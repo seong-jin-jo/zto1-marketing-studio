@@ -1,11 +1,10 @@
-import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { dataPath } from "@/lib/file-io";
 import { effectiveTenantId, AuthError } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { signImageToken } from "@/lib/image-token";
 import { canonicalPublicOrigin } from "@/lib/social-connect";
+import { mediaStore, MediaStoreError } from "@/lib/media-store";
 
 // POST /api/images/upload — 테넌트 격리 이미지 업로드(SNS-016).
 // 큐 이미지는 업로드 시점에 URL을 발급받아 queue.json에 영속 저장되고, 예약 발행이 며칠 뒤
@@ -14,6 +13,13 @@ import { canonicalPublicOrigin } from "@/lib/social-connect";
 const ALLOWED_EXTS = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MB = 1024 * 1024;
+const CONTENT_TYPES: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
 
 export async function POST(request: Request) {
   let tenantId: string | null;
@@ -62,13 +68,7 @@ export async function POST(request: Request) {
   }
 
   return runWithTenant(tenantId, async () => {
-    // dataPath()는 runWithTenant 컨텍스트 "안"에서 호출해야 테넌트별 tenants/{id}/images로
-    // 격리된다(모듈 스코프 상수로 두면 최초 로드 시점 테넌트로 전 테넌트가 새는 함정).
-    const imagesDir = dataPath("images");
     const safeName = `${crypto.randomBytes(6).toString("hex")}${ext}`;
-    if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
-
-    const savePath = path.join(imagesDir, safeName);
     const buf = Buffer.from(await file.arrayBuffer());
     // 2차 방어: 실제 바이트 길이가 사전검사와 어긋나는 런타임 조합에서도 상한을 넘긴 파일이
     // 디스크에 남지 않게 한 번 더 확인한다(fail closed).
@@ -78,19 +78,24 @@ export async function POST(request: Request) {
         { status: 413 },
       );
     }
-    fs.writeFileSync(savePath, buf);
 
     const origin = canonicalPublicOrigin();
     const token = origin ? signImageToken(tenantId, safeName) : null;
     if (!origin || !token) {
-      // 절대 공개 URL을 만들 수 없으면(OSMU_PUBLIC_URL 미설정 또는 서명 비밀 미설정) 방금 저장한
-      // 파일을 되돌려 흔적을 남기지 않는다(fail closed, 부분성공 방지) — 발행 시점에 죽는 URL을
-      // 큐에 영속 저장하는 것보다 업로드 실패로 즉시 알리는 편이 낫다.
-      try { fs.unlinkSync(savePath); } catch { /* ignore */ }
       return Response.json(
         { error: "공개 이미지 URL을 발급할 수 없습니다(OSMU_PUBLIC_URL / MEDIA_SIGNING_SECRET 설정 필요)." },
         { status: 500 },
       );
+    }
+
+    try {
+      await mediaStore.put(tenantId, safeName, buf, CONTENT_TYPES[ext]);
+    } catch (error) {
+      if (error instanceof MediaStoreError) {
+        const status = error.code === "R2_UNAVAILABLE" ? 503 : 500;
+        return Response.json({ error: error.message }, { status });
+      }
+      throw error;
     }
 
     return Response.json({ url: `${origin}/api/images/deliver/${token}`, filename: safeName });

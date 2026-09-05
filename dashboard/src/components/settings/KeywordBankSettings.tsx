@@ -60,7 +60,7 @@ export function KeywordBankSettings() {
   return (
     <div className="space-y-pad-inset">
       <div className="flex items-center justify-between">
-        <h3 className="text-body-sm font-medium text-text">Keyword Bank</h3>
+        <h3 className="text-body-sm font-medium text-text">키워드 목록</h3>
         <span className="text-caption text-subtle">{keywords.length} total | {keywords.filter((k) => !k.used).length} unused</span>
       </div>
 
@@ -89,7 +89,7 @@ export function KeywordBankSettings() {
       {/* Keyword list */}
       <div className="card p-pad-inset max-h-80 overflow-auto">
         {filtered.length === 0 ? (
-          <p className="text-subtle text-caption text-center">No keywords</p>
+          <p className="text-subtle text-caption text-center">키워드 없음</p>
         ) : (
           <div className="space-y-micro">
             {filtered.map((k) => (

@@ -60,6 +60,7 @@ const UNKNOWN_EVENT = "unknown_event";
 export const AUTH_REASONS = [
   "osmu_token_db_unreachable",
   "tenant_status_db_unreachable",
+  "tenant_access_record_failed",
   "supabase_jwt_verify_unreachable",
 ] as const;
 export const AI_FAILURE_REASONS = ["timeout", "provider_unavailable", "output_limit", "spawn_failed", "exit_nonzero", "stdin_failed", "unknown"] as const;

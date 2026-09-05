@@ -35,7 +35,7 @@ export function NotifStatusCard({ channel }: NotifStatusCardProps) {
           );
         })}
       </div>
-      <p className="text-caption text-subtle mt-stack-tight">Settings &gt; Notifications에서 변경</p>
+      <p className="text-caption text-subtle mt-stack-tight">설정 &gt; 알림에서 변경</p>
     </div>
   );
 }

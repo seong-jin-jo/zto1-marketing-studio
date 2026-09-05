@@ -13,7 +13,7 @@ import { SocialConnectButton } from "@/components/channel/SocialConnectButton";
 import { AccountManager } from "@/components/channel/AccountManager";
 import { SetupGuide } from "@/components/shared/SetupGuide";
 
-// OAuth "연결" 버튼을 제공하는 채널(ADR-004 — 비번/토큰 없이 버튼만). 점진 확장.
+// OAuth "연결" 버튼을 제공하는 채널. ADR-004에 따라 고객의 기본 경로는 연결 단추다.
 const OAUTH_CONNECT: Record<string, string> = {
   instagram: "Instagram",
   threads: "Threads",
@@ -47,15 +47,15 @@ interface ChannelPageProps {
   variant?: "text" | "blog" | "video";
 }
 
-// 미연결 채널 탭 — 콘텐츠를 살짝 블러(모자이크)로 가리고 연결 유도 모달을 띄운다.
+// 미연결 채널 탭은 콘텐츠를 살짝 흐리게 가리고 연결 안내를 띄운다.
 // 빈 화면 대신 "여기 뭔가 있다 → 연결하면 보인다"를 보여줘 연결 전환을 높인다.
 function ConnectGate({ label, onConnect }: { label: string; onConnect: () => void }) {
   return (
     <div className="relative min-h-[260px]">
-      {/* 블러 미리보기(실데이터 아님 — 모자이크 느낌의 자리표시) */}
+      {/* 실제 데이터가 아닌 흐린 미리보기 */}
       <div className="blur-sm select-none pointer-events-none opacity-60" aria-hidden>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-pad-inset mb-pad-inset">
-          {["Published", "Views", "Avg Views", "Avg Likes"].map((l) => (
+          {["발행 글", "조회", "평균 조회", "평균 좋아요"].map((l) => (
             <div key={l} className="card p-pad-inset">
               <p className="text-caption text-subtle uppercase tracking-wide">{l}</p>
               <p className="text-heading font-bold text-text mt-micro">없음</p>
@@ -89,7 +89,7 @@ export function ChannelPage({ channel, variant = "text" }: ChannelPageProps) {
   const { showToast } = useToast();
   const { subTab, setSubTab, expandedPopular, setExpandedPopular } = useUIStore();
   const [showManualCreds, setShowManualCreds] = useState(false);
-  // SNS-007: OAuth 연결 성공 시 AccountManager를 강제 리마운트해 목록을 갱신(key bump — refresh()를
+  // SNS-007: OAuth 연결 성공 시 AccountManager를 다시 마운트해 목록을 갱신한다. refresh()를
   // 부모가 직접 호출하려면 ref forwarding이 필요한데, remount가 더 단순하고 목록 API 자체가 가벼움).
   const [accountsRefreshTick, setAccountsRefreshTick] = useState(0);
 
@@ -101,10 +101,20 @@ export function ChannelPage({ channel, variant = "text" }: ChannelPageProps) {
   // 온다(GET /api/channel-config 라이브 검증). "인증 필요" raw 노출 대신 명확한 한국어 재연결 CTA로 안내.
   const reconnectRequired = !!cfg?.reconnectRequired;
   const providerUnreachable = cfg?.connectionStatus === "unverified" && cfg?.connectionError === "provider_unreachable";
-  const sg = setupGuides[channel] || { fields: [], labels: [], quick: ["Setup guide 준비 중"], detail: "" };
+  const sg = setupGuides[channel] || { fields: [], labels: [], quick: ["연결 안내 준비 중"], detail: "" };
 
   const isThreads = channel === "threads";
   const oauthLabel = OAUTH_CONNECT[channel];
+  const customerGuide = oauthLabel && !showManualCreds && !["threads", "instagram", "facebook"].includes(channel)
+    ? {
+        quick: [
+          `위 "${oauthLabel} 연결" 단추를 누르세요.`,
+          "공식 로그인 화면에서 사용할 계정을 확인하고 권한에 동의하세요.",
+          "연결이 끝나면 이 화면에서 계정과 연결 상태를 확인하세요.",
+        ],
+        detail: "직접 입력은 지원팀의 안내를 받은 경우에만 고급 연결 정보에서 사용하세요.",
+      }
+    : sg;
 
   // 채널 진입 시 기본 탭: 미연결이면 '연결(설정)' 탭으로 보내 키를 바로 입력하게(연결됨이면 큐).
   // 예전엔 무조건 queue로 빠져 채널 세팅 자체가 불가능했음.
@@ -122,12 +132,12 @@ export function ChannelPage({ channel, variant = "text" }: ChannelPageProps) {
       showToast(`${label} 연결 완료${r.account ? ". " + r.account : ""}`, "success");
       mutateConfig();
     } else if (r?.unverified) {
-      // 네트워크 등으로 확인 불가 — 키는 저장됐으나 검증 미완(자동화는 비활성 유지가 안전).
+      // 네트워크 문제로 확인하지 못하면 저장 상태만 알리고 자동화는 비활성으로 유지한다.
       showToast(`${label} 저장됨 · 미검증${r.reason ? ". " + r.reason : ""}`, "warning");
       mutateConfig();
     } else {
-      showToast(`연결 실패: ${r?.error || "Invalid credentials"}`, "error");
-      throw new Error(r?.error || "Verification failed");
+      showToast(`연결 실패: ${r?.error || "연결 정보를 확인해 주세요"}`, "error");
+      throw new Error(r?.error || "연결 확인에 실패했습니다");
     }
   };
 
@@ -153,8 +163,8 @@ export function ChannelPage({ channel, variant = "text" }: ChannelPageProps) {
           <h2 className="text-subheading font-semibold text-text">{label}</h2>
           <p className="text-caption text-subtle">
             {isThreads
-              ? `${cfg?.userId ? "ID: " + cfg.userId : ""} ${growth.length ? " · " + (growth[growth.length - 1] as Record<string, unknown>).followers + " followers" : ""}`
-              : connected ? "Connected" : CH_STATUS_LABEL[status] || status}
+              ? `${threadsUsername ? "@" + threadsUsername : connected ? "연결됨" : "연결 전"}${growth.length ? " · 팔로워 " + (growth[growth.length - 1] as Record<string, unknown>).followers : ""}`
+              : connected ? "연결됨" : CH_STATUS_LABEL[status] || status}
           </p>
         </div>
       </div>
@@ -215,13 +225,13 @@ export function ChannelPage({ channel, variant = "text" }: ChannelPageProps) {
                   label={oauthLabel}
                   onAccountsChanged={mutateConfig}
                 />
-                <p className="text-caption text-subtle mt-stack-tight">공식 OAuth가 기본 경로입니다. 토큰 직접 입력은 고급/비상용으로만 사용하세요.</p>
+                <p className="text-caption text-subtle mt-stack-tight">공식 연결이 기본입니다. 직접 입력은 지원 안내를 받은 경우에만 사용하세요.</p>
                 <Button
                   size="sm"
                   onClick={() => setShowManualCreds((v) => !v)}
                   className="mt-stack-tight"
                 >
-                  {showManualCreds ? "수동 토큰 입력 닫기" : "고급: 토큰 직접 입력"}
+                  {showManualCreds ? "고급 연결 정보 닫기" : "고급 연결 정보 열기"}
                 </Button>
               </div>
             )}
@@ -247,45 +257,45 @@ export function ChannelPage({ channel, variant = "text" }: ChannelPageProps) {
                 currentKeys={keys}
                 onSave={handleCredSave}
                 connected={connected}
-                title={isThreads ? "수동 Threads 토큰" : channel === "x" ? "수동 OAuth 1.0 Keys" : "수동 Credentials"}
-                badge={isThreads ? { text: "Long-lived Token", color: "blue" } : channel === "x" ? { text: "OAuth 1.0a", color: "blue" } : undefined}
-                connectLabel={isThreads ? "Connect Threads" : channel === "x" ? "Connect X Account" : undefined}
+                title={isThreads ? "Threads 고급 연결 정보" : channel === "x" ? "X 고급 연결 정보" : "고급 연결 정보"}
+                badge={isThreads ? { text: "장기 연결", color: "blue" } : channel === "x" ? { text: "OAuth 1.0a", color: "blue" } : undefined}
+                connectLabel={isThreads ? "Threads 연결" : channel === "x" ? "X 계정 연결" : undefined}
                 fieldGroups={channel === "x" ? [
-                  { title: "소비자 키 (Consumer Keys)", fieldIndices: [0, 1] },
-                  { title: "액세스 토큰 (Access Token)", fieldIndices: [2, 3] },
+                  { title: "앱 연결 키", fieldIndices: [0, 1] },
+                  { title: "계정 연결 정보", fieldIndices: [2, 3] },
                 ] : undefined}
               />
             )}
             {oauthLabel && !showManualCreds && connected && (
               <div className="rounded-control border border-success/30 bg-success/10 p-stack text-caption text-success">
-                OAuth 연결 상태입니다. 원문 access token은 화면에 표시하지 않고 서버에 암호화 저장합니다.
+                공식 연결 상태입니다. 연결 정보는 화면에 표시하지 않고 안전하게 보관합니다.
               </div>
             )}
             {oauthLabel && !showManualCreds && reconnectRequired && (
               <div className="mt-stack rounded-control border border-warning/40 bg-warning/10 p-stack text-caption text-warning">
-                재연결 필요. 저장된 토큰이 만료되었거나 무효합니다({label} 측 거부). 위 OAuth 단추로 다시 연결해 주세요.
+                재연결 필요. 저장된 연결이 만료되었거나 유효하지 않습니다. 위 연결 단추로 다시 연결해 주세요.
               </div>
             )}
           </div>
 
-          {/* Channel Info + Setup Guide */}
+          {/* 채널 정보와 연결 안내 */}
           <div className="space-y-pad-inset">
-            <Section title="Channel Info" headingLevel={3} className="card p-pad-inset">
+            <Section title="채널 정보" headingLevel={3} className="card p-pad-inset">
               <div className="space-y-stack-tight text-body">
                 <div className="flex justify-between">
-                  <span className="text-subtle">Status</span>
+                  <span className="text-subtle">상태</span>
                   <span className={connected ? "text-success" : status === "connected" ? "text-accent" : "text-warning"}>
-                    {connected ? "Connected" : reconnectRequired ? "재연결 필요" : CH_STATUS_LABEL[status] || "Not connected"}
+                    {connected ? "연결됨" : reconnectRequired ? "재연결 필요" : CH_STATUS_LABEL[status] || "연결 안 됨"}
                   </span>
                 </div>
                 {isThreads && (
                   <>
                     <div className="flex justify-between">
-                      <span className="text-subtle">Username</span>
+                      <span className="text-subtle">사용자 이름</span>
                       <span className="text-muted">{threadsUsername ? "@" + threadsUsername : "-"}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-subtle">Token Validity</span>
+                      <span className="text-subtle">연결 유효 기간</span>
                       <span className="text-muted">60일 (갱신 필요)</span>
                     </div>
                   </>
@@ -293,18 +303,18 @@ export function ChannelPage({ channel, variant = "text" }: ChannelPageProps) {
                 {channel === "x" && (
                   <>
                     <div className="flex justify-between">
-                      <span className="text-subtle">Auth Method</span>
-                      <span className="text-muted">OAuth 1.0a (User Context)</span>
+                      <span className="text-subtle">연결 방식</span>
+                      <span className="text-muted">OAuth 1.0a 사용자 연결</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-subtle">Permission</span>
-                      <span className="text-muted">Read and Write 필수</span>
+                      <span className="text-subtle">권한</span>
+                      <span className="text-muted">읽기 및 쓰기 필수</span>
                     </div>
                   </>
                 )}
                 {charLimit && (
                   <div className="flex justify-between">
-                    <span className="text-subtle">Character Limit</span>
+                    <span className="text-subtle">글자 수 제한</span>
                     <span className="text-muted">{charLimit}</span>
                   </div>
                 )}
@@ -312,18 +322,18 @@ export function ChannelPage({ channel, variant = "text" }: ChannelPageProps) {
             </Section>
             <div className="card p-pad-inset">
               <SetupGuide
-                quick={sg.quick}
-                detail={sg.detail}
-                images={sg.images}
+                quick={customerGuide.quick}
+                detail={customerGuide.detail}
+                images={"images" in customerGuide ? customerGuide.images : undefined}
                 warning={channel === "x" ? "* 권한 변경 후 반드시 액세스 토큰을 재생성해야 합니다" : undefined}
               />
             </div>
           </div>
 
-          {/* Tenant-scoped automation — no global cron status/run access. */}
+          {/* 이 작업 공간에만 적용되는 자동화 */}
           <TenantAutomationSettings channel={channel} />
 
-          {/* Parameters (Threads only) */}
+          {/* Threads 세부 설정 */}
           {isThreads && <ParametersSection />}
 
           {/* Content Guide + Keywords */}
@@ -339,7 +349,7 @@ export function ChannelPage({ channel, variant = "text" }: ChannelPageProps) {
 export function AnalyticsTab() {
   const { data } = useSWR("/api/analytics", fetcher);
   const a = data as Record<string, unknown> | undefined;
-  if (!a) return <p className="text-subtle">Loading...</p>;
+  if (!a) return <p className="text-subtle">불러오는 중...</p>;
 
   const s = (a.summary || {}) as Record<string, unknown>;
   const posts = ((a.posts || []) as Record<string, unknown>[]).sort(
@@ -353,15 +363,15 @@ export function AnalyticsTab() {
     <>
       {(s.totalPublished as number) === 0 && (
         <div className="p-stack rounded-chip bg-surface/50 mb-pad-inset">
-          <p className="text-caption text-subtle">아직 발행된 글이 없습니다. Queue에서 draft를 승인하면 자동 발행됩니다.</p>
+          <p className="text-caption text-subtle">아직 발행된 글이 없습니다. 대기열에서 초안을 승인하면 자동 발행됩니다.</p>
         </div>
       )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-pad-inset mb-stack-section">
         {[
-          ["Published", s.totalPublished],
-          ["Views", s.totalViews],
-          ["Avg Views", s.avgViews],
-          ["Avg Likes", s.avgLikes],
+          ["발행 글", s.totalPublished],
+          ["조회", s.totalViews],
+          ["평균 조회", s.avgViews],
+          ["평균 좋아요", s.avgLikes],
         ].map(([label, val]) => (
           <div key={String(label)} className="card p-pad-inset">
             <p className="text-caption text-subtle uppercase tracking-wide">{String(label)}</p>
@@ -372,14 +382,14 @@ export function AnalyticsTab() {
 
       {Object.keys(topics).length > 0 && (
         <div className="card p-pad-inset mb-stack-section">
-          <h3 className="text-caption font-medium text-subtle mb-stack">Topic Performance</h3>
+          <h3 className="text-caption font-medium text-subtle mb-stack">주제별 성과</h3>
           <table className="w-full text-body">
             <thead>
               <tr className="text-caption text-subtle uppercase">
-                <th className="text-left py-micro">Topic</th>
-                <th className="text-right py-micro">Posts</th>
-                <th className="text-right py-micro">Avg Views</th>
-                <th className="text-right py-micro">Avg Likes</th>
+                <th className="text-left py-micro">주제</th>
+                <th className="text-right py-micro">글 수</th>
+                <th className="text-right py-micro">평균 조회</th>
+                <th className="text-right py-micro">평균 좋아요</th>
               </tr>
             </thead>
             <tbody>
@@ -398,7 +408,7 @@ export function AnalyticsTab() {
 
       {Object.keys(hashtags).length > 0 && (
         <div className="card p-pad-inset mb-stack-section">
-          <h3 className="text-caption font-medium text-subtle mb-stack">Hashtag Performance</h3>
+          <h3 className="text-caption font-medium text-subtle mb-stack">해시태그별 성과</h3>
           <div className="flex flex-wrap gap-stack-tight">
             {Object.entries(hashtags)
               .sort((a, b) => (b[1].avgViews || 0) - (a[1].avgViews || 0))
@@ -413,7 +423,7 @@ export function AnalyticsTab() {
                 >
                   #{t}{" "}
                   <span className="text-caption text-subtle">
-                    {stats.count}posts {stats.avgViews || 0}v {stats.avgLikes || 0}l
+                    글 {stats.count}개 · 평균 조회 {stats.avgViews || 0} · 평균 좋아요 {stats.avgLikes || 0}
                   </span>
                 </span>
               ))}
@@ -423,7 +433,7 @@ export function AnalyticsTab() {
 
       {posts.length > 0 && (
         <div className="card p-pad-inset">
-          <h3 className="text-caption font-medium text-subtle mb-stack">Post Performance</h3>
+          <h3 className="text-caption font-medium text-subtle mb-stack">글별 성과</h3>
           <div className="space-y-stack-tight">
             {posts.map((p, i) => {
               const views = (p.views as number) || 0;
@@ -437,21 +447,21 @@ export function AnalyticsTab() {
                     <div className="flex items-center gap-stack mt-micro">
                       <span className="text-caption text-subtle">{String(p.topic || "")}</span>
                       <span className="text-caption text-subtle">{p.publishedAt ? fmtTime(p.publishedAt) : ""}</span>
-                      {!!p.archived && <span className="text-caption text-subtle">archived</span>}
+                      {!!p.archived && <span className="text-caption text-subtle">보관됨</span>}
                     </div>
                   </div>
                   <div className="flex gap-pad-inset text-right shrink-0">
                     <div>
                       <p className={`text-caption ${isViral ? "text-warning font-medium" : "text-muted"}`}>{views}</p>
-                      <p className="text-caption text-subtle">views</p>
+                      <p className="text-caption text-subtle">조회</p>
                     </div>
                     <div>
                       <p className="text-caption text-muted">{String(p.likes || 0)}</p>
-                      <p className="text-caption text-subtle">likes</p>
+                      <p className="text-caption text-subtle">좋아요</p>
                     </div>
                     <div>
                       <p className="text-caption text-muted">{String(p.replies || 0)}</p>
-                      <p className="text-caption text-subtle">replies</p>
+                      <p className="text-caption text-subtle">답글</p>
                     </div>
                   </div>
                 </div>
@@ -468,11 +478,11 @@ export function AnalyticsTab() {
 function GrowthTab() {
   const { data } = useSWR("/api/growth", fetcher);
   const records = (((data as Record<string, unknown>)?.records || []) as Array<{ date: string; followers: number; delta: number }>);
-  if (!records.length) return <p className="text-subtle text-body">No growth data</p>;
+  if (!records.length) return <p className="text-subtle text-body">아직 성장 데이터가 없습니다</p>;
 
   return (
     <div className="card p-pad-inset">
-      <h3 className="text-caption font-medium text-subtle mb-stack">Follower History</h3>
+      <h3 className="text-caption font-medium text-subtle mb-stack">팔로워 변화</h3>
       <div className="space-y-micro">
         {records.slice(-14).map((r) => (
           <div key={r.date} className="flex justify-between text-caption border-b border-border/50 py-micro">
@@ -501,6 +511,11 @@ function PopularTab({ expandedPopular, setExpandedPopular }: { expandedPopular: 
     external: "bg-accent-soft text-accent",
     "own-viral": "bg-success/15 text-success",
     manual: "bg-surface-2 text-muted",
+  };
+  const SOURCE_LABELS: Record<string, string> = {
+    external: "외부 수집",
+    "own-viral": "내 인기글",
+    manual: "직접 추가",
   };
 
   const handleAdd = async () => {
@@ -555,10 +570,10 @@ function PopularTab({ expandedPopular, setExpandedPopular }: { expandedPopular: 
               <div key={i} className="card overflow-hidden cursor-pointer hover:bg-surface-2/20 transition-colors" onClick={() => setExpandedPopular(open ? null : i)}>
                 <div className="flex items-center gap-stack-tight px-pad-inset pt-stack pb-micro">
                   <span className={`text-caption px-stack-tight py-micro rounded-chip ${SOURCE_COLORS[String(p.source)] || "bg-surface-2 text-muted"}`}>
-                    {String(p.source || "?")}
+                    {SOURCE_LABELS[String(p.source)] || "출처 미상"}
                   </span>
                   {p.topic ? <span className="text-caption text-subtle">{String(p.topic)}</span> : null}
-                  {p.likes && String(p.likes) !== "0" ? <span className="text-caption text-warning">{String(p.likes)} likes</span> : null}
+                  {p.likes && String(p.likes) !== "0" ? <span className="text-caption text-warning">좋아요 {String(p.likes)}</span> : null}
                   {p.username ? <span className="text-caption text-subtle">@{String(p.username)}</span> : null}
                   <span className="text-caption text-subtle ml-auto">{String(p.collected || "")}</span>
                   <svg className={`w-3 h-3 text-subtle transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -598,17 +613,17 @@ function ParametersSection() {
   const s = (settings || {}) as Record<string, number>;
 
   const PARAMS = [
-    { key: "viralThreshold", label: "Viral Threshold", desc: "터진 글 기준 views" },
-    { key: "draftsPerBatch", label: "Drafts per Batch", desc: "배치당 생성 개수" },
-    { key: "imagePerBatch", label: "Images per Batch", desc: "배치당 이미지 첨부 수" },
-    { key: "casualPerBatch", label: "Casual per Batch", desc: "배치당 일상 글 수" },
-    { key: "quotePerBatch", label: "Quotes per Batch", desc: "배치당 인용 게시 수" },
-    { key: "publishIntervalHours", label: "Publish Interval", desc: "발행 간격 (시간)" },
-    { key: "insightsIntervalHours", label: "Insights Interval", desc: "반응 수집 간격 (시간)" },
-    { key: "insightsMaxCollections", label: "Max Collections", desc: "최대 반응 수집 횟수" },
-    { key: "minLikes", label: "Min Likes", desc: "외부 인기글 최소 좋아요" },
-    { key: "searchDays", label: "Search Days", desc: "검색 기간 (일)" },
-    { key: "maxPopularPosts", label: "Max Popular Posts", desc: "인기글 최대 보관 수" },
+    { key: "viralThreshold", label: "인기글 기준", desc: "인기글로 판단할 최소 조회 수" },
+    { key: "draftsPerBatch", label: "초안 생성 수", desc: "한 번에 만들 초안 수" },
+    { key: "imagePerBatch", label: "이미지 첨부 수", desc: "한 번에 첨부할 이미지 수" },
+    { key: "casualPerBatch", label: "일상 글 수", desc: "한 번에 만들 일상 글 수" },
+    { key: "quotePerBatch", label: "인용 글 수", desc: "한 번에 만들 인용 글 수" },
+    { key: "publishIntervalHours", label: "발행 간격", desc: "발행 사이 간격(시간)" },
+    { key: "insightsIntervalHours", label: "성과 수집 간격", desc: "성과를 수집할 간격(시간)" },
+    { key: "insightsMaxCollections", label: "최대 수집 횟수", desc: "글마다 성과를 수집할 최대 횟수" },
+    { key: "minLikes", label: "최소 좋아요", desc: "외부 인기글 수집 기준" },
+    { key: "searchDays", label: "검색 기간", desc: "최근 검색 기간(일)" },
+    { key: "maxPopularPosts", label: "인기글 보관 수", desc: "보관할 인기글의 최대 수" },
   ];
 
   const [vals, setVals] = useState<Record<string, string>>({});
@@ -630,9 +645,9 @@ function ParametersSection() {
   return (
     <div className="card p-pad-inset">
       <div className="flex items-center justify-between mb-pad-inset">
-        <h3 className="text-body font-medium text-muted">Parameters</h3>
+        <h3 className="text-body font-medium text-muted">세부 설정</h3>
         <Button variant="primary" size="sm" onClick={handleSave} disabled={saving}>
-          {saving ? "Saving..." : "Save"}
+          {saving ? "저장 중..." : "저장"}
         </Button>
       </div>
       {PARAMS.map((p) => (

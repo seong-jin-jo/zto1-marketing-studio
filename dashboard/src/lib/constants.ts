@@ -83,9 +83,9 @@ export const CH_STATUS_BADGE: Record<string, string> = {
 
 export const CH_STATUS_LABEL: Record<string, string> = {
   live: "Live",
-  connected: "Connected",
+  connected: "연결됨",
   available: "",
-  soon: "Coming Soon",
+  soon: "준비 중",
 };
 
 // OSMU 1차 정식 제공 채널 (실배포 OPENCLAW_EXTENSIONS = threads/x/instagram publish).
@@ -112,23 +112,23 @@ export const IMPLEMENTED_PLUGINS: string[] = [
   "midjourney",
 ];
 
-/** Automation feature definitions — implemented: 크론잡 연결됨, coming_soon: 토글만 */
+/** 자동화 기능 정의. implemented는 현재 사용할 수 있는 기능을 뜻한다. */
 export const AUTOMATION_FEATURES = [
-  { key: "content_generation", label: "Content Generation", description: "prompt-guide 기반 글 배치 생성 → draft 저장", default: true, implemented: true },
-  { key: "auto_publish", label: "Auto Publish", description: "승인된 글 자동 발행 (1개씩)", default: true, implemented: true },
-  { key: "insights_collection", label: "Insights Collection", description: "발행 글 views/likes/replies 수집", default: true, implemented: true },
-  { key: "auto_like_replies", label: "Auto Like Replies", description: "내 글에 달린 댓글에 좋아요", default: true, implemented: true },
-  { key: "auto_reply", label: "Auto Reply", description: "미답변 댓글에 AI 톤 자동 답글", default: false, implemented: false },
-  { key: "low_engagement_cleanup", label: "Low Engagement Cleanup", description: "24시간 후 반응 저조 글 자동 삭제", default: false, implemented: false },
-  { key: "trending_collection", label: "Trending Collection", description: "키워드 기반 외부 인기글 브라우저 수집", default: true, implemented: true },
-  { key: "trending_rewrite", label: "Trending Rewrite", description: "수집된 인기글을 우리 톤으로 재가공", default: false, implemented: false },
-  { key: "quote_trending", label: "Quote Trending", description: "외부 인기글 인용 게시 (우리 관점 추가)", default: false, implemented: false },
-  { key: "series_followup", label: "Series Follow-up", description: "반응 좋은 토픽으로 시리즈 후속글", default: false, implemented: false },
-  { key: "casual_posts", label: "Casual Posts", description: "일상/감성 톤 글 (사람처럼 보이기)", default: false, implemented: false },
-  { key: "follower_tracking", label: "Growth Tracking", description: "팔로워 수 일간 추적", default: true, implemented: true },
-  { key: "image_generation", label: "Image Generation", description: "배치 중 일부에 AI 이미지 자동 생성", default: false, implemented: false },
-  { key: "instagram_carousel", label: "Instagram Carousel", description: "카드뉴스 자동 생성 + Instagram 캐러셀 발행", default: false, implemented: true },
-  { key: "youtube_shorts", label: "YouTube Shorts", description: "카드뉴스 기반 짧은 영상 생성 + Shorts 발행", default: false, implemented: false },
+  { key: "content_generation", label: "콘텐츠 생성", description: "학습 정보를 반영해 콘텐츠 초안을 만들고 저장합니다.", default: true, implemented: true },
+  { key: "auto_publish", label: "자동 발행", description: "승인된 글을 한 편씩 자동 발행합니다.", default: true, implemented: true },
+  { key: "insights_collection", label: "성과 수집", description: "발행한 글의 조회, 좋아요, 답글 수를 수집합니다.", default: true, implemented: true },
+  { key: "auto_like_replies", label: "댓글 자동 좋아요", description: "내 글에 달린 댓글에 좋아요를 표시합니다.", default: true, implemented: true },
+  { key: "auto_reply", label: "자동 답글", description: "답하지 않은 댓글에 브랜드 말투로 답글을 작성합니다.", default: false, implemented: false },
+  { key: "low_engagement_cleanup", label: "반응 저조 글 정리", description: "24시간 뒤 반응이 낮은 글을 자동으로 삭제합니다.", default: false, implemented: false },
+  { key: "trending_collection", label: "인기글 수집", description: "등록한 키워드를 기준으로 외부 인기글을 수집합니다.", default: true, implemented: true },
+  { key: "trending_rewrite", label: "인기글 재구성", description: "수집한 인기글을 브랜드 말투로 다시 구성합니다.", default: false, implemented: false },
+  { key: "quote_trending", label: "인기글 인용", description: "외부 인기글에 우리 관점을 더해 게시합니다.", default: false, implemented: false },
+  { key: "series_followup", label: "시리즈 후속 글", description: "반응이 좋은 주제로 후속 글을 만듭니다.", default: false, implemented: false },
+  { key: "casual_posts", label: "일상 글", description: "일상과 감성을 담은 글을 만듭니다.", default: false, implemented: false },
+  { key: "follower_tracking", label: "팔로워 추적", description: "팔로워 수 변화를 매일 기록합니다.", default: true, implemented: true },
+  { key: "image_generation", label: "이미지 생성", description: "일부 콘텐츠에 쓸 이미지를 자동으로 만듭니다.", default: false, implemented: false },
+  { key: "instagram_carousel", label: "Instagram 캐러셀", description: "카드뉴스를 만들고 Instagram 캐러셀로 발행합니다.", default: false, implemented: true },
+  { key: "youtube_shorts", label: "YouTube Shorts", description: "카드뉴스를 짧은 영상으로 만들어 발행합니다.", default: false, implemented: false },
 ];
 
 /**

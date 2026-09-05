@@ -168,7 +168,7 @@ export function UnifiedPostCard({
           </div>
         ) : (
           <div className="mb-stack w-36 h-44 rounded-control border border-dashed border-border bg-surface/30 flex items-center justify-center">
-            <span className="text-subtle text-caption">No Image</span>
+            <span className="text-subtle text-caption">이미지 없음</span>
           </div>
         )
       ) : variant === "blog" ? (
@@ -285,9 +285,9 @@ export function UnifiedPostCard({
       {/* Engagement (published only) */}
       {post.engagement?.views != null && (
         <div className="flex gap-pad-inset text-caption text-subtle">
-          <span>views: {post.engagement.views}</span>
-          <span>likes: {post.engagement.likes || 0}</span>
-          <span>replies: {post.engagement.replies || 0}</span>
+          <span>조회: {post.engagement.views}</span>
+          <span>좋아요: {post.engagement.likes || 0}</span>
+          <span>답글: {post.engagement.replies || 0}</span>
         </div>
       )}
 

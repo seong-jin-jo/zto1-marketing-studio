@@ -1,0 +1,24 @@
+{
+  "stamp": {
+    "created_at": "2026-09-02T05:23:53+09:00",
+    "model": "gpt-codex/gpt-5.6-sol",
+    "agent": "product-designer",
+    "skills": ["design-html", "design-review"],
+    "basis": [
+      "docs/prototype/openclaw-auto-4room-v64.html",
+      "docs/prototype/osmu-editroom-v65-gpt-codex-20260901-0710.html",
+      "docs/prototype/osmu-publishfield-v66-gpt-codex-20260901-0813.html"
+    ],
+    "decision": "v64 shell geometry is preserved while v65 edit and v66 publish content are unified in one routed candidate."
+  },
+  "source_mockup": "docs/prototype/openclaw-auto-4room-v64.html",
+  "source_plan": "pipeline-state.osmu.md",
+  "mode": "evolve",
+  "html_file": "docs/prototype/osmu-v67-edit-publish-hub-gpt-codex-20260902-0448.html",
+  "pretext_tier": "basic",
+  "framework": "vanilla",
+  "iterations": 4,
+  "date": "2026-09-02T05:23:53+09:00",
+  "screen": "OSMU edit and publish rooms",
+  "branch": "work/osmu-v67"
+}

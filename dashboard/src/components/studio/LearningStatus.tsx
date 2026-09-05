@@ -27,14 +27,17 @@ export function LearningStatus({
   }, [flashToken]);
 
   const done = filled >= LEARNING_SLOT_TOTAL;
+  const remaining = Math.max(0, LEARNING_SLOT_TOTAL - filled);
   return (
     <button
       type="button"
       onClick={onOpen}
       data-learning-status={filled}
       data-learning-flash={flashing ? "on" : undefined}
-      aria-label={`학습 정보 ${filled} / ${LEARNING_SLOT_TOTAL}칸 채움. 이어서 채우기`}
-      title="회원님 브랜드를 담당이 배워 둔 정도입니다. 눌러서 이어 채웁니다"
+      aria-label={done
+        ? `학습 정보 ${filled} / ${LEARNING_SLOT_TOTAL}칸 채움. 모두 채움`
+        : `학습 정보 ${filled} / ${LEARNING_SLOT_TOTAL}칸 채움. 남은 ${remaining}칸 이어 채우기`}
+      title={done ? "학습 정보를 모두 채웠습니다" : `남은 ${remaining}칸을 이어서 채웁니다`}
       className={`inline-flex min-h-control-touch items-center gap-stack-tight rounded-control border px-stack text-body-sm font-semibold ${
         flashing ? "border-accent bg-accent-soft text-accent" : "border-border bg-surface-2 text-muted hover:bg-surface"
       }`}
@@ -42,6 +45,9 @@ export function LearningStatus({
       <span>학습 정보</span>
       <span className={done ? "text-success" : "text-accent"}>
         {filled} / {LEARNING_SLOT_TOTAL}
+      </span>
+      <span className="text-caption text-muted">
+        {done ? "모두 채움" : `남은 ${remaining}칸 이어 채우기`}
       </span>
       <progress
         className="progress-semantic w-16"

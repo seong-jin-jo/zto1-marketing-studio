@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   pathname: vi.fn(() => "/"),
   replace: vi.fn(),
   signOut: vi.fn(),
+  refreshSession: vi.fn(),
   getSession: vi.fn(),
   sessionToken: null as string | null,
   authStateCallback: null as null | ((event: string, session: { access_token?: string } | null) => void),
@@ -35,6 +36,7 @@ vi.mock("@/lib/supabase", () => ({
   createBrowserSupabase: () => ({
     auth: {
       getSession: mocks.getSession,
+      refreshSession: mocks.refreshSession,
       signOut: mocks.signOut,
       onAuthStateChange: vi.fn((callback) => {
         mocks.authStateCallback = callback;
@@ -55,6 +57,9 @@ describe("AuthGate operator route separation", () => {
     mocks.replace.mockReset();
     mocks.signOut.mockReset();
     mocks.signOut.mockResolvedValue({ error: null });
+    // 기본은 "갱신 불가". 갱신이 되는 경우는 각 케이스에서 명시한다.
+    mocks.refreshSession.mockReset();
+    mocks.refreshSession.mockResolvedValue({ data: { session: null }, error: { message: "no session" } });
     mocks.getSession.mockReset();
     mocks.getSession.mockImplementation(async () => ({
       data: {
@@ -280,6 +285,25 @@ describe("AuthGate operator route separation", () => {
     expect(localStorage.getItem("dashboard_auth_token")).toBe("operator-token");
   });
 
+  // 2026-09-05 실측 회귀: 스튜디오 작업 도중 접근 토큰 수명이 끝나자 그대로 로그인
+  // 화면으로 튕겼다. 만료는 로그아웃 사유가 아니다. 갱신이 되면 있던 자리에 남아야 한다.
+  it("QA-AUTH-08 정상: 접근 토큰이 만료돼도 갱신에 성공하면 로그아웃시키지 않는다", async () => {
+    const jwt = `${"a".repeat(24)}.${"b".repeat(24)}.${"c".repeat(24)}`;
+    const renewed = `${"d".repeat(24)}.${"e".repeat(24)}.${"f".repeat(24)}`;
+    localStorage.setItem("dashboard_auth_token", jwt);
+    mocks.pathname.mockReturnValue("/studio");
+    window.history.replaceState(null, "", "/studio?room=edit");
+    mocks.refreshSession.mockResolvedValue({ data: { session: { access_token: renewed } }, error: null });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+
+    render(<AuthGate><div>customer child</div></AuthGate>);
+
+    await waitFor(() => expect(mocks.refreshSession).toHaveBeenCalled());
+    await waitFor(() => expect(localStorage.getItem("dashboard_auth_token")).toBe(renewed));
+    expect(mocks.signOut).not.toHaveBeenCalled();
+    expect(mocks.replace).not.toHaveBeenCalledWith("/login?returnTo=%2Fstudio%3Froom%3Dedit");
+  });
+
   it("QA-AUTH-06 정상: 만료 고객 JWT는 운영자 화면 대신 returnTo가 보존된 고객 로그인으로 보낸다", async () => {
     const jwt = `${"a".repeat(24)}.${"b".repeat(24)}.${"c".repeat(24)}`;
     localStorage.setItem("dashboard_auth_token", jwt);
@@ -296,6 +320,27 @@ describe("AuthGate operator route separation", () => {
     expect(mocks.replace).not.toHaveBeenCalledWith("/operator");
     expect(localStorage.getItem("dashboard_auth_token")).toBeNull();
     expect(screen.queryByText("customer child")).not.toBeInTheDocument();
+  });
+
+  it("V71-AUTH-03 거절: 다른 화면의 조회 401도 로그아웃 처리를 기다리지 않고 즉시 화면 행동을 막는다", async () => {
+    const jwt = `${"a".repeat(24)}.${"b".repeat(24)}.${"c".repeat(24)}`;
+    localStorage.setItem("dashboard_auth_token", jwt);
+    localStorage.setItem("dashboard_auth_identity_kind", "customer");
+    mocks.pathname.mockReturnValue("/calendar");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+      isOperator: false,
+      tenant: { id: "customer-1", slug: "customer", name: "Customer" },
+    })));
+
+    render(<AuthGate><button type="button">예약 변경</button></AuthGate>);
+    await waitFor(() => expect(screen.getByRole("button", { name: "예약 변경" })).toBeInTheDocument());
+
+    mocks.signOut.mockReturnValue(new Promise(() => {}));
+    act(() => window.dispatchEvent(new CustomEvent("auth:customer-reauth-required")));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("세션이 만료되었습니다");
+    expect(screen.getByRole("button", { name: "로그인 화면으로 이동" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "예약 변경" })).not.toBeInTheDocument();
   });
 
   it("QA-AUTH-08 거절: 형식 불량 고객 잔존 토큰도 고객 로그인에 머물고 운영자 화면을 열지 않는다", async () => {
@@ -451,5 +496,25 @@ describe("AuthGate operator route separation", () => {
     expect(localStorage.getItem("dashboard_auth_token")).toBeNull();
     expect(localStorage.getItem("active_workspace")).toBeNull();
     expect(useUIStore.getState().activeWorkspace).toBeNull();
+  });
+
+  // 2026-09-05 회장 계정 실측 회귀: 배포로 컨테이너가 잠깐 재시작하는 사이 상태 검사가 한 번
+  // 실패해 작업 중이던 화면이 통째로 덮였다. 바로 뒤에 같은 토큰으로 부르니 정상이었다.
+  it("QA-AUTH-09 정상: 상태 검사가 일시적으로 500이면 한 번 더 물어보고 화면을 지킨다", async () => {
+    const jwt = `${"a".repeat(24)}.${"b".repeat(24)}.${"c".repeat(24)}`;
+    localStorage.setItem("dashboard_auth_token", jwt);
+    mocks.pathname.mockReturnValue("/studio");
+    let calls = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) return new Response(null, { status: 503 });
+      return Response.json({ tenant: { id: "11111111-1111-4111-8111-111111111111" }, isOperator: false });
+    }));
+
+    render(<AuthGate><div>customer child</div></AuthGate>);
+
+    await waitFor(() => expect(screen.getByText("customer child")).toBeInTheDocument(), { timeout: 4000 });
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("서비스 확인 실패")).toBeNull();
   });
 });

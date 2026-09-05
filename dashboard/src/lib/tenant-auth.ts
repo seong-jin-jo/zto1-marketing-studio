@@ -11,6 +11,39 @@ function reportAuthServiceUnavailable(reason: string): void {
   void reportFailure({ event: "auth_service_unavailable", severity: "critical", context: { reason } });
 }
 
+// 고객 접속은 인증 성공 뒤 최대 15분에 한 번만 기록한다. 조건부 UPDATE와 이력 INSERT를 한 SQL
+// 문장으로 묶어 둘 중 하나만 반영되는 상태를 막는다. PostgreSQL Read Committed는 경합한 UPDATE가
+// 기다린 뒤 WHERE를 최신 행에 다시 평가하므로 같은 tenant의 동시 요청 중 하나만 touched_tenant를
+// 통과한다. 이력에는 tenant_id와 시각 외 개인정보를 전달하지 않는다.
+export async function recordTenantAccess(tenantId: string): Promise<void> {
+  const sql = db();
+  await sql`
+    WITH touched_tenant AS (
+      UPDATE tenants
+      SET last_accessed_at = now()
+      WHERE id = ${tenantId}
+        AND (
+          last_accessed_at IS NULL
+          OR last_accessed_at <= now() - INTERVAL '15 minutes'
+        )
+      RETURNING id, last_accessed_at
+    )
+    INSERT INTO tenant_access_events (tenant_id, accessed_at)
+    SELECT id, last_accessed_at
+    FROM touched_tenant
+    ON CONFLICT (tenant_id, accessed_at) DO NOTHING`;
+}
+
+async function recordTenantAccessWithoutBlockingAuth(tenantId: string): Promise<void> {
+  try {
+    await recordTenantAccess(tenantId);
+  } catch {
+    // 접속 장부 장애가 로그인과 고객 요청을 막아서는 안 된다. 원문 오류나 tenant 식별자는
+    // 관측 payload에 싣지 않고 고정 reason만 남긴다.
+    reportAuthServiceUnavailable("tenant_access_record_failed");
+  }
+}
+
 // 무효/미인식 bearer 또는 검증 인프라 장애 시 던짐 — effectiveTenantId가 절대 fallback/공유 root로
 // 새지 않게 하는 타입드 에러. 401(무효·미인식) / 403(유효하지만 계정 정지·이용불가) / 503(검증기·env·DB 장애).
 // code는 안정된 machine-readable 식별자(클라가 accessPaused/accountUnavailable 화면분기에 사용).
@@ -72,10 +105,17 @@ export async function resolveTenantByHost(request: Request): Promise<string | nu
 // ⚠️ 멱등·레이스 안전: 동시 첫로그인(여러 요청 병렬)이면 SELECT가 둘 다 비어 INSERT가 충돌해
 //   unique 위반 throw → 500 → 클라 재시도 폭주 → CPU 100% 고착(2026-06-28 장애). 그래서
 //   ON CONFLICT (owner_auth_id) DO UPDATE ... RETURNING로 중복이어도 기존 id를 throw 없이 반환한다.
-export async function ensureTenantForUser(authId: string, email: string | null): Promise<string> {
+export async function ensureTenantForUser(
+  authId: string,
+  email: string | null,
+  opts?: { recordAccess?: boolean },
+): Promise<string> {
   const sql = db();
   const [existing] = await sql<{ id: string }[]>`SELECT id FROM tenants WHERE owner_auth_id = ${authId} LIMIT 1`;
-  if (existing) return existing.id;
+  if (existing) {
+    if (opts?.recordAccess !== false) await recordTenantAccessWithoutBlockingAuth(existing.id);
+    return existing.id;
+  }
   const base = (email?.split("@")[0] || "user").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 24) || "user";
   const slug = `${base}-${crypto.randomBytes(3).toString("hex")}`;
   // OSMU v1.0.0 셀프서브 오픈: 신규 가입 = 'active'(계정 자체는 가입 즉시 이용 가능 — 공개 대시보드).
@@ -87,6 +127,7 @@ export async function ensureTenantForUser(authId: string, email: string | null):
     VALUES (${slug}, ${email || slug}, 'active', 'team', ${authId})
     ON CONFLICT (owner_auth_id) DO UPDATE SET owner_auth_id = EXCLUDED.owner_auth_id
     RETURNING id`;
+  if (opts?.recordAccess !== false) await recordTenantAccessWithoutBlockingAuth(row.id);
   return row.id;
 }
 

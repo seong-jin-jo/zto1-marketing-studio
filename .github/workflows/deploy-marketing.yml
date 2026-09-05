@@ -37,6 +37,10 @@ jobs:
           DATABASE_URL=${{ secrets.OSMU_DATABASE_URL }}
           OSMU_SECRET_KEY=${{ secrets.OSMU_SECRET_KEY }}
           OSMU_PUBLIC_URL=${{ secrets.OSMU_PUBLIC_URL }}
+          R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET=${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT=${{ secrets.R2_ENDPOINT }}
           OSMU_ALERT_SLACK_WEBHOOK_URL=${{ secrets.OSMU_ALERT_SLACK_WEBHOOK_URL }}
           OSMU_BUILD_COMMIT=${GITHUB_SHA}
           CLAUDE_CODE_OAUTH_TOKEN=${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -91,7 +95,19 @@ jobs:
         run: |
           # services 지정 시 그 서비스만 빌드(전체 빌드로 무관한 게이트웨이 확장 빌드 실패에
           # osmu 대시보드 배포가 막히는 것 방지). 비우면 기존대로 전체 빌드.
-          docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml build ${{ github.event.inputs.services }}
+          # 빌드는 한 번에 하나씩 한다. VM 메모리는 7.8GiB 인데 게이트웨이 빌드는
+          # 서비스마다 node heap 8GiB 를 잡는다. compose 기본 병렬 빌드로 4개가 동시에
+          # 돌면 heap out of memory 로 죽는다(2026-09-01 run 33432114188 실측).
+          SERVICES="${{ github.event.inputs.services }}"
+          if [ -z "$SERVICES" ]; then
+            SERVICES="$(docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml config --services)"
+          fi
+          for svc in $SERVICES; do
+            echo "::group::build $svc"
+            COMPOSE_BAKE=false COMPOSE_PARALLEL_LIMIT=1 \
+              docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml build "$svc"
+            echo "::endgroup::"
+          done
       - name: 기동
         # required NEXT_PUBLIC_* interpolation은 build와 up 모두에서 실행된다.
         run: |

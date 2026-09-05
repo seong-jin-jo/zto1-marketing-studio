@@ -1,0 +1,97 @@
+{
+  "stamp": {
+    "createdAt": "2026-09-02T02:13:50.997Z",
+    "model": "gpt-5.6",
+    "agent": "code-builder",
+    "skill": "qa",
+    "source": "OSMU v67 pinned candidate and current Next.js render",
+    "concern": "외부 플랫폼 대신 결정론적 API fixture를 사용한 build 단계 화면 증거다."
+  },
+  "observations": [
+    {
+      "room": "connection",
+      "provider": "threads",
+      "buttonActive": true,
+      "callbackObserved": true
+    },
+    {
+      "room": "edit",
+      "width": 1024,
+      "viewportWidth": 1024,
+      "documentWidth": 1024,
+      "roomWidth": 880,
+      "roomScrollWidth": 880,
+      "accountStates": [],
+      "displayNameInputs": 0,
+      "focusContract": null
+    },
+    {
+      "room": "edit",
+      "width": 390,
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "roomWidth": 342,
+      "roomScrollWidth": 342,
+      "accountStates": [],
+      "displayNameInputs": 0,
+      "focusContract": null
+    },
+    {
+      "room": "publish",
+      "width": 1024,
+      "viewportWidth": 1024,
+      "documentWidth": 1024,
+      "roomWidth": 880,
+      "roomScrollWidth": 880,
+      "accountStates": [
+        "connected",
+        "connected",
+        "connected",
+        "unsupported",
+        "unsupported",
+        "unsupported",
+        "connected"
+      ],
+      "displayNameInputs": 0,
+      "focusContract": {
+        "chipCount": 8,
+        "allPreviewCount": 7,
+        "focusedPreviewCount": 1,
+        "inputPreserved": true,
+        "selectionPreserved": true
+      }
+    },
+    {
+      "room": "publish",
+      "width": 390,
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "roomWidth": 342,
+      "roomScrollWidth": 342,
+      "accountStates": [
+        "connected",
+        "connected",
+        "connected",
+        "unsupported",
+        "unsupported",
+        "unsupported",
+        "connected"
+      ],
+      "displayNameInputs": 0,
+      "focusContract": {
+        "chipCount": 8,
+        "allPreviewCount": 7,
+        "focusedPreviewCount": 1,
+        "inputPreserved": true,
+        "selectionPreserved": true
+      }
+    },
+    {
+      "room": "performance",
+      "width": 390,
+      "rendered": true
+    }
+  ],
+  "publishRequestCount": 2,
+  "consoleErrors": []
+}

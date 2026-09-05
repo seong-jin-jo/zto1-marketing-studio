@@ -7,10 +7,11 @@ import { oauthErrorMessage } from "@/lib/oauth-errors";
 import { SCHEDULABLE_PLATFORMS, VIDEO_PUBLISH_PLATFORMS } from "@/lib/constants";
 import {
   CONNECT_READINESS_LABELS,
+  type ConnectReadinessEntry,
   type ConnectReadinessStatus,
 } from "@/lib/connect-readiness";
 
-interface Readiness { status?: ConnectReadinessStatus; available: boolean; reason?: string }
+type Readiness = ConnectReadinessEntry;
 type ReadinessState = Readiness | "error";
 
 // Meta 계열(threads/instagram)은 브라우저가 이미 로그인된 Meta 세션 쿠키를 팝업과 공유한다.
@@ -81,6 +82,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
   const { activeWorkspace } = useUIStore();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [connectFailed, setConnectFailed] = useState(false);
   const [readiness, setReadiness] = useState<ReadinessState | null>(null);
   const [readinessLoading, setReadinessLoading] = useState(true);
   const [showSwitchNote, setShowSwitchNote] = useState(false);
@@ -119,9 +121,11 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
       resolvedRef.current = true;
       setBusy(false);
       if (data.ok) {
+        setConnectFailed(false);
         setMsg(`${label} 연결 완료. 채널 상태를 새로고침합니다.`);
         onConnected?.();
       } else {
+        setConnectFailed(true);
         setMsg(oauthErrorMessage(data.message || "연결 실패", label));
       }
     }
@@ -172,7 +176,11 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
     || (known && !readinessEntry.available);
   // available=true여도 reason(예: Meta 앱 리뷰 상태 "확인 불가")이 있으면 조용히 버리지 않고
   // 경고로 보여준다 — finding 2.
-  const readinessWarning = readinessEntry?.available && readinessEntry.reason ? readinessEntry.reason : null;
+  const readinessWarning = readinessEntry?.available
+    && readinessEntry.reason
+    && !readinessEntry.guidance
+    ? readinessEntry.reason
+    : null;
   const connectLabel = readinessStatus === "connected"
     ? "다른 계정 연결"
     : readinessStatus === "opening_soon"
@@ -188,6 +196,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
     }
     if (busy || disabledByReadiness) return;
     setBusy(true);
+    setConnectFailed(false);
     setMsg("");
 
     // OAuth 팝업은 클릭 이벤트 핸들러 안에서 "동기적으로" 열어야 한다. fetch를 먼저 await하면
@@ -201,6 +210,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
     if (!popup) {
       // 팝업 차단 — 아직 fetch도 안 했으니 여기서 바로 중단(네트워크 낭비 방지).
       setMsg("팝업이 차단되었습니다. 브라우저 팝업 차단을 해제한 뒤 다시 시도해주세요.");
+      setConnectFailed(true);
       setBusy(false);
       return;
     }
@@ -226,6 +236,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
             watchClosedRef.current = null;
             if (!resolvedRef.current) {
               setBusy(false);
+              setConnectFailed(true);
               setMsg("연결 창이 결과 없이 닫혔습니다. 다시 시도해주세요.");
             }
           }
@@ -234,12 +245,14 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
         return; // busy는 postMessage/closed 감지가 최종 해제
       } else {
         popup.close(); // authUrl 없음. 예약해둔 빈 창을 남겨두지 않는다.
+        setConnectFailed(true);
         setMsg(oauthErrorMessage(d.error || "OAuth 앱 자격증명이 아직 설정되지 않았습니다.", label));
         setBusy(false);
       }
     } catch (e) {
       popup.close();
       if (!mountedRef.current) return;
+      setConnectFailed(true);
       setMsg(oauthErrorMessage(e instanceof Error ? e.message : "연결 실패", label));
       setBusy(false);
     }
@@ -272,6 +285,26 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
         <p className="text-caption text-warning mb-stack-tight" data-testid={`readiness-warning-${provider}`}>
           {readinessWarning}
         </p>
+      )}
+      {readinessEntry?.guidance && (
+        <div
+          className="mb-stack-tight rounded-control border border-border bg-surface p-stack-tight"
+          data-testid={`review-guidance-${provider}`}
+        >
+          <p className="text-caption text-text">{readinessEntry.guidance.title}</p>
+          <ol className="mt-micro list-decimal space-y-micro pl-pad-inset text-caption leading-relaxed text-muted">
+            {readinessEntry.guidance.steps.map((step) => <li key={step}>{step}</li>)}
+          </ol>
+          <a
+            href={readinessEntry.guidance.externalLink.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid={`review-guidance-link-${provider}`}
+            className="mt-stack-tight inline-flex text-caption text-accent underline underline-offset-2"
+          >
+            {readinessEntry.guidance.externalLink.label}
+          </a>
+        </div>
       )}
       <button
         onClick={connect}
@@ -343,6 +376,17 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
         </p>
       )}
       {msg && <p className="text-caption text-subtle mt-stack-tight">{msg}</p>}
+      {connectFailed && readinessEntry?.guidance && (
+        <a
+          href={readinessEntry.guidance.externalLink.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid={`connect-failure-guidance-link-${provider}`}
+          className="mt-micro inline-flex text-caption text-accent underline underline-offset-2"
+        >
+          {readinessEntry.guidance.externalLink.label}
+        </a>
+      )}
     </div>
   );
 }

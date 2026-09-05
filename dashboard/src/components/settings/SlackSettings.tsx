@@ -87,12 +87,12 @@ export function SlackSettings() {
 
   return (
     <div className="space-y-pad-inset">
-      <h3 className="text-body-sm font-medium text-text">Slack Notifications</h3>
+      <h3 className="text-body-sm font-medium text-text">Slack 알림</h3>
 
       {/* Webhook Config */}
       <div className="card p-pad-inset">
         <div className="flex items-center justify-between mb-stack">
-          <span className="text-caption text-subtle">Webhook URL</span>
+          <span className="text-caption text-subtle">웹훅 주소</span>
           <div className="flex items-center gap-stack-tight">
             <span className={`text-caption px-stack-tight py-micro rounded-pill ${config?.configured ? "bg-success/15 text-success" : "bg-surface-2 text-subtle"}`}>
               {config?.configured ? "Connected" : "Not set"}
@@ -141,7 +141,7 @@ export function SlackSettings() {
       {/* Template */}
       <div className="card p-pad-inset">
         <div className="flex items-center justify-between mb-stack">
-          <span className="text-caption text-subtle">Report Template</span>
+          <span className="text-caption text-subtle">보고서 양식</span>
           {!editingTmpl && (
             <button onClick={() => { setTemplate(tmpl?.template || ""); setEditingTmpl(true); }} className="text-caption text-accent hover:text-accent">수정</button>
           )}
@@ -173,7 +173,7 @@ export function SlackSettings() {
       {config?.configured && (
         <div className="card p-pad-inset">
           <div className="flex items-center gap-stack-tight mb-stack">
-            <span className="text-caption text-subtle">Report Preview & Send</span>
+            <span className="text-caption text-subtle">보고서 미리 보기와 보내기</span>
           </div>
           <div className="flex gap-stack-tight mb-stack">
             <button onClick={loadPreview} className="px-stack py-stack-tight text-caption bg-surface-2 text-muted rounded-chip hover:bg-surface-2">보고서 미리보기</button>

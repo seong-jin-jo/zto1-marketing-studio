@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useUIStore } from "@/store/ui-store";
 import { authHeaders } from "@/lib/auth";
+import { Button } from "@/components/shared/Button";
 
 // SNS-007: provider당 여러 계정(예: Threads 개인+브랜드)을 목록/추가(Bluesky만 수동)/기본전환/삭제.
 // OAuth provider(threads/x/instagram/facebook/youtube 등)는 이 컴포넌트가 아니라
@@ -19,6 +20,9 @@ interface AccountRow {
   status: string;
   token_expires_at: string | null;
   created_at: string;
+  connection_state: "connected" | "reconnect";
+  can_be_default: boolean;
+  default_blocked_reason: string | null;
 }
 
 function accountLabel(a: AccountRow): string {
@@ -28,11 +32,29 @@ function accountLabel(a: AccountRow): string {
   return a.external_account_id;
 }
 
-function statusBadge(status: string): { text: string; className: string } {
-  if (status === "active") return { text: "정상", className: "text-success" };
-  if (status === "expired") return { text: "만료됨. 재연결 필요", className: "text-warning" };
-  if (status === "revoked") return { text: "연결 해제됨", className: "text-danger" };
-  return { text: status, className: "text-muted" };
+function statusBadge(account: AccountRow): { text: string; className: string } {
+  if (account.connection_state === "connected") return { text: "연결됨", className: "text-success" };
+  if (account.status === "revoked") return { text: "연결 해제됨", className: "text-danger" };
+  return { text: "재연결 필요", className: "text-warning" };
+}
+
+function formatTokenExpiry(value: string | null): string {
+  if (!value) return "제공되지 않음";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "확인 필요";
+  return new Intl.DateTimeFormat("ko-KR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function defaultBlockedReason(reason: string | null): string {
+  if (reason === "status_revoked") return "연결이 해제되어 기본으로 지정할 수 없습니다. 다시 연결해 주세요.";
+  if (reason === "status_inactive") return "비활성 상태라 기본으로 지정할 수 없습니다.";
+  if (reason === "token_expiry_missing" || reason === "token_expiry_invalid") {
+    return "토큰 만료 시각을 확인할 수 없어 기본으로 지정할 수 없습니다. 다시 연결해 주세요.";
+  }
+  return "토큰이 만료되어 기본으로 지정할 수 없습니다. 다시 연결해 주세요.";
 }
 
 export function AccountManager({
@@ -102,12 +124,13 @@ export function AccountManager({
     }
   };
 
-  const remove = async (id: string) => {
+  const remove = async (account: AccountRow) => {
     if (!activeWorkspace || busyId) return;
-    if (!window.confirm(`이 ${label} 계정 연결을 해제할까요? 이 계정으로 예약된 발행은 실패로 처리됩니다.`)) return;
-    setBusyId(id);
+    const name = accountLabel(account);
+    if (!window.confirm(`${name} 계정 연결을 해제할까요? 이 작업은 되돌릴 수 없으며 이 계정으로 예약된 발행은 실패로 처리됩니다.`)) return;
+    setBusyId(account.id);
     try {
-      const r = await fetch(`/api/channels/${provider}/accounts/${id}?tenant_id=${activeWorkspace.id}`, {
+      const r = await fetch(`/api/channels/${provider}/accounts/${account.id}?tenant_id=${activeWorkspace.id}`, {
         method: "DELETE",
         headers: authHeaders(),
       });
@@ -154,7 +177,7 @@ export function AccountManager({
   if (error) {
     return (
       <p className="text-caption text-danger" data-testid={`account-manager-error-${provider}`}>
-        ⛔ {error}
+        {error}
       </p>
     );
   }
@@ -178,15 +201,22 @@ export function AccountManager({
 
   return (
     <div className="mt-stack" data-testid={`account-manager-${provider}`}>
-      <p className="text-caption font-semibold text-muted mb-micro">연결된 {label} 계정 ({accounts.length})</p>
+      <div className="mb-stack-tight space-y-micro">
+        <p className="text-caption font-semibold text-muted">연결된 {label} 계정 ({accounts.length})</p>
+        <p className="text-caption text-subtle" data-testid={`account-default-help-${provider}`}>
+          기본 계정은 이 플랫폼에 올릴 때 사용하는 계정입니다.
+        </p>
+      </div>
       <ul className="space-y-stack-tight">
         {accounts.map((a) => {
-          const badge = statusBadge(a.status);
+          const badge = statusBadge(a);
+          const blockedReason = a.can_be_default ? "" : defaultBlockedReason(a.default_blocked_reason);
+          const blockedReasonId = `account-default-blocked-${provider}-${a.id}`;
           return (
             <li
               key={a.id}
               data-testid={`account-row-${provider}-${a.id}`}
-              className="flex items-center justify-between gap-stack-tight rounded-control border border-border bg-surface-2 px-stack py-stack-tight text-caption"
+              className="flex flex-col gap-stack-tight rounded-control border border-border bg-surface-2 px-stack py-stack-tight text-caption md:flex-row md:items-center md:justify-between"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-stack-tight">
@@ -200,29 +230,50 @@ export function AccountManager({
                     </span>
                   )}
                 </div>
-                <span className={`text-caption ${badge.className}`}>{badge.text}</span>
-              </div>
-              <div className="flex shrink-0 items-center gap-stack-tight">
-                {!a.is_default && (
-                  <button
-                    type="button"
-                    onClick={() => setDefault(a.id)}
-                    disabled={busyId === a.id}
-                    data-testid={`account-set-default-${provider}-${a.id}`}
-                    className="rounded-chip px-stack-tight py-micro text-caption text-accent hover:bg-accent/10 disabled:opacity-50"
-                  >
-                    기본으로
-                  </button>
+                <dl className="mt-micro flex flex-wrap gap-x-stack gap-y-micro text-caption">
+                  <div className="flex gap-micro">
+                    <dt className="text-subtle">상태</dt>
+                    <dd className={badge.className}>{badge.text}</dd>
+                  </div>
+                  <div className="flex gap-micro">
+                    <dt className="text-subtle">토큰 만료</dt>
+                    <dd className="text-muted">
+                      {a.token_expires_at ? (
+                        <time dateTime={a.token_expires_at}>{formatTokenExpiry(a.token_expires_at)}</time>
+                      ) : formatTokenExpiry(null)}
+                    </dd>
+                  </div>
+                </dl>
+                {blockedReason && (
+                  <p id={blockedReasonId} className="mt-micro text-caption text-warning">
+                    {blockedReason}
+                  </p>
                 )}
-                <button
-                  type="button"
-                  onClick={() => remove(a.id)}
-                  disabled={busyId === a.id}
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-stack-tight">
+                {!a.is_default && (
+                  <Button
+                    size="sm"
+                    onClick={() => setDefault(a.id)}
+                    disabled={busyId !== null || !a.can_be_default}
+                    aria-describedby={!a.can_be_default ? blockedReasonId : undefined}
+                    data-testid={`account-set-default-${provider}-${a.id}`}
+                    className="min-w-0"
+                  >
+                    기본으로 지정
+                  </Button>
+                )}
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => remove(a)}
+                  disabled={busyId !== null}
+                  aria-label={`${accountLabel(a)} 계정 연결 해제`}
                   data-testid={`account-delete-${provider}-${a.id}`}
-                  className="rounded-chip px-stack-tight py-micro text-caption text-danger hover:bg-danger/10 disabled:opacity-50"
+                  className="min-w-0"
                 >
-                  삭제
-                </button>
+                  연결 해제
+                </Button>
               </div>
             </li>
           );
@@ -276,14 +327,14 @@ function ManualAddBlock({
 }) {
   return (
     <div>
-      <button
-        type="button"
+      <Button
+        size="sm"
         onClick={() => setShowAdd(!showAdd)}
         data-testid={`account-add-toggle-${provider}`}
-        className="text-caption text-accent underline underline-offset-2"
+        className="min-w-0"
       >
-        {showAdd ? "닫기" : `+ ${label} 계정 추가(App Password)`}
-      </button>
+        {showAdd ? "닫기" : `${label} 계정 추가(App Password)`}
+      </Button>
       {showAdd && (
         <div className="mt-stack-tight space-y-stack-tight rounded-control border border-border bg-surface p-stack">
           <input
@@ -296,20 +347,20 @@ function ManualAddBlock({
           <input
             value={appPassword}
             onChange={(e) => setAppPassword(e.target.value)}
-            placeholder="App Password"
+            placeholder="앱 비밀번호"
             type="password"
             data-testid={`account-add-password-${provider}`}
             className="w-full rounded-chip border border-border bg-surface-2 px-stack-tight py-micro text-caption text-text"
           />
-          <button
-            type="button"
+          <Button
+            size="sm"
             onClick={addManual}
             disabled={addBusy || !handle || !appPassword}
             data-testid={`account-add-submit-${provider}`}
-            className="w-full rounded-chip bg-accent px-stack-tight py-stack-tight text-caption text-accent-fg disabled:opacity-50"
+            className="w-full min-w-0"
           >
             {addBusy ? "연결 중…" : "계정 추가"}
-          </button>
+          </Button>
           {addMsg && <p className="text-caption text-subtle">{addMsg}</p>}
         </div>
       )}

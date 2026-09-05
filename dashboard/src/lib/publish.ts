@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { withTenant } from "@/lib/db";
 import { getSelectedChannelAccountCred } from "@/lib/channel-accounts";
 import { CHANNEL_TEXT_LIMITS, countTextCharacters } from "@/lib/channel-text-limits";
+import { validatePlatformPublish } from "@/lib/studio/platform-publish-fields";
 
 // 대시보드 직접 발행(게이트웨이 docker 불필요). 토큰=integrations 테이블(테넌트별) → env 폴백(dev).
 // 게이트웨이 extensions/{ch}-publish 로직 포팅. 실발행은 실 토큰 필요.
@@ -270,12 +271,13 @@ export async function publishThreads(
   text: string,
   imageUrl?: string,
   replyToId?: string,
+  topicTag?: string,
 ): Promise<PublishResult> {
-  const length = countTextCharacters(text);
-  if (length > CHANNEL_TEXT_LIMITS.threads) {
+  const validation = validatePlatformPublish("threads", { body: text, topicTag });
+  if (validation.blocking.length > 0) {
     return {
       ok: false,
-      error: `Threads 본문이 공식 상한 ${CHANNEL_TEXT_LIMITS.threads}자를 초과했습니다 (${length}/${CHANNEL_TEXT_LIMITS.threads}). 내용을 줄인 뒤 다시 발행해주세요.`,
+      error: validation.blocking[0].message,
     };
   }
   if (!cred.token) return { ok: false, error: "Threads 채널 토큰이 없습니다. 채널을 다시 연결해주세요." };
@@ -287,6 +289,7 @@ export async function publishThreads(
   };
   if (imageUrl) params.image_url = imageUrl;
   if (replyToId) params.reply_to_id = replyToId;
+  if (topicTag?.trim()) params.topic_tag = topicTag.trim().replace(/^#/, "");
 
   let containerId: string;
   try {
@@ -540,8 +543,12 @@ function buildXOAuthHeader(method: string, url: string, k: XKeys): string {
   return `OAuth ${headerParts}`;
 }
 
-// X 발행 (text only, API v2). 4키 OAuth1.0a 서명. 280자 초과 시 자르기.
+// X 발행 (text only, API v2). 4키 OAuth1.0a 서명. 공식 가중 문자가 280을 넘으면 차단한다.
 export async function publishX(cred: ChannelCred, text: string): Promise<PublishResult> {
+  const validation = validatePlatformPublish("x", { body: text });
+  if (validation.blocking.length > 0) {
+    return { ok: false, error: validation.blocking[0].message };
+  }
   const meta = (cred.meta ?? {}) as Record<string, unknown>;
   // apiSecret/accessSecret은 게이트웨이 표기(apiKeySecret/accessTokenSecret)도 허용
   const keys: XKeys = {
@@ -553,8 +560,7 @@ export async function publishX(cred: ChannelCred, text: string): Promise<Publish
   if (!keys.apiKey || !keys.apiSecret || !keys.accessToken || !keys.accessSecret) {
     return { ok: false, error: "X 4키(apiKey/apiSecret/accessToken/accessSecret) 누락" };
   }
-  // 280자 초과 시 자르기(멀티바이트 안전 — 코드포인트 단위)
-  const body = [...(text ?? "")].slice(0, CHANNEL_TEXT_LIMITS.x).join("");
+  const body = text ?? "";
   const url = `${X_API}/tweets`;
   const auth = buildXOAuthHeader("POST", url, keys);
   const resp = await fetch(url, {
@@ -569,6 +575,10 @@ export async function publishX(cred: ChannelCred, text: string): Promise<Publish
 }
 
 export async function publishXReply(cred: ChannelCred, text: string, parentId: string): Promise<PublishResult> {
+  const validation = validatePlatformPublish("x", { body: text });
+  if (validation.blocking.length > 0) {
+    return { ok: false, error: validation.blocking[0].message };
+  }
   const meta = (cred.meta ?? {}) as Record<string, unknown>;
   const keys: XKeys = {
     apiKey: String(meta.apiKey ?? ""),
@@ -579,7 +589,7 @@ export async function publishXReply(cred: ChannelCred, text: string, parentId: s
   if (!keys.apiKey || !keys.apiSecret || !keys.accessToken || !keys.accessSecret) {
     return { ok: false, error: "X 4키(apiKey/apiSecret/accessToken/accessSecret) 누락" };
   }
-  const body = [...text].slice(0, CHANNEL_TEXT_LIMITS.x).join("");
+  const body = text;
   const url = `${X_API}/tweets`;
   const resp = await fetch(url, {
     method: "POST",
@@ -594,13 +604,6 @@ export async function publishXReply(cred: ChannelCred, text: string, parentId: s
 
 // Facebook 페이지 발행 (Graph API). imageUrl 있으면 /photos(caption), 없으면 /feed(message).
 export async function publishFacebook(cred: ChannelCred, message: string, imageUrl?: string): Promise<PublishResult> {
-  const length = countTextCharacters(message);
-  if (length > CHANNEL_TEXT_LIMITS.facebook) {
-    return {
-      ok: false,
-      error: `Facebook 본문이 공식 상한 ${CHANNEL_TEXT_LIMITS.facebook}자를 초과했습니다 (${length}/${CHANNEL_TEXT_LIMITS.facebook}). 내용을 줄인 뒤 다시 발행해주세요.`,
-    };
-  }
   const pageId = cred.userId;
   if (!pageId) return { ok: false, error: "Facebook pageId(meta.userId) 없음" };
   if (!cred.token) return { ok: false, error: "Facebook access token 없음" };

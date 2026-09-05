@@ -45,14 +45,14 @@ export default function BlogPerformancePage() {
     <div className="px-region py-stack-section">
       <div className="mb-stack-section">
         <BackButton />
-        <h2 className="text-subheading font-bold text-text">Blog Performance</h2>
+        <h2 className="text-subheading font-bold text-text">블로그 성과</h2>
         <p className="text-caption text-subtle mt-micro">블로그 게시물 조회수 및 성과 분석</p>
       </div>
 
       {data?.error && (
         <div className="card p-pad-inset mb-pad-inset border border-warning/40">
           <p className="text-caption text-warning">{data.error}</p>
-          <p className="text-caption text-subtle mt-micro">Settings → Channels → Blog에서 연결 설정을 확인하세요.</p>
+          <p className="text-caption text-subtle mt-micro">설정 → 채널 → 블로그에서 연결 설정을 확인하세요.</p>
         </div>
       )}
 

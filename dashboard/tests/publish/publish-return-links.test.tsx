@@ -16,6 +16,7 @@ vi.mock("swr", () => ({ default: (...args: unknown[]) => mocks.swr(...args) }));
 vi.mock("@/lib/api", () => ({
   fetcher: vi.fn(),
   apiPost: (...args: unknown[]) => mocks.apiPost(...args),
+  isAuthRequiredError: (error: unknown) => error instanceof Error && error.name === "AuthRequiredError",
 }));
 vi.mock("@/components/layout/Toast", () => ({
   useToast: () => ({ showToast: mocks.showToast }),

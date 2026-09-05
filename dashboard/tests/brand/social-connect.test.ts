@@ -10,6 +10,7 @@ const H = vi.hoisted(() => ({
   fetchSeq: [] as Array<{ status: number; body: unknown }>,
   fetchCalls: [] as string[],
   identityError: "",
+  reconnected: false,
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({
@@ -45,7 +46,7 @@ vi.mock("@/lib/channel-accounts", () => ({
   }),
   upsertChannelAccount: vi.fn(async (input: Record<string, unknown>) => {
     H.inserts.push([input]);
-    return { id: `acc-${H.inserts.length}`, isDefault: true };
+    return { id: `acc-${H.inserts.length}`, isDefault: true, reconnected: H.reconnected };
   }),
   syncLegacyIntegration: vi.fn(async () => {}),
 }));
@@ -95,6 +96,7 @@ beforeEach(() => {
   H.inserts = [];
   H.fetchCalls = [];
   H.identityError = "";
+  H.reconnected = false;
   H.fetchSeq = [
     { status: 200, body: { access_token: "SHORT", user_id: 17841400000000001 } }, // 단기
     { status: 200, body: { access_token: "LONGLIVED60D", expires_in: 5_184_000 } }, // 장기
@@ -112,14 +114,16 @@ beforeEach(() => {
 });
 
 describe("GET /api/connect/instagram — OAuth 동의 URL", () => {
-  it("authUrl에 client_id·redirect_uri·scope·state(서명된 tenant) 포함", async () => {
+  it("META-SCOPE-001 정상: 첫 심사에 필요한 Instagram 연결·발행·댓글 권한을 요청한다", async () => {
     const { GET } = await import("@/app/api/connect/[provider]/route");
     const res = await GET(new Request("https://app.example/api/connect/instagram?tenant_id=tenant-1"), params("instagram"));
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.authUrl).toContain("instagram.com/oauth/authorize");
     expect(body.authUrl).toContain("client_id=ig-app-123");
+    expect(body.authUrl).toContain("instagram_business_basic");
     expect(body.authUrl).toContain("instagram_business_content_publish");
+    expect(body.authUrl).toContain("instagram_business_manage_comments");
     // state는 이제 base64url(payload).sig로 서명되어 있어 "tenant-1"이 그대로 노출되지 않는다 —
     // verifyState로 왕복 복원해 tenantId가 맞는지 확인한다.
     const { verifyState } = await import("@/lib/social-connect");
@@ -128,6 +132,15 @@ describe("GET /api/connect/instagram — OAuth 동의 URL", () => {
     expect(verified.valid).toBe(true);
     expect(verified.tenantId).toBe("tenant-1");
     expect(body.authUrl).toContain("api%2Fconnect%2Finstagram%2Fcallback");
+  });
+
+  it("META-SCOPE-002 거절: 실제 조회 기능이 없는 Instagram 인사이트 권한은 요청하지 않는다", async () => {
+    const { GET } = await import("@/app/api/connect/[provider]/route");
+    const res = await GET(new Request("https://app.example/api/connect/instagram?tenant_id=tenant-1"), params("instagram"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(new URL(body.authUrl).searchParams.get("scope")).not.toContain("instagram_business_manage_insights");
   });
 
   it("고객 JWT tenant와 쿼리 tenant_id가 다르면 값 없이 불일치 사실만 서버 로그에 남긴다", async () => {
@@ -241,6 +254,21 @@ describe("GET /api/connect/instagram/callback — 토큰교환·저장", () => {
     const expiresAt = new Date(String(input.tokenExpiresAt)).getTime();
     expect(expiresAt).toBeGreaterThanOrEqual(startedAt + 5_184_000_000);
     expect(expiresAt).toBeLessThanOrEqual(Date.now() + 5_184_000_000 + 1_000);
+  });
+
+  it("채널-재연결-03 정상: 기존 계정 갱신이면 사용자에게 연결 새로 고침 결과를 알린다", async () => {
+    H.reconnected = true;
+    const state = await signedState("tenant-1", "instagram");
+    const { GET } = await import("@/app/api/connect/[provider]/callback/route");
+    const res = await GET(
+      callbackRequest("instagram", state, "AUTHCODE"),
+      params("instagram"),
+    );
+
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("연결을 새로 고쳤습니다");
+    expect(html).not.toContain("연결 실패");
   });
 
   it("장기 토큰 교환이 실패하면 단기 토큰을 active 계정으로 저장하지 않는다", async () => {

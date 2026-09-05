@@ -20,7 +20,7 @@ vi.mock("@/lib/observability", async (importActual) => ({
   reportFailure: vi.fn(async (input: unknown) => H.failures.push(input)),
   reportRecovery: vi.fn(async (input: unknown) => H.recoveries.push(input)),
 }));
-vi.mock("@/lib/queue-store", () => ({ markQueuePublished: vi.fn(async () => true) }));
+vi.mock("@/lib/queue-store", () => ({ markQueuePublished: vi.fn(async () => "updated" as const) }));
 vi.mock("@/lib/first-comment", () => ({
   getFirstCommentCapability: vi.fn(() => ({ platform: "threads", supported: true })),
   normalizeFirstComment: vi.fn((value: unknown) => typeof value === "string" ? value.trim() : null),

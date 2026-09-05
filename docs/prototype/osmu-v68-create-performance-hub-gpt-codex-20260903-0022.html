@@ -1,0 +1,459 @@
+<!doctype html>
+<!--
+STAMP
+created_at: 2026-09-03 00:22 KST
+model: gpt-5.6
+agent: product-designer
+skills: no matching product UI skill; design quality constitution and v67 approved shell applied
+basis: docs/prototype/osmu-v67-edit-publish-hub-gpt-codex-20260902-0448.html; DESIGN.md v36; current dashboard implementation
+benchmarks: https://www.canva.com/help/use-magic-design/ ; https://buffer.com/insights ; https://support.buffer.com/en-us/articles/using-insights-in-buffer-x4gLauQU5a
+decision: inherit the v67 four-stage shell and add only creation and performance room candidates without changing product code
+-->
+<html lang="ko" data-room="create" data-state="normal" data-viewport="1024">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>OSMU v68 생성실·성과실 후보 시안</title>
+  <style>
+    :root {
+      --bg: #fbfbfc;
+      --surface: #ffffff;
+      --surface-2: #f4f4f5;
+      --surface-3: #fafafa;
+      --border: #e4e4e7;
+      --border-strong: #d4d4d8;
+      --text: #18181b;
+      --muted: #71717a;
+      --subtle: #a1a1aa;
+      --accent: #2563eb;
+      --accent-soft: #eff6ff;
+      --success: #15803d;
+      --success-soft: #f0fdf4;
+      --warning: #a16207;
+      --warning-soft: #fefce8;
+      --danger: #b91c1c;
+      --danger-soft: #fef2f2;
+      --sidebar: 56px;
+      --assistant: 304px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --shadow: 0 24px 70px rgba(24, 24, 27, .12);
+      font-family: Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      color: var(--text);
+      background: #e8e8ea;
+    }
+    * { box-sizing: border-box; min-width: 0; }
+    html, body { margin: 0; min-height: 100%; }
+    body { padding: 24px; }
+    button, select { font: inherit; }
+    button { min-height: 44px; cursor: pointer; }
+    .review-bar {
+      width: min(1024px, 100%);
+      margin: 0 auto 16px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      color: #3f3f46;
+      font-size: 13px;
+    }
+    .review-bar label { display: flex; gap: 6px; align-items: center; }
+    .review-bar select {
+      height: 44px;
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      background: white;
+      padding: 0 32px 0 12px;
+    }
+    .review-note { margin-left: auto; color: var(--muted); }
+    .device {
+      width: 1024px;
+      height: 900px;
+      margin: 0 auto;
+      overflow: hidden;
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      background: var(--bg);
+      position: relative;
+    }
+    .app-shell { width: 100%; height: 100%; display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); }
+    .side-nav {
+      background: #18181b;
+      color: white;
+      padding: 16px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand-mark {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: white;
+      color: #18181b;
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+    .side-link {
+      width: 44px;
+      min-height: 44px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: #a1a1aa;
+      font-weight: 700;
+    }
+    .side-link.active { background: #3f3f46; color: white; }
+    .side-spacer { flex: 1; }
+    .workspace { display: grid; grid-template-rows: 80px minmax(0, 1fr); min-height: 0; background: var(--bg); }
+    .top-bar {
+      background: rgba(255,255,255,.96);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 16px;
+      display: grid;
+      grid-template-columns: minmax(176px, .8fr) minmax(360px, 1.6fr) minmax(176px, .8fr);
+      align-items: center;
+      gap: 16px;
+    }
+    .workspace-name { font-size: 13px; color: var(--muted); line-height: 1.3; }
+    .workspace-name strong { display: block; color: var(--text); font-size: 15px; }
+    .room-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .room-step {
+      height: 48px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .room-step .step-no { font-size: 11px; font-weight: 800; color: var(--subtle); }
+    .room-step.active { background: var(--accent-soft); border-color: #bfdbfe; color: #1d4ed8; font-weight: 750; }
+    .room-step.active .step-no { color: #1d4ed8; }
+    .account-box { justify-self: end; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+    .avatar { width: 32px; height: 32px; border-radius: 50%; background: #27272a; color: white; display: grid; place-items: center; font-weight: 800; }
+    .work-area { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) var(--assistant); }
+    .main-pane { min-height: 0; overflow: auto; padding: 24px; scrollbar-gutter: stable; }
+    .assistant-pane { min-height: 0; border-left: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; }
+    .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+    .eyebrow { color: var(--accent); font-size: 12px; font-weight: 800; margin: 0 0 4px; }
+    h1 { font-size: 24px; line-height: 1.25; margin: 0; letter-spacing: -.02em; }
+    .lead { margin: 8px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+    .status-pill { flex: none; padding: 8px 10px; border-radius: 999px; background: var(--success-soft); color: var(--success); font-size: 12px; font-weight: 800; }
+    .status-pill.warning { background: var(--warning-soft); color: var(--warning); }
+    .status-pill.error { background: var(--danger-soft); color: var(--danger); }
+    .status-pill.neutral { background: var(--surface-2); color: var(--muted); }
+    .summary-strip { display: grid; grid-template-columns: 1.4fr .8fr .8fr; gap: 8px; margin-bottom: 16px; }
+    .summary-cell, .card { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-md); }
+    .summary-cell { padding: 12px; min-height: 64px; }
+    .summary-cell span { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .summary-cell strong { display: block; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+    .section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0 8px; }
+    .section-title h2 { margin: 0; font-size: 15px; }
+    .section-title span { color: var(--muted); font-size: 12px; }
+    .candidate-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .candidate { padding: 12px; min-height: 184px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+    .candidate-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .choice { width: 28px; height: 28px; border-radius: 8px; background: #18181b; color: white; display: grid; place-items: center; font-size: 12px; font-weight: 800; }
+    .format-tag { font-size: 11px; color: var(--muted); }
+    .candidate h3 { margin: 0; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+    .candidate p { margin: 0; color: #52525b; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+    .candidate-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; }
+    .learning-card { margin-top: 8px; padding: 12px; display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; }
+    .learning-card h3 { margin: 0 0 4px; font-size: 13px; }
+    .learning-card p { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.45; }
+    .learning-tags { display: flex; align-content: flex-start; align-items: flex-start; flex-wrap: wrap; gap: 6px; }
+    .tag { max-width: 100%; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); color: #52525b; font-size: 11px; overflow-wrap: anywhere; }
+    .assistant-head { padding: 16px; border-bottom: 1px solid var(--border); }
+    .assistant-head strong { display: block; font-size: 14px; }
+    .assistant-head span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .chat-scroll { padding: 12px; overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+    .bubble { max-width: 92%; border-radius: 12px; padding: 10px 12px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+    .bubble.ai { align-self: flex-start; background: var(--surface-2); }
+    .bubble.user { align-self: flex-end; background: #18181b; color: white; }
+    .choice-stack { display: grid; gap: 6px; }
+    .choice-button, .primary-button, .secondary-button {
+      width: 100%;
+      border-radius: 10px;
+      padding: 0 12px;
+      text-align: left;
+      font-weight: 750;
+    }
+    .choice-button { border: 1px solid var(--border-strong); background: white; color: var(--text); }
+    .choice-button.selected { border-color: #93c5fd; background: var(--accent-soft); color: #1d4ed8; }
+    .primary-button { border: 0; background: var(--accent); color: white; text-align: center; }
+    .secondary-button { border: 1px solid var(--border-strong); background: white; color: var(--text); text-align: center; }
+    .assistant-actions { padding: 12px; border-top: 1px solid var(--border); display: grid; gap: 8px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
+    .metric { padding: 12px; }
+    .metric span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+    .metric strong { font-size: 20px; }
+    .metric small { display: block; margin-top: 4px; color: var(--success); font-size: 11px; }
+    .metric.secondary strong { font-size: 15px; }
+    .performance-columns { display: grid; grid-template-columns: 1.1fr .9fr; gap: 8px; margin-top: 8px; }
+    .insight-card { padding: 12px; }
+    .insight-card h3 { margin: 0 0 8px; font-size: 13px; }
+    .rank-list, .task-list { display: grid; gap: 6px; }
+    .rank-row, .task-row { padding: 8px; border-radius: 8px; background: var(--surface-3); font-size: 11px; line-height: 1.45; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 6px; }
+    .rank-row b { color: var(--accent); }
+    .task-row { grid-template-columns: 12px minmax(0,1fr); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); margin-top: 4px; }
+    .filter-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .filter {
+      min-height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: white;
+      padding: 0 14px;
+      color: var(--muted);
+    }
+    .filter.active { border-color: #93c5fd; background: var(--accent-soft); color: #1d4ed8; font-weight: 800; }
+    .state-panel { min-height: 420px; border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-md); padding: 24px; display: grid; place-items: center; text-align: center; }
+    .state-box { width: min(400px, 100%); }
+    .state-box .state-mark { width: 48px; height: 48px; margin: 0 auto 12px; border-radius: 14px; display: grid; place-items: center; background: var(--surface-2); font-weight: 900; }
+    .state-box h2 { margin: 0; font-size: 18px; }
+    .state-box p { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 8px 0 16px; overflow-wrap: anywhere; }
+    .state-box .primary-button, .state-box .secondary-button { max-width: 240px; margin: 6px auto 0; display: block; }
+    .state-panel.error { border-color: #fecaca; background: var(--danger-soft); }
+    .state-panel.disabled { border-color: #fde68a; background: var(--warning-soft); }
+    .skeleton { position: relative; overflow: hidden; background: #e4e4e7; border-radius: 8px; color: transparent !important; }
+    .skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent); animation: shimmer 1.4s infinite; }
+    @keyframes shimmer { to { transform: translateX(100%); } }
+    .loading-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .loading-card { height: 184px; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; display: grid; align-content: start; gap: 10px; background: white; }
+    .loading-line { height: 14px; }
+    .loading-line.short { width: 56%; }
+    .mobile-room-title { display: none; }
+    @media (max-width: 600px) {
+      body { padding: 16px; }
+      .review-bar { width: 390px; }
+      .review-note { display: none; }
+      .device { width: 390px; height: 844px; }
+      .app-shell { grid-template-columns: 1fr; }
+      .side-nav { display: none; }
+      .workspace { grid-template-rows: 104px minmax(0, 1fr); }
+      .top-bar { padding: 8px 12px; grid-template-columns: 1fr auto; grid-template-rows: 32px 56px; gap: 0 8px; }
+      .workspace-name strong { font-size: 13px; }
+      .workspace-name span, .account-box span { display: none; }
+      .account-box { grid-column: 2; grid-row: 1; }
+      .room-steps { grid-column: 1 / -1; grid-row: 2; gap: 2px; }
+      .room-step { height: 48px; padding: 0 4px; font-size: 12px; flex-direction: column; gap: 0; }
+      .room-step .step-no { font-size: 9px; }
+      .work-area { display: block; position: relative; }
+      .main-pane { height: 100%; padding: 16px 16px 184px; scrollbar-gutter: auto; }
+      .assistant-pane { position: absolute; left: 0; right: 0; bottom: 0; height: 176px; border: 1px solid var(--border); border-width: 1px 0 0; box-shadow: 0 -12px 28px rgba(24,24,27,.08); }
+      .assistant-head { padding: 10px 16px 8px; }
+      .assistant-head span { display: none; }
+      .chat-scroll { padding: 8px 12px; }
+      .chat-scroll .bubble, .chat-scroll .choice-stack { display: none; }
+      .chat-scroll .bubble.current { display: block; }
+      .assistant-actions { padding: 8px 12px; display: block; }
+      .assistant-actions .secondary-button { display: none; }
+      .page-head { display: block; margin-bottom: 12px; }
+      h1 { font-size: 21px; }
+      .lead { font-size: 13px; }
+      .status-pill { display: inline-block; margin-top: 8px; }
+      .summary-strip { grid-template-columns: 1fr 1fr; }
+      .summary-cell:first-child { grid-column: 1 / -1; }
+      .candidate-grid, .loading-grid { grid-template-columns: 1fr; }
+      .candidate { min-height: 154px; }
+      .candidate-grid .candidate:nth-child(n+3), .loading-grid .loading-card:nth-child(n+3) { display: none; }
+      .learning-card { grid-template-columns: 1fr; }
+      .metric-grid { grid-template-columns: 1fr 1fr; }
+      .metric-grid .metric:nth-child(n+5) { display: none; }
+      .performance-columns { grid-template-columns: 1fr; }
+      .performance-columns .insight-card:last-child { display: none; }
+      .state-panel { min-height: 430px; padding: 16px; }
+      .filter-row { flex-wrap: nowrap; overflow: hidden; }
+      .filter { flex: none; }
+    }
+    html.clean body { padding: 0; overflow: hidden; background: var(--bg); }
+    html.clean .review-bar { display: none; }
+    html.clean .device { margin: 0; border-radius: 0; box-shadow: none; }
+    @media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }
+  </style>
+</head>
+<body>
+  <div class="review-bar" aria-label="시안 검토 도구">
+    <label>방
+      <select id="room-select">
+        <option value="create">생성실</option>
+        <option value="performance">성과실</option>
+      </select>
+    </label>
+    <label>상태
+      <select id="state-select">
+        <option value="normal">기본</option>
+        <option value="empty">빈 상태</option>
+        <option value="loading">불러오는 중</option>
+        <option value="error">오류</option>
+        <option value="disabled">사용 불가</option>
+        <option value="overflow">긴 내용</option>
+      </select>
+    </label>
+    <label>화면
+      <select id="viewport-select">
+        <option value="1024">1024</option>
+        <option value="390">390</option>
+      </select>
+    </label>
+    <span class="review-note">성과실은 전용 네 번째 방 후보이며 정보구조 확정 전입니다.</span>
+  </div>
+  <main class="device" id="device"></main>
+  <script>
+    const labels = { create: "생성실", performance: "성과실" };
+    const stateLabels = { normal: "기본", empty: "빈 상태", loading: "불러오는 중", error: "오류", disabled: "사용 불가", overflow: "긴 내용" };
+    const params = new URLSearchParams(location.search);
+    let room = params.get("room") || "create";
+    let state = params.get("state") || "normal";
+    let viewport = params.get("viewport") || "1024";
+    const clean = params.get("clean") === "1";
+    if (clean) document.documentElement.classList.add("clean");
+
+    const roomSteps = () => [
+      ["01", "생성실", "create"],
+      ["02", "편집실", "edit"],
+      ["03", "발행실", "publish"],
+      ["04", "성과실", "performance"]
+    ].map(([no, name, key]) => `<button class="room-step ${room === key ? "active" : ""}" type="button" ${key === "create" || key === "performance" ? `data-room-link="${key}"` : ""}><span class="step-no">${no}</span><span>${name}</span></button>`).join("");
+
+    const shell = content => `
+      <div class="app-shell">
+        <nav class="side-nav" aria-label="주요 탐색">
+          <div class="brand-mark">작</div>
+          <button class="side-link active" type="button" aria-label="작업 공간">작업</button>
+          <button class="side-link" type="button" aria-label="학습 정보">학습</button>
+          <button class="side-link" type="button" aria-label="설정">설정</button>
+          <span class="side-spacer"></span>
+          <button class="side-link" type="button" aria-label="도움말">도움</button>
+        </nav>
+        <section class="workspace">
+          <header class="top-bar">
+            <div class="workspace-name"><strong>콘텐츠 운영</strong><span>기본 작업 공간</span></div>
+            <nav class="room-steps" aria-label="작업 단계">${roomSteps()}</nav>
+            <div class="account-box"><span>연결 상태 양호</span><div class="avatar">나</div></div>
+          </header>
+          ${content}
+        </section>
+      </div>`;
+
+    const createAssistant = currentState => {
+      const disabled = currentState === "disabled";
+      const loading = currentState === "loading";
+      const error = currentState === "error";
+      return `
+        <aside class="assistant-pane" aria-label="생성 담당">
+          <div class="assistant-head"><strong>생성 담당</strong><span>한 번에 하나씩 물어보고 구조 초안을 만듭니다.</span></div>
+          <div class="chat-scroll">
+            <div class="bubble ai ${disabled || loading || error ? "current" : ""}">${disabled ? "공유 AI 사용 승인 대기 상태입니다. 입력한 내용은 유지됩니다." : loading ? "선택한 형식에 맞춰 구조 초안 세 개를 만들고 있습니다." : error ? "구조 초안을 만들지 못했습니다. 입력한 내용은 그대로 두었습니다." : "어떤 형식으로 만들까요? 먼저 형식을 골라 주세요."}</div>
+            ${!disabled && !loading && !error ? `<div class="choice-stack"><button class="choice-button selected" type="button">짧은 영상</button><button class="choice-button" type="button">카드 묶음</button><button class="choice-button" type="button">텍스트</button></div><div class="bubble user">짧은 영상으로 만들게요.</div><div class="bubble ai current">좋아요. 이번 콘텐츠의 목적은 무엇인가요?</div>` : ""}
+          </div>
+          <div class="assistant-actions">
+            <button class="primary-button" type="button" ${disabled || loading ? "disabled" : ""}>${error ? "다시 만들기" : disabled ? "승인 상태 확인" : loading ? "만드는 중" : "편집실에서 다듬기"}</button>
+            <button class="secondary-button" type="button">학습 정보 보기</button>
+          </div>
+        </aside>`;
+    };
+
+    const normalCreate = overflow => {
+      const title = overflow ? "처음 시작하는 운영자가 채널마다 다른 말투와 형식 때문에 막히지 않도록, 하나의 핵심 메시지를 여러 형식으로 자연스럽게 바꾸는 긴 구조 초안" : "처음부터 잘하려 하지 않아도 되는 이유";
+      const body = overflow ? "도입에서는 빈 화면 앞에서 멈추는 순간을 구체적으로 보여 주고, 본문에서는 학습 정보에 저장된 차분한 설명 방식을 유지합니다. 마지막에는 오늘 한 가지 형식만 골라 시작해도 충분하다는 행동을 제안합니다. 문장이 길어져도 카드 너비를 넘지 않고 다음 줄로 자연스럽게 이어집니다." : "빈 화면에서 멈추는 순간을 보여 주고, 오늘 한 가지 형식만 골라도 충분하다는 행동으로 마무리합니다.";
+      return `
+        <div class="summary-strip">
+          <div class="summary-cell"><span>선택한 형식</span><strong>짧은 영상</strong></div>
+          <div class="summary-cell"><span>반영한 학습 정보</span><strong>${overflow ? "12개" : "6개"}</strong></div>
+          <div class="summary-cell"><span>구조 초안</span><strong>3개</strong></div>
+        </div>
+        <div class="section-title"><h2>구조 초안 세 개</h2><span>선택은 오른쪽 생성 담당에서</span></div>
+        <div class="candidate-grid">
+          ${["A","B","C"].map((key, index) => `<article class="card candidate"><div class="candidate-head"><span class="choice">${key}</span><span class="format-tag">짧은 영상 · ${index === 0 ? "공감형" : index === 1 ? "설명형" : "사례형"}</span></div><h3>${index === 0 ? title : index === 1 ? "한 문장으로 시작하는 콘텐츠 운영" : "첫 발행까지 줄인 세 단계"}</h3><p>${index === 0 ? body : index === 1 ? "문제와 약속을 먼저 밝히고, 핵심 설명 두 가지 뒤에 다음 행동을 제안합니다." : "형식 선택, 구조 확인, 편집의 세 단계로 실제 진행 장면을 보여 줍니다."}</p><div class="candidate-foot"><span>${index === 0 ? "학습 정보 4개 반영" : "학습 정보 3개 반영"}</span><span>${index + 5}장면</span></div></article>`).join("")}
+        </div>
+        <article class="card learning-card"><div><h3>이번에 반영한 학습 정보</h3><p>사용자가 승인한 내용만 적용합니다.</p></div><div class="learning-tags"><span class="tag">차분한 설명</span><span class="tag">첫 문장은 짧게</span><span class="tag">과장 표현 제외</span>${overflow ? `<span class="tag">전문 용어는 한 문장 안에서 쉬운 말로 풀어서 함께 설명하기</span><span class="tag">마지막 행동은 하나만 구체적으로 제안하기</span><span class="tag">출처가 필요한 수치는 본문에 넣기 전에 확인하기</span>` : ""}</div></article>`;
+    };
+
+    const loadingCreate = () => `<div class="summary-strip"><div class="summary-cell skeleton">선택한 형식</div><div class="summary-cell skeleton">학습 정보</div><div class="summary-cell skeleton">구조 초안</div></div><div class="section-title"><h2>구조 초안을 만들고 있습니다</h2><span>입력 내용은 유지됩니다</span></div><div class="loading-grid">${[1,2,3].map(() => `<div class="loading-card"><div class="loading-line skeleton short"></div><div class="loading-line skeleton"></div><div class="loading-line skeleton"></div><div class="loading-line skeleton short"></div></div>`).join("")}</div>`;
+
+    const statePanel = (kind, mark, title, description, primary, secondary = "") => `<section class="state-panel ${kind}"><div class="state-box"><div class="state-mark">${mark}</div><h2>${title}</h2><p>${description}</p><button class="primary-button" type="button">${primary}</button>${secondary ? `<button class="secondary-button" type="button">${secondary}</button>` : ""}</div></section>`;
+
+    const createMain = () => {
+      let body = normalCreate(state === "overflow");
+      if (state === "empty") body = statePanel("", "0", "아직 만든 구조 초안이 없습니다", "오른쪽 생성 담당에서 형식부터 하나씩 답하면 구조 초안 세 개가 이곳에 나타납니다.", "형식부터 고르기", "학습 정보 확인");
+      if (state === "loading") body = loadingCreate();
+      if (state === "error") body = statePanel("error", "!", "구조 초안을 만들지 못했습니다", "입력한 목적, 대상, 주제와 학습 정보는 유지했습니다. 연결을 확인한 뒤 다시 만들 수 있습니다.", "다시 만들기", "입력 내용 확인");
+      if (state === "disabled") body = statePanel("disabled", "대기", "공유 AI 사용 승인 대기", "관리자의 사용 승인이 끝나면 바로 구조 초안을 만들 수 있습니다. 지금까지 입력한 내용은 사라지지 않습니다.", "승인 상태 확인", "자체 AI 연결 확인");
+      const statusClass = state === "disabled" ? "warning" : state === "error" ? "error" : state === "empty" || state === "loading" ? "neutral" : "";
+      return `<div class="work-area"><section class="main-pane"><header class="page-head"><div><p class="eyebrow">1단계</p><h1>생성실</h1><p class="lead">형식을 먼저 고르고, 학습 정보를 반영한 구조 초안 세 개를 비교합니다.</p></div><span class="status-pill ${statusClass}">${state === "disabled" ? "승인 대기" : stateLabels[state]}</span></header>${body}</section>${createAssistant(state)}</div>`;
+    };
+
+    const performanceAssistant = currentState => {
+      const disabled = currentState === "disabled";
+      const message = disabled ? "연결된 채널이 없어 성과를 확인할 수 없습니다. 연결 버튼은 계속 사용할 수 있습니다." : currentState === "loading" ? "최근 성과를 모으고 있습니다. 이전 화면으로 이동해도 작업은 이어집니다." : currentState === "error" ? "일부 성과를 불러오지 못했습니다. 마지막으로 확인한 내용은 유지했습니다." : currentState === "empty" ? "아직 발행한 콘텐츠가 없습니다. 첫 발행 뒤부터 반응을 모읍니다." : "이번 주에는 저장이 늘었습니다. 잘된 콘텐츠의 공통점을 학습 정보로 제안할까요?";
+      const showChoices = currentState === "normal" || currentState === "overflow";
+      const primary = disabled ? "채널 연결하기" : currentState === "error" ? "다시 불러오기" : currentState === "empty" ? "발행실 확인" : currentState === "loading" ? "수집 상태 확인" : "다음 행동 확인";
+      return `<aside class="assistant-pane" aria-label="성과 담당"><div class="assistant-head"><strong>성과 담당</strong><span>결과를 설명하고 다음 행동을 함께 정합니다.</span></div><div class="chat-scroll"><div class="bubble ai current">${message}</div>${showChoices ? `<div class="choice-stack"><button class="choice-button selected" type="button">잘된 이유 설명</button><button class="choice-button" type="button">반응 관리 후보 보기</button><button class="choice-button" type="button">다음 콘텐츠 제안</button></div>` : ""}</div><div class="assistant-actions"><button class="primary-button" type="button">${primary}</button><button class="secondary-button" type="button">학습 정보 제안 보기</button></div></aside>`;
+    };
+
+    const performanceNormal = overflow => `
+      <div class="filter-row"><button class="filter active" type="button">채널 전체</button><button class="filter" type="button">채널 가</button><button class="filter" type="button">채널 나</button><button class="filter" type="button">채널 다</button></div>
+      <div class="summary-strip"><div class="summary-cell"><span>한 줄 판정</span><strong>${overflow ? "저장 반응이 크게 늘었지만 채널별 도달 차이가 커서 같은 형식을 그대로 확대하기 전에 첫 문장과 게시 시간의 영향을 나눠 확인해야 합니다" : "저장 반응이 좋아졌습니다. 설명형 콘텐츠를 한 번 더 시험해 보세요."}</strong></div><div class="summary-cell"><span>분석 기간</span><strong>최근 30일</strong></div><div class="summary-cell"><span>확인한 콘텐츠</span><strong>${overflow ? "128개" : "12개"}</strong></div></div>
+      <div class="metric-grid">
+        ${[["조회","18,420","12% 증가"],["저장","1,284","24% 증가"],["답글","316","8% 증가"],["구독","428","31명 증가"],["발행","12","예정 4개"],["참여율","6.8%","0.7% 증가"],["도달","13,905","9% 증가"],["확산","3개","상위 10%"]].map((m,i) => `<article class="card metric ${i > 3 ? "secondary" : ""}"><span>${m[0]}</span><strong>${m[1]}</strong><small>${m[2]}</small></article>`).join("")}
+      </div>
+      <div class="performance-columns"><article class="card insight-card"><h3>잘된 콘텐츠 세 개</h3><div class="rank-list"><div class="rank-row"><b>1</b><span>${overflow ? "처음 시작하는 운영자가 긴 준비 없이도 오늘 바로 실행할 수 있는 한 가지 방법을 구체적인 사례와 함께 설명한 콘텐츠" : "첫 발행을 쉽게 만든 세 단계"}<br><small>저장 248 · 학습 정보 제안 가능</small></span></div><div class="rank-row"><b>2</b><span>빈 화면에서 멈추지 않는 방법<br><small>답글 76 · 첫 문장 반응 우수</small></span></div><div class="rank-row"><b>3</b><span>한 주 운영을 돌아보는 기준<br><small>조회 3,490 · 구독 전환 우수</small></span></div></div></article><article class="card insight-card"><h3>다음 행동과 반응 관리</h3><div class="task-list"><div class="task-row"><span class="dot"></span><span>설명형 구조를 다음 생성에 반영</span></div><div class="task-row"><span class="dot"></span><span>답글이 필요한 반응 8개 확인</span></div><div class="task-row"><span class="dot"></span><span>낮은 반응 콘텐츠 3개를 직접 검토</span></div></div></article></div>`;
+
+    const loadingPerformance = () => `<div class="filter-row"><button class="filter active" type="button">채널 전체</button><button class="filter" type="button">채널 가</button></div><div class="summary-strip"><div class="summary-cell skeleton">판정</div><div class="summary-cell skeleton">기간</div><div class="summary-cell skeleton">콘텐츠</div></div><div class="metric-grid">${[1,2,3,4,5,6,7,8].map(() => `<article class="card metric"><span class="loading-line skeleton"></span><strong class="loading-line skeleton"></strong></article>`).join("")}</div><div class="performance-columns"><article class="card insight-card"><h3>성과를 모으고 있습니다</h3><div class="loading-line skeleton"></div><br><div class="loading-line skeleton"></div></article><article class="card insight-card"><h3>다음 행동</h3><div class="loading-line skeleton"></div><br><div class="loading-line skeleton short"></div></article></div>`;
+
+    const performanceMain = () => {
+      let body = performanceNormal(state === "overflow");
+      if (state === "empty") body = statePanel("", "0", "아직 비교할 성과가 없습니다", "발행한 콘텐츠의 반응이 모이면 잘된 이유, 다음 행동, 학습 정보 제안을 이곳에서 확인할 수 있습니다.", "발행실 확인", "성과 수집 기준 보기");
+      if (state === "loading") body = loadingPerformance();
+      if (state === "error") body = statePanel("error", "!", "일부 성과를 불러오지 못했습니다", "마지막 확인 시점의 성과는 유지했습니다. 연결 상태를 확인한 뒤 다시 불러올 수 있습니다.", "다시 불러오기", "마지막 성과 보기");
+      if (state === "disabled") body = statePanel("disabled", "연결", "성과를 확인할 채널이 없습니다", "채널 연결이 끝나면 성과 수집이 시작됩니다. 심사 전 임시 안내가 표시되어도 연결 버튼은 계속 사용할 수 있습니다.", "채널 연결하기", "연결 안내 보기");
+      const statusClass = state === "disabled" ? "warning" : state === "error" ? "error" : state === "empty" || state === "loading" ? "neutral" : "";
+      return `<div class="work-area"><section class="main-pane"><header class="page-head"><div><p class="eyebrow">4단계 후보</p><h1>성과실</h1><p class="lead">채널 전체를 먼저 보고, 잘된 이유와 다음 행동을 확인합니다.</p></div><span class="status-pill ${statusClass}">${state === "disabled" ? "연결 필요" : stateLabels[state]}</span></header>${body}</section>${performanceAssistant(state)}</div>`;
+    };
+
+    function applyViewport() {
+      const device = document.getElementById("device");
+      device.style.width = viewport === "390" ? "390px" : "1024px";
+      device.style.height = viewport === "390" ? "844px" : "900px";
+      document.documentElement.dataset.viewport = viewport;
+    }
+    function render() {
+      document.documentElement.dataset.room = room;
+      document.documentElement.dataset.state = state;
+      document.getElementById("device").innerHTML = shell(room === "create" ? createMain() : performanceMain());
+      applyViewport();
+      document.querySelectorAll("[data-room-link]").forEach(button => button.addEventListener("click", () => { room = button.dataset.roomLink; render(); syncControls(); }));
+      requestAnimationFrame(recordAudit);
+    }
+    function recordAudit() {
+      const interactive = [...document.querySelectorAll("button, select, input, textarea, a")].filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== "hidden");
+      const productInteractive = interactive.filter(el => !el.closest(".review-bar"));
+      const targetUnder44 = productInteractive.filter(el => { const r = el.getBoundingClientRect(); return r.width < 44 || r.height < 44; }).length;
+      document.documentElement.dataset.ready = "true";
+      document.documentElement.dataset.overflowX = String(document.documentElement.scrollWidth > innerWidth || document.getElementById("device").scrollWidth > document.getElementById("device").clientWidth);
+      document.documentElement.dataset.targetUnder44 = String(targetUnder44);
+      document.documentElement.dataset.consoleError = window.__consoleError || "";
+    }
+    function syncControls() {
+      document.getElementById("room-select").value = room;
+      document.getElementById("state-select").value = state;
+      document.getElementById("viewport-select").value = viewport;
+    }
+    window.addEventListener("error", event => { window.__consoleError = event.message; document.documentElement.dataset.consoleError = event.message; });
+    document.getElementById("room-select").addEventListener("change", event => { room = event.target.value; render(); });
+    document.getElementById("state-select").addEventListener("change", event => { state = event.target.value; render(); });
+    document.getElementById("viewport-select").addEventListener("change", event => { viewport = event.target.value; render(); });
+    syncControls();
+    render();
+  </script>
+</body>
+</html>

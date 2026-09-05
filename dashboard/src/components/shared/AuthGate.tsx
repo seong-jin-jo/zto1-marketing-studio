@@ -21,31 +21,35 @@ type GateStatus = "checking" | "ok" | "access_paused" | "account_unavailable" | 
 function GateBlockScreen({
   title,
   desc,
-  onRefresh,
-  onLogout,
+  primaryLabel = "새로고침",
+  secondaryLabel = "로그아웃",
+  onPrimary,
+  onSecondary,
 }: {
   title: string;
   desc: string;
-  onRefresh: () => void;
-  onLogout: () => void;
+  primaryLabel?: string;
+  secondaryLabel?: string;
+  onPrimary: () => void;
+  onSecondary: () => void;
 }) {
   return (
-    <div className="min-h-screen w-full bg-bg flex items-center justify-center px-stack-section">
+    <div role="alert" className="min-h-screen w-full bg-bg flex items-center justify-center px-stack-section">
       <div className="card p-region w-full max-w-sm text-center">
         <h1 className="text-lead font-bold text-text mb-stack-tight">{title}</h1>
         <p className="text-body-sm text-subtle mb-stack-section">{desc}</p>
         <div className="flex flex-col gap-stack-tight">
           <button
-            onClick={onRefresh}
+            onClick={onPrimary}
             className="w-full py-stack rounded-control text-accent-fg font-semibold text-body-sm bg-accent hover:bg-accent-hover transition-colors"
           >
-            새로고침
+            {primaryLabel}
           </button>
           <button
-            onClick={onLogout}
+            onClick={onSecondary}
             className="w-full py-stack rounded-control text-caption text-subtle hover:text-muted transition-colors"
           >
-            로그아웃
+            {secondaryLabel}
           </button>
         </div>
       </div>
@@ -179,7 +183,7 @@ function LandingPage() {
       {/* ────── Pipeline ────── */}
       <section className="max-w-5xl mx-auto px-stack-section py-wide">
         <div className="text-center mb-wide">
-          <p className="text-caption font-semibold tracking-widest uppercase text-accent mb-stack">How It Works</p>
+          <p className="text-caption font-semibold tracking-widest uppercase text-accent mb-stack">이용 방법</p>
           <h2 className="text-heading sm:text-display font-bold text-text mb-stack">완전 자동화 파이프라인</h2>
           <p className="text-body-sm text-subtle">설정 한 번이면 24/7 자동 운영</p>
         </div>
@@ -230,7 +234,7 @@ function LandingPage() {
       {/* ────── Features ────── */}
       <section className="max-w-5xl mx-auto px-stack-section py-wide">
         <div className="text-center mb-wide">
-          <p className="text-caption font-semibold tracking-widest uppercase text-accent mb-stack">Features</p>
+          <p className="text-caption font-semibold tracking-widest uppercase text-accent mb-stack">주요 기능</p>
           <h2 className="text-heading sm:text-display font-bold text-text mb-stack">마케팅에 필요한 모든 것</h2>
           <p className="text-body-sm text-subtle">채널 관리부터 콘텐츠 생성, 분석까지 한 곳에서</p>
         </div>
@@ -258,7 +262,7 @@ function LandingPage() {
       {/* ────── Pricing ────── */}
       <section className="max-w-3xl mx-auto px-stack-section py-wide">
         <div className="text-center mb-wide">
-          <p className="text-caption font-semibold tracking-widest uppercase text-success mb-stack">Pricing</p>
+          <p className="text-caption font-semibold tracking-widest uppercase text-success mb-stack">요금</p>
           <h2 className="text-heading sm:text-display font-bold text-text mb-stack">심플한 요금제</h2>
           <p className="text-body-sm text-subtle">베타 기간 월 기본 제공량 내 무료입니다</p>
         </div>
@@ -271,7 +275,7 @@ function LandingPage() {
             베타 무료 제공
           </div>
 
-          <h3 className="text-display font-bold text-text mb-micro">Free</h3>
+          <h3 className="text-display font-bold text-text mb-micro">무료</h3>
           <p className="text-body-sm text-subtle mb-region">₩0 / 월</p>
 
           <ul className="text-left space-y-stack mb-region">
@@ -397,6 +401,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     const customerCredential = !pathname.startsWith("/operator")
       || identityKind === "customer"
       || isCustomerAuthToken(token);
+    // 어떤 보호 화면에서 401이 발생해도 provider signOut 완료를 기다리는 동안 이전 데이터와
+    // 행동 버튼이 살아 있으면 안 된다. 즉시 children을 내리고 재로그인 안내로 fail-closed한다.
+    setGateStatus("auth_error");
     if (customerCredential) {
       // Supabase emits SIGNED_OUT from signOut(). This operation owns that event:
       // the auth-state listener must not independently clear a replacement session.
@@ -404,6 +411,23 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       try {
         const { createBrowserSupabase } = await import("@/lib/supabase");
         if (getAuthToken() !== token) {
+          if (reauthOwnerToken.current === token) reauthOwnerToken.current = null;
+          reauthInFlight.current = false;
+          return;
+        }
+        // 만료는 로그아웃 사유가 아니다. 먼저 갱신을 시도한다.
+        //
+        // 2026-09-05 실측: 스튜디오에서 작업하는 도중 접근 토큰 수명이 끝나자 그대로
+        // 로그인 화면으로 튕겼다. 여기서 갱신 토큰을 한 번도 쓰지 않고 바로 로그아웃했기
+        // 때문이다. 접근 토큰은 원래 짧게 살고 갱신 토큰으로 이어 가는 것이 정상이다.
+        // 갱신에 성공하면 사용자는 있던 자리에 그대로 남고, 실패했을 때만 아래로 내려가
+        // 종전대로 로그아웃한다. 갱신 실패는 진짜 재로그인 사유다.
+        const refreshed = await createBrowserSupabase().auth.refreshSession();
+        const renewedToken = refreshed.data.session?.access_token;
+        if (!refreshed.error && renewedToken && renewedToken !== token) {
+          setAuthToken(renewedToken, "customer");
+          setHasToken(true);
+          setGateStatus("checking");
           if (reauthOwnerToken.current === token) reauthOwnerToken.current = null;
           reauthInFlight.current = false;
           return;
@@ -542,13 +566,32 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           void reauthenticateCurrentIdentity(requestToken);
           return;
         }
-        if (!res.ok) {
-          // 403/5xx/기타 — 상태를 신뢰할 수 없으니 fail-closed. 재시도 가능한 서비스 확인 실패 화면.
+        let statusRes = res;
+        if (!statusRes.ok) {
+          // 상태를 신뢰할 수 없으니 fail-closed 다. 다만 한 번의 실패로 곧장 막지는 않는다.
+          //
+          // 2026-09-05 회장 계정 실측: 배포로 컨테이너가 잠깐 재시작하는 사이 이 검사가 한 번
+          // 실패해 작업 중이던 화면이 통째로 "서비스 확인 실패"로 덮였다. 바로 뒤에 같은
+          // 토큰으로 부르니 200 이었다. 순간적인 장애로 작업 맥락을 잃게 만드는 것은 과하다.
+          // 서버 오류 계열만 한 번 더 물어보고, 성공하면 그 응답으로 평소 흐름을 이어간다.
+          // 권한 거부는 재시도해도 답이 같으므로 즉시 막는다.
+          if (statusRes.status >= 500) {
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+            if (!ownsPoll()) return;
+            const retry = await fetch("/api/me", {
+              headers: requestToken ? { Authorization: `Bearer ${requestToken}` } : {},
+              signal: controller.signal,
+            }).catch(() => null);
+            if (!ownsPoll()) return;
+            if (retry?.ok) statusRes = retry;
+          }
+        }
+        if (!statusRes.ok) {
           setVerifiedAccessKey(requestAccessKey);
           setGateStatus("service_error");
           return;
         }
-        const data = await res.json().catch(() => null);
+        const data = await statusRes.json().catch(() => null);
         if (!ownsPoll()) return;
         if (!data) {
           setVerifiedAccessKey(requestAccessKey);
@@ -663,9 +706,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return (
       <GateBlockScreen
         title="세션이 만료되었습니다"
-        desc="보안을 위해 다시 로그인해주세요."
-        onRefresh={doRefresh}
-        onLogout={doLogout}
+        desc="계속하려면 다시 로그인해주세요. 이전 화면의 데이터와 행동은 사용할 수 없습니다."
+        primaryLabel="로그인 화면으로 이동"
+        secondaryLabel="새로고침"
+        onPrimary={doLogout}
+        onSecondary={doRefresh}
       />
     );
   }
@@ -675,8 +720,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       <GateBlockScreen
         title="서비스 확인 실패"
         desc="계정 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요."
-        onRefresh={doRefresh}
-        onLogout={doLogout}
+        onPrimary={doRefresh}
+        onSecondary={doLogout}
       />
     );
   }
@@ -686,8 +731,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       <GateBlockScreen
         title="계정 이용이 중지되었습니다"
         desc="문의사항은 운영팀에 연락해주세요."
-        onRefresh={doRefresh}
-        onLogout={doLogout}
+        onPrimary={doRefresh}
+        onSecondary={doLogout}
       />
     );
   }
@@ -697,8 +742,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       <GateBlockScreen
         title="계정 상태를 확인할 수 없습니다"
         desc="일시적인 문제일 수 있습니다. 잠시 후 다시 시도하거나 운영팀에 문의해주세요."
-        onRefresh={doRefresh}
-        onLogout={doLogout}
+        onPrimary={doRefresh}
+        onSecondary={doLogout}
       />
     );
   }

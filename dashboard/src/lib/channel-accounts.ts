@@ -23,6 +23,22 @@ export interface ChannelAccountRow {
   token_expires_at: string | null;
   created_at: string;
   updated_at: string;
+  connection_state: "connected" | "reconnect";
+  can_be_default: boolean;
+  default_blocked_reason: DefaultAccountBlockedReason | null;
+}
+
+export type DefaultAccountBlockedReason =
+  | "status_expired"
+  | "status_revoked"
+  | "status_inactive"
+  | "token_expired"
+  | "token_expiry_missing"
+  | "token_expiry_invalid";
+
+export interface DefaultAccountEligibility {
+  eligible: boolean;
+  blockedReason: DefaultAccountBlockedReason | null;
 }
 
 export interface ResolvedIdentity {
@@ -111,10 +127,85 @@ interface UpsertInput {
   tokenExpiresAt?: string | null;
 }
 
+
+// 기본계정으로 쓸 수 있는 행인가. channel-connection.ts 의 판정과 같은 기준을 쓴다.
+const DEFAULT_REQUIRES_EXPIRY = new Set(["threads", "instagram", "facebook"]);
+
+export function defaultAccountEligibility(
+  provider: string,
+  status: string | null,
+  tokenExpiresAt: string | null,
+  now = Date.now(),
+): DefaultAccountEligibility {
+  if (status === "expired") return { eligible: false, blockedReason: "status_expired" };
+  if (status === "revoked") return { eligible: false, blockedReason: "status_revoked" };
+  if (status !== "active") return { eligible: false, blockedReason: "status_inactive" };
+  if (!tokenExpiresAt) {
+    return DEFAULT_REQUIRES_EXPIRY.has(provider)
+      ? { eligible: false, blockedReason: "token_expiry_missing" }
+      : { eligible: true, blockedReason: null };
+  }
+  const at = Date.parse(tokenExpiresAt);
+  if (!Number.isFinite(at)) return { eligible: false, blockedReason: "token_expiry_invalid" };
+  if (at <= now) return { eligible: false, blockedReason: "token_expired" };
+  return { eligible: true, blockedReason: null };
+}
+
+export function defaultAccountBlockedMessage(reason: DefaultAccountBlockedReason): string {
+  if (reason === "status_revoked") return "연결이 해제된 계정은 기본 계정으로 지정할 수 없습니다. 다시 연결해 주세요.";
+  if (reason === "status_inactive") return "비활성 계정은 기본 계정으로 지정할 수 없습니다.";
+  if (reason === "token_expiry_missing" || reason === "token_expiry_invalid") {
+    return "토큰 만료 시각을 확인할 수 없어 기본 계정으로 지정할 수 없습니다. 다시 연결해 주세요.";
+  }
+  return "토큰이 만료된 계정은 기본 계정으로 지정할 수 없습니다. 다시 연결해 주세요.";
+}
+
+function usableAsDefault(provider: string, status: string | null, tokenExpiresAt: string | null): boolean {
+  return defaultAccountEligibility(provider, status, tokenExpiresAt).eligible;
+}
+
+
+// 이번에 붙은 계정이 쓸 수 있고 기존 기본계정이 못 쓰는 상태면 기본을 넘긴다.
+// 넘기지 않으면 새로 연결해도 화면은 미연결로 남고 발행은 죽은 계정으로 간다.
+async function promoteIfDefaultUnusable(
+  sql: Parameters<Parameters<typeof withTenant>[1]>[0],
+  input: UpsertInput,
+  accountId: string,
+  alreadyDefault: boolean,
+): Promise<boolean> {
+  if (alreadyDefault) return true;
+  if (!usableAsDefault(input.provider, input.status ?? "active", input.tokenExpiresAt ?? null)) return false;
+
+  const [current] = await sql<{ id: string; status: string | null; token_expires_at: string | null }[]>`
+    SELECT id, status, token_expires_at::text AS token_expires_at
+    FROM channel_accounts
+    WHERE tenant_id = ${input.tenantId} AND provider = ${input.provider} AND is_default = true`;
+  if (current && usableAsDefault(input.provider, current.status, current.token_expires_at)) return false;
+
+  // 한 문장으로 뒤집으면 안 된다. uq_channel_accounts_one_default 는 부분 유니크 인덱스라
+  // 지연 검사가 불가능하고, 갱신은 행 물리 순서대로 즉시 검사된다. 기본이 될 행이 기존
+  // 기본계정보다 앞에 있으면 true 가 잠깐 둘이 되어 duplicate key 로 터진다.
+  // 2026-09-05 회장 계정 연결 실패가 이것이었다(운영 로그 uq_channel_accounts_one_default).
+  // 순서를 고정한다: 먼저 전부 내리고, 그 다음 이번 계정만 올린다.
+  await sql`
+    UPDATE channel_accounts SET is_default = false, updated_at = now()
+    WHERE tenant_id = ${input.tenantId} AND provider = ${input.provider} AND is_default = true`;
+  await sql`
+    UPDATE channel_accounts SET is_default = true, updated_at = now()
+    WHERE id = ${accountId}`;
+  return true;
+}
+
 // tenant/provider/externalId로 upsert. 최초 계정이면 기본(is_default=true), 이후는 비기본으로 추가.
 // 재연결(동일 external id)은 그 계정의 토큰/메타만 갱신 — 기본 여부는 건드리지 않는다.
-// 반환: 이 upsert가 만든/갱신한 계정이 기본계정인지(legacy integrations 동기화 판단용).
-export async function upsertChannelAccount(input: UpsertInput): Promise<{ id: string; isDefault: boolean }> {
+//
+// 단, 기존 기본계정이 못 쓰는 상태(비활성이거나 Meta 계열인데 장기 토큰 만료 시각이 없음)이고
+// 이번에 붙은 계정이 쓸 수 있으면 기본을 이번 계정으로 넘긴다. 2026-09-01 회장 계정에서
+// 실제로 난 일이다. 새 계정이 정상 연결됐는데도 낡은 기본계정 때문에 화면은 계속 미연결이었고
+// 발행 대상도 죽은 계정을 가리키고 있었다. 사용자가 고칠 수 있는 화면이 없으므로 서버가 고친다.
+// 반환: 이 upsert가 만든/갱신한 계정이 기본계정인지(legacy integrations 동기화 판단용)와
+// 기존 계정을 갱신한 재연결인지(사용자 결과 안내용).
+export async function upsertChannelAccount(input: UpsertInput): Promise<{ id: string; isDefault: boolean; reconnected: boolean }> {
   const key = process.env.OSMU_SECRET_KEY;
   if (!key) throw new Error("OSMU_SECRET_KEY 미설정 — 토큰 암호화 불가");
   return withTenant(input.tenantId, async (sql) => {
@@ -125,26 +216,16 @@ export async function upsertChannelAccount(input: UpsertInput): Promise<{ id: st
       SELECT id, is_default FROM channel_accounts
       WHERE tenant_id = ${input.tenantId} AND provider = ${input.provider} AND external_account_id = ${input.externalId}`;
 
-    if (existing) {
-      await sql`
-        UPDATE channel_accounts
-        SET secret_enc = armor(pgp_sym_encrypt(${input.accessToken}, ${key})),
-            refresh_enc = ${input.refreshToken ? sql`armor(pgp_sym_encrypt(${input.refreshToken}, ${key}))` : sql`refresh_enc`},
-            display_name = COALESCE(${input.displayName ?? null}, display_name),
-            username = COALESCE(${input.username ?? null}, username),
-            meta = ${input.meta ? sql.json(input.meta as Parameters<typeof sql.json>[0]) : sql`meta`},
-            status = ${input.status ?? "active"},
-            token_expires_at = ${input.tokenExpiresAt ?? null},
-            updated_at = now()
-        WHERE id = ${existing.id}`;
-      return { id: existing.id, isDefault: existing.is_default };
-    }
-
     const [{ cnt }] = await sql<{ cnt: string }[]>`
       SELECT count(*)::text AS cnt FROM channel_accounts WHERE tenant_id = ${input.tenantId} AND provider = ${input.provider}`;
-    const isFirst = Number(cnt) === 0;
+    const isFirst = !existing && Number(cnt) === 0;
+    const isInitialDefault = isFirst && usableAsDefault(
+      input.provider,
+      input.status ?? "active",
+      input.tokenExpiresAt ?? null,
+    );
 
-    const [inserted] = await sql<{ id: string }[]>`
+    const [inserted] = await sql<{ id: string; is_default: boolean }[]>`
       INSERT INTO channel_accounts
         (tenant_id, provider, external_account_id, display_name, username, secret_enc, refresh_enc, meta, is_default, status, token_expires_at)
       VALUES (
@@ -153,10 +234,22 @@ export async function upsertChannelAccount(input: UpsertInput): Promise<{ id: st
         armor(pgp_sym_encrypt(${input.accessToken}, ${key})),
         ${input.refreshToken ? sql`armor(pgp_sym_encrypt(${input.refreshToken}, ${key}))` : null},
         ${input.meta ? sql.json(input.meta as Parameters<typeof sql.json>[0]) : null},
-        ${isFirst}, ${input.status ?? "active"}, ${input.tokenExpiresAt ?? null}
+        ${isInitialDefault}, ${input.status ?? "active"}, ${input.tokenExpiresAt ?? null}
       )
-      RETURNING id`;
-    return { id: inserted.id, isDefault: isFirst };
+      ON CONFLICT (tenant_id, provider, external_account_id) DO UPDATE
+        SET secret_enc = EXCLUDED.secret_enc,
+            refresh_enc = COALESCE(EXCLUDED.refresh_enc, channel_accounts.refresh_enc),
+            display_name = COALESCE(EXCLUDED.display_name, channel_accounts.display_name),
+            username = COALESCE(EXCLUDED.username, channel_accounts.username),
+            meta = COALESCE(EXCLUDED.meta, channel_accounts.meta),
+            status = EXCLUDED.status,
+            token_expires_at = EXCLUDED.token_expires_at,
+            updated_at = now()
+      RETURNING id, is_default`;
+    const promoted = await promoteIfDefaultUnusable(
+      sql, input, inserted.id, inserted.is_default,
+    );
+    return { id: inserted.id, isDefault: promoted, reconnected: Boolean(existing) };
   });
 }
 
@@ -177,22 +270,41 @@ export async function syncLegacyIntegration(tenantId: string, provider: string, 
 
 // tenant+provider 스코프 계정 목록. 토큰은 절대 반환하지 않는다(display/username/status/default만).
 export async function listChannelAccounts(tenantId: string, provider: string): Promise<ChannelAccountRow[]> {
-  return withTenant(tenantId, (sql) => sql<ChannelAccountRow[]>`
+  const rows = await withTenant(tenantId, (sql) => sql<Omit<ChannelAccountRow, "connection_state" | "can_be_default" | "default_blocked_reason">[]>`
     SELECT id, provider, external_account_id, display_name, username, is_default, status,
            token_expires_at, created_at, updated_at
     FROM channel_accounts
     WHERE tenant_id = ${tenantId} AND provider = ${provider}
     ORDER BY is_default DESC, created_at ASC`);
+  return rows.map((row) => {
+    const eligibility = defaultAccountEligibility(row.provider, row.status, row.token_expires_at);
+    return {
+      ...row,
+      connection_state: eligibility.eligible ? "connected" : "reconnect",
+      can_be_default: eligibility.eligible,
+      default_blocked_reason: eligibility.blockedReason,
+    };
+  });
 }
 
 // 기본계정 전환 — 트랜잭션 내에서 기존 기본 해제 → 신규 기본 지정 → legacy integrations 동기화.
 // accountId가 tenant/provider 스코프 밖이면(cross-tenant) 0행 갱신 → notFound.
-export async function setDefaultAccount(tenantId: string, provider: string, accountId: string): Promise<{ ok: boolean; notFound?: boolean }> {
+export async function setDefaultAccount(
+  tenantId: string,
+  provider: string,
+  accountId: string,
+): Promise<{ ok: boolean; notFound?: boolean; blockedReason?: DefaultAccountBlockedReason }> {
   return withTenant(tenantId, async (sql) => {
     await sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:${provider}`}, 0))`;
-    const [target] = await sql<{ id: string }[]>`
-      SELECT id FROM channel_accounts WHERE id = ${accountId} AND tenant_id = ${tenantId} AND provider = ${provider}`;
+    const [target] = await sql<{ id: string; status: string; token_expires_at: string | null }[]>`
+      SELECT id, status, token_expires_at::text AS token_expires_at
+      FROM channel_accounts
+      WHERE id = ${accountId} AND tenant_id = ${tenantId} AND provider = ${provider}`;
     if (!target) return { ok: false, notFound: true };
+    const eligibility = defaultAccountEligibility(provider, target.status, target.token_expires_at);
+    if (!eligibility.eligible) {
+      return { ok: false, blockedReason: eligibility.blockedReason ?? "status_inactive" };
+    }
     await sql`UPDATE channel_accounts SET is_default = false, updated_at = now() WHERE tenant_id = ${tenantId} AND provider = ${provider} AND is_default = true`;
     await sql`UPDATE channel_accounts SET is_default = true, updated_at = now() WHERE id = ${accountId}`;
     const [account] = await sql<{ secret_enc: string; meta: Record<string, unknown> | null }[]>`
@@ -206,8 +318,8 @@ export async function setDefaultAccount(tenantId: string, provider: string, acco
   });
 }
 
-// 계정 삭제. 기본계정을 지우면 (created_at 가장 오래된) 다른 계정을 승격해 legacy 동기화.
-// 마지막 하나(그 provider의 유일 계정)를 지우면 legacy integrations 행도 제거(연결 완전 해제).
+// 계정 삭제. 기본계정을 지우면 쓸 수 있는 다른 계정 중 가장 오래된 계정을 승격한다.
+// 쓸 수 있는 계정이 없으면 남은 만료·비활성 행은 보존하되 legacy 연결은 제거한다.
 export async function deleteChannelAccount(tenantId: string, provider: string, accountId: string): Promise<{ ok: boolean; notFound?: boolean; promotedId?: string }> {
   return withTenant(tenantId, async (sql) => {
     await sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:${provider}`}, 0))`;
@@ -219,9 +331,14 @@ export async function deleteChannelAccount(tenantId: string, provider: string, a
 
     if (!target.is_default) return { ok: true as const };
 
-    const [next] = await sql<{ id: string }[]>`
-      SELECT id FROM channel_accounts WHERE tenant_id = ${tenantId} AND provider = ${provider}
-      ORDER BY created_at ASC LIMIT 1`;
+    const candidates = await sql<{ id: string; status: string; token_expires_at: string | null }[]>`
+      SELECT id, status, token_expires_at::text AS token_expires_at
+      FROM channel_accounts
+      WHERE tenant_id = ${tenantId} AND provider = ${provider}
+      ORDER BY created_at ASC`;
+    const next = candidates.find((candidate) => (
+      defaultAccountEligibility(provider, candidate.status, candidate.token_expires_at).eligible
+    ));
     if (next) {
       await sql`UPDATE channel_accounts SET is_default = true, updated_at = now() WHERE id = ${next.id}`;
       const [account] = await sql<{ secret_enc: string; meta: Record<string, unknown> | null }[]>`
@@ -233,7 +350,7 @@ export async function deleteChannelAccount(tenantId: string, provider: string, a
           SET secret_enc = EXCLUDED.secret_enc, meta = EXCLUDED.meta`;
       return { ok: true as const, promotedId: next.id };
     }
-    // 마지막 계정 삭제 — legacy 연결도 완전 해제
+    // 마지막 계정이거나 남은 계정이 모두 만료·비활성이면 legacy 연결도 완전 해제한다.
     await sql`DELETE FROM integrations WHERE tenant_id = ${tenantId} AND kind = 'channel' AND label = ${provider}`;
     return { ok: true as const };
   });
@@ -265,7 +382,7 @@ export async function getSelectedChannelAccountCred(
         FROM channel_accounts
         WHERE tenant_id = ${tenantId} AND provider = ${provider} AND id = ${accountId}
           AND status = 'active'
-          AND (token_expires_at IS NULL OR token_expires_at > now())`;
+          AND (token_expires_at > now() OR (token_expires_at IS NULL AND ${!DEFAULT_REQUIRES_EXPIRY.has(provider)}))`;
     }
     return sql<{ id: string; token: string | null; refresh_token: string | null; meta: Record<string, unknown> | null }[]>`
       SELECT id,
@@ -275,7 +392,7 @@ export async function getSelectedChannelAccountCred(
       FROM channel_accounts
       WHERE tenant_id = ${tenantId} AND provider = ${provider} AND is_default = true
         AND status = 'active'
-        AND (token_expires_at IS NULL OR token_expires_at > now())`;
+        AND (token_expires_at > now() OR (token_expires_at IS NULL AND ${!DEFAULT_REQUIRES_EXPIRY.has(provider)}))`;
   });
   if (!row || !row.token) return null;
   const meta = row.meta ?? {};
@@ -299,6 +416,7 @@ export async function channelAccountBelongsToProvider(
   const [row] = await withTenant(tenantId, (sql) => sql<{ id: string }[]>`
     SELECT id FROM channel_accounts
     WHERE id = ${accountId} AND tenant_id = ${tenantId} AND provider = ${provider}
-      AND status = 'active'`);
+      AND status = 'active'
+      AND (token_expires_at > now() OR (token_expires_at IS NULL AND ${!DEFAULT_REQUIRES_EXPIRY.has(provider)}))`);
   return Boolean(row);
 }

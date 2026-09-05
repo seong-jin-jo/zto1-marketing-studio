@@ -114,12 +114,25 @@ export async function mirrorQueueDelete(tenantId: string | null, postId: string)
   }
 }
 
+/**
+ * 승인 큐 미러에 발행 결과를 반영한다.
+ *
+ * 반환값이 왜 참·거짓이 아니라 세 가지인가. 2026-09-05 회장 계정 실측에서, 스튜디오에서
+ * 바로 발행한 글이 실제로 올라가고 발행 기록도 남았는데 화면에는 "내부 기록 실패"가 떴다.
+ * 응답 본문이 `stage: queue_record, publicationRecorded: true, queueRecorded: false` 였다.
+ * 원인은 이 함수가 "큐에 그 초안이 없다"와 "큐 갱신에 실패했다"를 똑같이 거짓으로 돌려준
+ * 것이다. 스튜디오 직접 발행은 승인 큐를 거치지 않으므로 큐에 없는 것이 정상인데,
+ * 호출하는 쪽은 그것을 실패로 읽고 사용자에게 복구를 요구하며 재발행을 막았다.
+ * 이제 없음(absent)과 갱신함(updated)을 나눠 돌려준다. 진짜 실패는 예외로 올라간다.
+ */
+export type QueuePublishOutcome = "updated" | "absent";
+
 export async function markQueuePublished(
   tenantId: string,
   postId: string,
   result: { platform: string; externalId?: string; permalink?: string },
-): Promise<boolean> {
-  if (!isUuid(tenantId) || !isUuid(postId)) return false;
+): Promise<QueuePublishOutcome> {
+  if (!isUuid(tenantId) || !isUuid(postId)) return "absent";
 
   let found: QueueMirrorPost | null = null;
   const publishedAt = new Date().toISOString();
@@ -153,5 +166,5 @@ export async function markQueuePublished(
            updated_at = now()
      WHERE id = ${postId}::uuid AND tenant_id = ${tenantId}::uuid
   `);
-  return found !== null;
+  return found !== null ? "updated" : "absent";
 }

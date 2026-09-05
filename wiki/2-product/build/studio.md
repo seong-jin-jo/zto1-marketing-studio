@@ -2,6 +2,15 @@
 
 Studio is the "power user" surface for one-off or assisted generation, complementing the fully automated cron/queue flow. It is the primary place where operators interact with the AI engine + wiki grounding + multi-platform output + video rendering.
 
+## Draft save failure feedback, 2026-09-03
+
+- 발행 전 초안 ID 확보는 외부 발행의 필수 조건이다. 저장 API가 빈 결과를 반환하거나 예외를
+  올리면 동일하게 오류 알림을 표시하고 외부 발행 요청을 시작하지 않는다.
+- 수동 임시 저장은 초안 ID를 받은 뒤에만 성공으로 알린다. 실패를 인증 헬퍼에서 삼키지 않고
+  Studio의 사용자 행동 경계에서 한국어 오류로 번역한다.
+- 외부 발행 뒤 초안 상태 저장이 실패하면 발행 결과 자체는 화면에 보존하고 저장 실패를 결과 오류로
+  함께 표시한다. 사용자가 실패를 성공으로 오인하거나 무응답으로 남지 않게 한다.
+
 ## Generation API v1, 2026-08-27
 
 - `POST /api/studio/v1/generations`: 학습 정보 7층과 요청 시점 platform spec을 검사하고 A/B/C 후보 3장을 만든다.

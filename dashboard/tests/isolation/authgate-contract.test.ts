@@ -16,8 +16,18 @@ describe("AuthGate — fail-open 회귀 방지 계약(소스 기반)", () => {
     expect(branch).not.toContain('setGateStatus("ok")');
   });
 
-  it("poll()의 !res.ok(403/5xx 등) 분기는 service_error로 설정하고 ok로 fail-open하지 않는다", () => {
-    expect(SRC).toMatch(/if \(!res\.ok\)[\s\S]{0,200}setGateStatus\("service_error"\)/);
+  // 2026-09-05: 상태 검사가 서버 오류로 한 번 실패했다고 곧장 화면을 막지는 않는다.
+  // 배포 중 컨테이너 재시작으로 한 번 실패하자 작업 화면이 통째로 덮였고, 바로 뒤 같은
+  // 토큰으로 부르면 정상이었다. 그래서 5xx 만 한 번 더 물어본다. 그러나 fail-open 은
+  // 여전히 금지다. 재시도까지 실패하면 반드시 service_error 로 닫혀야 한다.
+  it("poll()의 응답 실패 분기는 재시도 뒤에도 실패하면 service_error로 닫고 ok로 fail-open하지 않는다", () => {
+    const guard = SRC.match(/if \(!statusRes\.ok\) \{\s*setVerifiedAccessKey\(requestAccessKey\);\s*setGateStatus\("service_error"\);/);
+    expect(guard, "응답이 실패로 남으면 service_error 로 닫는 자리가 있어야 한다").toBeTruthy();
+    // 재시도는 서버 오류에만 허용한다. 권한 거부까지 다시 물으면 막아야 할 것을 늦게 막는다.
+    expect(SRC).toContain("statusRes.status >= 500");
+    // 실패 응답을 받고 곧바로 통과시키는 자리가 없어야 한다.
+    const failBlock = SRC.slice(SRC.indexOf("let statusRes = res;"), SRC.indexOf("const data = await statusRes.json()"));
+    expect(failBlock).not.toContain('setGateStatus("ok")');
   });
 
   it("poll()의 catch(네트워크 오류) 분기는 service_error로 설정하고 ok로 fail-open하지 않는다", () => {

@@ -17,6 +17,16 @@ interface DraftRow {
     publishReconciliation?: unknown;
     editor_handoff?: unknown;
     editFormat?: unknown;
+    editKind?: unknown;
+    editLines?: unknown;
+    cardTextPositions?: unknown;
+    titles?: unknown;
+    captions?: unknown;
+    hashtags?: unknown;
+    topicTags?: unknown;
+    firstComments?: unknown;
+    selectedAccounts?: unknown;
+    reviewQueueId?: unknown;
   };
   status: string;
   created_at: string;
@@ -56,6 +66,16 @@ export async function GET(request: Request) {
       publishReconciliation: r.payload?.publishReconciliation ?? null,
       editorHandoff: r.payload?.editor_handoff ?? null,
       editFormat: r.payload?.editFormat ?? null,
+      editKind: r.payload?.editKind ?? null,
+      editLines: r.payload?.editLines ?? null,
+      cardTextPositions: r.payload?.cardTextPositions ?? null,
+      titles: r.payload?.titles ?? {},
+      captions: r.payload?.captions ?? {},
+      hashtags: r.payload?.hashtags ?? {},
+      topicTags: r.payload?.topicTags ?? {},
+      firstComments: r.payload?.firstComments ?? {},
+      selectedAccounts: r.payload?.selectedAccounts ?? {},
+      reviewQueueId: r.payload?.reviewQueueId ?? null,
       status: r.status,
       savedAt: r.updated_at,
     }));
@@ -79,6 +99,16 @@ export async function POST(request: Request) {
       }, { status: 422, headers: { "Cache-Control": "no-store" } });
     }
   }
+  if (
+    body.selectedAccounts !== undefined
+    && (body.selectedAccounts === null || typeof body.selectedAccounts !== "object" || Array.isArray(body.selectedAccounts))
+  ) {
+    return Response.json({
+      ok: false,
+      code: "INVALID_PUBLISH_DRAFT_STATE",
+      error: "선택 계정값을 확인해 주세요",
+    }, { status: 422, headers: { "Cache-Control": "no-store" } });
+  }
   const tenantId = await effectiveTenantId(request, body.tenant_id);
   if (!tenantId) return Response.json({ error: "tenant_id required" }, { status: 400 });
   const payload = {
@@ -87,6 +117,16 @@ export async function POST(request: Request) {
     publishReconciliations: body.publishReconciliations ?? {},
     publishReconciliation: body.publishReconciliation ?? null,
     editFormat: body.editFormat ?? null,
+    editKind: body.editKind ?? null,
+    editLines: body.editLines ?? null,
+    cardTextPositions: body.cardTextPositions ?? null,
+    titles: body.titles ?? {},
+    captions: body.captions ?? {},
+    hashtags: body.hashtags ?? {},
+    topicTags: body.topicTags ?? {},
+    firstComments: body.firstComments ?? {},
+    selectedAccounts: body.selectedAccounts ?? {},
+    reviewQueueId: body.reviewQueueId ?? null,
   };
   const status = body.status || "draft";
   const idea = body.idea || "";

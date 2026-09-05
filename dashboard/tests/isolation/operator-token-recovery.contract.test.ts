@@ -127,7 +127,7 @@ case "\${1:-}" in
   url) cat "$url_file" ;;
   js)
     case "$2" in
-      *"Admin"*"고객 관리"*) printf 'true\\n' ;;
+      *"운영자"*"고객 관리"*) printf 'true\\n' ;;
       *"운영자 토큰이 유효하지"*) printf 'false\\n' ;;
       *) printf 'storage-cleared\\n' ;;
     esac
@@ -209,7 +209,7 @@ describe("operator canonical token recovery contract", () => {
     expect(formE2e).toContain("localStorage.clear()");
     expect(formE2e).toContain("sessionStorage.clear()");
     expect(formE2e).toContain("/operator/customers");
-    expect(formE2e).toContain("Admin");
+    expect(formE2e).toContain("운영자");
     expect(formE2e).toContain("고객 관리");
     expect(formE2e).toContain("운영자 토큰이 유효하지");
     expect(formE2e).toMatch(/4\d\d|5\d\d/);

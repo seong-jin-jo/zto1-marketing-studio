@@ -17,10 +17,10 @@ export function Account() {
 
   return (
     <div className="card p-stack-section">
-      <h3 className="text-body-sm font-medium text-muted mb-pad-inset">Account</h3>
+      <h3 className="text-body-sm font-medium text-muted mb-pad-inset">계정</h3>
       <div className="space-y-stack-tight text-body-sm">
         <div className="flex justify-between">
-          <span className="text-subtle">Auth</span>
+          <span className="text-subtle">인증</span>
           <span className="text-muted">{hasAuth ? "Token set" : "No auth"}</span>
         </div>
       </div>

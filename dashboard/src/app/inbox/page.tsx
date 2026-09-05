@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { fetcher, apiPost } from "@/lib/api";
+import { fetcher, apiPost, isAuthRequiredError } from "@/lib/api";
 import { useToast } from "@/components/layout/Toast";
 import type { VoiceTone } from "@/lib/voice-tone";
 import type { PublishReturnContext } from "@/lib/publish-return-context";
 import { PublishTrip } from "@/components/shared/PublishTrip";
+import { missingReviewFields, normalizeReviewText, type MissingReviewField } from "@/lib/review-content";
 
 const TONE_SLIDERS: { key: keyof VoiceTone; left: string; right: string }[] = [
   { key: "formal", left: "격식", right: "구어" },
@@ -18,7 +19,8 @@ const TONE_SLIDERS: { key: keyof VoiceTone; left: string; right: string }[] = [
 
 interface Post {
   id: string;
-  text?: string;
+  title?: string | null;
+  text?: string | null;
   topic?: string;
   status?: string;
   generatedAt?: string;
@@ -34,12 +36,32 @@ interface Post {
 // 검토 대상 = status=draft. 승인 → /approve, 거절 → /delete. 액션 후 다음 카드로.
 interface ProductSource { type?: string; owner?: string; repo?: string; path?: string; ref?: string; token?: string }
 
+function customerTopicLabel(topic?: string) {
+  const normalized = normalizeReviewText(topic);
+  if (!normalized || normalized === "post") return "일반 콘텐츠";
+  if (normalized === "studio-handoff") return "콘텐츠 작업실에서 보냄";
+  return normalized;
+}
+
+function approvalWarning(fields: MissingReviewField[]) {
+  if (fields.includes("body") && fields.includes("title")) {
+    return "제목과 본문을 불러오지 못했습니다. 내용을 확인할 수 있을 때만 승인할 수 있습니다.";
+  }
+  if (fields.includes("title")) {
+    return "제목을 불러오지 못했습니다. 내용을 확인할 수 있을 때만 승인할 수 있습니다.";
+  }
+  if (fields.includes("body")) {
+    return "본문을 불러오지 못했습니다. 내용을 확인할 수 있을 때만 승인하거나 거절할 수 있습니다.";
+  }
+  return "";
+}
+
 export default function InboxPage() {
-  const { data, mutate, isLoading } = useSWR<{ posts: Post[] }>("/api/queue?status=draft&returnTo=inbox", fetcher);
+  const { data, error: queueError, mutate, isLoading } = useSWR<{ posts: Post[] }>("/api/queue?status=draft&returnTo=inbox", fetcher);
   const { data: psData, mutate: mutatePsrc } = useSWR<{ source: ProductSource | null }>("/api/product-source", fetcher);
   const { showToast } = useToast();
 
-  const posts = data?.posts || [];
+  const posts = queueError ? [] : data?.posts || [];
   const [idx, setIdx] = useState(0);
   const [scheduleHours, setScheduleHours] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -53,7 +75,7 @@ export default function InboxPage() {
   const [savingSrc, setSavingSrc] = useState(false);
   const saveSrc = async () => {
     if (!srcForm.owner.trim() || !srcForm.repo.trim() || !srcForm.path.trim()) {
-      showToast("owner/repo/path를 입력하세요", "error");
+      showToast("계정 이름, 프로젝트 이름, 파일 위치를 입력하세요", "error");
       return;
     }
     setSavingSrc(true);
@@ -104,13 +126,20 @@ export default function InboxPage() {
   }, [posts.length, idx]);
 
   const current = posts[idx];
+  const currentTitle = normalizeReviewText(current?.title);
+  const currentBody = normalizeReviewText(current?.text);
+  const missingFields = current ? missingReviewFields(current) : [];
+  const blockedWarning = approvalWarning(missingFields);
+  const queueLoadFailed = Boolean(queueError);
+  const authExpired = isAuthRequiredError(queueError);
+  const canApprove = Boolean(current && missingFields.length === 0 && !queueLoadFailed);
 
   const advance = useCallback(() => {
     setIdx((i) => (i + 1 < posts.length ? i + 1 : i));
   }, [posts.length]);
 
   const approve = useCallback(async () => {
-    if (!current || busy) return;
+    if (!current || busy || queueLoadFailed || missingReviewFields(current).length > 0) return;
     setBusy(true);
     try {
       await apiPost(`/api/queue/${current.id}/approve`, { hours: scheduleHours });
@@ -122,10 +151,10 @@ export default function InboxPage() {
     } finally {
       setBusy(false);
     }
-  }, [current, busy, scheduleHours, mutate, advance, showToast]);
+  }, [current, busy, queueLoadFailed, scheduleHours, mutate, advance, showToast]);
 
   const reject = useCallback(async () => {
-    if (!current || busy) return;
+    if (!current || busy || queueLoadFailed || missingReviewFields(current).length > 0) return;
     setBusy(true);
     try {
       await apiPost(`/api/queue/${current.id}/delete`, {});
@@ -136,7 +165,7 @@ export default function InboxPage() {
     } finally {
       setBusy(false);
     }
-  }, [current, busy, mutate, advance, showToast]);
+  }, [current, busy, queueLoadFailed, mutate, advance, showToast]);
 
   // 데스크톱 단축키: A=승인, R=거절, ←/→ 이동
   useEffect(() => {
@@ -151,7 +180,12 @@ export default function InboxPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [approve, reject, posts.length]);
 
-  const channels = current?.channels ? Object.keys(current.channels) : [];
+  const channels = current?.channels
+    ? Object.keys(current.channels).map(normalizeReviewText).filter(Boolean)
+    : [];
+  const hashtags = current?.hashtags
+    ?.map(normalizeReviewText)
+    .filter(Boolean) ?? [];
   const videoSrc = current?.videoUrl
     ? (current.videoUrl.startsWith("http") ? current.videoUrl : `/videos/${current.videoUrl}`)
     : current?.videoFilename
@@ -174,16 +208,16 @@ export default function InboxPage() {
       {/* 제품 소스(제품-grounded): repo를 연결하면 "방금 만든 것"을 자동 홍보하는 글이 생성됨 */}
       <div className="mb-pad-inset text-caption">
         <button onClick={() => setShowSrc((v) => !v)} className="text-subtle hover:text-muted">
-          {psrc?.owner ? `제품 소스: ${psrc.owner}/${psrc.repo}/${psrc.path}` : "제품 소스 연결 (선택. 저장소 기반 생성)"}
+          {psrc?.owner ? `제품 내용: ${psrc.owner}/${psrc.repo}/${psrc.path}` : "제품 내용 연결 (선택. 최근 변경 내용 반영)"}
           <span className="ml-micro text-subtle">{showSrc ? "▲" : "▼"}</span>
         </button>
         {showSrc && (
           <div className="mt-stack-tight card p-stack grid grid-cols-2 gap-stack-tight">
-            <input value={srcForm.owner} onChange={(e) => setSrcForm({ ...srcForm, owner: e.target.value })} placeholder="owner (예: my-gh-id)" className="bg-surface-2 p-stack-tight rounded-chip border border-border" />
-            <input value={srcForm.repo} onChange={(e) => setSrcForm({ ...srcForm, repo: e.target.value })} placeholder="repo (예: my-product)" className="bg-surface-2 p-stack-tight rounded-chip border border-border" />
-            <input value={srcForm.path} onChange={(e) => setSrcForm({ ...srcForm, path: e.target.value })} placeholder="path (예: CHANGELOG.md)" className="bg-surface-2 p-stack-tight rounded-chip border border-border" />
-            <input value={srcForm.ref} onChange={(e) => setSrcForm({ ...srcForm, ref: e.target.value })} placeholder="ref (main)" className="bg-surface-2 p-stack-tight rounded-chip border border-border" />
-            <input value={srcForm.token} onChange={(e) => setSrcForm({ ...srcForm, token: e.target.value })} placeholder="token (비공개 repo만)" type="password" className="bg-surface-2 p-stack-tight rounded-chip border border-border col-span-2" />
+            <input aria-label="계정 이름" value={srcForm.owner} onChange={(e) => setSrcForm({ ...srcForm, owner: e.target.value })} placeholder="계정 이름" className="bg-surface-2 p-stack-tight rounded-chip border border-border" />
+            <input aria-label="프로젝트 이름" value={srcForm.repo} onChange={(e) => setSrcForm({ ...srcForm, repo: e.target.value })} placeholder="프로젝트 이름" className="bg-surface-2 p-stack-tight rounded-chip border border-border" />
+            <input aria-label="변경 기록 파일 위치" value={srcForm.path} onChange={(e) => setSrcForm({ ...srcForm, path: e.target.value })} placeholder="변경 기록 파일 위치" className="bg-surface-2 p-stack-tight rounded-chip border border-border" />
+            <input aria-label="기준 브랜치" value={srcForm.ref} onChange={(e) => setSrcForm({ ...srcForm, ref: e.target.value })} placeholder="기준 브랜치" className="bg-surface-2 p-stack-tight rounded-chip border border-border" />
+            <input aria-label="접근 토큰" value={srcForm.token} onChange={(e) => setSrcForm({ ...srcForm, token: e.target.value })} placeholder="비공개 프로젝트 접근 토큰" type="password" className="bg-surface-2 p-stack-tight rounded-chip border border-border col-span-2" />
             <button onClick={saveSrc} disabled={savingSrc} className="col-span-2 py-stack-tight bg-accent hover:bg-accent-hover rounded-chip disabled:opacity-50">
               {savingSrc ? "저장 중…" : "연결 저장"}
             </button>
@@ -232,7 +266,61 @@ export default function InboxPage() {
         aria-label="승인 검토 진행률"
       />
 
-      {isLoading ? (
+      {queueLoadFailed ? (
+        <div
+          id="queue-load-failure"
+          role="alert"
+          className="card mb-stack-section border border-danger/30 bg-danger-soft p-pad-inset text-body-sm text-danger"
+        >
+          <p className="font-semibold">
+            {authExpired ? "로그인 상태가 만료되었습니다." : "검토할 초안을 불러오지 못했습니다."}
+          </p>
+          <p className="mt-stack-tight text-caption text-subtle">
+            {authExpired
+              ? "계속하려면 다시 로그인해주세요. 내용을 다시 불러오기 전까지 승인과 거절은 사용할 수 없습니다."
+              : "연결 상태를 확인한 뒤 다시 불러와주세요. 내용을 확인하기 전까지 승인과 거절은 사용할 수 없습니다."}
+          </p>
+          {authExpired ? (
+            <Link
+              href="/login?returnTo=%2Finbox"
+              className="mt-stack inline-flex min-h-control-touch items-center justify-center rounded-control bg-accent px-stack text-caption font-semibold text-accent-fg hover:bg-accent-hover"
+            >
+              로그인 화면으로 이동
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void mutate()}
+              className="mt-stack min-h-control-touch rounded-control bg-accent px-stack text-caption font-semibold text-accent-fg hover:bg-accent-hover"
+            >
+              다시 불러오기
+            </button>
+          )}
+        </div>
+      ) : null}
+
+      {queueLoadFailed ? (
+        <div className="card p-pad-inset">
+          <div className="grid grid-cols-2 gap-stack">
+            <button
+              type="button"
+              disabled
+              aria-describedby="queue-load-failure"
+              className="py-stack rounded-control bg-danger/15 text-danger text-body-sm font-medium disabled:opacity-50"
+            >
+              거절
+            </button>
+            <button
+              type="button"
+              disabled
+              aria-describedby="queue-load-failure"
+              className="py-stack rounded-control bg-success text-status-fg text-body-sm font-medium disabled:opacity-50"
+            >
+              승인
+            </button>
+          </div>
+        </div>
+      ) : isLoading && data === undefined ? (
         <div className="card p-region text-center text-subtle text-body-sm">불러오는 중…</div>
       ) : posts.length === 0 ? (
         <div className="card p-region text-center">
@@ -245,7 +333,7 @@ export default function InboxPage() {
           >
             {seeding ? "생성 중…" : "AI로 한 주치 초안 생성"}
           </button>
-          <p className="text-caption text-subtle mt-stack">크론·Studio·영상에서 만든 글도 여기로 모입니다.</p>
+          <p className="text-caption text-subtle mt-stack">예약 작업·생성실·영상에서 만든 글도 여기로 모입니다.</p>
         </div>
       ) : !current ? (
         <div className="card p-region text-center text-subtle text-body-sm">모두 검토 완료.</div>
@@ -267,16 +355,28 @@ export default function InboxPage() {
             </div>
           )}
 
-          {/* 본문 */}
-          <p className="text-body-sm text-text whitespace-pre-wrap leading-relaxed min-h-[80px]">{current.text || "(내용 없음)"}</p>
+          {/* 제목은 실제 제목 값이 있을 때만, text는 항상 본문 영역에 표시한다. */}
+          <section aria-label="검토할 글" className="min-h-control-touch space-y-stack-tight" data-review-content>
+            {currentTitle ? (
+              <h3 className="text-body font-semibold text-text" data-review-title>{currentTitle}</h3>
+            ) : null}
+            {blockedWarning ? (
+              <div role="alert" className="rounded-control border border-warning/30 bg-warning/10 p-stack text-body-sm text-warning">
+                {blockedWarning}
+              </div>
+            ) : null}
+            {currentBody ? (
+              <p className="min-h-control-touch whitespace-pre-wrap text-body-sm leading-relaxed text-text" data-review-body>{currentBody}</p>
+            ) : null}
+          </section>
 
           {/* 해시태그 */}
-          {current.hashtags && current.hashtags.length > 0 && (
-            <p className="text-caption text-accent mt-stack-tight">{current.hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ")}</p>
+          {hashtags.length > 0 && (
+            <p className="text-caption text-accent mt-stack-tight">{hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ")}</p>
           )}
 
           <div className="mt-stack text-caption text-subtle flex items-center justify-between">
-            <span>{current.topic || "post"}</span>
+            <span>{customerTopicLabel(current.topic)}</span>
             <span>{current.generatedAt ? new Date(current.generatedAt).toLocaleString("ko-KR") : ""}</span>
           </div>
 
@@ -300,19 +400,24 @@ export default function InboxPage() {
           <div className="mt-stack-section grid grid-cols-2 gap-stack">
             <button
               onClick={reject}
-              disabled={busy}
+              disabled={busy || !canApprove}
+              aria-describedby={queueLoadFailed ? "queue-load-failure" : !canApprove ? "approval-blocked-reason" : undefined}
               className="py-stack rounded-control bg-danger/15 text-danger hover:bg-danger/25 text-body-sm font-medium disabled:opacity-50"
             >
-              거절 <span className="text-caption opacity-60">(R)</span>
+              거절
             </button>
             <button
               onClick={approve}
-              disabled={busy}
+              disabled={busy || !canApprove}
+              aria-describedby={queueLoadFailed ? "queue-load-failure" : !canApprove ? "approval-blocked-reason" : undefined}
               className="py-stack rounded-control bg-success text-status-fg hover:bg-success text-body-sm font-medium disabled:opacity-50"
             >
-              승인 <span className="text-caption opacity-80">(A)</span>
+              승인
             </button>
           </div>
+          {!queueLoadFailed && !canApprove ? (
+            <p id="approval-blocked-reason" className="mt-stack-tight text-center text-caption text-warning">본문 확인 전에는 승인하거나 거절할 수 없습니다.</p>
+          ) : null}
           {current.publishContext ? (
             <Link
               href={current.publishContext.returnUrl}

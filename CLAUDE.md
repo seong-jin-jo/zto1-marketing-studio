@@ -213,11 +213,12 @@ data/
 | `X_ACCESS_TOKEN` / `X_ACCESS_TOKEN_SECRET` | X 액세스 토큰/시크릿 (Read+Write) |
 | `INSTAGRAM_ACCESSTOKEN` / `INSTAGRAM_USERID` | Instagram Graph API 토큰/유저 ID |
 | `MIDJOURNEY_DISCORD_TOKEN` / `MIDJOURNEY_CHANNEL_ID` / `MIDJOURNEY_SERVER_ID` | Midjourney Discord 연동 |
-| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` / `R2_ENDPOINT` / `R2_PUBLIC_URL` | Cloudflare R2 |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` / `R2_ENDPOINT` | 비공개 Cloudflare R2 저장소. 외부 배달은 HMAC 서명 경로 사용 |
 | `OPENCLAW_GATEWAY_TOKEN` | Gateway 인증 |
 | `DASHBOARD_PORT` | 대시보드 포트 (기본 3456) |
 | `DASHBOARD_AUTH_TOKEN` | 대시보드 로그인 토큰. 미설정 시 인증 비활성화 |
 | `OSMU_PUBLIC_URL` | 정본 공개 URL. OAuth redirect_uri를 이 값으로 고정(프록시 뒤 내부주소 오염 방지). 미설정 시 x-forwarded-*→request.url fallback |
+| `OAUTH_APP_REVIEW_APPROVED_PROVIDERS` | 앱 심사가 승인된 provider의 쉼표 구분 목록. 예: `threads,instagram`. 여기에 든 provider는 심사 전 초대 안내와 심사 대기 사유를 readiness에서 제거 |
 | `VIRAL_THRESHOLD` | 터진 글 기준 views (기본 500) |
 
 ## Cron Jobs

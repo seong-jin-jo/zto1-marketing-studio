@@ -11,6 +11,7 @@ import { Stack } from "@/components/shared/Stack";
 import { fmtAgo } from "@/lib/format";
 import { PerformanceChatPanel } from "./PerformanceChatPanel";
 import { AutomationRulesPanel } from "./AutomationRulesPanel";
+import { workspaceDisplayName } from "@/lib/workspace-display-name";
 
 export interface PerformancePost {
   id: string;
@@ -24,6 +25,11 @@ export interface PerformancePost {
   likes?: number;
   replies?: number;
   reposts?: number;
+  /**
+   * 이 글을 지금 계정으로는 성과를 못 잰다는 표식. 서버가 수집 시도에서 남긴다.
+   * 없으면 아직 안 쟀거나 정상적으로 잰 것이다. 있으면 기다려도 안 채워진다.
+   */
+  metrics_blocked?: { code?: string; at?: string } | null;
 }
 
 interface PerformanceSampleAssessment {
@@ -102,6 +108,7 @@ interface UsageSummary {
 }
 
 interface PerformanceRoomProps {
+  dedicated?: boolean;
   workspaceId?: string;
   workspaceName?: string;
   metricsLoaded: boolean;
@@ -163,6 +170,7 @@ function PerformanceTableCell({
 }
 
 export function PerformanceRoom({
+  dedicated = false,
   workspaceId,
   workspaceName,
   metricsLoaded,
@@ -349,7 +357,13 @@ export function PerformanceRoom({
     { label: "조회", value: metricValue(totalViews, empty), detail: empty ? "발행 뒤부터 집계" : "선택한 플랫폼 합계" },
     { label: "저장", value: "미수집", detail: "채널 제공 뒤부터 집계" },
     { label: "답글", value: metricValue(totalReplies, empty), detail: empty ? "발행 뒤부터 집계" : "선택한 플랫폼 합계" },
-    { label: "팔로워", value: metricValue(followers, empty), detail: empty ? "발행 뒤부터 집계" : followerDelta === undefined ? "지난 기간 비교 미수집" : `이번 주 ${followerDelta >= 0 ? "+" : ""}${followerDelta}` },
+    { label: "구독", value: metricValue(followers, empty), detail: empty ? "발행 뒤부터 집계" : followerDelta === undefined ? "지난 기간 비교 미수집" : `이번 주 ${followerDelta >= 0 ? "+" : ""}${followerDelta}` },
+  ];
+  const previewCoreMetrics = [
+    { label: "조회", value: "18,420", detail: "12% 증가" },
+    { label: "저장", value: "1,284", detail: "24% 증가" },
+    { label: "답글", value: "316", detail: "8% 증가" },
+    { label: "구독", value: "428", detail: "31명 증가" },
   ];
   const secondaryMetrics = [
     { label: "총 발행", value: metricValue(focus === "all" ? publishedCount : focusedPosts.length, empty) },
@@ -360,15 +374,26 @@ export function PerformanceRoom({
     { label: "참여", value: "미수집" },
   ];
 
+  const roomColumn = dedicated ? "lg:col-start-1" : "";
+  const RoomTitle = dedicated ? "h1" : "p";
+  const VerdictTitle = dedicated ? "h2" : "h1";
+
   return (
-    <div className="mb-region space-y-region" data-room="performance">
+    <div className={`mb-region gap-region ${dedicated ? "grid lg:grid-cols-[minmax(0,1fr)_20rem]" : "space-y-region"}`} data-room="performance" data-performance-layout={dedicated ? "dedicated" : "embedded"}>
       <section
         aria-label="이 방에서 지금 알아야 할 것"
-        className="card flex min-h-control-touch items-baseline gap-stack px-pad-inset py-stack-tight"
+        className={`${roomColumn} flex min-h-control-touch flex-wrap items-start gap-stack rounded-surface border border-border bg-surface px-pad-inset py-stack`}
         data-room-top="performance"
       >
-        <b className="text-body font-bold tabular-nums text-accent">표본 {assessment.count}건</b>
-        <span className="min-w-0 truncate text-caption text-muted">최근 30일</span>
+        <div className="mr-auto min-w-0">
+          <p className="text-caption font-semibold text-accent">4단계</p>
+          <RoomTitle className="text-heading font-bold text-text">성과실</RoomTitle>
+          <p className="break-keep text-body-sm text-muted">채널 전체를 먼저 보고, 잘된 이유와 다음 행동을 확인합니다.</p>
+        </div>
+        <div className="text-right">
+          <b className="block text-body font-bold tabular-nums text-accent">표본 {assessment.count}건</b>
+          <span className="text-caption text-muted">최근 30일</span>
+        </div>
         <Link
           href="/calendar?from=performance"
           className="ml-auto inline-flex min-h-control-touch shrink-0 items-center rounded-control border border-border bg-surface-2 px-stack text-caption font-semibold text-muted hover:bg-surface"
@@ -377,10 +402,12 @@ export function PerformanceRoom({
         </Link>
       </section>
 
-      <PerformanceChatPanel workspaceId={workspaceId} posts={posts} focus={focus} />
+      <div className={dedicated ? "lg:sticky lg:top-pad-inset lg:col-start-2 lg:row-start-1 lg:row-span-[12] lg:h-fit" : ""}>
+        <PerformanceChatPanel workspaceId={workspaceId} posts={posts} focus={focus} expandedByDefault={dedicated} />
+      </div>
 
       <section
-        className="card p-region"
+        className={`${roomColumn} card p-region`}
         data-perf-verdict={empty ? "empty" : assessment.thresholdMet ? "ready" : "thin"}
         data-perf-sample={assessment.count}
         data-sample-threshold={assessment.threshold}
@@ -388,11 +415,11 @@ export function PerformanceRoom({
       >
         <Stack gap={16}>
           <Stack gap={8}>
-            <p className="text-caption font-semibold text-subtle">성과 요약 · {workspaceName || "작업 공간"} · 최근 30일</p>
-            <h1 className="flex items-start gap-stack text-display font-bold text-text break-keep">
+            <p className="text-caption font-semibold text-subtle">성과 요약 · {workspaceDisplayName(workspaceName)} · 최근 30일</p>
+            <VerdictTitle className="flex items-start gap-stack text-display font-bold text-text break-keep">
               <span aria-hidden="true" className="mt-micro inline-grid size-stack-section shrink-0 place-items-center rounded-pill bg-accent text-caption text-accent-fg">1</span>
               <span>{verdict}</span>
-            </h1>
+            </VerdictTitle>
             <p className="text-body-sm text-muted break-keep">
               {!assessment.thresholdMet && <span className="mr-stack-tight inline-flex rounded-pill bg-warning/15 px-stack-tight py-micro font-semibold text-warning">근거 부족</span>}
               성과 표본 {assessment.count}건입니다. {assessment.threshold}건부터 판정합니다.
@@ -416,6 +443,16 @@ export function PerformanceRoom({
             </div>
           )}
 
+          {empty ? (
+            <div className="grid gap-stack rounded-surface border border-border bg-surface p-pad-inset sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center" data-perf-empty-guide>
+              <div>
+                <h3 className="text-body font-bold text-text">아직 성과를 수집할 채널이 없습니다</h3>
+                <p className="mt-micro break-keep text-caption text-muted">채널을 연결하면 발행한 글의 조회, 저장, 답글, 구독이 이곳에 모입니다. 연결 뒤 첫 수집까지 시간이 조금 걸립니다.</p>
+              </div>
+              <Link href="/settings?tab=channels" className="inline-flex min-h-control-touch items-center justify-center rounded-control bg-accent px-stack text-caption font-semibold text-accent-fg">채널 연결하기</Link>
+            </div>
+          ) : null}
+
           <Stack direction="horizontal" gap={4} scroll className="scrollbar-semantic pb-micro" role="group" aria-label="플랫폼 집중">
             <Button variant={focus === "all" ? "primary" : "secondary"} size="sm" aria-pressed={focus === "all"} onClick={() => setFocus("all")}>전체</Button>
             {PREVIEW_PLATFORMS.map((platform) => (
@@ -435,9 +472,12 @@ export function PerformanceRoom({
             </Link>
           )}
 
-          <div className="grid grid-cols-2 gap-stack-tight lg:grid-cols-4" data-perf-tier="core">
-            {coreMetrics.map((metric) => (
-              <Card key={metric.label} className={`p-pad-inset ${empty ? "bg-surface-2" : ""}`}>
+          {empty ? (
+            <p className="text-caption text-muted" data-perf-preview-note><span className="mr-stack-tight rounded-pill bg-surface-2 px-stack-tight py-micro font-semibold">예시 데이터</span>채널을 연결하면 아래 자리가 실제 수치로 바뀝니다.</p>
+          ) : null}
+          <div className={`grid grid-cols-2 gap-stack-tight lg:grid-cols-4 ${empty ? "opacity-60" : ""}`} data-perf-tier="core" data-perf-preview={empty ? "example" : undefined}>
+            {(empty ? previewCoreMetrics : coreMetrics).map((metric) => (
+              <Card key={metric.label} className="p-pad-inset">
                 <Stack gap={4}>
                   <span className="text-caption text-muted">{metric.label}</span>
                   <b className="text-heading font-bold tabular-nums text-text">{metric.value}</b>
@@ -447,14 +487,16 @@ export function PerformanceRoom({
             ))}
           </div>
 
-          <div className="flex flex-wrap gap-x-stack-section gap-y-micro border-t border-border pt-stack" data-perf-tier="rest">
-            {secondaryMetrics.map((metric) => (
-              <span key={metric.label} className="inline-flex items-baseline gap-stack-tight">
-                <small className="text-caption text-muted">{metric.label}</small>
-                <b className="text-body font-bold tabular-nums text-text">{metric.value}</b>
-              </span>
-            ))}
-          </div>
+          {!empty ? (
+            <div className="flex flex-wrap gap-x-stack-section gap-y-micro border-t border-border pt-stack" data-perf-tier="rest">
+              {secondaryMetrics.map((metric) => (
+                <span key={metric.label} className="inline-flex items-baseline gap-stack-tight">
+                  <small className="text-caption text-muted">{metric.label}</small>
+                  <b className="text-body font-bold tabular-nums text-text">{metric.value}</b>
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           {usage && (
             <div className="flex flex-wrap items-center gap-x-stack-section gap-y-micro border-t border-border pt-stack text-caption text-muted">
@@ -466,7 +508,7 @@ export function PerformanceRoom({
         </Stack>
       </section>
 
-      <section className="border-t border-border pt-stack-section" data-perf-loop={topPosts.length}>
+      <section className={`${roomColumn} border-t border-border pt-stack-section`} data-perf-loop={topPosts.length}>
         <Stack gap={16}>
           <Stack gap={4}>
             <h2 className="text-subheading font-bold text-text"><span aria-hidden="true" className="mr-stack-tight inline-grid size-stack-section place-items-center rounded-pill bg-accent text-caption text-accent-fg">2</span>무엇이 통했나</h2>
@@ -520,7 +562,7 @@ export function PerformanceRoom({
         </Stack>
       </section>
 
-      <section className="border-t border-border pt-stack-section" data-perf-suggestions={suggestions.length} id="performance-suggestions">
+      <section className={`${roomColumn} border-t border-border pt-stack-section`} data-perf-suggestions={suggestions.length} id="performance-suggestions">
         <Stack gap={16}>
           <div className="flex flex-wrap items-center justify-between gap-stack">
             <Stack gap={4}>
@@ -556,7 +598,7 @@ export function PerformanceRoom({
         </Stack>
       </section>
 
-      <section className="border-t border-border pt-stack-section" data-perf-comments={reactionPosts.length}>
+      <section className={`${roomColumn} border-t border-border pt-stack-section`} data-perf-comments={reactionPosts.length}>
         <Stack gap={16}>
           <Stack gap={4}>
             <h2 className="text-subheading font-bold text-text"><span aria-hidden="true" className="mr-stack-tight inline-grid size-stack-section place-items-center rounded-pill bg-accent text-caption text-accent-fg">3</span>달린 반응</h2>
@@ -653,15 +695,23 @@ export function PerformanceRoom({
             </div>
           ) : (
             <div className="rounded-surface border border-dashed border-border p-pad-inset text-body-sm text-muted break-keep">
-              아직 달린 반응이 없습니다. 첫 편이 나가면 댓글과 반응이 이 자리에 모입니다.
+              {/*
+                2026-09-05 회장 계정 실측: 글은 이미 나갔는데도 "첫 편이 나가면 모입니다"
+                라고 말하고 있었다. 실제 이유는 성과 수집이 막힌 것인데 빈 화면이 엉뚱한
+                이유를 대면 사용자는 기다리기만 한다. Sprout 의 통합 인박스도 비어 있을 때
+                왜 비었는지와 다음 조치를 같이 준다. 나간 글이 있는지로 문구를 가른다.
+              */}
+              {publishedCount > 0
+                ? "글은 나갔는데 반응을 아직 못 모았습니다. 위의 성과 다시 수집하기를 눌러 보시고, 거절 안내가 뜨면 그 안내대로 채널을 다시 연결해 주세요."
+                : "아직 달린 반응이 없습니다. 첫 편이 나가면 댓글과 반응이 이 자리에 모입니다."}
             </div>
           )}
         </Stack>
       </section>
 
-      <AutomationRulesPanel workspaceId={workspaceId} />
+      <div className={roomColumn}><AutomationRulesPanel workspaceId={workspaceId} /></div>
 
-      <section className="border-t border-border pt-stack-section" data-perf-inherit="app/page.tsx">
+      <section className={`${roomColumn} border-t border-border pt-stack-section`} data-perf-inherit="app/page.tsx">
         <details>
           <summary className="flex min-h-control-touch cursor-pointer items-center gap-stack text-body font-bold text-text">
             <span>올린 글별 성적</span>
@@ -691,9 +741,14 @@ export function PerformanceRoom({
                     <PerformanceTableCell label="상태" className="lg:text-center">
                       <span className={`rounded-pill px-stack-tight py-micro text-caption ${post.status === "published" ? "bg-success/15 text-success" : "bg-danger/15 text-danger"}`}>{postStatusLabel(post.status)}</span>
                     </PerformanceTableCell>
-                    <PerformanceTableCell label="조회" className="tabular-nums lg:text-center">{post.views ?? "미수집"}</PerformanceTableCell>
-                    <PerformanceTableCell label="좋아요" className="tabular-nums lg:text-center">{post.likes ?? "미수집"}</PerformanceTableCell>
-                    <PerformanceTableCell label="답글" className="tabular-nums lg:text-center">{post.replies ?? "미수집"}</PerformanceTableCell>
+                    {/*
+                      "미수집"과 "측정 불가"는 다르다. 앞은 기다리면 채워지고, 뒤는 계정을
+                      바꾸기 전까지 영원히 안 채워진다. 같은 말로 쓰면 사용자는 무한정
+                      기다린다(2026-09-05 회장 계정 실측).
+                    */}
+                    <PerformanceTableCell label="조회" className="tabular-nums lg:text-center">{post.views ?? (post.metrics_blocked ? "측정 불가" : "미수집")}</PerformanceTableCell>
+                    <PerformanceTableCell label="좋아요" className="tabular-nums lg:text-center">{post.likes ?? (post.metrics_blocked ? "측정 불가" : "미수집")}</PerformanceTableCell>
+                    <PerformanceTableCell label="답글" className="tabular-nums lg:text-center">{post.replies ?? (post.metrics_blocked ? "측정 불가" : "미수집")}</PerformanceTableCell>
                     <PerformanceTableCell label="발행" className="text-subtle lg:text-center">{fmtAgo(post.published_at)}</PerformanceTableCell>
                   </tr>
                 ))}

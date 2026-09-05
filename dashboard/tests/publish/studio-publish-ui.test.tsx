@@ -61,9 +61,30 @@ vi.mock("@/components/studio/PlatformPreview", () => ({
     "reels",
     "tiktok",
   ].map((key) => ({ key, label: key })),
-  PlatformPreview: ({ platform, headerRight, editor }: { platform: string; headerRight?: React.ReactNode; editor?: { firstCommentSupported: boolean; firstCommentReason?: string; firstComment: string; onFirstCommentChange: (value: string) => void } }) => (
+  PlatformPreview: ({ platform, headerRight, editor }: { platform: string; headerRight?: React.ReactNode; editor?: {
+    account: { status: string; displayName?: string; username?: string };
+    title: string;
+    caption: string;
+    hashtags: string;
+    topicTag: string;
+    firstCommentSupported: boolean;
+    firstCommentReason?: string;
+    firstComment: string;
+    onTitleChange: (value: string) => void;
+    onCaptionChange: (value: string) => void;
+    onHashtagsChange: (value: string) => void;
+    onTopicTagChange: (value: string) => void;
+    onFirstCommentChange: (value: string) => void;
+  } }) => (
     <div data-testid={`preview-${platform}`}>
       {headerRight}
+      <span data-testid={`account-state-${platform}`}>{editor?.account.status}</span>
+      {editor?.account.displayName ? <span>{editor.account.displayName}</span> : null}
+      {editor?.account.username ? <span>@{editor.account.username}</span> : null}
+      <input aria-label={`${platform} 제목`} value={editor?.title ?? ""} onChange={(event) => editor?.onTitleChange(event.target.value)} />
+      <textarea aria-label={`${platform} 캡션`} value={editor?.caption ?? ""} onChange={(event) => editor?.onCaptionChange(event.target.value)} />
+      <input aria-label={`${platform} 해시태그`} value={editor?.hashtags ?? ""} onChange={(event) => editor?.onHashtagsChange(event.target.value)} />
+      <input aria-label={`${platform} 주제 태그`} value={editor?.topicTag ?? ""} onChange={(event) => editor?.onTopicTagChange(event.target.value)} />
       {editor?.firstCommentSupported ? <textarea aria-label={`${platform} 첫 댓글`} value={editor.firstComment} onChange={(event) => editor.onFirstCommentChange(event.target.value)} /> : <span>{editor?.firstCommentReason}</span>}
     </div>
   ),
@@ -109,6 +130,12 @@ function draftSaveStatuses() {
   return mocks.apiPost.mock.calls
     .filter(([path]) => path === "/api/studio/drafts")
     .map(([, body]) => (body as { status: string }).status);
+}
+
+async function findEnabledButton(name: string) {
+  const button = await screen.findByRole("button", { name });
+  await waitFor(() => expect(button).toBeEnabled());
+  return button;
 }
 
 describe("Studio publish result integrity", () => {
@@ -183,8 +210,8 @@ describe("Studio publish result integrity", () => {
 
     render(<StudioPage />);
 
-    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("승인 인박스 작업물을 불러왔습니다", "success"));
-    expect(screen.getByRole("button", { name: "선택한 1곳에 지금 발행" })).toBeInTheDocument();
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "선택한 1곳에 지금 발행" })).toBeInTheDocument());
     expect(screen.getByRole("checkbox", { name: "Threads 발행" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "X 발행" })).not.toBeChecked();
   });
@@ -236,7 +263,7 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "선택한 2곳에 지금 발행" }));
+    fireEvent.click(await findEnabledButton("선택한 2곳에 지금 발행"));
 
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledTimes(4));
     expect(screen.getByText("0%")).toBeInTheDocument();
@@ -258,7 +285,7 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "선택한 2곳에 지금 발행" }));
+    fireEvent.click(await findEnabledButton("선택한 2곳에 지금 발행"));
 
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledTimes(4));
     expect(screen.getByText("50%")).toBeInTheDocument();
@@ -281,7 +308,7 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "선택한 1곳에 지금 발행" }));
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
 
     await waitFor(() => expect(screen.getByText("0%")).toBeInTheDocument());
     expect(screen.getByText("첫 댓글 공급자 거절")).toBeInTheDocument();
@@ -304,7 +331,7 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "선택한 2곳에 지금 발행" }));
+    fireEvent.click(await findEnabledButton("선택한 2곳에 지금 발행"));
 
     await waitFor(() => expect(mocks.apiPost.mock.calls.some(([, body]) => (body as { platform?: string })?.platform === "x")).toBe(true));
     expect(mocks.apiPost.mock.calls.some(([, body]) => (body as { platform?: string })?.platform === "threads")).toBe(true);
@@ -329,7 +356,7 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    const publishButton = await screen.findByRole("button", { name: "선택한 3곳에 지금 발행" });
+    const publishButton = await findEnabledButton("선택한 3곳에 지금 발행");
     for (const [platform, label] of [["shorts", "Shorts"], ["reels", "Reels"], ["tiktok", "TikTok"]]) {
       expect(within(screen.getByTestId(`preview-${platform}`)).getByRole(
         "checkbox",
@@ -362,9 +389,8 @@ describe("Studio publish result integrity", () => {
 
     render(<StudioPage />);
 
-    expect(await screen.findByText(/연결된 발행 계정이 없습니다\./)).toBeInTheDocument();
-    // 연결 경로는 채널을 무시하는 설정 목록이 아니라 그 채널 화면이다. 거기에 연결과 기본 계정이 함께 있다.
-    expect(screen.getByRole("link", { name: "Threads부터 연결하기" })).toHaveAttribute("href", "/channels/threads");
+    expect(await screen.findByText(/채널 연결 0\/15/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "채널 연결하기" })).toHaveAttribute("href", "/settings?tab=channels");
     expect(screen.getByTestId("publish-connect-link-x")).toHaveAttribute("href", "/channels/x");
     for (const label of ["Threads 발행", "X 발행", "Instagram 발행"]) {
       expect(screen.getByRole("checkbox", { name: label })).toBeDisabled();
@@ -464,12 +490,21 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "선택한 1곳에 지금 발행" }));
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
 
     const link = await screen.findByTitle("게시물 보기");
     expect(link).toHaveAttribute("href", "https://www.threads.net/@example/post/ok");
+    expect(screen.getByRole("link", { name: "성과실에서 결과 보기" })).toHaveAttribute("href", "/performance");
     expect(draftSaveStatuses()).toEqual(["draft", "published"]);
     expect(mocks.showToast).toHaveBeenCalledWith("발행 완료", "success");
+  });
+
+  it("V68-PUBLISH-01 거절: 발행 성공 전에는 성과실 결과 링크를 노출하지 않는다", async () => {
+    restoreStudio(["threads"]);
+    render(<StudioPage />);
+
+    expect(await screen.findByRole("button", { name: "선택한 1곳에 지금 발행" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "성과실에서 결과 보기" })).not.toBeInTheDocument();
   });
 
   it("FE2-PUB-01 정상: 지원 채널 첫 댓글은 미리보기에서 편집되고 발행 API에 전달된다", async () => {
@@ -482,7 +517,7 @@ describe("Studio publish result integrity", () => {
 
     render(<StudioPage />);
     fireEvent.change(await screen.findByLabelText("threads 첫 댓글"), { target: { value: "첫 댓글 본문" } });
-    fireEvent.click(screen.getByRole("button", { name: "선택한 1곳에 지금 발행" }));
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
 
     await waitFor(() => expect(mocks.apiPost.mock.calls.some(([path, body]) => path === "/api/publish" && (body as { first_comment?: string }).first_comment === "첫 댓글 본문")).toBe(true));
   });
@@ -501,6 +536,41 @@ describe("Studio publish result integrity", () => {
     expect(screen.getByRole("complementary", { name: "발행 담당 대화창" })).toBeInTheDocument();
   });
 
+  it("PUB-DRAFT-UI-01 정상: 플랫폼 필드와 선택 계정을 임시 저장하고 같은 초안에서 복원한다", async () => {
+    restoreStudio(["threads", "instagram"]);
+    mocks.apiPost.mockResolvedValue({ id: "draft-v67" });
+
+    render(<StudioPage />);
+    fireEvent.change(await screen.findByLabelText("shorts 제목"), { target: { value: "쇼츠 제목" } });
+    fireEvent.change(screen.getByLabelText("instagram 캡션"), { target: { value: "채널별 캡션" } });
+    fireEvent.change(screen.getByLabelText("instagram 해시태그"), { target: { value: "#하나 #둘" } });
+    fireEvent.change(screen.getByLabelText("threads 주제 태그"), { target: { value: "운영팁" } });
+    fireEvent.change(screen.getByTestId("publish-account-select-instagram"), { target: { value: "instagram-account" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "임시 저장하기" })[0]);
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
+      titles: expect.objectContaining({ shorts: "쇼츠 제목" }),
+      captions: expect.objectContaining({ instagram: "채널별 캡션" }),
+      hashtags: expect.objectContaining({ instagram: "#하나 #둘" }),
+      topicTags: expect.objectContaining({ threads: "운영팁" }),
+      selectedAccounts: expect.objectContaining({ instagram: "instagram-account" }),
+    })));
+  });
+
+  it("PUB-DRAFT-UI-02 거절: 임시 저장 오류를 사용자에게 알리고 성공으로 표시하지 않는다", async () => {
+    restoreStudio(["threads"]);
+    mocks.apiPost.mockRejectedValue(new Error("초안 저장 요청에 실패했습니다"));
+
+    render(<StudioPage />);
+    fireEvent.click(screen.getAllByRole("button", { name: "임시 저장하기" })[0]);
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      "초안 저장 요청에 실패했습니다",
+      "error",
+    ));
+    expect(mocks.showToast).not.toHaveBeenCalledWith("임시 저장했습니다", "success");
+  });
+
   it("FE3-PUBLISH-02 거절: 미지원 영상 채널은 미리보기 안에서 발행 체크를 잠근다", async () => {
     render(<StudioPage />);
     const tiktok = within(await screen.findByTestId("preview-tiktok"));
@@ -517,7 +587,7 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "승인 인박스로 보내기" }));
+    fireEvent.click(await screen.findByRole("button", { name: "검토 요청하기" }));
 
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
       "/api/queue/queue-review/request-review",
@@ -527,7 +597,7 @@ describe("Studio publish result integrity", () => {
       "/api/queue/add",
       expect.objectContaining({ draftId: "draft-review" }),
     );
-    expect(mocks.showToast).toHaveBeenCalledWith("승인 인박스로 검토 요청을 보냈습니다", "success");
+    expect(mocks.showToast).toHaveBeenCalledWith("검토 요청을 보냈습니다", "success");
   });
 
   it("FE3-REVIEW-02 거절: 초안 저장 실패 시 큐와 검토 API를 호출하지 않는다", async () => {
@@ -538,7 +608,7 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "승인 인박스로 보내기" }));
+    fireEvent.click(await screen.findByRole("button", { name: "검토 요청하기" }));
 
     await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("초안 저장 실패", "error"));
     expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/queue/add")).toBe(false);
@@ -628,7 +698,7 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "선택한 2곳에 지금 발행" }));
+    fireEvent.click(await findEnabledButton("선택한 2곳에 지금 발행"));
 
     await waitFor(() => expect(mocks.apiPost.mock.calls.some(([path, body]) => {
       if (path !== "/api/studio/drafts") return false;
@@ -653,13 +723,183 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "선택한 1곳에 지금 발행" }));
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
 
     await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
       "발행할 초안을 저장하지 못했습니다",
       "error",
     ));
     expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(0);
+  });
+
+  it("M5-STUDIO-03 거절: 발행 전 초안 저장이 오류를 올려도 알림 뒤 외부 발행을 막는다", async () => {
+    restoreStudio(["threads"]);
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") throw new Error("초안 저장 실패");
+      if (path === "/api/publish") throw new Error("외부 발행이 호출되면 안 됩니다");
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      "발행할 초안을 저장하지 못했습니다",
+      "error",
+    ));
+    expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(0);
+  });
+
+  it("M5-STUDIO-04 거절: 외부 발행 뒤 결과 저장 실패를 사용자에게 알린다", async () => {
+    restoreStudio(["threads"]);
+    let draftSaveCount = 0;
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") {
+        draftSaveCount += 1;
+        if (draftSaveCount === 1) return { id: "draft-result-save" };
+        throw new Error("발행 결과 저장 실패");
+      }
+      if (path === "/api/publish") return { ok: true, permalink: "https://example.test/published" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+
+    // 2026-09-05: 일부만 실패했을 때 성공한 채널을 같이 알린다. 종전 문구는 실패만 보여
+    // 전부 실패한 것처럼 읽혔다(회장 실사용에서 threads 는 올라갔는데 전체 오류로 보임).
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      expect.stringContaining("발행 결과를 저장하지 못했습니다"),
+      "error",
+    ));
+    const [[resultMessage]] = mocks.showToast.mock.calls.slice(-1);
+    expect(resultMessage).toContain("발행됨");
+    expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(1);
+  });
+
+  // 2026-09-05 회장 실사용 회귀: 외부에는 올라갔는데 내부 기록이 없으면 발행이 막히는데,
+  // 정작 그 상태를 푸는 방법이 화면에 없어 막다른 길이었다. 한 번 눌러 닫을 수 있어야 한다.
+  it("발행-복구-01 정상: 외부 게시 완료 상태를 한 번 눌러 기록으로 닫는다", async () => {
+    restoreStudio(["threads"]);
+    let draftSaves = 0;
+    mocks.apiPost.mockImplementation(async (path: string, body: { status?: string }) => {
+      if (path === "/api/studio/drafts") { draftSaves += 1; return { id: "draft-reconcile", status: body.status }; }
+      if (path === "/api/publish") {
+        const error = new Error("외부 게시 완료") as Error & { payload?: unknown; externalPersistence?: boolean };
+        error.externalPersistence = true;
+        error.payload = {
+          permalink: "https://www.threads.net/@example/post/kept",
+          persistence: { reconciliation: { required: true, action: "verify_with_provider", retryPublish: false, platform: "threads" } },
+        };
+        throw error;
+      }
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+
+    const resolve = await screen.findByTestId("publish-reconciliation-resolve");
+    const savesBefore = draftSaves;
+    fireEvent.click(resolve);
+
+    await waitFor(() => expect(screen.queryByTestId("publish-reconciliation-resolve")).toBeNull());
+    expect(draftSaves).toBeGreaterThan(savesBefore);
+    expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(1);
+  });
+
+  // 2026-09-05 회장 실사용 회귀: 발행 뒤에도 발행 버튼이 그대로 남아 다시 누르면 이미 올라간
+  // 채널까지 재발행 대상이 됐다. 성공한 채널은 두 번째 클릭에서 제외돼야 한다.
+  it("발행-중복-01 거절: 이미 성공한 채널은 다시 눌러도 재발행하지 않는다", async () => {
+    restoreStudio(["threads"]);
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-no-republish" };
+      if (path === "/api/publish") return { ok: true, permalink: "https://example.test/published" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+    await waitFor(() => expect(
+      mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish"),
+    ).toHaveLength(1));
+
+    // 발행 뒤에도 대화 패널의 발행 단추는 남는다. 회장이 다시 누른 자리가 여기다.
+    fireEvent.click(await findEnabledButton("지금 발행하기"));
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      expect.stringContaining("이미 발행됐습니다"),
+      "success",
+    ));
+    expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(1);
+  });
+
+  it("V74-PUBLISH-READY-01 경합: 계정 조회가 늦어도 활성화된 뒤 발행을 시작한다", async () => {
+    restoreStudio(["threads"]);
+    let releaseAccounts: () => void = () => {};
+    const accountsPending = new Promise<void>((resolve) => { releaseAccounts = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      await accountsPending;
+      const platform = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
+      const accounts = platform === "threads"
+        ? [{ id: "threads-account", display_name: "Threads 계정", username: "threads", is_default: true }]
+        : [];
+      return Response.json({ accounts });
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-slow-accounts" };
+      if (path === "/api/publish") return { ok: false, error: "테스트 발행 거절" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    const publishButton = await screen.findByRole("button", { name: "선택한 1곳에 지금 발행" });
+    expect(publishButton).toBeDisabled();
+    expect(mocks.apiPost).not.toHaveBeenCalled();
+
+    releaseAccounts();
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
+
+    await waitFor(() => expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(1));
+  });
+
+  it("V65-PAGE-01 정상: 글을 직접 고친 뒤 저장 API를 호출하고 발행실로 이동한다", async () => {
+    window.history.replaceState(null, "", "/studio?room=edit");
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "편집실 이동 테스트",
+      text: {
+        threads: "고치기 전 본문",
+        x: "고치기 전 본문",
+        facebook: "고치기 전 본문",
+        instagram: { caption: "고치기 전 본문", slides: ["고치기 전 본문"] },
+      },
+      editLines: ["고치기 전 본문"],
+      editKind: "text",
+      editFormat: { kind: "text" },
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-v65" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    const editor = await screen.findByRole("textbox", { name: "글 전체" });
+    fireEvent.change(editor, { target: { value: "발행실로 넘길 본문" } });
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
+      id: null,
+      editKind: "text",
+      editFormat: { kind: "text" },
+      editLines: ["발행실로 넘길 본문"],
+      text: expect.objectContaining({
+        threads: "발행실로 넘길 본문",
+        x: "발행실로 넘길 본문",
+        facebook: "발행실로 넘길 본문",
+      }),
+    })));
+    expect(mocks.setStudioRoom).toHaveBeenCalledWith("publish");
+    expect(window.location.pathname + window.location.search).toBe("/studio?room=publish");
   });
 });
 

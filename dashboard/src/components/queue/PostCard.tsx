@@ -150,9 +150,9 @@ export function PostCard({ post, channelConfig, onRefresh, onPickImage }: PostCa
       {/* Engagement */}
       {post.engagement?.views != null && (
         <div className="flex gap-pad-inset text-caption text-subtle">
-          <span>views: {post.engagement.views}</span>
-          <span>likes: {post.engagement.likes || 0}</span>
-          <span>replies: {post.engagement.replies || 0}</span>
+          <span>조회: {post.engagement.views}</span>
+          <span>좋아요: {post.engagement.likes || 0}</span>
+          <span>답글: {post.engagement.replies || 0}</span>
         </div>
       )}
 

@@ -1,0 +1,24 @@
+최근 들어간 변경을 공격적으로 리뷰한다. 너는 이 코드를 짜지 않았다.
+
+대상: 지난 24시간 커밋 전부와 그 diff.
+
+공격할 것: 돈이 새는가, 격리가 뚫리는가, 동시성, 부분 실패를 전체 성공으로 세는 곳, 사유 없는 삭제,
+확정 요구 이탈(사족 문구·긴 대시·이모지·영문 라벨).
+
+산출: docs/audit/osmu-code-review-$(날짜).md 로 새 문서를 쓴다.
+각 지적은 파일:줄로 짚고 재현 시나리오를 쓴다. 심각도를 나눈다.
+고치지 마라. 지적만 한다. 문제가 없으면 없다고 근거와 함께 써라.
+
+공통 규율(어기면 반려된다):
+- 기반 산출물을 반드시 Read 하고 시작한다. 임의 재해석 금지.
+  확정 프로토타입 docs/prototype/openclaw-auto-4room-v63.html
+  회장 확정 요구 대장 docs/requests/회장-확정-요구사항-대장.md
+  사업 좌표 wiki/product/사업좌표-OSMU와-ZERO-ONE.md
+- 완료 = 증거. 도는 앱(localhost:3456)에 실제 요청을 보내 관찰하고 붙여라. mock 통과는 증거가 아니다.
+- npm run test 와 npx tsc --noEmit 통과 필수.
+- dashboard/scripts/verify-basic-flow-e2e.mjs 와 verify-studio-v1-e2e.mjs 가 계속 통과해야 한다.
+- 자격증명은 dashboard/.env.local, 작업 공간은 cd1d0a40-540d-4524-9b49-bf2445d82182.
+- 범위를 넘지 마라. 중간중간 커밋해라. 거짓 완료 금지.
+- 사족 문구 금지. 긴 대시 금지. 이모지 금지. 영문 단추 라벨 금지.
+- 끝나면 docs/qa/qa-tracker.md 에 증거를 적고 커밋해라.
+

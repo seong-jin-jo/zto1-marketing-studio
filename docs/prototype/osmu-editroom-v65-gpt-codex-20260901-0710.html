@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OSMU 편집실 v65</title>
+  <!--
+  STAMP
+  생성: 2026-09-01 07:10 KST
+  모델: gpt-codex/gpt-5.6-sol
+  에이전트: product-designer
+  스킬: 제품 화면 디자인 전용 스킬 미제공. design.md, ux-writing.md 수동 적용
+  근거: docs/prototype/openclaw-auto-4room-v64.html, DESIGN.md v33,
+        https://www.canva.com/help/add-and-edit-text/,
+        https://www.canva.com/help/layer-group-align/?query=group,
+        https://support.google.com/docs/answer/7068618?hl=ko
+  고민 한 줄: 형식과 플랫폼을 떼고 편집 대상 자체를 크게 보이면 처음 온 사람도 다음 행동을 설명 없이 찾을 수 있다.
+  -->
+  <style>
+    :root {
+      --bg:#fbfbfc; --surface:#fff; --surface-2:#f4f4f5; --border:#e4e4e7;
+      --text:#18181b; --muted:#52525b; --subtle:#71717a; --accent:#2563eb;
+      --accent-soft:#eff4ff; --success:#15803d; --danger:#dc2626;
+      --s1:8px; --s2:16px; --s3:24px; --s4:32px;
+      --r1:8px; --r2:16px; --fast:120ms; --base:200ms;
+      font-family:Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+      color:var(--text); background:#e7e7eb;
+    }
+    *{box-sizing:border-box} body{margin:0} button,textarea,input{font:inherit}
+    button{cursor:pointer} button:focus-visible,textarea:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
+    .review{min-height:100vh;padding:var(--s2);display:grid;gap:var(--s2)}
+    .reviewbar{max-width:1200px;margin:auto;width:100%;background:#111827;color:#fff;border-radius:var(--r2);padding:var(--s2);display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+    .reviewbar strong{margin-right:auto}.control{display:flex;gap:var(--s1);align-items:center;flex-wrap:wrap}
+    .control button{border:1px solid #4b5563;background:#1f2937;color:#fff;border-radius:var(--r1);padding:8px 16px}
+    .control button.on{background:#fff;color:#111827}.label{font-size:12px;color:#d1d5db}
+    .viewport{margin:auto;width:min(100%,1024px);height:820px;background:var(--bg);border-radius:var(--r2);overflow:hidden;box-shadow:0 24px 64px #11182733;transition:width var(--base)}
+    .viewport.mobile{width:390px;height:844px}.app{position:relative;height:100%;display:grid;grid-template:64px 1fr / 176px 1fr 248px;grid-template-areas:"head head head" "nav main helper"}
+    .head{grid-area:head;background:var(--surface);border-bottom:1px solid var(--border);padding:0 var(--s3);display:flex;align-items:center;gap:var(--s2)}
+    .brand{font-size:17px;font-weight:800}.roomname{font-size:13px;color:var(--muted)}.autosave{margin-left:auto;font-size:12px;color:var(--success)}
+    .nav{grid-area:nav;background:var(--surface);border-right:1px solid var(--border);padding:var(--s2)}
+    .nav h2{font-size:12px;color:var(--subtle);margin:0 0 var(--s1)}
+    .room{display:block;padding:16px;border-radius:var(--r1);font-size:13px;color:var(--muted);margin-bottom:var(--s1)}
+    .room.on{background:var(--accent-soft);color:#1d4ed8;font-weight:700}.room small{display:block;margin-top:8px;font-weight:400;color:var(--subtle)}
+    .main{grid-area:main;min-width:0;overflow:auto;padding:var(--s2);display:flex;flex-direction:column;gap:var(--s2)}
+    .helper{grid-area:helper;border-left:1px solid var(--border);background:var(--surface);padding:var(--s2);display:flex;flex-direction:column;gap:var(--s2)}
+    h1{font-size:21px;line-height:1.3;margin:0}.lead{font-size:13px;line-height:1.5;color:var(--muted);margin:8px 0 0}
+    .formatline{display:flex;gap:var(--s1);flex-wrap:wrap}.formatline button{min-height:40px;border:1px solid var(--border);background:var(--surface);border-radius:var(--r1);padding:8px 16px;color:var(--muted)}
+    .formatline button.on{border-color:var(--accent);background:var(--accent-soft);color:#1d4ed8;font-weight:700}
+    .platform-note{font-size:12px;color:var(--muted);background:var(--surface-2);padding:16px;border-radius:var(--r1)}
+    .workbench{min-height:0;display:grid;grid-template-columns:176px minmax(0,1fr);gap:var(--s2);flex:1}
+    .outline,.editor,.helperbox,.statusbox{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2)}
+    .outline{padding:var(--s2);overflow:auto}.outline h2,.helper h2{font-size:13px;margin:0 0 var(--s2)}
+    .outline button{width:100%;text-align:left;border:0;background:transparent;border-radius:var(--r1);padding:8px;font-size:12px;color:var(--muted);margin-bottom:var(--s1)}
+    .outline button.on{background:var(--accent-soft);color:#1d4ed8;font-weight:700}
+    .editor{min-width:0;padding:var(--s2);display:flex;flex-direction:column;gap:var(--s2);overflow:auto}
+    .editorhead{display:flex;align-items:flex-start;gap:var(--s2)}.editorhead div:first-child{flex:1}
+    .editorhead h2{font-size:15px;margin:0 0 8px}.meta{font-size:12px;color:var(--subtle)}
+    textarea{width:100%;border:1px solid var(--border);border-radius:var(--r1);padding:var(--s2);color:var(--text);background:#fff;line-height:1.7;resize:vertical}
+    .whole{min-height:344px;font-size:15px}.fieldlabel{font-size:12px;color:var(--muted);font-weight:700}
+    .primary{min-height:48px;border:0;background:var(--accent);color:#fff;border-radius:var(--r1);font-weight:800;padding:16px;width:100%}.primary:disabled{background:#a1a1aa;cursor:not-allowed}
+    .helperbox,.statusbox{padding:var(--s2)}.helperbox p,.statusbox p{font-size:12px;line-height:1.5;color:var(--muted);margin:0 0 var(--s2)}
+    .helperbox button{width:100%;text-align:left;border:1px solid var(--border);background:var(--surface);padding:16px;border-radius:var(--r1);font-size:12px;margin-bottom:var(--s1)}
+    .helperfooter{margin-top:auto;display:grid;gap:var(--s1)}.helperfooter small{color:var(--success);font-size:12px}
+    .canvaswrap{display:grid;grid-template-columns:minmax(176px,1fr) 128px;gap:var(--s2);align-items:start}
+    .canvas{position:relative;aspect-ratio:4/5;border-radius:var(--r2);overflow:hidden;background:linear-gradient(150deg,#e0e7ff,#f8fafc 58%,#dbeafe);border:1px solid var(--border)}
+    .canvas:before{content:"책상 위 제품 사진";position:absolute;inset:auto 16px 16px;font-size:12px;color:#475569}
+    .dragtext{position:absolute;left:8%;right:8%;top:50%;transform:translateY(-50%);background:#ffffffdc;border:1px dashed var(--accent);border-radius:var(--r1);padding:var(--s1)}
+    .dragtext textarea{min-height:96px;border:0;background:transparent;padding:8px;resize:none;font-size:21px;font-weight:800;line-height:1.35;text-align:center}.handle{display:block;margin:auto;border:0;background:#1d4ed8;color:white;border-radius:99px;padding:8px 16px;font-size:12px;touch-action:none;cursor:move}
+    .dragtext.top{top:8%;transform:none}.dragtext.bottom{top:auto;bottom:8%;transform:none}.settings{display:grid;gap:var(--s2)}
+    .choice{display:flex;gap:var(--s1);flex-wrap:wrap}.choice button{border:1px solid var(--border);background:#fff;border-radius:var(--r1);padding:8px 16px;font-size:12px}.choice button.on{border-color:var(--accent);background:var(--accent-soft);color:#1d4ed8}
+    .scene{aspect-ratio:16/9;border-radius:var(--r2);background:#18181b;color:#fff;display:grid;place-items:center;text-align:center;padding:var(--s3)}
+    .audio{min-height:240px;border-radius:var(--r2);background:var(--surface-2);display:grid;place-items:center;text-align:center;padding:var(--s3)}
+    .honest{border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:var(--r1);padding:var(--s2);font-size:13px;line-height:1.5}
+    .state{display:none;min-height:360px;place-items:center;text-align:center;padding:var(--s4);border:1px solid var(--border);border-radius:var(--r2);background:var(--surface)}
+    .state.show{display:grid}.state h2{font-size:17px;margin:0 0 var(--s1)}.state p{font-size:13px;line-height:1.6;color:var(--muted);max-width:40ch;margin:0 0 var(--s2)}
+    .state button{border:1px solid var(--border);background:#fff;border-radius:var(--r1);padding:8px 16px}.skeleton{width:min(360px,100%);display:grid;gap:var(--s2)}.sk{height:40px;background:#e4e4e7;border-radius:var(--r1);animation:pulse 1.2s infinite}.sk.big{height:176px}@keyframes pulse{50%{opacity:.45}}
+    .overflow-sample{display:grid;gap:var(--s1)}.overflow-sample span{display:block;padding:16px;background:var(--surface-2);border-radius:var(--r1);font-size:12px;white-space:normal;overflow-wrap:anywhere}
+    .mobile .app{grid-template:56px 1fr / 1fr;grid-template-areas:"head" "main"}.mobile .nav{display:none}.mobile .helper{position:absolute;left:0;right:0;bottom:0;height:168px;border:1px solid var(--border);border-radius:16px 16px 0 0;box-shadow:0 -8px 24px #18181b18;padding:var(--s2);z-index:4}.mobile .helperbox{display:none}.mobile .main{padding:var(--s2);padding-bottom:184px}.mobile .workbench{grid-template-columns:1fr}.mobile .outline{max-height:144px}.mobile .canvaswrap{grid-template-columns:1fr}.mobile .settings{grid-template-columns:1fr}.mobile .roomname{display:none}.mobile .head{padding:0 var(--s2)}.mobile .autosave{font-size:12px}.mobile h1{font-size:17px}.mobile .whole{min-height:320px}
+    @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  </style>
+</head>
+<body>
+  <div class="review">
+    <div class="reviewbar">
+      <strong>편집실 검토 허브</strong>
+      <div class="control" aria-label="검토할 형식">
+        <span class="label">형식</span>
+        <button data-kind="text" class="on">글</button><button data-kind="card">카드뉴스</button><button data-kind="video">영상</button><button data-kind="audio">음악</button>
+      </div>
+      <div class="control" aria-label="검토할 화면 너비">
+        <span class="label">화면</span><button data-view="desktop" class="on">1024</button><button data-view="mobile">390</button>
+      </div>
+      <div class="control" aria-label="검토할 상태">
+        <span class="label">상태</span><button data-state="normal" class="on">기본</button><button data-state="empty">빈 상태</button><button data-state="loading">불러오는 중</button><button data-state="error">오류</button><button data-state="overflow">긴 내용</button>
+      </div>
+    </div>
+    <div class="viewport" id="viewport">
+      <div class="app">
+        <header class="head"><div class="brand">OSMU</div><div class="roomname">콘텐츠 공장 · 편집실</div><div class="autosave">고치는 대로 자동 저장됨</div></header>
+        <nav class="nav"><h2>작업 순서</h2><span class="room">생성실<small>초안 만들기</small></span><span class="room on">편집실<small>내용과 화면 다듬기</small></span><span class="room">발행실<small>채널에 맞춰 올리기</small></span><span class="room">성과실<small>반응 확인하기</small></span></nav>
+        <main class="main">
+          <section id="normal">
+            <h1>내용과 화면을 직접 다듬습니다</h1>
+            <p class="lead">만들 형식을 고른 뒤 결과물 자체를 고칩니다. 올릴 채널과 채널별 문구는 발행실에서 정합니다.</p>
+          </section>
+          <div class="formatline" id="formats" aria-label="만들 콘텐츠 형식">
+            <button data-kind="text" class="on">글</button><button data-kind="card">카드뉴스</button><button data-kind="video">영상</button><button data-kind="audio">음악</button>
+          </div>
+          <div class="platform-note" id="platformNote"><strong>형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.</div>
+          <div class="workbench" id="workbench"></div>
+          <section class="state" id="state-empty"><div><h2>아직 편집할 작업물이 없습니다</h2><p>생성실에서 초안을 고르면 글, 카드뉴스, 영상 형식에 맞는 편집 도구가 열립니다.</p><button>생성실에서 작업물 고르기</button></div></section>
+          <section class="state" id="state-loading"><div class="skeleton" aria-label="편집 내용 불러오는 중"><div class="sk"></div><div class="sk big"></div><div class="sk"></div></div></section>
+          <section class="state" id="state-error"><div><h2>편집 내용을 불러오지 못했어요</h2><p>마지막 자동 저장본은 남아 있습니다. 연결을 확인한 뒤 다시 불러오세요.</p><button>다시 불러오기</button></div></section>
+        </main>
+        <aside class="helper">
+          <div class="helperbox"><h2>전체에 한 번에 적용</h2><p>반복해서 고칠 일은 담당에게 맡길 수 있습니다.</p><button>전부 짧게 줄이기</button><button>말끝을 높임말로 맞추기</button><button>빈 줄 걷어내기</button></div>
+          <div class="helperfooter"><small>마지막 저장 07:10</small><button class="primary" id="publish">발행실로 이동</button></div>
+        </aside>
+      </div>
+    </div>
+  </div>
+  <script>
+    const data={
+      text:{items:['도입','문제','해결 방법','마무리'],title:'글 전체 편집',meta:'공백 포함 624자 · 문단 4개',body:'콘텐츠를 여러 채널에 올릴 때 가장 오래 걸리는 일은 글을 새로 쓰는 것이 아닙니다.\n\n같은 내용을 채널마다 다시 다듬고, 사진 크기를 바꾸고, 올릴 시간을 맞추는 일이 시간을 잡아먹습니다.\n\nOSMU는 한 번 만든 내용을 글, 카드뉴스, 영상으로 다듬어 필요한 채널에 보낼 수 있게 돕습니다.\n\n아래 글 전체를 자유롭게 고친 뒤 발행실에서 올릴 채널을 정하세요.'},
+      card:{items:['표지','문제','해결','마무리'],title:'카드뉴스 편집',meta:'4장 · 선택한 카드 1장'},
+      video:{items:['도입 · 0:00','문제 · 0:04','해결 · 0:11','마무리 · 0:19'],title:'영상 편집',meta:'세로 영상 9:16 · 24초'},
+      audio:{items:['도입 대사','본문 대사','마무리 대사'],title:'음악과 나레이션',meta:'나레이션 대사 3개'}
+    };
+    const query=new URLSearchParams(location.search);
+    let kind=['text','card','video','audio'].includes(query.get('kind'))?query.get('kind'):'text';
+    let state=['normal','empty','loading','error','overflow'].includes(query.get('state'))?query.get('state'):'normal';
+    let position='center';
+    document.documentElement.dataset.consoleError='false';
+    window.addEventListener('error',()=>document.documentElement.dataset.consoleError='true');
+    function audit(){requestAnimationFrame(()=>{const app=document.querySelector('.app');document.documentElement.dataset.overflowX=String(app.scrollWidth>app.clientWidth);document.documentElement.dataset.primaryCount=String(document.querySelectorAll('.primary:not(:disabled)').length);document.documentElement.dataset.currentKind=kind;document.documentElement.dataset.currentState=state})}
+    const wb=document.querySelector('#workbench');
+    const outline=(d)=>`<aside class="outline"><h2>${kind==='text'?'글 문단':kind==='card'?'카드 목록':kind==='video'?'영상 장면':'대사 목록'}</h2>${d.items.map((x,i)=>`<button class="${i===0?'on':''}">${i+1}. ${x}</button>`).join('')}</aside>`;
+    function editor(){const d=data[kind];let inner='';
+      if(kind==='text') inner=`<label class="fieldlabel" for="wholeText">글 전체</label><textarea class="whole" id="wholeText">${d.body}</textarea><span class="meta">문단을 나누거나 합쳐도 자동 저장됩니다.</span>`;
+      if(kind==='card') inner=`<div class="canvaswrap"><div class="canvas"><div class="dragtext ${position}" id="dragText"><textarea aria-label="카드 안 글자">한 번 만든 콘텐츠를\n필요한 채널에 맞게</textarea><button class="handle" id="dragHandle">글자 위치 끌기</button></div></div><div class="settings"><div><span class="fieldlabel">글자 위치</span><div class="choice"><button data-pos="top">상단</button><button data-pos="center" class="on">중앙</button><button data-pos="bottom">하단</button></div></div><div><span class="fieldlabel">카드 비율</span><p class="meta">4:5 · 1080 × 1350픽셀</p></div><div><span class="fieldlabel">카드 글자 크기</span><p class="meta">기본 28픽셀</p></div><div><span class="fieldlabel">배경 이미지</span><p class="meta">책상 위 제품 사진</p></div></div></div>`;
+      if(kind==='video') inner=`<div class="scene"><div><strong>도입 장면 미리보기</strong><p>세로 영상 1080 × 1920픽셀</p></div></div><label class="fieldlabel" for="videoText">선택한 장면 대사</label><textarea id="videoText" rows="5">콘텐츠 하나를 여러 채널에 맞추느라 시간을 쓰고 계신가요?</textarea><span class="meta">영상 자막 글자 크기 44픽셀 · 화면 아래에서 160픽셀</span>`;
+      if(kind==='audio') inner=`<div class="audio"><div><strong>나레이션 대사 편집</strong><p class="meta">대사를 고치면 읽기용 원고에 반영됩니다.</p></div></div><div class="honest">음악 파일 생성은 아직 제공하지 않습니다. 지금은 나레이션 대사만 편집할 수 있습니다.</div><textarea rows="5">한 번 만든 콘텐츠를 필요한 채널에 맞춰 보내세요.</textarea>`;
+      return `<section class="editor"><div class="editorhead"><div><h2>${d.title}</h2><span class="meta">${d.meta}</span></div></div>${inner}</section>`;
+    }
+    function render(){
+      document.querySelectorAll('[data-kind]').forEach(b=>b.classList.toggle('on',b.dataset.kind===kind));
+      document.querySelectorAll('[data-state]').forEach(b=>b.classList.toggle('on',b.dataset.state===state));
+      const normal=state==='normal'||state==='overflow';
+      document.querySelector('#normal').style.display=normal?'block':'none';document.querySelector('#formats').style.display=normal?'flex':'none';document.querySelector('#platformNote').style.display=normal?'block':'none';
+      document.querySelectorAll('.state').forEach(x=>x.classList.remove('show'));
+      if(!normal){document.querySelector('#workbench').innerHTML='';document.querySelector(`#state-${state}`).classList.add('show');document.querySelector('#publish').disabled=true;audit();return}
+      wb.innerHTML=outline(data[kind])+editor();document.querySelector('#publish').disabled=false;
+      if(state==='overflow'){
+        const out=wb.querySelector('.outline');out.innerHTML='<h2>긴 내용 점검</h2><div class="overflow-sample">'+Array.from({length:12},(_,i)=>`<span>${i+1}. 매우 긴 문단 제목도 가로로 넘치지 않고 여러 줄로 읽힙니다</span>`).join('')+'</div>';
+        if(kind==='text') wb.querySelector('.whole').value=Array.from({length:12},(_,i)=>`${i+1}번째 문단입니다. 긴 본문에서도 편집 영역 안에서 세로로 스크롤되며 페이지 가로 폭을 밀어내지 않습니다.`).join('\n\n');
+      }
+      document.querySelectorAll('[data-pos]').forEach(b=>b.onclick=()=>{position=b.dataset.pos;render()});
+      const handle=document.querySelector('#dragHandle');if(handle) handle.onpointerdown=(e)=>{e.preventDefault();const box=document.querySelector('.canvas').getBoundingClientRect();const move=(m)=>{const y=(m.clientY-box.top)/box.height;position=y<.34?'top':y>.66?'bottom':'center';render()};handle.setPointerCapture(e.pointerId);handle.onpointerup=move};
+      audit();
+    }
+    document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.kind){kind=b.dataset.kind;state='normal';render()}if(b.dataset.state){state=b.dataset.state;render()}if(b.dataset.view){document.querySelector('#viewport').classList.toggle('mobile',b.dataset.view==='mobile');document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('on',x===b))}});
+    if(query.get('view')==='mobile') document.querySelector('#viewport').classList.add('mobile');
+    render();
+  </script>
+</body>
+</html>
+<!--
+RUBRIC_SCORE: clarity=5/5 action=5/5 linebreak=5/5 tone=4/5 slop=5/5 total=24/25
+WEAKEST_LINE: `형식과 채널은 다릅니다`는 설명조가 남아 있어 바로 뒤의 역할 문장으로 보완했다.
+SKILLS_USED: 없음. 현재 제공된 스킬 목록에 제품 화면 설계용 스킬이 없다.
+SKILLS_SKIPPED: design-review 계열 스킬이 현재 세션에서 호출 불가해 수동 검토와 Chromium 실렌더로 대체했다.
+SOURCES: DESIGN.md v33; docs/prototype/openclaw-auto-4room-v64.html; Canva Help; Google Docs Help; /Users/sj/.claude/standards/design.md; /Users/sj/.claude/standards/ux-writing.md
+MODEL: gpt-codex/gpt-5.6-sol
+-->

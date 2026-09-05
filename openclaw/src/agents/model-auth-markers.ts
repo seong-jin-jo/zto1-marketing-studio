@@ -21,6 +21,15 @@ export const OLLAMA_LOCAL_AUTH_MARKER = "ollama-local";
 export const CUSTOM_LOCAL_AUTH_MARKER = "custom-local";
 /** @deprecated Codex provider-owned marker; do not use from third-party plugins. */
 export const CODEX_APP_SERVER_AUTH_MARKER = "codex-app-server";
+/**
+ * @deprecated Qwen Portal provider-owned marker; do not use from third-party plugins.
+ *
+ * 이 상수가 빠져 있어서 게이트웨이 전체 빌드가 깨져 있었다. plugin-sdk/qwen-portal-auth 가
+ * 이 이름을 그대로 재수출하고, 번들된 확장이 그것을 가져다 쓴다.
+ * 비밀 아닌 표식 목록(CORE_NON_SECRET_API_KEY_MARKERS)에는 넣지 않는다. 같은 파일의
+ * 테스트가 "qwen-oauth" 는 그 목록에 들지 않는다고 못박고 있고, 그 정책은 그대로 둔다.
+ */
+export const QWEN_OAUTH_MARKER = "qwen-oauth";
 /** Marker for Google Vertex credentials resolved outside plain API-key env vars. */
 export const GCP_VERTEX_CREDENTIALS_MARKER = "gcp-vertex-credentials";
 /** Marker for a secret-ref-managed credential that is not stored as an env var. */

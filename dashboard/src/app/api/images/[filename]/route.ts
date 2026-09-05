@@ -1,9 +1,7 @@
-import fs from "fs";
-import path from "path";
-import { dataPath } from "@/lib/file-io";
 import { effectiveTenantId, AuthError } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { isSafeMediaFilename } from "@/lib/image-token";
+import { mediaStore, MediaStoreError } from "@/lib/media-store";
 
 // DELETE /api/images/[filename] — 테넌트 격리 이미지 삭제(SNS-016).
 // 테넌트는 effectiveTenantId(req)로 인증에서 직접 유도한다(클라이언트가 보내는 tenant_id를
@@ -32,13 +30,15 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ f
   }
 
   return runWithTenant(tenantId, async () => {
-    const filePath = path.join(dataPath("images"), decoded);
-
-    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-      return Response.json({ error: "File not found" }, { status: 404 });
+    try {
+      const deleted = await mediaStore.delete(tenantId, decoded);
+      if (!deleted) return Response.json({ error: "File not found" }, { status: 404 });
+      return Response.json({ success: true });
+    } catch (error) {
+      if (error instanceof MediaStoreError) {
+        return Response.json({ error: "이미지 저장소에서 파일을 삭제하지 못했습니다." }, { status: 503 });
+      }
+      throw error;
     }
-
-    fs.unlinkSync(filePath);
-    return Response.json({ success: true });
   });
 }

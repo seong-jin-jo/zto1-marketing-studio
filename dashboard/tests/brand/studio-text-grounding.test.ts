@@ -82,6 +82,30 @@ describe("POST /api/studio/text — 브랜드+위키 그라운딩 주입 (셀프
     expect(H.genTenant).toBe("tenant-1");
   });
 
+  it("V75-STUDIO-TEXT-01 정상: 선택한 A 구조와 순서를 생성 프롬프트에 반영한다", async () => {
+    const { status } = await studioText({
+      idea: "첫은 팀의 콘텐츠 운영",
+      tenant_id: "tenant-1",
+      structure: { label: "A", title: "문제 제시형", outline: ["고객이 겪는 문제", "문제가 생기는 이유", "바로 적용할 방법"] },
+    });
+
+    expect(status).toBe(200);
+    expect(H.genPrompt).toContain("사용자가 고른 구조: A 문제 제시형");
+    expect(H.genPrompt).toContain("고객이 겪는 문제 → 문제가 생기는 이유 → 바로 적용할 방법");
+    expect(H.genPrompt).toContain("반드시 반영");
+  });
+
+  it("V75-STUDIO-TEXT-02 거절: 알 수 없는 구조는 생성기 호출 전에 400으로 막는다", async () => {
+    const { status } = await studioText({
+      idea: "첫은 팀의 콘텐츠 운영",
+      tenant_id: "tenant-1",
+      structure: { label: "D", title: "알 수 없는 구조", outline: [] },
+    });
+
+    expect(status).toBe(400);
+    expect(H.genPrompt).toBe("");
+  });
+
   it("위키 없어도(신규 테넌트) idea만으로 생성은 됨", async () => {
     H.wiki = "";
     const { status, body } = await studioText({ idea: "오픈 이벤트", tenant_id: "tenant-1" });

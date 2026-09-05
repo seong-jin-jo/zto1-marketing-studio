@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { channelTextLimit, countTextCharacters } from "@/lib/channel-text-limits";
+import {
+  PLATFORM_FIELD_CONTRACT,
+  validatePlatformPublish,
+  type PlatformPublishValidation,
+} from "@/lib/studio/platform-publish-fields";
 
 export interface PreviewText {
   threads?: string; facebook?: string; x?: string;
@@ -11,18 +15,25 @@ export interface PreviewText {
 export interface PreviewMedia { imgUrl?: string; vidUrl?: string }
 export type PreviewPlatform = "threads" | "x" | "instagram" | "facebook" | "shorts" | "reels" | "tiktok";
 
+export type PreviewAccount = {
+  status: "loading" | "connected" | "missing" | "error" | "unsupported";
+  displayName?: string;
+  username?: string;
+};
+
 export interface PreviewInlineEditor {
-  displayName: string;
+  account: PreviewAccount;
   title: string;
   caption: string;
   hashtags: string;
+  topicTag: string;
   firstComment: string;
   firstCommentSupported: boolean;
   firstCommentReason?: string;
-  onDisplayNameChange: (value: string) => void;
   onTitleChange: (value: string) => void;
   onCaptionChange: (value: string) => void;
   onHashtagsChange: (value: string) => void;
+  onTopicTagChange: (value: string) => void;
   onFirstCommentChange: (value: string) => void;
 }
 
@@ -53,10 +64,15 @@ function Frame({ p, label, children, headerRight, characterCount }: {
 }) {
   return (
     <div className="w-full max-w-sm">
-      <div className="flex items-center gap-stack-tight mb-stack-tight px-micro">
+      {/*
+        2026-09-05 회장 계정 실측(폭 430): 이 머리줄이 담긴 칸보다 18픽셀 넓어져 오른쪽
+        끝의 발행 토글과 계정 관리가 잘렸다. 문서 가로 스크롤은 0이라 겉으로는 멀쩡해
+        보이지만 조작할 수 없는 단추가 생긴다. 좁으면 줄을 바꾸게 한다.
+      */}
+      <div className="flex flex-wrap items-center gap-stack-tight mb-stack-tight px-micro">
         <Logo p={p} />
-        <span className="min-w-0 truncate text-caption font-bold text-muted">{label}</span>
-        <div className="ml-auto flex items-center gap-stack-tight">
+        <span className="shrink-0 whitespace-nowrap text-caption font-bold text-muted">{label}</span>
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-stack-tight">
           {characterCount && (
             <span
               data-testid={`character-count-${p}`}
@@ -73,57 +89,89 @@ function Frame({ p, label, children, headerRight, characterCount }: {
   );
 }
 
+function AccountIdentity({ platform, account }: { platform: PreviewPlatform; account: PreviewAccount }) {
+  const statusLabel = account.status === "loading"
+    ? "연결 계정 확인 중"
+    : account.status === "error"
+      ? "연결 계정을 확인하지 못했습니다"
+      : account.status === "unsupported"
+        ? "이 플랫폼 발행은 아직 지원하지 않습니다"
+        : "연결된 계정이 없습니다";
+  if (account.status !== "connected") {
+    return <div data-testid={`preview-account-${platform}`} data-account-state={account.status} className="rounded-control border border-border bg-surface-2 p-stack text-caption text-muted">{statusLabel}</div>;
+  }
+  return (
+    <div data-testid={`preview-account-${platform}`} data-account-state="connected" className="flex min-h-control-touch items-center gap-stack rounded-control border border-border bg-surface-2 p-stack">
+      <Av s={32} />
+      <div className="min-w-0 flex-1"><b className="block truncate text-body-sm text-text">{account.displayName || account.username || "연결 계정"}</b>{account.username ? <span className="block truncate text-caption text-subtle">@{account.username.replace(/^@/, "")}</span> : null}</div>
+      <span className="text-caption text-subtle">읽기 전용</span>
+    </div>
+  );
+}
+
+function Counter({ validation, field }: { validation: PlatformPublishValidation; field: "title" | "body" | "topicTag" }) {
+  const counter = validation.counters[field];
+  if (!counter) return null;
+  const invalid = counter.current > counter.limit;
+  return <span className={invalid ? "text-caption text-danger" : "text-caption text-subtle"}>{counter.current}/{counter.limit} {counter.unit}</span>;
+}
+
 function InlinePreviewEditor({ platform, editor }: { platform: PreviewPlatform; editor: PreviewInlineEditor }) {
-  const video = platform === "shorts" || platform === "reels" || platform === "tiktok";
+  const contract = PLATFORM_FIELD_CONTRACT[platform];
+  const validation = validatePlatformPublish(platform, {
+    title: editor.title,
+    body: editor.caption,
+    hashtags: editor.hashtags,
+    topicTag: editor.topicTag,
+  });
+  const loading = editor.account.status === "loading";
   const inlineClass = "mt-micro min-h-control-touch w-full rounded-control border border-transparent bg-transparent px-stack text-body text-text underline decoration-accent/40 underline-offset-4 focus:border-accent focus:bg-surface focus:no-underline";
   return (
     <div className="mt-stack border-t border-border pt-stack" data-testid={`inline-editor-${platform}`} data-pub-fields={platform}>
-      <div className="grid gap-stack sm:grid-cols-2">
-        <label className="text-caption text-muted">
-          표시 이름
-          <input
-            aria-label={`${platform} 표시 이름`}
-            data-pv-inline-edit={`${platform}:displayName`}
-            value={editor.displayName}
-            onChange={(event) => editor.onDisplayNameChange(event.target.value)}
-            className={inlineClass}
-          />
-        </label>
-        {video ? (
+      <AccountIdentity platform={platform} account={editor.account} />
+      <div className="mt-stack grid gap-stack sm:grid-cols-2">
+        {contract.title ? (
           <label className="text-caption text-muted">
-            제목
+            <span className="flex items-center justify-between gap-stack-tight">제목 <Counter validation={validation} field="title" /></span>
             <input
               aria-label={`${platform} 제목`}
               data-pv-inline-edit={`${platform}:title`}
               value={editor.title}
               onChange={(event) => editor.onTitleChange(event.target.value)}
+              disabled={loading}
               className={inlineClass}
             />
           </label>
         ) : null}
       </div>
       <label className="mt-stack block text-caption text-muted">
-        캡션
+        <span className="flex items-center justify-between gap-stack-tight">{contract.bodyLabel} <Counter validation={validation} field="body" /></span>
         <textarea
           aria-label={`${platform} 캡션`}
           data-pv-inline-edit={`${platform}:caption`}
           value={editor.caption}
           onChange={(event) => editor.onCaptionChange(event.target.value)}
+          disabled={loading}
           rows={3}
           className={`${inlineClass} p-stack`}
         />
       </label>
-      <label className="mt-stack block text-caption text-muted">
+      {contract.hashtags ? <label className="mt-stack block text-caption text-muted">
         해시태그
         <input
           aria-label={`${platform} 해시태그`}
           data-pv-inline-edit={`${platform}:hashtags`}
           value={editor.hashtags}
           onChange={(event) => editor.onHashtagsChange(event.target.value)}
+          disabled={loading}
           className={inlineClass}
         />
-      </label>
-      {editor.firstCommentSupported ? (
+      </label> : null}
+      {contract.topicTag ? <label className="mt-stack block text-caption text-muted">
+        <span className="flex items-center justify-between gap-stack-tight">주제 태그 <Counter validation={validation} field="topicTag" /></span>
+        <input aria-label={`${platform} 주제 태그`} data-pv-inline-edit={`${platform}:topicTag`} value={editor.topicTag} onChange={(event) => editor.onTopicTagChange(event.target.value)} disabled={loading} className={inlineClass} />
+      </label> : null}
+      {contract.firstComment && editor.firstCommentSupported ? (
         <label className="mt-stack block text-caption text-muted">
           첫 댓글
           <textarea
@@ -131,15 +179,19 @@ function InlinePreviewEditor({ platform, editor }: { platform: PreviewPlatform; 
             data-pv-inline-edit={`${platform}:firstComment`}
             value={editor.firstComment}
             onChange={(event) => editor.onFirstCommentChange(event.target.value)}
+            disabled={loading}
             rows={2}
             className={`${inlineClass} p-stack`}
           />
         </label>
-      ) : (
+      ) : contract.firstComment ? (
         <div className="mt-stack rounded-control border border-border bg-surface-2 p-stack text-caption text-subtle">
           첫 댓글 미지원: {editor.firstCommentReason || "현재 채널 어댑터가 지원하지 않습니다"}
         </div>
-      )}
+      ) : null}
+      {contract.unknownLimitLabel ? <p className="mt-stack text-caption text-subtle">{contract.unknownLimitLabel}</p> : null}
+      {validation.blocking.map((issue) => <p key={`${issue.field}-${issue.message}`} className="mt-stack text-caption text-danger" role="alert">{issue.message}</p>)}
+      {validation.warnings.map((issue) => <p key={`${issue.field}-${issue.message}`} className="mt-stack text-caption text-warning">{issue.message}</p>)}
     </div>
   );
 }
@@ -189,8 +241,8 @@ function VideoRail({ kind }: { kind: "shorts" | "reels" | "tiktok" }) {
   );
 }
 
-export function PlatformPreview({ platform, text, media, brand = "your_brand", headerRight, editor }: { platform: PreviewPlatform; text: PreviewText; media: PreviewMedia; brand?: string; headerRight?: React.ReactNode; editor?: PreviewInlineEditor }) {
-  const handle = (editor?.displayName || brand).replace(/^@/, "");
+export function PlatformPreview({ platform, text, media, headerRight, editor }: { platform: PreviewPlatform; text: PreviewText; media: PreviewMedia; headerRight?: React.ReactNode; editor?: PreviewInlineEditor }) {
+  const handle = (editor?.account.username || editor?.account.displayName || "연결 계정 없음").replace(/^@/, "");
   const img = media.imgUrl; const vid = media.vidUrl;
   const label = PREVIEW_PLATFORMS.find((x) => x.key === platform)?.label || platform;
   const previewBody = platform === "threads"
@@ -202,8 +254,9 @@ export function PlatformPreview({ platform, text, media, brand = "your_brand", h
         : platform === "instagram"
           ? text.instagram?.caption || ""
           : "";
-  const limit = channelTextLimit(platform);
-  const characterCount = limit ? { current: countTextCharacters(previewBody), limit } : undefined;
+  const validation = editor ? validatePlatformPublish(platform, { title: editor.title, body: editor.caption, hashtags: editor.hashtags, topicTag: editor.topicTag }) : null;
+  const bodyCounter = validation?.counters.body;
+  const characterCount = bodyCounter ? { current: bodyCounter.current, limit: bodyCounter.limit } : undefined;
 
   if (platform === "threads") return (
     <Frame p="threads" label="Threads" headerRight={headerRight} characterCount={characterCount}>
@@ -225,7 +278,7 @@ export function PlatformPreview({ platform, text, media, brand = "your_brand", h
       <div className="bg-surface text-text rounded-surface border border-border px-pad-inset py-stack">
         <div className="flex gap-stack"><Av />
           <div className="flex-1 min-w-0">
-            <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="shrink-0 text-accent">✓</span><span className="min-w-0 truncate text-subtle ml-micro">@{handle} · 1분</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
+            <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="min-w-0 truncate text-subtle ml-micro">@{handle} · 1분</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
             <p className="text-body whitespace-pre-wrap leading-[1.4] mt-micro">{text.x || <span className="text-subtle">텍스트…</span>}</p>
             {img && <img src={img} alt="" className="mt-stack-tight rounded-surface border border-border w-full max-h-80 object-cover" />}
             <div className="flex justify-between mt-stack text-subtle text-body-sm">

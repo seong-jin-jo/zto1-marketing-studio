@@ -138,30 +138,30 @@ export const CHANNEL_CAPABILITIES: Record<string, ChannelCapability> = {
 };
 
 export const CHANNEL_TAB_LABELS: Record<ChannelTab, string> = {
-  queue: "Queue",
-  analytics: "Analytics",
-  growth: "Growth",
-  popular: "Popular",
-  settings: "Settings",
-  editor: "Editor",
+  queue: "대기열",
+  analytics: "성과 분석",
+  growth: "성장",
+  popular: "인기글",
+  settings: "설정",
+  editor: "편집기",
 };
 
 const CHANNEL_GROUP_DEFINITIONS = [
   {
     key: "social",
-    title: "Social",
+    title: "소셜",
     channels: ["threads", "x", "instagram", "facebook", "bluesky"],
     studioPublish: true,
   },
   {
     key: "messaging",
-    title: "Messaging",
+    title: "메시지",
     channels: ["telegram", "discord", "slack"],
     studioPublish: true,
   },
   {
     key: "video",
-    title: "Video",
+    title: "영상",
     channels: ["youtube", "tiktok"],
     studioPublish: false,
   },

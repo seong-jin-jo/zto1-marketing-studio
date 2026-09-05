@@ -167,6 +167,25 @@ export function missingLearningSlots(info: LearningInfo): LearningSlot[] {
   return LEARNING_SLOTS.filter((slot) => !(info[slot.key] || "").trim());
 }
 
+/**
+ * 고른 카드가 저장소에 남길 값.
+ *
+ * 2026-09-05 회장 계정 실측: 저장된 값이 `audience: "뭐부터 해야 할지 모르겠다면..."`,
+ * `voice: "이거 모르면 손해예요. 진짜로요."` 였다. 카드의 견본 문장만 저장했기 때문이다.
+ * 그 값이 그대로 생성 입력의 `target`(주요 고객)과 `tone`(말투)으로 들어가면,
+ * 모델은 "처음 해 보는 사람"이 아니라 저 카피 한 줄을 고객으로 읽는다.
+ * 이름과 견본을 함께 남겨 무엇을 고른 것인지와 그 결이 둘 다 전달되게 한다.
+ */
+export function cardValue(card: LearningCard): string {
+  return `${card.title}. 예: ${card.sample}`;
+}
+
+/** 저장값이 이 카드인가. 견본만 저장하던 시절의 값도 같은 카드로 인정한다. */
+export function isCardChosen(card: LearningCard, stored: string | undefined): boolean {
+  if (!stored) return false;
+  return stored === cardValue(card) || stored === card.sample;
+}
+
 export function cardById(cards: readonly LearningCard[], id: string | undefined): LearningCard | null {
   return cards.find((card) => card.id === id) ?? null;
 }
@@ -181,4 +200,29 @@ export function learningToBrandAnswers(info: LearningInfo): Record<string, strin
     hooks: info.purpose || "",
     visual: info.palette || "",
   };
+}
+
+// 학습 정보 문답을 자동으로 띄운 적이 있는지 기억한다.
+// 메모리 ref 만으로는 방을 옮길 때마다 초기화돼, 네 방 어디를 눌러도 모달이 다시 떠
+// 화면을 가로막았다(2026-08-31 회장 실사용). 브라우저에 남겨 작업 공간당 한 번만 띄운다.
+function learningPromptKey(workspaceId: string): string {
+  return `studio_learning_prompted:${workspaceId}`;
+}
+
+export function wasLearningPrompted(workspaceId: string): boolean {
+  if (!workspaceId) return true;
+  try {
+    return localStorage.getItem(learningPromptKey(workspaceId)) === "1";
+  } catch {
+    return true;
+  }
+}
+
+export function markLearningPrompted(workspaceId: string): void {
+  if (!workspaceId) return;
+  try {
+    localStorage.setItem(learningPromptKey(workspaceId), "1");
+  } catch {
+    // 저장 실패는 무시한다. 다음 방문에 한 번 더 뜨는 정도의 영향만 있다.
+  }
 }

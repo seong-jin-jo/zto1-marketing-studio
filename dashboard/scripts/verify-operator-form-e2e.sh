@@ -131,9 +131,9 @@ esac
 
 RENDER_OK="$(
   "$B" js \
-    "document.body.innerText.includes('Admin') && document.body.innerText.includes('고객 관리')"
+    "document.body.innerText.includes('운영자') && document.body.innerText.includes('고객 관리')"
 )"
-[ "$RENDER_OK" = "true" ] || fail "Admin/customer-management shell did not render"
+[ "$RENDER_OK" = "true" ] || fail "operator/customer-management shell did not render"
 
 INVALID_PRESENT="$(
   "$B" js \
@@ -158,4 +158,4 @@ CONSOLE_ERRORS="$(
 [ "$CONSOLE_ERRORS" = "0" ] ||
   fail "observed $CONSOLE_ERRORS browser console errors"
 
-printf '[operator-form-e2e] PASS url=/operator/customers Admin=yes customers=yes invalid=0 bad-http=0 console-errors=0\n'
+printf '[operator-form-e2e] PASS url=/operator/customers operator=yes customers=yes invalid=0 bad-http=0 console-errors=0\n'

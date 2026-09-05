@@ -9,10 +9,12 @@ import {
 
 export class AuthRequiredError extends Error {
   constructor() {
-    super("Authentication required");
+    super("로그인이 필요합니다");
     this.name = "AuthRequiredError";
   }
 }
+
+export const AUTH_CACHE_INVALIDATION_EVENT = "auth:cache-invalidate";
 
 export class ApiResponseError<T = unknown> extends Error {
   readonly status: number;
@@ -75,6 +77,10 @@ function requestAuth(): { token: string; headers: Record<string, string> } {
   };
 }
 
+function invalidateAuthCache(): void {
+  window.dispatchEvent(new CustomEvent(AUTH_CACHE_INVALIDATION_EVENT));
+}
+
 export function handleUnauthorizedResponse(requestToken: string, clearToken: boolean): void {
   // A response belongs to the credential snapshot used when its request started.
   // If login refreshed/replaced that credential meanwhile, the old 401 must not
@@ -100,6 +106,7 @@ export async function fetcher<T>(url: string): Promise<T> {
   const auth = requestAuth();
   const res = await fetch(url, { headers: auth.headers });
   if (res.status === 401) {
+    invalidateAuthCache();
     handleUnauthorizedResponse(auth.token, true);
     throw new AuthRequiredError();
   }
@@ -108,17 +115,24 @@ export async function fetcher<T>(url: string): Promise<T> {
 }
 
 /** POST helper for mutations */
-export async function apiPost<T = unknown>(url: string, body?: unknown): Promise<T | null> {
+/**
+ * 2026-09-06 회장 스모크: 생성이 시작되면 끝날 때까지 취소할 방법이 없었다.
+ * 잘못 눌렀거나 다른 것을 하고 싶어도 기다리는 수밖에 없다. 호출부가 중단 신호를
+ * 넘길 수 있게 열어 둔다. 안 넘기면 종전과 똑같이 동작한다.
+ */
+export async function apiPost<T = unknown>(url: string, body?: unknown, options?: { signal?: AbortSignal }): Promise<T | null> {
   try {
     const auth = requestAuth();
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...auth.headers },
       body: body ? JSON.stringify(body) : undefined,
+      signal: options?.signal,
     });
     if (res.status === 401) {
+      invalidateAuthCache();
       handleUnauthorizedResponse(auth.token, false);
-      return null;
+      throw new AuthRequiredError();
     }
     if (!res.ok) {
       const d = await res.json().catch(() => ({})) as { error?: string };
@@ -138,8 +152,9 @@ export async function apiDelete<T = unknown>(url: string): Promise<T | null> {
     headers: auth.headers,
   });
   if (res.status === 401) {
+    invalidateAuthCache();
     handleUnauthorizedResponse(auth.token, false);
-    return null;
+    throw new AuthRequiredError();
   }
   if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
   return res.json();

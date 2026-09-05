@@ -10,6 +10,8 @@ const H = vi.hoisted(() => ({
       tier: "team",
       owner_auth_id: "auth-1",
       created_at: "2026-07-01T00:00:00Z",
+      last_accessed_at: null,
+      recent_access_days_30: null,
       shared_cli_approved_at: null,
       integrations: [],
       channel_accounts: [
@@ -123,6 +125,8 @@ describe("/api/operator/customers", () => {
     expect(res.status).toBe(200);
     expect(body.customers[0].slug).toBe("customer-one");
     expect(body.customers[0]).toHaveProperty("shared_cli_approved_at");
+    expect(body.customers[0].last_accessed_at).toBeNull();
+    expect(body.customers[0].recent_access_days_30).toBeNull();
     expect(body.authUsers[0].email).toBe("owner@example.com");
     expect(body.authUsers[0]).toHaveProperty("tenant_shared_ai_approved_at");
     expect(body.summary).toEqual(expect.objectContaining({
@@ -132,6 +136,8 @@ describe("/api/operator/customers", () => {
       connectedAccounts: 2,
     }));
     expect(H.customerQuery).toContain("ca.status = 'active'");
+    expect(H.customerQuery).toContain("FROM tenant_access_events");
+    expect(H.customerQuery).toContain("AT TIME ZONE 'UTC'");
     expect(body.oauthProviders).toEqual(expect.arrayContaining([
       expect.objectContaining({ provider: "x", credentialsConfigured: false }),
       expect.objectContaining({ provider: "facebook", credentialsConfigured: false }),

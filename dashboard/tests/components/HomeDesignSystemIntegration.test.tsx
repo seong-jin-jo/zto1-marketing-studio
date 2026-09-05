@@ -3,10 +3,11 @@ import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import HomePage from "@/app/page";
+import HomePage, { PerformanceDashboard } from "@/app/page";
 
 const mocks = vi.hoisted(() => ({
   apiPost: vi.fn(),
+  showToast: vi.fn(),
   fetcher: vi.fn(),
   mutateMetrics: vi.fn(),
   posts: [] as Array<Record<string, unknown>>,
@@ -34,6 +35,10 @@ vi.mock("@/lib/api", () => ({
   fetcher: (...args: unknown[]) => mocks.fetcher(...args),
   apiPost: (...args: unknown[]) => mocks.apiPost(...args),
   ApiResponseError: class ApiResponseError extends Error {},
+}));
+
+vi.mock("@/components/layout/Toast", () => ({
+  useToast: () => ({ showToast: mocks.showToast }),
 }));
 
 vi.mock("@/components/studio/PlatformPreview", () => ({
@@ -100,11 +105,16 @@ describe("Home design-system migration interactions", () => {
 
   afterEach(cleanup);
 
-  it("FE-V63-01 정상 경로: 표본 0건은 미수집과 5건 문턱을 표시한다", async () => {
+  it("FE-V63-01 정상 경로: 표본 0건은 안내 한 번과 예시 지표로 다음 모습을 표시한다", async () => {
     render(<HomePage />);
 
     expect(screen.getByRole("heading", { level: 1, name: "아직 판정할 표본이 없습니다" })).toBeInTheDocument();
-    expect(screen.getAllByText("미수집").length).toBeGreaterThanOrEqual(10);
+    expect(screen.getByText("아직 성과를 수집할 채널이 없습니다")).toBeInTheDocument();
+    expect(document.querySelector('[data-perf-tier="core"]')).toHaveTextContent("18,420");
+    expect(document.querySelector('[data-perf-tier="core"]')).not.toHaveTextContent("미수집");
+    expect(document.querySelector('[data-perf-tier="rest"]')).not.toBeInTheDocument();
+    expect(screen.queryByText("미수집")).not.toBeInTheDocument();
+    expect(screen.getByText("예시 데이터")).toBeInTheDocument();
     expect(screen.getByText("성과 표본 0건입니다. 5건부터 판정합니다.")).toBeInTheDocument();
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
       "/api/suggestions",
@@ -325,6 +335,73 @@ describe("Home design-system migration interactions", () => {
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
       "/api/performance/learned-rules",
       expect.objectContaining({ tenant_id: "tenant-a" }),
+    ));
+  });
+
+  it("V68-PERF-01 정상: 전용 성과실은 04 단계를 표시하고 담당 대화를 처음부터 연다", async () => {
+    render(<PerformanceDashboard dedicatedRoom />);
+
+    expect(document.querySelector('[data-performance-layout="dedicated"]')).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "성과실" })).toBeInTheDocument();
+    expect(document.querySelector('[data-room-flow="performance"] [aria-current="step"]')).toHaveAttribute("href", "/performance");
+    expect(screen.getByRole("button", { name: "접기" })).toHaveAttribute("aria-expanded", "true");
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/suggestions", { tenant_id: "tenant-a" }));
+  });
+
+  it("V68-PERF-02 거절: 낮은 반응 콘텐츠는 후보만 제시하고 자동 삭제 호출을 만들지 않는다", async () => {
+    mocks.posts = [1000, 900, 800, 10, 5].map((views, index) => ({
+      id: `cleanup-${index}`,
+      platform: "threads",
+      text: `성과 확인 글 ${index + 1}`,
+      status: "published",
+      published_at: "2026-08-27T10:00:00.000Z",
+      views,
+      likes: 0,
+      replies: 0,
+    }));
+    render(<PerformanceDashboard dedicatedRoom />);
+
+    fireEvent.click(screen.getByRole("button", { name: "안 터진 글 정리해줘" }));
+    expect(await screen.findByText(/자동 삭제는 아직 없습니다/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /삭제/ })).not.toBeInTheDocument();
+    expect(mocks.apiPost.mock.calls.some(([path]) => String(path).includes("delete"))).toBe(false);
+  });
+
+  // 2026-09-05: 성과 다시 수집이 실패해도 아무 말이 없었다. catch 가 없어 예외가 그대로
+  // 새고 화면은 원래대로 돌아갈 뿐이라 눌러도 아무 일이 없는 것으로 읽혔다.
+  it("V68-PERF-03 거절: 성과 재수집이 실패하면 조용히 넘기지 않고 사용자에게 알린다", async () => {
+    mocks.showToast.mockClear();
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (String(path).includes("/api/metrics")) throw new Error("수집 실패");
+      return {};
+    });
+    render(<PerformanceDashboard dedicatedRoom />);
+
+    fireEvent.click(screen.getByRole("button", { name: "성과 다시 수집하기" }));
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      expect.stringContaining("성과를 다시 수집하지 못했습니다"),
+      "error",
+    ));
+  });
+
+  // 2026-09-05 회장 계정 실측 회귀: 수집 대상 1건인데 갱신 0건으로 끝나고 화면은 아무 말이
+  // 없었다. 눌렀는데 숫자가 그대로인 이유를 사용자가 알 수 없다.
+  it("V68-PERF-04 거절: 모을 대상이 있는데 하나도 못 모으면 이유를 알린다", async () => {
+    mocks.showToast.mockClear();
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (String(path).includes("/api/metrics")) {
+        return { ok: true, updated: 0, total: 1, collectionBlocked: true, reason: "채널이 성과 조회를 거절했습니다(응답 403). 채널을 다시 연결한 뒤 시도해 주세요." };
+      }
+      return {};
+    });
+    render(<PerformanceDashboard dedicatedRoom />);
+
+    fireEvent.click(screen.getByRole("button", { name: "성과 다시 수집하기" }));
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      expect.stringContaining("성과 조회를 거절"),
+      "error",
     ));
   });
 });

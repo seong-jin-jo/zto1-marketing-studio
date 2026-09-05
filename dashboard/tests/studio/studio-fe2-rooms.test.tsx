@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CreateRoom, EditRoom } from "@/components/studio/StudioRooms";
 import {
@@ -73,12 +73,13 @@ describe("화면 2차 생성실 계약", () => {
     expect(screen.getByRole("complementary", { name: "생성 담당 대화창" })).toBeInTheDocument();
   });
 
-  it("FE6-CREATE-01 정상: 디스플레이는 읽기 전용이고 선택 단추는 대화창에만 둔다", () => {
+  it("V75-CREATE-01 정상: 본문에 직접 생성 동선을 추가하고 기존 대화창을 유지한다", () => {
     render(<CreateRoom workspaceId="workspace" workspaceName="작업 공간" guide="브랜드 사실" topic="주제" onTopicChange={vi.fn()} onOpenLearning={vi.fn()} onCandidateSelect={vi.fn()} />);
 
-    const display = document.querySelector('[data-display-readonly="create"]');
-    expect(display).toBeInTheDocument();
-    expect(display?.querySelectorAll("button")).toHaveLength(0);
+    const workspace = document.querySelector("[data-create-workspace]");
+    expect(workspace).toBeInTheDocument();
+    expect(within(workspace as HTMLElement).getByLabelText("초안 주제")).toBeInTheDocument();
+    expect(within(workspace as HTMLElement).getByRole("button", { name: "초안 만들기" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "생성 담당 대화창" })).toHaveTextContent("무엇을 만들까요?");
   });
 
@@ -134,7 +135,7 @@ describe("화면 2차 생성실 계약", () => {
     expect(request.headers).toMatchObject({ Authorization: "Bearer customer-jwt" });
   });
 
-  it("QA-CREATE-04 정상: 생성실은 새로 시작하되 브랜드에 매달린 값은 학습 정보에서 되살린다", async () => {
+  it("V77-CREATE-PERSIST-03 정상: 생성실 문답과 학습 정보가 함께 되살아난다", async () => {
     const props = {
       workspaceId: "workspace-a",
       workspaceName: "작업 공간 A",
@@ -151,14 +152,11 @@ describe("화면 2차 생성실 계약", () => {
     first.unmount();
     render(<CreateRoom {...props} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "영상" }));
-    fireEvent.click(screen.getByRole("button", { name: "다음" }));
-    expect(screen.getByRole("button", { name: "문의 늘리기" })).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(screen.getByRole("button", { name: "브랜드 알리기" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "혼자 일하는 사장" })).toHaveAttribute("aria-pressed", "true"));
-    fireEvent.click(screen.getByRole("button", { name: "혼자 일하는 사장" }));
-    fireEvent.click(document.querySelector("[data-create-topic-picker] button") as HTMLElement);
-    expect(screen.getByLabelText("위 조건을 확인했습니다.")).toBeChecked();
+    expect(document.querySelector('[data-create-question="review"]')).toBeInTheDocument();
+    expect(document.querySelector("[data-create-review]")).toHaveTextContent("영상");
+    expect(document.querySelector("[data-create-review]")).toHaveTextContent("상담이나 문의를 시작");
+    expect(document.querySelector("[data-create-review]")).toHaveTextContent("사람 더 못 뽑는 상황");
+    expect(document.querySelector("[data-create-review]")).toHaveTextContent("확인됨");
   });
 
   it("QA-CREATE-05 경합: 후보 생성 연타는 클라이언트에서 단일 POST로 합친다", async () => {
@@ -226,20 +224,21 @@ describe("화면 2차 편집실 계약", () => {
     expect(onLinesChange).toHaveBeenCalledWith(["고친 첫 줄", "둘째 줄"]);
   });
 
-  it("FE3-EDIT-03 정상: 편집실 상단 한 줄은 현재 장면 수를 표시한다", () => {
+  it("FE3-EDIT-03 정상: 편집실 상단은 지금 무엇을 바꾸는지 설명한다", () => {
     render(<EditRoom lines={["첫 줄", "둘째 줄"]} onLinesChange={vi.fn()} />);
     const top = document.querySelector('[data-room-top="edit"]');
-    expect(top).toHaveTextContent("2개 장면");
+    expect(top).toHaveTextContent("내용과 화면을 직접 다듬습니다");
+    expect(top).toHaveTextContent("올릴 채널과 채널별 문구는 발행실에서 정합니다");
   });
 
-  it("FE6-EDIT-01 정상: 영상 목차와 아이콘 도구 뒤에 대사를 항상 배치한다", () => {
+  it("FE6-EDIT-01 정상: 영상 장면과 아이콘 도구 뒤에 대사를 항상 배치한다", () => {
     render(<EditRoom lines={["첫 줄", "둘째 줄"]} onLinesChange={vi.fn()} kind="video" />);
     const outline = document.querySelector("[data-edit-outline]");
     const stage = document.querySelector("[data-edit-stage]");
     const tools = document.querySelector("[data-edit-tools]");
     const script = document.querySelector("[data-edit-script]");
 
-    expect(outline).toHaveAttribute("aria-label", "영상 목차");
+    expect(outline).toHaveAttribute("aria-label", "영상 장면");
     expect(screen.getAllByRole("button", { name: /도구$/ })).toHaveLength(4);
     expect(stage!.compareDocumentPosition(script as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(tools!.compareDocumentPosition(script as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -250,17 +249,17 @@ describe("화면 2차 편집실 계약", () => {
     expect(document.querySelector("[data-edit-duration]")).toHaveTextContent("12초");
 
     fireEvent.click(screen.getAllByRole("button", { name: "빼기" })[0]);
-    expect(document.querySelector('[data-room-top="edit"]')).toHaveTextContent("2개 장면");
+    expect(document.querySelector("[data-edit-duration]")).toHaveTextContent("2개 장면");
     expect(document.querySelector("[data-edit-duration]")).toHaveTextContent("8초");
 
     fireEvent.click(screen.getByRole("button", { name: "되살리기" }));
-    expect(document.querySelector('[data-room-top="edit"]')).toHaveTextContent("3개 장면");
+    expect(document.querySelector("[data-edit-duration]")).toHaveTextContent("3개 장면");
   });
 
   it("FE6-EDIT-03 정상: 무음 표식이 있는 줄만 한 번에 줄인다", () => {
     render(<EditRoom lines={["첫 줄", "...", "둘째 줄"]} onLinesChange={vi.fn()} kind="video" />);
     fireEvent.click(screen.getByRole("button", { name: "무음 구간 1개 줄이기" }));
-    expect(document.querySelector('[data-room-top="edit"]')).toHaveTextContent("2개 장면");
+    expect(document.querySelector("[data-edit-duration]")).toHaveTextContent("2개 장면");
     expect(document.querySelector("[data-edit-duration]")).toHaveTextContent("8초");
   });
 
@@ -273,7 +272,7 @@ describe("화면 2차 편집실 계약", () => {
     const onFormatChange = vi.fn();
     render(<EditRoom lines={["첫 줄", "둘째 줄"]} onLinesChange={vi.fn()} kind="video" onFormatChange={onFormatChange} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "속도 도구" }));
+    fireEvent.click(screen.getByRole("button", { name: "영상 재생 속도 도구" }));
     fireEvent.click(screen.getByRole("button", { name: "1.5배" }));
 
     await waitFor(() => expect(onFormatChange).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -285,18 +284,18 @@ describe("화면 2차 편집실 계약", () => {
 
   it("FE6-EDIT-05 거절: 음악 백엔드가 없을 때 파일이나 파형을 완성된 것처럼 표시하지 않는다", () => {
     render(<EditRoom lines={["나레이션"]} onLinesChange={vi.fn()} kind="audio" />);
-    expect(screen.getByText("음악 생성 백엔드는 준비 중입니다")).toBeInTheDocument();
+    expect(screen.getByText("음악 파일 생성은 아직 제공하지 않습니다. 지금은 나레이션 대사만 편집할 수 있습니다.")).toBeInTheDocument();
     expect(document.querySelector("[data-edit-stage]")).not.toBeInTheDocument();
     expect(document.querySelector("[data-edit-tools]")).not.toBeInTheDocument();
   });
 
-  it("QA-EDIT-06 정상: 글 형식은 카드뉴스가 아니라 글 목차와 문단 편집기로 전환된다", () => {
+  it("QA-EDIT-06 정상: 글 형식은 카드뉴스가 아니라 글 문단과 연속 문서 편집기로 전환된다", () => {
     render(<EditRoom lines={["첫 문단", "둘째 문단"]} onLinesChange={vi.fn()} kind="text" />);
 
     expect(document.querySelector('[data-edit-kind="text"]')).toBeInTheDocument();
-    expect(document.querySelector("[data-edit-outline]")).toHaveAttribute("aria-label", "글 목차");
-    expect(screen.getByRole("region", { name: "글 미리보기" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "문단 1" })).toBeInTheDocument();
-    expect(document.querySelector('[data-room-top="edit"]')).toHaveTextContent("2개 문단");
+    expect(document.querySelector("[data-edit-outline]")).toHaveAttribute("aria-label", "글 문단");
+    expect(screen.getByRole("textbox", { name: "글 전체" })).toHaveValue("첫 문단\n\n둘째 문단");
+    expect(screen.queryByRole("textbox", { name: "문단 1" })).not.toBeInTheDocument();
+    expect(screen.getByText("공백 포함 11자 · 문단 2개")).toBeInTheDocument();
   });
 });

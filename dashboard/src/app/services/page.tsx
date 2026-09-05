@@ -59,7 +59,7 @@ export default function ServicesPage() {
 
   if (loading) {
     return (
-      <div className="p-region text-subtle">tenants 로드 중...</div>
+      <div className="p-region text-subtle">고객 목록 불러오는 중...</div>
     );
   }
 
@@ -67,7 +67,7 @@ export default function ServicesPage() {
     return (
       <div className="p-region text-subtle">
         <h1 className="text-subheading text-muted mb-pad-inset">전체 서비스</h1>
-        <p className="text-danger mb-stack-tight">tenants 로드 실패: {error}</p>
+        <p className="text-danger mb-stack-tight">고객 목록을 불러오지 못했습니다: {error}</p>
         <p className="text-body-sm">
           fork-only data 파일이 박혀있는지 확인. <code className="text-warning">data/tenants.json</code>
         </p>
@@ -79,8 +79,8 @@ export default function ServicesPage() {
     return (
       <div className="p-region text-subtle">
         <h1 className="text-subheading text-muted mb-pad-inset">전체 서비스</h1>
-        <p className="mb-stack">등록된 tenants가 없습니다.</p>
-        <p className="text-body-sm mb-stack-tight">fork에서 <code className="text-warning">data/tenants.json</code> 박기:</p>
+        <p className="mb-stack">등록된 고객이 없습니다.</p>
+        <p className="text-body-sm mb-stack-tight">분리 배포에서 <code className="text-warning">data/tenants.json</code> 추가:</p>
         <pre className="bg-surface p-stack text-caption text-muted rounded-chip">{`{
   "tenants": [
     {

@@ -62,3 +62,14 @@ DO $$ BEGIN
     EXECUTE 'DROP POLICY IF EXISTS tenant_iso ON oauth_credential_audit';
   END IF;
 END $$;
+
+-- 접속 이력은 인증 경계와 운영자만 읽고 쓴다. 테넌트별 고객 API에는 공개하지 않는다.
+-- table owner/BYPASSRLS 운영 연결은 사용하고, withTenant가 강등되는 osmu_service는 권한을 회수한다.
+DO $$ BEGIN
+  IF to_regclass('public.tenant_access_events') IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE tenant_access_events ENABLE ROW LEVEL SECURITY';
+    EXECUTE 'ALTER TABLE tenant_access_events NO FORCE ROW LEVEL SECURITY';
+    EXECUTE 'DROP POLICY IF EXISTS tenant_iso ON tenant_access_events';
+    EXECUTE 'REVOKE ALL ON tenant_access_events FROM osmu_service';
+  END IF;
+END $$;

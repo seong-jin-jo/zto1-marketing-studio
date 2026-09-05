@@ -137,7 +137,7 @@ export default function BlogPage() {
     <div className="px-region py-stack-section">
       <div className="flex items-center justify-between mb-stack-section">
         <div>
-          <h2 className="text-subheading font-bold text-text">Blog</h2>
+          <h2 className="text-subheading font-bold text-text">블로그</h2>
           <p className="text-caption text-subtle mt-micro">학생/학부모 대상 SEO 칼럼 자동화</p>
         </div>
         <div className="flex gap-stack-tight">
@@ -159,13 +159,13 @@ export default function BlogPage() {
           <details className="card p-pad-inset mb-stack-section">
             <summary className="text-body-sm font-medium text-muted cursor-pointer">SEO 콘텐츠 자동화 플로우</summary>
             <div className="mt-stack text-caption text-subtle space-y-stack-tight">
-              <div className="flex items-start gap-stack-tight"><span className="text-accent font-bold">1.</span><div><strong className="text-muted">키워드 수집</strong>. Keyword Planner에서 검색량 높은 키워드를 찾아 Blog Keywords에 추가</div></div>
-              <div className="flex items-start gap-stack-tight"><span className="text-accent font-bold">2.</span><div><strong className="text-muted">트렌드 확인</strong>. Naver Trends에서 시즌 키워드 파악 (시험, 방학 등)</div></div>
-              <div className="flex items-start gap-stack-tight"><span className="text-accent font-bold">3.</span><div><strong className="text-muted">콘텐츠 생산</strong>. AI가 Blog Keywords + Content Guide 기반으로 칼럼 draft 자동 생성</div></div>
-              <div className="flex items-start gap-stack-tight"><span className="text-accent font-bold">4.</span><div><strong className="text-muted">검수 + 발행</strong>. Queue에서 draft 확인 → 클릭하여 수정 → Approve → 블로그에 자동 발행</div></div>
+              <div className="flex items-start gap-stack-tight"><span className="text-accent font-bold">1.</span><div><strong className="text-muted">키워드 수집</strong>. 키워드 찾기에서 검색량 높은 키워드를 찾아 블로그 키워드에 추가</div></div>
+              <div className="flex items-start gap-stack-tight"><span className="text-accent font-bold">2.</span><div><strong className="text-muted">트렌드 확인</strong>. 네이버 트렌드에서 시즌 키워드 파악 (시험, 방학 등)</div></div>
+              <div className="flex items-start gap-stack-tight"><span className="text-accent font-bold">3.</span><div><strong className="text-muted">콘텐츠 생산</strong>. AI가 블로그 키워드와 콘텐츠 지침을 바탕으로 칼럼 초안을 자동 생성</div></div>
+              <div className="flex items-start gap-stack-tight"><span className="text-accent font-bold">4.</span><div><strong className="text-muted">검수 + 발행</strong>. 대기 목록에서 초안을 확인하고 수정한 뒤 승인하면 블로그에 자동 발행</div></div>
               <div className="flex items-start gap-stack-tight"><span className="text-accent font-bold">5.</span><div><strong className="text-muted">검색 노출</strong>. Search Console에서 색인 요청 → 검색 노출</div></div>
-              <div className="flex items-start gap-stack-tight"><span className="text-accent font-bold">6.</span><div><strong className="text-muted">결과 분석</strong>. Blog Performance에서 조회수 + 검색 클릭 추적</div></div>
-              <p className="text-caption text-subtle mt-stack-tight border-t border-border pt-stack-tight">Settings 탭에서 Content Guide와 Keywords를 수정하세요.</p>
+              <div className="flex items-start gap-stack-tight"><span className="text-accent font-bold">6.</span><div><strong className="text-muted">결과 분석</strong>. 블로그 성과에서 조회수와 검색 클릭 추적</div></div>
+              <p className="text-caption text-subtle mt-stack-tight border-t border-border pt-stack-tight">설정 탭에서 콘텐츠 지침과 키워드를 수정하세요.</p>
             </div>
           </details>
 
@@ -176,7 +176,7 @@ export default function BlogPage() {
                 <span className="text-body-sm font-medium text-muted">추천 키워드</span>
                 <a href="/keyword-planner" className="text-caption text-accent hover:text-accent">더 많은 키워드 찾기 →</a>
               </div>
-              <p className="text-caption text-subtle mb-stack-tight">Keyword Bank에서 수집된 미사용 키워드입니다.</p>
+              <p className="text-caption text-subtle mb-stack-tight">키워드 목록에서 수집된 미사용 키워드입니다.</p>
               <div className="flex flex-wrap gap-stack-tight">
                 {bank.slice(0, 10).map((k) => (
                   <span key={k.keyword} className="inline-flex items-center gap-micro px-stack-tight py-micro rounded-pill text-caption border border-accent bg-accent-soft text-accent">
@@ -207,11 +207,11 @@ export default function BlogPage() {
                       <span className={`text-caption px-stack-tight py-micro rounded-chip ${STATUS_CLASS[p.status] || "bg-surface-2 text-muted"}`}>{p.status}</span>
                       {p.seoKeyword && <span className="text-caption px-stack-tight py-micro rounded-chip bg-accent/40 text-accent">{p.seoKeyword}</span>}
                       {p.blogPostUrl && (
-                        <a href={p.blogPostUrl} target="_blank" rel="noopener noreferrer" className="text-caption text-accent hover:underline" onClick={(e) => e.stopPropagation()}>View →</a>
+                        <a href={p.blogPostUrl} target="_blank" rel="noopener noreferrer" className="text-caption text-accent hover:underline" onClick={(e) => e.stopPropagation()}>보기 →</a>
                       )}
                     </div>
                     <div className="flex items-center gap-stack-tight">
-                      {p.viewCount != null && <span className="text-caption text-subtle">views: {p.viewCount}</span>}
+                      {p.viewCount != null && <span className="text-caption text-subtle">조회: {p.viewCount}</span>}
                       <span className="text-caption text-subtle">{p.generatedAt?.split("T")[0] || ""}</span>
                     </div>
                   </div>
@@ -246,7 +246,7 @@ export default function BlogPage() {
       {tab === "editor" && (
         editingPost ? (
           <div className="space-y-pad-inset">
-            <button onClick={() => { setEditingPost(null); setTab("queue"); }} className="text-subtle hover:text-muted text-caption">← Queue로 돌아가기</button>
+            <button onClick={() => { setEditingPost(null); setTab("queue"); }} className="text-subtle hover:text-muted text-caption">← 대기 목록으로 돌아가기</button>
             <div className="flex items-center gap-stack-tight mb-stack-tight">
               <span className={`text-caption px-stack-tight py-micro rounded-chip ${STATUS_CLASS[editingPost.status] || "bg-surface-2 text-muted"}`}>{editingPost.status}</span>
               <span className="text-caption text-subtle">{editingPost.id.slice(0, 8)}</span>
@@ -270,15 +270,15 @@ export default function BlogPage() {
             <div className="flex gap-stack-tight">
               <button onClick={handleSaveEdit} className="px-pad-inset py-stack-tight text-body-sm bg-accent text-accent-fg rounded-chip hover:bg-accent-hover">저장</button>
               {editingPost.status === "draft" && (
-                <button onClick={async () => { await handleSaveEdit(); await handleApprove(editingPost.id); }} className="px-pad-inset py-stack-tight text-body-sm bg-success text-status-fg rounded-chip hover:bg-success">저장 + Approve</button>
+                <button onClick={async () => { await handleSaveEdit(); await handleApprove(editingPost.id); }} className="px-pad-inset py-stack-tight text-body-sm bg-success text-status-fg rounded-chip hover:bg-success">저장 후 승인</button>
               )}
               <button onClick={() => { setEditingPost(null); setTab("queue"); }} className="px-pad-inset py-stack-tight text-body-sm bg-surface-2 text-muted rounded-chip">취소</button>
             </div>
           </div>
         ) : (
           <div className="card p-region text-center">
-            <p className="text-subtle text-body-sm">Queue에서 글을 클릭하여 편집하세요.</p>
-            <button onClick={() => setTab("queue")} className="mt-stack px-pad-inset py-stack-tight text-caption bg-surface-2 text-muted rounded-chip hover:bg-surface-2">Queue로 가기</button>
+            <p className="text-subtle text-body-sm">대기 목록에서 글을 클릭하여 편집하세요.</p>
+            <button onClick={() => setTab("queue")} className="mt-stack px-pad-inset py-stack-tight text-caption bg-surface-2 text-muted rounded-chip hover:bg-surface-2">대기 목록으로 가기</button>
           </div>
         )
       )}
@@ -289,7 +289,7 @@ export default function BlogPage() {
           {/* Content Guide */}
           <div className="card p-pad-inset">
             <div className="flex items-center justify-between mb-stack">
-              <span className="text-body-sm font-medium text-text">Content Guide</span>
+              <span className="text-body-sm font-medium text-text">콘텐츠 지침</span>
               <span className="text-caption text-subtle">학생/학부모 대상 콘텐츠 전략</span>
             </div>
             <textarea
@@ -304,12 +304,12 @@ export default function BlogPage() {
           {/* SEO Keywords */}
           <div className="card p-pad-inset">
             <div className="flex items-center justify-between mb-stack">
-              <span className="text-body-sm font-medium text-text">Blog SEO Keywords</span>
+              <span className="text-body-sm font-medium text-text">블로그 검색 키워드</span>
               <span className="text-caption text-subtle">학생/학부모 검색어</span>
             </div>
             {bank.length > 0 && (
               <div className="mb-stack p-stack rounded-chip bg-accent-soft border border-accent">
-                <p className="text-caption text-accent mb-stack-tight">Keyword Bank ({bank.length}개). 클릭하여 추가</p>
+                <p className="text-caption text-accent mb-stack-tight">키워드 목록 ({bank.length}개). 클릭하여 추가</p>
                 <div className="flex flex-wrap gap-micro">
                   {bank.map((k) => (
                     <button

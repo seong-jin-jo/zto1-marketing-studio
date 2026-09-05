@@ -177,7 +177,12 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
   instagram: {
     label: "instagram",
     authorizeUrl: "https://www.instagram.com/oauth/authorize",
-    scopes: ["instagram_business_basic", "instagram_business_content_publish", "instagram_business_manage_insights", "instagram_business_manage_comments"],
+    scopes: [
+      "instagram_business_basic",
+      "instagram_business_content_publish",
+      "instagram_business_manage_comments",
+      // 쓰는 화면이 없어 첫 심사 범위에서 제외한다. 인사이트 화면 구현 후 2차 제출에 추가한다.
+    ],
     appIdEnv: "IG_APP_ID",
     appSecretEnv: "IG_APP_SECRET",
     tokenUrl: "https://api.instagram.com/oauth/access_token",

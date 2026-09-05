@@ -23,7 +23,7 @@ vi.mock("@/lib/db", () => ({
     const sql = Object.assign(
       (strings: TemplateStringsArray, ..._vals: unknown[]) => {
         const query = Array.from(strings).join(" ");
-        if (query.includes("SELECT DISTINCT ON (provider)")) {
+        if (query.includes("provider = ANY") && query.includes("is_default = true")) {
           const derived = H.rows.map((row) => ({
             provider: row.label,
             status: "active",

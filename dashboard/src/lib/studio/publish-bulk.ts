@@ -50,12 +50,6 @@ export function spreadHashtags(raw: string, platforms: readonly BulkPlatform[]):
   return Object.fromEntries(platforms.map((platform) => [platform, hashtagsForPlatform(tags, platform)]));
 }
 
-/** 표시 이름 하나를 일곱 자리 전부에 붙인다. */
-export function spreadDisplayName(name: string, platforms: readonly BulkPlatform[]): Record<string, string> {
-  const trimmed = (name ?? "").trim();
-  return Object.fromEntries(platforms.map((platform) => [platform, trimmed]));
-}
-
 /**
  * 한도를 넘긴 곳만 줄인다. 넘지 않은 곳은 손대지 않는다.
  * 잘렸다는 사실이 화면에서 보이도록 줄임표를 남긴다.
@@ -86,7 +80,6 @@ export type PublishCommand =
   | { kind: "exclude"; platform: BulkPlatform }
   | { kind: "onlyOne"; platform: BulkPlatform }
   | { kind: "unifyHashtags" }
-  | { kind: "unifyDisplayName" }
   | { kind: "trimOverLimit" }
   | { kind: "schedule" }
   | { kind: "requestReview" }
@@ -128,7 +121,6 @@ export function parsePublishCommand(raw: string): PublishCommand {
   if (/(전부|전체|모두|다)\s*(해제|끄|빼)/.test(text)) return { kind: "clearAll" };
   if (/(전부|전체|모두|일곱|7곳|다)/.test(text) && /(선택|올|발행|켜|고르)/.test(text)) return { kind: "selectAll" };
   if (/해시태그|태그/.test(text)) return { kind: "unifyHashtags" };
-  if (/표시\s*이름|계정\s*이름|닉네임/.test(text)) return { kind: "unifyDisplayName" };
   if (/(길이|한도|글자|넘)/.test(text) && /(줄|맞|자르)/.test(text)) return { kind: "trimOverLimit" };
   if (/예약|시간|일정|내일|시로/.test(text)) return { kind: "schedule" };
   if (/검토|승인\s*인박스/.test(text)) return { kind: "requestReview" };

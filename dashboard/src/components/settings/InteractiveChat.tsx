@@ -30,7 +30,7 @@ export function InteractiveChat({ chatChannels }: InteractiveChatProps) {
 
   return (
     <div className="card p-stack-section">
-      <h3 className="text-body-sm font-medium text-muted mb-stack">Interactive Chat</h3>
+      <h3 className="text-body-sm font-medium text-muted mb-stack">대화형 채팅</h3>
       <p className="text-caption text-subtle mb-stack">
         봇으로 Agent와 대화 &mdash; &quot;이번 주 성과 보여줘&quot;, &quot;다음 글 승인해&quot;, &quot;X에 글 올려&quot;
       </p>
@@ -100,7 +100,7 @@ export function InteractiveChat({ chatChannels }: InteractiveChatProps) {
           </div>
         </div>
       ) : (
-        <p className="text-caption text-subtle">Loading...</p>
+        <p className="text-caption text-subtle">불러오는 중...</p>
       )}
     </div>
   );

@@ -90,16 +90,27 @@ describe("회장 2차 실사용 피드백 생성실", () => {
     expect(screen.queryByText("말 거는 대상")).toBeNull();
   });
 
-  it("항목 15 거절: 생성실을 다시 열면 저장하지 않은 질문 진행 상태를 복원하지 않는다", () => {
-    localStorage.setItem("studio_work:11111111-1111-4111-8111-111111111111", JSON.stringify({ idea: "남아 있으면 안 되는 주제", createBranch: "video" }));
+  it("V77-CREATE-PERSIST-01 정상: 생성실을 다시 열면 질문 진행 상태와 선택 형식을 복원한다", async () => {
     const first = render(<CreateRoom {...createProps} />);
     fireEvent.click(screen.getByRole("button", { name: "영상" }));
     fireEvent.click(screen.getByRole("button", { name: "다음" }));
     expect(document.querySelector('[data-create-question="purpose"]')).toBeInTheDocument();
+    await waitFor(() => expect(localStorage.getItem("studio_create_state:11111111-1111-4111-8111-111111111111")).toContain('"questionIndex":1'));
     first.unmount();
     render(<CreateRoom {...createProps} />);
+    expect(document.querySelector('[data-create-question="purpose"]')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "이전 질문" }));
+    expect(screen.getByRole("button", { name: "영상" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("V77-CREATE-PERSIST-02 거절: 깨진 생성실 임시 저장값은 복원하지 않고 지운다", () => {
+    const key = "studio_create_state:11111111-1111-4111-8111-111111111111";
+    localStorage.setItem(key, JSON.stringify({ primaryKind: "모르는 형식", questionIndex: 99 }));
+
+    render(<CreateRoom {...createProps} />);
+
     expect(document.querySelector('[data-create-question="kind"]')).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "영상" })).toHaveAttribute("aria-pressed", "false");
+    expect(localStorage.getItem(key)).not.toContain("모르는 형식");
   });
 
   it("항목 16·17 정상: 규칙 기반 초안과 준비 중 기능을 분리하고 선택 뒤 CTA를 하나만 노출한다", async () => {
@@ -119,7 +130,7 @@ describe("회장 2차 실사용 피드백 생성실", () => {
     await screen.findByRole("button", { name: "A 구조 초안 선택" });
     fireEvent.click(screen.getByRole("button", { name: "A 구조 초안 선택" }));
     expect(screen.getByText(/영상은 대본과 장면 구성까지만 제공하며 렌더링은 아직 지원하지 않습니다/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "선택한 구조 초안을 편집실에서 보기" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "편집실에서 다듬기" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /확정하고 같이 만들기/ })).toBeNull();
   });
 

@@ -21,7 +21,15 @@ describe("SNS-007 multi-account source contracts", () => {
   });
 
   it("workspace changes clear prior account selections", () => {
-    expect(source("app/studio/page.tsx")).toMatch(/useEffect\(\(\) => \{\s*setSelectedAccounts\(\{\}\)/);
+    // 작업 공간이 바뀌면 계정 선택이 비워지는지를 본다. 예전 정규식은 이 초기화가
+    // useEffect 의 첫 문장일 것까지 요구해서, 같은 effect 안에서 순서만 바뀌어도 깨졌다
+    // (2026-09-02 v67 리팩터에서 실제로 깨졌고 동작 자체는 그대로였다).
+    // 정규식으로 effect 시작점을 고정하면 문장 순서에 다시 묶인다. useEffect 단위로 쪼갠 뒤
+    // 작업 공간을 읽는 블록을 골라, 그 안에 초기화가 있는지만 본다.
+    const studioBlocks = source("app/studio/page.tsx").split("useEffect((");
+    const workspaceBlock = studioBlocks.find((block) => block.includes("const workspaceId = activeWorkspace?.id"));
+    expect(workspaceBlock, "작업 공간 변경 effect를 찾지 못했다").toBeDefined();
+    expect(workspaceBlock!).toContain("setSelectedAccounts({})");
     expect(source("components/studio/SchedulePanel.tsx")).toMatch(/useEffect\(\(\) => \{\s*setSelectedAccounts\(\{\}\)/);
     expect(source("app/videos/page.tsx")).toMatch(/setPublishAccountId\(""\)[\s\S]*activeWorkspace\?\.id/);
   });

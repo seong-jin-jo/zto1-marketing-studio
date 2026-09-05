@@ -106,7 +106,7 @@ export function DesignToolsSettings() {
 
   return (
     <>
-      <p className="text-caption text-subtle mb-pad-inset">Instagram 카드뉴스를 전문 툴에서 리터치 후 가져오기. 연결하면 Create 탭에서 &quot;편집&quot; 버튼이 활성화됩니다.</p>
+      <p className="text-caption text-subtle mb-pad-inset">Instagram 카드뉴스를 전문 도구에서 보정한 뒤 가져옵니다. 연결하면 생성 탭에서 &quot;편집&quot; 버튼이 활성화됩니다.</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-stack-section">
         {/* Canva */}
         <div className="card p-stack-section">
@@ -150,7 +150,7 @@ export function DesignToolsSettings() {
             </details>
           </div>
           <div className="flex items-center justify-between mb-stack-tight">
-            <span className="text-caption text-subtle">Credentials</span>
+            <span className="text-caption text-subtle">인증 정보</span>
             {canvaConnected && !editingCanva && (
               <button onClick={() => setEditingCanva(true)} className="text-caption text-accent hover:text-accent">수정</button>
             )}
@@ -255,7 +255,7 @@ export function DesignToolsSettings() {
             </details>
           </div>
           <div className="flex items-center justify-between mb-stack-tight">
-            <span className="text-caption text-subtle">Credentials</span>
+            <span className="text-caption text-subtle">인증 정보</span>
             {figmaConnected && !editingFigma && (
               <button onClick={() => setEditingFigma(true)} className="text-caption text-accent hover:text-accent">수정</button>
             )}

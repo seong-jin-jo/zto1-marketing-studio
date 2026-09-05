@@ -164,7 +164,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
       ? new Date(Date.now() + tok.expiresInSeconds * 1000).toISOString()
       : null;
 
-    const { id: accountId, isDefault } = await upsertChannelAccount({
+    const { id: accountId, isDefault, reconnected } = await upsertChannelAccount({
       tenantId,
       provider,
       externalId: identity.externalId,
@@ -181,7 +181,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
     // 기본계정의 토큰을 덮어쓰면 안 된다(요구사항 2). isDefault=true일 때만 동기화.
     if (isDefault) await syncLegacyIntegration(tenantId, provider, accountId);
 
-    return resultHtml(`${cfg.label} 연결 완료!`, "이 창을 닫고 대시보드로 돌아가세요.", { provider, ok: true, origin });
+    const title = reconnected ? `${cfg.label} 연결 새로 고침` : `${cfg.label} 연결 완료`;
+    const message = reconnected
+      ? "연결을 새로 고쳤습니다. 이 창을 닫고 대시보드로 돌아가세요."
+      : "이 창을 닫고 대시보드로 돌아가세요.";
+    return resultHtml(title, message, { provider, ok: true, origin });
   } catch (e) {
     // 진단(2026-08-14 회장 재연결 실패 추적): 신원검증/저장 예외 사유 기록(토큰 미포함). 원인 확정 후 제거.
     console.error("[connect-callback][catch]", provider, e instanceof Error ? e.message : String(e));

@@ -45,11 +45,10 @@ export async function getChannelConnectionStates(
 ): Promise<Record<string, ChannelConnectionState>> {
   if (!tenantId || providers.length === 0) return {};
   const rows = await withTenant(tenantId, (sql) => sql<ConnectionRow[]>`
-    SELECT DISTINCT ON (provider) provider, status, token_expires_at,
+    SELECT provider, status, token_expires_at,
            (refresh_enc IS NOT NULL) AS has_refresh
     FROM channel_accounts
-    WHERE tenant_id = ${tenantId} AND provider = ANY(${providers})
-    ORDER BY provider, is_default DESC, created_at DESC`);
+    WHERE tenant_id = ${tenantId} AND provider = ANY(${providers}) AND is_default = true`);
   const out: Record<string, ChannelConnectionState> = {};
   for (const p of providers) out[p] = "disconnected";
   for (const r of rows) {

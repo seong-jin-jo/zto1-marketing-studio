@@ -4,7 +4,7 @@ import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OperatorCustomersPage from "@/app/operator/customers/page";
-import { fetcher } from "@/lib/api";
+import { apiDelete, apiPost, fetcher } from "@/lib/api";
 import { setAuthToken } from "@/lib/auth";
 
 const mocks = vi.hoisted(() => ({
@@ -59,6 +59,31 @@ describe("operator GET authentication handling", () => {
 
     window.removeEventListener("auth:customer-reauth-required", onCustomerReauth);
     window.removeEventListener("auth:required", onManualToken);
+  });
+
+  it.each([
+    ["승인 요청", () => apiPost("/api/queue/draft-1/approve", { hours: 0 })],
+    ["삭제 요청", () => apiDelete("/api/images/image-1")],
+  ])("V71-AUTH-04 거절: %s의 401도 성공값으로 삼키지 않고 인증 오류를 올린다", async (_label, request) => {
+    window.history.replaceState(null, "", "/inbox");
+    const jwt = `${"a".repeat(24)}.${"b".repeat(24)}.${"c".repeat(24)}`;
+    localStorage.setItem("dashboard_auth_token", jwt);
+    const onCustomerReauth = vi.fn();
+    window.addEventListener("auth:customer-reauth-required", onCustomerReauth);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+
+    await expect(request()).rejects.toMatchObject({ name: "AuthRequiredError" });
+    expect(onCustomerReauth).toHaveBeenCalledTimes(1);
+
+    window.removeEventListener("auth:customer-reauth-required", onCustomerReauth);
+  });
+
+  it("V71-AUTH-05 정상: 승인 요청 성공 응답은 기존 결과를 그대로 반환한다", async () => {
+    window.history.replaceState(null, "", "/inbox");
+    localStorage.setItem("dashboard_auth_token", "valid-operator-token");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ok: true })));
+
+    await expect(apiPost("/api/queue/draft-1/approve", { hours: 0 })).resolves.toEqual({ ok: true });
   });
 
   it("stale customer JWT 401 cannot reauthenticate or clear a newer customer session", async () => {
