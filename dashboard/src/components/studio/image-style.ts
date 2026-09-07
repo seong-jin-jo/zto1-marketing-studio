@@ -50,6 +50,33 @@ export const CUSTOM_STYLE_ID = "custom";
  * 마지막으로 조인다. 브랜드 색은 고객이 학습 정보에서 이미 골라 둔 값인데 종전에는 그림
  * 생성에 한 번도 쓰이지 않았다. 골라 둔 것이 결과에 안 나타나면 고른 의미가 없다.
  */
+/**
+ * 학습 정보의 브랜드 색 카드를 생성기가 알아듣는 색 이름으로 옮긴다.
+ *
+ * 2026-09-08 실측: 카드에 저장된 값은 "그린·크림. 예: 그린과 크림을 중심으로 편안하고
+ * 자연스럽게 표현합니다." 같은 한국어 문장이다. 그것을 그대로 지시문에 넣었더니 생성기가
+ * 그 말을 **그림 안에 글자로 그렸다**. 결과 이미지 상단에 "Grein · Cram" 같은 뭉개진
+ * 글자와 뜻 없는 한자가 박혀 나왔다. 그림 생성기는 지시문에 있는 낱말을 그림 속 글자로
+ * 옮기는 성질이 있다. 색을 말할 때는 색 이름만 말한다.
+ */
+const PALETTE_COLORS: readonly { match: RegExp; colors: string }[] = [
+  { match: /네이비|navy/i, colors: "navy and white" },
+  { match: /블랙|black/i, colors: "black and white" },
+  { match: /그린|green/i, colors: "sage green and cream" },
+  { match: /블루|blue/i, colors: "blue and light gray" },
+  { match: /오렌지|베이지|orange|beige/i, colors: "warm orange and beige" },
+];
+
+export function paletteToColors(palette?: string): string {
+  const value = (palette || "").trim();
+  if (!value) return "";
+  const hit = PALETTE_COLORS.find((one) => one.match.test(value));
+  return hit ? hit.colors : "";
+}
+
+/** 그림 안에 글자가 박히지 않게 하는 지시. 카드뉴스 글자는 편집실이 얹는다. */
+const NO_TEXT = "no text, no lettering, no watermark, no logo";
+
 export function buildImagePrompt(
   base: string,
   style: { id: string; custom?: string } | null,
@@ -65,7 +92,8 @@ export function buildImagePrompt(
       if (found) parts.push(found.prompt);
     }
   }
-  const brand = (palette || "").trim();
-  if (brand) parts.push(`brand color feel: ${brand}`);
+  const colors = paletteToColors(palette);
+  if (colors) parts.push(`color palette: ${colors}`);
+  parts.push(NO_TEXT);
   return parts.join(". ");
 }
