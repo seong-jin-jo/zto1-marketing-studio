@@ -566,7 +566,15 @@ export default function StudioPage() {
     setLastError(null);
     try {
       const r = await apiPost<ImgResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/image", { prompt, aspectRatio, label: idea, tenant_id: activeWorkspace.id });
-      if (!r?.ok) { const msg = r?.credits ? "Higgsfield 크레딧 부족" : r?.nsfw ? "Higgsfield NSFW 차단" : (r?.error || "이미지 실패"); setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null; }
+      if (!r?.ok) {
+        // 문구는 회장이 읽는 말로 쓴다. 생성기 이름과 영어 용어는 화면에 내지 않는다.
+        const msg = r?.credits
+          ? "이미지 생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다."
+          : r?.nsfw
+            ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요."
+            : (r?.error || "이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
+      }
       setImg(r); mutateAcct(); return r;
     } catch (e) {
       // 2026-09-08 실측: 생성기가 막은 주제였는데 화면에는 "Request failed: 502" 만 떴다.
@@ -590,7 +598,14 @@ export default function StudioPage() {
     const narration = [s?.hook, s?.body, s?.cta].filter(Boolean).join(". ");
     try {
       const r = await apiPost<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { localPath, prompt: "subtle idle motion, gentle glow, fixed camera", model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
-      if (!r?.ok) { const msg = r?.nsfw ? "Higgsfield NSFW 차단" : r?.credits ? "Higgsfield 크레딧 부족" : (r?.error || "영상 실패"); setLastError(`영상: ${msg}`); showToast(msg, "error"); return null; }
+      if (!r?.ok) {
+        const msg = r?.nsfw
+          ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요."
+          : r?.credits
+            ? "영상 생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다."
+            : (r?.error || "영상을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
+      }
       setVid(r); mutateAcct(); return r;
     } catch (e) {
       const msg = extractApiErrorMessage(e, "영상 생성 실패");
