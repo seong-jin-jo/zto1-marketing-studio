@@ -54,6 +54,18 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * 배달 경로(api/media/[token])가 쓰는 것과 같은 두 곳을 같은 순서로 본다. 한쪽만 보면
  * 못 찾는다는 사실이 두 곳에 따로 적혀 있으면 다음에 또 어긋난다.
  */
+// 2026-09-07 회장 계정 실측으로 드러난 것: 제공자 실패를 502 로 돌려주면 사용자는 이유를
+// 영영 못 본다. 우리 앞에 리버스 프록시(Cloudflare 터널)가 있어서, 원본이 502 를 내면
+// 프록시가 우리 JSON 본문을 자기 HTML 오류 페이지로 갈아치운다. 실제로 릴스 발행을
+// 시험했을 때 화면에 남은 것은 "<!DOCTYPE html>" 뿐이었고, 그 때문에 이것이 코드가 죽은
+// 것인지 제공자가 거절한 것인지조차 구분할 수 없었다.
+//
+// 502 는 "게이트웨이가 상류에서 잘못된 응답을 받았다"는 뜻이라 프록시가 개입할 여지를 준다.
+// 우리가 하려는 말은 "요청은 정상적으로 처리했고 제공자가 거절했다" 이므로 그 뜻에 맞는
+// 502 아닌 상태로 답한다. 그래야 우리가 쓴 문구가 사용자 화면까지 살아서 간다.
+// 같은 이유로 /api/publish 는 제공자 실패를 HTTP 200 + ok:false 로 돌려준다(그 라우트의 계약 테스트).
+const PROVIDER_FAILED = 200;
+
 function resolveVideoPath(tenantId: string, filename: string): string | null {
   const dirs: string[] = [dataPath("videos")];
   try {
@@ -227,22 +239,22 @@ export async function POST(request: Request) {
         });
         if (!uploadRes.ok) {
           return Response.json(
-            { error: `YouTube 영상 업로드 실패 (오류 코드 ${uploadRes.status}).` },
-            { status: 502 },
+            { ok: false, error: `YouTube 영상 업로드 실패 (오류 코드 ${uploadRes.status}).` },
+            { status: PROVIDER_FAILED },
           );
         }
         let result: unknown;
         try {
           result = await uploadRes.json();
         } catch {
-          return Response.json({ error: "YouTube 업로드 응답을 확인할 수 없습니다." }, { status: 502 });
+          return Response.json({ ok: false, error: "YouTube 업로드 응답을 확인할 수 없습니다." }, { status: PROVIDER_FAILED });
         }
         const videoId =
           result && typeof result === "object" && typeof (result as { id?: unknown }).id === "string"
             ? (result as { id: string }).id.trim()
             : "";
         if (!videoId) {
-          return Response.json({ error: "YouTube 업로드 결과에 영상 ID가 없습니다." }, { status: 502 });
+          return Response.json({ ok: false, error: "YouTube 업로드 결과에 영상 ID가 없습니다." }, { status: PROVIDER_FAILED });
         }
 
         return Response.json({
@@ -413,7 +425,7 @@ export async function POST(request: Request) {
             UPDATE published_posts SET status = 'failed', error = ${"TikTok 발행 요청 실패"}
              WHERE id = ${reservationId}::uuid AND tenant_id = ${tenantId}::uuid`);
         } catch { /* 기록 실패가 provider 오류를 노출하지 않는다 */ }
-        return Response.json({ error: "TikTok이 발행 요청을 거부했습니다. 앱 권한과 계정 상태를 확인해주세요." }, { status: 502 });
+        return Response.json({ ok: false, error: "TikTok이 발행 요청을 거부했습니다. 앱 권한과 계정 상태를 확인해주세요." }, { status: PROVIDER_FAILED });
       }
 
       try {
@@ -627,7 +639,7 @@ export async function POST(request: Request) {
             UPDATE published_posts SET status = 'failed', error = ${"발행 중 예기치 못한 오류"}
              WHERE id = ${reservationId}::uuid AND tenant_id = ${tenantId}::uuid`);
         } catch { /* 기록 실패가 응답을 바꾸지 않는다 */ }
-        return Response.json({ ok: false, error: "Reels 발행에 실패했습니다." }, { status: 502 });
+        return Response.json({ ok: false, error: "Reels 발행에 실패했습니다." }, { status: PROVIDER_FAILED });
       }
 
       try {
@@ -645,7 +657,7 @@ export async function POST(request: Request) {
 
       if (!result.ok) {
         // publishInstagramReels의 에러는 이미 프로바이더 원문을 담지 않는 고정 문구다.
-        return Response.json({ ok: false, error: result.error || "Reels 발행에 실패했습니다." }, { status: 502 });
+        return Response.json({ ok: false, error: result.error || "Reels 발행에 실패했습니다." }, { status: PROVIDER_FAILED });
       }
       return Response.json({
         ok: true,
