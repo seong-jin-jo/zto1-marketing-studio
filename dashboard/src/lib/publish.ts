@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
 import { withTenant } from "@/lib/db";
-import { getSelectedChannelAccountCred } from "@/lib/channel-accounts";
+// 발행 직전에 만료된 토큰을 갱신 토큰으로 되살린다. 종전에는 만료된 계정이 조용히
+// 사라져 "연결된 계정이 없다"로 끝났고, 회장이 하루에 몇 번씩 손으로 다시 연결해야 했다
+// (2026-09-07 X 실측). 연결은 한 번 하고 유지는 우리가 한다.
+import { getSelectedChannelAccountCredFresh as getSelectedChannelAccountCred } from "@/lib/channel-accounts";
 import { CHANNEL_TEXT_LIMITS, countTextCharacters } from "@/lib/channel-text-limits";
 import { validatePlatformPublish } from "@/lib/studio/platform-publish-fields";
 

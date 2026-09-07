@@ -420,3 +420,71 @@ export async function channelAccountBelongsToProvider(
       AND (token_expires_at > now() OR (token_expires_at IS NULL AND ${!DEFAULT_REQUIRES_EXPIRY.has(provider)}))`);
   return Boolean(row);
 }
+
+/**
+ * 만료됐거나 곧 만료될 접근 토큰을 갱신 토큰으로 되살린 뒤 돌려준다.
+ *
+ * 2026-09-07 회장 계정 실측: X 토큰이 오전에 만료돼 발행실 채널이 통째로 잠겼다.
+ * getSelectedChannelAccountCred 는 만료된 줄을 아예 걸러내므로 갱신 토큰이 있어도
+ * 아무 일도 일어나지 않고 "재연결 필요" 로 끝났다. 연결 상태 판정(channel-connection.ts)은
+ * 갱신 토큰이 있으면 connected 로 보게 되어 있는데 실제로 갱신하는 손이 없어서, 화면은
+ * 연결됐다고 하고 발행은 안 되는 어긋남까지 생겼다.
+ *
+ * 하루에 몇 번씩 다시 연결하게 만드는 발행 도구는 1인 사업가가 쓸 수 없다. 연결은 한 번
+ * 하고 그 뒤로는 우리가 유지한다.
+ *
+ * 만료 5분 전부터 미리 갱신한다. 발행 도중에 만료돼 실패하는 것을 막기 위해서다.
+ * 갱신에 실패하면 옛 자격을 그대로 돌려준다. 판정은 발행 호출이 하고, 그때의 실패 문구가
+ * 재연결을 안내한다. 여기서 조용히 null 로 만들면 이유 없이 사라진 것처럼 보인다.
+ */
+const REFRESH_MARGIN_MS = 5 * 60 * 1000;
+
+export async function getSelectedChannelAccountCredFresh(
+  tenantId: string,
+  provider: string,
+  accountId?: string,
+): Promise<SelectedChannelCred | null> {
+  const key = process.env.OSMU_SECRET_KEY;
+  const [row] = await withTenant(tenantId, (sql) => {
+    const selection = sql<{
+      id: string; token: string | null; refresh_token: string | null;
+      meta: Record<string, unknown> | null; token_expires_at: string | null;
+    }[]>`
+      SELECT id,
+             CASE WHEN secret_enc <> '' AND ${key ?? ""} <> '' THEN pgp_sym_decrypt(dearmor(secret_enc), ${key ?? ""}) ELSE NULL END AS token,
+             CASE WHEN refresh_enc IS NOT NULL AND ${key ?? ""} <> '' THEN pgp_sym_decrypt(dearmor(refresh_enc), ${key ?? ""}) ELSE NULL END AS refresh_token,
+             meta, token_expires_at
+      FROM channel_accounts
+      WHERE tenant_id = ${tenantId} AND provider = ${provider}
+        AND status = 'active'
+        AND ${accountId ? sql`id = ${accountId}` : sql`is_default = true`}`;
+    return selection;
+  });
+  if (!row || !row.token) return null;
+
+  const meta = row.meta ?? {};
+  const userId = typeof meta.userId === "string" ? meta.userId : undefined;
+  const expiresAt = row.token_expires_at ? Date.parse(row.token_expires_at) : NaN;
+  const stale = Number.isFinite(expiresAt) && expiresAt - REFRESH_MARGIN_MS <= Date.now();
+
+  if (stale && row.refresh_token) {
+    const { refreshAccessToken } = await import("@/lib/social-connect");
+    const refreshed = await refreshAccessToken(provider, row.refresh_token);
+    if (refreshed.accessToken) {
+      const nextExpiry = refreshed.expiresInSeconds
+        ? new Date(Date.now() + refreshed.expiresInSeconds * 1000).toISOString()
+        : null;
+      await withTenant(tenantId, (sql) => sql`
+        UPDATE channel_accounts
+        SET secret_enc = armor(pgp_sym_encrypt(${refreshed.accessToken}, ${key ?? ""})),
+            refresh_enc = CASE WHEN ${refreshed.refreshToken ?? ""} <> ''
+                               THEN armor(pgp_sym_encrypt(${refreshed.refreshToken ?? ""}, ${key ?? ""}))
+                               ELSE refresh_enc END,
+            token_expires_at = COALESCE(${nextExpiry}::timestamptz, token_expires_at)
+        WHERE tenant_id = ${tenantId} AND id = ${row.id}`);
+      return { token: refreshed.accessToken, refreshToken: refreshed.refreshToken ?? row.refresh_token, userId, meta, accountId: row.id };
+    }
+  }
+
+  return { token: row.token, refreshToken: row.refresh_token ?? undefined, userId, meta, accountId: row.id };
+}

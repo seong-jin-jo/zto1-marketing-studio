@@ -639,3 +639,68 @@ export async function exchangeFacebookCode(code: string, origin: string, f: type
   }
   return { accessToken: page.access_token, userId: page.id, expiresInSeconds };
 }
+
+/**
+ * 저장해 둔 갱신 토큰으로 새 접근 토큰을 받아온다.
+ *
+ * 2026-09-07 회장 계정 실측: X 접근 토큰이 오전 7시 36분에 만료돼 발행실 채널이 통째로
+ * 잠겼고, 회장이 손으로 다시 연결해야 했다. 새로 받은 토큰도 유효기간이 7시간이라 그날
+ * 안에 또 끊긴다. 갱신 토큰은 연결할 때부터 암호화해 보관하고 있었는데 그것을 쓰는 코드가
+ * 저장소 어디에도 없었다. 즉 구조는 갱신을 전제로 만들어졌는데 갱신하는 손이 없었다.
+ *
+ * 하루에 몇 번씩 다시 연결하라고 요구하는 발행 도구는 1인 사업가가 쓸 수 없다. 연결은
+ * 한 번 하고 그 뒤로는 우리가 알아서 유지하는 것이 이 제품이 파는 것의 일부다.
+ *
+ * 표준 OAuth 2.0 refresh_token 교부만 다룬다. 인스타그램·스레드는 갱신 토큰이 아니라
+ * 장기 토큰 재교환(60일)을 쓰므로 여기 오지 않는다.
+ */
+export async function refreshAccessToken(
+  providerName: string,
+  refreshToken: string,
+  f: typeof fetch = fetch,
+): Promise<ExchangedToken> {
+  const p = getProvider(providerName);
+  if (!p) return { accessToken: "", error: `unknown provider: ${providerName}` };
+  if (!refreshToken) return { accessToken: "", error: "갱신 토큰이 없습니다" };
+  if (p.longTokenUrl) {
+    return { accessToken: "", error: `${p.label} 은 갱신 토큰 방식이 아닙니다` };
+  }
+  const credentials = await resolveOAuthCredentialSet(providerName);
+  const clientId = credentials?.complete ? credentials.values.clientId || "" : "";
+  const clientSecret = credentials?.complete ? credentials.values.clientSecret || "" : "";
+  if (!clientId || !clientSecret) {
+    return { accessToken: "", error: `${p.label} OAuth 앱 자격증명 미설정 또는 불완전` };
+  }
+
+  const bodyParams: Record<string, string> = {
+    [p.clientIdParam ?? "client_id"]: clientId,
+    client_secret: clientSecret,
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  };
+  // 코드 교환과 같은 이유로 기밀 클라이언트는 Basic 인증을 함께 보낸다(RFC 6749 §2.3.1).
+  const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded" };
+  if (p.pkce && clientSecret) {
+    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
+  }
+
+  const res = await f(p.tokenUrl, {
+    method: "POST",
+    headers,
+    body: new URLSearchParams(bodyParams).toString(),
+  });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  try { data = JSON.parse(text); } catch { data = {}; }
+  const accessToken = (data.access_token as string) || "";
+  if (!res.ok || !accessToken) {
+    const detail = (data.error_description as string) || (data.error as string) || text.slice(0, 200);
+    return { accessToken: "", error: `${p.label} 토큰 갱신 실패: ${detail}` };
+  }
+  return {
+    accessToken,
+    // 제공자가 갱신 토큰을 함께 돌려주면 그것으로 바꾼다. 안 주면 쓰던 것을 계속 쓴다.
+    refreshToken: (data.refresh_token as string) || refreshToken,
+    expiresInSeconds: positiveExpiresIn(data.expires_in),
+  };
+}
