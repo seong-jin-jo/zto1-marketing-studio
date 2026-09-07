@@ -9,6 +9,16 @@ import { hfRun, extractJson, findResultUrl, downloadTo, logGen, recordMediaGener
 // img·video 태그는 인증 헤더를 못 붙인다. 그래서 헤더 인증만 있는 자산 경로로는 화면에
 // 아무것도 안 뜬다. 이미 있는 서명 배달 경로로 돌려준다. 서명이 없으면(비밀 미설정)
 // 종전 자산 경로로 떨어뜨려 최소한 운영자 화면에서는 보이게 한다.
+// 2026-09-08 실측: 생성기가 거절한 요청에 502 로 답했더니, 우리 앞의 리버스 프록시가
+// 우리 JSON 본문을 자기 HTML 오류 페이지로 갈아치웠다. 그래서 화면에는 "Request failed: 502"
+// 나 "Load failed" 만 뜨고 진짜 이유(막힌 주제·잔액 부족)는 한 번도 사용자에게 닿지 못했다.
+// 나조차 재생성 기능이 고장 난 줄 알고 한참을 팠다. 영상 발행 경로에서 같은 이유로 이미
+// 한 번 겪은 일이다.
+//
+// 502 는 "게이트웨이가 상류에서 잘못된 응답을 받았다" 는 뜻이라 프록시가 개입할 여지를 준다.
+// 우리가 하려는 말은 "요청은 정상 처리했고 생성기가 거절했다" 이므로 그 뜻에 맞게 답한다.
+const GENERATOR_REFUSED = 200;
+
 function deliverUrl(tenantId: string, filename: string): string {
   const token = signMediaToken(tenantId, filename);
   return token ? `/api/media/${encodeURIComponent(token)}` : assetUrl(tenantId, filename);
@@ -39,7 +49,7 @@ export async function POST(request: Request) {
     ]);
     mark("run:ok", `stdout=${stdout.length}`);
     const url = findResultUrl(extractJson(stdout), /png|jpg|jpeg|webp/);
-    if (!url) return Response.json({ error: "no image url", raw: stdout.slice(-400) }, { status: 502 });
+    if (!url) return Response.json({ ok: false, error: "생성기가 이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.", raw: stdout.slice(-400) }, { status: GENERATOR_REFUSED });
 
     // 종전에는 공용 루트에 저장하고 주소도 테넌트 없이 돌려줬다. 그런데 자산 라우트는
     // 테넌트 폴더에서만 읽고 tenant_id 를 요구한다. 그래서 만들기는 성공하는데 화면에서
@@ -67,6 +77,6 @@ export async function POST(request: Request) {
     const msg = e instanceof Error ? e.message : String(e);
     const nsfw = /nsfw/i.test(msg);
     const credits = /not enough credits/i.test(msg);
-    return Response.json({ error: msg.slice(0, 400), nsfw, credits }, { status: 502 });
+    return Response.json({ ok: false, error: msg.slice(0, 400), nsfw, credits }, { status: GENERATOR_REFUSED });
   }
 }
