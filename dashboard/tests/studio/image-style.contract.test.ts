@@ -21,7 +21,12 @@ describe("그림 지시문 조립", () => {
   });
 
   it("그림 안에 글자가 박히지 않도록 지시한다", () => {
-    expect(buildImagePrompt("카페 창가", null)).toContain("no text");
+    // 쓰는 모델은 부정 지시 파라미터를 받지 않는다. "쓰지 마라" 대신 "비어 있다" 를
+    // 그리라고 말한다. 모델은 금지보다 묘사를 잘 따른다(2026-09-08 실측).
+    const out = buildImagePrompt("카페 창가", null);
+    expect(out).toContain("free of any text");
+    expect(out).toContain("blank unbranded surfaces");
+    expect(out).toContain("empty signage");
   });
 
   it("모르는 색 표현은 억지로 넣지 않는다", () => {

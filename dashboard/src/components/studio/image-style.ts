@@ -74,8 +74,23 @@ export function paletteToColors(palette?: string): string {
   return hit ? hit.colors : "";
 }
 
-/** 그림 안에 글자가 박히지 않게 하는 지시. 카드뉴스 글자는 편집실이 얹는다. */
-const NO_TEXT = "no text, no lettering, no watermark, no logo";
+/**
+ * 그림 안에 글자가 박히지 않게 하는 지시. 카드뉴스 글자는 편집실이 얹는다.
+ *
+ * 2026-09-08 실측: "no text" 한 마디만으로는 부족했다. 간판·포장지·상표 같은 **글자가
+ * 있을 자리를 가진 물건**을 그리면 모델이 거기에 뭉개진 글자를 채워 넣는다. 실제로
+ * 카페 장면을 시켰더니 손가방에 뜻 없는 상표가 박혀 나왔다.
+ *
+ * 쓰는 모델(Higgsfield Soul 2.0)은 부정 지시(negative prompt) 파라미터를 받지 않는다.
+ * 받는 값은 비율·화질·씨앗·참조 이미지뿐이다. 그래서 "쓰지 마라" 가 아니라 "비어 있다"
+ * 를 그리라고 말한다. 모델은 금지보다 묘사를 잘 따른다.
+ */
+const NO_TEXT = [
+  "completely free of any text, letters, numbers or written characters",
+  "blank unbranded surfaces",
+  "empty signage",
+  "no logo, no watermark, no packaging labels",
+].join(", ");
 
 /**
  * 그림 지시문의 바탕이 될 말을 고른다.
