@@ -107,6 +107,9 @@ const TENANT_AWARE_PATHS = [
   // 고객이 자기 생성 이력을 보는 경로(회장 2026-09-06 확정).
   "/api/studio/generation-history",
   "/api/studio/handoffs",
+  // 브랜드를 아는 일곱 칸의 서버 보관소. 고객 화면이 직접 읽고 쓰는 경로다.
+  // 여기 없으면 저장은 코드에 있는데 화면에서 403 이 나 브라우저에만 남는다(2026-09-07 실측).
+  "/api/studio/learning",
   "/api/studio/text",
   // 2026-09-06 회장 확정으로 이미지·영상 생성을 고객에게 열었다. 두 라우트는
   // effectiveTenantId 로 테넌트를 확인하고 사용량을 그 작업 공간에 남긴다.
