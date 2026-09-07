@@ -1,64 +1,79 @@
 <meta charset="utf-8">
-<title>채널 연결 · 회장 조치판</title>
+<title>채널 연결 · 관리자 조치판</title>
 <style>
- body{font:16px/1.75 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#1a1a1a}
- h1{font-size:26px;margin-bottom:4px} .sub{color:#666;margin-bottom:28px}
- .card{border:1px solid #e3e3e3;border-radius:12px;padding:20px;margin:14px 0}
- .need{border-left:5px solid #d33}
- .done{border-left:5px solid #2a2;background:#fbfffb}
- .k{font-weight:600;font-size:18px;margin-bottom:6px}
+ body{font:16px/1.75 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;max-width:920px;margin:40px auto;padding:0 20px;color:#1a1a1a}
+ h1{font-size:26px;margin-bottom:2px} h2{font-size:19px;margin:34px 0 10px}
+ .sub{color:#666;margin-bottom:10px}
+ .frame{background:#f7f9ff;border:1px solid #dde5ff;border-radius:10px;padding:14px 16px;margin:18px 0}
+ .card{border:1px solid #e3e3e3;border-radius:12px;padding:18px;margin:12px 0}
+ .need{border-left:5px solid #d33} .done{border-left:5px solid #2a2;background:#fbfffb}
+ .k{font-weight:600;font-size:17px;margin-bottom:6px}
  .why{color:#555;margin:6px 0 10px}
- ol{margin:8px 0 0 18px;padding:0} li{margin:6px 0}
+ a.btn{display:inline-block;background:#1a56db;color:#fff;text-decoration:none;padding:8px 14px;border-radius:8px;font-size:14px;margin:6px 8px 0 0}
+ a.btn.g{background:#444}
+ ol{margin:8px 0 0 18px;padding:0} li{margin:5px 0}
  code{background:#f4f4f4;padding:2px 6px;border-radius:5px;font-size:14px}
- .ask{background:#fff8f8;border-radius:8px;padding:12px;margin-top:10px}
  table{border-collapse:collapse;width:100%;margin-top:10px}
- td,th{border:1px solid #e3e3e3;padding:8px 10px;text-align:left;font-size:15px}
- th{background:#fafafa}
+ td,th{border:1px solid #e3e3e3;padding:8px 10px;text-align:left;font-size:15px} th{background:#fafafa}
 </style>
 
-<h1>채널 연결 · 회장님 손이 필요한 것만</h1>
-<div class="sub">2026-09-08 00시 기준. 제가 할 수 있는 것은 전부 했고, 아래 넷은 제 권한 밖입니다.</div>
+<h1>채널 연결 · 관리자 조치판</h1>
+<div class="sub">2026-09-08 00시 30분 기준</div>
+
+<div class="frame">
+  <b>구조 확인.</b> 사파리에 켜져 있는 <code>j.the.great.investor@gmail.com</code> 은 <b>고객 계정</b>입니다.
+  고객은 OAuth 로그인 한 번이면 발행까지 가야 하고, 개발자 콘솔에 들어갈 일이 없어야 합니다.
+  아래는 전부 <b>관리자(회장님) 쪽 앱 등록</b> 작업입니다. 이것이 한 번 서면 이후 가입하는 고객은 단추만 누르면 됩니다.
+</div>
+
+<h2>지금 막고 있는 것 (관리자 조치)</h2>
 
 <div class="card need">
-  <div class="k">1. 맥 잠금 해제 <span style="color:#d33">(가장 급함)</span></div>
-  <div class="why">지금 로그인 화면이라 화면을 눌러야 하는 작업이 전부 멈춰 있습니다. Facebook 연결 팝업의 페이지 선택, Meta 콘솔 조작이 여기 걸려 있습니다. 비밀번호 입력은 제가 할 수 없습니다.</div>
-  <div class="ask">잠금만 풀어 주시면 Facebook 연결은 제가 끝냅니다.</div>
+  <div class="k">1. 유튜브 — 고객 계정에 유튜브 채널이 없음</div>
+  <div class="why">동의와 토큰 교환까지 전부 통과했고, 마지막 채널 조회에서 목록이 비어 실패합니다. 즉 앱 설정 문제가 아니라 <b>그 구글 계정에 유튜브 채널이 없는 것</b>입니다. 화면 문구도 "다시 연결"만 시키고 있어서 방금 원인을 말하도록 고쳤습니다.</div>
+  <a class="btn" href="https://www.youtube.com/create_channel" target="_blank">고객 계정으로 유튜브 채널 만들기</a>
+  <a class="btn g" href="https://console.cloud.google.com/apis/credentials/consent" target="_blank">구글 동의 화면(앱 심사)</a>
+  <div class="why" style="margin-top:10px">채널을 만드시면 제가 바로 연결까지 끝냅니다. 참고로 구글은 아직 "확인하지 않은 앱" 경고가 뜨며, 외부 고객에게 열려면 앱 심사가 필요합니다.</div>
 </div>
 
 <div class="card need">
-  <div class="k">2. 인스타그램 앱 시크릿이 서버 값과 같은지</div>
-  <div class="why">인스타그램은 동의까지 통과한 뒤 마지막 장기 토큰 교환에서 실패합니다. 이 앱은 <b>Instagram 전용 시크릿</b>이 Meta 앱 시크릿과 별개인데, 서버에 넣어둔 것이 어느 쪽인지 확인이 필요합니다. Meta가 시크릿을 보여줄 때 비밀번호 재인증을 요구해 제가 못 봅니다.</div>
-  <ol>
-    <li><code>developers.facebook.com</code> 접속</li>
-    <li>앱 <b>정성컴퍼니</b> 선택</li>
-    <li>왼쪽에서 <b>Instagram</b> → <b>API setup with Instagram login</b></li>
-    <li><b>Instagram 앱 시크릿 코드</b> 옆 <b>표시</b> 클릭 (비밀번호 재인증)</li>
-  </ol>
-  <div class="ask"><b>값은 저에게 보내지 마십시오.</b> 서버 값과 "같다" 또는 "다르다"만 알려 주시면 됩니다. 다르면 교체는 제가 합니다.</div>
+  <div class="k">2. 인스타그램 — Instagram 전용 앱 시크릿 확인</div>
+  <div class="why">동의까지 통과한 뒤 장기 토큰 교환에서 막힙니다. 이 앱은 <b>Instagram 전용 시크릿</b>이 Meta 앱 시크릿과 별개인데, 서버에 넣어둔 값이 어느 쪽인지 확인이 필요합니다. 시크릿을 보려면 비밀번호 재인증이 걸려 제가 못 봅니다.</div>
+  <a class="btn" href="https://developers.facebook.com/apps/1553503759757107/instagram-business/API-Setup-with-Instagram-login/" target="_blank">Instagram API 설정 바로가기</a>
+  <div class="why" style="margin-top:10px"><b>값은 보내지 마시고</b> 서버 값과 "같다·다르다"만 알려 주십시오. 다르면 교체는 제가 합니다.</div>
 </div>
 
 <div class="card need">
-  <div class="k">3. X 크레딧 충전</div>
-  <div class="why">연결과 인증은 살아 있습니다. 방금 시험했을 때 토큰이 만료돼 있었는데 자동 갱신이 되살려 X까지 요청이 갔고, 거기서 <b>요금 소진</b>으로 막혔습니다. 돈이 나가는 일이라 제가 하지 않습니다.</div>
-  <div class="ask">X 개발자 콘솔에서 충전하시면 그 즉시 발행됩니다.</div>
+  <div class="k">3. 페이스북 — 관리 중인 페이스북 페이지가 없음</div>
+  <div class="why">OAuth는 통과했는데 페이지 목록이 비어 실패합니다. 페이스북은 개인 계정이 아니라 <b>페이지</b>에 글을 올립니다. 페이지 생성은 대외에 노출되는 브랜드 결정이라 제가 임의로 만들지 않았습니다.</div>
+  <a class="btn" href="https://www.facebook.com/pages/create" target="_blank">페이스북 페이지 만들기</a>
+  <div class="why" style="margin-top:10px">만드신 뒤 알려 주시면 연결은 제가 끝냅니다.</div>
 </div>
 
 <div class="card need">
-  <div class="k">4. 유튜브·틱톡·링크드인 계정 방향</div>
-  <div class="why">유튜브와 틱톡은 <b>발행 기능이 이미 있습니다</b>. 계정만 연결하면 됩니다. 링크드인만 기능이 없어 새로 지어야 하고, 회사 페이지 이름이 필요합니다.</div>
-  <div class="ask">지금 붙일지, 인스타그램이 열린 뒤에 할지 알려 주십시오. 추천은 인스타그램 먼저입니다. 사업계획의 페르소나에 실명으로 나오는 채널이 인스타그램 하나뿐입니다.</div>
+  <div class="k">4. X — 사용 요금 소진</div>
+  <div class="why">연결·인증·토큰 자동 갱신까지 전부 정상입니다. 오늘 밤 토큰이 만료됐는데 자동 갱신이 되살려 X까지 요청이 갔고, 거기서 요금 소진으로 막혔습니다. 돈이 나가는 일이라 제가 하지 않습니다.</div>
+  <a class="btn" href="https://developer.x.com/en/portal/dashboard" target="_blank">X 개발자 콘솔</a>
 </div>
 
+<div class="card need">
+  <div class="k">5. 틱톡·링크드인 — 앱 미등록</div>
+  <div class="why">틱톡은 <b>발행 기능이 이미 있습니다</b>. 앱 등록만 하면 됩니다. 링크드인은 발행 기능도 없어 새로 지어야 하고 회사 페이지 이름이 필요합니다.</div>
+  <a class="btn" href="https://developers.tiktok.com/apps" target="_blank">틱톡 개발자 앱</a>
+  <a class="btn g" href="https://www.linkedin.com/developers/apps" target="_blank">링크드인 개발자 앱</a>
+  <div class="why" style="margin-top:10px">지금 붙일지, 인스타그램이 열린 뒤에 할지 알려 주십시오. 추천은 인스타그램 먼저입니다. 사업계획 페르소나에 실명으로 나오는 채널이 인스타그램 하나뿐입니다.</div>
+</div>
+
+<h2>고객이 이미 쓸 수 있는 것</h2>
 <div class="card done">
-  <div class="k">제가 오늘 끝낸 것</div>
   <table>
-    <tr><th>항목</th><th>상태</th></tr>
-    <tr><td>Threads 연결·발행·성과</td><td>실제 게시 확인</td></tr>
-    <tr><td>카드뉴스 이미지·숏폼 영상 생성</td><td>실제 생성 확인</td></tr>
-    <tr><td>배포가 생성기 로그인을 덮어써 죽이던 사고</td><td>원인 제거·검증</td></tr>
-    <tr><td>토큰 만료 시 자동 갱신</td><td>X에서 실제 되살아남 확인</td></tr>
-    <tr><td>성과에서 배운 규칙이 생성에 반영</td><td>배포</td></tr>
-    <tr><td>학습 정보 서버 보관(기기 바꿔도 유지)</td><td>브라우저 비우고 확인</td></tr>
-    <tr><td>발행 오류가 화면에 안 뜨던 것(프록시가 삼킴)</td><td>수정·확인</td></tr>
+    <tr><th>항목</th><th>확인</th></tr>
+    <tr><td>Threads 연결 · 발행 · 성과</td><td>실제 게시물 확인</td></tr>
+    <tr><td>카드뉴스 이미지 · 숏폼 영상 생성</td><td>1536px / 768px 5.9초</td></tr>
+    <tr><td>편집실 대사 편집 · 자동 저장</td><td>확인</td></tr>
+    <tr><td>X 연결 · 토큰 자동 갱신</td><td>만료된 토큰이 스스로 되살아남</td></tr>
+    <tr><td>성과에서 배운 규칙이 다음 생성에 반영</td><td>배포</td></tr>
+    <tr><td>학습 정보가 기기를 바꿔도 유지</td><td>브라우저 비우고 확인</td></tr>
+    <tr><td>발행 오류 문구가 화면까지 도달</td><td>프록시가 삼키던 것 수정</td></tr>
   </table>
 </div>
