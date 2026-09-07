@@ -31,11 +31,23 @@ export function GettingStartedStrip({ connectedCount: controlledConnectedCount }
     return channel?.connected === true || channel?.status === "live" || channel?.status === "connected";
   }).length;
   const connectedCount = controlledConnectedCount ?? detectedConnectedCount;
-  if (connectedCount > 0) return null;
 
   const checklist = (onboardingData as ChecklistData | undefined)?.checklist;
   const done = STEPS.filter((step) => Boolean(checklist?.[step.key])).length;
   const next = STEPS.find((step) => !checklist?.[step.key]) ?? STEPS[0];
+
+  // 2026-09-08: 종전에는 채널이 하나라도 연결되면 이 줄이 통째로 사라졌다. 그런데 다섯 칸
+  // 가운데 채널 연결은 세 번째다. 첫 발행도 성과 확인도 아직인 사람이, 채널 하나 붙였다는
+  // 이유로 길잡이를 잃었다. 처음 온 사람이 첫 발행까지 가는 것이 이 제품의 첫 관문인데
+  // 그 관문 한복판에서 안내가 없어지는 셈이다.
+  // 다섯 칸을 다 채웠을 때만 접는다. 그때는 안내가 할 일을 다 한 것이다.
+  if (done >= STEPS.length) return null;
+
+  // 연결된 채널이 하나도 없으면 무엇을 하든 발행에 닿지 못한다. 그때는 남은 칸 순서와
+  // 무관하게 채널 연결을 먼저 가리킨다. 하나라도 붙은 뒤에는 남은 칸으로 데려간다.
+  const cta = connectedCount === 0
+    ? STEPS.find((step) => step.key === "channel") ?? next
+    : next;
 
   return (
     <section className="mb-pad-inset" aria-label="시작 안내" data-start-strip>
@@ -43,8 +55,10 @@ export function GettingStartedStrip({ connectedCount: controlledConnectedCount }
         <b className="shrink-0">시작 {done}/{STEPS.length}</b>
         <span className="h-stack-section border-l border-accent/30" aria-hidden />
         <span className="min-w-0 flex-1 truncate">다음 할 일: {next.label} · 채널 연결 {connectedCount}/{channels.length}</span>
-        <Link href="/settings?tab=channels" className="inline-flex min-h-control-touch shrink-0 items-center rounded-control bg-accent px-stack text-caption font-semibold text-accent-fg">
-          채널 연결하기
+        {/* 단추가 늘 "채널 연결하기" 였다. 채널을 이미 붙인 사람에게는 할 일이 아니다.
+            지금 남은 칸으로 바로 데려간다. */}
+        <Link href={cta.href} data-testid="getting-started-next" className="inline-flex min-h-control-touch shrink-0 items-center rounded-control bg-accent px-stack text-caption font-semibold text-accent-fg">
+          {cta.key === "channel" ? "채널 연결하기" : cta.label}
         </Link>
         <button
           type="button"
