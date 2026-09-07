@@ -264,24 +264,31 @@ jobs:
           THREADS_APP_SECRET: ${{ secrets.THREADS_APP_SECRET }}
           FB_APP_ID: ${{ secrets.FB_APP_ID }}
           FB_APP_SECRET: ${{ secrets.FB_APP_SECRET }}
+          FB_CONFIG_ID: ${{ secrets.FB_CONFIG_ID }}
         run: |
           # import-env 는 DB 에 값이 이미 있으면 409 로 거절한다(2026-09-07 실측).
           # 콘솔에서 시크릿을 갈아 끼운 경우가 바로 그 상황이므로 덮어쓰기를 쓴다.
           umask 077
           for p in ${{ github.event.inputs.reimport_oauth }}; do
+            export CCFG=""
             case "$p" in
               youtube)   export CID="$YOUTUBE_CLIENT_ID"; export CSEC="$YOUTUBE_CLIENT_SECRET" ;;
               x)         export CID="$X_CLIENT_ID";       export CSEC="$X_CLIENT_SECRET" ;;
               instagram) export CID="$IG_APP_ID";         export CSEC="$IG_APP_SECRET" ;;
               threads)   export CID="$THREADS_APP_ID";   export CSEC="$THREADS_APP_SECRET" ;;
-              facebook)  export CID="$FB_APP_ID";        export CSEC="$FB_APP_SECRET" ;;
+              # 페이스북만 세 번째 값(설정 식별자)을 요구한다. 빠지면 400 으로 거절된다.
+              facebook)  export CID="$FB_APP_ID";        export CSEC="$FB_APP_SECRET"; export CCFG="$FB_CONFIG_ID" ;;
               *) echo "::error::지원하지 않는 제공자: $p"; exit 1 ;;
             esac
             if [ -z "$CID" ] || [ -z "$CSEC" ]; then
               echo "::error::$p 환경변수 값이 비어 있다"; exit 1
             fi
             # 값은 파일로만 흘린다. argv 나 로그에 남기지 않는다.
-            python3 -c 'import json,os,sys;json.dump({"provider":sys.argv[1],"values":{"clientId":os.environ["CID"],"clientSecret":os.environ["CSEC"]}},open("/tmp/cred.json","w"))' "$p"
+            python3 -c 'import json,os,sys
+vals={"clientId":os.environ["CID"],"clientSecret":os.environ["CSEC"]}
+cfg=os.environ.get("CCFG","")
+if cfg: vals["configId"]=cfg
+json.dump({"provider":sys.argv[1],"values":vals},open("/tmp/cred.json","w"))' "$p"
             CODE=$(curl -s -o /tmp/cred.out -w '%{http_code}' -X PUT \
               -H "Content-Type: application/json" -H @- \
               --data @/tmp/cred.json \
