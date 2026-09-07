@@ -28,6 +28,7 @@ import { authHeaders } from "@/lib/auth";
 import { CHANNEL_TEXT_LIMITS, countTextCharacters } from "@/lib/channel-text-limits";
 import { Button } from "@/components/shared/Button";
 import { CostApprovalDialog, type CostApprovalRequest } from "@/components/studio/CostApprovalDialog";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/shared/ConfirmDialog";
 import { RoomHeader } from "@/components/shared/RoomHeader";
 import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
@@ -263,6 +264,19 @@ export default function StudioPage() {
   function askCostApproval(req: CostApprovalRequest): Promise<boolean> {
     setCostApproval(req);
     return new Promise<boolean>((resolve) => { costApprovalResolve.current = resolve; });
+  }
+  // 되돌릴 수 없는 조작도 화면 안에서 묻는다. 브라우저 기본 확인창은 페이지를 통째로
+  // 멈춰 세워 무엇이 사라지는지 나란히 볼 수 없다(2026-09-07 회장 실사용).
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  const confirmResolve = useRef<((ok: boolean) => void) | null>(null);
+  function askConfirm(req: ConfirmRequest): Promise<boolean> {
+    setConfirmRequest(req);
+    return new Promise<boolean>((resolve) => { confirmResolve.current = resolve; });
+  }
+  function settleConfirm(ok: boolean) {
+    setConfirmRequest(null);
+    confirmResolve.current?.(ok);
+    confirmResolve.current = null;
   }
   function settleCostApproval(ok: boolean) {
     setCostApproval(null);
@@ -575,9 +589,16 @@ export default function StudioPage() {
   // (폐기하거나 다른 작업하고 싶을때)". 실제로 세 방 어디에도 새로 시작하는 길이 없었다.
   // 이미 발행한 작업물이 남아 있으면 발행이 중복으로 막히기까지 한다.
   // 되돌릴 수 없는 조작이므로 한 번 확인하고 지운다.
-  function discardCurrentWork() {
+  async function discardCurrentWork() {
     if (!text && !idea.trim() && !draftId) { showToast("이미 비어 있습니다", "success"); return; }
-    if (!window.confirm("지금 작업물을 버리고 새로 시작할까요? 저장하지 않은 내용은 사라집니다.")) return;
+    const ok = await askConfirm({
+      title: "지금 작업물을 버리고 새로 시작할까요?",
+      description: "저장하지 않은 본문과 방금 만든 이미지·영상이 이 화면에서 사라집니다. 이미 저장된 작업물은 작업물 전체에 그대로 남습니다.",
+      confirmLabel: "버리고 새로 시작",
+      cancelLabel: "그냥 두기",
+      destructive: true,
+    });
+    if (!ok) return;
     generationAbort.current?.abort();
     generationAbort.current = null;
     setBusy(null);
@@ -1373,6 +1394,7 @@ export default function StudioPage() {
         cardImageBusy={busy === "카드뉴스 이미지 만드는 중"}
       />
       <CostApprovalDialog request={costApproval} onApprove={() => settleCostApproval(true)} onCancel={() => settleCostApproval(false)} />
+      <ConfirmDialog request={confirmRequest} onConfirm={() => settleConfirm(true)} onCancel={() => settleConfirm(false)} />
     </div>
   );
 

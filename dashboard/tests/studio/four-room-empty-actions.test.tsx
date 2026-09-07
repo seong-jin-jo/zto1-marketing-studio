@@ -212,16 +212,34 @@ describe("V77-CREATE-NETWORK 생성 담당 구조 선택 계약", () => {
     mocks.room = "create";
     window.history.replaceState(null, "", "/studio?room=create");
     localStorage.setItem("studio_work:tenant-empty", JSON.stringify({ draftId: "keep-me", idea: "옛 주제" }));
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     render(<StudioPage />);
     fireEvent.click(await screen.findByTestId("studio-discard-work"));
+
+    // 2026-09-07: 브라우저 기본 확인창은 페이지를 멈춰 세워 걷어냈다. 이제 화면 안
+    // 확인창이 뜨고, 무엇이 사라지는지 읽은 뒤 실행 단추를 눌러야 지워진다.
+    fireEvent.click(await screen.findByTestId("confirm-dialog-accept"));
 
     await waitFor(() => {
       const saved = JSON.parse(localStorage.getItem("studio_work:tenant-empty") || "{}");
       expect(saved.draftId ?? null).toBeNull();
     });
-    confirmSpy.mockRestore();
+  });
+
+  it("V78-RESET-02 거절: 확인창에서 그만두면 작업물이 그대로 남는다", async () => {
+    mocks.room = "create";
+    window.history.replaceState(null, "", "/studio?room=create");
+    localStorage.setItem("studio_work:tenant-empty", JSON.stringify({ draftId: "keep-me", idea: "옛 주제" }));
+
+    render(<StudioPage />);
+    fireEvent.click(await screen.findByTestId("studio-discard-work"));
+    fireEvent.click(await screen.findByTestId("confirm-dialog-cancel"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("confirm-dialog")).toBeNull();
+    });
+    const saved = JSON.parse(localStorage.getItem("studio_work:tenant-empty") || "{}");
+    expect(saved.draftId).toBe("keep-me");
   });
 
   // 2026-09-06 회장 스모크 회귀: "작업물 전체 12 클릭하면 1개밖에 없다". 숫자는 작업물
