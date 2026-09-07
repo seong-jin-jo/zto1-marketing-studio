@@ -284,11 +284,7 @@ jobs:
               echo "::error::$p 환경변수 값이 비어 있다"; exit 1
             fi
             # 값은 파일로만 흘린다. argv 나 로그에 남기지 않는다.
-            python3 -c 'import json,os,sys
-vals={"clientId":os.environ["CID"],"clientSecret":os.environ["CSEC"]}
-cfg=os.environ.get("CCFG","")
-if cfg: vals["configId"]=cfg
-json.dump({"provider":sys.argv[1],"values":vals},open("/tmp/cred.json","w"))' "$p"
+            python3 -c 'import json,os,sys; v={"clientId":os.environ["CID"],"clientSecret":os.environ["CSEC"]}; c=os.environ.get("CCFG",""); v.update({"configId":c} if c else {}); json.dump({"provider":sys.argv[1],"values":v},open("/tmp/cred.json","w"))' "$p"
             CODE=$(curl -s -o /tmp/cred.out -w '%{http_code}' -X PUT \
               -H "Content-Type: application/json" -H @- \
               --data @/tmp/cred.json \
