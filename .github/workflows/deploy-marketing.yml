@@ -6,6 +6,10 @@ on:
         description: '띄울 서비스 (compose 서비스명 공백구분, 비우면 전체)'
         required: false
         default: ''
+      force_generator_credentials:
+        description: '이미지·영상 생성기 자격증명을 시크릿 값으로 강제로 덮어쓸지 (평소 비움 — 살아 있는 로그인을 죽인다)'
+        required: false
+        default: 'false'
       reimport_oauth:
         description: 'OAuth 앱 자격증명을 환경변수 값으로 다시 들여올 제공자 (공백구분, 비우면 안 함)'
         required: false
@@ -104,9 +108,23 @@ jobs:
             docker run --rm -v "$HOME/.config":/c alpine:3 \
               sh -c "mkdir -p /c/higgsfield && chown -R $(id -u):$(id -g) /c/higgsfield"
           fi
-          # 값은 파일로만 흘린다. argv 나 로그에 남기지 않는다.
-          printf '%s' "$HIGGSFIELD_CREDENTIALS_JSON" > "$HOME/.config/higgsfield/credentials.json"
-          chmod 600 "$HOME/.config/higgsfield/credentials.json"
+          # ★살아 있는 로그인을 덮어쓰지 않는다 (2026-09-07 회장 실사용에서 터진 사고).
+          # 생성기는 접근 토큰이 만료되면 스스로 갱신하고 그 결과를 이 파일에 다시 쓴다.
+          # 갱신 토큰은 한 번 쓰면 회전해 옛 값이 죽는다. 그런데 종전에는 배포할 때마다
+          # 시크릿의 옛 스냅샷으로 이 파일을 덮었다. 그래서 아침에 되던 카드뉴스·영상 생성이
+          # 그날 배포를 네 번 하고 나자 "생성기에 로그인되어 있지 않습니다"로 죽었다.
+          # 배포는 코드를 바꾸는 일이지 로그인을 되돌리는 일이 아니다.
+          # 이미 쓸 수 있는 자격증명이 있으면 그대로 둔다. 새로 넣어야 할 때는
+          # force_generator_credentials 입력으로 명시한다.
+          CRED="$HOME/.config/higgsfield/credentials.json"
+          if [ -s "$CRED" ] && [ "${{ github.event.inputs.force_generator_credentials }}" != "true" ]; then
+            echo "생성기 자격증명이 이미 있음 — 덮어쓰지 않음 (강제하려면 force_generator_credentials=true)"
+          else
+            # 값은 파일로만 흘린다. argv 나 로그에 남기지 않는다.
+            printf '%s' "$HIGGSFIELD_CREDENTIALS_JSON" > "$CRED"
+            chmod 600 "$CRED"
+            echo "생성기 자격증명 새로 배치함"
+          fi
           # 자격증명만으로는 부족하다. 작업 공간 선택이 별도 설정 파일에 있고, 그것이 없으면
           # 인증은 통과하는데 생성에서 "No workspace selected" 로 끝난다(2026-09-06 실측).
           # 작업 공간 식별자는 비밀값이 아니라 계정 안의 이름표라 평문으로 둔다.
