@@ -100,6 +100,7 @@ export function EditPreview({
   subtitleSize = "보통",
   renderReady = false,
   mediaUrl,
+  mediaType = "image",
   onLinesChange,
   cardTextPositions = [],
   onCardTextPositionsChange,
@@ -123,6 +124,9 @@ export function EditPreview({
    * 방이 정작 만든 것을 안 보여 준 셈이다.
    */
   mediaUrl?: string;
+  /** mediaUrl 이 실제로 무엇인지. 영상 편집 중에도 바탕 이미지를 보여 줄 수 있으므로
+   *  화면 종류가 아니라 파일 종류로 태그를 고른다. */
+  mediaType?: "image" | "video";
   onLinesChange?: (lines: string[]) => void;
   cardTextPositions?: CardTextPosition[];
   onCardTextPositionsChange?: (positions: CardTextPosition[]) => void;
@@ -182,7 +186,7 @@ export function EditPreview({
               무엇을 고칠지 판단할 수 있다. 종전에는 이 자리가 비어 "여기에 화면이 놓입니다"
               라는 자리표시자만 있었다(2026-09-08 회장 실사용). */}
           {mediaUrl ? (
-            kind === "video" ? (
+            mediaType === "video" ? (
               <video
                 data-edit-preview-media="video"
                 src={mediaUrl}

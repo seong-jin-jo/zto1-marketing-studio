@@ -1097,6 +1097,7 @@ export function EditRoom({
                               // 영상은 대표 이미지를 움직여 만든다. 영상이 아직 없으면 그 바탕이 된
                               // 이미지를 보여 주는 편이 자리표시자보다 결과에 가깝다.
                               mediaUrl={(kind === "video" ? (previewVideoUrl || previewImageUrl) : previewImageUrl) || undefined}
+                              mediaType={kind === "video" && previewVideoUrl ? "video" : "image"}
                               onLinesChange={onLinesChange}
                               cardTextPositions={cardTextPositions}
                               onCardTextPositionsChange={onCardTextPositionsChange}

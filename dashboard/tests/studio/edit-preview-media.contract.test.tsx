@@ -24,11 +24,21 @@ describe("편집실 미리보기", () => {
 
   it("영상은 만든 영상을 그린다", () => {
     const { container } = render(
-      <EditPreview kind="video" lines={["한 줄"]} activeLine={0} onActiveLine={() => {}} renderReady mediaUrl="/api/media/vid" />,
+      <EditPreview kind="video" lines={["한 줄"]} activeLine={0} onActiveLine={() => {}} renderReady mediaUrl="/api/media/vid" mediaType="video" />,
     );
     const video = container.querySelector('[data-edit-preview-media="video"]');
     expect(video).toBeInTheDocument();
     expect(video?.getAttribute("src")).toBe("/api/media/vid");
+  });
+
+  it("영상 편집 중이라도 파일이 이미지면 이미지로 그린다", () => {
+    // 숏폼 영상은 대표 이미지를 움직여 만든다. 영상이 아직 없을 때 바탕 이미지를 영상
+    // 태그에 넣으면 아무것도 안 보인다(2026-09-08 실측).
+    const { container } = render(
+      <EditPreview kind="video" lines={["한 줄"]} activeLine={0} onActiveLine={() => {}} renderReady mediaUrl="/api/media/img" mediaType="image" />,
+    );
+    expect(container.querySelector('[data-edit-preview-media="image"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-edit-preview-media="video"]')).toBeNull();
   });
 
   it("산출물이 없으면 종전대로 자리표시자를 그린다", () => {
