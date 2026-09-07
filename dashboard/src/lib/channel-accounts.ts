@@ -486,5 +486,16 @@ export async function getSelectedChannelAccountCredFresh(
     }
   }
 
+  // ★갱신에 실패했거나 갱신 토큰이 없으면 옛 규칙 그대로 못 쓰는 자격증명으로 본다.
+  //
+  // 2026-09-07 회귀: 갱신을 넣으면서 만료 검사를 조회에서 뺐는데, 그 결과 만료됐거나 만료
+  // 시각조차 없는 자격증명이 그대로 통과했다. 인스타그램 릴스 발행을 시험하다 발견했다.
+  // 종전이면 "인스타그램이 연결되지 않았습니다" 로 깔끔히 닫혔을 요청이, 못 쓰는 토큰을
+  // 들고 제공자까지 가서 502 로 죽었다. 사용자는 무엇이 문제인지 알 수 없다.
+  // 갱신은 되살릴 수 있을 때만 되살리는 장치이지 관문을 여는 장치가 아니다.
+  const stillExpired = Number.isFinite(expiresAt) && expiresAt <= Date.now();
+  const missingExpiry = !row.token_expires_at && DEFAULT_REQUIRES_EXPIRY.has(provider);
+  if (stillExpired || missingExpiry) return null;
+
   return { token: row.token, refreshToken: row.refresh_token ?? undefined, userId, meta, accountId: row.id };
 }
