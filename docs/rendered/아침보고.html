@@ -21,7 +21,7 @@ figcaption{padding:9px 12px;font-size:13px;color:var(--muted);border-top:1px sol
 </style>
 <div class="wrap">
 <h1>밤사이 만든 것</h1>
-<p class="sub">2026년 09월 08일 00시 32분 기준. 이 장은 감독이 1분마다 새로 씁니다.</p>
+<p class="sub">2026년 09월 08일 05시 04분 기준. 이 장은 감독이 1분마다 새로 씁니다.</p>
 <div class="note">실제로 눌러 보시려면 <code>http://localhost:3456/studio</code> 입니다. 아래 그림은 방금 그 앱을 찍은 것입니다.</div>
 <h2>지금 도는 것</h2><table><tr><th>판</th><th>갈래</th><th>상태</th><th>시각</th></tr>
 <tr><td>build10</td><td>build</td><td>끝남</td><td>07:21</td></tr>
@@ -73,6 +73,7 @@ figcaption{padding:9px 12px;font-size:13px;color:var(--muted);border-top:1px sol
 <tr><td>flowcheck090714</td><td>qa</td><td>발주실패</td><td>14:00</td></tr>
 <tr><td>flowcheck090718</td><td>qa</td><td>발주실패</td><td>18:05</td></tr>
 <tr><td>flowcheck090722</td><td>qa</td><td>발주실패</td><td>22:01</td></tr>
+<tr><td>flowcheck090802</td><td>qa</td><td>발주실패</td><td>02:00</td></tr>
 <tr><td>gapfill082823</td><td>build</td><td>끝남</td><td>23:23</td></tr>
 <tr><td>gapfill082903</td><td>build</td><td>끝남</td><td>03:03</td></tr>
 <tr><td>gapfill082907</td><td>build</td><td>끝남</td><td>07:12</td></tr>
@@ -102,6 +103,7 @@ figcaption{padding:9px 12px;font-size:13px;color:var(--muted);border-top:1px sol
 <tr><td>gapfill090715</td><td>build</td><td>발주실패</td><td>15:00</td></tr>
 <tr><td>gapfill090719</td><td>build</td><td>발주실패</td><td>19:01</td></tr>
 <tr><td>gapfill090723</td><td>build</td><td>발주실패</td><td>23:00</td></tr>
+<tr><td>gapfill090803</td><td>build</td><td>발주실패</td><td>03:00</td></tr>
 <tr><td>qa1</td><td>qa</td><td>끝남</td><td>18:59</td></tr>
 <tr><td>regress082900</td><td>review</td><td>끝남</td><td>00:03</td></tr>
 <tr><td>regress082904</td><td>review</td><td>끝남</td><td>04:02</td></tr>
@@ -130,6 +132,7 @@ figcaption{padding:9px 12px;font-size:13px;color:var(--muted);border-top:1px sol
 <tr><td>regress090716</td><td>review</td><td>발주실패</td><td>16:01</td></tr>
 <tr><td>regress090720</td><td>review</td><td>발주실패</td><td>20:54</td></tr>
 <tr><td>regress090800</td><td>review</td><td>발주실패</td><td>00:00</td></tr>
+<tr><td>regress090804</td><td>review</td><td>발주실패</td><td>04:00</td></tr>
 <tr><td>review1</td><td>review</td><td>끝남</td><td>18:42</td></tr>
 <tr><td>ship1</td><td>review</td><td>빈손</td><td>22:25</td></tr>
 <tr><td>sweep082901</td><td>qa</td><td>끝남</td><td>01:01</td></tr>
@@ -160,6 +163,8 @@ figcaption{padding:9px 12px;font-size:13px;color:var(--muted);border-top:1px sol
 <tr><td>sweep090713</td><td>qa</td><td>발주실패</td><td>13:00</td></tr>
 <tr><td>sweep090717</td><td>qa</td><td>발주실패</td><td>17:00</td></tr>
 <tr><td>sweep090721</td><td>qa</td><td>발주실패</td><td>21:01</td></tr>
+<tr><td>sweep090801</td><td>qa</td><td>발주실패</td><td>01:01</td></tr>
+<tr><td>sweep090805</td><td>qa</td><td>발주실패</td><td>05:00</td></tr>
 </table>
 <h2>화면</h2>
 <div class="shots">
@@ -193,6 +198,37 @@ figcaption{padding:9px 12px;font-size:13px;color:var(--muted);border-top:1px sol
 <figure><img src="아침보고-화면/studio-publish-768.png" alt="studio-publish-768"><figcaption>studio-publish-768</figcaption></figure>
 </div>
 <h2>밤사이 들어간 작업</h2><table><tr><th>커밋</th><th>무엇을</th></tr>
+<tr><td><code>b35108b6</code></td><td>docs(state): 페이스북 페이지 생성이 카테고리 한 칸에서 멈춘 상태 기록</td></tr>
+<tr><td><code>726a7e06</code></td><td>docs(state): 페이스북 페이지 생성 시도와 막힌 지점 기록</td></tr>
+<tr><td><code>ed5694f3</code></td><td>docs(state): 새 초안으로 전 구간 관통 완료 기록</td></tr>
+<tr><td><code>9ef1854c</code></td><td>docs(state): 발행 무반응 판정 취소 — 내 관측 오류였다</td></tr>
+<tr><td><code>333b14e9</code></td><td>docs(state): 발행 화면 무반응 증상과 좁힌 범위 기록</td></tr>
+<tr><td><code>c5367c3a</code></td><td>docs(state): 생성·편집 재관통 확인과 발행 재시도 미확정 기록</td></tr>
+<tr><td><code>3c8fe306</code></td><td>docs(state): 그림 속 글자 제거 실측 3회 기록</td></tr>
+<tr><td><code>46a85eea</code></td><td>fix(studio): 글자를 부르지 않으려면 글자를 언급하지 않는다</td></tr>
+<tr><td><code>6448814a</code></td><td>fix(studio): 그림 안에 글자가 박히는 것을 묘사로 억제한다</td></tr>
+<tr><td><code>ece20b7a</code></td><td>docs(state): 재생성 실패의 진짜 원인과 오진 경위 기록</td></tr>
+<tr><td><code>f28b2190</code></td><td>fix(studio): 생성 실패 문구에서 생성기 이름과 영어 용어를 뺀다</td></tr>
+<tr><td><code>dad00e55</code></td><td>fix(generate): 생성기 거절을 502로 답하지 않는다 — 프록시가 이유를 삼킨다</td></tr>
+<tr><td><code>e09fc3fa</code></td><td>docs(state): 생성 결 검증과 재생성 실패 기록</td></tr>
+<tr><td><code>515a05a1</code></td><td>fix(studio): 생성 실패 이유를 화면에 말한다</td></tr>
+<tr><td><code>856fcc4b</code></td><td>docs(state): 생성 결 선택과 그림 지시문 사고 기록</td></tr>
+<tr><td><code>f40a898a</code></td><td>fix(studio): 카드뉴스 본문을 그림 지시문으로 넘기지 않는다</td></tr>
+<tr><td><code>57654632</code></td><td>fix(studio): 브랜드 색 문구가 그림 안에 글자로 박히던 것을 막는다</td></tr>
+<tr><td><code>a2e49bcf</code></td><td>docs(state): 생성 결 선택 기록</td></tr>
+<tr><td><code>311b02b1</code></td><td>feat(studio): 만들기 전에 그림의 결을 고르게 한다</td></tr>
+<tr><td><code>08497a0e</code></td><td>docs(state): 유튜브 연결·링크드인 구현·편집실 표시 기록</td></tr>
+<tr><td><code>4c0dfb02</code></td><td>fix(media): 산출물 주소 수명을 작업 세션 길이에 맞춘다</td></tr>
+<tr><td><code>038855e2</code></td><td>fix(edit): 미리보기 태그를 화면 종류가 아니라 파일 종류로 고른다</td></tr>
+<tr><td><code>0c73cb92</code></td><td>fix(edit): 영상이 아직 없으면 그 바탕이 된 이미지를 보여 준다</td></tr>
+<tr><td><code>659a3133</code></td><td>fix(edit): 편집실이 방금 만든 카드뉴스·영상을 실제로 보여 준다</td></tr>
+<tr><td><code>e2385674</code></td><td>feat(publish): 링크드인 텍스트 발행을 구현한다 — 마지막 미구현 채널</td></tr>
+<tr><td><code>f965e084</code></td><td>docs(state): 첫 사용 안내 3중 결함 기록</td></tr>
+<tr><td><code>03cd673b</code></td><td>fix(onboarding): 시작 안내를 첫 화면인 생성실에도 둔다</td></tr>
+<tr><td><code>a71bc794</code></td><td>fix(onboarding): 고객에게 시작 안내가 한 번도 뜨지 않던 것을 고친다</td></tr>
+<tr><td><code>77884669</code></td><td>fix(onboarding): 채널 하나 붙였다고 첫 발행 길잡이를 뺏지 않는다</td></tr>
+<tr><td><code>89797236</code></td><td>docs(state): 남은 채널의 진짜 원인 셋 기록</td></tr>
+<tr><td><code>f804a2b0</code></td><td>docs: 조치판을 관리자 앱 등록과 고객 OAuth 로 나눠 다시 씀</td></tr>
 <tr><td><code>ae8d2712</code></td><td>fix(connect): 유튜브 채널이 없어서 실패한 것을 그렇게 말한다</td></tr>
 <tr><td><code>eef709b5</code></td><td>docs: 채널 연결 회장 조치판 (2026-09-08)</td></tr>
 <tr><td><code>ca34949f</code></td><td>fix(video): 제공자 실패를 502로 답하지 않는다 — 프록시가 오류 문구를 삼킨다</td></tr>
