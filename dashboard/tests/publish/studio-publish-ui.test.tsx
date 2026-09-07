@@ -357,11 +357,14 @@ describe("Studio publish result integrity", () => {
 
     render(<StudioPage />);
     const publishButton = await findEnabledButton("선택한 3곳에 지금 발행");
+    // 2026-09-08 개정: 영상 채널(쇼츠·릴스·틱톡)은 발행 기능이 이미 있었는데 발행실이
+    // 영상 발행 경로를 부르지 않아 "미지원" 으로 닫혀 있었다(회장 "왜 영상쪽은 다 미지원
+    // 이라고 뜸"). 이제 발행실이 그 경로를 부르므로 잠기지 않는다.
     for (const [platform, label] of [["shorts", "Shorts"], ["reels", "Reels"], ["tiktok", "TikTok"]]) {
-      expect(within(screen.getByTestId(`preview-${platform}`)).getByRole(
+      expect(within(screen.getByTestId(`preview-${platform}`)).queryByRole(
         "checkbox",
         { name: `${label} 발행 미지원` },
-      )).toBeDisabled();
+      )).toBeNull();
     }
 
     fireEvent.click(publishButton);
@@ -574,10 +577,12 @@ describe("Studio publish result integrity", () => {
     expect(mocks.showToast).not.toHaveBeenCalledWith("임시 저장했습니다", "success");
   });
 
-  it("FE3-PUBLISH-02 거절: 미지원 영상 채널은 미리보기 안에서 발행 체크를 잠근다", async () => {
+  it("FE3-PUBLISH-02 개정: 영상 채널도 발행 대상으로 고를 수 있다", async () => {
+    // 발행 기능이 있는데 화면이 잠가 두면 만든 영상을 올릴 데가 없다. 계정이 없으면
+    // 종전대로 잠기지만, 그것은 "미지원" 이 아니라 "미연결" 이다.
     render(<StudioPage />);
     const tiktok = within(await screen.findByTestId("preview-tiktok"));
-    expect(tiktok.getByRole("checkbox", { name: "TikTok 발행 미지원" })).toBeDisabled();
+    expect(tiktok.queryByRole("checkbox", { name: "TikTok 발행 미지원" })).toBeNull();
   });
 
   it("FE3-REVIEW-01 정상: 검토 요청은 큐 생성 뒤 기존 검토 API를 호출한다", async () => {

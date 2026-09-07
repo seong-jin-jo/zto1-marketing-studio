@@ -64,10 +64,33 @@ import { attemptRequiredDraftPersistence } from "@/lib/studio/required-draft-per
 // 계정 셀렉터를 노출한다. shorts/reels/tiktok은 /api/publish 미지원(실발행 분기 없음. 위
 // ChannelConnect.tsx 주석과 동일 SSOT 판단)이라 대상에서 뺀다.
 const PREVIEW_PLATFORM_KEYS = new Set<string>(PREVIEW_PLATFORMS.map((platform) => platform.key));
-const PUBLISH_SUPPORTED = new Set<PreviewPlatform>(
-  SCHEDULABLE_PLATFORMS.filter((platform) => PREVIEW_PLATFORM_KEYS.has(platform)) as PreviewPlatform[],
-);
+/**
+ * 영상으로 올리는 채널. 글 발행 경로가 아니라 영상 발행 경로(/api/video/publish)로 간다.
+ *
+ * 2026-09-08 회장 실사용: "왜 영상쪽은 다 미지원이라고 뜸". 영상 발행 기능은 이미 다
+ * 구현돼 있는데 발행실이 그 경로를 부르지 않아 세 칸이 "미지원" 으로 닫혀 있었다.
+ * 만든 영상을 올릴 데가 없으면 영상을 만들 이유가 없다.
+ */
+const VIDEO_ROOM_PLATFORMS = new Set<PreviewPlatform>(["shorts", "reels", "tiktok"] as PreviewPlatform[]);
+/** 영상 발행 경로가 쓰는 플랫폼 이름. 화면 이름과 다르다. */
+const VIDEO_PUBLISH_NAME: Record<string, string> = { shorts: "youtube", reels: "reels", tiktok: "tiktok" };
+/** 영상 채널이 쓰는 계정 제공자. 릴스는 인스타그램 계정을 쓴다. */
+const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reels: "instagram", tiktok: "tiktok" };
+
+const PUBLISH_SUPPORTED = new Set<PreviewPlatform>([
+  ...(SCHEDULABLE_PLATFORMS.filter((platform) => PREVIEW_PLATFORM_KEYS.has(platform)) as PreviewPlatform[]),
+  ...Array.from(VIDEO_ROOM_PLATFORMS),
+]);
 const ACCOUNT_SELECTABLE = PUBLISH_SUPPORTED;
+/** 계정 조회 응답 한 줄. 화면이 쓰는 것만 추린다. */
+interface ChannelAccountRaw {
+  id: string;
+  display_name: string | null;
+  username: string | null;
+  is_default: boolean;
+  connection_state?: string;
+}
+
 interface AccountOption {
   id: string;
   label: string;
@@ -86,12 +109,46 @@ interface FirstCommentCapability { platform: PreviewPlatform; supported: boolean
 // apiPost는 non-2xx에서 throw한다(ApiResponseError). 생성 함수들이 `r?.ok` 체크만 믿고
 // try/catch를 안 하면 403(shared_ai_approval_required) 같은 실패가 콘솔에만 찍히고 화면엔
 // 조용히 죽는다(결함 실측: /studio 생성 실패 시 lastError/toast 미표시). 여기서 공통 추출.
-function extractApiErrorMessage(e: unknown, fallback: string): string {
-  if (e instanceof ApiResponseError) {
-    const payload = e.payload as { error?: string } | null;
-    return payload?.error || e.message || fallback;
+/**
+ * 배달 주소(/api/media/<토큰>)에서 서버가 읽을 파일명을 꺼낸다.
+ * 토큰 본문은 base64url JSON 이라 화면에서도 읽을 수 있다(비밀이 아니다).
+ */
+function videoFilename(mediaUrl: string): string {
+  if (!mediaUrl) return "";
+  const marker = "/api/media/";
+  const at = mediaUrl.indexOf(marker);
+  if (at < 0) return "";
+  try {
+    const token = decodeURIComponent(mediaUrl.slice(at + marker.length));
+    const body = token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
+    const parsed = JSON.parse(atob(body)) as { f?: string };
+    return typeof parsed.f === "string" ? parsed.f : "";
+  } catch {
+    return "";
   }
-  if (e instanceof Error) return e.message || fallback;
+}
+
+function extractApiErrorMessage(e: unknown, fallback: string): string {
+  // 2026-09-08 회장 실사용: 화면에 "Request failed: 502" 라는 숫자만 떴다. 그 말은
+  // 사용자에게 아무 뜻이 없고 다음에 무엇을 하면 되는지도 말해 주지 않는다.
+  // 서버 문구가 있으면 그것을 쓰고, 없으면 상태 코드가 아니라 사람 말로 바꿔 준다.
+  if (e instanceof ApiResponseError) {
+    const payload = e.payload as { error?: string; nsfw?: boolean; credits?: boolean } | null;
+    if (payload?.nsfw) return "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요.";
+    if (payload?.credits) return "생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다.";
+    if (payload?.error) return payload.error;
+    if (e.status === 401 || e.status === 403) return "권한이 없어 요청이 막혔습니다. 로그아웃 후 다시 로그인해 주세요.";
+    if (e.status === 429) return "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.";
+    if (e.status >= 500) return "서버가 요청을 끝내지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    return fallback;
+  }
+  // 네트워크 단계 실패("Load failed", "Failed to fetch")도 그대로 보여 주지 않는다.
+  if (e instanceof Error) {
+    if (/load failed|failed to fetch|networkerror/i.test(e.message)) {
+      return "연결이 끊겨 요청이 끝나지 않았습니다. 잠시 후 다시 시도해 주세요.";
+    }
+    return e.message && !/^Request failed/i.test(e.message) ? e.message : fallback;
+  }
   return fallback;
 }
 
@@ -379,12 +436,34 @@ export default function StudioPage() {
     if (!shouldLoadPublishResources(activeRoom) || !activeWorkspace) { setAccountsByPlatform({}); return; }
     let cancelled = false;
     (async () => {
+      // 영상 채널은 자기 이름의 계정이 없다. 쇼츠는 유튜브, 릴스는 인스타그램, 틱톡은
+      // 틱톡 계정을 쓴다. 화면 이름 그대로 조회하면 늘 빈 목록이 나온다. 그리고 여러
+      // 화면 이름이 같은 제공자를 가리키므로 제공자당 한 번만 부른다(릴스·인스타그램).
+      // 응답 객체를 재사용하면 본문을 두 번 읽을 수 없다. 파싱 결과를 캐시한다.
+      const providerCache = new Map<string, Promise<{ ok: boolean; data: { accounts?: ChannelAccountRaw[] } }>>();
+      const fetchAccounts = (provider: string) => {
+        const hit = providerCache.get(provider);
+        if (hit) return hit;
+        // 캐시한 약속이 거부되면 그것을 기다리는 모든 채널이 함께 매달린다. 실패도
+        // 값으로 돌려 한 채널의 조회 실패가 화면 전체를 멈추지 않게 한다.
+        const call = (async () => {
+          try {
+            const res = await fetch(`/api/channels/${provider}/accounts?tenant_id=${activeWorkspace.id}`, { headers: authHeaders() });
+            const data = await res.json().catch(() => ({}));
+            return { ok: res.ok, data: data as { accounts?: ChannelAccountRaw[] } };
+          } catch {
+            return { ok: false, data: {} as { accounts?: ChannelAccountRaw[] } };
+          }
+        })();
+        providerCache.set(provider, call);
+        return call;
+      };
       const entries = await Promise.all(
         Array.from(ACCOUNT_SELECTABLE).map(async (p) => {
           try {
-            const r = await fetch(`/api/channels/${p}/accounts?tenant_id=${activeWorkspace.id}`, { headers: authHeaders() });
-            const d = await r.json();
-            if (!r.ok) return [p, [] as AccountOption[], true] as const;
+            const provider = VIDEO_ACCOUNT_PROVIDER[p] || p;
+            const { ok, data: d } = await fetchAccounts(provider);
+            if (!ok) return [p, [] as AccountOption[], true] as const;
             const opts: AccountOption[] = (d.accounts ?? []).map((a: { id: string; display_name: string | null; username: string | null; is_default: boolean; connection_state?: string }) => ({
               id: a.id,
               label: a.display_name || (a.username ? `@${a.username}` : a.id.slice(0, 8)),
@@ -889,6 +968,34 @@ export default function StudioPage() {
         // publish_attempt = 실제 제출 시점(클릭 즉시가 아니라 이 루프 진입 시점). publish_success는
         // API가 ok:true를 반환한 뒤에만 처리한다. 낙관적 발행 금지.
         trackEvent({ name: "publish_attempt", params: { channel: p as AnalyticsChannel } });
+        if (VIDEO_ROOM_PLATFORMS.has(p)) {
+          // 영상 채널은 서버가 파일을 직접 읽는다. 화면이 들고 있는 배달 주소에서 파일명을 꺼낸다.
+          const filename = videoFilename(vid?.file || vid?.url || "");
+          if (!filename) {
+            failureReason = "올릴 영상이 없습니다. 생성실에서 숏폼 영상을 먼저 만들어 주세요.";
+            errs.push(`${LABEL[p]}: ${failureReason}`);
+          } else {
+            const vr = await apiPost<{ ok?: boolean; processing?: boolean; url?: string; error?: string }>("/api/video/publish", {
+              filename,
+              platform: VIDEO_PUBLISH_NAME[p] || p,
+              title: titles[p] || idea || "",
+              description: publishText(p),
+              account_id: selectedAccounts[p] || undefined,
+              draft_id: did,
+            });
+            if (vr?.ok) {
+              urls[p] = vr.url || POST_URL[p] || "#";
+              trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+            } else {
+              failureReason = vr?.error || "영상 발행에 실패했습니다";
+              errs.push(`${LABEL[p]}: ${failureReason}`);
+            }
+          }
+          status[p] = failureReason ? "failed" : "done";
+          if (failureReason) errors[p] = failureReason;
+          setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors } });
+          return;
+        }
         const r = await apiPost<{ ok?: boolean; partial?: boolean; permalink?: string; error?: string; firstComment?: { ok?: boolean; error?: string } }>("/api/publish", {
           tenant_id: activeWorkspace.id, platform: p, text: publishText(p), image_url: img?.url, draft_id: did,
           publish_fields: platformPublishInput(p),

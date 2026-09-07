@@ -1,3 +1,4 @@
+import { UPSTREAM_FAILED } from "@/lib/api-failure";
 import { withTenant } from "@/lib/db";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { generateText, sharedGenerationQuotaErrorResponse, sharedAiApprovalErrorResponse } from "@/lib/anthropic";
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
   try {
     const stdout = await generateText(prompt, tenant_id);
     const m = stdout.match(/\{[\s\S]*\}/);
-    if (!m) return Response.json({ error: "JSON 추출 실패", raw: stdout.slice(-400) }, { status: 502 });
+    if (!m) return Response.json({ ok: false, error: "생성기가 알아볼 수 없는 형식으로 답했습니다. 잠시 후 다시 시도해 주세요.", raw: stdout.slice(-400) }, { status: UPSTREAM_FAILED });
     const parsed = JSON.parse(m[0]) as { prompt_guide?: string; visual_rules?: Record<string, unknown> };
     await withTenant(tenant_id, (sql) => sql`
       INSERT INTO brand_guides (tenant_id, prompt_guide, visual_rules, source, synced_at)
@@ -61,6 +62,6 @@ export async function POST(request: Request) {
     const quotaResponse = sharedGenerationQuotaErrorResponse(e);
     if (quotaResponse) return quotaResponse;
     const msg = e instanceof Error ? e.message : String(e);
-    return Response.json({ error: msg.slice(0, 400) }, { status: 502 });
+    return Response.json({ ok: false, error: msg.slice(0, 400) }, { status: UPSTREAM_FAILED });
   }
 }
