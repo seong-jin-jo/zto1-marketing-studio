@@ -24,6 +24,7 @@ import {
   findRecentProviderPost,
   publishThreads,
   publishInstagram,
+  publishLinkedIn,
   publishX,
   publishFacebook,
   publishBluesky,
@@ -563,6 +564,9 @@ export async function POST(request: Request) {
     result = await publishTelegram(cred, text || "", publishImageUrl);
   } else if (platform === "discord") {
     result = await publishDiscord(cred, text || "", publishImageUrl);
+  } else if (platform === "linkedin") {
+    // 2026-09-08: 아홉 채널 중 유일하게 발행 코드가 없던 자리. 텍스트 발행만 연다.
+    result = await publishLinkedIn(cred, text || "");
   } else if (platform === "slack") {
     result = await publishSlack(cred, text || "", publishImageUrl);
   } else {

@@ -9,6 +9,7 @@ import { SCHEDULABLE_PLATFORMS, SCHEDULABLE_PLATFORM_LABELS } from "../../src/li
 // "그 fail-open 패턴이 다시 들어오지 않는지"를 고정한다(리액트 렌더 테스트가 아니라 텍스트 계약).
 const SRC = readFileSync(resolve(__dirname, "../../src/components/shared/AuthGate.tsx"), "utf-8");
 
+// 2026-09-08: 링크드인 텍스트 발행을 구현해 /api/publish 가 분기 처리한다. 여덟에서 아홉이 됐다.
 describe("AuthGate — fail-open 회귀 방지 계약(소스 기반)", () => {
   it("poll()의 401 분기는 역할별 재인증으로 닫히고 ok로 fail-open하지 않는다", () => {
     const branch = SRC.match(/res\.status === 401([\s\S]{0,240})return;/)?.[1] || "";
@@ -153,7 +154,7 @@ describe("AuthGate — 채널 수량 과장 회귀 방지 계약(SCHEDULABLE_PLA
 
   it("예약 발행 미지원 채널(연결 전용·미연결 포함)이 발행 지원처럼 재등장하지 않는다", () => {
     const banned = [
-      "LinkedIn", "Pinterest", "Tumblr", "TikTok", "YouTube", "Naver Blog", "LINE",
+      "Pinterest", "Tumblr", "TikTok", "YouTube", "Naver Blog", "LINE",
       "Medium", "Substack", "Kakao", "RSS", "Custom API",
     ];
     const block = iconsBlock();

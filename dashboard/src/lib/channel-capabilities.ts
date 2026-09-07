@@ -150,7 +150,8 @@ const CHANNEL_GROUP_DEFINITIONS = [
   {
     key: "social",
     title: "소셜",
-    channels: ["threads", "x", "instagram", "facebook", "bluesky"],
+    // 2026-09-08: 링크드인 텍스트 발행을 구현해 발행실에 함께 노출한다.
+    channels: ["threads", "x", "instagram", "facebook", "linkedin", "bluesky"],
     studioPublish: true,
   },
   {

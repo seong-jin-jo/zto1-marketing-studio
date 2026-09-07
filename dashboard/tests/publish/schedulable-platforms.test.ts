@@ -15,9 +15,9 @@ import { PROVIDERS, getProvider } from '@/lib/social-connect';
 // 여기서 흔들리면 그 UI 판단도 같이 흔들리므로, 두 소스(constants·social-connect)의
 // 교차 상태를 이 테스트로 고정한다.
 describe('발행 지원 채널 집합 SSOT (SCHEDULABLE_PLATFORMS)', () => {
-  it('현재 발행 지원 8채널 — threads/x/facebook/instagram + bluesky/telegram/discord/slack', () => {
+  it('현재 발행 지원 9채널 — threads/x/facebook/instagram/linkedin + bluesky/telegram/discord/slack', () => {
     expect([...SCHEDULABLE_PLATFORMS].sort()).toEqual(
-      ['facebook', 'instagram', 'threads', 'x', 'bluesky', 'telegram', 'discord', 'slack'].sort(),
+      ['facebook', 'instagram', 'threads', 'x', 'linkedin', 'bluesky', 'telegram', 'discord', 'slack'].sort(),
     );
   });
 
@@ -25,10 +25,11 @@ describe('발행 지원 채널 집합 SSOT (SCHEDULABLE_PLATFORMS)', () => {
     const connectOnlyProviders = Object.keys(PROVIDERS).filter(
       (name) => !(SCHEDULABLE_PLATFORMS as readonly string[]).includes(name),
     );
-    // linkedin/youtube/naver_blog/pinterest/tumblr/tiktok/line = 연결만 가능, 발행 미지원.
+    // youtube/naver_blog/pinterest/tumblr/tiktok/line = 연결만 가능, 발행 미지원.
     // slack은 2026-07부로 SCHEDULABLE_PLATFORMS 편입 → 이 목록에서 빠짐(배지 사라짐).
+    // linkedin은 2026-09-08 텍스트 발행 구현으로 편입 → 이 목록에서 빠짐.
     expect(connectOnlyProviders.sort()).toEqual(
-      ['linkedin', 'youtube', 'naver_blog', 'pinterest', 'tumblr', 'tiktok', 'line'].sort(),
+      ['youtube', 'naver_blog', 'pinterest', 'tumblr', 'tiktok', 'line'].sort(),
     );
     for (const name of connectOnlyProviders) {
       expect((SCHEDULABLE_PLATFORMS as readonly string[]).includes(name)).toBe(false);

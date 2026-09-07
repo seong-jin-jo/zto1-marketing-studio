@@ -70,8 +70,8 @@ const FEATURES = [
   {
     icon: "발행",
     title: "주요 채널 동시 발행",
-    desc: "Threads, X, Facebook, Instagram, Bluesky, Telegram, Discord, Slack에 한 번에 예약 발행합니다.",
-    tags: ["Threads", "X", "Facebook", "Instagram", "Bluesky", "Telegram", "Discord", "Slack"],
+    desc: "Threads, X, Facebook, Instagram, LinkedIn, Bluesky, Telegram, Discord, Slack에 한 번에 예약 발행합니다.",
+    tags: ["Threads", "X", "Facebook", "Instagram", "LinkedIn", "Bluesky", "Telegram", "Discord", "Slack"],
   },
   {
     icon: "생성",
@@ -110,7 +110,7 @@ const FEATURES = [
 //  YouTube/Naver Blog/LINE은 연결만 가능하고 예약 발행 미지원이라 랜딩 나열에서 제외, 지원범위 과장 방지.
 //  authgate-contract.test.ts가 이 목록을 SCHEDULABLE_PLATFORMS와 교차검증한다.)
 const CHANNEL_ICONS = [
-  "Threads", "X", "Facebook", "Instagram",
+  "Threads", "X", "Facebook", "Instagram", "LinkedIn",
   "Bluesky", "Telegram", "Discord", "Slack",
 ];
 

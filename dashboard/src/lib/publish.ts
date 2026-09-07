@@ -969,3 +969,89 @@ export async function publishSlack(cred: ChannelCred, text: string, imageUrl?: s
     return { ok: false, error: `Slack 요청 실패: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
+
+/**
+ * LinkedIn 회원 게시.
+ *
+ * 2026-09-08 판정(docs/audit/osmu-채널-발행-실태-v1.0.md): 아홉 채널 가운데 LinkedIn 만
+ * 발행하는 코드가 두 경로 어디에도 없었다. 나머지는 전부 구현돼 있고 연결이나 배선만
+ * 남은 상태였다. 그래서 이 한 칸을 채운다.
+ *
+ * LinkedIn 은 글쓴이를 사람 식별자(URN)로 요구한다. 그 값은 연결할 때 openid 로 받아
+ * meta.userId 에 넣어 둔다. 없으면 게시가 성립하지 않으므로 지어내지 않고 정직하게 막는다.
+ *
+ * 공개 범위는 전체 공개로 고정한다. 마케팅 발행 도구가 아무도 못 보는 글을 올리는 것은
+ * 사용자가 기대한 일이 아니다. 나중에 선택이 필요해지면 그때 화면에 내놓는다.
+ *
+ * 이미지 첨부는 이번 범위에서 제외한다. LinkedIn 은 별도 업로드 등록 절차를 요구해
+ * 텍스트 발행과 실패 모양이 다르다. 반쯤 되는 첨부를 넣는 것보다 텍스트를 확실히 하는 편이
+ * 낫다. 첨부가 필요해지면 그때 등록 절차까지 함께 넣는다.
+ */
+const LINKEDIN_API = "https://api.linkedin.com/v2";
+const LINKEDIN_MAX_TEXT = 3000;
+
+export async function publishLinkedIn(cred: ChannelCred, text: string): Promise<PublishResult> {
+  const body = (text || "").trim();
+  if (!body) return { ok: false, error: "LinkedIn 발행할 본문이 없습니다." };
+  if ([...body].length > LINKEDIN_MAX_TEXT) {
+    return { ok: false, error: `LinkedIn 본문은 ${LINKEDIN_MAX_TEXT}자까지입니다. 현재 ${[...body].length}자입니다.` };
+  }
+  if (!cred.token) return { ok: false, error: "LinkedIn 연결이 없습니다. 설정에서 먼저 연결해 주세요." };
+  if (!cred.userId) {
+    return { ok: false, error: "LinkedIn 계정 식별자를 찾지 못했습니다. 설정에서 다시 연결해 주세요." };
+  }
+  const author = cred.userId.startsWith("urn:") ? cred.userId : `urn:li:person:${cred.userId}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${LINKEDIN_API}/ugcPosts`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cred.token}`,
+        "Content-Type": "application/json",
+        "X-Restli-Protocol-Version": "2.0.0",
+      },
+      body: JSON.stringify({
+        author,
+        lifecycleState: "PUBLISHED",
+        specificContent: {
+          "com.linkedin.ugc.ShareContent": {
+            shareCommentary: { text: body },
+            shareMediaCategory: "NONE",
+          },
+        },
+        visibility: { "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC" },
+      }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    // 네트워크 단계에서 끊기면 올라갔는지 아닌지 알 수 없다. 확정 실패로 처리해 자동 재시도가
+    // 중복 게시를 만들지 않게 한다.
+    return { ok: false, error: "LinkedIn 요청이 끝나지 않았습니다. 발행 여부를 확인한 뒤 다시 시도해 주세요.", failureKind: "indeterminate" };
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    return { ok: false, error: "LinkedIn 권한이 만료되었거나 발행 권한이 없습니다. 설정에서 다시 연결해 주세요.", failureKind: "definitive" };
+  }
+  if (res.status === 429) {
+    return { ok: false, error: "LinkedIn 요청 한도를 넘었습니다. 잠시 뒤 다시 시도해 주세요.", failureKind: "indeterminate" };
+  }
+  if (!res.ok) {
+    // 제공자 원문을 그대로 노출하지 않는다(내부 구조 노출 방지). 상태만 남긴다.
+    return { ok: false, error: `LinkedIn 발행에 실패했습니다(오류 코드 ${res.status}).`, failureKind: "definitive" };
+  }
+
+  // 식별자는 헤더 또는 본문 id 로 온다. 둘 다 없으면 성공으로 단정하지 않는다 —
+  // 기록할 식별자가 없으면 이후 성과 수집도 중복 방지도 못 한다.
+  const headerId = res.headers.get("x-restli-id") || "";
+  const data = (await res.json().catch(() => ({}))) as { id?: string };
+  const externalId = headerId || data.id || "";
+  if (!externalId) {
+    return { ok: false, error: "LinkedIn 응답에 게시물 식별자가 없습니다. 발행 여부를 확인해 주세요.", failureKind: "indeterminate" };
+  }
+  return {
+    ok: true,
+    externalId,
+    permalink: `https://www.linkedin.com/feed/update/${encodeURIComponent(externalId)}/`,
+  };
+}

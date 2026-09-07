@@ -41,6 +41,8 @@ export const CH_LABELS: Record<string, string> = {
  */
 export const SCHEDULABLE_PLATFORMS = [
   "threads", "x", "facebook", "instagram",
+  // 2026-09-08: 링크드인 텍스트 발행을 구현해 /api/publish 가 분기 처리한다.
+  "linkedin",
   "bluesky", "telegram", "discord", "slack",
 ] as const;
 export type SchedulablePlatform = (typeof SCHEDULABLE_PLATFORMS)[number];
@@ -57,6 +59,7 @@ export { PUBLISH_CHANNEL_GROUPS, VIDEO_PUBLISH_PLATFORMS } from "@/lib/channel-c
  * 여기서 제외한다(2026-07-16 P0 QA 정정 — 라벨/extension 설정은 constants 하단에 보존, 노출만 제거).
  * video/blog 그룹은 실제 항목이 없어 삭제. */
 export const SCHEDULABLE_PLATFORM_LABELS: Record<SchedulablePlatform, string> = {
+  linkedin: "LinkedIn",
   threads: "Threads",
   x: "X",
   facebook: "Facebook",
