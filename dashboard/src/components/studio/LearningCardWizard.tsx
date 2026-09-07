@@ -1,12 +1,13 @@
 "use client";
 
+import { authHeaders } from "@/lib/auth";
 import { useMemo, useState } from "react";
 import { apiPost } from "@/lib/api";
 import { Button } from "@/components/shared/Button";
 import { workspaceDisplayName } from "@/lib/workspace-display-name";
 import {
   AUDIENCE_CARDS, FORBIDDEN_CARDS, INDUSTRY_CARDS, PALETTE_CARDS, PURPOSE_CARDS,
-  RIGHTS_CARDS, VOICE_CARDS, cardValue, isCardChosen, learningToBrandAnswers, readLearningInfo, writeLearningInfo,
+  RIGHTS_CARDS, VOICE_CARDS, cardValue, isCardChosen, learningToBrandAnswers, readLearningInfo, saveLearningInfo,
   type LearningCard, type LearningInfo, type LearningSlotKey,
 } from "./learning-info";
 
@@ -53,7 +54,8 @@ export function LearningCardWizard({ workspaceId, workspaceName, onSaved, onClos
 
   const persist = (next: LearningInfo) => {
     setInfo(next);
-    writeLearningInfo(workspaceId, next);
+    // 브라우저와 서버에 함께 남긴다. 서버에 없으면 기기를 바꾼 순간 지금 채운 칸이 사라진다.
+    void saveLearningInfo(workspaceId, next, authHeaders());
   };
 
   const finish = async () => {

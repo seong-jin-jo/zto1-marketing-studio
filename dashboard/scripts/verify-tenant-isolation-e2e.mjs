@@ -193,6 +193,8 @@ const readCases = ({ tenantB, draftB, postB }) => [
   // 믿어 인증된 고객이 다른 작업 공간 파일을 받아 갈 수 있었다. 이제 부르는 쪽 토큰으로
   // 테넌트를 확정하므로 이 목록에 들어와 공격을 받아야 한다.
   ["READ-58", "/api/higgsfield/asset/probe.png"],
+  // 학습 정보 서버 보관소. 남의 작업 공간 브랜드 지식이 새면 그 자체가 영업기밀 유출이다.
+  ["READ-59", "/api/studio/learning"],
 ].map(([name, routePath]) => {
   const url = new URL(`${BASE_URL}${routePath}`);
   url.searchParams.set("tenant_id", tenantB);

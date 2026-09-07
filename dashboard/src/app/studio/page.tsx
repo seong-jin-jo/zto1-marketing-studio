@@ -20,7 +20,7 @@ import { useUsage } from "@/hooks/useOverview";
 import { useUIStore, type StudioRoom } from "@/store/ui-store";
 import { LearningCardWizard } from "@/components/studio/LearningCardWizard";
 import { LearningStatus } from "@/components/studio/LearningStatus";
-import { countFilledUserSlots, readLearningInfo, type LearningInfo } from "@/components/studio/learning-info";
+import { countFilledUserSlots, fetchLearningInfo, mergeLearningInfo, readLearningInfo, saveLearningInfo, type LearningInfo } from "@/components/studio/learning-info";
 import { RepoConnect } from "@/components/studio/RepoConnect";
 import { SchedulePanel } from "@/components/studio/SchedulePanel";
 import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
@@ -233,6 +233,21 @@ export default function StudioPage() {
     }
     const nextLearningInfo = readLearningInfo(activeWorkspace.id);
     setLearningInfo(nextLearningInfo);
+    // 브라우저에 있던 값을 먼저 그리고, 서버 값이 오면 그것으로 맞춘다. 학습 정보가 이
+    // 브라우저에만 있으면 기기를 바꾼 순간 일곱 칸이 0 이 된다(2026-09-07 감사).
+    // 서버에 없고 여기에만 있는 칸은 이관분이라 그대로 올려 준다.
+    let cancelled = false;
+    (async () => {
+      const workspaceId = activeWorkspace.id;
+      const server = await fetchLearningInfo(workspaceId, authHeaders());
+      if (cancelled) return;
+      const merged = mergeLearningInfo(server, nextLearningInfo);
+      setLearningInfo(merged);
+      if (JSON.stringify(merged) !== JSON.stringify(server ?? {})) {
+        void saveLearningInfo(workspaceId, merged, authHeaders());
+      }
+    })();
+    return () => { cancelled = true; };
     // 첫 화면을 덮는 강제 모달 대신 헤더에서 남은 칸 수와 이어 채우기 경로를 항상 보여 준다.
   }, [activeWorkspace?.id]);
   // 온보딩 위저드에서 "브랜드 설정하기"(/studio?setup=brand)로 오면 브랜드 위저드 자동 오픈.

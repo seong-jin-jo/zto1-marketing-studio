@@ -243,3 +243,67 @@ export function markLearningPrompted(workspaceId: string): void {
     // 저장 실패는 무시한다. 다음 방문에 한 번 더 뜨는 정도의 영향만 있다.
   }
 }
+
+/**
+ * 학습 정보를 서버에서 읽고 서버에 쓴다.
+ *
+ * 2026-09-07 감사: 이 값이 브라우저에만 있어서 기기를 바꾸면 일곱 칸이 0 이 됐다. 쌓을수록
+ * 좋아진다고 파는 제품에서 쌓인 것이 한 브라우저에 묶여 있으면 그것은 쌓이는 것이 아니다.
+ *
+ * localStorage 는 버리지 않고 앞단 캐시로 남긴다. 화면이 뜨자마자 지난 값을 보여 주고
+ * 서버 응답이 오면 그것으로 맞춘다. 서버가 죽어도 오늘 작업은 계속된다.
+ */
+export async function fetchLearningInfo(
+  workspaceId: string,
+  headers: Record<string, string> = {},
+): Promise<LearningInfo | null> {
+  if (!workspaceId) return null;
+  try {
+    const res = await fetch(`/api/studio/learning?tenant_id=${encodeURIComponent(workspaceId)}`, { headers });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { info?: Record<string, unknown> };
+    const info = Object.fromEntries(
+      Object.entries(data.info ?? {})
+        .filter(([key, value]) => typeof value === "string" && value.trim() && LEARNING_SLOTS.some((slot) => slot.key === key)),
+    ) as LearningInfo;
+    return info;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveLearningInfo(
+  workspaceId: string,
+  info: LearningInfo,
+  headers: Record<string, string> = {},
+): Promise<boolean> {
+  // 브라우저 캐시는 먼저 갱신한다. 서버가 느리거나 죽어도 이 화면은 방금 고친 값을 보여야 한다.
+  writeLearningInfo(workspaceId, info);
+  if (!workspaceId) return false;
+  try {
+    const res = await fetch("/api/studio/learning", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({ tenant_id: workspaceId, info }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 서버 값과 이 브라우저 값을 합친다.
+ *
+ * 서버를 정본으로 삼되, 서버에 없는 칸은 이 브라우저 값을 살린다. 종전 사용자는 값이
+ * 전부 브라우저에만 있으므로, 서버를 그대로 덮어쓰면 처음 접속에서 일곱 칸이 지워진다.
+ * 합친 결과가 브라우저 값과 다르면 그것이 서버로 올려야 할 이관분이다.
+ */
+export function mergeLearningInfo(server: LearningInfo | null, local: LearningInfo): LearningInfo {
+  if (!server) return local;
+  const merged: LearningInfo = { ...local };
+  for (const [key, value] of Object.entries(server)) {
+    if (typeof value === "string" && value.trim()) merged[key as LearningSlotKey] = value;
+  }
+  return merged;
+}
