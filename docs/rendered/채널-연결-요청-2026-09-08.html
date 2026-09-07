@@ -1,0 +1,64 @@
+<meta charset="utf-8">
+<title>채널 연결 · 회장 조치판</title>
+<style>
+ body{font:16px/1.75 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#1a1a1a}
+ h1{font-size:26px;margin-bottom:4px} .sub{color:#666;margin-bottom:28px}
+ .card{border:1px solid #e3e3e3;border-radius:12px;padding:20px;margin:14px 0}
+ .need{border-left:5px solid #d33}
+ .done{border-left:5px solid #2a2;background:#fbfffb}
+ .k{font-weight:600;font-size:18px;margin-bottom:6px}
+ .why{color:#555;margin:6px 0 10px}
+ ol{margin:8px 0 0 18px;padding:0} li{margin:6px 0}
+ code{background:#f4f4f4;padding:2px 6px;border-radius:5px;font-size:14px}
+ .ask{background:#fff8f8;border-radius:8px;padding:12px;margin-top:10px}
+ table{border-collapse:collapse;width:100%;margin-top:10px}
+ td,th{border:1px solid #e3e3e3;padding:8px 10px;text-align:left;font-size:15px}
+ th{background:#fafafa}
+</style>
+
+<h1>채널 연결 · 회장님 손이 필요한 것만</h1>
+<div class="sub">2026-09-08 00시 기준. 제가 할 수 있는 것은 전부 했고, 아래 넷은 제 권한 밖입니다.</div>
+
+<div class="card need">
+  <div class="k">1. 맥 잠금 해제 <span style="color:#d33">(가장 급함)</span></div>
+  <div class="why">지금 로그인 화면이라 화면을 눌러야 하는 작업이 전부 멈춰 있습니다. Facebook 연결 팝업의 페이지 선택, Meta 콘솔 조작이 여기 걸려 있습니다. 비밀번호 입력은 제가 할 수 없습니다.</div>
+  <div class="ask">잠금만 풀어 주시면 Facebook 연결은 제가 끝냅니다.</div>
+</div>
+
+<div class="card need">
+  <div class="k">2. 인스타그램 앱 시크릿이 서버 값과 같은지</div>
+  <div class="why">인스타그램은 동의까지 통과한 뒤 마지막 장기 토큰 교환에서 실패합니다. 이 앱은 <b>Instagram 전용 시크릿</b>이 Meta 앱 시크릿과 별개인데, 서버에 넣어둔 것이 어느 쪽인지 확인이 필요합니다. Meta가 시크릿을 보여줄 때 비밀번호 재인증을 요구해 제가 못 봅니다.</div>
+  <ol>
+    <li><code>developers.facebook.com</code> 접속</li>
+    <li>앱 <b>정성컴퍼니</b> 선택</li>
+    <li>왼쪽에서 <b>Instagram</b> → <b>API setup with Instagram login</b></li>
+    <li><b>Instagram 앱 시크릿 코드</b> 옆 <b>표시</b> 클릭 (비밀번호 재인증)</li>
+  </ol>
+  <div class="ask"><b>값은 저에게 보내지 마십시오.</b> 서버 값과 "같다" 또는 "다르다"만 알려 주시면 됩니다. 다르면 교체는 제가 합니다.</div>
+</div>
+
+<div class="card need">
+  <div class="k">3. X 크레딧 충전</div>
+  <div class="why">연결과 인증은 살아 있습니다. 방금 시험했을 때 토큰이 만료돼 있었는데 자동 갱신이 되살려 X까지 요청이 갔고, 거기서 <b>요금 소진</b>으로 막혔습니다. 돈이 나가는 일이라 제가 하지 않습니다.</div>
+  <div class="ask">X 개발자 콘솔에서 충전하시면 그 즉시 발행됩니다.</div>
+</div>
+
+<div class="card need">
+  <div class="k">4. 유튜브·틱톡·링크드인 계정 방향</div>
+  <div class="why">유튜브와 틱톡은 <b>발행 기능이 이미 있습니다</b>. 계정만 연결하면 됩니다. 링크드인만 기능이 없어 새로 지어야 하고, 회사 페이지 이름이 필요합니다.</div>
+  <div class="ask">지금 붙일지, 인스타그램이 열린 뒤에 할지 알려 주십시오. 추천은 인스타그램 먼저입니다. 사업계획의 페르소나에 실명으로 나오는 채널이 인스타그램 하나뿐입니다.</div>
+</div>
+
+<div class="card done">
+  <div class="k">제가 오늘 끝낸 것</div>
+  <table>
+    <tr><th>항목</th><th>상태</th></tr>
+    <tr><td>Threads 연결·발행·성과</td><td>실제 게시 확인</td></tr>
+    <tr><td>카드뉴스 이미지·숏폼 영상 생성</td><td>실제 생성 확인</td></tr>
+    <tr><td>배포가 생성기 로그인을 덮어써 죽이던 사고</td><td>원인 제거·검증</td></tr>
+    <tr><td>토큰 만료 시 자동 갱신</td><td>X에서 실제 되살아남 확인</td></tr>
+    <tr><td>성과에서 배운 규칙이 생성에 반영</td><td>배포</td></tr>
+    <tr><td>학습 정보 서버 보관(기기 바꿔도 유지)</td><td>브라우저 비우고 확인</td></tr>
+    <tr><td>발행 오류가 화면에 안 뜨던 것(프록시가 삼킴)</td><td>수정·확인</td></tr>
+  </table>
+</div>
