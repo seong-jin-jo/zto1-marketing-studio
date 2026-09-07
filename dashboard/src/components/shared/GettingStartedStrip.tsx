@@ -8,6 +8,7 @@ import { IMPLEMENTED_PLUGINS } from "@/lib/constants";
 
 interface ChecklistData {
   checklist?: { created?: boolean; wiki?: boolean; channel?: boolean; published?: boolean; analytics?: boolean };
+  channelConnected?: boolean;
 }
 
 const STEPS = [
@@ -23,16 +24,24 @@ export function GettingStartedStrip({ connectedCount: controlledConnectedCount }
   const { data: onboardingData } = useOnboardingStatus();
   const [open, setOpen] = useState(false);
 
-  if (!channelConfig && controlledConnectedCount === undefined) return null;
-
+  // 2026-09-08: 종전에는 채널 설정을 못 읽으면 이 줄을 통째로 감췄다. 그런데 그 조회
+  // (/api/channel-config)는 운영자 전용이라 고객에게는 403 이다. 즉 **고객에게는 시작
+  // 안내가 한 번도 뜬 적이 없다.** 처음 온 사람을 첫 발행까지 데려가는 장치가 정작
+  // 처음 온 사람에게만 안 보였다. 회장 계정에서 눌러 보고서야 알았다.
+  //
+  // 이 줄이 실제로 필요한 값은 진행 칸 상태이고 그것은 온보딩 조회가 준다. 채널 설정은
+  // 있으면 더 정확히 세는 보조 자료로만 쓴다. 없다고 안내를 없애지 않는다.
+  const onboarding = onboardingData as ChecklistData | undefined;
   const channels = IMPLEMENTED_PLUGINS.filter((key) => key !== "midjourney");
-  const detectedConnectedCount = channels.filter((key) => {
-    const channel = channelConfig?.[key] as Record<string, unknown> | undefined;
-    return channel?.connected === true || channel?.status === "live" || channel?.status === "connected";
-  }).length;
+  const detectedConnectedCount = channelConfig
+    ? channels.filter((key) => {
+        const channel = channelConfig[key] as Record<string, unknown> | undefined;
+        return channel?.connected === true || channel?.status === "live" || channel?.status === "connected";
+      }).length
+    : (onboarding?.channelConnected ? 1 : 0);
   const connectedCount = controlledConnectedCount ?? detectedConnectedCount;
 
-  const checklist = (onboardingData as ChecklistData | undefined)?.checklist;
+  const checklist = onboarding?.checklist;
   const done = STEPS.filter((step) => Boolean(checklist?.[step.key])).length;
   const next = STEPS.find((step) => !checklist?.[step.key]) ?? STEPS[0];
 
