@@ -20,13 +20,13 @@ describe("그림 지시문 조립", () => {
     expect(out).not.toContain("그린과 크림을 중심으로");
   });
 
-  it("그림 안에 글자가 박히지 않도록 지시한다", () => {
-    // 쓰는 모델은 부정 지시 파라미터를 받지 않는다. "쓰지 마라" 대신 "비어 있다" 를
-    // 그리라고 말한다. 모델은 금지보다 묘사를 잘 따른다(2026-09-08 실측).
+  it("글자를 부르지 않기 위해 글자를 언급하지 않는다", () => {
+    // 2026-09-08 실측 두 번. "no text" 를 넣으면 상표가 박히고, 더 세게 "blank signage"
+    // 까지 넣으면 글자가 더 늘었다. 부정을 이해하지 못하는 모델에게 "글자 없이" 라고
+    // 말하면 남는 것은 "글자" 라는 낱말이고 모델은 그것을 그린다.
     const out = buildImagePrompt("카페 창가", null);
-    expect(out).toContain("free of any text");
-    expect(out).toContain("blank unbranded surfaces");
-    expect(out).toContain("empty signage");
+    expect(out).not.toMatch(/text|letter|signage|watermark|logo|label/i);
+    expect(out).toContain("plain surfaces");
   });
 
   it("모르는 색 표현은 억지로 넣지 않는다", () => {
