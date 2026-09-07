@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildImagePrompt, paletteToColors, IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
+import { buildImagePrompt, paletteToColors, pickImageSubject, IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
 
 // 회장 2026-09-08: "생성할 때 여러 옵션은 안 받는 거냐. 고객은 이것저것 결을 보고 선택한
 // 다음 생성하고 싶어할 듯." 종전에는 결을 고를 자리가 없어 같은 글감이면 늘 같은 결만
@@ -49,5 +49,29 @@ describe("그림 지시문 조립", () => {
       expect(style.title).not.toMatch(/soul|hailuo|v2|model|SDXL/i);
       expect(style.hint.length).toBeGreaterThan(0);
     }
+  });
+});
+
+// 2026-09-08 실측 사고: 그림 지시문 자리에 카드뉴스 본문이 그대로 들어가, 생성기가 그
+// 한국어 문장을 그림 속 상자와 간판에 글자로 그렸다. 뭉개진 알파벳으로 뒤덮인 쓸 수 없는
+// 이미지가 나왔다. 지시문은 무엇을 그릴지를 말해야지 무엇이라고 쓸지를 말하면 안 된다.
+describe("그림 주제 고르기", () => {
+  it("생성기가 만든 시각 묘사가 있으면 그것을 쓴다", () => {
+    expect(pickImageSubject({ imagePrompt: "a sunlit cafe counter", topic: "카페" })).toBe("a sunlit cafe counter");
+  });
+
+  it("시각 묘사가 없으면 짧은 주제어까지만 쓴다", () => {
+    expect(pickImageSubject({ topic: "동네 필라테스" })).toBe("동네 필라테스");
+  });
+
+  it("본문처럼 긴 문장은 넘기지 않는다", () => {
+    const body = "처음 온 고객 10명 중 9명이 같은 실수를 한다. 예약 없이 왔다가 대기 30분, 원하는 메뉴 품절, 그냥 돌아간다.";
+    const out = pickImageSubject({ topic: body });
+    expect(out).not.toContain("예약 없이");
+    expect(out).toBe("brand lifestyle scene");
+  });
+
+  it("아무것도 없으면 무난한 장면으로 대신한다", () => {
+    expect(pickImageSubject({})).toBe("brand lifestyle scene");
   });
 });

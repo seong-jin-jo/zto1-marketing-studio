@@ -77,6 +77,27 @@ export function paletteToColors(palette?: string): string {
 /** 그림 안에 글자가 박히지 않게 하는 지시. 카드뉴스 글자는 편집실이 얹는다. */
 const NO_TEXT = "no text, no lettering, no watermark, no logo";
 
+/**
+ * 그림 지시문의 바탕이 될 말을 고른다.
+ *
+ * 2026-09-08 실측에서 드러난 사고: 지시문 자리에 카드뉴스 **본문**이 그대로 들어가고
+ * 있었다. "처음 온 고객 10명 중 9명이 같은 실수를 한다..." 같은 한국어 문장을 받은
+ * 생성기는 그 말을 그림 속 상자와 간판에 글자로 그렸다. 결과는 뭉개진 알파벳으로 뒤덮인
+ * 쓸 수 없는 이미지였다.
+ *
+ * 그림 지시문은 **무엇을 그릴지**를 말해야지 **무엇이라고 쓸지**를 말하면 안 된다.
+ * 생성기가 만든 시각 묘사(image_prompt)가 있으면 그것을 쓰고, 없으면 짧은 주제어까지만
+ * 쓴다. 본문은 어떤 경우에도 넘기지 않는다.
+ */
+export function pickImageSubject(input: { imagePrompt?: string; topic?: string }): string {
+  const visual = (input.imagePrompt || "").trim();
+  if (visual) return visual;
+  const topic = (input.topic || "").trim();
+  // 주제어도 길면 문장일 가능성이 높다. 짧을 때만 쓴다.
+  if (topic && [...topic].length <= 30) return topic;
+  return "brand lifestyle scene";
+}
+
 export function buildImagePrompt(
   base: string,
   style: { id: string; custom?: string } | null,

@@ -20,7 +20,7 @@ import { useUsage } from "@/hooks/useOverview";
 import { useUIStore, type StudioRoom } from "@/store/ui-store";
 import { LearningCardWizard } from "@/components/studio/LearningCardWizard";
 import { LearningStatus } from "@/components/studio/LearningStatus";
-import { buildImagePrompt } from "@/components/studio/image-style";
+import { buildImagePrompt, pickImageSubject } from "@/components/studio/image-style";
 import { countFilledUserSlots, fetchLearningInfo, mergeLearningInfo, readLearningInfo, saveLearningInfo, type LearningInfo } from "@/components/studio/learning-info";
 import { RepoConnect } from "@/components/studio/RepoConnect";
 import { SchedulePanel } from "@/components/studio/SchedulePanel";
@@ -645,9 +645,11 @@ export default function StudioPage() {
     try {
       // 고른 결과 학습 정보의 브랜드 색을 함께 실어 보낸다. 브랜드 색은 고객이 이미
       // 골라 둔 값인데 종전에는 그림 생성에 한 번도 쓰이지 않았다.
+      // 카드뉴스 본문을 그림 지시문으로 넘기지 않는다. 넘기면 생성기가 그 말을 그림 속
+      // 글자로 그려서 쓸 수 없는 이미지가 나온다(2026-09-08 실측).
       await genImage(
         buildImagePrompt(
-          text?.image_prompt || slides[0] || idea,
+          pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea }),
           { id: imageStyleId, custom: imageStyleCustom },
           learningInfo.palette,
         ),
