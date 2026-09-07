@@ -20,6 +20,7 @@ import { useUsage } from "@/hooks/useOverview";
 import { useUIStore, type StudioRoom } from "@/store/ui-store";
 import { LearningCardWizard } from "@/components/studio/LearningCardWizard";
 import { LearningStatus } from "@/components/studio/LearningStatus";
+import { buildImagePrompt } from "@/components/studio/image-style";
 import { countFilledUserSlots, fetchLearningInfo, mergeLearningInfo, readLearningInfo, saveLearningInfo, type LearningInfo } from "@/components/studio/learning-info";
 import { RepoConnect } from "@/components/studio/RepoConnect";
 import { SchedulePanel } from "@/components/studio/SchedulePanel";
@@ -267,6 +268,9 @@ export default function StudioPage() {
   }
   // 되돌릴 수 없는 조작도 화면 안에서 묻는다. 브라우저 기본 확인창은 페이지를 통째로
   // 멈춰 세워 무엇이 사라지는지 나란히 볼 수 없다(2026-09-07 회장 실사용).
+  // 만들 그림의 결. 만들기 전에 고른다(회장 2026-09-08).
+  const [imageStyleId, setImageStyleId] = useState("photo");
+  const [imageStyleCustom, setImageStyleCustom] = useState("");
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const confirmResolve = useRef<((ok: boolean) => void) | null>(null);
   function askConfirm(req: ConfirmRequest): Promise<boolean> {
@@ -639,7 +643,16 @@ export default function StudioPage() {
     generationAbort.current = new AbortController();
     setBusy("카드뉴스 이미지 만드는 중");
     try {
-      await genImage(text?.image_prompt || slides[0] || idea, "1:1");
+      // 고른 결과 학습 정보의 브랜드 색을 함께 실어 보낸다. 브랜드 색은 고객이 이미
+      // 골라 둔 값인데 종전에는 그림 생성에 한 번도 쓰이지 않았다.
+      await genImage(
+        buildImagePrompt(
+          text?.image_prompt || slides[0] || idea,
+          { id: imageStyleId, custom: imageStyleCustom },
+          learningInfo.palette,
+        ),
+        "1:1",
+      );
     } finally {
       generationAbort.current = null;
       setBusy(null);
@@ -1392,6 +1405,9 @@ export default function StudioPage() {
         onGenerateCardImages={generateCardImages}
         onGenerateVideo={generateShortVideo}
         videoBusy={busy === "숏폼 영상 만드는 중"}
+        imageStyleId={imageStyleId}
+        imageStyleCustom={imageStyleCustom}
+        onImageStyleChange={(styleId, custom) => { setImageStyleId(styleId); setImageStyleCustom(custom); }}
         madeImageUrl={img?.file || img?.url || null}
         madeVideoUrl={vid?.file || vid?.url || null}
         cardImageBusy={busy === "카드뉴스 이미지 만드는 중"}

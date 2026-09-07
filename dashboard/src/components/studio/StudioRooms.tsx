@@ -18,6 +18,7 @@ import {
 } from "@/lib/studio/generation/client";
 import { getAuthToken } from "@/lib/auth";
 import { workspaceDisplayName } from "@/lib/workspace-display-name";
+import { IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
 import {
   CARD_ASPECT_RATIOS,
   EDIT_BACKGROUNDS,
@@ -190,6 +191,10 @@ interface CreateRoomProps {
   onGenerateVideo?: () => Promise<void>;
   videoBusy?: boolean;
   /** 방금 만든 결과. 만든 자리에서 보여야 만들어졌다는 것을 안다(회장 2026-09-07). */
+  /** 만들 그림의 결. 고객이 만들기 전에 고른다(회장 2026-09-08). */
+  imageStyleId?: string;
+  imageStyleCustom?: string;
+  onImageStyleChange?: (styleId: string, custom: string) => void;
   madeImageUrl?: string | null;
   madeVideoUrl?: string | null;
   cardImageBusy?: boolean;
@@ -231,7 +236,7 @@ export function generationErrorMessage(cause: unknown): string {
   return message || "구조 초안을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
-export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, cardImageBusy = false, onGenerateVideo, videoBusy = false, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
+export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
   const topicInputRef = useRef<HTMLInputElement>(null);
   const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
   const [primaryKind, setPrimaryKind] = useState<CreateKind | null>(null);
@@ -681,6 +686,51 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
               놓고 "된다"고 보고한 사고가 났다(회장 2026-09-07 "생성실에는 영상 버튼 자체가
               없는데 했다고 거짓보고한 이유"). 만들 수 있으면 버튼이 여기 있어야 한다.
             */}
+            {/*
+              만들기 전에 결을 고른다. 종전에는 결을 고를 자리가 없어 같은 글감으로 늘 같은
+              결의 그림만 나왔고, 마음에 안 들면 다시 만드는 수밖에 없었다. 다시 만들면
+              그만큼 돈이 나간다. 고르는 것이 결과를 고르는 가장 싼 방법이다(회장 2026-09-08).
+              카드만 두면 준비된 것 밖으로 못 나가므로 직접 적는 칸을 함께 둔다.
+            */}
+            {onImageStyleChange ? (
+              <section className="mb-stack" aria-label="그림 결 고르기" data-image-style>
+                <b className="text-caption font-semibold text-text">어떤 결로 만들까요</b>
+                <div className="mt-stack-tight flex flex-wrap gap-stack-tight">
+                  {IMAGE_STYLES.map((one) => (
+                    <button
+                      key={one.id}
+                      type="button"
+                      data-testid={`image-style-${one.id}`}
+                      aria-pressed={imageStyleId === one.id}
+                      onClick={() => onImageStyleChange(one.id, imageStyleCustom)}
+                      className={`min-h-control-touch rounded-control border px-stack text-caption ${imageStyleId === one.id ? "border-accent bg-accent-soft font-semibold text-accent" : "border-border text-muted"}`}
+                    >
+                      {one.title}
+                      <span className="ml-stack-tight text-caption text-subtle">{one.hint}</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    data-testid="image-style-custom"
+                    aria-pressed={imageStyleId === CUSTOM_STYLE_ID}
+                    onClick={() => onImageStyleChange(CUSTOM_STYLE_ID, imageStyleCustom)}
+                    className={`min-h-control-touch rounded-control border px-stack text-caption ${imageStyleId === CUSTOM_STYLE_ID ? "border-accent bg-accent-soft font-semibold text-accent" : "border-border text-muted"}`}
+                  >
+                    직접 적기
+                  </button>
+                </div>
+                {imageStyleId === CUSTOM_STYLE_ID ? (
+                  <input
+                    data-testid="image-style-custom-input"
+                    aria-label="원하는 결을 직접 적기"
+                    value={imageStyleCustom}
+                    placeholder="예: 비 오는 날 창가, 필름 사진 느낌"
+                    onChange={(event) => onImageStyleChange(CUSTOM_STYLE_ID, event.target.value)}
+                    className="mt-stack-tight min-h-control-touch w-full rounded-control border border-border bg-surface px-stack text-caption text-text"
+                  />
+                ) : null}
+              </section>
+            ) : null}
             <div className="flex flex-wrap gap-stack-tight">
               {onGenerateCardImages ? (
                 <Button size="sm" data-testid="create-card-image" onClick={() => void onGenerateCardImages()} disabled={cardImageBusy || videoBusy}>
