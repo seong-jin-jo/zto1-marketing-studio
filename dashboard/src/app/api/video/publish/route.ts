@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { dataPath } from "@/lib/file-io";
+import { tenantMediaDir } from "@/lib/storage";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import crypto from "crypto";
@@ -41,8 +42,31 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // 고정되고, 이후 모든 요청(테넌트 무관)이 같은 경로를 공유하게 된다. 파일명은 사용자 입력이라
 // 테넌트 간 파일 존재 유무·경로가 새는 구조. 반드시 요청 핸들러 "안", tenantId가 확정된
 // runWithTenant(tenantId, ...) 컨텍스트 안에서만 dataPath()를 호출한다.
-function resolveVideoPath(filename: string): string {
-  return path.join(dataPath("videos"), filename);
+/**
+ * 올릴 영상 파일을 찾는다.
+ *
+ * 2026-09-07: 이 경로가 옛 영상 폴더(data/videos) 한 곳만 봤다. 그런데 생성실이 만든
+ * 숏폼 영상은 작업 공간 폴더(data/studio/{작업공간})에 떨어진다. 그래서 발행실에서 만든
+ * 영상을 이 경로로 올리면 파일이 있는데도 "video not found" 로 끝난다. 오늘 아침 배달
+ * 경로에서 똑같은 이유로 화면에 영상이 안 뜬 일이 있었고 그때는 배달 쪽만 고쳤다.
+ * 발행 쪽에 같은 구멍이 남아 있었다.
+ *
+ * 배달 경로(api/media/[token])가 쓰는 것과 같은 두 곳을 같은 순서로 본다. 한쪽만 보면
+ * 못 찾는다는 사실이 두 곳에 따로 적혀 있으면 다음에 또 어긋난다.
+ */
+function resolveVideoPath(tenantId: string, filename: string): string | null {
+  const dirs: string[] = [dataPath("videos")];
+  try {
+    // 작업 공간 식별자가 비었거나 형식이 틀리면 이 함수가 예외를 던진다. 탐색이 그것 때문에
+    // 죽으면 옛 폴더에 있는 영상까지 못 올린다. 한 곳이라도 볼 수 있으면 본다.
+    if (tenantId) dirs.push(tenantMediaDir(tenantId));
+  } catch { /* 작업 공간 폴더는 건너뛴다 */ }
+  for (const dir of dirs) {
+    const fp = path.join(dir, filename);
+    // 파일명은 위에서 이미 구분자·상위경로를 막았으므로 존재 확인만으로 충분하다.
+    if (fs.existsSync(fp)) return fp;
+  }
+  return null;
 }
 
 // published_posts.draft_id는 UUID라서, 동일한 발행 의도를 DB unique index로 직렬화할 수 있도록
@@ -108,8 +132,8 @@ export async function POST(request: Request) {
   const tenantId = await effectiveTenantId(request, null);
 
   return runWithTenant(tenantId, async () => {
-    const videoPath = resolveVideoPath(filename);
-    if (!fs.existsSync(videoPath)) {
+    const videoPath = resolveVideoPath(tenantId || "", filename);
+    if (!videoPath) {
       return Response.json({ error: "video not found" }, { status: 404 });
     }
 
