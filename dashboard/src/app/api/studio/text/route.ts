@@ -3,6 +3,7 @@ import { getWikiContext } from "@/lib/wiki-retrieve";
 import { generateText, sharedGenerationQuotaErrorResponse, sharedAiApprovalErrorResponse } from "@/lib/anthropic";
 import { fetchRepoFile } from "@/lib/github";
 import { CHANNEL_TEXT_LIMITS } from "@/lib/channel-text-limits";
+import { getLearnedRulesContext } from "@/lib/studio/learned-rules-context";
 
 // POST /api/studio/text — 글감 1개 → 플랫폼별 텍스트 변형(OSMU).
 // body: { idea, guide?, tenant_id?, context_sources? } 
@@ -30,6 +31,8 @@ export async function POST(request: Request) {
   // 위키 근거: 위키 전체 주입(작으면) 또는 관련 top-K(크면 자동 폴백) → 프롬프트 주입(사실 기반 생성)
   const tenantId = await effectiveTenantId(request, tenant_id);
   const { text: wiki } = tenantId ? await getWikiContext(tenantId, idea) : { text: "" };
+  // 성과실에서 승낙된 규칙을 생성에 실제로 반영한다. 이 줄이 없으면 성과실은 숫자판일 뿐이다.
+  const learnedRules = await getLearnedRulesContext(tenantId);
   let extraContext = "";
   // 0차: multi-repo context pulling (github raw + local) for operator's other repos
   if (context_sources && Array.isArray(context_sources)) {
@@ -56,7 +59,7 @@ export async function POST(request: Request) {
     }
   }
   const prompt = `너는 SNS 마케팅 카피라이터다. 아래 글감을 플랫폼 특성에 맞춰 변형하라.
-${guide ? `브랜드 톤 가이드:\n${guide}\n` : ""}${wiki ? `\n=== 위키 참조(아래 사실에 근거해 작성, 없는 내용 지어내기 금지) ===\n${wiki}\n===\n` : ""}${extraContext ? `\n=== 추가 컨텍스트 (0차 multi-repo) ===\n${extraContext}\n===\n` : ""}
+${guide ? `브랜드 톤 가이드:\n${guide}\n` : ""}${learnedRules}${wiki ? `\n=== 위키 참조(아래 사실에 근거해 작성, 없는 내용 지어내기 금지) ===\n${wiki}\n===\n` : ""}${extraContext ? `\n=== 추가 컨텍스트 (0차 multi-repo) ===\n${extraContext}\n===\n` : ""}
 글감: "${idea}"
 ${structureGuide}
 

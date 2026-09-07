@@ -23,7 +23,7 @@ describe("refreshAccessToken", () => {
     expect(result.refreshToken).toBe("new-refresh");
     expect(result.expiresInSeconds).toBe(7200);
 
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toContain("oauth2/token");
     const body = String(init.body);
     expect(body).toContain("grant_type=refresh_token");
