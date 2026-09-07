@@ -1365,6 +1365,9 @@ export default function StudioPage() {
     <div className="px-stack-section py-pad-inset">
       {showWizard && activeWorkspace ? <LearningCardWizard workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onSaved={(info, completed) => { setLearningInfo(info); if (completed) { setShowWizard(false); mutateBrand(); showToast("학습 정보를 배웠습니다"); } else { setLearningFlash((value) => value + 1); } }} onClose={() => setShowWizard(false)} /> : null}
       {roomHeader}
+      {/* 처음 온 사람은 생성실에 있다. 시작 안내가 발행실에만 붙어 있어서, 정작 첫 화면에서는
+          무엇을 할 차례인지 보이지 않았다(2026-09-08 회장 계정 실측). 첫 화면에도 둔다. */}
+      <GettingStartedStrip />
       {progressStrip}
       <CreateRoom
         workspaceId={activeWorkspace?.id}
