@@ -569,7 +569,17 @@ export default function StudioPage() {
       if (!r?.ok) { const msg = r?.credits ? "Higgsfield 크레딧 부족" : r?.nsfw ? "Higgsfield NSFW 차단" : (r?.error || "이미지 실패"); setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null; }
       setImg(r); mutateAcct(); return r;
     } catch (e) {
-      const msg = extractApiErrorMessage(e, "이미지 생성 실패");
+      // 2026-09-08 실측: 생성기가 막은 주제였는데 화면에는 "Request failed: 502" 만 떴다.
+      // 서버는 이유(nsfw·크레딧 부족)를 응답 본문에 담아 보내는데, 응답이 2xx 가 아니면
+      // 그 본문을 읽지 않고 버리고 있었다. 이유를 아는 실패는 이유를 말한다.
+      const payload = e instanceof ApiResponseError
+        ? (e.payload as { error?: string; nsfw?: boolean; credits?: boolean } | undefined)
+        : undefined;
+      const msg = payload?.nsfw
+        ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감을 바꾸거나 결을 바꿔 다시 시도해 주세요."
+        : payload?.credits
+          ? "이미지 생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다."
+          : payload?.error || extractApiErrorMessage(e, "이미지 생성 실패");
       setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
     }
   }
