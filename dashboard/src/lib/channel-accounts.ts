@@ -47,6 +47,14 @@ export interface ResolvedIdentity {
   username?: string;
 }
 
+/** 신원 조회가 "응답은 정상인데 대상이 없다"로 끝났을 때의 표식. 원인별 안내를 위해 쓴다. */
+class IdentityMissingError extends Error {
+  constructor(public reason: string) {
+    super(reason);
+    this.name = "IdentityMissingError";
+  }
+}
+
 const TIMEOUT_MS = 5000;
 
 const LIVE_IDENTITY_PROVIDERS = new Set(["threads", "instagram", "x", "youtube"]);
@@ -60,6 +68,7 @@ export async function resolveExternalIdentity(
   fallbackUserId?: string,
   tenantId?: string,
 ): Promise<ResolvedIdentity> {
+  // 아래 catch 에서 "무엇이 없는지"를 구분하기 위한 표식.
   try {
     if (provider === "x") {
       const res = await fetch("https://api.twitter.com/2/users/me", {
@@ -81,7 +90,10 @@ export async function resolveExternalIdentity(
       const data = (await res.json()) as { items?: Array<{ id?: string; snippet?: { title?: string } }> };
       const ch = data.items?.[0];
       if (ch?.id) return { externalId: ch.id, displayName: ch.snippet?.title };
-      throw new Error("youtube identity missing");
+      // 응답은 정상인데 목록이 비었다 = 이 구글 계정에 유튜브 채널이 없다.
+      // 이것과 "토큰이 잘못됐다"를 같은 문구로 뭉뚱그리면 사용자는 될 리 없는 재연결만 반복한다
+      // (2026-09-07 회장 계정에서 실제로 그랬다).
+      throw new IdentityMissingError("youtube_no_channel");
     } else if (provider === "threads") {
       const res = await fetch(`https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(accessToken)}`, {
         signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -102,8 +114,16 @@ export async function resolveExternalIdentity(
     // facebook: fallbackUserId는 이미 exchangeFacebookCode가 확정한 페이지 id(authoritative) —
     // 별도 /me 불필요. 그 외 provider(linkedin/naver_blog/pinterest/tumblr/tiktok/slack/line)는
     // 이 스코프에서 별도 /me 미구현 — fallback으로 처리.
-  } catch {
+  } catch (e) {
     if (LIVE_IDENTITY_PROVIDERS.has(provider)) {
+      // 원인을 아는 실패는 그 원인을 말한다. 모르면 종전 문구를 쓴다.
+      // "다시 연결해주세요" 는 재연결로 풀리는 문제일 때만 맞는 말이다. 채널이 없어서 실패한
+      // 사람에게 재연결을 시키면 몇 번을 해도 같은 화면을 본다(2026-09-07 회장 계정 실측).
+      if (e instanceof IdentityMissingError && e.reason === "youtube_no_channel") {
+        throw new Error(
+          "이 구글 계정에는 유튜브 채널이 없습니다. 유튜브에서 채널을 먼저 만든 뒤 다시 연결해 주세요. 채널이 있는 다른 구글 계정이라면 그 계정으로 연결하시면 됩니다.",
+        );
+      }
       throw new Error(`${provider} 계정 신원 검증에 실패했습니다. 다시 연결해주세요.`);
     }
   }
