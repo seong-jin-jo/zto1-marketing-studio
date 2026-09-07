@@ -467,6 +467,9 @@ export async function getSelectedChannelAccountCredFresh(
   const expiresAt = row.token_expires_at ? Date.parse(row.token_expires_at) : NaN;
   const stale = Number.isFinite(expiresAt) && expiresAt - REFRESH_MARGIN_MS <= Date.now();
 
+  // 갱신은 "되면 좋은 것"이다. 여기서 던지면 발행 요청 전체가 502 로 죽고 사용자는 이유를
+  // 알 수 없다(2026-09-07 실측). 갱신이 어떤 이유로 실패하든 아래 관문 판정으로 흘려보낸다.
+  try {
   if (stale && row.refresh_token) {
     const { refreshAccessToken } = await import("@/lib/social-connect");
     const refreshed = await refreshAccessToken(provider, row.refresh_token);
@@ -485,6 +488,7 @@ export async function getSelectedChannelAccountCredFresh(
       return { token: refreshed.accessToken, refreshToken: refreshed.refreshToken ?? row.refresh_token, userId, meta, accountId: row.id };
     }
   }
+  } catch { /* 갱신 실패는 아래 관문이 판정한다 */ }
 
   // ★갱신에 실패했거나 갱신 토큰이 없으면 옛 규칙 그대로 못 쓰는 자격증명으로 본다.
   //
