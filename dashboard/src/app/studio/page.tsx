@@ -1419,6 +1419,8 @@ export default function StudioPage() {
         initialFormat={editFormat}
         onFormatChange={setEditFormat}
         previewReady={editKind === "video" ? Boolean(vid?.file) : editKind === "card" ? Boolean(img?.file) : false}
+        previewImageUrl={img?.file || img?.url || null}
+        previewVideoUrl={vid?.file || vid?.url || null}
         cardTextPositions={cardTextPositions}
         onCardTextPositionsChange={setCardTextPositions}
         onOpenCreate={() => changeRoom("create")}

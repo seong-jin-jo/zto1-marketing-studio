@@ -99,6 +99,7 @@ export function EditPreview({
   onActiveLine,
   subtitleSize = "보통",
   renderReady = false,
+  mediaUrl,
   onLinesChange,
   cardTextPositions = [],
   onCardTextPositionsChange,
@@ -113,6 +114,15 @@ export function EditPreview({
   subtitleSize?: string;
   /** 실제 미디어 파일이 나왔는지 */
   renderReady?: boolean;
+  /**
+   * 생성실에서 방금 만든 산출물 주소.
+   *
+   * 2026-09-08 회장 실사용: "생성한 다음 편집실 가면 카드뉴스 영상 아무것도 안 나온다".
+   * 편집실은 준비 여부(참거짓)만 받고 산출물 주소를 아예 못 받고 있었다. 그래서 무엇을
+   * 만들었든 "여기에 화면이 놓입니다"라는 자리표시자만 그렸다. 만든 것을 보면서 고치는
+   * 방이 정작 만든 것을 안 보여 준 셈이다.
+   */
+  mediaUrl?: string;
   onLinesChange?: (lines: string[]) => void;
   cardTextPositions?: CardTextPosition[];
   onCardTextPositionsChange?: (positions: CardTextPosition[]) => void;
@@ -166,6 +176,29 @@ export function EditPreview({
           ) : null}
           {spec.safeBottom > 0 ? (
             <div aria-hidden="true" className={`absolute inset-x-0 bottom-0 border-t border-dashed border-border bg-surface/40 ${SAFE_AREA_HEIGHT_CLASS[spec.safeBottom]}`} />
+          ) : null}
+
+          {/* 만든 것을 배경으로 깔고 그 위에 글자와 자막을 얹는다. 실제 결과에 가깝게 보여야
+              무엇을 고칠지 판단할 수 있다. 종전에는 이 자리가 비어 "여기에 화면이 놓입니다"
+              라는 자리표시자만 있었다(2026-09-08 회장 실사용). */}
+          {mediaUrl ? (
+            kind === "video" ? (
+              <video
+                data-edit-preview-media="video"
+                src={mediaUrl}
+                className="absolute inset-0 h-full w-full object-cover"
+                controls
+                playsInline
+                muted
+              />
+            ) : (
+              <img
+                data-edit-preview-media="image"
+                src={mediaUrl}
+                alt="방금 만든 산출물 미리보기"
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            )
           ) : null}
 
           {kind === "card" ? (

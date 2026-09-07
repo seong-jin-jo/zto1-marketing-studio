@@ -831,6 +831,9 @@ interface EditRoomProps {
   kind?: EditContentKind;
   onKindChange?: (kind: EditContentKind) => void;
   previewReady?: boolean;
+  /** 생성실 산출물 주소. 편집실이 실제로 만든 것을 보여 주기 위해 받는다(2026-09-08). */
+  previewImageUrl?: string | null;
+  previewVideoUrl?: string | null;
   commandPanel?: ReactNode;
   initialFormat?: ContentEditFormat;
   onFormatChange?: (format: ContentEditFormat) => void;
@@ -948,6 +951,8 @@ export function EditRoom({
   kind = "video",
   onKindChange,
   previewReady = false,
+  previewImageUrl = null,
+  previewVideoUrl = null,
   commandPanel,
   initialFormat,
   onFormatChange,
@@ -1089,6 +1094,7 @@ export function EditRoom({
                               onActiveLine={setActiveLine}
                               subtitleSize={toolValues.자막}
                               renderReady={previewReady}
+                              mediaUrl={(kind === "video" ? previewVideoUrl : previewImageUrl) || undefined}
                               onLinesChange={onLinesChange}
                               cardTextPositions={cardTextPositions}
                               onCardTextPositionsChange={onCardTextPositionsChange}
