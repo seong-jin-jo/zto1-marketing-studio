@@ -260,6 +260,10 @@ jobs:
           X_CLIENT_SECRET: ${{ secrets.X_CLIENT_SECRET }}
           IG_APP_ID: ${{ secrets.IG_APP_ID }}
           IG_APP_SECRET: ${{ secrets.IG_APP_SECRET }}
+          THREADS_APP_ID: ${{ secrets.THREADS_APP_ID }}
+          THREADS_APP_SECRET: ${{ secrets.THREADS_APP_SECRET }}
+          FB_APP_ID: ${{ secrets.FB_APP_ID }}
+          FB_APP_SECRET: ${{ secrets.FB_APP_SECRET }}
         run: |
           # import-env 는 DB 에 값이 이미 있으면 409 로 거절한다(2026-09-07 실측).
           # 콘솔에서 시크릿을 갈아 끼운 경우가 바로 그 상황이므로 덮어쓰기를 쓴다.
@@ -269,6 +273,8 @@ jobs:
               youtube)   export CID="$YOUTUBE_CLIENT_ID"; export CSEC="$YOUTUBE_CLIENT_SECRET" ;;
               x)         export CID="$X_CLIENT_ID";       export CSEC="$X_CLIENT_SECRET" ;;
               instagram) export CID="$IG_APP_ID";         export CSEC="$IG_APP_SECRET" ;;
+              threads)   export CID="$THREADS_APP_ID";   export CSEC="$THREADS_APP_SECRET" ;;
+              facebook)  export CID="$FB_APP_ID";        export CSEC="$FB_APP_SECRET" ;;
               *) echo "::error::지원하지 않는 제공자: $p"; exit 1 ;;
             esac
             if [ -z "$CID" ] || [ -z "$CSEC" ]; then
