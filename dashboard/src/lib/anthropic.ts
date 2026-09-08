@@ -326,7 +326,7 @@ export class SharedGenerationQuotaError extends Error {
   readonly limit: number;
   readonly used: number;
   constructor(period: string, limit: number, used: number) {
-    super(`공유 생성 한도 초과 (${period}): ${used}/${limit}. Settings에서 자체 Anthropic 키를 등록하면 한도 없이 사용할 수 있습니다.`);
+    super(`이번 달 생성 한도를 다 쓰셨습니다 (${used}/${limit}, ${period}). 다음 달에 다시 채워지고, 설정에서 자체 Anthropic 키를 등록하면 한도 없이 쓸 수 있습니다.`);
     this.name = "SharedGenerationQuotaError";
     this.period = period;
     this.limit = limit;
@@ -348,10 +348,21 @@ export function sharedGenerationQuotaErrorResponse(e: unknown): Response | null 
 }
 
 // OSMU_SHARED_GENERATIONS_INCLUDED — 양의 정수만 인정, 그 외(미설정·0·음수·비숫자)는 기본 100.
-function sharedGenerationsIncluded(): number {
-  const raw = process.env.OSMU_SHARED_GENERATIONS_INCLUDED;
+// OSMU_TRIAL_GENERATIONS — 운영자 승인 전 회원의 체험 한도. 기본 20.
+//
+// 2026-09-08 회장 지시("회원들은 OAuth2 로그인만 하면 바로 발행"). 종전에는 승인 전 회원의
+// 생성 요청을 전부 거절했다. 가입은 되는데 첫 생성부터 막히고, 화면은 운영자 승인을 기다리거나
+// 개발자용 API 키를 직접 발급해 오라고 안내했다. 우리 고객은 도구 학습 시간이 없는 1인 사업자다.
+// 그 사람에게 API 키를 발급해 오라는 것은 제품을 안 쓰겠다는 말과 같다.
+// 그래서 승인은 "문" 이 아니라 "한도를 올리는 것" 으로 바꾼다. 비용은 무한히 열리지 않는다.
+// 이미 있는 월별 사용량 한도가 그대로 걸리고, 승인 전에는 더 작은 체험 한도가 걸린다.
+function sharedGenerationsIncluded(approved: boolean): number {
+  const raw = approved
+    ? process.env.OSMU_SHARED_GENERATIONS_INCLUDED
+    : process.env.OSMU_TRIAL_GENERATIONS;
   const n = raw != null && raw !== "" ? Number(raw) : NaN;
-  return Number.isInteger(n) && n > 0 ? n : 100;
+  if (Number.isInteger(n) && n > 0) return n;
+  return approved ? 100 : 20;
 }
 
 function currentPeriodUTC(): string {
@@ -364,8 +375,8 @@ function currentPeriodUTC(): string {
 // 먼저 행 잠금을 잡은 뒤 DO UPDATE의 WHERE를 잠금된 최신 값으로 재평가하므로, 동시 요청이 같은
 // tenant_id로 몰려도(FIFO 큐 덕에 실제로는 순차지만, 방어적으로) 한도를 넘겨 카운트되지 않는다.
 // RETURNING 행이 0개 = WHERE가 false = 이미 한도 도달 → SharedGenerationQuotaError throw(카운트 불변).
-async function reserveSharedGeneration(tenantId: string): Promise<{ period: string; limit: number }> {
-  const limit = sharedGenerationsIncluded();
+async function reserveSharedGeneration(tenantId: string, approved: boolean): Promise<{ period: string; limit: number }> {
+  const limit = sharedGenerationsIncluded(approved);
   const period = currentPeriodUTC();
 
   const rows = await withTenant(tenantId, (sql) => sql<{ generations_used: number }[]>`
@@ -456,9 +467,9 @@ async function recordByokGenerationEvent(
 // 테넌트 + 공유 CLI 경로 전용: 큐 실행 "직전"이 아니라 "그 작업이 실제로 시작될 때" reserve한다
 // (runSerializedCli에 넘기는 task 내부에서 reserve) — 대기 중인 여러 요청이 한꺼번에 quota를
 // 선점해 쌓이지 않고, 실제로 실행 순서가 돌아온 요청만 그 시점의 최신 사용량으로 reserve된다.
-function runSharedCliWithQuota(tenantId: string, prompt: string): Promise<string> {
+function runSharedCliWithQuota(tenantId: string, prompt: string, approved: boolean): Promise<string> {
   return runSerializedCli(async () => {
-    const { period } = await reserveSharedGeneration(tenantId);
+    const { period } = await reserveSharedGeneration(tenantId, approved);
     let stdout: string;
     try {
       stdout = await runClaudeCli(prompt);
@@ -486,6 +497,9 @@ function assertPromptWithinCliLimit(prompt: string): void {
 // 자격증명·비용)를 쓰려면 운영자가 개별 승인(tenants.shared_cli_approved_at)해야 한다.
 // BYO Anthropic 키 경로는 이 게이트와 무관(자기 키·자기 과금이라 즉시 허용, generateText 상단에서 이미 분기).
 
+// 2026-09-08 이후 이 오류는 더 이상 발생하지 않는다. 승인은 문이 아니라 한도가 됐다
+// (sharedGenerationsIncluded 주석 참조). 라우트 6곳이 아직 이 헬퍼를 catch 에서 부르고 있어
+// 형태만 남겨 둔다. 새 코드에서 이걸 던지지 마라 — 회원을 첫 생성에서 막는 문을 되살리는 것이다.
 export class SharedAiApprovalRequiredError extends Error {
   constructor() {
     super("공유 AI 생성은 아직 승인되지 않았습니다. 운영자 승인을 기다리거나 Settings에서 자체 Anthropic 키를 등록하면 즉시 이용할 수 있습니다.");
@@ -508,11 +522,16 @@ export function sharedAiApprovalErrorResponse(e: unknown): Response | null {
 
 // tenants는 RLS 제외라 bare db()로 조회(다른 tenants 조회 — getTenantStatus 등과 동일 패턴).
 // null/미존재면 미승인으로 fail-closed(계정 조회 실패를 "승인됨"으로 해석하지 않는다).
-async function assertSharedAiApproved(tenantId: string): Promise<void> {
-  const sql = db();
-  const [row] = await sql<{ shared_cli_approved_at: string | null }[]>`
-    SELECT shared_cli_approved_at FROM tenants WHERE id = ${tenantId} LIMIT 1`;
-  if (!row?.shared_cli_approved_at) throw new SharedAiApprovalRequiredError();
+// 조회 실패·미존재는 미승인으로 본다(fail-closed). 미승인은 거절이 아니라 체험 한도다.
+async function isSharedAiApproved(tenantId: string): Promise<boolean> {
+  try {
+    const sql = db();
+    const [row] = await sql<{ shared_cli_approved_at: string | null }[]>`
+      SELECT shared_cli_approved_at FROM tenants WHERE id = ${tenantId} LIMIT 1`;
+    return Boolean(row?.shared_cli_approved_at);
+  } catch {
+    return false;
+  }
 }
 
 // 텍스트 생성. 고객이 자기 Anthropic 키를 등록했으면 그 키로 API 호출(고객 과금·격리, quota 대상 아님,
@@ -551,9 +570,10 @@ export async function generateText(prompt: string, tenantId: string | null): Pro
       throw e;
     }
   }
-  await assertSharedAiApproved(tenantId);
+  // 승인은 문이 아니라 한도다. 승인 전이면 더 작은 체험 한도로 그대로 진행한다.
+  const approved = await isSharedAiApproved(tenantId);
   try {
-    const output = await runSharedCliWithQuota(tenantId, prompt);
+    const output = await runSharedCliWithQuota(tenantId, prompt, approved);
     void reportRecovery?.({ workspaceId: tenantId, category: "generation_failed", source: "shared_ai" });
     return output;
   } catch (e) {
@@ -629,9 +649,10 @@ export async function generateTextWithUsage(input: {
     return result;
   }
 
-  await assertSharedAiApproved(input.tenantId);
+  // 승인은 문이 아니라 한도다(sharedGenerationsIncluded 주석 참조).
+  const approved = await isSharedAiApproved(input.tenantId);
   return runSerializedCli(async () => {
-    const { period } = await reserveSharedGeneration(input.tenantId);
+    const { period } = await reserveSharedGeneration(input.tenantId, approved);
     try {
       const result = await runClaudeCliWithUsage(input.prompt, model, input.timeoutMs);
       await recordSharedGenerationEvent(input.tenantId, { ...result.usage, model, source: "shared-claude-cli" });
