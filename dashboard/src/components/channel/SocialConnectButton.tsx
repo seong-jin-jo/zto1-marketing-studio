@@ -189,7 +189,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
         ? "발행 준비중"
         : `${label} OAuth 연결`;
 
-  const connect = async () => {
+  const connect = async (switchAccount = false) => {
     if (!activeWorkspace) {
       setMsg("워크스페이스를 먼저 선택하세요.");
       return;
@@ -216,7 +216,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
     }
 
     try {
-      const r = await fetch(`/api/connect/${provider}?tenant_id=${activeWorkspace.id}`, { headers: authHeaders() });
+      const r = await fetch(`/api/connect/${provider}?tenant_id=${activeWorkspace.id}${switchAccount ? "&switch_account=1" : ""}`, { headers: authHeaders() });
       const d = (await r.json()) as { authUrl?: string; error?: string };
       if (!mountedRef.current) {
         // 언마운트된 뒤 fetch가 뒤늦게 resolve된 경우 — 예약해둔 팝업만 정리하고
@@ -307,7 +307,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
         </div>
       )}
       <button
-        onClick={connect}
+        onClick={() => connect(false)}
         disabled={busy || readinessLoading || disabledByReadiness}
         data-testid={`connect-${provider}`}
         data-ready={disabledByReadiness ? "false" : "true"}
@@ -320,14 +320,31 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
         {busy ? "여는 중…" : readinessLoading ? "확인 중…" : connectLabel}
       </button>
       {accountSwitchHelp && (
-        <div className="mt-stack-tight">
+        <div className="mt-stack-tight space-y-stack-tight">
+          {/*
+            2026-09-09 회장 지적: "X 는 다른 계정으로 로그인하는게 왜 없음."
+            여기 있던 것은 **안내문**이었다. 누르면 "먼저 로그아웃하세요" 라는 설명이
+            펼쳐질 뿐 계정을 바꾸는 동작이 없었다. 사용자에게 그 둘은 같아 보이지 않는다.
+            시키기만 하고 해 주지 않으면 없는 기능이다.
+            이제 누르면 제공자에게 계정 선택 화면을 강제로 띄우라고 말하며 연결을 시작한다.
+            그래도 안 되는 경우를 위해 종전 안내는 접힌 채로 남긴다.
+          */}
+          <button
+            type="button"
+            onClick={() => connect(true)}
+            disabled={busy || disabledByReadiness}
+            data-testid={`switch-account-connect-${provider}`}
+            className="inline-flex min-h-control-touch items-center rounded-control border border-accent/40 bg-accent-soft px-stack text-caption font-semibold text-accent hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? "여는 중…" : "다른 계정으로 연결하기"}
+          </button>
           <button
             type="button"
             onClick={() => setShowSwitchNote((v) => !v)}
             data-testid={`switch-account-${provider}`}
-            className="text-caption text-accent underline underline-offset-2"
+            className="block text-caption text-accent underline underline-offset-2"
           >
-            다른 계정으로 연결하고 싶어요
+            계정이 안 바뀌면 눌러 보세요
           </button>
           {showSwitchNote && (
             <div className="mt-micro space-y-stack-tight">
