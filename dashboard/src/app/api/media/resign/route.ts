@@ -1,9 +1,6 @@
-import fs from "fs";
-import path from "path";
-import { dataPath } from "@/lib/file-io";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { isSafeMediaFilename, signMediaToken } from "@/lib/media-token";
-import { tenantMediaDir } from "@/lib/storage";
+import { resolveGeneratedFile } from "@/lib/storage";
 
 // POST /api/media/resign — 만료된 배달 주소를 같은 파일의 새 주소로 바꿔 준다.
 //
@@ -26,12 +23,8 @@ export async function POST(request: Request) {
   const tenantId = await effectiveTenantId(request, body?.tenant_id);
   if (!tenantId) return Response.json({ ok: false, error: "작업 공간을 확인할 수 없습니다." }, { status: 401 });
 
-  // 배달 라우트와 같은 두 뿌리를 본다. 한쪽만 보면 못 찾는다.
-  let found = false;
-  for (const dir of [dataPath("videos"), tenantMediaDir(tenantId)]) {
-    const fp = path.join(dir, filename);
-    if (fs.existsSync(fp) && fs.statSync(fp).isFile()) { found = true; break; }
-  }
+  // 배달 라우트와 같은 함수로 찾는다. 탐색이 갈라지면 한쪽에서만 보이는 파일이 생긴다.
+  const found = Boolean(resolveGeneratedFile(tenantId, filename));
   // 존재 여부를 그대로 알려 주면 남의 파일 이름을 넣어 보는 것으로 목록을 캘 수 있다.
   // 배달 라우트와 같은 말로 닫는다.
   if (!found) return Response.json({ ok: false, error: "not found" }, { status: 404 });

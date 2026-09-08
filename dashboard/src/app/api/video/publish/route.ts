@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { dataPath } from "@/lib/file-io";
-import { tenantMediaDir } from "@/lib/storage";
+import { resolveGeneratedFile } from "@/lib/storage";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import crypto from "crypto";
@@ -66,20 +66,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // 같은 이유로 /api/publish 는 제공자 실패를 HTTP 200 + ok:false 로 돌려준다(그 라우트의 계약 테스트).
 const PROVIDER_FAILED = 200;
 
-function resolveVideoPath(tenantId: string, filename: string): string | null {
-  const dirs: string[] = [dataPath("videos")];
-  try {
-    // 작업 공간 식별자가 비었거나 형식이 틀리면 이 함수가 예외를 던진다. 탐색이 그것 때문에
-    // 죽으면 옛 폴더에 있는 영상까지 못 올린다. 한 곳이라도 볼 수 있으면 본다.
-    if (tenantId) dirs.push(tenantMediaDir(tenantId));
-  } catch { /* 작업 공간 폴더는 건너뛴다 */ }
-  for (const dir of dirs) {
-    const fp = path.join(dir, filename);
-    // 파일명은 위에서 이미 구분자·상위경로를 막았으므로 존재 확인만으로 충분하다.
-    if (fs.existsSync(fp)) return fp;
-  }
-  return null;
-}
+// 파일 찾기는 lib/storage.ts 의 resolveGeneratedFile 하나가 정본이다(2026-09-08).
 
 // published_posts.draft_id는 UUID라서, 동일한 발행 의도를 DB unique index로 직렬화할 수 있도록
 // 안정적인 UUID 모양의 키를 유도한다. 캡션/공개범위/상호작용 옵션 중 하나라도 달라지면 새 발행이다.
@@ -144,7 +131,7 @@ export async function POST(request: Request) {
   const tenantId = await effectiveTenantId(request, null);
 
   return runWithTenant(tenantId, async () => {
-    const videoPath = resolveVideoPath(tenantId || "", filename);
+    const videoPath = resolveGeneratedFile(tenantId || "", filename);
     if (!videoPath) {
       return Response.json({ error: "video not found" }, { status: 404 });
     }

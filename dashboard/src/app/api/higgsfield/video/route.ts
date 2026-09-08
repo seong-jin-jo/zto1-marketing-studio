@@ -4,8 +4,9 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { signMediaToken } from "@/lib/media-token";
 import { runWithTenant } from "@/lib/tenant-context";
 import { hfRun, extractJson, findResultUrl, downloadTo, addNarration, logGen, recordMediaGenerationEvent, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError, assertHiggsfieldReady, studioDir, assetUrl } from "@/lib/higgsfield";
+import { resolveGeneratedFile } from "@/lib/storage";
 
-// POST /api/higgsfield/video — image→video. body: { localPath, prompt, model?, narration? }
+// POST /api/higgsfield/video — image→video. body: { localPath 또는 filename, prompt, model?, narration? }
 // localPath = /api/higgsfield/image 가 반환한 서버측 절대경로(CLI가 자동 업로드).
 // model 기본 minimax_hailuo(6cr) — 무음. narration 주면 생성 후 TTS 음성 ffmpeg 합성(소리 추가).
 // img·video 태그는 인증 헤더를 못 붙인다. 그래서 헤더 인증만 있는 자산 경로로는 화면에
@@ -28,13 +29,28 @@ function deliverUrl(tenantId: string, filename: string): string {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { localPath, prompt, model = "minimax_hailuo", narration = "", label = "" } = body;
-  if (!localPath || !fs.existsSync(localPath)) {
-    return Response.json({ error: "valid localPath required (먼저 /api/higgsfield/image 호출)" }, { status: 400 });
-  }
+  const { prompt, model = "minimax_hailuo", narration = "", label = "" } = body;
   // 이미지와 같은 이유로 작업 공간을 남긴다(2026-09-06 고객 개방).
   const tenantId = await effectiveTenantId(request, body.tenant_id);
   if (!tenantId) return Response.json({ error: "테넌트를 식별할 수 없습니다." }, { status: 401 });
+
+  // 바탕 그림을 어떻게 받는가.
+  // 종전에는 서버 내부 경로(localPath)만 받았다. 그래서 방금 만든 그림으로는 영상이 됐지만,
+  // 승인함이나 달력에서 가져온 작업물로는 안 됐다. 그쪽은 웹 주소만 갖고 있기 때문이다.
+  // 화면에는 "valid localPath required" 라는 개발자 말이 그대로 떴다(코드 감사 F-05).
+  // 발행 경로는 이미 파일 이름으로 서버 경로를 푼다. 생성 경로만 달랐다. 같게 만든다.
+  const filename = typeof body.filename === "string" ? body.filename : "";
+  let localPath: string = typeof body.localPath === "string" ? body.localPath : "";
+  if (filename) {
+    const resolved = resolveGeneratedFile(tenantId, filename);
+    if (resolved) localPath = resolved;
+  }
+  if (!localPath || !fs.existsSync(localPath)) {
+    return Response.json({
+      ok: false,
+      error: "영상의 바탕이 될 그림을 찾지 못했습니다. 생성실에서 그림을 다시 만들어 주세요.",
+    }, { status: 400 });
+  }
   const motion = prompt || "subtle idle motion, gentle sway and glow, fixed camera, smooth";
   // Marketing Studio(UGC/제품광고)는 mode·aspect_ratio 파라미터 필요 → 모델별 분기
   const extra = model.startsWith("marketing_studio")

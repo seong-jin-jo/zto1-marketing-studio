@@ -4,7 +4,7 @@ import { Readable } from "stream";
 import { dataPath } from "@/lib/file-io";
 import { runWithTenant } from "@/lib/tenant-context";
 import { verifyMediaToken } from "@/lib/media-token";
-import { tenantMediaDir } from "@/lib/storage";
+import { resolveGeneratedFile } from "@/lib/storage";
 
 // GET /api/media/<signed-token> — SNS-015 서명 미디어 배달.
 // Instagram Reels 컨테이너 생성 시 Meta 서버가 직접 이 URL을 가져간다(= 인증 헤더를 못 붙임).
@@ -50,15 +50,9 @@ function sniffContentType(fp: string, fallback: string): string {
 
 // 토큰이 정한 테넌트 안에서만 찾는다. 영상 업로드 폴더와 생성실 폴더 두 곳을 본다.
 // 두 경로 모두 runWithTenant 안에서 계산되므로 다른 테넌트로 새지 않는다.
-function resolveDeliverable(tenantId: string, filename: string): string | null {
-  // data/tenants/{id}/videos (영상 업로드) 와 data/studio/{id} (생성실 산출물) 두 곳이다.
-  // 경로 계산이 서로 다른 뿌리를 쓰므로 한쪽만 보면 못 찾는다.
-  for (const dir of [dataPath("videos"), tenantMediaDir(tenantId)]) {
-    const fp = path.join(dir, filename);
-    if (fs.existsSync(fp) && fs.statSync(fp).isFile()) return fp;
-  }
-  return null;
-}
+// 파일 찾기는 lib/storage.ts 의 resolveGeneratedFile 하나가 정본이다.
+// 같은 탐색이 이 라우트, 영상 발행, 재서명에 각각 복사돼 있었고 영상 생성만 아예 달랐다
+// (2026-09-08 코드 감사 F-05). 복사본이 넷이면 넷이 서로 다르게 낡는다.
 
 /** Range 응답 1회 상한 — 메모리 보호. */
 const MAX_RANGE_CHUNK = 8 * 1024 * 1024;
@@ -71,7 +65,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (!claim) return notFound();
 
   return runWithTenant(claim.tenantId, async () => {
-    const fp = resolveDeliverable(claim.tenantId, claim.filename);
+    const fp = resolveGeneratedFile(claim.tenantId, claim.filename);
     if (!fp) return notFound();
     const declared = TYPES[path.extname(fp).toLowerCase()];
     const ct = declared ? sniffContentType(fp, declared) : declared;
@@ -155,7 +149,7 @@ export async function HEAD(req: Request, { params }: { params: Promise<{ token: 
   if (!claim) return new Response(null, { status: 404 });
 
   return runWithTenant(claim.tenantId, async () => {
-    const fp = resolveDeliverable(claim.tenantId, claim.filename);
+    const fp = resolveGeneratedFile(claim.tenantId, claim.filename);
     if (!fp) return new Response(null, { status: 404 });
     const declared = TYPES[path.extname(fp).toLowerCase()];
     const ct = declared ? sniffContentType(fp, declared) : declared;

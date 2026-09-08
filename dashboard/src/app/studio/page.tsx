@@ -670,13 +670,16 @@ export default function StudioPage() {
       setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
     }
   }
-  async function genVideo(localPath: string) {
+  // 바탕 그림을 서버 내부 경로로도, 파일 이름으로도 넘길 수 있게 한다.
+  // 방금 만든 그림은 내부 경로를 갖고 있지만, 승인함이나 달력에서 가져온 작업물은
+  // 웹 주소만 갖고 있다. 종전에는 후자로 영상을 만들 수 없었다(코드 감사 F-05).
+  async function genVideo(source: { localPath?: string; filename?: string }) {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return null; }
     setLastError(null);
     const s = text?.shorts;
     const narration = [s?.hook, s?.body, s?.cta].filter(Boolean).join(". ");
     try {
-      const r = await apiPost<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { localPath, prompt: "subtle idle motion, gentle glow, fixed camera", model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
+      const r = await apiPost<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { localPath: source.localPath, filename: source.filename, prompt: "subtle idle motion, gentle glow, fixed camera", model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
       if (!r?.ok) {
         const msg = r?.nsfw
           ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요."
@@ -808,11 +811,13 @@ export default function StudioPage() {
         if (!source) return; // 실패 사유는 genImage 가 이미 화면에 말했다
       }
       setBusy("숏폼 영상 만드는 중");
-      if (!source?.localPath) {
-        showToast("바탕 그림을 찾지 못했습니다. 다시 시도해 주세요.", "error");
+      // 내부 경로가 없으면 배달 주소에서 파일 이름을 꺼내 넘긴다. 서버가 그것으로 찾는다.
+      const baseFilename = videoFilename(source?.file || source?.url || img?.file || img?.url || "");
+      if (!source?.localPath && !baseFilename) {
+        showToast("영상의 바탕이 될 그림을 찾지 못했습니다. 생성실에서 그림을 다시 만들어 주세요.", "error");
         return;
       }
-      await genVideo(source.localPath);
+      await genVideo({ localPath: source?.localPath, filename: baseFilename });
     } finally {
       generationAbort.current = null;
       setBusy(null);

@@ -27,17 +27,18 @@ afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("만료된 배달 주소는 스스로 되살아난다", () => {
   it("이미지 로드 실패 → 같은 파일로 재서명 받아 새 주소로 다시 건다", async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: true, json: async () => ({ ok: true, file: "/api/media/NEW" }),
-    }));
+    const calls: string[] = [];
+    const fetchMock = vi.fn(async (_url: string, init?: { body?: string }) => {
+      calls.push(init?.body ?? "");
+      return { ok: true, json: async () => ({ ok: true, file: "/api/media/NEW" }) };
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<DeliveredMedia type="image" src={deliveryUrl("img_1.webp")} testId="m" tenantId="tenant-1" />);
     fireEvent.error(screen.getByTestId("m"));
 
     await waitFor(() => expect(screen.getByTestId("m")).toHaveAttribute("src", "/api/media/NEW"));
-    const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
-    expect(body.filename).toBe("img_1.webp");
+    expect(JSON.parse(calls[0]).filename).toBe("img_1.webp");
   });
 
   it("재서명도 실패하면 빈 자리가 아니라 사람 말로 적는다", async () => {
@@ -51,7 +52,7 @@ describe("만료된 배달 주소는 스스로 되살아난다", () => {
   });
 
   it("한 주소에 되살리기는 한 번뿐 — 사라진 파일에 무한 요청하지 않는다", async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, file: "/api/media/NEW" }) }));
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, file: "/api/media/NEW" }) }) as unknown as Response);
     vi.stubGlobal("fetch", fetchMock);
 
     render(<DeliveredMedia type="image" src={deliveryUrl("img_2.webp")} testId="m" />);

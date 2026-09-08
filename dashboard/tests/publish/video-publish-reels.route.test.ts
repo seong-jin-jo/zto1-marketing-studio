@@ -396,7 +396,9 @@ describe("/api/video/publish — Instagram Reels", () => {
     fs.writeFileSync(big, Buffer.alloc(1024));
     const { MAX_VIDEO_BYTES } = await import("@/lib/video-limits");
     expect(MAX_VIDEO_BYTES).toBe(100 * 1024 * 1024);
-    vi.spyOn(fs, "statSync").mockReturnValue({ size: MAX_VIDEO_BYTES + 1 } as unknown as fs.Stats);
+    // 2026-09-08: 파일 찾기가 디렉터리를 파일로 오인하지 않도록 isFile() 을 본다.
+    // 흉내에도 그 모양을 갖춰야 실제 경로와 같은 길을 탄다.
+    vi.spyOn(fs, "statSync").mockReturnValue({ size: MAX_VIDEO_BYTES + 1, isFile: () => true } as unknown as fs.Stats);
     const { status, json } = await callPublish({ filename: "big.mp4", platform: "reels" });
     vi.restoreAllMocks();
     expect(status).toBe(400);

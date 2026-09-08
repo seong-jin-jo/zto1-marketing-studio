@@ -22,6 +22,6 @@ describe("숏폼 영상 단독 실행", () => {
     const at = src.indexOf("needsBaseImage");
     const body = src.slice(at, at + 3000);
     expect(body.indexOf("영상 바탕 그림 만드는 중")).toBeGreaterThan(0);
-    expect(body.indexOf("genVideo(source.localPath)")).toBeGreaterThan(body.indexOf("영상 바탕 그림 만드는 중"));
+    expect(body.indexOf("genVideo({ localPath: source?.localPath, filename: baseFilename })")).toBeGreaterThan(body.indexOf("영상 바탕 그림 만드는 중"));
   });
 });
