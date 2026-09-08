@@ -18,6 +18,10 @@ on:
         description: '게스트 파일시스템을 디스크 끝까지 늘릴지 (Proxmox 에서 디스크를 늘린 직후 1회만. 평소 비움)'
         required: false
         default: ''
+      fix_guest_agent:
+        description: 'Proxmox 게스트 에이전트를 설치·기동할지 (Proxmox 화면에 이 VM 디스크 사용량이 안 뜰 때. 평소 비움)'
+        required: false
+        default: ''
 jobs:
   deploy:
     runs-on: [self-hosted, marketing_runner]
@@ -71,6 +75,43 @@ jobs:
           avail="$(df -BG --output=avail / | tail -1 | tr -dc '0-9')"
           echo "::warning title=확장 후::$(df -h / | tail -1) / 여유 ${avail}GB"
           lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT || true
+
+      - name: Proxmox 게스트 에이전트 복구
+        # Proxmox 는 VM 안의 파일시스템을 직접 못 본다. 게스트에 설치된 qemu-guest-agent 가
+        # 보고해야 사용량이 뜬다. 그것이 없으면 VM 목록의 디스크 칸은 영원히 0 이고,
+        # 회장 화면에는 아무 숫자도 안 나온다(2026-09-09 회장 지적 "qemu VM 에는 왜 다 0%").
+        #
+        # 실측: 이 노드의 VM 5대 모두 설정은 agent=1 인데 실제로 물어보니 3대가 500 으로
+        # 실패했다(103 marketing, 102 d-edu, 101 zero-one). 설정만 켜 놓고 게스트 안에
+        # 데몬이 안 돌고 있는 상태다. 설정과 실물이 어긋나면 실물이 진실이다.
+        #
+        # sudo 는 비밀번호를 요구하므로 파일시스템 확장과 같은 방법을 쓴다. 러너가 이미 가진
+        # 도커 권한으로 호스트 네임스페이스에 들어가 설치하고 기동한다.
+        if: ${{ github.event.inputs.fix_guest_agent != '' }}
+        run: |
+          set -uo pipefail
+          echo "복구 전 상태:"
+          systemctl is-active qemu-guest-agent 2>&1 || true
+
+          docker run --rm --privileged --pid=host --net=host \
+            -v /:/host \
+            alpine:3 sh -eux -c "
+              # 호스트 네임스페이스로 들어가 호스트의 패키지 관리자와 systemd 를 그대로 쓴다.
+              nsenter -t 1 -m -u -i -n -p -- sh -eux -c '
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -qq
+                apt-get install -y -qq qemu-guest-agent
+                systemctl enable --now qemu-guest-agent
+                systemctl is-active qemu-guest-agent
+              '
+            "
+
+          echo "복구 후 상태:"
+          state="$(systemctl is-active qemu-guest-agent 2>&1 || true)"
+          echo "::warning title=게스트 에이전트::$state"
+          if [ "$state" != "active" ]; then
+            echo "::error title=게스트 에이전트 미기동::$state. Proxmox 화면에 사용량이 계속 안 뜬다."
+          fi
 
       - name: 디스크 선정리 (빌드 전 — 꽉 찬 채로 시작하면 정리에 닿기도 전에 죽는다)
         # 2026-09-08: 배포가 이미지 빌드에서 두 번 죽었다. 오류는 도커가 아니라 러너 자신의
