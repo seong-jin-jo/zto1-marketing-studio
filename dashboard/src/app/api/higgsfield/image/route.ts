@@ -54,7 +54,11 @@ export async function POST(request: Request) {
     // 종전에는 공용 루트에 저장하고 주소도 테넌트 없이 돌려줬다. 그런데 자산 라우트는
     // 테넌트 폴더에서만 읽고 tenant_id 를 요구한다. 그래서 만들기는 성공하는데 화면에서
     // 그림이 안 뜨는 상태였다(회장 2026-09-07 실사용). 저장과 주소를 테넌트로 맞춘다.
-    const fname = `img_${Date.now()}.png`;
+    // 생성기가 주는 파일은 png 가 아닐 수 있다(실제로 webp 를 준다). 이름을 png 로 굳혀
+    // 두면 배달할 때 종류를 잘못 알려 주게 되고, 브라우저는 그림 그리기를 거부한다.
+    // 만들기는 성공하는데 화면만 비어 "생성이 안 된다" 로 읽힌다(2026-09-08 회장 실사용).
+    const ext = (url.split("?")[0].match(/\.(png|jpe?g|webp)$/i)?.[0] || ".webp").toLowerCase();
+    const fname = `img_${Date.now()}${ext}`;
     const localPath = path.join(studioDir(tenantId), fname);
     await downloadTo(url, localPath);
     runWithTenant(tenantId, () => logGen("image", "Higgsfield Soul V2", label));
