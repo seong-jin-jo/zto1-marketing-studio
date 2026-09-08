@@ -125,24 +125,80 @@ function stableValue(value: unknown): unknown {
   return value;
 }
 
+/**
+ * 학습 정보를 모델이 읽을 말로 옮긴다. 빈 것은 아예 적지 않는다.
+ *
+ * 2026-09-09 회장 지시: "학습정보를 잘 받아서 프롬프팅이나 하네스엔지니어링 없이도
+ * 최고의 퀄리티를 만들어나가는 것이 우리의 핵심 과제."
+ *
+ * 종전에는 일곱 칸을 통째로 JSON 으로 붙였다. 두 가지가 품질을 깎는다.
+ * ①빈 값이 그대로 들어간다. `"forbiddenPhrases":[]` 는 모델에게 아무것도 안 알려 주면서
+ *   자리만 차지한다. 사람이 "금지 표현: (없음)" 이라고 적힌 지시서를 받으면 그 줄을
+ *   그냥 넘기지만, 모델에게는 채워진 줄과 똑같은 무게의 입력이다.
+ * ②일곱 칸이 평평하게 나열된다. 실제로 결과를 가르는 것은 회원이 직접 채운 목적·대상·
+ *   말투·금지 표현인데, 시장 맥락이나 시간대와 같은 줄에 놓이면 그 비중이 묻힌다.
+ *
+ * 그래서 채워진 것만, 사람이 읽는 순서로 적는다. 값 자체는 하나도 빼지 않는다.
+ * 빼는 것은 "비어 있다는 사실" 뿐이다.
+ */
+function labelledLine(label: string, value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? `${label}: ${trimmed}` : null;
+  }
+  if (Array.isArray(value)) {
+    const items = value.map((v) => (typeof v === "string" ? v.trim() : v)).filter(Boolean);
+    return items.length ? `${label}: ${items.join(", ")}` : null;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .map(([k, v]) => labelledLine(k, v))
+      .filter(Boolean);
+    return entries.length ? `${label}:\n  - ${entries.join("\n  - ")}` : null;
+  }
+  return `${label}: ${String(value)}`;
+}
+
+export function describeLearningContext(layers: GenerationRequest["learningContext"]): string {
+  const lines: (string | null)[] = [
+    // 회원이 직접 채운 것을 맨 앞에 둔다. 결과를 가르는 것이 이것이다.
+    labelledLine("무엇을 위해 만드는가", layers.u3.purpose),
+    labelledLine("누구에게 보여 주는가", layers.u3.audience),
+    labelledLine("말투", layers.u3.tone),
+    labelledLine("쓰면 안 되는 표현", layers.u3.forbiddenPhrases),
+    labelledLine("이 작업 공간이 사실이라고 확인한 것", layers.u3.workspaceFacts),
+    labelledLine("이번에 요청한 것", layers.r6),
+    // 그다음이 우리가 정한 규칙이다.
+    labelledLine("지켜야 할 안전 규칙", layers.s0.safetyRules),
+    labelledLine("따라야 할 구조 규칙", layers.x4.structureRules),
+    labelledLine("지금까지 승인된 학습 규칙", layers.l5.acceptedRules),
+    // 마지막이 배경이다.
+    labelledLine("시장 맥락", layers.s1.marketContext),
+    labelledLine("언어와 접근성", {
+      언어: layers.u2.locale,
+      시간대: layers.u2.timeZone,
+      접근성: layers.u2.accessibilityRequirements,
+    }),
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
 export function buildCandidatePrompt(request: GenerationRequest): string {
   const layers = request.learningContext;
+  const specs = request.platformSpec?.targets ?? [];
   return [
     "당신은 한국어 콘텐츠 전략가입니다.",
-    "아래 일곱 칸 학습 정보를 모두 근거로 후보 A, B, C를 만드세요.",
+    "아래 학습 정보를 모두 근거로 후보 A, B, C를 만드세요.",
     "세 후보는 제목만 바꾸지 말고 도입, 전개, 사례, 마무리의 뼈대가 서로 달라야 합니다.",
     "A는 problem_first, B는 proof_first, C는 process_first입니다.",
     "각 outline은 실제 내용이 담긴 3개에서 6개의 문장이어야 합니다.",
     "응답은 설명이나 코드 펜스 없이 JSON 객체 하나만 반환하세요.",
     '형식: {"candidates":[{"label":"A","angle":"problem_first","title":"...","rationale":"...","outline":["...","...","..."]},{"label":"B","angle":"proof_first","title":"...","rationale":"...","outline":["...","...","..."]},{"label":"C","angle":"process_first","title":"...","rationale":"...","outline":["...","...","..."]}]}',
-    `S0 안전 규칙: ${JSON.stringify(layers.s0.safetyRules)}`,
-    `S1 시장 맥락: ${layers.s1.marketContext}`,
-    `U2 언어와 접근성: ${JSON.stringify({ locale: layers.u2.locale, timeZone: layers.u2.timeZone, accessibility: layers.u2.accessibilityRequirements })}`,
-    `U3 회원 목적과 대상: ${JSON.stringify({ purpose: layers.u3.purpose, audience: layers.u3.audience, contentBranch: layers.u3.contentBranch, workspaceFacts: layers.u3.workspaceFacts, forbiddenPhrases: layers.u3.forbiddenPhrases, tone: layers.u3.tone })}`,
-    `X4 구조 규칙: ${JSON.stringify(layers.x4.structureRules)}`,
-    `L5 승인된 학습 규칙: ${JSON.stringify(layers.l5.acceptedRules)}`,
-    `R6 이번 요청: ${JSON.stringify(stableValue(layers.r6))}`,
-    `요청 시점 채널 규격: ${JSON.stringify(stableValue(request.platformSpec?.targets ?? []))}`,
+    "",
+    "## 학습 정보",
+    describeLearningContext(layers),
+    ...(specs.length ? ["", `요청 시점 채널 규격: ${JSON.stringify(stableValue(specs))}`] : []),
   ].join("\n");
 }
 
@@ -155,7 +211,8 @@ function buildDerivationPrompt(
     "고른 주 갈래 결과를 새 갈래에 맞게 실제 내용으로 개작하세요.",
     "원문의 제목을 반복해 칸만 채우지 말고, 각 문장에 구체적인 메시지를 넣으세요.",
     `주 갈래: ${JSON.stringify({ title: candidate.title, rationale: candidate.rationale, outline: candidate.format.outline })}`,
-    `학습 정보: ${JSON.stringify(stableValue(request.learningContext))}`,
+    "학습 정보:",
+    describeLearningContext(request.learningContext),
     "응답은 설명이나 코드 펜스 없이 JSON 객체 하나만 반환하세요.",
   ];
   if (kind === "text") {
