@@ -29,13 +29,19 @@ jobs:
           fi
       - name: 게스트 파일시스템 확장 (Proxmox 디스크 확장 직후 1회)
         # Proxmox 에서 가상 디스크를 늘려도 게스트 안 파티션과 파일시스템은 그대로다.
-        # 늘어난 공간은 파티션 뒤의 빈 자리로만 존재하고 df 에는 잡히지 않는다.
-        # 게스트 에이전트가 죽어 있어(agent/get-fsinfo 500) Proxmox 쪽에서 명령을 넣을 수
-        # 없으므로, 이 VM 에서 도는 러너를 통해 게스트 안에서 직접 늘린다.
+        # 늘어난 공간은 파티션 뒤 빈 자리로만 존재하고 df 에는 잡히지 않는다.
+        # 게스트 에이전트가 죽어 있어(agent/get-fsinfo 500) Proxmox 쪽에서 명령을 못 넣는다.
+        #
+        # sudo 로 하려다 막혔다: "a terminal is required to read the password".
+        # 러너 사용자에게 비밀번호 없는 sudo 가 없다. 대신 러너는 이미 도커를 쓴다.
+        # 도커 데몬 접근 권한은 호스트 root 와 동등하므로, 특권 컨테이너에서 호스트 장치를
+        # 직접 다룬다. 새 권한을 얻는 것이 아니라 이미 가진 권한을 쓰는 것이다.
+        #
+        # 마운트된 root 파티션도 온라인으로 늘릴 수 있다. 커널이 BLKPG 로 파티션 크기 변경을
+        # 받고, ext4 는 마운트 상태에서 resize2fs 가 된다. 재부팅도 서비스 중단도 없다.
         #
         # 2026-09-09: 마케팅 VM 이 50GB 라 전체 서비스 콜드 빌드가 공간 부족으로 러너를
         # 죽였다. 회장 승인으로 Proxmox 에서 130GB 로 늘렸고 이 단계가 그 뒤를 잇는다.
-        # LVM 위인지 파티션 직결인지, ext4 인지 xfs 인지 추측하지 않고 실제 값을 읽어 가른다.
         if: ${{ github.event.inputs.grow_disk != '' }}
         run: |
           set -uo pipefail
@@ -44,33 +50,27 @@ jobs:
 
           root_src="$(findmnt -no SOURCE /)"
           fstype="$(findmnt -no FSTYPE /)"
-          echo "root=$root_src fstype=$fstype"
+          disk="/dev/$(lsblk -no PKNAME "$root_src" 2>/dev/null | head -1)"
+          part="$(echo "$root_src" | grep -o '[0-9]*$')"
+          echo "root=$root_src fstype=$fstype disk=$disk part=$part"
 
-          if echo "$root_src" | grep -q '^/dev/mapper/'; then
-            echo "LVM 논리볼륨이다. 물리볼륨이 올라탄 파티션부터 늘린다."
-            pv="$(sudo pvs --noheadings -o pv_name 2>/dev/null | head -1 | tr -d ' ')"
-            disk="/dev/$(lsblk -no PKNAME "$pv" 2>/dev/null | head -1)"
-            part="$(echo "$pv" | grep -o '[0-9]*$')"
-            echo "pv=$pv disk=$disk part=$part"
-            sudo growpart "$disk" "$part" || echo "growpart: 늘릴 것이 없다"
-            sudo pvresize "$pv" || true
-            sudo lvextend -l +100%FREE "$root_src" || echo "lvextend: 이미 최대다"
-          else
-            disk="/dev/$(lsblk -no PKNAME "$root_src" 2>/dev/null | head -1)"
-            part="$(echo "$root_src" | grep -o '[0-9]*$')"
-            echo "disk=$disk part=$part"
-            sudo growpart "$disk" "$part" || echo "growpart: 늘릴 것이 없다"
+          if [ "$fstype" != "ext4" ] && [ "$fstype" != "ext3" ] && [ "$fstype" != "ext2" ]; then
+            echo "::error title=예상 밖 파일시스템::$fstype 다. 이 단계는 ext 계열만 다룬다. 사람이 봐야 한다."
+            exit 1
           fi
 
-          case "$fstype" in
-            ext2|ext3|ext4) sudo resize2fs "$root_src" || true ;;
-            xfs)            sudo xfs_growfs / || true ;;
-            btrfs)          sudo btrfs filesystem resize max / || true ;;
-            *) echo "::error title=모르는 파일시스템::$fstype. 사람이 봐야 한다." ;;
-          esac
+          docker run --rm --privileged --pid=host \
+            -v /dev:/dev -v /run:/run \
+            alpine:3 sh -eux -c "
+              apk add --no-cache cloud-utils-growpart e2fsprogs-extra util-linux partx >/dev/null
+              growpart $disk $part || echo '파티션이 이미 최대다'
+              partx -u $disk || true
+              resize2fs $root_src
+            "
 
           avail="$(df -BG --output=avail / | tail -1 | tr -dc '0-9')"
           echo "::warning title=확장 후::$(df -h / | tail -1) / 여유 ${avail}GB"
+          lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT || true
 
       - name: 디스크 선정리 (빌드 전 — 꽉 찬 채로 시작하면 정리에 닿기도 전에 죽는다)
         # 2026-09-08: 배포가 이미지 빌드에서 두 번 죽었다. 오류는 도커가 아니라 러너 자신의
