@@ -77,6 +77,15 @@ const VIDEO_PUBLISH_NAME: Record<string, string> = { shorts: "youtube", reels: "
 /** 영상 채널이 쓰는 계정 제공자. 릴스는 인스타그램 계정을 쓴다. */
 const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reels: "instagram", tiktok: "tiktok" };
 
+// 채널 화면 주소는 제공자 이름으로 만든다.
+// 2026-09-08 회장 실사용: 발행실에서 쇼츠·릴스의 "계정 관리" 를 누르면 "알 수 없는 채널: shorts"
+// 만 뜨고 아무것도 못 했다. 계정 **조회**는 이미 제공자로 바꿔 부르고 있었는데(YouTube·Instagram)
+// **링크만** 미리보기 이름을 그대로 붙이고 있었다. /channels/shorts 라는 화면은 없다.
+// 같은 값을 두 곳에서 각각 만들면 한쪽만 낡는다. 한 함수로 만든다.
+function channelHref(platform: string): string {
+  return `/channels/${VIDEO_ACCOUNT_PROVIDER[platform] || platform}`;
+}
+
 const PUBLISH_SUPPORTED = new Set<PreviewPlatform>([
   ...(SCHEDULABLE_PLATFORMS.filter((platform) => PREVIEW_PLATFORM_KEYS.has(platform)) as PreviewPlatform[]),
   ...Array.from(VIDEO_ROOM_PLATFORMS),
@@ -1418,20 +1427,20 @@ export default function StudioPage() {
       currentRoom={activeRoom}
       leading={
         <>
-          <Button onClick={() => setShowWorks((value) => !value)} aria-expanded={showWorks} aria-controls="studio-work-overview">
+          <Button onClick={() => { setShowUsageHistory(false); setShowWorks((value) => !value); }} aria-expanded={showWorks} aria-controls="studio-work-overview">
             작업물 전체 <span className="ml-micro text-accent">{hist?.drafts.length ?? 0}</span>
           </Button>
           <LearningStatus
             filled={countFilledUserSlots(learningInfo, { guide })}
             flashToken={learningFlash}
-            onOpen={() => setShowWizard(true)}
+            onOpen={() => { setShowUsageHistory(false); setShowWorks(false); setShowWizard(true); }}
           />
           {/* 세 방 어디서나 같은 자리에서 지금 작업물을 버리고 새로 시작한다. */}
           <Button data-testid="studio-discard-work" onClick={discardCurrentWork}>새로 시작</Button>
           {/* 내가 이번 달 얼마나 썼는지. 안 보이면 고객은 쓰다가 갑자기 막힌다. */}
           {usage ? (
             <button type="button" data-testid="studio-usage-chip"
-              onClick={() => setShowUsageHistory((open) => !open)}
+              onClick={() => { setShowWorks(false); setShowUsageHistory((open) => !open); }}
               aria-expanded={showUsageHistory}
               className="inline-flex min-h-control-touch items-center gap-stack-tight rounded-control border border-border bg-surface-2 px-stack text-body-sm text-muted hover:bg-surface"
               title="눌러서 이 작업 공간의 생성 이력을 봅니다">
@@ -1458,6 +1467,12 @@ export default function StudioPage() {
         </>
       }
     >
+      {/*
+        머리줄에서 여는 판(생성 이력·작업물 전체)은 같은 자리에 겹쳐 뜬다. 그래서 하나를
+        열 때 다른 하나를 닫는다. 2026-09-08 회장 실사용: "이번 달 생성" 을 누른 다음
+        "학습 정보" 를 누르니 생성 이력 판이 학습 정보를 덮어 아무것도 못 했다.
+        판이 서로를 모르면 사용자가 손으로 닫아 줘야 하고, 덮인 쪽은 닫을 수도 없다.
+      */}
       {showUsageHistory ? (
         <div id="studio-usage-history" data-usage-history
           className="absolute left-0 right-0 top-full z-50 mt-stack space-y-stack-tight rounded-surface border border-border bg-surface p-pad-inset shadow-lg">
@@ -1759,7 +1774,7 @@ export default function StudioPage() {
                           )}
                           {accountsLoaded && PUBLISH_SUPPORTED.has(platform) && (accountsByPlatform[platform] || []).length === 0 ? (
                             <Link
-                              href={`/channels/${platform}`}
+                              href={channelHref(platform)}
                               data-testid={`publish-connect-link-${platform}`}
                               title={`${LABEL[platform]} 연결 화면으로 갑니다. 연결한 뒤 그 화면에서 기본 계정도 정할 수 있습니다`}
                               className="inline-flex min-h-control-touch items-center rounded-control border border-accent/40 bg-accent-soft px-stack-tight text-caption font-semibold text-accent hover:bg-surface"
@@ -1783,7 +1798,7 @@ export default function StudioPage() {
                                 {(accountsByPlatform[platform] || []).map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}
                               </select>
                               <Link
-                                href={`/channels/${platform}`}
+                                href={channelHref(platform)}
                                 data-testid={`publish-account-manage-${platform}`}
                                 title={`${LABEL[platform]} 계정을 더 연결하거나 기본 계정을 바꿉니다`}
                                 className="inline-flex min-h-control-touch items-center rounded-control border border-border bg-surface-2 px-stack-tight text-caption font-semibold text-muted hover:bg-surface"
@@ -1884,7 +1899,7 @@ export default function StudioPage() {
                     {reconnectTargets.map((platform) => (
                       <Link
                         key={`reconnect-${platform}`}
-                        href={`/channels/${platform}`}
+                        href={channelHref(platform)}
                         data-testid={`publish-reconnect-link-${platform}`}
                         title={`${LABEL[platform]} 연결 화면으로 갑니다. 다시 연결한 뒤 발행하세요`}
                         className="inline-flex min-h-control-touch items-center rounded-control border border-warning bg-surface px-stack-tight text-caption font-semibold text-warning hover:bg-surface-2"
