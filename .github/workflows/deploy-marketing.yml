@@ -46,12 +46,20 @@ jobs:
           rm -rf "$HOME"/actions-runner-oc/_diag/*.log 2>/dev/null || true
           rm -rf "$HOME"/actions-runner-oc/_work/_temp/* 2>/dev/null || true
 
-          docker builder prune -af || true
-          docker image prune -af || true
+          # 순서가 중요하다. 빌드 캐시를 먼저 버리면 콜드 빌드가 되고, 콜드 빌드는
+          # 증분 빌드보다 최대 사용량이 훨씬 크다. 실제로 캐시를 통째로 지웠더니
+          # 그 전까지 성공하던 배포가 오히려 공간 부족으로 죽었다(2026-09-08 실측).
+          # 그래서 캐시는 마지막에, 정말 빠듯할 때만 버린다.
           docker container prune -f || true
+          docker image prune -af || true
+          if [ "$(avail_gb)" -lt 25 ]; then
+            echo "여유가 $(avail_gb)GB — 빌드 캐시까지 버린다(다음 빌드는 느려진다)"
+            docker builder prune -af || true
+          fi
 
           after="$(df -h / | tail -1)"
-          echo "::notice title=디스크 선정리::전 [$before] → 후 [$after]"
+          # 경고 등급으로 남긴다. 알림 등급은 잡 요약에 안 뜨고, 로그는 디스크가 차면 통째로 유실된다.
+          echo "::warning title=디스크 선정리::전 [$before] → 후 [$after]"
 
           # 빌드가 실제로 얼마를 쓰는지 모르는 채로 시작하면 또 같은 자리에서 죽는다.
           # 남은 용량을 먼저 재고, 부족하면 조용히 진행하지 말고 여기서 멈춘다.
@@ -61,7 +69,7 @@ jobs:
             echo "::error title=디스크 부족::지울 수 있는 것을 다 지워도 여유가 ${have}GB 뿐이다(빌드에 최소 ${need}GB 필요). 러너 디스크를 늘려야 한다."
             exit 1
           fi
-          echo "::notice title=디스크 여유::${have}GB"
+          echo "::warning title=디스크 여유::빌드 시작 시점 ${have}GB"
 
       - name: Checkout
         uses: actions/checkout@v4
