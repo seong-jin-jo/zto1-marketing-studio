@@ -1055,6 +1055,20 @@ export function EditRoom({
   const roomState = state === "default" && !hasEditableContent ? "empty" : state;
   const editorVisible = roomState === "default" || roomState === "overflow";
   const updateLine = (value: string) => onLinesChange(safeLines.map((line, index) => index === activeLine ? value : line));
+  // 순서 이동. 줄과 함께 그 줄의 보임 여부도 같이 옮긴다. 따로 놀면 엉뚱한 줄이 지워진 것처럼 보인다.
+  const moveLine = (index: number, delta: number) => {
+    const target = index + delta;
+    if (target < 0 || target >= safeLines.length) return;
+    const nextLines = [...safeLines];
+    [nextLines[index], nextLines[target]] = [nextLines[target], nextLines[index]];
+    setVisibleLines((current) => {
+      const next = [...current];
+      [next[index], next[target]] = [next[target] ?? true, next[index] ?? true];
+      return next;
+    });
+    setActiveLine(target);
+    onLinesChange(nextLines);
+  };
   const toggleLine = (index: number) => setVisibleLines((current) => current.map((visible, lineIndex) => lineIndex === index ? !visible : visible));
   const trimSilences = () => setVisibleLines((current) => current.map((visible, index) => silenceIndexes.includes(index) ? false : visible));
   const shortenAll = () => {
@@ -1170,12 +1184,46 @@ export function EditRoom({
                         </>
                       )}
                       <section className="mt-pad-inset" aria-labelledby="edit-script-title" data-edit-script>
-                        <div className="mb-stack flex flex-wrap items-center justify-between gap-stack-tight"><b id="edit-script-title" className="text-body text-text">{kind === "card" ? "카드 글자" : kind === "audio" ? "나레이션 대사" : "선택한 장면 대사"}</b><span className="text-caption text-subtle" data-edit-duration={kind === "video" ? durationLabel : undefined}>{visibleCount}개 {unit}{kind === "video" ? ` · ${durationLabel}초` : ""}</span></div>
+                        <div className="mb-stack flex flex-wrap items-center justify-between gap-stack-tight"><b id="edit-script-title" className="text-body text-text">{kind === "card" ? "카드 문구" : kind === "audio" ? "나레이션 대사" : "장면 대사"}</b><span className="text-caption text-subtle" data-edit-duration={kind === "video" ? durationLabel : undefined}>{visibleCount}개 {unit}{kind === "video" ? ` · ${durationLabel}초` : ""}</span></div>
                         <ol className="space-y-stack-tight">{safeLines.map((line, index) => <li key={`script-${index}`} className={`grid gap-stack-tight rounded-control border border-border bg-surface-2 p-stack md:grid-cols-[4rem_minmax(0,1fr)_auto] ${visibleLines[index] ? "" : "opacity-60"}`} data-script-line={index + 1}>
                           <span className="text-caption text-subtle">{kind === "card" ? `${index + 1}장` : kind === "audio" ? `${index + 1}번째` : `${index * secondsPerLine}초부터`}</span>
-                          {activeLine === index ? <input aria-label={`${kind === "card" ? "문구" : "대사"} ${index + 1}`} value={line} onChange={(event) => updateLine(event.target.value)} className={`min-h-control-touch min-w-0 rounded-control border border-border bg-surface px-stack text-body-sm text-text ${visibleLines[index] ? "" : "line-through"}`} /> : <button type="button" onClick={() => setActiveLine(index)} className={`min-h-control-touch min-w-0 break-keep rounded-control px-stack text-left text-body-sm text-text hover:bg-surface ${visibleLines[index] ? "" : "line-through"}`}>{line || "빈 대사"}</button>}
-                          <Button size="sm" onClick={() => toggleLine(index)}>{visibleLines[index] ? "빼기" : "되살리기"}</Button>
+                          {/*
+                            2026-09-09 회장 지적("목차의 의미 몰라? vrew 처럼 장면 대사보고
+                            자막이나 음성 바로 편집가능하게하는건데")과 경쟁사 조사 반영.
+                            종전에는 한 줄을 눌러 고른 뒤 그 줄만 입력칸이 됐다. 나머지는
+                            읽기만 되는 목록이었다. 그래서 이 자리가 편집기가 아니라 목차로
+                            읽혔다. 고칠 곳을 고르는 동작이 고치는 동작 앞에 하나 더 있으면
+                            그만큼 손이 는다.
+                            Vrew 가 하는 것은 대본을 그대로 고치게 두는 것이다. 모든 줄이
+                            언제나 입력칸이다. 고르는 단계를 없앤다.
+                          */}
+                          <input
+                            aria-label={`${kind === "card" ? "문구" : "대사"} ${index + 1}`}
+                            data-line-input={index}
+                            value={line}
+                            onChange={(event) => onLinesChange(safeLines.map((current, lineIndex) => lineIndex === index ? event.target.value : current))}
+                            onFocus={() => setActiveLine(index)}
+                            placeholder={kind === "card" ? "빈 문구" : "빈 대사"}
+                            className={`min-h-control-touch min-w-0 rounded-control border px-stack text-body-sm text-text ${activeLine === index ? "border-accent bg-accent-soft/30" : "border-transparent bg-transparent hover:border-border hover:bg-surface"} ${visibleLines[index] ? "" : "line-through opacity-60"}`}
+                          />
+                          {/*
+                            여러 장이 한 세트인 흐름이라 순서가 곧 내용이다(회장 2026-09-09
+                            "대문 사진, 본문, 마지막 사진 등 사진 여러개 흐름이 한 세트").
+                            우리 팀이 이미 만든 카드 편집 도구도 슬라이드 순서 이동을 갖고 있다.
+                          */}
+                          <div className="flex shrink-0 gap-micro">
+                            <Button size="sm" aria-label={`${index + 1}번째를 위로`} data-line-up={index}
+                              disabled={index === 0} onClick={() => moveLine(index, -1)}>▲</Button>
+                            <Button size="sm" aria-label={`${index + 1}번째를 아래로`} data-line-down={index}
+                              disabled={index === safeLines.length - 1} onClick={() => moveLine(index, 1)}>▼</Button>
+                            <Button size="sm" onClick={() => toggleLine(index)}>{visibleLines[index] ? "빼기" : "되살리기"}</Button>
+                          </div>
                         </li>)}</ol>
+                        <div className="mt-stack flex flex-wrap gap-stack-tight">
+                          <Button size="sm" data-line-add onClick={() => onLinesChange([...safeLines, ""])}>
+                            {kind === "card" ? "카드 추가" : kind === "audio" ? "대사 추가" : "장면 추가"}
+                          </Button>
+                        </div>
                       </section>
                     </>
                   )}
