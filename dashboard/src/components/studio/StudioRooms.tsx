@@ -62,7 +62,11 @@ export interface QuickDraftResult {
   shorts?: { hook?: string; body?: string; cta?: string };
 }
 const ONBOARDING_CONTENT_BRANCH_KEY = "studio_content_branch";
-const CREATE_DRAFT_STORAGE_PREFIX = "studio_create_state";
+// 생성실이 답한 질문과 만든 후보를 브라우저에 남기는 자리.
+// 부모(작업실)도 이 키를 알아야 한다. "새로 시작" 이 이것을 못 보면, 부모 상태는 비었는데
+// 여기에 후보가 남아 화면에는 계속 옛 후보가 뜨고 "이미 비어 있습니다" 로 닫힌다.
+// 그러면 사용자는 그 후보를 영원히 못 지운다(2026-09-09 실사용에서 확인).
+export const CREATE_DRAFT_STORAGE_PREFIX = "studio_create_state";
 
 const CREATE_KIND_LABELS: Record<CreateKind, string> = { video: "영상", card: "카드뉴스", text: "글" };
 const CREATE_KIND_ORDER: CreateKind[] = ["video", "card", "text"];

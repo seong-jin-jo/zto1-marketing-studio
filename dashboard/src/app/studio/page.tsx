@@ -30,6 +30,7 @@ import { CHANNEL_TEXT_LIMITS, countTextCharacters } from "@/lib/channel-text-lim
 import { Button } from "@/components/shared/Button";
 import { CostApprovalDialog, type CostApprovalRequest } from "@/components/studio/CostApprovalDialog";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/shared/ConfirmDialog";
+import { CREATE_DRAFT_STORAGE_PREFIX } from "@/components/studio/StudioRooms";
 import { RoomHeader } from "@/components/shared/RoomHeader";
 import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
@@ -739,7 +740,14 @@ export default function StudioPage() {
   // 이미 발행한 작업물이 남아 있으면 발행이 중복으로 막히기까지 한다.
   // 되돌릴 수 없는 조작이므로 한 번 확인하고 지운다.
   async function discardCurrentWork() {
-    if (!text && !idea.trim() && !draftId) { showToast("이미 비어 있습니다", "success"); return; }
+    // 생성실이 브라우저에 남긴 후보까지 봐야 한다. 부모 상태만 보면, 부모는 비었는데
+    // 생성실에는 옛 후보가 살아 있는 상태에서 "이미 비어 있습니다" 로 닫혀 사용자가 그
+    // 후보를 영원히 못 지운다(2026-09-09 실사용에서 확인).
+    let createLeftover = false;
+    try {
+      createLeftover = Boolean(activeWorkspace && localStorage.getItem(`${CREATE_DRAFT_STORAGE_PREFIX}:${activeWorkspace.id}`));
+    } catch { /* 저장을 못 읽으면 없는 것으로 본다 */ }
+    if (!text && !idea.trim() && !draftId && !createLeftover) { showToast("이미 비어 있습니다", "success"); return; }
     const ok = await askConfirm({
       title: "지금 작업물을 버리고 새로 시작할까요?",
       description: "저장하지 않은 본문과 방금 만든 이미지·영상이 이 화면에서 사라집니다. 이미 저장된 작업물은 작업물 전체에 그대로 남습니다.",

@@ -40,4 +40,13 @@ describe("새로 시작은 생성실 안까지 비운다", () => {
     // 마운트 때 비우면 이어서 하기로 복원한 작업이 즉시 지워진다.
     expect(rooms).toContain("firstReset");
   });
+
+  it("부모가 비어 있어도 생성실에 남은 후보가 있으면 지울 수 있다", () => {
+    const page = src("app/studio/page.tsx");
+    // 부모 상태만 보고 "이미 비어 있습니다" 로 닫으면, 부모는 비었는데 생성실에는 옛 후보가
+    // 살아 있는 상태에서 사용자가 그 후보를 영원히 못 지운다(2026-09-09 실사용에서 확인).
+    expect(page).toContain("createLeftover");
+    expect(page).toMatch(/!draftId && !createLeftover/);
+    expect(page).toContain("CREATE_DRAFT_STORAGE_PREFIX");
+  });
 });
