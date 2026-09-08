@@ -22,6 +22,10 @@ on:
         description: 'Proxmox 게스트 에이전트를 설치·기동할지 (Proxmox 화면에 이 VM 디스크 사용량이 안 뜰 때. 평소 비움)'
         required: false
         default: ''
+      reclaim_storage:
+        description: '지운 블록을 저장소에 돌려줄지 (fstrim. 다른 VM 이 쓸 공간을 회수한다)'
+        required: false
+        default: ''
 jobs:
   deploy:
     runs-on: [self-hosted, marketing_runner]
@@ -112,6 +116,26 @@ jobs:
           if [ "$state" != "active" ]; then
             echo "::error title=게스트 에이전트 미기동::$state. Proxmox 화면에 사용량이 계속 안 뜬다."
           fi
+
+      - name: 저장소 회수 (fstrim)
+        # 왜 필요한가 (2026-09-09 회장 지적 "다른 VM도 써야하잖아")
+        # 이 노드의 vmstore 는 thin 방식이라 VM 에 준 크기가 아니라 **실제로 쓴 만큼만**
+        # 저장소를 먹는다. 그런데 게스트가 파일을 지워도 그 사실이 저장소까지 안 내려가면
+        # 저장소는 그 블록을 계속 잡고 있다. 빌드 캐시처럼 크게 썼다 지우는 것이 쌓이면
+        # 실제로는 비었는데 저장소에서는 여전히 차 있는 상태가 된다.
+        # fstrim 이 "이 블록 안 쓴다" 를 저장소에 알려 다른 VM 이 쓸 공간으로 되돌린다.
+        #
+        # 할당 총합이 실물보다 큰 오버커밋 상태(570GB 할당 / 456GB 실물)라 이 회수가
+        # 형식적인 청소가 아니라 실제 여유를 만드는 일이다.
+        # 이 VM 디스크는 discard=on 이라 TRIM 이 저장소까지 전달된다.
+        if: ${{ github.event.inputs.reclaim_storage != '' }}
+        run: |
+          set -uo pipefail
+          echo "::warning title=회수 전::$(df -h / | tail -1)"
+          docker run --rm --privileged --pid=host -v /:/host alpine:3 sh -eux -c "
+            nsenter -t 1 -m -u -i -n -p -- fstrim -av
+          " 2>&1 | tail -20
+          echo "::warning title=회수 후::$(df -h / | tail -1)"
 
       - name: 디스크 선정리 (빌드 전 — 꽉 찬 채로 시작하면 정리에 닿기도 전에 죽는다)
         # 2026-09-08: 배포가 이미지 빌드에서 두 번 죽었다. 오류는 도커가 아니라 러너 자신의
