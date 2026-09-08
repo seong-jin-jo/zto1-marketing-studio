@@ -254,6 +254,15 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const topicInputRef = useRef<HTMLInputElement>(null);
   const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
   const [primaryKind, setPrimaryKind] = useState<CreateKind | null>(null);
+  /**
+   * 사용자가 형식을 손으로 골랐는가.
+   *
+   * 2026-09-09 실사용에서 찾았다. 생성실에서 "카드뉴스" 를 골랐는데 화면에는 "선택한 형식:
+   * 영상" 이 뜨고 영상 구성으로 만들어졌다. 아래 복원 효과가 학습 정보 로드에 맞물려
+   * 다시 돌면서, 방금 고른 값을 저장된 옛 값이나 온보딩 기본값으로 덮어썼기 때문이다.
+   * 사람이 방금 누른 것을 화면이 몰래 되돌리면, 무엇을 고르든 소용이 없다.
+   */
+  const pickedByHand = useRef(false);
   const [alsoKinds, setAlsoKinds] = useState<CreateKind[]>([]);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [purpose, setPurpose] = useState("");
@@ -277,8 +286,10 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const firstReset = useRef(true);
   useEffect(() => {
     if (firstReset.current) { firstReset.current = false; return; }
+    pickedByHand.current = false;
     setQuestionIndex(0);
     setPurpose(""); setAudience(""); setRightsConfirmed(false); setTopicOpen(false);
+    setPrimaryKind(null); setAlsoKinds([]);
     setCandidates([]); setSelected(null); setQuickStructure(null);
     setAlsoQuote(null); setAlsoBatch(null); setQuickBlockReason(null); setError(null);
     try { localStorage.removeItem(`${CREATE_DRAFT_STORAGE_PREFIX}:${workspaceId}`); } catch { /* 저장이 막혀 있어도 화면은 이미 비웠다 */ }
@@ -308,7 +319,9 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   // 깨진 저장값은 조용히 폐기하고 학습 정보에서 확인된 기본값만 사용한다.
   useEffect(() => {
     setHydratedCreateWorkspaceId(null);
-    setPrimaryKind(null);
+    // 사람이 방금 고른 형식은 되돌리지 않는다. 학습 정보가 늦게 로드돼 이 효과가 다시
+    // 돌더라도, 그 사이 사용자가 누른 것이 옛 값으로 덮이면 안 된다.
+    if (!pickedByHand.current) setPrimaryKind(null);
     setAlsoKinds([]);
     setQuestionIndex(0);
     setPurpose("");
@@ -326,9 +339,11 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     const onboardingBranch = sessionStorage.getItem(ONBOARDING_CONTENT_BRANCH_KEY);
     if (onboardingBranch === "text_image" || onboardingBranch === "video") {
       const onboardingKind: CreateKind = onboardingBranch === "video" ? "video" : "card";
-      setPrimaryKind(onboardingKind);
-      onPrimaryKindChange?.(onboardingKind);
-      onContentBranchChange?.(onboardingBranch);
+      if (!pickedByHand.current) {
+        setPrimaryKind(onboardingKind);
+        onPrimaryKindChange?.(onboardingKind);
+        onContentBranchChange?.(onboardingBranch);
+      }
       setAudience(learned.audience || "");
       setRightsConfirmed(Boolean(learned.rights));
       sessionStorage.removeItem(ONBOARDING_CONTENT_BRANCH_KEY);
@@ -337,7 +352,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     }
     const saved = readCreateDraft(workspaceId);
     if (saved) {
-      setPrimaryKind(saved.primaryKind);
+      if (!pickedByHand.current) setPrimaryKind(saved.primaryKind);
       setAlsoKinds(saved.alsoKinds);
       setQuestionIndex(saved.questionIndex);
       setPurpose(saved.purpose);
@@ -390,6 +405,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
 
   const choosePrimary = (kind: CreateKind) => {
     if (!primaryKind) {
+      pickedByHand.current = true;
       setPrimaryKind(kind);
       onPrimaryKindChange?.(kind);
       onContentBranchChange?.(kindToBranch(kind));
