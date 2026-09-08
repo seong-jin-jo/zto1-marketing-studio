@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { fetcher, apiPost } from "@/lib/api";
 import { useToast } from "@/components/layout/Toast";
+import { confirmAction } from "@/components/shared/ConfirmHost";
 
 interface BlogPost {
   id: string;
@@ -75,7 +76,7 @@ export default function BlogPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("삭제?")) return;
+    if (!(await confirmAction({ title: "이 글을 삭제할까요?", description: "삭제한 글은 되돌릴 수 없습니다. 아직 발행하지 않은 내용도 함께 사라집니다.", confirmLabel: "글 삭제", destructive: true }))) return;
     try {
       await apiPost("/api/blog-queue/delete", { id });
       showToast("삭제 완료", "success");

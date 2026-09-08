@@ -122,6 +122,6 @@ describe("연결 계정 관리 화면", () => {
       "/api/channels/threads/accounts/acc-brand?tenant_id=tenant-1",
       expect.objectContaining({ method: "DELETE" }),
     ));
-    expect(confirmSpy).toHaveBeenLastCalledWith(expect.stringContaining("되돌릴 수 없으며"));
+    expect(confirmSpy).toHaveBeenLastCalledWith(expect.stringContaining("예약된 발행은 실패로 처리됩니다"));
   });
 });

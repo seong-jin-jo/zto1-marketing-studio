@@ -4,6 +4,7 @@ import useSWR from "swr";
 import { fetcher, apiDelete } from "@/lib/api";
 import { useToast } from "@/components/layout/Toast";
 import { fmtTime, fmtBytes } from "@/lib/format";
+import { confirmAction } from "@/components/shared/ConfirmHost";
 
 interface ImageItem {
   filename: string;
@@ -23,7 +24,7 @@ export default function ImagesPage() {
   };
 
   const handleDelete = async (filename: string) => {
-    if (!confirm("이미지를 삭제하시겠습니까?")) return;
+    if (!(await confirmAction({ title: "이미지를 삭제할까요?", description: "삭제한 이미지는 되돌릴 수 없습니다. 이 이미지를 쓰고 있는 글이 있으면 그 자리는 비어 보이게 됩니다.", confirmLabel: "이미지 삭제", destructive: true }))) return;
     try {
       await apiDelete(`/api/images/${encodeURIComponent(filename)}`);
       showToast("삭제됨", "success");

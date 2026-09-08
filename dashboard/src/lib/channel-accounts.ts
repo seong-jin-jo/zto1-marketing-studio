@@ -148,13 +148,23 @@ interface UpsertInput {
 }
 
 
-// 기본계정으로 쓸 수 있는 행인가. channel-connection.ts 의 판정과 같은 기준을 쓴다.
+// 계정 하나가 지금 쓸 수 있는 상태인가. **연결 판정의 단일 규칙이다.**
+// 채널 머리말·사이드바(channel-connection.ts)와 계정 카드(listChannelAccounts)가 둘 다 이것만 부른다.
+//
+// 2026-09-08 회장 실사용에서 X 화면 머리말은 "연결됨", 그 아래 유일한 계정은 "재연결 필요"
+// 라고 동시에 적혀 있었다. 같은 사실에 규칙이 둘이었기 때문이다. 머리말 쪽은 만료 토큰이라도
+// 갱신 토큰이 있으면 살아있다고 봤고(그리고 그 판단은 맞다 — 발행 직전에 실제로 갱신한다),
+// 계정 카드 쪽은 만료 시각만 보고 죽었다고 봤다. 사용자에게는 둘 중 어느 쪽이 참인지 알 방법이
+// 없다. 연결 화면에서 서로 다른 말을 하는 것은 "연결됐다" 는 말 전체의 신뢰를 깎는다.
+// 규칙을 여기 하나로 모으고, 갱신 토큰이 있으면 되살릴 수 있다고 본다(refreshAccessToken 이
+// 발행 직전에 실제로 그렇게 한다).
 const DEFAULT_REQUIRES_EXPIRY = new Set(["threads", "instagram", "facebook"]);
 
 export function defaultAccountEligibility(
   provider: string,
   status: string | null,
   tokenExpiresAt: string | null,
+  hasRefresh = false,
   now = Date.now(),
 ): DefaultAccountEligibility {
   if (status === "expired") return { eligible: false, blockedReason: "status_expired" };
@@ -167,7 +177,8 @@ export function defaultAccountEligibility(
   }
   const at = Date.parse(tokenExpiresAt);
   if (!Number.isFinite(at)) return { eligible: false, blockedReason: "token_expiry_invalid" };
-  if (at <= now) return { eligible: false, blockedReason: "token_expired" };
+  // 만료됐어도 갱신 토큰이 있으면 발행 직전에 되살아난다. 죽었다고 적으면 거짓말이다.
+  if (at <= now && !hasRefresh) return { eligible: false, blockedReason: "token_expired" };
   return { eligible: true, blockedReason: null };
 }
 
@@ -290,14 +301,17 @@ export async function syncLegacyIntegration(tenantId: string, provider: string, 
 
 // tenant+provider 스코프 계정 목록. 토큰은 절대 반환하지 않는다(display/username/status/default만).
 export async function listChannelAccounts(tenantId: string, provider: string): Promise<ChannelAccountRow[]> {
-  const rows = await withTenant(tenantId, (sql) => sql<Omit<ChannelAccountRow, "connection_state" | "can_be_default" | "default_blocked_reason">[]>`
+  type Raw = Omit<ChannelAccountRow, "connection_state" | "can_be_default" | "default_blocked_reason">
+    & { has_refresh: boolean };
+  const rows = await withTenant(tenantId, (sql) => sql<Raw[]>`
     SELECT id, provider, external_account_id, display_name, username, is_default, status,
-           token_expires_at, created_at, updated_at
+           token_expires_at, created_at, updated_at,
+           (refresh_enc IS NOT NULL) AS has_refresh
     FROM channel_accounts
     WHERE tenant_id = ${tenantId} AND provider = ${provider}
     ORDER BY is_default DESC, created_at ASC`);
-  return rows.map((row) => {
-    const eligibility = defaultAccountEligibility(row.provider, row.status, row.token_expires_at);
+  return rows.map(({ has_refresh, ...row }) => {
+    const eligibility = defaultAccountEligibility(row.provider, row.status, row.token_expires_at, has_refresh);
     return {
       ...row,
       connection_state: eligibility.eligible ? "connected" : "reconnect",
@@ -316,12 +330,12 @@ export async function setDefaultAccount(
 ): Promise<{ ok: boolean; notFound?: boolean; blockedReason?: DefaultAccountBlockedReason }> {
   return withTenant(tenantId, async (sql) => {
     await sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:${provider}`}, 0))`;
-    const [target] = await sql<{ id: string; status: string; token_expires_at: string | null }[]>`
-      SELECT id, status, token_expires_at::text AS token_expires_at
+    const [target] = await sql<{ id: string; status: string; token_expires_at: string | null; has_refresh: boolean }[]>`
+      SELECT id, status, token_expires_at::text AS token_expires_at, (refresh_enc IS NOT NULL) AS has_refresh
       FROM channel_accounts
       WHERE id = ${accountId} AND tenant_id = ${tenantId} AND provider = ${provider}`;
     if (!target) return { ok: false, notFound: true };
-    const eligibility = defaultAccountEligibility(provider, target.status, target.token_expires_at);
+    const eligibility = defaultAccountEligibility(provider, target.status, target.token_expires_at, target.has_refresh);
     if (!eligibility.eligible) {
       return { ok: false, blockedReason: eligibility.blockedReason ?? "status_inactive" };
     }

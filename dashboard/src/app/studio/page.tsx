@@ -769,11 +769,12 @@ export default function StudioPage() {
   // 영상은 대표 이미지를 움직이게 하는 것이라 이미지가 먼저 있어야 한다.
   async function generateShortVideo() {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return; }
+    // 2026-09-08 회장: "왜 카드뉴스 대표이미지를 만들어야 숏폼 영상만들기가 되는거냐".
+    // 영상은 그림을 움직여 만드는 것이라 바탕 그림이 필요한 것은 맞다. 그런데 그 사정은
+    // 우리 사정이지 고객 사정이 아니다. 고객은 "영상 만들기" 를 눌렀을 뿐인데 거절당하고
+    // 다른 단추를 먼저 누르라는 말을 듣는다. 필요한 것이면 우리가 만들고 이어서 간다.
     let source = img;
-    if (!source) {
-      showToast("먼저 카드뉴스 대표 이미지를 만들어 주세요. 영상은 그 이미지를 움직이게 합니다.", "error");
-      return;
-    }
+    const needsBaseImage = !source;
 
     const est = await apiPost<{
       ok?: boolean; min_minor?: number; max_minor?: number;
@@ -783,7 +784,9 @@ export default function StudioPage() {
 
     const approved = await askCostApproval({
       title: "숏폼 영상",
-      description: "방금 만든 대표 이미지를 움직이는 영상으로 바꿉니다. 소리는 없습니다.",
+      description: needsBaseImage
+        ? "바탕이 될 그림을 먼저 만들고, 그 그림을 움직이는 영상으로 바꿉니다. 소리는 없습니다."
+        : "방금 만든 대표 이미지를 움직이는 영상으로 바꿉니다. 소리는 없습니다.",
       minMinor: est.min_minor, maxMinor: est.max_minor,
       secondsMin: est.estimated_seconds_min, secondsMax: est.estimated_seconds_max,
       assumptions: est.assumptions,
@@ -791,8 +794,24 @@ export default function StudioPage() {
     if (!approved) { showToast("만들지 않았습니다", "success"); return; }
 
     generationAbort.current = new AbortController();
-    setBusy("숏폼 영상 만드는 중");
     try {
+      if (needsBaseImage) {
+        setBusy("영상 바탕 그림 만드는 중");
+        source = await genImage(
+          buildImagePrompt(
+            pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea }),
+            { id: imageStyleId, custom: imageStyleCustom },
+            learningInfo.palette,
+          ),
+          "9:16",
+        );
+        if (!source) return; // 실패 사유는 genImage 가 이미 화면에 말했다
+      }
+      setBusy("숏폼 영상 만드는 중");
+      if (!source?.localPath) {
+        showToast("바탕 그림을 찾지 못했습니다. 다시 시도해 주세요.", "error");
+        return;
+      }
       await genVideo(source.localPath);
     } finally {
       generationAbort.current = null;

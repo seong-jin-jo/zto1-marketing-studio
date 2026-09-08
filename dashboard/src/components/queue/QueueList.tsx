@@ -8,6 +8,7 @@ import { useToast } from "@/components/layout/Toast";
 import { apiPost, fetcher } from "@/lib/api";
 import { UnifiedPostCard } from "./UnifiedPostCard";
 import type { UnifiedPostCardProps } from "./UnifiedPostCard";
+import { confirmAction } from "@/components/shared/ConfirmHost";
 
 const FILTERS = ["all", "draft", "approved", "published", "failed"];
 const FILTER_LABELS: Record<string, string> = {
@@ -50,7 +51,8 @@ export function QueueList({ variant = "text", charLimit, showSeo, onEditInEditor
 
   const handleBulkApprove = async () => {
     const ids = Array.from(selectedIds);
-    if (!ids.length || !confirm(`${ids.length}개 일괄 승인?`)) return;
+    if (!ids.length) return;
+    if (!(await confirmAction({ title: `선택한 ${ids.length}건을 한 번에 승인할까요?`, description: "승인한 글은 예약 시각이 되면 그대로 발행됩니다. 발행 전이라면 대기열에서 다시 되돌릴 수 있습니다.", confirmLabel: `${ids.length}건 승인` }))) return;
     try {
       const r = await apiPost<{ approved: number }>("/api/queue/bulk-approve", { ids });
       if (r) { showToast(`${r.approved}개 승인`, "success"); clearSelection(); mutate(); }
@@ -59,7 +61,8 @@ export function QueueList({ variant = "text", charLimit, showSeo, onEditInEditor
 
   const handleBulkDelete = async () => {
     const ids = Array.from(selectedIds);
-    if (!ids.length || !confirm(`${ids.length}개 일괄 삭제?`)) return;
+    if (!ids.length) return;
+    if (!(await confirmAction({ title: `선택한 ${ids.length}건을 삭제할까요?`, description: "삭제한 글은 되돌릴 수 없습니다. 예약된 발행도 함께 취소됩니다.", confirmLabel: `${ids.length}건 삭제`, destructive: true }))) return;
     try {
       const r = await apiPost<{ deleted: number }>("/api/queue/bulk-delete", { ids });
       if (r) { showToast(`${r.deleted}개 삭제`, "success"); clearSelection(); mutate(); }

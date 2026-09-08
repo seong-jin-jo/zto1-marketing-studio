@@ -114,9 +114,13 @@ describe("POST /api/studio/text — 브랜드+위키 그라운딩 주입 (셀프
     expect(H.genPrompt).not.toContain("위키 참조");
   });
 
-  it("생성 결과가 JSON 아니면 502", async () => {
+  it("생성 결과가 JSON 아니면 실패로 응답", async () => {
     H.genReturn = "죄송합니다 출력 불가";
     const { status } = await studioText({ idea: "x", tenant_id: "tenant-1" });
-    expect(status).toBe(502);
+    // 2026-09-08: 생성 실패는 502 가 아니라 200 + ok:false 로 답한다. 502 는 게이트웨이가
+    // 상류에서 잘못된 응답을 받았다는 뜻이라 우리 앞의 리버스 프록시가 우리 JSON 본문을
+    // 자기 HTML 오류 페이지로 갈아치웠고, 화면에는 "502" 숫자만 뜨고 진짜 이유가 한 번도
+    // 사용자에게 닿지 못했다(회장 실사용). 정본 = src/lib/api-failure.ts.
+    expect(status).toBe(200);
   });
 });

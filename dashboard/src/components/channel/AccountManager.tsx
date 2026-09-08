@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useUIStore } from "@/store/ui-store";
 import { authHeaders } from "@/lib/auth";
 import { Button } from "@/components/shared/Button";
+import { confirmAction } from "@/components/shared/ConfirmHost";
 
 // SNS-007: provider당 여러 계정(예: Threads 개인+브랜드)을 목록/추가(Bluesky만 수동)/기본전환/삭제.
 // OAuth provider(threads/x/instagram/facebook/youtube 등)는 이 컴포넌트가 아니라
@@ -127,7 +128,7 @@ export function AccountManager({
   const remove = async (account: AccountRow) => {
     if (!activeWorkspace || busyId) return;
     const name = accountLabel(account);
-    if (!window.confirm(`${name} 계정 연결을 해제할까요? 이 작업은 되돌릴 수 없으며 이 계정으로 예약된 발행은 실패로 처리됩니다.`)) return;
+    if (!(await confirmAction({ title: `${name} 연결을 해제할까요?`, description: "해제하면 이 계정으로는 더 이상 발행할 수 없습니다. 이 계정으로 예약된 발행은 실패로 처리됩니다. 다시 쓰려면 공식 로그인으로 새로 연결하면 됩니다.", confirmLabel: "연결 해제", destructive: true }))) return;
     setBusyId(account.id);
     try {
       const r = await fetch(`/api/channels/${provider}/accounts/${account.id}?tenant_id=${activeWorkspace.id}`, {

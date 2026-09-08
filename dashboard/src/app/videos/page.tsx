@@ -7,6 +7,7 @@ import { fetcher, apiPost, handleUnauthorizedResponse } from "@/lib/api";
 import { authHeaders, getAuthToken } from "@/lib/auth";
 import { useToast } from "@/components/layout/Toast";
 import { useUIStore } from "@/store/ui-store";
+import { confirmAction } from "@/components/shared/ConfirmHost";
 
 interface Video {
   filename: string;
@@ -291,7 +292,7 @@ export default function VideosPage() {
   };
 
   const handleDelete = async (filename: string) => {
-    if (!confirm("Delete this video?")) return;
+    if (!(await confirmAction({ title: "이 영상을 삭제할까요?", description: "삭제한 영상은 되돌릴 수 없습니다. 이 영상으로 예약된 발행이 있으면 실패로 처리됩니다.", confirmLabel: "영상 삭제", destructive: true }))) return;
     try {
       await apiPost("/api/video/delete", { filename });
       showToast("Deleted", "success");

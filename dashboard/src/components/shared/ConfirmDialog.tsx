@@ -63,7 +63,12 @@ export function ConfirmDialog({ request, onConfirm, onCancel }: Props) {
           <Button size="sm" variant="secondary" data-testid="confirm-dialog-cancel" onClick={onCancel}>
             {request.cancelLabel || "그만두기"}
           </Button>
-          <Button size="sm" data-testid="confirm-dialog-accept" onClick={onConfirm}>
+          <Button
+            size="sm"
+            variant={request.destructive ? "danger" : "primary"}
+            data-testid="confirm-dialog-accept"
+            onClick={onConfirm}
+          >
             {request.confirmLabel}
           </Button>
         </div>

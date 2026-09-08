@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { fetcher, isAuthRequiredError } from "@/lib/api";
 import { authHeaders } from "@/lib/auth";
 import { OperationalIncidentPanel } from "@/components/operator/OperationalIncidentPanel";
+import { confirmAction } from "@/components/shared/ConfirmHost";
 
 interface Customer {
   id: string;
@@ -268,7 +269,7 @@ export default function OperatorCustomersPage() {
 
   async function deleteCredentialSet(item: OAuthProviderStatus) {
     if (busyProvider || item.source !== "db" || item.unavailableReason) return;
-    if (!window.confirm(`${item.label}의 Admin DB 저장값을 삭제하고 운영 환경변수 fallback으로 되돌릴까요?`)) return;
+    if (!(await confirmAction({ title: `${item.label} 저장값을 지울까요?`, description: "관리 화면에 저장한 값을 지우고 서버 환경설정 값으로 돌아갑니다. 지운 값은 되돌릴 수 없고 다시 입력해야 합니다.", confirmLabel: "저장값 지우기", destructive: true }))) return;
     setBusyProvider(item.provider);
     setOauthActionMsg((current) => ({ ...current, [item.provider]: "" }));
     try {

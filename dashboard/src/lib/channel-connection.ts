@@ -2,9 +2,10 @@
 // 이를 감싼 /api/channel-config 응답)를 통해서만 연결 여부를 판정한다. 레거시 integrations와
 // openclaw.json config는 판정에서 배제(발행 폴백 미러링만 별도 유지, schema.sql:259~).
 //
-// 판정 = channel_accounts의 기본 계정 status + token_expires_at + refresh_enc.
-// active여도 Meta 장기 토큰 만료시각이 없거나, 만료 토큰을 갱신할 refresh_enc가 없으면 reconnect다.
+// 판정 규칙 자체는 lib/channel-accounts.ts 의 defaultAccountEligibility 가 정본이다.
+// 계정 카드도 같은 함수를 부른다. 화면 두 곳이 다른 말을 하지 않게 하는 유일한 방법이다.
 import { withTenant } from "@/lib/db";
+import { defaultAccountEligibility } from "@/lib/channel-accounts";
 
 export type ChannelConnectionState = "connected" | "reconnect" | "disconnected";
 
@@ -15,17 +16,15 @@ interface ConnectionRow {
   has_refresh: boolean;
 }
 
-const DURABLE_EXPIRY_REQUIRED = new Set(["threads", "instagram", "facebook"]);
-
+// 판정 규칙은 여기 있지 않다. defaultAccountEligibility 하나가 정본이고 이 파일은 그것을 부른다.
+//
+// 2026-09-08 회장 실사용: X 화면 머리말이 "연결됨", 바로 아래 유일한 계정이 "재연결 필요" 라고
+// 동시에 적혀 있었다. 이 파일과 channel-accounts.ts 가 같은 사실을 서로 다른 규칙으로 판정했기
+// 때문이다. 두 곳 다 주석에는 "같은 기준을 쓴다" 고 적혀 있었다. 주석은 규칙을 붙들어 매지
+// 못한다. 규칙을 한 함수로 합쳐 갈라질 자리 자체를 없앤다.
 function resolveStoredConnection(provider: string, row: ConnectionRow): ChannelConnectionState {
-  if (row.status !== "active") return "reconnect";
-  if (!row.token_expires_at) {
-    return DURABLE_EXPIRY_REQUIRED.has(provider) ? "reconnect" : "connected";
-  }
-  const expiresAt = Date.parse(row.token_expires_at);
-  if (!Number.isFinite(expiresAt)) return "reconnect";
-  if (expiresAt <= Date.now() && !row.has_refresh) return "reconnect";
-  return "connected";
+  const { eligible } = defaultAccountEligibility(provider, row.status, row.token_expires_at, row.has_refresh);
+  return eligible ? "connected" : "reconnect";
 }
 
 export async function isChannelConnected(tenantId: string, provider: string): Promise<ChannelConnectionState> {

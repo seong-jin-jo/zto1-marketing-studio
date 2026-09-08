@@ -41,6 +41,7 @@ import { Section } from "@/components/shared/Section";
 import { Stack } from "@/components/shared/Stack";
 import { ChannelTabs } from "@/components/channel/ChannelTabs";
 import { isChannelTabEnabled } from "@/lib/channel-capabilities";
+import { confirmAction } from "@/components/shared/ConfirmHost";
 
 interface ChannelPageProps {
   channel: string;
@@ -529,7 +530,7 @@ function PopularTab({ expandedPopular, setExpandedPopular }: { expandedPopular: 
   };
 
   const handleDelete = async (i: number) => {
-    if (!confirm("이 인기글을 삭제하시겠습니까?")) return;
+    if (!(await confirmAction({ title: "이 인기글을 목록에서 지울까요?", description: "참고 자료 목록에서만 사라집니다. 원래 게시물은 그대로 남습니다.", confirmLabel: "목록에서 지우기", destructive: true }))) return;
     try {
       await apiPost("/api/popular/delete", { index: i });
       showToast("삭제됨", "success");
