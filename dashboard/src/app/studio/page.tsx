@@ -77,6 +77,26 @@ const VIDEO_PUBLISH_NAME: Record<string, string> = { shorts: "youtube", reels: "
 /** 영상 채널이 쓰는 계정 제공자. 릴스는 인스타그램 계정을 쓴다. */
 const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reels: "instagram", tiktok: "tiktok" };
 
+const ROOM_LABEL: Record<StudioRoom, string> = { create: "생성실", edit: "편집실", publish: "발행실" };
+
+/**
+ * 이 작업물을 누르면 어느 방으로 데려갈 것인가.
+ *
+ * 2026-09-09 회장 지적: "작업물 클릭하면 어디로 이동해서 뭘 하는건지."
+ * 종전에는 눌러도 방이 안 바뀌고 상태만 조용히 채워졌다. 무엇이 일어났는지도,
+ * 이제 어디로 가야 하는지도 화면이 말하지 않았다.
+ *
+ * 판정은 그 작업물이 어디까지 왔는지로 한다. 이미 발행했으면 발행실, 본문이 있으면
+ * 이어서 다듬을 편집실, 아직 아무것도 없으면 생성실이다.
+ */
+function draftLandingRoom(draft: Record<string, unknown>): StudioRoom {
+  const status = typeof draft.status === "string" ? draft.status : "";
+  if (status === "published" || status === "scheduled") return "publish";
+  const text = draft.text as Record<string, unknown> | null | undefined;
+  const hasBody = !!text && typeof text === "object" && Object.values(text).some((v) => typeof v === "string" ? v.trim() : v);
+  return hasBody ? "edit" : "create";
+}
+
 // 채널 화면 주소는 제공자 이름으로 만든다.
 // 2026-09-08 회장 실사용: 발행실에서 쇼츠·릴스의 "계정 관리" 를 누르면 "알 수 없는 채널: shorts"
 // 만 뜨고 아무것도 못 했다. 계정 **조회**는 이미 제공자로 바꿔 부르고 있었는데(YouTube·Instagram)
@@ -261,6 +281,13 @@ export default function StudioPage() {
     fetcher,
   );
   const usage = usageData as { thisMonth?: Record<string, number>; tier?: string; quota?: Record<string, unknown> | null } | undefined;
+  // 한도는 이미 서버가 usage_quotas 에서 내려주고 있었는데 화면이 안 썼다.
+  // 쓴 건수만 보여 주면 "이 숫자가 뭔데" 로 끝난다(2026-09-09 회장 지적).
+  const quotaUsed = Number(usage?.quota?.generations_used ?? usage?.thisMonth?.aiGenerations ?? 0);
+  const quotaIncluded = usage?.quota?.generations_included != null
+    ? Number(usage.quota.generations_included)
+    : null;
+  const quotaRemaining = quotaIncluded !== null ? Math.max(0, quotaIncluded - quotaUsed) : null;
   const { data: acct, mutate: mutateAcct } = useSWR<{ credits?: number; needsLogin?: boolean }>(
     isOperator ? "/api/higgsfield/status" : null,
     fetcher,
@@ -1449,7 +1476,23 @@ export default function StudioPage() {
                 2026-09-06 실측: 여기서 읽던 이름이 응답 필드와 달라(aiGeneration 대
                 aiGenerations) 실제 22건인데 화면에는 0건으로 떴다. 응답 정본 이름을 쓴다.
               */}
-              <b className="text-accent">{Number(usage.thisMonth?.aiGenerations ?? 0)}건</b>
+              {/*
+                2026-09-09 회장 지적: "이번 달 생성은 뭐하는거지 토큰관리야? UI가 이상한데."
+                종전에는 쓴 건수만 적었다. 그러면 이것이 무엇을 세는 숫자인지, 얼마까지
+                쓸 수 있는지, 넘으면 어떻게 되는지를 화면이 한 마디도 안 한다.
+                실제로는 월 한도가 걸려 있고 넘으면 생성이 막힌다. 쓰다가 갑자기 막히는
+                것이 가장 나쁘다. 쓴 건수와 한도를 함께 적고 남은 건수를 앞세운다.
+              */}
+              <b className="text-accent">
+                {quotaIncluded === null
+                  ? `${quotaUsed}건`
+                  : `${quotaUsed} / ${quotaIncluded}건`}
+              </b>
+              {quotaRemaining !== null ? (
+                <span className={`text-caption ${quotaRemaining <= 5 ? "text-warning" : "text-subtle"}`}>
+                  {quotaRemaining > 0 ? `${quotaRemaining}건 남음` : "한도 다 씀"}
+                </span>
+              ) : null}
               {usage.tier ? <span className="text-caption text-subtle">{usage.tier} 요금제</span> : null}
             </button>
           ) : null}
@@ -1527,11 +1570,26 @@ export default function StudioPage() {
                 key={String((draft as { id?: unknown }).id ?? "")}
                 type="button"
                 data-work-item={String((draft as { id?: unknown }).id ?? "")}
-                onClick={() => { loadDraft(draft as unknown as Record<string, unknown>); setShowWorks(false); showToast("작업물을 불러왔습니다", "success"); }}
+                onClick={() => {
+                  const room = draftLandingRoom(draft as unknown as Record<string, unknown>);
+                  loadDraft(draft as unknown as Record<string, unknown>);
+                  setActiveRoom(room);
+                  setShowWorks(false);
+                  showToast(`${ROOM_LABEL[room]}에서 이어 작업합니다`, "success");
+                }}
                 className="flex min-h-control-touch w-full flex-wrap items-center gap-stack rounded-control border border-border bg-surface-2 px-stack py-stack-tight text-left hover:bg-surface"
               >
                 <b className="min-w-0 flex-1 truncate text-body-sm text-text">{(draft as { idea?: string }).idea || "제목 없는 작업물"}</b>
                 <span className="shrink-0 text-caption text-subtle">{(draft as { status?: string }).status || "초안"}</span>
+                {/*
+                  2026-09-09 회장 지적: "작업물 클릭하면 어디로 이동해서 뭘 하는건지."
+                  종전에는 눌러도 방이 안 바뀌고 상태만 조용히 채워졌다. 그래서 무엇이
+                  일어났는지도, 어디로 가야 하는지도 알 수 없었다. 누르기 전에 갈 곳을
+                  적고, 누르면 실제로 그 방으로 데려간다.
+                */}
+                <span className="shrink-0 rounded-pill border border-accent/30 bg-accent-soft px-stack-tight text-caption font-semibold text-accent">
+                  {ROOM_LABEL[draftLandingRoom(draft as unknown as Record<string, unknown>)]}로
+                </span>
               </button>
             ))}
             {(hist?.drafts ?? []).length > 20 ? (
