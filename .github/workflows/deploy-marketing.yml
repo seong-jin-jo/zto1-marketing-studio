@@ -24,36 +24,44 @@ jobs:
             docker run --rm -v "$GITHUB_WORKSPACE":/w alpine:3 sh -c 'rm -rf /w/.[!.]* /w/..?* /w/* 2>/dev/null || true' || true
           fi
       - name: 디스크 선정리 (빌드 전 — 꽉 찬 채로 시작하면 정리에 닿기도 전에 죽는다)
-        # 2026-09-08: 러너 디스크가 꽉 차 배포가 이미지 빌드에서 죽었다. 오류는 도커가 아니라
-        # 러너 자신의 로그 쓰기였다("No space left on device: _diag/Worker_*.log"). 정리 단계는
-        # 이미 있었지만 배포 맨 끝에만 있었다. 디스크가 차서 죽으면 그 정리에 영원히 닿지 못한다.
-        # 뒷정리는 앞정리를 대신하지 못한다. 그래서 빌드 전에 한 번 더 치운다.
-        # 여유가 넉넉하면 아무것도 지우지 않고, 빠듯할 때만 보관 기간을 줄여 가며 치운다.
+        # 2026-09-08: 배포가 이미지 빌드에서 두 번 죽었다. 오류는 도커가 아니라 러너 자신의
+        # 로그 쓰기였다("No space left on device: _diag/Worker_*.log"). 디스크가 꽉 차면
+        # 잡 로그 자체가 안 남아 원인 추적도 불가능해진다 — 그래서 숫자는 로그가 아니라
+        # 주석(::notice::)으로 남긴다. 주석은 로그가 유실돼도 남는다.
+        #
+        # 정리 단계는 원래 배포 맨 끝에만 있었다. 디스크가 차서 죽으면 그 정리에 영원히
+        # 닿지 못한다. 뒷정리는 앞정리를 대신하지 못한다. 체크아웃보다 앞에 둔다
+        # (체크아웃 자체도 쓰기라 그 뒤에 두면 늦다).
+        #
+        # 무엇을 지우나: 빌드 캐시 전부와, 지금 도는 컨테이너가 안 쓰는 이미지 전부.
+        # 지금 쓰는 이미지와 볼륨은 도커가 참조를 보고 남긴다(--volumes 는 절대 쓰지 않는다.
+        # 거기에 운영 데이터가 있다). 기간 조건을 걸지 않는 이유는, 168시간 조건으로는
+        # 아무것도 안 지워지면서 통과해 버려 같은 실패를 두 번 냈기 때문이다.
         run: |
           set -u
-          used() { df --output=pcent / | tail -1 | tr -dc '0-9'; }
-          echo "정리 전 디스크: $(df -h / | tail -1)"
-          # 러너 자기 진단 로그는 아무도 안 지운다. 7일 지난 것은 지운다.
-          find "$HOME/actions-runner-oc/_diag" -name '*.log' -mtime +7 -delete 2>/dev/null || true
-          if [ "$(used)" -ge 70 ]; then
-            docker image prune -af --filter "until=168h" || true
-            docker builder prune -af --filter "until=168h" || true
-            docker container prune -f || true
-          fi
-          if [ "$(used)" -ge 85 ]; then
-            echo "여전히 빠듯하다 — 보관 기간을 24시간으로 줄인다"
-            docker image prune -af --filter "until=24h" || true
-            docker builder prune -af || true
-          fi
-          if [ "$(used)" -ge 92 ]; then
-            echo "마지막 수단 — 안 쓰는 이미지·캐시를 기간 무관 전부 지운다"
-            docker system prune -af || true
-          fi
-          echo "정리 뒤 디스크: $(df -h / | tail -1)"
-          if [ "$(used)" -ge 95 ]; then
-            echo "::error::디스크가 $(used)% 다. 지울 수 있는 것을 다 지워도 부족하다 — 사람이 봐야 한다."
+          avail_gb() { df -BG --output=avail / | tail -1 | tr -dc '0-9'; }
+          before="$(df -h / | tail -1)"
+
+          # 아무도 안 지우는 러너 자기 로그와 임시 파일.
+          rm -rf "$HOME"/actions-runner-oc/_diag/*.log 2>/dev/null || true
+          rm -rf "$HOME"/actions-runner-oc/_work/_temp/* 2>/dev/null || true
+
+          docker builder prune -af || true
+          docker image prune -af || true
+          docker container prune -f || true
+
+          after="$(df -h / | tail -1)"
+          echo "::notice title=디스크 선정리::전 [$before] → 후 [$after]"
+
+          # 빌드가 실제로 얼마를 쓰는지 모르는 채로 시작하면 또 같은 자리에서 죽는다.
+          # 남은 용량을 먼저 재고, 부족하면 조용히 진행하지 말고 여기서 멈춘다.
+          need=15
+          have="$(avail_gb)"
+          if [ "$have" -lt "$need" ]; then
+            echo "::error title=디스크 부족::지울 수 있는 것을 다 지워도 여유가 ${have}GB 뿐이다(빌드에 최소 ${need}GB 필요). 러너 디스크를 늘려야 한다."
             exit 1
           fi
+          echo "::notice title=디스크 여유::${have}GB"
 
       - name: Checkout
         uses: actions/checkout@v4

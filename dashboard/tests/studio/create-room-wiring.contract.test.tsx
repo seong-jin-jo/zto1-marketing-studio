@@ -38,8 +38,10 @@ describe("생성실 배선 계약", () => {
   });
 
   it("CREATE-WIRING-03 정상: 만든 결과를 만든 자리에서 보여 준다", () => {
+    // 2026-09-08: 만료된 배달 주소를 스스로 되살리도록 DeliveredMedia 로 감쌌다.
+    // 표식은 그 컴포넌트가 testId 로 받아 붙인다.
     for (const testid of ["create-made-image", "create-made-video"]) {
-      expect(roomsSrc, `${testid} 표시 자리가 없다`).toContain(`data-testid="${testid}"`);
+      expect(roomsSrc, `${testid} 표시 자리가 없다`).toContain(`testId="${testid}"`);
     }
     expect(pageSrc, "만든 그림이 생성실로 안 넘어간다").toMatch(/madeImageUrl=\{/);
     expect(pageSrc, "만든 영상이 생성실로 안 넘어간다").toMatch(/madeVideoUrl=\{/);

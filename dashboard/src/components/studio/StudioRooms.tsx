@@ -43,6 +43,7 @@ import {
   type LearningInfo,
 } from "./learning-info";
 import styles from "./StudioRooms.module.css";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 
 export type CreateContentBranch = "text_image" | "video";
 export type EditContentKind = "video" | "card" | "audio" | "text";
@@ -752,12 +753,13 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
               <div data-testid="create-made" className="space-y-stack-tight rounded-control border border-border bg-surface p-stack">
                 <b className="block text-caption text-text">방금 만든 것</b>
                 {madeImageUrl ? (
-                  <img data-testid="create-made-image" src={madeImageUrl} alt="방금 만든 카드뉴스 대표 이미지"
+                  <DeliveredMedia type="image" src={madeImageUrl} testId="create-made-image"
+                    alt="방금 만든 카드뉴스 대표 이미지" tenantId={workspaceId}
                     className="max-h-64 w-full rounded-control object-contain" />
                 ) : null}
                 {madeVideoUrl ? (
-                  <video data-testid="create-made-video" src={madeVideoUrl} controls playsInline
-                    className="max-h-64 w-full rounded-control" />
+                  <DeliveredMedia type="video" src={madeVideoUrl} testId="create-made-video"
+                    tenantId={workspaceId} className="max-h-64 w-full rounded-control" />
                 ) : null}
                 <p className="text-caption text-subtle break-keep">편집실에서 글자를 얹고 발행실로 보낼 수 있습니다.</p>
               </div>

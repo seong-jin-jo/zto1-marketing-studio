@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
 import type { EditContentKind } from "./StudioRooms";
 import styles from "./EditPreview.module.css";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 
 // 편집실 미리보기.
 //
@@ -186,23 +187,13 @@ export function EditPreview({
               무엇을 고칠지 판단할 수 있다. 종전에는 이 자리가 비어 "여기에 화면이 놓입니다"
               라는 자리표시자만 있었다(2026-09-08 회장 실사용). */}
           {mediaUrl ? (
-            mediaType === "video" ? (
-              <video
-                data-edit-preview-media="video"
-                src={mediaUrl}
-                className="absolute inset-0 h-full w-full object-cover"
-                controls
-                playsInline
-                muted
-              />
-            ) : (
-              <img
-                data-edit-preview-media="image"
-                src={mediaUrl}
-                alt="방금 만든 산출물 미리보기"
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-            )
+            <DeliveredMedia
+              type={mediaType === "video" ? "video" : "image"}
+              src={mediaUrl}
+              alt="방금 만든 산출물 미리보기"
+              dataAttr={{ "data-edit-preview-media": mediaType === "video" ? "video" : "image" }}
+              className="absolute inset-0 h-full w-full object-cover"
+            />
           ) : null}
 
           {kind === "card" ? (
