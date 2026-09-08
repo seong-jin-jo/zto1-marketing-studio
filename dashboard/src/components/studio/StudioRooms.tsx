@@ -196,6 +196,15 @@ interface CreateRoomProps {
   imageStyleId?: string;
   imageStyleCustom?: string;
   onImageStyleChange?: (styleId: string, custom: string) => void;
+  /**
+   * 값이 바뀌면 생성실이 자기 상태를 비운다.
+   *
+   * 2026-09-09 실사용에서 찾았다. 머리줄의 "새로 시작" 을 누르고 확인까지 했는데
+   * 생성실에는 앞서 만든 구조 초안 세 개가 그대로 남아 "3 / 3 선택한 구조 확인" 이었다.
+   * 부모는 본문·이미지·영상을 지웠지만 후보와 답한 질문은 이 컴포넌트 안에 있어서
+   * 손이 닿지 않았다. **버렸다고 말하고 안 버리는 것**이 가장 나쁘다.
+   */
+  resetToken?: number;
   madeImageUrl?: string | null;
   madeVideoUrl?: string | null;
   cardImageBusy?: boolean;
@@ -237,7 +246,7 @@ export function generationErrorMessage(cause: unknown): string {
   return message || "구조 초안을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
-export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
+export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
   const topicInputRef = useRef<HTMLInputElement>(null);
   const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
   const [primaryKind, setPrimaryKind] = useState<CreateKind | null>(null);
@@ -259,6 +268,18 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const [quickBlockReason, setQuickBlockReason] = useState<string | null>(null);
   const generationInFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  // 부모가 "새로 시작" 을 확정하면 이 방도 처음으로 돌아간다. 부모 상태만 비우고 여기를
+  // 두면 화면에는 지운 적 없는 후보가 남아 사용자는 무엇이 버려졌는지 알 수 없다.
+  const firstReset = useRef(true);
+  useEffect(() => {
+    if (firstReset.current) { firstReset.current = false; return; }
+    setQuestionIndex(0);
+    setPurpose(""); setAudience(""); setRightsConfirmed(false); setTopicOpen(false);
+    setCandidates([]); setSelected(null); setQuickStructure(null);
+    setAlsoQuote(null); setAlsoBatch(null); setQuickBlockReason(null); setError(null);
+    try { localStorage.removeItem(`${CREATE_DRAFT_STORAGE_PREFIX}:${workspaceId}`); } catch { /* 저장이 막혀 있어도 화면은 이미 비웠다 */ }
+  }, [resetToken, workspaceId]);
+
   const facts = useMemo(() => guide.trim() ? [guide.trim()] : [], [guide]);
   const learnedCount = countFilledLearningSlots(learning, { guide });
   const missing = [!primaryKind && "만들 형식", !topic.trim() && "주제", !purpose.trim() && "목표", !audience.trim() && "고객", !rightsConfirmed && "사용 권리 확인"].filter(Boolean) as string[];

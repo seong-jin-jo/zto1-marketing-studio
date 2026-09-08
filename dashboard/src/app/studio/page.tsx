@@ -417,6 +417,8 @@ export default function StudioPage() {
   const [moveToPublishBusy, setMoveToPublishBusy] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<StudioGenerationCandidate | null>(null);
   const [createBranch, setCreateBranch] = useState<CreateContentBranch>("video");
+  // "새로 시작" 이 생성실 안쪽까지 닿게 하는 신호. 값이 바뀌면 생성실이 스스로 비운다.
+  const [createResetToken, setCreateResetToken] = useState(0);
   const [createPrimaryKind, setCreatePrimaryKind] = useState<CreateKind | null>(null);
   const [alsoKinds, setAlsoKinds] = useState<CreateKind[]>([]);
   const [learningInfo, setLearningInfo] = useState<LearningInfo>({});
@@ -754,6 +756,10 @@ export default function StudioPage() {
     setPublishReconciliations({});
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {} });
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
+    // 생성실이 들고 있는 구조 초안과 답한 질문까지 비운다. 여기를 빼먹으면 "버렸다" 고
+    // 말해 놓고 화면에는 앞서 만든 후보가 그대로 남는다(2026-09-09 실사용에서 확인).
+    setCreatePrimaryKind(null); setAlsoKinds([]);
+    setCreateResetToken((value) => value + 1);
     showToast("새로 시작합니다", "success");
   }
   /**
@@ -1639,6 +1645,7 @@ export default function StudioPage() {
         imageStyleId={imageStyleId}
         imageStyleCustom={imageStyleCustom}
         onImageStyleChange={(styleId, custom) => { setImageStyleId(styleId); setImageStyleCustom(custom); }}
+        resetToken={createResetToken}
         madeImageUrl={img?.file || img?.url || null}
         madeVideoUrl={vid?.file || vid?.url || null}
         cardImageBusy={busy === "카드뉴스 이미지 만드는 중"}
