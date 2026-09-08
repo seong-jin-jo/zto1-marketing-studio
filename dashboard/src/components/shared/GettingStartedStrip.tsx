@@ -52,11 +52,14 @@ export function GettingStartedStrip({ connectedCount: controlledConnectedCount }
   // 다섯 칸을 다 채웠을 때만 접는다. 그때는 안내가 할 일을 다 한 것이다.
   if (done >= STEPS.length) return null;
 
-  // 연결된 채널이 하나도 없으면 무엇을 하든 발행에 닿지 못한다. 그때는 남은 칸 순서와
-  // 무관하게 채널 연결을 먼저 가리킨다. 하나라도 붙은 뒤에는 남은 칸으로 데려간다.
-  const cta = connectedCount === 0
-    ? STEPS.find((step) => step.key === "channel") ?? next
-    : next;
+  // 2026-09-08 코드 감사 F-02: 종전에는 연결된 채널이 없으면 남은 칸 순서와 무관하게
+  // 채널 연결로 데려갔다. 그래서 같은 줄 안에서 글은 "다음 할 일: 첫 콘텐츠 만들기" 라고
+  // 하는데 단추는 "채널 연결하기" 로 다른 곳을 가리켰다. 처음 온 사람은 둘 중 무엇이
+  // 맞는지 알 수 없다.
+  // 사업계획과 네 방 설계는 둘 다 "채널 연결 없이 먼저 만들고, 실제 연결은 발행할 때
+  // 받는다" 로 확정돼 있다. 채널을 먼저 요구하는 것은 그 결정을 뒤집는 것이다.
+  // 글과 단추가 같은 곳을 가리키게 한다.
+  const cta = next;
 
   return (
     <section className="mb-pad-inset" aria-label="시작 안내" data-start-strip>

@@ -24,7 +24,21 @@ describe("V70-START 시작 스트립 계약", () => {
 
     expect(screen.getByText("시작 1/5")).toBeInTheDocument();
     expect(screen.getByText(/채널 연결 0\/15/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "채널 연결하기" })).toHaveAttribute("href", "/settings?tab=channels");
+    // 2026-09-08 코드 감사 F-02: 종전에는 연결된 채널이 없으면 남은 칸과 무관하게 채널
+    // 연결로 데려갔다. 그래서 글은 "다음 할 일: 브랜드 문서 연결" 인데 단추는 "채널 연결하기"
+    // 라 서로 다른 곳을 가리켰다. 사업계획과 네 방 설계는 둘 다 "먼저 만들고 채널은 발행
+    // 직전" 으로 확정돼 있다. 글과 단추가 같은 칸을 가리켜야 한다.
+    expect(screen.getByText(/다음 할 일: 브랜드 문서 연결/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "브랜드 문서 연결" })).toHaveAttribute("href", "/studio?setup=brand");
+  });
+
+  it("V70-START-01b 정상: 채널이 하나도 없어도 글과 단추가 같은 칸을 가리킨다", () => {
+    mocks.checklist = { created: false, wiki: false, channel: false, published: false, analytics: false };
+    render(<GettingStartedStrip />);
+
+    expect(screen.getByText(/다음 할 일: 첫 콘텐츠 만들기/)).toBeInTheDocument();
+    expect(screen.getByTestId("getting-started-next")).toHaveAttribute("href", "/studio?room=create");
+    mocks.checklist = { created: true, wiki: false, channel: false, published: false, analytics: false };
   });
 
   it("V70-START-02 정상: 전체 보기는 기존 다섯 단계 기능을 펼쳐 보존한다", () => {

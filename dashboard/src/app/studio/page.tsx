@@ -1612,6 +1612,23 @@ export default function StudioPage() {
       {showRepo && activeWorkspace ? <RepoConnect workspace={activeWorkspace} onSynced={() => { mutateBrand(); showToast("브랜드 가이드 갱신됨"); }} onClose={() => setShowRepo(false)} /> : null}
       {roomHeader}
       <GettingStartedStrip connectedCount={accountsLoaded && connectedTargets.length === 0 ? 0 : undefined} />
+      {/*
+        연결된 채널이 하나도 없으면 발행실에서는 무엇을 눌러도 아무 데도 안 올라간다.
+        그 안내를 종전에는 시작 스트립에 기대고 있었다. 그런데 그 줄은 진행 칸이 다 차면
+        사라지고, 가리키는 곳도 그때그때 다르다. 발행 직전에 반드시 있어야 하는 말을
+        사라질 수 있는 줄에 맡기면 안 된다(2026-09-08 코드 감사 F-02 후속).
+        발행실이 자기 말로 한다.
+      */}
+      {accountsLoaded && connectedTargets.length === 0 ? (
+        <div data-testid="publish-no-channel" className="mb-pad-inset flex flex-wrap items-center gap-stack rounded-surface border border-warning/40 bg-warning/10 px-stack py-stack-tight text-caption text-warning">
+          <span className="min-w-0 flex-1 break-keep">
+            아직 연결된 채널이 없어 발행할 수 없습니다. 채널을 하나만 연결하면 이 작업물을 바로 올릴 수 있습니다.
+          </span>
+          <Link href="/settings?tab=channels" className="inline-flex min-h-control-touch shrink-0 items-center rounded-control bg-accent px-stack text-caption font-semibold text-accent-fg">
+            채널 연결하기
+          </Link>
+        </div>
+      ) : null}
       <section data-room="publish" className="grid gap-stack-section pb-wide lg:grid-cols-[minmax(0,1fr)_20rem] lg:pb-none">
         <div className="min-w-0 space-y-region">
           {/*

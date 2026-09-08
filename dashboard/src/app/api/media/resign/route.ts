@@ -1,4 +1,4 @@
-import { effectiveTenantId } from "@/lib/tenant-auth";
+import { AuthError, effectiveTenantId } from "@/lib/tenant-auth";
 import { isSafeMediaFilename, signMediaToken } from "@/lib/media-token";
 import { resolveGeneratedFile } from "@/lib/storage";
 
@@ -20,7 +20,15 @@ export async function POST(request: Request) {
   if (!isSafeMediaFilename(filename)) {
     return Response.json({ ok: false, error: "파일 이름이 올바르지 않습니다." }, { status: 400 });
   }
-  const tenantId = await effectiveTenantId(request, body?.tenant_id);
+  // effectiveTenantId 는 인증이 안 되면 던진다. 안 받으면 본문 없는 500 이 그대로 나가고,
+  // 화면은 왜 안 되는지 한 마디도 못 듣는다(2026-09-08 배포 화면에서 실측).
+  let tenantId: string | null = null;
+  try {
+    tenantId = await effectiveTenantId(request, body?.tenant_id);
+  } catch (e) {
+    if (e instanceof AuthError) return Response.json({ ok: false, error: e.message }, { status: e.status });
+    throw e;
+  }
   if (!tenantId) return Response.json({ ok: false, error: "작업 공간을 확인할 수 없습니다." }, { status: 401 });
 
   // 배달 라우트와 같은 함수로 찾는다. 탐색이 갈라지면 한쪽에서만 보이는 파일이 생긴다.
