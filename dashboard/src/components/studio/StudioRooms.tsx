@@ -703,6 +703,25 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
             <dl className="flex flex-wrap gap-stack-tight">
               {learningRows.map(([label, value]) => <div key={label} className="min-w-0 rounded-pill bg-surface-2 px-stack py-stack-tight text-caption text-muted"><dt className="sr-only">{label}</dt><dd className="max-w-full truncate">{label}: {value}</dd></div>)}
             </dl>
+            {/*
+              2026-09-09 실사용에서 찾았다. 만들어진 세 후보가 모두 "저희는 회사를 손님으로
+              모시는 곳" 이라고 썼는데 업종 칸은 "동네 가게" 였다. 어디서 온 문장인지 화면에서
+              찾을 수 없었다. 브랜드 문서 전문이 생성 입력으로 통째로 들어가는데 이 자리는
+              여덟 칸만 보여 주고 그 문서는 감췄기 때문이다.
+              **화면에 없는 입력이 결과를 좌우하면 사용자는 결과를 고칠 수가 없다.** 무엇을
+              바꿔야 그 문장이 사라지는지 알 방법이 없다. 들어가는 것은 다 보여 준다.
+            */}
+            {guide.trim() ? (
+              <details className="mt-stack rounded-control border border-border bg-surface-2 p-stack" data-brand-guide-used>
+                <summary className="cursor-pointer text-caption font-semibold text-muted">
+                  브랜드 문서도 그대로 반영합니다 ({guide.trim().length}자)
+                </summary>
+                <p className="mt-stack-tight whitespace-pre-wrap break-keep text-caption text-subtle">{guide.trim()}</p>
+                <p className="mt-stack-tight break-keep text-caption text-subtle">
+                  이 글도 위 여덟 칸과 함께 생성에 들어갑니다. 결과에 원치 않는 표현이 나오면 여기서 그 문장을 찾아 브랜드 문서를 고쳐 주세요.
+                </p>
+              </details>
+            ) : null}
           </section>
         </div>
         <AssistantPanel title="생성 담당">
