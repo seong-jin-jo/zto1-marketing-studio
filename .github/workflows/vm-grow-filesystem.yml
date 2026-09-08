@@ -1,0 +1,69 @@
+name: VM 디스크 확장 마무리 (게스트 파일시스템)
+# Proxmox 에서 가상 디스크를 늘려도 게스트 안 파티션과 파일시스템은 그대로다.
+# 늘어난 공간은 파티션 뒤의 빈 자리로만 존재하고 df 에는 잡히지 않는다.
+# 게스트 에이전트가 죽어 있어 Proxmox 쪽에서 명령을 넣을 수 없으므로,
+# 이 VM 에서 도는 러너를 통해 게스트 안에서 직접 늘린다.
+#
+# 2026-09-09: 마케팅 VM 이 50GB 라 전체 서비스 콜드 빌드가 공간 부족으로 러너를 죽였다.
+# 회장 승인으로 Proxmox 에서 130GB 로 늘렸고, 이 워크플로가 그 뒤를 잇는다.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "실제로 늘릴지 (빈 값이면 현황만 보고 아무것도 안 바꾼다)"
+        required: false
+        default: ''
+jobs:
+  grow:
+    runs-on: [self-hosted, marketing_runner]
+    steps:
+      - name: 현황 (변경 전)
+        run: |
+          echo "== 블록 장치 =="; lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT || true
+          echo "== 파일시스템 =="; df -hT / || true
+          root_src="$(findmnt -no SOURCE /)"
+          echo "::warning title=확장 전::root=$root_src / $(df -h / | tail -1)"
+
+      - name: 늘리기
+        if: ${{ github.event.inputs.apply != '' }}
+        run: |
+          set -euo pipefail
+          root_src="$(findmnt -no SOURCE /)"
+          echo "root 파일시스템 소스: $root_src"
+
+          # LVM 위인지 파티션 직결인지에 따라 손대는 대상이 다르다. 추측하지 않고 갈라 본다.
+          if [ -e /sys/class/block/"$(basename "$root_src")"/dm ] || echo "$root_src" | grep -q '^/dev/mapper/\|^/dev/[a-z0-9-]*vg'; then
+            echo "LVM 논리볼륨이다. 물리볼륨이 올라탄 파티션부터 늘린다."
+            pv="$(sudo pvs --noheadings -o pv_name | head -1 | tr -d ' ')"
+            echo "물리볼륨: $pv"
+            disk="/dev/$(lsblk -no PKNAME "$pv" | head -1)"
+            part="$(echo "$pv" | grep -o '[0-9]*$')"
+            echo "디스크 $disk 의 파티션 $part 를 늘린다."
+            sudo growpart "$disk" "$part" || echo "growpart: 이미 최대이거나 늘릴 것이 없다"
+            sudo pvresize "$pv"
+            sudo lvextend -l +100%FREE "$root_src" || echo "lvextend: 이미 최대다"
+          else
+            echo "파티션 직결이다."
+            disk="/dev/$(lsblk -no PKNAME "$root_src" | head -1)"
+            part="$(echo "$root_src" | grep -o '[0-9]*$')"
+            echo "디스크 $disk 의 파티션 $part 를 늘린다."
+            sudo growpart "$disk" "$part" || echo "growpart: 이미 최대이거나 늘릴 것이 없다"
+          fi
+
+          # 파일시스템 종류에 맞는 명령을 쓴다. ext4 와 xfs 는 명령이 다르다.
+          fstype="$(findmnt -no FSTYPE /)"
+          echo "파일시스템: $fstype"
+          case "$fstype" in
+            ext2|ext3|ext4) sudo resize2fs "$root_src" ;;
+            xfs)            sudo xfs_growfs / ;;
+            btrfs)          sudo btrfs filesystem resize max / ;;
+            *) echo "::error::모르는 파일시스템 $fstype. 사람이 봐야 한다."; exit 1 ;;
+          esac
+
+      - name: 현황 (변경 후)
+        if: always()
+        run: |
+          echo "== 블록 장치 =="; lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT || true
+          echo "== 파일시스템 =="; df -hT / || true
+          avail="$(df -BG --output=avail / | tail -1 | tr -dc '0-9')"
+          echo "::warning title=확장 후::$(df -h / | tail -1) / 여유 ${avail}GB"
