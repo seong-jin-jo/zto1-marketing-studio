@@ -131,6 +131,8 @@ function Counter({ validation, field }: { validation: PlatformPublishValidation;
  */
 // 미리보기 안에서 본문을 직접 고치는 형식. 이 목록에 있으면 아래 캡션 칸을 두지 않는다.
 const BODY_EDITABLE_IN_PREVIEW = new Set<PreviewPlatform>(["threads", "x", "facebook", "instagram"]);
+// 첫 댓글을 미리보기 답글 자리에서 고치는 형식. 나머지는 아래 칸이 유일한 입구다.
+const FIRST_COMMENT_IN_PREVIEW = new Set<PreviewPlatform>(["threads"]);
 
 function EditablePreviewBody({
   value, onChange, className, placeholder, testId, label, locked = false,
@@ -245,11 +247,11 @@ function InlinePreviewEditor({ platform, editor }: { platform: PreviewPlatform; 
           className={inlineClass}
         />
       </label> : null}
-      {contract.topicTag ? <label className="mt-stack block text-caption text-muted">
+      {contract.topicTag && !BODY_EDITABLE_IN_PREVIEW.has(platform) ? <label className="mt-stack block text-caption text-muted">
         <span className="flex items-center justify-between gap-stack-tight">주제 태그 <Counter validation={validation} field="topicTag" /></span>
         <input aria-label={`${platform} 주제 태그`} data-pv-inline-edit={`${platform}:topicTag`} value={editor.topicTag} onChange={(event) => editor.onTopicTagChange(event.target.value)} disabled={loading} className={inlineClass} />
       </label> : null}
-      {contract.firstComment && editor.firstCommentSupported ? (
+      {contract.firstComment && editor.firstCommentSupported && !FIRST_COMMENT_IN_PREVIEW.has(platform) ? (
         <label className="mt-stack block text-caption text-muted">
           첫 댓글
           <textarea
@@ -348,10 +350,26 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
               수정할수있게 하는게 낫지않겠어?" 실제 게시물에서 해시태그는 본문 바로 아래
               같은 흐름에 붙는다. 그 자리에서 고치는 것이 가장 직관적이다.
             */}
-            <EditablePreviewBody value={editor?.hashtags ?? ""} onChange={editor?.onHashtagsChange} testId="preview-tags-threads" label="threads 해시태그" locked={editor?.account.status === "loading"} placeholder="#해시태그" className="text-body-sm text-accent whitespace-pre-wrap mt-stack-tight" />
+            {/*
+              Threads 는 해시태그가 아니라 주제 태그 하나를 쓴다(PLATFORM_FIELD_CONTRACT).
+              채널 계약을 안 보고 해시태그 칸을 놓으면 화면이 그 채널에 없는 것을 있는 것처럼
+              말하게 된다. 계약대로 주제 태그를 놓는다.
+            */}
+            <EditablePreviewBody value={editor?.topicTag ?? ""} onChange={editor?.onTopicTagChange} testId="preview-topictag-threads" label="threads 주제 태그" locked={editor?.account.status === "loading"} placeholder="주제 태그" className="text-body-sm text-accent whitespace-pre-wrap mt-stack-tight" />
             {img && <img src={img} alt="" className="mt-stack-tight rounded-surface border border-border w-full max-h-80 object-cover" />}
             <div className="flex gap-stack-section mt-stack">{P(I.heart)}{P(I.chat)}{P(I.repost)}{P(I.send)}</div>
             <div className="text-subtle text-body-sm mt-stack-tight">답글 18개 · 좋아요 124개</div>
+            {/*
+              2026-09-09 회장 지적: "해시태그나 첫댓글도 미리보기화면에서 직관적으로
+              수정할수있게." 첫 댓글은 실제로 본문 아래 답글 자리에 붙는다. 그 자리에서
+              고치면 올라간 모습 그대로를 보며 쓰게 된다.
+            */}
+            {editor?.firstCommentSupported ? (
+              <div className="mt-stack-tight border-t border-border pt-stack-tight">
+                <span className="text-caption text-subtle">첫 댓글</span>
+                <EditablePreviewBody value={editor.firstComment} onChange={editor.onFirstCommentChange} testId="preview-firstcomment-threads" label="threads 첫 댓글" locked={editor.account.status === "loading"} placeholder="본문 아래 첫 댓글로 올릴 말" className="text-body-sm whitespace-pre-wrap" />
+              </div>
+            ) : null}
           </div></div>
       </div>
       {editor ? <InlinePreviewEditor platform="threads" editor={editor} /> : null}

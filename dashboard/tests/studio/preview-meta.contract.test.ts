@@ -27,13 +27,26 @@ describe("발행실 메타정보", () => {
     expect(page).toMatch(/if \(next\[platform\]\?\.trim\(\)\) continue;/);
   });
 
-  it("해시태그를 미리보기 본문 아래에서 고친다", () => {
+  it("채널이 실제로 쓰는 태그를 미리보기 본문 아래에서 고친다", () => {
     const preview = src("components/studio/PlatformPreview.tsx");
-    for (const platform of ["threads", "x", "facebook"]) {
+    // 채널마다 쓰는 것이 다르다. Threads 는 주제 태그 하나, X 와 Facebook 은 해시태그다
+    // (PLATFORM_FIELD_CONTRACT). 계약을 안 보고 같은 칸을 놓으면 그 채널에 없는 것을
+    // 있는 것처럼 말하게 된다.
+    expect(preview).toContain('testId="preview-topictag-threads"');
+    expect(preview).toContain("editor?.onTopicTagChange");
+    for (const platform of ["x", "facebook"]) {
       expect(preview, `${platform} 해시태그가 미리보기에 없다`)
         .toContain(`testId="preview-tags-${platform}"`);
     }
     expect(preview).toContain("editor?.onHashtagsChange");
+  });
+
+  it("첫 댓글은 실제 답글 자리에서 고친다", () => {
+    const preview = src("components/studio/PlatformPreview.tsx");
+    expect(preview).toContain('testId="preview-firstcomment-threads"');
+    expect(preview).toContain("FIRST_COMMENT_IN_PREVIEW");
+    // 미리보기에서 고치는 형식은 아래 같은 칸을 또 두지 않는다.
+    expect(preview).toMatch(/!FIRST_COMMENT_IN_PREVIEW\.has\(platform\)/);
   });
 
   it("아래에 같은 해시태그 칸을 또 두지 않는다", () => {
