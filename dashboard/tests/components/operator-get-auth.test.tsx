@@ -81,7 +81,7 @@ describe("operator GET authentication handling", () => {
   it("V71-AUTH-05 정상: 승인 요청 성공 응답은 기존 결과를 그대로 반환한다", async () => {
     window.history.replaceState(null, "", "/inbox");
     localStorage.setItem("dashboard_auth_token", "valid-operator-token");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ok: true })));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ ok: true }))));
 
     await expect(apiPost("/api/queue/draft-1/approve", { hours: 0 })).resolves.toEqual({ ok: true });
   });

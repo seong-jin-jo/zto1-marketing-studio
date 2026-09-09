@@ -388,7 +388,7 @@ describe("Studio publish result integrity", () => {
 
   it("QA-PUBLISH-06 거절: 연결 계정이 0개면 모든 발행 선택과 실행을 잠그고 설정 연결을 안내한다", async () => {
     restoreStudio(["threads", "x", "instagram"]);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ accounts: [] })));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ accounts: [] }))));
 
     render(<StudioPage />);
 
@@ -933,7 +933,7 @@ describe("Studio Higgsfield operator boundary", () => {
       }
       return { data: undefined, mutate: vi.fn() };
     });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ accounts: [] })));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ accounts: [] }))));
   });
 
   afterEach(() => {

@@ -5,6 +5,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreateRoom } from "@/components/studio/StudioRooms";
 
+
+
+
 const props = {
   workspaceId: "workspace-v68",
   workspaceName: "작업 공간",
@@ -39,7 +42,10 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   localStorage.setItem("dashboard_auth_token", "customer-token");
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { job_id: "job-v68", candidates } }, { status: 201 })));
+  // Response 본문은 한 번만 읽힌다. mockResolvedValue 로 **같은 Response 객체**를 계속
+// 돌려주면 두 번째 호출부터 빈 본문이 온다. 화면이 통신을 하나만 하던 시절에는 안 드러났고,
+// 성과 규칙을 읽기 시작하자 그 자리에서 터졌다(2026-09-10). 호출마다 새로 만든다.
+vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ data: { job_id: "job-v68", candidates } }, { status: 201 }))));
 });
 
 afterEach(() => {

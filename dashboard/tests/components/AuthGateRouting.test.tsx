@@ -88,7 +88,7 @@ describe("AuthGate operator route separation", () => {
       mocks.pathname.mockReturnValue(pathname);
       vi.stubGlobal(
         "fetch",
-        vi.fn().mockResolvedValue(Response.json({ isOperator: true, tenant: null })),
+        vi.fn().mockImplementation(() => Promise.resolve(Response.json({ isOperator: true, tenant: null }))),
       );
 
       render(<AuthGate><div>customer child</div></AuthGate>);
@@ -105,7 +105,7 @@ describe("AuthGate operator route separation", () => {
     mocks.pathname.mockReturnValue("/operator/customers");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(Response.json({ isOperator: true, tenant: null })),
+      vi.fn().mockImplementation(() => Promise.resolve(Response.json({ isOperator: true, tenant: null }))),
     );
 
     render(<AuthGate><div>operator child</div></AuthGate>);
@@ -124,10 +124,10 @@ describe("AuthGate operator route separation", () => {
     localStorage.setItem("dashboard_auth_identity_kind", "customer");
     mocks.pathname.mockReturnValue("/operator/customers");
     mocks.sessionToken = customerJwt;
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({
       isOperator: false,
       tenant: { id: "customer-1", slug: "customer", name: "Customer" },
-    })));
+    }))));
 
     render(<AuthGate><div>cached operator customer list</div></AuthGate>);
 
@@ -144,7 +144,7 @@ describe("AuthGate operator route separation", () => {
     localStorage.setItem("dashboard_auth_token", customerJwt);
     localStorage.setItem("dashboard_auth_identity_kind", "customer");
     mocks.pathname.mockReturnValue("/studio");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(payload)));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json(payload))));
 
     render(<AuthGate><div>customer child</div></AuthGate>);
 
@@ -174,7 +174,7 @@ describe("AuthGate operator route separation", () => {
     mocks.pathname.mockReturnValue("/operator/customers");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(Response.json({ isOperator: true, tenant: null })),
+      vi.fn().mockImplementation(() => Promise.resolve(Response.json({ isOperator: true, tenant: null }))),
     );
 
     render(<AuthGate><div>operator console</div></AuthGate>);
@@ -207,7 +207,7 @@ describe("AuthGate operator route separation", () => {
       .mockResolvedValueOnce({ data: { session: null } });
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(Response.json({ isOperator: true, tenant: null })),
+      vi.fn().mockImplementation(() => Promise.resolve(Response.json({ isOperator: true, tenant: null }))),
     );
 
     const view = render(<AuthGate><div>operator console</div></AuthGate>);
@@ -259,10 +259,10 @@ describe("AuthGate operator route separation", () => {
     mocks.sessionToken = customerJwt;
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(Response.json({
+      vi.fn().mockImplementation(() => Promise.resolve(Response.json({
         isOperator: false,
         tenant: { id: "customer-1", slug: "customer", name: "Customer" },
-      })),
+      }))),
     );
 
     render(<AuthGate><div>customer child</div></AuthGate>);
@@ -327,10 +327,10 @@ describe("AuthGate operator route separation", () => {
     localStorage.setItem("dashboard_auth_token", jwt);
     localStorage.setItem("dashboard_auth_identity_kind", "customer");
     mocks.pathname.mockReturnValue("/calendar");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({
       isOperator: false,
       tenant: { id: "customer-1", slug: "customer", name: "Customer" },
-    })));
+    }))));
 
     render(<AuthGate><button type="button">예약 변경</button></AuthGate>);
     await waitFor(() => expect(screen.getByRole("button", { name: "예약 변경" })).toBeInTheDocument());

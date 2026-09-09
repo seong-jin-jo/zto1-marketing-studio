@@ -19,7 +19,7 @@ afterEach(() => cleanup());
 
 beforeEach(() => {
   localStorage.clear();
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ok: true })));
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ ok: true }))));
 });
 
 describe("헤더 학습 정보 (회장: 왜 헤더에 학습 정보가 사라짐?)", () => {

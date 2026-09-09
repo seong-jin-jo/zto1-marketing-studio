@@ -5,11 +5,26 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CreateRoom, EditRoom } from "@/components/studio/StudioRooms";
 import {
+
   buildStudioGenerationRequest,
   requestStudioCandidates,
   STUDIO_GENERATION_SKILL_VERSION_ID,
   type StudioLearningInput,
 } from "@/lib/studio/generation/client";
+
+// 생성 계약 호출만 센다. 종전에는 fetch 전체 호출 수를 셌는데, 그러면 화면이 다른 자료를
+// (성과에서 배운 규칙 같은) 하나라도 더 읽는 순간 무관한 이유로 깨진다. 이 검사가 지키려는
+// 것은 "생성을 몇 번 불렀나" 이지 "화면이 통신을 몇 번 했나" 가 아니다(2026-09-10).
+function generationCalls(mock: { mock: { calls: unknown[][] } }): unknown[][] {
+  return mock.mock.calls.filter((call) => String(call[0] ?? "").includes("/api/studio/v1/generations"));
+}
+
+/** 생성 계약 호출의 요청 본문. 화면의 다른 통신이 0번 자리를 차지해도 흔들리지 않는다. */
+function generationRequest(mock: { mock: { calls: unknown[][] } }): RequestInit {
+  const call = generationCalls(mock)[0];
+  return call[1] as RequestInit;
+}
+
 
 const VALID_INPUT: StudioLearningInput = {
   workspaceId: "11111111-1111-4111-8111-111111111111",
@@ -54,13 +69,13 @@ describe("화면 2차 생성실 계약", () => {
       rationale: `${label} 근거`,
       format: { content_branch: "text_image", preview_kind: "structured_storyboard", quality: "draft", outline: ["첫 장면"] },
     }));
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({ data: { job_id: "job-1", candidates } }, { status: 201 }));
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ data: { job_id: "job-1", candidates } }, { status: 201 })));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await requestStudioCandidates(VALID_INPUT, "studio-token");
 
     expect(result.map((candidate) => candidate.label)).toEqual(["A", "B", "C"]);
-    const [, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const request = generationRequest(fetchMock);
     const body = JSON.parse(String(request.body));
     expect(Object.keys(body.learning_context)).toEqual(["s0", "s1", "u2", "u3", "x4", "l5", "r6"]);
     expect(body.learning_context.x4.skill_version_id).toBe(STUDIO_GENERATION_SKILL_VERSION_ID);
@@ -85,7 +100,7 @@ describe("화면 2차 생성실 계약", () => {
 
   it("FE6-CREATE-02 정상: 영상 선택은 대화창에서 생성 계약으로 전달한다", async () => {
     localStorage.setItem("dashboard_auth_token", "customer-jwt");
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({ data: { job_id: "job-1", candidates: [] } }, { status: 201 }));
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ data: { job_id: "job-1", candidates: [] } }, { status: 201 })));
     vi.stubGlobal("fetch", fetchMock);
     const onBranchChange = vi.fn();
     render(<CreateRoom workspaceId="workspace" workspaceName="작업 공간" guide="브랜드 사실" topic="주제" contentBranch="video" onContentBranchChange={onBranchChange} onTopicChange={vi.fn()} onOpenLearning={vi.fn()} onCandidateSelect={vi.fn()} />);
@@ -93,8 +108,8 @@ describe("화면 2차 생성실 계약", () => {
     chooseCards();
     fireEvent.click(screen.getByRole("button", { name: "구조 초안 3개 보기" }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+    await waitFor(() => expect(generationCalls(fetchMock)).toHaveLength(1));
+    const request = generationRequest(fetchMock);
     expect(JSON.parse(String(request.body)).learning_context.u3.content_branch).toBe("video");
     expect(request.headers).toMatchObject({ Authorization: "Bearer customer-jwt" });
   });
@@ -114,7 +129,7 @@ describe("화면 2차 생성실 계약", () => {
       rationale: `${label} 근거`,
       format: { content_branch: "text_image", preview_kind: "structured_storyboard", quality: "draft", outline: ["첫 장면"] },
     }));
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({ data: { job_id: "job-1", candidates } }, { status: 201 }));
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ data: { job_id: "job-1", candidates } }, { status: 201 })));
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CreateRoom
@@ -129,8 +144,8 @@ describe("화면 2차 생성실 계약", () => {
     chooseCards();
     fireEvent.click(screen.getByRole("button", { name: "구조 초안 3개 보기" }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+    await waitFor(() => expect(generationCalls(fetchMock)).toHaveLength(1));
+    const request = generationRequest(fetchMock);
     expect(JSON.parse(String(request.body)).workspace_id).toBe("11111111-1111-4111-8111-111111111111");
     expect(request.headers).toMatchObject({ Authorization: "Bearer customer-jwt" });
   });
@@ -171,7 +186,7 @@ describe("화면 2차 생성실 계약", () => {
     fireEvent.click(button);
     fireEvent.click(button);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(generationCalls(fetchMock)).toHaveLength(1);
     expect(button).toBeDisabled();
     resolveRequest(Response.json({ data: { job_id: "job-1", candidates: [] } }, { status: 201 }));
     await waitFor(() => expect(button).not.toBeDisabled());
@@ -188,9 +203,19 @@ describe("화면 2차 생성실 계약", () => {
       rationale: `${prefix} ${label} 근거`,
       format: { content_branch: "text_image", preview_kind: "structured_storyboard", quality: "draft", outline: ["첫 장면"] },
     }));
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(Response.json({ data: { job_id: "job-1", candidates: candidates("원본") } }, { status: 201 }))
-      .mockResolvedValueOnce(Response.json({ data: { replacement: { job_id: "job-2", candidates: candidates("대체") } } }, { status: 201 }));
+    // 순서가 아니라 **주소로** 답한다. 순서로 답하는 가짜는 화면이 통신을 하나만 하던
+    // 시절에만 맞았고, 성과 규칙을 읽기 시작하자 첫 응답을 엉뚱한 호출이 가져갔다(2026-09-10).
+    let generationCall = 0;
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/api/studio/v1/regenerations")) {
+        return Promise.resolve(Response.json({ data: { replacement: { job_id: "job-2", candidates: candidates("대체") } } }, { status: 201 }));
+      }
+      if (String(url).includes("/api/studio/v1/generations")) {
+        generationCall += 1;
+        return Promise.resolve(Response.json({ data: { job_id: `job-${generationCall}`, candidates: candidates("원본") } }, { status: 201 }));
+      }
+      return Promise.resolve(Response.json({ rules: [] }));
+    });
     vi.stubGlobal("fetch", fetchMock);
     render(<CreateRoom workspaceId="workspace" workspaceName="작업 공간" guide="브랜드 사실" topic="주제" onTopicChange={vi.fn()} onOpenLearning={vi.fn()} onCandidateSelect={vi.fn()} />);
     chooseCards();
@@ -200,7 +225,9 @@ describe("화면 2차 생성실 계약", () => {
     fireEvent.click(screen.getByRole("button", { name: "3개 모두 바꾸기" }));
 
     expect(await screen.findByText("대체 A 제목")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/studio/v1/regenerations/job-1", expect.objectContaining({ method: "POST" }));
+    // 몇 번째 호출인지가 아니라 **그 주소로 불렀는지**를 본다. 순번으로 보면 화면이 자료를
+    // 하나 더 읽는 순간 무관한 이유로 깨진다.
+    expect(fetchMock).toHaveBeenCalledWith("/api/studio/v1/regenerations/job-1", expect.objectContaining({ method: "POST" }));
   });
 });
 

@@ -6,6 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LearningCardWizard } from "@/components/studio/LearningCardWizard";
 import { CreateRoom, generationErrorMessage } from "@/components/studio/StudioRooms";
 
+// 생성 계약 호출만 센다. 종전에는 fetch 전체 호출 수를 셌는데, 그러면 화면이 다른 자료를
+// (성과에서 배운 규칙 같은) 하나라도 더 읽는 순간 무관한 이유로 깨진다. 이 검사가 지키려는
+// 것은 "생성을 몇 번 불렀나" 이지 "화면이 통신을 몇 번 했나" 가 아니다(2026-09-10).
+function generationCalls(mock: { mock: { calls: unknown[][] } }): unknown[][] {
+  return mock.mock.calls.filter((call) => String(call[0] ?? "").includes("/api/studio/v1/generations"));
+}
+
+
 const createProps = {
   workspaceId: "11111111-1111-4111-8111-111111111111",
   workspaceName: "작업 공간",
@@ -36,7 +44,10 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   localStorage.setItem("dashboard_auth_token", "customer-jwt");
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ok: true })));
+  // Response 본문은 한 번만 읽힌다. mockResolvedValue 로 **같은 Response 객체**를 계속
+// 돌려주면 두 번째 호출부터 빈 본문이 온다. 화면이 통신을 하나만 하던 시절에는 안 드러났고,
+// 성과 규칙을 읽기 시작하자 그 자리에서 터졌다(2026-09-10). 호출마다 새로 만든다.
+vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ ok: true }))));
 });
 
 afterEach(() => {
@@ -123,7 +134,7 @@ describe("회장 2차 실사용 피드백 생성실", () => {
       rationale: `${label} 설명`,
       format: { content_branch: "video", preview_kind: "structured_storyboard", quality: "draft", outline: ["첫 장면"] },
     }));
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { job_id: "job-1", candidates } }, { status: 201 })));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ data: { job_id: "job-1", candidates } }, { status: 201 }))));
     render(<CreateRoom {...createProps} />);
     answerCreateQuestions();
     fireEvent.click(screen.getByRole("button", { name: "구조 초안 3개 보기" }));
