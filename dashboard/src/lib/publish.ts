@@ -526,7 +526,16 @@ export async function verifyXCredentials(
   }
 }
 
-function buildXOAuthHeader(method: string, url: string, k: XKeys): string {
+/**
+ * OAuth1.0a 서명 헤더.
+ *
+ * 2026-09-09: 쿼리 파라미터를 받도록 넓혔다. 종전에는 oauth_* 만 서명했는데, 그것은
+ * 본문이 JSON 이고 쿼리가 없는 POST /2/tweets 에서만 맞다. 성과 조회는
+ * GET /2/tweets?ids=...&tweet.fields=... 처럼 쿼리가 있고, RFC5849 는 쿼리도 서명
+ * 대상에 넣으라고 한다. 안 넣으면 X 가 401 로 거절하는데 그 이유가 서명이라는 것을
+ * 화면에서 알 길이 없다.
+ */
+function buildXOAuthHeader(method: string, url: string, k: XKeys, query: Record<string, string> = {}): string {
   const oauth: Record<string, string> = {
     oauth_consumer_key: k.apiKey,
     oauth_nonce: crypto.randomBytes(16).toString("hex"),
@@ -535,10 +544,12 @@ function buildXOAuthHeader(method: string, url: string, k: XKeys): string {
     oauth_token: k.accessToken,
     oauth_version: "1.0",
   };
-  // 1) 파라미터 정렬 후 직렬화 → 서명베이스 구성
-  const sorted = Object.keys(oauth)
+  // 1) 파라미터 정렬 후 직렬화 → 서명베이스 구성.
+  //    쿼리가 있으면 oauth_* 와 함께 하나로 모아 정렬한다(RFC5849 §3.4.1.3).
+  const signedParams: Record<string, string> = { ...query, ...oauth };
+  const sorted = Object.keys(signedParams)
     .sort()
-    .map((key) => `${xPercentEncode(key)}=${xPercentEncode(oauth[key])}`)
+    .map((key) => `${xPercentEncode(key)}=${xPercentEncode(signedParams[key])}`)
     .join("&");
   const base = `${method.toUpperCase()}&${xPercentEncode(url)}&${xPercentEncode(sorted)}`;
   // 2) 서명키 = consumerSecret&tokenSecret, HMAC-SHA1 → base64
@@ -550,6 +561,70 @@ function buildXOAuthHeader(method: string, url: string, k: XKeys): string {
     .map((key) => `${xPercentEncode(key)}="${xPercentEncode(oauth[key])}"`)
     .join(", ");
   return `OAuth ${headerParts}`;
+}
+
+/**
+ * X 게시물의 공개 지표를 읽어 온다.
+ *
+ * 2026-09-09 회장 지적("성과 수집이 Threads 만") 후속. 우리는 X 로 발행까지 하면서
+ * 그 결과를 한 번도 되받지 않았다. 성과실은 X 글을 영원히 "미수집" 으로 두었다.
+ * 사업계획의 One Thing 은 "결과를 되받아 다음 제안으로 돌린다" 인데, 되받는 칸이
+ * 비어 있으면 그 뒤 칸이 전부 비어 돈다.
+ *
+ * 한 번에 100건까지 묶어 물을 수 있다. 글마다 따로 부르면 요청 수가 그만큼 늘고
+ * X 의 시간당 한도에 금방 닿는다.
+ */
+export async function fetchXPublicMetrics(
+  cred: ChannelCred,
+  tweetIds: string[],
+): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number; reposts: number }> }
+  | { ok: false; status?: number; error: string }> {
+  const ids = tweetIds.filter(Boolean).slice(0, 100);
+  if (ids.length === 0) return { ok: true, metrics: {} };
+  const query = { ids: ids.join(","), "tweet.fields": "public_metrics" };
+  const url = "https://api.twitter.com/2/tweets";
+  // 화면으로 연결한 계정은 OAuth 2.0 사용자 토큰을 쓰고, 4키가 있는 계정(구 방식)은
+  // OAuth 1.0a 서명을 쓴다. 발행이 이미 같은 방식으로 갈라져 있다(publishX).
+  // 한쪽만 보면 그 방식으로 연결한 사람은 성과가 영원히 안 모인다.
+  const meta = (cred.meta ?? {}) as Record<string, unknown>;
+  const k: XKeys = {
+    apiKey: String(meta.apiKey ?? ""),
+    apiSecret: String(meta.apiSecret ?? meta.apiKeySecret ?? ""),
+    accessToken: String(meta.accessToken ?? ""),
+    accessSecret: String(meta.accessSecret ?? meta.accessTokenSecret ?? ""),
+  };
+  const hasLegacyKeys = Boolean(k.apiKey && k.apiSecret && k.accessToken && k.accessSecret);
+  if (!hasLegacyKeys && !cred.token) {
+    return { ok: false, error: "X 연결이 없습니다." };
+  }
+  const auth = hasLegacyKeys ? buildXOAuthHeader("GET", url, k, query) : `Bearer ${cred.token}`;
+  try {
+    const resp = await fetch(`${url}?${new URLSearchParams(query).toString()}`, {
+      method: "GET",
+      headers: { Authorization: auth },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!resp.ok) {
+      return { ok: false, status: resp.status, error: `X 성과 조회 실패(${resp.status})` };
+    }
+    const body = (await resp.json()) as {
+      data?: { id: string; public_metrics?: { impression_count?: number; like_count?: number; reply_count?: number; retweet_count?: number } }[];
+    };
+    const metrics: Record<string, { views: number; likes: number; replies: number; reposts: number }> = {};
+    for (const row of body.data ?? []) {
+      const m = row.public_metrics ?? {};
+      metrics[row.id] = {
+        views: m.impression_count ?? 0,
+        likes: m.like_count ?? 0,
+        replies: m.reply_count ?? 0,
+        reposts: m.retweet_count ?? 0,
+      };
+    }
+    return { ok: true, metrics };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: `X 성과 조회 중 오류: ${msg.slice(0, 120)}` };
+  }
 }
 
 // X 발행 (text only, API v2). 4키 OAuth1.0a 서명. 공식 가중 문자가 280을 넘으면 차단한다.

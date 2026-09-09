@@ -12,7 +12,7 @@
  *
  * 새 채널의 수집을 만들면 여기 한 줄을 추가한다. 화면은 이 목록만 본다.
  */
-export const METRICS_COLLECTED_PLATFORMS: ReadonlySet<string> = new Set(["threads"]);
+export const METRICS_COLLECTED_PLATFORMS: ReadonlySet<string> = new Set(["threads", "x"]);
 
 export function isMetricsCollected(platform: string | null | undefined): boolean {
   return Boolean(platform && METRICS_COLLECTED_PLATFORMS.has(platform));

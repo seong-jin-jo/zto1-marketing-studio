@@ -1,6 +1,6 @@
 import { withTenant } from "@/lib/db";
 import { effectiveTenantId } from "@/lib/tenant-auth";
-import { getChannelCred } from "@/lib/publish";
+import { getChannelCred, fetchXPublicMetrics } from "@/lib/publish";
 import { readJson, writeJson, dataPath } from "@/lib/file-io";
 import { runWithTenant } from "@/lib/tenant-context";
 import {
@@ -60,32 +60,38 @@ export async function POST(request: Request) {
   const tenant_id = await effectiveTenantId(request, __b.tenant_id);
   if (!tenant_id) return Response.json({ error: "tenant_id required" }, { status: 400 });
   const cred = await getChannelCred(tenant_id, "threads");
-  if (!cred) return Response.json({ ok: false, error: "threads 채널 미연결" }, { status: 400 });
+  const xCred = await getChannelCred(tenant_id, "x");
+  // 2026-09-09: 종전에는 Threads 가 없으면 여기서 끝냈다. 그래서 X 만 연결한 사람은
+  // 성과 수집을 아예 못 돌렸다. 둘 다 없을 때만 막는다.
+  if (!cred && !xCred) {
+    return Response.json({ ok: false, error: "성과를 읽어 올 수 있는 채널이 연결돼 있지 않습니다. Threads 또는 X 를 연결해 주세요." }, { status: 400 });
+  }
   try {
     const { updated, total, skipped } = await withTenant(tenant_id, async (sql) => {
-      const rows = await sql<{ id: string; external_id: string }[]>`
+      const rows = cred ? await sql<{ id: string; external_id: string }[]>`
         SELECT id, external_id FROM published_posts
-        WHERE tenant_id = ${tenant_id} AND platform = 'threads' AND external_id IS NOT NULL`;
+        WHERE tenant_id = ${tenant_id} AND platform = 'threads' AND external_id IS NOT NULL` : [];
       let n = 0;
       // 2026-09-05 회장 계정 실측: 수집 대상 1건인데 갱신 0건으로 끝나고 화면에는 아무
       // 말이 없었다. 제공자 응답이 실패하면 여기서 조용히 건너뛰었기 때문이다. 사유를
       // 모으면 화면이 "왜 안 모였는지"를 말할 수 있다. 토큰은 절대 남기지 않는다.
       const skipped: string[] = [];
       for (const r of rows) {
+        const threadsToken = cred!.token;
         try {
-          const resp = await fetch(`${THREADS_API}/${r.external_id}/insights?metric=views,likes,replies,reposts&access_token=${cred.token}`);
+          const resp = await fetch(`${THREADS_API}/${r.external_id}/insights?metric=views,likes,replies,reposts&access_token=${threadsToken}`);
           if (!resp.ok) {
             const detail = (await resp.text().catch(() => "")).slice(0, 200);
             // 성과 조회가 막혔을 때 원인이 둘로 갈린다. 게시물을 못 찾는 것과 권한이 없는
             // 것이다. 제공자 문구만으로는 구분되지 않아("does not exist, cannot be loaded
             // due to missing permissions, or does not support this operation") 기본 조회를
             // 한 번 더 해 본다. 기본 조회가 되면 게시물은 있고 성과 권한만 없는 것이다.
-            const basic = await fetch(`${THREADS_API}/${r.external_id}?fields=id&access_token=${cred.token}`)
+            const basic = await fetch(`${THREADS_API}/${r.external_id}?fields=id&access_token=${threadsToken}`)
               .then((res) => res.status).catch(() => 0);
             // 저장한 식별자가 이 계정의 게시물 목록에 있는지 본다. 없으면 우리가 잘못된
             // 식별자를 저장한 것이고, 있으면 조회 권한 문제다. 이 구분이 있어야 다음
             // 조치가 갈린다(우리 데이터 교정 대 채널 재연결).
-            const own = await fetch(`${THREADS_API}/me/threads?fields=id&limit=25&access_token=${cred.token}`)
+            const own = await fetch(`${THREADS_API}/me/threads?fields=id&limit=25&access_token=${threadsToken}`)
               .then(async (res) => res.ok
                 ? { status: res.status, ids: ((await res.json()) as { data?: { id: string }[] }).data?.map((x) => x.id) ?? [] }
                 : { status: res.status, ids: [] as string[] })
@@ -129,7 +135,47 @@ export async function POST(request: Request) {
           skipped.push("exception");
         }
       }
-      return { updated: n, total: rows.length, skipped };
+      // ── X 성과 수집 ────────────────────────────────────────────────────
+      // 2026-09-09 회장 지적("성과 수집이 Threads 만"). 우리는 X 로 발행까지 하면서
+      // 그 결과를 한 번도 되받지 않았다. 사업계획의 One Thing 은 "결과를 되받아 다음
+      // 제안으로 돌린다" 인데, 되받는 칸이 비면 그 뒤 칸이 전부 비어 돈다.
+      let xTotal = 0;
+      if (xCred) {
+        const xRows = await sql<{ id: string; external_id: string }[]>`
+          SELECT id, external_id FROM published_posts
+          WHERE tenant_id = ${tenant_id} AND platform = 'x' AND external_id IS NOT NULL`;
+        xTotal = xRows.length;
+        if (xRows.length) {
+          // 한 번에 묶어 묻는다. 글마다 따로 부르면 X 시간당 한도에 금방 닿는다.
+          const result = await fetchXPublicMetrics(xCred, xRows.map((r) => r.external_id));
+          if (!result.ok) {
+            console.error("[metrics][collect-skip] x", result.status ?? "", result.error);
+            skipped.push(`x_${result.status ?? "error"}`);
+          } else {
+            for (const r of xRows) {
+              const m = result.metrics[r.external_id];
+              if (!m) {
+                // 응답에 없는 글은 지운 글이거나 다른 계정의 글이다. 기다려도 안 채워진다.
+                await sql`
+                  UPDATE published_posts
+                  SET provider_meta = COALESCE(provider_meta, '{}'::jsonb) || ${sql.json({
+                    metricsBlocked: { code: "post_not_in_account", at: new Date().toISOString() },
+                  } as never)}
+                  WHERE id = ${r.id}`;
+                continue;
+              }
+              await sql`
+                UPDATE published_posts
+                SET views = ${m.views}, likes = ${m.likes}, replies = ${m.replies},
+                    reposts = ${m.reposts}, metrics_at = now(),
+                    provider_meta = COALESCE(provider_meta, '{}'::jsonb) - 'metricsBlocked'
+                WHERE id = ${r.id}`;
+              n++;
+            }
+          }
+        }
+      }
+      return { updated: n, total: rows.length + xTotal, skipped };
     });
     markAnalyticsViewed(tenant_id);
     // 수집 대상이 있는데 하나도 못 모았으면 그것을 성공으로 말하지 않는다.
