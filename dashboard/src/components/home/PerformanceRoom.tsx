@@ -12,6 +12,7 @@ import { fmtAgo } from "@/lib/format";
 import { PerformanceChatPanel } from "./PerformanceChatPanel";
 import { AutomationRulesPanel } from "./AutomationRulesPanel";
 import { workspaceDisplayName } from "@/lib/workspace-display-name";
+import { emptyMetricLabel } from "@/lib/metrics-support";
 
 export interface PerformancePost {
   id: string;
@@ -742,13 +743,14 @@ export function PerformanceRoom({
                       <span className={`rounded-pill px-stack-tight py-micro text-caption ${post.status === "published" ? "bg-success/15 text-success" : "bg-danger/15 text-danger"}`}>{postStatusLabel(post.status)}</span>
                     </PerformanceTableCell>
                     {/*
-                      "미수집"과 "측정 불가"는 다르다. 앞은 기다리면 채워지고, 뒤는 계정을
-                      바꾸기 전까지 영원히 안 채워진다. 같은 말로 쓰면 사용자는 무한정
-                      기다린다(2026-09-05 회장 계정 실측).
+                      "미수집"과 "측정 불가"와 "측정 미지원"은 다르다. 첫째는 기다리면
+                      채워지고, 둘째는 계정을 바꾸기 전까지 안 채워지며, 셋째는 우리가 그
+                      채널의 수집을 만들기 전까지 영원히 안 채워진다. 같은 말로 쓰면
+                      사용자는 무한정 기다린다(2026-09-05 회장 계정 실측, 2026-09-09 후속).
                     */}
-                    <PerformanceTableCell label="조회" className="tabular-nums lg:text-center">{post.views ?? (post.metrics_blocked ? "측정 불가" : "미수집")}</PerformanceTableCell>
-                    <PerformanceTableCell label="좋아요" className="tabular-nums lg:text-center">{post.likes ?? (post.metrics_blocked ? "측정 불가" : "미수집")}</PerformanceTableCell>
-                    <PerformanceTableCell label="답글" className="tabular-nums lg:text-center">{post.replies ?? (post.metrics_blocked ? "측정 불가" : "미수집")}</PerformanceTableCell>
+                    <PerformanceTableCell label="조회" className="tabular-nums lg:text-center">{post.views ?? emptyMetricLabel(post.platform, post.metrics_blocked)}</PerformanceTableCell>
+                    <PerformanceTableCell label="좋아요" className="tabular-nums lg:text-center">{post.likes ?? emptyMetricLabel(post.platform, post.metrics_blocked)}</PerformanceTableCell>
+                    <PerformanceTableCell label="답글" className="tabular-nums lg:text-center">{post.replies ?? emptyMetricLabel(post.platform, post.metrics_blocked)}</PerformanceTableCell>
                     <PerformanceTableCell label="발행" className="text-subtle lg:text-center">{fmtAgo(post.published_at)}</PerformanceTableCell>
                   </tr>
                 ))}
