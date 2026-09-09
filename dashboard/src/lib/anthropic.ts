@@ -311,10 +311,62 @@ function runClaudeCliWithUsage(
 // 실패/타임아웃(runClaudeCli의 timeout이 자식 kill 후 reject)해도 tail은 항상 정착 → 다음 대기자 진행.
 let cliQueueTail: Promise<void> = Promise.resolve();
 
-function runSerializedCli<T>(task: () => Promise<T>): Promise<T> {
-  const run = cliQueueTail.then(task);
+/**
+ * 줄을 서는 데에도 마감이 있어야 한다.
+ *
+ * 2026-09-09 실측: 영상 구조 초안 생성이 세 번 모두 71~75초에 죽었다. 생성 자체의 제한
+ * 시간을 90초에서 25초로 줄여도 걸린 시간은 그대로였다. **생성이 느린 것이 아니라 줄이
+ * 길었던 것이다.** 공유 CLI 는 프로필이 하나라 모든 테넌트 요청을 한 줄로 세우는데, 그 줄에
+ * 마감이 없었다. 앞 사람이 끝날 때까지 무한정 기다리다가 우리 앞의 프록시가 먼저 연결을
+ * 끊는다.
+ *
+ * 더 나쁜 것은 **연결이 끊겨도 줄은 그대로 남는다**는 것이다. 화면이 실패로 끝난 뒤에도
+ * 그 작업은 계속 돌고, 다음 사람은 그 뒤에 선다. 그래서 한 번 밀리기 시작하면 아무도
+ * 결과를 못 받는 상태로 굳는다. 쓰는 사람이 늘수록 나빠지는 종류의 고장이다.
+ *
+ * 그래서 줄에 마감을 건다. 마감 안에 차례가 오지 않으면 **기다리지 않고 바로** 사정을
+ * 말한다. 사용자는 71초 뒤 알 수 없는 실패 대신 몇 초 안에 이유를 듣는다.
+ *
+ * 그리고 마감이 지난 뒤에는 **차례가 와도 실행하지 않는다.** 아무도 기다리지 않는 생성을
+ * 돌리면 그 비용은 그대로 낭비이고, 그만큼 뒷사람의 줄이 더 길어진다.
+ */
+const CLI_QUEUE_WAIT_MS = 20_000;
+
+export class SharedCliQueueBusyError extends Error {
+  constructor() {
+    super("지금 다른 생성이 밀려 있어 차례를 기다리다 멈췄습니다. 잠시 후 다시 시도해 주세요.");
+    this.name = "SharedCliQueueBusyError";
+  }
+}
+
+function runSerializedCli<T>(task: () => Promise<T>, waitMs = CLI_QUEUE_WAIT_MS): Promise<T> {
+  let gaveUp = false;
+  let started = false;
+  // 마감은 **기다리는 시간**에만 건다. 차례가 와서 실행이 시작되면 마감을 푼다.
+  // 실행 자체의 제한 시간은 CLI 쪽(runClaudeCli 의 timeout)이 따로 갖고 있고, 그것까지
+  // 여기서 한 번 더 자르면 정상적인 긴 생성을 이유 없이 죽인다.
+  let clearWait: () => void = () => undefined;
+
+  const run = cliQueueTail.then(() => {
+    if (gaveUp) throw new SharedCliQueueBusyError();
+    started = true;
+    clearWait();
+    return task();
+  });
   cliQueueTail = run.then(() => undefined, () => undefined);
-  return run;
+
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      if (started) return;
+      gaveUp = true;
+      reject(new SharedCliQueueBusyError());
+    }, waitMs);
+    clearWait = () => clearTimeout(timer);
+    run.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
 }
 
 // ─── 공유 claude -p 월별 사용량 quota ──────────────────────────────────────

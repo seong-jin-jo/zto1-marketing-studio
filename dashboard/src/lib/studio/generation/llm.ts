@@ -24,7 +24,10 @@ export type StudioLlmFailureReason =
   | "timeout"
   | "provider_unavailable"
   | "invalid_output"
-  | "usage_ledger_unavailable";
+  | "usage_ledger_unavailable"
+  // 생성기가 고장난 것이 아니라 앞에 줄이 길어 차례가 안 온 것이다. 둘을 같은 말로
+  // 알리면 사용자는 고장인 줄 알고 포기하거나 계속 다시 누른다.
+  | "queue_busy";
 
 export class StudioLlmExecutionError extends Error {
   constructor(
@@ -358,6 +361,7 @@ function failureReason(error: unknown): StudioLlmFailureReason {
   const message = error instanceof Error ? error.message : String(error);
   if (name === "SharedAiApprovalRequiredError") return "approval_required";
   if (name === "SharedGenerationQuotaError") return "quota_exhausted";
+  if (name === "SharedCliQueueBusyError") return "queue_busy";
   if (/timeout|aborted/i.test(message)) return "timeout";
   if (/unsupported LLM provider/i.test(message)) return "provider_unsupported";
   return "provider_unavailable";
@@ -473,7 +477,8 @@ export class LlmStudioContentGenerator implements StudioContentGenerator {
       } catch (error) {
         lastReason = failureReason(error);
         await this.ledger.finish({ ...input, eventId, model, attempt, status: "failed", reason: lastReason });
-        if (lastReason === "approval_required" || lastReason === "quota_exhausted" || lastReason === "provider_unsupported") break;
+        // 줄이 밀린 것은 모델을 바꿔도 같은 줄이다. 보조 모델로 재시도하면 줄만 더 길어진다.
+        if (lastReason === "approval_required" || lastReason === "quota_exhausted" || lastReason === "provider_unsupported" || lastReason === "queue_busy") break;
         continue;
       }
       try {
