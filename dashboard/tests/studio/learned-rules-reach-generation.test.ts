@@ -67,6 +67,13 @@ describe("승낙한 규칙이 생성실 화면에도 보인다", () => {
     expect(src).toContain('["성과에서 배운 규칙", learnedRules || learning.learnedRules || "아직 없음"]');
   });
 
+  it("회원 표를 함께 보낸다", () => {
+    // 인증 없이 부르면 401 이 오고 화면은 조용히 "아직 없음" 으로 남는다.
+    // 조용히 틀리는 것이 가장 나쁘다(2026-09-10 실측).
+    const src = read("src/components/studio/StudioRooms.tsx");
+    expect(src).toMatch(/learned-rules[\s\S]{0,220}Authorization: `Bearer \$\{token\}`/);
+  });
+
   it("여러 개면 몇 개인지 함께 말한다", () => {
     // 하나만 보여 주면 나머지는 안 쓰는 줄 안다.
     const src = read("src/components/studio/StudioRooms.tsx");

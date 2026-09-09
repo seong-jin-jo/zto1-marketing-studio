@@ -332,7 +332,12 @@ function useLearnedRules(workspaceId: string): string {
   useEffect(() => {
     if (!workspaceId) return;
     let alive = true;
-    fetch(`/api/performance/learned-rules?tenant_id=${encodeURIComponent(workspaceId)}`)
+    // 인증 없이 부르면 401 이 돌아오고 화면은 조용히 "아직 없음" 으로 남는다. 조용히 틀리는
+    // 것이 가장 나쁘다. 다른 호출과 같은 방식으로 회원 표를 함께 보낸다(2026-09-10 실측).
+    const token = getAuthToken();
+    fetch(`/api/performance/learned-rules?tenant_id=${encodeURIComponent(workspaceId)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
       .then((response) => (response.ok ? response.json() : { rules: [] }))
       .then((body: { rules?: { text?: string }[] }) => {
         if (!alive) return;
