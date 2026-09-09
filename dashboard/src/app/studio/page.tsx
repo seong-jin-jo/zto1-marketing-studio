@@ -1718,6 +1718,7 @@ export default function StudioPage() {
       {showWizard && activeWorkspace ? <LearningCardWizard workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onSaved={(info, completed) => { setLearningInfo(info); if (completed) { setShowWizard(false); mutateBrand(); showToast("학습 정보를 배웠습니다"); } else { setLearningFlash((value) => value + 1); } }} onClose={() => setShowWizard(false)} /> : null}
       {roomHeader}
       <EditRoom
+        workspaceId={activeWorkspace?.id}
         lines={resolvedEditLines}
         onLinesChange={syncEditLines}
         kind={editKind}

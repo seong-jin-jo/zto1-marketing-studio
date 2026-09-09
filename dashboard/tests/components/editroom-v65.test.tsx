@@ -59,12 +59,16 @@ describe("편집실 v65 화면 계약", () => {
     expect(screen.getByText(/배경 이미지: 책상 위 제품 사진/)).toBeInTheDocument();
   });
 
-  it("V65-EDIT-04 정상: 전체 적용은 세 가지 동작만 제공하고 실제 편집값을 바꾼다", () => {
+  it("V65-EDIT-04 정상: 전체 적용은 고정 동작 셋에 말로 시키기 하나를 더해 제공한다", () => {
     const onLinesChange = vi.fn();
     render(<EditRoom lines={["아주 긴 문장을 스물네 글자보다 길게 작성해서 줄이는 동작을 확인한다", ""]} onLinesChange={onLinesChange} kind="text" />);
 
     const helper = screen.getByRole("complementary", { name: "편집 담당 대화창" });
-    expect(helper.querySelectorAll("button")).toHaveLength(4);
+    // 2026-09-09 회장 지시: "AI 챗봇에서는 '자막에서 어투 이렇게 바꿔줘' 이렇게 요청할수도
+    // 있는거고." 고정 단추 셋으로는 그 말을 받을 수 없어 자유롭게 시킬 자리를 열었다.
+    // 고정 셋 + 시키기 + 발행실 이동 = 다섯.
+    expect(helper.querySelectorAll("button")).toHaveLength(5);
+    expect(helper.querySelector("[data-bulk-ask]")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "빈 줄 걷어내기" }));
     expect(onLinesChange).toHaveBeenCalledWith(["아주 긴 문장을 스물네 글자보다 길게 작성해서 줄이는 동작을 확인한다"]);
   });

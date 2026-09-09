@@ -44,6 +44,7 @@ import {
 } from "./learning-info";
 import styles from "./StudioRooms.module.css";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
+import { authHeaders } from "@/lib/auth";
 
 export type CreateContentBranch = "text_image" | "video";
 export type EditContentKind = "video" | "card" | "audio" | "text";
@@ -938,6 +939,8 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   );
 }
 interface EditRoomProps {
+  /** 말로 시키는 일괄 변경이 어느 작업 공간의 사용량으로 잡히는지. */
+  workspaceId?: string;
   lines: string[];
   onLinesChange: (lines: string[]) => void;
   kind?: EditContentKind;
@@ -1058,6 +1061,7 @@ function ToolIcon({ tool }: { tool: ToolName }) {
 }
 
 export function EditRoom({
+  workspaceId,
   lines,
   onLinesChange,
   kind = "video",
@@ -1087,6 +1091,8 @@ export function EditRoom({
   ));
   const [visibleLines, setVisibleLines] = useState<boolean[]>(() => safeLines.map(() => true));
   const [bulkMessage, setBulkMessage] = useState("");
+  const [bulkAsk, setBulkAsk] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
   const selectedFormat = useMemo(() => formatFromToolValues(formatKind, toolValues), [formatKind, toolValues]);
   const lastEmittedFormat = useRef("");
   useEffect(() => { setVisibleLines((current) => safeLines.map((_, index) => current[index] ?? true)); setActiveLine((current) => Math.min(current, safeLines.length - 1)); }, [safeLines.length]);
@@ -1142,6 +1148,32 @@ export function EditRoom({
     const changed = next.filter((line, index) => line !== safeLines[index]).length;
     if (changed) onLinesChange(next);
     setBulkMessage(changed ? `${changed}개 문장의 말끝을 높임말로 맞췄습니다.` : "말끝이 이미 높임말입니다.");
+  };
+  // 말로 시키는 일괄 변경. 줄 수와 순서가 어긋나면 서버가 거절하므로 여기서는 결과만 받는다.
+  const askBulk = async () => {
+    const instruction = bulkAsk.trim();
+    if (!instruction || !hasEditableContent || bulkBusy) return;
+    setBulkBusy(true);
+    setBulkMessage("");
+    try {
+      const res = await fetch("/api/studio/edit-bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ lines: safeLines, instruction, tenant_id: workspaceId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; lines?: string[]; changed?: number; error?: string };
+      if (!data.ok || !Array.isArray(data.lines)) {
+        setBulkMessage(data.error || "고치지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        return;
+      }
+      onLinesChange(data.lines);
+      setBulkAsk("");
+      setBulkMessage(data.changed ? `${data.changed}개 줄을 고쳤습니다.` : "바꿀 것이 없었습니다.");
+    } catch {
+      setBulkMessage("연결이 끊겨 요청이 끝나지 않았습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBulkBusy(false);
+    }
   };
   const dropEmpty = () => {
     const next = safeLines.filter((line) => line.trim());
@@ -1334,10 +1366,47 @@ export function EditRoom({
           )}
         </main>
         {commandPanel ?? (
+          /*
+            2026-09-09 회장 지적: "편집실 AI 챗봇은 왜 다른곳이랑 UI가 다름?"
+            다른 방(생성실·발행실·성과실)은 AssistantPanel 이라는 같은 대화창을 쓰는데
+            편집실만 이 자리가 버튼판이었다. 같은 역할이면 같은 모양이어야 한다.
+            대화창 안에 넣되, 편집실이 하는 일(전체 일괄 변경과 발행실 이동)은 그대로 둔다.
+          */
           <aside className={`card p-pad-inset ${styles.editHelper}`} aria-label="편집 담당 대화창" data-edit-helper>
             <div className={styles.editHelperActions}>
-              <h2 className="text-body font-bold text-text">전체에 한 번에 적용</h2>
-              <p className="mt-stack-tight break-keep text-caption text-muted">반복해서 고칠 일은 담당에게 맡길 수 있습니다.</p>
+              <div className="flex items-center gap-stack-tight border-b border-border pb-stack">
+                <div className="grid h-10 w-10 place-items-center rounded-pill bg-accent text-body font-bold text-accent-fg" aria-hidden="true">O</div>
+                <div><b className="block text-body text-text">편집 담당</b><span className="text-caption text-success">지금 대기 중</span></div>
+              </div>
+              <h2 className="mt-stack text-body font-bold text-text">전체에 한 번에 적용</h2>
+              <p className="mt-stack-tight break-keep text-caption text-muted">한 곳을 정확히 고치는 것은 손이 빠릅니다. 여러 곳을 같은 규칙으로 바꾸는 것은 말이 빠릅니다.</p>
+              {/*
+                2026-09-09 회장 지시: "AI 챗봇에서는 '자막에서 어투 이렇게 바꿔줘' 이렇게
+                요청할수도있는거고." 고정 단추 셋으로는 그 말을 받을 수 없었다. 자유롭게
+                시킬 자리를 연다. 줄 수와 순서는 서버가 지킨다(app/api/studio/edit-bulk).
+              */}
+              <form
+                className="mt-pad-inset flex gap-stack-tight"
+                data-bulk-ask-form
+                onSubmit={(event) => { event.preventDefault(); void askBulk(); }}
+              >
+                <input
+                  aria-label="전체에 적용할 요청"
+                  data-bulk-ask
+                  value={bulkAsk}
+                  onChange={(event) => setBulkAsk(event.target.value)}
+                  placeholder="예: 자막 어투를 더 부드럽게 바꿔줘"
+                  disabled={!hasEditableContent || bulkBusy}
+                  className="min-h-control-touch min-w-0 flex-1 rounded-control border border-border bg-surface px-stack text-body-sm text-text"
+                />
+                {/*
+                  이 방의 다음 단계는 "발행실로 이동" 하나다. 도구 단추가 같은 강조를 가지면
+                  다음 단계가 묻힌다. 강조는 방마다 하나여야 한다.
+                */}
+                <Button type="submit" disabled={!hasEditableContent || bulkBusy || !bulkAsk.trim()}>
+                  {bulkBusy ? "고치는 중" : "시키기"}
+                </Button>
+              </form>
               <div className="mt-pad-inset grid gap-stack-tight">
                 <Button className="w-full min-w-0 justify-start" onClick={shortenAll} disabled={!hasEditableContent}>전부 짧게 줄이기</Button>
                 <Button className="w-full min-w-0 justify-start" onClick={politeAll} disabled={!hasEditableContent}>말끝을 높임말로 맞추기</Button>
