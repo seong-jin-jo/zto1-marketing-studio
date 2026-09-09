@@ -272,6 +272,48 @@ export function generationErrorMessage(cause: unknown): string {
   return "구조 초안을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
+/**
+ * 기다리는 동안 아무것도 안 보여 주면 사용자는 고장이라고 읽는다.
+ *
+ * 2026-09-09 실측: 구조 초안 만들기는 글 35초, 영상 54초가 걸린다. 그동안 화면에는 버튼
+ * 글씨가 "만드는 중" 으로 바뀌는 것 말고 아무 변화가 없었다. 내가 직접 여덟 번을 기다려
+ * 봤는데 매번 멈춘 것인지 도는 것인지 알 수 없었다. **만든 사람이 그렇게 느끼면 처음
+ * 쓰는 사람은 확실히 그렇게 느낀다.**
+ *
+ * 벤치마크: Vrew·Descript·Canva 는 생성 중에 진행 표시와 예상 시간을 함께 준다. Buffer 는
+ * 오래 걸리는 일에 "보통 얼마" 를 미리 말해 둔다. 공통점은 지금 얼마나 지났고 보통 얼마나
+ * 걸리는지를 숨기지 않는 것이다.
+ *
+ * 진행률은 지어내지 않는다. 지난 시간을 정직하게 세는 편이 낫다. 가짜 진행 막대는 한 번
+ * 어긋나면 그때부터 아무도 안 믿는다. 예상 시간을 넘기면 사과 대신 사정을 말한다.
+ * 기다리는 사람에게 필요한 것은 사과가 아니라 계속 가고 있다는 사실이다.
+ */
+function WaitingNotice({ label, typicalSeconds }: { label: string; typicalSeconds: number }) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const timer = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const late = seconds > typicalSeconds;
+  return (
+    <div
+      className="rounded-control border border-border bg-surface p-stack text-caption text-muted"
+      data-waiting-notice
+      role="status"
+      aria-live="polite"
+    >
+      <b className="block font-semibold text-text">{label}</b>
+      <span data-waiting-elapsed>{seconds}초 지났습니다. 보통 {typicalSeconds}초쯤 걸립니다.</span>
+      <span className="mt-stack-tight block">
+        {late
+          ? "생각보다 걸리고 있습니다. 그대로 두시면 계속 만듭니다."
+          : "학습 정보를 반영해 서로 다른 구조 세 개를 짓고 있습니다."}
+      </span>
+    </div>
+  );
+}
+
 export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
   const topicInputRef = useRef<HTMLInputElement>(null);
   const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
@@ -912,6 +954,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
               {questionIndex > 0 && question !== "review" ? <Button onClick={() => setQuestionIndex((current) => Math.max(0, current - 1))}>이전 질문</Button> : null}
               {question === "review" && missing.length ? <div className="rounded-control border border-warning/30 bg-warning/10 p-stack text-caption text-warning">확인 필요: {missing.join(", ")}</div> : null}
               {question === "review" ? <><Button onClick={() => setQuestionIndex(0)}>입력 내용 수정</Button><Button variant="primary" onClick={generate} disabled={loading || missing.length > 0}>{loading ? "구조 초안 만드는 중" : "구조 초안 3개 보기"}</Button></> : null}
+              {loading ? <WaitingNotice label="구조 초안을 만들고 있습니다" typicalSeconds={primaryKind === "video" ? 55 : 35} /> : null}
             </> : null}
             {candidates.length && !selectedCandidate ? <>
               {candidates.map((candidate) => <Button key={candidate.label} variant="secondary" onClick={() => chooseStructureCandidate(candidate)} disabled={quickDraftLoading}>{quickDraftLoading ? "후보 만드는 중" : `${candidate.label} 구조 초안 선택`}</Button>)}
