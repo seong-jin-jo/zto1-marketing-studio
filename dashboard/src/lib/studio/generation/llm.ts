@@ -224,6 +224,23 @@ export function describeLearningContext(layers: GenerationRequest["learningConte
   ].join("\n");
 }
 
+/**
+ * 줄표(— –)는 계약에서 금지다. 그런데 **그 규칙을 프롬프트에서 한 번도 말하지 않았다.**
+ *
+ * 2026-09-09 실측: 글 생성이 "A 이야기 순서 3번에 금지한 줄표가 있습니다" 로 버려졌다.
+ * 모델은 금지된 줄 몰랐고, 우리가 넣어 준 브랜드 문서에는 줄표가 들어 있었다. 즉 금지한
+ * 것을 예시로 보여 주고 어긴다고 결과를 통째로 버린 셈이다. 그 비용은 사용자가 낸다.
+ *
+ * 검사만 있고 지시가 없는 규칙은 규칙이 아니라 함정이다. 그래서 두 가지를 같이 한다.
+ * 프롬프트에 대놓고 적고, 넣어 주는 학습 정보에서 줄표를 미리 걷어낸다.
+ */
+const NO_DASH_RULE = "줄표(— 와 –)는 절대 쓰지 마세요. 대신 마침표, 쉼표, 괄호, 콜론으로 끊으세요. 줄표가 하나라도 있으면 결과 전체가 버려집니다.";
+
+/** 넣어 주는 글에서 줄표를 걷어낸다. 금지한 것을 예시로 보여 주지 않기 위해서다. */
+export function withoutDashes(text: string): string {
+  return text.replace(/\s*[\u2014\u2013]\s*/g, ", ");
+}
+
 export function buildCandidatePrompt(request: GenerationRequest): string {
   const layers = request.learningContext;
   const specs = request.platformSpec?.targets ?? [];
@@ -233,11 +250,12 @@ export function buildCandidatePrompt(request: GenerationRequest): string {
     "세 후보는 제목만 바꾸지 말고 도입, 전개, 사례, 마무리의 뼈대가 서로 달라야 합니다.",
     "A는 problem_first, B는 proof_first, C는 process_first입니다.",
     "각 outline은 실제 내용이 담긴 3개에서 6개의 문장이어야 합니다.",
+    NO_DASH_RULE,
     "응답은 설명이나 코드 펜스 없이 JSON 객체 하나만 반환하세요.",
     '형식: {"candidates":[{"label":"A","angle":"problem_first","title":"...","rationale":"...","outline":["...","...","..."]},{"label":"B","angle":"proof_first","title":"...","rationale":"...","outline":["...","...","..."]},{"label":"C","angle":"process_first","title":"...","rationale":"...","outline":["...","...","..."]}]}',
     "",
     "## 학습 정보",
-    describeLearningContext(layers),
+    withoutDashes(describeLearningContext(layers)),
     ...(specs.length ? ["", `요청 시점 채널 규격: ${JSON.stringify(stableValue(specs))}`] : []),
   ].join("\n");
 }
@@ -252,7 +270,8 @@ function buildDerivationPrompt(
     "원문의 제목을 반복해 칸만 채우지 말고, 각 문장에 구체적인 메시지를 넣으세요.",
     `주 갈래: ${JSON.stringify({ title: candidate.title, rationale: candidate.rationale, outline: candidate.format.outline })}`,
     "학습 정보:",
-    describeLearningContext(request.learningContext),
+    withoutDashes(describeLearningContext(request.learningContext)),
+    NO_DASH_RULE,
     "응답은 설명이나 코드 펜스 없이 JSON 객체 하나만 반환하세요.",
   ];
   if (kind === "text") {
