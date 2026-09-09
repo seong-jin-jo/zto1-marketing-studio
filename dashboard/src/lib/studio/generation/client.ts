@@ -94,13 +94,27 @@ export function buildStudioGenerationRequest(input: StudioLearningInput) {
  * 기록돼 있었다. 즉 만들어졌는데 화면만 실패로 끝났다. 사용자는 돈이 나간 줄도 모르고
  * 다시 누른다.
  */
+/**
+ * 받침 유무로 은/는·이/가를 고른다.
+ *
+ * 2026-09-09 실제 화면에서 "구조 초안 만들기이 오래 걸려" 가 떴다. 조사를 고정 문자열로
+ * 박아 두면 앞말이 바뀌는 순간 한국어가 깨진다. 사용자가 가장 불안한 순간에 뜨는 문장이
+ * 어색하면 그것만으로 신뢰가 깎인다.
+ */
+function subjectParticle(word: string): string {
+  const last = word.trim().slice(-1);
+  const code = last.charCodeAt(0);
+  if (Number.isNaN(code) || code < 0xac00 || code > 0xd7a3) return "가";
+  return (code - 0xac00) % 28 === 0 ? "가" : "이";
+}
+
 async function readJson<T>(response: Response, what: string): Promise<T> {
   const text = await response.text();
   try {
     return JSON.parse(text) as T;
   } catch {
     if (response.status === 504 || response.status === 524 || response.status === 502) {
-      throw new Error(`${what}이 오래 걸려 연결이 먼저 끊겼습니다. 서버에서는 계속 만들고 있을 수 있으니 잠시 뒤 작업물 전체에서 확인해 주세요.`);
+      throw new Error(`${what}${subjectParticle(what)} 오래 걸려 연결이 먼저 끊겼습니다. 서버에서는 계속 만들고 있을 수 있으니 잠시 뒤 작업물 전체에서 확인해 주세요.`);
     }
     throw new Error(`${what} 중 서버가 알아볼 수 없는 응답을 보냈습니다(${response.status}). 잠시 후 다시 시도해 주세요.`);
   }

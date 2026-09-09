@@ -32,3 +32,29 @@ describe("생성 응답을 안전하게 읽는다", () => {
     expect(src).toContain("작업물 전체에서 확인해 주세요");
   });
 });
+
+// 2026-09-09 실제 화면에서 "구조 초안 만들기이 오래 걸려" 가 떴다. 조사를 고정 문자열로
+// 박으면 앞말이 바뀌는 순간 한국어가 깨진다. 네 개 호출의 이름이 받침 유무로 갈리므로
+// 둘 다 고정한다.
+describe("연결 끊김 안내 문장의 조사", () => {
+  const src = readFileSync(
+    resolve(process.cwd(), "src/lib/studio/generation/client.ts"),
+    "utf8",
+  );
+
+  it("조사를 고정 문자열로 박지 않는다", () => {
+    expect(src).not.toContain("${what}이 오래 걸려");
+    expect(src).toContain("${what}${subjectParticle(what)} 오래 걸려");
+  });
+
+  it("받침 유무로 이/가를 고른다", () => {
+    const pick = (word: string) => {
+      const code = word.trim().slice(-1).charCodeAt(0);
+      if (Number.isNaN(code) || code < 0xac00 || code > 0xd7a3) return "가";
+      return (code - 0xac00) % 28 === 0 ? "가" : "이";
+    };
+    expect(pick("구조 초안 만들기")).toBe("가");
+    expect(pick("비용 확인")).toBe("이");
+    expect(pick("다른 형식 만들기")).toBe("가");
+  });
+});
