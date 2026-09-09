@@ -242,13 +242,34 @@ function topicCandidates(industryTitle: string, purposeTitle: string): string[] 
 type CreateQuestion = "kind" | "purpose" | "audience" | "topic" | "rights" | "review";
 const CREATE_QUESTIONS: readonly CreateQuestion[] = ["kind", "purpose", "audience", "topic", "rights", "review"];
 
+/**
+ * 생성 실패를 사람 말로 옮긴다.
+ *
+ * 2026-09-09 실사용에서 찾았다. 생성이 실패하자 화면에 "The string did not match the
+ * expected pattern." 이 그대로 떴다. 브라우저가 던진 개발자 문구다. 사용자는 무엇이
+ * 잘못됐는지도, 무엇을 하면 되는지도 알 수 없다. 회장이 앞서 "인라인에러좀 잘해라" 라고
+ * 지적한 것과 같은 종류다.
+ *
+ * 원인은 마지막 줄의 `return message ||` 였다. 아는 오류는 옮겨 적고, 모르는 오류는
+ * **원문을 그대로 내보냈다.** 우리가 쓴 한국어 문구만 사용자에게 보이고, 모르는 것은
+ * 사람 말로 닫는다. 개발자가 볼 원문은 콘솔에만 남긴다.
+ */
 export function generationErrorMessage(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : "";
   if (/저장소|무결성|constraint|database|relation|schema/i.test(message)) {
     return "구조 초안을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.";
   }
-  if (/인증|로그인|unauthorized|forbidden/i.test(message)) return "로그인이 만료됐습니다. 다시 로그인해 주세요.";
-  return message || "구조 초안을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  if (/인증|로그인|unauthorized|forbidden|401|403/i.test(message)) return "로그인이 만료됐습니다. 다시 로그인해 주세요.";
+  if (/승인|shared_ai_approval/i.test(message)) return "공유 AI 사용이 아직 열리지 않았습니다. 설정에서 자체 키를 등록하면 바로 쓸 수 있습니다.";
+  if (/한도|quota|429/i.test(message)) return "이번 달 생성 한도를 다 쓰셨습니다. 다음 달에 다시 채워집니다.";
+  if (/load failed|failed to fetch|networkerror|network|timeout|aborted/i.test(message)) {
+    return "연결이 끊겨 요청이 끝나지 않았습니다. 잠시 후 다시 시도해 주세요.";
+  }
+  // 우리가 쓴 한국어 문구는 그대로 보여 준다. 그 외(브라우저·라이브러리가 던진 영문
+  // 개발자 문구)는 사용자에게 아무 도움이 안 되므로 사람 말로 닫고 원문은 콘솔에 남긴다.
+  if (/[가-힣]/.test(message)) return message;
+  if (message) console.error("[create] 알 수 없는 생성 실패:", message);
+  return "구조 초안을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
 export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
