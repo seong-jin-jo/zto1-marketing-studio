@@ -24,7 +24,10 @@ describe("생성 예산은 프록시 창 안에 있어야 한다", () => {
     expect(worstCase + RESERVE_MS).toBeLessThanOrEqual(PROXY_WINDOW_MS);
   });
 
-  it("한 번 시도에 주는 시간이 창의 절반을 넘지 않는다", () => {
-    expect(defaults.timeout_ms * 2).toBeLessThanOrEqual(PROXY_WINDOW_MS - RESERVE_MS);
+  // 시도를 나눠 갖는 것보다 한 번에 충분히 주는 편이 낫다. 창이 70초뿐이라 두 번으로 쪼개면
+  // 어느 쪽도 무거운 작업(영상)을 끝낼 만큼 받지 못하고, 결국 두 번 다 실패하며 시간만 쓴다.
+  it("한 번 시도가 창 안에서 실질적인 시간을 받는다", () => {
+    expect(defaults.timeout_ms).toBeGreaterThanOrEqual(40_000);
+    expect(defaults.timeout_ms).toBeLessThanOrEqual(PROXY_WINDOW_MS - RESERVE_MS);
   });
 });
