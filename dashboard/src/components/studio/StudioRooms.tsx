@@ -314,6 +314,40 @@ function WaitingNotice({ label, typicalSeconds }: { label: string; typicalSecond
   );
 }
 
+/**
+ * 성과실에서 승낙한 규칙을 생성실 화면이 직접 읽는다.
+ *
+ * 2026-09-10 실측: 성과실에서 규칙을 하나 승낙하고("threads 채널 글이 상위권을
+ * 차지합니다") 생성실로 왔더니 여전히 **"성과에서 배운 규칙: 아직 없음"** 이라고 떠 있었다.
+ * 서버는 그 규칙을 실제로 프롬프트에 넣고 있는데 화면만 없다고 말한 것이다.
+ *
+ * **화면이 거짓말하는 방향이 뒤집혔을 뿐 거짓말인 것은 같다.** 종전에는 쓴다고 해 놓고 안
+ * 썼고, 지금은 쓰면서 안 쓴다고 말한다. 사용자는 승낙한 것이 반영됐는지 확인할 길이 없고,
+ * 확인이 안 되면 다시 승낙하거나 이 기능을 안 믿게 된다.
+ *
+ * 규칙의 정본은 성과실 저장소다. 화면이 들고 다니는 학습 정보 사본이 아니라 그 정본을 읽는다.
+ */
+function useLearnedRules(workspaceId: string): string {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    if (!workspaceId) return;
+    let alive = true;
+    fetch(`/api/performance/learned-rules?tenant_id=${encodeURIComponent(workspaceId)}`)
+      .then((response) => (response.ok ? response.json() : { rules: [] }))
+      .then((body: { rules?: { text?: string }[] }) => {
+        if (!alive) return;
+        const rules = (body.rules ?? [])
+          .map((rule) => String(rule.text ?? "").trim())
+          .filter(Boolean);
+        // 여러 개면 몇 개인지 함께 말한다. 하나만 보여 주면 나머지는 안 쓰는 줄 안다.
+        setText(rules.length > 1 ? `${rules[rules.length - 1]} (외 ${rules.length - 1}개)` : rules[0] ?? "");
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [workspaceId]);
+  return text;
+}
+
 export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
   const topicInputRef = useRef<HTMLInputElement>(null);
   const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
@@ -617,13 +651,14 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       return { kind, label: "글 후보", lines };
     })
     .filter((section) => section.lines.length > 0);
+  const learnedRules = useLearnedRules(workspaceId ?? "");
   const learningRows = [
     ["작업 공간", workspaceDisplayName(workspaceName)],
     ["업종", learning.industry || guide || "아직 없음"],
     ["말투", learning.voice || "아직 없음"],
     ["콘텐츠 목표", purpose || "아직 없음"],
     ["주요 고객", audience || "아직 없음"],
-    ["성과에서 배운 규칙", learning.learnedRules || "아직 없음"],
+    ["성과에서 배운 규칙", learnedRules || learning.learnedRules || "아직 없음"],
   ];
 
   return (

@@ -49,3 +49,27 @@ describe("성과에서 배운 규칙이 실제 생성에 닿는다", () => {
     expect(llm).toContain("layers.l5.acceptedRules");
   });
 });
+
+// 2026-09-10 실측: 성과실에서 규칙을 하나 승낙하고 생성실로 왔더니 여전히 "아직 없음" 이라고
+// 떠 있었다. 서버는 그 규칙을 실제로 프롬프트에 넣고 있는데 화면만 없다고 말한 것이다.
+// **거짓말의 방향이 뒤집혔을 뿐 거짓말인 것은 같다.** 사용자는 승낙한 것이 반영됐는지
+// 확인할 길이 없고, 확인이 안 되면 다시 승낙하거나 이 기능을 안 믿게 된다.
+describe("승낙한 규칙이 생성실 화면에도 보인다", () => {
+  it("생성실이 규칙 정본을 직접 읽는다", () => {
+    const src = read("src/components/studio/StudioRooms.tsx");
+    expect(src).toContain("useLearnedRules");
+    // 화면이 들고 다니는 학습 정보 사본이 아니라 성과실 저장소를 읽어야 한다.
+    expect(src).toContain("/api/performance/learned-rules?tenant_id=");
+  });
+
+  it("정본이 있으면 사본보다 먼저 보여 준다", () => {
+    const src = read("src/components/studio/StudioRooms.tsx");
+    expect(src).toContain('["성과에서 배운 규칙", learnedRules || learning.learnedRules || "아직 없음"]');
+  });
+
+  it("여러 개면 몇 개인지 함께 말한다", () => {
+    // 하나만 보여 주면 나머지는 안 쓰는 줄 안다.
+    const src = read("src/components/studio/StudioRooms.tsx");
+    expect(src).toMatch(/외 \$\{rules\.length - 1\}개/);
+  });
+});
