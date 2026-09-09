@@ -39,19 +39,31 @@ async function storedRules(workspaceId: string): Promise<string[]> {
   }
 }
 
-export async function withStoredLearnedRules(request: GenerationRequest): Promise<GenerationRequest> {
+/**
+ * 채워 넣은 결과와 **무엇을 채웠는지**를 함께 돌려준다.
+ *
+ * 서버가 조용히 채우면 확인할 방법이 없다. 오늘 이 기능만 세 군데에서 끊겨 있었는데,
+ * 매번 화면을 눌러 보고서야 알았다. **보이지 않는 것은 언젠가 조용히 끊긴다.**
+ * 그래서 적용한 규칙을 응답에 실어 화면과 기록이 같이 볼 수 있게 한다.
+ */
+export async function withStoredLearnedRules(
+  request: GenerationRequest,
+): Promise<{ request: GenerationRequest; applied: string[] }> {
   const stored = await storedRules(request.workspaceId);
-  if (!stored.length) return request;
   const sent = request.learningContext.l5.acceptedRules;
   // 같은 규칙을 두 번 넣으면 모델이 그것만 중요한 줄 안다.
   const merged = [...new Set([...sent, ...stored])].slice(-MAX_RULES);
-  if (merged.length === sent.length && merged.every((rule, index) => rule === sent[index])) return request;
+  const unchanged = merged.length === sent.length && merged.every((rule, index) => rule === sent[index]);
+  if (unchanged) return { request, applied: merged };
   return {
-    ...request,
-    learningContext: {
-      ...request.learningContext,
-      l5: { ...request.learningContext.l5, acceptedRules: merged },
+    request: {
+      ...request,
+      learningContext: {
+        ...request.learningContext,
+        l5: { ...request.learningContext.l5, acceptedRules: merged },
+      },
     },
+    applied: merged,
   };
 }
 

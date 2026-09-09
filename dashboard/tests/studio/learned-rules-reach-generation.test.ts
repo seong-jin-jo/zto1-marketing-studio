@@ -19,6 +19,14 @@ describe("성과에서 배운 규칙이 실제 생성에 닿는다", () => {
     expect(route).toMatch(/create\(\s*principal\.memberId,[\s\S]*?enriched,/);
   });
 
+  it("무엇을 반영했는지 응답에 실어 돌려준다", () => {
+    // 서버가 조용히 채우면 확인할 방법이 없다. 오늘 이 기능만 세 군데에서 끊겨 있었는데
+    // 매번 화면을 눌러 보고서야 알았다. **보이지 않는 것은 언젠가 조용히 끊긴다.**
+    const route = read("src/app/api/studio/v1/generations/route.ts");
+    expect(route).toContain("appliedLearnedRules");
+    expect(route).toContain("studioSuccess({ ...response, appliedLearnedRules }");
+  });
+
   it("서버가 채운다. 화면이 들고 다니게 하지 않는다", () => {
     // 화면이 잊는 순간 학습이 조용히 죽고, 조용히 죽는 것은 아무도 모른다.
     const merge = read("src/lib/studio/generation/learned-rules-merge.ts");
