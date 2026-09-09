@@ -1,6 +1,6 @@
 import { withTenant } from "@/lib/db";
 import { effectiveTenantId } from "@/lib/tenant-auth";
-import { getChannelCred, fetchXPublicMetrics, fetchMetaPostMetrics } from "@/lib/publish";
+import { getChannelCred, fetchXPublicMetrics, fetchMetaPostMetrics, fetchYouTubeMetrics } from "@/lib/publish";
 import { readJson, writeJson, dataPath } from "@/lib/file-io";
 import { runWithTenant } from "@/lib/tenant-context";
 import {
@@ -63,10 +63,13 @@ export async function POST(request: Request) {
   const xCred = await getChannelCred(tenant_id, "x");
   const igCred = await getChannelCred(tenant_id, "instagram");
   const fbCred = await getChannelCred(tenant_id, "facebook");
+  // 2026-09-10: YouTube 는 연결돼 있는데도 수집 대상이 아니었다. 숏폼을 올려도 결과가
+  // 영영 안 돌아왔다. 되받을 숫자가 없으면 다음 제안이 뻔해진다.
+  const ytCred = await getChannelCred(tenant_id, "youtube");
   // 2026-09-09: 종전에는 Threads 가 없으면 여기서 끝냈다. 그래서 X 만 연결한 사람은
   // 성과 수집을 아예 못 돌렸다. 둘 다 없을 때만 막는다.
-  if (!cred && !xCred && !igCred && !fbCred) {
-    return Response.json({ ok: false, error: "성과를 읽어 올 수 있는 채널이 연결돼 있지 않습니다. Threads, X, Instagram, Facebook 중 하나를 연결해 주세요." }, { status: 400 });
+  if (!cred && !xCred && !igCred && !fbCred && !ytCred) {
+    return Response.json({ ok: false, error: "성과를 읽어 올 수 있는 채널이 연결돼 있지 않습니다. Threads, X, Instagram, Facebook, YouTube 중 하나를 연결해 주세요." }, { status: 400 });
   }
   try {
     const { updated, total, skipped } = await withTenant(tenant_id, async (sql) => {
@@ -213,7 +216,45 @@ export async function POST(request: Request) {
           n++;
         }
       }
-      return { updated: n, total: rows.length + xTotal + metaTotal, skipped };
+      // ── YouTube·쇼츠 성과 수집 ────────────────────────────────────────
+      // 같은 자격증명으로 두 갈래를 함께 읽는다. 쇼츠도 YouTube 영상이라 조회 방법이 같은데,
+      // 갈래 이름이 다르다는 이유로 한쪽만 읽으면 그쪽 성과가 영영 안 모인다.
+      let ytTotal = 0;
+      if (ytCred) {
+        const ytRows = await sql<{ id: string; external_id: string }[]>`
+          SELECT id, external_id FROM published_posts
+          WHERE tenant_id = ${tenant_id} AND platform IN ('youtube', 'shorts') AND external_id IS NOT NULL`;
+        ytTotal = ytRows.length;
+        if (ytRows.length) {
+          const result = await fetchYouTubeMetrics(ytCred, ytRows.map((r) => r.external_id));
+          if (!result.ok) {
+            console.error("[metrics][collect-skip] youtube", result.status ?? "", result.error);
+            skipped.push(`youtube_${result.status ?? "error"}`);
+          } else {
+            for (const r of ytRows) {
+              const m = result.metrics[r.external_id];
+              if (!m) {
+                // 비공개거나 지운 영상은 응답에서 그냥 빠진다. 기다려도 안 채워지므로
+                // 그렇게 표시해야 사용자가 무한정 기다리지 않는다.
+                await sql`
+                  UPDATE published_posts
+                  SET provider_meta = COALESCE(provider_meta, '{}'::jsonb) || ${sql.json({
+                    metricsBlocked: { code: "video_not_visible", at: new Date().toISOString() },
+                  } as never)}
+                  WHERE id = ${r.id}`;
+                continue;
+              }
+              await sql`
+                UPDATE published_posts
+                SET views = ${m.views}, likes = ${m.likes}, replies = ${m.replies}, metrics_at = now(),
+                    provider_meta = COALESCE(provider_meta, '{}'::jsonb) - 'metricsBlocked'
+                WHERE id = ${r.id}`;
+              n++;
+            }
+          }
+        }
+      }
+      return { updated: n, total: rows.length + xTotal + metaTotal + ytTotal, skipped };
     });
     markAnalyticsViewed(tenant_id);
     // 수집 대상이 있는데 하나도 못 모았으면 그것을 성공으로 말하지 않는다.

@@ -628,6 +628,57 @@ export async function fetchXPublicMetrics(
 }
 
 /**
+ * YouTube 영상의 공개 지표를 읽어 온다.
+ *
+ * 2026-09-10: 회장 계정에 YouTube 가 연결돼 있는데도 성과 수집 대상이 아니었다. 그래서
+ * 숏폼을 올려도 그 결과가 영영 안 돌아왔다. 경쟁사 비교 문서가 꼽은 다섯 번째 과제
+ * ("성과 수집을 Threads 외 채널로")가 이 자리다. **되받을 숫자가 없으면 다음 제안이
+ * 뻔해진다.**
+ *
+ * YouTube 는 videos?part=statistics 하나로 조회·좋아요·댓글을 함께 준다. 한 번에 50개까지
+ * 묶어 물을 수 있어 글마다 부르지 않는다.
+ *
+ * 주의: 비공개·삭제된 영상은 응답에서 그냥 빠진다. 오류가 아니라 빠짐이라서, 부르는 쪽이
+ * 빠진 것을 "측정 불가" 로 표시해야 사용자가 무한정 기다리지 않는다.
+ */
+export async function fetchYouTubeMetrics(
+  cred: ChannelCred,
+  videoIds: string[],
+): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number }> }
+  | { ok: false; status?: number; error: string }> {
+  const ids = videoIds.filter(Boolean).slice(0, 50);
+  if (ids.length === 0) return { ok: true, metrics: {} };
+  if (!cred.token) return { ok: false, error: "YouTube 연결이 없습니다." };
+  try {
+    const resp = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(ids.join(","))}`,
+      { headers: { Authorization: `Bearer ${cred.token}` }, signal: AbortSignal.timeout(10000) },
+    );
+    if (!resp.ok) {
+      return { ok: false, status: resp.status, error: `YouTube 성과 조회 실패(${resp.status})` };
+    }
+    const body = (await resp.json()) as {
+      items?: { id: string; statistics?: { viewCount?: string; likeCount?: string; commentCount?: string } }[];
+    };
+    const metrics: Record<string, { views: number; likes: number; replies: number }> = {};
+    for (const item of body.items ?? []) {
+      const st = item.statistics ?? {};
+      // 숫자를 글자로 준다. 좋아요를 끈 영상은 그 칸 자체가 없다(0 과 다르지만, 화면에서는
+      // 둘 다 "없음" 이라 0 으로 둔다).
+      metrics[item.id] = {
+        views: Number(st.viewCount ?? 0) || 0,
+        likes: Number(st.likeCount ?? 0) || 0,
+        replies: Number(st.commentCount ?? 0) || 0,
+      };
+    }
+    return { ok: true, metrics };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: `YouTube 성과 조회 중 오류: ${msg.slice(0, 120)}` };
+  }
+}
+
+/**
  * Instagram 또는 Facebook 게시물의 공개 지표를 읽어 온다.
  *
  * 2026-09-09 회장 지적("성과 수집이 Threads 만") 후속. Meta 는 Graph API 의 insights 로

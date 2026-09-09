@@ -14,7 +14,8 @@ describe("X 성과 수집", () => {
     expect(isMetricsCollected("x")).toBe(true);
     expect(isMetricsCollected("threads")).toBe(true);
     // 아직 안 만든 채널을 수집한다고 말하면 화면이 거짓말한다.
-    for (const platform of ["youtube", "tiktok", "shorts", "reels"]) {
+    // youtube·shorts 는 2026-09-10 에 수집을 만들어 이 목록에서 뺐다.
+    for (const platform of ["tiktok", "reels"]) {
       expect(isMetricsCollected(platform), `${platform}`).toBe(false);
     }
   });
@@ -45,7 +46,7 @@ describe("X 성과 수집", () => {
     const route = src("app/api/metrics/route.ts");
     // 종전에는 Threads 가 없으면 여기서 끝냈다. X 만 연결한 사람은 아예 못 돌렸다.
     // 채널이 늘어도 "하나라도 있으면 돈다" 는 규칙은 그대로여야 한다.
-    expect(route).toMatch(/if \(!cred && !xCred && !igCred && !fbCred\)/);
+    expect(route).toMatch(/if \(!cred && !xCred && !igCred && !fbCred && !ytCred\)/);
     expect(route).toContain("fetchXPublicMetrics");
   });
 });
