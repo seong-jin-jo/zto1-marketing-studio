@@ -85,6 +85,8 @@ export async function startTikTokVideoPost(input: {
   disableDuet: boolean;
   disableStitch: boolean;
   isAiGenerated: boolean;
+  /** 대문으로 쓸 시점(밀리초). 안 주면 TikTok 이 알아서 고른다(대개 첫 프레임). */
+  coverTimestampMs?: number;
 }, f: typeof fetch = fetch): Promise<{ ok: true; publishId: string } | { ok: false; reason: string }> {
   try {
     const res = await f(`${API_BASE}/video/init/`, {
@@ -100,6 +102,11 @@ export async function startTikTokVideoPost(input: {
           brand_content_toggle: false,
           brand_organic_toggle: false,
           is_aigc: input.isAiGenerated,
+          // 안 주면 TikTok 이 첫 프레임을 쓴다. 숏폼에서 첫 프레임은 대개 아직 아무것도
+          // 안 보이는 순간이라 가장 나쁜 대문이 된다(회장 2026-09-09).
+          ...(typeof input.coverTimestampMs === "number"
+            ? { video_cover_timestamp_ms: input.coverTimestampMs }
+            : {}),
         },
         source_info: { source: "PULL_FROM_URL", video_url: input.videoUrl },
       }),

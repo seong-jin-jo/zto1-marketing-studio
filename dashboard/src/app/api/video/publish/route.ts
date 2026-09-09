@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { dataPath } from "@/lib/file-io";
 import { resolveGeneratedFile } from "@/lib/storage";
+import { coverTimestampMs } from "@/lib/video-cover";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import crypto from "crypto";
@@ -100,6 +101,13 @@ export async function POST(request: Request) {
     return Response.json({ error: "플랫폼 형식이 올바르지 않습니다." }, { status: 400 });
   }
   const filename: string = scalarString(data.filename) ? data.filename : "";
+  // 대문으로 쓸 시점. 안 주면 플랫폼이 첫 프레임을 쓰는데, 숏폼에서 첫 프레임은 대개
+  // 아직 아무것도 안 보이는 순간이라 가장 나쁜 대문이 된다(회장 2026-09-09).
+  // 값 검증은 lib/video-cover.ts 가 한다. 잘못된 값을 그대로 보내면 플랫폼이 발행 자체를
+  // 거절하는데, 그 이유가 대문 때문이라는 것을 화면에서 알 길이 없다.
+  const coverMs = data.cover_seconds === undefined && data.coverSeconds === undefined
+    ? undefined
+    : coverTimestampMs(data.cover_seconds ?? data.coverSeconds);
   const title: string = data.title == null ? "" : (data.title as string);
   const description: string = data.description == null ? "" : (data.description as string);
   const tags: unknown = data.tags == null ? [] : data.tags;
@@ -405,6 +413,7 @@ export async function POST(request: Request) {
         disableDuet: creator.duetDisabled || disableDuet!,
         disableStitch: creator.stitchDisabled || disableStitch!,
         isAiGenerated: isAiGenerated!,
+        coverTimestampMs: coverMs,
       });
       if (!started.ok) {
         try {
@@ -619,7 +628,7 @@ export async function POST(request: Request) {
       //    — 안 그러면 in_progress가 남아 이후 재시도가 영구히 409로 막힌다.
       let result: Awaited<ReturnType<typeof publishInstagramReels>>;
       try {
-        result = await publishInstagramReels(cred, caption, videoUrl);
+        result = await publishInstagramReels(cred, caption, videoUrl, { coverTimestampMs: coverMs });
       } catch {
         try {
           await withTenant(tenantId, (sql) => sql`

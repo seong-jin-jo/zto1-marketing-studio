@@ -61,6 +61,7 @@ import {
 import type { CurrentWork } from "@/lib/studio/current-work";
 import { attemptRequiredDraftPersistence } from "@/lib/studio/required-draft-persistence";
 import { PLATFORM_FIELD_CONTRACT } from "@/lib/studio/platform-publish-fields";
+import { DEFAULT_COVER_SECONDS, coverUnsupportedReason, supportsCoverTimestamp } from "@/lib/video-cover";
 
 // SNS-007: /api/publish가 실제로 계정별 발행을 받는 4개 플랫폼(threads/x/facebook/instagram)만
 // 계정 셀렉터를 노출한다. shorts/reels/tiktok은 /api/publish 미지원(실발행 분기 없음. 위
@@ -455,6 +456,14 @@ export default function StudioPage() {
   const [selectedCandidate, setSelectedCandidate] = useState<StudioGenerationCandidate | null>(null);
   const [createBranch, setCreateBranch] = useState<CreateContentBranch>("video");
   // "새로 시작" 이 생성실 안쪽까지 닿게 하는 신호. 값이 바뀌면 생성실이 스스로 비운다.
+  /**
+   * 영상의 대문으로 쓸 시점(초). 채널마다 따로 정한다.
+   *
+   * 2026-09-09 회장 지적: "영상에서는 뭘 대문 썸네일로 지정할지도 세팅해야하지않나 API있지."
+   * 실제로 있었고 우리가 안 쓰고 있었다. 안 주면 플랫폼이 첫 프레임을 쓰는데, 숏폼에서
+   * 첫 프레임은 대개 아직 아무것도 안 보이는 순간이라 가장 나쁜 대문이 된다.
+   */
+  const [coverSeconds, setCoverSeconds] = useState<Record<string, number>>({});
   const [createResetToken, setCreateResetToken] = useState(0);
   const [createPrimaryKind, setCreatePrimaryKind] = useState<CreateKind | null>(null);
   const [alsoKinds, setAlsoKinds] = useState<CreateKind[]>([]);
@@ -1092,6 +1101,8 @@ export default function StudioPage() {
               description: publishText(p),
               account_id: selectedAccounts[p] || undefined,
               draft_id: did,
+              // 대문으로 쓸 시점. 지원하는 플랫폼만 실제로 쓴다(lib/video-cover.ts).
+              cover_seconds: supportsCoverTimestamp(p) ? (coverSeconds[p] ?? DEFAULT_COVER_SECONDS) : undefined,
             });
             if (vr?.ok) {
               urls[p] = vr.url || POST_URL[p] || "#";
@@ -1887,6 +1898,35 @@ export default function StudioPage() {
                               미지원
                             </label>
                           )}
+                          {/*
+                            2026-09-09 회장 지적: "영상에서는 뭘 대문 썸네일로 지정할지도
+                            세팅해야하지않나 API있지." 실제로 있었고 우리가 안 쓰고 있었다.
+                            안 주면 플랫폼이 첫 프레임을 쓰는데, 숏폼에서 첫 프레임은 대개
+                            아직 아무것도 안 보이는 순간이라 가장 나쁜 대문이 된다.
+                            시점으로 정할 수 있는 채널만 이 칸을 준다. YouTube 는 이미지를
+                            따로 올려야 해서 시점으로는 안 되고, 그 사실을 글로 적는다.
+                          */}
+                          {supportsCoverTimestamp(platform) ? (
+                            <label className="flex items-center gap-micro text-caption text-muted" title="영상에서 이 시점 화면을 대문으로 씁니다">
+                              대문
+                              <input
+                                type="number"
+                                min={0}
+                                max={600}
+                                step={0.5}
+                                aria-label={`${LABEL[platform]} 대문 시점(초)`}
+                                data-cover-seconds={platform}
+                                value={coverSeconds[platform] ?? DEFAULT_COVER_SECONDS}
+                                onChange={(event) => setCoverSeconds((current) => ({ ...current, [platform]: Number(event.target.value) }))}
+                                className="min-h-control-touch w-16 rounded-control border border-border bg-surface px-stack-tight text-caption text-text"
+                              />
+                              초
+                            </label>
+                          ) : coverUnsupportedReason(platform) ? (
+                            <span className="text-caption text-subtle" data-cover-note={platform} title={coverUnsupportedReason(platform) || undefined}>
+                              대문 자동
+                            </span>
+                          ) : null}
                           {accountsLoaded && PUBLISH_SUPPORTED.has(platform) && (accountsByPlatform[platform] || []).length === 0 ? (
                             <Link
                               href={channelHref(platform)}

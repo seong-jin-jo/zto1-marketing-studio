@@ -393,6 +393,8 @@ export interface ReelsPollOptions {
   attempts?: number;
   intervalMs?: number;
   timeoutMs?: number;
+  /** 대문으로 쓸 시점(밀리초). 안 주면 Instagram 이 알아서 고른다(대개 첫 프레임). */
+  coverTimestampMs?: number;
 }
 
 export async function publishInstagramReels(
@@ -401,6 +403,7 @@ export async function publishInstagramReels(
   videoUrl: string,
   opts: ReelsPollOptions = {},
 ): Promise<PublishResult> {
+  const { coverTimestampMs } = opts;
   if (!cred.userId) return { ok: false, error: "INSTAGRAM_USERID(meta.userId) 없음" };
   if (!videoUrl) return { ok: false, error: "Reels는 공개 video URL 필수" };
   if (!isSafePublicImageUrl(videoUrl) || !videoUrl.startsWith("https://")) {
@@ -425,6 +428,9 @@ export async function publishInstagramReels(
         media_type: "REELS",
         video_url: videoUrl,
         caption,
+        // 안 주면 Instagram 이 첫 프레임을 쓴다. 숏폼에서 첫 프레임은 대개 아직 아무것도
+        // 안 보이는 순간이라 가장 나쁜 대문이 된다(회장 2026-09-09).
+        ...(typeof coverTimestampMs === "number" ? { thumb_offset: String(coverTimestampMs) } : {}),
         access_token: cred.token,
       }),
       signal: AbortSignal.timeout(timeoutMs),
