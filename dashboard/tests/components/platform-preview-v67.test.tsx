@@ -48,7 +48,12 @@ describe("PUB-ACCOUNT-01 연결 계정 읽기 전용 표시", () => {
 
     expect(screen.getByTestId("preview-account-threads")).toHaveAttribute("data-account-state", "loading");
     expect(screen.getByText("연결 계정 확인 중")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "threads 캡션" })).toBeDisabled();
+    // 2026-09-09: 본문은 이제 미리보기 안에서 직접 고친다(회장 "미리보기 화면 자체에서
+    // 본문 수정해야지"). 별도 캡션 칸이 사라졌으므로 잠금도 그 자리에서 확인한다.
+    // 계정을 아직 못 불러온 동안에는 편집을 막는다. 그때 고친 값은 어느 계정으로 갈지 모른다.
+    const body = screen.getByTestId("preview-body-threads");
+    expect(body).toHaveAttribute("aria-disabled", "true");
+    expect(body).not.toHaveAttribute("contenteditable");
 
     rerender(<PlatformPreview platform="threads" text={{ threads: "정상 본문" }} media={{}} editor={editor({ account: { status: "missing" } })} />);
     expect(screen.getByTestId("preview-account-threads")).toHaveAttribute("data-account-state", "missing");

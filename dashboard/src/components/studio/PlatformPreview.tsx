@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   PLATFORM_FIELD_CONTRACT,
   validatePlatformPublish,
@@ -116,6 +116,70 @@ function Counter({ validation, field }: { validation: PlatformPublishValidation;
   return <span className={invalid ? "text-caption text-danger" : "text-caption text-subtle"}>{counter.current}/{counter.limit} {counter.unit}</span>;
 }
 
+/**
+ * 미리보기 안의 본문을 그 자리에서 고친다.
+ *
+ * 2026-09-09 회장 지적: "텍스트면 텍스트 미리보기 화면 자체에서 본문 수정해야지 왜 별도로
+ * 수정을해." 종전에는 미리보기가 본문을 읽기 전용으로 보여 주고, 그 아래 따로 붙은 칸에서
+ * 같은 본문을 고쳤다. 같은 글이 두 번 보이고, 고치는 곳과 결과를 보는 곳이 떨어져 있었다.
+ * 사업계획 §3.2 도 편집실 최우선 과제로 "미리보기와 최종 일치" 를 꼽았다. 고치는 자리가
+ * 곧 보는 자리면 어긋날 수가 없다.
+ *
+ * contentEditable 을 쓰되 값은 처음 한 번만 넣는다. 타이핑할 때마다 React 가 내용을 다시
+ * 그리면 커서가 맨 앞으로 튄다. 밖에서 값이 바뀐 경우(다른 곳에서 고쳤거나 초안을 불러온
+ * 경우)에만 화면을 맞춘다.
+ */
+// 미리보기 안에서 본문을 직접 고치는 형식. 이 목록에 있으면 아래 캡션 칸을 두지 않는다.
+const BODY_EDITABLE_IN_PREVIEW = new Set<PreviewPlatform>(["threads", "x", "facebook", "instagram"]);
+
+function EditablePreviewBody({
+  value, onChange, className, placeholder, testId, label, locked = false,
+}: {
+  value: string;
+  onChange?: (next: string) => void;
+  className: string;
+  placeholder: string;
+  testId: string;
+  /** 스크린 리더와 테스트가 이 자리를 부르는 이름. 플랫폼별 캡션이다. */
+  label: string;
+  /** 계정을 아직 못 불러온 동안에는 잠근다. 그때 고친 값은 어느 계정으로 갈지 알 수 없다. */
+  locked?: boolean;
+}) {
+  const ref = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    // 지금 손이 올라가 있는 동안에는 건드리지 않는다. 커서가 튄다.
+    if (document.activeElement === node) return;
+    if (node.textContent !== value) node.textContent = value;
+  }, [value]);
+
+  if (!onChange || locked) {
+    return (
+      <p className={className} aria-label={label} data-testid={testId} aria-disabled={locked || undefined}>
+        {value || <span className="text-subtle">{placeholder}</span>}
+      </p>
+    );
+  }
+  return (
+    <p
+      ref={ref}
+      data-testid={testId}
+      data-preview-body-editable
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline="true"
+      aria-label={label}
+      spellCheck={false}
+      onInput={(event) => onChange(event.currentTarget.textContent ?? "")}
+      className={`${className} rounded-control outline-none focus:bg-accent-soft/20 hover:bg-surface-2 ${value ? "" : "text-subtle"}`}
+    >
+      {value || placeholder}
+    </p>
+  );
+}
+
 function InlinePreviewEditor({ platform, editor }: { platform: PreviewPlatform; editor: PreviewInlineEditor }) {
   const contract = PLATFORM_FIELD_CONTRACT[platform];
   const validation = validatePlatformPublish(platform, {
@@ -144,18 +208,27 @@ function InlinePreviewEditor({ platform, editor }: { platform: PreviewPlatform; 
           </label>
         ) : null}
       </div>
-      <label className="mt-stack block text-caption text-muted">
-        <span className="flex items-center justify-between gap-stack-tight">{contract.bodyLabel} <Counter validation={validation} field="body" /></span>
-        <textarea
-          aria-label={`${platform} 캡션`}
-          data-pv-inline-edit={`${platform}:caption`}
-          value={editor.caption}
-          onChange={(event) => editor.onCaptionChange(event.target.value)}
-          disabled={loading}
-          rows={3}
-          className={`${inlineClass} p-stack`}
-        />
-      </label>
+      {/*
+        2026-09-09 회장 지적: "텍스트면 텍스트 미리보기 화면 자체에서 본문 수정해야지 왜
+        별도로 수정을해." 본문을 미리보기 안에서 고치는 플랫폼은 여기 같은 칸을 또 두지
+        않는다. 같은 글이 두 번 보이면 어느 쪽이 진짜인지 헷갈리고, 고치는 자리와 결과를
+        보는 자리가 떨어진다. 글자 수는 미리보기 머리에 이미 붙어 있다.
+        미리보기 본문 편집이 아직 없는 형식(숏폼·릴스·틱톡)은 이 칸이 유일한 입구라 남긴다.
+      */}
+      {BODY_EDITABLE_IN_PREVIEW.has(platform) ? null : (
+        <label className="mt-stack block text-caption text-muted">
+          <span className="flex items-center justify-between gap-stack-tight">{contract.bodyLabel} <Counter validation={validation} field="body" /></span>
+          <textarea
+            aria-label={`${platform} 캡션`}
+            data-pv-inline-edit={`${platform}:caption`}
+            value={editor.caption}
+            onChange={(event) => editor.onCaptionChange(event.target.value)}
+            disabled={loading}
+            rows={3}
+            className={`${inlineClass} p-stack`}
+          />
+        </label>
+      )}
       {contract.hashtags ? <label className="mt-stack block text-caption text-muted">
         해시태그
         <input
@@ -264,7 +337,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
         <div className="flex gap-stack"><Av />
           <div className="flex-1 min-w-0">
             <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="shrink-0 text-subtle text-body-sm ml-micro">1시간</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
-            <p className="text-body whitespace-pre-wrap leading-[1.45] mt-micro">{text.threads || <span className="text-subtle">텍스트…</span>}</p>
+            <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-threads" label="threads 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.45] mt-micro" />
             {img && <img src={img} alt="" className="mt-stack-tight rounded-surface border border-border w-full max-h-80 object-cover" />}
             <div className="flex gap-stack-section mt-stack">{P(I.heart)}{P(I.chat)}{P(I.repost)}{P(I.send)}</div>
             <div className="text-subtle text-body-sm mt-stack-tight">답글 18개 · 좋아요 124개</div>
@@ -279,7 +352,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
         <div className="flex gap-stack"><Av />
           <div className="flex-1 min-w-0">
             <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="min-w-0 truncate text-subtle ml-micro">@{handle} · 1분</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
-            <p className="text-body whitespace-pre-wrap leading-[1.4] mt-micro">{text.x || <span className="text-subtle">텍스트…</span>}</p>
+            <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-x" label="x 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.4] mt-micro" />
             {img && <img src={img} alt="" className="mt-stack-tight rounded-surface border border-border w-full max-h-80 object-cover" />}
             <div className="flex justify-between mt-stack text-subtle text-body-sm">
               <span className="flex items-center gap-stack-tight">{P(I.chat)}24</span><span className="flex items-center gap-stack-tight">{P(I.repost)}57</span>
@@ -293,7 +366,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
     <Frame p="facebook" label="Facebook" headerRight={headerRight} characterCount={characterCount}>
       <div className="bg-surface text-text rounded-control border border-border overflow-hidden">
         <div className="flex items-center gap-stack-tight px-stack pt-stack"><Av /><div className="min-w-0"><div className="truncate font-semibold text-body leading-tight">{handle}</div><div className="text-subtle text-caption">방금 · 전체 공개</div></div><div className="ml-auto text-subtle">{P(I.more)}</div></div>
-        <p className="px-stack py-stack-tight text-body whitespace-pre-wrap leading-snug">{text.facebook || <span className="text-subtle">텍스트…</span>}</p>
+        <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-facebook" label="facebook 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="px-stack py-stack-tight text-body whitespace-pre-wrap leading-snug" />
         {img && <img src={img} alt="" className="w-full max-h-80 object-cover" />}
         <div className="flex items-center justify-between px-stack py-stack-tight text-subtle text-body-sm border-b border-border"><span>반응 248</span><span>댓글 32 · 공유 12</span></div>
         <div className="flex text-subtle text-body-sm font-medium">{["좋아요", "댓글", "공유"].map((l) => <div key={l} className="flex-1 text-center py-stack-tight hover:bg-surface-2">{l}</div>)}</div>
@@ -310,7 +383,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
           <IgCarousel cards={cards} />
           <div className="flex items-center gap-pad-inset px-stack pt-stack">{P(I.heart)}{P(I.chat)}{P(I.send)}<div className="ml-auto">{P(I.bookmark)}</div></div>
           <div className="px-stack pt-stack-tight text-body-sm font-semibold">좋아요 1,284개</div>
-          <div className="px-stack pt-micro pb-stack text-body-sm"><b className="break-all">{handle}</b> <span className="text-muted">{text.instagram?.caption}</span>
+          <div className="px-stack pt-micro pb-stack text-body-sm"><b className="break-all">{handle}</b> <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-instagram" label="instagram 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-muted inline-block align-top" />
             <div className="text-accent mt-micro">{(text.instagram?.hashtags || []).map((h) => `#${h.replace(/^#/, "")}`).join(" ")}</div></div>
         </div>
         {editor ? <InlinePreviewEditor platform="instagram" editor={editor} /> : null}
