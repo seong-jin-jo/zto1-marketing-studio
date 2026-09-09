@@ -80,7 +80,11 @@ const VIDEO_PUBLISH_NAME: Record<string, string> = { shorts: "youtube", reels: "
 /** 영상 채널이 쓰는 계정 제공자. 릴스는 인스타그램 계정을 쓴다. */
 const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reels: "instagram", tiktok: "tiktok" };
 
+import { draftStatusLabel } from "@/lib/studio/draft-status-label";
+
 const ROOM_LABEL: Record<StudioRoom, string> = { create: "생성실", edit: "편집실", publish: "발행실" };
+
+
 
 /**
  * 이 작업물을 누르면 어느 방으로 데려갈 것인가.
@@ -1657,7 +1661,7 @@ export default function StudioPage() {
                 className="flex min-h-control-touch w-full flex-wrap items-center gap-stack rounded-control border border-border bg-surface-2 px-stack py-stack-tight text-left hover:bg-surface"
               >
                 <b className="min-w-0 flex-1 truncate text-body-sm text-text">{(draft as { idea?: string }).idea || "제목 없는 작업물"}</b>
-                <span className="shrink-0 text-caption text-subtle">{(draft as { status?: string }).status || "초안"}</span>
+                <span className="shrink-0 text-caption text-subtle">{draftStatusLabel((draft as { status?: string }).status)}</span>
                 {/*
                   2026-09-09 회장 지적: "작업물 클릭하면 어디로 이동해서 뭘 하는건지."
                   종전에는 눌러도 방이 안 바뀌고 상태만 조용히 채워졌다. 그래서 무엇이
