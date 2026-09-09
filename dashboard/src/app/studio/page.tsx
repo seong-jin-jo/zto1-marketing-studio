@@ -706,7 +706,15 @@ export default function StudioPage() {
           ? [result.shorts?.hook, result.shorts?.body, result.shorts?.cta].filter((line): line is string => Boolean(line))
           : nextKind === "card"
             ? (result.instagram?.slides?.length ? result.instagram.slides : [result.instagram?.caption || ""]).filter(Boolean)
-            : [result.threads || result.facebook || result.x || ""].filter(Boolean);
+            /*
+              2026-09-09: 글을 한 덩어리로 넘기면 편집실에서 줄이 하나뿐이라 문단을 고르거나
+              순서를 바꿀 수가 없다. 카드뉴스와 영상은 이미 조각으로 오는데 글만 통짜였다.
+              빈 줄로 갈라 문단으로 만든다. 붙일 때도 빈 줄로 붙이므로 원문이 그대로 돌아온다.
+            */
+            : (result.threads || result.facebook || result.x || "")
+              .split(/\n\s*\n/)
+              .map((paragraph) => paragraph.trim())
+              .filter(Boolean);
         setEditKind(nextKind);
         setEditFormat(defaultContentEditFormat(nextKind));
         setEditLines(nextLines);
@@ -1335,7 +1343,15 @@ export default function StudioPage() {
       shorts: { hook: candidate.title, body: candidate.format.outline.join("\n"), cta: candidate.rationale },
     });
     setEditLines([candidate.title, ...candidate.format.outline, candidate.rationale]);
-    const nextKind = candidate.format.content_branch === "video" ? "video" : "card";
+    /*
+      2026-09-09 실사용에서 찾았다. 생성실에서 "글" 을 골라 구조를 고르고 편집실로 갔더니
+      종류가 카드뉴스로 잡혔다. content_branch 는 text_image 와 video 둘뿐이라 글과
+      카드뉴스를 못 가른다. 그래서 글도 카드로 떨어졌다.
+      사용자가 방금 고른 형식(createPrimaryKind)이 있으면 그것이 맞다. 그 값이 없을 때만
+      갈래로 추측한다.
+    */
+    const nextKind: EditContentKind = createPrimaryKind
+      ?? (candidate.format.content_branch === "video" ? "video" : "card");
     setEditKind(nextKind);
     setEditFormat(defaultContentEditFormat(nextKind));
   }
