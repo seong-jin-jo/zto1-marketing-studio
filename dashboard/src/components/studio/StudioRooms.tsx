@@ -683,7 +683,12 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const learnedRules = useLearnedRules(workspaceId ?? "");
   const learningRows = [
     ["작업 공간", workspaceDisplayName(workspaceName)],
-    ["업종", learning.industry || guide || "아직 없음"],
+    // 업종 칸이 비면 브랜드 문서 전문(수백 자)을 업종 자리에 대신 넣고 있었다. 라벨은
+    // "업종" 인데 내용은 페르소나·보이스·금지 표현이 뒤섞인 문서 전체다. 사용자는 자기가
+    // 업종을 그렇게 적었다고 오해하고, 바로 아래 말투 칸과 같은 내용이 두 번 보인다.
+    // 브랜드 문서는 아래에 따로 "브랜드 문서도 그대로 반영합니다" 로 이미 알려 준다.
+    // 비었으면 비었다고 말하는 편이 정확하다(2026-09-10 실측).
+    ["업종", learning.industry || "아직 없음"],
     ["말투", learning.voice || "아직 없음"],
     ["콘텐츠 목표", purpose || "아직 없음"],
     ["주요 고객", audience || "아직 없음"],

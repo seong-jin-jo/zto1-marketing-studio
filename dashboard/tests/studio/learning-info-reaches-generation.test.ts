@@ -63,3 +63,23 @@ describe("고른 학습 정보가 생성 요청에 실린다", () => {
     expect(src).toContain('.split("예:")[0]');
   });
 });
+
+// 2026-09-10 실측: 업종 칸이 비면 브랜드 문서 전문(388자)을 업종 자리에 대신 넣고 있었다.
+// 라벨은 "업종" 인데 내용은 페르소나·보이스·금지 표현이 뒤섞인 문서 전체였다. 사용자는
+// 자기가 업종을 그렇게 적었다고 오해하고, 바로 아래 말투 칸과 같은 내용이 두 번 보인다.
+describe("학습 정보 칸은 그 칸의 값만 보여 준다", () => {
+  const src = readFileSync(
+    resolve(process.cwd(), "src/components/studio/StudioRooms.tsx"),
+    "utf8",
+  );
+
+  it("업종 자리에 브랜드 문서를 대신 넣지 않는다", () => {
+    expect(src).toContain('["업종", learning.industry || "아직 없음"]');
+    expect(src).not.toContain('learning.industry || guide');
+  });
+
+  it("브랜드 문서는 따로 알려 준다", () => {
+    // 비었다고 말하는 것과 안 쓴다는 것은 다르다. 문서는 계속 생성에 들어간다.
+    expect(src).toContain("브랜드 문서도 그대로 반영합니다");
+  });
+});
