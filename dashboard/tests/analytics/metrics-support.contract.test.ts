@@ -16,7 +16,10 @@ describe("성과 수집 지원 여부를 화면이 정직하게 말한다", () =
     // 2026-09-09 같은 날 X 수집을 만들었다. 만든 채널은 만들었다고, 안 만든 채널은
     // 안 만들었다고 말해야 화면이 정직해진다.
     expect(isMetricsCollected("x")).toBe(true);
-    for (const platform of ["instagram", "facebook", "youtube", "tiktok", null, ""]) {
+    // 2026-09-09 같은 날 Instagram·Facebook 수집도 만들었다.
+    expect(isMetricsCollected("instagram")).toBe(true);
+    expect(isMetricsCollected("facebook")).toBe(true);
+    for (const platform of ["youtube", "tiktok", "shorts", "reels", null, ""]) {
       expect(isMetricsCollected(platform), `${platform} 를 수집한다고 말하면 안 된다`).toBe(false);
     }
   });
@@ -27,8 +30,8 @@ describe("성과 수집 지원 여부를 화면이 정직하게 말한다", () =
     // 계정을 바꾸기 전까지 안 채워진다
     expect(emptyMetricLabel("threads", { code: "no_permission" })).toBe("측정 불가");
     // 우리가 그 채널 수집을 만들기 전까지 영원히 안 채워진다
-    expect(emptyMetricLabel("instagram", null)).toBe("측정 미지원");
-    expect(emptyMetricLabel("instagram", { code: "whatever" })).toBe("측정 미지원");
+    expect(emptyMetricLabel("youtube", null)).toBe("측정 미지원");
+    expect(emptyMetricLabel("youtube", { code: "whatever" })).toBe("측정 미지원");
     // X 는 수집을 만들었으므로 Threads 와 같은 규칙을 탄다.
     expect(emptyMetricLabel("x", null)).toBe("미수집");
     expect(emptyMetricLabel("x", { code: "post_not_in_account" })).toBe("측정 불가");

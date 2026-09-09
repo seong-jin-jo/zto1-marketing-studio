@@ -1,6 +1,6 @@
 import { withTenant } from "@/lib/db";
 import { effectiveTenantId } from "@/lib/tenant-auth";
-import { getChannelCred, fetchXPublicMetrics } from "@/lib/publish";
+import { getChannelCred, fetchXPublicMetrics, fetchMetaPostMetrics } from "@/lib/publish";
 import { readJson, writeJson, dataPath } from "@/lib/file-io";
 import { runWithTenant } from "@/lib/tenant-context";
 import {
@@ -61,10 +61,12 @@ export async function POST(request: Request) {
   if (!tenant_id) return Response.json({ error: "tenant_id required" }, { status: 400 });
   const cred = await getChannelCred(tenant_id, "threads");
   const xCred = await getChannelCred(tenant_id, "x");
+  const igCred = await getChannelCred(tenant_id, "instagram");
+  const fbCred = await getChannelCred(tenant_id, "facebook");
   // 2026-09-09: 종전에는 Threads 가 없으면 여기서 끝냈다. 그래서 X 만 연결한 사람은
   // 성과 수집을 아예 못 돌렸다. 둘 다 없을 때만 막는다.
-  if (!cred && !xCred) {
-    return Response.json({ ok: false, error: "성과를 읽어 올 수 있는 채널이 연결돼 있지 않습니다. Threads 또는 X 를 연결해 주세요." }, { status: 400 });
+  if (!cred && !xCred && !igCred && !fbCred) {
+    return Response.json({ ok: false, error: "성과를 읽어 올 수 있는 채널이 연결돼 있지 않습니다. Threads, X, Instagram, Facebook 중 하나를 연결해 주세요." }, { status: 400 });
   }
   try {
     const { updated, total, skipped } = await withTenant(tenant_id, async (sql) => {
@@ -175,7 +177,43 @@ export async function POST(request: Request) {
           }
         }
       }
-      return { updated: n, total: rows.length + xTotal, skipped };
+      // ── Instagram·Facebook 성과 수집 ──────────────────────────────────
+      // 두 채널은 Graph API 의 insights 로 게시물별 수치를 준다. 지표 이름이 채널마다
+      // 달라 각자 넘긴다. 하나로 뭉뚱그리면 그 채널에서는 빈 값이 온다.
+      let metaTotal = 0;
+      for (const [platform, metaCred] of [["instagram", igCred], ["facebook", fbCred]] as const) {
+        if (!metaCred) continue;
+        const metaRows = await sql<{ id: string; external_id: string }[]>`
+          SELECT id, external_id FROM published_posts
+          WHERE tenant_id = ${tenant_id} AND platform = ${platform} AND external_id IS NOT NULL`;
+        metaTotal += metaRows.length;
+        if (!metaRows.length) continue;
+        const result = await fetchMetaPostMetrics(metaCred, platform, metaRows.map((r) => r.external_id));
+        if (!result.ok) {
+          console.error("[metrics][collect-skip]", platform, result.error);
+          skipped.push(`${platform}_error`);
+          continue;
+        }
+        for (const r of metaRows) {
+          const m = result.metrics[r.external_id];
+          if (!m) {
+            await sql`
+              UPDATE published_posts
+              SET provider_meta = COALESCE(provider_meta, '{}'::jsonb) || ${sql.json({
+                metricsBlocked: { code: "insights_forbidden", at: new Date().toISOString() },
+              } as never)}
+              WHERE id = ${r.id}`;
+            continue;
+          }
+          await sql`
+            UPDATE published_posts
+            SET views = ${m.views}, likes = ${m.likes}, replies = ${m.replies}, metrics_at = now(),
+                provider_meta = COALESCE(provider_meta, '{}'::jsonb) - 'metricsBlocked'
+            WHERE id = ${r.id}`;
+          n++;
+        }
+      }
+      return { updated: n, total: rows.length + xTotal + metaTotal, skipped };
     });
     markAnalyticsViewed(tenant_id);
     // 수집 대상이 있는데 하나도 못 모았으면 그것을 성공으로 말하지 않는다.

@@ -64,7 +64,10 @@ describe("학습 정보를 모델에게 넘기는 방식", () => {
   });
 
   it("빈 값은 한 줄도 나오지 않는다", () => {
-    const out = describeLearningContext(sparse);
+    // 2026-09-09: 끝에 "어긋나면 무엇을 따르라" 는 안내가 붙었다. 그 안내에는 항목 이름이
+    // 설명으로 등장하므로, 값이 실린 부분만 떼어 검사한다.
+    const full = describeLearningContext(sparse);
+    const out = full.split("위 항목들이 서로 어긋나면")[0];
     // 빈 배열·빈 문자열이 통째로 새어 나오면 안 된다.
     expect(out).not.toContain("[]");
     expect(out).not.toContain('""');
@@ -88,6 +91,15 @@ describe("학습 정보를 모델에게 넘기는 방식", () => {
     expect(out.indexOf("말투")).toBeLessThan(out.indexOf("따라야 할 구조 규칙"));
     // 배경은 맨 뒤다.
     expect(out.indexOf("지켜야 할 안전 규칙")).toBeLessThan(out.indexOf("시장 맥락"));
+  });
+
+  it("어긋날 때 무엇을 따를지 적는다", () => {
+    // 2026-09-09 실사용: 업종 칸은 "동네 가게" 인데 브랜드 문서 첫 문장이 "회사를 손님으로
+    // 모시는 곳" 이었고, 후보 셋이 모두 문서 쪽을 따랐다. 어느 쪽이 이기는지 안 적으면
+    // 모델이 매번 다르게 고르고, 사용자는 문서를 고치기 전까지 이유를 알 수 없다.
+    const out = describeLearningContext(full);
+    expect(out).toContain("위 항목들이 서로 어긋나면 이 순서로 따르세요");
+    expect(out.indexOf("이 작업을 위해 방금 고른 값")).toBeLessThan(out.indexOf("예전에 써 둔 배경"));
   });
 
   it("JSON 덩어리가 아니라 사람이 읽는 줄로 나온다", () => {
