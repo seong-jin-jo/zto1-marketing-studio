@@ -954,7 +954,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
               {questionIndex > 0 && question !== "review" ? <Button onClick={() => setQuestionIndex((current) => Math.max(0, current - 1))}>이전 질문</Button> : null}
               {question === "review" && missing.length ? <div className="rounded-control border border-warning/30 bg-warning/10 p-stack text-caption text-warning">확인 필요: {missing.join(", ")}</div> : null}
               {question === "review" ? <><Button onClick={() => setQuestionIndex(0)}>입력 내용 수정</Button><Button variant="primary" onClick={generate} disabled={loading || missing.length > 0}>{loading ? "구조 초안 만드는 중" : "구조 초안 3개 보기"}</Button></> : null}
-              {loading ? <WaitingNotice label="구조 초안을 만들고 있습니다" typicalSeconds={primaryKind === "video" ? 55 : 35} /> : null}
+              {loading ? <WaitingNotice label="구조 초안을 만들고 있습니다" typicalSeconds={primaryKind === "video" ? 55 : primaryKind === "card" ? 120 : 35} /> : null}
             </> : null}
             {candidates.length && !selectedCandidate ? <>
               {candidates.map((candidate) => <Button key={candidate.label} variant="secondary" onClick={() => chooseStructureCandidate(candidate)} disabled={quickDraftLoading}>{quickDraftLoading ? "후보 만드는 중" : `${candidate.label} 구조 초안 선택`}</Button>)}

@@ -28,10 +28,12 @@ describe("기다리는 화면", () => {
     expect(src).toContain("초쯤 걸립니다");
   });
 
-  it("영상은 글보다 오래 걸린다고 미리 말한다", () => {
+  it("형식마다 실제 걸리는 시간을 다르게 말한다", () => {
     // 같은 값을 쓰면 영상에서 매번 "늦었다" 로 보여 안내가 거짓말이 된다.
-    const [, video, text] = src.match(/typicalSeconds=\{primaryKind === "video" \? (\d+) : (\d+)\}/) ?? [];
+    const [, video, card, text] = src.match(/typicalSeconds=\{primaryKind === "video" \? (\d+) : primaryKind === "card" \? (\d+) : (\d+)\}/) ?? [];
     expect(Number(video)).toBeGreaterThan(Number(text));
+    // 카드뉴스는 실측 121초로 가장 오래 걸린다. 35초라고 말해 두면 매번 늦은 것처럼 보인다.
+    expect(Number(card)).toBeGreaterThan(Number(video));
   });
 
   it("가짜 진행률을 만들지 않는다", () => {
