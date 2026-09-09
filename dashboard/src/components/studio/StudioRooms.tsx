@@ -1234,6 +1234,39 @@ export function EditRoom({
                                 }
                               }}
                             />
+                            {/*
+                              2026-09-09 회장 지적: "대문 사진, 본문, 마지막 사진 등 사진
+                              여러개 흐름이 한 세트가 되는 경우가 많을거같은데."
+                              종전에는 한 장씩만 보여 세트의 흐름이 안 보였다. 카드뉴스는
+                              장과 장 사이의 순서가 곧 내용인데, 지금 보는 한 장만으로는
+                              그 흐름을 판단할 수 없다. 우리 팀이 이미 만든 카드 편집
+                              도구(D-EDU 카드컨셉13)도 슬라이드 전체를 늘어놓고 고른다.
+                              전체를 늘어놓고 누르면 그 장으로 간다.
+                            */}
+                            {safeLines.length > 1 ? (
+                              <div className="mt-stack" data-card-strip aria-label={`${unit} 전체 ${safeLines.length}개`}>
+                                <div className="mb-stack-tight flex items-center justify-between">
+                                  <b className="text-caption text-muted">{unit} 전체</b>
+                                  <span className="text-caption text-subtle">{activeLine + 1} / {safeLines.length}</span>
+                                </div>
+                                <ol className="flex gap-stack-tight overflow-x-auto pb-stack-tight">
+                                  {safeLines.map((entry, index) => (
+                                    <li key={`strip-${index}`}>
+                                      <button
+                                        type="button"
+                                        data-card-strip-item={index}
+                                        aria-current={activeLine === index}
+                                        onClick={() => setActiveLine(index)}
+                                        className={`h-20 w-16 shrink-0 rounded-control border p-micro text-left text-caption leading-tight ${activeLine === index ? "border-accent bg-accent-soft text-accent" : "border-border bg-surface-2 text-subtle hover:bg-surface"} ${visibleLines[index] ? "" : "opacity-50 line-through"}`}
+                                      >
+                                        <span className="block font-semibold">{index + 1}</span>
+                                        <span className="line-clamp-3 break-keep">{entry || "빈 " + unit}</span>
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ol>
+                              </div>
+                            ) : null}
                           </section>
                           <section className="mt-pad-inset border-b border-border pb-pad-inset" aria-label="간편 편집 도구" data-edit-tools>
                             <div className="flex flex-wrap gap-stack-tight">{tools.map((tool) => <Button key={tool} size="sm" variant="secondary" className={activeTool === tool ? "border-accent bg-accent-soft text-accent" : ""} onClick={() => setActiveTool(tool)} aria-pressed={activeTool === tool} aria-label={`${visibleToolName(kind, tool)} 도구`}><ToolIcon tool={tool} /><span>{visibleToolName(kind, tool)}: {visibleToolValue(tool, toolValues[tool], kind)}</span></Button>)}
