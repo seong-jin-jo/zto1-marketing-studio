@@ -5,5 +5,5 @@
   ],
   "max_attempts": 1,
   "timeout_ms": 45000,
-  "max_output_tokens": 4000
+  "max_output_tokens": 8000
 }

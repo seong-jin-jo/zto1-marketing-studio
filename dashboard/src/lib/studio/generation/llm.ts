@@ -281,7 +281,9 @@ function jsonObject(text: string): Record<string, unknown> {
     if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("object required");
     return value as Record<string, unknown>;
   } catch {
-    throw new StudioLlmExecutionError("invalid_output", true);
+    // 여닫는 괄호는 찾았는데 그 사이가 JSON 이 아니다. 대개 길이 상한에 걸려 중간에서
+    // 잘린 결과다. 뒤쪽 괄호가 우연히 남아 있어 "잘림" 검사를 통과해 여기까지 온다.
+    throw new StudioLlmExecutionError("invalid_output", true, "결과를 JSON 으로 읽지 못했습니다(길이 상한에 걸려 잘렸을 수 있습니다)");
   }
 }
 
@@ -354,11 +356,12 @@ export function parseDerivationOutput(text: string, kind: DerivationKind): Deriv
     return { kind, slides };
   }
   if (!Array.isArray(value.scenes) || value.scenes.length < 3 || value.scenes.length > 8) {
-    throw new StudioLlmExecutionError("invalid_output", true);
+    const count = Array.isArray(value.scenes) ? `${value.scenes.length}개` : "장면 목록이 없음";
+    throw new StudioLlmExecutionError("invalid_output", true, `장면이 3~8개여야 하는데 ${count}입니다`);
   }
   const scenes = value.scenes.map((entry, order) => {
     if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
-      throw new StudioLlmExecutionError("invalid_output", true);
+      throw new StudioLlmExecutionError("invalid_output", true, `${order + 1}번 장면의 모양이 잘못됐습니다`);
     }
     const scene = entry as Record<string, unknown>;
     return {

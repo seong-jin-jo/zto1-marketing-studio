@@ -59,3 +59,18 @@ describe("계약 위반은 어느 규칙에서 걸렸는지 말한다", () => {
     expect(detailOf(JSON.stringify(body))).toContain("길이가");
   });
 });
+
+// 이유 없는 invalid_output 이 한 자리라도 남으면 그 경로에서만 다시 "무엇이 틀렸는지 모름"
+// 으로 돌아간다. 그리고 하필 그 자리가 우리가 오늘 걸린 자리였다.
+describe("이유 없는 계약 위반이 남아 있지 않다", () => {
+  it("invalid_output 은 전부 이유를 데리고 나온다", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(
+      resolve(process.cwd(), "src/lib/studio/generation/llm.ts"),
+      "utf8",
+    );
+    const bare = src.match(/new StudioLlmExecutionError\("invalid_output",\s*true\s*\)/g) ?? [];
+    expect(bare).toHaveLength(0);
+  });
+});
