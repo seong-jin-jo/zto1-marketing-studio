@@ -74,3 +74,21 @@ describe("이유 없는 계약 위반이 남아 있지 않다", () => {
     expect(bare).toHaveLength(0);
   });
 });
+
+// 이유를 붙이는 것과 이유를 끝까지 들고 가는 것은 다른 일이다. 2026-09-09 검사 자리마다
+// 이유를 붙여 놓고도 화면에는 여전히 이유가 안 나왔다. 실행부가 마지막 실패를 다시 던질 때
+// detail 을 빼먹고 있었기 때문이다. 중간에서 잃어버리면 안 붙인 것과 같다.
+describe("이유는 중간에서 사라지지 않는다", () => {
+  it("실행부가 다시 던질 때 detail 을 함께 넘긴다", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(
+      resolve(process.cwd(), "src/lib/studio/generation/llm.ts"),
+      "utf8",
+    );
+    const rethrow = src.match(/throw new StudioLlmExecutionError\(\s*lastReason[^;]*;/)?.[0] ?? "";
+    expect(rethrow).toContain("lastDetail");
+    // 두 실패 경로(호출 실패·해석 실패) 모두에서 이유를 주워 담아야 한다.
+    expect((src.match(/lastDetail = failureDetail\(error\)/g) ?? [])).toHaveLength(2);
+  });
+});

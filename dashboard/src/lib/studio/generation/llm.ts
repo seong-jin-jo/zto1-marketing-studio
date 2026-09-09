@@ -380,6 +380,12 @@ export function parseDerivationOutput(text: string, kind: DerivationKind): Deriv
   return { kind, asset_url: "pending:render", scenes };
 }
 
+/** 이유를 데리고 온 실패면 그 이유를 그대로 넘긴다. 중간에서 잃어버리면 안 붙인 것과 같다. */
+function failureDetail(error: unknown): string | undefined {
+  if (error instanceof StudioLlmExecutionError) return error.detail;
+  return undefined;
+}
+
 function failureReason(error: unknown): StudioLlmFailureReason {
   if (error instanceof StudioLlmExecutionError) return error.reason;
   const name = error instanceof Error ? error.name : "";
@@ -487,6 +493,10 @@ export class LlmStudioContentGenerator implements StudioContentGenerator {
   }): Promise<T> {
     const config = resolveStudioLlmConfig();
     let lastReason: StudioLlmFailureReason = "provider_unavailable";
+    // 2026-09-09: 검사 자리마다 이유를 붙여 놓고도 화면에는 여전히 이유가 안 나왔다.
+    // 여기서 마지막 실패를 다시 던질 때 detail 을 빼먹고 있었기 때문이다. **이유를 붙이는
+    // 것과 이유를 끝까지 들고 가는 것은 다른 일이다.**
+    let lastDetail: string | undefined;
     for (const [index, model] of config.models.entries()) {
       const attempt = index + 1;
       const eventId = await this.ledger.start({ ...input, model, attempt });
@@ -501,6 +511,7 @@ export class LlmStudioContentGenerator implements StudioContentGenerator {
         });
       } catch (error) {
         lastReason = failureReason(error);
+        lastDetail = failureDetail(error);
         await this.ledger.finish({ ...input, eventId, model, attempt, status: "failed", reason: lastReason });
         // 줄이 밀린 것은 모델을 바꿔도 같은 줄이다. 보조 모델로 재시도하면 줄만 더 길어진다.
         if (lastReason === "approval_required" || lastReason === "quota_exhausted" || lastReason === "provider_unsupported" || lastReason === "queue_busy") break;
@@ -512,11 +523,12 @@ export class LlmStudioContentGenerator implements StudioContentGenerator {
         return parsed;
       } catch (error) {
         lastReason = failureReason(error);
+        lastDetail = failureDetail(error);
         await this.ledger.finish({ ...input, eventId, model, attempt, status: "failed", reason: lastReason, result: generated });
         if (lastReason === "usage_ledger_unavailable") break;
       }
     }
-    throw new StudioLlmExecutionError(lastReason, lastReason === "timeout" || lastReason === "provider_unavailable");
+    throw new StudioLlmExecutionError(lastReason, lastReason === "timeout" || lastReason === "provider_unavailable", lastDetail);
   }
 
   generateCandidates(input: { memberId: string; request: GenerationRequest }): Promise<GeneratedCandidateContent[]> {
