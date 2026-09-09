@@ -9,6 +9,7 @@ import {
   CH_LABELS,
 } from "@/lib/constants";
 import { CHANNEL_GROUPS } from "@/lib/channel-capabilities";
+import { connectionLabel, connectionBadgeClass, CONNECTION_IN_USE, CONNECTION_LINKED } from "@/lib/channel-connection-label";
 import { getChannelIcon } from "@/lib/channel-icons";
 import { useUIStore, type StudioRoom, type Workspace } from "@/store/ui-store";
 import { fetcher } from "@/lib/api";
@@ -71,7 +72,7 @@ function SidebarGroup({
           const href = i.href ?? (i.key === "blog" ? "/blog" : i.key ? `/channels/${i.key}` : "#");
           const hrefPath = href.split(/[?#]/, 1)[0];
           const isActive = pathname === hrefPath;
-          const textColor = i.status === "사용 중" || i.status === "연결됨" ? "text-muted" : "text-subtle";
+          const textColor = i.status === CONNECTION_IN_USE || i.status === CONNECTION_LINKED ? "text-muted" : "text-subtle";
           return (
             <Link
               key={i.key || `${i.label}-${idx}`}
@@ -175,8 +176,8 @@ function chSidebarItem(key: string, channelConfig: Record<string, Record<string,
       label,
       icon: label[0],
       nav: true,
-      status: "사용 중" as const,
-      statusClass: "bg-success/15 text-success",
+      status: CONNECTION_IN_USE,
+      statusClass: connectionBadgeClass(CONNECTION_IN_USE),
     };
   }
   if (status === "connected") {
@@ -185,8 +186,8 @@ function chSidebarItem(key: string, channelConfig: Record<string, Record<string,
       label,
       icon: label[0],
       nav: true,
-      status: "연결됨" as const,
-      statusClass: "bg-accent/15 text-accent",
+      status: CONNECTION_LINKED,
+      statusClass: connectionBadgeClass(CONNECTION_LINKED),
     };
   }
   // 미연결. 클릭 가능, 흰 글씨.
@@ -335,10 +336,9 @@ function CustomerSidebar({
     icon: "T",
     iconClass: "bg-accent text-accent-fg",
     nav: true,
-    status: (cfg.threads?.connected ? "사용 중" : "") as string,
-    statusClass: cfg.threads?.connected
-      ? "bg-success/15 text-success"
-      : "bg-surface-2 text-subtle",
+    // Threads 는 켜고 끄는 개념이 없다. 연결되면 곧 사용 중이다.
+    status: connectionLabel(cfg.threads, { togglable: false }),
+    statusClass: connectionBadgeClass(connectionLabel(cfg.threads, { togglable: false })),
   };
 
   // Build X item specially
@@ -347,16 +347,8 @@ function CustomerSidebar({
     label: "X (Twitter)",
     icon: "X",
     nav: true,
-    status: cfg.x?.connected
-      ? cfg.x?.enabled
-        ? "사용 중"
-        : "연결됨"
-      : ("" as string),
-    statusClass: cfg.x?.connected
-      ? cfg.x?.enabled
-        ? "bg-success/15 text-success"
-        : "bg-accent/15 text-accent"
-      : "",
+    status: connectionLabel(cfg.x),
+    statusClass: connectionBadgeClass(connectionLabel(cfg.x)),
   };
 
   return (
