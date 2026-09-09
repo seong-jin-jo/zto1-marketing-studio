@@ -7,6 +7,10 @@ export interface StudioLearningInput {
   forbiddenPhrases: string[];
   materialRightsConfirmed: boolean;
   contentBranch: "text_image" | "video";
+  /** 학습 정보의 말투 칸. 비면 브랜드 문서에 적힌 말투를 따른다. */
+  tone?: string;
+  /** 학습 정보의 브랜드 색 칸. 카드뉴스·영상 화면을 좌우한다. */
+  palette?: string;
 }
 
 // 현재 생성기는 서버의 내장 X4 조립 규칙 v1을 사용한다. 사용자가 세션 저장소에 내부 UUID를
@@ -69,7 +73,10 @@ export function buildStudioGenerationRequest(input: StudioLearningInput) {
         forbidden_phrases: input.forbiddenPhrases,
         forbidden_phrases_confirmed_empty: input.forbiddenPhrases.length === 0,
         material_rights_confirmed: true,
-        tone: null,
+        // 2026-09-10: 사용자가 학습 정보에서 고른 말투를 여기 안 넣고 null 로 보내고 있었다.
+        // 화면은 "말투: 따뜻하게" 라고 표시하면서 생성기에는 말투를 한 글자도 안 준 것이다.
+        // 일곱 칸을 채우게 해 놓고 쓰지 않으면 그 문답은 장식이다.
+        tone: input.tone?.trim() || null,
       },
       x4: {
         revision: 1,

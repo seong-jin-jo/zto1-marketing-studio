@@ -399,6 +399,19 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   }, [resetToken, workspaceId]);
 
   const facts = useMemo(() => guide.trim() ? [guide.trim()] : [], [guide]);
+  /**
+   * 학습 정보의 "쓰지 않을 표현" 을 생성 계약이 받는 모양으로 옮긴다.
+   *
+   * 이 칸은 "별도 제한 없음. 예: ..." 처럼 견본 문장이 붙어 저장된다. 그것을 통째로
+   * 금지어로 넘기면 그 문장 전체가 결과에 있는지 찾게 되어 아무것도 안 걸린다.
+   * 그리고 "별도 제한 없음" 은 금지어가 아니라 **금지어가 없다는 답**이다. 그것을
+   * 금지어로 넣으면 그 말이 들어간 정상 문장이 통째로 버려진다.
+   */
+  const forbiddenFromLearning = useMemo(() => {
+    const raw = (learning.forbidden ?? "").split("예:")[0].trim();
+    if (!raw || /별도 제한 없음|없음|제한 없음/.test(raw)) return [];
+    return raw.split(/[,·]/).map((word) => word.trim()).filter(Boolean).slice(0, 20);
+  }, [learning.forbidden]);
   const learnedCount = countFilledLearningSlots(learning, { guide });
   const missing = [!primaryKind && "만들 형식", !topic.trim() && "주제", !purpose.trim() && "목표", !audience.trim() && "고객", !rightsConfirmed && "사용 권리 확인"].filter(Boolean) as string[];
   const selectedCandidate = candidates.find((candidate) => candidate.label === selected) ?? null;
@@ -552,7 +565,18 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     generationInFlight.current = true;
     setLoading(true);
     try {
-      const next = await requestStudioCandidates({ workspaceId, topic, purpose, audience, workspaceFacts: facts, forbiddenPhrases: [], materialRightsConfirmed: rightsConfirmed, contentBranch }, token);
+      // 학습 정보에서 고른 말투와 쓰지 않을 표현을 실제로 보낸다. 종전에는 화면에만
+      // 보여 주고 생성기에는 말투를 null, 금지 표현을 빈 목록으로 보냈다. **일곱 칸을
+      // 채우게 해 놓고 쓰지 않으면 그 문답은 장식이다**(2026-09-10 실측).
+      const next = await requestStudioCandidates({
+        workspaceId, topic, purpose, audience,
+        workspaceFacts: facts,
+        forbiddenPhrases: forbiddenFromLearning,
+        materialRightsConfirmed: rightsConfirmed,
+        contentBranch,
+        tone: learning.voice,
+        palette: learning.palette,
+      }, token);
       setCandidates(next);
       setSelected(null);
     } catch (cause) {
