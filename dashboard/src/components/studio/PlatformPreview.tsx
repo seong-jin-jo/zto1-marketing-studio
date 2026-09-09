@@ -63,7 +63,15 @@ function Frame({ p, label, children, headerRight, characterCount }: {
   characterCount?: { current: number; limit: number };
 }) {
   return (
-    <div className="w-full max-w-sm">
+    /*
+      2026-09-09 회장 지적: "발행실에서는 스레드는 컴포넌트 위치가 왜 살짝 아래로 내려갔냐."
+      실측하니 편집 칸 시작점이 채널마다 달랐다. X 는 1417, Facebook 은 1448, Threads 는
+      1532 픽셀이었다. 미리보기 내용 높이가 채널마다 다른데 카드가 그냥 위에서부터 쌓여서다.
+      나란히 놓인 카드가 제각각 다른 높이에서 시작하면 눈이 줄을 못 잡는다.
+      카드를 세로 흐름으로 만들고 미리보기 부분이 남은 높이를 채우게 해서, 그 아래 편집
+      칸들이 같은 줄에서 시작하게 한다.
+    */
+    <div className="flex h-full w-full max-w-sm flex-col" data-preview-card={p}>
       {/*
         2026-09-05 회장 계정 실측(폭 430): 이 머리줄이 담긴 칸보다 18픽셀 넓어져 오른쪽
         끝의 발행 토글과 계정 관리가 잘렸다. 문서 가로 스크롤은 0이라 겉으로는 멀쩡해
@@ -84,7 +92,7 @@ function Frame({ p, label, children, headerRight, characterCount }: {
           {headerRight}
         </div>
       </div>
-      {children}
+      <div className="flex flex-1 flex-col">{children}</div>
     </div>
   );
 }
@@ -193,7 +201,7 @@ function InlinePreviewEditor({ platform, editor }: { platform: PreviewPlatform; 
   const loading = editor.account.status === "loading";
   const inlineClass = "mt-micro min-h-control-touch w-full rounded-control border border-transparent bg-transparent px-stack text-body text-text underline decoration-accent/40 underline-offset-4 focus:border-accent focus:bg-surface focus:no-underline";
   return (
-    <div className="mt-stack border-t border-border pt-stack" data-testid={`inline-editor-${platform}`} data-pub-fields={platform}>
+    <div className="mt-auto border-t border-border pt-stack" data-testid={`inline-editor-${platform}`} data-pub-fields={platform}>
       <AccountIdentity platform={platform} account={editor.account} />
       <div className="mt-stack grid gap-stack sm:grid-cols-2">
         {contract.title ? (

@@ -1860,9 +1860,15 @@ export default function StudioPage() {
               return (
                 <section key={group.title}>
                   <div className="mb-stack flex items-center gap-stack-tight border-b border-border pb-stack"><b className="text-body text-text">{group.title}</b><span className="text-caption text-subtle">{visiblePlatforms.map((platform) => LABEL[platform]).join(" · ")}</span></div>
-                  <div className="grid items-start gap-stack-section md:grid-cols-2 xl:grid-cols-3">
+                  {/*
+                    2026-09-09 회장 지적: "스레드는 컴포넌트 위치가 왜 살짝 아래로 내려갔냐."
+                    items-start 라 카드가 각자 내용만큼만 높아졌고, 미리보기 길이가 채널마다
+                    달라 그 아래 편집 칸 시작점이 제각각이었다(실측 1417·1448·1532픽셀).
+                    같은 줄의 카드가 같은 높이를 갖게 하면 편집 칸이 한 줄에서 시작한다.
+                  */}
+                  <div className="grid gap-stack-section md:grid-cols-2 xl:grid-cols-3">
                     {visiblePlatforms.map((platform) => (
-                  <div key={platform} data-room-preview={platform} className="min-w-0 rounded-surface border border-border bg-surface p-stack">
+                  <div key={platform} data-room-preview={platform} className="flex min-w-0 flex-col rounded-surface border border-border bg-surface p-stack">
                     <PlatformPreview
                       platform={platform}
                       text={text || {}}
