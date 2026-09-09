@@ -60,6 +60,7 @@ import {
 } from "@/lib/studio/platform-publish-fields";
 import type { CurrentWork } from "@/lib/studio/current-work";
 import { attemptRequiredDraftPersistence } from "@/lib/studio/required-draft-persistence";
+import { PLATFORM_FIELD_CONTRACT } from "@/lib/studio/platform-publish-fields";
 
 // SNS-007: /api/publish가 실제로 계정별 발행을 받는 4개 플랫폼(threads/x/facebook/instagram)만
 // 계정 셀렉터를 노출한다. shorts/reels/tiktok은 /api/publish 미지원(실발행 분기 없음. 위
@@ -395,6 +396,41 @@ export default function StudioPage() {
   }
   const [lastError, setLastError] = useState<string | null>(null);
   const [text, setText] = useState<TextVariants | null>(null);
+
+  /**
+   * 생성이 만든 채널별 메타를 발행실 칸에 채운다.
+   *
+   * 2026-09-09 회장 지적: "지금 화면에서 왜 이런 메타정보(해시태그 첫댓글 캡션 등등)는
+   * 비어있어." 원인은 단절이었다. 생성은 인스타그램 해시태그를 실제로 만들어 내려보내는데
+   * (/api/studio/text 계약의 instagram.hashtags), 발행실은 그 값을 한 번도 읽지 않고
+   * 사용자가 손으로 채우기만 기다렸다. 만들어 놓고 안 쓰면 없는 것과 같다.
+   *
+   * 사업계획 §3.2 는 "채널별 제목·소개·해시태그·첫 댓글은 발행실이 맡는다" 고 정했다.
+   * 맡는다는 것은 빈 칸을 내주는 것이 아니라 채워 놓고 고치게 하는 것이다.
+   *
+   * 사용자가 이미 손댄 칸은 건드리지 않는다. 채우는 것이 덮어쓰기가 되면 안 된다.
+   */
+  useEffect(() => {
+    const tags = text?.instagram?.hashtags;
+    if (!Array.isArray(tags) || tags.length === 0) return;
+    const line = tags
+      .map((tag) => String(tag).trim())
+      .filter(Boolean)
+      .map((tag) => (tag.startsWith("#") ? tag : `#${tag}`))
+      .join(" ");
+    if (!line) return;
+    setHashtags((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const [platform, contract] of Object.entries(PLATFORM_FIELD_CONTRACT)) {
+        if (!contract.hashtags) continue;
+        if (next[platform]?.trim()) continue; // 손댄 칸은 그대로 둔다
+        next[platform] = line;
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [text]);
   const [img, setImg] = useState<ImgResult | null>(null);
   const [vid, setVid] = useState<VidResult | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);

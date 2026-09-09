@@ -229,7 +229,12 @@ function InlinePreviewEditor({ platform, editor }: { platform: PreviewPlatform; 
           />
         </label>
       )}
-      {contract.hashtags ? <label className="mt-stack block text-caption text-muted">
+      {/*
+        해시태그도 미리보기 본문 바로 아래에서 고친다(회장 2026-09-09). 실제 게시물에서
+        그 자리에 붙기 때문이다. 여기 같은 칸을 또 두면 어느 쪽이 진짜인지 헷갈린다.
+        미리보기에서 못 고치는 형식은 이 칸이 유일한 입구라 남긴다.
+      */}
+      {contract.hashtags && !BODY_EDITABLE_IN_PREVIEW.has(platform) ? <label className="mt-stack block text-caption text-muted">
         해시태그
         <input
           aria-label={`${platform} 해시태그`}
@@ -338,6 +343,12 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
           <div className="flex-1 min-w-0">
             <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="shrink-0 text-subtle text-body-sm ml-micro">1시간</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
             <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-threads" label="threads 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.45] mt-micro" />
+            {/*
+              2026-09-09 회장 지적: "해시태그나 첫댓글도 미리보기화면에서 직관적으로
+              수정할수있게 하는게 낫지않겠어?" 실제 게시물에서 해시태그는 본문 바로 아래
+              같은 흐름에 붙는다. 그 자리에서 고치는 것이 가장 직관적이다.
+            */}
+            <EditablePreviewBody value={editor?.hashtags ?? ""} onChange={editor?.onHashtagsChange} testId="preview-tags-threads" label="threads 해시태그" locked={editor?.account.status === "loading"} placeholder="#해시태그" className="text-body-sm text-accent whitespace-pre-wrap mt-stack-tight" />
             {img && <img src={img} alt="" className="mt-stack-tight rounded-surface border border-border w-full max-h-80 object-cover" />}
             <div className="flex gap-stack-section mt-stack">{P(I.heart)}{P(I.chat)}{P(I.repost)}{P(I.send)}</div>
             <div className="text-subtle text-body-sm mt-stack-tight">답글 18개 · 좋아요 124개</div>
@@ -353,6 +364,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
           <div className="flex-1 min-w-0">
             <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="min-w-0 truncate text-subtle ml-micro">@{handle} · 1분</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
             <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-x" label="x 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.4] mt-micro" />
+        <EditablePreviewBody value={editor?.hashtags ?? ""} onChange={editor?.onHashtagsChange} testId="preview-tags-x" label="x 해시태그" locked={editor?.account.status === "loading"} placeholder="#해시태그" className="text-body-sm text-accent whitespace-pre-wrap mt-stack-tight" />
             {img && <img src={img} alt="" className="mt-stack-tight rounded-surface border border-border w-full max-h-80 object-cover" />}
             <div className="flex justify-between mt-stack text-subtle text-body-sm">
               <span className="flex items-center gap-stack-tight">{P(I.chat)}24</span><span className="flex items-center gap-stack-tight">{P(I.repost)}57</span>
@@ -367,6 +379,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
       <div className="bg-surface text-text rounded-control border border-border overflow-hidden">
         <div className="flex items-center gap-stack-tight px-stack pt-stack"><Av /><div className="min-w-0"><div className="truncate font-semibold text-body leading-tight">{handle}</div><div className="text-subtle text-caption">방금 · 전체 공개</div></div><div className="ml-auto text-subtle">{P(I.more)}</div></div>
         <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-facebook" label="facebook 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="px-stack py-stack-tight text-body whitespace-pre-wrap leading-snug" />
+        <EditablePreviewBody value={editor?.hashtags ?? ""} onChange={editor?.onHashtagsChange} testId="preview-tags-facebook" label="facebook 해시태그" locked={editor?.account.status === "loading"} placeholder="#해시태그" className="px-stack pb-stack-tight text-body-sm text-accent whitespace-pre-wrap" />
         {img && <img src={img} alt="" className="w-full max-h-80 object-cover" />}
         <div className="flex items-center justify-between px-stack py-stack-tight text-subtle text-body-sm border-b border-border"><span>반응 248</span><span>댓글 32 · 공유 12</span></div>
         <div className="flex text-subtle text-body-sm font-medium">{["좋아요", "댓글", "공유"].map((l) => <div key={l} className="flex-1 text-center py-stack-tight hover:bg-surface-2">{l}</div>)}</div>
