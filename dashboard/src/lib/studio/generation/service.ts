@@ -312,10 +312,13 @@ function llmFailure(error: StudioLlmExecutionError): StudioApiError {
     usage_ledger_unavailable: 503,
     queue_busy: 503,
   };
+  // 어느 규칙에서 걸렸는지를 함께 알린다. 이유 없는 실패는 매번 사람이 처음부터
+  // 추측하게 만들고, 그 추측에 드는 시간이 곧 고장 시간이다.
+  const detail = error.detail ? ` (${error.detail})` : "";
   return new StudioApiError({
     status: statuses[error.reason],
     code: `STUDIO_LLM_${error.reason.toUpperCase()}`,
-    message: messages[error.reason],
+    message: `${messages[error.reason]}${detail}`,
     retryable: error.retryable,
     details: { reason: error.reason },
   });

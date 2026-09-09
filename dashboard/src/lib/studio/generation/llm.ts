@@ -30,11 +30,20 @@ export type StudioLlmFailureReason =
   | "queue_busy";
 
 export class StudioLlmExecutionError extends Error {
+  /**
+   * detail 은 **어느 규칙에서 걸렸는지**다.
+   *
+   * 2026-09-09 영상 구조 초안이 계속 "콘텐츠 계약에 맞지 않아 저장하지 않았습니다" 로만
+   * 끝났다. 이 문장으로는 나조차 무엇이 틀렸는지 알 수 없었다. 계약을 검사하는 자리는
+   * 아홉 군데인데 실패는 한 가지 말로만 나왔기 때문이다. 실패가 원인을 안 데리고 나오면
+   * 한 번 실패할 때마다 사람이 처음부터 추측해야 한다.
+   */
   constructor(
     readonly reason: StudioLlmFailureReason,
     readonly retryable: boolean,
+    readonly detail?: string,
   ) {
-    super(reason);
+    super(detail ? `${reason}: ${detail}` : reason);
     this.name = "StudioLlmExecutionError";
   }
 }
@@ -264,7 +273,9 @@ function jsonObject(text: string): Record<string, unknown> {
   const trimmed = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   const start = trimmed.indexOf("{");
   const end = trimmed.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new StudioLlmExecutionError("invalid_output", true);
+  // 여는 괄호는 있는데 닫는 괄호가 없으면 대개 길이 상한에 걸려 잘린 것이다.
+  if (start >= 0 && end <= start) throw new StudioLlmExecutionError("invalid_output", true, "결과가 중간에 잘렸습니다(길이 상한 의심)");
+  if (start < 0 || end <= start) throw new StudioLlmExecutionError("invalid_output", true, "JSON 을 찾지 못했습니다");
   try {
     const value = JSON.parse(trimmed.slice(start, end + 1));
     if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("object required");
@@ -274,24 +285,30 @@ function jsonObject(text: string): Record<string, unknown> {
   }
 }
 
-function requiredText(value: unknown, min: number, max: number): string {
-  if (typeof value !== "string") throw new StudioLlmExecutionError("invalid_output", true);
+function requiredText(value: unknown, min: number, max: number, field = "값"): string {
+  if (typeof value !== "string") throw new StudioLlmExecutionError("invalid_output", true, `${field}이 글이 아닙니다`);
   const normalized = value.trim();
-  if (normalized.length < min || normalized.length > max) throw new StudioLlmExecutionError("invalid_output", true);
-  if (/[\u2014\u2013]/.test(normalized)) throw new StudioLlmExecutionError("invalid_output", true);
+  if (normalized.length < min || normalized.length > max) {
+    throw new StudioLlmExecutionError("invalid_output", true, `${field} 길이가 ${min}~${max}자를 벗어났습니다(${normalized.length}자)`);
+  }
+  if (/[\u2014\u2013]/.test(normalized)) throw new StudioLlmExecutionError("invalid_output", true, `${field}에 금지한 줄표가 있습니다`);
   return normalized;
 }
 
-function requiredTextList(value: unknown, minItems: number, maxItems: number): string[] {
+function requiredTextList(value: unknown, minItems: number, maxItems: number, field = "목록"): string[] {
   if (!Array.isArray(value) || value.length < minItems || value.length > maxItems) {
-    throw new StudioLlmExecutionError("invalid_output", true);
+    const count = Array.isArray(value) ? `${value.length}개` : "목록이 아님";
+    throw new StudioLlmExecutionError("invalid_output", true, `${field}이 ${minItems}~${maxItems}개여야 하는데 ${count}입니다`);
   }
-  return value.map((entry) => requiredText(entry, 3, 300));
+  return value.map((entry, index) => requiredText(entry, 3, 300, `${field} ${index + 1}번`));
 }
 
 export function parseCandidateOutput(text: string, forbiddenPhrases: readonly string[]): GeneratedCandidateContent[] {
   const raw = jsonObject(text).candidates;
-  if (!Array.isArray(raw) || raw.length !== 3) throw new StudioLlmExecutionError("invalid_output", true);
+  if (!Array.isArray(raw) || raw.length !== 3) {
+    const count = Array.isArray(raw) ? `${raw.length}개` : "후보 목록이 없음";
+    throw new StudioLlmExecutionError("invalid_output", true, `후보가 3개여야 하는데 ${count}입니다`);
+  }
   const expected = [
     { label: "A" as const, ordinal: 1 as const, angle: "problem_first" as const },
     { label: "B" as const, ordinal: 2 as const, angle: "proof_first" as const },
@@ -299,23 +316,28 @@ export function parseCandidateOutput(text: string, forbiddenPhrases: readonly st
   ];
   const candidates = expected.map((identity) => {
     const item = raw.find((entry) => entry !== null && typeof entry === "object" && (entry as Record<string, unknown>).label === identity.label);
-    if (!item || typeof item !== "object") throw new StudioLlmExecutionError("invalid_output", true);
+    if (!item || typeof item !== "object") {
+      throw new StudioLlmExecutionError("invalid_output", true, `${identity.label} 후보가 없습니다`);
+    }
     const record = item as Record<string, unknown>;
-    if (record.angle !== identity.angle) throw new StudioLlmExecutionError("invalid_output", true);
+    if (record.angle !== identity.angle) {
+      throw new StudioLlmExecutionError("invalid_output", true, `${identity.label} 후보의 관점이 ${identity.angle} 여야 하는데 ${String(record.angle)} 입니다`);
+    }
     return {
       ...identity,
-      title: requiredText(record.title, 4, 120),
-      rationale: requiredText(record.rationale, 20, 500),
-      outline: requiredTextList(record.outline, 3, 6),
+      title: requiredText(record.title, 4, 120, `${identity.label} 제목`),
+      rationale: requiredText(record.rationale, 20, 500, `${identity.label} 설명`),
+      outline: requiredTextList(record.outline, 3, 6, `${identity.label} 이야기 순서`),
     };
   });
   const signatures = candidates.map((candidate) => `${candidate.title}\n${candidate.outline.join("\n")}`.toLocaleLowerCase("ko-KR"));
   if (new Set(signatures).size !== 3 || new Set(candidates.map((candidate) => candidate.outline[0])).size !== 3) {
-    throw new StudioLlmExecutionError("invalid_output", true);
+    throw new StudioLlmExecutionError("invalid_output", true, "세 후보가 서로 충분히 다르지 않습니다");
   }
   const combined = signatures.join("\n");
-  if (forbiddenPhrases.some((phrase) => phrase.trim() && combined.includes(phrase.trim().toLocaleLowerCase("ko-KR")))) {
-    throw new StudioLlmExecutionError("invalid_output", true);
+  const hit = forbiddenPhrases.find((phrase) => phrase.trim() && combined.includes(phrase.trim().toLocaleLowerCase("ko-KR")));
+  if (hit) {
+    throw new StudioLlmExecutionError("invalid_output", true, `쓰면 안 되는 표현이 들어갔습니다: ${hit.trim()}`);
   }
   return candidates;
 }
