@@ -99,7 +99,11 @@ describe("학습 정보를 모델에게 넘기는 방식", () => {
     // 모델이 매번 다르게 고르고, 사용자는 문서를 고치기 전까지 이유를 알 수 없다.
     const out = describeLearningContext(full);
     expect(out).toContain("위 항목들이 서로 어긋나면 이 순서로 따르세요");
-    expect(out.indexOf("이 작업을 위해 방금 고른 값")).toBeLessThan(out.indexOf("예전에 써 둔 배경"));
+    // 안내 부분만 떼어 본다. 항목 이름에도 같은 말이 들어가므로 전체에서 찾으면 어긋난다.
+    const guide = out.split("위 항목들이 서로 어긋나면")[1] ?? "";
+    expect(guide.indexOf("이 작업을 위해 방금 고른 값")).toBeLessThan(guide.indexOf("예전에 써 둔 배경"));
+    // 이름과 안내가 같은 말을 써야 모델이 둘을 잇는다. 실측에서 이름이 안내를 이겼다.
+    expect(out).toContain("브랜드 문서 (예전에 써 둔 배경)");
   });
 
   it("JSON 덩어리가 아니라 사람이 읽는 줄로 나온다", () => {

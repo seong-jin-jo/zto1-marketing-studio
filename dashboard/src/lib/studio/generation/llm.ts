@@ -167,13 +167,20 @@ export function describeLearningContext(layers: GenerationRequest["learningConte
     labelledLine("누구에게 보여 주는가", layers.u3.audience),
     labelledLine("말투", layers.u3.tone),
     labelledLine("쓰면 안 되는 표현", layers.u3.forbiddenPhrases),
-    labelledLine("이 작업 공간이 사실이라고 확인한 것", layers.u3.workspaceFacts),
+    // 이름을 우선순위 안내와 똑같이 맞춘다.
+    //
+    // 2026-09-09 실측: 우선순위 안내를 넣었는데도 브랜드 문서 쪽 표현("회사를 손님으로
+    // 모십니다")이 계속 나왔다. 안내는 "브랜드 문서" 라고 부르는데 항목 이름은 "이 작업
+    // 공간이 사실이라고 확인한 것" 이었다. 모델이 둘을 같은 것으로 잇지 못했다.
+    // 게다가 "사실이라고 확인한 것" 은 그 자체로 가장 센 말이라, 3순위로 내리라는 안내와
+    // 정면으로 부딪혔다. 이름이 안내를 이긴다.
     labelledLine("이번에 요청한 것", layers.r6),
     // 그다음이 우리가 정한 규칙이다.
     labelledLine("지켜야 할 안전 규칙", layers.s0.safetyRules),
     labelledLine("따라야 할 구조 규칙", layers.x4.structureRules),
     labelledLine("지금까지 승인된 학습 규칙", layers.l5.acceptedRules),
     // 마지막이 배경이다.
+    labelledLine("브랜드 문서 (예전에 써 둔 배경)", layers.u3.workspaceFacts),
     labelledLine("시장 맥락", layers.s1.marketContext),
     labelledLine("언어와 접근성", {
       언어: layers.u2.locale,
@@ -200,7 +207,8 @@ export function describeLearningContext(layers: GenerationRequest["learningConte
     "1. 무엇을 위해·누구에게·말투·쓰면 안 되는 표현 (이 작업을 위해 방금 고른 값)",
     "2. 지켜야 할 안전 규칙과 구조 규칙",
     "3. 브랜드 문서와 시장 맥락 (예전에 써 둔 배경)",
-    "특히 업종이나 대상이 브랜드 문서의 서술과 다르면 위 1번을 따르고, 문서 쪽 표현은 쓰지 마세요.",
+    "특히 업종이나 대상이 브랜드 문서의 서술과 다르면 위 1번을 따르고, 문서 쪽 표현은 그대로 옮겨 쓰지 마세요.",
+    "예를 들어 대상이 동네 손님인데 문서에 회사 대상 표현이 있으면, 그 표현을 빼고 대상에 맞게 새로 쓰세요.",
   ].join("\n");
 }
 
