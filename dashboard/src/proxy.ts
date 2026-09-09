@@ -98,6 +98,10 @@ const TENANT_AWARE_PATHS = [
   "/api/studio/brand-setup",
   "/api/studio/commands",
   "/api/studio/drafts",
+  // 편집실에서 여러 줄을 한 번에 고쳐 달라고 말로 시키는 자리(회장 2026-09-09).
+  // 이 목록은 허용 목록이라, 새 라우트를 만들고 여기 안 넣으면 고객 화면에서 403 이 난다.
+  // 실제로 그렇게 냈다. 만들자마자 여기 한 줄을 함께 추가한다.
+  "/api/studio/edit-bulk",
   "/api/studio/drafts/[draftId]/editor",
   "/api/studio/drafts/[draftId]/enqueue",
   "/api/studio/engine-status",
