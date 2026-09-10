@@ -19,6 +19,7 @@ import {
 import { getAuthToken } from "@/lib/auth";
 import { workspaceDisplayName } from "@/lib/workspace-display-name";
 import { IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
+import { renderTextCard, themeFromPalette, type CardRatio } from "@/lib/studio/text-card-image";
 import {
   CARD_ASPECT_RATIOS,
   EDIT_BACKGROUNDS,
@@ -681,6 +682,41 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     })
     .filter((section) => section.lines.length > 0);
   const learnedRules = useLearnedRules(workspaceId ?? "");
+  const [textCardBusy, setTextCardBusy] = useState(false);
+  const [textCards, setTextCards] = useState<string[]>([]);
+  const [textCardError, setTextCardError] = useState<string | null>(null);
+
+  /**
+   * 고른 구조의 각 줄을 글자 카드 그림으로 만든다.
+   *
+   * 2026-09-10 회장 지적("왜 영상 이미지 등은 하나도 없냐") 실측: 카드뉴스 대표 이미지도
+   * 숏폼 영상도 전부 바깥 그림 생성기 하나를 거치는데 그 생성기가 서버에서 로그아웃
+   * 상태여서 그림이 한 장도 없었다. **볼 수 있는 결과물 전체가 바깥 기계 하나에 매달려
+   * 있었던 것이 진짜 문제다.**
+   *
+   * 이 길은 바깥 기계를 안 쓴다. 브라우저가 직접 그린다. 즉시 나오고 돈이 안 들고 브랜드
+   * 색이 정확하다. 사진이 필요한 카드는 여전히 생성기를 쓰면 된다. 둘 다 있어야 한 쪽이
+   * 자도 제품이 선다.
+   */
+  async function makeTextCards() {
+    const source = selectedCandidate?.format.outline?.length
+      ? selectedCandidate.format.outline
+      : (quickStructure?.outline ?? []);
+    if (!source.length) { setTextCardError("먼저 구조 초안을 하나 골라 주세요."); return; }
+    setTextCardError(null);
+    setTextCardBusy(true);
+    try {
+      const theme = themeFromPalette(learning.palette);
+      const ratio: CardRatio = "4:5";
+      const made = source
+        .map((line, index) => renderTextCard({ text: line, ratio, theme, index, total: source.length }))
+        .filter((one): one is string => Boolean(one));
+      if (!made.length) { setTextCardError("이 브라우저에서는 카드를 그릴 수 없습니다."); return; }
+      setTextCards(made);
+    } finally {
+      setTextCardBusy(false);
+    }
+  }
   const learningRows = [
     ["작업 공간", workspaceDisplayName(workspaceName)],
     // 업종 칸이 비면 브랜드 문서 전문(수백 자)을 업종 자리에 대신 넣고 있었다. 라벨은
@@ -931,12 +967,32 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                   {cardImageBusy ? "카드뉴스 이미지 만드는 중" : "카드뉴스 대표 이미지 만들기"}
                 </Button>
               ) : null}
+              <Button size="sm" variant="secondary" data-testid="create-text-card" onClick={() => void makeTextCards()} disabled={textCardBusy || cardImageBusy || videoBusy}>
+                {textCardBusy ? "글자 카드 만드는 중" : "글자 카드로 만들기 (바로·무료)"}
+              </Button>
               {onGenerateVideo ? (
                 <Button size="sm" variant="secondary" data-testid="create-video" onClick={() => void onGenerateVideo()} disabled={cardImageBusy || videoBusy}>
                   {videoBusy ? "숏폼 영상 만드는 중" : "숏폼 영상 만들기"}
                 </Button>
               ) : null}
             </div>
+            {textCardError ? (
+              <p className="text-caption text-warning" data-text-card-error>{textCardError}</p>
+            ) : null}
+            {textCards.length ? (
+              <section className="rounded-control border border-border bg-surface p-stack" data-text-card-result={textCards.length}>
+                <b className="block text-caption font-semibold text-text">글자 카드 {textCards.length}장</b>
+                <p className="mt-stack-tight text-caption text-subtle">
+                  브라우저가 바로 그린 그림입니다. 올릴 규격 그대로라 흐리지 않습니다.
+                </p>
+                <div className="mt-stack grid grid-cols-2 gap-stack-tight sm:grid-cols-3">
+                  {textCards.map((src, index) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={index} src={src} alt={`글자 카드 ${index + 1}장`} className="w-full rounded-control border border-border" data-text-card-image={index} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
             {/*
               만든 결과가 만든 자리에 안 보이면 고객은 만들어졌는지 알 수 없다. 실제로
               단추를 눌러 생성이 끝났는데 화면이 그대로라 "안 된다" 로 읽혔다
