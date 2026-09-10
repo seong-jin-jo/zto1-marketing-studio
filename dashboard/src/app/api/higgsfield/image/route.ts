@@ -2,6 +2,7 @@ import path from "path";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { signMediaToken } from "@/lib/media-token";
 import { runWithTenant } from "@/lib/tenant-context";
+import { toGeneratorRatio } from "@/lib/generator-aspect-ratio";
 import { hfRun, extractJson, findResultUrl, downloadTo, logGen, recordMediaGenerationEvent, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError, assertHiggsfieldReady, studioDir, assetUrl } from "@/lib/higgsfield";
 
 // POST /api/higgsfield/image — Soul V2 text→image. body: { prompt, aspectRatio?, quality?, label? }
@@ -44,7 +45,9 @@ export async function POST(request: Request) {
     mark("ready:ok");
     const { stdout } = await hfRun([
       "generate", "create", "text2image_soul_v2",
-      "--prompt", prompt, "--aspect_ratio", aspectRatio, "--quality", quality,
+      // 생성기가 아는 화면비로 옮겨 보낸다. 4:5 같은 우리 규격을 그대로 넘기면
+      // "Invalid values" 로 끝난다(2026-09-10 실측).
+      "--prompt", prompt, "--aspect_ratio", toGeneratorRatio(aspectRatio), "--quality", quality,
       "--wait", "--json",
     ]);
     mark("run:ok", `stdout=${stdout.length}`);
