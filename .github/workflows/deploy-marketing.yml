@@ -265,6 +265,15 @@ jobs:
             exit 0
           fi
           umask 077
+          # 생성기가 실제로 도는 자리에서 확인한다. 러너에 바이너리를 새로 깔아 확인하면
+          # "러너에서는 되는데 앱에서는 안 되는" 상태를 못 잡는다. 앱 컨테이너가 읽는 그
+          # 파일을, 앱 컨테이너 안에서 물어본다.
+          probe_generator() {
+            docker exec openclaw-dashboard-osmu higgsfield auth token >/dev/null 2>&1
+          }
+          container_up() {
+            [ "$(docker inspect -f '{{.State.Running}}' openclaw-dashboard-osmu 2>/dev/null)" = "true" ]
+          }
           mkdir -p "$HOME/.config/higgsfield" 2>/dev/null || true
           # compose 가 이 경로를 bind mount 하는데 없으면 docker 가 root 소유로 만들어 버린다.
           # 그래서 첫 시도가 Permission denied 로 죽었다(2026-09-06 run 34033442243 실측).
@@ -283,8 +292,22 @@ jobs:
           # 이미 쓸 수 있는 자격증명이 있으면 그대로 둔다. 새로 넣어야 할 때는
           # force_generator_credentials 입력으로 명시한다.
           CRED="$HOME/.config/higgsfield/credentials.json"
-          if [ -s "$CRED" ] && [ "${{ github.event.inputs.force_generator_credentials }}" != "true" ]; then
-            echo "생성기 자격증명이 이미 있음 — 덮어쓰지 않음 (강제하려면 force_generator_credentials=true)"
+          # ★"파일이 있다"와 "로그인이 살아 있다"는 다르다 (2026-09-10 회장 지적으로 발견).
+          # 종전에는 파일 존재만 보고 덮어쓰지 않았다. 그런데 갱신 토큰이 회전하면 이 파일은
+          # 남아 있는 채로 죽는다. 그러면 **영원히 죽은 파일을 지키게 된다.** 실제로 그렇게
+          # 됐고, 화면에는 몇 주째 그림이 한 장도 없었다. 아무도 몰랐다.
+          # 그래서 존재가 아니라 **작동**을 본다. 살아 있으면 그대로 두고, 죽었으면 시크릿
+          # 스냅샷으로 되살린다. 되살려도 안 되면 조용히 넘어가지 않고 크게 실패한다.
+          CRED_ALIVE=no
+          if [ -s "$CRED" ] && container_up; then
+            if probe_generator; then
+              CRED_ALIVE=yes
+            else
+              echo "::warning::생성기 자격증명 파일은 있는데 로그인이 죽어 있다. 시크릿으로 되살린다"
+            fi
+          fi
+          if [ "$CRED_ALIVE" = "yes" ] && [ "${{ github.event.inputs.force_generator_credentials }}" != "true" ]; then
+            echo "생성기 로그인이 살아 있음 — 덮어쓰지 않음"
           else
             # 값은 파일로만 흘린다. argv 나 로그에 남기지 않는다.
             printf '%s' "$HIGGSFIELD_CREDENTIALS_JSON" > "$CRED"
@@ -302,7 +325,33 @@ jobs:
             echo "::error::HIGGSFIELD_CREDENTIALS_JSON 형식이 올바르지 않음(access_token 없음)"
             exit 1
           fi
-          echo "생성기 자격증명 배치 완료"
+          # ★배치했다고 끝이 아니다. 실제로 통하는지 확인한다. 통하지 않는데 "배치 완료" 라고
+          # 말하면 그 거짓말이 몇 주를 간다. 이번에 정확히 그랬다.
+          if ! container_up; then
+            echo "::warning::앱 컨테이너가 아직 안 떠 있어 로그인 확인을 건너뛴다. 배포 뒤 확인 단계가 다시 본다."
+          elif probe_generator; then
+            echo "생성기 로그인 확인됨 (auth token 응답)"
+          else
+            echo "::error::생성기 자격증명을 배치했지만 로그인이 통하지 않는다. HIGGSFIELD_CREDENTIALS_JSON 시크릿이 만료됐을 수 있다. 회장 맥의 ~/.config/higgsfield/credentials.json 을 다시 넣어야 한다."
+            exit 1
+          fi
+
+      - name: 생성기 로그인 최종 확인 (배포 뒤)
+        # 배포가 끝난 뒤 한 번 더 본다. 자격증명 배치 단계에서는 컨테이너가 아직 옛 것이거나
+        # 안 떠 있을 수 있어 그때 통과해도 새 컨테이너에서 죽을 수 있다.
+        # **여기서 조용히 넘어가면 화면에 그림이 한 장도 없는 상태가 몇 주를 간다.**
+        # 실제로 그랬다(2026-09-10 회장 지적으로 발견). 그래서 실패를 눈에 띄게 남긴다.
+        if: ${{ always() && (github.event.inputs.services == '' || contains(github.event.inputs.services, 'osmu')) }}
+        run: |
+          if [ "$(docker inspect -f '{{.State.Running}}' openclaw-dashboard-osmu 2>/dev/null)" != "true" ]; then
+            echo "::warning::앱 컨테이너가 떠 있지 않아 생성기 확인을 못 했다"
+            exit 0
+          fi
+          if docker exec openclaw-dashboard-osmu higgsfield auth token >/dev/null 2>&1; then
+            echo "생성기 로그인 살아 있음 — 카드뉴스 이미지·숏폼 영상 생성 가능"
+          else
+            echo "::warning::생성기 로그인이 죽어 있다. 카드뉴스 사진 이미지와 숏폼 영상이 만들어지지 않는다. 글자 카드는 영향 없다. HIGGSFIELD_CREDENTIALS_JSON 시크릿 갱신이 필요하다."
+          fi
 
       - name: OSMU DB 스키마 read-only preflight
         # 일반 앱 배포는 DB DDL을 실행하지 않는다. 역사 migration wildcard
