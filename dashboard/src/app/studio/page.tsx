@@ -1338,15 +1338,34 @@ export default function StudioPage() {
 
   function chooseCandidate(candidate: StudioGenerationCandidate) {
     setSelectedCandidate(candidate);
-    const body = [candidate.title, candidate.rationale, ...candidate.format.outline].join("\n");
+    /*
+      ★rationale 은 **고객에게 보여 줄 글이 아니다.** "이 구조를 왜 골랐는가" 를 우리가
+      우리에게 설명하는 내부 메모다. 예: "결과(사례)를 먼저 보여줘서 신뢰를 쌓고, 그 사례가
+      가능했던 조건을 역순으로 설명해 상담 동기를 만듭니다."
+
+      그런데 이것을 본문에 그대로 끼워 넣고 있었다. 2026-09-11 품질 측정에서 저장된 글
+      15편 중 9편의 본문이 제목과 이 메모로 시작하고 있는 것을 찾았다. 그대로 발행하면
+      **고객의 독자가 우리 내부 메모를 읽는다.** 발행실 미리보기에도 그 줄이 그대로 떠
+      있었는데 나는 그것을 보고도 못 알아봤다.
+
+      본문은 제목과 이야기 순서로만 만든다. rationale 은 화면에서 "왜 이 구조인가" 를
+      설명하는 자리에만 쓴다.
+    */
+    const body = [candidate.title, ...candidate.format.outline].join("\n");
     setText({
       threads: body,
       x: trimToChannelLimit(body, "x"),
       facebook: body,
-      instagram: { caption: candidate.rationale, slides: candidate.format.outline, hashtags: [] },
-      shorts: { hook: candidate.title, body: candidate.format.outline.join("\n"), cta: candidate.rationale },
+      // 캡션도 본문이다. 내부 메모를 캡션으로 내보내면 같은 사고가 인스타그램에서 난다.
+      instagram: { caption: candidate.title, slides: candidate.format.outline, hashtags: [] },
+      // 마무리 문구도 독자가 읽는다. 이야기 순서의 마지막 줄을 쓴다.
+      shorts: {
+        hook: candidate.title,
+        body: candidate.format.outline.join("\n"),
+        cta: candidate.format.outline[candidate.format.outline.length - 1] ?? candidate.title,
+      },
     });
-    setEditLines([candidate.title, ...candidate.format.outline, candidate.rationale]);
+    setEditLines([candidate.title, ...candidate.format.outline]);
     /*
       2026-09-09 실사용에서 찾았다. 생성실에서 "글" 을 골라 구조를 고르고 편집실로 갔더니
       종류가 카드뉴스로 잡혔다. content_branch 는 text_image 와 video 둘뿐이라 글과
