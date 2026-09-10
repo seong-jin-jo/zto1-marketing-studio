@@ -234,7 +234,7 @@ export function describeLearningContext(layers: GenerationRequest["learningConte
  * 검사만 있고 지시가 없는 규칙은 규칙이 아니라 함정이다. 그래서 두 가지를 같이 한다.
  * 프롬프트에 대놓고 적고, 넣어 주는 학습 정보에서 줄표를 미리 걷어낸다.
  */
-const NO_DASH_RULE = "줄표(— 와 –)는 절대 쓰지 마세요. 대신 마침표, 쉼표, 괄호, 콜론으로 끊으세요. 줄표가 하나라도 있으면 결과 전체가 버려집니다.";
+export const NO_DASH_RULE = "줄표(— 와 –)는 절대 쓰지 마세요. 대신 마침표, 쉼표, 괄호, 콜론으로 끊으세요. 줄표가 하나라도 있으면 결과 전체가 버려집니다.";
 
 /** 넣어 주는 글에서 줄표를 걷어낸다. 금지한 것을 예시로 보여 주지 않기 위해서다. */
 export function withoutDashes(text: string): string {

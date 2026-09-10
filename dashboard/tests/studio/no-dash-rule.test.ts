@@ -21,6 +21,18 @@ describe("줄표 금지는 검사만이 아니라 지시도 한다", () => {
     expect((src.match(/^\s*NO_DASH_RULE,$/gm) ?? [])).toHaveLength(2);
   });
 
+  it("옛 글 변형 경로에도 같은 규칙이 들어간다", () => {
+    // 2026-09-11 실측: 새로 만든 글 셋 중 하나에 줄표가 있었다. 규칙을 v1 생성 경로에만
+    // 넣고 /api/studio/text 경로에는 안 넣었기 때문이다. **한 경로만 고치면 다른 경로로
+    // 그대로 샌다.** 오늘 성과 규칙에서도 똑같은 실수를 했다.
+    const route = readFileSync(
+      resolve(process.cwd(), "src/app/api/studio/text/route.ts"),
+      "utf8",
+    );
+    expect(route).toContain("NO_DASH_RULE");
+    expect(route).toContain("withoutDashes(guide)");
+  });
+
   it("넣어 주는 학습 정보에서 줄표를 걷어낸다", () => {
     expect((src.match(/withoutDashes\(describeLearningContext/g) ?? [])).toHaveLength(2);
   });

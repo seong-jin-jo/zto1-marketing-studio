@@ -5,6 +5,7 @@ import { generateText, sharedGenerationQuotaErrorResponse, sharedAiApprovalError
 import { fetchRepoFile } from "@/lib/github";
 import { CHANNEL_TEXT_LIMITS } from "@/lib/channel-text-limits";
 import { getLearnedRulesContext } from "@/lib/studio/learned-rules-context";
+import { NO_DASH_RULE, withoutDashes } from "@/lib/studio/generation/llm";
 
 // POST /api/studio/text — 글감 1개 → 플랫폼별 텍스트 변형(OSMU).
 // body: { idea, guide?, tenant_id?, context_sources? } 
@@ -60,11 +61,12 @@ export async function POST(request: Request) {
     }
   }
   const prompt = `너는 SNS 마케팅 카피라이터다. 아래 글감을 플랫폼 특성에 맞춰 변형하라.
-${guide ? `브랜드 톤 가이드:\n${guide}\n` : ""}${learnedRules}${wiki ? `\n=== 위키 참조(아래 사실에 근거해 작성, 없는 내용 지어내기 금지) ===\n${wiki}\n===\n` : ""}${extraContext ? `\n=== 추가 컨텍스트 (0차 multi-repo) ===\n${extraContext}\n===\n` : ""}
+${guide ? `브랜드 톤 가이드:\n${withoutDashes(guide)}\n` : ""}${learnedRules}${wiki ? `\n=== 위키 참조(아래 사실에 근거해 작성, 없는 내용 지어내기 금지) ===\n${wiki}\n===\n` : ""}${extraContext ? `\n=== 추가 컨텍스트 (0차 multi-repo) ===\n${extraContext}\n===\n` : ""}
 글감: "${idea}"
 ${structureGuide}
 
 규칙: 100% 한국어, AI가 쓴 티 금지, 후킹 첫 문장, 과한 이모지 금지.
+${NO_DASH_RULE}
 출력은 JSON만(다른 텍스트 없이):
 {
  "threads": "Threads용 본문 (${CHANNEL_TEXT_LIMITS.threads}자 이내, 구어체, 첫 줄 훅)",
