@@ -331,9 +331,14 @@ jobs:
             echo "::warning::앱 컨테이너가 아직 안 떠 있어 로그인 확인을 건너뛴다. 배포 뒤 확인 단계가 다시 본다."
           elif probe_generator; then
             echo "생성기 로그인 확인됨 (auth token 응답)"
-          else
-            echo "::error::생성기 자격증명을 배치했지만 로그인이 통하지 않는다. HIGGSFIELD_CREDENTIALS_JSON 시크릿이 만료됐을 수 있다. 회장 맥의 ~/.config/higgsfield/credentials.json 을 다시 넣어야 한다."
+          elif [ "${{ github.event.inputs.force_generator_credentials }}" = "true" ]; then
+            # 자격증명을 고치겠다고 명시하고 들어왔는데 안 고쳐졌다. 그때는 크게 실패한다.
+            echo "::error::생성기 자격증명을 배치했지만 로그인이 통하지 않는다. HIGGSFIELD_CREDENTIALS_JSON 시크릿이 만료됐다. 로컬에서 'gh secret set HIGGSFIELD_CREDENTIALS_JSON < ~/.config/higgsfield/credentials.json' 로 갱신해야 한다."
             exit 1
+          else
+            # 평소 배포까지 이 이유로 막지는 않는다. 그림 생성기가 죽었다고 앱 배포를 막으면
+            # 급한 수정이 못 나간다. 대신 경고를 남겨 조용히 묻히지 않게 한다.
+            echo "::warning::생성기 로그인이 통하지 않는다. 사진 카드와 숏폼 영상이 안 만들어진다(글자 카드는 영향 없음). HIGGSFIELD_CREDENTIALS_JSON 시크릿 갱신이 필요하다."
           fi
 
       - name: 생성기 로그인 최종 확인 (배포 뒤)
