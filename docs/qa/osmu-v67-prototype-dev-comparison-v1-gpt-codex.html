@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>OSMU v67 프로토타입·dev 실화면 비교</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #eef2f7;
+      --surface: #ffffff;
+      --text: #111827;
+      --muted: #64748b;
+      --border: #cbd5e1;
+      --accent: #2563eb;
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--page); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    header { position: sticky; top: 0; z-index: 10; padding: 20px 24px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,.96); }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    p { margin: 0; color: var(--muted); line-height: 1.6; }
+    main { display: grid; gap: 24px; padding: 24px; }
+    section { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+    .section-head { display: flex; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    h2 { margin: 0; font-size: 18px; }
+    .badge { align-self: center; padding: 6px 10px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; font-size: 12px; font-weight: 700; }
+    .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    figure { min-width: 0; margin: 0; padding: 16px; }
+    figure + figure { border-left: 1px solid var(--border); }
+    figcaption { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; font-size: 13px; font-weight: 700; }
+    figcaption span { color: var(--muted); font-weight: 500; }
+    .frame { height: 720px; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+    iframe { display: block; width: 100%; height: 100%; border: 0; }
+    img { display: block; width: 100%; height: auto; }
+    footer { padding: 0 24px 24px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+    @media (max-width: 900px) {
+      header, main { padding-left: 12px; padding-right: 12px; }
+      .pair { grid-template-columns: 1fr; }
+      figure + figure { border-top: 1px solid var(--border); border-left: 0; }
+      .frame { height: 640px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>OSMU v67 프로토타입·dev 실화면 비교</h1>
+    <p>왼쪽은 v67 디자인 정본 후보를 같은 방·뷰포트로 연 화면이고, 오른쪽은 현재 Next.js를 실제 렌더해 저장한 전체 화면입니다.</p>
+  </header>
+  <main>
+    <section>
+      <div class="section-head"><h2>편집실 1024</h2><span class="badge">직접 대조</span></div>
+      <div class="pair">
+        <figure>
+          <figcaption>프로토타입 <span>room=edit · vp=1024</span></figcaption>
+          <div class="frame"><iframe title="편집실 1024 프로토타입" src="../prototype/osmu-v67-edit-publish-hub-gpt-codex-20260902-0448.html?room=edit&amp;state=normal&amp;vp=1024&amp;kind=video"></iframe></div>
+        </figure>
+        <figure>
+          <figcaption>dev 실화면 <span>Chromium · 1024</span></figcaption>
+          <div class="frame"><img src="osmu-v67-build-evidence-20260902/edit-1024.png" alt="편집실 1024 dev 실화면"></div>
+        </figure>
+      </div>
+    </section>
+    <section>
+      <div class="section-head"><h2>편집실 390</h2><span class="badge">직접 대조</span></div>
+      <div class="pair">
+        <figure>
+          <figcaption>프로토타입 <span>room=edit · vp=390</span></figcaption>
+          <div class="frame"><iframe title="편집실 390 프로토타입" src="../prototype/osmu-v67-edit-publish-hub-gpt-codex-20260902-0448.html?room=edit&amp;state=normal&amp;vp=390&amp;kind=video"></iframe></div>
+        </figure>
+        <figure>
+          <figcaption>dev 실화면 <span>Chromium · 390</span></figcaption>
+          <div class="frame"><img src="osmu-v67-build-evidence-20260902/edit-390.png" alt="편집실 390 dev 실화면"></div>
+        </figure>
+      </div>
+    </section>
+    <section>
+      <div class="section-head"><h2>발행실 1024</h2><span class="badge">직접 대조</span></div>
+      <div class="pair">
+        <figure>
+          <figcaption>프로토타입 <span>room=publish · vp=1024</span></figcaption>
+          <div class="frame"><iframe title="발행실 1024 프로토타입" src="../prototype/osmu-v67-edit-publish-hub-gpt-codex-20260902-0448.html?room=publish&amp;state=normal&amp;vp=1024"></iframe></div>
+        </figure>
+        <figure>
+          <figcaption>dev 실화면 <span>Chromium · 1024</span></figcaption>
+          <div class="frame"><img src="osmu-v67-build-evidence-20260902/publish-1024.png" alt="발행실 1024 dev 실화면"></div>
+        </figure>
+      </div>
+    </section>
+    <section>
+      <div class="section-head"><h2>발행실 390</h2><span class="badge">직접 대조</span></div>
+      <div class="pair">
+        <figure>
+          <figcaption>프로토타입 <span>room=publish · vp=390</span></figcaption>
+          <div class="frame"><iframe title="발행실 390 프로토타입" src="../prototype/osmu-v67-edit-publish-hub-gpt-codex-20260902-0448.html?room=publish&amp;state=normal&amp;vp=390"></iframe></div>
+        </figure>
+        <figure>
+          <figcaption>dev 실화면 <span>Chromium · 390</span></figcaption>
+          <div class="frame"><img src="osmu-v67-build-evidence-20260902/publish-390.png" alt="발행실 390 dev 실화면"></div>
+        </figure>
+      </div>
+    </section>
+  </main>
+  <footer>
+    STAMP | line: v67build | 생성: 2026-09-02 09:29 KST | model: gpt-codex/gpt-5.6 | agent: code-builder | skill: 없음 | 근거: v67 프로토타입과 현재 Next.js Chromium 캡처 | 고민: 프로토타입과 dev 화면을 같은 방·뷰포트로 한 페이지에서 바로 비교하게 했다.<br>
+    SOURCES: ../prototype/osmu-v67-edit-publish-hub-gpt-codex-20260902-0448.html; osmu-v67-build-evidence-20260902/*.png<br>
+    MODEL: gpt-codex/gpt-5.6
+  </footer>
+</body>
+</html>

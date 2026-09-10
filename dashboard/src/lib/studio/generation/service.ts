@@ -299,6 +299,7 @@ function llmFailure(error: StudioLlmExecutionError): StudioApiError {
     provider_unavailable: "AI 생성 엔진이 응답하지 않았습니다",
     invalid_output: "AI 생성 결과가 콘텐츠 계약에 맞지 않아 저장하지 않았습니다",
     usage_ledger_unavailable: "AI 사용량 기록을 남길 수 없어 생성을 시작하지 않았습니다",
+    queue_busy: "지금 다른 생성이 밀려 있어 차례를 기다리다 멈췄습니다. 잠시 후 다시 시도해 주세요",
   };
   const statuses: Record<StudioLlmExecutionError["reason"], number> = {
     configuration_missing: 503,
@@ -309,11 +310,15 @@ function llmFailure(error: StudioLlmExecutionError): StudioApiError {
     provider_unavailable: 503,
     invalid_output: 502,
     usage_ledger_unavailable: 503,
+    queue_busy: 503,
   };
+  // 어느 규칙에서 걸렸는지를 함께 알린다. 이유 없는 실패는 매번 사람이 처음부터
+  // 추측하게 만들고, 그 추측에 드는 시간이 곧 고장 시간이다.
+  const detail = error.detail ? ` (${error.detail})` : "";
   return new StudioApiError({
     status: statuses[error.reason],
     code: `STUDIO_LLM_${error.reason.toUpperCase()}`,
-    message: messages[error.reason],
+    message: `${messages[error.reason]}${detail}`,
     retryable: error.retryable,
     details: { reason: error.reason },
   });

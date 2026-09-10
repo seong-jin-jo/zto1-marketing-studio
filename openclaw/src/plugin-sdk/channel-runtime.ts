@@ -21,3 +21,10 @@ export {
   keepHttpServerTaskAlive,
   waitUntilAbort,
 } from "./channel-lifecycle.core.js";
+
+// 번들된 채널 확장(bluebubbles 등)이 이 두 도우미를 이 배럴에서 가져온다.
+// 정의는 있는데 여기서 내보내지 않아 전체 빌드가 MISSING_EXPORT 로 깨져 있었다.
+export {
+  createPairingPrefixStripper,
+  createTextPairingAdapter,
+} from "../channels/plugins/pairing-adapters.js";

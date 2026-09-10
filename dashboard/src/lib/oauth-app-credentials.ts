@@ -225,7 +225,7 @@ export const OAUTH_CREDENTIAL_DEFINITIONS: Record<string, OAuthCredentialDefinit
     label: "Facebook",
     fields: [
       ...baseFields("FB_APP_ID", "FB_APP_SECRET", "App ID", "App Secret"),
-      { key: "configId", env: "FB_CONFIG_ID", label: "Configuration ID", secret: false },
+      { key: "configId", env: "FB_CONFIG_ID", label: "설정 식별자", secret: false },
     ],
     consoleUrl: "https://developers.facebook.com/apps/",
     docsUrl: "https://developers.facebook.com/docs/facebook-login/facebook-login-for-business",

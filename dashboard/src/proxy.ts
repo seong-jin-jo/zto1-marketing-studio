@@ -98,11 +98,30 @@ const TENANT_AWARE_PATHS = [
   "/api/studio/brand-setup",
   "/api/studio/commands",
   "/api/studio/drafts",
+  // 편집실에서 여러 줄을 한 번에 고쳐 달라고 말로 시키는 자리(회장 2026-09-09).
+  // 이 목록은 허용 목록이라, 새 라우트를 만들고 여기 안 넣으면 고객 화면에서 403 이 난다.
+  // 실제로 그렇게 냈다. 만들자마자 여기 한 줄을 함께 추가한다.
+  "/api/studio/edit-bulk",
   "/api/studio/drafts/[draftId]/editor",
   "/api/studio/drafts/[draftId]/enqueue",
   "/api/studio/engine-status",
+  // 만들기 전 비용 산정. 고객이 승인 여부를 판단하는 화면이 부르므로 테넌트 경로다
+  // (사업계획 v0.4 7절·10절의 비용 승인 관문).
+  "/api/studio/estimate",
+  // 고객이 자기 생성 이력을 보는 경로(회장 2026-09-06 확정).
+  "/api/studio/generation-history",
   "/api/studio/handoffs",
+  // 브랜드를 아는 일곱 칸의 서버 보관소. 고객 화면이 직접 읽고 쓰는 경로다.
+  // 여기 없으면 저장은 코드에 있는데 화면에서 403 이 나 브라우저에만 남는다(2026-09-07 실측).
+  "/api/studio/learning",
   "/api/studio/text",
+  // 2026-09-06 회장 확정으로 이미지·영상 생성을 고객에게 열었다. 두 라우트는
+  // effectiveTenantId 로 테넌트를 확인하고 사용량을 그 작업 공간에 남긴다.
+  "/api/higgsfield/image",
+  "/api/higgsfield/video",
+  // 만든 그림과 영상을 화면이 불러오는 경로. 여기 없으면 만들기는 되는데 화면에 안 뜬다
+  // (회장 2026-09-07 실사용). 라우트 자체가 tenant_id 를 요구하고 그 테넌트 폴더에서만 읽는다.
+  "/api/higgsfield/asset/[file]",
   "/api/suggestions",
   "/api/suggestions/enqueue",
   "/api/threads-username",

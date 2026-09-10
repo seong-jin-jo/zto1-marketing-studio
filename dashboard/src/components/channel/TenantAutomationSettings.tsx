@@ -34,7 +34,8 @@ export function TenantAutomationSettings({ channel }: { channel: string }) {
     try {
       await apiPost(`/api/channel-settings/${channel}`, { [key]: checked });
       await mutate();
-      showToast(`${key} ${checked ? "ON" : "OFF"}`, "success");
+      const label = AUTOMATION_FEATURES.find((feature) => feature.key === key)?.label || key;
+      showToast(`${label} ${checked ? "켬" : "끔"}`, "success");
     } catch (error) {
       showToast(`실패: ${(error as Error).message}`, "error");
     }
@@ -42,7 +43,7 @@ export function TenantAutomationSettings({ channel }: { channel: string }) {
 
   return (
     <div className="card p-stack-section">
-      <h3 className="text-body-sm font-medium text-muted mb-micro">Automation</h3>
+      <h3 className="text-body-sm font-medium text-muted mb-micro">자동화</h3>
       <p className="text-caption text-subtle mb-pad-inset">
         이 워크스페이스의 채널 자동화만 설정합니다.
       </p>
@@ -75,7 +76,7 @@ export function TenantAutomationSettings({ channel }: { channel: string }) {
                 <span className={`text-caption ${available ? "text-muted" : "text-subtle"}`}>
                   {feature.label}
                 </span>
-                {!available && <span className="text-caption text-subtle">Coming Soon</span>}
+                {!available && <span className="text-caption text-subtle">준비 중</span>}
               </div>
               <p className="text-caption text-subtle">{feature.description}</p>
             </div>

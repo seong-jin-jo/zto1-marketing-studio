@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const error = url.searchParams.get("error");
 
   if (error) {
-    return new Response(`<h2>Figma OAuth Error: ${error}</h2><p><a href='javascript:window.close()'>Close</a></p>`, {
+    return new Response(`<h2>Figma OAuth 오류: ${error}</h2><p><a href='javascript:window.close()'>닫기</a></p>`, {
       status: 400,
       headers: { "Content-Type": "text/html" },
     });
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   // Load stored state
   const oauthState = readJson<Record<string, string>>(dataPath("figma-oauth-state.json"));
   if (!oauthState || oauthState.state !== state) {
-    return new Response("<h2>State mismatch</h2>", { status: 400, headers: { "Content-Type": "text/html" } });
+    return new Response("<h2>인증 상태가 일치하지 않습니다</h2>", { status: 400, headers: { "Content-Type": "text/html" } });
   }
 
   try {
@@ -80,7 +80,7 @@ export async function GET(request: Request) {
     </main></body></html>`;
     return new Response(html, { headers: { "Content-Type": "text/html" } });
   } catch (e) {
-    return new Response(`<h2>Token exchange failed: ${e}</h2>`, {
+    return new Response(`<h2>토큰 교환 실패: ${e}</h2>`, {
       status: 500,
       headers: { "Content-Type": "text/html" },
     });

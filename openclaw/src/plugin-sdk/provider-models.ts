@@ -48,8 +48,10 @@ export {
   buildMistralModelDefinition,
   MISTRAL_BASE_URL,
   MISTRAL_DEFAULT_MODEL_ID,
-  MISTRAL_DEFAULT_MODEL_REF,
 } from "../../extensions/mistral/model-definitions.js";
+// 이 상수는 model-definitions 가 아니라 onboard 에 있다. 잘못된 경로를 가리켜
+// 전체 빌드가 MISSING_EXPORT 로 깨져 있었다.
+export { MISTRAL_DEFAULT_MODEL_REF } from "../../extensions/mistral/onboard.js";
 export {
   buildModelStudioDefaultModelDefinition,
   buildModelStudioModelDefinition,
@@ -58,8 +60,8 @@ export {
   MODELSTUDIO_DEFAULT_MODEL_REF,
   MODELSTUDIO_GLOBAL_BASE_URL,
 } from "../../extensions/modelstudio/model-definitions.js";
-export { MOONSHOT_BASE_URL } from "../../extensions/moonshot/provider-catalog.js";
-export { MOONSHOT_CN_BASE_URL } from "../../extensions/moonshot/onboard.js";
+// 두 상수 모두 provider-catalog 에 있다. CN 쪽만 onboard 를 가리켜 깨져 있었다.
+export { MOONSHOT_BASE_URL, MOONSHOT_CN_BASE_URL } from "../../extensions/moonshot/provider-catalog.js";
 export {
   buildXaiModelDefinition,
   XAI_BASE_URL,

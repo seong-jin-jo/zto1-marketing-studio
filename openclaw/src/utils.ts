@@ -219,3 +219,25 @@ export const CONFIG_DIR = resolveConfigDir();
 export async function pathExists(targetPath: string): Promise<boolean> {
   return await fsSafePathExists(targetPath);
 }
+
+/**
+ * 터미널 하이퍼링크(OSC 8) 문자열을 만든다.
+ *
+ * src/terminal/links.ts 가 이 이름을 가져다 쓰는데 정의가 없어 게이트웨이 전체 빌드가
+ * MISSING_EXPORT 로 깨져 있었다. 두 호출부의 계약(label, url, { fallback, force })
+ * 그대로 구현한다. 링크를 못 그리는 곳에서는 fallback 을 그대로 돌려주므로 표시가
+ * 깨지지 않는다. force 는 TTY 판정을 건너뛴다.
+ */
+export function formatTerminalLink(
+  label: string,
+  url: string,
+  opts?: { fallback?: string; force?: boolean },
+): string {
+  const fallback = opts?.fallback ?? label;
+  const supported = opts?.force === true
+    || (typeof process !== "undefined" && Boolean(process.stdout?.isTTY));
+  if (!supported) return fallback;
+  const OSC = "\u001B]";
+  const BEL = "\u0007";
+  return `${OSC}8;;${url}${BEL}${label}${OSC}8;;${BEL}`;
+}

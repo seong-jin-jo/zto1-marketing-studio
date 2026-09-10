@@ -9,6 +9,7 @@ import { SCHEDULABLE_PLATFORMS, SCHEDULABLE_PLATFORM_LABELS } from "../../src/li
 // "그 fail-open 패턴이 다시 들어오지 않는지"를 고정한다(리액트 렌더 테스트가 아니라 텍스트 계약).
 const SRC = readFileSync(resolve(__dirname, "../../src/components/shared/AuthGate.tsx"), "utf-8");
 
+// 2026-09-08: 링크드인 텍스트 발행을 구현해 /api/publish 가 분기 처리한다. 여덟에서 아홉이 됐다.
 describe("AuthGate — fail-open 회귀 방지 계약(소스 기반)", () => {
   it("poll()의 401 분기는 역할별 재인증으로 닫히고 ok로 fail-open하지 않는다", () => {
     const branch = SRC.match(/res\.status === 401([\s\S]{0,240})return;/)?.[1] || "";
@@ -16,8 +17,18 @@ describe("AuthGate — fail-open 회귀 방지 계약(소스 기반)", () => {
     expect(branch).not.toContain('setGateStatus("ok")');
   });
 
-  it("poll()의 !res.ok(403/5xx 등) 분기는 service_error로 설정하고 ok로 fail-open하지 않는다", () => {
-    expect(SRC).toMatch(/if \(!res\.ok\)[\s\S]{0,200}setGateStatus\("service_error"\)/);
+  // 2026-09-05: 상태 검사가 서버 오류로 한 번 실패했다고 곧장 화면을 막지는 않는다.
+  // 배포 중 컨테이너 재시작으로 한 번 실패하자 작업 화면이 통째로 덮였고, 바로 뒤 같은
+  // 토큰으로 부르면 정상이었다. 그래서 5xx 만 한 번 더 물어본다. 그러나 fail-open 은
+  // 여전히 금지다. 재시도까지 실패하면 반드시 service_error 로 닫혀야 한다.
+  it("poll()의 응답 실패 분기는 재시도 뒤에도 실패하면 service_error로 닫고 ok로 fail-open하지 않는다", () => {
+    const guard = SRC.match(/if \(!statusRes\.ok\) \{\s*setVerifiedAccessKey\(requestAccessKey\);\s*setGateStatus\("service_error"\);/);
+    expect(guard, "응답이 실패로 남으면 service_error 로 닫는 자리가 있어야 한다").toBeTruthy();
+    // 재시도는 서버 오류에만 허용한다. 권한 거부까지 다시 물으면 막아야 할 것을 늦게 막는다.
+    expect(SRC).toContain("statusRes.status >= 500");
+    // 실패 응답을 받고 곧바로 통과시키는 자리가 없어야 한다.
+    const failBlock = SRC.slice(SRC.indexOf("let statusRes = res;"), SRC.indexOf("const data = await statusRes.json()"));
+    expect(failBlock).not.toContain('setGateStatus("ok")');
   });
 
   it("poll()의 catch(네트워크 오류) 분기는 service_error로 설정하고 ok로 fail-open하지 않는다", () => {
@@ -143,7 +154,7 @@ describe("AuthGate — 채널 수량 과장 회귀 방지 계약(SCHEDULABLE_PLA
 
   it("예약 발행 미지원 채널(연결 전용·미연결 포함)이 발행 지원처럼 재등장하지 않는다", () => {
     const banned = [
-      "LinkedIn", "Pinterest", "Tumblr", "TikTok", "YouTube", "Naver Blog", "LINE",
+      "Pinterest", "Tumblr", "TikTok", "YouTube", "Naver Blog", "LINE",
       "Medium", "Substack", "Kakao", "RSS", "Custom API",
     ];
     const block = iconsBlock();

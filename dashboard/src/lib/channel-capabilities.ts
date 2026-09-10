@@ -138,30 +138,31 @@ export const CHANNEL_CAPABILITIES: Record<string, ChannelCapability> = {
 };
 
 export const CHANNEL_TAB_LABELS: Record<ChannelTab, string> = {
-  queue: "Queue",
-  analytics: "Analytics",
-  growth: "Growth",
-  popular: "Popular",
-  settings: "Settings",
-  editor: "Editor",
+  queue: "대기열",
+  analytics: "성과 분석",
+  growth: "성장",
+  popular: "인기글",
+  settings: "설정",
+  editor: "편집기",
 };
 
 const CHANNEL_GROUP_DEFINITIONS = [
   {
     key: "social",
-    title: "Social",
-    channels: ["threads", "x", "instagram", "facebook", "bluesky"],
+    title: "소셜",
+    // 2026-09-08: 링크드인 텍스트 발행을 구현해 발행실에 함께 노출한다.
+    channels: ["threads", "x", "instagram", "facebook", "linkedin", "bluesky"],
     studioPublish: true,
   },
   {
     key: "messaging",
-    title: "Messaging",
+    title: "메시지",
     channels: ["telegram", "discord", "slack"],
     studioPublish: true,
   },
   {
     key: "video",
-    title: "Video",
+    title: "영상",
     channels: ["youtube", "tiktok"],
     studioPublish: false,
   },

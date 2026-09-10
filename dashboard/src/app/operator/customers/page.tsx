@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { fetcher, isAuthRequiredError } from "@/lib/api";
 import { authHeaders } from "@/lib/auth";
 import { OperationalIncidentPanel } from "@/components/operator/OperationalIncidentPanel";
+import { confirmAction } from "@/components/shared/ConfirmHost";
 
 interface Customer {
   id: string;
@@ -14,6 +15,8 @@ interface Customer {
   tier: string;
   owner_auth_id: string | null;
   created_at: string;
+  last_accessed_at: string | null;
+  recent_access_days_30: number | null;
   shared_cli_approved_at: string | null;
   integrations: Array<{ kind: string; label: string | null; has_secret: boolean; connected_at?: string | null }>;
   channel_accounts?: Array<{ provider: string; account_count: number; default_username: string | null; last_connected_at: string | null }>;
@@ -266,7 +269,7 @@ export default function OperatorCustomersPage() {
 
   async function deleteCredentialSet(item: OAuthProviderStatus) {
     if (busyProvider || item.source !== "db" || item.unavailableReason) return;
-    if (!window.confirm(`${item.label}의 Admin DB 저장값을 삭제하고 운영 환경변수 fallback으로 되돌릴까요?`)) return;
+    if (!(await confirmAction({ title: `${item.label} 저장값을 지울까요?`, description: "관리 화면에 저장한 값을 지우고 서버 환경설정 값으로 돌아갑니다. 지운 값은 되돌릴 수 없고 다시 입력해야 합니다.", confirmLabel: "저장값 지우기", destructive: true }))) return;
     setBusyProvider(item.provider);
     setOauthActionMsg((current) => ({ ...current, [item.provider]: "" }));
     try {
@@ -419,7 +422,7 @@ export default function OperatorCustomersPage() {
                 className="mt-stack space-y-stack"
               >
                 <div>
-                  <p className="text-caption font-medium uppercase tracking-wide text-subtle">Callback URL</p>
+                  <p className="text-caption font-medium uppercase tracking-wide text-subtle">콜백 주소</p>
                   <div className="mt-micro flex items-start gap-stack-tight">
                     <code className="min-w-0 flex-1 break-all rounded-chip bg-surface-2 px-stack-tight py-stack-tight text-caption text-muted">
                       {item.callbackUrl}
@@ -435,7 +438,7 @@ export default function OperatorCustomersPage() {
                 </div>
                 <div>
                   <div className="flex items-center justify-between gap-stack-tight">
-                    <p className="text-caption font-medium uppercase tracking-wide text-subtle">Required fields</p>
+                    <p className="text-caption font-medium uppercase tracking-wide text-subtle">필수 항목</p>
                     {revealedValues[item.provider] ? (
                       <button type="button" onClick={() => hideCredentialValues(item.provider)} className="text-caption text-danger hover:underline">
                         숨기기
@@ -498,7 +501,7 @@ export default function OperatorCustomersPage() {
                   </div>
                 </div>
                 <div>
-                  <p className="text-caption font-medium uppercase tracking-wide text-subtle">Console setup</p>
+                  <p className="text-caption font-medium uppercase tracking-wide text-subtle">콘솔 설정</p>
                   <ol className="mt-micro list-decimal space-y-micro pl-pad-inset text-caption leading-relaxed text-subtle">
                     {item.setupSteps.map((step) => <li key={step}>{step}</li>)}
                   </ol>
@@ -550,7 +553,7 @@ export default function OperatorCustomersPage() {
 
       <section className="mb-stack-section">
         <div className="flex items-center justify-between mb-stack">
-          <h3 className="text-body-sm font-semibold text-text">Auth 가입자</h3>
+          <h3 className="text-body-sm font-semibold text-text">인증 가입자</h3>
           <span className="text-caption text-subtle">{authUsers.length}명</span>
         </div>
         <div className="grid gap-stack-tight">
@@ -651,8 +654,16 @@ export default function OperatorCustomersPage() {
                   <p className="text-caption text-subtle">가입 {fmtDate(c.created_at)} · auth {c.owner_auth_id || "-"}</p>
                 </div>
                 <div className="text-right text-caption text-subtle">
-                  <p>최근 사용 {fmtDate(c.last_usage_at)}</p>
-                  <p>이벤트 {c.usage_events_count} · 초안 {c.drafts_count} · 발행 {c.published_count} · 실패 {c.failed_count}</p>
+                  {c.last_accessed_at ? (
+                    <>
+                      <p>최근 접속 {fmtDate(c.last_accessed_at)}</p>
+                      <p>{c.recent_access_days_30 == null ? "최근 30일 접속 기록 없음" : `최근 30일 접속 ${c.recent_access_days_30}일`}</p>
+                    </>
+                  ) : (
+                    <p>접속 기록 없음</p>
+                  )}
+                  <p>최근 AI 사용 {fmtDate(c.last_usage_at)}</p>
+                  <p>AI 사용 기록 {c.usage_events_count} · 초안 {c.drafts_count} · 발행 {c.published_count} · 실패 {c.failed_count}</p>
                   <p>생성 {c.generations_used ?? 0} · 쇼츠 {c.shorts_used ?? 0}</p>
                 </div>
               </div>

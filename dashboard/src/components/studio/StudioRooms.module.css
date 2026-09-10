@@ -1,0 +1,64 @@
+.editRoomGrid {
+  display: grid;
+  gap: var(--stack-section);
+  min-width: 0;
+}
+
+.editWorkbench {
+  display: grid;
+  gap: var(--pad-inset);
+  min-width: 0;
+}
+
+.editOutline {
+  border-bottom: 1px solid var(--border);
+}
+
+.editOutline :global(.ds-label-fill) span {
+  overflow-wrap: anywhere;
+}
+
+.editHelper {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--pad-inset);
+}
+
+.editHelperFooter {
+  display: grid;
+  gap: var(--stack-tight);
+  margin-top: auto;
+}
+
+@media (min-width: 51.25rem) {
+  .editWorkbench {
+    grid-template-columns: 11rem minmax(0, 1fr);
+  }
+
+  .editOutline {
+    border-right: 1px solid var(--border);
+    border-bottom: 0;
+  }
+}
+
+@media (min-width: 64rem) {
+  .editRoomGrid {
+    grid-template-columns: minmax(0, 1fr) 15.5rem;
+  }
+}
+
+@media (max-width: 63.99rem) {
+  .editHelper {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    max-height: 10.5rem;
+    border-radius: var(--shape-surface) var(--shape-surface) 0 0;
+    box-shadow: 0 -8px 24px color-mix(in srgb, var(--text) 10%, transparent);
+  }
+
+  .editHelperActions {
+    display: none;
+  }
+}

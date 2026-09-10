@@ -61,7 +61,7 @@ export async function GET(request: Request) {
     });
   }
   if (post.status === "failed") {
-    return Response.json({ ok: false, status: "failed", publishId, error: "TikTok 영상 처리에 실패했습니다. 영상 규격과 계정 권한을 확인해주세요." }, { status: 502 });
+    return Response.json({ status: "failed", publishId, error: "TikTok 영상 처리에 실패했습니다. 영상 규격과 계정 권한을 확인해주세요." }, { status: 502 });
   }
 
   // account_id는 예약을 만든 실제 TikTok 계정이다. UI 선택값/기본계정이 이후 바뀌어도 이 작업의
@@ -145,7 +145,7 @@ export async function GET(request: Request) {
     } catch {
       return Response.json({ error: "TikTok 실패 상태를 저장하지 못했습니다. 잠시 후 다시 확인해주세요." }, { status: 503 });
     }
-    return Response.json({ ok: false, status: "failed", publishId, error: "TikTok 영상 처리에 실패했습니다. 영상 규격과 계정 권한을 확인해주세요." }, { status: 502 });
+    return Response.json({ status: "failed", publishId, error: "TikTok 영상 처리에 실패했습니다. 영상 규격과 계정 권한을 확인해주세요." }, { status: 502 });
   }
 
   return Response.json({ ok: true, status: "processing", publishId }, { status: 202 });

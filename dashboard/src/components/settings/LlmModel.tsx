@@ -33,12 +33,12 @@ export function LlmModel() {
     finally { setSaving(false); }
   };
 
-  if (!llm) return <div className="card p-stack-section"><p className="text-caption text-subtle">Loading...</p></div>;
+  if (!llm) return <div className="card p-stack-section"><p className="text-caption text-subtle">불러오는 중...</p></div>;
 
   return (
     <div className="card p-stack-section">
       <div className="flex items-center justify-between mb-pad-inset">
-        <h3 className="text-body-sm font-medium text-muted">LLM Model</h3>
+        <h3 className="text-body-sm font-medium text-muted">LLM 모델</h3>
         <div className="flex items-center gap-stack-tight">
           {hasConfig && (
             <span className="text-caption px-stack-tight py-micro rounded-pill bg-success/15 text-success">{primary.split("/").pop()}</span>
@@ -63,14 +63,14 @@ export function LlmModel() {
         </div>
         {Object.keys(jobModels).length > 0 && (
           <div className="border-t border-border/50 pt-stack">
-            <p className="text-caption text-subtle uppercase tracking-wide mb-stack-tight">Per-Job Override</p>
+            <p className="text-caption text-subtle uppercase tracking-wide mb-stack-tight">작업별 모델 선택</p>
             <div className="space-y-stack-tight">
               {Object.entries(jobModels).map(([job, model]) => (
                 <div key={job} className="flex items-center justify-between gap-stack-tight">
                   <span className="text-caption text-subtle flex-shrink-0 w-40 truncate">{job}</span>
                   {editable ? (
                     <select value={jobOverrides[job] ?? model ?? ""} onChange={(e) => setJobOverrides((prev) => ({ ...prev, [job]: e.target.value }))} className="flex-1 bg-surface border border-border rounded-chip px-stack-tight py-micro text-caption text-muted font-mono">
-                      <option value="">Default ({selectedPrimary.split("/").pop()})</option>
+                      <option value="">기본값 ({selectedPrimary.split("/").pop()})</option>
                       {available.filter((m) => m !== selectedPrimary).map((m) => <option key={m} value={m}>{m.split("/").pop()}</option>)}
                     </select>
                   ) : (

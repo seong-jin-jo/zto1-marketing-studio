@@ -5,6 +5,7 @@ import { CH_LABELS } from "@/lib/constants";
 import { CHANNEL_GROUPS } from "@/lib/channel-capabilities";
 import { getChannelIcon } from "@/lib/channel-icons";
 import Link from "next/link";
+import { connectionLabel } from "@/lib/channel-connection-label";
 
 // 발행 채널 그룹은 constants의 PUBLISH_CHANNEL_GROUPS 단일 소스를 사용(사이드바와 동일).
 const GROUPS = CHANNEL_GROUPS;
@@ -22,7 +23,7 @@ function ChRow({ channelKey, label, sub, connected }: {
         </div>
       </div>
       <span className={`text-caption ${connected ? "text-success" : "text-accent"}`}>
-        {connected ? "Connected" : "연결 →"}
+        {connected ? connectionLabel({ connected: true }) : "연결 →"}
       </span>
     </Link>
   );

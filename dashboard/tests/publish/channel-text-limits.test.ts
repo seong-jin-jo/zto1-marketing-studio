@@ -16,14 +16,13 @@ describe("채널 글자수 SSOT", () => {
     expect(CHANNEL_TEXT_LIMITS).toMatchObject({
       x: 280,
       threads: 500,
-      facebook: 63_206,
       instagram: 2_200,
       linkedin: 3_000,
       bluesky: 300,
     });
     expect(CHANNEL_TEXT_LIMIT_SOURCES.x).toMatch(/^https:\/\/docs\.x\.com\//);
     expect(CHANNEL_TEXT_LIMIT_SOURCES.threads).toMatch(/^https:\/\/developers\.facebook\.com\//);
-    expect(CHANNEL_TEXT_LIMIT_SOURCES.facebook).toMatch(/^https:\/\/developers\.facebook\.com\//);
+    expect(CHANNEL_TEXT_LIMITS).not.toHaveProperty("facebook");
     expect(CHANNEL_TEXT_LIMIT_SOURCES.bluesky).toMatch(/^https:\/\/docs\.bsky\.app\//);
   });
 
@@ -46,12 +45,12 @@ describe("채널 글자수 SSOT", () => {
     expect(studio).toContain('p === "facebook"');
     expect(studio).toContain("text.facebook");
     expect(preview).toContain("text.facebook");
-    expect(preview).toContain("@/lib/channel-text-limits");
+    expect(preview).toContain("@/lib/studio/platform-publish-fields");
     expect(preview).toContain("data-testid={`character-count-${p}`}");
   });
 });
 
-describe("Threads·Facebook 외부 발행 전 상한 차단", () => {
+describe("Threads 외부 발행 상한과 Facebook 미확정 상한", () => {
   it("Threads 500자 초과는 신원 조회나 container 생성 전에 거부한다", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -63,8 +62,8 @@ describe("Threads·Facebook 외부 발행 전 상한 차단", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("Facebook 63,206자 초과는 Graph API 호출 전에 거부한다", async () => {
-    const fetchMock = vi.fn();
+  it("Facebook은 확인되지 않은 63,206자 상한으로 외부 발행을 막지 않는다", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "post-1" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await publishFacebook(
@@ -72,8 +71,7 @@ describe("Threads·Facebook 외부 발행 전 상한 차단", () => {
       "a".repeat(63_207),
     );
 
-    expect(result).toMatchObject({ ok: false });
-    expect(result.error).toContain("63206");
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ ok: true, externalId: "post-1" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -32,15 +32,15 @@ export function AIEngine() {
 
   return (
     <div className="card p-stack-section">
-      <h3 className="text-body-sm font-medium text-muted mb-stack">Runtime</h3>
+      <h3 className="text-body-sm font-medium text-muted mb-stack">실행 환경</h3>
       <div className="grid grid-cols-2 gap-stack-tight">
         <button onClick={() => handleModeSwitch("gateway")} disabled={switching} className={`p-stack rounded-chip border text-left transition-colors disabled:opacity-50 ${mode === "gateway" ? "border-accent bg-accent-soft" : "border-border hover:border-border"}`}>
           <div className="text-caption font-medium text-muted">OpenClaw Gateway</div>
-          <div className="text-caption text-subtle mt-micro">Extra Usage 과금</div>
+          <div className="text-caption text-subtle mt-micro">추가 사용량 과금</div>
         </button>
         <button onClick={() => handleModeSwitch("cli")} disabled={switching} className={`p-stack rounded-chip border text-left transition-colors disabled:opacity-50 ${mode === "cli" ? "border-success bg-success/10" : "border-border hover:border-border"}`}>
           <div className="text-caption font-medium text-muted">Claude CLI</div>
-          <div className="text-caption text-success/70 mt-micro">Plan Usage (Max Plan)</div>
+          <div className="text-caption text-success/70 mt-micro">요금제 사용량 (Max 요금제)</div>
         </button>
       </div>
       {switching && <p className="text-caption text-warning mt-stack-tight">전환 중... Gateway 재시작 포함 (~15초)</p>}

@@ -7,16 +7,18 @@ import { PUBLISH_CHANNEL_GROUPS, SCHEDULABLE_PLATFORMS, CH_LABELS } from "@/lib/
 // it was publish-ready when POST /api/publish would just reject with "{platform} 미지원".
 // This test locks PUBLISH_CHANNEL_GROUPS to exactly the 8 directly-publishable channels.
 
-const UNSUPPORTED = ["linkedin", "pinterest", "tumblr", "tiktok", "youtube", "naver_blog", "line"];
+// 2026-09-08: linkedin 은 텍스트 발행 구현으로 지원 채널이 됐다. 미지원 목록에서 뺀다.
+const UNSUPPORTED = ["pinterest", "tumblr", "tiktok", "youtube", "naver_blog", "line"];
 
-describe("PUBLISH_CHANNEL_GROUPS — 직접 발행 가능 8채널만 노출", () => {
+// 2026-09-08: 링크드인 텍스트 발행을 구현해 /api/publish 가 분기 처리한다. 여덟에서 아홉이 됐다.
+describe("PUBLISH_CHANNEL_GROUPS — 직접 발행 가능 9채널만 노출", () => {
   it("그룹 내 채널 전체가 SCHEDULABLE_PLATFORMS(=/api/publish 실지원)와 정확히 일치한다", () => {
     const flat = PUBLISH_CHANNEL_GROUPS.flatMap((g) => [...g.channels]).sort();
     expect(flat).toEqual([...SCHEDULABLE_PLATFORMS].sort());
-    expect(flat).toHaveLength(8);
+    expect(flat).toHaveLength(9);
   });
 
-  it("미지원 7채널(OAuth 앱은 등록됐지만 실발행 분기 없음)은 어떤 그룹에도 없다", () => {
+  it("미지원 6채널(OAuth 앱은 등록됐지만 실발행 분기 없음)은 어떤 그룹에도 없다", () => {
     const flat = PUBLISH_CHANNEL_GROUPS.flatMap((g) => [...g.channels]);
     for (const u of UNSUPPORTED) {
       expect(flat, `${u}는 노출되면 안 됨`).not.toContain(u);
@@ -30,10 +32,10 @@ describe("PUBLISH_CHANNEL_GROUPS — 직접 발행 가능 8채널만 노출", ()
     expect(keys.sort()).toEqual(["messaging", "social"].sort());
   });
 
-  it("social 그룹 = threads/x/instagram/facebook/bluesky, messaging 그룹 = telegram/discord/slack", () => {
+  it("social 그룹 = threads/x/instagram/facebook/linkedin/bluesky, messaging 그룹 = telegram/discord/slack", () => {
     const social = PUBLISH_CHANNEL_GROUPS.find((g) => g.key === "social");
     const messaging = PUBLISH_CHANNEL_GROUPS.find((g) => g.key === "messaging");
-    expect([...(social?.channels ?? [])].sort()).toEqual(["bluesky", "facebook", "instagram", "threads", "x"].sort());
+    expect([...(social?.channels ?? [])].sort()).toEqual(["bluesky", "facebook", "instagram", "linkedin", "threads", "x"].sort());
     expect([...(messaging?.channels ?? [])].sort()).toEqual(["discord", "slack", "telegram"].sort());
   });
 

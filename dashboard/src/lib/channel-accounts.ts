@@ -23,12 +23,36 @@ export interface ChannelAccountRow {
   token_expires_at: string | null;
   created_at: string;
   updated_at: string;
+  connection_state: "connected" | "reconnect";
+  can_be_default: boolean;
+  default_blocked_reason: DefaultAccountBlockedReason | null;
+}
+
+export type DefaultAccountBlockedReason =
+  | "status_expired"
+  | "status_revoked"
+  | "status_inactive"
+  | "token_expired"
+  | "token_expiry_missing"
+  | "token_expiry_invalid";
+
+export interface DefaultAccountEligibility {
+  eligible: boolean;
+  blockedReason: DefaultAccountBlockedReason | null;
 }
 
 export interface ResolvedIdentity {
   externalId: string;
   displayName?: string;
   username?: string;
+}
+
+/** 신원 조회가 "응답은 정상인데 대상이 없다"로 끝났을 때의 표식. 원인별 안내를 위해 쓴다. */
+class IdentityMissingError extends Error {
+  constructor(public reason: string) {
+    super(reason);
+    this.name = "IdentityMissingError";
+  }
 }
 
 const TIMEOUT_MS = 5000;
@@ -44,6 +68,7 @@ export async function resolveExternalIdentity(
   fallbackUserId?: string,
   tenantId?: string,
 ): Promise<ResolvedIdentity> {
+  // 아래 catch 에서 "무엇이 없는지"를 구분하기 위한 표식.
   try {
     if (provider === "x") {
       const res = await fetch("https://api.twitter.com/2/users/me", {
@@ -65,7 +90,10 @@ export async function resolveExternalIdentity(
       const data = (await res.json()) as { items?: Array<{ id?: string; snippet?: { title?: string } }> };
       const ch = data.items?.[0];
       if (ch?.id) return { externalId: ch.id, displayName: ch.snippet?.title };
-      throw new Error("youtube identity missing");
+      // 응답은 정상인데 목록이 비었다 = 이 구글 계정에 유튜브 채널이 없다.
+      // 이것과 "토큰이 잘못됐다"를 같은 문구로 뭉뚱그리면 사용자는 될 리 없는 재연결만 반복한다
+      // (2026-09-07 회장 계정에서 실제로 그랬다).
+      throw new IdentityMissingError("youtube_no_channel");
     } else if (provider === "threads") {
       const res = await fetch(`https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(accessToken)}`, {
         signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -86,8 +114,16 @@ export async function resolveExternalIdentity(
     // facebook: fallbackUserId는 이미 exchangeFacebookCode가 확정한 페이지 id(authoritative) —
     // 별도 /me 불필요. 그 외 provider(linkedin/naver_blog/pinterest/tumblr/tiktok/slack/line)는
     // 이 스코프에서 별도 /me 미구현 — fallback으로 처리.
-  } catch {
+  } catch (e) {
     if (LIVE_IDENTITY_PROVIDERS.has(provider)) {
+      // 원인을 아는 실패는 그 원인을 말한다. 모르면 종전 문구를 쓴다.
+      // "다시 연결해주세요" 는 재연결로 풀리는 문제일 때만 맞는 말이다. 채널이 없어서 실패한
+      // 사람에게 재연결을 시키면 몇 번을 해도 같은 화면을 본다(2026-09-07 회장 계정 실측).
+      if (e instanceof IdentityMissingError && e.reason === "youtube_no_channel") {
+        throw new Error(
+          "이 구글 계정에는 유튜브 채널이 없습니다. 유튜브에서 채널을 먼저 만든 뒤 다시 연결해 주세요. 채널이 있는 다른 구글 계정이라면 그 계정으로 연결하시면 됩니다.",
+        );
+      }
       throw new Error(`${provider} 계정 신원 검증에 실패했습니다. 다시 연결해주세요.`);
     }
   }
@@ -111,10 +147,96 @@ interface UpsertInput {
   tokenExpiresAt?: string | null;
 }
 
+
+// 계정 하나가 지금 쓸 수 있는 상태인가. **연결 판정의 단일 규칙이다.**
+// 채널 머리말·사이드바(channel-connection.ts)와 계정 카드(listChannelAccounts)가 둘 다 이것만 부른다.
+//
+// 2026-09-08 회장 실사용에서 X 화면 머리말은 "연결됨", 그 아래 유일한 계정은 "재연결 필요"
+// 라고 동시에 적혀 있었다. 같은 사실에 규칙이 둘이었기 때문이다. 머리말 쪽은 만료 토큰이라도
+// 갱신 토큰이 있으면 살아있다고 봤고(그리고 그 판단은 맞다 — 발행 직전에 실제로 갱신한다),
+// 계정 카드 쪽은 만료 시각만 보고 죽었다고 봤다. 사용자에게는 둘 중 어느 쪽이 참인지 알 방법이
+// 없다. 연결 화면에서 서로 다른 말을 하는 것은 "연결됐다" 는 말 전체의 신뢰를 깎는다.
+// 규칙을 여기 하나로 모으고, 갱신 토큰이 있으면 되살릴 수 있다고 본다(refreshAccessToken 이
+// 발행 직전에 실제로 그렇게 한다).
+const DEFAULT_REQUIRES_EXPIRY = new Set(["threads", "instagram", "facebook"]);
+
+export function defaultAccountEligibility(
+  provider: string,
+  status: string | null,
+  tokenExpiresAt: string | null,
+  hasRefresh = false,
+  now = Date.now(),
+): DefaultAccountEligibility {
+  if (status === "expired") return { eligible: false, blockedReason: "status_expired" };
+  if (status === "revoked") return { eligible: false, blockedReason: "status_revoked" };
+  if (status !== "active") return { eligible: false, blockedReason: "status_inactive" };
+  if (!tokenExpiresAt) {
+    return DEFAULT_REQUIRES_EXPIRY.has(provider)
+      ? { eligible: false, blockedReason: "token_expiry_missing" }
+      : { eligible: true, blockedReason: null };
+  }
+  const at = Date.parse(tokenExpiresAt);
+  if (!Number.isFinite(at)) return { eligible: false, blockedReason: "token_expiry_invalid" };
+  // 만료됐어도 갱신 토큰이 있으면 발행 직전에 되살아난다. 죽었다고 적으면 거짓말이다.
+  if (at <= now && !hasRefresh) return { eligible: false, blockedReason: "token_expired" };
+  return { eligible: true, blockedReason: null };
+}
+
+export function defaultAccountBlockedMessage(reason: DefaultAccountBlockedReason): string {
+  if (reason === "status_revoked") return "연결이 해제된 계정은 기본 계정으로 지정할 수 없습니다. 다시 연결해 주세요.";
+  if (reason === "status_inactive") return "비활성 계정은 기본 계정으로 지정할 수 없습니다.";
+  if (reason === "token_expiry_missing" || reason === "token_expiry_invalid") {
+    return "토큰 만료 시각을 확인할 수 없어 기본 계정으로 지정할 수 없습니다. 다시 연결해 주세요.";
+  }
+  return "토큰이 만료된 계정은 기본 계정으로 지정할 수 없습니다. 다시 연결해 주세요.";
+}
+
+function usableAsDefault(provider: string, status: string | null, tokenExpiresAt: string | null): boolean {
+  return defaultAccountEligibility(provider, status, tokenExpiresAt).eligible;
+}
+
+
+// 이번에 붙은 계정이 쓸 수 있고 기존 기본계정이 못 쓰는 상태면 기본을 넘긴다.
+// 넘기지 않으면 새로 연결해도 화면은 미연결로 남고 발행은 죽은 계정으로 간다.
+async function promoteIfDefaultUnusable(
+  sql: Parameters<Parameters<typeof withTenant>[1]>[0],
+  input: UpsertInput,
+  accountId: string,
+  alreadyDefault: boolean,
+): Promise<boolean> {
+  if (alreadyDefault) return true;
+  if (!usableAsDefault(input.provider, input.status ?? "active", input.tokenExpiresAt ?? null)) return false;
+
+  const [current] = await sql<{ id: string; status: string | null; token_expires_at: string | null }[]>`
+    SELECT id, status, token_expires_at::text AS token_expires_at
+    FROM channel_accounts
+    WHERE tenant_id = ${input.tenantId} AND provider = ${input.provider} AND is_default = true`;
+  if (current && usableAsDefault(input.provider, current.status, current.token_expires_at)) return false;
+
+  // 한 문장으로 뒤집으면 안 된다. uq_channel_accounts_one_default 는 부분 유니크 인덱스라
+  // 지연 검사가 불가능하고, 갱신은 행 물리 순서대로 즉시 검사된다. 기본이 될 행이 기존
+  // 기본계정보다 앞에 있으면 true 가 잠깐 둘이 되어 duplicate key 로 터진다.
+  // 2026-09-05 회장 계정 연결 실패가 이것이었다(운영 로그 uq_channel_accounts_one_default).
+  // 순서를 고정한다: 먼저 전부 내리고, 그 다음 이번 계정만 올린다.
+  await sql`
+    UPDATE channel_accounts SET is_default = false, updated_at = now()
+    WHERE tenant_id = ${input.tenantId} AND provider = ${input.provider} AND is_default = true`;
+  await sql`
+    UPDATE channel_accounts SET is_default = true, updated_at = now()
+    WHERE id = ${accountId}`;
+  return true;
+}
+
 // tenant/provider/externalId로 upsert. 최초 계정이면 기본(is_default=true), 이후는 비기본으로 추가.
 // 재연결(동일 external id)은 그 계정의 토큰/메타만 갱신 — 기본 여부는 건드리지 않는다.
-// 반환: 이 upsert가 만든/갱신한 계정이 기본계정인지(legacy integrations 동기화 판단용).
-export async function upsertChannelAccount(input: UpsertInput): Promise<{ id: string; isDefault: boolean }> {
+//
+// 단, 기존 기본계정이 못 쓰는 상태(비활성이거나 Meta 계열인데 장기 토큰 만료 시각이 없음)이고
+// 이번에 붙은 계정이 쓸 수 있으면 기본을 이번 계정으로 넘긴다. 2026-09-01 회장 계정에서
+// 실제로 난 일이다. 새 계정이 정상 연결됐는데도 낡은 기본계정 때문에 화면은 계속 미연결이었고
+// 발행 대상도 죽은 계정을 가리키고 있었다. 사용자가 고칠 수 있는 화면이 없으므로 서버가 고친다.
+// 반환: 이 upsert가 만든/갱신한 계정이 기본계정인지(legacy integrations 동기화 판단용)와
+// 기존 계정을 갱신한 재연결인지(사용자 결과 안내용).
+export async function upsertChannelAccount(input: UpsertInput): Promise<{ id: string; isDefault: boolean; reconnected: boolean }> {
   const key = process.env.OSMU_SECRET_KEY;
   if (!key) throw new Error("OSMU_SECRET_KEY 미설정 — 토큰 암호화 불가");
   return withTenant(input.tenantId, async (sql) => {
@@ -125,26 +247,16 @@ export async function upsertChannelAccount(input: UpsertInput): Promise<{ id: st
       SELECT id, is_default FROM channel_accounts
       WHERE tenant_id = ${input.tenantId} AND provider = ${input.provider} AND external_account_id = ${input.externalId}`;
 
-    if (existing) {
-      await sql`
-        UPDATE channel_accounts
-        SET secret_enc = armor(pgp_sym_encrypt(${input.accessToken}, ${key})),
-            refresh_enc = ${input.refreshToken ? sql`armor(pgp_sym_encrypt(${input.refreshToken}, ${key}))` : sql`refresh_enc`},
-            display_name = COALESCE(${input.displayName ?? null}, display_name),
-            username = COALESCE(${input.username ?? null}, username),
-            meta = ${input.meta ? sql.json(input.meta as Parameters<typeof sql.json>[0]) : sql`meta`},
-            status = ${input.status ?? "active"},
-            token_expires_at = ${input.tokenExpiresAt ?? null},
-            updated_at = now()
-        WHERE id = ${existing.id}`;
-      return { id: existing.id, isDefault: existing.is_default };
-    }
-
     const [{ cnt }] = await sql<{ cnt: string }[]>`
       SELECT count(*)::text AS cnt FROM channel_accounts WHERE tenant_id = ${input.tenantId} AND provider = ${input.provider}`;
-    const isFirst = Number(cnt) === 0;
+    const isFirst = !existing && Number(cnt) === 0;
+    const isInitialDefault = isFirst && usableAsDefault(
+      input.provider,
+      input.status ?? "active",
+      input.tokenExpiresAt ?? null,
+    );
 
-    const [inserted] = await sql<{ id: string }[]>`
+    const [inserted] = await sql<{ id: string; is_default: boolean }[]>`
       INSERT INTO channel_accounts
         (tenant_id, provider, external_account_id, display_name, username, secret_enc, refresh_enc, meta, is_default, status, token_expires_at)
       VALUES (
@@ -153,10 +265,22 @@ export async function upsertChannelAccount(input: UpsertInput): Promise<{ id: st
         armor(pgp_sym_encrypt(${input.accessToken}, ${key})),
         ${input.refreshToken ? sql`armor(pgp_sym_encrypt(${input.refreshToken}, ${key}))` : null},
         ${input.meta ? sql.json(input.meta as Parameters<typeof sql.json>[0]) : null},
-        ${isFirst}, ${input.status ?? "active"}, ${input.tokenExpiresAt ?? null}
+        ${isInitialDefault}, ${input.status ?? "active"}, ${input.tokenExpiresAt ?? null}
       )
-      RETURNING id`;
-    return { id: inserted.id, isDefault: isFirst };
+      ON CONFLICT (tenant_id, provider, external_account_id) DO UPDATE
+        SET secret_enc = EXCLUDED.secret_enc,
+            refresh_enc = COALESCE(EXCLUDED.refresh_enc, channel_accounts.refresh_enc),
+            display_name = COALESCE(EXCLUDED.display_name, channel_accounts.display_name),
+            username = COALESCE(EXCLUDED.username, channel_accounts.username),
+            meta = COALESCE(EXCLUDED.meta, channel_accounts.meta),
+            status = EXCLUDED.status,
+            token_expires_at = EXCLUDED.token_expires_at,
+            updated_at = now()
+      RETURNING id, is_default`;
+    const promoted = await promoteIfDefaultUnusable(
+      sql, input, inserted.id, inserted.is_default,
+    );
+    return { id: inserted.id, isDefault: promoted, reconnected: Boolean(existing) };
   });
 }
 
@@ -177,22 +301,44 @@ export async function syncLegacyIntegration(tenantId: string, provider: string, 
 
 // tenant+provider 스코프 계정 목록. 토큰은 절대 반환하지 않는다(display/username/status/default만).
 export async function listChannelAccounts(tenantId: string, provider: string): Promise<ChannelAccountRow[]> {
-  return withTenant(tenantId, (sql) => sql<ChannelAccountRow[]>`
+  type Raw = Omit<ChannelAccountRow, "connection_state" | "can_be_default" | "default_blocked_reason">
+    & { has_refresh: boolean };
+  const rows = await withTenant(tenantId, (sql) => sql<Raw[]>`
     SELECT id, provider, external_account_id, display_name, username, is_default, status,
-           token_expires_at, created_at, updated_at
+           token_expires_at, created_at, updated_at,
+           (refresh_enc IS NOT NULL) AS has_refresh
     FROM channel_accounts
     WHERE tenant_id = ${tenantId} AND provider = ${provider}
     ORDER BY is_default DESC, created_at ASC`);
+  return rows.map(({ has_refresh, ...row }) => {
+    const eligibility = defaultAccountEligibility(row.provider, row.status, row.token_expires_at, has_refresh);
+    return {
+      ...row,
+      connection_state: eligibility.eligible ? "connected" : "reconnect",
+      can_be_default: eligibility.eligible,
+      default_blocked_reason: eligibility.blockedReason,
+    };
+  });
 }
 
 // 기본계정 전환 — 트랜잭션 내에서 기존 기본 해제 → 신규 기본 지정 → legacy integrations 동기화.
 // accountId가 tenant/provider 스코프 밖이면(cross-tenant) 0행 갱신 → notFound.
-export async function setDefaultAccount(tenantId: string, provider: string, accountId: string): Promise<{ ok: boolean; notFound?: boolean }> {
+export async function setDefaultAccount(
+  tenantId: string,
+  provider: string,
+  accountId: string,
+): Promise<{ ok: boolean; notFound?: boolean; blockedReason?: DefaultAccountBlockedReason }> {
   return withTenant(tenantId, async (sql) => {
     await sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:${provider}`}, 0))`;
-    const [target] = await sql<{ id: string }[]>`
-      SELECT id FROM channel_accounts WHERE id = ${accountId} AND tenant_id = ${tenantId} AND provider = ${provider}`;
+    const [target] = await sql<{ id: string; status: string; token_expires_at: string | null; has_refresh: boolean }[]>`
+      SELECT id, status, token_expires_at::text AS token_expires_at, (refresh_enc IS NOT NULL) AS has_refresh
+      FROM channel_accounts
+      WHERE id = ${accountId} AND tenant_id = ${tenantId} AND provider = ${provider}`;
     if (!target) return { ok: false, notFound: true };
+    const eligibility = defaultAccountEligibility(provider, target.status, target.token_expires_at, target.has_refresh);
+    if (!eligibility.eligible) {
+      return { ok: false, blockedReason: eligibility.blockedReason ?? "status_inactive" };
+    }
     await sql`UPDATE channel_accounts SET is_default = false, updated_at = now() WHERE tenant_id = ${tenantId} AND provider = ${provider} AND is_default = true`;
     await sql`UPDATE channel_accounts SET is_default = true, updated_at = now() WHERE id = ${accountId}`;
     const [account] = await sql<{ secret_enc: string; meta: Record<string, unknown> | null }[]>`
@@ -206,8 +352,8 @@ export async function setDefaultAccount(tenantId: string, provider: string, acco
   });
 }
 
-// 계정 삭제. 기본계정을 지우면 (created_at 가장 오래된) 다른 계정을 승격해 legacy 동기화.
-// 마지막 하나(그 provider의 유일 계정)를 지우면 legacy integrations 행도 제거(연결 완전 해제).
+// 계정 삭제. 기본계정을 지우면 쓸 수 있는 다른 계정 중 가장 오래된 계정을 승격한다.
+// 쓸 수 있는 계정이 없으면 남은 만료·비활성 행은 보존하되 legacy 연결은 제거한다.
 export async function deleteChannelAccount(tenantId: string, provider: string, accountId: string): Promise<{ ok: boolean; notFound?: boolean; promotedId?: string }> {
   return withTenant(tenantId, async (sql) => {
     await sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:${provider}`}, 0))`;
@@ -219,9 +365,14 @@ export async function deleteChannelAccount(tenantId: string, provider: string, a
 
     if (!target.is_default) return { ok: true as const };
 
-    const [next] = await sql<{ id: string }[]>`
-      SELECT id FROM channel_accounts WHERE tenant_id = ${tenantId} AND provider = ${provider}
-      ORDER BY created_at ASC LIMIT 1`;
+    const candidates = await sql<{ id: string; status: string; token_expires_at: string | null }[]>`
+      SELECT id, status, token_expires_at::text AS token_expires_at
+      FROM channel_accounts
+      WHERE tenant_id = ${tenantId} AND provider = ${provider}
+      ORDER BY created_at ASC`;
+    const next = candidates.find((candidate) => (
+      defaultAccountEligibility(provider, candidate.status, candidate.token_expires_at).eligible
+    ));
     if (next) {
       await sql`UPDATE channel_accounts SET is_default = true, updated_at = now() WHERE id = ${next.id}`;
       const [account] = await sql<{ secret_enc: string; meta: Record<string, unknown> | null }[]>`
@@ -233,7 +384,7 @@ export async function deleteChannelAccount(tenantId: string, provider: string, a
           SET secret_enc = EXCLUDED.secret_enc, meta = EXCLUDED.meta`;
       return { ok: true as const, promotedId: next.id };
     }
-    // 마지막 계정 삭제 — legacy 연결도 완전 해제
+    // 마지막 계정이거나 남은 계정이 모두 만료·비활성이면 legacy 연결도 완전 해제한다.
     await sql`DELETE FROM integrations WHERE tenant_id = ${tenantId} AND kind = 'channel' AND label = ${provider}`;
     return { ok: true as const };
   });
@@ -265,7 +416,7 @@ export async function getSelectedChannelAccountCred(
         FROM channel_accounts
         WHERE tenant_id = ${tenantId} AND provider = ${provider} AND id = ${accountId}
           AND status = 'active'
-          AND (token_expires_at IS NULL OR token_expires_at > now())`;
+          AND (token_expires_at > now() OR (token_expires_at IS NULL AND ${!DEFAULT_REQUIRES_EXPIRY.has(provider)}))`;
     }
     return sql<{ id: string; token: string | null; refresh_token: string | null; meta: Record<string, unknown> | null }[]>`
       SELECT id,
@@ -275,7 +426,7 @@ export async function getSelectedChannelAccountCred(
       FROM channel_accounts
       WHERE tenant_id = ${tenantId} AND provider = ${provider} AND is_default = true
         AND status = 'active'
-        AND (token_expires_at IS NULL OR token_expires_at > now())`;
+        AND (token_expires_at > now() OR (token_expires_at IS NULL AND ${!DEFAULT_REQUIRES_EXPIRY.has(provider)}))`;
   });
   if (!row || !row.token) return null;
   const meta = row.meta ?? {};
@@ -299,6 +450,90 @@ export async function channelAccountBelongsToProvider(
   const [row] = await withTenant(tenantId, (sql) => sql<{ id: string }[]>`
     SELECT id FROM channel_accounts
     WHERE id = ${accountId} AND tenant_id = ${tenantId} AND provider = ${provider}
-      AND status = 'active'`);
+      AND status = 'active'
+      AND (token_expires_at > now() OR (token_expires_at IS NULL AND ${!DEFAULT_REQUIRES_EXPIRY.has(provider)}))`);
   return Boolean(row);
+}
+
+/**
+ * 만료됐거나 곧 만료될 접근 토큰을 갱신 토큰으로 되살린 뒤 돌려준다.
+ *
+ * 2026-09-07 회장 계정 실측: X 토큰이 오전에 만료돼 발행실 채널이 통째로 잠겼다.
+ * getSelectedChannelAccountCred 는 만료된 줄을 아예 걸러내므로 갱신 토큰이 있어도
+ * 아무 일도 일어나지 않고 "재연결 필요" 로 끝났다. 연결 상태 판정(channel-connection.ts)은
+ * 갱신 토큰이 있으면 connected 로 보게 되어 있는데 실제로 갱신하는 손이 없어서, 화면은
+ * 연결됐다고 하고 발행은 안 되는 어긋남까지 생겼다.
+ *
+ * 하루에 몇 번씩 다시 연결하게 만드는 발행 도구는 1인 사업가가 쓸 수 없다. 연결은 한 번
+ * 하고 그 뒤로는 우리가 유지한다.
+ *
+ * 만료 5분 전부터 미리 갱신한다. 발행 도중에 만료돼 실패하는 것을 막기 위해서다.
+ * 갱신에 실패하면 옛 자격을 그대로 돌려준다. 판정은 발행 호출이 하고, 그때의 실패 문구가
+ * 재연결을 안내한다. 여기서 조용히 null 로 만들면 이유 없이 사라진 것처럼 보인다.
+ */
+const REFRESH_MARGIN_MS = 5 * 60 * 1000;
+
+export async function getSelectedChannelAccountCredFresh(
+  tenantId: string,
+  provider: string,
+  accountId?: string,
+): Promise<SelectedChannelCred | null> {
+  const key = process.env.OSMU_SECRET_KEY;
+  const [row] = await withTenant(tenantId, (sql) => {
+    const selection = sql<{
+      id: string; token: string | null; refresh_token: string | null;
+      meta: Record<string, unknown> | null; token_expires_at: string | null;
+    }[]>`
+      SELECT id,
+             CASE WHEN secret_enc <> '' AND ${key ?? ""} <> '' THEN pgp_sym_decrypt(dearmor(secret_enc), ${key ?? ""}) ELSE NULL END AS token,
+             CASE WHEN refresh_enc IS NOT NULL AND ${key ?? ""} <> '' THEN pgp_sym_decrypt(dearmor(refresh_enc), ${key ?? ""}) ELSE NULL END AS refresh_token,
+             meta, token_expires_at
+      FROM channel_accounts
+      WHERE tenant_id = ${tenantId} AND provider = ${provider}
+        AND status = 'active'
+        AND ${accountId ? sql`id = ${accountId}` : sql`is_default = true`}`;
+    return selection;
+  });
+  if (!row || !row.token) return null;
+
+  const meta = row.meta ?? {};
+  const userId = typeof meta.userId === "string" ? meta.userId : undefined;
+  const expiresAt = row.token_expires_at ? Date.parse(row.token_expires_at) : NaN;
+  const stale = Number.isFinite(expiresAt) && expiresAt - REFRESH_MARGIN_MS <= Date.now();
+
+  // 갱신은 "되면 좋은 것"이다. 여기서 던지면 발행 요청 전체가 502 로 죽고 사용자는 이유를
+  // 알 수 없다(2026-09-07 실측). 갱신이 어떤 이유로 실패하든 아래 관문 판정으로 흘려보낸다.
+  try {
+  if (stale && row.refresh_token) {
+    const { refreshAccessToken } = await import("@/lib/social-connect");
+    const refreshed = await refreshAccessToken(provider, row.refresh_token);
+    if (refreshed.accessToken) {
+      const nextExpiry = refreshed.expiresInSeconds
+        ? new Date(Date.now() + refreshed.expiresInSeconds * 1000).toISOString()
+        : null;
+      await withTenant(tenantId, (sql) => sql`
+        UPDATE channel_accounts
+        SET secret_enc = armor(pgp_sym_encrypt(${refreshed.accessToken}, ${key ?? ""})),
+            refresh_enc = CASE WHEN ${refreshed.refreshToken ?? ""} <> ''
+                               THEN armor(pgp_sym_encrypt(${refreshed.refreshToken ?? ""}, ${key ?? ""}))
+                               ELSE refresh_enc END,
+            token_expires_at = COALESCE(${nextExpiry}::timestamptz, token_expires_at)
+        WHERE tenant_id = ${tenantId} AND id = ${row.id}`);
+      return { token: refreshed.accessToken, refreshToken: refreshed.refreshToken ?? row.refresh_token, userId, meta, accountId: row.id };
+    }
+  }
+  } catch { /* 갱신 실패는 아래 관문이 판정한다 */ }
+
+  // ★갱신에 실패했거나 갱신 토큰이 없으면 옛 규칙 그대로 못 쓰는 자격증명으로 본다.
+  //
+  // 2026-09-07 회귀: 갱신을 넣으면서 만료 검사를 조회에서 뺐는데, 그 결과 만료됐거나 만료
+  // 시각조차 없는 자격증명이 그대로 통과했다. 인스타그램 릴스 발행을 시험하다 발견했다.
+  // 종전이면 "인스타그램이 연결되지 않았습니다" 로 깔끔히 닫혔을 요청이, 못 쓰는 토큰을
+  // 들고 제공자까지 가서 502 로 죽었다. 사용자는 무엇이 문제인지 알 수 없다.
+  // 갱신은 되살릴 수 있을 때만 되살리는 장치이지 관문을 여는 장치가 아니다.
+  const stillExpired = Number.isFinite(expiresAt) && expiresAt <= Date.now();
+  const missingExpiry = !row.token_expires_at && DEFAULT_REQUIRES_EXPIRY.has(provider);
+  if (stillExpired || missingExpiry) return null;
+
+  return { token: row.token, refreshToken: row.refresh_token ?? undefined, userId, meta, accountId: row.id };
 }

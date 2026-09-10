@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   tier        TEXT NOT NULL DEFAULT 'starter',    -- starter | pro | team (ADR-003 hybrid pricing)
   domain      TEXT UNIQUE,                     -- 커스텀 도메인(CNAME). Host 헤더 → 이 테넌트로 매핑(호스팅 멀티테넌트)
   owner_auth_id UUID UNIQUE,                    -- Supabase Auth 유저 → 테넌트 매핑(고객 셀프서브 로그인). 첫 로그인 시 자동 생성
+  last_accessed_at TIMESTAMPTZ,                 -- 고객 신원 확인 뒤 15분 단위로 갱신하는 마지막 접속 시각
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -41,6 +42,21 @@ BEGIN
     UPDATE tenants SET status = 'active' WHERE status = 'pending';
   END IF;
 END $$;
+
+-- 기존 DB에는 additive로 마지막 접속 시각만 더한다. 접속 실패가 인증을 막지 않도록 애플리케이션은
+-- 이 컬럼과 아래 이력 표를 한 문장으로 best-effort 갱신한다.
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMPTZ;
+
+-- 고객 접속 이력. 개인정보 최소화를 위해 테넌트와 시각만 저장한다.
+-- 15분 안 재접속 합치기는 tenants.last_accessed_at 조건부 UPDATE가 직렬화하고, 그 UPDATE가
+-- 성공한 경우에만 같은 SQL 문장에서 이 표에 한 행을 넣는다.
+CREATE TABLE IF NOT EXISTS tenant_access_events (
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  accessed_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (tenant_id, accessed_at)
+);
+CREATE INDEX IF NOT EXISTS idx_tenant_access_events_recent
+  ON tenant_access_events(tenant_id, accessed_at DESC);
 
 -- 브랜드 컨텍스트(위저드/레포연동 산출, 표준 스키마). 생성이 이걸 읽어 톤 주입.
 CREATE TABLE IF NOT EXISTS brand_guides (

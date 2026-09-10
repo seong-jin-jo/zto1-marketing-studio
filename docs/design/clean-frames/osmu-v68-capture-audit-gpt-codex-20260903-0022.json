@@ -1,0 +1,884 @@
+{
+  "stamp": "2026-09-03 00:22 KST",
+  "model": "gpt-codex/gpt-5.6",
+  "source": "docs/prototype/osmu-v68-create-performance-hub-gpt-codex-20260903-0022.html",
+  "expectedFrames": 24,
+  "capturedFrames": 24,
+  "rules": {
+    "exactViewport": [
+      "1024x900",
+      "390x844"
+    ],
+    "cleanExport": true,
+    "fullPageCapture": false,
+    "expectedOverflowX": "false",
+    "expectedTargetUnder44": 0,
+    "expectedConsoleErrors": 0
+  },
+  "frames": [
+    {
+      "file": "osmu-v68-create-normal-390-gpt-codex-20260903-0022.png",
+      "room": "create",
+      "state": "normal",
+      "viewport": "390",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 390,
+      "bodyScrollHeight": 844,
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "mainPane": {
+        "x": 0,
+        "y": 104,
+        "width": 390,
+        "height": 740
+      },
+      "assistantPane": {
+        "x": 0,
+        "y": 668,
+        "width": 390,
+        "height": 176
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-create-empty-390-gpt-codex-20260903-0022.png",
+      "room": "create",
+      "state": "empty",
+      "viewport": "390",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 390,
+      "bodyScrollHeight": 844,
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "mainPane": {
+        "x": 0,
+        "y": 104,
+        "width": 390,
+        "height": 740
+      },
+      "assistantPane": {
+        "x": 0,
+        "y": 668,
+        "width": 390,
+        "height": 176
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-create-loading-390-gpt-codex-20260903-0022.png",
+      "room": "create",
+      "state": "loading",
+      "viewport": "390",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 390,
+      "bodyScrollHeight": 844,
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "mainPane": {
+        "x": 0,
+        "y": 104,
+        "width": 390,
+        "height": 740
+      },
+      "assistantPane": {
+        "x": 0,
+        "y": 668,
+        "width": 390,
+        "height": 176
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-create-error-390-gpt-codex-20260903-0022.png",
+      "room": "create",
+      "state": "error",
+      "viewport": "390",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 390,
+      "bodyScrollHeight": 844,
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "mainPane": {
+        "x": 0,
+        "y": 104,
+        "width": 390,
+        "height": 740
+      },
+      "assistantPane": {
+        "x": 0,
+        "y": 668,
+        "width": 390,
+        "height": 176
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-create-disabled-390-gpt-codex-20260903-0022.png",
+      "room": "create",
+      "state": "disabled",
+      "viewport": "390",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 390,
+      "bodyScrollHeight": 844,
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "mainPane": {
+        "x": 0,
+        "y": 104,
+        "width": 390,
+        "height": 740
+      },
+      "assistantPane": {
+        "x": 0,
+        "y": 668,
+        "width": 390,
+        "height": 176
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-create-overflow-390-gpt-codex-20260903-0022.png",
+      "room": "create",
+      "state": "overflow",
+      "viewport": "390",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 390,
+      "bodyScrollHeight": 844,
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "mainPane": {
+        "x": 0,
+        "y": 104,
+        "width": 390,
+        "height": 740
+      },
+      "assistantPane": {
+        "x": 0,
+        "y": 668,
+        "width": 390,
+        "height": 176
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-create-normal-1024-gpt-codex-20260903-0022.png",
+      "room": "create",
+      "state": "normal",
+      "viewport": "1024",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 1024,
+      "bodyScrollHeight": 900,
+      "innerWidth": 1024,
+      "innerHeight": 900,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 900
+      },
+      "mainPane": {
+        "x": 56,
+        "y": 80,
+        "width": 664,
+        "height": 820
+      },
+      "assistantPane": {
+        "x": 720,
+        "y": 80,
+        "width": 304,
+        "height": 820
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-create-empty-1024-gpt-codex-20260903-0022.png",
+      "room": "create",
+      "state": "empty",
+      "viewport": "1024",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 1024,
+      "bodyScrollHeight": 900,
+      "innerWidth": 1024,
+      "innerHeight": 900,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 900
+      },
+      "mainPane": {
+        "x": 56,
+        "y": 80,
+        "width": 664,
+        "height": 820
+      },
+      "assistantPane": {
+        "x": 720,
+        "y": 80,
+        "width": 304,
+        "height": 820
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-create-loading-1024-gpt-codex-20260903-0022.png",
+      "room": "create",
+      "state": "loading",
+      "viewport": "1024",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 1024,
+      "bodyScrollHeight": 900,
+      "innerWidth": 1024,
+      "innerHeight": 900,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 900
+      },
+      "mainPane": {
+        "x": 56,
+        "y": 80,
+        "width": 664,
+        "height": 820
+      },
+      "assistantPane": {
+        "x": 720,
+        "y": 80,
+        "width": 304,
+        "height": 820
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-create-error-1024-gpt-codex-20260903-0022.png",
+      "room": "create",
+      "state": "error",
+      "viewport": "1024",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 1024,
+      "bodyScrollHeight": 900,
+      "innerWidth": 1024,
+      "innerHeight": 900,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 900
+      },
+      "mainPane": {
+        "x": 56,
+        "y": 80,
+        "width": 664,
+        "height": 820
+      },
+      "assistantPane": {
+        "x": 720,
+        "y": 80,
+        "width": 304,
+        "height": 820
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-create-disabled-1024-gpt-codex-20260903-0022.png",
+      "room": "create",
+      "state": "disabled",
+      "viewport": "1024",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 1024,
+      "bodyScrollHeight": 900,
+      "innerWidth": 1024,
+      "innerHeight": 900,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 900
+      },
+      "mainPane": {
+        "x": 56,
+        "y": 80,
+        "width": 664,
+        "height": 820
+      },
+      "assistantPane": {
+        "x": 720,
+        "y": 80,
+        "width": 304,
+        "height": 820
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-create-overflow-1024-gpt-codex-20260903-0022.png",
+      "room": "create",
+      "state": "overflow",
+      "viewport": "1024",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 1024,
+      "bodyScrollHeight": 900,
+      "innerWidth": 1024,
+      "innerHeight": 900,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 900
+      },
+      "mainPane": {
+        "x": 56,
+        "y": 80,
+        "width": 664,
+        "height": 820
+      },
+      "assistantPane": {
+        "x": 720,
+        "y": 80,
+        "width": 304,
+        "height": 820
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-performance-normal-390-gpt-codex-20260903-0022.png",
+      "room": "performance",
+      "state": "normal",
+      "viewport": "390",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 390,
+      "bodyScrollHeight": 844,
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "mainPane": {
+        "x": 0,
+        "y": 104,
+        "width": 390,
+        "height": 740
+      },
+      "assistantPane": {
+        "x": 0,
+        "y": 668,
+        "width": 390,
+        "height": 176
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-performance-empty-390-gpt-codex-20260903-0022.png",
+      "room": "performance",
+      "state": "empty",
+      "viewport": "390",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 390,
+      "bodyScrollHeight": 844,
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "mainPane": {
+        "x": 0,
+        "y": 104,
+        "width": 390,
+        "height": 740
+      },
+      "assistantPane": {
+        "x": 0,
+        "y": 668,
+        "width": 390,
+        "height": 176
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-performance-loading-390-gpt-codex-20260903-0022.png",
+      "room": "performance",
+      "state": "loading",
+      "viewport": "390",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 390,
+      "bodyScrollHeight": 844,
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "mainPane": {
+        "x": 0,
+        "y": 104,
+        "width": 390,
+        "height": 740
+      },
+      "assistantPane": {
+        "x": 0,
+        "y": 668,
+        "width": 390,
+        "height": 176
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-performance-error-390-gpt-codex-20260903-0022.png",
+      "room": "performance",
+      "state": "error",
+      "viewport": "390",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 390,
+      "bodyScrollHeight": 844,
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "mainPane": {
+        "x": 0,
+        "y": 104,
+        "width": 390,
+        "height": 740
+      },
+      "assistantPane": {
+        "x": 0,
+        "y": 668,
+        "width": 390,
+        "height": 176
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-performance-disabled-390-gpt-codex-20260903-0022.png",
+      "room": "performance",
+      "state": "disabled",
+      "viewport": "390",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 390,
+      "bodyScrollHeight": 844,
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "mainPane": {
+        "x": 0,
+        "y": 104,
+        "width": 390,
+        "height": 740
+      },
+      "assistantPane": {
+        "x": 0,
+        "y": 668,
+        "width": 390,
+        "height": 176
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-performance-overflow-390-gpt-codex-20260903-0022.png",
+      "room": "performance",
+      "state": "overflow",
+      "viewport": "390",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 390,
+      "bodyScrollHeight": 844,
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      },
+      "mainPane": {
+        "x": 0,
+        "y": 104,
+        "width": 390,
+        "height": 740
+      },
+      "assistantPane": {
+        "x": 0,
+        "y": 668,
+        "width": 390,
+        "height": 176
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-performance-normal-1024-gpt-codex-20260903-0022.png",
+      "room": "performance",
+      "state": "normal",
+      "viewport": "1024",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 1024,
+      "bodyScrollHeight": 900,
+      "innerWidth": 1024,
+      "innerHeight": 900,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 900
+      },
+      "mainPane": {
+        "x": 56,
+        "y": 80,
+        "width": 664,
+        "height": 820
+      },
+      "assistantPane": {
+        "x": 720,
+        "y": 80,
+        "width": 304,
+        "height": 820
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-performance-empty-1024-gpt-codex-20260903-0022.png",
+      "room": "performance",
+      "state": "empty",
+      "viewport": "1024",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 1024,
+      "bodyScrollHeight": 900,
+      "innerWidth": 1024,
+      "innerHeight": 900,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 900
+      },
+      "mainPane": {
+        "x": 56,
+        "y": 80,
+        "width": 664,
+        "height": 820
+      },
+      "assistantPane": {
+        "x": 720,
+        "y": 80,
+        "width": 304,
+        "height": 820
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-performance-loading-1024-gpt-codex-20260903-0022.png",
+      "room": "performance",
+      "state": "loading",
+      "viewport": "1024",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 1024,
+      "bodyScrollHeight": 900,
+      "innerWidth": 1024,
+      "innerHeight": 900,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 900
+      },
+      "mainPane": {
+        "x": 56,
+        "y": 80,
+        "width": 664,
+        "height": 820
+      },
+      "assistantPane": {
+        "x": 720,
+        "y": 80,
+        "width": 304,
+        "height": 820
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-performance-error-1024-gpt-codex-20260903-0022.png",
+      "room": "performance",
+      "state": "error",
+      "viewport": "1024",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 1024,
+      "bodyScrollHeight": 900,
+      "innerWidth": 1024,
+      "innerHeight": 900,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 900
+      },
+      "mainPane": {
+        "x": 56,
+        "y": 80,
+        "width": 664,
+        "height": 820
+      },
+      "assistantPane": {
+        "x": 720,
+        "y": 80,
+        "width": 304,
+        "height": 820
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-performance-disabled-1024-gpt-codex-20260903-0022.png",
+      "room": "performance",
+      "state": "disabled",
+      "viewport": "1024",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 1024,
+      "bodyScrollHeight": 900,
+      "innerWidth": 1024,
+      "innerHeight": 900,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 900
+      },
+      "mainPane": {
+        "x": 56,
+        "y": 80,
+        "width": 664,
+        "height": 820
+      },
+      "assistantPane": {
+        "x": 720,
+        "y": 80,
+        "width": 304,
+        "height": 820
+      },
+      "consoleErrors": []
+    },
+    {
+      "file": "osmu-v68-performance-overflow-1024-gpt-codex-20260903-0022.png",
+      "room": "performance",
+      "state": "overflow",
+      "viewport": "1024",
+      "ready": "true",
+      "overflowX": "false",
+      "targetUnder44": 0,
+      "consoleError": "",
+      "reviewControlsVisible": false,
+      "bodyScrollWidth": 1024,
+      "bodyScrollHeight": 900,
+      "innerWidth": 1024,
+      "innerHeight": 900,
+      "scrollX": 0,
+      "scrollY": 0,
+      "device": {
+        "x": 0,
+        "y": 0,
+        "width": 1024,
+        "height": 900
+      },
+      "mainPane": {
+        "x": 56,
+        "y": 80,
+        "width": 664,
+        "height": 820
+      },
+      "assistantPane": {
+        "x": 720,
+        "y": 80,
+        "width": 304,
+        "height": 820
+      },
+      "consoleErrors": []
+    }
+  ]
+}

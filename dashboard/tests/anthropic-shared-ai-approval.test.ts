@@ -1,19 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { EventEmitter } from "events";
 
-// 공유 AI(claude -p) 사용 승인 게이트(lib/anthropic.ts assertSharedAiApproved) 전용 검증.
-// OSMU v1.0.0 공개 대시보드: 계정 자체(tenants.status)는 가입 즉시 active라 대시보드 진입을 막지
-// 않지만, 운영자 자격증명/비용을 쓰는 공유 claude -p는 tenants.shared_cli_approved_at(null=미승인)로
-// 별도 게이트한다. BYO Anthropic 키 경로와 tenantId=null(운영자 내부 호출)은 이 게이트 대상이 아니다.
+// 공유 AI(claude -p) 사용 승인이 "문" 이 아니라 "한도" 임을 고정한다(lib/anthropic.ts).
 //
-// 검증 순서 계약: 미승인이면 quota reserve(usage_quotas INSERT)와 CLI spawn 둘 다 발생하지 않아야
-// 한다("before quota reserve/queue/spawn") — 그래서 spawn 호출 여부와 usage_quotas 상태를 직접 관찰한다.
+// 2026-09-08 정책 변경. 종전에는 tenants.shared_cli_approved_at 이 비어 있으면 생성 요청을 전부
+// 거절했다. 가입은 되는데 첫 생성부터 막히고, 화면은 운영자 승인을 기다리거나 개발자용 API 키를
+// 직접 발급해 오라고 안내했다. 우리 고객은 도구 학습 시간이 없는 1인 사업자다. 그 사람에게 API 키
+// 발급을 요구하는 것은 제품을 안 쓰겠다는 말과 같다(회장 반복 지시: 회원은 OAuth 로그인만 하면
+// 바로 쓸 수 있어야 한다).
+// 비용은 열려 있지 않다. 승인 전에는 더 작은 체험 한도(OSMU_TRIAL_GENERATIONS, 기본 20)가 걸리고,
+// 승인은 그 한도를 정규 한도(OSMU_SHARED_GENERATIONS_INCLUDED, 기본 100)로 올릴 뿐이다.
+// BYO Anthropic 키 경로와 tenantId=null(운영자 내부 호출)은 여전히 한도 대상이 아니다.
 
 const H = vi.hoisted(() => ({
   byoKey: null as string | null,
   sharedAiApprovedAt: null as string | null,
   dbThrows: false,
   quotaInsertCalls: 0,
+  onQuotaLimit: null as ((limit: number) => void) | null,
   started: [] as { prompt: string; finish: (out: string) => void }[],
 }));
 
@@ -37,11 +41,14 @@ vi.mock("child_process", () => ({
 vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async (_tenantId: string, cb: (sql: unknown) => unknown) => {
     const sql = Object.assign(
-      (strings: TemplateStringsArray, ..._vals: unknown[]) => {
+      (strings: TemplateStringsArray, ...vals: unknown[]) => {
         const text = strings.join("?");
         if (text.includes("FROM integrations")) return Promise.resolve([{ token: H.byoKey }]);
         if (text.includes("INSERT INTO usage_quotas")) {
           H.quotaInsertCalls++;
+          // reserve 문에 실린 한도 값(generations_included)을 그대로 관찰한다.
+          const limit = vals.find((v) => typeof v === "number");
+          if (typeof limit === "number") H.onQuotaLimit?.(limit);
           return Promise.resolve([{ generations_used: 1 }]);
         }
         if (text.includes("INSERT INTO usage_events")) return Promise.resolve([]);
@@ -73,6 +80,7 @@ beforeEach(() => {
   H.sharedAiApprovedAt = null;
   H.dbThrows = false;
   H.quotaInsertCalls = 0;
+  H.onQuotaLimit = null;
   H.started = [];
   process.env.OSMU_SECRET_KEY = "enc-key";
 });
@@ -81,17 +89,38 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("공유 AI 사용 승인 게이트 — 미승인 테넌트(shared_cli_approved_at=null)", () => {
-  it("BYO 키 없는 테넌트 + 미승인 → SharedAiApprovalRequiredError, quota reserve/CLI spawn 둘 다 0회", async () => {
-    const { generateText, SharedAiApprovalRequiredError } = await importAnthropic();
-    await expect(generateText("hello", "tenant-unapproved")).rejects.toBeInstanceOf(SharedAiApprovalRequiredError);
-    expect(H.quotaInsertCalls).toBe(0);
-    expect(H.started).toHaveLength(0);
+describe("승인 전 회원(shared_cli_approved_at=null)", () => {
+  it("거절하지 않는다 — 체험 한도를 잡고 생성까지 간다", async () => {
+    const { generateText } = await importAnthropic();
+    const p = generateText("hello", "tenant-unapproved");
+    await settle();
+    expect(H.started).toHaveLength(1);
+    expect(H.quotaInsertCalls).toBe(1);
+    H.started[0].finish("ok");
+    await expect(p).resolves.toBe("ok");
   });
 
-  it("에러 메시지는 운영자 승인 또는 BYO 키 등록을 안내한다(빈 메시지 아님)", async () => {
+  it("승인 전에는 체험 한도, 승인 뒤에는 정규 한도를 쓴다", async () => {
+    process.env.OSMU_TRIAL_GENERATIONS = "7";
+    process.env.OSMU_SHARED_GENERATIONS_INCLUDED = "99";
+    const limits: number[] = [];
+    H.onQuotaLimit = (n) => limits.push(n);
+
     const { generateText } = await importAnthropic();
-    await expect(generateText("hello", "tenant-unapproved")).rejects.toThrow(/승인|Anthropic/);
+    const a = generateText("x", "tenant-unapproved");
+    await settle();
+    H.started[0].finish("ok");
+    await a;
+
+    H.sharedAiApprovedAt = "2026-07-01T00:00:00Z";
+    const b = generateText("x", "tenant-approved");
+    await settle();
+    H.started[1].finish("ok");
+    await b;
+
+    expect(limits).toEqual([7, 99]);
+    delete process.env.OSMU_TRIAL_GENERATIONS;
+    delete process.env.OSMU_SHARED_GENERATIONS_INCLUDED;
   });
 });
 
@@ -130,13 +159,21 @@ describe("공유 AI 사용 승인 게이트 — 우회 경로(BYO 키 / tenantId
   });
 });
 
-describe("공유 AI 사용 승인 게이트 — DB 장애", () => {
-  it("shared_cli_approved_at 조회 자체가 실패하면 fail-closed로 reject한다(승인됨으로 오해석 금지) — quota/CLI 미실행", async () => {
+describe("승인 조회 DB 장애", () => {
+  it("조회가 실패하면 승인됨으로 오해석하지 않고 체험 한도로 진행한다", async () => {
+    process.env.OSMU_TRIAL_GENERATIONS = "5";
+    const limits: number[] = [];
+    H.onQuotaLimit = (n) => limits.push(n);
     H.dbThrows = true;
     const { generateText } = await importAnthropic();
-    await expect(generateText("x", "tenant-db-down")).rejects.toThrow();
-    expect(H.quotaInsertCalls).toBe(0);
-    expect(H.started).toHaveLength(0);
+    const p = generateText("x", "tenant-db-down");
+    await settle();
+    expect(H.started).toHaveLength(1);
+    H.started[0].finish("ok");
+    await expect(p).resolves.toBe("ok");
+    // 장애를 이유로 정규 한도가 열리면 비용이 새어 나간다.
+    expect(limits).toEqual([5]);
+    delete process.env.OSMU_TRIAL_GENERATIONS;
   });
 });
 

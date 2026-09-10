@@ -52,8 +52,12 @@ vi.mock("@/components/layout/Toast", () => ({
   useToast: () => ({ showToast: mocks.showToast }),
 }));
 
-vi.mock("@/components/shared/CredentialForm", () => ({ CredentialForm: () => null }));
-vi.mock("@/components/channel/SocialConnectButton", () => ({ SocialConnectButton: () => null }));
+vi.mock("@/components/shared/CredentialForm", () => ({
+  CredentialForm: ({ title }: { title?: string }) => <section>{title}</section>,
+}));
+vi.mock("@/components/channel/SocialConnectButton", () => ({
+  SocialConnectButton: ({ label }: { label: string }) => <button>{label} 연결</button>,
+}));
 vi.mock("@/components/channel/AccountManager", () => ({ AccountManager: () => null }));
 vi.mock("@/components/shared/SetupGuide", () => ({ SetupGuide: () => null }));
 vi.mock("@/components/channel/ContentGuide", () => ({ ContentGuide: () => null }));
@@ -114,7 +118,7 @@ describe("ChannelPage customer/operator API boundary", () => {
   it("updates the tenant channel setting without requesting global cron data", async () => {
     render(<ChannelPage channel="youtube" variant="video" />);
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "Auto Publish" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "자동 발행" }));
 
     await waitFor(() => {
       expect(mocks.apiPost).toHaveBeenCalledWith(
@@ -141,7 +145,7 @@ describe("ChannelPage customer/operator API boundary", () => {
   it("keeps migrated channel tabs wired to shared UI state", () => {
     render(<ChannelPage channel="threads" />);
 
-    fireEvent.click(screen.getByRole("tab", { name: "Analytics" }));
+    fireEvent.click(screen.getByRole("tab", { name: "성과 분석" }));
 
     expect(mocks.setSubTab).toHaveBeenCalledWith("analytics");
   });
@@ -203,7 +207,7 @@ describe("ChannelPage customer/operator API boundary", () => {
     render(<InstagramPage />);
 
     expect(mocks.swr.mock.calls.map(([key]) => key)).toContain("/api/channel-settings/instagram");
-    fireEvent.click(screen.getByRole("checkbox", { name: "Auto Publish" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "자동 발행" }));
     await vi.waitFor(() => {
       expect(mocks.apiPost).toHaveBeenCalledWith(
         "/api/channel-settings/instagram",
@@ -213,5 +217,48 @@ describe("ChannelPage customer/operator API boundary", () => {
     const keys = mocks.swr.mock.calls.map(([key]) => key);
     expect(keys).not.toContain("/api/cron-status");
     expect(keys).not.toContain("/api/cron-runs");
+  });
+
+  it("V69-COPY-03 정상: 채널 탭과 설정 라벨을 한국어 표준 용어로 표시한다", () => {
+    render(<ChannelPage channel="threads" />);
+
+    ["대기열", "성과 분석", "성장", "인기글", "설정"].forEach((name) => {
+      expect(screen.getByRole("tab", { name })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("heading", { name: "채널 정보" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "자동화" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "세부 설정" })).toBeInTheDocument();
+  });
+
+  it("V69-COPY-03 거절: 고객 채널 화면에 기존 영어 탭과 설정 라벨을 노출하지 않는다", () => {
+    render(<ChannelPage channel="threads" />);
+
+    ["Queue", "Analytics", "Growth", "Popular", "Settings", "Channel Info", "Automation", "Parameters"].forEach((label) => {
+      expect(screen.queryByText(label, { exact: true })).not.toBeInTheDocument();
+    });
+  });
+
+  it("V69-COPY-05 정상: 공식 연결 단추는 항상 활성 상태로 먼저 보인다", () => {
+    render(<ChannelPage channel="threads" />);
+
+    expect(screen.getByRole("button", { name: "Threads 연결" })).toBeEnabled();
+    expect(screen.queryByText("Threads 고급 연결 정보")).not.toBeInTheDocument();
+  });
+
+  it("V69-COPY-05 거절: 고급 연결 정보는 고객이 직접 펼치기 전에는 노출하지 않는다", () => {
+    render(<ChannelPage channel="threads" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "고급 연결 정보 열기" }));
+    expect(screen.getByText("Threads 고급 연결 정보")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Threads 연결" })).toBeEnabled();
+  });
+
+  it("V69-COPY-05 Instagram: 공식 연결을 유지하고 고급 연결 정보는 접어 둔다", () => {
+    render(<InstagramPage />);
+
+    expect(screen.getByRole("button", { name: "Instagram 연결" })).toBeEnabled();
+    expect(screen.queryByText("Instagram 고급 연결 정보")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "고급 연결 정보 열기" }));
+    expect(screen.getByText("Instagram 고급 연결 정보")).toBeInTheDocument();
   });
 });

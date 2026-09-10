@@ -7,10 +7,22 @@ export type ConnectReadinessStatus =
   | "publish_pending"
   | "error";
 
+export interface ConnectReadinessExternalLink {
+  label: string;
+  url: string;
+}
+
+export interface ConnectReadinessGuidance {
+  title: string;
+  steps: string[];
+  externalLink: ConnectReadinessExternalLink;
+}
+
 export interface ConnectReadinessEntry {
   status: ConnectReadinessStatus;
   available: boolean;
   reason?: string;
+  guidance?: ConnectReadinessGuidance;
 }
 
 interface ResolveConnectReadinessInput {
@@ -29,6 +41,41 @@ export const CONNECT_READINESS_LABELS: Record<ConnectReadinessStatus, string> = 
   publish_pending: "발행 준비중",
   error: "확인 필요",
 };
+
+// 심사 전 고객이 직접 해야 하는 provider별 초대 수락 안내의 단일 진실원이다.
+// 서버는 심사 대기 중일 때만 이 값을 readiness에 싣고, 클라이언트는 받은 값만 그린다.
+const META_PRE_REVIEW_GUIDANCE: Readonly<Partial<Record<string, ConnectReadinessGuidance>>> = {
+  threads: {
+    title: "심사 전 연결 안내",
+    steps: [
+      "현재는 앱 테스터로 등록된 계정만 연결할 수 있습니다.",
+      "Threads 웹사이트 권한의 초대 탭에서 초대를 수락합니다.",
+      "이 화면으로 돌아와 Threads OAuth 연결을 누릅니다.",
+      "앱 심사 승인 뒤에는 이 과정 없이 연결할 수 있습니다.",
+    ],
+    externalLink: {
+      label: "초대 수락하러 가기 (새 탭)",
+      url: "https://www.threads.com/settings/website_permissions",
+    },
+  },
+  instagram: {
+    title: "심사 전 연결 안내",
+    steps: [
+      "현재는 앱 테스터로 등록된 계정만 연결할 수 있습니다.",
+      "Instagram 프로필의 앱 및 웹사이트에서 초대를 수락합니다.",
+      "이 화면으로 돌아와 Instagram OAuth 연결을 누릅니다.",
+      "앱 심사 승인 뒤에는 이 과정 없이 연결할 수 있습니다.",
+    ],
+    externalLink: {
+      label: "초대 수락하러 가기 (새 탭)",
+      url: "https://www.instagram.com/accounts/manage_access/",
+    },
+  },
+};
+
+export function getMetaPreReviewGuidance(provider: string): ConnectReadinessGuidance | undefined {
+  return META_PRE_REVIEW_GUIDANCE[provider];
+}
 
 export function resolveConnectReadiness({
   credentialsComplete,

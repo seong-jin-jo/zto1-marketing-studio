@@ -82,6 +82,30 @@ describe("POST /api/studio/text — 브랜드+위키 그라운딩 주입 (셀프
     expect(H.genTenant).toBe("tenant-1");
   });
 
+  it("V75-STUDIO-TEXT-01 정상: 선택한 A 구조와 순서를 생성 프롬프트에 반영한다", async () => {
+    const { status } = await studioText({
+      idea: "첫은 팀의 콘텐츠 운영",
+      tenant_id: "tenant-1",
+      structure: { label: "A", title: "문제 제시형", outline: ["고객이 겪는 문제", "문제가 생기는 이유", "바로 적용할 방법"] },
+    });
+
+    expect(status).toBe(200);
+    expect(H.genPrompt).toContain("사용자가 고른 구조: A 문제 제시형");
+    expect(H.genPrompt).toContain("고객이 겪는 문제 → 문제가 생기는 이유 → 바로 적용할 방법");
+    expect(H.genPrompt).toContain("반드시 반영");
+  });
+
+  it("V75-STUDIO-TEXT-02 거절: 알 수 없는 구조는 생성기 호출 전에 400으로 막는다", async () => {
+    const { status } = await studioText({
+      idea: "첫은 팀의 콘텐츠 운영",
+      tenant_id: "tenant-1",
+      structure: { label: "D", title: "알 수 없는 구조", outline: [] },
+    });
+
+    expect(status).toBe(400);
+    expect(H.genPrompt).toBe("");
+  });
+
   it("위키 없어도(신규 테넌트) idea만으로 생성은 됨", async () => {
     H.wiki = "";
     const { status, body } = await studioText({ idea: "오픈 이벤트", tenant_id: "tenant-1" });
@@ -90,9 +114,13 @@ describe("POST /api/studio/text — 브랜드+위키 그라운딩 주입 (셀프
     expect(H.genPrompt).not.toContain("위키 참조");
   });
 
-  it("생성 결과가 JSON 아니면 502", async () => {
+  it("생성 결과가 JSON 아니면 실패로 응답", async () => {
     H.genReturn = "죄송합니다 출력 불가";
     const { status } = await studioText({ idea: "x", tenant_id: "tenant-1" });
-    expect(status).toBe(502);
+    // 2026-09-08: 생성 실패는 502 가 아니라 200 + ok:false 로 답한다. 502 는 게이트웨이가
+    // 상류에서 잘못된 응답을 받았다는 뜻이라 우리 앞의 리버스 프록시가 우리 JSON 본문을
+    // 자기 HTML 오류 페이지로 갈아치웠고, 화면에는 "502" 숫자만 뜨고 진짜 이유가 한 번도
+    // 사용자에게 닿지 못했다(회장 실사용). 정본 = src/lib/api-failure.ts.
+    expect(status).toBe(200);
   });
 });

@@ -132,3 +132,7 @@ export function buildOpenAISyntheticCatalogEntry(
 }
 
 export { cloneFirstTemplateModel, findCatalogTemplate, matchesExactOrPrefix };
+
+// openai-codex-provider 가 이 판별기를 shared 에서 가져온다. 정의는 base-url 에 있는데
+// 여기서 다시 내보내지 않아 전체 빌드가 MISSING_EXPORT 로 깨져 있었다.
+export { isOpenAIApiBaseUrl } from "./base-url.js";

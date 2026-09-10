@@ -102,12 +102,12 @@ describe("operator OAuth credential UI lifecycle", () => {
   it("reveals a complete env set with one button/request and refreshes DB-backed metadata", async () => {
     const initial = swrResult();
     mocks.swr.mockReturnValue(initial);
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(Response.json({
       provider: "x",
       source: "db",
       values: { clientId: "raw-id", clientSecret: "raw-secret" },
       imported: true,
-    }));
+    })));
     vi.stubGlobal("fetch", fetchMock);
 
     const view = render(<OperatorCustomersPage />);

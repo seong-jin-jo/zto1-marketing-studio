@@ -4,7 +4,6 @@ import {
   hashtagsForPlatform,
   parseHashtags,
   parsePublishCommand,
-  spreadDisplayName,
   spreadHashtags,
   trimAllOverLimit,
   trimOverLimit,
@@ -41,14 +40,6 @@ describe("해시태그 한 벌 나누기", () => {
 
   it("태그가 예산보다 적으면 있는 만큼만 붙는다", () => {
     expect(spreadHashtags("#하나", ALL).threads).toBe("#하나");
-  });
-});
-
-describe("표시 이름 한 번에 맞추기", () => {
-  it("앞뒤 공백을 떼고 일곱 자리에 같은 값을 넣는다", () => {
-    const spread = spreadDisplayName("  우리 브랜드 ", ALL);
-    expect(new Set(Object.values(spread))).toEqual(new Set(["우리 브랜드"]));
-    expect(Object.keys(spread)).toHaveLength(7);
   });
 });
 
@@ -89,7 +80,6 @@ describe("대화창 자유 입력 해석", () => {
     ["X 만 빼고 올려", "exclude"],
     ["인스타 빼줘", "exclude"],
     ["해시태그 세 개로 통일", "unifyHashtags"],
-    ["표시 이름 맞춰줘", "unifyDisplayName"],
     ["길이 넘는 곳만 줄여", "trimOverLimit"],
     ["내일 아침 8시로 예약", "schedule"],
     ["먼저 검토받을게", "requestReview"],
@@ -108,5 +98,9 @@ describe("대화창 자유 입력 해석", () => {
   it("알아듣지 못한 말은 정직하게 unknown이다", () => {
     expect(parsePublishCommand("오늘 날씨 어때").kind).toBe("unknown");
     expect(parsePublishCommand("").kind).toBe("unknown");
+  });
+
+  it("PUB-ACCOUNT-02 거절: 읽기 전용 계정 이름 변경 명령은 실행 계약으로 해석하지 않는다", () => {
+    expect(parsePublishCommand("표시 이름 맞춰줘")).toEqual({ kind: "unknown" });
   });
 });

@@ -54,7 +54,7 @@ openclaw-auto/
 
 | 폴더 | 책임 | 이 폴더에 두면 안 되는 것 |
 |---|---|---|
-| `dashboard/` | 회원이 보는 모든 화면과 그 화면이 부르는 서버 | 크론 로직 |
+| `dashboard/` | Next.js 애플리케이션. App Router 페이지와 API 라우트 | 크론 로직 |
 | `openclaw/` | 스케줄 실행 · Tool Registry · 에이전트 상태 | 화면 |
 | `extensions/` | 채널 하나당 폴더 하나. 발행·수집 도구 | 여러 채널에 걸친 규칙 |
 | `config/` | 모델 선택 · 크론 주기 | 비밀값 (환경 변수로) |

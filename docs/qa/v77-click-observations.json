@@ -1,0 +1,22 @@
+{
+  "headerLearningText": "학습 정보 0 / 8 남은 8칸 이어 채우기",
+  "directGenerationButtonCount": 1,
+  "learningClick": {
+    "bodyTextLengthBefore": 1189,
+    "bodyTextLengthAfter": 1671,
+    "delta": 482
+  },
+  "structureClick": {
+    "bodyTextLengthBefore": 1147,
+    "bodyTextLengthAfter": 1094,
+    "delta": -53
+  },
+  "reloadPersistence": {
+    "remainingString": "새로고침 뒤에도 남는 고객 질문"
+  },
+  "textEdit": {
+    "before": "편집 전 글 본문",
+    "after": "편집 뒤 반영된 글 본문"
+  },
+  "consoleErrorCount": 0
+}

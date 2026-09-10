@@ -17,8 +17,19 @@
 // 검증은 상수시간 비교 + 만료 확인. 실패는 전부 동일하게 null(존재 여부 열거 차단).
 import crypto from "crypto";
 
-/** 기본 수명 — 프로바이더가 받아가기에 충분하고, 유출돼도 오래 살지 않을 만큼 짧게. */
-export const MEDIA_TOKEN_TTL_MS = 15 * 60 * 1000;
+/**
+ * 기본 수명.
+ *
+ * 2026-09-08 회장 실사용: 생성실에서 만든 카드뉴스가 편집실에서 사라졌다. 원인은 이 값이
+ * 15분이었던 것이다. 화면은 만들 때 받은 서명 주소를 그대로 들고 있는데, 15분이 지나면
+ * 그 주소가 죽어 이미지도 영상도 화면에서 없어진다. 만들고 문구를 다듬고 채널마다 손보고
+ * 발행까지 가는 한 편의 작업은 15분보다 길다. 즉 정상 사용에서 반드시 깨지는 값이었다.
+ *
+ * 이 토큰이 여는 것은 한 작업 공간의 파일 하나에 대한 읽기뿐이고, 위조는 서명이 막는다.
+ * 그래서 수명을 작업 세션 길이에 맞춘다. 외부 제공자가 받아가는 경로(릴스 등)는 발행
+ * 시점에 따로 서명하므로 이 값과 무관하다.
+ */
+export const MEDIA_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 
 export interface MediaTokenPayload {
   tenantId: string;
@@ -32,7 +43,10 @@ export interface MediaTokenPayload {
  * 둘 다 없거나 너무 짧으면 null → 서명 자체를 거부(서명 없는 공개 URL 발급 금지).
  */
 function signingKey(): Buffer | null {
-  const raw = process.env.MEDIA_SIGNING_SECRET || process.env.DASHBOARD_AUTH_TOKEN || "";
+  // 2026-09-07: 배포 컨테이너에 앞의 두 값이 없어 서명이 발급되지 않았고, 그래서 만든
+  // 그림과 영상이 화면에 안 떴다(img·video 태그는 인증 헤더를 못 붙인다). 배포에 반드시
+  // 있는 OSMU_SECRET_KEY 까지 파생 후보에 넣는다. 원문을 키로 쓰지 않는 것은 그대로다.
+  const raw = process.env.MEDIA_SIGNING_SECRET || process.env.DASHBOARD_AUTH_TOKEN || process.env.OSMU_SECRET_KEY || "";
   if (raw.length < 16) return null;
   return crypto.createHmac("sha256", "osmu-media-delivery-v1").update(raw).digest();
 }

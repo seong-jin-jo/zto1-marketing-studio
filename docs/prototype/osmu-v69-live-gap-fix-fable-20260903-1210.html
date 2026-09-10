@@ -1,0 +1,475 @@
+<!doctype html>
+<!--
+STAMP
+line: osmu-v69
+created_at: 2026-09-03 12:10 KST
+model: claude-fable-5
+agent: product-designer
+skills: design-review(QA 루프); design-html·design-shotgun SKIPPED(승인 셸 v67·v68 상속 보수 작업 — 신규 시안 발산 아님, 재창조 금지 게이트 준수)
+basis: docs/prototype/osmu-v68-create-performance-hub-gpt-codex-20260903-0022.html (셸 정본);
+  docs/prototype/osmu-v67-edit-publish-hub-gpt-codex-20260902-0448.html (발행실 카드 규격);
+  docs/qa/osmu-live-walk-20260903/live-*.png (운영 실화면 4장); DESIGN.md
+benchmarks:
+  https://support.buffer.com/article/946-navigating-buffers-new-dashboard (계정은 하단 코너·워크스페이스명은 짧게)
+  https://support.buffer.com/article/950-using-insights-in-buffer (미수집 = 안내 1회 + 회색 처리, 칸마다 반복 금지)
+  https://medium.com/hootsuite-engineering/enhancing-hootsuite-analytics-onboarding-experience-with-realistic-demo-data-b984ddeeca3a (빈 지표 = 예시 데이터 프리뷰)
+  https://consently.net/blog/cookie-consent-banner-examples (쿠키 = 좌하단 코너·동의/거부 동일 무게·모바일은 하단 시트)
+고민 한 줄: 운영 화면의 7개 이탈은 새 화면이 아니라 셸 규율의 문제다. v68 셸(작업 공간명 + 4단계 + 코너 배너)로 되돌리는 것이 수정의 전부여야 한다.
+주: 예시 데이터는 전부 가상이며 실제 계정·메일 주소를 포함하지 않는다.
+-->
+<html lang="ko" data-room="publish" data-state="before" data-viewport="1024">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OSMU v69 운영 이탈 교정 시안</title>
+<style>
+:root{
+  --bg:#fbfbfc;--surface:#fff;--surface-2:#f4f4f5;--surface-3:#fafafa;
+  --border:#e4e4e7;--border-strong:#d4d4d8;
+  --text:#18181b;--muted:#71717a;--subtle:#a1a1aa;
+  --accent:#2563eb;--accent-soft:#eff6ff;
+  --success:#15803d;--success-soft:#f0fdf4;
+  --warning:#a16207;--warning-soft:#fefce8;
+  --danger:#b91c1c;--danger-soft:#fef2f2;
+  --sidebar:56px;--assistant:304px;
+  --radius-sm:8px;--radius-md:12px;--radius-lg:16px;
+  --shadow:0 24px 70px rgba(24,24,27,.12);
+  font-family:Pretendard,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+  color:var(--text);background:#e8e8ea;
+}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;min-height:100%}
+body{padding:24px;word-break:keep-all}
+button,select{font:inherit}
+button{min-height:44px;cursor:pointer}
+.review-bar{width:min(1024px,100%);margin:0 auto 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:#3f3f46;font-size:13px}
+.review-bar label{display:flex;gap:6px;align-items:center}
+.review-bar select{height:44px;border:1px solid var(--border-strong);border-radius:8px;background:#fff;padding:0 32px 0 12px}
+.review-note{margin-left:auto;color:var(--muted)}
+.device{width:1024px;height:900px;margin:0 auto;overflow:hidden;border-radius:16px;box-shadow:var(--shadow);background:var(--bg);position:relative}
+.app-shell{width:100%;height:100%;display:grid;grid-template-columns:var(--sidebar) minmax(0,1fr)}
+.side-nav{background:#18181b;color:#fff;padding:16px 8px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.brand-mark{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:#fff;color:#18181b;font-weight:800;margin-bottom:16px}
+.side-link{width:44px;min-height:44px;border:0;border-radius:10px;background:transparent;color:#a1a1aa;font-weight:700;font-size:12px}
+.side-link.active{background:#3f3f46;color:#fff}
+.side-spacer{flex:1}
+.workspace{display:grid;grid-template-rows:80px minmax(0,1fr);min-height:0;background:var(--bg)}
+.top-bar{background:rgba(255,255,255,.96);border-bottom:1px solid var(--border);padding:8px 16px;display:grid;grid-template-columns:minmax(160px,.8fr) minmax(360px,1.6fr) minmax(200px,.9fr);align-items:center;gap:16px}
+.workspace-name{font-size:13px;color:var(--muted);line-height:1.3}
+.workspace-name strong{display:block;color:var(--text);font-size:15px}
+.room-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.room-step{height:48px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.room-step .step-no{font-size:11px;font-weight:800;color:var(--subtle)}
+.room-step.active{background:var(--accent-soft);border-color:#bfdbfe;color:#1d4ed8;font-weight:750}
+.room-step.active .step-no{color:#1d4ed8}
+.utility-box{justify-self:end;display:flex;align-items:center;gap:8px}
+.util-btn{position:relative;min-width:44px;border:1px solid var(--border);border-radius:10px;background:#fff;color:var(--muted);font-size:12px;padding:0 10px}
+.util-btn .badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;border-radius:999px;background:var(--accent);color:#fff;font-size:10px;font-weight:800;display:grid;place-items:center;padding:0 4px}
+.avatar-btn{width:44px;height:44px;border:0;border-radius:50%;background:#27272a;color:#fff;display:grid;place-items:center;font-weight:800}
+.account-pop{position:absolute;top:72px;right:16px;z-index:40;width:264px;border:1px solid var(--border);border-radius:var(--radius-md);background:#fff;box-shadow:0 16px 40px rgba(24,24,27,.16);padding:16px;font-size:12px}
+.account-pop strong{display:block;font-size:13px;margin-bottom:2px}
+.account-pop .mail{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.account-pop hr{border:0;border-top:1px solid var(--border);margin:12px 0}
+.account-pop button{width:100%;border:1px solid var(--border);border-radius:8px;background:#fff;text-align:left;padding:0 12px;margin-top:6px;font-size:12px}
+.work-area{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) var(--assistant)}
+.main-pane{min-height:0;overflow:auto;padding:24px;scrollbar-gutter:stable}
+.assistant-pane{min-height:0;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column}
+.assistant-head{padding:16px;border-bottom:1px solid var(--border)}
+.assistant-head strong{display:block;font-size:14px}
+.assistant-head span{display:block;margin-top:4px;color:var(--muted);font-size:11px}
+.chat-scroll{padding:12px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:8px}
+.bubble{max-width:92%;border-radius:12px;padding:10px 12px;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.bubble.ai{align-self:flex-start;background:var(--surface-2)}
+.choice-stack{display:grid;gap:6px}
+.choice-button,.primary-button,.secondary-button{width:100%;border-radius:10px;padding:0 12px;text-align:left;font-weight:750;min-height:44px}
+.choice-button{border:1px solid var(--border-strong);background:#fff;color:var(--text)}
+.primary-button{border:0;background:var(--accent);color:#fff;text-align:center}
+.secondary-button{border:1px solid var(--border-strong);background:#fff;color:var(--text);text-align:center}
+.assistant-actions{padding:12px;border-top:1px solid var(--border);display:grid;gap:8px}
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}
+.eyebrow{color:var(--accent);font-size:12px;font-weight:800;margin:0 0 4px}
+h1{font-size:24px;line-height:1.25;margin:0;letter-spacing:-.02em}
+.lead{margin:8px 0 0;color:var(--muted);font-size:14px;line-height:1.55}
+.status-pill{flex:none;padding:8px 10px;border-radius:999px;background:var(--surface-2);color:var(--muted);font-size:12px;font-weight:800}
+.status-pill.warning{background:var(--warning-soft);color:var(--warning)}
+.card{border:1px solid var(--border);background:var(--surface);border-radius:var(--radius-md)}
+/* 시작 안내 한 줄 스트립 (미연결 배너 + 온보딩 줄 통합) */
+.start-strip{display:flex;align-items:center;gap:12px;padding:10px 12px;margin-bottom:16px;border:1px solid #bfdbfe;background:var(--accent-soft);border-radius:var(--radius-md);font-size:12px;color:#1e40af}
+.start-strip b{font-weight:800}
+.start-strip .divider{width:1px;height:16px;background:#bfdbfe}
+.start-strip .grow{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1e40af}
+.start-strip button{min-height:36px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-size:12px;font-weight:800;padding:0 12px;flex:none}
+.start-strip .toggle{background:transparent;color:#1d4ed8;border:1px solid #bfdbfe}
+.start-detail{margin:-8px 0 16px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);display:grid;gap:6px;font-size:12px;color:var(--muted)}
+.start-detail .done{color:var(--success);font-weight:750}
+/* 발행실 */
+.channel-strip{display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:16px}
+.channel-strip strong{font-size:14px}
+.channel-strip span{color:var(--muted);font-size:12px}
+.channel-strip .actions{margin-left:auto;display:flex;gap:8px}
+.channel-strip .actions button{border:1px solid var(--border);border-radius:8px;background:#fff;font-size:12px;padding:0 12px;color:var(--muted)}
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.filter{min-height:44px;border:1px solid var(--border);border-radius:999px;background:#fff;padding:0 14px;color:var(--muted);font-size:13px}
+.filter.active{border-color:#93c5fd;background:var(--accent-soft);color:#1d4ed8;font-weight:800}
+.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0 8px}
+.section-title h2{margin:0;font-size:15px}
+.section-title span{color:var(--muted);font-size:12px}
+.publish-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.publish-card{min-width:0;overflow:hidden}
+.publish-head{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border)}
+.ch-mark{width:24px;height:24px;flex:none;border-radius:6px;background:var(--surface-2);display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--muted)}
+.publish-head b{font-size:13px;white-space:nowrap}
+.publish-head .counter{margin-left:auto;font-size:12px;color:var(--subtle);white-space:nowrap}
+.connect-cta{margin:12px 16px;display:flex;align-items:center;gap:8px}
+.connect-cta button{min-height:40px;border:1px solid var(--accent);border-radius:8px;background:#fff;color:var(--accent);font-size:12px;font-weight:800;padding:0 12px}
+.preview-body{padding:0 16px 16px;color:var(--muted);font-size:12px;line-height:1.6}
+.preview-body .ph{margin-top:8px;padding:12px;border:1px dashed var(--border-strong);border-radius:8px;background:var(--surface-3);color:var(--subtle)}
+/* 성과실 */
+.summary-line{font-size:12px;color:var(--muted);margin:0 0 8px}
+.metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.metric{padding:12px}
+.metric span{display:block;color:var(--muted);font-size:11px;margin-bottom:6px}
+.metric strong{font-size:20px}
+.metric small{display:block;margin-top:4px;color:var(--success);font-size:11px}
+.preview-mode .metric{opacity:.55}
+.preview-note{display:flex;align-items:center;gap:8px;margin:8px 0 16px;font-size:12px;color:var(--muted)}
+.preview-note .tag{flex:none;padding:4px 8px;border-radius:999px;background:var(--surface-2);font-weight:800;font-size:11px;color:var(--muted)}
+.perf-empty{padding:16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;margin-bottom:16px}
+.perf-empty h2{margin:0 0 4px;font-size:15px}
+.perf-empty p{margin:0;font-size:12px;color:var(--muted);line-height:1.55}
+.perf-empty .primary-button{width:auto;padding:0 16px}
+/* 성과실 연결 후 본론 (v68 정본 상속: 잘된 콘텐츠 + 다음 행동) */
+.performance-columns{display:grid;grid-template-columns:1.1fr .9fr;gap:8px;margin-top:16px}
+.insight-card{padding:12px}
+.insight-card h3{margin:0 0 8px;font-size:13px}
+.rank-list,.task-list{display:grid;gap:6px}
+.rank-row,.task-row{padding:8px;border-radius:8px;background:var(--surface-3);font-size:11px;line-height:1.45;display:grid;grid-template-columns:24px minmax(0,1fr);gap:6px}
+.rank-row b{color:var(--accent)}
+.rank-row small,.task-row small{color:var(--subtle)}
+.task-row{grid-template-columns:12px minmax(0,1fr)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--warning);margin-top:4px}
+/* 발행실 연결 후 계정 행 (v67 정본 상속) */
+.account-row{display:grid;grid-template-columns:32px minmax(0,1fr);gap:8px;align-items:center;padding:12px 16px;background:var(--surface-2)}
+.account-row .avatar-sm{width:32px;height:32px;border-radius:50%;background:#dbeafe;color:#1d4ed8;display:grid;place-items:center;font-size:11px;font-weight:800}
+.account-row strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.account-row span{display:block;font-size:11px;color:var(--subtle)}
+.preview-text{margin-top:8px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12px;line-height:1.6}
+/* 쿠키 배너: 좌하단 코너, 담당 패널·입력을 덮지 않음 */
+.cookie-banner{position:absolute;left:16px;bottom:16px;z-index:50;width:340px;max-width:calc(100% - 32px);border:1px solid var(--border);border-radius:var(--radius-md);background:#fff;box-shadow:0 16px 40px rgba(24,24,27,.18);padding:14px 16px;font-size:12px;line-height:1.55;color:var(--muted)}
+.cookie-banner b{display:block;color:var(--text);margin-bottom:4px;font-size:13px}
+.cookie-actions{display:flex;gap:8px;margin-top:10px}
+.cookie-actions button{flex:1;min-height:40px;border:1px solid var(--border-strong);border-radius:8px;background:#fff;color:var(--text);font-weight:800;font-size:12px}
+.cookie-actions a{align-self:center;font-size:11px;color:var(--muted);flex:none}
+.mobile-only{display:none}
+@media (max-width:600px){
+  body{padding:16px}
+  .review-bar{width:390px}
+  .review-note{display:none}
+  .device{width:390px;height:844px}
+  .app-shell{grid-template-columns:1fr}
+  .side-nav{display:none}
+  .workspace{grid-template-rows:116px minmax(0,1fr)}
+  .top-bar{padding:8px 12px;grid-template-columns:1fr auto;grid-template-rows:44px 56px;gap:0 8px}
+  .workspace-name strong{font-size:13px}
+  .workspace-name span{display:none}
+  .utility-box{grid-column:2;grid-row:1}
+  .util-btn{min-height:44px;min-width:44px;font-size:11px;padding:0 8px}
+  .avatar-btn{width:44px;height:44px}
+  .room-steps{grid-column:1/-1;grid-row:2;gap:2px}
+  .room-step{height:48px;padding:0 4px;font-size:12px;flex-direction:column;gap:0}
+  .room-step .step-no{font-size:9px}
+  .work-area{display:block;position:relative}
+  .main-pane{height:100%;padding:16px 16px 184px;scrollbar-gutter:auto}
+  .assistant-pane{position:absolute;left:0;right:0;bottom:0;height:176px;border:1px solid var(--border);border-width:1px 0 0;box-shadow:0 -12px 28px rgba(24,24,27,.08)}
+  .assistant-head{padding:10px 16px 8px}
+  .assistant-head span{display:none}
+  .chat-scroll{padding:8px 12px}
+  .chat-scroll .bubble,.chat-scroll .choice-stack{display:none}
+  .chat-scroll .bubble.current{display:block}
+  .assistant-actions{padding:8px 12px;display:block}
+  .assistant-actions .secondary-button{display:none}
+  .page-head{display:block;margin-bottom:12px}
+  h1{font-size:21px}
+  .lead{font-size:13px}
+  .status-pill{display:inline-block;margin-top:8px}
+  .start-strip{flex-wrap:wrap;row-gap:6px}
+  .start-strip .divider{display:none}
+  .publish-grid{grid-template-columns:1fr}
+  .metric-grid{grid-template-columns:1fr 1fr}
+  .perf-empty{grid-template-columns:1fr}
+  .performance-columns{grid-template-columns:1fr}
+  .perf-empty .primary-button{width:100%}
+  /* 교정 8(390): 필터 칩 두 줄 깔림 방지 = 한 줄 가로 스크롤 */
+  .filter-row{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-left:-16px;margin-right:-16px;padding:0 16px}
+  .filter-row::-webkit-scrollbar{display:none}
+  .filter{flex:none}
+  /* 교정 8(390): 쿠키 시트 압축 = 본문 1줄 말줄임 + 펼치기 없이 즉시 선택 */
+  .cookie-banner{padding:12px 16px;font-size:11px}
+  .cookie-banner b{font-size:12px}
+  .cookie-actions{margin-top:8px}
+  .cookie-actions button{min-height:36px}
+  /* 모바일 쿠키 = 하단 시트: 담당 패널 위에 전폭 */
+  .cookie-banner{left:0;right:0;bottom:0;width:auto;max-width:none;border-radius:16px 16px 0 0}
+}
+html.clean body{padding:0;overflow:hidden;background:var(--bg)}
+html.clean .review-bar{display:none}
+html.clean .device{margin:0;border-radius:0;box-shadow:none}
+</style>
+</head>
+<body>
+<div class="review-bar" aria-label="시안 검토 도구">
+  <label>방
+    <select id="room-select">
+      <option value="publish">발행실</option>
+      <option value="performance">성과실</option>
+    </select>
+  </label>
+  <label>상태
+    <select id="state-select">
+      <option value="before">채널 연결 전(현재 운영 상태)</option>
+      <option value="after">채널 연결 후</option>
+    </select>
+  </label>
+  <label>화면
+    <select id="viewport-select">
+      <option value="1024">1024</option>
+      <option value="390">390</option>
+    </select>
+  </label>
+  <label>쿠키 배너
+    <select id="cookie-select">
+      <option value="on">표시</option>
+      <option value="off">숨김</option>
+    </select>
+  </label>
+  <span class="review-note">운영 이탈 7건 교정. v68 셸 상속, 예시 데이터는 전부 가상.</span>
+</div>
+<main class="device" id="device"></main>
+<aside class="sc-chg" id="sc-chg" style="width:min(1024px,100%);margin:12px auto 0;border:1px solid #d4d4d8;border-radius:12px;background:#fff;padding:12px 16px;font-size:12px;color:#3f3f46;line-height:1.6"></aside>
+<style>html.clean .sc-chg{display:none}</style>
+<footer class="stamp-bar" style="width:min(1024px,100%);margin:12px auto 0;font-size:11px;color:#71717a;line-height:1.6">
+🏷 STAMP | line: osmu-v69 | 생성: 2026-09-03 12:10 KST | model: claude-fable-5 | agent: product-designer | skills: design-review | 근거: v68 셸 상속 + 운영 실화면 4장(docs/qa/osmu-live-walk-20260903) + Buffer/Hootsuite/쿠키배너 벤치마크(STAMP 주석) | 고민: 새 화면이 아니라 셸 규율 복원이 수정의 전부여야 한다.
+</footer>
+<style>html.clean .stamp-bar{display:none}</style>
+<script>
+const params=new URLSearchParams(location.search);
+let room=params.get("room")||"publish";
+let state=params.get("state")||"before";
+let viewport=params.get("viewport")||"1024";
+let cookie=params.get("cookie")||"on";
+if(params.get("clean")==="1")document.documentElement.classList.add("clean");
+
+const roomSteps=()=>[["01","생성실","create"],["02","편집실","edit"],["03","발행실","publish"],["04","성과실","performance"]]
+  .map(([no,name,key])=>`<button class="room-step ${room===key?"active":""}" type="button" ${key==="publish"||key==="performance"?`data-room-link="${key}"`:""}><span class="step-no">${no}</span><span>${name}</span></button>`).join("");
+
+/* 교정 1·3: 제목 = 작업 공간명. 메일 주소는 계정 메뉴 안에만(가린 예시). 칩 줄 삭제, 검토 대기·발행 일정은 우측 유틸 버튼. 내부 용어(AI 공유 Claude CLI)는 고객 화면에서 제거. */
+const shell=content=>`
+  <div class="app-shell">
+    <nav class="side-nav" aria-label="주요 탐색">
+      <div class="brand-mark">작</div>
+      <button class="side-link active" type="button" aria-label="작업 공간">작업</button>
+      <button class="side-link" type="button" aria-label="학습 정보">학습</button>
+      <button class="side-link" type="button" aria-label="설정">설정</button>
+      <span class="side-spacer"></span>
+      <button class="side-link" type="button" aria-label="도움말">도움</button>
+    </nav>
+    <section class="workspace">
+      <header class="top-bar">
+        <div class="workspace-name"><strong>콘텐츠 운영</strong><span>기본 작업 공간</span></div>
+        <nav class="room-steps" aria-label="작업 단계">${roomSteps()}</nav>
+        <div class="utility-box">
+          <button class="util-btn" type="button" aria-label="검토 대기">검토<span class="badge">1</span></button>
+          <button class="util-btn" type="button" aria-label="발행 일정">일정</button>
+          <button class="avatar-btn" type="button" id="avatar-btn" aria-label="계정 메뉴">나</button>
+        </div>
+      </header>
+      <div class="account-pop" id="account-pop" hidden>
+        <strong>기본 작업 공간</strong>
+        <span class="mail">so******@gmail.com</span>
+        <hr>
+        <button type="button">작업 공간 이름 바꾸기</button>
+        <button type="button">계정 설정</button>
+        <button type="button">로그아웃</button>
+      </div>
+      ${content}
+    </section>
+  </div>
+  ${cookie==="on"?cookieBanner():""}`;
+
+/* 교정 2: 쿠키 배너 = 좌하단 코너(담당 패널·입력을 안 덮음), 동의·거부 동일 무게. 모바일은 하단 시트. */
+function cookieBanner(){return `
+  <aside class="cookie-banner" role="dialog" aria-label="쿠키 사용 동의">
+    <b>쿠키 사용 동의</b>
+    방문 통계를 익명으로 수집합니다. 광고에는 쓰지 않으며 개인정보 설정에서 언제든 바꿀 수 있습니다.
+    <div class="cookie-actions">
+      <button type="button">거부</button>
+      <button type="button">동의</button>
+    </div>
+  </aside>`;}
+
+/* 교정 6: 미연결 배너 + 온보딩 진행 줄 통합 = 한 줄 시작 스트립 + 펼침 */
+const startStrip=open=>`
+  <div class="start-strip" role="status">
+    <b>시작 1/5</b><span class="divider"></span>
+    <span class="grow">다음 할 일: 브랜드 문서 연결 · 채널 연결 0/15</span>
+    <button type="button">채널 연결하기</button>
+    <button type="button" class="toggle" data-start-toggle>${open?"접기":"전체 보기"}</button>
+  </div>
+  ${open?`<div class="start-detail">
+    <span class="done">완료 · 첫 콘텐츠 만들기</span>
+    <span>할 일 · 브랜드 문서 연결</span>
+    <span>할 일 · 발행할 채널 연결 (0/15)</span>
+    <span>할 일 · 첫 콘텐츠 발행</span>
+    <span>할 일 · 성과 확인</span>
+  </div>`:""}`;
+
+const assistant=(title,msg,primary)=>`
+  <aside class="assistant-pane" aria-label="${title}">
+    <div class="assistant-head"><strong>${title}</strong><span>지금 대기 중</span></div>
+    <div class="chat-scroll">
+      <div class="bubble ai current">${msg}</div>
+      <div class="choice-stack">
+        <button class="choice-button" type="button">이번 주 왜 이랬어</button>
+        <button class="choice-button" type="button">이거 왜 잘 됐어</button>
+      </div>
+    </div>
+    <div class="assistant-actions">
+      <button class="primary-button" type="button">${primary}</button>
+      <button class="secondary-button" type="button">직접 써서 보내기</button>
+    </div>
+  </aside>`;
+
+/* 교정 7: 채널 이름 전체 표기(말줄임 금지), 카운터는 우측 별도 자리 */
+const publishCard=(mark,name,limit,connected)=>`
+  <article class="card publish-card">
+    <div class="publish-head"><span class="ch-mark">${mark}</span><b>${name}</b><span class="counter">0/${limit}</span></div>
+    ${connected?`<div class="account-row"><span class="avatar-sm">${mark}</span><div><strong>예시 계정</strong><span>@example_official · 연결됨</span></div></div>
+      <div class="preview-body"><div class="preview-text">처음부터 잘하려 하지 않아도 되는 이유. 오늘은 첫 발행을 쉽게 만든 세 단계를 이야기합니다.</div></div>`
+      :`<div class="connect-cta"><button type="button">${name} 계정 연결하기</button></div>
+       <div class="preview-body"><div class="ph">연결하면 실제 계정 이름과 미리보기가 여기 표시됩니다.</div></div>`}
+  </article>`;
+
+const publishMain=(startOpen)=>{
+  const before=state==="before";
+  return `<div class="work-area"><section class="main-pane">
+    <header class="page-head">
+      <div><p class="eyebrow">3단계</p><h1>발행실</h1><p class="lead">연결한 채널을 고르고 채널별 미리보기로 발행합니다.</p></div>
+      <span class="status-pill ${before?"warning":""}">${before?"연결 필요":"발행 준비됨"}</span>
+    </header>
+    ${before?startStrip(startOpen):""}
+    <div class="card channel-strip">
+      <strong>${before?"0곳":"3곳"}</strong>
+      <span>발행할 채널 · 연결된 곳 ${before?"0":"3"}</span>
+      <div class="actions"><button type="button" ${before?"disabled":""}>연결된 곳 전부 고르기</button><button type="button" ${before?"disabled":""}>전부 해제</button></div>
+    </div>
+    <div class="filter-row">
+      <button class="filter active" type="button">전체 7곳</button>
+      <button class="filter" type="button">Threads</button>
+      <button class="filter" type="button">X</button>
+      <button class="filter" type="button">Instagram</button>
+      <button class="filter" type="button">Facebook</button>
+      <button class="filter" type="button">YouTube Shorts</button>
+      <button class="filter" type="button">TikTok</button>
+    </div>
+    <div class="section-title"><h2>텍스트</h2><span>Threads · X · Facebook</span></div>
+    <div class="publish-grid">
+      ${publishCard("T","Threads","500",!before)}
+      ${publishCard("X","X","280",!before)}
+    </div>
+  </section>${assistant("발행 담당","발행할 작업물을 먼저 가져와 주세요.","생성실 열기")}</div>`;
+};
+
+/* 교정 5: 미수집 4칸 반복 대신 — 안내 1회 + 예시 데이터 프리뷰(회색 처리) */
+const perfMain=(startOpen)=>{
+  const before=state==="before";
+  const metrics=[["조회","18,420","12% 증가"],["저장","1,284","24% 증가"],["답글","316","8% 증가"],["구독","428","31명 증가"]];
+  return `<div class="work-area"><section class="main-pane">
+    <header class="page-head">
+      <div><p class="eyebrow">4단계</p><h1>성과실</h1><p class="lead">채널 전체를 먼저 보고, 잘된 이유와 다음 행동을 확인합니다.</p></div>
+      <span class="status-pill ${before?"warning":""}">${before?"연결 필요":"수집 중"}</span>
+    </header>
+    ${before?startStrip(startOpen):""}
+    ${before?`<div class="card perf-empty">
+      <div><h2>아직 성과를 수집할 채널이 없습니다</h2>
+      <p>채널을 연결하면 발행한 글의 조회·저장·답글·구독이 이곳에 모입니다. 연결 뒤 첫 수집까지 시간이 조금 걸립니다.</p></div>
+      <button class="primary-button" type="button">채널 연결하기</button>
+    </div>
+    <div class="preview-note"><span class="tag">예시 데이터</span><span>연결하면 아래 자리가 실제 수치로 바뀝니다.</span></div>`
+    :`<p class="summary-line">성과 요약 · 기본 작업 공간 · 최근 30일 · 표본 12건</p>`}
+    <div class="metric-grid ${before?"preview-mode":""}">
+      ${metrics.map(m=>`<article class="card metric"><span>${m[0]}</span><strong>${m[1]}</strong><small>${m[2]}</small></article>`).join("")}
+    </div>
+    <div class="section-title"><h2>채널별 보기</h2><span>${before?"연결 후 활성화":"최근 30일"}</span></div>
+    <div class="filter-row">
+      <button class="filter active" type="button">전체</button>
+      <button class="filter" type="button" ${before?"disabled":""}>Threads</button>
+      <button class="filter" type="button" ${before?"disabled":""}>X</button>
+      <button class="filter" type="button" ${before?"disabled":""}>Instagram</button>
+      <button class="filter" type="button" ${before?"disabled":""}>Facebook</button>
+    </div>
+    ${before?"":`<div class="performance-columns">
+      <article class="card insight-card"><h3>잘된 콘텐츠 세 개</h3><div class="rank-list">
+        <div class="rank-row"><b>1</b><span>첫 발행을 쉽게 만든 세 단계<br><small>저장 248 · 학습 정보 제안 가능</small></span></div>
+        <div class="rank-row"><b>2</b><span>빈 화면에서 멈추지 않는 방법<br><small>답글 76 · 첫 문장 반응 우수</small></span></div>
+        <div class="rank-row"><b>3</b><span>한 주 운영을 돌아보는 기준<br><small>조회 3,490 · 구독 전환 우수</small></span></div>
+      </div></article>
+      <article class="card insight-card"><h3>다음 행동과 반응 관리</h3><div class="task-list">
+        <div class="task-row"><span class="dot"></span><span>설명형 구조를 다음 생성에 반영</span></div>
+        <div class="task-row"><span class="dot"></span><span>답글이 필요한 반응 8개 확인</span></div>
+        <div class="task-row"><span class="dot"></span><span>낮은 반응 콘텐츠 3개를 직접 검토</span></div>
+      </div></article>
+    </div>`}
+  </section>${assistant("성과 담당",state==="before"?"채널 연결이 끝나면 성과 해석을 도와드립니다.":"성과 해석과 조치를 도와드립니다. 아래 버튼으로 물어보거나 직접 써 주세요.","채널 연결하기")}</div>`;
+};
+
+/* 검수 셸 전용 화면별 변경점(chg) — 제품 화면(.device) 안에는 렌더하지 않는다 */
+const chg={
+  publish:[
+    "제목: 이메일 주소 전체 노출 → 작업 공간명(콘텐츠 운영)으로 교체. 메일은 계정 메뉴 안에서 가린 형태로만. (회장: 개인정보가 화면 제목이 되는 것은 결함)",
+    "상단 칩 줄 삭제: 승인 인박스·발행 캘린더는 우측 유틸 버튼(검토·일정)으로, 내부 용어 'AI 공유 Claude CLI'는 고객 화면에서 제거. (회장: 시안에 없는 칩 줄·내부 용어 노출)",
+    "미연결 배너 + 온보딩 1/5 줄 → 한 줄 시작 스트립으로 통합, 전체 보기로 펼침. (회장: 상단이 무겁다)",
+    "미리보기 카드 채널명 말줄임(Thre...) 제거: 이름 전체 표기, 글자수는 우측 별도 자리. (회장: 채널 이름이 잘린다)",
+    "쿠키 배너: 우하단 담당 패널 덮음 → 좌하단 코너 카드, 동의·거부 동일 무게. 390은 압축 하단 시트. (회장: 입력창과 버튼을 덮는다)",
+    "390: 상단 5줄 적층 → 2줄(공간명+유틸 / 4단계), 필터 칩 두 줄 깔림 → 한 줄 가로 스크롤. (회장: 상단이 화면 40%를 먹는다)"
+  ],
+  performance:[
+    "제목·요약 줄의 이메일 주소 → 작업 공간명으로 교체. (회장: 성과 요약에 이메일이 한 번 더 나온다)",
+    "지표 4칸 전부 '미수집' 반복 → 안내 카드 1회 + 예시 데이터 프리뷰(회색 처리, '예시 데이터' 배지). Hootsuite 데모 데이터 패턴 차용. (회장: 빈 상태 문구 반복으로 화면이 죽어 보인다)",
+    "좌측 세로 막대 0/5·0/3·0/2 숫자 제거: v68 다크 아이콘 레일 상속, 채널 연결 수는 시작 스트립에 '채널 연결 0/15'로 라벨과 함께. (회장: 무엇의 분수인지 알 수 없다)",
+    "미연결 배너 + 온보딩 줄 통합 시작 스트립. 쿠키 배너 좌하단 이동. (발행실과 동일)"
+  ]
+};
+let startOpen=false;
+function applyViewport(){
+  const d=document.getElementById("device");
+  d.style.width=viewport==="390"?"390px":"1024px";
+  d.style.height=viewport==="390"?"844px":"900px";
+  document.documentElement.dataset.viewport=viewport;
+}
+function render(){
+  document.documentElement.dataset.room=room;
+  document.documentElement.dataset.state=state;
+  document.getElementById("device").innerHTML=shell(room==="publish"?publishMain(startOpen):perfMain(startOpen));
+  document.getElementById("sc-chg").innerHTML=`<b>이번 개정 변경점 — ${room==="publish"?"발행실":"성과실"} (v67·v68 → v69, 운영 실화면 이탈 교정)</b><ul style="margin:6px 0 0;padding-left:18px">${chg[room].map(c=>`<li data-changelog-item>${c}</li>`).join("")}</ul>`;
+  applyViewport();
+  document.querySelectorAll("[data-room-link]").forEach(b=>b.addEventListener("click",()=>{room=b.dataset.roomLink;render();sync();}));
+  const t=document.querySelector("[data-start-toggle]");
+  if(t)t.addEventListener("click",()=>{startOpen=!startOpen;render();});
+  const av=document.getElementById("avatar-btn"),pop=document.getElementById("account-pop");
+  if(av&&pop)av.addEventListener("click",()=>{pop.hidden=!pop.hidden;});
+  document.documentElement.dataset.ready="true";
+}
+function sync(){
+  document.getElementById("room-select").value=room;
+  document.getElementById("state-select").value=state;
+  document.getElementById("viewport-select").value=viewport;
+  document.getElementById("cookie-select").value=cookie;
+}
+document.getElementById("room-select").addEventListener("change",e=>{room=e.target.value;render();});
+document.getElementById("state-select").addEventListener("change",e=>{state=e.target.value;render();});
+document.getElementById("viewport-select").addEventListener("change",e=>{viewport=e.target.value;render();});
+document.getElementById("cookie-select").addEventListener("change",e=>{cookie=e.target.value;render();});
+sync();render();
+</script>
+</body>
+</html>

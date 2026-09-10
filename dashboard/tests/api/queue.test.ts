@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createTempDir, setupTestEnv, cleanupTestEnv, copyFixture, readTempJson } from '../helpers';
 
 let tmpDir: string;
@@ -131,6 +133,30 @@ describe('POST /api/queue/bulk-approve', () => {
     const queue = readTempJson<{ posts: Array<Record<string, unknown>> }>(tmpDir, 'queue.json');
     const post = queue!.posts.find(p => p.id === 'post-001');
     expect(post!.status).toBe('approved');
+  });
+
+  it('V70-INBOX-10 거절: 공백 본문이 섞인 일괄 승인은 일부 항목도 승인하지 않는다', async () => {
+    const queue = readTempJson<{ posts: Array<Record<string, unknown>> }>(tmpDir, 'queue.json');
+    queue!.posts.push({ id: 'post-empty', text: ' \n\t ', status: 'draft' });
+    fs.writeFileSync(path.join(tmpDir, 'queue.json'), JSON.stringify(queue, null, 2));
+
+    const { POST } = await import('@/app/api/queue/bulk-approve/route');
+    const res = await POST(
+      new Request('http://localhost/api/queue/bulk-approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: ['post-001', 'post-empty'], intervalHours: 2 }),
+      })
+    );
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({
+      code: 'REVIEW_CONTENT_MISSING',
+      invalid: [{ id: 'post-empty', missingFields: ['body'] }],
+    });
+    const persisted = readTempJson<{ posts: Array<Record<string, unknown>> }>(tmpDir, 'queue.json');
+    expect(persisted!.posts.find((post) => post.id === 'post-001')!.status).toBe('draft');
+    expect(persisted!.posts.find((post) => post.id === 'post-empty')!.status).toBe('draft');
   });
 });
 

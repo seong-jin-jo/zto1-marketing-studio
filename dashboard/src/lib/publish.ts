@@ -1,7 +1,11 @@
 import crypto from "node:crypto";
 import { withTenant } from "@/lib/db";
-import { getSelectedChannelAccountCred } from "@/lib/channel-accounts";
+// 발행 직전에 만료된 토큰을 갱신 토큰으로 되살린다. 종전에는 만료된 계정이 조용히
+// 사라져 "연결된 계정이 없다"로 끝났고, 회장이 하루에 몇 번씩 손으로 다시 연결해야 했다
+// (2026-09-07 X 실측). 연결은 한 번 하고 유지는 우리가 한다.
+import { getSelectedChannelAccountCredFresh as getSelectedChannelAccountCred } from "@/lib/channel-accounts";
 import { CHANNEL_TEXT_LIMITS, countTextCharacters } from "@/lib/channel-text-limits";
+import { validatePlatformPublish } from "@/lib/studio/platform-publish-fields";
 
 // 대시보드 직접 발행(게이트웨이 docker 불필요). 토큰=integrations 테이블(테넌트별) → env 폴백(dev).
 // 게이트웨이 extensions/{ch}-publish 로직 포팅. 실발행은 실 토큰 필요.
@@ -270,12 +274,13 @@ export async function publishThreads(
   text: string,
   imageUrl?: string,
   replyToId?: string,
+  topicTag?: string,
 ): Promise<PublishResult> {
-  const length = countTextCharacters(text);
-  if (length > CHANNEL_TEXT_LIMITS.threads) {
+  const validation = validatePlatformPublish("threads", { body: text, topicTag });
+  if (validation.blocking.length > 0) {
     return {
       ok: false,
-      error: `Threads 본문이 공식 상한 ${CHANNEL_TEXT_LIMITS.threads}자를 초과했습니다 (${length}/${CHANNEL_TEXT_LIMITS.threads}). 내용을 줄인 뒤 다시 발행해주세요.`,
+      error: validation.blocking[0].message,
     };
   }
   if (!cred.token) return { ok: false, error: "Threads 채널 토큰이 없습니다. 채널을 다시 연결해주세요." };
@@ -287,6 +292,7 @@ export async function publishThreads(
   };
   if (imageUrl) params.image_url = imageUrl;
   if (replyToId) params.reply_to_id = replyToId;
+  if (topicTag?.trim()) params.topic_tag = topicTag.trim().replace(/^#/, "");
 
   let containerId: string;
   try {
@@ -387,6 +393,8 @@ export interface ReelsPollOptions {
   attempts?: number;
   intervalMs?: number;
   timeoutMs?: number;
+  /** 대문으로 쓸 시점(밀리초). 안 주면 Instagram 이 알아서 고른다(대개 첫 프레임). */
+  coverTimestampMs?: number;
 }
 
 export async function publishInstagramReels(
@@ -395,6 +403,7 @@ export async function publishInstagramReels(
   videoUrl: string,
   opts: ReelsPollOptions = {},
 ): Promise<PublishResult> {
+  const { coverTimestampMs } = opts;
   if (!cred.userId) return { ok: false, error: "INSTAGRAM_USERID(meta.userId) 없음" };
   if (!videoUrl) return { ok: false, error: "Reels는 공개 video URL 필수" };
   if (!isSafePublicImageUrl(videoUrl) || !videoUrl.startsWith("https://")) {
@@ -419,6 +428,9 @@ export async function publishInstagramReels(
         media_type: "REELS",
         video_url: videoUrl,
         caption,
+        // 안 주면 Instagram 이 첫 프레임을 쓴다. 숏폼에서 첫 프레임은 대개 아직 아무것도
+        // 안 보이는 순간이라 가장 나쁜 대문이 된다(회장 2026-09-09).
+        ...(typeof coverTimestampMs === "number" ? { thumb_offset: String(coverTimestampMs) } : {}),
         access_token: cred.token,
       }),
       signal: AbortSignal.timeout(timeoutMs),
@@ -514,7 +526,16 @@ export async function verifyXCredentials(
   }
 }
 
-function buildXOAuthHeader(method: string, url: string, k: XKeys): string {
+/**
+ * OAuth1.0a 서명 헤더.
+ *
+ * 2026-09-09: 쿼리 파라미터를 받도록 넓혔다. 종전에는 oauth_* 만 서명했는데, 그것은
+ * 본문이 JSON 이고 쿼리가 없는 POST /2/tweets 에서만 맞다. 성과 조회는
+ * GET /2/tweets?ids=...&tweet.fields=... 처럼 쿼리가 있고, RFC5849 는 쿼리도 서명
+ * 대상에 넣으라고 한다. 안 넣으면 X 가 401 로 거절하는데 그 이유가 서명이라는 것을
+ * 화면에서 알 길이 없다.
+ */
+function buildXOAuthHeader(method: string, url: string, k: XKeys, query: Record<string, string> = {}): string {
   const oauth: Record<string, string> = {
     oauth_consumer_key: k.apiKey,
     oauth_nonce: crypto.randomBytes(16).toString("hex"),
@@ -523,10 +544,12 @@ function buildXOAuthHeader(method: string, url: string, k: XKeys): string {
     oauth_token: k.accessToken,
     oauth_version: "1.0",
   };
-  // 1) 파라미터 정렬 후 직렬화 → 서명베이스 구성
-  const sorted = Object.keys(oauth)
+  // 1) 파라미터 정렬 후 직렬화 → 서명베이스 구성.
+  //    쿼리가 있으면 oauth_* 와 함께 하나로 모아 정렬한다(RFC5849 §3.4.1.3).
+  const signedParams: Record<string, string> = { ...query, ...oauth };
+  const sorted = Object.keys(signedParams)
     .sort()
-    .map((key) => `${xPercentEncode(key)}=${xPercentEncode(oauth[key])}`)
+    .map((key) => `${xPercentEncode(key)}=${xPercentEncode(signedParams[key])}`)
     .join("&");
   const base = `${method.toUpperCase()}&${xPercentEncode(url)}&${xPercentEncode(sorted)}`;
   // 2) 서명키 = consumerSecret&tokenSecret, HMAC-SHA1 → base64
@@ -540,8 +563,173 @@ function buildXOAuthHeader(method: string, url: string, k: XKeys): string {
   return `OAuth ${headerParts}`;
 }
 
-// X 발행 (text only, API v2). 4키 OAuth1.0a 서명. 280자 초과 시 자르기.
+/**
+ * X 게시물의 공개 지표를 읽어 온다.
+ *
+ * 2026-09-09 회장 지적("성과 수집이 Threads 만") 후속. 우리는 X 로 발행까지 하면서
+ * 그 결과를 한 번도 되받지 않았다. 성과실은 X 글을 영원히 "미수집" 으로 두었다.
+ * 사업계획의 One Thing 은 "결과를 되받아 다음 제안으로 돌린다" 인데, 되받는 칸이
+ * 비어 있으면 그 뒤 칸이 전부 비어 돈다.
+ *
+ * 한 번에 100건까지 묶어 물을 수 있다. 글마다 따로 부르면 요청 수가 그만큼 늘고
+ * X 의 시간당 한도에 금방 닿는다.
+ */
+export async function fetchXPublicMetrics(
+  cred: ChannelCred,
+  tweetIds: string[],
+): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number; reposts: number }> }
+  | { ok: false; status?: number; error: string }> {
+  const ids = tweetIds.filter(Boolean).slice(0, 100);
+  if (ids.length === 0) return { ok: true, metrics: {} };
+  const query = { ids: ids.join(","), "tweet.fields": "public_metrics" };
+  const url = "https://api.twitter.com/2/tweets";
+  // 화면으로 연결한 계정은 OAuth 2.0 사용자 토큰을 쓰고, 4키가 있는 계정(구 방식)은
+  // OAuth 1.0a 서명을 쓴다. 발행이 이미 같은 방식으로 갈라져 있다(publishX).
+  // 한쪽만 보면 그 방식으로 연결한 사람은 성과가 영원히 안 모인다.
+  const meta = (cred.meta ?? {}) as Record<string, unknown>;
+  const k: XKeys = {
+    apiKey: String(meta.apiKey ?? ""),
+    apiSecret: String(meta.apiSecret ?? meta.apiKeySecret ?? ""),
+    accessToken: String(meta.accessToken ?? ""),
+    accessSecret: String(meta.accessSecret ?? meta.accessTokenSecret ?? ""),
+  };
+  const hasLegacyKeys = Boolean(k.apiKey && k.apiSecret && k.accessToken && k.accessSecret);
+  if (!hasLegacyKeys && !cred.token) {
+    return { ok: false, error: "X 연결이 없습니다." };
+  }
+  const auth = hasLegacyKeys ? buildXOAuthHeader("GET", url, k, query) : `Bearer ${cred.token}`;
+  try {
+    const resp = await fetch(`${url}?${new URLSearchParams(query).toString()}`, {
+      method: "GET",
+      headers: { Authorization: auth },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!resp.ok) {
+      return { ok: false, status: resp.status, error: `X 성과 조회 실패(${resp.status})` };
+    }
+    const body = (await resp.json()) as {
+      data?: { id: string; public_metrics?: { impression_count?: number; like_count?: number; reply_count?: number; retweet_count?: number } }[];
+    };
+    const metrics: Record<string, { views: number; likes: number; replies: number; reposts: number }> = {};
+    for (const row of body.data ?? []) {
+      const m = row.public_metrics ?? {};
+      metrics[row.id] = {
+        views: m.impression_count ?? 0,
+        likes: m.like_count ?? 0,
+        replies: m.reply_count ?? 0,
+        reposts: m.retweet_count ?? 0,
+      };
+    }
+    return { ok: true, metrics };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: `X 성과 조회 중 오류: ${msg.slice(0, 120)}` };
+  }
+}
+
+/**
+ * YouTube 영상의 공개 지표를 읽어 온다.
+ *
+ * 2026-09-10: 회장 계정에 YouTube 가 연결돼 있는데도 성과 수집 대상이 아니었다. 그래서
+ * 숏폼을 올려도 그 결과가 영영 안 돌아왔다. 경쟁사 비교 문서가 꼽은 다섯 번째 과제
+ * ("성과 수집을 Threads 외 채널로")가 이 자리다. **되받을 숫자가 없으면 다음 제안이
+ * 뻔해진다.**
+ *
+ * YouTube 는 videos?part=statistics 하나로 조회·좋아요·댓글을 함께 준다. 한 번에 50개까지
+ * 묶어 물을 수 있어 글마다 부르지 않는다.
+ *
+ * 주의: 비공개·삭제된 영상은 응답에서 그냥 빠진다. 오류가 아니라 빠짐이라서, 부르는 쪽이
+ * 빠진 것을 "측정 불가" 로 표시해야 사용자가 무한정 기다리지 않는다.
+ */
+export async function fetchYouTubeMetrics(
+  cred: ChannelCred,
+  videoIds: string[],
+): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number }> }
+  | { ok: false; status?: number; error: string }> {
+  const ids = videoIds.filter(Boolean).slice(0, 50);
+  if (ids.length === 0) return { ok: true, metrics: {} };
+  if (!cred.token) return { ok: false, error: "YouTube 연결이 없습니다." };
+  try {
+    const resp = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(ids.join(","))}`,
+      { headers: { Authorization: `Bearer ${cred.token}` }, signal: AbortSignal.timeout(10000) },
+    );
+    if (!resp.ok) {
+      return { ok: false, status: resp.status, error: `YouTube 성과 조회 실패(${resp.status})` };
+    }
+    const body = (await resp.json()) as {
+      items?: { id: string; statistics?: { viewCount?: string; likeCount?: string; commentCount?: string } }[];
+    };
+    const metrics: Record<string, { views: number; likes: number; replies: number }> = {};
+    for (const item of body.items ?? []) {
+      const st = item.statistics ?? {};
+      // 숫자를 글자로 준다. 좋아요를 끈 영상은 그 칸 자체가 없다(0 과 다르지만, 화면에서는
+      // 둘 다 "없음" 이라 0 으로 둔다).
+      metrics[item.id] = {
+        views: Number(st.viewCount ?? 0) || 0,
+        likes: Number(st.likeCount ?? 0) || 0,
+        replies: Number(st.commentCount ?? 0) || 0,
+      };
+    }
+    return { ok: true, metrics };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: `YouTube 성과 조회 중 오류: ${msg.slice(0, 120)}` };
+  }
+}
+
+/**
+ * Instagram 또는 Facebook 게시물의 공개 지표를 읽어 온다.
+ *
+ * 2026-09-09 회장 지적("성과 수집이 Threads 만") 후속. Meta 는 Graph API 의 insights 로
+ * 게시물별 수치를 준다. Threads 와 같은 구조라 응답 형태만 맞추면 된다.
+ *
+ * 지표 이름이 채널마다 다르다. Instagram 은 impressions·likes·comments 이고 Facebook 은
+ * post_impressions 다. 하나로 뭉뚱그리면 그 채널에서는 빈 값이 온다.
+ */
+export async function fetchMetaPostMetrics(
+  cred: ChannelCred,
+  platform: "instagram" | "facebook",
+  postIds: string[],
+): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number }> }
+  | { ok: false; status?: number; error: string }> {
+  const ids = postIds.filter(Boolean).slice(0, 50);
+  if (ids.length === 0) return { ok: true, metrics: {} };
+  if (!cred.token) return { ok: false, error: `${platform} 연결이 없습니다.` };
+
+  const metricNames = platform === "instagram"
+    ? "impressions,likes,comments"
+    : "post_impressions,post_reactions_by_type_total";
+  const metrics: Record<string, { views: number; likes: number; replies: number }> = {};
+
+  // Graph API 는 게시물별 insights 를 하나씩 묻는다. 한 번에 묶는 batch 도 있지만 실패
+  // 하나가 전체를 물고 늘어져 원인을 못 가린다. 하나씩 묻고 실패도 하나씩 남긴다.
+  for (const id of ids) {
+    try {
+      const resp = await fetch(
+        `https://graph.facebook.com/v21.0/${encodeURIComponent(id)}/insights?metric=${metricNames}&access_token=${cred.token}`,
+        { signal: AbortSignal.timeout(8000) },
+      );
+      if (!resp.ok) continue; // 못 잰 글은 호출부가 "측정 불가" 로 남긴다
+      const body = (await resp.json()) as { data?: { name: string; values?: { value?: number }[] }[] };
+      const row: Record<string, number> = {};
+      for (const entry of body.data ?? []) row[entry.name] = entry.values?.[0]?.value ?? 0;
+      metrics[id] = {
+        views: row.impressions ?? row.post_impressions ?? 0,
+        likes: row.likes ?? row.post_reactions_by_type_total ?? 0,
+        replies: row.comments ?? 0,
+      };
+    } catch { /* 이 글만 건너뛴다. 하나 때문에 나머지를 잃지 않는다 */ }
+  }
+  return { ok: true, metrics };
+}
+
+// X 발행 (text only, API v2). 4키 OAuth1.0a 서명. 공식 가중 문자가 280을 넘으면 차단한다.
 export async function publishX(cred: ChannelCred, text: string): Promise<PublishResult> {
+  const validation = validatePlatformPublish("x", { body: text });
+  if (validation.blocking.length > 0) {
+    return { ok: false, error: validation.blocking[0].message };
+  }
   const meta = (cred.meta ?? {}) as Record<string, unknown>;
   // apiSecret/accessSecret은 게이트웨이 표기(apiKeySecret/accessTokenSecret)도 허용
   const keys: XKeys = {
@@ -550,25 +738,48 @@ export async function publishX(cred: ChannelCred, text: string): Promise<Publish
     accessToken: String(meta.accessToken ?? ""),
     accessSecret: String(meta.accessSecret ?? meta.accessTokenSecret ?? ""),
   };
-  if (!keys.apiKey || !keys.apiSecret || !keys.accessToken || !keys.accessSecret) {
-    return { ok: false, error: "X 4키(apiKey/apiSecret/accessToken/accessSecret) 누락" };
-  }
-  // 280자 초과 시 자르기(멀티바이트 안전 — 코드포인트 단위)
-  const body = [...(text ?? "")].slice(0, CHANNEL_TEXT_LIMITS.x).join("");
+  const body = text ?? "";
   const url = `${X_API}/tweets`;
-  const auth = buildXOAuthHeader("POST", url, keys);
+  // 2026-09-07 회장 계정 실측: 화면에서 X 를 연결하면 OAuth 2.0 사용자 토큰이 저장되는데
+  // 발행은 OAuth 1.0a 4키만 받아 "4키 누락" 으로 끝났다. 연결과 발행이 서로 다른 인증을
+  // 보고 있었다. X API v2 의 /tweets 는 OAuth 2.0 사용자 토큰(Bearer)으로도 올릴 수 있다.
+  // 화면으로 연결한 계정은 그 토큰으로 올리고, 4키가 있는 계정(구 방식)은 종전대로 둔다.
+  const hasLegacyKeys = Boolean(keys.apiKey && keys.apiSecret && keys.accessToken && keys.accessSecret);
+  if (!hasLegacyKeys && !cred.token) {
+    return { ok: false, error: "X 연결이 없습니다. 발행실에서 X 를 다시 연결해 주세요." };
+  }
+  const auth = hasLegacyKeys ? buildXOAuthHeader("POST", url, keys) : `Bearer ${cred.token}`;
   const resp = await fetch(url, {
     method: "POST",
     headers: { Authorization: auth, "Content-Type": "application/json" },
     body: JSON.stringify({ text: body }),
   });
-  if (!resp.ok) return { ok: false, error: `X tweet 실패(${resp.status}): ${(await resp.text()).slice(0, 200)}` };
+  if (!resp.ok) {
+    const raw = (await resp.text()).slice(0, 300);
+    // 402 는 X 가 사용량 요금을 다 썼다는 뜻이다. 제공자 JSON 을 그대로 보여 주면 고객은
+    // 무엇을 해야 하는지 모른다(2026-09-07 실측: `{"detail":"credits depleted"...}` 노출).
+    // 돈 문제와 권한 문제와 글자수 문제는 조치가 서로 다르므로 갈라서 말한다.
+    if (resp.status === 402 || /credits? depleted|payment required/i.test(raw)) {
+      return { ok: false, error: "X 사용 요금이 소진돼 올리지 못했습니다. X 개발자 콘솔에서 크레딧을 채우면 바로 올라갑니다." };
+    }
+    if (resp.status === 401 || resp.status === 403) {
+      return { ok: false, error: "X 가 이 계정의 권한을 받아들이지 않았습니다. 발행실에서 X 를 다시 연결해 주세요." };
+    }
+    if (resp.status === 429) {
+      return { ok: false, error: "X 가 잠시 요청을 제한했습니다. 조금 뒤 다시 올려 주세요." };
+    }
+    return { ok: false, error: `X 에 올리지 못했습니다 (HTTP ${resp.status}). 원문: ${raw.slice(0, 160)}` };
+  }
   const data = (await resp.json()) as { data?: { id?: string } };
   const tweetId = data.data?.id;
   return { ok: true, externalId: tweetId, permalink: tweetId ? `https://x.com/i/web/status/${tweetId}` : undefined };
 }
 
 export async function publishXReply(cred: ChannelCred, text: string, parentId: string): Promise<PublishResult> {
+  const validation = validatePlatformPublish("x", { body: text });
+  if (validation.blocking.length > 0) {
+    return { ok: false, error: validation.blocking[0].message };
+  }
   const meta = (cred.meta ?? {}) as Record<string, unknown>;
   const keys: XKeys = {
     apiKey: String(meta.apiKey ?? ""),
@@ -579,7 +790,7 @@ export async function publishXReply(cred: ChannelCred, text: string, parentId: s
   if (!keys.apiKey || !keys.apiSecret || !keys.accessToken || !keys.accessSecret) {
     return { ok: false, error: "X 4키(apiKey/apiSecret/accessToken/accessSecret) 누락" };
   }
-  const body = [...text].slice(0, CHANNEL_TEXT_LIMITS.x).join("");
+  const body = text;
   const url = `${X_API}/tweets`;
   const resp = await fetch(url, {
     method: "POST",
@@ -594,13 +805,6 @@ export async function publishXReply(cred: ChannelCred, text: string, parentId: s
 
 // Facebook 페이지 발행 (Graph API). imageUrl 있으면 /photos(caption), 없으면 /feed(message).
 export async function publishFacebook(cred: ChannelCred, message: string, imageUrl?: string): Promise<PublishResult> {
-  const length = countTextCharacters(message);
-  if (length > CHANNEL_TEXT_LIMITS.facebook) {
-    return {
-      ok: false,
-      error: `Facebook 본문이 공식 상한 ${CHANNEL_TEXT_LIMITS.facebook}자를 초과했습니다 (${length}/${CHANNEL_TEXT_LIMITS.facebook}). 내용을 줄인 뒤 다시 발행해주세요.`,
-    };
-  }
   const pageId = cred.userId;
   if (!pageId) return { ok: false, error: "Facebook pageId(meta.userId) 없음" };
   if (!cred.token) return { ok: false, error: "Facebook access token 없음" };
@@ -942,4 +1146,90 @@ export async function publishSlack(cred: ChannelCred, text: string, imageUrl?: s
   } catch (e) {
     return { ok: false, error: `Slack 요청 실패: ${e instanceof Error ? e.message : String(e)}` };
   }
+}
+
+/**
+ * LinkedIn 회원 게시.
+ *
+ * 2026-09-08 판정(docs/audit/osmu-채널-발행-실태-v1.0.md): 아홉 채널 가운데 LinkedIn 만
+ * 발행하는 코드가 두 경로 어디에도 없었다. 나머지는 전부 구현돼 있고 연결이나 배선만
+ * 남은 상태였다. 그래서 이 한 칸을 채운다.
+ *
+ * LinkedIn 은 글쓴이를 사람 식별자(URN)로 요구한다. 그 값은 연결할 때 openid 로 받아
+ * meta.userId 에 넣어 둔다. 없으면 게시가 성립하지 않으므로 지어내지 않고 정직하게 막는다.
+ *
+ * 공개 범위는 전체 공개로 고정한다. 마케팅 발행 도구가 아무도 못 보는 글을 올리는 것은
+ * 사용자가 기대한 일이 아니다. 나중에 선택이 필요해지면 그때 화면에 내놓는다.
+ *
+ * 이미지 첨부는 이번 범위에서 제외한다. LinkedIn 은 별도 업로드 등록 절차를 요구해
+ * 텍스트 발행과 실패 모양이 다르다. 반쯤 되는 첨부를 넣는 것보다 텍스트를 확실히 하는 편이
+ * 낫다. 첨부가 필요해지면 그때 등록 절차까지 함께 넣는다.
+ */
+const LINKEDIN_API = "https://api.linkedin.com/v2";
+const LINKEDIN_MAX_TEXT = 3000;
+
+export async function publishLinkedIn(cred: ChannelCred, text: string): Promise<PublishResult> {
+  const body = (text || "").trim();
+  if (!body) return { ok: false, error: "LinkedIn 발행할 본문이 없습니다." };
+  if ([...body].length > LINKEDIN_MAX_TEXT) {
+    return { ok: false, error: `LinkedIn 본문은 ${LINKEDIN_MAX_TEXT}자까지입니다. 현재 ${[...body].length}자입니다.` };
+  }
+  if (!cred.token) return { ok: false, error: "LinkedIn 연결이 없습니다. 설정에서 먼저 연결해 주세요." };
+  if (!cred.userId) {
+    return { ok: false, error: "LinkedIn 계정 식별자를 찾지 못했습니다. 설정에서 다시 연결해 주세요." };
+  }
+  const author = cred.userId.startsWith("urn:") ? cred.userId : `urn:li:person:${cred.userId}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${LINKEDIN_API}/ugcPosts`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cred.token}`,
+        "Content-Type": "application/json",
+        "X-Restli-Protocol-Version": "2.0.0",
+      },
+      body: JSON.stringify({
+        author,
+        lifecycleState: "PUBLISHED",
+        specificContent: {
+          "com.linkedin.ugc.ShareContent": {
+            shareCommentary: { text: body },
+            shareMediaCategory: "NONE",
+          },
+        },
+        visibility: { "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC" },
+      }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    // 네트워크 단계에서 끊기면 올라갔는지 아닌지 알 수 없다. 확정 실패로 처리해 자동 재시도가
+    // 중복 게시를 만들지 않게 한다.
+    return { ok: false, error: "LinkedIn 요청이 끝나지 않았습니다. 발행 여부를 확인한 뒤 다시 시도해 주세요.", failureKind: "indeterminate" };
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    return { ok: false, error: "LinkedIn 권한이 만료되었거나 발행 권한이 없습니다. 설정에서 다시 연결해 주세요.", failureKind: "definitive" };
+  }
+  if (res.status === 429) {
+    return { ok: false, error: "LinkedIn 요청 한도를 넘었습니다. 잠시 뒤 다시 시도해 주세요.", failureKind: "indeterminate" };
+  }
+  if (!res.ok) {
+    // 제공자 원문을 그대로 노출하지 않는다(내부 구조 노출 방지). 상태만 남긴다.
+    return { ok: false, error: `LinkedIn 발행에 실패했습니다(오류 코드 ${res.status}).`, failureKind: "definitive" };
+  }
+
+  // 식별자는 헤더 또는 본문 id 로 온다. 둘 다 없으면 성공으로 단정하지 않는다 —
+  // 기록할 식별자가 없으면 이후 성과 수집도 중복 방지도 못 한다.
+  const headerId = res.headers.get("x-restli-id") || "";
+  const data = (await res.json().catch(() => ({}))) as { id?: string };
+  const externalId = headerId || data.id || "";
+  if (!externalId) {
+    return { ok: false, error: "LinkedIn 응답에 게시물 식별자가 없습니다. 발행 여부를 확인해 주세요.", failureKind: "indeterminate" };
+  }
+  return {
+    ok: true,
+    externalId,
+    permalink: `https://www.linkedin.com/feed/update/${encodeURIComponent(externalId)}/`,
+  };
 }

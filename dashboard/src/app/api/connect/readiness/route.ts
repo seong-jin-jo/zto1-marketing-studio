@@ -3,12 +3,48 @@ import { PROVIDERS, FACEBOOK } from "@/lib/social-connect";
 import { resolveOAuthCredentialSets } from "@/lib/oauth-app-credentials";
 import { auditConnectTenantQueryMismatch } from "@/lib/connect-tenant-audit";
 import { getChannelConnectionStates } from "@/lib/channel-connection";
-import { resolveConnectReadiness, type ConnectReadinessEntry } from "@/lib/connect-readiness";
+import { CH_LABELS } from "@/lib/constants";
+import {
+  getMetaPreReviewGuidance,
+  resolveConnectReadiness,
+  type ConnectReadinessEntry,
+} from "@/lib/connect-readiness";
 
 const CREDENTIAL_STORE_UNAVAILABLE_REASON =
   "OAuth 자격증명 저장소에 일시적으로 연결할 수 없습니다. 관리자 복구 후 다시 시도해주세요.";
 
 const META_REVIEW_PROVIDERS = new Set(["threads", "instagram", "facebook"]);
+
+// 자격증명이 없을 때 화면에 뜨던 문구는 "서버에 x OAuth 앱 자격증명(X_CLIENT_ID/X_CLIENT_SECRET)이
+// 아직 설정되지 않았습니다" 였다. 회장 2026-09-06 "앱 자격증명 등록을 하라는게 뭔말이냐".
+// 설정 변수 이름은 우리 사정이고 화면을 보는 사람의 언어가 아니다. 어디에 가서 무엇을 만들고
+// 무엇을 받아 와야 하는지를 평문으로 적는다(ADR-007 조용한 실패 금지의 연장).
+const CONSOLE_GUIDE: Record<string, string> = {
+  x: "X 개발자 사이트(developer.x.com)에서 앱을 만들고 열쇠 두 개를 받아 오면 연결이 열립니다.",
+  tiktok: "TikTok 개발자 사이트(developers.tiktok.com)에서 앱을 만들고 열쇠 두 개를 받아 오면 연결이 열립니다.",
+  linkedin: "LinkedIn 개발자 사이트(developer.linkedin.com)에서 앱을 만들고 열쇠 두 개를 받아 오면 연결이 열립니다.",
+  youtube: "구글 클라우드 콘솔에서 앱을 만들고 열쇠 두 개를 받아 오면 연결이 열립니다.",
+  instagram: "Meta 개발자 사이트에서 앱을 만들고 열쇠 두 개를 받아 오면 연결이 열립니다.",
+  threads: "Meta 개발자 사이트에서 앱을 만들고 열쇠 두 개를 받아 오면 연결이 열립니다.",
+  facebook: "Meta 개발자 사이트에서 앱을 만들고 열쇠 두 개를 받아 오면 연결이 열립니다.",
+};
+
+function missingCredentialReason(provider: string, label: string): string {
+  const guide = CONSOLE_GUIDE[provider]
+    || "해당 플랫폼 개발자 사이트에서 앱을 만들고 열쇠 두 개를 받아 오면 연결이 열립니다.";
+  return `${label} 은 아직 열 준비가 되지 않았습니다. ${guide} 받은 값은 운영자 화면에서 등록합니다.`;
+}
+
+function isExternalReviewPending(provider: string, review: "required" | "unknown" | undefined): boolean {
+  if (review !== "required") return false;
+  const approvedProviders = new Set(
+    String(process.env.OAUTH_APP_REVIEW_APPROVED_PROVIDERS || "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  return !approvedProviders.has(provider.toLowerCase());
+}
 
 function externalReviewReason(
   provider: string,
@@ -17,8 +53,8 @@ function externalReviewReason(
 ): string {
   if (META_REVIEW_PROVIDERS.has(provider)) {
     return connectionState === "connected"
-      ? `${label}은 아직 앱 심사 전입니다. 현재 연결된 테스터 계정은 사용할 수 있지만 외부 고객 계정은 연결할 수 없습니다. 심사 승인 후에는 테스터 등록 없이 OAuth로 연결됩니다.`
-      : `${label}은 아직 앱 심사 전입니다. Meta 앱에서 테스터로 등록하고 초대를 수락한 계정만 연결할 수 있습니다. 심사 승인 후에는 테스터 등록 없이 OAuth로 연결됩니다.`;
+      ? `${label} 채널은 아직 앱 심사 전입니다. 현재 연결된 테스터 계정은 사용할 수 있지만 외부 고객 계정은 연결할 수 없습니다. 심사 승인 후에는 테스터 등록 없이 OAuth로 연결됩니다.`
+      : `${label} 채널은 아직 앱 심사 전입니다. Meta 앱에서 테스터로 등록하고 초대를 수락한 계정만 연결할 수 있습니다. 심사 승인 후에는 테스터 등록 없이 OAuth로 연결됩니다.`;
   }
   return connectionState === "connected"
     ? `${label} 계정은 연결됐지만 외부 앱 심사가 완료되기 전에는 실제 발행이 제한됩니다.`
@@ -56,7 +92,7 @@ export async function GET(request: Request) {
   for (const [name, cfg] of Object.entries(PROVIDERS)) {
     const credentials = credentialsByProvider[name];
     const credentialStoreError = credentials?.reason === "credential_store_unavailable";
-    const externalReviewPending = credentials?.externalReview === "required";
+    const externalReviewPending = isExternalReviewPending(name, credentials?.externalReview);
     const connectionState = connectionStates[name] || "disconnected";
     const reason = credentialStoreError
       ? CREDENTIAL_STORE_UNAVAILABLE_REASON
@@ -65,13 +101,13 @@ export async function GET(request: Request) {
       // 자격증명이 없으면 심사 여부보다 그 사실을 먼저 알린다. 자격증명 미설정 상태에서
       // "심사가 끝나면 연결할 수 있습니다"라고 안내하면 고객이 기다리기만 하게 된다.
       : !credentials?.complete
-      ? `서버에 ${name} OAuth 앱 자격증명(${cfg.appIdEnv}/${cfg.appSecretEnv})이 아직 설정되지 않았습니다.`
+      ? missingCredentialReason(name, CH_LABELS[name] || cfg.label)
       : externalReviewPending
-      ? externalReviewReason(name, cfg.label, connectionState)
+      ? externalReviewReason(name, CH_LABELS[name] || cfg.label, connectionState)
       : connectionState === "reconnect"
-      ? `${cfg.label} 계정을 다시 연결해주세요.`
+      ? `${CH_LABELS[name] || cfg.label} 계정을 다시 연결해주세요.`
       : undefined;
-    result[name] = resolveConnectReadiness({
+    const readiness = resolveConnectReadiness({
       credentialsComplete: Boolean(credentials?.complete),
       credentialStoreError,
       connectionState,
@@ -79,6 +115,10 @@ export async function GET(request: Request) {
       externalReviewPending,
       reason,
     });
+    const guidance = externalReviewPending && readiness.available
+      ? getMetaPreReviewGuidance(name)
+      : undefined;
+    result[name] = guidance ? { ...readiness, guidance } : readiness;
   }
 
   // Facebook은 config_id 모델(비즈니스용 로그인) — FB_APP_ID/SECRET 외에 FB_CONFIG_ID도 필요.
@@ -100,7 +140,7 @@ export async function GET(request: Request) {
     });
   } else {
     const connectionState = connectionStates.facebook || "disconnected";
-    const externalReviewPending = facebook.externalReview === "required";
+    const externalReviewPending = isExternalReviewPending("facebook", facebook.externalReview);
     result.facebook = resolveConnectReadiness({
       credentialsComplete: true,
       connectionState,

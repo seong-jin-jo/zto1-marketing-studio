@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { channelTextLimit, countTextCharacters } from "@/lib/channel-text-limits";
+import { useEffect, useRef, useState } from "react";
+import {
+  PLATFORM_FIELD_CONTRACT,
+  validatePlatformPublish,
+  type PlatformPublishValidation,
+} from "@/lib/studio/platform-publish-fields";
 
 export interface PreviewText {
   threads?: string; facebook?: string; x?: string;
@@ -11,18 +15,25 @@ export interface PreviewText {
 export interface PreviewMedia { imgUrl?: string; vidUrl?: string }
 export type PreviewPlatform = "threads" | "x" | "instagram" | "facebook" | "shorts" | "reels" | "tiktok";
 
+export type PreviewAccount = {
+  status: "loading" | "connected" | "missing" | "error" | "unsupported";
+  displayName?: string;
+  username?: string;
+};
+
 export interface PreviewInlineEditor {
-  displayName: string;
+  account: PreviewAccount;
   title: string;
   caption: string;
   hashtags: string;
+  topicTag: string;
   firstComment: string;
   firstCommentSupported: boolean;
   firstCommentReason?: string;
-  onDisplayNameChange: (value: string) => void;
   onTitleChange: (value: string) => void;
   onCaptionChange: (value: string) => void;
   onHashtagsChange: (value: string) => void;
+  onTopicTagChange: (value: string) => void;
   onFirstCommentChange: (value: string) => void;
 }
 
@@ -52,11 +63,24 @@ function Frame({ p, label, children, headerRight, characterCount }: {
   characterCount?: { current: number; limit: number };
 }) {
   return (
-    <div className="w-full max-w-sm">
-      <div className="flex items-center gap-stack-tight mb-stack-tight px-micro">
+    /*
+      2026-09-09 회장 지적: "발행실에서는 스레드는 컴포넌트 위치가 왜 살짝 아래로 내려갔냐."
+      실측하니 편집 칸 시작점이 채널마다 달랐다. X 는 1417, Facebook 은 1448, Threads 는
+      1532 픽셀이었다. 미리보기 내용 높이가 채널마다 다른데 카드가 그냥 위에서부터 쌓여서다.
+      나란히 놓인 카드가 제각각 다른 높이에서 시작하면 눈이 줄을 못 잡는다.
+      카드를 세로 흐름으로 만들고 미리보기 부분이 남은 높이를 채우게 해서, 그 아래 편집
+      칸들이 같은 줄에서 시작하게 한다.
+    */
+    <div className="flex h-full w-full max-w-sm flex-col" data-preview-card={p}>
+      {/*
+        2026-09-05 회장 계정 실측(폭 430): 이 머리줄이 담긴 칸보다 18픽셀 넓어져 오른쪽
+        끝의 발행 토글과 계정 관리가 잘렸다. 문서 가로 스크롤은 0이라 겉으로는 멀쩡해
+        보이지만 조작할 수 없는 단추가 생긴다. 좁으면 줄을 바꾸게 한다.
+      */}
+      <div className="flex flex-wrap items-center gap-stack-tight mb-stack-tight px-micro">
         <Logo p={p} />
-        <span className="min-w-0 truncate text-caption font-bold text-muted">{label}</span>
-        <div className="ml-auto flex items-center gap-stack-tight">
+        <span className="shrink-0 whitespace-nowrap text-caption font-bold text-muted">{label}</span>
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-stack-tight">
           {characterCount && (
             <span
               data-testid={`character-count-${p}`}
@@ -68,62 +92,174 @@ function Frame({ p, label, children, headerRight, characterCount }: {
           {headerRight}
         </div>
       </div>
-      {children}
+      <div className="flex flex-1 flex-col">{children}</div>
     </div>
   );
 }
 
+function AccountIdentity({ platform, account }: { platform: PreviewPlatform; account: PreviewAccount }) {
+  const statusLabel = account.status === "loading"
+    ? "연결 계정 확인 중"
+    : account.status === "error"
+      ? "연결 계정을 확인하지 못했습니다"
+      : account.status === "unsupported"
+        ? "이 플랫폼 발행은 아직 지원하지 않습니다"
+        : "연결된 계정이 없습니다";
+  if (account.status !== "connected") {
+    return <div data-testid={`preview-account-${platform}`} data-account-state={account.status} className="rounded-control border border-border bg-surface-2 p-stack text-caption text-muted">{statusLabel}</div>;
+  }
+  return (
+    <div data-testid={`preview-account-${platform}`} data-account-state="connected" className="flex min-h-control-touch items-center gap-stack rounded-control border border-border bg-surface-2 p-stack">
+      <Av s={32} />
+      <div className="min-w-0 flex-1"><b className="block truncate text-body-sm text-text">{account.displayName || account.username || "연결 계정"}</b>{account.username ? <span className="block truncate text-caption text-subtle">@{account.username.replace(/^@/, "")}</span> : null}</div>
+      <span className="text-caption text-subtle">읽기 전용</span>
+    </div>
+  );
+}
+
+function Counter({ validation, field }: { validation: PlatformPublishValidation; field: "title" | "body" | "topicTag" }) {
+  const counter = validation.counters[field];
+  if (!counter) return null;
+  const invalid = counter.current > counter.limit;
+  return <span className={invalid ? "text-caption text-danger" : "text-caption text-subtle"}>{counter.current}/{counter.limit} {counter.unit}</span>;
+}
+
+/**
+ * 미리보기 안의 본문을 그 자리에서 고친다.
+ *
+ * 2026-09-09 회장 지적: "텍스트면 텍스트 미리보기 화면 자체에서 본문 수정해야지 왜 별도로
+ * 수정을해." 종전에는 미리보기가 본문을 읽기 전용으로 보여 주고, 그 아래 따로 붙은 칸에서
+ * 같은 본문을 고쳤다. 같은 글이 두 번 보이고, 고치는 곳과 결과를 보는 곳이 떨어져 있었다.
+ * 사업계획 §3.2 도 편집실 최우선 과제로 "미리보기와 최종 일치" 를 꼽았다. 고치는 자리가
+ * 곧 보는 자리면 어긋날 수가 없다.
+ *
+ * contentEditable 을 쓰되 값은 처음 한 번만 넣는다. 타이핑할 때마다 React 가 내용을 다시
+ * 그리면 커서가 맨 앞으로 튄다. 밖에서 값이 바뀐 경우(다른 곳에서 고쳤거나 초안을 불러온
+ * 경우)에만 화면을 맞춘다.
+ */
+// 미리보기 안에서 본문을 직접 고치는 형식. 이 목록에 있으면 아래 캡션 칸을 두지 않는다.
+const BODY_EDITABLE_IN_PREVIEW = new Set<PreviewPlatform>(["threads", "x", "facebook", "instagram"]);
+// 첫 댓글을 미리보기 답글 자리에서 고치는 형식. 나머지는 아래 칸이 유일한 입구다.
+const FIRST_COMMENT_IN_PREVIEW = new Set<PreviewPlatform>(["threads"]);
+
+function EditablePreviewBody({
+  value, onChange, className, placeholder, testId, label, locked = false,
+}: {
+  value: string;
+  onChange?: (next: string) => void;
+  className: string;
+  placeholder: string;
+  testId: string;
+  /** 스크린 리더와 테스트가 이 자리를 부르는 이름. 플랫폼별 캡션이다. */
+  label: string;
+  /** 계정을 아직 못 불러온 동안에는 잠근다. 그때 고친 값은 어느 계정으로 갈지 알 수 없다. */
+  locked?: boolean;
+}) {
+  const ref = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    // 지금 손이 올라가 있는 동안에는 건드리지 않는다. 커서가 튄다.
+    if (document.activeElement === node) return;
+    if (node.textContent !== value) node.textContent = value;
+  }, [value]);
+
+  if (!onChange || locked) {
+    return (
+      <p className={className} aria-label={label} data-testid={testId} aria-disabled={locked || undefined}>
+        {value || <span className="text-subtle">{placeholder}</span>}
+      </p>
+    );
+  }
+  return (
+    <p
+      ref={ref}
+      data-testid={testId}
+      data-preview-body-editable
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline="true"
+      aria-label={label}
+      spellCheck={false}
+      onInput={(event) => onChange(event.currentTarget.textContent ?? "")}
+      className={`${className} rounded-control outline-none focus:bg-accent-soft/20 hover:bg-surface-2 ${value ? "" : "text-subtle"}`}
+    >
+      {value || placeholder}
+    </p>
+  );
+}
+
 function InlinePreviewEditor({ platform, editor }: { platform: PreviewPlatform; editor: PreviewInlineEditor }) {
-  const video = platform === "shorts" || platform === "reels" || platform === "tiktok";
+  const contract = PLATFORM_FIELD_CONTRACT[platform];
+  const validation = validatePlatformPublish(platform, {
+    title: editor.title,
+    body: editor.caption,
+    hashtags: editor.hashtags,
+    topicTag: editor.topicTag,
+  });
+  const loading = editor.account.status === "loading";
   const inlineClass = "mt-micro min-h-control-touch w-full rounded-control border border-transparent bg-transparent px-stack text-body text-text underline decoration-accent/40 underline-offset-4 focus:border-accent focus:bg-surface focus:no-underline";
   return (
-    <div className="mt-stack border-t border-border pt-stack" data-testid={`inline-editor-${platform}`} data-pub-fields={platform}>
-      <div className="grid gap-stack sm:grid-cols-2">
-        <label className="text-caption text-muted">
-          표시 이름
-          <input
-            aria-label={`${platform} 표시 이름`}
-            data-pv-inline-edit={`${platform}:displayName`}
-            value={editor.displayName}
-            onChange={(event) => editor.onDisplayNameChange(event.target.value)}
-            className={inlineClass}
-          />
-        </label>
-        {video ? (
+    <div className="mt-auto border-t border-border pt-stack" data-testid={`inline-editor-${platform}`} data-pub-fields={platform}>
+      <AccountIdentity platform={platform} account={editor.account} />
+      <div className="mt-stack grid gap-stack sm:grid-cols-2">
+        {contract.title ? (
           <label className="text-caption text-muted">
-            제목
+            <span className="flex items-center justify-between gap-stack-tight">제목 <Counter validation={validation} field="title" /></span>
             <input
               aria-label={`${platform} 제목`}
               data-pv-inline-edit={`${platform}:title`}
               value={editor.title}
               onChange={(event) => editor.onTitleChange(event.target.value)}
+              disabled={loading}
               className={inlineClass}
             />
           </label>
         ) : null}
       </div>
-      <label className="mt-stack block text-caption text-muted">
-        캡션
-        <textarea
-          aria-label={`${platform} 캡션`}
-          data-pv-inline-edit={`${platform}:caption`}
-          value={editor.caption}
-          onChange={(event) => editor.onCaptionChange(event.target.value)}
-          rows={3}
-          className={`${inlineClass} p-stack`}
-        />
-      </label>
-      <label className="mt-stack block text-caption text-muted">
+      {/*
+        2026-09-09 회장 지적: "텍스트면 텍스트 미리보기 화면 자체에서 본문 수정해야지 왜
+        별도로 수정을해." 본문을 미리보기 안에서 고치는 플랫폼은 여기 같은 칸을 또 두지
+        않는다. 같은 글이 두 번 보이면 어느 쪽이 진짜인지 헷갈리고, 고치는 자리와 결과를
+        보는 자리가 떨어진다. 글자 수는 미리보기 머리에 이미 붙어 있다.
+        미리보기 본문 편집이 아직 없는 형식(숏폼·릴스·틱톡)은 이 칸이 유일한 입구라 남긴다.
+      */}
+      {BODY_EDITABLE_IN_PREVIEW.has(platform) ? null : (
+        <label className="mt-stack block text-caption text-muted">
+          <span className="flex items-center justify-between gap-stack-tight">{contract.bodyLabel} <Counter validation={validation} field="body" /></span>
+          <textarea
+            aria-label={`${platform} 캡션`}
+            data-pv-inline-edit={`${platform}:caption`}
+            value={editor.caption}
+            onChange={(event) => editor.onCaptionChange(event.target.value)}
+            disabled={loading}
+            rows={3}
+            className={`${inlineClass} p-stack`}
+          />
+        </label>
+      )}
+      {/*
+        해시태그도 미리보기 본문 바로 아래에서 고친다(회장 2026-09-09). 실제 게시물에서
+        그 자리에 붙기 때문이다. 여기 같은 칸을 또 두면 어느 쪽이 진짜인지 헷갈린다.
+        미리보기에서 못 고치는 형식은 이 칸이 유일한 입구라 남긴다.
+      */}
+      {contract.hashtags && !BODY_EDITABLE_IN_PREVIEW.has(platform) ? <label className="mt-stack block text-caption text-muted">
         해시태그
         <input
           aria-label={`${platform} 해시태그`}
           data-pv-inline-edit={`${platform}:hashtags`}
           value={editor.hashtags}
           onChange={(event) => editor.onHashtagsChange(event.target.value)}
+          disabled={loading}
           className={inlineClass}
         />
-      </label>
-      {editor.firstCommentSupported ? (
+      </label> : null}
+      {contract.topicTag && !BODY_EDITABLE_IN_PREVIEW.has(platform) ? <label className="mt-stack block text-caption text-muted">
+        <span className="flex items-center justify-between gap-stack-tight">주제 태그 <Counter validation={validation} field="topicTag" /></span>
+        <input aria-label={`${platform} 주제 태그`} data-pv-inline-edit={`${platform}:topicTag`} value={editor.topicTag} onChange={(event) => editor.onTopicTagChange(event.target.value)} disabled={loading} className={inlineClass} />
+      </label> : null}
+      {contract.firstComment && editor.firstCommentSupported && !FIRST_COMMENT_IN_PREVIEW.has(platform) ? (
         <label className="mt-stack block text-caption text-muted">
           첫 댓글
           <textarea
@@ -131,15 +267,19 @@ function InlinePreviewEditor({ platform, editor }: { platform: PreviewPlatform; 
             data-pv-inline-edit={`${platform}:firstComment`}
             value={editor.firstComment}
             onChange={(event) => editor.onFirstCommentChange(event.target.value)}
+            disabled={loading}
             rows={2}
             className={`${inlineClass} p-stack`}
           />
         </label>
-      ) : (
+      ) : contract.firstComment ? (
         <div className="mt-stack rounded-control border border-border bg-surface-2 p-stack text-caption text-subtle">
           첫 댓글 미지원: {editor.firstCommentReason || "현재 채널 어댑터가 지원하지 않습니다"}
         </div>
-      )}
+      ) : null}
+      {contract.unknownLimitLabel ? <p className="mt-stack text-caption text-subtle">{contract.unknownLimitLabel}</p> : null}
+      {validation.blocking.map((issue) => <p key={`${issue.field}-${issue.message}`} className="mt-stack text-caption text-danger" role="alert">{issue.message}</p>)}
+      {validation.warnings.map((issue) => <p key={`${issue.field}-${issue.message}`} className="mt-stack text-caption text-warning">{issue.message}</p>)}
     </div>
   );
 }
@@ -189,8 +329,8 @@ function VideoRail({ kind }: { kind: "shorts" | "reels" | "tiktok" }) {
   );
 }
 
-export function PlatformPreview({ platform, text, media, brand = "your_brand", headerRight, editor }: { platform: PreviewPlatform; text: PreviewText; media: PreviewMedia; brand?: string; headerRight?: React.ReactNode; editor?: PreviewInlineEditor }) {
-  const handle = (editor?.displayName || brand).replace(/^@/, "");
+export function PlatformPreview({ platform, text, media, headerRight, editor }: { platform: PreviewPlatform; text: PreviewText; media: PreviewMedia; headerRight?: React.ReactNode; editor?: PreviewInlineEditor }) {
+  const handle = (editor?.account.username || editor?.account.displayName || "연결 계정 없음").replace(/^@/, "");
   const img = media.imgUrl; const vid = media.vidUrl;
   const label = PREVIEW_PLATFORMS.find((x) => x.key === platform)?.label || platform;
   const previewBody = platform === "threads"
@@ -202,19 +342,49 @@ export function PlatformPreview({ platform, text, media, brand = "your_brand", h
         : platform === "instagram"
           ? text.instagram?.caption || ""
           : "";
-  const limit = channelTextLimit(platform);
-  const characterCount = limit ? { current: countTextCharacters(previewBody), limit } : undefined;
+  const validation = editor ? validatePlatformPublish(platform, { title: editor.title, body: editor.caption, hashtags: editor.hashtags, topicTag: editor.topicTag }) : null;
+  const bodyCounter = validation?.counters.body;
+  const characterCount = bodyCounter ? { current: bodyCounter.current, limit: bodyCounter.limit } : undefined;
 
   if (platform === "threads") return (
     <Frame p="threads" label="Threads" headerRight={headerRight} characterCount={characterCount}>
       <div className="bg-surface text-text rounded-surface border border-border px-pad-inset py-stack">
         <div className="flex gap-stack"><Av />
           <div className="flex-1 min-w-0">
-            <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="shrink-0 text-subtle text-body-sm ml-micro">1시간</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
-            <p className="text-body whitespace-pre-wrap leading-[1.45] mt-micro">{text.threads || <span className="text-subtle">텍스트…</span>}</p>
+            <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="shrink-0 text-subtle text-body-sm ml-micro">지금</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
+            <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-threads" label="threads 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.45] mt-micro" />
+            {/*
+              2026-09-09 회장 지적: "해시태그나 첫댓글도 미리보기화면에서 직관적으로
+              수정할수있게 하는게 낫지않겠어?" 실제 게시물에서 해시태그는 본문 바로 아래
+              같은 흐름에 붙는다. 그 자리에서 고치는 것이 가장 직관적이다.
+            */}
+            {/*
+              Threads 는 해시태그가 아니라 주제 태그 하나를 쓴다(PLATFORM_FIELD_CONTRACT).
+              채널 계약을 안 보고 해시태그 칸을 놓으면 화면이 그 채널에 없는 것을 있는 것처럼
+              말하게 된다. 계약대로 주제 태그를 놓는다.
+            */}
+            <EditablePreviewBody value={editor?.topicTag ?? ""} onChange={editor?.onTopicTagChange} testId="preview-topictag-threads" label="threads 주제 태그" locked={editor?.account.status === "loading"} placeholder="주제 태그" className="text-body-sm text-accent whitespace-pre-wrap mt-stack-tight" />
             {img && <img src={img} alt="" className="mt-stack-tight rounded-surface border border-border w-full max-h-80 object-cover" />}
             <div className="flex gap-stack-section mt-stack">{P(I.heart)}{P(I.chat)}{P(I.repost)}{P(I.send)}</div>
-            <div className="text-subtle text-body-sm mt-stack-tight">답글 18개 · 좋아요 124개</div>
+{/*
+              2026-09-09 회장 지적("실제 플랫폼별 미리보기 화면 그대로인건 맞아?") 후속.
+              모양은 실제와 비슷했는데 **숫자가 가짜였다.** 아직 아무 데도 안 올린 글에
+              "좋아요 124개" 가 붙어 있었다. 성과실에서는 못 잰 것을 "미수집" 이라고
+              정직하게 적으면서 발행실에서는 없는 숫자를 지어 보이면 앞뒤가 안 맞는다.
+              레이아웃은 실제 그대로 두되 숫자 자리는 아직 없다고 적는다.
+            */}
+            <div className="text-subtle text-body-sm mt-stack-tight" data-preview-engagement="threads">올리면 여기에 답글과 좋아요가 쌓입니다</div>
+            {/*
+              2026-09-09 회장 지적: "해시태그나 첫댓글도 미리보기화면에서 직관적으로
+              수정할수있게." 첫 댓글은 실제로 본문 아래 답글 자리에 붙는다. 그 자리에서
+              고치면 올라간 모습 그대로를 보며 쓰게 된다.
+            */}
+            {editor?.firstCommentSupported ? (
+              <div className="mt-stack-tight border-t border-border pt-stack-tight">
+                <span className="text-caption text-subtle">첫 댓글</span>
+                <EditablePreviewBody value={editor.firstComment} onChange={editor.onFirstCommentChange} testId="preview-firstcomment-threads" label="threads 첫 댓글" locked={editor.account.status === "loading"} placeholder="본문 아래 첫 댓글로 올릴 말" className="text-body-sm whitespace-pre-wrap" />
+              </div>
+            ) : null}
           </div></div>
       </div>
       {editor ? <InlinePreviewEditor platform="threads" editor={editor} /> : null}
@@ -225,13 +395,16 @@ export function PlatformPreview({ platform, text, media, brand = "your_brand", h
       <div className="bg-surface text-text rounded-surface border border-border px-pad-inset py-stack">
         <div className="flex gap-stack"><Av />
           <div className="flex-1 min-w-0">
-            <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="shrink-0 text-accent">✓</span><span className="min-w-0 truncate text-subtle ml-micro">@{handle} · 1분</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
-            <p className="text-body whitespace-pre-wrap leading-[1.4] mt-micro">{text.x || <span className="text-subtle">텍스트…</span>}</p>
+            <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="min-w-0 truncate text-subtle ml-micro">@{handle} · 지금</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
+            <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-x" label="x 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.4] mt-micro" />
+        <EditablePreviewBody value={editor?.hashtags ?? ""} onChange={editor?.onHashtagsChange} testId="preview-tags-x" label="x 해시태그" locked={editor?.account.status === "loading"} placeholder="#해시태그" className="text-body-sm text-accent whitespace-pre-wrap mt-stack-tight" />
             {img && <img src={img} alt="" className="mt-stack-tight rounded-surface border border-border w-full max-h-80 object-cover" />}
-            <div className="flex justify-between mt-stack text-subtle text-body-sm">
-              <span className="flex items-center gap-stack-tight">{P(I.chat)}24</span><span className="flex items-center gap-stack-tight">{P(I.repost)}57</span>
-              <span className="flex items-center gap-stack-tight">{P(I.heart)}312</span><span className="flex items-center gap-stack-tight">{P(I.bookmark)}</span><span className="flex items-center gap-stack-tight">{P(I.share)}</span>
-            </div></div></div>
+            {/* 숫자는 아직 없다. 안 올린 글에 답글 24개를 적으면 그것은 거짓이다. */}
+            <div className="flex justify-between mt-stack text-subtle text-body-sm" data-preview-engagement="x">
+              <span className="flex items-center gap-stack-tight">{P(I.chat)}</span><span className="flex items-center gap-stack-tight">{P(I.repost)}</span>
+              <span className="flex items-center gap-stack-tight">{P(I.heart)}</span><span className="flex items-center gap-stack-tight">{P(I.bookmark)}</span><span className="flex items-center gap-stack-tight">{P(I.share)}</span>
+            </div>
+            <div className="mt-stack-tight text-caption text-subtle">올리면 여기에 반응이 쌓입니다</div></div></div>
       </div>
       {editor ? <InlinePreviewEditor platform="x" editor={editor} /> : null}
     </Frame>
@@ -240,9 +413,10 @@ export function PlatformPreview({ platform, text, media, brand = "your_brand", h
     <Frame p="facebook" label="Facebook" headerRight={headerRight} characterCount={characterCount}>
       <div className="bg-surface text-text rounded-control border border-border overflow-hidden">
         <div className="flex items-center gap-stack-tight px-stack pt-stack"><Av /><div className="min-w-0"><div className="truncate font-semibold text-body leading-tight">{handle}</div><div className="text-subtle text-caption">방금 · 전체 공개</div></div><div className="ml-auto text-subtle">{P(I.more)}</div></div>
-        <p className="px-stack py-stack-tight text-body whitespace-pre-wrap leading-snug">{text.facebook || <span className="text-subtle">텍스트…</span>}</p>
+        <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-facebook" label="facebook 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="px-stack py-stack-tight text-body whitespace-pre-wrap leading-snug" />
+        <EditablePreviewBody value={editor?.hashtags ?? ""} onChange={editor?.onHashtagsChange} testId="preview-tags-facebook" label="facebook 해시태그" locked={editor?.account.status === "loading"} placeholder="#해시태그" className="px-stack pb-stack-tight text-body-sm text-accent whitespace-pre-wrap" />
         {img && <img src={img} alt="" className="w-full max-h-80 object-cover" />}
-        <div className="flex items-center justify-between px-stack py-stack-tight text-subtle text-body-sm border-b border-border"><span>반응 248</span><span>댓글 32 · 공유 12</span></div>
+        <div className="flex items-center justify-between px-stack py-stack-tight text-subtle text-body-sm border-b border-border" data-preview-engagement="facebook"><span>올리면 여기에 반응이 쌓입니다</span></div>
         <div className="flex text-subtle text-body-sm font-medium">{["좋아요", "댓글", "공유"].map((l) => <div key={l} className="flex-1 text-center py-stack-tight hover:bg-surface-2">{l}</div>)}</div>
       </div>
       {editor ? <InlinePreviewEditor platform="facebook" editor={editor} /> : null}
@@ -256,8 +430,8 @@ export function PlatformPreview({ platform, text, media, brand = "your_brand", h
           <div className="flex items-center gap-stack px-stack py-stack"><Av s={32} /><b className="min-w-0 truncate text-body-sm">{handle}</b><span className="shrink-0 text-subtle text-caption">· 팔로우</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
           <IgCarousel cards={cards} />
           <div className="flex items-center gap-pad-inset px-stack pt-stack">{P(I.heart)}{P(I.chat)}{P(I.send)}<div className="ml-auto">{P(I.bookmark)}</div></div>
-          <div className="px-stack pt-stack-tight text-body-sm font-semibold">좋아요 1,284개</div>
-          <div className="px-stack pt-micro pb-stack text-body-sm"><b className="break-all">{handle}</b> <span className="text-muted">{text.instagram?.caption}</span>
+          <div className="px-stack pt-stack-tight text-body-sm text-subtle" data-preview-engagement="instagram">올리면 여기에 좋아요가 쌓입니다</div>
+          <div className="px-stack pt-micro pb-stack text-body-sm"><b className="break-all">{handle}</b> <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-instagram" label="instagram 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-muted inline-block align-top" />
             <div className="text-accent mt-micro">{(text.instagram?.hashtags || []).map((h) => `#${h.replace(/^#/, "")}`).join(" ")}</div></div>
         </div>
         {editor ? <InlinePreviewEditor platform="instagram" editor={editor} /> : null}

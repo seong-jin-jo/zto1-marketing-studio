@@ -29,7 +29,7 @@ function CredField({ id, label, desc, isSecret = false, value, editable, onChang
           placeholder={label}
           readOnly={!editable}
           onChange={(e) => onChange(e.target.value)}
-          title={isSecret && value ? "저장된 비밀값" : value}
+          title={isSecret && value ? "저장된 연결 정보" : value}
           className={`w-full ${editable ? "bg-surface" : "bg-surface/50 cursor-default"} border border-border rounded-chip px-stack py-stack-tight pr-wide text-caption text-muted placeholder-subtle font-mono`}
         />
         {isSecret && (
@@ -38,7 +38,7 @@ function CredField({ id, label, desc, isSecret = false, value, editable, onChang
             onClick={() => setVisible(!visible)}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-caption text-subtle hover:text-muted"
           >
-            {visible ? "Hide" : "Show"}
+            {visible ? "숨기기" : "보기"}
           </button>
         )}
       </div>
@@ -104,7 +104,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
   return (
     <div>
       <div className="flex items-center justify-between mb-stack">
-        <h3 className="text-body-sm font-medium text-muted">{title || "Credentials"}</h3>
+        <h3 className="text-body-sm font-medium text-muted">{title || "연결 정보"}</h3>
         <div className="flex items-center gap-stack-tight">
           {connected && (
             <span className="text-caption px-stack-tight py-micro rounded-pill bg-success/15 text-success border border-success/30">
@@ -118,7 +118,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
           )}
           {hasKeys && !editing && (
             <button onClick={() => setEditing(true)} className="text-caption text-accent hover:text-accent">
-              {channelKey === "threads" || channelKey === "x" ? "Edit" : "Edit Credentials"}
+              연결 정보 수정
             </button>
           )}
         </div>
@@ -148,7 +148,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
             disabled={saving}
             className="flex-1 py-stack-tight bg-accent text-accent-fg text-body-sm rounded-chip hover:bg-accent-hover disabled:opacity-50"
           >
-            {saving ? "Verifying..." : hasKeys ? "Update" : (connectLabel || "Connect")}
+            {saving ? "확인 중..." : hasKeys ? "수정 내용 저장" : (connectLabel || "연결")}
           </button>
           {hasKeys && (
             <button
@@ -160,7 +160,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
               }}
               className="px-pad-inset py-stack-tight bg-surface-2 text-muted text-body-sm rounded-chip hover:bg-surface-2"
             >
-              Cancel
+              취소
             </button>
           )}
         </div>

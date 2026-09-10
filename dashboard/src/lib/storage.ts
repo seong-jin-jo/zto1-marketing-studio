@@ -73,3 +73,32 @@ export function listMedia(tenantId: string, exts: Set<string>): Array<{ filename
       return { filename: f, size: st.size, mtimeMs: st.mtimeMs };
     });
 }
+
+/**
+ * 만들어진 파일 하나를 이름으로 찾아 서버 경로를 돌려준다. 못 찾으면 null.
+ *
+ * 파일이 두 뿌리에 흩어져 산다. 옛 공용 폴더(data/videos)와 작업 공간별 폴더다.
+ * 한쪽만 보면 멀쩡히 있는 파일을 못 찾는다.
+ *
+ * 2026-09-08: 같은 탐색이 배달 라우트, 영상 발행 라우트, 재서명 라우트에 각각 복사돼
+ * 있었다. 영상 생성 라우트만 이 탐색 없이 서버 내부 경로를 그대로 요구했고, 그래서
+ * 승인함이나 달력에서 가져온 작업물로는 영상을 만들 수 없었다(코드 감사 F-05).
+ * 복사본이 넷이면 넷이 서로 다르게 낡는다. 한 곳으로 모은다.
+ */
+export function resolveGeneratedFile(tenantId: string, filename: string): string | null {
+  if (!filename) return null;
+  if (filename.includes("/") || filename.includes("\\") || filename.includes("..") || filename.includes("\0")) return null;
+  const dirs: string[] = [dataPath("videos")];
+  try {
+    // 작업 공간 식별자가 비었거나 형식이 틀리면 tenantMediaDir 이 예외를 던진다. 탐색이
+    // 그것 때문에 죽으면 옛 폴더에 있는 파일까지 못 찾는다. 한 곳이라도 볼 수 있으면 본다.
+    if (tenantId) dirs.push(tenantMediaDir(tenantId));
+  } catch { /* 작업 공간 폴더는 건너뛴다 */ }
+  for (const dir of dirs) {
+    const fp = path.join(dir, filename);
+    try {
+      if (fs.existsSync(fp) && fs.statSync(fp).isFile()) return fp;
+    } catch { /* 읽을 수 없으면 없는 것으로 본다 */ }
+  }
+  return null;
+}

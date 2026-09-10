@@ -61,7 +61,11 @@ export const useUIStore = create<UIState>((set) => ({
   subTab: "queue",
   queueFilter: "all",
   sidebarCollapsed: {},
-  studioRoom: "publish",
+  // 처음 온 사람이 /studio 로 들어오면 생성실이 열려야 한다. 종전 기본값은 발행실이라
+  // 아직 만든 것이 하나도 없는 사람에게 "발행할 것을 고르세요" 화면이 먼저 떴다.
+  // 사업계획과 네 방 설계 둘 다 "만들기 먼저, 채널 연결은 발행 직전" 으로 확정돼 있다
+  // (2026-09-08 코드 감사 F-02).
+  studioRoom: "create",
   editingPost: null,
   selectedIds: new Set(),
   editingChannel: null,

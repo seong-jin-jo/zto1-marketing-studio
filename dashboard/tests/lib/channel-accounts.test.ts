@@ -9,6 +9,8 @@ interface Row {
   tenant_id: string;
   provider: string;
   external_account_id: string;
+  display_name: string | null;
+  username: string | null;
   secret_enc: string;
   refresh_enc: string | null;
   meta: Record<string, unknown> | null;
@@ -22,12 +24,14 @@ const H = vi.hoisted(() => ({
   rows: [] as Row[],
   legacyIntegrations: new Map<string, { secret_enc: string; meta: unknown }>(), // key = tenant:provider
   seq: 0,
+  transactionTail: Promise.resolve(),
 }));
 
 function reset() {
   H.rows = [];
   H.legacyIntegrations = new Map();
   H.seq = 0;
+  H.transactionTail = Promise.resolve();
 }
 
 // 최소 postgres.js 태그드템플릿 흉내 — channel-accounts.ts의 각 쿼리 패턴만 식별해 처리한다.
@@ -35,15 +39,17 @@ function fakeSql(strings: TemplateStringsArray, ...vals: unknown[]) {
   const text = strings.join("?");
 
   if (text.includes("CASE WHEN secret_enc") && text.includes("FROM channel_accounts")) {
-    const accountId = text.includes("AND id =") ? String(vals.at(-1)) : undefined;
-    const provider = String(vals.at(accountId ? -2 : -1));
-    const tenantId = String(vals.at(accountId ? -3 : -2));
+    const hasAccountId = text.includes("AND id =");
+    const accountId = hasAccountId ? String(vals.at(-2)) : undefined;
+    const provider = String(vals.at(hasAccountId ? -3 : -2));
+    const tenantId = String(vals.at(hasAccountId ? -4 : -3));
     const row = H.rows.find((candidate) => (
       candidate.tenant_id === tenantId
       && candidate.provider === provider
       && candidate.status === "active"
       && (accountId ? candidate.id === accountId : candidate.is_default)
       && (!candidate.token_expires_at || Date.parse(candidate.token_expires_at) > Date.now())
+      && (candidate.token_expires_at || !["threads", "instagram", "facebook"].includes(candidate.provider))
     ));
     return Promise.resolve(row ? [{
       id: row.id,
@@ -57,6 +63,18 @@ function fakeSql(strings: TemplateStringsArray, ...vals: unknown[]) {
     const [tenantId, provider, externalId] = vals as [string, string, string];
     const row = H.rows.find((r) => r.tenant_id === tenantId && r.provider === provider && r.external_account_id === externalId);
     return Promise.resolve(row ? [{ id: row.id, is_default: row.is_default }] : []);
+  }
+  if (text.includes("SELECT id, status, token_expires_at::text AS token_expires_at") && text.includes("is_default = true")) {
+    const [tenantId, provider] = vals as [string, string];
+    const row = H.rows.find((r) => r.tenant_id === tenantId && r.provider === provider && r.is_default);
+    return Promise.resolve(row ? [{ id: row.id, status: row.status, token_expires_at: row.token_expires_at }] : []);
+  }
+  if (text.includes("UPDATE channel_accounts SET is_default = (id =")) {
+    const [accountId, tenantId, provider] = vals as [string, string, string];
+    H.rows
+      .filter((r) => r.tenant_id === tenantId && r.provider === provider)
+      .forEach((r) => (r.is_default = r.id === accountId));
+    return Promise.resolve([]);
   }
   if (text.includes("UPDATE channel_accounts") && text.includes("SET secret_enc")) {
     // upsert 기존 계정 갱신 경로
@@ -74,15 +92,36 @@ function fakeSql(strings: TemplateStringsArray, ...vals: unknown[]) {
     return Promise.resolve([{ cnt: String(cnt) }]);
   }
   if (text.includes("INSERT INTO channel_accounts")) {
-    const [tenantId, provider, externalId, displayName, username, accessToken, , refreshToken, , isDefault, status, tokenExpiresAt] = vals;
+    const [tenantId, provider, externalId, displayName, username, accessToken, , refreshToken, meta, isDefault, status, tokenExpiresAt] = vals;
+    const existing = H.rows.find((r) => (
+      r.tenant_id === tenantId
+      && r.provider === provider
+      && r.external_account_id === externalId
+    ));
+    if (existing) {
+      existing.secret_enc = accessToken as string;
+      if (refreshToken) existing.refresh_enc = refreshToken as string;
+      if (displayName) existing.display_name = displayName as string;
+      if (username) existing.username = username as string;
+      if (meta) existing.meta = meta as Record<string, unknown>;
+      existing.status = status as string;
+      existing.token_expires_at = (tokenExpiresAt as string) ?? null;
+      return Promise.resolve([{ id: existing.id, is_default: existing.is_default }]);
+    }
     const id = `acc-${++H.seq}`;
     H.rows.push({
       id, tenant_id: tenantId as string, provider: provider as string, external_account_id: externalId as string,
       secret_enc: accessToken as string, refresh_enc: (refreshToken as string) ?? null,
-      meta: { displayName, username }, is_default: Boolean(isDefault), status: status as string,
+      display_name: (displayName as string) ?? null, username: (username as string) ?? null,
+      meta: (meta as Record<string, unknown>) ?? null, is_default: Boolean(isDefault), status: status as string,
       token_expires_at: (tokenExpiresAt as string) ?? null, created_at: H.seq,
     });
-    return Promise.resolve([{ id }]);
+    return Promise.resolve([{ id, is_default: Boolean(isDefault) }]);
+  }
+  if (text.includes("SELECT id, status, token_expires_at::text AS token_expires_at") && text.includes("WHERE id =")) {
+    const [accountId, tenantId, provider] = vals as [string, string, string];
+    const row = H.rows.find((r) => r.id === accountId && r.tenant_id === tenantId && r.provider === provider);
+    return Promise.resolve(row ? [{ id: row.id, status: row.status, token_expires_at: row.token_expires_at }] : []);
   }
   if (text.includes("SELECT id FROM channel_accounts WHERE id") && text.includes("provider = ")) {
     const [accountId, tenantId, provider] = vals as [string, string, string];
@@ -110,10 +149,12 @@ function fakeSql(strings: TemplateStringsArray, ...vals: unknown[]) {
     H.rows = H.rows.filter((r) => r.id !== accountId);
     return Promise.resolve([]);
   }
-  if (text.includes("SELECT id FROM channel_accounts WHERE tenant_id") && text.includes("ORDER BY created_at ASC")) {
+  if (text.includes("SELECT id, status, token_expires_at::text AS token_expires_at") && text.includes("ORDER BY created_at ASC")) {
     const [tenantId, provider] = vals as [string, string];
-    const next = H.rows.filter((r) => r.tenant_id === tenantId && r.provider === provider).sort((a, b) => a.created_at - b.created_at)[0];
-    return Promise.resolve(next ? [{ id: next.id }] : []);
+    return Promise.resolve(H.rows
+      .filter((r) => r.tenant_id === tenantId && r.provider === provider)
+      .sort((a, b) => a.created_at - b.created_at)
+      .map((row) => ({ id: row.id, status: row.status, token_expires_at: row.token_expires_at })));
   }
   if (text.includes("DELETE FROM integrations WHERE tenant_id")) {
     const [tenantId, provider] = vals as [string, string];
@@ -149,7 +190,17 @@ function fakeSql(strings: TemplateStringsArray, ...vals: unknown[]) {
 vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async (_t: string, cb: (sql: unknown) => unknown) => {
     const sql = Object.assign(fakeSql, { json: (v: unknown) => v });
-    return cb(sql);
+    const previous = H.transactionTail;
+    let release = () => {};
+    H.transactionTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await cb(sql);
+    } finally {
+      release();
+    }
   }),
   db: vi.fn(() => Object.assign(fakeSql, { json: (v: unknown) => v })),
 }));
@@ -163,26 +214,31 @@ beforeEach(() => {
 describe("upsertChannelAccount — 2계정 + 재연결 idempotency", () => {
   it("같은 tenant/provider에 서로 다른 external id 2개 upsert → 2행, 첫번째만 기본", async () => {
     const { upsertChannelAccount, listChannelAccounts } = await import("@/lib/channel-accounts");
-    const a = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1" });
-    const b = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-2", accessToken: "tok-2" });
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const a = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1", tokenExpiresAt: future });
+    const b = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-2", accessToken: "tok-2", tokenExpiresAt: future });
     expect(a.isDefault).toBe(true);
     expect(b.isDefault).toBe(false);
     const list = await listChannelAccounts("t1", "threads");
     expect(list).toHaveLength(2);
   });
 
-  it("재연결(동일 external id)은 새 계정을 만들지 않고 기존 행을 갱신한다", async () => {
+  it("채널-재연결-04 정상: 동일 external id는 새 행 없이 토큰과 표시 정보를 갱신하고 기본을 유지한다", async () => {
     const { upsertChannelAccount } = await import("@/lib/channel-accounts");
-    const first = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1" });
-    const reconnect = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1-new" });
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const first = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", displayName: "연결 전", accessToken: "tok-1", tokenExpiresAt: future });
+    const reconnect = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", displayName: "연결 후", accessToken: "tok-1-new", tokenExpiresAt: future });
     expect(reconnect.id).toBe(first.id);
+    expect(reconnect).toMatchObject({ isDefault: true, reconnected: true });
     expect(H.rows).toHaveLength(1);
+    expect(H.rows[0]).toMatchObject({ secret_enc: "tok-1-new", display_name: "연결 후", is_default: true });
   });
 
   it("두 번째 계정 추가가 첫 번째(기본) 계정의 토큰을 덮어쓰지 않는다", async () => {
     const { upsertChannelAccount } = await import("@/lib/channel-accounts");
-    await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1" });
-    await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-2", accessToken: "tok-2" });
+    const future = new Date(Date.now() + 60_000).toISOString();
+    await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1", tokenExpiresAt: future });
+    await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-2", accessToken: "tok-2", tokenExpiresAt: future });
     const defaultRow = H.rows.find((r) => r.is_default);
     expect(defaultRow?.secret_enc).toBe("tok-1");
   });
@@ -221,6 +277,25 @@ describe("getSelectedChannelAccountCred: 만료 토큰 사전 차단", () => {
     });
     await expect(getSelectedChannelAccountCred("t1", "threads", account.id)).resolves.toBeNull();
   });
+
+  it("계정-발행-02 거절: 만료 시각 없는 Threads 계정은 최초 계정이어도 기본과 발행 자격이 되지 않는다", async () => {
+    const { upsertChannelAccount, getSelectedChannelAccountCred, listChannelAccounts } = await import("@/lib/channel-accounts");
+    const account = await upsertChannelAccount({
+      tenantId: "t1", provider: "threads", externalId: "missing-expiry", accessToken: "token-unknown",
+    });
+
+    expect(account.isDefault).toBe(false);
+    await expect(getSelectedChannelAccountCred("t1", "threads")).resolves.toBeNull();
+    await expect(listChannelAccounts("t1", "threads")).resolves.toEqual([
+      expect.objectContaining({
+        id: account.id,
+        is_default: false,
+        connection_state: "reconnect",
+        can_be_default: false,
+        default_blocked_reason: "token_expiry_missing",
+      }),
+    ]);
+  });
 });
 
 describe("resolveExternalIdentity fail-closed", () => {
@@ -242,8 +317,9 @@ describe("resolveExternalIdentity fail-closed", () => {
 describe("setDefaultAccount — 기본전환 + cross-tenant", () => {
   it("기본 전환 시 이전 기본이 해제되고 신규가 기본이 된다", async () => {
     const { upsertChannelAccount, setDefaultAccount } = await import("@/lib/channel-accounts");
-    await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1" });
-    const b = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-2", accessToken: "tok-2" });
+    const future = new Date(Date.now() + 60_000).toISOString();
+    await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1", tokenExpiresAt: future });
+    const b = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-2", accessToken: "tok-2", tokenExpiresAt: future });
     const result = await setDefaultAccount("t1", "threads", b.id);
     expect(result.ok).toBe(true);
     expect(H.rows.filter((r) => r.is_default)).toHaveLength(1);
@@ -252,18 +328,72 @@ describe("setDefaultAccount — 기본전환 + cross-tenant", () => {
 
   it("cross-tenant accountId → notFound", async () => {
     const { upsertChannelAccount, setDefaultAccount } = await import("@/lib/channel-accounts");
-    const a = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1" });
+    const a = await upsertChannelAccount({ tenantId: "t1", provider: "x", externalId: "ext-1", accessToken: "tok-1" });
     const result = await setDefaultAccount("t2", "threads", a.id);
     expect(result.notFound).toBe(true);
     expect(H.rows.find((r) => r.id === a.id)?.is_default).toBe(true); // 변경 안 됨
+  });
+
+  it("계정-기본-02 거절: 만료됐거나 비활성인 계정은 기존 기본을 바꾸지 않는다", async () => {
+    const { upsertChannelAccount, setDefaultAccount } = await import("@/lib/channel-accounts");
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const current = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "live", accessToken: "tok-live", tokenExpiresAt: future });
+    const expired = await upsertChannelAccount({
+      tenantId: "t1", provider: "threads", externalId: "expired", accessToken: "tok-expired",
+      tokenExpiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const inactive = await upsertChannelAccount({
+      tenantId: "t1", provider: "threads", externalId: "inactive", accessToken: "tok-inactive",
+      tokenExpiresAt: future, status: "inactive",
+    });
+
+    await expect(setDefaultAccount("t1", "threads", expired.id)).resolves.toEqual({
+      ok: false,
+      blockedReason: "token_expired",
+    });
+    await expect(setDefaultAccount("t1", "threads", inactive.id)).resolves.toEqual({
+      ok: false,
+      blockedReason: "status_inactive",
+    });
+    expect(H.rows.find((row) => row.id === current.id)?.is_default).toBe(true);
+  });
+
+  it("계정-기본-03 경합: 두 기본 전환 요청이 겹쳐도 provider당 기본은 하나다", async () => {
+    const { upsertChannelAccount, setDefaultAccount } = await import("@/lib/channel-accounts");
+    const future = new Date(Date.now() + 60_000).toISOString();
+    await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "one", accessToken: "tok-1", tokenExpiresAt: future });
+    const second = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "two", accessToken: "tok-2", tokenExpiresAt: future });
+    const third = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "three", accessToken: "tok-3", tokenExpiresAt: future });
+
+    await Promise.all([
+      setDefaultAccount("t1", "threads", second.id),
+      setDefaultAccount("t1", "threads", third.id),
+    ]);
+
+    expect(H.rows.filter((row) => row.is_default)).toHaveLength(1);
+  });
+
+  it("계정-발행-01 정상: 기본 전환 뒤 기본 발행 자격 조회는 새 계정 토큰과 id를 사용한다", async () => {
+    const { upsertChannelAccount, setDefaultAccount, getSelectedChannelAccountCred } = await import("@/lib/channel-accounts");
+    const future = new Date(Date.now() + 60_000).toISOString();
+    await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "old", accessToken: "tok-old", tokenExpiresAt: future });
+    const next = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "new", accessToken: "tok-new", tokenExpiresAt: future });
+
+    await setDefaultAccount("t1", "threads", next.id);
+
+    await expect(getSelectedChannelAccountCred("t1", "threads")).resolves.toMatchObject({
+      accountId: next.id,
+      token: "tok-new",
+    });
   });
 });
 
 describe("deleteChannelAccount — 승격/legacy 해제/cross-tenant", () => {
   it("기본계정 삭제 시 가장 오래된 다른 계정이 승격된다", async () => {
     const { upsertChannelAccount, deleteChannelAccount } = await import("@/lib/channel-accounts");
-    const a = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1" });
-    const b = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-2", accessToken: "tok-2" });
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const a = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1", tokenExpiresAt: future });
+    const b = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-2", accessToken: "tok-2", tokenExpiresAt: future });
     const result = await deleteChannelAccount("t1", "threads", a.id);
     expect(result.ok).toBe(true);
     expect(result.promotedId).toBe(b.id);
@@ -272,18 +402,33 @@ describe("deleteChannelAccount — 승격/legacy 해제/cross-tenant", () => {
 
   it("마지막 계정 삭제 시 legacy integrations 행도 제거된다", async () => {
     const { upsertChannelAccount, syncLegacyIntegration, deleteChannelAccount } = await import("@/lib/channel-accounts");
-    const a = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1" });
-    await syncLegacyIntegration("t1", "threads", a.id);
-    expect(H.legacyIntegrations.has("t1:threads")).toBe(true);
-    await deleteChannelAccount("t1", "threads", a.id);
-    expect(H.legacyIntegrations.has("t1:threads")).toBe(false);
+    const a = await upsertChannelAccount({ tenantId: "t1", provider: "x", externalId: "ext-1", accessToken: "tok-1" });
+    await syncLegacyIntegration("t1", "x", a.id);
+    expect(H.legacyIntegrations.has("t1:x")).toBe(true);
+    await deleteChannelAccount("t1", "x", a.id);
+    expect(H.legacyIntegrations.has("t1:x")).toBe(false);
   });
 
   it("cross-tenant accountId 삭제 시도 → notFound, 행 유지", async () => {
     const { upsertChannelAccount, deleteChannelAccount } = await import("@/lib/channel-accounts");
-    const a = await upsertChannelAccount({ tenantId: "t1", provider: "threads", externalId: "ext-1", accessToken: "tok-1" });
-    const result = await deleteChannelAccount("t2", "threads", a.id);
+    const a = await upsertChannelAccount({ tenantId: "t1", provider: "x", externalId: "ext-1", accessToken: "tok-1" });
+    const result = await deleteChannelAccount("t2", "x", a.id);
     expect(result.notFound).toBe(true);
     expect(H.rows).toHaveLength(1);
+  });
+
+  it("계정-해제-02 거절: 기본 삭제 뒤 만료 계정만 남으면 자동 승격하지 않는다", async () => {
+    const { upsertChannelAccount, deleteChannelAccount } = await import("@/lib/channel-accounts");
+    const current = await upsertChannelAccount({ tenantId: "t1", provider: "x", externalId: "live", accessToken: "tok-live" });
+    await upsertChannelAccount({
+      tenantId: "t1", provider: "x", externalId: "expired", accessToken: "tok-expired",
+      tokenExpiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+
+    const result = await deleteChannelAccount("t1", "x", current.id);
+
+    expect(result).toEqual({ ok: true });
+    expect(H.rows).toHaveLength(1);
+    expect(H.rows[0]?.is_default).toBe(false);
   });
 });

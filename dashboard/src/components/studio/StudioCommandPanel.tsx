@@ -31,6 +31,8 @@ type StudioCommandPanelProps = {
   onDraftId: (draftId: string) => void;
   onHandoff: (handoff: EditorHandoff) => void;
   onQueueChanged: () => void;
+  onSaveEdit?: () => Promise<void> | void;
+  onOpenPublish?: () => void;
 };
 
 type CommandResponse = {
@@ -60,11 +62,13 @@ export function StudioCommandPanel({
   onDraftId,
   onHandoff,
   onQueueChanged,
+  onSaveEdit,
+  onOpenPublish,
 }: StudioCommandPanelProps) {
   const [handoff, setHandoff] = useState<EditorHandoff | null>(initialHandoff);
   const [selectedKind, setSelectedKind] = useState<EditorHandoffKind | null>(null);
   const [busy, setBusy] = useState("");
-  const [message, setMessage] = useState("만든 결과를 편집 작업물로 저장하거나, 다 되면 발행실로 넘겨 드립니다.");
+  const [message, setMessage] = useState("본문을 고친 뒤 저장하거나 발행실로 이동할 수 있습니다.");
   const [error, setError] = useState("");
   const [chatDraft, setChatDraft] = useState("");
 
@@ -170,7 +174,7 @@ export function StudioCommandPanel({
     draft_id: draftId,
     idea,
     handoff: buildHandoff(),
-  }, "편집실 인계 중", () => "편집실 작업물에 추가했습니다. 원본은 덮어쓰지 않았어요.");
+  }, "편집 내용 저장 중", () => "편집 내용을 서버에 저장했습니다.");
 
   const reverseScenes = () => {
     if (!handoff || handoff.payload.kind !== "video") return;
@@ -311,7 +315,7 @@ export function StudioCommandPanel({
     if (!handoff && kind && availableKinds.includes(kind)) {
       setSelectedKind(kind);
       onKindSelect?.(kind);
-      setMessage(`${value} 원본을 고르셨습니다. 편집실로 넘길 수 있어요.`);
+      setMessage(`${value} 편집 화면으로 바꿨습니다.`);
       return;
     }
     if (/전부 짧게|짧게 줄여|다 줄여/.test(value)) shortenAll();
@@ -325,14 +329,30 @@ export function StudioCommandPanel({
     else if (handoff?.payload.kind === "video" && /첫 문장|삭제|복원/.test(value)) await toggleFirstLine();
     else if (handoff?.status === "editing" && /준비/.test(value)) await markReady();
     else if (handoff?.status !== "editing" && /발행/.test(value)) await enqueue();
-    else setError("전부 짧게, 높임말로, 빈 줄 걷어내기, 여기까지를 판으로 고정, 원본 내려받기, 발행실로 넘기기 중 하나로 말씀해 주세요.");
+    else setError("전부 짧게, 높임말로, 빈 줄 걷어내기, 저장, 원본 내려받기, 발행실로 이동 중 하나로 말씀해 주세요.");
+  };
+
+  const hasEditableContent = editorLines.some((line) => line.trim().length > 0) || availableKinds.length > 0;
+
+  const saveEdit = async () => {
+    if (!hasEditableContent || !onSaveEdit) return;
+    setBusy("편집 내용 저장 중");
+    setError("");
+    try {
+      await onSaveEdit();
+      setMessage("편집 내용을 저장했습니다. 계속 고치거나 발행실로 이동할 수 있습니다.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "편집 내용을 저장하지 못했습니다");
+    } finally {
+      setBusy("");
+    }
   };
 
   return (
-    <aside className="card min-w-0 overflow-hidden" aria-label="Studio 담당 대화" data-chat-dock="persistent">
+    <aside className="card min-w-0 overflow-hidden" aria-label="편집 담당 대화창" data-chat-dock="persistent">
       <div className="flex items-center gap-stack-tight border-b border-border p-stack">
         <div className="grid h-10 w-10 place-items-center rounded-pill bg-accent text-body font-bold text-accent-fg">O</div>
-        <div><b className="block text-body text-text">Studio 담당</b><span className="text-caption text-success">지금 대기 중</span></div>
+        <div><b className="block text-body text-text">편집 담당</b><span className="text-caption text-success">지금 대기 중</span></div>
       </div>
       <div className="space-y-stack bg-surface-2 p-stack">
         <div className="max-w-[90%] rounded-surface rounded-tl-control border border-border bg-surface p-stack">
@@ -340,31 +360,7 @@ export function StudioCommandPanel({
         </div>
         {error ? <p className="break-keep text-caption text-danger" role="alert">{error}</p> : null}
 
-        {!handoff ? (
-          <Stack gap={8}>
-            <div className="max-w-[90%] rounded-surface rounded-tl-control border border-border bg-surface p-stack text-caption text-muted">
-              {preferredKind && !availableKinds.includes(preferredKind)
-                ? `${{ video: "영상", card: "카드뉴스", audio: "소리", image: "이미지", text: "글" }[preferredKind]} 원본은 아직 준비 중입니다. 준비된 다른 원본을 고를 수 있습니다.`
-                : "어떤 원본을 편집 작업물로 저장할까요?"}
-            </div>
-            <Stack direction="horizontal" gap={8} wrap aria-label="원본 빠른 답장">
-              {availableKinds.map((kind) => (
-                <Button
-                  key={kind}
-                  size="sm"
-                  variant={selectedKind === kind ? "primary" : "secondary"}
-                  aria-pressed={selectedKind === kind}
-                  onClick={() => { setSelectedKind(kind); onKindSelect?.(kind); }}
-                >
-                  {{ text: "글", image: "이미지", video: "영상", card: "카드뉴스", audio: "소리" }[kind]}
-                </Button>
-              ))}
-            </Stack>
-            <Button variant="primary" onClick={handoffToEditor} disabled={!selectedKind || Boolean(busy)}>
-              편집 작업물로 저장
-            </Button>
-          </Stack>
-        ) : (
+        {handoff ? (
           <Stack gap={8}>
             <div className="rounded-surface border border-border bg-surface p-stack">
               <p className="text-caption font-semibold text-text">{{ text: "글", image: "이미지", video: "영상", card: "카드뉴스", audio: "소리" }[handoff.kind]} · 수정 {handoff.revision}</p>
@@ -378,17 +374,16 @@ export function StudioCommandPanel({
                 </Button>
               </Stack>
             ) : null}
-            {handoff.status === "editing" ? (
-              <Button variant="primary" onClick={markReady} disabled={Boolean(busy)}>발행 준비 마치기</Button>
-            ) : (
-              <Button variant="primary" onClick={enqueue} disabled={Boolean(busy)}>발행실로 넘기기</Button>
-            )}
           </Stack>
-        )}
+        ) : null}
+        <Stack direction="horizontal" gap={8} wrap className="mt-stack" aria-label="편집실 다음 행동">
+          <Button onClick={saveEdit} disabled={!hasEditableContent || !onSaveEdit || Boolean(busy)}>편집 내용 저장</Button>
+          <Button variant="primary" onClick={onOpenPublish} disabled={!hasEditableContent || !onOpenPublish || Boolean(busy)}>발행실로 이동</Button>
+        </Stack>
       </div>
       <div className="space-y-stack border-t border-border bg-surface-2 p-stack" data-chat-only-actions>
-        <span className="text-caption font-semibold text-text">여기서만 한 번에 되는 일</span>
-        <p className="break-keep text-caption text-subtle">아래는 아래쪽에서 손으로 하면 {Math.max(editorLines.length, 1)}번 반복해야 하는 일입니다.</p>
+        <span className="text-caption font-semibold text-text">여러 문장 한꺼번에 고치기</span>
+        <p className="break-keep text-caption text-subtle">현재 본문의 {Math.max(editorLines.length, 1)}개 문장에 같은 수정을 적용합니다.</p>
         <Stack direction="horizontal" gap={8} wrap>
           <Button size="sm" onClick={shortenAll} disabled={!editorLines.length}>전부 짧게 줄이기</Button>
           <Button size="sm" onClick={politeAll} disabled={!editorLines.length}>말끝 높임말로 맞추기</Button>
@@ -404,7 +399,7 @@ export function StudioCommandPanel({
         </p>
       </div>
       <form onSubmit={submitChat} className="flex gap-stack-tight border-t border-border p-stack">
-        <input aria-label="Studio 담당에게 명령" value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="직접 쓰셔도 됩니다" className="min-h-control-touch min-w-0 flex-1 rounded-control border border-border bg-surface px-stack text-body-sm text-text" />
+        <input aria-label="편집 담당에게 명령" value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="직접 쓰셔도 됩니다" className="min-h-control-touch min-w-0 flex-1 rounded-control border border-border bg-surface px-stack text-body-sm text-text" />
         <Button type="submit" variant="primary">보내기</Button>
       </form>
     </aside>

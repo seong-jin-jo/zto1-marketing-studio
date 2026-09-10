@@ -4,6 +4,7 @@ import useSWR from "swr";
 import { fetcher, apiDelete } from "@/lib/api";
 import { useToast } from "@/components/layout/Toast";
 import { fmtTime, fmtBytes } from "@/lib/format";
+import { confirmAction } from "@/components/shared/ConfirmHost";
 
 interface ImageItem {
   filename: string;
@@ -23,7 +24,7 @@ export default function ImagesPage() {
   };
 
   const handleDelete = async (filename: string) => {
-    if (!confirm("이미지를 삭제하시겠습니까?")) return;
+    if (!(await confirmAction({ title: "이미지를 삭제할까요?", description: "삭제한 이미지는 되돌릴 수 없습니다. 이 이미지를 쓰고 있는 글이 있으면 그 자리는 비어 보이게 됩니다.", confirmLabel: "이미지 삭제", destructive: true }))) return;
     try {
       await apiDelete(`/api/images/${encodeURIComponent(filename)}`);
       showToast("삭제됨", "success");
@@ -35,7 +36,7 @@ export default function ImagesPage() {
     <div className="p-stack-section max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-stack-section">
         <div>
-          <h2 className="text-subheading font-bold text-text">Images</h2>
+          <h2 className="text-subheading font-bold text-text">이미지</h2>
           <p className="text-body-sm text-subtle mt-micro">{images.length}개 이미지. AI 생성 이미지 갤러리</p>
         </div>
       </div>
@@ -46,7 +47,7 @@ export default function ImagesPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
           <p className="text-subtle">아직 생성된 이미지가 없습니다</p>
-          <p className="text-caption text-subtle mt-micro">image_generate tool로 이미지를 생성하면 여기에 표시됩니다</p>
+          <p className="text-caption text-subtle mt-micro">이미지 생성 도구로 이미지를 만들면 여기에 표시됩니다</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-pad-inset">

@@ -7,6 +7,10 @@ export interface StudioLearningInput {
   forbiddenPhrases: string[];
   materialRightsConfirmed: boolean;
   contentBranch: "text_image" | "video";
+  /** 학습 정보의 말투 칸. 비면 브랜드 문서에 적힌 말투를 따른다. */
+  tone?: string;
+  /** 학습 정보의 브랜드 색 칸. 카드뉴스·영상 화면을 좌우한다. */
+  palette?: string;
 }
 
 // 현재 생성기는 서버의 내장 X4 조립 규칙 v1을 사용한다. 사용자가 세션 저장소에 내부 UUID를
@@ -69,7 +73,10 @@ export function buildStudioGenerationRequest(input: StudioLearningInput) {
         forbidden_phrases: input.forbiddenPhrases,
         forbidden_phrases_confirmed_empty: input.forbiddenPhrases.length === 0,
         material_rights_confirmed: true,
-        tone: null,
+        // 2026-09-10: 사용자가 학습 정보에서 고른 말투를 여기 안 넣고 null 로 보내고 있었다.
+        // 화면은 "말투: 따뜻하게" 라고 표시하면서 생성기에는 말투를 한 글자도 안 준 것이다.
+        // 일곱 칸을 채우게 해 놓고 쓰지 않으면 그 문답은 장식이다.
+        tone: input.tone?.trim() || null,
       },
       x4: {
         revision: 1,
@@ -83,6 +90,43 @@ export function buildStudioGenerationRequest(input: StudioLearningInput) {
   };
 }
 
+/**
+ * 응답을 JSON 으로 읽는다. 못 읽으면 왜 못 읽었는지를 사람 말로 담아 던진다.
+ *
+ * 2026-09-09 실사용에서 찾았다. 생성이 오래 걸리면 우리 앞의 리버스 프록시가 요청을 끊고
+ * 자기 HTML 오류 페이지를 돌려준다. 그것을 JSON 으로 읽으려다 브라우저가
+ * "The string did not match the expected pattern." 을 던졌고, 그 문구가 화면에 그대로 떴다.
+ *
+ * 더 나쁜 것은 **서버는 그때도 계속 만들고 있었다는 것**이다. 생성 이력에 그 건이 토큰까지
+ * 기록돼 있었다. 즉 만들어졌는데 화면만 실패로 끝났다. 사용자는 돈이 나간 줄도 모르고
+ * 다시 누른다.
+ */
+/**
+ * 받침 유무로 은/는·이/가를 고른다.
+ *
+ * 2026-09-09 실제 화면에서 "구조 초안 만들기이 오래 걸려" 가 떴다. 조사를 고정 문자열로
+ * 박아 두면 앞말이 바뀌는 순간 한국어가 깨진다. 사용자가 가장 불안한 순간에 뜨는 문장이
+ * 어색하면 그것만으로 신뢰가 깎인다.
+ */
+function subjectParticle(word: string): string {
+  const last = word.trim().slice(-1);
+  const code = last.charCodeAt(0);
+  if (Number.isNaN(code) || code < 0xac00 || code > 0xd7a3) return "가";
+  return (code - 0xac00) % 28 === 0 ? "가" : "이";
+}
+
+async function readJson<T>(response: Response, what: string): Promise<T> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    if (response.status === 504 || response.status === 524 || response.status === 502) {
+      throw new Error(`${what}${subjectParticle(what)} 오래 걸려 연결이 먼저 끊겼습니다. 서버에서는 계속 만들고 있을 수 있으니 잠시 뒤 작업물 전체에서 확인해 주세요.`);
+    }
+    throw new Error(`${what} 중 서버가 알아볼 수 없는 응답을 보냈습니다(${response.status}). 잠시 후 다시 시도해 주세요.`);
+  }
+}
+
 export async function requestStudioCandidates(input: StudioLearningInput, token: string): Promise<StudioGenerationCandidate[]> {
   const authorization = required(token, "Studio 인증");
   const response = await fetch("/api/studio/v1/generations", {
@@ -94,7 +138,7 @@ export async function requestStudioCandidates(input: StudioLearningInput, token:
     },
     body: JSON.stringify(buildStudioGenerationRequest(input)),
   });
-  const body = await response.json() as StudioGenerationEnvelope;
+  const body = await readJson<StudioGenerationEnvelope>(response, "구조 초안 만들기");
   if (!response.ok || !body.data) {
     const field = body.error?.field_errors?.[0];
     throw new Error(field ? `${field.field}: ${field.reason}` : body.error?.message || "후보 생성에 실패했습니다");
@@ -113,7 +157,7 @@ export async function regenerateStudioCandidates(jobId: string, token: string): 
     method: "POST",
     headers: { Authorization: `Bearer ${authorization}` },
   });
-  const body = await response.json() as StudioRegenerationEnvelope;
+  const body = await readJson<StudioRegenerationEnvelope>(response, "구조 초안 다시 만들기");
   if (!response.ok || !body.data) {
     throw new Error(body.error?.message || "무료 재생성에 실패했습니다");
   }
@@ -168,7 +212,7 @@ export async function quoteStudioDerivations(
     `/api/studio/v1/generations/${encodeURIComponent(required(jobId, "기존 생성 작업"))}/derivations${query}`,
     { headers: { Authorization: `Bearer ${authorization}` } },
   );
-  const body = await response.json() as { data?: { quote: StudioDerivationQuote }; error?: { message?: string } };
+  const body = await readJson<{ data?: { quote: StudioDerivationQuote }; error?: { message?: string } }>(response, "비용 확인");
   if (!response.ok || !body.data) throw new Error(body.error?.message || "값을 불러오지 못했습니다");
   return body.data.quote;
 }
@@ -200,7 +244,7 @@ export async function requestStudioDerivations(input: {
       }),
     },
   );
-  const body = await response.json() as { data?: StudioDerivationBatch; error?: { message?: string } };
+  const body = await readJson<{ data?: StudioDerivationBatch; error?: { message?: string } }>(response, "다른 형식 만들기");
   if (!body.data) throw new Error(body.error?.message || "같이 만들기에 실패했습니다");
   return body.data;
 }
@@ -211,7 +255,7 @@ export async function discardStudioDerivations(batchId: string, token: string): 
     method: "DELETE",
     headers: { Authorization: `Bearer ${authorization}` },
   });
-  const body = await response.json() as { data?: StudioDerivationBatch; error?: { message?: string } };
+  const body = await readJson<{ data?: StudioDerivationBatch; error?: { message?: string } }>(response, "다른 형식 만들기");
   if (!response.ok || !body.data) throw new Error(body.error?.message || "파생물을 버리지 못했습니다");
   return body.data;
 }

@@ -41,6 +41,21 @@ describe("FE-V63-07 성과실 댓글 행동", () => {
 
   afterEach(() => cleanup());
 
+  it("V68-PERF-03 정상: 성과실 담당 패널은 이름 있는 보조 랜드마크다", () => {
+    H.fetcher.mockImplementation(() => new Promise(() => {}));
+    render(room());
+
+    expect(screen.getByRole("complementary", { name: "성과실 담당 대화창" })).toBeInTheDocument();
+  });
+
+  it("V69-COPY-01 거절: 성과 요약에 이메일 형태의 작업 공간 이름을 노출하지 않는다", () => {
+    H.fetcher.mockImplementation(() => new Promise(() => {}));
+    render(<PerformanceRoom workspaceId="11111111-1111-4111-8111-111111111111" workspaceName="owner@example.test" metricsLoaded posts={[post]} publishedCount={1} followers="10" engagementRate={2} queuedCount={0} viralCount={0} collecting={false} onCollectMetrics={vi.fn(async () => {})} />);
+
+    expect(screen.getByText("성과 요약 · 기본 작업 공간 · 최근 30일")).toBeInTheDocument();
+    expect(screen.queryByText(/owner@example\.test/)).not.toBeInTheDocument();
+  });
+
   it("FE-V63-07 정상 경로: 본문을 읽고 다섯 후속 행동 단추가 실제 API를 호출한다", async () => {
     H.fetcher.mockResolvedValue({
       postId: post.id, platform: "threads", capability: supported,
@@ -85,5 +100,30 @@ describe("FE-V63-07 성과실 댓글 행동", () => {
     expect(await screen.findByText(/TikTok Content Posting API는 댓글 관리 계약을 제공하지 않습니다/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "이 답글 보내기" })).not.toBeInTheDocument();
     expect(H.apiPost).not.toHaveBeenCalled();
+  });
+
+  // 2026-09-05 회장 계정 실측 회귀: 글이 이미 나갔는데도 빈 화면이 "첫 편이 나가면
+  // 모입니다" 라고 말했다. 실제 이유는 수집이 막힌 것이라 사용자는 기다리기만 한다.
+  it("FE-V63-08 거절: 나간 글이 있는데 반응이 비면 기다리라고 하지 않고 조치를 안내한다", () => {
+    render(<PerformanceRoom workspaceId="11111111-1111-4111-8111-111111111111" workspaceName="공용 작업 공간" metricsLoaded posts={[]} publishedCount={1} followers="10" engagementRate={2} queuedCount={0} viralCount={0} collecting={false} onCollectMetrics={vi.fn(async () => {})} />);
+
+    expect(screen.getByText(/성과 다시 수집하기를 눌러/)).toBeInTheDocument();
+    expect(screen.queryByText(/첫 편이 나가면 댓글과 반응이/)).toBeNull();
+  });
+
+  // 2026-09-05 실측 회귀: 계정이 바뀌기 전까지 영원히 안 채워지는 글을 "미수집"으로 적으면
+  // 사용자는 무한정 기다린다. 못 재는 글은 못 잰다고 적는다.
+  it("FE-V63-09 정상: 측정이 막힌 글은 미수집이 아니라 측정 불가로 적는다", () => {
+    const blocked = {
+      id: "blocked-1",
+      platform: "threads",
+      text: "측정 막힌 글",
+      status: "published",
+      published_at: "2026-09-04T20:41:14.000Z",
+      metrics_blocked: { code: "post_not_in_account", at: "2026-09-05T12:00:00.000Z" },
+    };
+    render(<PerformanceRoom workspaceId="11111111-1111-4111-8111-111111111111" workspaceName="공용 작업 공간" metricsLoaded posts={[blocked]} publishedCount={1} followers="10" engagementRate={2} queuedCount={0} viralCount={0} collecting={false} onCollectMetrics={vi.fn(async () => {})} />);
+
+    expect(screen.getAllByText("측정 불가").length).toBeGreaterThan(0);
   });
 });

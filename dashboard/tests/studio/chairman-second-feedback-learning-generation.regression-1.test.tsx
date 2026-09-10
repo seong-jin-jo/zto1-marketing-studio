@@ -6,6 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LearningCardWizard } from "@/components/studio/LearningCardWizard";
 import { CreateRoom, generationErrorMessage } from "@/components/studio/StudioRooms";
 
+// 생성 계약 호출만 센다. 종전에는 fetch 전체 호출 수를 셌는데, 그러면 화면이 다른 자료를
+// (성과에서 배운 규칙 같은) 하나라도 더 읽는 순간 무관한 이유로 깨진다. 이 검사가 지키려는
+// 것은 "생성을 몇 번 불렀나" 이지 "화면이 통신을 몇 번 했나" 가 아니다(2026-09-10).
+function generationCalls(mock: { mock: { calls: unknown[][] } }): unknown[][] {
+  return mock.mock.calls.filter((call) => String(call[0] ?? "").includes("/api/studio/v1/generations"));
+}
+
+
 const createProps = {
   workspaceId: "11111111-1111-4111-8111-111111111111",
   workspaceName: "작업 공간",
@@ -36,7 +44,10 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   localStorage.setItem("dashboard_auth_token", "customer-jwt");
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ok: true })));
+  // Response 본문은 한 번만 읽힌다. mockResolvedValue 로 **같은 Response 객체**를 계속
+// 돌려주면 두 번째 호출부터 빈 본문이 온다. 화면이 통신을 하나만 하던 시절에는 안 드러났고,
+// 성과 규칙을 읽기 시작하자 그 자리에서 터졌다(2026-09-10). 호출마다 새로 만든다.
+vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ ok: true }))));
 });
 
 afterEach(() => {
@@ -90,16 +101,27 @@ describe("회장 2차 실사용 피드백 생성실", () => {
     expect(screen.queryByText("말 거는 대상")).toBeNull();
   });
 
-  it("항목 15 거절: 생성실을 다시 열면 저장하지 않은 질문 진행 상태를 복원하지 않는다", () => {
-    localStorage.setItem("studio_work:11111111-1111-4111-8111-111111111111", JSON.stringify({ idea: "남아 있으면 안 되는 주제", createBranch: "video" }));
+  it("V77-CREATE-PERSIST-01 정상: 생성실을 다시 열면 질문 진행 상태와 선택 형식을 복원한다", async () => {
     const first = render(<CreateRoom {...createProps} />);
     fireEvent.click(screen.getByRole("button", { name: "영상" }));
     fireEvent.click(screen.getByRole("button", { name: "다음" }));
     expect(document.querySelector('[data-create-question="purpose"]')).toBeInTheDocument();
+    await waitFor(() => expect(localStorage.getItem("studio_create_state:11111111-1111-4111-8111-111111111111")).toContain('"questionIndex":1'));
     first.unmount();
     render(<CreateRoom {...createProps} />);
+    expect(document.querySelector('[data-create-question="purpose"]')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "이전 질문" }));
+    expect(screen.getByRole("button", { name: "영상" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("V77-CREATE-PERSIST-02 거절: 깨진 생성실 임시 저장값은 복원하지 않고 지운다", () => {
+    const key = "studio_create_state:11111111-1111-4111-8111-111111111111";
+    localStorage.setItem(key, JSON.stringify({ primaryKind: "모르는 형식", questionIndex: 99 }));
+
+    render(<CreateRoom {...createProps} />);
+
     expect(document.querySelector('[data-create-question="kind"]')).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "영상" })).toHaveAttribute("aria-pressed", "false");
+    expect(localStorage.getItem(key)).not.toContain("모르는 형식");
   });
 
   it("항목 16·17 정상: 규칙 기반 초안과 준비 중 기능을 분리하고 선택 뒤 CTA를 하나만 노출한다", async () => {
@@ -112,14 +134,14 @@ describe("회장 2차 실사용 피드백 생성실", () => {
       rationale: `${label} 설명`,
       format: { content_branch: "video", preview_kind: "structured_storyboard", quality: "draft", outline: ["첫 장면"] },
     }));
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { job_id: "job-1", candidates } }, { status: 201 })));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ data: { job_id: "job-1", candidates } }, { status: 201 }))));
     render(<CreateRoom {...createProps} />);
     answerCreateQuestions();
     fireEvent.click(screen.getByRole("button", { name: "구조 초안 3개 보기" }));
     await screen.findByRole("button", { name: "A 구조 초안 선택" });
     fireEvent.click(screen.getByRole("button", { name: "A 구조 초안 선택" }));
-    expect(screen.getByText(/영상은 대본과 장면 구성까지만 제공하며 렌더링은 아직 지원하지 않습니다/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "선택한 구조 초안을 편집실에서 보기" })).toBeInTheDocument();
+    expect(screen.getByText(/카드뉴스 이미지와 숏폼 영상을 여기서 바로 만들 수 있습니다/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "편집실에서 다듬기" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /확정하고 같이 만들기/ })).toBeNull();
   });
 

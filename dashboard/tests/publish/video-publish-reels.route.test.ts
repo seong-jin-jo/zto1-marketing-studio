@@ -1,3 +1,7 @@
+// 2026-09-07 정정: 제공자 실패를 502 로 돌려주던 계약을 바꿨다. 우리 앞의 리버스 프록시가
+// 502 를 보면 우리 JSON 본문을 자기 HTML 오류 페이지로 갈아치워, 화면에 남는 것이
+// "<!DOCTYPE html>" 뿐이었다. 실제로 릴스 발행을 시험했을 때 코드가 죽은 것인지 제공자가
+// 거절한 것인지조차 구분할 수 없었다. 이제 200 + ok:false 로 답한다(/api/publish 와 같은 계약).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -245,10 +249,10 @@ describe("/api/video/publish — Instagram Reels", () => {
     expect(String(H.reelsCalls[0][1])).not.toBe(String(H.reelsCalls[1][1]));
   });
 
-  it("발행 실패는 502 + 고정 문구 — 프로바이더 원문/스택을 반환하지 않는다", async () => {
+  it("발행 실패는 200 + ok:false + 고정 문구 — 프로바이더 원문/스택을 반환하지 않는다", async () => {
     H.reelsResult = { ok: false, error: "IG Reels container 실패(400)" };
     const { status, json } = await callPublish({ filename: "clip.mp4", platform: "reels" });
-    expect(status).toBe(502);
+    expect(status).toBe(200);
     expect(json.error).toBe("IG Reels container 실패(400)");
     expect(JSON.stringify(json)).not.toContain("access_token");
   });
@@ -295,7 +299,7 @@ describe("/api/video/publish — Instagram Reels", () => {
   it("실패한 발행은 in_progress를 남기지 않아 재시도가 가능하다(영구 409 방지)", async () => {
     const draftId = "77777777-7777-7777-7777-777777777777";
     H.reelsResult = { ok: false, error: "IG Reels container 실패(400)" };
-    expect((await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId })).status).toBe(502);
+    expect((await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId })).status).toBe(200);
     expect(H.rows[0].status).toBe("failed");
 
     H.reelsResult = { ok: true, externalId: "media-9", permalink: null };
@@ -392,7 +396,9 @@ describe("/api/video/publish — Instagram Reels", () => {
     fs.writeFileSync(big, Buffer.alloc(1024));
     const { MAX_VIDEO_BYTES } = await import("@/lib/video-limits");
     expect(MAX_VIDEO_BYTES).toBe(100 * 1024 * 1024);
-    vi.spyOn(fs, "statSync").mockReturnValue({ size: MAX_VIDEO_BYTES + 1 } as unknown as fs.Stats);
+    // 2026-09-08: 파일 찾기가 디렉터리를 파일로 오인하지 않도록 isFile() 을 본다.
+    // 흉내에도 그 모양을 갖춰야 실제 경로와 같은 길을 탄다.
+    vi.spyOn(fs, "statSync").mockReturnValue({ size: MAX_VIDEO_BYTES + 1, isFile: () => true } as unknown as fs.Stats);
     const { status, json } = await callPublish({ filename: "big.mp4", platform: "reels" });
     vi.restoreAllMocks();
     expect(status).toBe(400);

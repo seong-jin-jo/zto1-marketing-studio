@@ -36,7 +36,18 @@ vi.mock("@/lib/higgsfield", () => ({
   downloadTo: vi.fn(async () => 123),
   addNarration: vi.fn(async () => H.higgsNarration),
   logGen: vi.fn(),
-  STUDIO_DIR: "/tmp/studio",
+  // 2026-09-06: 생성 1건을 사용량 정본에 남기는 헬퍼가 추가됐다. 이 판의 관심사는
+  // 무음 폴백 응답이므로 기록은 통과시킨다.
+  recordMediaGenerationEvent: vi.fn(async () => {}),
+  // 2026-09-06: 긴 생성 호출 전에 생성기가 쓸 수 있는지 짧게 확인한다. 이 판은 무음
+  // 폴백 응답만 보므로 준비된 것으로 둔다.
+  assertHiggsfieldReady: vi.fn(async () => {}),
+  HiggsfieldUnavailableError: class extends Error {},
+  HiggsfieldUnauthenticatedError: class extends Error {},
+  // 2026-09-07: 만든 파일을 테넌트 폴더에 두고 주소에도 테넌트를 실어야 화면이 불러온다.
+  // 종전에는 공용 루트에 저장하고 주소에 테넌트가 없어 그림이 안 떴다.
+  studioDir: vi.fn((tenantId: string) => `/tmp/studio/${tenantId}`),
+  assetUrl: vi.fn((tenantId: string, key: string) => `/api/higgsfield/asset/${key}?tenant_id=${tenantId}`),
 }));
 
 vi.mock("@/lib/file-io", () => ({
@@ -44,8 +55,10 @@ vi.mock("@/lib/file-io", () => ({
   dataPath: vi.fn((p: string) => path.join("/tmp/data", p)),
 }));
 
+// 2026-09-06: 영상 생성이 사용량을 작업 공간별로 남기게 되면서 테넌트 식별을 요구한다.
+// 이 판은 무음 폴백 응답 계약만 보므로 식별을 통과시킨다.
 vi.mock("@/lib/tenant-auth", () => ({
-  effectiveTenantId: vi.fn(async () => null),
+  effectiveTenantId: vi.fn(async () => "11111111-1111-4111-8111-111111111111"),
 }));
 
 vi.mock("@/lib/tenant-context", () => ({
@@ -70,6 +83,7 @@ describe("내레이션 무음 폴백 응답 계약", () => {
         localPath: "/tmp/input.png",
         prompt: "motion",
         narration: "읽어줄 문장",
+        tenant_id: "11111111-1111-4111-8111-111111111111",
       }),
     }));
     const body = await response.json();

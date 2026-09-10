@@ -1,3 +1,6 @@
+// 2026-09-08 정정: 생성 계열 라우트가 상류 실패에 502 를 쓰면 앞단 리버스 프록시가 우리
+// JSON 본문을 HTML 오류 페이지로 갈아치워, 회장 화면에 "502" 라는 숫자만 떴다. 사용자가
+// 이유를 볼 수 있도록 200+ok:false 로 바꿨다(운영·알림 계열의 fail-closed 502 는 유지).
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -210,12 +213,12 @@ describe("generateText 호출 라우트 — SharedAiApprovalRequiredError → 40
 });
 
 describe("generateText 호출 라우트 — 그 외 에러는 기존 오류 계약(quota 아닌 일반 실패) 보존", () => {
-  it("studio/text: 일반 Error는 여전히 502(quota 매핑 아님)", async () => {
+  it("studio/text: 일반 Error는 200+ok:false(quota 매핑 아님, 프록시가 문구를 삼키지 않게)", async () => {
     H.genImpl = async () => { throw new Error("claude -p 알수없는 실패"); };
     const { POST } = await import("@/app/api/studio/text/route");
     const res = await POST(postJson("http://localhost/api/studio/text", { idea: "x", tenant_id: "tenant-1" }));
     const body = await res.json();
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
     expect(body.code).toBeUndefined();
   });
 

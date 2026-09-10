@@ -1,3 +1,7 @@
+// 2026-09-07 정정: 제공자 실패를 502 로 돌려주던 계약을 바꿨다. 우리 앞의 리버스 프록시가
+// 502 를 보면 우리 JSON 본문을 자기 HTML 오류 페이지로 갈아치워, 화면에 남는 것이
+// "<!DOCTYPE html>" 뿐이었다. 실제로 릴스 발행을 시험했을 때 코드가 죽은 것인지 제공자가
+// 거절한 것인지조차 구분할 수 없었다. 이제 200 + ok:false 로 답한다(/api/publish 와 같은 계약).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs";
 import path from "path";
@@ -277,7 +281,7 @@ describe("POST /api/video/publish — youtube 브랜치", () => {
       body: JSON.stringify({ filename: "x.mp4", platform: "youtube" }),
     }));
 
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
     expect(await res.json()).not.toEqual(expect.objectContaining({ ok: true }));
   });
 
@@ -295,7 +299,7 @@ describe("POST /api/video/publish — youtube 브랜치", () => {
       body: JSON.stringify({ filename: "x.mp4", platform: "youtube" }),
     }));
 
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
     expect(await res.json()).not.toEqual(expect.objectContaining({ ok: true }));
   });
 
@@ -313,7 +317,7 @@ describe("POST /api/video/publish — youtube 브랜치", () => {
       body: JSON.stringify({ filename: "x.mp4", platform: "youtube" }),
     }));
 
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
     expect(await res.json()).not.toEqual(expect.objectContaining({ ok: true }));
   });
 

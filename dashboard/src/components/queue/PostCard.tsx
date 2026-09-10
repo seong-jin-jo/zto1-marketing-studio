@@ -6,6 +6,7 @@ import { useToast } from "@/components/layout/Toast";
 import { useUIStore } from "@/store/ui-store";
 import { fmtTime } from "@/lib/format";
 import type { Post } from "@/types/queue";
+import { confirmAction } from "@/components/shared/ConfirmHost";
 
 const STATUS_CLASS: Record<string, string> = {
   draft: "bg-warning/15 text-warning",
@@ -62,7 +63,7 @@ export function PostCard({ post, channelConfig, onRefresh, onPickImage }: PostCa
   };
 
   const handleDelete = async () => {
-    if (!confirm("정말 삭제?")) return;
+    if (!(await confirmAction({ title: "이 글을 삭제할까요?", description: "삭제한 글은 되돌릴 수 없습니다. 예약된 발행도 함께 취소됩니다.", confirmLabel: "글 삭제", destructive: true }))) return;
     try {
       await apiPost(`/api/queue/${post.id}/delete`);
       showToast("삭제 완료", "success");
@@ -150,9 +151,9 @@ export function PostCard({ post, channelConfig, onRefresh, onPickImage }: PostCa
       {/* Engagement */}
       {post.engagement?.views != null && (
         <div className="flex gap-pad-inset text-caption text-subtle">
-          <span>views: {post.engagement.views}</span>
-          <span>likes: {post.engagement.likes || 0}</span>
-          <span>replies: {post.engagement.replies || 0}</span>
+          <span>조회: {post.engagement.views}</span>
+          <span>좋아요: {post.engagement.likes || 0}</span>
+          <span>답글: {post.engagement.replies || 0}</span>
         </div>
       )}
 

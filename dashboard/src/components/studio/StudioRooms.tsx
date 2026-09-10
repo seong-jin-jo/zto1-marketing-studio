@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/shared/Button";
-import { EditPreview } from "./EditPreview";
+import { StateNotice } from "@/components/shared/StateNotice";
+import { EditPreview, type CardTextPosition } from "./EditPreview";
 import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
 import {
@@ -16,6 +17,9 @@ import {
   type StudioGenerationCandidate,
 } from "@/lib/studio/generation/client";
 import { getAuthToken } from "@/lib/auth";
+import { workspaceDisplayName } from "@/lib/workspace-display-name";
+import { IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
+import { renderTextCard, themeFromPalette, type CardRatio } from "@/lib/studio/text-card-image";
 import {
   CARD_ASPECT_RATIOS,
   EDIT_BACKGROUNDS,
@@ -39,20 +43,123 @@ import {
   writeLearningInfo,
   type LearningInfo,
 } from "./learning-info";
+import styles from "./StudioRooms.module.css";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
+import { authHeaders } from "@/lib/auth";
 
 export type CreateContentBranch = "text_image" | "video";
 export type EditContentKind = "video" | "card" | "audio" | "text";
 /** 화면에서 고르는 갈래. 글과 카드뉴스는 만드는 방식이 달라 따로 고른다. */
 export type CreateKind = "video" | "card" | "text";
+export interface CreateStructureChoice {
+  label: "A" | "B" | "C";
+  title: string;
+  outline: readonly string[];
+}
+export interface QuickDraftResult {
+  threads?: string;
+  facebook?: string;
+  x?: string;
+  instagram?: { caption?: string; hashtags?: string[]; slides?: string[] };
+  shorts?: { hook?: string; body?: string; cta?: string };
+}
 const ONBOARDING_CONTENT_BRANCH_KEY = "studio_content_branch";
+// 생성실이 답한 질문과 만든 후보를 브라우저에 남기는 자리.
+// 부모(작업실)도 이 키를 알아야 한다. "새로 시작" 이 이것을 못 보면, 부모 상태는 비었는데
+// 여기에 후보가 남아 화면에는 계속 옛 후보가 뜨고 "이미 비어 있습니다" 로 닫힌다.
+// 그러면 사용자는 그 후보를 영원히 못 지운다(2026-09-09 실사용에서 확인).
+export const CREATE_DRAFT_STORAGE_PREFIX = "studio_create_state";
 
 const CREATE_KIND_LABELS: Record<CreateKind, string> = { video: "영상", card: "카드뉴스", text: "글" };
 const CREATE_KIND_ORDER: CreateKind[] = ["video", "card", "text"];
 const kindToBranch = (kind: CreateKind): CreateContentBranch => (kind === "video" ? "video" : "text_image");
 
+interface PersistedCreateDraft {
+  primaryKind: CreateKind | null;
+  alsoKinds: CreateKind[];
+  questionIndex: number;
+  purpose: string;
+  audience: string;
+  rightsConfirmed: boolean;
+  topicOpen: boolean;
+  candidates: StudioGenerationCandidate[];
+  selected: "A" | "B" | "C" | null;
+  quickStructure: CreateStructureChoice | null;
+}
+
+function createDraftStorageKey(workspaceId: string): string {
+  return `${CREATE_DRAFT_STORAGE_PREFIX}:${workspaceId}`;
+}
+
+function isCreateKind(value: unknown): value is CreateKind {
+  return value === "video" || value === "card" || value === "text";
+}
+
+function isCandidateLabel(value: unknown): value is "A" | "B" | "C" {
+  return value === "A" || value === "B" || value === "C";
+}
+
+function isStudioGenerationCandidate(value: unknown): value is StudioGenerationCandidate {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<StudioGenerationCandidate>;
+  return typeof candidate.candidate_id === "string"
+    && isCandidateLabel(candidate.label)
+    && typeof candidate.title === "string"
+    && Boolean(candidate.format)
+    && Array.isArray(candidate.format?.outline)
+    && candidate.format.outline.every((line) => typeof line === "string");
+}
+
+function readCreateDraft(workspaceId: string): PersistedCreateDraft | null {
+  try {
+    const raw = localStorage.getItem(createDraftStorageKey(workspaceId));
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<PersistedCreateDraft>;
+    const questionIndex = Number(value.questionIndex);
+    if ((value.primaryKind !== null && !isCreateKind(value.primaryKind))
+      || !Array.isArray(value.alsoKinds)
+      || value.alsoKinds.some((kind) => !isCreateKind(kind))
+      || !Number.isInteger(questionIndex)
+      || questionIndex < 0
+      || questionIndex >= CREATE_QUESTIONS.length
+      || typeof value.purpose !== "string"
+      || typeof value.audience !== "string"
+      || typeof value.rightsConfirmed !== "boolean"
+      || typeof value.topicOpen !== "boolean"
+      || !Array.isArray(value.candidates)
+      || value.candidates.some((candidate) => !isStudioGenerationCandidate(candidate))
+      || (value.selected !== null && !isCandidateLabel(value.selected))) {
+      throw new Error("생성실 임시 저장 형식이 올바르지 않습니다");
+    }
+    const quickStructure = value.quickStructure;
+    if (quickStructure !== null && (!quickStructure
+      || !isCandidateLabel(quickStructure.label)
+      || typeof quickStructure.title !== "string"
+      || !Array.isArray(quickStructure.outline)
+      || quickStructure.outline.some((line) => typeof line !== "string"))) {
+      throw new Error("생성실 구조 임시 저장 형식이 올바르지 않습니다");
+    }
+    return {
+      primaryKind: value.primaryKind ?? null,
+      alsoKinds: value.alsoKinds as CreateKind[],
+      questionIndex,
+      purpose: value.purpose,
+      audience: value.audience,
+      rightsConfirmed: value.rightsConfirmed,
+      topicOpen: value.topicOpen,
+      candidates: value.candidates as StudioGenerationCandidate[],
+      selected: value.selected ?? null,
+      quickStructure: quickStructure ?? null,
+    };
+  } catch {
+    localStorage.removeItem(createDraftStorageKey(workspaceId));
+    return null;
+  }
+}
+
 function AssistantPanel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <aside className="card h-fit min-w-0 overflow-hidden lg:sticky lg:top-pad-inset" aria-label={`${title} 대화창`} data-chat-dock="persistent" data-chat-always="true">
+    <aside className="card h-fit min-w-0 overflow-y-auto max-lg:sticky max-lg:bottom-0 max-lg:z-30 max-lg:max-h-44 max-lg:rounded-b-none lg:sticky lg:top-pad-inset" aria-label={`${title} 대화창`} data-chat-dock="persistent" data-chat-always="true">
       <div className="flex items-center gap-stack-tight border-b border-border p-stack">
         <div className="grid h-10 w-10 place-items-center rounded-pill bg-accent text-body font-bold text-accent-fg" aria-hidden="true">O</div>
         <div><b className="block text-body text-text">{title}</b><span className="text-caption text-success">지금 대기 중</span></div>
@@ -82,6 +189,32 @@ interface CreateRoomProps {
   /** 만들던 것 이어서 하기. 0이면 줄이 아예 안 뜬다 */
   resumeCount?: number;
   onResume?: () => void;
+  quickDraft?: QuickDraftResult | null;
+  quickDraftLoading?: boolean;
+  quickDraftError?: string | null;
+  /** 카드뉴스 대표 이미지 생성. 비용 승인 관문은 호출부가 담당한다. */
+  onGenerateCardImages?: () => Promise<void>;
+  /** 숏폼 영상 생성. 카드뉴스와 같이 비용 승인 관문은 호출부가 담당한다. */
+  onGenerateVideo?: () => Promise<void>;
+  videoBusy?: boolean;
+  /** 방금 만든 결과. 만든 자리에서 보여야 만들어졌다는 것을 안다(회장 2026-09-07). */
+  /** 만들 그림의 결. 고객이 만들기 전에 고른다(회장 2026-09-08). */
+  imageStyleId?: string;
+  imageStyleCustom?: string;
+  onImageStyleChange?: (styleId: string, custom: string) => void;
+  /**
+   * 값이 바뀌면 생성실이 자기 상태를 비운다.
+   *
+   * 2026-09-09 실사용에서 찾았다. 머리줄의 "새로 시작" 을 누르고 확인까지 했는데
+   * 생성실에는 앞서 만든 구조 초안 세 개가 그대로 남아 "3 / 3 선택한 구조 확인" 이었다.
+   * 부모는 본문·이미지·영상을 지웠지만 후보와 답한 질문은 이 컴포넌트 안에 있어서
+   * 손이 닿지 않았다. **버렸다고 말하고 안 버리는 것**이 가장 나쁘다.
+   */
+  resetToken?: number;
+  madeImageUrl?: string | null;
+  madeVideoUrl?: string | null;
+  cardImageBusy?: boolean;
+  onQuickDraftGenerate?: (structure: CreateStructureChoice) => Promise<void> | void;
 }
 
 const CREATE_EXAMPLES = [
@@ -110,19 +243,130 @@ function topicCandidates(industryTitle: string, purposeTitle: string): string[] 
 type CreateQuestion = "kind" | "purpose" | "audience" | "topic" | "rights" | "review";
 const CREATE_QUESTIONS: readonly CreateQuestion[] = ["kind", "purpose", "audience", "topic", "rights", "review"];
 
+/**
+ * 생성 실패를 사람 말로 옮긴다.
+ *
+ * 2026-09-09 실사용에서 찾았다. 생성이 실패하자 화면에 "The string did not match the
+ * expected pattern." 이 그대로 떴다. 브라우저가 던진 개발자 문구다. 사용자는 무엇이
+ * 잘못됐는지도, 무엇을 하면 되는지도 알 수 없다. 회장이 앞서 "인라인에러좀 잘해라" 라고
+ * 지적한 것과 같은 종류다.
+ *
+ * 원인은 마지막 줄의 `return message ||` 였다. 아는 오류는 옮겨 적고, 모르는 오류는
+ * **원문을 그대로 내보냈다.** 우리가 쓴 한국어 문구만 사용자에게 보이고, 모르는 것은
+ * 사람 말로 닫는다. 개발자가 볼 원문은 콘솔에만 남긴다.
+ */
 export function generationErrorMessage(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : "";
   if (/저장소|무결성|constraint|database|relation|schema/i.test(message)) {
     return "구조 초안을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.";
   }
-  if (/인증|로그인|unauthorized|forbidden/i.test(message)) return "로그인이 만료됐습니다. 다시 로그인해 주세요.";
-  return message || "구조 초안을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  if (/인증|로그인|unauthorized|forbidden|401|403/i.test(message)) return "로그인이 만료됐습니다. 다시 로그인해 주세요.";
+  if (/승인|shared_ai_approval/i.test(message)) return "공유 AI 사용이 아직 열리지 않았습니다. 설정에서 자체 키를 등록하면 바로 쓸 수 있습니다.";
+  if (/한도|quota|429/i.test(message)) return "이번 달 생성 한도를 다 쓰셨습니다. 다음 달에 다시 채워집니다.";
+  if (/load failed|failed to fetch|networkerror|network|timeout|aborted/i.test(message)) {
+    return "연결이 끊겨 요청이 끝나지 않았습니다. 잠시 후 다시 시도해 주세요.";
+  }
+  // 우리가 쓴 한국어 문구는 그대로 보여 준다. 그 외(브라우저·라이브러리가 던진 영문
+  // 개발자 문구)는 사용자에게 아무 도움이 안 되므로 사람 말로 닫고 원문은 콘솔에 남긴다.
+  if (/[가-힣]/.test(message)) return message;
+  if (message) console.error("[create] 알 수 없는 생성 실패:", message);
+  return "구조 초안을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
-export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, resumeCount = 0, onResume }: CreateRoomProps) {
+/**
+ * 기다리는 동안 아무것도 안 보여 주면 사용자는 고장이라고 읽는다.
+ *
+ * 2026-09-09 실측: 구조 초안 만들기는 글 35초, 영상 54초가 걸린다. 그동안 화면에는 버튼
+ * 글씨가 "만드는 중" 으로 바뀌는 것 말고 아무 변화가 없었다. 내가 직접 여덟 번을 기다려
+ * 봤는데 매번 멈춘 것인지 도는 것인지 알 수 없었다. **만든 사람이 그렇게 느끼면 처음
+ * 쓰는 사람은 확실히 그렇게 느낀다.**
+ *
+ * 벤치마크: Vrew·Descript·Canva 는 생성 중에 진행 표시와 예상 시간을 함께 준다. Buffer 는
+ * 오래 걸리는 일에 "보통 얼마" 를 미리 말해 둔다. 공통점은 지금 얼마나 지났고 보통 얼마나
+ * 걸리는지를 숨기지 않는 것이다.
+ *
+ * 진행률은 지어내지 않는다. 지난 시간을 정직하게 세는 편이 낫다. 가짜 진행 막대는 한 번
+ * 어긋나면 그때부터 아무도 안 믿는다. 예상 시간을 넘기면 사과 대신 사정을 말한다.
+ * 기다리는 사람에게 필요한 것은 사과가 아니라 계속 가고 있다는 사실이다.
+ */
+function WaitingNotice({ label, typicalSeconds }: { label: string; typicalSeconds: number }) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const timer = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const late = seconds > typicalSeconds;
+  return (
+    <div
+      className="rounded-control border border-border bg-surface p-stack text-caption text-muted"
+      data-waiting-notice
+      role="status"
+      aria-live="polite"
+    >
+      <b className="block font-semibold text-text">{label}</b>
+      <span data-waiting-elapsed>{seconds}초 지났습니다. 보통 {typicalSeconds}초쯤 걸립니다.</span>
+      <span className="mt-stack-tight block">
+        {late
+          ? "생각보다 걸리고 있습니다. 그대로 두시면 계속 만듭니다."
+          : "학습 정보를 반영해 서로 다른 구조 세 개를 짓고 있습니다."}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * 성과실에서 승낙한 규칙을 생성실 화면이 직접 읽는다.
+ *
+ * 2026-09-10 실측: 성과실에서 규칙을 하나 승낙하고("threads 채널 글이 상위권을
+ * 차지합니다") 생성실로 왔더니 여전히 **"성과에서 배운 규칙: 아직 없음"** 이라고 떠 있었다.
+ * 서버는 그 규칙을 실제로 프롬프트에 넣고 있는데 화면만 없다고 말한 것이다.
+ *
+ * **화면이 거짓말하는 방향이 뒤집혔을 뿐 거짓말인 것은 같다.** 종전에는 쓴다고 해 놓고 안
+ * 썼고, 지금은 쓰면서 안 쓴다고 말한다. 사용자는 승낙한 것이 반영됐는지 확인할 길이 없고,
+ * 확인이 안 되면 다시 승낙하거나 이 기능을 안 믿게 된다.
+ *
+ * 규칙의 정본은 성과실 저장소다. 화면이 들고 다니는 학습 정보 사본이 아니라 그 정본을 읽는다.
+ */
+function useLearnedRules(workspaceId: string): string {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    if (!workspaceId) return;
+    let alive = true;
+    // 인증 없이 부르면 401 이 돌아오고 화면은 조용히 "아직 없음" 으로 남는다. 조용히 틀리는
+    // 것이 가장 나쁘다. 다른 호출과 같은 방식으로 회원 표를 함께 보낸다(2026-09-10 실측).
+    const token = getAuthToken();
+    fetch(`/api/performance/learned-rules?tenant_id=${encodeURIComponent(workspaceId)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+      .then((response) => (response.ok ? response.json() : { rules: [] }))
+      .then((body: { rules?: { text?: string }[] }) => {
+        if (!alive) return;
+        const rules = (body.rules ?? [])
+          .map((rule) => String(rule.text ?? "").trim())
+          .filter(Boolean);
+        // 여러 개면 몇 개인지 함께 말한다. 하나만 보여 주면 나머지는 안 쓰는 줄 안다.
+        setText(rules.length > 1 ? `${rules[rules.length - 1]} (외 ${rules.length - 1}개)` : rules[0] ?? "");
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [workspaceId]);
+  return text;
+}
+
+export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
   const topicInputRef = useRef<HTMLInputElement>(null);
-  const previousWorkspaceId = useRef(workspaceId);
+  const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
   const [primaryKind, setPrimaryKind] = useState<CreateKind | null>(null);
+  /**
+   * 사용자가 형식을 손으로 골랐는가.
+   *
+   * 2026-09-09 실사용에서 찾았다. 생성실에서 "카드뉴스" 를 골랐는데 화면에는 "선택한 형식:
+   * 영상" 이 뜨고 영상 구성으로 만들어졌다. 아래 복원 효과가 학습 정보 로드에 맞물려
+   * 다시 돌면서, 방금 고른 값을 저장된 옛 값이나 온보딩 기본값으로 덮어썼기 때문이다.
+   * 사람이 방금 누른 것을 화면이 몰래 되돌리면, 무엇을 고르든 소용이 없다.
+   */
+  const pickedByHand = useRef(false);
   const [alsoKinds, setAlsoKinds] = useState<CreateKind[]>([]);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [purpose, setPurpose] = useState("");
@@ -132,13 +376,43 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const [learning, setLearning] = useState<LearningInfo>({});
   const [candidates, setCandidates] = useState<StudioGenerationCandidate[]>([]);
   const [selected, setSelected] = useState<"A" | "B" | "C" | null>(null);
+  const [quickStructure, setQuickStructure] = useState<CreateStructureChoice | null>(null);
   const [loading, setLoading] = useState(false);
   const [alsoQuote, setAlsoQuote] = useState<StudioDerivationQuote | null>(null);
   const [alsoBatch, setAlsoBatch] = useState<StudioDerivationBatch | null>(null);
   const [alsoBusy, setAlsoBusy] = useState(false);
+  // 초안을 못 만드는 이유를 단추 옆에서 말한다(조용한 비활성 금지).
+  const [quickBlockReason, setQuickBlockReason] = useState<string | null>(null);
   const generationInFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  // 부모가 "새로 시작" 을 확정하면 이 방도 처음으로 돌아간다. 부모 상태만 비우고 여기를
+  // 두면 화면에는 지운 적 없는 후보가 남아 사용자는 무엇이 버려졌는지 알 수 없다.
+  const firstReset = useRef(true);
+  useEffect(() => {
+    if (firstReset.current) { firstReset.current = false; return; }
+    pickedByHand.current = false;
+    setQuestionIndex(0);
+    setPurpose(""); setAudience(""); setRightsConfirmed(false); setTopicOpen(false);
+    setPrimaryKind(null); setAlsoKinds([]);
+    setCandidates([]); setSelected(null); setQuickStructure(null);
+    setAlsoQuote(null); setAlsoBatch(null); setQuickBlockReason(null); setError(null);
+    try { localStorage.removeItem(`${CREATE_DRAFT_STORAGE_PREFIX}:${workspaceId}`); } catch { /* 저장이 막혀 있어도 화면은 이미 비웠다 */ }
+  }, [resetToken, workspaceId]);
+
   const facts = useMemo(() => guide.trim() ? [guide.trim()] : [], [guide]);
+  /**
+   * 학습 정보의 "쓰지 않을 표현" 을 생성 계약이 받는 모양으로 옮긴다.
+   *
+   * 이 칸은 "별도 제한 없음. 예: ..." 처럼 견본 문장이 붙어 저장된다. 그것을 통째로
+   * 금지어로 넘기면 그 문장 전체가 결과에 있는지 찾게 되어 아무것도 안 걸린다.
+   * 그리고 "별도 제한 없음" 은 금지어가 아니라 **금지어가 없다는 답**이다. 그것을
+   * 금지어로 넣으면 그 말이 들어간 정상 문장이 통째로 버려진다.
+   */
+  const forbiddenFromLearning = useMemo(() => {
+    const raw = (learning.forbidden ?? "").split("예:")[0].trim();
+    if (!raw || /별도 제한 없음|없음|제한 없음/.test(raw)) return [];
+    return raw.split(/[,·]/).map((word) => word.trim()).filter(Boolean).slice(0, 20);
+  }, [learning.forbidden]);
   const learnedCount = countFilledLearningSlots(learning, { guide });
   const missing = [!primaryKind && "만들 형식", !topic.trim() && "주제", !purpose.trim() && "목표", !audience.trim() && "고객", !rightsConfirmed && "사용 권리 확인"].filter(Boolean) as string[];
   const selectedCandidate = candidates.find((candidate) => candidate.label === selected) ?? null;
@@ -149,36 +423,94 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const purposeTitle = useMemo(() => PURPOSE_CARDS.find((card) => card.sample === purpose)?.title || "", [purpose]);
   const topicCards = useMemo(() => topicCandidates(industryTitle, purposeTitle), [industryTitle, purposeTitle]);
 
-  useEffect(() => {
-    const savedBranch = sessionStorage.getItem(ONBOARDING_CONTENT_BRANCH_KEY);
-    if (savedBranch !== "text_image" && savedBranch !== "video") return;
-    onContentBranchChange?.(savedBranch);
-    const savedKind: CreateKind = savedBranch === "video" ? "video" : "card";
-    setPrimaryKind(savedKind);
-    onPrimaryKindChange?.(savedKind);
-    sessionStorage.removeItem(ONBOARDING_CONTENT_BRANCH_KEY);
-  }, [onContentBranchChange, onPrimaryKindChange]);
-
-  // 생성실은 언제나 새로 시작 상태로 열린다(질문6 확정). 이전 작업물은 지우지 않고
-  // 헤더 작업물함에 그대로 있고, 위쪽 "이어서 하기" 한 줄로 부른다.
-  // 브랜드에 매달린 값(대상, 소재 권리)만 학습 정보에서 되살린다.
+  // 학습 정보는 작업 공간마다 다시 읽는다. 생성실 문답의 임시 저장과는 별도다.
   useEffect(() => {
     if (!workspaceId) return;
     const saved = readLearningInfo(workspaceId);
     setLearning(saved);
-    setAudience(saved.audience || "");
-    setRightsConfirmed(Boolean(saved.rights));
+    setAudience((current) => current || saved.audience || "");
+    setRightsConfirmed((current) => current || Boolean(saved.rights));
+  }, [workspaceId, learningVersion]);
+
+  // 새로고침해도 생성실 질문, 선택 구조, 생성 후보를 작업 공간별로 이어 간다.
+  // 깨진 저장값은 조용히 폐기하고 학습 정보에서 확인된 기본값만 사용한다.
+  useEffect(() => {
+    setHydratedCreateWorkspaceId(null);
+    // 사람이 방금 고른 형식은 되돌리지 않는다. 학습 정보가 늦게 로드돼 이 효과가 다시
+    // 돌더라도, 그 사이 사용자가 누른 것이 옛 값으로 덮이면 안 된다.
+    if (!pickedByHand.current) setPrimaryKind(null);
+    setAlsoKinds([]);
+    setQuestionIndex(0);
     setPurpose("");
+    setAudience("");
+    setRightsConfirmed(false);
     setTopicOpen(false);
-    if (previousWorkspaceId.current !== workspaceId) {
-      previousWorkspaceId.current = workspaceId;
-      setPrimaryKind(null);
-      setAlsoKinds([]);
-      setQuestionIndex(0);
-      onPrimaryKindChange?.(null);
-      onAlsoKindsChange?.([]);
+    setCandidates([]);
+    setSelected(null);
+    setQuickStructure(null);
+    onPrimaryKindChange?.(null);
+    onAlsoKindsChange?.([]);
+    if (!workspaceId) return;
+
+    const learned = readLearningInfo(workspaceId);
+    const onboardingBranch = sessionStorage.getItem(ONBOARDING_CONTENT_BRANCH_KEY);
+    if (onboardingBranch === "text_image" || onboardingBranch === "video") {
+      const onboardingKind: CreateKind = onboardingBranch === "video" ? "video" : "card";
+      if (!pickedByHand.current) {
+        setPrimaryKind(onboardingKind);
+        onPrimaryKindChange?.(onboardingKind);
+        onContentBranchChange?.(onboardingBranch);
+      }
+      setAudience(learned.audience || "");
+      setRightsConfirmed(Boolean(learned.rights));
+      sessionStorage.removeItem(ONBOARDING_CONTENT_BRANCH_KEY);
+      setHydratedCreateWorkspaceId(workspaceId);
+      return;
     }
-  }, [workspaceId, learningVersion, onAlsoKindsChange, onPrimaryKindChange]);
+    const saved = readCreateDraft(workspaceId);
+    if (saved) {
+      if (!pickedByHand.current) setPrimaryKind(saved.primaryKind);
+      setAlsoKinds(saved.alsoKinds);
+      setQuestionIndex(saved.questionIndex);
+      setPurpose(saved.purpose);
+      setAudience(saved.audience || learned.audience || "");
+      setRightsConfirmed(saved.rightsConfirmed || Boolean(learned.rights));
+      setTopicOpen(saved.topicOpen);
+      setCandidates(saved.candidates);
+      setSelected(saved.selected);
+      setQuickStructure(saved.quickStructure);
+      onPrimaryKindChange?.(saved.primaryKind);
+      onAlsoKindsChange?.(saved.alsoKinds);
+      if (saved.primaryKind) onContentBranchChange?.(kindToBranch(saved.primaryKind));
+      const savedCandidate = saved.candidates.find((candidate) => candidate.label === saved.selected);
+      if (savedCandidate) onCandidateSelect(savedCandidate);
+    } else {
+      setAudience(learned.audience || "");
+      setRightsConfirmed(Boolean(learned.rights));
+    }
+    setHydratedCreateWorkspaceId(workspaceId);
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId || hydratedCreateWorkspaceId !== workspaceId) return;
+    const value: PersistedCreateDraft = {
+      primaryKind,
+      alsoKinds,
+      questionIndex,
+      purpose,
+      audience,
+      rightsConfirmed,
+      topicOpen,
+      candidates,
+      selected,
+      quickStructure,
+    };
+    try {
+      localStorage.setItem(createDraftStorageKey(workspaceId), JSON.stringify(value));
+    } catch {
+      setError("생성실 입력을 임시 저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.");
+    }
+  }, [workspaceId, hydratedCreateWorkspaceId, primaryKind, alsoKinds, questionIndex, purpose, audience, rightsConfirmed, topicOpen, candidates, selected, quickStructure]);
 
   const rememberLearning = (patch: LearningInfo) => {
     setLearning((current) => {
@@ -190,6 +522,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
 
   const choosePrimary = (kind: CreateKind) => {
     if (!primaryKind) {
+      pickedByHand.current = true;
       setPrimaryKind(kind);
       onPrimaryKindChange?.(kind);
       onContentBranchChange?.(kindToBranch(kind));
@@ -233,7 +566,18 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     generationInFlight.current = true;
     setLoading(true);
     try {
-      const next = await requestStudioCandidates({ workspaceId, topic, purpose, audience, workspaceFacts: facts, forbiddenPhrases: [], materialRightsConfirmed: rightsConfirmed, contentBranch }, token);
+      // 학습 정보에서 고른 말투와 쓰지 않을 표현을 실제로 보낸다. 종전에는 화면에만
+      // 보여 주고 생성기에는 말투를 null, 금지 표현을 빈 목록으로 보냈다. **일곱 칸을
+      // 채우게 해 놓고 쓰지 않으면 그 문답은 장식이다**(2026-09-10 실측).
+      const next = await requestStudioCandidates({
+        workspaceId, topic, purpose, audience,
+        workspaceFacts: facts,
+        forbiddenPhrases: forbiddenFromLearning,
+        materialRightsConfirmed: rightsConfirmed,
+        contentBranch,
+        tone: learning.voice,
+        palette: learning.palette,
+      }, token);
       setCandidates(next);
       setSelected(null);
     } catch (cause) {
@@ -265,6 +609,17 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   function choose(candidate: StudioGenerationCandidate) {
     setSelected(candidate.label);
     onCandidateSelect(candidate);
+  }
+
+  function chooseStructureCandidate(candidate: StudioGenerationCandidate) {
+    choose(candidate);
+    const structure: CreateStructureChoice = {
+      label: candidate.label,
+      title: candidate.title,
+      outline: candidate.format.outline,
+    };
+    setQuickStructure(structure);
+    void onQuickDraftGenerate?.(structure);
   }
 
   // 같이 만들 갈래를 고른 채로 후보를 고르면, 확정을 누르기 전에 값을 먼저 보여 준다.
@@ -312,66 +667,352 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   }
 
   const kindHeading = primaryKind ? `${CREATE_KIND_LABELS[primaryKind]} 구성 초안 예시` : "콘텐츠 구성 초안 예시";
+  const quickDraftSections = (primaryKind ? [primaryKind, ...alsoKinds] : CREATE_KIND_ORDER)
+    .map((kind) => {
+      if (kind === "video") {
+        const lines = [quickDraft?.shorts?.hook, quickDraft?.shorts?.body, quickDraft?.shorts?.cta].filter((line): line is string => Boolean(line));
+        return { kind, label: "영상 대본 후보", lines };
+      }
+      if (kind === "card") {
+        const lines = [...(quickDraft?.instagram?.slides || []), quickDraft?.instagram?.caption || ""].filter(Boolean);
+        return { kind, label: "카드뉴스 후보", lines };
+      }
+      const lines = [quickDraft?.threads || quickDraft?.facebook || quickDraft?.x || ""].filter(Boolean);
+      return { kind, label: "글 후보", lines };
+    })
+    .filter((section) => section.lines.length > 0);
+  const learnedRules = useLearnedRules(workspaceId ?? "");
+  const [textCardBusy, setTextCardBusy] = useState(false);
+  const [textCards, setTextCards] = useState<string[]>([]);
+  const [textCardError, setTextCardError] = useState<string | null>(null);
+
+  /**
+   * 고른 구조의 각 줄을 글자 카드 그림으로 만든다.
+   *
+   * 2026-09-10 회장 지적("왜 영상 이미지 등은 하나도 없냐") 실측: 카드뉴스 대표 이미지도
+   * 숏폼 영상도 전부 바깥 그림 생성기 하나를 거치는데 그 생성기가 서버에서 로그아웃
+   * 상태여서 그림이 한 장도 없었다. **볼 수 있는 결과물 전체가 바깥 기계 하나에 매달려
+   * 있었던 것이 진짜 문제다.**
+   *
+   * 이 길은 바깥 기계를 안 쓴다. 브라우저가 직접 그린다. 즉시 나오고 돈이 안 들고 브랜드
+   * 색이 정확하다. 사진이 필요한 카드는 여전히 생성기를 쓰면 된다. 둘 다 있어야 한 쪽이
+   * 자도 제품이 선다.
+   */
+  async function makeTextCards() {
+    const source = selectedCandidate?.format.outline?.length
+      ? selectedCandidate.format.outline
+      : (quickStructure?.outline ?? []);
+    if (!source.length) { setTextCardError("먼저 구조 초안을 하나 골라 주세요."); return; }
+    setTextCardError(null);
+    setTextCardBusy(true);
+    try {
+      const theme = themeFromPalette(learning.palette);
+      const ratio: CardRatio = "4:5";
+      const made = source
+        .map((line, index) => renderTextCard({ text: line, ratio, theme, index, total: source.length }))
+        .filter((one): one is string => Boolean(one));
+      if (!made.length) { setTextCardError("이 브라우저에서는 카드를 그릴 수 없습니다."); return; }
+      setTextCards(made);
+    } finally {
+      setTextCardBusy(false);
+    }
+  }
+  const learningRows = [
+    ["작업 공간", workspaceDisplayName(workspaceName)],
+    // 업종 칸이 비면 브랜드 문서 전문(수백 자)을 업종 자리에 대신 넣고 있었다. 라벨은
+    // "업종" 인데 내용은 페르소나·보이스·금지 표현이 뒤섞인 문서 전체다. 사용자는 자기가
+    // 업종을 그렇게 적었다고 오해하고, 바로 아래 말투 칸과 같은 내용이 두 번 보인다.
+    // 브랜드 문서는 아래에 따로 "브랜드 문서도 그대로 반영합니다" 로 이미 알려 준다.
+    // 비었으면 비었다고 말하는 편이 정확하다(2026-09-10 실측).
+    ["업종", learning.industry || "아직 없음"],
+    ["말투", learning.voice || "아직 없음"],
+    ["콘텐츠 목표", purpose || "아직 없음"],
+    ["주요 고객", audience || "아직 없음"],
+    ["성과에서 배운 규칙", learnedRules || learning.learnedRules || "아직 없음"],
+  ];
 
   return (
     <section data-room="create" className="space-y-region">
       {resumeCount > 0 ? (
         <section data-create-resume={resumeCount} className="flex min-h-control-touch flex-wrap items-center gap-stack rounded-surface border border-border bg-surface-2 px-pad-inset py-stack">
-          <span className="mr-auto break-keep text-body-sm text-muted">만들던 것 {resumeCount}건이 그대로 있습니다. 지금 화면은 새로 시작하는 자리입니다</span>
+          <span className="mr-auto break-keep text-body-sm text-muted">저장된 작업물 {resumeCount}건이 있습니다. 지금 입력도 새로고침 뒤 이어집니다</span>
           <Button size="sm" onClick={onResume}>이어서 하기</Button>
         </section>
       ) : null}
-      <section data-room-top="create" data-create-stage={stage.count} aria-label="이 방에서 지금 알아야 할 것" className="flex min-h-control-touch items-center justify-between rounded-surface border border-border bg-surface px-pad-inset py-stack">
-        <b className="text-lead text-accent">{stage.count}</b><span className="text-caption text-subtle">{stage.label}</span>
+      <section data-room-top="create" data-create-stage={stage.count} aria-label="이 방에서 지금 알아야 할 것" className="flex min-h-control-touch flex-wrap items-start gap-stack rounded-surface border border-border bg-surface px-pad-inset py-stack">
+        <div className="mr-auto min-w-0">
+          <p className="text-caption font-semibold text-accent">1단계</p>
+          <h1 className="text-heading font-bold text-text">생성실</h1>
+          <p className="break-keep text-body-sm text-muted">형식을 먼저 고르고, 학습 정보를 반영한 구조 초안 세 개를 비교합니다.</p>
+        </div>
+        <div className="text-right"><b className="block text-body font-bold text-accent">{stage.count}</b><span className="text-caption text-subtle">{stage.label}</span></div>
       </section>
       <div className="grid gap-stack-section lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="grid min-w-0 gap-stack-section xl:grid-cols-3" data-display-readonly="create">
-          <section className="card min-w-0 p-pad-inset xl:col-span-2" aria-labelledby="create-display-title">
-            <div className="mb-stack flex items-center justify-between border-b border-border pb-stack">
-              <b id="create-display-title" className="text-body text-text">{selectedCandidate ? "선택한 구조 초안" : candidates.length ? "주제별 구조 초안 3개" : kindHeading}</b>
-              <span className="text-caption text-subtle">{selectedCandidate ? `${selectedCandidate.label} 구조` : candidates.length ? "학습 정보 기반 초안" : "구성 방식 예시"}</span>
+        <div className="min-w-0 space-y-region" data-create-workspace>
+          <section className="card space-y-stack-section p-pad-inset" aria-labelledby="create-quick-title" data-create-quick-start>
+            <div>
+              <h2 id="create-quick-title" className="text-subheading font-bold text-text">주제로 바로 초안 만들기</h2>
+              <p className="break-keep text-caption text-subtle">주제를 적고 아래 구조를 고른 뒤 초안을 만드세요. 기존 생성 담당 문답도 그대로 사용할 수 있습니다.</p>
             </div>
-            <div className="grid gap-stack" data-create-candidate-deck>
+            <Field label="초안 주제" htmlFor="studio-quick-topic">
+              <input
+                id="studio-quick-topic"
+                value={topic}
+                onChange={(event) => onTopicChange(event.target.value)}
+                placeholder="고객에게 전할 주제를 입력하세요"
+                className="h-control-touch w-full rounded-control border border-border bg-surface-2 px-stack text-body text-text"
+              />
+            </Field>
+            {quickStructure ? (
+              <article className="rounded-control border border-accent/30 bg-accent-soft p-stack" data-quick-structure={quickStructure.label}>
+                <b className="block text-body-sm text-accent">{quickStructure.label} {quickStructure.title} 후보</b>
+                <ol className="mt-stack-tight space-y-micro text-caption text-accent">
+                  {quickStructure.outline.map((line, index) => <li key={`${quickStructure.label}-${line}`}><span className="mr-micro font-semibold">{index + 1}.</span>{line}</li>)}
+                </ol>
+              </article>
+            ) : (
+              <p className="text-caption text-subtle">아래 A, B, C 중 하나를 골라 생성 구조를 정해 주세요.</p>
+            )}
+            {/*
+              2026-09-05 회장 계정 실측: 이 단추를 눌렀는데 화면이 한 글자도 안 바뀌었다.
+              구조를 안 골랐다는 이유로 조용히 비활성이었기 때문이다. 못 누르는 단추는
+              고장으로 읽힌다. 눌리게 두고, 무엇이 없어서 못 만드는지 그 자리에서 말한다.
+            */}
+            <Button
+              variant="primary"
+              className="w-full min-w-0"
+              onClick={() => {
+                const missing = !workspaceId
+                  ? "작업 공간을 먼저 고르세요."
+                  : !topic.trim()
+                    ? "초안 주제를 먼저 적어 주세요."
+                    : !quickStructure
+                      ? "아래 A, B, C 중 하나를 골라 구조를 정해 주세요."
+                      : null;
+                if (missing) {
+                  setQuickBlockReason(missing);
+                  if (!topic.trim()) document.getElementById("studio-quick-topic")?.focus();
+                  else if (!quickStructure) document.querySelector("[data-quick-structure-picker]")?.scrollIntoView({ block: "center" });
+                  return;
+                }
+                setQuickBlockReason(null);
+                if (quickStructure) onQuickDraftGenerate?.(quickStructure);
+              }}
+              disabled={quickDraftLoading}
+            >
+              {quickDraftLoading ? "초안 만드는 중" : "초안 만들기"}
+            </Button>
+            {quickBlockReason ? <p role="alert" className="text-caption text-danger">{quickBlockReason}</p> : null}
+            {quickDraftError ? <p role="alert" className="text-caption text-danger">{quickDraftError}</p> : null}
+          </section>
+          <section className="grid gap-stack sm:grid-cols-3" aria-label="생성실 요약">
+            <article className="card p-pad-inset"><span className="text-caption text-subtle">선택한 형식</span><b className="mt-micro block text-body text-text">{primaryKind ? CREATE_KIND_LABELS[primaryKind] : "선택 전"}</b></article>
+            <article className="card p-pad-inset"><span className="text-caption text-subtle">반영한 학습 정보</span><b className="mt-micro block text-body text-text">{learnedCount}개</b></article>
+            <article className="card p-pad-inset"><span className="text-caption text-subtle">구조 초안</span><b className="mt-micro block text-body text-text">{candidates.length}개</b></article>
+          </section>
+          <section className="min-w-0" aria-labelledby="create-display-title">
+            <div className="mb-stack flex items-center justify-between border-b border-border pb-stack">
+              <h2 id="create-display-title" className="text-subheading font-bold text-text">{selectedCandidate ? "선택한 구조 초안" : candidates.length ? "구조 초안 세 개" : kindHeading}</h2>
+              <span className="text-caption text-subtle">카드를 눌러 구조를 선택하세요</span>
+            </div>
+            <div className="grid gap-stack md:grid-cols-3" data-create-candidate-deck data-quick-structure-picker>
               {displayCandidates.filter((candidate) => !selectedCandidate || candidate.label === selectedCandidate.label).map((candidate) => {
                 const outline = "format" in candidate ? candidate.format.outline : candidate.outline;
                 return (
-                  <article key={candidate.label} data-create-candidate={candidate.label} className={`grid gap-stack rounded-surface border p-pad-inset md:grid-cols-5 ${selected === candidate.label ? "border-accent bg-accent-soft" : "border-border bg-surface-2"}`}>
-                    <div className="md:col-span-3">
+                  <article key={candidate.label} data-create-candidate={candidate.label} className={`flex min-w-0 flex-col gap-stack rounded-surface border p-pad-inset ${selected === candidate.label ? "border-accent bg-accent-soft" : "border-border bg-surface"}`}>
+                    <div>
                       <div className="mb-stack flex items-start gap-stack-tight"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-pill bg-accent text-caption font-bold text-accent-fg">{candidate.label}</span><b className="break-keep text-body-sm text-text">{candidate.title}</b></div>
                       <p className="break-keep text-caption text-muted">{primaryKind ? `${CREATE_KIND_LABELS[primaryKind]}에 적용할 이야기 순서` : "형식을 고른 뒤 주제에 맞춰 바뀌는 이야기 순서"}</p>
                     </div>
-                    <ol className="space-y-stack-tight border-l border-border pl-stack md:col-span-2">
+                    <ol className="mt-auto space-y-stack-tight border-t border-border pt-stack">
                       {outline.map((item, index) => <li key={`${candidate.label}-${index}`} className="flex gap-stack-tight text-caption text-muted"><span className="text-accent">{index + 1}</span><span className="break-keep">{item}</span></li>)}
                     </ol>
+                    {"format" in candidate ? (
+                      <Button
+                        variant={selected === candidate.label ? "primary" : "secondary"}
+                        className="w-full min-w-0"
+                        onClick={() => chooseStructureCandidate(candidate)}
+                        disabled={quickDraftLoading}
+                      >
+                        {quickDraftLoading ? "후보 만드는 중" : `${candidate.label} 구조를 본문에서 선택`}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant={quickStructure?.label === candidate.label ? "primary" : "secondary"}
+                        className="w-full min-w-0"
+                        aria-pressed={quickStructure?.label === candidate.label}
+                        onClick={() => setQuickStructure({ label: candidate.label, title: candidate.title, outline: candidate.outline })}
+                      >
+                        {candidate.label} 구조 사용
+                      </Button>
+                    )}
                   </article>
                 );
               })}
             </div>
           </section>
+          {quickDraftSections.length ? (
+            <section className="rounded-surface border border-success/30 bg-success/10 p-pad-inset" aria-labelledby="quick-draft-result-title" data-quick-draft-result>
+              <h3 id="quick-draft-result-title" className="text-body font-bold text-text">고른 형식의 생성 후보</h3>
+              <div className="mt-stack grid gap-stack md:grid-cols-2">
+                {quickDraftSections.map((section) => (
+                  <article key={section.kind} className="rounded-control border border-success/30 bg-surface p-stack" data-quick-draft-format={section.kind}>
+                    <b className="block text-body-sm text-text">{section.label}</b>
+                    <ol className="mt-stack-tight space-y-stack-tight">
+                      {section.lines.map((line, index) => <li key={`${section.kind}-${index}`} className="whitespace-pre-wrap break-keep text-caption text-muted">{line}</li>)}
+                    </ol>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
           <section className="card p-pad-inset" aria-labelledby="create-learning-title">
-            <div className="mb-stack flex items-center justify-between border-b border-border pb-stack"><b id="create-learning-title" className="text-body text-text">회원님께 쌓인 것</b><span className="text-caption text-subtle">{learnedCount} / {LEARNING_SLOT_TOTAL}</span></div>
-            <progress className="progress-semantic mb-pad-inset w-full" max={LEARNING_SLOT_TOTAL} value={learnedCount} aria-label="학습 정보 수집 정도" />
-            <dl className="space-y-stack">
-              <div><dt className="text-caption text-subtle">작업 공간</dt><dd className="text-body text-text">{workspaceName || "아직 없음"}</dd></div>
-              <div><dt className="text-caption text-subtle">업종</dt><dd className="line-clamp-4 break-keep text-body-sm text-muted">{learning.industry || guide || "아직 없음"}</dd></div>
-              <div><dt className="text-caption text-subtle">말투</dt><dd className="break-keep text-body-sm text-muted">{learning.voice || "아직 없음"}</dd></div>
-              <div><dt className="text-caption text-subtle">콘텐츠 목표</dt><dd className="break-keep text-body-sm text-muted">{purpose || "아직 없음"}</dd></div>
-              <div><dt className="text-caption text-subtle">주요 고객</dt><dd className="break-keep text-body-sm text-muted">{audience || "아직 없음"}</dd></div>
-              <div className="border-t border-border pt-stack"><dt className="text-caption text-subtle">성과에서 배운 규칙</dt><dd className="text-body-sm text-muted">{learning.learnedRules || "아직 없음"}</dd></div>
+            <div className="mb-stack flex flex-wrap items-center justify-between gap-stack"><div><h2 id="create-learning-title" className="text-body font-bold text-text">이번에 반영한 학습 정보</h2><p className="text-caption text-subtle">사용자가 승인한 내용만 적용합니다.</p></div><span className="text-caption text-subtle">{learnedCount} / {LEARNING_SLOT_TOTAL}</span></div>
+            <progress className="progress-semantic mb-stack w-full" max={LEARNING_SLOT_TOTAL} value={learnedCount} aria-label="학습 정보 수집 정도" />
+            <dl className="flex flex-wrap gap-stack-tight">
+              {learningRows.map(([label, value]) => <div key={label} className="min-w-0 rounded-pill bg-surface-2 px-stack py-stack-tight text-caption text-muted"><dt className="sr-only">{label}</dt><dd className="max-w-full truncate">{label}: {value}</dd></div>)}
             </dl>
+            {/*
+              2026-09-09 실사용에서 찾았다. 만들어진 세 후보가 모두 "저희는 회사를 손님으로
+              모시는 곳" 이라고 썼는데 업종 칸은 "동네 가게" 였다. 어디서 온 문장인지 화면에서
+              찾을 수 없었다. 브랜드 문서 전문이 생성 입력으로 통째로 들어가는데 이 자리는
+              여덟 칸만 보여 주고 그 문서는 감췄기 때문이다.
+              **화면에 없는 입력이 결과를 좌우하면 사용자는 결과를 고칠 수가 없다.** 무엇을
+              바꿔야 그 문장이 사라지는지 알 방법이 없다. 들어가는 것은 다 보여 준다.
+            */}
+            {guide.trim() ? (
+              <details className="mt-stack rounded-control border border-border bg-surface-2 p-stack" data-brand-guide-used>
+                <summary className="cursor-pointer text-caption font-semibold text-muted">
+                  브랜드 문서도 그대로 반영합니다 ({guide.trim().length}자)
+                </summary>
+                <p className="mt-stack-tight whitespace-pre-wrap break-keep text-caption text-subtle">{guide.trim()}</p>
+                <p className="mt-stack-tight break-keep text-caption text-subtle">
+                  이 글도 위 여덟 칸과 함께 생성에 들어갑니다. 결과에 원치 않는 표현이 나오면 여기서 그 문장을 찾아 브랜드 문서를 고쳐 주세요.
+                </p>
+              </details>
+            ) : null}
           </section>
         </div>
         <AssistantPanel title="생성 담당">
           <Stack gap={16}>
             <div className="max-w-[90%] rounded-surface rounded-tl-control border border-border bg-surface p-stack text-body-sm text-text" data-empty-next={!candidates.length ? "create" : undefined}>
-              {selectedCandidate ? "구조 초안이 준비됐습니다. 영상은 대본과 장면 구성까지만 제공하며 렌더링은 아직 지원하지 않습니다." : candidates.length ? "A, B, C 구조 중 편집할 초안을 하나 골라 주세요." : "한 번에 하나씩 묻겠습니다. 선택한 답은 다음 질문에 반영됩니다."}
+              {selectedCandidate ? "구조 초안이 준비됐습니다. 카드뉴스 이미지와 숏폼 영상을 여기서 바로 만들 수 있습니다." : candidates.length ? "A, B, C 구조 중 편집할 초안을 하나 골라 주세요." : "한 번에 하나씩 묻겠습니다. 선택한 답은 다음 질문에 반영됩니다."}
             </div>
             <div className="rounded-control border border-border bg-surface-2 p-stack text-caption text-muted" data-generation-capability>
               <b className="block text-text">현재 제공</b>
               <span className="block">일곱 칸 학습 정보를 반영한 구성 초안 3개</span>
+              <span className="block">카드뉴스 대표 이미지(만들기 전 비용을 보여 드립니다)</span>
+              <span className="block">숏폼 영상(대표 이미지를 움직이는 영상으로)</span>
               <b className="mt-stack-tight block text-text">준비 중</b>
-              <span className="block">영상 렌더링, 카드뉴스 이미지 생성</span>
+              <span className="block">배경 음악</span>
             </div>
+            {/*
+              사업계획 v0.4 10절이 첫 매체를 카드뉴스로 정했고 7절이 만들기 전 비용 승인
+              관문을 요구한다. 그동안 이 자리에 "준비 중"만 적혀 있어 고객은 카드뉴스를
+              만들 수 없었다(2026-09-06 회장 스모크).
+            */}
+            {/*
+              영상 버튼이 여기 없어서, 화면에서는 못 만드는데 세션이 API 를 직접 불러 만들어
+              놓고 "된다"고 보고한 사고가 났다(회장 2026-09-07 "생성실에는 영상 버튼 자체가
+              없는데 했다고 거짓보고한 이유"). 만들 수 있으면 버튼이 여기 있어야 한다.
+            */}
+            {/*
+              만들기 전에 결을 고른다. 종전에는 결을 고를 자리가 없어 같은 글감으로 늘 같은
+              결의 그림만 나왔고, 마음에 안 들면 다시 만드는 수밖에 없었다. 다시 만들면
+              그만큼 돈이 나간다. 고르는 것이 결과를 고르는 가장 싼 방법이다(회장 2026-09-08).
+              카드만 두면 준비된 것 밖으로 못 나가므로 직접 적는 칸을 함께 둔다.
+            */}
+            {onImageStyleChange ? (
+              <section className="mb-stack" aria-label="그림 결 고르기" data-image-style>
+                <b className="text-caption font-semibold text-text">어떤 결로 만들까요</b>
+                <div className="mt-stack-tight flex flex-wrap gap-stack-tight">
+                  {IMAGE_STYLES.map((one) => (
+                    <button
+                      key={one.id}
+                      type="button"
+                      data-testid={`image-style-${one.id}`}
+                      aria-pressed={imageStyleId === one.id}
+                      onClick={() => onImageStyleChange(one.id, imageStyleCustom)}
+                      className={`min-h-control-touch rounded-control border px-stack text-caption ${imageStyleId === one.id ? "border-accent bg-accent-soft font-semibold text-accent" : "border-border text-muted"}`}
+                    >
+                      {one.title}
+                      <span className="ml-stack-tight text-caption text-subtle">{one.hint}</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    data-testid="image-style-custom"
+                    aria-pressed={imageStyleId === CUSTOM_STYLE_ID}
+                    onClick={() => onImageStyleChange(CUSTOM_STYLE_ID, imageStyleCustom)}
+                    className={`min-h-control-touch rounded-control border px-stack text-caption ${imageStyleId === CUSTOM_STYLE_ID ? "border-accent bg-accent-soft font-semibold text-accent" : "border-border text-muted"}`}
+                  >
+                    직접 적기
+                  </button>
+                </div>
+                {imageStyleId === CUSTOM_STYLE_ID ? (
+                  <input
+                    data-testid="image-style-custom-input"
+                    aria-label="원하는 결을 직접 적기"
+                    value={imageStyleCustom}
+                    placeholder="예: 비 오는 날 창가, 필름 사진 느낌"
+                    onChange={(event) => onImageStyleChange(CUSTOM_STYLE_ID, event.target.value)}
+                    className="mt-stack-tight min-h-control-touch w-full rounded-control border border-border bg-surface px-stack text-caption text-text"
+                  />
+                ) : null}
+              </section>
+            ) : null}
+            <div className="flex flex-wrap gap-stack-tight">
+              {onGenerateCardImages ? (
+                <Button size="sm" data-testid="create-card-image" onClick={() => void onGenerateCardImages()} disabled={cardImageBusy || videoBusy}>
+                  {cardImageBusy ? "카드뉴스 이미지 만드는 중" : "카드뉴스 대표 이미지 만들기"}
+                </Button>
+              ) : null}
+              <Button size="sm" variant="secondary" data-testid="create-text-card" onClick={() => void makeTextCards()} disabled={textCardBusy || cardImageBusy || videoBusy}>
+                {textCardBusy ? "글자 카드 만드는 중" : "글자 카드로 만들기 (바로·무료)"}
+              </Button>
+              {onGenerateVideo ? (
+                <Button size="sm" variant="secondary" data-testid="create-video" onClick={() => void onGenerateVideo()} disabled={cardImageBusy || videoBusy}>
+                  {videoBusy ? "숏폼 영상 만드는 중" : "숏폼 영상 만들기"}
+                </Button>
+              ) : null}
+            </div>
+            {textCardError ? (
+              <p className="text-caption text-warning" data-text-card-error>{textCardError}</p>
+            ) : null}
+            {textCards.length ? (
+              <section className="rounded-control border border-border bg-surface p-stack" data-text-card-result={textCards.length}>
+                <b className="block text-caption font-semibold text-text">글자 카드 {textCards.length}장</b>
+                <p className="mt-stack-tight text-caption text-subtle">
+                  브라우저가 바로 그린 그림입니다. 올릴 규격 그대로라 흐리지 않습니다.
+                </p>
+                <div className="mt-stack grid grid-cols-2 gap-stack-tight sm:grid-cols-3">
+                  {textCards.map((src, index) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={index} src={src} alt={`글자 카드 ${index + 1}장`} className="w-full rounded-control border border-border" data-text-card-image={index} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            {/*
+              만든 결과가 만든 자리에 안 보이면 고객은 만들어졌는지 알 수 없다. 실제로
+              단추를 눌러 생성이 끝났는데 화면이 그대로라 "안 된다" 로 읽혔다
+              (회장 2026-09-07). 만든 것은 그 자리에서 보여 준다.
+            */}
+            {madeImageUrl || madeVideoUrl ? (
+              <div data-testid="create-made" className="space-y-stack-tight rounded-control border border-border bg-surface p-stack">
+                <b className="block text-caption text-text">방금 만든 것</b>
+                {madeImageUrl ? (
+                  <DeliveredMedia type="image" src={madeImageUrl} testId="create-made-image"
+                    alt="방금 만든 카드뉴스 대표 이미지" tenantId={workspaceId}
+                    className="max-h-64 w-full rounded-control object-contain" />
+                ) : null}
+                {madeVideoUrl ? (
+                  <DeliveredMedia type="video" src={madeVideoUrl} testId="create-made-video"
+                    tenantId={workspaceId} className="max-h-64 w-full rounded-control" />
+                ) : null}
+                <p className="text-caption text-subtle break-keep">편집실에서 글자를 얹고 발행실로 보낼 수 있습니다.</p>
+              </div>
+            ) : null}
             {!candidates.length ? <>
               <div className="space-y-stack rounded-surface border border-border bg-surface p-stack" data-create-question={question}>
                 {question === "kind" ? <fieldset data-create-kind-picker><legend className="mb-stack-tight text-caption font-semibold text-text">무엇을 만들까요?</legend>
@@ -438,9 +1079,10 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
               {questionIndex > 0 && question !== "review" ? <Button onClick={() => setQuestionIndex((current) => Math.max(0, current - 1))}>이전 질문</Button> : null}
               {question === "review" && missing.length ? <div className="rounded-control border border-warning/30 bg-warning/10 p-stack text-caption text-warning">확인 필요: {missing.join(", ")}</div> : null}
               {question === "review" ? <><Button onClick={() => setQuestionIndex(0)}>입력 내용 수정</Button><Button variant="primary" onClick={generate} disabled={loading || missing.length > 0}>{loading ? "구조 초안 만드는 중" : "구조 초안 3개 보기"}</Button></> : null}
+              {loading ? <WaitingNotice label="구조 초안을 만들고 있습니다" typicalSeconds={primaryKind === "video" ? 55 : primaryKind === "card" ? 120 : 35} /> : null}
             </> : null}
             {candidates.length && !selectedCandidate ? <>
-              {candidates.map((candidate) => <Button key={candidate.label} variant="secondary" onClick={() => choose(candidate)}>{candidate.label} 구조 초안 선택</Button>)}
+              {candidates.map((candidate) => <Button key={candidate.label} variant="secondary" onClick={() => chooseStructureCandidate(candidate)} disabled={quickDraftLoading}>{quickDraftLoading ? "후보 만드는 중" : `${candidate.label} 구조 초안 선택`}</Button>)}
               <Button onClick={regenerateAll} disabled={loading}>{loading ? "다시 만드는 중" : "3개 모두 바꾸기"}</Button>
             </> : null}
             {selectedCandidate && alsoQuote && !alsoBatch ? (
@@ -476,7 +1118,8 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                 {alsoBatch.discarded_at ? null : <Button onClick={discardAlso} disabled={alsoBusy}>추가 구성 초안 버리기</Button>}
               </div>
             ) : null}
-            {selectedCandidate && (alsoKinds.length === 0 || Boolean(alsoBatch)) ? <Stack gap={8}><Button variant="primary" onClick={onOpenEditor}>선택한 구조 초안을 편집실에서 보기</Button><Button onClick={() => setSelected(null)}>구조 초안 다시 고르기</Button></Stack> : null}
+            {selectedCandidate && (alsoKinds.length === 0 || Boolean(alsoBatch)) ? <Stack gap={8}><Button variant="primary" onClick={onOpenEditor}>편집실에서 다듬기</Button><Button onClick={() => setSelected(null)}>구조 초안 다시 고르기</Button></Stack> : null}
+            {quickDraftError ? <p role="alert" className="text-caption text-danger">{quickDraftError}</p> : null}
             {error ? <p role="alert" className="text-caption text-danger">{error}</p> : null}
           </Stack>
         </AssistantPanel>
@@ -485,13 +1128,28 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   );
 }
 interface EditRoomProps {
+  /** 말로 시키는 일괄 변경이 어느 작업 공간의 사용량으로 잡히는지. */
+  workspaceId?: string;
   lines: string[];
   onLinesChange: (lines: string[]) => void;
   kind?: EditContentKind;
+  onKindChange?: (kind: EditContentKind) => void;
   previewReady?: boolean;
+  /** 생성실 산출물 주소. 편집실이 실제로 만든 것을 보여 주기 위해 받는다(2026-09-08). */
+  previewImageUrl?: string | null;
+  previewVideoUrl?: string | null;
   commandPanel?: ReactNode;
   initialFormat?: ContentEditFormat;
   onFormatChange?: (format: ContentEditFormat) => void;
+  cardTextPositions?: CardTextPosition[];
+  onCardTextPositionsChange?: (positions: CardTextPosition[]) => void;
+  state?: "default" | "loading" | "error" | "overflow";
+  onOpenCreate?: () => void;
+  onRetry?: () => void;
+  onOpenPublish?: () => void;
+  lastSavedAt?: string;
+  moveBusy?: boolean;
+  autosaveError?: string;
 }
 type ToolName = "비율" | "배경" | "목소리" | "속도" | "자막" | "음악" | "음량";
 const VIDEO_TOOLS: ToolName[] = ["비율", "목소리", "속도", "자막"];
@@ -499,6 +1157,42 @@ const CARD_TOOLS: ToolName[] = ["비율", "배경", "자막"];
 const AUDIO_TOOLS: ToolName[] = ["목소리", "음악", "음량"];
 
 type ToolValues = Record<ToolName, string>;
+
+const EDIT_KIND_LABELS: Record<EditContentKind, string> = {
+  text: "글",
+  card: "카드뉴스",
+  video: "영상",
+  audio: "음악",
+};
+const EDIT_KIND_ORDER: EditContentKind[] = ["text", "card", "video", "audio"];
+const SUBTITLE_SIZE_LABELS: Record<string, string> = {
+  작게: "작은 글자",
+  보통: "기본 글자",
+  크게: "큰 글자",
+};
+const BACKGROUND_LABELS: Record<string, string> = {
+  "작업실 책상": "책상 위 제품 사진",
+  "삭제 커밋 화면": "프로그램 작업 화면",
+  "창밖 새벽": "새벽 창가 사진",
+};
+
+function visibleToolName(kind: EditContentKind, tool: ToolName): string {
+  if (tool === "비율") return kind === "card" ? "카드 비율" : "영상 비율";
+  if (tool === "배경") return "배경 이미지";
+  if (tool === "자막") return kind === "card" ? "카드 글자 크기" : "자막 크기";
+  if (tool === "속도") return "영상 재생 속도";
+  if (tool === "음량") return "배경음악 음량";
+  return tool;
+}
+
+function visibleToolValue(tool: ToolName, value: string, kind?: EditContentKind): string {
+  if (tool === "비율" && kind === "card" && value === "4:5") return "4:5 · 1080 × 1350픽셀";
+  if (tool === "비율" && kind === "video" && value === "9:16") return "9:16 · 1080 × 1920픽셀";
+  if (tool === "자막" && kind === "card" && value === "보통") return "기본 28픽셀";
+  if (tool === "자막") return SUBTITLE_SIZE_LABELS[value] ?? value;
+  if (tool === "배경") return BACKGROUND_LABELS[value] ?? value;
+  return value;
+}
 
 function toolOptions(kind: EditContentKind, tool: ToolName): string[] {
   if (tool === "비율") return [...(kind === "card" ? CARD_ASPECT_RATIOS : VIDEO_ASPECT_RATIOS)];
@@ -526,11 +1220,14 @@ function toolValuesFromFormat(format: ContentEditFormat): ToolValues {
   if (format.kind === "card") {
     return { ...defaults, 비율: format.aspectRatio, 배경: format.background, 자막: format.subtitleSize };
   }
+  if (format.kind === "text") return defaults;
   return { ...defaults, 목소리: format.voice, 음악: format.musicTrack, 음량: `${format.musicVolume}%` };
 }
 
 function formatFromToolValues(kind: ContentEditFormat["kind"], values: ToolValues): ContentEditFormat {
-  const candidate = kind === "video"
+  const candidate = kind === "text"
+    ? { kind }
+    : kind === "video"
     ? { kind, aspectRatio: values.비율, subtitleSize: values.자막, playbackSpeed: Number.parseFloat(values.속도), voice: values.목소리 }
     : kind === "card"
       ? { kind, aspectRatio: values.비율, subtitleSize: values.자막, background: values.배경 }
@@ -552,15 +1249,39 @@ function ToolIcon({ tool }: { tool: ToolName }) {
   return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[tool]}</svg>;
 }
 
-export function EditRoom({ lines, onLinesChange, kind = "video", previewReady = false, commandPanel, initialFormat, onFormatChange }: EditRoomProps) {
-  const formatKind = kind === "text" ? "card" : kind;
-  const safeLines = lines.length ? lines : ["대사를 입력하세요"];
+export function EditRoom({
+  workspaceId,
+  lines,
+  onLinesChange,
+  kind = "video",
+  onKindChange,
+  previewReady = false,
+  previewImageUrl = null,
+  previewVideoUrl = null,
+  commandPanel,
+  initialFormat,
+  onFormatChange,
+  cardTextPositions = [],
+  onCardTextPositionsChange,
+  state = "default",
+  onOpenCreate,
+  onRetry,
+  onOpenPublish,
+  lastSavedAt,
+  moveBusy = false,
+  autosaveError,
+}: EditRoomProps) {
+  const formatKind = kind;
+  const safeLines = lines.length ? lines : [""];
   const [activeLine, setActiveLine] = useState(0);
   const [activeTool, setActiveTool] = useState<ToolName>("비율");
   const [toolValues, setToolValues] = useState<ToolValues>(() => toolValuesFromFormat(
     initialFormat?.kind === formatKind ? initialFormat : defaultContentEditFormat(formatKind),
   ));
   const [visibleLines, setVisibleLines] = useState<boolean[]>(() => safeLines.map(() => true));
+  const [bulkMessage, setBulkMessage] = useState("");
+  const [bulkAsk, setBulkAsk] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
   const selectedFormat = useMemo(() => formatFromToolValues(formatKind, toolValues), [formatKind, toolValues]);
   const lastEmittedFormat = useRef("");
   useEffect(() => { setVisibleLines((current) => safeLines.map((_, index) => current[index] ?? true)); setActiveLine((current) => Math.min(current, safeLines.length - 1)); }, [safeLines.length]);
@@ -575,7 +1296,7 @@ export function EditRoom({ lines, onLinesChange, kind = "video", previewReady = 
     lastEmittedFormat.current = JSON.stringify(selectedFormat);
     onFormatChange?.(selectedFormat);
   }, [onFormatChange, selectedFormat]);
-  const visibleCount = visibleLines.filter(Boolean).length;
+  const visibleCount = visibleLines.filter((visible, index) => visible && Boolean(safeLines[index]?.trim())).length;
   const secondsPerLine = kind === "video" && selectedFormat.kind === "video" ? 4 / selectedFormat.playbackSpeed : 4;
   const duration = visibleCount * secondsPerLine;
   const durationLabel = Number.isInteger(duration) ? String(duration) : duration.toFixed(1);
@@ -583,50 +1304,311 @@ export function EditRoom({ lines, onLinesChange, kind = "video", previewReady = 
   const silenceIndexes = safeLines.map((line, index) => (/…|\.{3}|^\s*$/.test(line) ? index : -1)).filter((index) => index >= 0);
   const visibleSilences = silenceIndexes.filter((index) => visibleLines[index]).length;
   const tools = kind === "card" || kind === "text" ? CARD_TOOLS : kind === "audio" ? AUDIO_TOOLS : VIDEO_TOOLS;
-  const outlineTitle = kind === "text" ? "글 목차" : kind === "card" ? "장 목차" : kind === "audio" ? "곡 목차" : "영상 목차";
+  const outlineTitle = kind === "text" ? "글 문단" : kind === "card" ? "카드 목록" : kind === "audio" ? "대사 목록" : "영상 장면";
   const unit = kind === "card" ? "장" : kind === "text" ? "문단" : "장면";
+  const hasEditableContent = safeLines.some((line) => line.trim().length > 0);
+  const roomState = state === "default" && !hasEditableContent ? "empty" : state;
+  const editorVisible = roomState === "default" || roomState === "overflow";
   const updateLine = (value: string) => onLinesChange(safeLines.map((line, index) => index === activeLine ? value : line));
+  // 순서 이동. 줄과 함께 그 줄의 보임 여부도 같이 옮긴다. 따로 놀면 엉뚱한 줄이 지워진 것처럼 보인다.
+  const moveLine = (index: number, delta: number) => {
+    const target = index + delta;
+    if (target < 0 || target >= safeLines.length) return;
+    const nextLines = [...safeLines];
+    [nextLines[index], nextLines[target]] = [nextLines[target], nextLines[index]];
+    setVisibleLines((current) => {
+      const next = [...current];
+      [next[index], next[target]] = [next[target] ?? true, next[index] ?? true];
+      return next;
+    });
+    setActiveLine(target);
+    onLinesChange(nextLines);
+  };
   const toggleLine = (index: number) => setVisibleLines((current) => current.map((visible, lineIndex) => lineIndex === index ? !visible : visible));
   const trimSilences = () => setVisibleLines((current) => current.map((visible, index) => silenceIndexes.includes(index) ? false : visible));
+  const shortenAll = () => {
+    const next = safeLines.map((line) => line.length > 24 ? `${line.slice(0, 23)}…` : line);
+    const changed = next.filter((line, index) => line !== safeLines[index]).length;
+    if (changed) onLinesChange(next);
+    setBulkMessage(changed ? `긴 문장 ${changed}개를 줄였습니다.` : "줄일 긴 문장이 없습니다.");
+  };
+  const politeAll = () => {
+    const next = safeLines.map((line) => line.replace(/(다|음|함)\.?$/u, "습니다").replace(/\s+$/u, ""));
+    const changed = next.filter((line, index) => line !== safeLines[index]).length;
+    if (changed) onLinesChange(next);
+    setBulkMessage(changed ? `${changed}개 문장의 말끝을 높임말로 맞췄습니다.` : "말끝이 이미 높임말입니다.");
+  };
+  // 말로 시키는 일괄 변경. 줄 수와 순서가 어긋나면 서버가 거절하므로 여기서는 결과만 받는다.
+  const askBulk = async () => {
+    const instruction = bulkAsk.trim();
+    if (!instruction || !hasEditableContent || bulkBusy) return;
+    setBulkBusy(true);
+    setBulkMessage("");
+    try {
+      const res = await fetch("/api/studio/edit-bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ lines: safeLines, instruction, tenant_id: workspaceId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; lines?: string[]; changed?: number; error?: string };
+      if (!data.ok || !Array.isArray(data.lines)) {
+        setBulkMessage(data.error || "고치지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        return;
+      }
+      onLinesChange(data.lines);
+      setBulkAsk("");
+      setBulkMessage(data.changed ? `${data.changed}개 줄을 고쳤습니다.` : "바꿀 것이 없었습니다.");
+    } catch {
+      setBulkMessage("연결이 끊겨 요청이 끝나지 않았습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+  const dropEmpty = () => {
+    const next = safeLines.filter((line) => line.trim());
+    const removed = safeLines.length - next.length;
+    if (removed) onLinesChange(next);
+    setBulkMessage(removed ? `빈 줄 ${removed}개를 걷어냈습니다.` : "빈 줄이 없습니다.");
+  };
   return (
-    <section data-room="edit" data-edit-kind={kind} className="space-y-region">
-      <section data-room-top="edit" aria-label="이 방에서 지금 알아야 할 것" className="flex min-h-control-touch items-center justify-between rounded-surface border border-border bg-surface px-pad-inset py-stack"><b className="text-lead text-accent">{visibleCount}개 {unit}</b><span className="text-caption text-subtle" data-edit-duration>{kind === "audio" ? "음악 생성 준비 중" : `${durationLabel}초 · 대사를 다듬는 중`}</span></section>
-      <div className="grid gap-stack-section lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="card grid min-w-0 overflow-hidden md:grid-cols-[15rem_minmax(0,1fr)]" data-edit-workspace>
-          <nav className="min-w-0 max-h-[40vh] overflow-y-auto border-b border-border p-pad-inset md:border-b-0 md:border-r" aria-label={outlineTitle} data-edit-outline>
-            <b className="text-body text-text">{outlineTitle}</b>
-            <ol className="mt-stack space-y-stack-tight">{safeLines.map((line, index) => <li key={`${index}-${line.slice(0, 16)}`}><Button size="sm" variant={activeLine === index ? "primary" : "secondary"} onClick={() => setActiveLine(index)} className={`ds-label-fill w-full min-w-0 justify-start overflow-hidden text-left ${visibleLines[index] ? "" : "line-through opacity-60"}`}><span className="min-w-0 truncate">{index + 1}. {line || "빈 대사"}</span></Button></li>)}</ol>
-          </nav>
-          <div className="min-w-0 p-pad-inset">
-            {kind === "audio" ? <section className="grid min-h-80 place-items-center rounded-surface border border-dashed border-border bg-surface-2 p-region text-center" data-edit-readiness><div className="max-w-xl"><b className="text-subheading text-text">음악 생성 백엔드는 준비 중입니다</b><p className="mt-stack break-keep text-body-sm text-muted">현재는 나레이션 대사만 확인할 수 있습니다. 음악 파일이나 파형은 아직 표시하지 않습니다.</p></div></section> : <>
-              <section aria-label={kind === "card" ? "카드뉴스 미리보기" : kind === "text" ? "글 미리보기" : "영상 미리보기"} data-edit-stage>
-                <EditPreview
-                  kind={kind}
-                  lines={safeLines.map((line, index) => (visibleLines[index] ? line : ""))}
-                  activeLine={activeLine}
-                  onActiveLine={setActiveLine}
-                  subtitleSize={toolValues.자막}
-                  renderReady={previewReady}
-                />
+    <section data-room="edit" data-edit-kind={kind} data-edit-state={roomState} className="space-y-stack-section">
+      <div className={styles.editRoomGrid}>
+        <main className="min-w-0 space-y-pad-inset">
+          {editorVisible ? (
+            <>
+              <section data-room-top="edit" aria-label="편집실 현재 작업">
+                <h2 className="break-keep text-heading font-bold text-text">내용과 화면을 직접 다듬습니다</h2>
+                <p className="mt-stack-tight break-keep text-body-sm text-muted">만들 형식을 고른 뒤 결과물 자체를 고칩니다. 올릴 채널과 채널별 문구는 발행실에서 정합니다.</p>
               </section>
-              <section className="mt-stack border-b border-border pb-stack" aria-label="간편 편집 도구" data-edit-tools>
-                <div className="flex flex-wrap gap-stack-tight">{tools.map((tool) => <Button key={tool} size="sm" variant={activeTool === tool ? "primary" : "secondary"} onClick={() => setActiveTool(tool)} aria-pressed={activeTool === tool} aria-label={`${tool} 도구`}><ToolIcon tool={tool} /><span>{toolValues[tool]}</span></Button>)}
-                  {kind === "video" ? <Button size="sm" onClick={trimSilences} disabled={visibleSilences === 0}>무음 구간 {visibleSilences}개 줄이기</Button> : null}
+              <div role="group" aria-label="만들 콘텐츠 형식" className="flex flex-wrap gap-stack-tight">
+                {EDIT_KIND_ORDER.map((editKind) => (
+                  <Button
+                    key={editKind}
+                    size="sm"
+                    aria-label={EDIT_KIND_LABELS[editKind]}
+                    aria-pressed={kind === editKind}
+                    variant="secondary"
+                    className={kind === editKind ? "border-accent bg-accent-soft text-accent" : ""}
+                    onClick={() => onKindChange?.(editKind)}
+                  >
+                    {EDIT_KIND_LABELS[editKind]}
+                  </Button>
+                ))}
+              </div>
+              <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
+                <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
+              </p>
+              <div className={`card overflow-hidden ${styles.editWorkbench}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined}>
+                <nav className={`max-h-80 min-w-0 overflow-y-auto p-pad-inset ${styles.editOutline}`} aria-label={outlineTitle} data-edit-outline>
+                  <b className="text-body text-text">{outlineTitle}</b>
+                  <ol className="mt-stack space-y-stack-tight">{safeLines.map((line, index) => (
+                    <li key={`${index}-${line.slice(0, 16)}`}>
+                      <Button size="sm" variant="secondary" aria-pressed={activeLine === index} onClick={() => setActiveLine(index)} className={`ds-label-fill w-full min-w-0 justify-start overflow-hidden text-left ${activeLine === index ? "border-accent bg-accent-soft text-accent" : ""} ${visibleLines[index] ? "" : "line-through opacity-60"}`}>
+                        <span className="min-w-0 break-keep text-left">{index + 1}. {line || (kind === "text" ? "빈 문단" : "빈 대사")}</span>
+                      </Button>
+                    </li>
+                  ))}</ol>
+                </nav>
+                <div className="min-w-0 p-pad-inset">
+                  {kind === "text" ? (
+                    <section aria-labelledby="whole-text-title" data-edit-stage>
+                      <div className="mb-stack flex flex-wrap items-start justify-between gap-stack-tight">
+                        <div><b id="whole-text-title" className="text-body text-text">글 전체 편집</b><p className="text-caption text-subtle">공백 포함 {safeLines.join("\n\n").length}자 · 문단 {safeLines.length}개</p></div>
+                      </div>
+                      <textarea
+                        aria-label="글 전체"
+                        value={safeLines.join("\n\n")}
+                        rows={14}
+                        onChange={(event) => onLinesChange(event.target.value.split(/\n\s*\n/))}
+                        className="min-h-80 w-full resize-y overflow-y-auto rounded-control border border-border bg-surface p-pad-inset text-body leading-relaxed text-text"
+                      />
+                      <p className="mt-stack-tight text-caption text-subtle">문단을 나누거나 합쳐도 자동 저장됩니다.</p>
+                    </section>
+                  ) : (
+                    <>
+                      {kind === "audio" ? (
+                        <section className="space-y-pad-inset" data-edit-readiness>
+                          <div className="grid min-h-80 place-items-center rounded-surface bg-surface-2 p-region text-center"><b className="text-subheading text-text">나레이션 대사 편집</b></div>
+                          <p className="rounded-control border border-warning bg-warning-soft p-pad-inset text-body-sm text-warning">음악 파일 생성은 아직 제공하지 않습니다. 지금은 나레이션 대사만 편집할 수 있습니다.</p>
+                        </section>
+                      ) : (
+                        <>
+                          <section aria-label={kind === "card" ? "카드뉴스 미리보기" : "영상 미리보기"} data-edit-stage>
+                            <EditPreview
+                              kind={kind}
+                              lines={safeLines.map((line, index) => (visibleLines[index] ? line : ""))}
+                              activeLine={activeLine}
+                              onActiveLine={setActiveLine}
+                              subtitleSize={toolValues.자막}
+                              renderReady={previewReady}
+                              // 영상은 대표 이미지를 움직여 만든다. 영상이 아직 없으면 그 바탕이 된
+                              // 이미지를 보여 주는 편이 자리표시자보다 결과에 가깝다.
+                              mediaUrl={(kind === "video" ? (previewVideoUrl || previewImageUrl) : previewImageUrl) || undefined}
+                              mediaType={kind === "video" && previewVideoUrl ? "video" : "image"}
+                              onLinesChange={onLinesChange}
+                              cardTextPositions={cardTextPositions}
+                              onCardTextPositionsChange={onCardTextPositionsChange}
+                              aspectRatio={toolValues.비율}
+                              onAspectRatioChange={(aspectRatio) => {
+                                if (toolOptions(formatKind, "비율").includes(aspectRatio)) {
+                                  setToolValues((current) => ({ ...current, 비율: aspectRatio }));
+                                }
+                              }}
+                            />
+                            {/*
+                              2026-09-09 회장 지적: "대문 사진, 본문, 마지막 사진 등 사진
+                              여러개 흐름이 한 세트가 되는 경우가 많을거같은데."
+                              종전에는 한 장씩만 보여 세트의 흐름이 안 보였다. 카드뉴스는
+                              장과 장 사이의 순서가 곧 내용인데, 지금 보는 한 장만으로는
+                              그 흐름을 판단할 수 없다. 우리 팀이 이미 만든 카드 편집
+                              도구(D-EDU 카드컨셉13)도 슬라이드 전체를 늘어놓고 고른다.
+                              전체를 늘어놓고 누르면 그 장으로 간다.
+                            */}
+                            {safeLines.length > 1 ? (
+                              <div className="mt-stack" data-card-strip aria-label={`${unit} 전체 ${safeLines.length}개`}>
+                                <div className="mb-stack-tight flex items-center justify-between">
+                                  <b className="text-caption text-muted">{unit} 전체</b>
+                                  <span className="text-caption text-subtle">{activeLine + 1} / {safeLines.length}</span>
+                                </div>
+                                <ol className="flex gap-stack-tight overflow-x-auto pb-stack-tight">
+                                  {safeLines.map((entry, index) => (
+                                    <li key={`strip-${index}`}>
+                                      <button
+                                        type="button"
+                                        data-card-strip-item={index}
+                                        aria-current={activeLine === index}
+                                        onClick={() => setActiveLine(index)}
+                                        className={`h-20 w-16 shrink-0 rounded-control border p-micro text-left text-caption leading-tight ${activeLine === index ? "border-accent bg-accent-soft text-accent" : "border-border bg-surface-2 text-subtle hover:bg-surface"} ${visibleLines[index] ? "" : "opacity-50 line-through"}`}
+                                      >
+                                        <span className="block font-semibold">{index + 1}</span>
+                                        <span className="line-clamp-3 break-keep">{entry || "빈 " + unit}</span>
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ol>
+                              </div>
+                            ) : null}
+                          </section>
+                          <section className="mt-pad-inset border-b border-border pb-pad-inset" aria-label="간편 편집 도구" data-edit-tools>
+                            <div className="flex flex-wrap gap-stack-tight">{tools.map((tool) => <Button key={tool} size="sm" variant="secondary" className={activeTool === tool ? "border-accent bg-accent-soft text-accent" : ""} onClick={() => setActiveTool(tool)} aria-pressed={activeTool === tool} aria-label={`${visibleToolName(kind, tool)} 도구`}><ToolIcon tool={tool} /><span>{visibleToolName(kind, tool)}: {visibleToolValue(tool, toolValues[tool], kind)}</span></Button>)}
+                              {kind === "video" ? <Button size="sm" onClick={trimSilences} disabled={visibleSilences === 0}>무음 구간 {visibleSilences}개 줄이기</Button> : null}
+                            </div>
+                            <div className="mt-pad-inset flex flex-wrap gap-stack-tight" aria-label={`${visibleToolName(kind, activeTool)} 선택지`}>{toolOptions(formatKind, activeTool).map((option) => <Button key={option} size="sm" variant="secondary" className={toolValues[activeTool] === option ? "border-accent bg-accent-soft text-accent" : ""} aria-pressed={toolValues[activeTool] === option} onClick={() => setToolValues((current) => ({ ...current, [activeTool]: option }))}>{visibleToolValue(activeTool, option, kind)}</Button>)}</div>
+                          </section>
+                        </>
+                      )}
+                      <section className="mt-pad-inset" aria-labelledby="edit-script-title" data-edit-script>
+                        <div className="mb-stack flex flex-wrap items-center justify-between gap-stack-tight"><b id="edit-script-title" className="text-body text-text">{kind === "card" ? "카드 문구" : kind === "audio" ? "나레이션 대사" : "장면 대사"}</b><span className="text-caption text-subtle" data-edit-duration={kind === "video" ? durationLabel : undefined}>{visibleCount}개 {unit}{kind === "video" ? ` · ${durationLabel}초` : ""}</span></div>
+                        <ol className="space-y-stack-tight">{safeLines.map((line, index) => <li key={`script-${index}`} className={`grid gap-stack-tight rounded-control border border-border bg-surface-2 p-stack md:grid-cols-[4rem_minmax(0,1fr)_auto] ${visibleLines[index] ? "" : "opacity-60"}`} data-script-line={index + 1}>
+                          <span className="text-caption text-subtle">{kind === "card" ? `${index + 1}장` : kind === "audio" ? `${index + 1}번째` : `${index * secondsPerLine}초부터`}</span>
+                          {/*
+                            2026-09-09 회장 지적("목차의 의미 몰라? vrew 처럼 장면 대사보고
+                            자막이나 음성 바로 편집가능하게하는건데")과 경쟁사 조사 반영.
+                            종전에는 한 줄을 눌러 고른 뒤 그 줄만 입력칸이 됐다. 나머지는
+                            읽기만 되는 목록이었다. 그래서 이 자리가 편집기가 아니라 목차로
+                            읽혔다. 고칠 곳을 고르는 동작이 고치는 동작 앞에 하나 더 있으면
+                            그만큼 손이 는다.
+                            Vrew 가 하는 것은 대본을 그대로 고치게 두는 것이다. 모든 줄이
+                            언제나 입력칸이다. 고르는 단계를 없앤다.
+                          */}
+                          <input
+                            aria-label={`${kind === "card" ? "문구" : "대사"} ${index + 1}`}
+                            data-line-input={index}
+                            value={line}
+                            onChange={(event) => onLinesChange(safeLines.map((current, lineIndex) => lineIndex === index ? event.target.value : current))}
+                            onFocus={() => setActiveLine(index)}
+                            placeholder={kind === "card" ? "빈 문구" : "빈 대사"}
+                            className={`min-h-control-touch min-w-0 rounded-control border px-stack text-body-sm text-text ${activeLine === index ? "border-accent bg-accent-soft/30" : "border-transparent bg-transparent hover:border-border hover:bg-surface"} ${visibleLines[index] ? "" : "line-through opacity-60"}`}
+                          />
+                          {/*
+                            여러 장이 한 세트인 흐름이라 순서가 곧 내용이다(회장 2026-09-09
+                            "대문 사진, 본문, 마지막 사진 등 사진 여러개 흐름이 한 세트").
+                            우리 팀이 이미 만든 카드 편집 도구도 슬라이드 순서 이동을 갖고 있다.
+                          */}
+                          <div className="flex shrink-0 gap-micro">
+                            <Button size="sm" aria-label={`${index + 1}번째를 위로`} data-line-up={index}
+                              disabled={index === 0} onClick={() => moveLine(index, -1)}>▲</Button>
+                            <Button size="sm" aria-label={`${index + 1}번째를 아래로`} data-line-down={index}
+                              disabled={index === safeLines.length - 1} onClick={() => moveLine(index, 1)}>▼</Button>
+                            <Button size="sm" onClick={() => toggleLine(index)}>{visibleLines[index] ? "빼기" : "되살리기"}</Button>
+                          </div>
+                        </li>)}</ol>
+                        <div className="mt-stack flex flex-wrap gap-stack-tight">
+                          <Button size="sm" data-line-add onClick={() => onLinesChange([...safeLines, ""])}>
+                            {kind === "card" ? "카드 추가" : kind === "audio" ? "대사 추가" : "장면 추가"}
+                          </Button>
+                        </div>
+                      </section>
+                    </>
+                  )}
                 </div>
-                <div className="mt-stack flex flex-wrap gap-stack-tight" aria-label={`${activeTool} 선택지`}>{toolOptions(formatKind, activeTool).map((option) => <Button key={option} size="sm" variant={toolValues[activeTool] === option ? "primary" : "secondary"} aria-pressed={toolValues[activeTool] === option} onClick={() => setToolValues((current) => ({ ...current, [activeTool]: option }))}>{option}</Button>)}</div>
-              </section>
-            </>}
-            <section className="mt-pad-inset" aria-labelledby="edit-script-title" data-edit-script>
-              <div className="mb-stack flex flex-wrap items-center justify-between gap-stack-tight"><b id="edit-script-title" className="text-body text-text">{kind === "card" ? "장 문구" : kind === "text" ? "문단" : "대사"}</b><span className="text-caption text-subtle">화면 아래에서 바로 고칩니다</span></div>
-              <ol className="space-y-stack-tight">{safeLines.map((line, index) => <li key={`script-${index}`} className={`grid gap-stack-tight rounded-control border border-border bg-surface-2 p-stack md:grid-cols-[4rem_minmax(0,1fr)_auto] ${visibleLines[index] ? "" : "opacity-60"}`} data-script-line={index + 1}>
-                <span className="text-caption text-subtle">{index * secondsPerLine}초부터</span>
-                {activeLine === index ? <input aria-label={`${kind === "card" ? "문구" : kind === "text" ? "문단" : "대사"} ${index + 1}`} value={line} onChange={(event) => updateLine(event.target.value)} className={`min-h-control-touch min-w-0 rounded-control border border-border bg-surface px-stack text-body-sm text-text ${visibleLines[index] ? "" : "line-through"}`} /> : <button type="button" onClick={() => setActiveLine(index)} className={`min-h-control-touch min-w-0 break-keep rounded-control px-stack text-left text-body-sm text-text hover:bg-surface ${visibleLines[index] ? "" : "line-through"}`}>{line || "빈 대사"}</button>}
-                <Button size="sm" onClick={() => toggleLine(index)}>{visibleLines[index] ? "빼기" : "되살리기"}</Button>
-              </li>)}</ol>
+              </div>
+            </>
+          ) : roomState === "empty" ? (
+            <StateNotice tone="empty" title="아직 편집할 작업물이 없습니다" description="생성실에서 초안을 고르면 글, 카드뉴스, 영상 형식에 맞는 편집 도구가 열립니다." actionLabel="생성실에서 작업물 고르기" onAction={onOpenCreate} className="min-h-80 justify-center" />
+          ) : roomState === "error" ? (
+            <StateNotice tone="error" title="편집 내용을 불러오지 못했어요" description="마지막 자동 저장본은 남아 있습니다. 연결을 확인한 뒤 다시 불러오세요." actionLabel="다시 불러오기" onAction={onRetry} className="min-h-80 justify-center" />
+          ) : (
+            <section aria-label="편집 내용 불러오는 중" aria-busy="true" className="card grid min-h-80 place-items-center p-region">
+              <div className="w-full max-w-sm space-y-pad-inset"><div className="h-10 animate-pulse rounded-control bg-surface-2" /><div className="h-44 animate-pulse rounded-control bg-surface-2" /><div className="h-10 animate-pulse rounded-control bg-surface-2" /></div>
             </section>
-          </div>
-        </div>
-        {commandPanel ?? <AssistantPanel title="편집 담당"><Stack gap={12}><div className="rounded-control border border-border bg-surface p-stack"><span className="text-caption text-subtle">현재 위치</span><p className="mt-micro text-body text-text">{activeLine + 1} / {safeLines.length}</p></div><div className="rounded-control border border-border bg-surface p-stack"><span className="text-caption text-subtle">지금 고치는 것</span><p className="mt-micro text-body text-text">{kind === "card" ? "카드뉴스" : kind === "text" ? "글" : kind === "audio" ? "음악" : "영상"}</p></div></Stack></AssistantPanel>}
+          )}
+        </main>
+        {commandPanel ?? (
+          /*
+            2026-09-09 회장 지적: "편집실 AI 챗봇은 왜 다른곳이랑 UI가 다름?"
+            다른 방(생성실·발행실·성과실)은 AssistantPanel 이라는 같은 대화창을 쓰는데
+            편집실만 이 자리가 버튼판이었다. 같은 역할이면 같은 모양이어야 한다.
+            대화창 안에 넣되, 편집실이 하는 일(전체 일괄 변경과 발행실 이동)은 그대로 둔다.
+          */
+          <aside className={`card p-pad-inset ${styles.editHelper}`} aria-label="편집 담당 대화창" data-edit-helper>
+            <div className={styles.editHelperActions}>
+              <div className="flex items-center gap-stack-tight border-b border-border pb-stack">
+                <div className="grid h-10 w-10 place-items-center rounded-pill bg-accent text-body font-bold text-accent-fg" aria-hidden="true">O</div>
+                <div><b className="block text-body text-text">편집 담당</b><span className="text-caption text-success">지금 대기 중</span></div>
+              </div>
+              <h2 className="mt-stack text-body font-bold text-text">전체에 한 번에 적용</h2>
+              <p className="mt-stack-tight break-keep text-caption text-muted">한 곳을 정확히 고치는 것은 손이 빠릅니다. 여러 곳을 같은 규칙으로 바꾸는 것은 말이 빠릅니다.</p>
+              {/*
+                2026-09-09 회장 지시: "AI 챗봇에서는 '자막에서 어투 이렇게 바꿔줘' 이렇게
+                요청할수도있는거고." 고정 단추 셋으로는 그 말을 받을 수 없었다. 자유롭게
+                시킬 자리를 연다. 줄 수와 순서는 서버가 지킨다(app/api/studio/edit-bulk).
+              */}
+              <form
+                className="mt-pad-inset flex gap-stack-tight"
+                data-bulk-ask-form
+                onSubmit={(event) => { event.preventDefault(); void askBulk(); }}
+              >
+                <input
+                  aria-label="전체에 적용할 요청"
+                  data-bulk-ask
+                  value={bulkAsk}
+                  onChange={(event) => setBulkAsk(event.target.value)}
+                  placeholder="예: 자막 어투를 더 부드럽게 바꿔줘"
+                  disabled={!hasEditableContent || bulkBusy}
+                  className="min-h-control-touch min-w-0 flex-1 rounded-control border border-border bg-surface px-stack text-body-sm text-text"
+                />
+                {/*
+                  이 방의 다음 단계는 "발행실로 이동" 하나다. 도구 단추가 같은 강조를 가지면
+                  다음 단계가 묻힌다. 강조는 방마다 하나여야 한다.
+                */}
+                <Button type="submit" disabled={!hasEditableContent || bulkBusy || !bulkAsk.trim()}>
+                  {bulkBusy ? "고치는 중" : "시키기"}
+                </Button>
+              </form>
+              <div className="mt-pad-inset grid gap-stack-tight">
+                <Button className="w-full min-w-0 justify-start" onClick={shortenAll} disabled={!hasEditableContent}>전부 짧게 줄이기</Button>
+                <Button className="w-full min-w-0 justify-start" onClick={politeAll} disabled={!hasEditableContent}>말끝을 높임말로 맞추기</Button>
+                <Button className="w-full min-w-0 justify-start" onClick={dropEmpty} disabled={!hasEditableContent}>빈 줄 걷어내기</Button>
+              </div>
+              {bulkMessage ? <p className="mt-stack text-caption text-success" aria-live="polite">{bulkMessage}</p> : null}
+            </div>
+            <div className={styles.editHelperFooter}>
+              <small className={autosaveError ? "text-caption text-danger" : "text-caption text-success"}>{autosaveError || (lastSavedAt ? `마지막 자동 저장 ${lastSavedAt}` : "고치는 대로 자동 저장됨")}</small>
+              <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>
+            </div>
+          </aside>
+        )}
       </div>
     </section>
   );

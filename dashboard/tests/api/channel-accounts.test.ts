@@ -9,9 +9,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const H = vi.hoisted(() => ({
   tenantId: "tenant-1" as string | null,
   accounts: [
-    { id: "acc-1", provider: "threads", external_account_id: "ext-1", display_name: "메인", username: "main", is_default: true, status: "active", token_expires_at: null, created_at: "t", updated_at: "t" },
+    {
+      id: "acc-1", provider: "threads", external_account_id: "ext-1", display_name: "메인", username: "main",
+      is_default: true, status: "active", token_expires_at: "2026-10-30T00:00:00.000Z",
+      created_at: "t", updated_at: "t", connection_state: "connected", can_be_default: true,
+      default_blocked_reason: null,
+    },
   ],
-  setDefaultResult: { ok: true } as { ok: boolean; notFound?: boolean },
+  setDefaultResult: { ok: true } as { ok: boolean; notFound?: boolean; blockedReason?: string },
   deleteResult: { ok: true } as { ok: boolean; notFound?: boolean; promotedId?: string },
   upsertResult: { id: "acc-new", isDefault: false },
 }));
@@ -27,6 +32,7 @@ vi.mock("@/lib/tenant-auth", () => ({
 vi.mock("@/lib/channel-accounts", () => ({
   listChannelAccounts: vi.fn(async () => H.accounts),
   setDefaultAccount: vi.fn(async () => H.setDefaultResult),
+  defaultAccountBlockedMessage: vi.fn(() => "토큰이 만료된 계정은 기본 계정으로 지정할 수 없습니다. 다시 연결해 주세요."),
   deleteChannelAccount: vi.fn(async () => H.deleteResult),
   upsertChannelAccount: vi.fn(async () => H.upsertResult),
   syncLegacyIntegration: vi.fn(async () => {}),
@@ -133,6 +139,19 @@ describe("POST /api/channels/{provider}/accounts/{id}/default", () => {
     const { POST } = await import("@/app/api/channels/[provider]/accounts/[id]/default/route");
     const res = await POST(new Request("http://localhost/x", { method: "POST" }), { params: Promise.resolve({ provider: "threads", id: "acc-1" }) });
     expect(res.status).toBe(200);
+  });
+
+  it("계정-API-02 거절: 만료 계정 기본 지정은 사유 코드와 함께 409를 반환한다", async () => {
+    H.setDefaultResult = { ok: false, blockedReason: "token_expired" };
+    const { POST } = await import("@/app/api/channels/[provider]/accounts/[id]/default/route");
+    const res = await POST(new Request("http://localhost/x", { method: "POST" }), { params: Promise.resolve({ provider: "threads", id: "acc-expired" }) });
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json).toEqual({
+      error: "토큰이 만료된 계정은 기본 계정으로 지정할 수 없습니다. 다시 연결해 주세요.",
+      code: "token_expired",
+    });
   });
 });
 

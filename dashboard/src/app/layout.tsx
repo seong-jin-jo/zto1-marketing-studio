@@ -3,6 +3,7 @@ import "./globals.css";
 import { Providers } from "@/components/layout/Providers";
 import { ToastContainer } from "@/components/layout/Toast";
 import { LoginModal } from "@/components/shared/LoginModal";
+import { ConfirmHost } from "@/components/shared/ConfirmHost";
 import { AuthGate } from "@/components/shared/AuthGate";
 import { ImagePickerModal } from "@/components/queue/ImagePickerModal";
 import { ConsentBanner, PrivacySettingsLink } from "@/components/shared/ConsentBanner";
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AuthGate>{children}</AuthGate>
           <ToastContainer />
           <LoginModal />
+          <ConfirmHost />
           <ImagePickerModal />
           {/* GA4 consent-gated 트래킹(dashboard/src/lib/analytics/) — 동의 전엔 완전 no-op */}
           <RouteTracker />

@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { EventEmitter } from "events";
 
 // lib/anthropic.ts — 공유 claude -p 실행 실패(shared AI generation execution failure)에서만
-// reportFailure가 호출되는지 검증. quota 초과(SharedGenerationQuotaError)·미승인
-// (SharedAiApprovalRequiredError)은 정상 사용량 게이트일 뿐이라 알림 대상이 아니어야 한다(스팸 방지
+// reportFailure가 호출되는지 검증. quota 초과(SharedGenerationQuotaError)는 정상 사용량 게이트일
+// 뿐이라 알림 대상이 아니어야 한다(스팸 방지
 // 회귀). 2026-07-14 재설계: e.message(임의 텍스트, prompt는 안 실리지만 그래도 원문)를 그대로
 // context에 넘기지 않고 classifySharedAiFailure()로 고정 reason 코드(exit_nonzero 등)로만 변환해
 // 넘기는지 검증한다 — reportFailure는 목이라 anthropic.ts가 넘긴 값을 그대로 관찰할 수 있다.
@@ -110,10 +110,16 @@ describe("anthropic.ts — shared_ai_generation_execution_failed 알림 경계",
     expect(call.context).toEqual({ reason: "spawn_failed" });
   });
 
-  it("공유 AI 미승인(SharedAiApprovalRequiredError) → reportFailure 호출 안 함(정상 게이트)", async () => {
+  // 2026-09-08: 승인은 문이 아니라 한도가 됐다. 승인 전 회원은 거절되지 않고 체험 한도로
+  // 그대로 생성까지 간다. 따라서 여기서 알림이 뜰 일도 없다.
+  it("승인 전 회원의 정상 생성은 알림 대상이 아니다", async () => {
     H.dbRows.sharedCliApprovedAt = null;
     const generateText = await importGenerateText();
-    await expect(generateText("prompt", "tenant-1")).rejects.toThrow(/승인되지 않았습니다/);
+    const p = generateText("prompt", "tenant-1");
+    await new Promise((r) => setImmediate(r));
+    H.lastChild!.stdout.emit("data", Buffer.from("ok"));
+    H.lastChild!.emit("close", 0);
+    await expect(p).resolves.toContain("ok");
     expect(H.reportCalls).toHaveLength(0);
   });
 
@@ -138,7 +144,7 @@ describe("anthropic.ts — shared_ai_generation_execution_failed 알림 경계",
       }),
     }));
     const generateText = await importGenerateText();
-    await expect(generateText("prompt", "tenant-1")).rejects.toThrow(/공유 생성 한도 초과/);
+    await expect(generateText("prompt", "tenant-1")).rejects.toThrow(/생성 한도를 다 쓰셨습니다/);
     expect(H.reportCalls).toHaveLength(0);
   });
 });

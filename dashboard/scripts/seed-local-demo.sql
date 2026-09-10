@@ -1,5 +1,9 @@
 \set t '5edb6703-c63e-43b8-86e3-d0a952836ebd'
-UPDATE tenants SET name='모노스튜디오', slug='monostudio' WHERE id=:'t';
+-- 이 테넌트가 없으면 UPDATE는 0행을 바꾸고 이후 모든 INSERT가 외래키 위반으로 죽는다.
+-- 시드는 빈 DB에서도 그대로 돌아야 하므로 먼저 테넌트를 만든다(있으면 이름만 맞춘다).
+INSERT INTO tenants (id, slug, name, status, tier)
+VALUES (:'t', 'monostudio', '모노스튜디오', 'active', 'team')
+ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, slug=EXCLUDED.slug;
 
 -- 연결된 채널 계정 (secret_enc는 upsertChannelAccount와 동일하게 armor(pgp_sym_encrypt(...))로
 -- 암호화한다 — 평문 더미('local-demo')는 /api/channel-config의 dearmor()가 실패해 쿼리 전체가
@@ -33,10 +37,11 @@ INSERT INTO drafts (tenant_id, idea, payload, status, created_at) VALUES
 ON CONFLICT DO NOTHING;
 
 -- 승인 대기 큐
-INSERT INTO queue_posts (tenant_id, text, topic, status, hashtags, channels, generated_at, approved_at) VALUES
- (:'t','확인 가능한 마케팅 흐름을 먼저 만듭니다.','온보딩','approved','{"#마케팅자동화"}','{"threads":{"status":"published"},"x":{"status":"published"},"instagram":{"status":"pending"}}', now()-interval '4 hours', now()-interval '3 hours'),
- (:'t','승인하지 않은 사실은 콘텐츠에 들어가지 않습니다.','브랜드','pending','{"#브랜드위키"}','{"threads":{"status":"pending"}}', now()-interval '2 hours', NULL),
- (:'t','채널마다 다시 쓰는 이유는 플랫폼 정책입니다.','정책','pending','{"#콘텐츠정책"}','{"threads":{"status":"pending"},"instagram":{"status":"pending"}}', now()-interval '40 minutes', NULL)
+-- queue_posts.id 는 queue.json 의 post.id 와 같은 값을 쓰므로 기본값이 없다. 시드가 직접 준다.
+INSERT INTO queue_posts (id, tenant_id, text, topic, status, hashtags, channels, generated_at, approved_at) VALUES
+ ('aaaa1111-0000-4000-8000-000000000001',:'t','확인 가능한 마케팅 흐름을 먼저 만듭니다.','온보딩','approved','{"#마케팅자동화"}','{"threads":{"status":"published"},"x":{"status":"published"},"instagram":{"status":"pending"}}', now()-interval '4 hours', now()-interval '3 hours'),
+ ('aaaa1111-0000-4000-8000-000000000002',:'t','승인하지 않은 사실은 콘텐츠에 들어가지 않습니다.','브랜드','pending','{"#브랜드위키"}','{"threads":{"status":"pending"}}', now()-interval '2 hours', NULL),
+ ('aaaa1111-0000-4000-8000-000000000003',:'t','채널마다 다시 쓰는 이유는 플랫폼 정책입니다.','정책','pending','{"#콘텐츠정책"}','{"threads":{"status":"pending"},"instagram":{"status":"pending"}}', now()-interval '40 minutes', NULL)
 ON CONFLICT DO NOTHING;
 
 -- 발행 결과 + 성과

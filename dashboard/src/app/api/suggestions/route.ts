@@ -1,3 +1,4 @@
+import { UPSTREAM_FAILED } from "@/lib/api-failure";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { withTenant } from "@/lib/db";
@@ -115,6 +116,6 @@ ${winners || "(없음)"}`;
       sampleAssessment,
     });
   } catch (e) {
-    return Response.json({ error: `아이디어 생성 실패: ${(e as Error).message.slice(0, 160)}` }, { status: 502 });
+    return Response.json({ ok: false, error: `아이디어 생성 실패: ${(e as Error).message.slice(0, 160)}` }, { status: UPSTREAM_FAILED });
   }
 }

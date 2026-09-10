@@ -33,12 +33,24 @@ afterEach(() => {
 });
 
 describe("Studio 실제 LLM 생성 계약", () => {
-  it("LLM-01 정상: 후보 프롬프트가 일곱 칸 학습 정보와 채널 규격을 모두 포함한다", () => {
+  it("LLM-01 정상: 후보 프롬프트가 학습 정보의 값과 채널 규격을 모두 포함한다", () => {
     const request = parseGenerationRequest(generationRequestFixture());
     const prompt = buildCandidatePrompt(request);
-    for (const layer of ["S0", "S1", "U2", "U3", "X4", "L5", "R6"]) expect(prompt).toContain(layer);
+    // 2026-09-09: 종전에는 칸 이름(S0·U3 같은 내부 코드)이 프롬프트에 그대로 실렸는지를
+    // 검사했다. 그런데 모델에게 필요한 것은 칸 이름이 아니라 **그 안의 값**이다.
+    // 내부 코드명을 프롬프트에 싣는 것은 오히려 모델에게 뜻 없는 토큰을 주는 일이다.
+    // 이제 사람이 읽는 이름으로 적고 빈 칸은 아예 빼므로, 값이 살아 있는지로 검사한다.
+    for (const label of [
+      "무엇을 위해 만드는가", "누구에게 보여 주는가",
+      "지켜야 할 안전 규칙", "따라야 할 구조 규칙", "지금까지 승인된 학습 규칙",
+      "시장 맥락", "언어와 접근성", "이번에 요청한 것",
+    ]) {
+      expect(prompt, `"${label}" 이 프롬프트에서 사라졌다`).toContain(label);
+    }
     expect(prompt).toContain("자동화가 실패했을 때 확인할 세 가지");
     expect(prompt).toContain("vertical-video-primary");
+    // 내부 코드명이 다시 새어 나오면 안 된다.
+    expect(prompt).not.toMatch(/^S0 안전 규칙:/m);
   });
 
   it("LLM-02 정상: 서로 다른 후보 셋과 정확한 token 사용량을 기록한다", async () => {

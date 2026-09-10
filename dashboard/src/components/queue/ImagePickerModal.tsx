@@ -70,7 +70,7 @@ export function ImagePickerModal() {
     >
       <div className="card p-stack-section w-full max-w-3xl max-h-[80vh] overflow-y-auto mx-pad-inset">
         <div className="flex items-center justify-between mb-pad-inset">
-          <h3 className="text-lead font-semibold text-text">Select Image</h3>
+          <h3 className="text-lead font-semibold text-text">이미지 선택</h3>
           <button onClick={() => setImagePickerPostId(null)} className="text-subtle hover:text-text text-subheading">&times;</button>
         </div>
 
@@ -80,7 +80,7 @@ export function ImagePickerModal() {
             <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            <span className="text-caption text-muted">Generate New</span>
+            <span className="text-caption text-muted">새 이미지 만들기</span>
           </div>
           <div className="flex gap-stack-tight">
             <input

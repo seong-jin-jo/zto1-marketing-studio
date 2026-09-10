@@ -25,6 +25,10 @@ RUN apk add --no-cache docker-cli
 #   compose에 `- ~/.claude:/root/.claude:ro` (호스트가 사전 인증 필요 — 운영자 액션).
 # 테넌트가 자기 API 키를 등록하면 그 경로(HTTP API)로 가므로 claude CLI 불필요.
 RUN npm install -g @anthropic-ai/claude-code
+# 이미지·영상 생성기. 2026-09-06 실측으로 운영 컨테이너에 이 실행기가 없어 고객이 카드뉴스를
+# 만들 수 없다는 것이 드러났다(생성 요청이 곧바로 502). 자격증명은 이미지에 넣지 않고
+# claude 와 같은 방식으로 호스트에서 읽기 전용 마운트한다.
+RUN npm install -g @higgsfield/cli
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
