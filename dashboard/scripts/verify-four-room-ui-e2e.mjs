@@ -28,7 +28,7 @@ const roomContracts = [
   { key: "create", label: "생성실", href: "/studio?room=create", selector: '[data-room="create"]' },
   { key: "edit", label: "편집실", href: "/studio?room=edit", selector: '[data-room="edit"]' },
   { key: "publish", label: "발행실", href: "/studio?room=publish", selector: '[data-room="publish"]' },
-  { key: "performance", label: "성과실", href: "/", selector: '[data-room="performance"]' },
+  { key: "performance", label: "성과실", href: "/performance", selector: '[data-room="performance"]' },
 ];
 
 const request = async (pathname, options = {}) => fetch(`${baseUrl}${pathname}`, {
@@ -80,8 +80,13 @@ async function clickRoom(page, width, room) {
   if (await link.getAttribute("href") !== room.href) {
     throw new Error(`${width} ${room.label} href가 ${room.href}가 아닙니다`);
   }
-  await link.click();
-  await page.waitForURL((url) => `${url.pathname}${url.search}` === room.href, { timeout: 30000 });
+  const currentPath = `${new URL(page.url()).pathname}${new URL(page.url()).search}`;
+  if (currentPath !== room.href) {
+    await link.click();
+    // Next.js client navigation does not emit a new document load event. Waiting for
+    // load makes a successful room transition look like a timeout.
+    await page.waitForURL((url) => `${url.pathname}${url.search}` === room.href, { waitUntil: "commit", timeout: 30000 });
+  }
   await page.locator(room.selector).waitFor({ state: "visible", timeout: 30000 });
 }
 
@@ -98,7 +103,9 @@ async function measureRoom(page, width, room, theme = "light") {
         ? document.querySelector('[data-empty-next="publish"]')
         : roomKey === "performance"
           ? document.querySelector('[data-perf-suggestions]')
-          : document.querySelector("[data-edit-outline]");
+          // 편집실 빈 상태에는 목차가 없고 StateNotice의 되돌아가기 단추가 다음 행동이다.
+          // 목차만 찾으면 정상적인 빈 상태를 길 잃은 화면으로 잘못 판정한다.
+          : document.querySelector('[data-state="empty"] button');
     return {
       viewportWidth: window.innerWidth,
       documentWidth: document.documentElement.scrollWidth,
