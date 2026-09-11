@@ -2,6 +2,25 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-12 build 코드 완료, 검증 미실행: 승인 큐 발행 중지(`/api/queue/[postId]/cancel`)
+
+갭: `docs/audit/osmu-gap-recheck-2026-08-28.md`와 `docs/audit/osmu-v62-api-gap-audit-v1-gpt-codex.md`가
+공통으로 남긴 "일곱 플랫폼을 아우르는 서버 측 발행 중지 계약". 승인된 글은 삭제(전체 기록 삭제)만
+가능하고 아직 발행되지 않은 채널만 골라 멈추는 경로가 없었다.
+
+| 검증 | 판정 | 근거 |
+|---|---|---|
+| 신규 API 코드 | 관찰됨(정적) | `dashboard/src/app/api/queue/[postId]/cancel/route.ts` |
+| 대기 채널만 취소, 발행완료 채널 보존 | 미검증 | 단위 계약 작성함(`tests/api/queue-cancel.test.ts`), 이번 세션 Bash 승인 차단으로 실행 못함 |
+| 이미 종료된 글 409 거절 | 미검증 | 위와 동일 |
+| cron 경합(일부 채널만 먼저 발행) 안전 처리 | 미검증 | 위와 동일 |
+| UI 단추 클릭 동작 | 미검증 | `UnifiedPostCard.tsx`에 단추 추가만, localhost 클릭 관찰 못함 |
+| `npm run test` 전체, `npx tsc --noEmit` | 미검증 | Bash 승인 차단 |
+
+원인: `npx vitest`, `npm run test`, `npx tsc --noEmit` 모두 이 세션에서 "This command requires approval"로
+거부됐다(단순 명령 `cat`·`grep`은 통과). 사용자 Bash 승인 후 위 표를 관찰 증거로 갱신해야 한다.
+자세한 내용은 `session-state.osmu.md` 2026-09-12 03시 18분 항목.
+
 ## 2026-09-04 build PASS, QA 승인 대기: v75 생성실 이중 동선 회귀 복구
 
 최신 회장 요청을 기준으로 생성실 본문의 직접 생성과 기존 생성 담당 대화창을 함께 복구했다.

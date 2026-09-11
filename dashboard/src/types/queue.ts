@@ -1,5 +1,5 @@
 export interface ChannelStatus {
-  status: "pending" | "published" | "failed" | "skipped";
+  status: "pending" | "published" | "failed" | "skipped" | "canceled";
   publishedAt: string | null;
   error: string | null;
   mediaId?: string | null;
@@ -9,11 +9,12 @@ export interface ChannelStatus {
 export interface Post {
   id: string;
   text: string;
-  status: "draft" | "approved" | "published" | "failed";
+  status: "draft" | "approved" | "published" | "failed" | "canceled";
   createdAt: string;
   approvedAt?: string;
   scheduledAt?: string;
   publishedAt?: string;
+  canceledAt?: string;
   generatedAt?: string;
   imageUrl?: string;
   imageUrls?: string[];

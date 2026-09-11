@@ -13,6 +13,7 @@ const STATUS_CLASS: Record<string, string> = {
   approved: "bg-accent-soft text-accent",
   published: "bg-success/15 text-success",
   failed: "bg-danger/15 text-danger",
+  canceled: "bg-surface-2 text-subtle",
 };
 
 const CHANNEL_BADGE_CLASS: Record<string, string> = {
@@ -20,6 +21,7 @@ const CHANNEL_BADGE_CLASS: Record<string, string> = {
   failed: "bg-danger/15 text-danger",
   pending: "bg-surface-2 text-subtle",
   skipped: "bg-surface-2 text-subtle",
+  canceled: "bg-surface-2 text-subtle",
 };
 
 const CHANNEL_BADGE_LABELS: Record<string, string> = {
@@ -96,6 +98,15 @@ export function UnifiedPostCard({
       setEditingPost(null);
       onRefresh();
     } catch (e) { showToast(`수정 실패: ${(e as Error).message}`, "error"); }
+  };
+
+  const handleCancel = async () => {
+    if (!(await confirmAction({ title: "발행을 중지할까요?", description: "아직 올라가지 않은 채널은 발행을 멈춥니다. 이미 올라간 채널은 그대로 유지됩니다.", confirmLabel: "발행 중지", destructive: true }))) return;
+    try {
+      await apiPost(`/api/queue/${post.id}/cancel`);
+      showToast("발행 중지됨", "success");
+      onRefresh();
+    } catch (e) { showToast(`중지 실패: ${(e as Error).message}`, "error"); }
   };
 
   const handleDelete = async () => {
@@ -309,6 +320,9 @@ export function UnifiedPostCard({
         <div className="flex gap-stack-tight mt-stack-tight pt-stack-tight border-t border-border/50">
           {post.status === "draft" && (
             <button onClick={handleApprove} className="px-stack-tight py-micro text-caption bg-success text-status-fg rounded-chip hover:bg-success">승인</button>
+          )}
+          {post.status === "approved" && (
+            <button onClick={handleCancel} className="px-stack-tight py-micro text-caption bg-warning/15 text-warning rounded-chip hover:bg-warning/25">발행 중지</button>
           )}
           {onEditInEditor ? (
             <button onClick={() => onEditInEditor(post.id)} className="px-stack-tight py-micro text-caption bg-surface-2 text-muted rounded-chip hover:bg-surface-2">수정</button>
