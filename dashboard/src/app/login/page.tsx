@@ -166,7 +166,7 @@ export default function LoginPage() {
 
         <div className="space-y-stack-tight">
           <button onClick={google} disabled={busy}
-            className="w-full px-pad-inset py-stack-tight text-body-sm bg-accent text-accent-fg rounded-control disabled:opacity-50">
+            className="w-full min-h-control-touch px-pad-inset py-stack-tight text-body-sm bg-accent text-accent-fg rounded-control disabled:opacity-50">
             {busy ? "확인 중…" : "Google로 계속"}
           </button>
         </div>
