@@ -51,7 +51,7 @@ try {
   p.on("response",response=>{if(response.status()===401) unauthorizedUrls.push(response.url());});
 
   const rows=[];
-  for(const [room,url] of [["create","/studio?room=create"],["edit","/studio?room=edit"],["publish","/studio?room=publish"],["performance","/"]]) {
+  for(const [room,url] of [["create","/studio?room=create"],["edit","/studio?room=edit"],["publish","/studio?room=publish"],["performance","/performance"]]) {
     // Next dev keeps HMR and background requests alive. networkidle can time out after
     // the room is already interactive, so the visible room contract is the readiness signal.
     await p.goto(`${base}${url}`,{waitUntil:"domcontentloaded",timeout:60000});
