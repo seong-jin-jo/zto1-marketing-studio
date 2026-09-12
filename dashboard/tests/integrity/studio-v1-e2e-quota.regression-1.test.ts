@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-// Regression: ISSUE-004. 고정 QA 작업 공간이 미승인 체험 한도 20회를 소진해
+// Regression: ISSUE-005. 고정 QA 작업 공간이 미승인 체험 한도 20회를 소진해
 // Studio v1 E2E의 두 번째 실제 생성이 429로 끊겼고, 검증기는 실패 응답을 data로
 // 오인해 TypeError까지 덧붙였다.
 // Found by /qa on 2026-09-12

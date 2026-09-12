@@ -25,6 +25,7 @@ try {
   const ctx=await b.newContext({viewport:{width:1440,height:1200}});
   await ctx.addInitScript(({t,st,w})=>{
     localStorage.setItem("dashboard_auth_token",t);
+    localStorage.setItem("dashboard_auth_identity_kind","customer");
     localStorage.setItem("active_workspace",JSON.stringify({id:w,slug:"local",name:"로컬 검증 작업 공간",tier:"team"}));
     // 발행실은 작업 공간별 키(`studio_work:<작업공간>`)에서만 작업물을 복원하고, 옛 공용 키는
     // 화면이 뜨는 즉시 지운다. 지금까지 공용 키만 심어 온 탓에 발행실이 늘 빈 상태로 측정됐고
@@ -51,9 +52,14 @@ try {
 
   const rows=[];
   for(const [room,url] of [["create","/studio?room=create"],["edit","/studio?room=edit"],["publish","/studio?room=publish"],["performance","/"]]) {
-    await p.goto(`${base}${url}`,{waitUntil:"networkidle",timeout:60000});
-    await p.locator(`[data-room="${room}"]`).waitFor({state:"visible",timeout:30000});
-    rows.push(await p.evaluate((r)=>({
+    // Next dev keeps HMR and background requests alive. networkidle can time out after
+    // the room is already interactive, so the visible room contract is the readiness signal.
+    await p.goto(`${base}${url}`,{waitUntil:"domcontentloaded",timeout:60000});
+    const roomRoot=p.locator(`[data-room="${room}"]`);
+    await roomRoot.waitFor({state:"visible",timeout:30000});
+    // AuthGate may finish a client navigation after DOMContentLoaded. Anchor evaluation
+    // to the live room locator so Playwright re-resolves it in the final document.
+    rows.push(await roomRoot.evaluate((_roomElement,r)=>({
       방:r,
       그려짐:document.querySelector(`[data-room="${r}"]`) instanceof HTMLElement,
       방머리:document.querySelector(`[data-room-top="${r}"]`) instanceof HTMLElement,

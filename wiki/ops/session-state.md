@@ -1,3 +1,33 @@
+## 2026-09-12 22시 49분 - 네 방 기본 흐름 로컬 QA 완료, 전체 QA는 NG
+
+회장 요청 원문을 handoff basis로 사용했고 현재 tmux pane `%479`를 확인했다. canonical main repo는
+`/Users/sj/sj_code_master/zto1-marketing-studio`이며 `pipeline-state.osmu.md`는 `current_stage: qa`,
+승인 전 상태를 유지한다.
+
+localhost:3456에서 지정 작업 공간의 생성→편집→발행 큐→성과 제안 재인계 11/11, Studio v1
+14/14, 네 방 단면 탐침과 390 라이트·다크, 768, 1024, 1440의 20화면 및 성과실→생성실 복귀
+5건을 확인했다. 가로 넘침, 차단 모달, 브라우저 401, 콘솔 오류는 모두 0건이다.
+
+반복 QA로 고정 작업 공간의 체험 한도가 소진되어 실제 생성이 429가 된 결함은 seed가 공유 AI
+승인 상태를 보장하도록 수정했다. 빠른 Next.js client navigation이 클릭 안에서 끝나 검증기가
+이미 지난 commit을 기다리던 경쟁 조건은 waiter를 클릭 전에 걸어 수정했다. 두 수정은 각각
+`studio-v1-e2e-quota.regression-1.test.ts`와 `four-room-client-navigation.regression-1.test.ts`로
+고정했다.
+
+최종 검증은 `npm run test` 299파일 PASS, 2,000건 PASS, 3건 스킵, `npx tsc --noEmit`,
+`npm run build` 정적 페이지 182/182, 전체 `dashboard/src` 디자인 lint 위반 0이다. build의 기존
+NFT 추적 경고와 React 테스트의 기존 act 경고는 남아 있다.
+
+v63 원본과 dev 4폭 PNG 대조에서는 데이터 상태와 무관한 공통 셸, 열 수, 담당 패널 위치,
+요소 순서, 버튼 위계 불일치를 관찰했다. 사용자 지정 v63과 pipeline 최신 승인 핀 v68도 충돌한다.
+따라서 기본 흐름만 범위 PASS이며 전체 QA, 디자인 gate, 배포는 NG다. 운영 배포와 외부 OAuth,
+실제 permalink, 성과 API는 이번 턴에 검증하지 않았다.
+
+변경 파일은 네 방·Studio 검증기, 고정 fixture seed, 회귀 테스트 4개, 기본 흐름 QA 보고서,
+qa-tracker, 구현현황, canonical pipeline 상태와 이 handoff다. 다음 소유자는 product-designer와
+Codex 컨트롤러다. v63 또는 v68 승인 핀을 하나로 확정하고 공통 셸을 맞춘 뒤 같은 상태의 네 방
+4폭 PNG 정합과 외부 실발행을 QA에 재위임한다.
+
 ## 2026-09-12 20시 23분 - 최근 24시간 코드리뷰 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. tmux pane과 기존 session-state를 참고했지만 리뷰 대상은 회장이 지정한 최근 24시간 커밋 전체로 고정했다. 대상은 `443da936` 다음부터 `532e37f`까지 13개다. 코드 수정은 하지 않았고 감사 문서와 QA 증거만 갱신했다.

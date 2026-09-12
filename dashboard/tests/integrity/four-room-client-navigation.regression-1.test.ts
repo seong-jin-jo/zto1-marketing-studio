@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-// Regression: ISSUE-005. Next.js client navigation이 link.click() 안에서 먼저 끝나면
+// Regression: ISSUE-006. Next.js client navigation이 link.click() 안에서 먼저 끝나면
 // 뒤늦게 설치한 waitForURL({ waitUntil: "commit" })은 이미 지난 commit을 기다리며
 // 30초 timeout으로 정상 방 이동을 실패 처리했다.
 // Found by /qa on 2026-09-12

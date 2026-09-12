@@ -2,6 +2,82 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-12 22시 49분 KST · 네 방 기본 흐름 재검증 최종 판정
+
+한 줄 결론: localhost 네 방 기본 흐름은 두 검증기 결함을 수리한 뒤 범위 PASS다. 승인 디자인
+정합과 외부 채널 발행은 통과하지 않았으므로 전체 QA와 배포는 NG다.
+
+| 검증 | 판정 | 증거 |
+|---|---|---|
+| canonical 단계 | 진행 중 | 메인 repo `pipeline-state.osmu.md`의 `current_stage: qa`, 승인 전 |
+| backend와 web 전체 회귀 | PASS | `npm run test`, 299파일 PASS, 2,000건 PASS, 3건 제외, exit 0 |
+| TypeScript | PASS | `npx tsc --noEmit`, 출력 오류 0, exit 0 |
+| production build | PASS | `npm run build`, 정적 페이지 182/182, exit 0. 기존 NFT 추적 경고 1건 |
+| health | PASS | localhost:3456 `/api/health` HTTP 200, `db: up`, 43ms |
+| seed | NG 후 수정, PASS | 고정 QA 작업 공간이 체험 한도 20건을 소진해 생성 429. 승인 fixture로 수정하고 실제 DB에서 `true`, `active`, `team` 확인 |
+| 기본 API 흐름 | PASS | `.env.local` 주입 후 `verify-basic-flow-e2e.mjs`, 생성부터 성과 제안 재인계까지 11/11 |
+| Studio v1 | NG 후 수정, PASS | 최초 교차 시간대 생성 429와 TypeError. 수정 뒤 `verify-studio-v1-e2e.mjs` 14/14 |
+| 네 방 단면 탐침 | PASS | `probe-four-room-flow.mjs`, 네 방 렌더 true, 가린 모달·401·콘솔 오류 각 0 |
+| 사람 클릭 반응형 | NG 후 수정, PASS | URL 대기를 클릭 전에 걸도록 수정. `logs/diff/osmu-four-room-flow-20260912-2220`, 390 라이트·다크, 768, 1024, 1440의 20화면과 성과실→생성실 5건 PASS |
+| 디자인 lint | PASS | `design-lint.sh dashboard/src`, 임의 px·인라인 style·토큰 밖 hex 위반 0 |
+| mobile typecheck와 Maestro | 해당 없음 | dashboard 웹 제품이며 별도 mobile 계약이 없음. `optional:true` 우회 없음 |
+| 승인 디자인 정합 | NG | v63 원본과 dev 4폭 PNG를 직접 대조. 셸 열 수, 담당 패널 위치, 요소 순서, 버튼 위계 불일치. 사용자 지정 v63과 pipeline 최신 v68 핀 충돌도 미해소 |
+| 외부 OAuth·실발행·성과 | 미검증 | 이번 범위는 발행 직전까지이며 외부 permalink와 운영 배포 증거 없음 |
+
+### 결함과 회귀
+
+1. 반복 QA가 체험 한도를 소진하는 구조를 고쳤다. `seed-test-tenants.sql`이 고정 작업 공간의
+   공유 AI 승인을 보장하고, `studio-v1-e2e-quota.regression-1.test.ts`가 이를 고정한다.
+2. Next.js 전환 commit이 클릭 안에서 끝나 검증기가 과거 이벤트를 기다리는 경쟁 조건을 고쳤다.
+   `waitForURL`과 클릭을 함께 시작하고 폭·방 로그를 남겼다.
+   `four-room-client-navigation.regression-1.test.ts`가 순서를 고정한다.
+
+### 요청 번호 승계
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08 | 네 방 이동 | FLOW-UI-01 | PASS | 네 방 20화면과 성과실→생성실 5건 |
+| R27 | 후보 전건 거절 뒤 무료 재생성 | STUDIO-V1-REGEN | NG 후 수정, PASS | 승인 fixture 복원 뒤 Studio v1 14/14 |
+| R104 | 고객 인증 경계 | FLOW-AUTH-01 | PASS | 실제 임시 고객 토큰, 브라우저 401 0, 폐기 200 |
+| R193 | 성과 제안에서 생성실 재진입 | FLOW-UI-RETURN | NG 후 수정, PASS | URL 대기 경쟁 조건 수정 뒤 5개 폭·테마 조합 복귀 |
+| R200, R207 | 성과실 UX와 학습 정보 | FLOW-PERF-01 | 기능 PASS, 디자인 NG | 제안 3건과 다음 행동 표시. v63 공통 구조와 불일치 |
+| R201 | 중복 안내 없이 방 이동 | FLOW-SIDEBAR-01 | PASS | 차단 모달 0, 다음 행동 표시, 네 방 이동 성공 |
+| R206 | 승인 시안 충실도 | CONF-ALL | NG | `docs/qa/osmu-four-room-basic-flow-v1-gpt-codex.md` 속성별 정합 행렬 |
+| R01~R207 | 이번 기본 흐름 밖 확정 요구 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 누락으로 PASS 처리하지 않음 |
+
+전환 가능 TC는 FLOW-UI-01, FLOW-AUTH-01, FLOW-UI-RETURN, FLOW-SIDEBAR-01과 기본 API 11단계다.
+Studio v1 14건도 재실행 PASS다. CONF-ALL과 외부 실발행은 전환 불가다.
+
+페르소나 결정: 박도윤은 네 폭에서 생성실부터 성과실까지 길을 잃지 않고 이동하고 돌아올 수 있다.
+다만 승인 시안과 다른 공통 구조, 외부 채널 미검증 때문에 첫 콘텐츠의 실제 공개와 성과 수집까지
+완료할 수 있다고 판정하지 않는다.
+
+레드팀: 링크 클릭만 통과하면 생성과 인계가 끊겨도 숨을 수 있다. 이를 막기 위해 실제 API 11단계와
+Studio v1 14건을 별도 실행했다. 반대로 API 통과만으로 화면 성공을 대신하지 않고 20개 실제 화면과
+복귀 5건을 관찰했다.
+
+셀프심문: 이 결론이 틀렸다면 가장 그럴듯한 이유는 localhost가 운영 배포와 다르거나 시안과 dev의
+데이터 상태가 달라 시각 차이를 잘못 분류한 경우다. 그래서 판정을 로컬 기본 흐름 PASS로 한정하고,
+상태와 무관한 공통 구조 불일치만 디자인 NG로 기록했다. 운영 배포와 외부 발행은 미검증이다.
+
+벤치마크: Playwright 공식 actionability와 locator 원칙을 따라 force click 없이 표시·동작 가능한
+링크를 눌렀고, 빠른 이동은 waiter를 먼저 거는 공식 패턴을 적용했다.
+
+다음 실행: 소유자는 product-designer와 Codex 컨트롤러다. v63 또는 v68 승인 핀을 하나로 확정하고
+공통 셸을 정합시킨 뒤 QA가 같은 상태의 네 방 4폭 PNG를 다시 대조한다. 종료 증거는 속성별 디자인
+PASS와 외부 계정 연결·permalink·성과 API 응답이다.
+
+SKILLS_USED: qa, 실제 앱 회귀·결함 등록·반응형 관찰·증거 기록 / SKILLS_SKIPPED: 없음
+
+SOURCES: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html` | `pipeline-state.osmu.md` | `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md` | `logs/diff/osmu-four-room-flow-20260912-2220/observations.json` | https://playwright.dev/docs/actionability | https://playwright.dev/docs/locators
+
+MODEL: gpt-codex/gpt-5.6-sol / qa-verifier
+
+KNOWLEDGE_QUERY: business + OSMU + 기본 흐름 + 1인 사업자 + 끝내기 우선
+HITS_USED: BRAIN의 ZERO-ONE Marketing Studio 아이디어와 repo 사업 좌표를 사용해 생성→편집→발행→성과의 검증 축과 초보 1인 사업자 페르소나를 고정했다.
+HITS_REJECTED: 일반 마케팅 심리와 다른 벤처 자료는 이 동작 QA의 판정 근거가 아니어서 제외했다.
+CONFLICTS: 외부 Playwright 원칙과 회장 정본은 충돌 없음. 사용자 지정 v63과 pipeline 최신 승인 핀 v68이 충돌해 디자인 PASS를 금지했다.
+
 ## 2026-09-12 22시 14분 KST · 읽기 API 전수 실사 최종 판정
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

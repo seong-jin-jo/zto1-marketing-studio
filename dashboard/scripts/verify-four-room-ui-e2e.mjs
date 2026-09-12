@@ -8,7 +8,7 @@ const { chromium } = playwright;
 const baseUrl = process.env.FOUR_ROOM_BASE_URL || "http://localhost:3456";
 const operatorToken = process.env.DASHBOARD_AUTH_TOKEN || "";
 const workspaceId = process.env.FOUR_ROOM_WORKSPACE_ID || "cd1d0a40-540d-4524-9b49-bf2445d82182";
-const outputDir = process.env.FOUR_ROOM_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/prototype/qa-flow");
+const outputDir = process.env.FOUR_ROOM_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/design/prototypes/legacy-prototype-20260912/prototype/qa-flow");
 const executablePath = process.env.FOUR_ROOM_CHROME_PATH || "/Users/sj/Library/Caches/ms-playwright/chromium-1228/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing";
 const dataRoot = process.env.DATA_DIR || path.resolve(process.cwd(), "../data");
 const settingsPath = path.join(dataRoot, "tenants", workspaceId, "settings.json");
@@ -74,18 +74,31 @@ async function sidebar(page, width) {
   return nav.getByRole("region", { name: "한 편의 제작 순서" });
 }
 
-async function clickRoom(page, width, room) {
+async function roomFlow(page, width) {
+  // v68 promotes the four-room flow into the shared top header. Keep the
+  // sidebar fallback for non-studio routes and older customer shells.
+  const currentPath = `${new URL(page.url()).pathname}${new URL(page.url()).search}`;
+  const headerFlow = page.getByRole("navigation", { name: "작업 단계" });
+  if (await headerFlow.count() && await headerFlow.isVisible()) return headerFlow;
   const flow = await sidebar(page, width);
-  const link = flow.getByRole("link", { name: new RegExp(room.label) });
-  if (await link.getAttribute("href") !== room.href) {
-    throw new Error(`${width} ${room.label} href가 ${room.href}가 아닙니다`);
-  }
+  return flow;
+}
+
+async function clickRoom(page, width, room) {
   const currentPath = `${new URL(page.url()).pathname}${new URL(page.url()).search}`;
   if (currentPath !== room.href) {
-    await link.click();
+    const flow = await roomFlow(page, width);
+    const link = flow.getByRole("link", { name: new RegExp(room.label) });
+    if (await link.getAttribute("href") !== room.href) {
+      throw new Error(`${width} ${room.label} href가 ${room.href}가 아닙니다`);
+    }
     // Next.js client navigation does not emit a new document load event. Waiting for
-    // load makes a successful room transition look like a timeout.
-    await page.waitForURL((url) => `${url.pathname}${url.search}` === room.href, { waitUntil: "commit", timeout: 30000 });
+    // load makes a successful room transition look like a timeout. Arm the URL waiter
+    // before the click so a fast client transition cannot finish between both awaits.
+    await Promise.all([
+      page.waitForURL((url) => `${url.pathname}${url.search}` === room.href, { waitUntil: "commit", timeout: 30000 }),
+      link.click(),
+    ]);
   }
   await page.locator(room.selector).waitFor({ state: "visible", timeout: 30000 });
 }
@@ -110,6 +123,7 @@ async function measureRoom(page, width, room, theme = "light") {
       viewportWidth: window.innerWidth,
       documentWidth: document.documentElement.scrollWidth,
       fullScreenOverlay: Boolean(overlay),
+      blockingNavigation: document.querySelector('[aria-label="메뉴 바깥 닫기"]') instanceof HTMLElement,
       nextActionVisible: firstAction instanceof HTMLElement && firstAction.offsetParent !== null,
       suggestionCount: Number(document.querySelector("[data-perf-suggestions]")?.getAttribute("data-perf-suggestions") || 0),
       inlineOnboarding: document.querySelector('[data-onboarding-mode="inline"]') instanceof HTMLElement,
@@ -119,6 +133,7 @@ async function measureRoom(page, width, room, theme = "light") {
   }, room.key);
   if (metrics.documentWidth > width + 1) throw new Error(`${tag} 가로 넘침 ${metrics.documentWidth}/${width}`);
   if (metrics.fullScreenOverlay) throw new Error(`${tag} 전체 화면 모달이 길을 막습니다`);
+  if (metrics.blockingNavigation) throw new Error(`${tag} 이동 뒤 탐색 메뉴가 화면을 가립니다`);
   if (!metrics.nextActionVisible) throw new Error(`${tag} 다음 행동이 보이지 않습니다`);
   if (room.key === "performance" && metrics.suggestionCount < 3) throw new Error(`${tag} 방향 제안이 ${metrics.suggestionCount}건입니다`);
   if (metrics.appliedTheme !== theme) throw new Error(`${tag} 테마가 적용 안 됨: data-theme=${metrics.appliedTheme} (기대 ${theme})`);
@@ -146,6 +161,7 @@ try {
       const context = await browser.newContext({ viewport: { width, height: width === 390 ? 844 : width === 768 ? 1024 : 1200 } });
       await context.addInitScript(({ token, workspace, mode }) => {
         localStorage.setItem("dashboard_auth_token", token);
+        localStorage.setItem("dashboard_auth_identity_kind", "customer");
         localStorage.setItem("active_workspace", JSON.stringify({ id: workspace, slug: "qa-four-room", name: "네 방 검증 작업 공간", tier: "team" }));
         localStorage.setItem("theme", mode);
       }, { token: issuedBody.token, workspace: workspaceId, mode: theme });
@@ -155,8 +171,11 @@ try {
       page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(`${tag}: ${message.text()}`); });
       page.on("response", (response) => { if (response.status() === 401) unauthorizedUrls.push(`${tag}: ${response.url()}`); });
 
-      await page.goto(`${baseUrl}/studio?room=create`, { waitUntil: "networkidle", timeout: 60000 });
+      // Next dev keeps HMR and background requests alive. The room locator below is the
+      // user-visible readiness signal; networkidle can misclassify a rendered page as a timeout.
+      await page.goto(`${baseUrl}/studio?room=create`, { waitUntil: "domcontentloaded", timeout: 60000 });
       for (const room of roomContracts) {
+        console.log(`검증 ${tag} ${room.label}`);
         await clickRoom(page, width, room);
         await measureRoom(page, width, room, theme);
       }
