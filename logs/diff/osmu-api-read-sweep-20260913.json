@@ -3,9 +3,9 @@
   "git_commit": "27c94381960f703fa471bb5328f9d67a42f65f7f",
   "source_state": {
     "initial_sweep_git_commit": "27c94381960f703fa471bb5328f9d67a42f65f7f",
-    "late_recheck_at": "2026-09-12T17:48:00.000Z",
-    "late_recheck_head": "80c09807610674f7602c24f912fb77bdec2b461f",
-    "api_source_sha256": "00d4c436e309c376b28b0ed2cdaaba8396a768d085e82c943956d5cf27da1fb6",
+    "late_recheck_at": "2026-09-12T17:56:33.000Z",
+    "late_recheck_head": "823bc295cdbac1411fa4123b3762ef0d2f6b7c60",
+    "api_source_sha256": "ca1c9a1428b513ee114f5bedd6905f86927b1d931ca098eb98f940853b3b931a",
     "uncommitted_get_routes_rechecked": [
       {
         "route": "/api/higgsfield/transactions",

@@ -10,7 +10,7 @@ STAMP | line: osmu | 생성: 2026-09-13 02:48 KST | model: gpt-codex/gpt-5.6-sol
 - 환경: `http://127.0.0.1:3456`, `dashboard/.env.local`, 작업 공간 `cd1d0a40-540d-4524-9b49-bf2445d82182`.
 - 증거: `logs/diff/osmu-api-read-sweep-20260913.json`.
 - 최초 전수 시점: commit `27c94381`, 2026-09-13 02:11 KST.
-- 후속 소스 대조: HEAD `80c09807`, API 소스 합성 SHA-256 `00d4c436e309c376b28b0ed2cdaaba8396a768d085e82c943956d5cf27da1fb6`.
+- 후속 소스 대조: 증거 commit `823bc295`와 공유 미커밋 API 소스 합성 SHA-256 `ca1c9a1428b513ee114f5bedd6905f86927b1d931ca098eb98f940853b3b931a`, 2026-09-13 02:56 KST.
 - 전수 뒤 동시 변경된 GET 3개는 현재 소스로 다시 호출했다. Higgsfield 거래, 성과 학습 규칙, Studio 학습 정보가 모두 HTTP 200이었다.
 - 판정: 2xx와 3xx는 정상이다. 입력 오류, 인증 경계, 없는 자원, 설정 부재를 설명하는 4xx와 503은 의도된 거절이다. 설명 없는 500과 요청 실패는 고장이다.
 
