@@ -15,6 +15,7 @@
 | 브라우저 화면 | PASS | `최근 학습 판단`, `반영`·`안 함`, 표본·기간·작업 공간 범위 표시 |
 | 브라우저 안전 | PASS | 401 0건, 콘솔 오류 0건, 캡처 `logs/diff/osmu-learning-decision-history-20260912.png` |
 | 계약 테스트 | PASS | 신규 API 4건, 화면 2건, 기존 성과실 16건 통과 |
+| 디자인 lint | PASS | 카드 색상 정의를 전용 테마 모듈로 분리한 뒤 전체 `dashboard/src` 위반 0 |
 | 전체 회귀 | PASS | Vitest 294파일 1,987건 통과, 3건 스킵, TypeScript 오류 0, production build 182/182 |
 | 기본 흐름 | PASS | 기본 흐름 11/11, Studio v1 최초 11/12 실패 후 후보 거절 선행 계약을 반영해 14/14 |
 
