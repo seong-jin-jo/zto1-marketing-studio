@@ -10,7 +10,7 @@
 
 검증: localhost 실제 수락 201, 거절 201, 잘못된 판단 400, 이력 GET 200, 검증 규칙 비활성화
 DELETE 200. 브라우저에 최근 판단, 수락·거절, 표본·기간·범위가 보였고 401·콘솔 오류는 0건이다.
-`npm run test`는 294파일 1,987건 통과·3건 스킵, TypeScript와 production build 182/182,
+최종 `npm run test`는 295파일 1,990건 통과·3건 스킵, TypeScript와 production build 182/182,
 기본 흐름 11/11, Studio v1 14/14다. 카드 색상 정의를 전용 테마 모듈로 분리한 `d5c11dd0` 뒤
 전체 `dashboard/src` design lint도 위반 0이다.
 
