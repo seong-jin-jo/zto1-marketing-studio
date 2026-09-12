@@ -48,12 +48,6 @@ export interface ClaimablePost {
 
 export const DEFAULT_LEASE_MS = 5 * 60 * 1000;
 
-// 공급자 호출이 끝나기 전에 lease 가 만료되면, 만료된 워커가 외부에 실제로 게시해버린 뒤
-// update_channel 만 막히는 상태가 된다(내부는 미발행, 외부는 발행). 재검증 시점에
-// 최소 이만큼 남아 있지 않으면 아예 발행을 시작하지 않게 한다.
-// Codex 교차 리뷰 MAJOR 2. 분산 시스템이라 완전 제거는 불가능하고 창을 좁히는 대책이다.
-export const MIN_LEASE_HEADROOM_MS = 60 * 1000;
-
 /** 이 글에 아직 살아 있는 다른 워커의 lease 가 걸려 있는가. */
 export function isClaimActive(post: ClaimablePost, now: Date = new Date()): boolean {
   const claim = post.claim;
@@ -98,9 +92,7 @@ export type PublishVerdict =
         | "channel-not-pending"
         | "claim-missing"
         | "claim-expired"
-        | "claim-mismatch"
-        | "claim-headroom"
-        | "claim-required";
+        | "claim-mismatch";
       message: string;
     };
 
@@ -111,7 +103,7 @@ export type PublishVerdict =
 export function verifyPublishable(
   post: ClaimablePost | null | undefined,
   channel: ChannelKey,
-  options: { claimToken?: string | null; now?: Date; requireHeadroom?: boolean } = {},
+  options: { claimToken?: string | null; now?: Date } = {},
 ): PublishVerdict {
   const now = options.now ?? new Date();
   if (!post) {
@@ -136,20 +128,8 @@ export function verifyPublishable(
   }
 
   const token = options.claimToken;
-  const claim = post.claim;
-
-  // Codex 교차 리뷰 MAJOR 4 — 토큰 없는 호출이 소유권 검사를 통째로 건너뛰던 구멍.
-  // 살아 있는 claim 이 걸린 글은 그 소유자만 최종 상태를 기록할 수 있다.
-  // (claim 이 아예 없는 레거시 cron 경로는 기존대로 상태 검사만으로 통과시킨다.)
-  if (!token && isClaimActive(post, now)) {
-    return {
-      ok: false,
-      reason: "claim-required",
-      message: "다른 워커가 예약한 작업물입니다. claimToken 이 필요합니다",
-    };
-  }
-
   if (token) {
+    const claim = post.claim;
     if (!claim) {
       return { ok: false, reason: "claim-missing", message: "이 작업물의 발행 예약이 해제됐습니다" };
     }
@@ -158,18 +138,6 @@ export function verifyPublishable(
     }
     if (!isClaimActive(post, now)) {
       return { ok: false, reason: "claim-expired", message: "발행 예약 시간이 만료됐습니다" };
-    }
-    // 발행을 "시작" 할 때만 여유를 요구한다. 이미 끝난 호출의 결과 기록까지 막으면
-    // 외부엔 올라갔는데 내부 기록만 없는 더 나쁜 상태가 된다.
-    if (options.requireHeadroom) {
-      const remaining = new Date(claim.expiresAt).getTime() - now.getTime();
-      if (remaining < MIN_LEASE_HEADROOM_MS) {
-        return {
-          ok: false,
-          reason: "claim-headroom",
-          message: "발행 예약 잔여 시간이 부족합니다. 예약을 새로 받으십시오",
-        };
-      }
     }
   }
   return { ok: true };

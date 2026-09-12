@@ -49,23 +49,12 @@ export function normalizeChannels(post: LoosePost): Record<string, ChannelStatus
           ? "canceled"
           : "pending";
 
-  // Codex 교차 리뷰 MINOR 7 — extensions/threads-queue 의 migratePost 와 한 글자도
-  // 어긋나면 안 된다. 같은 queue.json 을 읽는 두 시스템이 레거시 글의 채널 구성을
-  // 다르게 보면, 대시보드가 threads 만 만들어 취소한 뒤 발행기가 x 채널을 찾지 못한다.
-  // migratePost 는 x 를 skipped, instagram 을 imageUrl 유무로 정한다. 그대로 맞춘다.
-  const hasImage = Boolean(post.imageUrl);
   return {
     threads: {
       status: derived,
       mediaId: (post.threadsMediaId as string | undefined) ?? null,
       publishedAt: (post.publishedAt as string | undefined) ?? null,
       error: status === "failed" ? ((post.error as string | undefined) ?? null) : null,
-    },
-    x: { status: "skipped", tweetId: null, publishedAt: null, error: null },
-    instagram: {
-      status: status === "canceled" ? "canceled" : hasImage ? "pending" : "skipped",
-      publishedAt: null,
-      error: null,
     },
   };
 }
