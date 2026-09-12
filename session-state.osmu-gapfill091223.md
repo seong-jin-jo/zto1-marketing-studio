@@ -1,4 +1,4 @@
-## 2026-09-13 01시 56분 - Instagram Reels 성과 수집 build 완료
+## 2026-09-13 02시 04분 - Instagram Reels 성과 수집 build 완료
 
 ### 무엇을 어디까지 했나
 
@@ -9,6 +9,8 @@
 ### 남은 이슈·블로커
 
 지정 작업 공간에 연결 자격증명과 Reels 발행물이 없어 실제 Instagram provider 성공 응답은 미검증이다. QA 승인과 배포는 하지 않았다. 남은 감사 갭은 TikTok provider 수집기와 게시물별 시계열 snapshot이다.
+
+백그라운드 레지스트리의 `codex-qa-verifier-35190`은 별도 pane `osmu-sweep091301`의 읽기 API 전수 실사다. 현재 Codex 세션 식별자가 레지스트리의 라인 판별에 연결되지 않아 같은 레포 작업으로 잘못 표시됐으며, 이 Reels 라인의 위임이 아니므로 중단하거나 등록 해제하지 않았다.
 
 ### 다음에 칠 명령
 

@@ -356,3 +356,203 @@ describe('발행기 도구 계약 — get_approved/update_channel 이 가드를 
     expect(toolSrc()).toMatch(/"canceled"/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-09-13 Codex 교차 리뷰(review-only)가 짚은 잔여 결함 7건의 경계 테스트.
+// 감사 4건을 닫은 첫 커밋(b9bb9fc9)에 남아 있던 구멍들이다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Codex 교차 리뷰 잔여 결함 — 경계 케이스', () => {
+  it('MAJOR 1: 발행기도 대시보드와 같은 자물쇠(${file}.lock)를 쓴다', async () => {
+    const { withQueueLock } = await import('../../../extensions/threads-queue/src/queue-lock');
+    const target = path.join(tmpDir, 'lock-probe.json');
+    fs.writeFileSync(target, '{}');
+
+    let insideSaw = false;
+    await withQueueLock(target, async () => {
+      // 잠금 규약이 proper-lockfile 과 같아야 두 프로세스가 실제로 다툰다.
+      insideSaw = fs.existsSync(`${target}.lock`);
+    });
+    expect(insideSaw).toBe(true);
+    // 해제되면 자물쇠가 사라진다.
+    expect(fs.existsSync(`${target}.lock`)).toBe(false);
+
+    // 모듈이 있는 것만으로는 아무 것도 못 막는다. 발행기 도구가 실제로 경유해야 한다.
+    const toolSrc = fs.readFileSync(
+      path.resolve(__dirname, '../../../extensions/threads-queue/src/threads-queue-tool.ts'),
+      'utf-8',
+    );
+    expect(toolSrc).toMatch(/withQueueLock\(queuePath/);
+    // 큐 읽기가 잠금 안에서 일어나야 한다(잠금 밖 읽기는 lost update 를 못 막는다).
+    const lockIdx = toolSrc.indexOf('withQueueLock(queuePath');
+    const readIdx = toolSrc.indexOf('await readQueue(queuePath)');
+    expect(lockIdx).toBeGreaterThan(-1);
+    expect(readIdx).toBeGreaterThan(lockIdx);
+  });
+
+  it('MAJOR 1: 잠금을 못 잡으면 조용히 진행하지 않고 실패한다(fail-open 금지)', async () => {
+    const { withQueueLock } = await import('../../../extensions/threads-queue/src/queue-lock');
+    const target = path.join(tmpDir, 'lock-busy.json');
+    fs.writeFileSync(target, '{}');
+    fs.mkdirSync(`${target}.lock`); // 다른 프로세스가 잡고 있는 상황
+
+    await expect(withQueueLock(target, async () => 'never')).rejects.toThrow(/queue lock timeout/);
+    fs.rmdirSync(`${target}.lock`);
+  }, 20000);
+
+  it('MAJOR 1: 죽은 프로세스가 남긴 낡은 자물쇠는 회수한다(큐 영구 정지 방지)', async () => {
+    const { withQueueLock } = await import('../../../extensions/threads-queue/src/queue-lock');
+    const target = path.join(tmpDir, 'lock-stale.json');
+    fs.writeFileSync(target, '{}');
+    fs.mkdirSync(`${target}.lock`);
+    const old = new Date(Date.now() - 60_000);
+    fs.utimesSync(`${target}.lock`, old, old);
+
+    await expect(withQueueLock(target, async () => 'ok')).resolves.toBe('ok');
+  }, 20000);
+
+  it('MAJOR 2: lease 잔여 시간이 부족하면 발행을 시작하지 않는다', () => {
+    const now = new Date('2026-04-02T12:00:00Z');
+    const post: ClaimablePost = { id: 'p', status: 'approved', channels: { threads: { status: 'pending' } } };
+    claimPost(post, { workerId: 'A', token: 'tA', now, leaseMs: 10_000 });
+
+    // 발행 시작 직전 재검증(verify_claim)은 여유를 요구한다.
+    const start = verifyPublishable(post, 'threads', { claimToken: 'tA', now, requireHeadroom: true });
+    expect(start.ok).toBe(false);
+    expect(start.ok === false && start.reason).toBe('claim-headroom');
+
+    // 이미 끝난 호출의 결과 기록까지 막으면 외부만 발행된 더 나쁜 상태가 되므로 통과시킨다.
+    expect(verifyPublishable(post, 'threads', { claimToken: 'tA', now }).ok).toBe(true);
+  });
+
+  it('MAJOR 3: 취소 뒤 도착한 낡은 skipped 가 최상위 상태를 published 로 뒤집지 못한다', async () => {
+    const queue = readQueue();
+    const target = queue.posts.find((p) => p.id === 'post-002') as Record<string, unknown>;
+    (target.channels as Record<string, unknown>).threads = {
+      status: 'published',
+      publishedAt: '2026-04-02T13:00:00Z',
+      mediaId: 'm1',
+    };
+    writeQueue(queue);
+    await cancel('post-002');
+
+    const after = readQueue().posts.find((p) => p.id === 'post-002') as Record<string, unknown>;
+    const channels = after.channels as Record<string, { status: string }>;
+    expect(channels.x.status).toBe('canceled');
+    expect(after.status).toBe('canceled');
+
+    // 발행기 계약: 취소된 글은 어떤 채널도 덮이지 않는다.
+    const verdict = verifyPublishable(after as ClaimablePost, 'x', {});
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok === false && verdict.reason).toBe('post-canceled');
+
+    // 최상위가 아직 살아 있어도 canceled 채널 단독으로 막힌다.
+    const channelOnly = verifyPublishable(
+      { id: 'z', status: 'approved', channels: { x: { status: 'canceled' } } },
+      'x',
+      {},
+    );
+    expect(channelOnly.ok === false && channelOnly.reason).toBe('channel-canceled');
+
+    const toolSrc = fs.readFileSync(
+      path.resolve(__dirname, '../../../extensions/threads-queue/src/threads-queue-tool.ts'),
+      'utf-8',
+    );
+    const updateChannel = toolSrc.slice(toolSrc.indexOf('case "update_channel"'));
+    // skipped 를 포함한 모든 상태 기록이 취소된 채널에서 막힌다.
+    expect(updateChannel).toMatch(/existingChannelStatus === "canceled"/);
+    // 집계도 canceled 를 완료로 세지 않는다.
+    expect(updateChannel).toMatch(/anyCanceled/);
+  });
+
+  it('MAJOR 4: 살아 있는 claim 이 걸린 글은 토큰 없이 최종 상태를 기록할 수 없다', () => {
+    const post: ClaimablePost = { id: 'p', status: 'approved', channels: { threads: { status: 'pending' } } };
+    claimPost(post, { workerId: 'A', token: 'tA' });
+
+    const noToken = verifyPublishable(post, 'threads', {});
+    expect(noToken.ok).toBe(false);
+    expect(noToken.ok === false && noToken.reason).toBe('claim-required');
+
+    // 소유자는 통과한다.
+    expect(verifyPublishable(post, 'threads', { claimToken: 'tA' }).ok).toBe(true);
+  });
+
+  it('MAJOR 4: claim 이 없는 레거시 경로는 기존대로 상태 검사만으로 통과한다', () => {
+    const post: ClaimablePost = { id: 'p', status: 'approved', channels: { threads: { status: 'pending' } } };
+    expect(verifyPublishable(post, 'threads', {}).ok).toBe(true);
+  });
+
+  it('MAJOR 5: drain 은 낡은 스냅샷이 아니라 큐의 현재 상태를 민다', async () => {
+    const pushed: Array<Record<string, unknown>> = [];
+    vi.doMock('@/lib/queue-store', async () => {
+      const actual = await vi.importActual<typeof import('@/lib/queue-store')>('@/lib/queue-store');
+      return {
+        ...actual,
+        mirrorQueuePostDetailed: vi.fn(async (_t: unknown, post: Record<string, unknown>) => {
+          pushed.push(post);
+          return pushed.length === 1 ? { status: 'failed', message: 'db down' } : { status: 'ok' };
+        }),
+      };
+    });
+
+    await cancel('post-002');
+
+    // 그 사이 같은 글이 파일에서 더 최신 상태로 바뀐다.
+    const queue = readQueue();
+    const target = queue.posts.find((p) => p.id === 'post-002') as Record<string, unknown>;
+    target.text = '나중에 고친 본문';
+    writeQueue(queue);
+
+    const { drainQueueMirrorOutbox } = await import('@/lib/queue-mirror-outbox');
+    await drainQueueMirrorOutbox();
+
+    expect(pushed).toHaveLength(2);
+    // 두 번째로 민 것이 스냅샷이 아니라 현재 파일 상태여야 한다(역행 금지).
+    expect(pushed[1].text).toBe('나중에 고친 본문');
+    vi.doUnmock('@/lib/queue-store');
+  });
+
+  it('MINOR 6: outbox 상한 초과분은 조용히 사라지지 않고 폐기 수가 기록된다', async () => {
+    vi.doMock('@/lib/queue-store', async () => {
+      const actual = await vi.importActual<typeof import('@/lib/queue-store')>('@/lib/queue-store');
+      return {
+        ...actual,
+        mirrorQueuePostDetailed: vi.fn(async () => ({ status: 'failed', message: 'db down' })),
+      };
+    });
+    const { readQueueMirrorOutbox } = await import('@/lib/queue-mirror-outbox');
+    const { mutateJson, dataPath } = await import('@/lib/file-io');
+    const many = Array.from({ length: 510 }, (_, i) => ({
+      postId: `bulk-${i}`,
+      tenantId: null,
+      post: { id: `bulk-${i}` },
+      reason: 'db down',
+      attempts: 1,
+      firstFailedAt: '2026-04-02T12:00:00Z',
+      lastFailedAt: '2026-04-02T12:00:00Z',
+    }));
+    await mutateJson(dataPath('queue-mirror-outbox.json'), () => ({ entries: many }), { entries: [] });
+
+    await cancel('post-002');
+
+    const file = readTempJson<{ entries: unknown[]; droppedCount: number }>(tmpDir, 'queue-mirror-outbox.json');
+    expect(file?.entries).toHaveLength(500);
+    expect(file?.droppedCount).toBeGreaterThan(0);
+    expect(readQueueMirrorOutbox()).toHaveLength(500);
+    vi.doUnmock('@/lib/queue-store');
+  });
+
+  it('MINOR 7: 레거시 정규화가 발행기 migratePost 와 같은 채널 구성을 만든다', async () => {
+    const { normalizeChannels } = await import('@/lib/post-publish-state');
+    const withImage = normalizeChannels({ id: 'a', status: 'approved', imageUrl: 'https://x/y.png' });
+    expect(Object.keys(withImage).sort()).toEqual(['instagram', 'threads', 'x']);
+    expect(withImage.threads.status).toBe('pending');
+    expect(withImage.x.status).toBe('skipped');
+    expect(withImage.instagram.status).toBe('pending');
+
+    const noImage = normalizeChannels({ id: 'b', status: 'approved' });
+    expect(noImage.instagram.status).toBe('skipped');
+
+    // draft 는 두 구현 모두 채널을 만들지 않는다.
+    expect(Object.keys(normalizeChannels({ id: 'c', status: 'draft' }))).toHaveLength(0);
+  });
+});

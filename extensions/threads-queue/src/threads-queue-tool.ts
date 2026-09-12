@@ -14,6 +14,7 @@ import {
   type ChannelKey,
   type QueueClaim,
 } from "./queue-claim.js";
+import { withQueueLock } from "./queue-lock.js";
 
 type Engagement = {
   views: number;
@@ -242,6 +243,9 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
     async execute(_toolCallId: string, rawParams: Record<string, unknown>) {
       const action = readStringParam(rawParams, "action", { required: true });
       const queuePath = resolveQueuePath(api);
+      // Codex 교차 리뷰 MAJOR 1 — 대시보드(proper-lockfile)와 같은 자물쇠 아래에서
+      // 읽고 고쳐 쓴다. 잠금 밖에서 읽은 큐를 되쓰면 고객의 취소가 통째로 덮인다.
+      return withQueueLock(queuePath, async () => {
       const queue = await readQueue(queuePath);
 
       switch (action) {
@@ -426,7 +430,7 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
           const channel = readStringParam(rawParams, "channel", { required: true }) as ChannelKey;
           const claimToken = readStringParam(rawParams, "claimToken") ?? null;
           const post = queue.posts.find((p) => p.id === id);
-          const verdict = verifyPublishable(post, channel, { claimToken });
+          const verdict = verifyPublishable(post, channel, { claimToken, requireHeadroom: true });
           return jsonResult(verdict.ok ? { ok: true, id, channel } : { ok: false, id, channel, ...verdict });
         }
 
@@ -447,8 +451,24 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
           if (!post) throw new Error(`Post not found: ${id}`);
 
           // 경합 차단 3단계 — 마지막 관문. 재검증을 건너뛴 워커가 있어도 취소된 글·채널에
-          // published/failed 를 기록하지 못한다. skipped/canceled 기록은 되돌림이 아니라
-          // 정리이므로 통과시킨다.
+          // 어떤 상태도 덮어쓰지 못한다.
+          //
+          // Codex 교차 리뷰 MAJOR 3: 처음엔 published/failed 만 재검증하고 skipped 는
+          // 통과시켰다. 그런데 아래 집계가 skipped 를 "완료" 로 세기 때문에, 취소 직전에
+          // 큐를 가져간 낡은 워커가 canceled 채널에 skipped 를 쓰면 모든 채널이
+          // published/skipped 가 되어 최상위 상태가 canceled → published 로 뒤집혔다.
+          // 고객의 중지 의사와 정반대 상태가 되는 경로라 어떤 상태 기록이든 막는다.
+          const existingChannelStatus = post.channels?.[channel]?.status;
+          if (existingChannelStatus === "canceled" || post.status === "canceled") {
+            return jsonResult({
+              success: false,
+              blocked: true,
+              id,
+              channel,
+              reason: "channel-canceled",
+              message: "고객이 발행을 중지한 작업물이라 상태를 바꿀 수 없습니다",
+            });
+          }
           if (channelStatus === "published" || channelStatus === "failed") {
             const claimToken = readStringParam(rawParams, "claimToken") ?? null;
             const verdict = verifyPublishable(post, channel, { claimToken });
@@ -492,7 +512,10 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
           }
 
           const allChannels = Object.values(post.channels);
-          const allDone = allChannels.every((c) => c.status === "published" || c.status === "skipped");
+          const anyCanceled = allChannels.some((c) => c.status === "canceled");
+          // canceled 채널이 하나라도 있으면 이 글은 "전부 완료" 가 될 수 없다.
+          const allDone =
+            !anyCanceled && allChannels.every((c) => c.status === "published" || c.status === "skipped");
           const anyFailed = allChannels.some((c) => c.status === "failed");
           const anyPending = allChannels.some((c) => c.status === "pending");
 
@@ -568,6 +591,7 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
             `Unknown action: ${action}. Use list, add, update, delete, get_approved, verify_claim, release_claim, update_channel, or cleanup.`,
           );
       }
+      });
     },
   };
 }

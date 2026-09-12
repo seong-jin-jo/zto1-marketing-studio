@@ -29,6 +29,9 @@ export interface QueueMirrorOutboxEntry {
 
 interface OutboxFile {
   entries: QueueMirrorOutboxEntry[];
+  /** 상한을 넘겨 버려진 항목 수. 조용히 사라지면 운영자가 불일치를 영영 모른다. */
+  droppedCount?: number;
+  lastDroppedAt?: string | null;
 }
 
 export function readQueueMirrorOutbox(): QueueMirrorOutboxEntry[] {
@@ -38,8 +41,21 @@ export function readQueueMirrorOutbox(): QueueMirrorOutboxEntry[] {
 async function writeOutbox(fn: (entries: QueueMirrorOutboxEntry[]) => QueueMirrorOutboxEntry[]): Promise<void> {
   await mutateJson<OutboxFile>(
     dataPath(OUTBOX_FILE),
-    (cur) => ({ entries: fn(cur.entries || []).slice(-MAX_ENTRIES) }),
-    { entries: [] },
+    (cur) => {
+      const next = fn(cur.entries || []);
+      // Codex 교차 리뷰 MINOR 6 — 상한 초과분을 조용히 버리면 DB 불일치가 기록 없이 사라진다.
+      // 버리더라도 몇 건을 버렸는지는 남기고 운영 로그로 소리를 낸다.
+      const overflow = Math.max(0, next.length - MAX_ENTRIES);
+      if (overflow > 0) {
+        console.error(`[queue-mirror-outbox] 상한 초과로 ${overflow}건을 폐기한다. DB 미러가 계속 실패하고 있다.`);
+      }
+      return {
+        entries: next.slice(-MAX_ENTRIES),
+        droppedCount: (cur.droppedCount ?? 0) + overflow,
+        lastDroppedAt: overflow > 0 ? new Date().toISOString() : (cur.lastDroppedAt ?? null),
+      };
+    },
+    { entries: [], droppedCount: 0, lastDroppedAt: null },
   );
 }
 
@@ -103,16 +119,25 @@ async function clearQueueMirrorOutboxEntry(postId: string): Promise<void> {
   await writeOutbox((cur) => cur.filter((e) => e.postId !== postId));
 }
 
-/** 밀린 미러를 다시 민다. 성공한 항목만 outbox 에서 빠진다(멱등 upsert라 재시도 안전). */
+/**
+ * 밀린 미러를 다시 민다. 성공한 항목만 outbox 에서 빠진다.
+ *
+ * Codex 교차 리뷰 MAJOR 5: 처음엔 outbox 에 담아둔 payload 를 그대로 다시 upsert 했다.
+ * 그 사이 같은 글에 새 취소나 발행 결과가 반영됐으면 DB 가 과거 상태로 역행한다.
+ * queue.json 이 진실의 원천이므로, 밀 때는 저장된 스냅샷이 아니라 파일의 현재 글을
+ * 다시 읽어서 민다. 스냅샷은 글이 사라진 경우의 최후 수단으로만 쓴다.
+ */
 export async function drainQueueMirrorOutbox(): Promise<{
   total: number;
   converged: number;
   stillPending: number;
 }> {
   const entries = readQueueMirrorOutbox();
+  const live = readJson<{ posts: Array<Record<string, unknown>> }>(dataPath("queue.json")) || { posts: [] };
   const converged: string[] = [];
   for (const entry of entries) {
-    const outcome = await mirrorQueuePostDetailed(entry.tenantId, entry.post);
+    const current = (live.posts || []).find((p) => p.id === entry.postId) as QueueMirrorPost | undefined;
+    const outcome = await mirrorQueuePostDetailed(entry.tenantId, current ?? entry.post);
     if (outcome.status === "ok" || outcome.status === "skipped") converged.push(entry.postId);
   }
   if (converged.length > 0) {
