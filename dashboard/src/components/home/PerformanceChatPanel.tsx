@@ -22,11 +22,34 @@ interface LearnedRule {
   createdAt: string;
 }
 
+interface LearnedRuleDecision {
+  id: string;
+  decision: "accepted" | "rejected";
+  text: string;
+  sourceLabel: string;
+  sampleCount: number;
+  observedFrom: string | null;
+  observedTo: string | null;
+  decidedAt: string;
+}
+
+interface LearnedRulesResponse {
+  rules: LearnedRule[];
+  decisions: LearnedRuleDecision[];
+}
+
 interface ChatTurn {
   id: string;
   from: "me" | "담당";
   text: string;
-  ruleCandidate?: { text: string; sourcePostIds: string[] };
+  ruleCandidate?: {
+    candidateId: string;
+    text: string;
+    sourcePostIds: string[];
+    sampleCount: number;
+    observedFrom: string | null;
+    observedTo: string | null;
+  };
 }
 
 const SAMPLE_THRESHOLD = 5;
@@ -37,6 +60,11 @@ function fmtDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+function fmtPeriod(from: string | null, to: string | null): string {
+  if (!from || !to) return "기간 미수집";
+  return `${fmtDate(from)}부터 ${fmtDate(to)}까지`;
 }
 
 function platformOf(p: PerformancePost): string {
@@ -64,11 +92,12 @@ export function PerformanceChatPanel({
   focus: string;
   expandedByDefault?: boolean;
 }) {
-  const { data: rulesData, mutate: mutateRules } = useSWR<{ rules: LearnedRule[] }>(
+  const { data: rulesData, mutate: mutateRules } = useSWR<LearnedRulesResponse>(
     workspaceId ? `/api/performance/learned-rules?tenant_id=${encodeURIComponent(workspaceId)}` : null,
     fetcher,
   );
   const learnedRules = rulesData?.rules ?? [];
+  const learnedDecisions = rulesData?.decisions ?? [];
 
   const [turns, setTurns] = useState<ChatTurn[]>([
     { id: "intro", from: "담당", text: "성과 해석과 조치를 도와드립니다. 아래 버튼으로 물어보거나 직접 써 주세요." },
@@ -163,25 +192,44 @@ export function PerformanceChatPanel({
       say(`조회 상위 ${top.length}편을 봤지만 뚜렷한 공통점을 못 찾았습니다. 표본이 더 쌓이면 다시 봐 드릴게요.`);
       return;
     }
+    const measuredTimes = measured
+      .map((post) => new Date(post.published_at).getTime())
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
     say(`조회 상위 ${top.length}편(${top.map((p) => `${Number(p.views || 0).toLocaleString()}회`).join(", ")})을 보니: ${candidateText} 이 규칙을 배울까요?`, {
+      candidateId: `candidate_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       text: candidateText,
       sourcePostIds: top.map((p) => p.id),
+      sampleCount: measured.length,
+      observedFrom: measuredTimes.length > 0 ? new Date(measuredTimes[0]).toISOString() : null,
+      observedTo: measuredTimes.length > 0 ? new Date(measuredTimes[measuredTimes.length - 1]).toISOString() : null,
     });
   };
 
-  const learnRule = async (turnId: string, ruleCandidate: NonNullable<ChatTurn["ruleCandidate"]>) => {
+  const decideRule = async (
+    turnId: string,
+    ruleCandidate: NonNullable<ChatTurn["ruleCandidate"]>,
+    decision: "accepted" | "rejected",
+  ) => {
     if (!workspaceId) return;
     setSavingRuleFor(turnId);
     try {
       await apiPost("/api/performance/learned-rules", {
         tenant_id: workspaceId,
+        candidateId: ruleCandidate.candidateId,
+        decision,
         text: ruleCandidate.text,
         sourcePostIds: ruleCandidate.sourcePostIds,
-        sourceLabel: `조회 상위 ${ruleCandidate.sourcePostIds.length}편에서 뽑음 · ${fmtDate(new Date().toISOString())}`,
+        sourceLabel: `조회 ${ruleCandidate.sampleCount}편을 비교해 상위 ${ruleCandidate.sourcePostIds.length}편에서 뽑음`,
+        sampleCount: ruleCandidate.sampleCount,
+        observedFrom: ruleCandidate.observedFrom,
+        observedTo: ruleCandidate.observedTo,
       });
       await mutateRules();
       setTurns((cur) => cur.map((t) => (t.id === turnId ? { ...t, ruleCandidate: undefined } : t)));
-      say("배웠습니다. 다음 생성부터 이 규칙을 참고합니다.");
+      say(decision === "accepted"
+        ? "배웠습니다. 다음 생성부터 이 규칙을 참고합니다."
+        : "배우지 않기로 남겼습니다. 다음 생성에는 쓰지 않습니다.");
     } finally {
       setSavingRuleFor(null);
     }
@@ -232,11 +280,11 @@ export function PerformanceChatPanel({
                     </span>
                     {turn.ruleCandidate && (
                       <div className="mt-stack-tight flex justify-end gap-stack-tight">
-                        <Button size="sm" variant="primary" disabled={savingRuleFor === turn.id} onClick={() => void learnRule(turn.id, turn.ruleCandidate!)}>
+                        <Button size="sm" variant="secondary" disabled={savingRuleFor === turn.id} onClick={() => void decideRule(turn.id, turn.ruleCandidate!, "accepted")}>
                           {savingRuleFor === turn.id ? "배우는 중" : "배우기"}
                         </Button>
-                        <Button size="sm" variant="secondary" onClick={() => setTurns((cur) => cur.map((t) => (t.id === turn.id ? { ...t, ruleCandidate: undefined } : t)))}>
-                          넘어가기
+                        <Button size="sm" variant="secondary" disabled={savingRuleFor === turn.id} onClick={() => void decideRule(turn.id, turn.ruleCandidate!, "rejected")}>
+                          배우지 않기
                         </Button>
                       </div>
                     )}
@@ -279,6 +327,24 @@ export function PerformanceChatPanel({
             </ul>
           )}
         </div>
+
+        {learnedDecisions.length > 0 && (
+          <div className="border-t border-border pt-stack">
+            <p className="text-caption font-semibold text-subtle">최근 학습 판단</p>
+            <ul className="mt-stack-tight space-y-stack-tight">
+              {learnedDecisions.slice(0, 5).map((decision) => (
+                <li key={decision.id} className="rounded-control border border-border bg-surface-2 p-stack-tight text-caption text-muted break-keep">
+                  <span className="block text-body-sm text-text">
+                    {decision.decision === "accepted" ? "반영" : "안 함"}: {decision.text}
+                  </span>
+                  <span className="text-subtle">
+                    표본 {decision.sampleCount}건 · {fmtPeriod(decision.observedFrom, decision.observedTo)} · 작업 공간의 다음 생성
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Stack>
     </aside>
   );
