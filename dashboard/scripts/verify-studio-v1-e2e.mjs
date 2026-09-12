@@ -22,6 +22,18 @@ const record = (name, got, want) => {
   results.push({ name, got, want, ok });
   console.log(`${ok ? "통과" : "실패"}  ${name}  기대 ${want} 실제 ${got}`);
 };
+const rejectAllCandidates = async (generation) => {
+  const statuses = [];
+  for (const candidate of generation.candidates) {
+    const response = await fetch(`${base}/api/studio/v1/generations/${generation.job_id}/rejections`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...auth },
+      body: JSON.stringify({ candidate_id: candidate.candidate_id }),
+    });
+    statuses.push(response.status);
+  }
+  return statuses.every((status) => status === 201);
+};
 
 const noToken = await fetch(`${base}/api/studio/v1/generations`, {
   method: "POST", headers: { "content-type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: "{}",
@@ -57,7 +69,11 @@ const oppositeZoneCreated = await fetch(`${base}/api/studio/v1/generations`, {
   method: "POST", headers: json(), body: JSON.stringify(oppositeZoneBody),
 });
 record("다른 시간대의 별도 작업도 생성된다", oppositeZoneCreated.status, 201);
-const oppositeZoneJobId = (await oppositeZoneCreated.json()).data?.job_id;
+const oppositeZonePayload = (await oppositeZoneCreated.json()).data;
+const oppositeZoneJobId = oppositeZonePayload?.job_id;
+
+record("첫 작업의 후보 세 장을 모두 거절로 남긴다", await rejectAllCandidates(payload), true);
+record("다른 시간대 작업의 후보 세 장도 모두 거절로 남긴다", await rejectAllCandidates(oppositeZonePayload), true);
 
 // 무료 다시 만들기 몫은 작업이나 클라이언트 시간대가 아니라 회원의 UTC 하루 단위다.
 // 반복 실행으로 이미 오늘 몫을 쓴 환경에서는 두 호출이 모두 409일 수 있다. 첫 호출이 201이면
