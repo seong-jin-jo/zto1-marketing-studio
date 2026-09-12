@@ -679,17 +679,17 @@ export async function fetchYouTubeMetrics(
 }
 
 /**
- * Instagram 또는 Facebook 게시물의 공개 지표를 읽어 온다.
+ * Instagram 피드, Reels 또는 Facebook 게시물의 공개 지표를 읽어 온다.
  *
  * 2026-09-09 회장 지적("성과 수집이 Threads 만") 후속. Meta 는 Graph API 의 insights 로
  * 게시물별 수치를 준다. Threads 와 같은 구조라 응답 형태만 맞추면 된다.
  *
- * 지표 이름이 채널마다 다르다. Instagram 은 impressions·likes·comments 이고 Facebook 은
- * post_impressions 다. 하나로 뭉뚱그리면 그 채널에서는 빈 값이 온다.
+ * 지표 이름이 채널마다 다르다. Instagram 피드는 impressions, Reels는 views, Facebook은
+ * post_impressions를 쓴다. 하나로 뭉뚱그리면 해당 미디어 유형에서 빈 값이 온다.
  */
 export async function fetchMetaPostMetrics(
   cred: ChannelCred,
-  platform: "instagram" | "facebook",
+  platform: "instagram" | "instagram_reels" | "facebook",
   postIds: string[],
 ): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number }> }
   | { ok: false; status?: number; error: string }> {
@@ -699,7 +699,9 @@ export async function fetchMetaPostMetrics(
 
   const metricNames = platform === "instagram"
     ? "impressions,likes,comments"
-    : "post_impressions,post_reactions_by_type_total";
+    : platform === "instagram_reels"
+      ? "views,likes,comments"
+      : "post_impressions,post_reactions_by_type_total";
   const metrics: Record<string, { views: number; likes: number; replies: number }> = {};
 
   // Graph API 는 게시물별 insights 를 하나씩 묻는다. 한 번에 묶는 batch 도 있지만 실패
@@ -715,7 +717,7 @@ export async function fetchMetaPostMetrics(
       const row: Record<string, number> = {};
       for (const entry of body.data ?? []) row[entry.name] = entry.values?.[0]?.value ?? 0;
       metrics[id] = {
-        views: row.impressions ?? row.post_impressions ?? 0,
+        views: row.views ?? row.impressions ?? row.post_impressions ?? 0,
         likes: row.likes ?? row.post_reactions_by_type_total ?? 0,
         replies: row.comments ?? 0,
       };

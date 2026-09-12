@@ -16,7 +16,7 @@ vi.mock("@/lib/db", () => ({
     const sql = ((strings: TemplateStringsArray, ...values: unknown[]) => {
       const text = strings.join("?").replace(/\s+/g, " ").trim();
       H.queries.push({ text, values });
-      if (text.includes("platform IN ('instagram', 'instagram_reels', 'reels')")) {
+      if (text.includes("platform IN ('instagram_reels', 'reels')")) {
         return Promise.resolve([{ id: "reel-row-1", external_id: "ig-media-1" }]);
       }
       return Promise.resolve([]);
@@ -66,7 +66,7 @@ describe("POST /api/metrics Instagram Reels 성과 수집 계약", () => {
     expect(body).toEqual(expect.objectContaining({ ok: true, updated: 1, total: 1 }));
     expect(publishMocks.fetchMetaPostMetrics).toHaveBeenCalledWith(
       H.instagramCredential,
-      "instagram",
+      "instagram_reels",
       ["ig-media-1"],
     );
     expect(H.queries.some(({ text }) => text.includes("SET views ="))).toBe(true);

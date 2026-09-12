@@ -181,17 +181,25 @@ export async function POST(request: Request) {
         }
       }
       // ── Instagram 피드·Reels·Facebook 성과 수집 ──────────────────────
-      // Reels 발행 결과도 Instagram Media ID 다. 피드와 같은 Instagram 자격증명과
-      // insights 호출을 쓰되 저장 플랫폼 세 갈래를 함께 읽어 누락을 막는다.
+      // Reels 발행 결과도 Instagram Media ID 다. 피드와 같은 Instagram 자격증명을 쓰지만
+      // 요청 지표가 달라 수집 호출은 분리한다. 저장 이름 두 갈래는 한 대상으로 합친다.
       let metaTotal = 0;
-      for (const [platform, metaCred] of [["instagram", igCred], ["facebook", fbCred]] as const) {
+      for (const [platform, metaCred] of [
+        ["instagram", igCred],
+        ["instagram_reels", igCred],
+        ["facebook", fbCred],
+      ] as const) {
         if (!metaCred) continue;
         const metaRows = platform === "instagram"
           ? await sql<{ id: string; external_id: string }[]>`
               SELECT id, external_id FROM published_posts
-              WHERE tenant_id = ${tenant_id}
-                AND platform IN ('instagram', 'instagram_reels', 'reels')
-                AND external_id IS NOT NULL`
+              WHERE tenant_id = ${tenant_id} AND platform = 'instagram' AND external_id IS NOT NULL`
+          : platform === "instagram_reels"
+            ? await sql<{ id: string; external_id: string }[]>`
+                SELECT id, external_id FROM published_posts
+                WHERE tenant_id = ${tenant_id}
+                  AND platform IN ('instagram_reels', 'reels')
+                  AND external_id IS NOT NULL`
           : await sql<{ id: string; external_id: string }[]>`
               SELECT id, external_id FROM published_posts
               WHERE tenant_id = ${tenant_id} AND platform = 'facebook' AND external_id IS NOT NULL`;
