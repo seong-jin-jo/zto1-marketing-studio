@@ -39,7 +39,7 @@ async function collectRouteFiles(directory) {
 }
 
 const dynamicValues = {
-  batchId: "00000000",
+  batchId: "00000000-0000-4000-8000-000000000000",
   channel: "threads",
   file: "없는-파일.png",
   jobId: "00000000-0000-4000-8000-000000000000",
