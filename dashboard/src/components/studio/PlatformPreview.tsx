@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import {
   PLATFORM_FIELD_CONTRACT,
   validatePlatformPublish,
@@ -299,13 +300,13 @@ const I = {
   more: "M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z",
 };
 
-function IgCarousel({ cards }: { cards: { type: "img" | "text"; v: string }[] }) {
+function IgCarousel({ cards, tenantId }: { cards: { type: "img" | "text"; v: string }[]; tenantId?: string }) {
   const [i, setI] = useState(0);
   const n = cards.length; const cur = cards[i];
   return (
     <div className="relative bg-surface aspect-square">
       {n === 0 ? <div className="w-full h-full grid place-items-center text-subtle text-body-sm">카드 생성 대기</div>
-        : cur.type === "img" ? <img src={cur.v} alt="" className="w-full h-full object-cover" />
+        : cur.type === "img" ? <DeliveredMedia type="image" src={cur.v} tenantId={tenantId} testId="preview-media-instagram" className="w-full h-full object-cover" />
         : <div className="w-full h-full grid place-items-center p-region bg-accent-soft"><p className="text-accent text-subheading font-bold text-center leading-snug">{cur.v}</p></div>}
       {n > 1 && <>
         <button type="button" aria-label="이전 카드" onClick={(e) => { e.stopPropagation(); setI((x) => (x - 1 + n) % n); }} className="absolute left-stack-tight top-1/2 min-h-control-touch min-w-control-touch -translate-y-1/2 rounded-pill bg-text text-bg">‹</button>
@@ -329,7 +330,10 @@ function VideoRail({ kind }: { kind: "shorts" | "reels" | "tiktok" }) {
   );
 }
 
-export function PlatformPreview({ platform, text, media, headerRight, editor }: { platform: PreviewPlatform; text: PreviewText; media: PreviewMedia; headerRight?: React.ReactNode; editor?: PreviewInlineEditor }) {
+// tenantId: 만료된 배달 주소를 되살릴 때 어느 작업 공간으로 다시 서명할지 알려 준다. 운영자
+// 토큰으로 들어온 요청은 본문의 tenant_id 가 유일한 단서라 이것이 없으면 401 로 닫힌다
+// (tenant-auth.ts effectiveTenantId). 2026-09-13 Codex 교차리뷰 지적.
+export function PlatformPreview({ platform, text, media, headerRight, editor, tenantId }: { platform: PreviewPlatform; text: PreviewText; media: PreviewMedia; headerRight?: React.ReactNode; editor?: PreviewInlineEditor; tenantId?: string }) {
   const handle = (editor?.account.username || editor?.account.displayName || "연결 계정 없음").replace(/^@/, "");
   const img = media.imgUrl; const vid = media.vidUrl;
   const label = PREVIEW_PLATFORMS.find((x) => x.key === platform)?.label || platform;
@@ -364,7 +368,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
               말하게 된다. 계약대로 주제 태그를 놓는다.
             */}
             <EditablePreviewBody value={editor?.topicTag ?? ""} onChange={editor?.onTopicTagChange} testId="preview-topictag-threads" label="threads 주제 태그" locked={editor?.account.status === "loading"} placeholder="주제 태그" className="text-body-sm text-accent whitespace-pre-wrap mt-stack-tight" />
-            {img && <img src={img} alt="" className="mt-stack-tight rounded-surface border border-border w-full max-h-80 object-cover" />}
+            {img && <DeliveredMedia type="image" src={img} tenantId={tenantId} testId="preview-media-threads" className="mt-stack-tight rounded-surface border border-border w-full max-h-80 object-cover" />}
             <div className="flex gap-stack-section mt-stack">{P(I.heart)}{P(I.chat)}{P(I.repost)}{P(I.send)}</div>
 {/*
               2026-09-09 회장 지적("실제 플랫폼별 미리보기 화면 그대로인건 맞아?") 후속.
@@ -398,7 +402,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
             <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="min-w-0 truncate text-subtle ml-micro">@{handle} · 지금</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
             <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-x" label="x 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.4] mt-micro" />
         <EditablePreviewBody value={editor?.hashtags ?? ""} onChange={editor?.onHashtagsChange} testId="preview-tags-x" label="x 해시태그" locked={editor?.account.status === "loading"} placeholder="#해시태그" className="text-body-sm text-accent whitespace-pre-wrap mt-stack-tight" />
-            {img && <img src={img} alt="" className="mt-stack-tight rounded-surface border border-border w-full max-h-80 object-cover" />}
+            {img && <DeliveredMedia type="image" src={img} tenantId={tenantId} testId="preview-media-x" className="mt-stack-tight rounded-surface border border-border w-full max-h-80 object-cover" />}
             {/* 숫자는 아직 없다. 안 올린 글에 답글 24개를 적으면 그것은 거짓이다. */}
             <div className="flex justify-between mt-stack text-subtle text-body-sm" data-preview-engagement="x">
               <span className="flex items-center gap-stack-tight">{P(I.chat)}</span><span className="flex items-center gap-stack-tight">{P(I.repost)}</span>
@@ -415,7 +419,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
         <div className="flex items-center gap-stack-tight px-stack pt-stack"><Av /><div className="min-w-0"><div className="truncate font-semibold text-body leading-tight">{handle}</div><div className="text-subtle text-caption">방금 · 전체 공개</div></div><div className="ml-auto text-subtle">{P(I.more)}</div></div>
         <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-facebook" label="facebook 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="px-stack py-stack-tight text-body whitespace-pre-wrap leading-snug" />
         <EditablePreviewBody value={editor?.hashtags ?? ""} onChange={editor?.onHashtagsChange} testId="preview-tags-facebook" label="facebook 해시태그" locked={editor?.account.status === "loading"} placeholder="#해시태그" className="px-stack pb-stack-tight text-body-sm text-accent whitespace-pre-wrap" />
-        {img && <img src={img} alt="" className="w-full max-h-80 object-cover" />}
+        {img && <DeliveredMedia type="image" src={img} tenantId={tenantId} testId="preview-media-facebook" className="w-full max-h-80 object-cover" />}
         <div className="flex items-center justify-between px-stack py-stack-tight text-subtle text-body-sm border-b border-border" data-preview-engagement="facebook"><span>올리면 여기에 반응이 쌓입니다</span></div>
         <div className="flex text-subtle text-body-sm font-medium">{["좋아요", "댓글", "공유"].map((l) => <div key={l} className="flex-1 text-center py-stack-tight hover:bg-surface-2">{l}</div>)}</div>
       </div>
@@ -428,7 +432,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
       <Frame p="instagram" label="Instagram" headerRight={headerRight} characterCount={characterCount}>
         <div className="bg-surface text-text rounded-control border border-border overflow-hidden">
           <div className="flex items-center gap-stack px-stack py-stack"><Av s={32} /><b className="min-w-0 truncate text-body-sm">{handle}</b><span className="shrink-0 text-subtle text-caption">· 팔로우</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
-          <IgCarousel cards={cards} />
+          <IgCarousel cards={cards} tenantId={tenantId} />
           <div className="flex items-center gap-pad-inset px-stack pt-stack">{P(I.heart)}{P(I.chat)}{P(I.send)}<div className="ml-auto">{P(I.bookmark)}</div></div>
           <div className="px-stack pt-stack-tight text-body-sm text-subtle" data-preview-engagement="instagram">올리면 여기에 좋아요가 쌓입니다</div>
           <div className="px-stack pt-micro pb-stack text-body-sm"><b className="break-all">{handle}</b> <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-instagram" label="instagram 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-muted inline-block align-top" />
@@ -444,8 +448,8 @@ export function PlatformPreview({ platform, text, media, headerRight, editor }: 
   return (
     <Frame p={platform} label={label} headerRight={headerRight}>
       <div className="relative rounded-surface overflow-hidden bg-surface-2 aspect-[9/16] border border-border">
-        {vid ? <video key={vid} src={vid} controls playsInline preload="metadata" className="w-full h-full object-cover" />
-          : img ? <img src={img} alt="" className="w-full h-full object-cover" />
+        {vid ? <DeliveredMedia key={vid} type="video" src={vid} tenantId={tenantId} testId={`preview-media-${k}`} className="w-full h-full object-cover" />
+          : img ? <DeliveredMedia type="image" src={img} tenantId={tenantId} testId={`preview-media-${k}`} className="w-full h-full object-cover" />
           : <div className="w-full h-full grid place-items-center text-subtle text-caption">영상 생성 대기</div>}
         {!vid && <>
           {k === "shorts" && <div className="absolute top-3 left-3 flex items-center gap-micro text-text font-bold text-body-sm">▶ Shorts</div>}

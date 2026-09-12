@@ -1924,6 +1924,7 @@ export default function StudioPage() {
                       platform={platform}
                       text={text || {}}
                       media={media}
+                      tenantId={activeWorkspace?.id}
                       editor={previewEditor(platform)}
                       headerRight={
                         <div className="flex flex-wrap items-center justify-end gap-stack-tight">
