@@ -13,6 +13,7 @@ handoff basis: 회장 요청 원문과 tmux `osmu-sweep091301:0.0`
 - 전수 뒤 공유 작업 트리에서 바뀐 GET 3개를 현재 소스로 재호출했다. Higgsfield 거래, 성과 학습 규칙, Studio 학습 정보는 모두 HTTP 200이었다.
 - 새 코드 결함이 없어 제품 코드는 수정하지 않았다.
 - 보고서와 원본 증거, qa-tracker, 구현현황, wiki handoff를 `823bc295`에 커밋했다. 최종 API 소스 해시 정정은 `b425c544`에 커밋했다.
+- 종료 시 잡힌 `codex-code-builder-99277`은 별도 `osmu-gapfill091303` pane의 실행 중 위임임을 PID·프롬프트·로그로 확인했다. 위임을 삭제하지 않고 전역 런타임 레지스트리의 잘못된 repo 트랙을 실제 소유 트랙으로 교정했다. 현재 API sweep 트랙의 실행 중 위임은 0개다.
 - 상세 보고서: `docs/qa/osmu-api-read-sweep-v5-gpt-codex-20260913-0248.md`.
 - 원본 증거: `logs/diff/osmu-api-read-sweep-20260913.json`.
 
