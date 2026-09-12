@@ -2,7 +2,7 @@
 
 회장 요청 원문을 handoff basis로 사용했다. 대상은 `8652fb5b29fecad7aa688b99ad1c2bab534d2fc4..39d32c58510565df52f330d01c0ac0d96cb0256d` 47커밋, 185파일로 고정했다. `openclaw-auto:0.0`, `openclaw-auto:0.2`는 동시 작업 확인에, `studio-auth-runtime:0.0`은 localhost:3456 실행 상태 확인에만 사용했다. 공유 작업 트리의 타 세션 변경은 건드리지 않았다.
 
-코드는 수정하지 않았다. 리뷰 결과는 MAJOR 22건, MINOR 4건, `REVIEW_VERDICT: BLOCK`이다. 실제 Compose가 빌드하는 queue 복제본에 claim 수리가 없고, 발행 중지의 잠금과 공급자 호출 결합이 불완전하며, 새 예약 취소 경로는 고객 proxy allowlist에서 빠졌다. 부분 수집과 취소의 부분 실패가 성공으로 보이고 공급자 batch 한도 밖 성과가 영구 실패로 오분류된다. 무료 글자 카드와 image-purpose 토큰은 편집, 발행, 만료 복구가 단절됐다. 돈 경계 검증 스크립트 3개는 fixture 변경으로 요청 전에 깨지고, Higgsfield 거래 파서 수리는 운영 route에 배선되지 않았다. 승인 v63의 학습 화면과 문구 계약도 이탈했다. 상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-13.md`다.
+코드는 수정하지 않았다. 리뷰 결과는 MAJOR 23건, MINOR 5건, `REVIEW_VERDICT: BLOCK`이다. 실제 Compose가 빌드하는 queue 복제본에 claim 수리가 없고, 발행 중지의 잠금과 공급자 호출 결합이 불완전하며, 새 예약 취소 경로는 고객 proxy allowlist에서 빠졌다. 부분 수집과 취소의 부분 실패가 성공으로 보이고 공급자 batch 한도 밖 성과가 영구 실패로 오분류된다. 무료 글자 카드와 image-purpose 토큰은 편집, 발행, 만료 복구가 단절됐다. 돈 경계 검증 스크립트 3개는 fixture 변경으로 요청 전에 깨지고, Higgsfield 거래 파서 수리는 운영 route에 배선되지 않았다. 승인 v63의 학습 화면과 문구 계약도 이탈했다. 상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-13.md`다.
 
 현재 공유 작업 트리에서 localhost health, metrics, learned-rules, queue는 HTTP 200이었다. Vitest 311파일과 2,077건, TypeScript, 기본 흐름 11/11, Studio v1 14/14가 통과했다. 이 증거는 후속 미커밋 수정이 섞인 현재 트리 기준이며 고정 커밋의 결함 해소 증거가 아니다. 배포는 미검증이고 pipeline 상태는 바꾸지 않았다. 다음 소유자는 build 워커다. 리뷰 문서의 MAJOR를 수정한 새 고정 커밋을 만든 뒤 QA가 실제 Compose 이미지와 부분 실패 및 경합 재현을 다시 관찰해야 한다.
 

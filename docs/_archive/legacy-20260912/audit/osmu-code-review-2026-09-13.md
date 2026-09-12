@@ -2,7 +2,7 @@
 
 STAMP | line: osmu | 생성: 2026-09-13 08:29 KST | model: gpt-codex/gpt-5 | agent: code-reviewer | skill: review | 근거: 승인 프로토타입 v63, DESIGN.md, 회장 확정 요구 대장, 사업 좌표, 고정 커밋 diff, localhost 실측, AWS·PostgreSQL·OWASP 공식 문서 | 고민: 초록 테스트가 실제 런타임과 실패 계약을 검증하는지 역방향으로 확인했다.
 
-한 줄 결론: 최근 24시간 47개 커밋에는 운영 복제본 누락, 발행 취소 경합, 고객 예약 취소 차단, 성과 오분류, 자산 전달 단절, 돈 검증기 단절, 승인 시안 이탈을 포함한 MAJOR 22건이 있어 머지를 차단한다.
+한 줄 결론: 최근 24시간 47개 커밋에는 운영 복제본 누락, 발행 취소 경합, 고객 예약 취소 차단, 성과 오분류, 자산 전달 단절, 돈 검증기 단절, 승인 시안 이탈을 포함한 MAJOR 23건이 있어 머지를 차단한다.
 
 ## 리뷰 범위와 증거
 
@@ -59,6 +59,8 @@ STAMP | line: osmu | 생성: 2026-09-13 08:29 KST | model: gpt-codex/gpt-5 | age
 
 22. [승인 시안 이탈] `dashboard/src/components/home/PerformanceChatPanel.tsx:316` — 승인된 선택 문구 `그렇게 해`, `아니`를 `배우기`, `배우지 않기`로 임의 변경했다 / 프로토타입 `v63:8115-8116`의 버튼 원문과 확정 요구 대장의 사족 문구 금지 계약에 어긋난다 / 승인 원문으로 복원하고 두 행동의 같은 위계는 유지하라. 재현: 성과실 학습 후보의 두 버튼을 v63 원문과 대조하면 불일치한다.
 
+23. [회귀 위험] `extensions/threads-queue/src/queue-claim.ts:100` — 공급자 직전 검증이 읽기만 하므로 검증 성공과 외부 호출 사이에 취소가 끼어들 수 있다. 취소 API는 200을 주지만 워커는 이미 받은 허가로 게시하고, 사후 상태 기록만 canceled라 막혀 외부 게시와 비용까지 로컬에서 숨는다 / `dashboard/src/app/api/queue/[postId]/cancel/route.ts:33-34`의 재검증으로 취소 뒤 게시를 막는다는 계약과 어긋난다 / claim 소유자의 pending에서 publishing 전이를 같은 원자 경계에서 수행하고, publishing 이후 취소는 성공이 아닌 충돌로 반환하며 공급자 idempotency key와 결과 복구 상태를 남겨라. 재현: A의 verify 성공 직후 B의 취소를 완료시키고 A의 provider 호출을 재개하면 취소 200 뒤에도 외부 게시가 실행된다.
+
 ## MINOR
 
 1. [토큰 위반] `dashboard/src/components/home/LearningDecisionsDialog.tsx:79` — 일반 학습 이력 스크림에 플레이어 전용 `bg-player-surface/70` 토큰을 썼다 / `DESIGN.md:115`의 player 토큰은 재생기 전용이라는 계약과 어긋난다 / 덮는 층을 제거하되 화면이 남으면 일반 surface semantic token을 써라. 재현: 클래스와 DESIGN 토큰 정의를 대조한다.
@@ -69,6 +71,8 @@ STAMP | line: osmu | 생성: 2026-09-13 08:29 KST | model: gpt-codex/gpt-5 | age
 
 4. [회귀 위험] `dashboard/src/components/studio/PlatformPreview.tsx:451` — DeliveredMedia 교체 때 기존 영상 `preload="metadata"`를 전달하지 않아 브라우저 기본 정책에 맡겼다 / 세 플랫폼 미리보기가 동시에 뜨는 화면의 불필요한 대용량 전송 방지 기준과 어긋난다 / `preload="metadata"` 또는 의도한 `none`을 명시하고 DOM 속성과 전송량 회귀 테스트를 둬라. 재현: Shorts, Reels, TikTok 미리보기를 함께 렌더하고 세 video의 preload 속성과 네트워크 전송량을 본다.
 
+5. [토큰 위반] `dashboard/src/components/home/LearningDecisionsDialog.tsx:85` — `max-h-[90vh]`를 DESIGN 의미 토큰 없이 직접 박았다 / `DESIGN.md:882`의 v37 토큰만 사용하고 신규 크기 단을 금지한다는 계약과 어긋난다 / 승인된 레이아웃 크기 토큰을 쓰거나 필요한 크기를 DESIGN에 먼저 정의하라. 재현: 클래스의 arbitrary value와 DESIGN 토큰 목록을 대조한다.
+
 ## 셀프심문
 
 질문: 내가 PASS를 준다면, 회장이 dev에서 직접 써보고 발견할 가장 그럴듯한 문제는 무엇인가?
@@ -78,8 +82,8 @@ STAMP | line: osmu | 생성: 2026-09-13 08:29 KST | model: gpt-codex/gpt-5 | age
 ## 4축 판정
 
 - 승인 시안 이탈: 지적 3건
-- 회귀 위험: 지적 22건. MAJOR 19건, MINOR 3건
-- 토큰 위반: 지적 1건
+- 회귀 위험: 지적 23건. MAJOR 20건, MINOR 3건
+- 토큰 위반: 지적 2건
 - 무기록 삭제: 문제없음. 고정 범위의 삭제 파일은 0개였고 UI 부품 삭제 diff도 없었다.
 
 REVIEW_VERDICT: BLOCK(MAJOR 있음)
