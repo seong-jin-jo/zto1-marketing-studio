@@ -3,6 +3,12 @@
 current_stage: qa
 status: in-progress (승인 아님)
 
+2026-09-13 06:22 KST 재검증 결과: 현재 localhost 소스는 health HTTP 200·DB up, 기본 흐름 11/11,
+네 방 렌더 4/4, 390 라이트·다크와 768·1024·1440의 20화면, 성과실→생성실 복귀 5회,
+Vitest 311파일·2,077건, TypeScript, build 182/182, seed와 디자인 lint가 통과했다. v63 대비
+공통 셸·열·요소 순서가 불일치하고 과제 v63과 승인 핀 v68이 충돌하므로 디자인 정합과 제품
+전체 QA는 NG다. 증거는 `docs/qa/osmu-four-room-basic-flow-v2-gpt-codex.md`다.
+
 검증 범위: 생성실에서 성과실까지 네 방 기본 흐름, 백엔드 열한 단계, 390·768·1024·1440 폭,
 승인 프로토타입 정합, 전체 회귀. 결과와 증거는 `docs/qa/qa-tracker.md`에 기록한다.
 

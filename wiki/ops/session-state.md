@@ -1,3 +1,11 @@
+## 2026-09-13 06시 22분 - 네 방 현재 소스 기능 PASS, 디자인 정합 NG
+
+회장 요청 원문을 handoff basis로 사용했다. `studio-auth-runtime:0.0`은 localhost:3456 실행 상태 확인에만 사용했다. canonical main repo의 `pipeline-state.osmu.md`는 이미 `current_stage: qa`였고 승인·배포 상태는 바꾸지 않았다.
+
+현재 공유 소스를 다시 검증해 health HTTP 200·DB up, 기본 API 흐름 11/11, 네 방 렌더 4/4, 390 라이트·다크와 768·1024·1440의 20화면, 성과실→생성실 복귀 5회를 통과했다. 가로 넘침·가린 모달·이동 차단·다음 행동 누락·브라우저 401·콘솔 오류는 0건이다. 전체 Vitest 311파일·2,077건, TypeScript, 임시 복사본 production build 182/182, seed, 디자인 lint도 통과했다. Studio v1은 첫 실행의 공급자 JSON 파싱 실패 뒤 즉시 전체 재실행 14/14가 통과해 비결정성 우려를 유지한다.
+
+제품 코드는 수정하지 않았다. v63과 실제 화면의 공통 셸·열·요소 순서·담당 패널이 달라 디자인 정합은 NG이며, 과제의 v63과 pipeline 승인 핀 v68도 충돌한다. 제품 전체 QA와 배포는 NG다. 상세 증거는 `docs/qa/osmu-four-room-basic-flow-v2-gpt-codex.md`, 원본은 `logs/diff/osmu-four-room-flow-20260913-qa-rerun/`이다. 다음 소유자는 product-designer와 컨트롤러다. 디자인 기준 핀 하나를 확정해 구현을 맞춘 뒤 같은 4폭 매트릭스를 다시 실행해야 한다.
+
 ## 2026-09-13 06시 00분 - API 읽기 전수 재실사 v6 완료, 제품 전체 QA는 NG
 
 회장 요청 원문을 handoff basis로 사용했다. `studio-auth-runtime:0.0`은 localhost:3456 실행 상태와
