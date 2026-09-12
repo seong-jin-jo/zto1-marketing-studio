@@ -1,3 +1,15 @@
+## 2026-09-13 02시 48분 - API 읽기 경로 전수 재실사 완료, 전체 QA는 NG
+
+회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 `/Users/sj/sj_code_master/zto1-marketing-studio`이며 `pipeline-state.osmu.md`는 이미 `current_stage: qa`여서 단계 변경은 하지 않았다. tmux의 `studio-auth-runtime:0.0`을 localhost:3456 실행 근거로 확인했다.
+
+GET을 export하는 API 105개와 명시적 HEAD 1개를 실호출했다. 결과는 정상 92, 의도된 거절 13, 원인불명 500과 요청 실패 0이다. 새 코드 결함이 없어 제품 코드는 수정하지 않았다. 전수 뒤 공유 작업 트리에서 API GET 3개가 바뀐 것을 감지해 Higgsfield 거래, 성과 학습 규칙, Studio 학습 정보를 현재 소스로 다시 호출했고 모두 HTTP 200이었다.
+
+이전 파생 조회 500과 migration manifest 누락의 집중 회귀 30건, 전체 Vitest 302파일 2,033건과 3건 스킵, TypeScript, production build 182/182, 멱등 seed, health 200과 DB up, 기본 흐름 11/11, Studio v1 최종 14/14, 디자인 lint를 확인했다. Studio 무료 재생성 POST는 한 번 예상 밖 200이었지만 즉시 수동 재호출과 재실행에서는 계약상 409였으며 비재현 관찰로 남겼다.
+
+보고서는 `docs/qa/osmu-api-read-sweep-v5-gpt-codex-20260913-0248.md`, 원본은 `logs/diff/osmu-api-read-sweep-20260913.json`이다. API 읽기 범위는 PASS지만 승인 디자인 v63과 pipeline 핀 v68 충돌 및 기존 정합 NG, 외부 OAuth·실발행·운영 배포 미검증으로 제품 전체 QA와 배포는 NG다. 다음 소유자는 product-designer와 컨트롤러다. 승인 핀을 하나로 확정하고 공통 셸을 정합시킨 뒤 QA가 화면 3폭과 외부 실발행을 다시 검증해야 한다.
+
+상위 `verify-agent-quality.sh`는 운영 또는 스테이징 접촉 증거 0건으로 반려했다. localhost API 범위만 PASS이며 운영 QA PASS로 확장하지 않는다.
+
 ## 2026-09-12 22시 49분 - 네 방 기본 흐름 로컬 QA 완료, 전체 QA는 NG
 
 회장 요청 원문을 handoff basis로 사용했고 현재 tmux pane `%479`를 확인했다. canonical main repo는
