@@ -10,10 +10,10 @@ Instagram Reels와 TikTok이었다. 기본 흐름의 발행 다음 단계에 가
 | 계약 | 현재 판정 | 증거 |
 |---|---|---|
 | Reels 발행물 조회 | 테스트됨 | `instagram_reels`, `reels` 저장 이름을 Instagram 피드와 함께 조회 |
-| provider 연결 | 테스트됨 | Instagram 자격증명과 기존 `fetchMetaPostMetrics`를 재사용해 Media ID별 수치 갱신 |
+| provider 연결 | 테스트됨 | Instagram 자격증명을 재사용하고 Reels에는 `views,likes,comments`를 요청해 Media ID별 수치 갱신 |
 | 지원 범위 정합 | 관찰됨 | localhost GET 200, `collectionSupported:true`, `collector:instagram_media_insights`, 미발행 사유 `NO_PUBLISHED_POST` |
 | 자격증명 거절 | 관찰됨 | 지정 작업 공간의 localhost POST 400, 연결 채널 없음 안내, 외부 조회와 DB 변경 없음 |
-| 기본 흐름 회귀 | 테스트됨 | 전체 Vitest 301파일 2,021건 통과, 3건 스킵. 기본 흐름 11/11, Studio v1 14/14, TypeScript 오류 0, production build 182/182 |
+| 기본 흐름 회귀 | 테스트됨 | 전체 Vitest 302파일 2,023건 통과, 3건 스킵. 기본 흐름 11/11, Studio v1 14/14, TypeScript 오류 0, production build 182/182 |
 | 실제 Instagram 수치 회수 | 미검증 | 지정 작업 공간에 연결 자격증명과 Reels 발행물이 없어 provider 성공 응답은 관찰하지 못함 |
 
 이제 Reels는 수집 미지원으로 표시되지 않는다. 남은 구조 갭은 TikTok provider 수집기와 게시물별
