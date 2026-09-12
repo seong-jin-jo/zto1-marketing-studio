@@ -15,9 +15,10 @@ describe("X 성과 수집", () => {
     expect(isMetricsCollected("threads")).toBe(true);
     // 아직 안 만든 채널을 수집한다고 말하면 화면이 거짓말한다.
     // youtube·shorts 는 2026-09-10 에 수집을 만들어 이 목록에서 뺐다.
-    for (const platform of ["tiktok", "reels"]) {
+    for (const platform of ["tiktok"]) {
       expect(isMetricsCollected(platform), `${platform}`).toBe(false);
     }
+    expect(isMetricsCollected("reels")).toBe(true);
   });
 
   it("쿼리까지 서명한다", () => {

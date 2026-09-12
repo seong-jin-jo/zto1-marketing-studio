@@ -29,9 +29,11 @@ describe("플랫폼별 성과 수집 범위 계약", () => {
       missingReason: expect.objectContaining({ code: "PARTIAL_COLLECTION" }),
     }));
     expect(coverage.platforms.find((item) => item.platform === "reels")).toEqual(expect.objectContaining({
-      collectionSupported: false,
+      collectionSupported: true,
+      collector: "instagram_media_insights",
+      metrics: ["views", "likes", "replies"],
       publishedCount: 1,
-      missingReason: expect.objectContaining({ code: "COLLECTOR_NOT_IMPLEMENTED" }),
+      missingReason: expect.objectContaining({ code: "NOT_COLLECTED_YET" }),
     }));
   });
 

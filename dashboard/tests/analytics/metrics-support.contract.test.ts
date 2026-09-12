@@ -21,7 +21,9 @@ describe("성과 수집 지원 여부를 화면이 정직하게 말한다", () =
     expect(isMetricsCollected("facebook")).toBe(true);
     // 2026-09-10: youtube·shorts 는 수집을 만들었으므로 여기서 뺀다. 만들었는데도 "미지원"
     // 이라고 말하면 그것도 거짓말이다.
-    for (const platform of ["tiktok", "reels", null, ""]) {
+    expect(isMetricsCollected("reels")).toBe(true);
+    expect(isMetricsCollected("instagram_reels")).toBe(true);
+    for (const platform of ["tiktok", null, ""]) {
       expect(isMetricsCollected(platform), `${platform} 를 수집한다고 말하면 안 된다`).toBe(false);
     }
   });
@@ -36,6 +38,7 @@ describe("성과 수집 지원 여부를 화면이 정직하게 말한다", () =
     expect(emptyMetricLabel("tiktok", { code: "whatever" })).toBe("측정 미지원");
     // 수집을 만든 채널은 빈 값이 "미수집"(기다리면 채워짐)이다.
     expect(emptyMetricLabel("youtube", null)).toBe("미수집");
+    expect(emptyMetricLabel("instagram_reels", null)).toBe("미수집");
     // X 는 수집을 만들었으므로 Threads 와 같은 규칙을 탄다.
     expect(emptyMetricLabel("x", null)).toBe("미수집");
     expect(emptyMetricLabel("x", { code: "post_not_in_account" })).toBe("측정 불가");

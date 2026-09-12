@@ -24,6 +24,7 @@ interface MetricsCollectorDefinition {
 }
 
 const THREADS_METRICS = ["views", "likes", "replies", "reposts"] as const;
+const ENGAGEMENT_METRICS = ["views", "likes", "replies"] as const;
 
 const DEFINITIONS: Record<PublishStatusTarget, MetricsCollectorDefinition> = {
   threads: {
@@ -37,42 +38,42 @@ const DEFINITIONS: Record<PublishStatusTarget, MetricsCollectorDefinition> = {
   x: {
     platform: "x",
     storagePlatforms: ["x"],
-    collectionSupported: false,
-    collector: null,
-    metrics: [],
-    unsupportedReason: "현재 X 연결은 발행만 지원하며 게시물 성과 수집기는 연결되지 않았습니다.",
+    collectionSupported: true,
+    collector: "x_public_metrics",
+    metrics: THREADS_METRICS,
+    unsupportedReason: null,
   },
   instagram: {
     platform: "instagram",
     storagePlatforms: ["instagram"],
-    collectionSupported: false,
-    collector: null,
-    metrics: [],
-    unsupportedReason: "현재 Instagram 피드 게시물 성과 수집기는 연결되지 않았습니다.",
+    collectionSupported: true,
+    collector: "instagram_media_insights",
+    metrics: ENGAGEMENT_METRICS,
+    unsupportedReason: null,
   },
   facebook: {
     platform: "facebook",
     storagePlatforms: ["facebook"],
-    collectionSupported: false,
-    collector: null,
-    metrics: [],
-    unsupportedReason: "현재 Facebook 게시물 성과 수집기는 연결되지 않았습니다.",
+    collectionSupported: true,
+    collector: "facebook_post_insights",
+    metrics: ENGAGEMENT_METRICS,
+    unsupportedReason: null,
   },
   shorts: {
     platform: "shorts",
     storagePlatforms: ["youtube", "shorts"],
-    collectionSupported: false,
-    collector: null,
-    metrics: [],
-    unsupportedReason: "현재 YouTube Analytics 수집기는 연결되지 않았습니다.",
+    collectionSupported: true,
+    collector: "youtube_video_statistics",
+    metrics: ENGAGEMENT_METRICS,
+    unsupportedReason: null,
   },
   reels: {
     platform: "reels",
     storagePlatforms: ["instagram_reels", "reels"],
-    collectionSupported: false,
-    collector: null,
-    metrics: [],
-    unsupportedReason: "현재 Instagram Reels 성과 수집기는 연결되지 않았습니다.",
+    collectionSupported: true,
+    collector: "instagram_media_insights",
+    metrics: ENGAGEMENT_METRICS,
+    unsupportedReason: null,
   },
   tiktok: {
     platform: "tiktok",

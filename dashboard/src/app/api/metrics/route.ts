@@ -54,7 +54,7 @@ export async function GET(request: Request) {
   }
 }
 
-// POST /api/metrics — 성과 수집 { tenant_id } (Threads insights). 토큰 필요.
+// POST /api/metrics — 성과 수집 { tenant_id }. 연결된 채널 자격증명 필요.
 export async function POST(request: Request) {
   const __b = await request.json();
   const tenant_id = await effectiveTenantId(request, __b.tenant_id);
@@ -180,15 +180,21 @@ export async function POST(request: Request) {
           }
         }
       }
-      // ── Instagram·Facebook 성과 수집 ──────────────────────────────────
-      // 두 채널은 Graph API 의 insights 로 게시물별 수치를 준다. 지표 이름이 채널마다
-      // 달라 각자 넘긴다. 하나로 뭉뚱그리면 그 채널에서는 빈 값이 온다.
+      // ── Instagram 피드·Reels·Facebook 성과 수집 ──────────────────────
+      // Reels 발행 결과도 Instagram Media ID 다. 피드와 같은 Instagram 자격증명과
+      // insights 호출을 쓰되 저장 플랫폼 세 갈래를 함께 읽어 누락을 막는다.
       let metaTotal = 0;
       for (const [platform, metaCred] of [["instagram", igCred], ["facebook", fbCred]] as const) {
         if (!metaCred) continue;
-        const metaRows = await sql<{ id: string; external_id: string }[]>`
-          SELECT id, external_id FROM published_posts
-          WHERE tenant_id = ${tenant_id} AND platform = ${platform} AND external_id IS NOT NULL`;
+        const metaRows = platform === "instagram"
+          ? await sql<{ id: string; external_id: string }[]>`
+              SELECT id, external_id FROM published_posts
+              WHERE tenant_id = ${tenant_id}
+                AND platform IN ('instagram', 'instagram_reels', 'reels')
+                AND external_id IS NOT NULL`
+          : await sql<{ id: string; external_id: string }[]>`
+              SELECT id, external_id FROM published_posts
+              WHERE tenant_id = ${tenant_id} AND platform = 'facebook' AND external_id IS NOT NULL`;
         metaTotal += metaRows.length;
         if (!metaRows.length) continue;
         const result = await fetchMetaPostMetrics(metaCred, platform, metaRows.map((r) => r.external_id));
