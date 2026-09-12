@@ -1,6 +1,6 @@
 # OSMU API 읽기 경로 전수 재실사 핸드오프
 
-업데이트: 2026-09-13 06:00 KST
+업데이트: 2026-09-13 06:04 KST
 라인: osmu
 작업 목적: 2026-09-13 최신 소스 기준 API 읽기 경로 전수 재실사
 handoff basis: 회장 요청 원문과 tmux `osmu-sweep091305:0.1`, 위임 `codex-qa-verifier-11356`
@@ -20,6 +20,7 @@ handoff basis: 회장 요청 원문과 tmux `osmu-sweep091305:0.1`, 위임 `code
 - 집중 회귀 31건, 전체 Vitest 311파일과 2,077건, TypeScript, 정적 페이지 182/182 build, seed, 기본 흐름 11/11, Studio v1 14/14, 디자인 lint가 통과했다.
 - 시드 직후 health는 한 번 HTTP 503과 DB down이었고 후속 세 번은 모두 HTTP 200과 DB up이었다. 비재현 단발 관찰로 기록했으며 반복 시 별도 결함으로 다시 연다.
 - 보고서는 `docs/qa/osmu-api-read-sweep-v6-gpt-codex-20260913-0600.md`, 원본은 `logs/diff/osmu-api-read-sweep-20260913-0537.json`이다.
+- QA 추적표, 구현현황, 원본 세 종류, 보고서와 핸드오프는 다른 세션의 변경을 제외해 `2b0b9441`로 커밋했다.
 
 ## 남은 이슈·블로커
 
@@ -42,7 +43,7 @@ bash ~/.claude/harness/bin/bg-agents.sh rm codex-qa-verifier-11356
 | 최신 localhost API 실호출 | GET 105개 정상 92, 의도된 거절 13, HTTP 500과 요청 실패 0. HEAD 404 |
 | 최신 Vitest·TypeScript·기본 흐름·Studio v1 | 전체 2,077건, 오류 0, 11/11, 14/14 |
 | build·seed·health·design lint | 182/182, seed PASS, health 최종 3회 200과 DB up, 위반 0 |
-| qa-tracker·비교표 | 기록 완료, 최종 문서 커밋 전 |
+| qa-tracker·비교표 | 기록 및 `2b0b9441` 커밋 완료 |
 | 상위 QA 품질 검증 | FAIL, 배포 환경 접촉 증거 0건. 로컬 범위 PASS를 운영 PASS로 확장하지 않음 |
 
 SKILLS_USED: qa, 착수 규약과 중복 실행 방지에 사용 / SKILLS_SKIPPED: 없음
