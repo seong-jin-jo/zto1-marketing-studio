@@ -1,3 +1,56 @@
+## 2026-09-12 23시 02분 - 네 방 기본 흐름 QA 인계
+
+### 무엇을 어디까지 했나
+
+회장 요청 원문을 기준으로 canonical `pipeline-state.osmu.md`를 `current_stage: qa`, 승인 전으로
+유지했다. localhost:3456과 지정 작업 공간 `cd1d0a40-540d-4524-9b49-bf2445d82182`에서
+생성→편집→발행 큐→성과 제안 재인계 11/11, Studio v1 14/14, 네 방 단면 탐침을 통과시켰다.
+390 라이트·다크, 768, 1024, 1440에서 실제 링크를 눌러 네 방 20화면과 성과실→생성실 복귀
+5건을 관찰했다. 기능·증거 커밋은 `77f32121`과 `33c8e6f6`이다.
+
+반복 QA가 고정 작업 공간의 체험 한도를 소진해 실제 생성이 429로 막히던 문제는 seed가 공유 AI
+승인 상태를 보장하도록 고쳤다. 빠른 Next.js client navigation을 검증기가 놓치던 경쟁 조건은
+URL waiter를 클릭 전에 걸어 고쳤다. 회귀 4파일 5건으로 두 구조를 고정했다.
+
+v63 시안과 dev 캡처를 390 생성실, 1440 성과실에서 각각 두 장씩 원본 Read로 재대조했다.
+기능 흐름은 통과하지만 공통 셸, 열 수, 담당 패널 위치, 요소 순서, 버튼 위계가 달라 디자인
+정합은 NG다. 사용자 지정 v63과 pipeline 최신 승인 핀 v68의 충돌도 남아 있다.
+
+### 남은 이슈·블로커
+
+전체 QA와 배포는 NG다. 승인 디자인 정합, 실제 외부 OAuth, 외부 permalink, 운영 성과 API가
+미검증이다. production build에는 기존 NFT 추적 경고 1건, 전체 테스트에는 기존 React act 경고가
+남아 있다. 공유 작업트리의 다른 세션 변경은 되돌리거나 이번 커밋에 포함하지 않았다.
+
+### 다음에 칠 명령
+
+product-designer와 컨트롤러가 v63 또는 v68 승인 핀을 하나로 확정하고 공통 셸을 정합시킨 뒤,
+QA 소유자가 아래 명령과 같은 상태의 4폭 PNG 대조를 실행한다.
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+npm run test
+npx tsc --noEmit
+npm run build
+set -a && . ./.env.local && set +a
+node scripts/verify-basic-flow-e2e.mjs
+node scripts/verify-studio-v1-e2e.mjs
+node scripts/probe-four-room-flow.mjs
+FOUR_ROOM_OUTPUT_DIR=../logs/diff/osmu-four-room-flow-next node scripts/verify-four-room-ui-e2e.mjs
+bash /Users/sj/.claude/harness/bin/design-lint.sh /Users/sj/sj_code_master/zto1-marketing-studio/dashboard/src
+```
+
+외부 회수 시점은 디자인 속성별 PASS와 QA 게이트 승인 뒤다. 종료 증거는 전체 회귀 exit 0,
+같은 상태의 시안·dev 4폭 정합 PASS, 실제 연결 계정, 외부 permalink, 성과 API 응답이다.
+
+### 검증했나
+
+관찰됨: health HTTP 200과 DB up, seed의 `true`·`active`·`team`, 기본 흐름 11/11, Studio v1
+14/14, 네 방 20화면과 왕복 5건, 가로 넘침·차단 모달·브라우저 401·콘솔 오류 각 0.
+테스트됨: `npm run test` 299파일·2,000건 PASS와 3건 스킵, `npx tsc --noEmit`, production build
+182/182, 디자인 lint 위반 0, 신규 회귀 4파일 5건 PASS. 디자인 QA: v63 시안과 dev 캡처를
+같은 폭에서 각 두 장씩 직접 열어 공통 구조 불일치 NG. 미검증: 운영 배포와 외부 실발행·성과.
+
 ## 2026-09-12 22시 14분 - 읽기 API 전수 실사 인계
 
 ### 무엇을 어디까지 했나
