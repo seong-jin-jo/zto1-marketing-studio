@@ -14,6 +14,18 @@ deliberation: 기능 동선 PASS와 상태 무관한 공통 셸 불일치를 분
 
 # OSMU 네 방 기본 흐름 QA
 
+## 2026-09-13 03:09 최종 handoff
+
+`2f04d839`까지 고정된 소스와 증거에서는 아래 기능 범위가 PASS다. 그 커밋 뒤 병렬 build 세션이
+`dashboard/src/app/studio/page.tsx`와 `dashboard/src/components/studio/StudioRooms.tsx`를 포함한
+공유 작업트리를 수정했다. 변경 중인 같은 localhost에 probe를 다시 요청하자 health는 HTTP 200과
+DB up이었지만, 첫 재시도는 생성실, 다음 재시도는 편집실 표시를 각각 30초 안에 찾지 못했다.
+
+따라서 기능 PASS는 `80c09807`과 `2f04d839`의 고정 증거 범위에만 적용한다. 현재 변경 중인 공유
+작업트리와 배포 환경은 미검증이며 전체 QA는 계속 NG다. 상위 품질 검증도 운영 또는 staging 접촉
+증거가 없다는 이유로 반려했다. 병렬 build가 안정된 커밋을 만든 뒤 dev를 그 커밋으로 다시 띄우고
+기본 11단계, Studio v1, 네 방 probe, 네 폭 클릭을 전부 재실행해야 한다.
+
 ## 2026-09-13 재검증 판정
 
 한 줄 결론: localhost 네 방 기능 흐름은 검증기의 낡은 성과실 주소를 고친 뒤 범위 PASS다.

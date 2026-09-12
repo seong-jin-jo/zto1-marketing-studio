@@ -1,3 +1,15 @@
+## 2026-09-13 03시 09분 - 네 방 고정 증거 PASS, 현재 공유 작업트리는 미검증
+
+`80c09807`에서 성과실 probe 경로를 `/performance`로 고치고 회귀 계약을 추가했으며,
+`2f04d839`에 localhost 기능 PASS, 4폭 PNG, 전체 회귀와 QA 문서를 고정했다. 그 뒤 병렬 build
+세션이 `studio/page.tsx`와 `StudioRooms.tsx`를 포함한 공유 작업트리를 수정했다. 최신 health는
+HTTP 200과 DB up이지만 probe 재시도는 생성실 또는 편집실 표시를 30초 안에 찾지 못했다.
+
+기능 PASS는 위 두 커밋 증거에만 적용한다. 현재 변경 중인 작업트리와 운영 배포는 미검증이고
+전체 QA는 NG다. 상위 `verify-agent-quality.sh`도 배포 환경 접촉 증거 0건으로 반려했다. 다음
+소유자는 현재 병렬 build 완료 뒤 안정된 커밋을 정하고 dev를 다시 띄운 다음 기본 11단계,
+Studio v1, 네 방 probe, 네 폭 클릭을 모두 재실행해야 한다.
+
 ## 2026-09-13 02시 50분 - 네 방 기본 흐름 QA 재검증 완료
 
 회장 요청 원문을 handoff basis로 사용했다. `osmu-flowcheck091302:0.0`,
