@@ -1,3 +1,28 @@
+## 2026-09-13 03시 43분 - TikTok 발행 성과 수집 build 완료
+
+회장 요청 원문을 handoff basis로 사용했다. `osmu-gapfill091303:0.1`은 현재 위임 작업의 로그였고,
+`studio-auth-runtime:0.0`은 localhost:3456 실행 상태 확인에 사용했다. `pipeline-state.osmu.md`는
+`current_stage: qa`이며 단계 승격과 배포는 하지 않았다.
+
+두 갭 감사와 승인 v63 프로토타입, 회장 요구 대장, OSMU 사업 좌표를 현재 코드와 대조했다.
+Threads, X, Instagram, Facebook, Reels, YouTube와 Shorts 수집은 이미 있어 재구현하지 않았고,
+DB 계약이 필요한 snapshot 대신 기본 흐름의 발행 직후에 붙는 TikTok provider 수집기를 골랐다.
+
+구현 커밋 `7f853720`은 TikTok Display API 20개 분할 조회, 네 성과 축 변환, 발행물 갱신,
+실패 사유 보존, `video.list` OAuth 범위, 지원 범위 계약을 포함한다. 전체 테스트 중 발견된 옛
+TikTok 미지원 기대값은 `3b8708bf`에서 현재 계약으로 정정됐다.
+
+검증은 localhost GET 200에서 `tiktok_video_query`와 네 지표를 관찰했고, 지정 작업 공간 POST는
+연결 자격증명이 없어 400으로 거절됐다. 기본 흐름 11/11, Studio v1 재실행 14/14, 전체 Vitest
+307파일 2,054건과 3건 스킵, TypeScript, production build 182/182, 디자인 lint 위반 0을 확인했다.
+Studio v1 첫 실행의 생성 provider JSON 절단은 재실행에서 재현되지 않았다. 실제 TikTok 계정
+수치 회수는 자격증명과 발행물이 없어 미검증이다.
+
+다음 소유자는 QA 검증자다. TikTok 계정을 새 `video.list` 범위로 연결하고 영상 1건 발행 뒤
+성과 API의 외부 수치와 `published_posts.metrics_at`을 관찰해야 한다. 종료 증거는 연결 범위,
+외부 영상 ID, provider 응답 수치, DB 수치와 수집 시각이다. 별도 남은 제품 갭은 게시물별 성과
+snapshot과 재현 가능한 30일 비교이며, DB 계약 합의 전 구현하지 않는다.
+
 ## 2026-09-13 03시 09분 - 네 방 고정 증거 PASS, 현재 공유 작업트리는 미검증
 
 `80c09807`에서 성과실 probe 경로를 `/performance`로 고치고 회귀 계약을 추가했으며,

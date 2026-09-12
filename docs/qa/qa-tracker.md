@@ -2,6 +2,33 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-13 03시 43분 KST · TikTok 발행 성과 수집기 수정 증거
+
+판정: 수정됨. 기존 DB와 네 방 UI를 바꾸지 않고 TikTok 발행 영상의 공개 성과를 기존 성과실로
+되받는 provider 수집기를 연결했다. build 범위의 증거이며 QA 승인과 운영 배포는 하지 않았다.
+
+| 테스트번호 | 계약 | 판정 | 증거 |
+|---|---|---|---|
+| METRICS-TIKTOK-PROVIDER-01 | 요청당 20개 분할과 네 지표 변환 | PASS | 21개 영상이 provider 2회 호출로 분할되고 네 성과 축으로 변환 |
+| METRICS-TIKTOK-PROVIDER-02 | 토큰 없음 거절 | PASS | provider 호출 0회 |
+| METRICS-TIKTOK-01 | TikTok 발행물 성과 갱신 | PASS | 영상 ID 조회, provider 호출, views·likes·replies·reposts UPDATE |
+| METRICS-TIKTOK-02 | 연결 자격증명 없음 거절 | PASS | HTTP 400, provider 호출과 DB 변경 0회 |
+| METRICS-TIKTOK-OAUTH-01 | 조회 권한 동의 | PASS | `user.info.basic`, `video.publish`, `video.list` 보존 |
+| LOCAL-METRICS-GET | localhost 지원 범위 | PASS | HTTP 200, `tiktok_video_query`, 네 지표, 미발행 사유 확인 |
+| LOCAL-METRICS-POST | 지정 작업 공간 거절 | PASS | HTTP 400, 연결 채널 없음 안내. 외부 TikTok 호출 없음 |
+
+회귀 증거: `npm run test` 307파일, 2,054건 통과, 3건 제외, 실패 0. `npx tsc --noEmit`
+오류 0. `verify-basic-flow-e2e.mjs` 11/11. `verify-studio-v1-e2e.mjs`는 첫 실행에서 생성 provider의
+JSON 절단 오류를 관찰했고 동일 검증 재실행은 14/14 통과했다. production build는 정적 페이지
+182/182, 디자인 lint는 위반 0이다. 기존 NFT 추적 경고 1건은 남아 있다.
+
+실제 TikTok provider 성공은 미검증이다. 지정 작업 공간에 TikTok 자격증명과 발행물이 없어서
+GET은 지원 계약과 빈 상태만 관찰했고 POST는 자격증명 없음으로 거절됐다. 신규 연결은
+`video.list`를 요청하며 기존 토큰은 재연결이 필요할 수 있다.
+
+관련 구현 커밋은 `7f853720`, 옛 TikTok 미지원 기대값 정정은 `3b8708bf`다. 운영 배포와
+pipeline 단계 승격은 하지 않았다.
+
 ## 2026-09-13 02시 50분 KST · 네 방 기본 흐름 재검증 최종 판정
 
 한 줄 결론: localhost 네 방 기본 흐름은 성과실 주소가 낡은 probe를 수리한 뒤 범위 PASS다.

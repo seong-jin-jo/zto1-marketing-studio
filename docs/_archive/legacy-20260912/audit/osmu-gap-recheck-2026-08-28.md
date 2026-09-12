@@ -1,5 +1,56 @@
 # 갭 감사 재확인 2026-08-28
 
+## 2026-09-13 03시 43분 갭 갱신: TikTok 발행 성과 수집 연결
+
+두 감사 문서의 잔여 항목을 현재 소스와 다시 대조했다. 생성, 편집, 발행 큐, 성과 제안 인계와
+Threads, X, Instagram 피드, Facebook, Reels, YouTube와 Shorts 성과 수집은 이미 구현돼 있어
+재구현하지 않았다. 기본 흐름의 발행 다음 단계에 가장 가까운 미구현 항목은 TikTok provider
+성과 수집기였고, 게시물별 snapshot과 재현 가능한 30일 비교는 새 DB 계약이 필요해 이번 범위에서
+제외했다.
+
+| 계약 | 현재 판정 | 증거 |
+|---|---|---|
+| TikTok provider 조회 | 테스트됨 | 공식 `/v2/video/query/`에 `video.list` 토큰과 영상 ID를 보내고 요청당 20개씩 분할 |
+| 성과 축 변환 | 테스트됨 | `view_count`, `like_count`, `comment_count`, `share_count`를 views, likes, replies, reposts로 변환 |
+| 발행물 갱신 | 테스트됨 | TikTok 발행 행 조회, 네 성과 수치와 `metrics_at` 갱신, 성공 시 막힘 표식 제거 |
+| 실패 상태 보존 | 테스트됨 | 401과 403은 성과 권한 없음, 응답에 없는 영상은 영상 확인 불가로 게시물별 기록 |
+| OAuth 조회 범위 | 테스트됨 | 신규 TikTok 연결 동의에 `video.list` 추가, 기존 `video.publish`와 사용자 조회 범위 보존 |
+| 지원 범위 정합 | 관찰됨 | localhost GET 200, `collectionSupported:true`, `collector:tiktok_video_query`, 네 지표 확인 |
+| 자격증명 거절 | 관찰됨 | 지정 작업 공간 localhost POST 400, TikTok을 포함한 연결 안내, 외부 provider 호출 없음 |
+| 기본 흐름 회귀 | 테스트됨 | 기본 흐름 11/11, Studio v1 재실행 14/14, Vitest 307파일 2,054건 통과와 3건 스킵 |
+| 빌드와 토큰 | 테스트됨 | TypeScript 오류 0, production 정적 페이지 182/182, 디자인 lint 위반 0 |
+| 실제 TikTok 수치 회수 | 미검증 | 지정 작업 공간에 TikTok 자격증명과 발행물이 없어 외부 provider 성공 응답을 관찰하지 못함 |
+
+이제 TikTok 발행물은 성과 화면에서 측정 미지원으로 표시되지 않는다. 연결 뒤 발행 영상이 있으면
+성과 수집 요청이 실제 provider까지 이어지고, 과거 연결 토큰에 `video.list`가 없으면 권한 문제와
+재연결 필요성을 표시한다. 남은 구조 갭은 게시물별 성과 snapshot과 재현 가능한 30일 비교다.
+
+벤치마크 적용: TikTok 공식 Display API의 `video.list`, 요청당 영상 ID 20개, 다섯 공개 필드
+계약을 그대로 사용했다. 별도 테이블이나 두 번째 자격증명 저장소를 만들지 않고 기존 발행 식별자와
+성과 필드에 연결했다. 출처는 https://developers.tiktok.com/docs/en/tiktok-api-v2-video-query 와
+https://developers.tiktok.com/docs/en/tiktok-api-v2-video-object?enter_method=left_navigation 다.
+
+레드팀: 지원 목록만 true로 바꾸면 실제 provider 호출과 DB 갱신이 없는 거짓 완료가 된다. provider
+단위 테스트와 Route Handler 통합 테스트를 분리해 20개 분할, 실제 호출 payload, 게시물 조회와
+네 수치 UPDATE를 각각 고정했다.
+
+셀프심문: 이 결론이 틀렸다면 가장 그럴듯한 이유는 기존 TikTok 토큰에 새 `video.list` 범위가 없어
+실계정 조회가 403으로 막히는 경우다. 그래서 외부 성공은 미검증으로 남기고 401과 403을 게시물별
+권한 문제로 보존하며 재연결 안내가 나오게 했다.
+
+STAMP | line: osmu-gapfill091303 | 생성: 2026-09-13 03:43 KST | model: gpt-codex/gpt-5.6-sol | agent: code-builder | skill: 없음 | 고민: 이미 있는 발행 식별자와 성과 필드를 재사용해 TikTok 수집만 닫고 DB 계약 변경은 피했다.
+
+SKILLS_USED: 없음. 설치된 스킬 중 이 Next.js 성과 수집 build에 직접 대응하는 스킬 없음. SKILLS_SKIPPED: qa는 QA 단계 소유이므로 build 계약과 사용자 지정 E2E만 실행.
+
+KNOWLEDGE_QUERY: OSMU 기본 흐름, 발행 후 성과 회수, TikTok video query와 공개 지표 계약을 검색했다.
+HITS_USED: BRAIN의 ZERO-ONE Marketing Studio 아이디어, repo 사업 좌표, 두 갭 감사, TikTok 공식 API 문서를 기본 흐름과 provider 계약 근거로 채택했다.
+HITS_REJECTED: 일반 마케팅 심리와 다른 벤처 자료는 이번 기술 연결의 계약 근거가 아니어서 제외했다.
+CONFLICTS: 회장 정본과 TikTok 공식 조회 계약의 충돌은 없다. 사용자 지정 v63과 pipeline 최신 v68 디자인 핀 충돌은 기존 상태이며 이번 비화면 변경에서 판단하지 않았다.
+
+SOURCES: 두 갭 감사 | 승인 v63 프로토타입 | 회장 요구 대장 | OSMU 사업 좌표 | `dashboard/src/lib/tiktok.ts` | `dashboard/src/app/api/metrics/route.ts` | TikTok 공식 API 문서
+
+MODEL: gpt-codex/gpt-5.6-sol / code-builder
+
 ## 2026-09-12 23시 23분 갭 갱신: Instagram Reels 성과 수집 연결
 
 두 감사 문서의 잔여 목록을 현재 소스와 다시 대조했다. X, Instagram 피드, Facebook,
