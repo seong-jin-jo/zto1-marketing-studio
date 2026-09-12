@@ -102,6 +102,7 @@ export function EditPreview({
   renderReady = false,
   mediaUrl,
   mediaType = "image",
+  tenantId,
   onLinesChange,
   cardTextPositions = [],
   onCardTextPositionsChange,
@@ -128,6 +129,14 @@ export function EditPreview({
   /** mediaUrl 이 실제로 무엇인지. 영상 편집 중에도 바탕 이미지를 보여 줄 수 있으므로
    *  화면 종류가 아니라 파일 종류로 태그를 고른다. */
   mediaType?: "image" | "video";
+  /**
+   * 만료된 배달 주소를 되살릴 때 어느 작업 공간으로 다시 서명할지.
+   *
+   * 2026-09-13. 여기는 `DeliveredMedia` 를 쓰면서도 이것만 안 넘기고 있었다. 운영자 토큰으로
+   * 들어온 요청은 본문의 작업 공간 식별자가 유일한 단서라(tenant-auth.ts effectiveTenantId),
+   * 없으면 재서명이 401 로 닫힌다. 되살리는 부품을 써 놓고도 못 되살리는 상태였다.
+   */
+  tenantId?: string;
   onLinesChange?: (lines: string[]) => void;
   cardTextPositions?: CardTextPosition[];
   onCardTextPositionsChange?: (positions: CardTextPosition[]) => void;
@@ -190,6 +199,7 @@ export function EditPreview({
             <DeliveredMedia
               type={mediaType === "video" ? "video" : "image"}
               src={mediaUrl}
+              tenantId={tenantId}
               alt="방금 만든 산출물 미리보기"
               dataAttr={{ "data-edit-preview-media": mediaType === "video" ? "video" : "image" }}
               className="absolute inset-0 h-full w-full object-cover"

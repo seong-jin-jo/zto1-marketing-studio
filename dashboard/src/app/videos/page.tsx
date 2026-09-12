@@ -7,6 +7,7 @@ import { fetcher, apiPost, handleUnauthorizedResponse } from "@/lib/api";
 import { authHeaders, getAuthToken } from "@/lib/auth";
 import { useToast } from "@/components/layout/Toast";
 import { useUIStore } from "@/store/ui-store";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { confirmAction } from "@/components/shared/ConfirmHost";
 
 interface Video {
@@ -678,6 +679,8 @@ export default function VideosPage() {
                   <div key={c.id || oi} className="relative bg-surface-2 rounded-control overflow-hidden flex flex-col">
                     {/* 9:16 프리뷰 + 랭크/점수 오버레이 */}
                     <div className="relative bg-player-surface aspect-[9/16]">
+                      {/* raw-media-ok: src 는 서명 토큰이 아니라 정적 경로(/videos/<파일명>)
+                          이거나 외부 http 주소다(위 src 계산 참조). 만료가 없다. */}
                       {src && <video src={src} controls playsInline className="w-full h-full object-contain" />}
                       <span className="absolute top-1.5 left-1.5 text-caption font-bold bg-player-surface/70 text-text rounded-chip px-stack-tight py-micro">#{rank + 1}</span>
                       {c.viralScore != null && (
@@ -803,12 +806,17 @@ export default function VideosPage() {
                 </div>
                 {previewFile === v.filename && (
                   <div className="mt-stack flex justify-center">
-                    {/* 세로 쇼츠/릴스 임베드 플레이어 — 발행 전 검수용 */}
-                    <video
+                    {/* 세로 쇼츠/릴스 임베드 플레이어 — 발행 전 검수용.
+                        목록을 오래 열어 두면 이 주소가 죽는다. /api/video/list 는 테넌트에게
+                        서명 배달 주소(/api/media/<토큰>)를 내려주고 그것은 12시간이면 만료된다
+                        (api/video/list/route.ts). 되살리는 부품으로 건다.
+                        2026-09-13 Codex 교차리뷰가 이 자리를 잡았다. */}
+                    <DeliveredMedia
                       key={v.url}
+                      type="video"
                       src={v.url}
-                      controls
-                      playsInline
+                      tenantId={activeWorkspace?.id}
+                      testId="video-preview-player"
                       className="rounded-control bg-player-surface w-full max-w-[260px] aspect-[9/16] object-contain"
                     />
                   </div>

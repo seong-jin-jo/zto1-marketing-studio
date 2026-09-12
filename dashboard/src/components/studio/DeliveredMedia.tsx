@@ -76,9 +76,17 @@ interface Props {
   testId?: string;
   dataAttr?: Record<string, string>;
   tenantId?: string;
+  /**
+   * 영상 전용. 목록에 여러 편이 깔리는 자리는 "none" 으로 받아 미리 내려받지 않는다.
+   * 큐 카드가 날 <video preload="none"> 이었으므로 그 성질을 잃지 않고 옮기려고 받는다
+   * (2026-09-13). 안 넘기면 종전 그대로 브라우저 기본값이다.
+   */
+  preload?: "none" | "metadata" | "auto";
+  /** 영상 전용. 재생 전에 보여 줄 대표 그림. */
+  poster?: string;
 }
 
-export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, tenantId }: Props) {
+export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, tenantId, preload, poster }: Props) {
   const [url, setUrl] = useState(() => (isDeliveryUrlExpired(src) ? "" : src));
   const [phase, setPhase] = useState<"ready" | "renewing" | "failed">(() =>
     isDeliveryUrlExpired(src) ? "renewing" : "ready",
@@ -162,6 +170,8 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
         className={className}
         controls
         playsInline
+        preload={preload}
+        poster={poster}
         onError={handleError}
       />
     );

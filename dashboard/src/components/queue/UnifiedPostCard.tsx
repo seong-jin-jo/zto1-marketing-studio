@@ -4,6 +4,7 @@ import { useState } from "react";
 import { apiPost } from "@/lib/api";
 import { useToast } from "@/components/layout/Toast";
 import { useUIStore } from "@/store/ui-store";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { fmtTime } from "@/lib/format";
 import type { Post } from "@/types/queue";
 import { confirmAction } from "@/components/shared/ConfirmHost";
@@ -73,7 +74,7 @@ export function UnifiedPostCard({
   onPickImage,
 }: UnifiedPostCardProps) {
   const { showToast } = useToast();
-  const { editingPost, setEditingPost, selectedIds, toggleSelect } = useUIStore();
+  const { editingPost, setEditingPost, selectedIds, toggleSelect, activeWorkspace } = useUIStore();
   const [editText, setEditText] = useState(post.text);
   const [makingVariants, setMakingVariants] = useState(false);
   const isEditing = editingPost === post.id;
@@ -173,7 +174,13 @@ export function UnifiedPostCard({
             <div className="scrollbar-semantic flex gap-stack-tight overflow-x-auto pb-stack-tight">
               {slides.map((s, i) => (
                 <div key={i} className="flex-shrink-0 w-36 h-44 rounded-control overflow-hidden border border-border">
-                  <img src={s} alt={`Slide ${i + 1}`} className="w-full h-full object-cover" />
+                  <DeliveredMedia
+                    type="image"
+                    src={s}
+                    tenantId={activeWorkspace?.id}
+                    alt={`Slide ${i + 1}`}
+                    className="w-full h-full object-cover"
+                  />
                 </div>
               ))}
             </div>
@@ -187,14 +194,32 @@ export function UnifiedPostCard({
         /* Blog: small thumbnail */
         post.imageUrl ? (
           <div className="mb-stack-tight float-right ml-stack max-w-30">
-            <img src={post.imageUrl} alt="Thumbnail" className="w-full rounded-chip border border-border" />
+            <DeliveredMedia
+              type="image"
+              src={post.imageUrl}
+              tenantId={activeWorkspace?.id}
+              alt="Thumbnail"
+              className="w-full rounded-chip border border-border"
+            />
           </div>
         ) : null
       ) : (
         /* Text: medium image */
         post.imageUrl ? (
           <div className="mb-stack-tight relative group/img max-w-lg">
-            <img src={post.imageUrl} alt="Post image" className="block w-full rounded-control border border-border" />
+            {/*
+              큐에 담긴 그림 주소는 발행실에서 만들 때 받은 배달 주소 그대로다
+              (studio/page.tsx requestReview → /api/queue/add 의 imageUrl). 12시간이면 만료돼
+              어제 담은 글의 그림이 오늘 큐에서 사라진다. 되살리는 부품으로 건다(2026-09-13).
+            */}
+            <DeliveredMedia
+              type="image"
+              src={post.imageUrl}
+              tenantId={activeWorkspace?.id}
+              alt="Post image"
+              testId="queue-post-image"
+              className="block w-full rounded-control border border-border"
+            />
             {post.status === "draft" && (
               <button
                 onClick={handleRemoveImage}
@@ -213,10 +238,20 @@ export function UnifiedPostCard({
       {/* Video for repurposed clips */}
       {(post.videoFilename || post.videoUrl) && (
         <div className="mb-stack-tight">
-          <video
+          {/*
+            post.videoUrl 도 발행실에서 만들 때 받은 배달 주소 그대로다
+            (studio/page.tsx requestReview → /api/queue/add 의 `videoUrl: vid?.url`).
+            그림과 똑같이 12시간이면 죽는다. videoFilename 만 있는 옛 글은 정적 경로라
+            그대로 통과한다(DeliveredMedia 는 배달 주소가 아니면 손대지 않는다).
+            2026-09-13 Codex 교차리뷰가 이 자리를 잡았다. 여러 줄 태그라 처음 검사기를
+            빠져나갔다.
+          */}
+          <DeliveredMedia
+            type="video"
             src={post.videoUrl || `/videos/${post.videoFilename}`}
+            tenantId={activeWorkspace?.id}
+            testId="queue-post-video"
             poster={post.videoThumbnail || undefined}
-            controls
             preload="none"
             className="max-h-52 w-full rounded-chip border border-border"
           />

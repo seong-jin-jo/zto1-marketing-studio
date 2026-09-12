@@ -987,6 +987,8 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                 </p>
                 <div className="mt-stack grid grid-cols-2 gap-stack-tight sm:grid-cols-3">
                   {textCards.map((src, index) => (
+                    // raw-media-ok: 글자 카드는 브라우저가 그 자리에서 그린 canvas 결과라
+                    // data: URL 이다(lib/studio/text-card-image.ts toDataURL). 만료가 없다.
                     // eslint-disable-next-line @next/next/no-img-element
                     <img key={index} src={src} alt={`글자 카드 ${index + 1}장`} className="w-full rounded-control border border-border" data-text-card-image={index} />
                   ))}
@@ -1445,6 +1447,9 @@ export function EditRoom({
                               // 이미지를 보여 주는 편이 자리표시자보다 결과에 가깝다.
                               mediaUrl={(kind === "video" ? (previewVideoUrl || previewImageUrl) : previewImageUrl) || undefined}
                               mediaType={kind === "video" && previewVideoUrl ? "video" : "image"}
+                              // 만료된 배달 주소를 되살릴 때 어느 작업 공간인지 함께 보낸다.
+                              // 없으면 운영자 경로에서 401 로 닫힌다(2026-09-13).
+                              tenantId={workspaceId}
                               onLinesChange={onLinesChange}
                               cardTextPositions={cardTextPositions}
                               onCardTextPositionsChange={onCardTextPositionsChange}

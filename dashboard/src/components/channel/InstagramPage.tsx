@@ -279,6 +279,9 @@ function CardNewsEditor({ onReload, editingPostId, onBackToQueue }: { onReload: 
                     onDrop={() => handleDrop(i)}
                   >
                     <div className="w-32 h-40 rounded-control overflow-hidden border border-border cursor-pointer" onClick={() => setPreviewImg(s)}>
+                      {/* raw-media-ok: 카드뉴스 생성이 돌려주는 슬라이드는 서명 토큰이 아니라
+                          정적 경로(/images/<파일명>)다(api/card-news/generate/route.ts). 만료가
+                          없다. 방금 만든 결과를 그 자리에서 보여 줄 뿐 저장해 두지도 않는다. */}
                       <img src={s} alt={`Slide ${i + 1}`} className="w-full h-full object-cover pointer-events-none" />
                     </div>
                     <button aria-label="슬라이드 삭제" onClick={() => removeResultSlide(i)} className="absolute -top-1 -right-1 w-5 h-5 bg-danger text-status-fg rounded-pill text-caption opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">×</button>
@@ -328,6 +331,7 @@ function CardNewsEditor({ onReload, editingPostId, onBackToQueue }: { onReload: 
       </div>
       {previewImg && (
         <div className="fixed inset-0 z-50 bg-player-surface/80 backdrop-blur-sm flex items-center justify-center cursor-pointer" onClick={() => setPreviewImg(null)}>
+          {/* raw-media-ok: 바로 위 슬라이드 목록에서 고른 같은 주소다(정적 /images/<파일명>). */}
           <img src={previewImg} className="max-h-[90vh] max-w-[90vw] rounded-control shadow-2xl" alt="미리보기" />
         </div>
       )}

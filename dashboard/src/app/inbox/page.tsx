@@ -351,6 +351,8 @@ export default function InboxPage() {
           {/* 영상 프리뷰(있으면) */}
           {videoSrc && (
             <div className="flex justify-center mb-stack">
+              {/* raw-media-ok: videoSrc 는 서명 토큰이 아니라 정적 경로(/videos/<파일명>)이거나
+                  외부 http 주소다(위 videoSrc 계산 참조). 만료가 없다. */}
               <video src={videoSrc} controls playsInline className="rounded-control bg-player-surface w-full max-w-[240px] aspect-[9/16] object-contain" />
             </div>
           )}

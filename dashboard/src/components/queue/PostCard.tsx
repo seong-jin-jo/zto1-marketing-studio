@@ -4,6 +4,7 @@ import { useState } from "react";
 import { apiPost } from "@/lib/api";
 import { useToast } from "@/components/layout/Toast";
 import { useUIStore } from "@/store/ui-store";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { fmtTime } from "@/lib/format";
 import type { Post } from "@/types/queue";
 import { confirmAction } from "@/components/shared/ConfirmHost";
@@ -39,7 +40,7 @@ interface PostCardProps {
 
 export function PostCard({ post, channelConfig, onRefresh, onPickImage }: PostCardProps) {
   const { showToast } = useToast();
-  const { editingPost, setEditingPost, selectedIds, toggleSelect } = useUIStore();
+  const { editingPost, setEditingPost, selectedIds, toggleSelect, activeWorkspace } = useUIStore();
   const [editText, setEditText] = useState(post.text);
   const isEditing = editingPost === post.id;
   const isSelected = selectedIds.has(post.id);
@@ -101,7 +102,19 @@ export function PostCard({ post, channelConfig, onRefresh, onPickImage }: PostCa
       {/* Image */}
       {post.imageUrl && (
         <div className="mb-stack-tight relative group/img max-w-lg">
-          <img src={post.imageUrl} alt="Post image" className="block w-full rounded-control border border-border" />
+          {/*
+            큐에 담긴 그림 주소는 발행실에서 만들 때 받은 배달 주소 그대로다
+            (studio/page.tsx requestReview → /api/queue/add 의 imageUrl). 12시간이면 만료돼
+            어제 담은 글의 그림이 오늘 큐에서 사라진다. 되살리는 부품으로 건다(2026-09-13).
+          */}
+          <DeliveredMedia
+            type="image"
+            src={post.imageUrl}
+            tenantId={activeWorkspace?.id}
+            alt="Post image"
+            testId="queue-post-image"
+            className="block w-full rounded-control border border-border"
+          />
           {post.status === "draft" && (
             <button
               onClick={handleRemoveImage}

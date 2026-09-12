@@ -130,6 +130,10 @@ export function ImagePickerModal() {
                 }`}
               >
                 <div className="aspect-square bg-surface">
+                  {/* handleSelect 가 이 주소를 큐에 그대로 저장하는 것은 별개 문제다. 그쪽은
+                      /api/images/deliver 체계(30일)라 /api/media 용 재서명으로 못 고친다.
+                      2026-09-13 Codex 교차리뷰 지적, 별건으로 올렸다.
+                      raw-media-ok: 목록 자체는 열 때마다 새로 서명돼 내려온다. */}
                   <img src={img.url} className="w-full h-full object-cover" loading="lazy" alt={img.filename} />
                 </div>
                 <div className="p-stack-tight">

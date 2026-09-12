@@ -54,6 +54,9 @@ export default function ImagesPage() {
           {images.map((img) => (
             <div key={img.filename} className="card overflow-hidden group relative">
               <div className="aspect-square bg-surface flex items-center justify-center">
+                {/* raw-media-ok: 이 주소는 화면을 열 때마다 /api/images 가 그 자리에서 새로
+                    서명해 내려준다(app/api/images/route.ts). 갤러리는 주소를 저장하지 않으므로
+                    오래된 주소를 들고 있을 수가 없다. 만료로 깨지는 경우가 아니다. */}
                 <img src={img.url} alt={img.filename} className="w-full h-full object-cover" loading="lazy" />
               </div>
               <div className="p-stack">
