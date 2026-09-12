@@ -23,7 +23,8 @@ describe("성과 수집 지원 여부를 화면이 정직하게 말한다", () =
     // 이라고 말하면 그것도 거짓말이다.
     expect(isMetricsCollected("reels")).toBe(true);
     expect(isMetricsCollected("instagram_reels")).toBe(true);
-    for (const platform of ["tiktok", null, ""]) {
+    expect(isMetricsCollected("tiktok")).toBe(true);
+    for (const platform of [null, ""]) {
       expect(isMetricsCollected(platform), `${platform} 를 수집한다고 말하면 안 된다`).toBe(false);
     }
   });
@@ -33,9 +34,9 @@ describe("성과 수집 지원 여부를 화면이 정직하게 말한다", () =
     expect(emptyMetricLabel("threads", null)).toBe("미수집");
     // 계정을 바꾸기 전까지 안 채워진다
     expect(emptyMetricLabel("threads", { code: "no_permission" })).toBe("측정 불가");
-    // 우리가 그 채널 수집을 만들기 전까지 영원히 안 채워진다
-    expect(emptyMetricLabel("tiktok", null)).toBe("측정 미지원");
-    expect(emptyMetricLabel("tiktok", { code: "whatever" })).toBe("측정 미지원");
+    // TikTok 수집을 만들었으므로 빈 값과 제공자 거절을 구분한다.
+    expect(emptyMetricLabel("tiktok", null)).toBe("미수집");
+    expect(emptyMetricLabel("tiktok", { code: "video_not_visible" })).toBe("측정 불가");
     // 수집을 만든 채널은 빈 값이 "미수집"(기다리면 채워짐)이다.
     expect(emptyMetricLabel("youtube", null)).toBe("미수집");
     expect(emptyMetricLabel("instagram_reels", null)).toBe("미수집");

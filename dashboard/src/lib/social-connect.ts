@@ -285,7 +285,7 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
   tiktok: {
     label: "tiktok",
     authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/",
-    scopes: ["user.info.basic", "video.publish"],
+    scopes: ["user.info.basic", "video.publish", "video.list"],
     appIdEnv: "TIKTOK_CLIENT_KEY",
     appSecretEnv: "TIKTOK_CLIENT_SECRET",
     tokenUrl: "https://open.tiktokapis.com/v2/oauth/token/",

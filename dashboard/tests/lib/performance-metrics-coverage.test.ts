@@ -35,6 +35,12 @@ describe("플랫폼별 성과 수집 범위 계약", () => {
       publishedCount: 1,
       missingReason: expect.objectContaining({ code: "NOT_COLLECTED_YET" }),
     }));
+    expect(coverage.platforms.find((item) => item.platform === "tiktok")).toEqual(expect.objectContaining({
+      collectionSupported: true,
+      collector: "tiktok_video_query",
+      metrics: ["views", "likes", "replies", "reposts"],
+      missingReason: expect.objectContaining({ code: "NO_PUBLISHED_POST" }),
+    }));
   });
 
   it("METRICS-COVERAGE-UNIT-02 거절: 수집 건수가 발행 건수보다 큰 모순된 집계를 거절한다", () => {

@@ -3,6 +3,7 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { getChannelCred, fetchXPublicMetrics, fetchMetaPostMetrics, fetchYouTubeMetrics } from "@/lib/publish";
 import { readJson, writeJson, dataPath } from "@/lib/file-io";
 import { runWithTenant } from "@/lib/tenant-context";
+import { fetchTikTokVideoMetrics } from "@/lib/tiktok";
 import {
   buildPerformanceMetricsCoverage,
   type MetricsCoverageAggregateRow,
@@ -66,10 +67,11 @@ export async function POST(request: Request) {
   // 2026-09-10: YouTube 는 연결돼 있는데도 수집 대상이 아니었다. 숏폼을 올려도 결과가
   // 영영 안 돌아왔다. 되받을 숫자가 없으면 다음 제안이 뻔해진다.
   const ytCred = await getChannelCred(tenant_id, "youtube");
+  const tiktokCred = await getChannelCred(tenant_id, "tiktok");
   // 2026-09-09: 종전에는 Threads 가 없으면 여기서 끝냈다. 그래서 X 만 연결한 사람은
   // 성과 수집을 아예 못 돌렸다. 둘 다 없을 때만 막는다.
-  if (!cred && !xCred && !igCred && !fbCred && !ytCred) {
-    return Response.json({ ok: false, error: "성과를 읽어 올 수 있는 채널이 연결돼 있지 않습니다. Threads, X, Instagram, Facebook, YouTube 중 하나를 연결해 주세요." }, { status: 400 });
+  if (!cred && !xCred && !igCred && !fbCred && !ytCred && !tiktokCred) {
+    return Response.json({ ok: false, error: "성과를 읽어 올 수 있는 채널이 연결돼 있지 않습니다. Threads, X, Instagram, Facebook, YouTube, TikTok 중 하나를 연결해 주세요." }, { status: 400 });
   }
   try {
     const { updated, total, skipped } = await withTenant(tenant_id, async (sql) => {
@@ -268,7 +270,58 @@ export async function POST(request: Request) {
           }
         }
       }
-      return { updated: n, total: rows.length + xTotal + metaTotal + ytTotal, skipped };
+      // TikTok 발행 결과의 실제 영상 ID는 published_posts.external_id에 저장된다. Display API는
+      // video.list 권한으로 한 번에 20개씩 조회하므로 공용 helper가 분할 호출을 책임진다.
+      let tiktokTotal = 0;
+      if (tiktokCred) {
+        const tiktokRows = await sql<{ id: string; external_id: string }[]>`
+          SELECT id, external_id FROM published_posts
+          WHERE tenant_id = ${tenant_id} AND platform = 'tiktok' AND external_id IS NOT NULL`;
+        tiktokTotal = tiktokRows.length;
+        if (tiktokRows.length) {
+          const result = await fetchTikTokVideoMetrics(
+            tiktokCred.token,
+            tiktokRows.map((row) => row.external_id),
+          );
+          if (!result.ok) {
+            console.error("[metrics][collect-skip] tiktok", result.status ?? "", result.error);
+            const skipCode = result.status === 401 || result.status === 403
+              ? "insights_forbidden"
+              : `tiktok_${result.status ?? "error"}`;
+            skipped.push(skipCode);
+            for (const row of tiktokRows) {
+              await sql`
+                UPDATE published_posts
+                SET provider_meta = COALESCE(provider_meta, '{}'::jsonb) || ${sql.json({
+                  metricsBlocked: { code: skipCode, at: new Date().toISOString() },
+                } as never)}
+                WHERE id = ${row.id}`;
+            }
+          } else {
+            for (const row of tiktokRows) {
+              const metric = result.metrics[row.external_id];
+              if (!metric) {
+                await sql`
+                  UPDATE published_posts
+                  SET provider_meta = COALESCE(provider_meta, '{}'::jsonb) || ${sql.json({
+                    metricsBlocked: { code: "video_not_visible", at: new Date().toISOString() },
+                  } as never)}
+                  WHERE id = ${row.id}`;
+                skipped.push("video_not_visible");
+                continue;
+              }
+              await sql`
+                UPDATE published_posts
+                SET views = ${metric.views}, likes = ${metric.likes}, replies = ${metric.replies},
+                    reposts = ${metric.reposts}, metrics_at = now(),
+                    provider_meta = COALESCE(provider_meta, '{}'::jsonb) - 'metricsBlocked'
+                WHERE id = ${row.id}`;
+              n++;
+            }
+          }
+        }
+      }
+      return { updated: n, total: rows.length + xTotal + metaTotal + ytTotal + tiktokTotal, skipped };
     });
     markAnalyticsViewed(tenant_id);
     // 수집 대상이 있는데 하나도 못 모았으면 그것을 성공으로 말하지 않는다.
@@ -283,6 +336,8 @@ export async function POST(request: Request) {
           ? "성과 조회 중 오류가 났습니다. 잠시 후 다시 시도해 주세요."
           : skipped.includes("post_not_in_account")
             ? "연결된 채널 계정에서 이 게시물을 찾을 수 없습니다. 글을 올린 계정과 지금 연결된 계정이 다를 수 있습니다. 채널을 다시 연결하면서 글을 올린 계정을 선택해 주세요."
+          : skipped.includes("video_not_visible")
+            ? "연결된 채널 계정에서 이 영상을 찾을 수 없습니다. 영상이 비공개 또는 삭제됐거나 다른 계정으로 발행됐는지 확인해 주세요."
           : skipped.includes("insights_forbidden")
             ? "게시물은 확인되는데 성과 조회 권한이 없습니다. 채널을 다시 연결해 성과 조회 권한을 허용해 주세요."
             : `채널이 성과 조회를 거절했습니다(응답 ${skipped[0] ?? "알 수 없음"}). 채널을 다시 연결한 뒤 시도해 주세요.`,

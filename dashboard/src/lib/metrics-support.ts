@@ -20,6 +20,7 @@ export const METRICS_COLLECTED_PLATFORMS: ReadonlySet<string> = new Set([
   "facebook",
   "youtube",
   "shorts",
+  "tiktok",
 ]);
 
 export function isMetricsCollected(platform: string | null | undefined): boolean {

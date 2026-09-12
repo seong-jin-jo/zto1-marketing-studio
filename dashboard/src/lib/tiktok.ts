@@ -1,5 +1,7 @@
 const API_BASE = "https://open.tiktokapis.com/v2/post/publish";
+const DISPLAY_API_BASE = "https://open.tiktokapis.com/v2";
 const TIMEOUT_MS = 10_000;
+const VIDEO_QUERY_LIMIT = 20;
 
 export const TIKTOK_PRIVACY_LEVELS = [
   "PUBLIC_TO_EVERYONE",
@@ -22,8 +24,19 @@ export interface TikTokCreatorInfo {
 
 interface TikTokEnvelope<T> {
   data?: T;
-  error?: { code?: string };
+  error?: { code?: string; message?: string };
 }
+
+export interface TikTokVideoMetrics {
+  views: number;
+  likes: number;
+  replies: number;
+  reposts: number;
+}
+
+export type TikTokVideoMetricsResult =
+  | { ok: true; metrics: Record<string, TikTokVideoMetrics> }
+  | { ok: false; status?: number; error: string };
 
 function headers(accessToken: string): Record<string, string> {
   return {
@@ -36,6 +49,70 @@ function validPrivacyLevels(value: unknown): TikTokPrivacyLevel[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is TikTokPrivacyLevel =>
     typeof item === "string" && (TIKTOK_PRIVACY_LEVELS as readonly string[]).includes(item));
+}
+
+/**
+ * 발행이 끝난 TikTok 영상의 공개 성과를 읽어 온다.
+ *
+ * TikTok Display API의 video/query는 요청당 영상 ID를 최대 20개 받는다. 호출부가 게시물을
+ * 몇 개 넘기더라도 이 경계에서 20개씩 나눠 모든 결과를 되받는다. share_count는 제품의
+ * 공통 성과 축인 reposts에 저장한다.
+ *
+ * 공식 계약: https://developers.tiktok.com/docs/en/tiktok-api-v2-video-query
+ */
+export async function fetchTikTokVideoMetrics(
+  accessToken: string,
+  videoIds: string[],
+  f: typeof fetch = fetch,
+): Promise<TikTokVideoMetricsResult> {
+  const ids = [...new Set(videoIds.filter(Boolean))];
+  if (ids.length === 0) return { ok: true, metrics: {} };
+  if (!accessToken) return { ok: false, error: "TikTok 연결이 없습니다." };
+
+  const metrics: Record<string, TikTokVideoMetrics> = {};
+  for (let start = 0; start < ids.length; start += VIDEO_QUERY_LIMIT) {
+    const batch = ids.slice(start, start + VIDEO_QUERY_LIMIT);
+    try {
+      const res = await f(
+        `${DISPLAY_API_BASE}/video/query/?fields=id,view_count,like_count,comment_count,share_count`,
+        {
+          method: "POST",
+          headers: headers(accessToken),
+          body: JSON.stringify({ filters: { video_ids: batch } }),
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        },
+      );
+      const body = await res.json().catch(() => ({})) as TikTokEnvelope<{
+        videos?: Array<{
+          id?: string;
+          view_count?: number;
+          like_count?: number;
+          comment_count?: number;
+          share_count?: number;
+        }>;
+      }>;
+      if (!res.ok || body.error?.code !== "ok") {
+        return {
+          ok: false,
+          status: res.status,
+          error: `TikTok 성과 조회 실패(${body.error?.code || res.status})`,
+        };
+      }
+      for (const video of body.data?.videos ?? []) {
+        if (!video.id) continue;
+        metrics[video.id] = {
+          views: Number(video.view_count ?? 0) || 0,
+          likes: Number(video.like_count ?? 0) || 0,
+          replies: Number(video.comment_count ?? 0) || 0,
+          reposts: Number(video.share_count ?? 0) || 0,
+        };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, error: `TikTok 성과 조회 중 오류: ${message.slice(0, 120)}` };
+    }
+  }
+  return { ok: true, metrics };
 }
 
 export async function queryTikTokCreatorInfo(

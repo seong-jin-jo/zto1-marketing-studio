@@ -78,10 +78,10 @@ const DEFINITIONS: Record<PublishStatusTarget, MetricsCollectorDefinition> = {
   tiktok: {
     platform: "tiktok",
     storagePlatforms: ["tiktok"],
-    collectionSupported: false,
-    collector: null,
-    metrics: [],
-    unsupportedReason: "현재 TikTok 게시물 성과 수집기는 연결되지 않았습니다.",
+    collectionSupported: true,
+    collector: "tiktok_video_query",
+    metrics: THREADS_METRICS,
+    unsupportedReason: null,
   },
 };
 
