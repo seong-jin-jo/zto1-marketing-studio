@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
+import generationRequest from "./generation-request.fixture.json";
 import type { StudioContentGenerator } from "@/lib/studio/generation/llm";
 
-export const STUDIO_TEST_WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
+export const STUDIO_TEST_WORKSPACE_ID = generationRequest.workspace_id;
 
 export const FIXTURE_STUDIO_CONTENT_GENERATOR: StudioContentGenerator = {
   async generateCandidates({ request }) {
@@ -20,52 +21,10 @@ export const FIXTURE_STUDIO_CONTENT_GENERATOR: StudioContentGenerator = {
 };
 
 export function generationRequestFixture() {
-  return {
-    workspace_id: STUDIO_TEST_WORKSPACE_ID,
-    learning_context: {
-      s0: { revision: 1, safety_rules: ["권리 확인 전 외부 소재를 쓰지 않는다"] },
-      s1: { revision: 2, market_context: "짧은 교육형 콘텐츠의 첫 장면에서 핵심을 분명히 보여 준다" },
-      u2: {
-        revision: 3,
-        locale: "ko-KR",
-        time_zone: "Asia/Seoul",
-        accessibility_requirements: ["자막 포함"],
-      },
-      u3: {
-        revision: 4,
-        purpose: "처음 보는 사람에게 복잡한 개념을 설명한다",
-        audience: "업무 자동화를 처음 접하는 1인 사업가",
-        content_branch: "video",
-        workspace_facts: ["실제 운영 기록만 근거로 쓴다"],
-        workspace_facts_confirmed_empty: false,
-        forbidden_phrases: [],
-        forbidden_phrases_confirmed_empty: true,
-        material_rights_confirmed: true,
-        tone: "짧고 구체적으로 말한다",
-      },
-      x4: {
-        revision: 5,
-        skill_version_id: "22222222-2222-4222-8222-222222222222",
-        structure_rules: ["첫 장면에 문제나 결과를 둔다", "마지막에 다음 행동을 둔다"],
-      },
-      l5: { revision: 6, accepted_rules: ["증거가 먼저 나오는 구성을 선호한다"] },
-      r6: {
-        topic: "자동화가 실패했을 때 확인할 세 가지",
-        output_language: "ko-KR",
-        adjustments: { emphasis: "실패 원인" },
-      },
-    },
-    platform_spec: {
-      reference: "opaque-platform-contract",
-      version: "2026-08",
-      digest: "a".repeat(64),
-      targets: [{
-        target_id: "vertical-video-primary",
-        format: "short-video",
-        aspect_ratio: "9:16",
-        max_duration_seconds: 60,
-      }],
-      body: { codec: "configured-at-request-time" },
-    },
-  };
+  // 요청 본문의 정본은 generation-request.fixture.json 하나다.
+  // 종전에는 이 파일의 객체 리터럴을 node 검증기가 정규식으로 오려내 eval 했다.
+  // 리터럴 모양이 조금만 달라져도 검증기는 네트워크 요청 전에 SyntaxError 로 죽었고,
+  // 그 상태에서 QA 문서에는 PASS 가 적혔다(2026-09-12 코드리뷰 MAJOR).
+  // 두 쪽이 같은 JSON 을 읽으면 파싱이라는 단계 자체가 사라진다.
+  return structuredClone(generationRequest) as typeof generationRequest;
 }

@@ -81,7 +81,13 @@ const TENANT_AWARE_PATHS = [
   "/api/publish/first-comment-capabilities",
   "/api/queue/[postId]/add-image",
   "/api/queue/[postId]/approve",
+  // 고객이 예약 글의 발행을 멈추는 경로. 화면(UnifiedPostCard)이 "발행을 멈춥니다"라고
+  // 약속하는데 이 줄이 없어 유효한 고객 토큰도 핸들러 전에 403 을 받았다(2026-09-12 코드리뷰 MAJOR).
+  "/api/queue/[postId]/cancel",
   "/api/queue/[postId]/delete",
+  // 같은 구멍이 하나 더 있었다. studio/page.tsx:1521 이 고객 화면에서 이 경로를 부르는데
+  // 허용 목록에 없어 검토 요청이 조용히 403 이었다(2026-09-12 실사).
+  "/api/queue/[postId]/request-review",
   "/api/queue/[postId]/update",
   "/api/queue/[postId]/variants",
   "/api/queue/add",

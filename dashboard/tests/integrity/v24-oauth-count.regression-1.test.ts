@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 // Regression: V24-DR-006. 운영 화면 주석이 등록된 provider 수와 다른 고정 숫자를 주장했다.
 // Found by /qa on 2026-08-28
-// Report: docs/audit/v24-design-review.md
+// Report: docs/_archive/legacy-20260912/audit/v24-design-review.md
 
 const read = (relativePath: string) => fs.readFileSync(path.resolve(process.cwd(), relativePath), "utf8");
 

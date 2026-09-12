@@ -45,6 +45,26 @@ describe("고객이 부르는 studio 라우트는 허용 목록에 있다", () =
     expect(missing, `허용 목록에 없는 studio 라우트: ${missing.join(", ")}`).toEqual([]);
   });
 
+  // 2026-09-12 코드리뷰 MAJOR 에서 같은 사고가 queue 쪽에서 다시 나왔다.
+  // 발행 중지(/api/queue/[postId]/cancel) 가 허용 목록에 없어 고객이 "발행을 멈춥니다"를
+  // 눌러도 핸들러에 닿지 못하고 403 이었다. studio 만 검사하던 계약을 queue 까지 넓힌다.
+  it("queue 아래 라우트가 빠짐없이 등록돼 있다", () => {
+    const routes = studioRoutes(resolve(root, "app/api/queue"), "/api/queue");
+    const allowed = (route: string) => {
+      if (proxy.includes(`"${route}"`)) return true;
+      const asMatcher = route.replace(/\//g, "\\/").replace(/\[[^\]]+\]/g, "[^/]+");
+      return proxy.includes(asMatcher);
+    };
+    // 운영자 전용으로 의도한 것만 여기 적는다. 이유 없이 적으면 그게 다음 사고다.
+    const operatorOnly = new Set<string>([
+      "/api/queue/promote",   // schedule 라우트가 서버끼리 부른다. 고객 화면 경로가 아니다.
+      "/api/queue/seed",      // 시드 주입. 운영자 도구다.
+      "/api/queue/backfill",  // 과거 데이터 보정. 운영자 도구다.
+    ]);
+    const missing = routes.filter((route) => !operatorOnly.has(route) && !allowed(route));
+    expect(missing, `허용 목록에 없는 queue 라우트: ${missing.join(", ")}`).toEqual([]);
+  });
+
   it("이 목록이 허용 목록이라는 사실이 코드에 적혀 있다", () => {
     // 차단 목록으로 착각하면 새 라우트를 안 넣고 지나간다.
     expect(proxy).toContain("허용 목록");

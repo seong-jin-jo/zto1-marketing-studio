@@ -63,6 +63,7 @@ describe("V69-COPY-04 고객 UI 문구 계약", () => {
     const studio = fs.readFileSync(path.join(ROOT, "src/app/studio/page.tsx"), "utf8");
     expect(studio).not.toContain("engine?.label");
     expect(studio).not.toContain("engine?.model");
-    expect(studio).toContain("AI 사용 가능");
+    expect(studio).toContain("AI 엔진 설정됨");
+    expect(studio).not.toContain("AI 사용 가능");
   });
 });

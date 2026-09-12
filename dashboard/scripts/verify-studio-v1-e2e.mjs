@@ -8,10 +8,9 @@ const token = process.env.STUDIO_DEV_BEARER_TOKEN;
 const workspace = (process.env.STUDIO_DEV_WORKSPACE_IDS || "").split(",")[0].trim();
 if (!token || !workspace) throw new Error("STUDIO_DEV_BEARER_TOKEN 과 STUDIO_DEV_WORKSPACE_IDS 가 필요하다");
 
-const fixtureText = fs.readFileSync(new URL("../tests/studio/generation-fixture.ts", import.meta.url), "utf8");
-const literal = fixtureText.match(/return \{([\s\S]*?)\n {2}\};\n\}/);
-if (!literal) throw new Error("generation-fixture.ts 에서 요청 본문을 찾지 못했다");
-const body = eval(`({${literal[1].replace(/STUDIO_TEST_WORKSPACE_ID/g, JSON.stringify(workspace))}})`);
+// 요청 본문은 tests/studio/generation-request.fixture.json 하나에서 읽는다.
+// 정규식+eval 파싱은 요청 전에 SyntaxError 로 죽었다(2026-09-12 코드리뷰 MAJOR).
+const body = JSON.parse(fs.readFileSync(new URL("../tests/studio/generation-request.fixture.json", import.meta.url), "utf8"));
 body.workspace_id = workspace;
 
 const auth = { authorization: `Bearer ${token}` };
@@ -49,8 +48,13 @@ const empty = await fetch(`${base}/api/studio/v1/generations`, { method: "POST",
 record("빈 본문은 어느 항목이 빠졌는지 밝히며 거절된다", empty.status, 422);
 
 const created = await fetch(`${base}/api/studio/v1/generations`, { method: "POST", headers: json(), body: JSON.stringify(body) });
+const createdBody = await created.json();
 record("일곱 층 학습 정보를 갖춘 생성 요청은 받아들여진다", created.status, 201);
-const payload = (await created.json()).data;
+if (created.status !== 201 || !createdBody.data) {
+  console.log(JSON.stringify(createdBody).slice(0, 500));
+  process.exit(1);
+}
+const payload = createdBody.data;
 record("후보를 세 장 돌려준다", payload.candidates.length, 3);
 
 const jobId = payload.job_id;
@@ -69,7 +73,12 @@ const oppositeZoneCreated = await fetch(`${base}/api/studio/v1/generations`, {
   method: "POST", headers: json(), body: JSON.stringify(oppositeZoneBody),
 });
 record("다른 시간대의 별도 작업도 생성된다", oppositeZoneCreated.status, 201);
-const oppositeZonePayload = (await oppositeZoneCreated.json()).data;
+const oppositeZoneCreatedBody = await oppositeZoneCreated.json();
+if (oppositeZoneCreated.status !== 201 || !oppositeZoneCreatedBody.data) {
+  console.log(JSON.stringify(oppositeZoneCreatedBody).slice(0, 500));
+  process.exit(1);
+}
+const oppositeZonePayload = oppositeZoneCreatedBody.data;
 const oppositeZoneJobId = oppositeZonePayload?.job_id;
 
 record("첫 작업의 후보 세 장을 모두 거절로 남긴다", await rejectAllCandidates(payload), true);
