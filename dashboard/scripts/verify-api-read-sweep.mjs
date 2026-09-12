@@ -17,7 +17,7 @@ const operatorToken = process.env.DASHBOARD_AUTH_TOKEN;
 const studioToken = process.env.STUDIO_DEV_BEARER_TOKEN;
 const tenantToken = process.env.API_SWEEP_TENANT_TOKEN || "";
 const outputPath = process.env.API_SWEEP_OUTPUT || "";
-const requestTimeoutMs = Number(process.env.API_SWEEP_TIMEOUT_MS || "60000");
+const requestTimeoutMs = Number(process.env.API_SWEEP_TIMEOUT_MS || "120000");
 
 if (!workspaceId) throw new Error("API_SWEEP_WORKSPACE_ID 또는 STUDIO_DEV_WORKSPACE_IDS가 필요합니다");
 if (!operatorToken) throw new Error("DASHBOARD_AUTH_TOKEN이 필요합니다");
