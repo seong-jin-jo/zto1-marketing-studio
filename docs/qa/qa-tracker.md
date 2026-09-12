@@ -2,6 +2,19 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-12 23시 23분 KST · Instagram Reels 성과 수집 build 전환
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98 | 발행 성과를 다음 생성 판단으로 되돌리고, 미수집을 측정값으로 오인하지 않음 | METRICS-REELS-01 | build 통과, QA 미승인 | Reels 행 조회, provider 호출, 수치 UPDATE 정상 계약 통과. localhost GET 200에서 지원 범위 관찰 |
+| R68, R98 | 연결되지 않은 작업 공간에서 외부 수집을 시작하지 않음 | METRICS-REELS-02 | build 통과, QA 미승인 | Route Handler 계약과 localhost POST 400으로 자격증명 없음 거절 확인 |
+
+원 감사의 "Threads 외 수집기 6개 없음" 중 X, Instagram 피드, Facebook, YouTube·Shorts는 현재
+코드에 이미 구현돼 있다. 재구현하지 않고 같은 Instagram 자격증명과 미디어 insights 경로를 쓰는
+Reels만 이번 build 대상으로 좁혔다. 전체 Vitest 301파일 2,021건, TypeScript, 기본 흐름 11/11,
+Studio v1 14/14, production build 182/182, 디자인 lint가 통과했다. 지정 작업 공간에는 연결 자격증명과 Reels 발행물이 없어
+실제 Instagram provider 성공 응답은 미검증이다. QA 승인과 운영 배포는 하지 않았다.
+
 ## 2026-09-12 22시 49분 KST · 네 방 기본 흐름 재검증 최종 판정
 
 한 줄 결론: localhost 네 방 기본 흐름은 두 검증기 결함을 수리한 뒤 범위 PASS다. 승인 디자인

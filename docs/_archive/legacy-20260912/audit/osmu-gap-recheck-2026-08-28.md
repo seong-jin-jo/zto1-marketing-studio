@@ -1,5 +1,43 @@
 # 갭 감사 재확인 2026-08-28
 
+## 2026-09-12 23시 23분 갭 갱신: Instagram Reels 성과 수집 연결
+
+두 감사 문서의 잔여 목록을 현재 소스와 다시 대조했다. X, Instagram 피드, Facebook,
+YouTube와 Shorts 수집기는 이미 구현돼 있어 재구현하지 않았다. 실제로 남은 provider 수집기는
+Instagram Reels와 TikTok이었다. 기본 흐름의 발행 다음 단계에 가장 가까우며 기존 Instagram
+자격증명을 재사용할 수 있는 Reels 한 항목을 이번 build 대상으로 골랐다.
+
+| 계약 | 현재 판정 | 증거 |
+|---|---|---|
+| Reels 발행물 조회 | 테스트됨 | `instagram_reels`, `reels` 저장 이름을 Instagram 피드와 함께 조회 |
+| provider 연결 | 테스트됨 | Instagram 자격증명과 기존 `fetchMetaPostMetrics`를 재사용해 Media ID별 수치 갱신 |
+| 지원 범위 정합 | 관찰됨 | localhost GET 200, `collectionSupported:true`, `collector:instagram_media_insights`, 미발행 사유 `NO_PUBLISHED_POST` |
+| 자격증명 거절 | 관찰됨 | 지정 작업 공간의 localhost POST 400, 연결 채널 없음 안내, 외부 조회와 DB 변경 없음 |
+| 기본 흐름 회귀 | 테스트됨 | 전체 Vitest 301파일 2,021건 통과, 3건 스킵. 기본 흐름 11/11, Studio v1 14/14, TypeScript 오류 0, production build 182/182 |
+| 실제 Instagram 수치 회수 | 미검증 | 지정 작업 공간에 연결 자격증명과 Reels 발행물이 없어 provider 성공 응답은 관찰하지 못함 |
+
+이제 Reels는 수집 미지원으로 표시되지 않는다. 남은 구조 갭은 TikTok provider 수집기와 게시물별
+성과 snapshot, 재현 가능한 30일 비교다. 이번 변경은 테이블, 외부 계약, 화면 구조를 늘리지 않았다.
+
+벤치마크 적용: Meta 공식 Instagram API가 Reels 발행 결과를 Instagram Media ID로 다루는 계약을
+따라, 별도 Reels 인증 저장소를 만들지 않고 기존 Instagram Media Insights 경로에 저장 이름만
+합쳤다. 출처는 https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api 다.
+
+레드팀: 지원 범위만 true로 바꾸면 실제 수집 쿼리가 Reels를 지나치는 거짓 완료가 된다. 라우트
+통합 테스트가 Reels 행 조회, provider 호출, 수치 UPDATE를 한 묶음으로 검증하도록 고정했다.
+
+셀프심문: 이 결론이 틀렸다면 가장 그럴듯한 이유는 Reels Media ID에서 피드와 다른 insight 지표
+권한이 필요한 경우다. 로컬 성공 계약과 실제 앱의 정직한 미발행, 미연결 상태까지만 완료로 판정하고,
+실제 provider 수치 회수는 자격증명과 발행물이 생길 때까지 미검증으로 남겼다.
+
+STAMP | line: osmu-gapfill091223 | 생성: 2026-09-12 23:23 KST | model: gpt-codex/gpt-5.6-sol | agent: code-builder | skill: 없음 | 고민: 이미 있는 Instagram 수집기를 보존하고 누락된 Reels 저장 이름만 기본 흐름에 연결했다.
+
+SKILLS_USED: 없음. 설치된 스킬 중 이 Next.js 성과 수집 build에 직접 대응하는 스킬 없음. SKILLS_SKIPPED: qa는 QA 단계 소유이므로 build 계약과 지정 E2E만 검증.
+
+SOURCES: 두 갭 감사 | 승인 v63 프로토타입 | 회장 요구 대장 | OSMU 사업 좌표 | `dashboard/src/app/api/metrics/route.ts` | Meta Instagram API 공식 문서
+
+MODEL: gpt-codex/gpt-5.6-sol / code-builder
+
 ## 2026-09-12 19시 36분 갭 갱신: 학습 후보 수락·거절 이력 구현·실측 완료
 
 두 감사 문서를 현재 코드와 다시 대조했다. 수락한 규칙이 다음 생성에 들어가는 경로는 이미 있었지만,
