@@ -1,3 +1,30 @@
+## 2026-09-13 06시 00분 - API 읽기 전수 재실사 v6 완료, 제품 전체 QA는 NG
+
+회장 요청 원문을 handoff basis로 사용했다. `studio-auth-runtime:0.0`은 localhost:3456 실행 상태와
+콜드 컴파일 진행 확인에만 사용했다. canonical main repo의 `pipeline-state.osmu.md`는 이미
+`current_stage: qa`였으며 승인 상태와 배포는 바꾸지 않았다.
+
+GET을 내보내는 API 105개와 HEAD 1개를 실호출했다. 최종 결과는 정상 92개, 의도된 거절
+13개, HTTP 500과 요청 실패 0개다. 첫 15초 실행의 요청 실패 13개와 60초 실행의 요청 실패
+2개는 공유 Next 개발 서버의 콜드 컴파일을 고정 제한시간이 제품 장애로 오판한 것이었다.
+실패 경로 단독 200과 120초 전수 재실행을 확인하고 검증기에 설정 가능한 제한시간과 회귀
+테스트를 추가했다. 커밋은 `b25005aa`, `f2d3b3e2`다.
+
+집중 회귀 31건, 전체 Vitest 311파일과 2,077건, TypeScript, 정적 페이지 182/182 build, 멱등
+seed, 기본 흐름 11/11, Studio v1 14/14, 디자인 lint가 통과했다. 시드 직후 health는 한 번
+HTTP 503과 DB down이었지만 후속 세 번은 모두 HTTP 200과 DB up이었다. 반복되면 DB 연결
+구간을 별도 결함으로 다시 연다.
+
+보고서는 `docs/qa/osmu-api-read-sweep-v6-gpt-codex-20260913-0600.md`, 원본은
+`logs/diff/osmu-api-read-sweep-20260913-0537.json`이다. API 읽기 범위만 PASS다. 승인
+프로토타입 v63과 pipeline 디자인 핀 v68 충돌, 기존 디자인 정합 NG, 외부 OAuth와 실제 발행,
+운영 배포 미검증 때문에 제품 전체 QA와 배포는 NG다. 다음 소유자는 product-designer와
+컨트롤러다. 디자인 승인 핀을 하나로 확정하고 정합시킨 뒤 외부 계정 발행과 성과 응답을 QA가
+재관찰해야 한다.
+
+상위 `verify-agent-quality.sh`는 배포 환경 접촉 증거 0건으로 FAIL을 반환했다. 이번 과제는
+localhost 실사로 명시됐으므로 운영 환경까지 임의로 확대하지 않았고 로컬 범위 PASS만 기록한다.
+
 ## 2026-09-13 03시 43분 - TikTok 발행 성과 수집 build 완료
 
 회장 요청 원문을 handoff basis로 사용했다. `osmu-gapfill091303:0.1`은 현재 위임 작업의 로그였고,
