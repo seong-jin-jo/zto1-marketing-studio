@@ -3,8 +3,8 @@ STAMP
 line: osmu
 artifact: 네 방 기본 흐름 QA와 디자인 정합 행렬
 created_at: 2026-08-29 10:39 KST
-updated_at: 2026-09-12 22:49 KST
-model: gpt-codex/gpt-5.6-sol
+updated_at: 2026-09-13 02:50 KST
+model: gpt-codex/GPT-5 (2026-09-13 재검증), gpt-codex/gpt-5.6-sol (기존 본문)
 agent: qa-verifier
 skills: qa, 결함 등록, 실제 앱 회귀, 반응형 관찰, 증거 기록에 사용
 basis: docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html, docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md, wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md
@@ -13,6 +13,66 @@ deliberation: 기능 동선 PASS와 상태 무관한 공통 셸 불일치를 분
 -->
 
 # OSMU 네 방 기본 흐름 QA
+
+## 2026-09-13 재검증 판정
+
+한 줄 결론: localhost 네 방 기능 흐름은 검증기의 낡은 성과실 주소를 고친 뒤 범위 PASS다.
+전체 QA는 승인 디자인 정합 NG와 외부 공개 발행 미검증 때문에 승인할 수 없다.
+
+첫 health 요청은 같은 개발 서버를 사용하던 API 전수 실사가 라우트 네 개씩을 컴파일하면서 30초
+안에 응답하지 못했다. 해당 실사가 끝난 뒤 같은 `localhost:3456`에서 health HTTP 200과 DB up을
+확인했고 기본 흐름 11/11도 통과했다. 제품 health 실패로 세지 않고 공유 개발 서버의 동시 검증
+부하로 기록한다.
+
+`probe-four-room-flow.mjs`는 성과실을 옛 홈 주소 `/`에서 찾고 있어 실제 `/performance` 화면을
+실패로 판정했다. probe 주소를 현재 제품 계약에 맞추고 회귀 계약을 추가한 커밋은 `80c09807`이다.
+수정 후 probe는 네 방 렌더, 가린 모달 0건, 브라우저 401 0건, 콘솔 오류 0건으로 끝났다.
+
+| 검증 | 판정 | 2026-09-13 직접 관찰 증거 |
+|---|---|---|
+| canonical 단계 | 진행 중 | 메인 repo `pipeline-state.osmu.md`의 `current_stage: qa`, 승인 전 |
+| health | PASS | `/api/health` HTTP 200, `db: up`, 서버 측 DB 확인 58ms |
+| seed | PASS | 멱등 시드 실행 뒤 지정 작업 공간 `active`, `team`, 공유 AI 승인 상태를 실제 DB에서 확인 |
+| 기본 API 흐름 | PASS | `verify-basic-flow-e2e.mjs`, 생성부터 성과 제안 재인계까지 11/11 |
+| Studio v1 | PASS | `verify-studio-v1-e2e.mjs`, 인증 거절과 생성·조회·후보 전건 거절·UTC 무료 재생성 경계 14/14 |
+| 네 방 probe | NG 후 수정, PASS | 성과실 주소 `/`를 `/performance`로 수정. 네 방 렌더, 가린 모달·401·콘솔 오류 각 0 |
+| 사람 클릭 반응형 | PASS | 390 라이트·다크, 768, 1024, 1440에서 20화면과 성과실→생성실 복귀 5건 |
+| 전체 회귀 | PASS | `npm run test`, 302파일 2,033건 PASS, 3건 제외, 실패 0 |
+| TypeScript | PASS | `npx tsc --noEmit`, 종료 코드 0 |
+| production build | PASS | 공유 dev와 분리한 현재 소스 사본에서 정적 페이지 182/182, 종료 코드 0 |
+| 디자인 lint | PASS | `design-lint.sh dashboard/src`, 임의 px·인라인 style·토큰 밖 hex 위반 0 |
+| mobile typecheck·Maestro | 해당 없음 | dashboard 웹 범위이며 별도 Expo 화면 계약 없음. 실패 숨김 옵션 사용 안 함 |
+| 승인 v63 디자인 정합 | NG | 현재 PNG를 v63 원본과 직접 대조. 셸, 열 수, 담당 패널, 요소 순서, 버튼 위계 불일치 |
+| 외부 공개 발행·성과 | 미검증 | 이번 범위는 발행 큐까지다. 외부 permalink와 배포 버전 증거 없음 |
+
+실행 원본은
+[`observations.json`](../../logs/diff/osmu-four-room-flow-20260913-0216/captures/observations.json)과
+같은 폴더의 20개 PNG다. v63 원본은
+[`docs/design/captures/osmu-four-room-prototype-v63-20260912`](../design/captures/osmu-four-room-prototype-v63-20260912)를
+참조했다. 390 생성실, 768 편집실, 1024 발행실, 1440 성과실을 원본과 짝지어 직접 열었으며,
+기존 속성별 NG 행렬과 같은 구조 차이를 재확인했다.
+
+### 2026-09-13 요청 번호 승계
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08 | 네 방 이동 | FLOW-UI-01 | PASS | 네 방 20화면, 생성실→성과실 클릭과 성과실→생성실 복귀 5건 |
+| R27 | 후보 거절 뒤 무료 재생성 | STUDIO-V1-REGEN | PASS | Studio v1 14/14 |
+| R104 | 고객 인증 경계 | FLOW-AUTH-01 | PASS | 실제 임시 고객 토큰, 브라우저 401 0, 토큰 폐기 200 |
+| R168 | 첫 생성과 학습 정보 | FLOW-11-GEN | PASS | 후보 3장과 편집실 인계 |
+| R193 | 성과 제안에서 생성실 재진입 | FLOW-UI-RETURN | PASS | 네 폭과 390 다크에서 제안 3건, 생성실 복귀 5건 |
+| R200, R207 | 성과실 UX와 학습 정보 | FLOW-PERF-01 | 기능 PASS, 디자인 NG | `/performance` 렌더와 제안 3건. v63 구조와 불일치 |
+| R201 | 중복 안내 없이 방 이동 | FLOW-SIDEBAR-01 | PASS | 차단 모달과 이동 후 가린 메뉴 0건 |
+| R206 | 승인 시안 수준 화면 충실도 | CONF-ALL | NG | 현재 PNG와 v63 원본의 속성별 구조 불일치 |
+| R01~R207 | 이번 기본 흐름 밖 확정 요구 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 범위 밖 항목을 PASS로 세지 않음 |
+
+페르소나 결정 질문: 박도윤이 설명 없이 생성실에서 성과실까지 이동하고 다시 시작할 수 있는가?
+
+답: 네 방 이동과 다음 행동에는 PASS다. 실제 공개 채널 발행과 승인 시안 정합에는 NG이므로 첫
+콘텐츠의 공개와 성과 수집까지 혼자 완결할 수 있다고는 판정하지 않는다.
+
+Design Score: D. 기능과 반응형은 통과했지만 승인 v63 대비 네 대표 화면의 구조 속성이 모두 NG라
+합격선 B에 미달한다.
 
 ## 판정
 

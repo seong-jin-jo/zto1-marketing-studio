@@ -2,6 +2,81 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-13 02시 50분 KST · 네 방 기본 흐름 재검증 최종 판정
+
+한 줄 결론: localhost 네 방 기본 흐름은 성과실 주소가 낡은 probe를 수리한 뒤 범위 PASS다.
+승인 v63 디자인 정합과 외부 공개 발행은 통과하지 않아 전체 QA와 배포는 NG다.
+
+| 단계 | 상태 | 증거·비고 |
+|---|---|---|
+| canonical 단계 | 진행 중 | 메인 repo `pipeline-state.osmu.md`의 `current_stage: qa`, 승인 전 |
+| health | PASS | localhost:3456 HTTP 200, DB up, 서버 측 DB 확인 58ms |
+| seed | PASS | 멱등 시드 뒤 지정 작업 공간 `active`, `team`, 공유 AI 승인 true |
+| 기본 API 흐름 | PASS | `verify-basic-flow-e2e.mjs` 11/11 |
+| Studio v1 | PASS | `verify-studio-v1-e2e.mjs` 14/14 |
+| 네 방 probe | NG 후 수정, PASS | `/`에서 찾던 성과실을 정본 `/performance`로 수정. 네 방 렌더, 가린 모달·401·콘솔 오류 각 0 |
+| 사람 클릭 반응형 | PASS | 390 라이트·다크, 768, 1024, 1440에서 20화면과 성과실→생성실 복귀 5건 |
+| 전체 회귀 | PASS | Vitest 302파일, 2,033건 PASS, 3건 제외, 실패 0 |
+| TypeScript | PASS | `npx tsc --noEmit`, 오류 0 |
+| production build | PASS | 공유 dev와 분리한 현재 소스 사본, 정적 페이지 182/182 |
+| 디자인 lint | PASS | `dashboard/src` 임의 px·인라인 style·토큰 밖 hex 위반 0 |
+| mobile typecheck·Maestro | 해당 없음 | dashboard 웹 범위, 별도 Expo 계약 없음, 실패 숨김 옵션 미사용 |
+| 승인 디자인 정합 | NG | v63 원본과 현재 4폭 PNG 직접 대조. 셸, 열 수, 담당 패널, 순서, 버튼 위계 불일치. Design Score D |
+| 외부 OAuth·실발행·성과 | 미검증 | 이번 범위는 발행 큐까지다. 외부 permalink와 배포 버전 증거 없음 |
+
+최초 health 시간 초과는 같은 공유 개발 서버에서 API 전수 실사가 네 요청씩 라우트를 컴파일한
+동시 부하였다. 해당 실사가 끝난 뒤 같은 주소가 200으로 회복돼 제품 health 결함으로 세지 않았다.
+실제 결함은 probe가 성과실의 옛 주소 `/`를 사용한 것이며, 수정과 회귀 계약은 `80c09807`이다.
+실행 원본은 `logs/diff/osmu-four-room-flow-20260913-0216/captures/observations.json`과 같은 폴더의
+20개 PNG, 상세 판정은 `docs/qa/osmu-four-room-basic-flow-v1-gpt-codex.md`다.
+
+### 요청 번호 승계
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08 | 네 방 이동 | FLOW-UI-01 | PASS | 20화면과 성과실→생성실 복귀 5건 |
+| R27 | 후보 전건 거절 뒤 무료 재생성 | STUDIO-V1-REGEN | PASS | Studio v1 14/14 |
+| R104 | 고객 인증 경계 | FLOW-AUTH-01 | PASS | 실제 임시 고객 토큰, 브라우저 401 0, 폐기 200 |
+| R168 | 첫 생성과 학습 정보 | FLOW-11-GEN | PASS | 후보 3장, 편집실 인계 |
+| R193 | 성과 제안에서 생성실 재진입 | FLOW-UI-RETURN | PASS | 제안 3건과 생성실 복귀 5건 |
+| R200, R207 | 성과실 UX와 학습 정보 | FLOW-PERF-01 | 기능 PASS, 디자인 NG | `/performance` 렌더는 정상, v63 구조는 불일치 |
+| R201 | 중복 안내 없이 방 이동 | FLOW-SIDEBAR-01 | PASS | 차단 모달과 이동 후 가린 메뉴 0건 |
+| R206 | 승인 시안 수준 화면 충실도 | CONF-ALL | NG | 현재 PNG와 v63 원본의 속성별 구조 불일치 |
+| R01~R207 | 이번 기본 흐름 밖 확정 요구 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 누락으로 PASS 처리하지 않음 |
+
+전환 가능 TC는 FLOW-UI-01, FLOW-AUTH-01, FLOW-UI-RETURN, FLOW-SIDEBAR-01과 기본 API 11단계,
+Studio v1 14건이다. CONF-ALL과 외부 공개 발행은 전환 불가다.
+
+페르소나 결정: 박도윤은 네 폭에서 생성실부터 성과실까지 이동하고 다시 시작할 수 있다. 그러나
+승인 시안과 다른 구조 및 외부 채널 미검증 때문에 실제 공개와 성과 수집까지 완결한다고 판정하지 않는다.
+
+레드팀: 검증기만 고쳐 제품 결함을 숨겼을 가능성을 공격했다. 독립 `/performance` 고객 토큰
+브라우저, 실제 API 11단계, Studio v1 14건, 20개 PNG를 교차해 제품 렌더와 인계를 따로 확인했다.
+
+셀프심문: 이 결론이 틀렸다면 가장 그럴듯한 이유는 localhost 통과를 운영 배포와 동일시하거나,
+데이터 상태 차이를 디자인 일치로 오판한 경우다. 그래서 로컬 기능 PASS로 범위를 제한하고 공통
+구조 불일치와 외부 공개 발행을 각각 NG와 미검증으로 남겼다.
+
+벤치마크: Playwright 공식 actionability와 locator 원칙을 적용해 force click 없이 보이고 안정적이며
+입력을 받는 링크만 눌렀다. [Actionability](https://playwright.dev/docs/actionability),
+[Locators](https://playwright.dev/docs/locators)
+
+다음 실행: 소유자는 product-designer와 Codex 컨트롤러다. v63 또는 v68 승인 핀을 하나로 확정하고
+공통 셸을 정합시킨 뒤 QA가 동일 상태 네 방 4폭 PNG를 재대조한다. 종료 증거는 Design Score B 이상
+속성별 PASS, 외부 계정 연결, permalink, 성과 API 응답이다.
+
+[모델]: gpt-codex/GPT-5, qa-verifier가 실제 localhost와 원본 PNG를 직접 관찰했다.
+소스 1: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html`.
+소스 2: `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md`, `wiki/거버넌스/요청.md`.
+소스 3: `logs/diff/osmu-four-room-flow-20260913-0216/captures/observations.json`, 같은 폴더 PNG 20개.
+
+SKILLS_USED: qa, 실제 앱 회귀·결함 등록·반응형 관찰·증거 기록 / SKILLS_SKIPPED: 없음
+
+KNOWLEDGE_QUERY: business + OSMU + 기본 흐름 + 1인 사업자 + 끝내기 우선
+HITS_USED: BRAIN의 ZERO-ONE Marketing Studio 아이디어와 repo 사업 좌표를 사용해 생성→편집→발행→성과 검증 축과 박도윤 페르소나를 고정했다.
+HITS_REJECTED: 일반 마케팅 심리와 다른 벤처 자료는 이번 동작 QA 판정 근거가 아니어서 제외했다.
+CONFLICTS: Playwright 원칙과 회장 정본은 충돌 없음. 사용자 지정 v63과 pipeline 최신 승인 핀 v68이 충돌해 디자인 PASS를 금지했다.
+
 ## 2026-09-13 02시 48분 KST · API 읽기 경로 105개 전수 재실사
 
 한 줄 결론: localhost GET 105개는 정상 92개와 의도된 거절 13개이며, 원인불명 500과 요청 실패는 0개다. API 읽기 범위만 PASS이고 전체 제품 QA와 배포는 NG를 유지한다.

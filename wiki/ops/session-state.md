@@ -1,3 +1,23 @@
+## 2026-09-13 02시 50분 - 네 방 기본 흐름 QA 재검증 완료
+
+회장 요청 원문을 handoff basis로 사용했다. `osmu-flowcheck091302:0.0`,
+`osmu-supervisor:0.0`, `openclaw-auto:0.0`, `studio-auth-runtime:0.0` pane은 동시 작업과 실행 서버
+상태 확인에만 참고했다. canonical main repo의 `pipeline-state.osmu.md`는 이미
+`current_stage: qa`였으며 승인 상태로 올리지 않았다.
+
+최초 health 시간 초과는 같은 3456 개발 서버에서 별도 API 전수 실사가 네 요청씩 라우트를
+컴파일한 동시 부하였다. 실사가 끝난 뒤 health 200과 DB up으로 회복했고 실제 기본 흐름 11/11,
+Studio v1 14/14가 통과했다. 네 방 probe는 성과실의 폐기된 홈 주소 `/`를 찾아 실패했다.
+정본 `/performance`로 바꾸고 회귀 계약을 추가한 커밋은 `80c09807`이다.
+
+수정 후 네 방 렌더 4/4, 가린 모달·401·콘솔 오류 0건, 390 라이트·다크와 768·1024·1440의
+20화면, 성과실→생성실 복귀 5건을 localhost에서 관찰했다. 전체 Vitest 302파일 2,033건과
+3건 제외, TypeScript, 분리 production build 182/182, 멱등 seed, 디자인 lint가 통과했다.
+v63 원본과 현재 PNG의 셸·열 수·담당 패널·순서·버튼 위계가 달라 디자인 NG이며 외부 공개
+발행과 배포 버전은 미검증이다. 다음 소유자는 product-designer와 컨트롤러다. v63 또는 v68
+승인 핀을 단일화하고 같은 상태의 네 방 4폭 정합을 맞춘 뒤 외부 계정·permalink·성과 응답을
+QA가 재관찰해야 한다.
+
 ## 2026-09-13 02시 48분 - API 읽기 경로 전수 재실사 완료, 전체 QA는 NG
 
 회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 `/Users/sj/sj_code_master/zto1-marketing-studio`이며 `pipeline-state.osmu.md`는 이미 `current_stage: qa`여서 단계 변경은 하지 않았다. tmux의 `studio-auth-runtime:0.0`을 localhost:3456 실행 근거로 확인했다.

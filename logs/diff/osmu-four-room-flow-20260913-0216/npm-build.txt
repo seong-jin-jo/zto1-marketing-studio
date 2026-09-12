@@ -1,0 +1,262 @@
+
+> dashboard@0.2.0 build
+> next build
+
+▲ Next.js 16.2.2 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+Turbopack build encountered 1 warnings:
+./next.config.ts
+Encountered unexpected file in NFT list
+A file was traced that indicates that the whole project was traced unintentionally. Somewhere in the import trace below, there are:
+- filesystem operations (like path.join, path.resolve or fs.readFile), or
+- very dynamic requires (like require('./' + foo)).
+To resolve this, you can
+- remove them if possible, or
+- only use them in development, or
+- make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+- add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+
+Import trace:
+  App Route:
+    ./next.config.ts
+    ./src/app/api/studio/text/route.ts
+
+
+✓ Compiled successfully in 44s
+  Running TypeScript ...
+  Finished TypeScript in 114s ...
+  Collecting page data using 15 workers ...
+  Generating static pages using 15 workers (0/182) ...
+  Generating static pages using 15 workers (45/182)
+  Generating static pages using 15 workers (90/182)
+  Generating static pages using 15 workers (136/182)
+✓ Generating static pages using 15 workers (182/182) in 3.5s
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/activity
+├ ƒ /api/agent-logs
+├ ƒ /api/ai-runtime
+├ ƒ /api/ai-suggest/guide
+├ ƒ /api/ai-suggest/keywords
+├ ƒ /api/alerts
+├ ƒ /api/analytics
+├ ƒ /api/auth/google
+├ ƒ /api/blog-guide
+├ ƒ /api/blog-keywords
+├ ƒ /api/blog-queue
+├ ƒ /api/blog-queue/[postId]/approve
+├ ƒ /api/blog-queue/[postId]/delete
+├ ƒ /api/blog-queue/[postId]/update
+├ ƒ /api/blog-queue/approve
+├ ƒ /api/blog-queue/delete
+├ ƒ /api/blog-queue/update
+├ ƒ /api/blog-stats
+├ ƒ /api/blog-upload-image
+├ ƒ /api/brand/sync-repo
+├ ƒ /api/brand/sync-wiki
+├ ƒ /api/card-news/generate
+├ ƒ /api/card-news/outline
+├ ƒ /api/card-slides/[batchId]
+├ ƒ /api/channel-config
+├ ƒ /api/channel-config/[channel]
+├ ƒ /api/channel-settings
+├ ƒ /api/channel-settings/[channel]
+├ ƒ /api/channels/[provider]/accounts
+├ ƒ /api/channels/[provider]/accounts/[id]
+├ ƒ /api/channels/[provider]/accounts/[id]/default
+├ ƒ /api/chat-channels
+├ ƒ /api/claude-token
+├ ƒ /api/clipping-config
+├ ƒ /api/connect/[provider]
+├ ƒ /api/connect/[provider]/callback
+├ ƒ /api/connect/readiness
+├ ƒ /api/content/validate
+├ ƒ /api/cron-check
+├ ƒ /api/cron-runs
+├ ƒ /api/cron-status
+├ ƒ /api/cron/[jobName]/interval
+├ ƒ /api/cron/[jobName]/toggle
+├ ƒ /api/design-tools
+├ ƒ /api/design-tools/canva
+├ ƒ /api/design-tools/figma
+├ ƒ /api/design-tools/figma-mcp
+├ ƒ /api/design-tools/figma-mcp-tokens
+├ ƒ /api/elevenlabs-config
+├ ƒ /api/elevenlabs-voices
+├ ƒ /api/engagement
+├ ƒ /api/errors
+├ ƒ /api/figma-mcp/callback
+├ ƒ /api/figma-mcp/start-oauth
+├ ƒ /api/figma/create-slides
+├ ƒ /api/figma/export
+├ ƒ /api/figma/export-to-queue
+├ ƒ /api/ga-analytics
+├ ƒ /api/ga-config
+├ ƒ /api/gateway/restart
+├ ƒ /api/generate-card
+├ ƒ /api/generate-image
+├ ƒ /api/google-trend
+├ ƒ /api/growth
+├ ƒ /api/gsc-analytics
+├ ƒ /api/gsc-config
+├ ƒ /api/gsc-index
+├ ƒ /api/guide
+├ ƒ /api/guide/[channel]
+├ ƒ /api/health
+├ ƒ /api/higgsfield/asset/[file]
+├ ƒ /api/higgsfield/image
+├ ƒ /api/higgsfield/status
+├ ƒ /api/higgsfield/transactions
+├ ƒ /api/higgsfield/video
+├ ƒ /api/images
+├ ƒ /api/images/[filename]
+├ ƒ /api/images/deliver/[token]
+├ ƒ /api/images/upload
+├ ƒ /api/integrations
+├ ƒ /api/isolation-proof
+├ ƒ /api/keyword-bank
+├ ƒ /api/keyword-bank/add
+├ ƒ /api/keyword-bank/mark-used
+├ ƒ /api/keyword-bank/remove
+├ ƒ /api/keyword-research
+├ ƒ /api/keywords
+├ ƒ /api/keywords/[channel]
+├ ƒ /api/kw-planner-config
+├ ƒ /api/llm-config
+├ ƒ /api/me
+├ ƒ /api/media/[token]
+├ ƒ /api/media/resign
+├ ƒ /api/metrics
+├ ƒ /api/midjourney/generate
+├ ƒ /api/naver-datalab-config
+├ ƒ /api/naver-trend
+├ ƒ /api/notification-log
+├ ƒ /api/notification-settings
+├ ƒ /api/nsa-data
+├ ƒ /api/onboarding
+├ ƒ /api/operator/customers
+├ ƒ /api/operator/incidents
+├ ƒ /api/operator/oauth-credentials
+├ ƒ /api/operator/shorts-factory/runs/[runId]
+├ ƒ /api/overview
+├ ƒ /api/performance/learned-rules
+├ ƒ /api/popular
+├ ƒ /api/popular/add
+├ ƒ /api/popular/delete
+├ ƒ /api/product-source
+├ ƒ /api/provision
+├ ƒ /api/publish
+├ ƒ /api/publish/first-comment-capabilities
+├ ƒ /api/queue
+├ ƒ /api/queue/[postId]/add-image
+├ ƒ /api/queue/[postId]/approve
+├ ƒ /api/queue/[postId]/cancel
+├ ƒ /api/queue/[postId]/delete
+├ ƒ /api/queue/[postId]/request-review
+├ ƒ /api/queue/[postId]/update
+├ ƒ /api/queue/[postId]/variants
+├ ƒ /api/queue/add
+├ ƒ /api/queue/backfill
+├ ƒ /api/queue/bulk-approve
+├ ƒ /api/queue/bulk-delete
+├ ƒ /api/queue/promote
+├ ƒ /api/queue/seed
+├ ƒ /api/r2-config
+├ ƒ /api/schedule
+├ ƒ /api/schedule/[id]
+├ ƒ /api/schedule/[id]/cancel
+├ ƒ /api/schedule/publish-due
+├ ƒ /api/send-notification
+├ ƒ /api/seo-settings
+├ ƒ /api/settings
+├ ƒ /api/slack-config
+├ ƒ /api/slack-report-preview
+├ ƒ /api/slack-send-custom
+├ ƒ /api/slack-template
+├ ƒ /api/slack-test
+├ ƒ /api/sourcing
+├ ƒ /api/sourcing/import-to-queue
+├ ƒ /api/studio/brand-setup
+├ ƒ /api/studio/commands
+├ ƒ /api/studio/drafts
+├ ƒ /api/studio/drafts/[draftId]/editor
+├ ƒ /api/studio/drafts/[draftId]/enqueue
+├ ƒ /api/studio/edit-bulk
+├ ƒ /api/studio/engine-status
+├ ƒ /api/studio/estimate
+├ ƒ /api/studio/generation-history
+├ ƒ /api/studio/handoffs
+├ ƒ /api/studio/learning
+├ ƒ /api/studio/text
+├ ƒ /api/studio/v1/derivations/[batchId]
+├ ƒ /api/studio/v1/generations
+├ ƒ /api/studio/v1/generations/[jobId]
+├ ƒ /api/studio/v1/generations/[jobId]/derivations
+├ ƒ /api/studio/v1/generations/[jobId]/rejections
+├ ƒ /api/studio/v1/regenerations/[jobId]
+├ ƒ /api/studio/v1/shorts-factory/runs
+├ ƒ /api/studio/v1/shorts-factory/runs/[runId]
+├ ƒ /api/suggestions
+├ ƒ /api/suggestions/enqueue
+├ ƒ /api/tenant-info
+├ ƒ /api/tenant-tokens
+├ ƒ /api/tenants
+├ ƒ /api/threads-username
+├ ƒ /api/threads/low-engagement-candidates
+├ ƒ /api/threads/low-engagement-cleanup
+├ ƒ /api/tiktok/creator-info
+├ ƒ /api/tiktok/publish-status
+├ ƒ /api/token-status
+├ ƒ /api/trend-report
+├ ƒ /api/usage
+├ ƒ /api/usage/record
+├ ƒ /api/video/delete
+├ ƒ /api/video/generate
+├ ƒ /api/video/list
+├ ƒ /api/video/publish
+├ ƒ /api/video/refine-clip
+├ ƒ /api/video/repurpose
+├ ƒ /api/video/script-from-blog
+├ ƒ /api/video/upload
+├ ƒ /api/voice-tone
+├ ƒ /api/weekly-report
+├ ƒ /api/weekly-report/send
+├ ƒ /api/weekly-summary
+├ ƒ /api/workspaces
+├ ƒ /api/youtube/refresh
+├ ƒ /api/youtube/status
+├ ○ /blog
+├ ○ /blog-performance
+├ ○ /calendar
+├ ƒ /channels/[channel]
+├ ○ /data-deletion
+├ ○ /google-analytics
+├ ○ /google-trends
+├ ○ /images
+├ ○ /inbox
+├ ○ /keyword-planner
+├ ○ /login
+├ ○ /naver-trends
+├ ○ /operator
+├ ○ /operator/customers
+├ ○ /performance
+├ ○ /privacy
+├ ○ /search-advisor
+├ ○ /search-console
+├ ○ /services
+├ ○ /settings
+├ ○ /signup
+├ ○ /studio
+├ ○ /terms
+└ ○ /videos
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand

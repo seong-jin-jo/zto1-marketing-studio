@@ -6,6 +6,13 @@ status: in-progress (승인 아님)
 검증 범위: 생성실에서 성과실까지 네 방 기본 흐름, 백엔드 열한 단계, 390·768·1024·1440 폭,
 승인 프로토타입 정합, 전체 회귀. 결과와 증거는 `docs/qa/qa-tracker.md`에 기록한다.
 
+2026-09-13 02:50 KST 재검증 결과: probe가 성과실의 옛 주소 `/`를 사용하던 결함을
+`/performance`로 수정하고 `80c09807`에 회귀 계약을 남겼다. localhost health 200과 DB up,
+seed, 기본 흐름 11/11, Studio v1 14/14, 네 방 렌더 4/4, 4폭 20화면과 복귀 5건,
+Vitest 302파일·2,033건, TypeScript, build 182/182, 디자인 lint가 통과했다. v63 대비 구조
+불일치와 v63·v68 승인 핀 충돌, 외부 공개 발행·배포 버전 미검증 때문에 `qa` 진행 중과 승인
+불가 상태를 유지한다. 증거는 `docs/qa/osmu-four-room-basic-flow-v1-gpt-codex.md`다.
+
 2026-09-12 22:49 KST 결과: 로컬 기본 흐름은 API 11/11, Studio v1 14/14, 네 방 20화면과
 성과실→생성실 복귀 5건, 전체 Vitest 299파일·2,000건, TypeScript, build 182/182, 디자인 lint가
 통과했다. 고정 QA fixture 월 한도와 client navigation 대기 경쟁 조건을 수정하고 회귀를 남겼다.

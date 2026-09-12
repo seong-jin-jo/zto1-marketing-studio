@@ -1,0 +1,23 @@
+검증 390/light 생성실
+검증 390/light 편집실
+검증 390/light 발행실
+검증 390/light 성과실
+검증 390/dark 생성실
+검증 390/dark 편집실
+검증 390/dark 발행실
+검증 390/dark 성과실
+검증 768/light 생성실
+검증 768/light 편집실
+검증 768/light 발행실
+검증 768/light 성과실
+검증 1024/light 생성실
+검증 1024/light 편집실
+검증 1024/light 발행실
+검증 1024/light 성과실
+검증 1440/light 생성실
+검증 1440/light 편집실
+검증 1440/light 발행실
+검증 1440/light 성과실
+PASS 네 방 4개 x 4폭(390은 라이트+다크), 총 20회 측정
+PASS 가로 넘침 0px, 전체 화면 모달 0건, 브라우저 401 0건, 콘솔 오류 0건, 390 다크 테마 미적용 0건
+CAPTURES ../logs/diff/osmu-four-room-flow-20260913-0216/captures

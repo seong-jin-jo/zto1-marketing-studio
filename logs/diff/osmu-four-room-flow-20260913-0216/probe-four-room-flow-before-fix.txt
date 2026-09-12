@@ -1,0 +1,16 @@
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+locator.waitFor: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for locator('[data-room="performance"]') to be visible[22m
+
+    at /Users/sj/sj_code_master/zto1-marketing-studio/dashboard/scripts/probe-four-room-flow.mjs:59:20 {
+  log: [
+    `  - waiting for locator('[data-room="performance"]') to be visible`
+  ],
+  name: 'TimeoutError'
+}
+
+Node.js v22.16.0
