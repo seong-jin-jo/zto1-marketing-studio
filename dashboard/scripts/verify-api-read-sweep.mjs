@@ -17,10 +17,14 @@ const operatorToken = process.env.DASHBOARD_AUTH_TOKEN;
 const studioToken = process.env.STUDIO_DEV_BEARER_TOKEN;
 const tenantToken = process.env.API_SWEEP_TENANT_TOKEN || "";
 const outputPath = process.env.API_SWEEP_OUTPUT || "";
+const requestTimeoutMs = Number(process.env.API_SWEEP_TIMEOUT_MS || "60000");
 
 if (!workspaceId) throw new Error("API_SWEEP_WORKSPACE_ID 또는 STUDIO_DEV_WORKSPACE_IDS가 필요합니다");
 if (!operatorToken) throw new Error("DASHBOARD_AUTH_TOKEN이 필요합니다");
 if (!studioToken) throw new Error("STUDIO_DEV_BEARER_TOKEN이 필요합니다");
+if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
+  throw new Error("API_SWEEP_TIMEOUT_MS는 0보다 큰 숫자여야 합니다");
+}
 
 const GET_EXPORT = /export\s+(?:async\s+)?function\s+GET\b|export\s+const\s+GET\b/;
 
@@ -112,7 +116,7 @@ for (const file of files) {
     const response = await fetch(url, {
       headers: requestHeaders(apiPath),
       redirect: "manual",
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(requestTimeoutMs),
     });
     const body = redact((await response.text()).slice(0, 500));
     results.push({
@@ -148,6 +152,7 @@ const report = {
   base_url: baseUrl,
   git_commit: gitCommit,
   workspace_id: workspaceId,
+  request_timeout_ms: requestTimeoutMs,
   route_count: files.length,
   counts,
   results,
