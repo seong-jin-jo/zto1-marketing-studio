@@ -2,6 +2,16 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-12 22시 14분 KST · 읽기 API 전수 실사 최종 판정
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R01~R207 | 읽기 경로 전수 실사 범위와 기존 확정 요구 승계 | API-READ-20260912-01 | 범위 PASS | GET 105개와 HEAD 1개를 localhost:3456에서 실제 호출. 최종 정상 92, 계약상 거절 13, HTTP 500 0, 요청 실패 0 |
+| R01~R207 | 서버 고장과 의도된 거절 분리 | API-READ-20260912-02 | 범위 PASS | 파생 작업 조회 500을 잘못된 UUID 400, 없는 UUID 404로 분리. 커밋 `87c3014b`, `fdaa82e1` |
+| R01~R207 | 전체 제품 회귀 | API-READ-20260912-03 | NG | 전체 Vitest 2,000건 중 1,993 PASS, 4 FAIL, 3 skip. 실패 4건은 진행 중 성과실 UI, 네 방 탐침, UI token 변경이며 집중 재실행에서도 재현 |
+
+production build 182/182, TypeScript, 기본 흐름 11/11, Studio v1 14/14, 신규 회귀 30건, seed, health, design lint는 통과했다. 전체 근거와 지난 실사 대조는 `docs/qa/osmu-api-read-sweep-v4-gpt-codex-20260912-2214.md`, 전후 원본은 `logs/diff/osmu-api-read-sweep-20260912-before.json`과 `logs/diff/osmu-api-read-sweep-20260912-after.json`이다. 읽기 API 범위는 PASS지만 전체 제품 QA는 PASS로 올리지 않는다.
+
 ## 2026-09-12 20시 23분 KST · 최근 24시간 코드리뷰 BLOCK
 
 최근 24시간 커밋 13개를 `443da936..532e37f`로 고정해 별도 detached worktree에서 검증했다. 전체 Vitest는 288파일, 1,963건 통과와 3건 제외, TypeScript는 오류 0이었다. 필수 기본 흐름과 Studio v1 E2E는 둘 다 fixture 파싱 `SyntaxError`로 API 요청 전에 exit 1이었다. 커밋된 QA 수치와 재현 결과가 다르므로 기존 PASS 증거를 승인 근거로 쓰지 않는다.

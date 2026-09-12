@@ -1,3 +1,21 @@
+## 2026-09-12 22시 14분 - 읽기 API 전수 실사 인계
+
+### 무엇을 어디까지 했나
+
+GET 읽기 경로 105개와 HEAD 1개를 localhost:3456에서 실제 호출했다. 파생 작업 조회 HTTP 500을 발견해 UUID 입구 검증과 누락 migration manifest 등록을 각각 `87c3014b`, `fdaa82e1`에 커밋했다. 빌드 서버 최종 실사는 정상 92, 계약상 거절 13, HTTP 500과 요청 실패 0이다. 보고서는 `docs/qa/osmu-api-read-sweep-v4-gpt-codex-20260912-2214.md`, 원본은 `logs/diff/osmu-api-read-sweep-20260912-before.json`과 `after.json`이다.
+
+### 남은 이슈·블로커
+
+전체 Vitest 2,000건 중 4건이 다른 진행 중 변경에서 실패한다. 성과실 UI 2건, 네 방 탐침 1건, UI token 감사 1건이며 집중 재실행에서도 재현됐다. 이번 API 범위를 넘어 다른 세션 파일을 수정하거나 되돌리지 않았다. 따라서 읽기 API는 범위 PASS지만 제품 전체 QA는 NG다.
+
+### 다음에 칠 명령
+
+해당 UI 소유 작업이 안정화된 뒤 `cd dashboard && npm run test`를 다시 실행한다. 4건이 해소되면 qa-tracker의 전체 제품 회귀만 PASS로 갱신한다. API 재검증이 필요하면 production build를 localhost:3456에 올리고 `API_SWEEP_WORKSPACE_ID=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-api-read-sweep.mjs`를 실행한다.
+
+### 검증했나
+
+관찰됨: 최종 GET 105개와 HEAD 1개, 잘못된 파생 ID 400, 없는 유효 UUID 404, health 200과 DB up, seed 작업 공간 active. 테스트됨: production build 182/182, TypeScript, 기본 흐름 11/11, Studio v1 14/14, 신규와 migration 회귀 30건, design lint 0. 미검증: 원격 배포와 실제 고객 JWT. 실패: 전체 Vitest 4건.
+
 ## 2026-09-12 19시 51분 - 학습 후보 수락·거절 이력 build 핸드오프
 
 ### 무엇을 어디까지 했나

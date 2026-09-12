@@ -1,0 +1,960 @@
+{
+  "observed_at": "2026-09-12T12:15:57.730Z",
+  "base_url": "http://localhost:3456",
+  "git_commit": "c850acf9204bd4e58ab540bc31dda84363e9f6ae",
+  "workspace_id": "cd1d0a40-540d-4524-9b49-bf2445d82182",
+  "route_count": 105,
+  "counts": {
+    "고장": 1,
+    "요청 실패": 2,
+    "의도된 거절 후보": 11,
+    "정상": 91
+  },
+  "results": [
+    {
+      "route": "/api/activity",
+      "file": "src/app/api/activity/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3842,
+      "body_sha256": "a979015fa8de423fa61cb13c68050ce513cf4c2f60eadf234bd41fb278d8468a",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/agent-logs",
+      "file": "src/app/api/agent-logs/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 1621,
+      "body_sha256": "76e9dd6dee8295f595d24f41801f3a81f1eedc9fbda94a5c227e9853ba06d99c",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/ai-runtime",
+      "file": "src/app/api/ai-runtime/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 1703,
+      "body_sha256": "470ff9189a3d88940b9720815be63a7f3d627ffe66846c86087a5791042d190a",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/alerts",
+      "file": "src/app/api/alerts/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 1818,
+      "body_sha256": "f43c62200c7815091a6fe618461fbcb6ffd38e0f8ff7aaa9ee863ab0f5d47092",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/analytics",
+      "file": "src/app/api/analytics/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3459,
+      "body_sha256": "ce54293663adfd3c1e88ee4a8a24fd5301cfa60701915d947a95b676c1c37cc0",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/auth/google",
+      "file": "src/app/api/auth/google/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 10762,
+      "body_sha256": "00d98e6950e7782cfe25ef36f9c0aef33f576026737fa11c67552543e5864fdc",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/blog-guide",
+      "file": "src/app/api/blog-guide/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4458,
+      "body_sha256": "44935a322e2a2cdfa846e76b8ed70c57d40aa341e5ab9384696e2e04c9f0a102",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/blog-keywords",
+      "file": "src/app/api/blog-keywords/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4236,
+      "body_sha256": "080040b4937f3f423f32cd7f19b2a79ba1e1e213f1d9f4f4db4f609d4ad778d8",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/blog-queue",
+      "file": "src/app/api/blog-queue/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2612,
+      "body_sha256": "757b487ec1e7feaf6cdc6e1e76b8f46481b17e43275df126f41880ea55a5499d",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/blog-stats",
+      "file": "src/app/api/blog-stats/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2272,
+      "body_sha256": "80074e9ed6eb89252714f205d5797950f5dcddfbcb43f8d939d9a0224a748ad9",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/brand/sync-repo",
+      "file": "src/app/api/brand/sync-repo/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 5534,
+      "body_sha256": "150d37b719634588cad196cde1b52494cce62f8f3fe6093c30b468c3db54bfb1",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/brand/sync-wiki",
+      "file": "src/app/api/brand/sync-wiki/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2573,
+      "body_sha256": "2a91e3662c9f43adcb984159c43fa7ef03537fc4d967b36cd1f4c0959e538ad4",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/card-slides/00000000",
+      "file": "src/app/api/card-slides/[batchId]/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3481,
+      "body_sha256": "f82116b60e511daf3420e3999a8067518e34f6ea5b8c9cd4249baabbd7dadb86",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/channel-config",
+      "file": "src/app/api/channel-config/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 9805,
+      "body_sha256": "23e8fa97b6594dd992f992aacab6b8d0e7f60f88c1e2fd9290baa0681d19e643",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/channel-settings/threads",
+      "file": "src/app/api/channel-settings/[channel]/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 5570,
+      "body_sha256": "255b51e5f3f78d6c837a3a2122b3665542d4d4eb17075bb7e29e00261c4090ca",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/channel-settings",
+      "file": "src/app/api/channel-settings/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2812,
+      "body_sha256": "62f80a5f8921194149c6b0f66ea098424f16fc1ee8db90a118443e53175adb03",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/channels/threads/accounts",
+      "file": "src/app/api/channels/[provider]/accounts/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 6627,
+      "body_sha256": "f80c7a28c7780081af8b273543b91fc9a1f29fbe2891e5f67218e4952bd2154a",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/chat-channels",
+      "file": "src/app/api/chat-channels/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2946,
+      "body_sha256": "96550c5d93bcb790c29f8235633ddcbf28403b74da7c07f830be9ddc9a8b892c",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/clipping-config",
+      "file": "src/app/api/clipping-config/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2951,
+      "body_sha256": "fa492bc0d8db0287caca5cf14f8462af98b09b9a21b77a99b9d3527d2ee6ff1f",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/connect/threads/callback",
+      "file": "src/app/api/connect/[provider]/callback/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 5808,
+      "body_sha256": "065f33043782a3fe57e5a8ede0b971044a74c6ef99577893d50526858257f2b7",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/connect/threads",
+      "file": "src/app/api/connect/[provider]/route.ts",
+      "status": 503,
+      "classification": "의도된 거절 후보",
+      "duration_ms": 9548,
+      "body_sha256": "ddcec9fad1e6cdc81973f57eb0da927c09e9fa7d00ffb18296d84fd1bd72fb42",
+      "body_preview": "{\"error\":\"threads OAuth 앱 자격증명이 미설정 또는 불완전합니다.\"}"
+    },
+    {
+      "route": "/api/connect/readiness",
+      "file": "src/app/api/connect/readiness/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4904,
+      "body_sha256": "5f58db73aabcac58b3e6b40d38632629585980b913dcf6b104d208b8ea0494e5",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/cron-runs",
+      "file": "src/app/api/cron-runs/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4333,
+      "body_sha256": "6f23bb10da82b8a196d50cdfbe0a86f583cc4df842d62052e624fb9b14bd5c90",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/cron-status",
+      "file": "src/app/api/cron-status/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3615,
+      "body_sha256": "0a5796e93f9b57ddf7c45f860485cbb7353fc0eda3dca753a444d0fd2a1573fe",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/design-tools",
+      "file": "src/app/api/design-tools/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3585,
+      "body_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/elevenlabs-config",
+      "file": "src/app/api/elevenlabs-config/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4071,
+      "body_sha256": "761d1c1d20e2ba5c8c0c770958ae8931476f02136ba38ea6d86b4647d4a0eb37",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/elevenlabs-voices",
+      "file": "src/app/api/elevenlabs-voices/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 7837,
+      "body_sha256": "ad54bef847b0b6689a9e0ea762be5d65edfc3f3db324b390e16699db14be3f0f",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/engagement",
+      "file": "src/app/api/engagement/route.ts",
+      "status": 404,
+      "classification": "의도된 거절 후보",
+      "duration_ms": 10082,
+      "body_sha256": "a483a92ffc15801f2f9ac781d051673f4b0baec7d08fea723f6ab1436cf28f30",
+      "body_preview": "{\"error\":\"이 작업 공간의 발행 글을 찾을 수 없습니다.\",\"code\":\"POST_NOT_FOUND\"}"
+    },
+    {
+      "route": "/api/errors",
+      "file": "src/app/api/errors/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3896,
+      "body_sha256": "32344d39fbdcc37d6d2f3bcf186f9d91d575677da778bbffaf98f39b85811cdc",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/figma-mcp/callback",
+      "file": "src/app/api/figma-mcp/callback/route.ts",
+      "status": 400,
+      "classification": "의도된 거절 후보",
+      "duration_ms": 3851,
+      "body_sha256": "8d8978b7ea5cb8bf5922d2c3bfa078dc8057703e5cdb100b46c00658cf13de48",
+      "body_preview": "<h2>인증 상태가 일치하지 않습니다</h2>"
+    },
+    {
+      "route": "/api/figma-mcp/start-oauth",
+      "file": "src/app/api/figma-mcp/start-oauth/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 5257,
+      "body_sha256": "83e2b72f95931ce2ba4483dd1eb61d4224a18f4e40faceb0bf0172714ae7dec8",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/ga-analytics",
+      "file": "src/app/api/ga-analytics/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4178,
+      "body_sha256": "a497c5fbe997820276408e782a875b4e11faabdcc27106c482f91cb46531e815",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/ga-config",
+      "file": "src/app/api/ga-config/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4125,
+      "body_sha256": "53c614c4b4d9a51d30b71266077534c8750daf83e66f68740f4f4a3f4463ed4d",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/growth",
+      "file": "src/app/api/growth/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 5665,
+      "body_sha256": "447b6a2ee4b073b8efcc65ba053ec12d6950e9209d14f2c27a89d2dcf2d15acd",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/gsc-analytics",
+      "file": "src/app/api/gsc-analytics/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4366,
+      "body_sha256": "0bb15979ebaea85b4ed3b19621b2bfd12a5302aee24c14823d8e162b01fc14ca",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/gsc-config",
+      "file": "src/app/api/gsc-config/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4614,
+      "body_sha256": "c7375faddf5eef1362aa7d21372a7c6c1bd6abf347258bc89800d2dd0dbef3d6",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/guide/threads",
+      "file": "src/app/api/guide/[channel]/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4627,
+      "body_sha256": "1e9445e36686f19977c089dee67600086920ecb6591d5e571b6868cbf96fe8a2",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/guide",
+      "file": "src/app/api/guide/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4413,
+      "body_sha256": "44935a322e2a2cdfa846e76b8ed70c57d40aa341e5ab9384696e2e04c9f0a102",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/health",
+      "file": "src/app/api/health/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 111,
+      "body_sha256": "91ad4544b317d3449bec34a3a099c5476f371bf6ab0a29e08e05885a42aa7e15",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/higgsfield/asset/%EC%97%86%EB%8A%94-%ED%8C%8C%EC%9D%BC.png",
+      "file": "src/app/api/higgsfield/asset/[file]/route.ts",
+      "status": 404,
+      "classification": "의도된 거절 후보",
+      "duration_ms": 9282,
+      "body_sha256": "51d0a9e3bd9ffc25483790aaffe7a3597e642edd040dddb16aafc324e6e922ed",
+      "body_preview": "{\"error\":\"not found\"}"
+    },
+    {
+      "route": "/api/higgsfield/status",
+      "file": "src/app/api/higgsfield/status/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 12977,
+      "body_sha256": "053038bafc21fd370ea067647dbfd249b1e5d535195f77717ae8ae7d62f61369",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/higgsfield/transactions",
+      "file": "src/app/api/higgsfield/transactions/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4833,
+      "body_sha256": "54ef178ec8142ed0e6aba97445450c141789d1ece7147d87fd9805e03f80c98a",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/images/deliver/%EC%97%86%EB%8A%94-%ED%86%A0%ED%81%B0",
+      "file": "src/app/api/images/deliver/[token]/route.ts",
+      "status": 404,
+      "classification": "의도된 거절 후보",
+      "duration_ms": 4477,
+      "body_sha256": "51d0a9e3bd9ffc25483790aaffe7a3597e642edd040dddb16aafc324e6e922ed",
+      "body_preview": "{\"error\":\"not found\"}"
+    },
+    {
+      "route": "/api/images",
+      "file": "src/app/api/images/route.ts",
+      "status": 0,
+      "classification": "요청 실패",
+      "duration_ms": 15002,
+      "body_sha256": "",
+      "body_preview": "The operation was aborted due to timeout"
+    },
+    {
+      "route": "/api/integrations",
+      "file": "src/app/api/integrations/route.ts",
+      "status": 0,
+      "classification": "요청 실패",
+      "duration_ms": 15003,
+      "body_sha256": "",
+      "body_preview": "The operation was aborted due to timeout"
+    },
+    {
+      "route": "/api/isolation-proof",
+      "file": "src/app/api/isolation-proof/route.ts",
+      "status": 401,
+      "classification": "의도된 거절 후보",
+      "duration_ms": 7336,
+      "body_sha256": "51ced3f200d236c4e296dd9edc9ac8590974298e144998a18adef50ce56caa6a",
+      "body_preview": "{\"error\":\"no-tenant\"}"
+    },
+    {
+      "route": "/api/keyword-bank",
+      "file": "src/app/api/keyword-bank/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3077,
+      "body_sha256": "080040b4937f3f423f32cd7f19b2a79ba1e1e213f1d9f4f4db4f609d4ad778d8",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/keywords/threads",
+      "file": "src/app/api/keywords/[channel]/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4824,
+      "body_sha256": "0a7e1fb82037be4461399322d2da737882c1af6738368a5789e2483525e3d989",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/keywords",
+      "file": "src/app/api/keywords/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3921,
+      "body_sha256": "080040b4937f3f423f32cd7f19b2a79ba1e1e213f1d9f4f4db4f609d4ad778d8",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/kw-planner-config",
+      "file": "src/app/api/kw-planner-config/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3790,
+      "body_sha256": "a3569f98c68120eb59e8ccf4372130ad07caf0a4159acaf4a63c6f2b1a2af8ab",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/llm-config",
+      "file": "src/app/api/llm-config/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4084,
+      "body_sha256": "c0072a6f6ce46b03b6c769603afaa77e1fe6e3789c43874bade9978544abdffd",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/me",
+      "file": "src/app/api/me/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4966,
+      "body_sha256": "296eae67316a5833b56a506bda186579611a10d47982b0f0fb224db76708d5d9",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/media/%EC%97%86%EB%8A%94-%ED%86%A0%ED%81%B0",
+      "file": "src/app/api/media/[token]/route.ts",
+      "status": 404,
+      "classification": "의도된 거절 후보",
+      "duration_ms": 6755,
+      "body_sha256": "51d0a9e3bd9ffc25483790aaffe7a3597e642edd040dddb16aafc324e6e922ed",
+      "body_preview": "{\"error\":\"not found\"}"
+    },
+    {
+      "route": "/api/metrics",
+      "file": "src/app/api/metrics/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 14669,
+      "body_sha256": "7d42ed4cee34fb714ee93bc6ca7d8b48f9118d610b52f6b1fa070fd0dee400aa",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/naver-datalab-config",
+      "file": "src/app/api/naver-datalab-config/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3086,
+      "body_sha256": "849fc67e8163d3dd68428ad0ea55107a61b3f90d37c8474ed0eda50962cc8d65",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/notification-log",
+      "file": "src/app/api/notification-log/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2996,
+      "body_sha256": "d801aa1fb7ddcc330a5e3173372ea6af4a3d08ec58074478e85aa5603e926658",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/notification-settings",
+      "file": "src/app/api/notification-settings/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2834,
+      "body_sha256": "98f702f2454345c9e4ba5d3f24af679d10a90d9f3a2a56a1d02b00c6affe76bf",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/nsa-data",
+      "file": "src/app/api/nsa-data/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 6746,
+      "body_sha256": "447174b56c9429a4d45ec2ba62e1d241e5a3403ee427eb14427887fde00a264b",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/onboarding",
+      "file": "src/app/api/onboarding/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4678,
+      "body_sha256": "9277f3fa4a631bd9084106918aba03e85eabb45c2d571b586da48e154d9c9874",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/operator/customers",
+      "file": "src/app/api/operator/customers/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 13003,
+      "body_sha256": "253c7ee676c3306f9c83c59eb80b6e80a576cc8a6c39258d58e572125ca475a1",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/operator/incidents",
+      "file": "src/app/api/operator/incidents/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 7615,
+      "body_sha256": "01ce64e4e76a00adad69386b2672d74cd6159c18db10f6d64a7920761bae7fb0",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/operator/oauth-credentials",
+      "file": "src/app/api/operator/oauth-credentials/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 5409,
+      "body_sha256": "348418eff741955965cf1531613509fae38e7ba9963216cc89a2e7e135ef7c2d",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/overview",
+      "file": "src/app/api/overview/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 6423,
+      "body_sha256": "ee46c8604c48dcb067d4ff2747af79205baf8506c98da2a2e1dbc133bbd390bb",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/performance/learned-rules",
+      "file": "src/app/api/performance/learned-rules/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 5046,
+      "body_sha256": "f694e391f0e274feba2a2370e2b43b5e18d2a6891a08b124f8a4790e28a6706e",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/popular",
+      "file": "src/app/api/popular/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3517,
+      "body_sha256": "a1972bc518d734af3238aae7436d34ba55850582b8bd1bf243b8a84037503c35",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/product-source",
+      "file": "src/app/api/product-source/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3585,
+      "body_sha256": "6674e881b9da1ecc8e8e2cec371c2fe93ba3a366692683bb52a5b1153bafffb4",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/publish/first-comment-capabilities",
+      "file": "src/app/api/publish/first-comment-capabilities/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 8099,
+      "body_sha256": "c6e5b6827c2f2c9730fe5d4970db1902ff57f3332f7313f6c2e90b301574e695",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/publish",
+      "file": "src/app/api/publish/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 12688,
+      "body_sha256": "27cde2f3561665572ce99fd74865a10c9c1148874a274c67f2f2052780a44dcb",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/queue",
+      "file": "src/app/api/queue/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 9072,
+      "body_sha256": "057f0adbb748b70225dc1c55d2ff3586d01a93aeb584d464e37b0cd7541fe187",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/r2-config",
+      "file": "src/app/api/r2-config/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3066,
+      "body_sha256": "f497110389e414c7b13f78c5c14f651833d4a8dcc8aed92528254a8953da119b",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/schedule",
+      "file": "src/app/api/schedule/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2993,
+      "body_sha256": "6daa9ec137a94fc5962f6d05ab16df8dba70096ae34571ccd552ac130cd733c5",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/seo-settings",
+      "file": "src/app/api/seo-settings/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3996,
+      "body_sha256": "bb9005c0f8d18c3a578a02e758e62499a5a3dee8d8dcce0a80cb7b09a658f4aa",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/settings",
+      "file": "src/app/api/settings/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 6119,
+      "body_sha256": "4eea3b1b9384e7cce8fc8272843045dfb1b62fa46e0940c5cf5d82cf83fd62cc",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/slack-config",
+      "file": "src/app/api/slack-config/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2943,
+      "body_sha256": "3a7f93705ed6d3d19db8de47e1767a1997b1bf1e735e7f926906b0441b3e122a",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/slack-report-preview",
+      "file": "src/app/api/slack-report-preview/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3040,
+      "body_sha256": "606fee4416b7b96daa1be4eb4039a75b3b3f636fce69ea6e752a1a1140beb7c8",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/slack-template",
+      "file": "src/app/api/slack-template/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3187,
+      "body_sha256": "cb3ff4c06a41999304945e36f4139c13b1f0585c5bd593088793d4f24a737886",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/sourcing/import-to-queue",
+      "file": "src/app/api/sourcing/import-to-queue/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 5297,
+      "body_sha256": "81ab9d98a303259fe0c07cf2834e923e774447d8c8f805b4af40530ccb117370",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/sourcing",
+      "file": "src/app/api/sourcing/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 7253,
+      "body_sha256": "78abe5a2b4cc98cca7c4411e8caaee2a772a2e4301725f82af9b37f21a4e1a09",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/studio/brand-setup",
+      "file": "src/app/api/studio/brand-setup/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 7305,
+      "body_sha256": "be32bbc422eba1748ce5cb4338ba2b1642ac9f3268bf3643c80a264e774297ef",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/studio/drafts",
+      "file": "src/app/api/studio/drafts/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2815,
+      "body_sha256": "5e248f6bf780804c1aed39e86f4473e7ea4788ede108acaa44da77f93373d132",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/studio/engine-status",
+      "file": "src/app/api/studio/engine-status/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3168,
+      "body_sha256": "6c7e3e3267f2dde31e85e71a2cab889392b5890a8ff444a70883a75e7331de5f",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/studio/generation-history",
+      "file": "src/app/api/studio/generation-history/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4235,
+      "body_sha256": "e616d9b68f5c57a956cebd3482e60e0d12f10bb1dfbedf30f98771b86ba299eb",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/studio/learning",
+      "file": "src/app/api/studio/learning/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 5703,
+      "body_sha256": "9012b067812f2c9e6b48e2865e32e8dc15f51d5403fe5a01e25d6e88ae9311f2",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/studio/v1/derivations/00000000",
+      "file": "src/app/api/studio/v1/derivations/[batchId]/route.ts",
+      "status": 500,
+      "classification": "고장",
+      "duration_ms": 13973,
+      "body_sha256": "efa2280542526884e888a483d18449dbbea4d9a7aa2c61fe98bc28e32d545778",
+      "body_preview": "{\"error\":{\"code\":\"INTERNAL_ERROR\",\"message\":\"Studio 요청을 처리하지 못했습니다\",\"retryable\":false,\"field_errors\":[],\"details\":{}},\"meta\":{\"request_id\":\"a9b6fa91-6b1a-4da5-ad3a-3922a2d3ecdd\",\"contract_version\":\"1.0\"}}"
+    },
+    {
+      "route": "/api/studio/v1/generations/00000000-0000-4000-8000-000000000000/derivations",
+      "file": "src/app/api/studio/v1/generations/[jobId]/derivations/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 9350,
+      "body_sha256": "8c14522eca2917f22d2efe53b4e28b1547a09e08786e8b5784c9938b913f4ef8",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/studio/v1/generations/00000000-0000-4000-8000-000000000000",
+      "file": "src/app/api/studio/v1/generations/[jobId]/route.ts",
+      "status": 404,
+      "classification": "의도된 거절 후보",
+      "duration_ms": 5630,
+      "body_sha256": "96ae7be04f02e7c383a9a5b8777453fdcc3b6402bfda6471c44bb7d926994f00",
+      "body_preview": "{\"error\":{\"code\":\"RESOURCE_NOT_FOUND\",\"message\":\"생성 작업을 찾을 수 없습니다\",\"retryable\":false,\"field_errors\":[],\"details\":{}},\"meta\":{\"request_id\":\"4f040a06-4baf-43cf-8db5-b9ed5d334d11\",\"contract_version\":\"1.0\"}}"
+    },
+    {
+      "route": "/api/studio/v1/shorts-factory/runs/00000000-0000-4000-8000-000000000000",
+      "file": "src/app/api/studio/v1/shorts-factory/runs/[runId]/route.ts",
+      "status": 404,
+      "classification": "의도된 거절 후보",
+      "duration_ms": 5054,
+      "body_sha256": "379ac3b2f6d16a0289b1bd2cba868186c8b7f4334f3a259abb0464b8c95d999b",
+      "body_preview": "{\"error\":{\"code\":\"RESOURCE_NOT_FOUND\",\"message\":\"숏폼 공장 실행을 찾을 수 없습니다\",\"retryable\":false,\"field_errors\":[],\"details\":{}},\"meta\":{\"request_id\":\"58dc5985-b377-4fd6-96a4-a748e06af8ce\",\"contract_version\":\"1.0\"}}"
+    },
+    {
+      "route": "/api/studio/v1/shorts-factory/runs",
+      "file": "src/app/api/studio/v1/shorts-factory/runs/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2600,
+      "body_sha256": "5ba60701a910f916ef2dd7516b3a5e6f5f6e7d362abce076faebd127e184fe06",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/suggestions",
+      "file": "src/app/api/suggestions/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 9353,
+      "body_sha256": "470c9b2000548de90a845b8487478f8b74fb90e20ceaa1ddcc3db44fb168165e",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/tenant-info",
+      "file": "src/app/api/tenant-info/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 12984,
+      "body_sha256": "e0fc23701c341c38f4bb99f366f59169cf0e2b4ddb899167b238b852ce825f6b",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/tenant-tokens",
+      "file": "src/app/api/tenant-tokens/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 7021,
+      "body_sha256": "d18925dee270de2e380f83e310870f35f2ddbac119d1f736d09900bbe036e4da",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/tenants",
+      "file": "src/app/api/tenants/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 13012,
+      "body_sha256": "69400c09b5a28823665fe47f4da6c84af9d19b34e4c0ac2f99dfbd61e6ba3ed2",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/threads-username",
+      "file": "src/app/api/threads-username/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 6620,
+      "body_sha256": "8fad5d78ee01713e238ecb8c406d871a7a2d32a7f67f89e7dd657a446ec6e516",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/threads/low-engagement-candidates",
+      "file": "src/app/api/threads/low-engagement-candidates/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 9130,
+      "body_sha256": "94c5fbafbaa75742045022b359ebd269b936d51c853fdbc6cc15c7f76dea832a",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/tiktok/creator-info",
+      "file": "src/app/api/tiktok/creator-info/route.ts",
+      "status": 400,
+      "classification": "의도된 거절 후보",
+      "duration_ms": 9521,
+      "body_sha256": "30f551a82a76fbc106dce89385159cf0c8346f44dc7b9e4a3cc0e548efae9867",
+      "body_preview": "{\"error\":\"테넌트를 확인할 수 없습니다.\"}"
+    },
+    {
+      "route": "/api/tiktok/publish-status",
+      "file": "src/app/api/tiktok/publish-status/route.ts",
+      "status": 400,
+      "classification": "의도된 거절 후보",
+      "duration_ms": 4503,
+      "body_sha256": "30f551a82a76fbc106dce89385159cf0c8346f44dc7b9e4a3cc0e548efae9867",
+      "body_preview": "{\"error\":\"테넌트를 확인할 수 없습니다.\"}"
+    },
+    {
+      "route": "/api/token-status",
+      "file": "src/app/api/token-status/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 12548,
+      "body_sha256": "14946b16675d2a9b3ab1d50e35c44a24ef43019c4ba76b0315d4ffd59e769d1e",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/trend-report",
+      "file": "src/app/api/trend-report/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2112,
+      "body_sha256": "b66f3807c7eaeed87d4cb7ee8cb1e04d5c23d0f4398092c0082ba89e237db170",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/usage",
+      "file": "src/app/api/usage/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3721,
+      "body_sha256": "14ca167b4b337957f2d3cfaef6c7160d5856503df7a1bba07d703c8fe772b98a",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/video/list",
+      "file": "src/app/api/video/list/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 7458,
+      "body_sha256": "6d85ccfec7c8120f186db06f250422a6fa121387662aad6a9ebe58c1e6d7583c",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/voice-tone",
+      "file": "src/app/api/voice-tone/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 7798,
+      "body_sha256": "c576fa13fd28bf40069601864fef63e7ea445e2e6b4d4e45d0024047db0f2d98",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/weekly-report",
+      "file": "src/app/api/weekly-report/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 4567,
+      "body_sha256": "166e89cf3423c1d24bc4b86054172556a77c4f4c2ddf3e07a012a46702efb791",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/weekly-summary",
+      "file": "src/app/api/weekly-summary/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3458,
+      "body_sha256": "1341d83bbf532f31de6fab816efb04328019a3fcf2092e4cf3789c8cbeeac6f6",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/workspaces",
+      "file": "src/app/api/workspaces/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 3145,
+      "body_sha256": "5409fcbf461ad7198c4e445d0129cf5c3dff05832b8c09cf07221c69506ac9f9",
+      "body_preview": ""
+    },
+    {
+      "route": "/api/youtube/status",
+      "file": "src/app/api/youtube/status/route.ts",
+      "status": 200,
+      "classification": "정상",
+      "duration_ms": 2666,
+      "body_sha256": "73ceb01cc6be1d5c64ab9041f0a6f3c9ccbbb5f3aef13eae0113cf3f7382a2ff",
+      "body_preview": ""
+    }
+  ]
+}
