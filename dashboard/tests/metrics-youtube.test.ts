@@ -17,7 +17,8 @@ describe("YouTube 성과 수집", () => {
   it("수집 채널의 빈 값은 미수집이지 측정 미지원이 아니다", () => {
     // 둘은 다르다. 앞은 기다리면 채워지고 뒤는 영영 안 채워진다.
     expect(emptyMetricLabel("youtube", null)).toBe("미수집");
-    expect(emptyMetricLabel("tiktok", null)).toBe("측정 미지원");
+    // tiktok 은 2026-09-13 에 수집을 만들었으므로 이제 "미수집" 쪽이다.
+    expect(emptyMetricLabel("tiktok", null)).toBe("미수집");
   });
 
   it("수집 경로가 YouTube 를 실제로 부른다", () => {
