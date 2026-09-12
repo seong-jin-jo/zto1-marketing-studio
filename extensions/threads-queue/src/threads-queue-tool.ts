@@ -5,6 +5,15 @@ import { Type } from "@sinclair/typebox";
 import { jsonResult, readStringParam } from "openclaw/plugin-sdk/agent-runtime";
 import { optionalStringEnum } from "openclaw/plugin-sdk/core";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-runtime";
+import {
+  claimPost,
+  isClaimActive,
+  releaseClaim,
+  verifyPublishable,
+  DEFAULT_LEASE_MS,
+  type ChannelKey,
+  type QueueClaim,
+} from "./queue-claim.js";
 
 type Engagement = {
   views: number;
@@ -19,7 +28,7 @@ type Engagement = {
 };
 
 type ChannelStatus = {
-  status: "pending" | "published" | "failed" | "skipped";
+  status: "pending" | "published" | "failed" | "skipped" | "canceled";
   mediaId?: string | null;
   tweetId?: string | null;
   publishedAt: string | null;
@@ -38,7 +47,7 @@ type Post = {
   originalText: string | null;
   topic: string;
   hashtags: string[];
-  status: "draft" | "approved" | "published" | "failed";
+  status: "draft" | "approved" | "published" | "failed" | "canceled";
   generatedAt: string;
   approvedAt: string | null;
   scheduledAt: string | null;
@@ -52,6 +61,9 @@ type Post = {
   cardBatchId?: string | null;
   engagement: Engagement | null;
   channels?: Channels;
+  // 발행기 lease. get_approved 가 걸고 update_channel/취소가 해제한다(queue-claim.ts 계약).
+  claim?: QueueClaim | null;
+  canceledAt?: string | null;
 };
 
 type QueueData = {
@@ -92,7 +104,14 @@ function migratePost(post: Post): Post {
   if (!post.channels && post.status !== "draft") {
     post.channels = {
       threads: {
-        status: post.status === "published" ? "published" : post.status === "failed" ? "failed" : "pending",
+        status:
+          post.status === "published"
+            ? "published"
+            : post.status === "failed"
+              ? "failed"
+              : post.status === "canceled"
+                ? "canceled"
+                : "pending",
         mediaId: post.threadsMediaId ?? null,
         publishedAt: post.publishedAt ?? null,
         error: post.status === "failed" ? (post.error ?? null) : null,
@@ -102,7 +121,11 @@ function migratePost(post: Post): Post {
     };
   }
   if (post.channels && !post.channels.instagram) {
-    post.channels.instagram = { status: post.imageUrl ? "pending" : "skipped", publishedAt: null, error: null };
+    post.channels.instagram = {
+      status: post.status === "canceled" ? "canceled" : post.imageUrl ? "pending" : "skipped",
+      publishedAt: null,
+      error: null,
+    };
   }
   return post;
 }
@@ -129,10 +152,10 @@ async function writeQueue(queuePath: string, data: QueueData): Promise<void> {
 const ThreadsQueueToolSchema = Type.Object(
   {
     action: optionalStringEnum(
-      ["list", "add", "update", "delete", "get_approved", "cleanup", "update_channel"] as const,
+      ["list", "add", "update", "delete", "get_approved", "cleanup", "update_channel", "verify_claim", "release_claim"] as const,
       {
         description:
-          'Action to perform: "list", "add", "update", "delete", "get_approved", "cleanup", "update_channel" (update per-channel publish status).',
+          'Action to perform: "list", "add", "update", "delete", "get_approved" (claims posts with a lease), "cleanup", "update_channel" (update per-channel publish status), "verify_claim" (MUST be called immediately before every provider publish call), "release_claim".',
       },
     ),
     id: Type.Optional(
@@ -180,7 +203,7 @@ const ThreadsQueueToolSchema = Type.Object(
       { description: 'Target channel for update_channel action: "threads", "x", or "instagram".' },
     ),
     channelStatus: optionalStringEnum(
-      ["published", "failed", "skipped"] as const,
+      ["published", "failed", "skipped", "canceled"] as const,
       { description: 'Channel publish status for update_channel action.' },
     ),
     tweetId: Type.Optional(
@@ -192,6 +215,18 @@ const ThreadsQueueToolSchema = Type.Object(
     ),
     limit: Type.Optional(
       Type.Number({ description: "Max posts to return for get_approved (default: 1)." }),
+    ),
+    claimToken: Type.Optional(
+      Type.String({
+        description:
+          "Lease token returned by get_approved. Required for verify_claim/release_claim and strongly recommended on update_channel.",
+      }),
+    ),
+    workerId: Type.Optional(
+      Type.String({ description: "Publisher worker identity for get_approved lease bookkeeping." }),
+    ),
+    leaseMs: Type.Optional(
+      Type.Number({ description: "Lease duration in ms for get_approved (default: 300000)." }),
     ),
   },
   { additionalProperties: false },
@@ -343,22 +378,65 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
         }
 
         case "get_approved": {
+          // 스냅샷이 아니라 lease 를 건 claim 을 준다. 이미 다른 워커가 가져간 글은
+          // 돌려주지 않는다(경합 차단 1단계). 반환된 claimToken 은 공급자 호출 직전
+          // verify_claim 과 update_channel 에서 소유권 증명으로 쓴다.
           const now = new Date();
           const limitParam = rawParams.limit;
           const limit = typeof limitParam === "number" && limitParam > 0 ? limitParam : 1;
+          const leaseParam = rawParams.leaseMs;
+          const leaseMs = typeof leaseParam === "number" && leaseParam > 0 ? leaseParam : DEFAULT_LEASE_MS;
+          const workerId = readStringParam(rawParams, "workerId") ?? `worker-${process.pid}`;
+
           const ready = queue.posts
             .filter(
               (p) =>
                 p.status === "approved" &&
                 p.scheduledAt &&
-                new Date(p.scheduledAt) <= now,
+                new Date(p.scheduledAt) <= now &&
+                !isClaimActive(p, now),
             )
             .sort((a, b) => new Date(a.scheduledAt!).getTime() - new Date(b.scheduledAt!).getTime())
             .slice(0, limit);
+
+          const claimed: Array<Post & { claimToken: string }> = [];
+          for (const post of ready) {
+            const claim = claimPost(post, {
+              workerId,
+              token: crypto.randomUUID(),
+              now,
+              leaseMs,
+            });
+            if (!claim) continue;
+            claimed.push({ ...post, claimToken: claim.token });
+          }
+          if (claimed.length > 0) await writeQueue(queuePath, queue);
+
           return jsonResult({
-            total: ready.length,
-            posts: ready,
+            total: claimed.length,
+            posts: claimed,
+            // 발행기 계약: 공급자 호출 직전 반드시 verify_claim 을 부른다.
+            mustVerifyBeforePublish: true,
           });
+        }
+
+        case "verify_claim": {
+          // 공급자 호출 직전 재검증(경합 차단 2단계). 파일을 방금 새로 읽은 queue 로 판정한다.
+          const id = readStringParam(rawParams, "id", { required: true });
+          const channel = readStringParam(rawParams, "channel", { required: true }) as ChannelKey;
+          const claimToken = readStringParam(rawParams, "claimToken") ?? null;
+          const post = queue.posts.find((p) => p.id === id);
+          const verdict = verifyPublishable(post, channel, { claimToken });
+          return jsonResult(verdict.ok ? { ok: true, id, channel } : { ok: false, id, channel, ...verdict });
+        }
+
+        case "release_claim": {
+          const id = readStringParam(rawParams, "id", { required: true });
+          const post = queue.posts.find((p) => p.id === id);
+          if (!post) throw new Error(`Post not found: ${id}`);
+          releaseClaim(post);
+          await writeQueue(queuePath, queue);
+          return jsonResult({ success: true, id });
         }
 
         case "update_channel": {
@@ -367,6 +445,24 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
           const channelStatus = readStringParam(rawParams, "channelStatus", { required: true }) as ChannelStatus["status"];
           const post = queue.posts.find((p) => p.id === id);
           if (!post) throw new Error(`Post not found: ${id}`);
+
+          // 경합 차단 3단계 — 마지막 관문. 재검증을 건너뛴 워커가 있어도 취소된 글·채널에
+          // published/failed 를 기록하지 못한다. skipped/canceled 기록은 되돌림이 아니라
+          // 정리이므로 통과시킨다.
+          if (channelStatus === "published" || channelStatus === "failed") {
+            const claimToken = readStringParam(rawParams, "claimToken") ?? null;
+            const verdict = verifyPublishable(post, channel, { claimToken });
+            if (!verdict.ok) {
+              return jsonResult({
+                success: false,
+                blocked: true,
+                id,
+                channel,
+                reason: verdict.reason,
+                message: verdict.message,
+              });
+            }
+          }
 
           if (!post.channels) {
             post.channels = {
@@ -400,10 +496,11 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
           const anyFailed = allChannels.some((c) => c.status === "failed");
           const anyPending = allChannels.some((c) => c.status === "pending");
 
-          if (allDone) { post.status = "published"; post.publishedAt = now; }
+          if (allDone) { post.status = "published"; post.publishedAt = now; releaseClaim(post); }
           else if (anyFailed && !anyPending) {
             post.status = "failed";
             post.error = allChannels.filter((c) => c.status === "failed").map((c) => c.error).join("; ");
+            releaseClaim(post);
           }
 
           await writeQueue(queuePath, queue);
@@ -468,7 +565,7 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
 
         default:
           throw new Error(
-            `Unknown action: ${action}. Use list, add, update, delete, get_approved, or cleanup.`,
+            `Unknown action: ${action}. Use list, add, update, delete, get_approved, verify_claim, release_claim, update_channel, or cleanup.`,
           );
       }
     },

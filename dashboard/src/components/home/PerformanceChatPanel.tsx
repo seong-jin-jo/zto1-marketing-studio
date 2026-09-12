@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { apiPost, fetcher } from "@/lib/api";
+import { isPerformancePublished } from "@/lib/post-publish-state";
 import type { PerformancePost } from "./PerformanceRoom";
 import { Button } from "@/components/shared/Button";
 import { Stack } from "@/components/shared/Stack";
@@ -107,7 +108,14 @@ export function PerformanceChatPanel({
   const [open, setOpen] = useState(expandedByDefault);
 
   const published = useMemo(
-    () => posts.filter((p) => p.status === "published" && (focus === "all" || platformOf(p) === focus)),
+    // 최상위 status 가 아니라 채널별 발행 사실로 센다. 일부 채널만 올라간 뒤 멈춘 글이
+    // 성과실에서 사라지던 결함을 닫는다(2026-09-12 감사 MAJOR, lib/post-publish-state.ts).
+    () =>
+      posts.filter(
+        (p) =>
+          isPerformancePublished(p as unknown as Record<string, unknown>) &&
+          (focus === "all" || platformOf(p) === focus),
+      ),
     [posts, focus],
   );
 

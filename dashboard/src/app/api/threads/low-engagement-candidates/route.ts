@@ -7,6 +7,7 @@ import {
   LOW_ENGAGEMENT_MIN_LIKES_DEFAULT,
   LOW_ENGAGEMENT_MIN_VIEWS_DEFAULT,
 } from "@/lib/constants";
+import { isPerformancePublished } from "@/lib/post-publish-state";
 
 // 읽기 전용 후보 조회 — 절대 삭제하지 않는다. 실제 삭제는 POST /api/threads/low-engagement-cleanup이
 // 사람이 고른 postId 목록으로만 수행한다(회장 지시 2026-08-29 — 승낙 없는 삭제 경로 금지).
@@ -64,7 +65,12 @@ export async function GET(request: Request) {
         const threadsChannel = post.channels?.threads;
         const publishedAt = threadsChannel?.publishedAt ?? post.publishedAt ?? null;
         const mediaId = threadsChannel?.mediaId ?? post.threadsMediaId ?? null;
-        if (post.status !== "published" || !mediaId || !publishedAt) return false;
+        // 성과 기준은 최상위 status 가 아니라 "실제로 올라간 채널이 있는가" 다.
+        // 일부 채널만 발행된 뒤 나머지를 멈춘 글도 대외에 존재하므로 표본에 남는다
+        // (2026-09-12 감사 MAJOR: 부분 발행을 성과에서 숨김 — lib/post-publish-state.ts).
+        if (!isPerformancePublished(post as unknown as Record<string, unknown>)) return false;
+        if (threadsChannel && threadsChannel.status !== "published") return false;
+        if (!mediaId || !publishedAt) return false;
         const age = now - new Date(publishedAt).getTime();
         if (Number.isNaN(age) || age < LOW_ENGAGEMENT_MIN_AGE_MS) return false;
         if (!post.engagement) return false;

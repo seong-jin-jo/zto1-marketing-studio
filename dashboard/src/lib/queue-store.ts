@@ -29,10 +29,30 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const isUuid = (s: unknown): s is string => typeof s === "string" && UUID_RE.test(s);
 const ts = (s: unknown): string | null => (typeof s === "string" && s.trim() ? s : null);
 
+// DB 미러 결과. "적용 대상이 아님(skipped)"과 "쓰려다 실패함(failed)"은 전혀 다른 사건이다.
+// 갭: docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-12.md 의 MAJOR
+// "cancel/route.ts:58 — mirrorQueuePost 의 false 를 무시하고 {ok:true} 를 반환해
+// 부분 실패를 전체 성공으로 센다". boolean 하나로는 둘을 구분할 수 없어 호출부가
+// 구분할 방법 자체가 없었다.
+export type QueueMirrorOutcome =
+  | { status: "ok" }
+  | { status: "skipped"; reason: "non-uuid-tenant" | "non-uuid-post" }
+  | { status: "failed"; message: string };
+
 // 단일 항목 upsert(생성/수정 공용). queue.json 쓰기 직후 호출.
+// 기존 boolean 계약을 쓰는 호출부를 위해 얇은 래퍼로 남긴다.
 export async function mirrorQueuePost(tenantId: string | null, post: QueueMirrorPost): Promise<boolean> {
+  const result = await mirrorQueuePostDetailed(tenantId, post);
+  return result.status === "ok";
+}
+
+export async function mirrorQueuePostDetailed(
+  tenantId: string | null,
+  post: QueueMirrorPost,
+): Promise<QueueMirrorOutcome> {
   // DB는 tenant_id·id 모두 UUID 필요. 아니면(운영자 모드/레거시 id 등) 조용히 skip → 무중단.
-  if (!isUuid(tenantId) || !isUuid(post?.id)) return false;
+  if (!isUuid(tenantId)) return { status: "skipped", reason: "non-uuid-tenant" };
+  if (!isUuid(post?.id)) return { status: "skipped", reason: "non-uuid-post" };
   const text = (typeof post.text === "string" ? post.text : null);
   const topic = (typeof post.topic === "string" ? post.topic : null);
   const status = (typeof post.status === "string" ? post.status : "draft");
@@ -58,10 +78,10 @@ export async function mirrorQueuePost(tenantId: string | null, post: QueueMirror
       `;
       if (rows.length === 0) throw new Error("queue mirror tenant mismatch");
     });
-    return true;
+    return { status: "ok" };
   } catch (e) {
     if (process.env.OSMU_DEBUG) console.error("[queue-store] mirror skip:", (e as Error).message);
-    return false;
+    return { status: "failed", message: (e as Error).message };
   }
 }
 
