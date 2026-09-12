@@ -1,3 +1,40 @@
+## 2026-09-12 19시 51분 - 학습 후보 수락·거절 이력 build 핸드오프
+
+### 무엇을 어디까지 했나
+
+성과실 학습 후보의 기존 `배우기` 경로를 보존하면서 `배우지 않기`를 서버에 기록하도록 확장했다. 판단 이력에는 후보 원문, 근거 게시물, 표본 수, 관찰 기간, 적용 범위, 판단 시각을 남기며, 수락된 후보만 다음 생성 규칙으로 활성화한다. 동일 판단 재시도는 재사용하고 반대 판단 경합은 409로 거절한다. 성과실에는 최근 판단 5건과 `반영`·`안 함`, 표본·기간·적용 범위를 표시한다. 코드와 증거 커밋은 `4df0e276`, `85eb13d9`, `8480df1f`, `5a9f0d65`, `15ee80e5`, `d5c11dd0`이다.
+
+핸드오프 기준은 회장의 이번 build 요청과 이 루트 파일이며, 시작 때 tmux pane `%472`와 `wiki/ops/session-state.md`를 확인했다. 기존 수락 흐름·생성 반영·성과실 섹션은 유지했고, 거절 이력과 출처 표시만 추가했다.
+
+### 남은 이슈·블로커
+
+감사 문서의 남은 실제 갭은 게시물별 성과 스냅샷과 재현 가능한 30일 비교, Threads 외 플랫폼의 실제 성과 수집기다. QA 승인과 운영 배포는 하지 않았고 실제 배포 버전, 외부 공급자 발행·성과 수집도 미검증이다. 작업 트리에는 다른 세션의 대량 변경이 남아 있으므로 위 커밋과 현재 미커밋 변경을 분리해서 다뤄야 한다.
+
+### 다음에 칠 명령
+
+QA 소유자가 아래 명령으로 커밋 기준 회귀를 재검증한다. 종료 증거는 전체 테스트·타입 검사·기본 흐름·Studio 흐름·디자인 lint가 모두 exit 0이고, 승인된 배포 뒤 회원 화면에서 수락·거절 이력과 다음 생성 반영을 직접 관찰한 기록이다.
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+npm run test
+npx tsc --noEmit
+npm run build
+set -a && source ./.env.local && set +a
+node scripts/verify-basic-flow-e2e.mjs
+node scripts/verify-studio-v1-e2e.mjs
+bash /Users/sj/.claude/harness/bin/design-lint.sh /Users/sj/sj_code_master/zto1-marketing-studio/dashboard/src
+```
+
+외부 회수 시점은 `/approve`로 QA 게이트가 통과하고 운영 배포 승인이 난 직후다. 그때 실제 회원 계정과 공급자 자격증명으로 외부 발행·성과 수집을 확인한다.
+
+### 검증했나
+
+관찰됨: localhost API에서 수락 201, 거절 201, 잘못된 판단 400 `INVALID_DECISION`, 이력 GET 200, 테스트 규칙 DELETE 200을 확인했다. localhost 브라우저 `/performance`에서 수락·거절 이력, 표본, 적용 범위를 확인했고 console error와 401 노출은 0이었다. 캡처는 `logs/diff/osmu-learning-decision-history-20260912.png`다.
+
+테스트됨: 최종 전체 Vitest 295개 파일, 1,990건 통과, 3건 스킵, TypeScript 통과, Next.js production build 정적 페이지 182/182, 기본 흐름 11/11, Studio 흐름 14/14, 디자인 lint 위반 0이다. production build의 기존 NFT tracing 경고 1건은 남아 있다.
+
+미검증: QA 승인, 운영 배포, 운영 회원 화면, 외부 공급자 발행·성과 수집.
+
 ## 2026-09-12 03시 05분 - code-builder 워커, 발행 중지 재점검 2회차(코드 변경 없음, Bash 승인 여전히 전부 차단)
 
 **현재 작업**: 갭 감사 두 문서(`docs/audit/osmu-gap-recheck-2026-08-28.md`, `docs/audit/osmu-v62-api-gap-audit-v1-gpt-codex.md`) 대조 후 남은 항목 중 기본 흐름(생성/편집/발행/성과)에 가장 가까운 "일곱 플랫폼을 아우르는 서버 측 발행 중지 계약"을 골랐다. 이미 이전 턴(02시 56분, 03시 40분 기록)에서 `DELETE /api/schedule/[id]`, `POST /api/queue/[postId]/cancel`, `POST /api/schedule/[scheduleId]/cancel` 3개 라우트와 SchedulePanel/UnifiedPostCard/calendar UI, `schedule-cancel-route.test.ts` 5개 계약 테스트까지 전부 작성돼 있음을 diff로 재확인했다.
