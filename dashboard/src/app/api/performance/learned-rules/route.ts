@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { candidateFingerprint } from "@/lib/performance/candidate-fingerprint";
 import { readJson, mutateJson, dataPath } from "@/lib/file-io";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -20,6 +20,13 @@ export interface LearnedRule {
 export interface LearnedRuleDecision {
   id: string;
   candidateId: string;
+  /**
+   * 서버가 계산하는 정규 후보 지문. 유일성은 이 값에 건다.
+   * 화면이 만드는 candidateId 는 탭마다 무작위라 같은 후보를 두 탭에서 만들면
+   * 중복·반대 판단 방지가 통째로 우회됐다(2026-09-12 감사 MAJOR).
+   * 지문은 규칙 문장, 정렬한 출처 글 id, 관찰 기간만으로 만든다.
+   */
+  candidateKey?: string;
   decision: "accepted" | "rejected";
   text: string;
   sourcePostIds: string[];
@@ -38,6 +45,28 @@ interface RulesFile {
 }
 
 const FILE_NAME = "performance-learned-rules.json";
+
+/**
+ * 옛 기록에는 지문이 없다. 그때는 저장된 값으로 지문을 다시 계산해 견준다.
+ * candidateId 로만 견주면 옛 기록이 있는 작업 공간에서 무작위 id 우회가 되살아난다(Codex 교차 리뷰 MAJOR 1).
+ */
+function sameCandidate(item: LearnedRuleDecision, candidateKey: string, candidateId: string): boolean {
+  if (item.candidateKey) return item.candidateKey === candidateKey;
+  if (item.candidateId === candidateId) return true;
+  return candidateFingerprint({
+    text: String(item.text || ""),
+    sourcePostIds: (item.sourcePostIds || []).map((value) => String(value).trim()),
+    observedFrom: normalizeInstant(item.observedFrom),
+    observedTo: normalizeInstant(item.observedTo),
+  }) === candidateKey;
+}
+
+/** 같은 시각을 다른 문자열로 보내도 같은 후보가 되게 한다(Codex 교차 리뷰 MAJOR 2). */
+function normalizeInstant(value: string | null): string | null {
+  if (value == null) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : value;
+}
 
 export async function GET(request: Request) {
   const tenantId = await effectiveTenantId(request, new URL(request.url).searchParams.get("tenant_id"));
@@ -62,7 +91,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "decision must be accepted or rejected", code: "INVALID_DECISION" }, { status: 400 });
   }
   const sourcePostIds: string[] = Array.isArray(body.sourcePostIds)
-    ? [...new Set<string>(body.sourcePostIds.map((value: unknown) => String(value)).filter((value: string) => Boolean(value)))].slice(0, 10)
+    ? [...new Set<string>(body.sourcePostIds.map((value: unknown) => String(value).trim()).filter((value: string) => Boolean(value)))].slice(0, 10)
     : [];
   const sampleCount = body.sampleCount == null ? sourcePostIds.length : Number(body.sampleCount);
   if (!Number.isInteger(sampleCount) || sampleCount < 0) {
@@ -77,10 +106,13 @@ export async function POST(request: Request) {
   ) {
     return Response.json({ error: "observation period is invalid", code: "INVALID_OBSERVATION_PERIOD" }, { status: 400 });
   }
-  const candidateId = String(body.candidateId || "").trim() || `candidate_${createHash("sha256")
-    .update(JSON.stringify([text, [...sourcePostIds].sort(), observedFrom, observedTo]))
-    .digest("hex")
-    .slice(0, 16)}`;
+  const candidateKey = candidateFingerprint({
+    text,
+    sourcePostIds,
+    observedFrom: normalizeInstant(observedFrom),
+    observedTo: normalizeInstant(observedTo),
+  });
+  const candidateId = String(body.candidateId || "").trim() || `candidate_${candidateKey.slice(0, 16)}`;
 
   return runWithTenant(tenantId, async () => {
     let recordedDecision: LearnedRuleDecision | null = null;
@@ -91,7 +123,7 @@ export async function POST(request: Request) {
     await mutateJson<RulesFile>(dataPath(FILE_NAME), (current) => {
       const rules = current.rules || [];
       const decisions = current.decisions || [];
-      const existing = decisions.find((item) => item.candidateId === candidateId);
+      const existing = decisions.find((item) => sameCandidate(item, candidateKey, candidateId));
       if (existing) {
         if (existing.decision !== decision) {
           conflict = true;
@@ -117,6 +149,7 @@ export async function POST(request: Request) {
       const nextDecision: LearnedRuleDecision = {
         id: `decision_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         candidateId,
+        candidateKey,
         decision,
         text,
         sourcePostIds,
@@ -147,12 +180,39 @@ export async function DELETE(request: Request) {
   const url = new URL(request.url);
   const tenantId = await effectiveTenantId(request, url.searchParams.get("tenant_id"));
   const id = url.searchParams.get("id");
-  if (!tenantId || !id) return Response.json({ error: "tenant_id, id required" }, { status: 400 });
+  const decisionId = url.searchParams.get("decisionId");
+  if (!tenantId || (!id && !decisionId) || (id && decisionId)) {
+    return Response.json({ error: "tenant_id and exactly one of id or decisionId required" }, { status: 400 });
+  }
   return runWithTenant(tenantId, async () => {
-    await mutateJson<RulesFile>(dataPath(FILE_NAME), (data) => ({
-      rules: (data.rules || []).map((rule) => (rule.id === id ? { ...rule, active: false } : rule)),
-      decisions: data.decisions || [],
-    }), { rules: [], decisions: [] });
-    return Response.json({ ok: true });
+    // 되돌리기. 판단 이력과 그 판단이 만든 활성 규칙을 한 번의 잠금 안에서 같이 되돌린다.
+    // 규칙만 끄고 이력을 남겨 두면 같은 후보의 반대 판단이 영원히 409 가 된다(2026-09-12 감사 MAJOR).
+    let undone: LearnedRuleDecision | null = null;
+    let deactivatedRuleId: string | null = null;
+    let found = false;
+
+    await mutateJson<RulesFile>(dataPath(FILE_NAME), (data) => {
+      const rules = data.rules || [];
+      const decisions = data.decisions || [];
+      const target = decisionId
+        ? decisions.find((item) => item.id === decisionId) || null
+        : decisions.find((item) => item.ruleId === id) || null;
+      const ruleId = decisionId ? target?.ruleId ?? null : id;
+      const ruleExists = ruleId ? rules.some((rule) => rule.id === ruleId) : false;
+      if (!target && !ruleExists) return { rules, decisions };
+
+      found = true;
+      undone = target;
+      deactivatedRuleId = ruleExists ? ruleId : null;
+      return {
+        rules: rules.map((rule) => (ruleId && rule.id === ruleId ? { ...rule, active: false } : rule)),
+        decisions: target ? decisions.filter((item) => item.id !== target.id) : decisions,
+      };
+    }, { rules: [], decisions: [] });
+
+    if (!found) {
+      return Response.json({ error: "decision or rule not found", code: "NOT_FOUND" }, { status: 404 });
+    }
+    return Response.json({ ok: true, undone, deactivatedRuleId });
   });
 }

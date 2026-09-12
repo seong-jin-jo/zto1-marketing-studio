@@ -14,6 +14,12 @@ import { isPerformancePublished } from "@/lib/post-publish-state";
 import type { PerformancePost } from "./PerformanceRoom";
 import { Button } from "@/components/shared/Button";
 import { Stack } from "@/components/shared/Stack";
+import {
+  LearningDecisionsDialog,
+  formatLearningDate,
+  formatLearningPeriod,
+  type LearnedRuleDecisionView,
+} from "./LearningDecisionsDialog";
 
 interface LearnedRule {
   id: string;
@@ -23,16 +29,7 @@ interface LearnedRule {
   createdAt: string;
 }
 
-interface LearnedRuleDecision {
-  id: string;
-  decision: "accepted" | "rejected";
-  text: string;
-  sourceLabel: string;
-  sampleCount: number;
-  observedFrom: string | null;
-  observedTo: string | null;
-  decidedAt: string;
-}
+type LearnedRuleDecision = LearnedRuleDecisionView;
 
 interface LearnedRulesResponse {
   rules: LearnedRule[];
@@ -55,17 +52,33 @@ interface ChatTurn {
 
 const SAMPLE_THRESHOLD = 5;
 
-function fmtDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
-  } catch {
-    return iso;
-  }
-}
+/**
+ * 이 표본 수 아래면 근거가 약하다고 화면에 먼저 밝힌다.
+ * v63 계약: 규칙 문장과 표본 수와 관찰 기간과 실리는 범위를 결정 전에 한 줄로 같이 보여준다.
+ */
+const EVIDENCE_SUFFICIENT_SAMPLE = 10;
 
-function fmtPeriod(from: string | null, to: string | null): string {
-  if (!from || !to) return "기간 미수집";
-  return `${fmtDate(from)}부터 ${fmtDate(to)}까지`;
+const RULE_SCOPE_LABEL = "이 작업 공간의 다음 생성";
+
+const fmtDate = formatLearningDate;
+const fmtPeriod = formatLearningPeriod;
+
+/** 결정 버튼 바로 위에 붙는 근거 한 줄. 표본·기간·적용 범위·한계를 같이 적는다. */
+export function ruleBasisLine(candidate: {
+  sampleCount: number;
+  sourcePostIds: string[];
+  observedFrom: string | null;
+  observedTo: string | null;
+}): string {
+  const limits: string[] = [];
+  if (candidate.sampleCount < EVIDENCE_SUFFICIENT_SAMPLE) {
+    limits.push(`표본이 ${EVIDENCE_SUFFICIENT_SAMPLE}건에 못 미쳐 근거가 약합니다`);
+  }
+  if (!candidate.observedFrom || !candidate.observedTo) {
+    limits.push("관찰 기간을 수집하지 못했습니다");
+  }
+  const limit = limits.length > 0 ? limits.join(", ") : "표본과 기간이 충분합니다";
+  return `근거: 표본 ${candidate.sampleCount}건 중 상위 ${candidate.sourcePostIds.length}편 · 관찰 기간 ${fmtPeriod(candidate.observedFrom, candidate.observedTo)} · 적용 범위 ${RULE_SCOPE_LABEL} · 한계: ${limit}`;
 }
 
 function platformOf(p: PerformancePost): string {
@@ -106,6 +119,7 @@ export function PerformanceChatPanel({
   const [draft, setDraft] = useState("");
   const [savingRuleFor, setSavingRuleFor] = useState<string | null>(null);
   const [open, setOpen] = useState(expandedByDefault);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const published = useMemo(
     // 최상위 status 가 아니라 채널별 발행 사실로 센다. 일부 채널만 올라간 뒤 멈춘 글이
@@ -238,6 +252,9 @@ export function PerformanceChatPanel({
       say(decision === "accepted"
         ? "배웠습니다. 다음 생성부터 이 규칙을 참고합니다."
         : "배우지 않기로 남겼습니다. 다음 생성에는 쓰지 않습니다.");
+    } catch {
+      // 409·401·500·네트워크 실패를 삼키지 않는다. 후보를 남겨 다시 누를 수 있게 한다.
+      say("지금은 판단을 저장하지 못했습니다. 잠시 뒤 다시 눌러 주세요. 같은 후보를 이미 반대로 정했다면 학습 정보에서 되돌린 뒤 다시 정할 수 있습니다.");
     } finally {
       setSavingRuleFor(null);
     }
@@ -286,6 +303,14 @@ export function PerformanceChatPanel({
                     <span className={`inline-block max-w-full whitespace-pre-wrap break-keep rounded-control px-stack py-stack-tight text-body-sm ${turn.from === "me" ? "bg-accent text-accent-fg" : "bg-surface text-text"}`}>
                       {turn.text}
                     </span>
+                    {turn.ruleCandidate && (
+                      <p
+                        className="mt-stack-tight break-keep text-right text-caption text-subtle"
+                        data-rule-basis={turn.ruleCandidate.candidateId}
+                      >
+                        {ruleBasisLine(turn.ruleCandidate)}
+                      </p>
+                    )}
                     {turn.ruleCandidate && (
                       <div className="mt-stack-tight flex justify-end gap-stack-tight">
                         <Button size="sm" variant="secondary" disabled={savingRuleFor === turn.id} onClick={() => void decideRule(turn.id, turn.ruleCandidate!, "accepted")}>
@@ -338,21 +363,31 @@ export function PerformanceChatPanel({
 
         {learnedDecisions.length > 0 && (
           <div className="border-t border-border pt-stack">
-            <p className="text-caption font-semibold text-subtle">최근 학습 판단</p>
-            <ul className="mt-stack-tight space-y-stack-tight">
-              {learnedDecisions.slice(0, 5).map((decision) => (
-                <li key={decision.id} className="rounded-control border border-border bg-surface-2 p-stack-tight text-caption text-muted break-keep">
-                  <span className="block text-body-sm text-text">
-                    {decision.decision === "accepted" ? "반영" : "안 함"}: {decision.text}
-                  </span>
-                  <span className="text-subtle">
-                    표본 {decision.sampleCount}건 · {fmtPeriod(decision.observedFrom, decision.observedTo)} · 작업 공간의 다음 생성
-                  </span>
-                </li>
-              ))}
-            </ul>
+            {/* 상세는 별도 창이 소유한다(DESIGN.md:159·160). 여기는 완료 피드백과 진입만 남긴다. */}
+            <p className="text-caption text-subtle" data-learning-decision-feedback>
+              최근 판단 {learnedDecisions.length}건을 학습 정보에 남겼습니다.
+            </p>
+            <Button
+              className="mt-stack-tight"
+              size="sm"
+              variant="secondary"
+              onClick={() => setDetailOpen(true)}
+              data-learning-decision-entry
+            >
+              학습 정보에서 보기
+            </Button>
           </div>
         )}
+
+        {detailOpen && workspaceId && (
+          <LearningDecisionsDialog
+            workspaceId={workspaceId}
+            decisions={learnedDecisions}
+            onClose={() => setDetailOpen(false)}
+            onUndone={async () => { await mutateRules(); }}
+          />
+        )}
+
       </Stack>
     </aside>
   );
