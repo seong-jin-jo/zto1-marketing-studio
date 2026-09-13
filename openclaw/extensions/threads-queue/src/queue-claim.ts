@@ -74,6 +74,10 @@ export function isClaimActive(post: ClaimablePost, now: Date = new Date()): bool
   return expires > now.getTime();
 }
 
+export function hasPublishingAttempt(post: ClaimablePost): boolean {
+  return Object.values(post.channels ?? {}).some((channel) => channel?.status === "publishing");
+}
+
 /**
  * 글에 lease 를 건다. 이미 살아 있는 claim 이 있으면 null 을 돌려 가져가지 못하게 한다.
  * 만료된 claim 은 회수 대상이므로 덮어쓴다(워커가 죽어도 큐가 멈추지 않게).
@@ -83,6 +87,9 @@ export function claimPost(
   options: { workerId: string; token: string; now?: Date; leaseMs?: number; approvedPayloadHash?: string },
 ): QueueClaim | null {
   const now = options.now ?? new Date();
+  // publishing 중에는 만료 claim도 교체하지 않는다. 기존 워커의 늦은 결과를 같은
+  // idempotency key와 token에 붙여야 외부 발행과 내부 상태가 갈라지지 않는다.
+  if (hasPublishingAttempt(post)) return null;
   if (isClaimActive(post, now)) return null;
   const leaseMs = options.leaseMs && options.leaseMs > 0 ? options.leaseMs : DEFAULT_LEASE_MS;
   const claim: QueueClaim = {
