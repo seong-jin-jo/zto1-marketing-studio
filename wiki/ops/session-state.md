@@ -1,3 +1,17 @@
+## 2026-09-13 15시 05분 - 성과 시계열 갭 동일 승인 차단 재확인
+
+회장 요청 원문을 handoff basis로 사용했고 `osmu-gapfill091315:0.1`은 이번 위임 실행 pane으로
+확인했다. 두 갭 감사와 현재 코드를 재대조한 결과 남은 기본 흐름 갭은 게시물별 성과 시계열과
+재현 가능한 30일 비교 하나다. localhost 지정 작업 공간의 `GET /api/metrics`는 HTTP 200이지만
+최상위 키가 `posts`, `coverage`뿐이며 게시물 0건, `history`와 `comparison`은 없다.
+
+제품 소스와 migration은 수정하지 않았다. 현재 pipeline 공정이 `qa`, 승인 아님이고 새 이력
+저장소와 비교 의미는 미승인 DB·API 계약이기 때문이다. 같은 차단은 07시 04분 QA tracker와
+`session-state.osmu-gapfill091307.md`, `session-state.osmu-gapfill091311.md`에 이미 기록돼 있다.
+이번 실행의 상세와 공식 provider 계약 대조는 `session-state.osmu-gapfill091315.md`, 커밋
+`7ffbb38b`다. 다음 소유자는 컨트롤러와 tech-architect이며 저장 계약 합의와 build 승인 뒤에만
+migration, snapshot write, history·comparison API와 정상·거절·경합 테스트를 구현한다.
+
 ## 2026-09-13 14시 29분 - 네 방 기본 흐름 v4 기능 PASS, 제품 전체 QA NG
 
 회장 요청 원문을 handoff basis로 사용했다. tmux `openclaw-auto:0.0`은 동시 작업 확인에만 참고했고 현재 과제의 기준으로 쓰지 않았다. canonical main repo는 현재 경로이며 `pipeline-state.osmu.md`는 이미 `current_stage: qa`여서 단계·승인 상태를 바꾸지 않았다.
