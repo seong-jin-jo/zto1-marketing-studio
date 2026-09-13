@@ -65,7 +65,13 @@ export type CardDeckDeps = {
   /** 카드 한 장을 PNG data URL 로 그린다. 못 그리면 null. */
   render?: (input: TextCardInput) => string | null;
   /** data URL 한 장을 저장하고 배달 주소를 돌려준다. */
-  upload: (dataUrl: string, index: number) => Promise<string>;
+  upload: (dataUrl: string, index: number) => Promise<string | CardDeckUpload>;
+};
+
+export type CardDeckUpload = {
+  url: string;
+  /** 같은 요청에서 뒤 장이 실패했을 때 이미 저장된 이 객체를 회수한다. */
+  rollback?: () => Promise<void>;
 };
 
 export class CardDeckError extends Error {}
@@ -85,8 +91,24 @@ export async function renderAndUploadCardDeck(spec: CardDeckSpec, deps: CardDeck
     drawn.push(dataUrl);
   }
   const urls: string[] = [];
-  for (let index = 0; index < drawn.length; index += 1) {
-    urls.push(await deps.upload(drawn[index], index));
+  const rollbacks: Array<() => Promise<void>> = [];
+  try {
+    for (let index = 0; index < drawn.length; index += 1) {
+      const uploaded = await deps.upload(drawn[index], index);
+      if (typeof uploaded === "string") {
+        urls.push(uploaded);
+      } else {
+        urls.push(uploaded.url);
+        if (uploaded.rollback) rollbacks.push(uploaded.rollback);
+      }
+    }
+  } catch (error) {
+    const cleanup = await Promise.allSettled([...rollbacks].reverse().map((rollback) => rollback()));
+    const cleanupFailures = cleanup.filter((result) => result.status === "rejected").length;
+    if (cleanupFailures > 0) {
+      throw new CardDeckError(`카드 저장이 중단됐고 임시 파일 ${cleanupFailures}개를 회수하지 못했습니다. 다시 시도하기 전에 저장소를 확인해주세요.`);
+    }
+    throw error;
   }
   return urls;
 }
@@ -98,10 +120,24 @@ export function browserCardUploader(headers: Record<string, string>): CardDeckDe
     const form = new FormData();
     form.append("file", new File([blob], `text-card-${index + 1}.png`, { type: "image/png" }));
     const response = await fetch("/api/images/upload", { method: "POST", headers, body: form });
-    const payload = await response.json().catch(() => ({})) as { url?: string; error?: string };
+    const payload = await response.json().catch(() => ({})) as { url?: string; error?: string; filename?: string };
     if (!response.ok || !payload.url) {
       throw new CardDeckError(payload.error || `글자 카드 ${index + 1}장을 저장하지 못했습니다`);
     }
-    return payload.url;
+    const filename = typeof payload.filename === "string" ? payload.filename : null;
+    return {
+      url: payload.url,
+      rollback: filename
+        ? async () => {
+          const deleted = await fetch(`/api/images/${encodeURIComponent(filename)}`, {
+            method: "DELETE",
+            headers,
+          });
+          if (!deleted.ok && deleted.status !== 404) {
+            throw new CardDeckError(`임시 카드 ${index + 1}장을 회수하지 못했습니다`);
+          }
+        }
+        : undefined,
+    };
   };
 }
