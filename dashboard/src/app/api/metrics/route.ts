@@ -1,5 +1,5 @@
 import { withTenant } from "@/lib/db";
-import { collectMetrics } from "@/lib/metrics-collector";
+import { collectMetrics, failureDetailsFor } from "@/lib/metrics-collector";
 import {
   buildPerformanceMetricsCoverage,
   type MetricsCoverageAggregateRow,
@@ -40,6 +40,20 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * 이 요청이 운영자인가.
+ *
+ * `/api/me` 와 같은 판정을 쓴다. 운영자 토큰이 설정돼 있고 그 값으로 왔으면 운영자다.
+ * 토큰이 아예 설정 안 된 개발 환경에서는 전 API 가 공개라 운영자로 본다 — `/api/me` 가
+ * 이미 그렇게 하고 있고, 여기만 다르게 굴면 개발에서 진단이 안 보인다.
+ */
+function isOperatorRequest(request: Request): boolean {
+  const operatorToken = process.env.DASHBOARD_AUTH_TOKEN || "";
+  if (!operatorToken) return true;
+  const raw = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "";
+  return raw === operatorToken;
+}
+
 // POST /api/metrics - 외부 호출은 DB transaction 밖에서 수행하고 결과만 짧게 저장한다.
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({})) as { tenant_id?: string };
@@ -75,7 +89,13 @@ export async function POST(request: Request) {
               : failureCodes.length > 0 && failureCodes.every((code) => code === "post_not_in_account")
                 ? 422
                 : 503;
-    return Response.json(result, { status });
+    // 운영자에게는 진단을 다 주고 고객에게는 자기 글을 찾을 만큼만 준다(근거는
+    // metrics-collector.redactFailureDetail 주석).
+    const audience = isOperatorRequest(request) ? "operator" : "customer";
+    return Response.json({
+      ...result,
+      failureDetails: failureDetailsFor(result.failureDetails, audience),
+    }, { status });
   } catch (error) {
     return Response.json({
       ok: false,

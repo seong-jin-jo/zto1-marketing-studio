@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { collectMetrics } from "@/lib/metrics-collector";
 
 vi.mock("@/lib/tenant-auth", () => ({ effectiveTenantId: vi.fn(async () => "tenant-metrics") }));
-vi.mock("@/lib/metrics-collector", () => ({ collectMetrics: vi.fn() }));
+// 이 파일은 상태 매핑만 본다. 라우트가 함께 쓰는 정제 함수는 실제 동작을 그대로 둔다 —
+// 빼먹으면 라우트가 500 으로 죽고, 그 500 을 상태 계약 실패로 잘못 읽게 된다.
+vi.mock("@/lib/metrics-collector", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/metrics-collector")>()),
+  collectMetrics: vi.fn(),
+}));
 
 async function requestMetrics() {
   const { POST } = await import("@/app/api/metrics/route");
@@ -13,6 +18,8 @@ async function requestMetrics() {
 }
 
 const base = {
+  // 이 파일은 HTTP 상태 매핑만 본다. 글 단위 상세는 pending-ingest 회귀가 본다.
+  failureDetails: [],
   updated: 0,
   total: 2,
   failed: 2,
@@ -61,6 +68,7 @@ describe("OSMU-018 성과 API 상태 계약", () => {
       failed: 1,
       partial: true,
       collectionBlocked: false,
+      failureDetails: [],
       failures: [{ channel: "x", code: "x_503", count: 1 }],
     });
     expect((await requestMetrics()).status).toBe(207);
@@ -72,6 +80,7 @@ describe("OSMU-018 성과 API 상태 계약", () => {
       failed: 0,
       partial: false,
       collectionBlocked: false,
+      failureDetails: [],
       failures: [],
     });
     expect((await requestMetrics()).status).toBe(200);
