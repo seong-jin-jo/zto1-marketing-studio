@@ -54,7 +54,19 @@ export async function POST(request: Request) {
         error: "성과를 읽어 올 수 있는 채널이 연결돼 있지 않습니다. Threads, X, Instagram, Facebook, YouTube, TikTok 중 하나를 연결해 주세요.",
       }, { status: 400 });
     }
-    return Response.json(result, { status: result.partial ? 207 : 200 });
+    const failureCodes = result.failures.map((failure) => failure.code);
+    const status = result.partial
+      ? 207
+      : result.ok
+        ? 200
+        : failureCodes.includes("collection_in_progress")
+          ? 409
+          : failureCodes.some((code) => code.endsWith("_429") || code === "provider_429")
+            ? 429
+            : failureCodes.every((code) => code === "insights_forbidden")
+              ? 424
+              : 503;
+    return Response.json(result, { status });
   } catch (error) {
     return Response.json({
       ok: false,

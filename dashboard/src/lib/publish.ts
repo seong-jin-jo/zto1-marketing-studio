@@ -607,8 +607,8 @@ function buildXOAuthHeader(method: string, url: string, k: XKeys, query: Record<
 export async function fetchXPublicMetrics(
   cred: ChannelCred,
   tweetIds: string[],
-): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number; reposts: number }>; attemptedIds: string[] }
-  | { ok: false; status?: number; error: string }> {
+): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number; reposts: number }>; attemptedIds: string[]; failedIds?: string[]; failures?: Array<{ ids: string[]; status?: number; code: string }> }
+  | { ok: false; status?: number; error: string; metrics?: Record<string, { views: number; likes: number; replies: number; reposts: number }>; attemptedIds?: string[]; failedIds?: string[]; failures?: Array<{ ids: string[]; status?: number; code: string }> }> {
   const ids = [...new Set(tweetIds.filter(Boolean))];
   if (ids.length === 0) return { ok: true, metrics: {}, attemptedIds: [] };
   const url = "https://api.twitter.com/2/tweets";
@@ -627,9 +627,12 @@ export async function fetchXPublicMetrics(
     return { ok: false, error: "X 연결이 없습니다." };
   }
   const metrics: Record<string, { views: number; likes: number; replies: number; reposts: number }> = {};
-  try {
-    for (let offset = 0; offset < ids.length; offset += 100) {
-      const chunk = ids.slice(offset, offset + 100);
+  const attemptedIds: string[] = [];
+  const failedIds: string[] = [];
+  const failures: Array<{ ids: string[]; status?: number; code: string }> = [];
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const chunk = ids.slice(offset, offset + 100);
+    try {
       const query = { ids: chunk.join(","), "tweet.fields": "public_metrics" };
       const auth = hasLegacyKeys ? buildXOAuthHeader("GET", url, k, query) : `Bearer ${cred.token}`;
       const resp = await fetch(`${url}?${new URLSearchParams(query).toString()}`, {
@@ -638,8 +641,11 @@ export async function fetchXPublicMetrics(
         signal: AbortSignal.timeout(10000),
       });
       if (!resp.ok) {
-        return { ok: false, status: resp.status, error: `X 성과 조회 실패(${resp.status})` };
+        failedIds.push(...chunk);
+        failures.push({ ids: chunk, status: resp.status, code: `x_${resp.status}` });
+        continue;
       }
+      attemptedIds.push(...chunk);
       const body = (await resp.json()) as {
         data?: { id: string; public_metrics?: { impression_count?: number; like_count?: number; reply_count?: number; retweet_count?: number } }[];
       };
@@ -652,12 +658,20 @@ export async function fetchXPublicMetrics(
           reposts: m.retweet_count ?? 0,
         };
       }
+    } catch {
+      failedIds.push(...chunk);
+      failures.push({ ids: chunk, code: "x_exception" });
     }
-    return { ok: true, metrics, attemptedIds: ids };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, error: `X 성과 조회 중 오류: ${msg.slice(0, 120)}` };
   }
+  if (attemptedIds.length === 0 && failedIds.length > 0) {
+    return { ok: false, status: failures[0]?.status, error: "X 성과 조회가 모두 실패했습니다.", metrics, attemptedIds, failedIds, failures };
+  }
+  return {
+    ok: true,
+    metrics,
+    attemptedIds,
+    ...(failedIds.length > 0 ? { failedIds, failures } : {}),
+  };
 }
 
 /**
@@ -677,22 +691,28 @@ export async function fetchXPublicMetrics(
 export async function fetchYouTubeMetrics(
   cred: ChannelCred,
   videoIds: string[],
-): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number }>; attemptedIds: string[] }
-  | { ok: false; status?: number; error: string }> {
+): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number }>; attemptedIds: string[]; failedIds?: string[]; failures?: Array<{ ids: string[]; status?: number; code: string }> }
+  | { ok: false; status?: number; error: string; metrics?: Record<string, { views: number; likes: number; replies: number }>; attemptedIds?: string[]; failedIds?: string[]; failures?: Array<{ ids: string[]; status?: number; code: string }> }> {
   const ids = [...new Set(videoIds.filter(Boolean))];
   if (ids.length === 0) return { ok: true, metrics: {}, attemptedIds: [] };
   if (!cred.token) return { ok: false, error: "YouTube 연결이 없습니다." };
   const metrics: Record<string, { views: number; likes: number; replies: number }> = {};
-  try {
-    for (let offset = 0; offset < ids.length; offset += 50) {
-      const chunk = ids.slice(offset, offset + 50);
+  const attemptedIds: string[] = [];
+  const failedIds: string[] = [];
+  const failures: Array<{ ids: string[]; status?: number; code: string }> = [];
+  for (let offset = 0; offset < ids.length; offset += 50) {
+    const chunk = ids.slice(offset, offset + 50);
+    try {
       const resp = await fetch(
         `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(chunk.join(","))}`,
         { headers: { Authorization: `Bearer ${cred.token}` }, signal: AbortSignal.timeout(10000) },
       );
       if (!resp.ok) {
-        return { ok: false, status: resp.status, error: `YouTube 성과 조회 실패(${resp.status})` };
+        failedIds.push(...chunk);
+        failures.push({ ids: chunk, status: resp.status, code: `youtube_${resp.status}` });
+        continue;
       }
+      attemptedIds.push(...chunk);
       const body = (await resp.json()) as {
         items?: { id: string; statistics?: { viewCount?: string; likeCount?: string; commentCount?: string } }[];
       };
@@ -704,12 +724,20 @@ export async function fetchYouTubeMetrics(
           replies: Number(st.commentCount ?? 0) || 0,
         };
       }
+    } catch {
+      failedIds.push(...chunk);
+      failures.push({ ids: chunk, code: "youtube_exception" });
     }
-    return { ok: true, metrics, attemptedIds: ids };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, error: `YouTube 성과 조회 중 오류: ${msg.slice(0, 120)}` };
   }
+  if (attemptedIds.length === 0 && failedIds.length > 0) {
+    return { ok: false, status: failures[0]?.status, error: "YouTube 성과 조회가 모두 실패했습니다.", metrics, attemptedIds, failedIds, failures };
+  }
+  return {
+    ok: true,
+    metrics,
+    attemptedIds,
+    ...(failedIds.length > 0 ? { failedIds, failures } : {}),
+  };
 }
 
 /**
@@ -725,8 +753,8 @@ export async function fetchMetaPostMetrics(
   cred: ChannelCred,
   platform: "instagram" | "instagram_reels" | "facebook",
   postIds: string[],
-): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number }>; attemptedIds: string[] }
-  | { ok: false; status?: number; error: string }> {
+): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number }>; attemptedIds: string[]; failedIds?: string[]; failures?: Array<{ id: string; status?: number; code: string }> }
+  | { ok: false; status?: number; error: string; metrics?: Record<string, { views: number; likes: number; replies: number }>; attemptedIds?: string[]; failedIds?: string[]; failures?: Array<{ id: string; status?: number; code: string }> }> {
   const ids = [...new Set(postIds.filter(Boolean))];
   if (ids.length === 0) return { ok: true, metrics: {}, attemptedIds: [] };
   if (!cred.token) return { ok: false, error: `${platform} 연결이 없습니다.` };
@@ -737,6 +765,8 @@ export async function fetchMetaPostMetrics(
       ? "views,likes,comments"
       : "post_impressions,post_reactions_by_type_total";
   const metrics: Record<string, { views: number; likes: number; replies: number }> = {};
+  const attemptedIds: string[] = [];
+  const failures: Array<{ id: string; status?: number; code: string }> = [];
 
   // Graph API 는 게시물별 insights 를 하나씩 묻는다. 한 번에 묶는 batch 도 있지만 실패
   // 하나가 전체를 물고 늘어져 원인을 못 가린다. 하나씩 묻고 실패도 하나씩 남긴다.
@@ -746,7 +776,16 @@ export async function fetchMetaPostMetrics(
         `https://graph.facebook.com/v21.0/${encodeURIComponent(id)}/insights?metric=${metricNames}&access_token=${cred.token}`,
         { signal: AbortSignal.timeout(8000) },
       );
-      if (!resp.ok) continue; // 못 잰 글은 호출부가 "측정 불가" 로 남긴다
+      if (!resp.ok) {
+        const code = resp.status === 401 || resp.status === 403
+          ? "insights_forbidden"
+          : resp.status === 404
+            ? "post_not_in_account"
+            : `provider_${resp.status}`;
+        failures.push({ id, status: resp.status, code });
+        continue;
+      }
+      attemptedIds.push(id);
       const body = (await resp.json()) as { data?: { name: string; values?: { value?: unknown }[] }[] };
       const row: Record<string, unknown> = {};
       for (const entry of body.data ?? []) row[entry.name] = entry.values?.[0]?.value ?? 0;
@@ -759,9 +798,28 @@ export async function fetchMetaPostMetrics(
         likes: Number(row.likes ?? reactionTotal) || 0,
         replies: Number(row.comments ?? 0) || 0,
       };
-    } catch { /* 이 글만 건너뛴다. 하나 때문에 나머지를 잃지 않는다 */ }
+    } catch {
+      failures.push({ id, code: "exception" });
+    }
   }
-  return { ok: true, metrics, attemptedIds: ids };
+  const failedIds = failures.map((failure) => failure.id);
+  if (attemptedIds.length === 0 && failedIds.length > 0) {
+    return {
+      ok: false,
+      status: failures[0]?.status,
+      error: `${platform} 성과 조회가 모두 실패했습니다.`,
+      metrics,
+      attemptedIds,
+      failedIds,
+      failures,
+    };
+  }
+  return {
+    ok: true,
+    metrics,
+    attemptedIds,
+    ...(failedIds.length > 0 ? { failedIds, failures } : {}),
+  };
 }
 
 // X 발행 (text only, API v2). 4키 OAuth1.0a 서명. 공식 가중 문자가 280을 넘으면 차단한다.
