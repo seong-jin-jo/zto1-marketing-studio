@@ -2,6 +2,23 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-13 16시 27분 KST · 최근 24시간 코드 재리뷰 갱신 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 변경 | 돈 누수, 작업 공간 격리, 동시성, 부분 실패, 무기록 삭제, 확정 요구 이탈 공격 리뷰 | REVIEW-20260913-R3-01 | BLOCK | 고정 범위 `8652fb5..e65a1d1`, 71커밋, 283파일. MAJOR 26건, MINOR 1건. 기존 차단 사유에 원격 DB 과금 한도 초기화, QA 전체 deadline 부재, 예약 카드뉴스 단일 이미지 축소가 추가됨 |
+| 잠금 경합 | queue lock 임계구역 직렬화 | REVIEW-20260913-R3-02 | NG | 첫 writer 종료 12,502ms 전 둘째 writer가 10,257ms에 진입해 2,245ms 중첩 관찰 |
+| 현재 localhost | 지정 작업 공간의 실제 실행 경로 | REVIEW-20260913-R3-03 | 부분 관찰 | health HTTP 200. 기본 흐름 11/11, Studio v1 14/14. metrics는 15초 안에 응답하지 않음 |
+| 자동 회귀 | 전체 테스트와 TypeScript | REVIEW-20260913-R3-04 | PASS | `npm run test` 종료 코드 0, `npx tsc --noEmit` 종료 코드 0. 초록 테스트는 MAJOR 해소 증거로 사용하지 않음 |
+
+상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-13.md`다. 제품 코드는 수정하지 않았고 운영 배포는 미검증이다.
+
+[모델]: gpt-codex/GPT-5가 고정 diff와 승인 산출물을 대조하고 localhost 요청과 경합 재현을 직접 실행했다.
+벤치마크: OWASP API Security, Node.js path, PostgreSQL explicit locking 공식 문서의 자원 한도, 경로 정규화, 동시 변경 원칙을 적용했다.
+소스 1: `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-13.md`.
+소스 2: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html`, `DESIGN.md`.
+소스 3: `dashboard/scripts/seed-test-tenants.sql`, `openclaw/extensions/threads-queue/src/queue-lock.ts`.
+
 ## 2026-09-13 14시 29분 KST · 네 방 기본 흐름 v4 재검증
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

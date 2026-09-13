@@ -1,3 +1,13 @@
+## 2026-09-13 16시 27분 - 최근 24시간 코드 재리뷰 BLOCK 갱신
+
+회장 요청 원문을 handoff basis로 사용했다. tmux pane은 동시 작업 충돌 여부와 localhost 실행 상태 확인에만 참고했다. 리뷰 범위는 착수 시점의 `8652fb5b29fecad7aa688b99ad1c2bab534d2fc4..e65a1d1b1aecbc11ce589ecf9db4183bf4d4296e` 71커밋, 283파일로 고정했다. 제품 코드는 수정하지 않았다.
+
+판정은 MAJOR 26건, MINOR 1건, `REVIEW_VERDICT: BLOCK`이다. 기존 path traversal, 승인 payload 바꿔치기, queue 및 outbox 경합, 성과 부분 실패 거짓 성공, 카드뉴스 실제 발행물 불일치가 아직 남았다. 새로 들어온 테스트 시드는 임의 원격 `DATABASE_URL`에도 고정 QA 작업 공간의 월 사용량을 0으로 되감을 수 있고, 네 방 probe는 전체 deadline 없이 각 방의 두 대기에 120초씩 허용한다. 예약 발행은 다섯 장 카드뉴스를 첫 장 하나로 축소한다. 상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-13.md`, 최신 감사 커밋은 `d91a8e41`이다.
+
+직접 실행에서 queue lock 첫 writer가 12,502ms에 끝나기 전 둘째 writer가 10,257ms에 진입했다. localhost health는 HTTP 200, metrics는 15초 timeout이었다. 기본 흐름은 11/11, Studio v1은 14/14, 전체 `npm run test`와 `npx tsc --noEmit`은 종료 코드 0이었다. 현재 공유 작업 트리의 실행 증거이므로 고정 커밋 결함의 해소 증거로 사용하지 않았다. 배포는 미검증이고 pipeline 상태는 바꾸지 않았다.
+
+다음 소유자는 build 워커다. MAJOR를 코드로 수정한 새 고정 커밋 뒤 QA가 경로 이탈 차단, 승인 payload 결속, lock 중첩 0, provider 부분 실패의 비성공 응답, 다중 카드 미리보기와 실제 발행 bytes 일치, 운영 DB seed 거부, QA 전체 deadline을 재검증해야 한다.
+
 ## 2026-09-13 15시 05분 - 성과 시계열 갭 동일 승인 차단 재확인
 
 회장 요청 원문을 handoff basis로 사용했고 `osmu-gapfill091315:0.1`은 이번 위임 실행 pane으로
