@@ -13,7 +13,7 @@ export interface PreviewText {
   instagram?: { caption?: string; hashtags?: string[]; slides?: string[] };
   shorts?: { hook?: string; body?: string; cta?: string };
 }
-export interface PreviewMedia { imgUrl?: string; vidUrl?: string }
+export interface PreviewMedia { imgUrl?: string; imgUrls?: string[]; vidUrl?: string }
 export type PreviewPlatform = "threads" | "x" | "instagram" | "facebook" | "shorts" | "reels" | "tiktok";
 
 export type PreviewAccount = {
@@ -335,7 +335,8 @@ function VideoRail({ kind }: { kind: "shorts" | "reels" | "tiktok" }) {
 // (tenant-auth.ts effectiveTenantId). 2026-09-13 Codex 교차리뷰 지적.
 export function PlatformPreview({ platform, text, media, headerRight, editor, tenantId }: { platform: PreviewPlatform; text: PreviewText; media: PreviewMedia; headerRight?: React.ReactNode; editor?: PreviewInlineEditor; tenantId?: string }) {
   const handle = (editor?.account.username || editor?.account.displayName || "연결 계정 없음").replace(/^@/, "");
-  const img = media.imgUrl; const vid = media.vidUrl;
+  const images = media.imgUrls?.filter(Boolean).length ? media.imgUrls.filter(Boolean) : media.imgUrl ? [media.imgUrl] : [];
+  const img = images[0]; const vid = media.vidUrl;
   const label = PREVIEW_PLATFORMS.find((x) => x.key === platform)?.label || platform;
   const previewBody = platform === "threads"
     ? text.threads || ""
@@ -427,7 +428,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
     </Frame>
   );
   if (platform === "instagram") {
-    const cards = [...(img ? [{ type: "img" as const, v: img }] : []), ...(text.instagram?.slides || []).map((s) => ({ type: "text" as const, v: s }))];
+    const cards = images.map((url) => ({ type: "img" as const, v: url }));
     return (
       <Frame p="instagram" label="Instagram" headerRight={headerRight} characterCount={characterCount}>
         <div className="bg-surface text-text rounded-control border border-border overflow-hidden">

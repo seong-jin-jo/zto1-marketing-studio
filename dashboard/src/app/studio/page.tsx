@@ -116,11 +116,6 @@ function channelHref(platform: string): string {
   return `/channels/${VIDEO_ACCOUNT_PROVIDER[platform] || platform}`;
 }
 
-function learningValueLabel(value: string | undefined): string {
-  if (!value?.trim()) return "아직 없음";
-  return value.split(". 예:")[0].trim() || value.trim();
-}
-
 const PUBLISH_SUPPORTED = new Set<PreviewPlatform>([
   ...(SCHEDULABLE_PLATFORMS.filter((platform) => PREVIEW_PLATFORM_KEYS.has(platform)) as PreviewPlatform[]),
   ...Array.from(VIDEO_ROOM_PLATFORMS),
@@ -655,7 +650,6 @@ export default function StudioPage() {
     }
   }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat]);
 
-  const media = { imgUrl: img?.file, vidUrl: vid?.file };
   const upText = (patch: Partial<TextVariants>) => setText((p) => ({ ...(p || {}), ...patch }));
   const upIg = (patch: Partial<NonNullable<TextVariants["instagram"]>>) => setText((p) => ({ ...(p || {}), instagram: { ...(p?.instagram || {}), ...patch } }));
   const syncEditLines = (nextLines: string[]) => {
@@ -1017,7 +1011,7 @@ export default function StudioPage() {
       setImg(next);
       return next;
     } catch (error) {
-      showToast(extractApiErrorMessage(error, "고친 글자를 카드 그림에 다시 그리지 못했습니다. 발행실에는 이전 그림이 실립니다."), "error");
+      showToast(extractApiErrorMessage(error, "고친 글자를 카드 그림에 다시 그리지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요."), "error");
       return null;
     }
   }
@@ -1030,6 +1024,7 @@ export default function StudioPage() {
     setMoveToPublishBusy(true);
     try {
       const redrawn = await recompositeCards(linesToPersist);
+      if (editKind === "card" && !redrawn) return;
       const savedDraftId = await save("draft", publishReconciliations, draftId, linesToPersist, redrawn ?? img);
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
       if (!editLines.length) setEditLines(linesToPersist);
@@ -1398,14 +1393,6 @@ export default function StudioPage() {
           ? "발행 실패"
           : "발행 완료";
   const LABEL: Record<string, string> = { threads: "Threads", x: "X", facebook: "Facebook", instagram: "Instagram", shorts: "Shorts", reels: "Reels", tiktok: "TikTok" };
-  const publishLearningRows = [
-    ["업종", learningValueLabel(learningInfo.industry)],
-    ["주요 고객", learningValueLabel(learningInfo.audience)],
-    ["콘텐츠 목표", learningValueLabel(learningInfo.purpose)],
-    ["말투", learningValueLabel(learningInfo.voice)],
-    ["쓰지 않을 표현", learningValueLabel(learningInfo.forbidden)],
-  ] as const;
-
   function chooseCandidate(candidate: StudioGenerationCandidate) {
     setSelectedCandidate(candidate);
     /*
@@ -1918,14 +1905,6 @@ export default function StudioPage() {
           </div>
           <Button size="sm" variant="secondary" onClick={() => setShowWizard(true)}>학습 정보 고치기</Button>
         </div>
-        <dl className="mt-stack flex flex-wrap gap-stack-tight">
-          {publishLearningRows.map(([label, value]) => (
-            <div key={label} className="min-w-0 rounded-pill border border-accent/20 bg-surface px-stack py-stack-tight text-caption text-muted" title={value}>
-              <dt className="sr-only">{label}</dt>
-              <dd className="max-w-full truncate">{label}: {value}</dd>
-            </div>
-          ))}
-        </dl>
       </section>
       <section data-room="publish" className="grid gap-stack-section pb-wide lg:grid-cols-[minmax(0,1fr)_20rem] lg:pb-none">
         <div className="min-w-0 space-y-region">
@@ -2048,7 +2027,11 @@ export default function StudioPage() {
                     <PlatformPreview
                       platform={platform}
                       text={text || {}}
-                      media={media}
+                      media={{
+                        imgUrl: img?.file,
+                        imgUrls: planChannelImages(platform, publishDeck).images,
+                        vidUrl: vid?.file,
+                      }}
                       tenantId={activeWorkspace?.id}
                       editor={previewEditor(platform)}
                       headerRight={
