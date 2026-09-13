@@ -1,3 +1,13 @@
+## 2026-09-13 12시 31분 - 최근 24시간 코드 재리뷰 BLOCK
+
+회장 요청 원문을 handoff basis로 사용했다. tmux pane은 동시 작업과 localhost 실행 상태 확인에만 참고했고, 검토 범위는 착수 시점의 `8652fb5b29fecad7aa688b99ad1c2bab534d2fc4..7e39d0a7ddee8a9d7344cb08f56dea8baaf94419` 55커밋, 236파일로 고정했다. 제품 코드는 수정하지 않았다.
+
+MAJOR 23건으로 `REVIEW_VERDICT: BLOCK`이다. 핵심은 OpenClaw publisher의 작업 공간 밖 파일 반출과 승인 payload 바꿔치기, queue lock heartbeat와 소유권 부재, corrupt queue의 빈 큐 덮어쓰기, outbox ABA 삭제, 성과 수집의 전체 실패 HTTP 200과 batch 성공 폐기, 카드뉴스 실제 미리보기와 발행 bytes 불일치다. 상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-13.md`다.
+
+직접 실행한 queue lock 재현에서 첫 writer 종료 12,502ms 전 둘째 writer가 10,253ms에 진입했다. 전체 Vitest 319파일 2,106건 통과, 3건 제외, TypeScript 통과다. localhost:3456은 HTTP 200이었지만 지정 작업 공간의 기본 흐름과 Studio v1은 실제 생성 단계가 공유 AI 월간 한도 소진 HTTP 429로 중단돼 두 필수 E2E가 NG다. 운영 배포는 미검증이고 pipeline 상태는 바꾸지 않았다.
+
+다음 소유자는 build 워커다. MAJOR 23건을 수정한 새 고정 커밋 뒤 QA가 경로 이탈, payload binding, lock 중첩, outbox version 경합, 전 실패 및 뒤 batch 실패, 카드 PNG 미리보기와 실제 발행 동일성을 재현해야 한다. 종료 증거는 두 E2E 통과, 경합 중첩 0, 부분 실패 정확한 비성공 응답, 실제 카드 bytes 일치다.
+
 ## 2026-09-13 12시 01분 - 네 방 기본 흐름 v3 기능 PASS, 제품 전체 QA NG
 
 회장 요청 원문을 handoff basis로 사용했다. `studio-auth-runtime:0.0`은 localhost:3456 실행 상태와 콜드 컴파일 진행 확인에만 사용했다. canonical main repo의 `pipeline-state.osmu.md`는 이미 `current_stage: qa`였고 단계·승인 상태와 배포는 바꾸지 않았다.
