@@ -13,6 +13,7 @@ handoff basis: 회장 요청 원문, canonical `pipeline-state.osmu.md`, 현재 
 - 전체 Vitest 323파일과 2,119건, TypeScript, build 183/183, 디자인 lint를 통과했다. 조건부 테스트 3건은 제외됐다.
 - QA 캡처가 디자인 원본 폴더와 전체 페이지를 사용하던 ISSUE-010을 고치고 회귀를 추가했다. 커밋 `561e859b`.
 - 상세 보고서를 `docs/qa/osmu-four-room-basic-flow-v5-gpt-codex.md`에 작성하고 tracker와 구현현황을 갱신했다.
+- 검증용 개발 및 production 서버는 증거 수집 뒤 종료해 포트 3456에 무인 프로세스를 남기지 않았다.
 
 ## 남은 이슈·블로커
 
