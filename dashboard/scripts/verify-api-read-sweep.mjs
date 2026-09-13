@@ -18,6 +18,8 @@ const studioToken = process.env.STUDIO_DEV_BEARER_TOKEN;
 const tenantToken = process.env.API_SWEEP_TENANT_TOKEN || "";
 const outputPath = process.env.API_SWEEP_OUTPUT || "";
 const requestTimeoutMs = Number(process.env.API_SWEEP_TIMEOUT_MS || "120000");
+const totalTimeoutMs = Number(process.env.API_SWEEP_TOTAL_TIMEOUT_MS || "300000");
+const sweepConcurrency = Number(process.env.API_SWEEP_CONCURRENCY || "4");
 
 if (!workspaceId) throw new Error("API_SWEEP_WORKSPACE_ID 또는 STUDIO_DEV_WORKSPACE_IDS가 필요합니다");
 if (!operatorToken) throw new Error("DASHBOARD_AUTH_TOKEN이 필요합니다");
@@ -25,6 +27,8 @@ if (!studioToken) throw new Error("STUDIO_DEV_BEARER_TOKEN이 필요합니다");
 if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
   throw new Error("API_SWEEP_TIMEOUT_MS는 0보다 큰 숫자여야 합니다");
 }
+if (!Number.isFinite(totalTimeoutMs) || totalTimeoutMs <= 0) throw new Error("API_SWEEP_TOTAL_TIMEOUT_MS는 0보다 큰 숫자여야 합니다");
+if (!Number.isInteger(sweepConcurrency) || sweepConcurrency < 1 || sweepConcurrency > 12) throw new Error("API_SWEEP_CONCURRENCY는 1부터 12 사이 정수여야 합니다");
 
 const GET_EXPORT = /export\s+(?:async\s+)?function\s+GET\b|export\s+const\s+GET\b/;
 
@@ -107,16 +111,31 @@ function classify(status) {
 
 const files = await collectRouteFiles(apiRoot);
 const results = [];
+const deadlineAt = Date.now() + totalTimeoutMs;
+let cursor = 0;
 
-for (const file of files) {
+async function inspectRoute(file) {
   const apiPath = routePath(file);
   const url = requestUrl(apiPath);
   const startedAt = Date.now();
+  const remainingMs = deadlineAt - startedAt;
+  if (remainingMs <= 0) {
+    results.push({
+      route: apiPath,
+      file: path.relative(dashboardRoot, file),
+      status: 0,
+      classification: "전체 시간 초과",
+      duration_ms: 0,
+      body_sha256: "",
+      body_preview: "전체 실행시간 예산이 끝나 요청하지 않았습니다",
+    });
+    return;
+  }
   try {
     const response = await fetch(url, {
       headers: requestHeaders(apiPath),
       redirect: "manual",
-      signal: AbortSignal.timeout(requestTimeoutMs),
+      signal: AbortSignal.timeout(Math.min(requestTimeoutMs, remainingMs)),
     });
     const body = redact((await response.text()).slice(0, 500));
     results.push({
@@ -141,6 +160,14 @@ for (const file of files) {
   }
 }
 
+await Promise.all(Array.from({ length: Math.min(sweepConcurrency, files.length) }, async () => {
+  while (cursor < files.length) {
+    const file = files[cursor++];
+    await inspectRoute(file);
+  }
+}));
+results.sort((left, right) => left.route.localeCompare(right.route));
+
 const counts = Object.fromEntries(
   [...new Set(results.map((result) => result.classification))]
     .sort()
@@ -153,6 +180,8 @@ const report = {
   git_commit: gitCommit,
   workspace_id: workspaceId,
   request_timeout_ms: requestTimeoutMs,
+  total_timeout_ms: totalTimeoutMs,
+  concurrency: sweepConcurrency,
   route_count: files.length,
   counts,
   results,
@@ -166,5 +195,5 @@ console.log(`합계 ${files.length}개 ${JSON.stringify(counts)}`);
 
 if (outputPath) await fs.writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
-const failed = results.filter((result) => ["고장", "서버 오류 검토", "요청 실패"].includes(result.classification));
+const failed = results.filter((result) => ["고장", "서버 오류 검토", "요청 실패", "전체 시간 초과"].includes(result.classification));
 process.exit(failed.length ? 1 : 0);

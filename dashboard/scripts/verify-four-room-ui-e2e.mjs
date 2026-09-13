@@ -13,11 +13,19 @@ const executablePath = process.env.FOUR_ROOM_CHROME_PATH || "/Users/sj/Library/C
 const dataRoot = process.env.DATA_DIR || path.resolve(process.cwd(), "../data");
 const settingsPath = path.join(dataRoot, "tenants", workspaceId, "settings.json");
 const readyTimeoutMs = Number(process.env.FOUR_ROOM_READY_TIMEOUT_MS || "120000");
+const totalTimeoutMs = Number(process.env.FOUR_ROOM_TOTAL_TIMEOUT_MS || "300000");
 
 if (!operatorToken) throw new Error("DASHBOARD_AUTH_TOKEN이 필요합니다");
 if (!fs.existsSync(settingsPath)) throw new Error(`첫 사용자 설정 파일이 없습니다: ${settingsPath}`);
 if (!Number.isFinite(readyTimeoutMs) || readyTimeoutMs <= 0) {
   throw new Error("FOUR_ROOM_READY_TIMEOUT_MS는 0보다 큰 숫자여야 합니다");
+}
+if (!Number.isFinite(totalTimeoutMs) || totalTimeoutMs <= 0) throw new Error("FOUR_ROOM_TOTAL_TIMEOUT_MS는 0보다 큰 숫자여야 합니다");
+const deadlineAt = Date.now() + totalTimeoutMs;
+function remainingTimeout(label) {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) throw new Error(`전체 실행시간 초과: ${label}`);
+  return Math.min(readyTimeoutMs, remaining);
 }
 
 const widths = [390, 768, 1024, 1440];
@@ -42,10 +50,12 @@ const request = async (pathname, options = {}) => fetch(`${baseUrl}${pathname}`,
     ...(options.body ? { "content-type": "application/json" } : {}),
     ...(options.headers || {}),
   },
+  signal: AbortSignal.timeout(Math.max(1, Math.min(15_000, deadlineAt - Date.now()))),
 });
 
 let issuedTokenId = "";
 let browser;
+let deadlineTimer;
 const originalSettings = fs.readFileSync(settingsPath, "utf8");
 const observations = [];
 const consoleErrors = [];
@@ -74,7 +84,7 @@ async function sidebar(page, width) {
     if (await open.getAttribute("aria-expanded") !== "true") await open.click();
   }
   const nav = page.getByRole("complementary", { name: "주요 사이드바" });
-  await nav.waitFor({ state: "visible" });
+  await nav.waitFor({ state: "visible", timeout: remainingTimeout(`${width} 사이드바`) });
   return nav.getByRole("region", { name: "한 편의 제작 순서" });
 }
 
@@ -100,11 +110,11 @@ async function clickRoom(page, width, room) {
     // load makes a successful room transition look like a timeout. Arm the URL waiter
     // before the click so a fast client transition cannot finish between both awaits.
     await Promise.all([
-      page.waitForURL((url) => `${url.pathname}${url.search}` === room.href, { waitUntil: "commit", timeout: readyTimeoutMs }),
+      page.waitForURL((url) => `${url.pathname}${url.search}` === room.href, { waitUntil: "commit", timeout: remainingTimeout(`${width} ${room.label} 주소 이동`) }),
       link.click(),
     ]);
   }
-  await page.locator(room.selector).waitFor({ state: "visible", timeout: readyTimeoutMs });
+  await page.locator(room.selector).waitFor({ state: "visible", timeout: remainingTimeout(`${width} ${room.label} 표시`) });
 }
 
 async function measureRoom(page, width, room, theme = "light") {
@@ -113,7 +123,7 @@ async function measureRoom(page, width, room, theme = "light") {
     await page.waitForFunction(
       () => Number(document.querySelector("[data-perf-suggestions]")?.getAttribute("data-perf-suggestions") || 0) >= 3,
       undefined,
-      { timeout: readyTimeoutMs },
+      { timeout: remainingTimeout(`${tag} 성과 제안`) },
     );
   }
   const metrics = await page.evaluate((roomKey) => {
@@ -148,10 +158,11 @@ async function measureRoom(page, width, room, theme = "light") {
   observations.push({ width, theme, room: room.key, path: new URL(page.url()).pathname + new URL(page.url()).search, ...metrics });
   // QA 증거는 원본 프로토타입을 덮지 않고 logs/diff에 둔다. 비교할 때
   // viewport 밖의 세로 길이가 섞이지 않도록 사용자가 보는 화면만 캡처한다.
-  await page.screenshot({ path: path.join(outputDir, `${width}-${theme}-${room.key}.png`), fullPage: false });
+  await page.screenshot({ path: path.join(outputDir, `${width}-${theme}-${room.key}.png`), fullPage: false, timeout: remainingTimeout(`${tag} 캡처`) });
 }
 
 try {
+  deadlineTimer = setTimeout(() => { void closeBrowserWithin(1000); }, totalTimeoutMs);
   const issued = await request("/api/tenant-tokens", {
     method: "POST",
     body: JSON.stringify({ tenant_id: workspaceId, label: `qa-four-room-${Date.now()}` }),
@@ -163,7 +174,7 @@ try {
   fs.writeFileSync(settingsPath, firstUserSettings(originalSettings));
   fs.mkdirSync(outputDir, { recursive: true });
 
-  browser = await chromium.launch({ executablePath, headless: true });
+  browser = await chromium.launch({ executablePath, headless: true, timeout: remainingTimeout("브라우저 시작") });
   for (const width of widths) {
     // 390 폭은 라이트+다크 둘 다, 그 외 폭은 라이트만(마찰 대비 최소 범위 확대).
     const themes = width === narrowDarkWidth ? ["light", "dark"] : ["light"];
@@ -183,7 +194,7 @@ try {
 
       // Next dev keeps HMR and background requests alive. The room locator below is the
       // user-visible readiness signal; networkidle can misclassify a rendered page as a timeout.
-      await page.goto(`${baseUrl}/studio?room=create`, { waitUntil: "domcontentloaded", timeout: readyTimeoutMs });
+      await page.goto(`${baseUrl}/studio?room=create`, { waitUntil: "domcontentloaded", timeout: remainingTimeout(`${tag} 생성실 진입`) });
       for (const room of roomContracts) {
         console.log(`검증 ${tag} ${room.label}`);
         await clickRoom(page, width, room);
@@ -205,10 +216,15 @@ try {
   console.log(`PASS 가로 넘침 0px, 전체 화면 모달 0건, 브라우저 401 0건, 콘솔 오류 0건, 390 다크 테마 미적용 0건`);
   console.log(`CAPTURES ${outputDir}`);
 } finally {
+  if (deadlineTimer) clearTimeout(deadlineTimer);
   fs.writeFileSync(settingsPath, originalSettings);
   if (issuedTokenId) {
-    const revoked = await request(`/api/tenant-tokens?id=${encodeURIComponent(issuedTokenId)}`, { method: "DELETE" });
-    if (!revoked.ok) console.error(`임시 고객 토큰 폐기 실패: HTTP ${revoked.status}`);
+    try {
+      const revoked = await request(`/api/tenant-tokens?id=${encodeURIComponent(issuedTokenId)}`, { method: "DELETE" });
+      if (!revoked.ok) console.error(`임시 고객 토큰 폐기 실패: HTTP ${revoked.status}`);
+    } catch (error) {
+      console.error(`임시 고객 토큰 폐기 실패: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
   await closeBrowserWithin(5000);
 }
