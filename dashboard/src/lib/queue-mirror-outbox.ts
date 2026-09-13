@@ -1,4 +1,6 @@
-import { mutateJson, readJson, dataPath } from "./file-io";
+import fs from "node:fs";
+import path from "node:path";
+import { mutateJson, readJson, dataPath, DATA_DIR } from "./file-io";
 import { mirrorQueuePostDetailed, type QueueMirrorPost } from "./queue-store";
 
 // 파일(queue.json)과 DB(queue_posts) 두 저장소를 수렴시키는 outbox.
@@ -15,7 +17,7 @@ import { mirrorQueuePostDetailed, type QueueMirrorPost } from "./queue-store";
 //  - drainQueueMirrorOutbox 가 나중에 같은 항목을 다시 밀어 두 저장소를 맞춘다.
 
 const OUTBOX_FILE = "queue-mirror-outbox.json";
-const MAX_ENTRIES = 500;
+const OUTBOX_ALERT_THRESHOLD = 500;
 
 export interface QueueMirrorOutboxEntry {
   postId: string;
@@ -38,9 +40,29 @@ export function readQueueMirrorOutbox(): QueueMirrorOutboxEntry[] {
 async function writeOutbox(fn: (entries: QueueMirrorOutboxEntry[]) => QueueMirrorOutboxEntry[]): Promise<void> {
   await mutateJson<OutboxFile>(
     dataPath(OUTBOX_FILE),
-    (cur) => ({ entries: fn(cur.entries || []).slice(-MAX_ENTRIES) }),
+    (cur) => {
+      const next = fn(cur.entries || []);
+      if (next.length > OUTBOX_ALERT_THRESHOLD) {
+        console.error(`[queue-mirror-outbox] 미수렴 항목 ${next.length}건. 저장소 복구가 필요합니다.`);
+      }
+      // 미수렴 항목은 오래됐다는 이유로 버리지 않는다. 성공한 항목만 drain에서 제거한다.
+      return { entries: next };
+    },
     { entries: [] },
   );
+}
+
+/** 운영 스윕이 due schedule이 없는 작업 공간의 밀린 미러도 찾도록 한다. */
+export function listQueueMirrorOutboxTenantIds(): string[] {
+  const root = path.join(DATA_DIR, "tenants");
+  try {
+    return fs.readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && /^[A-Za-z0-9_-]{1,64}$/.test(entry.name))
+      .filter((entry) => fs.existsSync(path.join(root, entry.name, OUTBOX_FILE)))
+      .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
 }
 
 export type QueuePersistenceResult = {
@@ -103,20 +125,36 @@ async function clearQueueMirrorOutboxEntry(postId: string): Promise<void> {
   await writeOutbox((cur) => cur.filter((e) => e.postId !== postId));
 }
 
-/** 밀린 미러를 다시 민다. 성공한 항목만 outbox 에서 빠진다(멱등 upsert라 재시도 안전). */
+/**
+ * 밀린 미러를 다시 민다. 성공한 항목만 outbox 에서 빠진다.
+ *
+ * Codex 교차 리뷰 MAJOR 5: 처음엔 outbox 에 담아둔 payload 를 그대로 다시 upsert 했다.
+ * 그 사이 같은 글에 새 취소나 발행 결과가 반영됐으면 DB 가 과거 상태로 역행한다.
+ * queue.json 이 진실의 원천이므로, 밀 때는 저장된 스냅샷이 아니라 파일의 현재 글을
+ * 다시 읽어서 민다. 스냅샷은 글이 사라진 경우의 최후 수단으로만 쓴다.
+ */
 export async function drainQueueMirrorOutbox(): Promise<{
   total: number;
   converged: number;
   stillPending: number;
 }> {
   const entries = readQueueMirrorOutbox();
+  const live = readJson<{ posts: Array<Record<string, unknown>> }>(dataPath("queue.json")) || { posts: [] };
   const converged: string[] = [];
+  const failures = new Map<string, string>();
   for (const entry of entries) {
-    const outcome = await mirrorQueuePostDetailed(entry.tenantId, entry.post);
+    const current = (live.posts || []).find((p) => p.id === entry.postId) as QueueMirrorPost | undefined;
+    const outcome = await mirrorQueuePostDetailed(entry.tenantId, current ?? entry.post);
     if (outcome.status === "ok" || outcome.status === "skipped") converged.push(entry.postId);
+    else failures.set(entry.postId, outcome.message);
   }
-  if (converged.length > 0) {
-    await writeOutbox((cur) => cur.filter((e) => !converged.includes(e.postId)));
+  if (converged.length > 0 || failures.size > 0) {
+    const now = new Date().toISOString();
+    await writeOutbox((cur) => cur
+      .filter((entry) => !converged.includes(entry.postId))
+      .map((entry) => failures.has(entry.postId)
+        ? { ...entry, attempts: entry.attempts + 1, lastFailedAt: now, reason: failures.get(entry.postId)! }
+        : entry));
   }
   return {
     total: entries.length,

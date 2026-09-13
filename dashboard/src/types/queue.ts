@@ -1,9 +1,18 @@
 export interface ChannelStatus {
-  status: "pending" | "published" | "failed" | "skipped" | "canceled";
+  status: "pending" | "publishing" | "published" | "failed" | "skipped" | "canceled";
   publishedAt: string | null;
   error: string | null;
   mediaId?: string | null;
   tweetId?: string | null;
+  publishAttempt?: {
+    claimToken: string;
+    idempotencyKey: string;
+    startedAt: string;
+    state: "publishing" | "provider_succeeded" | "provider_failed" | "result_unknown";
+    providerId?: string | null;
+    error?: string | null;
+    updatedAt?: string;
+  } | null;
 }
 
 export interface Post {

@@ -22,7 +22,7 @@ describe("YouTube 성과 수집", () => {
   });
 
   it("수집 경로가 YouTube 를 실제로 부른다", () => {
-    const route = read("src/app/api/metrics/route.ts");
+    const route = read("src/lib/metrics-collector.ts");
     expect(route).toContain("fetchYouTubeMetrics");
     // 쇼츠도 같은 자격증명으로 읽는다. 갈래 이름이 다르다는 이유로 한쪽만 읽으면
     // 그쪽 성과가 영영 안 모인다.
@@ -30,19 +30,20 @@ describe("YouTube 성과 수집", () => {
   });
 
   it("YouTube 만 연결한 사람도 수집을 돌릴 수 있다", () => {
-    const route = read("src/app/api/metrics/route.ts");
-    expect(route).toContain("!fbCred && !ytCred");
+    const route = read("src/lib/metrics-collector.ts");
+    expect(route).toContain("!facebookCred && !youtubeCred");
   });
 
   it("응답에서 빠진 영상은 기다려도 안 채워진다고 표시한다", () => {
     // 비공개·삭제 영상은 오류가 아니라 빠짐으로 온다. 표시하지 않으면 무한정 기다린다.
-    const route = read("src/app/api/metrics/route.ts");
+    const route = read("src/lib/metrics-collector.ts");
     expect(route).toContain("video_not_visible");
   });
 
   it("한 번에 묶어 묻는다", () => {
     // 영상마다 따로 부르면 하루 할당량에 금방 닿는다.
     const publish = read("src/lib/publish.ts");
-    expect(publish).toMatch(/videoIds\.filter\(Boolean\)\.slice\(0, 50\)/);
+    expect(publish).toMatch(/offset \+= 50/);
+    expect(publish).toContain("ids.slice(offset, offset + 50)");
   });
 });

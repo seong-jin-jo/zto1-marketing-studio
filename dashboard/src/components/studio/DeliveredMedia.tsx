@@ -17,22 +17,24 @@ import { authHeaders } from "@/lib/auth";
  * 생긴다. 그래서 실패하면 같은 파일의 새 주소를 받아 한 번 다시 건다. 그래도 안 되면
  * 무슨 일이 났고 무엇을 하면 되는지 글로 적는다. 빈 자리로 두지 않는다.
  */
-function payloadFromDeliveryUrl(url: string): { f?: string; e?: number } | null {
-  const marker = "/api/media/";
-  const at = url.indexOf(marker);
+type DeliveryKind = "media" | "image";
+
+function deliveryParts(url: string): { kind: DeliveryKind; token: string; payload: { f?: string; e?: number } } | null {
+  const markers: Array<{ marker: string; kind: DeliveryKind }> = [
+    { marker: "/api/images/deliver/", kind: "image" },
+    { marker: "/api/media/", kind: "media" },
+  ];
+  const match = markers.find(({ marker }) => url.includes(marker));
+  if (!match) return null;
+  const at = url.indexOf(match.marker);
   if (at < 0) return null;
   try {
-    const token = decodeURIComponent(url.slice(at + marker.length));
+    const token = decodeURIComponent(url.slice(at + match.marker.length));
     const body = token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(body)) as { f?: string; e?: number };
+    return { kind: match.kind, token, payload: JSON.parse(atob(body)) as { f?: string; e?: number } };
   } catch {
     return null;
   }
-}
-
-function filenameFromDeliveryUrl(url: string): string {
-  const parsed = payloadFromDeliveryUrl(url);
-  return parsed && typeof parsed.f === "string" ? parsed.f : "";
 }
 
 /**
@@ -46,20 +48,20 @@ function filenameFromDeliveryUrl(url: string): string {
  * 404 를 받고 나서 고치면 그 사이 깨진 그림 자리가 뜬다. 죽은 줄 알면 걸지 않는다.
  */
 export function isDeliveryUrlExpired(url: string, now: number = Date.now()): boolean {
-  const parsed = payloadFromDeliveryUrl(url);
-  if (!parsed || typeof parsed.e !== "number") return false;
-  return parsed.e <= now;
+  const parts = deliveryParts(url);
+  if (!parts || typeof parts.payload.e !== "number") return false;
+  return parts.payload.e <= now;
 }
 
 /** 만료된 배달 주소를 같은 파일의 새 주소로 바꾼다. 못 바꾸면 빈 문자열. */
 export async function resignDeliveryUrl(url: string, tenantId?: string): Promise<string> {
-  const filename = filenameFromDeliveryUrl(url);
-  if (!filename) return "";
+  const parts = deliveryParts(url);
+  if (!parts || typeof parts.payload.f !== "string") return "";
   try {
     const res = await fetch("/api/media/resign", {
       method: "POST",
       headers: { "content-type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ filename, tenant_id: tenantId }),
+      body: JSON.stringify({ delivery_url: url, purpose: parts.kind, tenant_id: tenantId }),
     });
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; file?: string };
     return res.ok && data.ok && typeof data.file === "string" ? data.file : "";
@@ -97,37 +99,39 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
   const retried = useRef<string>("");
   const attemptKey = `${tenantId || ""}|${src}`;
 
-  // 언마운트·주소 교체 뒤에 도착한 늦은 응답이 화면을 되돌리지 않게 한다.
-  const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  // effect마다 고유한 요청 번호를 둔다. A 작업 공간 응답이 늦게 와도 B 화면을 덮지 못한다.
+  const requestId = useRef(0);
 
   useEffect(() => {
-    alive.current = true;
+    const currentRequestId = ++requestId.current;
+    let canceled = false;
     if (!isDeliveryUrlExpired(src)) {
       if (retried.current !== attemptKey) retried.current = "";
       setUrl(src);
       setPhase("ready");
-      return;
+      return () => { canceled = true; };
     }
     // 만료가 확실하다. 걸어 보지 않고 바로 새 주소를 받는다.
     // 같은 주소로 이미 요청했으면 다시 보내지 않는다. effect 는 StrictMode 와 재마운트에서
     // 다시 돈다(2026-09-13 Codex 교차리뷰 지적). 사라진 파일에 요청이 겹치면 그만큼 샌다.
-    if (retried.current === attemptKey) return;
+    if (retried.current === attemptKey) return () => { canceled = true; };
     retried.current = attemptKey;
     setUrl("");
     setPhase("renewing");
     void resignDeliveryUrl(src, tenantId).then((next) => {
-      if (!alive.current) return;
+      if (canceled || requestId.current !== currentRequestId) return;
       if (next) { setUrl(next); setPhase("ready"); }
       else setPhase("failed");
     });
+    return () => { canceled = true; };
   }, [src, tenantId, attemptKey]);
 
   async function handleError() {
     if (retried.current === attemptKey) { setPhase("failed"); return; }
     retried.current = attemptKey;
+    const currentRequestId = ++requestId.current;
     const next = await resignDeliveryUrl(src, tenantId);
-    if (!alive.current) return;
+    if (requestId.current !== currentRequestId) return;
     if (next) { setUrl(next); setPhase("ready"); }
     else setPhase("failed");
   }

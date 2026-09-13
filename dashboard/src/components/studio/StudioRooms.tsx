@@ -39,6 +39,7 @@ import {
   LEARNING_SLOT_TOTAL,
   PURPOSE_CARDS,
   countFilledLearningSlots,
+  isCardChosen,
   readLearningInfo,
   writeLearningInfo,
   type LearningInfo,
@@ -186,6 +187,8 @@ interface CreateRoomProps {
   onAlsoKindsChange?: (kinds: CreateKind[]) => void;
   /** 학습 정보가 문답에서 갱신되면 이 값이 올라가고 생성실이 다시 읽는다 */
   learningVersion?: number;
+  /** 생성실 문답에서 바뀐 학습 정보를 작업실 헤더와 다음 방에도 즉시 전달한다. */
+  onLearningInfoChange?: (info: LearningInfo) => void;
   /** 만들던 것 이어서 하기. 0이면 줄이 아예 안 뜬다 */
   resumeCount?: number;
   onResume?: () => void;
@@ -194,6 +197,8 @@ interface CreateRoomProps {
   quickDraftError?: string | null;
   /** 카드뉴스 대표 이미지 생성. 비용 승인 관문은 호출부가 담당한다. */
   onGenerateCardImages?: () => Promise<void>;
+  /** 무료 글자 카드를 작업 공간 자산으로 저장한 뒤 편집·발행 상태에 연결한다. */
+  onTextCardsCreated?: (urls: string[]) => void;
   /** 숏폼 영상 생성. 카드뉴스와 같이 비용 승인 관문은 호출부가 담당한다. */
   onGenerateVideo?: () => Promise<void>;
   videoBusy?: boolean;
@@ -354,7 +359,7 @@ function useLearnedRules(workspaceId: string): string {
   return text;
 }
 
-export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
+export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
   const topicInputRef = useRef<HTMLInputElement>(null);
   const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
   const [primaryKind, setPrimaryKind] = useState<CreateKind | null>(null);
@@ -419,8 +424,8 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const displayCandidates = candidates.length ? candidates : CREATE_EXAMPLES;
   const question = CREATE_QUESTIONS[questionIndex];
   const stage = selected ? { count: "3 / 3", label: "선택한 구조 확인" } : candidates.length ? { count: "2 / 3", label: "구조 초안 고르기" } : { count: "1 / 3", label: `만들 조건 확인 ${Math.min(questionIndex + 1, 6)} / 6` };
-  const industryTitle = useMemo(() => INDUSTRY_CARDS.find((card) => card.sample === learning.industry)?.title || "", [learning.industry]);
-  const purposeTitle = useMemo(() => PURPOSE_CARDS.find((card) => card.sample === purpose)?.title || "", [purpose]);
+  const industryTitle = useMemo(() => INDUSTRY_CARDS.find((card) => isCardChosen(card, learning.industry))?.title || "", [learning.industry]);
+  const purposeTitle = useMemo(() => PURPOSE_CARDS.find((card) => isCardChosen(card, purpose || learning.purpose))?.title || "", [learning.purpose, purpose]);
   const topicCards = useMemo(() => topicCandidates(industryTitle, purposeTitle), [industryTitle, purposeTitle]);
 
   // 학습 정보는 작업 공간마다 다시 읽는다. 생성실 문답의 임시 저장과는 별도다.
@@ -429,8 +434,10 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     const saved = readLearningInfo(workspaceId);
     setLearning(saved);
     setAudience((current) => current || saved.audience || "");
+    setPurpose((current) => current || PURPOSE_CARDS.find((card) => isCardChosen(card, saved.purpose))?.sample || saved.purpose || "");
     setRightsConfirmed((current) => current || Boolean(saved.rights));
-  }, [workspaceId, learningVersion]);
+    onLearningInfoChange?.(saved);
+  }, [learningVersion, onLearningInfoChange, workspaceId]);
 
   // 새로고침해도 생성실 질문, 선택 구조, 생성 후보를 작업 공간별로 이어 간다.
   // 깨진 저장값은 조용히 폐기하고 학습 정보에서 확인된 기본값만 사용한다.
@@ -462,6 +469,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
         onContentBranchChange?.(onboardingBranch);
       }
       setAudience(learned.audience || "");
+      setPurpose(PURPOSE_CARDS.find((card) => isCardChosen(card, learned.purpose))?.sample || learned.purpose || "");
       setRightsConfirmed(Boolean(learned.rights));
       sessionStorage.removeItem(ONBOARDING_CONTENT_BRANCH_KEY);
       setHydratedCreateWorkspaceId(workspaceId);
@@ -485,11 +493,12 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       const savedCandidate = saved.candidates.find((candidate) => candidate.label === saved.selected);
       if (savedCandidate) onCandidateSelect(savedCandidate);
     } else {
+      setPurpose(PURPOSE_CARDS.find((card) => isCardChosen(card, learned.purpose))?.sample || learned.purpose || "");
       setAudience(learned.audience || "");
       setRightsConfirmed(Boolean(learned.rights));
     }
     setHydratedCreateWorkspaceId(workspaceId);
-  }, [workspaceId]);
+  }, [onLearningInfoChange, workspaceId]);
 
   useEffect(() => {
     if (!workspaceId || hydratedCreateWorkspaceId !== workspaceId) return;
@@ -513,11 +522,17 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   }, [workspaceId, hydratedCreateWorkspaceId, primaryKind, alsoKinds, questionIndex, purpose, audience, rightsConfirmed, topicOpen, candidates, selected, quickStructure]);
 
   const rememberLearning = (patch: LearningInfo) => {
-    setLearning((current) => {
-      const next = { ...current, ...patch };
-      if (workspaceId) writeLearningInfo(workspaceId, next);
-      return next;
-    });
+    const next = { ...learning, ...patch };
+    setLearning(next);
+    if (workspaceId) writeLearningInfo(workspaceId, next);
+    onLearningInfoChange?.(next);
+  };
+
+  const choosePurpose = (value: string) => {
+    setPurpose(value);
+    const card = PURPOSE_CARDS.find((one) => one.sample === value);
+    rememberLearning({ purpose: card ? `${card.title}. 예: ${card.sample}` : value });
+    setQuestionIndex(2);
   };
 
   const choosePrimary = (kind: CreateKind) => {
@@ -712,7 +727,22 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
         .map((line, index) => renderTextCard({ text: line, ratio, theme, index, total: source.length }))
         .filter((one): one is string => Boolean(one));
       if (!made.length) { setTextCardError("이 브라우저에서는 카드를 그릴 수 없습니다."); return; }
-      setTextCards(made);
+      const persisted: string[] = [];
+      for (let index = 0; index < made.length; index += 1) {
+        const blob = await fetch(made[index]).then((response) => response.blob());
+        const form = new FormData();
+        form.append("file", new File([blob], `text-card-${index + 1}.png`, { type: "image/png" }));
+        const response = await fetch("/api/images/upload", { method: "POST", headers: authHeaders(), body: form });
+        const payload = await response.json().catch(() => ({})) as { url?: string; error?: string };
+        if (!response.ok || !payload.url) {
+          throw new Error(payload.error || `글자 카드 ${index + 1}장을 저장하지 못했습니다`);
+        }
+        persisted.push(payload.url);
+      }
+      setTextCards(persisted);
+      onTextCardsCreated?.(persisted);
+    } catch (error) {
+      setTextCardError(error instanceof Error ? error.message : "글자 카드를 저장하지 못했습니다");
     } finally {
       setTextCardBusy(false);
     }
@@ -1031,7 +1061,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                 {question === "purpose" ? <fieldset data-create-purpose-picker><legend className="mb-stack-tight text-caption font-semibold text-text">이번 콘텐츠로 원하는 결과는 무엇인가요?</legend>
                   <div className="flex flex-wrap gap-stack-tight">
                     {PURPOSE_CARDS.map((card) => (
-                      <Button key={card.id} size="sm" variant={purpose === card.sample ? "primary" : "secondary"} aria-pressed={purpose === card.sample} title={card.sample} onClick={() => { setPurpose(card.sample); setQuestionIndex(2); }}>{card.title}</Button>
+                      <Button key={card.id} size="sm" variant={purpose === card.sample ? "primary" : "secondary"} aria-pressed={purpose === card.sample} title={card.sample} onClick={() => choosePurpose(card.sample)}>{card.title}</Button>
                     ))}
                   </div>
                   {purpose ? <p className="mt-stack-tight break-keep text-caption text-subtle">{purpose}</p> : null}

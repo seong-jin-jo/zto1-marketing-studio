@@ -91,7 +91,8 @@ describe("PUB-MEDIA-01 발행실 미리보기는 만료된 배달 주소를 스�
         expect(fetchMock).toHaveBeenCalledWith("/api/media/resign", expect.objectContaining({ method: "POST" }));
       });
       const body = JSON.parse(String((fetchMock.mock.calls[0][1] as { body: string }).body));
-      expect(body.filename).toBe("img_1789045561960.webp");
+      expect(body.delivery_url).toBe(EXPIRED);
+      expect(body.purpose).toBe("media");
       // 어느 작업 공간으로 다시 서명할지 함께 보낸다. 운영자 토큰 경로에서는 이것이 없으면
       // 401 로 닫혀 만료 그림이 계속 안 뜬다(2026-09-13 Codex 교차리뷰 지적).
       expect(body.tenant_id).toBe("tenant-a");

@@ -178,7 +178,7 @@ function partialPersistenceFailure(
 // 발행 후 published_posts에 기록(성과 수집 대상). 토큰 없으면 명확한 에러(크래시 X).
 export async function POST(request: Request) {
   const __b = await request.json();
-  const { platform, image_url, draft_id, account_id } = __b;
+  const { platform, image_url, image_urls, draft_id, account_id } = __b;
   const legacyText = typeof __b.text === "string" ? __b.text : "";
   if (__b.edit_format !== undefined) {
     const formatValidation = validateContentEditFormat(__b.edit_format);
@@ -258,12 +258,24 @@ export async function POST(request: Request) {
   const reservationKey = isDraftUuid ? null : idempotencyKey;
 
   let publishImageUrl: string | undefined;
-  if (image_url) {
-    const refreshed = refreshImageDeliveryUrl(tenant_id, image_url);
-    if (!refreshed) {
-      return Response.json({ ok: false, error: "이미지 URL이 만료되었거나 유효하지 않습니다. 이미지를 다시 선택해주세요." }, { status: 400 });
+  let publishImageUrls: string[] | undefined;
+  if (image_urls !== undefined && (!Array.isArray(image_urls)
+    || image_urls.length < 1
+    || image_urls.length > 10
+    || image_urls.some((value) => typeof value !== "string" || !value.trim()))) {
+    return Response.json({ ok: false, error: "이미지 목록은 1장 이상 10장 이하의 유효한 주소여야 합니다." }, { status: 400 });
+  }
+  const requestedImages = Array.isArray(image_urls) ? image_urls : image_url ? [image_url] : [];
+  if (requestedImages.length > 0) {
+    publishImageUrls = [];
+    for (const requestedImage of requestedImages) {
+      const refreshed = refreshImageDeliveryUrl(tenant_id, requestedImage);
+      if (!refreshed) {
+        return Response.json({ ok: false, error: "이미지 URL이 만료되었거나 유효하지 않습니다. 이미지를 다시 선택해주세요." }, { status: 400 });
+      }
+      publishImageUrls.push(refreshed);
     }
-    publishImageUrl = refreshed;
+    publishImageUrl = publishImageUrls[0];
   }
 
   // SNS-007: account_id 지정 시 그 계정으로만 발행 — getChannelCred는 삭제/cross-tenant면 조용히
@@ -551,7 +563,7 @@ export async function POST(request: Request) {
   if (platform === "threads") {
     result = await publishThreads(cred, text || "", publishImageUrl, undefined, publishFields.topicTag);
   } else if (platform === "instagram") {
-    result = await publishInstagram(cred, text || "", publishImageUrl);
+    result = await publishInstagram(cred, text || "", publishImageUrls);
   } else if (platform === "x") {
     // X API v2 + OAuth1.0a 직접발행(P5). text only, 280자 자동 절단.
     result = await publishX(cred, text || "");

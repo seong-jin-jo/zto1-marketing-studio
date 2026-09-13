@@ -46,7 +46,7 @@ export function LearningDecisionsDialog({
 }: {
   workspaceId: string;
   decisions: LearnedRuleDecisionView[];
-  onClose: () => void;
+  onClose?: () => void;
   onUndone: () => void | Promise<void>;
 }) {
   const [undoingId, setUndoingId] = useState<string | null>(null);
@@ -75,14 +75,12 @@ export function LearningDecisionsDialog({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-player-surface/70 p-pad-inset"
-      role="dialog"
-      aria-modal="true"
+    <section
+      className="w-full rounded-surface border border-border bg-surface p-stack-section"
       aria-label="학습 정보 상세"
-      data-learning-decisions-dialog
+      data-learning-decisions-page
     >
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-surface border border-border bg-surface p-stack-section shadow-floating">
+      <div className="w-full">
         <Stack gap={16}>
           <div className="flex flex-wrap items-center gap-stack border-b border-border pb-stack">
             <div className="mr-auto min-w-0">
@@ -91,7 +89,7 @@ export function LearningDecisionsDialog({
                 판단마다 표본 수와 관찰 기간과 적용 범위를 함께 남깁니다. 되돌리면 그 줄만 원래대로 돌아갑니다.
               </span>
             </div>
-            <Button size="sm" variant="secondary" onClick={onClose}>닫기</Button>
+            {onClose ? <Button size="sm" variant="secondary" onClick={onClose}>닫기</Button> : null}
           </div>
 
           {error && <p className="text-caption text-danger" role="alert">{error}</p>}
@@ -110,8 +108,11 @@ export function LearningDecisionsDialog({
                     {decision.decision === "accepted" ? "반영" : "안 함"}: {decision.text}
                   </span>
                   <span className="text-subtle">
-                    표본 {decision.sampleCount}건 · {formatLearningPeriod(decision.observedFrom, decision.observedTo)} · 작업 공간의 다음 생성
+                    근거: {decision.sourceLabel} · 표본 {decision.sampleCount}건 · {formatLearningPeriod(decision.observedFrom, decision.observedTo)} · 작업 공간의 다음 생성
                   </span>
+                  {decision.sampleCount < 10 ? (
+                    <span className="mt-micro block text-warning">근거가 아직 얇습니다. 표본 10건부터 다시 확인합니다.</span>
+                  ) : null}
                   <div className="mt-stack-tight flex justify-end">
                     <Button
                       size="sm"
@@ -128,6 +129,6 @@ export function LearningDecisionsDialog({
           )}
         </Stack>
       </div>
-    </div>
+    </section>
   );
 }

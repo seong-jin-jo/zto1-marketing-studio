@@ -53,4 +53,12 @@ describe("생성실 배선 계약", () => {
       expect(pageSrc, `${dead} 가 되살아났다. 화면에 잇거나 지워야 한다`).not.toContain(dead);
     }
   });
+
+  it("시험 18 정상: 저장된 글자 카드 묶음을 초안과 편집실과 발행실이 함께 쓰는 img 상태로 잇는다", () => {
+    expect(roomsSrc).toContain("onTextCardsCreated?.(persisted)");
+    expect(pageSrc).toContain("onTextCardsCreated={(urls) => {");
+    expect(pageSrc).toContain("imageUrls: urls");
+    expect(pageSrc).toContain("imageUrls: img?.imageUrls");
+    expect(pageSrc).toContain('image_urls: p === "instagram" ? img?.imageUrls : undefined');
+  });
 });

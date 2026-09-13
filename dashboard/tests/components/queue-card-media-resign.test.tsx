@@ -88,7 +88,8 @@ describe("QUEUE-MEDIA-01 큐 카드는 만료된 배달 주소를 스스로 갱�
       expect(fetchMock).toHaveBeenCalledWith("/api/media/resign", expect.objectContaining({ method: "POST" }));
     });
     const body = JSON.parse(String((fetchMock.mock.calls[0][1] as { body: string }).body));
-    expect(body.filename).toBe("img_1789045561960.webp");
+    expect(body.delivery_url).toBe(EXPIRED);
+    expect(body.purpose).toBe("media");
     // 작업 공간을 함께 보낸다. 빠지면 운영자 경로에서 401 이라 증상이 그대로 남는다.
     expect(body.tenant_id).toBe("tenant-a");
 
@@ -133,7 +134,8 @@ describe("QUEUE-MEDIA-01 큐 카드는 만료된 배달 주소를 스스로 갱�
       expect(screen.getByTestId("queue-post-video")).toHaveAttribute("src", renewedVideo);
     });
     const body = JSON.parse(String((fetchMock.mock.calls[0][1] as { body: string }).body));
-    expect(body.filename).toBe("vid_1789045561960.mp4");
+    expect(body.delivery_url).toContain("/api/media/");
+    expect(body.purpose).toBe("media");
     expect(body.tenant_id).toBe("tenant-a");
   });
 

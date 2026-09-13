@@ -55,11 +55,19 @@ export function PerformanceDashboard({ dedicatedRoom = false }: { dedicatedRoom?
     if (!activeWorkspace || collecting) return;
     setCollecting(true);
     try {
-      const r = await apiPost<{ updated?: number; total?: number; collectionBlocked?: boolean; reason?: string }>(
+      const r = await apiPost<{
+        updated?: number;
+        total?: number;
+        failed?: number;
+        partial?: boolean;
+        collectionBlocked?: boolean;
+        reason?: string;
+      }>(
         "/api/metrics", { tenant_id: activeWorkspace.id },
       );
       await mutateMetrics();
       if (r?.collectionBlocked) showToast(r.reason || "성과를 모으지 못했습니다. 채널 연결을 확인해 주세요.", "error");
+      else if (r?.partial) showToast(`성과 ${r.updated || 0}건을 모았고 ${r.failed || 0}건은 실패했습니다. ${r.reason || "채널 연결을 확인해 주세요."}`, "error");
       else if (r?.updated) showToast(`성과 ${r.updated}건을 새로 모았습니다.`, "success");
     } catch {
       showToast("성과를 다시 수집하지 못했습니다. 채널 연결 상태를 확인한 뒤 다시 눌러 주세요.", "error");

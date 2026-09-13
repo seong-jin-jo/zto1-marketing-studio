@@ -63,6 +63,12 @@ export interface UnifiedPostCardProps {
   onPickImage?: (postId: string) => void;
 }
 
+interface CancelPostResponse {
+  persistence?: { db?: "ok" | "skipped" | "deferred"; dbReason?: string };
+  partiallyPublished?: boolean;
+  alreadyPublishedChannels?: string[];
+}
+
 export function UnifiedPostCard({
   post,
   channelConfig,
@@ -104,8 +110,15 @@ export function UnifiedPostCard({
   const handleCancel = async () => {
     if (!(await confirmAction({ title: "발행을 중지할까요?", description: "아직 올라가지 않은 채널은 발행을 멈춥니다. 이미 올라간 채널은 그대로 유지됩니다.", confirmLabel: "발행 중지", destructive: true }))) return;
     try {
-      await apiPost(`/api/queue/${post.id}/cancel`);
-      showToast("발행 중지됨", "success");
+      const result = await apiPost<CancelPostResponse>(`/api/queue/${post.id}/cancel`);
+      const published = result?.alreadyPublishedChannels ?? [];
+      if (result?.persistence?.db === "deferred") {
+        showToast("발행은 중지됐지만 저장소 동기화를 기다리고 있습니다. 다시 발행하지 마세요.", "error");
+      } else if (result?.partiallyPublished && published.length > 0) {
+        showToast(`남은 발행은 중지됐습니다. 이미 올라간 채널: ${published.join(", ")}`, "error");
+      } else {
+        showToast("발행 중지됨", "success");
+      }
       onRefresh();
     } catch (e) { showToast(`중지 실패: ${(e as Error).message}`, "error"); }
   };
@@ -287,7 +300,7 @@ export function UnifiedPostCard({
             <button onClick={() => setEditingPost(null)} className="px-stack-tight py-micro text-caption bg-surface-2 text-muted rounded-chip">취소</button>
             {onPickImage && (
               <button onClick={() => onPickImage(post.id)} className="px-stack-tight py-micro text-caption bg-accent text-accent-fg rounded-chip hover:bg-accent-hover">
-                {post.imageUrl ? "Change Image" : "Add Image"}
+                {post.imageUrl ? "이미지 바꾸기" : "이미지 추가"}
               </button>
             )}
           </div>

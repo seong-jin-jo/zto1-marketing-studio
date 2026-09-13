@@ -1,0 +1,16 @@
+{
+  "id": "x-publish",
+  "name": "X Publish",
+  "description": "Publish posts to X via API v2.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiKey": { "type": "string", "description": "X API Key." },
+      "apiKeySecret": { "type": "string", "description": "X API Key Secret." },
+      "accessToken": { "type": "string", "description": "X Access Token." },
+      "accessTokenSecret": { "type": "string", "description": "X Access Token Secret." },
+      "queuePath": { "type": "string", "description": "Shared queue.json path." }
+    }
+  }
+}

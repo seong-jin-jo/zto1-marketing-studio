@@ -97,6 +97,8 @@ const TENANT_AWARE_PATHS = [
   "/api/queue",
   "/api/queue/seed",
   "/api/schedule/publish-due",
+  "/api/schedule/[id]",
+  "/api/schedule/[id]/cancel",
   "/api/schedule",
   "/api/settings",
   "/api/sourcing/import-to-queue",

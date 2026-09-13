@@ -44,7 +44,7 @@ describe("FE-L5-HISTORY 학습 후보 판단 연결", () => {
     render(<PerformanceChatPanel workspaceId="workspace-1" posts={POSTS} focus="all" expandedByDefault />);
 
     fireEvent.click(screen.getByRole("button", { name: "이거 왜 잘 됐어" }));
-    fireEvent.click(await screen.findByRole("button", { name: "배우기" }));
+    fireEvent.click(await screen.findByRole("button", { name: "그렇게 해" }));
 
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
       "/api/performance/learned-rules",
@@ -73,15 +73,10 @@ describe("FE-L5-HISTORY 학습 후보 판단 연결", () => {
     render(<PerformanceChatPanel workspaceId="workspace-1" posts={POSTS} focus="all" expandedByDefault />);
 
     // 상세는 별도 창이 소유한다(DESIGN.md:159·160). 본문에는 진입만 남는다.
-    expect(screen.getByRole("button", { name: "학습 정보에서 보기" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "학습 정보에서 보기" }));
-    expect(screen.getByText(/안 함: 짧은 글이 긴 글보다 잘 갑니다/)).toBeInTheDocument();
-    expect(screen.getByText(/표본 6건/)).toBeInTheDocument();
-    expect(screen.getByText(/작업 공간의 다음 생성/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+    expect(screen.getByRole("link", { name: "학습 정보에서 보기" })).toHaveAttribute("href", "/learn?tenant_id=workspace-1");
 
     fireEvent.click(screen.getByRole("button", { name: "이거 왜 잘 됐어" }));
-    fireEvent.click(await screen.findByRole("button", { name: "배우지 않기" }));
+    fireEvent.click(await screen.findByRole("button", { name: "아니" }));
 
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
       "/api/performance/learned-rules",

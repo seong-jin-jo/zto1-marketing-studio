@@ -1,6 +1,9 @@
 import { AuthError, effectiveTenantId } from "@/lib/tenant-auth";
-import { isSafeMediaFilename, signMediaToken } from "@/lib/media-token";
+import { isSafeMediaFilename, signMediaToken, verifyMediaTokenSignature } from "@/lib/media-token";
+import { signImageToken, verifyImageTokenSignature } from "@/lib/image-token";
 import { resolveGeneratedFile } from "@/lib/storage";
+import { canonicalPublicOrigin } from "@/lib/social-connect";
+import { mediaStore, MediaStoreError } from "@/lib/media-store";
 
 // POST /api/media/resign — 만료된 배달 주소를 같은 파일의 새 주소로 바꿔 준다.
 //
@@ -16,7 +19,15 @@ import { resolveGeneratedFile } from "@/lib/storage";
 // 넣어도 자기 폴더에 없으면 아무것도 나오지 않는다.
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
-  const filename = typeof body?.filename === "string" ? body.filename : "";
+  const deliveryUrl = typeof body?.delivery_url === "string" ? body.delivery_url : "";
+  const purpose = body?.purpose === "image" ? "image" : "media";
+  const marker = purpose === "image" ? "/api/images/deliver/" : "/api/media/";
+  const encodedToken = deliveryUrl.includes(marker) ? deliveryUrl.slice(deliveryUrl.indexOf(marker) + marker.length) : "";
+  let token = "";
+  try { token = decodeURIComponent(encodedToken); } catch { token = ""; }
+  const claim = purpose === "image" ? verifyImageTokenSignature(token) : verifyMediaTokenSignature(token);
+  const legacyFilename = typeof body?.filename === "string" ? body.filename : "";
+  const filename = claim?.filename ?? legacyFilename;
   if (!isSafeMediaFilename(filename)) {
     return Response.json({ ok: false, error: "파일 이름이 올바르지 않습니다." }, { status: 400 });
   }
@@ -31,15 +42,34 @@ export async function POST(request: Request) {
   }
   if (!tenantId) return Response.json({ ok: false, error: "작업 공간을 확인할 수 없습니다." }, { status: 401 });
 
+  if (deliveryUrl && (!claim || claim.tenantId !== tenantId)) {
+    return Response.json({ ok: false, error: "배달 주소를 확인할 수 없습니다." }, { status: 404 });
+  }
+
   // 배달 라우트와 같은 함수로 찾는다. 탐색이 갈라지면 한쪽에서만 보이는 파일이 생긴다.
-  const found = Boolean(resolveGeneratedFile(tenantId, filename));
+  let found = false;
+  try {
+    found = purpose === "image"
+      ? await mediaStore.exists(tenantId, filename)
+      : Boolean(resolveGeneratedFile(tenantId, filename));
+  } catch (error) {
+    if (error instanceof MediaStoreError) {
+      return Response.json({ ok: false, error: error.message }, { status: 503 });
+    }
+    throw error;
+  }
   // 존재 여부를 그대로 알려 주면 남의 파일 이름을 넣어 보는 것으로 목록을 캘 수 있다.
   // 배달 라우트와 같은 말로 닫는다.
   if (!found) return Response.json({ ok: false, error: "not found" }, { status: 404 });
 
-  const token = signMediaToken(tenantId, filename);
-  if (!token) {
+  const renewed = purpose === "image" ? signImageToken(tenantId, filename) : signMediaToken(tenantId, filename);
+  if (!renewed) {
     return Response.json({ ok: false, error: "미디어 배달 서명이 설정되지 않았습니다." }, { status: 503 });
   }
-  return Response.json({ ok: true, file: `/api/media/${encodeURIComponent(token)}` });
+  if (purpose === "image") {
+    const origin = canonicalPublicOrigin();
+    if (!origin) return Response.json({ ok: false, error: "공개 이미지 주소가 설정되지 않았습니다." }, { status: 503 });
+    return Response.json({ ok: true, file: `${origin}/api/images/deliver/${encodeURIComponent(renewed)}` });
+  }
+  return Response.json({ ok: true, file: `/api/media/${encodeURIComponent(renewed)}` });
 }

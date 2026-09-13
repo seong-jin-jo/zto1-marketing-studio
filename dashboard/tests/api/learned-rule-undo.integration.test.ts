@@ -189,4 +189,29 @@ describe("BE-L5-UNDO 학습 판단 되돌리기와 후보 지문", () => {
     expect(other.status).toBe(201);
     expect(storedFile().decisions).toHaveLength(2);
   });
+
+  it("시험 14 정상: 남은 수락 이력이 비활성 규칙을 가리키면 규칙을 다시 활성화한다", async () => {
+    const file = path.join(dataDir, "tenants", H.tenantId!, "performance-learned-rules.json");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({
+      rules: [{ id: "rule_stale", text: CANDIDATE.text, sourcePostIds: CANDIDATE.sourcePostIds, sourceLabel: CANDIDATE.sourceLabel, createdAt: "2026-09-01T00:00:00.000Z", active: false }],
+      decisions: [{
+        id: "decision_stale",
+        candidateId: "candidate_stale",
+        decision: "accepted",
+        ...CANDIDATE,
+        scope: "workspace_generation",
+        decidedAt: "2026-09-01T00:00:00.000Z",
+        ruleId: "rule_stale",
+      }],
+    }, null, 2));
+
+    const { POST } = await import("@/app/api/performance/learned-rules/route");
+    const response = await POST(decisionRequest("accepted", "candidate_stale_retry"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ reused: true, rule: { id: "rule_stale", active: true } });
+    expect(storedFile().rules).toContainEqual(expect.objectContaining({ id: "rule_stale", active: true }));
+  });
 });

@@ -1,10 +1,21 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { jsonResult, readStringParam } from "openclaw/plugin-sdk/agent-runtime";
 import { optionalStringEnum } from "openclaw/plugin-sdk/core";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-runtime";
+import {
+  beginPublishAttempt,
+  claimPost,
+  isClaimActive,
+  releaseClaim,
+  verifyClaimOwnership,
+  DEFAULT_LEASE_MS,
+  type ChannelKey,
+  type QueueClaim,
+} from "./queue-claim.js";
+import { withQueueLock } from "./queue-lock.js";
 
 type Engagement = {
   views: number;
@@ -18,13 +29,36 @@ type Engagement = {
   fedToStyle: boolean;
 };
 
+type ChannelStatus = {
+  status: "pending" | "publishing" | "published" | "failed" | "skipped" | "canceled";
+  mediaId?: string | null;
+  tweetId?: string | null;
+  publishedAt: string | null;
+  error: string | null;
+  publishAttempt?: {
+    claimToken: string;
+    idempotencyKey: string;
+    startedAt: string;
+    state: "publishing" | "provider_succeeded" | "provider_failed" | "result_unknown";
+    providerId?: string | null;
+    error?: string | null;
+    updatedAt?: string;
+  } | null;
+};
+
+type Channels = {
+  threads: ChannelStatus;
+  x: ChannelStatus;
+  instagram: ChannelStatus;
+};
+
 type Post = {
   id: string;
   text: string;
   originalText: string | null;
   topic: string;
   hashtags: string[];
-  status: "draft" | "approved" | "published" | "failed";
+  status: "draft" | "approved" | "published" | "failed" | "canceled";
   generatedAt: string;
   approvedAt: string | null;
   scheduledAt: string | null;
@@ -33,7 +67,14 @@ type Post = {
   error: string | null;
   abVariant: string;
   model: string | null;
+  imageUrl: string | null;
+  imageUrls?: string[] | null;
+  cardBatchId?: string | null;
   engagement: Engagement | null;
+  channels?: Channels;
+  // 발행기 lease. get_approved 가 걸고 update_channel/취소가 해제한다(queue-claim.ts 계약).
+  claim?: QueueClaim | null;
+  canceledAt?: string | null;
 };
 
 type QueueData = {
@@ -47,6 +88,19 @@ type QueueConfig = {
 
 const DEFAULT_QUEUE_DIR = path.resolve(process.cwd(), "data");
 const DEFAULT_QUEUE_PATH = path.join(DEFAULT_QUEUE_DIR, "queue.json");
+const DEFAULT_ANALYTICS_PATH = path.join(DEFAULT_QUEUE_DIR, "analytics-history.json");
+
+type AnalyticsHistory = {
+  posts: Array<{
+    id: string;
+    text: string;
+    topic: string;
+    hashtags: string[];
+    publishedAt: string | null;
+    archivedAt: string;
+    engagement: Engagement | null;
+  }>;
+};
 
 function resolveQueuePath(api: OpenClawPluginApi): string {
   const pluginCfg = (api.pluginConfig ?? {}) as QueueConfig;
@@ -57,27 +111,62 @@ function resolveQueuePath(api: OpenClawPluginApi): string {
   );
 }
 
+function migratePost(post: Post): Post {
+  if (!post.channels && post.status !== "draft") {
+    post.channels = {
+      threads: {
+        status:
+          post.status === "published"
+            ? "published"
+            : post.status === "failed"
+              ? "failed"
+              : post.status === "canceled"
+                ? "canceled"
+                : "pending",
+        mediaId: post.threadsMediaId ?? null,
+        publishedAt: post.publishedAt ?? null,
+        error: post.status === "failed" ? (post.error ?? null) : null,
+      },
+      x: { status: "skipped", tweetId: null, publishedAt: null, error: null },
+      instagram: { status: post.imageUrl ? "pending" : "skipped", publishedAt: null, error: null },
+    };
+  }
+  if (post.channels && !post.channels.instagram) {
+    post.channels.instagram = {
+      status: post.status === "canceled" ? "canceled" : post.imageUrl ? "pending" : "skipped",
+      publishedAt: null,
+      error: null,
+    };
+  }
+  return post;
+}
+
 async function readQueue(queuePath: string): Promise<QueueData> {
   try {
     const raw = await fs.readFile(queuePath, "utf-8");
-    return JSON.parse(raw) as QueueData;
+    const data = JSON.parse(raw) as QueueData;
+    data.version = 2;
+    data.posts = data.posts.map(migratePost);
+    return data;
   } catch {
-    return { version: 1, posts: [] };
+    return { version: 2, posts: [] };
   }
 }
 
 async function writeQueue(queuePath: string, data: QueueData): Promise<void> {
   await fs.mkdir(path.dirname(queuePath), { recursive: true });
-  await fs.writeFile(queuePath, JSON.stringify(data, null, 2), "utf-8");
+  const tmpPath = queuePath + `.tmp.${process.pid}`;
+  await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+  await fs.rename(tmpPath, queuePath);
 }
 
 const ThreadsQueueToolSchema = Type.Object(
   {
     action: optionalStringEnum(
-      ["list", "add", "update", "delete", "get_approved", "cleanup"] as const,
+      ["list", "add", "update", "delete", "get_approved", "cleanup", "update_channel", "verify_claim", "release_claim"] as const,
       {
         description:
-          'Action to perform: "list" (all posts), "add" (new draft), "update" (modify post), "delete" (remove post), "get_approved" (get approved posts ready to publish), "cleanup" (remove old published/failed posts).',
+          'Action to perform: "list", "add", "update", "delete", "get_approved" (claims posts with a lease), "cleanup", "update_channel" (update per-channel publish status), "verify_claim" (MUST be called immediately before every provider publish call), "release_claim".',
       },
     ),
     id: Type.Optional(
@@ -111,9 +200,44 @@ const ThreadsQueueToolSchema = Type.Object(
     model: Type.Optional(
       Type.String({ description: 'Model used to generate this post (e.g. "gemini-2.5-flash", "llama3.1:8b"). For add action.' }),
     ),
+    imageUrl: Type.Optional(
+      Type.String({ description: "Public image URL to attach to the post (for add/update). For card news, use the first slide." }),
+    ),
+    imageUrls: Type.Optional(
+      Type.Array(Type.String(), { description: "Array of image URLs for carousel/card news (for add/update). Overrides imageUrl for Instagram." }),
+    ),
+    cardBatchId: Type.Optional(
+      Type.String({ description: "Card news batch ID from card_generate tool (for add). Links slides together." }),
+    ),
+    channel: optionalStringEnum(
+      ["threads", "x", "instagram"] as const,
+      { description: 'Target channel for update_channel action: "threads", "x", or "instagram".' },
+    ),
+    channelStatus: optionalStringEnum(
+      ["published", "failed", "skipped", "canceled"] as const,
+      { description: 'Channel publish status for update_channel action.' },
+    ),
+    tweetId: Type.Optional(
+      Type.String({ description: "X tweet ID after publishing (for update_channel)." }),
+    ),
     statusFilter: optionalStringEnum(
       ["draft", "approved", "published", "failed"] as const,
       { description: "Filter by status (for list)." },
+    ),
+    limit: Type.Optional(
+      Type.Number({ description: "Max posts to return for get_approved (default: 1)." }),
+    ),
+    claimToken: Type.Optional(
+      Type.String({
+        description:
+          "Lease token returned by get_approved. Required for verify_claim, release_claim, and update_channel.",
+      }),
+    ),
+    workerId: Type.Optional(
+      Type.String({ description: "Publisher worker identity for get_approved lease bookkeeping." }),
+    ),
+    leaseMs: Type.Optional(
+      Type.Number({ description: "Lease duration in ms for get_approved (default: 300000)." }),
     ),
   },
   { additionalProperties: false },
@@ -129,6 +253,9 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
     async execute(_toolCallId: string, rawParams: Record<string, unknown>) {
       const action = readStringParam(rawParams, "action", { required: true });
       const queuePath = resolveQueuePath(api);
+      // Codex 교차 리뷰 MAJOR 1 — 대시보드(proper-lockfile)와 같은 자물쇠 아래에서
+      // 읽고 고쳐 쓴다. 잠금 밖에서 읽은 큐를 되쓰면 고객의 취소가 통째로 덮인다.
+      return withQueueLock(queuePath, async () => {
       const queue = await readQueue(queuePath);
 
       switch (action) {
@@ -154,6 +281,7 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
             : [];
           const abVariant = readStringParam(rawParams, "abVariant") ?? "A";
           const model = readStringParam(rawParams, "model") ?? null;
+          const imageUrl = readStringParam(rawParams, "imageUrl") ?? null;
 
           // Validate text length
           if (text.length > 500) {
@@ -167,10 +295,10 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
             return jsonResult({ success: false, reason: "한국어 비율 부족" });
           }
 
-          // Auto-fill hashtags from topic if empty
-          if (hashtags.length === 0 && topic !== "general") {
-            hashtags = [topic];
-          }
+          const imageUrls = Array.isArray(rawParams.imageUrls)
+            ? (rawParams.imageUrls as string[]).filter((u) => typeof u === "string")
+            : null;
+          const cardBatchId = readStringParam(rawParams, "cardBatchId") ?? null;
 
           const post: Post = {
             id: crypto.randomUUID(),
@@ -187,6 +315,9 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
             error: null,
             abVariant,
             model,
+            imageUrl: imageUrl || (imageUrls?.[0] ?? null),
+            imageUrls: imageUrls?.length ? imageUrls : null,
+            cardBatchId,
             engagement: null,
           };
 
@@ -235,6 +366,16 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
             post.error = error ?? null;
           }
 
+          const newImageUrl = readStringParam(rawParams, "imageUrl");
+          if (newImageUrl !== undefined) {
+            post.imageUrl = newImageUrl ?? null;
+          }
+
+          if (Array.isArray(rawParams.imageUrls)) {
+            post.imageUrls = (rawParams.imageUrls as string[]).filter((u) => typeof u === "string");
+            if (!post.imageUrl && post.imageUrls.length) post.imageUrl = post.imageUrls[0];
+          }
+
           await writeQueue(queuePath, queue);
           return jsonResult({ success: true, post });
         }
@@ -251,17 +392,180 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
         }
 
         case "get_approved": {
+          // 스냅샷이 아니라 lease 를 건 claim 을 준다. 이미 다른 워커가 가져간 글은
+          // 돌려주지 않는다(경합 차단 1단계). 반환된 claimToken 은 공급자 호출 직전
+          // verify_claim 과 update_channel 에서 소유권 증명으로 쓴다.
           const now = new Date();
-          const ready = queue.posts.filter(
-            (p) =>
-              p.status === "approved" &&
-              p.scheduledAt &&
-              new Date(p.scheduledAt) <= now,
-          );
+          const limitParam = rawParams.limit;
+          const limit = typeof limitParam === "number" && limitParam > 0 ? limitParam : 1;
+          const leaseParam = rawParams.leaseMs;
+          const leaseMs = typeof leaseParam === "number" && leaseParam > 0 ? leaseParam : DEFAULT_LEASE_MS;
+          const workerId = readStringParam(rawParams, "workerId") ?? `worker-${process.pid}`;
+
+          const ready = queue.posts
+            .filter(
+              (p) =>
+                p.status === "approved" &&
+                p.scheduledAt &&
+                new Date(p.scheduledAt) <= now &&
+                !isClaimActive(p, now),
+            )
+            .sort((a, b) => new Date(a.scheduledAt!).getTime() - new Date(b.scheduledAt!).getTime())
+            .slice(0, limit);
+
+          const claimed: Array<Post & { claimToken: string }> = [];
+          for (const post of ready) {
+            const claim = claimPost(post, {
+              workerId,
+              token: crypto.randomUUID(),
+              now,
+              leaseMs,
+            });
+            if (!claim) continue;
+            claimed.push({ ...post, claimToken: claim.token });
+          }
+          if (claimed.length > 0) await writeQueue(queuePath, queue);
+
           return jsonResult({
-            total: ready.length,
-            posts: ready,
+            total: claimed.length,
+            posts: claimed,
+            // 발행기 계약: 공급자 호출 직전 반드시 verify_claim 을 부른다.
+            mustVerifyBeforePublish: true,
           });
+        }
+
+        case "verify_claim": {
+          // 공급자 호출 허가는 단순 조회가 아니라 pending -> publishing 원자 전이다.
+          const id = readStringParam(rawParams, "id", { required: true });
+          const channel = readStringParam(rawParams, "channel", { required: true }) as ChannelKey;
+          const claimToken = readStringParam(rawParams, "claimToken", { required: true });
+          const post = queue.posts.find((p) => p.id === id);
+          const verdict = beginPublishAttempt(post, channel, {
+            claimToken,
+            idempotencyKey: crypto.randomUUID(),
+          });
+          if (verdict.ok) await writeQueue(queuePath, queue);
+          return jsonResult(verdict.ok
+            ? { ok: true, id, channel, idempotencyKey: verdict.idempotencyKey }
+            : { id, channel, ...verdict });
+        }
+
+        case "release_claim": {
+          const id = readStringParam(rawParams, "id", { required: true });
+          const claimToken = readStringParam(rawParams, "claimToken", { required: true });
+          const post = queue.posts.find((p) => p.id === id);
+          if (!post) throw new Error(`Post not found: ${id}`);
+          const ownership = verifyClaimOwnership(post, claimToken);
+          if (!ownership.ok) return jsonResult({ success: false, blocked: true, ...ownership });
+          const publishing = Object.entries(post.channels || {})
+            .filter(([, state]) => state.status === "publishing")
+            .map(([key]) => key);
+          if (publishing.length > 0) {
+            return jsonResult({
+              success: false,
+              blocked: true,
+              reason: "result-recovery-required",
+              publishingChannels: publishing,
+              message: "공급자 결과를 확인해야 하는 채널이 있어 예약을 해제할 수 없습니다",
+            });
+          }
+          releaseClaim(post);
+          await writeQueue(queuePath, queue);
+          return jsonResult({ success: true, id });
+        }
+
+        case "update_channel": {
+          const id = readStringParam(rawParams, "id", { required: true });
+          const channel = readStringParam(rawParams, "channel", { required: true }) as "threads" | "x" | "instagram";
+          const channelStatus = readStringParam(rawParams, "channelStatus", { required: true }) as ChannelStatus["status"];
+          const claimToken = readStringParam(rawParams, "claimToken", { required: true });
+          const post = queue.posts.find((p) => p.id === id);
+          if (!post) throw new Error(`Post not found: ${id}`);
+
+          // 경합 차단 3단계 — 마지막 관문. 재검증을 건너뛴 워커가 있어도 취소된 글·채널에
+          // 어떤 상태도 덮어쓰지 못한다.
+          //
+          // Codex 교차 리뷰 MAJOR 3: 처음엔 published/failed 만 재검증하고 skipped 는
+          // 통과시켰다. 그런데 아래 집계가 skipped 를 "완료" 로 세기 때문에, 취소 직전에
+          // 큐를 가져간 낡은 워커가 canceled 채널에 skipped 를 쓰면 모든 채널이
+          // published/skipped 가 되어 최상위 상태가 canceled → published 로 뒤집혔다.
+          // 고객의 중지 의사와 정반대 상태가 되는 경로라 어떤 상태 기록이든 막는다.
+          const existingChannelStatus = post.channels?.[channel]?.status;
+          if (existingChannelStatus === "canceled" || post.status === "canceled") {
+            return jsonResult({
+              success: false,
+              blocked: true,
+              id,
+              channel,
+              reason: "channel-canceled",
+              message: "고객이 발행을 중지한 작업물이라 상태를 바꿀 수 없습니다",
+            });
+          }
+          const ownership = verifyClaimOwnership(post, claimToken, {
+            allowExpired: existingChannelStatus === "publishing",
+          });
+          if (!ownership.ok) {
+            return jsonResult({ success: false, blocked: true, id, channel, ...ownership });
+          }
+          if (channelStatus === "published" || channelStatus === "failed") {
+            const attempt = post.channels?.[channel]?.publishAttempt;
+            const expectedResult = channelStatus === "published" ? "provider_succeeded" : "provider_failed";
+            if (existingChannelStatus !== "publishing" || attempt?.state !== expectedResult) {
+              return jsonResult({
+                success: false,
+                blocked: true,
+                id,
+                channel,
+                reason: "provider-result-missing",
+                message: "공급자 결과가 기록되지 않아 채널 상태를 바꿀 수 없습니다",
+              });
+            }
+          }
+
+          if (!post.channels) {
+            post.channels = {
+              threads: { status: "pending", mediaId: null, publishedAt: null, error: null },
+              x: { status: "pending", tweetId: null, publishedAt: null, error: null },
+              instagram: { status: "pending", publishedAt: null, error: null },
+            };
+          }
+
+          const now = new Date().toISOString();
+          const ch = post.channels[channel];
+          ch.status = channelStatus;
+          ch.error = null;
+
+          if (channelStatus === "published") {
+            ch.publishedAt = now;
+            if (channel === "threads") {
+              const mediaId = readStringParam(rawParams, "threadsMediaId");
+              if (mediaId) { ch.mediaId = mediaId; post.threadsMediaId = mediaId; }
+            } else if (channel === "x") {
+              const tweet = readStringParam(rawParams, "tweetId");
+              if (tweet) ch.tweetId = tweet;
+            }
+          } else if (channelStatus === "failed") {
+            const error = readStringParam(rawParams, "error");
+            ch.error = error ?? "Unknown error";
+          }
+
+          const allChannels = Object.values(post.channels);
+          const anyCanceled = allChannels.some((c) => c.status === "canceled");
+          // canceled 채널이 하나라도 있으면 이 글은 "전부 완료" 가 될 수 없다.
+          const allDone =
+            !anyCanceled && allChannels.every((c) => c.status === "published" || c.status === "skipped");
+          const anyFailed = allChannels.some((c) => c.status === "failed");
+          const anyPending = allChannels.some((c) => c.status === "pending" || c.status === "publishing");
+
+          if (allDone) { post.status = "published"; post.publishedAt = now; releaseClaim(post); }
+          else if (anyFailed && !anyPending) {
+            post.status = "failed";
+            post.error = allChannels.filter((c) => c.status === "failed").map((c) => c.error).join("; ");
+            releaseClaim(post);
+          }
+
+          await writeQueue(queuePath, queue);
+          return jsonResult({ success: true, post });
         }
 
         case "cleanup": {
@@ -269,12 +573,14 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
           const PUBLISHED_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
           const FAILED_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
           const details: { id: string; status: string; age: string }[] = [];
+          const toArchive: Post[] = [];
 
           queue.posts = queue.posts.filter((p) => {
             if (p.status === "published" && p.publishedAt) {
               const age = now.getTime() - new Date(p.publishedAt).getTime();
               if (age > PUBLISHED_MAX_AGE_MS) {
                 details.push({ id: p.id, status: "published", age: `${Math.floor(age / 86400000)}d` });
+                toArchive.push(p);
                 return false;
               }
             }
@@ -288,15 +594,42 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
             return true;
           });
 
+          // Archive published posts' engagement to analytics-history.json
+          if (toArchive.length > 0) {
+            const analyticsPath = path.join(path.dirname(queuePath), "analytics-history.json");
+            let history: AnalyticsHistory;
+            try {
+              const raw = await fs.readFile(analyticsPath, "utf-8");
+              history = JSON.parse(raw) as AnalyticsHistory;
+            } catch {
+              history = { posts: [] };
+            }
+            for (const p of toArchive) {
+              history.posts.push({
+                id: p.id,
+                text: p.text,
+                topic: p.topic,
+                hashtags: p.hashtags,
+                publishedAt: p.publishedAt,
+                archivedAt: now.toISOString(),
+                engagement: p.engagement,
+              });
+            }
+            const tmpPath = analyticsPath + `.tmp.${process.pid}`;
+            await fs.writeFile(tmpPath, JSON.stringify(history, null, 2), "utf-8");
+            await fs.rename(tmpPath, analyticsPath);
+          }
+
           await writeQueue(queuePath, queue);
-          return jsonResult({ removed: details.length, details });
+          return jsonResult({ removed: details.length, archived: toArchive.length, details });
         }
 
         default:
           throw new Error(
-            `Unknown action: ${action}. Use list, add, update, delete, get_approved, or cleanup.`,
+            `Unknown action: ${action}. Use list, add, update, delete, get_approved, verify_claim, release_claim, update_channel, or cleanup.`,
           );
       }
+      });
     },
   };
 }

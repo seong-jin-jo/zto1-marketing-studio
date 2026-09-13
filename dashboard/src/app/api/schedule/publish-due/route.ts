@@ -4,6 +4,8 @@ import { reportFailure, reportRecovery, normalizePlatform, classifyPublishFailur
 import { normalizeIncidentSource } from "@/lib/observability/incidents";
 import { refreshImageDeliveryUrl } from "@/lib/image-token";
 import { SCHEDULABLE_PLATFORMS } from "@/lib/constants";
+import { runWithTenant } from "@/lib/tenant-context";
+import { drainQueueMirrorOutbox, listQueueMirrorOutboxTenantIds } from "@/lib/queue-mirror-outbox";
 import {
   getChannelCred,
   publishFacebook,
@@ -55,21 +57,23 @@ export async function POST(request: Request) {
 
   const tenantId = await effectiveTenantId(request, body.tenant_id);
   if (tenantId) {
+    const outbox = await runWithTenant(tenantId, () => drainQueueMirrorOutbox());
     const schedules = await processTenant(tenantId, limit);
-    return Response.json({ ok: true, processed: schedules.length, schedules });
+    return Response.json({ ok: true, processed: schedules.length, schedules, outbox });
   }
 
   // 테넌트 미해석 — 운영자 토큰이면 전체 테넌트 스윕(단일 크론 진입점), 아니면 400.
   const raw = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "";
   const operatorToken = process.env.DASHBOARD_AUTH_TOKEN || "";
   if (operatorToken && raw === operatorToken) {
-    const tenantIds = await dueTenantIds();
+    const tenantIds = [...new Set([...(await dueTenantIds()), ...listQueueMirrorOutboxTenantIds()])];
     const tenants = [];
     let processed = 0;
     for (const tid of tenantIds) {
+      const outbox = await runWithTenant(tid, () => drainQueueMirrorOutbox());
       const schedules = await processTenant(tid, limit);
       processed += schedules.length;
-      tenants.push({ tenantId: tid, processed: schedules.length, schedules });
+      tenants.push({ tenantId: tid, processed: schedules.length, schedules, outbox });
     }
     return Response.json({ ok: true, mode: "all-tenants", tenantCount: tenants.length, processed, tenants });
   }

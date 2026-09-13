@@ -113,4 +113,45 @@ describe("BE-L5-HISTORY 학습 후보 판단 이력", () => {
     expect(stored.decisions).toHaveLength(1);
     expect(stored.rules).toHaveLength(1);
   });
+
+  it("시험 MINOR 3: 작업 공간을 확인할 수 없어도 성공 응답 스키마를 유지한다", async () => {
+    H.tenantId = null;
+    const { GET } = await import("@/app/api/performance/learned-rules/route");
+    const response = await GET(new Request("http://localhost/api/performance/learned-rules"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ rules: [], decisions: [], nextCursor: null });
+  });
+
+  it("시험 MINOR 2: 판단 이력은 500건을 넘기지 않고 GET은 커서로 나눈다", async () => {
+    const file = path.join(dataDir, "tenants", H.tenantId!, "performance-learned-rules.json");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const decisions = Array.from({ length: 500 }, (_, index) => ({
+      id: `decision_${index}`,
+      candidateId: `candidate_${index}`,
+      candidateKey: `key_${index}`,
+      decision: "rejected",
+      text: `규칙 ${index}`,
+      sourcePostIds: [],
+      sourceLabel: "과거 기록",
+      sampleCount: 0,
+      observedFrom: null,
+      observedTo: null,
+      scope: "workspace_generation",
+      decidedAt: new Date(index).toISOString(),
+      ruleId: null,
+    }));
+    fs.writeFileSync(file, JSON.stringify({ rules: [], decisions }));
+
+    const { GET, POST } = await import("@/app/api/performance/learned-rules/route");
+    const created = await POST(decisionRequest("rejected", "candidate_new"));
+    expect(created.status).toBe(201);
+    const stored = JSON.parse(fs.readFileSync(file, "utf8"));
+    expect(stored.decisions).toHaveLength(500);
+    expect(stored.decisions[0].id).toBe("decision_1");
+
+    const page = await (await GET(new Request(`http://localhost/api/performance/learned-rules?tenant_id=${H.tenantId}&cursor=0&limit=10`))).json();
+    expect(page.decisions).toHaveLength(10);
+    expect(page.nextCursor).toBe(10);
+  });
 });

@@ -8,6 +8,7 @@
 // 계산은 이미 부모(page.tsx→PerformanceRoom)가 내려주는 posts로 클라이언트에서 한다(별도 DB 조회 없음).
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import { apiPost, fetcher } from "@/lib/api";
 import { isPerformancePublished } from "@/lib/post-publish-state";
@@ -15,7 +16,6 @@ import type { PerformancePost } from "./PerformanceRoom";
 import { Button } from "@/components/shared/Button";
 import { Stack } from "@/components/shared/Stack";
 import {
-  LearningDecisionsDialog,
   formatLearningDate,
   formatLearningPeriod,
   type LearnedRuleDecisionView,
@@ -119,7 +119,6 @@ export function PerformanceChatPanel({
   const [draft, setDraft] = useState("");
   const [savingRuleFor, setSavingRuleFor] = useState<string | null>(null);
   const [open, setOpen] = useState(expandedByDefault);
-  const [detailOpen, setDetailOpen] = useState(false);
 
   const published = useMemo(
     // 최상위 status 가 아니라 채널별 발행 사실로 센다. 일부 채널만 올라간 뒤 멈춘 글이
@@ -314,10 +313,10 @@ export function PerformanceChatPanel({
                     {turn.ruleCandidate && (
                       <div className="mt-stack-tight flex justify-end gap-stack-tight">
                         <Button size="sm" variant="secondary" disabled={savingRuleFor === turn.id} onClick={() => void decideRule(turn.id, turn.ruleCandidate!, "accepted")}>
-                          {savingRuleFor === turn.id ? "배우는 중" : "배우기"}
+                          {savingRuleFor === turn.id ? "저장 중" : "그렇게 해"}
                         </Button>
                         <Button size="sm" variant="secondary" disabled={savingRuleFor === turn.id} onClick={() => void decideRule(turn.id, turn.ruleCandidate!, "rejected")}>
-                          배우지 않기
+                          아니
                         </Button>
                       </div>
                     )}
@@ -367,25 +366,14 @@ export function PerformanceChatPanel({
             <p className="text-caption text-subtle" data-learning-decision-feedback>
               최근 판단 {learnedDecisions.length}건을 학습 정보에 남겼습니다.
             </p>
-            <Button
+            <Link
               className="mt-stack-tight"
-              size="sm"
-              variant="secondary"
-              onClick={() => setDetailOpen(true)}
+              href={`/learn?tenant_id=${encodeURIComponent(workspaceId || "")}`}
               data-learning-decision-entry
             >
               학습 정보에서 보기
-            </Button>
+            </Link>
           </div>
-        )}
-
-        {detailOpen && workspaceId && (
-          <LearningDecisionsDialog
-            workspaceId={workspaceId}
-            decisions={learnedDecisions}
-            onClose={() => setDetailOpen(false)}
-            onUndone={async () => { await mutateRules(); }}
-          />
         )}
 
       </Stack>

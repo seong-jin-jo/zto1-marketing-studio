@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTransactionItems } from "@/lib/higgsfield-transactions";
+import { parseTransactionItems, parseTransactionPage } from "@/lib/higgsfield-transactions";
 
 describe("parseTransactionItems", () => {
   it("accepts the paginated Higgsfield CLI response", () => {
@@ -14,7 +14,8 @@ describe("parseTransactionItems", () => {
     ]);
   });
 
-  it("returns an empty list for progress text without JSON", () => {
+  it("시험 12: JSON이 아닌 CLI 출력은 파싱 실패로 구분한다", () => {
     expect(parseTransactionItems("progress\nnot-json")).toEqual([]);
+    expect(parseTransactionPage("progress\nnot-json")).toEqual({ ok: false, items: [] });
   });
 });

@@ -16,8 +16,11 @@
 //       node scripts/verify-derivation-osmu.mjs
 //
 // 정리: 이 스크립트가 만든 것만 전용 회원과 전용 키로 지운다. 공유 장부를 통째로 지우지 않는다.
-import fs from "node:fs";
+import { createRequire } from "node:module";
 import postgres from "postgres";
+
+const require = createRequire(import.meta.url);
+const generationFixture = require("../tests/studio/generation-request.fixture.json");
 
 const BASE = process.env.OSMU_BASE_URL || "http://localhost:3456";
 const TOKEN = process.env.STUDIO_DEV_BEARER_TOKEN;
@@ -47,10 +50,8 @@ async function call(method, path, body, idempotencyKey) {
   return { status: response.status, payload };
 }
 
-const fixture = fs.readFileSync("tests/studio/generation-fixture.ts", "utf8");
-const literal = fixture.match(/return \{([\s\S]*?)\n {2}\};\n\}/);
 function generationBody(topic) {
-  const body = eval("({" + literal[1].replace(/STUDIO_TEST_WORKSPACE_ID/g, JSON.stringify(WORKSPACE)) + "})");
+  const body = structuredClone(generationFixture);
   body.workspace_id = WORKSPACE;
   body.learning_context.r6.topic = topic;
   return body;

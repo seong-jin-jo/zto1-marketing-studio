@@ -1,6 +1,6 @@
 "use client";
 
-import { PerformanceDashboard } from "@/app/page";
+import { PerformanceDashboard } from "@/components/home/PerformanceDashboard";
 
 export default function PerformancePage() {
   return <PerformanceDashboard dedicatedRoom />;

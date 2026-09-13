@@ -87,8 +87,7 @@ export function signMediaToken(
   return `${body}.${sig}`;
 }
 
-/** 검증. 변조·만료·형식오류·비밀 미설정 전부 null. */
-export function verifyMediaToken(token: string, now: number = Date.now()): MediaTokenPayload | null {
+function parseMediaToken(token: string, now: number, requireUnexpired: boolean): MediaTokenPayload | null {
   const key = signingKey();
   if (!key || !token || token.length > 2048) return null;
   const dot = token.indexOf(".");
@@ -111,6 +110,16 @@ export function verifyMediaToken(token: string, now: number = Date.now()): Media
     return null;
   }
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(parsed.t) || !isSafeMediaFilename(parsed.f)) return null;
-  if (!(parsed.e > now)) return null;
+  if (!Number.isFinite(parsed.e) || (requireUnexpired && !(parsed.e > now))) return null;
   return { tenantId: parsed.t, filename: parsed.f, expiresAt: parsed.e };
+}
+
+/** 검증. 변조·만료·형식오류·비밀 미설정 전부 null. */
+export function verifyMediaToken(token: string, now: number = Date.now()): MediaTokenPayload | null {
+  return parseMediaToken(token, now, true);
+}
+
+/** 만료만 무시하고 서명, 목적, 테넌트, 파일명 형식을 검증한다. 재발급 경로 전용이다. */
+export function verifyMediaTokenSignature(token: string): MediaTokenPayload | null {
+  return parseMediaToken(token, Date.now(), false);
 }

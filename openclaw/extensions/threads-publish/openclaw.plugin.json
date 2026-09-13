@@ -13,6 +13,10 @@
       "userId": {
         "type": "string",
         "description": "Threads user ID."
+      },
+      "queuePath": {
+        "type": "string",
+        "description": "Shared queue.json path."
       }
     }
   }

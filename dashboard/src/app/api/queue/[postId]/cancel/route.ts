@@ -48,7 +48,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ pos
       // 레거시 항목은 정규화 후 판정한다. channels 가 없다는 이유로 통과시키지 않는다.
       const channels = normalizeChannels(post as unknown as Record<string, unknown>) as Record<string, ChannelStatus>;
       const cancellable = Object.keys(channels).filter((key) => channels[key].status === "pending");
+      const publishing = Object.keys(channels).filter((key) => channels[key].status === "publishing");
       const publishedKeys = publishedChannelKeys({ ...post, channels } as unknown as Record<string, unknown>);
+
+      // pending -> publishing 전이가 끝난 뒤에는 공급자 호출이 시작될 수 있다. 이때 200
+      // 취소를 주면 고객에게는 멈췄다고 말하면서 외부 게시가 계속되는 거짓 성공이 된다.
+      if (publishing.length > 0) {
+        rejection = {
+          code: "PUBLISH_IN_PROGRESS",
+          detail: publishing.join(","),
+          error: `현재 발행 중인 채널(${publishing.join(", ")})이 있어 중지할 수 없습니다. 발행 결과를 확인해 주세요`,
+        };
+        found = post as unknown as Record<string, unknown>;
+        return queue;
+      }
 
       // 취소 가능한 최상위 상태인가. published·failed·canceled 는 종료 상태라 덮지 않는다.
       if (!CANCELLABLE_POST_STATUSES.has(post.status)) {

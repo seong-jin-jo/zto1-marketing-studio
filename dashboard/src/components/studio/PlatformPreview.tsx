@@ -448,7 +448,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
   return (
     <Frame p={platform} label={label} headerRight={headerRight}>
       <div className="relative rounded-surface overflow-hidden bg-surface-2 aspect-[9/16] border border-border">
-        {vid ? <DeliveredMedia key={vid} type="video" src={vid} tenantId={tenantId} testId={`preview-media-${k}`} className="w-full h-full object-cover" />
+        {vid ? <DeliveredMedia key={vid} type="video" src={vid} tenantId={tenantId} preload="metadata" testId={`preview-media-${k}`} className="w-full h-full object-cover" />
           : img ? <DeliveredMedia type="image" src={img} tenantId={tenantId} testId={`preview-media-${k}`} className="w-full h-full object-cover" />
           : <div className="w-full h-full grid place-items-center text-subtle text-caption">영상 생성 대기</div>}
         {!vid && <>

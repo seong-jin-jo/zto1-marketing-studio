@@ -335,6 +335,8 @@ describe("proxy 테넌트 토큰(인증모델 b) 분기 — 실검증", () => {
     "/api/channels/threads/accounts/account-1",
     "/api/channels/threads/accounts/account-1/default",
     "/api/suggestions/enqueue",
+    "/api/schedule/11111111-1111-4111-8111-111111111111",
+    "/api/schedule/11111111-1111-4111-8111-111111111111/cancel",
     "/api/tiktok/creator-info",
     // Regression: API-READ-20260829-02. UI가 polling하는 경로가 모든 인증 조합에서 막혔다.
     "/api/tiktok/publish-status",

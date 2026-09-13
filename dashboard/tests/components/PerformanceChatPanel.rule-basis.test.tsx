@@ -4,6 +4,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PerformanceChatPanel } from "@/components/home/PerformanceChatPanel";
+import { LearningDecisionsDialog } from "@/components/home/LearningDecisionsDialog";
 import type { PerformancePost } from "@/components/home/PerformanceRoom";
 
 // 2026-09-12 감사 MAJOR 두 건의 재현 절차.
@@ -66,7 +67,7 @@ describe("FE-L5-BASIS 결정 전 근거 표시와 학습 상세 소유권", () =
     expect(basis.textContent).toContain("표본 6건 중 상위 3편");
     expect(basis.textContent).toContain("8월 1일부터 8월 6일까지");
     expect(basis.textContent).toContain("적용 범위 이 작업 공간의 다음 생성");
-    expect(screen.getByRole("button", { name: "배우기" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "그렇게 해" })).toBeInTheDocument();
     expect(mocks.apiPost).not.toHaveBeenCalled();
   });
 
@@ -83,7 +84,7 @@ describe("FE-L5-BASIS 결정 전 근거 표시와 학습 상세 소유권", () =
     mocks.apiPost.mockRejectedValue(new Error("conflict"));
     render(<PerformanceChatPanel workspaceId="workspace-1" posts={POSTS} focus="all" expandedByDefault />);
     fireEvent.click(screen.getByRole("button", { name: "이거 왜 잘 됐어" }));
-    fireEvent.click(await screen.findByRole("button", { name: "배우기" }));
+    fireEvent.click(await screen.findByRole("button", { name: "그렇게 해" }));
 
     expect(await screen.findByText(/지금은 판단을 저장하지 못했습니다/)).toBeInTheDocument();
   });
@@ -93,20 +94,20 @@ describe("FE-L5-BASIS 결정 전 근거 표시와 학습 상세 소유권", () =
     render(<PerformanceChatPanel workspaceId="workspace-1" posts={POSTS} focus="all" expandedByDefault />);
 
     expect(screen.getByText("최근 판단 1건을 학습 정보에 남겼습니다.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "학습 정보에서 보기" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "학습 정보에서 보기" })).toHaveAttribute("href", "/learn?tenant_id=workspace-1");
     expect(screen.queryByText(/반영: 짧은 글이 긴 글보다 잘 갑니다/)).not.toBeInTheDocument();
     expect(screen.queryByText(/표본 6건 · 8월 1일부터/)).not.toBeInTheDocument();
   });
 
   it("FE-L5-OWN-02 학습 정보 별도 창이 상세를 소유하고 되돌리기를 제공한다", async () => {
     mocks.decisions = [DECISION];
-    render(<PerformanceChatPanel workspaceId="workspace-1" posts={POSTS} focus="all" expandedByDefault />);
-    fireEvent.click(screen.getByRole("button", { name: "학습 정보에서 보기" }));
+    render(<LearningDecisionsDialog workspaceId="workspace-1" decisions={[DECISION]} onUndone={mocks.mutate} />);
 
-    const dialog = screen.getByRole("dialog", { name: "학습 정보 상세" });
-    expect(dialog).toBeInTheDocument();
+    const page = screen.getByRole("region", { name: "학습 정보 상세" });
+    expect(page).toBeInTheDocument();
     expect(screen.getByText(/반영: 짧은 글이 긴 글보다 잘 갑니다/)).toBeInTheDocument();
-    expect(screen.getByText(/표본 6건 · 8월 1일부터 8월 6일까지 · 작업 공간의 다음 생성/)).toBeInTheDocument();
+    expect(screen.getByText(/근거: 조회 6편을 비교해 상위 3편에서 뽑음 · 표본 6건 · 8월 1일부터 8월 6일까지 · 작업 공간의 다음 생성/)).toBeInTheDocument();
+    expect(screen.getByText(/근거가 아직 얇습니다/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "되돌리기" }));
     await waitFor(() => expect(mocks.apiDelete).toHaveBeenCalledWith(
@@ -118,8 +119,7 @@ describe("FE-L5-BASIS 결정 전 근거 표시와 학습 상세 소유권", () =
   it("FE-L5-OWN-03 되돌리기가 실패하면 실패를 말하고 상세는 남는다", async () => {
     mocks.decisions = [DECISION];
     mocks.apiDelete.mockRejectedValue(new Error("network"));
-    render(<PerformanceChatPanel workspaceId="workspace-1" posts={POSTS} focus="all" expandedByDefault />);
-    fireEvent.click(screen.getByRole("button", { name: "학습 정보에서 보기" }));
+    render(<LearningDecisionsDialog workspaceId="workspace-1" decisions={[DECISION]} onUndone={mocks.mutate} />);
     fireEvent.click(screen.getByRole("button", { name: "되돌리기" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("되돌리지 못했습니다");

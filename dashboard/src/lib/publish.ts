@@ -349,15 +349,45 @@ export async function fetchInstagramPermalink(cred: ChannelCred, mediaId: string
   return undefined;
 }
 
-export async function publishInstagram(cred: ChannelCred, caption: string, imageUrl?: string): Promise<PublishResult> {
+export async function publishInstagram(cred: ChannelCred, caption: string, imageInput?: string | string[]): Promise<PublishResult> {
   if (!cred.userId) return { ok: false, error: "INSTAGRAM_USERID(meta.userId) 없음" };
-  if (!imageUrl) return { ok: false, error: "Instagram은 이미지 필수" };
+  const imageUrls = (Array.isArray(imageInput) ? imageInput : imageInput ? [imageInput] : []).filter(Boolean);
+  if (!imageUrls.length) return { ok: false, error: "Instagram은 이미지 필수" };
+  if (imageUrls.length > 10) return { ok: false, error: "Instagram 카드뉴스는 최대 10장" };
   // 테넌트가 "연결"(Instagram Login API)로 붙인 토큰은 graph.instagram.com, 레거시 env는 graph.facebook.com.
   const base = cred.meta?.api === "instagram_login" ? IG_LOGIN_API : IG_API;
-  const create = await fetch(`${base}/${cred.userId}/media`, {
-    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ image_url: imageUrl, caption, access_token: cred.token }),
-  });
+  let create: Response;
+  if (imageUrls.length === 1) {
+    create = await fetch(`${base}/${cred.userId}/media`, {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ image_url: imageUrls[0], caption, access_token: cred.token }),
+    });
+  } else {
+    const childIds: string[] = [];
+    for (const imageUrl of imageUrls) {
+      const child = await fetch(`${base}/${cred.userId}/media`, {
+        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          image_url: imageUrl,
+          is_carousel_item: "true",
+          access_token: cred.token,
+        }),
+      });
+      if (!child.ok) return { ok: false, error: `IG carousel child 실패(${child.status})` };
+      const childBody = await child.json() as { id?: string };
+      if (!childBody.id) return { ok: false, error: "IG carousel child 결과 없음" };
+      childIds.push(childBody.id);
+    }
+    create = await fetch(`${base}/${cred.userId}/media`, {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        media_type: "CAROUSEL",
+        children: childIds.join(","),
+        caption,
+        access_token: cred.token,
+      }),
+    });
+  }
   if (!create.ok) return { ok: false, error: `IG container 실패(${create.status})` };
   const { id: creationId } = (await create.json()) as { id: string };
   // 이미지 컨테이너는 인스타가 비동기 처리한다. status_code=FINISHED 될 때까지 폴링해야
@@ -577,11 +607,10 @@ function buildXOAuthHeader(method: string, url: string, k: XKeys, query: Record<
 export async function fetchXPublicMetrics(
   cred: ChannelCred,
   tweetIds: string[],
-): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number; reposts: number }> }
+): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number; reposts: number }>; attemptedIds: string[] }
   | { ok: false; status?: number; error: string }> {
-  const ids = tweetIds.filter(Boolean).slice(0, 100);
-  if (ids.length === 0) return { ok: true, metrics: {} };
-  const query = { ids: ids.join(","), "tweet.fields": "public_metrics" };
+  const ids = [...new Set(tweetIds.filter(Boolean))];
+  if (ids.length === 0) return { ok: true, metrics: {}, attemptedIds: [] };
   const url = "https://api.twitter.com/2/tweets";
   // 화면으로 연결한 계정은 OAuth 2.0 사용자 토큰을 쓰고, 4키가 있는 계정(구 방식)은
   // OAuth 1.0a 서명을 쓴다. 발행이 이미 같은 방식으로 갈라져 있다(publishX).
@@ -597,30 +626,34 @@ export async function fetchXPublicMetrics(
   if (!hasLegacyKeys && !cred.token) {
     return { ok: false, error: "X 연결이 없습니다." };
   }
-  const auth = hasLegacyKeys ? buildXOAuthHeader("GET", url, k, query) : `Bearer ${cred.token}`;
+  const metrics: Record<string, { views: number; likes: number; replies: number; reposts: number }> = {};
   try {
-    const resp = await fetch(`${url}?${new URLSearchParams(query).toString()}`, {
-      method: "GET",
-      headers: { Authorization: auth },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!resp.ok) {
-      return { ok: false, status: resp.status, error: `X 성과 조회 실패(${resp.status})` };
-    }
-    const body = (await resp.json()) as {
-      data?: { id: string; public_metrics?: { impression_count?: number; like_count?: number; reply_count?: number; retweet_count?: number } }[];
-    };
-    const metrics: Record<string, { views: number; likes: number; replies: number; reposts: number }> = {};
-    for (const row of body.data ?? []) {
-      const m = row.public_metrics ?? {};
-      metrics[row.id] = {
-        views: m.impression_count ?? 0,
-        likes: m.like_count ?? 0,
-        replies: m.reply_count ?? 0,
-        reposts: m.retweet_count ?? 0,
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      const chunk = ids.slice(offset, offset + 100);
+      const query = { ids: chunk.join(","), "tweet.fields": "public_metrics" };
+      const auth = hasLegacyKeys ? buildXOAuthHeader("GET", url, k, query) : `Bearer ${cred.token}`;
+      const resp = await fetch(`${url}?${new URLSearchParams(query).toString()}`, {
+        method: "GET",
+        headers: { Authorization: auth },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!resp.ok) {
+        return { ok: false, status: resp.status, error: `X 성과 조회 실패(${resp.status})` };
+      }
+      const body = (await resp.json()) as {
+        data?: { id: string; public_metrics?: { impression_count?: number; like_count?: number; reply_count?: number; retweet_count?: number } }[];
       };
+      for (const row of body.data ?? []) {
+        const m = row.public_metrics ?? {};
+        metrics[row.id] = {
+          views: m.impression_count ?? 0,
+          likes: m.like_count ?? 0,
+          replies: m.reply_count ?? 0,
+          reposts: m.retweet_count ?? 0,
+        };
+      }
     }
-    return { ok: true, metrics };
+    return { ok: true, metrics, attemptedIds: ids };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: `X 성과 조회 중 오류: ${msg.slice(0, 120)}` };
@@ -644,34 +677,35 @@ export async function fetchXPublicMetrics(
 export async function fetchYouTubeMetrics(
   cred: ChannelCred,
   videoIds: string[],
-): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number }> }
+): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number }>; attemptedIds: string[] }
   | { ok: false; status?: number; error: string }> {
-  const ids = videoIds.filter(Boolean).slice(0, 50);
-  if (ids.length === 0) return { ok: true, metrics: {} };
+  const ids = [...new Set(videoIds.filter(Boolean))];
+  if (ids.length === 0) return { ok: true, metrics: {}, attemptedIds: [] };
   if (!cred.token) return { ok: false, error: "YouTube 연결이 없습니다." };
+  const metrics: Record<string, { views: number; likes: number; replies: number }> = {};
   try {
-    const resp = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(ids.join(","))}`,
-      { headers: { Authorization: `Bearer ${cred.token}` }, signal: AbortSignal.timeout(10000) },
-    );
-    if (!resp.ok) {
-      return { ok: false, status: resp.status, error: `YouTube 성과 조회 실패(${resp.status})` };
-    }
-    const body = (await resp.json()) as {
-      items?: { id: string; statistics?: { viewCount?: string; likeCount?: string; commentCount?: string } }[];
-    };
-    const metrics: Record<string, { views: number; likes: number; replies: number }> = {};
-    for (const item of body.items ?? []) {
-      const st = item.statistics ?? {};
-      // 숫자를 글자로 준다. 좋아요를 끈 영상은 그 칸 자체가 없다(0 과 다르지만, 화면에서는
-      // 둘 다 "없음" 이라 0 으로 둔다).
-      metrics[item.id] = {
-        views: Number(st.viewCount ?? 0) || 0,
-        likes: Number(st.likeCount ?? 0) || 0,
-        replies: Number(st.commentCount ?? 0) || 0,
+    for (let offset = 0; offset < ids.length; offset += 50) {
+      const chunk = ids.slice(offset, offset + 50);
+      const resp = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${encodeURIComponent(chunk.join(","))}`,
+        { headers: { Authorization: `Bearer ${cred.token}` }, signal: AbortSignal.timeout(10000) },
+      );
+      if (!resp.ok) {
+        return { ok: false, status: resp.status, error: `YouTube 성과 조회 실패(${resp.status})` };
+      }
+      const body = (await resp.json()) as {
+        items?: { id: string; statistics?: { viewCount?: string; likeCount?: string; commentCount?: string } }[];
       };
+      for (const item of body.items ?? []) {
+        const st = item.statistics ?? {};
+        metrics[item.id] = {
+          views: Number(st.viewCount ?? 0) || 0,
+          likes: Number(st.likeCount ?? 0) || 0,
+          replies: Number(st.commentCount ?? 0) || 0,
+        };
+      }
     }
-    return { ok: true, metrics };
+    return { ok: true, metrics, attemptedIds: ids };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: `YouTube 성과 조회 중 오류: ${msg.slice(0, 120)}` };
@@ -691,10 +725,10 @@ export async function fetchMetaPostMetrics(
   cred: ChannelCred,
   platform: "instagram" | "instagram_reels" | "facebook",
   postIds: string[],
-): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number }> }
+): Promise<{ ok: true; metrics: Record<string, { views: number; likes: number; replies: number }>; attemptedIds: string[] }
   | { ok: false; status?: number; error: string }> {
-  const ids = postIds.filter(Boolean).slice(0, 50);
-  if (ids.length === 0) return { ok: true, metrics: {} };
+  const ids = [...new Set(postIds.filter(Boolean))];
+  if (ids.length === 0) return { ok: true, metrics: {}, attemptedIds: [] };
   if (!cred.token) return { ok: false, error: `${platform} 연결이 없습니다.` };
 
   const metricNames = platform === "instagram"
@@ -713,17 +747,21 @@ export async function fetchMetaPostMetrics(
         { signal: AbortSignal.timeout(8000) },
       );
       if (!resp.ok) continue; // 못 잰 글은 호출부가 "측정 불가" 로 남긴다
-      const body = (await resp.json()) as { data?: { name: string; values?: { value?: number }[] }[] };
-      const row: Record<string, number> = {};
+      const body = (await resp.json()) as { data?: { name: string; values?: { value?: unknown }[] }[] };
+      const row: Record<string, unknown> = {};
       for (const entry of body.data ?? []) row[entry.name] = entry.values?.[0]?.value ?? 0;
+      const reactions = row.post_reactions_by_type_total;
+      const reactionTotal = reactions && typeof reactions === "object" && !Array.isArray(reactions)
+        ? Object.values(reactions).reduce((sum, value) => sum + (typeof value === "number" && Number.isFinite(value) ? value : 0), 0)
+        : typeof reactions === "number" && Number.isFinite(reactions) ? reactions : 0;
       metrics[id] = {
-        views: row.views ?? row.impressions ?? row.post_impressions ?? 0,
-        likes: row.likes ?? row.post_reactions_by_type_total ?? 0,
-        replies: row.comments ?? 0,
+        views: Number(row.views ?? row.impressions ?? row.post_impressions ?? 0) || 0,
+        likes: Number(row.likes ?? reactionTotal) || 0,
+        replies: Number(row.comments ?? 0) || 0,
       };
     } catch { /* 이 글만 건너뛴다. 하나 때문에 나머지를 잃지 않는다 */ }
   }
-  return { ok: true, metrics };
+  return { ok: true, metrics, attemptedIds: ids };
 }
 
 // X 발행 (text only, API v2). 4키 OAuth1.0a 서명. 공식 가중 문자가 280을 넘으면 차단한다.
@@ -1153,7 +1191,7 @@ export async function publishSlack(cred: ChannelCred, text: string, imageUrl?: s
 /**
  * LinkedIn 회원 게시.
  *
- * 2026-09-08 판정(docs/audit/osmu-채널-발행-실태-v1.0.md): 아홉 채널 가운데 LinkedIn 만
+ * 2026-09-08 판정(docs/_archive/legacy-20260912/audit/osmu-채널-발행-실태-v1.0.md): 아홉 채널 가운데 LinkedIn 만
  * 발행하는 코드가 두 경로 어디에도 없었다. 나머지는 전부 구현돼 있고 연결이나 배선만
  * 남은 상태였다. 그래서 이 한 칸을 채운다.
  *

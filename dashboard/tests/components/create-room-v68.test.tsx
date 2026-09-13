@@ -153,4 +153,48 @@ describe("V68 생성실 계약", () => {
     expect(document.querySelector('[data-quick-draft-format="text"]')).toBeNull();
     expect(screen.queryByText("고르지 않은 글")).toBeNull();
   });
+
+  it("시험 18 정상: 글자 카드를 자산 저장소에 올린 뒤 편집과 발행 인계 콜백에 전달한다", async () => {
+    const onTextCardsCreated = vi.fn();
+    vi.stubGlobal("File", class {
+      constructor(public parts: unknown[], public name: string, public options: unknown) {}
+    });
+    vi.stubGlobal("FormData", class {
+      append() {}
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      fillStyle: "",
+      font: "",
+      textAlign: "left",
+      textBaseline: "top",
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+      measureText: (value: string) => ({ width: value.length * 10 }),
+    } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,dGVzdA==");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).startsWith("data:image/png")) return { blob: async () => ({ type: "image/png" }) } as Response;
+      if (String(input) === "/api/images/upload") {
+        return Response.json({ url: "http://localhost/api/images/deliver/signed-card" });
+      }
+      return Response.json({ rules: [], decisions: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(<CreateRoom {...props} topic="고객 질문" onTextCardsCreated={onTextCardsCreated} />);
+    fireEvent.click(within(container.querySelector("[data-create-workspace]") as HTMLElement).getByRole("button", { name: "A 구조 사용" }));
+    fireEvent.click(screen.getByTestId("create-text-card"));
+
+    await waitFor(() => {
+      const error = document.querySelector("[data-text-card-error]")?.textContent;
+      if (error) throw new Error(error);
+      expect(onTextCardsCreated).toHaveBeenCalledWith([
+        "http://localhost/api/images/deliver/signed-card",
+        "http://localhost/api/images/deliver/signed-card",
+        "http://localhost/api/images/deliver/signed-card",
+      ]);
+    });
+    expect(fetchMock.mock.calls.filter(([input]) => String(input) === "/api/images/upload")).toHaveLength(3);
+    expect(document.querySelector("[data-text-card-result]" )).toHaveAttribute("data-text-card-result", "3");
+  });
 });

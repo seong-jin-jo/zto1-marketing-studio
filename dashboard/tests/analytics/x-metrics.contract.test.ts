@@ -34,21 +34,22 @@ describe("X 성과 수집", () => {
     const publish = src("lib/publish.ts");
     // 화면 연결은 OAuth 2.0 토큰, 구 방식은 4키다. 한쪽만 보면 그 방식으로 연결한
     // 사람은 성과가 영원히 안 모인다. 발행이 이미 같은 방식으로 갈라져 있다.
-    expect(publish).toMatch(/fetchXPublicMetrics[\s\S]{0,1400}hasLegacyKeys \? buildXOAuthHeader[\s\S]{0,60}Bearer/);
+    const helper = publish.slice(publish.indexOf("export async function fetchXPublicMetrics"));
+    expect(helper).toMatch(/hasLegacyKeys \? buildXOAuthHeader[\s\S]{0,100}Bearer/);
   });
 
   it("한 번에 묶어 묻는다", () => {
     const publish = src("lib/publish.ts");
     // 글마다 따로 부르면 요청 수가 그만큼 늘고 X 시간당 한도에 금방 닿는다.
-    expect(publish).toMatch(/slice\(0, 100\)/);
-    expect(publish).toContain('ids: ids.join(",")');
+    expect(publish).toMatch(/offset \+= 100/);
+    expect(publish).toContain('ids: chunk.join(",")');
   });
 
   it("Threads 가 없어도 X 만으로 수집이 돈다", () => {
-    const route = src("app/api/metrics/route.ts");
+    const route = src("lib/metrics-collector.ts");
     // 종전에는 Threads 가 없으면 여기서 끝냈다. X 만 연결한 사람은 아예 못 돌렸다.
     // 채널이 늘어도 "하나라도 있으면 돈다" 는 규칙은 그대로여야 한다.
-    expect(route).toMatch(/if \(!cred && !xCred && !igCred && !fbCred && !ytCred && !tiktokCred\)/);
+    expect(route).toMatch(/if \(!threadsCred && !xCred && !instagramCred && !facebookCred && !youtubeCred && !tiktokCred\)/);
     expect(route).toContain("fetchXPublicMetrics");
   });
 });

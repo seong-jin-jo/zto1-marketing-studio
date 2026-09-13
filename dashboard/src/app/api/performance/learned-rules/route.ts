@@ -45,6 +45,8 @@ interface RulesFile {
 }
 
 const FILE_NAME = "performance-learned-rules.json";
+const MAX_DECISIONS = 500;
+const DEFAULT_PAGE_SIZE = 50;
 
 /**
  * 옛 기록에는 지문이 없다. 그때는 저장된 값으로 지문을 다시 계산해 견준다.
@@ -69,13 +71,19 @@ function normalizeInstant(value: string | null): string | null {
 }
 
 export async function GET(request: Request) {
-  const tenantId = await effectiveTenantId(request, new URL(request.url).searchParams.get("tenant_id"));
-  if (!tenantId) return Response.json({ rules: [] });
+  const url = new URL(request.url);
+  const tenantId = await effectiveTenantId(request, url.searchParams.get("tenant_id"));
+  if (!tenantId) return Response.json({ rules: [], decisions: [], nextCursor: null });
+  const cursor = Math.max(0, Number.parseInt(url.searchParams.get("cursor") || "0", 10) || 0);
+  const limit = Math.max(1, Math.min(100, Number.parseInt(url.searchParams.get("limit") || String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE));
   return runWithTenant(tenantId, async () => {
     const data = readJson<RulesFile>(dataPath(FILE_NAME)) || { rules: [] };
+    const decisions = [...(data.decisions || [])].reverse();
+    const page = decisions.slice(cursor, cursor + limit);
     return Response.json({
       rules: (data.rules || []).filter((rule) => rule.active !== false),
-      decisions: [...(data.decisions || [])].reverse().slice(0, 50),
+      decisions: page,
+      nextCursor: cursor + page.length < decisions.length ? cursor + page.length : null,
     });
   });
 }
@@ -129,10 +137,32 @@ export async function POST(request: Request) {
           conflict = true;
           return { rules, decisions };
         }
+        let nextRules = rules;
+        let nextDecisions = decisions;
         recordedDecision = existing;
         recordedRule = existing.ruleId ? rules.find((rule) => rule.id === existing.ruleId) || null : null;
+        // 중간 버전은 되돌릴 때 판단 이력을 남기고 규칙만 비활성화했다. 그 데이터를
+        // 그대로 없이 재사용 성공으로 돌리면 화면과 다음 생성이 서로 다른 상태가 된다.
+        if (decision === "accepted" && (!recordedRule || recordedRule.active === false)) {
+          const restored: LearnedRule = recordedRule
+            ? { ...recordedRule, active: true }
+            : {
+                id: `rule_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                text: existing.text,
+                sourcePostIds: existing.sourcePostIds,
+                sourceLabel: existing.sourceLabel,
+                createdAt: existing.decidedAt,
+                active: true,
+              };
+          nextRules = recordedRule
+            ? rules.map((rule) => rule.id === restored.id ? restored : rule)
+            : [...rules, restored];
+          recordedDecision = { ...existing, ruleId: restored.id };
+          nextDecisions = decisions.map((item) => item.id === existing.id ? recordedDecision! : item);
+          recordedRule = restored;
+        }
         reused = true;
-        return { rules, decisions };
+        return { rules: nextRules, decisions: nextDecisions.slice(-MAX_DECISIONS) };
       }
 
       const decidedAt = new Date().toISOString();
@@ -165,7 +195,7 @@ export async function POST(request: Request) {
       recordedDecision = nextDecision;
       return {
         rules: nextRule ? [...rules, nextRule] : rules,
-        decisions: [...decisions, nextDecision],
+        decisions: [...decisions, nextDecision].slice(-MAX_DECISIONS),
       };
     }, { rules: [], decisions: [] });
 

@@ -21,7 +21,7 @@ import { useUIStore, type StudioRoom } from "@/store/ui-store";
 import { LearningCardWizard } from "@/components/studio/LearningCardWizard";
 import { LearningStatus } from "@/components/studio/LearningStatus";
 import { buildImagePrompt, pickImageSubject } from "@/components/studio/image-style";
-import { countFilledUserSlots, fetchLearningInfo, mergeLearningInfo, readLearningInfo, saveLearningInfo, type LearningInfo } from "@/components/studio/learning-info";
+import { countFilledUserSlots, fetchLearningInfo, LEARNING_USER_SLOT_TOTAL, mergeLearningInfo, readLearningInfo, saveLearningInfo, type LearningInfo } from "@/components/studio/learning-info";
 import { RepoConnect } from "@/components/studio/RepoConnect";
 import { SchedulePanel } from "@/components/studio/SchedulePanel";
 import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
@@ -113,6 +113,11 @@ function channelHref(platform: string): string {
   return `/channels/${VIDEO_ACCOUNT_PROVIDER[platform] || platform}`;
 }
 
+function learningValueLabel(value: string | undefined): string {
+  if (!value?.trim()) return "아직 없음";
+  return value.split(". 예:")[0].trim() || value.trim();
+}
+
 const PUBLISH_SUPPORTED = new Set<PreviewPlatform>([
   ...(SCHEDULABLE_PLATFORMS.filter((platform) => PREVIEW_PLATFORM_KEYS.has(platform)) as PreviewPlatform[]),
   ...Array.from(VIDEO_ROOM_PLATFORMS),
@@ -194,7 +199,7 @@ interface TextVariants {
   shorts?: { hook?: string; body?: string; cta?: string };
   image_prompt?: string;
 }
-interface ImgResult { url: string; file: string; localPath: string }
+interface ImgResult { url: string; file: string; localPath: string; imageUrls?: string[] }
 interface VidResult {
   url: string;
   file: string;
@@ -1130,7 +1135,8 @@ export default function StudioPage() {
           return;
         }
         const r = await apiPost<{ ok?: boolean; partial?: boolean; permalink?: string; error?: string; firstComment?: { ok?: boolean; error?: string } }>("/api/publish", {
-          tenant_id: activeWorkspace.id, platform: p, text: publishText(p), image_url: img?.url, draft_id: did,
+          tenant_id: activeWorkspace.id, platform: p, text: publishText(p), image_url: img?.url,
+          image_urls: p === "instagram" ? img?.imageUrls : undefined, draft_id: did,
           publish_fields: platformPublishInput(p),
           account_id: selectedAccounts[p] || undefined,
           first_comment: capabilityFor(p).supported && firstComments[p]?.trim() ? firstComments[p].trim() : undefined,
@@ -1246,13 +1252,21 @@ export default function StudioPage() {
     const params = new URLSearchParams(window.location.search);
     const requestedDraftId = params.get("draft_id");
     const sourceCommentId = params.get("comment_id");
-    if (!requestedDraftId || !sourceCommentId || commentHandoffLoaded.current === requestedDraftId || !hist?.drafts) return;
+    // draft_id는 댓글 인계 전용이 아니다. 발행 복귀, 작업물 목록의 딥링크, 새로고침 뒤
+    // 편집실 복원도 같은 주소를 쓴다. 종전에는 comment_id가 함께 있을 때만 읽어서
+    // /studio?room=edit&draft_id=...가 빈 편집실로 열렸다.
+    // queue_id가 함께 있으면 publishReturnRequest가 큐와 draft의 연결을 검증한다. 이
+    // 효과가 먼저 실행되면 불일치 draft가 잠깐 화면에 주입됐다가 뒤늦게 거부된다(M4).
+    if (!requestedDraftId || publishReturnRequest || commentHandoffLoaded.current === requestedDraftId || !hist?.drafts) return;
     const requestedDraft = hist.drafts.find((draft) => draft.id === requestedDraftId);
     if (!requestedDraft) return;
     loadDraft(requestedDraft);
-    setActiveRoom("edit");
+    // 댓글 인계는 편집실로, 발행 복귀는 요청 주소가 정한 방으로 남긴다. room이 없거나
+    // create로 들어온 일반 초안 딥링크는 작업물을 바로 다듬을 수 있게 편집실로 연다.
+    const requestedRoom = new URLSearchParams(window.location.search).get("room");
+    if (sourceCommentId || !requestedRoom || requestedRoom === "create") setActiveRoom("edit");
     commentHandoffLoaded.current = requestedDraftId;
-  }, [hist?.drafts, setActiveRoom]);
+  }, [hist?.drafts, publishReturnRequest, setActiveRoom]);
   const publishReturnLoaded = useRef<string | null>(null);
   useEffect(() => {
     if (!publishReturnRequest || !publishReturnQueue?.posts) return;
@@ -1335,6 +1349,13 @@ export default function StudioPage() {
           ? "발행 실패"
           : "발행 완료";
   const LABEL: Record<string, string> = { threads: "Threads", x: "X", facebook: "Facebook", instagram: "Instagram", shorts: "Shorts", reels: "Reels", tiktok: "TikTok" };
+  const publishLearningRows = [
+    ["업종", learningValueLabel(learningInfo.industry)],
+    ["주요 고객", learningValueLabel(learningInfo.audience)],
+    ["콘텐츠 목표", learningValueLabel(learningInfo.purpose)],
+    ["말투", learningValueLabel(learningInfo.voice)],
+    ["쓰지 않을 표현", learningValueLabel(learningInfo.forbidden)],
+  ] as const;
 
   function chooseCandidate(candidate: StudioGenerationCandidate) {
     setSelectedCandidate(candidate);
@@ -1492,6 +1513,7 @@ export default function StudioPage() {
           topic: idea || "Studio 작업물",
           hashtags: (hashtags.instagram || "").split(/[\s,]+/).map((value) => value.replace(/^#/, "")).filter(Boolean),
           imageUrl: img?.url || null,
+          imageUrls: img?.imageUrls || null,
           videoUrl: vid?.url || null,
         });
         queueId = added?.post?.id || null;
@@ -1606,7 +1628,7 @@ export default function StudioPage() {
               {activeRoom === "create" && alsoKinds.length ? <span className="font-normal text-subtle">, {alsoKinds.map((kind) => (kind === "video" ? "영상" : kind === "card" ? "카드뉴스" : "글")).join(", ")}</span> : null}
             </span>
           ) : null}
-          <span className="rounded-control border border-border bg-surface-2 px-stack py-stack-tight text-caption text-subtle" title={activeRoom === "create" ? "현재 생성실은 일곱 칸 학습 정보를 바탕으로 AI 구성 초안을 만듭니다." : "AI 작업 상태"}>{activeRoom === "create" ? "AI 구성 초안" : engine?.error ? "AI 연결 확인 필요" : "AI 사용 가능"}</span>
+          <span className="rounded-control border border-border bg-surface-2 px-stack py-stack-tight text-caption text-subtle" title={activeRoom === "create" ? "현재 생성실은 일곱 칸 학습 정보를 바탕으로 AI 구성 초안을 만듭니다." : engine?.error ? "생성 엔진 확인에 실패했습니다. 설정에서 연결을 확인해 주세요." : "생성 엔진의 설정 정보입니다. 실제 생성 가능 여부는 생성 요청 결과로 확인됩니다."}>{activeRoom === "create" ? "AI 구성 초안" : engine?.error ? "AI 연결 확인 필요" : "AI 엔진 설정됨"}</span>
         </>
       }
     >
@@ -1711,7 +1733,11 @@ export default function StudioPage() {
       {roomHeader}
       {/* 처음 온 사람은 생성실에 있다. 시작 안내가 발행실에만 붙어 있어서, 정작 첫 화면에서는
           무엇을 할 차례인지 보이지 않았다(2026-09-08 회장 계정 실측). 첫 화면에도 둔다. */}
-      <GettingStartedStrip />
+      <GettingStartedStrip
+        learningFilled={countFilledUserSlots(learningInfo, { guide })}
+        learningTotal={LEARNING_USER_SLOT_TOTAL}
+        onOpenLearning={() => setShowWizard(true)}
+      />
       {progressStrip}
       <CreateRoom
         workspaceId={activeWorkspace?.id}
@@ -1726,6 +1752,7 @@ export default function StudioPage() {
         onCandidateSelect={chooseCandidate}
         onOpenEditor={() => changeRoom("edit")}
         onAlsoKindsChange={setAlsoKinds}
+        onLearningInfoChange={setLearningInfo}
         learningVersion={learningFlash + countFilledUserSlots(learningInfo, { guide })}
         resumeCount={hist?.drafts.length ?? 0}
         onResume={() => setShowWorks(true)}
@@ -1734,6 +1761,12 @@ export default function StudioPage() {
         quickDraftError={lastError}
         onQuickDraftGenerate={generateQuickDraft}
         onGenerateCardImages={generateCardImages}
+        onTextCardsCreated={(urls) => {
+          if (!urls.length) return;
+          setImg({ url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls });
+          setEditKind("card");
+          setEditFormat(defaultContentEditFormat("card"));
+        }}
         onGenerateVideo={generateShortVideo}
         videoBusy={busy === "숏폼 영상 만드는 중"}
         imageStyleId={imageStyleId}
@@ -1786,7 +1819,12 @@ export default function StudioPage() {
       {showWizard && activeWorkspace ? <LearningCardWizard workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onSaved={(info, completed) => { setLearningInfo(info); if (completed) { setShowWizard(false); mutateBrand(); showToast("학습 정보를 배웠습니다"); } else { setLearningFlash((value) => value + 1); } }} onClose={() => setShowWizard(false)} /> : null}
       {showRepo && activeWorkspace ? <RepoConnect workspace={activeWorkspace} onSynced={() => { mutateBrand(); showToast("브랜드 가이드 갱신됨"); }} onClose={() => setShowRepo(false)} /> : null}
       {roomHeader}
-      <GettingStartedStrip connectedCount={accountsLoaded && connectedTargets.length === 0 ? 0 : undefined} />
+      <GettingStartedStrip
+        connectedCount={accountsLoaded && connectedTargets.length === 0 ? 0 : undefined}
+        learningFilled={countFilledUserSlots(learningInfo, { guide })}
+        learningTotal={LEARNING_USER_SLOT_TOTAL}
+        onOpenLearning={() => setShowWizard(true)}
+      />
       {/*
         연결된 채널이 하나도 없으면 발행실에서는 무엇을 눌러도 아무 데도 안 올라간다.
         그 안내를 종전에는 시작 스트립에 기대고 있었다. 그런데 그 줄은 진행 칸이 다 차면
@@ -1804,6 +1842,23 @@ export default function StudioPage() {
           </Link>
         </div>
       ) : null}
+      <section data-testid="publish-learning-context" className="mb-pad-inset rounded-surface border border-accent/30 bg-accent-soft p-stack">
+        <div className="flex flex-wrap items-start gap-stack">
+          <div className="mr-auto min-w-0">
+            <b className="block text-body-sm text-text">이 작업 공간이 배운 기준</b>
+            <p className="mt-micro break-keep text-caption text-muted">다음 생성과 다시 만들기에 이어집니다. 지금 본문은 아래 미리보기에서 확인하고, 바꿀 내용은 편집실에서 고칩니다.</p>
+          </div>
+          <Button size="sm" variant="secondary" onClick={() => setShowWizard(true)}>학습 정보 고치기</Button>
+        </div>
+        <dl className="mt-stack flex flex-wrap gap-stack-tight">
+          {publishLearningRows.map(([label, value]) => (
+            <div key={label} className="min-w-0 rounded-pill border border-accent/20 bg-surface px-stack py-stack-tight text-caption text-muted" title={value}>
+              <dt className="sr-only">{label}</dt>
+              <dd className="max-w-full truncate">{label}: {value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
       <section data-room="publish" className="grid gap-stack-section pb-wide lg:grid-cols-[minmax(0,1fr)_20rem] lg:pb-none">
         <div className="min-w-0 space-y-region">
           {/*
@@ -1824,9 +1879,11 @@ export default function StudioPage() {
             </div>
           ) : null}
           <section data-room-top="publish" aria-label="이 방에서 지금 알아야 할 것" className="flex min-h-control-touch flex-wrap items-center gap-stack rounded-surface border border-border bg-surface px-pad-inset py-stack">
-            <b className="text-lead text-accent">{selectedTargets.length}곳</b>
-            <span className="mr-auto text-caption text-subtle">
-              발행할 채널 · 연결된 곳 {connectedTargets.length}
+            <b className="text-lead text-accent">{accountsLoaded ? publishTargets.length : selectedTargets.length}곳</b>
+            <span data-testid="publish-availability" className="mr-auto text-caption text-subtle">
+              {accountsLoaded
+                ? `선택 ${selectedTargets.length}곳 · 실제 발행 가능 ${publishTargets.length}곳 · 연결된 채널 ${connectedTargets.length}곳`
+                : "발행 가능한 계정을 확인하는 중입니다"}
             </span>
             <Button
               size="sm"

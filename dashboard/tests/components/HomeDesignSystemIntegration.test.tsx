@@ -3,7 +3,8 @@ import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import HomePage, { PerformanceDashboard } from "@/app/page";
+import HomePage from "@/app/page";
+import { PerformanceDashboard } from "@/components/home/PerformanceDashboard";
 
 const mocks = vi.hoisted(() => ({
   apiPost: vi.fn(),
@@ -200,6 +201,16 @@ describe("Home design-system migration interactions", () => {
     expect(mocks.mutateMetrics).toHaveBeenCalled();
   });
 
+  it("FE-V63-10 회귀: 성과 재수집 CTA는 올린 글별 성적을 펼치지 않아도 보인다", () => {
+    // Regression: 실제 회원 성과실에서 안내 문구는 CTA를 가리켰지만 버튼이 접힌 details 안에 있었다.
+    // Found by /qa on 2026-09-12
+    render(<HomePage />);
+
+    const collectButton = screen.getByRole("button", { name: "성과 다시 수집하기" });
+    expect(collectButton).toBeVisible();
+    expect(collectButton.closest("details")).toBeNull();
+  });
+
   it("FE5-PERF-01 정상 경로: 통한 글에서 성과 제안을 실제 API로 불러온다", async () => {
     mocks.posts = [1200, 900, 500, 300, 100].map((views, index) => ({
       id: `post-${index}`,
@@ -212,8 +223,6 @@ describe("Home design-system migration interactions", () => {
       replies: index,
     }));
     render(<HomePage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "이 결로 한 편 더" }));
 
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
       "/api/suggestions",
@@ -238,8 +247,6 @@ describe("Home design-system migration interactions", () => {
       return { ok: true };
     });
     render(<HomePage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "이 결로 한 편 더" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("제안을 불러오지 못했어요. 잠시 후 다시 받아 주세요.");
     expect(screen.getByRole("button", { name: "이 결로 한 편 더" })).toBeEnabled();
@@ -331,7 +338,7 @@ describe("Home design-system migration interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "이거 왜 잘 됐어" }));
 
     expect(await screen.findByText(/이 규칙을 배울까요\?/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "배우기" }));
+    fireEvent.click(screen.getByRole("button", { name: "그렇게 해" }));
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
       "/api/performance/learned-rules",
       expect.objectContaining({ tenant_id: "tenant-a" }),
