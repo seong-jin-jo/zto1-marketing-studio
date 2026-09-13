@@ -89,14 +89,41 @@ export function wrapLines(
   return out;
 }
 
+/** 글자를 카드 어디에 앉힐지. 편집실의 상단·중앙·하단과 같은 값이다. */
+export type CardTextVerticalPosition = "top" | "center" | "bottom";
+
 export type TextCardInput = {
   text: string;
   ratio: CardRatio;
   theme?: CardTheme;
+  /**
+   * 편집실에서 사용자가 옮긴 글자 자리.
+   *
+   * 2026-09-14 실측: 편집실에서 글자를 위로 올려도 내보내는 그림은 늘 한가운데였다.
+   * 화면에서 옮긴 것이 결과에 없으면 옮기는 기능은 없는 것과 같다.
+   */
+  position?: CardTextVerticalPosition;
   /** 몇 번째 장인지. 여러 장이면 사람은 순서를 먼저 찾는다. */
   index?: number;
   total?: number;
 };
+
+/**
+ * 글자 덩어리를 카드 세로 어디에 놓을지 계산한다. 캔버스가 없어도 시험할 수 있게 떼어 뒀다.
+ * 위·아래는 가장자리 여백 안쪽까지만 간다. 여백 밖으로 나가면 올릴 때 잘린다.
+ */
+export function cardTextTop(
+  position: CardTextVerticalPosition,
+  height: number,
+  blockHeight: number,
+  margin: number,
+): number {
+  if (position === "top") return Math.round(margin);
+  if (position === "bottom") return Math.round(Math.max(margin, height - margin - blockHeight));
+  // 글이 아주 길면 덩어리가 카드보다 커진다. 그때 가운데 값은 음수가 되어 첫 줄이 화면 위로
+  // 잘려 나간다. 잘릴 바에는 위에서부터 보이는 편이 낫다.
+  return Math.max(0, Math.round((height - blockHeight) / 2));
+}
 
 /**
  * 카드 한 장을 그려 PNG data URL 로 돌려준다.
@@ -136,7 +163,7 @@ export function renderTextCard(input: TextCardInput): string | null {
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   const lineHeight = fontSize * 1.45;
-  let y = Math.round((height - lines.length * lineHeight) / 2);
+  let y = cardTextTop(input.position ?? "center", height, lines.length * lineHeight, margin);
   for (const line of lines) {
     ctx.fillText(line, margin, y);
     y += lineHeight;

@@ -33,6 +33,7 @@ import {
   publishSlack,
   type PublishResult,
 } from "@/lib/publish";
+import { PUBLISH_IMAGE_LIMIT, channelImageCapacity } from "@/lib/studio/channel-image-capacity";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
 import {
   buildPlatformPublishText,
@@ -261,9 +262,21 @@ export async function POST(request: Request) {
   let publishImageUrls: string[] | undefined;
   if (image_urls !== undefined && (!Array.isArray(image_urls)
     || image_urls.length < 1
-    || image_urls.length > 10
+    || image_urls.length > PUBLISH_IMAGE_LIMIT
     || image_urls.some((value) => typeof value !== "string" || !value.trim()))) {
-    return Response.json({ ok: false, error: "이미지 목록은 1장 이상 10장 이하의 유효한 주소여야 합니다." }, { status: 400 });
+    return Response.json({ ok: false, error: `이미지 목록은 1장 이상 ${PUBLISH_IMAGE_LIMIT}장 이하의 유효한 주소여야 합니다.` }, { status: 400 });
+  }
+  /*
+    2026-09-14 교차리뷰(Codex) 지적: 서버는 열 장까지 다 받아 주는데 실제로 여러 장을 올리는
+    발행 함수는 인스타그램 하나뿐이었다. 나머지 채널로 열 장을 보내면 아홉 장이 조용히
+    사라진다. 조용히 버리는 것이 가장 나쁘다. 못 보내면 못 보낸다고 말하고 멈춘다.
+  */
+  if (Array.isArray(image_urls) && image_urls.length > channelImageCapacity(String(platform))) {
+    return Response.json({
+      ok: false,
+      code: "CHANNEL_IMAGE_CAPACITY_EXCEEDED",
+      error: `${platform} 은 한 번에 이미지 ${channelImageCapacity(String(platform))}장까지 올릴 수 있습니다. ${image_urls.length}장을 보내면 나머지가 올라가지 않으므로 발행을 시작하지 않았습니다.`,
+    }, { status: 422, headers: { "Cache-Control": "no-store" } });
   }
   const requestedImages = Array.isArray(image_urls) ? image_urls : image_url ? [image_url] : [];
   if (requestedImages.length > 0) {

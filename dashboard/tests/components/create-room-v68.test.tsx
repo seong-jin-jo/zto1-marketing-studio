@@ -188,11 +188,17 @@ describe("V68 생성실 계약", () => {
     await waitFor(() => {
       const error = document.querySelector("[data-text-card-error]")?.textContent;
       if (error) throw new Error(error);
-      expect(onTextCardsCreated).toHaveBeenCalledWith([
-        "http://localhost/api/images/deliver/signed-card",
-        "http://localhost/api/images/deliver/signed-card",
-        "http://localhost/api/images/deliver/signed-card",
-      ]);
+      // 2026-09-14: 그림 주소만 넘기면 편집실은 카드가 몇 장인지 모른다(실측: 3장이 `1 / 1`).
+      // 카드에 적힌 글자를 두 번째 인자로 함께 넘긴다.
+      expect(onTextCardsCreated).toHaveBeenCalledWith(
+        [
+          "http://localhost/api/images/deliver/signed-card",
+          "http://localhost/api/images/deliver/signed-card",
+          "http://localhost/api/images/deliver/signed-card",
+        ],
+        expect.arrayContaining([expect.any(String)]),
+      );
+      expect(onTextCardsCreated.mock.calls[0][1]).toHaveLength(3);
     });
     expect(fetchMock.mock.calls.filter(([input]) => String(input) === "/api/images/upload")).toHaveLength(3);
     expect(document.querySelector("[data-text-card-result]" )).toHaveAttribute("data-text-card-result", "3");

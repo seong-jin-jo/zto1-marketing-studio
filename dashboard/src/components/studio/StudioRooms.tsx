@@ -19,7 +19,8 @@ import {
 import { getAuthToken } from "@/lib/auth";
 import { workspaceDisplayName } from "@/lib/workspace-display-name";
 import { IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
-import { renderTextCard, themeFromPalette, type CardRatio } from "@/lib/studio/text-card-image";
+import { themeFromPalette, type CardRatio } from "@/lib/studio/text-card-image";
+import { browserCardUploader, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
 import {
   CARD_ASPECT_RATIOS,
   EDIT_BACKGROUNDS,
@@ -197,8 +198,16 @@ interface CreateRoomProps {
   quickDraftError?: string | null;
   /** 카드뉴스 대표 이미지 생성. 비용 승인 관문은 호출부가 담당한다. */
   onGenerateCardImages?: () => Promise<void>;
-  /** 무료 글자 카드를 작업 공간 자산으로 저장한 뒤 편집·발행 상태에 연결한다. */
-  onTextCardsCreated?: (urls: string[]) => void;
+  /**
+   * 무료 글자 카드를 작업 공간 자산으로 저장한 뒤 편집·발행 상태에 연결한다.
+   *
+   * 그림 주소만 넘기면 편집실은 카드가 몇 장인지 모른다. 실제로 그래서 3장을 만들어도
+   * 편집실이 `1 / 1` 을 그렸다(2026-09-14 실측). 카드에 적힌 글자를 같이 넘겨야
+   * 편집실 목록과 발행 그림의 장수가 맞는다.
+   */
+  onTextCardsCreated?: (urls: string[], lines: string[]) => void;
+  /** 글자 카드를 어느 비율로 그릴지. 화면에서 고른 값이 실제 픽셀이 된다. */
+  cardRatio?: CardRatio;
   /** 숏폼 영상 생성. 카드뉴스와 같이 비용 승인 관문은 호출부가 담당한다. */
   onGenerateVideo?: () => Promise<void>;
   videoBusy?: boolean;
@@ -359,7 +368,7 @@ function useLearnedRules(workspaceId: string): string {
   return text;
 }
 
-export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
+export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardRatio = "4:5", cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
   const topicInputRef = useRef<HTMLInputElement>(null);
   const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
   const [primaryKind, setPrimaryKind] = useState<CreateKind | null>(null);
@@ -721,26 +730,16 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     setTextCardError(null);
     setTextCardBusy(true);
     try {
+      // 비율을 여기서 "4:5" 로 박아 두었더니 화면에서 무엇을 고르든 픽셀이 늘 1080×1350
+      // 하나였다(2026-09-14 실측). 고른 값을 그대로 쓴다.
       const theme = themeFromPalette(learning.palette);
-      const ratio: CardRatio = "4:5";
-      const made = source
-        .map((line, index) => renderTextCard({ text: line, ratio, theme, index, total: source.length }))
-        .filter((one): one is string => Boolean(one));
-      if (!made.length) { setTextCardError("이 브라우저에서는 카드를 그릴 수 없습니다."); return; }
-      const persisted: string[] = [];
-      for (let index = 0; index < made.length; index += 1) {
-        const blob = await fetch(made[index]).then((response) => response.blob());
-        const form = new FormData();
-        form.append("file", new File([blob], `text-card-${index + 1}.png`, { type: "image/png" }));
-        const response = await fetch("/api/images/upload", { method: "POST", headers: authHeaders(), body: form });
-        const payload = await response.json().catch(() => ({})) as { url?: string; error?: string };
-        if (!response.ok || !payload.url) {
-          throw new Error(payload.error || `글자 카드 ${index + 1}장을 저장하지 못했습니다`);
-        }
-        persisted.push(payload.url);
-      }
+      const lines = source.filter((line) => line.trim().length > 0);
+      const persisted = await renderAndUploadCardDeck(
+        { lines, ratio: cardRatio, theme },
+        { upload: browserCardUploader(authHeaders()) },
+      );
       setTextCards(persisted);
-      onTextCardsCreated?.(persisted);
+      onTextCardsCreated?.(persisted, lines);
     } catch (error) {
       setTextCardError(error instanceof Error ? error.message : "글자 카드를 저장하지 못했습니다");
     } finally {
@@ -1169,6 +1168,13 @@ interface EditRoomProps {
   previewReady?: boolean;
   /** 생성실 산출물 주소. 편집실이 실제로 만든 것을 보여 주기 위해 받는다(2026-09-08). */
   previewImageUrl?: string | null;
+  /**
+   * 카드뉴스 한 벌 전체의 그림 주소.
+   *
+   * 2026-09-14 실측: 카드 3장을 만들어도 편집실은 대표 한 장만 받아 `1 / 1` 을 그렸다.
+   * 장마다 그림이 다르므로 장 목록과 같은 길이의 목록으로 받는다.
+   */
+  previewImageUrls?: string[] | null;
   previewVideoUrl?: string | null;
   commandPanel?: ReactNode;
   initialFormat?: ContentEditFormat;
@@ -1289,6 +1295,7 @@ export function EditRoom({
   onKindChange,
   previewReady = false,
   previewImageUrl = null,
+  previewImageUrls = null,
   previewVideoUrl = null,
   commandPanel,
   initialFormat,
@@ -1476,6 +1483,9 @@ export function EditRoom({
                               // 영상은 대표 이미지를 움직여 만든다. 영상이 아직 없으면 그 바탕이 된
                               // 이미지를 보여 주는 편이 자리표시자보다 결과에 가깝다.
                               mediaUrl={(kind === "video" ? (previewVideoUrl || previewImageUrl) : previewImageUrl) || undefined}
+                              // 카드뉴스는 장마다 그림이 다르다. 한 벌을 통째로 넘겨 고른 장의
+                              // 그림을 그린다(2026-09-14 실측: 늘 대표 한 장만 보였다).
+                              mediaUrls={kind === "card" ? (previewImageUrls ?? undefined) : undefined}
                               mediaType={kind === "video" && previewVideoUrl ? "video" : "image"}
                               // 만료된 배달 주소를 되살릴 때 어느 작업 공간인지 함께 보낸다.
                               // 없으면 운영자 경로에서 401 로 닫힌다(2026-09-13).

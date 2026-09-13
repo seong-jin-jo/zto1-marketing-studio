@@ -26,6 +26,9 @@ import { RepoConnect } from "@/components/studio/RepoConnect";
 import { SchedulePanel } from "@/components/studio/SchedulePanel";
 import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
+import { browserCardUploader, cardRatioFrom, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
+import { limitedChannelNotice, planChannelImages } from "@/lib/studio/channel-image-capacity";
+import { themeFromPalette } from "@/lib/studio/text-card-image";
 import { CHANNEL_TEXT_LIMITS, countTextCharacters } from "@/lib/channel-text-limits";
 import { Button } from "@/components/shared/Button";
 import { CostApprovalDialog, type CostApprovalRequest } from "@/components/studio/CostApprovalDialog";
@@ -480,6 +483,11 @@ export default function StudioPage() {
   const [learningFlash, setLearningFlash] = useState(0);
   const [editKind, setEditKind] = useState<EditContentKind>("video");
   const [editFormat, setEditFormat] = useState<ContentEditFormat>(() => defaultContentEditFormat("video"));
+  // 카드 비율 하나만 본다. 생성실도 편집실도 발행 그림도 이 값을 쓴다.
+  // 종전에는 생성실이 "4:5" 를 코드에 박아 두어 무엇을 골라도 픽셀이 1080×1350 하나였다.
+  const cardAspectRatio = editFormat.kind === "card" ? editFormat.aspectRatio : "4:5";
+  // 발행에 실을 카드 한 벌. 여러 장이면 여러 장 그대로, 없으면 대표 한 장.
+  const publishDeck = img?.imageUrls?.length ? img.imageUrls : img?.url ? [img.url] : [];
   const [editing, setEditing] = useState<PreviewPlatform | null>(null);
   const [showTx, setShowTx] = useState(false);
   const { data: tx } = useSWR<{ items?: Array<{ display_name?: string; credits?: number; action?: string; created_at?: string; output?: string | null; outputKind?: string | null }> }>(
@@ -942,13 +950,15 @@ export default function StudioPage() {
     reconciliations: PublishReconciliationMap = publishReconciliations,
     persistedDraftId: string | null = draftId,
     persistedEditLines: string[] = editLines,
+    // 방금 다시 그린 카드는 아직 상태에 반영되기 전이다. 상태를 기다리면 옛 그림이 저장된다.
+    persistedImg: ImgResult | null = img,
   ) {
     const r = await apiPost<{ id?: string }>("/api/studio/drafts", {
       tenant_id: activeWorkspace?.id,
       id: persistedDraftId,
       idea,
       text,
-      img,
+      img: persistedImg,
       vid,
       includes,
       status,
@@ -980,6 +990,37 @@ export default function StudioPage() {
       showToast(extractApiErrorMessage(error, "초안을 저장하지 못했습니다"), "error");
     }
   }
+  /**
+   * 편집실에서 고친 글자와 자리와 비율로 카드를 **다시 그려** 저장한다.
+   *
+   * 2026-09-14 실측: 편집실에서 글자를 고치고 비율을 1:1 로 바꿔도 발행실에는 옛 그림이
+   * 그대로 있었다. 편집실 미리보기는 그림 위에 글자를 얹어 보여 줄 뿐 합성이 없었기
+   * 때문이다. 나가는 그림을 생성실과 같은 렌더러(renderTextCard)로 다시 그려 그 불일치를
+   * 없앤다(설계 §2.2).
+   *
+   * 못 그리면 막지 않고 밝힌다. 그리기는 브라우저 캔버스에 달려 있어 환경에 따라 없을 수
+   * 있고, 그때 발행실로 가는 길까지 닫으면 사용자는 이유도 모른 채 갇힌다.
+   */
+  async function recompositeCards(lines: string[]): Promise<ImgResult | null> {
+    if (editKind !== "card") return null;
+    if (!lines.some((line) => line.trim())) return null;
+    try {
+      const urls = await renderAndUploadCardDeck({
+        // 빈 줄을 여기서 먼저 걷어내면 글자 자리 목록과 장 번호가 한 칸씩 어긋난다.
+        // 걷어내기는 카드 한 벌을 만드는 쪽이 원래 번호를 아는 채로 한다.
+        lines,
+        ratio: cardRatioFrom(cardAspectRatio),
+        theme: themeFromPalette(learningInfo.palette),
+        positions: cardTextPositions,
+      }, { upload: browserCardUploader(authHeaders()) });
+      const next: ImgResult = { url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls };
+      setImg(next);
+      return next;
+    } catch (error) {
+      showToast(extractApiErrorMessage(error, "고친 글자를 카드 그림에 다시 그리지 못했습니다. 발행실에는 이전 그림이 실립니다."), "error");
+      return null;
+    }
+  }
   async function moveToPublish() {
     const linesToPersist = editLines.length ? editLines : [text?.shorts?.hook || "", text?.shorts?.body || "", text?.shorts?.cta || ""].filter(Boolean);
     if (!linesToPersist.some((line) => line.trim())) {
@@ -988,7 +1029,8 @@ export default function StudioPage() {
     }
     setMoveToPublishBusy(true);
     try {
-      const savedDraftId = await save("draft", publishReconciliations, draftId, linesToPersist);
+      const redrawn = await recompositeCards(linesToPersist);
+      const savedDraftId = await save("draft", publishReconciliations, draftId, linesToPersist, redrawn ?? img);
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
       if (!editLines.length) setEditLines(linesToPersist);
       changeRoom("publish");
@@ -1135,8 +1177,15 @@ export default function StudioPage() {
           return;
         }
         const r = await apiPost<{ ok?: boolean; partial?: boolean; permalink?: string; error?: string; firstComment?: { ok?: boolean; error?: string } }>("/api/publish", {
-          tenant_id: activeWorkspace.id, platform: p, text: publishText(p), image_url: img?.url,
-          image_urls: p === "instagram" ? img?.imageUrls : undefined, draft_id: did,
+          tenant_id: activeWorkspace.id, platform: p,
+          text: publishText(p),
+          // 채널이 몇 장까지 받는지는 채널 규격 한 자리에서 정한다(channel-image-capacity.ts).
+          // 종전에는 인스타그램만 여러 장이었고 나머지는 대표 한 장으로 조용히 잘렸다.
+          image_url: planChannelImages(p, publishDeck).images[0] ?? img?.url,
+          image_urls: planChannelImages(p, publishDeck).images.length > 1
+            ? planChannelImages(p, publishDeck).images
+            : undefined,
+          draft_id: did,
           publish_fields: platformPublishInput(p),
           account_id: selectedAccounts[p] || undefined,
           first_comment: capabilityFor(p).supported && firstComments[p]?.trim() ? firstComments[p].trim() : undefined,
@@ -1761,12 +1810,20 @@ export default function StudioPage() {
         quickDraftError={lastError}
         onQuickDraftGenerate={generateQuickDraft}
         onGenerateCardImages={generateCardImages}
-        onTextCardsCreated={(urls) => {
+        onTextCardsCreated={(urls, cardLines) => {
           if (!urls.length) return;
           setImg({ url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls });
           setEditKind("card");
-          setEditFormat(defaultContentEditFormat("card"));
+          setEditFormat((current) => {
+            const base = defaultContentEditFormat("card");
+            // 고른 비율은 지킨다. 카드로 형식을 바꿀 때마다 4:5 로 되돌리면 고른 값이 사라진다.
+            return base.kind === "card" ? { ...base, aspectRatio: cardAspectRatio } : current;
+          });
+          // 그림만 넘기면 편집실은 카드가 몇 장인지 모른다. 실제로 그래서 3장을 만들어도
+          // 편집실이 `1 / 1` 을 그렸다(2026-09-14 실측). 장에 적힌 글자를 같이 넘긴다.
+          if (cardLines.length) setEditLines(cardLines);
         }}
+        cardRatio={cardAspectRatio}
         onGenerateVideo={generateShortVideo}
         videoBusy={busy === "숏폼 영상 만드는 중"}
         imageStyleId={imageStyleId}
@@ -1802,6 +1859,7 @@ export default function StudioPage() {
         onFormatChange={setEditFormat}
         previewReady={editKind === "video" ? Boolean(vid?.file) : editKind === "card" ? Boolean(img?.file) : false}
         previewImageUrl={img?.file || img?.url || null}
+        previewImageUrls={img?.imageUrls ?? null}
         previewVideoUrl={vid?.file || vid?.url || null}
         cardTextPositions={cardTextPositions}
         onCardTextPositionsChange={setCardTextPositions}
@@ -1841,6 +1899,16 @@ export default function StudioPage() {
             채널 연결하기
           </Link>
         </div>
+      ) : null}
+      {/*
+        2026-09-14 실측: 카드를 여러 장 만들어도 대부분의 채널에는 첫 장만 올라간다.
+        우리 발행 코드가 여러 장을 실제로 보낼 수 있는 곳은 인스타그램뿐이다.
+        받을 수 있는 척하고 조용히 버리면 그건 거짓말이다. 몇 장 중 몇 장이 나가는지 밝힌다.
+      */}
+      {limitedChannelNotice(publishTargets, publishDeck.length, (platform) => LABEL[platform as keyof typeof LABEL] ?? platform) ? (
+        <p data-testid="publish-image-capacity" role="status" className="mb-pad-inset break-keep rounded-surface border border-warning/40 bg-warning/10 px-stack py-stack-tight text-caption text-warning">
+          {limitedChannelNotice(publishTargets, publishDeck.length, (platform) => LABEL[platform as keyof typeof LABEL] ?? platform)}
+        </p>
       ) : null}
       <section data-testid="publish-learning-context" className="mb-pad-inset rounded-surface border border-accent/30 bg-accent-soft p-stack">
         <div className="flex flex-wrap items-start gap-stack">

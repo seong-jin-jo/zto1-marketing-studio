@@ -55,10 +55,12 @@ describe("생성실 배선 계약", () => {
   });
 
   it("시험 18 정상: 저장된 글자 카드 묶음을 초안과 편집실과 발행실이 함께 쓰는 img 상태로 잇는다", () => {
-    expect(roomsSrc).toContain("onTextCardsCreated?.(persisted)");
-    expect(pageSrc).toContain("onTextCardsCreated={(urls) => {");
+    // 2026-09-14 갱신. 콜백이 글자까지 함께 넘기도록 계약이 넓어졌고(편집실 장수),
+    // 인스타그램만 여러 장이라는 하드코딩은 채널 규격표(channel-image-capacity.ts)로 옮겼다.
+    expect(roomsSrc).toContain("onTextCardsCreated?.(persisted, lines)");
+    expect(pageSrc).toContain("onTextCardsCreated={(urls, cardLines) => {");
     expect(pageSrc).toContain("imageUrls: urls");
     expect(pageSrc).toContain("imageUrls: img?.imageUrls");
-    expect(pageSrc).toContain('image_urls: p === "instagram" ? img?.imageUrls : undefined');
+    expect(pageSrc).toContain("image_urls: planChannelImages(p, publishDeck).images.length > 1");
   });
 });

@@ -101,6 +101,7 @@ export function EditPreview({
   subtitleSize = "보통",
   renderReady = false,
   mediaUrl,
+  mediaUrls,
   mediaType = "image",
   tenantId,
   onLinesChange,
@@ -126,6 +127,13 @@ export function EditPreview({
    * 방이 정작 만든 것을 안 보여 준 셈이다.
    */
   mediaUrl?: string;
+  /**
+   * 장마다 다른 산출물 주소. 카드뉴스처럼 한 벌이 여러 장인 형식에서 쓴다.
+   *
+   * 2026-09-14 실측: 카드 3장을 만들어도 편집실은 대표 한 장만 받아 어느 장을 눌러도
+   * 같은 그림이었다. 고른 장의 그림이 있으면 그것을 먼저 그린다.
+   */
+  mediaUrls?: string[];
   /** mediaUrl 이 실제로 무엇인지. 영상 편집 중에도 바탕 이미지를 보여 줄 수 있으므로
    *  화면 종류가 아니라 파일 종류로 태그를 고른다. */
   mediaType?: "image" | "video";
@@ -153,6 +161,7 @@ export function EditPreview({
   const line = lines[activeLine] ?? lines[0] ?? "";
   const unit = kind === "card" ? "장" : kind === "text" ? "문단" : "장면";
   const cardPosition = cardTextPositions[activeLine] ?? "center";
+  const activeMediaUrl = mediaUrls?.[activeLine] ?? mediaUrl;
   const cardVerticalPosition = cardPosition.startsWith("top") ? "top" : cardPosition.startsWith("bottom") ? "bottom" : "center";
   const movingCardText = useRef(false);
   // 자막이 아래 UI가 덮는 자리 안으로 들어가면 실제 업로드 화면에서 가린다.
@@ -195,10 +204,10 @@ export function EditPreview({
           {/* 만든 것을 배경으로 깔고 그 위에 글자와 자막을 얹는다. 실제 결과에 가깝게 보여야
               무엇을 고칠지 판단할 수 있다. 종전에는 이 자리가 비어 "여기에 화면이 놓입니다"
               라는 자리표시자만 있었다(2026-09-08 회장 실사용). */}
-          {mediaUrl ? (
+          {activeMediaUrl ? (
             <DeliveredMedia
               type={mediaType === "video" ? "video" : "image"}
-              src={mediaUrl}
+              src={activeMediaUrl}
               tenantId={tenantId}
               alt="방금 만든 산출물 미리보기"
               dataAttr={{ "data-edit-preview-media": mediaType === "video" ? "video" : "image" }}
