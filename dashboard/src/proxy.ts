@@ -33,6 +33,13 @@ const TENANT_AWARE_PATHS = [
   "/api/channel-config/[channel]",
   // 인스타그램 채널 화면이 카드뉴스 개요와 장을 만들 때 부른다. 목록에 없어 403 이었다
   // (2026-09-14 고객 토큰으로 직접 확인). 회장이 지목한 카드뉴스 기능이 여기서 막혔다.
+  // 고객 화면이 부르는데 목록에 없어 403 이던 것들. 2026-09-14 고객 토큰으로 하나씩 직접
+  // 불러 확인했다. 이미지 고르기 창(ImagePickerModal), 채널 콘텐츠 안내(ContentGuide),
+  // 키워드 편집(KeywordsEditor), 인스타그램 채널 화면이 각각 부른다.
+  "/api/ai-suggest/guide",
+  "/api/ai-suggest/keywords",
+  "/api/generate-image",
+  "/api/midjourney/generate",
   "/api/card-news/generate",
   "/api/card-news/outline",
   "/api/channel-config",
