@@ -31,6 +31,10 @@ const TENANT_AWARE_PATHS = [
   "/api/brand/sync-repo",
   "/api/brand/sync-wiki",
   "/api/channel-config/[channel]",
+  // 인스타그램 채널 화면이 카드뉴스 개요와 장을 만들 때 부른다. 목록에 없어 403 이었다
+  // (2026-09-14 고객 토큰으로 직접 확인). 회장이 지목한 카드뉴스 기능이 여기서 막혔다.
+  "/api/card-news/generate",
+  "/api/card-news/outline",
   "/api/channel-config",
   "/api/channel-settings/[channel]",
   "/api/channel-settings",
@@ -125,6 +129,9 @@ const TENANT_AWARE_PATHS = [
   "/api/studio/text",
   // 2026-09-06 회장 확정으로 이미지·영상 생성을 고객에게 열었다. 두 라우트는
   // effectiveTenantId 로 테넌트를 확인하고 사용량을 그 작업 공간에 남긴다.
+  // 생성기가 살아 있는지 화면이 묻는 경로. 생성실이 부르는데 목록에 없어 403 이었다
+  // (2026-09-14 고객 토큰으로 직접 확인). 상태를 못 읽으면 화면이 왜 안 되는지 말할 수 없다.
+  "/api/higgsfield/status",
   "/api/higgsfield/image",
   "/api/higgsfield/video",
   // 만든 그림과 영상을 화면이 불러오는 경로. 여기 없으면 만들기는 되는데 화면에 안 뜬다
