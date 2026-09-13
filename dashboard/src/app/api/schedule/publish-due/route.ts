@@ -1,9 +1,11 @@
+import crypto from "node:crypto";
 import { db, withTenant } from "@/lib/db";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { reportFailure, reportRecovery, normalizePlatform, classifyPublishFailure } from "@/lib/observability";
 import { normalizeIncidentSource } from "@/lib/observability/incidents";
 import { refreshImageDeliveryUrl } from "@/lib/image-token";
 import { SCHEDULABLE_PLATFORMS } from "@/lib/constants";
+import { channelImageCapacity } from "@/lib/studio/channel-image-capacity";
 import { runWithTenant } from "@/lib/tenant-context";
 import { drainQueueMirrorOutbox, listQueueMirrorOutboxTenantIds } from "@/lib/queue-mirror-outbox";
 import {
@@ -38,6 +40,7 @@ interface DueScheduleRow {
   platforms: string[] | null;
   payload: Record<string, unknown> | null;
   draft_payload: Record<string, unknown> | null;
+  worker_token: string;
 }
 
 interface PlatformPublishResult extends PublishResult {
@@ -50,6 +53,7 @@ interface PlatformPublishResult extends PublishResult {
 const SUPPORTED_PLATFORMS = new Set<string>(SCHEDULABLE_PLATFORMS);
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 25;
+const SCHEDULE_LEASE_MS = 15 * 60 * 1000;
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as PublishDueBody;
@@ -93,6 +97,11 @@ async function processTenant(tenantId: string, limit: number) {
       results.push({ platform: "(none)", ok: false, error: "platforms 없음" });
     } else {
       for (const platform of platforms) {
+        const leaseOwned = await renewScheduleLease(tenantId, row.id, row.worker_token);
+        if (!leaseOwned) {
+          results.push({ platform, ok: false, error: "예약 처리 소유권이 만료되어 발행을 중단했습니다." });
+          break;
+        }
         const requestedAccountId = accountIdForPlatform(row.payload, platform);
         const { resolvedAccountId, ...result } = await publishOne(tenantId, row, platform, requestedAccountId);
         // results.accountId는 감사/응답용이라 요청값으로 폴백해도 안전(FK 아님) — 그러나 DB 기록
@@ -129,7 +138,7 @@ async function processTenant(tenantId: string, limit: number) {
     }
 
     const status = scheduleStatus(results);
-    await finishSchedule(tenantId, row.id, status, results);
+    await finishSchedule(tenantId, row.id, row.worker_token, status, results);
     schedules.push({ id: row.id, status, results });
   }
   return schedules;
@@ -165,20 +174,38 @@ function clampLimit(value: unknown): number {
 }
 
 async function claimDueSchedules(tenantId: string, limit: number): Promise<DueScheduleRow[]> {
-  return withTenant(tenantId, (sql) => sql<DueScheduleRow[]>`
+  const workerToken = crypto.randomUUID();
+  const now = new Date();
+  const lease = {
+    processingLease: {
+      workerToken,
+      startedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + SCHEDULE_LEASE_MS).toISOString(),
+    },
+  };
+  const rows = await withTenant(tenantId, (sql) => sql<DueScheduleRow[]>`
     WITH due AS (
       SELECT id
       FROM schedules
       WHERE tenant_id = ${tenantId}
-        AND status = 'scheduled'
-        AND scheduled_at <= now()
+        AND (
+          (status = 'scheduled' AND scheduled_at <= now())
+          OR (
+            status = 'processing'
+            AND COALESCE(
+              NULLIF(payload->'processingLease'->>'expiresAt', '')::timestamptz,
+              scheduled_at
+            ) <= now()
+          )
+        )
       ORDER BY scheduled_at ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
     ),
     claimed AS (
       UPDATE schedules
-      SET status = 'processing'
+      SET status = 'processing',
+          payload = COALESCE(payload, '{}'::jsonb) || ${sql.json(lease as never)}::jsonb
       WHERE id IN (SELECT id FROM due)
       RETURNING id, tenant_id, draft_id, platforms, payload
     )
@@ -187,12 +214,33 @@ async function claimDueSchedules(tenantId: string, limit: number): Promise<DueSc
       claimed.draft_id,
       claimed.platforms,
       claimed.payload,
-      drafts.payload AS draft_payload
+      drafts.payload AS draft_payload,
+      ${workerToken}::text AS worker_token
     FROM claimed
     LEFT JOIN drafts
       ON drafts.id = claimed.draft_id
      AND drafts.tenant_id = ${tenantId}
   `);
+  return rows.map((row) => ({ ...row, worker_token: row.worker_token || workerToken }));
+}
+
+async function renewScheduleLease(tenantId: string, scheduleId: string, workerToken: string): Promise<boolean> {
+  const expiresAt = new Date(Date.now() + SCHEDULE_LEASE_MS).toISOString();
+  const rows = await withTenant(tenantId, (sql) => sql<{ id: string }[]>`
+    UPDATE schedules
+    SET payload = jsonb_set(
+      COALESCE(payload, '{}'::jsonb),
+      '{processingLease,expiresAt}',
+      to_jsonb(${expiresAt}::text),
+      true
+    )
+    WHERE id = ${scheduleId}
+      AND tenant_id = ${tenantId}
+      AND status = 'processing'
+      AND payload->'processingLease'->>'workerToken' = ${workerToken}
+    RETURNING id
+  `);
+  return rows.length === 1;
 }
 
 async function publishOne(
@@ -217,9 +265,16 @@ async function publishOne(
   }
 
   const text = textForPlatform(platform, row.payload, row.draft_payload);
-  const storedImageUrl = imageUrlFromPayload(row.payload, row.draft_payload);
-  let imageUrl: string | undefined;
-  if (storedImageUrl) {
+  const storedImageUrls = imageUrlsFromPayload(row.payload, row.draft_payload);
+  if (storedImageUrls.length > channelImageCapacity(platform)) {
+    return {
+      ok: false,
+      error: `${platform} 은 한 번에 이미지 ${channelImageCapacity(platform)}장까지 올릴 수 있습니다. ${storedImageUrls.length}장을 보내면 나머지가 올라가지 않으므로 발행을 시작하지 않았습니다.`,
+      resolvedAccountId: cred.accountId,
+    };
+  }
+  const imageUrls: string[] = [];
+  for (const storedImageUrl of storedImageUrls) {
     const refreshed = refreshImageDeliveryUrl(tenantId, storedImageUrl);
     if (!refreshed) {
       return {
@@ -228,13 +283,14 @@ async function publishOne(
         resolvedAccountId: cred.accountId,
       };
     }
-    imageUrl = refreshed;
+    imageUrls.push(refreshed);
   }
+  const imageUrl = imageUrls[0];
 
   try {
     let result: PublishResult;
     if (platform === "threads") result = await publishThreads(cred, text, imageUrl);
-    else if (platform === "instagram") result = await publishInstagram(cred, text, imageUrl);
+    else if (platform === "instagram") result = await publishInstagram(cred, text, imageUrls);
     else if (platform === "x") result = await publishX(cred, text);
     else if (platform === "facebook") result = await publishFacebook(cred, text, imageUrl);
     else if (platform === "bluesky") result = await publishBluesky(cred, text, imageUrl);
@@ -279,25 +335,43 @@ function textForPlatform(
   return stringValue(text.threads);
 }
 
-function imageUrlFromPayload(
+function imageUrlsFromPayload(
   schedulePayload: Record<string, unknown> | null,
   draftPayload: Record<string, unknown> | null,
-): string | undefined {
+): string[] {
+  const list =
+    schedulePayload?.image_urls ??
+    schedulePayload?.imageUrls ??
+    draftPayload?.image_urls ??
+    draftPayload?.imageUrls;
+  if (Array.isArray(list)) {
+    const urls = list.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+    if (urls.length > 0) return urls;
+  }
+
+  const img = schedulePayload?.img ?? draftPayload?.img;
+  if (img && typeof img === "object") {
+    const imageUrls = (img as Record<string, unknown>).imageUrls;
+    if (Array.isArray(imageUrls)) {
+      const urls = imageUrls.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+      if (urls.length > 0) return urls;
+    }
+  }
+
   const direct =
     schedulePayload?.image_url ??
     schedulePayload?.imageUrl ??
     draftPayload?.image_url ??
     draftPayload?.imageUrl;
   const directValue = stringValue(direct);
-  if (directValue) return directValue;
+  if (directValue) return [directValue];
 
-  const img = schedulePayload?.img ?? draftPayload?.img;
-  if (typeof img === "string") return img;
+  if (typeof img === "string") return [img];
   if (img && typeof img === "object") {
     const url = stringValue((img as Record<string, unknown>).url);
-    if (url) return url;
+    if (url) return [url];
   }
-  return undefined;
+  return [];
 }
 
 function stringValue(value: unknown): string {
@@ -339,6 +413,7 @@ function scheduleStatus(results: PlatformPublishResult[]): "published" | "partia
 async function finishSchedule(
   tenantId: string,
   scheduleId: string,
+  workerToken: string,
   status: "published" | "partial" | "failed" | "uncertain",
   results: PlatformPublishResult[],
 ) {
@@ -352,5 +427,7 @@ async function finishSchedule(
         payload = COALESCE(payload, '{}'::jsonb) || ${sql.json(publishResultPayload as never)}::jsonb
     WHERE id = ${scheduleId}
       AND tenant_id = ${tenantId}
+      AND status = 'processing'
+      AND payload->'processingLease'->>'workerToken' = ${workerToken}
   `);
 }
