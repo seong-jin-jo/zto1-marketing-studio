@@ -1,3 +1,13 @@
+## 2026-09-14 08시 22분 - 최근 24시간 코드 공격 리뷰 BLOCK
+
+회장 요청 원문을 handoff basis로 사용했다. tmux는 공유 작업 여부 확인에만 참고했고 코드 판정 범위는 `39d32c58510565df52f330d01c0ac0d96cb0256d..fe24d05180b99b1c39e30e915b8557bd8e03d0fe`의 70커밋, 189파일로 고정했다. 사용자가 v63 프로토타입을 명시해 화면 계약 기준으로 썼다. `pipeline-state.osmu.md` 최신 승인 핀 v68, `DESIGN.md` 현행 전체 정본 v64와 충돌하므로 디자인 전체 PASS는 금지했다. 제품 코드는 수정하지 않았다.
+
+판정은 MAJOR 20건, MINOR 0건, `REVIEW_VERDICT: BLOCK`이다. 주요 결함은 고객에게 열린 전역 유료 에이전트 경로와 전역 이미지 폴더, 고객 토큰으로 실측된 Higgsfield 계정 정보 노출, Instagram 캐러셀 R2 키 덮어쓰기, 예약 발행 임차와 DB 기록 실패의 중복 발행, 복구 불가능한 publishing 큐, stale 잠금 회수 경쟁, Threads 자산의 공개 제3자 호스트 반출, 자막 실패 HTTP 200과 무제한 ffmpeg, seed 사용량 초기화, 성과 계정 오선택과 무백오프 재시도, 승인안에서 제거한 목차 방향 단추 복원이다. 상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-14.md`다.
+
+localhost health는 HTTP 200과 DB up이다. 지정 작업 공간에 임시 고객 토큰을 발급해 `/api/higgsfield/status`를 호출하자 HTTP 200과 `email`, `plan`, `credits`, `raw` 키가 반환됐고 토큰은 즉시 폐기했다. 전체 Vitest 342파일, 2,217건 통과와 3건 제외, TypeScript 종료 코드 0, 기본 흐름 11/11, Studio v1 14/14를 관찰했다. 초록 테스트는 이번 BLOCK 결함의 해소 증거가 아니다. 운영 배포와 외부 실제 발행은 미검증이고 pipeline 상태는 바꾸지 않았다.
+
+다음 소유자는 build 워커와 product-designer다. 고객 허용 목록과 전역 핸들러 경계를 먼저 닫고, 발행 멱등과 복구 상태를 영속화하며, 자막과 성과 수집의 자원 및 재시도 한도를 만든 뒤 각 재현 시나리오를 회귀 테스트로 고정해야 한다. product-designer는 v63, v64, v68 핀을 단일화하고 목차 재정렬 계약을 확정해야 한다. 종료 증거는 고객 토큰 전역 정보 0건, 동시 발행 1회, 실패 비성공 HTTP, 캐러셀 URL 장별 고유, 재시작 뒤 큐 복구, 전체 테스트와 두 E2E 재통과다.
+
 ## 2026-09-14 06시 40분 - 네 방 기본 흐름 기능 PASS, 제품 전체 NG
 
 회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`여서 단계와 승인 상태를 바꾸지 않았다. 실행 pane `osmu-flowcheck091406:0.0`은 이 QA 세션으로 확인했다.

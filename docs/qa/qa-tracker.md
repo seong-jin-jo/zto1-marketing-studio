@@ -2,6 +2,13 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 08시 22분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| REVIEW-20260914-R2 | 지난 24시간 70개 커밋의 돈, 격리, 동시성, 부분 실패, 삭제, 확정 요구 이탈 재검토 | REVIEW-ATTACK-R2 | BLOCK | 범위 `39d32c58510565df52f330d01c0ac0d96cb0256d..fe24d05180b99b1c39e30e915b8557bd8e03d0fe`, 189파일, 추가 11,113줄, 삭제 2,042줄. MAJOR 20건, MINOR 0건. 승인 시안 이탈 1건, 회귀 위험 19건, 토큰 위반과 무기록 삭제는 0건. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-14.md`. |
+| REVIEW-20260914-R2-RUNTIME | 지정 작업 공간 localhost 실제 요청과 필수 회귀 | REVIEW-ATTACK-R2-LIVE | BLOCK | health HTTP 200과 DB up. 임시 고객 토큰의 `/api/higgsfield/status`가 HTTP 200으로 전역 `email`, `plan`, `credits`, `raw`를 반환했고 토큰은 즉시 폐기. `npm run test` 342파일, 2,217건 통과, 3건 제외. TypeScript 종료 코드 0, 기본 흐름 11/11, Studio v1 14/14 통과. 자동 검증은 격리 결함을 잡지 못했다. |
+
 ## 2026-09-14 06시 40분 KST · 네 방 기본 흐름 기능 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
