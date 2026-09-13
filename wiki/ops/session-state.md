@@ -1,3 +1,13 @@
+## 2026-09-14 04시 33분 - 최근 24시간 코드 공격 리뷰 BLOCK
+
+회장 요청 원문을 handoff basis로 사용했다. tmux pane은 공유 작업 여부와 localhost 실행 상태 확인에만 참고했고, 코드 판정 범위는 착수 시점의 `b4ec9dbdb4eaaa52a9b5d80766ab2927431c2811..acb981ea484a113eaef87ef82f05d4edc43334bf` 47커밋, 184파일로 고정했다. 사용자가 v63 프로토타입을 명시해 이를 시안 기준으로 썼으며, `pipeline-state.osmu.md` 최신 승인 핀이 v68인 충돌은 보고서에 남겼다. 제품 코드는 수정하지 않았다.
+
+판정은 MAJOR 19건, MINOR 0건, `REVIEW_VERDICT: BLOCK`이다. 핵심은 OpenClaw Threads와 Instagram 발행기의 이미지 루트 밖 파일 반출, 승인 payload 바꿔치기, heartbeat와 소유권 없는 queue lock, 발행 중 lease 복구 교착, 예약 claim 영구 고아, 예약 Instagram 카드뉴스 단일 이미지 축소, 카드 객체 부분 저장, 편집 재합성 실패 뒤 옛 그림 성공 처리, 실제 발행 덱과 다른 미리보기, 성과 수집 중복 호출과 전체 실패 HTTP 200이다. 상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-14.md`다.
+
+직접 실행에서 queue lock 첫 작업은 1ms에 진입해 13,002ms에 끝났지만 둘째 작업이 10,254ms에 진입해 2.648초 겹쳤다. localhost health는 HTTP 200과 DB up, 지정 작업 공간의 기본 흐름은 11/11, Studio v1은 14/14, TypeScript는 종료 코드 0이었다. 전체 Vitest는 종료 코드 1이며 324파일 중 323 통과, 2,124건 중 2,120 통과, 3건 제외, 1건 실패다. 실패는 `dashboard/tests/studio/studio-fe2-rooms.test.tsx:239`의 접근 이름 계약이고 관련 파일은 고정 감사 범위 밖이라 최근 변경 지적 수에는 포함하지 않았다. 현재 공유 작업 트리의 미커밋 변경이 많아 실행 증거는 고정 HEAD의 해소 증거가 아니다. 운영 배포와 실제 외부 채널 발행은 미검증이고 pipeline 상태는 바꾸지 않았다.
+
+다음 소유자는 build 워커다. MAJOR를 수정한 새 고정 커밋 뒤 QA가 경로 탈출 차단, 승인 payload 결속, lock 중첩 0, `processing` lease 회수, 예약 카드 덱 보존, 부분 업로드 회수, 재합성 실패 이동 차단, 실제 미리보기와 발행 bytes 일치, 성과 중복 호출 0과 전 실패 비성공 HTTP를 재검증해야 한다. 기존 Vitest 접근 이름 실패도 원인 소유권을 확인해 전체 초록으로 돌려야 한다.
+
 ## 2026-09-13 16시 27분 - 최근 24시간 코드 재리뷰 BLOCK 갱신
 
 회장 요청 원문을 handoff basis로 사용했다. tmux pane은 동시 작업 충돌 여부와 localhost 실행 상태 확인에만 참고했다. 리뷰 범위는 착수 시점의 `8652fb5b29fecad7aa688b99ad1c2bab534d2fc4..e65a1d1b1aecbc11ce589ecf9db4183bf4d4296e` 71커밋, 283파일로 고정했다. 제품 코드는 수정하지 않았다.
