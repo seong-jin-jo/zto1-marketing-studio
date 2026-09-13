@@ -12,9 +12,13 @@ const outputDir = process.env.FOUR_ROOM_OUTPUT_DIR || path.resolve(process.cwd()
 const executablePath = process.env.FOUR_ROOM_CHROME_PATH || "/Users/sj/Library/Caches/ms-playwright/chromium-1228/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing";
 const dataRoot = process.env.DATA_DIR || path.resolve(process.cwd(), "../data");
 const settingsPath = path.join(dataRoot, "tenants", workspaceId, "settings.json");
+const readyTimeoutMs = Number(process.env.FOUR_ROOM_READY_TIMEOUT_MS || "120000");
 
 if (!operatorToken) throw new Error("DASHBOARD_AUTH_TOKEN이 필요합니다");
 if (!fs.existsSync(settingsPath)) throw new Error(`첫 사용자 설정 파일이 없습니다: ${settingsPath}`);
+if (!Number.isFinite(readyTimeoutMs) || readyTimeoutMs <= 0) {
+  throw new Error("FOUR_ROOM_READY_TIMEOUT_MS는 0보다 큰 숫자여야 합니다");
+}
 
 const widths = [390, 768, 1024, 1440];
 // 좁은 폭(390)과 어두운 화면은 QA가 넓은 화면·밝은 화면으로만 검증하고 넘어가기 쉽다
@@ -106,7 +110,11 @@ async function clickRoom(page, width, room) {
 async function measureRoom(page, width, room, theme = "light") {
   const tag = `${width}/${theme} ${room.label}`;
   if (room.key === "performance") {
-    await page.waitForFunction(() => Number(document.querySelector("[data-perf-suggestions]")?.getAttribute("data-perf-suggestions") || 0) >= 3);
+    await page.waitForFunction(
+      () => Number(document.querySelector("[data-perf-suggestions]")?.getAttribute("data-perf-suggestions") || 0) >= 3,
+      undefined,
+      { timeout: readyTimeoutMs },
+    );
   }
   const metrics = await page.evaluate((roomKey) => {
     const overlay = document.querySelector('[data-onboarding-mode="modal"], .fixed.inset-0.z-50');
@@ -189,7 +197,7 @@ try {
 
   if (consoleErrors.length) throw new Error(`브라우저 콘솔 오류 ${consoleErrors.length}건: ${consoleErrors.slice(0, 3).join(" | ")}`);
   if (unauthorizedUrls.length) throw new Error(`브라우저 401 ${unauthorizedUrls.length}건: ${unauthorizedUrls.slice(0, 3).join(" | ")}`);
-  fs.writeFileSync(path.join(outputDir, "observations.json"), JSON.stringify({ workspaceId, widths, observations, consoleErrors, unauthorizedUrls }, null, 2));
+  fs.writeFileSync(path.join(outputDir, "observations.json"), JSON.stringify({ workspaceId, widths, readyTimeoutMs, observations, consoleErrors, unauthorizedUrls }, null, 2));
   const totalRuns = observations.filter((entry) => entry.room !== "performance-to-create").length;
   console.log(`PASS 네 방 ${roomContracts.length}개 x ${widths.length}폭(390은 라이트+다크), 총 ${totalRuns}회 측정`);
   console.log(`PASS 가로 넘침 0px, 전체 화면 모달 0건, 브라우저 401 0건, 콘솔 오류 0건, 390 다크 테마 미적용 0건`);
