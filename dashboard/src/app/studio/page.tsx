@@ -28,6 +28,7 @@ import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
 import { browserCardUploader, cardRatioFrom, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
 import { limitedChannelNotice, planChannelImages } from "@/lib/studio/channel-image-capacity";
+import { decideVideoRequest, droppedMediaNotice, mediaTopicKey, stalePublishBlock } from "@/lib/studio/work-media";
 import { themeFromPalette } from "@/lib/studio/text-card-image";
 import { CHANNEL_TEXT_LIMITS, countTextCharacters } from "@/lib/channel-text-limits";
 import { Button } from "@/components/shared/Button";
@@ -197,11 +198,14 @@ interface TextVariants {
   shorts?: { hook?: string; body?: string; cta?: string };
   image_prompt?: string;
 }
-interface ImgResult { url: string; file: string; localPath: string; imageUrls?: string[] }
+// topicKey = 이 매체가 **어느 주제로** 만들어졌는지 찍는 도장(lib/studio/work-media.ts).
+// 도장이 없으면 새 주제에 어제 영상이 그대로 붙는다. 2026-09-14 실측 사고.
+interface ImgResult { url: string; file: string; localPath: string; imageUrls?: string[]; topicKey?: string }
 interface VidResult {
   url: string;
   file: string;
   model: string;
+  topicKey?: string;
   hasAudio?: boolean;
   narration?: { requested: boolean; included: boolean; reason?: string; message?: string };
 }
@@ -712,6 +716,13 @@ export default function StudioPage() {
         setDraftId(null);
         setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {} });
         setPublishReconciliations({});
+        // 2026-09-14 실측: 초안번호와 발행 흔적은 끊으면서 **그림과 영상만 그대로 뒀다.**
+        // 그래서 주제를 바꿔 새 초안을 만들어도 발행실에는 어제 주제의 영상이 붙어 있었고,
+        // 화면이 멀쩡해 보여 그대로 발행된다. 새 작업물에는 새 매체만 붙는다.
+        // 남기고 경고만 띄우는 안은 버렸다(근거: lib/studio/work-media.ts droppedMediaNotice).
+        const dropped = droppedMediaNotice({ img: Boolean(img), vid: Boolean(vid) });
+        setImg(null); setVid(null); setCardTextPositions([]);
+        if (dropped) showToast(dropped, "success");
         const nextKind = createPrimaryKind ?? "text";
         const nextLines = nextKind === "video"
           ? [result.shorts?.hook, result.shorts?.body, result.shorts?.cta].filter((line): line is string => Boolean(line))
@@ -757,7 +768,9 @@ export default function StudioPage() {
             : (r?.error || "이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
         setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
       }
-      setImg(r); mutateAcct(); return r;
+      // 만든 그림에 주제 도장을 찍는다. 이 도장이 다음 작업물에서 재사용 여부를 가른다.
+      const stamped = { ...r, topicKey: mediaTopicKey(idea) };
+      setImg(stamped); mutateAcct(); return stamped;
     } catch (e) {
       // 2026-09-08 실측: 생성기가 막은 주제였는데 화면에는 "Request failed: 502" 만 떴다.
       // 서버는 이유(nsfw·크레딧 부족)를 응답 본문에 담아 보내는데, 응답이 2xx 가 아니면
@@ -797,7 +810,8 @@ export default function StudioPage() {
             : (r?.error || "영상을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
         setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
       }
-      setVid(r); mutateAcct(); return r;
+      const stamped = { ...r, topicKey: mediaTopicKey(idea) };
+      setVid(stamped); mutateAcct(); return stamped;
     } catch (e) {
       const msg = extractApiErrorMessage(e, "영상 생성 실패");
       setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
@@ -817,7 +831,10 @@ export default function StudioPage() {
     try {
       createLeftover = Boolean(activeWorkspace && localStorage.getItem(`${CREATE_DRAFT_STORAGE_PREFIX}:${activeWorkspace.id}`));
     } catch { /* 저장을 못 읽으면 없는 것으로 본다 */ }
-    if (!text && !idea.trim() && !draftId && !createLeftover) { showToast("이미 비어 있습니다", "success"); return; }
+    // 2026-09-14 실측: 글은 없고 만든 영상만 남은 상태에서 "새로 시작" 을 누르면 여기서
+    // "이미 비어 있습니다" 로 닫혀 **영상이 살아남았다.** 그 영상이 다음 주제에 그대로
+    // 붙는다. 비어 있음은 그림·영상까지 봐야 판정할 수 있다.
+    if (!text && !idea.trim() && !draftId && !createLeftover && !img && !vid) { showToast("이미 비어 있습니다", "success"); return; }
     const ok = await askConfirm({
       title: "지금 작업물을 버리고 새로 시작할까요?",
       description: "저장하지 않은 본문과 방금 만든 이미지·영상이 이 화면에서 사라집니다. 이미 저장된 작업물은 작업물 전체에 그대로 남습니다.",
@@ -896,8 +913,23 @@ export default function StudioPage() {
     // 영상은 그림을 움직여 만드는 것이라 바탕 그림이 필요한 것은 맞다. 그런데 그 사정은
     // 우리 사정이지 고객 사정이 아니다. 고객은 "영상 만들기" 를 눌렀을 뿐인데 거절당하고
     // 다른 단추를 먼저 누르라는 말을 듣는다. 필요한 것이면 우리가 만들고 이어서 간다.
-    let source = img;
+    // 2026-09-14 실측 사고. 종전에는 남아 있는 그림을 **어느 주제의 것인지 묻지 않고** 바탕
+    // 으로 썼고, 영상이 이미 있으면 사용자는 무엇이 일어났는지 알 길이 없었다. 주제 도장으로
+    // 가른다: 도장이 다르면 묻지 않고 새로 만들고(옛것이 발행되면 안 된다), 같으면 한 번
+    // 물어 중복 과금을 막는다(근거: lib/studio/work-media.ts decideVideoRequest).
+    const decision = decideVideoRequest({ idea, img, vid });
+    if (decision.action === "confirm" && decision.confirm) {
+      const again = await askConfirm({
+        title: decision.confirm.title,
+        description: decision.confirm.description,
+        confirmLabel: "다시 만들기",
+        cancelLabel: "지금 영상 그대로 두기",
+      });
+      if (!again) { showToast("지금 영상을 그대로 둡니다", "success"); return; }
+    }
+    let source = decision.baseImage === "reuse" ? img : null;
     const needsBaseImage = !source;
+    if (decision.notice) showToast(decision.notice, "success");
 
     const est = await apiPost<{
       ok?: boolean; min_minor?: number; max_minor?: number;
@@ -916,6 +948,11 @@ export default function StudioPage() {
     });
     if (!approved) { showToast("만들지 않았습니다", "success"); return; }
 
+    // 옛 주제 영상은 만들기 시작하는 순간 내린다. 생성이 실패해도 화면에 남아 발행되면
+    // 안 된다. 승인 **뒤**에 내리는 이유는, 비용 승인 창에서 취소한 사용자에게서까지
+    // 되돌릴 수 없이 영상을 뺏지 않기 위해서다(2026-09-14 Codex 교차리뷰 P1).
+    // 취소하고 그대로 두더라도 발행 문에서 다시 막힌다(stalePublishBlock).
+    if (decision.notice) setVid(null);
     generationAbort.current = new AbortController();
     try {
       if (needsBaseImage) {
@@ -932,9 +969,14 @@ export default function StudioPage() {
       }
       setBusy("숏폼 영상 만드는 중");
       // 내부 경로가 없으면 배달 주소에서 파일 이름을 꺼내 넘긴다. 서버가 그것으로 찾는다.
-      const baseFilename = videoFilename(source?.file || source?.url || img?.file || img?.url || "");
+      // 여기서 `img` 로 한 번 더 떨어지면 방금 가른 것이 무의미해진다. 바탕은 source 뿐이다.
+      const baseFilename = videoFilename(source?.file || source?.url || "");
       if (!source?.localPath && !baseFilename) {
-        showToast("영상의 바탕이 될 그림을 찾지 못했습니다. 생성실에서 그림을 다시 만들어 주세요.", "error");
+        // 잠깐 뜨는 알림만으로는 옛 영상이 화면에 남아 있는 것을 사용자가 알 수 없다.
+        // 사라지지 않는 자리에도 남긴다(ADR-007).
+        const msg = "영상의 바탕이 될 그림을 찾지 못했습니다. 생성실에서 그림을 다시 만들어 주세요.";
+        setLastError(`영상: ${msg}`);
+        showToast(msg, "error");
         return;
       }
       await genVideo({ localPath: source?.localPath, filename: baseFilename });
@@ -1016,7 +1058,7 @@ export default function StudioPage() {
         theme: themeFromPalette(learningInfo.palette),
         positions: cardTextPositions,
       }, { upload: browserCardUploader(authHeaders()) });
-      const next: ImgResult = { url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls };
+      const next: ImgResult = { url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
       setImg(next);
       return next;
     } catch (error) {
@@ -1080,6 +1122,10 @@ export default function StudioPage() {
       showToast("발행실로 넘길 편집 내용이 없습니다", "error");
       return;
     }
+    // 2026-09-14 Codex 교차리뷰 P1. 여기서 안 막으면 옛 주제 영상에 새 주제 자막을 구워
+    // 저장까지 하게 된다. 그 파일은 화면상 멀쩡해 보이므로 그대로 발행된다.
+    const staleForEdit = stalePublishBlock(vid, idea, "영상") ?? stalePublishBlock(img, idea, "이미지");
+    if (staleForEdit) { showToast(staleForEdit, "error"); setLastError(staleForEdit); return; }
     setMoveToPublishBusy(true);
     try {
       const redrawn = await recompositeCards(linesToPersist);
@@ -1165,6 +1211,10 @@ export default function StudioPage() {
       showToast("외부 게시가 이미 완료된 항목입니다. 재발행하지 말고 내부 기록을 먼저 복구하세요.", "error");
       return;
     }
+    // 2026-09-14 Codex 교차리뷰 P0. 생성 단추에만 주제 도장을 걸면 구멍이 남는다. 주제만
+    // 고쳐 놓고 생성 없이 바로 발행하면 옛 매체가 그대로 나간다. 나가는 문에도 건다.
+    const staleMedia = stalePublishBlock(vid, idea, "영상") ?? stalePublishBlock(img, idea, "이미지");
+    if (staleMedia) { showToast(staleMedia, "error"); setLastError(staleMedia); return; }
     const blocked = publishTargets
       .map((platform) => ({ platform, issue: validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0] }))
       .find((entry) => entry.issue);
@@ -1865,7 +1915,7 @@ export default function StudioPage() {
         onGenerateCardImages={generateCardImages}
         onTextCardsCreated={(urls, cardLines) => {
           if (!urls.length) return;
-          setImg({ url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls });
+          setImg({ url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) });
           setEditKind("card");
           setEditFormat((current) => {
             const base = defaultContentEditFormat("card");
