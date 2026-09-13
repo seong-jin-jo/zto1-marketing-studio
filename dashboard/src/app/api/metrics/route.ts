@@ -59,13 +59,22 @@ export async function POST(request: Request) {
       ? 207
       : result.ok
         ? 200
+        // 남은 것이 집계 대기뿐이면 장애가 아니라 "접수했고 아직 기다리는 중" 이다.
+        // 503 으로 말하면 화면이 장애로 읽고 사용자는 멀쩡한 채널을 손보게 된다.
+        : failureCodes.length > 0 && failureCodes.every((code) => code === "metrics_pending_ingest")
+        ? 202
         : failureCodes.includes("collection_in_progress")
           ? 409
           : failureCodes.some((code) => code.endsWith("_429") || code === "provider_429")
             ? 429
-            : failureCodes.every((code) => code === "insights_forbidden")
+            // 빈 목록에도 every 는 true 다. 실패 코드가 없는데 권한 오류로 말하면 안 된다.
+            : failureCodes.length > 0 && failureCodes.every((code) => code === "insights_forbidden")
               ? 424
-              : 503;
+              // 계정 불일치는 다시 시도한다고 풀리지 않는다. 장애(503)로 말하면 화면이
+              // 재시도를 권하고 사용자는 될 일이 없는 일을 반복한다.
+              : failureCodes.length > 0 && failureCodes.every((code) => code === "post_not_in_account")
+                ? 422
+                : 503;
     return Response.json(result, { status });
   } catch (error) {
     return Response.json({

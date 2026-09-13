@@ -30,5 +30,13 @@ export function isMetricsCollected(platform: string | null | undefined): boolean
 /** 숫자가 비었을 때 그 자리에 적을 말. 왜 비었는지로 갈라 적는다. */
 export function emptyMetricLabel(platform: string | null | undefined, blocked: unknown): string {
   if (!isMetricsCollected(platform)) return "측정 미지원";
-  return blocked ? "측정 불가" : "미수집";
+  if (!blocked) return "미수집";
+  // "측정 불가" 는 손을 써야 채워진다는 말이다. 기다리면 채워지는 것까지 그렇게 적으면
+  // 사용자는 멀쩡한 채널을 손본다(2026-09-14 Threads 집계 지연 오진).
+  const code = typeof blocked === "object" && blocked !== null
+    ? (blocked as { code?: unknown }).code
+    : blocked;
+  if (code === "metrics_pending_ingest") return "집계 대기";
+  if (code === "metrics_lookup_incomplete") return "확인 중";
+  return "측정 불가";
 }

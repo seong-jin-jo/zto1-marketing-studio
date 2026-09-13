@@ -43,6 +43,10 @@ describe("성과 수집 지원 여부를 화면이 정직하게 말한다", () =
     // X 는 수집을 만들었으므로 Threads 와 같은 규칙을 탄다.
     expect(emptyMetricLabel("x", null)).toBe("미수집");
     expect(emptyMetricLabel("x", { code: "post_not_in_account" })).toBe("측정 불가");
+    // 2026-09-14: 기다리면 채워지는 것을 "측정 불가"(손을 써야 채워진다)로 적으면
+    // 사용자는 멀쩡한 채널을 끊고 다시 연결한다.
+    expect(emptyMetricLabel("threads", { code: "metrics_pending_ingest" })).toBe("집계 대기");
+    expect(emptyMetricLabel("threads", { code: "metrics_lookup_incomplete" })).toBe("확인 중");
   });
 
   it("성과 화면이 그 함수를 쓴다", () => {
