@@ -1,3 +1,15 @@
+## 2026-09-13 12시 01분 - 네 방 기본 흐름 v3 기능 PASS, 제품 전체 QA NG
+
+회장 요청 원문을 handoff basis로 사용했다. `studio-auth-runtime:0.0`은 localhost:3456 실행 상태와 콜드 컴파일 진행 확인에만 사용했다. canonical main repo의 `pipeline-state.osmu.md`는 이미 `current_stage: qa`였고 단계·승인 상태와 배포는 바꾸지 않았다.
+
+현재 localhost에서 health HTTP 200·DB up, 기본 API 11/11, 네 방 렌더 4/4, 390 라이트·다크와 768·1024·1440의 20화면, 성과실→생성실 복귀 5/5를 관찰했다. 가로 넘침, 가린 모달, 이동 차단, 다음 행동 누락, 브라우저 401, 콘솔 오류는 0건이다. 전체 Vitest 319파일·2,106건, TypeScript, 임시 독립 production build 183/183, seed, 디자인 lint도 통과했다.
+
+첫 실행의 390 성과실 준비와 후속 실행의 편집→발행 이동이 고정 30초 제한시간에 걸렸다. 서버 로그와 수정 후 90초를 넘겨 정상 준비된 화면을 근거로 QA 검증기의 준비·URL·방 표시·최초 이동 제한시간을 120초 단일 정책으로 통합했다. 커밋은 `d8a65e3d`, `7e39d0a7`, 회귀는 `dashboard/tests/integrity/four-room-performance-ready-timeout.regression-1.test.ts`다. 제품 코드는 수정하지 않았다.
+
+Studio v1은 앞선 같은 소스 실행에서 14/14였으나 최종 재실행의 정상 생성 단계가 공유 AI 월간 한도 소진으로 HTTP 429였다. v63과 실제 화면의 8개 배치 축도 모두 불일치하고 과제의 v63과 pipeline 승인 핀 v68이 충돌한다. 따라서 네 방 로컬 기능만 PASS이며 제품 전체 QA와 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v3-gpt-codex.md`, 원본은 `logs/diff/osmu-four-room-flow-20260913-v3/captures/`다.
+
+다음 소유자는 컨트롤러와 product-designer다. 디자인 승인 핀을 하나로 확정하고 실제 화면을 맞춘 뒤, 공유 AI 한도를 복구해 Studio v1 14/14와 같은 네 폭 매트릭스를 다시 관찰해야 한다. 종료 증거는 단일 승인 핀, 8축 정합 PASS, Studio v1 14/14, 운영 배포 버전의 실제 화면이다.
+
 ## 2026-09-13 08시 29분 - 최근 24시간 코드 리뷰 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. 대상은 `8652fb5b29fecad7aa688b99ad1c2bab534d2fc4..39d32c58510565df52f330d01c0ac0d96cb0256d` 47커밋, 185파일로 고정했다. `openclaw-auto:0.0`, `openclaw-auto:0.2`는 동시 작업 확인에, `studio-auth-runtime:0.0`은 localhost:3456 실행 상태 확인에만 사용했다. 공유 작업 트리의 타 세션 변경은 건드리지 않았다.
