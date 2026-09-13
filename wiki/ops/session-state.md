@@ -1,3 +1,15 @@
+## 2026-09-13 14시 29분 - 네 방 기본 흐름 v4 기능 PASS, 제품 전체 QA NG
+
+회장 요청 원문을 handoff basis로 사용했다. tmux `openclaw-auto:0.0`은 동시 작업 확인에만 참고했고 현재 과제의 기준으로 쓰지 않았다. canonical main repo는 현재 경로이며 `pipeline-state.osmu.md`는 이미 `current_stage: qa`여서 단계·승인 상태를 바꾸지 않았다.
+
+첫 기본 흐름은 지정 QA 작업 공간의 현재 월 생성 사용량이 100/100이라 실패했다. 고정 작업 공간을 복원하는 시드가 `usage_quotas`를 초기화하지 않는 것이 원인이었다. 단면 탐침은 성과실 표시만 고정 30초를 써서 공용 120초의 4폭 검증과 상반된 판정을 냈다. 시드 복원과 단면 탐침 제한시간을 수정하고 신규 회귀 2개를 추가한 커밋은 `af2f0335`다. 제품 화면과 제품 API 계약은 바꾸지 않았다.
+
+수정 뒤 localhost health HTTP 200, 기본 흐름 11/11, 네 방 렌더 4/4, 390 라이트·다크와 768·1024·1440의 20화면, 성과실→생성실 복귀 5/5, Studio v1 재실행 14/14를 관찰했다. 전체 Vitest 321파일·2,108건과 3건 제외, TypeScript, production build 183/183, 디자인 lint도 통과했다. Studio v1 첫 실행의 `STUDIO_LLM_INVALID_OUTPUT`, build NFT 경고, React `act(...)` 경고는 남아 있다.
+
+v63과 실제 화면의 8개 배치 축은 불일치하고 과제의 v63과 canonical pipeline 승인 핀 v68도 충돌한다. 따라서 네 방 localhost 기능만 PASS다. 제품 전체 QA, 단계 승인, 배포는 NG이며 운영 버전과 외부 계정 발행은 미검증이다. 상세는 `docs/qa/osmu-four-room-basic-flow-v4-gpt-codex.md`, 원본은 `logs/diff/osmu-four-room-flow-20260913-1407/captures/`다.
+
+다음 소유자는 컨트롤러와 product-designer다. v63 또는 v68을 단일 승인 핀으로 확정하고 실제 화면을 맞춘 뒤 같은 4폭 매트릭스와 운영 버전을 재검증해야 한다. 별도로 기존 최근 24시간 코드 재리뷰 BLOCK은 이번 네 방 기능 PASS로 해소되지 않았다.
+
 ## 2026-09-13 12시 22분 - 최근 24시간 코드 재리뷰 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. tmux pane은 동시 작업과 localhost 실행 상태 확인에만 참고했고, 검토 범위는 착수 시점의 `8652fb5b29fecad7aa688b99ad1c2bab534d2fc4..7e39d0a7ddee8a9d7344cb08f56dea8baaf94419` 55커밋, 236파일로 고정했다. 제품 코드는 수정하지 않았다.
