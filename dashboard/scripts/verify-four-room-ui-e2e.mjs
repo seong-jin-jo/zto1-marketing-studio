@@ -8,7 +8,7 @@ const { chromium } = playwright;
 const baseUrl = process.env.FOUR_ROOM_BASE_URL || "http://localhost:3456";
 const operatorToken = process.env.DASHBOARD_AUTH_TOKEN || "";
 const workspaceId = process.env.FOUR_ROOM_WORKSPACE_ID || "cd1d0a40-540d-4524-9b49-bf2445d82182";
-const outputDir = process.env.FOUR_ROOM_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/design/prototypes/legacy-prototype-20260912/prototype/qa-flow");
+const outputDir = process.env.FOUR_ROOM_OUTPUT_DIR || path.resolve(process.cwd(), "../logs/diff/osmu-four-room-flow/captures");
 const executablePath = process.env.FOUR_ROOM_CHROME_PATH || "/Users/sj/Library/Caches/ms-playwright/chromium-1228/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing";
 const dataRoot = process.env.DATA_DIR || path.resolve(process.cwd(), "../data");
 const settingsPath = path.join(dataRoot, "tenants", workspaceId, "settings.json");
@@ -146,7 +146,9 @@ async function measureRoom(page, width, room, theme = "light") {
   if (room.key === "performance" && metrics.suggestionCount < 3) throw new Error(`${tag} 방향 제안이 ${metrics.suggestionCount}건입니다`);
   if (metrics.appliedTheme !== theme) throw new Error(`${tag} 테마가 적용 안 됨: data-theme=${metrics.appliedTheme} (기대 ${theme})`);
   observations.push({ width, theme, room: room.key, path: new URL(page.url()).pathname + new URL(page.url()).search, ...metrics });
-  await page.screenshot({ path: path.join(outputDir, `${width}-${theme}-${room.key}.png`), fullPage: true });
+  // QA 증거는 원본 프로토타입을 덮지 않고 logs/diff에 둔다. 비교할 때
+  // viewport 밖의 세로 길이가 섞이지 않도록 사용자가 보는 화면만 캡처한다.
+  await page.screenshot({ path: path.join(outputDir, `${width}-${theme}-${room.key}.png`), fullPage: false });
 }
 
 try {
