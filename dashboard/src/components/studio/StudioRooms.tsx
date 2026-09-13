@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/shared/Button";
 import { StateNotice } from "@/components/shared/StateNotice";
 import { EditPreview, type CardTextPosition } from "./EditPreview";
+import { EditOutline } from "./EditOutline";
 import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
 import {
@@ -1349,19 +1350,47 @@ export function EditRoom({
   const roomState = state === "default" && !hasEditableContent ? "empty" : state;
   const editorVisible = roomState === "default" || roomState === "overflow";
   const updateLine = (value: string) => onLinesChange(safeLines.map((line, index) => index === activeLine ? value : line));
-  // 순서 이동. 줄과 함께 그 줄의 보임 여부도 같이 옮긴다. 따로 놀면 엉뚱한 줄이 지워진 것처럼 보인다.
-  const moveLine = (index: number, delta: number) => {
-    const target = index + delta;
-    if (target < 0 || target >= safeLines.length) return;
+  // 순서 이동. 줄과 함께 그 줄의 보임 여부와 글자 위치도 같이 옮긴다.
+  // 따로 놀면 엉뚱한 줄이 지워진 것처럼 보이고 엉뚱한 장에 남의 글자 위치가 붙는다.
+  // 끌어서 놓기는 한 칸이 아니라 먼 자리로 건너뛰므로 뽑아서 끼우는 방식으로 옮긴다.
+  // 붙어 있는 두 칸이면 이것은 자리 맞바꾸기와 같은 결과다.
+  const moveLineTo = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= safeLines.length || to >= safeLines.length) return;
     const nextLines = [...safeLines];
-    [nextLines[index], nextLines[target]] = [nextLines[target], nextLines[index]];
+    const [movedLine] = nextLines.splice(from, 1);
+    nextLines.splice(to, 0, movedLine);
     setVisibleLines((current) => {
-      const next = [...current];
-      [next[index], next[target]] = [next[target] ?? true, next[index] ?? true];
+      const next = safeLines.map((_, index) => current[index] ?? true);
+      const [movedVisible] = next.splice(from, 1);
+      next.splice(to, 0, movedVisible);
       return next;
     });
-    setActiveLine(target);
+    if (onCardTextPositionsChange && cardTextPositions.length) {
+      const next = safeLines.map((_, index) => cardTextPositions[index] ?? "center");
+      const [movedPosition] = next.splice(from, 1);
+      next.splice(to, 0, movedPosition);
+      onCardTextPositionsChange(next);
+    }
+    setActiveLine(to);
     onLinesChange(nextLines);
+  };
+  const moveLine = (index: number, delta: number) => moveLineTo(index, index + delta);
+  // 목록 끝에 한 장 더. 더한 장으로 바로 옮겨 간다. 더해 놓고 어디 갔는지 찾게 하지 않는다.
+  const addLine = () => {
+    onLinesChange([...safeLines, ""]);
+    setActiveLine(safeLines.length);
+  };
+  // 장 삭제. 줄만 지우면 보임 여부와 글자 위치가 한 칸씩 밀려 엉뚱한 장의 값이 붙는다.
+  // 마지막 한 장은 지우지 않는다. 편집 대상이 0이 되면 방이 빈 상태로 튕긴다.
+  const removeLine = (index: number) => {
+    if (safeLines.length <= 1) return;
+    const next = safeLines.filter((_, lineIndex) => lineIndex !== index);
+    setVisibleLines((current) => current.filter((_, lineIndex) => lineIndex !== index));
+    if (onCardTextPositionsChange && cardTextPositions.length) {
+      onCardTextPositionsChange(cardTextPositions.filter((_, lineIndex) => lineIndex !== index));
+    }
+    setActiveLine((current) => Math.min(current, next.length - 1));
+    onLinesChange(next);
   };
   const toggleLine = (index: number) => setVisibleLines((current) => current.map((visible, lineIndex) => lineIndex === index ? !visible : visible));
   const trimSilences = () => setVisibleLines((current) => current.map((visible, index) => silenceIndexes.includes(index) ? false : visible));
@@ -1438,15 +1467,30 @@ export function EditRoom({
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
               <div className={`card overflow-hidden ${styles.editWorkbench}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined}>
-                <nav className={`max-h-80 min-w-0 overflow-y-auto p-pad-inset ${styles.editOutline}`} aria-label={outlineTitle} data-edit-outline>
-                  <b className="text-body text-text">{outlineTitle}</b>
-                  <ol className="mt-stack space-y-stack-tight">{safeLines.map((line, index) => (
-                    <li key={`${index}-${line.slice(0, 16)}`}>
-                      <Button size="sm" variant="secondary" aria-pressed={activeLine === index} onClick={() => setActiveLine(index)} className={`ds-label-fill w-full min-w-0 justify-start overflow-hidden text-left ${activeLine === index ? "border-accent bg-accent-soft text-accent" : ""} ${visibleLines[index] ? "" : "line-through opacity-60"}`}>
-                        <span className="min-w-0 break-keep text-left">{index + 1}. {line || (kind === "text" ? "빈 문단" : "빈 대사")}</span>
-                      </Button>
-                    </li>
-                  ))}</ol>
+                {/*
+                  2026-09-14. 여기는 `1. 첫 장` 같은 글자 목록이었고, 장을 옮기려면 미리보기
+                  아래 `앞 장`·`다음 장` 화살표를 여러 번 눌러야 했다. 카드뉴스는 장과 장의
+                  흐름이 곧 상품인데 그 흐름이 화면에 없었다. DESIGN.md §4 가 이 칸을 이미
+                  계약해 뒀으므로 새 칸을 만들지 않고 있는 집을 채운다.
+                */}
+                <nav className={`min-w-0 p-pad-inset ${styles.editOutline}`} aria-label={outlineTitle} data-edit-outline>
+                  <EditOutline
+                    title={outlineTitle}
+                    unit={unit}
+                    lines={safeLines}
+                    activeIndex={activeLine}
+                    onSelect={setActiveLine}
+                    visibleLines={visibleLines}
+                    // 카드뉴스만 장마다 그림이 다르다. 나머지 형식은 순번 자리표시자를 쓴다.
+                    thumbnails={kind === "card" ? (previewImageUrls ?? undefined) : undefined}
+                    tenantId={workspaceId}
+                    showRoles={kind === "card"}
+                    note={kind === "card" ? "순서는 끌어서 놓거나 ▲▼로 바꿉니다. 자유 배치는 아직 제공하지 않습니다. 글자는 상단·중앙·하단 중에서 고릅니다." : undefined}
+                    onMove={kind === "text" ? undefined : moveLine}
+                    onMoveTo={kind === "text" ? undefined : moveLineTo}
+                    onAdd={kind === "text" ? undefined : addLine}
+                    onRemove={kind === "text" ? undefined : removeLine}
+                  />
                 </nav>
                 <div className="min-w-0 p-pad-inset">
                   {kind === "text" ? (

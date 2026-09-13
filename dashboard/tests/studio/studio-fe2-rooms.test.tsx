@@ -236,7 +236,10 @@ describe("화면 2차 편집실 계약", () => {
     const onLinesChange = vi.fn();
     render(<EditRoom lines={["첫 줄", "둘째 줄", "셋째 줄"]} onLinesChange={onLinesChange} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "2. 둘째 줄" }));
+    // 2026-09-14. 목차 항목이 글자 한 줄에서 썸네일·순번·배지를 가진 항목으로 바뀌면서
+    // 읽히는 이름을 `2. 둘째 줄` 이라는 본문 조합이 아니라 무엇을 하는 단추인지로 못 박았다.
+    // 고르는 동작 자체는 그대로다.
+    fireEvent.click(screen.getByRole("button", { name: "2번째 장면 고르기" }));
     fireEvent.change(screen.getByRole("textbox", { name: "대사 2" }), { target: { value: "고친 둘째 줄" } });
 
     await waitFor(() => expect(onLinesChange).toHaveBeenCalledWith(["첫 줄", "고친 둘째 줄", "셋째 줄"]));

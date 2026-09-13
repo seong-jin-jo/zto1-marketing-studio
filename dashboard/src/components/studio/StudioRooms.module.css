@@ -12,6 +12,16 @@
 
 .editOutline {
   border-bottom: 1px solid var(--border);
+  /* 목차와 본문은 각각 세로로 구르고 화면 가로 폭을 밀지 않는다(DESIGN.md §4 넘침 규칙). */
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+/* 390 계약값. DESIGN.md §4 편집실 390 블록이 `.edit-outline max-height 144px` 로 못 박았다. */
+@media (max-width: 24.4375rem) {
+  .editOutline {
+    max-height: 9rem;
+  }
 }
 
 .editOutline :global(.ds-label-fill) span {
