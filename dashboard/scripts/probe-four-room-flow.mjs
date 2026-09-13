@@ -3,7 +3,9 @@ const exe="/Users/sj/Library/Caches/ms-playwright/chromium-1228/chrome-mac-x64/G
 const W="cd1d0a40-540d-4524-9b49-bf2445d82182";
 const base=process.env.FOUR_ROOM_BASE_URL||"http://localhost:3456";
 const operatorToken=process.env.DASHBOARD_AUTH_TOKEN||"";
+const readyTimeoutMs=Number(process.env.FOUR_ROOM_READY_TIMEOUT_MS||"120000");
 if(!operatorToken) throw new Error("DASHBOARD_AUTH_TOKEN이 필요합니다");
+if(!Number.isFinite(readyTimeoutMs)||readyTimeoutMs<=0) throw new Error("FOUR_ROOM_READY_TIMEOUT_MS는 0보다 큰 숫자여야 합니다");
 
 const request=(pathname,options={})=>fetch(`${base}${pathname}`,{
   ...options,
@@ -54,9 +56,9 @@ try {
   for(const [room,url] of [["create","/studio?room=create"],["edit","/studio?room=edit"],["publish","/studio?room=publish"],["performance","/performance"]]) {
     // Next dev keeps HMR and background requests alive. networkidle can time out after
     // the room is already interactive, so the visible room contract is the readiness signal.
-    await p.goto(`${base}${url}`,{waitUntil:"domcontentloaded",timeout:60000});
+    await p.goto(`${base}${url}`,{waitUntil:"domcontentloaded",timeout:readyTimeoutMs});
     const roomRoot=p.locator(`[data-room="${room}"]`);
-    await roomRoot.waitFor({state:"visible",timeout:30000});
+    await roomRoot.waitFor({state:"visible",timeout:readyTimeoutMs});
     // AuthGate may finish a client navigation after DOMContentLoaded. Anchor evaluation
     // to the live room locator so Playwright re-resolves it in the final document.
     rows.push(await roomRoot.evaluate((_roomElement,r)=>({

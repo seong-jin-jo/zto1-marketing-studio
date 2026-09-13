@@ -15,6 +15,21 @@ VALUES ('cd1d0a40-540d-4524-9b49-bf2445d82182', 'qa-four-room', '네 방 검증 
       tier = EXCLUDED.tier,
       shared_cli_approved_at = COALESCE(tenants.shared_cli_approved_at, EXCLUDED.shared_cli_approved_at);
 
+-- 같은 고정 작업 공간으로 실제 생성 E2E를 반복하면 월 사용량이 제품 한도까지 누적된다.
+-- --seed는 CI와 로컬 QA fixture 복원 전용이므로 현재 UTC 월의 공유 AI 사용량도 함께 초기화한다.
+INSERT INTO usage_quotas (tenant_id, period, generations_included, generations_used)
+VALUES (
+  'cd1d0a40-540d-4524-9b49-bf2445d82182',
+  to_char(timezone('UTC', now()), 'YYYY-MM'),
+  100,
+  0
+)
+ON CONFLICT (tenant_id) DO UPDATE
+SET period = EXCLUDED.period,
+    generations_included = EXCLUDED.generations_included,
+    generations_used = 0,
+    updated_at = now();
+
 -- seed-a: short draft 1행(isolation drafts 테스트가 소유 테넌트를 이걸로 탐색)
 INSERT INTO drafts (tenant_id, idea, payload, status)
   SELECT id, 'seed idea', '{"kind":"short","hook":"seed"}'::jsonb, 'draft'
