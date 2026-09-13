@@ -7,11 +7,13 @@ describe("API 읽기 전수 검증기 요청 제한시간 회귀", () => {
   // 15초를 넘으면 정상 API도 요청 실패로 오분류됐다.
   // Found by /qa on 2026-09-13
   // Report: docs/qa/osmu-api-read-sweep-v6-gpt-codex-20260913.md
-  it("120초 기본값과 실행 환경 재정의를 함께 제공한다", () => {
+  it("요청별 120초 상한과 전체 실행시간 예산을 함께 제공한다", () => {
     const script = readFileSync(resolve(process.cwd(), "scripts/verify-api-read-sweep.mjs"), "utf8");
 
     expect(script).toContain('process.env.API_SWEEP_TIMEOUT_MS || "120000"');
-    expect(script).toContain("AbortSignal.timeout(requestTimeoutMs)");
+    expect(script).toContain("AbortSignal.timeout(Math.min(requestTimeoutMs, remainingMs))");
     expect(script).toContain("request_timeout_ms: requestTimeoutMs");
+    expect(script).toContain('process.env.API_SWEEP_TOTAL_TIMEOUT_MS || "300000"');
+    expect(script).toContain("total_timeout_ms: totalTimeoutMs");
   });
 });
