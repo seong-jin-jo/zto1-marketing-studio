@@ -1,3 +1,21 @@
+## 2026-09-13 14시 41분 - 네 방 기본 흐름 v4 QA 인계
+
+### 무엇을 어디까지 했나
+
+회장 요청 원문을 기준으로 canonical main repo의 QA를 완료했다. `pipeline-state.osmu.md`는 착수 시 이미 `current_stage: qa`여서 단계와 승인 상태를 바꾸지 않았다. 지정 작업 공간의 월 생성 사용량 100/100 때문에 첫 생성이 막힌 결함과 단면 탐침만 고정 30초를 사용하던 판정 불일치를 수정했다. 커밋은 `af2f0335`, 증거 고정은 `72395708`, localhost 범위 명시는 `ebdcc524`다. 상세 보고서는 `docs/qa/osmu-four-room-basic-flow-v4-gpt-codex.md`, 원본 PNG와 관찰 JSON은 `logs/diff/osmu-four-room-flow-20260913-1407/captures/`다. 실행 중으로 남아 있던 위임 등록 `codex-qa-verifier-37557`은 완료 처리 후 해제했고 실행 중 위임 0건을 확인했다.
+
+### 남은 이슈·블로커
+
+네 방 localhost 기능은 PASS지만 제품 전체 QA와 배포는 NG다. 현재 턴에 v63 390 생성실과 dev 390 생성실 원본을 함께 다시 열어 대조했으며, v63의 모바일 셸·작업 탭·후보 선택·하단 담당 구조와 dev의 상단 네 방 탭·학습 스트립·세로 생성 단계·인라인 담당 구조가 명확히 다르다. 과제가 v63을 확정 기준으로 명시하지만 canonical pipeline 승인 핀은 v68이라 기준도 충돌한다. 상위 `verify-agent-quality.sh`는 배포 환경 접촉 증거 0건으로 종료 코드 2를 반환했다. 기존 최근 24시간 코드 재리뷰 BLOCK, 운영 버전과 외부 실발행 미검증도 남아 있다.
+
+### 다음에 칠 명령
+
+소유자는 컨트롤러와 product-designer다. v63 또는 v68 중 단일 승인 핀을 확정하고 실제 화면을 그 기준에 맞춘 뒤 `cd dashboard && set -a && source .env.local && set +a && node scripts/verify-studio-v1-e2e.mjs && node scripts/verify-basic-flow-e2e.mjs && node scripts/probe-four-room-flow.mjs && FOUR_ROOM_OUTPUT_DIR=../logs/diff/osmu-four-room-flow-next node scripts/verify-four-room-ui-e2e.mjs && npm run test && npx tsc --noEmit && npm run build`를 실행한다. 그 다음 운영 URL에서 같은 네 방을 클릭하고 기준·dev·운영 PNG를 대조한다. 종료 증거는 단일 승인 핀, 디자인 8축 PASS, Studio v1 14/14, 기본 흐름 11/11, 운영 네 방 캡처와 외부 발행 URL이다. 외부 회수 시점은 디자인 핀 확정과 운영 배포 직후다.
+
+### 검증했나
+
+관찰됨: localhost health HTTP 200, 기본 API 11/11, 네 방 4/4, 390 라이트·다크와 768·1024·1440의 20화면, 성과실→생성실 복귀 5/5, 가로 넘침·가린 모달·브라우저 401·콘솔 오류 0, v63·dev 390 생성실 양쪽 원본 대조, 위임 실행 0건. 테스트됨: Vitest 321파일·2,108건 PASS와 3건 제외, TypeScript PASS, production build 183/183, Studio v1 재실행 14/14, 디자인 lint 위반 0, 신규 회귀 2건. 남은 경고: Studio v1 첫 실행 `STUDIO_LLM_INVALID_OUTPUT`, build NFT 추적 경고, React `act(...)` 경고. 미검증: 운영 배포 버전, 외부 계정 발행과 성과 회수.
+
 ## 2026-09-13 12시 33분 - 네 방 v3 QA 및 코드 리뷰 회수 완료
 
 ### 무엇을 어디까지 했나
