@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
 // Found by /qa on 2026-09-13
 // Report: docs/qa/qa-tracker.md
 
-describe("네 방 성과실 준비 제한시간 회귀", () => {
-  it("120초 기본값과 실행 환경 재정의, 관찰 증거를 함께 제공한다", () => {
+describe("네 방 화면 준비 제한시간 회귀", () => {
+  it("120초 기본값을 최초 진입, 방 이동, 성과 데이터 준비에 함께 적용하고 관찰 증거를 남긴다", () => {
     const source = fs.readFileSync(
       path.resolve(process.cwd(), "scripts/verify-four-room-ui-e2e.mjs"),
       "utf8",
@@ -16,6 +16,9 @@ describe("네 방 성과실 준비 제한시간 회귀", () => {
 
     expect(source).toContain('process.env.FOUR_ROOM_READY_TIMEOUT_MS || "120000"');
     expect(source).toContain("{ timeout: readyTimeoutMs }");
+    expect(source).toContain('waitUntil: "commit", timeout: readyTimeoutMs');
+    expect(source).toContain('waitUntil: "domcontentloaded", timeout: readyTimeoutMs');
+    expect(source).not.toContain("timeout: 30000");
     expect(source).toContain("readyTimeoutMs, observations");
   });
 });

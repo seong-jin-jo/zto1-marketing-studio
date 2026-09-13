@@ -100,11 +100,11 @@ async function clickRoom(page, width, room) {
     // load makes a successful room transition look like a timeout. Arm the URL waiter
     // before the click so a fast client transition cannot finish between both awaits.
     await Promise.all([
-      page.waitForURL((url) => `${url.pathname}${url.search}` === room.href, { waitUntil: "commit", timeout: 30000 }),
+      page.waitForURL((url) => `${url.pathname}${url.search}` === room.href, { waitUntil: "commit", timeout: readyTimeoutMs }),
       link.click(),
     ]);
   }
-  await page.locator(room.selector).waitFor({ state: "visible", timeout: 30000 });
+  await page.locator(room.selector).waitFor({ state: "visible", timeout: readyTimeoutMs });
 }
 
 async function measureRoom(page, width, room, theme = "light") {
@@ -181,7 +181,7 @@ try {
 
       // Next dev keeps HMR and background requests alive. The room locator below is the
       // user-visible readiness signal; networkidle can misclassify a rendered page as a timeout.
-      await page.goto(`${baseUrl}/studio?room=create`, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await page.goto(`${baseUrl}/studio?room=create`, { waitUntil: "domcontentloaded", timeout: readyTimeoutMs });
       for (const room of roomContracts) {
         console.log(`검증 ${tag} ${room.label}`);
         await clickRoom(page, width, room);
