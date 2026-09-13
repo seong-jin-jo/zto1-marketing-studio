@@ -1,4 +1,6 @@
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
+import path from "node:path";
 
 // queue.json 의 교차 프로세스 잠금. 대시보드와 발행기가 같은 자물쇠를 쓴다.
 //
@@ -26,9 +28,19 @@ function lockPath(filePath: string): string {
   return `${filePath}.lock`;
 }
 
-async function tryAcquire(filePath: string): Promise<boolean> {
+function ownerPath(filePath: string): string {
+  return path.join(lockPath(filePath), "owner");
+}
+
+async function tryAcquire(filePath: string, ownerToken: string): Promise<boolean> {
   try {
     await fs.mkdir(lockPath(filePath));
+    try {
+      await fs.writeFile(ownerPath(filePath), ownerToken, { encoding: "utf-8", flag: "wx" });
+    } catch (error) {
+      await fs.rm(lockPath(filePath), { recursive: true, force: true });
+      throw error;
+    }
     return true;
   } catch (e) {
     const err = e as NodeJS.ErrnoException;
@@ -37,7 +49,9 @@ async function tryAcquire(filePath: string): Promise<boolean> {
     try {
       const stat = await fs.stat(lockPath(filePath));
       if (Date.now() - stat.mtimeMs > STALE_MS) {
-        await fs.rmdir(lockPath(filePath)).catch(() => {});
+        const stalePath = `${lockPath(filePath)}.stale.${process.pid}.${crypto.randomUUID()}`;
+        await fs.rename(lockPath(filePath), stalePath).catch(() => {});
+        await fs.rm(stalePath, { recursive: true, force: true }).catch(() => {});
       }
     } catch {
       /* 그 사이 풀렸다 — 다음 회차에 다시 시도한다 */
@@ -55,16 +69,37 @@ async function tryAcquire(filePath: string): Promise<boolean> {
  */
 export async function withQueueLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
   const deadline = Date.now() + MAX_WAIT_MS;
+  const ownerToken = crypto.randomUUID();
   let acquired = false;
-  while (!(acquired = await tryAcquire(filePath))) {
+  while (!(acquired = await tryAcquire(filePath, ownerToken))) {
     if (Date.now() > deadline) {
       throw new Error(`queue lock timeout: ${lockPath(filePath)} (다른 프로세스가 큐를 쓰고 있습니다)`);
     }
     await sleep(RETRY_DELAY_MS);
   }
+  let stopped = false;
+  let heartbeat = Promise.resolve();
+  const timer = setInterval(() => {
+    if (stopped) return;
+    heartbeat = heartbeat.then(async () => {
+      const currentOwner = await fs.readFile(ownerPath(filePath), "utf-8").catch(() => "");
+      if (currentOwner !== ownerToken) return;
+      const now = new Date();
+      await fs.utimes(lockPath(filePath), now, now).catch(() => {});
+    });
+  }, Math.max(1_000, Math.floor(STALE_MS / 3)));
+  timer.unref();
   try {
     return await fn();
   } finally {
-    await fs.rmdir(lockPath(filePath)).catch(() => {});
+    stopped = true;
+    clearInterval(timer);
+    await heartbeat.catch(() => {});
+    const currentOwner = await fs.readFile(ownerPath(filePath), "utf-8").catch(() => "");
+    if (currentOwner === ownerToken) {
+      const releasePath = `${lockPath(filePath)}.release.${process.pid}.${ownerToken}`;
+      const moved = await fs.rename(lockPath(filePath), releasePath).then(() => true).catch(() => false);
+      if (moved) await fs.rm(releasePath, { recursive: true, force: true }).catch(() => {});
+    }
   }
 }
