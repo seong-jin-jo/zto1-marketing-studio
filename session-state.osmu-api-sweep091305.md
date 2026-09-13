@@ -1,5 +1,37 @@
 # OSMU API 읽기 경로 전수 재실사 핸드오프
 
+## 2026-09-13 13:31 KST 현재 소스 재확인
+
+### 무엇을 어디까지 했나
+
+- canonical `pipeline-state.osmu.md`는 이미 `current_stage: qa`여서 단계 값은 유지했다.
+- localhost:3456의 GET 105개를 다시 실호출했다. 정상 92개, 계약상 거절 후보 13개, HTTP 500과 요청 실패 0개다.
+- 추적 대상 API 소스 합성 SHA-256은 실행 전후 `8e98aa63f82cb8b5bfbe874f4188f0458e88dd66705b05854b065324d732249f`로 같았다. 루트 `.gitignore`의 `tenants/` 규칙에 가려진 `/api/tenants`까지 포함한 실제 분모는 105개다.
+- `npm run test`는 319파일 2,106건 통과와 3건 제외, `npx tsc --noEmit`은 오류 0이었다.
+- `verify-basic-flow-e2e.mjs`와 `verify-studio-v1-e2e.mjs`는 모두 공유 AI 월 한도 소진으로 생성 단계에서 NG였다. 각각 `STUDIO_LLM_QUOTA_EXHAUSTED`, HTTP 429를 직접 관찰했다.
+- 읽기 API 범위는 기존 v6와 같은 PASS다. 필수 E2E가 현재 NG이고 운영 배포 접촉 증거가 없어 제품 전체 QA와 배포는 계속 NG다.
+
+### 남은 이슈·블로커
+
+- 공유 AI 월 한도가 복구되기 전에는 두 필수 E2E를 PASS로 전환할 수 없다.
+- 공유 작업 트리의 `dashboard/src/app/api/studio/learning/route.ts` 미커밋 변경은 다른 작업 소유라 건드리지 않았다.
+- `docs/qa/qa-tracker.md`에는 같은 월 한도 E2E NG와 API v6 증거가 이미 기록돼 있다. 다른 세션의 미커밋 변경을 섞지 않기 위해 중복 기록하지 않았다.
+
+### 다음에 칠 명령
+
+- 공유 AI 월 한도 복구 뒤 `cd dashboard && set -a && source .env.local && set +a && node scripts/verify-basic-flow-e2e.mjs && node scripts/verify-studio-v1-e2e.mjs`를 다시 실행한다.
+
+### 검증했나
+
+| 항목 | 결과 |
+|---|---|
+| GET 105개 실호출 | 정상 92, 계약상 거절 13, HTTP 500과 요청 실패 0 |
+| 전체 Vitest | 319파일 2,106건 PASS, 3건 제외 |
+| TypeScript | PASS |
+| 기본 흐름 E2E | NG, 공유 AI 월 한도 소진 |
+| Studio v1 E2E | NG, HTTP 429 |
+| 운영 배포 | 미검증 |
+
 ## 2026-09-13 09:21 KST 중복 위임 회수 점검
 
 ### 무엇을 어디까지 했나
