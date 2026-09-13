@@ -149,8 +149,9 @@ async function readQueue(queuePath: string): Promise<QueueData> {
     data.version = 2;
     data.posts = data.posts.map(migratePost);
     return data;
-  } catch {
-    return { version: 2, posts: [] };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 2, posts: [] };
+    throw error;
   }
 }
 
@@ -603,7 +604,8 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
             try {
               const raw = await fs.readFile(analyticsPath, "utf-8");
               history = JSON.parse(raw) as AnalyticsHistory;
-            } catch {
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
               history = { posts: [] };
             }
             for (const p of toArchive) {
