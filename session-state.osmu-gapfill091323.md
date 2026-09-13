@@ -4,7 +4,7 @@
 
 handoff_basis: 회장 요청 원문. 기존 tmux pane과 공용 상태는 동시 작업 여부 확인에만 사용했다.
 
-### 결론
+### 무엇을 어디까지 했나
 
 두 갭 감사의 최신 갱신과 현재 구현을 대조했다. 생성, 편집, 발행, 성과 제안 인계,
 학습 판단, 일곱 플랫폼 성과 수집은 이미 구현돼 있다. 지금도 없는 항목은 게시물별 성과
@@ -24,7 +24,7 @@ handoff_basis: 회장 요청 원문. 기존 tmux pane과 공용 상태는 동시
 - 같은 NG와 승인 차단은 `docs/qa/qa-tracker.md`의 2026-09-13 07시 04분 절에 이미
   기록돼 있어 중복 기록하지 않았다.
 
-### 설계 전 결정할 것
+### 남은 이슈·블로커
 
 1. 저장 방식: tenant와 게시물 FK를 가진 append-only snapshot 테이블을 추천한다.
 2. 멱등성: 게시물, provider, 관찰 구간을 기준으로 중복 수집을 막아야 한다.
@@ -32,20 +32,33 @@ handoff_basis: 회장 요청 원문. 기존 tmux pane과 공용 상태는 동시
 4. 비교 의미: 요청 시점, 시작과 끝, 포함 게시물 수, 결측과 데이터 지연을 응답에 밝혀야 한다.
 5. 보존 정책: 고객 자산 보존 원칙과 원자료 비용을 함께 반영해야 한다.
 
-### 다음 실행
+### 다음에 칠 명령
 
 소유자는 컨트롤러와 tech-architect다. 성과 이력 저장 계약과 30일 비교 의미를 합의하고
 eng-design 산출물과 build 공정을 승인한다. 그 뒤 code-builder가 migration, 수집 성공 시
 snapshot write, history와 comparison 읽기 API, 정상·거절·경합 계약 테스트를 구현한다.
 종료 증거는 localhost 실요청, 전체 Vitest, TypeScript, 기본 흐름 E2E 두 개다.
 
-### 검증 상태
+승인 뒤 검증 명령:
+
+```bash
+cd dashboard
+npm run test
+npx tsc --noEmit
+set -a && source ./.env.local && set +a && STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-basic-flow-e2e.mjs
+set -a && source ./.env.local && set +a && STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-studio-v1-e2e.mjs
+```
+
+### 검증했나
 
 - 관찰됨: localhost `GET /api/metrics` HTTP 200, `coverage`와 `posts`만 반환.
 - 근거 확인: `published_posts`는 최신 누계와 `metrics_at`만 보존하며 게시물별 이력 테이블이 없다.
 - 근거 확인: YouTube Analytics는 날짜와 영상 차원의 기간 조회를 지원하지만 TikTok 영상 조회는
   현재 누계 지표 중심이므로 일곱 provider 공통 비교 계약을 대신하지 못한다.
 - 미검증: 새 기능, migration, 단위·통합 테스트, 두 E2E, 운영 배포. 구현하지 않았다.
+- 백그라운드 레지스트리의 `codex-qa-verifier-32358`, `codex-code-builder-19902`는
+  이번 성과 시계열 작업에서 위임한 하위 작업이 아니다. 다른 OSMU 세션이 소유하므로
+  중단하거나 등록 해제하지 않았다.
 
 SKILLS_USED: 없음. 설치된 스킬 중 Next.js 성과 시계열 build에 직접 대응하는 스킬 없음.
 SKILLS_SKIPPED: qa는 QA 단계 소유이며 기존 NG를 실제 요청으로 재확인하는 데 그쳤다.
