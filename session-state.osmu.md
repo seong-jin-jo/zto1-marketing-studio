@@ -1,3 +1,21 @@
+## 2026-09-13 12시 33분 - 네 방 v3 QA 및 코드 리뷰 회수 완료
+
+### 무엇을 어디까지 했나
+
+네 방 v3 로컬 기능 QA는 기본 API 11/11, 네 방 렌더 4/4, 390 라이트·다크와 768·1024·1440의 20화면, 성과실→생성실 복귀 5/5로 관찰 완료했다. 별도 코드 리뷰도 회수했고 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-13.md`에 MAJOR 23건, MINOR 0건, `REVIEW_VERDICT: BLOCK`으로 확정됐다. 리뷰 커밋은 `afe2a312`, `4bff798d`, `4ec37004`, `ed9d9f2f`, 최종 리뷰 핸드오프는 `20debd7f`다. 백그라운드 위임 등록은 해제했고 실행 중 위임 0건을 확인했다.
+
+### 남은 이슈·블로커
+
+로컬 네 방 이동 자체는 관찰됐지만 제품 전체 QA는 NG다. 큐 잠금 임계구역이 실측 2,249ms 겹쳤고, 작업 공간 밖 파일 반출, 승인 payload 바꿔치기, 깨진 큐 덮어쓰기, outbox ABA 삭제, 성과 수집 거짓 성공, 카드뉴스 미리보기와 실제 발행 bytes 불일치가 남았다. Studio v1과 기본 흐름 최종 재실행도 공유 AI 월간 한도 소진 HTTP 429로 NG다. v63 과제 기준과 pipeline v68 승인 핀이 충돌하고 실제 화면은 v63과 디자인 불일치다. 운영 배포와 외부 실발행은 미검증이다.
+
+### 다음에 칠 명령
+
+build 워커가 MAJOR 23건을 새 고정 커밋에서 해소한 뒤 QA가 `cd dashboard && npm run test && npx tsc --noEmit && node scripts/verify-basic-flow-e2e.mjs && node scripts/verify-studio-v1-e2e.mjs`를 실행한다. 이어 경로 이탈, 승인 payload binding, lock 중첩, outbox version 경합, 성과 전체 실패와 뒤 batch 실패, 카드 PNG 미리보기와 실제 발행 bytes 일치를 직접 재현한다. product-designer와 컨트롤러는 v63·v68 중 단일 승인 핀을 확정한 뒤 4폭 픽셀 대조를 다시 수행한다.
+
+### 검증했나
+
+관찰됨: localhost 네 방 흐름, 양쪽 1024 성과실 PNG 대조, queue lock 2,249ms 동시 진입, 위임 실행 0건. 테스트됨: Vitest 319파일·2,106건 PASS와 3건 skip, TypeScript PASS. NG: 실제 생성 요청 HTTP 429, 디자인 정합, 코드 리뷰 MAJOR 23건. 미검증: 운영 배포, 외부 실발행.
+
 ## 2026-09-13 12시 07분 - 네 방 v3 QA 최종 인계
 
 ### 무엇을 어디까지 했나
