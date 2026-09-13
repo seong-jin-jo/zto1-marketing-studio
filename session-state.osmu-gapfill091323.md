@@ -56,9 +56,11 @@ set -a && source ./.env.local && set +a && STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540
 - 근거 확인: YouTube Analytics는 날짜와 영상 차원의 기간 조회를 지원하지만 TikTok 영상 조회는
   현재 누계 지표 중심이므로 일곱 provider 공통 비교 계약을 대신하지 못한다.
 - 미검증: 새 기능, migration, 단위·통합 테스트, 두 E2E, 운영 배포. 구현하지 않았다.
-- 백그라운드 레지스트리의 `codex-qa-verifier-32358`, `codex-code-builder-19902`는
-  이번 성과 시계열 작업에서 위임한 하위 작업이 아니다. 다른 OSMU 세션이 소유하므로
-  중단하거나 등록 해제하지 않았다.
+- 백그라운드 레지스트리의 `codex-qa-verifier-32358`은 `osmu-flowcheck091322`,
+  `codex-code-builder-19902`는 현재 `osmu-gapfill091323` 실행 자체다. 두 등록의 track이
+  레포명으로 잘못 들어가 종료 훅이 다른 라인과 자기 자신을 하위 위임으로 셌다. 프로세스를
+  중단하거나 등록 해제하지 않고 track만 실제 tmux 작업명으로 교정했다. 현재 레포 기본 track
+  기준 실행 중 위임 수는 0이다.
 
 SKILLS_USED: 없음. 설치된 스킬 중 Next.js 성과 시계열 build에 직접 대응하는 스킬 없음.
 SKILLS_SKIPPED: qa는 QA 단계 소유이며 기존 NG를 실제 요청으로 재확인하는 데 그쳤다.
