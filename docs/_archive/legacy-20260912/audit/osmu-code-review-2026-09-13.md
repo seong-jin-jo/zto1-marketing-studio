@@ -2,7 +2,7 @@
 
 STAMP | line: osmu | 생성: 2026-09-13 16:27 KST | model: gpt-codex/GPT-5 | agent: code-reviewer | skill: review | 근거: 승인 프로토타입 v63, pipeline 승인 핀 v68, DESIGN.md v37, 회장 확정 요구 대장, 사업 좌표, BRAIN, 고정 커밋 diff, localhost 실측, 공식 문서 | 고민: 초록 회귀 테스트가 실제 실패 경계를 닫았는지와 테스트 장치 자체가 과금 및 시간 계약을 새로 깨뜨렸는지를 분리했다.
 
-한 줄 결론: 최근 24시간 71개 커밋에는 작업 공간 밖 파일 반출, 승인물 바꿔치기 발행, 동시 writer 진입, 성과 수집 거짓 성공, 카드뉴스 발행물 불일치, 운영 DB 과금 장부 초기화를 포함한 MAJOR 25건이 남아 있어 머지를 차단한다.
+한 줄 결론: 최근 24시간 71개 커밋에는 작업 공간 밖 파일 반출, 승인물 바꿔치기 발행, 동시 writer 진입, 성과 수집 거짓 성공, 카드뉴스 예약 발행 축소, 운영 DB 과금 장부 초기화를 포함한 MAJOR 26건이 남아 있어 머지를 차단한다.
 
 ## 리뷰 범위와 증거
 
@@ -52,6 +52,8 @@ MAJOR: [회귀 위험] `dashboard/src/components/studio/StudioRooms.tsx:730`, `d
 
 MAJOR: [회귀 위험] `dashboard/src/lib/publish-return-context.ts:22`, `dashboard/src/app/studio/page.tsx:1312`: 새 다중 이미지 작업을 검토 대기나 발행 일정에서 복귀할 때 `imageUrl` 한 장만 복원한다 / v63 14652행의 다섯 장 카드뉴스 계약과 어긋난다 / return context에 검증된 `imageUrls` 배열을 포함하고 fallback ImgResult까지 복원하라. 재현: 5장을 검토 대기로 보낸 뒤 연결 draft가 없는 복귀 경로를 타면 첫 장만 남아 다음 발행이 단일 이미지로 축소된다.
 
+MAJOR: [회귀 위험] `dashboard/src/app/api/schedule/publish-due/route.ts:220`, `dashboard/src/app/api/schedule/publish-due/route.ts:237`, `dashboard/src/app/api/schedule/publish-due/route.ts:294`: 예약 발행은 `img.imageUrls` 배열을 읽지 않고 `img.url` 한 장만 Instagram publisher에 넘긴다 / 수동 발행의 `dashboard/src/app/studio/page.tsx:1139`와 v63 14652행의 다섯 장 카드뉴스 계약에 어긋난다 / 예약 payload에서도 전체 `imageUrls`를 검증하고 각각 다시 서명해 Instagram publisher에 배열로 넘겨라. 재현: 카드뉴스 5장을 예약 발행하면 수동 발행과 달리 첫 장만 단일 이미지 게시물로 올라간다.
+
 MAJOR: [회귀 위험] `dashboard/scripts/verify-api-read-sweep.mjs:20`, `dashboard/scripts/verify-api-read-sweep.mjs:111`: 120초 제한을 GET 105개에 순차 적용하고 전체 deadline이 없어 최악 종료가 12,600초다 / 확정 요구 대장의 검증은 반드시 끝나는 명령이어야 한다는 계약과 어긋난다 / dev compile 준비를 분리하고 제한 병렬성, 짧은 route timeout, 전체 실행 마감을 둬라. 재현: 모든 route가 연결만 유지하면 210분 뒤에야 종료된다.
 
 MAJOR: [회귀 위험] `dashboard/scripts/verify-four-room-ui-e2e.mjs:15`, `dashboard/scripts/verify-four-room-ui-e2e.mjs:103`, `dashboard/scripts/verify-four-room-ui-e2e.mjs:107`, `dashboard/scripts/verify-four-room-ui-e2e.mjs:116`: 콜드 컴파일과 사용자의 방 이동 및 데이터 준비를 같은 120초로 늘려 119초가 걸린 화면도 PASS로 만든다 / 사용자 상호작용 상한을 검증해야 한다는 요구와 어긋난다 / 서버 예열과 클릭 후 SLA를 분리하고 단계별 시간을 기록해 짧은 사용자 상한을 넘으면 실패시켜라. 재현: 각 방 이동 또는 성과 제안이 119초 걸려도 현재 조건에서는 PASS다.
@@ -73,7 +75,7 @@ MINOR: [회귀 위험] `dashboard/tests/integrity/four-room-probe-ready-timeout.
 ## 4축 판정
 
 - 승인 시안 이탈: 지적 3건
-- 회귀 위험: 지적 23건. MAJOR 22건, MINOR 1건
+- 회귀 위험: 지적 24건. MAJOR 23건, MINOR 1건
 - 토큰 위반: 문제없음. 최근 diff의 신규 색상, 인라인 style, 임의 spacing 리터럴에서 DESIGN.md 토큰 계약 위반을 확정하지 못했다.
 - 무기록 삭제: 문제없음. 최근 diff의 삭제 파일과 기능 역방향 대조에서 사유 없는 제품 부품 삭제를 확정하지 못했다.
 
@@ -87,7 +89,7 @@ REVIEW_VERDICT: BLOCK(MAJOR 있음)
 
 SKILLS_USED: review
 SKILLS_SKIPPED: 디자인 기계 탐지기는 설치되지 않아 기계 검사를 생략하고 DESIGN.md 및 코드 대조로 수행했다.
-SOURCES: `pipeline-state.osmu.md`; `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html`; pipeline 승인 v68 prototype; `DESIGN.md`; `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md`; `wiki/거버넌스/결정.md`; `wiki/거버넌스/실수.md`; `wiki/거버넌스/요청.md`; `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md`; `docs/구현현황.md`; `/Users/sj/Documents/SJ_BRAIN_wiki/wiki/business/index.md`; `/Users/sj/Documents/SJ_BRAIN_wiki/wiki/business/pmf/idea-zero-one-marketing-studio.md`; `/Users/sj/Documents/SJ_BRAIN_wiki/wiki/business/pmf/concept-제로원-고객경계-바이브코딩-결과물-보유자.md`; `https://api-security.owasp.org/editions/2023/en/0x11-t10/`; `https://nodejs.org/api/path.html`; `https://www.postgresql.org/docs/current/explicit-locking.html`
+SOURCES: `pipeline-state.osmu.md`; `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html`; `docs/design/prototypes/legacy-prototype-20260912/prototype/osmu-v68-create-performance-hub-gpt-codex-20260903-0022.html`; `DESIGN.md`; `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md`; `wiki/거버넌스/결정.md`; `wiki/거버넌스/실수.md`; `wiki/거버넌스/요청.md`; `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md`; `docs/구현현황.md`; `/Users/sj/Documents/SJ_BRAIN_wiki/wiki/business/index.md`; `/Users/sj/Documents/SJ_BRAIN_wiki/wiki/business/pmf/idea-zero-one-marketing-studio.md`; `/Users/sj/Documents/SJ_BRAIN_wiki/wiki/business/pmf/concept-제로원-고객경계-바이브코딩-결과물-보유자.md`; `https://api-security.owasp.org/editions/2023/en/0x11-t10/`; `https://nodejs.org/api/path.html`; `https://www.postgresql.org/docs/current/explicit-locking.html`
 MODEL: gpt-codex/GPT-5
 KNOWLEDGE_QUERY: OSMU 원본 충실도, 멀티벤처 작업 공간 경계, 승인 발행 payload 결속, 파일 경로 정규화, Postgres 동시 변경, provider 부분 실패, 과금 quota 시드, 카드뉴스 실제 미리보기, QA 전체 deadline
 HITS_USED: BRAIN의 OSMU 원본 충실도와 고객 결과물 소유 경계, OWASP의 무제한 자원 소비 위험, Node.js path 정규화 의미, PostgreSQL의 명시적 잠금과 동시 변경 원칙을 결함 우선순위와 재현 설계에 사용했다.
