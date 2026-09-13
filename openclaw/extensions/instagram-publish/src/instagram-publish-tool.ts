@@ -1,8 +1,8 @@
 import { Type } from "typebox";
 import { jsonResult, readStringParam } from "openclaw/plugin-sdk/agent-runtime";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-runtime";
-import { readFile } from "node:fs/promises";
-import { resolve, extname } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { basename, extname, isAbsolute, relative, resolve } from "node:path";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import {
   beginQueuePublishAttempt,
@@ -20,6 +20,50 @@ const MIME_TYPES: Record<string, string> = {
   ".webp": "image/webp",
 };
 
+const LOCAL_IMAGE_PREFIX = "/images/";
+
+function hasExpectedImageSignature(buffer: Buffer, extension: string): boolean {
+  if (extension === ".jpg" || extension === ".jpeg") {
+    return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  }
+  if (extension === ".png") {
+    return buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  }
+  if (extension === ".gif") {
+    const signature = buffer.subarray(0, 6).toString("ascii");
+    return signature === "GIF87a" || signature === "GIF89a";
+  }
+  return extension === ".webp"
+    && buffer.length >= 12
+    && buffer.subarray(0, 4).toString("ascii") === "RIFF"
+    && buffer.subarray(8, 12).toString("ascii") === "WEBP";
+}
+
+export async function readOwnedLocalImage(
+  imageUrl: string,
+  dataDir: string,
+): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
+  if (!imageUrl.startsWith(LOCAL_IMAGE_PREFIX)) throw new Error("로컬 이미지 경로가 아닙니다");
+  const requested = imageUrl.slice(LOCAL_IMAGE_PREFIX.length);
+  if (!requested || requested.includes("\0") || isAbsolute(requested)) {
+    throw new Error("허용되지 않은 로컬 이미지 경로입니다");
+  }
+
+  const imageRoot = await realpath(resolve(dataDir, "images"));
+  const filePath = await realpath(resolve(imageRoot, requested));
+  const childPath = relative(imageRoot, filePath);
+  if (!childPath || childPath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || childPath === ".." || isAbsolute(childPath)) {
+    throw new Error("이미지 저장소 밖의 파일은 발행할 수 없습니다");
+  }
+
+  const extension = extname(filePath).toLowerCase();
+  const contentType = MIME_TYPES[extension];
+  if (!contentType) throw new Error("지원하지 않는 이미지 파일 형식입니다");
+  const buffer = await readFile(filePath);
+  if (!hasExpectedImageSignature(buffer, extension)) throw new Error("파일 내용이 이미지 형식과 일치하지 않습니다");
+  return { buffer, filename: basename(filePath), contentType };
+}
+
 type Config = { accessToken?: string; userId?: string; queuePath?: string };
 
 function resolveConfig(api: OpenClawPluginApi) {
@@ -32,10 +76,8 @@ function resolveConfig(api: OpenClawPluginApi) {
 }
 
 async function uploadToR2(localPath: string, idempotencyKey: string): Promise<string> {
-  const filename = localPath.replace("/images/", "");
   const dataDir = process.env.DATA_DIR || "/home/node/data";
-  const filePath = resolve(dataDir, "images", filename);
-  const fileBuffer = await readFile(filePath);
+  const { buffer: fileBuffer, filename, contentType } = await readOwnedLocalImage(localPath, dataDir);
 
   const accessKeyId = process.env.R2_ACCESS_KEY_ID || "";
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY || "";
@@ -48,7 +90,6 @@ async function uploadToR2(localPath: string, idempotencyKey: string): Promise<st
   }
 
   const ext = extname(filename).toLowerCase();
-  const contentType = MIME_TYPES[ext] || "application/octet-stream";
   const key = `instagram/${idempotencyKey}${ext}`;
 
   const s3 = new S3Client({

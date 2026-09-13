@@ -1,8 +1,8 @@
 import { Type } from "typebox";
 import { jsonResult, readStringParam } from "openclaw/plugin-sdk/agent-runtime";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-runtime";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { basename, extname, isAbsolute, relative, resolve } from "node:path";
 import {
   beginQueuePublishAttempt,
   recordQueueProviderResult,
@@ -10,6 +10,50 @@ import {
 } from "../../threads-queue/api.js";
 
 const THREADS_API_BASE = "https://graph.threads.net/v1.0";
+
+const LOCAL_IMAGE_PREFIX = "/images/";
+const ALLOWED_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
+
+function hasExpectedImageSignature(buffer: Buffer, extension: string): boolean {
+  if (extension === ".jpg" || extension === ".jpeg") {
+    return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  }
+  if (extension === ".png") {
+    return buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  }
+  if (extension === ".gif") {
+    const signature = buffer.subarray(0, 6).toString("ascii");
+    return signature === "GIF87a" || signature === "GIF89a";
+  }
+  return extension === ".webp"
+    && buffer.length >= 12
+    && buffer.subarray(0, 4).toString("ascii") === "RIFF"
+    && buffer.subarray(8, 12).toString("ascii") === "WEBP";
+}
+
+export async function readOwnedLocalImage(
+  imageUrl: string,
+  dataDir: string,
+): Promise<{ buffer: Buffer; filename: string }> {
+  if (!imageUrl.startsWith(LOCAL_IMAGE_PREFIX)) throw new Error("로컬 이미지 경로가 아닙니다");
+  const requested = imageUrl.slice(LOCAL_IMAGE_PREFIX.length);
+  if (!requested || requested.includes("\0") || isAbsolute(requested)) {
+    throw new Error("허용되지 않은 로컬 이미지 경로입니다");
+  }
+
+  const imageRoot = await realpath(resolve(dataDir, "images"));
+  const filePath = await realpath(resolve(imageRoot, requested));
+  const childPath = relative(imageRoot, filePath);
+  if (!childPath || childPath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || childPath === ".." || isAbsolute(childPath)) {
+    throw new Error("이미지 저장소 밖의 파일은 발행할 수 없습니다");
+  }
+
+  const extension = extname(filePath).toLowerCase();
+  if (!ALLOWED_IMAGE_EXTENSIONS.has(extension)) throw new Error("지원하지 않는 이미지 파일 형식입니다");
+  const buffer = await readFile(filePath);
+  if (!hasExpectedImageSignature(buffer, extension)) throw new Error("파일 내용이 이미지 형식과 일치하지 않습니다");
+  return { buffer, filename: basename(filePath) };
+}
 
 type ThreadsPublishConfig = {
   accessToken?: string;
@@ -87,10 +131,8 @@ export function createThreadsPublishTool(api: OpenClawPluginApi) {
 
       // Convert local /images/ path to public URL via temporary upload
       if (imageUrl && imageUrl.startsWith("/images/")) {
-        const filename = imageUrl.replace("/images/", "");
         const dataDir = process.env.DATA_DIR || resolve(process.cwd(), "data");
-        const localPath = resolve(dataDir, "images", filename);
-        const fileBuffer = await readFile(localPath);
+        const { buffer: fileBuffer, filename } = await readOwnedLocalImage(imageUrl, dataDir);
         const formData = new FormData();
         formData.append("file", new Blob([fileBuffer]), filename);
         const uploadResp = await fetch("https://tmpfiles.org/api/v1/upload", { method: "POST", body: formData });
