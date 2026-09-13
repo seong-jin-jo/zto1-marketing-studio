@@ -124,7 +124,13 @@ export function createThreadsPublishTool(api: OpenClawPluginApi) {
       const quotePostId = readStringParam(rawParams, "quote_post_id");
       const { accessToken, userId } = resolveConfig(api);
       const queuePath = resolvePublisherQueuePath((api.pluginConfig ?? {}) as ThreadsPublishConfig);
-      const attempt = await beginQueuePublishAttempt({ queuePath, postId, channel: "threads", claimToken });
+      const attempt = await beginQueuePublishAttempt({
+        queuePath,
+        postId,
+        channel: "threads",
+        claimToken,
+        payload: { text, imageUrls: imageUrl ? [imageUrl] : [], quotePostId },
+      });
       let resultRecorded = false;
 
       try {

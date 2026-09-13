@@ -140,7 +140,13 @@ export function createXPublishTool(api: OpenClawPluginApi) {
       const url = `${X_API_BASE}/tweets`;
       const authHeader = buildOAuthHeader("POST", url, config);
       const queuePath = resolvePublisherQueuePath((api.pluginConfig ?? {}) as XPublishConfig);
-      const attempt = await beginQueuePublishAttempt({ queuePath, postId, channel: "x", claimToken });
+      const attempt = await beginQueuePublishAttempt({
+        queuePath,
+        postId,
+        channel: "x",
+        claimToken,
+        payload: { text },
+      });
       let resultRecorded = false;
 
       try {

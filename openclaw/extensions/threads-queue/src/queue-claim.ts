@@ -45,6 +45,7 @@ export interface QueueClaim {
   token: string;
   claimedAt: string;
   expiresAt: string;
+  approvedPayloadHash?: string;
 }
 
 export interface ClaimablePost {
@@ -79,7 +80,7 @@ export function isClaimActive(post: ClaimablePost, now: Date = new Date()): bool
  */
 export function claimPost(
   post: ClaimablePost,
-  options: { workerId: string; token: string; now?: Date; leaseMs?: number },
+  options: { workerId: string; token: string; now?: Date; leaseMs?: number; approvedPayloadHash?: string },
 ): QueueClaim | null {
   const now = options.now ?? new Date();
   if (isClaimActive(post, now)) return null;
@@ -89,6 +90,7 @@ export function claimPost(
     token: options.token,
     claimedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + leaseMs).toISOString(),
+    approvedPayloadHash: options.approvedPayloadHash,
   };
   post.claim = claim;
   return claim;

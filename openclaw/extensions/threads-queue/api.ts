@@ -11,6 +11,12 @@ import { withQueueLock } from "./src/queue-lock.js";
 
 type QueueData = { version?: number; posts: ClaimablePost[] };
 
+export type ApprovedPublishPayload = {
+  text: string;
+  imageUrls?: string[];
+  quotePostId?: string;
+};
+
 export type QueueGuardConfig = { queuePath?: string };
 
 export function resolvePublisherQueuePath(config: QueueGuardConfig = {}): string {
@@ -34,16 +40,59 @@ async function writeQueue(queuePath: string, queue: QueueData): Promise<void> {
   await fs.rename(tempPath, queuePath);
 }
 
+function stringField(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function stringArrayField(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+export function hashApprovedQueuePayload(post: ClaimablePost): string {
+  return crypto.createHash("sha256").update(JSON.stringify({
+    text: stringField(post.text),
+    imageUrl: stringField(post.imageUrl),
+    imageUrls: stringArrayField(post.imageUrls),
+    quotePostId: stringField(post.quotePostId),
+  })).digest("hex");
+}
+
+function approvedPayloadForChannel(post: ClaimablePost, channel: ChannelKey): Required<ApprovedPublishPayload> {
+  const imageUrl = stringField(post.imageUrl);
+  const imageUrls = stringArrayField(post.imageUrls);
+  return {
+    text: stringField(post.text),
+    imageUrls: channel === "instagram" ? (imageUrls.length > 0 ? imageUrls : imageUrl ? [imageUrl] : []) : channel === "threads" && imageUrl ? [imageUrl] : [],
+    quotePostId: channel === "threads" ? stringField(post.quotePostId) : "",
+  };
+}
+
+function normalizeAttemptedPayload(payload: ApprovedPublishPayload): Required<ApprovedPublishPayload> {
+  return {
+    text: stringField(payload.text),
+    imageUrls: stringArrayField(payload.imageUrls),
+    quotePostId: stringField(payload.quotePostId),
+  };
+}
+
 /** 공급자 호출 직전에 pending을 publishing으로 원자 전이한다. */
 export async function beginQueuePublishAttempt(options: {
   queuePath: string;
   postId: string;
   channel: ChannelKey;
   claimToken: string;
+  payload: ApprovedPublishPayload;
 }): Promise<{ idempotencyKey: string }> {
   return withQueueLock(options.queuePath, async () => {
     const queue = await readQueue(options.queuePath);
     const post = queue.posts.find((item) => item.id === options.postId);
+    const claimHash = post?.claim?.approvedPayloadHash;
+    if (!post || !claimHash || claimHash !== hashApprovedQueuePayload(post)) {
+      throw new Error("발행 차단: approved-payload-changed: 승인 뒤 작업물 내용이 바뀌었습니다");
+    }
+    if (JSON.stringify(normalizeAttemptedPayload(options.payload)) !== JSON.stringify(approvedPayloadForChannel(post, options.channel))) {
+      throw new Error("발행 차단: approved-payload-mismatch: 승인하지 않은 본문 또는 미디어입니다");
+    }
     const idempotencyKey = crypto.randomUUID();
     const verdict = beginPublishAttempt(post, options.channel, {
       claimToken: options.claimToken,

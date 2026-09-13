@@ -16,6 +16,7 @@ import {
   type QueueClaim,
 } from "./queue-claim.js";
 import { withQueueLock } from "./queue-lock.js";
+import { hashApprovedQueuePayload } from "../api.js";
 
 type Engagement = {
   views: number;
@@ -420,6 +421,7 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
               token: crypto.randomUUID(),
               now,
               leaseMs,
+              approvedPayloadHash: hashApprovedQueuePayload(post),
             });
             if (!claim) continue;
             claimed.push({ ...post, claimToken: claim.token });

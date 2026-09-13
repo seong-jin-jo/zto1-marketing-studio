@@ -141,7 +141,13 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
 
       const { accessToken, userId } = resolveConfig(api);
       const queuePath = resolvePublisherQueuePath((api.pluginConfig ?? {}) as Config);
-      const attempt = await beginQueuePublishAttempt({ queuePath, postId, channel: "instagram", claimToken });
+      const attempt = await beginQueuePublishAttempt({
+        queuePath,
+        postId,
+        channel: "instagram",
+        claimToken,
+        payload: { text: caption, imageUrls },
+      });
       let resultRecorded = false;
 
       try {

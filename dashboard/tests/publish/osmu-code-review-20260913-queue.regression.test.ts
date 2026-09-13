@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { beginQueuePublishAttempt } from "../../../openclaw/extensions/threads-queue/api";
+import { beginQueuePublishAttempt, hashApprovedQueuePayload } from "../../../openclaw/extensions/threads-queue/api";
 import { createTempDir, cleanupTestEnv, setupTestEnv } from "../helpers";
 
 let tempDir: string;
@@ -44,12 +44,14 @@ describe("OSMU 코드 리뷰 1, 2, 3, 4, 23 발행 격리 계약", () => {
     writeQueue({
       id: "post-publishing",
       status: "approved",
+      text: "승인 본문",
       scheduledAt: new Date(Date.now() - 60_000).toISOString(),
       claim: {
         workerId: "worker-A",
         token: "token-A",
         claimedAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        approvedPayloadHash: hashApprovedQueuePayload({ id: "post-publishing", status: "approved", text: "승인 본문", channels: {} }),
       },
       channels: {
         threads: { status: "pending", publishedAt: null, error: null },
@@ -63,6 +65,7 @@ describe("OSMU 코드 리뷰 1, 2, 3, 4, 23 발행 격리 계약", () => {
       postId: "post-publishing",
       channel: "threads",
       claimToken: "token-A",
+      payload: { text: "승인 본문" },
     });
     expect(attempt.idempotencyKey).toBeTruthy();
     expect((readPost().channels as Record<string, { status: string }>).threads.status).toBe("publishing");
@@ -89,8 +92,10 @@ describe("OSMU 코드 리뷰 1, 2, 3, 4, 23 발행 격리 계약", () => {
         token: "token-A",
         claimedAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        approvedPayloadHash: hashApprovedQueuePayload({ id: "post-token", status: "approved", text: "승인 본문", channels: {} }),
       },
       channels: { threads: { status: "pending", publishedAt: null, error: null } },
+      text: "승인 본문",
     });
 
     await expect(beginQueuePublishAttempt({
@@ -98,12 +103,14 @@ describe("OSMU 코드 리뷰 1, 2, 3, 4, 23 발행 격리 계약", () => {
       postId: "post-token",
       channel: "threads",
       claimToken: "",
+      payload: { text: "승인 본문" },
     })).rejects.toThrow(/claim-required/);
     await expect(beginQueuePublishAttempt({
       queuePath: queuePath(),
       postId: "post-token",
       channel: "threads",
       claimToken: "token-B",
+      payload: { text: "승인 본문" },
     })).rejects.toThrow(/claim-mismatch/);
     expect((readPost().channels as Record<string, { status: string }>).threads.status).toBe("pending");
   });
