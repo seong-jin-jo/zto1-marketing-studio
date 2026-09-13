@@ -1,5 +1,37 @@
 # OSMU API 읽기 경로 전수 재실사 핸드오프
 
+## 2026-09-13 09:21 KST 중복 위임 회수 점검
+
+### 무엇을 어디까지 했나
+
+- 이번 `codex-qa-verifier-61057` 위임은 아래 06:08 KST 완료 과제와 같은 요청이었다. 새 제품 수정은 하지 않았다.
+- 완료 커밋 `b25005aa`, `f2d3b3e2`, `2b0b9441`이 현재 HEAD 이력에 포함된 것을 확인했다.
+- 고정 소스 `f2d3b3e2`의 정적 GET export 105개와 `logs/diff/osmu-api-read-sweep-20260913-0537.json`의 고유 경로 105개가 일치했다. 원본은 정상 92개, 의도된 거절 후보 13개, HTTP 500과 요청 실패 0개다.
+- 현재 localhost health를 다시 호출해 HTTP 200과 DB `up`을 관찰했다.
+- v63 생성실 시안 `docs/design/captures/osmu-four-room-prototype-v63-20260912/1440-light-create.png`와 dev 생성실 `logs/diff/osmu-four-room-flow-20260913-qa-rerun/1440-light-create.png`를 직접 열어 대조했다. 시안의 좌측 영구 사이드바, 상단 상태줄, 중앙 후보 3열, 우측 좁은 담당 패널이 dev의 상단 방 탭, 세로 입력 폼, 하단 후보 3열, 넓은 우측 대화 패널로 바뀌어 기존 디자인 NG가 재확인됐다.
+
+### 남은 이슈·블로커
+
+- 06:00 KST 완료 뒤 공유 작업 트리에서 GET을 포함한 API route가 다시 수정됐다. 이번 재실사 시작 뒤에도 `/api/publish`가 바뀌어 실행 전후 소스 해시가 달라졌으므로 그 실행은 완료 증거에서 제외했다.
+- 현재 미커밋 API 변경본은 다른 코드 리뷰 수정 작업 소유다. 그 작업이 커밋돼 소스가 고정되기 전에는 최신 105개 전수 판정을 낼 수 없다.
+- 제품 전체 QA는 디자인 정합 NG, 외부 OAuth·실발행·운영 배포 미검증 때문에 계속 NG다.
+
+### 다음에 칠 명령
+
+- 다른 코드 리뷰 수정이 커밋된 뒤 `cd dashboard && set -a && source .env.local && set +a && API_SWEEP_WORKSPACE_ID=cd1d0a40-540d-4524-9b49-bf2445d82182 API_SWEEP_TIMEOUT_MS=120000 node scripts/verify-api-read-sweep.mjs`를 실행한다.
+- 실행 전후 `dashboard/src/app/api/**/route.ts` 합성 해시가 같고 HTTP 500·요청 실패가 0일 때만 새 결과로 승격한다.
+
+### 검증했나
+
+| 항목 | 결과 |
+|---|---|
+| 완료 산출물의 HEAD 포함 | 확인, `2b0b9441` ancestor |
+| 고정 소스 GET 분모와 원본 | 105 대 105 일치 |
+| 고정 원본 실패 | HTTP 500 0, 요청 실패 0 |
+| 현재 localhost health | HTTP 200, DB up |
+| 현재 이동 중 소스 전수 실사 | 미검증, 실행 중 소스 변경으로 증거 제외 |
+| v63 시안 대 dev 화면 | 직접 2장 열람, 구조 불일치로 NG 재확인 |
+
 업데이트: 2026-09-13 06:08 KST
 라인: osmu
 작업 목적: 2026-09-13 최신 소스 기준 API 읽기 경로 전수 재실사
