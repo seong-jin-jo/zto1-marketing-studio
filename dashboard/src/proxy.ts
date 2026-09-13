@@ -156,6 +156,9 @@ const TENANT_AWARE_PATHS = [
   "/api/video/list",
   "/api/video/publish",
   "/api/video/refine-clip",
+  // 편집실을 떠날 때 자막을 영상에 굽는 경로. 이 줄이 없어 고객 토큰이 403 을 받았고,
+  // 발행실로 넘어가는 길이 말없이 막혔다(2026-09-14 실측). 화면에는 아무 안내도 안 떴다.
+  "/api/video/subtitle",
   "/api/video/repurpose",
   "/api/video/upload",
   "/api/voice-tone",

@@ -65,6 +65,27 @@ describe("고객이 부르는 studio 라우트는 허용 목록에 있다", () =
     expect(missing, `허용 목록에 없는 queue 라우트: ${missing.join(", ")}`).toEqual([]);
   });
 
+  // 2026-09-14 같은 사고가 세 번째다. studio, queue 에 이어 video 에서 났다.
+  // 자막 굽기 라우트를 새로 만들고 허용 목록에 안 넣어 편집실에서 발행실로 가는 길이
+  // 말없이 막혔다. 고객 화면이 부르는 디렉터리는 전부 이 검사를 받게 한다.
+  it("video 아래 라우트가 빠짐없이 등록돼 있다", () => {
+    const routes = studioRoutes(resolve(root, "app/api/video"), "/api/video");
+    const allowed = (route: string) => {
+      if (proxy.includes(`"${route}"`)) return true;
+      const asMatcher = route.replace(/\//g, "\\/").replace(/\[[^\]]+\]/g, "[^/]+");
+      return proxy.includes(asMatcher);
+    };
+    // 운영자 전용으로 의도한 것만 여기 적는다. 이유 없이 적으면 그게 다음 사고다.
+    const operatorOnly = new Set<string>([
+      "/api/video/generate",       // 본문 경로를 그대로 받는다. proxy.ts 151행이 이유를 적어 뒀다.
+      "/api/video/repurpose",      // 운영자 도구.
+      "/api/video/script-from-blog", // 운영자 도구.
+      "/api/video/upload",         // 운영자 업로드 경로.
+    ]);
+    const missing = routes.filter((route) => !operatorOnly.has(route) && !allowed(route));
+    expect(missing, `허용 목록에 없는 video 라우트: ${missing.join(", ")}`).toEqual([]);
+  });
+
   it("이 목록이 허용 목록이라는 사실이 코드에 적혀 있다", () => {
     // 차단 목록으로 착각하면 새 라우트를 안 넣고 지나간다.
     expect(proxy).toContain("허용 목록");
