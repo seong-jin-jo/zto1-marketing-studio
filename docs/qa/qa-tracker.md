@@ -2,6 +2,20 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 05시 38분 KST · 코드 공격 리뷰 19건 수정 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| OSMU-001부터 OSMU-007 | 경로 이탈, 승인 payload, 큐 잠금, 발행 claim, 공급자 실패 상태, analytics 이력 보존 | REVIEW-FIX-20260914-01 | PASS | 경로 realpath·magic byte 3건, 승인 hash 3건, 13초 잠금 경합 2건, claim 복구 2건, 공급자 상태 2건, 손상 이력 2건 통과. 소스 커밋 `d0b8065f`부터 `5032b483` |
+| OSMU-008부터 OSMU-014 | 예약 lease, 예약 캐러셀, Instagram 시도 기록, 카드 저장 보상, 발행실 시안 준수 | REVIEW-FIX-20260914-02 | PASS | 예약 14건, Instagram 7건, 카드 저장 3건, 카드 흐름 10건, 발행실 4건 통과. 커밋 `92e0d02e`, `2c806d9d`, `2be47af9`, `1b60a823` |
+| OSMU-015부터 OSMU-018 | 성과 중복 호출, 묶음 부분 실패, Meta 오류 분류, API 상태 일치 | REVIEW-FIX-20260914-03 | PASS | PostgreSQL advisory lock, 5분 freshness, X 101건과 YouTube 51건 부분 성공 보존, Meta 게시물별 실패, HTTP 207·429·424·503 계약 14건 통과. 커밋 `6ce8016f` |
+| OSMU-019 | QA 전체 실행시간과 제한 병렬성 | REVIEW-FIX-20260914-04 | PASS | 회귀 3건과 기존 timeout 계약 3건 통과. 전체 예산 100ms 재현은 0.55초에 종료 코드 1로 끝났고 미실행 75개를 `전체 시간 초과`로 기록. 커밋 `d2ce0e0e`, `8a055508` |
+| 필수 자동 회귀 | 전체 Vitest | REVIEW-FIX-20260914-05 | PASS | `npm run test` 종료 코드 0. 337파일 전체 통과, 2,169건 통과, 조건부 3건 제외, 실패 0 |
+| 정적 검증과 빌드 | TypeScript, production build, 디자인 토큰 | REVIEW-FIX-20260914-06 | PASS | `npx tsc --noEmit` 종료 코드 0. `npm run build` 184개 page 생성, 종료 코드 0. design-lint 위반 0. 기존 Turbopack NFT 추적 경고 1건은 남음 |
+| 현재 localhost | 이번 코드로 재기동한 실제 서버 | REVIEW-FIX-20260914-07 | PASS | 기존 3456 서버가 120초 무응답이라 해당 자식만 종료했다. 이번 코드로 제한시간 재기동 후 `/api/health` HTTP 200, `db=up`, 기본 흐름 11/11, Studio v1 14/14 통과 후 서버 종료 |
+
+운영 배포와 실제 외부 채널 게시물 생성은 수행하지 않았다. 공급자 결과를 조회할 수 없는 예약은 자동 재게시하지 않으며, Instagram 자식 컨테이너는 삭제 API를 추측하지 않고 생성 ID와 부모 ID를 `provider_meta` 또는 예약 payload에 남긴다.
+
 ## 2026-09-14 04시 33분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
