@@ -19,7 +19,14 @@ RUN npm run build
 FROM node:20-alpine
 ARG BUILD_COMMIT="unknown"
 LABEL org.opencontainers.image.revision=$BUILD_COMMIT
-RUN apk add --no-cache docker-cli
+# ffmpeg = 영상 자막 굽기(api/video/subtitle)와 내레이션 합성(lib/higgsfield addNarration)의
+# 실행기. font-noto-cjk = 그 자막을 한글로 그릴 글꼴.
+#
+# 2026-09-14 확인: 이 이미지에 둘 다 없었다. 그래서 발행 대기 중인 영상에 자막이 한 자도
+# 없었고(내려받아 프레임을 떠서 확인) 내레이션 합성도 조용히 실패하고 있었다. 편집실에는
+# 자막 크기를 고르는 자리가 있는데 결과물에는 자막이 없는 상태였다. 글꼴이 없으면 ffmpeg 은
+# 한글을 네모로 그리므로 실행기만 넣는 것으로는 부족하다. 둘은 같이 들어와야 한 기능이 된다.
+RUN apk add --no-cache docker-cli ffmpeg font-noto-cjk
 # claude CLI — generateText의 폴백 경로(테넌트 Anthropic 키 미등록 시 `claude -p`).
 # 내부 4앱은 이 폴백으로 운영(운영자 Max 구독). 인증(~/.claude OAuth)은 런타임 볼륨 마운트로 주입:
 #   compose에 `- ~/.claude:/root/.claude:ro` (호스트가 사전 인증 필요 — 운영자 액션).

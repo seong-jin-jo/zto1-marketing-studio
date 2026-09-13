@@ -20,7 +20,7 @@ import { useUsage } from "@/hooks/useOverview";
 import { useUIStore, type StudioRoom } from "@/store/ui-store";
 import { LearningCardWizard } from "@/components/studio/LearningCardWizard";
 import { LearningStatus } from "@/components/studio/LearningStatus";
-import { buildImagePrompt, pickImageSubject } from "@/components/studio/image-style";
+import { buildImagePrompt, buildMotionPrompt, pickImageSubject } from "@/components/studio/image-style";
 import { countFilledUserSlots, fetchLearningInfo, LEARNING_USER_SLOT_TOTAL, mergeLearningInfo, readLearningInfo, saveLearningInfo, type LearningInfo } from "@/components/studio/learning-info";
 import { RepoConnect } from "@/components/studio/RepoConnect";
 import { SchedulePanel } from "@/components/studio/SchedulePanel";
@@ -782,7 +782,13 @@ export default function StudioPage() {
     const s = text?.shorts;
     const narration = [s?.hook, s?.body, s?.cta].filter(Boolean).join(". ");
     try {
-      const r = await apiPost<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { localPath: source.localPath, filename: source.filename, prompt: "subtle idle motion, gentle glow, fixed camera", model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
+      // 2026-09-14 이전에는 여기 지시문이 고정 문자열이라 주제도 학습 정보도 실리지 않았다.
+      // 무엇에 관한 영상이든 같은 지시가 갔고, 결과가 주제와 무관하게 나오는 원인 중 하나였다.
+      const motion = buildMotionPrompt(
+        pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea }),
+        learningInfo,
+      );
+      const r = await apiPost<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { localPath: source.localPath, filename: source.filename, prompt: motion, model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
       if (!r?.ok) {
         const msg = r?.nsfw
           ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요."
@@ -864,15 +870,15 @@ export default function StudioPage() {
     generationAbort.current = new AbortController();
     setBusy("카드뉴스 이미지 만드는 중");
     try {
-      // 고른 결과 학습 정보의 브랜드 색을 함께 실어 보낸다. 브랜드 색은 고객이 이미
-      // 골라 둔 값인데 종전에는 그림 생성에 한 번도 쓰이지 않았다.
+      // 학습 정보를 **통째로** 실어 보낸다. 2026-09-14 이전에는 브랜드 색 한 칸만 실리고
+      // 업종·말투·목표·금지어는 고객이 골라 뒀는데도 그림에 한 번도 닿지 않았다.
       // 카드뉴스 본문을 그림 지시문으로 넘기지 않는다. 넘기면 생성기가 그 말을 그림 속
       // 글자로 그려서 쓸 수 없는 이미지가 나온다(2026-09-08 실측).
       await genImage(
         buildImagePrompt(
           pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea }),
           { id: imageStyleId, custom: imageStyleCustom },
-          learningInfo.palette,
+          learningInfo,
         ),
         "1:1",
       );
@@ -918,7 +924,7 @@ export default function StudioPage() {
           buildImagePrompt(
             pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea }),
             { id: imageStyleId, custom: imageStyleCustom },
-            learningInfo.palette,
+            learningInfo,
           ),
           "9:16",
         );
@@ -946,6 +952,9 @@ export default function StudioPage() {
     persistedEditLines: string[] = editLines,
     // 방금 다시 그린 카드는 아직 상태에 반영되기 전이다. 상태를 기다리면 옛 그림이 저장된다.
     persistedImg: ImgResult | null = img,
+    // 방금 자막을 구운 영상도 같은 이유로 인자로 받는다. 상태를 기다리면 자막 없는 옛
+    // 파일이 저장되고, 발행실은 저장된 것을 올린다.
+    persistedVid: VidResult | null = vid,
   ) {
     const r = await apiPost<{ id?: string }>("/api/studio/drafts", {
       tenant_id: activeWorkspace?.id,
@@ -953,7 +962,7 @@ export default function StudioPage() {
       idea,
       text,
       img: persistedImg,
-      vid,
+      vid: persistedVid,
       includes,
       status,
       publishReconciliations: reconciliations,
@@ -1015,6 +1024,56 @@ export default function StudioPage() {
       return null;
     }
   }
+  /**
+   * 편집실의 장면 대사와 자막 크기를 **나가는 영상 파일에 굽는다**.
+   *
+   * 2026-09-14 실측: 발행 대기 중이던 영상을 내려받아 프레임을 떠 보니 자막이 한 자도
+   * 없었다. 편집실에는 자막 크기를 고르는 자리가 있는데 결과물에는 자막이 아예 없다.
+   * 소리 없는 숏폼에서 자막은 내용 전달의 전부다.
+   *
+   * 카드가 `recompositeCards` 로 푼 것과 같은 자리, 같은 성질의 문제다. 화면에서 고친
+   * 것이 나가는 파일에 없으면 고치는 기능은 없는 것과 같다. 다만 카드는 브라우저가 다시
+   * 그리고 영상은 서버가 굽는다(ffmpeg).
+   *
+   * **못 구우면 넘어가지 않는다.** 카드가 다시 그리기에 실패하면 발행실로 안 보내는 것과
+   * 같은 판단이다(교차 리뷰 2026-09-14 HIGH 지적). 굽기에 실패했는데 그냥 통과시키면 자막
+   * 없는 파일이 그대로 발행된다. 그것은 이 작업이 고치려는 바로 그 상태이고, 사용자는
+   * 자막을 넣었다고 믿은 채로 무자막 영상을 내보내게 된다. 조용한 통과가 가장 나쁘다.
+   *
+   * "해당 없음"(영상 편집이 아니거나 올릴 영상이 아직 없음)과 "실패"는 다르다. 해당 없으면
+   * 길을 막지 않는다.
+   */
+  type SubtitleBurnOutcome =
+    | { kind: "skipped" }
+    | { kind: "done"; vid: VidResult }
+    | { kind: "failed" };
+  async function burnVideoSubtitles(lines: string[]): Promise<SubtitleBurnOutcome> {
+    if (editKind !== "video") return { kind: "skipped" };
+    if (!activeWorkspace) return { kind: "skipped" };
+    const filename = videoFilename(vid?.file || vid?.url || "");
+    if (!filename) return { kind: "skipped" };
+    const spoken = lines.filter((line) => line.trim());
+    if (!spoken.length) return { kind: "skipped" };
+    const subtitleSize = editFormat.kind === "video" ? editFormat.subtitleSize : "보통";
+    try {
+      const r = await apiPost<{ ok?: boolean; file?: string; filename?: string; error?: string }>("/api/video/subtitle", {
+        tenant_id: activeWorkspace.id,
+        filename,
+        lines: spoken,
+        subtitleSize,
+      });
+      if (!r?.ok || !r.file) {
+        showToast(r?.error || "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요.", "error");
+        return { kind: "failed" };
+      }
+      const next: VidResult = { ...(vid as VidResult), url: r.file, file: r.file };
+      setVid(next);
+      return { kind: "done", vid: next };
+    } catch (error) {
+      showToast(extractApiErrorMessage(error, "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요."), "error");
+      return { kind: "failed" };
+    }
+  }
   async function moveToPublish() {
     const linesToPersist = editLines.length ? editLines : [text?.shorts?.hook || "", text?.shorts?.body || "", text?.shorts?.cta || ""].filter(Boolean);
     if (!linesToPersist.some((line) => line.trim())) {
@@ -1025,7 +1084,14 @@ export default function StudioPage() {
     try {
       const redrawn = await recompositeCards(linesToPersist);
       if (editKind === "card" && !redrawn) return;
-      const savedDraftId = await save("draft", publishReconciliations, draftId, linesToPersist, redrawn ?? img);
+      const subtitled = await burnVideoSubtitles(linesToPersist);
+      // 자막을 못 구웠으면 넘어가지 않는다. 넘어가면 무자막 파일이 그대로 발행된다.
+      if (subtitled.kind === "failed") return;
+      const savedDraftId = await save(
+        "draft", publishReconciliations, draftId, linesToPersist,
+        redrawn ?? img,
+        subtitled.kind === "done" ? subtitled.vid : vid,
+      );
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
       if (!editLines.length) setEditLines(linesToPersist);
       changeRoom("publish");

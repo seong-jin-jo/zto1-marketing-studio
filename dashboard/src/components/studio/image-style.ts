@@ -102,22 +102,159 @@ const NO_TEXT = "clean minimal composition, plain surfaces, natural materials";
  * 그림 지시문은 **무엇을 그릴지**를 말해야지 **무엇이라고 쓸지**를 말하면 안 된다.
  * 생성기가 만든 시각 묘사(image_prompt)가 있으면 그것을 쓰고, 없으면 짧은 주제어까지만
  * 쓴다. 본문은 어떤 경우에도 넘기지 않는다.
+ *
+ * 2026-09-14 고친 것: **주제가 지시문에서 빠져 있었다.** 컨트롤러가 발행 대기 중인
+ * 영상을 내려받아 프레임을 떠 보니, 주제가 "계약서 조건 세 가지" 인데 화면에는 손이 치즈
+ * 덩어리를 만지고 있었다. 원인이 여기였다. 시각 묘사가 있으면 **그것만** 쓰고 주제를
+ * 버렸는데, 그 시각 묘사는 앞선 글감 때 만들어진 것일 수 있다. 그러면 무엇을 그릴지
+ * 아무도 말해 주지 않은 채로 생성기가 알아서 그린다.
+ *
+ * 순서를 바꾼다. **주제가 무엇을 그릴지 정하고 시각 묘사는 그것을 꾸민다.** 둘 다 있으면
+ * 둘 다 싣되 주제를 앞에 둔다. 앞에 오는 말이 그림의 주인공이 된다.
  */
 export function pickImageSubject(input: { imagePrompt?: string; topic?: string }): string {
   const visual = (input.imagePrompt || "").trim();
-  if (visual) return visual;
   const topic = (input.topic || "").trim();
   // 주제어도 길면 문장일 가능성이 높다. 짧을 때만 쓴다.
-  if (topic && [...topic].length <= 30) return topic;
+  const usableTopic = topic && [...topic].length <= 30 ? topic : "";
+  if (usableTopic && visual) return `${usableTopic}. ${visual}`;
+  if (visual) return visual;
+  if (usableTopic) return usableTopic;
   return "brand lifestyle scene";
 }
 
+/**
+ * 그림 지시문에 실을 학습 정보.
+ *
+ * 회장 2026-09-14: "학습정보를 잘 받아서 프롬프팅이나 하네스엔지니어링 없이도 최고의
+ * 퀄리티를 만들어나가는 것." 고객은 업종·말투·목표·금지어를 이미 골라 뒀다. 그런데 그림
+ * 생성에는 그중 브랜드 색 하나만 실리고 나머지는 한 번도 쓰이지 않았다. 골라 둔 것이
+ * 결과에 안 나타나면 고객은 결국 지시문을 직접 만지게 된다. 그것이 이 제품이 없애려는 일이다.
+ */
+export type ImagePromptLearning = {
+  industry?: string;
+  voice?: string;
+  audience?: string;
+  purpose?: string;
+  forbidden?: string;
+  palette?: string;
+};
+
+/**
+ * 학습 정보 칸은 한국어 문장으로 저장된다("동네 가게. 예: 가까운 손님이 걸어와 …").
+ * 그것을 지시문에 그대로 넣으면 생성기가 그 말을 **그림 속 글자로 그린다**(브랜드 색에서
+ * 이미 겪었다 — `PALETTE_COLORS` 주석). 그래서 고른 칸을 **장면 묘사**로 옮긴다.
+ * 못 알아본 값은 버린다. 억지로 찍으면 고객 업종이 아닌 장면이 나간다.
+ */
+const INDUSTRY_SCENES: readonly { match: RegExp; scene: string }[] = [
+  { match: /교육|강의|학원/, scene: "set in a bright learning space with a desk and an open notebook" },
+  { match: /앱|서비스|소프트웨어/, scene: "set in a tidy modern workspace with a laptop on a clean desk" },
+  { match: /식음료|카페|음식|베이커리/, scene: "set at a warm neighborhood cafe counter" },
+  { match: /뷰티|미용|헤어|네일/, scene: "set in a calm beauty studio interior" },
+  { match: /쇼핑몰|커머스|스토어/, scene: "set around a neatly styled product display on a table" },
+  { match: /부동산|인테리어/, scene: "set in a sunlit well-kept living space" },
+  { match: /운동|건강|피트니스|필라테스/, scene: "set in a clean fitness studio with natural light" },
+  { match: /금융|재테크|투자/, scene: "set at a quiet desk with a notebook and a cup of coffee" },
+  { match: /여행|숙박/, scene: "set in a calm travel scene with a packed bag by a window" },
+  { match: /반려동물/, scene: "set in a cozy home corner arranged for a pet" },
+  { match: /동네 가게|로컬/, scene: "set at a small neighborhood shop front in soft daylight" },
+  { match: /기업|회사|B2B/i, scene: "set at a composed office meeting table" },
+];
+
+const VOICE_MOODS: readonly { match: RegExp; mood: string }[] = [
+  { match: /차분/, mood: "quiet composed mood, restrained tones" },
+  { match: /친하|친근/, mood: "friendly approachable mood" },
+  { match: /짧고|단단/, mood: "crisp graphic mood, firm shapes" },
+  { match: /전문/, mood: "precise professional mood" },
+  { match: /따뜻/, mood: "warm gentle mood, soft daylight" },
+  { match: /가볍|재밌|재미/, mood: "light playful mood, cheerful energy" },
+];
+
+const PURPOSE_FRAMINGS: readonly { match: RegExp; framing: string }[] = [
+  { match: /알리|인지/, framing: "wide establishing framing" },
+  { match: /신뢰/, framing: "close honest framing on hands at work" },
+  { match: /문의|상담/, framing: "inviting framing with an open seat facing the viewer" },
+  { match: /방문|예약/, framing: "welcoming entrance framing" },
+  { match: /구매|판매|주문/, framing: "clear product-forward framing" },
+  { match: /재방문|재구매|다시/, framing: "familiar returning-customer framing" },
+];
+
+/**
+ * 쓰지 않을 표현. 그림 지시문에서 **뺀다**.
+ *
+ * 부정 지시("과장 없이")를 적으면 이 모델은 그 낱말을 그린다(`NO_TEXT` 주석의 두 번
+ * 실측). 그래서 금지는 말로 적는 것이 아니라 **해당하는 말을 지시문에서 지우는 것**으로
+ * 이행한다. 금지를 글자로 적으면 금지를 어기게 되는 역설을 피한다.
+ *
+ * 왼쪽(match)은 **금지 카드가 실제로 저장하는 표제**에만 맞춘다. `/과장/` 처럼 넓게 잡으면
+ * "과장님" 같은 멀쩡한 말까지 금지 범주로 판정한다(교차 리뷰 2026-09-14 지적).
+ */
+const FORBIDDEN_TERMS: readonly { match: RegExp; drop: RegExp }[] = [
+  { match: /과장 표현/, drop: /\b(dramatic|epic|extreme|hyper-?realistic|stunning|spectacular)\b/gi },
+  { match: /불안·압박|압박 표현|불안과 압박/, drop: /\b(urgent|alarming|tense|anxious|ominous)\b/gi },
+  { match: /전문 용어/, drop: /\b(technical diagram|schematic|infographic)\b/gi },
+  { match: /유행어|비속어/, drop: /\b(meme|slang|graffiti)\b/gi },
+];
+
+/** 금지 칸이 고른 항목에 해당하는 말을 지시문에서 걷어낸다. */
+export function stripForbidden(text: string, forbidden?: string): string {
+  const value = (forbidden || "").trim();
+  if (!value) return text;
+  let out = text;
+  for (const rule of FORBIDDEN_TERMS) {
+    if (rule.match.test(value)) out = out.replace(rule.drop, " ");
+  }
+  return out.replace(/\s{2,}/g, " ").replace(/\s+\./g, ".").trim();
+}
+
+/**
+ * 영상 움직임 지시문.
+ *
+ * 2026-09-14 이전에는 화면에서 부르는 자리에 `"subtle idle motion, gentle glow, fixed
+ * camera"` 한 줄이 **박혀** 있었다. 주제도 학습 정보도 한 글자도 실리지 않았다. 그래서
+ * 무엇에 관한 영상이든 같은 지시가 갔다. 움직임은 무엇이 움직이는가에 달렸으므로 주제를
+ * 먼저 말하고 그 다음에 움직임을 말한다. 카메라는 계속 고정이다. 짧은 숏폼에서 카메라가
+ * 움직이면 자막을 읽을 시간이 사라진다.
+ */
+export function buildMotionPrompt(subject: string, learning?: string | ImagePromptLearning): string {
+  const info: ImagePromptLearning = typeof learning === "string" || learning == null
+    ? { palette: learning ?? undefined }
+    : learning;
+  const parts = [subject.trim()].filter(Boolean);
+  const voice = VOICE_MOODS.find((one) => one.match.test(info.voice || ""));
+  if (voice) parts.push(voice.mood);
+  parts.push("subtle idle motion, gentle sway and glow, fixed camera, smooth");
+  return stripForbidden(parts.join(". "), info.forbidden);
+}
+
+/** 학습 정보 여러 칸을 그림이 알아듣는 장면 묘사 조각으로 옮긴다. 못 알아본 칸은 빠진다. */
+export function learningVisualHints(info: ImagePromptLearning): string[] {
+  const out: string[] = [];
+  const industry = INDUSTRY_SCENES.find((one) => one.match.test(info.industry || ""));
+  if (industry) out.push(industry.scene);
+  const voice = VOICE_MOODS.find((one) => one.match.test(info.voice || ""));
+  if (voice) out.push(voice.mood);
+  const purpose = PURPOSE_FRAMINGS.find((one) => one.match.test(info.purpose || ""));
+  if (purpose) out.push(purpose.framing);
+  return out;
+}
+
+/**
+ * 셋째 인자는 종전에 브랜드 색 한 칸이었다. 학습 정보 전체를 받게 넓히되 문자열도 계속
+ * 받는다. 옛 호출부와 그 계약 시험이 같은 뜻으로 계속 돌아야 한다.
+ */
 export function buildImagePrompt(
   base: string,
   style: { id: string; custom?: string } | null,
-  palette?: string,
+  learning?: string | ImagePromptLearning,
 ): string {
+  const info: ImagePromptLearning = typeof learning === "string" || learning == null
+    ? { palette: learning ?? undefined }
+    : learning;
   const parts = [base.trim()].filter(Boolean);
+  // 학습 정보는 주제 바로 뒤에 온다. 무엇을 그릴지 다음으로 중요한 것이 어디에서 누구에게
+  // 인가이고, 그 다음이 결이다.
+  parts.push(...learningVisualHints(info));
   if (style) {
     if (style.id === CUSTOM_STYLE_ID) {
       const custom = (style.custom || "").trim();
@@ -127,8 +264,8 @@ export function buildImagePrompt(
       if (found) parts.push(found.prompt);
     }
   }
-  const colors = paletteToColors(palette);
+  const colors = paletteToColors(info.palette);
   if (colors) parts.push(`color palette: ${colors}`);
   parts.push(NO_TEXT);
-  return parts.join(". ");
+  return stripForbidden(parts.join(". "), info.forbidden);
 }
