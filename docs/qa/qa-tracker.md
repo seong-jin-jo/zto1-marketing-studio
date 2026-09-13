@@ -17,7 +17,8 @@
 localhost health HTTP 200, seed, TypeScript, 정적 페이지 183/183 build, 디자인 lint도 통과했다.
 빌드의 기존 NFT 추적 경고 1건과 React `act(...)` 테스트 경고는 남아 있다. 네 방 로컬 기능은
 PASS지만 디자인 정합 NG, 기존 코드 재리뷰 BLOCK, 운영 배포 미검증 때문에 제품 전체 QA와
-배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v4-gpt-codex.md`다.
+배포는 NG다. 상위 `verify-agent-quality.sh`도 배포 환경 접촉 증거 0건으로 종료 코드 2를 반환했다.
+상세는 `docs/qa/osmu-four-room-basic-flow-v4-gpt-codex.md`다.
 
 ## 2026-09-13 12시 22분 KST · 최근 24시간 코드 재리뷰 BLOCK
 
