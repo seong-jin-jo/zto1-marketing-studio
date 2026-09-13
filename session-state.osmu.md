@@ -1,3 +1,25 @@
+## 2026-09-13 12시 07분 - 네 방 v3 QA 최종 인계
+
+### 무엇을 어디까지 했나
+
+회장 요청 원문을 handoff basis로 삼아 localhost:3456의 생성→편집→발행→성과 흐름을 다시 끝까지 검증했다. 기본 API 11/11, 네 방 렌더 4/4, 390 라이트·다크와 768·1024·1440의 20화면, 성과실→생성실 복귀 5/5가 통과했다. 고정 30초가 공유 Next 개발 서버의 정상적인 늦은 준비를 단절로 오판해 QA 검증기의 준비·URL·방 표시·최초 이동을 120초 단일 정책으로 고쳤다. 코드 커밋은 `d8a65e3d`, `7e39d0a7`, 문서·PNG 증거 커밋은 `3ba867f7`이다. canonical `pipeline-state.osmu.md`는 이미 `current_stage: qa`여서 바꾸지 않았다.
+
+v63 1024 성과실 원본과 v3 dev 1024 성과실 PNG를 둘 다 직접 열었다. v63은 이름 있는 네 방 레일, 중앙 핵심 결론, 우측 고정 담당의 3영역이다. 실제 화면은 아이콘 레일, 4단계 상단 탭, 긴 단일 성과 문서, 내부 담당 카드 구조라 주축·순서·열·여백·표시·글꼴 단계·버튼 위계가 모두 다르다. 디자인 일치로 판정하지 않았다.
+
+### 남은 이슈·블로커
+
+Studio v1 최종 재실행은 공유 AI 월간 한도 소진으로 HTTP 429였다. 과제가 지정한 v63과 pipeline 승인 핀 v68도 충돌한다. 실제 화면은 v63과 불일치하고 운영 배포는 미검증이다. 따라서 네 방 로컬 기능만 PASS이며 제품 전체 QA와 배포는 NG다. 상위 `verify-agent-quality.sh`도 배포 환경 접촉 증거 0건으로 FAIL이다. 별도 `codex:code-reviewer` 위임은 최근 24시간 변경을 검토 중이며 완료 후 결과를 별도 회수해야 한다.
+
+### 다음에 칠 명령
+
+컨트롤러가 디자인 승인 핀을 단일화하고 공유 AI 한도를 복구한 뒤 `cd dashboard && set -a && source .env.local && set +a && node scripts/verify-studio-v1-e2e.mjs && node scripts/verify-basic-flow-e2e.mjs && node scripts/probe-four-room-flow.mjs && FOUR_ROOM_OUTPUT_DIR=../logs/diff/osmu-four-room-flow-next node scripts/verify-four-room-ui-e2e.mjs`를 실행한다. 이어 운영 배포 버전에서 같은 네 방을 클릭한다. 종료 증거는 Studio v1 14/14, 단일 승인 핀, 디자인 8축 PASS, 운영 URL의 네 방 캡처다.
+
+### 검증했나
+
+관찰됨: health HTTP 200·DB up, 기본 흐름 11/11, 네 방 4/4, 4폭 20화면, 복귀 5/5, 브라우저 401·콘솔 오류·가림·가로 넘침 0, v63과 dev 1024 성과실 PNG 양쪽 육안 대조.
+테스트됨: Vitest 319파일·2,106건 PASS, 3건 skip, TypeScript exit 0, production build 183/183, seed, 디자인 lint, 제한시간 집중 회귀 3파일.
+미검증: 운영 배포 버전, 외부 실발행. Studio v1은 현재 429, 디자인 정합은 NG.
+
 ## 2026-09-12 23시 02분 - 네 방 기본 흐름 QA 인계
 
 ### 무엇을 어디까지 했나
