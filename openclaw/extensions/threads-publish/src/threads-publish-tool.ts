@@ -152,7 +152,7 @@ export function createThreadsPublishTool(api: OpenClawPluginApi) {
         const dataDir = process.env.DATA_DIR || resolve(process.cwd(), "data");
         const { buffer: fileBuffer, filename } = await readOwnedLocalImage(imageUrl, dataDir);
         const formData = new FormData();
-        formData.append("file", new Blob([fileBuffer]), filename);
+        formData.append("file", new Blob([Uint8Array.from(fileBuffer)]), filename);
         const uploadResp = await fetch("https://tmpfiles.org/api/v1/upload", { method: "POST", body: formData });
         if (!uploadResp.ok) {
           const message = `Image upload failed (${uploadResp.status}). Cannot publish image without public URL.`;
