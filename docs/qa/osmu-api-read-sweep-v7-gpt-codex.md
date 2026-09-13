@@ -138,7 +138,7 @@ v6와 v7의 경로 집합, HTTP 상태, 분류는 모두 같다. v6 뒤 구현�
 
 ## 8. 제품 전체 판정
 
-API 읽기 범위만 PASS다. `docs/design/captures/manifest.json`은 로컬 화면 9개 중 실제 production Supabase JWT, 운영자 캘린더, 픽셀 대조, 원격 배포를 미검증으로 남긴다. 기존 design-conformance-matrix도 승인 프로토타입 v63과 실제 화면의 공통 셸, 열 수, 요소 순서, 버튼 위계를 NG로 판정했다. 따라서 제품 전체 QA와 배포는 NG를 유지한다.
+API 읽기 범위만 PASS다. 승인 시안 `docs/design/captures/osmu-four-room-prototype-v63-20260912/1440-light-publish.png`와 dev 실화면 `docs/design/captures/live-20260912/authenticated-fe3/studio-publish-1440.png`을 원본 1440폭으로 직접 열어 대조했다. dev는 시안에 없는 작업 상태, 학습 정보, 시작 안내를 본문 상단에 추가해 요소 순서와 수직 밀도가 달라졌고, 발행 콘텐츠도 시안의 가로 미리보기 중심에서 세로 작업 카드 중심으로 바뀌었다. 공통 셸, 요소 순서, 카드 열 구성, 버튼 위계가 일치하지 않으므로 디자인 정합은 NG다. 또한 `docs/design/captures/manifest.json`은 실제 production Supabase JWT, 운영자 캘린더, 원격 배포를 미검증으로 남긴다. 따라서 제품 전체 QA와 배포는 NG를 유지한다.
 
 ⛔ 검증실패 보고: 등급=상위 QA 품질 검증 FAIL. 사유=운영 또는 stage 배포 환경 접촉 증거가 0건이고 이번 과제는 localhost:3456으로 범위가 고정됐다. 출고여부=localhost API 읽기 범위 증거로만 출고하며 제품 전체 QA 승인과 배포 근거로는 출고하지 않는다.
 
