@@ -211,6 +211,7 @@ describe("OSMU 코드리뷰 예약 발행 회귀", () => {
       { token: "tok", userId: "u-1" },
       "세 장 카드뉴스",
       ["https://cdn/1.png", "https://cdn/2.png", "https://cdn/3.png"],
+      expect.objectContaining({ onProgress: expect.any(Function) }),
     );
   });
 

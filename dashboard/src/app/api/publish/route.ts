@@ -576,7 +576,20 @@ export async function POST(request: Request) {
   if (platform === "threads") {
     result = await publishThreads(cred, text || "", publishImageUrl, undefined, publishFields.topicTag);
   } else if (platform === "instagram") {
-    result = await publishInstagram(cred, text || "", publishImageUrls);
+    result = await publishInstagram(cred, text || "", publishImageUrls, {
+      onProgress: async (progress) => {
+        const [saved] = await withTenant(tenant_id, (sql) => sql<{ id: string }[]>`
+          UPDATE published_posts
+             SET provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+               || ${sql.json({ instagramAttempt: progress } as never)}::jsonb
+           WHERE tenant_id = ${tenant_id}::uuid
+             AND id = ${reservationId}::uuid
+             AND status = 'in_progress'
+          RETURNING id::text
+        `);
+        if (!saved) throw new Error("Instagram 발행 진행 상태를 저장하지 못했습니다.");
+      },
+    });
   } else if (platform === "x") {
     // X API v2 + OAuth1.0a 직접발행(P5). text only, 280자 자동 절단.
     result = await publishX(cred, text || "");

@@ -336,7 +336,9 @@ export async function fetchInstagramPermalink(cred: ChannelCred, mediaId: string
   const base = cred.meta?.api === "instagram_login" ? IG_LOGIN_API : IG_API;
   for (let i = 0; i < 5; i++) {
     try {
-      const res = await fetch(`${base}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(cred.token)}`);
+      const res = await fetch(`${base}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(cred.token)}`, {
+        signal: AbortSignal.timeout(15_000),
+      });
       if (res.ok) {
         const permalink = String(((await res.json()) as { permalink?: string }).permalink ?? "");
         if (permalink) return permalink;
@@ -349,23 +351,56 @@ export async function fetchInstagramPermalink(cred: ChannelCred, mediaId: string
   return undefined;
 }
 
-export async function publishInstagram(cred: ChannelCred, caption: string, imageInput?: string | string[]): Promise<PublishResult> {
+export type InstagramPublishProgress = {
+  state: "started" | "children_creating" | "container_created" | "publishing" | "published";
+  childIds: string[];
+  creationId?: string;
+  mediaId?: string;
+};
+
+export type InstagramPublishOptions = {
+  requestTimeoutMs?: number;
+  totalTimeoutMs?: number;
+  onProgress?: (progress: InstagramPublishProgress) => Promise<void>;
+};
+
+export async function publishInstagram(
+  cred: ChannelCred,
+  caption: string,
+  imageInput?: string | string[],
+  options: InstagramPublishOptions = {},
+): Promise<PublishResult> {
   if (!cred.userId) return { ok: false, error: "INSTAGRAM_USERID(meta.userId) 없음" };
   const imageUrls = (Array.isArray(imageInput) ? imageInput : imageInput ? [imageInput] : []).filter(Boolean);
   if (!imageUrls.length) return { ok: false, error: "Instagram은 이미지 필수" };
   if (imageUrls.length > 10) return { ok: false, error: "Instagram 카드뉴스는 최대 10장" };
+  const requestTimeoutMs = Math.max(100, options.requestTimeoutMs ?? 15_000);
+  const deadlineAt = Date.now() + Math.max(requestTimeoutMs, options.totalTimeoutMs ?? 120_000);
+  const request = (input: string, init: RequestInit = {}) => {
+    const remaining = deadlineAt - Date.now();
+    if (remaining <= 0) throw new Error("IG 전체 발행 시간 초과");
+    return fetch(input, {
+      ...init,
+      signal: AbortSignal.timeout(Math.min(requestTimeoutMs, remaining)),
+    });
+  };
+  const persist = async (progress: InstagramPublishProgress) => {
+    if (options.onProgress) await options.onProgress(progress);
+  };
   // 테넌트가 "연결"(Instagram Login API)로 붙인 토큰은 graph.instagram.com, 레거시 env는 graph.facebook.com.
   const base = cred.meta?.api === "instagram_login" ? IG_LOGIN_API : IG_API;
   let create: Response;
-  if (imageUrls.length === 1) {
-    create = await fetch(`${base}/${cred.userId}/media`, {
-      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ image_url: imageUrls[0], caption, access_token: cred.token }),
-    });
-  } else {
-    const childIds: string[] = [];
+  const childIds: string[] = [];
+  try {
+    await persist({ state: "started", childIds: [...childIds] });
+    if (imageUrls.length === 1) {
+      create = await request(`${base}/${cred.userId}/media`, {
+        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ image_url: imageUrls[0], caption, access_token: cred.token }),
+      });
+    } else {
     for (const imageUrl of imageUrls) {
-      const child = await fetch(`${base}/${cred.userId}/media`, {
+      const child = await request(`${base}/${cred.userId}/media`, {
         method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           image_url: imageUrl,
@@ -377,8 +412,9 @@ export async function publishInstagram(cred: ChannelCred, caption: string, image
       const childBody = await child.json() as { id?: string };
       if (!childBody.id) return { ok: false, error: "IG carousel child 결과 없음" };
       childIds.push(childBody.id);
+      await persist({ state: "children_creating", childIds: [...childIds] });
     }
-    create = await fetch(`${base}/${cred.userId}/media`, {
+    create = await request(`${base}/${cred.userId}/media`, {
       method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         media_type: "CAROUSEL",
@@ -387,14 +423,34 @@ export async function publishInstagram(cred: ChannelCred, caption: string, image
         access_token: cred.token,
       }),
     });
+    }
+  } catch {
+    return {
+      ok: false,
+      error: childIds.length > 0
+        ? "IG 카드뉴스 준비가 중단됐습니다. 이미 만든 임시 항목을 기록했으며 자동 재발행하지 않습니다."
+        : "IG 컨테이너 요청 시간이 초과됐습니다. 잠시 후 다시 시도해주세요.",
+      failureKind: childIds.length > 0 ? "indeterminate" : "definitive",
+    };
   }
   if (!create.ok) return { ok: false, error: `IG container 실패(${create.status})` };
   const { id: creationId } = (await create.json()) as { id: string };
+  if (!creationId) return { ok: false, error: "IG container 결과 없음" };
+  try {
+    await persist({ state: "container_created", childIds: [...childIds], creationId });
+  } catch {
+    return { ok: false, error: "IG 발행 준비 상태를 저장하지 못해 발행을 중단했습니다.", failureKind: "definitive" };
+  }
   // 이미지 컨테이너는 인스타가 비동기 처리한다. status_code=FINISHED 될 때까지 폴링해야
   // media_publish가 "Media ID is not available"(9007) 없이 성공한다.
   let finished = false;
   for (let i = 0; i < 20; i++) {
-    const st = await fetch(`${base}/${creationId}?fields=status_code&access_token=${encodeURIComponent(cred.token)}`);
+    let st: Response;
+    try {
+      st = await request(`${base}/${creationId}?fields=status_code&access_token=${encodeURIComponent(cred.token)}`);
+    } catch {
+      return { ok: false, error: "IG 미디어 처리 결과를 확인하지 못했습니다. 자동 재발행하지 않습니다.", failureKind: "indeterminate" };
+    }
     const { status_code } = (await st.json().catch(() => ({}))) as { status_code?: string };
     if (status_code === "FINISHED") {
       finished = true;
@@ -404,12 +460,24 @@ export async function publishInstagram(cred: ChannelCred, caption: string, image
     await new Promise((r) => setTimeout(r, 1500));
   }
   if (!finished) return { ok: false, error: "IG 미디어 처리 시간 초과 — 잠시 후 다시 시도해주세요." };
-  const pub = await fetch(`${base}/${cred.userId}/media_publish`, {
-    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ creation_id: creationId, access_token: cred.token }),
-  });
+  try {
+    await persist({ state: "publishing", childIds: [...childIds], creationId });
+  } catch {
+    return { ok: false, error: "IG 발행 직전 상태를 저장하지 못해 발행을 중단했습니다.", failureKind: "definitive" };
+  }
+  let pub: Response;
+  try {
+    pub = await request(`${base}/${cred.userId}/media_publish`, {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ creation_id: creationId, access_token: cred.token }),
+    });
+  } catch {
+    return { ok: false, error: "IG 발행 결과를 확인하지 못했습니다. 자동 재발행하지 않습니다.", failureKind: "indeterminate" };
+  }
   if (!pub.ok) return { ok: false, error: `IG publish 실패(${pub.status})` };
   const { id: mediaId } = (await pub.json()) as { id: string };
+  if (!mediaId) return { ok: false, error: "IG 발행 결과를 확인하지 못했습니다. 자동 재발행하지 않습니다.", failureKind: "indeterminate" };
+  await persist({ state: "published", childIds: [...childIds], creationId, mediaId }).catch(() => {});
   const permalink = await fetchInstagramPermalink(cred, mediaId);
   return { ok: true, externalId: mediaId, permalink };
 }

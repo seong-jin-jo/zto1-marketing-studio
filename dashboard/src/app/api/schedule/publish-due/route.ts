@@ -290,7 +290,21 @@ async function publishOne(
   try {
     let result: PublishResult;
     if (platform === "threads") result = await publishThreads(cred, text, imageUrl);
-    else if (platform === "instagram") result = await publishInstagram(cred, text, imageUrls);
+    else if (platform === "instagram") result = await publishInstagram(cred, text, imageUrls, {
+      onProgress: async (progress) => {
+        const [saved] = await withTenant(tenantId, (sql) => sql<{ id: string }[]>`
+          UPDATE schedules
+             SET payload = COALESCE(payload, '{}'::jsonb)
+               || ${sql.json({ instagramAttempt: progress } as never)}::jsonb
+           WHERE tenant_id = ${tenantId}
+             AND id = ${row.id}
+             AND status = 'processing'
+             AND payload->'processingLease'->>'workerToken' = ${row.worker_token}
+          RETURNING id
+        `);
+        if (!saved) throw new Error("예약 발행 진행 상태를 저장하지 못했습니다.");
+      },
+    });
     else if (platform === "x") result = await publishX(cred, text);
     else if (platform === "facebook") result = await publishFacebook(cred, text, imageUrl);
     else if (platform === "bluesky") result = await publishBluesky(cred, text, imageUrl);
