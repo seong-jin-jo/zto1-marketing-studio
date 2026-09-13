@@ -2,6 +2,21 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 06시 04분 KST · API 읽기 경로 전수 재실사 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98 | 발행 성과를 읽고 다음 생성 판단으로 되돌림 | API-READ-ALL-V7 | PASS | localhost GET 105개 실호출. 정상 92, 계약상 거절 13, HTTP 500과 요청 실패 0. 원본 `logs/diff/osmu-api-read-sweep-20260914-final-v2.json` |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY-V7 | PASS | 무토큰 격리 탐침 401, production의 개발 토큰 401, 인증된 조회는 handler 응답. 13개 비정상 상태의 본문을 읽어 입력, 설정, 인증 경계로 확인 |
+| R200, R207 | 성과 학습 규칙과 Studio 학습 정보 조회 | API-LEARNING-READ-V7 | PASS | `/api/performance/learned-rules`, `/api/studio/learning` 각각 HTTP 200 |
+| 현재 소스 고정 | 공유 작업 트리 혼입 방지 | API-READ-SOURCE-HASH-V7 | PASS | GET 105개 합성 SHA-256 실행 전후 `a011035aabbc73c19f9862f5f493ef5d9b806c6d922e0d87a3258399de37e5f1` 동일. 소스가 바뀐 두 실행과 서버가 재시작된 전건 실패 실행은 폐기 |
+| 필수 자동 회귀 | 전체 Vitest | API-READ-REGRESSION-V7 | PASS | 339파일, 2,194건 통과, 조건부 3건 제외, 실패 0. 줄 모양에 결합된 발행실 검사 1건은 호출 순서 계약으로 수정, 커밋 `e56f660b` |
+| 정적 검증과 build | TypeScript, production build, 디자인 lint | API-READ-BUILD-V7 | PASS | `npx tsc --noEmit` 종료 코드 0. Next.js 16.2.2 production build 184/184, 종료 코드 0. 기존 NFT 경고 1건. 디자인 토큰 위반 0 |
+| seed와 localhost 흐름 | 고정 작업 공간 fixture와 실동작 | API-READ-E2E-V7 | PASS | `apply-schema.sh --seed` 멱등 적용. production health 200. 개발 서버에서 기본 흐름 11/11, Studio v1 14/14, 최종 health 200 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 디자인 정합, 운영 배포, 외부 채널 실발행은 이번 PASS에 포함하지 않음 |
+
+상세는 `docs/qa/osmu-api-read-sweep-v7-gpt-codex.md`다. v6와 v7의 경로, 상태, 분류는 모두 같다. 2026-08-28 문서 분모 84개와 당시 실제 정적 분모 95개의 차이를 숨기지 않았고, 당시 뒤 추가된 GET 10개를 표로 대조했다. API 읽기 범위는 PASS지만 별도 개발 E2E 서버의 반복 Turbopack 치명 로그, 승인 프로토타입과 실제 화면의 디자인 불일치, 운영 배포 미검증 때문에 제품 전체 QA와 배포는 NG다.
+
 ## 2026-09-14 05시 38분 KST · 코드 공격 리뷰 19건 기능 PASS, 개발 서버 로그 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
@@ -16,6 +31,14 @@
 | 공유 작업트리 후속 재검증 | 다른 세션의 발행실 인접 변경 뒤 회귀 | REVIEW-FIX-20260914-08 | 기능 PASS, 로그 NG | 발행실·예약·Instagram 회귀 25/25와 TypeScript, localhost 기본 흐름 11/11, Studio v1 14/14 재통과. 다만 개발 서버가 `/login` endpoint 작성 중 `Next.js package not found` Turbopack 치명 로그를 반복해 깨끗한 개발 서버 스모크는 NG |
 
 운영 배포와 실제 외부 채널 게시물 생성은 수행하지 않았다. 공급자 결과를 조회할 수 없는 예약은 자동 재게시하지 않으며, Instagram 자식 컨테이너는 삭제 API를 추측하지 않고 생성 ID와 부모 ID를 `provider_meta` 또는 예약 payload에 남긴다.
+
+## 2026-09-14 05시 06분 KST · API 읽기 경로 전수 재실사 착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R104, R200, R207 | 현재 코드가 내보내는 읽기 Route Handler 전부를 실제 요청으로 재검증 | API-READ-20260914-01 | NG | 현재 분모 105개, 실행 전 API 소스 합성 SHA-256 `3ef23480dafe1f508d8bc2589f3712f7a4f61c321a56f1dc5af8cde8b46e7d8f`. localhost health HTTP 200과 DB up까지만 관찰했다. 전수 요청, 의도된 거절 확인, 필수 회귀가 끝나지 않아 PASS 금지. |
+
+지난 실사 뒤 Route Handler와 공유 코드가 바뀌었으므로 기존 105개 PASS를 현재 코드 증거로 재사용하지 않는다. 전수 원본 JSON, 실행 전후 소스 해시, 실패 단독 재현, 전체 회귀, TypeScript, 기본 흐름과 Studio v1을 새로 관찰한 뒤 판정을 갱신한다.
 
 ## 2026-09-14 04시 33분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
 

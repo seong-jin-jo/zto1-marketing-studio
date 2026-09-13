@@ -1,3 +1,26 @@
+## 2026-09-14 06시 04분 - API 읽기 경로 v7 범위 PASS, 제품 전체 NG
+
+회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`여서 단계와 승인 상태를 바꾸지 않았다. `osmu-sweep091405:0.0`은 이 QA 세션이며, `openclaw-auto:0.0`과 코드 수정 빌더는 동시 변경 여부 확인에만 참고했다.
+
+현재 GET Route Handler 105개를 localhost:3456에서 지정 작업 공간으로 실호출했다. 최종 결과는 정상 92, 계약상 거절 13, HTTP 500과 요청 실패 0이다. GET 소스 합성 SHA-256은 실행 전후 `a011035aabbc73c19f9862f5f493ef5d9b806c6d922e0d87a3258399de37e5f1`로 동일했다. 소스 변경이 섞인 두 실행과 서버 재시작으로 전건 연결 실패한 실행은 폐기했다. 원본은 `logs/diff/osmu-api-read-sweep-20260914-final-v2.json`, 상세는 `docs/qa/osmu-api-read-sweep-v7-gpt-codex.md`다.
+
+전체 Vitest 339파일과 2,194건, TypeScript, production build 184/184, seed, 기본 흐름 11/11, Studio v1 14/14, 디자인 lint가 통과했다. 줄 모양에 결합된 발행실 회귀 검사만 호출 순서 계약으로 고친 커밋은 `e56f660b`다. production health와 최종 개발 health는 HTTP 200이다. 별도 개발 E2E 서버의 Turbopack 치명 로그, 승인 프로토타입과 실제 화면의 디자인 불일치, 운영 배포와 외부 채널 실발행은 NG 또는 미검증이다.
+
+다음 소유자는 컨트롤러와 개발 환경 담당이다. API 읽기 범위는 추가 조치가 없다. 개발 서버의 `Next.js package not found` Turbopack 치명 로그를 깨끗한 설치와 단일 서버 조건에서 재현해 원인을 닫고, product-designer가 승인 디자인 핀을 단일화한 뒤 제품 전체 QA를 다시 열어야 한다. 종료 증거는 치명 로그 0, 단일 승인 핀, 8축 디자인 정합 PASS, 운영 버전 실측이다.
+
+## 2026-09-14 05시 06분 - API 읽기 경로 전수 재실사 착수
+
+회장 요청 원문을 handoff basis로 사용한다. 현재 실행 pane `osmu-sweep091405:0.0`과 보조 pane
+`osmu-sweep091405:0.1`은 중복 워커가 아니라 이 세션의 실행 화면으로 확인했다. canonical main
+repo는 현재 경로이고 `pipeline-state.osmu.md`는 이미 `current_stage: qa`라 단계와 승인 상태를
+바꾸지 않았다.
+
+현재 GET Route Handler 분모는 105개, 실행 전 API 소스 합성 SHA-256은
+`3ef23480dafe1f508d8bc2589f3712f7a4f61c321a56f1dc5af8cde8b46e7d8f`다. localhost health는
+HTTP 200과 DB up이다. 전수 요청과 회귀는 미실행이며 QA tracker에 착수 NG를 먼저 등록했다.
+다음 행동은 지정 작업 공간으로 105개를 순차 실호출하고 5xx, 요청 실패, 계약상 거절을 분리하는
+것이다.
+
 ## 2026-09-14 04시 33분 - 최근 24시간 코드 공격 리뷰 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. tmux pane은 공유 작업 여부와 localhost 실행 상태 확인에만 참고했고, 코드 판정 범위는 착수 시점의 `b4ec9dbdb4eaaa52a9b5d80766ab2927431c2811..acb981ea484a113eaef87ef82f05d4edc43334bf` 47커밋, 184파일로 고정했다. 사용자가 v63 프로토타입을 명시해 이를 시안 기준으로 썼으며, `pipeline-state.osmu.md` 최신 승인 핀이 v68인 충돌은 보고서에 남겼다. 제품 코드는 수정하지 않았다.
