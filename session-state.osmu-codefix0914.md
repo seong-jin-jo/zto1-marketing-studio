@@ -3,7 +3,7 @@
 ## 2026-09-14 05:40 KST 완료
 
 - 무엇을 어디까지 했나: `osmu-code-review-2026-09-14.md`의 OSMU-001부터 019까지 재현 경로를 모두 닫고 회귀 테스트를 남겼다. 격리·승인 불변성·큐 소유권·발행 복구·예약 lease·카드 덱 원자성·발행실 흐름·성과 수집 부분 실패·QA 전체 deadline을 심각도순으로 처리했다. 증거는 `docs/qa/qa-tracker.md`, 구현 상태는 `docs/구현현황.md`에 기록했고 문서 커밋은 `0141e821`이다.
-- 남은 이슈·블로커: 운영 배포와 실제 외부 SNS 게시 호출은 비가역 외부 작업이라 수행하지 않았다. 공급자 결과 조회나 생성 컨테이너 삭제가 공식 계약으로 확인되지 않은 경우 자동 재발행·임의 삭제를 하지 않고 상태와 식별자를 보존해 실패 폐쇄한다. `npm run build`에는 기존 Turbopack NFT 전체 프로젝트 추적 경고가 남지만 빌드는 성공했다. 기존 QA 산출물 `osmu-four-room-basic-flow-v5-gpt-codex.md`의 배포 환경 접촉 증거 실패는 이번 수정 결과로 출고하지 않는다.
+- 남은 이슈·블로커: 운영 배포와 실제 외부 SNS 게시 호출은 비가역 외부 작업이라 수행하지 않았다. 공급자 결과 조회나 생성 컨테이너 삭제가 공식 계약으로 확인되지 않은 경우 자동 재발행·임의 삭제를 하지 않고 상태와 식별자를 보존해 실패 폐쇄한다. `npm run build`에는 기존 Turbopack NFT 전체 프로젝트 추적 경고가 남지만 빌드는 성공했다. 후속 localhost 재검증에서는 기능 11/11과 14/14가 통과했지만 `/login` endpoint 작성 중 `Next.js package not found` Turbopack 치명 로그가 반복돼 깨끗한 개발 서버 스모크는 NG다. 기존 QA 산출물 `osmu-four-room-basic-flow-v5-gpt-codex.md`의 배포 환경 접촉 증거 실패는 이번 수정 결과로 출고하지 않는다.
 - 다음에 칠 명령: QA 단계에서 `cd dashboard && npm run test && npx tsc --noEmit && node scripts/verify-basic-flow-e2e.mjs && node scripts/verify-studio-v1-e2e.mjs`를 실행한다. 외부 계정 검증은 승인된 테스트 게시물과 공급자 조회·정리 계약이 마련된 뒤 별도 수행한다.
 - 검증했나: 전체 Vitest 337파일, 2169건 통과, 3건 skip, 0건 실패. `npx tsc --noEmit`, `npm run build`, `design-lint.sh dashboard/src` 통과. 현재 코드로 localhost:3456을 제한 시간 동안 구동해 `/api/health`의 `healthOk=true`, `db=up`을 관찰했고 기본 흐름 E2E 11/11, Studio v1 E2E 14/14를 통과했다. API sweep 100ms 강제 예산 재현은 0.55초 안에 종료 코드 1과 미시도 75경로를 명시해 전체 deadline이 실제로 작동함을 확인했다. 이후 다른 세션이 발행실 인접 파일을 수정해, 최종 작업트리에서 겹치는 발행실·예약·Instagram 회귀 25건과 TypeScript를 재실행해 다시 통과했다. 검증 서버는 종료했다.
 

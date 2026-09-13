@@ -2,7 +2,7 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
-## 2026-09-14 05시 38분 KST · 코드 공격 리뷰 19건 수정 PASS
+## 2026-09-14 05시 38분 KST · 코드 공격 리뷰 19건 기능 PASS, 개발 서버 로그 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
@@ -13,6 +13,7 @@
 | 필수 자동 회귀 | 전체 Vitest | REVIEW-FIX-20260914-05 | PASS | `npm run test` 종료 코드 0. 337파일 전체 통과, 2,169건 통과, 조건부 3건 제외, 실패 0 |
 | 정적 검증과 빌드 | TypeScript, production build, 디자인 토큰 | REVIEW-FIX-20260914-06 | PASS | `npx tsc --noEmit` 종료 코드 0. `npm run build` 184개 page 생성, 종료 코드 0. design-lint 위반 0. 기존 Turbopack NFT 추적 경고 1건은 남음 |
 | 현재 localhost | 이번 코드로 재기동한 실제 서버 | REVIEW-FIX-20260914-07 | PASS | 기존 3456 서버가 120초 무응답이라 해당 자식만 종료했다. 이번 코드로 제한시간 재기동 후 `/api/health` HTTP 200, `db=up`, 기본 흐름 11/11, Studio v1 14/14 통과 후 서버 종료 |
+| 공유 작업트리 후속 재검증 | 다른 세션의 발행실 인접 변경 뒤 회귀 | REVIEW-FIX-20260914-08 | 기능 PASS, 로그 NG | 발행실·예약·Instagram 회귀 25/25와 TypeScript, localhost 기본 흐름 11/11, Studio v1 14/14 재통과. 다만 개발 서버가 `/login` endpoint 작성 중 `Next.js package not found` Turbopack 치명 로그를 반복해 깨끗한 개발 서버 스모크는 NG |
 
 운영 배포와 실제 외부 채널 게시물 생성은 수행하지 않았다. 공급자 결과를 조회할 수 없는 예약은 자동 재게시하지 않으며, Instagram 자식 컨테이너는 삭제 API를 추측하지 않고 생성 ID와 부모 ID를 `provider_meta` 또는 예약 payload에 남긴다.
 
