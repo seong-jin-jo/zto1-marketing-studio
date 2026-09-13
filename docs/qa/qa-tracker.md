@@ -2,6 +2,20 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 06시 40분 KST · 네 방 기본 흐름 기능 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 네 방 관통 | FLOW-API-V6 | PASS | localhost 기본 흐름 11/11. 후보 3장, 초안 편집, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰 |
+| R08, R19, R207 | 390, 768, 1024, 1440 사람 클릭 | FLOW-UI-V6 | 기능 PASS, 디자인 NG | 20개 방 화면과 성과실에서 생성실 복귀 5/5. 가로 넘침, 가린 모달, 탐색 차단, 다음 행동 누락, 401, 콘솔 오류 모두 0건. 원본 `logs/diff/osmu-four-room-flow-20260914-rerun/captures-after-fix/` |
+| R27, R168 | Studio v1 생성과 무료 다시 만들기 경계 | STUDIO-V1-V6 | PASS | localhost 실요청 14/14 |
+| 개발 서버 회귀 | 기본 개발 명령으로 네 방 렌더 | DEV-BUNDLER-V6 | PASS | Turbopack의 반복 `/login/page` 치명 오류를 재현한 뒤 기본 명령을 Webpack으로 고정. `npm run dev -- --port 3456`에서 health 200과 네 방 4/4 재통과. 회귀 2건, 커밋 `99686354` |
+| 전체 회귀 | Vitest, TypeScript, build, 디자인 lint | FLOW-REGRESSION-V6 | PASS | 340파일, 2,197건 통과, 조건부 3건 제외. TypeScript 종료 코드 0, build 184/184, 디자인 토큰 위반 0 |
+| R205, R206 | v63 디자인 계승 | DESIGN-V6 | NG | v63 원본과 현재 16개 화면의 8축 배치 속성이 모두 불일치. 사용자 지정 v63과 pipeline 승인 v68 핀도 충돌 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 운영 배포와 외부 채널 실발행은 이번 PASS에 포함하지 않음 |
+
+상세는 `docs/qa/osmu-four-room-basic-flow-v6-gpt-codex.md`다. 네 방 localhost 기능 범위는 PASS다. 디자인 정합과 승인 기준 충돌, 운영 배포 및 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다.
+
 ## 2026-09-14 06시 04분 KST · API 읽기 경로 전수 재실사 범위 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

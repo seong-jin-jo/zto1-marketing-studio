@@ -1,3 +1,13 @@
+## 2026-09-14 06시 40분 - 네 방 기본 흐름 기능 PASS, 제품 전체 NG
+
+회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`여서 단계와 승인 상태를 바꾸지 않았다. 실행 pane `osmu-flowcheck091406:0.0`은 이 QA 세션으로 확인했다.
+
+지정 작업 공간의 localhost 기본 흐름은 11/11, 네 방 렌더는 4/4, 390, 768, 1024, 1440 사람 클릭은 20/20과 성과실에서 생성실 복귀 5/5, Studio v1은 14/14로 통과했다. 가로 넘침, 가린 모달, 탐색 차단, 다음 행동 누락, 401, 콘솔 오류는 모두 0건이다. 전체 Vitest 340파일과 2,197건, TypeScript, production build 184/184, seed, health, 디자인 lint도 통과했다.
+
+기본 Turbopack 개발 서버는 `/login/page` 작성 중 `Next.js package not found` 치명 오류를 반복했고 첫 probe가 120초 뒤 실패했다. Next.js 16.2.2 패키지는 실제 설치돼 있었고 production 및 Webpack 개발 서버는 같은 소스로 통과했다. 기본 개발 명령을 공식 지원 Webpack 경로로 고정하고 회귀 2건을 추가한 커밋은 `99686354`다. 평소 명령 `npm run dev -- --port 3456`에서 Webpack, health 200, 네 방 4/4를 다시 관찰했다.
+
+기능 흐름은 PASS지만 v63 원본과 현재 16개 화면은 8축 배치 속성이 불일치하고, 과제의 v63과 pipeline 최신 승인 v68 핀도 충돌한다. 제품 전체 QA와 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v6-gpt-codex.md`, 원본은 `logs/diff/osmu-four-room-flow-20260914-rerun/`이다. 다음 소유자는 product-designer와 컨트롤러다. 승인 디자인 핀을 단일화하고 네 방 8축 정합을 맞춘 뒤 운영 버전에서 같은 경로를 재검증해야 한다.
+
 ## 2026-09-14 06시 04분 - API 읽기 경로 v7 범위 PASS, 제품 전체 NG
 
 회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`여서 단계와 승인 상태를 바꾸지 않았다. `osmu-sweep091405:0.0`은 이 QA 세션이며, `openclaw-auto:0.0`과 코드 수정 빌더는 동시 변경 여부 확인에만 참고했다.
