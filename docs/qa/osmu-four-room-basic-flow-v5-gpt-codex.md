@@ -4,6 +4,8 @@
 
 한 줄 결론: 지정 작업 공간의 localhost 기본 API 11/11, 네 방 렌더 4/4, 4개 폭의 실제 이동 20/20과 복귀 5/5, Studio v1 14/14가 통과했다. 캡처 증거 경로 결함은 회귀 테스트와 함께 고쳤다. 그러나 v63 대비 16개 화면의 디자인 정합이 모두 NG이고 기준 핀도 v68과 충돌하므로 제품 전체 QA는 NG다.
 
+검증실패 보고: `verify-agent-quality.sh`는 배포 환경 접촉 증거가 0건이라 로컬 QA를 반려했다. 과제는 localhost:3456 개발본을 지정했고 운영 배포 권한을 주지 않았으므로 운영 호스트로 범위를 넓히지 않았다. 이 문서의 PASS는 네 방 로컬 기능에만 유효하며 QA 승인이나 출고 근거로 사용할 수 없다.
+
 ## 요청 추적
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
@@ -34,6 +36,7 @@
 | Maestro | 해당 없음 | 대상 표면은 Next.js Web이며 Maestro 구성이 없음 |
 | 디자인 lint | PASS | `design-lint.sh dashboard/src`, 토큰 위반 0건 |
 | 디자인 정합 | NG | v63 원본과 현재 화면 16개 조합 모두 구조 불일치 |
+| 상위 QA 품질 게이트 | FAIL | 배포 환경 접촉 증거 0건으로 반려. 로컬 기능 PASS를 QA 승인으로 확대하지 않음 |
 | 운영 배포 | 미검증 | 실제 배포 버전, 외부 계정 발행, 운영 성과 회수는 확인하지 않음 |
 
 QA 원본은 `logs/diff/osmu-four-room-flow-20260914-031512/`에 있다. 화면 캡처 20장과 관찰 JSON은 `captures/post-fix/`에 있다. 동적 URL은 `/studio?room=create`, `/studio?room=edit`, `/studio?room=publish`, `/performance`다. `observations.json`은 준비 제한시간 120초, 방 관찰 20건, 복귀 5건, 콘솔 오류 0건, 401 URL 0건을 기록한다.

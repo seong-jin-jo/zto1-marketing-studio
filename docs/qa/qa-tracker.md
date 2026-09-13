@@ -13,7 +13,7 @@
 | QA 증거 계약 | 디자인 원본과 QA 결과 분리, viewport 캡처 | ISSUE-010 | 수정 후 PASS | 기본 출력 `logs/diff`, `fullPage: false`, 신규 회귀 1/1. 커밋 `561e859b` |
 | R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 판정을 유지하고 이번 PASS에 포함하지 않음 |
 
-seed, health HTTP 200과 DB up, 전체 Vitest 323파일과 2,119건, TypeScript, build 183/183, 디자인 lint가 통과했다. 조건부 DB 테스트 3건은 제외됐고 기존 NFT 추적 경고 1건은 남아 있다. build 결과에서도 health 200과 네 방 4/4를 재관찰했다. 실제 운영 배포와 외부 채널 실발행은 미검증이다. 상세와 16개 화면 매트릭스는 `docs/qa/osmu-four-room-basic-flow-v5-gpt-codex.md`, 원본 증거는 `logs/diff/osmu-four-room-flow-20260914-031512/`에 있다.
+seed, health HTTP 200과 DB up, 전체 Vitest 323파일과 2,119건, TypeScript, build 183/183, 디자인 lint가 통과했다. 조건부 DB 테스트 3건은 제외됐고 기존 NFT 추적 경고 1건은 남아 있다. build 결과에서도 health 200과 네 방 4/4를 재관찰했다. `verify-agent-quality.sh`는 배포 환경 접촉 증거 0건으로 반려했다. 실제 운영 배포와 외부 채널 실발행은 미검증이다. 상세와 16개 화면 매트릭스는 `docs/qa/osmu-four-room-basic-flow-v5-gpt-codex.md`, 원본 증거는 `logs/diff/osmu-four-room-flow-20260914-031512/`에 있다.
 
 
 ## 2026-09-13 16시 27분 KST · 최근 24시간 코드 재리뷰 갱신 BLOCK
