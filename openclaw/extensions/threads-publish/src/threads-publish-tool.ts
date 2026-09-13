@@ -132,6 +132,18 @@ export function createThreadsPublishTool(api: OpenClawPluginApi) {
         payload: { text, imageUrls: imageUrl ? [imageUrl] : [], quotePostId },
       });
       let resultRecorded = false;
+      const recordProviderFailure = async (error: string) => {
+        await recordQueueProviderResult({
+          queuePath,
+          postId,
+          channel: "threads",
+          claimToken,
+          idempotencyKey: attempt.idempotencyKey,
+          state: "provider_failed",
+          error,
+        });
+        resultRecorded = true;
+      };
 
       try {
 
@@ -143,7 +155,9 @@ export function createThreadsPublishTool(api: OpenClawPluginApi) {
         formData.append("file", new Blob([fileBuffer]), filename);
         const uploadResp = await fetch("https://tmpfiles.org/api/v1/upload", { method: "POST", body: formData });
         if (!uploadResp.ok) {
-          throw new Error(`Image upload failed (${uploadResp.status}). Cannot publish image without public URL.`);
+          const message = `Image upload failed (${uploadResp.status}). Cannot publish image without public URL.`;
+          await recordProviderFailure(message);
+          throw new Error(message);
         }
         const uploadData = (await uploadResp.json()) as { data?: { url?: string } };
         const tmpUrl = uploadData.data?.url;
@@ -178,7 +192,9 @@ export function createThreadsPublishTool(api: OpenClawPluginApi) {
 
       if (!createResp.ok) {
         const err = await createResp.text();
-        throw new Error(`Threads container creation failed (${createResp.status}): ${err}`);
+        const message = `Threads container creation failed (${createResp.status}): ${err}`;
+        await recordProviderFailure(message);
+        throw new Error(message);
       }
 
       const createData = (await createResp.json()) as { id: string };
@@ -200,7 +216,9 @@ export function createThreadsPublishTool(api: OpenClawPluginApi) {
 
       if (!publishResp.ok) {
         const err = await publishResp.text();
-        throw new Error(`Threads publish failed (${publishResp.status}): ${err}`);
+        const message = `Threads publish failed (${publishResp.status}): ${err}`;
+        await recordProviderFailure(message);
+        throw new Error(message);
       }
 
       const publishData = (await publishResp.json()) as { id: string };

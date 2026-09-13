@@ -149,6 +149,18 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
         payload: { text: caption, imageUrls },
       });
       let resultRecorded = false;
+      const recordProviderFailure = async (error: string) => {
+        await recordQueueProviderResult({
+          queuePath,
+          postId,
+          channel: "instagram",
+          claimToken,
+          idempotencyKey: attempt.idempotencyKey,
+          state: "provider_failed",
+          error,
+        });
+        resultRecorded = true;
+      };
 
       try {
       // Resolve all image URLs (upload local paths)
@@ -166,7 +178,11 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
           headers: { "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": attempt.idempotencyKey },
           body: new URLSearchParams({ image_url: publicUrls[0], caption, access_token: accessToken }),
         });
-        if (!createResp.ok) throw new Error(`IG container failed: ${await createResp.text()}`);
+        if (!createResp.ok) {
+          const message = `IG container failed (${createResp.status}): ${await createResp.text()}`;
+          await recordProviderFailure(message);
+          throw new Error(message);
+        }
         const { id: containerId } = (await createResp.json()) as { id: string };
 
         const pubResp = await fetch(`${API_BASE}/${userId}/media_publish`, {
@@ -174,7 +190,11 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
           headers: { "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": attempt.idempotencyKey },
           body: new URLSearchParams({ creation_id: containerId, access_token: accessToken }),
         });
-        if (!pubResp.ok) throw new Error(`IG publish failed: ${await pubResp.text()}`);
+        if (!pubResp.ok) {
+          const message = `IG publish failed (${pubResp.status}): ${await pubResp.text()}`;
+          await recordProviderFailure(message);
+          throw new Error(message);
+        }
         const pub = (await pubResp.json()) as { id: string };
         mediaId = pub.id;
       } else {
@@ -190,7 +210,11 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
               access_token: accessToken,
             }),
           });
-          if (!childResp.ok) throw new Error(`IG carousel child failed: ${await childResp.text()}`);
+          if (!childResp.ok) {
+            const message = `IG carousel child failed (${childResp.status}): ${await childResp.text()}`;
+            await recordProviderFailure(message);
+            throw new Error(message);
+          }
           const child = (await childResp.json()) as { id: string };
           childIds.push(child.id);
         }
@@ -206,7 +230,11 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
             access_token: accessToken,
           }),
         });
-        if (!carouselResp.ok) throw new Error(`IG carousel container failed: ${await carouselResp.text()}`);
+        if (!carouselResp.ok) {
+          const message = `IG carousel container failed (${carouselResp.status}): ${await carouselResp.text()}`;
+          await recordProviderFailure(message);
+          throw new Error(message);
+        }
         const { id: carouselId } = (await carouselResp.json()) as { id: string };
 
         // Publish carousel
@@ -215,7 +243,11 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
           headers: { "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": attempt.idempotencyKey },
           body: new URLSearchParams({ creation_id: carouselId, access_token: accessToken }),
         });
-        if (!pubResp.ok) throw new Error(`IG carousel publish failed: ${await pubResp.text()}`);
+        if (!pubResp.ok) {
+          const message = `IG carousel publish failed (${pubResp.status}): ${await pubResp.text()}`;
+          await recordProviderFailure(message);
+          throw new Error(message);
+        }
         const pub = (await pubResp.json()) as { id: string };
         mediaId = pub.id;
       }
