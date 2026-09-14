@@ -186,7 +186,7 @@ describe("Sidebar operator/customer shell separation", () => {
 
     const sidebar = screen.getByRole("complementary", { name: "주요 사이드바" });
     const openButton = screen.getByRole("button", { name: "메뉴 열기" });
-    expect(sidebar).toHaveClass("hidden", "md:flex", "md:w-14", "md:bg-text");
+    expect(sidebar).toHaveClass("hidden", "md:flex", "md:w-56", "md:bg-text");
     expect(screen.getAllByText("편집실").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("지금 여기")).not.toBeInTheDocument();
     expect(openButton).toHaveAttribute("aria-expanded", "false");
@@ -196,6 +196,29 @@ describe("Sidebar operator/customer shell separation", () => {
     expect(openButton).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(screen.getByRole("button", { name: "메뉴 닫기" }));
     expect(sidebar).toHaveClass("hidden");
+  });
+
+  it("CODE-REVIEW-20260915-23 정상: 데스크톱 네 방 흐름을 224px로 보이고 56px 접힘 상태를 저장한다", () => {
+    mocks.pathname.mockReturnValue("/studio");
+    mocks.swr.mockImplementation((key: string | null) => {
+      if (key === "/api/me") return { data: { isOperator: false, tenant: { id: "customer-1", slug: "customer", name: "고객 워크스페이스" } }, mutate: vi.fn() };
+      if (key === "/api/images") return { data: [] };
+      return { data: undefined };
+    });
+
+    render(<Sidebar />);
+    const sidebar = screen.getByRole("complementary", { name: "주요 사이드바" });
+    expect(sidebar).toHaveClass("md:w-56");
+    expect(screen.getByRole("region", { name: "한 편의 제작 순서" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "사이드바 접기" }));
+    expect(sidebar).toHaveClass("md:w-14");
+    expect(localStorage.getItem("customer_sidebar_collapsed")).toBe("true");
+    expect(screen.queryByRole("region", { name: "한 편의 제작 순서" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "사이드바 펴기" }));
+    expect(sidebar).toHaveClass("md:w-56");
+    expect(localStorage.getItem("customer_sidebar_collapsed")).toBe("false");
   });
 
   it("FE4-SIDEBAR-02 거절: 좁은 폭에서도 고정 96px 레일을 강제하는 옛 셸을 되살리지 않는다", () => {

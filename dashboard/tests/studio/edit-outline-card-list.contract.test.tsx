@@ -39,7 +39,7 @@ describe("편집실 목차 칸의 카드 목록", () => {
 
     const outline = document.querySelector("[data-edit-outline]")!;
     fireEvent.click(outline.querySelector('[data-outline-item="1"]')!);
-    fireEvent.click(outline.querySelector('[data-outline-up="1"]')!);
+    fireEvent.keyDown(outline.querySelector('[data-outline-item="1"]')!, { key: "ArrowUp", altKey: true });
 
     expect(onLinesChange).toHaveBeenLastCalledWith(["둘째 장", "첫 장", "셋째 장"]);
   });
@@ -146,8 +146,9 @@ describe("편집실 목차 칸의 카드 목록", () => {
     expect(outline.querySelector("[data-outline-role]")).toBeNull();
 
     fireEvent.click(outline.querySelector('[data-outline-item="0"]')!);
-    fireEvent.click(outline.querySelector('[data-outline-down="0"]')!);
+    fireEvent.keyDown(outline.querySelector('[data-outline-item="0"]')!, { key: "ArrowDown", altKey: true });
     expect(onLinesChange).toHaveBeenLastCalledWith(["둘째 장면", "첫 장면"]);
+    expect(outline.querySelector("[data-outline-up], [data-outline-down]")).toBeNull();
   });
 
   it("OUTLINE-08 정상: 편집실의 채운 강조색 버튼은 여전히 발행실로 이동 하나뿐이다", () => {
