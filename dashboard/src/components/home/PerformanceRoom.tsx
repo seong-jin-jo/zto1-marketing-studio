@@ -717,8 +717,7 @@ export function PerformanceRoom({
 
       <section className={`${roomColumn} border-t border-border pt-stack-section`} data-perf-inherit="app/page.tsx">
         <div className="mb-stack flex flex-wrap items-center gap-stack">
-          <p className="mr-auto text-caption text-subtle break-keep">반응이 비어 있으면 연결된 채널에서 최신 성과를 다시 확인하세요.</p>
-          <Button onClick={() => void onCollectMetrics()} disabled={collecting || !workspaceId}>{collecting ? "성과 수집 중" : "성과 다시 수집하기"}</Button>
+          <Button className="ml-auto" onClick={() => void onCollectMetrics()} disabled={collecting || !workspaceId}>{collecting ? "성과 수집 중" : "성과 다시 수집하기"}</Button>
         </div>
         <details>
           <summary className="flex min-h-control-touch cursor-pointer items-center gap-stack text-body font-bold text-text">

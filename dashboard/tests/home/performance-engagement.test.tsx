@@ -46,6 +46,7 @@ describe("FE-V63-07 성과실 댓글 행동", () => {
     render(room());
 
     expect(screen.getByRole("complementary", { name: "성과실 담당 대화창" })).toBeInTheDocument();
+    expect(screen.queryByText("반응이 비어 있으면 연결된 채널에서 최신 성과를 다시 확인하세요.")).not.toBeInTheDocument();
   });
 
   it("V69-COPY-01 거절: 성과 요약에 이메일 형태의 작업 공간 이름을 노출하지 않는다", () => {
