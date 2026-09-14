@@ -1,5 +1,59 @@
 # OSMU 네 방 기본 흐름 재검증 핸드오프
 
+## 2026-09-14 18:40 KST v9 재검증 완료
+
+### 무엇을 어디까지 했나
+
+- handoff basis는 회장 요청 원문과 현재 공유 작업트리다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`여서 단계와 승인 상태를 바꾸지 않았다.
+- localhost:3456과 지정 작업 공간에서 기본 흐름 11/11, 네 방 단면 4/4, 390 라이트와 다크, 768, 1024, 1440 라이트의 20개 방 화면과 성과실에서 생성실 복귀 5/5, Studio v1 14/14를 관찰했다.
+- 첫 단면 실행에서 네 방 4/4 뒤 임시 고객 토큰 폐기 제한시간 초과가 성공 종료로 숨는 결함을 발견했다. 두 검증기에 독립된 60초 폐기 제한시간과 실패 종료 계약을 추가하고 회귀 2건을 만들었다. 코드 커밋은 `4736aa9f`다.
+- 전체 Vitest 351파일과 2,291건 통과, 조건부 3건 제외, TypeScript 종료 0, production build 184/184, seed, health HTTP 200과 DB up, 디자인 lint 위반 0을 확인했다.
+- 원본 20장과 관찰 JSON은 `logs/diff/osmu-four-room-flow-20260914-1819/captures/`, 상세는 `docs/qa/osmu-four-room-basic-flow-v9-gpt-codex.md`다. 활성 `qa-four-room-*` 테스트 토큰 최종 잔여는 0건이다.
+
+### 남은 이슈와 블로커
+
+- 과제가 확정 기준으로 지정한 v63과 canonical pipeline 최신 승인 `design_hub` v68이 충돌한다. 워커가 승인 정본을 임의로 바꾸지 않았다.
+- v63 원본과 현재 16개 방과 폭 조합의 주축, 요소 순서, 열 수, 정렬과 여백, 표시 여부, 글꼴 단계, 버튼 위계가 모두 달라 디자인 정합은 NG다.
+- 실제 운영 배포 버전, 외부 채널 실발행과 운영 성과 회수는 미검증이다. localhost 기능 PASS를 제품 전체 QA 승인으로 확대하지 않는다.
+
+### 다음에 칠 명령
+
+컨트롤러가 디자인 승인 핀을 단일화하고 product-designer가 네 방 레이아웃을 맞춘 뒤 QA 소유자가 아래 종료형 검증을 다시 실행한다. 현재 localhost:3456 서버는 다른 세션 소유이므로 소유자 확인 없이 종료하거나 교체하지 않는다.
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+set -a; . ./.env.local; set +a
+bash scripts/apply-schema.sh --seed
+npm run test
+npx tsc --noEmit
+npm run build
+node scripts/verify-basic-flow-e2e.mjs
+node scripts/verify-studio-v1-e2e.mjs
+node scripts/probe-four-room-flow.mjs
+FOUR_ROOM_OUTPUT_DIR=../logs/diff/osmu-four-room-flow-next/captures node scripts/verify-four-room-ui-e2e.mjs
+```
+
+종료 증거는 단일 승인 핀, 16개 화면 8축 디자인 정합 PASS, localhost 전 기능 회귀 PASS, 운영 버전 동일 흐름 실측이다.
+
+### 검증했나
+
+| 항목 | 결과 |
+|---|---|
+| canonical QA 단계 | 근거 확인, 이미 `qa` |
+| seed와 health | PASS, HTTP 200과 DB up |
+| 백엔드 기본 흐름 | PASS, 11/11 |
+| 네 방 렌더 | PASS, 4/4 |
+| 4개 viewport 실제 이동 | PASS, 20/20과 복귀 5/5 |
+| Studio v1 | PASS, 14/14 |
+| 전체 테스트 | PASS, 351파일과 2,291건. 조건부 3건 제외 |
+| TypeScript | PASS, 종료 코드 0 |
+| web build | PASS, 184/184. 기존 NFT 경고 1건 |
+| 디자인 lint | PASS, 위반 0건 |
+| 검증 자격증명 정리 | 수정 후 PASS, 회귀 3파일 6건과 활성 테스트 토큰 잔여 0건 |
+| 디자인 시안과 dev 원본 대조 | NG, 16개 방과 폭 조합의 8축 불일치 |
+| 운영 배포와 외부 발행 | 미검증 |
+| 제품 전체 판정 | NG |
+
 ## 2026-09-14 14:48 KST 재검증 완료
 
 - handoff basis는 회장 요청 원문과 현재 공유 작업트리다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였다.
