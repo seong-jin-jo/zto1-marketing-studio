@@ -2,6 +2,20 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 20시 44분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 변경 | 전체 커밋과 diff 공격 리뷰 | OSMU-CODE-REVIEW-R5-01 | BLOCK | `82642efe..f32ff712`, 87커밋, 213파일. MAJOR 36건, MINOR 9건. |
+| 실제 앱 요청 | localhost와 지정 작업 공간 기본 흐름 | OSMU-CODE-REVIEW-R5-02 | 범위 PASS | health HTTP 200과 DB up. 기본 흐름 11/11, Studio v1 14/14. |
+| 고객 격리 | 고객 토큰으로 공급자 전역 계정 정보 접근 여부 | OSMU-CODE-REVIEW-R5-03 | NG | 임시 고객 토큰으로 `/api/higgsfield/status` HTTP 200과 `email`, `plan`, `credits`, `raw` 키를 관찰했다. 값은 기록하지 않았고 토큰 폐기 HTTP 200을 확인했다. |
+| dashboard 회귀 | test와 TypeScript | OSMU-CODE-REVIEW-R5-04 | PASS | Vitest 351파일, 2,291건 통과, 조건부 3건 제외. `npx tsc --noEmit` 종료 코드 0. |
+| OpenClaw 회귀 | 종료 직전 추가된 메모리 수정의 대상 테스트 | OSMU-CODE-REVIEW-R5-05 | NG | `test/scripts/tsdown-build.test.ts` 26건 중 3건 실패. 기대 6,400MB, 실제 3,584MB. |
+| 증거 정합 | 실행 서버가 현재 검토 커밋과 같은가 | OSMU-CODE-REVIEW-R5-06 | NG | listener PID 33531은 16:14 시작됐지만 저장 증거는 17:00 커밋을 주장한다. 실요청 관찰은 유효하나 고정 HEAD 실행 증거로 확대하지 않았다. |
+| 4축 | 시안, 회귀, 토큰, 삭제 | OSMU-CODE-REVIEW-R5-07 | BLOCK | 승인 시안 이탈 3건, 회귀 위험 39건, 토큰 위반 2건, 무기록 삭제 1건. |
+
+제품 코드, migration과 테스트는 수정하지 않았다. 상세 보고서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-14.md`다. 운영 배포, 외부 채널 실발행, 현재 HEAD로 재기동한 localhost 동일성은 미검증이다.
+
 ## 2026-09-14 19시 18분 KST · 성과 시계열 갭 재실사 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
