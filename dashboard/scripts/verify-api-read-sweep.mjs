@@ -19,7 +19,11 @@ const tenantToken = process.env.API_SWEEP_TENANT_TOKEN || "";
 const outputPath = process.env.API_SWEEP_OUTPUT || "";
 const requestTimeoutMs = Number(process.env.API_SWEEP_TIMEOUT_MS || "120000");
 const totalTimeoutMs = Number(process.env.API_SWEEP_TOTAL_TIMEOUT_MS || "300000");
-const sweepConcurrency = Number(process.env.API_SWEEP_CONCURRENCY || "4");
+// Next dev compiles unseen Route Handlers on demand. Starting several cold
+// compilations at once can starve the dev server and turn healthy routes into
+// timeouts, so the safe default is sequential. Production checks can opt in to
+// bounded parallelism with API_SWEEP_CONCURRENCY.
+const sweepConcurrency = Number(process.env.API_SWEEP_CONCURRENCY || "1");
 
 if (!workspaceId) throw new Error("API_SWEEP_WORKSPACE_ID 또는 STUDIO_DEV_WORKSPACE_IDS가 필요합니다");
 if (!operatorToken) throw new Error("DASHBOARD_AUTH_TOKEN이 필요합니다");
