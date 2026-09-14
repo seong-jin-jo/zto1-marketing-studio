@@ -2,6 +2,19 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 17시 47분 KST · API 읽기 경로 v10 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98 | 성과와 학습 읽기를 다음 생성 판단으로 되돌림 | API-READ-ALL-V10 | PASS | localhost 고유 경로 105개, GET 105건과 HEAD 1건 실호출. 정상 92, 계약상 거절 14, 500·redirect·timeout·예상 밖 거절 0. 원본 logs/diff/osmu-api-read-sweep-20260914-v10-authoritative.json |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY-V10 | PASS | 격리 탐침은 계약 401과 안전한 no-tenant 본문. 401 인증 필요 문구 노출 0, 예상 밖 4xx·5xx 0 |
+| R200, R207 | 성과와 Studio 학습 정보 읽기 | API-LEARNING-READ-V10 | PASS | /api/metrics, /api/performance/learned-rules, /api/studio/learning HTTP 200 |
+| 검사 증거 울타리 | HEAD·3xx·import chain·서버 교체를 놓치지 않음 | API-SWEEP-FENCE-V10 | 수정 후 PASS | GET 105와 HEAD 1 별도 실행, 2xx만 정상, 전체 src·scripts 해시와 listener PID 전후 동일. 커밋 a6924427, 3be8459b |
+| 필수 회귀 | 전체 test, TypeScript, build, seed, health, 두 E2E, 디자인 lint | API-READ-REGRESSION-V10 | PASS | 350파일·2,289건 통과·3건 제외, tsc 0, build 184/184, health 200, 기본 11/11, Studio 14/14, lint 위반 0 |
+| 원장 232건 중 이번 범위 밖 | 회장 확정 요구 전건 승계 | REQ-ALL-V10 | 이월 | docs/qa/osmu-api-read-sweep-v10-gpt-codex.md에 232개 요청 번호를 전건 표로 승계 |
+
+권위 실행 전후 listener PID는 33531, dashboard/src/**/*와 dashboard/scripts/**/* 합성 SHA-256은 a7cea815adcf5a80359662c4c8a382b53b1c2c3bf3d7e3458ee270268b2e3e7f로 동일했다. 좁은 해시와 300초 예산 소진 실행은 권위 증거에서 제외했다. API 읽기 범위만 PASS이며 v63과 v68 승인 핀 충돌, 3폭 디자인 정합 NG, 운영 배포와 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다.
+
 ## 2026-09-14 16시 16분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
