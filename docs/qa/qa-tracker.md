@@ -2,6 +2,29 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-15 02시 27분 KST · 네 방 기본 흐름 v11 기능 수정 후 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 실제 관통 | FLOW-API-V11 | 수정 후 PASS | 최초 생성은 `spawn_failed`, 후보 0장. Claude CLI 사용자 설치 경로 탐색을 복구한 뒤 build 후 재기동 서버에서 기본 흐름 최종 11/11. 후보 3장, 편집, 삭제·복원, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰. 수정 `629f056d`, 회귀 `957a8225` |
+| R08, R19, R207 | 390, 768, 1024, 1440 네 폭에서 네 방을 사람처럼 이동 | FLOW-UI-V11 | 기능 PASS, 디자인 NG | 단면 4/4, 방 화면 20/20, 성과실에서 생성실 복귀 5/5. 가로 넘침·가린 모달·탐색 차단·브라우저 401·콘솔 오류 0. 원본 `logs/diff/osmu-four-room-flow-20260915-0216/captures/` |
+| R27, R168 | Studio v1 회귀 | STUDIO-V1-V11 | PASS | localhost 실요청 14/14 |
+| R104 | 검증 자격증명 정리 | FLOW-PROBE-CLEANUP-V11 | PASS | 전체 실행 뒤 활성 `qa-four-room-*` 토큰 0건 |
+| R193, R205, R206 | v63 디자인 계승 | DESIGN-V11 | NG | 16개 방·폭 조합의 주축, 요소 순서, 열 수, 정렬·여백, 표시·숨김, 글꼴 단계, 버튼 위계가 불일치. 과제 v63과 pipeline 승인 v68 핀도 충돌 |
+| 필수 회귀 | test, TypeScript, build, seed, health, 두 API E2E, Playwright, 디자인 lint | FLOW-REGRESSION-V11 | PASS | Vitest 353파일과 2,293건 통과, 조건부 3건 제외. tsc 종료 0, build 184/184, schema·seed·RLS 적용, 최종 health HTTP 200·DB up·26ms, 디자인 토큰 위반 0 |
+| R01부터 R207 중 이번 범위 밖 | 회장 확정 요구 승계 | REQ-ALL-V11 | 이월 | 요구 정본을 유지하고 이번 네 방 기능 PASS에 포함하지 않음 |
+| QA 출고 게이트 | 운영 배포와 외부 채널 실발행 | QA-QUALITY-GATE-V11 | NG | `verify-agent-quality.sh` 종료 코드 2. localhost 기능은 관찰 완료했지만 운영 배포 환경 접촉과 외부 계정 발행은 미검증. 상세 `docs/qa/osmu-four-room-basic-flow-v11-gpt-codex.md` |
+
+canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였다. 최종 listener PID는 42353, `dashboard/src`, `dashboard/scripts`, `dashboard/tests` 합성 SHA-256은 `f9919ac18a62566b2b461a0f77de21c2bd848af0853664bb812e70f5222b2ecf`다. 기능 범위는 PASS지만 디자인 정합과 제품 전체 QA, 배포는 NG다.
+
+## 2026-09-15 02시 06분 KST · 네 방 기본 흐름 v11 착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R27, R166, R168, R172 | 생성실부터 성과실까지 실제 기본 흐름 재검증 | FLOW-API-V11 | ❌ NG | 착수 health는 `localhost:3456/api/health` HTTP 200, DB up이었으나 `verify-basic-flow-e2e.mjs` 첫 생성 요청이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 종료 코드 1. 후보 0장. request id는 `ebeab845-101e-4ece-baf8-f0f9fadef2b1` |
+
+제공자 실패가 실행 환경인지 제품 회귀인지 분리하고, 같은 localhost에서 기본 11단계, 네 방 렌더, 네 폭 클릭, 전체 회귀를 다시 끝내기 전에는 PASS로 전환하지 않는다.
+
 ## 2026-09-14 22시 35분 KST · 네 방 기본 흐름 v10 기능 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
