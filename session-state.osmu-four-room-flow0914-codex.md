@@ -1,5 +1,56 @@
 # OSMU 네 방 기본 흐름 재검증 핸드오프
 
+## 2026-09-15 02:38 KST v11 재검증 완료
+
+### 무엇을 어디까지 했나
+
+- handoff basis는 회장 요청 원문과 현재 공유 작업트리다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였고 승인 상태는 바꾸지 않았다.
+- 최초 기본 흐름은 생성 엔진의 `spawn_failed`로 후보 0장에서 끊겼다. 감독 실행환경 PATH에 Claude CLI 사용자 설치 위치가 없었던 것이 원인이며, 애플리케이션 실행 경계의 경로 탐색과 회귀 테스트를 `629f056d`, `957a8225`로 반영했다.
+- 수정본 서버에서 기본 흐름 11/11, 네 방 단면 4/4, 390 라이트와 다크·768·1024·1440 라이트의 방 화면 20/20, 성과실에서 생성실 복귀 5/5, Studio v1 14/14를 실제 관찰했다.
+- 전체 Vitest 353파일과 2,293건 통과, 조건부 3건 제외, TypeScript 종료 0, production build 184/184, schema·seed·RLS, health HTTP 200과 DB up, 디자인 lint 위반 0, 활성 검증 토큰 0건을 확인했다.
+- v63 시안과 dev 실화면을 1440 및 390 생성실 원본으로 다시 함께 열었다. 1440은 v63의 후보 3열·학습 패널·우측 담당과 dev의 입력 중심 본문·상단 단계가 다르고, 390은 v63의 후보 카드·하단 담당과 dev의 진행 안내·세로 입력이 다르다. 16개 화면 8축 정합은 NG다.
+- 상세 보고서는 `docs/qa/osmu-four-room-basic-flow-v11-gpt-codex.md`, 원본은 `logs/diff/osmu-four-room-flow-20260915-0216/captures/`다. 코드, 회귀, QA 문서와 상태 기록은 `629f056d`부터 `7dec2ec8`까지 분리 커밋했다.
+
+### 남은 이슈·블로커
+
+- 과제가 지정한 v63과 canonical pipeline 최신 승인 `design_hub` v68이 충돌한다. 디자인 기준을 임의로 선택하지 않았고 제품 전체 QA와 배포는 NG다.
+- 실제 운영 배포 버전, 외부 채널 실발행과 운영 성과 회수는 미검증이다.
+
+### 다음에 칠 명령
+
+컨트롤러가 v63과 v68 중 단일 디자인 핀을 확정하고 product-designer가 16개 화면의 8축 정합을 맞춘 뒤 QA 소유자가 아래 종료형 검증을 다시 실행한다.
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+npm run test
+npx tsc --noEmit
+npm run build
+set -a; . ./.env.local; set +a
+bash scripts/apply-schema.sh --seed
+node scripts/verify-basic-flow-e2e.mjs
+node scripts/verify-studio-v1-e2e.mjs
+node scripts/probe-four-room-flow.mjs
+FOUR_ROOM_OUTPUT_DIR=../logs/diff/osmu-four-room-flow-next/captures node scripts/verify-four-room-ui-e2e.mjs
+```
+
+종료 증거는 단일 승인 핀, 16개 화면 8축 디자인 정합 PASS, localhost 전 기능 회귀 PASS, 운영 버전 동일 흐름 실측이다.
+
+### 검증했나
+
+| 항목 | 결과 |
+|---|---|
+| 기본 흐름 | PASS, 11/11 |
+| 네 방 렌더 | PASS, 4/4 |
+| 4개 viewport 실제 이동 | PASS, 방 화면 20/20과 복귀 5/5 |
+| Studio v1 | PASS, 14/14 |
+| 전체 테스트 | PASS, 353파일과 2,293건. 조건부 3건 제외 |
+| TypeScript와 web build | PASS, 종료 코드 0과 184/184 |
+| seed와 health | PASS, schema·seed·RLS와 최종 HTTP 200·DB up |
+| 디자인 lint | PASS, 위반 0건 |
+| 시안과 dev 원본 육안 대조 | NG, 1440과 390 생성실 양쪽 원본 직접 확인. 16개 조합 매트릭스 NG |
+| 운영 배포와 외부 발행 | 미검증 |
+| 제품 전체 판정 | NG |
+
 ## 2026-09-14 22:35 KST v10 재검증 완료
 
 ### 무엇을 어디까지 했나
