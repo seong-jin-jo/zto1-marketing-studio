@@ -32,7 +32,7 @@ snapshot 또는 공급자 기간 보고서의 명시적 계약이 필요하다�
 live `information_schema`, schema와 migration, metrics Route Handler, 실제 응답을 교차 확인했지만
 그 계약은 없었다.
 
-STAMP | line: osmu-gapfill091419 | 생성: 2026-09-14 19:18 KST | model: gpt-codex/gpt-5 | agent: code-builder | skill: 없음 | 고민: 반복 발주라도 QA 공정과 미승인 DB 계약을 우회하지 않고 실물 증거를 갱신했다.
+STAMP | line: osmu-gapfill091419 | 생성: 2026-09-14 19:18 KST | model: gpt-codex/gpt-5.6-sol | agent: code-builder | skill: 없음 | 고민: 반복 발주라도 QA 공정과 미승인 DB 계약을 우회하지 않고 실물 증거를 갱신했다.
 
 SKILLS_USED: 없음. 설치된 스킬 중 이 Next.js와 PostgreSQL 성과 저장 build에 직접 대응하는 스킬 없음. SKILLS_SKIPPED: qa는 QA 단계 소유이므로 사용자 지정 localhost 검증만 수행.
 
@@ -43,7 +43,7 @@ CONFLICTS: 회장 정본과 외부 공식 계약의 충돌은 없다. 사용자 
 
 SOURCES: 두 갭 감사 | v63 프로토타입 | 회장 요구 대장과 정본 요청 원장 | OSMU 사업 좌표 | `dashboard/db/schema.sql` | `dashboard/src/app/api/metrics/route.ts` | https://developers.google.com/youtube/analytics/reference/reports/query | https://developers.tiktok.com/docs/en/tiktok-api-v2-video-object?enter_method=left_navigation
 
-MODEL: gpt-codex/gpt-5 / code-builder
+MODEL: gpt-codex/gpt-5.6-sol / code-builder
 
 ## 2026-09-14 15시 14분 갭 재확인: 승인 없는 성과 시계열은 구현하지 않음
 
