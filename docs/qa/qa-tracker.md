@@ -2,6 +2,15 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-15 03시 04분 KST · 성과 시계열 갭 재착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사를 현재 코드와 대조해 남은 기본 흐름 갭을 구현 | GAP-HISTORY-20260915-0304-01 | ❌ NG | localhost 지정 작업 공간 `GET /api/metrics`는 HTTP 200이지만 최상위 키가 `coverage`, `posts`뿐이고 `history`, `comparison`은 없다. 게시물은 0건이다. |
+| pipeline build 허용 범위 | 게시물별 성과 snapshot과 재현 가능한 30일 비교 구현 | GAP-HISTORY-20260915-0304-02 | BLOCK | `pipeline-state.osmu.md`의 현재 공정은 `qa`, 상태는 승인 아님이다. snapshot 저장 단위, 멱등 키, 보존 기간, 30일 비교식의 승인된 DB·API 계약이 없다. |
+
+health는 HTTP 200과 DB up으로 관찰했다. 코드와 migration을 수정하기 전 두 감사의 후속 구현, 현재 schema, Route Handler, 공식 provider 기간 계약을 대조한다. 승인 없는 저장 계약을 임의로 만들지 않는다.
+
 ## 2026-09-15 02시 27분 KST · 네 방 기본 흐름 v11 기능 수정 후 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
