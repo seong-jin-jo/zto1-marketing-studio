@@ -1,3 +1,22 @@
+# 2026-09-15 04시 17분 - 최근 24시간 코드 공격 리뷰 BLOCK
+
+회장 요청 원문을 handoff basis로 사용했다. 검토 시작 시 고정한 범위는
+`acb981ea484a113eaef87ef82f05d4edc43334bf..4692afe3d2030db299a02f18b79e6392e2ad114d`,
+96개 커밋과 212개 파일이다. 이후 공유 HEAD가 이동했지만 지적한 코드 파일은 고정 범위 끝과
+동일함을 다시 확인했다. 제품 코드는 수정하지 않았다.
+
+판정은 MAJOR 43건, MINOR 7건, REVIEW_VERDICT BLOCK이다. 고객 토큰으로 공유 Higgsfield
+계정의 이메일, 요금제, 크레딧, 원문 키가 HTTP 200에 노출되는 것을 직접 관찰했고 임시 토큰은
+HTTP 200으로 폐기했다. health HTTP 200과 DB up, dashboard Vitest 353파일과 2,293건,
+TypeScript, 기본 흐름 11/11, Studio v1 14/14는 통과했다. 최근 바뀐 OpenClaw tsdown 표적
+테스트는 26건 중 5건 실패했다.
+
+감사 문서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-15.md`, QA 증거는
+`docs/qa/qa-tracker.md` 맨 위에 있다. 커밋은 `f6f33b00`, `b125d7bb`다. 다음 소유자는 build
+워커다. 공유 생성 비용과 결과 격리, 자막 공용 영상 접근, 발행 lease와 fencing, 부분 실패
+상태, v63 구조 이탈, tsdown 회귀를 고친 고정 커밋 뒤 같은 실제 요청과 전체 회귀를 다시 돌린다.
+운영 배포와 외부 채널 실발행은 미검증이다.
+
 # 2026-09-15 03시 55분 - 성과 시계열 갭은 기술설계 미승인으로 build 회수
 
 회장 요청 원문을 handoff basis로 사용했다. 같은 과제를 진행하다 중단된
