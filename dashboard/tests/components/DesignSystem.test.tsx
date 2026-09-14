@@ -29,7 +29,8 @@ describe("shared design-system components", () => {
 
     const button = screen.getByRole("button", { name: "라벨 전체 표시" });
     expect(button).toHaveAttribute("type", "button");
-    expect(button).toHaveClass("min-h-control-touch", "min-w-max", "ds-label", variantClass);
+    expect(button).toHaveClass("min-h-control-touch", "ds-touch-target", "ds-label", variantClass);
+    expect(button).not.toHaveClass("min-w-max");
     expect(button).not.toHaveClass("truncate", "overflow-hidden");
   });
 
