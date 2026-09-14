@@ -1,3 +1,13 @@
+## 2026-09-14 12시 22분 - 최근 24시간 코드 공격 리뷰 BLOCK
+
+회장 요청 원문을 handoff basis로 사용했다. 같은 저장소의 tmux pane은 동시 작업 확인에만 참고했고, 리뷰 범위는 착수 시점 최근 24시간의 `7e39d0a7ddee8a9d7344cb08f56dea8baaf94419..4f59a75912c6163670a28a2d87fad6817f32a4a8`, 커밋 74개와 파일 180개로 고정했다. 사용자 지정 v63 프로토타입을 화면 계약 기준으로 썼지만 pipeline 최신 승인 핀 v68과 DESIGN.md 현행 전체 정본 v64가 충돌하므로 디자인 전체 PASS는 금지했다.
+
+판정은 MAJOR 27건, MINOR 3건, `REVIEW_VERDICT: BLOCK`이다. 고객 토큰으로 전역 Higgsfield 계정의 `email`, `plan`, `credits`, `raw` 키가 HTTP 200으로 실제 반환됐다. 그 밖에 전역 유료 생성 경로와 결과 폴더, 예약 중복 발행, 공개 파일 호스트 반출, 무제한 ffmpeg와 성과 수집, 부분 실패 `ok:true`, 카드 편집 뒤 유료 대표 이미지 소실을 확인했다. 제품 소스는 수정하지 않았다.
+
+localhost health HTTP 200과 DB up, 기본 흐름 11/11, Studio v1 14/14, 전체 Vitest 347파일과 2,275건 통과, 3건 제외, TypeScript 종료 코드 0이다. 자동 회귀가 통과해도 실제 격리 결함이 재현됐으므로 머지 차단을 유지한다. 임시 고객 토큰은 삭제 후 잔여 0건을 확인했다. 상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-14.md`, QA 증거는 `docs/qa/qa-tracker.md` 최신 절이다.
+
+다음 소유자는 code-builder와 qa-verifier다. MAJOR를 격리·발행 멱등·자원 상한·편집 자산 보존 순으로 수정하고 각 재현 시나리오를 회귀 픽스처로 만든 뒤, 같은 고객 토큰 공격과 localhost 두 E2E를 다시 관찰해야 한다. 배포와 QA 승인은 하지 않았다.
+
 ## 2026-09-14 11시 20분 - 성과 시계열 갭 build 승인 차단
 
 회장 요청 원문을 handoff basis로 사용했고 `osmu-gapfill091411:0.0`은 이번 위임 실행 화면으로 확인했다. 두 갭 감사와 현재 코드를 다시 대조한 결과 남은 기본 흐름 갭은 게시물별 성과 시계열과 재현 가능한 30일 비교 하나다. localhost 지정 작업 공간의 `GET /api/metrics`는 HTTP 200이지만 `history`, `comparison`이 없고, 현재 schema는 게시물별 이력을 보존하지 않는다.
