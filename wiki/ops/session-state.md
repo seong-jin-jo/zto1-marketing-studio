@@ -1,3 +1,26 @@
+# 2026-09-15 03시 55분 - 성과 시계열 갭은 기술설계 미승인으로 build 회수
+
+회장 요청 원문을 handoff basis로 사용했다. 같은 과제를 진행하다 중단된
+`osmu-gapfill091423:0.0`, `osmu-gapfill091503:0.0` pane은 중복 작업 확인용으로만 읽었고,
+제품 소스는 수정하지 않았다. canonical `pipeline-state.osmu.md`는 `current_stage: qa`, 승인
+아님이다.
+
+두 갭 감사의 후속 구현과 현재 코드를 대조하면 생성, 편집, 발행 큐, 성과 제안 재인계와 일곱
+표시 플랫폼 성과 수집은 이미 구현돼 있다. 남은 기본 흐름 갭은 게시물별 성과 snapshot과
+재현 가능한 30일 비교 하나다. 지정 작업 공간 localhost metrics는 HTTP 200이지만 최상위 키가
+`coverage`, `posts`뿐이고 게시물 0건, `history`와 `comparison`은 없다. schema에도 게시물별
+관측 이력 table이 없다.
+
+localhost 기본 흐름 11/11, Studio v1 14/14, Vitest 353파일과 2,293건, TypeScript, production
+build 184/184, 디자인 lint가 통과했다. health는 HTTP 200과 DB up이다. 검증 중 제품 소스와
+migration은 바꾸지 않았다. 갭 재확인 문서와 QA tracker를 최신 증거로 갱신했다.
+
+다음 소유자는 컨트롤러와 tech-architect다. snapshot 저장 단위, 멱등 키, 보존 기간, 공급자별
+누계·기간 지표 정규화, 최근 30일과 직전 30일 비교식, 표본 부족 기준을 합의하고 eng-design
+산출물을 승인한 뒤 build 공정을 다시 열어야 한다. 그 뒤 code-builder가 migration, snapshot
+write, history·comparison API와 정상·거절·경합 테스트를 구현한다. 운영 배포와 외부 공급자
+기간 성과는 미검증이다.
+
 # 2026-09-15 02:27 KST - 네 방 기본 흐름 v11 기능 수정 후 PASS, 제품 전체 NG
 
 회장 요청 원문과 현재 공유 작업트리를 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다.

@@ -2,6 +2,20 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-15 03시 55분 KST · 성과 시계열 갭 재확인 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사를 현재 코드와 대조해 남은 기본 흐름 갭을 구현 | GAP-HISTORY-20260915-0355-01 | NG | 남은 항목은 게시물별 성과 snapshot과 재현 가능한 30일 비교다. localhost 지정 작업 공간 `GET /api/metrics`는 HTTP 200, 최상위 키는 `coverage`, `posts`, 게시물 0건이며 `history`, `comparison`은 없다. |
+| DB 실물과 API 계약 | 게시물별 관측 이력과 기간 비교를 재현 | GAP-HISTORY-20260915-0355-02 | NG | `published_posts`는 최신 누계와 `metrics_at`만 보존하고, 게시물별 이력 table과 migration은 없다. |
+| pipeline build 허용 범위 | 승인된 계약 안에서만 구현 | GAP-HISTORY-20260915-0355-03 | BLOCK | 현재 공정은 `qa`, 승인 아님이다. snapshot 단위, 멱등 키, 보존 기간, 공급자별 정규화와 30일 비교식이 승인되지 않아 제품 소스와 migration을 수정하지 않았다. |
+| 기본 흐름 실제 요청 | 생성, 편집, 발행 큐, 성과와 생성실 재인계 | GAP-HISTORY-20260915-0355-04 | PASS | localhost 기본 흐름 11/11, Studio v1 14/14. health HTTP 200, DB up. |
+| 필수 회귀 | test, TypeScript, production build, 디자인 lint | GAP-HISTORY-20260915-0355-05 | PASS | Vitest 353파일과 2,293건 통과, 3건 제외. TypeScript 종료 0, build 184/184, 디자인 토큰 위반 0. |
+
+YouTube Analytics는 요청 기간과 집계축을 명시하지만 TikTok Video Query는 영상별 누계값을
+반환한다. 여러 공급자를 하나의 30일 비교로 묶는 저장·집계 계약이 먼저 필요하다. 운영 배포와
+실제 외부 공급자 기간 성과는 미검증이다.
+
 ## 2026-09-15 03시 04분 KST · 성과 시계열 갭 재착수 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
