@@ -1,5 +1,24 @@
 # OSMU 네 방 기본 흐름 재검증 핸드오프
 
+## 2026-09-14 14:48 KST 재검증 완료
+
+- handoff basis는 회장 요청 원문과 현재 공유 작업트리다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였다.
+- 감독의 앱 복구 경로가 `package.json`의 Webpack 계약을 우회해 Turbopack을 띄우던 근본 원인을 수정했다. 코드 커밋은 `d17115f6`이다.
+- 최종 localhost:3456은 Webpack 서버 PID 35651, health HTTP 200, DB up, 응답 2ms다. 재기동 뒤 런타임 치명 로그는 0건이다.
+- 기본 흐름 11/11, 네 방 4/4, 4개 폭 20/20과 복귀 5/5, Studio v1 14/14, 전체 Vitest 348파일과 2,277건, TypeScript, build 184/184, seed, 디자인 lint가 통과했다.
+- 원본은 `logs/diff/osmu-four-room-flow-20260914-final/captures/`, 상세는 `docs/qa/osmu-four-room-basic-flow-v8-gpt-codex.md`다.
+- 남은 blocker는 v63 대비 16개 화면 디자인 정합 NG, 과제 v63과 pipeline 승인 v68 핀 충돌, 운영 배포와 외부 채널 실발행 미검증이다.
+- 다음 행동은 컨트롤러가 디자인 승인 핀을 단일화하고 product-designer가 화면을 맞춘 뒤 QA가 같은 네 폭과 운영 버전을 재검증하는 것이다.
+
+## 2026-09-14 14:19 KST 재검증 진행 중
+
+- handoff basis는 회장 요청 원문과 현재 공유 작업트리다. canonical `pipeline-state.osmu.md`는 이미 `current_stage: qa`다.
+- 현재 HEAD `a462cb4c`와 localhost:3456 listener PID 21466을 기준으로 시작했다. 실행 전 `dashboard/src` + `dashboard/scripts` 합성 SHA-256은 `386faf5dc3c6289493bab64f20d6db1d17ed1d9dadc5d0279dfa80cafdf6e984`다.
+- `verify-basic-flow-e2e.mjs`는 지정 작업 공간에서 11/11 통과했다.
+- `probe-four-room-flow.mjs`는 생성실 표시를 120초 안에 관찰하지 못해 NG다. 중단 직후 listener PID는 21466으로 유지됐고 health는 HTTP 200, DB up이다.
+- 다음 행동은 실패 시점의 DOM, 라우트 반복, API 지연을 단독 재현해 제품 결함과 개발 서버 경합을 가른 뒤 네 폭 전건을 다시 돌리는 것이다.
+- 검증 상태: 백엔드 11/11은 관찰됨. 네 방 렌더는 NG. 네 폭, Studio v1, 전체 Vitest, TypeScript, build는 이 실행 기준 미완료다.
+
 업데이트: 2026-09-14 10:48 KST
 라인: osmu
 작업 목적: 네 방 기본 흐름, 4개 viewport, v63 디자인 계승, 전체 회귀 재검증

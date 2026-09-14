@@ -2,6 +2,28 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 14시 48분 KST · 네 방 감독 복구 경로 수정 후 기능 PASS, 디자인 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 네 방 관통 | FLOW-API-V8 | PASS | localhost 기본 흐름 11/11. 후보 3장, 편집, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰 |
+| R08, R19, R207 | 네 방 렌더와 390, 768, 1024, 1440 실제 이동 | FLOW-UI-V8 | 기능 PASS, 디자인 NG | 단면 4/4, 20개 방 화면과 성과실에서 생성실 복귀 5/5. 가로 넘침, 가린 모달, 탐색 차단, 다음 행동 누락, 401, 콘솔 오류 모두 0건. 원본 `logs/diff/osmu-four-room-flow-20260914-final/captures/` |
+| R27, R168 | Studio v1 생성과 무료 다시 만들기 경계 | STUDIO-V1-V8 | PASS | localhost 실요청 14/14 |
+| 개발 서버 복구 | 감독이 검증된 Webpack 개발 계약으로 앱을 복구 | QA-FLOW-RUNTIME-01 | 수정 후 PASS | 감독의 직접 `npx next dev`가 Turbopack을 띄워 `Next.js package not found` 패닉을 반복. `npm run dev -- -p 3456`으로 연결하고 회귀 8/8, 최종 런타임 치명 로그 0건. 커밋 `d17115f6` |
+| 전체 회귀 | Vitest, TypeScript, build, 디자인 lint | FLOW-REGRESSION-V8 | PASS | 348파일, 2,277건 통과, 조건부 3건 제외. TypeScript 종료 코드 0, build 184/184, 디자인 토큰 위반 0 |
+| R205, R206 | v63 디자인 계승 | DESIGN-V8 | NG | v63 원본과 현재 16개 화면의 8축 배치 속성이 모두 불일치. 과제 v63과 pipeline 승인 v68 핀도 충돌 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 운영 배포와 외부 채널 실발행은 이번 PASS에 포함하지 않음 |
+
+seed는 지정 작업 공간에 멱등 적용했고 최종 health는 HTTP 200, DB up, 2ms다. 상세는 `docs/qa/osmu-four-room-basic-flow-v8-gpt-codex.md`다. 네 방 localhost 기능만 PASS이며 디자인 정합, 운영 배포, 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다.
+
+## 2026-09-14 14시 19분 KST · 네 방 렌더 탐침 1차 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R166, R172, R207 | 생성실부터 성과실까지 네 방 렌더와 가림 모달 여부 재검증 | FLOW-PROBE-20260914-1419-01 | NG | 기본 백엔드 흐름은 11/11 통과했으나 `probe-four-room-flow.mjs`가 `/studio?room=create`의 `[data-room="create"]` 표시를 120초 안에 관찰하지 못하고 종료 코드 1로 중단됨. 검증 전후 localhost:3456 listener PID 21466과 health HTTP 200, DB up은 유지됨. |
+
+현재는 제품 렌더 결함과 공유 Next 개발 서버의 콜드 컴파일 정체를 분리하는 중이다. 동일 소스에서 단독 재현과 네 폭 전건 재실행을 끝내기 전에는 PASS로 바꾸지 않는다.
+
 ## 2026-09-14 14시 00분 KST · API 읽기 경로 전수 재실사 범위 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

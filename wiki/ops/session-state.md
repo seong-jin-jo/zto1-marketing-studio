@@ -1,3 +1,13 @@
+## 2026-09-14 14시 48분 - 네 방 감독 복구 경로 수정 후 기능 PASS, 디자인 NG
+
+회장 요청 원문과 현재 공유 작업트리를 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다.
+
+기존 Webpack 기본 개발 명령을 감독 복구 경로가 우회해 Turbopack을 띄우고 있었다. 그 서버는 네 방 탐침 중 `Next.js package not found` 패닉을 반복했다. 감독도 `npm run dev -- -p 3456`을 사용하도록 연결하고 회귀 계약을 추가한 커밋은 `d17115f6`이다.
+
+수정 후 localhost 기본 흐름 11/11, 네 방 렌더 4/4, 390, 768, 1024, 1440의 실제 클릭 20/20과 성과실에서 생성실 복귀 5/5, Studio v1 14/14가 통과했다. 전체 Vitest 348파일과 2,277건, 조건부 제외 3건, TypeScript, production build 184/184, seed, health HTTP 200과 DB up, 디자인 lint도 통과했다. 원본은 `logs/diff/osmu-four-room-flow-20260914-final/captures/`, 상세는 `docs/qa/osmu-four-room-basic-flow-v8-gpt-codex.md`다.
+
+네 방 localhost 기능은 PASS지만 v63 원본과 현재 16개 화면의 8축 배치 속성이 모두 불일치하고 과제 v63과 pipeline 승인 v68 핀도 충돌한다. 제품 전체 QA와 배포는 NG다. 다음 소유자는 컨트롤러와 product-designer다. 디자인 승인 핀을 단일화하고 화면을 맞춘 뒤 운영 버전에서 같은 흐름을 재검증해야 한다.
+
 ## 2026-09-14 14시 00분 - API 읽기 경로 v9 범위 PASS, 제품 전체 NG
 
 회장 요청 원문과 tmux `osmu-sweep091413:0.1`을 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다.
