@@ -1,0 +1,30 @@
+{
+  // CI 전용 타입 검사 설정.
+  //
+  // 왜 따로 두나. 대시보드 테스트 아홉 개가 `../../../openclaw/extensions/...` 로 이웃
+  // 워크스페이스를 직접 부른다. 그 트리는 자기 의존성(typebox, plugin-sdk, aws-sdk)을
+  // 따로 들고 있고 node_modules 가 2.2GB 다. CI 는 대시보드 의존성만 설치하므로
+  // 그 파일들이 프로그램에 끌려 들어오는 순간 "모듈을 찾을 수 없다" 로 무너진다.
+  // 2026-09-14 실측: 이 사유로 CI 타입 검사가 열한 건 실패했다.
+  //
+  // CI 에 2.2GB 를 설치해 타입 하나 보자고 매 실행을 느리게 만드는 것은 값이 안 맞는다.
+  // 그래서 CI 는 설치한 범위만 검사하고, 벤더 트리를 부르는 테스트는 제외한다.
+  // 그 파일들의 타입은 벤더 워크스페이스가 설치된 로컬 `npx tsc --noEmit` 이 본다.
+  // 테스트 실행 자체는 vitest 가 트랜스파일만 하므로 영향이 없다.
+  //
+  // 남은 숙제: 대시보드 테스트가 이웃 트리를 직접 부르는 구조가 옳은지는 따로 판단해야
+  // 한다. 공유 로직을 대시보드 쪽 이음매로 내리면 이 예외가 필요 없어진다.
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "tests/publish/osmu-code-review-20260913-queue.regression.test.ts",
+    "tests/publish/osmu-code-review-20260914-analytics-history.regression-1.test.ts",
+    "tests/publish/osmu-code-review-20260914-approved-payload.regression-1.test.ts",
+    "tests/publish/osmu-code-review-20260914-local-image.regression-1.test.ts",
+    "tests/publish/osmu-code-review-20260914-provider-failure.regression-1.test.ts",
+    "tests/publish/osmu-code-review-20260914-publishing-recovery.regression-1.test.ts",
+    "tests/publish/osmu-code-review-20260914-queue-lock.regression-1.test.ts",
+    "tests/publish/cancel-safety-regression.test.ts",
+    "tests/api/threads-insights-agent-tool-no-consent-delete.test.ts"
+  ]
+}

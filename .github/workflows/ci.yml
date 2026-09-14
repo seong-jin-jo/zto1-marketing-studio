@@ -49,7 +49,11 @@ jobs:
       - run: npm ci
 
       - name: Type check
-        run: npx tsc --noEmit
+        # CI 는 대시보드 의존성만 설치한다. 이웃 워크스페이스(openclaw)를 직접 부르는
+        # 테스트 아홉 개는 그 트리의 의존성이 없어 여기서 무너진다(2026-09-14 실측 11건).
+        # 그 트리 node_modules 가 2.2GB 라 CI 에 설치하는 것은 값이 안 맞는다.
+        # 설치한 범위만 검사하고 사유는 tsconfig.ci.json 주석에 적었다.
+        run: npx tsc --noEmit -p tsconfig.ci.json
 
       - name: Build
         run: npm run build   # NEXT_PUBLIC_SUPABASE_* 미설정도 빌드 OK(런타임만 영향)
