@@ -2,6 +2,18 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 19시 18분 KST · 성과 시계열 갭 재실사 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사를 현재 코드와 대조해 기본 흐름의 잔여 미구현을 선별 | GAP-HISTORY-20260914-1902-01 | NG | 지금도 없는 항목은 게시물별 성과 이력과 재현 가능한 30일 비교다. 지정 작업 공간 localhost `GET /api/metrics`는 HTTP 200이지만 최상위 키는 `coverage`, `posts`뿐이고 `history`, `comparison`은 없다. |
+| DB 실물 | 게시물별 누계의 과거 시점 보존 여부 | GAP-HISTORY-20260914-1902-02 | NG | live DB `information_schema`에서 이력 계열 테이블은 채널 팔로워용 `growth_metrics`뿐이다. `published_posts`는 최신 `views`, `likes`, `replies`, `reposts`, `metrics_at`만 보존한다. |
+| pipeline build 허용 범위 | 승인된 DB와 API 계약 안에서만 구현 | GAP-HISTORY-20260914-1902-03 | BLOCK | `pipeline-state.osmu.md`의 현재 공정은 `qa`, 상태는 승인 아님이다. snapshot 저장 단위, 멱등 키, 보존 기간과 30일 비교식의 승인 계약이 없어 제품 소스와 migration을 수정하지 않았다. |
+| 기존 기본 흐름 | 생성, 편집, 발행 큐, 성과와 생성실 재인계 | GAP-HISTORY-20260914-1902-04 | PASS | localhost 기본 흐름 11/11, Studio v1 14/14를 실제 요청으로 관찰했다. |
+| 필수 회귀 | test, TypeScript, production build, 디자인 lint | GAP-HISTORY-20260914-1902-05 | PASS | Vitest 351파일과 2,291건 통과, 조건부 3건 제외. TypeScript 종료 0, build 184/184, 디자인 토큰 위반 0. |
+
+이번 사용자 요청 원문을 작업 기준으로 사용했다. 제품 소스, migration과 테스트는 수정하지 않았다. 현재 누계값을 30일 값으로 재명명하거나 JSON에 이력을 임의 적재하면 재현성과 격리 계약을 증명할 수 없다. 기술설계에서 계약을 승인하고 build 공정을 다시 연 뒤 구현해야 한다. 운영 배포와 실제 외부 provider 기간 조회는 미검증이다.
+
 ## 2026-09-14 18시 40분 KST · 네 방 기본 흐름 v9 기능 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
