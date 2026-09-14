@@ -1,3 +1,13 @@
+# 2026-09-15 02:27 KST - 네 방 기본 흐름 v11 기능 수정 후 PASS, 제품 전체 NG
+
+회장 요청 원문과 현재 공유 작업트리를 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다.
+
+첫 `verify-basic-flow-e2e.mjs`는 health HTTP 200과 DB up인데도 첫 생성에서 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장으로 끊겼다. 서버 관찰 원인은 `spawn_failed`였고 감독이 띄운 Next 프로세스 PATH에 Claude CLI 설치 위치가 없었다. `dashboard/src/lib/anthropic.ts`의 단일 CLI 실행 경계가 사용자 기본 설치 경로를 복구하도록 고치고 회귀를 추가한 커밋은 `629f056d`, `957a8225`다.
+
+수정 뒤 build 후 재기동 서버에서 기본 흐름 최종 11/11, 네 방 렌더 4/4, 390 라이트·다크와 768·1024·1440의 방 화면 20/20, 성과실에서 생성실 복귀 5/5, Studio v1 14/14가 통과했다. Vitest 353파일과 2,293건 통과, 조건부 3건 제외, TypeScript 종료 0, production build 184/184, schema·seed·RLS, health HTTP 200과 DB up, 디자인 lint 위반 0, 활성 검증 토큰 0건을 확인했다. 원본은 `logs/diff/osmu-four-room-flow-20260915-0216/captures/`, 상세는 `docs/qa/osmu-four-room-basic-flow-v11-gpt-codex.md`다.
+
+v63 원본과 현재 16개 화면의 주축, 요소 순서, 열 수, 정렬·여백, 표시·숨김, 글꼴 단계와 버튼 위계가 모두 다르고 과제 v63과 pipeline 승인 v68 핀도 충돌한다. 네 방 localhost 기능만 PASS이며 제품 전체 QA와 배포는 NG다. 다음 소유자는 컨트롤러와 product-designer다. 디자인 기준 핀을 단일화하고 정합을 맞춘 뒤 운영 버전에서 같은 흐름을 재검증해야 한다.
+
 ## 2026-09-14 22시 15분 - API 읽기 경로 v11 범위 PASS, 제품 전체 NG
 
 회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다. 실행 pane은 `osmu-sweep091421:0.0`이며 다른 OSMU pane은 동시 변경 확인용으로만 사용했다.
