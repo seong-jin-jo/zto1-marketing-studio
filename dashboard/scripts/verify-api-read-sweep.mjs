@@ -204,13 +204,14 @@ async function inspectRoute({ file, method }) {
       redirect: "manual",
       signal: AbortSignal.timeout(Math.min(requestTimeoutMs, remainingMs)),
     });
-    const body = redact((await response.text()).slice(0, 500));
+    const fullBody = await response.text();
+    const safeBody = redact(fullBody);
     const classification = classifyApiReadResponse({
       status: response.status,
       expectedRejection,
       method,
       contentType: response.headers.get("content-type") || "",
-      bodyText: body,
+      bodyText: fullBody,
     });
     results.push({
       route: apiPath,
@@ -220,9 +221,9 @@ async function inspectRoute({ file, method }) {
       status: response.status,
       classification,
       duration_ms: Date.now() - startedAt,
-      body_sha256: createHash("sha256").update(body).digest("hex"),
+      body_sha256: createHash("sha256").update(safeBody).digest("hex"),
       body_preview: response.status >= 400 || classification !== "정상"
-        ? body.replace(/\s+/g, " ").slice(0, 220)
+        ? safeBody.replace(/\s+/g, " ").slice(0, 220)
         : "",
     });
   } catch (error) {
