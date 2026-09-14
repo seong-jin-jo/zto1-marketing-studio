@@ -3,6 +3,7 @@
 // Runs the tsdown build with output cleanup, stale chunk pruning, and bounded
 // child-process diagnostics.
 import { spawn, spawnSync } from "node:child_process";
+import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -489,12 +490,34 @@ function normalizeTsdownNodeOptions(nodeOptions, params = {}) {
   return normalized.join(" ");
 }
 
+// 번들러 작업 스레드 수를 메모리에 맞춰 묶는다.
+//
+// tsdown 은 rolldown(Rust)을 쓴다. 그쪽이 잡는 메모리는 V8 힙 밖이라
+// --max-old-space-size 로 안 잡힌다. 2026-09-14 실측: 힙 상한을 4,357MB 로 낮췄는데도
+// 배포 머신에서 총 사용이 7,147MB 까지 갔고 tsdown 이 SIGABRT 로 죽었다. 차이 약 2.8GB 가
+// 힙 밖이다. rayon 작업 스레드가 코어 수만큼(이 머신은 4) 뜨고 각자 메모리를 든다.
+//
+// 그래서 메모리 여유로 스레드 수를 정한다. 스레드당 약 1,024MB 를 잡고 최소 1, 최대는
+// 코어 수다. 이 머신(여유 4,357MB 기준)에서는 2 로 떨어진다. 메모리가 큰 기계는 코어 수
+// 그대로라 느려지지 않는다. 이미 값이 지정돼 있으면 존중한다.
+function resolveRayonThreads(params = {}, maxOldSpaceMb) {
+  const cpus = params.cpuCount ?? os.cpus().length ?? 1;
+  const perThreadMb = 1024;
+  const byMemory = Math.max(1, Math.floor(maxOldSpaceMb / perThreadMb) - 2);
+  return Math.max(1, Math.min(cpus, byMemory));
+}
+
 function resolveTsdownEnv(env, params = {}) {
   const nodeOptions = env.NODE_OPTIONS?.trim() ?? "";
-  return {
+  const maxOldSpaceMb = resolveTsdownMaxOldSpaceMb(params);
+  const next = {
     ...env,
     NODE_OPTIONS: normalizeTsdownNodeOptions(nodeOptions, params),
   };
+  if (!next.RAYON_NUM_THREADS) {
+    next.RAYON_NUM_THREADS = String(resolveRayonThreads(params, maxOldSpaceMb));
+  }
+  return next;
 }
 
 export function tsdownBuildUsage() {
