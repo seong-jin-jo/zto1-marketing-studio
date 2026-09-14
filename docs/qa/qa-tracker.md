@@ -2,6 +2,22 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-15 06시 35분 KST · 네 방 기본 흐름 v12 기능 수정 후 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 실제 관통 | FLOW-API-V12 | 수정 후 PASS | 지정 작업 공간에서 최종 localhost 기본 흐름 11/11. 후보 3장, 편집 순서 변경, 삭제와 복원, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰 |
+| R08, R19, R207 | 네 방 렌더와 390, 768, 1024, 1440 실제 이동 | FLOW-UI-V12 | 기능 PASS, 디자인 NG | 단면 4/4, 방 화면 20/20, 성과실에서 생성실 복귀 5/5. 가로 넘침, 전체 화면 모달, 탐색 가림, 브라우저 401, 콘솔 오류 0. 원본 `logs/diff/osmu-four-room-flow-20260915-0635/captures/` |
+| R27, R168 | Studio v1 회귀 | STUDIO-V1-V12 | PASS | localhost 실요청 14/14 |
+| R104 | 검증 자격증명 정리 | FLOW-PROBE-CLEANUP-V12 | PASS | 전체 실행 뒤 활성 `qa-four-room-*` 토큰 0건 |
+| R193, R205, R206 | v63 디자인 계승 | DESIGN-V12 | NG | 16개 방과 폭 조합의 주축, 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계가 불일치. 과제 v63과 pipeline 승인 v68 핀도 충돌 |
+| 필수 회귀 | test, TypeScript, build, seed, health, 두 API E2E, Playwright, 디자인 lint | FLOW-REGRESSION-V12 | 작업트리 PASS | Vitest 360파일과 2,317건 통과, 조건부 3건 제외. tsc 종료 0, build 184/184, schema와 seed 및 RLS 적용, health HTTP 200과 DB up 및 52ms, 디자인 토큰 위반 0 |
+| 커밋 무결성 | 수정과 회귀가 깨끗한 체크아웃에도 남는지 | FLOW-COMMIT-V12 | NG | 큐 잠금 수정은 `800c970a`. 발행 동시성 정적 계약 테스트 변경은 같은 경로의 타 세션 미추적 테스트 때문에 커밋 훅이 차단해 작업트리에 남음 |
+| QA 출고 게이트 | 운영 배포 접촉 증거 | QA-QUALITY-GATE-V12 | NG | `verify-agent-quality.sh`가 배포 환경 접촉 증거 0건으로 반려. localhost 기능 증거를 제품 전체 QA나 배포 PASS로 확대하지 않음 |
+| R01부터 R207 중 이번 범위 밖 | 회장 확정 요구 승계 | REQ-ALL-V12 | 이월 | 요구 정본을 유지하고 이번 네 방 기능 PASS에 포함하지 않음 |
+
+첫 전체 회귀는 3파일 실패였다. 제한 동시성 구현을 예전 `Promise.all` 문자열로만 찾던 정적 계약을 현재 구현으로 맞췄고, 큐 잠금 재시도 여유를 1.55초에서 3.55초로 늘리며 최종 `ELOCKED`를 `queue lock timeout`으로 정규화했다. 수정 후 표적 3파일 43건과 전체 2,317건이 통과했다. 기능 범위는 PASS지만 디자인 정합, 커밋 무결성, 운영 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v12-gpt-codex.md`다.
+
 ## 2026-09-15 04시 17분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

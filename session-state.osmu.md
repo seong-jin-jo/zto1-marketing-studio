@@ -1,3 +1,7 @@
+## 2026-09-15 06시 35분 네 방 기본 흐름 v12 기능 PASS, 제품 전체 NG
+
+지정 작업 공간의 localhost 기본 흐름 11/11, Studio v1 14/14, 네 방 4/4, 4개 폭 방 화면 20/20, 성과실에서 생성실 복귀 5/5, Vitest 360파일과 2,317건, TypeScript, build 184/184, seed, health와 디자인 lint가 통과했다. 큐 수정은 `800c970a`다. 정적 계약 테스트는 타 세션 미추적 파일 때문에 commit 훅이 차단해 작업트리에 남았다. v63 대비 16개 화면 디자인 정합 NG와 v63 및 v68 핀 충돌, 운영 배포 미검증 때문에 제품 전체 QA와 배포는 NG다. 증거는 `docs/qa/osmu-four-room-basic-flow-v12-gpt-codex.md`다.
+
 ## 2026-09-15 06시 30분 - 빌드 슬림화 머지, 8GB 에서는 여전히 힙 부족, RAM 재배분만 남음
 
 - PR 47 머지(main c2008b1a): OPENCLAW_INSTALL_BROWSER 끔(984MB), OPENCLAW_BUNDLED_PLUGIN_BUILD_IDS 8개(anthropic openai google ollama device-pair memory-core phone-control talk-voice). PR 46 은 세션 브랜치의 무관한 테스트 실패 10파일 때문에 닫음.

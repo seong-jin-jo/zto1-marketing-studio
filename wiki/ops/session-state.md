@@ -1,3 +1,13 @@
+# 2026-09-15 06시 35분 네 방 기본 흐름 v12 기능 PASS, 제품 전체 NG
+
+회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이며 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다. 같은 repo의 tmux pane은 현재 앱 listener와 동시 작업 충돌 확인에만 사용했다.
+
+지정 작업 공간의 localhost 기본 흐름 11/11, Studio v1 14/14, 네 방 단면 4/4, 390 라이트와 다크 및 768, 1024, 1440 라이트의 방 화면 20/20, 성과실에서 생성실 복귀 5/5를 관찰했다. 전체 Vitest 360파일과 2,317건 통과, 3건 제외, TypeScript 종료 0, production build 184/184, seed, health HTTP 200과 DB up, 디자인 lint 위반 0, 활성 `qa-four-room-*` 토큰 0건이다.
+
+첫 전체 회귀의 실패 3건은 큐 잠금 재시도 부족 2건과 제한 동시성 구현을 예전 문자열로 판정한 정적 계약 1건이었다. 큐 잠금은 `800c970a`로 커밋했고, 정적 계약 테스트는 같은 `dashboard/tests` 경로에 다른 세션 소유의 미추적 파일이 있어 commit 훅이 차단한 상태다. 해당 파일을 임의 포함하거나 옮겨 우회하지 않았다.
+
+v63 원본과 현재 16개 화면은 주축, 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계가 다르다. 과제 기준 v63과 pipeline 승인 핀 v68도 충돌한다. 따라서 기능 범위만 PASS이고 제품 전체 QA와 배포는 NG다. 상세와 다음 행동은 `docs/qa/osmu-four-room-basic-flow-v12-gpt-codex.md`에 있다. 다음 소유자는 컨트롤러다. 미추적 테스트 소유권을 정리해 정적 계약 변경을 커밋하고, product-designer가 단일 승인 핀에 맞춘 뒤 16개 화면 정합을 다시 검증해야 한다.
+
 # 2026-09-15 04시 17분 - 최근 24시간 코드 공격 리뷰 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. 검토 시작 시 고정한 범위는
