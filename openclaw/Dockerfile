@@ -119,14 +119,12 @@ RUN pnpm_config_verify_deps_before_run=false pnpm canvas:a2ui:bundle || \
 RUN if printf '%s\n' "$OPENCLAW_EXTENSIONS" | tr ',' ' ' | tr ' ' '\n' | grep -qx 'qa-lab'; then \
       export OPENCLAW_BUILD_PRIVATE_QA=1 OPENCLAW_ENABLE_PRIVATE_QA_CLI=1; \
     fi && \
-    # 힙 상한을 4096 으로 낮춘다. 종전 8192 는 배포 머신 총 메모리(7,941MB)보다 크다.
-    # 2026-09-14 실측: 전체 빌드를 돌리자 사용 메모리가 7,661MB 까지 차서 머신이 포화됐고
-    # 빌드가 exit 255 로, 그 전에는 exit 137(OOM kill)로 죽었다. 러너까지 같이 내려간 적도 있다.
-    # 힙이 물리 메모리보다 크면 V8 은 한도에 닿기 전에 스왑을 갈다가 머신을 죽인다.
-    # 4096 이면 운영체제와 돌고 있는 컨테이너 몫이 남는다. 이 값으로도 모자라면 빌드는
-    # "JavaScript heap out of memory" 로 분명하게 죽는다. 머신을 죽이는 것보다 그게 낫다.
-    # 그때는 메모리를 늘리거나 게이트웨이 빌드를 다른 곳에서 하는 것이 답이다.
-    NODE_OPTIONS=--max-old-space-size=4096 pnpm_config_verify_deps_before_run=false pnpm build:docker
+    # 힙 상한은 여기서 정하지 않는다. scripts/tsdown-build.mjs 의
+    # normalizeMaxOldSpaceSizeMb 가 여기 값이 자기 계산보다 작으면 다시 올리기 때문에
+    # 이 자리에서 낮춰도 효과가 없다(2026-09-14 실측: 4096 으로 낮췄는데 7,173 이 적용됐다).
+    # 실제 손잡이는 그 파일의 TSDOWN_CGROUP_MEMORY_HEADROOM_MB 이고 사유도 거기 적었다.
+    # 여기서는 그 계산이 그대로 서도록 값을 주지 않는다.
+    pnpm_config_verify_deps_before_run=false pnpm build:docker
 # Force pnpm for UI build (Bun may fail on ARM/Synology architectures)
 ENV OPENCLAW_PREFER_PNPM=1
 RUN pnpm_config_verify_deps_before_run=false pnpm ui:build
