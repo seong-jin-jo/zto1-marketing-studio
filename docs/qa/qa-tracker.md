@@ -2,6 +2,21 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 22시 35분 KST · 네 방 기본 흐름 v10 기능 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 실제 관통 | FLOW-API-V10 | PASS | 지정 작업 공간 localhost 기본 흐름 11/11. 후보 3장, 편집, 삭제·복원, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰 |
+| R08, R19, R207 | 390, 768, 1024, 1440 네 폭에서 네 방을 사람처럼 이동 | FLOW-UI-V10 | 기능 PASS, 디자인 NG | 단면 4/4, 방 화면 20/20, 성과실에서 생성실 복귀 5/5. 가로 넘침·가린 모달·탐색 차단·브라우저 401·콘솔 오류 0. 원본 `logs/diff/osmu-four-room-flow-20260914-2208/captures/` |
+| R27, R168 | Studio v1 회귀 | STUDIO-V1-V10 | PASS | localhost 실요청 14/14 |
+| R104 | 검증 자격증명 정리 | FLOW-PROBE-CLEANUP-V10 | PASS | 전체 실행 뒤 활성 `qa-four-room-*` 토큰 0건 |
+| R193, R205, R206 | v63 디자인 계승 | DESIGN-V10 | NG | 16개 방·폭 조합의 주축, 요소 순서, 열 수, 정렬·여백, 표시·숨김, 글꼴 단계, 버튼 위계가 불일치. 과제 v63과 pipeline 승인 v68 핀도 충돌 |
+| 필수 회귀 | test, TypeScript, build, seed, health, 두 API E2E, Playwright, 디자인 lint | FLOW-REGRESSION-V10 | PASS | Vitest 351파일과 2,291건 통과, 조건부 3건 제외. tsc 종료 0, build 184/184, schema·seed·RLS 적용, health HTTP 200·DB up·24ms, 디자인 토큰 위반 0 |
+| R01부터 R207 중 이번 범위 밖 | 회장 확정 요구 승계 | REQ-ALL-V10 | 이월 | 요구 정본을 유지하고 이번 네 방 기능 PASS에 포함하지 않음 |
+| QA 출고 게이트 | 운영 배포와 외부 채널 실발행 | QA-QUALITY-GATE-V10 | NG | localhost 기능은 관찰 완료했지만 운영 배포와 외부 계정 발행은 미검증. 상세 `docs/qa/osmu-four-room-basic-flow-v10-gpt-codex.md` |
+
+첫 `npm run test`는 실자격증명을 내보낸 셸의 환경 오염으로 16파일 59건이 실패했다. 원본 `vitest.log`에 보존하고 제품 결함 판정에서 제외했다. 깨끗한 셸의 공식 명령은 `vitest-clean.log`와 같이 전건 통과했다. 제품 소스는 수정하지 않았다.
+
 ## 2026-09-14 22시 15분 KST · API 읽기 경로 v11 범위 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
