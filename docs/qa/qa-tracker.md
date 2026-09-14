@@ -2,6 +2,27 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 14시 00분 KST · API 읽기 경로 전수 재실사 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98 | 발행 성과를 읽고 다음 생성 판단으로 되돌림 | API-READ-ALL-V9 | PASS | localhost GET 105개 실호출. 정상 92, 계약상 거절 13, HTTP 500과 요청 실패 0. 원본 `logs/diff/osmu-api-read-sweep-20260914-1313-final.json` |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY-V9 | PASS | 무토큰 격리 탐침 401. 비정상 상태 13개의 본문을 입력, 없는 자원, 인증, 설정 경계로 확인 |
+| R200, R207 | 성과 학습 규칙과 Studio 학습 정보 조회 | API-LEARNING-READ-V9 | PASS | `/api/performance/learned-rules`, `/api/studio/learning` 각각 HTTP 200 |
+| 검사기 콜드 컴파일 경합 | 개발 서버 전수 검사가 제품 응답 전에 멈추지 않음 | API-READ-DEV-COLD-V9 | 수정 후 PASS | 첫 동시성 4 실행은 요청 실패 4, 전체 시간 초과 35, 제품 500 0. production 동시성 4와 개발 서버 순차 실행은 105/105 응답. 기본 동시성을 1로 고정하고 회귀 추가, 커밋 `d5a612cc` |
+| 필수 자동 회귀 | 전체 Vitest, TypeScript, build, seed, E2E | API-READ-REGRESSION-V9 | PASS | 348파일과 2,276건 통과, 3건 제외. TypeScript 종료 0, build 184/184, seed와 RLS 적용, 기본 흐름 11/11, Studio v1 14/14, health 200, 디자인 lint 위반 0 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 디자인 정합, 운영 배포, 외부 채널 실발행은 이번 PASS에 포함하지 않음 |
+
+상세는 `docs/qa/osmu-api-read-sweep-v9-gpt-codex.md`다. 2026-08-28 문서 84개, 당시 실제 정적 분모 95개, 현재 105개를 분리해 비교했다. 직전 v8과 현재 v9의 경로, 상태, 분류 차이는 0건이다. API 읽기 범위만 PASS이며 기존 디자인 정합 NG, v63과 v68 승인 핀 충돌, canonical 테스트 계획과 ONE_THING 부재, 운영 배포와 외부 채널 실발행 미검증, 같은 날 공격 리뷰 BLOCK 때문에 제품 전체 QA와 배포는 NG다.
+
+## 2026-09-14 13시 28분 KST · API 읽기 경로 전수 재실사 착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R104, R200, R207 | 최신 코드가 내보내는 읽기 Route Handler 전부를 실제 요청으로 재검증 | API-READ-20260914-1313-01 | NG | 현재 분모 105개, 실행 전 GET 소스 합성 SHA-256 `b37dedf0bf4623843063fd7022fc1c0a5aaba47e5adaba96afc5480f680a4f3a`. localhost health HTTP 200과 DB up만 관찰. 전수 요청, 거절 본문 확인, 필수 회귀가 안 끝나 PASS 금지. |
+
+`rg`가 gitignore의 `tenants/` 패턴을 존중해 추적 중인 `/api/tenants`를 누락한 104개 중간 계산은 폐기했다. 실제 검증기와 동일하게 `fs.readdir`로 수집한 105개가 분모다. `/api/studio/learning`은 공유 작업 트리에서 수정 중이다. 새 원본 JSON과 실행 전후 소스 해시, 실패 단독 재현, 전체 Vitest, TypeScript, 기본 흐름과 Studio v1을 새로 관찰하기 전에는 직전 PASS를 재사용하지 않는다.
+
 ## 2026-09-14 12시 22분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

@@ -1,3 +1,13 @@
+## 2026-09-14 14시 00분 - API 읽기 경로 v9 범위 PASS, 제품 전체 NG
+
+회장 요청 원문과 tmux `osmu-sweep091413:0.1`을 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다.
+
+localhost GET Route Handler 105개를 기본값으로 전부 호출해 정상 92, 계약상 거절 13, HTTP 500과 요청 실패 0을 관찰했다. 첫 동시성 4 실행은 개발 서버 콜드 컴파일 정체로 요청 실패 4개와 전체 시간 초과 35개가 발생했지만 제품 HTTP 500은 없었다. 같은 빌드의 production 동시성 4와 새 개발 서버 순차 105개가 모두 끝나 검사기 기본 동시성을 1로 고정하고 회귀를 추가했다. 수정 커밋은 `d5a612cc`다.
+
+전체 Vitest 348파일과 2,276건, TypeScript, production build 184/184, seed, 기본 흐름 11/11, Studio v1 14/14, health HTTP 200과 DB up, 디자인 lint가 통과했다. 상세는 `docs/qa/osmu-api-read-sweep-v9-gpt-codex.md`, 원본은 `logs/diff/osmu-api-read-sweep-20260914-1313-*.json`이다. API 읽기 범위만 PASS이며 디자인 정합, 승인 핀 충돌, 문서 정본 부재, 운영 배포와 외부 채널 실발행, 같은 날 공격 리뷰 BLOCK 때문에 제품 전체 QA와 배포는 NG다.
+
+다음 소유자는 product-designer, 컨트롤러와 code-builder다. v63과 v68 디자인 핀을 단일화하고 공격 리뷰 BLOCK을 해소한 뒤 운영 환경에서 같은 경로를 재실사해야 한다. 완료 증거는 단일 승인 핀, 8축 정합 PASS, 고객 격리 결함 0, 운영 전수 요청 실패 0이다.
+
 ## 2026-09-14 12시 22분 - 최근 24시간 코드 공격 리뷰 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. 같은 저장소의 tmux pane은 동시 작업 확인에만 참고했고, 리뷰 범위는 착수 시점 최근 24시간의 `7e39d0a7ddee8a9d7344cb08f56dea8baaf94419..4f59a75912c6163670a28a2d87fad6817f32a4a8`, 커밋 74개와 파일 180개로 고정했다. 사용자 지정 v63 프로토타입을 화면 계약 기준으로 썼지만 pipeline 최신 승인 핀 v68과 DESIGN.md 현행 전체 정본 v64가 충돌하므로 디자인 전체 PASS는 금지했다.
