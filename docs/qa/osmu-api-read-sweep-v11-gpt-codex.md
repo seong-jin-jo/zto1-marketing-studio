@@ -124,6 +124,7 @@ v10과 v11의 경로 추가·삭제, 상태코드 변경, 분류 변경은 모�
 | curl health | PASS, localhost:3456 HTTP 200, DB up, warm 응답 3ms |
 | 기본 흐름 E2E | PASS, 11/11 |
 | Studio v1 E2E | PASS, 14/14 |
+| Playwright 네 방 단면 | PASS, 현재 PID 53664에서 4개 방 렌더, 가린 모달·브라우저 401·콘솔 오류 0 |
 | design-lint | PASS, dashboard/src 토큰 위반 0 |
 | verify-agent-quality.sh | FAIL, 종료 코드 2. 배포 환경 접촉 증거 0건 |
 | mobile typecheck | 미해당, Expo·mobile 패키지 없음 |
@@ -135,7 +136,7 @@ build의 기존 Turbopack NFT broad trace 경고와 Vitest의 기존 React act �
 
 docs/design/README.md가 DESIGN.md, ui-architecture.md, screen-inventory.md, user-flow.md, captures/manifest.json의 실제 경로를 지목하는 것을 확인했다. 원본 PNG는 docs/design/captures 계열이고 QA 원본은 logs/diff에서 이를 참조한다. README는 인증 후 화면을 미검증으로 적었지만 manifest에는 더 늦은 localhost 인증 캡처가 있어 문서 시점이 일치하지 않는다. 과제가 지정한 v63 프로토타입과 pipeline-state.osmu.md의 최신 v68 승인 핀도 충돌한다.
 
-이번 변경은 QA 증거와 문서뿐이며 제품 화면은 바꾸지 않았다. 18시 40분 v9 실사에서 390, 768, 1024, 1440 기능 이동은 통과했지만 v63과 현재 화면의 8개 배치 속성은 전부 NG였다. 따라서 기존 3폭 이상 디자인 정합 NG를 PASS로 바꾸지 않는다. 운영 배포 버전과 동적 URL의 실제 운영 화면도 미검증이다. 화면 redirect와 미검증을 정상으로 세지 않았다.
+이번 변경은 QA 증거와 문서뿐이며 제품 화면은 바꾸지 않았다. 권위 실행 뒤 현재 PID 53664에서 Playwright 네 방 단면을 재실행해 4개 방 렌더와 가린 모달·브라우저 401·콘솔 오류 0건을 관찰했다. 18시 40분 v9 실사에서 390, 768, 1024, 1440 기능 이동은 통과했지만 v63과 현재 화면의 8개 배치 속성은 전부 NG였다. 따라서 기존 3폭 이상 디자인 정합 NG를 PASS로 바꾸지 않는다. 운영 배포 버전과 동적 URL의 실제 운영 화면도 미검증이다. 화면 redirect와 미검증을 정상으로 세지 않았다.
 
 canonical docs/test-plan.md와 docs/ONE_THING.md는 없었다. 테스트 계획 대체본 docs/eng-design/fdd-legacy-20260912/fdd/test-plan-r02-v1.0.0-opus.md, 제품 기준 docs/plan/one-thing.md와 docs/plan/persona-v7.3.5.md를 읽었다. 정본 경로 부재는 회수 필요다.
 

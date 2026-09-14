@@ -6,7 +6,7 @@
 
 처음 세 실행은 5시간 실행된 PID 33531에서 서로 다른 경로 timeout과 health 503으로 끝났다. DB는 max_connections 100, 총 연결 6, active 1, idle in transaction 0이었다. 같은 DB와 소스에서 QA 관리 대상 dev pane만 PID 53664로 재기동한 뒤 전건 통과했다. 실패 원본도 보존했고 제품 Route Handler 500은 재현되지 않아 제품 코드와 회귀 테스트는 수정하지 않았다.
 
-Vitest 351파일과 2,291건 통과, 조건부 3건 제외, TypeScript 종료 0, production build 184/184, seed, warm health HTTP 200과 DB up 3ms, 기본 흐름 11/11, Studio v1 14/14, 디자인 lint 위반 0을 관찰했다. 상세는 `docs/qa/osmu-api-read-sweep-v11-gpt-codex.md`와 `docs/qa/qa-tracker.md`다. API 읽기 범위만 PASS다. 과제 v63과 pipeline 승인 v68 핀 충돌, 기존 배치 속성 정합 NG, 운영 host 접촉 미검증 때문에 제품 전체 QA와 배포는 NG다. 상위 품질 검증은 배포 환경 접촉 증거 0건으로 종료 코드 2다.
+Vitest 351파일과 2,291건 통과, 조건부 3건 제외, TypeScript 종료 0, production build 184/184, seed, warm health HTTP 200과 DB up 3ms, 기본 흐름 11/11, Studio v1 14/14, 현재 PID 53664 Playwright 네 방 렌더 4/4와 가린 모달·브라우저 401·콘솔 오류 0, 디자인 lint 위반 0을 관찰했다. 상세는 `docs/qa/osmu-api-read-sweep-v11-gpt-codex.md`와 `docs/qa/qa-tracker.md`다. API 읽기 범위만 PASS다. 과제 v63과 pipeline 승인 v68 핀 충돌, 기존 배치 속성 정합 NG, 운영 host 접촉 미검증 때문에 제품 전체 QA와 배포는 NG다. 상위 품질 검증은 배포 환경 접촉 증거 0건으로 종료 코드 2다.
 
 다음 소유자는 컨트롤러와 product-designer다. API 읽기 로컬 범위에는 추가 제품 코드 조치가 없다. 디자인 승인 핀을 단일화하고 배치 속성 정합을 맞춘 뒤 운영 버전에서 같은 106건을 재검증해야 한다.
 
