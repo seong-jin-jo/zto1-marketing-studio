@@ -1,3 +1,13 @@
+## 2026-09-14 10시 39분 - 네 방 기본 흐름 기능 PASS, 디자인과 제품 전체 NG
+
+회장 요청 원문과 `osmu-flowcheck091410:0.0`을 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다.
+
+최종 소스에서 localhost 기본 흐름 11/11, 네 방 렌더 4/4, 390, 768, 1024, 1440의 실제 클릭 20/20과 성과실에서 생성실 복귀 5/5, Studio v1 14/14가 통과했다. 전체 Vitest 346파일과 2,266건, TypeScript, production build 184/184, seed, health HTTP 200과 DB up, 디자인 lint도 통과했다. 원본은 `logs/diff/osmu-four-room-flow-20260914-v7/captures/`, 합성 소스 SHA-256은 `9fb3ed473b15475efaa9753508f4ead4e7a0c965af6b3991f2996feb37bc721e`다.
+
+첫 단면 탐침은 생성실 제한시간 초과, 다음 탐침은 실행 중 localhost 서버 교체로 연결 재설정 19건이 발생해 즉시 NG로 기록했다. 표준 webpack 서버 안정화 뒤 기본 명령을 그대로 재실행해 제품 단절이 아님을 분리했다. 전체 회귀에서 공통 Button의 새 44px 양축 조작영역 계약과 오래된 검사 3건이 충돌해 `DesignSystem.test.tsx`를 현재 계약에 맞췄고, 수정 커밋은 `92635f06`이다.
+
+기능은 PASS지만 v63 원본과 현재 16개 화면의 8축 배치 속성이 모두 불일치하고 과제 v63과 pipeline 최신 승인 v68 핀도 충돌한다. 제품 전체 QA와 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v7-gpt-codex.md`다. 다음 소유자는 product-designer와 컨트롤러다. 단일 승인 디자인 핀을 확정하고 네 방 정합을 맞춘 뒤 운영 버전에서 같은 경로를 재검증해야 한다.
+
 ## 2026-09-14 08시 22분 - 최근 24시간 코드 공격 리뷰 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. tmux는 공유 작업 여부 확인에만 참고했고 코드 판정 범위는 `39d32c58510565df52f330d01c0ac0d96cb0256d..fe24d05180b99b1c39e30e915b8557bd8e03d0fe`의 70커밋, 189파일로 고정했다. 사용자가 v63 프로토타입을 명시해 화면 계약 기준으로 썼다. `pipeline-state.osmu.md` 최신 승인 핀 v68, `DESIGN.md` 현행 전체 정본 v64와 충돌하므로 디자인 전체 PASS는 금지했다. 제품 코드는 수정하지 않았다.

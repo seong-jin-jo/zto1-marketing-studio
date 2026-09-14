@@ -2,6 +2,28 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 10시 39분 KST · 네 방 기본 흐름 기능 PASS, 디자인과 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172, R193 | 생성, 편집, 발행, 성과의 실제 데이터 인계 | FLOW-API-V7 | PASS | 최종 소스의 localhost 기본 흐름 11/11. 후보 3장, 초안 편집, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰 |
+| R08, R19, R207 | 390, 768, 1024, 1440에서 네 방 실제 이동 | FLOW-UI-V7 | 기능 PASS, 디자인 NG | 20개 방 화면과 성과실에서 생성실 복귀 5/5. 가로 넘침, 가린 모달, 탐색 차단, 다음 행동 누락, 401, 콘솔 오류 모두 0건. 원본 `logs/diff/osmu-four-room-flow-20260914-v7/captures/` |
+| R27, R168 | Studio v1 생성과 무료 다시 만들기 경계 | STUDIO-V1-V7 | PASS | localhost 실요청 14/14 |
+| 공통 단추 회귀 | 새 44px 양축 조작영역 계약과 자동 검사 일치 | FLOW-REGRESSION-V7 | 수정 후 PASS | 첫 전체 회귀는 오래된 `min-w-max` 예상 3건 실패. `ds-touch-target` 존재와 이전 class 부재를 검사하도록 수정, 집중 20/20과 전체 346파일, 2,266건 통과, 조건부 3건 제외. 커밋 `92635f06` |
+| web build와 정적 검증 | TypeScript, production build, 디자인 lint | FLOW-BUILD-V7 | PASS | `npx tsc --noEmit` 종료 코드 0, build 184/184, 디자인 토큰 위반 0. 기존 NFT 추적 경고 1건 |
+| R205, R206 | v63 디자인 계승 | DESIGN-V7 | NG | v63 원본과 현재 16개 화면의 8축 배치 속성이 모두 불일치. 사용자 지정 v63과 pipeline 승인 v68 핀도 충돌 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 운영 배포와 외부 채널 실발행은 이번 PASS에 포함하지 않음 |
+
+첫 probe 생성실 제한시간 초과와 다음 probe의 연결 재설정 19건은 공유 localhost 서버가 실행 중 교체된 증거라 즉시 NG로 기록했다. 프로젝트 표준 webpack 서버가 안정화된 뒤 기본 스크립트를 그대로 재실행했고, 최종 `dashboard/src`와 `dashboard/scripts` 합성 SHA-256 `9fb3ed473b15475efaa9753508f4ead4e7a0c965af6b3991f2996feb37bc721e`에서 모든 필수 검증을 다시 통과했다. 네 방 localhost 기능만 PASS이며 디자인 정합, 승인 핀 충돌, 운영 배포와 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v7-gpt-codex.md`다.
+
+## 2026-09-14 10시 11분 KST · 네 방 기본 흐름 재실사 1차 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R166, R172, R207 | 생성실부터 성과실까지 네 방 렌더와 실제 이동 | FLOW-PROBE-V7-01 | NG | localhost 기본 흐름은 11/11 통과했으나 `probe-four-room-flow.mjs`가 `/studio?room=create`의 `[data-room="create"]`를 120초 안에 관찰하지 못해 종료 코드 1. 직후 health는 HTTP 200, DB up |
+
+제품 렌더 결함, 개발 서버 경합, 검증기 대기 결함을 분리하기 전에는 네 방 기능을 PASS로 전환하지 않는다. 같은 URL의 최종 DOM, 요청 상태, 콘솔 오류와 서버 로그를 수집하고 재현한 뒤 전체 네 폭을 처음부터 다시 실행한다.
+
 ## 2026-09-14 10시 05분 KST · API 읽기 경로 전수 재실사 범위 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
