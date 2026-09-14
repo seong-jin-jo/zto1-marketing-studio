@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import useSWR from "swr";
-import { fetcher, apiPost } from "@/lib/api";
+import { ApiResponseError, fetcher, apiPost } from "@/lib/api";
 import { useOverview, useUsage } from "@/hooks/useOverview";
 import { useChannelConfig } from "@/hooks/useChannelConfig";
 import { useOnboardingStatus } from "@/hooks/useOnboarding";
@@ -76,6 +76,7 @@ export function PerformanceDashboard({ dedicatedRoom = false }: { dedicatedRoom?
       }>(
         "/api/metrics", { tenant_id: activeWorkspace.id },
       );
+      if (!r) throw new Error("성과 수집 응답이 비어 있습니다");
       setFailureDetails(r.failureDetails || []);
       setExcluded(r.excluded || []);
       await mutateMetrics();

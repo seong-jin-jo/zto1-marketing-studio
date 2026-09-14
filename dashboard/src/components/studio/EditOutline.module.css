@@ -43,7 +43,7 @@
 
 .thumb {
   display: block;
-  width: 44px;
+  width: var(--control-touch);
   aspect-ratio: 4 / 5;
   object-fit: cover;
   border: 1px solid var(--border);

@@ -66,6 +66,10 @@ import type { CurrentWork } from "@/lib/studio/current-work";
 import { attemptRequiredDraftPersistence } from "@/lib/studio/required-draft-persistence";
 import { PLATFORM_FIELD_CONTRACT } from "@/lib/studio/platform-publish-fields";
 import { DEFAULT_COVER_SECONDS, coverUnsupportedReason, supportsCoverTimestamp } from "@/lib/video-cover";
+import { runWithConcurrency } from "@/lib/async-pool";
+
+const PUBLISH_CONCURRENCY = 3;
+const PUBLISH_REQUEST_TIMEOUT_MS = 45_000;
 
 // SNS-007: /api/publish가 실제로 계정별 발행을 받는 4개 플랫폼(threads/x/facebook/instagram)만
 // 계정 셀렉터를 노출한다. shorts/reels/tiktok은 /api/publish 미지원(실발행 분기 없음. 위
@@ -506,6 +510,7 @@ export default function StudioPage() {
   const [accountsByPlatform, setAccountsByPlatform] = useState<Record<string, AccountOption[]>>({});
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string>>({});
   const [accountLoadErrors, setAccountLoadErrors] = useState<Record<string, boolean>>({});
+  const [accountLoadPending, setAccountLoadPending] = useState<Record<string, boolean>>({});
   const [accountsLoaded, setAccountsLoaded] = useState(false);
   // 복원한 작업물의 선택 상태는 계정 조회와 별개다. 계정 조회가 느려도 본문과 선택 채널은
   // 먼저 복원해 보여 주고, 실제 발행 가능 대상만 조회 완료 뒤 따로 좁힌다.
@@ -533,7 +538,12 @@ export default function StudioPage() {
   useEffect(() => {
     setAccountsLoaded(false);
     setAccountLoadErrors({});
-    if (!shouldLoadPublishResources(activeRoom) || !activeWorkspace) { setAccountsByPlatform({}); return; }
+    setAccountLoadPending(Object.fromEntries(Array.from(ACCOUNT_SELECTABLE).map((platform) => [platform, true])));
+    if (!shouldLoadPublishResources(activeRoom) || !activeWorkspace) {
+      setAccountsByPlatform({});
+      setAccountLoadPending({});
+      return;
+    }
     let cancelled = false;
     (async () => {
       // 영상 채널은 자기 이름의 계정이 없다. 쇼츠는 유튜브, 릴스는 인스타그램, 틱톡은
@@ -548,7 +558,10 @@ export default function StudioPage() {
         // 값으로 돌려 한 채널의 조회 실패가 화면 전체를 멈추지 않게 한다.
         const call = (async () => {
           try {
-            const res = await fetch(`/api/channels/${provider}/accounts?tenant_id=${activeWorkspace.id}`, { headers: authHeaders() });
+            const res = await fetch(`/api/channels/${provider}/accounts?tenant_id=${activeWorkspace.id}`, {
+              headers: authHeaders(),
+              signal: AbortSignal.timeout(10_000),
+            });
             const data = await res.json().catch(() => ({}));
             return { ok: res.ok, data: data as { accounts?: ChannelAccountRaw[] } };
           } catch {
@@ -558,37 +571,44 @@ export default function StudioPage() {
         providerCache.set(provider, call);
         return call;
       };
-      const entries = await Promise.all(
+      const resolvedAccounts: Record<string, AccountOption[]> = {};
+      await Promise.allSettled(
         Array.from(ACCOUNT_SELECTABLE).map(async (p) => {
+          let opts: AccountOption[] = [];
+          let failed = false;
           try {
             const provider = VIDEO_ACCOUNT_PROVIDER[p] || p;
             const { ok, data: d } = await fetchAccounts(provider);
-            if (!ok) return [p, [] as AccountOption[], true] as const;
-            const opts: AccountOption[] = (d.accounts ?? []).map((a: { id: string; display_name: string | null; username: string | null; is_default: boolean; connection_state?: string }) => ({
-              id: a.id,
-              label: a.display_name || (a.username ? `@${a.username}` : a.id.slice(0, 8)),
-              displayName: a.display_name || undefined,
-              username: a.username || undefined,
-              is_default: a.is_default,
-              connectionState: a.connection_state === "reconnect" ? "reconnect" : "connected",
-            }));
-            return [p, opts, false] as const;
+            failed = !ok;
+            if (ok) {
+              opts = (d.accounts ?? []).map((a: { id: string; display_name: string | null; username: string | null; is_default: boolean; connection_state?: string }) => ({
+                id: a.id,
+                label: a.display_name || (a.username ? `@${a.username}` : a.id.slice(0, 8)),
+                displayName: a.display_name || undefined,
+                username: a.username || undefined,
+                is_default: a.is_default,
+                connectionState: a.connection_state === "reconnect" ? "reconnect" : "connected",
+              }));
+            }
           } catch {
-            return [p, [] as AccountOption[], true] as const;
+            failed = true;
           }
+          resolvedAccounts[p] = opts;
+          if (cancelled) return;
+          setAccountsByPlatform((current) => ({ ...current, [p]: opts }));
+          setAccountLoadErrors((current) => ({ ...current, [p]: failed }));
+          setAccountLoadPending((current) => ({ ...current, [p]: false }));
         }),
       );
       if (cancelled) return;
-      const nextAccounts = Object.fromEntries(entries.map(([platform, accounts]) => [platform, accounts]));
-      setAccountsByPlatform(nextAccounts);
-      setAccountLoadErrors(Object.fromEntries(entries.map(([platform, , failed]) => [platform, failed])));
       setSelectedAccounts((current) => Object.fromEntries(Object.entries(current).filter(([platform, accountId]) => (
-        (nextAccounts[platform] || []).some((account) => account.id === accountId)
+        (resolvedAccounts[platform] || []).some((account) => account.id === accountId)
       ))));
       setIncludes((current) => Object.fromEntries(ALL.map((platform) => [
         platform,
-        Boolean(current[platform]) && (nextAccounts[platform]?.length ?? 0) > 0,
+        Boolean(current[platform]) && (resolvedAccounts[platform]?.length ?? 0) > 0,
       ])));
+      setAccountLoadPending({});
       setAccountsLoaded(true);
     })();
     return () => { cancelled = true; };
@@ -1248,7 +1268,7 @@ export default function StudioPage() {
     const errs: string[] = [];
     const pendingReconciliations: PublishReconciliationMap = {};
     setPub({ running: true, stopped: false, status: { ...status }, urls: {}, errors: {} });
-    await Promise.all(targets.map(async (p) => {
+    await runWithConcurrency(targets, PUBLISH_CONCURRENCY, async (p) => {
       status[p] = "doing";
       setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors } });
       let failureReason: string | null = null;
@@ -1273,7 +1293,7 @@ export default function StudioPage() {
               draft_id: did,
               // 대문으로 쓸 시점. 지원하는 플랫폼만 실제로 쓴다(lib/video-cover.ts).
               cover_seconds: supportsCoverTimestamp(p) ? (coverSeconds[p] ?? DEFAULT_COVER_SECONDS) : undefined,
-            });
+            }, { signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS) });
             if (vr?.ok) {
               urls[p] = vr.url || POST_URL[p] || "#";
               trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
@@ -1301,7 +1321,7 @@ export default function StudioPage() {
           account_id: selectedAccounts[p] || undefined,
           first_comment: capabilityFor(p).supported && firstComments[p]?.trim() ? firstComments[p].trim() : undefined,
           edit_format: editFormat,
-        });
+        }, { signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS) });
         if (r?.ok && !r.partial) { urls[p] = r.permalink || POST_URL[p] || "#"; trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } }); }
         else {
           failureReason = r?.partial
@@ -1330,7 +1350,7 @@ export default function StudioPage() {
         urls: { ...urls },
         errors: { ...errors },
       });
-    }));
+    });
     setPub({
       running: false,
       stopped: false,
@@ -1566,7 +1586,7 @@ export default function StudioPage() {
 
   function previewAccount(platform: PreviewPlatform): PreviewAccount {
     if (!PUBLISH_SUPPORTED.has(platform)) return { status: "unsupported" };
-    if (!accountsLoaded) return { status: "loading" };
+    if (accountLoadPending[platform]) return { status: "loading" };
     if (accountLoadErrors[platform]) return { status: "error" };
     const accounts = accountsByPlatform[platform] || [];
     if (!accounts.length) return { status: "missing" };
@@ -2157,7 +2177,7 @@ export default function StudioPage() {
                                조작면은 44px이다」. 표식은 그대로 두고 label 을 44px 조작면으로
                                쓴다(2026-09-14 실측: 390 에서 체크 7개가 13x13 이었다). */
                             <label className="ds-touch-target flex min-h-control-touch items-center gap-micro px-stack-tight text-caption text-muted">
-                              <input aria-label={`${LABEL[platform]} 발행`} type="checkbox" className="h-5 w-5 shrink-0" checked={Boolean(includes[platform])} disabled={!accountsLoaded || (accountsByPlatform[platform] || []).length === 0} onChange={(event) => setIncludes((current) => ({ ...current, [platform]: event.target.checked }))} />
+                              <input aria-label={`${LABEL[platform]} 발행`} type="checkbox" className="h-5 w-5 shrink-0" checked={Boolean(includes[platform])} disabled={Boolean(accountLoadPending[platform]) || (accountsByPlatform[platform] || []).length === 0} onChange={(event) => setIncludes((current) => ({ ...current, [platform]: event.target.checked }))} />
                               발행
                             </label>
                           ) : (
@@ -2195,7 +2215,7 @@ export default function StudioPage() {
                               대문 자동
                             </span>
                           ) : null}
-                          {accountsLoaded && PUBLISH_SUPPORTED.has(platform) && (accountsByPlatform[platform] || []).length === 0 ? (
+                          {!accountLoadPending[platform] && PUBLISH_SUPPORTED.has(platform) && (accountsByPlatform[platform] || []).length === 0 ? (
                             <Link
                               href={channelHref(platform)}
                               data-testid={`publish-connect-link-${platform}`}
