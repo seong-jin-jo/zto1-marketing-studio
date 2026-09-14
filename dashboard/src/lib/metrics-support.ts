@@ -38,5 +38,8 @@ export function emptyMetricLabel(platform: string | null | undefined, blocked: u
     : blocked;
   if (code === "metrics_pending_ingest") return "집계 대기";
   if (code === "metrics_lookup_incomplete") return "확인 중";
+  // 지워진 글은 손을 써도 안 채워진다. "측정 불가" 는 손을 쓰면 된다는 말이라 거짓말이 된다.
+  // 계정 불일치(post_not_in_account)는 재연결로 풀리므로 "측정 불가" 그대로 둔다.
+  if (code === "post_deleted") return "삭제된 글";
   return "측정 불가";
 }

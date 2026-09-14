@@ -20,6 +20,7 @@ async function requestMetrics() {
 const base = {
   // 이 파일은 HTTP 상태 매핑만 본다. 글 단위 상세는 pending-ingest 회귀가 본다.
   failureDetails: [],
+  excluded: [],
   updated: 0,
   total: 2,
   failed: 2,
@@ -69,6 +70,7 @@ describe("OSMU-018 성과 API 상태 계약", () => {
       partial: true,
       collectionBlocked: false,
       failureDetails: [],
+      excluded: [],
       failures: [{ channel: "x", code: "x_503", count: 1 }],
     });
     expect((await requestMetrics()).status).toBe(207);
@@ -81,6 +83,7 @@ describe("OSMU-018 성과 API 상태 계약", () => {
       partial: false,
       collectionBlocked: false,
       failureDetails: [],
+      excluded: [],
       failures: [],
     });
     expect((await requestMetrics()).status).toBe(200);
