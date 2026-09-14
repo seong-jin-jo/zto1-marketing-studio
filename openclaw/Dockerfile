@@ -124,7 +124,19 @@ RUN if printf '%s\n' "$OPENCLAW_EXTENSIONS" | tr ',' ' ' | tr ' ' '\n' | grep -q
     # 이 자리에서 낮춰도 효과가 없다(2026-09-14 실측: 4096 으로 낮췄는데 7,173 이 적용됐다).
     # 실제 손잡이는 그 파일의 TSDOWN_CGROUP_MEMORY_HEADROOM_MB 이고 사유도 거기 적었다.
     # 여기서는 그 계산이 그대로 서도록 값을 주지 않는다.
-    pnpm_config_verify_deps_before_run=false pnpm build:docker
+    # ★다음에 칠 가장 큰 지렛대가 여기다. 아직 안 당겼다.
+    #
+    # 2026-09-14 실측. 이 빌드는 openclaw 자체 확장 70개를 묶는데 **그중 우리가 싣는 것은
+    # 하나도 없다.** 우리가 쓰는 25개(threads-publish 등)는 저장소 루트 extensions/ 에 있고
+    # 다른 경로로 들어온다. 빌드 뒤 prune-docker-plugin-dist.mjs 가 그 70개를 잘라낸다.
+    # 즉 버려질 70개를 묶느라 메모리와 시간을 쓰고 있다.
+    #
+    # 거르는 장치는 이미 있다. scripts/lib/bundled-plugin-build-entries.mjs 의
+    # OPENCLAW_BUNDLED_PLUGIN_BUILD_IDS 다. 다만 그 필터는 모르는 이름을 만나면 예외를
+    # 던지고, 우리 25개는 이 트리 기준으로 전부 "모르는 이름" 이다. 그래서 그대로 넘기면
+    # 빌드가 깨진다. 70개 중 무엇이 실제로 필요한지(코어 지원 패키지 포함) 가려낸 뒤에야
+    # 안전하게 당길 수 있다. 그 조사 없이 당기지 마라.
+        pnpm_config_verify_deps_before_run=false pnpm build:docker
 # Force pnpm for UI build (Bun may fail on ARM/Synology architectures)
 ENV OPENCLAW_PREFER_PNPM=1
 RUN pnpm_config_verify_deps_before_run=false pnpm ui:build
