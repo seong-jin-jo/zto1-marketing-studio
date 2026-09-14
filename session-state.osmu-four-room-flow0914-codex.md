@@ -9,6 +9,7 @@
 - 전체 Vitest 351파일과 2,291건 통과, 조건부 3건 제외, TypeScript 종료 0, production build 184/184, seed, health HTTP 200과 DB up, 디자인 lint 위반 0을 확인했다. 활성 `qa-four-room-*` 토큰 최종 잔여는 0건이다.
 - 첫 테스트는 `.env.local` 자격증명을 내보낸 셸의 환경 오염으로 16파일 59건이 실패했다. 제품 결함 판정에서 제외하고 깨끗한 셸에서 공식 명령을 재실행해 전건 통과했다.
 - 원본 20장과 관찰 JSON은 `logs/diff/osmu-four-room-flow-20260914-2208/captures/`, 상세는 `docs/qa/osmu-four-room-basic-flow-v10-gpt-codex.md`다. 제품 소스, API 계약과 DB 스키마는 바꾸지 않았다.
+- QA 보고서, tracker, 구현현황과 이 핸드오프는 커밋 `0b9df735`에 기록했다. 공유 작업트리의 다른 미커밋 변경은 커밋하지 않았다.
 
 ### 남은 이슈와 블로커
 
