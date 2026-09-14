@@ -1,5 +1,50 @@
 # 갭 감사 재확인 2026-08-28
 
+## 2026-09-14 15시 14분 갭 재확인: 승인 없는 성과 시계열은 구현하지 않음
+
+두 감사, 현재 Route Handler와 DB schema를 다시 대조했다. 2026-09-14 11시 20분 이후 성과
+이력 migration과 API 계약 추가 커밋은 없었다. 생성, 편집, 발행 큐, 성과 제안 재인계와 일곱
+표시 플랫폼 수집기는 그대로 구현돼 있으며, 지금도 없는 항목은 게시물별 성과 snapshot과
+재현 가능한 30일 비교 하나다.
+
+| 계약 | 현재 판정 | 증거 |
+|---|---|---|
+| 게시물별 성과 이력 | 없음 | `published_posts`는 최신 누계와 `metrics_at`만 보존하고 게시물별 이력 테이블과 migration이 없음 |
+| 재현 가능한 30일 비교 | 없음 | 지정 작업 공간 localhost `GET /api/metrics` HTTP 200. 최상위 키는 `coverage`, `posts`이고 `history`, `comparison`은 없음 |
+| 기본 흐름 | 관찰됨 | localhost 기본 흐름 11/11, Studio v1 14/14 |
+| 전체 회귀 | 테스트됨 | Vitest 348파일, 2,277건 통과와 3건 제외. TypeScript 오류 0 |
+| 신규 구현 | 차단 | `pipeline-state.osmu.md`의 현재 공정은 QA 진행 중이고 snapshot 저장 단위, 멱등 키, 보존 기간, 비교식의 승인된 DB와 API 계약이 없음 |
+
+제품 소스, migration과 테스트는 수정하지 않았다. 최근 누계값을 30일 값으로 표시하거나
+`provider_meta`에 배열을 임의 추가하면 같은 기간의 결과를 다시 만들 수 없고 작업 공간 격리,
+중복 수집과 보존 정책도 검증할 수 없다. 기술설계에서 계약을 합의하고 build 공정을 다시 연 뒤
+구현해야 한다.
+
+벤치마크 적용: YouTube Analytics 공식 보고 API는 `startDate`, `endDate`, `metrics`, 선택
+`dimensions`로 조회 범위와 집계축을 명시한다. OSMU도 30일 비교에 기준 시각, 기간, 표본과
+집계식을 응답으로 보존해야 한다. 출처는 https://developers.google.com/youtube/analytics/reference/reports/query 다.
+
+레드팀: 화면에 `최근 30일` 문구와 현재 누계를 붙인 채로 두면 사용자는 실제 30일 시계열로
+오해한다. 다만 승인 없이 저장 구조를 만들면 더 큰 계약 이탈이므로 이번 턴은 거짓 완료를 막고
+차단 상태를 유지했다.
+
+셀프심문: 이 판정이 틀렸다면 11시 20분 이후 게시물별 성과 이력을 보존하는 migration 또는
+API 응답이 추가됐어야 한다. 최근 커밋, schema, migrations와 `metrics`, `analytics`,
+`home-metrics` 경로를 교차 검색했지만 해당 저장소와 응답 계약은 없었다.
+
+STAMP | line: osmu-gapfill091415 | 생성: 2026-09-14 15:14 KST | model: gpt-codex/gpt-5 | agent: code-builder | skill: 없음 | 고민: 반복 발주라도 승인되지 않은 DB 계약을 지어내지 않고 잔여 갭과 정상 기본 흐름을 분리했다.
+
+SKILLS_USED: 없음. 설치된 스킬 중 이 Next.js 성과 저장 build에 직접 대응하는 스킬 없음. SKILLS_SKIPPED: qa는 QA 단계 소유라 사용자 지정 localhost 검증만 수행.
+
+KNOWLEDGE_QUERY: OSMU 기본 흐름, 게시물별 성과 시계열, 재현 가능한 30일 비교와 YouTube Analytics 기간 계약을 검색했다.
+HITS_USED: BRAIN의 ZERO-ONE Marketing Studio 아이디어, repo 사업 좌표, 두 갭 감사, YouTube Analytics 공식 보고 계약을 잔여 갭과 기간 재현성의 근거로 채택했다.
+HITS_REJECTED: 일반 마케팅 심리와 다른 벤처 문서는 게시물 성과 저장 단위와 중복 계약의 근거가 아니어서 제외했다.
+CONFLICTS: 회장 정본과 공식 기간 조회 계약의 충돌은 없다. 사용자 지정 v63과 pipeline 승인 v68 디자인 핀 충돌은 기존 상태이며 이번 비화면 차단 판정에서 고르지 않았다.
+
+SOURCES: 두 갭 감사 | v63 프로토타입 | 회장 요구 대장과 정본 요청 원장 | OSMU 사업 좌표 | `dashboard/db/schema.sql` | `dashboard/src/app/api/metrics/route.ts` | YouTube Analytics 공식 문서
+
+MODEL: gpt-codex/gpt-5 / code-builder
+
 ## 2026-09-14 11시 20분 갭 재확인: 성과 시계열은 승인 전이라 그대로 남음
 
 두 감사와 현재 Route Handler, DB schema, localhost 응답을 다시 대조했다. 생성, 편집, 발행,
