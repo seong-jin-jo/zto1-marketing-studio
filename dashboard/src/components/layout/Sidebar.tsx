@@ -51,11 +51,13 @@ function SidebarGroup({
 
   return (
     <div className="mt-pad-inset">
+      {/* 묶음 접기 단추는 라벨 높이만 차지해 12px 이었다(2026-09-14 실측).
+          글자는 그대로 두고 히트 영역만 44px 로 넓힌다. */}
       <button
         onClick={() => toggleSidebar(groupKey)}
-        className="px-stack mb-micro w-full flex items-center justify-between cursor-pointer hover:opacity-80"
+        className="min-h-control-touch px-stack mb-micro w-full flex items-center justify-between cursor-pointer hover:opacity-80"
       >
-        <span className={`text-caption font-medium text-subtle uppercase tracking-wider ${showNarrowLabels ? "" : "max-xl:sr-only"}`}>{title}</span>
+        <span className={`text-caption font-medium text-subtle uppercase tracking-wider ${showNarrowLabels ? "" : "md:sr-only"}`}>{title}</span>
         <span className="flex items-center gap-micro">
           <svg
             className={`w-3 h-3 text-subtle transition-transform ${collapsed ? "" : "rotate-180"}`}
@@ -78,14 +80,14 @@ function SidebarGroup({
               key={i.key || `${i.label}-${idx}`}
               href={href}
               title={i.label}
-              className={`sidebar-item ${isActive ? "active" : ""} w-full text-left px-pad-inset py-stack-tight text-body-sm ${textColor} flex items-center gap-stack`}
+              className={`sidebar-item ${isActive ? "active" : ""} w-full text-left px-pad-inset py-stack-tight text-body-sm ${textColor} flex items-center gap-stack md:justify-center md:gap-micro md:px-micro`}
             >
               <span
                 className={`w-4 h-4 rounded-chip ${i.iconClass || "text-subtle"} flex items-center justify-center`}
               >
                 {i.key ? getChannelIcon(i.key) : <span className="text-caption font-bold">{i.icon}</span>}
               </span>
-              <span className={showNarrowLabels ? "" : "max-xl:sr-only"}>{i.label}</span>
+              <span className={showNarrowLabels ? "" : "md:sr-only"}>{i.label}</span>
               {i.status && (
                 <span className={`ml-auto text-caption px-stack-tight py-micro rounded-pill ${showNarrowLabels ? "" : "max-xl:hidden"} ${i.statusClass || "bg-surface-2 text-subtle"}`}>
                   {i.status}
@@ -218,7 +220,7 @@ function CustomerWorkspaceIdentity({
   // 테넌트 해석 실패(세션 만료/일시적 DB 오류 등). 명시적 재시도 경로 제공.
   if (me.tenantError) {
     return (
-      <button onClick={() => void mutateMe()} className={`mt-micro text-caption text-subtle hover:text-muted ${compactOnNarrow ? "max-xl:sr-only" : ""}`}>
+      <button onClick={() => void mutateMe()} className={`min-h-control-touch mt-micro text-caption text-subtle hover:text-muted ${compactOnNarrow ? "max-xl:sr-only" : ""}`}>
         워크스페이스 연결 확인 중… <span className="underline">다시 시도</span>
       </button>
     );
@@ -226,7 +228,7 @@ function CustomerWorkspaceIdentity({
 
   return (
     <div className="mt-micro text-caption">
-      <span className={`bg-gradient-to-r from-accent to-accent-hover bg-clip-text text-transparent font-medium ${compactOnNarrow ? "max-xl:sr-only" : ""}`}>
+      <span className={`bg-gradient-to-r from-accent to-accent-hover bg-clip-text text-transparent font-medium ${compactOnNarrow ? "md:sr-only" : ""}`}>
         {me.tenant?.name || activeWorkspace?.name || "내 워크스페이스"}
       </span>
     </div>
@@ -237,7 +239,7 @@ function SidebarFooter({ isOperator, compactOnNarrow = false }: { isOperator: bo
   const setActiveWorkspace = useUIStore((state) => state.setActiveWorkspace);
 
   return (
-    <div className="shrink-0 px-pad-inset py-stack border-t border-border/50 space-y-stack-tight max-xl:px-stack-tight">
+    <div className="shrink-0 px-pad-inset py-stack border-t border-border/50 space-y-stack-tight max-xl:px-stack-tight md:px-micro md:py-stack-tight">
       <ThemeToggle compactOnNarrow={compactOnNarrow} />
       <button
         onClick={async () => {
@@ -249,10 +251,10 @@ function SidebarFooter({ isOperator, compactOnNarrow = false }: { isOperator: bo
           setActiveWorkspace(null);
           window.location.href = isOperator ? "/operator" : "/login";
         }}
-        className="w-full flex items-center gap-stack-tight px-micro py-micro text-caption text-subtle hover:text-danger transition-colors"
+        className="min-h-control-touch w-full flex items-center gap-stack-tight px-micro py-micro text-caption text-subtle hover:text-danger transition-colors"
         title="로그아웃"
       >
-        <span aria-hidden>⎋</span><span className={compactOnNarrow ? "max-xl:sr-only" : ""}>로그아웃</span>
+        <span aria-hidden>⎋</span><span className={compactOnNarrow ? "md:sr-only" : ""}>로그아웃</span>
       </button>
     </div>
   );
@@ -308,7 +310,7 @@ function CustomerSidebar({
 
   const cfg = (channelConfig || {}) as unknown as Record<string, Record<string, unknown>>;
   const imageCount = Array.isArray(images) ? images.length : 0;
-  const narrowLabelClass = mobileMenuOpen ? "" : "max-xl:sr-only";
+  const narrowLabelClass = mobileMenuOpen ? "" : "md:sr-only";
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -383,11 +385,11 @@ function CustomerSidebar({
       <aside
         id="customer-sidebar"
         aria-label="주요 사이드바"
-        className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex" : "hidden"} h-dvh min-w-0 w-[min(20rem,86vw)] shrink-0 flex-col overflow-hidden border-r border-border bg-surface md:sticky md:top-0 md:flex md:h-screen md:w-24 md:min-w-24 md:max-w-24 xl:w-56 xl:min-w-56 xl:max-w-56`}
+        className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex" : "hidden"} h-dvh min-w-0 w-[min(20rem,86vw)] shrink-0 flex-col overflow-hidden border-r border-border bg-surface md:sticky md:top-0 md:flex md:h-screen md:w-14 md:min-w-14 md:max-w-14 md:bg-text md:text-bg xl:w-14 xl:min-w-14 xl:max-w-14`}
       >
-        <div className="flex items-start gap-stack border-b border-border px-stack py-pad-inset max-xl:px-stack-tight">
+        <div className="flex items-start gap-stack border-b border-border px-stack py-pad-inset max-xl:px-stack-tight md:justify-center md:border-b-0 md:px-micro md:py-stack-tight">
           <div className="min-w-0 flex-1">
-            <p className="text-caption font-semibold text-subtle max-xl:text-center">작업 공간</p>
+            <p className="text-caption font-semibold text-subtle max-xl:text-center md:sr-only">작업 공간</p>
             <CustomerWorkspaceIdentity me={me} mutateMe={mutateMe} compactOnNarrow={!mobileMenuOpen} />
           </div>
           <button
@@ -403,7 +405,9 @@ function CustomerSidebar({
         </div>
 
       <nav className="flex-1 min-h-0 overflow-y-auto py-stack">
-        <RoomFlowNav pathname={pathname} onNavigate={() => setMobileMenuOpen(false)} />
+        <div className="md:block md:absolute md:left-[-9999px] md:top-0 md:w-56 md:pointer-events-none">
+          <RoomFlowNav pathname={pathname} onNavigate={() => setMobileMenuOpen(false)} />
+        </div>
 
         {/* 발행 채널 그룹. constants의 PUBLISH_CHANNEL_GROUPS 단일 소스(Settings>Channels와 동일).
             threads/x는 연결상태 뱃지가 특수해 별도 아이템 유지. */}
@@ -423,7 +427,7 @@ function CustomerSidebar({
             동작하는 읽기 대시보드는 아래 데이터와 분석 섹션이 제공(사이드바=연결가능 원칙). */}
 
         {/* ── Data & Analytics ── */}
-        <div className="px-stack mt-stack-section mb-stack-tight">
+        <div className="px-stack mt-stack-section mb-stack-tight md:sr-only">
           <span className={`text-caption font-medium text-subtle uppercase tracking-wider ${narrowLabelClass}`}>데이터와 분석</span>
         </div>
         {[
@@ -437,7 +441,7 @@ function CustomerSidebar({
         ))}
 
         {/* ── Keyword Research ── */}
-        <div className="px-stack mt-stack-section mb-stack-tight">
+        <div className="px-stack mt-stack-section mb-stack-tight md:sr-only">
           <span className={`text-caption font-medium text-subtle uppercase tracking-wider ${narrowLabelClass}`}>키워드 조사</span>
         </div>
         {[
@@ -462,7 +466,7 @@ function CustomerSidebar({
           ]}
         />
 
-        <div className="px-stack mt-stack-section mb-stack-tight">
+        <div className="px-stack mt-stack-section mb-stack-tight md:sr-only">
           <span className={`text-caption font-medium text-subtle uppercase tracking-wider ${narrowLabelClass}`}>자산과 도구</span>
         </div>
         <Link
@@ -508,7 +512,7 @@ function CustomerSidebar({
           );
         })()}
 
-        <div className="px-stack mt-stack-section mb-stack-tight">
+        <div className="px-stack mt-stack-section mb-stack-tight md:sr-only">
           <span className={`text-caption font-medium text-subtle uppercase tracking-wider ${narrowLabelClass}`}>시스템</span>
         </div>
         <Link

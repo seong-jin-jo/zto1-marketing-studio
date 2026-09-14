@@ -44,6 +44,9 @@
   --space-wide: 48px;
   --control-touch: 44px;
 
+  /* DESIGN.md §3 서체 계약. 첫 패밀리는 Pretendard 하나뿐이다. */
+  --font-sans-stack: Pretendard, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+
   /* DESIGN.md §5: component roles own radius. Literal radius utilities are forbidden. */
   --shape-chip: 6px;
   --shape-control: 8px;
@@ -125,6 +128,8 @@
   --spacing-wide:          var(--space-wide);
   --spacing-control-touch: var(--control-touch);
 
+  --font-sans: var(--font-sans-stack);
+
   --radius-chip:    var(--shape-chip);
   --radius-control: var(--shape-control);
   --radius-surface: var(--shape-surface);
@@ -147,7 +152,13 @@
   --text-display--line-height:     var(--font-display-leading);
 }
 
-html, body { background: var(--bg); color: var(--text); }
+/* DESIGN.md §3: 서체 1종(Pretendard). Tailwind preflight 는 `@layer base` 에서 html 에
+   `ui-sans-serif` 계열을 깔기 때문에, 이 선언이 없으면 실화면 본문 서체가 계약과 무관한
+   `ui-sans-serif` 가 된다(2026-09-14 실측: getComputedStyle(body).fontFamily 첫 패밀리가
+   `ui-sans-serif`). 아래 규칙은 레이어 밖이라 preflight 를 이긴다.
+   웹폰트 파일은 번들하지 않는다. DESIGN.md §3 이 "웹폰트가 없는 환경에서도 한글 자간이
+   무너지지 않게 시스템 한글 폰트로 폴백한다"를 계약으로 두었고, 그 폴백 사슬이 이 값이다. */
+html, body { background: var(--bg); color: var(--text); font-family: var(--font-sans-stack); }
 
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 3px solid var(--focus);
@@ -165,6 +176,16 @@ html, body { background: var(--bg); color: var(--text); }
 .ds-label { min-width: max-content; flex: 0 0 auto; white-space: nowrap; }
 /* 좁은 칸(목차, 카드)을 채우는 라벨. max-content가 칸을 밀어내 글자를 가리는 것을 막는다. */
 .ds-label.ds-label-fill, .ds-label-fill { min-width: 0; flex: 0 1 auto; }
+/* 조작 영역 하한. DESIGN.md 가 `--control-touch` 로 44px 을 못 박았는데 세로만 지키고
+   가로를 안 지킨 자리가 많았다(2026-09-14 실측: 편집실 1440 에서 44px 미만 26개. 그중 20개는
+   높이 44 · 폭 27~42 였다. `▲` `▼` `글` `1:1` 처럼 라벨이 짧은 단추가 전부 여기 걸렸다).
+   글자를 밀어내지 않고 히트 영역만 넓힌다. 라벨이 44px 보다 넓으면 inline-flex 의 자연 폭
+   (shrink-to-fit)이 그대로 이기고, 좁을 때만 44px 까지 벌어진다. 줄바꿈은 `.ds-label` 의
+   `white-space: nowrap` 과 `flex: 0 0 auto` 가 이미 막고 있으므로 `max-content` 를 다시
+   적을 필요가 없다(CSS 수학 함수 안에는 `max-content` 같은 내재 크기 키워드를 넣을 수 없다.
+   `max(44px, max-content)` 로 적으면 선언 전체가 조용히 버려진다 — 2026-09-14 실측으로 확인).
+   `.ds-label` 뒤에 둬서 같은 특이도에서 이 규칙이 이긴다. */
+.ds-touch-target { min-width: var(--control-touch); min-height: var(--control-touch); }
 .ds-copy { min-width: 0; overflow-wrap: anywhere; }
 .ds-user-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds-field-control :is(input:not([type="checkbox"]):not([type="radio"]), select) {

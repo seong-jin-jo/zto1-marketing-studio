@@ -29,9 +29,16 @@ export function Button({
   type = "button",
   ...props
 }: ButtonProps) {
-  // 기본값은 라벨이 줄바꿈되지 않도록 min-w-max다. 다만 좁은 칸(목차, 카드) 안에서는 이 값이
-  // 칸을 밀어내 글자를 가린다. 호출부가 min-w-를 직접 주면 그 값을 존중한다.
-  const minWidthClass = /(^|\s)min-w-/.test(className) ? "" : "min-w-max";
+  // 기본값은 `.ds-touch-target`(globals.css)이다. 라벨이 줄바꿈되지 않게 max-content를 지키면서
+  // 동시에 44px 가로 하한을 건다(`min-width: max(44px, max-content)`).
+  //
+  // 2026-09-14 실측: 종전 기본값 `min-w-max`는 세로만 44px이고 가로는 라벨 폭 그대로였다.
+  // 그래서 편집실 1440에서 `▲`(27px) `글`(28px) `1:1`(33px) 같은 단추 20개가 손가락으로
+  // 정확히 누를 수 없는 크기로 있었다. 글자를 밀어내지 않고 히트 영역만 넓히는 쪽을 골랐다.
+  //
+  // 좁은 칸(목차, 카드) 안에서는 이 값이 칸을 밀어내 글자를 가리므로, 호출부가 min-w-를
+  // 직접 주면 그 값을 존중한다.
+  const minWidthClass = /(^|\s)min-w-/.test(className) ? "" : "ds-touch-target";
 
   return (
     <button
