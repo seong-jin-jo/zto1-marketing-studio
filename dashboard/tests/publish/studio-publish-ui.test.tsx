@@ -393,7 +393,12 @@ describe("Studio publish result integrity", () => {
     render(<StudioPage />);
 
     expect(await screen.findByText(/채널 연결 0\/15/)).toBeInTheDocument();
-    expect(screen.getByTestId("publish-availability")).toHaveTextContent("선택 0곳 · 실제 발행 가능 0곳 · 연결된 채널 0곳");
+    // 계정 조회가 끝나기 전에는 이 자리에 "확인하는 중" 이 적힌다. 위 findByText 는
+    // 다른 조건으로 걸린 다른 요소라 둘이 같은 틱에 온다는 보장이 없다. 느린 기계에서는
+    // 실제로 갈렸다(2026-09-14 CI). 기대 문구는 그대로 두고 기다리기만 한다.
+    await waitFor(() => {
+      expect(screen.getByTestId("publish-availability")).toHaveTextContent("선택 0곳 · 실제 발행 가능 0곳 · 연결된 채널 0곳");
+    });
     expect(screen.getByRole("link", { name: "채널 연결하기" })).toHaveAttribute("href", "/settings?tab=channels");
     expect(screen.getByTestId("publish-connect-link-x")).toHaveAttribute("href", "/channels/x");
     for (const label of ["Threads 발행", "X 발행", "Instagram 발행"]) {
