@@ -1,5 +1,16 @@
 # OSMU 최근 24시간 코드 공격 리뷰 핸드오프
 
+## 2026-09-14 16시 16분 KST 재감사
+
+- 회장 요청 원문을 handoff basis로 삼아 최근 24시간 범위를 `e65a1d1b1aecbc11ce589ecf9db4183bf4d4296e..22c27bdb303a11cdc8c831160a404ea1ea541bf6`로 다시 고정했다. 커밋 70개, 파일 162개, 추가 17,132줄, 삭제 433줄이다.
+- 사용자 지정 v63 프로토타입, 요청 대장, `DESIGN.md`, pipeline 승인 핀, OSMU 사업 좌표와 전체 diff를 다시 대조했다.
+- 제품 코드는 수정하지 않았다. 판정은 MAJOR 28건, MINOR 5건, `REVIEW_VERDICT: BLOCK`이다.
+- 기존 27개 MAJOR가 모두 남았고 `dashboard/scripts/verify-api-read-sweep.mjs:108`이 인증 리다이렉트까지 정상으로 세는 MAJOR 1건을 추가했다. 소스 문자열만 검사하는 회귀 테스트 2건도 MINOR로 추가했다.
+- localhost health HTTP 200, DB up, 기본 흐름 11/11, Studio v1 14/14를 관찰했다. Vitest는 348파일, 2,277건 통과와 3건 제외, TypeScript는 종료 코드 0이다.
+- 상세 보고서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-14.md`, QA 증거는 `docs/qa/qa-tracker.md`에 기록한다.
+- 다음 소유자는 code-builder와 qa-verifier다. 고객 격리와 비용 원장, 발행 멱등과 복구, 자원 상한, 편집 자산 보존, 3xx 검증 실패 처리를 고친 뒤 각 재현 시나리오를 실행형 회귀 테스트로 고정해야 한다.
+- 운영 배포, 실제 외부 채널 발행, 시안과 dev의 픽셀 대조는 미검증이다. pipeline 상태는 바꾸지 않았다.
+
 ## 무엇을 어디까지 했나
 
 - 회장 요청 원문을 handoff basis로 삼아 최근 24시간 범위를 `7e39d0a7ddee8a9d7344cb08f56dea8baaf94419..4f59a75912c6163670a28a2d87fad6817f32a4a8`로 고정했다. 커밋 74개, 파일 180개, 추가 13,529줄, 삭제 451줄이다.

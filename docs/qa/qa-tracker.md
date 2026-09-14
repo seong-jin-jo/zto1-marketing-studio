@@ -2,6 +2,18 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 16시 16분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 변경 | 돈, 격리, 동시성, 부분 실패, 삭제, 확정 요구 이탈 공격 리뷰 | OSMU-CODE-REVIEW-R4-01 | BLOCK | `e65a1d1b..22c27bdb`, 커밋 70개, 파일 162개. MAJOR 28건, MINOR 5건. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-14.md` |
+| 실제 앱 요청 | 지정 작업 공간 기본 흐름과 Studio v1 | OSMU-CODE-REVIEW-R4-02 | PASS | localhost health HTTP 200과 DB up, 기본 흐름 11/11, Studio v1 14/14 |
+| 전체 회귀 | Vitest와 TypeScript | OSMU-CODE-REVIEW-R4-03 | PASS | Vitest 348파일, 2,277건 통과와 3건 제외. `npx tsc --noEmit` 종료 코드 0 |
+| 고객 격리 | 고객 허용 목록과 전역 Higgsfield 상태 응답 | OSMU-CODE-REVIEW-R4-04 | NG | 같은 날 앞선 임시 고객 토큰 실측에서 HTTP 200과 `email`, `plan`, `credits`, `raw` 키 노출. 이번 범위 종료까지 허용 목록과 응답 코드 변경 없음. 값은 기록하지 않음 |
+| 검증기 신뢰성 | 인증 리다이렉트의 부분 실패 분류 | OSMU-CODE-REVIEW-R4-05 | NG | `dashboard/scripts/verify-api-read-sweep.mjs:108`이 200부터 399까지 모두 정상으로 분류해 API가 로그인 화면으로 리다이렉트돼도 초록 가능 |
+
+제품 소스, migration과 테스트는 수정하지 않았다. 다른 세션의 미커밋 변경이 있는 공유 작업 트리에서 실행했으므로 초록 테스트를 고정 커밋 범위의 안전 증명으로 확대하지 않는다. 운영 배포, 실제 외부 채널 발행과 시안 픽셀 대조는 미검증이다.
+
 ## 2026-09-14 15시 14분 KST · 성과 시계열 재확인 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

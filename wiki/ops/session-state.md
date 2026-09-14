@@ -1,3 +1,13 @@
+## 2026-09-14 16시 16분 - 최근 24시간 코드 공격 재리뷰 BLOCK
+
+회장 요청 원문을 handoff basis로 사용했다. 최근 24시간 범위 `e65a1d1b..22c27bdb`의 커밋 70개와 파일 162개를 사용자 지정 v63 프로토타입, 확정 요구 대장, `DESIGN.md`, pipeline 승인 핀과 대조했다. 제품 코드는 수정하지 않았다.
+
+판정은 MAJOR 28건, MINOR 5건, `REVIEW_VERDICT: BLOCK`이다. 기존 고객 격리, 유료 경로 비용 원장, 발행 멱등과 복구, 공개 호스트 반출, 무제한 자원, 부분 실패 성공 오인, 편집 자산 소실 결함이 남았다. `dashboard/scripts/verify-api-read-sweep.mjs:108`이 인증 리다이렉트까지 정상으로 세는 결함을 새로 추가했다.
+
+localhost health HTTP 200과 DB up, 기본 흐름 11/11, Studio v1 14/14를 관찰했다. Vitest는 348파일, 2,277건 통과와 3건 제외, TypeScript는 종료 코드 0이다. 상세 보고서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-14.md`, QA 증거는 `docs/qa/qa-tracker.md`, 전용 인계는 `session-state.osmu-code-review0914.md`다.
+
+다음 소유자는 code-builder와 qa-verifier다. 고객 격리와 비용 원장, 발행 멱등과 복구, 자원 상한, 편집 자산 보존, 3xx 검증 실패 처리를 고친 뒤 각 재현 시나리오를 실행형 회귀 테스트로 고정한다. 운영 배포, 실제 외부 채널 발행과 시안 픽셀 대조는 미검증이며 pipeline 상태는 바꾸지 않았다.
+
 ## 2026-09-14 15시 14분 - 성과 시계열 갭 재확인, build 승인 차단 유지
 
 회장 요청 원문과 현재 실행 pane `osmu-gapfill091415:0.0`을 handoff basis로 사용했다. 두 갭
