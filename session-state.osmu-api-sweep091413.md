@@ -16,11 +16,12 @@ handoff basis: 회장 요청 원문과 현재 tmux `osmu-sweep091413:0.1`
 - 최종 기본값 전수 실사는 정상 92, 계약상 거절 13, HTTP 500과 요청 실패 0이다. v8과 경로, 상태, 분류 변화 0건이다.
 - 전체 Vitest 348파일과 2,276건, TypeScript, production build 184/184, seed, 기본 흐름 11/11, Studio v1 14/14, health 200과 DB up, 디자인 lint를 관찰했다.
 - 상세 보고서 `docs/qa/osmu-api-read-sweep-v9-gpt-codex.md`, 원본 `logs/diff/osmu-api-read-sweep-20260914-1313-*.json`, tracker와 구현현황을 갱신했다.
+- 증거 문서와 원본 커밋은 `1844b471`이다.
 
 ## 남은 일
 
 - 제품 전체 QA는 디자인 정합 NG, v63과 v68 핀 충돌, canonical 테스트 계획과 ONE_THING 부재, 운영 배포와 외부 채널 실발행 미검증, 같은 날 공격 리뷰 BLOCK 해소 뒤 다시 열어야 한다.
-- 현재 QA 범위의 문서와 원본 증거만 별도 커밋한다.
+- 이 API 읽기 실사 범위의 추가 작업은 없다.
 
 ## 검증했나
 
