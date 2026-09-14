@@ -54,6 +54,20 @@ export function resolveMediaPath(tenantId: string, key: string): string | null {
   return resolved;
 }
 
+/**
+ * 고객 요청에서 쓸 엄격한 미디어 조회. 지정된 테넌트 폴더만 보고 공용 legacy 폴더로
+ * 폴백하지 않는다. 공용 파일 이전은 소유권을 확인할 수 있는 운영자 작업이어야 한다.
+ */
+export function resolveTenantGeneratedFile(tenantId: string, filename: string): string | null {
+  const resolved = resolveMediaPath(tenantId, filename);
+  if (!resolved) return null;
+  try {
+    return fs.existsSync(resolved) && fs.statSync(resolved).isFile() ? resolved : null;
+  } catch {
+    return null;
+  }
+}
+
 // 테넌트 미디어 에셋 URL — asset 라우트가 tenant_id로 대조하도록 쿼리에 테넌트를 명시.
 export function assetUrl(tenantId: string, key: string): string {
   const t = safeTenantId(tenantId) || "";
