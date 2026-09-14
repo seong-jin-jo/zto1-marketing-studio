@@ -58,6 +58,21 @@ export interface ClaimablePost {
 }
 
 export const DEFAULT_LEASE_MS = 5 * 60 * 1000;
+export const MAX_CLAIM_BATCH = 10;
+export const MIN_CLAIM_LEASE_MS = 60 * 1000;
+export const MAX_CLAIM_LEASE_MS = 15 * 60 * 1000;
+
+export function normalizeClaimRequest(input: { limit?: unknown; leaseMs?: unknown }): { limit: number; leaseMs: number } {
+  const limit = input.limit === undefined ? 1 : input.limit;
+  const leaseMs = input.leaseMs === undefined ? DEFAULT_LEASE_MS : input.leaseMs;
+  if (!Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > MAX_CLAIM_BATCH) {
+    throw new Error(`limit은 1 이상 ${MAX_CLAIM_BATCH} 이하의 정수여야 합니다`);
+  }
+  if (!Number.isSafeInteger(leaseMs) || Number(leaseMs) < MIN_CLAIM_LEASE_MS || Number(leaseMs) > MAX_CLAIM_LEASE_MS) {
+    throw new Error(`leaseMs는 ${MIN_CLAIM_LEASE_MS} 이상 ${MAX_CLAIM_LEASE_MS} 이하의 정수여야 합니다`);
+  }
+  return { limit: Number(limit), leaseMs: Number(leaseMs) };
+}
 
 // 공급자 호출이 끝나기 전에 lease 가 만료되면, 만료된 워커가 외부에 실제로 게시해버린 뒤
 // update_channel 만 막히는 상태가 된다(내부는 미발행, 외부는 발행). 재검증 시점에
