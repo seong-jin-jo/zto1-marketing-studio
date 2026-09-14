@@ -10,7 +10,7 @@ import { LearningCardWizard } from "@/components/studio/LearningCardWizard";
 import { EditPreview } from "@/components/studio/EditPreview";
 import { LEARNING_USER_SLOT_TOTAL, countFilledLearningSlots, readLearningInfo } from "@/components/studio/learning-info";
 
-// 회장 4실 실사용 피드백(docs/requests/2026-08-29-회장-4실-실사용-피드백.md) 중
+// 회장 4실 실사용 피드백(docs/_archive/legacy-20260912/requests/2026-08-29-회장-4실-실사용-피드백.md) 중
 // 생성실과 편집실 항목의 계약. 대조표에서 미해결로 판정된 자리만 여기서 못 박는다.
 
 const noop = () => {};

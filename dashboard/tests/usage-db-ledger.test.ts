@@ -76,7 +76,7 @@ describe("GET /api/usage — usage_events DB 정본", () => {
   });
 
   it("사용량 화면이 활성 워크스페이스 tenant_id를 API에 전달한다", () => {
-    const home = fs.readFileSync(path.join(process.cwd(), "src/app/page.tsx"), "utf8");
+    const home = fs.readFileSync(path.join(process.cwd(), "src/components/home/PerformanceDashboard.tsx"), "utf8");
     const hook = fs.readFileSync(path.join(process.cwd(), "src/hooks/useOverview.ts"), "utf8");
     expect(home).toContain("useUsage(activeWorkspace?.id)");
     expect(hook).toContain("`/api/usage?tenant_id=${tenantId}`");

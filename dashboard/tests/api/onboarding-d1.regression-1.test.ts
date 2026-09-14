@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Regression: OSMU-BLOCK-D1. API가 wikiCount를 계산하면서도 체크리스트 계약에는
 // 브랜드 문서 상태를 내리지 않던 결함.
 // Found by 교차 모델 검수 on 2026-08-28.
-// Report: docs/audit/osmu-cross-review-2026-08-28-opus.md
+// Report: docs/_archive/legacy-20260912/audit/osmu-cross-review-2026-08-28-opus.md
 
 const H = vi.hoisted(() => ({ wikiCount: 0 }));
 

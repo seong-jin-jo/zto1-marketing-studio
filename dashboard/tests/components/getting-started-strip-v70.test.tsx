@@ -72,4 +72,14 @@ describe("V70-START 시작 스트립 계약", () => {
 
     expect(document.querySelector("[data-start-strip]")).not.toBeInTheDocument();
   });
+
+  it("V70-START-05 학습 정보가 비어 있으면 생성 전에 채우는 길을 먼저 보여 준다", () => {
+    const onOpenLearning = vi.fn();
+    render(<GettingStartedStrip learningFilled={2} learningTotal={7} onOpenLearning={onOpenLearning} />);
+
+    expect(screen.getByText(/AI가 내 일을 이해하도록 학습 정보 2\/7칸 채우기/)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("getting-started-learning"));
+    expect(onOpenLearning).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId("getting-started-next")).not.toBeInTheDocument();
+  });
 });

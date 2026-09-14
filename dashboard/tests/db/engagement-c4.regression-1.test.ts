@@ -6,7 +6,7 @@ import { getDatabaseUrl } from "../isolation/_env";
 // Regression: OSMU-BLOCK-C4. 공급자가 공개 답글을 만들고 응답만 끊긴 청구가
 // 일반 lease 만료 뒤 다시 획득되어 같은 답글이 중복 게시될 수 있던 결함.
 // Found by 교차 모델 검수 on 2026-08-28.
-// Report: docs/audit/osmu-cross-review-2026-08-28-opus.md
+// Report: docs/_archive/legacy-20260912/audit/osmu-cross-review-2026-08-28-opus.md
 
 describe("답글 결과 불명 청구 회귀", () => {
   it("OSMU-BLOCK-C4 거절: 결과 불명 표식이 있는 청구는 lease가 지나도 다시 획득하지 않는다", async (ctx) => {

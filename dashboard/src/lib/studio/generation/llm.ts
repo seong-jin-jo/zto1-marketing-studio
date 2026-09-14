@@ -21,6 +21,7 @@ export type StudioLlmFailureReason =
   | "provider_unsupported"
   | "approval_required"
   | "quota_exhausted"
+  | "provider_rate_limited"
   | "timeout"
   | "provider_unavailable"
   | "invalid_output"
@@ -250,6 +251,9 @@ export function buildCandidatePrompt(request: GenerationRequest): string {
     "세 후보는 제목만 바꾸지 말고 도입, 전개, 사례, 마무리의 뼈대가 서로 달라야 합니다.",
     "A는 problem_first, B는 proof_first, C는 process_first입니다.",
     "각 outline은 실제 내용이 담긴 3개에서 6개의 문장이어야 합니다.",
+    "각 후보의 제목과 outline은 누구에게 보여 주는지와 무엇을 위해 만드는지를 분명히 반영하세요.",
+    "각 후보의 문장은 지정한 말투를 유지하고, rationale에는 학습정보를 어떻게 적용했는지 설명하세요.",
+    "학습정보에 없는 성과 수치, 고객 사례, 사실을 지어내지 마세요. 필요하면 조건과 확인 방법을 먼저 말하세요.",
     NO_DASH_RULE,
     "응답은 설명이나 코드 펜스 없이 JSON 객체 하나만 반환하세요.",
     '형식: {"candidates":[{"label":"A","angle":"problem_first","title":"...","rationale":"...","outline":["...","...","..."]},{"label":"B","angle":"proof_first","title":"...","rationale":"...","outline":["...","...","..."]},{"label":"C","angle":"process_first","title":"...","rationale":"...","outline":["...","...","..."]}]}',
@@ -411,6 +415,7 @@ function failureReason(error: unknown): StudioLlmFailureReason {
   const message = error instanceof Error ? error.message : String(error);
   if (name === "SharedAiApprovalRequiredError") return "approval_required";
   if (name === "SharedGenerationQuotaError") return "quota_exhausted";
+  if (name === "SharedAiProviderRateLimitError") return "provider_rate_limited";
   if (name === "SharedCliQueueBusyError") return "queue_busy";
   if (/timeout|aborted/i.test(message)) return "timeout";
   if (/unsupported LLM provider/i.test(message)) return "provider_unsupported";
@@ -533,7 +538,7 @@ export class LlmStudioContentGenerator implements StudioContentGenerator {
         lastDetail = failureDetail(error);
         await this.ledger.finish({ ...input, eventId, model, attempt, status: "failed", reason: lastReason });
         // 줄이 밀린 것은 모델을 바꿔도 같은 줄이다. 보조 모델로 재시도하면 줄만 더 길어진다.
-        if (lastReason === "approval_required" || lastReason === "quota_exhausted" || lastReason === "provider_unsupported" || lastReason === "queue_busy") break;
+        if (lastReason === "approval_required" || lastReason === "quota_exhausted" || lastReason === "provider_rate_limited" || lastReason === "provider_unsupported" || lastReason === "queue_busy") break;
         continue;
       }
       try {
@@ -547,7 +552,11 @@ export class LlmStudioContentGenerator implements StudioContentGenerator {
         if (lastReason === "usage_ledger_unavailable") break;
       }
     }
-    throw new StudioLlmExecutionError(lastReason, lastReason === "timeout" || lastReason === "provider_unavailable", lastDetail);
+    throw new StudioLlmExecutionError(
+      lastReason,
+      lastReason === "timeout" || lastReason === "provider_unavailable" || lastReason === "provider_rate_limited",
+      lastDetail,
+    );
   }
 
   generateCandidates(input: { memberId: string; request: GenerationRequest }): Promise<GeneratedCandidateContent[]> {

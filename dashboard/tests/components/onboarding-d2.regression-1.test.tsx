@@ -8,7 +8,7 @@ import { OnboardingWizard } from "@/components/shared/OnboardingWizard";
 // Regression: OSMU-BLOCK-D2. 새로고침 입력 복원이 첫 콘텐츠 동선 정리 중
 // 삭제된 결함. 자동저장과 손상 값 거절을 고정한다.
 // Found by 교차 모델 검수 on 2026-08-28.
-// Report: docs/audit/osmu-cross-review-2026-08-28-opus.md
+// Report: docs/_archive/legacy-20260912/audit/osmu-cross-review-2026-08-28-opus.md
 
 const H = vi.hoisted(() => ({ apiPost: vi.fn() }));
 

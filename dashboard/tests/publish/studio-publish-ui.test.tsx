@@ -393,6 +393,7 @@ describe("Studio publish result integrity", () => {
     render(<StudioPage />);
 
     expect(await screen.findByText(/채널 연결 0\/15/)).toBeInTheDocument();
+    expect(screen.getByTestId("publish-availability")).toHaveTextContent("선택 0곳 · 실제 발행 가능 0곳 · 연결된 채널 0곳");
     expect(screen.getByRole("link", { name: "채널 연결하기" })).toHaveAttribute("href", "/settings?tab=channels");
     expect(screen.getByTestId("publish-connect-link-x")).toHaveAttribute("href", "/channels/x");
     for (const label of ["Threads 발행", "X 발행", "Instagram 발행"]) {

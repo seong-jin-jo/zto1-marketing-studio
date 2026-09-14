@@ -36,6 +36,7 @@ export const INCIDENT_REASONS = [
   "token_revoked",
   "timeout",
   "provider_unavailable",
+  "provider_rate_limited",
   "output_limit",
   "spawn_failed",
   "exit_nonzero",

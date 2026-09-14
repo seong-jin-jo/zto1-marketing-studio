@@ -11,7 +11,7 @@ const operatorToken = process.env.FE1_OPERATOR_TOKEN || "";
 const workspaceId = process.env.FE1_WORKSPACE_ID || "";
 const workspaceName = process.env.FE1_WORKSPACE_NAME || "로컬 검증 워크스페이스";
 const mode = process.env.FE1_MODE || "empty";
-const outputDir = process.env.FE1_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/prototype/qa-fe1");
+const outputDir = process.env.FE1_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/design/prototypes/legacy-prototype-20260912/prototype/qa-fe1");
 const chromePath = process.env.FE1_CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const debugPort = Number(process.env.FE1_CHROME_DEBUG_PORT || 9341);
 

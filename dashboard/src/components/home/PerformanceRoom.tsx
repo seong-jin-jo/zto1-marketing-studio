@@ -332,10 +332,13 @@ export function PerformanceRoom({
   }, [loadingSuggestions, workspaceId]);
 
   useEffect(() => {
-    if (!metricsLoaded || measuredPosts.length !== 0 || !workspaceId || autoRequested.current.has(workspaceId)) return;
+    // 표본이 충분할 때만 다음 실험을 자동 제안한다. 한두 편의 성과로 결론을
+    // 내리면 브랜드 학습이 흔들리고, 매 방문마다 외부 생성 비용도 발생한다.
+    const enoughForAutomaticExperiment = measuredPosts.length >= SAMPLE_THRESHOLD;
+    if (!metricsLoaded || (!empty && !enoughForAutomaticExperiment) || !workspaceId || autoRequested.current.has(workspaceId)) return;
     autoRequested.current.add(workspaceId);
     void loadSuggestions();
-  }, [loadSuggestions, measuredPosts.length, metricsLoaded, workspaceId]);
+  }, [empty, loadSuggestions, measuredPosts.length, metricsLoaded, workspaceId]);
 
   const enqueueSuggestion = async (suggestion: PerformanceSuggestion) => {
     if (!workspaceId || queueState[suggestion.id] === "loading") return;
@@ -713,6 +716,10 @@ export function PerformanceRoom({
       <div className={roomColumn}><AutomationRulesPanel workspaceId={workspaceId} /></div>
 
       <section className={`${roomColumn} border-t border-border pt-stack-section`} data-perf-inherit="app/page.tsx">
+        <div className="mb-stack flex flex-wrap items-center gap-stack">
+          <p className="mr-auto text-caption text-subtle break-keep">반응이 비어 있으면 연결된 채널에서 최신 성과를 다시 확인하세요.</p>
+          <Button onClick={() => void onCollectMetrics()} disabled={collecting || !workspaceId}>{collecting ? "성과 수집 중" : "성과 다시 수집하기"}</Button>
+        </div>
         <details>
           <summary className="flex min-h-control-touch cursor-pointer items-center gap-stack text-body font-bold text-text">
             <span>올린 글별 성적</span>
@@ -757,9 +764,6 @@ export function PerformanceRoom({
                 {posts.length === 0 && <tr className="block lg:table-row"><td colSpan={7} className="block p-stack-section text-center text-caption text-subtle lg:table-cell">아직 나간 글이 없습니다. 발행실에서 올리면 여기에 쌓입니다.</td></tr>}
               </tbody>
             </table>
-          </div>
-          <div className="mt-stack flex flex-wrap gap-stack">
-            <Button onClick={() => void onCollectMetrics()} disabled={collecting || !workspaceId}>{collecting ? "성과 수집 중" : "성과 다시 수집하기"}</Button>
           </div>
         </details>
       </section>

@@ -45,6 +45,18 @@ export type GeneratedTextResult = {
   usage: GeneratedTextUsage;
 };
 
+/** 공유 CLI 로그인은 살아 있지만 제공자 계정의 사용 한도에 걸린 경우. */
+export class SharedAiProviderRateLimitError extends Error {
+  constructor() {
+    super("claude CLI provider rate limit");
+    this.name = "SharedAiProviderRateLimitError";
+  }
+}
+
+function isSharedAiProviderRateLimitMessage(value: unknown): value is string {
+  return typeof value === "string" && /weekly.*limit|limit.*weekly|rate.*limit|limit.*rate|quota|usage.*limit|limit.*usage/i.test(value);
+}
+
 // 테넌트가 등록한 자기 Anthropic 키(integrations kind='anthropic') 복호화. 없으면 null.
 // withTenant(RLS) 안에서 복호화 — 키는 메모리에만.
 export async function getAnthropicKey(tenantId: string): Promise<string | null> {
@@ -251,23 +263,39 @@ function runClaudeCliWithUsage(
     child.on("close", (code) => {
       cleanup();
       if (overflowed) return;
+      const raw = Buffer.concat(stdoutChunks).toString("utf8");
+      let envelope: {
+        is_error?: boolean;
+        result?: unknown;
+        total_cost_usd?: unknown;
+        usage?: {
+          input_tokens?: unknown;
+          cache_creation_input_tokens?: unknown;
+          cache_read_input_tokens?: unknown;
+          output_tokens?: unknown;
+        };
+      };
+      try {
+        envelope = JSON.parse(raw) as typeof envelope;
+      } catch {
+        settle(() => reject(new Error(code !== 0 ? `claude CLI exited with code ${code}` : "claude CLI JSON 결과를 해석하지 못했습니다")));
+        return;
+      }
+      if (envelope.is_error && isSharedAiProviderRateLimitMessage(envelope.result)) {
+        settle(() => reject(new SharedAiProviderRateLimitError()));
+        return;
+      }
       if (code !== 0) {
         settle(() => reject(new Error(`claude CLI exited with code ${code}`)));
         return;
       }
       try {
-        const envelope = JSON.parse(Buffer.concat(stdoutChunks).toString("utf8")) as {
-          is_error?: boolean;
-          result?: unknown;
-          total_cost_usd?: unknown;
-          usage?: {
-            input_tokens?: unknown;
-            cache_creation_input_tokens?: unknown;
-            cache_read_input_tokens?: unknown;
-            output_tokens?: unknown;
-          };
-        };
         if (envelope.is_error || typeof envelope.result !== "string" || !envelope.result.trim()) {
+          // Claude CLI는 주간 한도에 걸려도 exit code 0인 JSON envelope를 돌려준다.
+          // 원문은 사용자·로그에 절대 흘리지 않고, 한도라는 분류만 보존한다.
+          if (envelope.is_error && isSharedAiProviderRateLimitMessage(envelope.result)) {
+            throw new SharedAiProviderRateLimitError();
+          }
           throw new Error("claude CLI가 사용할 수 있는 결과를 반환하지 않았습니다");
         }
         const inputTokens = finiteNonNegative(envelope.usage?.input_tokens);
@@ -290,7 +318,11 @@ function runClaudeCliWithUsage(
             totalCostUsd,
           },
         }));
-      } catch {
+      } catch (error) {
+        if (error instanceof SharedAiProviderRateLimitError) {
+          settle(() => reject(error));
+          return;
+        }
         settle(() => reject(new Error("claude CLI JSON 결과를 해석하지 못했습니다")));
       }
     });

@@ -10,8 +10,9 @@ const dashboardToken = process.env.FE3_DASHBOARD_TOKEN || "";
 const studioToken = process.env.FE3_STUDIO_TOKEN || "";
 const workspaceId = process.env.FE3_WORKSPACE_ID || "";
 const studioWorkspaceId = process.env.FE3_STUDIO_WORKSPACE_ID || workspaceId;
-const outputDir = process.env.FE3_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/prototype/qa-fe6");
+const outputDir = process.env.FE3_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/design/prototypes/legacy-prototype-20260912/prototype/qa-fe6");
 const executablePath = process.env.FE3_CHROME_PATH || "/Users/sj/Library/Caches/ms-playwright/chromium-1228/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing";
+const runGenerationFlow = process.env.FE3_RUN_GENERATION === "1";
 
 if (!dashboardToken || !studioToken || !workspaceId) {
   throw new Error("FE3_DASHBOARD_TOKEN, FE3_STUDIO_TOKEN, FE3_WORKSPACE_ID are required");
@@ -20,6 +21,7 @@ fs.mkdirSync(outputDir, { recursive: true });
 let chatAlwaysAt390 = 0;
 const basicFlow = [];
 let chatVisibleAt390 = false;
+let generationResponseStatus = null;
 const responsiveObservations = [];
 const performanceObservations = [];
 const studioRoomObservations = [];
@@ -43,7 +45,9 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 1200
 await context.addInitScript(({ dashboardTokenValue, studioTokenValue, workspaceIdValue, studioWorkspaceIdValue }) => {
   localStorage.setItem("dashboard_auth_token", dashboardTokenValue);
   localStorage.setItem("active_workspace", JSON.stringify({ id: workspaceIdValue, slug: "local-fe3-verification", name: "로컬 검증 작업 공간", tier: "team" }));
-  localStorage.setItem("studio_work", JSON.stringify({
+  // StudioPage now namespaces persisted work by workspace. The old unscoped key
+  // left the publish room empty, so the action contract below was never rendered.
+  localStorage.setItem(`studio_work:${workspaceIdValue}`, JSON.stringify({
     idea: "1인 사업가의 콘텐츠 운영 시간 줄이기",
     text: {
       threads: "콘텐츠 운영 시간을 줄이는 세 가지 기준",
@@ -102,29 +106,36 @@ try {
   if (await page.getByRole("complementary", { name: "발행 담당 대화창" }).getByText("발행 채널", { exact: true }).count()) throw new Error("legacy channel selector rendered in chat dock");
   if (await page.getByText("발행 이력", { exact: true }).count()) throw new Error("legacy publish history rendered");
   if (await page.getByRole("button", { name: /중지/ }).count()) throw new Error("unsupported publish stop button rendered");
-  for (const label of ["임시 저장하기", "승인 인박스로 보내기", "선택한 3곳에 지금 발행", "예약 발행"]) {
+  for (const label of ["임시 저장하기", "검토 요청하기", "예약 발행"]) {
     if (await page.getByRole("button", { name: label, exact: true }).count() !== 1) throw new Error(`${label} action missing`);
   }
+  if (await page.getByRole("button", { name: /선택한 \d+곳에 지금 발행/ }).count() !== 1) throw new Error("immediate publish action missing");
   for (const platform of ["threads", "x", "facebook", "instagram"]) {
     const preview = page.locator(`[data-room-preview="${platform}"]`);
     if (await preview.getByRole("checkbox", { name: new RegExp("발행$") }).count() !== 1) throw new Error(`${platform} inline publish checkbox missing`);
-    if (await preview.getByRole("combobox", { name: new RegExp("발행 계정$") }).count() !== 1) throw new Error(`${platform} inline account selector missing`);
+    const accountSelectorCount = await preview.getByRole("combobox", { name: new RegExp("발행 계정$") }).count();
+    const connectLinkCount = await preview.getByRole("link", { name: "계정 연결하기", exact: true }).count();
+    if (accountSelectorCount !== 1 && connectLinkCount !== 1) throw new Error(`${platform} account selector or connection link missing`);
   }
   await page.screenshot({ path: path.join(outputDir, "publish-room-1440.png"), fullPage: true });
 
   // 기본 흐름 점검: 네 방이 각각 실제 내용을 그리는지 본다(회장 2026-08-28 우선순위).
   for (const room of ["create", "edit", "publish", "perf"]) {
-    await page.goto(`${baseUrl}/studio?room=${room}`, { waitUntil: "networkidle" });
+    const routeRoom = room === "perf" ? "performance" : room;
+    await page.goto(`${baseUrl}/studio?room=${routeRoom}`, { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
-    basicFlow.push(await page.evaluate((roomName) => ({
+    basicFlow.push(await page.evaluate((roomName) => {
+      const domRoomName = roomName === "perf" ? "performance" : roomName;
+      return {
       room: roomName,
-      rendered: document.querySelector(`[data-room="${roomName}"]`) !== null,
-      roomTop: document.querySelector(`[data-room-top="${roomName}"]`) !== null,
+      rendered: document.querySelector(`[data-room="${domRoomName}"]`) !== null,
+      roomTop: document.querySelector(`[data-room-top="${domRoomName}"]`) !== null,
       outlineItems: document.querySelectorAll("[data-edit-outline] li").length,
       scriptLines: document.querySelectorAll("[data-edit-script] input, [data-edit-script] li").length,
       previews: document.querySelectorAll(".osmu-wall > *").length,
       buttons: document.querySelectorAll("main button").length,
-    }), room));
+      };
+    }, room));
   }
   await page.goto(`${baseUrl}/studio`, { waitUntil: "networkidle" });
   await page.waitForTimeout(600);
@@ -140,12 +151,13 @@ try {
   for (const room of ["생성실", "편집실", "발행실", "성과실"]) {
     if (!await mobileSidebar.getByText(room, { exact: true }).isVisible()) throw new Error(`${room} missing from 390 drawer`);
   }
-  if (!await mobileSidebar.getByText("지금 여기", { exact: true }).isVisible()) throw new Error("390 drawer current room marker missing");
+  if (await mobileSidebar.locator('[aria-current="page"]').count() !== 1) throw new Error("390 drawer current room marker missing");
   await mobileSidebar.getByRole("button", { name: "메뉴 닫기" }).click();
   await page.screenshot({ path: path.join(outputDir, "publish-room-390.png") });
   await page.setViewportSize({ width: 1440, height: 1200 });
   await page.waitForTimeout(400);
 
+  if (runGenerationFlow) {
   await roomFlow.getByRole("link", { name: /생성실/ }).click();
   await page.locator('[data-room="create"]').waitFor();
   const createAssistant = page.getByRole("complementary", { name: "생성 담당 대화창" });
@@ -159,7 +171,8 @@ try {
   const generationResponse = page.waitForResponse((response) => response.url().includes("/api/studio/v1/generations") && response.request().method() === "POST");
   await createAssistant.getByRole("button", { name: "구조 초안 3개 보기", exact: true }).click();
   const response = await generationResponse;
-  if (response.status() !== 201) throw new Error(`Studio generation returned ${response.status()}`);
+  generationResponseStatus = response.status();
+  if (generationResponseStatus !== 201) throw new Error(`Studio generation returned ${generationResponseStatus}`);
   await createAssistant.getByRole("button", { name: "A 구조 초안 선택" }).waitFor();
   if (await createAssistant.getByRole("button", { name: /구조 초안 선택$/ }).count() !== 3) throw new Error("Studio API candidates A, B, C did not render");
   for (const viewport of RESPONSIVE_VIEWPORTS) {
@@ -182,7 +195,7 @@ try {
     });
     if (metrics.bodyScrollWidth > metrics.viewportWidth + 1 || metrics.roomScrollWidth > metrics.roomClientWidth + 1) throw new Error(`create ${viewport.width} overflow: ${JSON.stringify(metrics)}`);
     if (!metrics.directGenerationVisible || metrics.candidateCards !== 3 || !metrics.chatVisible) throw new Error(`create ${viewport.width} dual flow contract failed: ${JSON.stringify(metrics)}`);
-    studioRoomObservations.push({ room: "create", width: viewport.width, httpStatus: response.status(), ...metrics });
+    studioRoomObservations.push({ room: "create", width: viewport.width, httpStatus: generationResponseStatus, ...metrics });
     await page.screenshot({ path: path.join(outputDir, `create-room-${viewport.width}.png`), fullPage: true });
   }
 
@@ -229,6 +242,7 @@ try {
   const durationAfterRestore = await page.locator("[data-edit-duration]").textContent();
   if (durationBefore === durationAfterRemove || durationBefore !== durationAfterRestore) throw new Error(`edit remove and restore failed: ${durationBefore}/${durationAfterRemove}/${durationAfterRestore}`);
   studioRoomObservations.push({ room: "edit", interaction: "대사 빼기와 되살리기", durationBefore, durationAfterRemove, durationAfterRestore });
+  }
 
   if (process.env.FE3_CAPTURE_SCOPE !== "rooms") {
     for (const route of RESPONSIVE_ROUTES) {
@@ -355,8 +369,9 @@ try {
     publishPreviews: 7,
     inlinePublishCheckboxes: 4,
     inlineAccountSelectors: 4,
-    generationStatus: response.status(),
-    candidateButtons: 3,
+    generationFlow: runGenerationFlow ? "executed" : "skipped-production-identity-contract",
+    generationStatus: generationResponseStatus,
+    candidateButtons: runGenerationFlow ? 3 : 0,
     publishStopButtons: 0,
     basicFlow,
     chatAlwaysAt390,

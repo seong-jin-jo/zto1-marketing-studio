@@ -53,11 +53,16 @@ describe("만료된 배달 주소는 스스로 되살아난다", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<DeliveredMedia type="image" src={deliveryUrl("img_1.webp")} testId="m" tenantId="tenant-1" />);
+    const originalUrl = deliveryUrl("img_1.webp");
+    render(<DeliveredMedia type="image" src={originalUrl} testId="m" tenantId="tenant-1" />);
     fireEvent.error(screen.getByTestId("m"));
 
     await waitFor(() => expect(screen.getByTestId("m")).toHaveAttribute("src", "/api/media/NEW"));
-    expect(JSON.parse(calls[0]).filename).toBe("img_1.webp");
+    expect(JSON.parse(calls[0])).toEqual(expect.objectContaining({
+      delivery_url: originalUrl,
+      purpose: "media",
+      tenant_id: "tenant-1",
+    }));
   });
 
   it("재서명도 실패하면 빈 자리가 아니라 사람 말로 적는다", async () => {

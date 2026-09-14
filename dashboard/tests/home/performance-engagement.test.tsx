@@ -126,4 +126,25 @@ describe("FE-V63-07 성과실 댓글 행동", () => {
 
     expect(screen.getAllByText("측정 불가").length).toBeGreaterThan(0);
   });
+
+  it("V70-PERF-04 정상: 표본 5편이 쌓이면 다음 실험 제안을 자동으로 불러온다", async () => {
+    H.fetcher.mockImplementation(() => new Promise(() => {}));
+    H.apiPost.mockResolvedValue({
+      suggestions: [{ id: "suggestion-1", text: "같은 주제로 짧은 영상 실험", label: "우리 검증 기록", verified: true }],
+      sampleAssessment: { count: 5, threshold: 5, thresholdMet: true },
+    });
+    const measured = Array.from({ length: 5 }, (_, index) => ({
+      ...post,
+      id: `post-${index}`,
+      views: 100 + index,
+    }));
+
+    render(room(measured));
+
+    await waitFor(() => expect(H.apiPost).toHaveBeenCalledWith(
+      "/api/suggestions",
+      { tenant_id: "11111111-1111-4111-8111-111111111111" },
+    ));
+    expect(await screen.findByText("같은 주제로 짧은 영상 실험")).toBeInTheDocument();
+  });
 });

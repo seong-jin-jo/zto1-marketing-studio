@@ -186,7 +186,7 @@ describe("Sidebar operator/customer shell separation", () => {
 
     const sidebar = screen.getByRole("complementary", { name: "주요 사이드바" });
     const openButton = screen.getByRole("button", { name: "메뉴 열기" });
-    expect(sidebar).toHaveClass("hidden", "md:flex", "md:w-24");
+    expect(sidebar).toHaveClass("hidden", "md:flex", "md:w-14", "md:bg-text");
     expect(screen.getAllByText("편집실").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("지금 여기")).not.toBeInTheDocument();
     expect(openButton).toHaveAttribute("aria-expanded", "false");

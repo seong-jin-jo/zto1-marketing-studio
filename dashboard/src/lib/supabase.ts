@@ -5,8 +5,16 @@ const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 // 브라우저용 — 로그인/가입. 세션은 클라가 보관하고 API 호출 시 access token을 Bearer로 첨부.
+let _browserClient: ReturnType<typeof createClient> | null = null;
+
 export function createBrowserSupabase() {
-  return createClient(URL, ANON, { auth: { persistSession: true, autoRefreshToken: true } });
+  // AuthGate, LoginPage, Sidebar가 같은 탭에서 이 함수를 여러 번 부른다. 매번 새
+  // GoTrueClient를 만들면 같은 storage key를 두 인스턴스가 감시해 실제 브라우저에서
+  // `Multiple GoTrueClient instances` 경고와 동시 세션 이벤트 경쟁이 생긴다.
+  if (!_browserClient) {
+    _browserClient = createClient(URL, ANON, { auth: { persistSession: true, autoRefreshToken: true } });
+  }
+  return _browserClient;
 }
 
 // 서버용 — 클라가 보낸 access token(JWT) 검증. anon 키로 getUser(jwt) 서명검증.

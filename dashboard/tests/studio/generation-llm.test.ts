@@ -49,6 +49,9 @@ describe("Studio 실제 LLM 생성 계약", () => {
     }
     expect(prompt).toContain("자동화가 실패했을 때 확인할 세 가지");
     expect(prompt).toContain("vertical-video-primary");
+    expect(prompt).toContain("누구에게 보여 주는지와 무엇을 위해 만드는지");
+    expect(prompt).toContain("학습정보를 어떻게 적용했는지");
+    expect(prompt).toContain("성과 수치, 고객 사례, 사실을 지어내지 마세요");
     // 내부 코드명이 다시 새어 나오면 안 된다.
     expect(prompt).not.toMatch(/^S0 안전 규칙:/m);
   });

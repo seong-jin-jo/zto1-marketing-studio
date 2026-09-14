@@ -19,7 +19,6 @@
     "ops:recover-operator-token": "bash scripts/recover-operator-token.sh"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1121.0",
     "@supabase/supabase-js": "^2.108.2",
     "next": "16.2.2",
     "next-themes": "^0.4.6",
@@ -32,6 +31,7 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1056.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -42,6 +42,7 @@
     "@types/twitter-text": "3.1.10",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4",
+    "typebox": "^1.1.39",
     "typescript": "^5",
     "vitest": "^2.1.9"
   }

@@ -10,7 +10,7 @@ import { FIXTURE_STUDIO_CONTENT_GENERATOR, generationRequestFixture } from "./ge
 // Regression: OSMU-BLOCK-M2. 사용자가 내부 무료 재생성 키와 같은 생성 키를 선점하면
 // 두 번째 멱등 기록 INSERT가 unique violation으로 500을 내던 결함.
 // Found by 교차 모델 검수 on 2026-08-28.
-// Report: docs/audit/osmu-cross-review-2026-08-28-opus.md
+// Report: docs/_archive/legacy-20260912/audit/osmu-cross-review-2026-08-28-opus.md
 
 let admin: ReturnType<typeof postgres> | null = null;
 let memberId = "";

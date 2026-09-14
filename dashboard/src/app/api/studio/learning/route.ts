@@ -1,6 +1,7 @@
 import { readJson, writeJson, dataPath } from "@/lib/file-io";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
+import { sanitizeLearningInfo } from "@/lib/studio-learning-sanitize";
 
 /**
  * 학습 정보(브랜드를 아는 일곱 칸)의 서버 보관소.
@@ -14,29 +15,9 @@ import { runWithTenant } from "@/lib/tenant-context";
  */
 const FILE_NAME = "studio-learning-info.json";
 
-/** 저장 가능한 칸 이름. 화면의 LEARNING_SLOTS 와 같은 집합이다. */
-const ALLOWED_KEYS = new Set([
-  "business", "audience", "voice", "purpose", "forbidden", "palette", "rights", "learnedRules",
-]);
-/** 한 칸이 지나치게 길어져 프롬프트를 잡아먹는 것을 막는다. */
-const MAX_VALUE_LENGTH = 2_000;
-
 interface LearningFile {
   info?: Record<string, string>;
   updatedAt?: string;
-}
-
-function sanitize(input: unknown): Record<string, string> {
-  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-    if (!ALLOWED_KEYS.has(key)) continue;
-    if (typeof value !== "string") continue;
-    const trimmed = value.trim();
-    if (!trimmed) continue;
-    out[key] = trimmed.slice(0, MAX_VALUE_LENGTH);
-  }
-  return out;
 }
 
 export async function GET(request: Request) {
@@ -44,7 +25,7 @@ export async function GET(request: Request) {
   if (!tenantId) return Response.json({ info: {} }, { status: 401 });
   return runWithTenant(tenantId, async () => {
     const data = readJson<LearningFile>(dataPath(FILE_NAME));
-    return Response.json({ info: sanitize(data?.info ?? {}), updatedAt: data?.updatedAt ?? null });
+    return Response.json({ info: sanitizeLearningInfo(data?.info ?? {}), updatedAt: data?.updatedAt ?? null });
   });
 }
 
@@ -52,7 +33,7 @@ export async function PUT(request: Request) {
   const body = await request.json().catch(() => ({}));
   const tenantId = await effectiveTenantId(request, body.tenant_id ?? null);
   if (!tenantId) return Response.json({ error: "tenant_id required" }, { status: 401 });
-  const info = sanitize(body.info);
+  const info = sanitizeLearningInfo(body.info);
   return runWithTenant(tenantId, async () => {
     const updatedAt = new Date().toISOString();
     writeJson(dataPath(FILE_NAME), { info, updatedAt });

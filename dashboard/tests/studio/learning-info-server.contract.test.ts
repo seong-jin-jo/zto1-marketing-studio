@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mergeLearningInfo, type LearningInfo } from "@/components/studio/learning-info";
+import { sanitizeLearningInfo } from "@/lib/studio-learning-sanitize";
 
 // 2026-09-07 감사 재발 방지.
 // 학습 정보 일곱 칸이 브라우저 localStorage 에만 있어 기기를 바꾸면 0 칸이 됐다.
@@ -24,5 +25,19 @@ describe("mergeLearningInfo", () => {
   it("서버의 빈 칸이 채워진 칸을 지우지 않는다", () => {
     const merged = mergeLearningInfo({ audience: "  " } as LearningInfo, { audience: "옛 고객" } as LearningInfo);
     expect(merged.audience).toBe("옛 고객");
+  });
+});
+
+describe("sanitizeLearningInfo", () => {
+  it("업종 키를 서버에 보존한다", () => {
+    expect(sanitizeLearningInfo({ industry: "교육·강의", audience: "처음 해 보는 사람" })).toEqual({
+      industry: "교육·강의",
+      audience: "처음 해 보는 사람",
+    });
+  });
+
+  it("옛 business 키를 industry로 이관한다", () => {
+    expect(sanitizeLearningInfo({ business: "동네 가게", unknown: "버림" })).toEqual({ industry: "동네 가게" });
+    expect(sanitizeLearningInfo({ business: "옛 값", industry: "새 값" }).industry).toBe("새 값");
   });
 });

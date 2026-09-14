@@ -168,6 +168,9 @@ describe("V77-CREATE-NETWORK 생성 담당 구조 선택 계약", () => {
   // 2026-09-05 회장 계정 실측 회귀: 새 초안을 만들어도 이전 초안 번호를 그대로 들고 가서,
   // 그 번호가 이미 발행된 것이면 발행이 매번 "이미 올라갔습니다"로 닫혔다. 스튜디오에서
   // 두 번째 글을 영영 못 올리는 상태였다. 새로 만든 것은 새 작업물이어야 한다.
+  // 이 경로는 jsdom에서 Next client effect와 생성 담당 문답을 함께 기다린다.
+  // 전체 2-worker 실행의 자원 경합에서도 제품 판정을 5초 timeout으로 오판하지 않도록
+  // 이 브라우저형 계약에만 10초 상한을 둔다. 전역 timeout은 완화하지 않는다.
   it("V77-CREATE-NETWORK-03 정상: 새 초안을 만들면 이전 초안 번호를 끊는다", async () => {
     mocks.room = "create";
     window.history.replaceState(null, "", "/studio?room=create");
@@ -189,7 +192,7 @@ describe("V77-CREATE-NETWORK 생성 담당 구조 선택 계약", () => {
       const saved = JSON.parse(localStorage.getItem("studio_work:tenant-empty") || "{}");
       expect(saved.draftId ?? null).toBeNull();
     });
-  });
+  }, 10_000);
 
   it("V77-CREATE-NETWORK-02 거절: 주제가 비어 있으면 구조 선택과 text API 호출로 진행하지 않는다", async () => {
     mocks.room = "create";

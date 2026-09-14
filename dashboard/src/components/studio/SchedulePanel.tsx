@@ -82,6 +82,7 @@ export function SchedulePanel({
     return Object.fromEntries(PLATFORMS.map((p) => [p, base.includes(p)]));
   });
   const [saving, setSaving] = useState(false);
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
   // SNS-007: 플랫폼별 다중계정 중 이 예약에 쓸 계정 — 미선택이면 publish-due가 기본계정 사용.
   const [accountsByPlatform, setAccountsByPlatform] = useState<Record<string, AccountOption[]>>({});
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string>>({});

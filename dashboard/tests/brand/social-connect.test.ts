@@ -204,7 +204,7 @@ describe("GET /api/connect/instagram — OAuth 동의 URL", () => {
 
   // Regression: API-READ-20260829-01. OAuth 설정 부재를 서버 고장으로 오분류했다.
   // Found by /qa on 2026-08-29
-  // Report: docs/audit/openclaw-api-live-sweep-2026-08-29.md
+  // Report: docs/_archive/legacy-20260912/audit/openclaw-api-live-sweep-2026-08-29.md
   it("IG_APP_ID 미설정 → 503", async () => {
     delete process.env.IG_APP_ID;
     const { GET } = await import("@/app/api/connect/[provider]/route");
