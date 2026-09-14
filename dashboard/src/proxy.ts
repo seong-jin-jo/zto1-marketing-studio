@@ -38,9 +38,9 @@ const TENANT_AWARE_PATHS = [
   // 키워드 편집(KeywordsEditor), 인스타그램 채널 화면이 각각 부른다.
   "/api/ai-suggest/guide",
   "/api/ai-suggest/keywords",
-  "/api/generate-image",
-  "/api/midjourney/generate",
-  "/api/card-news/generate",
+  // 공용 gateway 파일과 유료 계정을 직접 쓰는 레거시 미디어 생성 세 경로는 고객 허용 목록에
+  // 넣지 않는다. 고객 생성은 작업 공간, 비용 장부와 결과 manifest를 갖춘 Studio 생성 경로를
+  // 사용한다. 이 경로들은 그 계약을 이식하기 전까지 운영자 전용이다(CODE-REVIEW-20260915-01).
   "/api/card-news/outline",
   "/api/channel-config",
   "/api/channel-settings/[channel]",
@@ -134,11 +134,10 @@ const TENANT_AWARE_PATHS = [
   // 여기 없으면 저장은 코드에 있는데 화면에서 403 이 나 브라우저에만 남는다(2026-09-07 실측).
   "/api/studio/learning",
   "/api/studio/text",
-  // 2026-09-06 회장 확정으로 이미지·영상 생성을 고객에게 열었다. 두 라우트는
-  // effectiveTenantId 로 테넌트를 확인하고 사용량을 그 작업 공간에 남긴다.
-  // 생성기가 살아 있는지 화면이 묻는 경로. 생성실이 부르는데 목록에 없어 403 이었다
-  // (2026-09-14 고객 토큰으로 직접 확인). 상태를 못 읽으면 화면이 왜 안 되는지 말할 수 없다.
-  "/api/higgsfield/status",
+  // 공유 Higgsfield 계정 상태는 이메일, 요금제와 전체 크레딧을 포함하는 운영 정보다.
+  // 고객은 /api/usage에서 자기 작업 공간 사용량만 읽는다(CODE-REVIEW-20260915-03).
+  // 실제 이미지·영상 생성 경로는 effectiveTenantId로 테넌트를 확인하고 사용량을 작업 공간에
+  // 남기므로 고객에게 유지한다. 상태 조회와 생성 권한은 같은 것이 아니다.
   "/api/higgsfield/image",
   "/api/higgsfield/video",
   // 만든 그림과 영상을 화면이 불러오는 경로. 여기 없으면 만들기는 되는데 화면에 안 뜬다

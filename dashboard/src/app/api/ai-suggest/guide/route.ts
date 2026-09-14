@@ -1,5 +1,5 @@
-import { execFileSync } from "child_process";
-import { readText, dataPath } from "@/lib/file-io";
+import { generateText, sharedAiApprovalErrorResponse, sharedGenerationQuotaErrorResponse } from "@/lib/anthropic";
+import { effectiveTenantId } from "@/lib/tenant-auth";
 
 export async function POST(request: Request) {
   const data = await request.json();
@@ -8,6 +8,8 @@ export async function POST(request: Request) {
   const currentGuide = (data.currentGuide || "").trim();
 
   if (!channel) return Response.json({ error: "channel required" }, { status: 400 });
+  const tenantId = await effectiveTenantId(request, typeof data.tenant_id === "string" ? data.tenant_id : null);
+  if (!tenantId) return Response.json({ error: "작업 공간을 식별할 수 없습니다." }, { status: 401 });
 
   // 현재 가이드가 있으면 참고해서 개선, 없으면 새로 작성
   const context = currentGuide
@@ -31,10 +33,7 @@ ${context}
 {"guide": "전체 가이드 텍스트"}`;
 
   try {
-    const container = process.env.GATEWAY_CONTAINER || "openclaw-gateway";
-    const result = execFileSync("docker", [
-      "exec", container, "node", "dist/index.js", "agent", "--agent", "main", "--message", msg,
-    ], { timeout: 120000 }).toString().trim();
+    const result = (await generateText(msg, tenantId)).trim();
 
     const jsonMatch = result.match(/\{[\s\S]*"guide"[\s\S]*\}/);
     if (jsonMatch) {
@@ -43,6 +42,10 @@ ${context}
     }
     return Response.json({ error: "AI 응답에서 JSON을 추출할 수 없음", raw: result.slice(-300) }, { status: 500 });
   } catch (e) {
+    const approval = sharedAiApprovalErrorResponse(e);
+    if (approval) return approval;
+    const quota = sharedGenerationQuotaErrorResponse(e);
+    if (quota) return quota;
     const msg2 = e instanceof Error ? e.message : String(e);
     if (msg2.includes("TIMEOUT") || msg2.includes("timed out")) {
       return Response.json({ error: "AI 제안 생성 타임아웃 (2분 제한)" }, { status: 504 });

@@ -1,9 +1,12 @@
-import { execFileSync } from "child_process";
+import { generateText, sharedAiApprovalErrorResponse, sharedGenerationQuotaErrorResponse } from "@/lib/anthropic";
+import { effectiveTenantId } from "@/lib/tenant-auth";
 
 export async function POST(request: Request) {
   const data = await request.json();
   const title = (data.title || "").trim();
   if (!title) return Response.json({ error: "title required" }, { status: 400 });
+  const tenantId = await effectiveTenantId(request, typeof data.tenant_id === "string" ? data.tenant_id : null);
+  if (!tenantId) return Response.json({ error: "작업 공간을 식별할 수 없습니다." }, { status: 401 });
 
   const msg = `다음 주제로 Instagram 카드뉴스 슬라이드 초안을 만들어라: "${title}"
 
@@ -18,10 +21,7 @@ export async function POST(request: Request) {
 {"slides": ["슬라이드1 내용", "슬라이드2 내용", ...], "caption": "Instagram 캡션", "hashtags": ["태그1", "태그2", ...]}`;
 
   try {
-    const container = process.env.GATEWAY_CONTAINER || "openclaw-gateway";
-    const result = execFileSync("docker", [
-      "exec", container, "node", "dist/index.js", "agent", "--agent", "main", "--message", msg,
-    ], { timeout: 120000 }).toString().trim();
+    const result = (await generateText(msg, tenantId)).trim();
 
     const jsonMatch = result.match(/\{[\s\S]*"slides"[\s\S]*\}/);
     if (jsonMatch) {
@@ -30,6 +30,10 @@ export async function POST(request: Request) {
     }
     return Response.json({ error: "AI 응답에서 JSON을 추출할 수 없음", raw: result.slice(-500) }, { status: 500 });
   } catch (e) {
+    const approval = sharedAiApprovalErrorResponse(e);
+    if (approval) return approval;
+    const quota = sharedGenerationQuotaErrorResponse(e);
+    if (quota) return quota;
     const msg2 = e instanceof Error ? e.message : String(e);
     if (msg2.includes("TIMEOUT") || msg2.includes("timed out")) {
       return Response.json({ error: "AI outline generation timed out (2분 제한)" }, { status: 504 });
