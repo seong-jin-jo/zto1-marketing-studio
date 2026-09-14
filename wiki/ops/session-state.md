@@ -7,7 +7,8 @@
 
 지정 작업 공간의 localhost health와 `GET /api/metrics`는 HTTP 200이었다. metrics 응답 키는
 `coverage`, `posts`이고 `history`, `comparison`은 없다. 기본 흐름 11/11, Studio v1 14/14,
-전체 Vitest 348파일과 2,277건, 조건부 제외 3건, TypeScript 종료 코드 0을 관찰했다.
+전체 Vitest 348파일과 2,277건, 조건부 제외 3건, TypeScript 종료 코드 0, production build
+184/184와 디자인 토큰 위반 0을 관찰했다.
 
 제품 소스, migration과 테스트는 수정하지 않았다. `pipeline-state.osmu.md`의 현재 공정이 QA
 진행 중이고 snapshot 저장 단위, 멱등 키, 보존 기간과 비교식이 승인되지 않았기 때문이다.

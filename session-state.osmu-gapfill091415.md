@@ -27,6 +27,8 @@ migration과 테스트는 수정하지 않았다.
 - `dashboard/scripts/verify-studio-v1-e2e.mjs`: 14/14 통과.
 - `npm run test`: 348파일, 2,277건 통과와 3건 제외.
 - `npx tsc --noEmit`: 종료 코드 0.
+- `npm run build`: production build 184/184, 종료 코드 0.
+- `design-lint.sh dashboard/src`: 디자인 토큰 위반 0, 종료 코드 0.
 
 ## 다음 행동
 

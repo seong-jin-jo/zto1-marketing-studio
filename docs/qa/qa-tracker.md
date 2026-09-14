@@ -9,7 +9,7 @@
 | R68, API 갭 P2 | 게시물별 성과 시계열과 재현 가능한 30일 비교 | METRICS-HISTORY-20260914-1514-01 | NG | 지정 작업 공간 localhost `GET /api/metrics` HTTP 200. 응답 키는 `coverage`, `posts`이고 `history`, `comparison`은 없음 |
 | pipeline build 허용 범위 | 승인된 DB와 API 계약 안에서만 구현 | METRICS-HISTORY-20260914-1514-02 | BLOCK | `pipeline-state.osmu.md`의 현재 공정은 `qa`, 상태는 승인 아님. 성과 snapshot 저장 단위, 멱등 키, 보존 기간과 30일 비교식이 승인되지 않음 |
 | 기존 기본 흐름 보존 | 생성, 편집, 발행 큐, 성과와 생성실 재인계 | METRICS-HISTORY-20260914-1514-03 | PASS | localhost health HTTP 200, 기본 흐름 11/11, Studio v1 14/14 |
-| 전체 회귀 | Vitest와 TypeScript | METRICS-HISTORY-20260914-1514-04 | PASS | Vitest 348파일, 2,277건 통과와 3건 제외. `npx tsc --noEmit` 종료 코드 0 |
+| 전체 회귀 | Vitest, TypeScript, production build와 디자인 lint | METRICS-HISTORY-20260914-1514-04 | PASS | Vitest 348파일, 2,277건 통과와 3건 제외. `npx tsc --noEmit` 종료 코드 0, build 184/184, 디자인 토큰 위반 0 |
 
 제품 소스, migration과 테스트는 수정하지 않았다. 승인되지 않은 저장 계약을 임의로 추가하지
 않았으며 운영 배포와 실제 외부 provider 기간별 성과 회수는 미검증이다.

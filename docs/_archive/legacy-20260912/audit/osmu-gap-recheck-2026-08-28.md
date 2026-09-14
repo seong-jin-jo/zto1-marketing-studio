@@ -12,7 +12,7 @@
 | 게시물별 성과 이력 | 없음 | `published_posts`는 최신 누계와 `metrics_at`만 보존하고 게시물별 이력 테이블과 migration이 없음 |
 | 재현 가능한 30일 비교 | 없음 | 지정 작업 공간 localhost `GET /api/metrics` HTTP 200. 최상위 키는 `coverage`, `posts`이고 `history`, `comparison`은 없음 |
 | 기본 흐름 | 관찰됨 | localhost 기본 흐름 11/11, Studio v1 14/14 |
-| 전체 회귀 | 테스트됨 | Vitest 348파일, 2,277건 통과와 3건 제외. TypeScript 오류 0 |
+| 전체 회귀 | 테스트됨 | Vitest 348파일, 2,277건 통과와 3건 제외. TypeScript 오류 0, production build 184/184, 디자인 토큰 위반 0 |
 | 신규 구현 | 차단 | `pipeline-state.osmu.md`의 현재 공정은 QA 진행 중이고 snapshot 저장 단위, 멱등 키, 보존 기간, 비교식의 승인된 DB와 API 계약이 없음 |
 
 제품 소스, migration과 테스트는 수정하지 않았다. 최근 누계값을 30일 값으로 표시하거나
