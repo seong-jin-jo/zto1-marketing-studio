@@ -2,6 +2,20 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 22시 15분 KST · API 읽기 경로 v11 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R200, R207 | 최신 코드의 읽기 Route Handler 전부를 localhost에서 재검증 | API-READ-ALL-V11 | PASS | 고유 경로 105개에서 GET 105건과 HEAD 1건, 총 106건 실호출. 정상 92, 계약상 거절 14, 500·기타 예상 밖 5xx·redirect·예상 밖 4xx·timeout 0. 원본 `logs/diff/osmu-api-read-sweep-20260914-v11-authoritative-restarted.json` |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY-V11 | PASS | 격리 탐침은 계약 401과 `no-tenant` 본문. 401 인증 필요 문구 노출 0. Threads OAuth 미설정 503 등 나머지 13건도 정확한 allowlist와 일치 |
+| 검사 실행 환경 | 장기 실행 dev listener 열화와 제품 고장 분리 | API-SWEEP-RUNTIME-V11 | 수정 후 PASS | PID 33531에서 세 번 실행이 서로 다른 경로 timeout과 health 503으로 끝났다. DB는 max_connections 100, 연결 6, active 1이었다. 같은 DB와 소스에서 관리 대상 pane만 PID 53664로 재기동한 뒤 106건 전부 응답. 제품 500은 재현되지 않아 제품 코드는 수정하지 않음 |
+| 필수 회귀 | test, TypeScript, build, seed, health, 두 E2E, 디자인 lint | API-READ-REGRESSION-V11 | PASS | Vitest 351파일과 2,291건 통과, 조건부 3건 제외. tsc 종료 0, build 184/184, schema·seed·RLS 적용, warm health HTTP 200·DB up·3ms, 기본 흐름 11/11, Studio v1 14/14, 디자인 토큰 위반 0 |
+| R205, R206 | 승인 프로토타입과 UI 계승 | DESIGN-V11 | NG | 제품 화면 소스는 바꾸지 않았다. v9의 390·768·1024·1440 기능 이동은 PASS지만 v63 대비 8개 배치 속성은 전부 NG. 과제 v63과 pipeline 승인 v68 핀도 충돌 |
+| R01부터 R207과 하위 번호 232건 | 회장 확정 요구 전건 승계 | REQ-ALL-V11 | 이월 | 상세 보고서의 요청 번호 표에 232건을 전건 승계. 이번 API 범위와 직접 연결된 항목만 실행 판정하고 나머지는 이월 |
+| QA 출고 게이트 | 운영 배포 접촉 증거 | QA-QUALITY-GATE-V11 | NG | `verify-agent-quality.sh` 종료 코드 2. localhost 명시 범위는 관찰 완료했지만 운영 host 접촉 증거가 없어 제품 전체 QA와 배포 PASS 금지 |
+
+canonical `pipeline-state.osmu.md`는 착수 시 이미 `current_stage: qa`였다. 권위 실행 전후 listener PID 53664와 `dashboard/src/**/*`, `dashboard/scripts/**/*` 합성 SHA-256 `723e40ed26074441a93080d267342c1e89290d846c0a6b1d7e21f309c8dca3cd`가 같았다. v10 대비 경로 추가·삭제, 상태와 분류 변화는 0건이다. 상세는 `docs/qa/osmu-api-read-sweep-v11-gpt-codex.md`다.
+
 ## 2026-09-14 20시 44분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
