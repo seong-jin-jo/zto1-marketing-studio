@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { withTenant } from "@/lib/db";
-import { getChannelCred, publishThreads, publishX } from "@/lib/publish";
+import { getChannelCred, publishInstagram, publishThreads, publishX } from "@/lib/publish";
 
 const H = vi.hoisted(() => ({
   tenantId: "tenant-1" as string | null,
@@ -15,6 +15,8 @@ const H = vi.hoisted(() => ({
   claimedTenants: [] as string[], // processTenant가 호출된 테넌트 추적
   inserts: [] as unknown[][],
   updates: [] as unknown[][],
+  sqlTexts: [] as string[],
+  leaseOwned: true,
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({
@@ -35,6 +37,7 @@ vi.mock("@/lib/db", () => ({
     const sql = Object.assign(
       (strings: TemplateStringsArray, ...vals: unknown[]) => {
         const text = strings.join("?");
+        H.sqlTexts.push(text);
         if (/WITH\s+due\s+AS/i.test(text)) return Promise.resolve(H.rows);
         if (/INSERT\s+INTO\s+published_posts/i.test(text)) {
           H.inserts.push(vals);
@@ -43,6 +46,9 @@ vi.mock("@/lib/db", () => ({
         if (/UPDATE\s+schedules\s+SET\s+status/i.test(text)) {
           H.updates.push(vals);
           return Promise.resolve([]);
+        }
+        if (/UPDATE\s+schedules/i.test(text) && /RETURNING\s+id/i.test(text)) {
+          return Promise.resolve(H.leaseOwned ? [{ id: "lease-owned" }] : []);
         }
         return Promise.resolve([]);
       },
@@ -73,6 +79,7 @@ async function publishDue(body: Record<string, unknown> = {}, headers: Record<st
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.resetModules();
   delete process.env.DASHBOARD_AUTH_TOKEN;
   H.tenantId = "tenant-1";
@@ -81,6 +88,8 @@ beforeEach(() => {
   H.claimedTenants = [];
   H.inserts = [];
   H.updates = [];
+  H.sqlTexts = [];
+  H.leaseOwned = true;
 });
 
 describe("POST /api/schedule/publish-due — 예약 실발행 루프", () => {
@@ -145,6 +154,81 @@ describe("POST /api/schedule/publish-due — 예약 실발행 루프", () => {
     expect(body.schedules[0].status).toBe("partial");
     expect(H.inserts).toHaveLength(2);
     expect(H.updates[0]).toContain("partial");
+  });
+});
+
+describe("OSMU 코드리뷰 예약 발행 회귀", () => {
+  it("OSMU-008 정상 경로: 만료된 processing 예약도 lease 토큰으로 다시 claim하고 소유권을 갱신한다", async () => {
+    H.rows = [{
+      id: "sched-stale",
+      draft_id: "draft-stale",
+      platforms: ["threads"],
+      payload: { text: "lease recovery" },
+      draft_payload: null,
+    }];
+
+    const { body } = await publishDue({ tenant_id: "tenant-1" });
+
+    expect(body.schedules[0].status).toBe("published");
+    const claimSql = H.sqlTexts.find((text) => /WITH\s+due\s+AS/i.test(text));
+    expect(claimSql).toMatch(/status = 'processing'/);
+    expect(claimSql).toMatch(/processingLease/);
+    expect(H.sqlTexts.some((text) => /processingLease,expiresAt/.test(text) && /workerToken/.test(text))).toBe(true);
+  });
+
+  it("OSMU-008 거절 경로: lease 갱신이 거절되면 공급자 호출 전에 발행을 멈춘다", async () => {
+    H.leaseOwned = false;
+    H.rows = [{
+      id: "sched-lost",
+      draft_id: "draft-lost",
+      platforms: ["threads"],
+      payload: { text: "must not publish" },
+      draft_payload: null,
+    }];
+
+    const { body } = await publishDue({ tenant_id: "tenant-1" });
+
+    expect(body.schedules[0].results[0].error).toMatch(/소유권이 만료/);
+    expect(publishThreads).not.toHaveBeenCalled();
+  });
+
+  it("OSMU-009 정상 경로: 예약된 인스타그램 카드뉴스 세 장을 배열 그대로 발행한다", async () => {
+    H.rows = [{
+      id: "sched-carousel",
+      draft_id: "draft-carousel",
+      platforms: ["instagram"],
+      payload: {
+        text: { instagram: { caption: "세 장 카드뉴스" } },
+        img: { imageUrls: ["https://cdn/1.png", "https://cdn/2.png", "https://cdn/3.png"] },
+      },
+      draft_payload: null,
+    }];
+
+    const { body } = await publishDue({ tenant_id: "tenant-1" });
+
+    expect(body.schedules[0].status).toBe("published");
+    expect(publishInstagram).toHaveBeenCalledWith(
+      { token: "tok", userId: "u-1" },
+      "세 장 카드뉴스",
+      ["https://cdn/1.png", "https://cdn/2.png", "https://cdn/3.png"],
+      expect.objectContaining({ onProgress: expect.any(Function) }),
+    );
+  });
+
+  it("OSMU-009 거절 경로: 한 장만 받는 채널에 여러 장을 예약하면 조용히 버리지 않는다", async () => {
+    H.rows = [{
+      id: "sched-overflow",
+      draft_id: "draft-overflow",
+      platforms: ["threads"],
+      payload: { text: "overflow", image_urls: ["https://cdn/1.png", "https://cdn/2.png"] },
+      draft_payload: null,
+    }];
+
+    const { body } = await publishDue({ tenant_id: "tenant-1" });
+
+    expect(body.schedules[0].status).toBe("failed");
+    expect(body.schedules[0].results[0].error).toMatch(/발행을 시작하지 않았습니다/);
+    expect(publishThreads).not.toHaveBeenCalled();
   });
 });
 

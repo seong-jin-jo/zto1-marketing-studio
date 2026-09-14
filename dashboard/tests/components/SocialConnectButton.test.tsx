@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { SocialConnectButton } from "@/components/channel/SocialConnectButton";
 import { useUIStore } from "@/store/ui-store";
+import type { ConnectReadinessGuidance } from "@/lib/connect-readiness";
 
 // OAuth 팝업 회귀 테스트: OAuth 팝업이 fetch 완료를 기다리지 않고 클릭 즉시(동기적으로) 열려야
 // production headless Chrome에서 user-activation이 살아있는 채로 window.open이 호출된다.
@@ -37,12 +38,31 @@ describe("SocialConnectButton — OAuth popup activation", () => {
     });
   }
 
-  function mockReadinessStatus(status: string, available: boolean, reason?: string) {
+  function mockReadinessStatus(
+    status: string,
+    available: boolean,
+    reason?: string,
+    guidance?: ConnectReadinessGuidance,
+  ) {
     return vi.fn().mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ providers: { threads: { status, available, reason } } }),
+      json: async () => ({ providers: { threads: { status, available, reason, guidance } } }),
     });
   }
+
+  const threadsReviewGuidance: ConnectReadinessGuidance = {
+    title: "심사 전 연결 안내",
+    steps: [
+      "현재는 앱 테스터로 등록된 계정만 연결할 수 있습니다.",
+      "Threads 웹사이트 권한의 초대 탭에서 초대를 수락합니다.",
+      "이 화면으로 돌아와 Threads OAuth 연결을 누릅니다.",
+      "앱 심사 승인 뒤에는 이 과정 없이 연결할 수 있습니다.",
+    ],
+    externalLink: {
+      label: "초대 수락하러 가기 (새 탭)",
+      url: "https://www.threads.com/settings/website_permissions",
+    },
+  };
 
   it("shows not_connected as an active customer action", async () => {
     vi.stubGlobal("fetch", mockReadinessStatus("not_connected", true));
@@ -67,6 +87,77 @@ describe("SocialConnectButton — OAuth popup activation", () => {
     expect(warning).toHaveTextContent("초대를 수락");
     expect(screen.getByTestId("connect-threads")).not.toBeDisabled();
     expect(warning.compareDocumentPosition(screen.getByTestId("connect-threads")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("AR-GUIDE-003 정상: 심사 전 안내와 바깥 링크를 보여주면서 연결 단추 클릭을 허용한다", async () => {
+    const fetchMock = mockReadinessStatus(
+      "not_connected",
+      true,
+      "Threads는 아직 앱 심사 전입니다.",
+      threadsReviewGuidance,
+    );
+    const popup = fakePopup();
+    vi.stubGlobal("fetch", fetchMock);
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
+
+    render(<SocialConnectButton provider="threads" label="Threads" />);
+
+    expect(await screen.findByTestId("review-guidance-threads")).toHaveTextContent("심사 전 연결 안내");
+    expect(screen.getByTestId("review-guidance-threads")).toHaveTextContent("초대 탭에서 초대를 수락");
+    expect(screen.getByTestId("review-guidance-link-threads")).toHaveAttribute(
+      "href",
+      "https://www.threads.com/settings/website_permissions",
+    );
+    expect(screen.getByTestId("review-guidance-link-threads")).toHaveAttribute("target", "_blank");
+    expect(screen.queryByTestId("readiness-warning-threads")).not.toBeInTheDocument();
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ authUrl: "https://provider.example/auth" }),
+    });
+    fireEvent.click(screen.getByTestId("connect-threads"));
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(popup.location.href).toBe("https://provider.example/auth"));
+  });
+
+  it("AR-GUIDE-004 거절: 서버가 안내를 내려주지 않으면 심사 전 안내를 표시하지 않는다", async () => {
+    vi.stubGlobal("fetch", mockReadinessStatus("not_connected", true));
+
+    render(<SocialConnectButton provider="threads" label="Threads" />);
+
+    await waitFor(() => expect(screen.getByTestId("connect-threads")).not.toBeDisabled());
+    expect(screen.queryByTestId("review-guidance-threads")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("review-guidance-link-threads")).not.toBeInTheDocument();
+  });
+
+  it("AR-GUIDE-005 거절: 초대 미수락 실패에는 사람 말 원인과 같은 초대 링크를 다시 보여준다", async () => {
+    const fetchMock = mockReadinessStatus(
+      "not_connected",
+      true,
+      "Threads는 아직 앱 심사 전입니다.",
+      threadsReviewGuidance,
+    );
+    const popup = fakePopup();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(window, "open").mockReturnValue(popup);
+
+    render(<SocialConnectButton provider="threads" label="Threads" />);
+    await waitFor(() => expect(screen.getByTestId("connect-threads")).not.toBeDisabled());
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        error: "Invalid Request: The user has not accepted the invite to test the app. error_code=1349245",
+      }),
+    });
+    fireEvent.click(screen.getByTestId("connect-threads"));
+
+    expect(await screen.findByText(/이 계정은 아직 테스트 사용자 초대를 수락하지 않았습니다/)).toBeInTheDocument();
+    expect(screen.getByTestId("connect-failure-guidance-link-threads")).toHaveAttribute(
+      "href",
+      threadsReviewGuidance.externalLink.url,
+    );
   });
 
   it("shows opening_soon as a neutral waiting state without an active connect CTA", async () => {

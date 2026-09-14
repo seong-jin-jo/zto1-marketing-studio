@@ -18,9 +18,14 @@ const SH=()=>({ "content-type":"application/json", authorization:`Bearer ${ST}`,
 const out=[]; const say=(n,ok,detail="")=>{out.push({n,ok});console.log(`${ok?"통과":"실패"}  ${n}${detail?"  "+detail:""}`);};
 
 console.log("== 생성실 ==");
-const t=fs.readFileSync("tests/studio/generation-fixture.ts","utf8");
-const m=t.match(/return \{([\s\S]*?)\n {2}\};\n\}/);
-const body=eval("({"+m[1].replace(/STUDIO_TEST_WORKSPACE_ID/g,JSON.stringify(W))+"})");
+// 감독 워커는 저장소 루트에서 이 스크립트를 실행할 수 있다. 현재 작업 디렉터리에
+// 의존하면 fixture를 읽기 전에 끝나 실제 생성 제공자 병목과 구분할 수 없으므로,
+// 검증기 자신의 위치를 기준으로 읽는다.
+// 요청 본문은 tests/studio/generation-request.fixture.json 하나에서 읽는다.
+// 종전에는 TS 파일에서 객체 리터럴을 정규식으로 오려 eval 했고, 리터럴 모양이 바뀌자
+// 네트워크 요청 전에 SyntaxError 로 죽었다(2026-09-12 코드리뷰 MAJOR).
+const body=JSON.parse(fs.readFileSync(new URL("../tests/studio/generation-request.fixture.json", import.meta.url),"utf8"));
+body.workspace_id=W;
 body.workspace_id=W;
 const g=await fetch(`${B}/api/studio/v1/generations`,{method:"POST",headers:SH(),body:JSON.stringify(body)});
 const gd=await g.json();

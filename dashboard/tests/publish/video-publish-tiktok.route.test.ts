@@ -1,3 +1,5 @@
+// 2026-09-07 정정: 제공자 실패를 502 로 돌려주던 계약을 바꿨다. 리버스 프록시가 502 를 보면
+// 우리 JSON 본문을 자기 HTML 오류 페이지로 갈아치워 사용자가 이유를 못 본다. 200 + ok:false 로 답한다.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "fs";
 import os from "os";
@@ -145,7 +147,7 @@ describe("/api/video/publish — TikTok reservation", () => {
   it("marks an init rejection failed and never exposes the provider reason", async () => {
     H.started = { ok: false, reason: "access_token=provider-secret" };
     const { response, body } = await publish(request());
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(200);
     expect(JSON.stringify(body)).not.toContain("provider-secret");
     expect(H.rows[0]?.status).toBe("failed");
   });

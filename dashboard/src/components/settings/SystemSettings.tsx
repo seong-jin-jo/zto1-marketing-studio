@@ -11,7 +11,7 @@ export function SystemSettings() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-stack-section">
       <div className="card p-stack-section">
-        <h3 className="text-body-sm font-medium text-muted mb-pad-inset">Cron Status</h3>
+        <h3 className="text-body-sm font-medium text-muted mb-pad-inset">예약 작업 상태</h3>
         <p className="text-caption text-subtle mb-stack">자동화 작업 실행 현황</p>
         <div className="space-y-stack">
           {jobs.map((j, i) => {
@@ -24,7 +24,7 @@ export function SystemSettings() {
                 </div>
                 <span className="text-caption text-subtle">
                   {j.lastStatus === "error" ? (
-                    <span className="text-danger">error</span>
+                    <span className="text-danger">오류</span>
                   ) : (
                     j.nextRunAt ? fmtTime(j.nextRunAt) : ""
                   )}

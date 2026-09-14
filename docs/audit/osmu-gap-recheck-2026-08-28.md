@@ -4,6 +4,39 @@
 
 이 문서는 `docs/audit/osmu-v62-api-gap-audit-v1-gpt-codex.md`의 2026-08-28 현재 정정본이다. 원 감사의 당시 판정은 보존하되 새 작업 발주는 이 문서를 먼저 본다.
 
+## 2026-09-12 이번에 닫은 갭(코드 완료, 검증 미실행)
+
+이 문서와 원 감사가 공통으로 남긴 잔여 네 항목(§`아직 남은 감사 항목`)을 현재 코드와 다시 대조했다.
+"성과가 규칙을 고친다"는 이 문서 이후 별도로 이미 닫혀 있었다(`891d0577`, `learned-rules-context.ts`,
+2026-09-10 확장 `learned-rules-merge.ts` — 재작업하지 않았다). 남은 네 항목 중 게시물별 성과 시계열,
+학습 이력, Threads 외 provider 수집기는 DB 구조나 외부 자격증명이 필요해 이번에도 배제한다.
+"일곱 플랫폼을 아우르는 서버 측 발행 중지 계약"만 기본 흐름(생성, 편집, **발행**, 성과)의 발행 단계에
+직접 붙어 있고 새 DB나 외부 자격증명 없이 만들 수 있어 이번 build 대상으로 골랐다.
+
+| 계약 | 구현 | 검증 |
+|---|---|---|
+| 대기 채널만 취소 | `queue.json`의 `channels[*].status === 'pending'`인 항목만 `canceled`로 전환 | 미검증(단위 계약 작성, 실행 못함) |
+| 이미 종료된 채널 보존 | `published`/`failed`/`skipped` 채널은 손대지 않음 | 미검증 |
+| 크론 경합 안전 | `mutateJson` fresh-read로 `threads-queue-tool.ts`의 `get_approved`→`update_channel`이 같은 순간에 일부 채널을 이미 끝냈어도 그 상태를 보고 나머지만 취소 | 미검증 |
+| 취소할 것이 없으면 거절 | 대기 채널이 하나도 없으면(이미 전부 끝남) 409 `NOTHING_TO_CANCEL`, 기존 상태 보존 | 미검증 |
+| 기존 흐름 보존 | 기존 승인, 삭제, 편집 인계, 큐 조회 경로는 그대로 유지(신규 라우트 추가만, 기존 라우트 수정 없음) | 근거 확인(diff 범위 확인) |
+
+이번 build는 코드와 계약 테스트(`dashboard/tests/api/queue-cancel.test.ts` 4건)까지만 완료했다.
+이번 세션에서 `npx vitest`·`npm run test`·`npx tsc --noEmit`·E2E 스크립트·localhost 실제 클릭 확인이
+전부 Bash 명령 승인 차단으로 실행되지 못했다. 승인 후 `docs/qa/qa-tracker.md`의 같은 항목 표를
+관찰 증거로 갱신해야 완료로 볼 수 있다. 자세한 내용은 `session-state.osmu.md` 2026-09-12 03시 18분 항목.
+
+이번 범위에서 구현하지 않은 것: 게시물별 성과 시계열 snapshot과 30일 비교, 학습 후보 수락·거절 이력,
+Threads 외 여섯 플랫폼의 실제 provider 성과 수집기. 이 셋은 그대로 남아 있다.
+
+STAMP | line: osmu | 생성: 2026-09-12 03:18 KST | model: claude-sonnet-5 | agent: code-builder | skill: 없음 | 고민: 검증을 못 돌린 상태에서 "닫았다"고 쓰면 위조가 된다. 그래서 이 절 전체를 "코드 완료, 검증 미실행"으로 못 박았다.
+
+SKILLS_USED: 없음. 코드 구현 전용 매칭 스킬 없음. SKILLS_SKIPPED: qa는 QA 단계 소유라 사용하지 않음.
+
+SOURCES: `docs/audit/osmu-v62-api-gap-audit-v1-gpt-codex.md` | `docs/audit/osmu-프로덕션수준-갭판정-v1.0.md` | `docs/prototype/openclaw-auto-4room-v63.html` | `docs/requests/회장-확정-요구사항-대장.md`
+
+MODEL: claude-sonnet-5 / code-builder
+
 ## 2026-08-29 현재 작업 단일 계약 build
 
 두 감사 문서의 미구현 및 부분 구현 항목을 현재 코드와 다시 대조했다. 댓글 행동, 성과 제안 큐 인계, 성과 0건 가설, 편집 장면 조작, 형식 검증, 첫 댓글, 발행 상태, 검토 후 복귀, 성과 수집 범위는 이미 구현돼 있어 제외했다. DB 구조나 외부 자격증명이 필요한 성과 snapshot, 학습 이력, 외부 수집기와 승인 시안이 지원하지 않는 서버 발행 중지도 제외했다. 그 결과 생성실 감사의 `현재 작업과 현재 단계 표시`를 기본 흐름에 가장 가까운 실제 갭으로 선택했다.

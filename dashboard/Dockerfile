@@ -19,12 +19,23 @@ RUN npm run build
 FROM node:20-alpine
 ARG BUILD_COMMIT="unknown"
 LABEL org.opencontainers.image.revision=$BUILD_COMMIT
-RUN apk add --no-cache docker-cli
+# ffmpeg = 영상 자막 굽기(api/video/subtitle)와 내레이션 합성(lib/higgsfield addNarration)의
+# 실행기. font-noto-cjk = 그 자막을 한글로 그릴 글꼴.
+#
+# 2026-09-14 확인: 이 이미지에 둘 다 없었다. 그래서 발행 대기 중인 영상에 자막이 한 자도
+# 없었고(내려받아 프레임을 떠서 확인) 내레이션 합성도 조용히 실패하고 있었다. 편집실에는
+# 자막 크기를 고르는 자리가 있는데 결과물에는 자막이 없는 상태였다. 글꼴이 없으면 ffmpeg 은
+# 한글을 네모로 그리므로 실행기만 넣는 것으로는 부족하다. 둘은 같이 들어와야 한 기능이 된다.
+RUN apk add --no-cache docker-cli ffmpeg font-noto-cjk
 # claude CLI — generateText의 폴백 경로(테넌트 Anthropic 키 미등록 시 `claude -p`).
 # 내부 4앱은 이 폴백으로 운영(운영자 Max 구독). 인증(~/.claude OAuth)은 런타임 볼륨 마운트로 주입:
 #   compose에 `- ~/.claude:/root/.claude:ro` (호스트가 사전 인증 필요 — 운영자 액션).
 # 테넌트가 자기 API 키를 등록하면 그 경로(HTTP API)로 가므로 claude CLI 불필요.
 RUN npm install -g @anthropic-ai/claude-code
+# 이미지·영상 생성기. 2026-09-06 실측으로 운영 컨테이너에 이 실행기가 없어 고객이 카드뉴스를
+# 만들 수 없다는 것이 드러났다(생성 요청이 곧바로 502). 자격증명은 이미지에 넣지 않고
+# claude 와 같은 방식으로 호스트에서 읽기 전용 마운트한다.
+RUN npm install -g @higgsfield/cli
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./

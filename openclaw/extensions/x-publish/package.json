@@ -1,0 +1,15 @@
+{
+  "name": "@openclaw/x-publish",
+  "version": "2026.9.13",
+  "private": true,
+  "description": "OpenClaw X API v2 publish plugin",
+  "type": "module",
+  "dependencies": {
+    "typebox": "1.1.39"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

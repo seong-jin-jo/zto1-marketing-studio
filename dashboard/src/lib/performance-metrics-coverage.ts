@@ -11,6 +11,17 @@ export interface MetricsCoverageAggregateRow {
   platform: string;
   published_count: unknown;
   collected_count: unknown;
+  /**
+   * 수집에서 내려놓은 글 수. 채널에서 지워졌거나 다른 계정 글이라 다시 시도해도 영원히 안
+   * 채워지는 것들이다.
+   *
+   * 이걸 세지 않으면 지워진 글 한 편이 "발행 8건 중 7건만 수집" 을 영원히 띄운다. 상시로
+   * 켜진 경고는 아무도 안 보고, 그 옆에 진짜 미수집이 생겨도 묻힌다. 없애서 조용하게 만드는
+   * 것이 아니라 **다른 칸에 세는 것**이다.
+   *
+   * 옛 호출자는 이 필드를 안 보낸다. 그때는 0 으로 읽어 예전과 똑같이 판정한다.
+   */
+  retired_count?: unknown;
   last_collected_at: string | null;
 }
 
@@ -24,6 +35,7 @@ interface MetricsCollectorDefinition {
 }
 
 const THREADS_METRICS = ["views", "likes", "replies", "reposts"] as const;
+const ENGAGEMENT_METRICS = ["views", "likes", "replies"] as const;
 
 const DEFINITIONS: Record<PublishStatusTarget, MetricsCollectorDefinition> = {
   threads: {
@@ -37,52 +49,58 @@ const DEFINITIONS: Record<PublishStatusTarget, MetricsCollectorDefinition> = {
   x: {
     platform: "x",
     storagePlatforms: ["x"],
-    collectionSupported: false,
-    collector: null,
-    metrics: [],
-    unsupportedReason: "현재 X 연결은 발행만 지원하며 게시물 성과 수집기는 연결되지 않았습니다.",
+    collectionSupported: true,
+    collector: "x_public_metrics",
+    metrics: THREADS_METRICS,
+    unsupportedReason: null,
   },
   instagram: {
     platform: "instagram",
     storagePlatforms: ["instagram"],
-    collectionSupported: false,
-    collector: null,
-    metrics: [],
-    unsupportedReason: "현재 Instagram 피드 게시물 성과 수집기는 연결되지 않았습니다.",
+    collectionSupported: true,
+    collector: "instagram_media_insights",
+    metrics: ENGAGEMENT_METRICS,
+    unsupportedReason: null,
   },
   facebook: {
     platform: "facebook",
     storagePlatforms: ["facebook"],
-    collectionSupported: false,
-    collector: null,
-    metrics: [],
-    unsupportedReason: "현재 Facebook 게시물 성과 수집기는 연결되지 않았습니다.",
+    collectionSupported: true,
+    collector: "facebook_post_insights",
+    metrics: ENGAGEMENT_METRICS,
+    unsupportedReason: null,
   },
   shorts: {
     platform: "shorts",
     storagePlatforms: ["youtube", "shorts"],
-    collectionSupported: false,
-    collector: null,
-    metrics: [],
-    unsupportedReason: "현재 YouTube Analytics 수집기는 연결되지 않았습니다.",
+    collectionSupported: true,
+    collector: "youtube_video_statistics",
+    metrics: ENGAGEMENT_METRICS,
+    unsupportedReason: null,
   },
   reels: {
     platform: "reels",
     storagePlatforms: ["instagram_reels", "reels"],
-    collectionSupported: false,
-    collector: null,
-    metrics: [],
-    unsupportedReason: "현재 Instagram Reels 성과 수집기는 연결되지 않았습니다.",
+    collectionSupported: true,
+    collector: "instagram_media_insights",
+    metrics: ENGAGEMENT_METRICS,
+    unsupportedReason: null,
   },
   tiktok: {
     platform: "tiktok",
     storagePlatforms: ["tiktok"],
-    collectionSupported: false,
-    collector: null,
-    metrics: [],
-    unsupportedReason: "현재 TikTok 게시물 성과 수집기는 연결되지 않았습니다.",
+    collectionSupported: true,
+    collector: "tiktok_video_query",
+    metrics: THREADS_METRICS,
+    unsupportedReason: null,
   },
 };
+
+/** 안 보낸 필드는 0 이다. 보냈는데 숫자가 아니면 그건 조용히 넘길 것이 아니라 오류다. */
+function optionalCount(value: unknown, field: string): number {
+  if (value === undefined || value === null) return 0;
+  return count(value, field);
+}
 
 function count(value: unknown, field: string): number {
   const parsed = Number(value);
@@ -100,6 +118,7 @@ function missingReason(
   definition: MetricsCollectorDefinition,
   publishedCount: number,
   collectedCount: number,
+  retiredCount: number,
 ) {
   if (publishedCount === 0) {
     return {
@@ -113,16 +132,20 @@ function missingReason(
       message: definition.unsupportedReason!,
     };
   }
-  if (collectedCount === 0) {
+  // 내려놓은 글은 "아직 안 한 것" 이 아니라 "더 할 수 없는 것" 이다. 기다림의 분모에서 뺀다.
+  const collectable = publishedCount - retiredCount;
+  if (collectedCount === 0 && collectable > 0) {
     return {
       code: "NOT_COLLECTED_YET" as const,
       message: "발행 게시물은 있지만 아직 성과 수집을 실행하지 않았습니다.",
     };
   }
-  if (collectedCount < publishedCount) {
+  if (collectedCount < collectable) {
     return {
       code: "PARTIAL_COLLECTION" as const,
-      message: `발행 ${publishedCount}건 중 ${collectedCount}건만 성과를 수집했습니다.`,
+      message: retiredCount > 0
+        ? `발행 ${publishedCount}건 중 ${retiredCount}건은 채널에서 더 읽을 수 없어 수집에서 내려놓았고, 나머지 ${collectable}건 중 ${collectedCount}건만 성과를 수집했습니다.`
+        : `발행 ${publishedCount}건 중 ${collectedCount}건만 성과를 수집했습니다.`,
     };
   }
   return null;
@@ -132,10 +155,14 @@ export function buildPerformanceMetricsCoverage(rows: MetricsCoverageAggregateRo
   const normalized = rows.map((row) => {
     const publishedCount = count(row.published_count, "published_count");
     const collectedCount = count(row.collected_count, "collected_count");
+    const retiredCount = optionalCount(row.retired_count, "retired_count");
     if (collectedCount > publishedCount) {
       throw new Error("collected_count cannot exceed published_count");
     }
-    return { ...row, publishedCount, collectedCount };
+    if (retiredCount > publishedCount) {
+      throw new Error("retired_count cannot exceed published_count");
+    }
+    return { ...row, publishedCount, collectedCount, retiredCount };
   });
 
   return {
@@ -146,6 +173,7 @@ export function buildPerformanceMetricsCoverage(rows: MetricsCoverageAggregateRo
       const matches = normalized.filter((row) => definition.storagePlatforms.includes(row.platform));
       const publishedCount = matches.reduce((sum, row) => sum + row.publishedCount, 0);
       const collectedCount = matches.reduce((sum, row) => sum + row.collectedCount, 0);
+      const retiredCount = matches.reduce((sum, row) => sum + row.retiredCount, 0);
       return {
         platform,
         storagePlatforms: definition.storagePlatforms,
@@ -154,9 +182,14 @@ export function buildPerformanceMetricsCoverage(rows: MetricsCoverageAggregateRo
         metrics: definition.metrics,
         publishedCount,
         collectedCount,
-        missingCount: publishedCount - collectedCount,
+        /**
+         * 내려놓은 글은 미수집이 아니다. 같은 칸에 섞어 세면 "채워질 것" 과 "영영 안 채워질
+         * 것" 이 한 숫자로 뭉개지고, 화면은 영원히 빨간 불을 띄운다.
+         */
+        retiredCount,
+        missingCount: Math.max(0, publishedCount - collectedCount - retiredCount),
         lastCollectedAt: latest(matches.map((row) => row.last_collected_at)),
-        missingReason: missingReason(definition, publishedCount, collectedCount),
+        missingReason: missingReason(definition, publishedCount, collectedCount, retiredCount),
       };
     }),
   };

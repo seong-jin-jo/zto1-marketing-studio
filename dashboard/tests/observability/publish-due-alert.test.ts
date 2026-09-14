@@ -42,6 +42,9 @@ vi.mock("@/lib/db", () => ({
       (strings: TemplateStringsArray) => {
         const text = strings.join("?");
         if (/WITH\s+due\s+AS/i.test(text)) return Promise.resolve(H.rows);
+        if (/UPDATE\s+schedules/i.test(text) && /RETURNING\s+id/i.test(text)) {
+          return Promise.resolve([{ id: "lease-owned" }]);
+        }
         return Promise.resolve([]);
       },
       { json: (value: unknown) => value },

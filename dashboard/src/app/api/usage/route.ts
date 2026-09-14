@@ -21,7 +21,9 @@ function emptyDay(): DailyUsage {
 
 function addUsage(target: DailyUsage, eventType: string, rawQuantity: number | string): void {
   const quantity = Number(rawQuantity) || 0;
-  if (eventType === "aiGeneration" || eventType === "shortsGeneration") {
+  // 2026-09-06: 미디어 생성을 고객에게 열면서 mediaGeneration 이 새로 들어온다. 이 분류에
+  // 안 넣으면 usage_events 에는 쌓이는데 화면 합계에서 빠져 고객이 자기 사용량을 못 본다.
+  if (eventType === "aiGeneration" || eventType === "shortsGeneration" || eventType === "mediaGeneration") {
     target.aiGenerations += quantity;
   } else if (eventType === "publication" || eventType === "shortsVideoMinute") {
     target.publications += quantity;

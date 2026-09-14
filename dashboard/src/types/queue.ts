@@ -1,19 +1,29 @@
 export interface ChannelStatus {
-  status: "pending" | "published" | "failed" | "skipped";
+  status: "pending" | "publishing" | "published" | "failed" | "skipped" | "canceled";
   publishedAt: string | null;
   error: string | null;
   mediaId?: string | null;
   tweetId?: string | null;
+  publishAttempt?: {
+    claimToken: string;
+    idempotencyKey: string;
+    startedAt: string;
+    state: "publishing" | "provider_succeeded" | "provider_failed" | "result_unknown";
+    providerId?: string | null;
+    error?: string | null;
+    updatedAt?: string;
+  } | null;
 }
 
 export interface Post {
   id: string;
   text: string;
-  status: "draft" | "approved" | "published" | "failed";
+  status: "draft" | "approved" | "published" | "failed" | "canceled";
   createdAt: string;
   approvedAt?: string;
   scheduledAt?: string;
   publishedAt?: string;
+  canceledAt?: string;
   generatedAt?: string;
   imageUrl?: string;
   imageUrls?: string[];

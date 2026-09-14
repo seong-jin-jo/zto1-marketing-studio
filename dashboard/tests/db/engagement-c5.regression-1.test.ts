@@ -6,7 +6,7 @@ import { getDatabaseUrl } from "../isolation/_env";
 // Regression: OSMU-BLOCK-C5. 동시 좋아요 요청 둘이 기존 상태 확인을 함께 통과해
 // 외부 공급자를 두 번 호출하던 결함.
 // Found by 교차 모델 검수 on 2026-08-28.
-// Report: docs/audit/osmu-cross-review-2026-08-28-opus.md
+// Report: docs/_archive/legacy-20260912/audit/osmu-cross-review-2026-08-28-opus.md
 
 let admin: ReturnType<typeof postgres> | null = null;
 let tenantId = "";

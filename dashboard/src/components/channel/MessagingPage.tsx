@@ -23,7 +23,7 @@ export function MessagingPage({ channel }: MessagingPageProps) {
   const status = cfg?.status || "available";
   const connected = !!cfg?.connected;
   const keys = cfg?.keys || {};
-  const sg = setupGuides[channel] || { fields: [], labels: [], quick: ["Setup guide 준비 중"], detail: "" };
+  const sg = setupGuides[channel] || { fields: [], labels: [], quick: ["연결 안내 준비 중"], detail: "" };
 
   const handleCredSave = async (newKeys: Record<string, string>) => {
     const r = await apiPost<{ verified?: boolean; error?: string; account?: string }>(`/api/channel-config/${channel}`, newKeys);
@@ -31,8 +31,8 @@ export function MessagingPage({ channel }: MessagingPageProps) {
       showToast(`${label} 연결 완료${r.account ? ". " + r.account : ""}`, "success");
       mutateConfig();
     } else {
-      showToast(`연결 실패: ${r?.error || "Invalid credentials"}`, "error");
-      throw new Error(r?.error || "Verification failed");
+      showToast(`연결 실패: ${r?.error || "연결 정보를 확인해 주세요"}`, "error");
+      throw new Error(r?.error || "연결 확인에 실패했습니다");
     }
   };
 
@@ -64,15 +64,15 @@ export function MessagingPage({ channel }: MessagingPageProps) {
           />
         </div>
 
-        {/* Channel Info + Setup Guide */}
+        {/* 채널 정보와 연결 안내 */}
         <div className="space-y-pad-inset">
           <div className="card p-stack-section">
-            <h3 className="text-body-sm font-medium text-muted mb-stack">Channel Info</h3>
+            <h3 className="text-body-sm font-medium text-muted mb-stack">채널 정보</h3>
             <div className="space-y-stack-tight text-body-sm">
               <div className="flex justify-between">
-                <span className="text-subtle">Status</span>
+                <span className="text-subtle">상태</span>
                 <span className={status === "live" ? "text-success" : (connected || status === "connected") ? "text-accent" : "text-subtle"}>
-                  {status === "live" ? "Live" : (connected || status === "connected") ? "Connected" : "Not connected"}
+                  {status === "live" ? "사용 중" : (connected || status === "connected") ? "연결됨" : "연결 안 됨"}
                 </span>
               </div>
             </div>

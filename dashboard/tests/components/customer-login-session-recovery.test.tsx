@@ -77,10 +77,10 @@ describe("고객 로그인 Supabase 세션 복구 경계", () => {
   it("QA-AUTH-11 정상: 서버가 확인한 고객 세션만 안전한 returnTo로 복귀한다", async () => {
     const validJwt = `${"d".repeat(24)}.${"e".repeat(24)}.${"f".repeat(24)}`;
     mocks.getSession.mockResolvedValue({ data: { session: { access_token: validJwt } } });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({
       isOperator: false,
       tenant: { id: "customer-1" },
-    })));
+    }))));
 
     render(<LoginPage />);
 
@@ -99,7 +99,7 @@ describe("고객 로그인 Supabase 세션 복구 경계", () => {
   ])("QA-AUTH-13 거절: /api/me 200 $label 응답은 고객 로그인 성공으로 승인하지 않는다", async ({ payload }) => {
     const token = `${"d".repeat(24)}.${"e".repeat(24)}.${"f".repeat(24)}`;
     mocks.getSession.mockResolvedValue({ data: { session: { access_token: token } } });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(payload)));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json(payload))));
 
     render(<LoginPage />);
 
@@ -114,10 +114,10 @@ describe("고객 로그인 Supabase 세션 복구 경계", () => {
     const token = `${"d".repeat(24)}.${"e".repeat(24)}.${"f".repeat(24)}`;
     window.history.replaceState(null, "", "/login?returnTo=%2Fstudio%3Froom%3Dedit#access_token=callback");
     mocks.getSession.mockResolvedValue({ data: { session: { access_token: token } } });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({
       isOperator: false,
       tenant: { id: "customer-1" },
-    })));
+    }))));
 
     render(<LoginPage />);
 

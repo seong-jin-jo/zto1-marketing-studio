@@ -106,7 +106,8 @@ ensure_app() {
     return 1
   }
   echo "[$(date +%H:%M)] 앱이 죽어 있다. 되살린다."
-  ( cd "$ROOT/dashboard" && nohup npx next dev -p 3456 > /tmp/osmu-dev.log 2>&1 & )
+  # package.json의 검증된 개발 서버 계약(Webpack)을 우회하지 않는다.
+  ( cd "$ROOT/dashboard" && nohup npm run dev -- -p 3456 > /tmp/osmu-dev.log 2>&1 & )
   for _ in $(seq 1 20); do
     sleep 3
     curl -s -o /dev/null --max-time 5 http://localhost:3456/api/health 2>/dev/null && {

@@ -69,7 +69,7 @@ export default function KeywordPlannerPage() {
     <div className="px-region py-stack-section">
       <div className="mb-stack-section">
         <BackButton />
-        <h2 className="text-subheading font-bold text-text">Keyword Planner</h2>
+        <h2 className="text-subheading font-bold text-text">키워드 찾기</h2>
         <p className="text-caption text-subtle mt-micro">네이버 검색광고 API 기반 키워드 검색량 조회</p>
       </div>
 
@@ -113,7 +113,7 @@ export default function KeywordPlannerPage() {
                     <th className="text-right px-pad-inset py-stack-tight">모바일</th>
                     <th className="text-right px-pad-inset py-stack-tight">합계</th>
                     <th className="text-right px-pad-inset py-stack-tight">경쟁도</th>
-                    <th className="text-right px-pad-inset py-stack-tight">Bank</th>
+                    <th className="text-right px-pad-inset py-stack-tight">목록</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -131,7 +131,7 @@ export default function KeywordPlannerPage() {
                           <button
                             onClick={() => handleAddToBank(r.keyword)}
                             className="text-caption text-accent hover:text-accent"
-                          >+ Bank</button>
+                          >목록에 추가</button>
                         )}
                       </td>
                     </tr>

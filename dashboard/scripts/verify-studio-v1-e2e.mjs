@@ -8,10 +8,9 @@ const token = process.env.STUDIO_DEV_BEARER_TOKEN;
 const workspace = (process.env.STUDIO_DEV_WORKSPACE_IDS || "").split(",")[0].trim();
 if (!token || !workspace) throw new Error("STUDIO_DEV_BEARER_TOKEN 과 STUDIO_DEV_WORKSPACE_IDS 가 필요하다");
 
-const fixtureText = fs.readFileSync(new URL("../tests/studio/generation-fixture.ts", import.meta.url), "utf8");
-const literal = fixtureText.match(/return \{([\s\S]*?)\n {2}\};\n\}/);
-if (!literal) throw new Error("generation-fixture.ts 에서 요청 본문을 찾지 못했다");
-const body = eval(`({${literal[1].replace(/STUDIO_TEST_WORKSPACE_ID/g, JSON.stringify(workspace))}})`);
+// 요청 본문은 tests/studio/generation-request.fixture.json 하나에서 읽는다.
+// 정규식+eval 파싱은 요청 전에 SyntaxError 로 죽었다(2026-09-12 코드리뷰 MAJOR).
+const body = JSON.parse(fs.readFileSync(new URL("../tests/studio/generation-request.fixture.json", import.meta.url), "utf8"));
 body.workspace_id = workspace;
 
 const auth = { authorization: `Bearer ${token}` };
@@ -21,6 +20,18 @@ const record = (name, got, want) => {
   const ok = got === want;
   results.push({ name, got, want, ok });
   console.log(`${ok ? "통과" : "실패"}  ${name}  기대 ${want} 실제 ${got}`);
+};
+const rejectAllCandidates = async (generation) => {
+  const statuses = [];
+  for (const candidate of generation.candidates) {
+    const response = await fetch(`${base}/api/studio/v1/generations/${generation.job_id}/rejections`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...auth },
+      body: JSON.stringify({ candidate_id: candidate.candidate_id }),
+    });
+    statuses.push(response.status);
+  }
+  return statuses.every((status) => status === 201);
 };
 
 const noToken = await fetch(`${base}/api/studio/v1/generations`, {
@@ -37,8 +48,13 @@ const empty = await fetch(`${base}/api/studio/v1/generations`, { method: "POST",
 record("빈 본문은 어느 항목이 빠졌는지 밝히며 거절된다", empty.status, 422);
 
 const created = await fetch(`${base}/api/studio/v1/generations`, { method: "POST", headers: json(), body: JSON.stringify(body) });
+const createdBody = await created.json();
 record("일곱 층 학습 정보를 갖춘 생성 요청은 받아들여진다", created.status, 201);
-const payload = (await created.json()).data;
+if (created.status !== 201 || !createdBody.data) {
+  console.log(JSON.stringify(createdBody).slice(0, 500));
+  process.exit(1);
+}
+const payload = createdBody.data;
 record("후보를 세 장 돌려준다", payload.candidates.length, 3);
 
 const jobId = payload.job_id;
@@ -57,7 +73,16 @@ const oppositeZoneCreated = await fetch(`${base}/api/studio/v1/generations`, {
   method: "POST", headers: json(), body: JSON.stringify(oppositeZoneBody),
 });
 record("다른 시간대의 별도 작업도 생성된다", oppositeZoneCreated.status, 201);
-const oppositeZoneJobId = (await oppositeZoneCreated.json()).data?.job_id;
+const oppositeZoneCreatedBody = await oppositeZoneCreated.json();
+if (oppositeZoneCreated.status !== 201 || !oppositeZoneCreatedBody.data) {
+  console.log(JSON.stringify(oppositeZoneCreatedBody).slice(0, 500));
+  process.exit(1);
+}
+const oppositeZonePayload = oppositeZoneCreatedBody.data;
+const oppositeZoneJobId = oppositeZonePayload?.job_id;
+
+record("첫 작업의 후보 세 장을 모두 거절로 남긴다", await rejectAllCandidates(payload), true);
+record("다른 시간대 작업의 후보 세 장도 모두 거절로 남긴다", await rejectAllCandidates(oppositeZonePayload), true);
 
 // 무료 다시 만들기 몫은 작업이나 클라이언트 시간대가 아니라 회원의 UTC 하루 단위다.
 // 반복 실행으로 이미 오늘 몫을 쓴 환경에서는 두 호출이 모두 409일 수 있다. 첫 호출이 201이면

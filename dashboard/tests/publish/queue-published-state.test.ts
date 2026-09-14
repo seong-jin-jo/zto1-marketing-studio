@@ -49,7 +49,9 @@ describe("markQueuePublished", () => {
     });
     const queue = JSON.parse(fs.readFileSync(path.join(tenantDir, "queue.json"), "utf8"));
 
-    expect(found).toBe(true);
+    // 2026-09-05: 반환값이 참·거짓에서 "updated"·"absent" 로 바뀌었다. 큐에 없는 것과
+    // 갱신에 실패한 것을 호출부가 구분해야 하기 때문이다(스튜디오 직접 발행은 큐에 없다).
+    expect(found).toBe("updated");
     expect(queue.posts[0]).toMatchObject({
       id: postId,
       status: "published",

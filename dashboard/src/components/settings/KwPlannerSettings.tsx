@@ -66,7 +66,7 @@ export function KwPlannerSettings() {
         <div className="flex items-center justify-between mb-stack">
           <div className="flex items-center gap-stack-tight">
             <span className="w-5 h-5 rounded-chip bg-success flex items-center justify-center text-caption font-bold text-status-fg">N</span>
-            <span className="text-body-sm font-medium text-text">Naver Keyword Planner</span>
+            <span className="text-body-sm font-medium text-text">네이버 키워드 찾기</span>
           </div>
           <div className="flex items-center gap-stack-tight">
             <span className={`text-caption px-stack-tight py-micro rounded-pill ${kwCfg?.configured ? "bg-success/15 text-success" : "bg-surface-2 text-subtle"}`}>
@@ -103,7 +103,7 @@ export function KwPlannerSettings() {
                     value={clientSecretVal}
                     readOnly={!isEditable}
                     onChange={(e) => setKwForm({ ...kwForm, clientSecret: e.target.value })}
-                    placeholder="Secret Key"
+                    placeholder="보안 키"
                     title={clientSecretVal}
                     className={`w-full ${isEditable ? "bg-surface" : "bg-surface/50 cursor-default"} border border-border rounded-chip px-stack py-stack-tight pr-wide text-caption text-muted placeholder-gray-600 font-mono`}
                   />
@@ -122,7 +122,7 @@ export function KwPlannerSettings() {
                   value={customerIdVal}
                   readOnly={!isEditable}
                   onChange={(e) => setKwForm({ ...kwForm, customerId: e.target.value })}
-                  placeholder="Customer ID"
+                  placeholder="고객 식별자"
                   title={customerIdVal}
                   className={`w-full ${isEditable ? "bg-surface" : "bg-surface/50 cursor-default"} border border-border rounded-chip px-stack py-stack-tight text-caption text-muted placeholder-gray-600 font-mono`}
                 />
@@ -169,7 +169,7 @@ export function KwPlannerSettings() {
                   value={clientIdVal}
                   readOnly={!isEditable}
                   onChange={(e) => setDlForm({ ...dlForm, clientId: e.target.value })}
-                  placeholder="Client ID"
+                  placeholder="클라이언트 식별자"
                   title={clientIdVal}
                   className={`w-full ${isEditable ? "bg-surface" : "bg-surface/50 cursor-default"} border border-border rounded-chip px-stack py-stack-tight text-caption text-muted placeholder-gray-600 font-mono`}
                 />
@@ -182,7 +182,7 @@ export function KwPlannerSettings() {
                     value={clientSecretVal}
                     readOnly={!isEditable}
                     onChange={(e) => setDlForm({ ...dlForm, clientSecret: e.target.value })}
-                    placeholder="Client Secret"
+                    placeholder="클라이언트 보안 키"
                     title={clientSecretVal}
                     className={`w-full ${isEditable ? "bg-surface" : "bg-surface/50 cursor-default"} border border-border rounded-chip px-stack py-stack-tight pr-wide text-caption text-muted placeholder-gray-600 font-mono`}
                   />

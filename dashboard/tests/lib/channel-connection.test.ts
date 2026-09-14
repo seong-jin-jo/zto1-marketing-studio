@@ -72,5 +72,6 @@ describe("channel_accounts 연결상태 SSOT", () => {
 
     await expect(getChannelConnectionStates("tenant-1", ["x", "threads", "instagram"]))
       .resolves.toEqual({ x: "connected", threads: "reconnect", instagram: "disconnected" });
+    expect(H.query).toContain("is_default = true");
   });
 });

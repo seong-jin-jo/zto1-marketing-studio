@@ -1,6 +1,7 @@
 import { getProvider, exchangeCode, exchangeFacebookCode, publicOrigin, verifyState } from "@/lib/social-connect";
 import { escapeHtml, oauthErrorMessage } from "@/lib/oauth-errors";
 import { resolveExternalIdentity, upsertChannelAccount, syncLegacyIntegration } from "@/lib/channel-accounts";
+import { recordOperationalIncident, normalizeIncidentSource } from "@/lib/observability/incidents";
 
 // GET /api/connect/{provider}/callback?code=...&state=<tenantId>
 // provider OAuth 리다이렉트(인증 없음 — middleware 공개). state로 테넌트 식별 → code를 토큰 교환 →
@@ -137,6 +138,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
     if (!tok.accessToken) {
       // 진단(2026-08-14 회장 재연결 실패 추적): 토큰/시크릿 미포함, 에러 사유만 기록. 원인 확정 후 제거.
       console.error("[connect-callback][exchange-fail]", provider, tok.error);
+      // 컨테이너 로그는 재배포에서 사라진다. 2026-09-05 인스타그램 장기 토큰 실패가 그렇게 증발해
+      // 원인을 못 잡았다. 제공자가 준 사유를 DB 인시던트로 남겨 다음 시도 한 번이면 확정되게 한다.
+      // 토큰·시크릿은 여기 오지 않는다 — tok.error 는 제공자 메시지와 상태 코드뿐이다.
+      await recordOperationalIncident({
+        workspaceId: tenantId,
+        category: "external_service_error",
+        source: normalizeIncidentSource(provider),
+        reasonCode: "http_4xx",
+        severity: "error",
+        intervention: "human",
+        resourceKey: `connect-exchange: ${(tok.error || "사유 없음").slice(0, 180)}`,
+      });
       return fail(oauthErrorMessage(tok.error || "토큰 교환 실패", cfg.label).slice(0, 240));
     }
 
@@ -164,7 +177,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
       ? new Date(Date.now() + tok.expiresInSeconds * 1000).toISOString()
       : null;
 
-    const { id: accountId, isDefault } = await upsertChannelAccount({
+    const { id: accountId, isDefault, reconnected } = await upsertChannelAccount({
       tenantId,
       provider,
       externalId: identity.externalId,
@@ -181,7 +194,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
     // 기본계정의 토큰을 덮어쓰면 안 된다(요구사항 2). isDefault=true일 때만 동기화.
     if (isDefault) await syncLegacyIntegration(tenantId, provider, accountId);
 
-    return resultHtml(`${cfg.label} 연결 완료!`, "이 창을 닫고 대시보드로 돌아가세요.", { provider, ok: true, origin });
+    const title = reconnected ? `${cfg.label} 연결 새로 고침` : `${cfg.label} 연결 완료`;
+    const message = reconnected
+      ? "연결을 새로 고쳤습니다. 이 창을 닫고 대시보드로 돌아가세요."
+      : "이 창을 닫고 대시보드로 돌아가세요.";
+    return resultHtml(title, message, { provider, ok: true, origin });
   } catch (e) {
     // 진단(2026-08-14 회장 재연결 실패 추적): 신원검증/저장 예외 사유 기록(토큰 미포함). 원인 확정 후 제거.
     console.error("[connect-callback][catch]", provider, e instanceof Error ? e.message : String(e));

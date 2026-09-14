@@ -35,10 +35,10 @@ describe("readonly/edit pattern integrity", () => {
     expect(content).toContain("editable");
   });
 
-  it("CredentialForm must have Show/Hide toggle", () => {
+  it("V69-COPY-03 연결 정보 입력은 보기/숨기기 전환을 유지한다", () => {
     const filePath = path.resolve(__dirname, "../../src/components/shared/CredentialForm.tsx");
     const content = fs.readFileSync(filePath, "utf-8");
-    expect(content).toContain("Show");
-    expect(content).toContain("Hide");
+    expect(content).toContain("보기");
+    expect(content).toContain("숨기기");
   });
 });

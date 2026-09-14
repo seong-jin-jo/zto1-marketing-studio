@@ -1,5 +1,5 @@
 export const VIDEO_ASPECT_RATIOS = ["9:16", "1:1", "16:9"] as const;
-export const CARD_ASPECT_RATIOS = ["1:1", "4:5"] as const;
+export const CARD_ASPECT_RATIOS = ["4:5", "1:1"] as const;
 export const SUBTITLE_SIZES = ["작게", "보통", "크게"] as const;
 export const PLAYBACK_SPEEDS = [0.75, 1, 1.25, 1.5] as const;
 export const EDIT_VOICES = ["차분한 남성", "또렷한 여성", "내 목소리 복제"] as const;
@@ -8,6 +8,9 @@ export const EDIT_MUSIC_TRACKS = ["없음", "잔잔한 로파이", "밝은 어�
 export const EDIT_MUSIC_VOLUMES = [0, 10, 20, 35] as const;
 
 export type ContentEditFormat =
+  | {
+    kind: "text";
+  }
   | {
     kind: "video";
     aspectRatio: typeof VIDEO_ASPECT_RATIOS[number];
@@ -56,8 +59,9 @@ function oneOf<T extends readonly unknown[]>(
 }
 
 export function defaultContentEditFormat(kind: ContentEditFormat["kind"]): ContentEditFormat {
+  if (kind === "text") return { kind };
   if (kind === "card") {
-    return { kind, aspectRatio: "1:1", subtitleSize: "보통", background: "작업실 책상" };
+    return { kind, aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" };
   }
   if (kind === "audio") {
     return { kind, voice: "차분한 남성", musicTrack: "없음", musicVolume: 20 };
@@ -70,6 +74,9 @@ export function validateContentEditFormat(value: unknown): ContentEditFormatVali
     return { valid: false, value: null, issues: [{ field: "edit_format", message: "edit_format은 객체여야 합니다" }] };
   }
   const issues: ContentEditFormatIssue[] = [];
+  if (value.kind === "text") {
+    return { valid: true, value: { kind: "text" }, issues: [] };
+  }
   if (value.kind === "video") {
     const aspectRatio = oneOf(value, "aspectRatio", VIDEO_ASPECT_RATIOS, issues);
     const subtitleSize = oneOf(value, "subtitleSize", SUBTITLE_SIZES, issues);
@@ -101,6 +108,6 @@ export function validateContentEditFormat(value: unknown): ContentEditFormatVali
   return {
     valid: false,
     value: null,
-    issues: [{ field: "kind", message: "kind 값은 video, card, audio 중 하나여야 합니다" }],
+    issues: [{ field: "kind", message: "kind 값은 text, video, card, audio 중 하나여야 합니다" }],
   };
 }

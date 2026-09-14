@@ -11,7 +11,7 @@ const customerSurfaces: Array<{
   retained?: string[];
 }> = [
   {
-    file: "src/app/page.tsx",
+    file: "src/components/home/PerformanceDashboard.tsx",
     forbidden: ["/api/cron-status", "/api/token-status"],
     retained: ["/api/metrics"],
   },

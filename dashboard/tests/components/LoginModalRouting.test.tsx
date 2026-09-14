@@ -74,7 +74,7 @@ describe("운영자 401 복구 모달", () => {
   });
 
   it("QA-AUTH-20 정상: /api/me가 운영자를 확인한 뒤에만 operator 종류와 토큰을 저장한다", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ isOperator: true, tenant: null })));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json({ isOperator: true, tenant: null }))));
     openModal();
     fireEvent.change(screen.getByPlaceholderText("운영자 토큰"), { target: { value: " verified-operator-token " } });
     fireEvent.click(screen.getByRole("button", { name: "로그인" }));

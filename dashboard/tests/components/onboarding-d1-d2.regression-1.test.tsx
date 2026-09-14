@@ -8,7 +8,7 @@ import { OnboardingChecklist } from "@/components/shared/OnboardingChecklist";
 // Regression: OSMU-BLOCK-D1. 브랜드 문서 안내가 첫 콘텐츠 동선 정리 중
 // 삭제된 결함.
 // Found by 교차 모델 검수 on 2026-08-28.
-// Report: docs/audit/osmu-cross-review-2026-08-28-opus.md
+// Report: docs/_archive/legacy-20260912/audit/osmu-cross-review-2026-08-28-opus.md
 
 const H = vi.hoisted(() => ({
   checklist: { created: false, wiki: false, channel: false, published: false, analytics: false },

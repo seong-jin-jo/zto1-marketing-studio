@@ -6,6 +6,26 @@ on:
         description: '띄울 서비스 (compose 서비스명 공백구분, 비우면 전체)'
         required: false
         default: ''
+      force_generator_credentials:
+        description: '이미지·영상 생성기 자격증명을 시크릿 값으로 강제로 덮어쓸지 (평소 비움 — 살아 있는 로그인을 죽인다)'
+        required: false
+        default: 'false'
+      reimport_oauth:
+        description: 'OAuth 앱 자격증명을 환경변수 값으로 다시 들여올 제공자 (공백구분, 비우면 안 함)'
+        required: false
+        default: ''
+      grow_disk:
+        description: '게스트 파일시스템을 디스크 끝까지 늘릴지 (Proxmox 에서 디스크를 늘린 직후 1회만. 평소 비움)'
+        required: false
+        default: ''
+      fix_guest_agent:
+        description: 'Proxmox 게스트 에이전트를 설치·기동할지 (Proxmox 화면에 이 VM 디스크 사용량이 안 뜰 때. 평소 비움)'
+        required: false
+        default: ''
+      reclaim_storage:
+        description: '지운 블록을 저장소에 돌려줄지 (fstrim. 다른 VM 이 쓸 공간을 회수한다)'
+        required: false
+        default: ''
 jobs:
   deploy:
     runs-on: [self-hosted, marketing_runner]
@@ -15,6 +35,160 @@ jobs:
           if [ -d "$GITHUB_WORKSPACE" ]; then
             docker run --rm -v "$GITHUB_WORKSPACE":/w alpine:3 sh -c 'rm -rf /w/.[!.]* /w/..?* /w/* 2>/dev/null || true' || true
           fi
+      - name: 게스트 파일시스템 확장 (Proxmox 디스크 확장 직후 1회)
+        # Proxmox 에서 가상 디스크를 늘려도 게스트 안 파티션과 파일시스템은 그대로다.
+        # 늘어난 공간은 파티션 뒤 빈 자리로만 존재하고 df 에는 잡히지 않는다.
+        # 게스트 에이전트가 죽어 있어(agent/get-fsinfo 500) Proxmox 쪽에서 명령을 못 넣는다.
+        #
+        # sudo 로 하려다 막혔다: "a terminal is required to read the password".
+        # 러너 사용자에게 비밀번호 없는 sudo 가 없다. 대신 러너는 이미 도커를 쓴다.
+        # 도커 데몬 접근 권한은 호스트 root 와 동등하므로, 특권 컨테이너에서 호스트 장치를
+        # 직접 다룬다. 새 권한을 얻는 것이 아니라 이미 가진 권한을 쓰는 것이다.
+        #
+        # 마운트된 root 파티션도 온라인으로 늘릴 수 있다. 커널이 BLKPG 로 파티션 크기 변경을
+        # 받고, ext4 는 마운트 상태에서 resize2fs 가 된다. 재부팅도 서비스 중단도 없다.
+        #
+        # 2026-09-09: 마케팅 VM 이 50GB 라 전체 서비스 콜드 빌드가 공간 부족으로 러너를
+        # 죽였다. 회장 승인으로 Proxmox 에서 130GB 로 늘렸고 이 단계가 그 뒤를 잇는다.
+        if: ${{ github.event.inputs.grow_disk != '' }}
+        run: |
+          set -uo pipefail
+          echo "::warning title=확장 전::$(df -h / | tail -1)"
+          lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT || true
+
+          root_src="$(findmnt -no SOURCE /)"
+          fstype="$(findmnt -no FSTYPE /)"
+          disk="/dev/$(lsblk -no PKNAME "$root_src" 2>/dev/null | head -1)"
+          part="$(echo "$root_src" | grep -o '[0-9]*$')"
+          echo "root=$root_src fstype=$fstype disk=$disk part=$part"
+
+          if [ "$fstype" != "ext4" ] && [ "$fstype" != "ext3" ] && [ "$fstype" != "ext2" ]; then
+            echo "::error title=예상 밖 파일시스템::$fstype 다. 이 단계는 ext 계열만 다룬다. 사람이 봐야 한다."
+            exit 1
+          fi
+
+          docker run --rm --privileged --pid=host \
+            -v /dev:/dev -v /run:/run \
+            alpine:3 sh -eux -c "
+              apk add --no-cache cloud-utils-growpart e2fsprogs-extra util-linux partx >/dev/null
+              growpart $disk $part || echo '파티션이 이미 최대다'
+              partx -u $disk || true
+              resize2fs $root_src
+            "
+
+          avail="$(df -BG --output=avail / | tail -1 | tr -dc '0-9')"
+          echo "::warning title=확장 후::$(df -h / | tail -1) / 여유 ${avail}GB"
+          lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT || true
+
+      - name: Proxmox 게스트 에이전트 복구
+        # Proxmox 는 VM 안의 파일시스템을 직접 못 본다. 게스트에 설치된 qemu-guest-agent 가
+        # 보고해야 사용량이 뜬다. 그것이 없으면 VM 목록의 디스크 칸은 영원히 0 이고,
+        # 회장 화면에는 아무 숫자도 안 나온다(2026-09-09 회장 지적 "qemu VM 에는 왜 다 0%").
+        #
+        # 실측: 이 노드의 VM 5대 모두 설정은 agent=1 인데 실제로 물어보니 3대가 500 으로
+        # 실패했다(103 marketing, 102 d-edu, 101 zero-one). 설정만 켜 놓고 게스트 안에
+        # 데몬이 안 돌고 있는 상태다. 설정과 실물이 어긋나면 실물이 진실이다.
+        #
+        # sudo 는 비밀번호를 요구하므로 파일시스템 확장과 같은 방법을 쓴다. 러너가 이미 가진
+        # 도커 권한으로 호스트 네임스페이스에 들어가 설치하고 기동한다.
+        if: ${{ github.event.inputs.fix_guest_agent != '' }}
+        run: |
+          set -uo pipefail
+          echo "복구 전 상태:"
+          systemctl is-active qemu-guest-agent 2>&1 || true
+
+          docker run --rm --privileged --pid=host --net=host \
+            -v /:/host \
+            alpine:3 sh -eux -c "
+              # 호스트 네임스페이스로 들어가 호스트의 패키지 관리자와 systemd 를 그대로 쓴다.
+              nsenter -t 1 -m -u -i -n -p -- sh -eux -c '
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -qq
+                apt-get install -y -qq qemu-guest-agent
+                systemctl enable --now qemu-guest-agent
+                systemctl is-active qemu-guest-agent
+              '
+            "
+
+          echo "복구 후 상태:"
+          state="$(systemctl is-active qemu-guest-agent 2>&1 || true)"
+          echo "::warning title=게스트 에이전트::$state"
+          if [ "$state" != "active" ]; then
+            echo "::error title=게스트 에이전트 미기동::$state. Proxmox 화면에 사용량이 계속 안 뜬다."
+          fi
+
+      - name: 저장소 회수 (fstrim)
+        # 왜 필요한가 (2026-09-09 회장 지적 "다른 VM도 써야하잖아")
+        # 이 노드의 vmstore 는 thin 방식이라 VM 에 준 크기가 아니라 **실제로 쓴 만큼만**
+        # 저장소를 먹는다. 그런데 게스트가 파일을 지워도 그 사실이 저장소까지 안 내려가면
+        # 저장소는 그 블록을 계속 잡고 있다. 빌드 캐시처럼 크게 썼다 지우는 것이 쌓이면
+        # 실제로는 비었는데 저장소에서는 여전히 차 있는 상태가 된다.
+        # fstrim 이 "이 블록 안 쓴다" 를 저장소에 알려 다른 VM 이 쓸 공간으로 되돌린다.
+        #
+        # 할당 총합이 실물보다 큰 오버커밋 상태(570GB 할당 / 456GB 실물)라 이 회수가
+        # 형식적인 청소가 아니라 실제 여유를 만드는 일이다.
+        # 이 VM 디스크는 discard=on 이라 TRIM 이 저장소까지 전달된다.
+        if: ${{ github.event.inputs.reclaim_storage != '' }}
+        run: |
+          set -uo pipefail
+          echo "::warning title=회수 전::$(df -h / | tail -1)"
+          docker run --rm --privileged --pid=host -v /:/host alpine:3 sh -eux -c "
+            nsenter -t 1 -m -u -i -n -p -- fstrim -av
+          " 2>&1 | tail -20
+          echo "::warning title=회수 후::$(df -h / | tail -1)"
+
+      - name: 디스크 선정리 (빌드 전 — 꽉 찬 채로 시작하면 정리에 닿기도 전에 죽는다)
+        # 2026-09-08: 배포가 이미지 빌드에서 두 번 죽었다. 오류는 도커가 아니라 러너 자신의
+        # 로그 쓰기였다("No space left on device: _diag/Worker_*.log"). 디스크가 꽉 차면
+        # 잡 로그 자체가 안 남아 원인 추적도 불가능해진다 — 그래서 숫자는 로그가 아니라
+        # 주석(::notice::)으로 남긴다. 주석은 로그가 유실돼도 남는다.
+        #
+        # 정리 단계는 원래 배포 맨 끝에만 있었다. 디스크가 차서 죽으면 그 정리에 영원히
+        # 닿지 못한다. 뒷정리는 앞정리를 대신하지 못한다. 체크아웃보다 앞에 둔다
+        # (체크아웃 자체도 쓰기라 그 뒤에 두면 늦다).
+        #
+        # 무엇을 지우나: 빌드 캐시 전부와, 지금 도는 컨테이너가 안 쓰는 이미지 전부.
+        # 지금 쓰는 이미지와 볼륨은 도커가 참조를 보고 남긴다(--volumes 는 절대 쓰지 않는다.
+        # 거기에 운영 데이터가 있다). 기간 조건을 걸지 않는 이유는, 168시간 조건으로는
+        # 아무것도 안 지워지면서 통과해 버려 같은 실패를 두 번 냈기 때문이다.
+        run: |
+          set -u
+          avail_gb() { df -BG --output=avail / | tail -1 | tr -dc '0-9'; }
+          before="$(df -h / | tail -1)"
+
+          # 아무도 안 지우는 러너 자기 로그와 임시 파일.
+          rm -rf "$HOME"/actions-runner-oc/_diag/*.log 2>/dev/null || true
+          rm -rf "$HOME"/actions-runner-oc/_work/_temp/* 2>/dev/null || true
+
+          # 순서가 중요하다. 빌드 캐시를 먼저 버리면 콜드 빌드가 되고, 콜드 빌드는
+          # 증분 빌드보다 최대 사용량이 훨씬 크다. 실제로 캐시를 통째로 지웠더니
+          # 그 전까지 성공하던 배포가 오히려 공간 부족으로 죽었다(2026-09-08 실측).
+          # 그래서 캐시는 마지막에, 정말 빠듯할 때만 버린다.
+          # ★빌드 캐시는 여기서 절대 지우지 않는다.
+          # 2026-09-08 실측: 캐시를 지웠더니 그때까지 성공하던 배포가 세 번 연속 죽었다.
+          # 디스크는 49GB 뿐이고 정리해도 여유가 16GB 다. 캐시가 있으면 증분 빌드라 그
+          # 안에서 끝나지만, 캐시를 지우면 네 개 서비스가 전부 콜드 빌드가 되면서 16GB 를
+          # 넘겨 러너 자체가 죽는다("runner lost communication"). 내가 넣은 정리가 문제를
+          # 키웠다. 캐시는 배포 끝의 정리 단계가 기간 조건을 걸어 천천히 줄인다.
+          docker container prune -f || true
+          docker image prune -af || true
+
+          after="$(df -h / | tail -1)"
+          # 경고 등급으로 남긴다. 알림 등급은 잡 요약에 안 뜨고, 로그는 디스크가 차면 통째로 유실된다.
+          echo "::warning title=디스크 선정리::전 [$before] → 후 [$after]"
+
+          # 빌드가 실제로 얼마를 쓰는지 모르는 채로 시작하면 또 같은 자리에서 죽는다.
+          # 남은 용량을 먼저 재고, 부족하면 조용히 진행하지 말고 여기서 멈춘다.
+          # 증분 빌드가 실제로 쓰는 양(2026-09-08 성공 배포 실측: 여유 16GB 로 완주)을
+          # 기준으로 잡는다. 이보다 적으면 조용히 진행하지 말고 여기서 멈춘다.
+          need=10
+          have="$(avail_gb)"
+          if [ "$have" -lt "$need" ]; then
+            echo "::error title=디스크 부족::지울 수 있는 것을 다 지워도 여유가 ${have}GB 뿐이다(최소 ${need}GB 필요). 러너 디스크(현재 49GB)를 늘려야 한다."
+            exit 1
+          fi
+          echo "::warning title=디스크 여유::빌드 시작 시점 ${have}GB"
+
       - name: Checkout
         uses: actions/checkout@v4
       - name: 영속 config/data 복원 (~/openclaw-persist → 체크아웃)
@@ -36,7 +210,12 @@ jobs:
           NEXT_PUBLIC_GA_MEASUREMENT_ID=${{ secrets.OSMU_GA4_MEASUREMENT_ID }}
           DATABASE_URL=${{ secrets.OSMU_DATABASE_URL }}
           OSMU_SECRET_KEY=${{ secrets.OSMU_SECRET_KEY }}
+          MEDIA_SIGNING_SECRET=${{ secrets.OSMU_SECRET_KEY }}
           OSMU_PUBLIC_URL=${{ secrets.OSMU_PUBLIC_URL }}
+          R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET=${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT=${{ secrets.R2_ENDPOINT }}
           OSMU_ALERT_SLACK_WEBHOOK_URL=${{ secrets.OSMU_ALERT_SLACK_WEBHOOK_URL }}
           OSMU_BUILD_COMMIT=${GITHUB_SHA}
           CLAUDE_CODE_OAUTH_TOKEN=${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -71,6 +250,114 @@ jobs:
             exit 1
           fi
           echo ".env.osmu rendered ($(grep -c . .env.osmu) lines)"
+      - name: 이미지·영상 생성기 자격증명 배치 (시크릿이 있을 때만)
+        # 종전에는 배포 호스트에서 사람이 `higgsfield auth login` 을 한 번 해야 했다. 배포 VM 은
+        # 브라우저가 없는 서버라 그 한 번이 계속 되지 않았고 카드뉴스 생성이 막혀 있었다.
+        # 생성기는 자격증명을 작은 JSON 파일 하나로 읽는다. 그 파일을 시크릿에서 렌더한다.
+        # 회장은 본인 맥의 ~/.config/higgsfield/credentials.json 내용을
+        # HIGGSFIELD_CREDENTIALS_JSON 시크릿에 한 번 넣으면 된다. 서버 로그인은 필요 없다.
+        # 시크릿이 없으면 아무것도 하지 않는다 — 화면은 종전대로 "생성기 미로그인"으로 닫힌다.
+        env:
+          HIGGSFIELD_CREDENTIALS_JSON: ${{ secrets.HIGGSFIELD_CREDENTIALS_JSON }}
+        run: |
+          if [ -z "$HIGGSFIELD_CREDENTIALS_JSON" ]; then
+            echo "HIGGSFIELD_CREDENTIALS_JSON 미설정 — 생성기 자격증명 배치 건너뜀"
+            exit 0
+          fi
+          umask 077
+          # 생성기가 실제로 도는 자리에서 확인한다. 러너에 바이너리를 새로 깔아 확인하면
+          # "러너에서는 되는데 앱에서는 안 되는" 상태를 못 잡는다. 앱 컨테이너가 읽는 그
+          # 파일을, 앱 컨테이너 안에서 물어본다.
+          probe_generator() {
+            docker exec openclaw-dashboard-osmu higgsfield auth token >/dev/null 2>&1
+          }
+          container_up() {
+            [ "$(docker inspect -f '{{.State.Running}}' openclaw-dashboard-osmu 2>/dev/null)" = "true" ]
+          }
+          mkdir -p "$HOME/.config/higgsfield" 2>/dev/null || true
+          # compose 가 이 경로를 bind mount 하는데 없으면 docker 가 root 소유로 만들어 버린다.
+          # 그래서 첫 시도가 Permission denied 로 죽었다(2026-09-06 run 34033442243 실측).
+          # 러너 계정이 쓸 수 있도록 소유권을 되돌린다. docker 는 이 러너가 이미 쓰고 있다.
+          if [ ! -w "$HOME/.config/higgsfield" ]; then
+            echo "생성기 설정 디렉터리가 root 소유 — 소유권 회수"
+            docker run --rm -v "$HOME/.config":/c alpine:3 \
+              sh -c "mkdir -p /c/higgsfield && chown -R $(id -u):$(id -g) /c/higgsfield"
+          fi
+          # ★살아 있는 로그인을 덮어쓰지 않는다 (2026-09-07 회장 실사용에서 터진 사고).
+          # 생성기는 접근 토큰이 만료되면 스스로 갱신하고 그 결과를 이 파일에 다시 쓴다.
+          # 갱신 토큰은 한 번 쓰면 회전해 옛 값이 죽는다. 그런데 종전에는 배포할 때마다
+          # 시크릿의 옛 스냅샷으로 이 파일을 덮었다. 그래서 아침에 되던 카드뉴스·영상 생성이
+          # 그날 배포를 네 번 하고 나자 "생성기에 로그인되어 있지 않습니다"로 죽었다.
+          # 배포는 코드를 바꾸는 일이지 로그인을 되돌리는 일이 아니다.
+          # 이미 쓸 수 있는 자격증명이 있으면 그대로 둔다. 새로 넣어야 할 때는
+          # force_generator_credentials 입력으로 명시한다.
+          CRED="$HOME/.config/higgsfield/credentials.json"
+          # ★"파일이 있다"와 "로그인이 살아 있다"는 다르다 (2026-09-10 회장 지적으로 발견).
+          # 종전에는 파일 존재만 보고 덮어쓰지 않았다. 그런데 갱신 토큰이 회전하면 이 파일은
+          # 남아 있는 채로 죽는다. 그러면 **영원히 죽은 파일을 지키게 된다.** 실제로 그렇게
+          # 됐고, 화면에는 몇 주째 그림이 한 장도 없었다. 아무도 몰랐다.
+          # 그래서 존재가 아니라 **작동**을 본다. 살아 있으면 그대로 두고, 죽었으면 시크릿
+          # 스냅샷으로 되살린다. 되살려도 안 되면 조용히 넘어가지 않고 크게 실패한다.
+          CRED_ALIVE=no
+          if [ -s "$CRED" ] && container_up; then
+            if probe_generator; then
+              CRED_ALIVE=yes
+            else
+              echo "::warning::생성기 자격증명 파일은 있는데 로그인이 죽어 있다. 시크릿으로 되살린다"
+            fi
+          fi
+          if [ "$CRED_ALIVE" = "yes" ] && [ "${{ github.event.inputs.force_generator_credentials }}" != "true" ]; then
+            echo "생성기 로그인이 살아 있음 — 덮어쓰지 않음"
+          else
+            # 값은 파일로만 흘린다. argv 나 로그에 남기지 않는다.
+            printf '%s' "$HIGGSFIELD_CREDENTIALS_JSON" > "$CRED"
+            chmod 600 "$CRED"
+            echo "생성기 자격증명 새로 배치함"
+          fi
+          # 자격증명만으로는 부족하다. 작업 공간 선택이 별도 설정 파일에 있고, 그것이 없으면
+          # 인증은 통과하는데 생성에서 "No workspace selected" 로 끝난다(2026-09-06 실측).
+          # 작업 공간 식별자는 비밀값이 아니라 계정 안의 이름표라 평문으로 둔다.
+          printf '{"workspace_id": "%s"}' "${HIGGSFIELD_WORKSPACE_ID:-fc99282e-5af5-4127-b445-203ca2f64aa9}" \
+            > "$HOME/.config/higgsfield/config.json"
+          chmod 600 "$HOME/.config/higgsfield/config.json"
+          if ! python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));sys.exit(0 if d.get("access_token") else 1)' \
+              "$HOME/.config/higgsfield/credentials.json"; then
+            echo "::error::HIGGSFIELD_CREDENTIALS_JSON 형식이 올바르지 않음(access_token 없음)"
+            exit 1
+          fi
+          # ★배치했다고 끝이 아니다. 실제로 통하는지 확인한다. 통하지 않는데 "배치 완료" 라고
+          # 말하면 그 거짓말이 몇 주를 간다. 이번에 정확히 그랬다.
+          if ! container_up; then
+            echo "::warning::앱 컨테이너가 아직 안 떠 있어 로그인 확인을 건너뛴다. 배포 뒤 확인 단계가 다시 본다."
+          elif probe_generator; then
+            echo "생성기 로그인 확인됨 (auth token 응답)"
+          elif [ "${{ github.event.inputs.force_generator_credentials }}" = "true" ]; then
+            # 자격증명을 고치겠다고 명시하고 들어왔는데 안 고쳐졌다. 그때는 크게 실패한다.
+            echo "::error::생성기 자격증명을 배치했지만 로그인이 통하지 않는다. HIGGSFIELD_CREDENTIALS_JSON 시크릿이 만료됐다. 로컬에서 'gh secret set HIGGSFIELD_CREDENTIALS_JSON < ~/.config/higgsfield/credentials.json' 로 갱신해야 한다."
+            exit 1
+          else
+            # 평소 배포까지 이 이유로 막지는 않는다. 그림 생성기가 죽었다고 앱 배포를 막으면
+            # 급한 수정이 못 나간다. 대신 경고를 남겨 조용히 묻히지 않게 한다.
+            echo "::warning::생성기 로그인이 통하지 않는다. 사진 카드와 숏폼 영상이 안 만들어진다(글자 카드는 영향 없음). HIGGSFIELD_CREDENTIALS_JSON 시크릿 갱신이 필요하다."
+          fi
+
+      - name: 생성기 로그인 최종 확인 (배포 뒤)
+        # 배포가 끝난 뒤 한 번 더 본다. 자격증명 배치 단계에서는 컨테이너가 아직 옛 것이거나
+        # 안 떠 있을 수 있어 그때 통과해도 새 컨테이너에서 죽을 수 있다.
+        # **여기서 조용히 넘어가면 화면에 그림이 한 장도 없는 상태가 몇 주를 간다.**
+        # 실제로 그랬다(2026-09-10 회장 지적으로 발견). 그래서 실패를 눈에 띄게 남긴다.
+        if: ${{ always() && (github.event.inputs.services == '' || contains(github.event.inputs.services, 'osmu')) }}
+        run: |
+          if [ "$(docker inspect -f '{{.State.Running}}' openclaw-dashboard-osmu 2>/dev/null)" != "true" ]; then
+            echo "::warning::앱 컨테이너가 떠 있지 않아 생성기 확인을 못 했다"
+            exit 0
+          fi
+          if docker exec openclaw-dashboard-osmu higgsfield auth token >/dev/null 2>&1; then
+            echo "생성기 로그인 살아 있음 — 카드뉴스 이미지·숏폼 영상 생성 가능"
+          else
+            echo "::warning::생성기 로그인이 죽어 있다. 카드뉴스 사진 이미지와 숏폼 영상이 만들어지지 않는다. 글자 카드는 영향 없다. HIGGSFIELD_CREDENTIALS_JSON 시크릿 갱신이 필요하다."
+          fi
+
       - name: OSMU DB 스키마 read-only preflight
         # 일반 앱 배포는 DB DDL을 실행하지 않는다. 역사 migration wildcard
         # replay를 금지하고, 승인형 osmu-db-migrate workflow만 명시 phase를 적용한다.
@@ -91,7 +378,19 @@ jobs:
         run: |
           # services 지정 시 그 서비스만 빌드(전체 빌드로 무관한 게이트웨이 확장 빌드 실패에
           # osmu 대시보드 배포가 막히는 것 방지). 비우면 기존대로 전체 빌드.
-          docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml build ${{ github.event.inputs.services }}
+          # 빌드는 한 번에 하나씩 한다. VM 메모리는 7.8GiB 인데 게이트웨이 빌드는
+          # 서비스마다 node heap 8GiB 를 잡는다. compose 기본 병렬 빌드로 4개가 동시에
+          # 돌면 heap out of memory 로 죽는다(2026-09-01 run 33432114188 실측).
+          SERVICES="${{ github.event.inputs.services }}"
+          if [ -z "$SERVICES" ]; then
+            SERVICES="$(docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml config --services)"
+          fi
+          for svc in $SERVICES; do
+            echo "::group::build $svc"
+            COMPOSE_BAKE=false COMPOSE_PARALLEL_LIMIT=1 \
+              docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml build "$svc"
+            echo "::endgroup::"
+          done
       - name: 기동
         # required NEXT_PUBLIC_* interpolation은 build와 up 모두에서 실행된다.
         run: |
@@ -166,6 +465,60 @@ jobs:
           echo "operator/customers=$OC"
           [ "$OC" = "200" ] || { echo "::error::/api/operator/customers HTTP $OC — 200이어야 함(DB 스키마 누락/운영자 토큰/라우트 장애 신호)"; exit 1; }
           echo "✅ 스모크 통과: 로그인페이지·인증게이트·supabase 빌드주입·Google-only(비밀번호UI無)·google 계정선택 preflight·operator/customers 정상"
+      - name: OAuth 앱 자격증명을 환경변수 값으로 다시 들여오기 (지정한 제공자만)
+        # 왜 (2026-09-07 회장 계정 실측): 자격증명은 DB 저장분이 환경변수보다 우선한다.
+        # 그래서 유튜브 시크릿을 새로 발급해 저장소 시크릿을 바꾸고 배포해도 연결이 계속
+        # "The provided client secret is invalid" 로 끝났다. 서버가 DB 의 옛 값을 보고 있었다.
+        # 콘솔에서 시크릿을 갈면 배포도 그 값을 따라가야 한다. 지정한 제공자만 건드려
+        # 운영자가 화면에서 넣은 값을 함부로 덮지 않는다.
+        if: ${{ github.event.inputs.reimport_oauth != '' }}
+        env:
+          DASHBOARD_AUTH_TOKEN: ${{ secrets.OSMU_DASHBOARD_AUTH_TOKEN }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          X_CLIENT_ID: ${{ secrets.X_CLIENT_ID }}
+          X_CLIENT_SECRET: ${{ secrets.X_CLIENT_SECRET }}
+          IG_APP_ID: ${{ secrets.IG_APP_ID }}
+          IG_APP_SECRET: ${{ secrets.IG_APP_SECRET }}
+          THREADS_APP_ID: ${{ secrets.THREADS_APP_ID }}
+          THREADS_APP_SECRET: ${{ secrets.THREADS_APP_SECRET }}
+          FB_APP_ID: ${{ secrets.FB_APP_ID }}
+          FB_APP_SECRET: ${{ secrets.FB_APP_SECRET }}
+          FB_CONFIG_ID: ${{ secrets.FB_CONFIG_ID }}
+        run: |
+          # import-env 는 DB 에 값이 이미 있으면 409 로 거절한다(2026-09-07 실측).
+          # 콘솔에서 시크릿을 갈아 끼운 경우가 바로 그 상황이므로 덮어쓰기를 쓴다.
+          umask 077
+          for p in ${{ github.event.inputs.reimport_oauth }}; do
+            export CCFG=""
+            case "$p" in
+              youtube)   export CID="$YOUTUBE_CLIENT_ID"; export CSEC="$YOUTUBE_CLIENT_SECRET" ;;
+              x)         export CID="$X_CLIENT_ID";       export CSEC="$X_CLIENT_SECRET" ;;
+              instagram) export CID="$IG_APP_ID";         export CSEC="$IG_APP_SECRET" ;;
+              threads)   export CID="$THREADS_APP_ID";   export CSEC="$THREADS_APP_SECRET" ;;
+              # 페이스북만 세 번째 값(설정 식별자)을 요구한다. 빠지면 400 으로 거절된다.
+              facebook)  export CID="$FB_APP_ID";        export CSEC="$FB_APP_SECRET"; export CCFG="$FB_CONFIG_ID" ;;
+              *) echo "::error::지원하지 않는 제공자: $p"; exit 1 ;;
+            esac
+            if [ -z "$CID" ] || [ -z "$CSEC" ]; then
+              echo "::error::$p 환경변수 값이 비어 있다"; exit 1
+            fi
+            # 값은 파일로만 흘린다. argv 나 로그에 남기지 않는다.
+            python3 -c 'import json,os,sys; v={"clientId":os.environ["CID"],"clientSecret":os.environ["CSEC"]}; c=os.environ.get("CCFG",""); v.update({"configId":c} if c else {}); json.dump({"provider":sys.argv[1],"values":v},open("/tmp/cred.json","w"))' "$p"
+            CODE=$(curl -s -o /tmp/cred.out -w '%{http_code}' -X PUT \
+              -H "Content-Type: application/json" -H @- \
+              --data @/tmp/cred.json \
+              http://localhost:18789/api/operator/oauth-credentials <<CURL_HDR || echo 000
+          Authorization: Bearer $DASHBOARD_AUTH_TOKEN
+          CURL_HDR
+            )
+            rm -f /tmp/cred.json
+            echo "$p 덮어쓰기 → HTTP $CODE"
+            sed -E 's/[A-Za-z0-9_-]{20,}/[가림]/g' /tmp/cred.out | head -3
+            rm -f /tmp/cred.out
+            [ "$CODE" = "200" ] || { echo "::error::$p 자격증명 덮어쓰기 실패 (HTTP $CODE)"; exit 1; }
+          done
+
       - name: 배포 찌꺼기 정리 (다음 배포가 디스크로 죽지 않게)
         # 2026-08-30: 디스크 81% 에서 이미지 빌드가 메모리·디스크로 죽었다(exit 137).
         # 배포마다 옛 이미지와 빌드 캐시가 쌓이는데 아무도 안 치웠던 것이 원인이다.

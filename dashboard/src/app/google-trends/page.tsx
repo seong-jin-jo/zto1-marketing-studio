@@ -32,7 +32,7 @@ export default function GoogleTrendsPage() {
         <h3 className="text-body-sm font-medium text-muted mb-stack">활용 가이드</h3>
         <ul className="text-caption text-subtle space-y-stack-tight">
           <li>• 타겟 키워드의 검색량 추이를 확인하여 시즌별 콘텐츠 전략 수립</li>
-          <li>• "관련 검색어"에서 떠오르는 키워드를 Keyword Bank에 추가</li>
+          <li>• "관련 검색어"에서 떠오르는 키워드를 키워드 목록에 추가</li>
           <li>• 지역별 관심도를 확인하여 타겟 지역 콘텐츠 제작</li>
           <li>• Naver Trends와 비교하여 플랫폼별 검색 패턴 차이 분석</li>
         </ul>

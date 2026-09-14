@@ -85,6 +85,11 @@ export function verifyImageToken(token: string, now: number = Date.now()): Image
   return parseImageToken(token, now, true);
 }
 
+/** 만료만 무시하고 서명, 목적, 테넌트, 파일명 형식을 검증한다. 재발급 경로 전용이다. */
+export function verifyImageTokenSignature(token: string): ImageTokenPayload | null {
+  return parseImageToken(token, Date.now(), false);
+}
+
 /**
  * 큐에 저장된 자사 이미지 URL을 발행 직전에 갱신한다. 만료된 토큰도 HMAC 서명 자체가 유효하고
  * 요청 테넌트와 일치할 때만 새 토큰을 발급한다. 따라서 30일을 넘긴 예약은 살리되, 위조·타

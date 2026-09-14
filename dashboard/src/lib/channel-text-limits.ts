@@ -4,7 +4,6 @@
 export const CHANNEL_TEXT_LIMITS = {
   x: 280,
   threads: 500,
-  facebook: 63_206,
   instagram: 2_200,
   linkedin: 3_000,
   bluesky: 300,
@@ -21,7 +20,6 @@ export const CHANNEL_TEXT_LIMITS = {
 export const CHANNEL_TEXT_LIMIT_SOURCES = {
   x: "https://docs.x.com/fundamentals/counting-characters",
   threads: "https://developers.facebook.com/docs/threads/posts/",
-  facebook: "https://developers.facebook.com/docs/graph-api/reference/page/feed/",
   instagram: "https://developers.facebook.com/docs/instagram-platform/content-publishing/",
   linkedin: "https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api",
   bluesky: "https://docs.bsky.app/docs/advanced-guides/intent-links",

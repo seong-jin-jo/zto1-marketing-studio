@@ -1,0 +1,1423 @@
+{
+  "generatedAt": "2026-09-01T20:21:51.430Z",
+  "prototype": "/private/tmp/osmu-wt-v67/docs/prototype/osmu-v67-edit-publish-hub-gpt-codex-20260902-0448.html",
+  "frames": [
+    {
+      "file": "osmu-v67-edit-normal-1024-gpt-codex-20260902-0448.png",
+      "room": "edit",
+      "viewport": 1024,
+      "state": "normal",
+      "height": 900,
+      "audit": {
+        "ready": "complete",
+        "room": "edit",
+        "state": "normal",
+        "viewport": "1024",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 1024,
+        "innerWidth": 1024,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 900
+          },
+          ".app-main": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 900
+          },
+          ".gnb-wrap": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 129
+          },
+          ".workarea": {
+            "x": 56,
+            "y": 129,
+            "width": 968,
+            "height": 771
+          },
+          ".content": {
+            "x": 56,
+            "y": 129,
+            "width": 655.1875,
+            "height": 771
+          },
+          ".chat-dock": {
+            "x": 727.1875,
+            "y": 145,
+            "width": 280.8125,
+            "height": 422.390625
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-edit-empty-1024-gpt-codex-20260902-0448.png",
+      "room": "edit",
+      "viewport": 1024,
+      "state": "empty",
+      "height": 900,
+      "audit": {
+        "ready": "complete",
+        "room": "edit",
+        "state": "empty",
+        "viewport": "1024",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 1024,
+        "innerWidth": 1024,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 900
+          },
+          ".app-main": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 900
+          },
+          ".gnb-wrap": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 129
+          },
+          ".workarea": {
+            "x": 56,
+            "y": 129,
+            "width": 968,
+            "height": 771
+          },
+          ".content": {
+            "x": 56,
+            "y": 129,
+            "width": 655.1875,
+            "height": 771
+          },
+          ".chat-dock": {
+            "x": 727.1875,
+            "y": 145,
+            "width": 280.8125,
+            "height": 422.390625
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-edit-loading-1024-gpt-codex-20260902-0448.png",
+      "room": "edit",
+      "viewport": 1024,
+      "state": "loading",
+      "height": 900,
+      "audit": {
+        "ready": "complete",
+        "room": "edit",
+        "state": "loading",
+        "viewport": "1024",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 1024,
+        "innerWidth": 1024,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 900
+          },
+          ".app-main": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 900
+          },
+          ".gnb-wrap": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 129
+          },
+          ".workarea": {
+            "x": 56,
+            "y": 129,
+            "width": 968,
+            "height": 771
+          },
+          ".content": {
+            "x": 56,
+            "y": 129,
+            "width": 655.1875,
+            "height": 771
+          },
+          ".chat-dock": {
+            "x": 727.1875,
+            "y": 145,
+            "width": 280.8125,
+            "height": 422.390625
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-edit-error-1024-gpt-codex-20260902-0448.png",
+      "room": "edit",
+      "viewport": 1024,
+      "state": "error",
+      "height": 900,
+      "audit": {
+        "ready": "complete",
+        "room": "edit",
+        "state": "error",
+        "viewport": "1024",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 1024,
+        "innerWidth": 1024,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 900
+          },
+          ".app-main": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 900
+          },
+          ".gnb-wrap": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 129
+          },
+          ".workarea": {
+            "x": 56,
+            "y": 129,
+            "width": 968,
+            "height": 771
+          },
+          ".content": {
+            "x": 56,
+            "y": 129,
+            "width": 655.1875,
+            "height": 771
+          },
+          ".chat-dock": {
+            "x": 727.1875,
+            "y": 145,
+            "width": 280.8125,
+            "height": 422.390625
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-edit-disabled-1024-gpt-codex-20260902-0448.png",
+      "room": "edit",
+      "viewport": 1024,
+      "state": "disabled",
+      "height": 900,
+      "audit": {
+        "ready": "complete",
+        "room": "edit",
+        "state": "disabled",
+        "viewport": "1024",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 1024,
+        "innerWidth": 1024,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 900
+          },
+          ".app-main": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 900
+          },
+          ".gnb-wrap": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 129
+          },
+          ".workarea": {
+            "x": 56,
+            "y": 129,
+            "width": 968,
+            "height": 771
+          },
+          ".content": {
+            "x": 56,
+            "y": 129,
+            "width": 655.1875,
+            "height": 771
+          },
+          ".chat-dock": {
+            "x": 727.1875,
+            "y": 145,
+            "width": 280.8125,
+            "height": 422.390625
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-edit-overflow-1024-gpt-codex-20260902-0448.png",
+      "room": "edit",
+      "viewport": 1024,
+      "state": "overflow",
+      "height": 900,
+      "audit": {
+        "ready": "complete",
+        "room": "edit",
+        "state": "overflow",
+        "viewport": "1024",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 1024,
+        "innerWidth": 1024,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 900
+          },
+          ".app-main": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 900
+          },
+          ".gnb-wrap": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 129
+          },
+          ".workarea": {
+            "x": 56,
+            "y": 129,
+            "width": 968,
+            "height": 771
+          },
+          ".content": {
+            "x": 56,
+            "y": 129,
+            "width": 655.1875,
+            "height": 771
+          },
+          ".chat-dock": {
+            "x": 727.1875,
+            "y": 145,
+            "width": 280.8125,
+            "height": 422.390625
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-edit-normal-390-gpt-codex-20260902-0448.png",
+      "room": "edit",
+      "viewport": 390,
+      "state": "normal",
+      "height": 844,
+      "audit": {
+        "ready": "complete",
+        "room": "edit",
+        "state": "normal",
+        "viewport": "390",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 390,
+        "innerWidth": 390,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".app-main": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".gnb-wrap": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 122
+          },
+          ".workarea": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 602
+          },
+          ".content": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 442
+          },
+          ".chat-dock": {
+            "x": 8,
+            "y": 572,
+            "width": 374,
+            "height": 152
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-edit-empty-390-gpt-codex-20260902-0448.png",
+      "room": "edit",
+      "viewport": 390,
+      "state": "empty",
+      "height": 844,
+      "audit": {
+        "ready": "complete",
+        "room": "edit",
+        "state": "empty",
+        "viewport": "390",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 390,
+        "innerWidth": 390,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".app-main": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".gnb-wrap": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 122
+          },
+          ".workarea": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 602
+          },
+          ".content": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 442
+          },
+          ".chat-dock": {
+            "x": 8,
+            "y": 572,
+            "width": 374,
+            "height": 152
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-edit-loading-390-gpt-codex-20260902-0448.png",
+      "room": "edit",
+      "viewport": 390,
+      "state": "loading",
+      "height": 844,
+      "audit": {
+        "ready": "complete",
+        "room": "edit",
+        "state": "loading",
+        "viewport": "390",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 390,
+        "innerWidth": 390,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".app-main": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".gnb-wrap": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 122
+          },
+          ".workarea": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 602
+          },
+          ".content": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 442
+          },
+          ".chat-dock": {
+            "x": 8,
+            "y": 572,
+            "width": 374,
+            "height": 152
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-edit-error-390-gpt-codex-20260902-0448.png",
+      "room": "edit",
+      "viewport": 390,
+      "state": "error",
+      "height": 844,
+      "audit": {
+        "ready": "complete",
+        "room": "edit",
+        "state": "error",
+        "viewport": "390",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 390,
+        "innerWidth": 390,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".app-main": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".gnb-wrap": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 122
+          },
+          ".workarea": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 602
+          },
+          ".content": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 442
+          },
+          ".chat-dock": {
+            "x": 8,
+            "y": 572,
+            "width": 374,
+            "height": 152
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-edit-disabled-390-gpt-codex-20260902-0448.png",
+      "room": "edit",
+      "viewport": 390,
+      "state": "disabled",
+      "height": 844,
+      "audit": {
+        "ready": "complete",
+        "room": "edit",
+        "state": "disabled",
+        "viewport": "390",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 390,
+        "innerWidth": 390,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".app-main": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".gnb-wrap": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 122
+          },
+          ".workarea": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 602
+          },
+          ".content": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 442
+          },
+          ".chat-dock": {
+            "x": 8,
+            "y": 572,
+            "width": 374,
+            "height": 152
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-edit-overflow-390-gpt-codex-20260902-0448.png",
+      "room": "edit",
+      "viewport": 390,
+      "state": "overflow",
+      "height": 844,
+      "audit": {
+        "ready": "complete",
+        "room": "edit",
+        "state": "overflow",
+        "viewport": "390",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 390,
+        "innerWidth": 390,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".app-main": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".gnb-wrap": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 122
+          },
+          ".workarea": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 602
+          },
+          ".content": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 442
+          },
+          ".chat-dock": {
+            "x": 8,
+            "y": 572,
+            "width": 374,
+            "height": 152
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-publish-normal-1024-gpt-codex-20260902-0448.png",
+      "room": "publish",
+      "viewport": 1024,
+      "state": "normal",
+      "height": 900,
+      "audit": {
+        "ready": "complete",
+        "room": "publish",
+        "state": "normal",
+        "viewport": "1024",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 1024,
+        "innerWidth": 1024,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 900
+          },
+          ".app-main": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 900
+          },
+          ".gnb-wrap": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 129
+          },
+          ".workarea": {
+            "x": 56,
+            "y": 129,
+            "width": 968,
+            "height": 771
+          },
+          ".content": {
+            "x": 56,
+            "y": 129,
+            "width": 655.1875,
+            "height": 771
+          },
+          ".chat-dock": {
+            "x": 727.1875,
+            "y": 145,
+            "width": 280.8125,
+            "height": 401.59375
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-publish-empty-1024-gpt-codex-20260902-0448.png",
+      "room": "publish",
+      "viewport": 1024,
+      "state": "empty",
+      "height": 900,
+      "audit": {
+        "ready": "complete",
+        "room": "publish",
+        "state": "empty",
+        "viewport": "1024",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 1024,
+        "innerWidth": 1024,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 900
+          },
+          ".app-main": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 900
+          },
+          ".gnb-wrap": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 129
+          },
+          ".workarea": {
+            "x": 56,
+            "y": 129,
+            "width": 968,
+            "height": 771
+          },
+          ".content": {
+            "x": 56,
+            "y": 129,
+            "width": 655.1875,
+            "height": 771
+          },
+          ".chat-dock": {
+            "x": 727.1875,
+            "y": 145,
+            "width": 280.8125,
+            "height": 401.59375
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-publish-loading-1024-gpt-codex-20260902-0448.png",
+      "room": "publish",
+      "viewport": 1024,
+      "state": "loading",
+      "height": 900,
+      "audit": {
+        "ready": "complete",
+        "room": "publish",
+        "state": "loading",
+        "viewport": "1024",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 1024,
+        "innerWidth": 1024,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 900
+          },
+          ".app-main": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 900
+          },
+          ".gnb-wrap": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 129
+          },
+          ".workarea": {
+            "x": 56,
+            "y": 129,
+            "width": 968,
+            "height": 771
+          },
+          ".content": {
+            "x": 56,
+            "y": 129,
+            "width": 655.1875,
+            "height": 771
+          },
+          ".chat-dock": {
+            "x": 727.1875,
+            "y": 145,
+            "width": 280.8125,
+            "height": 401.59375
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-publish-error-1024-gpt-codex-20260902-0448.png",
+      "room": "publish",
+      "viewport": 1024,
+      "state": "error",
+      "height": 900,
+      "audit": {
+        "ready": "complete",
+        "room": "publish",
+        "state": "error",
+        "viewport": "1024",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 1024,
+        "innerWidth": 1024,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 900
+          },
+          ".app-main": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 900
+          },
+          ".gnb-wrap": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 129
+          },
+          ".workarea": {
+            "x": 56,
+            "y": 129,
+            "width": 968,
+            "height": 771
+          },
+          ".content": {
+            "x": 56,
+            "y": 129,
+            "width": 655.1875,
+            "height": 771
+          },
+          ".chat-dock": {
+            "x": 727.1875,
+            "y": 145,
+            "width": 280.8125,
+            "height": 401.59375
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-publish-disabled-1024-gpt-codex-20260902-0448.png",
+      "room": "publish",
+      "viewport": 1024,
+      "state": "disabled",
+      "height": 900,
+      "audit": {
+        "ready": "complete",
+        "room": "publish",
+        "state": "disabled",
+        "viewport": "1024",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 1024,
+        "innerWidth": 1024,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 900
+          },
+          ".app-main": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 900
+          },
+          ".gnb-wrap": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 129
+          },
+          ".workarea": {
+            "x": 56,
+            "y": 129,
+            "width": 968,
+            "height": 771
+          },
+          ".content": {
+            "x": 56,
+            "y": 129,
+            "width": 655.1875,
+            "height": 771
+          },
+          ".chat-dock": {
+            "x": 727.1875,
+            "y": 145,
+            "width": 280.8125,
+            "height": 401.59375
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-publish-overflow-1024-gpt-codex-20260902-0448.png",
+      "room": "publish",
+      "viewport": 1024,
+      "state": "overflow",
+      "height": 900,
+      "audit": {
+        "ready": "complete",
+        "room": "publish",
+        "state": "overflow",
+        "viewport": "1024",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 1024,
+        "innerWidth": 1024,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 1024,
+            "height": 900
+          },
+          ".app-main": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 900
+          },
+          ".gnb-wrap": {
+            "x": 56,
+            "y": 0,
+            "width": 968,
+            "height": 129
+          },
+          ".workarea": {
+            "x": 56,
+            "y": 129,
+            "width": 968,
+            "height": 771
+          },
+          ".content": {
+            "x": 56,
+            "y": 129,
+            "width": 655.1875,
+            "height": 771
+          },
+          ".chat-dock": {
+            "x": 727.1875,
+            "y": 145,
+            "width": 280.8125,
+            "height": 401.59375
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-publish-normal-390-gpt-codex-20260902-0448.png",
+      "room": "publish",
+      "viewport": 390,
+      "state": "normal",
+      "height": 844,
+      "audit": {
+        "ready": "complete",
+        "room": "publish",
+        "state": "normal",
+        "viewport": "390",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 390,
+        "innerWidth": 390,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".app-main": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".gnb-wrap": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 122
+          },
+          ".workarea": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 602
+          },
+          ".content": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 442
+          },
+          ".chat-dock": {
+            "x": 8,
+            "y": 572,
+            "width": 374,
+            "height": 152
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-publish-empty-390-gpt-codex-20260902-0448.png",
+      "room": "publish",
+      "viewport": 390,
+      "state": "empty",
+      "height": 844,
+      "audit": {
+        "ready": "complete",
+        "room": "publish",
+        "state": "empty",
+        "viewport": "390",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 390,
+        "innerWidth": 390,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".app-main": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".gnb-wrap": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 122
+          },
+          ".workarea": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 602
+          },
+          ".content": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 442
+          },
+          ".chat-dock": {
+            "x": 8,
+            "y": 572,
+            "width": 374,
+            "height": 152
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-publish-loading-390-gpt-codex-20260902-0448.png",
+      "room": "publish",
+      "viewport": 390,
+      "state": "loading",
+      "height": 844,
+      "audit": {
+        "ready": "complete",
+        "room": "publish",
+        "state": "loading",
+        "viewport": "390",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 390,
+        "innerWidth": 390,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".app-main": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".gnb-wrap": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 122
+          },
+          ".workarea": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 602
+          },
+          ".content": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 442
+          },
+          ".chat-dock": {
+            "x": 8,
+            "y": 572,
+            "width": 374,
+            "height": 152
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-publish-error-390-gpt-codex-20260902-0448.png",
+      "room": "publish",
+      "viewport": 390,
+      "state": "error",
+      "height": 844,
+      "audit": {
+        "ready": "complete",
+        "room": "publish",
+        "state": "error",
+        "viewport": "390",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 390,
+        "innerWidth": 390,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".app-main": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".gnb-wrap": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 122
+          },
+          ".workarea": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 602
+          },
+          ".content": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 442
+          },
+          ".chat-dock": {
+            "x": 8,
+            "y": 572,
+            "width": 374,
+            "height": 152
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-publish-disabled-390-gpt-codex-20260902-0448.png",
+      "room": "publish",
+      "viewport": 390,
+      "state": "disabled",
+      "height": 844,
+      "audit": {
+        "ready": "complete",
+        "room": "publish",
+        "state": "disabled",
+        "viewport": "390",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 390,
+        "innerWidth": 390,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".app-main": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".gnb-wrap": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 122
+          },
+          ".workarea": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 602
+          },
+          ".content": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 442
+          },
+          ".chat-dock": {
+            "x": 8,
+            "y": 572,
+            "width": 374,
+            "height": 152
+          }
+        }
+      }
+    },
+    {
+      "file": "osmu-v67-publish-overflow-390-gpt-codex-20260902-0448.png",
+      "room": "publish",
+      "viewport": 390,
+      "state": "overflow",
+      "height": 844,
+      "audit": {
+        "ready": "complete",
+        "room": "publish",
+        "state": "overflow",
+        "viewport": "390",
+        "overflowX": "false",
+        "targetUnder44": "0",
+        "consoleError": "false",
+        "reviewControlsVisible": false,
+        "bodyScrollWidth": 390,
+        "innerWidth": 390,
+        "scrollX": 0,
+        "scrollY": 0,
+        "rects": {
+          ".prototype": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".app-main": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          ".gnb-wrap": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 122
+          },
+          ".workarea": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 602
+          },
+          ".content": {
+            "x": 0,
+            "y": 122,
+            "width": 390,
+            "height": 442
+          },
+          ".chat-dock": {
+            "x": 8,
+            "y": 572,
+            "width": 374,
+            "height": 152
+          }
+        }
+      }
+    }
+  ],
+  "consoleErrors": []
+}

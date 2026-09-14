@@ -22,7 +22,7 @@ export function DataChannelPage({ channel }: DataChannelPageProps) {
   const status = cfg?.status || "available";
   const connected = !!cfg?.connected;
   const keys = cfg?.keys || {};
-  const sg = setupGuides[channel] || { fields: [], labels: [], quick: ["Setup guide 준비 중"], detail: "" };
+  const sg = setupGuides[channel] || { fields: [], labels: [], quick: ["연결 안내 준비 중"], detail: "" };
 
   const handleCredSave = async (newKeys: Record<string, string>) => {
     const r = await apiPost<{ verified?: boolean; error?: string; account?: string }>(`/api/channel-config/${channel}`, newKeys);
@@ -30,8 +30,8 @@ export function DataChannelPage({ channel }: DataChannelPageProps) {
       showToast(`${label} 연결 완료${r.account ? ". " + r.account : ""}`, "success");
       mutateConfig();
     } else {
-      showToast(`연결 실패: ${r?.error || "Invalid credentials"}`, "error");
-      throw new Error(r?.error || "Verification failed");
+      showToast(`연결 실패: ${r?.error || "연결 정보를 확인해 주세요"}`, "error");
+      throw new Error(r?.error || "연결 확인에 실패했습니다");
     }
   };
 

@@ -1,3 +1,4 @@
+import { UPSTREAM_FAILED } from "@/lib/api-failure";
 import { effectiveTenantId, AuthError } from "@/lib/tenant-auth";
 import { listChannelAccounts, upsertChannelAccount, syncLegacyIntegration } from "@/lib/channel-accounts";
 
@@ -85,7 +86,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
     }
     session = data;
   } catch {
-    return Response.json({ error: "Bluesky 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요." }, { status: 502 });
+    return Response.json({ ok: false, error: "Bluesky 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요." }, { status: UPSTREAM_FAILED });
   }
 
   try {

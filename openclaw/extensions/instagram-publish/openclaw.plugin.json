@@ -1,0 +1,14 @@
+{
+  "id": "instagram-publish",
+  "name": "Instagram Publish",
+  "description": "Publish posts to Instagram via Meta Graph API.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "accessToken": { "type": "string", "description": "Instagram access token." },
+      "userId": { "type": "string", "description": "Instagram Business account user ID." },
+      "queuePath": { "type": "string", "description": "Shared queue.json path." }
+    }
+  }
+}

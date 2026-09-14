@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 // Regression: V24-DR-001. 현재 방 상태를 중복 설명하는 딱지가 실제 작업 흐름을 가렸다.
 // Found by /qa on 2026-08-28
-// Report: docs/audit/v24-design-review.md
+// Report: docs/_archive/legacy-20260912/audit/v24-design-review.md
 
 const read = (relativePath: string) => fs.readFileSync(path.resolve(process.cwd(), relativePath), "utf8");
 

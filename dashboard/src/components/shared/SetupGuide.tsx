@@ -25,6 +25,8 @@ export function SetupGuide({ quick, detail, warning, images }: SetupGuideProps) 
       {images && images.length > 0 && (
         <div className="mt-stack space-y-stack-tight">
           {images.filter((img) => !hidden[img.src]).map((img) => (
+            // raw-media-ok: 채널 연결 설명서에 붙는 안내 그림이다(types/channel.ts 의
+            // SetupGuide images). 고객 산출물이 아니라 서명 배달을 타지 않는다.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               key={img.src}

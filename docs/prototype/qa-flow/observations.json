@@ -9,6 +9,7 @@
   "observations": [
     {
       "width": 390,
+      "theme": "light",
       "room": "create",
       "path": "/studio?room=create",
       "viewportWidth": 390,
@@ -16,10 +17,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 0,
-      "inlineOnboarding": false
+      "inlineOnboarding": false,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 390,
+      "theme": "light",
       "room": "edit",
       "path": "/studio?room=edit",
       "viewportWidth": 390,
@@ -27,10 +31,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 0,
-      "inlineOnboarding": false
+      "inlineOnboarding": false,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 390,
+      "theme": "light",
       "room": "publish",
       "path": "/studio?room=publish",
       "viewportWidth": 390,
@@ -38,10 +45,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 0,
-      "inlineOnboarding": false
+      "inlineOnboarding": false,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 390,
+      "theme": "light",
       "room": "performance",
       "path": "/",
       "viewportWidth": 390,
@@ -49,16 +59,83 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 3,
-      "inlineOnboarding": true
+      "inlineOnboarding": true,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 390,
+      "theme": "light",
+      "room": "performance-to-create",
+      "path": "/studio?room=create",
+      "navigated": true
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "room": "create",
+      "path": "/studio?room=create",
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "fullScreenOverlay": false,
+      "nextActionVisible": true,
+      "suggestionCount": 0,
+      "inlineOnboarding": false,
+      "appliedTheme": "dark",
+      "bodyBackground": "rgb(10, 10, 11)"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "room": "edit",
+      "path": "/studio?room=edit",
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "fullScreenOverlay": false,
+      "nextActionVisible": true,
+      "suggestionCount": 0,
+      "inlineOnboarding": false,
+      "appliedTheme": "dark",
+      "bodyBackground": "rgb(10, 10, 11)"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "room": "publish",
+      "path": "/studio?room=publish",
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "fullScreenOverlay": false,
+      "nextActionVisible": true,
+      "suggestionCount": 0,
+      "inlineOnboarding": false,
+      "appliedTheme": "dark",
+      "bodyBackground": "rgb(10, 10, 11)"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "room": "performance",
+      "path": "/",
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "fullScreenOverlay": false,
+      "nextActionVisible": true,
+      "suggestionCount": 3,
+      "inlineOnboarding": true,
+      "appliedTheme": "dark",
+      "bodyBackground": "rgb(10, 10, 11)"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
       "room": "performance-to-create",
       "path": "/studio?room=create",
       "navigated": true
     },
     {
       "width": 768,
+      "theme": "light",
       "room": "create",
       "path": "/studio?room=create",
       "viewportWidth": 768,
@@ -66,10 +143,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 0,
-      "inlineOnboarding": false
+      "inlineOnboarding": false,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 768,
+      "theme": "light",
       "room": "edit",
       "path": "/studio?room=edit",
       "viewportWidth": 768,
@@ -77,10 +157,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 0,
-      "inlineOnboarding": false
+      "inlineOnboarding": false,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 768,
+      "theme": "light",
       "room": "publish",
       "path": "/studio?room=publish",
       "viewportWidth": 768,
@@ -88,10 +171,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 0,
-      "inlineOnboarding": false
+      "inlineOnboarding": false,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 768,
+      "theme": "light",
       "room": "performance",
       "path": "/",
       "viewportWidth": 768,
@@ -99,16 +185,20 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 3,
-      "inlineOnboarding": true
+      "inlineOnboarding": true,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 768,
+      "theme": "light",
       "room": "performance-to-create",
       "path": "/studio?room=create",
       "navigated": true
     },
     {
       "width": 1024,
+      "theme": "light",
       "room": "create",
       "path": "/studio?room=create",
       "viewportWidth": 1024,
@@ -116,10 +206,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 0,
-      "inlineOnboarding": false
+      "inlineOnboarding": false,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 1024,
+      "theme": "light",
       "room": "edit",
       "path": "/studio?room=edit",
       "viewportWidth": 1024,
@@ -127,10 +220,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 0,
-      "inlineOnboarding": false
+      "inlineOnboarding": false,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 1024,
+      "theme": "light",
       "room": "publish",
       "path": "/studio?room=publish",
       "viewportWidth": 1024,
@@ -138,10 +234,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 0,
-      "inlineOnboarding": false
+      "inlineOnboarding": false,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 1024,
+      "theme": "light",
       "room": "performance",
       "path": "/",
       "viewportWidth": 1024,
@@ -149,16 +248,20 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 3,
-      "inlineOnboarding": true
+      "inlineOnboarding": true,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 1024,
+      "theme": "light",
       "room": "performance-to-create",
       "path": "/studio?room=create",
       "navigated": true
     },
     {
       "width": 1440,
+      "theme": "light",
       "room": "create",
       "path": "/studio?room=create",
       "viewportWidth": 1440,
@@ -166,10 +269,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 0,
-      "inlineOnboarding": false
+      "inlineOnboarding": false,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 1440,
+      "theme": "light",
       "room": "edit",
       "path": "/studio?room=edit",
       "viewportWidth": 1440,
@@ -177,10 +283,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 0,
-      "inlineOnboarding": false
+      "inlineOnboarding": false,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 1440,
+      "theme": "light",
       "room": "publish",
       "path": "/studio?room=publish",
       "viewportWidth": 1440,
@@ -188,10 +297,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 0,
-      "inlineOnboarding": false
+      "inlineOnboarding": false,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 1440,
+      "theme": "light",
       "room": "performance",
       "path": "/",
       "viewportWidth": 1440,
@@ -199,10 +311,13 @@
       "fullScreenOverlay": false,
       "nextActionVisible": true,
       "suggestionCount": 3,
-      "inlineOnboarding": true
+      "inlineOnboarding": true,
+      "appliedTheme": "light",
+      "bodyBackground": "rgb(251, 251, 252)"
     },
     {
       "width": 1440,
+      "theme": "light",
       "room": "performance-to-create",
       "path": "/studio?room=create",
       "navigated": true

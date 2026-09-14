@@ -17,7 +17,7 @@ export function ThemeToggle({ compactOnNarrow = false }: { compactOnNarrow?: boo
   return (
     <button
       onClick={toggle}
-      className="w-full flex items-center gap-stack-tight px-micro py-micro text-caption text-subtle hover:text-muted transition-colors"
+      className="min-h-control-touch w-full flex items-center gap-stack-tight px-micro py-micro text-caption text-subtle hover:text-muted transition-colors"
       title="테마 전환"
     >
       <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -27,7 +27,7 @@ export function ThemeToggle({ compactOnNarrow = false }: { compactOnNarrow?: boo
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M20.35 15.35A9 9 0 0 1 8.65 3.65a9 9 0 1 0 11.7 11.7Z" />
         )}
       </svg>
-      <span className={compactOnNarrow ? "max-xl:sr-only" : ""}>{dark ? "라이트 모드" : "다크 모드"}</span>
+      <span className={compactOnNarrow ? "md:sr-only" : ""}>{dark ? "라이트 모드" : "다크 모드"}</span>
     </button>
   );
 }

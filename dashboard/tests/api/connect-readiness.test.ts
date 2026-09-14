@@ -45,7 +45,12 @@ describe("GET /api/connect/readiness", () => {
     const body = await res.json();
     expect(body.providers.x.available).toBe(false);
     expect(body.providers.x.status).toBe("opening_soon");
-    expect(body.providers.x.reason).toContain("자격증명");
+    // 계약이 "자격증명"이라는 낱말을 요구하던 것을 바꾼다. 그 낱말은 우리 사정이지 화면을 보는
+    // 사람의 언어가 아니었다(회장 2026-09-06 "앱 자격증명 등록을 하라는게 뭔말이냐").
+    // 이제 요구하는 것은 낱말이 아니라 조치 가능성이다. 어디로 가야 하는지가 문구에 있어야 한다.
+    expect(body.providers.x.reason).toContain("developer.x.com");
+    expect(body.providers.x.reason).toContain("연결이 열립니다");
+    expect(body.providers.x.reason).not.toContain("X_CLIENT_ID"); // 설정 변수 이름 노출 금지
     expect(body.providers.x.reason).not.toMatch(/^\{/); // raw JSON 아님
   });
 

@@ -108,9 +108,16 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
   <div class="meta">2026년 8월 30일 · 작성 대상: 회장 · 마케팅 VM 실측과 저장소 기록에 근거함</div>
 </header>
 
+<div class="card t-warn">
+  <b>2026년 9월 1일 대체됨.</b>
+  현행 인프라 아키텍처와 표준 기술 용어는
+  <code>docs/reports/osmu-인프라-아키텍처-2026-09-01.md</code>를 따른다.
+  이 문서의 2026년 8월 30일 운영 실측 수치와 개선 이력은 보존한다.
+</div>
+
 <div class="card summary">
   <h3>30초 요약</h3>
-  <p>서비스는 <b>서버 한 대</b>에서 돕니다. 그 위에 컨테이너는 딱 <b>둘</b>입니다. 화면과 서버를 겸하는 운영 앱 하나, 그 앱이 멎으면 되살리는 감시자 하나입니다. 데이터베이스와 로그인은 <b>Supabase</b>가 맡습니다. 바깥에서 들어오는 길은 Cloudflare 터널 하나뿐입니다.</p>
+  <p>서비스는 <b>VM 한 대</b>에서 실행됩니다. 운영 컨테이너는 Next.js App Router 애플리케이션 컨테이너와 autoheal 컨테이너 두 개입니다. 데이터베이스와 인증은 <b>Supabase</b>가 맡습니다. 외부 HTTPS ingress는 Cloudflare Tunnel입니다.</p>
   <p><b>어제까지는 컨테이너가 열둘이었습니다.</b> 열 개가 죽은 채 자리만 차지하고 있었고, 그중 하나는 운영 앱과 같은 포트를 노려 7월에 1861회 재시작 사고를 냈던 것입니다. 전부 지웠습니다. 디스크 사용률이 81퍼센트에서 <b>36퍼센트</b>로 내려갔습니다.</p>
   <p><b>이미지와 영상을 보관할 저장소(R2)는 아직 운영에 붙어 있지 않습니다.</b> 코드에는 붙일 자리가 준비돼 있는데 운영 컨테이너에는 설정이 하나도 없습니다. 이것은 결정이 안 난 항목입니다.</p>
   <p>개선 쪽은 이렇습니다. 회장께서 화면을 쓰며 남기신 지적 30건 중 <b>3건 해결, 6건 부분, 12건 미해결, 9건 설계만</b>이 8월 29일 판정이었고, 그 뒤 여덟 개 조가 붙어 네 방을 고쳤습니다. 돈이 새던 자리 일곱 개를 막았고, 사람 승낙 없이 글을 지우던 옛 경로를 봉인했고, 세 번 죽었던 배포를 살려 지금 운영에 새 코드가 올라가 있습니다. <b>다만 실제 발행 경로는 연결된 채널이 0곳이라 아무도 끝까지 못 봤습니다.</b></p>
@@ -133,11 +140,11 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
 
 <div class="diagram">
   <div class="dg-row">
-    <div class="node"><div class="n-t">고객 브라우저</div><div class="n-s">회장과 고객이 여는 화면</div></div>
+    <div class="node"><div class="n-t">고객 브라우저</div><div class="n-s">Next.js 프론트엔드 클라이언트</div></div>
   </div>
   <div class="arrow">↓ &nbsp;<b>인터넷</b></div>
   <div class="dg-row">
-    <div class="node"><div class="n-t">Cloudflare 터널</div><div class="n-s">바깥으로 열린 유일한 문. 서버가 인터넷 쪽으로 포트를 열지 않고, 터널이 안에서 밖으로 연결을 겁니다. 어떤 주소를 어디로 보낼지는 Cloudflare 웹 화면에 있고 서버 디스크에는 없습니다.</div></div>
+    <div class="node"><div class="n-t">Cloudflare Tunnel</div><div class="n-s">공개 HTTPS ingress입니다. VM에 public inbound port를 직접 노출하지 않고 host port 18789로 요청을 전달합니다. hostname routing 정본은 Cloudflare 설정에 있습니다.</div></div>
   </div>
   <div class="arrow">↓ &nbsp;<b>서버 안쪽 포트 18789</b></div>
 
@@ -145,22 +152,22 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
     <span class="band-label">마케팅 서버 한 대 (메모리 7기가 · 디스크 49기가 · 74일 연속 가동)</span>
     <div class="dg-row">
       <div class="node app">
-        <div class="n-t">운영 앱</div>
-        <div class="n-s"><code>openclaw-dashboard-osmu</code><br>화면과 서버를 한 몸에 담은 물건입니다. 네 방(생성·편집·발행·성과) 화면을 그리는 것도, 그 화면이 부르는 처리를 받는 것도 이 하나가 합니다. 이미지 표식 0.2.0.</div>
+        <div class="n-t">Next.js 애플리케이션 컨테이너</div>
+        <div class="n-s"><code>openclaw-dashboard-osmu</code><br>Next.js App Router의 프론트엔드 렌더링과 API Route Handler를 함께 배포합니다. Docker 이미지 태그는 <code>openclaw-auto/dashboard:0.2.0</code>입니다.</div>
       </div>
       <div class="node">
-        <div class="n-t">감시자</div>
-        <div class="n-s"><code>openclaw-autoheal</code><br>앱이 비정상으로 표시되면 자동으로 재시작합니다. 6월 28일 장애 뒤에 들어온 물건입니다.</div>
+        <div class="n-t">autoheal 컨테이너</div>
+        <div class="n-s"><code>openclaw-autoheal</code><br>애플리케이션의 Docker health status가 <code>unhealthy</code>면 Docker Engine API로 재시작합니다. 6월 28일 장애 뒤에 도입했습니다.</div>
       </div>
     </div>
     <div class="dg-row">
       <div class="node">
-        <div class="n-t">배포 일꾼</div>
-        <div class="n-s">GitHub Actions의 자체 호스팅 러너가 이 서버 위에서 돕니다. 배포 단추를 누르면 여기서 코드를 받아 새 앱을 만들어 올립니다.</div>
+        <div class="n-t">자체 호스팅 GitHub Actions 러너</div>
+        <div class="n-s"><code>self-hosted</code>, <code>marketing_runner</code> label에 매칭됩니다. checkout, Docker 이미지 빌드, Compose 배포와 스모크 검증을 실행합니다.</div>
       </div>
       <div class="node">
         <div class="n-t">정기 작업</div>
-        <div class="n-s">서버 자체 시계로 도는 세 가지. 상태 감시 1분마다, 예약 발행 10분마다, 주간 도커 정리 일요일 새벽.</div>
+        <div class="n-s">VM host cron 세 가지입니다. 상태 확인은 1분마다, 예약 발행은 10분마다, Docker 정리는 일요일 새벽에 실행합니다.</div>
       </div>
     </div>
   </div>
@@ -173,8 +180,8 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
       <div class="n-s">데이터베이스와 로그인을 함께 맡습니다. 작업 공간, 회원, 작업물, 발행 기록, 학습 정보, 돈 장부가 전부 여기 있습니다. 서울 지역 연결 풀러를 거쳐 붙습니다.</div>
     </div>
     <div class="node store">
-      <div class="n-t">서버 안 보관함 둘</div>
-      <div class="n-s"><code>openclaw-osmu-config</code>와 <code>openclaw-osmu-data</code>. 앱이 재시작해도 남아야 하는 설정과 파일이 여기 있습니다. 배포 때 자동으로 꺼냈다 다시 넣습니다.</div>
+      <div class="n-t">Docker named volume</div>
+      <div class="n-s"><code>openclaw-osmu-config</code>와 <code>openclaw-osmu-data</code>입니다. 컨테이너 생명 주기와 분리해 설정과 파일을 영속화합니다.</div>
     </div>
     <div class="node off">
       <div class="n-t">R2 (이미지·영상 저장소)</div>
@@ -186,18 +193,18 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
 <h3>컨테이너 각각이 하는 일</h3>
 <div class="scroll">
 <table>
-  <thead><tr><th>이름</th><th>역할</th><th>멎으면</th><th>상태</th></tr></thead>
+  <thead><tr><th>이름</th><th>역할</th><th>장애 영향</th><th>상태</th></tr></thead>
   <tbody>
     <tr>
       <td><code>openclaw-dashboard-osmu</code></td>
-      <td>운영 앱 전부. 화면을 그리는 일과 그 화면이 부르는 처리를 한 몸이 합니다. Next.js라 둘이 갈라져 있지 않습니다.</td>
-      <td>서비스가 통째로 멎습니다. 단일 장애점입니다.</td>
+      <td>Next.js 프론트엔드 렌더링과 API Route Handler를 하나의 컨테이너에서 실행합니다.</td>
+      <td>프론트엔드와 API가 함께 중단됩니다. 단일 장애점입니다.</td>
       <td><span class="tag t-ok">정상</span></td>
     </tr>
     <tr>
       <td><code>openclaw-autoheal</code></td>
-      <td>앱의 자가진단이 비정상으로 바뀌면 자동으로 재시작합니다.</td>
-      <td>앱이 멎어도 아무도 안 살립니다.</td>
+      <td>Docker health status가 <code>unhealthy</code>로 바뀐 애플리케이션 컨테이너를 재시작합니다.</td>
+      <td>healthcheck 실패에 대한 자동 재시작이 실행되지 않습니다.</td>
       <td><span class="tag t-ok">정상</span></td>
     </tr>
   </tbody>
@@ -205,8 +212,8 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
 </div>
 
 <div class="card">
-  <h4>감시자가 만능은 아닙니다</h4>
-  <p>도커의 기본 재시작 규칙은 <b>프로세스가 죽어야</b> 듣습니다. 앱이 죽지 않고 처리 능력만 100퍼센트로 붙잡힌 채 멎으면 그 규칙은 아무 일도 하지 않습니다. 감시자는 그 경우를 잡으라고 넣은 것인데, 감시자 자신도 앱의 자가진단이 비정상을 <b>정확히 보고할 때만</b> 움직입니다. 자가진단이 정상이라고 거짓말하는 종류의 멎음은 여전히 사람이 봐야 압니다.</p>
+  <h4>healthcheck와 autoheal의 한계</h4>
+  <p><code>restart: unless-stopped</code>는 애플리케이션 process가 종료될 때 재시작합니다. process가 종료되지 않은 hang은 Docker healthcheck가 <code>unhealthy</code>로 판정해야 autoheal이 재시작할 수 있습니다. <code>/api/health</code>가 장애를 정상으로 응답하면 이 경로로 탐지하지 못합니다.</p>
 </div>
 
 <h3>지운 것: 열둘에서 둘로</h3>
@@ -215,7 +222,7 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
   <li>그들의 데이터 보관 자리가 <b>전부 비어 있었습니다.</b></li>
   <li><b>7월 5일 이후 아무도 손대지 않았습니다.</b></li>
   <li>게이트웨이 넷은 <b>4주째 비정상</b>이었고 마지막 기록이 7월 31일입니다. 인증 열쇠가 없어 애초에 아무 일도 못 하는 상태였습니다.</li>
-  <li>그중 tenant1 게이트웨이는 운영 앱과 <b>같은 포트를 쓰려다</b> 7월에 <b>1861회 재시작</b> 사고를 낸 물건입니다.</li>
+  <li>그중 tenant1 게이트웨이는 운영 애플리케이션과 <b>host port 18789가 충돌해</b> 7월에 <b>1861회 재시작</b>했습니다.</li>
 </ul>
 
 <div class="nums">
@@ -224,11 +231,11 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
   <div class="num"><b>2.5기가</b><span>회수한 이미지</span></div>
   <div class="num"><b>6.6기가</b><span>회수한 보관 자리</span></div>
 </div>
-<p class="note">다시 쌓이지 않게 두 겹을 걸었습니다. 배포할 때마다 찌꺼기를 치우는 단계를 배포 절차에 넣었고, 서버 시계로 도는 주간 정리를 일요일 새벽에 걸었습니다.</p>
+<p class="note">재발 방지 제어는 두 개입니다. 배포 workflow에 unused image, build cache, stopped container 정리를 넣었고, VM host cron에 주간 Docker 정리를 등록했습니다.</p>
 
 <h3>데이터베이스와 로그인</h3>
 <p>둘 다 Supabase가 맡습니다. 서울 지역 연결 풀러를 거칩니다. 여기서 회장께서 알아 두셔야 할 성질이 하나 있습니다.</p>
-<blockquote>Supabase 주소와 공개 열쇠는 <b>앱을 만드는 시점에 코드 안으로 박힙니다.</b> 나중에 값만 바꾸면 반영되지 않고, 앱을 다시 만들어야 합니다.</blockquote>
+<blockquote>Supabase URL과 anon key는 <b>Next.js build-time environment variable로 클라이언트 번들에 inline됩니다.</b> 값을 바꾼 뒤에는 Docker 이미지를 다시 빌드해야 합니다.</blockquote>
 <p>이 성질 때문에 배포 마지막 검사가 그 값이 실제로 박혔는지를 확인합니다. 안 박혔으면 배포가 실패로 끝납니다. 값이 빠진 채 올라가면 로그인이 통째로 안 되기 때문입니다.</p>
 
 <h3>이미지와 영상을 어디에 둘 것인가 (미결)</h3>
@@ -238,15 +245,15 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
   <p>이것이 뜻하는 바는 하나입니다. <b>만들어진 이미지와 영상 원본을 어디에 보관할지가 아직 안 정해졌습니다.</b> 지금 화면에서 보이는 미리보기는 저장된 원본을 불러오는 것이 아닙니다. 이 결정이 나기 전에는 "만든 영상을 내려받는다"가 온전히 성립하지 않습니다.</p>
 </div>
 
-<h3>운영 앱이 들고 있는 설정 (이름만)</h3>
-<p>값은 이 문서에 적지 않습니다. 무엇을 들고 있는지만 적습니다.</p>
+<h3>런타임 환경 변수와 secret</h3>
+<p>secret 값은 기록하지 않고 변수명과 책임 경계만 기록합니다.</p>
 <div class="scroll">
 <table>
   <thead><tr><th>묶음</th><th>들어 있는 것</th></tr></thead>
   <tbody>
     <tr><td>접속과 신원</td><td>Supabase 주소, Supabase 공개 열쇠, 데이터베이스 주소, 서명 열쇠, 운영자 잠금 토큰</td></tr>
     <tr><td>주소와 알림</td><td>공개 주소, 슬랙 알림 주소</td></tr>
-    <tr><td>추적</td><td>빌드 커밋(지금 떠 있는 앱이 어느 코드로 만들어졌는지 나타내는 표식)</td></tr>
+    <tr><td>추적</td><td>Git 소스 리비전. <code>GITHUB_SHA</code>를 OCI <code>org.opencontainers.image.revision</code> 라벨에 기록</td></tr>
     <tr><td>채널별 앱 열쇠</td><td>Threads, Instagram, X, TikTok, LinkedIn, Pinterest, Tumblr, Slack, Line, Naver 각 한 벌</td></tr>
     <tr><td>없는 것</td><td><b>R2 관련 설정 전부</b></td></tr>
   </tbody>
@@ -257,23 +264,23 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
 <h3>정기 작업</h3>
 <div class="scroll">
 <table>
-  <thead><tr><th>무엇</th><th>주기</th><th>도는 곳</th></tr></thead>
+  <thead><tr><th>작업</th><th>주기</th><th>실행 주체</th></tr></thead>
   <tbody>
-    <tr><td>상태 감시</td><td>1분마다</td><td>서버 시계</td></tr>
-    <tr><td>예약 발행 처리</td><td>10분마다</td><td>서버 시계</td></tr>
-    <tr><td>도커 찌꺼기 주간 정리</td><td>일요일 새벽 4시 17분</td><td>서버 시계 (이번에 신설)</td></tr>
+    <tr><td>상태 확인</td><td>1분마다</td><td>VM host cron</td></tr>
+    <tr><td>예약 발행 처리</td><td>10분마다</td><td>VM host cron</td></tr>
+    <tr><td>Docker unused resource 정리</td><td>일요일 새벽 4시 17분</td><td>VM host cron</td></tr>
     <tr><td>바깥에서 살아 있는지 확인</td><td>5분마다</td><td>GitHub 쪽. 서버가 통째로 죽어도 이 확인은 독립적으로 돕니다. 정상에서 장애로, 장애에서 정상으로 바뀔 때만 슬랙에 알립니다.</td></tr>
   </tbody>
 </table>
 </div>
 
-<h3>배포 절차 넷</h3>
+<h3>GitHub Actions workflow</h3>
 <div class="scroll">
 <table>
   <thead><tr><th>이름</th><th>하는 일</th><th>언제</th></tr></thead>
   <tbody>
     <tr><td>CI</td><td>코드가 올라올 때마다 시험과 타입 검사를 돌립니다.</td><td>자동</td></tr>
-    <tr><td>Deploy</td><td>새 앱을 만들어 서버에 올립니다.</td><td>회장 또는 담당이 수동으로</td></tr>
+    <tr><td>Deploy openclaw</td><td>Docker 이미지를 빌드하고 Compose로 배포합니다.</td><td><code>workflow_dispatch</code></td></tr>
     <tr><td>DB 마이그레이션</td><td>데이터베이스 구조를 단계별로 바꿉니다.</td><td>단계를 골라 수동으로</td></tr>
     <tr><td>Health Monitor</td><td>바깥에서 서비스가 살아 있는지 확인합니다.</td><td>5분마다 자동</td></tr>
   </tbody>
@@ -287,8 +294,8 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
   <ol>
     <li><b>audit</b>: 읽기만 합니다. 아무것도 바꾸지 않습니다.</li>
     <li><b>apply-legacy</b>: 빠진 표를 채웁니다. 기존 데이터를 지우거나 바꾸지 않습니다.</li>
-    <li><b>Deploy</b>: 새 앱을 올립니다. 여기서 앱에 표식이 붙습니다.</li>
-    <li><b>expand-member</b>: 3단계 뒤에만 됩니다. 3단계가 붙인 표식을 이 단계가 읽기 때문입니다.</li>
+    <li><b>Deploy</b>: 애플리케이션을 배포하고 OCI 이미지 리비전 라벨을 기록합니다.</li>
+    <li><b>expand-member</b>: 3단계 뒤에만 실행합니다. 이 단계가 배포 이미지의 소스 리비전을 읽기 때문입니다.</li>
   </ol>
   <p class="note">콘텐츠를 만들어 보시는 데는 3단계까지면 충분합니다. 4단계는 데이터 안전을 한 칸 더 조이는 것이지 기능을 여는 것이 아닙니다.</p>
 </div>
@@ -317,7 +324,7 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
     <tr><td>4</td><td>예약에 만료가 없어 예약 직후 처리가 죽으면 그 건이 영원히 막혔습니다.</td><td>10분 임차를 두고, 만료되면 공급자에게 먼저 물어 이미 올라간 글이 있으면 그것을 채택하고 다시 올리지 않습니다.</td></tr>
     <tr><td>5</td><td>게시는 성공했는데 응답만 끊긴 경우를 실패로 저장해, 재시도가 <b>같은 글을 또 올렸습니다.</b></td><td>실패가 아니라 "모름"으로 보존하고, 공급자에게 확인하기 전에는 다시 올리지 못하게 막았습니다.</td></tr>
     <tr><td>6</td><td>본문은 성공하고 첫 댓글만 실패했는데 화면에는 전체 성공으로 보였습니다.</td><td>첫 댓글 상태를 따로 기록하고, 같은 요청을 다시 보내면 본문은 그대로 두고 댓글만 복구합니다.</td></tr>
-    <tr><td>7</td><td>숏폼 공장에서 강제 종료된 작업의 옛 일꾼이 <b>계속 비용 작업을 만들고</b> 최종 상태를 덮어썼습니다.</td><td>실행마다 소유 표를 두고, 표를 잃으면 그 자리에서 비용이 끊깁니다. 강제 종료가 실제 취소가 되게 했습니다.</td></tr>
+    <tr><td>7</td><td>숏폼 공장에서 강제 종료된 orphaned background job이 <b>계속 비용 작업을 만들고</b> 최종 상태를 덮어썼습니다.</td><td>실행마다 job ownership record를 두고, ownership을 잃으면 비용 작업을 중단합니다. 강제 종료가 실제 취소로 이어지게 했습니다.</td></tr>
   </tbody>
 </table>
 </div>
@@ -328,9 +335,9 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
 <div class="diagram">
   <div class="dg-row">
     <div class="node"><div class="n-t">배포</div><div class="n-s">데이터베이스가 목표 상태여야 통과시킴</div></div>
-    <div class="node"><div class="n-t">데이터베이스 확장</div><div class="n-s">지금 떠 있는 앱의 표식을 읽어야 실행 가능</div></div>
+    <div class="node"><div class="n-t">데이터베이스 확장</div><div class="n-s">현재 배포 이미지의 소스 리비전을 읽어야 실행 가능</div></div>
   </div>
-  <div class="arrow"><b>배포는 확장을 기다리고, 확장은 배포를 기다렸습니다.</b> 표식은 새 배포만 붙일 수 있으니 첫 바퀴를 돌 방법이 없었습니다.</div>
+  <div class="arrow"><b>배포 precondition과 migration precondition이 순환 의존했습니다.</b> OCI 이미지 리비전 라벨은 새 배포에서만 생성되므로 초기 migration 경로가 없었습니다.</div>
 </div>
 <p>우회로도 없었습니다. 목표 상태로 가는 다른 길 하나는 우리 계정 권한으로 <b>영구히 불가능</b>했기 때문입니다.</p>
 <p><b>진짜 원인은 검사 자체에 있었습니다.</b> 배포 검사가 요구한 상태는 확장을 <b>끝낸 뒤의 목표 상태</b>였습니다. 그것을 배포의 사전 조건 자리에 놓아 둔 것이 설계 결함이었습니다. 그 증거는 명백했습니다. 검사가 거절한 그 상태 위에서 <b>서비스는 이틀 동안 멀쩡히 돌고 있었습니다.</b></p>
@@ -451,7 +458,7 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
 <ul>
   <li><b>"그래서 지금 화면이 쓸 만한가"는 이 문서가 답하지 못합니다.</b> 여기 적은 것은 무엇을 고쳤는지이지 회장께서 열어 보셨을 때의 느낌이 아닙니다. 그 답은 회장께서 다시 한 바퀴 도셔야만 나옵니다. 그리고 그때 나오는 지적이 2차 대조표의 재료가 됩니다.</li>
   <li><b>돈이 실제로 얼마나 나가는지 모릅니다.</b> 새던 자리 일곱 개를 막았다는 것은 "잘못 나가는 것을 막았다"이지 "정상적으로 얼마 나간다"가 아닙니다. 공급자 실청구를 붙여 본 적이 없어 한 편에 실제로 얼마가 드는지는 아무도 모릅니다.</li>
-  <li><b>서버 한 대가 죽으면 어떻게 되는지 실제로 겪어 보지 않았습니다.</b> 감시자가 있지만 그것은 앱이 멎었을 때의 이야기이고, 서버 자체나 Supabase가 죽는 경우의 복구 시간은 측정된 적이 없습니다.</li>
+  <li><b>VM 장애를 실제로 재현하지 않았습니다.</b> autoheal은 애플리케이션 컨테이너의 <code>unhealthy</code> 상태만 처리하며, VM이나 Supabase 장애의 복구 시간은 측정되지 않았습니다.</li>
   <li><b>Cloudflare 쪽 라우팅 설정은 서버에서 볼 수 없습니다.</b> 어떤 주소가 어디로 가는지의 정본이 Cloudflare 웹 화면에만 있어, 그 설정이 바뀌어도 저장소에는 흔적이 남지 않습니다.</li>
   <li><b>저장소(R2)를 언제 어떻게 붙일지는 결정된 바가 없습니다.</b> 이 문서는 "안 붙어 있다"는 사실만 확인했을 뿐, 무엇을 어디에 얼마에 둘지는 회장 판단이 필요한 항목입니다.</li>
 </ul>
@@ -461,7 +468,7 @@ hr{border:none; border-top:1px solid var(--line); margin:36px 0}
   생성: 2026-08-30 KST · line: osmu<br>
   model: claude-opus-5[1m] · agent: 메인 컨트롤러<br>
   <b>근거 소스</b><br>
-  마케팅 VM 직접 접속 실측(컨테이너 목록, 디스크 사용률, 운영 컨테이너 설정 이름, 서버 시계 정기 작업, 터널 구성)<br>
+  마케팅 VM 직접 접속 실측(컨테이너 목록, 디스크 사용률, 운영 컨테이너 설정 이름, host cron, Cloudflare Tunnel 구성)<br>
   <code>session-state.osmu.md</code> · <code>pipeline-state.osmu.md</code><br>
   <code>docs/qa/회장-피드백-대조표-2026-08-29.md</code> · <code>docs/requests/2026-08-29-회장-4실-실사용-피드백.md</code><br>
   <code>docs/releases/2026-08-29-배포-교착-해소-순서.md</code> · <code>docs/qa/qa-tracker.md</code> 2026-08-29 항목<br>

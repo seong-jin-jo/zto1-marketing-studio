@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LEARNING_SLOT_TOTAL } from "./learning-info";
+import { LEARNING_USER_SLOT_TOTAL } from "./learning-info";
 
 // 헤더 학습 정보. 회장 지적 "왜 헤더에 학습 정보가 사라짐?"의 자리다.
 // 네 방 어디에 있든 항상 보이고, 얼마나 찼는지가 숫자와 막대로 같이 보인다.
@@ -26,26 +26,34 @@ export function LearningStatus({
     return () => clearTimeout(timer);
   }, [flashToken]);
 
-  const done = filled >= LEARNING_SLOT_TOTAL;
+  // 성과에서 배운 규칙은 발행 결과로 저절로 차는 칸이라 완료 판정에서 뺀다.
+  // 넣으면 사용자가 다 채워도 영원히 미완으로 보인다(2026-09-06 회장 스모크).
+  const done = filled >= LEARNING_USER_SLOT_TOTAL;
+  const remaining = Math.max(0, LEARNING_USER_SLOT_TOTAL - filled);
   return (
     <button
       type="button"
       onClick={onOpen}
       data-learning-status={filled}
       data-learning-flash={flashing ? "on" : undefined}
-      aria-label={`학습 정보 ${filled} / ${LEARNING_SLOT_TOTAL}칸 채움. 이어서 채우기`}
-      title="회원님 브랜드를 담당이 배워 둔 정도입니다. 눌러서 이어 채웁니다"
+      aria-label={done
+        ? `학습 정보 ${filled} / ${LEARNING_USER_SLOT_TOTAL}칸 채움. 모두 채움`
+        : `학습 정보 ${filled} / ${LEARNING_USER_SLOT_TOTAL}칸 채움. 남은 ${remaining}칸 이어 채우기`}
+      title={done ? "학습 정보를 모두 채웠습니다. 성과에서 배운 규칙은 발행 결과가 쌓이면 저절로 채워집니다" : `남은 ${remaining}칸을 이어서 채웁니다`}
       className={`inline-flex min-h-control-touch items-center gap-stack-tight rounded-control border px-stack text-body-sm font-semibold ${
         flashing ? "border-accent bg-accent-soft text-accent" : "border-border bg-surface-2 text-muted hover:bg-surface"
       }`}
     >
       <span>학습 정보</span>
       <span className={done ? "text-success" : "text-accent"}>
-        {filled} / {LEARNING_SLOT_TOTAL}
+        {filled} / {LEARNING_USER_SLOT_TOTAL}
+      </span>
+      <span className="text-caption text-muted">
+        {done ? "모두 채움" : `남은 ${remaining}칸 이어 채우기`}
       </span>
       <progress
         className="progress-semantic w-16"
-        max={LEARNING_SLOT_TOTAL}
+        max={LEARNING_USER_SLOT_TOTAL}
         value={filled}
         aria-hidden="true"
       />

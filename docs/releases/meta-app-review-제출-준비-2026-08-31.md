@@ -1,14 +1,14 @@
 # Meta App Review 제출 준비
 
-STAMP | line: osmu-appreview0831 | 생성: 2026-08-31 05:03 KST | model: gpt-5.6-sol | agent: code-builder | skills: 없음 | 근거: ADR-004, Meta App Review 공식 가이드, Meta Permissions Reference, Meta Data Deletion Callback 문서 | 고민: 심사를 빨리 내는 것보다 실제 제품에서 사용하지 않는 권한을 제출하지 않는 것이 반려와 재심사를 줄인다.
+STAMP | line: osmu-appreview0831 | 생성: 2026-08-31 05:03 KST | 갱신: 2026-08-31 17:55 KST | model: gpt-codex/gpt-5.6-sol | agent: code-builder | skills: 없음 | 근거: ADR-004, Meta 공식 Threads·Instagram API 컬렉션, 운영 법적 고지 3경로 실측, OAuth scope와 실제 API 경로 전수 대조 | 고민: 첫 제출은 실제 제품 경로가 있는 권한 8개로만 고정하고 Instagram 인사이트는 화면과 호출이 생긴 뒤 2차 제출한다.
 
 ## 한 줄 결론
 
-현재 `threads_basic` 오류는 앱 심사 전 계정이 Threads Tester가 아니거나 초대를 수락하지 않아 발생한다. 당장은 아래 테스터 등록과 수락으로 회장 계정을 연결할 수 있다. 외부 고객의 클릭형 OAuth 연결은 App Review와 Advanced Access 승인 뒤 가능하다. 다만 9개 권한 전체 제출은 아래 세 가지가 끝나기 전에는 제출하면 안 된다.
+첫 Meta App Review의 코드 선행 조건은 해소됐다. 제출 권한은 실제 제품 경로가 있는 8개로 고정했고 `instagram_business_manage_insights`는 제거했다. 회장이 지금 제출해도 되는가: **아직 NO-GO다. 8개 권한별 최근 성공 API 호출과 영상 증거를 확보한 뒤 제출해야 한다.**
 
-1. 이 변경을 운영에 배포하여 Privacy Policy, Terms, Data Deletion 안내를 최신화한다.
-2. 각 제출 권한으로 최근 30일 안에 성공한 API 호출을 만들고 녹화한다.
-3. `instagram_business_manage_insights`를 실제로 쓰는 제품 화면과 API 호출을 구현하거나, 첫 심사 요청 범위에서 이 권한을 제거한다. 현재 코드에는 Instagram 인사이트 조회 경로가 없다.
+1. [완료] Privacy Policy, Terms, Data Deletion 안내를 운영에 배포했다. 2026-08-31 운영 실측에서 세 경로 모두 HTTPS 200이었다.
+2. [남음] 각 제출 권한으로 최근 30일 안에 성공한 API 호출을 만들고 영상 A부터 G까지 녹화한다.
+3. [완료] `instagram_business_manage_insights`를 OAuth scope와 첫 제출 목록에서 제거했다. Instagram 인사이트 화면과 API 호출을 구현한 뒤 2차 제출한다.
 
 ## 현재 오류와 정본 결정
 
@@ -83,11 +83,11 @@ Instagram API 설정 화면을 기준으로 진행할 경우 `Instagram > API se
 
 | Meta 앱 설정 | 입력 URL | 현재 판단 |
 |---|---|---|
-| Privacy Policy URL | `https://openclaw.sj-onpremise-cloudflare-tunnel.cloud/privacy` | 200 응답은 관찰됨. 이 판의 보강 문구는 아직 미배포 |
-| Terms of Service URL | `https://openclaw.sj-onpremise-cloudflare-tunnel.cloud/terms` | 200 응답은 관찰됨. 이 판의 보강 문구는 아직 미배포 |
-| User Data Deletion | `https://openclaw.sj-onpremise-cloudflare-tunnel.cloud/data-deletion` | 안내 URL 방식. 200 응답은 관찰됨. 이 판의 보강 문구는 아직 미배포 |
+| Privacy Policy URL | `https://openclaw.sj-onpremise-cloudflare-tunnel.cloud/privacy` | 운영 배포 완료. 2026-08-31 HTTPS 200 관찰 |
+| Terms of Service URL | `https://openclaw.sj-onpremise-cloudflare-tunnel.cloud/terms` | 운영 배포 완료. 2026-08-31 HTTPS 200 관찰 |
+| User Data Deletion | `https://openclaw.sj-onpremise-cloudflare-tunnel.cloud/data-deletion` | 안내 URL 방식. 운영 배포 완료. 2026-08-31 HTTPS 200 관찰 |
 
-Meta는 Data Deletion Request Callback URL 또는 Data Deletion Instructions URL 중 하나를 허용한다. 현재는 안내 URL 방식을 쓴다. 운영 배포 후 세 URL을 로그아웃 상태에서 다시 열어 200, HTTPS, 본문 표시를 확인해야 한다.
+Meta는 Data Deletion Request Callback URL 또는 Data Deletion Instructions URL 중 하나를 허용한다. 현재는 안내 URL 방식을 쓴다. 세 운영 URL의 HTTPS 200과 최신 본문은 컨트롤러가 실측 확인했다.
 
 ## Privacy Policy와 Terms 대조
 
@@ -104,7 +104,7 @@ Meta는 Data Deletion Request Callback URL 또는 Data Deletion Instructions URL
 
 ## 권한별 Advanced Access 준비표
 
-외부 고객 계정을 연결하는 `Clients` 용도에서는 아래 9개 모두 Advanced Access 대상으로 제출한다. Standard Access는 앱 역할, 테스터, 앱 소유 계정처럼 개발자가 소유하거나 관리하는 계정 범위다.
+외부 고객 계정을 연결하는 `Clients` 용도에서는 아래 8개만 첫 Advanced Access 대상으로 제출한다. Standard Access는 앱 역할, 테스터, 앱 소유 계정처럼 개발자가 소유하거나 관리하는 계정 범위다.
 
 | 권한 | 의존 권한 | 제품에서 보여줄 실제 사용 | 제출 판단 |
 |---|---|---|---|
@@ -115,10 +115,49 @@ Meta는 Data Deletion Request Callback URL 또는 Data Deletion Instructions URL
 | `threads_manage_replies` | `threads_basic` | 읽은 답글에 회신하고 Threads에서 결과 확인 | 준비 가능. 숨김 기능을 구현했다고 주장하지 않음 |
 | `instagram_business_basic` | 없음 | OAuth 승인 후 Instagram Professional 프로필과 연결 계정 표시 | 준비 가능 |
 | `instagram_business_content_publish` | `instagram_business_basic` | 이미지 또는 영상 게시 후 Instagram에서 결과 확인 | 준비 가능 |
-| `instagram_business_manage_insights` | `instagram_business_basic` | Instagram 인사이트를 제품 화면에서 조회 | 제출 차단. 현재 실제 조회 경로 없음 |
 | `instagram_business_manage_comments` | `instagram_business_basic` | 게시물 댓글을 읽고 제품에서 답글 작성 | 준비 가능 |
 
 공식 제출 가이드에 따라 Advanced Access를 요청하는 권한마다 제출 전 30일 안에 성공한 API 호출이 최소 1회 있어야 한다.
+
+### 요청 권한과 실제 코드 경로 전수 대조
+
+첫 Meta 제출 대상 provider인 Instagram과 Threads의 기존 요청 권한 9개를 모두 대조했다. 비 Meta provider의 OAuth scope는 이번 Meta App Review 제출 대상이 아니므로 변경하지 않았다.
+
+| 권한 | 실제 사용 코드 경로 | 판정 |
+|---|---|---|
+| `threads_basic` | `dashboard/src/lib/channel-accounts.ts:69-76`의 `/me?fields=id,username` 연결 계정 확인 | 유지 |
+| `threads_content_publish` | `dashboard/src/lib/publish.ts:293-315`의 `/threads`, `/threads_publish` | 유지. 핵심 발행 권한 |
+| `threads_manage_insights` | `dashboard/src/app/api/metrics/route.ts:56-87`의 `/{post-id}/insights` 수집 | 유지 |
+| `threads_read_replies` | `dashboard/src/lib/engagement-provider.ts:63-76`의 `/{post-id}/conversation` 조회 | 유지 |
+| `threads_manage_replies` | `dashboard/src/lib/publish.ts:289-315`의 `reply_to_id` 답글 발행, `dashboard/src/lib/first-comment.ts:74-86`의 첫 댓글 | 유지 |
+| `instagram_business_basic` | `dashboard/src/lib/channel-accounts.ts:77-84`의 `/me?fields=id,username` 연결 계정 확인 | 유지 |
+| `instagram_business_content_publish` | `dashboard/src/lib/publish.ts:346-378`의 `/media`, `/media_publish` | 유지. 핵심 발행 권한 |
+| `instagram_business_manage_comments` | `dashboard/src/lib/engagement-provider.ts:79-92,174-178`의 댓글 조회·답글, `dashboard/src/lib/first-comment.ts:82-86`의 첫 댓글 | 유지 |
+| `instagram_business_manage_insights` | Instagram Graph `/insights` 호출 0건. `dashboard/src/lib/performance-metrics-coverage.ts:45-52`도 수집기 미구현을 명시 | 첫 제출에서 제거 |
+
+최종 OAuth scope는 `dashboard/src/lib/social-connect.ts:180-195`가 정본이다. Instagram 3개와 Threads 5개, 총 8개다.
+
+전수 grep 결과는 다음과 같다. 제거한 권한 문자열은 거절 계약 테스트에만 남았고 Instagram `/insights` 호출은 0건이다. 유지한 권한은 각 Meta endpoint와 연결된다.
+
+```text
+REMOVED_SCOPE_REFERENCES
+dashboard/tests/brand/social-connect.test.ts:141:    expect(new URL(body.authUrl).searchParams.get("scope")).not.toContain("instagram_business_manage_insights");
+INSTAGRAM_INSIGHTS_CALLS
+결과 없음
+RETAINED_META_ENDPOINTS
+dashboard/src/app/api/metrics/route.ts:71: Threads /insights?metric 호출
+dashboard/src/lib/engagement-provider.ts:65: Threads /conversation?fields 호출
+dashboard/src/lib/engagement-provider.ts:81: Instagram /comments?fields 호출
+dashboard/src/lib/publish.ts:289: Threads reply_to_id 설정
+dashboard/src/lib/publish.ts:311: Threads /threads_publish 호출
+dashboard/src/lib/publish.ts:371: Instagram /media_publish 호출
+dashboard/src/lib/channel-accounts.ts:70: Threads /me?fields=id,username 호출
+dashboard/src/lib/channel-accounts.ts:78: Instagram /me?fields=id,username 호출
+```
+
+### 2차 제출로 미룬 권한
+
+`instagram_business_manage_insights` 한 개를 미룬다. 추가 전제는 Instagram Professional 계정 또는 미디어의 실제 `/insights` API 호출, 실제 값을 표시하는 성과 화면, 정상·거절 계약 테스트, 최근 성공 호출, 권한 사용 영상이다. 현재 성과 계약은 Instagram 수집기 미구현을 명시하고 값이 없을 때 `미수집`으로 표시하므로 조용히 0으로 가장하지 않는다.
 
 ## 화면 녹화 공통 규칙
 
@@ -278,16 +317,16 @@ Meta 공식 제출 가이드는 보통 1주 안에 결정을 받는다고 안내
 - [ ] 1024x1024 앱 아이콘과 정확한 앱 카테고리 확인
 - [ ] App Purpose를 `Clients`로 확인
 - [ ] Privacy Policy, Terms, Data Deletion URL을 운영 URL로 입력
-- [ ] 운영의 세 URL을 로그아웃 상태에서 열어 HTTPS 200과 최신 본문 확인
+- [x] 운영의 세 URL을 로그아웃 상태에서 열어 HTTPS 200과 최신 본문 확인
 - [ ] Primary Contact Email 확인
 - [ ] 요구되는 Business Verification 완료
 - [ ] Data handling questions를 실제 저장, 사용, 삭제 동작과 일치하게 작성
 
 ### 권한과 기능
 
-- [ ] 9개 권한 각각 Allowed Usage와 제품 기능이 일치하는지 확인
+- [x] 첫 제출 8개 권한 각각 Allowed Usage와 제품 기능이 일치하는지 코드 경로 전수 대조
 - [ ] 각 권한에 최근 30일 성공 API 호출 최소 1회 확보
-- [ ] `instagram_business_manage_insights` 실제 기능을 구현하거나 첫 제출 범위에서 제거하는 결정을 확정
+- [x] `instagram_business_manage_insights`를 OAuth scope와 첫 제출 범위에서 제거
 - [ ] 심사자 자신의 계정으로 재현 가능한 앱 접근 URL과 단계별 안내 준비
 - [ ] 개인 Meta 비밀번호나 장기 토큰을 제출 메모에 넣지 않음
 
@@ -311,11 +350,15 @@ Meta 공식 제출 가이드는 보통 1주 안에 결정을 받는다고 안내
 
 질문: 회장이 이 문서만 보고 제출까지 갈 수 있는가, 아니면 중간에 또 막히는가?
 
-답: 현재 그대로는 9개 권한 전체 제출까지 갈 수 없다. Instagram 인사이트 실제 기능과 최근 성공 호출이 없고, 이번 Privacy Policy와 Terms 보강분도 운영에 아직 배포되지 않았다. 이 두 조건을 숨긴 채 체크리스트만 제공하면 제출 단계에서 다시 막히거나 반려된다. 그래서 제출 상태를 `조건부 NO-GO`로 명시하고, 현재 연결을 복구하는 Threads Tester 등록과 초대 수락 경로를 맨 앞에 분리했다.
+답: 운영 법적 고지와 첫 제출 scope 정리는 끝났다. 다만 8개 권한별 최근 성공 호출과 영상 증거는 아직 미검증이다. 이 증거 없이 제출하면 심사자가 실제 사용을 재현하지 못하므로 현재 판정은 `NO-GO`다.
 
 까다로운 심사자 관점의 공격: 한 영상으로 여러 권한을 뭉뚱그리거나 제품이 실제로 쓰지 않는 Instagram 인사이트를 문장만으로 주장하면 데이터 최소화 원칙과 Allowed Usage를 증명하지 못한다.
 
-수정 결과: 권한별 실제 화면, 영문 설명, 성공 API 호출 조건을 분리했고, 구현되지 않은 Instagram 인사이트는 제출 차단으로 올렸다. `threads_manage_replies`도 구현된 회신만 주장하고 숨김 기능은 주장하지 않는다.
+수정 결과: 권한별 실제 화면, 영문 설명, 성공 API 호출 조건을 분리했고, 구현되지 않은 Instagram 인사이트는 첫 제출 scope에서 제거했다. `threads_manage_replies`도 구현된 회신만 주장하고 숨김 기능은 주장하지 않는다.
+
+질문: 내가 뺀 권한 중 실제로는 쓰이고 있어서 빼면 기능이 죽는 것이 있는가?
+
+답: 없다. 뺀 권한은 `instagram_business_manage_insights` 하나다. Instagram Graph `/insights` 호출은 0건이고 성과 범위 계약도 Instagram 수집기를 미구현으로 표시한다. 반대로 Threads 인사이트, Threads 답글 읽기·쓰기, Instagram 댓글 읽기·답글은 각각 실제 API 경로가 있어 유지했다. 따라서 제거로 죽는 기존 기능은 없으며 Instagram 연결, 발행, 댓글 기능은 남은 3개 권한으로 보존된다.
 
 ## 공식 출처
 
@@ -328,9 +371,9 @@ Meta 공식 제출 가이드는 보통 1주 안에 결정을 받는다고 안내
 - Meta Instagram API Postman collection: <https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api>
 - Meta Instagram Insights collection: <https://www.postman.com/meta/instagram/folder/23987686-f659d7d1-d74c-44e4-9192-9b1e8694c511>
 
-SOURCES: `wiki/거버넌스/결정.md` ADR-004, `wiki/2-product/insight/product-positioning.md`, `dashboard/src/lib/social-connect.ts`, Meta 공식 문서와 공식 API 컬렉션
+SOURCES: `wiki/거버넌스/결정.md` ADR-004, `wiki/거버넌스/실수.md`, `dashboard/src/lib/social-connect.ts`, `dashboard/src/lib/{publish,engagement-provider,first-comment,channel-accounts}.ts`, `dashboard/src/app/api/metrics/route.ts`, Meta 공식 Threads·Instagram API 컬렉션
 
-MODEL: gpt-5.6-sol
+MODEL: gpt-codex/gpt-5.6-sol
 
 SKILLS_USED: 없음
 

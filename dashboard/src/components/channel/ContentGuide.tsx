@@ -63,7 +63,7 @@ export function ContentGuide({ channel }: ContentGuideProps) {
     if (suggestion) {
       setText(suggestion);
       setSuggestion(null);
-      showToast("제안 적용됨. Save를 눌러 저장하세요", "info");
+      showToast("제안이 적용되었습니다. 저장을 눌러 반영하세요.", "info");
     }
   };
 
@@ -71,7 +71,7 @@ export function ContentGuide({ channel }: ContentGuideProps) {
     <div className="card p-stack-section">
       <div className="flex items-center justify-between mb-stack">
         <h3 className="text-body-sm font-medium text-muted">
-          Content Guide <span className="text-caption text-subtle">({label})</span>
+          콘텐츠 가이드 <span className="text-caption text-subtle">({label})</span>
         </h3>
         <div className="flex gap-stack-tight">
           <button
@@ -85,7 +85,7 @@ export function ContentGuide({ channel }: ContentGuideProps) {
             공통에서 복사
           </button>
           <button onClick={handleSave} disabled={saving} className="px-stack py-micro text-caption bg-accent text-accent-fg rounded-chip hover:bg-accent-hover disabled:opacity-50">
-            {saving ? "Saving..." : "Save"}
+            {saving ? "저장 중..." : "저장"}
           </button>
         </div>
       </div>

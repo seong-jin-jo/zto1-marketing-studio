@@ -31,6 +31,17 @@ const TENANT_AWARE_PATHS = [
   "/api/brand/sync-repo",
   "/api/brand/sync-wiki",
   "/api/channel-config/[channel]",
+  // 인스타그램 채널 화면이 카드뉴스 개요와 장을 만들 때 부른다. 목록에 없어 403 이었다
+  // (2026-09-14 고객 토큰으로 직접 확인). 회장이 지목한 카드뉴스 기능이 여기서 막혔다.
+  // 고객 화면이 부르는데 목록에 없어 403 이던 것들. 2026-09-14 고객 토큰으로 하나씩 직접
+  // 불러 확인했다. 이미지 고르기 창(ImagePickerModal), 채널 콘텐츠 안내(ContentGuide),
+  // 키워드 편집(KeywordsEditor), 인스타그램 채널 화면이 각각 부른다.
+  "/api/ai-suggest/guide",
+  "/api/ai-suggest/keywords",
+  "/api/generate-image",
+  "/api/midjourney/generate",
+  "/api/card-news/generate",
+  "/api/card-news/outline",
   "/api/channel-config",
   "/api/channel-settings/[channel]",
   "/api/channel-settings",
@@ -81,7 +92,13 @@ const TENANT_AWARE_PATHS = [
   "/api/publish/first-comment-capabilities",
   "/api/queue/[postId]/add-image",
   "/api/queue/[postId]/approve",
+  // 고객이 예약 글의 발행을 멈추는 경로. 화면(UnifiedPostCard)이 "발행을 멈춥니다"라고
+  // 약속하는데 이 줄이 없어 유효한 고객 토큰도 핸들러 전에 403 을 받았다(2026-09-12 코드리뷰 MAJOR).
+  "/api/queue/[postId]/cancel",
   "/api/queue/[postId]/delete",
+  // 같은 구멍이 하나 더 있었다. studio/page.tsx:1521 이 고객 화면에서 이 경로를 부르는데
+  // 허용 목록에 없어 검토 요청이 조용히 403 이었다(2026-09-12 실사).
+  "/api/queue/[postId]/request-review",
   "/api/queue/[postId]/update",
   "/api/queue/[postId]/variants",
   "/api/queue/add",
@@ -91,6 +108,8 @@ const TENANT_AWARE_PATHS = [
   "/api/queue",
   "/api/queue/seed",
   "/api/schedule/publish-due",
+  "/api/schedule/[id]",
+  "/api/schedule/[id]/cancel",
   "/api/schedule",
   "/api/settings",
   "/api/sourcing/import-to-queue",
@@ -98,11 +117,33 @@ const TENANT_AWARE_PATHS = [
   "/api/studio/brand-setup",
   "/api/studio/commands",
   "/api/studio/drafts",
+  // 편집실에서 여러 줄을 한 번에 고쳐 달라고 말로 시키는 자리(회장 2026-09-09).
+  // 이 목록은 허용 목록이라, 새 라우트를 만들고 여기 안 넣으면 고객 화면에서 403 이 난다.
+  // 실제로 그렇게 냈다. 만들자마자 여기 한 줄을 함께 추가한다.
+  "/api/studio/edit-bulk",
   "/api/studio/drafts/[draftId]/editor",
   "/api/studio/drafts/[draftId]/enqueue",
   "/api/studio/engine-status",
+  // 만들기 전 비용 산정. 고객이 승인 여부를 판단하는 화면이 부르므로 테넌트 경로다
+  // (사업계획 v0.4 7절·10절의 비용 승인 관문).
+  "/api/studio/estimate",
+  // 고객이 자기 생성 이력을 보는 경로(회장 2026-09-06 확정).
+  "/api/studio/generation-history",
   "/api/studio/handoffs",
+  // 브랜드를 아는 일곱 칸의 서버 보관소. 고객 화면이 직접 읽고 쓰는 경로다.
+  // 여기 없으면 저장은 코드에 있는데 화면에서 403 이 나 브라우저에만 남는다(2026-09-07 실측).
+  "/api/studio/learning",
   "/api/studio/text",
+  // 2026-09-06 회장 확정으로 이미지·영상 생성을 고객에게 열었다. 두 라우트는
+  // effectiveTenantId 로 테넌트를 확인하고 사용량을 그 작업 공간에 남긴다.
+  // 생성기가 살아 있는지 화면이 묻는 경로. 생성실이 부르는데 목록에 없어 403 이었다
+  // (2026-09-14 고객 토큰으로 직접 확인). 상태를 못 읽으면 화면이 왜 안 되는지 말할 수 없다.
+  "/api/higgsfield/status",
+  "/api/higgsfield/image",
+  "/api/higgsfield/video",
+  // 만든 그림과 영상을 화면이 불러오는 경로. 여기 없으면 만들기는 되는데 화면에 안 뜬다
+  // (회장 2026-09-07 실사용). 라우트 자체가 tenant_id 를 요구하고 그 테넌트 폴더에서만 읽는다.
+  "/api/higgsfield/asset/[file]",
   "/api/suggestions",
   "/api/suggestions/enqueue",
   "/api/threads-username",
@@ -129,6 +170,9 @@ const TENANT_AWARE_PATHS = [
   "/api/video/list",
   "/api/video/publish",
   "/api/video/refine-clip",
+  // 편집실을 떠날 때 자막을 영상에 굽는 경로. 이 줄이 없어 고객 토큰이 403 을 받았고,
+  // 발행실로 넘어가는 길이 말없이 막혔다(2026-09-14 실측). 화면에는 아무 안내도 안 떴다.
+  "/api/video/subtitle",
   "/api/video/repurpose",
   "/api/video/upload",
   "/api/voice-tone",

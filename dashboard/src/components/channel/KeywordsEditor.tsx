@@ -66,7 +66,7 @@ export function KeywordsEditor({ channel }: KeywordsEditorProps) {
       const merged = [...new Set([...current, ...suggestedKeywords])];
       setText(merged.join("\n"));
       setSuggestedKeywords(null);
-      showToast("전체 적용됨. Save를 눌러 저장하세요", "info");
+      showToast("전체 제안이 적용되었습니다. 저장을 눌러 반영하세요.", "info");
     }
   };
 
@@ -84,7 +84,7 @@ export function KeywordsEditor({ channel }: KeywordsEditorProps) {
     <div className="card p-stack-section">
       <div className="flex items-center justify-between mb-stack">
         <h3 className="text-body-sm font-medium text-muted">
-          {channel === "x" ? "Search Keywords" : "Keywords"} <span className="text-caption text-subtle">({label})</span>
+          {channel === "x" ? "검색 키워드" : "키워드"} <span className="text-caption text-subtle">({label})</span>
         </h3>
         <div className="flex gap-stack-tight">
           <button
@@ -98,7 +98,7 @@ export function KeywordsEditor({ channel }: KeywordsEditorProps) {
             공통에서 복사
           </button>
           <button onClick={handleSave} disabled={saving} className="px-stack py-micro text-caption bg-accent text-accent-fg rounded-chip hover:bg-accent-hover disabled:opacity-50">
-            {saving ? "Saving..." : "Save"}
+            {saving ? "저장 중..." : "저장"}
           </button>
         </div>
       </div>

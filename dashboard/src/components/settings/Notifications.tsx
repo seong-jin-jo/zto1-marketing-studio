@@ -66,11 +66,11 @@ export function Notifications() {
     finally { setSendingReport(false); }
   };
 
-  if (!settings) return <div className="card p-stack-section"><p className="text-caption text-subtle">Loading...</p></div>;
+  if (!settings) return <div className="card p-stack-section"><p className="text-caption text-subtle">불러오는 중...</p></div>;
 
   return (
     <div className="card p-stack-section">
-      <h3 className="text-body-sm font-medium text-muted mb-pad-inset">Notifications</h3>
+      <h3 className="text-body-sm font-medium text-muted mb-pad-inset">알림</h3>
       <div className="space-y-stack">
         {Object.entries(EVENT_LABELS).map(([evt, label]) => {
           const v = getEvt(evt);
@@ -90,7 +90,7 @@ export function Notifications() {
                 onChange={(e) => setOverrides((prev) => ({ ...prev, [evt]: { ...v, channel: e.target.value } }))}
                 className="bg-surface border border-border rounded-chip px-stack-tight py-micro text-caption text-muted"
               >
-                <option value="">Off</option>
+                <option value="">사용 안 함</option>
                 {MESSAGING_OPTIONS.map((ch) => (
                   <option key={ch} value={ch}>{ch}</option>
                 ))}

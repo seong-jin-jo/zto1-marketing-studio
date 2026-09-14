@@ -44,10 +44,10 @@ describe("R-09 channel capability SSOT", () => {
     expect(getChannelTabs("telegram").map((tab) => tab.id)).toEqual(["settings"]);
   });
 
-  it("shows video channels consistently without adding them to the existing eight-channel Studio publish set", () => {
+  it("shows video channels consistently without adding them to the existing nine-channel Studio publish set", () => {
     expect(CHANNEL_GROUPS.flatMap((group) => [...group.channels])).toContain("youtube");
     expect(CHANNEL_GROUPS.flatMap((group) => [...group.channels])).toContain("tiktok");
-    expect(PUBLISH_CHANNEL_GROUPS.flatMap((group) => [...group.channels])).toHaveLength(8);
+    expect(PUBLISH_CHANNEL_GROUPS.flatMap((group) => [...group.channels])).toHaveLength(9);
     expect(PUBLISH_CHANNEL_GROUPS.flatMap((group) => [...group.channels])).not.toContain("youtube");
     expect(PUBLISH_CHANNEL_GROUPS.flatMap((group) => [...group.channels])).not.toContain("tiktok");
   });

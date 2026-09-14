@@ -12,7 +12,7 @@ const studioToken = process.env.FE2_STUDIO_TOKEN || "";
 const workspaceId = process.env.FE2_WORKSPACE_ID || "";
 const studioWorkspaceId = process.env.FE2_STUDIO_WORKSPACE_ID || workspaceId;
 const verifyHandoff = process.env.FE2_VERIFY_HANDOFF === "1";
-const outputDir = process.env.FE2_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/prototype/qa-fe2");
+const outputDir = process.env.FE2_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/design/prototypes/legacy-prototype-20260912/prototype/qa-fe2");
 const executablePath = process.env.FE2_CHROME_PATH || "/Users/sj/Library/Caches/ms-playwright/chromium-1228/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing";
 
 if (!dashboardToken || !studioToken || !workspaceId) throw new Error("FE2_DASHBOARD_TOKEN, FE2_STUDIO_TOKEN, FE2_WORKSPACE_ID are required");

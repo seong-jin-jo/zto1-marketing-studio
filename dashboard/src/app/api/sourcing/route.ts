@@ -1,3 +1,4 @@
+import { UPSTREAM_FAILED } from "@/lib/api-failure";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
@@ -249,7 +250,7 @@ export async function POST(request: Request) {
   if (finalCandidates.length === 0) {
     return Response.json(
       { ok: false, error: "숏폼 후보 추출 실패", chunks: chunks.length, errors },
-      { status: 502 },
+      { status: UPSTREAM_FAILED },
     );
   }
 

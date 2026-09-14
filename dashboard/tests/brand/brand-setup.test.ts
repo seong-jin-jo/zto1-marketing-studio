@@ -78,13 +78,17 @@ describe("POST /api/studio/brand-setup — generateText 경유 증류 (A1)", () 
     expect(H.upserts).toHaveLength(1);
   });
 
-  it("generateText가 JSON 아닌 텍스트 → 502 (저장 안 함)", async () => {
+  it("generateText가 JSON 아닌 텍스트 → 실패로 응답 (저장 안 함)", async () => {
     H.gen = "죄송합니다, 출력할 수 없습니다.";
     const { status, body } = await brandSetup({
       tenant_id: "tenant-1",
       answers: { service: "x", target: "y", tone: "z", banned: "", hooks: "", visual: "" },
     });
-    expect(status).toBe(502);
+    // 2026-09-08: 생성 실패는 502 가 아니라 200 + ok:false 로 답한다. 502 는 게이트웨이가
+    // 상류에서 잘못된 응답을 받았다는 뜻이라 우리 앞의 리버스 프록시가 우리 JSON 본문을
+    // 자기 HTML 오류 페이지로 갈아치웠고, 화면에는 "502" 숫자만 뜨고 진짜 이유가 한 번도
+    // 사용자에게 닿지 못했다(회장 실사용). 정본 = src/lib/api-failure.ts.
+    expect(status).toBe(200);
     expect(body.error).toBeTruthy();
     expect(H.upserts).toHaveLength(0);
   });

@@ -46,7 +46,7 @@ export function ClaudeToken() {
   return (
     <div className="card p-stack-section">
       <div className="flex items-center justify-between mb-pad-inset">
-        <h3 className="text-body-sm font-medium text-muted">Claude Token</h3>
+        <h3 className="text-body-sm font-medium text-muted">Claude 토큰</h3>
         <div className="flex items-center gap-stack-tight">
           {claude && (
             <span className={`text-caption px-stack-tight py-micro rounded-chip ${claude.healthy ? "bg-success/15 text-success" : "bg-danger/15 text-danger"}`}>
@@ -63,11 +63,11 @@ export function ClaudeToken() {
       {claude && (
         <div className="space-y-micro text-caption mb-stack">
           <div className="flex justify-between">
-            <span className="text-subtle">Errors</span>
+            <span className="text-subtle">오류</span>
             <span className={Number(claude.errorCount) > 0 ? "text-danger" : "text-subtle"}>{String(claude.errorCount)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-subtle">Last used</span>
+            <span className="text-subtle">최근 사용</span>
             <span className="text-subtle">{claude.lastUsed ? fmtAgo(claude.lastUsed) : "-"}</span>
           </div>
         </div>
@@ -98,7 +98,7 @@ export function ClaudeToken() {
           </div>
         </div>
         <details className="text-caption">
-          <summary className="text-accent hover:text-accent cursor-pointer">Setup Guide</summary>
+          <summary className="text-accent hover:text-accent cursor-pointer">설정 안내</summary>
           <div className="mt-stack-tight p-stack-tight rounded-chip bg-surface/50 text-subtle space-y-micro">
             <p>1. 터미널에서 <code className="bg-surface-2 px-micro rounded-chip">claude setup-token</code> 실행</p>
             <p>2. 브라우저에서 Anthropic 로그인</p>

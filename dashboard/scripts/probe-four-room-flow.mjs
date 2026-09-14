@@ -3,16 +3,29 @@ const exe="/Users/sj/Library/Caches/ms-playwright/chromium-1228/chrome-mac-x64/G
 const W="cd1d0a40-540d-4524-9b49-bf2445d82182";
 const base=process.env.FOUR_ROOM_BASE_URL||"http://localhost:3456";
 const operatorToken=process.env.DASHBOARD_AUTH_TOKEN||"";
+const readyTimeoutMs=Number(process.env.FOUR_ROOM_READY_TIMEOUT_MS||"120000");
+const totalTimeoutMs=Number(process.env.FOUR_ROOM_TOTAL_TIMEOUT_MS||"180000");
 if(!operatorToken) throw new Error("DASHBOARD_AUTH_TOKEN이 필요합니다");
+if(!Number.isFinite(readyTimeoutMs)||readyTimeoutMs<=0) throw new Error("FOUR_ROOM_READY_TIMEOUT_MS는 0보다 큰 숫자여야 합니다");
+if(!Number.isFinite(totalTimeoutMs)||totalTimeoutMs<=0) throw new Error("FOUR_ROOM_TOTAL_TIMEOUT_MS는 0보다 큰 숫자여야 합니다");
+const deadlineAt=Date.now()+totalTimeoutMs;
+const remainingTimeout=(label)=>{
+  const remaining=deadlineAt-Date.now();
+  if(remaining<=0) throw new Error(`전체 실행시간 초과: ${label}`);
+  return Math.min(readyTimeoutMs,remaining);
+};
 
 const request=(pathname,options={})=>fetch(`${base}${pathname}`,{
   ...options,
   headers:{authorization:`Bearer ${operatorToken}`,...(options.body?{"content-type":"application/json"}:{}),...(options.headers||{})},
+  signal:AbortSignal.timeout(Math.max(1,Math.min(15000,deadlineAt-Date.now()))),
 });
 
 let issuedTokenId="";
 let b;
+let deadlineTimer;
 try {
+  deadlineTimer=setTimeout(()=>{if(b) void b.close().catch(()=>{});},totalTimeoutMs);
   const issued=await request("/api/tenant-tokens",{
     method:"POST",
     body:JSON.stringify({tenant_id:W,label:`qa-four-room-probe-${Date.now()}`}),
@@ -21,10 +34,11 @@ try {
   if(!issued.ok||!issuedBody.token||!issuedBody.id) throw new Error(`고객 토큰 발급 실패: HTTP ${issued.status}`);
   issuedTokenId=issuedBody.id;
 
-  b=await playwright.chromium.launch({executablePath:exe,headless:true});
+  b=await playwright.chromium.launch({executablePath:exe,headless:true,timeout:remainingTimeout("브라우저 시작")});
   const ctx=await b.newContext({viewport:{width:1440,height:1200}});
   await ctx.addInitScript(({t,st,w})=>{
     localStorage.setItem("dashboard_auth_token",t);
+    localStorage.setItem("dashboard_auth_identity_kind","customer");
     localStorage.setItem("active_workspace",JSON.stringify({id:w,slug:"local",name:"로컬 검증 작업 공간",tier:"team"}));
     // 발행실은 작업 공간별 키(`studio_work:<작업공간>`)에서만 작업물을 복원하고, 옛 공용 키는
     // 화면이 뜨는 즉시 지운다. 지금까지 공용 키만 심어 온 탓에 발행실이 늘 빈 상태로 측정됐고
@@ -50,10 +64,15 @@ try {
   p.on("response",response=>{if(response.status()===401) unauthorizedUrls.push(response.url());});
 
   const rows=[];
-  for(const [room,url] of [["create","/studio?room=create"],["edit","/studio?room=edit"],["publish","/studio?room=publish"],["performance","/"]]) {
-    await p.goto(`${base}${url}`,{waitUntil:"networkidle",timeout:60000});
-    await p.locator(`[data-room="${room}"]`).waitFor({state:"visible",timeout:30000});
-    rows.push(await p.evaluate((r)=>({
+  for(const [room,url] of [["create","/studio?room=create"],["edit","/studio?room=edit"],["publish","/studio?room=publish"],["performance","/performance"]]) {
+    // Next dev keeps HMR and background requests alive. networkidle can time out after
+    // the room is already interactive, so the visible room contract is the readiness signal.
+    await p.goto(`${base}${url}`,{waitUntil:"domcontentloaded",timeout:remainingTimeout(`${room} 진입`)});
+    const roomRoot=p.locator(`[data-room="${room}"]`);
+    await roomRoot.waitFor({state:"visible",timeout:remainingTimeout(`${room} 표시`)});
+    // AuthGate may finish a client navigation after DOMContentLoaded. Anchor evaluation
+    // to the live room locator so Playwright re-resolves it in the final document.
+    rows.push(await roomRoot.evaluate((_roomElement,r)=>({
       방:r,
       그려짐:document.querySelector(`[data-room="${r}"]`) instanceof HTMLElement,
       방머리:document.querySelector(`[data-room-top="${r}"]`) instanceof HTMLElement,
@@ -74,9 +93,14 @@ try {
   if(unauthorizedUrls.length) throw new Error(`브라우저 401 ${unauthorizedUrls.length}건: ${unauthorizedUrls.slice(0,3).join(" | ")}`);
   console.log("PASS 네 방 4개 렌더, 가린 모달 0건, 브라우저 401 0건, 콘솔 오류 0건");
 } finally {
-  if(b) await b.close();
+  if(deadlineTimer) clearTimeout(deadlineTimer);
+  if(b) await Promise.race([b.close(),new Promise((resolve)=>setTimeout(resolve,5000))]);
   if(issuedTokenId) {
-    const revoked=await request(`/api/tenant-tokens?id=${encodeURIComponent(issuedTokenId)}`,{method:"DELETE"});
-    if(!revoked.ok) console.error(`임시 고객 토큰 폐기 실패: HTTP ${revoked.status}`);
+    try {
+      const revoked=await request(`/api/tenant-tokens?id=${encodeURIComponent(issuedTokenId)}`,{method:"DELETE"});
+      if(!revoked.ok) console.error(`임시 고객 토큰 폐기 실패: HTTP ${revoked.status}`);
+    } catch(error) {
+      console.error(`임시 고객 토큰 폐기 실패: ${error instanceof Error?error.message:String(error)}`);
+    }
   }
 }

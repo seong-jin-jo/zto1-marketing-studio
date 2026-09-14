@@ -27,10 +27,12 @@ beforeEach(() => mocks.apiPost.mockReset());
 afterEach(cleanup);
 
 describe("FE-V63-31 Studio 담당 대화 명령 연결", () => {
-  it("FE-V63-31 정상 경로: 영상 칩 선택과 편집실 인계 버튼이 command API를 실제 호출한다", async () => {
+  it("R-S10-38 정상: 편집 저장과 발행실 이동을 같은 행동 구역에서 분리한다", async () => {
     mocks.apiPost.mockResolvedValue({ draft_id: "draft-1", handoff: videoHandoff });
     const onDraftId = vi.fn();
     const onHandoff = vi.fn();
+    const onSaveEdit = vi.fn().mockResolvedValue(undefined);
+    const onOpenPublish = vi.fn();
     render(<StudioCommandPanel
       workspaceId="tenant-1"
       draftId={null}
@@ -44,28 +46,18 @@ describe("FE-V63-31 Studio 담당 대화 명령 연결", () => {
       onDraftId={onDraftId}
       onHandoff={onHandoff}
       onQueueChanged={vi.fn()}
+      onSaveEdit={onSaveEdit}
+      onOpenPublish={onOpenPublish}
     />);
 
-    expect(screen.getByRole("button", { name: "영상" })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(screen.getByRole("button", { name: "편집 작업물로 저장" }));
-    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
-      "/api/studio/commands",
-      expect.objectContaining({
-        tenant_id: "tenant-1",
-        action: "handoff_to_editor",
-        handoff: expect.objectContaining({
-          kind: "video",
-          source: { generation_id: "generation-1", candidate_id: "candidate-a" },
-          payload: expect.objectContaining({
-            scenes: expect.arrayContaining([
-              expect.objectContaining({ lines: [expect.objectContaining({ text: "고친 첫 문장" })] }),
-            ]),
-          }),
-        }),
-      }),
-    ));
-    expect(onDraftId).toHaveBeenCalledWith("draft-1");
-    expect(await screen.findByText("편집실 작업물에 추가했습니다. 원본은 덮어쓰지 않았어요.")).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "편집 담당 대화창" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "편집 내용 저장" }));
+    await waitFor(() => expect(onSaveEdit).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    expect(onOpenPublish).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("편집 작업물로 저장")).not.toBeInTheDocument();
+    expect(screen.queryByText("여기서만 한 번에 되는 일")).not.toBeInTheDocument();
   });
 
   it("FE-V63-31 정상 경로: 장면 순서 버튼은 revision과 전체 scene id를 보낸다", async () => {
@@ -81,6 +73,8 @@ describe("FE-V63-31 Studio 담당 대화 명령 연결", () => {
       onDraftId={vi.fn()}
       onHandoff={vi.fn()}
       onQueueChanged={vi.fn()}
+      onSaveEdit={vi.fn()}
+      onOpenPublish={vi.fn()}
     />);
 
     fireEvent.click(screen.getByRole("button", { name: "장면 순서 뒤집기" }));
@@ -95,7 +89,7 @@ describe("FE-V63-31 Studio 담당 대화 명령 연결", () => {
     ));
   });
 
-  it("FE-V63-31 거절 경로: 넘길 결과가 없으면 편집실 버튼은 비활성이고 API를 부르지 않는다", () => {
+  it("R-S10-38 거절 경로: 편집할 내용이 없으면 저장과 발행실 이동을 실행하지 않는다", () => {
     render(<StudioCommandPanel
       workspaceId="tenant-1"
       draftId={null}
@@ -107,10 +101,12 @@ describe("FE-V63-31 Studio 담당 대화 명령 연결", () => {
       onDraftId={vi.fn()}
       onHandoff={vi.fn()}
       onQueueChanged={vi.fn()}
+      onSaveEdit={vi.fn()}
+      onOpenPublish={vi.fn()}
     />);
-    const button = screen.getByRole("button", { name: "편집 작업물로 저장" });
-    expect(button).toBeDisabled();
-    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "편집 내용 저장" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "발행실로 이동" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "편집 내용 저장" }));
     expect(mocks.apiPost).not.toHaveBeenCalled();
   });
 });

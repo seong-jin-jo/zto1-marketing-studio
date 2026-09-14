@@ -4,14 +4,17 @@ import { useState } from "react";
 import { apiPost } from "@/lib/api";
 import { useToast } from "@/components/layout/Toast";
 import { useUIStore } from "@/store/ui-store";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { fmtTime } from "@/lib/format";
 import type { Post } from "@/types/queue";
+import { confirmAction } from "@/components/shared/ConfirmHost";
 
 const STATUS_CLASS: Record<string, string> = {
   draft: "bg-warning/15 text-warning",
   approved: "bg-accent-soft text-accent",
   published: "bg-success/15 text-success",
   failed: "bg-danger/15 text-danger",
+  canceled: "bg-surface-2 text-subtle",
 };
 
 const CHANNEL_BADGE_CLASS: Record<string, string> = {
@@ -19,6 +22,7 @@ const CHANNEL_BADGE_CLASS: Record<string, string> = {
   failed: "bg-danger/15 text-danger",
   pending: "bg-surface-2 text-subtle",
   skipped: "bg-surface-2 text-subtle",
+  canceled: "bg-surface-2 text-subtle",
 };
 
 const CHANNEL_BADGE_LABELS: Record<string, string> = {
@@ -59,6 +63,12 @@ export interface UnifiedPostCardProps {
   onPickImage?: (postId: string) => void;
 }
 
+interface CancelPostResponse {
+  persistence?: { db?: "ok" | "skipped" | "deferred"; dbReason?: string };
+  partiallyPublished?: boolean;
+  alreadyPublishedChannels?: string[];
+}
+
 export function UnifiedPostCard({
   post,
   channelConfig,
@@ -70,7 +80,7 @@ export function UnifiedPostCard({
   onPickImage,
 }: UnifiedPostCardProps) {
   const { showToast } = useToast();
-  const { editingPost, setEditingPost, selectedIds, toggleSelect } = useUIStore();
+  const { editingPost, setEditingPost, selectedIds, toggleSelect, activeWorkspace } = useUIStore();
   const [editText, setEditText] = useState(post.text);
   const [makingVariants, setMakingVariants] = useState(false);
   const isEditing = editingPost === post.id;
@@ -97,8 +107,24 @@ export function UnifiedPostCard({
     } catch (e) { showToast(`수정 실패: ${(e as Error).message}`, "error"); }
   };
 
+  const handleCancel = async () => {
+    if (!(await confirmAction({ title: "발행을 중지할까요?", description: "아직 올라가지 않은 채널은 발행을 멈춥니다. 이미 올라간 채널은 그대로 유지됩니다.", confirmLabel: "발행 중지", destructive: true }))) return;
+    try {
+      const result = await apiPost<CancelPostResponse>(`/api/queue/${post.id}/cancel`);
+      const published = result?.alreadyPublishedChannels ?? [];
+      if (result?.persistence?.db === "deferred") {
+        showToast("발행은 중지됐지만 저장소 동기화를 기다리고 있습니다. 다시 발행하지 마세요.", "error");
+      } else if (result?.partiallyPublished && published.length > 0) {
+        showToast(`남은 발행은 중지됐습니다. 이미 올라간 채널: ${published.join(", ")}`, "error");
+      } else {
+        showToast("발행 중지됨", "success");
+      }
+      onRefresh();
+    } catch (e) { showToast(`중지 실패: ${(e as Error).message}`, "error"); }
+  };
+
   const handleDelete = async () => {
-    if (!confirm("정말 삭제?")) return;
+    if (!(await confirmAction({ title: "이 글을 삭제할까요?", description: "삭제한 글은 되돌릴 수 없습니다. 예약된 발행도 함께 취소됩니다.", confirmLabel: "글 삭제", destructive: true }))) return;
     try {
       await apiPost(`/api/queue/${post.id}/delete`);
       showToast("삭제 완료", "success");
@@ -161,28 +187,52 @@ export function UnifiedPostCard({
             <div className="scrollbar-semantic flex gap-stack-tight overflow-x-auto pb-stack-tight">
               {slides.map((s, i) => (
                 <div key={i} className="flex-shrink-0 w-36 h-44 rounded-control overflow-hidden border border-border">
-                  <img src={s} alt={`Slide ${i + 1}`} className="w-full h-full object-cover" />
+                  <DeliveredMedia
+                    type="image"
+                    src={s}
+                    tenantId={activeWorkspace?.id}
+                    alt={`Slide ${i + 1}`}
+                    className="w-full h-full object-cover"
+                  />
                 </div>
               ))}
             </div>
           </div>
         ) : (
           <div className="mb-stack w-36 h-44 rounded-control border border-dashed border-border bg-surface/30 flex items-center justify-center">
-            <span className="text-subtle text-caption">No Image</span>
+            <span className="text-subtle text-caption">이미지 없음</span>
           </div>
         )
       ) : variant === "blog" ? (
         /* Blog: small thumbnail */
         post.imageUrl ? (
           <div className="mb-stack-tight float-right ml-stack max-w-30">
-            <img src={post.imageUrl} alt="Thumbnail" className="w-full rounded-chip border border-border" />
+            <DeliveredMedia
+              type="image"
+              src={post.imageUrl}
+              tenantId={activeWorkspace?.id}
+              alt="Thumbnail"
+              className="w-full rounded-chip border border-border"
+            />
           </div>
         ) : null
       ) : (
         /* Text: medium image */
         post.imageUrl ? (
           <div className="mb-stack-tight relative group/img max-w-lg">
-            <img src={post.imageUrl} alt="Post image" className="block w-full rounded-control border border-border" />
+            {/*
+              큐에 담긴 그림 주소는 발행실에서 만들 때 받은 배달 주소 그대로다
+              (studio/page.tsx requestReview → /api/queue/add 의 imageUrl). 12시간이면 만료돼
+              어제 담은 글의 그림이 오늘 큐에서 사라진다. 되살리는 부품으로 건다(2026-09-13).
+            */}
+            <DeliveredMedia
+              type="image"
+              src={post.imageUrl}
+              tenantId={activeWorkspace?.id}
+              alt="Post image"
+              testId="queue-post-image"
+              className="block w-full rounded-control border border-border"
+            />
             {post.status === "draft" && (
               <button
                 onClick={handleRemoveImage}
@@ -201,10 +251,20 @@ export function UnifiedPostCard({
       {/* Video for repurposed clips */}
       {(post.videoFilename || post.videoUrl) && (
         <div className="mb-stack-tight">
-          <video
+          {/*
+            post.videoUrl 도 발행실에서 만들 때 받은 배달 주소 그대로다
+            (studio/page.tsx requestReview → /api/queue/add 의 `videoUrl: vid?.url`).
+            그림과 똑같이 12시간이면 죽는다. videoFilename 만 있는 옛 글은 정적 경로라
+            그대로 통과한다(DeliveredMedia 는 배달 주소가 아니면 손대지 않는다).
+            2026-09-13 Codex 교차리뷰가 이 자리를 잡았다. 여러 줄 태그라 처음 검사기를
+            빠져나갔다.
+          */}
+          <DeliveredMedia
+            type="video"
             src={post.videoUrl || `/videos/${post.videoFilename}`}
+            tenantId={activeWorkspace?.id}
+            testId="queue-post-video"
             poster={post.videoThumbnail || undefined}
-            controls
             preload="none"
             className="max-h-52 w-full rounded-chip border border-border"
           />
@@ -240,7 +300,7 @@ export function UnifiedPostCard({
             <button onClick={() => setEditingPost(null)} className="px-stack-tight py-micro text-caption bg-surface-2 text-muted rounded-chip">취소</button>
             {onPickImage && (
               <button onClick={() => onPickImage(post.id)} className="px-stack-tight py-micro text-caption bg-accent text-accent-fg rounded-chip hover:bg-accent-hover">
-                {post.imageUrl ? "Change Image" : "Add Image"}
+                {post.imageUrl ? "이미지 바꾸기" : "이미지 추가"}
               </button>
             )}
           </div>
@@ -285,9 +345,9 @@ export function UnifiedPostCard({
       {/* Engagement (published only) */}
       {post.engagement?.views != null && (
         <div className="flex gap-pad-inset text-caption text-subtle">
-          <span>views: {post.engagement.views}</span>
-          <span>likes: {post.engagement.likes || 0}</span>
-          <span>replies: {post.engagement.replies || 0}</span>
+          <span>조회: {post.engagement.views}</span>
+          <span>좋아요: {post.engagement.likes || 0}</span>
+          <span>답글: {post.engagement.replies || 0}</span>
         </div>
       )}
 
@@ -308,6 +368,9 @@ export function UnifiedPostCard({
         <div className="flex gap-stack-tight mt-stack-tight pt-stack-tight border-t border-border/50">
           {post.status === "draft" && (
             <button onClick={handleApprove} className="px-stack-tight py-micro text-caption bg-success text-status-fg rounded-chip hover:bg-success">승인</button>
+          )}
+          {post.status === "approved" && (
+            <button onClick={handleCancel} className="px-stack-tight py-micro text-caption bg-warning/15 text-warning rounded-chip hover:bg-warning/25">발행 중지</button>
           )}
           {onEditInEditor ? (
             <button onClick={() => onEditInEditor(post.id)} className="px-stack-tight py-micro text-caption bg-surface-2 text-muted rounded-chip hover:bg-surface-2">수정</button>

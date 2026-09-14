@@ -14,6 +14,8 @@ interface CustomerRow {
   tier: string;
   owner_auth_id: string | null;
   created_at: string;
+  last_accessed_at: string | null;
+  recent_access_days_30: number | null;
   shared_cli_approved_at: string | null;
   integrations: Array<{ kind: string; label: string | null; has_secret: boolean; connected_at?: string | null }>;
   channel_accounts: Array<{
@@ -21,6 +23,9 @@ interface CustomerRow {
     account_count: number;
     default_username: string | null;
     last_connected_at: string | null;
+    default_count: number;
+    expiring_at: string | null;
+    missing_expiry_count: number;
   }>;
   drafts_count: number;
   published_count: number;
@@ -75,6 +80,16 @@ export async function GET(request: Request) {
         t.tier,
         t.owner_auth_id::text,
         t.created_at::text,
+        t.last_accessed_at::text,
+        (
+          SELECT CASE
+            WHEN count(*) = 0 THEN NULL
+            ELSE count(DISTINCT (access_event.accessed_at AT TIME ZONE 'UTC')::date)::int
+          END
+          FROM tenant_access_events access_event
+          WHERE access_event.tenant_id = t.id
+            AND access_event.accessed_at >= now() - INTERVAL '30 days'
+        ) AS recent_access_days_30,
         t.shared_cli_approved_at::text,
         COALESCE((
           SELECT jsonb_agg(jsonb_build_object(
@@ -91,14 +106,22 @@ export async function GET(request: Request) {
             'provider', grouped.provider,
             'account_count', grouped.account_count,
             'default_username', grouped.default_username,
-            'last_connected_at', grouped.last_connected_at
+            'last_connected_at', grouped.last_connected_at,
+            'default_count', grouped.default_count,
+            'expiring_at', grouped.expiring_at,
+            'missing_expiry_count', grouped.missing_expiry_count
           ) ORDER BY grouped.provider)
           FROM (
             SELECT
               ca.provider,
               count(*)::int AS account_count,
               max(CASE WHEN ca.is_default THEN ca.username END) AS default_username,
-              max(ca.created_at)::text AS last_connected_at
+              max(ca.created_at)::text AS last_connected_at,
+              -- 연결이 저장됐는데도 화면이 미연결로 보이는 사고를 값 없이 추측하지 않으려고
+              -- 판정 입력 세 가지를 그대로 노출한다. 자격증명은 담지 않는다(2026-09-01).
+              count(*) FILTER (WHERE ca.is_default)::int AS default_count,
+              max(ca.token_expires_at)::text AS expiring_at,
+              count(*) FILTER (WHERE ca.token_expires_at IS NULL)::int AS missing_expiry_count
             FROM channel_accounts ca
             WHERE ca.tenant_id = t.id AND ca.status = 'active'
             GROUP BY ca.provider
@@ -174,7 +197,9 @@ async function resolveTargetTenant(userId: unknown): Promise<{ error: Response }
   if (!authUser) {
     return { error: Response.json({ error: "unknown user_id" }, { status: 404 }) };
   }
-  const tenantId = await ensureTenantForUser(authUser.id, authUser.email);
+  // 운영자의 계정 조치는 고객 접속이 아니다. 아직 로그인하지 않은 가입자를 정지·재개해도
+  // 접속 이력을 만들지 않도록 명시적으로 기록을 끈다.
+  const tenantId = await ensureTenantForUser(authUser.id, authUser.email, { recordAccess: false });
   return { tenantId, id };
 }
 

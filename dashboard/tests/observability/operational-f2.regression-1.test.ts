@@ -5,7 +5,7 @@ import { getDatabaseUrl } from "../isolation/_env";
 
 // Regression: OSMU-BLOCK-F2. 같은 플랫폼의 계정 B 성공이 계정 A의 열린 장애까지 닫던 결함.
 // Found by 교차 모델 검수 on 2026-08-28.
-// Report: docs/audit/osmu-cross-review-2026-08-28-opus.md
+// Report: docs/_archive/legacy-20260912/audit/osmu-cross-review-2026-08-28-opus.md
 
 describe("운영 장애 계정 단위 복구 회귀", () => {
   it("OSMU-BLOCK-F2 정상: 계정 B 복구는 계정 A의 열린 발행 장애를 닫지 않는다", async (ctx) => {

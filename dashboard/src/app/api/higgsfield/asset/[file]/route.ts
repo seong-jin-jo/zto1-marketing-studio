@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { resolveMediaPath } from "@/lib/storage";
+import { effectiveTenantId } from "@/lib/tenant-auth";
 
 const TYPES: Record<string, string> = {
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -13,9 +14,14 @@ const TYPES: Record<string, string> = {
 // 보안: 모든 실패를 404로 통일해 다른 테넌트 파일 존재 여부 열거(enumerate)를 차단.
 export async function GET(req: Request, { params }: { params: Promise<{ file: string }> }) {
   const { file } = await params;
-  // 테넌트 컨텍스트는 쿼리(?tenant_id=) 또는 헤더(X-Tenant-ID)에서. 없으면 404.
-  const tenantId = new URL(req.url).searchParams.get("tenant_id") || req.headers.get("x-tenant-id");
+  // 2026-09-07 감사 지적: 쿼리 tenant_id 를 그대로 믿으면 인증된 고객 A 가
+  // ?tenant_id=B 로 다른 작업 공간 파일을 받아 갈 수 있다. 파일명이 어렵다는 것은
+  // 인가가 아니라 은폐다. 부르는 쪽 토큰으로 테넌트를 확정하고, 쿼리 값은 그 확정값과
+  // 같을 때만 통과시킨다(다르면 없는 것처럼 404).
+  const asked = new URL(req.url).searchParams.get("tenant_id") || req.headers.get("x-tenant-id");
+  const tenantId = await effectiveTenantId(req, asked);
   if (!tenantId) return Response.json({ error: "not found" }, { status: 404 });
+  if (asked && asked !== tenantId) return Response.json({ error: "not found" }, { status: 404 });
 
   // resolveMediaPath가 path traversal( .. / \ )과 타테넌트 경로를 차단. null이면 404.
   const fp = resolveMediaPath(tenantId, file);

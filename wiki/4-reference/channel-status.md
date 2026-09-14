@@ -32,6 +32,21 @@ For each channel the pattern is:
 
 See extensions/ directory and dashboard/src/lib/constants.ts for IMPLEMENTED_PLUGINS.
 
+## 계정 재연결 저장 계약 (2026-09-04)
+
+- 모든 OAuth provider callback은 `upsertChannelAccount` 한 경로로 계정을 저장한다.
+- `(tenant_id, provider, external_account_id)`가 처음이면 새 행을 만든다. 같은 키가 이미 있으면
+  오류를 내거나 새 행을 만들지 않고 기존 행의 access token, refresh token, 표시 이름, 사용자명,
+  meta, 상태, 토큰 만료 시각을 갱신한다.
+- 재연결은 기존 `is_default`를 갱신하지 않는다. 이미 기본이던 계정은 기본을 유지하고,
+  비기본 계정의 재연결은 기존 기본 계정을 밀어내지 않는다. 기존 기본이 사용할 수 없는 경우에만
+  아래 다중 계정 계약의 승격 규칙을 적용한다.
+- 새 refresh token이 없는 재연결은 저장된 refresh token을 지우지 않는다. 새 값이 있으면
+  pgcrypto 암호문을 교체한다. 자격증명 원문은 응답과 로그에 포함하지 않는다.
+- callback 결과는 처음 연결이면 `연결 완료`, 기존 행 갱신이면 `연결을 새로 고쳤습니다`로 알린다.
+- 실제 PostgreSQL 16 검증 수치: 1회차 성공 1, 2회차 성공 1, provider 행 1,
+  토큰 갱신 1, 표시 이름 갱신 1, 기본 행 1, 기본 유지 1.
+
 
 ## 남의 공개 게시물을 읽을 수 있나 (2026-08-21 실측)
 
@@ -131,6 +146,16 @@ Instagram, Facebook은 `token_expires_at` non-null과 미만료가 필수다. �
 암호화된 refresh token이 있는 provider만 연결을 유지하며, 나머지는 `reconnect`로 판정한다.
 연결 콜백은 장기 토큰 교환과 실제 계정 신원 검증을 둘 다 통과한 후에만
 `active`를 저장한다. 이 계약의 실 OAuth 재현은 운영 계정 재검증 전까지 미검증이다.
+
+## 다중 계정과 기본 계정 계약
+
+- 한 tenant는 같은 provider에 여러 `channel_accounts` 행을 둘 수 있지만 기본은 최대 하나다.
+- 채널 상세 Settings의 계정 목록은 사용자명, 연결 상태, 토큰 만료 시각, 기본 여부만 보여준다. 자격증명 값과 암호문은 목록 응답에 포함하지 않는다.
+- 기본은 해당 플랫폼에 올릴 때 account id를 따로 고르지 않은 발행이 사용하는 계정이다. `getChannelCred`는 `is_default=true` 행을 먼저 읽는다.
+- 기본 전환은 active이며 사용 가능한 토큰인 계정만 허용한다. 만료, 비활성, revoked, Meta 장기 토큰 만료 시각 누락은 서버가 409로 거절한다.
+- 기본 계정 삭제 뒤에는 사용 가능한 계정만 승격한다. 남은 계정이 모두 사용할 수 없으면 기본과 legacy 미러를 비워 발행이 다른 계정으로 새지 않게 한다.
+- 벌크 연결 판정도 기본 계정만 읽는다. 기본이 없으면 다른 최신 계정이 active여도 해당 provider는 연결됨으로 표시하지 않는다.
+- 연결 해제는 계정 한 행만 삭제하며 되돌릴 수 없음과 예약 발행 영향을 확인한 뒤 실행한다.
 
 ### 운영자/고객 shell 경계
 

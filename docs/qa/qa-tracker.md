@@ -2,6 +2,1093 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 16시 16분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 변경 | 돈, 격리, 동시성, 부분 실패, 삭제, 확정 요구 이탈 공격 리뷰 | OSMU-CODE-REVIEW-R4-01 | BLOCK | `e65a1d1b..22c27bdb`, 커밋 70개, 파일 162개. MAJOR 28건, MINOR 5건. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-14.md` |
+| 실제 앱 요청 | 지정 작업 공간 기본 흐름과 Studio v1 | OSMU-CODE-REVIEW-R4-02 | PASS | localhost health HTTP 200과 DB up, 기본 흐름 11/11, Studio v1 14/14 |
+| 전체 회귀 | Vitest와 TypeScript | OSMU-CODE-REVIEW-R4-03 | PASS | Vitest 348파일, 2,277건 통과와 3건 제외. `npx tsc --noEmit` 종료 코드 0 |
+| 고객 격리 | 고객 허용 목록과 전역 Higgsfield 상태 응답 | OSMU-CODE-REVIEW-R4-04 | NG | 같은 날 앞선 임시 고객 토큰 실측에서 HTTP 200과 `email`, `plan`, `credits`, `raw` 키 노출. 이번 범위 종료까지 허용 목록과 응답 코드 변경 없음. 값은 기록하지 않음 |
+| 검증기 신뢰성 | 인증 리다이렉트의 부분 실패 분류 | OSMU-CODE-REVIEW-R4-05 | NG | `dashboard/scripts/verify-api-read-sweep.mjs:108`이 200부터 399까지 모두 정상으로 분류해 API가 로그인 화면으로 리다이렉트돼도 초록 가능 |
+
+제품 소스, migration과 테스트는 수정하지 않았다. 다른 세션의 미커밋 변경이 있는 공유 작업 트리에서 실행했으므로 초록 테스트를 고정 커밋 범위의 안전 증명으로 확대하지 않는다. 운영 배포, 실제 외부 채널 발행과 시안 픽셀 대조는 미검증이다.
+
+## 2026-09-14 15시 14분 KST · 성과 시계열 재확인 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 게시물별 성과 시계열과 재현 가능한 30일 비교 | METRICS-HISTORY-20260914-1514-01 | NG | 지정 작업 공간 localhost `GET /api/metrics` HTTP 200. 응답 키는 `coverage`, `posts`이고 `history`, `comparison`은 없음 |
+| pipeline build 허용 범위 | 승인된 DB와 API 계약 안에서만 구현 | METRICS-HISTORY-20260914-1514-02 | BLOCK | `pipeline-state.osmu.md`의 현재 공정은 `qa`, 상태는 승인 아님. 성과 snapshot 저장 단위, 멱등 키, 보존 기간과 30일 비교식이 승인되지 않음 |
+| 기존 기본 흐름 보존 | 생성, 편집, 발행 큐, 성과와 생성실 재인계 | METRICS-HISTORY-20260914-1514-03 | PASS | localhost health HTTP 200, 기본 흐름 11/11, Studio v1 14/14 |
+| 전체 회귀 | Vitest, TypeScript, production build와 디자인 lint | METRICS-HISTORY-20260914-1514-04 | PASS | Vitest 348파일, 2,277건 통과와 3건 제외. `npx tsc --noEmit` 종료 코드 0, build 184/184, 디자인 토큰 위반 0 |
+
+제품 소스, migration과 테스트는 수정하지 않았다. 승인되지 않은 저장 계약을 임의로 추가하지
+않았으며 운영 배포와 실제 외부 provider 기간별 성과 회수는 미검증이다.
+
+## 2026-09-14 14시 48분 KST · 네 방 감독 복구 경로 수정 후 기능 PASS, 디자인 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 네 방 관통 | FLOW-API-V8 | PASS | localhost 기본 흐름 11/11. 후보 3장, 편집, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰 |
+| R08, R19, R207 | 네 방 렌더와 390, 768, 1024, 1440 실제 이동 | FLOW-UI-V8 | 기능 PASS, 디자인 NG | 단면 4/4, 20개 방 화면과 성과실에서 생성실 복귀 5/5. 가로 넘침, 가린 모달, 탐색 차단, 다음 행동 누락, 401, 콘솔 오류 모두 0건. 원본 `logs/diff/osmu-four-room-flow-20260914-final/captures/` |
+| R27, R168 | Studio v1 생성과 무료 다시 만들기 경계 | STUDIO-V1-V8 | PASS | localhost 실요청 14/14 |
+| 개발 서버 복구 | 감독이 검증된 Webpack 개발 계약으로 앱을 복구 | QA-FLOW-RUNTIME-01 | 수정 후 PASS | 감독의 직접 `npx next dev`가 Turbopack을 띄워 `Next.js package not found` 패닉을 반복. `npm run dev -- -p 3456`으로 연결하고 회귀 8/8, 최종 런타임 치명 로그 0건. 커밋 `d17115f6` |
+| 전체 회귀 | Vitest, TypeScript, build, 디자인 lint | FLOW-REGRESSION-V8 | PASS | 348파일, 2,277건 통과, 조건부 3건 제외. TypeScript 종료 코드 0, build 184/184, 디자인 토큰 위반 0 |
+| R205, R206 | v63 디자인 계승 | DESIGN-V8 | NG | v63 원본과 현재 16개 화면의 8축 배치 속성이 모두 불일치. 과제 v63과 pipeline 승인 v68 핀도 충돌 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 운영 배포와 외부 채널 실발행은 이번 PASS에 포함하지 않음 |
+
+seed는 지정 작업 공간에 멱등 적용했고 최종 health는 HTTP 200, DB up, 2ms다. 상세는 `docs/qa/osmu-four-room-basic-flow-v8-gpt-codex.md`다. 네 방 localhost 기능만 PASS이며 디자인 정합, 운영 배포, 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다.
+
+## 2026-09-14 14시 19분 KST · 네 방 렌더 탐침 1차 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R166, R172, R207 | 생성실부터 성과실까지 네 방 렌더와 가림 모달 여부 재검증 | FLOW-PROBE-20260914-1419-01 | NG | 기본 백엔드 흐름은 11/11 통과했으나 `probe-four-room-flow.mjs`가 `/studio?room=create`의 `[data-room="create"]` 표시를 120초 안에 관찰하지 못하고 종료 코드 1로 중단됨. 검증 전후 localhost:3456 listener PID 21466과 health HTTP 200, DB up은 유지됨. |
+
+현재는 제품 렌더 결함과 공유 Next 개발 서버의 콜드 컴파일 정체를 분리하는 중이다. 동일 소스에서 단독 재현과 네 폭 전건 재실행을 끝내기 전에는 PASS로 바꾸지 않는다.
+
+## 2026-09-14 14시 00분 KST · API 읽기 경로 전수 재실사 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98 | 발행 성과를 읽고 다음 생성 판단으로 되돌림 | API-READ-ALL-V9 | PASS | localhost GET 105개 실호출. 정상 92, 계약상 거절 13, HTTP 500과 요청 실패 0. 원본 `logs/diff/osmu-api-read-sweep-20260914-1313-final.json` |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY-V9 | PASS | 무토큰 격리 탐침 401. 비정상 상태 13개의 본문을 입력, 없는 자원, 인증, 설정 경계로 확인 |
+| R200, R207 | 성과 학습 규칙과 Studio 학습 정보 조회 | API-LEARNING-READ-V9 | PASS | `/api/performance/learned-rules`, `/api/studio/learning` 각각 HTTP 200 |
+| 검사기 콜드 컴파일 경합 | 개발 서버 전수 검사가 제품 응답 전에 멈추지 않음 | API-READ-DEV-COLD-V9 | 수정 후 PASS | 첫 동시성 4 실행은 요청 실패 4, 전체 시간 초과 35, 제품 500 0. production 동시성 4와 개발 서버 순차 실행은 105/105 응답. 기본 동시성을 1로 고정하고 회귀 추가, 커밋 `d5a612cc` |
+| 필수 자동 회귀 | 전체 Vitest, TypeScript, build, seed, E2E | API-READ-REGRESSION-V9 | PASS | 348파일과 2,276건 통과, 3건 제외. TypeScript 종료 0, build 184/184, seed와 RLS 적용, 기본 흐름 11/11, Studio v1 14/14, health 200, 디자인 lint 위반 0 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 디자인 정합, 운영 배포, 외부 채널 실발행은 이번 PASS에 포함하지 않음 |
+
+상세는 `docs/qa/osmu-api-read-sweep-v9-gpt-codex.md`다. 2026-08-28 문서 84개, 당시 실제 정적 분모 95개, 현재 105개를 분리해 비교했다. 직전 v8과 현재 v9의 경로, 상태, 분류 차이는 0건이다. API 읽기 범위만 PASS이며 기존 디자인 정합 NG, v63과 v68 승인 핀 충돌, canonical 테스트 계획과 ONE_THING 부재, 운영 배포와 외부 채널 실발행 미검증, 같은 날 공격 리뷰 BLOCK 때문에 제품 전체 QA와 배포는 NG다.
+
+이번 턴에 v63 발행실 1440 PNG와 dev 발행실 1440 PNG를 각각 원본 크기로 직접 열었다. 공통 셸, 요소 순서, 본문 구조, 행동 위계가 달랐고 데이터 상태도 3곳 선택과 0곳 선택으로 달라 디자인 일치를 주장할 수 없다. 1440은 NG, 다른 폭은 이번 턴 미검증으로 유지한다.
+
+## 2026-09-14 13시 28분 KST · API 읽기 경로 전수 재실사 착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R104, R200, R207 | 최신 코드가 내보내는 읽기 Route Handler 전부를 실제 요청으로 재검증 | API-READ-20260914-1313-01 | NG | 현재 분모 105개, 실행 전 GET 소스 합성 SHA-256 `b37dedf0bf4623843063fd7022fc1c0a5aaba47e5adaba96afc5480f680a4f3a`. localhost health HTTP 200과 DB up만 관찰. 전수 요청, 거절 본문 확인, 필수 회귀가 안 끝나 PASS 금지. |
+
+`rg`가 gitignore의 `tenants/` 패턴을 존중해 추적 중인 `/api/tenants`를 누락한 104개 중간 계산은 폐기했다. 실제 검증기와 동일하게 `fs.readdir`로 수집한 105개가 분모다. `/api/studio/learning`은 공유 작업 트리에서 수정 중이다. 새 원본 JSON과 실행 전후 소스 해시, 실패 단독 재현, 전체 Vitest, TypeScript, 기본 흐름과 Studio v1을 새로 관찰하기 전에는 직전 PASS를 재사용하지 않는다.
+
+## 2026-09-14 12시 22분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 변경 | 돈 누수, 작업 공간 격리, 동시성, 부분 실패, 무기록 삭제, 확정 요구 이탈 공격 리뷰 | REVIEW-20260914-R3-01 | BLOCK | 범위 `7e39d0a7..4f59a759`, 커밋 74개, 파일 180개. MAJOR 27건, MINOR 3건. 승인 시안 이탈 2건, 회귀 위험 26건, 토큰 위반 1건, 무기록 삭제 1건. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-14.md`. |
+| 고객 격리 실측 | 고객 토큰이 운영 전역 공급자 정보를 읽지 못함 | REVIEW-20260914-R3-LIVE | FAIL | 임시 고객 토큰으로 `/api/higgsfield/status` 호출 시 HTTP 200과 `email`, `plan`, `credits`, `raw` 키 반환. 값은 출력하지 않았고 임시 토큰 삭제 뒤 잔여 0건 확인. |
+| 필수 자동 회귀 | 전체 Vitest와 TypeScript | REVIEW-20260914-R3-REGRESSION | PASS | `npm run test` 347파일, 2,275건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. |
+| localhost 기본 흐름 | 생성, 편집, 발행 큐, 성과 재인계와 Studio v1 | REVIEW-20260914-R3-E2E | PASS | health HTTP 200과 DB up. 기본 흐름 11/11, Studio v1 14/14. |
+
+자동 회귀와 기본 흐름은 통과했지만 고객 격리 결함이 실제 재현됐고, 중복 발행과 자원 고갈 등 정적 재현 경로가 남아 있어 전체 판정은 BLOCK이다. 실행 검증은 다른 세션의 미커밋 변경이 있는 공유 작업 트리에서 수행했으므로 고정 커밋 범위의 안전 증명으로 확대하지 않는다. 제품 소스는 수정하지 않았다.
+
+## 2026-09-14 11시 20분 KST · 성과 시계열 갭 build 차단 재확인
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 갭 감사 잔여 1건 | 게시물별 성과 시계열과 재현 가능한 30일 비교 | GAP-HISTORY-20260914-01 | NG | 현재 `published_posts`는 최신 누계와 `metrics_at`만 보존하고 게시물별 이력 테이블이 없다. localhost `GET /api/metrics`는 HTTP 200이지만 최상위 키는 `posts`, `coverage`뿐이고 `history`, `comparison`은 없다 |
+| 공정 게이트 | 승인된 DB·API 계약 안에서만 build | GAP-HISTORY-20260914-02 | BLOCK | `pipeline-state.osmu.md`의 현재 공정은 `qa`, 상태는 `in-progress (승인 아님)`이다. 이력 보존 단위, 중복 기준, 보존 기간, 30일 비교 의미가 승인되지 않아 제품 소스와 migration은 수정하지 않았다 |
+| 현재 기본 흐름 | 생성, 편집, 발행 큐, 성과 제안 재인계 | GAP-HISTORY-20260914-03 | PASS | localhost 기본 흐름 11/11, Studio v1 14/14 |
+| 전체 회귀 | 기존 기능 보존 | GAP-HISTORY-20260914-04 | PASS | Vitest 347파일, 2,275건 통과, 3건 제외. TypeScript 종료 코드 0. production build 184/184 |
+
+현재 두 감사 문서를 코드와 다시 대조하면 이미 닫힌 항목을 제외한 잔여는 성과 시계열 하나다. 이를 최신 누계값 비교로 흉내 내면 프로토타입의 `최근 30일`이 재현 불가능한 숫자가 된다. 정규화된 게시물 성과 snapshot 계약을 승인하고 build 공정을 다시 열기 전에는 PASS로 전환하지 않는다.
+
+## 2026-09-14 10시 39분 KST · 네 방 기본 흐름 기능 PASS, 디자인과 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172, R193 | 생성, 편집, 발행, 성과의 실제 데이터 인계 | FLOW-API-V7 | PASS | 최종 소스의 localhost 기본 흐름 11/11. 후보 3장, 초안 편집, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰 |
+| R08, R19, R207 | 390, 768, 1024, 1440에서 네 방 실제 이동 | FLOW-UI-V7 | 기능 PASS, 디자인 NG | 20개 방 화면과 성과실에서 생성실 복귀 5/5. 가로 넘침, 가린 모달, 탐색 차단, 다음 행동 누락, 401, 콘솔 오류 모두 0건. 원본 `logs/diff/osmu-four-room-flow-20260914-v7/captures/` |
+| R27, R168 | Studio v1 생성과 무료 다시 만들기 경계 | STUDIO-V1-V7 | PASS | localhost 실요청 14/14 |
+| 공통 단추 회귀 | 새 44px 양축 조작영역 계약과 자동 검사 일치 | FLOW-REGRESSION-V7 | 수정 후 PASS | 첫 전체 회귀는 오래된 `min-w-max` 예상 3건 실패. `ds-touch-target` 존재와 이전 class 부재를 검사하도록 수정, 집중 20/20과 전체 346파일, 2,266건 통과, 조건부 3건 제외. 커밋 `92635f06` |
+| web build와 정적 검증 | TypeScript, production build, 디자인 lint | FLOW-BUILD-V7 | PASS | `npx tsc --noEmit` 종료 코드 0, build 184/184, 디자인 토큰 위반 0. 기존 NFT 추적 경고 1건 |
+| R205, R206 | v63 디자인 계승 | DESIGN-V7 | NG | v63 원본과 현재 16개 화면의 8축 배치 속성이 모두 불일치. 사용자 지정 v63과 pipeline 승인 v68 핀도 충돌 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 운영 배포와 외부 채널 실발행은 이번 PASS에 포함하지 않음 |
+
+첫 probe 생성실 제한시간 초과와 다음 probe의 연결 재설정 19건은 공유 localhost 서버가 실행 중 교체된 증거라 즉시 NG로 기록했다. 프로젝트 표준 webpack 서버가 안정화된 뒤 기본 스크립트를 그대로 재실행했고, 최종 `dashboard/src`와 `dashboard/scripts` 합성 SHA-256 `9fb3ed473b15475efaa9753508f4ead4e7a0c965af6b3991f2996feb37bc721e`에서 모든 필수 검증을 다시 통과했다. 네 방 localhost 기능만 PASS이며 디자인 정합, 승인 핀 충돌, 운영 배포와 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v7-gpt-codex.md`다.
+
+## 2026-09-14 10시 11분 KST · 네 방 기본 흐름 재실사 1차 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R166, R172, R207 | 생성실부터 성과실까지 네 방 렌더와 실제 이동 | FLOW-PROBE-V7-01 | NG | localhost 기본 흐름은 11/11 통과했으나 `probe-four-room-flow.mjs`가 `/studio?room=create`의 `[data-room="create"]`를 120초 안에 관찰하지 못해 종료 코드 1. 직후 health는 HTTP 200, DB up |
+
+제품 렌더 결함, 개발 서버 경합, 검증기 대기 결함을 분리하기 전에는 네 방 기능을 PASS로 전환하지 않는다. 같은 URL의 최종 DOM, 요청 상태, 콘솔 오류와 서버 로그를 수집하고 재현한 뒤 전체 네 폭을 처음부터 다시 실행한다.
+
+## 2026-09-14 10시 05분 KST · API 읽기 경로 전수 재실사 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98 | 발행 성과를 읽고 다음 생성 판단으로 되돌림 | API-READ-ALL-V8 | PASS | 고정된 최신 소스에서 localhost GET 105개 실호출. 정상 92, 계약상 거절 13, HTTP 500과 요청 실패 0. 원본 `logs/diff/osmu-api-read-sweep-20260914-091409-final.json` |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY-V8 | PASS | 무토큰 격리 탐침 401. 13개 비정상 상태의 본문을 읽어 입력, 설정, 인증 경계로 확인 |
+| R200, R207 | 성과 학습 규칙과 Studio 학습 정보 조회 | API-LEARNING-READ-V8 | PASS | `/api/performance/learned-rules`, `/api/studio/learning` 각각 HTTP 200 |
+| 생성 장부 연결 오류 | 일시적인 DB 연결 실패가 일반 500으로 누출되지 않음 | API-GENERATION-DB-READ-V8 | 수정 후 PASS | 최초 파생 작업 조회가 38,980ms 뒤 HTTP 500. 연결 오류를 재시도 가능한 503으로 분류하고 회귀 3건 추가. 커밋 `25330905`. 최종 같은 경로 404, 전체 500 0 |
+| 현재 소스 고정 | 공유 작업 트리 혼입 방지 | API-READ-SOURCE-HASH-V8 | PASS | 실행 전후 HEAD `e0c66d14`와 `dashboard/src` 합성 SHA-256 `5f276662869c8aef8126c48e0d3969afa810d10971bb763e2c9b58fabd942f5b` 동일. 최종 health 200 |
+| 필수 자동 회귀 | 전체 Vitest | API-READ-REGRESSION-V8 | PASS | 최신 코드 345파일, 2,254건 통과, 조건부 3건 제외, 실패 0 |
+| 정적 검증과 build | TypeScript, production build, 디자인 lint | API-READ-BUILD-V8 | PASS | `npx tsc --noEmit` 종료 코드 0. Next.js 16.2.2 production build 184/184, 종료 코드 0. 기존 NFT 경고 1건. 디자인 토큰 위반 0 |
+| seed와 localhost 흐름 | 고정 작업 공간 fixture와 실동작 | API-READ-E2E-V8 | PASS | schema와 seed 멱등 적용, production health 200, 기본 흐름 11/11, Studio v1 14/14 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 디자인 정합, 운영 배포, 외부 채널 실발행은 이번 PASS에 포함하지 않음 |
+
+상세는 `docs/qa/osmu-api-read-sweep-v8-gpt-codex.md`다. v7과 v8의 최종 경로, HTTP 상태, 분류는 같다. 이번 실사에서 발견한 생성 장부 연결 오류의 500 누출은 계약 보강과 회귀 테스트로 고쳤다. Next 개발 서버 콜드 컴파일 중 콜백 500은 단독 5회와 예열 뒤 전수 실행에서 HTTP 200으로 분리 확인했다. API 읽기 범위만 PASS이며 디자인 정합, 운영 배포, 외부 채널 실발행이 미검증이므로 제품 전체 QA와 배포는 NG다.
+
+## 2026-09-14 09시 06분 KST · API 읽기 경로 전수 재실사 착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R104, R200, R207 | 최신 코드가 내보내는 읽기 Route Handler 전부를 실제 요청으로 재검증 | API-READ-20260914-091409-01 | NG | 현재 분모 105개, 실행 전 GET 소스 합성 SHA-256 `422005c15c9ceaaa90157b94c17cdbacdf12bc4bb8131128f2346c54e9548e23`. localhost health HTTP 200과 DB up까지만 관찰했다. 전수 요청, 의도된 거절 본문 확인, 필수 회귀가 끝나지 않아 PASS 금지. |
+
+직전 v7 실사 뒤 `/api/metrics`와 고객 proxy 허용 경로가 바뀌었고 `/api/studio/learning`은 공유 작업 트리에서 수정 중이다. 전수 원본 JSON, 실행 전후 소스 해시, 실패 단독 재현, 전체 Vitest, TypeScript, 기본 흐름과 Studio v1을 새로 관찰하기 전에는 기존 PASS를 현재 코드 증거로 재사용하지 않는다.
+
+## 2026-09-14 08시 22분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| REVIEW-20260914-R2 | 지난 24시간 70개 커밋의 돈, 격리, 동시성, 부분 실패, 삭제, 확정 요구 이탈 재검토 | REVIEW-ATTACK-R2 | BLOCK | 범위 `39d32c58510565df52f330d01c0ac0d96cb0256d..fe24d05180b99b1c39e30e915b8557bd8e03d0fe`, 189파일, 추가 11,113줄, 삭제 2,042줄. MAJOR 20건, MINOR 0건. 승인 시안 이탈 1건, 회귀 위험 19건, 토큰 위반과 무기록 삭제는 0건. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-14.md`. |
+| REVIEW-20260914-R2-RUNTIME | 지정 작업 공간 localhost 실제 요청과 필수 회귀 | REVIEW-ATTACK-R2-LIVE | BLOCK | health HTTP 200과 DB up. 임시 고객 토큰의 `/api/higgsfield/status`가 HTTP 200으로 전역 `email`, `plan`, `credits`, `raw`를 반환했고 토큰은 즉시 폐기. `npm run test` 342파일, 2,217건 통과, 3건 제외. TypeScript 종료 코드 0, 기본 흐름 11/11, Studio v1 14/14 통과. 자동 검증은 격리 결함을 잡지 못했다. |
+
+## 2026-09-14 06시 40분 KST · 네 방 기본 흐름 기능 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 네 방 관통 | FLOW-API-V6 | PASS | localhost 기본 흐름 11/11. 후보 3장, 초안 편집, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰 |
+| R08, R19, R207 | 390, 768, 1024, 1440 사람 클릭 | FLOW-UI-V6 | 기능 PASS, 디자인 NG | 20개 방 화면과 성과실에서 생성실 복귀 5/5. 가로 넘침, 가린 모달, 탐색 차단, 다음 행동 누락, 401, 콘솔 오류 모두 0건. 원본 `logs/diff/osmu-four-room-flow-20260914-rerun/captures-after-fix/` |
+| R27, R168 | Studio v1 생성과 무료 다시 만들기 경계 | STUDIO-V1-V6 | PASS | localhost 실요청 14/14 |
+| 개발 서버 회귀 | 기본 개발 명령으로 네 방 렌더 | DEV-BUNDLER-V6 | PASS | Turbopack의 반복 `/login/page` 치명 오류를 재현한 뒤 기본 명령을 Webpack으로 고정. `npm run dev -- --port 3456`에서 health 200과 네 방 4/4 재통과. 회귀 2건, 커밋 `99686354` |
+| 전체 회귀 | Vitest, TypeScript, build, 디자인 lint | FLOW-REGRESSION-V6 | PASS | 340파일, 2,197건 통과, 조건부 3건 제외. TypeScript 종료 코드 0, build 184/184, 디자인 토큰 위반 0 |
+| R205, R206 | v63 디자인 계승 | DESIGN-V6 | NG | v63 원본과 현재 16개 화면의 8축 배치 속성이 모두 불일치. 사용자 지정 v63과 pipeline 승인 v68 핀도 충돌 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 운영 배포와 외부 채널 실발행은 이번 PASS에 포함하지 않음 |
+
+상세는 `docs/qa/osmu-four-room-basic-flow-v6-gpt-codex.md`다. 네 방 localhost 기능 범위는 PASS다. 디자인 정합과 승인 기준 충돌, 운영 배포 및 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다.
+
+## 2026-09-14 06시 04분 KST · API 읽기 경로 전수 재실사 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98 | 발행 성과를 읽고 다음 생성 판단으로 되돌림 | API-READ-ALL-V7 | PASS | localhost GET 105개 실호출. 정상 92, 계약상 거절 13, HTTP 500과 요청 실패 0. 원본 `logs/diff/osmu-api-read-sweep-20260914-final-v2.json` |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY-V7 | PASS | 무토큰 격리 탐침 401, production의 개발 토큰 401, 인증된 조회는 handler 응답. 13개 비정상 상태의 본문을 읽어 입력, 설정, 인증 경계로 확인 |
+| R200, R207 | 성과 학습 규칙과 Studio 학습 정보 조회 | API-LEARNING-READ-V7 | PASS | `/api/performance/learned-rules`, `/api/studio/learning` 각각 HTTP 200 |
+| 현재 소스 고정 | 공유 작업 트리 혼입 방지 | API-READ-SOURCE-HASH-V7 | PASS | GET 105개 합성 SHA-256 실행 전후 `a011035aabbc73c19f9862f5f493ef5d9b806c6d922e0d87a3258399de37e5f1` 동일. 소스가 바뀐 두 실행과 서버가 재시작된 전건 실패 실행은 폐기 |
+| 필수 자동 회귀 | 전체 Vitest | API-READ-REGRESSION-V7 | PASS | 339파일, 2,194건 통과, 조건부 3건 제외, 실패 0. 줄 모양에 결합된 발행실 검사 1건은 호출 순서 계약으로 수정, 커밋 `e56f660b` |
+| 정적 검증과 build | TypeScript, production build, 디자인 lint | API-READ-BUILD-V7 | PASS | `npx tsc --noEmit` 종료 코드 0. Next.js 16.2.2 production build 184/184, 종료 코드 0. 기존 NFT 경고 1건. 디자인 토큰 위반 0 |
+| seed와 localhost 흐름 | 고정 작업 공간 fixture와 실동작 | API-READ-E2E-V7 | PASS | `apply-schema.sh --seed` 멱등 적용. production health 200. 개발 서버에서 기본 흐름 11/11, Studio v1 14/14, 최종 health 200 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 디자인 정합, 운영 배포, 외부 채널 실발행은 이번 PASS에 포함하지 않음 |
+
+상세는 `docs/qa/osmu-api-read-sweep-v7-gpt-codex.md`다. v6와 v7의 경로, 상태, 분류는 모두 같다. 2026-08-28 문서 분모 84개와 당시 실제 정적 분모 95개의 차이를 숨기지 않았고, 당시 뒤 추가된 GET 10개를 표로 대조했다. API 읽기 범위는 PASS지만 별도 개발 E2E 서버의 반복 Turbopack 치명 로그, 승인 프로토타입과 실제 화면의 디자인 불일치, 운영 배포 미검증 때문에 제품 전체 QA와 배포는 NG다.
+
+## 2026-09-14 05시 38분 KST · 코드 공격 리뷰 19건 기능 PASS, 개발 서버 로그 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| OSMU-001부터 OSMU-007 | 경로 이탈, 승인 payload, 큐 잠금, 발행 claim, 공급자 실패 상태, analytics 이력 보존 | REVIEW-FIX-20260914-01 | PASS | 경로 realpath·magic byte 3건, 승인 hash 3건, 13초 잠금 경합 2건, claim 복구 2건, 공급자 상태 2건, 손상 이력 2건 통과. 소스 커밋 `d0b8065f`부터 `5032b483` |
+| OSMU-008부터 OSMU-014 | 예약 lease, 예약 캐러셀, Instagram 시도 기록, 카드 저장 보상, 발행실 시안 준수 | REVIEW-FIX-20260914-02 | PASS | 예약 14건, Instagram 7건, 카드 저장 3건, 카드 흐름 10건, 발행실 4건 통과. 커밋 `92e0d02e`, `2c806d9d`, `2be47af9`, `1b60a823` |
+| OSMU-015부터 OSMU-018 | 성과 중복 호출, 묶음 부분 실패, Meta 오류 분류, API 상태 일치 | REVIEW-FIX-20260914-03 | PASS | PostgreSQL advisory lock, 5분 freshness, X 101건과 YouTube 51건 부분 성공 보존, Meta 게시물별 실패, HTTP 207·429·424·503 계약 14건 통과. 커밋 `6ce8016f` |
+| OSMU-019 | QA 전체 실행시간과 제한 병렬성 | REVIEW-FIX-20260914-04 | PASS | 회귀 3건과 기존 timeout 계약 3건 통과. 전체 예산 100ms 재현은 0.55초에 종료 코드 1로 끝났고 미실행 75개를 `전체 시간 초과`로 기록. 커밋 `d2ce0e0e`, `8a055508` |
+| 필수 자동 회귀 | 전체 Vitest | REVIEW-FIX-20260914-05 | PASS | `npm run test` 종료 코드 0. 337파일 전체 통과, 2,169건 통과, 조건부 3건 제외, 실패 0 |
+| 정적 검증과 빌드 | TypeScript, production build, 디자인 토큰 | REVIEW-FIX-20260914-06 | PASS | `npx tsc --noEmit` 종료 코드 0. `npm run build` 184개 page 생성, 종료 코드 0. design-lint 위반 0. 기존 Turbopack NFT 추적 경고 1건은 남음 |
+| 현재 localhost | 이번 코드로 재기동한 실제 서버 | REVIEW-FIX-20260914-07 | PASS | 기존 3456 서버가 120초 무응답이라 해당 자식만 종료했다. 이번 코드로 제한시간 재기동 후 `/api/health` HTTP 200, `db=up`, 기본 흐름 11/11, Studio v1 14/14 통과 후 서버 종료 |
+| 공유 작업트리 후속 재검증 | 다른 세션의 발행실 인접 변경 뒤 회귀 | REVIEW-FIX-20260914-08 | 기능 PASS, 로그 NG | 발행실·예약·Instagram 회귀 25/25와 TypeScript, localhost 기본 흐름 11/11, Studio v1 14/14 재통과. 다만 개발 서버가 `/login` endpoint 작성 중 `Next.js package not found` Turbopack 치명 로그를 반복해 깨끗한 개발 서버 스모크는 NG |
+
+운영 배포와 실제 외부 채널 게시물 생성은 수행하지 않았다. 공급자 결과를 조회할 수 없는 예약은 자동 재게시하지 않으며, Instagram 자식 컨테이너는 삭제 API를 추측하지 않고 생성 ID와 부모 ID를 `provider_meta` 또는 예약 payload에 남긴다.
+
+## 2026-09-14 05시 06분 KST · API 읽기 경로 전수 재실사 착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R104, R200, R207 | 현재 코드가 내보내는 읽기 Route Handler 전부를 실제 요청으로 재검증 | API-READ-20260914-01 | NG | 현재 분모 105개, 실행 전 API 소스 합성 SHA-256 `3ef23480dafe1f508d8bc2589f3712f7a4f61c321a56f1dc5af8cde8b46e7d8f`. localhost health HTTP 200과 DB up까지만 관찰했다. 전수 요청, 의도된 거절 확인, 필수 회귀가 끝나지 않아 PASS 금지. |
+
+지난 실사 뒤 Route Handler와 공유 코드가 바뀌었으므로 기존 105개 PASS를 현재 코드 증거로 재사용하지 않는다. 전수 원본 JSON, 실행 전후 소스 해시, 실패 단독 재현, 전체 회귀, TypeScript, 기본 흐름과 Studio v1을 새로 관찰한 뒤 판정을 갱신한다.
+
+## 2026-09-14 04시 33분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 변경 | 돈 누수, 작업 공간 격리, 동시성, 부분 실패, 무기록 삭제, 확정 요구 이탈 공격 리뷰 | REVIEW-20260914-01 | BLOCK | 고정 범위 `b4ec9dbd..acb981ea`, 47커밋, 184파일. MAJOR 19건, MINOR 0건. 경로 탈출 2곳, 승인 payload 불일치, 큐 잠금 중첩, 예약 고아와 캐러셀 단일화, 부분 저장, 성과 수집 중복과 거짓 HTTP 200을 확인 |
+| 필수 정적 검증 | TypeScript | REVIEW-20260914-02 | PASS | `npx tsc --noEmit` 종료 코드 0 |
+| 필수 자동 회귀 | 전체 Vitest | REVIEW-20260914-03 | NG | `npm run test` 종료 코드 1. 324파일 중 323 통과, 1 실패. 2,124건 중 2,120 통과, 3 제외, 1 실패. `tests/studio/studio-fe2-rooms.test.tsx:239`의 편집 목차 접근 이름 계약 실패. 해당 테스트와 직접 원인 파일은 고정 감사 범위 밖이라 최근 커밋 지적 수에는 미포함 |
+| 현재 localhost | health와 기본 네 방 데이터 인계 | REVIEW-20260914-04 | PASS | `localhost:3456/api/health` HTTP 200, DB up. 지정 작업 공간에서 `verify-basic-flow-e2e.mjs` 11/11 통과 |
+| Studio v1 계약 | 생성, 조회, 무료 다시 만들기 경합 | REVIEW-20260914-05 | PASS | 지정 작업 공간에서 `verify-studio-v1-e2e.mjs` 14/14 통과 |
+| 큐 파일 상호 배제 | 13초 임계 구역과 stale 회수 경합 | REVIEW-20260914-06 | NG | 첫 작업 1ms 진입과 13,002ms 종료 사이에 둘째 작업이 10,254ms 진입, 10,356ms 종료. 2.648초 동시 진입 관찰 |
+
+상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-14.md`다. 제품 코드는 수정하지 않았다. 현재 공유 작업 트리의 미커밋 변경과 병렬 tmux 작업은 고정 커밋 리뷰 범위에서 제외했고, 실행 증거는 현재 공유 작업 트리에서 관찰했다. 운영 배포와 실제 외부 채널 발행은 미검증이다.
+
+## 2026-09-14 03시 35분 KST · 네 방 기본 흐름 v5 기능 PASS, 디자인 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R168, R193, R207 | 생성실부터 성과실까지 실제 데이터 인계 | FLOW-API-20260914-01 | PASS | localhost `verify-basic-flow-e2e.mjs` 11/11. 후보 3장, 편집, 발행 큐 HTTP 201, 성과 제안 3건, 생성실 재인계, 지표 조회 |
+| R08, R19, R166, R172 | 네 방 렌더와 390, 768, 1024, 1440 실제 이동 | FLOW-UI-20260914-01 | 기능 PASS | 단면 4/4, 사람 클릭 20/20, 성과실에서 생성실 복귀 5/5. 가로 넘침, 가린 모달, 이동 차단, 다음 행동 누락, 브라우저 401, 콘솔 오류 모두 0건 |
+| R27, R168 | Studio v1 생성과 무료 다시 만들기 계약 | STUDIO-V1-20260914-01 | PASS | `verify-studio-v1-e2e.mjs` 14/14 첫 실행 통과 |
+| R205, R206, R207 | v63 화면 정합과 성과실 UX | DESIGN-20260914-01 | NG | 4개 방과 4개 폭, 총 16개 조합에서 주축, 순서, 열 수, 여백, 표시, 글꼴 단계, 버튼 위계가 모두 불일치. v63의 1440 원본은 실제 1394x796이라 정확한 픽셀 비교도 불가 |
+| QA 증거 계약 | 디자인 원본과 QA 결과 분리, viewport 캡처 | ISSUE-010 | 수정 후 PASS | 기본 출력 `logs/diff`, `fullPage: false`, 신규 회귀 1/1. 커밋 `561e859b` |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 판정을 유지하고 이번 PASS에 포함하지 않음 |
+
+seed, health HTTP 200과 DB up, 전체 Vitest 323파일과 2,119건, TypeScript, build 183/183, 디자인 lint가 통과했다. 조건부 DB 테스트 3건은 제외됐고 기존 NFT 추적 경고 1건은 남아 있다. build 결과에서도 health 200과 네 방 4/4를 재관찰했다. `verify-agent-quality.sh`는 배포 환경 접촉 증거 0건으로 반려했다. 실제 운영 배포와 외부 채널 실발행은 미검증이다. 상세와 16개 화면 매트릭스는 `docs/qa/osmu-four-room-basic-flow-v5-gpt-codex.md`, 원본 증거는 `logs/diff/osmu-four-room-flow-20260914-031512/`에 있다.
+
+
+## 2026-09-13 16시 27분 KST · 최근 24시간 코드 재리뷰 갱신 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 변경 | 돈 누수, 작업 공간 격리, 동시성, 부분 실패, 무기록 삭제, 확정 요구 이탈 공격 리뷰 | REVIEW-20260913-R3-01 | BLOCK | 고정 범위 `8652fb5..e65a1d1`, 71커밋, 283파일. MAJOR 26건, MINOR 1건. 기존 차단 사유에 원격 DB 과금 한도 초기화, QA 전체 deadline 부재, 예약 카드뉴스 단일 이미지 축소가 추가됨 |
+| 잠금 경합 | queue lock 임계구역 직렬화 | REVIEW-20260913-R3-02 | NG | 첫 writer 종료 12,502ms 전 둘째 writer가 10,257ms에 진입해 2,245ms 중첩 관찰 |
+| 현재 localhost | 지정 작업 공간의 실제 실행 경로 | REVIEW-20260913-R3-03 | 부분 관찰 | health HTTP 200. 기본 흐름 11/11, Studio v1 14/14. metrics는 15초 안에 응답하지 않음 |
+| 자동 회귀 | 전체 테스트와 TypeScript | REVIEW-20260913-R3-04 | PASS | `npm run test` 종료 코드 0, `npx tsc --noEmit` 종료 코드 0. 초록 테스트는 MAJOR 해소 증거로 사용하지 않음 |
+
+상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-13.md`다. 제품 코드는 수정하지 않았고 운영 배포는 미검증이다.
+
+[모델]: gpt-codex/GPT-5가 고정 diff와 승인 산출물을 대조하고 localhost 요청과 경합 재현을 직접 실행했다.
+벤치마크: OWASP API Security, Node.js path, PostgreSQL explicit locking 공식 문서의 자원 한도, 경로 정규화, 동시 변경 원칙을 적용했다.
+소스 1: `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-13.md`.
+소스 2: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html`, `DESIGN.md`.
+소스 3: `dashboard/scripts/seed-test-tenants.sql`, `openclaw/extensions/threads-queue/src/queue-lock.ts`.
+
+## 2026-09-13 14시 29분 KST · 네 방 기본 흐름 v4 재검증
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R168, R193, R207 | 생성실부터 성과실까지 실제 데이터 인계 | FLOW-API-01 | 수정 후 PASS | 첫 실행은 고정 QA 작업 공간 월 사용량 100/100으로 생성 실패. 시드가 현재 UTC 월 사용량을 0으로 복원하도록 수정한 뒤 `verify-basic-flow-e2e.mjs` 최종 11/11. 후보 3장, 편집, 큐 201, 제안 3건과 재인계 확인 |
+| R08, R19, R207 | 네 방이 각각 그려지고 가린 모달이 없음 | FLOW-PROBE-01 | 수정 후 PASS | 첫 탐침은 성과실 표시의 고정 30초에서 실패. 공용 `FOUR_ROOM_READY_TIMEOUT_MS` 120초 정책을 적용한 뒤 4/4 렌더, 가린 모달·브라우저 401·콘솔 오류 0 |
+| R08, R19, R166, R172 | 390·768·1024·1440에서 생성실부터 성과실까지 실제 이동 | FLOW-UI-01 | 기능 PASS | 라이트 4폭 16화면과 390 다크 4화면, 성과실→생성실 복귀 5/5. 가로 넘침·이동 차단·다음 행동 누락 0. 원본 `logs/diff/osmu-four-room-flow-20260913-1407/captures/` |
+| R27, R168 | 일곱 층 정보를 반영한 Studio v1 생성 | STUDIO-V1 | 재실행 PASS | 첫 실행은 HTTP 200 오류 본문 `STUDIO_LLM_INVALID_OUTPUT`으로 중단. 같은 전체 검증 재실행은 실제 생성과 거절 경계를 포함해 14/14 통과. 제공자 비결정성 우려는 유지 |
+| R08, R19, R207 | 반복 QA가 제품 사용량과 검증기 시간차 때문에 흔들리지 않음 | ISSUE-008, ISSUE-009 | 회귀 PASS | `af2f0335`. 월 사용량 시드 복원과 탐침 단일 120초 정책. 신규 회귀 2건과 전체 Vitest 321파일·2,108건 통과, 3건 제외 |
+| R205, R206, R207 | v63 승인 화면 정합 | DESIGN-01 | NG | v63 원본과 실제 네 방 4폭의 주축·순서·열·여백·표시·글꼴·버튼 위계가 불일치. pipeline 승인 핀 v68과도 충돌 |
+| R01~R207 중 이번 범위 밖 항목 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 추적표 판정을 유지하고 이번 PASS에 포함하지 않음 |
+
+localhost health HTTP 200, seed, TypeScript, 정적 페이지 183/183 build, 디자인 lint도 통과했다.
+빌드의 기존 NFT 추적 경고 1건과 React `act(...)` 테스트 경고는 남아 있다. 네 방 로컬 기능은
+PASS지만 디자인 정합 NG, 기존 코드 재리뷰 BLOCK, 운영 배포 미검증 때문에 제품 전체 QA와
+배포는 NG다. 상위 `verify-agent-quality.sh`도 배포 환경 접촉 증거 0건으로 종료 코드 2를 반환했다.
+상세는 `docs/qa/osmu-four-room-basic-flow-v4-gpt-codex.md`다.
+
+## 2026-09-13 12시 22분 KST · 최근 24시간 코드 재리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 변경 | 돈 누수, 작업 공간 격리, 동시성, 부분 실패, 확정 요구 이탈 공격 리뷰 | REVIEW-20260913-R2-01 | ❌ BLOCK | 고정 범위 `8652fb5..7e39d0a7`, 55커밋, 236파일. MAJOR 23건. 파일 반출, 승인물 바꿔치기, 동시 writer, 성과 거짓 성공, 카드뉴스 실물 불일치 확인 |
+| 잠금 경합 | queue lock이 임계구역을 실제로 직렬화 | REVIEW-20260913-R2-02 | ❌ NG | 첫 writer 종료 12,502ms 전 둘째 writer가 10,253ms에 진입해 2,249ms 중첩 관찰 |
+| 자동 회귀 | 전체 테스트와 TypeScript | REVIEW-20260913-R2-03 | PASS | `npm run test` 319파일 2,106건 통과, 3건 제외. `npx tsc --noEmit` 통과 |
+| 실제 앱 기본 흐름 | 지정 작업 공간의 기본 흐름과 Studio v1 | REVIEW-20260913-R2-04 | ❌ NG | localhost:3456 HTTP 200. 두 필수 E2E 모두 실제 요청을 보냈으나 정상 생성 단계가 공유 AI 월간 한도 소진 HTTP 429로 중단 |
+
+상세 지적과 재현은 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-13.md`에 있다. 제품 코드는 수정하지 않았고 운영 배포는 미검증이다.
+
+## 2026-09-13 12시 01분 KST · 네 방 기본 흐름 v3 재검증
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R166, R172 | 생성실부터 성과실까지 네 방 이동과 네 폭 반응형 | FLOW-UI-01 | PASS | 390 라이트·다크, 768·1024·1440의 20화면과 성과실→생성실 복귀 5/5. 가로 넘침·가린 모달·이동 차단·다음 행동 누락 0 |
+| R08, R193, R207 | 네 방 렌더와 실제 데이터 인계 | FLOW-API-01 | PASS | localhost health 200·DB up, 기본 API 11/11, 네 방 probe 4/4, 브라우저 401·콘솔 오류 0 |
+| R27, R168 | 일곱 층 학습 정보를 갖춘 Studio v1 생성 | STUDIO-V1 | NG | 앞선 같은 소스 실행 14/14 뒤 최종 실행의 정상 생성 단계가 공유 AI 월간 한도 소진으로 HTTP 429 |
+| R08, R19, R207 | 공유 개발 서버의 느린 준비를 제품 단절로 오판하지 않음 | ISSUE-007 | 수정·회귀 PASS | `d8a65e3d`, `7e39d0a7`. 준비·URL·방 표시·최초 이동을 120초 단일 정책으로 통합, 집중 회귀 3파일 PASS |
+| R205, R206, R207 | v63 승인 화면 정합 | DESIGN-01 | NG | v63 원본과 실제 네 방 4폭의 주축·순서·열·여백·표시·글꼴·버튼 위계가 불일치. pipeline 승인 핀 v68과도 충돌 |
+| R01~R207 중 이번 범위 밖 항목 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 추적표 판정을 유지하고 이번 PASS에 포함하지 않음 |
+
+전체 Vitest 319파일·2,106건, TypeScript, 정적 페이지 183/183 build, seed, 디자인 lint는 통과했다. 네 방 로컬 기능 범위는 PASS다. Studio v1 현재 429, 디자인 정합 NG, 운영 배포 미검증 때문에 제품 전체 QA와 배포는 NG다. 상세와 원본 경로는 `docs/qa/osmu-four-room-basic-flow-v3-gpt-codex.md`에 있다.
+
+## 2026-09-13 코드 리뷰 게이트 · 최근 24시간 변경
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 변경 | 돈 누수, 작업 공간 격리, 동시성, 부분 실패, 무기록 삭제, 확정 요구 이탈 공격 리뷰 | REVIEW-20260913-01 | ❌ BLOCK | 고정 범위 `8652fb5..39d32c5`, 47커밋과 185파일. MAJOR 23건, MINOR 5건. 실제 Compose 복제본 누락, 취소 경합, 고객 예약 취소 차단, 성과 오분류, 자산 전달 단절, 돈 검증기 단절, 승인 시안 이탈 확인 |
+| localhost 읽기 | 지정 작업 공간의 현재 실행 앱 응답 | REVIEW-20260913-02 | 관찰됨 | health 200, metrics 200, learned-rules 200, queue 200. 후속 미커밋 수정이 섞인 현재 공유 작업 트리 기준이므로 고정 리뷰 커밋의 결함 해소 증거가 아님 |
+| 자동 검증 | 전체 테스트, TypeScript, 기본 흐름, Studio v1 | REVIEW-20260913-03 | 테스트됨 | Vitest 311파일 2,077건 통과와 3건 스킵, `npx tsc --noEmit` 통과, 기본 흐름 11/11, Studio v1 14/14. 현재 공유 작업 트리 기준 |
+| 직접 재현 | 돈 검증 fixture와 Higgsfield 거래 파서 | REVIEW-20260913-04 | ❌ NG | 고정 커밋의 옛 fixture 정규식은 `legacyFixtureMatch=false`. 페이지 객체 거래 응답은 운영 route 로직에서 `SyntaxError` 뒤 HTTP 200 실패 계약 |
+
+상세 지적과 재현 시나리오는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-13.md`에 있다. 코드와 단계 상태는 바꾸지 않았고 배포는 미검증이다.
+
+
+## 2026-09-13 06시 22분 KST · 네 방 기본 흐름 재검증 완료, 기능 PASS·디자인 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R193, R201 | 생성실에서 성과실까지 네 방 이동과 4폭 반응형 | FLOW-UI-01 | PASS | 390 라이트·다크, 768·1024·1440에서 20화면과 성과실→생성실 복귀 5회. 가로 넘침·가린 모달·이동 차단·다음 행동 누락 0 |
+| R27, R168 | 학습 정보를 반영한 후보 생성과 거절 후 다시 만들기 | STUDIO-V1-REGEN | 재실행 PASS | 첫 실행은 `STUDIO_LLM_INVALID_OUTPUT` NG, 즉시 전체 재실행 14/14 PASS. 공급자 비결정성 우려는 유지 |
+| R205, R206, R207 | 네 방 상단 일관성, 실제 수준 충실도, 성과실 UX | DESIGN-01 | NG | v63 대 실제 4폭 속성 대조에서 공통 셸·요소 순서·열 수·담당 패널·버튼 위계 불일치 |
+
+localhost health HTTP 200·DB up, 기본 API 11/11, 네 방 probe 4/4, Vitest 311파일·2,077건, TypeScript, build 182/182, seed, 디자인 lint가 통과했다. 제품 코드는 수정하지 않았다. 상세 매트릭스와 PNG 원본 경로는 `docs/qa/osmu-four-room-basic-flow-v2-gpt-codex.md`에 있다. 기능 범위만 PASS이며 디자인 정합·운영 배포 미검증 때문에 제품 전체 QA와 배포는 NG다. 상위 품질 게이트도 배포 환경 접촉 증거 0건으로 FAIL을 반환했다.
+
+## 2026-09-13 06시 00분 KST · API 읽기 전수 재실사 v6
+
+한 줄 결론: localhost:3456의 GET 105개와 HEAD 1개를 실제 호출해 정상 92개, 의도된 거절
+13개, HTTP 500과 요청 실패 0개를 관찰했다. API 읽기 범위는 PASS지만 제품 전체 QA와 배포는 NG다.
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98 | 발행 성과를 측정하고 다음 생성 판단으로 되돌림 | API-READ-ALL | PASS | GET 105개 전수 실호출, HTTP 500과 요청 실패 0 |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY | PASS | 올바른 토큰은 handler 도달, 격리 탐침 무토큰은 401 |
+| R200, R207 | 성과 학습 규칙과 Studio 학습 정보 조회 | API-LEARNING-READ | PASS | 변경된 두 GET이 각각 HTTP 200 |
+| R01~R207 | 이번 API 읽기 범위 밖 확정 요구 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 누락으로 PASS 처리하지 않음 |
+
+첫 15초 실행은 정상 79, 의도된 거절 13, 요청 실패 13으로 NG였다. 60초 실행도 정상 90,
+의도된 거절 13, 요청 실패 2로 NG였다. 실패한 알림 설정과 NSA 데이터 경로는 단독 호출과
+최종 120초 전수 실행에서 모두 HTTP 200이었다. 공유 Next 개발 서버의 콜드 컴파일 지연을 제품
+고장으로 오판한 것이 원인이므로 검증기의 제한시간을 환경 변수로 만들고 기본값을 120초로
+올렸다. 회귀 테스트와 커밋은 `b25005aa`, `f2d3b3e2`다.
+
+회귀는 집중 31건, 전체 Vitest 311파일과 2,077건, TypeScript, 정적 페이지 182/182 build,
+멱등 seed, 기본 흐름 11/11, Studio v1 14/14, 디자인 lint 위반 0을 확인했다. 시드 직후 health는
+한 번 HTTP 503과 DB down이었으나 이어진 세 번은 모두 HTTP 200과 DB up이었다. 단발성 관찰을
+숨기지 않으며 반복되면 DB 연결 구간을 별도 결함으로 다시 연다.
+
+원본은 `logs/diff/osmu-api-read-sweep-20260913-0537.json`, 상세 비교와 판정은
+`docs/qa/osmu-api-read-sweep-v6-gpt-codex-20260913-0600.md`다. 승인 프로토타입 v63과 pipeline
+디자인 핀 v68 충돌, 기존 디자인 정합 NG, 외부 OAuth와 실제 발행 및 운영 배포 미검증 때문에
+제품 전체 QA와 배포는 NG를 유지한다.
+
+상위 QA 품질 검증은 배포 환경 접촉 증거 0건으로 FAIL을 반환했다. 이번 과제의 명시 범위인
+localhost 읽기 PASS를 운영 QA PASS로 확장하지 않는다.
+
+## 2026-09-13 05시 17분 KST · API 읽기 전수 첫 실행 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R104, R200, R207 | 생성·발행·성과·학습·인증 읽기 경로가 고장 없이 응답 | API-READ-20260913-01 | NG | localhost:3456 GET 105개 중 정상 79, 계약상 거절 13, 15초 요청 제한시간 초과 13. `logs/diff/osmu-api-read-sweep-20260913-0505.json` |
+
+원인 분리 전 판정은 NG다. 개발 서버가 각 경로를 최초 컴파일하는 로그와 제한시간 초과가 겹쳤지만,
+따뜻해진 동일 서버에서 전수 재실행해 제품 응답 지연과 개발 컴파일 지연을 가르기 전에는 PASS로
+전환하지 않는다. HTTP 500은 첫 실행에서 0건이었다.
+
+## 2026-09-13 03시 43분 KST · TikTok 발행 성과 수집기 수정 증거
+
+판정: 수정됨. 기존 DB와 네 방 UI를 바꾸지 않고 TikTok 발행 영상의 공개 성과를 기존 성과실로
+되받는 provider 수집기를 연결했다. build 범위의 증거이며 QA 승인과 운영 배포는 하지 않았다.
+
+| 테스트번호 | 계약 | 판정 | 증거 |
+|---|---|---|---|
+| METRICS-TIKTOK-PROVIDER-01 | 요청당 20개 분할과 네 지표 변환 | PASS | 21개 영상이 provider 2회 호출로 분할되고 네 성과 축으로 변환 |
+| METRICS-TIKTOK-PROVIDER-02 | 토큰 없음 거절 | PASS | provider 호출 0회 |
+| METRICS-TIKTOK-01 | TikTok 발행물 성과 갱신 | PASS | 영상 ID 조회, provider 호출, views·likes·replies·reposts UPDATE |
+| METRICS-TIKTOK-02 | 연결 자격증명 없음 거절 | PASS | HTTP 400, provider 호출과 DB 변경 0회 |
+| METRICS-TIKTOK-OAUTH-01 | 조회 권한 동의 | PASS | `user.info.basic`, `video.publish`, `video.list` 보존 |
+| LOCAL-METRICS-GET | localhost 지원 범위 | PASS | HTTP 200, `tiktok_video_query`, 네 지표, 미발행 사유 확인 |
+| LOCAL-METRICS-POST | 지정 작업 공간 거절 | PASS | HTTP 400, 연결 채널 없음 안내. 외부 TikTok 호출 없음 |
+
+회귀 증거: `npm run test` 307파일, 2,054건 통과, 3건 제외, 실패 0. `npx tsc --noEmit`
+오류 0. `verify-basic-flow-e2e.mjs` 11/11. `verify-studio-v1-e2e.mjs`는 첫 실행에서 생성 provider의
+JSON 절단 오류를 관찰했고 동일 검증 재실행은 14/14 통과했다. production build는 정적 페이지
+182/182, 디자인 lint는 위반 0이다. 기존 NFT 추적 경고 1건은 남아 있다.
+
+실제 TikTok provider 성공은 미검증이다. 지정 작업 공간에 TikTok 자격증명과 발행물이 없어서
+GET은 지원 계약과 빈 상태만 관찰했고 POST는 자격증명 없음으로 거절됐다. 신규 연결은
+`video.list`를 요청하며 기존 토큰은 재연결이 필요할 수 있다.
+
+관련 구현 커밋은 `7f853720`, 옛 TikTok 미지원 기대값 정정은 `3b8708bf`다. 운영 배포와
+pipeline 단계 승격은 하지 않았다.
+
+## 2026-09-13 02시 50분 KST · 네 방 기본 흐름 재검증 최종 판정
+
+한 줄 결론: localhost 네 방 기본 흐름은 성과실 주소가 낡은 probe를 수리한 뒤 범위 PASS다.
+승인 v63 디자인 정합과 외부 공개 발행은 통과하지 않아 전체 QA와 배포는 NG다.
+
+| 단계 | 상태 | 증거·비고 |
+|---|---|---|
+| canonical 단계 | 진행 중 | 메인 repo `pipeline-state.osmu.md`의 `current_stage: qa`, 승인 전 |
+| health | PASS | localhost:3456 HTTP 200, DB up, 서버 측 DB 확인 58ms |
+| seed | PASS | 멱등 시드 뒤 지정 작업 공간 `active`, `team`, 공유 AI 승인 true |
+| 기본 API 흐름 | PASS | `verify-basic-flow-e2e.mjs` 11/11 |
+| Studio v1 | PASS | `verify-studio-v1-e2e.mjs` 14/14 |
+| 네 방 probe | NG 후 수정, PASS | `/`에서 찾던 성과실을 정본 `/performance`로 수정. 네 방 렌더, 가린 모달·401·콘솔 오류 각 0 |
+| 사람 클릭 반응형 | PASS | 390 라이트·다크, 768, 1024, 1440에서 20화면과 성과실→생성실 복귀 5건 |
+| 전체 회귀 | PASS | Vitest 302파일, 2,033건 PASS, 3건 제외, 실패 0 |
+| TypeScript | PASS | `npx tsc --noEmit`, 오류 0 |
+| production build | PASS | 공유 dev와 분리한 현재 소스 사본, 정적 페이지 182/182 |
+| 디자인 lint | PASS | `dashboard/src` 임의 px·인라인 style·토큰 밖 hex 위반 0 |
+| mobile typecheck·Maestro | 해당 없음 | dashboard 웹 범위, 별도 Expo 계약 없음, 실패 숨김 옵션 미사용 |
+| 승인 디자인 정합 | NG | v63 원본과 현재 4폭 PNG 직접 대조. 셸, 열 수, 담당 패널, 순서, 버튼 위계 불일치. Design Score D |
+| 외부 OAuth·실발행·성과 | 미검증 | 이번 범위는 발행 큐까지다. 외부 permalink와 배포 버전 증거 없음 |
+
+최초 health 시간 초과는 같은 공유 개발 서버에서 API 전수 실사가 네 요청씩 라우트를 컴파일한
+동시 부하였다. 해당 실사가 끝난 뒤 같은 주소가 200으로 회복돼 제품 health 결함으로 세지 않았다.
+실제 결함은 probe가 성과실의 옛 주소 `/`를 사용한 것이며, 수정과 회귀 계약은 `80c09807`이다.
+실행 원본은 `logs/diff/osmu-four-room-flow-20260913-0216/captures/observations.json`과 같은 폴더의
+20개 PNG, 상세 판정은 `docs/qa/osmu-four-room-basic-flow-v1-gpt-codex.md`다.
+
+### 요청 번호 승계
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08 | 네 방 이동 | FLOW-UI-01 | PASS | 20화면과 성과실→생성실 복귀 5건 |
+| R27 | 후보 전건 거절 뒤 무료 재생성 | STUDIO-V1-REGEN | PASS | Studio v1 14/14 |
+| R104 | 고객 인증 경계 | FLOW-AUTH-01 | PASS | 실제 임시 고객 토큰, 브라우저 401 0, 폐기 200 |
+| R168 | 첫 생성과 학습 정보 | FLOW-11-GEN | PASS | 후보 3장, 편집실 인계 |
+| R193 | 성과 제안에서 생성실 재진입 | FLOW-UI-RETURN | PASS | 제안 3건과 생성실 복귀 5건 |
+| R200, R207 | 성과실 UX와 학습 정보 | FLOW-PERF-01 | 기능 PASS, 디자인 NG | `/performance` 렌더는 정상, v63 구조는 불일치 |
+| R201 | 중복 안내 없이 방 이동 | FLOW-SIDEBAR-01 | PASS | 차단 모달과 이동 후 가린 메뉴 0건 |
+| R206 | 승인 시안 수준 화면 충실도 | CONF-ALL | NG | 현재 PNG와 v63 원본의 속성별 구조 불일치 |
+| R01~R207 | 이번 기본 흐름 밖 확정 요구 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 누락으로 PASS 처리하지 않음 |
+
+전환 가능 TC는 FLOW-UI-01, FLOW-AUTH-01, FLOW-UI-RETURN, FLOW-SIDEBAR-01과 기본 API 11단계,
+Studio v1 14건이다. CONF-ALL과 외부 공개 발행은 전환 불가다.
+
+페르소나 결정: 박도윤은 네 폭에서 생성실부터 성과실까지 이동하고 다시 시작할 수 있다. 그러나
+승인 시안과 다른 구조 및 외부 채널 미검증 때문에 실제 공개와 성과 수집까지 완결한다고 판정하지 않는다.
+
+레드팀: 검증기만 고쳐 제품 결함을 숨겼을 가능성을 공격했다. 독립 `/performance` 고객 토큰
+브라우저, 실제 API 11단계, Studio v1 14건, 20개 PNG를 교차해 제품 렌더와 인계를 따로 확인했다.
+
+셀프심문: 이 결론이 틀렸다면 가장 그럴듯한 이유는 localhost 통과를 운영 배포와 동일시하거나,
+데이터 상태 차이를 디자인 일치로 오판한 경우다. 그래서 로컬 기능 PASS로 범위를 제한하고 공통
+구조 불일치와 외부 공개 발행을 각각 NG와 미검증으로 남겼다.
+
+벤치마크: Playwright 공식 actionability와 locator 원칙을 적용해 force click 없이 보이고 안정적이며
+입력을 받는 링크만 눌렀다. [Actionability](https://playwright.dev/docs/actionability),
+[Locators](https://playwright.dev/docs/locators)
+
+다음 실행: 소유자는 product-designer와 Codex 컨트롤러다. v63 또는 v68 승인 핀을 하나로 확정하고
+공통 셸을 정합시킨 뒤 QA가 동일 상태 네 방 4폭 PNG를 재대조한다. 종료 증거는 Design Score B 이상
+속성별 PASS, 외부 계정 연결, permalink, 성과 API 응답이다.
+
+[모델]: gpt-codex/GPT-5, qa-verifier가 실제 localhost와 원본 PNG를 직접 관찰했다.
+소스 1: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html`.
+소스 2: `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md`, `wiki/거버넌스/요청.md`.
+소스 3: `logs/diff/osmu-four-room-flow-20260913-0216/captures/observations.json`, 같은 폴더 PNG 20개.
+
+SKILLS_USED: qa, 실제 앱 회귀·결함 등록·반응형 관찰·증거 기록 / SKILLS_SKIPPED: 없음
+
+KNOWLEDGE_QUERY: business + OSMU + 기본 흐름 + 1인 사업자 + 끝내기 우선
+HITS_USED: BRAIN의 ZERO-ONE Marketing Studio 아이디어와 repo 사업 좌표를 사용해 생성→편집→발행→성과 검증 축과 박도윤 페르소나를 고정했다.
+HITS_REJECTED: 일반 마케팅 심리와 다른 벤처 자료는 이번 동작 QA 판정 근거가 아니어서 제외했다.
+CONFLICTS: Playwright 원칙과 회장 정본은 충돌 없음. 사용자 지정 v63과 pipeline 최신 승인 핀 v68이 충돌해 디자인 PASS를 금지했다.
+
+## 2026-09-13 02시 48분 KST · API 읽기 경로 105개 전수 재실사
+
+한 줄 결론: localhost GET 105개는 정상 92개와 의도된 거절 13개이며, 원인불명 500과 요청 실패는 0개다. API 읽기 범위만 PASS이고 전체 제품 QA와 배포는 NG를 유지한다.
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98 | 발행 성과를 측정하고 다음 생성 판단으로 되돌림 | API-READ-ALL | PASS | GET 105개 전수 실호출, 정상 92, 의도된 거절 13, 원인불명 500과 요청 실패 0 |
+| R104 | 고객·운영자·작업 공간 인증 경계 | API-AUTH-BOUNDARY | PASS | 올바른 토큰은 handler 도달, 격리 탐침 무토큰은 401 |
+| R200, R207 | 성과 학습 규칙과 Studio 학습 정보 조회 | API-LEARNING-READ | PASS | 전수 뒤 동시 변경된 GET 3개를 현재 소스로 다시 호출해 모두 200 |
+| R01~R207 | 이번 API 읽기 범위 밖 확정 요구 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 누락으로 PASS 처리하지 않음 |
+
+집중 회귀 3파일 30건, 전체 Vitest 302파일 2,033건과 3건 스킵, TypeScript, production build 182/182, seed, health 200, 기본 흐름 11/11, Studio v1 최종 14/14, 디자인 lint를 확인했다. Studio 무료 재생성 POST는 첫 실행에서 한 번 예상 밖 200이었으나 즉시 수동 재호출과 전체 재실행에서는 계약상 409였다. 비재현 관찰로 남긴다.
+
+승인 프로토타입 v63과 pipeline 핀 v68의 충돌 및 기존 디자인 정합 NG, 외부 OAuth·실발행·운영 배포 미검증 때문에 제품 전체 PASS로 승격하지 않는다. 상위 QA 품질 게이트도 운영 또는 스테이징 접촉 증거 0건으로 반려했다. 상세 보고서는 `docs/qa/osmu-api-read-sweep-v5-gpt-codex-20260913-0248.md`, 원본은 `logs/diff/osmu-api-read-sweep-20260913.json`이다.
+
+
+## 2026-09-12 23시 23분 KST · Instagram Reels 성과 수집 build 전환
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98 | 발행 성과를 다음 생성 판단으로 되돌리고, 미수집을 측정값으로 오인하지 않음 | METRICS-REELS-01 | build 통과, QA 미승인 | Reels 행 조회, `views` provider 요청, 수치 UPDATE 정상 계약 통과. localhost GET 200에서 지원 범위 관찰 |
+| R68, R98 | 연결되지 않은 작업 공간에서 외부 수집을 시작하지 않음 | METRICS-REELS-02 | build 통과, QA 미승인 | Route Handler 계약과 localhost POST 400으로 자격증명 없음 거절 확인 |
+
+원 감사의 "Threads 외 수집기 6개 없음" 중 X, Instagram 피드, Facebook, YouTube·Shorts는 현재
+코드에 이미 구현돼 있다. 재구현하지 않고 같은 Instagram 자격증명과 미디어 insights 경로를 쓰는
+Reels만 이번 build 대상으로 좁혔다. 전체 Vitest 302파일 2,023건, TypeScript, 기본 흐름 11/11,
+Studio v1 14/14, production build 182/182, 디자인 lint가 통과했다. 지정 작업 공간에는 연결 자격증명과 Reels 발행물이 없어
+실제 Instagram provider 성공 응답은 미검증이다. QA 승인과 운영 배포는 하지 않았다.
+
+## 2026-09-12 22시 49분 KST · 네 방 기본 흐름 재검증 최종 판정
+
+한 줄 결론: localhost 네 방 기본 흐름은 두 검증기 결함을 수리한 뒤 범위 PASS다. 승인 디자인
+정합과 외부 채널 발행은 통과하지 않았으므로 전체 QA와 배포는 NG다.
+
+| 검증 | 판정 | 증거 |
+|---|---|---|
+| canonical 단계 | 진행 중 | 메인 repo `pipeline-state.osmu.md`의 `current_stage: qa`, 승인 전 |
+| backend와 web 전체 회귀 | PASS | `npm run test`, 299파일 PASS, 2,000건 PASS, 3건 제외, exit 0 |
+| TypeScript | PASS | `npx tsc --noEmit`, 출력 오류 0, exit 0 |
+| production build | PASS | `npm run build`, 정적 페이지 182/182, exit 0. 기존 NFT 추적 경고 1건 |
+| health | PASS | localhost:3456 `/api/health` HTTP 200, `db: up`, 43ms |
+| seed | NG 후 수정, PASS | 고정 QA 작업 공간이 체험 한도 20건을 소진해 생성 429. 승인 fixture로 수정하고 실제 DB에서 `true`, `active`, `team` 확인 |
+| 기본 API 흐름 | PASS | `.env.local` 주입 후 `verify-basic-flow-e2e.mjs`, 생성부터 성과 제안 재인계까지 11/11 |
+| Studio v1 | NG 후 수정, PASS | 최초 교차 시간대 생성 429와 TypeError. 수정 뒤 `verify-studio-v1-e2e.mjs` 14/14 |
+| 네 방 단면 탐침 | PASS | `probe-four-room-flow.mjs`, 네 방 렌더 true, 가린 모달·401·콘솔 오류 각 0 |
+| 사람 클릭 반응형 | NG 후 수정, PASS | URL 대기를 클릭 전에 걸도록 수정. `logs/diff/osmu-four-room-flow-20260912-2220`, 390 라이트·다크, 768, 1024, 1440의 20화면과 성과실→생성실 5건 PASS |
+| 디자인 lint | PASS | `design-lint.sh dashboard/src`, 임의 px·인라인 style·토큰 밖 hex 위반 0 |
+| mobile typecheck와 Maestro | 해당 없음 | dashboard 웹 제품이며 별도 mobile 계약이 없음. `optional:true` 우회 없음 |
+| 승인 디자인 정합 | NG | v63 원본과 dev 4폭 PNG를 직접 대조. 셸 열 수, 담당 패널 위치, 요소 순서, 버튼 위계 불일치. 사용자 지정 v63과 pipeline 최신 v68 핀 충돌도 미해소 |
+| 외부 OAuth·실발행·성과 | 미검증 | 이번 범위는 발행 직전까지이며 외부 permalink와 운영 배포 증거 없음 |
+
+### 결함과 회귀
+
+1. 반복 QA가 체험 한도를 소진하는 구조를 고쳤다. `seed-test-tenants.sql`이 고정 작업 공간의
+   공유 AI 승인을 보장하고, `studio-v1-e2e-quota.regression-1.test.ts`가 이를 고정한다.
+2. Next.js 전환 commit이 클릭 안에서 끝나 검증기가 과거 이벤트를 기다리는 경쟁 조건을 고쳤다.
+   `waitForURL`과 클릭을 함께 시작하고 폭·방 로그를 남겼다.
+   `four-room-client-navigation.regression-1.test.ts`가 순서를 고정한다.
+
+### 요청 번호 승계
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08 | 네 방 이동 | FLOW-UI-01 | PASS | 네 방 20화면과 성과실→생성실 5건 |
+| R27 | 후보 전건 거절 뒤 무료 재생성 | STUDIO-V1-REGEN | NG 후 수정, PASS | 승인 fixture 복원 뒤 Studio v1 14/14 |
+| R104 | 고객 인증 경계 | FLOW-AUTH-01 | PASS | 실제 임시 고객 토큰, 브라우저 401 0, 폐기 200 |
+| R193 | 성과 제안에서 생성실 재진입 | FLOW-UI-RETURN | NG 후 수정, PASS | URL 대기 경쟁 조건 수정 뒤 5개 폭·테마 조합 복귀 |
+| R200, R207 | 성과실 UX와 학습 정보 | FLOW-PERF-01 | 기능 PASS, 디자인 NG | 제안 3건과 다음 행동 표시. v63 공통 구조와 불일치 |
+| R201 | 중복 안내 없이 방 이동 | FLOW-SIDEBAR-01 | PASS | 차단 모달 0, 다음 행동 표시, 네 방 이동 성공 |
+| R206 | 승인 시안 충실도 | CONF-ALL | NG | `docs/qa/osmu-four-room-basic-flow-v1-gpt-codex.md` 속성별 정합 행렬 |
+| R01~R207 | 이번 기본 흐름 밖 확정 요구 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 누락으로 PASS 처리하지 않음 |
+
+전환 가능 TC는 FLOW-UI-01, FLOW-AUTH-01, FLOW-UI-RETURN, FLOW-SIDEBAR-01과 기본 API 11단계다.
+Studio v1 14건도 재실행 PASS다. CONF-ALL과 외부 실발행은 전환 불가다.
+
+페르소나 결정: 박도윤은 네 폭에서 생성실부터 성과실까지 길을 잃지 않고 이동하고 돌아올 수 있다.
+다만 승인 시안과 다른 공통 구조, 외부 채널 미검증 때문에 첫 콘텐츠의 실제 공개와 성과 수집까지
+완료할 수 있다고 판정하지 않는다.
+
+레드팀: 링크 클릭만 통과하면 생성과 인계가 끊겨도 숨을 수 있다. 이를 막기 위해 실제 API 11단계와
+Studio v1 14건을 별도 실행했다. 반대로 API 통과만으로 화면 성공을 대신하지 않고 20개 실제 화면과
+복귀 5건을 관찰했다.
+
+셀프심문: 이 결론이 틀렸다면 가장 그럴듯한 이유는 localhost가 운영 배포와 다르거나 시안과 dev의
+데이터 상태가 달라 시각 차이를 잘못 분류한 경우다. 그래서 판정을 로컬 기본 흐름 PASS로 한정하고,
+상태와 무관한 공통 구조 불일치만 디자인 NG로 기록했다. 운영 배포와 외부 발행은 미검증이다.
+
+벤치마크: Playwright 공식 actionability와 locator 원칙을 따라 force click 없이 표시·동작 가능한
+링크를 눌렀고, 빠른 이동은 waiter를 먼저 거는 공식 패턴을 적용했다.
+
+다음 실행: 소유자는 product-designer와 Codex 컨트롤러다. v63 또는 v68 승인 핀을 하나로 확정하고
+공통 셸을 정합시킨 뒤 QA가 같은 상태의 네 방 4폭 PNG를 다시 대조한다. 종료 증거는 속성별 디자인
+PASS와 외부 계정 연결·permalink·성과 API 응답이다.
+
+SKILLS_USED: qa, 실제 앱 회귀·결함 등록·반응형 관찰·증거 기록 / SKILLS_SKIPPED: 없음
+
+SOURCES: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html` | `pipeline-state.osmu.md` | `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md` | `logs/diff/osmu-four-room-flow-20260912-2220/observations.json` | https://playwright.dev/docs/actionability | https://playwright.dev/docs/locators
+
+MODEL: gpt-codex/gpt-5.6-sol / qa-verifier
+
+KNOWLEDGE_QUERY: business + OSMU + 기본 흐름 + 1인 사업자 + 끝내기 우선
+HITS_USED: BRAIN의 ZERO-ONE Marketing Studio 아이디어와 repo 사업 좌표를 사용해 생성→편집→발행→성과의 검증 축과 초보 1인 사업자 페르소나를 고정했다.
+HITS_REJECTED: 일반 마케팅 심리와 다른 벤처 자료는 이 동작 QA의 판정 근거가 아니어서 제외했다.
+CONFLICTS: 외부 Playwright 원칙과 회장 정본은 충돌 없음. 사용자 지정 v63과 pipeline 최신 승인 핀 v68이 충돌해 디자인 PASS를 금지했다.
+
+## 2026-09-12 22시 14분 KST · 읽기 API 전수 실사 최종 판정
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R01~R207 | 읽기 경로 전수 실사 범위와 기존 확정 요구 승계 | API-READ-20260912-01 | 범위 PASS | GET 105개와 HEAD 1개를 localhost:3456에서 실제 호출. 최종 정상 92, 계약상 거절 13, HTTP 500 0, 요청 실패 0 |
+| R01~R207 | 서버 고장과 의도된 거절 분리 | API-READ-20260912-02 | 범위 PASS | 파생 작업 조회 500을 잘못된 UUID 400, 없는 UUID 404로 분리. 커밋 `87c3014b`, `fdaa82e1` |
+| R01~R207 | 전체 제품 회귀 | API-READ-20260912-03 | NG | 전체 Vitest 2,000건 중 1,993 PASS, 4 FAIL, 3 skip. 실패 4건은 진행 중 성과실 UI, 네 방 탐침, UI token 변경이며 집중 재실행에서도 재현 |
+
+production build 182/182, TypeScript, 기본 흐름 11/11, Studio v1 14/14, 신규 회귀 30건, seed, health, design lint는 통과했다. 전체 근거와 지난 실사 대조는 `docs/qa/osmu-api-read-sweep-v4-gpt-codex-20260912-2214.md`, 전후 원본은 `logs/diff/osmu-api-read-sweep-20260912-before.json`과 `logs/diff/osmu-api-read-sweep-20260912-after.json`이다. 읽기 API 범위는 PASS지만 전체 제품 QA는 PASS로 올리지 않는다.
+
+## 2026-09-12 20시 23분 KST · 최근 24시간 코드리뷰 BLOCK
+
+최근 24시간 커밋 13개를 `443da936..532e37f`로 고정해 별도 detached worktree에서 검증했다. 전체 Vitest는 288파일, 1,963건 통과와 3건 제외, TypeScript는 오류 0이었다. 필수 기본 흐름과 Studio v1 E2E는 둘 다 fixture 파싱 `SyntaxError`로 API 요청 전에 exit 1이었다. 커밋된 QA 수치와 재현 결과가 다르므로 기존 PASS 증거를 승인 근거로 쓰지 않는다.
+
+localhost:3456은 health 200과 DB up이었다. 지정 작업 공간에 임시 고객 토큰을 발급해 `/api/me`와 학습 규칙 GET은 200을 확인했지만 새 queue cancel은 프록시에서 403 `운영자 전용`으로 차단됐다. 운영자 토큰은 같은 요청이 handler까지 도달해 404였고 임시 토큰은 폐기 200을 확인했다.
+
+- 판정: `BLOCK`. MAJOR 10건, MINOR 2건.
+- 주요 결함: 고객 발행 중지 403, 취소 뒤 발행 race, DB mirror 실패의 성공 오인, 부분 발행 성과 누락, 학습 판단 경합, 승인 시안의 근거와 되돌리기 누락.
+- 미검증: 실제 외부 채널에 예약된 글을 둔 상태의 cancel race는 외부 게시 비용을 만들 수 있어 실행하지 않고 코드 경합으로 판정했다.
+- 감사 문서: `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-12.md`.
+
+## 2026-09-12 19시 36분 KST · 성과 학습 후보 수락·거절 이력
+
+발견: 성과실의 `배우기`는 활성 규칙만 저장했고 `넘어가기`는 후보를 버려, 왜 수락하거나 거절했는지
+다시 볼 수 없었다. API도 표본 수·관찰 기간·적용 범위를 저장하지 않았다.
+
+| 증거 항목 | 판정 | 근거 |
+|---|---|---|
+| 수락·거절 API | PASS | localhost 수락 201, 거절 201, 잘못된 판단 400 `INVALID_DECISION` |
+| 이력 재조회 | PASS | 같은 작업 공간 GET 200, 수락·거절 두 판단과 표본 6건·기간·범위 확인 |
+| 생성 반영 경계 | PASS | 수락만 규칙 번호 생성, 거절은 `rule:null`; 검증 수락 규칙은 DELETE 200으로 비활성화 |
+| 브라우저 화면 | PASS | `최근 학습 판단`, `반영`·`안 함`, 표본·기간·작업 공간 범위 표시 |
+| 브라우저 안전 | PASS | 401 0건, 콘솔 오류 0건, 캡처 `logs/diff/osmu-learning-decision-history-20260912.png` |
+| 계약 테스트 | PASS | 신규 API 4건, 화면 2건, 기존 성과실 16건 통과 |
+| 디자인 lint | PASS | 카드 색상 정의를 전용 테마 모듈로 분리한 뒤 전체 `dashboard/src` 위반 0 |
+| 전체 회귀 | PASS | 최종 Vitest 295파일 1,990건 통과, 3건 스킵, TypeScript 오류 0, production build 182/182 |
+| 기본 흐름 | PASS | 기본 흐름 11/11, Studio v1 최초 11/12 실패 후 후보 거절 선행 계약을 반영해 14/14 |
+
+초기 Studio v1 실패 원인은 제품 변경이 아니라 검증기가 무료 다시 만들기 전에 후보 세 장을 거절하지
+않은 것이었다. 현재 R27 서버 계약과 같은 순서로 검증기를 고쳐 재실행했다.
+
+- [모델]: 파일 저장, 실제 HTTP, 실제 브라우저, 전체 회귀 네 증거를 분리해 판정했다.
+- 벤치마크: [Buffer Insights](https://buffer.com/resources/meet-insights/)의 성과→다음 행동 원칙을 참고하되, 자동 적용 대신 사람의 수락·거절 이력을 보존했다.
+- 남은 미검증: 운영 배포와 실제 외부 채널 발행·provider 성과 수집.
+- 다음 실행: QA 검증자가 승인된 새 배포에서 같은 회원 작업 공간의 수락·거절 이력과 다음 생성 반영을 재확인한다.
+- 소스 1: learned-rules Route Handler와 성과실 화면.
+- 소스 2: 신규 계약 테스트 6건, 전체 회귀, 두 필수 E2E.
+- 소스 3: 승인 v63 프로토타입, 갭 감사 정정본, localhost 실제 응답과 브라우저 캡처.
+
+## 2026-09-12 build 코드 완료, 검증 미실행: 승인 큐 발행 중지(`/api/queue/[postId]/cancel`)
+
+갭: `docs/audit/osmu-gap-recheck-2026-08-28.md`와 `docs/audit/osmu-v62-api-gap-audit-v1-gpt-codex.md`가
+공통으로 남긴 "일곱 플랫폼을 아우르는 서버 측 발행 중지 계약". 승인된 글은 삭제(전체 기록 삭제)만
+가능하고 아직 발행되지 않은 채널만 골라 멈추는 경로가 없었다.
+
+| 검증 | 판정 | 근거 |
+|---|---|---|
+| 신규 API 코드 | 관찰됨(정적) | `dashboard/src/app/api/queue/[postId]/cancel/route.ts` |
+| 대기 채널만 취소, 발행완료 채널 보존 | 미검증 | 단위 계약 작성함(`tests/api/queue-cancel.test.ts`), 이번 세션 Bash 승인 차단으로 실행 못함 |
+| 이미 종료된 글 409 거절 | 미검증 | 위와 동일 |
+| cron 경합(일부 채널만 먼저 발행) 안전 처리 | 미검증 | 위와 동일 |
+| UI 단추 클릭 동작 | 미검증 | `UnifiedPostCard.tsx`에 단추 추가만, localhost 클릭 관찰 못함 |
+| `npm run test` 전체, `npx tsc --noEmit` | 미검증 | Bash 승인 차단 |
+
+원인: `npx vitest`, `npm run test`, `npx tsc --noEmit` 모두 이 세션에서 "This command requires approval"로
+거부됐다(단순 명령 `cat`·`grep`은 통과). 사용자 Bash 승인 후 위 표를 관찰 증거로 갱신해야 한다.
+자세한 내용은 `session-state.osmu.md` 2026-09-12 03시 18분 항목.
+
+## 2026-09-04 build PASS, QA 승인 대기: v75 생성실 이중 동선 회귀 복구
+
+최신 회장 요청을 기준으로 생성실 본문의 직접 생성과 기존 생성 담당 대화창을 함께 복구했다.
+앞서 기록된 본문 읽기 전용 NG는 최신 요청과 충돌하는 구형 디자인 계약이며, 이번 명시 계약이
+우선한다. 원래 `V75-CREATE-01`과 전체 PostgreSQL 테스트, production 브라우저 클릭을 모두 통과했다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| v75 계약 보존 | PASS | 본문 `초안 주제`, `초안 만들기`, `생성 담당 대화창` 동시 표시 |
+| 직접 생성 클릭 | PASS | 본문 1,198자에서 1,296자, 변화 +98자 |
+| 생성 요청 | PASS | `/api/studio/text` 1건, B `결과 제시형` 구조 전체 반영 |
+| 대화창 보존 | PASS | 직접 생성 뒤 `생성 담당 대화창` 표시 `true` |
+| 헤더 학습 정보 | PASS | 클릭 전 1,296자, 클릭 후 1,778자, 변화 +482자 |
+| v77 기능 보존 | PASS | 새로고침 뒤 주제 보존, 글 전체 편집 전후 값 반영 |
+| 브라우저 콘솔 | PASS | 오류 0건 |
+| 전체 회귀 | PASS | PostgreSQL 16 연결 상태 226파일 1,679건 통과, 1건 조건부 제외, 실패 0 |
+| TypeScript·Web build·토큰 | PASS | 타입 오류 0, 정적 페이지 177/177, 디자인 토큰 위반 0 |
+| 디자인 산출물 정합 | 후속 필요 | DESIGN v37과 v68 프로토타입의 읽기 전용 문구를 최신 이중 동선 계약으로 갱신 필요 |
+| 원격·배포 | PASS | `work/v77req` 원격 ref와 로컬 HEAD 일치 확인. 머지와 운영 배포는 실행하지 않음 |
+
+## 2026-09-04 build NG: v77 변경이 v75 생성실 직접 생성 계약을 삭제
+
+`f32d132f`가 생성실 본문의 `초안 주제`, A·B·C 구조 선택, `초안 만들기`를 제거했고,
+`d48e4321`은 이를 검출하던 `V75-CREATE-01`을 본문 조작 0개를 요구하는 새 테스트로 바꿨다.
+회장 요구는 본문 직접 생성과 기존 생성 담당 대화창의 동시 유지이므로 테스트 변경으로 계약을
+대체할 수 없다. v77의 헤더 학습 정보, 남은 칸 진입, 생성 상태 복원, 글 편집도 함께 보존해야 한다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| v75 계약 보존 | NG | 원래 `V75-CREATE-01`을 복구하고 본문 `초안 주제`, `초안 만들기`, 기존 생성 담당을 함께 검증 |
+| 직접 생성 클릭 | NG | 본문 단추 클릭 전후 `document.body.innerText.length` 변화 1자 이상 |
+| 대화창 보존 | 재검증 대기 | 직접 생성 뒤에도 `생성 담당 대화창`이 화면에 존재 |
+| v77 기능 보존 | 재검증 대기 | 헤더 학습 정보 클릭 변화, 남은 칸, 새로고침 보존, 글 편집 계약 유지 |
+| 전체 회귀 | 재검증 대기 | `npx tsc --noEmit`, CI 동등 PostgreSQL 전체 테스트 실패 0 |
+
+## 2026-09-04 build NG: 생성실 본문이 승인된 역할 경계를 위반
+
+승인 `DESIGN.md` v37과 v68 프로토타입은 생성실 본문을 설명·예시·결과 전용으로 두고,
+형식·주제·A·B·C 구조 선택은 오른쪽 생성 담당에서 하도록 정했다. 현재 코드는 본문에
+`초안 주제`, `A·B·C 구조 사용`, `초안 만들기`를 노출해 회장이 지적한 역할 혼합을 다시 만들었다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 본문 역할 | NG | 본문에 입력·선택 단추 0개, 설명·예시·생성 결과만 존재 |
+| 생성 담당 역할 | NG | 형식부터 구조 선택까지 한 번에 한 질문으로 진행하고 A·B·C 선택도 생성 담당 안에서 실행 |
+| 직접 생성 보존 | 재검증 대기 | 생성 담당에서 A·B·C를 고르면 기존 `/api/studio/text` 호출과 형식별 후보 표시가 유지 |
+| 회귀 | 재검증 대기 | TypeScript, 계약 테스트, PostgreSQL 전체 회귀, 디자인 lint, 헤드리스 클릭 실패 0 |
+
+## 2026-09-04 build PASS, 운영 재검증 대기: 학습 정보와 생성실·편집실 회장 요청 복구
+
+회장 요청 원문 33건을 현재 코드와 항목별로 대조해 최종 반영 32건, 부분 1건,
+미반영 0건으로 정리했다. production build를 헤드리스로 실제 클릭해 헤더 학습 정보,
+남은 문답 진입, 구조 후보, 새로고침 복원, 글 전체 편집을 직접 관찰했다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 헤더 학습 정보 | PASS | `학습 정보 0 / 8 남은 8칸 이어 채우기` 상시 표시 |
+| 남은 칸 진입 | PASS | 클릭 전 1,189자, 클릭 후 1,671자, 변화 +482자 |
+| 구조 후보 | PASS | 구조 B 클릭 전 1,169자, 클릭 후 1,178자, 변화 +9자 |
+| 생성실 새로고침 | PASS | `새로고침 뒤에도 남는 고객 질문` 보존 |
+| 글 전체 편집 | PASS | `편집 전 글 본문`에서 `편집 뒤 반영된 글 본문`으로 값 반영 |
+| 브라우저 콘솔 | PASS | 오류 0건 |
+| 전체 회귀 | PASS | PostgreSQL 16 연결 상태 226파일 1,679건 통과, 1건 조건부 제외, 실패 0 |
+| TypeScript·Web build·토큰 | PASS | 타입 오류 0, 정적 페이지 177/177, 디자인 토큰 위반 0 |
+| 카드뉴스 사진 후보 | 부분 | 메인·본문·마무리 사진 후보 생성과 선택은 이번 build 범위 밖 |
+| 원격 브랜치 | PASS | `work/v77req` 원격 ref와 로컬 HEAD 일치 확인 |
+| 원격 CI | 미실행 | CI 트리거가 `main` push와 pull request뿐이어서 작업 브랜치 push 실행 0건. 로컬 CI 동등 PostgreSQL 전체 테스트는 PASS |
+| 운영 외부 경로 | QA 대기 | 실제 외부 생성, OAuth, 게시, 운영 배포는 실행하지 않음 |
+
+## 2026-09-04 build NG: 학습 정보와 생성실 새로고침이 회장 요청과 어긋남
+
+회장 요청 원문과 현재 코드를 대조한 결과, 학습 정보가 덜 채워져도 로그인 뒤 문답을 열지 않고
+생성실에서는 새로고침 때 주제와 문답 진행 상태를 복원하지 않는다. A, B, C 구조로 만든 응답도
+첫 번째 글 본문만 보여 주어 함께 고른 영상, 카드뉴스, 글 후보를 화면에서 구분할 수 없다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 학습 정보 유도 | NG | 미완성 작업 공간 첫 진입에서 학습 정보 문답이 열리고 헤더 단추로 남은 칸에 다시 진입 |
+| 헤더 학습 정보 | 재검증 대기 | 보이는 문구에 학습 정보, 채운 칸, 남은 칸 행동이 함께 존재 |
+| 생성실 새로고침 | NG | 주제, 현재 질문, 고른 형식과 구조가 새로고침 뒤 복원 |
+| 형식별 생성 후보 | NG | 구조 생성 뒤 영상, 카드뉴스, 글 중 고른 형식의 실제 후보 본문이 구분되어 표시 |
+| 편집실 | 재검증 대기 | 글 전체 편집, 카드 글자 직접 수정과 위치 이동, 발행실 이동을 실제 클릭으로 확인 |
+| 전체 회귀 | 재검증 대기 | CI 동등 PostgreSQL 전체 테스트와 TypeScript 실패 0 |
+
+## 2026-09-04 build PASS, 운영 재검증 대기: 채널 계정 재연결 중복 키 복구
+
+공통 계정 저장 INSERT에 유일 키 기준 원자적 갱신을 추가했다. CI와 같은 PostgreSQL 16에
+스키마, seed, RLS를 적용하고 같은 계정을 두 번 저장해 두 번째 저장 성공, 복호화 값 갱신,
+기본 계정 보존을 직접 확인했다. callback은 기존 행 갱신 결과를 별도 한국어 문구로 알린다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 동일 계정 2회 저장 | PASS | 1회차 성공 1, 2회차 성공 1 |
+| 행 중복 방지 | PASS | 두 번 저장 뒤 같은 provider 행 1개 |
+| 재연결 데이터 갱신 | PASS | access token 갱신 1, 표시 이름 갱신 1, 나머지 갱신 필드도 새 값 일치 |
+| 기본 계정 보존 | PASS | 기본 행 1개, 같은 id 유지 1, 기본 유지 1 |
+| 사용자 결과 안내 | PASS | `채널-재연결-03`, `연결을 새로 고쳤습니다` 표시 |
+| 키 누락 거절 | PASS | `채널-재연결-02`, 암호화 키가 없으면 DB 저장 전 거절 |
+| 전체 회귀 | PASS | PostgreSQL 연결 상태 226파일 1,676건 통과, 1건 조건부 제외, 실패 0 |
+| TypeScript·Web build·토큰 | PASS | 타입 오류 0, 정적 페이지 177/177, 디자인 토큰 위반 0 |
+| 운영 OAuth | QA 대기 | 운영 배포와 실제 provider 동의 왕복은 이 build 범위에서 실행하지 않음 |
+
+## 2026-09-04 build NG: 같은 채널 계정 재연결이 중복 키로 실패
+
+같은 `(tenant_id, provider, external_account_id)` 계정을 다시 연결할 때
+`channel_accounts`의 유일 제약과 충돌하지만, 공통 저장 INSERT에 `ON CONFLICT`가 없어
+두 번째 저장이 실패한다. 기존 기본 계정 여부와 legacy 미러는 보존하면서 토큰, 표시 정보,
+상태, 만료 시각, meta를 갱신하는 실제 PostgreSQL 왕복이 서기 전까지 build NG다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 동일 계정 2회 저장 | NG | 실제 PostgreSQL에서 1회 삽입과 2회 갱신이 모두 성공 |
+| 행 중복 방지 | NG | 두 번 저장 뒤 같은 provider 행 수 1개 |
+| 재연결 데이터 갱신 | NG | 2회차 토큰과 표시 이름이 DB 복호화 조회에서 새 값 |
+| 기본 계정 보존 | NG | 1회차와 2회차 모두 같은 계정이 기본이며 기본 행 수 1개 |
+| 사용자 결과 안내 | NG | 첫 연결은 연결 완료, 재연결은 연결을 새로 고쳤다는 한국어 결과 |
+| 전체 회귀 | 재검증 대기 | TypeScript와 전체 Vitest 실패 0 |
+
+## 2026-09-04 build PASS, 운영 재검증 대기: 생성실 직접 생성 경로와 구조 선택
+
+생성실 본문에 주제 입력, A·B·C 구조 선택, `초안 만들기`, 생성 결과를 연결했다.
+기존 생성 담당 문답은 함께 유지했다. 프로덕션 빌드 화면에서 구조 카드와 생성 단추를
+실제로 클릭해 본문 변화, 네트워크 요청, 결과 문자열, 단추 라벨을 관찰했다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 직접 생성 단추 | PASS | 본문 1170→1268자, 변화 +98자, `/api/studio/text` 요청 1건 |
+| A·B·C 구조 선택 | PASS | B 카드 클릭 본문 1155→1170자, 요청에 B·결과 제시형·순서 포함 |
+| 영어 일반 라벨 | PASS | 생성실 단추 19개 전수 추출, 일반 영어 라벨 0건 |
+| 생성 결과 | PASS | 결정론적 한국어 결과 문자열 화면 표시, 콘솔 오류 0건 |
+| 기존 대화형 생성 | PASS | 기존 회귀 포함 전체 Vitest 226파일 1,636건 통과, 실패 0 |
+| TypeScript·디자인 토큰 | PASS | `npx tsc --noEmit` 오류 0, design lint 위반 0 |
+| Web build | PASS | Next.js production build 정적 페이지 177/177 |
+| 운영 외부 생성 | QA 대기 | 이 build의 UI를 운영 반영한 뒤 실제 생성 엔진 응답을 재관찰해야 함 |
+
+## 2026-09-04 build NG: 생성실 직접 생성 경로와 구조 선택이 동작하지 않음
+
+운영 화면을 헤드리스로 열어 직접 누른 결과, 생성실 단추 16개 중 초안 생성을
+시작하는 단추는 0개였다. A 구조 초안 카드 클릭 전후 `document.body.innerText.length`는
+1284자로 같아 변화량이 0자였고, 사이드바 단추에 `Custom Integration`이 남아 있었다.
+반면 운영 `POST /api/studio/text`는 200과 한국어 본문을 반환했으므로, 백엔드가 아니라
+화면 연결과 발견 가능성 결함으로 판정한다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 직접 생성 단추 | NG | 주제 입력→단추 클릭 후 본문 길이 변화량 1자 이상, `/api/studio/text` 요청 관찰 |
+| A·B·C 구조 선택 | NG | 각 카드 클릭 후 선택 구조가 화면과 생성 요청에 반영되고 본문 길이 변화량 1자 이상 |
+| 영어 일반 라벨 | NG | 사이드바를 포함한 고객 화면 전수 검사, 플랫폼·제품 고유명사를 제외한 영어 라벨 0개 |
+| 기존 대화형 생성 | 재검증 대기 | 기존 6단계 문답→후보 3장→편집실 이동 계약 통과 |
+
+## 2026-09-03 build PASS: 발행실 UI 계정 조회 경합 안정화
+
+발행 단추의 DOM 존재와 사용자 상호작용 가능 시점을 구분했다. 기존 발행 클릭 11곳은 계정 조회 뒤
+활성 상태에 동기화했고, `V74-PUBLISH-READY-01`은 조회 응답을 보류해 비활성·요청 0건을 확인한 뒤
+응답 해제 후 활성화·발행 요청 1건을 검증한다. 제한시간 확장, 재시도, 계약 제외는 없다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 계정 조회 경합 | PASS | 지연 응답 중 단추 비활성·API 0건, 응답 뒤 활성·발행 1건 |
+| 기존 발행 계약 | PASS | 기존 33건과 신규 1건, 총 34건 통과. 삭제·제외 0 |
+| 순서 독립성 | PASS | seed 7401 `--sequence.shuffle.tests`, 34건 통과 |
+| 반복 안정성 | PASS | 동일 명령 5회 각각 34건, 총 170건 통과, 실패 0 |
+| TypeScript | PASS | `npx tsc --noEmit` 오류 0 |
+| 전체 회귀 | PASS | PostgreSQL 16 적용, 226파일 1,666건 통과, 1건 조건부 제외, 실패 0 |
+| Web build·토큰 | PASS | 정적 페이지 177/177, 디자인 lint 위반 0, 기존 NFT 경고 1건 |
+| 운영 CI | 미검증 | 브랜치 push 뒤 GitHub Actions 실제 컨테이너 실행은 아직 관찰 전 |
+
+## 2026-09-03 build NG: 발행실 UI 테스트가 계정 조회 전에 비활성 단추를 클릭함
+
+같은 커밋의 CI 재실행에서 기본 플랫폼 발행, 외부 성공 뒤 복구 지도, 초안 저장 거절 테스트가
+번갈아 실패했다. 테스트는 발행 단추의 존재만 기다렸지만 제품은 계정 조회가 끝날 때까지 같은
+이름의 단추를 비활성으로 렌더한다. 느린 CI에서 `fireEvent.click`이 무시되어 발행 호출과 후속
+상태가 모두 0건으로 남는 경합이다. 계약 삭제나 제한시간 확장 없이 활성 상태에 동기화해야 한다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 계정 조회 경합 | NG | 지연된 계정 응답에서 단추 비활성 확인 뒤 활성화와 발행 호출 통과 |
+| 기존 발행 계약 | 재검증 대기 | 지정 파일 전체 실패 0, 기존 33건 삭제·제외 0 |
+| 순서 독립성 | 재검증 대기 | `--sequence.shuffle.tests` 실행 실패 0 |
+| 반복 안정성 | 재검증 대기 | 지정 파일 같은 명령 5회 연속 실패 0 |
+| 전체 회귀 | 재검증 대기 | TypeScript와 PostgreSQL 포함 전체 테스트 실패 0 |
+
+## 2026-09-03 build PASS, 운영 재검증 대기: v73 인박스 본문 위치와 v69 잔여
+
+제목 없는 실제 응답 형태를 사용해 `text`가 본문 영역에 표시되고 빈 제목 요소가 생기지 않는
+계약을 추가했다. 본문이 비면 승인과 거절을 단추와 단축키 모두에서 막았다. 성과실 빈 상태는
+안내와 예시 지표 한 묶음만 남기고 반복 `미수집` 보조 지표를 숨겼다. 모바일 헤더·필터와
+미리보기 채널명 계약은 기존 구현을 보존한 상태로 재검증했다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 제목 없는 `text` 응답 | PASS | `V73-INBOX-01`, 본문 영역 표시, 제목 요소 0개, 승인·거절 활성 |
+| 빈 콘텐츠 행동 차단 | PASS | `V73-INBOX-02`, 승인·거절 비활성, A·R 요청 0건 |
+| v69 모바일·미리보기 | PASS | 헤더 두 줄, 필터 한 줄 스크롤·44픽셀 표적, 채널명 전체 표시·계산기 분리 계약 통과 |
+| 성과실 빈 상태 | PASS | 안내 1회, 예시 지표 표시, `미수집`과 보조 지표 묶음 0개 |
+| 초안 저장 실패 알림 | PASS | 지정 테스트 33건 통과, `M5-STUDIO-02`, `M5-STUDIO-03` 유지 |
+| 전체 회귀 | PASS | 226파일 1,628건 통과, 38건 조건부 제외, 실패 0 |
+| TypeScript·디자인 토큰 | PASS | `npx tsc --noEmit` 오류 0, design lint 위반 0 |
+| Web build | PASS | Next.js production build 정적 페이지 177/177, 기존 NFT 경고 1건 |
+| 운영 실화면 | QA 대기 | 인증된 운영 인박스에서 본문 위치와 빈 콘텐츠 행동을 브라우저로 재관찰 필요 |
+
+## 2026-09-03 build NG: 인박스 본문 위치와 빈 콘텐츠 거절 차단
+
+운영 인증 요청의 실제 응답에는 `title`이 없고 27자 `text`만 있었다. 운영 화면은 그 값을
+제목처럼 굵게 표시하고 본문 영역을 비워 두었다. 현재 build 브랜치는 `text` 표시 자체는
+추가했지만 본문 영역 계약을 직접 식별하지 않았고, 본문이 정말 비었을 때 거절 단추와
+R 단축키가 계속 동작하는 안전장치 누락도 확인했다. 아래 종료 증거가 모두 서기 전까지 build NG다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 제목 없는 `text` 응답 | NG | `text`가 본문 영역에 있고 빈 제목 요소가 생성되지 않는 계약 테스트 통과 |
+| 빈 콘텐츠 행동 차단 | NG | 승인·거절 비활성, A·R 단축키 요청 0건 |
+| v69 모바일·성과실·미리보기 | 재검증 대기 | 390 헤더 두 줄, 필터 한 줄 스크롤과 44픽셀 표적, 성과 안내 1회, 채널명 전체 표시 |
+| 초안 저장 실패 알림 | 재검증 대기 | `M5-STUDIO-02`, `M5-STUDIO-03` 포함 전용 테스트 실패 0 |
+| 전체 회귀 | 재검증 대기 | TypeScript, 전체 Vitest, 디자인 lint, Web build 실패 0 |
+
+## 2026-09-03 build PASS, 운영 재검증 대기: v72 초안 알림과 인증 캐시 결합
+
+발행 전 저장의 예외와 빈 ID를 중간 경계에서 하나의 실패 결과로 정규화하고, 발행 행동이
+그 결과 한 곳에서만 사용자 오류 알림과 외부 발행 차단을 소유하게 했다. `apiPost`의 오류 전파와
+401 캐시 제거·재로그인 부수효과는 유지했다. 보고된 CI 실패는 착수 HEAD에서 재현되지 않았지만,
+CI와 같은 PostgreSQL 스키마·seed·RLS를 붙인 최종 전체 실행으로 두 계약을 함께 확인했다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 초안 저장 빈 ID | PASS | `M5-STUDIO-02`, 오류 알림 1곳과 외부 발행 요청 0건 |
+| 초안 저장 예외 | PASS | `M5-STUDIO-03`, 오류 알림 1곳과 외부 발행 요청 0건 |
+| 401 캐시 무효화 | PASS | `V72-AUTH-CACHE-01`, 옛 내용 비노출, 안내 노출, 승인·거절 비활성 |
+| 공통 오류 전파 | PASS | `api-post-error-contract.test.ts`, non-2xx 예외 계약 유지 |
+| CI 동등 전체 회귀 | PASS | PostgreSQL 16 schema·seed·RLS 적용, 226파일 1,665건 통과, 1건 제외, 실패 0 |
+| TypeScript·디자인 토큰 | PASS | `npx tsc --noEmit` 오류 0, design lint 위반 0 |
+| Web build | PASS | Next.js production build 정적 페이지 177/177, 기존 NFT 경고 1건 |
+| 운영 실화면 | QA 대기 | 저장 실패를 주입한 실제 고객 화면과 만료 세션 인박스 재관찰 필요 |
+
+## 2026-09-03 NG: v72 캐시 무효화 뒤 초안 저장 실패 알림 재회귀
+
+CI의 데이터베이스 포함 조합에서 `M5-STUDIO-02`, `M5-STUDIO-03`이 다시 실패했다.
+발행 전 초안 저장 실패 뒤 외부 발행 차단과 사용자 오류 알림이 함께 서야 하지만,
+캐시 무효화 변경 뒤 오류 알림 호출이 사라졌다. 테스트 기대값은 바꾸지 않고 오류 전파
+경계와 사용자 알림 경계를 분리한 뒤 두 계약을 같은 실행에서 재검증하기 전까지 build NG다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 초안 저장 실패 알림 | NG | `M5-STUDIO-02`, `M5-STUDIO-03`에서 오류 알림과 외부 발행 요청 0건 동시 통과 |
+| 401 캐시 무효화 | 재검증 대기 | 성공 캐시 뒤 401에서 옛 내용 비노출, 안내 노출, 승인·거절 비활성 |
+| 전체 회귀 | 재검증 대기 | `npx tsc --noEmit`, 전용 Vitest, 전체 Vitest 실패 0 |
+
+## 2026-09-03 build PASS, 운영 재검증 대기: v72 401 승인 캐시 제거
+
+실제 SWR cache provider에 성공 조회를 저장한 뒤 같은 목록을 401로 재조회하는 계약을
+추가했다. 수정 전에는 오류 안내와 비활성 단추 뒤에 옛 제목과 본문이 남아 계약이
+실패했다. 수정 뒤에는 `fetcher`의 401이 인증 오류를 throw하기 전 공통 무효화 신호를
+보내고, SWR provider가 모든 보호 조회 캐시를 재검증 없이 제거한다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 승인 인박스 실제 SWR 전이 | PASS | `V72-AUTH-CACHE-01`. 성공 캐시 뒤 401에서 옛 제목·본문 비노출, 만료 안내, 승인·거절 비활성 |
+| 다른 보호 화면 캐시 | PASS | 같은 계약에서 `/api/settings` 성공 캐시도 함께 제거됨을 관찰 |
+| 공통 API 401 | PASS | `fetcher`, `apiPost`, `apiDelete`가 모두 캐시 무효화 후 `AuthRequiredError` 유지 |
+| 지정 인증 회귀 | PASS | 4파일 42건 통과, 실패 0 |
+| TypeScript와 디자인 토큰 | PASS | `npx tsc --noEmit` 오류 0, `design-lint.sh dashboard/src` 위반 0 |
+| 전체 Vitest | PASS | 226파일 1,628건 통과, PostgreSQL 필요 38건 조건부 제외, 실패 0 |
+| Web build | PASS | Next.js production build 성공, 정적 페이지 177/177. 기존 NFT 광범위 추적 경고 1건 유지 |
+| 운영 실화면 | QA 대기 | 만료된 운영 세션에서 캐시 카드 비노출과 재로그인 안내를 브라우저로 재관찰 |
+
+## 2026-09-03 NG: 401 후에도 승인 가능한 초안 캐시 잔존
+
+운영 브라우저에서 보호 API가 전부 401을 반환했지만, 이전 성공 조회의 SWR
+캐시가 승인 인박스에 남아 승인 단추가 활성된 상태를 직접 관찰했다. 무인증 HTML에는
+카드 제목이 없으므로 서버 렌더가 아니라 클라이언트 캐시 재사용이다. v71 계약 테스트는
+SWR의 `data` 와 `error` 를 mock으로 동시 주입해 실제 성공 캐시 뒤 401 전이와 캐시 제거를
+검증하지 않았다. 실제 SWR 캐시 계약과 공통 401 무효화를 추가하기 전까지 build NG다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 승인 인박스 캐시 | NG | 캐시에 초안이 있는 상태에서 재조회 401 후 카드 내용 비노출, 안내 노출, 승인·거절 비활성 |
+| 공통 `fetcher` | 원인 확인 | 401을 `AuthRequiredError`로 throw하지만 SWR 캐시를 직접 제거하지 않음 |
+| 다른 보호 화면 | 재검증 대기 | 같은 `fetcher`의 401이면 화면별 이전 조회 데이터도 공통으로 제거 |
+| 전체 회귀 | 재검증 대기 | `npx tsc --noEmit`, `npx vitest run` 실패 0 |
+
+## 2026-09-03 build PASS, 운영 재검증 대기: v71 초안 저장 실패 알림 복구
+
+`apiPost`가 인증을 포함한 변경 요청 실패를 예외로 올리도록 바뀐 뒤에도 Studio 발행 함수는
+초안 저장 실패가 `null`로 돌아오는 경우만 처리했다. 예외는 알림 분기 전에 함수를 빠져나가
+CI의 데이터베이스 포함 실패 경로에서 사용자 오류 알림이 사라졌다. 발행 전 저장, 수동 임시 저장,
+외부 발행 뒤 결과 저장의 예외를 각 사용자 행동 경계에서 처리하도록 보강했다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 발행 전 초안 저장 실패 | PASS | `M5-STUDIO-02·03` 통과. `null`과 예외 모두 오류 알림 뒤 외부 발행 0건 |
+| 수동 임시 저장 실패 | PASS | `PUB-DRAFT-UI-01·02` 통과. 정상 저장과 오류 알림, 거짓 성공 알림 0건 |
+| 외부 발행 뒤 결과 저장 실패 | PASS | `M5-STUDIO-04` 통과. 외부 발행은 한 번만 실행하고 결과 저장 실패를 오류로 표시 |
+| v71 인증과 복원 경계 | PASS | `V71-AUTH-01`부터 `05`, `FE-V63-RETURN-01·02`, `M4-STUDIO-01` 전체 실행 통과 |
+| 지정 발행실 계약 | PASS | `studio-publish-ui.test.tsx` 33건 통과, 실패 0 |
+| 전체 회귀 | PASS | 225파일 1,627건 통과, PostgreSQL 필요 38건 조건부 제외, 실패 0 |
+| TypeScript와 build | PASS | `npx tsc --noEmit` 오류 0, production build 정적 페이지 177/177 |
+| 디자인 토큰 | PASS | `design-lint.sh dashboard/src`, 위반 0 |
+| 운영 화면 | QA 대기 | 데이터베이스 저장 실패를 주입한 운영 화면에서 오류 알림과 외부 발행 0건 관찰 필요 |
+
+## 2026-09-03 NG: v71 초안 ID 확보 실패 알림 누락
+
+CI의 데이터베이스 포함 조합에서 `M5-STUDIO-02`가 실패했다. 발행 전에 초안 ID를 확보하지
+못하면 외부 발행을 시작하지 않는 동작은 유지되지만, 사용자가 봐야 할
+`발행할 초안을 저장하지 못했습니다` 오류 알림 호출이 관찰되지 않았다. 원인 수정과 전체
+회귀 검증 전까지 build NG다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 초안 저장 실패 알림 | NG | `M5-STUDIO-02`에서 오류 알림 호출과 외부 발행 요청 0건 동시 통과 |
+| v71 인증 경계 | 재검증 대기 | 조회 실패 행동 차단, 인증 만료 안내, POST·DELETE 401 전파 계약 통과 |
+| 발행실 복원 | 재검증 대기 | `FE-V63-RETURN-01·02`, `M4-STUDIO-01` 통과 |
+| 전체 회귀 | 재검증 대기 | `npx vitest run` 실패 0 |
+
+## 2026-09-03 build PASS, 브라우저 재검증 대기: v71 발행실 복원 대기 회귀
+
+전체 Vitest에서 `FE-V63-RETURN-01`이 5초를 넘겨 실패했다. 단독 실행은 1.68초에 통과했고,
+16개 파일 워커를 함께 돌린 실행에서는 이 테스트가 9.55초까지 밀리면서 무관한 테스트 6개도
+같은 제한으로 실패했다. 복원된 작업물 표시가 채널 계정 조회 완료에 묶여 있던 제품 결합과
+테스트 과병렬화를 함께 분리했다. 기존 테스트의 기대값과 제한시간은 변경하지 않았다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 발행실 복원 | build PASS | 전체 실행의 `FE-V63-RETURN-01` 4.08초 통과. 인박스 본문과 Threads 선택 복원 |
+| 잘못된 복원 거절 | build PASS | `FE-V63-RETURN-02`, `M4-STUDIO-01` 통과. 없는 작업물과 초안 불일치 거절 |
+| 인증 안전장치 보존 | build PASS | `V71-AUTH-01`부터 `05`까지 통과. 조회 실패 행동 차단, 즉시 만료 화면, POST·DELETE 401 전파 유지 |
+| 전체 회귀 | PASS | 225파일 1,624건 통과, PostgreSQL 필요 38건 조건부 제외, 실패 0 |
+| TypeScript와 build | PASS | `npx tsc --noEmit` 오류 0, production build 정적 페이지 177/177 |
+| 디자인 토큰 | PASS | `design-lint.sh dashboard/src`, 위반 0 |
+| 실제 브라우저 복원 | QA 대기 | 로그인 고객 세션에서 인박스 복귀 링크 클릭, 본문과 선택 채널 표시, 계정 확인 전 발행 잠금 관찰 필요 |
+
+## 2026-09-03 build PASS, 운영 재검증 대기: 승인 인박스 공백 판단값 차단
+
+운영 1024 화면에서 본문을 판단할 내용이 비어 있는데 승인 단추가 활성이고 본문 누락 경고도
+나오지 않는 상태를 직접 관찰했다. 화면, 개별 승인 API, 일괄 승인 API가 이제 같은 공백 판정을
+사용한다. 공백과 줄바꿈 본문, 공백 제목, 일괄 승인 부분 성공 방지 계약은 build에서 통과했다.
+운영에는 배포하지 않았으므로 수정 후 운영 화면은 재검증 대기다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 운영 승인 인박스 | NG 유지 | 수정 전 캡처에서 판단할 본문 없이 승인 단추 활성 관찰. 배포 후 같은 조건의 캡처 필요 |
+| 화면 공백 본문 | PASS | `V70-INBOX-02`에서 공백과 줄바꿈 본문 경고, 승인 비활성, A 단축키 요청 0건 |
+| 선택적 제목 | PASS | `V70-INBOX-03·04`에서 공백 제목 차단과 정상 제목·본문 분리 표시 |
+| 화면 메타데이터 | PASS | `V70-INBOX-07`에서 공백 주제 fallback, 공백 해시태그·채널 이름 비노출 |
+| 개별 승인 API | PASS | `V70-INBOX-08·09`에서 공백 본문·제목 422와 초안 상태 불변 |
+| 일괄 승인 API | PASS | `V70-INBOX-10`에서 공백 본문 혼입 시 전체 422, 선택한 정상 초안도 상태 불변 |
+| 지정 전체 회귀 | PASS | 89파일 587건 통과, 15건 조건부 제외, 실패 0. TypeScript 오류 0, production build 177/177, design lint 위반 0 |
+
+## 2026-09-03 build PASS, 운영 재검증 대기: 운영 화면 문구·언어·개인정보 노출
+
+운영 로그인 상태에서 네 화면을 직접 순회한 캡처에 고객 화면 결함 여섯 묶음이 재현됐다.
+작업 공간 이름이 없을 때 이메일 주소가 제목과 성과 요약에 노출되고, 쿠키 동의 배너가 담당 패널의
+입력과 전송 단추를 덮는다. 채널 화면에는 영문과 개발자용 연결 절차가 남아 있고, 연결 가이드에는
+긴 대시가 있으며, 발행실 상단에는 내부 실행 도구 이름이 노출된다. build 계약과 전체 회귀는
+통과했다. 로그인 상태 운영 화면의 수정 후 캡처는 아직 없으므로 운영 QA는 재검증 대기다.
+
+| 검증 | 판정 | 직접 근거·종료 조건 |
+|---|---|---|
+| 작업 공간 이름과 개인정보 | build PASS | `V69-COPY-01` 정상·거절 계약. 공용 표시 함수가 빈 값과 이메일 형태를 `기본 작업 공간`으로 바꾸고 RoomHeader·성과 요약에서 원문 비노출 확인 |
+| 쿠키 동의 배너와 담당 패널 | build PASS, 화면 대조 대기 | `V69-COPY-02` 2건 통과. 배너가 `fixed`, `bottom-4`, `right-4`를 쓰지 않고 문서 흐름의 `relative` 영역임을 확인 |
+| 채널 화면 한국어 | build PASS | `V69-COPY-03` 정상·거절 계약과 채널 컴포넌트 통합 17건 통과. 기존 영어 탭·상태·설정 라벨 비노출 |
+| UI 긴 대시 | build PASS | `V69-COPY-04`가 components, app 화면, 고객 UI 상수의 문자열 AST를 전수 검사. 긴 대시 위반 0 |
+| OAuth 기본 흐름의 고객 언어 | build PASS | `V69-COPY-05`에서 Threads·Instagram 연결 단추 활성, 직접 입력 기본 비노출, 사용자가 펼친 뒤 기존 입력 폼 노출 확인 |
+| 내부 실행 도구 이름 | build PASS | `V69-COPY-06`에서 스튜디오 고객 UI가 내부 label·model을 표시하지 않고 `AI 사용 가능` 상태를 사용함을 확인 |
+| 전체 회귀 | PASS | TypeScript 오류 0. Vitest 223파일 1,600건 통과, 38건 조건부 제외, 실패 0. build 177/177. design lint 위반 0 |
+| 수정 후 실화면 | 미검증 | 로컬 `/channels/threads`는 HTTP 200 뒤 로그인 화면까지 관찰. Supabase 공개 설정과 고객 세션이 없어 로그인 상태 1024 화면 대조는 QA로 이관 |
+
+## 2026-09-03 build PASS: v68 네 방 담당 패널 접근성 계약 회귀 복구
+
+v68 생성실 개편에서 담당 패널의 시맨틱 요소가 `aside`에서 접근성 이름이 있는 `section`으로
+바뀌었다. 화면에는 같은 이름이 보이지만 접근성 역할이 `complementary`에서 `region`으로 바뀌어
+화면 낭독기 랜드마크 계약과 기존 계약 테스트 두 건이 깨졌다. 생성실을 `aside`로 되돌리고
+편집실, 발행실, 성과실도 같은 이름 있는 보조 랜드마크 계약으로 맞췄다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 생성실 담당 랜드마크 | PASS | `FE3-CREATE-01`, `FE6-CREATE-01` 포함 생성실 19건 통과. 이름 `생성 담당 대화창`, 역할 `complementary` 확인 |
+| 다른 방 담당 랜드마크 | PASS | 편집실 `편집 담당 대화창`, 발행실 `발행 담당 대화창`, 성과실 `성과실 담당 대화창`을 `complementary` 역할로 계약 고정 |
+| TypeScript | PASS | `npx tsc --noEmit`, 오류 0 |
+| 전체 회귀 | PASS | `npx vitest run`, 221파일 1,586건 통과, 38건 조건부 제외, 실패 0 |
+| Web build | PASS | `npm run build`, 정적 페이지 177/177. 기존 NFT 광범위 추적 경고 1건 유지 |
+| 디자인 토큰 | PASS | `design-lint.sh dashboard/src`, 위반 0 |
+| 로컬 서버 스모크 | PASS | 종료형 production server에서 `GET /studio` HTTP 200 관찰 |
+
+## 2026-09-02 build PASS: v67 집중 필터와 운영 빌드 스모크
+
+컨트롤러가 시안과 코드를 직접 대조해 앞 판이 놓친 플랫폼 집중 필터를 찾아 구현시켰고,
+운영과 같은 production build 로 실제 서버를 띄워 주요 경로를 직접 두드렸다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 플랫폼 집중 필터 | PASS | `PlatformFocusFilter.tsx` 신설. 전체 7곳과 플랫폼 7개 칩, 선택 시 해당 카드만 표시. 필터 전환이 선택·입력값을 바꾸지 않는 계약 테스트 포함 |
+| 작업 공간 초기화 계약 | PASS | `multi-account-ui.contract.test.ts` 를 문장 순서 비의존으로 바꿔 통과. useEffect 블록 안의 초기화 존재만 검사 |
+| 타입 | PASS | `npx tsc --noEmit` 오류 0 |
+| 지정 회귀 | PASS | `tests/components tests/publish tests/brand` 64파일 553건 통과, 실패 0 |
+| production build | PASS | `npm run build` 성공 |
+| 운영 빌드 스모크 | PASS | `next start` 로 띄워 `/` `/studio` `/settings` `/channels/threads` `/images` `/blog` 전부 200 |
+| CI | PASS | run `33583258595`, HEAD `3fcc6af3`, conclusion success |
+| 운영 배포 | 미검증 | `/approve qa` 미승인. 컨트롤러는 배포 게이트를 우회하지 않는다 |
+
+운영 배포와 실제 외부 OAuth 동의, 외부 플랫폼 실게시, 운영 데이터베이스는 여전히 미검증이다.
+
+## 2026-09-02 build PASS: v67 발행실 플랫폼 집중 필터
+
+v67 디자인 정본의 `전체 7곳`과 일곱 플랫폼 집중 필터를 발행실에 반영했다. 필터 상태는
+미리보기 노출만 좁히며 캡션, 발행 대상 선택, 계정 선택을 바꾸지 않는다. 1024와 390에서
+전체 일곱 장, X 한 장, 전체 복귀와 입력·선택 보존을 직접 관찰했다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 전체 보기 | PASS | `PUB-FOCUS-01`에서 기본 상태 일곱 플랫폼 카드 표시 |
+| 한 플랫폼 집중 | PASS | `PUB-FOCUS-02`에서 플랫폼 칩 선택 뒤 해당 카드 한 장만 표시 |
+| 편집·선택 보존 | PASS | `PUB-FOCUS-03`에서 필터 왕복 뒤 캡션과 발행 선택 유지 |
+| 실제 화면 | PASS | 1024와 390에서 칩 8개, 전체 7장, X 1장, 전체 복귀, 입력·선택 보존, 가로 넘침 0, 콘솔 오류 0 관찰. 증거 `docs/qa/osmu-v67-platform-focus-evidence-20260902/` |
+
+## 2026-09-02 build PASS: v67 발행 계약과 초안 복원 경로 정합
+
+회장 요청 원문과 v67 디자인 정본의 다섯 종료 조건을 코드, 계약 테스트, 현재 Next.js 화면에 다시
+대조했다. 글 형식과 플랫폼별 필드가 초안 왕복에서 보존되고, 연결 계정 정보는 읽기 전용이며,
+확인된 하드 한도만 발행 전에 거절한다. 결정론적 API fixture를 사용한 build 화면에서 OAuth 연결
+단추부터 생성, 편집, 두 계정 발행, 성과실까지 실제 클릭했다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 텍스트 편집 형식 | PASS | `FMT-DRAFT-01·02·04` 저장·복원 계약과 `V65-PAGE-01` 편집 뒤 저장·발행실 이동 통합 테스트 통과 |
+| 발행 필드 복원 | PASS | `PUB-DRAFT-01·02`, `PUB-DRAFT-UI-01`에서 제목·캡션·해시태그·주제 태그·선택 계정 저장, 복원, 잘못된 입력 거절 통과 |
+| 계정 표시 | PASS | `PUB-ACCOUNT-01`, `QA-PUBLISH-06`에서 읽기 전용, 로딩, 미연결, 0계정 잠금 통과. 1024·390 렌더에서 표시 이름 입력 0개, 연결 계정 상태 4개 관찰 |
+| 플랫폼별 필드·한도 | PASS | `PUB-FIELD-01`, `PUB-LIMIT-01`, `PUB-LIMIT-API-01·02`, `PUB-LIMIT-UI-01`, `PUB-FOCUS-01·02·03` 정상·경계·거절 통과. X 280가중 문자 경계는 손실 없이 발행하고 집중 필터는 입력·발행 선택을 보존 |
+| 전체 흐름 | PASS | `/channels/threads` OAuth 연결 단추 활성과 동일 출처 성공 callback 관찰 뒤 생성→편집→발행→성과 실제 클릭. 1024·390 가로 넘침 0, 발행 요청 2건, 브라우저 콘솔 오류 0 |
+
+지정 최종 검증은 TypeScript 오류 0, Vitest 89파일 684건 통과·2건 조건부 제외, production build
+177/177, 디자인 토큰 위반 0이다. 렌더 증거는 `docs/qa/osmu-v67-build-evidence-20260902/`에
+있다. 이 PASS는 build 단계의 앱 왕복 계약이다. 실제 외부 OAuth 공급자 동의, 외부 플랫폼 게시물,
+운영 데이터베이스, 운영 배포는 시도하지 않아 미검증이다. Next.js build의 기존 NFT 광범위 추적
+경고 1건은 남아 있다.
+
+## 2026-09-01 build 범위 PASS: 테넌트 접속 기록
+
+고객 신원 확인 경계에 15분 단위 접속 기록을 추가하고 운영자 고객 조회와 화면에 마지막 접속,
+최근 30일 접속 일수를 연결했다. 기록이 없으면 `접속 기록 없음`으로 표시한다. AI 사용량 전용
+`usage_events`는 변경하지 않았고 접속 이력 표에는 테넌트와 시각만 둔다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 15분 접속 합치기 | build PASS, DB 실증 대기 | 조건부 원문 SQL과 동시 재접속 통합 테스트 작성. 로컬 PostgreSQL 부재로 해당 1건 조건부 제외 |
+| 인증 가용성 | PASS | 접속 기록 쓰기 실패를 주입해도 기존·신규 고객 테넌트 식별 성공 |
+| 운영자 결측 표시 | PASS | 컴포넌트 테스트에서 `접속 기록 없음` 확인, 접속 일수 0 표기 없음 |
+| 개인정보 최소화 | PASS | `tenant_access_events` 열은 `tenant_id`, `accessed_at` 두 개뿐 |
+| 전체 회귀 | PASS | 깨끗한 구현 커밋 기준 Vitest 214파일 1,540건 통과, 조건부 38건 제외. TypeScript 오류 0, build 177/177, design lint 위반 0 |
+| 운영 실측 | 미검증 | 운영 DB migration과 운영자 화면 브라우저 확인은 QA·배포 단계로 남김 |
+
+## 2026-09-01 NG: 편집실과 발행실 2차 실사용 피드백 재현
+
+승인 프로토타입 `docs/prototype/openclaw-auto-4room-v64.html`이 핀된 뒤 현재 화면을 다시 대조했다.
+글을 대사 줄과 초 단위로 보여 주고, 카드뉴스 편집 중 발행 채널 이름을 노출하며, 카드 안 글자를
+직접 고치거나 옮길 수 없다. 저장과 발행실 이동도 한곳에서 분리되지 않았고 발행실에는
+`승인 인박스로 보내기`와 `여기서만 한 번에 되는 일`이 남아 있다. 아래 종료 증거를 모두 다시
+관찰하기 전까지 이 항목은 NG다.
+
+| 검증 | 판정 | 종료 증거 |
+|---|---|---|
+| 글 편집 | NG | 문단 편집기에서 본문 수정 후 발행실 본문에 같은 값이 보임 |
+| 카드뉴스 편집 | NG | 이미지 안 글자 수정과 드래그 이동, 새로고침 뒤 위치 복원 |
+| 형식과 채널 분리 | NG | 편집실 형식 선택에 발행 채널 이름 0건, 발행실에서만 채널 선택 |
+| 저장과 다음 단계 | NG | `편집 내용 저장`과 `발행실로 이동`을 같은 행동 구역에서 각각 조작 |
+| 의미 불명 라벨 | NG | 지정된 다섯 라벨이 제품 화면에서 0건 |
+| 전체 회귀 | 미검증 | TypeScript, 전체 Vitest, 두 네 방 E2E, design lint 모두 통과 |
+
 ## 2026-08-31 NG: 생성실 콘텐츠가 실제 LLM을 호출하지 않음
 
 회장 실사용에서 후보 A/B/C를 눌러도 실제 영상 후보가 나오지 않았다. 코드 확인 결과 `buildCandidates()`와 파생 생성이 고정 문자열 템플릿만 반환하고 LLM 호출은 0건이며, 영상 `asset_url`도 `pending:render`로 고정돼 있다. 실제 LLM 호출, 실패 사유 노출, 호출량 기록, 로컬 실호출 관찰이 끝날 때까지 생성 기능 완료 판정을 금지한다.

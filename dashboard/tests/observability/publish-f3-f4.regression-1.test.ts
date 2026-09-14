@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Regression: OSMU-BLOCK-F3/F4. 첫 댓글 실패와 멱등 재생을 새 성공으로 세어
 // 열린 발행 장애를 복구하던 결함.
 // Found by 교차 모델 검수 on 2026-08-28.
-// Report: docs/audit/osmu-cross-review-2026-08-28-opus.md
+// Report: docs/_archive/legacy-20260912/audit/osmu-cross-review-2026-08-28-opus.md
 
 const H = vi.hoisted(() => ({
   failures: [] as unknown[],
@@ -20,7 +20,7 @@ vi.mock("@/lib/observability", async (importActual) => ({
   reportFailure: vi.fn(async (input: unknown) => H.failures.push(input)),
   reportRecovery: vi.fn(async (input: unknown) => H.recoveries.push(input)),
 }));
-vi.mock("@/lib/queue-store", () => ({ markQueuePublished: vi.fn(async () => true) }));
+vi.mock("@/lib/queue-store", () => ({ markQueuePublished: vi.fn(async () => "updated" as const) }));
 vi.mock("@/lib/first-comment", () => ({
   getFirstCommentCapability: vi.fn(() => ({ platform: "threads", supported: true })),
   normalizeFirstComment: vi.fn((value: unknown) => typeof value === "string" ? value.trim() : null),

@@ -53,11 +53,11 @@ This is the reference for all persistent state. Most data is tenant-scoped for S
 - `GET /api/metrics` keeps the existing `posts` array and adds coverage contract version `v1` for all seven
   preview targets. Each target reports collection support, collector, supported metrics, published and collected
   counts, last collection time, and a machine-readable missing reason.
-- Threads is the only connected metrics collector. It reads views, likes, replies, and reposts through the existing
-  Threads insights path. X, Instagram, Facebook, YouTube Shorts, Instagram Reels, and TikTok report that their
-  collectors are not implemented instead of presenting missing values as measured zeroes.
+- The connected collectors are Threads insights, X public metrics, Instagram Media Insights for feed posts and
+  Reels, Facebook post insights, and YouTube video statistics for YouTube and Shorts. TikTok remains unsupported
+  and reports that its collector is not implemented instead of presenting missing values as measured zeroes.
 - Coverage is derived from existing `published_posts.status` and `metrics_at`. It adds no table or migration.
-  Time-series snapshots, reproducible 30-day comparisons, and non-Threads provider collectors remain separate
+  Time-series snapshots, reproducible 30-day comparisons, and the TikTok provider collector remain separate
   contracts and are not implied by coverage version `v1`.
 
 #### OSMU v63 editor handoff and queue bridge (2026-08-28)

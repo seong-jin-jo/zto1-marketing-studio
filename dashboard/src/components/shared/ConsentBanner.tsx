@@ -10,8 +10,8 @@ export function openConsentSettings() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(OPEN_EVENT));
 }
 
-// SSR-safe: renders null until mounted client-side (no hydration mismatch, no CLS — the
-// banner only ever appears after mount via a state flip, same as any client-only overlay).
+// SSR-safe: renders null until mounted client-side. 배너는 문서 흐름 안에 두어 우측 담당
+// 패널의 입력창과 전송 단추를 가리지 않는다.
 export function ConsentBanner() {
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -38,9 +38,9 @@ export function ConsentBanner() {
 
   return (
     <div
-      role="dialog"
+      role="region"
       aria-label="분석 쿠키 동의"
-      className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:max-w-sm z-50 card p-pad-inset border border-border shadow-lg bg-surface"
+      className="relative z-40 mx-region mb-stack-section card p-pad-inset border border-border shadow-lg bg-surface"
     >
       <p className="text-body-sm text-text mb-micro font-medium">쿠키/분석 사용 동의</p>
       <p className="text-caption text-subtle mb-stack">
@@ -70,10 +70,13 @@ export function PrivacySettingsLink() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted || !gaEnabled) return null;
+  // 이 단추는 `fixed` 라 문서 흐름 밖에 있다. 누르는 면을 44px 로 키워도 바닥글이 두꺼워지거나
+  // 본문이 밀리지 않는다. 그래서 하한 예외로 두지 않고, 글자 크기(text-caption)는 그대로 둔 채
+  // 히트 영역만 넓혔다(2026-09-14 배포 실측 66x18 → 계약 위반).
   return (
     <button
       onClick={openConsentSettings}
-      className="fixed bottom-1 left-1 text-caption text-subtle underline z-40 opacity-70 hover:opacity-100"
+      className="ds-touch-target fixed bottom-1 left-1 inline-flex items-center justify-center px-stack-tight text-caption text-subtle underline z-40 opacity-70 hover:opacity-100"
     >
       개인정보 설정
     </button>

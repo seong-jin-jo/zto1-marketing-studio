@@ -7,6 +7,8 @@ import { fetcher, apiPost, handleUnauthorizedResponse } from "@/lib/api";
 import { authHeaders, getAuthToken } from "@/lib/auth";
 import { useToast } from "@/components/layout/Toast";
 import { useUIStore } from "@/store/ui-store";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
+import { confirmAction } from "@/components/shared/ConfirmHost";
 
 interface Video {
   filename: string;
@@ -291,7 +293,7 @@ export default function VideosPage() {
   };
 
   const handleDelete = async (filename: string) => {
-    if (!confirm("Delete this video?")) return;
+    if (!(await confirmAction({ title: "이 영상을 삭제할까요?", description: "삭제한 영상은 되돌릴 수 없습니다. 이 영상으로 예약된 발행이 있으면 실패로 처리됩니다.", confirmLabel: "영상 삭제", destructive: true }))) return;
     try {
       await apiPost("/api/video/delete", { filename });
       showToast("Deleted", "success");
@@ -608,8 +610,8 @@ export default function VideosPage() {
       {/* 0차: Long Video Repurpose (external clipper + OSMU brand/wiki refine) */}
       <div className="card p-pad-inset mb-stack-section">
         <div className="flex items-center gap-stack-tight mb-stack">
-          <span className="text-body-sm font-medium">Repurpose Long Video (0차)</span>
-          <span className="text-caption text-subtle">External (Reap/Ssemble) → OSMU refine + publish</span>
+          <span className="text-body-sm font-medium">긴 영상 재활용 (0차)</span>
+          <span className="text-caption text-subtle">외부 서비스 (Reap/Ssemble) → OSMU 보정 후 발행</span>
         </div>
         {/* 클리핑 API 키는 운영자 전용 전역 설정(/api/clipping-config — proxy.ts 제외 사유 참고).
             고객 세션에는 입력 폼을 그리지 않는다(눌러봐야 403 나는 버튼 금지, SNS-015 전례). */}
@@ -640,14 +642,14 @@ export default function VideosPage() {
           <input
             value={repurposeUrl}
             onChange={(e) => { setRepurposeUrl(e.target.value); setRepurposeFile(null); }}
-            placeholder="YouTube long URL (e.g. https://youtube.com/watch?v=...)"
+            placeholder="YouTube 긴 영상 주소"
             className="flex-1 min-w-[280px] bg-surface-2 text-muted text-caption p-stack-tight rounded-chip border border-border"
           />
           <button onClick={handleRepurpose} disabled={repurposing} className="px-stack py-stack-tight text-caption bg-accent hover:bg-accent-hover rounded-chip disabled:opacity-50">
             {repurposing ? "Clipping..." : "Clip"}
           </button>
         </div>
-        <div className="text-caption text-subtle mb-stack-tight">Local long video: upload to YT first or use public URL (local file support for input limited; output clips saved locally)</div>
+        <div className="text-caption text-subtle mb-stack-tight">로컬 긴 영상은 YouTube에 먼저 올리거나 공개 주소를 사용하세요. 입력용 로컬 파일 지원은 제한되며 결과 영상은 로컬에 저장됩니다.</div>
 
         {repurposeClips.length === 0 ? (
           <div className="mt-stack-tight rounded-chip border border-dashed border-border bg-surface/40 p-stack-section text-center">
@@ -677,6 +679,8 @@ export default function VideosPage() {
                   <div key={c.id || oi} className="relative bg-surface-2 rounded-control overflow-hidden flex flex-col">
                     {/* 9:16 프리뷰 + 랭크/점수 오버레이 */}
                     <div className="relative bg-player-surface aspect-[9/16]">
+                      {/* raw-media-ok: src 는 서명 토큰이 아니라 정적 경로(/videos/<파일명>)
+                          이거나 외부 http 주소다(위 src 계산 참조). 만료가 없다. */}
                       {src && <video src={src} controls playsInline className="w-full h-full object-contain" />}
                       <span className="absolute top-1.5 left-1.5 text-caption font-bold bg-player-surface/70 text-text rounded-chip px-stack-tight py-micro">#{rank + 1}</span>
                       {c.viralScore != null && (
@@ -721,7 +725,7 @@ export default function VideosPage() {
         <div className="space-y-stack">
           {videos.length === 0 ? (
             <div className="card p-region text-center">
-              <p className="text-subtle text-body-sm">No videos yet. Generate one to get started.</p>
+              <p className="text-subtle text-body-sm">아직 영상이 없습니다. 먼저 영상을 만들어 주세요.</p>
             </div>
           ) : (
             videos.map((v) => (
@@ -748,7 +752,7 @@ export default function VideosPage() {
                           <input
                             value={publishTitle}
                             onChange={(e) => setPublishTitle(e.target.value)}
-                            placeholder="Title"
+                            placeholder="제목"
                             className="px-stack-tight py-micro text-caption bg-surface-2 text-text rounded-chip border border-border w-32"
                           />
                           {youtubeAccounts.length > 1 && (
@@ -802,12 +806,17 @@ export default function VideosPage() {
                 </div>
                 {previewFile === v.filename && (
                   <div className="mt-stack flex justify-center">
-                    {/* 세로 쇼츠/릴스 임베드 플레이어 — 발행 전 검수용 */}
-                    <video
+                    {/* 세로 쇼츠/릴스 임베드 플레이어 — 발행 전 검수용.
+                        목록을 오래 열어 두면 이 주소가 죽는다. /api/video/list 는 테넌트에게
+                        서명 배달 주소(/api/media/<토큰>)를 내려주고 그것은 12시간이면 만료된다
+                        (api/video/list/route.ts). 되살리는 부품으로 건다.
+                        2026-09-13 Codex 교차리뷰가 이 자리를 잡았다. */}
+                    <DeliveredMedia
                       key={v.url}
+                      type="video"
                       src={v.url}
-                      controls
-                      playsInline
+                      tenantId={activeWorkspace?.id}
+                      testId="video-preview-player"
                       className="rounded-control bg-player-surface w-full max-w-[260px] aspect-[9/16] object-contain"
                     />
                   </div>
@@ -820,7 +829,7 @@ export default function VideosPage() {
 
       {tab === "generate" && canGenerate && (
         <div className="card p-stack-section">
-          <h3 className="text-body-sm font-medium text-muted mb-pad-inset">Slide Editor</h3>
+          <h3 className="text-body-sm font-medium text-muted mb-pad-inset">장면 편집</h3>
           <div className="space-y-stack mb-pad-inset">
             {slides.map((s, i) => (
               <div key={i} className="flex gap-stack-tight items-start">
@@ -828,7 +837,7 @@ export default function VideosPage() {
                 <textarea
                   value={s.text}
                   onChange={(e) => updateSlide(i, "text", e.target.value)}
-                  placeholder="Slide text..."
+                  placeholder="장면 문구"
                   className="flex-1 bg-surface-2 text-muted text-caption p-stack-tight rounded-chip border border-border"
                   rows={2}
                 />
@@ -839,12 +848,12 @@ export default function VideosPage() {
                   className="w-14 bg-surface-2 text-muted text-caption p-stack-tight rounded-chip border border-border"
                   min={1}
                   max={30}
-                  title="Duration (seconds)"
+                  title="재생 시간(초)"
                 />
                 <input
                   value={s.imageUrl}
                   onChange={(e) => updateSlide(i, "imageUrl", e.target.value)}
-                  placeholder="Image URL (optional)"
+                  placeholder="이미지 주소(선택)"
                   className="w-40 bg-surface-2 text-muted text-caption p-stack-tight rounded-chip border border-border"
                 />
                 {slides.length > 1 && (

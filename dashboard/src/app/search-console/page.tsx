@@ -72,7 +72,7 @@ export default function SearchConsolePage() {
       {data?.error && (
         <div className="card p-pad-inset mb-pad-inset border border-warning/40">
           <p className="text-caption text-warning">{data.error}</p>
-          <p className="text-caption text-subtle mt-micro">Settings → Channels → Search Console에서 서비스 계정을 설정하세요.</p>
+          <p className="text-caption text-subtle mt-micro">설정 → 채널 → Search Console에서 서비스 계정을 설정하세요.</p>
         </div>
       )}
 

@@ -24,6 +24,7 @@ import {
   findRecentProviderPost,
   publishThreads,
   publishInstagram,
+  publishLinkedIn,
   publishX,
   publishFacebook,
   publishBluesky,
@@ -32,7 +33,14 @@ import {
   publishSlack,
   type PublishResult,
 } from "@/lib/publish";
+import { PUBLISH_IMAGE_LIMIT, channelImageCapacity } from "@/lib/studio/channel-image-capacity";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
+import {
+  buildPlatformPublishText,
+  validatePlatformPublish,
+  type PlatformPublishInput,
+  type PublishPlatform,
+} from "@/lib/studio/platform-publish-fields";
 
 type PersistenceStage = "publication_record" | "queue_record";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -171,7 +179,8 @@ function partialPersistenceFailure(
 // 발행 후 published_posts에 기록(성과 수집 대상). 토큰 없으면 명확한 에러(크래시 X).
 export async function POST(request: Request) {
   const __b = await request.json();
-  const { platform, text, image_url, draft_id, account_id } = __b;
+  const { platform, image_url, image_urls, draft_id, account_id } = __b;
+  const legacyText = typeof __b.text === "string" ? __b.text : "";
   if (__b.edit_format !== undefined) {
     const formatValidation = validateContentEditFormat(__b.edit_format);
     if (!formatValidation.valid) {
@@ -193,6 +202,36 @@ export async function POST(request: Request) {
   if (!tenant_id || !platform) {
     return Response.json({ error: "tenant_id, platform required" }, { status: 400 });
   }
+  const fieldPlatforms = new Set<PublishPlatform>(["threads", "x", "facebook", "instagram", "shorts", "reels", "tiktok"]);
+  const rawFields = __b.publish_fields;
+  if (rawFields !== undefined && (!rawFields || typeof rawFields !== "object" || Array.isArray(rawFields))) {
+    return Response.json({
+      ok: false,
+      code: "INVALID_PUBLISH_FIELDS",
+      error: "플랫폼별 발행 필드값을 확인해 주세요",
+    }, { status: 422, headers: { "Cache-Control": "no-store" } });
+  }
+  const publishFields: PlatformPublishInput = rawFields ? {
+    title: typeof rawFields.title === "string" ? rawFields.title : "",
+    body: typeof rawFields.body === "string" ? rawFields.body : legacyText,
+    hashtags: typeof rawFields.hashtags === "string" ? rawFields.hashtags : "",
+    topicTag: typeof rawFields.topicTag === "string" ? rawFields.topicTag : "",
+  } : { body: legacyText };
+  const fieldPlatform = fieldPlatforms.has(platform as PublishPlatform) ? platform as PublishPlatform : null;
+  if (fieldPlatform) {
+    const fieldValidation = validatePlatformPublish(fieldPlatform, publishFields);
+    if (fieldValidation.blocking.length > 0) {
+      return Response.json({
+        ok: false,
+        code: "PUBLISH_FIELD_LIMIT_EXCEEDED",
+        error: fieldValidation.blocking[0].message,
+        issues: fieldValidation.blocking,
+      }, { status: 422, headers: { "Cache-Control": "no-store" } });
+    }
+  }
+  const text = fieldPlatform && rawFields
+    ? buildPlatformPublishText(fieldPlatform, publishFields)
+    : legacyText;
   if (firstCommentText) {
     const capability = getFirstCommentCapability(platform);
     if (!capability?.supported) {
@@ -220,12 +259,36 @@ export async function POST(request: Request) {
   const reservationKey = isDraftUuid ? null : idempotencyKey;
 
   let publishImageUrl: string | undefined;
-  if (image_url) {
-    const refreshed = refreshImageDeliveryUrl(tenant_id, image_url);
-    if (!refreshed) {
-      return Response.json({ ok: false, error: "이미지 URL이 만료되었거나 유효하지 않습니다. 이미지를 다시 선택해주세요." }, { status: 400 });
+  let publishImageUrls: string[] | undefined;
+  if (image_urls !== undefined && (!Array.isArray(image_urls)
+    || image_urls.length < 1
+    || image_urls.length > PUBLISH_IMAGE_LIMIT
+    || image_urls.some((value) => typeof value !== "string" || !value.trim()))) {
+    return Response.json({ ok: false, error: `이미지 목록은 1장 이상 ${PUBLISH_IMAGE_LIMIT}장 이하의 유효한 주소여야 합니다.` }, { status: 400 });
+  }
+  /*
+    2026-09-14 교차리뷰(Codex) 지적: 서버는 열 장까지 다 받아 주는데 실제로 여러 장을 올리는
+    발행 함수는 인스타그램 하나뿐이었다. 나머지 채널로 열 장을 보내면 아홉 장이 조용히
+    사라진다. 조용히 버리는 것이 가장 나쁘다. 못 보내면 못 보낸다고 말하고 멈춘다.
+  */
+  if (Array.isArray(image_urls) && image_urls.length > channelImageCapacity(String(platform))) {
+    return Response.json({
+      ok: false,
+      code: "CHANNEL_IMAGE_CAPACITY_EXCEEDED",
+      error: `${platform} 은 한 번에 이미지 ${channelImageCapacity(String(platform))}장까지 올릴 수 있습니다. ${image_urls.length}장을 보내면 나머지가 올라가지 않으므로 발행을 시작하지 않았습니다.`,
+    }, { status: 422, headers: { "Cache-Control": "no-store" } });
+  }
+  const requestedImages = Array.isArray(image_urls) ? image_urls : image_url ? [image_url] : [];
+  if (requestedImages.length > 0) {
+    publishImageUrls = [];
+    for (const requestedImage of requestedImages) {
+      const refreshed = refreshImageDeliveryUrl(tenant_id, requestedImage);
+      if (!refreshed) {
+        return Response.json({ ok: false, error: "이미지 URL이 만료되었거나 유효하지 않습니다. 이미지를 다시 선택해주세요." }, { status: 400 });
+      }
+      publishImageUrls.push(refreshed);
     }
-    publishImageUrl = refreshed;
+    publishImageUrl = publishImageUrls[0];
   }
 
   // SNS-007: account_id 지정 시 그 계정으로만 발행 — getChannelCred는 삭제/cross-tenant면 조용히
@@ -476,13 +539,9 @@ export async function POST(request: Request) {
             externalId: existing.external_id ?? undefined,
             permalink,
           });
-          if (!queueRecorded) {
-            return partialPersistenceFailure(existingResult, {
-              stage: "queue_record",
-              draftId: draft_id,
-              platform,
-              accountId: cred.accountId,
-            });
+          // 위와 같은 이유로 큐에 없는 것은 실패가 아니다.
+          if (queueRecorded === "absent") {
+            console.info("[publish] queue_record_absent(dedupe)", platform, "승인 큐를 거치지 않은 직접 발행");
           }
         } catch {
           return partialPersistenceFailure(existingResult, {
@@ -515,9 +574,22 @@ export async function POST(request: Request) {
 
   let result: PublishResult;
   if (platform === "threads") {
-    result = await publishThreads(cred, text || "", publishImageUrl);
+    result = await publishThreads(cred, text || "", publishImageUrl, undefined, publishFields.topicTag);
   } else if (platform === "instagram") {
-    result = await publishInstagram(cred, text || "", publishImageUrl);
+    result = await publishInstagram(cred, text || "", publishImageUrls, {
+      onProgress: async (progress) => {
+        const [saved] = await withTenant(tenant_id, (sql) => sql<{ id: string }[]>`
+          UPDATE published_posts
+             SET provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+               || ${sql.json({ instagramAttempt: progress } as never)}::jsonb
+           WHERE tenant_id = ${tenant_id}::uuid
+             AND id = ${reservationId}::uuid
+             AND status = 'in_progress'
+          RETURNING id::text
+        `);
+        if (!saved) throw new Error("Instagram 발행 진행 상태를 저장하지 못했습니다.");
+      },
+    });
   } else if (platform === "x") {
     // X API v2 + OAuth1.0a 직접발행(P5). text only, 280자 자동 절단.
     result = await publishX(cred, text || "");
@@ -530,6 +602,9 @@ export async function POST(request: Request) {
     result = await publishTelegram(cred, text || "", publishImageUrl);
   } else if (platform === "discord") {
     result = await publishDiscord(cred, text || "", publishImageUrl);
+  } else if (platform === "linkedin") {
+    // 2026-09-08: 아홉 채널 중 유일하게 발행 코드가 없던 자리. 텍스트 발행만 연다.
+    result = await publishLinkedIn(cred, text || "");
   } else if (platform === "slack") {
     result = await publishSlack(cred, text || "", publishImageUrl);
   } else {
@@ -598,7 +673,12 @@ export async function POST(request: Request) {
           published_at = now()
       WHERE tenant_id = ${tenant_id}::uuid AND id = ${reservationId}::uuid
     `);
-  } catch {
+  } catch (error) {
+    // 2026-09-05 회장 계정 실측: 실제로는 올라갔는데 "내부 기록 실패"만 뜨고, 컨테이너
+    // 로그에는 아무것도 없었다. 여기서 예외를 그대로 버렸기 때문이다. 이유를 안 남기면
+    // 같은 증상이 나도 매번 처음부터 추측해야 한다. 값은 남기지 않고 사유만 남긴다.
+    console.error("[publish][persist-fail] publication_record", platform,
+      error instanceof Error ? error.message : String(error));
     if (result.ok) {
       return partialPersistenceFailure(result, {
         stage: "publication_record",
@@ -627,15 +707,15 @@ export async function POST(request: Request) {
         externalId: result.externalId,
         permalink: result.permalink,
       });
-      if (!queueRecorded) {
-        return partialPersistenceFailure(result, {
-          stage: "queue_record",
-          draftId: draft_id,
-          platform,
-          accountId: cred.accountId,
-        });
+      // 큐에 없는 것은 실패가 아니다. 스튜디오에서 바로 발행하면 승인 큐를 거치지 않으므로
+      // 없는 것이 정상이다. 종전에는 이것을 내부 기록 실패로 보고 사용자에게 복구를
+      // 요구하며 재발행을 막았다(2026-09-05 회장 계정 실측). 갱신 실패는 예외로 잡힌다.
+      if (queueRecorded === "absent") {
+        console.info("[publish] queue_record_absent", platform, "승인 큐를 거치지 않은 직접 발행");
       }
-    } catch {
+    } catch (error) {
+      console.error("[publish][persist-fail] queue_record", platform,
+        error instanceof Error ? error.message : String(error));
       return partialPersistenceFailure(result, {
         stage: "queue_record",
         draftId: draft_id,

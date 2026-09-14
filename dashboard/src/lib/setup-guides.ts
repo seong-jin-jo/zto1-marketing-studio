@@ -5,14 +5,14 @@ import type { SetupGuide } from "@/types/channel";
 export const setupGuides: Record<string, SetupGuide> = {
   threads: {
     fields: ["accessToken", "userId"],
-    labels: ["Access Token", "User ID"],
+    labels: ["액세스 토큰", "계정 식별자"],
     quick: [
-      '<strong class="text-text">위 "Threads 연결" 단추 한 번</strong> → Threads 공식 로그인·동의 → 끝. <span class="text-subtle">토큰 개념을 몰라도 됩니다. 발급·60일 갱신을 우리가 처리합니다.</span>',
-      '— 아래는 직접 토큰 입력(고급)만 필요할 때 —',
-      '수동: developers.facebook.com → 앱(Threads) → Access Token 생성(threads_basic, threads_content_publish 동의) → 토큰 + User ID(긴 숫자, 앱 ID 아님)를 아래 폼에.',
+      '<strong class="text-text">위 "Threads 연결" 단추를 누르세요.</strong> 공식 로그인 화면에서 사용할 계정을 확인하고 권한에 동의하면 연결됩니다.',
+      "심사 전에는 초대를 수락한 계정만 연결할 수 있습니다. 안내 링크에서 초대를 수락한 뒤 다시 연결하세요.",
+      "직접 입력은 지원팀의 안내를 받은 경우에만 고급 연결 정보에서 사용하세요.",
     ],
     detail:
-      '추천: 위 "Threads 연결" 단추면 끝납니다(비밀번호·토큰 입력 없이 공식 로그인, 토큰 자동 발급·갱신). 직접 토큰 입력은 고급 사용자용입니다. User ID에 앱 ID(짧은 숫자)를 넣으면 발행이 실패하므로 Threads 계정 고유번호(긴 숫자)를 넣으세요.',
+      '일반 사용자는 위 "Threads 연결" 단추만 사용하면 됩니다. 공식 로그인과 동의를 마치면 연결 상태를 이 화면에서 확인할 수 있습니다. 고급 연결 정보는 지원팀의 안내를 받은 경우에만 입력하세요.',
   },
   x: {
     fields: ["apiKey", "apiKeySecret", "accessToken", "accessTokenSecret"],
@@ -28,14 +28,14 @@ export const setupGuides: Record<string, SetupGuide> = {
   },
   facebook: {
     fields: ["accessToken", "pageId"],
-    labels: ["Page Access Token", "Page ID"],
+    labels: ["페이지 액세스 토큰", "페이지 식별자"],
     quick: [
-      '<strong class="text-text">위 "Facebook 연결" 단추 한 번</strong> → Facebook 공식 로그인·동의 → 페이지 자동 연결. <span class="text-subtle">페이지 토큰을 우리가 받아 처리하므로 직접 발급할 필요가 없습니다.</span>',
-      '— 아래는 직접 입력(고급) —',
-      "수동: developers.facebook.com → 앱 → Page Access Token 발급 + Page ID 확인 → 아래 폼에.",
+      '<strong class="text-text">위 "Facebook 연결" 단추를 누르세요.</strong> 공식 로그인 화면에서 사용할 페이지를 선택하면 연결됩니다.',
+      "연결 뒤 이 화면에서 사용할 페이지와 연결 상태를 확인하세요.",
+      "직접 입력은 지원팀의 안내를 받은 경우에만 고급 연결 정보에서 사용하세요.",
     ],
     detail:
-      '추천: 위 "Facebook 연결" 버튼이면 페이지 토큰까지 자동입니다(공식 로그인, 비번 우리 안 거침). 페이지 관리자 권한 필요, 토큰 60일(long-lived). 직접 입력은 고급용.',
+      '일반 사용자는 위 "Facebook 연결" 단추만 사용하면 됩니다. 페이지 관리자 권한이 있는 계정으로 공식 로그인을 마치세요. 고급 연결 정보는 지원팀의 안내를 받은 경우에만 입력하세요.',
   },
   bluesky: {
     fields: ["handle", "appPassword"],
@@ -51,15 +51,14 @@ export const setupGuides: Record<string, SetupGuide> = {
   },
   instagram: {
     fields: ["accessToken", "userId"],
-    labels: ["Graph API Access Token", "Instagram Business User ID"],
+    labels: ["액세스 토큰", "Instagram 계정 식별자"],
     quick: [
-      '<strong class="text-text">위 "Instagram 연결" 단추 한 번</strong> → 프로페셔널(비즈니스/크리에이터) 계정으로 공식 로그인·동의 → 끝. <span class="text-subtle">토큰·User ID를 우리가 받아 처리하므로 토큰 개념을 몰라도 됩니다.</span>',
-      "선행: Instagram이 프로페셔널 계정이어야 함(프로필 > 설정 > 프로페셔널 계정으로 전환).",
-      '— 아래는 직접 토큰 입력(고급) —',
-      "수동: developers.facebook.com 앱 → Instagram 권한으로 토큰 생성 + instagram_business_account.id(User ID, 앱 ID 아님)를 아래 폼에.",
+      '<strong class="text-text">위 "Instagram 연결" 단추를 누르세요.</strong> 프로페셔널 계정으로 공식 로그인하고 권한에 동의하면 연결됩니다.',
+      "Instagram 프로필 설정에서 비즈니스 또는 크리에이터 계정인지 먼저 확인하세요.",
+      "직접 입력은 지원팀의 안내를 받은 경우에만 고급 연결 정보에서 사용하세요.",
     ],
     detail:
-      '추천: 위 "Instagram 연결" 단추면 끝납니다(공식 로그인, 비밀번호·토큰을 우리에게 전달하지 않음, 자동 발급·갱신). 단 Instagram이 프로페셔널 계정이어야 합니다. 직접 입력(고급) 시 앱 ID와 User ID는 다르므로 instagram_business_account.id를 넣으세요. 지원: 단일/캐러셀(2~10장)/릴스.',
+      '일반 사용자는 위 "Instagram 연결" 단추만 사용하면 됩니다. 비즈니스 또는 크리에이터 계정으로 공식 로그인을 마치세요. 고급 연결 정보는 지원팀의 안내를 받은 경우에만 입력하세요. 단일 이미지, 캐러셀, 릴스 발행을 지원합니다.',
   },
   linkedin: {
     fields: ["accessToken", "personUrn"],
@@ -122,7 +121,7 @@ export const setupGuides: Record<string, SetupGuide> = {
   },
   telegram: {
     fields: ["botToken", "chatId"],
-    labels: ["Bot Token (@BotFather에서 발급)", "Chat ID (선택 — 알림 발송용)"],
+    labels: ["Bot Token (@BotFather에서 발급)", "Chat ID (선택, 알림 발송용)"],
     quick: [
       "Telegram에서 @BotFather 검색 > /newbot 명령",
       "봇 이름 + username 설정 > Bot Token 복사",
@@ -155,7 +154,7 @@ export const setupGuides: Record<string, SetupGuide> = {
       "생성된 Webhook URL 복사 (https://hooks.slack.com/...) > 위 폼에 붙여넣기",
     ],
     detail:
-      "Slack '앱'은 Workspace에 기능을 추가하는 단위입니다. 봇, Webhook, 슬래시 명령어 등을 묶어서 관리합니다. 여기서는 Incoming Webhook만 사용합니다 — 앱을 만들면 Webhook URL이 생성되고, 이 URL로 POST 요청을 보내면 지정 채널에 메시지가 표시됩니다. Slack mrkdwn 포맷 지원. 양방향 대화가 필요하면 Bot Token + App Token이 추가로 필요합니다 (Settings > Interactive Chat 참고).",
+      "Slack '앱'은 Workspace에 기능을 추가하는 단위입니다. 봇, Webhook, 슬래시 명령어 등을 묶어서 관리합니다. 여기서는 Incoming Webhook만 사용합니다. 앱을 만들면 Webhook URL이 생성되고, 이 URL로 POST 요청을 보내면 지정 채널에 메시지가 표시됩니다. Slack mrkdwn 포맷 지원. 양방향 대화가 필요하면 Bot Token + App Token이 추가로 필요합니다 (Settings > Interactive Chat 참고).",
   },
   line: {
     fields: ["channelAccessToken"],
@@ -215,6 +214,6 @@ export const setupGuides: Record<string, SetupGuide> = {
       "위 폼에 3개 값 입력 후 Connect",
     ],
     detail:
-      "Midjourney Discord 연동으로 /imagine 명령을 자동 전송하고 생성된 이미지를 수집합니다.\n\n⚠️ Discord 유저 토큰 사용 — Discord TOS 위반 리스크가 있습니다. 자동화 속도를 제한하여 사용하세요.\n\nDiscord Token이란?\n봇 토큰이 아닌 '유저 토큰'입니다. 브라우저에서 Discord에 로그인한 상태에서 개발자 콘솔로 추출합니다.\n\n다른 방법으로 Token 찾기:\n1. discord.com/app > F12 > Network 탭 > Fetch/XHR 필터 > 아무 요청 클릭 > Headers > Authorization 값\n2. F12 > Application > Local Storage > discord.com > 'token' 검색\n\nChannel ID / Server ID:\n개발자 모드를 ON하면 우클릭 메뉴에 'ID 복사' 항목이 생깁니다.\n\n이미지 생성 시간: 30~90초. 자동 업스케일 지원.\nMidjourney 구독 필요 (Basic $10/월, Standard $30/월).",
+      "Midjourney Discord 연동으로 /imagine 명령을 자동 전송하고 생성된 이미지를 수집합니다.\n\n주의: Discord 유저 토큰 사용은 Discord 이용 약관을 위반할 위험이 있습니다. 자동화 속도를 제한하여 사용하세요.\n\nDiscord Token이란?\n봇 토큰이 아닌 '유저 토큰'입니다. 브라우저에서 Discord에 로그인한 상태에서 개발자 콘솔로 추출합니다.\n\n다른 방법으로 Token 찾기:\n1. discord.com/app > F12 > Network 탭 > Fetch/XHR 필터 > 아무 요청 클릭 > Headers > Authorization 값\n2. F12 > Application > Local Storage > discord.com > 'token' 검색\n\nChannel ID / Server ID:\n개발자 모드를 ON하면 우클릭 메뉴에 'ID 복사' 항목이 생깁니다.\n\n이미지 생성 시간: 30~90초. 자동 업스케일 지원.\nMidjourney 구독 필요 (Basic $10/월, Standard $30/월).",
   },
 };

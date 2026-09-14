@@ -38,7 +38,12 @@ concurrency:
 permissions: {}
 
 env:
+  # 터널 안쪽 주소. 앱 자체가 살아있는지를 본다.
   OSMU_HEALTH_URL: https://openclaw.sj-onpremise-cloudflare-tunnel.cloud/api/health
+  # 2026-09-09: 고객이 실제로 여는 주소. 이것이 없어서 openclaw.app 이 등록기관
+  # 주차 페이지로 넘어가 온종일 접속 불가였는데 이 감시는 계속 "정상" 이라고 답했다.
+  # 앱이 살아있는 것과 고객이 들어올 수 있는 것은 다른 일이다. 둘 다 본다.
+  OSMU_PUBLIC_URL: https://openclaw.app/api/health
   STATE_FILE: .osmu-health-state
   STATE_KEY_PREFIX: osmu-health-state-
 
@@ -70,16 +75,31 @@ jobs:
       - name: 헬스체크 실행
         id: check
         run: |
-          set +e
-          CODE=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 10 "$OSMU_HEALTH_URL")
-          CURL_EXIT=$?
-          set -e
-          if [ "$CURL_EXIT" -ne 0 ] || [ "$CODE" != "200" ]; then
+          # 두 주소를 따로 본다. 하나라도 죽으면 장애다.
+          # 어느 쪽이 죽었는지 알려주지 않으면 받는 사람이 앱을 볼지 도메인을 볼지 모른다.
+          probe() {
+            set +e
+            curl -fsS -o /dev/null -w '%{http_code}' --max-time 10 "$1"
+            set -e
+          }
+          CODE=$(probe "$OSMU_HEALTH_URL");    [ -n "$CODE" ] || CODE=000
+          PUB_CODE=$(probe "$OSMU_PUBLIC_URL"); [ -n "$PUB_CODE" ] || PUB_CODE=000
+
+          FAILED=""
+          [ "$CODE" != "200" ] && FAILED="앱(터널) http $CODE"
+          if [ "$PUB_CODE" != "200" ]; then
+            [ -n "$FAILED" ] && FAILED="$FAILED · "
+            FAILED="${FAILED}고객 주소 openclaw.app http $PUB_CODE"
+          fi
+
+          if [ -n "$FAILED" ]; then
             echo "status=down" >> "$GITHUB_OUTPUT"
           else
             echo "status=up" >> "$GITHUB_OUTPUT"
           fi
-          echo "http_code=${CODE:-000}" >> "$GITHUB_OUTPUT"
+          echo "http_code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "public_http_code=$PUB_CODE" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
 
       - name: 상태 전이 판정(failure/recovery/none)
         id: transition
@@ -104,15 +124,17 @@ jobs:
           SLACK_WEBHOOK: ${{ secrets.OSMU_ALERT_SLACK_WEBHOOK_URL }}
           KIND: ${{ steps.transition.outputs.kind }}
           HTTP_CODE: ${{ steps.check.outputs.http_code }}
+          PUBLIC_HTTP_CODE: ${{ steps.check.outputs.public_http_code }}
+          FAILED: ${{ steps.check.outputs.failed }}
         run: |
           if [ -z "$SLACK_WEBHOOK" ]; then
             echo "OSMU_ALERT_SLACK_WEBHOOK_URL 미설정 — 알림 스킵(체크/상태기록은 정상 수행됨)"
             exit 0
           fi
           if [ "$KIND" = "failure" ]; then
-            TEXT=":rotating_light: OSMU health check FAILED (http $HTTP_CODE) — $OSMU_HEALTH_URL"
+            TEXT=":rotating_light: OSMU 접속 장애 — $FAILED"
           else
-            TEXT=":white_check_mark: OSMU health check RECOVERED (http $HTTP_CODE) — $OSMU_HEALTH_URL"
+            TEXT=":white_check_mark: OSMU 접속 복구 — 앱 http $HTTP_CODE · 고객 주소 http $PUBLIC_HTTP_CODE"
           fi
           BODY=$(printf '{"text":"%s"}' "$TEXT")
           curl -fsS --max-time 5 -X POST -H 'Content-Type: application/json' -d "$BODY" "$SLACK_WEBHOOK" >/dev/null \
@@ -135,8 +157,9 @@ jobs:
         run: |
           {
             echo "### OSMU Health Monitor"
-            echo "- url: $OSMU_HEALTH_URL"
-            echo "- status: ${{ steps.check.outputs.status }} (http ${{ steps.check.outputs.http_code }})"
+            echo "- 앱(터널): $OSMU_HEALTH_URL — http ${{ steps.check.outputs.http_code }}"
+            echo "- 고객 주소: $OSMU_PUBLIC_URL — http ${{ steps.check.outputs.public_http_code }}"
+            echo "- status: ${{ steps.check.outputs.status }}"
             echo "- prev: ${{ steps.prev.outputs.prev }}"
             echo "- transition: ${{ steps.transition.outputs.kind }}"
           } >> "$GITHUB_STEP_SUMMARY"

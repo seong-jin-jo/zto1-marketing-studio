@@ -46,6 +46,24 @@ function postgresCode(error: unknown): string | null {
 
 export function mapGenerationDatabaseError(error: unknown): StudioApiError {
   const code = postgresCode(error);
+  if (
+    code === "CONNECT_TIMEOUT"
+    || code === "CONNECTION_CLOSED"
+    || code === "CONNECTION_DESTROYED"
+    || code === "CONNECTION_ENDED"
+    || code === "ECONNRESET"
+    || code === "ECONNREFUSED"
+    || code === "ETIMEDOUT"
+    || code === "EPIPE"
+  ) {
+    return new StudioApiError({
+      status: 503,
+      code: "GENERATION_DB_UNAVAILABLE",
+      message: "생성 저장소 연결이 불안정해 잠시 후 다시 시도해야 합니다",
+      retryable: true,
+      details: { retry_after_ms: 1500 },
+    });
+  }
   if (code === "55P03" || code === "40001" || code === "40P01") {
     return new StudioApiError({
       status: 503,
@@ -225,16 +243,20 @@ export class PostgresGenerationRepository implements GenerationRepository {
     batchId: string,
     allowedWorkspaceIds: readonly string[],
   ): Promise<{ batch: DerivationBatch; workspaceId: string } | null> {
-    for (const workspaceId of allowedWorkspaceIds) {
-      const [row] = await generationTransaction(workspaceId, (sql) => sql<DerivationRow[]>`
-        SELECT id, tenant_id, job_id, candidate_id, status, currency, quoted_minor,
-               charged_minor, items, created_at, discarded_at
-        FROM studio_derivation_batches
-        WHERE tenant_id = ${workspaceId} AND member_id = ${memberId} AND id = ${batchId}
-        LIMIT 1`);
-      if (row) return { batch: rowToBatch(row), workspaceId };
+    try {
+      for (const workspaceId of allowedWorkspaceIds) {
+        const [row] = await generationTransaction(workspaceId, (sql) => sql<DerivationRow[]>`
+          SELECT id, tenant_id, job_id, candidate_id, status, currency, quoted_minor,
+                 charged_minor, items, created_at, discarded_at
+          FROM studio_derivation_batches
+          WHERE tenant_id = ${workspaceId} AND member_id = ${memberId} AND id = ${batchId}
+          LIMIT 1`);
+        if (row) return { batch: rowToBatch(row), workspaceId };
+      }
+      return null;
+    } catch (error) {
+      throw mapGenerationDatabaseError(error);
     }
-    return null;
   }
 
   async markDerivationDiscarded(workspaceId: string, batchId: string, at: string): Promise<DerivationBatch | null> {
@@ -298,16 +320,20 @@ export class PostgresGenerationRepository implements GenerationRepository {
   }
 
   async findJob(memberId: string, jobId: string, allowedWorkspaceIds: readonly string[]): Promise<GenerationJob | null> {
-    for (const workspaceId of allowedWorkspaceIds) {
-      const [row] = await generationTransaction(workspaceId, (sql) => sql<GenerationJobRow[]>`
-        SELECT id, tenant_id, member_id, status, candidates, layer_revisions,
-               platform_spec_receipt, time_zone, request_payload, created_at
-        FROM studio_generation_jobs
-        WHERE tenant_id = ${workspaceId} AND member_id = ${memberId} AND id = ${jobId}
-        LIMIT 1`);
-      if (row) return rowToJob(row);
+    try {
+      for (const workspaceId of allowedWorkspaceIds) {
+        const [row] = await generationTransaction(workspaceId, (sql) => sql<GenerationJobRow[]>`
+          SELECT id, tenant_id, member_id, status, candidates, layer_revisions,
+                 platform_spec_receipt, time_zone, request_payload, created_at
+          FROM studio_generation_jobs
+          WHERE tenant_id = ${workspaceId} AND member_id = ${memberId} AND id = ${jobId}
+          LIMIT 1`);
+        if (row) return rowToJob(row);
+      }
+      return null;
+    } catch (error) {
+      throw mapGenerationDatabaseError(error);
     }
-    return null;
   }
 
   async recordCandidateRejection(input: RecordRejectionInput): Promise<{ rejectedCandidateIds: string[] }> {

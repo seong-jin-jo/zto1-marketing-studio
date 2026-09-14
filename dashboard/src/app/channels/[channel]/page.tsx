@@ -17,7 +17,7 @@ export default function ChannelRoute({ params }: { params: Promise<{ channel: st
   if (!CH_LABELS[channel]) {
     return (
       <div className="px-region py-stack-section">
-        <p className="text-[var(--text-muted)]">Unknown channel: {channel}</p>
+        <p className="text-[var(--text-muted)]">알 수 없는 채널: {channel}</p>
       </div>
     );
   }

@@ -8,11 +8,18 @@
 // 계산은 이미 부모(page.tsx→PerformanceRoom)가 내려주는 posts로 클라이언트에서 한다(별도 DB 조회 없음).
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import { apiPost, fetcher } from "@/lib/api";
+import { isPerformancePublished } from "@/lib/post-publish-state";
 import type { PerformancePost } from "./PerformanceRoom";
 import { Button } from "@/components/shared/Button";
 import { Stack } from "@/components/shared/Stack";
+import {
+  formatLearningDate,
+  formatLearningPeriod,
+  type LearnedRuleDecisionView,
+} from "./LearningDecisionsDialog";
 
 interface LearnedRule {
   id: string;
@@ -22,21 +29,56 @@ interface LearnedRule {
   createdAt: string;
 }
 
+type LearnedRuleDecision = LearnedRuleDecisionView;
+
+interface LearnedRulesResponse {
+  rules: LearnedRule[];
+  decisions: LearnedRuleDecision[];
+}
+
 interface ChatTurn {
   id: string;
   from: "me" | "담당";
   text: string;
-  ruleCandidate?: { text: string; sourcePostIds: string[] };
+  ruleCandidate?: {
+    candidateId: string;
+    text: string;
+    sourcePostIds: string[];
+    sampleCount: number;
+    observedFrom: string | null;
+    observedTo: string | null;
+  };
 }
 
 const SAMPLE_THRESHOLD = 5;
 
-function fmtDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
-  } catch {
-    return iso;
+/**
+ * 이 표본 수 아래면 근거가 약하다고 화면에 먼저 밝힌다.
+ * v63 계약: 규칙 문장과 표본 수와 관찰 기간과 실리는 범위를 결정 전에 한 줄로 같이 보여준다.
+ */
+const EVIDENCE_SUFFICIENT_SAMPLE = 10;
+
+const RULE_SCOPE_LABEL = "이 작업 공간의 다음 생성";
+
+const fmtDate = formatLearningDate;
+const fmtPeriod = formatLearningPeriod;
+
+/** 결정 버튼 바로 위에 붙는 근거 한 줄. 표본·기간·적용 범위·한계를 같이 적는다. */
+export function ruleBasisLine(candidate: {
+  sampleCount: number;
+  sourcePostIds: string[];
+  observedFrom: string | null;
+  observedTo: string | null;
+}): string {
+  const limits: string[] = [];
+  if (candidate.sampleCount < EVIDENCE_SUFFICIENT_SAMPLE) {
+    limits.push(`표본이 ${EVIDENCE_SUFFICIENT_SAMPLE}건에 못 미쳐 근거가 약합니다`);
   }
+  if (!candidate.observedFrom || !candidate.observedTo) {
+    limits.push("관찰 기간을 수집하지 못했습니다");
+  }
+  const limit = limits.length > 0 ? limits.join(", ") : "표본과 기간이 충분합니다";
+  return `근거: 표본 ${candidate.sampleCount}건 중 상위 ${candidate.sourcePostIds.length}편 · 관찰 기간 ${fmtPeriod(candidate.observedFrom, candidate.observedTo)} · 적용 범위 ${RULE_SCOPE_LABEL} · 한계: ${limit}`;
 }
 
 function platformOf(p: PerformancePost): string {
@@ -57,26 +99,36 @@ export function PerformanceChatPanel({
   workspaceId,
   posts,
   focus,
+  expandedByDefault = false,
 }: {
   workspaceId?: string;
   posts: PerformancePost[];
   focus: string;
+  expandedByDefault?: boolean;
 }) {
-  const { data: rulesData, mutate: mutateRules } = useSWR<{ rules: LearnedRule[] }>(
+  const { data: rulesData, mutate: mutateRules } = useSWR<LearnedRulesResponse>(
     workspaceId ? `/api/performance/learned-rules?tenant_id=${encodeURIComponent(workspaceId)}` : null,
     fetcher,
   );
   const learnedRules = rulesData?.rules ?? [];
+  const learnedDecisions = rulesData?.decisions ?? [];
 
   const [turns, setTurns] = useState<ChatTurn[]>([
     { id: "intro", from: "담당", text: "성과 해석과 조치를 도와드립니다. 아래 버튼으로 물어보거나 직접 써 주세요." },
   ]);
   const [draft, setDraft] = useState("");
   const [savingRuleFor, setSavingRuleFor] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(expandedByDefault);
 
   const published = useMemo(
-    () => posts.filter((p) => p.status === "published" && (focus === "all" || platformOf(p) === focus)),
+    // 최상위 status 가 아니라 채널별 발행 사실로 센다. 일부 채널만 올라간 뒤 멈춘 글이
+    // 성과실에서 사라지던 결함을 닫는다(2026-09-12 감사 MAJOR, lib/post-publish-state.ts).
+    () =>
+      posts.filter(
+        (p) =>
+          isPerformancePublished(p as unknown as Record<string, unknown>) &&
+          (focus === "all" || platformOf(p) === focus),
+      ),
     [posts, focus],
   );
 
@@ -161,25 +213,47 @@ export function PerformanceChatPanel({
       say(`조회 상위 ${top.length}편을 봤지만 뚜렷한 공통점을 못 찾았습니다. 표본이 더 쌓이면 다시 봐 드릴게요.`);
       return;
     }
+    const measuredTimes = measured
+      .map((post) => new Date(post.published_at).getTime())
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
     say(`조회 상위 ${top.length}편(${top.map((p) => `${Number(p.views || 0).toLocaleString()}회`).join(", ")})을 보니: ${candidateText} 이 규칙을 배울까요?`, {
+      candidateId: `candidate_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       text: candidateText,
       sourcePostIds: top.map((p) => p.id),
+      sampleCount: measured.length,
+      observedFrom: measuredTimes.length > 0 ? new Date(measuredTimes[0]).toISOString() : null,
+      observedTo: measuredTimes.length > 0 ? new Date(measuredTimes[measuredTimes.length - 1]).toISOString() : null,
     });
   };
 
-  const learnRule = async (turnId: string, ruleCandidate: NonNullable<ChatTurn["ruleCandidate"]>) => {
+  const decideRule = async (
+    turnId: string,
+    ruleCandidate: NonNullable<ChatTurn["ruleCandidate"]>,
+    decision: "accepted" | "rejected",
+  ) => {
     if (!workspaceId) return;
     setSavingRuleFor(turnId);
     try {
       await apiPost("/api/performance/learned-rules", {
         tenant_id: workspaceId,
+        candidateId: ruleCandidate.candidateId,
+        decision,
         text: ruleCandidate.text,
         sourcePostIds: ruleCandidate.sourcePostIds,
-        sourceLabel: `조회 상위 ${ruleCandidate.sourcePostIds.length}편에서 뽑음 · ${fmtDate(new Date().toISOString())}`,
+        sourceLabel: `조회 ${ruleCandidate.sampleCount}편을 비교해 상위 ${ruleCandidate.sourcePostIds.length}편에서 뽑음`,
+        sampleCount: ruleCandidate.sampleCount,
+        observedFrom: ruleCandidate.observedFrom,
+        observedTo: ruleCandidate.observedTo,
       });
       await mutateRules();
       setTurns((cur) => cur.map((t) => (t.id === turnId ? { ...t, ruleCandidate: undefined } : t)));
-      say("배웠습니다. 다음 생성부터 이 규칙을 참고합니다.");
+      say(decision === "accepted"
+        ? "배웠습니다. 다음 생성부터 이 규칙을 참고합니다."
+        : "배우지 않기로 남겼습니다. 다음 생성에는 쓰지 않습니다.");
+    } catch {
+      // 409·401·500·네트워크 실패를 삼키지 않는다. 후보를 남겨 다시 누를 수 있게 한다.
+      say("지금은 판단을 저장하지 못했습니다. 잠시 뒤 다시 눌러 주세요. 같은 후보를 이미 반대로 정했다면 학습 정보에서 되돌린 뒤 다시 정할 수 있습니다.");
     } finally {
       setSavingRuleFor(null);
     }
@@ -201,7 +275,7 @@ export function PerformanceChatPanel({
   }, [open]);
 
   return (
-    <section className="card p-region" aria-label="성과실 담당 대화" data-perf-chat data-chat-dock="performance">
+    <aside className="card p-region" aria-label="성과실 담당 대화창" data-perf-chat data-chat-dock="performance">
       <Stack gap={12}>
         <div className="flex items-center justify-between gap-stack">
           <div>
@@ -229,12 +303,20 @@ export function PerformanceChatPanel({
                       {turn.text}
                     </span>
                     {turn.ruleCandidate && (
+                      <p
+                        className="mt-stack-tight break-keep text-right text-caption text-subtle"
+                        data-rule-basis={turn.ruleCandidate.candidateId}
+                      >
+                        {ruleBasisLine(turn.ruleCandidate)}
+                      </p>
+                    )}
+                    {turn.ruleCandidate && (
                       <div className="mt-stack-tight flex justify-end gap-stack-tight">
-                        <Button size="sm" variant="primary" disabled={savingRuleFor === turn.id} onClick={() => void learnRule(turn.id, turn.ruleCandidate!)}>
-                          {savingRuleFor === turn.id ? "배우는 중" : "배우기"}
+                        <Button size="sm" variant="secondary" disabled={savingRuleFor === turn.id} onClick={() => void decideRule(turn.id, turn.ruleCandidate!, "accepted")}>
+                          {savingRuleFor === turn.id ? "저장 중" : "그렇게 해"}
                         </Button>
-                        <Button size="sm" variant="secondary" onClick={() => setTurns((cur) => cur.map((t) => (t.id === turn.id ? { ...t, ruleCandidate: undefined } : t)))}>
-                          넘어가기
+                        <Button size="sm" variant="secondary" disabled={savingRuleFor === turn.id} onClick={() => void decideRule(turn.id, turn.ruleCandidate!, "rejected")}>
+                          아니
                         </Button>
                       </div>
                     )}
@@ -277,7 +359,24 @@ export function PerformanceChatPanel({
             </ul>
           )}
         </div>
+
+        {learnedDecisions.length > 0 && (
+          <div className="border-t border-border pt-stack">
+            {/* 상세는 별도 창이 소유한다(DESIGN.md:159·160). 여기는 완료 피드백과 진입만 남긴다. */}
+            <p className="text-caption text-subtle" data-learning-decision-feedback>
+              최근 판단 {learnedDecisions.length}건을 학습 정보에 남겼습니다.
+            </p>
+            <Link
+              className="ds-touch-target mt-stack-tight inline-flex items-center"
+              href={`/learn?tenant_id=${encodeURIComponent(workspaceId || "")}`}
+              data-learning-decision-entry
+            >
+              학습 정보에서 보기
+            </Link>
+          </div>
+        )}
+
       </Stack>
-    </section>
+    </aside>
   );
 }

@@ -11,13 +11,13 @@
 //       psql "$DATABASE_URL" -c "delete from studio_free_regeneration_uses" &&
 //       node scripts/verify-free-quota-timezone-attack.mjs
 //   ※ 오늘 몫을 이미 썼으면 전부 409 가 나와 검증이 무의미하다. 먼저 비우고 돌려라.
-import fs from "node:fs";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const generationFixture = require("../tests/studio/generation-request.fixture.json");
 const B="http://localhost:3456", ST=process.env.STUDIO_DEV_BEARER_TOKEN;
 const W=process.env.STUDIO_DEV_WORKSPACE_IDS.split(",")[0].trim();
 const H=()=>({ "content-type":"application/json", authorization:`Bearer ${ST}`, "Idempotency-Key": crypto.randomUUID() });
-const t=fs.readFileSync("tests/studio/generation-fixture.ts","utf8");
-const m=t.match(/return \{([\s\S]*?)\n {2}\};\n\}/);
-const make=(tz)=>{const b=eval("({"+m[1].replace(/STUDIO_TEST_WORKSPACE_ID/g,JSON.stringify(W))+"})");b.workspace_id=W;b.learning_context.u2.time_zone=tz;return b;};
+const make=(tz)=>{const b=structuredClone(generationFixture);b.workspace_id=W;b.learning_context.u2.time_zone=tz;return b;};
 const create=async(tz)=>{const r=await fetch(`${B}/api/studio/v1/generations`,{method:"POST",headers:H(),body:JSON.stringify(make(tz))});const d=await r.json();return [r.status, d.data?.job_id];};
 const retry=async(id)=>{const r=await fetch(`${B}/api/studio/v1/regenerations/${id}`,{method:"POST",headers:H(),body:JSON.stringify({reason:"free_retry"})});return r.status;};
 

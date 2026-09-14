@@ -1,0 +1,106 @@
+/* 편집실 왼쪽 176px 목차 칸.
+   DESIGN.md §4 편집실 3영역 골격(v65)이 이 칸의 자리와 390 계약값(max-height 144px)을
+   이미 정했다. 여기서는 그 계약 안에서 항목 모양만 정의한다. 새 색·새 간격·새 radius를
+   만들지 않고 globals.css 토큰만 쓴다. */
+
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--stack-tight);
+}
+
+.item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--stack-tight);
+  align-items: center;
+  width: 100%;
+  min-height: var(--control-touch);
+  padding: var(--stack-tight);
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+}
+
+.item:hover {
+  background: var(--surface-2);
+}
+
+/* 선택 표현은 사이드바 관습(.sidebar-item.active)을 계승한다.
+   --accent-soft 배경 + 왼쪽 --accent 2px 선. 새 선택 표현을 발명하지 않는다. */
+.itemActive {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.itemHidden {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.thumb {
+  display: block;
+  width: 44px;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-chip);
+}
+
+.thumbFallback {
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  color: var(--text-subtle);
+  font-weight: 700;
+}
+
+.controls {
+  display: flex;
+  gap: var(--space-micro);
+  margin-top: var(--space-micro);
+}
+
+.control {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--control-touch);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--font-caption-size);
+  line-height: var(--font-caption-leading);
+  font-weight: 700;
+}
+
+.control:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.control:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+/* 편집실의 채운 강조색 버튼은 `발행실로 이동` 하나다(DESIGN.md §4).
+   여기 단추는 전부 테두리형 보조 단추다. */
+.action {
+  width: 100%;
+  min-height: var(--control-touch);
+  margin-top: var(--stack);
+  padding: 0 var(--stack);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-body-sm-size);
+  font-weight: 700;
+}
+
+.action:hover {
+  border-color: var(--accent);
+}

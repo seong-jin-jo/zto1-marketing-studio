@@ -151,10 +151,10 @@ export default function CalendarPage() {
               발행실로 돌아가기
             </Link>
           ) : null}
-          <button onClick={() => move(-1)} className="px-stack-tight py-micro rounded-chip bg-surface-2 hover:bg-surface-2 text-muted">←</button>
+          <button aria-label="이전 달" onClick={() => move(-1)} className="ds-touch-target inline-flex items-center justify-center px-stack-tight py-micro rounded-chip bg-surface-2 hover:bg-surface-2 text-muted">←</button>
           <span className="text-text font-medium w-28 text-center">{ym.y}년 {ym.m + 1}월</span>
-          <button onClick={() => move(1)} className="px-stack-tight py-micro rounded-chip bg-surface-2 hover:bg-surface-2 text-muted">→</button>
-          <button onClick={() => { setYm({ y: today.getFullYear(), m: today.getMonth() }); setSelected(null); }} className="ml-micro px-stack-tight py-micro rounded-chip bg-surface-2 hover:bg-surface-2 text-subtle text-caption">오늘</button>
+          <button aria-label="다음 달" onClick={() => move(1)} className="ds-touch-target inline-flex items-center justify-center px-stack-tight py-micro rounded-chip bg-surface-2 hover:bg-surface-2 text-muted">→</button>
+          <button onClick={() => { setYm({ y: today.getFullYear(), m: today.getMonth() }); setSelected(null); }} className="ds-touch-target inline-flex items-center justify-center ml-micro px-stack-tight py-micro rounded-chip bg-surface-2 hover:bg-surface-2 text-subtle text-caption">오늘</button>
         </div>
       </div>
 

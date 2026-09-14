@@ -40,7 +40,7 @@ describe("OSMU local public Supabase env recovery", () => {
   it("FE-AUTH-ENV-05 감독 프로세스는 복구 성공 뒤에만 로컬 Next 앱을 기동한다", () => {
     const supervisor = readFileSync(resolve(process.cwd(), "../scripts/osmu-supervisor.sh"), "utf8");
     const recovery = supervisor.indexOf("recover-osmu-local-public-env.mjs");
-    const nextDev = supervisor.indexOf("npx next dev -p 3456", recovery);
+    const nextDev = supervisor.indexOf("npm run dev -- -p 3456", recovery);
     expect(recovery).toBeGreaterThan(-1);
     expect(nextDev).toBeGreaterThan(recovery);
     expect(supervisor.slice(recovery, nextDev)).toContain("return 1");

@@ -66,6 +66,6 @@ export async function POST(request: Request) {
     const data = await resp.json().catch(() => ({}));
     return Response.json({ ok: true, promoted: { draft_id, platforms, scheduled_at: scheduled_at ?? null }, gateway: data });
   } catch (e) {
-    return Response.json({ ok: false, error: `게이트웨이 연결 실패: ${String(e)}` }, { status: 502 });
+    return Response.json({ error: `게이트웨이 연결 실패: ${String(e)}` }, { status: 502 });
   }
 }

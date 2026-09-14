@@ -60,9 +60,10 @@ const UNKNOWN_EVENT = "unknown_event";
 export const AUTH_REASONS = [
   "osmu_token_db_unreachable",
   "tenant_status_db_unreachable",
+  "tenant_access_record_failed",
   "supabase_jwt_verify_unreachable",
 ] as const;
-export const AI_FAILURE_REASONS = ["timeout", "provider_unavailable", "output_limit", "spawn_failed", "exit_nonzero", "stdin_failed", "unknown"] as const;
+export const AI_FAILURE_REASONS = ["timeout", "provider_unavailable", "provider_rate_limited", "output_limit", "spawn_failed", "exit_nonzero", "stdin_failed", "unknown"] as const;
 export const PUBLISH_FAILURE_REASONS = ["http_error", "network_error", "unsupported_platform", "auth_invalid", "decrypt_failed", "unknown"] as const;
 export const OPERATOR_ACTIONS = [
   "pause_user",
@@ -335,6 +336,7 @@ export function classifyPublishFailure(error: unknown): { reason: string; httpSt
 // 고정 코드로만 변환한다(이중 방어 — 메시지 포맷이 바뀌어도 유출 표면이 늘지 않는다).
 export function classifySharedAiFailure(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
+  if (/provider rate limit/i.test(msg)) return "provider_rate_limited";
   if (/timeout/i.test(msg)) return "timeout";
   if (/exceeded \d+ bytes/i.test(msg)) return "output_limit";
   if (/spawn 실패|ENOENT/i.test(msg)) return "spawn_failed";

@@ -4,6 +4,32 @@
 INSERT INTO tenants (slug, name) VALUES ('seed-a', 'Seed A'), ('seed-b', 'Seed B')
   ON CONFLICT (slug) DO NOTHING;
 
+-- 로컬 네 방 E2E가 .env.local과 검증 스크립트에서 공유하는 고정 작업 공간.
+-- apply-schema.sh --seed 뒤 이 행이 없으면 생성 장부와 임시 고객 토큰이 모두 FK 위반으로
+-- 첫 요청에서 끊기므로, 테스트 DB 초기화가 사용자 흐름 fixture까지 복원해야 한다.
+INSERT INTO tenants (id, slug, name, status, tier, shared_cli_approved_at)
+VALUES ('cd1d0a40-540d-4524-9b49-bf2445d82182', 'qa-four-room', '네 방 검증 작업 공간', 'active', 'team', now())
+  ON CONFLICT (id) DO UPDATE
+  SET name = EXCLUDED.name,
+      status = EXCLUDED.status,
+      tier = EXCLUDED.tier,
+      shared_cli_approved_at = COALESCE(tenants.shared_cli_approved_at, EXCLUDED.shared_cli_approved_at);
+
+-- 같은 고정 작업 공간으로 실제 생성 E2E를 반복하면 월 사용량이 제품 한도까지 누적된다.
+-- --seed는 CI와 로컬 QA fixture 복원 전용이므로 현재 UTC 월의 공유 AI 사용량도 함께 초기화한다.
+INSERT INTO usage_quotas (tenant_id, period, generations_included, generations_used)
+VALUES (
+  'cd1d0a40-540d-4524-9b49-bf2445d82182',
+  to_char(timezone('UTC', now()), 'YYYY-MM'),
+  100,
+  0
+)
+ON CONFLICT (tenant_id) DO UPDATE
+SET period = EXCLUDED.period,
+    generations_included = EXCLUDED.generations_included,
+    generations_used = 0,
+    updated_at = now();
+
 -- seed-a: short draft 1행(isolation drafts 테스트가 소유 테넌트를 이걸로 탐색)
 INSERT INTO drafts (tenant_id, idea, payload, status)
   SELECT id, 'seed idea', '{"kind":"short","hook":"seed"}'::jsonb, 'draft'

@@ -1,0 +1,9 @@
+STAMP
+created_at: 2026-09-03 00:22 KST
+model: gpt-codex/gpt-5.6
+agent: product-designer
+room: 생성실
+state: 기본
+viewport: 390x844
+source: docs/prototype/osmu-v68-create-performance-hub-gpt-codex-20260903-0022.html
+clean: browser chrome, review controls, stamp, state toggles, user options, and explanatory overlays removed

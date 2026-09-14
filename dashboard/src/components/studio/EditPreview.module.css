@@ -65,3 +65,53 @@
 .bottom26 {
   bottom: 26%;
 }
+
+.cardTopLeft {
+  left: 8%;
+  top: 8%;
+}
+
+.cardTopCenter {
+  left: 50%;
+  top: 8%;
+  transform: translateX(-50%);
+}
+
+.cardTopRight {
+  right: 8%;
+  top: 8%;
+}
+
+.cardCenterLeft {
+  left: 8%;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.cardCenter {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.cardCenterRight {
+  right: 8%;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.cardBottomLeft {
+  bottom: 8%;
+  left: 8%;
+}
+
+.cardBottomCenter {
+  bottom: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.cardBottomRight {
+  bottom: 8%;
+  right: 8%;
+}

@@ -8,6 +8,10 @@ type Sql = ReturnType<typeof postgres>;
 async function tryConnect(): Promise<Sql | null> {
   const url = getDatabaseUrl();
   if (!url) return null;
+  // 검증 대상(src/lib/db.ts)은 process.env.DATABASE_URL 만 읽는다. 그 값이 없으면
+  // 테스트만 파일에서 URL 을 찾아 붙고 코드는 "미설정"으로 죽는다. 같은 DB 를 보지
+  // 못하는 상태이므로 이 판은 통합 검증이 성립하지 않는다. 조용히 건너뛴다.
+  if (!process.env.DATABASE_URL) return null;
   let sql: Sql | null = null;
   try {
     sql = postgres(url, { max: 2, idle_timeout: 5, connect_timeout: 8, onnotice: () => {} });

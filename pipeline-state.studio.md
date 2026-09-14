@@ -19,7 +19,7 @@ project: openclaw-auto-studio
 line: studio
 repo: /Users/sj/sj_code_master/openclaw-auto
 pipeline_version: 1
-current_stage: qa           # 2026-08-31 R-S16 회장 세션 발화 전건 대조 QA 착수. canonical 상태를 QA 진행중으로 전환.
+current_stage: eng-design   # 회장 확정 2026-08-18: studio-service는 헤드리스라 기획 이후 기술설계 진행 중. 정식 파이프라인.
 approved_stages: []
 approved_artifacts:
   prd:            { version: 1.2.1, path: studio/docs/prd-studio-service-v1.2.1-gpt-codex.md }
