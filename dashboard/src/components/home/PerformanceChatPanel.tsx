@@ -367,7 +367,7 @@ export function PerformanceChatPanel({
               최근 판단 {learnedDecisions.length}건을 학습 정보에 남겼습니다.
             </p>
             <Link
-              className="mt-stack-tight"
+              className="ds-touch-target mt-stack-tight inline-flex items-center"
               href={`/learn?tenant_id=${encodeURIComponent(workspaceId || "")}`}
               data-learning-decision-entry
             >

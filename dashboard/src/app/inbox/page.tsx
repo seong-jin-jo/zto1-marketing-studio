@@ -207,7 +207,7 @@ export default function InboxPage() {
 
       {/* 제품 소스(제품-grounded): repo를 연결하면 "방금 만든 것"을 자동 홍보하는 글이 생성됨 */}
       <div className="mb-pad-inset text-caption">
-        <button onClick={() => setShowSrc((v) => !v)} className="text-subtle hover:text-muted">
+        <button onClick={() => setShowSrc((v) => !v)} className="ds-touch-target inline-flex items-center text-left text-subtle hover:text-muted">
           {psrc?.owner ? `제품 내용: ${psrc.owner}/${psrc.repo}/${psrc.path}` : "제품 내용 연결 (선택. 최근 변경 내용 반영)"}
           <span className="ml-micro text-subtle">{showSrc ? "▲" : "▼"}</span>
         </button>
@@ -227,7 +227,7 @@ export default function InboxPage() {
 
       {/* 브랜드 보이스 슬라이더: 보이고 조절 가능해 신뢰. 생성 톤 제어 */}
       <div className="mb-pad-inset text-caption">
-        <button onClick={() => setShowTone((v) => !v)} className="text-subtle hover:text-muted">
+        <button onClick={() => setShowTone((v) => !v)} className="ds-touch-target inline-flex items-center text-left text-subtle hover:text-muted">
           보이스 톤 {tone ? `(격식${100 - tone.formal}·유머${tone.humor}·열정${tone.energy})` : ""}
           <span className="ml-micro text-subtle">{showTone ? "▲" : "▼"}</span>
         </button>
@@ -388,7 +388,7 @@ export default function InboxPage() {
             <select
               value={scheduleHours}
               onChange={(e) => setScheduleHours(Number(e.target.value))}
-              className="bg-surface-2 text-muted text-caption p-stack-tight rounded-chip border border-border"
+              className="min-h-control-touch bg-surface-2 text-muted text-caption p-stack-tight rounded-chip border border-border"
             >
               <option value={0}>지금(다음 발행 주기)</option>
               <option value={2}>2시간 뒤</option>

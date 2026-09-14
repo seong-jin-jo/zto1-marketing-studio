@@ -2153,13 +2153,16 @@ export default function StudioPage() {
                       headerRight={
                         <div className="flex flex-wrap items-center justify-end gap-stack-tight">
                           {PUBLISH_SUPPORTED.has(platform) ? (
-                            <label className="flex items-center gap-micro text-caption text-muted">
-                              <input aria-label={`${LABEL[platform]} 발행`} type="checkbox" checked={Boolean(includes[platform])} disabled={!accountsLoaded || (accountsByPlatform[platform] || []).length === 0} onChange={(event) => setIncludes((current) => ({ ...current, [platform]: event.target.checked }))} />
+                            /* DESIGN.md 발행실 절: 「선택 체크의 보이는 표식은 20px, 실제
+                               조작면은 44px이다」. 표식은 그대로 두고 label 을 44px 조작면으로
+                               쓴다(2026-09-14 실측: 390 에서 체크 7개가 13x13 이었다). */
+                            <label className="ds-touch-target flex min-h-control-touch items-center gap-micro px-stack-tight text-caption text-muted">
+                              <input aria-label={`${LABEL[platform]} 발행`} type="checkbox" className="h-5 w-5 shrink-0" checked={Boolean(includes[platform])} disabled={!accountsLoaded || (accountsByPlatform[platform] || []).length === 0} onChange={(event) => setIncludes((current) => ({ ...current, [platform]: event.target.checked }))} />
                               발행
                             </label>
                           ) : (
-                            <label className="flex items-center gap-micro text-caption text-warning">
-                              <input aria-label={`${LABEL[platform]} 발행 미지원`} type="checkbox" checked={false} disabled />
+                            <label className="ds-touch-target flex min-h-control-touch items-center gap-micro px-stack-tight text-caption text-warning">
+                              <input aria-label={`${LABEL[platform]} 발행 미지원`} type="checkbox" className="h-5 w-5 shrink-0" checked={false} disabled />
                               미지원
                             </label>
                           )}

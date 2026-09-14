@@ -70,10 +70,13 @@ export function PrivacySettingsLink() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted || !gaEnabled) return null;
+  // 이 단추는 `fixed` 라 문서 흐름 밖에 있다. 누르는 면을 44px 로 키워도 바닥글이 두꺼워지거나
+  // 본문이 밀리지 않는다. 그래서 하한 예외로 두지 않고, 글자 크기(text-caption)는 그대로 둔 채
+  // 히트 영역만 넓혔다(2026-09-14 배포 실측 66x18 → 계약 위반).
   return (
     <button
       onClick={openConsentSettings}
-      className="fixed bottom-1 left-1 text-caption text-subtle underline z-40 opacity-70 hover:opacity-100"
+      className="ds-touch-target fixed bottom-1 left-1 inline-flex items-center justify-center px-stack-tight text-caption text-subtle underline z-40 opacity-70 hover:opacity-100"
     >
       개인정보 설정
     </button>

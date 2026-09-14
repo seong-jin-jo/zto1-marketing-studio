@@ -7,6 +7,7 @@ import { ChannelsSettings } from "@/components/settings/ChannelsSettings";
 import { ChannelConnect } from "@/components/studio/ChannelConnect";
 import { TenantTokensSettings } from "@/components/settings/TenantTokensSettings";
 import { useUIStore } from "@/store/ui-store";
+import { Button } from "@/components/shared/Button";
 import { AIEngine } from "@/components/settings/AIEngine";
 import { AiKeySettings } from "@/components/settings/AiKeySettings";
 import { LlmModel } from "@/components/settings/LlmModel";
@@ -51,7 +52,7 @@ export default function SettingsPage() {
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key)}
-            className={`px-stack py-stack-tight text-body-sm rounded-chip ${activeTab === t.key ? "bg-accent text-accent-fg" : "text-subtle hover:bg-surface-2"}`}
+            className={`ds-touch-target inline-flex items-center justify-center px-stack py-stack-tight text-body-sm rounded-chip ${activeTab === t.key ? "bg-accent text-accent-fg" : "text-subtle hover:bg-surface-2"}`}
           >
             {t.label}
           </button>
@@ -66,8 +67,8 @@ export default function SettingsPage() {
               <h3 className="text-body-sm font-semibold text-accent">OSMU 채널 OAuth {activeWorkspace?.name ? `· ${activeWorkspace.name}` : ""}</h3>
               <p className="text-caption text-subtle mt-micro">활성 워크스페이스의 발행용 채널을 공식 로그인으로 연결합니다. 토큰 원문은 서버에 암호화 저장되고 화면에 표시하지 않습니다.</p>
             </div>
-            <button onClick={() => setShowConnect(true)} disabled={!activeWorkspace}
-              className="px-stack py-stack-tight text-caption bg-accent text-accent-fg rounded-control disabled:opacity-50 whitespace-nowrap">채널 OAuth 연결</button>
+            <Button variant="primary" size="sm" onClick={() => setShowConnect(true)} disabled={!activeWorkspace}
+              className="px-stack whitespace-nowrap">채널 OAuth 연결</Button>
           </div>
           <ChannelsSettings />
         </>

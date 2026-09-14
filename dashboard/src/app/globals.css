@@ -165,7 +165,10 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--font-
   outline-offset: 2px;
 }
 
-.sidebar-item { transition: all 0.15s; color: var(--text-muted); }
+/* DESIGN.md 부품표가 사이드바 항목 최소 높이를 44px 로 못 박았는데 실렌더는 32px 이었다
+   (2026-09-14 실측: 1440 에서 채널·조사·자산 항목 20개가 전부 55x32). 항목은 `flex` 라
+   `min-height` 만 걸면 글자 크기를 그대로 두고 누르는 면만 커진다. */
+.sidebar-item { transition: all 0.15s; color: var(--text-muted); min-height: var(--control-touch); }
 .sidebar-item:hover { background: var(--surface-2); }
 .sidebar-item.active { background: var(--accent-soft); color: var(--text); border-right: 2px solid var(--accent); }
 
