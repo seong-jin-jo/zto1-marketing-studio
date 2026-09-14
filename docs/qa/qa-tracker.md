@@ -2,6 +2,18 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-15 04시 17분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 96개 커밋 | 돈, 격리, 동시성, 부분 실패, 무기록 삭제, 확정 요구 이탈 공격 리뷰 | CODE-REVIEW-20260915-01 | BLOCK | MAJOR 43건, MINOR 7건. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-15.md` |
+| 실제 고객 인증 경계 | 고객 허용 생성 경로와 공유 계정 정보 노출 | CODE-REVIEW-20260915-02 | NG | 임시 고객 토큰으로 이미지와 카드뉴스 빈 본문은 각각 HTTP 400으로 핸들러 도달. Higgsfield 상태는 HTTP 200과 `email`, `plan`, `credits`, `raw` 키 노출. 값은 기록하지 않았고 임시 토큰 폐기 HTTP 200 확인 |
+| 기본 제품 흐름 | 지정 작업 공간의 localhost 실제 요청 | CODE-REVIEW-20260915-03 | PASS | health HTTP 200과 DB up, 기본 흐름 11/11, Studio v1 14/14 |
+| dashboard 회귀 | 전체 테스트와 TypeScript | CODE-REVIEW-20260915-04 | PASS | Vitest 353파일과 2,293건 통과, 3건 제외. `npx tsc --noEmit` 종료 0 |
+| OpenClaw 빌드 회귀 | 최근 변경된 tsdown 자원 정책 표적 테스트 | CODE-REVIEW-20260915-05 | NG | 26건 중 21 통과, 5 실패. heap 기대값 3건과 새 `RAYON_NUM_THREADS` 환경값 2건 불일치 |
+
+제품 코드는 수정하지 않았다. 격리와 비용 경계, 발행 멱등성, lease fencing, 복구 상태, v63 화면 계약, 증거 신뢰성에 MAJOR가 남아 머지와 배포를 차단한다.
+
 ## 2026-09-15 03시 55분 KST · 성과 시계열 갭 재확인 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
