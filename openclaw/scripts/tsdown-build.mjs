@@ -25,7 +25,24 @@ const DEFAULT_HEARTBEAT_MS = 30_000;
 const DEFAULT_TSDOWN_MAX_OLD_SPACE_MB = 12288;
 const DEFAULT_WINDOWS_TSDOWN_MAX_OLD_SPACE_MB = 8192;
 const MIN_TSDOWN_MAX_OLD_SPACE_MB = 2048;
-const TSDOWN_CGROUP_MEMORY_HEADROOM_MB = 768;
+// 빌드가 아닌 것들 몫으로 남겨 둘 메모리.
+//
+// 종전 768MB 는 "이 기계는 빌드 전용" 이라는 가정이다. 그 가정이 안 맞는 곳이 있다.
+// OSMU 배포 머신(marketing VM)은 총 7,941MB 인데 서비스 컨테이너 8개와 운영체제가
+// 상시 약 1,800MB 를 쓰고, 그 위에서 도커 데몬과 BuildKit 이 빌드를 돌린다.
+//
+// 2026-09-14 실측. 그 머신에서 게이트웨이 이미지 하나를 직렬로 빌드했다. 768MB 여유로
+// 계산된 힙 상한은 7,173MB(= 7,941 - 768) 였고, 사용 메모리가 4,009 → 5,562 → 7,166 →
+// 7,699MB 로 올라간 뒤 **머신이 통째로 응답을 멈췄다.** SSH 도 끊겼다. 그 전 배포들도
+// 같은 이유로 exit 137 과 exit 255 로 죽었고 한 번은 CI 러너까지 같이 내려갔다.
+//
+// Dockerfile 에서 NODE_OPTIONS 를 낮춰도 소용없다. 아래 normalizeMaxOldSpaceSizeMb 가
+// 이 값보다 작은 설정을 다시 올리기 때문이다. 그래서 여기가 진짜 손잡이다.
+//
+// 3,584MB 를 남기면 위 머신에서 힙 상한이 약 4,357MB 가 되고 운영체제와 컨테이너 몫이
+// 남는다. 메모리가 큰 기계는 영향이 없다. 상한이 min(12288, 총량 - 여유) 라서 총량이
+// 15.8GB 를 넘으면 12,288MB 로 그대로 걸린다.
+const TSDOWN_CGROUP_MEMORY_HEADROOM_MB = 3584;
 const CGROUP_MEMORY_LIMIT_PATHS = [
   "/sys/fs/cgroup/memory.max",
   "/sys/fs/cgroup/memory/memory.limit_in_bytes",

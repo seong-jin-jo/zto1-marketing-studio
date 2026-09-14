@@ -52,6 +52,14 @@ const request = async (pathname, options = {}) => fetch(`${baseUrl}${pathname}`,
   },
   signal: AbortSignal.timeout(Math.max(1, Math.min(15_000, deadlineAt - Date.now()))),
 });
+const cleanupRequest = async (pathname, options = {}) => fetch(`${baseUrl}${pathname}`, {
+  ...options,
+  headers: {
+    authorization: `Bearer ${operatorToken}`,
+    ...(options.headers || {}),
+  },
+  signal: AbortSignal.timeout(60_000),
+});
 
 let issuedTokenId = "";
 let browser;
@@ -220,13 +228,15 @@ try {
   fs.writeFileSync(settingsPath, originalSettings);
   if (issuedTokenId) {
     try {
-      const revoked = await request(`/api/tenant-tokens?id=${encodeURIComponent(issuedTokenId)}`, { method: "DELETE" });
-      if (!revoked.ok) console.error(`임시 고객 토큰 폐기 실패: HTTP ${revoked.status}`);
+      const revoked = await cleanupRequest(`/api/tenant-tokens?id=${encodeURIComponent(issuedTokenId)}`, { method: "DELETE" });
+      if (!revoked.ok) {
+        process.exitCode = 1;
+        console.error(`임시 고객 토큰 폐기 실패: HTTP ${revoked.status}`);
+      }
     } catch (error) {
+      process.exitCode = 1;
       console.error(`임시 고객 토큰 폐기 실패: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   await closeBrowserWithin(5000);
 }
-
-process.exit(0);

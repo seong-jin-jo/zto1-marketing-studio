@@ -2,6 +2,47 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 19시 18분 KST · 성과 시계열 갭 재실사 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사를 현재 코드와 대조해 기본 흐름의 잔여 미구현을 선별 | GAP-HISTORY-20260914-1902-01 | NG | 지금도 없는 항목은 게시물별 성과 이력과 재현 가능한 30일 비교다. 지정 작업 공간 localhost `GET /api/metrics`는 HTTP 200이지만 최상위 키는 `coverage`, `posts`뿐이고 `history`, `comparison`은 없다. |
+| DB 실물 | 게시물별 누계의 과거 시점 보존 여부 | GAP-HISTORY-20260914-1902-02 | NG | live DB `information_schema`에서 이력 계열 테이블은 채널 팔로워용 `growth_metrics`뿐이다. `published_posts`는 최신 `views`, `likes`, `replies`, `reposts`, `metrics_at`만 보존한다. |
+| pipeline build 허용 범위 | 승인된 DB와 API 계약 안에서만 구현 | GAP-HISTORY-20260914-1902-03 | BLOCK | `pipeline-state.osmu.md`의 현재 공정은 `qa`, 상태는 승인 아님이다. snapshot 저장 단위, 멱등 키, 보존 기간과 30일 비교식의 승인 계약이 없어 제품 소스와 migration을 수정하지 않았다. |
+| 기존 기본 흐름 | 생성, 편집, 발행 큐, 성과와 생성실 재인계 | GAP-HISTORY-20260914-1902-04 | PASS | localhost 기본 흐름 11/11, Studio v1 14/14를 실제 요청으로 관찰했다. |
+| 필수 회귀 | test, TypeScript, production build, 디자인 lint | GAP-HISTORY-20260914-1902-05 | PASS | Vitest 351파일과 2,291건 통과, 조건부 3건 제외. TypeScript 종료 0, build 184/184, 디자인 토큰 위반 0. |
+
+이번 사용자 요청 원문을 작업 기준으로 사용했다. 제품 소스, migration과 테스트는 수정하지 않았다. 현재 누계값을 30일 값으로 재명명하거나 JSON에 이력을 임의 적재하면 재현성과 격리 계약을 증명할 수 없다. 기술설계에서 계약을 승인하고 build 공정을 다시 연 뒤 구현해야 한다. 운영 배포와 실제 외부 provider 기간 조회는 미검증이다.
+
+## 2026-09-14 18시 40분 KST · 네 방 기본 흐름 v9 기능 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 네 방 관통 | FLOW-API-V9 | PASS | localhost 기본 흐름 11/11. 후보 3장, 편집, 순서 변경, 삭제와 복원, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계를 직접 관찰 |
+| R08, R19, R207 | 네 방 렌더와 390, 768, 1024, 1440 실제 이동 | FLOW-UI-V9 | 기능 PASS, 디자인 NG | 단면 4/4, 20개 방 화면과 성과실에서 생성실 복귀 5/5. 가로 넘침, 가린 모달, 401, 콘솔 오류 0건. 원본 `logs/diff/osmu-four-room-flow-20260914-1819/captures/` |
+| R27, R168 | Studio v1 생성과 무료 다시 만들기 경계 | STUDIO-V1-V9 | PASS | localhost 실요청 14/14 |
+| R104 | 검증 자격증명을 남기지 않음 | FLOW-PROBE-CLEANUP-V9 | 수정 후 PASS | 화면 검증과 독립된 60초 폐기 요청과 실패 종료 코드 1 계약을 추가했다. 회귀 3파일 6건, 실앱 단면 4/4, 실행 전후 활성 probe 토큰 0건. 과거 활성 테스트 토큰 2건도 폐기해 최종 잔여 0건. 커밋 `4736aa9f` |
+| 필수 회귀 | test, TypeScript, build, seed, health, 디자인 lint | FLOW-REGRESSION-V9 | PASS | Vitest 351파일과 2,291건 통과, 조건부 3건 제외. TypeScript 종료 0, build 184/184, health HTTP 200과 DB up, seed 적용, 디자인 토큰 위반 0 |
+| R205, R206 | v63 디자인 계승 | DESIGN-V9 | NG | v63 원본과 현재 16개 방과 폭 조합의 주축, 요소 순서, 열 수, 정렬과 여백, 표시 여부, 글꼴 단계, 버튼 위계가 모두 불일치. 과제 v63과 pipeline 승인 v68 핀도 충돌 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 승계 | REQ-ALL-V9 | 이월 | 기존 전건 추적표 유지. 운영 배포와 외부 채널 실발행은 이번 기능 PASS에 포함하지 않음 |
+
+첫 단면 실행은 4/4 뒤 토큰 폐기 제한시간 초과를 출력하면서 종료 코드 0을 반환했다. 원인은 화면 탐색과 토큰 폐기가 하나의 전체 마감시각을 공유한 구조와 강제 성공 종료였다. 두 검증기의 정리 요청을 독립시키고 실패를 프로세스 실패로 바꾼 뒤 실앱과 회귀를 다시 통과시켰다. 상세는 `docs/qa/osmu-four-room-basic-flow-v9-gpt-codex.md`다. localhost 네 방 기능만 PASS이며 디자인 정합, 운영 배포, 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다.
+
+## 2026-09-14 17시 47분 KST · API 읽기 경로 v10 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98 | 성과와 학습 읽기를 다음 생성 판단으로 되돌림 | API-READ-ALL-V10 | PASS | localhost 고유 경로 105개, GET 105건과 HEAD 1건 실호출. 정상 92, 계약상 거절 14, 500·redirect·timeout·예상 밖 거절 0. 원본 logs/diff/osmu-api-read-sweep-20260914-v10-authoritative.json |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY-V10 | PASS | 격리 탐침은 계약 401과 안전한 no-tenant 본문. 401 인증 필요 문구 노출 0, 예상 밖 4xx·5xx 0 |
+| R200, R207 | 성과와 Studio 학습 정보 읽기 | API-LEARNING-READ-V10 | PASS | /api/metrics, /api/performance/learned-rules, /api/studio/learning HTTP 200 |
+| 검사 증거 울타리 | HEAD·3xx·import chain·서버 교체를 놓치지 않음 | API-SWEEP-FENCE-V10 | 수정 후 PASS | GET 105와 HEAD 1 별도 실행, 2xx만 정상, 전체 src·scripts 해시와 listener PID 전후 동일. 커밋 a6924427, 3be8459b |
+| 필수 회귀 | 전체 test, TypeScript, build, seed, health, 두 E2E, 디자인 lint | API-READ-REGRESSION-V10 | PASS | 350파일·2,289건 통과·3건 제외, tsc 0, build 184/184, health 200, 기본 11/11, Studio 14/14, lint 위반 0 |
+| 원장 232건 중 이번 범위 밖 | 회장 확정 요구 전건 승계 | REQ-ALL-V10 | 이월 | docs/qa/osmu-api-read-sweep-v10-gpt-codex.md에 232개 요청 번호를 전건 표로 승계 |
+
+권위 실행 전후 listener PID는 33531, dashboard/src/**/*와 dashboard/scripts/**/* 합성 SHA-256은 a7cea815adcf5a80359662c4c8a382b53b1c2c3bf3d7e3458ee270268b2e3e7f로 동일했다. 좁은 해시와 300초 예산 소진 실행은 권위 증거에서 제외했다. API 읽기 범위만 PASS이며 v63과 v68 승인 핀 충돌, 3폭 디자인 정합 NG, 운영 배포와 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다.
+
+⛔ 검증실패 보고: 상위 verify-agent-quality.sh는 배포 환경 접촉 증거 0건으로 종료 코드 2와 함께 반려했다. localhost 명시 범위는 관찰 완료했지만 제품 전체 PASS로 전환하지 않는다.
+
 ## 2026-09-14 16시 16분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

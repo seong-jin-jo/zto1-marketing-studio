@@ -20,6 +20,11 @@ const request=(pathname,options={})=>fetch(`${base}${pathname}`,{
   headers:{authorization:`Bearer ${operatorToken}`,...(options.body?{"content-type":"application/json"}:{}),...(options.headers||{})},
   signal:AbortSignal.timeout(Math.max(1,Math.min(15000,deadlineAt-Date.now()))),
 });
+const cleanupRequest=(pathname,options={})=>fetch(`${base}${pathname}`,{
+  ...options,
+  headers:{authorization:`Bearer ${operatorToken}`,...(options.headers||{})},
+  signal:AbortSignal.timeout(60_000),
+});
 
 let issuedTokenId="";
 let b;
@@ -97,9 +102,13 @@ try {
   if(b) await Promise.race([b.close(),new Promise((resolve)=>setTimeout(resolve,5000))]);
   if(issuedTokenId) {
     try {
-      const revoked=await request(`/api/tenant-tokens?id=${encodeURIComponent(issuedTokenId)}`,{method:"DELETE"});
-      if(!revoked.ok) console.error(`임시 고객 토큰 폐기 실패: HTTP ${revoked.status}`);
+      const revoked=await cleanupRequest(`/api/tenant-tokens?id=${encodeURIComponent(issuedTokenId)}`,{method:"DELETE"});
+      if(!revoked.ok) {
+        process.exitCode=1;
+        console.error(`임시 고객 토큰 폐기 실패: HTTP ${revoked.status}`);
+      }
     } catch(error) {
+      process.exitCode=1;
       console.error(`임시 고객 토큰 폐기 실패: ${error instanceof Error?error.message:String(error)}`);
     }
   }

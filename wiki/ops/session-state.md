@@ -1,3 +1,27 @@
+## 2026-09-14 19시 18분 - 성과 시계열 갭 재실사 BLOCK
+
+이번 사용자 요청 원문을 handoff basis로 사용했다. 현재 실행 pane은 `osmu-gapfill091419:0.0`이며 다른 pane과 공유 작업 트리는 동시 변경 확인에만 사용했다.
+
+두 2026-08-28 갭 감사, 현재 코드, live DB와 localhost를 대조한 결과 기본 흐름의 잔여 미구현은 게시물별 성과 snapshot과 재현 가능한 30일 비교 하나다. metrics는 HTTP 200이지만 `coverage`, `posts`만 반환하고 DB는 게시물별 최신 누계만 보존한다.
+
+제품 소스, migration과 테스트는 수정하지 않았다. 현재 pipeline은 QA이고 snapshot 단위, 멱등 키, 보존 기간과 비교식의 승인된 DB 및 API 계약이 없다. localhost 기본 흐름 11/11, Studio v1 14/14, Vitest 351파일과 2,291건, TypeScript, production build 184/184와 디자인 lint를 통과했다.
+
+다음 소유자는 컨트롤러와 tech-architect다. 기술설계를 승인하고 build 공정을 다시 연 뒤 code-builder가 구현한다. 운영 배포와 실제 외부 provider 기간 조회는 미검증이다.
+
+## 2026-09-14 17시 47분 - API 읽기 경로 v10 범위 PASS, 제품 전체 NG
+
+회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이고 pipeline-state.osmu.md는 착수 때 이미 current_stage: qa라 단계와 승인 상태를 바꾸지 않았다.
+
+현재 공유 소스의 읽기 Route Handler 고유 경로 105개에서 GET 105건과 HEAD 1건, 총 106건을 localhost:3456에 실제 요청했다. 정상 92, 계약상 거절 14, HTTP 500·redirect·timeout·예상 밖 거절은 0이다. 권위 실행 전후 listener PID는 33531, 전체 dashboard/src와 dashboard/scripts 합성 SHA-256은 a7cea815adcf5a80359662c4c8a382b53b1c2c3bf3d7e3458ee270268b2e3e7f로 동일했다. 원본은 logs/diff/osmu-api-read-sweep-20260914-v10-authoritative.json이다.
+
+GET만 호출하고 3xx까지 정상으로 셀 수 있던 검사기를 HEAD 별도 실행, 2xx 전용 정상, 정확한 거절 allowlist, 전체 소스 해시와 서버 PID 울타리로 고쳤다. 커밋은 a6924427과 3be8459b다. 제품 Route Handler 고장은 없어 제품 코드는 수정하지 않았다.
+
+전체 Vitest 350파일과 2,289건 통과, 조건부 제외 3건, TypeScript, production build 184/184, seed, health HTTP 200, 기본 흐름 11/11, Studio v1 14/14와 디자인 lint가 통과했다. 상세는 docs/qa/osmu-api-read-sweep-v10-gpt-codex.md다. API 읽기 범위만 PASS이며 v63과 v68 승인 핀 충돌, 디자인 정합 NG, 운영 배포와 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다.
+
+⛔ 검증실패 보고: 상위 verify-agent-quality.sh는 배포 환경 접촉 증거 0건으로 종료 코드 2와 함께 반려했다. 명시된 localhost 범위 밖 운영 배포는 건드리지 않았고 이 결과를 제품 전체 PASS로 확대하지 않는다.
+
+다음 소유자는 컨트롤러와 product-designer다. API 읽기 범위는 추가 제품 코드 조치가 없다. 디자인 승인 핀을 단일화하고 3폭 정합을 맞춘 뒤 운영 버전에서 같은 106건을 재검증해야 한다.
+
 ## 2026-09-14 16시 16분 - 최근 24시간 코드 공격 재리뷰 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. 최근 24시간 범위 `e65a1d1b..22c27bdb`의 커밋 70개와 파일 162개를 사용자 지정 v63 프로토타입, 확정 요구 대장, `DESIGN.md`, pipeline 승인 핀과 대조했다. 제품 코드는 수정하지 않았다.

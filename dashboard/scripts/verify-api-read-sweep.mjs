@@ -34,7 +34,11 @@ if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
 if (!Number.isFinite(totalTimeoutMs) || totalTimeoutMs <= 0) throw new Error("API_SWEEP_TOTAL_TIMEOUT_MS는 0보다 큰 숫자여야 합니다");
 if (!Number.isInteger(sweepConcurrency) || sweepConcurrency < 1 || sweepConcurrency > 12) throw new Error("API_SWEEP_CONCURRENCY는 1부터 12 사이 정수여야 합니다");
 
-const GET_EXPORT = /export\s+(?:async\s+)?function\s+GET\b|export\s+const\s+GET\b/;
+const READ_METHODS = ["GET", "HEAD"];
+const READ_EXPORT = Object.fromEntries(READ_METHODS.map((method) => [
+  method,
+  new RegExp(`^\\s*export\\s+(?:async\\s+)?function\\s+${method}\\b|^\\s*export\\s+const\\s+${method}\\b`, "m"),
+]));
 
 async function collectRouteFiles(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -44,10 +48,11 @@ async function collectRouteFiles(directory) {
     if (entry.isDirectory()) files.push(...await collectRouteFiles(fullPath));
     if (entry.isFile() && entry.name === "route.ts") {
       const source = await fs.readFile(fullPath, "utf8");
-      if (GET_EXPORT.test(source)) files.push(fullPath);
+      const methods = READ_METHODS.filter((method) => READ_EXPORT[method].test(source));
+      if (methods.length) files.push({ file: fullPath, methods });
     }
   }
-  return files.sort();
+  return files.sort((left, right) => left.file.localeCompare(right.file));
 }
 
 const dynamicValues = {
@@ -105,28 +110,93 @@ function redact(text) {
   return safe.replace(/(access_token|refresh_token|api[_-]?key|secret|token)\s*[=:]\s*[^\s,}"']+/gi, "$1=[REDACTED]");
 }
 
-function classify(status) {
-  if (status >= 200 && status < 400) return "정상";
-  if ([400, 401, 403, 404, 405, 409, 410, 422, 429, 503].includes(status)) return "의도된 거절 후보";
+const expectedRejections = new Map([
+  ["src/app/api/card-slides/[batchId]/route.ts:GET", { statuses: [400], reason: "없는 카드 묶음 번호 형식 거절" }],
+  ["src/app/api/connect/[provider]/route.ts:GET", { statuses: [503], reason: "Threads OAuth 설정 미준비 거절" }],
+  ["src/app/api/engagement/route.ts:GET", { statuses: [404], reason: "지정 작업 공간의 발행 글 없음" }],
+  ["src/app/api/figma-mcp/callback/route.ts:GET", { statuses: [400], reason: "OAuth state 불일치 거절" }],
+  ["src/app/api/higgsfield/asset/[file]/route.ts:GET", { statuses: [404], reason: "없는 자산 거절" }],
+  ["src/app/api/images/deliver/[token]/route.ts:GET", { statuses: [404], reason: "없는 전달 토큰 거절" }],
+  ["src/app/api/isolation-proof/route.ts:GET", { statuses: [401], reason: "테넌트 인증 토큰 없음" }],
+  ["src/app/api/media/[token]/route.ts:GET", { statuses: [404], reason: "없는 서명 미디어 토큰 거절" }],
+  ["src/app/api/media/[token]/route.ts:HEAD", { statuses: [404], reason: "없는 서명 미디어 토큰을 본문 없이 거절" }],
+  ["src/app/api/studio/v1/derivations/[batchId]/route.ts:GET", { statuses: [404], reason: "없는 파생 작업 거절" }],
+  ["src/app/api/studio/v1/generations/[jobId]/route.ts:GET", { statuses: [404], reason: "없는 생성 작업 거절" }],
+  ["src/app/api/studio/v1/shorts-factory/runs/[runId]/route.ts:GET", { statuses: [404], reason: "없는 숏폼 공장 실행 거절" }],
+  ["src/app/api/tiktok/creator-info/route.ts:GET", { statuses: [400], reason: "토큰에서 테넌트 확인 불가" }],
+  ["src/app/api/tiktok/publish-status/route.ts:GET", { statuses: [400], reason: "토큰에서 테넌트 확인 불가" }],
+]);
+
+function classify(status, expectedRejection) {
+  if (expectedRejection?.statuses.includes(status)) return "계약상 거절";
+  if (status >= 200 && status < 300) return expectedRejection ? "계약 불일치" : "정상";
+  if (status >= 300 && status < 400) return "리다이렉트 검토";
   if (status === 500) return "고장";
   if (status >= 500) return "서버 오류 검토";
-  return "거절 검토";
+  return "예상 밖 거절";
 }
 
 const files = await collectRouteFiles(apiRoot);
+const requests = files.flatMap(({ file, methods }) => methods.map((method) => ({ file, method })));
 const results = [];
 const deadlineAt = Date.now() + totalTimeoutMs;
 let cursor = 0;
 
-async function inspectRoute(file) {
+async function collectFiles(directory) {
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  const collected = [];
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) collected.push(...await collectFiles(fullPath));
+    if (entry.isFile()) collected.push(fullPath);
+  }
+  return collected;
+}
+
+const evidenceFiles = [
+  ...await collectFiles(path.join(dashboardRoot, "src")),
+  ...await collectFiles(path.join(dashboardRoot, "scripts")),
+].sort();
+
+async function sourceHash() {
+  const hash = createHash("sha256");
+  for (const file of evidenceFiles) {
+    hash.update(path.relative(dashboardRoot, file));
+    hash.update("\0");
+    hash.update(await fs.readFile(file));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+function listenerPids() {
+  const url = new URL(baseUrl);
+  const port = url.port || (url.protocol === "https:" ? "443" : "80");
+  try {
+    return execFileSync("lsof", ["-nP", "-t", `-iTCP:${port}`, "-sTCP:LISTEN"], { encoding: "utf8" })
+      .trim().split(/\s+/).filter(Boolean).sort();
+  } catch {
+    return [];
+  }
+}
+
+const sourceHashBefore = await sourceHash();
+const listenerPidsBefore = listenerPids();
+
+async function inspectRoute({ file, method }) {
   const apiPath = routePath(file);
   const url = requestUrl(apiPath);
+  const relativeFile = path.relative(dashboardRoot, file);
+  const expectedRejection = expectedRejections.get(`${relativeFile}:${method}`);
+  const expectedContract = expectedRejection?.reason || "2xx 성공. 3xx, 예상하지 않은 4xx·5xx는 계약 재검토";
   const startedAt = Date.now();
   const remainingMs = deadlineAt - startedAt;
   if (remainingMs <= 0) {
     results.push({
       route: apiPath,
-      file: path.relative(dashboardRoot, file),
+      method,
+      file: relativeFile,
+      expected_contract: expectedContract,
       status: 0,
       classification: "전체 시간 초과",
       duration_ms: 0,
@@ -137,6 +207,7 @@ async function inspectRoute(file) {
   }
   try {
     const response = await fetch(url, {
+      method,
       headers: requestHeaders(apiPath),
       redirect: "manual",
       signal: AbortSignal.timeout(Math.min(requestTimeoutMs, remainingMs)),
@@ -144,9 +215,11 @@ async function inspectRoute(file) {
     const body = redact((await response.text()).slice(0, 500));
     results.push({
       route: apiPath,
-      file: path.relative(dashboardRoot, file),
+      method,
+      file: relativeFile,
+      expected_contract: expectedContract,
       status: response.status,
-      classification: classify(response.status),
+      classification: classify(response.status, expectedRejection),
       duration_ms: Date.now() - startedAt,
       body_sha256: createHash("sha256").update(body).digest("hex"),
       body_preview: response.status >= 400 ? body.replace(/\s+/g, " ").slice(0, 220) : "",
@@ -154,7 +227,9 @@ async function inspectRoute(file) {
   } catch (error) {
     results.push({
       route: apiPath,
-      file: path.relative(dashboardRoot, file),
+      method,
+      file: relativeFile,
+      expected_contract: expectedContract,
       status: 0,
       classification: "요청 실패",
       duration_ms: Date.now() - startedAt,
@@ -165,12 +240,18 @@ async function inspectRoute(file) {
 }
 
 await Promise.all(Array.from({ length: Math.min(sweepConcurrency, files.length) }, async () => {
-  while (cursor < files.length) {
-    const file = files[cursor++];
-    await inspectRoute(file);
+  while (cursor < requests.length) {
+    const request = requests[cursor++];
+    await inspectRoute(request);
   }
 }));
-results.sort((left, right) => left.route.localeCompare(right.route));
+results.sort((left, right) => left.route.localeCompare(right.route) || left.method.localeCompare(right.method));
+
+const sourceHashAfter = await sourceHash();
+const listenerPidsAfter = listenerPids();
+const evidenceStable = sourceHashBefore === sourceHashAfter
+  && JSON.stringify(listenerPidsBefore) === JSON.stringify(listenerPidsAfter)
+  && listenerPidsBefore.length > 0;
 
 const counts = Object.fromEntries(
   [...new Set(results.map((result) => result.classification))]
@@ -187,17 +268,26 @@ const report = {
   total_timeout_ms: totalTimeoutMs,
   concurrency: sweepConcurrency,
   route_count: files.length,
+  request_count: requests.length,
+  method_counts: Object.fromEntries(READ_METHODS.map((method) => [method, requests.filter((entry) => entry.method === method).length])),
+  listener_pids_before: listenerPidsBefore,
+  listener_pids_after: listenerPidsAfter,
+  source_hash_before: sourceHashBefore,
+  source_hash_after: sourceHashAfter,
+  source_hash_scope: ["src/**/*", "scripts/**/*"],
+  evidence_stable: evidenceStable,
   counts,
   results,
 };
 
 for (const result of results) {
   const detail = result.body_preview ? ` ${result.body_preview}` : "";
-  console.log(`${result.status}\t${result.classification}\t${result.route}${detail}`);
+  console.log(`${result.status}\t${result.classification}\t${result.method}\t${result.route}${detail}`);
 }
-console.log(`합계 ${files.length}개 ${JSON.stringify(counts)}`);
+console.log(`합계 경로 ${files.length}개, 요청 ${requests.length}개 ${JSON.stringify(counts)}`);
+console.log(`증거 고정 ${evidenceStable ? "PASS" : "FAIL"} PID ${listenerPidsBefore.join(",") || "없음"} -> ${listenerPidsAfter.join(",") || "없음"} HASH ${sourceHashBefore} -> ${sourceHashAfter}`);
 
 if (outputPath) await fs.writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
-const failed = results.filter((result) => ["고장", "서버 오류 검토", "요청 실패", "전체 시간 초과"].includes(result.classification));
-process.exit(failed.length ? 1 : 0);
+const failed = results.filter((result) => !["정상", "계약상 거절"].includes(result.classification));
+process.exit(failed.length || !evidenceStable ? 1 : 0);
