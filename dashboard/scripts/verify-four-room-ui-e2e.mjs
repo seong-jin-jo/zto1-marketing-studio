@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import playwright from "/Users/sj/kimstudy-auto/node_modules/playwright-core/index.js";
+import { runCleanupSteps } from "./lib/cleanup-steps.mjs";
 
 const { chromium } = playwright;
 const baseUrl = process.env.FOUR_ROOM_BASE_URL || "http://localhost:3456";
@@ -225,18 +226,28 @@ try {
   console.log(`CAPTURES ${outputDir}`);
 } finally {
   if (deadlineTimer) clearTimeout(deadlineTimer);
-  fs.writeFileSync(settingsPath, originalSettings);
-  if (issuedTokenId) {
-    try {
+  const cleanupFailures = await runCleanupSteps([
+    {
+      label: "첫 사용자 설정 복구",
+      run: async () => { fs.writeFileSync(settingsPath, originalSettings); },
+    },
+    {
+      label: "임시 고객 토큰 폐기",
+      run: async () => {
+        if (!issuedTokenId) return;
       const revoked = await cleanupRequest(`/api/tenant-tokens?id=${encodeURIComponent(issuedTokenId)}`, { method: "DELETE" });
-      if (!revoked.ok) {
-        process.exitCode = 1;
-        console.error(`임시 고객 토큰 폐기 실패: HTTP ${revoked.status}`);
-      }
-    } catch (error) {
-      process.exitCode = 1;
-      console.error(`임시 고객 토큰 폐기 실패: ${error instanceof Error ? error.message : String(error)}`);
+        if (!revoked.ok) throw new Error(`HTTP ${revoked.status}`);
+      },
+    },
+    {
+      label: "브라우저 종료",
+      run: async () => closeBrowserWithin(5000),
+    },
+  ]);
+  if (cleanupFailures.length > 0) {
+    process.exitCode = 1;
+    for (const failure of cleanupFailures) {
+      console.error(`${failure.label} 실패: ${failure.message}`);
     }
   }
-  await closeBrowserWithin(5000);
 }
