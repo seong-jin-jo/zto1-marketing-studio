@@ -8,6 +8,8 @@ GET만 호출하고 3xx까지 정상으로 셀 수 있던 검사기를 HEAD 별�
 
 전체 Vitest 350파일과 2,289건 통과, 조건부 제외 3건, TypeScript, production build 184/184, seed, health HTTP 200, 기본 흐름 11/11, Studio v1 14/14와 디자인 lint가 통과했다. 상세는 docs/qa/osmu-api-read-sweep-v10-gpt-codex.md다. API 읽기 범위만 PASS이며 v63과 v68 승인 핀 충돌, 디자인 정합 NG, 운영 배포와 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다.
 
+상위 verify-agent-quality.sh는 배포 환경 접촉 증거 0건으로 종료 코드 2와 함께 반려했다. 명시된 localhost 범위 밖 운영 배포는 건드리지 않았고 이 결과를 제품 전체 PASS로 확대하지 않는다.
+
 다음 소유자는 컨트롤러와 product-designer다. API 읽기 범위는 추가 제품 코드 조치가 없다. 디자인 승인 핀을 단일화하고 3폭 정합을 맞춘 뒤 운영 버전에서 같은 106건을 재검증해야 한다.
 
 ## 2026-09-14 16시 16분 - 최근 24시간 코드 공격 재리뷰 BLOCK

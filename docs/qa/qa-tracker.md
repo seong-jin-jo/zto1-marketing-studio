@@ -15,6 +15,8 @@
 
 권위 실행 전후 listener PID는 33531, dashboard/src/**/*와 dashboard/scripts/**/* 합성 SHA-256은 a7cea815adcf5a80359662c4c8a382b53b1c2c3bf3d7e3458ee270268b2e3e7f로 동일했다. 좁은 해시와 300초 예산 소진 실행은 권위 증거에서 제외했다. API 읽기 범위만 PASS이며 v63과 v68 승인 핀 충돌, 3폭 디자인 정합 NG, 운영 배포와 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다.
 
+상위 verify-agent-quality.sh는 배포 환경 접촉 증거 0건으로 종료 코드 2와 함께 반려했다. localhost 명시 범위는 관찰 완료했지만 제품 전체 PASS로 전환하지 않는다.
+
 ## 2026-09-14 16시 16분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
