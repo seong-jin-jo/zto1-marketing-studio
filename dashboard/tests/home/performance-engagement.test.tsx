@@ -128,6 +128,37 @@ describe("FE-V63-07 성과실 댓글 행동", () => {
     expect(screen.getAllByText("측정 불가").length).toBeGreaterThan(0);
   });
 
+  it("CODE-REVIEW-20260915-22 정상: 글별 실패·제외·수집 범위를 보여주고 운영자만 되돌린다", () => {
+    const onReinstate = vi.fn(async () => undefined);
+    const retired = { ...post, metrics_retired: { code: "post_deleted", at: "2026-09-15T00:00:00Z" } };
+    const props = {
+      workspaceId: "11111111-1111-4111-8111-111111111111",
+      workspaceName: "공용 작업 공간",
+      metricsLoaded: true,
+      posts: [retired],
+      publishedCount: 1,
+      followers: "10",
+      engagementRate: 2,
+      queuedCount: 0,
+      viralCount: 0,
+      collecting: false,
+      onCollectMetrics: vi.fn(async () => undefined),
+      failureDetails: [{ postId: post.id, channel: "threads", code: "post_deleted", evidence: "채널 조회에서 글을 찾지 못했습니다." }],
+      excluded: [{ postId: post.id, channel: "threads", code: "post_deleted", retiredAt: "2026-09-15T00:00:00Z" }],
+      coverage: { platforms: [{ platform: "threads", publishedCount: 1, collectedCount: 0, retiredCount: 1, missingCount: 0, missingReason: null }] },
+      onReinstate,
+    };
+    const view = render(<PerformanceRoom {...props} canReinstate />);
+
+    expect(screen.getByText(/채널에서 삭제된 글: 채널 조회에서 글을 찾지 못했습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/수집 0건, 대기 0건, 제외 1건/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "성과 수집에 다시 넣기" }));
+    expect(onReinstate).toHaveBeenCalledWith(post.id);
+
+    view.rerender(<PerformanceRoom {...props} canReinstate={false} />);
+    expect(screen.queryByRole("button", { name: "성과 수집에 다시 넣기" })).not.toBeInTheDocument();
+  });
+
   it("V70-PERF-04 정상: 표본 5편이 쌓이면 다음 실험 제안을 자동으로 불러온다", async () => {
     H.fetcher.mockImplementation(() => new Promise(() => {}));
     H.apiPost.mockResolvedValue({

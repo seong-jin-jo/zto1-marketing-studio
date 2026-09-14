@@ -31,6 +31,32 @@ export interface PerformancePost {
    * 없으면 아직 안 쟀거나 정상적으로 잰 것이다. 있으면 기다려도 안 채워진다.
    */
   metrics_blocked?: { code?: string; at?: string } | null;
+  metrics_retired?: { code?: string; at?: string } | null;
+}
+
+export interface MetricsFailureDetailView {
+  postId: string;
+  channel: string;
+  code: string;
+  evidence: string;
+}
+
+export interface MetricsExcludedView {
+  postId: string;
+  channel: string;
+  code: string;
+  retiredAt: string;
+}
+
+export interface MetricsCoverageView {
+  platforms: Array<{
+    platform: string;
+    publishedCount: number;
+    collectedCount: number;
+    retiredCount: number;
+    missingCount: number;
+    missingReason?: { message?: string } | null;
+  }>;
 }
 
 interface PerformanceSampleAssessment {
@@ -123,6 +149,11 @@ interface PerformanceRoomProps {
   usage?: UsageSummary;
   collecting: boolean;
   onCollectMetrics: () => Promise<void>;
+  failureDetails?: MetricsFailureDetailView[];
+  excluded?: MetricsExcludedView[];
+  coverage?: MetricsCoverageView;
+  canReinstate?: boolean;
+  onReinstate?: (postId: string) => Promise<void>;
 }
 
 const SAMPLE_THRESHOLD = 5;
@@ -151,6 +182,15 @@ function postStatusLabel(status: string): string {
   if (status === "published") return "발행됨";
   if (status === "failed") return "오류";
   return status;
+}
+
+function metricsIssueLabel(code?: string): string {
+  if (code === "post_deleted") return "채널에서 삭제된 글";
+  if (code === "post_not_in_account") return "현재 연결 계정의 글이 아님";
+  if (code === "provider_429") return "채널 요청 한도 초과";
+  if (code === "metrics_pending_ingest") return "채널 집계 대기 중";
+  if (code === "metrics_lookup_incomplete") return "채널 목록 확인 미완료";
+  return "성과 수집 실패";
 }
 
 function PerformanceTableCell({
@@ -185,6 +225,11 @@ export function PerformanceRoom({
   usage,
   collecting,
   onCollectMetrics,
+  failureDetails = [],
+  excluded = [],
+  coverage,
+  canReinstate = false,
+  onReinstate,
 }: PerformanceRoomProps) {
   const [focus, setFocus] = useState<PreviewPlatform | "all">("all");
   const [suggestions, setSuggestions] = useState<PerformanceSuggestion[]>([]);
@@ -199,6 +244,14 @@ export function PerformanceRoom({
   const [reactionFilter, setReactionFilter] = useState<"all" | "reply" | "fix" | "hold">("all");
   const autoRequested = useRef(new Set<string>());
   const engagementRequested = useRef(new Set<string>());
+  const failureByPost = useMemo(
+    () => new Map(failureDetails.map((detail) => [detail.postId, detail])),
+    [failureDetails],
+  );
+  const excludedByPost = useMemo(
+    () => new Map(excluded.map((detail) => [detail.postId, detail])),
+    [excluded],
+  );
 
   const publishedPosts = useMemo(
     () => posts.filter((post) => post.status === "published"),
@@ -725,6 +778,16 @@ export function PerformanceRoom({
             <span className="text-caption font-normal text-muted">{posts.length}건</span>
           </summary>
           <div className="pt-stack">
+            {coverage ? (
+              <div className="mb-stack grid gap-micro text-caption text-subtle" data-metrics-coverage>
+                {coverage.platforms.filter((item) => item.publishedCount > 0).map((item) => (
+                  <p key={item.platform}>
+                    <b className="text-muted">{platformLabel(item.platform)}</b>: 수집 {item.collectedCount}건, 대기 {item.missingCount}건, 제외 {item.retiredCount}건
+                    {item.missingReason?.message ? ` · ${item.missingReason.message}` : ""}
+                  </p>
+                ))}
+              </div>
+            ) : null}
             <table className="block w-full text-body lg:table">
               <thead className="hidden lg:table-header-group">
                 <tr className="border-b border-border text-caption text-subtle">
@@ -738,12 +801,27 @@ export function PerformanceRoom({
                 </tr>
               </thead>
               <tbody className="block divide-y divide-border lg:table-row-group">
-                {posts.map((post) => (
+                {posts.map((post) => {
+                  const failure = failureByPost.get(post.id);
+                  const excludedDetail = excludedByPost.get(post.id);
+                  const retired = post.metrics_retired;
+                  const issueCode = failure?.code || excludedDetail?.code || retired?.code;
+                  return (
                   <tr key={post.id} className="block py-stack text-muted lg:table-row lg:border-b lg:border-border lg:py-none">
                     <PerformanceTableCell label="플랫폼">{platformLabel(post.platform)}</PerformanceTableCell>
                     <PerformanceTableCell label="내용" className="lg:max-w-xs">
                       <span className="line-clamp-2">{post.text || "게시물 본문 미수집"}</span>
                       {post.status === "failed" && <span className="block text-caption text-danger">{post.error?.slice(0, 60)}</span>}
+                      {issueCode ? (
+                        <span className="mt-micro block text-caption text-danger" data-metrics-issue={post.id}>
+                          {metricsIssueLabel(issueCode)}{failure?.evidence ? `: ${failure.evidence}` : ""}
+                        </span>
+                      ) : null}
+                      {canReinstate && onReinstate && (excludedDetail || retired) ? (
+                        <Button className="mt-stack min-w-0" size="sm" onClick={() => void onReinstate(post.id)}>
+                          성과 수집에 다시 넣기
+                        </Button>
+                      ) : null}
                     </PerformanceTableCell>
                     <PerformanceTableCell label="상태" className="lg:text-center">
                       <span className={`rounded-pill px-stack-tight py-micro text-caption ${post.status === "published" ? "bg-success/15 text-success" : "bg-danger/15 text-danger"}`}>{postStatusLabel(post.status)}</span>
@@ -759,7 +837,8 @@ export function PerformanceRoom({
                     <PerformanceTableCell label="답글" className="tabular-nums lg:text-center">{post.replies ?? emptyMetricLabel(post.platform, post.metrics_blocked)}</PerformanceTableCell>
                     <PerformanceTableCell label="발행" className="text-subtle lg:text-center">{fmtAgo(post.published_at)}</PerformanceTableCell>
                   </tr>
-                ))}
+                  );
+                })}
                 {posts.length === 0 && <tr className="block lg:table-row"><td colSpan={7} className="block p-stack-section text-center text-caption text-subtle lg:table-cell">아직 나간 글이 없습니다. 발행실에서 올리면 여기에 쌓입니다.</td></tr>}
               </tbody>
             </table>
