@@ -49,6 +49,7 @@ FROM ${OPENCLAW_BUN_IMAGE} AS bun-binary
 FROM ${OPENCLAW_NODE_BOOKWORM_IMAGE} AS build
 ARG OPENCLAW_BUNDLED_PLUGIN_DIR
 ARG OPENCLAW_EXTENSIONS
+ARG OPENCLAW_BUNDLED_PLUGIN_BUILD_IDS=""
 
 # Copy pinned Bun binary from the official image instead of fetching via curl.
 COPY --from=bun-binary /usr/local/bin/bun /usr/local/bin/bun
@@ -124,18 +125,14 @@ RUN if printf '%s\n' "$OPENCLAW_EXTENSIONS" | tr ',' ' ' | tr ' ' '\n' | grep -q
     # 이 자리에서 낮춰도 효과가 없다(2026-09-14 실측: 4096 으로 낮췄는데 7,173 이 적용됐다).
     # 실제 손잡이는 그 파일의 TSDOWN_CGROUP_MEMORY_HEADROOM_MB 이고 사유도 거기 적었다.
     # 여기서는 그 계산이 그대로 서도록 값을 주지 않는다.
-    # ★다음에 칠 가장 큰 지렛대가 여기다. 아직 안 당겼다.
-    #
-    # 2026-09-14 실측. 이 빌드는 openclaw 자체 확장 70개를 묶는데 **그중 우리가 싣는 것은
-    # 하나도 없다.** 우리가 쓰는 25개(threads-publish 등)는 저장소 루트 extensions/ 에 있고
-    # 다른 경로로 들어온다. 빌드 뒤 prune-docker-plugin-dist.mjs 가 그 70개를 잘라낸다.
-    # 즉 버려질 70개를 묶느라 메모리와 시간을 쓰고 있다.
-    #
-    # 거르는 장치는 이미 있다. scripts/lib/bundled-plugin-build-entries.mjs 의
-    # OPENCLAW_BUNDLED_PLUGIN_BUILD_IDS 다. 다만 그 필터는 모르는 이름을 만나면 예외를
-    # 던지고, 우리 25개는 이 트리 기준으로 전부 "모르는 이름" 이다. 그래서 그대로 넘기면
-    # 빌드가 깨진다. 70개 중 무엇이 실제로 필요한지(코어 지원 패키지 포함) 가려낸 뒤에야
-    # 안전하게 당길 수 있다. 그 조사 없이 당기지 마라.
+    # 2026-09-15 당겼다. OPENCLAW_BUNDLED_PLUGIN_BUILD_IDS 로 tsdown 이 묶는 openclaw 자체
+    # 확장을 70개에서 8개로 줄인다. 8개 = 모델 제공자 4(anthropic openai google ollama) +
+    # 게이트웨이가 기본으로 올리는 플러그인 4(device-pair memory-core phone-control talk-voice).
+    # browser·canvas·file-transfer 와 우리 threads-* 는 이 목록 대상이 아니라(코어가 따로 묶는다)
+    # 필터에 넣으면 "unknown id" 로 죽는다. 우리 루트 extensions/ 25개도 마찬가지다.
+    # 실측(맥, 힙 4,608MB 강제, RAYON 4스레드): 70개 = heap OOM, 8개 = 통과(RSS 6.3GB).
+    # 힙 3,072 에서는 8개도 죽는다. 즉 힙 4.6GB 가 하한이고 VM 은 12GB 가 있어야 한다.
+    export OPENCLAW_BUNDLED_PLUGIN_BUILD_IDS="${OPENCLAW_BUNDLED_PLUGIN_BUILD_IDS:-anthropic,openai,google,ollama,device-pair,memory-core,phone-control,talk-voice}" && \
         pnpm_config_verify_deps_before_run=false pnpm build:docker
 # Force pnpm for UI build (Bun may fail on ARM/Synology architectures)
 ENV OPENCLAW_PREFER_PNPM=1
@@ -264,7 +261,8 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
 
 # Optionally install Chromium and Xvfb for browser automation.
 # Build with: docker build --build-arg OPENCLAW_INSTALL_BROWSER=1 ...
-# Adds ~300MB but eliminates the 60-90s Playwright install on every container start.
+# 2026-09-15 실측: 이 레이어는 984MB 다(주석의 300MB 는 낡았다). 우리 확장 30개 중 브라우저를
+# 쓰는 것은 0개라 compose 에서 이 인자를 끈다. 켜야 하면 compose args 에 "1" 을 다시 준다.
 # Must run after node_modules COPY so playwright-core is available.
 ARG OPENCLAW_INSTALL_BROWSER=""
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright

@@ -30,7 +30,10 @@ x-gateway-base: &gateway-base
     network: host
     args:
       OPENCLAW_EXTENSIONS: "threads-publish threads-queue threads-style threads-insights threads-search threads-growth x-publish image-upload instagram-publish card-generator midjourney-image video-generate facebook-publish linkedin-publish youtube-publish naver-blog-publish pinterest-publish tumblr-publish tiktok-publish slack-publish line-publish bluesky-publish discord-publish telegram-publish blog-queue"
-      OPENCLAW_INSTALL_BROWSER: "1"
+      # 2026-09-15 브라우저 984MB 제거. 우리 확장은 브라우저를 안 쓴다(전수 검사 0건).
+      OPENCLAW_INSTALL_BROWSER: ""
+      # tsdown 이 묶는 openclaw 자체 확장 70→8개. 사유는 openclaw/Dockerfile 빌드 단계 주석.
+      OPENCLAW_BUNDLED_PLUGIN_BUILD_IDS: "anthropic,openai,google,ollama,device-pair,memory-core,phone-control,talk-voice"
   image: openclaw-auto/gateway:postagi
   network_mode: host
   init: true
