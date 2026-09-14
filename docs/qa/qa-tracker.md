@@ -2,6 +2,30 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-14 10시 05분 KST · API 읽기 경로 전수 재실사 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98 | 발행 성과를 읽고 다음 생성 판단으로 되돌림 | API-READ-ALL-V8 | PASS | 고정된 최신 소스에서 localhost GET 105개 실호출. 정상 92, 계약상 거절 13, HTTP 500과 요청 실패 0. 원본 `logs/diff/osmu-api-read-sweep-20260914-091409-final.json` |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY-V8 | PASS | 무토큰 격리 탐침 401. 13개 비정상 상태의 본문을 읽어 입력, 설정, 인증 경계로 확인 |
+| R200, R207 | 성과 학습 규칙과 Studio 학습 정보 조회 | API-LEARNING-READ-V8 | PASS | `/api/performance/learned-rules`, `/api/studio/learning` 각각 HTTP 200 |
+| 생성 장부 연결 오류 | 일시적인 DB 연결 실패가 일반 500으로 누출되지 않음 | API-GENERATION-DB-READ-V8 | 수정 후 PASS | 최초 파생 작업 조회가 38,980ms 뒤 HTTP 500. 연결 오류를 재시도 가능한 503으로 분류하고 회귀 3건 추가. 커밋 `25330905`. 최종 같은 경로 404, 전체 500 0 |
+| 현재 소스 고정 | 공유 작업 트리 혼입 방지 | API-READ-SOURCE-HASH-V8 | PASS | 실행 전후 HEAD `e0c66d14`와 `dashboard/src` 합성 SHA-256 `5f276662869c8aef8126c48e0d3969afa810d10971bb763e2c9b58fabd942f5b` 동일. 최종 health 200 |
+| 필수 자동 회귀 | 전체 Vitest | API-READ-REGRESSION-V8 | PASS | 최신 코드 345파일, 2,254건 통과, 조건부 3건 제외, 실패 0 |
+| 정적 검증과 build | TypeScript, production build, 디자인 lint | API-READ-BUILD-V8 | PASS | `npx tsc --noEmit` 종료 코드 0. Next.js 16.2.2 production build 184/184, 종료 코드 0. 기존 NFT 경고 1건. 디자인 토큰 위반 0 |
+| seed와 localhost 흐름 | 고정 작업 공간 fixture와 실동작 | API-READ-E2E-V8 | PASS | schema와 seed 멱등 적용, production health 200, 기본 흐름 11/11, Studio v1 14/14 |
+| R01부터 R207 중 이번 범위 밖 | 확정 요구 전건 누락 방지 | REQ-ALL | 이월 | 기존 전건 추적표 유지. 디자인 정합, 운영 배포, 외부 채널 실발행은 이번 PASS에 포함하지 않음 |
+
+상세는 `docs/qa/osmu-api-read-sweep-v8-gpt-codex.md`다. v7과 v8의 최종 경로, HTTP 상태, 분류는 같다. 이번 실사에서 발견한 생성 장부 연결 오류의 500 누출은 계약 보강과 회귀 테스트로 고쳤다. Next 개발 서버 콜드 컴파일 중 콜백 500은 단독 5회와 예열 뒤 전수 실행에서 HTTP 200으로 분리 확인했다. API 읽기 범위만 PASS이며 디자인 정합, 운영 배포, 외부 채널 실발행이 미검증이므로 제품 전체 QA와 배포는 NG다.
+
+## 2026-09-14 09시 06분 KST · API 읽기 경로 전수 재실사 착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R104, R200, R207 | 최신 코드가 내보내는 읽기 Route Handler 전부를 실제 요청으로 재검증 | API-READ-20260914-091409-01 | NG | 현재 분모 105개, 실행 전 GET 소스 합성 SHA-256 `422005c15c9ceaaa90157b94c17cdbacdf12bc4bb8131128f2346c54e9548e23`. localhost health HTTP 200과 DB up까지만 관찰했다. 전수 요청, 의도된 거절 본문 확인, 필수 회귀가 끝나지 않아 PASS 금지. |
+
+직전 v7 실사 뒤 `/api/metrics`와 고객 proxy 허용 경로가 바뀌었고 `/api/studio/learning`은 공유 작업 트리에서 수정 중이다. 전수 원본 JSON, 실행 전후 소스 해시, 실패 단독 재현, 전체 Vitest, TypeScript, 기본 흐름과 Studio v1을 새로 관찰하기 전에는 기존 PASS를 현재 코드 증거로 재사용하지 않는다.
+
 ## 2026-09-14 08시 22분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
