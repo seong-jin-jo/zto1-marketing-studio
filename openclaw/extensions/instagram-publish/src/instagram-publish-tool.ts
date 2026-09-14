@@ -150,6 +150,7 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
         payload: { text: caption, imageUrls },
       });
       let resultRecorded = false;
+      let providerDispatchStarted = false;
       const recordProviderFailure = async (error: string) => {
         await recordQueueProviderResult({
           queuePath,
@@ -173,6 +174,7 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
       let mediaId: string;
 
       if (publicUrls.length === 1) {
+        providerDispatchStarted = true;
         // Single image post
         const createResp = await fetch(`${API_BASE}/${userId}/media`, {
           method: "POST",
@@ -202,6 +204,7 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
         // Carousel: create children first, then carousel container, then publish
         const childIds: string[] = [];
         for (const url of publicUrls) {
+          providerDispatchStarted = true;
           const childResp = await fetch(`${API_BASE}/${userId}/media`, {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": `${attempt.idempotencyKey}-${childIds.length}` },
@@ -274,15 +277,20 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
       });
       } catch (error) {
         if (!resultRecorded) {
-          await recordQueueProviderResult({
-            queuePath,
-            postId,
-            channel: "instagram",
-            claimToken,
-            idempotencyKey: attempt.idempotencyKey,
-            state: "result_unknown",
-            error: error instanceof Error ? error.message : String(error),
-          }).catch(() => {});
+          const message = error instanceof Error ? error.message : String(error);
+          if (!providerDispatchStarted) {
+            await recordProviderFailure(message).catch(() => {});
+          } else {
+            await recordQueueProviderResult({
+              queuePath,
+              postId,
+              channel: "instagram",
+              claimToken,
+              idempotencyKey: attempt.idempotencyKey,
+              state: "result_unknown",
+              error: message,
+            }).catch(() => {});
+          }
         }
         throw error;
       }

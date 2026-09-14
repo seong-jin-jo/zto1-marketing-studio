@@ -90,4 +90,22 @@ describe("CODE-REVIEW-20260915-08 Instagram 캐러셀 객체 보존", () => {
     expect(new Set(keys).size).toBe(2);
     expect(new Set(requestedImageUrls).size).toBe(2);
   });
+
+  it("CODE-REVIEW-20260915-12 거절: 공급자 호출 전 저장소 준비 실패를 결과 불명으로 기록하지 않는다", async () => {
+    vi.stubEnv("R2_BUCKET", "");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const api = createTestPluginApi({ id: "instagram-publish", name: "instagram-publish" });
+    const tool = createInstagramPublishTool(api);
+
+    await expect(tool.execute("call-2", {
+      caption: "저장소 실패 검증",
+      image_urls: ["/images/first.png"],
+      queue_id: "post-2",
+      claim_token: "claim-2",
+    })).rejects.toThrow("R2 credentials not configured");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mocks.record).toHaveBeenLastCalledWith(expect.objectContaining({ state: "provider_failed" }));
+  });
 });
