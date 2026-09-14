@@ -147,25 +147,11 @@ export function createThreadsPublishTool(api: OpenClawPluginApi) {
 
       try {
 
-      // Convert local /images/ path to public URL via temporary upload
+      // Meta가 읽을 URL의 저장과 만료 계약이 생기기 전에는 로컬 고객 이미지를 외부에 복제하지 않는다.
       if (imageUrl && imageUrl.startsWith("/images/")) {
-        const dataDir = process.env.DATA_DIR || resolve(process.cwd(), "data");
-        const { buffer: fileBuffer, filename } = await readOwnedLocalImage(imageUrl, dataDir);
-        const formData = new FormData();
-        formData.append("file", new Blob([Uint8Array.from(fileBuffer)]), filename);
-        const uploadResp = await fetch("https://tmpfiles.org/api/v1/upload", { method: "POST", body: formData });
-        if (!uploadResp.ok) {
-          const message = `Image upload failed (${uploadResp.status}). Cannot publish image without public URL.`;
-          await recordProviderFailure(message);
-          throw new Error(message);
-        }
-        const uploadData = (await uploadResp.json()) as { data?: { url?: string } };
-        const tmpUrl = uploadData.data?.url;
-        if (!tmpUrl) {
-          throw new Error("Image upload returned no URL.");
-        }
-        // tmpfiles.org requires /dl/ prefix for direct download
-        imageUrl = tmpUrl.replace("tmpfiles.org/", "tmpfiles.org/dl/");
+        const message = "보호된 이미지 배달 저장소가 준비되지 않아 발행하지 않았습니다";
+        await recordProviderFailure(message);
+        throw new Error(message);
       }
 
       // Step 1: Create media container
