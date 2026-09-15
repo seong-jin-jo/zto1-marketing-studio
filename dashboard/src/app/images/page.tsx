@@ -69,7 +69,7 @@ export default function ImagesPage() {
               <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-micro">
                 <button
                   onClick={() => handleCopyUrl(img.url)}
-                  className="p-stack-tight bg-surface/80 rounded-chip text-muted hover:text-text"
+                  className="ds-touch-target flex items-center justify-center p-stack-tight bg-surface/80 rounded-chip text-muted hover:text-text"
                   title="URL 복사"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,7 +78,7 @@ export default function ImagesPage() {
                 </button>
                 <button
                   onClick={() => handleDelete(img.filename)}
-                  className="p-stack-tight bg-surface/80 rounded-chip text-danger hover:text-danger"
+                  className="ds-touch-target flex items-center justify-center p-stack-tight bg-surface/80 rounded-chip text-danger hover:text-danger"
                   title="삭제"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

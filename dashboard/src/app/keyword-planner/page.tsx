@@ -80,13 +80,13 @@ export default function KeywordPlannerPage() {
             value={inputKws}
             onChange={(e) => setInputKws(e.target.value)}
             placeholder="키워드 입력 (쉼표 또는 줄바꿈 구분, 최대 5개)"
-            className="flex-1 bg-surface-2 text-muted text-body-sm px-stack py-stack-tight rounded-chip border border-border"
+            className="min-h-control-touch flex-1 bg-surface-2 text-muted text-body-sm px-stack py-stack-tight rounded-chip border border-border"
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
           />
           <button
             onClick={handleSearch}
             disabled={searching}
-            className="px-pad-inset py-stack-tight text-body-sm bg-accent text-accent-fg rounded-chip hover:bg-accent-hover disabled:opacity-50"
+            className="min-h-control-touch px-pad-inset py-stack-tight text-body-sm bg-accent text-accent-fg rounded-chip hover:bg-accent-hover disabled:opacity-50"
           >
             {searching ? "조회 중..." : "조회"}
           </button>
