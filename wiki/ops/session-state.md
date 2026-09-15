@@ -1,3 +1,13 @@
+# 2026-09-15 17시 37분 API 읽기 경로 v12 범위 PASS, 제품 전체 NG
+
+회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이며 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다. 같은 저장소의 tmux pane은 현재 앱 listener와 동시 작업 충돌 확인에만 사용했다.
+
+localhost:3456의 지정 작업 공간에서 읽기 Route Handler 105개 고유 경로에 GET 105건과 HEAD 1건, 총 106건을 두 번 권위 실행했다. 최종 결과는 정상 92, 계약상 거절 14이며 HTTP 500, 기타 예상 밖 5xx, redirect, 예상 밖 4xx, timeout은 모두 0이다. 마지막 실행 전후 listener PID는 64529, `dashboard/src`와 `dashboard/scripts` 합성 SHA-256은 `8c65d5fa62b8f3d49cac66f3a41c82018d7735a7641379d95d1f454c88e07a75`로 같았다. 원본은 `logs/diff/osmu-api-read-sweep-20260915-v12-authoritative-final2.json`이다.
+
+제품 Route Handler 500은 없어서 제품 API 코드는 수정하지 않았다. 긴 정상 JSON 19건을 500자로 자른 뒤 파싱해 실패로 오판하던 검사기를 고쳤다. 전체 본문으로 판정하고 비밀 키를 마스킹한 220자 미리보기만 기록하며 전체 bytes의 SHA-256을 남긴다. 수정 `2c50d68b`, 회귀 `1aefc861`이다.
+
+전체 Vitest 360파일과 2,317건 통과, 조건부 3건 제외, TypeScript 종료 0, production build 184/184, schema와 seed 및 RLS, health HTTP 200과 DB up, 기본 흐름 11/11, Studio v1 14/14, 390 라이트와 다크 및 768, 1024, 1440의 네 방 20화면, 디자인 lint 위반 0을 확인했다. API 읽기 범위는 PASS다. 기존 v63 디자인 정합 NG, 과제 v63과 승인 핀 v68 충돌, 같은 날 코드 공격 리뷰 BLOCK, 운영 배포와 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다. 상세는 `docs/qa/osmu-api-read-sweep-v12-gpt-codex.md`와 `docs/qa/qa-tracker.md` 최신 절이다. 다음 소유자는 컨트롤러이며 build 워커가 공격 리뷰 MAJOR를 닫은 새 고정 커밋 뒤 전체 QA를 다시 실행해야 한다.
+
 # 2026-09-15 17시 25분 최근 24시간 코드 공격 재리뷰 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. 같은 저장소의 tmux pane은 동시 작업 유무 확인에만 사용했고, 검토 범위는 착수 시점의 `fe24d05180b99b1c39e30e915b8557bd8e03d0fe..f4b0f5a5188ef6343e22d9ed4cbebd79b05d0bcc` 91개 커밋과 202개 파일로 고정했다. 검토 중 공유 HEAD가 이동했으므로 감사 줄 번호는 고정 끝 커밋을 기준으로 한다. 제품 코드는 수정하지 않았다.

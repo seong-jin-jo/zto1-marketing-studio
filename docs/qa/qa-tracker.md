@@ -2,6 +2,20 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-15 17시 37분 KST · API 읽기 경로 v12 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R200, R207 | 최신 코드의 읽기 Route Handler 전부를 localhost에서 재검증 | API-READ-ALL-V12 | PASS | 고유 경로 105개에서 GET 105건과 HEAD 1건, 총 106건 실호출. 정상 92, 계약상 거절 14, HTTP 500, 기타 예상 밖 5xx, redirect, 예상 밖 4xx, timeout 모두 0. 최종 원본 `logs/diff/osmu-api-read-sweep-20260915-v12-authoritative-final2.json` |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY-V12 | PASS | 격리 탐침은 계약 401과 `no-tenant` 본문. 인증 필요 문구 노출 0. OAuth 미설정 503을 포함한 나머지 13건도 정확한 허용 목록과 일치 |
+| 검사기 회귀 | 긴 JSON 전체 본문 판정과 안전한 증거 축약 | API-SWEEP-LONG-JSON-V12 | 수정 후 PASS | 긴 정상 JSON 19건 오판을 수정. 표적 1파일 3건, 전체 Vitest 360파일과 2,317건 통과, 조건부 3건 제외. 수정 `2c50d68b`, 회귀 `1aefc861` |
+| 필수 회귀 | TypeScript, build, seed, health, 두 API E2E, Playwright, 디자인 lint | API-READ-REGRESSION-V12 | 작업트리 PASS | tsc 종료 0, Next.js build 184/184, schema와 seed 및 RLS 적용, health HTTP 200과 DB up, 기본 흐름 11/11, Studio v1 14/14, 네 방 반응형 20/20, 가로 넘침, 가린 모달, 브라우저 401, 콘솔 오류, 디자인 토큰 위반 모두 0 |
+| 2026-08-28 대비 | 과거 전수 실사와 현재 분모 및 결과 비교 | API-READ-DIFF-V12 | PASS | 과거 문서 84 GET 대비 현재 105 GET으로 21개 증가. 과거 당시 소스 정적 재계산 95 대비 10개 증가. 과거 발견 500은 2건 후 수정, 현재 0. v11 대비 경로, 상태, 분류 변경 0 |
+| R01부터 R207 및 세부 요청 232건 중 이번 범위 밖 | 회장 확정 요구 승계 | REQ-ALL-V12 | 이월 | 전건 표를 `docs/qa/osmu-api-read-sweep-v12-gpt-codex.md`에 승계. 이번 API 읽기 직접 관련 5건만 실행 판정하고 나머지는 이월 |
+| 제품 전체 | 디자인 정합, 코드 공격 리뷰, 운영 배포 | QA-QUALITY-GATE-V12 | NG | `verify-agent-quality.sh` 종료 코드 2, 배포 환경 접촉 증거 0건. v63과 v68 승인 핀 충돌, 기존 8개 배치 속성 디자인 NG, 17시 25분 코드 공격 재리뷰 BLOCK, 운영 배포와 외부 채널 실발행 미검증을 유지 |
+
+제품 Route Handler의 HTTP 500은 재현되지 않아 제품 API 코드는 바꾸지 않았다. 검사기는 전체 응답으로 판정하고 220자 증거 미리보기만 축약하도록 고쳤다. 최종 실행 전후 listener PID는 64529, 소스 합성 SHA-256은 `8c65d5fa62b8f3d49cac66f3a41c82018d7735a7641379d95d1f454c88e07a75`로 같았다. 상세 보고서는 `docs/qa/osmu-api-read-sweep-v12-gpt-codex.md`다.
+
 ## 2026-09-15 17시 25분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
