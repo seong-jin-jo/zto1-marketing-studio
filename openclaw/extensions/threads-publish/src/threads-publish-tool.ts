@@ -80,7 +80,14 @@ async function stageLocalImage(localPath: string, idempotencyKey: string): Promi
   const key = `threads/${idempotencyKey}${extension}`;
   const client = new S3Client({ region: "auto", endpoint, credentials: { accessKeyId, secretAccessKey } });
   await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: contentType }));
-  const url = await getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: 900 });
+  // Dashboard contract tests import this workspace package through a second
+  // node_modules tree. The runtime packages are version-pinned together, but
+  // their duplicated Smithy private types are not structurally assignable.
+  const url = await getSignedUrl(
+    client as never,
+    new GetObjectCommand({ Bucket: bucket, Key: key }) as never,
+    { expiresIn: 900 },
+  );
   return {
     url,
     cleanup: async () => { await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })); },

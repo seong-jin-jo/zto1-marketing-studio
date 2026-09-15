@@ -108,7 +108,14 @@ async function uploadToR2(localPath: string, idempotencyKey: string, imageIndex:
     ContentType: contentType,
   }));
 
-  const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: 900 });
+  // Dashboard contract tests import this workspace package through a second
+  // node_modules tree. The runtime packages are version-pinned together, but
+  // their duplicated Smithy private types are not structurally assignable.
+  const url = await getSignedUrl(
+    s3 as never,
+    new GetObjectCommand({ Bucket: bucket, Key: key }) as never,
+    { expiresIn: 900 },
+  );
   return {
     url,
     cleanup: async () => { await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })); },
