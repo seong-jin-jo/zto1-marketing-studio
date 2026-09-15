@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import useSWR from "swr";
 import { fetcher, apiPost, handleUnauthorizedResponse } from "@/lib/api";
@@ -60,28 +61,6 @@ function CardNewsEditor({ onReload, editingPostId, onBackToQueue }: { onReload: 
         showToast(`${r.slides?.length || 0}장 초안 생성 완료`, "success");
       } else { setEd(prev => ({ ...prev, outlining: false })); }
     } catch (e) { showToast((e as Error).message, "error"); setEd(prev => ({ ...prev, outlining: false })); }
-  };
-
-  const generate = async () => {
-    const title = (document.getElementById("card-title") as HTMLInputElement)?.value || "";
-    const ending = (document.getElementById("card-ending") as HTMLInputElement)?.value || "";
-    // read slide textareas
-    const slideEls = document.querySelectorAll<HTMLTextAreaElement>("[data-card-slide]");
-    const slides = [...slideEls].map(el => el.value);
-    if (!title) { showToast("제목을 입력하세요", "warning"); return; }
-    if (!slides.some(s => s.trim())) { showToast("슬라이드 내용을 입력하세요", "warning"); return; }
-
-    setEd(prev => ({ ...prev, title, ending, generating: true }));
-    try {
-      const r = await apiPost<{ success: boolean; batchId: string; slides: string[]; totalSlides: number }>(
-        "/api/card-news/generate",
-        { title, slides: slides.filter(s => s.trim()), style: ed.style, ending: ending || title },
-      );
-      if (r?.success) {
-        setEd(prev => ({ ...prev, generating: false, result: r }));
-        showToast(`카드뉴스 ${r.totalSlides}장 생성 완료`, "success");
-      } else { setEd(prev => ({ ...prev, generating: false })); }
-    } catch (e) { showToast((e as Error).message, "error"); setEd(prev => ({ ...prev, generating: false })); }
   };
 
   const saveDraft = async () => {
@@ -232,9 +211,10 @@ function CardNewsEditor({ onReload, editingPostId, onBackToQueue }: { onReload: 
               <label className="text-caption text-subtle block mb-micro">엔딩 슬라이드</label>
               <input id="card-ending" type="text" defaultValue={ed.ending} placeholder="자세한 내용은 프로필 링크에서 확인하세요" className="w-full bg-surface border border-border rounded-chip px-stack py-stack-tight text-body-sm text-muted" />
             </div>
-            <button onClick={generate} disabled={ed.generating} className={`w-full py-stack bg-accent text-accent-fg text-body-sm rounded-chip hover:bg-accent-hover ${ed.generating ? "opacity-50 cursor-wait" : ""}`}>
-              {ed.generating ? "생성 중..." : "카드뉴스 생성"}
-            </button>
+            <p className="text-caption text-subtle">고객별 비용과 결과 기록을 보존하는 생성실에서 카드뉴스를 만듭니다.</p>
+            <Link href="/studio?room=create" className="flex min-h-control-touch w-full items-center justify-center rounded-chip bg-accent px-stack py-stack text-body-sm text-accent-fg hover:bg-accent-hover">
+              생성실에서 카드뉴스 만들기
+            </Link>
           </div>
         </div>
         <div className="card p-stack-section">
@@ -323,8 +303,8 @@ function CardNewsEditor({ onReload, editingPostId, onBackToQueue }: { onReload: 
         ) : (
           <div className="flex items-center justify-center h-64 text-subtle">
             <div className="text-center">
-              <p className="text-body-sm mb-micro">카드뉴스를 생성하면 여기에 프리뷰가 표시됩니다</p>
-              <p className="text-caption">제목 + 슬라이드 텍스트 입력 후 &quot;카드뉴스 생성&quot; 클릭</p>
+              <p className="text-body-sm mb-micro">생성실에서 만든 카드뉴스나 직접 올린 이미지가 여기에 표시됩니다</p>
+              <p className="text-caption">새 카드뉴스는 위의 생성실 이동 단추에서 시작하세요</p>
             </div>
           </div>
         )}

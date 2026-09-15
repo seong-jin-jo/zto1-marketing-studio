@@ -27,8 +27,8 @@ const customerSurfaces: Array<{
   },
   {
     file: "src/components/channel/InstagramPage.tsx",
-    forbidden: ["/api/cron-status", "/api/cron-runs", "/api/cron-interval", "/api/cron/", "/api/design-tools"],
-    retained: ["/api/queue", "/api/channel-config/instagram", 'TenantAutomationSettings channel="instagram"'],
+    forbidden: ["/api/cron-status", "/api/cron-runs", "/api/cron-interval", "/api/cron/", "/api/design-tools", "/api/card-news/generate"],
+    retained: ["/api/queue", "/api/channel-config/instagram", 'TenantAutomationSettings channel="instagram"', '/studio?room=create'],
   },
   {
     file: "src/components/channel/MessagingPage.tsx",
