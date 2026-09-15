@@ -532,7 +532,7 @@ export function PerformanceRoom({
           {empty ? (
             <p className="text-caption text-muted" data-perf-preview-note><span className="mr-stack-tight rounded-pill bg-surface-2 px-stack-tight py-micro font-semibold">예시 데이터</span>채널을 연결하면 아래 자리가 실제 수치로 바뀝니다.</p>
           ) : null}
-          <div className={`grid grid-cols-2 gap-stack-tight lg:grid-cols-4 ${empty ? "opacity-60" : ""}`} data-perf-tier="core" data-perf-preview={empty ? "example" : undefined}>
+          <div className={`grid grid-cols-2 gap-stack-tight ${dedicated ? "xl:grid-cols-4" : "lg:grid-cols-4"} ${empty ? "opacity-60" : ""}`} data-perf-tier="core" data-perf-preview={empty ? "example" : undefined}>
             {(empty ? previewCoreMetrics : coreMetrics).map((metric) => (
               <Card key={metric.label} className="p-pad-inset">
                 <Stack gap={4}>
