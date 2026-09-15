@@ -880,6 +880,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
 
+  extensions/instagram-publish:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: 3.1056.0
+        version: 3.1056.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: 3.1056.0
+        version: 3.1056.0
+      typebox:
+        specifier: 1.1.39
+        version: 1.1.39
+
   extensions/inworld:
     devDependencies:
       '@openclaw/plugin-sdk':
@@ -1552,10 +1564,20 @@ importers:
 
   extensions/threads-growth: {}
 
-  extensions/threads-insights: {}
+  extensions/threads-insights:
+    dependencies:
+      typebox:
+        specifier: 1.1.39
+        version: 1.1.39
 
   extensions/threads-publish:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: 3.1056.0
+        version: 3.1056.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: 3.1056.0
+        version: 3.1056.0
       typebox:
         specifier: 1.1.39
         version: 1.1.39
@@ -1572,21 +1594,6 @@ importers:
   extensions/threads-search: {}
 
   extensions/threads-style: {}
-
-  extensions/x-publish:
-    dependencies:
-      typebox:
-        specifier: 1.1.39
-        version: 1.1.39
-
-  extensions/instagram-publish:
-    dependencies:
-      '@aws-sdk/client-s3':
-        specifier: 3.1056.0
-        version: 3.1056.0
-      typebox:
-        specifier: 1.1.39
-        version: 1.1.39
 
   extensions/tlon:
     dependencies:
@@ -1775,6 +1782,12 @@ importers:
       openclaw:
         specifier: 2026.5.28
         version: 2026.5.28
+
+  extensions/x-publish:
+    dependencies:
+      typebox:
+        specifier: 1.1.39
+        version: 1.1.39
 
   extensions/xai:
     dependencies:

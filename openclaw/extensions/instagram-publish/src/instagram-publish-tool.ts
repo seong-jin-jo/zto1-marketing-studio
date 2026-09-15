@@ -3,7 +3,8 @@ import { jsonResult, readStringParam } from "openclaw/plugin-sdk/agent-runtime";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-runtime";
 import { readFile, realpath } from "node:fs/promises";
 import { basename, extname, isAbsolute, relative, resolve } from "node:path";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   beginQueuePublishAttempt,
   recordQueueProviderResult,
@@ -75,18 +76,19 @@ function resolveConfig(api: OpenClawPluginApi) {
   return { accessToken, userId };
 }
 
-async function uploadToR2(localPath: string, idempotencyKey: string, imageIndex: number): Promise<string> {
+type StagedImage = { url: string; cleanup: () => Promise<void> };
+
+async function uploadToR2(localPath: string, idempotencyKey: string, imageIndex: number): Promise<StagedImage> {
   const dataDir = process.env.DATA_DIR || "/home/node/data";
   const { buffer: fileBuffer, filename, contentType } = await readOwnedLocalImage(localPath, dataDir);
 
   const accessKeyId = process.env.R2_ACCESS_KEY_ID || "";
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY || "";
   const bucket = process.env.R2_BUCKET || "";
-  const publicUrl = (process.env.R2_PUBLIC_URL || "").replace(/\/+$/, "");
   const endpoint = process.env.R2_ENDPOINT || "";
 
-  if (!accessKeyId || !secretAccessKey || !bucket || !publicUrl || !endpoint) {
-    throw new Error("R2 credentials not configured. Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL, R2_ENDPOINT env vars.");
+  if (!accessKeyId || !secretAccessKey || !bucket || !endpoint) {
+    throw new Error("R2 credentials not configured. Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT env vars.");
   }
 
   const ext = extname(filename).toLowerCase();
@@ -106,12 +108,16 @@ async function uploadToR2(localPath: string, idempotencyKey: string, imageIndex:
     ContentType: contentType,
   }));
 
-  return `${publicUrl}/${key}`;
+  const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: 900 });
+  return {
+    url,
+    cleanup: async () => { await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })); },
+  };
 }
 
-async function resolveImageUrl(url: string, idempotencyKey: string, imageIndex: number): Promise<string> {
+async function resolveImageUrl(url: string, idempotencyKey: string, imageIndex: number): Promise<StagedImage> {
   if (url.startsWith("/images/")) return await uploadToR2(url, idempotencyKey, imageIndex);
-  return url;
+  return { url, cleanup: async () => {} };
 }
 
 const ToolSchema = Type.Object({
@@ -151,6 +157,7 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
       });
       let resultRecorded = false;
       let providerDispatchStarted = false;
+      const stagedImages: StagedImage[] = [];
       const recordProviderFailure = async (error: string) => {
         await recordQueueProviderResult({
           queuePath,
@@ -168,7 +175,9 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
       // Resolve all image URLs (upload local paths)
       const publicUrls: string[] = [];
       for (const [imageIndex, url] of imageUrls.entries()) {
-        publicUrls.push(await resolveImageUrl(url, attempt.idempotencyKey, imageIndex));
+        const staged = await resolveImageUrl(url, attempt.idempotencyKey, imageIndex);
+        stagedImages.push(staged);
+        publicUrls.push(staged.url);
       }
 
       let mediaId: string;
@@ -293,6 +302,8 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
           }
         }
         throw error;
+      } finally {
+        await Promise.all(stagedImages.map((image) => image.cleanup().catch(() => {})));
       }
     },
   };

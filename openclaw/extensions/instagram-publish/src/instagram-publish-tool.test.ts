@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   begin: vi.fn(),
   record: vi.fn(),
   uploads: [] as Array<Record<string, unknown>>,
+  deletes: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("../../threads-queue/api.js", () => ({
@@ -18,14 +19,29 @@ vi.mock("../../threads-queue/api.js", () => ({
 
 vi.mock("@aws-sdk/client-s3", () => ({
   PutObjectCommand: class PutObjectCommand {
+    kind = "put";
+    constructor(public input: Record<string, unknown>) {}
+  },
+  GetObjectCommand: class GetObjectCommand {
+    kind = "get";
+    constructor(public input: Record<string, unknown>) {}
+  },
+  DeleteObjectCommand: class DeleteObjectCommand {
+    kind = "delete";
     constructor(public input: Record<string, unknown>) {}
   },
   S3Client: class S3Client {
-    async send(command: { input: Record<string, unknown> }) {
-      mocks.uploads.push(command.input);
+    async send(command: { kind: string; input: Record<string, unknown> }) {
+      if (command.kind === "put") mocks.uploads.push(command.input);
+      if (command.kind === "delete") mocks.deletes.push(command.input);
       return {};
     }
   },
+}));
+
+vi.mock("@aws-sdk/s3-request-presigner", () => ({
+  getSignedUrl: vi.fn(async (_client: unknown, command: { input: { Key: string } }, options: { expiresIn: number }) =>
+    `https://signed.example.test/${command.input.Key}?expires=${options.expiresIn}`),
 }));
 
 import { createInstagramPublishTool } from "./instagram-publish-tool.js";
@@ -45,11 +61,11 @@ describe("CODE-REVIEW-20260915-08 Instagram 캐러셀 객체 보존", () => {
     vi.stubEnv("R2_ACCESS_KEY_ID", "test-r2-access");
     vi.stubEnv("R2_SECRET_ACCESS_KEY", "test-r2-secret");
     vi.stubEnv("R2_BUCKET", "test-bucket");
-    vi.stubEnv("R2_PUBLIC_URL", "https://media.example.test");
     vi.stubEnv("R2_ENDPOINT", "https://r2.example.test");
     mocks.begin.mockResolvedValue({ idempotencyKey: "attempt-1" });
     mocks.record.mockResolvedValue(undefined);
     mocks.uploads.length = 0;
+    mocks.deletes.length = 0;
   });
 
   afterEach(() => {
@@ -89,6 +105,8 @@ describe("CODE-REVIEW-20260915-08 Instagram 캐러셀 객체 보존", () => {
     expect(keys).toHaveLength(2);
     expect(new Set(keys).size).toBe(2);
     expect(new Set(requestedImageUrls).size).toBe(2);
+    expect(requestedImageUrls.every((url) => url.includes("expires=900"))).toBe(true);
+    expect(mocks.deletes.map((entry) => entry.Key)).toEqual(keys);
   });
 
   it("CODE-REVIEW-20260915-12 거절: 공급자 호출 전 저장소 준비 실패를 결과 불명으로 기록하지 않는다", async () => {
