@@ -75,7 +75,7 @@ function resolveConfig(api: OpenClawPluginApi) {
   return { accessToken, userId };
 }
 
-async function uploadToR2(localPath: string, idempotencyKey: string): Promise<string> {
+async function uploadToR2(localPath: string, idempotencyKey: string, imageIndex: number): Promise<string> {
   const dataDir = process.env.DATA_DIR || "/home/node/data";
   const { buffer: fileBuffer, filename, contentType } = await readOwnedLocalImage(localPath, dataDir);
 
@@ -90,7 +90,8 @@ async function uploadToR2(localPath: string, idempotencyKey: string): Promise<st
   }
 
   const ext = extname(filename).toLowerCase();
-  const key = `instagram/${idempotencyKey}${ext}`;
+  // 한 시도 안의 각 장은 별도 객체여야 한다. 순번이 없으면 같은 확장자의 다음 장이 앞 장을 덮는다.
+  const key = `instagram/${idempotencyKey}-${String(imageIndex + 1).padStart(2, "0")}${ext}`;
 
   const s3 = new S3Client({
     region: "auto",
@@ -108,8 +109,8 @@ async function uploadToR2(localPath: string, idempotencyKey: string): Promise<st
   return `${publicUrl}/${key}`;
 }
 
-async function resolveImageUrl(url: string, idempotencyKey: string): Promise<string> {
-  if (url.startsWith("/images/")) return await uploadToR2(url, idempotencyKey);
+async function resolveImageUrl(url: string, idempotencyKey: string, imageIndex: number): Promise<string> {
+  if (url.startsWith("/images/")) return await uploadToR2(url, idempotencyKey, imageIndex);
   return url;
 }
 
@@ -149,6 +150,7 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
         payload: { text: caption, imageUrls },
       });
       let resultRecorded = false;
+      let providerDispatchStarted = false;
       const recordProviderFailure = async (error: string) => {
         await recordQueueProviderResult({
           queuePath,
@@ -165,13 +167,14 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
       try {
       // Resolve all image URLs (upload local paths)
       const publicUrls: string[] = [];
-      for (const url of imageUrls) {
-        publicUrls.push(await resolveImageUrl(url, attempt.idempotencyKey));
+      for (const [imageIndex, url] of imageUrls.entries()) {
+        publicUrls.push(await resolveImageUrl(url, attempt.idempotencyKey, imageIndex));
       }
 
       let mediaId: string;
 
       if (publicUrls.length === 1) {
+        providerDispatchStarted = true;
         // Single image post
         const createResp = await fetch(`${API_BASE}/${userId}/media`, {
           method: "POST",
@@ -201,6 +204,7 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
         // Carousel: create children first, then carousel container, then publish
         const childIds: string[] = [];
         for (const url of publicUrls) {
+          providerDispatchStarted = true;
           const childResp = await fetch(`${API_BASE}/${userId}/media`, {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": `${attempt.idempotencyKey}-${childIds.length}` },
@@ -273,15 +277,20 @@ export function createInstagramPublishTool(api: OpenClawPluginApi) {
       });
       } catch (error) {
         if (!resultRecorded) {
-          await recordQueueProviderResult({
-            queuePath,
-            postId,
-            channel: "instagram",
-            claimToken,
-            idempotencyKey: attempt.idempotencyKey,
-            state: "result_unknown",
-            error: error instanceof Error ? error.message : String(error),
-          }).catch(() => {});
+          const message = error instanceof Error ? error.message : String(error);
+          if (!providerDispatchStarted) {
+            await recordProviderFailure(message).catch(() => {});
+          } else {
+            await recordQueueProviderResult({
+              queuePath,
+              postId,
+              channel: "instagram",
+              claimToken,
+              idempotencyKey: attempt.idempotencyKey,
+              state: "result_unknown",
+              error: message,
+            }).catch(() => {});
+          }
         }
         throw error;
       }

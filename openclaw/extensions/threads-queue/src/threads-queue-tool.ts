@@ -11,7 +11,10 @@ import {
   isClaimActive,
   releaseClaim,
   verifyClaimOwnership,
-  DEFAULT_LEASE_MS,
+  MAX_CLAIM_BATCH,
+  MAX_CLAIM_LEASE_MS,
+  MIN_CLAIM_LEASE_MS,
+  normalizeClaimRequest,
   type ChannelKey,
   type QueueClaim,
 } from "./queue-claim.js";
@@ -227,7 +230,7 @@ const ThreadsQueueToolSchema = Type.Object(
       { description: "Filter by status (for list)." },
     ),
     limit: Type.Optional(
-      Type.Number({ description: "Max posts to return for get_approved (default: 1)." }),
+      Type.Integer({ minimum: 1, maximum: MAX_CLAIM_BATCH, description: "Max posts to return for get_approved (default: 1)." }),
     ),
     claimToken: Type.Optional(
       Type.String({
@@ -239,7 +242,11 @@ const ThreadsQueueToolSchema = Type.Object(
       Type.String({ description: "Publisher worker identity for get_approved lease bookkeeping." }),
     ),
     leaseMs: Type.Optional(
-      Type.Number({ description: "Lease duration in ms for get_approved (default: 300000)." }),
+      Type.Integer({
+        minimum: MIN_CLAIM_LEASE_MS,
+        maximum: MAX_CLAIM_LEASE_MS,
+        description: "Lease duration in ms for get_approved (default: 300000).",
+      }),
     ),
   },
   { additionalProperties: false },
@@ -398,10 +405,10 @@ export function createThreadsQueueTool(api: OpenClawPluginApi) {
           // 돌려주지 않는다(경합 차단 1단계). 반환된 claimToken 은 공급자 호출 직전
           // verify_claim 과 update_channel 에서 소유권 증명으로 쓴다.
           const now = new Date();
-          const limitParam = rawParams.limit;
-          const limit = typeof limitParam === "number" && limitParam > 0 ? limitParam : 1;
-          const leaseParam = rawParams.leaseMs;
-          const leaseMs = typeof leaseParam === "number" && leaseParam > 0 ? leaseParam : DEFAULT_LEASE_MS;
+          const { limit, leaseMs } = normalizeClaimRequest({
+            limit: rawParams.limit,
+            leaseMs: rawParams.leaseMs,
+          });
           const workerId = readStringParam(rawParams, "workerId") ?? `worker-${process.pid}`;
 
           const ready = queue.posts

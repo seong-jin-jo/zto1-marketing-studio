@@ -2,6 +2,148 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-15 20시 43분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 변경 | 돈, 격리, 동시성, 부분 실패, 무기록 삭제, 확정 요구 이탈 공격 리뷰 | OSMU-CODE-REVIEW-R7-01 | BLOCK | `0774bf9e..bd0d3499`, 55개 커밋과 103개 파일. MAJOR 25건, MINOR 1건. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-15.md` |
+| localhost 실제 응답 | 지정 작업 공간 기본 흐름과 health | OSMU-CODE-REVIEW-R7-02 | 범위 PASS | health HTTP 200, DB up. 기본 흐름 11/11, Studio v1 14/14. 단 listener는 05시 20분 시작이고 끝 커밋은 19시 02분이며 health에 build SHA가 없어 끝 커밋 실행 증거로는 인정하지 않음 |
+| Dashboard 회귀 | 전체 테스트와 TypeScript | OSMU-CODE-REVIEW-R7-03 | PASS | Vitest 361파일과 2,319건 통과, 조건부 3건 제외. `npx tsc --noEmit` 종료 0 |
+| OpenClaw 빌드 회귀 | tsdown 자원 정책 표적 테스트 | OSMU-CODE-REVIEW-R7-04 | NG | 26건 중 21건 통과, 5건 실패. heap 기대값 3건과 새 `RAYON_NUM_THREADS` 환경값 2건 불일치 |
+| 확정 UI 계약 | v63과 DESIGN.md 코드 구조 대조 | OSMU-CODE-REVIEW-R7-05 | NG | 접힌 사이드바에서 네 방 링크와 현재 방 강조가 삭제되고 1024 기본 56px, 펼침 겹침, 브랜드 오른쪽 접기 단추 계약을 지키지 않음 |
+
+제품 코드, migration과 테스트는 수정하지 않았다. 고객 UI의 생성 단추 403, 신규 큐 빈 파일 파손, Threads와 Instagram 이미지 발행 회귀, 프로세스 로컬 공유 생성 큐, 무제한 ffmpeg, YouTube 중복 게시 가능성, 전역 Docker 정리, 거짓 성공 검증기를 확인해 머지와 배포를 차단한다. 운영 배포, 외부 SNS 실발행, 외부 계정 성과 수집은 미검증이다.
+
+## 2026-09-15 17시 37분 KST · API 읽기 경로 v12 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R200, R207 | 최신 코드의 읽기 Route Handler 전부를 localhost에서 재검증 | API-READ-ALL-V12 | PASS | 고유 경로 105개에서 GET 105건과 HEAD 1건, 총 106건 실호출. 정상 92, 계약상 거절 14, HTTP 500, 기타 예상 밖 5xx, redirect, 예상 밖 4xx, timeout 모두 0. 최종 원본 `logs/diff/osmu-api-read-sweep-20260915-v12-authoritative-final2.json` |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY-V12 | PASS | 격리 탐침은 계약 401과 `no-tenant` 본문. 인증 필요 문구 노출 0. OAuth 미설정 503을 포함한 나머지 13건도 정확한 허용 목록과 일치 |
+| 검사기 회귀 | 긴 JSON 전체 본문 판정과 안전한 증거 축약 | API-SWEEP-LONG-JSON-V12 | 수정 후 PASS | 긴 정상 JSON 19건 오판을 수정. 표적 1파일 3건, 전체 Vitest 360파일과 2,317건 통과, 조건부 3건 제외. 수정 `2c50d68b`, 회귀 `1aefc861` |
+| 필수 회귀 | TypeScript, build, seed, health, 두 API E2E, Playwright, 디자인 lint | API-READ-REGRESSION-V12 | 작업트리 PASS | tsc 종료 0, Next.js build 184/184, schema와 seed 및 RLS 적용, health HTTP 200과 DB up, 기본 흐름 11/11, Studio v1 14/14, 네 방 반응형 20/20, 가로 넘침, 가린 모달, 브라우저 401, 콘솔 오류, 디자인 토큰 위반 모두 0 |
+| 2026-08-28 대비 | 과거 전수 실사와 현재 분모 및 결과 비교 | API-READ-DIFF-V12 | PASS | 과거 문서 84 GET 대비 현재 105 GET으로 21개 증가. 과거 당시 소스 정적 재계산 95 대비 10개 증가. 과거 발견 500은 2건 후 수정, 현재 0. v11 대비 경로, 상태, 분류 변경 0 |
+| R01부터 R207 및 세부 요청 232건 중 이번 범위 밖 | 회장 확정 요구 승계 | REQ-ALL-V12 | 이월 | 전건 표를 `docs/qa/osmu-api-read-sweep-v12-gpt-codex.md`에 승계. 이번 API 읽기 직접 관련 5건만 실행 판정하고 나머지는 이월 |
+| 제품 전체 | 디자인 정합, 코드 공격 리뷰, 운영 배포 | QA-QUALITY-GATE-V12 | NG | `verify-agent-quality.sh` 종료 코드 2, 배포 환경 접촉 증거 0건. v63과 v68 승인 핀 충돌, 기존 8개 배치 속성 디자인 NG, 17시 25분 코드 공격 재리뷰 BLOCK, 운영 배포와 외부 채널 실발행 미검증을 유지 |
+
+제품 Route Handler의 HTTP 500은 재현되지 않아 제품 API 코드는 바꾸지 않았다. 검사기는 전체 응답으로 판정하고 220자 증거 미리보기만 축약하도록 고쳤다. 최종 실행 전후 listener PID는 64529, 소스 합성 SHA-256은 `8c65d5fa62b8f3d49cac66f3a41c82018d7735a7641379d95d1f454c88e07a75`로 같았다. 상세 보고서는 `docs/qa/osmu-api-read-sweep-v12-gpt-codex.md`다.
+
+## 2026-09-15 17시 25분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 91개 커밋 | 돈, 격리, 동시성, 부분 실패, 무기록 삭제, 확정 요구 이탈 공격 리뷰 | CODE-REVIEW-20260915-R2-01 | BLOCK | `fe24d051..f4b0f5a5`, 202파일. MAJOR 17건, MINOR 1건. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-15.md` |
+| localhost 실제 응답 | 지정 작업 공간 기본 흐름과 health | CODE-REVIEW-20260915-R2-02 | 범위 PASS | health HTTP 200, DB up. 기본 흐름 11/11 |
+| Studio v1 실제 응답 | 생성, 조회, 거절, 무료 다시 만들기 몫 | CODE-REVIEW-20260915-R2-03 | NG | 첫 실행 12/14, 무료 다시 만들기 2건 실패. 같은 조건 재실행 14/14. 연속 안정 통과가 아니므로 전체 성공으로 세지 않음 |
+| dashboard 회귀 | 전체 테스트와 TypeScript | CODE-REVIEW-20260915-R2-04 | PASS | Vitest 360파일과 2,317건 통과, 3건 제외. `npx tsc --noEmit` 종료 0 |
+| OpenClaw 빌드 회귀 | tsdown 자원 정책 표적 테스트 | CODE-REVIEW-20260915-R2-05 | NG | 26건 중 21건 통과, 5건 실패. heap 기대값 3건과 새 `RAYON_NUM_THREADS` 환경값 2건 불일치 |
+| 확정 UI 계약 | v63과 DESIGN.md 코드 구조 대조 | CODE-REVIEW-20260915-R2-06 | NG | 접힌 사이드바에서 네 방 링크와 현재 방 강조가 삭제되고, 1024 기본 56px 및 펼침 겹침 계약을 지키지 않음 |
+
+제품 코드는 수정하지 않았다. 계정별 성과 격리, 프로세스 로컬 생성 큐, 무제한 ffmpeg, 불확실한 성과 글 영구 제외, R2 공개 객체 보관, 증거 스크립트의 거짓 커밋 귀속, 공유 runner 전역 정리에 MAJOR가 남아 머지와 배포를 차단한다. 운영 배포, 외부 SNS 실제 발행, 외부 계정 성과 수집은 미검증이다.
+
+## 2026-09-15 06시 35분 KST · 네 방 기본 흐름 v12 기능 수정 후 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 실제 관통 | FLOW-API-V12 | 수정 후 PASS | 지정 작업 공간에서 최종 localhost 기본 흐름 11/11. 후보 3장, 편집 순서 변경, 삭제와 복원, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰 |
+| R08, R19, R207 | 네 방 렌더와 390, 768, 1024, 1440 실제 이동 | FLOW-UI-V12 | 기능 PASS, 디자인 NG | 단면 4/4, 방 화면 20/20, 성과실에서 생성실 복귀 5/5. 가로 넘침, 전체 화면 모달, 탐색 가림, 브라우저 401, 콘솔 오류 0. 원본 `logs/diff/osmu-four-room-flow-20260915-0635/captures/` |
+| R27, R168 | Studio v1 회귀 | STUDIO-V1-V12 | PASS | localhost 실요청 14/14 |
+| R104 | 검증 자격증명 정리 | FLOW-PROBE-CLEANUP-V12 | PASS | 전체 실행 뒤 활성 `qa-four-room-*` 토큰 0건 |
+| R193, R205, R206 | v63 디자인 계승 | DESIGN-V12 | NG | 16개 방과 폭 조합의 주축, 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계가 불일치. 과제 v63과 pipeline 승인 v68 핀도 충돌 |
+| 필수 회귀 | test, TypeScript, build, seed, health, 두 API E2E, Playwright, 디자인 lint | FLOW-REGRESSION-V12 | 작업트리 PASS | Vitest 360파일과 2,317건 통과, 조건부 3건 제외. tsc 종료 0, build 184/184, schema와 seed 및 RLS 적용, health HTTP 200과 DB up 및 52ms, 디자인 토큰 위반 0 |
+| 커밋 무결성 | 수정과 회귀가 깨끗한 체크아웃에도 남는지 | FLOW-COMMIT-V12 | NG | 큐 잠금 수정은 `800c970a`. 발행 동시성 정적 계약 테스트 변경은 같은 경로의 타 세션 미추적 테스트 때문에 커밋 훅이 차단해 작업트리에 남음 |
+| QA 출고 게이트 | 운영 배포 접촉 증거 | QA-QUALITY-GATE-V12 | NG | `verify-agent-quality.sh`가 배포 환경 접촉 증거 0건으로 반려. localhost 기능 증거를 제품 전체 QA나 배포 PASS로 확대하지 않음 |
+| R01부터 R207 중 이번 범위 밖 | 회장 확정 요구 승계 | REQ-ALL-V12 | 이월 | 요구 정본을 유지하고 이번 네 방 기능 PASS에 포함하지 않음 |
+
+첫 전체 회귀는 3파일 실패였다. 제한 동시성 구현을 예전 `Promise.all` 문자열로만 찾던 정적 계약을 현재 구현으로 맞췄고, 큐 잠금 재시도 여유를 1.55초에서 3.55초로 늘리며 최종 `ELOCKED`를 `queue lock timeout`으로 정규화했다. 수정 후 표적 3파일 43건과 전체 2,317건이 통과했다. 기능 범위는 PASS지만 디자인 정합, 커밋 무결성, 운영 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v12-gpt-codex.md`다.
+
+## 2026-09-15 04시 17분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 96개 커밋 | 돈, 격리, 동시성, 부분 실패, 무기록 삭제, 확정 요구 이탈 공격 리뷰 | CODE-REVIEW-20260915-01 | BLOCK | MAJOR 43건, MINOR 7건. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-15.md` |
+| 실제 고객 인증 경계 | 고객 허용 생성 경로와 공유 계정 정보 노출 | CODE-REVIEW-20260915-02 | NG | 임시 고객 토큰으로 이미지와 카드뉴스 빈 본문은 각각 HTTP 400으로 핸들러 도달. Higgsfield 상태는 HTTP 200과 `email`, `plan`, `credits`, `raw` 키 노출. 값은 기록하지 않았고 임시 토큰 폐기 HTTP 200 확인 |
+| 기본 제품 흐름 | 지정 작업 공간의 localhost 실제 요청 | CODE-REVIEW-20260915-03 | PASS | health HTTP 200과 DB up, 기본 흐름 11/11, Studio v1 14/14 |
+| dashboard 회귀 | 전체 테스트와 TypeScript | CODE-REVIEW-20260915-04 | PASS | Vitest 353파일과 2,293건 통과, 3건 제외. `npx tsc --noEmit` 종료 0 |
+| OpenClaw 빌드 회귀 | 최근 변경된 tsdown 자원 정책 표적 테스트 | CODE-REVIEW-20260915-05 | NG | 26건 중 21 통과, 5 실패. heap 기대값 3건과 새 `RAYON_NUM_THREADS` 환경값 2건 불일치 |
+
+제품 코드는 수정하지 않았다. 격리와 비용 경계, 발행 멱등성, lease fencing, 복구 상태, v63 화면 계약, 증거 신뢰성에 MAJOR가 남아 머지와 배포를 차단한다.
+
+## 2026-09-15 03시 55분 KST · 성과 시계열 갭 재확인 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사를 현재 코드와 대조해 남은 기본 흐름 갭을 구현 | GAP-HISTORY-20260915-0355-01 | NG | 남은 항목은 게시물별 성과 snapshot과 재현 가능한 30일 비교다. localhost 지정 작업 공간 `GET /api/metrics`는 HTTP 200, 최상위 키는 `coverage`, `posts`, 게시물 0건이며 `history`, `comparison`은 없다. |
+| DB 실물과 API 계약 | 게시물별 관측 이력과 기간 비교를 재현 | GAP-HISTORY-20260915-0355-02 | NG | `published_posts`는 최신 누계와 `metrics_at`만 보존하고, 게시물별 이력 table과 migration은 없다. |
+| pipeline build 허용 범위 | 승인된 계약 안에서만 구현 | GAP-HISTORY-20260915-0355-03 | BLOCK | 현재 공정은 `qa`, 승인 아님이다. snapshot 단위, 멱등 키, 보존 기간, 공급자별 정규화와 30일 비교식이 승인되지 않아 제품 소스와 migration을 수정하지 않았다. |
+| 기본 흐름 실제 요청 | 생성, 편집, 발행 큐, 성과와 생성실 재인계 | GAP-HISTORY-20260915-0355-04 | PASS | localhost 기본 흐름 11/11, Studio v1 14/14. health HTTP 200, DB up. |
+| 필수 회귀 | test, TypeScript, production build, 디자인 lint | GAP-HISTORY-20260915-0355-05 | PASS | Vitest 353파일과 2,293건 통과, 3건 제외. TypeScript 종료 0, build 184/184, 디자인 토큰 위반 0. |
+
+YouTube Analytics는 요청 기간과 집계축을 명시하지만 TikTok Video Query는 영상별 누계값을
+반환한다. 여러 공급자를 하나의 30일 비교로 묶는 저장·집계 계약이 먼저 필요하다. 운영 배포와
+실제 외부 공급자 기간 성과는 미검증이다.
+
+## 2026-09-15 03시 04분 KST · 성과 시계열 갭 재착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사를 현재 코드와 대조해 남은 기본 흐름 갭을 구현 | GAP-HISTORY-20260915-0304-01 | ❌ NG | localhost 지정 작업 공간 `GET /api/metrics`는 HTTP 200이지만 최상위 키가 `coverage`, `posts`뿐이고 `history`, `comparison`은 없다. 게시물은 0건이다. |
+| pipeline build 허용 범위 | 게시물별 성과 snapshot과 재현 가능한 30일 비교 구현 | GAP-HISTORY-20260915-0304-02 | BLOCK | `pipeline-state.osmu.md`의 현재 공정은 `qa`, 상태는 승인 아님이다. snapshot 저장 단위, 멱등 키, 보존 기간, 30일 비교식의 승인된 DB·API 계약이 없다. |
+
+health는 HTTP 200과 DB up으로 관찰했다. 코드와 migration을 수정하기 전 두 감사의 후속 구현, 현재 schema, Route Handler, 공식 provider 기간 계약을 대조한다. 승인 없는 저장 계약을 임의로 만들지 않는다.
+
+## 2026-09-15 02시 27분 KST · 네 방 기본 흐름 v11 기능 수정 후 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 실제 관통 | FLOW-API-V11 | 수정 후 PASS | 최초 생성은 `spawn_failed`, 후보 0장. Claude CLI 사용자 설치 경로 탐색을 복구한 뒤 build 후 재기동 서버에서 기본 흐름 최종 11/11. 후보 3장, 편집, 삭제·복원, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰. 수정 `629f056d`, 회귀 `957a8225` |
+| R08, R19, R207 | 390, 768, 1024, 1440 네 폭에서 네 방을 사람처럼 이동 | FLOW-UI-V11 | 기능 PASS, 디자인 NG | 단면 4/4, 방 화면 20/20, 성과실에서 생성실 복귀 5/5. 가로 넘침·가린 모달·탐색 차단·브라우저 401·콘솔 오류 0. 원본 `logs/diff/osmu-four-room-flow-20260915-0216/captures/` |
+| R27, R168 | Studio v1 회귀 | STUDIO-V1-V11 | PASS | localhost 실요청 14/14 |
+| R104 | 검증 자격증명 정리 | FLOW-PROBE-CLEANUP-V11 | PASS | 전체 실행 뒤 활성 `qa-four-room-*` 토큰 0건 |
+| R193, R205, R206 | v63 디자인 계승 | DESIGN-V11 | NG | 16개 방·폭 조합의 주축, 요소 순서, 열 수, 정렬·여백, 표시·숨김, 글꼴 단계, 버튼 위계가 불일치. 과제 v63과 pipeline 승인 v68 핀도 충돌 |
+| 필수 회귀 | test, TypeScript, build, seed, health, 두 API E2E, Playwright, 디자인 lint | FLOW-REGRESSION-V11 | PASS | Vitest 353파일과 2,293건 통과, 조건부 3건 제외. tsc 종료 0, build 184/184, schema·seed·RLS 적용, 최종 health HTTP 200·DB up·26ms, 디자인 토큰 위반 0 |
+| R01부터 R207 중 이번 범위 밖 | 회장 확정 요구 승계 | REQ-ALL-V11 | 이월 | 요구 정본을 유지하고 이번 네 방 기능 PASS에 포함하지 않음 |
+| QA 출고 게이트 | 운영 배포와 외부 채널 실발행 | QA-QUALITY-GATE-V11 | NG | `verify-agent-quality.sh` 종료 코드 2. localhost 기능은 관찰 완료했지만 운영 배포 환경 접촉과 외부 계정 발행은 미검증. 상세 `docs/qa/osmu-four-room-basic-flow-v11-gpt-codex.md` |
+
+canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였다. 최종 listener PID는 42353, `dashboard/src`, `dashboard/scripts`, `dashboard/tests` 합성 SHA-256은 `f9919ac18a62566b2b461a0f77de21c2bd848af0853664bb812e70f5222b2ecf`다. 기능 범위는 PASS지만 디자인 정합과 제품 전체 QA, 배포는 NG다.
+
+## 2026-09-15 02시 06분 KST · 네 방 기본 흐름 v11 착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R27, R166, R168, R172 | 생성실부터 성과실까지 실제 기본 흐름 재검증 | FLOW-API-V11 | ❌ NG | 착수 health는 `localhost:3456/api/health` HTTP 200, DB up이었으나 `verify-basic-flow-e2e.mjs` 첫 생성 요청이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 종료 코드 1. 후보 0장. request id는 `ebeab845-101e-4ece-baf8-f0f9fadef2b1` |
+
+제공자 실패가 실행 환경인지 제품 회귀인지 분리하고, 같은 localhost에서 기본 11단계, 네 방 렌더, 네 폭 클릭, 전체 회귀를 다시 끝내기 전에는 PASS로 전환하지 않는다.
+
+## 2026-09-14 22시 35분 KST · 네 방 기본 흐름 v10 기능 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 실제 관통 | FLOW-API-V10 | PASS | 지정 작업 공간 localhost 기본 흐름 11/11. 후보 3장, 편집, 삭제·복원, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰 |
+| R08, R19, R207 | 390, 768, 1024, 1440 네 폭에서 네 방을 사람처럼 이동 | FLOW-UI-V10 | 기능 PASS, 디자인 NG | 단면 4/4, 방 화면 20/20, 성과실에서 생성실 복귀 5/5. 가로 넘침·가린 모달·탐색 차단·브라우저 401·콘솔 오류 0. 원본 `logs/diff/osmu-four-room-flow-20260914-2208/captures/` |
+| R27, R168 | Studio v1 회귀 | STUDIO-V1-V10 | PASS | localhost 실요청 14/14 |
+| R104 | 검증 자격증명 정리 | FLOW-PROBE-CLEANUP-V10 | PASS | 전체 실행 뒤 활성 `qa-four-room-*` 토큰 0건 |
+| R193, R205, R206 | v63 디자인 계승 | DESIGN-V10 | NG | 16개 방·폭 조합의 주축, 요소 순서, 열 수, 정렬·여백, 표시·숨김, 글꼴 단계, 버튼 위계가 불일치. 과제 v63과 pipeline 승인 v68 핀도 충돌 |
+| 필수 회귀 | test, TypeScript, build, seed, health, 두 API E2E, Playwright, 디자인 lint | FLOW-REGRESSION-V10 | PASS | Vitest 351파일과 2,291건 통과, 조건부 3건 제외. tsc 종료 0, build 184/184, schema·seed·RLS 적용, health HTTP 200·DB up·24ms, 디자인 토큰 위반 0 |
+| R01부터 R207 중 이번 범위 밖 | 회장 확정 요구 승계 | REQ-ALL-V10 | 이월 | 요구 정본을 유지하고 이번 네 방 기능 PASS에 포함하지 않음 |
+| QA 출고 게이트 | 운영 배포와 외부 채널 실발행 | QA-QUALITY-GATE-V10 | NG | localhost 기능은 관찰 완료했지만 운영 배포와 외부 계정 발행은 미검증. 상세 `docs/qa/osmu-four-room-basic-flow-v10-gpt-codex.md` |
+
+첫 `npm run test`는 실자격증명을 내보낸 셸의 환경 오염으로 16파일 59건이 실패했다. 원본 `vitest.log`에 보존하고 제품 결함 판정에서 제외했다. 깨끗한 셸의 공식 명령은 `vitest-clean.log`와 같이 전건 통과했다. 제품 소스는 수정하지 않았다.
+
+## 2026-09-14 22시 15분 KST · API 읽기 경로 v11 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R200, R207 | 최신 코드의 읽기 Route Handler 전부를 localhost에서 재검증 | API-READ-ALL-V11 | PASS | 고유 경로 105개에서 GET 105건과 HEAD 1건, 총 106건 실호출. 정상 92, 계약상 거절 14, 500·기타 예상 밖 5xx·redirect·예상 밖 4xx·timeout 0. 원본 `logs/diff/osmu-api-read-sweep-20260914-v11-authoritative-restarted.json` |
+| R104 | 고객, 운영자, 작업 공간 인증 경계 | API-AUTH-BOUNDARY-V11 | PASS | 격리 탐침은 계약 401과 `no-tenant` 본문. 401 인증 필요 문구 노출 0. Threads OAuth 미설정 503 등 나머지 13건도 정확한 allowlist와 일치 |
+| 검사 실행 환경 | 장기 실행 dev listener 열화와 제품 고장 분리 | API-SWEEP-RUNTIME-V11 | 수정 후 PASS | PID 33531에서 세 번 실행이 서로 다른 경로 timeout과 health 503으로 끝났다. DB는 max_connections 100, 연결 6, active 1이었다. 같은 DB와 소스에서 관리 대상 pane만 PID 53664로 재기동한 뒤 106건 전부 응답. 제품 500은 재현되지 않아 제품 코드는 수정하지 않음 |
+| 필수 회귀 | test, TypeScript, build, seed, health, 두 API E2E, Playwright, 디자인 lint | API-READ-REGRESSION-V11 | PASS | Vitest 351파일과 2,291건 통과, 조건부 3건 제외. tsc 종료 0, build 184/184, schema·seed·RLS 적용, warm health HTTP 200·DB up·3ms, 기본 흐름 11/11, Studio v1 14/14, 현재 PID 53664 네 방 렌더 4/4와 가린 모달·브라우저 401·콘솔 오류 0, 디자인 토큰 위반 0 |
+| R205, R206 | 승인 프로토타입과 UI 계승 | DESIGN-V11 | NG | 제품 화면 소스는 바꾸지 않았다. v9의 390·768·1024·1440 기능 이동은 PASS지만 v63 대비 8개 배치 속성은 전부 NG. 과제 v63과 pipeline 승인 v68 핀도 충돌 |
+| R01부터 R207과 하위 번호 232건 | 회장 확정 요구 전건 승계 | REQ-ALL-V11 | 이월 | 상세 보고서의 요청 번호 표에 232건을 전건 승계. 이번 API 범위와 직접 연결된 항목만 실행 판정하고 나머지는 이월 |
+| QA 출고 게이트 | 운영 배포 접촉 증거 | QA-QUALITY-GATE-V11 | NG | `verify-agent-quality.sh` 종료 코드 2. localhost 명시 범위는 관찰 완료했지만 운영 host 접촉 증거가 없어 제품 전체 QA와 배포 PASS 금지 |
+
+canonical `pipeline-state.osmu.md`는 착수 시 이미 `current_stage: qa`였다. 권위 실행 전후 listener PID 53664와 `dashboard/src/**/*`, `dashboard/scripts/**/*` 합성 SHA-256 `723e40ed26074441a93080d267342c1e89290d846c0a6b1d7e21f309c8dca3cd`가 같았다. v10 대비 경로 추가·삭제, 상태와 분류 변화는 0건이다. 상세는 `docs/qa/osmu-api-read-sweep-v11-gpt-codex.md`다.
+
 ## 2026-09-14 20시 44분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

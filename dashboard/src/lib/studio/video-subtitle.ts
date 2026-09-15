@@ -280,3 +280,23 @@ export function pickSubtitleFont(exists: (candidate: string) => boolean, overrid
   if (configured) return exists(configured) ? configured : null;
   return SUBTITLE_FONT_CANDIDATES.find((candidate) => exists(candidate)) ?? null;
 }
+
+export type SubtitleFailure = {
+  status: 503 | 504 | 422;
+  code: "ENCODER_MISSING" | "SUBTITLE_TIMEOUT" | "SUBTITLE_BURN_FAILED";
+};
+
+/** ffmpeg 실행 실패를 HTTP 계약으로 분류한다. 인프라 준비 실패를 사용자 입력 오류로 숨기지 않는다. */
+export function subtitleFailureStatus(error: unknown): SubtitleFailure {
+  const candidate = error as { code?: unknown; killed?: unknown; signal?: unknown; message?: unknown };
+  const message = typeof candidate?.message === "string" ? candidate.message : String(error);
+  if (
+    candidate?.code === "ENOENT"
+    || /ENOENT/.test(message)
+    || /No such filter:\s*['\"]?drawtext|Filter not found/i.test(message)
+  ) return { status: 503, code: "ENCODER_MISSING" };
+  if (candidate?.killed === true || candidate?.signal === "SIGTERM" || /timed?\s*out|timeout/i.test(message)) {
+    return { status: 504, code: "SUBTITLE_TIMEOUT" };
+  }
+  return { status: 422, code: "SUBTITLE_BURN_FAILED" };
+}

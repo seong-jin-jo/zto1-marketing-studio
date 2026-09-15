@@ -48,6 +48,20 @@ jobs:
 
       - run: npm ci
 
+      - name: Seed proper-lockfile into the openclaw tree
+        # tests/publish/cancel-safety-regression 등 8개가 openclaw/extensions/threads-queue 의
+        # queue-lock 을 원본 그대로 부른다. 그 파일은 proper-lockfile 을 자기 트리(openclaw/node_modules)
+        # 에서 찾는데 CI 는 대시보드만 설치해 없다(2026-09-15 실측: Cannot find module './lib/lockfile').
+        # 심볼릭 링크는 vitest 가 realpath 로 풀어 tests/setup.ts 의 proper-lockfile mock 과 같은
+        # 모듈로 합쳐 버리고, 그러면 진짜 자물쇠를 검사하는 테스트가 무너진다. 그래서 복사한다.
+        # 로컬은 pnpm 이 별도 실체를 두므로 같은 조건이다.
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p openclaw/node_modules
+          for m in proper-lockfile graceful-fs retry signal-exit; do
+            cp -R "dashboard/node_modules/$m" "openclaw/node_modules/$m"
+          done
+
       - name: Type check
         # CI 는 대시보드 의존성만 설치한다. 이웃 워크스페이스(openclaw)를 직접 부르는
         # 테스트 아홉 개는 그 트리의 의존성이 없어 여기서 무너진다(2026-09-14 실측 11건).

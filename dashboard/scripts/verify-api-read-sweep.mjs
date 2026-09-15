@@ -6,6 +6,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { classifyApiReadResponse } from "./lib/api-sweep-contract.mjs";
 
 const dashboardRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const apiRoot = path.join(dashboardRoot, "src", "app", "api");
@@ -127,15 +128,6 @@ const expectedRejections = new Map([
   ["src/app/api/tiktok/publish-status/route.ts:GET", { statuses: [400], reason: "토큰에서 테넌트 확인 불가" }],
 ]);
 
-function classify(status, expectedRejection) {
-  if (expectedRejection?.statuses.includes(status)) return "계약상 거절";
-  if (status >= 200 && status < 300) return expectedRejection ? "계약 불일치" : "정상";
-  if (status >= 300 && status < 400) return "리다이렉트 검토";
-  if (status === 500) return "고장";
-  if (status >= 500) return "서버 오류 검토";
-  return "예상 밖 거절";
-}
-
 const files = await collectRouteFiles(apiRoot);
 const requests = files.flatMap(({ file, methods }) => methods.map((method) => ({ file, method })));
 const results = [];
@@ -212,17 +204,27 @@ async function inspectRoute({ file, method }) {
       redirect: "manual",
       signal: AbortSignal.timeout(Math.min(requestTimeoutMs, remainingMs)),
     });
-    const body = redact((await response.text()).slice(0, 500));
+    const fullBody = await response.text();
+    const safeBody = redact(fullBody);
+    const classification = classifyApiReadResponse({
+      status: response.status,
+      expectedRejection,
+      method,
+      contentType: response.headers.get("content-type") || "",
+      bodyText: fullBody,
+    });
     results.push({
       route: apiPath,
       method,
       file: relativeFile,
       expected_contract: expectedContract,
       status: response.status,
-      classification: classify(response.status, expectedRejection),
+      classification,
       duration_ms: Date.now() - startedAt,
-      body_sha256: createHash("sha256").update(body).digest("hex"),
-      body_preview: response.status >= 400 ? body.replace(/\s+/g, " ").slice(0, 220) : "",
+      body_sha256: createHash("sha256").update(safeBody).digest("hex"),
+      body_preview: response.status >= 400 || classification !== "정상"
+        ? safeBody.replace(/\s+/g, " ").slice(0, 220)
+        : "",
     });
   } catch (error) {
     results.push({

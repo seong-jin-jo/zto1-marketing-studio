@@ -76,14 +76,17 @@ describe("publish_success fires only after confirmed API success, not on click a
     const apiCall = block.indexOf('apiPost<{ ok?: boolean; partial?: boolean;');
     const partialGuard = block.indexOf("isExternalPublishPersistenceError(e)");
     const preserveUrl = block.indexOf("e.payload.permalink", partialGuard);
-    const parallelJoin = block.indexOf("await Promise.all(targets.map", preflightGuard);
+    const boundedParallelJoin = block.indexOf(
+      "await runWithConcurrency(targets, PUBLISH_CONCURRENCY",
+      preflightGuard,
+    );
     const persistPartial = block.indexOf('save("partial", pendingReconciliations, did)');
 
     expect(preflightGuard).toBeGreaterThan(-1);
     expect(preflightGuard).toBeLessThan(apiCall);
     expect(partialGuard).toBeGreaterThan(-1);
     expect(preserveUrl).toBeGreaterThan(partialGuard);
-    expect(parallelJoin).toBeGreaterThan(preflightGuard);
+    expect(boundedParallelJoin).toBeGreaterThan(preflightGuard);
     expect(persistPartial).toBeGreaterThan(partialGuard);
     expect(block.slice(partialGuard, persistPartial)).not.toContain('name: "publish_success"');
     expect(block).not.toContain("retryPublish(");

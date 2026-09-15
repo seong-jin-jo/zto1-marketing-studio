@@ -12,3 +12,4 @@
 // 불일치가 생기지 않는다.
 export const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100 MiB
 export const MAX_VIDEO_MIB = MAX_VIDEO_BYTES / (1024 * 1024);
+export const MAX_VIDEO_DURATION_SECONDS = 180;

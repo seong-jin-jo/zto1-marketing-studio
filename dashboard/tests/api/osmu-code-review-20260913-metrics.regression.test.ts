@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ transactionActive: false, updates: 0 }));
+const state = vi.hoisted(() => ({
+  transactionActive: false,
+  updates: 0,
+  scenario: "threads" as "threads" | "tiktok",
+  fetchTikTok: vi.fn(),
+}));
 
 vi.mock("@/lib/tenant-auth", () => ({ effectiveTenantId: vi.fn(async () => "tenant-metrics") }));
 vi.mock("@/lib/file-io", () => ({
@@ -9,9 +14,9 @@ vi.mock("@/lib/file-io", () => ({
   dataPath: vi.fn((name: string) => name),
 }));
 vi.mock("@/lib/tenant-context", () => ({ runWithTenant: vi.fn((_id: string, fn: () => unknown) => fn()) }));
-vi.mock("@/lib/tiktok", () => ({ fetchTikTokVideoMetrics: vi.fn() }));
+vi.mock("@/lib/tiktok", () => ({ fetchTikTokVideoMetrics: state.fetchTikTok }));
 vi.mock("@/lib/publish", () => ({
-  getChannelCred: vi.fn(async (_tenant: string, channel: string) => channel === "threads" ? { token: "test-token" } : null),
+  getChannelCred: vi.fn(async (_tenant: string, channel: string) => channel === state.scenario ? { token: "test-token" } : null),
   fetchXPublicMetrics: vi.fn(),
   fetchMetaPostMetrics: vi.fn(),
   fetchYouTubeMetrics: vi.fn(),
@@ -26,10 +31,19 @@ vi.mock("@/lib/db", () => ({
         return [];
       }
       if (query.includes("platform = 'threads'")) {
+        if (state.scenario !== "threads") return [];
         return [
           { id: "row-success", external_id: "threads-success" },
           { id: "row-failure", external_id: "threads-failure" },
         ];
+      }
+      if (query.includes("platform = 'tiktok'")) {
+        if (state.scenario !== "tiktok") return [];
+        return ["one", "two", "three"].map((suffix) => ({
+          id: `row-${suffix}`,
+          external_id: `video-${suffix}`,
+          account_id: "account-tiktok",
+        }));
       }
       return [];
     };
@@ -46,6 +60,8 @@ describe("성과 수집 검수 회귀", () => {
   beforeEach(() => {
     state.transactionActive = false;
     state.updates = 0;
+    state.scenario = "threads";
+    state.fetchTikTok.mockReset();
     vi.resetModules();
   });
 
@@ -84,5 +100,28 @@ describe("성과 수집 검수 회귀", () => {
     expect(body.failures).toContainEqual({ channel: "threads", code: "insights_forbidden", count: 1 });
     expect(state.updates).toBe(2);
     vi.unstubAllGlobals();
+  });
+
+  it("항목 33 거절 경로: TikTok 묶음 실패 세 건은 실패 건수와 상세 건수를 모두 3으로 센다", async () => {
+    state.scenario = "tiktok";
+    state.fetchTikTok.mockResolvedValue({ ok: false, status: 500, error: "provider failed" });
+
+    const { POST } = await import("@/app/api/metrics/route");
+    const response = await POST(new Request("http://localhost/api/metrics", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-metrics" }),
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body).toEqual(expect.objectContaining({
+      ok: false,
+      updated: 0,
+      failed: 3,
+      total: 3,
+      failures: [{ channel: "tiktok", code: "tiktok_500", count: 3 }],
+    }));
+    expect(body.failureDetails).toHaveLength(3);
+    expect(state.updates).toBe(3);
   });
 });

@@ -57,7 +57,7 @@ export function EditOutline({
    *
    * 회장 확정 D-2026-09-09-1: "직접 문구 수정이나 드래그앤 드롭정도는 할수있는거지.
    * 프롬프팅보다 편하니까." 다만 끌기만 두면 키보드와 보조기기에서 순서를 못 바꾼다.
-   * 그래서 ▲▼ 단추를 함께 남긴다. 같은 일을 두 길로 할 수 있게 두는 것이다.
+   * 그래서 `Alt+위/아래 화살표` 키 이동을 함께 둔다. 보이는 방향 단추는 R190 계약상 두지 않는다.
    */
   onMoveTo?: (from: number, to: number) => void;
   onAdd?: () => void;
@@ -85,6 +85,17 @@ export function EditOutline({
                 aria-current={active ? "true" : "false"}
                 aria-label={`${index + 1}번째 ${unit} 고르기`}
                 onClick={() => onSelect(index)}
+                onKeyDown={(event) => {
+                  if (!onMove || !event.altKey) return;
+                  if (event.key === "ArrowUp" && index > 0) {
+                    event.preventDefault();
+                    onMove(index, -1);
+                  }
+                  if (event.key === "ArrowDown" && index < count - 1) {
+                    event.preventDefault();
+                    onMove(index, 1);
+                  }
+                }}
                 draggable={Boolean(onMoveTo)}
                 onDragStart={(event) => event.dataTransfer.setData("text/plain", String(index))}
                 onDragOver={(event) => { if (onMoveTo) event.preventDefault(); }}
@@ -123,17 +134,9 @@ export function EditOutline({
                   <span className="mt-micro block break-keep text-caption text-muted">{line.trim() || `빈 ${unit}`}</span>
                 </span>
               </button>
-              {active && (onMove || onRemove) ? (
+              {active && onRemove ? (
                 <div className={styles.controls} data-outline-controls={index}>
-                  {onMove ? (
-                    <>
-                      <button type="button" className={styles.control} data-outline-up={index} aria-label={`${index + 1}번째 ${unit}을 위로`} disabled={index === 0} onClick={() => onMove(index, -1)}>▲</button>
-                      <button type="button" className={styles.control} data-outline-down={index} aria-label={`${index + 1}번째 ${unit}을 아래로`} disabled={index === count - 1} onClick={() => onMove(index, 1)}>▼</button>
-                    </>
-                  ) : null}
-                  {onRemove ? (
-                    <button type="button" className={styles.control} data-outline-remove={index} aria-label={`${index + 1}번째 ${unit} 삭제`} disabled={count <= 1} onClick={() => onRemove(index)}>삭제</button>
-                  ) : null}
+                  <button type="button" className={styles.control} data-outline-remove={index} aria-label={`${index + 1}번째 ${unit} 삭제`} disabled={count <= 1} onClick={() => onRemove(index)}>삭제</button>
                 </div>
               ) : null}
             </li>

@@ -14,7 +14,9 @@ ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 # GitHub secret 이름: OSMU_GA4_MEASUREMENT_ID (.github/workflows/deploy-marketing.yml 참고).
 ARG NEXT_PUBLIC_GA_MEASUREMENT_ID=""
 ENV NEXT_PUBLIC_GA_MEASUREMENT_ID=$NEXT_PUBLIC_GA_MEASUREMENT_ID
-RUN npm run build
+# next build의 중복 검사는 이웃 OpenClaw 테스트 의존성을 설치하지 않는 이미지에서 제외한다.
+# 대신 같은 builder stage와 같은 소스에서 CI 전용 타입 검사를 먼저 통과해야 빌드가 시작된다.
+RUN npm run typecheck:ci && npm run build
 
 FROM node:20-alpine
 ARG BUILD_COMMIT="unknown"

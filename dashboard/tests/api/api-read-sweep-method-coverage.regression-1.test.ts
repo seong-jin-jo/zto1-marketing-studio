@@ -9,10 +9,11 @@ describe("API 읽기 전수 검증기 메서드·증거 회귀", () => {
   // Report: docs/qa/osmu-api-read-sweep-v10-gpt-codex.md
   it("GET과 HEAD를 각각 요청하고 3xx를 실패 검토로 분류한다", () => {
     const script = readFileSync(resolve(process.cwd(), "scripts/verify-api-read-sweep.mjs"), "utf8");
+    const contract = readFileSync(resolve(process.cwd(), "scripts/lib/api-sweep-contract.mjs"), "utf8");
 
     expect(script).toContain('const READ_METHODS = ["GET", "HEAD"]');
     expect(script).toContain("method,");
-    expect(script).toContain('return "리다이렉트 검토"');
+    expect(contract).toContain('return "리다이렉트 검토"');
     expect(script).toContain("request_count: requests.length");
     expect(script).toContain("method_counts:");
   });

@@ -3,6 +3,8 @@
 current_stage: qa
 status: in-progress (승인 아님)
 
+2026-09-15 02:27 KST 재검증 결과: 감독이 시작한 서버에서 Claude CLI 설치 위치가 PATH에 없어 첫 생성이 `spawn_failed`, 후보 0장으로 끊겼다. 애플리케이션 경계의 CLI 경로 탐색을 고치고 회귀를 추가한 커밋은 `629f056d`, `957a8225`다. 수정 뒤 localhost 기본 흐름 최종 11/11, 네 방 단면 4/4, 390 라이트·다크와 768·1024·1440의 방 화면 20/20, 성과실에서 생성실 복귀 5/5, Studio v1 14/14, Vitest 353파일·2,293건, TypeScript, build 184/184, seed, health와 디자인 lint가 통과했다. v63 대비 16개 화면 디자인 정합 NG와 v63·v68 승인 핀 충돌, 운영 배포 미검증 때문에 제품 전체 QA와 배포는 NG다. 증거는 `docs/qa/osmu-four-room-basic-flow-v11-gpt-codex.md`다.
+
 2026-09-13 06:22 KST 재검증 결과: 현재 localhost 소스는 health HTTP 200·DB up, 기본 흐름 11/11,
 네 방 렌더 4/4, 390 라이트·다크와 768·1024·1440의 20화면, 성과실→생성실 복귀 5회,
 Vitest 311파일·2,077건, TypeScript, build 182/182, seed와 디자인 lint가 통과했다. v63 대비

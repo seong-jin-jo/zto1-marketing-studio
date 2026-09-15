@@ -877,6 +877,30 @@ describe("Studio publish result integrity", () => {
     await waitFor(() => expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(1));
   });
 
+  it("CODE-REVIEW-20260915-30 거절: X 계정 조회가 멈춰도 먼저 끝난 Threads 계정을 독립 반영한다", async () => {
+    restoreStudio(["threads", "x"]);
+    let releaseX: () => void = () => {};
+    const xPending = new Promise<void>((resolve) => { releaseX = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const provider = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
+      if (provider === "x") await xPending;
+      const accounts = provider === "threads"
+        ? [{ id: "threads-account", display_name: "Threads 계정", username: "threads", is_default: true }]
+        : [];
+      return Response.json({ accounts });
+    }));
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByTestId("account-state-threads")).toHaveTextContent("connected"));
+    expect(screen.getByRole("checkbox", { name: "Threads 발행" })).toBeEnabled();
+    expect(screen.getByTestId("account-state-x")).toHaveTextContent("loading");
+    expect(screen.getByText("발행 가능한 계정을 확인하는 중입니다")).toBeInTheDocument();
+
+    releaseX();
+    await waitFor(() => expect(screen.getByTestId("account-state-x")).toHaveTextContent("missing"));
+  });
+
   it("V65-PAGE-01 정상: 글을 직접 고친 뒤 저장 API를 호출하고 발행실로 이동한다", async () => {
     window.history.replaceState(null, "", "/studio?room=edit");
     localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({

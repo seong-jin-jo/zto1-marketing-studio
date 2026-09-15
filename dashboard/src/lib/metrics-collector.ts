@@ -843,8 +843,8 @@ async function collectMetricsWithLease(tenantId: string): Promise<MetricsCollect
     const result = await fetchTikTokVideoMetrics(tiktokCred.token, targets.tiktok.map((row) => row.external_id));
     if (!result.ok) {
       const code = result.status === 401 || result.status === 403 ? "insights_forbidden" : `tiktok_${result.status || "error"}`;
-      // 이 갈래는 호출 한 번이 통째로 실패한 것이라 집계 코드는 하나다. 그래도 어느 글이
-      // 못 채워졌는지는 글마다 남긴다. 그게 없으면 또 "뭔가 실패했다" 로 끝난다.
+      // 공급자 호출은 한 번이어도 실패 집계의 단위는 글이다. failed, failureDetails,
+      // failures[].count가 같은 기준을 써야 운영 화면에서 숫자가 서로 어긋나지 않는다.
       for (const row of targets.tiktok) {
         patches.push({ id: row.id, blockedCode: code });
         const detail: MetricsFailureDetail = {
@@ -862,9 +862,9 @@ async function collectMetricsWithLease(tenantId: string): Promise<MetricsCollect
           },
         };
         failureDetails.push(detail);
+        failureCodes.push({ channel: "tiktok", code });
         console.warn("[metrics][failure]", JSON.stringify({ tenantId, ...detail }));
       }
-      failureCodes.push({ channel: "tiktok", code });
       return;
     }
     for (const row of targets.tiktok) {

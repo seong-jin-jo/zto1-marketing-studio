@@ -36,6 +36,11 @@ up() {
     docker exec -i "$NAME" psql "postgres://postgres:postgres@127.0.0.1:5432/testdb" \
       -v ON_ERROR_STOP=1 -q < "$ROOT/$f" >/dev/null 2>&1 && echo "적용: $f" || echo "⚠️ 적용 중 경고: $f"
   done
+  # schema.sql은 기준 스키마만 만들고 이후 legacy migration은 포함하지 않는다.
+  # 새 QA DB에서도 운영과 같은 manifest를 거쳐야 파생 장부 같은 후속 테이블이 빠지지 않는다.
+  DATABASE_URL="$URL" RUNNER_COMMIT="$(git -C "$ROOT" rev-parse HEAD)" \
+    bash "$ROOT/dashboard/db/run-migrations.sh" apply-legacy \
+    || { echo "⛔ legacy migration 적용 실패"; exit 1; }
   echo "준비됨. DATABASE_URL=$URL"
 }
 

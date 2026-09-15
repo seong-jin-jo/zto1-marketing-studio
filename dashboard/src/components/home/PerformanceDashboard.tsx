@@ -2,14 +2,20 @@
 
 import { useEffect, useState } from "react";
 import useSWR from "swr";
-import { fetcher, apiPost } from "@/lib/api";
+import { ApiResponseError, fetcher, apiPost } from "@/lib/api";
 import { useOverview, useUsage } from "@/hooks/useOverview";
 import { useChannelConfig } from "@/hooks/useChannelConfig";
 import { useOnboardingStatus } from "@/hooks/useOnboarding";
 import { useUIStore } from "@/store/ui-store";
 import { OnboardingWizard } from "@/components/shared/OnboardingWizard";
 import { GettingStartedStrip } from "@/components/shared/GettingStartedStrip";
-import { PerformanceRoom, type PerformancePost } from "@/components/home/PerformanceRoom";
+import {
+  PerformanceRoom,
+  type MetricsCoverageView,
+  type MetricsExcludedView,
+  type MetricsFailureDetailView,
+  type PerformancePost,
+} from "@/components/home/PerformanceRoom";
 import { RoomHeader } from "@/components/shared/RoomHeader";
 import { LearningStatus } from "@/components/studio/LearningStatus";
 import { countFilledUserSlots, readLearningInfo, type LearningInfo } from "@/components/studio/learning-info";
@@ -28,9 +34,12 @@ export function PerformanceDashboard({ dedicatedRoom = false }: { dedicatedRoom?
   useEffect(() => {
     setLearningInfo(activeWorkspaceId ? readLearningInfo(activeWorkspaceId) : {});
   }, [activeWorkspaceId]);
-  const { data: metricsData, mutate: mutateMetrics } = useSWR<{ posts?: PerformancePost[] }>(
+  const { data: me } = useSWR<{ isOperator?: boolean }>("/api/me", fetcher);
+  const { data: metricsData, mutate: mutateMetrics } = useSWR<{ posts?: PerformancePost[]; coverage?: MetricsCoverageView }>(
     activeWorkspace ? `/api/metrics?tenant_id=${activeWorkspace.id}` : null, fetcher);
   const [collecting, setCollecting] = useState(false);
+  const [failureDetails, setFailureDetails] = useState<MetricsFailureDetailView[]>([]);
+  const [excluded, setExcluded] = useState<MetricsExcludedView[]>([]);
   const { data: onboardingData, mutate: mutateOnboarding } = useOnboardingStatus();
   const onboardingStatus = onboardingData as { completed?: boolean } | undefined;
 
@@ -62,17 +71,46 @@ export function PerformanceDashboard({ dedicatedRoom = false }: { dedicatedRoom?
         partial?: boolean;
         collectionBlocked?: boolean;
         reason?: string;
+        failureDetails?: MetricsFailureDetailView[];
+        excluded?: MetricsExcludedView[];
       }>(
         "/api/metrics", { tenant_id: activeWorkspace.id },
       );
+      if (!r) throw new Error("성과 수집 응답이 비어 있습니다");
+      setFailureDetails(r.failureDetails || []);
+      setExcluded(r.excluded || []);
       await mutateMetrics();
       if (r?.collectionBlocked) showToast(r.reason || "성과를 모으지 못했습니다. 채널 연결을 확인해 주세요.", "error");
       else if (r?.partial) showToast(`성과 ${r.updated || 0}건을 모았고 ${r.failed || 0}건은 실패했습니다. ${r.reason || "채널 연결을 확인해 주세요."}`, "error");
       else if (r?.updated) showToast(`성과 ${r.updated}건을 새로 모았습니다.`, "success");
-    } catch {
-      showToast("성과를 다시 수집하지 못했습니다. 채널 연결 상태를 확인한 뒤 다시 눌러 주세요.", "error");
+    } catch (error) {
+      if (error instanceof ApiResponseError) {
+        const payload = error.payload as {
+          failureDetails?: MetricsFailureDetailView[];
+          excluded?: MetricsExcludedView[];
+          reason?: string;
+          error?: string;
+        };
+        setFailureDetails(payload.failureDetails || []);
+        setExcluded(payload.excluded || []);
+        showToast(payload.reason || payload.error || "성과를 다시 수집하지 못했습니다. 채널 연결 상태를 확인해 주세요.", "error");
+      } else {
+        showToast("성과를 다시 수집하지 못했습니다. 채널 연결 상태를 확인한 뒤 다시 눌러 주세요.", "error");
+      }
     } finally {
       setCollecting(false);
+    }
+  };
+  const reinstateMetrics = async (postId: string) => {
+    if (!activeWorkspace || !me?.isOperator) return;
+    try {
+      await apiPost("/api/metrics", { tenant_id: activeWorkspace.id, action: "reinstate", post_id: postId });
+      setFailureDetails((current) => current.filter((detail) => detail.postId !== postId));
+      setExcluded((current) => current.filter((detail) => detail.postId !== postId));
+      await mutateMetrics();
+      showToast("성과 수집 대상에 다시 넣었습니다.", "success");
+    } catch {
+      showToast("성과 수집 대상으로 되돌리지 못했습니다. 잠시 후 다시 시도해 주세요.", "error");
     }
   };
 
@@ -111,6 +149,11 @@ export function PerformanceDashboard({ dedicatedRoom = false }: { dedicatedRoom?
         usage={usage}
         collecting={collecting}
         onCollectMetrics={collectMetrics}
+        failureDetails={failureDetails}
+        excluded={excluded}
+        coverage={metricsData?.coverage}
+        canReinstate={Boolean(me?.isOperator)}
+        onReinstate={reinstateMetrics}
       />
 
       {showOnboarding ? (

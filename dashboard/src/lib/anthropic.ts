@@ -1,6 +1,8 @@
 import { withTenant, db } from "@/lib/db";
 import { spawn, type ChildProcess } from "child_process";
+import { existsSync } from "fs";
 import os from "os";
+import path from "path";
 import { reportFailure, reportRecovery, classifySharedAiFailure } from "@/lib/observability";
 
 // 공유 claude -p 실행 실패(spawn/timeout/output-overflow/non-zero exit) 전용 알림 — quota 초과
@@ -19,7 +21,22 @@ function reportSharedAiExecutionFailure(e: unknown, workspaceId?: string): void 
   });
 }
 
-const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
+function resolveClaudeBin(): string {
+  if (process.env.CLAUDE_BIN) return process.env.CLAUDE_BIN;
+
+  // launchd/cron이 띄운 개발 서버는 셸 초기화 파일을 읽지 않아 ~/.local/bin이
+  // PATH에서 빠질 수 있다. 앱이 살아 있는데 생성만 ENOENT로 끊기지 않도록
+  // 사용자 기본 설치 경로를 먼저 확인하고, 없을 때만 PATH 탐색에 맡긴다.
+  for (const candidate of [
+    path.join(os.homedir(), ".local", "bin", "claude"),
+    path.join(os.homedir(), ".claude", "local", "claude"),
+  ]) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return "claude";
+}
+
+const CLAUDE_BIN = resolveClaudeBin();
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL = process.env.OSMU_GEN_MODEL || "claude-sonnet-4-6";
 const CLAUDE_CLI_TIMEOUT_MS = 120_000;

@@ -80,7 +80,7 @@ function SidebarGroup({
               key={i.key || `${i.label}-${idx}`}
               href={href}
               title={i.label}
-              className={`sidebar-item ${isActive ? "active" : ""} w-full text-left px-pad-inset py-stack-tight text-body-sm ${textColor} flex items-center gap-stack md:justify-center md:gap-micro md:px-micro`}
+              className={`sidebar-item ${isActive ? "active" : ""} w-full text-left px-pad-inset py-stack-tight text-body-sm ${textColor} flex items-center gap-stack ${showNarrowLabels ? "" : "md:justify-center md:gap-micro md:px-micro"}`}
             >
               <span
                 className={`w-4 h-4 rounded-chip ${i.iconClass || "text-subtle"} flex items-center justify-center`}
@@ -304,13 +304,18 @@ function CustomerSidebar({
 }) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("customer_sidebar_collapsed") === "true";
+  });
   const { data: channelConfig } = useChannelConfig();
   const { data: images } = useSWR<unknown[]>("/api/images", fetcher);
   const studioRoom = useUIStore((state) => state.studioRoom);
 
   const cfg = (channelConfig || {}) as unknown as Record<string, Record<string, unknown>>;
   const imageCount = Array.isArray(images) ? images.length : 0;
-  const narrowLabelClass = mobileMenuOpen ? "" : "md:sr-only";
+  const showLabels = mobileMenuOpen || !railCollapsed;
+  const narrowLabelClass = showLabels ? "" : "md:sr-only";
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -385,12 +390,12 @@ function CustomerSidebar({
       <aside
         id="customer-sidebar"
         aria-label="주요 사이드바"
-        className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex" : "hidden"} h-dvh min-w-0 w-[min(20rem,86vw)] shrink-0 flex-col overflow-hidden border-r border-border bg-surface md:sticky md:top-0 md:flex md:h-screen md:w-14 md:min-w-14 md:max-w-14 md:bg-text md:text-bg xl:w-14 xl:min-w-14 xl:max-w-14`}
+        className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex" : "hidden"} h-dvh min-w-0 w-[min(20rem,86vw)] shrink-0 flex-col overflow-hidden border-r border-border bg-surface md:sticky md:top-0 md:flex md:h-screen md:bg-text md:text-bg ${railCollapsed ? "md:w-14 md:min-w-14 md:max-w-14" : "md:w-56 md:min-w-56 md:max-w-56"}`}
       >
         <div className="flex items-start gap-stack border-b border-border px-stack py-pad-inset max-xl:px-stack-tight md:justify-center md:border-b-0 md:px-micro md:py-stack-tight">
           <div className="min-w-0 flex-1">
             <p className="text-caption font-semibold text-subtle max-xl:text-center md:sr-only">작업 공간</p>
-            <CustomerWorkspaceIdentity me={me} mutateMe={mutateMe} compactOnNarrow={!mobileMenuOpen} />
+            <CustomerWorkspaceIdentity me={me} mutateMe={mutateMe} compactOnNarrow={!showLabels} />
           </div>
           <button
             type="button"
@@ -405,9 +410,9 @@ function CustomerSidebar({
         </div>
 
       <nav className="flex-1 min-h-0 overflow-y-auto py-stack">
-        <div className="md:block md:absolute md:left-[-9999px] md:top-0 md:w-56 md:pointer-events-none">
+        {showLabels ? <div>
           <RoomFlowNav pathname={pathname} onNavigate={() => setMobileMenuOpen(false)} />
-        </div>
+        </div> : null}
 
         {/* 발행 채널 그룹. constants의 PUBLISH_CHANNEL_GROUPS 단일 소스(Settings>Channels와 동일).
             threads/x는 연결상태 뱃지가 특수해 별도 아이템 유지. */}
@@ -416,7 +421,7 @@ function CustomerSidebar({
             key={g.key}
             groupKey={g.key}
             title={g.title}
-            showNarrowLabels={mobileMenuOpen}
+            showNarrowLabels={showLabels}
             items={g.channels.map((ch) =>
               ch === "threads" ? threadsItem : ch === "x" ? xItem : chSidebarItem(ch, cfg),
             )}
@@ -460,7 +465,7 @@ function CustomerSidebar({
         <SidebarGroup
           groupKey="custom"
           title="외부 연동"
-          showNarrowLabels={mobileMenuOpen}
+          showNarrowLabels={showLabels}
           items={[
             { key: "blog", label: "블로그", icon: "B", nav: true },
           ]}
@@ -532,7 +537,20 @@ function CustomerSidebar({
         </Link>
       </nav>
 
-      <SidebarFooter isOperator={false} compactOnNarrow={!mobileMenuOpen} />
+      <button
+        type="button"
+        className="hidden min-h-control-touch items-center justify-center border-t border-border text-caption text-subtle md:flex"
+        aria-label={railCollapsed ? "사이드바 펴기" : "사이드바 접기"}
+        onClick={() => {
+          const next = !railCollapsed;
+          setRailCollapsed(next);
+          window.localStorage.setItem("customer_sidebar_collapsed", String(next));
+        }}
+      >
+        <span aria-hidden>{railCollapsed ? "▶" : "◀"}</span>
+        {railCollapsed ? null : <span className="ml-micro">사이드바 접기</span>}
+      </button>
+      <SidebarFooter isOperator={false} compactOnNarrow={!showLabels} />
       </aside>
     </>
   );

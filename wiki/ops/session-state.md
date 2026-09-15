@@ -1,3 +1,103 @@
+# 2026-09-15 20시 43분 최근 24시간 코드 공격 재리뷰 BLOCK
+
+현재 사용자 요청을 handoff basis로 사용했다. 같은 저장소의 tmux pane과 기존 session-state는 동시 작업 및 선행 감사 확인에만 사용했다. 검토 범위는 `0774bf9e89ad1a215bdeddeabbc92e97799e3a02..bd0d349959ffcd771db77b617d39daae55f38f34`, 55개 커밋과 103개 파일로 고정했다.
+
+제품 코드, migration과 테스트는 수정하지 않았다. 판정은 MAJOR 25건, MINOR 1건, REVIEW_VERDICT BLOCK이다. 지정 작업 공간의 localhost 기본 흐름 11/11과 Studio v1 14/14, Dashboard Vitest 361파일 2,319건, TypeScript는 통과했다. 다만 listener는 오전 5시 20분 시작이고 끝 커밋은 오후 7시 2분이며 health에 build SHA가 없어 같은 빌드 증거가 아니다. OpenClaw tsdown 표적 테스트는 26건 중 5건 실패했다.
+
+감사 문서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-15.md`, QA 증거는 `docs/qa/qa-tracker.md` 최신 절이다. 다음 소유자는 build 워커다. 사이드바 네 방, 고객 생성 403, 이미지 발행, 큐 영속성, 공유 생성과 ffmpeg 상한, YouTube 멱등성, 전역 Docker 정리, 검증기 성공 계약을 수정한 새 고정 커밋 뒤 다시 공격 리뷰해야 한다. 운영 배포와 외부 SNS 실발행은 미검증이다.
+
+# 2026-09-15 17시 37분 API 읽기 경로 v12 범위 PASS, 제품 전체 NG
+
+회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이며 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다. 같은 저장소의 tmux pane은 현재 앱 listener와 동시 작업 충돌 확인에만 사용했다.
+
+localhost:3456의 지정 작업 공간에서 읽기 Route Handler 105개 고유 경로에 GET 105건과 HEAD 1건, 총 106건을 두 번 권위 실행했다. 최종 결과는 정상 92, 계약상 거절 14이며 HTTP 500, 기타 예상 밖 5xx, redirect, 예상 밖 4xx, timeout은 모두 0이다. 마지막 실행 전후 listener PID는 64529, `dashboard/src`와 `dashboard/scripts` 합성 SHA-256은 `8c65d5fa62b8f3d49cac66f3a41c82018d7735a7641379d95d1f454c88e07a75`로 같았다. 원본은 `logs/diff/osmu-api-read-sweep-20260915-v12-authoritative-final2.json`이다.
+
+제품 Route Handler 500은 없어서 제품 API 코드는 수정하지 않았다. 긴 정상 JSON 19건을 500자로 자른 뒤 파싱해 실패로 오판하던 검사기를 고쳤다. 전체 본문으로 판정하고 비밀 키를 마스킹한 220자 미리보기만 기록하며 전체 bytes의 SHA-256을 남긴다. 수정 `2c50d68b`, 회귀 `1aefc861`이다.
+
+전체 Vitest 360파일과 2,317건 통과, 조건부 3건 제외, TypeScript 종료 0, production build 184/184, schema와 seed 및 RLS, health HTTP 200과 DB up, 기본 흐름 11/11, Studio v1 14/14, 390 라이트와 다크 및 768, 1024, 1440의 네 방 20화면, 디자인 lint 위반 0을 확인했다. API 읽기 범위는 PASS다. 기존 v63 디자인 정합 NG, 과제 v63과 승인 핀 v68 충돌, 같은 날 코드 공격 리뷰 BLOCK, 운영 배포와 외부 채널 실발행 미검증 때문에 제품 전체 QA와 배포는 NG다. 상세는 `docs/qa/osmu-api-read-sweep-v12-gpt-codex.md`와 `docs/qa/qa-tracker.md` 최신 절이다. 다음 소유자는 컨트롤러이며 build 워커가 공격 리뷰 MAJOR를 닫은 새 고정 커밋 뒤 전체 QA를 다시 실행해야 한다.
+
+# 2026-09-15 17시 25분 최근 24시간 코드 공격 재리뷰 BLOCK
+
+회장 요청 원문을 handoff basis로 사용했다. 같은 저장소의 tmux pane은 동시 작업 유무 확인에만 사용했고, 검토 범위는 착수 시점의 `fe24d05180b99b1c39e30e915b8557bd8e03d0fe..f4b0f5a5188ef6343e22d9ed4cbebd79b05d0bcc` 91개 커밋과 202개 파일로 고정했다. 검토 중 공유 HEAD가 이동했으므로 감사 줄 번호는 고정 끝 커밋을 기준으로 한다. 제품 코드는 수정하지 않았다.
+
+판정은 MAJOR 17건, MINOR 1건, REVIEW_VERDICT BLOCK이다. 핵심은 접힌 사이드바의 네 방 삭제, 1024 레이아웃 계약 위반, 프로세스 로컬 공유 생성 큐, 계정별 성과 격리 누락, 불확실한 글의 영구 성과 제외, 공개 R2 객체 보관 누락, 증거 스크립트의 실행 서버와 커밋 오귀속, 공유 runner 전역 Docker 정리다.
+
+localhost health는 HTTP 200과 DB up, 기본 흐름은 11/11, dashboard Vitest는 360파일과 2,317건, TypeScript는 종료 0이다. Studio v1은 첫 실행 12/14 실패 후 재실행 14/14라 연속 안정 통과로 인정하지 않았다. OpenClaw tsdown 표적 테스트는 26건 중 5건 실패했다. 감사 문서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-15.md`, QA 증거는 `docs/qa/qa-tracker.md` 최신 절이다. 운영 배포, 외부 SNS 실제 발행, 외부 계정 성과 수집은 미검증이다. 다음 소유자는 build 워커이며 MAJOR 수정 뒤 같은 고정 범위 기반의 실제 요청과 전체 회귀를 다시 검증해야 한다.
+
+# 2026-09-15 06시 35분 네 방 기본 흐름 v12 기능 PASS, 제품 전체 NG
+
+회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이며 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다. 같은 repo의 tmux pane은 현재 앱 listener와 동시 작업 충돌 확인에만 사용했다.
+
+지정 작업 공간의 localhost 기본 흐름 11/11, Studio v1 14/14, 네 방 단면 4/4, 390 라이트와 다크 및 768, 1024, 1440 라이트의 방 화면 20/20, 성과실에서 생성실 복귀 5/5를 관찰했다. 전체 Vitest 360파일과 2,317건 통과, 3건 제외, TypeScript 종료 0, production build 184/184, seed, health HTTP 200과 DB up, 디자인 lint 위반 0, 활성 `qa-four-room-*` 토큰 0건이다.
+
+첫 전체 회귀의 실패 3건은 큐 잠금 재시도 부족 2건과 제한 동시성 구현을 예전 문자열로 판정한 정적 계약 1건이었다. 큐 잠금은 `800c970a`로 커밋했고, 정적 계약 테스트는 같은 `dashboard/tests` 경로에 다른 세션 소유의 미추적 파일이 있어 commit 훅이 차단한 상태다. 해당 파일을 임의 포함하거나 옮겨 우회하지 않았다.
+
+v63 원본과 현재 16개 화면은 주축, 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계가 다르다. 과제 기준 v63과 pipeline 승인 핀 v68도 충돌한다. 따라서 기능 범위만 PASS이고 제품 전체 QA와 배포는 NG다. 상세와 다음 행동은 `docs/qa/osmu-four-room-basic-flow-v12-gpt-codex.md`에 있다. 다음 소유자는 컨트롤러다. 미추적 테스트 소유권을 정리해 정적 계약 변경을 커밋하고, product-designer가 단일 승인 핀에 맞춘 뒤 16개 화면 정합을 다시 검증해야 한다.
+
+# 2026-09-15 04시 17분 - 최근 24시간 코드 공격 리뷰 BLOCK
+
+회장 요청 원문을 handoff basis로 사용했다. 검토 시작 시 고정한 범위는
+`acb981ea484a113eaef87ef82f05d4edc43334bf..4692afe3d2030db299a02f18b79e6392e2ad114d`,
+96개 커밋과 212개 파일이다. 이후 공유 HEAD가 이동했지만 지적한 코드 파일은 고정 범위 끝과
+동일함을 다시 확인했다. 제품 코드는 수정하지 않았다.
+
+판정은 MAJOR 43건, MINOR 7건, REVIEW_VERDICT BLOCK이다. 고객 토큰으로 공유 Higgsfield
+계정의 이메일, 요금제, 크레딧, 원문 키가 HTTP 200에 노출되는 것을 직접 관찰했고 임시 토큰은
+HTTP 200으로 폐기했다. health HTTP 200과 DB up, dashboard Vitest 353파일과 2,293건,
+TypeScript, 기본 흐름 11/11, Studio v1 14/14는 통과했다. 최근 바뀐 OpenClaw tsdown 표적
+테스트는 26건 중 5건 실패했다.
+
+감사 문서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-15.md`, QA 증거는
+`docs/qa/qa-tracker.md` 맨 위에 있다. 커밋은 `f6f33b00`, `b125d7bb`다. 다음 소유자는 build
+워커다. 공유 생성 비용과 결과 격리, 자막 공용 영상 접근, 발행 lease와 fencing, 부분 실패
+상태, v63 구조 이탈, tsdown 회귀를 고친 고정 커밋 뒤 같은 실제 요청과 전체 회귀를 다시 돌린다.
+운영 배포와 외부 채널 실발행은 미검증이다.
+
+# 2026-09-15 03시 55분 - 성과 시계열 갭은 기술설계 미승인으로 build 회수
+
+회장 요청 원문을 handoff basis로 사용했다. 같은 과제를 진행하다 중단된
+`osmu-gapfill091423:0.0`, `osmu-gapfill091503:0.0` pane은 중복 작업 확인용으로만 읽었고,
+제품 소스는 수정하지 않았다. canonical `pipeline-state.osmu.md`는 `current_stage: qa`, 승인
+아님이다.
+
+두 갭 감사의 후속 구현과 현재 코드를 대조하면 생성, 편집, 발행 큐, 성과 제안 재인계와 일곱
+표시 플랫폼 성과 수집은 이미 구현돼 있다. 남은 기본 흐름 갭은 게시물별 성과 snapshot과
+재현 가능한 30일 비교 하나다. 지정 작업 공간 localhost metrics는 HTTP 200이지만 최상위 키가
+`coverage`, `posts`뿐이고 게시물 0건, `history`와 `comparison`은 없다. schema에도 게시물별
+관측 이력 table이 없다.
+
+localhost 기본 흐름 11/11, Studio v1 14/14, Vitest 353파일과 2,293건, TypeScript, production
+build 184/184, 디자인 lint가 통과했다. health는 HTTP 200과 DB up이다. 검증 중 제품 소스와
+migration은 바꾸지 않았다. 갭 재확인 문서와 QA tracker를 최신 증거로 갱신했다.
+
+다음 소유자는 컨트롤러와 tech-architect다. snapshot 저장 단위, 멱등 키, 보존 기간, 공급자별
+누계·기간 지표 정규화, 최근 30일과 직전 30일 비교식, 표본 부족 기준을 합의하고 eng-design
+산출물을 승인한 뒤 build 공정을 다시 열어야 한다. 그 뒤 code-builder가 migration, snapshot
+write, history·comparison API와 정상·거절·경합 테스트를 구현한다. 운영 배포와 외부 공급자
+기간 성과는 미검증이다.
+
+# 2026-09-15 02:27 KST - 네 방 기본 흐름 v11 기능 수정 후 PASS, 제품 전체 NG
+
+회장 요청 원문과 현재 공유 작업트리를 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다.
+
+첫 `verify-basic-flow-e2e.mjs`는 health HTTP 200과 DB up인데도 첫 생성에서 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장으로 끊겼다. 서버 관찰 원인은 `spawn_failed`였고 감독이 띄운 Next 프로세스 PATH에 Claude CLI 설치 위치가 없었다. `dashboard/src/lib/anthropic.ts`의 단일 CLI 실행 경계가 사용자 기본 설치 경로를 복구하도록 고치고 회귀를 추가한 커밋은 `629f056d`, `957a8225`다.
+
+수정 뒤 build 후 재기동 서버에서 기본 흐름 최종 11/11, 네 방 렌더 4/4, 390 라이트·다크와 768·1024·1440의 방 화면 20/20, 성과실에서 생성실 복귀 5/5, Studio v1 14/14가 통과했다. Vitest 353파일과 2,293건 통과, 조건부 3건 제외, TypeScript 종료 0, production build 184/184, schema·seed·RLS, health HTTP 200과 DB up, 디자인 lint 위반 0, 활성 검증 토큰 0건을 확인했다. 원본은 `logs/diff/osmu-four-room-flow-20260915-0216/captures/`, 상세는 `docs/qa/osmu-four-room-basic-flow-v11-gpt-codex.md`다.
+
+v63 원본과 현재 16개 화면의 주축, 요소 순서, 열 수, 정렬·여백, 표시·숨김, 글꼴 단계와 버튼 위계가 모두 다르고 과제 v63과 pipeline 승인 v68 핀도 충돌한다. 네 방 localhost 기능만 PASS이며 제품 전체 QA와 배포는 NG다. 다음 소유자는 컨트롤러와 product-designer다. 디자인 기준 핀을 단일화하고 정합을 맞춘 뒤 운영 버전에서 같은 흐름을 재검증해야 한다.
+
+## 2026-09-14 22시 15분 - API 읽기 경로 v11 범위 PASS, 제품 전체 NG
+
+회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다. 실행 pane은 `osmu-sweep091421:0.0`이며 다른 OSMU pane은 동시 변경 확인용으로만 사용했다.
+
+현재 공유 소스의 읽기 Route Handler 고유 경로 105개에서 GET 105건과 HEAD 1건, 총 106건을 localhost:3456에 실제 요청했다. 정상 92, 계약상 거절 14, HTTP 500·기타 예상 밖 5xx·redirect·예상 밖 4xx·timeout은 0이다. 권위 실행 전후 listener PID는 53664, 전체 `dashboard/src`와 `dashboard/scripts` 합성 SHA-256은 `723e40ed26074441a93080d267342c1e89290d846c0a6b1d7e21f309c8dca3cd`로 동일했다. 원본은 `logs/diff/osmu-api-read-sweep-20260914-v11-authoritative-restarted.json`이다.
+
+처음 세 실행은 5시간 실행된 PID 33531에서 서로 다른 경로 timeout과 health 503으로 끝났다. DB는 max_connections 100, 총 연결 6, active 1, idle in transaction 0이었다. 같은 DB와 소스에서 QA 관리 대상 dev pane만 PID 53664로 재기동한 뒤 전건 통과했다. 실패 원본도 보존했고 제품 Route Handler 500은 재현되지 않아 제품 코드와 회귀 테스트는 수정하지 않았다.
+
+Vitest 351파일과 2,291건 통과, 조건부 3건 제외, TypeScript 종료 0, production build 184/184, seed, warm health HTTP 200과 DB up 3ms, 기본 흐름 11/11, Studio v1 14/14, 현재 PID 53664 Playwright 네 방 렌더 4/4와 가린 모달·브라우저 401·콘솔 오류 0, 디자인 lint 위반 0을 관찰했다. 상세는 `docs/qa/osmu-api-read-sweep-v11-gpt-codex.md`와 `docs/qa/qa-tracker.md`다. API 읽기 범위만 PASS다. 과제 v63과 pipeline 승인 v68 핀 충돌, 기존 배치 속성 정합 NG, 운영 host 접촉 미검증 때문에 제품 전체 QA와 배포는 NG다. 상위 품질 검증은 배포 환경 접촉 증거 0건으로 종료 코드 2다.
+
+다음 소유자는 컨트롤러와 product-designer다. API 읽기 로컬 범위에는 추가 제품 코드 조치가 없다. 디자인 승인 핀을 단일화하고 배치 속성 정합을 맞춘 뒤 운영 버전에서 같은 106건을 재검증해야 한다.
+
 ## 2026-09-14 20시 44분 - 최근 24시간 코드 공격 재리뷰 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. 최근 24시간 범위를 `82642efe..f32ff712`로 고정해 87커밋과 213파일을 사용자 지정 v63 프로토타입, 확정 요구 대장, `DESIGN.md`, pipeline 승인 핀과 대조했다. 제품 코드는 수정하지 않았다.
