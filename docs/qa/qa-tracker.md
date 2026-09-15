@@ -2,6 +2,19 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-16 00시 51분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 변경 | 돈, 격리, 동시성, 부분 실패, 무기록 삭제, 확정 요구 이탈 공격 리뷰 | OSMU-CODE-REVIEW-20260916-01 | BLOCK | 범위 `90e785e3..af4f21cf`, 착수 시점 61개 커밋과 순변경 171개 파일. MAJOR 17건, MINOR 0건. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-16.md` |
+| localhost 실제 응답 | 지정 작업 공간 기본 흐름과 Studio v1 | OSMU-CODE-REVIEW-20260916-02 | 범위 PASS | health HTTP 200과 DB up, 기본 흐름 11/11, Studio v1 14/14. 고객 임시 토큰의 카드뉴스 생성은 HTTP 403으로 재현했고 토큰 폐기는 HTTP 200. health에 build SHA, commit, version이 없어 끝 커밋 실행본 귀속은 NG |
+| Dashboard 회귀 | 전체 테스트와 TypeScript | OSMU-CODE-REVIEW-20260916-03 | PASS | Vitest 363파일, 2,330건 통과, 조건부 3건 제외. `npx tsc --noEmit` 종료 0 |
+| OpenClaw 표적 회귀 | 큐 잠금과 Threads, Instagram 발행 | OSMU-CODE-REVIEW-20260916-04 | PASS | 4파일, 6건 통과. 다만 테스트가 먼저 `{}`를 써 첫 실행 0바이트 파손을 건너뛰며, 별도 실측은 0바이트와 JSON `SyntaxError`를 재현 |
+| 승인 UI 계약 | v63, v68, DESIGN.md 구조 대조 | OSMU-CODE-REVIEW-20260916-05 | NG | 1024 기본 56px과 펼침 오버레이를 어기고, 접힌 사이드바에서 네 방 전체를 제거함 |
+| 검증기 진실성 | API 오류 본문과 실행본 커밋 귀속 | OSMU-CODE-REVIEW-20260916-06 | NG | HTTP 200의 `success:false`, 최상위 `error`, 배열 본문을 모두 정상으로 오분류. localhost health에는 실행 commit 필드가 없어 현재 소스와 서버 동일성을 증명하지 못함 |
+
+제품 코드, migration과 테스트는 수정하지 않았다. 고객 카드뉴스 403, 첫 큐 파일 파손, 잠금 밖 큐 덮어쓰기, 복구 불가능한 발행 불명 상태, Threads 이미지 발행 차단, Instagram 배포 설정 불일치와 공개 객체 잔존, YouTube 중복 게시 가능성, ffprobe 실패 시 자원 상한 우회를 확인해 머지와 배포를 차단한다. 토큰 추가행과 제품 코드 삭제 파일은 0건이다. 운영 배포와 외부 SNS 실발행은 미검증이다.
+
 ## 2026-09-15 23시 12분 KST · 성과 시계열 갭 재확인 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

@@ -1,5 +1,6 @@
 import { generateText, sharedAiApprovalErrorResponse, sharedGenerationQuotaErrorResponse } from "@/lib/anthropic";
 import { effectiveTenantId } from "@/lib/tenant-auth";
+import { parseKeywordsOutput } from "@/lib/ai-json-contract";
 
 export async function POST(request: Request) {
   const data = await request.json();
@@ -29,14 +30,9 @@ ${context}
 {"keywords": ["키워드1", "키워드2", ...]}`;
 
   try {
-    const result = (await generateText(msg, tenantId)).trim();
-
-    const jsonMatch = result.match(/\{[\s\S]*"keywords"[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return Response.json({ success: true, keywords: parsed.keywords });
-    }
-    return Response.json({ error: "AI 응답에서 JSON을 추출할 수 없음", raw: result.slice(-300) }, { status: 500 });
+    const parsed = parseKeywordsOutput(await generateText(msg, tenantId));
+    if (parsed) return Response.json({ success: true, keywords: parsed.keywords });
+    return Response.json({ success: false, code: "AI_OUTPUT_INVALID", error: "AI 키워드 응답 형식이 올바르지 않습니다." }, { status: 502 });
   } catch (e) {
     const approval = sharedAiApprovalErrorResponse(e);
     if (approval) return approval;

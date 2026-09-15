@@ -1,3 +1,13 @@
+# 2026-09-16 00시 51분 최근 24시간 코드 공격 리뷰 BLOCK
+
+회장 요청 원문을 이번 작업의 handoff basis로 사용했다. 범위는 착수 시점 `90e785e3..af4f21cf`의 최근 24시간 61개 커밋과 순변경 171개 파일이다. 제품 코드는 수정하지 않고 v63 지정 프로토타입, pipeline 최신 v68 승인 핀, DESIGN.md, 확정 요구 대장과 사업 좌표를 대조했다. pipeline 최신 승인 블록에 PRD 핀은 없고 v8.2.1은 in-review라 위험 참고로만 사용했다.
+
+판정은 MAJOR 17건, MINOR 0건, REVIEW_VERDICT BLOCK이다. 핵심은 고객 카드뉴스 생성 403, 첫 큐 파일 0바이트 파손, 잠금 밖 큐 덮어쓰기, `publishing/result_unknown` 영구 정체, Threads 로컬 이미지 발행 차단, Instagram 배포 설정 불일치와 공개 객체 잔존, YouTube 중복 게시 가능성, ffprobe 실패 시 자원 상한 우회, API 검증기의 거짓 성공이다.
+
+localhost:3456에서 지정 작업 공간 기본 흐름 11/11과 Studio v1 14/14를 관찰했다. Dashboard Vitest 363파일과 2,330건, TypeScript, OpenClaw 표적 4파일과 6건은 통과했다. 고객 임시 토큰의 카드뉴스 생성은 HTTP 403, 토큰 폐기는 HTTP 200, 첫 큐 파일은 0바이트와 JSON `SyntaxError`, 오류 본문 3종은 모두 검증기 `정상` 오분류로 재현됐다. health는 build SHA, commit, version이 없어 실행본 귀속은 NG다.
+
+감사 문서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-16.md`, QA 증거는 `docs/qa/qa-tracker.md` 최신 절이다. 공유 작업트리의 다른 세션 변경은 보존했다. 다음 소유자는 build 워커다. MAJOR를 고친 새 고정 커밋 뒤 같은 공격 시나리오와 전체 회귀를 다시 실행해야 한다. 운영 배포와 외부 SNS 실발행은 미검증이다.
+
 # 2026-09-15 20시 43분 최근 24시간 코드 공격 재리뷰 BLOCK
 
 현재 사용자 요청을 handoff basis로 사용했다. 같은 저장소의 tmux pane과 기존 session-state는 동시 작업 및 선행 감사 확인에만 사용했다. 검토 범위는 `0774bf9e89ad1a215bdeddeabbc92e97799e3a02..bd0d349959ffcd771db77b617d39daae55f38f34`, 55개 커밋과 103개 파일로 고정했다.

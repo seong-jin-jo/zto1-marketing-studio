@@ -1,3 +1,10 @@
+## 2026-09-16 00시 58분 - 44px 잔여 2건 배포, 채널 페이지에서 새 묶음 발견
+
+- 사후 재측정: 14 라우트 under44=0(/calendar 55x15 예외 유지). 잔여 2건(blog 키워드 링크, videos Clip·슬라이드 버튼) code-builder 재위임 → PR 52 머지, 배포 run 34991628147 success, /videos 0 확인.
+- 새 발견: 동적 라우트 /channels/[channel] 은 1차 목록에서 빠졌었다. /channels/instagram 26건, /channels/youtube 24~26건(텍스트 링크 18px, 버튼 28~36px). 다음 작업.
+- 사파리 앞 문서가 측정 중 Google 계정 선택(accountchooser)으로 바뀜. 회장이 채널 재연결 중으로 보여 측정 중단.
+- 미검증: /blog·/inbox 최종 재측정(앞 문서 전환으로 못 잼). contract 테스트는 통과.
+
 ## 2026-09-16 00시 20분 - 44px 미만 조작 대상 57건 수정 배포
 
 - 사파리 전수 실측(16 라우트): 57건 미만. code-builder 위임(verify PASS) → 9파일 수정 + contract 테스트 safari-44px-sweep-20260915 9건. PR 51 머지, 배포 run 34986707922 success.

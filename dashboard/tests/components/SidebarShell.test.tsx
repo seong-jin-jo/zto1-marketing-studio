@@ -186,7 +186,10 @@ describe("Sidebar operator/customer shell separation", () => {
 
     const sidebar = screen.getByRole("complementary", { name: "주요 사이드바" });
     const openButton = screen.getByRole("button", { name: "메뉴 열기" });
-    expect(sidebar).toHaveClass("hidden", "md:flex", "md:w-56", "md:bg-text");
+    expect(sidebar).toHaveClass("hidden", "md:flex", "md:w-56", "bg-surface");
+    // 2026-09-16 회장 지적: 사이드바가 갑자기 어두워졌다. 09-14 디자인 수정 커밋이 설명 없이
+    // md:bg-text 를 넣었고 DESIGN.md 에는 역상 사이드바 계약이 없다. 본문과 같은 표면색으로 되돌린다.
+    expect(sidebar).not.toHaveClass("md:bg-text");
     expect(screen.getAllByText("편집실").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("지금 여기")).not.toBeInTheDocument();
     expect(openButton).toHaveAttribute("aria-expanded", "false");

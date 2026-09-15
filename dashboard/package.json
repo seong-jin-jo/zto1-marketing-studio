@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "OSMU_BUILD_COMMIT=$(git rev-parse HEAD) next dev --webpack",
     "build": "next build",
     "typecheck:ci": "tsc --noEmit -p tsconfig.ci.json",
     "start": "next start",

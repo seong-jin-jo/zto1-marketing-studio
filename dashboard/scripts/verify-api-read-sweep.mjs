@@ -128,6 +128,20 @@ const expectedRejections = new Map([
   ["src/app/api/tiktok/publish-status/route.ts:GET", { statuses: [400], reason: "토큰에서 테넌트 확인 불가" }],
 ]);
 
+const gitCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dashboardRoot, encoding: "utf8" }).trim();
+const healthResponse = await fetch(new URL("/api/health", baseUrl), {
+  headers: { accept: "application/json" },
+  signal: AbortSignal.timeout(Math.min(requestTimeoutMs, 10_000)),
+});
+const healthBody = await healthResponse.json().catch(() => null);
+const serverBuildCommit = healthBody && typeof healthBody === "object" && typeof healthBody.build_commit === "string"
+  ? healthBody.build_commit
+  : "";
+const buildCommitMatches = healthResponse.ok && serverBuildCommit === gitCommit;
+if (!buildCommitMatches) {
+  throw new Error(`실행 서버 커밋 불일치: SERVER=${serverBuildCommit || "없음"} EXPECTED=${gitCommit}`);
+}
+
 const files = await collectRouteFiles(apiRoot);
 const requests = files.flatMap(({ file, methods }) => methods.map((method) => ({ file, method })));
 const results = [];
@@ -260,11 +274,12 @@ const counts = Object.fromEntries(
     .sort()
     .map((name) => [name, results.filter((result) => result.classification === name).length]),
 );
-const gitCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dashboardRoot, encoding: "utf8" }).trim();
 const report = {
   observed_at: new Date().toISOString(),
   base_url: baseUrl,
   git_commit: gitCommit,
+  server_build_commit: serverBuildCommit || null,
+  build_commit_matches: buildCommitMatches,
   workspace_id: workspaceId,
   request_timeout_ms: requestTimeoutMs,
   total_timeout_ms: totalTimeoutMs,
@@ -288,8 +303,9 @@ for (const result of results) {
 }
 console.log(`합계 경로 ${files.length}개, 요청 ${requests.length}개 ${JSON.stringify(counts)}`);
 console.log(`증거 고정 ${evidenceStable ? "PASS" : "FAIL"} PID ${listenerPidsBefore.join(",") || "없음"} -> ${listenerPidsAfter.join(",") || "없음"} HASH ${sourceHashBefore} -> ${sourceHashAfter}`);
+console.log(`실행 커밋 ${buildCommitMatches ? "PASS" : "FAIL"} SERVER ${serverBuildCommit || "없음"} EXPECTED ${gitCommit}`);
 
 if (outputPath) await fs.writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
 const failed = results.filter((result) => !["정상", "계약상 거절"].includes(result.classification));
-process.exit(failed.length || !evidenceStable ? 1 : 0);
+process.exit(failed.length || !evidenceStable || !buildCommitMatches ? 1 : 0);
