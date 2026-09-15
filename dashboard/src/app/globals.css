@@ -165,6 +165,20 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--font-
   outline-offset: 2px;
 }
 
+/* 사파리는 select 에 네이티브 모양을 입히면서 저자의 min-height 를 버린다. 2026-09-14 실측:
+   /inbox 발행 시점 select 에 클래스·규칙·토큰(44px) 이 전부 붙어 있는데 계산값은 18px 였다.
+   `appearance: none` 을 주면 저자 크기가 먹는다. 화살표는 브라우저 것이 사라지므로 배경으로
+   다시 그린다(currentColor 라 라이트·다크 둘 다 글자색을 따른다). 선택 목록 11곳 전부 해당. */
+select:not([multiple]):not([size]) {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: var(--control-touch);
+  padding-right: 2rem;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+}
+
 /* DESIGN.md 부품표가 사이드바 항목 최소 높이를 44px 로 못 박았는데 실렌더는 32px 이었다
    (2026-09-14 실측: 1440 에서 채널·조사·자산 항목 20개가 전부 55x32). 항목은 `flex` 라
    `min-height` 만 걸면 글자 크기를 그대로 두고 누르는 면만 커진다. */
