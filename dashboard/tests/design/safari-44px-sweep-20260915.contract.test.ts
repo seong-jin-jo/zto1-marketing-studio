@@ -95,4 +95,16 @@ describe("2026-09-15 사파리 44px 스윕 계약", () => {
   it("QA-SAFARI44-09 경계: 하한 표식 상수는 둘 중 하나만 있으면 된다는 계약을 스스로 지킨다", () => {
     expect(TOUCH_MARKERS).toEqual(["ds-touch-target", "min-h-control-touch"]);
   });
+
+  it("QA-SAFARI44-10 정상: 블로그 키워드 배너의 '키워드 찾기' 링크 둘 다 하한 표식을 갖는다 (2026-09-16 재측정)", () => {
+    const source = read("src/app/blog/page.tsx");
+    expect(windowAround(source, "더 많은 키워드 찾기 →")).toMatch(/min-h-control-touch/);
+    expect(windowAround(source, ">키워드 찾기 →</a>")).toMatch(/min-h-control-touch/);
+  });
+
+  it("QA-SAFARI44-11 정상: 영상 리퍼포즈 Clip 버튼과 슬라이드 추가 버튼이 하한 표식을 갖는다 (2026-09-16 재측정)", () => {
+    const source = read("src/app/videos/page.tsx");
+    expect(windowAround(source, "onClick={handleRepurpose}")).toMatch(/min-h-control-touch/);
+    expect(windowAround(source, "onClick={addSlide}")).toMatch(/min-h-control-touch/);
+  });
 });

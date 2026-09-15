@@ -645,7 +645,7 @@ export default function VideosPage() {
             placeholder="YouTube 긴 영상 주소"
             className="min-h-control-touch flex-1 min-w-[280px] bg-surface-2 text-muted text-caption p-stack-tight rounded-chip border border-border"
           />
-          <button onClick={handleRepurpose} disabled={repurposing} className="px-stack py-stack-tight text-caption bg-accent hover:bg-accent-hover rounded-chip disabled:opacity-50">
+          <button onClick={handleRepurpose} disabled={repurposing} className="min-h-control-touch px-stack py-stack-tight text-caption bg-accent hover:bg-accent-hover rounded-chip disabled:opacity-50">
             {repurposing ? "Clipping..." : "Clip"}
           </button>
         </div>
@@ -863,7 +863,7 @@ export default function VideosPage() {
             ))}
           </div>
           <div className="flex items-center gap-pad-inset mb-pad-inset">
-            <button onClick={addSlide} className="px-stack py-stack-tight text-caption bg-surface-2 text-muted rounded-chip hover:bg-surface-2">
+            <button onClick={addSlide} className="min-h-control-touch px-stack py-stack-tight text-caption bg-surface-2 text-muted rounded-chip hover:bg-surface-2">
               + Add Slide
             </button>
             <label className="flex items-center gap-stack-tight text-caption text-subtle">

@@ -1,3 +1,9 @@
+## 2026-09-16 00시 20분 - 44px 미만 조작 대상 57건 수정 배포
+
+- 사파리 전수 실측(16 라우트): 57건 미만. code-builder 위임(verify PASS) → 9파일 수정 + contract 테스트 safari-44px-sweep-20260915 9건. PR 51 머지, 배포 run 34986707922 success.
+- 사후 사파리 재측정은 AppleEvent 시간 초과(-1712)로 못 함. 사파리가 응답 없음(대화상자 열림 추정). **미검증.** 다음 세션 첫 작업으로 재측정.
+- /calendar 55x15 는 기존 INLINE_TEXT_EXCEPTIONS(문장 내 링크) 로 유지.
+
 ## 2026-09-15 23시 45분 - /inbox select 18px 해결, 도커 typecheck 결함 하나 더
 
 - globals.css 에 `select:not([multiple]):not([size])` 전역 규칙(appearance none + currentColor 화살표 + min-height 토큰). PR 49 머지.

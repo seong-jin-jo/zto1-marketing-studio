@@ -175,7 +175,7 @@ export default function BlogPage() {
             <div className="card p-pad-inset mb-pad-inset border-l-2 border-accent">
               <div className="flex items-center justify-between mb-stack-tight">
                 <span className="text-body-sm font-medium text-muted">추천 키워드</span>
-                <a href="/keyword-planner" className="text-caption text-accent hover:text-accent">더 많은 키워드 찾기 →</a>
+                <a href="/keyword-planner" className="inline-flex min-h-control-touch items-center text-caption text-accent hover:text-accent">더 많은 키워드 찾기 →</a>
               </div>
               <p className="text-caption text-subtle mb-stack-tight">키워드 목록에서 수집된 미사용 키워드입니다.</p>
               <div className="flex flex-wrap gap-stack-tight">
@@ -191,7 +191,7 @@ export default function BlogPage() {
             <div className="card p-pad-inset mb-pad-inset border-l-2 border-border">
               <div className="flex items-center justify-between">
                 <p className="text-caption text-subtle">아직 수집된 키워드가 없습니다.</p>
-                <a href="/keyword-planner" className="text-caption text-accent hover:text-accent whitespace-nowrap">키워드 찾기 →</a>
+                <a href="/keyword-planner" className="inline-flex min-h-control-touch items-center text-caption text-accent hover:text-accent whitespace-nowrap">키워드 찾기 →</a>
               </div>
             </div>
           )}
