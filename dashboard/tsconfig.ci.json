@@ -19,6 +19,11 @@
   // `npx tsc --noEmit` 이 본다(2026-09-14 실측 exit 0). 그래서 CI 타입 검사는
   // 설치한 범위만 보고, 벤더를 부르는 파일은 아래에서 제외한다.
   //
+  // 2026-09-15 추가. 도커 빌드도 이 설정으로 검사하는데 그 컨텍스트는 ./dashboard 뿐이라
+  // 저장소 루트 scripts/ 를 부르는 테스트는 "모듈을 찾을 수 없다" 로 무너진다
+  // (배포 run 34979582500 실측: public-supabase-env-recovery 가 recover-osmu-local-public-env.mjs
+  // 를 못 찾음). CI 는 저장소 전체를 받으니 통과했고 도커만 죽는 형태다. 그 파일도 제외한다.
+  //
   "extends": "./tsconfig.json",
   "exclude": [
     "node_modules",
@@ -30,6 +35,7 @@
     "tests/publish/osmu-code-review-20260914-publishing-recovery.regression-1.test.ts",
     "tests/publish/osmu-code-review-20260914-queue-lock.regression-1.test.ts",
     "tests/publish/cancel-safety-regression.test.ts",
-    "tests/api/threads-insights-agent-tool-no-consent-delete.test.ts"
+    "tests/api/threads-insights-agent-tool-no-consent-delete.test.ts",
+    "tests/isolation/public-supabase-env-recovery.test.ts"
   ]
 }
