@@ -1,0 +1,18 @@
+검증 390/light 생성실
+검증 390/light 편집실
+검증 390/light 발행실
+검증 390/light 성과실
+임시 고객 토큰 폐기 실패: fetch failed
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.waitForFunction: Timeout 120000ms exceeded.
+    at measureRoom (/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/scripts/verify-four-room-ui-e2e.mjs:162:16)
+    at /Users/sj/sj_code_master/zto1-marketing-studio/dashboard/scripts/verify-four-room-ui-e2e.mjs:261:15 {
+  log: [],
+  name: 'TimeoutError'
+}
+
+Node.js v22.16.0
+EXIT_CODE=1

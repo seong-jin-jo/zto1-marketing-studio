@@ -1,0 +1,4 @@
+═══ design-lint (기준: standards/standard-design.md §9 8pt·토큰) · dashboard/src ═══
+──
+✅ 디자인 토큰 위반 없음
+EXIT_CODE=0

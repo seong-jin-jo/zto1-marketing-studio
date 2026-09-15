@@ -2,6 +2,42 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-16 03시 27분 KST · 네 방 기본 흐름 v15 기능 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 백엔드 기본 흐름 관통 | FLOW-API-V15 | PASS | 통제 localhost의 지정 작업 공간 실요청 11/11. `commands/08-basic-flow-controlled.log` |
+| R08, R19, R207 | 네 방 렌더와 390, 768, 1024, 1440 실제 클릭 이동 | FLOW-UI-V15 | PASS | 단면 4/4, 화면 20/20, 복귀 5/5. 가로 넘침, 전체 화면 모달, 탐색 가림, 브라우저 401, 콘솔 오류 0건. `captures-final/observations.json` |
+| R27, R168 | Studio v1 회귀 | STUDIO-V1-V15 | PASS | 같은 통제 서버에서 실요청 14/14. `commands/11-studio-v1-controlled.log` |
+| 실행 서버 귀속 | 현재 실행 제품 소스와 localhost 동일성 | FLOW-RUNTIME-V15 | PASS | 서버 시작 HEAD와 health `build_commit`이 `4a44136d9c24c1ab5e863a60862f2308d199e7cc`로 일치. 이후 HEAD 변경은 문서 전용 |
+| 필수 회귀 | TypeScript, seed, 디자인 lint | FLOW-REGRESSION-V15 | 부분 PASS | 손상된 Next dev 생성물을 `/tmp`에 보존 이동한 뒤 정확한 `npx tsc --noEmit` 종료 0. schema, seed, RLS 종료 0. 디자인 lint 위반 0 |
+| 필수 회귀 | 전체 `npm run test` | FLOW-FULL-REGRESSION-V15 | NG | 착수 실행은 366파일, 2,345건 PASS, 조건부 3건 제외. 최종 재실행에서 발행 경계 2건이 5초 timeout으로 실패했고 남은 실행은 종료 전 중단. 최신 전체 PASS로 세지 않음 |
+| R193, R205, R206 | 승인 프로토타입과 UI 계승 계약 | DESIGN-V15 | NG | 과제 지정 v63과 canonical 승인 v68 핀이 충돌. 상세 `docs/qa/osmu-four-room-basic-flow-v15-gpt-codex.md` |
+| R01부터 R207 중 이번 범위 밖 | 회장 확정 요구 승계 | REQ-ALL-V15 | 이월 | 직접 관련 요청만 실행 판정하고 나머지는 이월 |
+| 제품 전체 | QA 출고 | QA-QUALITY-GATE-V15 | NG | 네 방 localhost 기능은 통과했으나 최신 full regression, 단일 승인 디자인 핀, 운영 배포와 외부 실발행이 미통과 또는 미검증 |
+
+첫 네 폭 실행은 다른 워커 소유 서버가 성과실 대기 중 종료돼 health HTTP 000을 남겼다. 통제 서버 재실행으로 제품 실패와 분리했다. Next 16.2.2는 통제 서버에서도 `.next/dev/types/routes.d.ts`를 잘라 만들었다. 정식 typegen 결과는 보존했고 손상 생성물은 `/tmp/osmu-next-dev-types-broken-v15-20260916-0310`으로 옮겼다. 이 도구 결함과 전체 회귀 NG 때문에 제품 전체 PASS는 금지한다.
+
+SOURCES: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html` | `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md` | `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md` | `pipeline-state.osmu.md` | https://playwright.dev/docs/emulation | https://playwright.dev/docs/screenshots | https://playwright.dev/docs/api/class-consolemessage
+
+MODEL: gpt-codex/gpt-5.6-sol
+
+## 2026-09-16 02시 18분 KST · 네 방 재검증 TypeScript 1차 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 네 방 필수 회귀 | 정확한 `npx tsc --noEmit` 통과 | FLOW-TSC-V15-01 | NG | 종료 1. `.next/dev/types/routes.d.ts:279`와 `.next/dev/types/validator.ts:1925` 생성물이 토큰 중간에서 잘려 구문 오류 4건. `logs/diff` 최종 증거 작성 전 즉시 NG로 기록했으며 제품 소스 결함과 동시 생성 오염을 분리 진단 중. 원본 로그 `/tmp/osmu-flowcheck091602-tsc.log` |
+
+이 실패를 재생성 없이 PASS로 덮지 않는다. 실행 중인 `next dev`, 다른 QA 브라우저 검증, 공유 작업트리의 HEAD 변동을 함께 관찰해 생성물 손상의 원인을 분리한 뒤 같은 필수 명령을 다시 실행한다.
+
+## 2026-09-16 02시 36분 KST · 네 폭 첫 실행 환경 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R207 | 390, 768, 1024, 1440에서 생성실부터 성과실까지 실제 이동 | FLOW-UI-V15-01 | 환경 NG | 390 라이트 생성, 편집, 발행까지 진행한 뒤 성과 제안 대기 120초 초과. 직후 localhost health는 HTTP 000, 3456 listener 없음. 임시 고객 토큰 폐기도 같은 연결 실패. 다른 워커가 시작하고 종료 trap을 소유한 서버가 검증 중 내려간 것이 직접 원인. `logs/diff/osmu-four-room-flow-20260916-v15/commands/05-four-room-ui.log` |
+
+제품 성과실 결함과 섞지 않는다. QA가 시작과 종료를 소유하고 health의 `build_commit`을 HEAD와 대조하는 단일 서버에서 기본 흐름, 단면, 네 폭, Studio v1을 전부 재실행하기 전 PASS 금지다. 실패한 실행이 남긴 임시 고객 토큰도 서버 복구 뒤 별도로 조회하고 폐기한다.
+
 ## 2026-09-16 00시 51분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
