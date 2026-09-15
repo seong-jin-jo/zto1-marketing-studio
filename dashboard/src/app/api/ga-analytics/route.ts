@@ -4,8 +4,18 @@ import { getGoogleAccessToken } from "@/lib/gsc-auth";
 export async function GET(request: Request) {
   const keyData = readJson<Record<string, string>>(dataPath("gsc-service-account.json"));
   const gaCfg = readJson<Record<string, string>>(dataPath("ga-config.json"));
-  if (!keyData) return Response.json({ error: "Service account not configured" });
-  if (!gaCfg?.propertyId) return Response.json({ error: "GA4 Property ID not configured" });
+  if (!keyData) {
+    return Response.json(
+      { error: "Service account not configured", code: "GA_NOT_CONFIGURED" },
+      { status: 503 },
+    );
+  }
+  if (!gaCfg?.propertyId) {
+    return Response.json(
+      { error: "GA4 Property ID not configured", code: "GA_PROPERTY_NOT_CONFIGURED" },
+      { status: 503 },
+    );
+  }
 
   const propertyId = gaCfg.propertyId;
   const { searchParams } = new URL(request.url);
@@ -40,6 +50,7 @@ export async function GET(request: Request) {
       }),
       signal: AbortSignal.timeout(15000),
     });
+    if (!res.ok) throw new Error(`GA channel report failed: ${res.status}`);
     const result = await res.json();
 
     let totalSessions = 0;
@@ -82,6 +93,7 @@ export async function GET(request: Request) {
       }),
       signal: AbortSignal.timeout(15000),
     });
+    if (!pageRes.ok) throw new Error(`GA page report failed: ${pageRes.status}`);
     const pageResult = await pageRes.json();
 
     const pages: Record<string, unknown>[] = [];
@@ -104,6 +116,6 @@ export async function GET(request: Request) {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return Response.json({ error: msg });
+    return Response.json({ error: msg, code: "GA_UPSTREAM_FAILED" }, { status: 502 });
   }
 }

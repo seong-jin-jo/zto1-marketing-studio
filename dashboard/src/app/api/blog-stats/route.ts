@@ -19,7 +19,10 @@ export async function GET(request: Request) {
   const password = blogCfg.password || "";
 
   if (!apiBase || !email) {
-    return Response.json({ error: "Blog not configured", articles: [], totalViews: 0, totalArticles: 0 });
+    return Response.json(
+      { error: "Blog not configured", code: "BLOG_NOT_CONFIGURED", articles: [], totalViews: 0, totalArticles: 0 },
+      { status: 503 },
+    );
   }
 
   try {
@@ -30,10 +33,19 @@ export async function GET(request: Request) {
       body: JSON.stringify({ email, password }),
       signal: AbortSignal.timeout(10000),
     });
+    if (!loginRes.ok) {
+      return Response.json(
+        { error: "Blog login failed", code: "BLOG_LOGIN_FAILED", articles: [], totalViews: 0, totalArticles: 0 },
+        { status: 502 },
+      );
+    }
     const cookie = loginRes.headers.get("set-cookie") || "";
     const authMatch = cookie.match(/Authorization=([^;]+)/);
     if (!authMatch) {
-      return Response.json({ error: "Login failed", articles: [], totalViews: 0, totalArticles: 0 });
+      return Response.json(
+        { error: "Blog login failed", code: "BLOG_LOGIN_FAILED", articles: [], totalViews: 0, totalArticles: 0 },
+        { status: 502 },
+      );
     }
     const authToken = authMatch[1];
 
@@ -42,6 +54,12 @@ export async function GET(request: Request) {
       headers: { Cookie: `Authorization=${authToken}` },
       signal: AbortSignal.timeout(10000),
     });
+    if (!listRes.ok) {
+      return Response.json(
+        { error: "Blog article request failed", code: "BLOG_UPSTREAM_FAILED", articles: [], totalViews: 0, totalArticles: 0 },
+        { status: 502 },
+      );
+    }
     const listData = await listRes.json();
     const content = listData?.data?.content || [];
 
@@ -114,7 +132,10 @@ export async function GET(request: Request) {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return Response.json({ error: msg, articles: [], totalViews: 0, totalArticles: 0 });
+    return Response.json(
+      { error: msg, code: "BLOG_UPSTREAM_FAILED", articles: [], totalViews: 0, totalArticles: 0 },
+      { status: 502 },
+    );
   }
   });
 }
