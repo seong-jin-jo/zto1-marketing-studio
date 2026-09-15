@@ -36,6 +36,8 @@ export default defineConfig({
       // 버전은 확장 선언과 같다(typebox 1.1.39, @aws-sdk/client-s3 3.1056.0).
       typebox: path.resolve(__dirname, 'node_modules/typebox'),
       '@aws-sdk/client-s3': path.resolve(__dirname, 'node_modules/@aws-sdk/client-s3'),
+      // 2026-09-16: threads-publish 도구가 미리 서명 주소(getSignedUrl)를 쓰기 시작했다. 같은 방식.
+      '@aws-sdk/s3-request-presigner': path.resolve(__dirname, 'node_modules/@aws-sdk/s3-request-presigner'),
     },
   },
 });
