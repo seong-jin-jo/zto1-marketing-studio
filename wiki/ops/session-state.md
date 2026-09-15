@@ -1,3 +1,11 @@
+# 2026-09-15 17시 25분 최근 24시간 코드 공격 재리뷰 BLOCK
+
+회장 요청 원문을 handoff basis로 사용했다. 같은 저장소의 tmux pane은 동시 작업 유무 확인에만 사용했고, 검토 범위는 착수 시점의 `fe24d05180b99b1c39e30e915b8557bd8e03d0fe..f4b0f5a5188ef6343e22d9ed4cbebd79b05d0bcc` 91개 커밋과 202개 파일로 고정했다. 검토 중 공유 HEAD가 이동했으므로 감사 줄 번호는 고정 끝 커밋을 기준으로 한다. 제품 코드는 수정하지 않았다.
+
+판정은 MAJOR 17건, MINOR 1건, REVIEW_VERDICT BLOCK이다. 핵심은 접힌 사이드바의 네 방 삭제, 1024 레이아웃 계약 위반, 프로세스 로컬 공유 생성 큐, 계정별 성과 격리 누락, 불확실한 글의 영구 성과 제외, 공개 R2 객체 보관 누락, 증거 스크립트의 실행 서버와 커밋 오귀속, 공유 runner 전역 Docker 정리다.
+
+localhost health는 HTTP 200과 DB up, 기본 흐름은 11/11, dashboard Vitest는 360파일과 2,317건, TypeScript는 종료 0이다. Studio v1은 첫 실행 12/14 실패 후 재실행 14/14라 연속 안정 통과로 인정하지 않았다. OpenClaw tsdown 표적 테스트는 26건 중 5건 실패했다. 감사 문서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-15.md`, QA 증거는 `docs/qa/qa-tracker.md` 최신 절이다. 운영 배포, 외부 SNS 실제 발행, 외부 계정 성과 수집은 미검증이다. 다음 소유자는 build 워커이며 MAJOR 수정 뒤 같은 고정 범위 기반의 실제 요청과 전체 회귀를 다시 검증해야 한다.
+
 # 2026-09-15 06시 35분 네 방 기본 흐름 v12 기능 PASS, 제품 전체 NG
 
 회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이며 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다. 같은 repo의 tmux pane은 현재 앱 listener와 동시 작업 충돌 확인에만 사용했다.
