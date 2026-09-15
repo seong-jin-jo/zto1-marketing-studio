@@ -107,7 +107,7 @@ const ROOM_FLOW: Array<{ key: StudioRoom | "performance"; label: string; href: s
   { key: "performance", label: "성과실", href: "/performance" },
 ];
 
-function RoomFlowNav({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+function RoomFlowNav({ pathname, onNavigate, compact = false }: { pathname: string; onNavigate?: () => void; compact?: boolean }) {
   const { studioRoom, setStudioRoom } = useUIStore();
   const activeIndex = pathname === "/performance"
     ? ROOM_FLOW.length - 1
@@ -121,8 +121,8 @@ function RoomFlowNav({ pathname, onNavigate }: { pathname: string; onNavigate?: 
       : null;
 
   return (
-    <section className="border-b border-border px-stack pb-stack" aria-label="한 편의 제작 순서">
-      <p className="mb-stack text-caption font-semibold text-subtle max-xl:text-center">한 편의 제작 순서</p>
+    <section className={`border-b border-border pb-stack ${compact ? "px-micro" : "px-stack"}`} aria-label="한 편의 제작 순서">
+      <p className={`mb-stack text-caption font-semibold text-subtle max-xl:text-center ${compact ? "sr-only" : ""}`}>한 편의 제작 순서</p>
       <ol className="space-y-micro">
         {ROOM_FLOW.map((room, index) => {
           const active = index === activeIndex;
@@ -139,12 +139,12 @@ function RoomFlowNav({ pathname, onNavigate }: { pathname: string; onNavigate?: 
                   onNavigate?.();
                 }}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-control-touch items-center gap-stack-tight rounded-control px-stack-tight py-stack-tight text-body-sm font-semibold transition-colors max-xl:flex-col max-xl:gap-micro max-xl:px-micro ${active ? "bg-accent text-accent-fg" : "text-muted hover:bg-surface-2"}`}
+                className={`flex min-h-control-touch items-center rounded-control py-stack-tight text-body-sm font-semibold transition-colors ${compact ? "justify-center px-micro" : "gap-stack-tight px-stack-tight max-xl:flex-col max-xl:gap-micro max-xl:px-micro"} ${active ? "bg-accent text-accent-fg" : "text-muted hover:bg-surface-2"}`}
               >
                 <span className={`relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-pill border text-caption ${active ? "border-accent-fg/40 bg-accent-fg/15 text-accent-fg" : done ? "border-accent bg-accent-soft text-accent" : "border-border bg-surface text-subtle"}`}>
                   {`0${index + 1}`}
                 </span>
-                <span>{room.label}</span>
+                <span className={compact ? "sr-only" : ""}>{room.label}</span>
               </Link>
             </li>
           );
@@ -390,7 +390,7 @@ function CustomerSidebar({
       <aside
         id="customer-sidebar"
         aria-label="주요 사이드바"
-        className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex" : "hidden"} h-dvh min-w-0 w-[min(20rem,86vw)] shrink-0 flex-col overflow-hidden border-r border-border bg-surface md:sticky md:top-0 md:flex md:h-screen md:bg-text md:text-bg ${railCollapsed ? "md:w-14 md:min-w-14 md:max-w-14" : "md:w-56 md:min-w-56 md:max-w-56"}`}
+        className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex" : "hidden"} h-dvh min-w-0 w-[min(20rem,86vw)] shrink-0 flex-col overflow-hidden border-r border-border bg-surface  md:sticky md:top-0 md:flex md:h-screen ${railCollapsed ? "md:w-14 md:min-w-14 md:max-w-14" : "md:w-56 md:min-w-56 md:max-w-56"}`}
       >
         <div className="flex items-start gap-stack border-b border-border px-stack py-pad-inset max-xl:px-stack-tight md:justify-center md:border-b-0 md:px-micro md:py-stack-tight">
           <div className="min-w-0 flex-1">
