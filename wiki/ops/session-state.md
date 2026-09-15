@@ -1,3 +1,11 @@
+# 2026-09-15 20시 43분 최근 24시간 코드 공격 재리뷰 BLOCK
+
+현재 사용자 요청을 handoff basis로 사용했다. 같은 저장소의 tmux pane과 기존 session-state는 동시 작업 및 선행 감사 확인에만 사용했다. 검토 범위는 `0774bf9e89ad1a215bdeddeabbc92e97799e3a02..bd0d349959ffcd771db77b617d39daae55f38f34`, 55개 커밋과 103개 파일로 고정했다.
+
+제품 코드, migration과 테스트는 수정하지 않았다. 판정은 MAJOR 25건, MINOR 1건, REVIEW_VERDICT BLOCK이다. 지정 작업 공간의 localhost 기본 흐름 11/11과 Studio v1 14/14, Dashboard Vitest 361파일 2,319건, TypeScript는 통과했다. 다만 listener는 오전 5시 20분 시작이고 끝 커밋은 오후 7시 2분이며 health에 build SHA가 없어 같은 빌드 증거가 아니다. OpenClaw tsdown 표적 테스트는 26건 중 5건 실패했다.
+
+감사 문서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-15.md`, QA 증거는 `docs/qa/qa-tracker.md` 최신 절이다. 다음 소유자는 build 워커다. 사이드바 네 방, 고객 생성 403, 이미지 발행, 큐 영속성, 공유 생성과 ffmpeg 상한, YouTube 멱등성, 전역 Docker 정리, 검증기 성공 계약을 수정한 새 고정 커밋 뒤 다시 공격 리뷰해야 한다. 운영 배포와 외부 SNS 실발행은 미검증이다.
+
 # 2026-09-15 17시 37분 API 읽기 경로 v12 범위 PASS, 제품 전체 NG
 
 회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 현재 경로이며 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계와 승인 상태를 바꾸지 않았다. 같은 저장소의 tmux pane은 현재 앱 listener와 동시 작업 충돌 확인에만 사용했다.

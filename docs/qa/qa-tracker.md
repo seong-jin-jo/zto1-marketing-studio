@@ -2,6 +2,18 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-15 20시 43분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 최근 24시간 변경 | 돈, 격리, 동시성, 부분 실패, 무기록 삭제, 확정 요구 이탈 공격 리뷰 | OSMU-CODE-REVIEW-R7-01 | BLOCK | `0774bf9e..bd0d3499`, 55개 커밋과 103개 파일. MAJOR 25건, MINOR 1건. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-15.md` |
+| localhost 실제 응답 | 지정 작업 공간 기본 흐름과 health | OSMU-CODE-REVIEW-R7-02 | 범위 PASS | health HTTP 200, DB up. 기본 흐름 11/11, Studio v1 14/14. 단 listener는 05시 20분 시작이고 끝 커밋은 19시 02분이며 health에 build SHA가 없어 끝 커밋 실행 증거로는 인정하지 않음 |
+| Dashboard 회귀 | 전체 테스트와 TypeScript | OSMU-CODE-REVIEW-R7-03 | PASS | Vitest 361파일과 2,319건 통과, 조건부 3건 제외. `npx tsc --noEmit` 종료 0 |
+| OpenClaw 빌드 회귀 | tsdown 자원 정책 표적 테스트 | OSMU-CODE-REVIEW-R7-04 | NG | 26건 중 21건 통과, 5건 실패. heap 기대값 3건과 새 `RAYON_NUM_THREADS` 환경값 2건 불일치 |
+| 확정 UI 계약 | v63과 DESIGN.md 코드 구조 대조 | OSMU-CODE-REVIEW-R7-05 | NG | 접힌 사이드바에서 네 방 링크와 현재 방 강조가 삭제되고 1024 기본 56px, 펼침 겹침, 브랜드 오른쪽 접기 단추 계약을 지키지 않음 |
+
+제품 코드, migration과 테스트는 수정하지 않았다. 고객 UI의 생성 단추 403, 신규 큐 빈 파일 파손, Threads와 Instagram 이미지 발행 회귀, 프로세스 로컬 공유 생성 큐, 무제한 ffmpeg, YouTube 중복 게시 가능성, 전역 Docker 정리, 거짓 성공 검증기를 확인해 머지와 배포를 차단한다. 운영 배포, 외부 SNS 실발행, 외부 계정 성과 수집은 미검증이다.
+
 ## 2026-09-15 17시 37분 KST · API 읽기 경로 v12 범위 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
