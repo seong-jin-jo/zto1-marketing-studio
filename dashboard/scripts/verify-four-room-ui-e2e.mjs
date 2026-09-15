@@ -135,6 +135,26 @@ async function measureRoom(page, width, room, theme = "light") {
       { timeout: remainingTimeout(`${tag} 성과 제안`) },
     );
   }
+  // 상단 단계 이동 직후 방 본문만 기다리면, 사이드바 현재 위치가 이전 방에 남은 회귀를
+  // 놓치고 150ms 색 전환 중간 프레임을 증거로 저장한다. 데스크톱에서는 두 길잡이가
+  // 같은 방을 가리키는지 DOM 계약으로 확인한 뒤 전환이 끝난 화면을 캡처한다.
+  if (width >= 768) {
+    const currentSelector = 'aside section[aria-label="한 편의 제작 순서"] a[aria-current="page"]';
+    await page.waitForFunction(
+      ({ selector, label }) => {
+        const current = [...document.querySelectorAll(selector)];
+        return current.length === 1 && (current[0].textContent || "").replace(/\s+/g, "").includes(label);
+      },
+      { selector: currentSelector, label: room.label },
+      { timeout: remainingTimeout(`${tag} 사이드바 현재 위치`) },
+    );
+    const sidebarCurrent = page.locator(currentSelector);
+    const currentLabels = (await sidebarCurrent.allTextContents()).map((value) => value.replace(/\s+/g, ""));
+    if (currentLabels.length !== 1 || !currentLabels[0].includes(room.label)) {
+      throw new Error(`${tag} 사이드바 현재 위치 불일치: ${currentLabels.join(", ") || "없음"}`);
+    }
+    await page.waitForTimeout(200);
+  }
   const metrics = await page.evaluate((roomKey) => {
     const overlay = document.querySelector('[data-onboarding-mode="modal"], .fixed.inset-0.z-50');
     const firstAction = roomKey === "create"

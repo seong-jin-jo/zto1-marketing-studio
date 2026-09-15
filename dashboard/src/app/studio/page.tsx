@@ -278,6 +278,14 @@ export default function StudioPage() {
   useEffect(() => {
     if (roomResolution.redirectTo) window.location.replace(roomResolution.redirectTo);
   }, [roomResolution.redirectTo]);
+  // 상단 작업 단계는 URL을 바꾸고, 사이드바는 ui-store의 방을 읽는다. URL의 방을
+  // 공통 저장 상태로 되돌려 주지 않으면 상단은 발행실인데 사이드바는 편집실인 식으로
+  // 현재 위치가 한 단계 뒤에 남는다. 유효한 Studio URL만 단일 현재 방으로 동기화한다.
+  useEffect(() => {
+    if (!roomResolution.redirectTo && !roomResolution.unknownRoom && storedRoom !== activeRoom) {
+      setActiveRoom(activeRoom);
+    }
+  }, [activeRoom, roomResolution.redirectTo, roomResolution.unknownRoom, setActiveRoom, storedRoom]);
   useEffect(() => {
     if (roomResolution.unknownRoom) {
       showToast(`"${roomResolution.unknownRoom}" 이라는 방은 없습니다. 생성실·편집실·발행실 중에서 고르시거나 성과실은 왼쪽 차림표에서 여세요.`, "error");
