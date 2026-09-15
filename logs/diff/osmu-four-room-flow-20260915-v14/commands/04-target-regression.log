@@ -1,0 +1,16 @@
+
+> dashboard@0.2.0 test
+> vitest run tests/home/performance-core-metrics-responsive.regression-1.test.tsx
+
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.9 /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+
+ ✓ tests/home/performance-core-metrics-responsive.regression-1.test.tsx (2 tests) 197ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  22:15:48
+   Duration  3.66s (transform 407ms, setup 55ms, collect 962ms, tests 197ms, environment 1.81s, prepare 110ms)
+
+EXIT_CODE=0

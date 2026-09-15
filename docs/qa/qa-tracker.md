@@ -2,6 +2,35 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-15 22시 55분 KST · 네 방 기본 흐름 v14 기능 수정 후 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 백엔드 기본 흐름 관통 | FLOW-API-V14 | PASS | 지정 작업 공간의 localhost 최종 실요청 11/11. 후보 3장, 편집 순서 변경, 삭제와 복원, 발행 큐 HTTP 201, 성과 제안 3건, 생성실 재인계 관찰. `commands/12-basic-flow-final.log` 종료 0 |
+| R08, R19, R207 | 네 방 렌더와 390, 768, 1024, 1440 실제 클릭 이동 | FLOW-UI-V14 | 수정 후 PASS | 단면 4/4, 가린 모달 0, 브라우저 401 0, 콘솔 오류 0. 화면 20/20과 성과실에서 생성실 복귀 5/5. 수정 후 원본 `logs/diff/osmu-four-room-flow-20260915-v14/captures-fixed/` |
+| R19, R200, R206, R207 | 1024 성과실 핵심 지표 가독성 | FLOW-UI-METRICS-V14 | 수정 후 PASS | 수정 전 `captures/1024-light-performance.png`에서 조회 `18,420`, 저장 `1,284`, 답글 `316`, 구독 `428`이 한 자리씩 줄바꿈. 전용 성과실은 1024에서 2열, 1440에서 4열로 조정. 수정 후 `captures-fixed/1024-light-performance.png`와 `captures-fixed/1440-light-performance.png`에서 숫자 한 줄 표시 직접 관찰. 회귀 2건 종료 0 |
+| R27, R168 | Studio v1 생성, 조회, 거절, 무료 다시 만들기 회귀 | STUDIO-V1-V14 | PASS | 최종 localhost 실요청 14/14. `commands/14-studio-final.log` 종료 0 |
+| R104 | QA 자격증명 정리 | FLOW-PROBE-CLEANUP-V14 | PASS | `probe-four-room-flow.mjs` 자체 정리 완료 후 최종 4/4. `commands/13-probe-final.log` 종료 0 |
+| 필수 회귀 | test, TypeScript, build, seed, health, Playwright, 디자인 lint | FLOW-REGRESSION-V14 | PASS | Vitest 362파일, 2,321건 통과, 조건부 3건 제외. TypeScript 최종 종료 0, production build 184/184, schema와 seed 및 RLS 적용, health HTTP 200과 DB up, 디자인 lint 위반 0. 모든 명령별 종료 코드는 아래 기록 |
+| R193, R205, R206 | 승인 프로토타입과 UI 계승 계약 | DESIGN-V14 | NG | 과제 지정 v63과 canonical pipeline 최신 승인 v68 핀이 충돌한다. 기존 정합 행렬의 주축, 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 계열과 크기 단계, 버튼 위계, 폭별 판정 NG를 기능 수정으로 해소했다고 세지 않음. QA 캡처는 원본 `docs/design/captures/live-20260912/authenticated-fe3/performance-room-1440.png`와 manifest를 참조한다. `docs/design/README.md`는 3줄이며 필수 5경로를 지목하지 않고, `screen-inventory.md`의 인증 STUDIO 미검증 표기와 `captures/manifest.json`의 인증 캡처가 충돌 |
+| 실행 서버 귀속 | 현재 HEAD와 localhost 실행본 동일성 | FLOW-RUNTIME-ATTRIBUTION-V14 | NG | listener PID 15479는 21시 30분 시작, 최종 HEAD `099a7370...`이고 health는 `build_sha`, `commit`, `version`을 제공하지 않는다. localhost 기능은 관찰했지만 현재 HEAD 실행본이라고 입증하지 못함. `commands/15-health-attribution.log` |
+| R01부터 R207 중 이번 범위 밖 | 회장 확정 요구 승계 | REQ-ALL-V14 | 이월 | 요청 정본 전건을 유지한다. 이번 네 방 흐름 직접 관련 요청만 실행 판정하고 나머지는 이월 |
+| 제품 전체 | 운영 배포와 외부 계정 실발행 | QA-QUALITY-GATE-V14 | NG | localhost 기능 범위만 관찰했다. `verify-agent-quality.sh` 종료 2, 배포 환경 접촉 증거 0건. 단일 승인 디자인 핀, 실행본 커밋 귀속, 운영 배포 버전, 외부 채널 실발행은 미검증이므로 제품 전체 PASS와 배포 출고를 금지 |
+
+첫 1024 화면에서 전용 성과실의 오른쪽 담당 패널 때문에 왼쪽 실제 카드 폭이 좁은데도 화면 breakpoint만 보고 4열을 적용해 숫자가 세로로 깨졌다. 전용 화면만 4열 전환점을 1440급으로 늦추고, 포함형 화면의 기존 1024 4열 계약은 보존했다. 수정 전후 1024와 수정 후 1440을 직접 대조했고, 생성, 편집, 발행, 성과, 제안 재인계, 모바일 메뉴, 테마, 사이드바 현재 방은 그대로 통과했다.
+
+명령 증거는 `logs/diff/osmu-four-room-flow-20260915-v14/commands/`에 있다. `01-basic-flow.log` 0, `02-probe-four-room.log` 0, `03-four-room-ui.log` 0, `04-target-regression.log` 0, `05-four-room-ui-fixed.log` 0, `06-studio-v1.log` 0, `07-full-test.log` 0, `08-tsc.log` 2, `08-tsc-rerun.log` 2, `08a-next-typegen.log` 0, `08-tsc-final.log` 0, `09-design-lint.log` 0, `10-seed.log` 0, `11-build.log` 1, `11-build-final.log` 0, `12-basic-flow-final.log` 0, `13-probe-final.log` 0, `14-studio-final.log` 0, `15-health-attribution.log` 0, `16-verify-agent-quality.log` 2다. TypeScript 첫 실패는 손상된 `.next/dev/types/routes.d.ts` 생성물 때문이며 `next typegen` 재생성 뒤 동일 명령이 통과했다. 첫 build 실패는 임시 디렉터리의 `node_modules` 심볼릭 링크가 Turbopack 파일시스템 루트 밖을 가리킨 실행 구성 문제다. `node_modules`를 hardlink 복제한 격리 디렉터리의 최종 build는 184/184로 통과했으며 실행 중인 3456 서버는 건드리지 않았다.
+
+셀프심문: 이 결론이 틀렸다면 가장 그럴듯한 이유는 localhost가 현재 HEAD의 실행본이 아닐 가능성이다. health가 버전 필드를 내지 않으므로 이 가능성을 배제하지 못했고, 기능 PASS와 실행본 귀속 NG를 분리했다. 레드팀: 까다로운 고객에게 1024 숫자 가독성은 회귀가 분명하므로 최초 20/20을 그대로 PASS로 세지 않고 즉시 NG를 기록한 뒤 수정 전후 캡처, 표적 회귀, 전 기능 회귀, 네 폭 재클릭을 다시 요구했다. 승인 핀과 디자인 문서 드리프트도 별도 NG로 유지했다.
+
+SOURCES: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html` | `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md` | `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md` | `pipeline-state.osmu.md` | `docs/design/captures/manifest.json` | https://playwright.dev/docs/actionability | https://playwright.dev/docs/locators | https://playwright.dev/docs/test-snapshots
+
+MODEL: gpt-codex/gpt-5.6-sol
+
+RUBRIC_SCORE: 완결성=4/5 정밀성=5/5 벤치마크=4/5 추적성=5/5 전문성=4/5 total=22/25
+
+WEAKEST_LINE: "단일 승인 디자인 핀과 실행본 커밋 귀속이 없어 제품 전체 PASS는 내릴 수 없다."
+
 ## 2026-09-15 20시 43분 KST · 최근 24시간 코드 공격 재리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
