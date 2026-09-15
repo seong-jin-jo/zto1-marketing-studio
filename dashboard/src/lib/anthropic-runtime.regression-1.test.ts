@@ -10,9 +10,10 @@ describe("OSMU 공유 Claude CLI 런타임 계약", () => {
     // 공유 Claude CLI spawn이 실패했고 네 방 기본 흐름이 후보 0장에서 끊겼다.
     // Found by /qa on 2026-09-15.
     // Report: docs/qa/qa-tracker.md
-    expect(anthropic).toContain("function resolveClaudeBin(): string");
+    expect(anthropic).toContain("function resolveClaudeBins(): string[]");
     expect(anthropic).toContain('path.join(os.homedir(), ".local", "bin", "claude")');
-    expect(anthropic).toContain("if (existsSync(candidate)) return candidate");
-    expect(anthropic).toContain("const CLAUDE_BIN = resolveClaudeBin()");
+    expect(anthropic).toContain("accessSync(candidate, constants.X_OK)");
+    expect(anthropic).toContain("const CLAUDE_BINS = resolveClaudeBins()");
+    expect(anthropic).toContain('code === "ENOENT" || code === "EACCES"');
   });
 });

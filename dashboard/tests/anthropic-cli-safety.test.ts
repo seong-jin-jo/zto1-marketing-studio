@@ -235,6 +235,23 @@ describe("claude CLI 실행 경계 — timeout / 출력상한 / spawn 에러 / �
     expect(err.message).not.toContain(secretPrompt);
   });
 
+  it("OSMU-CODE-REVIEW-20260916-17 거절: 첫 실행 파일이 EACCES면 다음 실행 가능 후보로 한 번 폴백한다", async () => {
+    process.env.CLAUDE_BIN = "/실행권한없는/claude";
+    const generateText = await importGenerateText();
+    const p = generateText("fallback", null);
+    await microtask();
+    const first = H.calls[0];
+    const lookupError = Object.assign(new Error("permission denied"), { code: "EACCES" });
+    first.child.emit("error", lookupError);
+    await microtask();
+
+    expect(H.calls).toHaveLength(2);
+    expect(H.calls[1].bin).not.toBe(first.bin);
+    H.calls[1].child.stdout.emit("data", Buffer.from("fallback-ok"));
+    H.calls[1].child.emit("close", 0);
+    await expect(p).resolves.toBe("fallback-ok");
+  });
+
   it("비정상 exit code는 exit code만 담아 reject한다 — child stderr 원문은 어떤 형태로도 캡처·노출되지 않는다", async () => {
     const generateText = await importGenerateText();
     const secretPrompt = "auth-secret-in-stdin-only";
