@@ -5,7 +5,11 @@ export function classifyApiReadResponse({ status, expectedRejection = null, meth
     if (method !== "HEAD" && String(contentType).toLowerCase().includes("application/json")) {
       try {
         const body = JSON.parse(bodyText);
-        if (body && typeof body === "object" && body.ok === false) return "실패 본문";
+        if (Array.isArray(body) && body.length === 0) return "응답 구조 오류";
+        if (body && typeof body === "object" && !Array.isArray(body)) {
+          if (body.ok === false || body.success === false) return "실패 본문";
+          if (typeof body.error === "string" && body.error.trim()) return "실패 본문";
+        }
       } catch {
         return "응답 형식 오류";
       }

@@ -40,4 +40,24 @@ describe("CODE-REVIEW-20260915-27 API 읽기 검증 거짓 성공 방지", () =>
       bodyText: "<html>오류</html>",
     })).toBe("응답 형식 오류");
   });
+
+  // Regression: OSMU-CODE-REVIEW-20260916-11. success:false, 최상위 error와 빈 배열을
+  // HTTP 200이라는 이유만으로 정상에 더했다.
+  // Found by /qa on 2026-09-16
+  // Report: docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-16.md
+  it.each([
+    [JSON.stringify({ success: false, error: "고장" }), "실패 본문"],
+    [JSON.stringify({ error: "고장" }), "실패 본문"],
+    [JSON.stringify([]), "응답 구조 오류"],
+  ])("OSMU-CODE-REVIEW-20260916-11 거절: 오류 JSON %s를 정상으로 세지 않는다", (bodyText, expected) => {
+    expect(classifyApiReadResponse({ status: 200, method: "GET", contentType: "application/json", bodyText })).toBe(expected);
+  });
+
+  it("OSMU-CODE-REVIEW-20260916-12 정상: 검증기는 health 실행 커밋과 현재 HEAD 일치를 강제한다", () => {
+    const script = readFileSync(resolve(process.cwd(), "scripts/verify-api-read-sweep.mjs"), "utf8");
+    const health = readFileSync(resolve(process.cwd(), "src/app/api/health/route.ts"), "utf8");
+    expect(health).toContain("build_commit: BUILD_COMMIT");
+    expect(script).toContain("serverBuildCommit === gitCommit");
+    expect(script).toContain("!buildCommitMatches");
+  });
 });
