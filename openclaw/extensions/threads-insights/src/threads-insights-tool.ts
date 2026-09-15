@@ -1,9 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { jsonResult, readStringParam } from "openclaw/plugin-sdk/agent-runtime";
 import { optionalStringEnum } from "openclaw/plugin-sdk/core";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-runtime";
+import { withQueueLock } from "../../threads-queue/src/queue-lock.js";
 
 const THREADS_API_BASE = "https://graph.threads.net/v1.0";
 
@@ -61,6 +62,11 @@ type StyleEntry = {
 type StyleData = {
   version: number;
   entries: StyleEntry[];
+};
+
+type CollectedMetrics = Omit<Engagement, "collectCount" | "fedToPopular" | "fedToStyle"> & {
+  postId: string;
+  threadsMediaId: string;
 };
 
 const DEFAULT_DATA_DIR = path.resolve(process.cwd(), "data");
@@ -176,7 +182,7 @@ export function createThreadsInsightsTool(api: OpenClawPluginApi) {
       let collected = 0;
       let viral = 0;
       let errors = 0;
-      const viralPosts: Post[] = [];
+      const collectedMetrics: CollectedMetrics[] = [];
 
       for (const post of targets) {
         try {
@@ -194,39 +200,52 @@ export function createThreadsInsightsTool(api: OpenClawPluginApi) {
           const reposts = extractMetricValue(data, "reposts");
           const quotes = extractMetricValue(data, "quotes");
 
-          const prevFedToPopular = post.engagement?.fedToPopular ?? false;
-          const prevFedToStyle = post.engagement?.fedToStyle ?? false;
-          const prevCollectCount = post.engagement?.collectCount ?? 0;
-
-          post.engagement = {
+          collectedMetrics.push({
+            postId: post.id,
+            threadsMediaId: post.threadsMediaId as string,
             views,
             likes,
             replies,
             reposts,
             quotes,
             collectedAt: now.toISOString(),
-            collectCount: prevCollectCount + 1,
-            fedToPopular: prevFedToPopular,
-            fedToStyle: prevFedToStyle,
-          };
+          });
 
           collected++;
-
-          if (views >= config.viralThreshold) {
-            viral++;
-            viralPosts.push(post);
-          }
         } catch (err) {
           errors++;
         }
       }
 
-      // Feed viral posts to popular-posts.txt and style-data.json
-      if (viralPosts.length > 0) {
-        let popularContent = await readTextFile(config.popularPostsPath);
-        const styleData = await readJson<StyleData>(config.stylePath, { version: 1, entries: [] });
+      // 외부 API는 잠금 밖에서 호출하되, 반영 직전 큐를 다시 읽고 같은 글과 mediaId에만
+      // 결과를 병합한다. 수집 중 고객이 취소하거나 다른 워커가 갱신한 큐 전체를 되쓰지 않는다.
+      await withQueueLock(config.queuePath, async () => {
+        const freshQueue = await readJson<QueueData>(config.queuePath, { version: 1, posts: [] });
+        const viralPosts: Post[] = [];
+        for (const metrics of collectedMetrics) {
+          const post = freshQueue.posts.find((candidate) => candidate.id === metrics.postId);
+          if (!post || post.status !== "published" || post.threadsMediaId !== metrics.threadsMediaId) continue;
+          const previous = post.engagement;
+          post.engagement = {
+            views: metrics.views,
+            likes: metrics.likes,
+            replies: metrics.replies,
+            reposts: metrics.reposts,
+            quotes: metrics.quotes,
+            collectedAt: metrics.collectedAt,
+            collectCount: (previous?.collectCount ?? 0) + 1,
+            fedToPopular: previous?.fedToPopular ?? false,
+            fedToStyle: previous?.fedToStyle ?? false,
+          };
+          if (metrics.views >= config.viralThreshold) viralPosts.push(post);
+        }
 
-        for (const post of viralPosts) {
+        viral = viralPosts.length;
+        if (viralPosts.length > 0) {
+          let popularContent = await readTextFile(config.popularPostsPath);
+          const styleData = await readJson<StyleData>(config.stylePath, { version: 1, entries: [] });
+
+          for (const post of viralPosts) {
           // Feed to popular-posts.txt
           if (!post.engagement!.fedToPopular) {
             const textOneLine = post.text.replace(/\n/g, " ");
@@ -252,14 +271,14 @@ export function createThreadsInsightsTool(api: OpenClawPluginApi) {
               post.engagement!.fedToStyle = true;
             }
           }
+          }
+
+          await writeTextFile(config.popularPostsPath, popularContent);
+          await writeJson(config.stylePath, styleData);
         }
 
-        await writeTextFile(config.popularPostsPath, popularContent);
-        await writeJson(config.stylePath, styleData);
-      }
-
-      // Save updated queue
-      await writeJson(config.queuePath, queue);
+        await writeJson(config.queuePath, freshQueue);
+      });
 
       return jsonResult({
         message: `Done: collected=${collected}, viral=${viral}, errors=${errors}`,

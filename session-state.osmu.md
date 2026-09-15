@@ -1,3 +1,12 @@
+## 2026-09-16 02시 40분 - 실유저 이미지·영상 발행 E2E, 사이드바 역상 원인, 채널 연결 진단
+
+- 사이드바 다크: 09-14 디자인 수정 커밋 169ef0a5 가 설명 없이 md:bg-text 를 넣음(DESIGN.md 에 역상 계약 없음). 접기 UI 는 Codex 5faa0aff 가 DESIGN.md 165행(224/56 접기, localStorage) 대로 넣은 것. 역상만 되돌림(PR 53 머지). 실수원장 [undeclared-change-relay].
+- 실유저(j.the.great.investor) E2E: 새 주제(동네 세탁소) 카드뉴스 초안 → 대표 이미지 1536x1536(Higgsfield) → 숏폼 영상 768x768 → 발행. Threads 성공(DdUN4oJH3Ow, 새 이미지 확인), YouTube Shorts 성공(MH9htqdWH_M, 제목 확인). X 실패: API 크레딧 소진(회장 콘솔). Instagram·Reels: 토큰 해지로 제외.
+- 생성기 자격증명: :ro 마운트 때문에 잠금·회전 실패 → 맥 자격증명 복사로 임시 복구. OD-2026-09-16-1.
+- 결함 발견: ①발행실 X 280자 초과 시 토스트만 뜨고 다른 채널 발행까지 통째로 막힘(도우미 "한도 넘는 곳만 줄이기" 로 해결 가능하나 안내 없음) ②숏폼 영상이 768x768 정사각형(9:16 계약 위반) ③생성 이미지에 깨진 영문 텍스트(프롬프트에 글자 금지 필요) ④성과실 "오늘 발행 0" 이 실제 발행 2건을 반영 안 함 ⑤이미 발행된 작업물을 다시 발행하면 dedupe 로 옛 글 링크를 새 발행처럼 보여줌 ⑥시작 스트립 "채널 연결 0/15→3/15" 값이 화면마다 다름.
+- 채널 연결 진단(/api/connect/readiness 실측): LinkedIn·TikTok·Slack·Naver·Pinterest·Tumblr·LINE = 앱 키 미등록(opening_soon). Bluesky = 앱 비밀번호 직접 입력형. Facebook = Meta 앱 심사 전, "사용할 수 없는 기능"은 Meta 대화상자(앱 모드·비즈니스 인증). Instagram = redirect_uri 는 시작·콜백 동일한데 Meta 가 code 교환에서 거절(재현 1회). 콘솔 등록값 확인 필요.
+- PR 54: Codex 야간 커밋 10개 + dev-server 계약 정렬. CI 대기.
+
 ## 2026-09-16 00시 58분 - 44px 잔여 2건 배포, 채널 페이지에서 새 묶음 발견
 
 - 사후 재측정: 14 라우트 under44=0(/calendar 55x15 예외 유지). 잔여 2건(blog 키워드 링크, videos Clip·슬라이드 버튼) code-builder 재위임 → PR 52 머지, 배포 run 34991628147 success, /videos 0 확인.

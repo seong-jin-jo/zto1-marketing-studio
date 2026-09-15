@@ -50,6 +50,7 @@ vi.mock("@/lib/supabase", () => ({
 
 describe("Sidebar operator/customer shell separation", () => {
   beforeEach(() => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
     localStorage.clear();
     localStorage.setItem(
       "active_workspace",
@@ -175,6 +176,7 @@ describe("Sidebar operator/customer shell separation", () => {
   });
 
   it("FE4-SIDEBAR-01 정상: 390 셸은 닫힌 서랍과 현재 방 이름으로 본문 폭을 보존한다", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
     mocks.pathname.mockReturnValue("/studio");
     mocks.swr.mockImplementation((key: string | null) => {
       if (key === "/api/me") return { data: { isOperator: false, tenant: { id: "customer-1", slug: "customer", name: "고객 워크스페이스" } }, mutate: vi.fn() };
@@ -186,7 +188,7 @@ describe("Sidebar operator/customer shell separation", () => {
 
     const sidebar = screen.getByRole("complementary", { name: "주요 사이드바" });
     const openButton = screen.getByRole("button", { name: "메뉴 열기" });
-    expect(sidebar).toHaveClass("hidden", "md:flex", "md:w-56", "bg-surface");
+    expect(sidebar).toHaveClass("hidden", "md:flex", "md:w-14", "bg-surface");
     // 2026-09-16 회장 지적: 사이드바가 갑자기 어두워졌다. 09-14 디자인 수정 커밋이 설명 없이
     // md:bg-text 를 넣었고 DESIGN.md 에는 역상 사이드바 계약이 없다. 본문과 같은 표면색으로 되돌린다.
     expect(sidebar).not.toHaveClass("md:bg-text");
@@ -202,6 +204,7 @@ describe("Sidebar operator/customer shell separation", () => {
   });
 
   it("CODE-REVIEW-20260915-23 정상: 데스크톱 네 방 흐름을 224px로 보이고 56px 접힘 상태를 저장한다", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1440 });
     mocks.pathname.mockReturnValue("/studio");
     mocks.swr.mockImplementation((key: string | null) => {
       if (key === "/api/me") return { data: { isOperator: false, tenant: { id: "customer-1", slug: "customer", name: "고객 워크스페이스" } }, mutate: vi.fn() };
@@ -217,7 +220,8 @@ describe("Sidebar operator/customer shell separation", () => {
     fireEvent.click(screen.getByRole("button", { name: "사이드바 접기" }));
     expect(sidebar).toHaveClass("md:w-14");
     expect(localStorage.getItem("customer_sidebar_collapsed")).toBe("true");
-    expect(screen.queryByRole("region", { name: "한 편의 제작 순서" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "한 편의 제작 순서" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /생성실/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "사이드바 펴기" }));
     expect(sidebar).toHaveClass("md:w-56");
@@ -236,7 +240,8 @@ describe("Sidebar operator/customer shell separation", () => {
 
     const sidebar = screen.getByRole("complementary", { name: "주요 사이드바" });
     expect(sidebar.className).not.toContain("sticky top-0 flex h-screen w-24");
-    expect(sidebar).toHaveClass("w-[min(20rem,86vw)]", "md:sticky", "md:h-screen");
+    expect(sidebar).toHaveClass("w-[min(20rem,86vw)]", "md:max-xl:absolute", "md:h-screen");
+    expect(document.querySelector("[data-sidebar-layout-slot]")).toHaveClass("md:max-xl:w-14");
   });
 
   it("clears the persisted active workspace when a customer logs out", async () => {

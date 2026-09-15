@@ -70,6 +70,9 @@ import { runWithConcurrency } from "@/lib/async-pool";
 
 const PUBLISH_CONCURRENCY = 3;
 const PUBLISH_REQUEST_TIMEOUT_MS = 45_000;
+// 영상 API의 공급자 업로드 상한은 120초다. 클라이언트가 먼저 포기하면 서버의 실제 성공을
+// 실패로 보여 재시도를 유도하므로 영상만 서버 상한보다 길게 기다린다.
+const VIDEO_PUBLISH_REQUEST_TIMEOUT_MS = 130_000;
 
 // SNS-007: /api/publish가 실제로 계정별 발행을 받는 4개 플랫폼(threads/x/facebook/instagram)만
 // 계정 셀렉터를 노출한다. shorts/reels/tiktok은 /api/publish 미지원(실발행 분기 없음. 위
@@ -1301,7 +1304,7 @@ export default function StudioPage() {
               draft_id: did,
               // 대문으로 쓸 시점. 지원하는 플랫폼만 실제로 쓴다(lib/video-cover.ts).
               cover_seconds: supportsCoverTimestamp(p) ? (coverSeconds[p] ?? DEFAULT_COVER_SECONDS) : undefined,
-            }, { signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS) });
+            }, { signal: AbortSignal.timeout(VIDEO_PUBLISH_REQUEST_TIMEOUT_MS) });
             if (vr?.ok) {
               urls[p] = vr.url || POST_URL[p] || "#";
               trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });

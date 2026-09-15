@@ -1,6 +1,6 @@
 import { withTenant, db } from "@/lib/db";
 import { spawn, type ChildProcess } from "child_process";
-import { existsSync } from "fs";
+import { accessSync, constants } from "fs";
 import os from "os";
 import path from "path";
 import { reportFailure, reportRecovery, classifySharedAiFailure } from "@/lib/observability";
@@ -21,8 +21,9 @@ function reportSharedAiExecutionFailure(e: unknown, workspaceId?: string): void 
   });
 }
 
-function resolveClaudeBin(): string {
-  if (process.env.CLAUDE_BIN) return process.env.CLAUDE_BIN;
+function resolveClaudeBins(): string[] {
+  const candidates: string[] = [];
+  if (process.env.CLAUDE_BIN) candidates.push(process.env.CLAUDE_BIN);
 
   // launchd/cron이 띄운 개발 서버는 셸 초기화 파일을 읽지 않아 ~/.local/bin이
   // PATH에서 빠질 수 있다. 앱이 살아 있는데 생성만 ENOENT로 끊기지 않도록
@@ -31,12 +32,18 @@ function resolveClaudeBin(): string {
     path.join(os.homedir(), ".local", "bin", "claude"),
     path.join(os.homedir(), ".claude", "local", "claude"),
   ]) {
-    if (existsSync(candidate)) return candidate;
+    try {
+      accessSync(candidate, constants.X_OK);
+      candidates.push(candidate);
+    } catch {
+      // 존재해도 실행 불가능한 파일은 후보가 아니다.
+    }
   }
-  return "claude";
+  candidates.push("claude");
+  return [...new Set(candidates)];
 }
 
-const CLAUDE_BIN = resolveClaudeBin();
+const CLAUDE_BINS = resolveClaudeBins();
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL = process.env.OSMU_GEN_MODEL || "claude-sonnet-4-6";
 const CLAUDE_CLI_TIMEOUT_MS = 120_000;
@@ -45,6 +52,11 @@ const CLAUDE_CLI_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 // 상한을 건다 — UTF-8 바이트 기준(문자 수 아님, multibyte 프롬프트가 실제 페이로드 크기를 과소평가하지
 // 않게). 공유 CLI(spawn/큐/quota reserve) 경로에만 적용 — BYO Anthropic HTTP API 경로는 미적용.
 const CLAUDE_CLI_MAX_PROMPT_BYTES = 1_000_000;
+
+function isClaudeLookupError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === "ENOENT" || code === "EACCES";
+}
 
 export type GeneratedTextUsage = {
   inputTokens: number;
@@ -127,10 +139,12 @@ function runClaudeCli(prompt: string): Promise<string> {
       fn();
     };
 
-    let child: ChildProcess;
-    try {
-      child = spawn(
-        CLAUDE_BIN,
+    const start = (candidateIndex: number) => {
+      let child: ChildProcess;
+      let attemptFinished = false;
+      try {
+        child = spawn(
+        CLAUDE_BINS[candidateIndex],
         [
           "-p",
           "--tools", "",
@@ -144,23 +158,28 @@ function runClaudeCli(prompt: string): Promise<string> {
         // 로그/반환 경로로 새어나갈 여지가 없다).
         { cwd: os.tmpdir(), stdio: ["pipe", "pipe", "ignore"] },
       );
-    } catch (err) {
-      reject(err instanceof Error ? err : new Error(String(err)));
-      return;
-    }
+      } catch (err) {
+        if (isClaudeLookupError(err) && candidateIndex + 1 < CLAUDE_BINS.length) {
+          start(candidateIndex + 1);
+          return;
+        }
+        settle(() => reject(err instanceof Error ? err : new Error(String(err))));
+        return;
+      }
 
-    const stdoutChunks: Buffer[] = [];
-    let stdoutBytes = 0;
-    let overflowed = false;
+      const stdoutChunks: Buffer[] = [];
+      let stdoutBytes = 0;
+      let overflowed = false;
 
-    const timer = setTimeout(() => {
-      killClaudeChild(child);
-      settle(() => reject(new Error(`claude CLI timeout(${CLAUDE_CLI_TIMEOUT_MS}ms)`)));
-    }, CLAUDE_CLI_TIMEOUT_MS);
-    const cleanup = () => clearTimeout(timer);
+      const timer = setTimeout(() => {
+        attemptFinished = true;
+        killClaudeChild(child);
+        settle(() => reject(new Error(`claude CLI timeout(${CLAUDE_CLI_TIMEOUT_MS}ms)`)));
+      }, CLAUDE_CLI_TIMEOUT_MS);
+      const cleanup = () => clearTimeout(timer);
 
-    child.stdout?.on("data", (chunk: Buffer) => {
-      if (overflowed) return;
+      child.stdout?.on("data", (chunk: Buffer) => {
+      if (overflowed || attemptFinished) return;
       stdoutBytes += chunk.length;
       if (stdoutBytes > CLAUDE_CLI_MAX_OUTPUT_BYTES) {
         overflowed = true;
@@ -170,23 +189,32 @@ function runClaudeCli(prompt: string): Promise<string> {
         return;
       }
       stdoutChunks.push(chunk);
-    });
+      });
 
     // stdin 쓰기 실패(EPIPE 등, 예: child가 stdin을 채 열기도 전에 죽은 경우) — 진행 중인 child를
     // 종료하고 안정된(프롬프트 미포함) 에러로 정확히 1회 reject한다. 큐(runSerializedCli)는 이 reject로
     // tail이 그대로 정착돼 다음 대기자로 진행한다.
-    child.stdin?.on("error", () => {
+      child.stdin?.on("error", () => {
+      attemptFinished = true;
       cleanup();
       killClaudeChild(child);
       settle(() => reject(new Error("claude CLI stdin 오류")));
-    });
+      });
 
-    child.on("error", (err) => {
-      cleanup();
-      settle(() => reject(new Error(`claude CLI spawn 실패: ${err.message}`)));
-    });
+      child.on("error", (err) => {
+        if (attemptFinished) return;
+        attemptFinished = true;
+        cleanup();
+        if (isClaudeLookupError(err) && candidateIndex + 1 < CLAUDE_BINS.length) {
+          start(candidateIndex + 1);
+          return;
+        }
+        settle(() => reject(new Error(`claude CLI spawn 실패: ${err.message}`)));
+      });
 
-    child.on("close", (code) => {
+      child.on("close", (code) => {
+      if (attemptFinished) return;
+      attemptFinished = true;
       cleanup();
       if (overflowed) return; // 이미 reject됨 — 여기서 재처리하지 않음.
       if (code === 0) {
@@ -194,17 +222,20 @@ function runClaudeCli(prompt: string): Promise<string> {
       } else {
         settle(() => reject(new Error(`claude CLI exited with code ${code}`)));
       }
-    });
+      });
 
     // end()가 동기적으로 throw할 수도 있다(예: 스트림이 이미 파괴된 극단 케이스) — try/catch로 잡아
     // 위 error 이벤트 경로와 동일하게 child를 종료하고 안정된 에러로 1회만 reject한다.
-    try {
-      child.stdin?.end(prompt, "utf8");
-    } catch {
-      cleanup();
-      killClaudeChild(child);
-      settle(() => reject(new Error("claude CLI stdin 쓰기 실패")));
-    }
+      try {
+        child.stdin?.end(prompt, "utf8");
+      } catch {
+        attemptFinished = true;
+        cleanup();
+        killClaudeChild(child);
+        settle(() => reject(new Error("claude CLI stdin 쓰기 실패")));
+      }
+    };
+    start(0);
   });
 }
 
@@ -212,10 +243,11 @@ function finiteNonNegative(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
-function runClaudeCliWithUsage(
+function runClaudeCliWithUsageAt(
   prompt: string,
   model: string,
   timeoutMs: number,
+  candidateIndex: number,
 ): Promise<GeneratedTextResult> {
   return new Promise<GeneratedTextResult>((resolve, reject) => {
     let settled = false;
@@ -228,7 +260,7 @@ function runClaudeCliWithUsage(
     let child: ChildProcess;
     try {
       child = spawn(
-        CLAUDE_BIN,
+        CLAUDE_BINS[candidateIndex],
         [
           "-p",
           "--tools", "",
@@ -275,7 +307,9 @@ function runClaudeCliWithUsage(
     });
     child.on("error", (error) => {
       cleanup();
-      settle(() => reject(new Error(`claude CLI spawn 실패: ${error.message}`)));
+      const wrapped = new Error(`claude CLI spawn 실패: ${error.message}`) as NodeJS.ErrnoException;
+      wrapped.code = (error as NodeJS.ErrnoException).code;
+      settle(() => reject(wrapped));
     });
     child.on("close", (code) => {
       cleanup();
@@ -351,6 +385,23 @@ function runClaudeCliWithUsage(
       settle(() => reject(new Error("claude CLI stdin 쓰기 실패")));
     }
   });
+}
+
+async function runClaudeCliWithUsage(
+  prompt: string,
+  model: string,
+  timeoutMs: number,
+): Promise<GeneratedTextResult> {
+  let lastError: unknown;
+  for (let index = 0; index < CLAUDE_BINS.length; index += 1) {
+    try {
+      return await runClaudeCliWithUsageAt(prompt, model, timeoutMs, index);
+    } catch (error) {
+      lastError = error;
+      if (!isClaudeLookupError(error) || index + 1 >= CLAUDE_BINS.length) throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("claude CLI 실행 파일을 찾지 못했습니다");
 }
 
 // 공유 claude -p 직렬화 큐 — CLI는 프로세스에 1개뿐인 공유 프로필(운영자 OAuth 세션)을 쓰므로

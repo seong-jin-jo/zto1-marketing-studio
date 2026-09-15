@@ -306,7 +306,9 @@ function CustomerSidebar({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("customer_sidebar_collapsed") === "true";
+    const saved = window.localStorage.getItem("customer_sidebar_collapsed");
+    if (saved !== null) return saved === "true";
+    return window.innerWidth < 1280;
   });
   const { data: channelConfig } = useChannelConfig();
   const { data: images } = useSWR<unknown[]>("/api/images", fetcher);
@@ -387,10 +389,12 @@ function CustomerSidebar({
         </p>
       </header>
 
+      <div className="contents md:max-xl:relative md:max-xl:block md:max-xl:h-screen md:max-xl:w-14 md:max-xl:min-w-14 md:max-xl:max-w-14" data-sidebar-layout-slot>
       <aside
         id="customer-sidebar"
         aria-label="주요 사이드바"
-        className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex" : "hidden"} h-dvh min-w-0 w-[min(20rem,86vw)] shrink-0 flex-col overflow-hidden border-r border-border bg-surface  md:sticky md:top-0 md:flex md:h-screen ${railCollapsed ? "md:w-14 md:min-w-14 md:max-w-14" : "md:w-56 md:min-w-56 md:max-w-56"}`}
+        data-sidebar-collapsed={railCollapsed ? "true" : "false"}
+        className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex" : "hidden"} h-dvh min-w-0 w-[min(20rem,86vw)] shrink-0 flex-col overflow-hidden border-r border-border bg-surface md:top-0 md:flex md:h-screen md:max-xl:absolute md:max-xl:left-0 md:max-xl:z-30 ${railCollapsed ? "md:w-14 md:min-w-14 md:max-w-14" : "md:w-56 md:min-w-56 md:max-w-56 xl:sticky"}`}
       >
         <div className="flex items-start gap-stack border-b border-border px-stack py-pad-inset max-xl:px-stack-tight md:justify-center md:border-b-0 md:px-micro md:py-stack-tight">
           <div className="min-w-0 flex-1">
@@ -410,9 +414,7 @@ function CustomerSidebar({
         </div>
 
       <nav className="flex-1 min-h-0 overflow-y-auto py-stack">
-        {showLabels ? <div>
-          <RoomFlowNav pathname={pathname} onNavigate={() => setMobileMenuOpen(false)} />
-        </div> : null}
+        <RoomFlowNav pathname={pathname} onNavigate={() => setMobileMenuOpen(false)} compact={!showLabels} />
 
         {/* 발행 채널 그룹. constants의 PUBLISH_CHANNEL_GROUPS 단일 소스(Settings>Channels와 동일).
             threads/x는 연결상태 뱃지가 특수해 별도 아이템 유지. */}
@@ -552,6 +554,7 @@ function CustomerSidebar({
       </button>
       <SidebarFooter isOperator={false} compactOnNarrow={!showLabels} />
       </aside>
+      </div>
     </>
   );
 }

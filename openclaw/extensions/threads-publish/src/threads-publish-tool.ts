@@ -3,6 +3,8 @@ import { jsonResult, readStringParam } from "openclaw/plugin-sdk/agent-runtime";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-runtime";
 import { readFile, realpath } from "node:fs/promises";
 import { basename, extname, isAbsolute, relative, resolve } from "node:path";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   beginQueuePublishAttempt,
   recordQueueProviderResult,
@@ -60,6 +62,37 @@ type ThreadsPublishConfig = {
   userId?: string;
   queuePath?: string;
 };
+
+type StagedImage = { url: string; cleanup: () => Promise<void> };
+
+async function stageLocalImage(localPath: string, idempotencyKey: string): Promise<StagedImage> {
+  const dataDir = process.env.DATA_DIR || "/home/node/data";
+  const { buffer, filename } = await readOwnedLocalImage(localPath, dataDir);
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID || "";
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY || "";
+  const bucket = process.env.R2_BUCKET || "";
+  const endpoint = process.env.R2_ENDPOINT || "";
+  if (!accessKeyId || !secretAccessKey || !bucket || !endpoint) {
+    throw new Error("보호된 이미지 배달 저장소 설정이 없어 발행하지 않았습니다");
+  }
+  const extension = extname(filename).toLowerCase();
+  const contentType = extension === ".png" ? "image/png" : extension === ".gif" ? "image/gif" : extension === ".webp" ? "image/webp" : "image/jpeg";
+  const key = `threads/${idempotencyKey}${extension}`;
+  const client = new S3Client({ region: "auto", endpoint, credentials: { accessKeyId, secretAccessKey } });
+  await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer, ContentType: contentType }));
+  // Dashboard contract tests import this workspace package through a second
+  // node_modules tree. The runtime packages are version-pinned together, but
+  // their duplicated Smithy private types are not structurally assignable.
+  const url = await getSignedUrl(
+    client as never,
+    new GetObjectCommand({ Bucket: bucket, Key: key }) as never,
+    { expiresIn: 900 },
+  );
+  return {
+    url,
+    cleanup: async () => { await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })); },
+  };
+}
 
 function resolveConfig(api: OpenClawPluginApi): { accessToken: string; userId: string } {
   const pluginCfg = (api.pluginConfig ?? {}) as ThreadsPublishConfig;
@@ -132,6 +165,7 @@ export function createThreadsPublishTool(api: OpenClawPluginApi) {
         payload: { text, imageUrls: imageUrl ? [imageUrl] : [], quotePostId },
       });
       let resultRecorded = false;
+      let providerDispatchStarted = false;
       const recordProviderFailure = async (error: string) => {
         await recordQueueProviderResult({
           queuePath,
@@ -144,14 +178,12 @@ export function createThreadsPublishTool(api: OpenClawPluginApi) {
         });
         resultRecorded = true;
       };
+      let stagedImage: StagedImage | null = null;
 
       try {
-
-      // Meta가 읽을 URL의 저장과 만료 계약이 생기기 전에는 로컬 고객 이미지를 외부에 복제하지 않는다.
       if (imageUrl && imageUrl.startsWith("/images/")) {
-        const message = "보호된 이미지 배달 저장소가 준비되지 않아 발행하지 않았습니다";
-        await recordProviderFailure(message);
-        throw new Error(message);
+        stagedImage = await stageLocalImage(imageUrl, attempt.idempotencyKey);
+        imageUrl = stagedImage.url;
       }
 
       // Step 1: Create media container
@@ -167,6 +199,7 @@ export function createThreadsPublishTool(api: OpenClawPluginApi) {
       if (quotePostId) {
         containerParams.quote_post_id = quotePostId;
       }
+      providerDispatchStarted = true;
       const createResp = await fetch(createUrl, {
         method: "POST",
         body: new URLSearchParams(containerParams),
@@ -231,17 +264,24 @@ export function createThreadsPublishTool(api: OpenClawPluginApi) {
       });
       } catch (error) {
         if (!resultRecorded) {
-          await recordQueueProviderResult({
-            queuePath,
-            postId,
-            channel: "threads",
-            claimToken,
-            idempotencyKey: attempt.idempotencyKey,
-            state: "result_unknown",
-            error: error instanceof Error ? error.message : String(error),
-          }).catch(() => {});
+          const message = error instanceof Error ? error.message : String(error);
+          if (!providerDispatchStarted) {
+            await recordProviderFailure(message).catch(() => {});
+          } else {
+            await recordQueueProviderResult({
+              queuePath,
+              postId,
+              channel: "threads",
+              claimToken,
+              idempotencyKey: attempt.idempotencyKey,
+              state: "result_unknown",
+              error: message,
+            }).catch(() => {});
+          }
         }
         throw error;
+      } finally {
+        if (stagedImage) await stagedImage.cleanup().catch(() => {});
       }
     },
   };

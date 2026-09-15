@@ -32,40 +32,41 @@ import {
   SUBTITLE_MAX_LINES,
   type SubtitleSize,
 } from "@/lib/studio/video-subtitle";
+import { acquireSubtitleSlot } from "@/lib/studio/subtitle-work-limit";
 
 const execFileP = promisify(execFile);
 
 const FFPROBE_BIN = process.env.FFPROBE_BIN || "ffprobe";
 
 /**
- * 영상의 실제 크기와 길이를 읽는다. 못 읽으면 세로 숏폼 기본값으로 간다.
+ * 영상의 실제 크기와 길이를 읽는다. 크기는 렌더 안전 기본값을 쓸 수 있지만 길이는
+ * 자원 상한이므로 측정 실패를 짧은 영상으로 간주하지 않는다.
  *
  * 크기를 짐작으로 박으면 안 된다. 실제로 나온 클립은 1080x1920 이 아니라 **768x768** 이었다.
  * 1080 을 가정하고 글자 크기를 정하면 그 클립에서 자막이 화면 밖으로 나간다.
  */
 async function probeVideo(filePath: string): Promise<{ width: number; height: number; durationSec: number }> {
   const fallback = { width: 1080, height: 1920, durationSec: 6 };
-  try {
-    const { stdout } = await execFileP(FFPROBE_BIN, [
+  const { stdout } = await execFileP(FFPROBE_BIN, [
       "-v", "error",
       "-select_streams", "v:0",
       "-show_entries", "stream=width,height:format=duration",
       "-of", "json", filePath,
     ], { timeout: 20000 });
-    const parsed = JSON.parse(stdout) as {
-      streams?: Array<{ width?: number; height?: number }>;
-      format?: { duration?: string };
-    };
-    const stream = parsed.streams?.[0] ?? {};
-    const duration = Number(parsed.format?.duration);
-    return {
-      width: Number(stream.width) > 0 ? Number(stream.width) : fallback.width,
-      height: Number(stream.height) > 0 ? Number(stream.height) : fallback.height,
-      durationSec: Number.isFinite(duration) && duration > 0 ? duration : fallback.durationSec,
-    };
-  } catch {
-    return fallback;
+  const parsed = JSON.parse(stdout) as {
+    streams?: Array<{ width?: number; height?: number }>;
+    format?: { duration?: string };
+  };
+  const stream = parsed.streams?.[0] ?? {};
+  const duration = Number(parsed.format?.duration);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error("video duration unavailable");
   }
+  return {
+    width: Number(stream.width) > 0 ? Number(stream.width) : fallback.width,
+    height: Number(stream.height) > 0 ? Number(stream.height) : fallback.height,
+    durationSec: duration,
+  };
 }
 
 function deliverUrl(tenantId: string, filename: string): string {
@@ -139,7 +140,28 @@ export async function POST(request: Request) {
     }, { status: 503 });
   }
 
-  const { width, height, durationSec } = await probeVideo(inputPath);
+  const releaseSlot = await acquireSubtitleSlot(tenantId);
+  if (!releaseSlot) {
+    return Response.json({
+      ok: false,
+      code: "SUBTITLE_QUEUE_FULL",
+      error: "자막 작업이 몰려 지금은 더 받을 수 없습니다. 잠시 뒤 다시 시도해 주세요.",
+    }, { status: 429 });
+  }
+
+  try {
+  let width: number;
+  let height: number;
+  let durationSec: number;
+  try {
+    ({ width, height, durationSec } = await probeVideo(inputPath));
+  } catch {
+    return Response.json({
+      ok: false,
+      code: "SUBTITLE_VIDEO_PROBE_FAILED",
+      error: "영상 길이를 확인하지 못해 자막 작업을 시작하지 않았습니다. 다른 영상으로 다시 시도해 주세요.",
+    }, { status: 422 });
+  }
   if (durationSec > MAX_VIDEO_DURATION_SECONDS) {
     return Response.json({
       ok: false,
@@ -192,4 +214,7 @@ export async function POST(request: Request) {
     file: deliverUrl(tenantId, outName),
     subtitle: { size, lines: lines.filter((line) => line.trim()).length, width, height, durationSec },
   });
+  } finally {
+    releaseSlot();
+  }
 }
