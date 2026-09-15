@@ -1,5 +1,6 @@
 import { generateText, sharedAiApprovalErrorResponse, sharedGenerationQuotaErrorResponse } from "@/lib/anthropic";
 import { effectiveTenantId } from "@/lib/tenant-auth";
+import { parseCardOutlineOutput } from "@/lib/ai-json-contract";
 
 export async function POST(request: Request) {
   const data = await request.json();
@@ -21,14 +22,9 @@ export async function POST(request: Request) {
 {"slides": ["슬라이드1 내용", "슬라이드2 내용", ...], "caption": "Instagram 캡션", "hashtags": ["태그1", "태그2", ...]}`;
 
   try {
-    const result = (await generateText(msg, tenantId)).trim();
-
-    const jsonMatch = result.match(/\{[\s\S]*"slides"[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return Response.json({ success: true, ...parsed });
-    }
-    return Response.json({ error: "AI 응답에서 JSON을 추출할 수 없음", raw: result.slice(-500) }, { status: 500 });
+    const parsed = parseCardOutlineOutput(await generateText(msg, tenantId));
+    if (parsed) return Response.json({ success: true, ...parsed });
+    return Response.json({ success: false, code: "AI_OUTPUT_INVALID", error: "AI 카드뉴스 응답 형식이 올바르지 않습니다." }, { status: 502 });
   } catch (e) {
     const approval = sharedAiApprovalErrorResponse(e);
     if (approval) return approval;
