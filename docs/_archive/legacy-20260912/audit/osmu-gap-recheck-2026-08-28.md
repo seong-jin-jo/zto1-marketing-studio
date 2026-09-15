@@ -1,5 +1,56 @@
 # 갭 감사 재확인 2026-08-28
 
+## 2026-09-15 23시 12분 갭 재확인: 성과 시계열 build 차단 유지
+
+두 기반 감사와 03시 55분 이후 커밋, 현재 schema, migration, 성과 Route Handler를 다시
+대조했다. 생성, 편집, 발행 큐, 성과 제안 재인계와 일곱 표시 플랫폼 성과 수집은 이미 구현돼
+있다. 이후 변경은 네 방 화면과 QA 보강이며 게시물별 성과 이력은 추가되지 않았다. 지금도 없는
+기본 흐름 항목은 게시물별 성과 snapshot과 재현 가능한 30일 비교 하나다.
+
+| 계약 | 현재 판정 | 직접 증거 |
+|---|---|---|
+| 게시물별 성과 이력 | 없음 | 현재 `published_posts`는 최신 누계와 `metrics_at`만 갱신하고, 게시물과 관측 시각별 이력 table 또는 migration은 없다. `growth_metrics`는 채널 팔로워 이력이다. |
+| 재현 가능한 30일 비교 | 없음 | 지정 작업 공간 localhost `GET /api/metrics` HTTP 200. 응답 최상위 키는 `coverage`, `posts`뿐이고 `history`, `comparison`은 없다. 게시물은 0건이다. |
+| 생성, 편집, 발행, 성과 재인계 | 관찰됨 | localhost 기본 흐름 11/11과 Studio v1 14/14가 종료 코드 0으로 통과했다. |
+| 전체 회귀 | 테스트됨 | `npm run test`에서 Vitest 362파일과 2,321건 통과, 3건 제외. `npx tsc --noEmit` 종료 0, 디자인 토큰 위반 0. |
+| 신규 구현 | 차단 | `pipeline-state.osmu.md`는 `qa`, 승인 아님이다. snapshot 단위, 멱등 키, 보존 기간, 공급자 정규화와 최근 30일 비교식의 승인된 DB 및 API 계약이 없다. |
+
+이번 실행에서 새로 되는 것으로 전환된 항목은 없다. 현재 누계값을 30일 값으로 표시하거나
+`provider_meta`에 배열을 넣는 방식은 수집 누락, 중복 수집, 작업 공간 격리와 보존 정책을
+검증하지 못한다. 새 table, 기존 JSONB, 공급자 기간 보고서 중 하나를 워커가 단독 선택하는
+것도 금지된 DB 스키마와 아키텍처 결정이다. 제품 소스, migration과 기능 테스트는 수정하지
+않았다.
+
+외부 계약 대조: YouTube Analytics는 `startDate`, `endDate`, `metrics`와 선택적 `dimensions`로
+기간 보고서를 정의한다. TikTok Video Query는 영상별 누계 `view_count`, `like_count`,
+`comment_count`, `share_count`를 반환한다. 여러 공급자를 같은 30일 비교로 묶으려면 로컬
+snapshot 또는 공급자별 기간 보고서의 저장·집계 계약이 먼저 필요하다.
+
+레드팀: 최신 누계 두 번의 차이로 빠르게 증감률을 만들 수 있지만 수집 누락, 게시 시점 차이와
+누계 감소를 구분하지 못한다. 화면은 완성처럼 보여도 같은 기간을 다시 계산할 수 없는 거짓
+계약이 된다.
+
+셀프심문: 이 차단이 틀렸다면 03시 55분 이후 게시물별 관측 이력을 보존하는 migration, 응답
+계약 또는 승인된 기술설계가 추가됐어야 한다. 관련 커밋, schema, migrations, metrics Route
+Handler, 실제 응답과 pipeline을 교차 확인했지만 추가되지 않았다.
+
+회수 필요: 컨트롤러와 tech-architect가 snapshot 저장 단위, 멱등 키, 보존 기간, 공급자별
+누계·기간 지표 정규화, 최근 30일과 직전 30일 비교식 및 표본 부족 기준을 합의하고 eng-design
+산출물을 승인한 뒤 build 공정을 다시 열어야 한다.
+
+STAMP | line: osmu-gapfill091523 | 생성: 2026-09-15 23:12 KST | model: gpt-codex/gpt-5 | agent: code-builder | skill: 없음 | 고민: 반복 발주와 최신 UI 변경에도 승인 없는 성과 저장 계약을 지어내지 않고 실물 증거로 차단을 재검증했다.
+
+SKILLS_USED: 없음. 설치된 스킬 중 이 Next.js와 PostgreSQL 성과 저장 build에 직접 대응하는 스킬 없음. SKILLS_SKIPPED: qa는 QA 단계 소유이므로 사용자 지정 localhost 검증과 필수 회귀만 수행.
+
+KNOWLEDGE_QUERY: OSMU 기본 흐름, 게시물별 성과 시계열, 재현 가능한 30일 비교, YouTube 기간 보고 계약과 TikTok 누계 성과 필드를 검색했다.
+HITS_USED: BRAIN의 ZERO-ONE Marketing Studio 맥락, repo 사업 좌표, 두 갭 감사, v63 성과실, YouTube Analytics와 TikTok 공식 계약을 잔여 갭과 재현성 판정에 채택했다.
+HITS_REJECTED: 일반 마케팅 심리, 다른 벤처 자료와 공급자 Research API는 이번 고객용 저장 단위와 승인 계약의 근거가 아니어서 제외했다.
+CONFLICTS: 회장 정본과 외부 공식 계약의 충돌은 없다. 사용자 지정 v63과 pipeline 승인 v68 디자인 핀은 충돌하며 이번 비화면 판정에서 어느 쪽도 임의 선택하지 않았다.
+
+SOURCES: 두 갭 감사 | v63 프로토타입 | 회장 요구 대장과 정본 요청 원장 | OSMU 사업 좌표 | `dashboard/db/schema.sql` | `dashboard/src/app/api/metrics/route.ts` | https://developers.google.com/youtube/analytics/reference/reports/query | https://developers.tiktok.com/docs/en/tiktok-api-v2-video-query
+
+MODEL: gpt-codex/gpt-5 / code-builder
+
 ## 2026-09-15 03시 55분 갭 재확인: 남은 성과 시계열은 기술설계 회수
 
 두 감사의 후속 구현, 2026-09-14 19시 18분 이후 커밋, 현재 schema와 Route Handler를 다시
