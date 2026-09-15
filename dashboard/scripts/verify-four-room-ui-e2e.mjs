@@ -126,6 +126,31 @@ async function clickRoom(page, width, room) {
   await page.locator(room.selector).waitFor({ state: "visible", timeout: remainingTimeout(`${width} ${room.label} 표시`) });
 }
 
+async function verifySidebarAt1024(page) {
+  const aside = page.locator('#customer-sidebar');
+  const slot = page.locator('[data-sidebar-layout-slot]');
+  await aside.waitFor({ state: "visible", timeout: remainingTimeout("1024 사이드바 기본 상태") });
+  if (await aside.getAttribute("data-sidebar-collapsed") !== "true") {
+    throw new Error("1024 첫 방문 사이드바가 56px 레일로 접히지 않았습니다");
+  }
+  const collapsedBox = await aside.boundingBox();
+  const slotBox = await slot.boundingBox();
+  if (!collapsedBox || Math.round(collapsedBox.width) !== 56 || !slotBox || Math.round(slotBox.width) !== 56) {
+    throw new Error(`1024 접힘 치수 불일치: sidebar=${collapsedBox?.width ?? "없음"}, slot=${slotBox?.width ?? "없음"}`);
+  }
+  const roomLinks = aside.locator('section[aria-label="한 편의 제작 순서"] a');
+  if (await roomLinks.count() !== 4) throw new Error("접힌 사이드바에 네 방 이동이 모두 남지 않았습니다");
+
+  await aside.getByRole("button", { name: "사이드바 펴기" }).click();
+  await page.waitForFunction(() => document.querySelector('#customer-sidebar')?.getAttribute("data-sidebar-collapsed") === "false");
+  const expandedBox = await aside.boundingBox();
+  const expandedSlotBox = await slot.boundingBox();
+  if (!expandedBox || Math.round(expandedBox.width) !== 224 || !expandedSlotBox || Math.round(expandedSlotBox.width) !== 56) {
+    throw new Error(`1024 펼침 오버레이 치수 불일치: sidebar=${expandedBox?.width ?? "없음"}, slot=${expandedSlotBox?.width ?? "없음"}`);
+  }
+  await aside.getByRole("button", { name: "사이드바 접기" }).click();
+}
+
 async function measureRoom(page, width, room, theme = "light") {
   const tag = `${width}/${theme} ${room.label}`;
   if (room.key === "performance") {
@@ -224,6 +249,7 @@ try {
       // Next dev keeps HMR and background requests alive. The room locator below is the
       // user-visible readiness signal; networkidle can misclassify a rendered page as a timeout.
       await page.goto(`${baseUrl}/studio?room=create`, { waitUntil: "domcontentloaded", timeout: remainingTimeout(`${tag} 생성실 진입`) });
+      if (width === 1024 && theme === "light") await verifySidebarAt1024(page);
       for (const room of roomContracts) {
         console.log(`검증 ${tag} ${room.label}`);
         await clickRoom(page, width, room);
