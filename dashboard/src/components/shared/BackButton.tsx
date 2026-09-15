@@ -13,7 +13,7 @@ export function BackButton({ fallback = "/", label = "뒤로" }: { fallback?: st
         if (typeof window !== "undefined" && window.history.length > 1) router.back();
         else router.push(fallback);
       }}
-      className="text-subtle hover:text-text text-body-sm mb-micro inline-flex items-center gap-micro transition-colors"
+      className="text-subtle hover:text-text text-body-sm mb-micro inline-flex min-h-control-touch items-center gap-micro transition-colors"
     >
       &larr; {label}
     </button>

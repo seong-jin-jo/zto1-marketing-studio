@@ -498,7 +498,7 @@ export default function VideosPage() {
         <div className="flex gap-stack-tight">
           <button
             onClick={() => setTab("list")}
-            className={`px-stack py-stack-tight text-caption rounded-chip ${tab === "list" ? "bg-accent text-accent-fg" : "text-subtle hover:bg-surface-2"}`}
+            className={`min-h-control-touch px-stack py-stack-tight text-caption rounded-chip ${tab === "list" ? "bg-accent text-accent-fg" : "text-subtle hover:bg-surface-2"}`}
           >
             라이브러리 ({videos.length})
           </button>
@@ -506,7 +506,7 @@ export default function VideosPage() {
             <button
               data-testid="video-generate-tab"
               onClick={() => setTab("generate")}
-              className={`px-stack py-stack-tight text-caption rounded-chip ${tab === "generate" ? "bg-accent text-accent-fg" : "text-subtle hover:bg-surface-2"}`}
+              className={`min-h-control-touch px-stack py-stack-tight text-caption rounded-chip ${tab === "generate" ? "bg-accent text-accent-fg" : "text-subtle hover:bg-surface-2"}`}
             >
               + 생성
             </button>
@@ -530,7 +530,7 @@ export default function VideosPage() {
             </div>
             <Link
               href="/channels/youtube"
-              className="shrink-0 text-caption text-accent hover:text-accent-hover"
+              className="inline-flex min-h-control-touch shrink-0 items-center text-caption text-accent hover:text-accent-hover"
             >
               채널 관리 →
             </Link>
@@ -552,7 +552,7 @@ export default function VideosPage() {
             </div>
             <Link
               href="/channels/tiktok"
-              className="shrink-0 text-caption text-accent hover:text-accent-hover"
+              className="inline-flex min-h-control-touch shrink-0 items-center text-caption text-accent hover:text-accent-hover"
             >
               채널 관리 →
             </Link>
@@ -643,7 +643,7 @@ export default function VideosPage() {
             value={repurposeUrl}
             onChange={(e) => { setRepurposeUrl(e.target.value); setRepurposeFile(null); }}
             placeholder="YouTube 긴 영상 주소"
-            className="flex-1 min-w-[280px] bg-surface-2 text-muted text-caption p-stack-tight rounded-chip border border-border"
+            className="min-h-control-touch flex-1 min-w-[280px] bg-surface-2 text-muted text-caption p-stack-tight rounded-chip border border-border"
           />
           <button onClick={handleRepurpose} disabled={repurposing} className="px-stack py-stack-tight text-caption bg-accent hover:bg-accent-hover rounded-chip disabled:opacity-50">
             {repurposing ? "Clipping..." : "Clip"}

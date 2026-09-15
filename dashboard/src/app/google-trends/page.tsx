@@ -22,7 +22,7 @@ export default function GoogleTrendsPage() {
           href="https://trends.google.com/trends/explore?geo=KR&cat=958"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-block px-pad-inset py-stack-tight text-body-sm bg-accent text-accent-fg rounded-chip hover:bg-accent-hover"
+          className="inline-flex min-h-control-touch items-center px-pad-inset py-stack-tight text-body-sm bg-accent text-accent-fg rounded-chip hover:bg-accent-hover"
         >
           Google Trends 열기
         </a>

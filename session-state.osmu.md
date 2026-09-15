@@ -1,3 +1,11 @@
+## 2026-09-15 23시 45분 - /inbox select 18px 해결, 도커 typecheck 결함 하나 더
+
+- globals.css 에 `select:not([multiple]):not([size])` 전역 규칙(appearance none + currentColor 화살표 + min-height 토큰). PR 49 머지.
+- 배포 첫 시도(run 34979582500) 실패: 도커 컨텍스트가 ./dashboard 뿐인데 tests/isolation/public-supabase-env-recovery 가 루트 scripts/*.mjs 를 import → tsc TS2307. CI 는 전체 체크아웃이라 통과. tsconfig.ci.json 제외 + 사유. PR 50 머지. 재배포 run 34982297217 success.
+- 사파리 실측(배포본): /inbox select 44x141, computed min-height 44px, appearance none. /studio /videos /settings 은 select 0개, 가로 넘침 없음.
+- OD-2026-09-14-4(허용목록) 종결: 09-14 기록대로 나머지는 운영자 전용 판정, contract 4건 통과.
+- 남은 백로그: 44px 미측정 라우트 전수, 채널 연결(회장), 인스타 재연결(회장), 문서 대량 정리 OD-2026-09-12-1, 30일 배달 OD-2026-09-13-2.
+
 ## 2026-09-15 22시 05분 - 고정 IP, 테스트 부채 해소, main CI green, 운영 로그 2건
 
 - marketing VM 고정 IP: /etc/netplan/99-static-marketing.yaml(192.168.1.110/24, gw .1, DNS .1+1.1.1.1). Proxmox guest agent(root)로 base64 로 써서 적용. ssh/러너/터널/공개 URL 200 확인. OD-2026-09-15-1 종결.

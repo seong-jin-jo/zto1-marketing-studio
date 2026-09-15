@@ -605,7 +605,7 @@ export function PerformanceRoom({
                           {loadingSuggestions ? "제안 불러오는 중" : "이 결로 한 편 더"}
                         </Button>
                       )}
-                      {post.permalink && <a className="text-caption font-semibold text-accent hover:underline" href={post.permalink} target="_blank" rel="noopener noreferrer">실제 게시물 보기</a>}
+                      {post.permalink && <a className="inline-flex min-h-control-touch items-center text-caption font-semibold text-accent hover:underline" href={post.permalink} target="_blank" rel="noopener noreferrer">실제 게시물 보기</a>}
                     </Stack>
                   </Card>
                 );
@@ -643,7 +643,7 @@ export function PerformanceRoom({
                         {state === "loading" ? "새 콘텐츠 준비하는 중" : state === "queued" ? "생성실 대기 목록에 넣었어요" : state === "reused" ? "이미 생성실 대기 목록에 있어요" : "이 제안으로 새 콘텐츠 만들기"}
                       </Button>
                       {state === "queued" || state === "reused" ? (
-                        <Link href="/studio" className="text-caption font-semibold text-accent hover:underline">생성실에서 바로 확인하기</Link>
+                        <Link href="/studio" className="inline-flex min-h-control-touch items-center text-caption font-semibold text-accent hover:underline">생성실에서 바로 확인하기</Link>
                       ) : null}
                       {state === "error" && <p role="alert" className="text-caption text-danger break-keep">준비하지 못했어요. 잠시 후 다시 눌러 주세요.</p>}
                     </Stack>

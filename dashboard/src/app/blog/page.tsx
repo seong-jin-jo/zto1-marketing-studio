@@ -146,7 +146,7 @@ export default function BlogPage() {
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-stack py-stack-tight text-caption rounded-chip ${tab === t ? "bg-accent text-accent-fg" : "text-subtle hover:bg-surface-2"}`}
+              className={`min-h-control-touch px-stack py-stack-tight text-caption rounded-chip ${tab === t ? "bg-accent text-accent-fg" : "text-subtle hover:bg-surface-2"}`}
             >
               {t === "queue" ? `Queue (${posts.length})` : t === "editor" ? "Editor" : "Settings"}
             </button>
@@ -208,7 +208,7 @@ export default function BlogPage() {
                       <span className={`text-caption px-stack-tight py-micro rounded-chip ${STATUS_CLASS[p.status] || "bg-surface-2 text-muted"}`}>{p.status}</span>
                       {p.seoKeyword && <span className="text-caption px-stack-tight py-micro rounded-chip bg-accent/40 text-accent">{p.seoKeyword}</span>}
                       {p.blogPostUrl && (
-                        <a href={p.blogPostUrl} target="_blank" rel="noopener noreferrer" className="text-caption text-accent hover:underline" onClick={(e) => e.stopPropagation()}>보기 →</a>
+                        <a href={p.blogPostUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-control-touch items-center text-caption text-accent hover:underline" onClick={(e) => e.stopPropagation()}>보기 →</a>
                       )}
                     </div>
                     <div className="flex items-center gap-stack-tight">

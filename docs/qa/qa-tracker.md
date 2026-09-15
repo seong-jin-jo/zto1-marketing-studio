@@ -2,6 +2,20 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-15 23시 12분 KST · 성과 시계열 갭 재확인 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 게시물별 성과 시계열과 재현 가능한 30일 비교 | GAP-HISTORY-20260915-2312-01 | ❌ NG | 지정 작업 공간 localhost `GET /api/metrics` HTTP 200. 응답 키는 `coverage`, `posts`이고 `history`, `comparison`은 없음. 현재 schema와 migration에도 게시물별 관측 이력 없음 |
+| pipeline build 허용 범위 | 승인 계약 안에서 신규 저장과 응답을 구현할 수 있는지 확인 | GAP-HISTORY-20260915-2312-02 | BLOCK | `pipeline-state.osmu.md`는 `qa`, 승인 아님. snapshot 단위, 멱등 키, 보존 기간, 공급자 정규화와 비교식의 승인된 DB 및 API 계약이 없어 제품 소스와 migration을 수정하지 않음 |
+| 기존 기본 흐름 | 생성, 편집, 발행 큐, 성과와 생성실 재인계 | GAP-HISTORY-20260915-2312-03 | PASS | localhost 기본 흐름 11/11, Studio v1 14/14, health HTTP 200과 DB up. health version은 null이라 현재 HEAD 실행본 귀속은 미검증 |
+| 필수 회귀 | test, TypeScript, 디자인 lint | GAP-HISTORY-20260915-2312-04 | PASS | Vitest 362파일과 2,321건 통과, 조건부 3건 제외. TypeScript 종료 0, 디자인 토큰 위반 0 |
+
+현재 누계를 30일 값으로 이름만 바꾸거나 JSON 배열에 이력을 임의 적재하면 기간 재현성과 작업
+공간 격리, 중복 수집과 보존 정책을 증명할 수 없다. 기술설계에서 저장 단위와 비교 계약을
+승인하고 build 공정을 다시 열기 전까지 PASS로 전환하지 않는다. 운영 배포와 실제 외부
+공급자의 기간 성과는 미검증이다.
+
 ## 2026-09-15 22시 55분 KST · 네 방 기본 흐름 v14 기능 수정 후 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

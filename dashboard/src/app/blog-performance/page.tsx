@@ -95,11 +95,11 @@ export default function BlogPerformancePage() {
             <div className="flex gap-micro">
               <button
                 onClick={() => setSortBy("views")}
-                className={`px-stack-tight py-micro text-caption rounded-chip ${sortBy === "views" ? "bg-accent text-accent-fg" : "text-subtle hover:bg-surface-2"}`}
+                className={`min-h-control-touch px-stack-tight py-micro text-caption rounded-chip ${sortBy === "views" ? "bg-accent text-accent-fg" : "text-subtle hover:bg-surface-2"}`}
               >조회순</button>
               <button
                 onClick={() => setSortBy("date")}
-                className={`px-stack-tight py-micro text-caption rounded-chip ${sortBy === "date" ? "bg-accent text-accent-fg" : "text-subtle hover:bg-surface-2"}`}
+                className={`min-h-control-touch px-stack-tight py-micro text-caption rounded-chip ${sortBy === "date" ? "bg-accent text-accent-fg" : "text-subtle hover:bg-surface-2"}`}
               >최신순</button>
             </div>
           </div>
