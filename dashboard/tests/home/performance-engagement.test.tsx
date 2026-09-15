@@ -126,6 +126,7 @@ describe("FE-V63-07 성과실 댓글 행동", () => {
     render(<PerformanceRoom workspaceId="11111111-1111-4111-8111-111111111111" workspaceName="공용 작업 공간" metricsLoaded posts={[blocked]} publishedCount={1} followers="10" engagementRate={2} queuedCount={0} viralCount={0} collecting={false} onCollectMetrics={vi.fn(async () => {})} />);
 
     expect(screen.getAllByText("측정 불가").length).toBeGreaterThan(0);
+    expect(document.querySelector('[data-metrics-issue="blocked-1"]')).toHaveTextContent("현재 연결 계정의 글이 아님");
   });
 
   it("CODE-REVIEW-20260915-22 정상: 글별 실패·제외·수집 범위를 보여주고 운영자만 되돌린다", () => {

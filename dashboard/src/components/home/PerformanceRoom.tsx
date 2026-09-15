@@ -805,7 +805,9 @@ export function PerformanceRoom({
                   const failure = failureByPost.get(post.id);
                   const excludedDetail = excludedByPost.get(post.id);
                   const retired = post.metrics_retired;
-                  const issueCode = failure?.code || excludedDetail?.code || retired?.code;
+                  // POST 직후의 임시 상태보다 GET으로 되살아나는 글별 영속 값을 최종 근거로 쓴다.
+                  // 새로고침 뒤에도 수집 차단 이유가 사라지지 않아야 한다.
+                  const issueCode = failure?.code || excludedDetail?.code || retired?.code || post.metrics_blocked?.code;
                   return (
                   <tr key={post.id} className="block py-stack text-muted lg:table-row lg:border-b lg:border-border lg:py-none">
                     <PerformanceTableCell label="플랫폼">{platformLabel(post.platform)}</PerformanceTableCell>
