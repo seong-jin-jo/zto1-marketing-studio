@@ -5,7 +5,8 @@ import packageJson from "../../package.json";
 
 describe("개발 서버 번들러 계약", () => {
   it("반복된 Turbopack 치명 오류를 피하도록 기본 개발 서버는 Webpack을 사용한다", () => {
-    expect(packageJson.scripts.dev).toMatch(/^next dev\b/);
+    expect(packageJson.scripts.dev).toMatch(/next dev\b/);
+    expect(packageJson.scripts.dev).toContain("OSMU_BUILD_COMMIT=$(git rev-parse HEAD)");
     expect(packageJson.scripts.dev).toContain("--webpack");
   });
 
