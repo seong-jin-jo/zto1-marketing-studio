@@ -1,3 +1,11 @@
+## 2026-09-15 22시 05분 - 고정 IP, 테스트 부채 해소, main CI green, 운영 로그 2건
+
+- marketing VM 고정 IP: /etc/netplan/99-static-marketing.yaml(192.168.1.110/24, gw .1, DNS .1+1.1.1.1). Proxmox guest agent(root)로 base64 로 써서 적용. ssh/러너/터널/공개 URL 200 확인. OD-2026-09-15-1 종결.
+- PR 48 머지(main 64a69745), main CI run 34972057125 success. 원인 둘: ①contract 테스트가 Promise.all 을 찾는데 소스는 runWithConcurrency ②openclaw/extensions/threads-queue/queue-lock 이 proper-lockfile 을 자기 트리에서 찾는데 CI 는 대시보드만 설치. ci.yml 에 proper-lockfile+deps 3개를 openclaw/node_modules 로 복사하는 단계 추가(심볼릭 링크는 vitest realpath 때문에 setup.ts mock 과 합쳐져 불가). local-ci-db.sh 에 apply-legacy 추가.
+- 운영 로그 ①: gateway-tenant2/3/4 는 --allow-unconfigured 빈 설정이라 기본 모델(openai/gpt-5.5) 하트비트가 ProviderAuthError. 크론 없음. 기능 영향 없음. 배포 전부터 같음(9/9 로그 모델 동일).
+- 운영 로그 ②: 실유저 테넌트(j.the.great.investor) 인스타그램 토큰 revoked(2026-09-05 이후, 채널 설정 조회마다 alert). UI 는 재연결 필요로 표시됨. 계정 주인의 OAuth 재연결 필요. 회장 항목.
+- 다음: 게이트웨이 크론 실발행 확인은 tenant 게이트웨이에 잡이 없어 해당 없음. 남은 백로그: 허용목록 후보 15개(운영자 전용 판정), /inbox select 18px, 44px 미측정 라우트, 채널 연결 2/15.
+
 ## 2026-09-15 06시 35분 네 방 기본 흐름 v12 기능 PASS, 제품 전체 NG
 
 지정 작업 공간의 localhost 기본 흐름 11/11, Studio v1 14/14, 네 방 4/4, 4개 폭 방 화면 20/20, 성과실에서 생성실 복귀 5/5, Vitest 360파일과 2,317건, TypeScript, build 184/184, seed, health와 디자인 lint가 통과했다. 큐 수정은 `800c970a`다. 정적 계약 테스트는 타 세션 미추적 파일 때문에 commit 훅이 차단해 작업트리에 남았다. v63 대비 16개 화면 디자인 정합 NG와 v63 및 v68 핀 충돌, 운영 배포 미검증 때문에 제품 전체 QA와 배포는 NG다. 증거는 `docs/qa/osmu-four-room-basic-flow-v12-gpt-codex.md`다.

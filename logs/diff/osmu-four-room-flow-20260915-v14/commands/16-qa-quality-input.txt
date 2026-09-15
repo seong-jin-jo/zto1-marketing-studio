@@ -1,0 +1,23 @@
+OUTPUT: docs/qa/qa-tracker.md
+ROLE: qa-verifier
+
+승인 입력: pipeline-state.osmu.md approved_artifacts, docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html, docs/design/captures/manifest.json을 읽었다.
+실행 증거: localhost:3456에서 Playwright 화면 캡처 20/20, 기본 흐름 curl 상당 실요청 11/11, Studio v1 14/14, Vitest 2,321건, production build 184/184를 실행했다.
+화면 증거: logs/diff/osmu-four-room-flow-20260915-v14/captures/1024-light-performance.png, logs/diff/osmu-four-room-flow-20260915-v14/captures-fixed/1024-light-performance.png, docs/design/captures/live-20260912/authenticated-fe3/performance-room-1440.png.
+design-conformance-matrix 판정: 과제 v63과 canonical v68 승인 핀 충돌, UI 계승 문서 드리프트가 있어 디자인 QA는 NG다.
+운영 환경: stage와 운영 호스트는 접촉하지 않았다. localhost 결과를 배포 PASS로 세지 않는다.
+
+셀프심문: 현재 localhost가 현재 HEAD와 같은 실행본이라는 보장이 없다. health에 commit 정보가 없어서 귀속 NG로 분리했다.
+레드팀: 최초 화면 20/20만 보고 통과시키면 1024 숫자 줄바꿈 결함을 숨긴다. 수정 전후 캡처와 네 폭 재클릭을 요구해 기능 수정 후 PASS로 전환했다.
+
+KNOWLEDGE_QUERY: OSMU QA, 네 방 기본 흐름, 사업 좌표와 요청 및 실수 원장을 검색했다.
+HITS_USED: wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md, wiki/거버넌스/결정.md, wiki/거버넌스/실수.md를 제품 경계와 금지사항 근거로 채택했다.
+HITS_REJECTED: 다른 사업체 문서는 OSMU 네 방 흐름과 무관해 채택하지 않았다.
+CONFLICTS: Playwright actionability와 screenshot 비교 원칙은 정본과 충돌하지 않는다. 과제 v63과 pipeline 최신 v68 핀은 서로 충돌한다.
+
+SKILLS_USED: qa. 실제 네 방 탐색, 결함 발견, 최소 수정, 회귀, 수정 전후 캡처에 사용했다.
+SKILLS_SKIPPED: 없음.
+SOURCES: https://playwright.dev/docs/actionability | https://playwright.dev/docs/locators | https://playwright.dev/docs/test-snapshots | /Users/sj/.claude/standards/standard-qa-methodology.md | /Users/sj/.claude/standards/standard-dev.md | /Users/sj/.claude/standards/standard-design.md | /Users/sj/.claude/standards/standard-doc-review.md
+MODEL: gpt-codex/gpt-5.6-sol
+RUBRIC_SCORE: 완결성=4/5 정밀성=5/5 벤치마크=4/5 추적성=5/5 전문성=4/5 total=22/25
+WEAKEST_LINE: "실행본 commit 귀속은 health 메타데이터가 없어 미검증이다."
