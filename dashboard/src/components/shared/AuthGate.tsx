@@ -47,7 +47,7 @@ function GateBlockScreen({
           </button>
           <button
             onClick={onSecondary}
-            className="w-full py-stack rounded-control text-caption text-subtle hover:text-muted transition-colors"
+            className="w-full min-h-control-touch py-stack rounded-control text-caption text-subtle hover:text-muted transition-colors"
           >
             {secondaryLabel}
           </button>

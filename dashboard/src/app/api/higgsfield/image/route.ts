@@ -68,7 +68,10 @@ export async function POST(request: Request) {
     await recordMediaGenerationEvent(tenantId, "image", "Higgsfield Soul V2", label);
     return Response.json({ ok: true, url, file: deliverUrl(tenantId, fname), localPath });
   } catch (e) {
-    mark("catch", e instanceof Error ? `${e.name}: ${e.message}` : String(e));
+    // 2026-09-16 실측: execFile 오류 메시지는 "Command failed: <긴 명령>\n<stderr>" 라 앞 300자만
+    // 남기면 명령만 보이고 생성기가 말한 이유(stderr)는 잘린다. 이유가 있는 끝쪽을 남긴다.
+    const stderrTail = (e as { stderr?: string })?.stderr?.trim().slice(-300);
+    mark("catch", stderrTail || (e instanceof Error ? `${e.name}: ${e.message}`.slice(-300) : String(e)));
     if (e instanceof HiggsfieldUnauthenticatedError) {
       return Response.json({
         error: "이미지 생성기에 로그인되어 있지 않습니다. 서버에서 생성기 로그인을 한 번 해 주시면 바로 쓰실 수 있습니다.",

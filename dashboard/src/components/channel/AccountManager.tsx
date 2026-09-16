@@ -225,7 +225,7 @@ export function AccountManager({
                   {a.is_default && (
                     <span
                       data-testid={`account-default-badge-${provider}-${a.id}`}
-                      className="shrink-0 rounded-chip bg-accent/20 px-stack-tight py-micro text-caption text-accent"
+                      className="inline-flex min-h-control-touch shrink-0 items-center rounded-chip bg-accent/20 px-stack-tight py-micro text-caption text-accent"
                     >
                       기본
                     </span>
