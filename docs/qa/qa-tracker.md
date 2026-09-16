@@ -2,6 +2,26 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-16 17시 57분 KST · API 읽기 경로 v15 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R200, R207 | 최신 코드의 읽기 Route Handler 전수 재실사 | API-READ-ALL-V15 | PASS | 실행 커밋과 HEAD가 `50ac3341`로 일치하는 localhost에서 105경로, GET 105회와 HEAD 1회를 실요청했다. 정상 88, 계약상 거절 18, 예상 밖 0, HTTP 500 0. PID와 Route Handler 합성 해시는 전후 동일. `logs/diff/osmu-api-read-sweep-20260916-v15/api-read-sweep-final.json` |
+| R68, R98 | HTTP 200 오류 은폐 제거 | API-READ-TRUTH-V15 | PASS | `/api/blog-stats`, `/api/elevenlabs-voices`, `/api/ga-analytics`, `/api/gsc-analytics` 설정 누락은 HTTP 503과 고정 오류 코드를 반환. `/api/images`의 HTTP 200 빈 배열은 정상으로 판정. 실요청과 신규 회귀 12건 통과 |
+| R104 | 시드, 자격증명과 비밀값 관리 | API-READ-AUTH-V15 | PASS | `dashboard/.env.local`을 값 출력 없이 주입. 지정 작업 공간 시드와 RLS 멱등 적용. 비밀값 문서 기록 0 |
+| 필수 회귀 | test, TypeScript, build, health, 두 E2E | API-READ-REGRESSION-V15 | PASS | Vitest 371파일과 2,385건 통과, 3건 제외. TypeScript 종료 0. 격리 build 184/184. health HTTP 200과 DB up. 기본 흐름 11/11, Studio v1 14/14 |
+| UI 계승 | 디자인 입력, lint, 390px 관찰 | API-READ-UI-V15 | 부분 PASS | 디자인 토큰 위반 0. 로그인 HTTP 200, 390px 렌더와 콘솔 오류 0. 화면 코드는 미변경. 과제 v63과 pipeline 승인 v68 핀 충돌 및 기존 정합 NG 때문에 디자인 QA PASS로 승격하지 않음 |
+| 제품 전체 | 운영 배포와 실제 외부 계정 | QA-QUALITY-GATE-V15 | NG | 운영 동적 URL, 외부 공급자 실제 자격증명 성공, 채널 실발행은 미검증. API 읽기 범위 PASS와 제품 전체 QA를 분리 |
+| R01부터 R207 및 세부 요청 232건 중 이번 범위 밖 | 회장 확정 요구 전건 | REQ-ALL-V15 | 이월 | 요구 정본의 기존 판정을 유지한다. 이번 수정으로 판정이 바뀐 항목은 R68, R98, R104, R200, R207이다. |
+
+2026-08-28의 문서상 GET 84경로에서 현재 105경로로 21개 늘었다. 과거 실사 중 HTTP 500 두 건은 당시 수정됐고 현재도 0건이다. 이번에는 과거에 집계하지 않은 HTTP 200 오류 본문 네 건을 찾아 수정하고 기계 판독 JSON을 남겼다. 상세는 `docs/qa/osmu-api-read-sweep-v15-gpt-codex.md`다.
+
+## 2026-09-16 17시 32분 KST · API 읽기 경로 재실사 최초 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R200, R207 | 최신 실행본의 읽기 응답 진실성 | API-READ-TRUTH-V15-INITIAL | NG | localhost:3456 실행본 `80166cfe`에서 `/api/blog-stats`, `/api/elevenlabs-voices`, `/api/ga-analytics`, `/api/gsc-analytics`가 설정 누락 오류 본문을 HTTP 200으로 반환했다. `/api/images`의 HTTP 200 빈 배열은 현재 검사기가 `응답 구조 오류`로 오판한다. 최신 HEAD에서도 같은 네 Route Handler와 검사 계약이 유지됨을 코드로 확인했다. 수정 후 최신 HEAD 실행본에서 전 경로 실요청과 전체 회귀를 다시 요구한다. |
+
 ## 2026-09-16 12시 19분 KST · 최근 24시간 코드 공격 리뷰 R3 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

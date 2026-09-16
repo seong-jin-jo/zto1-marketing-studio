@@ -1,3 +1,15 @@
+# 2026-09-16 17시 57분 API 읽기 경로 전수 실사 v15 완료
+
+회장 요청 원문을 handoff basis로 사용했다. 기존 tmux `osmu-sweep091617:0.0`과 session-state는 병렬 변경과 최신 서버 귀속 확인에 사용했다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였다.
+
+최초 실행본에서 `/api/blog-stats`, `/api/elevenlabs-voices`, `/api/ga-analytics`, `/api/gsc-analytics`가 설정 누락 오류를 HTTP 200으로 숨겼고, 검사기는 `/api/images`의 유효한 빈 배열을 오류로 오판했다. 제품 상태 계약과 검사기를 수정하고 회귀 2파일 12건을 추가했다. 코드 커밋은 `c7304dc0`, `cecbe6da`, `3d393fb8`이다.
+
+최신 HEAD와 서버 build가 `50ac3341`로 일치하는 localhost에서 읽기 105경로에 GET 105회, HEAD 1회를 보냈다. 정상 88, 계약상 거절 18, 예상 밖 0, HTTP 500 0이다. PID와 Route Handler 합성 해시는 전후 동일하다. 기본 흐름 11/11, Studio v1 14/14, Vitest 371파일과 2,385건, 조건부 제외 3건, TypeScript, 격리 build 184/184, 시드와 RLS, health HTTP 200과 DB up, 디자인 lint, 390px 로그인과 콘솔 오류 0을 관찰했다.
+
+API 읽기 범위는 PASS다. 과제 v63과 canonical 승인 디자인 v68 핀 충돌 및 기존 정합 NG, 운영 배포, 실제 외부 공급자 자격증명과 채널 실발행은 미검증이므로 디자인 QA와 제품 전체 QA는 NG를 유지한다. 상세 문서는 `docs/qa/osmu-api-read-sweep-v15-gpt-codex.md`, 기계 원본은 `logs/diff/osmu-api-read-sweep-20260916-v15/api-read-sweep-final.json`이다.
+
+다음 소유자는 컨트롤러다. API 읽기 범위 증거를 검토하되 제품 전체 QA 승인이나 배포로 확대하지 않는다. 디자인 정본 핀 충돌을 해소하고 기존 디자인 정합 NG와 운영 외부 연동을 별도 검증한다.
+
 # 2026-09-16 09시 12분 최근 24시간 코드 공격 리뷰 R2 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. tmux `openclaw-auto:0.0`은 공유 서버와 동시 작업 확인에만 사용했고 과제 기준은 사용자 요청으로 고정했다. 검토 범위는 착수 시각 기준 `c2008b1a580576a9b4ddff9822af5f695a0d0104..6a51aaf3a6179616bed04266e258cd35d712feec`, first-parent 31개 커밋, 시간 필터 전체 52개 커밋, 순변경 249개 파일이다. 제품 코드는 수정하지 않았다.

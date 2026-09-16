@@ -1,0 +1,109 @@
+200	정상	GET	/api/activity
+200	정상	GET	/api/agent-logs
+200	정상	GET	/api/ai-runtime
+200	정상	GET	/api/alerts
+200	정상	GET	/api/analytics
+200	정상	GET	/api/auth/google
+200	정상	GET	/api/blog-guide
+200	정상	GET	/api/blog-keywords
+200	정상	GET	/api/blog-queue
+503	계약상 거절	GET	/api/blog-stats {"error":"Blog not configured","code":"BLOG_NOT_CONFIGURED","articles":[],"totalViews":0,"totalArticles":0}
+200	정상	GET	/api/brand/sync-repo
+200	정상	GET	/api/brand/sync-wiki
+400	계약상 거절	GET	/api/card-slides/00000000-0000-4000-8000-000000000000 {"error":"Invalid batch ID"}
+200	정상	GET	/api/channel-config
+200	정상	GET	/api/channel-settings
+200	정상	GET	/api/channel-settings/threads
+200	정상	GET	/api/channels/threads/accounts
+200	정상	GET	/api/chat-channels
+200	정상	GET	/api/clipping-config
+200	정상	GET	/api/connect/readiness
+503	계약상 거절	GET	/api/connect/threads {"error":"threads OAuth 앱 자격증명이 미설정 또는 불완전합니다."}
+200	정상	GET	/api/connect/threads/callback
+200	정상	GET	/api/cron-runs
+200	정상	GET	/api/cron-status
+200	정상	GET	/api/design-tools
+200	정상	GET	/api/elevenlabs-config
+503	계약상 거절	GET	/api/elevenlabs-voices {"error":"API key not set","code":"ELEVENLABS_NOT_CONFIGURED","voices":[]}
+404	계약상 거절	GET	/api/engagement {"error":"이 작업 공간의 발행 글을 찾을 수 없습니다.","code":"POST_NOT_FOUND"}
+200	정상	GET	/api/errors
+400	계약상 거절	GET	/api/figma-mcp/callback <h2>인증 상태가 일치하지 않습니다</h2>
+200	정상	GET	/api/figma-mcp/start-oauth
+503	계약상 거절	GET	/api/ga-analytics {"error":"Service account not configured","code":"GA_NOT_CONFIGURED"}
+200	정상	GET	/api/ga-config
+200	정상	GET	/api/growth
+503	계약상 거절	GET	/api/gsc-analytics {"error":"GSC service account not configured","code":"GSC_NOT_CONFIGURED","rows":[]}
+200	정상	GET	/api/gsc-config
+200	정상	GET	/api/guide
+200	정상	GET	/api/guide/threads
+200	정상	GET	/api/health
+404	계약상 거절	GET	/api/higgsfield/asset/%EC%97%86%EB%8A%94-%ED%8C%8C%EC%9D%BC.png {"error":"not found"}
+200	정상	GET	/api/higgsfield/status
+200	정상	GET	/api/higgsfield/transactions
+200	정상	GET	/api/images
+404	계약상 거절	GET	/api/images/deliver/%EC%97%86%EB%8A%94-%ED%86%A0%ED%81%B0 {"error":"not found"}
+200	정상	GET	/api/integrations
+401	계약상 거절	GET	/api/isolation-proof {"error":"no-tenant"}
+200	정상	GET	/api/keyword-bank
+200	정상	GET	/api/keywords
+200	정상	GET	/api/keywords/threads
+200	정상	GET	/api/kw-planner-config
+200	정상	GET	/api/llm-config
+200	정상	GET	/api/me
+404	계약상 거절	GET	/api/media/%EC%97%86%EB%8A%94-%ED%86%A0%ED%81%B0 {"error":"not found"}
+404	계약상 거절	HEAD	/api/media/%EC%97%86%EB%8A%94-%ED%86%A0%ED%81%B0
+200	정상	GET	/api/metrics
+200	정상	GET	/api/naver-datalab-config
+200	정상	GET	/api/notification-log
+200	정상	GET	/api/notification-settings
+200	정상	GET	/api/nsa-data
+200	정상	GET	/api/onboarding
+200	정상	GET	/api/operator/customers
+200	정상	GET	/api/operator/incidents
+200	정상	GET	/api/operator/oauth-credentials
+200	정상	GET	/api/overview
+200	정상	GET	/api/performance/learned-rules
+200	정상	GET	/api/popular
+200	정상	GET	/api/product-source
+200	정상	GET	/api/publish
+200	정상	GET	/api/publish/first-comment-capabilities
+200	정상	GET	/api/queue
+200	정상	GET	/api/r2-config
+200	정상	GET	/api/schedule
+200	정상	GET	/api/seo-settings
+200	정상	GET	/api/settings
+200	정상	GET	/api/slack-config
+200	정상	GET	/api/slack-report-preview
+200	정상	GET	/api/slack-template
+200	정상	GET	/api/sourcing
+200	정상	GET	/api/sourcing/import-to-queue
+200	정상	GET	/api/studio/brand-setup
+200	정상	GET	/api/studio/drafts
+200	정상	GET	/api/studio/engine-status
+200	정상	GET	/api/studio/generation-history
+200	정상	GET	/api/studio/learning
+404	계약상 거절	GET	/api/studio/v1/derivations/00000000-0000-4000-8000-000000000000 {"error":{"code":"RESOURCE_NOT_FOUND","message":"파생 작업을 찾을 수 없습니다","retryable":false,"field_errors":[],"details":{}},"meta":{"request_id":"505583c7-6038-4036-ad0b-0fa545bd884a","contract_version":"1.0"}}
+404	계약상 거절	GET	/api/studio/v1/generations/00000000-0000-4000-8000-000000000000 {"error":{"code":"RESOURCE_NOT_FOUND","message":"생성 작업을 찾을 수 없습니다","retryable":false,"field_errors":[],"details":{}},"meta":{"request_id":"5498ab38-d919-419c-8ea3-3718d30e8b86","contract_version":"1.0"}}
+200	정상	GET	/api/studio/v1/generations/00000000-0000-4000-8000-000000000000/derivations
+200	정상	GET	/api/studio/v1/shorts-factory/runs
+404	계약상 거절	GET	/api/studio/v1/shorts-factory/runs/00000000-0000-4000-8000-000000000000 {"error":{"code":"RESOURCE_NOT_FOUND","message":"숏폼 공장 실행을 찾을 수 없습니다","retryable":false,"field_errors":[],"details":{}},"meta":{"request_id":"bdebc5bb-a65c-4d26-a06c-195baa067918","contract_version":"1.0"}}
+200	정상	GET	/api/suggestions
+200	정상	GET	/api/tenant-info
+200	정상	GET	/api/tenant-tokens
+200	정상	GET	/api/tenants
+200	정상	GET	/api/threads-username
+200	정상	GET	/api/threads/low-engagement-candidates
+400	계약상 거절	GET	/api/tiktok/creator-info {"error":"테넌트를 확인할 수 없습니다."}
+400	계약상 거절	GET	/api/tiktok/publish-status {"error":"테넌트를 확인할 수 없습니다."}
+200	정상	GET	/api/token-status
+200	정상	GET	/api/trend-report
+200	정상	GET	/api/usage
+200	정상	GET	/api/video/list
+200	정상	GET	/api/voice-tone
+200	정상	GET	/api/weekly-report
+200	정상	GET	/api/weekly-summary
+200	정상	GET	/api/workspaces
+200	정상	GET	/api/youtube/status
+합계 경로 105개, 요청 106개 {"계약상 거절":18,"정상":88}
+증거 고정 PASS PID 19902 -> 19902 HASH 543d24a0c96c9b44c85335f67a471f1c56d3984a28af25fc2a16171e376e1541 -> 543d24a0c96c9b44c85335f67a471f1c56d3984a28af25fc2a16171e376e1541
+실행 커밋 PASS SERVER 50ac3341aea889bf3430d8319c48c6ee08fb1346 EXPECTED 50ac3341aea889bf3430d8319c48c6ee08fb1346
