@@ -1,3 +1,24 @@
+# 2026-09-17 04시 20분 최근 24시간 코드 공격 리뷰 BLOCK
+
+회장 요청 원문을 handoff basis로 사용했다. tmux pane은 동시 작업과 localhost 소유권 확인에만
+사용했다. 검토 범위는 2026-09-16 04시 04분부터 2026-09-17 04시 04분까지 착륙한 43개 커밋,
+`7cc7f848..93d1da1` 순변경 81개 파일이다. 제품 코드는 수정하지 않았다.
+
+MAJOR 6건을 확인했다. 일부 채널 제외를 전체 성공으로 저장하고 긴 대시를 노출한다. YouTube는
+resumable upload 세션을 영속화하지 않으며 외부 성공 뒤 DB 확정 실패도 성공으로 반환한다. 자동
+멱등 키는 태그와 파일 내용을 빼 같은 키로 충돌한다. 사용량 이벤트 실패는 버려져 발행 수와 쿼터
+장부가 영구히 누락될 수 있다. 격리 우회, 새 토큰 리터럴, 무기록 삭제 파일은 순변경에서 확인되지
+않았다. 판정은 BLOCK이다.
+
+localhost health는 HTTP 200과 DB up이나 실행 `build_commit=5bdc1f85`로 검토 끝 `93d1da1`과
+다르다. 기본 흐름 11/11과 Studio v1 14/14는 통과했다. Vitest 372개 파일과 2,399건 통과,
+3건 제외, TypeScript 종료 0이다. 지정 작업 공간 `/api/usage`는 HTTP 200이지만 source
+`usage_events`, 모든 기간 발행 0, 일별 행 0이다. 외부 SNS 실발행과 운영 배포는 미검증이다.
+
+감사 문서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md`다. 다음 소유자는
+코드 작성자다. 여섯 MAJOR를 고친 뒤 동일 범위 회귀와 현재 HEAD에 귀속되는 localhost에서 다시
+검증해야 한다.
+
 # 2026-09-16 18시 53분 네 방 기본 흐름 v17 기능 범위 PASS, 제품 전체 NG
 
 회장 요청 원문을 handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계 값은 바꾸지 않았다. 지정 v63 프로토타입, 확정 요구 대장, 사업 좌표, 디자인 README와 captures manifest, 현재 코드와 이전 QA를 읽었다.

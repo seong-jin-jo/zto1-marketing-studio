@@ -2,6 +2,15 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-17 04시 04분 KST · 최근 24시간 코드 공격 리뷰 BLOCK ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드 리뷰 | 최근 24시간 커밋 전체의 돈, 격리, 동시성, 부분 실패, 삭제, 확정 요구 이탈 검토 | CODE-REVIEW-20260917-01 | ❌ NG | 43개 커밋, `7cc7f848..93d1da1`, 81개 파일. MAJOR 6건: 제외 채널 전체 성공 저장, 긴 대시, YouTube 세션 미보존, 외부 성공 뒤 DB 확정 실패 은폐, 멱등 키 충돌, 사용량 장부 유실. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` |
+| 필수 회귀 | 전체 test와 TypeScript | CODE-REVIEW-20260917-02 | PASS | Vitest 372개 파일과 2,399건 통과, 3건 제외. `npx tsc --noEmit` 종료 0. |
+| 실앱 기본 흐름 | localhost:3456 기본 흐름과 Studio v1 | CODE-REVIEW-20260917-03 | PASS | 지정 작업 공간 실제 요청에서 기본 흐름 11/11, Studio v1 14/14. health HTTP 200, DB up. 단 실행 `build_commit=5bdc1f85`로 검토 끝 `93d1da1`과 달라 최신 YouTube 변경의 실앱 귀속은 NG. |
+| 사용량 실측 | 지정 작업 공간 `/api/usage` | CODE-REVIEW-20260917-04 | 관찰 | HTTP 200, source `usage_events`, 오늘과 이번 주 및 이번 달 발행 0, 일별 행 0. 외부 실발행은 하지 않았다. |
+
 ## 2026-09-16 23시 10분 KST · 성과 시계열 갭 build BLOCK, 필수 실앱 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
