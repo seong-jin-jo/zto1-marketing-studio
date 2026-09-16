@@ -53,6 +53,23 @@ const CLAUDE_CLI_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 // 않게). 공유 CLI(spawn/큐/quota reserve) 경로에만 적용 — BYO Anthropic HTTP API 경로는 미적용.
 const CLAUDE_CLI_MAX_PROMPT_BYTES = 1_000_000;
 
+function claudeCliInvocation(bin: string, args: string[]): { bin: string; args: string[] } {
+  if (process.platform !== "darwin") return { bin, args };
+  try {
+    accessSync("/bin/launchctl", constants.X_OK);
+    const uid = os.userInfo().uid;
+    if (Number.isSafeInteger(uid) && uid > 0) {
+      // launchd, cron, nohup에서 시작한 Next 서버는 SECURITYSESSIONID 문자열을 갖고 있어도
+      // 실제 macOS audit session이 GUI 사용자와 다를 수 있다. Claude CLI의 OAuth refresh는
+      // 환경값만으로 키체인 세션을 바꾸지 못하므로 ConsoleUser bootstrap context에서 실행한다.
+      return { bin: "/bin/launchctl", args: ["asuser", String(uid), bin, ...args] };
+    }
+  } catch {
+    // launchctl을 쓸 수 없는 macOS 환경에서는 기존 직접 실행 경로를 유지한다.
+  }
+  return { bin, args };
+}
+
 // Next 서버는 감독 프로세스와 QA 워커의 환경을 통째로 물려받을 수 있다. 그 환경에는
 // 앱 비밀값뿐 아니라 CLAUDECODE, CLAUDE_CONFIG_DIR 같은 상위 도구의 실행 상태도 섞인다.
 // 공유 생성 CLI에 이를 그대로 넘기면 상위 세션의 임시 설정 때문에 인증이 달라지거나
@@ -115,6 +132,15 @@ function isSharedAiProviderRateLimitMessage(value: unknown): value is string {
   return typeof value === "string" && /weekly.*limit|limit.*weekly|rate.*limit|limit.*rate|quota|usage.*limit|limit.*usage/i.test(value);
 }
 
+function classifyClaudeCliExitResult(value: unknown): string {
+  if (typeof value !== "string") return "missing_result";
+  if (/nested|inside another|already running|CLAUDECODE/i.test(value)) return "nested_session";
+  if (/oauth|auth|login|log in|token|credential|keychain/i.test(value)) return "authentication";
+  if (/model|not found|unsupported/i.test(value)) return "model";
+  if (/permission|denied|EACCES/i.test(value)) return "permission";
+  return "unclassified";
+}
+
 // 테넌트가 등록한 자기 Anthropic 키(integrations kind='anthropic') 복호화. 없으면 null.
 // withTenant(RLS) 안에서 복호화 — 키는 메모리에만.
 export async function getAnthropicKey(tenantId: string): Promise<string | null> {
@@ -172,9 +198,7 @@ function runClaudeCli(prompt: string): Promise<string> {
       let child: ChildProcess;
       let attemptFinished = false;
       try {
-        child = spawn(
-        CLAUDE_BINS[candidateIndex],
-        [
+        const invocation = claudeCliInvocation(CLAUDE_BINS[candidateIndex], [
           "-p",
           "--tools", "",
           "--safe-mode",
@@ -182,7 +206,10 @@ function runClaudeCli(prompt: string): Promise<string> {
           "--no-session-persistence",
           "--no-chrome",
           "--model", MODEL,
-        ],
+        ]);
+        child = spawn(
+        invocation.bin,
+        invocation.args,
         // stderr: "ignore" — child 진단 출력을 프로세스로 아예 들이지 않는다(캡처 자체가 없으므로
         // 로그/반환 경로로 새어나갈 여지가 없다).
         { cwd: os.tmpdir(), stdio: ["pipe", "pipe", "ignore"], env: claudeCliEnv() },
@@ -288,9 +315,7 @@ function runClaudeCliWithUsageAt(
 
     let child: ChildProcess;
     try {
-      child = spawn(
-        CLAUDE_BINS[candidateIndex],
-        [
+      const invocation = claudeCliInvocation(CLAUDE_BINS[candidateIndex], [
           "-p",
           "--tools", "",
           "--safe-mode",
@@ -300,7 +325,10 @@ function runClaudeCliWithUsageAt(
           "--max-turns", "1",
           "--model", model,
           "--output-format", "json",
-        ],
+        ]);
+      child = spawn(
+        invocation.bin,
+        invocation.args,
         { cwd: os.tmpdir(), stdio: ["pipe", "pipe", "ignore"], env: claudeCliEnv() },
       );
     } catch (error) {
@@ -366,6 +394,14 @@ function runClaudeCliWithUsageAt(
         return;
       }
       if (code !== 0) {
+        // CLI 원문은 사용자 프롬프트나 인증 진단을 포함할 수 있어 로그에 남기지 않는다.
+        // 대신 고정된 분류만 기록해, 실제 실행 실패를 무조건 exit_nonzero 한 덩어리로
+        // 뭉개지 않고 운영 환경 결함을 재현할 수 있게 한다.
+        console.error(JSON.stringify({
+          event: "claude_cli_exit_nonzero",
+          category: classifyClaudeCliExitResult(envelope.result),
+          code,
+        }));
         settle(() => reject(new Error(`claude CLI exited with code ${code}`)));
         return;
       }
