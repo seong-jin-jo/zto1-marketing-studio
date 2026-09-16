@@ -1,3 +1,19 @@
+/**
+ * @typedef {object} ExpectedRejection
+ * @property {number[]} statuses
+ * @property {string[]=} bodyIncludes
+ * @property {boolean=} emptyBody
+ */
+
+/**
+ * @param {object} input
+ * @param {number} input.status
+ * @param {ExpectedRejection | null=} input.expectedRejection
+ * @param {boolean=} input.allowEmptyArray
+ * @param {string} input.method
+ * @param {string} input.contentType
+ * @param {string} input.bodyText
+ */
 export function classifyApiReadResponse({ status, expectedRejection = null, allowEmptyArray = false, method, contentType, bodyText }) {
   if (expectedRejection?.statuses.includes(status)) {
     if (expectedRejection.bodyIncludes && !expectedRejection.bodyIncludes.some((marker) => bodyText.includes(marker))) {
