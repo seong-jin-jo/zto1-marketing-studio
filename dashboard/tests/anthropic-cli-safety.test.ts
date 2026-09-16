@@ -167,6 +167,7 @@ describe("claude CLI 실행 경계 — 필수 플래그·cwd·model", () => {
     const childEnv = H.calls[0].opts.env;
     expect(childEnv).toBeDefined();
     expect(childEnv?.HOME).toBeTruthy();
+    expect(childEnv?.NODE_ENV).toBeTruthy();
     expect(childEnv?.PATH).toBeTruthy();
     expect(childEnv?.SECURITYSESSIONID).toBe("qa-login-session");
     expect(childEnv?.OSMU_TEST_SENTINEL_SECRET).toBeUndefined();

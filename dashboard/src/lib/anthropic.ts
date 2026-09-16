@@ -63,6 +63,7 @@ const CLAUDE_CLI_MAX_PROMPT_BYTES = 1_000_000;
 function claudeCliEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     HOME: process.env.HOME || os.homedir(),
+    NODE_ENV: process.env.NODE_ENV || "production",
     PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
     TMPDIR: process.env.TMPDIR || os.tmpdir(),
   };
