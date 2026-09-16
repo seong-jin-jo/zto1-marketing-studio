@@ -14,6 +14,22 @@ const remainingTimeout=(label)=>{
   if(remaining<=0) throw new Error(`전체 실행시간 초과: ${label}`);
   return Math.min(readyTimeoutMs,remaining);
 };
+const gotoRoom=async(page,url,room)=>{
+  const target=`${base}${url}`;
+  try {
+    await page.goto(target,{waitUntil:"domcontentloaded",timeout:remainingTimeout(`${room} 진입`)});
+  } catch(error) {
+    const message=error instanceof Error?error.message:String(error);
+    if(!message.includes("net::ERR_ABORTED")) throw error;
+    const expected=new URL(target);
+    const current=new URL(page.url());
+    if(current.pathname===expected.pathname&&current.search===expected.search) return;
+    // AuthGate가 직전 방의 client navigation을 늦게 마치면 다음 goto를 한 번
+    // 취소할 수 있다. 실제 목표 주소가 아니면 짧게 양보한 뒤 딱 한 번만 재시도한다.
+    await page.waitForTimeout(250);
+    await page.goto(target,{waitUntil:"domcontentloaded",timeout:remainingTimeout(`${room} 재진입`)});
+  }
+};
 
 const request=(pathname,options={})=>fetch(`${base}${pathname}`,{
   ...options,
@@ -72,7 +88,7 @@ try {
   for(const [room,url] of [["create","/studio?room=create"],["edit","/studio?room=edit"],["publish","/studio?room=publish"],["performance","/performance"]]) {
     // Next dev keeps HMR and background requests alive. networkidle can time out after
     // the room is already interactive, so the visible room contract is the readiness signal.
-    await p.goto(`${base}${url}`,{waitUntil:"domcontentloaded",timeout:remainingTimeout(`${room} 진입`)});
+    await gotoRoom(p,url,room);
     const roomRoot=p.locator(`[data-room="${room}"]`);
     await roomRoot.waitFor({state:"visible",timeout:remainingTimeout(`${room} 표시`)});
     // AuthGate may finish a client navigation after DOMContentLoaded. Anchor evaluation
