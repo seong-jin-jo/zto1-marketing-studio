@@ -2,6 +2,32 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-17 06시 19분 KST · 네 방 기본 흐름 v20 기능 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 백엔드 기본 흐름 관통 | FLOW-API-V20 | PASS | HEAD `7f5564ea` 와 일치하는 localhost 실제 요청 최종 11/11. 후보 3장, 편집 상태 변경, 발행 큐 HTTP 201, 성과 제안 3건, 생성 큐 재인계. `logs/diff/osmu-four-room-flow-20260917-v20/commands/16-verify-basic-flow-final.txt` |
+| R08, R19, R207 | 네 방 렌더와 가린 모달 확인 | FLOW-ROOM-PROBE-V20 | PASS | seed 후 최종 4/4, 가린 모달 0, 브라우저 401 0, 콘솔 오류 0. `commands/17-probe-four-room-final.txt` |
+| R08, R19 | 390, 768, 1024, 1440에서 사람처럼 생성실부터 성과실까지 이동 | FLOW-UI-V20 | PASS | 390 라이트·다크와 768, 1024, 1440의 20화면, 성과실→생성실 복귀 5/5. 가로 넘침, 탐색 가림, 모달, 401, 콘솔 오류 0. `commands/18-verify-four-room-ui-final.txt`, 원본 `captures-final/` |
+| R166, R172 | Studio v1 인증, 생성, 조회, 무료 다시 만들기 | FLOW-STUDIO-V20 | PASS | localhost 실제 요청 14/14. `commands/04-verify-studio-v1-e2e.txt` |
+| 필수 회귀 | 전체 test, TypeScript, production build, seed·RLS, health·주요 API curl, 디자인 lint | FLOW-REGRESSION-V20 | PASS | Vitest 374파일·2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 0. 격리 build 184/184, seed·RLS 멱등 적용, health·metrics·drafts HTTP 200, 디자인 lint 위반 0. `commands/05` 부터 `13` |
+| 검증기 환경 회수 | 격리 production build | FLOW-BUILD-V20-RECOVERY | PASS | 최초 `node_modules` symlink은 Turbopack root 제약으로 환경 NG였다. 실복사 격리 디렉터리에서 compile과 184/184를 통과해 제품 오류와 분리했다. `commands/07-npm-build.txt`, `commands/08-npm-build-copy.txt` |
+| 검증 자격증명 | QA 토큰 정리 | FLOW-TOKEN-CLEANUP-V20 | PASS | 이번 실행 최신 토큰 10/10 폐기. 2026-09-15부터 남은 검증 토큰 1개도 제품 API HTTP 200으로 폐기해 활성 `qa-four-room-*` 토큰 0건. `commands/20-token-cleanup.txt` |
+| R193, R205, R206 | v63 계승과 8개 배치 속성 정합 | DESIGN-CONF-V20 | NG | v63 원본과 현재 16개 라이트 화면이 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계에서 불일치하거나 동일 상태가 아님. 과제 v63과 canonical v68 승인 핏도 충돌. `docs/qa/osmu-four-room-basic-flow-v20-gpt-codex.md` |
+| 제품 전체 | 운영 배포와 외부 채널 | QA-QUALITY-GATE-V20 | NG | localhost 기능 범위만 PASS. 운영 동적 URL, 실제 배포 버전, 외부 채널 실발행은 미검증이고 디자인 정합 NG. |
+| R01부터 R207 및 세부 요청 232건 중 이번 범위 밖 | 회장 확정 요구 전건 | REQ-ALL-V20 | 이월 | 기존 정본 판정을 유지하고 이번 범위 관련 요청만 갱신. |
+
+제품 소스는 수정하지 않았다. 기능 흐름에서 끊긴 곳은 없었고, 최초 build 실패는 격리
+방식의 symlink 제약으로 확정해 실복사 환경에서 회수했다. 16개 화면 디자인 정합 NG와 배포
+미검증 때문에 QA 승인은 불가하다.
+
+## 2026-09-17 06시 14분 KST · 네 방 기본 흐름 v20 build 검증기 환경 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 필수 회귀 | production build | FLOW-BUILD-V20-INITIAL | ❌ NG | 격리 작업 디렉터리에 `node_modules`를 symlink로 연결한 검증기가 Turbopack의 파일시스템 root 제약에 걸려 종료 코드 1. 제품 compile 오류가 아닌 검증 환경 구성 실패로 분리했으며 실복사 격리 build로 재검증 전에는 PASS로 전환하지 않는다. `logs/diff/osmu-four-room-flow-20260917-v20/commands/07-npm-build.txt` |
+
+
 ## 2026-09-17 05시 08분 KST · 코드 공격 리뷰 MAJOR 6건 수정 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

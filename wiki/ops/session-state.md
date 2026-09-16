@@ -1,3 +1,25 @@
+# 2026-09-17 06시 19분 네 방 기본 흐름 v20 기능 PASS, 제품 전체 NG
+
+회장이 지정한 네 방 QA 과제를 handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는
+착수 때 이미 `current_stage: qa`였다. tmux `osmu-flowcheck091706:0.0`은 직전 QA 실행 로그를,
+`osmu-dev-restored-091705:0.0`은 localhost 서버 요청 로그를 확인하는 데만 사용했다. 작업 기준은
+사용자의 명시 과제와 지정 산출물이다.
+
+HEAD `7f5564ea`와 일치하는 localhost에서 기본 흐름 최종 11/11, 네 방 4/4,
+390 라이트·다크와 768·1024·1440의 20화면, 성과실→생성실 복귀 5/5, Studio v1
+14/14를 관찰했다. Vitest 374파일·2,414건, TypeScript, 격리 build 184/184, seed·RLS,
+health·metrics·drafts HTTP 200, 디자인 lint도 통과했다. 최초 build는 `node_modules` symlink의
+Turbopack root 제약으로 검증기 환경 NG였고, 실복사 환경에서 회수했다. 이번 실행 토큰 10개와
+2026-09-15부터 남아 있던 QA 토큰 1개를 제품 API로 폐기해 활성 검증 토큰 0건을 확인했다.
+제품 소스 변경은 없다.
+
+v63 디자인 정합 NG, v63과 canonical v68 승인 핏 충돌, 운영 배포와 외부 채널
+실발행 미검증 때문에 제품 전체 QA와 배포는 NG다. 상세는
+`docs/qa/osmu-four-room-basic-flow-v20-gpt-codex.md`, 원본은
+`logs/diff/osmu-four-room-flow-20260917-v20/`이다. 다음 소유자는 컨트롤러와 product-designer다.
+단일 승인 디자인 핏을 확정하고 같은 콘텐츠 상태의 16화면 정합을 맞춘 뒤 운영 host와
+외부 채널을 별도로 검증한다.
+
 # 2026-09-17 05시 08분 코드 공격 리뷰 여섯 건 수정 완료
 
 회장 요청 원문을 handoff basis로 사용했다. 지적은 사용량 장부 유실, 외부 YouTube 성공 뒤 내부 확정
