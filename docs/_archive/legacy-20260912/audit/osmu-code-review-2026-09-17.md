@@ -116,3 +116,117 @@ CONFLICTS: 과제는 v63을 확정 프로토타입으로 명시하지만 `pipeli
 - 무기록 삭제: 문제없음
 
 REVIEW_VERDICT: BLOCK
+
+## 최근 24시간 고정 범위 최종 재검수 2026-09-17 08시 17분 KST
+
+한 줄 결론: MAJOR 3건이다. 외부 게시 뒤 내부 장부 복구가 화면에서 거짓 완료되고, YouTube 재개 세션은 바뀐 파일을 이어 붙일 수 있으며, 새 ElevenLabs 오류가 한국어 UI 계약을 깨므로 머지를 막아야 한다.
+
+### 범위와 근거
+
+- 고정 검토 창: 2026-09-16 08시 15분부터 2026-09-17 08시 15분 KST까지다.
+- 고정 끝 커밋: `b3086d78c9d71ffa73ab129a03f144a3379ce48c`이다. 49개 커밋을 검토했고, 창 직전 기준점 `6a51aaf3`부터의 순변경은 155개 파일, 추가 9,280줄, 삭제 286줄이다. 삭제 파일은 0개다.
+- 승인 핀: `pipeline-state.osmu.md:263-267`의 v68 디자인 허브와 `DESIGN.md` v37이다. 이 승인 블록에는 PRD 핀이 없다.
+- 지정 입력: v63 프로토타입, 회장 확정 요구 대장, 이동된 실제 사업 좌표 `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md`, `docs/구현현황.md`, 결정과 실수 원장을 읽었다. 지정 사업 좌표 원래 경로는 존재하지 않아 이동된 실제 파일로 검증했다.
+- 참조 입력: BRAIN business index에서 OSMU, 자동화, 멱등, 돈 장부를 좁혀 읽었다. Google resumable upload, Microsoft transactional outbox, OWASP 멀티테넌트 자료를 공식 출처로 대조했다.
+- 실제 앱: localhost:3456의 실행 소스 `7f5564ea` 이후 `b3086d78`까지 제품 소스 변경은 0개다. 따라서 실제 요청 결과는 이번 고정 끝 커밋의 제품 소스에 귀속된다.
+
+### MAJOR
+
+MAJOR: [회귀 위험] dashboard/src/app/studio/page.tsx:1234 — `resolvePublishReconciliation`이 초안에 `save("published")`만 호출한 뒤 1236행에서 복구 대상을 지운다 / v63 프로토타입 `openclaw-auto-4room-v63.html:7481`은 "외부 성공 뒤 기록만 실패했다면 기록만 복구합니다"라고 확정했고, 화면 자체도 `dashboard/src/app/studio/page.tsx:2390`에서 내부 기록 누락을 알리지만 서버의 `published_posts`와 pending 사용량은 전혀 복구하지 않는다 / 테넌트, 발행 행, 외부 식별자를 결속한 서버 복구 동작이 발행 행 확정과 사용량 relay를 끝낸 성공 응답 뒤에만 초안 상태와 경고를 지우게 해야 한다.
+
+재현: YouTube가 영상 번호를 반환한 직후 `dashboard/src/app/api/video/publish/route.ts:647`의 `publication_record` 실패를 만든다. 화면에서 `이미 올라간 것으로 기록하기`를 누르면 초안만 `published`가 되고, 서버 예약 행은 `in_progress`, 외부 영상 번호와 사용량은 미확정인 채 경고가 사라진다.
+
+MAJOR: [회귀 위험] dashboard/src/app/api/video/publish/route.ts:354 — 저장된 YouTube 재개 세션에서 `youtubeUpload.url`만 읽고 552행에 저장한 `fileHash`와 `totalBytes`를 현재 235-236행의 `videoHash`, `videoSize`와 비교하지 않는다 / Google 공식 재개 계약은 한 바이너리의 연속 구간을 같은 세션에 보내는 것인데, 현재 420-435행은 기존 수신 위치만 가져오고 563-575행은 현재 파일의 나머지 바이트를 그대로 보낸다 / 재개 전에 저장된 파일 해시와 크기, 세션 초기화 때의 메타데이터가 현재 요청과 일치하는지 확인하고, 다르면 기존 세션에 바이트를 보내지 않은 채 불확실 상태로 닫아야 한다.
+
+재현: 2,048바이트 영상 A의 앞 1,024바이트가 전송된 뒤 프로세스를 끊는다. 같은 경로를 같은 크기의 영상 B로 바꾸고 예약 기한 뒤 같은 초안을 다시 발행한다. 상태 조회가 `Range: bytes=0-1023`을 주면 영상 B의 1,024-2,047바이트가 영상 A 세션으로 들어가 혼합 파일이 된다.
+
+MAJOR: [승인 시안 이탈] dashboard/src/app/api/elevenlabs-voices/route.ts:24 — 최근 변경이 새 오류 문구 `ElevenLabs voice request failed`를 추가했고 `dashboard/src/components/settings/ElevenLabsSettings.tsx:54`가 이를 그대로 토스트에 노출한다 / `dashboard/CLAUDE.md:15`의 "한국어 UI 텍스트" 계약과 한국어로 확정된 제품 문구 체계에 어긋난다 / API는 안정된 오류 코드만 내리고, 화면은 그 코드를 승인된 한국어 행동 안내로 매핑해야 한다.
+
+재현: 잘못됐거나 만료된 ElevenLabs 자격증명을 넣고 음성 목록을 불러온다. 공급자가 비정상 응답을 주면 화면 토스트에 영문 오류 문구가 그대로 나타난다.
+
+### MINOR
+
+MINOR: 없음.
+
+### 검증 증거
+
+- `npm run test`: 374개 파일, 2,414건 통과, 3건 제외, 종료 코드 0.
+- `npx tsc --noEmit`: 종료 코드 0.
+- `dashboard/scripts/verify-basic-flow-e2e.mjs`: localhost 실제 요청 11/11 통과.
+- `dashboard/scripts/verify-studio-v1-e2e.mjs`: localhost 실제 요청 14/14 통과.
+- `/api/health`: HTTP 200, DB up, 실행 제품 소스 `7f5564ea`.
+- 지정 작업 공간 `/api/usage`: HTTP 200, source `usage_events`, 모든 기간 발행 0, 일별 행 0. pending 복구 대상이 없는 정상 조회만 관찰했다.
+- 테넌트 격리: 최근 변경의 DB 읽기와 쓰기에서 `tenantId` 또는 `effectiveTenantId` 범위를 확인했고 새 우회 경로는 찾지 못했다. 실제 기본 흐름도 지정 작업 공간에서만 통과했다.
+- 외부 YouTube 실게시, 공급자 성공 직후 DB 장애 주입, 운영 배포는 실행하지 않아 미검증이다.
+
+### 셀프심문
+
+질문: 내가 PASS를 준다면, 회장이 dev에서 직접 써보고 발견할 가장 그럴듯한 문제는 무엇인가?
+
+답: YouTube는 이미 올라갔는데 내부 확정이 실패한 뒤 복구 단추를 누르면 장부는 비어 있고 경고만 사라지는 문제다. 실제 서버 복구 없이 성공 토스트를 내므로 이미 MAJOR로 잡았고 PASS를 줄 수 없다.
+
+SKILLS_USED: review. 승인 계약, 고정 시간 창, 정적 상태 전이와 실제 앱 증거를 분리해 공격 검토했다.
+SKILLS_SKIPPED: 자동 수정은 사용자 금지로 실행하지 않았다. 서브에이전트는 사용하지 않았다.
+SOURCES: https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol?authuser=14 , https://learn.microsoft.com/en-us/samples/azure-samples/cosmos-db-design-patterns/transactional-outbox/ , https://cheatsheetseries.owasp.org/cheatsheets/Multi_Tenant_Security_Cheat_Sheet.html , `pipeline-state.osmu.md`, `DESIGN.md`, 지정 v63 프로토타입, v68 승인 프로토타입, 회장 확정 요구 대장, 이동된 사업 좌표, `docs/구현현황.md`
+MODEL: gpt-codex/gpt-5
+KNOWLEDGE_QUERY: BRAIN business index에서 OSMU, 마케팅 자동화, 멱등, 돈과 영속 장부를 검색했다. 웹에서는 YouTube 재개 업로드, transactional outbox, 멀티테넌트 격리를 공식 자료로 조회했다.
+HITS_USED: 사업 좌표의 영속 쿼터와 멱등 계약을 발행 상태 전이에 적용했다. Google 자료는 같은 바이너리의 연속 업로드 계약에, Microsoft 자료는 외부 성공과 내부 장부 수렴에, OWASP 자료는 모든 데이터 접근의 테넌트 범위 대조에 사용했다.
+HITS_REJECTED: BRAIN의 교육과 일반 포트폴리오 문서는 이번 코드 상태 전이에 직접 적용할 계약이 없어 쓰지 않았다. v63과 v68의 순수 시각 차이는 코드 리뷰 범위 밖이라 지적으로 쓰지 않았다.
+CONFLICTS: 과제는 v63을 확정 프로토타입으로 지정하지만 `pipeline-state.osmu.md:263-267`은 v68을 최신 승인 핀으로 둔다. 두 산출물과 DESIGN이 함께 확정한 복구 상태와 한국어 문구만 적용했고 서로 다른 시각 표현은 판정하지 않았다.
+
+### 4축 판정
+
+- 승인 시안 이탈: 지적 1건
+- 회귀 위험: 지적 2건
+- 토큰 위반: 문제없음
+- 무기록 삭제: 문제없음
+
+REVIEW_VERDICT: BLOCK
+
+## 수정 커밋 독립 재검수 2026-09-17 05시 20분 KST
+
+수정 범위는 `c0661fb2..46e75b2d`다. 원래 여섯 지적 가운데 제외 채널 상태, 긴 대시,
+fallback 멱등 키, 사용량 outbox 네 건은 닫혔다. YouTube 영속 복구와 세션 재개 두 건은
+아래 경로가 남아 최종 판정을 바꾸지 않는다.
+
+MAJOR: [회귀 위험] dashboard/src/app/studio/page.tsx:1234 — 외부 게시 뒤 `publication_record` 확정 실패로 받은 `repair_persistence_only`를 화면이 실제 발행 장부 복구 없이 초안 `save("published")`만 호출해 닫고 1236행에서 재발행 금지 상태까지 지운다 / API가 `dashboard/src/app/api/video/publish/route.ts:647`에서 반환한 계약은 내부 `published_posts`와 사용량 장부를 수렴시키라는 것이고, 화면 문구도 `dashboard/src/app/studio/page.tsx:2390`에서 "내부 기록이 남지 않았습니다"라고 명시한다 / 테넌트, 발행 행, 외부 영상 번호를 결속한 서버 복구 동작이 `published_posts`를 `published`로 확정하고 pending 사용량을 relay한 성공 응답을 받은 뒤에만 초안 상태와 재발행 금지 상태를 지워야 한다.
+
+재현: YouTube가 영상 번호를 반환한 직후 `published_posts` UPDATE만 실패시킨다. 화면에서 "이미 올라간 것으로 기록하기"를 누르면 초안만 `published`가 되고, 서버 예약 행은 `in_progress`, 외부 영상 번호와 사용량은 미확정인 채 경고가 사라진다.
+
+MAJOR: [회귀 위험] dashboard/src/app/api/video/publish/route.ts:354 — 저장한 resumable 세션을 재개할 때 `youtubeUpload.url`만 읽고 552행에 저장한 `fileHash`와 `totalBytes`를 현재 235-236행의 `videoSize`, `videoHash`와 비교하지 않는다 / Google resumable 세션은 초기화한 한 영상의 이어 올리기 계약인데, 현재 코드는 같은 `draft_id` 아래 파일이 바뀌어도 기존 세션의 수신 범위 다음에 새 파일 조각을 보낸다 / 재개 전에 저장한 파일 해시와 크기가 현재 파일과 정확히 같아야 한다. 다르면 기존 세션에 바이트를 보내지 말고 상태를 불확실로 닫아 사람이 기존 외부 결과를 확인하게 해야 한다. 제목, 설명과 태그처럼 세션 초기화 때 고정된 메타데이터도 같은 의도인지 검증해야 한다.
+
+재현: 같은 초안으로 2,048바이트 영상 A의 앞 1,024바이트가 전송된 뒤 프로세스를 끊는다. 파일을 같은 크기의 영상 B로 교체하고 15분 뒤 다시 발행한다. 상태 조회가 `Range: bytes=0-1023`을 주면 566-575행이 영상 B의 1,024-2,047바이트를 기존 세션으로 보내 영상 A 앞부분과 영상 B 뒷부분을 결합한다.
+
+## 수정 후 검증 증거
+
+- 표적 회귀: 4파일, 28건 통과. YouTube 기존 재개 테스트는 파일 불변 경로만 검사해 두 번째 MAJOR를 검출하지 못한다.
+- 전체 회귀: 374파일, 2,414건 통과, 3건 제외. TypeScript 종료 코드 0. production build 종료 코드 0.
+- 실앱: 수정 커밋 `46e75b2d`를 포함한 localhost 실행본에서 기본 흐름 11/11과 Studio v1 14/14 통과. 현재 health 실행 커밋 `f3c3704a`는 현재 브랜치 HEAD `ba7e9f6f`와 다른 계보라 현재 HEAD 귀속은 NG다.
+- 외부 SNS 실제 게시와 운영 배포는 미검증이다.
+
+## 수정 후 셀프심문
+
+질문: 내가 PASS를 준다면, 회장이 dev에서 직접 써보고 발견할 가장 그럴듯한 문제는 무엇인가?
+
+답: YouTube는 실제로 올라갔는데 DB 확정이 실패한 뒤 복구 단추를 누르면 경고만 사라지고 발행 장부는 계속 비어 있는 문제다. 이 문제와 파일 교체 뒤 세션 혼합 업로드가 남아 있으므로 PASS를 줄 수 없다.
+
+## 수정 후 4축 판정
+
+- 승인 시안 이탈: 문제없음
+- 회귀 위험: 지적 2건
+- 토큰 위반: 문제없음
+- 무기록 삭제: 문제없음
+
+SKILLS_USED: review. 수정 주장과 실제 상태 전이, 세션 영속 값의 소비 여부를 대조했다.
+SKILLS_SKIPPED: 자동 수정은 사용자 금지로 실행하지 않았다.
+
+REVIEW_VERDICT: BLOCK
+
+## 최종 4축 판정
+
+- 승인 시안 이탈: 지적 1건
+- 회귀 위험: 지적 2건
+- 토큰 위반: 문제없음
+- 무기록 삭제: 문제없음
+
+REVIEW_VERDICT: BLOCK
