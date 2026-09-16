@@ -30,12 +30,12 @@ interface FakeChild extends EventEmitter {
 }
 
 const H = vi.hoisted(() => ({
-  calls: [] as { bin: string; args: string[]; opts: { cwd?: string; stdio?: unknown }; child: FakeChild; stdinData: string }[],
+  calls: [] as { bin: string; args: string[]; opts: { cwd?: string; stdio?: unknown; env?: NodeJS.ProcessEnv }; child: FakeChild; stdinData: string }[],
   throwOnStdinEnd: false,
 }));
 
 vi.mock("child_process", () => ({
-  spawn: vi.fn((bin: string, args: string[], opts: { cwd?: string; stdio?: unknown }) => {
+  spawn: vi.fn((bin: string, args: string[], opts: { cwd?: string; stdio?: unknown; env?: NodeJS.ProcessEnv }) => {
     const child = new EventEmitter() as FakeChild;
     child.stdout = new EventEmitter();
     child.kill = vi.fn();
@@ -89,6 +89,10 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  delete process.env.OSMU_TEST_SENTINEL_SECRET;
+  delete process.env.CLAUDECODE;
+  delete process.env.CLAUDE_CONFIG_DIR;
+  delete process.env.SECURITYSESSIONID;
 });
 
 describe("claude CLI 실행 경계 — argv에 prompt 없음 + stdin 전달", () => {
@@ -149,6 +153,29 @@ describe("claude CLI 실행 경계 — 필수 플래그·cwd·model", () => {
     H.calls[0].child.stdout.emit("data", Buffer.from("x"));
     H.calls[0].child.emit("close", 0);
     await p;
+  });
+
+  it("서버와 상위 워커의 비밀값 및 Claude 실행 상태를 자식 환경에 넘기지 않는다", async () => {
+    process.env.OSMU_TEST_SENTINEL_SECRET = "절대-자식에-넘기지-않음";
+    process.env.CLAUDECODE = "1";
+    process.env.CLAUDE_CONFIG_DIR = "/tmp/상위-워커-전용-설정";
+    process.env.SECURITYSESSIONID = "qa-login-session";
+    const generateText = await importGenerateText();
+    const p = generateText("hello", null);
+    await microtask();
+
+    const childEnv = H.calls[0].opts.env;
+    expect(childEnv).toBeDefined();
+    expect(childEnv?.HOME).toBeTruthy();
+    expect(childEnv?.PATH).toBeTruthy();
+    expect(childEnv?.SECURITYSESSIONID).toBe("qa-login-session");
+    expect(childEnv?.OSMU_TEST_SENTINEL_SECRET).toBeUndefined();
+    expect(childEnv?.CLAUDECODE).toBeUndefined();
+    expect(childEnv?.CLAUDE_CONFIG_DIR).toBeUndefined();
+
+    H.calls[0].child.stdout.emit("data", Buffer.from("clean-env-ok"));
+    H.calls[0].child.emit("close", 0);
+    await expect(p).resolves.toBe("clean-env-ok");
   });
 });
 

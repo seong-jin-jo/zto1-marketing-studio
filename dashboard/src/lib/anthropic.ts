@@ -53,6 +53,34 @@ const CLAUDE_CLI_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 // 않게). 공유 CLI(spawn/큐/quota reserve) 경로에만 적용 — BYO Anthropic HTTP API 경로는 미적용.
 const CLAUDE_CLI_MAX_PROMPT_BYTES = 1_000_000;
 
+// Next 서버는 감독 프로세스와 QA 워커의 환경을 통째로 물려받을 수 있다. 그 환경에는
+// 앱 비밀값뿐 아니라 CLAUDECODE, CLAUDE_CONFIG_DIR 같은 상위 도구의 실행 상태도 섞인다.
+// 공유 생성 CLI에 이를 그대로 넘기면 상위 세션의 임시 설정 때문에 인증이 달라지거나
+// 비정상 종료하고, 도구를 전부 닫았어도 불필요한 앱 비밀값이 자식 프로세스에 남는다.
+//
+// CLI가 실제로 필요한 운영체제, 네트워크 변수만 새 환경으로 조립한다. Claude 전용 상태는
+// 의도적으로 승계하지 않아 언제 어떤 워커가 서버를 띄웠는지와 생성 성공 여부를 분리한다.
+function claudeCliEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    HOME: process.env.HOME || os.homedir(),
+    PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+    TMPDIR: process.env.TMPDIR || os.tmpdir(),
+  };
+  for (const key of [
+    // macOS의 OAuth refresh token은 로그인 키체인에 있고, CLI가 그 세션을 여는 데
+    // SECURITYSESSIONID가 필요하다. 이를 빼면 짧은 요청은 남은 access token으로 통과해도
+    // 실제 후보 생성에서 refresh 시점에 인증 실패가 난다.
+    "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "SHELL", "TERM", "SECURITYSESSIONID",
+    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+    "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
+  ]) {
+    const value = process.env[key];
+    if (value) env[key] = value;
+  }
+  return env;
+}
+
 function isClaudeLookupError(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | undefined)?.code;
   return code === "ENOENT" || code === "EACCES";
@@ -156,7 +184,7 @@ function runClaudeCli(prompt: string): Promise<string> {
         ],
         // stderr: "ignore" — child 진단 출력을 프로세스로 아예 들이지 않는다(캡처 자체가 없으므로
         // 로그/반환 경로로 새어나갈 여지가 없다).
-        { cwd: os.tmpdir(), stdio: ["pipe", "pipe", "ignore"] },
+        { cwd: os.tmpdir(), stdio: ["pipe", "pipe", "ignore"], env: claudeCliEnv() },
       );
       } catch (err) {
         if (isClaudeLookupError(err) && candidateIndex + 1 < CLAUDE_BINS.length) {
@@ -272,7 +300,7 @@ function runClaudeCliWithUsageAt(
           "--model", model,
           "--output-format", "json",
         ],
-        { cwd: os.tmpdir(), stdio: ["pipe", "pipe", "ignore"] },
+        { cwd: os.tmpdir(), stdio: ["pipe", "pipe", "ignore"], env: claudeCliEnv() },
       );
     } catch (error) {
       reject(error instanceof Error ? error : new Error(String(error)));

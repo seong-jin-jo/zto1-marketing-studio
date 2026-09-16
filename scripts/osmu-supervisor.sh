@@ -22,6 +22,30 @@ PROMPTS="$ROOT/docs/plan/backlog-prompts"
 rm -f "$STOP"
 [ -f "$STATE" ] || printf 'id\tlane\t상태\t시각\t세션\n' > "$STATE"
 
+# cron이나 launchd가 감독을 띄우면 macOS GUI 로그인 세션 식별자가 빠질 수 있다.
+# Claude CLI의 짧은 요청은 남은 access token으로 통과하지만, 실제 후보 생성 중 OAuth
+# refresh가 필요해지는 순간 로그인 키체인을 열지 못하고 종료 코드 1로 끝난다.
+# ConsoleUser 정본의 십진 audit session id를 macOS가 환경에 쓰는 16진수로 변환한다.
+resolve_security_session_id() {
+  if [ -n "${SECURITYSESSIONID:-}" ]; then
+    printf '%s\n' "$SECURITYSESSIONID"
+    return
+  fi
+  [ "$(uname -s 2>/dev/null || true)" = "Darwin" ] || return
+  local session_decimal
+  session_decimal="$(/usr/sbin/scutil <<<'show State:/Users/ConsoleUser' 2>/dev/null | awk '/kSCSecuritySessionID/{print $3; exit}')"
+  case "$session_decimal" in
+    ''|*[!0-9]*) return ;;
+  esac
+  printf '%x\n' "$session_decimal"
+}
+
+SECURITY_SESSION_ID="$(resolve_security_session_id)"
+if [ -n "$SECURITY_SESSION_ID" ]; then
+  export SECURITYSESSIONID="$SECURITY_SESSION_ID"
+  echo "[$(date +%H:%M)] macOS 로그인 키체인 세션 확인"
+fi
+
 status_of() { awk -F'\t' -v i="$1" '$1==i{s=$3} END{print s}' "$STATE"; }
 mark() { printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$(date +%H:%M)" "$4" >> "$STATE"; }
 
