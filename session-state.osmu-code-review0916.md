@@ -1,3 +1,35 @@
+# OSMU code review 2026-09-16 stop-hook handoff
+
+## 무엇을 어디까지 했나
+
+- 코드리뷰 R3 감사, QA 증거, 인수인계는 `e70d5de58b30f0d2a59614a2af4ff621dc08f21a`와 `50ac3341aea889bf3430d8319c48c6ee08fb1346`에 커밋했다.
+- 후속 stop hook에서 다른 QA 위임 `codex-qa-verifier-61880`을 완료까지 감독했다. 해당 위임은 코드 커밋 `c7304dc0`, `cecbe6da`, `3d393fb8`과 증거 커밋 `523aaa4a`를 남겼고 API 읽기 범위를 PASS로 닫았다.
+- 후속 QA 변경은 API 읽기 오류 은폐와 검사기 오판을 고친 별도 작업이다. R3에서 확인한 나머지 MAJOR를 전부 고쳤다는 증거는 아니므로 `REVIEW_VERDICT: BLOCK`은 유지한다.
+- 제품 코드는 이 코드리뷰 세션에서 수정하지 않았다.
+
+## 남은 이슈·블로커
+
+- R3 MAJOR 10건 중 후속 API 읽기 검사기 결함 외 항목은 재리뷰로 해소 확인되지 않았다.
+- 운영 배포, 실제 외부 자격증명, 실제 SNS 발행은 미검증이다.
+- 현재 실행 중인 새 QA 위임과 mobile 위임은 감독 프로세스가 새로 발주한 다른 작업이다. 이 코드리뷰 세션 소유가 아니므로 종료하거나 등록 해제하지 않았다.
+
+## 다음에 칠 명령
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio
+git show --stat --oneline e70d5de5
+git show --stat --oneline 523aaa4a
+rg -n '^MAJOR:|^MINOR:|^REVIEW_VERDICT:' docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-16.md | head -20
+```
+
+다음 소유자는 build 워커다. R3 MAJOR별 수정 커밋을 만든 뒤 code-reviewer가 고정 범위를 다시 공격한다. 종료 증거는 MAJOR 0건과 두 E2E, 동시성·부분 실패 공격 시나리오의 같은 SHA 실측 통과다. 실제 SNS 발행이나 운영 배포가 필요할 때만 회장에게 외부 회수한다.
+
+## 검증했나
+
+- R3 검증은 아래 블록과 감사 문서에 고정했다.
+- 후속 API 읽기 위임은 105경로 106요청, 예상 밖 0, HTTP 500 0, 기본 흐름 11/11, Studio v1 14/14, Vitest 371파일 2,385건, TypeScript와 격리 build 통과를 `523aaa4a`에 기록했다.
+- 위 후속 통과는 API 읽기 범위에 한정하며 제품 전체 QA는 NG다.
+
 # OSMU code review 2026-09-16 R3 handoff
 
 ## 무엇을 어디까지 했나
