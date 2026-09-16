@@ -6,9 +6,10 @@
 - 최근 24시간 범위를 `f4b0f5a5188ef6343e22d9ed4cbebd79b05d0bcc..e5a4487e84fe297b5738bb56c522f33f3f171cf9`로 고정했다. 시간 창 커밋 67개, 그래프 범위 79개, 순변경 239파일이다.
 - `pipeline-state.osmu.md`의 v68 승인 핀, 지정 v63 프로토타입, `DESIGN.md` v37, 확정 요구 대장, 사업 좌표, 구현 현황과 diff를 대조했다.
 - `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-16.md` 최상단 R3에 MAJOR 10건, MINOR 1건, `REVIEW_VERDICT: BLOCK`을 기록했다.
-- `docs/qa/qa-tracker.md` 최상단에 테스트와 localhost 실측 증거를 기록했다.
+- `docs/qa/qa-tracker.md`에 테스트와 localhost 실측 증거를 기록했다.
+- 감사 문서, QA 증거 16줄, 이 인수인계 문서만 커밋했다. 커밋은 `e70d5de58b30f0d2a59614a2af4ff621dc08f21a`다.
 
-## 핵심 블로커
+## 남은 이슈·블로커
 
 - 일부 채널을 검증 단계에서 빼도 남은 한 채널이 성공하면 전체 초안이 `published`, 토스트가 `발행 완료`가 된다.
 - YouTube는 외부 업로드 전 예약이 없어 동시 요청이 중복 영상을 만들고, 두 번째 DB 충돌을 숨긴 채 둘 다 성공으로 응답할 수 있다.
@@ -18,7 +19,25 @@
 - 정상 HTTP 200 빈 이미지 목록을 검증기가 구조 오류로 오판한다.
 - 접힌 사이드바가 숫자 원을 쓰고 sticky가 없어 승인 아이콘 레일과 상시 이동 계약을 어긴다.
 
-## 검증
+## 다음에 칠 명령
+
+다음 소유자는 build 워커다. 아래 명령은 R3 MAJOR를 수정한 고정 커밋과 동일한 localhost를 띄운 뒤 실행한다.
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio
+git rev-parse HEAD
+curl -fsS http://localhost:3456/api/health
+cd dashboard
+npm run test
+npx tsc --noEmit
+set -a && source ./.env.local && set +a
+STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-basic-flow-e2e.mjs
+STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-studio-v1-e2e.mjs
+```
+
+종료 증거는 R3 MAJOR 0건, 전체 Vitest와 TypeScript 종료 코드 0, 같은 SHA localhost에서 두 E2E 통과, 부분 채널 차단 상태 저장, YouTube 동시 요청, Reels 기록 실패, 다중 인스턴스 자막 상한, Threads insights 동시 수집 공격 시나리오 통과다. 외부 회수 시점은 실제 SNS 실발행 또는 운영 배포 승인이 필요할 때다.
+
+## 검증했나
 
 - `npm run test`: 369파일, 2,373건 통과, 3건 제외, 종료 0.
 - `npx tsc --noEmit`: 종료 0.
@@ -28,10 +47,6 @@
 - Studio v1 E2E: 401, 400, 422 통과 뒤 정상 생성이 HTTP 200 오류 본문으로 끝나 NG.
 - 지정 작업 공간 `/api/images`: HTTP 200 `[]`. 검증기 분류는 `응답 구조 오류`, NG.
 - 운영 배포와 외부 SNS 실발행: 미검증.
-
-## 다음 행동
-
-다음 소유자는 build 워커다. R3 MAJOR를 수정한 고정 커밋에서 해당 커밋과 일치하는 localhost를 소유하고 전체 회귀, 두 E2E, 부분 채널 차단 상태 저장, YouTube 동시 요청, Reels 기록 실패, 다중 인스턴스 자막 상한, Threads insights 동시 수집을 다시 검증해야 한다.
 
 # OSMU code review 2026-09-16 R2 handoff
 
