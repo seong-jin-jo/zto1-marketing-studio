@@ -2,6 +2,21 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-17 05시 08분 KST · 코드 공격 리뷰 MAJOR 6건 수정 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드 리뷰 수정 | 돈과 쿼터 장부 유실, YouTube 중복 업로드, 발행 의도 유실, 부분 실패 오판, 금지 문구를 위험도 순으로 수정 | CODE-REVIEW-FIX-20260917-01 | PASS | 수정 커밋 `1f7fbed4`, `46e75b2d`, `dc5165cf`. outbox 실 DB 회귀 `72044c45`. 원래 여섯 지적을 모두 수정했고 제외한 지적은 없다. 상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md`의 수정 결과 표다. |
+| 과금 장부 | pending outbox 원자 기록, 실패 보존, 중복 relay 방지 | CODE-REVIEW-FIX-20260917-02 | PASS | 목 경계 4건과 실제 Postgres 통합 1건 통과. 같은 발행을 두 번 relay해도 `usage_events`는 1행이고 outbox는 recorded로 수렴했다. 테스트 뒤 행을 정리했다. |
+| YouTube 복구 | 세션 저장, 308 범위 재개, stale 상태 조회, 재개권 경합, 외부 성공 뒤 내부 확정 실패 | CODE-REVIEW-FIX-20260917-03 | PASS | Route Handler 회귀 17건 통과. 저장된 Range 다음 바이트부터 재개하고, 동시 두 요청은 200과 409로 갈리며 실제 업로드 본문은 한 번만 보냈다. DB 확정과 장부 실패는 `partial`, `retryPublish:false`로 닫혔다. |
+| 멱등과 화면 | 태그와 파일 내용 해시, 제외 채널 부분 실패, 긴 대시 제거 | CODE-REVIEW-FIX-20260917-04 | PASS | 태그 변경과 같은 이름의 파일 내용 변경이 각각 새 발행 키를 만들었다. 화면 회귀 6건에서 차단 채널이 초안과 알림의 partial 결과에 포함되고 긴 대시가 0건이다. |
+| 전체 회귀 | test, TypeScript, production build, 디자인 lint | CODE-REVIEW-FIX-20260917-05 | PASS | `npm run test`: 374파일, 2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 0. `npm run build` 종료 0. design lint 위반 0. |
+| 실앱 기본 흐름 | 현재 수정 소스를 띄운 localhost:3456 기본 흐름과 Studio v1 | CODE-REVIEW-FIX-20260917-06 | PASS | 제품 수정 커밋 `46e75b2d`를 포함한 실행본에서 기본 흐름 11/11, Studio v1 14/14를 실제 요청으로 관찰했다. health는 HTTP 200, DB up이었다. 이후 포트를 이어받은 API sweep 실행본 `35f11ab0`도 `46e75b2d`의 후손이다. |
+| 미검증 경계 | 외부 공개 SNS의 실제 게시와 운영 배포 | CODE-REVIEW-FIX-20260917-07 | 미검증 | 공개 게시와 운영 배포는 실행하지 않았다. 외부 성공 직후 DB 장애는 Route Handler 경계에서 공급자 응답과 DB 실패를 제어해 재현했고, localhost에서는 기존 제품 기본 흐름을 실제로 관찰했다. |
+
+제품 전체 QA와 배포 판정은 기존 디자인 정합 NG와 운영 미검증 때문에 계속 NG다. 이번 PASS는
+리뷰 MAJOR 6건의 수정 범위에 한정한다.
+
 ## 2026-09-17 04시 04분 KST · 최근 24시간 코드 공격 리뷰 BLOCK ❌ NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

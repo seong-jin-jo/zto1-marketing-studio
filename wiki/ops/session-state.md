@@ -1,3 +1,19 @@
+# 2026-09-17 05시 08분 코드 공격 리뷰 여섯 건 수정 완료
+
+회장 요청 원문을 handoff basis로 사용했다. 지적은 사용량 장부 유실, 외부 YouTube 성공 뒤 내부 확정
+실패, resumable 세션 유실, 멱등 키 충돌, 제외 채널 전체 성공 오판, 금지 문구 순으로 수정했다. 틀렸다고
+제외한 지적은 없다.
+
+코드 커밋은 `1f7fbed4`, `46e75b2d`, 계약 보수는 `dc5165cf`, 실 Postgres outbox 회귀는
+`72044c45`다. 전체 Vitest 374파일과 2,414건 통과, 3건 제외, TypeScript와 production build 및
+디자인 lint가 통과했다. 실제 Postgres에서 중복 relay가 장부 한 행으로 수렴했고, 수정 소스를 띄운
+localhost에서 기본 흐름 11/11과 Studio v1 14/14를 실제 요청으로 관찰했다. 뒤이어 포트를 이어받은
+API sweep 실행본 `35f11ab0`도 제품 수정 커밋의 후손이며 health HTTP 200과 DB up이다.
+
+리뷰 수정 범위는 PASS다. 공개 SNS 실발행과 운영 배포는 미검증이다. 기존 v63과 v68 디자인 핀 충돌과
+디자인 정합 NG가 남아 제품 전체 QA와 배포는 NG를 유지한다. 상세 증거는
+`docs/qa/qa-tracker.md`와 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md`다.
+
 # 2026-09-17 04시 20분 최근 24시간 코드 공격 리뷰 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. tmux pane은 동시 작업과 localhost 소유권 확인에만
