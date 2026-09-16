@@ -62,7 +62,7 @@ import {
   validatePlatformPublish,
   type PlatformPublishInput,
 } from "@/lib/studio/platform-publish-fields";
-import { partitionBlockedPublishTargets } from "@/lib/studio/publish-partial-block";
+import { blockedPublishFailures, partitionBlockedPublishTargets } from "@/lib/studio/publish-partial-block";
 import type { CurrentWork } from "@/lib/studio/current-work";
 import { attemptRequiredDraftPersistence } from "@/lib/studio/required-draft-persistence";
 import { PLATFORM_FIELD_CONTRACT } from "@/lib/studio/platform-publish-fields";
@@ -1273,7 +1273,7 @@ export default function StudioPage() {
         showToast(`${summary} · 한도 넘는 곳만 줄이기를 눌러 맞춘 뒤 다시 시도하세요`, "error");
         return;
       }
-      showToast(`한도를 넘은 곳은 빼고 발행합니다 — ${summary}`, "error");
+      showToast(`한도를 넘은 곳은 빼고 발행합니다. ${summary}`, "error");
     }
     const draftPersistence = await attemptRequiredDraftPersistence(() => save("draft"));
     if (!draftPersistence.ok) {
@@ -1286,20 +1286,22 @@ export default function StudioPage() {
     // 재발행 대상이 됐다. 이번 초안에서 이미 성공한 채널은 대상에서 뺀다.
     const alreadyPublished = publishTargets.filter((platform) => pub.status[platform] === "done");
     const targets = publishTargets.filter((platform) => pub.status[platform] !== "done" && !blockedPlatforms.has(platform));
-    if (!targets.length && alreadyPublished.length) {
+    if (!targets.length && alreadyPublished.length && blockedEntries.length === 0) {
       showToast(`${alreadyPublished.map((platform) => LABEL[platform]).join(", ")} 은 이미 발행됐습니다. 다시 올리지 않았습니다.`, "success");
       return;
     }
-    if (!targets.length) { showToast("연결된 발행 계정이 없습니다. 설정에서 채널을 먼저 연결하세요", "error"); return; }
-    const status: Record<string, PubStatus> = {}; targets.forEach((p) => (status[p] = "wait"));
+    if (!targets.length && blockedEntries.length === 0) { showToast("연결된 발행 계정이 없습니다. 설정에서 채널을 먼저 연결하세요", "error"); return; }
+    const blockedFailure = blockedPublishFailures(blockedEntries, (platform) => LABEL[platform]);
+    const status: Record<string, PubStatus> = { ...blockedFailure.status };
+    targets.forEach((p) => (status[p] = "wait"));
     const urls: Record<string, string> = {};
-    const errors: Record<string, string> = {};
+    const errors: Record<string, string> = { ...blockedFailure.errors };
     const already: Record<string, string | true> = {};
     alreadyPublished.forEach((platform) => {
       status[platform] = "done";
       if (pub.urls[platform]) urls[platform] = pub.urls[platform];
     });
-    const errs: string[] = [];
+    const errs: string[] = [...blockedFailure.messages];
     const pendingReconciliations: PublishReconciliationMap = {};
     setPub({ running: true, stopped: false, status: { ...status }, urls: {}, errors: {}, already: {} });
     await runWithConcurrency(targets, PUBLISH_CONCURRENCY, async (p) => {

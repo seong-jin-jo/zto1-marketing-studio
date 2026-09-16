@@ -21,3 +21,24 @@ export function partitionBlockedPublishTargets<P extends string>(
   }
   return { blocked, allowed };
 }
+
+export function blockedPublishFailures<P extends string>(
+  blocked: readonly { platform: P; issue: PublishValidationIssue }[],
+  label: (platform: P) => string,
+): {
+  status: Record<string, "failed">;
+  errors: Record<string, string>;
+  messages: string[];
+} {
+  const status: Record<string, "failed"> = {};
+  const errors: Record<string, string> = {};
+  const messages: string[] = [];
+
+  for (const entry of blocked) {
+    status[entry.platform] = "failed";
+    errors[entry.platform] = entry.issue.message;
+    messages.push(`${label(entry.platform)}: ${entry.issue.message}`);
+  }
+
+  return { status, errors, messages };
+}
