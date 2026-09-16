@@ -1,3 +1,13 @@
+# 2026-09-16 09시 12분 최근 24시간 코드 공격 리뷰 R2 BLOCK
+
+회장 요청 원문을 handoff basis로 사용했다. tmux `openclaw-auto:0.0`은 공유 서버와 동시 작업 확인에만 사용했고 과제 기준은 사용자 요청으로 고정했다. 검토 범위는 착수 시각 기준 `c2008b1a580576a9b4ddff9822af5f695a0d0104..6a51aaf3a6179616bed04266e258cd35d712feec`, first-parent 31개 커밋, 시간 필터 전체 52개 커밋, 순변경 249개 파일이다. 제품 코드는 수정하지 않았다.
+
+판정은 MAJOR 11건, MINOR 1건, REVIEW_VERDICT BLOCK이다. 공급자 발행 0건을 전체 발행 완료로 닫는 상태 전이, 결과 불명과 공급자 실패의 영구 정지, R2 삭제 실패 무기록 비용 누적, 다중 서버 자막 상한 우회, 접힌 사이드바 상시 이동 소실, 45초 발행 timeout 중복 위험, 배포 SHA 유실, 빈 배열 오판, 깨끗한 HEAD 자체 테스트 실패, 미커밋 고객 UI 긴 대시를 확인했다. 고정 순변경의 삭제 파일은 0건이고 승인된 R190 삭제는 요구 대장에 사유가 있다.
+
+`npm run test`는 369개 파일 중 7개 실패, 2,372건 중 8개 실패다. `npx tsc --noEmit`은 종료 코드 0이다. `git archive HEAD`의 네 방 timeout 계약 테스트는 1/1 실패했다. localhost:3456 health는 HTTP 200, DB up, build commit `6a51aaf3`로 대상과 일치했지만 기본 흐름과 Studio v1 모두 실제 생성 제공자 `STUDIO_LLM_PROVIDER_UNAVAILABLE`에서 NG였다. 운영 배포와 외부 SNS 실발행은 미검증이다.
+
+감사 문서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-16.md`, QA 증거는 `docs/qa/qa-tracker.md` 최신 절이다. 다음 소유자는 build 워커다. MAJOR 수정과 미커밋 검증기 정리 후 깨끗한 고정 커밋에서 전체 테스트, 두 E2E, 실제 발행 상태 전이 재현을 다시 실행해야 한다.
+
 # 2026-09-16 05시 47분 최근 24시간 코드 공격 리뷰 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. 검토 범위는 `cd2e04c650abf2a4ead4b855c5c887d0d82dfca7..7cc7f848e2238c1691fc7467cca4bf2bd89e1b2a`의 최근 24시간 85개 커밋과 순변경 236개 파일이다. 제품 코드는 수정하지 않고 v63 지정 프로토타입, pipeline 최신 v68 승인 핀, DESIGN.md v37, 확정 요구 대장과 사업 좌표를 대조했다.
