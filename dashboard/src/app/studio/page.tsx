@@ -1356,13 +1356,9 @@ export default function StudioPage() {
           first_comment: capabilityFor(p).supported && firstComments[p]?.trim() ? firstComments[p].trim() : undefined,
           edit_format: editFormat,
         }, { signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS) });
-        if (r?.ok && !r.partial) {
-          urls[p] = r.permalink || POST_URL[p] || "#";
-          // 2026-09-16 실측: 서버가 dedupe 로 옛 글을 돌려준 것을 방금 새로 올라간 것과
-          // 구분한다. 이미 있던 것이면 "새로 올렸다" 이벤트를 다시 세지 않는다.
-          if (r.alreadyPublished) already[p] = r.publishedAt || true;
-          else trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
-        }
+        // 2026-09-16 실측: 서버가 dedupe 로 옛 글을 돌려준 것을 방금 새로 올라간 것과
+        // 구분한다. 이미 있던 것이면 "새로 올렸다" 이벤트를 다시 세지 않는다.
+        if (r?.ok && !r.partial) { urls[p] = r.permalink || POST_URL[p] || "#"; if (!r.alreadyPublished) trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } }); else already[p] = r.publishedAt || true; }
         else {
           failureReason = r?.partial
             ? r.firstComment?.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다"
@@ -2207,7 +2203,7 @@ export default function StudioPage() {
                 <div data-testid="publish-blocked-channels" role="alert" className="rounded-control border border-warning/30 bg-warning/10 p-stack text-caption text-warning">
                   <p className="break-keep">
                     {publishBlockedEntries.map((entry) => `${LABEL[entry.platform]}: ${entry.issue.message}`).join(" · ")}
-                    {" — 한도를 넘은 곳은 발행에서 빠집니다."}
+                    {" (한도를 넘은 곳은 발행에서 빠집니다.)"}
                   </p>
                   <Button size="sm" className="mt-stack-tight" onClick={trimOverLimitChannels}>한도 넘는 곳만 줄이기</Button>
                 </div>
