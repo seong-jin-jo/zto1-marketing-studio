@@ -126,4 +126,26 @@ describe("2026-09-16 사파리 44px 스윕 계약 (채널 페이지 공유 컴�
     // 다시 나타나거나 레이아웃이 깨진다).
     expect(source).toMatch(/sr-only peer/);
   });
+
+  /*
+   * 2026-09-16 배포본 재측정(2차): 채널 페이지 위반이 36건 → 1건으로 줄어든 뒤 남은 3곳.
+   * ①,②는 채널 설정 탭이 공유하는 컴포넌트, ③은 /channels/x 에서 계정이 access_paused ·
+   * account_unavailable 상태일 때 전체 화면을 덮는 AuthGate 의 GateBlockScreen(role="alert") —
+   * "모달"로 보였던 것의 실체는 이 풀스크린 차단 화면이다. layout.tsx 가 AuthGate 로 전 라우트를
+   * 감싸므로 /channels/x 를 포함한 모든 경로에서 같은 화면이 뜬다.
+   */
+  it("QA-SAFARI44C-11 정상: SetupGuide 의 '더 알아보기/접기' 버튼이 하한 표식을 갖는다", () => {
+    const source = read("src/components/shared/SetupGuide.tsx");
+    expect(windowAround(source, "더 알아보기")).toMatch(/min-h-control-touch/);
+  });
+
+  it("QA-SAFARI44C-12 정상: AccountManager 의 '기본' 배지가 하한 표식을 갖는다", () => {
+    const source = read("src/components/channel/AccountManager.tsx");
+    expect(windowAround(source, "account-default-badge-${provider}")).toMatch(/min-h-control-touch/);
+  });
+
+  it("QA-SAFARI44C-13 정상: AuthGate GateBlockScreen 의 '로그아웃' 보조 버튼이 하한 표식을 갖는다 (/channels/x 포함 전 라우트에서 access_paused·account_unavailable 시 노출)", () => {
+    const source = read("src/components/shared/AuthGate.tsx");
+    expect(windowAround(source, "{secondaryLabel}")).toMatch(/min-h-control-touch/);
+  });
 });

@@ -46,7 +46,7 @@ export function SetupGuide({ quick, detail, warning, images }: SetupGuideProps) 
         <>
           <button
             onClick={() => setShowDetail(!showDetail)}
-            className="text-caption text-accent hover:text-accent mt-stack block"
+            className="inline-flex items-center min-h-control-touch text-caption text-accent hover:text-accent mt-stack"
           >
             {showDetail ? "접기" : "더 알아보기"}
           </button>
