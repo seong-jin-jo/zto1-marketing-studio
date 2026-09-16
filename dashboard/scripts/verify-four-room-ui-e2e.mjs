@@ -115,12 +115,17 @@ async function clickRoom(page, width, room) {
     if (await link.getAttribute("href") !== room.href) {
       throw new Error(`${width} ${room.label} href가 ${room.href}가 아닙니다`);
     }
-    // Next.js client navigation does not emit a new document load event. Waiting for
-    // load makes a successful room transition look like a timeout. Arm the URL waiter
-    // before the click so a fast client transition cannot finish between both awaits.
+    // Next.js client navigation changes history without a document commit. Observe the
+    // browser address directly and arm that observation before the user click. Otherwise
+    // Playwright can keep retrying a successful link while waiting for a commit that will
+    // never occur.
     await Promise.all([
-      page.waitForURL((url) => `${url.pathname}${url.search}` === room.href, { waitUntil: "commit", timeout: remainingTimeout(`${width} ${room.label} 주소 이동`) }),
-      link.click(),
+      page.waitForFunction(
+        (expected) => `${window.location.pathname}${window.location.search}` === expected,
+        room.href,
+        { timeout: remainingTimeout(`${width} ${room.label} 주소 이동`) },
+      ),
+      link.click({ noWaitAfter: true }),
     ]);
   }
   await page.locator(room.selector).waitFor({ state: "visible", timeout: remainingTimeout(`${width} ${room.label} 표시`) });
