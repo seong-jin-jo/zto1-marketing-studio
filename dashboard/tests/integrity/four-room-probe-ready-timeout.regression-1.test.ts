@@ -15,9 +15,10 @@ describe("네 방 단면 탐침 준비 제한시간 계약", () => {
     );
 
     expect(source).toContain('process.env.FOUR_ROOM_READY_TIMEOUT_MS||"120000"');
-    expect(source).toContain('process.env.FOUR_ROOM_TOTAL_TIMEOUT_MS||"180000"');
+    expect(source).toContain('process.env.FOUR_ROOM_TOTAL_TIMEOUT_MS||"300000"');
     expect(source).toContain('timeout:remainingTimeout(');
     expect(source).toContain("전체 실행시간 초과");
+    expect(source).toContain("current.pathname===expected.pathname&&current.search===expected.search");
     expect(source).not.toContain("timeout:30000");
     expect(source).not.toContain("timeout:60000");
   });
