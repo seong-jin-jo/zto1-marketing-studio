@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { GettingStartedStrip } from "@/components/shared/GettingStartedStrip";
 
 const mocks = vi.hoisted(() => ({
-  channels: {} as Record<string, Record<string, unknown>>,
+  channels: {} as Record<string, Record<string, unknown>> | undefined,
   checklist: { created: true, wiki: false, channel: false, published: false, analytics: false },
 }));
 
@@ -16,6 +16,10 @@ vi.mock("@/hooks/useOnboarding", () => ({ useOnboardingStatus: () => ({ data: { 
 afterEach(() => {
   cleanup();
   mocks.channels = {};
+  // 2026-09-16: V70-START-04 가 checklist 를 전부 true 로 바꿔 두고 되돌리지 않아, 그 뒤에
+  // 추가된 테스트가 "다섯 칸을 다 채웠다"는 leftover 상태를 물려받아 컴포넌트가 조용히
+  // null 을 반환했다(빈 <div/>). 매 테스트가 독립적이도록 기본값으로 되돌린다.
+  mocks.checklist = { created: true, wiki: false, channel: false, published: false, analytics: false };
 });
 
 describe("V70-START 시작 스트립 계약", () => {
@@ -81,5 +85,25 @@ describe("V70-START 시작 스트립 계약", () => {
     fireEvent.click(screen.getByTestId("getting-started-learning"));
     expect(onOpenLearning).toHaveBeenCalledOnce();
     expect(screen.queryByTestId("getting-started-next")).not.toBeInTheDocument();
+  });
+
+  // 2026-09-16 실측(j.the.great.investor): "채널 연결 0/15" 가 같은 세션의 다른 화면에서는
+  // "3/15" 로 떴다. channelConfig 조회가 아직 안 끝난 동안(undefined) 이 줄이 "연결 0"으로
+  // 단정해 그렸기 때문이다. 로딩 중에는 0 을 찍지 말고 로딩 중임을 말해야 한다.
+  it("V70-START-06 개정: channel-config 조회가 아직 안 끝났으면 0으로 단정하지 않고 확인 중이라고 말한다", () => {
+    mocks.channels = undefined;
+    render(<GettingStartedStrip />);
+
+    expect(screen.getByText(/채널 연결 확인 중/)).toBeInTheDocument();
+    expect(screen.queryByText(/채널 연결 0\/15/)).not.toBeInTheDocument();
+    mocks.channels = {};
+  });
+
+  it("V70-START-07 개정: 호출부가 명시적으로 connectedCount 를 넘기면 로딩 중이어도 그 값을 따른다", () => {
+    mocks.channels = undefined;
+    render(<GettingStartedStrip connectedCount={0} />);
+
+    expect(screen.getByText(/채널 연결 0\/15/)).toBeInTheDocument();
+    mocks.channels = {};
   });
 });

@@ -133,6 +133,8 @@ describe("OSMU-FLOW-UI-03 생성실 첫 행동 계약", () => {
 });
 
 describe("V77-CREATE-NETWORK 생성 담당 구조 선택 계약", () => {
+  // 전체 회귀에서는 366개 파일의 jsdom 작업이 겹친다. 이 경로는 일곱 단계 문답과
+  // 비동기 생성 결과까지 기다리므로 전역 상한은 그대로 두고 이 브라우저형 계약만 늘린다.
   it("V77-CREATE-NETWORK-01 정상: 본문 직접 생성 동선을 유지하며 생성 담당에서 고른 주제와 구조를 text API에 보낸다", async () => {
     mocks.room = "create";
     window.history.replaceState(null, "", "/studio?room=create");
@@ -163,7 +165,7 @@ describe("V77-CREATE-NETWORK 생성 담당 구조 선택 계약", () => {
     ));
     await waitFor(() => expect(document.querySelector("[data-quick-draft-result]")).toHaveTextContent("네트워크 요청으로 생성된 영상 후보입니다."));
     expect(screen.getByLabelText("생성 담당 대화창")).toBeInTheDocument();
-  });
+  }, 15_000);
 
   // 2026-09-05 회장 계정 실측 회귀: 새 초안을 만들어도 이전 초안 번호를 그대로 들고 가서,
   // 그 번호가 이미 발행된 것이면 발행이 매번 "이미 올라갔습니다"로 닫혔다. 스튜디오에서

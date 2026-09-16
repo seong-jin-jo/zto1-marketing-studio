@@ -90,14 +90,14 @@ export function KeywordsEditor({ channel }: KeywordsEditorProps) {
           <button
             onClick={handleAiSuggest}
             disabled={suggesting}
-            className="px-stack-tight py-micro text-caption bg-accent text-accent-fg rounded-chip hover:bg-accent-hover disabled:opacity-50"
+            className="min-h-control-touch px-stack-tight py-micro text-caption bg-accent text-accent-fg rounded-chip hover:bg-accent-hover disabled:opacity-50"
           >
             {suggesting ? "생성중..." : "AI 제안"}
           </button>
-          <button onClick={handleCopyCommon} className="px-stack-tight py-micro text-caption bg-surface-2 text-subtle rounded-chip hover:bg-surface-2">
+          <button onClick={handleCopyCommon} className="min-h-control-touch px-stack-tight py-micro text-caption bg-surface-2 text-subtle rounded-chip hover:bg-surface-2">
             공통에서 복사
           </button>
-          <button onClick={handleSave} disabled={saving} className="px-stack py-micro text-caption bg-accent text-accent-fg rounded-chip hover:bg-accent-hover disabled:opacity-50">
+          <button onClick={handleSave} disabled={saving} className="min-h-control-touch px-stack py-micro text-caption bg-accent text-accent-fg rounded-chip hover:bg-accent-hover disabled:opacity-50">
             {saving ? "저장 중..." : "저장"}
           </button>
         </div>
@@ -115,16 +115,16 @@ export function KeywordsEditor({ channel }: KeywordsEditorProps) {
           <div className="flex items-center justify-between mb-stack-tight">
             <span className="text-caption text-accent font-medium">AI 제안 ({suggestedKeywords.length}개)</span>
             <div className="flex gap-stack-tight">
-              <button onClick={handleApplyAll} className="px-stack-tight py-micro text-caption bg-accent text-accent-fg rounded-chip hover:bg-accent-hover">
+              <button onClick={handleApplyAll} className="min-h-control-touch px-stack-tight py-micro text-caption bg-accent text-accent-fg rounded-chip hover:bg-accent-hover">
                 전체 추가
               </button>
               <button
                 onClick={() => { navigator.clipboard.writeText(suggestedKeywords.join("\n")); showToast("클립보드에 복사됨", "info"); }}
-                className="px-stack-tight py-micro text-caption bg-surface-2 text-subtle rounded-chip hover:bg-surface-2"
+                className="min-h-control-touch px-stack-tight py-micro text-caption bg-surface-2 text-subtle rounded-chip hover:bg-surface-2"
               >
                 복사
               </button>
-              <button onClick={() => setSuggestedKeywords(null)} className="px-stack-tight py-micro text-caption text-subtle hover:text-muted">
+              <button onClick={() => setSuggestedKeywords(null)} className="min-h-control-touch px-stack-tight py-micro text-caption text-subtle hover:text-muted">
                 닫기
               </button>
             </div>

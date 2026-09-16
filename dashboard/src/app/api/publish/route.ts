@@ -1,4 +1,5 @@
 import { withTenant } from "@/lib/db";
+import { recordPublicationEvent } from "@/lib/usage-events";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { markQueuePublished } from "@/lib/queue-store";
 import { reportFailure, reportRecovery, normalizePlatform, classifyPublishFailure } from "@/lib/observability";
@@ -70,6 +71,10 @@ type ReservationConflictRow = {
   permalink: string | null;
   reserved_at: string | null;
   first_comment_status: string | null;
+  // 2026-09-16 실측(j.the.great.investor): 이미 올라간 글을 "지금 발행"으로 다시 누르면
+  // 이 dedupe 경로가 옛 글을 돌려주는데, 화면은 그것을 새로 올라간 것처럼 "새 창" 링크만
+  // 보여줬다. 언제 올라간 것인지를 응답에 실어야 화면이 구분해 말할 수 있다.
+  published_at: string | null;
 };
 
 // 첫 댓글 결과를 본문 상태와 따로 저장한다. 본문 성공 + 댓글 실패를 published/error NULL 로
@@ -331,7 +336,8 @@ export async function POST(request: Request) {
     if (!reservationId) {
     const [conflict] = await withTenant(tenant_id, (sql) => sql<ReservationConflictRow[]>`
       SELECT id::text, status, external_id, permalink,
-             reserved_at::text AS reserved_at, first_comment_status
+             reserved_at::text AS reserved_at, first_comment_status,
+             published_at::text AS published_at
         FROM published_posts
        WHERE tenant_id = ${tenant_id}::uuid
          AND platform = ${platform}
@@ -496,6 +502,7 @@ export async function POST(request: Request) {
           externalId: existing.external_id,
           permalink: existing.permalink ?? undefined,
           alreadyPublished: true,
+          publishedAt: existing.published_at ?? undefined,
           firstComment: recovered,
           partial: !recovered.ok,
         }, recovered.ok ? undefined : { headers: { "Cache-Control": "no-store" } });
@@ -557,6 +564,7 @@ export async function POST(request: Request) {
         externalId: existing.external_id ?? undefined,
         permalink,
         alreadyPublished: true,
+        publishedAt: existing.published_at ?? undefined,
       });
     }
     }
@@ -699,6 +707,10 @@ export async function POST(request: Request) {
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }
+
+  // 성과실 "오늘 발행" 이 이 성공을 세게 한다. published_posts 는 이미 위에서 기록됐지만
+  // 사용량 집계(/api/usage)는 usage_events 만 읽는다(2026-09-16 실측, 두 정본이 갈려 있었다).
+  if (result.ok) await recordPublicationEvent(tenant_id, platform);
 
   if (result.ok && isDraftUuid) {
     try {

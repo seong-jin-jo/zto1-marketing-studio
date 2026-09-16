@@ -300,7 +300,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
             target="_blank"
             rel="noopener noreferrer"
             data-testid={`review-guidance-link-${provider}`}
-            className="mt-stack-tight inline-flex text-caption text-accent underline underline-offset-2"
+            className="mt-stack-tight inline-flex items-center min-h-control-touch text-caption text-accent underline underline-offset-2"
           >
             {readinessEntry.guidance.externalLink.label}
           </a>
@@ -311,7 +311,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
         disabled={busy || readinessLoading || disabledByReadiness}
         data-testid={`connect-${provider}`}
         data-ready={disabledByReadiness ? "false" : "true"}
-        className={`px-pad-inset py-stack-tight text-body-sm rounded-control disabled:opacity-50 ${
+        className={`min-h-control-touch px-pad-inset py-stack-tight text-body-sm rounded-control disabled:opacity-50 ${
           disabledByReadiness
             ? "bg-surface-2 text-subtle"
             : "bg-accent text-accent-fg hover:bg-accent-hover"
@@ -342,7 +342,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
             type="button"
             onClick={() => setShowSwitchNote((v) => !v)}
             data-testid={`switch-account-${provider}`}
-            className="block text-caption text-accent underline underline-offset-2"
+            className="inline-flex items-center min-h-control-touch text-caption text-accent underline underline-offset-2"
           >
             계정이 안 바뀌면 눌러 보세요
           </button>
@@ -356,7 +356,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
                 target="_blank"
                 rel="noopener noreferrer"
                 data-testid={`manage-provider-account-${provider}`}
-                className="inline-flex text-caption text-accent underline underline-offset-2"
+                className="inline-flex items-center min-h-control-touch text-caption text-accent underline underline-offset-2"
               >
                 {accountSwitchHelp.managementLabel} ↗
               </a>
@@ -375,7 +375,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
           <button
             type="button"
             onClick={() => setReadinessAttempt((attempt) => attempt + 1)}
-            className="mt-micro text-caption text-accent underline underline-offset-2"
+            className="mt-micro inline-flex items-center min-h-control-touch text-caption text-accent underline underline-offset-2"
           >
             다시 확인
           </button>
@@ -399,7 +399,7 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
           target="_blank"
           rel="noopener noreferrer"
           data-testid={`connect-failure-guidance-link-${provider}`}
-          className="mt-micro inline-flex text-caption text-accent underline underline-offset-2"
+          className="mt-micro inline-flex items-center min-h-control-touch text-caption text-accent underline underline-offset-2"
         >
           {readinessEntry.guidance.externalLink.label}
         </a>

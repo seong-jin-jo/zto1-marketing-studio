@@ -186,7 +186,7 @@ function CardNewsEditor({ onReload, editingPostId, onBackToQueue }: { onReload: 
               <label className="text-caption text-subtle block mb-micro">스타일</label>
               <div className="flex gap-stack-tight">
                 {["dark", "light", "gradient", "tech", "warm"].map(s => (
-                  <button key={s} onClick={() => setEd(prev => ({ ...prev, style: s }))} className={`px-stack py-stack-tight text-caption rounded-chip ${ed.style === s ? "bg-accent text-accent-fg" : "bg-surface-2 text-subtle hover:bg-surface-2"}`}>
+                  <button key={s} onClick={() => setEd(prev => ({ ...prev, style: s }))} className={`min-h-control-touch px-stack py-stack-tight text-caption rounded-chip ${ed.style === s ? "bg-accent text-accent-fg" : "bg-surface-2 text-subtle hover:bg-surface-2"}`}>
                     {s}
                   </button>
                 ))}
@@ -195,7 +195,7 @@ function CardNewsEditor({ onReload, editingPostId, onBackToQueue }: { onReload: 
             <div>
               <div className="flex items-center justify-between mb-micro">
                 <label className="text-caption text-subtle">슬라이드 (각 장의 텍스트)</label>
-                <button onClick={addSlide} className="text-caption text-accent hover:text-accent">+ 슬라이드 추가</button>
+                <button onClick={addSlide} className="inline-flex items-center min-h-control-touch text-caption text-accent hover:text-accent">+ 슬라이드 추가</button>
               </div>
               <div className="space-y-stack-tight">
                 {ed.slides.map((s, i) => (
@@ -233,7 +233,7 @@ function CardNewsEditor({ onReload, editingPostId, onBackToQueue }: { onReload: 
               <div className="flex items-center justify-between mb-stack-tight">
                 <p className="text-caption text-subtle">{ed.result.slides.length} slides</p>
                 <div className="flex gap-stack-tight">
-                  <label className="text-caption text-accent hover:text-accent cursor-pointer">
+                  <label className="inline-flex items-center min-h-control-touch text-caption text-accent hover:text-accent cursor-pointer">
                     + 이미지 추가
                     <input type="file" multiple accept="image/*" className="hidden" onChange={handleUpload} />
                   </label>
@@ -473,7 +473,7 @@ export function InstagramPage() {
         ) : (
           <div className="card p-region text-center">
             <p className="text-subtle text-body-sm mb-stack-tight">Instagram 계정을 연결하면 큐를 사용할 수 있습니다</p>
-            <button onClick={() => setSubTab("settings")} className="text-caption text-accent hover:text-accent">설정에서 연결하기</button>
+            <button onClick={() => setSubTab("settings")} className="inline-flex items-center min-h-control-touch text-caption text-accent hover:text-accent">설정에서 연결하기</button>
           </div>
         )
       )}
@@ -483,7 +483,7 @@ export function InstagramPage() {
         ) : (
           <div className="card p-region text-center">
             <p className="text-subtle text-body-sm mb-stack-tight">Instagram 계정을 연결하면 카드뉴스 에디터를 사용할 수 있습니다</p>
-            <button onClick={() => setSubTab("settings")} className="text-caption text-accent hover:text-accent">설정에서 연결하기</button>
+            <button onClick={() => setSubTab("settings")} className="inline-flex items-center min-h-control-touch text-caption text-accent hover:text-accent">설정에서 연결하기</button>
           </div>
         )
       )}
@@ -491,7 +491,7 @@ export function InstagramPage() {
         connected ? <AnalyticsTab /> : (
           <div className="card p-pad-inset text-center">
             <p className="text-subtle text-body-sm mb-stack-tight">Instagram 계정을 연결하면 분석을 사용할 수 있습니다</p>
-            <button onClick={() => setSubTab("settings")} className="text-caption text-accent">설정에서 연결하기</button>
+            <button onClick={() => setSubTab("settings")} className="inline-flex items-center min-h-control-touch text-caption text-accent">설정에서 연결하기</button>
           </div>
         )
       )}

@@ -306,3 +306,13 @@ Key routing rules:
 - Save/restore context → /context-save or /context-restore
 
 이 절차로 "AI가 가상 엔지니어링 팀처럼" 동작하게 한다. Boil the Ocean (완전성) 원칙 준수.
+
+## 그로스 레인
+
+이 벤처의 마케팅은 5칸 레인으로 돈다: 전략 → 우선순위 → 자산·계측 준비 → 발주·제작 → 검수·집행.
+판독은 레인 밖(회고)이다. 절차 = `/growth-lane` · 규격 = `~/.claude/standards/growth-loop.md` §7.2
+산출물 = `docs/growth/campaigns/<스프린트>/01~06.md` (**브랜치 말고 main**. 대시보드가 작업 트리를 읽는다)
+진행 판정 = frontmatter `status` (파일 존재는 완료가 아니다, §7.2.1)
+그로스 진행을 `pipeline-state` 에 적지 마라(§7.9). 게이트 파일 = `growth-state.<스프린트>.md`, 서사 = `session-state.growth.md`.
+이 벤처의 특이점: 4칸 "외주"는 OpenClaw 크론, 즉 제품 자체다(도그푸딩). 캠페인 컨셉 = 메타 데모(회장 2026-09-16).
+

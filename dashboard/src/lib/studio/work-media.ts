@@ -29,7 +29,7 @@ export function mediaTopicKey(idea: string | null | undefined): string {
   return String(idea ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-export type StampedMedia = { topicKey?: string } | null | undefined;
+export type StampedMedia = { topicKey?: string; aspectRatio?: string } | null | undefined;
 
 /**
  * 이 매체가 지금 주제의 것인가.
@@ -48,6 +48,21 @@ export function mediaFreshness(media: StampedMedia, idea: string | null | undefi
 /** 재사용해도 되는 매체인가. 도장이 없는 것은 재사용하지 않는다(옛 파일 경로일 수 있다). */
 export function isReusableMedia(media: StampedMedia, idea: string | null | undefined): boolean {
   return mediaFreshness(media, idea) === "fresh";
+}
+
+/**
+ * 숏폼 영상의 바탕 그림으로 재사용해도 되는가.
+ *
+ * 2026-09-16 실측(j.the.great.investor): 숏폼 영상이 768x768 정사각형으로 나왔다.
+ * DESIGN.md 는 영상을 9:16 세로로 못박았는데, 바탕 그림이 카드뉴스용 1:1 정사각 대표
+ * 이미지였다(회장 계정: 대표 이미지 만들고 → 영상 만들기를 누르면 그 정사각 그림을
+ * "재사용"했다). `/api/higgsfield/video` 는 image→video 라 결과 비율이 바탕 그림을
+ * 따라간다 — 화면비 파라미터가 없다. 그래서 재사용 판정에 **주제가 같은가** 뿐 아니라
+ * **영상에 맞는 비율인가**도 넣는다. 1:1 대표 이미지는 주제가 같아도 영상 바탕으로
+ * 재사용하지 않고 9:16 으로 새로 만든다.
+ */
+export function isReusableVideoBaseImage(media: StampedMedia, idea: string | null | undefined): boolean {
+  return isReusableMedia(media, idea) && media?.aspectRatio === "9:16";
 }
 
 export type VideoRequestDecision = {
@@ -74,7 +89,7 @@ export function decideVideoRequest(input: {
   img: StampedMedia;
   vid: StampedMedia;
 }): VideoRequestDecision {
-  const baseImage = isReusableMedia(input.img, input.idea) ? "reuse" : "new";
+  const baseImage = isReusableVideoBaseImage(input.img, input.idea) ? "reuse" : "new";
   const video = mediaFreshness(input.vid, input.idea);
   if (video === "fresh") {
     return {

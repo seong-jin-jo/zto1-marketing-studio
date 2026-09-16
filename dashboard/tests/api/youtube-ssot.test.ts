@@ -19,6 +19,7 @@ import { createTempDir, setupTestEnv, cleanupTestEnv } from "../helpers";
 const H = vi.hoisted(() => ({
   cred: null as { token: string; refreshToken?: string; userId?: string; meta?: Record<string, unknown>; accountId?: string } | null,
   updateCalls: [] as unknown[][],
+  otherWrites: [] as [string, unknown[]][],
   tenantId: "tenant-1" as string | null,
 }));
 
@@ -35,8 +36,17 @@ vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async (_t: string, cb: (sql: unknown) => unknown) => {
     const sql = Object.assign(
       (s: TemplateStringsArray, ...vals: unknown[]) => {
-        H.updateCalls.push(vals);
-        return Promise.resolve(s.join("?").includes("UPDATE channel_accounts") ? [{ is_default: false }] : []);
+        // 2026-09-16: youtube 발행 성공 시 published_posts 기록 + usage_events 발행 집계를
+        // 새로 추가했다(성과실 "발행 0" 실측 결함). "refresh 헬퍼가 DB를 정확히 1회만
+        // 쓴다" 는 이 테스트의 원래 의도(H.updateCalls)와 섞이지 않게 channel_accounts
+        // 갱신만 그 배열에 남기고 나머지 기록은 별도로 받는다.
+        const query = s.join("?");
+        if (query.includes("UPDATE channel_accounts") || query.includes("UPDATE integrations")) {
+          H.updateCalls.push(vals);
+        } else {
+          H.otherWrites.push([query, vals]);
+        }
+        return Promise.resolve(query.includes("UPDATE channel_accounts") ? [{ is_default: false }] : []);
       },
       { json: (v: unknown) => v },
     );
@@ -51,6 +61,7 @@ beforeEach(() => {
   vi.resetModules();
   H.cred = null;
   H.updateCalls = [];
+  H.otherWrites = [];
   H.tenantId = "tenant-1";
   process.env.OSMU_SECRET_KEY = "enc-key";
   tmpDir = createTempDir();
@@ -265,6 +276,12 @@ describe("POST /api/video/publish — youtube 브랜치", () => {
     expect(res.status).toBe(200);
     expect(body.ok).toBe(true);
     expect(body.videoId).toBe("VIDEO123");
+    // 2026-09-16 실측: 오늘 03:00 YouTube Shorts 가 실제로 올라갔는데
+    // `published_posts` 에 아무 행도 없었다(성과실·metrics-collector 가 이 표만 읽어
+    // 그 발행을 영영 못 봤다). 성공 응답 뒤 이 분기도 다른 채널처럼 기록을 남겨야 한다.
+    const insertedPublishedPosts = H.otherWrites.find(([query, vals]) =>
+      query.includes("INSERT INTO published_posts") && vals.includes("VIDEO123"));
+    expect(insertedPublishedPosts).toBeDefined();
   });
 
   it("upload PUT non-2xx는 video id가 든 JSON이어도 실패한다", async () => {

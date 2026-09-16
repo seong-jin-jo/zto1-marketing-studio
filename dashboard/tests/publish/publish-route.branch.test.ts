@@ -15,8 +15,9 @@ const H = vi.hoisted(() => ({
   tenantId: null as string | null,
   cred: null as { token: string; userId?: string; meta?: Record<string, unknown>; accountId?: string } | null,
   inserts: [] as unknown[][],
+  usageEventInserts: [] as unknown[][],
   getChannelCredCalls: [] as unknown[][],
-  existingPublication: null as { external_id: string | null; permalink: string | null } | null,
+  existingPublication: null as { external_id: string | null; permalink: string | null; published_at?: string | null } | null,
   publicationRecordError: null as Error | null,
   markQueuePublishedCalls: [] as unknown[][],
   queueRecordError: null as Error | null,
@@ -55,6 +56,7 @@ vi.mock("@/lib/db", () => ({
             permalink: H.existingPublication.permalink,
             reserved_at: null,
             first_comment_status: H.existingFirstCommentStatus,
+            published_at: H.existingPublication.published_at ?? null,
           }]);
         }
         if (H.reservationClaimed) {
@@ -93,6 +95,13 @@ vi.mock("@/lib/db", () => ({
           vals[8],
         ]);
         if (vals[3] === "published") H.existingPublication = { external_id: vals[0] as string | null, permalink: vals[1] as string | null };
+        return Promise.resolve([]);
+      }
+      // 2026-09-16: 성과실 발행 집계(recordPublicationEvent, lib/usage-events.ts)가 발행
+      // 성공 뒤 usage_events 에 별도로 기록한다. published_posts 기록 개수를 세는 기존
+      // H.inserts 단언(toHaveLength(1) 등)과 섞이면 안 되므로 따로 받는다.
+      if (query.includes("INSERT INTO usage_events")) {
+        H.usageEventInserts.push(vals);
         return Promise.resolve([]);
       }
       H.inserts.push(vals);
@@ -161,6 +170,7 @@ beforeEach(() => {
   H.tenantId = "tenant-1";
   H.cred = { token: "tok", userId: "u-1" };
   H.inserts = [];
+  H.usageEventInserts = [];
   H.getChannelCredCalls = [];
   H.existingPublication = null;
   H.publicationRecordError = null;
@@ -309,6 +319,25 @@ describe("/api/publish — happy path (실 publish* + fetch 목)", () => {
     expect(v[I.platform]).toBe("threads");
     expect(v[I.externalId]).toBe("media-1");
     expect(v[I.draft]).toBe("d1111111-1111-4111-8111-111111111111");
+    // 2026-09-16 실측(j.the.great.investor): 실제로 Threads·YouTube 를 발행했는데 성과실
+    // "오늘 발행 0" 이 그대로였다. published_posts 는 기록되는데 사용량 집계(usage_events,
+    // /api/usage 가 읽는 정본)는 한 번도 안 쓰였기 때문이다. 성공한 발행은 여기도 남겨야 한다.
+    expect(H.usageEventInserts).toHaveLength(1);
+    expect(H.usageEventInserts[0][0]).toBe("tenant-1");
+    expect(H.usageEventInserts[0][1]).toBe("publication");
+    expect(H.usageEventInserts[0][2]).toBe(1);
+  });
+
+  it("실패한 발행은 usage_events 발행 집계를 남기지 않는다", async () => {
+    installFetch([
+      { match: "me?fields=id", json: { id: "live-id" } },
+      { match: "fields=status", json: { status: "FINISHED" } },
+      { match: "/threads_publish", status: 500, json: { error: { message: "provider down" } } },
+      { match: "/threads", json: { id: "container-2" } },
+    ]);
+    const { body } = await callPublish({ platform: "threads", text: "hi", draft_id: "d2222222-1111-4111-8111-111111111111" });
+    expect(body.ok).toBe(false);
+    expect(H.usageEventInserts).toHaveLength(0);
   });
 
   it("UUID draft 성공 시 queue를 published로 마킹한다", async () => {
@@ -353,6 +382,32 @@ describe("/api/publish — happy path (실 publish* + fetch 목)", () => {
       externalId: "already-1",
       permalink: "https://www.threads.net/@u/post/already",
     }]]);
+  });
+
+  // 2026-09-16 실측(j.the.great.investor): 이미 발행된 작업물을 "지금 발행"으로 다시 누르면
+  // 이 dedupe 경로가 옛 글을 돌려주는데, 화면은 그것을 새로 올라간 것처럼 "새 창" 링크만
+  // 보여줬다(`[publish] queue_record_absent(dedupe)`). 응답에 발행 시각을 실어야 화면이
+  // "이미 올라간 글입니다(시각)" 로 구분해 말할 수 있다.
+  it("동일 UUID dedupe 응답에 published_at을 publishedAt으로 실어 화면이 구분할 수 있게 한다", async () => {
+    H.cred = { token: "tok", userId: "u-1", accountId: "11111111-1111-4111-8111-111111111111" };
+    H.existingPublication = {
+      external_id: "already-2",
+      permalink: "https://www.threads.net/@u/post/already-2",
+      published_at: "2026-09-15T10:00:00.000Z",
+    };
+    vi.stubGlobal("fetch", vi.fn());
+    const { body } = await callPublish({
+      platform: "threads",
+      text: "hi",
+      draft_id: "23730d99-a268-47de-9cf9-90157ea1fa79",
+      account_id: "11111111-1111-4111-8111-111111111111",
+    });
+
+    expect(body).toMatchObject({
+      ok: true,
+      alreadyPublished: true,
+      publishedAt: "2026-09-15T10:00:00.000Z",
+    });
   });
 
   it("BE-V63-발행-예약-05 경합: 동일 초안 동시 요청은 외부 공급자를 한 번만 호출한다", async () => {

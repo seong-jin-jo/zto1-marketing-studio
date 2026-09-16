@@ -1006,6 +1006,16 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                 </Button>
               ) : null}
             </div>
+            {/*
+              2026-09-16 실측(j.the.great.investor): 생성기 로그인이 안 된 상태에서 "대표
+              이미지 만들기" 를 누르면 토스트가 스치듯 뜨고 사라져 "아무 일도 안 일어났다"
+              로 읽혔다. 실패 사유(setLastError)는 이미 있는데 이 버튼들 옆에는 그것을
+              계속 보여 주는 자리가 없었다 — 글자 카드 실패(textCardError)에는 있는데
+              생성기 호출 실패에는 없었다. 같은 자리를 만든다.
+            */}
+            {quickDraftError ? (
+              <p role="alert" className="text-caption text-danger" data-testid="create-media-error">{quickDraftError}</p>
+            ) : null}
             {textCardError ? (
               <p className="text-caption text-warning" data-text-card-error>{textCardError}</p>
             ) : null}

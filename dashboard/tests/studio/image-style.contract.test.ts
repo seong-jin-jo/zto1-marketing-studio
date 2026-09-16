@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildImagePrompt, paletteToColors, pickImageSubject, IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
+import { buildImagePrompt, paletteToColors, pickImageSubject, learningVisualHints, IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
 
 // 회장 2026-09-08: "생성할 때 여러 옵션은 안 받는 거냐. 고객은 이것저것 결을 보고 선택한
 // 다음 생성하고 싶어할 듯." 종전에는 결을 고를 자리가 없어 같은 글감이면 늘 같은 결만
@@ -84,5 +84,28 @@ describe("그림 주제 고르기", () => {
 
   it("아무것도 없으면 무난한 장면으로 대신한다", () => {
     expect(pickImageSubject({})).toBe("brand lifestyle scene");
+  });
+});
+
+// 2026-09-16 실측(j.the.great.investor): 생성 이미지에 깨진 영문 간판 글자
+// ("hry lecimino Dry Cleening")가 박혔다. "동네 가게" 업종 장면이 정면 외관("shop front")을
+// 그리게 했고, 정면 외관은 간판이 달리는 자리라 모델이 못 읽는 글자를 지어 그렸다.
+describe("업종 장면은 간판이 나올 자리를 피한다", () => {
+  it("동네 가게 장면은 정면 외관(shop front) 대신 매장 안쪽을 그린다", () => {
+    const hints = learningVisualHints({ industry: "동네 가게" });
+    const scene = hints.join(" ");
+    expect(scene).not.toMatch(/shop front/i);
+    expect(scene).toContain("interior counter");
+  });
+
+  it("세탁소·드라이클리닝 업종에도 간판 없는 실내 장면을 붙인다", () => {
+    const hints = learningVisualHints({ industry: "동네 세탁소" });
+    expect(hints.join(" ")).toContain("laundromat interior");
+  });
+
+  it("최종 지시문은 실외 정면 대신 실내 근접 구도를 말한다(간판이라는 낱말 없이)", () => {
+    const out = buildImagePrompt("동네 세탁소 후기", null, {});
+    expect(out).toContain("close interior framing");
+    expect(out).not.toMatch(/text|letter|signage|watermark|logo|label|sign\b/i);
   });
 });

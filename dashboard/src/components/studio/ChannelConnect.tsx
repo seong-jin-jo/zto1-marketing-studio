@@ -77,7 +77,7 @@ export function ChannelConnect({ workspace, onClose }: { workspace: Workspace; o
       <div className="w-full max-w-2xl rounded-surface border border-accent bg-surface/95 backdrop-blur-xl p-stack-section shadow-floating max-h-[88vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-micro">
           <h2 className="text-lead font-bold bg-gradient-to-r from-accent to-accent-hover bg-clip-text text-transparent">채널 연결</h2>
-          <button onClick={onClose} className="text-subtle text-body-sm">✕</button>
+          <button onClick={onClose} className="ds-touch-target inline-flex items-center justify-center text-subtle text-body-sm">✕</button>
         </div>
         <p className="text-caption text-subtle mb-pad-inset">{workspace.name} · 입력 후 저장하면 실제 API로 검증되고 계정이 확인됩니다</p>
 
@@ -86,7 +86,7 @@ export function ChannelConnect({ workspace, onClose }: { workspace: Workspace; o
             const connected = Boolean((cfg?.[c] as { connected?: boolean })?.connected);
             return (
               <button key={c} onClick={() => { setPlatform(c); setResult(null); setShowManualCreds(false); }}
-                className={`px-stack py-stack-tight rounded-control text-caption flex items-center gap-micro ${platform === c ? "bg-accent text-accent-fg" : "bg-surface-2 text-subtle"}`}>
+                className={`min-h-control-touch px-stack py-stack-tight rounded-control text-caption flex items-center gap-micro ${platform === c ? "bg-accent text-accent-fg" : "bg-surface-2 text-subtle"}`}>
                 {LABELS[c] || c}{connected && <span className="text-success">✓</span>}
               </button>
             );
@@ -107,7 +107,7 @@ export function ChannelConnect({ workspace, onClose }: { workspace: Workspace; o
                   <button
                     type="button"
                     onClick={() => setShowManualCreds((v) => !v)}
-                    className="mt-stack-tight text-caption text-accent"
+                    className="mt-stack-tight inline-flex items-center min-h-control-touch text-caption text-accent"
                   >
                     {showManualCreds ? "수동 입력 닫기" : "고급: 토큰 직접 입력"}
                   </button>
@@ -124,7 +124,7 @@ export function ChannelConnect({ workspace, onClose }: { workspace: Workspace; o
                     connectLabel="수동 연결 + 검증"
                   />
                   <button onClick={testConnection} disabled={testing}
-                    className="mt-stack w-full py-stack-tight text-caption bg-surface-2 hover:bg-surface-2 text-muted rounded-chip disabled:opacity-50">
+                    className="mt-stack min-h-control-touch w-full py-stack-tight text-caption bg-surface-2 hover:bg-surface-2 text-muted rounded-chip disabled:opacity-50">
                     {testing ? "테스트 중…" : "연결 테스트 (저장된 키 재검증)"}
                   </button>
                 </>

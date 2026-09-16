@@ -43,6 +43,13 @@ export function GettingStartedStrip({
   // 있으면 더 정확히 세는 보조 자료로만 쓴다. 없다고 안내를 없애지 않는다.
   const onboarding = onboardingData as ChecklistData | undefined;
   const channels = IMPLEMENTED_PLUGINS.filter((key) => key !== "midjourney");
+  // 2026-09-16 실측(j.the.great.investor): "채널 연결 0/15" 가 같은 세션의 다른 화면에서는
+  // "3/15" 로 떴다. channelConfig 조회가 아직 안 끝난 동안(undefined) 이 줄이 "연결 0"으로
+  // 단정해 그렸기 때문이다 — 로딩 중을 안 됨으로 잘못 읽은 것이다. 온보딩 조회의 boolean
+  // 폴백(channelConnected ? 1 : 0)도 진짜 개수가 아니라 근사값이라 같은 문제를 만든다.
+  // 로딩 중에는 숫자를 비우고(있으면 그 뜻을 확실히 말하고), 소스는 channel-config
+  // 하나로 통일한다.
+  const channelConfigLoading = channelConfig === undefined;
   const detectedConnectedCount = channelConfig
     ? channels.filter((key) => {
         const channel = channelConfig[key] as Record<string, unknown> | undefined;
@@ -78,7 +85,7 @@ export function GettingStartedStrip({
         <b className="shrink-0">시작 {done}/{STEPS.length}</b>
         <span className="h-stack-section border-l border-accent/30" aria-hidden />
         <span className="min-w-0 flex-1 truncate">
-          다음 할 일: {learningIncomplete ? `AI가 내 일을 이해하도록 학습 정보 ${learningFilled}/${learningTotal}칸 채우기` : next.label} · 채널 연결 {connectedCount}/{channels.length}
+          다음 할 일: {learningIncomplete ? `AI가 내 일을 이해하도록 학습 정보 ${learningFilled}/${learningTotal}칸 채우기` : next.label} · 채널 연결 {controlledConnectedCount === undefined && channelConfigLoading ? "확인 중" : `${connectedCount}/${channels.length}`}
         </span>
         {/* 단추가 늘 "채널 연결하기" 였다. 채널을 이미 붙인 사람에게는 할 일이 아니다.
             지금 남은 칸으로 바로 데려간다. */}

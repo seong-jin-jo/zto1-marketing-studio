@@ -17,7 +17,8 @@ describe("네 방 화면 준비 제한시간 회귀", () => {
     expect(source).toContain('process.env.FOUR_ROOM_READY_TIMEOUT_MS || "120000"');
     expect(source).toContain('process.env.FOUR_ROOM_TOTAL_TIMEOUT_MS || "300000"');
     expect(source).toContain("{ timeout: remainingTimeout(");
-    expect(source).toContain('waitUntil: "commit", timeout: remainingTimeout(');
+    expect(source).toContain('remainingTimeout(`${width} ${room.label} 주소 이동`)');
+    expect(source).not.toContain('waitUntil: "commit"');
     expect(source).toContain('waitUntil: "domcontentloaded", timeout: remainingTimeout(');
     expect(source).not.toContain("timeout: 30000");
     expect(source).toContain("readyTimeoutMs, observations");
