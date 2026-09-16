@@ -2,6 +2,13 @@
 
 목적: OSMU 그로스(마케팅) 레인을 개시해 2026-09 첫 바퀴(전략→우선순위→개통→발주→집행)를 돌린다. 캠페인 컨셉 = 메타 데모("이 계정의 모든 게시물은 OSMU 로 만들어졌다").
 
+# 2026-09-17 02시 30분 회장 질문: SNS 세팅 순서·Playwright 저장 프로필 자동 운전 가부
+회장: "뭐부터? SNS 세팅부터? Claude in Chrome 말고 Playwright 프로필로 인스타·스레드 계정 저장해 쓸 수 없나, 안 되면 다른 브라우저".
+답변(컨트롤러 직접 판단): 순서는 3칸 개통(SNS 세팅)부터가 맞음. 저장 프로필 자동 운전은 기술적으로 가능(gstack setup-browser-cookies·connect-chrome·Playwright 바이너리 실재)하나 **Meta 계정군엔 금지**: 결정.md 385행 2026-07-01 GStack 자동 운전으로 개발자 계정 플래그 실사고 + ADR-005 §7 계정 셋업 자동화 금지. 추천 = 읽기 전용 확인만, 세팅은 회장 손 + 컨트롤러 페어(URL·클릭 경로 안내, 캡처 확인).
+회장 답 대기: ①자동 운전 범위(읽기 전용 추천) ②앞선 3건(A 지목 / 수동 3건 / 정적 도착 페이지 예외 배포).
+다음 액션(답 즉시): 02 chairman-confirmed → decisions.md append → 03-개통 growth-analyst 위임(도착 페이지 규격·UTM 실문자열·GA4 이벤트·회장 수동 절차서).
+남은 이슈: 제품 외부 실발행 미관찰(가설 B~D 선행조건). session 브랜치 커밋 상태(main 미머지, 대시보드는 작업트리 읽음).
+
 # 2026-09-16 03시 15분 2칸 우선순위 draft 완료 · 회장 확인 대기
 2칸: growth-analyst 산출 `02-우선순위.md`. 점수 A 11 / B 7 / C 7 / D 6, 지목 = A 계측 개통. B~D 는 "제품 실발행 관찰 ≥1" 선행조건이 이번 스프린트 안 충족 근거 0 이라 확신 1. verify PASS, gate-stamp 박제, 검사기 0건. status 는 draft(회장 확인 후 chairman-confirmed).
 회장 확인 3건(open-decisions.md 등록): ①A 지목 ②수동 3건(GA4 property·bio 링크·osmu.kr) ③qa 미승인 상태 정적 도착 페이지 1장 배포 예외.

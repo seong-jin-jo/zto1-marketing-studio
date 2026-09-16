@@ -1,11 +1,33 @@
-export function classifyApiReadResponse({ status, expectedRejection = null, method, contentType, bodyText }) {
-  if (expectedRejection?.statuses.includes(status)) return "계약상 거절";
+/**
+ * @typedef {object} ExpectedRejection
+ * @property {number[]} statuses
+ * @property {string[]=} bodyIncludes
+ * @property {boolean=} emptyBody
+ */
+
+/**
+ * @param {object} input
+ * @param {number} input.status
+ * @param {ExpectedRejection | null=} input.expectedRejection
+ * @param {boolean=} input.allowEmptyArray
+ * @param {string} input.method
+ * @param {string} input.contentType
+ * @param {string} input.bodyText
+ */
+export function classifyApiReadResponse({ status, expectedRejection = null, allowEmptyArray = false, method, contentType, bodyText }) {
+  if (expectedRejection?.statuses.includes(status)) {
+    if (expectedRejection.bodyIncludes && !expectedRejection.bodyIncludes.some((marker) => bodyText.includes(marker))) {
+      return "계약 불일치";
+    }
+    if (expectedRejection.emptyBody === true && bodyText.length !== 0) return "계약 불일치";
+    return "계약상 거절";
+  }
   if (status >= 200 && status < 300) {
     if (expectedRejection) return "계약 불일치";
     if (method !== "HEAD" && String(contentType).toLowerCase().includes("application/json")) {
       try {
         const body = JSON.parse(bodyText);
-        if (Array.isArray(body) && body.length === 0) return "응답 구조 오류";
+        if (Array.isArray(body) && body.length === 0 && !allowEmptyArray) return "응답 구조 오류";
         if (body && typeof body === "object" && !Array.isArray(body)) {
           if (body.ok === false || body.success === false) return "실패 본문";
           if (typeof body.error === "string" && body.error.trim()) return "실패 본문";

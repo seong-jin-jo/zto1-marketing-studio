@@ -1,3 +1,25 @@
+# 2026-09-16 18시 53분 네 방 기본 흐름 v17 기능 범위 PASS, 제품 전체 NG
+
+회장 요청 원문을 handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계 값은 바꾸지 않았다. 지정 v63 프로토타입, 확정 요구 대장, 사업 좌표, 디자인 README와 captures manifest, 현재 코드와 이전 QA를 읽었다.
+
+최초 localhost 기본 흐름은 실제 3,044바이트 생성 프롬프트에서 Claude CLI OAuth refresh가 macOS 로그인 키체인 세션을 찾지 못해 NG였다. 감독이 `SECURITYSESSIONID`를 복구하고 앱이 비밀값을 제외한 최소 자식 환경에 이를 보존하게 고쳤다. 제품 수정은 `327500b0`, 타입 계약 보수는 `e7b8dc0d`다. 최종 네 방 단면 중 한 번 발생한 성과실 `ERR_ABORTED`도 숨기지 않고 원인을 분리해 해당 이동 오류에만 한 번 재시도하도록 탐침과 회귀를 고쳤다. 검증기 커밋은 `71495ef5`다.
+
+최종 통제 localhost에서 기본 흐름 11/11, 네 방 단면 4/4, 390 라이트와 다크 및 768, 1024, 1440의 화면 20/20, 성과실에서 생성실 복귀 5/5, Studio v1 14/14를 관찰했다. 가로 넘침, 전체 화면 모달, 탐색 가림, 브라우저 401, 콘솔 오류는 0건이다. Vitest 371파일과 2,387건, TypeScript, build 184/184, schema와 seed 및 RLS, 디자인 lint도 통과했다.
+
+기능 범위만 PASS다. 과제 v63과 canonical v68 승인 핀이 충돌하며 현재 16개 화면은 v63 배치 속성과 불일치하거나 동일 상태 캡처가 아니다. 운영 동적 URL의 배포 버전과 외부 채널 실발행도 미검증이다. 따라서 디자인과 제품 전체 QA, 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v17-gpt-codex.md`, 원본은 `logs/diff/osmu-four-room-flow-20260916-v17/`다. 다음 소유자는 컨트롤러와 product-designer다. 단일 디자인 핀을 확정하고 같은 상태의 16개 화면 정합을 맞춘 뒤 운영 host와 외부 채널을 별도 검증한다.
+
+# 2026-09-16 17시 57분 API 읽기 경로 전수 실사 v15 완료
+
+회장 요청 원문을 handoff basis로 사용했다. 기존 tmux `osmu-sweep091617:0.0`과 session-state는 병렬 변경과 최신 서버 귀속 확인에 사용했다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였다.
+
+최초 실행본에서 `/api/blog-stats`, `/api/elevenlabs-voices`, `/api/ga-analytics`, `/api/gsc-analytics`가 설정 누락 오류를 HTTP 200으로 숨겼고, 검사기는 `/api/images`의 유효한 빈 배열을 오류로 오판했다. 제품 상태 계약과 검사기를 수정하고 회귀 2파일 12건을 추가했다. 코드 커밋은 `c7304dc0`, `cecbe6da`, `3d393fb8`이다.
+
+최신 HEAD와 서버 build가 `50ac3341`로 일치하는 localhost에서 읽기 105경로에 GET 105회, HEAD 1회를 보냈다. 정상 88, 계약상 거절 18, 예상 밖 0, HTTP 500 0이다. PID와 Route Handler 합성 해시는 전후 동일하다. 기본 흐름 11/11, Studio v1 14/14, Vitest 371파일과 2,385건, 조건부 제외 3건, TypeScript, 격리 build 184/184, 시드와 RLS, health HTTP 200과 DB up, 디자인 lint, 390px 로그인과 콘솔 오류 0을 관찰했다.
+
+API 읽기 범위는 PASS다. 과제 v63과 canonical 승인 디자인 v68 핀 충돌 및 기존 정합 NG, 운영 배포, 실제 외부 공급자 자격증명과 채널 실발행은 미검증이므로 디자인 QA와 제품 전체 QA는 NG를 유지한다. 상세 문서는 `docs/qa/osmu-api-read-sweep-v15-gpt-codex.md`, 기계 원본은 `logs/diff/osmu-api-read-sweep-20260916-v15/api-read-sweep-final.json`이다.
+
+다음 소유자는 컨트롤러다. API 읽기 범위 증거를 검토하되 제품 전체 QA 승인이나 배포로 확대하지 않는다. 디자인 정본 핀 충돌을 해소하고 기존 디자인 정합 NG와 운영 외부 연동을 별도 검증한다.
+
 # 2026-09-16 09시 12분 최근 24시간 코드 공격 리뷰 R2 BLOCK
 
 회장 요청 원문을 handoff basis로 사용했다. tmux `openclaw-auto:0.0`은 공유 서버와 동시 작업 확인에만 사용했고 과제 기준은 사용자 요청으로 고정했다. 검토 범위는 착수 시각 기준 `c2008b1a580576a9b4ddff9822af5f695a0d0104..6a51aaf3a6179616bed04266e258cd35d712feec`, first-parent 31개 커밋, 시간 필터 전체 52개 커밋, 순변경 249개 파일이다. 제품 코드는 수정하지 않았다.

@@ -112,20 +112,28 @@ function redact(text) {
 }
 
 const expectedRejections = new Map([
-  ["src/app/api/card-slides/[batchId]/route.ts:GET", { statuses: [400], reason: "없는 카드 묶음 번호 형식 거절" }],
-  ["src/app/api/connect/[provider]/route.ts:GET", { statuses: [503], reason: "Threads OAuth 설정 미준비 거절" }],
-  ["src/app/api/engagement/route.ts:GET", { statuses: [404], reason: "지정 작업 공간의 발행 글 없음" }],
-  ["src/app/api/figma-mcp/callback/route.ts:GET", { statuses: [400], reason: "OAuth state 불일치 거절" }],
-  ["src/app/api/higgsfield/asset/[file]/route.ts:GET", { statuses: [404], reason: "없는 자산 거절" }],
-  ["src/app/api/images/deliver/[token]/route.ts:GET", { statuses: [404], reason: "없는 전달 토큰 거절" }],
-  ["src/app/api/isolation-proof/route.ts:GET", { statuses: [401], reason: "테넌트 인증 토큰 없음" }],
-  ["src/app/api/media/[token]/route.ts:GET", { statuses: [404], reason: "없는 서명 미디어 토큰 거절" }],
-  ["src/app/api/media/[token]/route.ts:HEAD", { statuses: [404], reason: "없는 서명 미디어 토큰을 본문 없이 거절" }],
-  ["src/app/api/studio/v1/derivations/[batchId]/route.ts:GET", { statuses: [404], reason: "없는 파생 작업 거절" }],
-  ["src/app/api/studio/v1/generations/[jobId]/route.ts:GET", { statuses: [404], reason: "없는 생성 작업 거절" }],
-  ["src/app/api/studio/v1/shorts-factory/runs/[runId]/route.ts:GET", { statuses: [404], reason: "없는 숏폼 공장 실행 거절" }],
-  ["src/app/api/tiktok/creator-info/route.ts:GET", { statuses: [400], reason: "토큰에서 테넌트 확인 불가" }],
-  ["src/app/api/tiktok/publish-status/route.ts:GET", { statuses: [400], reason: "토큰에서 테넌트 확인 불가" }],
+  ["src/app/api/blog-stats/route.ts:GET", { statuses: [503], bodyIncludes: ["BLOG_NOT_CONFIGURED"], reason: "블로그 연결 설정 미준비 거절" }],
+  ["src/app/api/card-slides/[batchId]/route.ts:GET", { statuses: [400], bodyIncludes: ["Invalid batch ID"], reason: "없는 카드 묶음 번호 형식 거절" }],
+  ["src/app/api/connect/[provider]/route.ts:GET", { statuses: [503], bodyIncludes: ["OAuth 앱 자격증명이 미설정"], reason: "Threads OAuth 설정 미준비 거절" }],
+  ["src/app/api/elevenlabs-voices/route.ts:GET", { statuses: [503], bodyIncludes: ["ELEVENLABS_NOT_CONFIGURED"], reason: "ElevenLabs 설정 미준비 거절" }],
+  ["src/app/api/engagement/route.ts:GET", { statuses: [404], bodyIncludes: ["POST_NOT_FOUND"], reason: "지정 작업 공간의 발행 글 없음" }],
+  ["src/app/api/figma-mcp/callback/route.ts:GET", { statuses: [400], bodyIncludes: ["인증 상태가 일치하지 않습니다"], reason: "OAuth state 불일치 거절" }],
+  ["src/app/api/ga-analytics/route.ts:GET", { statuses: [503], bodyIncludes: ["GA_NOT_CONFIGURED"], reason: "Google Analytics 설정 미준비 거절" }],
+  ["src/app/api/gsc-analytics/route.ts:GET", { statuses: [503], bodyIncludes: ["GSC_NOT_CONFIGURED"], reason: "Search Console 설정 미준비 거절" }],
+  ["src/app/api/higgsfield/asset/[file]/route.ts:GET", { statuses: [404], bodyIncludes: ["not found"], reason: "없는 자산 거절" }],
+  ["src/app/api/images/deliver/[token]/route.ts:GET", { statuses: [404], bodyIncludes: ["not found"], reason: "없는 전달 토큰 거절" }],
+  ["src/app/api/isolation-proof/route.ts:GET", { statuses: [401], bodyIncludes: ["no-tenant"], reason: "테넌트 인증 토큰 없음" }],
+  ["src/app/api/media/[token]/route.ts:GET", { statuses: [404], bodyIncludes: ["not found"], reason: "없는 서명 미디어 토큰 거절" }],
+  ["src/app/api/media/[token]/route.ts:HEAD", { statuses: [404], emptyBody: true, reason: "없는 서명 미디어 토큰을 본문 없이 거절" }],
+  ["src/app/api/studio/v1/derivations/[batchId]/route.ts:GET", { statuses: [404], bodyIncludes: ["RESOURCE_NOT_FOUND"], reason: "없는 파생 작업 거절" }],
+  ["src/app/api/studio/v1/generations/[jobId]/route.ts:GET", { statuses: [404], bodyIncludes: ["RESOURCE_NOT_FOUND"], reason: "없는 생성 작업 거절" }],
+  ["src/app/api/studio/v1/shorts-factory/runs/[runId]/route.ts:GET", { statuses: [404], bodyIncludes: ["RESOURCE_NOT_FOUND"], reason: "없는 숏폼 공장 실행 거절" }],
+  ["src/app/api/tiktok/creator-info/route.ts:GET", { statuses: [400], bodyIncludes: ["테넌트를 확인할 수 없습니다"], reason: "토큰에서 테넌트 확인 불가" }],
+  ["src/app/api/tiktok/publish-status/route.ts:GET", { statuses: [400], bodyIncludes: ["테넌트를 확인할 수 없습니다"], reason: "토큰에서 테넌트 확인 불가" }],
+]);
+
+const successContracts = new Map([
+  ["src/app/api/images/route.ts:GET", { allowEmptyArray: true, reason: "이미지가 없는 작업 공간의 정상 빈 갤러리" }],
 ]);
 
 const gitCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dashboardRoot, encoding: "utf8" }).trim();
@@ -194,7 +202,8 @@ async function inspectRoute({ file, method }) {
   const url = requestUrl(apiPath);
   const relativeFile = path.relative(dashboardRoot, file);
   const expectedRejection = expectedRejections.get(`${relativeFile}:${method}`);
-  const expectedContract = expectedRejection?.reason || "2xx 성공. 3xx, 예상하지 않은 4xx·5xx는 계약 재검토";
+  const successContract = successContracts.get(`${relativeFile}:${method}`);
+  const expectedContract = expectedRejection?.reason || successContract?.reason || "2xx 성공. 3xx, 예상하지 않은 4xx·5xx는 계약 재검토";
   const startedAt = Date.now();
   const remainingMs = deadlineAt - startedAt;
   if (remainingMs <= 0) {
@@ -223,6 +232,7 @@ async function inspectRoute({ file, method }) {
     const classification = classifyApiReadResponse({
       status: response.status,
       expectedRejection,
+      allowEmptyArray: successContract?.allowEmptyArray === true,
       method,
       contentType: response.headers.get("content-type") || "",
       bodyText: fullBody,

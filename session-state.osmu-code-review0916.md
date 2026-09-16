@@ -1,3 +1,85 @@
+# OSMU code review 2026-09-16 stop-hook handoff
+
+## 무엇을 어디까지 했나
+
+- 코드리뷰 R3 감사, QA 증거, 인수인계는 `e70d5de58b30f0d2a59614a2af4ff621dc08f21a`와 `50ac3341aea889bf3430d8319c48c6ee08fb1346`에 커밋했다.
+- 후속 stop hook에서 다른 QA 위임 `codex-qa-verifier-61880`을 완료까지 감독했다. 해당 위임은 코드 커밋 `c7304dc0`, `cecbe6da`, `3d393fb8`과 증거 커밋 `523aaa4a`를 남겼고 API 읽기 범위를 PASS로 닫았다.
+- 후속 QA 변경은 API 읽기 오류 은폐와 검사기 오판을 고친 별도 작업이다. R3에서 확인한 나머지 MAJOR를 전부 고쳤다는 증거는 아니므로 `REVIEW_VERDICT: BLOCK`은 유지한다.
+- 제품 코드는 이 코드리뷰 세션에서 수정하지 않았다.
+
+## 남은 이슈·블로커
+
+- R3 MAJOR 10건 중 후속 API 읽기 검사기 결함 외 항목은 재리뷰로 해소 확인되지 않았다.
+- 운영 배포, 실제 외부 자격증명, 실제 SNS 발행은 미검증이다.
+- 현재 실행 중인 새 QA 위임과 mobile 위임은 감독 프로세스가 새로 발주한 다른 작업이다. 이 코드리뷰 세션 소유가 아니므로 종료하거나 등록 해제하지 않았다.
+
+## 다음에 칠 명령
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio
+git show --stat --oneline e70d5de5
+git show --stat --oneline 523aaa4a
+rg -n '^MAJOR:|^MINOR:|^REVIEW_VERDICT:' docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-16.md | head -20
+```
+
+다음 소유자는 build 워커다. R3 MAJOR별 수정 커밋을 만든 뒤 code-reviewer가 고정 범위를 다시 공격한다. 종료 증거는 MAJOR 0건과 두 E2E, 동시성·부분 실패 공격 시나리오의 같은 SHA 실측 통과다. 실제 SNS 발행이나 운영 배포가 필요할 때만 회장에게 외부 회수한다.
+
+## 검증했나
+
+- R3 검증은 아래 블록과 감사 문서에 고정했다.
+- 후속 API 읽기 위임은 105경로 106요청, 예상 밖 0, HTTP 500 0, 기본 흐름 11/11, Studio v1 14/14, Vitest 371파일 2,385건, TypeScript와 격리 build 통과를 `523aaa4a`에 기록했다.
+- 위 후속 통과는 API 읽기 범위에 한정하며 제품 전체 QA는 NG다.
+
+# OSMU code review 2026-09-16 R3 handoff
+
+## 무엇을 어디까지 했나
+
+- 회장 요청 원문을 handoff basis로 사용했다. localhost 공유 서버와 다른 세션의 대규모 작업 트리 변경은 관찰만 했고 제품 코드는 수정하지 않았다.
+- 최근 24시간 범위를 `f4b0f5a5188ef6343e22d9ed4cbebd79b05d0bcc..e5a4487e84fe297b5738bb56c522f33f3f171cf9`로 고정했다. 시간 창 커밋 67개, 그래프 범위 79개, 순변경 239파일이다.
+- `pipeline-state.osmu.md`의 v68 승인 핀, 지정 v63 프로토타입, `DESIGN.md` v37, 확정 요구 대장, 사업 좌표, 구현 현황과 diff를 대조했다.
+- `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-16.md` 최상단 R3에 MAJOR 10건, MINOR 1건, `REVIEW_VERDICT: BLOCK`을 기록했다.
+- `docs/qa/qa-tracker.md`에 테스트와 localhost 실측 증거를 기록했다.
+- 감사 문서, QA 증거 16줄, 이 인수인계 문서만 커밋했다. 커밋은 `e70d5de58b30f0d2a59614a2af4ff621dc08f21a`다.
+
+## 남은 이슈·블로커
+
+- 일부 채널을 검증 단계에서 빼도 남은 한 채널이 성공하면 전체 초안이 `published`, 토스트가 `발행 완료`가 된다.
+- YouTube는 외부 업로드 전 예약이 없어 동시 요청이 중복 영상을 만들고, 두 번째 DB 충돌을 숨긴 채 둘 다 성공으로 응답할 수 있다.
+- Reels 외부 성공 뒤 DB 확정 실패, 발행 usage event 실패를 성공으로 숨겨 내부 장부가 수렴하지 않는다.
+- 자막 상한은 프로세스 메모리, Threads insights 대상 claim은 잠금 밖이라 다중 서버와 동시 cron에서 비용 상한과 수집 횟수가 배로 늘어난다.
+- Threads와 Instagram R2 임시 객체 삭제 실패가 무기록으로 사라진다.
+- 정상 HTTP 200 빈 이미지 목록을 검증기가 구조 오류로 오판한다.
+- 접힌 사이드바가 숫자 원을 쓰고 sticky가 없어 승인 아이콘 레일과 상시 이동 계약을 어긴다.
+
+## 다음에 칠 명령
+
+다음 소유자는 build 워커다. 아래 명령은 R3 MAJOR를 수정한 고정 커밋과 동일한 localhost를 띄운 뒤 실행한다.
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio
+git rev-parse HEAD
+curl -fsS http://localhost:3456/api/health
+cd dashboard
+npm run test
+npx tsc --noEmit
+set -a && source ./.env.local && set +a
+STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-basic-flow-e2e.mjs
+STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-studio-v1-e2e.mjs
+```
+
+종료 증거는 R3 MAJOR 0건, 전체 Vitest와 TypeScript 종료 코드 0, 같은 SHA localhost에서 두 E2E 통과, 부분 채널 차단 상태 저장, YouTube 동시 요청, Reels 기록 실패, 다중 인스턴스 자막 상한, Threads insights 동시 수집 공격 시나리오 통과다. 외부 회수 시점은 실제 SNS 실발행 또는 운영 배포 승인이 필요할 때다.
+
+## 검증했나
+
+- `npm run test`: 369파일, 2,373건 통과, 3건 제외, 종료 0.
+- `npx tsc --noEmit`: 종료 0.
+- OpenClaw 표적 4파일, 8건: 통과.
+- localhost health: HTTP 200, DB up. 실행 `80166cfe`, 검토 끝 `e5a4487e`로 귀속 NG.
+- 기본 흐름 E2E: `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장, NG.
+- Studio v1 E2E: 401, 400, 422 통과 뒤 정상 생성이 HTTP 200 오류 본문으로 끝나 NG.
+- 지정 작업 공간 `/api/images`: HTTP 200 `[]`. 검증기 분류는 `응답 구조 오류`, NG.
+- 운영 배포와 외부 SNS 실발행: 미검증.
+
 # OSMU code review 2026-09-16 R2 handoff
 
 ## 무엇을 어디까지 했나

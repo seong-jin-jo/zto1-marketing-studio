@@ -18,6 +18,9 @@ describe("네 방 브라우저 탐침 준비 상태 계약", () => {
       expect(source, file).toMatch(/\.waitFor\(\{\s*state:\s*"visible"/);
     }
     expect(read("scripts/probe-four-room-flow.mjs")).toContain("roomRoot.evaluate");
+    expect(read("scripts/probe-four-room-flow.mjs")).toContain('message.includes("net::ERR_ABORTED")');
+    expect(read("scripts/probe-four-room-flow.mjs")).toContain("await gotoRoom(p,url,room)");
+    expect(read("scripts/probe-four-room-flow.mjs")).toContain("${room} 재진입");
     expect(read("scripts/probe-four-room-flow.mjs")).toContain('dashboard_auth_identity_kind\",\"customer');
     expect(read("scripts/probe-four-room-flow.mjs")).toContain('["performance","/performance"]');
     expect(read("scripts/probe-four-room-flow.mjs")).not.toContain('["performance","/"]');

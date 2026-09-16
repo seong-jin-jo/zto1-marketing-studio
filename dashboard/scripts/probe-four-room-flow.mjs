@@ -4,7 +4,7 @@ const W="cd1d0a40-540d-4524-9b49-bf2445d82182";
 const base=process.env.FOUR_ROOM_BASE_URL||"http://localhost:3456";
 const operatorToken=process.env.DASHBOARD_AUTH_TOKEN||"";
 const readyTimeoutMs=Number(process.env.FOUR_ROOM_READY_TIMEOUT_MS||"120000");
-const totalTimeoutMs=Number(process.env.FOUR_ROOM_TOTAL_TIMEOUT_MS||"180000");
+const totalTimeoutMs=Number(process.env.FOUR_ROOM_TOTAL_TIMEOUT_MS||"300000");
 if(!operatorToken) throw new Error("DASHBOARD_AUTH_TOKEN이 필요합니다");
 if(!Number.isFinite(readyTimeoutMs)||readyTimeoutMs<=0) throw new Error("FOUR_ROOM_READY_TIMEOUT_MS는 0보다 큰 숫자여야 합니다");
 if(!Number.isFinite(totalTimeoutMs)||totalTimeoutMs<=0) throw new Error("FOUR_ROOM_TOTAL_TIMEOUT_MS는 0보다 큰 숫자여야 합니다");
@@ -13,6 +13,25 @@ const remainingTimeout=(label)=>{
   const remaining=deadlineAt-Date.now();
   if(remaining<=0) throw new Error(`전체 실행시간 초과: ${label}`);
   return Math.min(readyTimeoutMs,remaining);
+};
+const gotoRoom=async(page,url,room)=>{
+  const target=`${base}${url}`;
+  try {
+    await page.goto(target,{waitUntil:"domcontentloaded",timeout:remainingTimeout(`${room} 진입`)});
+  } catch(error) {
+    const message=error instanceof Error?error.message:String(error);
+    const expected=new URL(target);
+    const current=new URL(page.url());
+    // Next 개발 서버가 콜드 컴파일 중이면 주소와 새 화면은 이미 바뀌었어도
+    // DOMContentLoaded 대기만 단계 제한시간을 넘길 수 있다. 목표 주소에 도달한
+    // 경우 다음 roomRoot 검사가 실제 화면 준비 여부를 판정하게 한다.
+    if(current.pathname===expected.pathname&&current.search===expected.search) return;
+    if(!message.includes("net::ERR_ABORTED")) throw error;
+    // AuthGate가 직전 방의 client navigation을 늦게 마치면 다음 goto를 한 번
+    // 취소할 수 있다. 실제 목표 주소가 아니면 짧게 양보한 뒤 딱 한 번만 재시도한다.
+    await page.waitForTimeout(250);
+    await page.goto(target,{waitUntil:"domcontentloaded",timeout:remainingTimeout(`${room} 재진입`)});
+  }
 };
 
 const request=(pathname,options={})=>fetch(`${base}${pathname}`,{
@@ -72,7 +91,7 @@ try {
   for(const [room,url] of [["create","/studio?room=create"],["edit","/studio?room=edit"],["publish","/studio?room=publish"],["performance","/performance"]]) {
     // Next dev keeps HMR and background requests alive. networkidle can time out after
     // the room is already interactive, so the visible room contract is the readiness signal.
-    await p.goto(`${base}${url}`,{waitUntil:"domcontentloaded",timeout:remainingTimeout(`${room} 진입`)});
+    await gotoRoom(p,url,room);
     const roomRoot=p.locator(`[data-room="${room}"]`);
     await roomRoot.waitFor({state:"visible",timeout:remainingTimeout(`${room} 표시`)});
     // AuthGate may finish a client navigation after DOMContentLoaded. Anchor evaluation

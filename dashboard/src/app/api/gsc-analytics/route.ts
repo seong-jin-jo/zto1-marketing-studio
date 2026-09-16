@@ -3,7 +3,12 @@ import { getGoogleAccessToken } from "@/lib/gsc-auth";
 
 export async function GET(request: Request) {
   const keyData = readJson<Record<string, string>>(dataPath("gsc-service-account.json"));
-  if (!keyData) return Response.json({ error: "GSC service account not configured", rows: [] });
+  if (!keyData) {
+    return Response.json(
+      { error: "GSC service account not configured", code: "GSC_NOT_CONFIGURED", rows: [] },
+      { status: 503 },
+    );
+  }
 
   const { searchParams } = new URL(request.url);
   const siteUrl = searchParams.get("site") || "";
@@ -26,6 +31,7 @@ export async function GET(request: Request) {
       body: JSON.stringify({ startDate, endDate, dimensions: [dimension], rowLimit: 50 }),
       signal: AbortSignal.timeout(15000),
     });
+    if (!res.ok) throw new Error(`GSC report failed: ${res.status}`);
     const result = await res.json();
 
     let totalClicks = 0;
@@ -69,6 +75,6 @@ export async function GET(request: Request) {
       return Response.json(cached);
     }
     const msg = e instanceof Error ? e.message : String(e);
-    return Response.json({ error: msg, rows: [] });
+    return Response.json({ error: msg, code: "GSC_UPSTREAM_FAILED", rows: [] }, { status: 502 });
   }
 }

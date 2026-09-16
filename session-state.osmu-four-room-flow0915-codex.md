@@ -1,5 +1,36 @@
 # OSMU 네 방 기본 흐름 QA 핸드오프
 
+## 2026-09-16 18:53 KST · v17 현재 핸드오프
+
+### 무엇을 어디까지 했나
+
+- 회장 요청 원문을 handoff basis로 사용했다. canonical main repo는 `/Users/sj/sj_code_master/zto1-marketing-studio`이며 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였다.
+- 최초 생성 NG의 원인은 cron과 launchd 감독 환경에서 macOS 로그인 키체인 세션이 빠져 Claude CLI OAuth refresh가 실패한 것이었다. `SECURITYSESSIONID`를 복구하고 비밀값을 제외한 최소 자식 환경에 보존했다. 제품 커밋은 `327500b0`, 타입 보수는 `e7b8dc0d`다.
+- 최종 네 방 단면의 성과실 이동 중 `ERR_ABORTED` 1건을 재현했다. AuthGate의 늦은 client navigation과 직접 이동 경합에만 1회 재시도하도록 탐침과 계약 테스트를 고쳤다. 커밋은 `71495ef5`다.
+- 최종 통제 localhost에서 기본 흐름 11/11, 네 방 4/4, 화면 20/20, 성과실에서 생성실 복귀 5/5, Studio v1 14/14를 관찰했다. 가로 넘침, 전체 화면 모달, 탐색 가림, 401, 콘솔 오류는 0건이다.
+- 최종 전체 Vitest 371파일과 2,387건, 조건부 3건 제외, TypeScript, production build 184/184, schema와 seed 및 RLS, 디자인 lint가 통과했다.
+
+### 남은 이슈와 블로커
+
+- 과제 지정 v63과 canonical pipeline 승인 v68 핀이 충돌한다. 현재 16개 화면은 v63의 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계와 불일치하거나 동일 상태 캡처가 아니다.
+- 운영 동적 URL의 실제 배포 버전과 외부 계정 실발행은 미검증이다. localhost 기능 PASS를 제품 전체 QA나 배포 PASS로 확대하지 않는다.
+- 통제 dev 서버는 검증 뒤 종료했다. health가 보고한 제품 build는 `e7b8dc0d`이며 후속 `71495ef5`는 E2E 탐침과 테스트만 바꿔 제품 런타임 소스는 동일하다.
+
+### 다음 행동
+
+1. 컨트롤러와 product-designer가 v63 또는 v68 중 단일 승인 디자인 핀을 확정한다.
+2. 같은 콘텐츠 상태의 16개 화면으로 8개 배치 속성 정합을 다시 검증한다.
+3. 승인된 운영 host에서 네 방 흐름과 외부 채널 실발행을 관찰한 뒤 배포 게이트를 판단한다.
+
+### 증거 등급
+
+- 관찰됨: localhost 기본 흐름 11/11, Studio v1 14/14, 네 방 4/4, 화면 20/20, 복귀 5/5, health HTTP 200과 DB up.
+- 테스트됨: 전체 Vitest 2,387건, TypeScript, production build 184/184, seed와 RLS, 디자인 lint.
+- 근거 확인: `docs/qa/osmu-four-room-basic-flow-v17-gpt-codex.md`, `logs/diff/osmu-four-room-flow-20260916-v17/`, 커밋 `327500b0`, `e7b8dc0d`, `71495ef5`.
+- 미검증: 단일 승인 핀 기준 디자인 정합, 운영 배포 버전, 외부 채널 실발행.
+
+---
+
 ## 2026-09-15 22:55 KST · v14 현재 핸드오프
 
 ### 무엇을 어디까지 했나

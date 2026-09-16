@@ -30,12 +30,12 @@ interface FakeChild extends EventEmitter {
 }
 
 const H = vi.hoisted(() => ({
-  calls: [] as { bin: string; args: string[]; opts: { cwd?: string; stdio?: unknown }; child: FakeChild; stdinData: string }[],
+  calls: [] as { bin: string; args: string[]; opts: { cwd?: string; stdio?: unknown; env?: NodeJS.ProcessEnv }; child: FakeChild; stdinData: string }[],
   throwOnStdinEnd: false,
 }));
 
 vi.mock("child_process", () => ({
-  spawn: vi.fn((bin: string, args: string[], opts: { cwd?: string; stdio?: unknown }) => {
+  spawn: vi.fn((bin: string, args: string[], opts: { cwd?: string; stdio?: unknown; env?: NodeJS.ProcessEnv }) => {
     const child = new EventEmitter() as FakeChild;
     child.stdout = new EventEmitter();
     child.kill = vi.fn();
@@ -73,6 +73,14 @@ async function rejectionOf(p: Promise<unknown>): Promise<Error> {
   }
 }
 
+function cliInvocation(call: (typeof H.calls)[number]): { bin: string; args: string[] } {
+  const promptIndex = call.args.indexOf("-p");
+  if (promptIndex > 0 && call.bin === "/bin/launchctl") {
+    return { bin: call.args[promptIndex - 1], args: call.args.slice(promptIndex) };
+  }
+  return { bin: call.bin, args: call.args };
+}
+
 beforeEach(() => {
   vi.resetModules();
   // vi.mock 팩토리가 만든 vi.fn()(spawn/withTenant)는 resetModules만으로는 호출 기록이 비워지지
@@ -89,6 +97,10 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  delete process.env.OSMU_TEST_SENTINEL_SECRET;
+  delete process.env.CLAUDECODE;
+  delete process.env.CLAUDE_CONFIG_DIR;
+  delete process.env.SECURITYSESSIONID;
 });
 
 describe("claude CLI 실행 경계 — argv에 prompt 없음 + stdin 전달", () => {
@@ -111,12 +123,35 @@ describe("claude CLI 실행 경계 — argv에 prompt 없음 + stdin 전달", ()
 });
 
 describe("claude CLI 실행 경계 — 필수 플래그·cwd·model", () => {
+  it("ISSUE-018 macOS 서버 자식은 GUI 사용자의 launchctl bootstrap context에서 실행된다", async () => {
+    // Regression: ISSUE-018 — launchd 또는 nohup이 띄운 Next 서버의 실제 audit session이
+    // GUI 사용자와 달라 OAuth refresh가 종료 코드 1로 끊겼다.
+    // Found by /qa on 2026-09-16.
+    // Report: docs/qa/qa-tracker.md
+    const generateText = await importGenerateText();
+    const p = generateText("gui-session", null);
+    await microtask();
+
+    const call = H.calls[0];
+    if (process.platform === "darwin") {
+      expect(call.bin).toBe("/bin/launchctl");
+      expect(call.args.slice(0, 2)).toEqual(["asuser", String(os.userInfo().uid)]);
+      expect(call.args[2]).toBe("claude");
+    } else {
+      expect(call.bin).toBe("claude");
+    }
+
+    call.child.stdout.emit("data", Buffer.from("ok"));
+    call.child.emit("close", 0);
+    await expect(p).resolves.toBe("ok");
+  });
+
   it("-p, --tools(빈값), --safe-mode, --disable-slash-commands, --no-session-persistence, --no-chrome, --model이 모두 실린다", async () => {
     const generateText = await importGenerateText();
     const p = generateText("hello", null);
     await microtask();
 
-    const { args, bin } = H.calls[0];
+    const { args, bin } = cliInvocation(H.calls[0]);
     expect(bin).toBe("claude");
     expect(args).toContain("-p");
     expect(args).toContain("--safe-mode");
@@ -149,6 +184,30 @@ describe("claude CLI 실행 경계 — 필수 플래그·cwd·model", () => {
     H.calls[0].child.stdout.emit("data", Buffer.from("x"));
     H.calls[0].child.emit("close", 0);
     await p;
+  });
+
+  it("서버와 상위 워커의 비밀값 및 Claude 실행 상태를 자식 환경에 넘기지 않는다", async () => {
+    process.env.OSMU_TEST_SENTINEL_SECRET = "절대-자식에-넘기지-않음";
+    process.env.CLAUDECODE = "1";
+    process.env.CLAUDE_CONFIG_DIR = "/tmp/상위-워커-전용-설정";
+    process.env.SECURITYSESSIONID = "qa-login-session";
+    const generateText = await importGenerateText();
+    const p = generateText("hello", null);
+    await microtask();
+
+    const childEnv = H.calls[0].opts.env;
+    expect(childEnv).toBeDefined();
+    expect(childEnv?.HOME).toBeTruthy();
+    expect(childEnv?.NODE_ENV).toBeTruthy();
+    expect(childEnv?.PATH).toBeTruthy();
+    expect(childEnv?.SECURITYSESSIONID).toBe("qa-login-session");
+    expect(childEnv?.OSMU_TEST_SENTINEL_SECRET).toBeUndefined();
+    expect(childEnv?.CLAUDECODE).toBeUndefined();
+    expect(childEnv?.CLAUDE_CONFIG_DIR).toBeUndefined();
+
+    H.calls[0].child.stdout.emit("data", Buffer.from("clean-env-ok"));
+    H.calls[0].child.emit("close", 0);
+    await expect(p).resolves.toBe("clean-env-ok");
   });
 });
 
@@ -246,7 +305,7 @@ describe("claude CLI 실행 경계 — timeout / 출력상한 / spawn 에러 / �
     await microtask();
 
     expect(H.calls).toHaveLength(2);
-    expect(H.calls[1].bin).not.toBe(first.bin);
+    expect(cliInvocation(H.calls[1]).bin).not.toBe(cliInvocation(first).bin);
     H.calls[1].child.stdout.emit("data", Buffer.from("fallback-ok"));
     H.calls[1].child.emit("close", 0);
     await expect(p).resolves.toBe("fallback-ok");

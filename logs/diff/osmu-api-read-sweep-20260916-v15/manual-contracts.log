@@ -1,0 +1,5 @@
+/api/blog-stats	{"error":"Blog not configured","code":"BLOG_NOT_CONFIGURED","articles":[],"totalViews":0,"totalArticles":0}	HTTP 503
+/api/elevenlabs-voices	{"error":"API key not set","code":"ELEVENLABS_NOT_CONFIGURED","voices":[]}	HTTP 503
+/api/ga-analytics	{"error":"Service account not configured","code":"GA_NOT_CONFIGURED"}	HTTP 503
+/api/gsc-analytics	{"error":"GSC service account not configured","code":"GSC_NOT_CONFIGURED","rows":[]}	HTTP 503
+/api/images	[]	HTTP 200
