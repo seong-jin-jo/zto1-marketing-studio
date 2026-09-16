@@ -2,6 +2,34 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-16 22시 31분 KST · 네 방 기본 흐름 v18 기능 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 기본 흐름 관통 | FLOW-API-V18 | PASS | 수정 커밋 `9293ab40`과 일치하는 localhost 실제 요청 11/11. 후보 3장, 편집 인계와 상태 변경, 발행 큐, 성과 제안 3건, 생성 큐 재인계와 지표 확인. `logs/diff/osmu-four-room-flow-20260916-v18/commands/11-basic-flow.log` |
+| R08, R19, R207 | 네 방 렌더와 가린 모달 확인 | FLOW-ROOM-PROBE-V18 | PASS | 네 방 4/4, 가린 모달 0, 브라우저 401 0, 콘솔 오류 0. `commands/12-probe-four-room.log` |
+| R08, R19 | 네 폭에서 사람처럼 생성실부터 성과실까지 이동 | FLOW-UI-V18 | PASS | 390 라이트와 다크, 768, 1024, 1440의 20화면과 성과실에서 생성실 복귀 5/5. 가로 넘침, 전체 화면 모달, 탐색 가림, 401, 콘솔 오류 0. `commands/13-four-room-ui.log`, 원본 `captures/` |
+| R166, R172 | Studio v1 인증, 생성, 조회, 무료 다시 만들기 | FLOW-STUDIO-V18 | PASS | localhost 실제 요청 14/14. `commands/14-studio-v1.log` |
+| 최초 NG 회수 | 장기 실행 서버의 Claude CLI OAuth 갱신 실패 | FLOW-RUNTIME-V18 | PASS | macOS에서 Claude CLI를 로그인 사용자의 `launchctl asuser` context로 실행하고 회귀 테스트 추가. 제품과 테스트만 담은 커밋 `9293ab40` |
+| 필수 회귀 | 전체 test, TypeScript, build, seed와 RLS, 디자인 lint | FLOW-REGRESSION-V18 | PASS | Vitest 371파일과 2,388건 통과, 3건 제외. TypeScript 종료 0. build 184/184. schema, seed, RLS 적용. 디자인 lint 위반 0. `commands/05-npm-test.log`부터 `09-design-lint.log` |
+| 모바일 사용성 | 390px 인증된 네 방의 글자, 탭 크기, 눌림 상태 | MOBILE-ERGONOMICS-V18 | 미검증 | 지정 계측기는 고객 토큰을 주입하지 못해 AuthGate를 측정했다. 결과를 제품 판정에 사용하지 않음. `commands/16-mobile-ergonomics.log` |
+| R193, R205, R206 | v63 계승과 8개 배치 속성 정합 | DESIGN-CONF-V18 | NG | 현재 16개 화면 조합이 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계에서 불일치하거나 동일 상태 캡처가 아니다. 과제 v63과 canonical 승인 v68 핀도 충돌. `docs/qa/osmu-four-room-basic-flow-v18-gpt-codex.md` |
+| 제품 전체 | 운영 배포와 외부 채널 | QA-QUALITY-GATE-V18 | NG | localhost 기능 범위만 PASS. 운영 동적 URL, 실제 배포 버전과 외부 채널 실발행은 미검증이며 디자인 정합 NG |
+| R01부터 R207 및 세부 요청 232건 중 이번 범위 밖 | 회장 확정 요구 전건 | REQ-ALL-V18 | 이월 | 기존 정본 판정을 유지하고 이번 범위 관련 요청만 갱신 |
+
+최초 실패는 화면이나 mock으로 덮지 않았다. GUI 터미널과 장기 실행 서버의 차이를 분리해 macOS
+bootstrap context를 보존하도록 고친 뒤, 수정 커밋과 일치하는 서버에서 필수 검증을 전부 다시
+실행했다. 상세 근거는 `docs/qa/osmu-four-room-basic-flow-v18-gpt-codex.md`다.
+
+## 2026-09-16 22시 05분 KST · 네 방 기본 흐름 재검증 최초 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 백엔드 기본 흐름 관통 | FLOW-API-V18-INITIAL | NG | HEAD `ed8231a5`와 일치하는 localhost:3456 실제 요청에서 첫 후보 생성이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, `provider_unavailable`, 후보 0장으로 종료 코드 1. 원인 수정 후 같은 실제 요청과 전체 회귀를 다시 통과하기 전 PASS 전환 금지. |
+
+화면 단면이나 빌드 통과로 이 실패를 덮지 않는다. 서버 자식 프로세스 환경과 Claude CLI 실행 끝점을 추적한다.
+
+
 ## 2026-09-16 18시 53분 KST · 네 방 기본 흐름 v17 기능 범위 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

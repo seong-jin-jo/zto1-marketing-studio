@@ -3,6 +3,13 @@
 current_stage: qa
 status: in-progress (승인 아님)
 
+2026-09-16 22:31 KST v18 재검증: 수정 커밋 `9293ab40`과 일치하는 localhost에서 기본 흐름
+11/11, 네 방 4/4, 네 폭 20화면, 복귀 5/5, Studio v1 14/14, 전체 Vitest 371파일과 2,388건,
+TypeScript, build 184/184, seed와 RLS, 디자인 lint가 통과했다. v63 디자인 정합 NG, v63과 v68
+승인 핀 충돌, 인증된 모바일 인체공학과 운영 배포 및 외부 채널 실발행 미검증 때문에 qa 진행 중과
+승인 불가 상태를 유지한다. 증거는 `docs/qa/osmu-four-room-basic-flow-v18-gpt-codex.md`다.
+
+
 2026-09-15 02:27 KST 재검증 결과: 감독이 시작한 서버에서 Claude CLI 설치 위치가 PATH에 없어 첫 생성이 `spawn_failed`, 후보 0장으로 끊겼다. 애플리케이션 경계의 CLI 경로 탐색을 고치고 회귀를 추가한 커밋은 `629f056d`, `957a8225`다. 수정 뒤 localhost 기본 흐름 최종 11/11, 네 방 단면 4/4, 390 라이트·다크와 768·1024·1440의 방 화면 20/20, 성과실에서 생성실 복귀 5/5, Studio v1 14/14, Vitest 353파일·2,293건, TypeScript, build 184/184, seed, health와 디자인 lint가 통과했다. v63 대비 16개 화면 디자인 정합 NG와 v63·v68 승인 핀 충돌, 운영 배포 미검증 때문에 제품 전체 QA와 배포는 NG다. 증거는 `docs/qa/osmu-four-room-basic-flow-v11-gpt-codex.md`다.
 
 2026-09-13 06:22 KST 재검증 결과: 현재 localhost 소스는 health HTTP 200·DB up, 기본 흐름 11/11,
