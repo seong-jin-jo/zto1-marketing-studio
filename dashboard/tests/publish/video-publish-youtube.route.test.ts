@@ -253,13 +253,14 @@ describe("/api/video/publish — YouTube", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("업로드 초기화 실패는 failed 행을 남기고 재시도를 허용한다", async () => {
+  it("업로드 초기화 실패는 사람이 읽을 실패 응답과 failed 행을 남기고 재시도를 허용한다", async () => {
     const draftId = "77777777-7777-7777-7777-777777777777";
     fetchMock = vi.fn(async () => ({ ok: false, status: 500, headers: { get: () => null } }) as unknown as Response);
     vi.stubGlobal("fetch", fetchMock);
 
-    const { status } = await callPublish({ filename: "clip.mp4", platform: "youtube", draft_id: draftId });
-    expect(status).toBe(502);
+    const { status, json } = await callPublish({ filename: "clip.mp4", platform: "youtube", draft_id: draftId });
+    expect(status).toBe(200);
+    expect(json).toMatchObject({ ok: false, error: "YouTube 업로드 초기화 실패 (오류 코드 500)." });
     expect(H.rows[0].status).toBe("failed");
 
     // 실패 후 재시도는 새 예약을 잡고 실제로 업로드한다(영구 409 방지). 실패 행(status='failed')은
