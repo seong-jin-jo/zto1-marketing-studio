@@ -10,17 +10,24 @@
 - 수정 커밋과 일치하는 통제 localhost에서 기본 흐름 11/11, 네 방 단면 4/4, 390 라이트와 다크 및 768, 1024, 1440의 화면 20/20, 복귀 5/5, Studio v1 14/14를 관찰했다.
 - 전체 Vitest 371파일과 2,388건, TypeScript, build 184/184, schema와 seed 및 RLS, 디자인 lint가 통과했다. 증거는 `logs/diff/osmu-four-room-flow-20260916-v18/`와 `docs/qa/osmu-four-room-basic-flow-v18-gpt-codex.md`다.
 
-### 남은 이슈와 블로커
+### 남은 이슈·블로커
 
 - 과제 지정 v63과 canonical 승인 v68 핀이 충돌한다. 현재 16개 화면은 v63의 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계와 불일치하거나 동일 상태 캡처가 아니다.
 - 지정 모바일 인체공학 계측기는 고객 토큰을 주입하지 못해 AuthGate를 측정했다. 인증된 제품 네 방의 글자와 탭 크기 및 눌림 상태는 미검증이다.
 - 운영 동적 URL의 실제 배포 버전과 외부 계정 실발행은 미검증이다. 통제 dev 서버는 검증 뒤 종료했다.
 
-### 다음 정확한 행동
+### 다음에 칠 명령
 
-단일 승인 디자인 핀을 확정한 뒤 그 핀으로 16개 화면 정합을 다시 측정한다. 모바일 인체공학
-계측기는 고객 토큰 주입을 지원하도록 하네스 소유자가 보완한 뒤 인증된 390px 네 방에서 재실행한다.
-운영 출고 판단은 승인된 운영 host와 외부 채널에서 별도 배포 게이트로 검증한다.
+소유자: product-designer와 Stage Controller. 단일 승인 디자인 핀 확정 직후 아래를 실행한다.
+종료 증거는 기준 PNG와 dev PNG 동시 Read, 8개 배치 속성 행렬 PASS, 인증된 390px 모바일
+인체공학 계측 PASS다. 운영 출고는 그 뒤 승인된 host와 외부 채널에서 별도 배포 게이트로 회수한다.
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+set -a && source .env.local && set +a
+FOUR_ROOM_OUTPUT_DIR="../logs/diff/osmu-four-room-flow-<next>/captures" node scripts/verify-four-room-ui-e2e.mjs
+node scripts/probe-four-room-flow.mjs
+```
 
 ### 검증했나
 
