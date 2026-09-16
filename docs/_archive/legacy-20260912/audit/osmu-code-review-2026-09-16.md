@@ -1,6 +1,122 @@
 <!--
 STAMP
 line: osmu
+created_at: 2026-09-16 12:19 KST
+model: gpt-codex/gpt-5
+agent: code-reviewer
+skills: review
+scope: 2026-09-15 17:16:46 KST부터 2026-09-16 11:28:25 KST까지 착륙한 커밋과 f4b0f5a5..e5a4487e 순변경
+basis: pipeline-state.osmu.md approved_artifacts, DESIGN.md v37, 지정 v63 프로토타입, 회장 요구 대장, 사업 좌표
+benchmarks: Google YouTube resumable upload, Cloudflare R2 object deletion and lifecycle, PostgreSQL uniqueness concurrency
+deliberation: 공급자 부작용과 내부 기록, 다중 프로세스 자원 상한, 부분 성공 표기를 각각 분리해 공격했다.
+-->
+
+# OSMU 최근 24시간 코드 공격 리뷰 R3
+
+한 줄 결론: MAJOR 10건, MINOR 1건이다. 일부 채널을 빼고 발행한 결과가 전체 성공으로 저장되고, YouTube 중복 업로드와 외부 성공 뒤 내부 기록 유실, 다중 서버 자원 상한 우회가 가능하므로 머지를 막아야 한다.
+
+## 범위와 계약
+
+- 검토 창: 2026-09-15 17:16:46 KST부터 2026-09-16 11:28:25 KST까지다.
+- 커밋: 시간 창에 착륙한 67개다. 첫 커밋의 부모 `f4b0f5a5188ef6343e22d9ed4cbebd79b05d0bcc`부터 끝 커밋 `e5a4487e84fe297b5738bb56c522f33f3f171cf9`까지 그래프 범위는 병합 이력 포함 79개다.
+- 순변경: 239개 파일, 추가 8,649줄, 삭제 526줄이다. 삭제 파일은 0개다.
+- 승인 핀: `pipeline-state.osmu.md:236-240`의 v68 디자인 허브와 `DESIGN.md` v37이다. 이 승인 블록에는 PRD 핀이 없다.
+- 지정 시안: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html`을 실제로 열어 네 방, 224px과 56px 사이드바, 1024 겹침, 상태와 흐름 계약을 확인했다. v68 승인 파일도 함께 열었다. 순수 시각 편차는 자동 MAJOR로 쓰지 않았다.
+- 요청 원장: 지정 파일과 정본 `wiki/거버넌스/요청.md`를 확인했다. 지정된 `wiki/product/사업좌표-OSMU와-ZERO-ONE.md`는 없고 실제 이동 경로 `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md:45-59`를 읽었다.
+- 구현 현황: `docs/구현현황.md`에서 기존 채널, 발행, 네 방 구현 기록을 확인했다. 새 구조로 재해석하지 않았다.
+- 현재 작업 트리: 공유 작업 트리의 대규모 미커밋 문서 이동과 다른 세션 변경은 범위에서 제외했다. 아래 지적은 고정 커밋 범위의 코드에만 귀속했다.
+
+## MAJOR
+
+MAJOR: [회귀 위험] dashboard/src/app/studio/page.tsx:1265 — 한도 초과 채널을 `blockedPlatforms`로 발행 대상에서 빼지만 1411행의 초안 상태와 1419행 이후 최종 결과에는 차단 채널을 실패나 부분 성공으로 포함하지 않아, 남은 채널 한 곳만 성공해도 `published` 저장과 `발행 완료` 토스트가 나온다 / 과제의 확정 공격 항목은 "부분 실패를 전체 성공으로 세는 곳"이고, 같은 화면도 일부 실패를 `partial`로 저장하는 계약을 이미 가진다 / 차단 채널을 명시적 `failed` 또는 `skipped_by_validation` 결과에 넣고 초안 상태를 `partial`로 저장하며 성공과 제외 채널을 함께 보여줘야 한다.
+
+재현: Threads와 X를 함께 선택하고 X 본문만 280 가중 문자를 넘긴다. Threads가 성공하면 X는 호출되지 않았는데 초안은 `published`, 최종 토스트는 `발행 완료`가 된다.
+
+MAJOR: [승인 시안 이탈] dashboard/src/app/studio/page.tsx:1276 — 고객 토스트에 긴 대시 `—`가 들어갔다 / `DESIGN.md:860`은 "em dash와 en dash"를 금지하고 과제도 "긴 대시 금지"를 확정했다 / 마침표로 두 문장으로 나누거나 쉼표로 바꾸고 런타임 문자열까지 검사하는 계약 테스트를 추가해야 한다.
+
+재현: 일부 채널만 글자 한도를 넘긴 뒤 지금 발행을 누르면 `한도를 넘은 곳은 빼고 발행합니다 — ...`가 화면에 노출된다. 전체 Vitest의 기존 긴 대시 테스트는 이 템플릿 문자열을 놓치고 통과했다.
+
+MAJOR: [회귀 위험] dashboard/src/app/api/video/publish/route.ts:206 — YouTube는 외부 resumable upload를 시작하기 전에 발행 예약을 만들지 않고, 성공 뒤 261행에서만 `published_posts`를 넣는다. 같은 `draft_id`의 동시 요청은 둘 다 외부 업로드를 끝낸 뒤 한 INSERT만 unique index를 통과하고, 271행은 두 번째 충돌을 삼킨 채 둘 다 `ok:true`를 반환한다. 유효한 `draft_id`가 없으면 266행의 무작위 UUID가 중복 방지를 완전히 우회한다 / 사업 좌표 `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md:59`는 "돈이 걸린 계약"의 멱등이 실제로 지켜져야 한다고 확정하고, Google 공식 resumable upload 계약은 세션 URI를 저장해 중단된 같은 업로드를 조회하고 이어가라고 한다 / 공급자 호출 전에 안정된 draft 또는 idempotency key로 `in_progress` 예약을 원자 생성하고 upload URL과 상태를 저장한 뒤, 재요청은 새 `videos.insert`가 아니라 기존 세션 상태 조회와 재개로 수렴시켜야 한다.
+
+재현: 같은 영상, 계정, `draft_id`로 두 요청을 동시에 보낸다. 둘 다 206행을 지나 별도 YouTube 세션을 만들고 업로드한다. 두 번째 DB INSERT는 충돌하지만 오류가 숨겨져 두 응답 모두 200 성공이고 외부 영상은 두 개가 된다.
+
+MAJOR: [회귀 위험] dashboard/src/app/api/video/publish/route.ts:662 — Reels 외부 발행 뒤 `published_posts` 확정 UPDATE가 실패해도 671행의 빈 catch가 이를 숨기고 681행 사용량 기록 뒤 `ok:true`를 반환한다 / 과제는 "부분 실패를 전체 성공으로 세는 곳"을 공격하라고 했고, 같은 텍스트 발행 경로는 외부 성공 뒤 기록 실패를 재발행 금지 복구 상태로 반환한다 / 외부 성공과 내부 확정 실패를 `partial`과 `retryPublish:false`로 반환하고, 외부 ID를 담은 영속 reconciliation outbox로 내부 행을 수렴시켜야 한다.
+
+재현: Instagram이 Reels ID를 반환한 직후 DB UPDATE만 실패시킨다. 고객은 성공 응답을 받지만 예약 행은 `in_progress`로 남아 다음 요청이 409로 막히고 성과실은 게시물을 찾지 못한다.
+
+MAJOR: [회귀 위험] dashboard/src/lib/usage-events.ts:20 — 발행 사용량 INSERT 실패를 디버그 환경에서만 로그로 남기고 항상 성공으로 끝낸다. `/api/usage`는 `dashboard/src/app/api/usage/route.ts:76-85`에서 `usage_events`만 집계하므로 외부 발행은 성공했지만 발행 수, 쿼터, 향후 과금 장부는 영구히 0으로 남을 수 있다 / 이 변경의 주석 자체가 "실제 발행 2건인데 발행 0"을 고치려는 목적이라고 적었고 과제는 돈이 새는 경로와 부분 실패의 성공 처리를 공격하라고 했다 / 공급자 성공 응답을 재시도하게 만들지 말고, 발행 예약과 같은 멱등 키를 가진 outbox를 같은 DB 트랜잭션에 기록해 usage event가 성공할 때까지 재처리해야 한다.
+
+재현: 외부 Threads 발행과 `published_posts` 저장은 성공시키고 `usage_events` INSERT만 실패시킨다. API는 200 성공을 반환하지만 성과실의 오늘 발행 수는 그대로이며 실패 재처리 단서도 없다.
+
+MAJOR: [회귀 위험] dashboard/src/lib/studio/subtitle-work-limit.ts:9 — `active`, `activeTenants`, `waiting`이 프로세스 메모리라 테넌트당 1개와 전체 2개 제한이 서버 인스턴스마다 따로 생긴다 / 사업 좌표 `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md:59`는 "프로세스 메모리에 있으면 서버를 늘릴 때 몫이 배로 늘어 사업 자체가 성립하지 않는다"고 확정한다 / Postgres advisory lock이나 만료되는 영속 permit으로 테넌트와 전체 상한을 공유하고, 다중 인스턴스 경합과 연결 중단 대기자 취소를 검증해야 한다.
+
+재현: 같은 DB와 tenant를 쓰는 dashboard 인스턴스 둘에 자막 요청을 동시에 두 건씩 보낸다. 각 프로세스가 `active=0`에서 시작해 합계 네 ffmpeg 작업을 실행할 수 있다.
+
+MAJOR: [회귀 위험] openclaw/extensions/threads-insights/src/threads-insights-tool.ts:165 — 수집 대상 조회와 187행의 공급자 호출이 큐 잠금 밖에 있고, 잠금은 222행의 결과 병합에만 걸린다. 두 수집기가 같은 스냅샷을 읽으면 같은 글을 두 번 조회하고 `collectCount`를 두 번 올려 한 관측 시점을 두 회로 소진한다 / 과제는 동시성과 돈이 새는 경로를 공격하라고 했고 이 코드는 `collectCount < 3`으로 유료 API 수집 횟수를 제한한다 / 잠금 안에서 글과 예정 수집 시각별 claim을 먼저 만들고, 공급자 호출 뒤 같은 claim만 확정하며 날짜 또는 관측 구간 키로 멱등 병합해야 한다.
+
+재현: engagement가 없는 같은 큐에 `threads_insights collect`를 동시에 두 번 실행한다. 두 실행 모두 같은 post를 target으로 골라 공급자를 두 번 호출하고, 병합 뒤 `collectCount=2`가 되어 하루 한 번의 관측이 두 번으로 계산된다.
+
+MAJOR: [회귀 위험] openclaw/extensions/threads-publish/src/threads-publish-tool.ts:284 — 임시 R2 객체 삭제 실패를 빈 catch로 버린다. 같은 결함이 `openclaw/extensions/instagram-publish/src/instagram-publish-tool.ts:313`에도 있다 / 과제는 "돈이 새는가"를 공격하라고 했고 Cloudflare 공식 문서는 객체 삭제와 lifecycle 만료를 별도 동작으로 정의한다. 저장소에는 `threads/`와 `instagram/` 임시 prefix의 lifecycle 설정이나 삭제 재시도 장부가 없다 / 삭제 실패를 영속 cleanup queue에 기록해 재시도하고, 두 임시 prefix에 짧은 lifecycle 상한을 구성해 단일 삭제 실패가 무기한 저장으로 이어지지 않게 해야 한다.
+
+재현: 공급자 발행은 성공시키고 `DeleteObjectCommand`만 네트워크 오류로 거절한다. 도구는 성공으로 끝나지만 R2 객체는 남고, 같은 상황이 반복될수록 저장 객체와 비용이 누적된다.
+
+MAJOR: [회귀 위험] dashboard/scripts/lib/api-sweep-contract.mjs:8 — 정상 2xx의 빈 JSON 배열을 모두 `응답 구조 오류`로 분류한다 / `dashboard/src/app/api/images/route.ts:31`과 54행은 이미지가 없는 신규 작업 공간에 정상적으로 `[]`를 반환한다 / 경로별 성공 schema와 `allowEmpty` 계약을 두고 전역 빈 배열 휴리스틱을 없애야 한다.
+
+재현: 지정 작업 공간으로 localhost의 `/api/images`를 호출해 HTTP 200과 `[]`를 직접 관찰했다. 같은 응답을 분류기에 넣자 `응답 구조 오류`가 나왔다.
+
+MAJOR: [승인 시안 이탈] dashboard/src/components/layout/Sidebar.tsx:144 — 접힌 네 방 항목이 방 아이콘 대신 `01`부터 `04` 숫자 원으로 남고, 397행은 펼친 분기에만 `xl:sticky`를 붙여 접힌 56px 레일을 긴 화면에서 스크롤 밖으로 밀어낸다 / `DESIGN.md:663`은 "접히면 방은 아이콘"과 56px을 확정하고, 지정 v63의 `openclaw-auto-4room-v63.html:629-630`은 사이드바를 너비와 무관하게 `position:sticky;top:0`으로, 2318행은 접힘에서 방 번호를 숨기도록 구현한다 / 네 방의 승인 아이콘을 compact 상태에 유지하고 sticky를 접힘과 펼침 공통 셸 속성으로 올리며 1024 overlay만 별도 분기해야 한다.
+
+재현: 1440px에서 사이드바를 접으면 방 항목은 숫자로만 보인다. 긴 Studio 본문을 아래로 스크롤하면 접힌 rail에 `sticky`가 없어 네 방 진입로 전체가 viewport 밖으로 사라진다.
+
+## MINOR
+
+MINOR: [토큰 위반] dashboard/src/app/globals.css:176 — select 오른쪽 여백 `2rem`과 179행의 위치 `0.75rem`을 직접 넣었다 / `DESIGN.md:861`은 임의 간격 리터럴을 금지하고 885행은 기존 화면 간격을 4, 8, 12, 16, 24, 32로 제한한다 / 같은 32px과 12px을 공용 spacing token으로 치환해야 한다.
+
+재현: 최근 추가된 select 규칙을 토큰 감사하면 두 spacing 선언이 `var(...)`가 아닌 리터럴로 남는다.
+
+## 검증 증거
+
+| 검증 | 결과 | 증거 등급 |
+|---|---|---|
+| localhost health | HTTP 200, DB up. 실행 `build_commit=80166cfe`, 검토 대상 끝 `e5a4487e`로 불일치 | 관찰됨, 귀속 NG |
+| `verify-basic-flow-e2e.mjs` | 첫 생성이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장으로 종료 | 관찰됨, NG |
+| `verify-studio-v1-e2e.mjs` | 401, 400, 422 거절은 통과. 정상 생성은 오류 본문과 HTTP 200을 반환해 기대 201 대비 실패 | 관찰됨, NG |
+| 실제 빈 목록 분류 | 지정 작업 공간 `/api/images`가 HTTP 200 `[]`, 분류기는 `응답 구조 오류` | 관찰됨, NG |
+| `npm run test` | 369개 파일 통과, 2,373건 통과, 3건 제외 | 테스트됨, PASS |
+| `npx tsc --noEmit` | 종료 코드 0 | 테스트됨, PASS |
+| OpenClaw 표적 회귀 | queue lock, Threads insights, Threads publish, Instagram publish 4파일 8건 통과 | 테스트됨, PASS |
+| 시안과 토큰 | v63 지정 프로토타입, v68 승인 핀, DESIGN v37 실제 파일 대조 | 근거 확인 |
+| 삭제 파일 | 순변경에서 삭제 파일 0건. `InstagramPage` 카드 생성 함수 제거는 커밋 `1cd36c29` 제목과 `wiki/거버넌스/요청.md:70`에 생성실 이관 사유가 기록됨 | 근거 확인, 문제없음 |
+| 디자인 픽셀 대조 | 코드 계약 리뷰 범위라 렌더 이미지의 시각 편차를 판정하지 않음 | 미검토 |
+| 운영 배포와 외부 SNS 실발행 | 실행하지 않음 | 미검증 |
+
+## 셀프심문
+
+질문: 내가 PASS를 준다면, 회장이 dev에서 직접 써보고 발견할 가장 그럴듯한 문제는 무엇인가?
+
+답: X 한도 초과 때문에 X만 빠졌는데 Threads 하나가 성공한 뒤 전체가 `발행 완료`로 저장되는 문제다. 그 다음은 YouTube를 연속으로 눌렀을 때 외부 영상은 중복인데 두 요청 모두 성공으로 끝나는 문제다. 둘 다 MAJOR로 확인했으므로 PASS를 줄 수 없다.
+
+SKILLS_USED: review. 최근 커밋 범위, 승인 계약, 실제 서버, 회귀 테스트를 분리해 공격 검토하는 데 사용했다.
+SKILLS_SKIPPED: 자동 수정은 사용자 금지로 실행하지 않았다. 서브에이전트 검토는 이번 역할이 단일 공격 리뷰와 정확한 파일 줄 귀속을 요구해 사용하지 않았다.
+SOURCES: https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol , https://developers.cloudflare.com/r2/objects/delete-objects/ , https://developers.cloudflare.com/r2/buckets/object-lifecycles/ , https://www.postgresql.org/files/developer/concurrency.pdf , `pipeline-state.osmu.md`, `DESIGN.md`, v63 지정 프로토타입, v68 승인 프로토타입, `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md`, `wiki/거버넌스/요청.md`, `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md`, `docs/구현현황.md`
+MODEL: gpt-codex/gpt-5
+KNOWLEDGE_QUERY: BRAIN business index에서 OSMU, ZERO-ONE, 돈, 멱등, 동시 공장을 조회하고 레포의 승인 핀, 확정 요구, 구현 현황으로 좁혔다. 웹에서는 YouTube resumable upload, R2 삭제와 lifecycle, PostgreSQL 동시 unique insert의 공식 자료를 조회했다.
+HITS_USED: 사업 좌표 45-59행은 다중 공장과 돈, 멱등의 직접 계약이라 사용했다. Google 공식 문서는 업로드 세션 보존과 중단 상태 조회 근거로, Cloudflare 공식 문서는 객체 삭제와 lifecycle의 분리 근거로, PostgreSQL 자료는 unique 충돌이 외부 부작용을 되돌리지 못한다는 근거로 사용했다.
+HITS_REJECTED: BRAIN의 일반 포트폴리오와 교육 문서는 이번 코드 상태 전이에 직접 적용할 계약이 없어 채택하지 않았다. v63과 v68의 순수 시각 차이는 코드 계약 리뷰 범위 밖이라 지적으로 쓰지 않았다.
+CONFLICTS: 과제는 v63 대조를 명시하지만 pipeline 최신 승인 핀은 v68이다. 두 산출물과 DESIGN v37이 함께 확정한 네 방, 56px 접힘, 1024 겹침, 상태 보존만 계약으로 적용했다.
+
+## 4축 판정
+
+- 승인 시안 이탈: 지적 2건
+- 회귀 위험: 지적 8건
+- 토큰 위반: 지적 1건
+- 무기록 삭제: 문제없음
+
+REVIEW_VERDICT: BLOCK
+
+<!--
+STAMP
+line: osmu
 created_at: 2026-09-16 09:12 KST
 model: gpt-codex/gpt-5
 agent: code-reviewer

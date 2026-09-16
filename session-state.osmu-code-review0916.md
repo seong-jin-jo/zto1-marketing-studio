@@ -1,3 +1,38 @@
+# OSMU code review 2026-09-16 R3 handoff
+
+## 무엇을 어디까지 했나
+
+- 회장 요청 원문을 handoff basis로 사용했다. localhost 공유 서버와 다른 세션의 대규모 작업 트리 변경은 관찰만 했고 제품 코드는 수정하지 않았다.
+- 최근 24시간 범위를 `f4b0f5a5188ef6343e22d9ed4cbebd79b05d0bcc..e5a4487e84fe297b5738bb56c522f33f3f171cf9`로 고정했다. 시간 창 커밋 67개, 그래프 범위 79개, 순변경 239파일이다.
+- `pipeline-state.osmu.md`의 v68 승인 핀, 지정 v63 프로토타입, `DESIGN.md` v37, 확정 요구 대장, 사업 좌표, 구현 현황과 diff를 대조했다.
+- `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-16.md` 최상단 R3에 MAJOR 10건, MINOR 1건, `REVIEW_VERDICT: BLOCK`을 기록했다.
+- `docs/qa/qa-tracker.md` 최상단에 테스트와 localhost 실측 증거를 기록했다.
+
+## 핵심 블로커
+
+- 일부 채널을 검증 단계에서 빼도 남은 한 채널이 성공하면 전체 초안이 `published`, 토스트가 `발행 완료`가 된다.
+- YouTube는 외부 업로드 전 예약이 없어 동시 요청이 중복 영상을 만들고, 두 번째 DB 충돌을 숨긴 채 둘 다 성공으로 응답할 수 있다.
+- Reels 외부 성공 뒤 DB 확정 실패, 발행 usage event 실패를 성공으로 숨겨 내부 장부가 수렴하지 않는다.
+- 자막 상한은 프로세스 메모리, Threads insights 대상 claim은 잠금 밖이라 다중 서버와 동시 cron에서 비용 상한과 수집 횟수가 배로 늘어난다.
+- Threads와 Instagram R2 임시 객체 삭제 실패가 무기록으로 사라진다.
+- 정상 HTTP 200 빈 이미지 목록을 검증기가 구조 오류로 오판한다.
+- 접힌 사이드바가 숫자 원을 쓰고 sticky가 없어 승인 아이콘 레일과 상시 이동 계약을 어긴다.
+
+## 검증
+
+- `npm run test`: 369파일, 2,373건 통과, 3건 제외, 종료 0.
+- `npx tsc --noEmit`: 종료 0.
+- OpenClaw 표적 4파일, 8건: 통과.
+- localhost health: HTTP 200, DB up. 실행 `80166cfe`, 검토 끝 `e5a4487e`로 귀속 NG.
+- 기본 흐름 E2E: `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장, NG.
+- Studio v1 E2E: 401, 400, 422 통과 뒤 정상 생성이 HTTP 200 오류 본문으로 끝나 NG.
+- 지정 작업 공간 `/api/images`: HTTP 200 `[]`. 검증기 분류는 `응답 구조 오류`, NG.
+- 운영 배포와 외부 SNS 실발행: 미검증.
+
+## 다음 행동
+
+다음 소유자는 build 워커다. R3 MAJOR를 수정한 고정 커밋에서 해당 커밋과 일치하는 localhost를 소유하고 전체 회귀, 두 E2E, 부분 채널 차단 상태 저장, YouTube 동시 요청, Reels 기록 실패, 다중 인스턴스 자막 상한, Threads insights 동시 수집을 다시 검증해야 한다.
+
 # OSMU code review 2026-09-16 R2 handoff
 
 ## 무엇을 어디까지 했나
