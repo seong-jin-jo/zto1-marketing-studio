@@ -1,6 +1,7 @@
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { withTenant } from "@/lib/db";
+import { reconcilePendingPublicationEvents } from "@/lib/usage-events";
 
 interface DailyUsage {
   aiGenerations: number;
@@ -69,6 +70,7 @@ export async function GET(request: Request) {
     }
 
     try {
+      const publicationRelay = await reconcilePendingPublicationEvents(tenantId);
       let tier = "starter";
       let quota: Record<string, unknown> | null = null;
       let rows: UsageRow[] = [];
@@ -118,6 +120,7 @@ export async function GET(request: Request) {
         daily,
         tier,
         quota,
+        publicationRelay,
       });
     } catch {
       return Response.json(

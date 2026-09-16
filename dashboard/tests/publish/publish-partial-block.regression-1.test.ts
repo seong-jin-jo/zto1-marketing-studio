@@ -51,7 +51,7 @@ describe("한도를 넘은 채널만 발행에서 뺀다", () => {
   });
 
   it("CODE-REVIEW-20260917-01 정상: 제외 채널을 실패 결과와 사용자 메시지에 남긴다", () => {
-    const issue = { field: "body", message: "X 본문은 최대 280자입니다.", severity: "blocking" as const };
+    const issue = { field: "body" as const, message: "X 본문은 최대 280자입니다.", severity: "blocking" as const };
     const result = blockedPublishFailures([{ platform: "x", issue }], (platform) => platform.toUpperCase());
 
     expect(result.status).toEqual({ x: "failed" });

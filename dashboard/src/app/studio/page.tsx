@@ -1320,7 +1320,7 @@ export default function StudioPage() {
             failureReason = "올릴 영상이 없습니다. 생성실에서 숏폼 영상을 먼저 만들어 주세요.";
             errs.push(`${LABEL[p]}: ${failureReason}`);
           } else {
-            const vr = await apiPost<{ ok?: boolean; processing?: boolean; url?: string; error?: string }>("/api/video/publish", {
+            const vr = await apiPost<{ ok?: boolean; partial?: boolean; processing?: boolean; url?: string; error?: string }>("/api/video/publish", {
               filename,
               platform: VIDEO_PUBLISH_NAME[p] || p,
               title: titles[p] || idea || "",
@@ -1330,7 +1330,7 @@ export default function StudioPage() {
               // 대문으로 쓸 시점. 지원하는 플랫폼만 실제로 쓴다(lib/video-cover.ts).
               cover_seconds: supportsCoverTimestamp(p) ? (coverSeconds[p] ?? DEFAULT_COVER_SECONDS) : undefined,
             }, { signal: AbortSignal.timeout(VIDEO_PUBLISH_REQUEST_TIMEOUT_MS) });
-            if (vr?.ok) {
+            if (vr?.ok && !vr.partial) {
               urls[p] = vr.url || POST_URL[p] || "#";
               trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
             } else {

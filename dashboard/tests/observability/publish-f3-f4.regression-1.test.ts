@@ -33,6 +33,10 @@ vi.mock("@/lib/publish", () => ({
   publishTelegram: vi.fn(), publishDiscord: vi.fn(), publishSlack: vi.fn(),
   fetchThreadsPermalink: vi.fn(), fetchInstagramPermalink: vi.fn(),
 }));
+vi.mock("@/lib/usage-events", () => ({
+  publicationUsageOutbox: (platform: string) => ({ usageEvent: { status: "pending", platform } }),
+  recordPublicationEvent: vi.fn(async () => ({ recorded: true, alreadyRecorded: false })),
+}));
 vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async (_tenantId: string, callback: (sql: unknown) => unknown) => {
     const sql = (strings: TemplateStringsArray) => {

@@ -39,6 +39,11 @@ vi.mock("@/lib/publish", async (importOriginal) => {
   return { ...actual, getChannelCred: vi.fn(async () => H.cred) };
 });
 
+vi.mock("@/lib/usage-events", () => ({
+  publicationUsageOutbox: (platform: string) => ({ usageEvent: { status: "pending", platform } }),
+  recordPublicationEvent: vi.fn(async () => ({ recorded: true, alreadyRecorded: false })),
+}));
+
 vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async (_t: string, cb: (sql: unknown) => unknown) => {
     const sql = Object.assign(
@@ -72,9 +77,12 @@ vi.mock("@/lib/db", () => ({
         }
         if (query.includes("UPDATE published_posts")) {
           H.otherWrites.push([query, vals]);
-          const id = vals[vals.length - 2] as string;
+          const id = vals.find((value) => H.publishedPosts.some((candidate) => candidate.id === value)) as string;
           const row = H.publishedPosts.find((r) => r.id === id);
           if (row) {
+            if (query.includes("'{youtubeUpload}'")) {
+              return Promise.resolve([{ id: row.id }]);
+            }
             if (vals.length >= 5) {
               row.status = vals[0] as string;
               row.external_id = (vals[1] as string | null) ?? null;
@@ -83,7 +91,7 @@ vi.mock("@/lib/db", () => ({
               row.status = "failed";
             }
           }
-          return Promise.resolve([]);
+          return Promise.resolve(query.includes("RETURNING id::text") && row ? [{ id: row.id }] : []);
         }
         H.otherWrites.push([query, vals]);
         return Promise.resolve([]);
@@ -359,8 +367,8 @@ describe("POST /api/video/publish — youtube 브랜치", () => {
       body: JSON.stringify({ filename: "x.mp4", platform: "youtube" }),
     }));
 
-    expect(res.status).toBe(200);
-    expect(await res.json()).not.toEqual(expect.objectContaining({ ok: true }));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ ok: false, reconciliation: { retryPublish: false } });
   });
 
   it("upload PUT의 성공 응답에 유효한 video id가 없으면 실패한다", async () => {
@@ -377,8 +385,8 @@ describe("POST /api/video/publish — youtube 브랜치", () => {
       body: JSON.stringify({ filename: "x.mp4", platform: "youtube" }),
     }));
 
-    expect(res.status).toBe(200);
-    expect(await res.json()).not.toEqual(expect.objectContaining({ ok: true }));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ ok: false, reconciliation: { retryPublish: false } });
   });
 
   it("finding 5: init에서 401이면 refresh 헬퍼를 정확히 1회 호출하고 1회만 재시도해 성공한다", async () => {

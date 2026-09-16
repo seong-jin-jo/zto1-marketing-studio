@@ -22,9 +22,13 @@ const H = vi.hoisted(() => ({
     status: string;
     external_id: string | null;
     permalink: string | null;
+    reserved_at: string | null;
+    provider_meta: Record<string, unknown>;
   }>,
   inserts: [] as unknown[][],
   dbFail: false,
+  publicationConfirmFail: false,
+  usageRelayFail: false,
   staleReclaim: false,
   seq: 0,
   recordEvents: [] as unknown[][],
@@ -50,13 +54,17 @@ vi.mock("@/lib/db", () => ({
         const [, draft, platform, , account] = vals as [unknown, string, string, unknown, string | null];
         if (live(draft, platform, account)) return Promise.resolve([]); // ON CONFLICT DO NOTHING
         const id = `res-${++H.seq}`;
-        H.rows.push({ id, draft_id: draft, platform, account_id: account ?? null, status: "in_progress", external_id: null, permalink: null });
+        H.rows.push({
+          id, draft_id: draft, platform, account_id: account ?? null,
+          status: "in_progress", external_id: null, permalink: null,
+          reserved_at: new Date().toISOString(), provider_meta: {},
+        });
         return Promise.resolve([{ id }]);
       }
-      if (q.includes("SELECT status, external_id, permalink")) {
+      if (q.includes("SELECT id::text, status, external_id, permalink")) {
         const [, draft, platform, account] = vals as [unknown, string, string, string | null];
         const row = live(draft, platform, account);
-        return Promise.resolve(row ? [row] : []);
+        return Promise.resolve(row ? [{ ...row, provider_meta: structuredClone(row.provider_meta) }] : []);
       }
       if (q.includes("stale") || q.includes("15 minutes")) {
         // 회수 UPDATE는 error를 파라미터로 바인딩하므로 vals[0]은 error 메시지, vals[1]이 tenantId다.
@@ -70,21 +78,41 @@ vi.mock("@/lib/db", () => ({
       }
       if (q.includes("UPDATE published_posts")) {
         // 전체 확정 UPDATE는 [status, ext, permalink, error, id, tenant], 축약 실패 UPDATE는 [error, id, tenant].
-        const id = vals[vals.length - 2] as string;
+        const id = vals.find((value) => H.rows.some((candidate) => candidate.id === value)) as string;
         const row = H.rows.find((r) => r.id === id);
+        if (H.publicationConfirmFail && q.includes("external_id") && q.includes("RETURNING id::text")) {
+          return Promise.reject(new Error("confirm failed"));
+        }
         if (row) {
+          if (q.includes("'{youtubeUpload}'")) {
+            row.provider_meta.youtubeUpload = vals[0];
+            row.reserved_at = new Date().toISOString();
+            return Promise.resolve([{ id: row.id }]);
+          }
+          if (q.includes("youtubeUpload,nextByte")) {
+            const expectedReservedAt = vals[3] as string | undefined;
+            if (q.includes("reserved_at =") && row.reserved_at !== expectedReservedAt) {
+              return Promise.resolve([]);
+            }
+            const youtubeUpload = row.provider_meta.youtubeUpload as Record<string, unknown> | undefined;
+            row.provider_meta.youtubeUpload = { ...(youtubeUpload ?? {}), nextByte: Number(vals[0]) };
+            row.reserved_at = new Date().toISOString();
+            return Promise.resolve([{ id: row.id }]);
+          }
           if (vals.length >= 6) {
             row.status = vals[0] as string;
             row.external_id = (vals[1] as string | null) ?? null;
             row.permalink = (vals[2] as string | null) ?? null;
+            if (vals[4] && typeof vals[4] === "object") Object.assign(row.provider_meta, vals[4]);
           } else {
             row.status = "failed";
           }
         }
-        return Promise.resolve([]);
+        return Promise.resolve(q.includes("RETURNING id::text") && row ? [{ id: row.id }] : []);
       }
       return Promise.resolve([]);
     };
+    sql.json = (value: unknown) => value;
     return cb(sql);
   }),
 }));
@@ -108,8 +136,11 @@ vi.mock("@/lib/youtube-token", () => ({
 }));
 
 vi.mock("@/lib/usage-events", () => ({
+  publicationUsageOutbox: (platform: string) => ({ usageEvent: { status: "pending", platform } }),
   recordPublicationEvent: vi.fn(async (...args: unknown[]) => {
     H.recordEvents.push(args);
+    if (H.usageRelayFail) throw new Error("usage ledger down");
+    return { recorded: true, alreadyRecorded: false };
   }),
 }));
 
@@ -164,6 +195,8 @@ describe("/api/video/publish — YouTube", () => {
     H.inserts = [];
     H.rows = [];
     H.dbFail = false;
+    H.publicationConfirmFail = false;
+    H.usageRelayFail = false;
     H.staleReclaim = false;
     H.seq = 0;
     H.recordEvents = [];
@@ -183,6 +216,11 @@ describe("/api/video/publish — YouTube", () => {
     expect(json.url).toBe("https://youtube.com/shorts/yt-video-1");
     expect(fetchMock).toHaveBeenCalledTimes(2); // init + upload
     expect(H.rows[0].status).toBe("published");
+    expect(H.rows[0].provider_meta.youtubeUpload).toMatchObject({
+      url: "https://upload.example.com/session-1",
+      totalBytes: 2048,
+      nextByte: 0,
+    });
     expect(H.recordEvents.length).toBe(1);
   }, 15000); // 첫 테스트는 모듈 최초 트랜스폼 비용이 커 5s 기본 타임아웃을 넘길 수 있다.
 
@@ -283,6 +321,7 @@ describe("/api/video/publish — YouTube", () => {
     H.rows.push({
       id: "zombie", draft_id: draftId, platform: "youtube", account_id: null,
       status: "in_progress", external_id: null, permalink: null,
+      reserved_at: new Date().toISOString(), provider_meta: {},
     });
 
     H.staleReclaim = false;
@@ -290,6 +329,7 @@ describe("/api/video/publish — YouTube", () => {
     expect(fetchMock).not.toHaveBeenCalled();
 
     H.staleReclaim = true;
+    H.rows[0].reserved_at = new Date(Date.now() - 16 * 60 * 1000).toISOString();
     const { status } = await callPublish({ filename: "clip.mp4", platform: "youtube", draft_id: draftId });
     expect(status).toBe(200);
   });
@@ -307,6 +347,110 @@ describe("/api/video/publish — YouTube", () => {
     mockFetchSuccess("yt-video-2");
     await callPublish({ filename: "clip.mp4", platform: "youtube", title: "B", description: "본문" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("CODE-REVIEW-20260917-04 정상: 태그만 바뀌어도 새 발행 의도로 업로드한다", async () => {
+    await callPublish({ filename: "clip.mp4", platform: "youtube", title: "제목", tags: ["one"] });
+    mockFetchSuccess("yt-tags-2");
+    const second = await callPublish({ filename: "clip.mp4", platform: "youtube", title: "제목", tags: ["two"] });
+
+    expect(second.status).toBe(200);
+    expect(second.json.videoId).toBe("yt-tags-2");
+  });
+
+  it("CODE-REVIEW-20260917-05 정상: 같은 파일명이어도 파일 내용이 바뀌면 새 발행 의도로 업로드한다", async () => {
+    await callPublish({ filename: "clip.mp4", platform: "youtube", title: "제목" });
+    const videoPath = path.join(tmpRoot, "tenants", H.tenantId as string, "videos", "clip.mp4");
+    fs.writeFileSync(videoPath, Buffer.alloc(2048, 2));
+    mockFetchSuccess("yt-bytes-2");
+    const second = await callPublish({ filename: "clip.mp4", platform: "youtube", title: "제목" });
+
+    expect(second.status).toBe(200);
+    expect(second.json.videoId).toBe("yt-bytes-2");
+  });
+
+  it("CODE-REVIEW-20260917-06 복구: 저장된 세션 상태를 조회하고 받은 바이트 다음부터 이어 올린다", async () => {
+    const draftId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    H.rows.push({
+      id: "resume-1", draft_id: draftId, platform: "youtube", account_id: null,
+      status: "in_progress", external_id: null, permalink: null,
+      reserved_at: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
+      provider_meta: { youtubeUpload: { url: "https://upload.example.com/resume", totalBytes: 2048, nextByte: 0 } },
+    });
+    fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      const range = (init?.headers as Record<string, string>)?.["Content-Range"];
+      if (range === "bytes */2048") {
+        return { ok: false, status: 308, headers: { get: (key: string) => key === "Range" ? "bytes=0-1023" : null } } as unknown as Response;
+      }
+      expect(range).toBe("bytes 1024-2047/2048");
+      return { ok: true, status: 201, headers: { get: () => null }, json: async () => ({ id: "yt-resumed" }) } as unknown as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await callPublish({ filename: "clip.mp4", platform: "youtube", draft_id: draftId });
+
+    expect(result.status).toBe(200);
+    expect(result.json).toMatchObject({ ok: true, videoId: "yt-resumed" });
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("uploadType=resumable"))).toBe(true);
+  });
+
+  it("CODE-REVIEW-20260917-09 경합: 만료된 같은 세션의 재개권은 한 요청만 가져간다", async () => {
+    const draftId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    H.rows.push({
+      id: "resume-race-1", draft_id: draftId, platform: "youtube", account_id: null,
+      status: "in_progress", external_id: null, permalink: null,
+      reserved_at: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
+      provider_meta: { youtubeUpload: { url: "https://upload.example.com/race", totalBytes: 2048, nextByte: 0 } },
+    });
+    let statusCalls = 0;
+    let uploadCalls = 0;
+    let releaseStatus: () => void = () => {};
+    const bothStatusRequests = new Promise<void>((resolve) => { releaseStatus = resolve; });
+    fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      const range = (init?.headers as Record<string, string>)?.["Content-Range"];
+      if (range === "bytes */2048") {
+        statusCalls += 1;
+        if (statusCalls === 2) releaseStatus();
+        await bothStatusRequests;
+        return { ok: false, status: 308, headers: { get: (key: string) => key === "Range" ? "bytes=0-1023" : null } } as unknown as Response;
+      }
+      uploadCalls += 1;
+      return { ok: true, status: 201, headers: { get: () => null }, json: async () => ({ id: "yt-race-winner" }) } as unknown as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const results = await Promise.all([
+      callPublish({ filename: "clip.mp4", platform: "youtube", draft_id: draftId }),
+      callPublish({ filename: "clip.mp4", platform: "youtube", draft_id: draftId }),
+    ]);
+
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    expect(uploadCalls).toBe(1);
+  });
+
+  it("CODE-REVIEW-20260917-07 거절: 외부 성공 뒤 발행 확정 실패를 전체 성공으로 반환하지 않는다", async () => {
+    H.publicationConfirmFail = true;
+    const result = await callPublish({ filename: "clip.mp4", platform: "youtube" });
+
+    expect(result.status).toBe(500);
+    expect(result.json).toMatchObject({
+      ok: false,
+      externalPublished: true,
+      persistence: { stage: "publication_record", reconciliation: { retryPublish: false } },
+    });
+  });
+
+  it("CODE-REVIEW-20260917-08 거절: 사용량 relay 실패를 성공으로 숨기지 않고 pending outbox를 남긴다", async () => {
+    H.usageRelayFail = true;
+    const result = await callPublish({ filename: "clip.mp4", platform: "youtube" });
+
+    expect(result.status).toBe(500);
+    expect(result.json).toMatchObject({
+      ok: false,
+      externalPublished: true,
+      persistence: { stage: "usage_record", reconciliation: { retryPublish: false } },
+    });
+    expect(H.rows[0].provider_meta).toMatchObject({ usageEvent: { status: "pending", platform: "youtube" } });
   });
 
   it("401이면 정확히 1회 refresh 후 재시도한다", async () => {

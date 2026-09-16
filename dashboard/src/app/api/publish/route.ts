@@ -1,5 +1,5 @@
 import { withTenant } from "@/lib/db";
-import { recordPublicationEvent } from "@/lib/usage-events";
+import { publicationUsageOutbox, recordPublicationEvent } from "@/lib/usage-events";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { markQueuePublished } from "@/lib/queue-store";
 import { reportFailure, reportRecovery, normalizePlatform, classifyPublishFailure } from "@/lib/observability";
@@ -43,7 +43,7 @@ import {
   type PublishPlatform,
 } from "@/lib/studio/platform-publish-fields";
 
-type PersistenceStage = "publication_record" | "queue_record";
+type PersistenceStage = "publication_record" | "queue_record" | "usage_record";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // 예약 임차 시간. 이 시간이 지나도록 in_progress 로 남은 예약은 발행 프로세스가 죽은 것으로 보고
@@ -134,17 +134,20 @@ function partialPersistenceFailure(
     accountId?: string;
   },
 ): Response {
-  const publicationRecorded = input.stage === "queue_record";
+  const publicationRecorded = input.stage !== "publication_record";
   const code = input.stage === "publication_record"
     ? "PUBLICATION_RECORD_FAILED"
-    : "QUEUE_RECORD_FAILED";
+    : input.stage === "queue_record" ? "QUEUE_RECORD_FAILED" : "USAGE_RECORD_PENDING";
   const message = input.stage === "publication_record"
     ? "외부 게시에는 성공했지만 발행 기록 저장에 실패했습니다."
-    : "외부 게시와 발행 기록 저장에는 성공했지만 queue 상태 저장에 실패했습니다.";
+    : input.stage === "queue_record"
+      ? "외부 게시와 발행 기록 저장에는 성공했지만 queue 상태 저장에 실패했습니다."
+      : "외부 게시와 발행 기록 저장에는 성공했지만 사용량 장부 반영이 대기 중입니다.";
 
   return Response.json(
     {
       ok: false,
+      partial: true,
       externalPublished: true,
       externalId: result.externalId,
       permalink: result.permalink,
@@ -153,7 +156,7 @@ function partialPersistenceFailure(
         ok: false,
         stage: input.stage,
         publicationRecorded,
-        queueRecorded: false,
+        queueRecorded: input.stage === "usage_record",
         error: {
           code,
           message,
@@ -304,8 +307,8 @@ export async function POST(request: Request) {
       {
         ok: false,
         error: account_id
-          ? `선택한 ${platform} 계정을 찾을 수 없음 — 삭제되었거나 다른 테넌트 소유`
-          : `${platform} 채널 미연결 — Settings에서 토큰 등록 필요`,
+          ? `선택한 ${platform} 계정을 찾을 수 없음. 삭제되었거나 다른 작업 공간 소유입니다.`
+          : `${platform} 채널 미연결. 채널 설정에서 연결을 완료해주세요.`,
       },
       { status: 400 },
     );
@@ -389,13 +392,23 @@ export async function POST(request: Request) {
             UPDATE published_posts
                SET status = 'published', external_id = ${readback.hit.externalId},
                    permalink = ${readback.hit.permalink ?? null}, error = NULL,
-                   reserved_at = NULL, published_at = now()
+                   reserved_at = NULL, published_at = now(),
+                   provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+                     || ${sql.json(publicationUsageOutbox(platform) as never)}::jsonb
              WHERE tenant_id = ${tenant_id}::uuid AND id = ${conflict.id}::uuid AND status = 'in_progress'
           `);
         } catch {
           return partialPersistenceFailure(
             { ok: true, externalId: readback.hit.externalId, permalink: readback.hit.permalink },
             { stage: "publication_record", draftId: draft_id, platform, accountId: cred.accountId },
+          );
+        }
+        try {
+          await recordPublicationEvent(tenant_id, conflict.id, platform);
+        } catch {
+          return partialPersistenceFailure(
+            { ok: true, externalId: readback.hit.externalId, permalink: readback.hit.permalink },
+            { stage: "usage_record", draftId: draft_id, platform, accountId: cred.accountId },
           );
         }
         return Response.json({
@@ -559,6 +572,16 @@ export async function POST(request: Request) {
           });
         }
       }
+      try {
+        await recordPublicationEvent(tenant_id, existing.id, platform);
+      } catch {
+        return partialPersistenceFailure(existingResult, {
+          stage: "usage_record",
+          draftId: draft_id,
+          platform,
+          accountId: cred.accountId,
+        });
+      }
       return Response.json({
         ok: true,
         externalId: existing.external_id ?? undefined,
@@ -677,7 +700,11 @@ export async function POST(request: Request) {
           first_comment_status = ${commentState.status},
           first_comment_error = ${commentState.error},
           first_comment_external_id = ${commentState.externalId},
-          provider_meta = ${sql.json(firstCommentResult ? { firstComment: firstCommentResult } as never : {} as never)},
+          provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+            || ${sql.json({
+              ...(firstCommentResult ? { firstComment: firstCommentResult } : {}),
+              ...publicationUsageOutbox(platform),
+            } as never)}::jsonb,
           published_at = now()
       WHERE tenant_id = ${tenant_id}::uuid AND id = ${reservationId}::uuid
     `);
@@ -708,10 +735,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // 성과실 "오늘 발행" 이 이 성공을 세게 한다. published_posts 는 이미 위에서 기록됐지만
-  // 사용량 집계(/api/usage)는 usage_events 만 읽는다(2026-09-16 실측, 두 정본이 갈려 있었다).
-  if (result.ok) await recordPublicationEvent(tenant_id, platform);
-
   if (result.ok && isDraftUuid) {
     try {
       const queueRecorded = await markQueuePublished(tenant_id, draft_id, {
@@ -730,6 +753,18 @@ export async function POST(request: Request) {
         error instanceof Error ? error.message : String(error));
       return partialPersistenceFailure(result, {
         stage: "queue_record",
+        draftId: draft_id,
+        platform,
+        accountId: cred.accountId,
+      });
+    }
+  }
+  if (result.ok) {
+    try {
+      await recordPublicationEvent(tenant_id, reservationId, platform);
+    } catch {
+      return partialPersistenceFailure(result, {
+        stage: "usage_record",
         draftId: draft_id,
         platform,
         accountId: cred.accountId,
