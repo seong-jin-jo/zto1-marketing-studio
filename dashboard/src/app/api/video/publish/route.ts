@@ -169,6 +169,114 @@ export async function POST(request: Request) {
         );
       }
 
+      // 2026-09-17: TikTok/Reels와 같은 예약(reserve) + idempotency 계약으로 맞춘다. "지금 발행"을
+      // 두 번 누르면(순차 재시도 또는 동시 클릭) 같은 영상이 YouTube에 두 번 올라가던 것을 막는다.
+      // 명시적 draft_id/idempotency_key(UUID)가 있으면 그대로 쓰고, 없으면(실 UI 클릭) tenant+계정+
+      // 파일명+제목+설명 해시로 같은 클릭 페이로드를 결정론적으로 식별한다.
+      const explicitKey: string = typeof data.draft_id === "string" && data.draft_id
+        ? data.draft_id
+        : (typeof data.idempotency_key === "string" ? data.idempotency_key : "");
+      const idKey = UUID_RE.test(explicitKey)
+        ? explicitKey
+        : publishReservationKey(["osmu-youtube-dedupe-v1", tenantId, accountId || "", filename, title, description]);
+
+      const reserve = () =>
+        withTenant(tenantId, (sql) => sql<{ id: string }[]>`
+          INSERT INTO published_posts (tenant_id, draft_id, platform, text, status, account_id)
+          VALUES (${tenantId}::uuid, ${idKey}::uuid, ${"youtube"}, ${description || title || null},
+                  'in_progress', ${accountId ?? null}::uuid)
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `);
+
+      let reservationId: string | null = null;
+      try {
+        const [row] = await reserve();
+        reservationId = row?.id ?? null;
+      } catch {
+        return Response.json(
+          { error: "발행 상태를 확인할 수 없어 중단했습니다(중복 발행 방지). 잠시 후 다시 시도해주세요." },
+          { status: 503 },
+        );
+      }
+
+      if (!reservationId) {
+        // 좀비 예약 회수 — Reels/TikTok과 같은 15분 유예.
+        try {
+          const reclaimed = await withTenant(tenantId, (sql) => sql<{ id: string }[]>`
+            UPDATE published_posts
+               SET status = 'failed', error = ${"완료되지 않은 YouTube 예약(stale) 자동 회수"}
+             WHERE tenant_id = ${tenantId}::uuid
+               AND draft_id = ${idKey}::uuid
+               AND platform = ${"youtube"}
+               AND status = 'in_progress'
+               AND account_id IS NOT DISTINCT FROM ${accountId ?? null}::uuid
+               AND published_at < now() - interval '15 minutes'
+            RETURNING id
+          `);
+          if (reclaimed.length > 0) {
+            const [row] = await reserve();
+            reservationId = row?.id ?? null;
+          }
+        } catch {
+          return Response.json(
+            { error: "발행 상태를 확인할 수 없어 중단했습니다(중복 발행 방지). 잠시 후 다시 시도해주세요." },
+            { status: 503 },
+          );
+        }
+      }
+
+      if (!reservationId) {
+        let holder: { status: string; external_id: string | null; permalink: string | null } | undefined;
+        try {
+          [holder] = await withTenant(tenantId, (sql) => sql<{
+            status: string; external_id: string | null; permalink: string | null;
+          }[]>`
+            SELECT status, external_id, permalink
+              FROM published_posts
+             WHERE tenant_id = ${tenantId}::uuid
+               AND draft_id = ${idKey}::uuid
+               AND platform = ${"youtube"}
+               AND account_id IS NOT DISTINCT FROM ${accountId ?? null}::uuid
+               AND status IN ('published', 'in_progress')
+             ORDER BY published_at DESC
+             LIMIT 1
+          `);
+        } catch {
+          return Response.json(
+            { error: "발행 상태를 확인할 수 없어 중단했습니다(중복 발행 방지). 잠시 후 다시 시도해주세요." },
+            { status: 503 },
+          );
+        }
+        if (holder?.status === "published") {
+          return Response.json({
+            ok: true,
+            platform: "youtube",
+            videoId: holder.external_id ?? undefined,
+            url: holder.permalink ?? undefined,
+            alreadyPublished: true,
+          });
+        }
+        return Response.json(
+          {
+            ok: false,
+            error: "같은 영상의 YouTube 발행이 이미 진행 중입니다. 완료될 때까지 기다린 뒤 결과를 확인해주세요.",
+            code: "publish_in_progress",
+          },
+          { status: 409 },
+        );
+      }
+
+      // ③ 예약 성공한 요청만 외부 발행. 어떤 경로로 끝나든 예약 행은 반드시 확정 상태로 닫는다
+      //    — 안 그러면 in_progress가 남아 이후 재시도가 영구히 409로 막힌다.
+      const failReservation = async (error: string) => {
+        try {
+          await withTenant(tenantId, (sql) => sql`
+            UPDATE published_posts SET status = 'failed', error = ${error}
+             WHERE id = ${reservationId}::uuid AND tenant_id = ${tenantId}::uuid`);
+        } catch { /* 기록 실패가 응답을 바꾸지 않는다 */ }
+      };
+
       try {
         const videoSize = fs.statSync(videoPath).size;
         const metadata = JSON.stringify({
@@ -207,21 +315,23 @@ export async function POST(request: Request) {
         if (initRes.status === 401) {
           const refreshed = await refreshYoutubeAccessToken(tenantId, accountId);
           if (!refreshed.ok || !refreshed.accessToken) {
-            return Response.json(
-              { error: refreshed.error || "YouTube 인증이 만료되었습니다. 다시 연결해주세요." },
-              { status: 401 },
-            );
+            const msg = refreshed.error || "YouTube 인증이 만료되었습니다. 다시 연결해주세요.";
+            await failReservation(msg);
+            return Response.json({ error: msg }, { status: 401 });
           }
           accessToken = refreshed.accessToken;
           initRes = await initUploadOnce(accessToken);
         }
 
         if (!initRes.ok) {
-          return Response.json({ error: `YouTube 업로드 초기화 실패 (오류 코드 ${initRes.status}).` }, { status: initRes.status === 401 ? 401 : 502 });
+          const msg = `YouTube 업로드 초기화 실패 (오류 코드 ${initRes.status}).`;
+          await failReservation(msg);
+          return Response.json({ error: msg }, { status: initRes.status === 401 ? 401 : 502 });
         }
 
         const uploadUrl = initRes.headers.get("Location");
         if (!uploadUrl) {
+          await failReservation("Failed to get upload URL");
           return Response.json({ error: "Failed to get upload URL" }, { status: 500 });
         }
 
@@ -234,15 +344,15 @@ export async function POST(request: Request) {
           signal: AbortSignal.timeout(120000),
         });
         if (!uploadRes.ok) {
-          return Response.json(
-            { ok: false, error: `YouTube 영상 업로드 실패 (오류 코드 ${uploadRes.status}).` },
-            { status: PROVIDER_FAILED },
-          );
+          const msg = `YouTube 영상 업로드 실패 (오류 코드 ${uploadRes.status}).`;
+          await failReservation(msg);
+          return Response.json({ ok: false, error: msg }, { status: PROVIDER_FAILED });
         }
         let result: unknown;
         try {
           result = await uploadRes.json();
         } catch {
+          await failReservation("YouTube 업로드 응답을 확인할 수 없습니다.");
           return Response.json({ ok: false, error: "YouTube 업로드 응답을 확인할 수 없습니다." }, { status: PROVIDER_FAILED });
         }
         const videoId =
@@ -250,24 +360,20 @@ export async function POST(request: Request) {
             ? (result as { id: string }).id.trim()
             : "";
         if (!videoId) {
+          await failReservation("YouTube 업로드 결과에 영상 ID가 없습니다.");
           return Response.json({ ok: false, error: "YouTube 업로드 결과에 영상 ID가 없습니다." }, { status: PROVIDER_FAILED });
         }
 
-        // 2026-09-16 실측: 업로드는 성공했는데(영상이 실제로 올라감) 이 분기는 TikTok·Reels와
-        // 달리 published_posts 에 아무 행도 남기지 않았다. 성과실·metrics-collector 는 이 표만
-        // 읽으므로 이 발행은 어디에서도 세어지지 않았다. dedupe 예약까지는 이번 범위 밖이고
-        // (별도 후속), 최소한 기록과 사용량 집계는 다른 채널과 같게 남긴다.
+        // 2026-09-17: TikTok/Reels와 같은 계약 — 위에서 잡은 예약 행을 published로 확정한다
+        // (새 INSERT가 아니라 UPDATE). 업로드는 성공했는데 이 UPDATE가 실패하면 dedupe 인덱스가
+        // 여전히 in_progress를 막고 있으므로, 사용자에게 성공을 숨기지 않되 기록 실패를 로그로 남긴다.
         const permalink = `https://youtube.com/shorts/${videoId}`;
         try {
           await withTenant(tenantId, (sql) => sql`
-            INSERT INTO published_posts (tenant_id, draft_id, platform, text, status, external_id, permalink, account_id, published_at)
-            VALUES (
-              ${tenantId}::uuid,
-              ${typeof data.draft_id === "string" && UUID_RE.test(data.draft_id) ? data.draft_id : crypto.randomUUID()}::uuid,
-              'youtube', ${description || title || null}, 'published',
-              ${videoId}, ${permalink}, ${accountId ?? null}::uuid, now()
-            )
-          `);
+            UPDATE published_posts
+               SET status = ${"published"}, external_id = ${videoId}, permalink = ${permalink}, error = ${null},
+                   published_at = now()
+             WHERE id = ${reservationId}::uuid AND tenant_id = ${tenantId}::uuid`);
         } catch (e) {
           console.error("[video-publish][persist-fail] youtube published_posts", e instanceof Error ? e.message : String(e));
         }
@@ -281,6 +387,7 @@ export async function POST(request: Request) {
         });
       } catch {
         // finding 7: provider raw 에러/스택트레이스를 그대로 노출하지 않는다.
+        await failReservation("YouTube 업로드 중 예기치 못한 오류");
         return Response.json({ error: "YouTube 업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요." }, { status: 500 });
       }
     }

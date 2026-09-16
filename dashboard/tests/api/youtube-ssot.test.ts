@@ -21,6 +21,13 @@ const H = vi.hoisted(() => ({
   updateCalls: [] as unknown[][],
   otherWrites: [] as [string, unknown[]][],
   tenantId: "tenant-1" as string | null,
+  // 2026-09-17: youtube 분기도 TikTok/Reels와 같은 예약(reserve) + idempotency 계약을 쓴다.
+  // published_posts를 인메모리로 흉내내 그 왕복(INSERT 예약 → UPDATE 확정)을 시뮬레이션한다.
+  publishedPosts: [] as Array<{
+    id: string; draft_id: string; platform: string; account_id: string | null;
+    status: string; external_id: string | null; permalink: string | null;
+  }>,
+  seq: 0,
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({
@@ -43,10 +50,43 @@ vi.mock("@/lib/db", () => ({
         const query = s.join("?");
         if (query.includes("UPDATE channel_accounts") || query.includes("UPDATE integrations")) {
           H.updateCalls.push(vals);
-        } else {
-          H.otherWrites.push([query, vals]);
+          return Promise.resolve([{ is_default: false }]);
         }
-        return Promise.resolve(query.includes("UPDATE channel_accounts") ? [{ is_default: false }] : []);
+        const live = (draft: unknown, platform: unknown, account: unknown) =>
+          H.publishedPosts.find(
+            (r) => r.draft_id === draft && r.platform === platform && r.account_id === (account ?? null)
+              && (r.status === "published" || r.status === "in_progress"),
+          );
+        if (query.includes("INSERT INTO published_posts")) {
+          H.otherWrites.push([query, vals]);
+          const [, draft, platform, , account] = vals as [unknown, string, string, unknown, string | null];
+          if (live(draft, platform, account)) return Promise.resolve([]); // ON CONFLICT DO NOTHING
+          const id = `res-${++H.seq}`;
+          H.publishedPosts.push({ id, draft_id: draft, platform, account_id: account ?? null, status: "in_progress", external_id: null, permalink: null });
+          return Promise.resolve([{ id }]);
+        }
+        if (query.includes("SELECT status, external_id, permalink")) {
+          const [, draft, platform, account] = vals as [unknown, string, string, string | null];
+          const row = live(draft, platform, account);
+          return Promise.resolve(row ? [row] : []);
+        }
+        if (query.includes("UPDATE published_posts")) {
+          H.otherWrites.push([query, vals]);
+          const id = vals[vals.length - 2] as string;
+          const row = H.publishedPosts.find((r) => r.id === id);
+          if (row) {
+            if (vals.length >= 5) {
+              row.status = vals[0] as string;
+              row.external_id = (vals[1] as string | null) ?? null;
+              row.permalink = (vals[2] as string | null) ?? null;
+            } else {
+              row.status = "failed";
+            }
+          }
+          return Promise.resolve([]);
+        }
+        H.otherWrites.push([query, vals]);
+        return Promise.resolve([]);
       },
       { json: (v: unknown) => v },
     );
@@ -62,6 +102,8 @@ beforeEach(() => {
   H.cred = null;
   H.updateCalls = [];
   H.otherWrites = [];
+  H.publishedPosts = [];
+  H.seq = 0;
   H.tenantId = "tenant-1";
   process.env.OSMU_SECRET_KEY = "enc-key";
   tmpDir = createTempDir();
@@ -279,9 +321,10 @@ describe("POST /api/video/publish — youtube 브랜치", () => {
     // 2026-09-16 실측: 오늘 03:00 YouTube Shorts 가 실제로 올라갔는데
     // `published_posts` 에 아무 행도 없었다(성과실·metrics-collector 가 이 표만 읽어
     // 그 발행을 영영 못 봤다). 성공 응답 뒤 이 분기도 다른 채널처럼 기록을 남겨야 한다.
-    const insertedPublishedPosts = H.otherWrites.find(([query, vals]) =>
-      query.includes("INSERT INTO published_posts") && vals.includes("VIDEO123"));
-    expect(insertedPublishedPosts).toBeDefined();
+    // 2026-09-17: 이제 예약(INSERT) 후 UPDATE로 확정하는 계약이라 video id는 UPDATE에 실린다.
+    const confirmedPublishedPost = H.otherWrites.find(([query, vals]) =>
+      query.includes("UPDATE published_posts") && vals.includes("VIDEO123"));
+    expect(confirmedPublishedPost).toBeDefined();
   });
 
   it("upload PUT non-2xx는 video id가 든 JSON이어도 실패한다", async () => {
