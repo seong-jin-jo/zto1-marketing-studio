@@ -2,6 +2,23 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-16 23시 10분 KST · 성과 시계열 갭 build BLOCK, 필수 실앱 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사에서 지금도 없는 기본 흐름 항목 확인 | GAP-HISTORY-20260916-2310-01 | NG | 게시물별 성과 관측 이력과 재현 가능한 최근 30일 비교가 없다. `published_posts`는 최신 누계와 `metrics_at`만 보존하고, 실제 `GET /api/metrics` 응답은 `posts`, `coverage`만 반환한다. |
+| pipeline build 허용 범위 | 신규 저장과 비교 계약을 소스에 추가할 수 있는지 확인 | GAP-HISTORY-20260916-2310-02 | BLOCK | `pipeline-state.osmu.md` 최상단은 `current_stage: qa`, `status: in-progress (승인 아님)`이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준의 승인 기술설계가 없다. |
+| 실행본 귀속 | localhost와 현재 소스 일치 | GAP-HISTORY-20260916-2310-03 | PASS | `/api/health` HTTP 200, DB up, `build_commit`과 현재 HEAD가 `df5c4daa`로 일치한다. |
+| 실제 metrics | 지정 작업 공간 성과 응답 | GAP-HISTORY-20260916-2310-04 | NG | localhost 실제 요청 HTTP 200. 게시물 0건, `history`와 `comparison` 키가 없다. |
+| 필수 회귀 | `npm run test`와 `npx tsc --noEmit` | GAP-HISTORY-20260916-2310-05 | PASS | Vitest 371파일, 2,388건 통과, 3건 제외. TypeScript 종료 코드 0. |
+| 기본 흐름 실앱 | `verify-basic-flow-e2e.mjs` | GAP-HISTORY-20260916-2310-06 | NG | 첫 생성이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장으로 종료 코드 1. 서버 로그의 직접 원인은 Claude CLI 자식 `exit_nonzero`다. 같은 launch context와 모델의 최소 CLI 대조 요청은 exit 0이라 실행 파일과 전역 인증 장애는 제외했고, 실패는 전체 생성 입력 경로로 좁혔다. 자식 stderr를 보안상 버려 그 아래 원인은 미검증이다. |
+| Studio v1 실앱 | `verify-studio-v1-e2e.mjs` | GAP-HISTORY-20260916-2310-07 | NG | 401, 400, 422 거절은 통과했다. 정상 생성은 기대 201 대신 HTTP 200과 공급자 오류를 받아 종료 코드 1이다. |
+| 제품 소스 | migration, API, 테스트 | GAP-HISTORY-20260916-2310-08 | BLOCK | 제품 소스 변경 0건. QA 공정과 미승인 DB 및 API 계약을 우회하지 않았다. |
+| 증거 커밋 | 이번 기록의 원자 커밋 | GAP-HISTORY-20260916-2310-09 | PASS | 이번 절, 갭 재확인 절, 전용 세션 상태만 부분 staging해 원자 커밋했다. 착수 전부터 있던 다른 세션 변경은 포함하지 않았다. |
+
+이번 실행에서 새로 되는 것으로 전환된 항목은 없다. 최신 누계값을 기간 성과로 이름만 바꾸면
+같은 30일을 재현할 수 없다. 저장과 비교 계약을 승인하고 build를 다시 연 뒤 구현해야 한다.
+
 ## 2026-09-16 22시 31분 KST · 네 방 기본 흐름 v18 기능 범위 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
