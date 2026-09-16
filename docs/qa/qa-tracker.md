@@ -2,6 +2,38 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-16 18시 53분 KST · 네 방 기본 흐름 v17 기능 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 기본 흐름 관통 | FLOW-API-V17 | PASS | 최종 localhost 실제 요청 11/11. 후보 3장, 편집 인계와 순서 변경, 삭제와 복구, 발행 큐, 지원 여부, 성과 제안 3건, 생성 큐 재인계, 성과 지표를 확인했다. `logs/diff/osmu-four-room-flow-20260916-v17/commands/29-basic-flow-final2.log` |
+| R08, R19, R207 | 네 방 렌더와 가린 모달 확인 | FLOW-ROOM-PROBE-V17 | PASS | 최종 네 방 4/4, 가린 모달 0건, 브라우저 401 0건, 콘솔 오류 0건. 중간 실행의 성과실 `ERR_ABORTED` 1건을 숨기지 않고 탐침을 제한적 1회 재시도로 고쳤다. 실패 `commands/25-probe-four-room-final.log`, 통과 `commands/30-probe-four-room-final2.log`, 수정 `71495ef5` |
+| R08, R19 | 네 폭에서 사람처럼 생성실부터 성과실까지 이동 | FLOW-UI-V17 | PASS | 390 라이트와 다크, 768, 1024, 1440의 20화면과 성과실에서 생성실 복귀 5/5. 가로 넘침, 전체 화면 모달, 탐색 가림, 401, 콘솔 오류 0건. `commands/31-four-room-ui-final2.log`, 원본 `logs/diff/osmu-four-room-flow-20260916-v17/captures/` |
+| R166, R172 | Studio v1 인증, 생성, 조회, 무료 다시 만들기 | FLOW-STUDIO-V17 | PASS | localhost 실제 요청 14/14. `commands/32-studio-v1-final2.log` |
+| 필수 회귀 | 전체 test, TypeScript, build, seed와 RLS, 디자인 lint | FLOW-REGRESSION-V17 | PASS | Vitest 최종 371파일과 2,387건 통과, 3건 제외. TypeScript 종료 0. build 184/184. schema, seed, RLS 적용. 디자인 lint 위반 0. `commands/33-npm-test-after-probe-fix.log`, `34-tsc-after-probe-fix.log`, `19-npm-build.log`, `20-schema-seed.log`, `21-design-lint.log` |
+| R193, R205, R206 | 승인 시안 계승과 8개 배치 속성 정합 | DESIGN-CONF-V17 | NG | 과제 지정 v63과 현재 16개 화면 조합이 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계에서 불일치하거나 동일 상태 캡처가 아니다. canonical 승인 v68 핀과도 충돌한다. `docs/qa/osmu-four-room-basic-flow-v17-gpt-codex.md` |
+| 제품 전체 | 운영 배포와 외부 채널 | QA-QUALITY-GATE-V17 | NG | localhost 기능 범위만 PASS다. 운영 동적 URL의 실제 배포 버전과 외부 채널 실발행은 미검증이다. 디자인 정합도 NG라 제품 전체 PASS와 배포 승격을 금지한다. |
+| R01부터 R207 및 세부 요청 232건 중 이번 범위 밖 | 회장 확정 요구 전건 | REQ-ALL-V17 | 이월 | 기존 정본 판정을 유지하고 이번 범위 관련 요청만 갱신했다. |
+
+첫 생성 실패는 실제 3,044바이트 프롬프트에서 Claude CLI OAuth refresh가 macOS 로그인 키체인 세션을 찾지 못한 것이 원인이었다. 감독이 `SECURITYSESSIONID`를 복구하고 앱의 최소 자식 환경에 보존하도록 고쳤다. 제품 수정은 `327500b0`, 타입 계약 보수는 `e7b8dc0d`, 탐침 회귀 방지는 `71495ef5`다. 별도 Expo 또는 Maestro 표면은 없어 해당 없음으로 판정했다.
+
+## 2026-09-16 18시 36분 KST · 네 방 기본 흐름 v17 TypeScript 최초 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 필수 회귀 | 정확한 `npx tsc --noEmit` 통과 | FLOW-TSC-V17-INITIAL | NG | 공유 CLI 자식 환경을 최소화한 수정에서 프로젝트가 확장한 `NodeJS.ProcessEnv`의 필수 `NODE_ENV`를 빠뜨려 `src/lib/anthropic.ts:64` TS2741, 종료 코드 2. `logs/diff/osmu-four-room-flow-20260916-v17/commands/16-tsc-noemit.log` |
+
+제품 런타임 기본 흐름은 수정 후 통과했지만 타입 계약 실패를 별도로 남긴다. `NODE_ENV`를 명시하고 같은 명령과 전체 회귀를 다시 통과하기 전 최종 PASS로 세지 않는다.
+
+## 2026-09-16 18시 11분 KST · 네 방 기본 흐름 v17 최초 실행 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 백엔드 기본 흐름 관통 | FLOW-API-V17-INITIAL | NG | localhost:3456 실제 요청에서 첫 후보 생성이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 끝나 후보 0장, 종료 코드 1. 서버 로그의 고정 실패 사유는 `exit_nonzero`. 같은 호스트의 Claude CLI 단독 실행은 종료 코드 0이라 서버 자식 실행 조건 차이를 분리 진단한다. `logs/diff/osmu-four-room-flow-20260916-v17/commands/01-basic-flow.log` |
+| R08, R19, R207 | 네 방 렌더와 가린 모달 확인 | FLOW-ROOM-PROBE-V17-INITIAL | PASS | 생성실, 편집실, 발행실, 성과실 4/4 렌더. 가린 모달 0건, 브라우저 401 0건, 콘솔 오류 0건. `logs/diff/osmu-four-room-flow-20260916-v17/commands/02-probe-four-room.log` |
+
+기본 흐름 실패를 화면 단면 통과로 덮지 않는다. 원인을 수정한 뒤 동일한 실제 생성 요청과 전체 회귀를 다시 실행하기 전 `FLOW-API-V17`은 PASS로 전환하지 않는다.
+
 ## 2026-09-16 17시 57분 KST · API 읽기 경로 v15 범위 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
