@@ -45,7 +45,9 @@ describe("그림 지시문에 주제를 싣는다", () => {
       학습정보,
     );
     expect(out).toContain("계약서 조건 세 가지");
-    expect(out).toContain("neighborhood shop");   // 업종
+    // 2026-09-16 실측: "shop front"(정면 외관)는 간판이 달리는 자리라 모델이 깨진 글자를
+    // 지어 그렸다("hry lecimino Dry Cleening"). 정면 대신 매장 안쪽으로 좁혔다.
+    expect(out).toContain("shop's interior counter");   // 업종
     expect(out).toContain("warm gentle mood");     // 말투
     expect(out).toContain("inviting framing");     // 목표
     expect(out).toContain("color palette: sage green and cream"); // 브랜드 색

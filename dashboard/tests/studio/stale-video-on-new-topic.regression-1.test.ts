@@ -60,7 +60,9 @@ describe("VID-STALE 새 주제에 옛 영상이 붙지 않는다", () => {
 
   it("VID-STALE-04 같은 주제로 이미 영상이 있으면 중복 과금 전에 한 번 묻는다", () => {
     const same = mediaTopicKey(NEW);
-    const decision = decideVideoRequest({ idea: NEW, img: { topicKey: same }, vid: { topicKey: same } });
+    // 2026-09-16 실측 추가: 재사용은 주제만이 아니라 영상에 맞는 9:16 비율일 때만
+    // 허용한다(1:1 대표 이미지를 영상 바탕으로 재사용해 정사각 영상이 나간 사고).
+    const decision = decideVideoRequest({ idea: NEW, img: { topicKey: same, aspectRatio: "9:16" }, vid: { topicKey: same } });
     expect(decision.action).toBe("confirm");
     expect(decision.baseImage).toBe("reuse");
     expect(decision.confirm?.description).toContain("비용");
@@ -69,8 +71,8 @@ describe("VID-STALE 새 주제에 옛 영상이 붙지 않는다", () => {
   it("VID-STALE-05 처음 만들 때는 묻지 않고 바로 만든다", () => {
     const first = decideVideoRequest({ idea: NEW, img: null, vid: null });
     expect(first).toEqual({ action: "generate", baseImage: "new" });
-    // 방금 이 주제로 만든 그림이 있으면 그것을 바탕으로 쓴다. 두 번 만들 이유가 없다.
-    const withImage = decideVideoRequest({ idea: NEW, img: { topicKey: mediaTopicKey(NEW) }, vid: null });
+    // 방금 이 주제로 9:16 그림을 만들어 뒀으면 그것을 바탕으로 쓴다. 두 번 만들 이유가 없다.
+    const withImage = decideVideoRequest({ idea: NEW, img: { topicKey: mediaTopicKey(NEW), aspectRatio: "9:16" }, vid: null });
     expect(withImage).toEqual({ action: "generate", baseImage: "reuse" });
   });
 

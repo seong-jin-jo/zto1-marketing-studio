@@ -179,6 +179,17 @@ describe("Studio publish result integrity", () => {
           { platform: "tiktok", supported: false, reason: "현재 TikTok provider adapter는 댓글 생성 계약을 제공하지 않습니다." },
         ] }, mutate: vi.fn() };
       }
+      // 2026-09-16: GettingStartedStrip이 자체 조회하는 두 훅. 실제 화면에서는 이 조회가
+      // 끝까지 가면(성공하면) 빈 객체로 resolve된다 -- "조회 안 함"과 "조회했더니 0개"는
+      // 다르다(회장 실측: 로딩 중을 0으로 잘못 읽어 "0/15" 가 다른 화면의 "3/15" 와
+      // 갈렸다). 이 표를 다른 키처럼 영구 undefined 로 두면 그 구분을 이 테스트가
+      // 검증할 수 없으므로, 조회가 끝난 상태(빈 채널 설정)로 고정한다.
+      if (key === "/api/channel-config") {
+        return { data: {}, mutate: vi.fn() };
+      }
+      if (key === "/api/onboarding") {
+        return { data: { checklist: {} }, mutate: vi.fn() };
+      }
       return { data: undefined, mutate: vi.fn() };
     });
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
@@ -960,6 +971,17 @@ describe("Studio Higgsfield operator boundary", () => {
       }
       if (key === "/api/studio/brand-setup?tenant_id=tenant-a") {
         return { data: { guide: null }, mutate: vi.fn() };
+      }
+      // 2026-09-16: GettingStartedStrip이 자체 조회하는 두 훅. 실제 화면에서는 이 조회가
+      // 끝까지 가면(성공하면) 빈 객체로 resolve된다 -- "조회 안 함"과 "조회했더니 0개"는
+      // 다르다(회장 실측: 로딩 중을 0으로 잘못 읽어 "0/15" 가 다른 화면의 "3/15" 와
+      // 갈렸다). 이 표를 다른 키처럼 영구 undefined 로 두면 그 구분을 이 테스트가
+      // 검증할 수 없으므로, 조회가 끝난 상태(빈 채널 설정)로 고정한다.
+      if (key === "/api/channel-config") {
+        return { data: {}, mutate: vi.fn() };
+      }
+      if (key === "/api/onboarding") {
+        return { data: { checklist: {} }, mutate: vi.fn() };
       }
       return { data: undefined, mutate: vi.fn() };
     });

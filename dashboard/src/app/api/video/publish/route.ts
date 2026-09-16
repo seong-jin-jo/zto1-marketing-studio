@@ -9,6 +9,7 @@ import crypto from "crypto";
 import { getChannelCred, publishInstagramReels } from "@/lib/publish";
 import { refreshYoutubeAccessToken } from "@/lib/youtube-token";
 import { withTenant } from "@/lib/db";
+import { recordPublicationEvent } from "@/lib/usage-events";
 import { signMediaToken } from "@/lib/media-token";
 import { canonicalPublicOrigin } from "@/lib/social-connect";
 import { MAX_VIDEO_BYTES, MAX_VIDEO_MIB } from "@/lib/video-limits";
@@ -252,11 +253,31 @@ export async function POST(request: Request) {
           return Response.json({ ok: false, error: "YouTube 업로드 결과에 영상 ID가 없습니다." }, { status: PROVIDER_FAILED });
         }
 
+        // 2026-09-16 실측: 업로드는 성공했는데(영상이 실제로 올라감) 이 분기는 TikTok·Reels와
+        // 달리 published_posts 에 아무 행도 남기지 않았다. 성과실·metrics-collector 는 이 표만
+        // 읽으므로 이 발행은 어디에서도 세어지지 않았다. dedupe 예약까지는 이번 범위 밖이고
+        // (별도 후속), 최소한 기록과 사용량 집계는 다른 채널과 같게 남긴다.
+        const permalink = `https://youtube.com/shorts/${videoId}`;
+        try {
+          await withTenant(tenantId, (sql) => sql`
+            INSERT INTO published_posts (tenant_id, draft_id, platform, text, status, external_id, permalink, account_id, published_at)
+            VALUES (
+              ${tenantId}::uuid,
+              ${typeof data.draft_id === "string" && UUID_RE.test(data.draft_id) ? data.draft_id : crypto.randomUUID()}::uuid,
+              'youtube', ${description || title || null}, 'published',
+              ${videoId}, ${permalink}, ${accountId ?? null}::uuid, now()
+            )
+          `);
+        } catch (e) {
+          console.error("[video-publish][persist-fail] youtube published_posts", e instanceof Error ? e.message : String(e));
+        }
+        await recordPublicationEvent(tenantId, "youtube");
+
         return Response.json({
           ok: true,
           platform: "youtube",
           videoId,
-          url: `https://youtube.com/shorts/${videoId}`,
+          url: permalink,
         });
       } catch {
         // finding 7: provider raw 에러/스택트레이스를 그대로 노출하지 않는다.
@@ -655,6 +676,9 @@ export async function POST(request: Request) {
         // publishInstagramReels의 에러는 이미 프로바이더 원문을 담지 않는 고정 문구다.
         return Response.json({ ok: false, error: result.error || "Reels 발행에 실패했습니다." }, { status: PROVIDER_FAILED });
       }
+      // published_posts 는 위에서 이미 기록했다. 성과실 사용량 집계(usage_events)는 별도
+      // 정본이라 여기서 따로 남긴다(2026-09-16, /api/publish 와 같은 원인).
+      await recordPublicationEvent(tenantId, REELS_PLATFORM);
       return Response.json({
         ok: true,
         platform: REELS_PLATFORM,

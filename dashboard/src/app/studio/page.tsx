@@ -62,6 +62,7 @@ import {
   validatePlatformPublish,
   type PlatformPublishInput,
 } from "@/lib/studio/platform-publish-fields";
+import { partitionBlockedPublishTargets } from "@/lib/studio/publish-partial-block";
 import type { CurrentWork } from "@/lib/studio/current-work";
 import { attemptRequiredDraftPersistence } from "@/lib/studio/required-draft-persistence";
 import { PLATFORM_FIELD_CONTRACT } from "@/lib/studio/platform-publish-fields";
@@ -207,7 +208,9 @@ interface TextVariants {
 }
 // topicKey = 이 매체가 **어느 주제로** 만들어졌는지 찍는 도장(lib/studio/work-media.ts).
 // 도장이 없으면 새 주제에 어제 영상이 그대로 붙는다. 2026-09-14 실측 사고.
-interface ImgResult { url: string; file: string; localPath: string; imageUrls?: string[]; topicKey?: string }
+// aspectRatio = 이 그림이 어떤 비율로 만들어졌는지(work-media.ts isReusableVideoBaseImage).
+// 1:1 대표 이미지를 영상 바탕으로 잘못 재사용해 정사각 영상이 나오는 것을 막는다(2026-09-16).
+interface ImgResult { url: string; file: string; localPath: string; imageUrls?: string[]; topicKey?: string; aspectRatio?: string }
 interface VidResult {
   url: string;
   file: string;
@@ -515,7 +518,12 @@ export default function StudioPage() {
     status: Record<string, PubStatus>;
     urls: Record<string, string>;
     errors: Record<string, string>;
-  }>({ running: false, stopped: false, status: {}, urls: {}, errors: {} });
+    // 2026-09-16 실측(j.the.great.investor): 이미 올라간 글을 "지금 발행"으로 다시 누르면
+    // 서버가 dedupe 로 옛 글을 돌려주는데(`[publish] queue_record_absent(dedupe)`), 화면은
+    // "완료" + "새 창" 링크만 보여줘 방금 새로 올라간 것처럼 보였다. 그 발행 시각(있으면)을
+    // 따로 들고 있다가 "이미 올라간 글입니다" 로 구분해 말한다.
+    already: Record<string, string | true>;
+  }>({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
   // SNS-007: 플랫폼별 다중계정 중 이번 발행에 쓸 계정. 미선택(undefined)이면 getChannelCred가
   // 기본계정으로 resolve(/api/publish 계약과 동일). 계정이 1개뿐이면 셀렉터 자체를 숨긴다.
   const [accountsByPlatform, setAccountsByPlatform] = useState<Record<string, AccountOption[]>>({});
@@ -648,7 +656,7 @@ export default function StudioPage() {
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
     setEditLines([]); setCardTextPositions([]); setReviewQueueId(null); setSelectedCandidate(null);
     setCreateBranch("video"); setCreatePrimaryKind(null); setEditKind("video"); setEditFormat(defaultContentEditFormat("video"));
-    setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {} });
+    setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     if (!workspaceId) return;
     try {
       localStorage.removeItem("studio_work");
@@ -745,7 +753,7 @@ export default function StudioPage() {
         // 두 번째 글을 영영 못 올리는 상태였다. 새로 만든 것은 새 작업물이므로 이전 번호와
         // 발행 흔적을 끊는다. 끊지 않으면 새 글이 옛 글의 발행 기록에 덮어써진다.
         setDraftId(null);
-        setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {} });
+        setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
         setPublishReconciliations({});
         // 2026-09-14 실측: 초안번호와 발행 흔적은 끊으면서 **그림과 영상만 그대로 뒀다.**
         // 그래서 주제를 바꿔 새 초안을 만들어도 발행실에는 어제 주제의 영상이 붙어 있었고,
@@ -799,8 +807,10 @@ export default function StudioPage() {
             : (r?.error || "이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
         setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
       }
-      // 만든 그림에 주제 도장을 찍는다. 이 도장이 다음 작업물에서 재사용 여부를 가른다.
-      const stamped = { ...r, topicKey: mediaTopicKey(idea) };
+      // 만든 그림에 주제 도장과 비율 도장을 찍는다. 주제 도장은 재사용 여부를,
+      // 비율 도장은 영상 바탕으로 써도 되는지를 가른다(work-media.ts isReusableVideoBaseImage,
+      // 2026-09-16 실측: 1:1 대표 이미지를 영상 바탕으로 재사용해 정사각 영상이 나갔다).
+      const stamped = { ...r, topicKey: mediaTopicKey(idea), aspectRatio };
       setImg(stamped); mutateAcct(); return stamped;
     } catch (e) {
       // 2026-09-08 실측: 생성기가 막은 주제였는데 화면에는 "Request failed: 502" 만 떴다.
@@ -880,7 +890,7 @@ export default function StudioPage() {
     setIdea(""); setText(null); setImg(null); setVid(null); setDraftId(null);
     setEditLines([]); setEditorHandoff(null);
     setPublishReconciliations({});
-    setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {} });
+    setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
     // 생성실이 들고 있는 구조 초안과 답한 질문까지 비운다. 여기를 빼먹으면 "버렸다" 고
     // 말해 놓고 화면에는 앞서 만든 후보가 그대로 남는다(2026-09-09 실사용에서 확인).
@@ -1246,12 +1256,24 @@ export default function StudioPage() {
     // 고쳐 놓고 생성 없이 바로 발행하면 옛 매체가 그대로 나간다. 나가는 문에도 건다.
     const staleMedia = stalePublishBlock(vid, idea, "영상") ?? stalePublishBlock(img, idea, "이미지");
     if (staleMedia) { showToast(staleMedia, "error"); setLastError(staleMedia); return; }
-    const blocked = publishTargets
-      .map((platform) => ({ platform, issue: validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0] }))
-      .find((entry) => entry.issue);
-    if (blocked?.issue) {
-      showToast(`${LABEL[blocked.platform]}: ${blocked.issue.message}`, "error");
-      return;
+    // 2026-09-16 실측(j.the.great.investor): X 본문이 280 가중 문자를 넘으면(한 채널) 이
+    // 검사가 전체 publishTargets 중 "첫 번째로 걸리는 것"을 찾아 발행 자체를 통째로
+    // 멈췄다. Threads·YouTube 등 한도를 넘지 않은 다른 채널까지 아무것도 시작되지
+    // 않았고, 사용자는 버튼이 안 눌리는 줄 알았다(회장 "다 진행해 왜 멈춰" 계열 결함).
+    // 한도를 넘은 채널만 빼고 나머지는 그대로 발행한다. 전부 넘었을 때만 아무것도
+    // 못 올린다.
+    const { blocked: blockedEntries } = partitionBlockedPublishTargets(
+      publishTargets,
+      (platform) => validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0],
+    );
+    const blockedPlatforms = new Set(blockedEntries.map((entry) => entry.platform));
+    if (blockedEntries.length) {
+      const summary = blockedEntries.map((entry) => `${LABEL[entry.platform]}: ${entry.issue.message}`).join(" / ");
+      if (blockedEntries.length === publishTargets.length) {
+        showToast(`${summary} · 한도 넘는 곳만 줄이기를 눌러 맞춘 뒤 다시 시도하세요`, "error");
+        return;
+      }
+      showToast(`한도를 넘은 곳은 빼고 발행합니다 — ${summary}`, "error");
     }
     const draftPersistence = await attemptRequiredDraftPersistence(() => save("draft"));
     if (!draftPersistence.ok) {
@@ -1263,7 +1285,7 @@ export default function StudioPage() {
     // 전체가 실패로 보였고, 발행 버튼이 그대로 남아 다시 누르면 이미 올라간 채널까지
     // 재발행 대상이 됐다. 이번 초안에서 이미 성공한 채널은 대상에서 뺀다.
     const alreadyPublished = publishTargets.filter((platform) => pub.status[platform] === "done");
-    const targets = publishTargets.filter((platform) => pub.status[platform] !== "done");
+    const targets = publishTargets.filter((platform) => pub.status[platform] !== "done" && !blockedPlatforms.has(platform));
     if (!targets.length && alreadyPublished.length) {
       showToast(`${alreadyPublished.map((platform) => LABEL[platform]).join(", ")} 은 이미 발행됐습니다. 다시 올리지 않았습니다.`, "success");
       return;
@@ -1272,16 +1294,17 @@ export default function StudioPage() {
     const status: Record<string, PubStatus> = {}; targets.forEach((p) => (status[p] = "wait"));
     const urls: Record<string, string> = {};
     const errors: Record<string, string> = {};
+    const already: Record<string, string | true> = {};
     alreadyPublished.forEach((platform) => {
       status[platform] = "done";
       if (pub.urls[platform]) urls[platform] = pub.urls[platform];
     });
     const errs: string[] = [];
     const pendingReconciliations: PublishReconciliationMap = {};
-    setPub({ running: true, stopped: false, status: { ...status }, urls: {}, errors: {} });
+    setPub({ running: true, stopped: false, status: { ...status }, urls: {}, errors: {}, already: {} });
     await runWithConcurrency(targets, PUBLISH_CONCURRENCY, async (p) => {
       status[p] = "doing";
-      setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors } });
+      setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
       let failureReason: string | null = null;
       try {
         // 실 발행: /api/publish (테넌트 채널 토큰). 토큰 없으면 graceful 에러.
@@ -1315,10 +1338,10 @@ export default function StudioPage() {
           }
           status[p] = failureReason ? "failed" : "done";
           if (failureReason) errors[p] = failureReason;
-          setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors } });
+          setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
           return;
         }
-        const r = await apiPost<{ ok?: boolean; partial?: boolean; permalink?: string; error?: string; firstComment?: { ok?: boolean; error?: string } }>("/api/publish", {
+        const r = await apiPost<{ ok?: boolean; partial?: boolean; permalink?: string; error?: string; alreadyPublished?: boolean; publishedAt?: string; firstComment?: { ok?: boolean; error?: string } }>("/api/publish", {
           tenant_id: activeWorkspace.id, platform: p,
           text: publishText(p),
           // 채널이 몇 장까지 받는지는 채널 규격 한 자리에서 정한다(channel-image-capacity.ts).
@@ -1333,7 +1356,13 @@ export default function StudioPage() {
           first_comment: capabilityFor(p).supported && firstComments[p]?.trim() ? firstComments[p].trim() : undefined,
           edit_format: editFormat,
         }, { signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS) });
-        if (r?.ok && !r.partial) { urls[p] = r.permalink || POST_URL[p] || "#"; trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } }); }
+        if (r?.ok && !r.partial) {
+          urls[p] = r.permalink || POST_URL[p] || "#";
+          // 2026-09-16 실측: 서버가 dedupe 로 옛 글을 돌려준 것을 방금 새로 올라간 것과
+          // 구분한다. 이미 있던 것이면 "새로 올렸다" 이벤트를 다시 세지 않는다.
+          if (r.alreadyPublished) already[p] = r.publishedAt || true;
+          else trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+        }
         else {
           failureReason = r?.partial
             ? r.firstComment?.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다"
@@ -1360,6 +1389,7 @@ export default function StudioPage() {
         status: { ...status },
         urls: { ...urls },
         errors: { ...errors },
+        already: { ...already },
       });
     });
     setPub({
@@ -1368,6 +1398,7 @@ export default function StudioPage() {
       status: { ...status },
       urls: { ...urls },
       errors: { ...errors },
+      already: { ...already },
     });
     if (Object.keys(pendingReconciliations).length > 0) {
       setPublishReconciliations(pendingReconciliations);
@@ -1632,6 +1663,13 @@ export default function StudioPage() {
   // ── 발행실에서만 한 번에 되는 일 ──
   // 손으로 하면 칸을 일곱 번 열어 일곱 번 고쳐야 하는 것들이다. 채널마다 다른 규격(해시태그 개수,
   // 본문 한도)을 고객이 외우지 않아도 되게 대화창이 대신 맞춘다. 규칙은 lib/studio/publish-bulk.ts.
+  // 2026-09-16 실측: 한도 초과가 토스트 한 번으로만 떴다가 사라지고 나면 사용자는 "왜 안
+  // 눌리지" 상태로 남았다. 발행 단추 옆에 계속 보이는 자리를 둬 어느 채널이 왜 막혔는지와
+  // 바로 고치는 단추를 붙인다.
+  const publishBlockedEntries = partitionBlockedPublishTargets(
+    publishTargets,
+    (platform) => validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0],
+  ).blocked;
   const bulkTargets = ALL.filter((platform) => PUBLISH_SUPPORTED.has(platform)) as BulkPlatform[];
   const connectedTargets = bulkTargets.filter((platform) => (accountsByPlatform[platform] || []).length > 0);
   const previewTargets = ALL as BulkPlatform[];
@@ -2011,8 +2049,14 @@ export default function StudioPage() {
       {showWizard && activeWorkspace ? <LearningCardWizard workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onSaved={(info, completed) => { setLearningInfo(info); if (completed) { setShowWizard(false); mutateBrand(); showToast("학습 정보를 배웠습니다"); } else { setLearningFlash((value) => value + 1); } }} onClose={() => setShowWizard(false)} /> : null}
       {showRepo && activeWorkspace ? <RepoConnect workspace={activeWorkspace} onSynced={() => { mutateBrand(); showToast("브랜드 가이드 갱신됨"); }} onClose={() => setShowRepo(false)} /> : null}
       {roomHeader}
+      {/*
+        2026-09-16 실측(j.the.great.investor): 시작 스트립 "채널 연결 0/15" 가 같은 세션의
+        다른 화면(예: 생성실)에서는 "3/15" 로 떴다. 여기서 `connectedTargets`(이 발행실
+        화면의 대량 발행 대상 채널만 세는 좁은 집합)를 강제로 얹어 GettingStartedStrip 의
+        진짜 소스(channel-config, 15개 전체)를 덮어썼기 때문이다. 소스를 하나로 통일한다
+        — 이 화면도 GettingStartedStrip 자체 조회 결과를 그대로 쓴다.
+      */}
       <GettingStartedStrip
-        connectedCount={accountsLoaded && connectedTargets.length === 0 ? 0 : undefined}
         learningFilled={countFilledUserSlots(learningInfo, { guide })}
         learningTotal={LEARNING_USER_SLOT_TOTAL}
         onOpenLearning={() => setShowWizard(true)}
@@ -2108,8 +2152,17 @@ export default function StudioPage() {
                 <b className="text-body text-text">{pubResultLabel}</b>
                 <div className="mt-stack-tight flex flex-wrap gap-stack-tight">{Object.entries(pub.status).map(([key, status]) => {
                   const cls = `rounded-pill border px-stack-tight py-micro text-caption ${status === "done" ? "border-success/30 bg-success/10 text-success" : status === "failed" ? "border-danger/30 bg-danger/10 text-danger" : status === "doing" ? "border-warning/30 bg-warning/10 text-warning" : "border-border bg-surface-2 text-subtle"}`;
-                  const value = `${status === "done" ? "완료 " : status === "failed" ? "실패 " : status === "doing" ? "발행 중 " : ""}${LABEL[key]}`;
-                  return status === "done" && pub.urls[key] ? <a key={key} href={pub.urls[key]} target="_blank" rel="noopener noreferrer" className={cls} title="게시물 보기">{value}<span className="sr-only"> 새 창</span></a> : <span key={key} className={cls}>{value}{status === "failed" && pub.errors[key] ? <span className="ml-micro"><span>{pub.errors[key]}</span></span> : null}</span>;
+                  // 2026-09-16 실측(j.the.great.investor): "지금 발행"을 다시 누르면 서버가
+                  // dedupe 로 옛 글을 돌려주는데, "완료" + "새 창" 링크만 보여 새로 올라간
+                  // 것처럼 읽혔다. 이미 있던 것이면 그 사실과(있으면) 발행 시각을 말한다.
+                  const already = pub.already[key];
+                  const alreadyLabel = already
+                    ? `이미 올라간 글입니다${typeof already === "string" ? ` (${new Date(already).toLocaleString("ko-KR")})` : ""}`
+                    : "";
+                  const value = already
+                    ? `${LABEL[key]} · ${alreadyLabel}`
+                    : `${status === "done" ? "완료 " : status === "failed" ? "실패 " : status === "doing" ? "발행 중 " : ""}${LABEL[key]}`;
+                  return status === "done" && pub.urls[key] ? <a key={key} href={pub.urls[key]} target="_blank" rel="noopener noreferrer" className={cls} title={already ? alreadyLabel : "게시물 보기"}>{value}<span className="sr-only"> 새 창</span></a> : <span key={key} className={cls}>{value}{status === "failed" && pub.errors[key] ? <span className="ml-micro"><span>{pub.errors[key]}</span></span> : null}</span>;
                 })}</div>
               </div>
               {hasPublishedResult ? <Link href="/performance" className="shrink-0 rounded-control bg-accent px-stack py-stack-tight text-body-sm font-semibold text-accent-fg">성과실에서 결과 보기</Link> : null}
@@ -2144,6 +2197,21 @@ export default function StudioPage() {
               <Button variant="primary" onClick={publish} disabled={pub.running || !accountsLoaded || publishTargets.length === 0}>선택한 {accountsLoaded ? publishTargets.length : selectedTargets.length}곳에 지금 발행{accountsLoaded && selectedTargets.length > publishTargets.length ? ` (올릴 수 없는 ${selectedTargets.length - publishTargets.length}곳 제외)` : ""}</Button>
               {activeWorkspace ? <Button variant={showSchedule ? "primary" : "secondary"} onClick={() => setShowSchedule((value) => !value)}>예약 발행</Button> : null}
               </div>
+              {/*
+                2026-09-16 실측(j.the.great.investor): X 본문이 280 가중 문자를 넘으면
+                토스트만 뜨고 사라져 사용자는 발행 단추가 안 눌리는 줄 알았다. 발행 단추
+                옆에 계속 남는 자리에 어느 채널이 왜 막혔는지와 바로 고치는 단추를 둔다.
+                이제 한도 넘는 곳은 발행 대상에서 빠지고 나머지는 그대로 올라간다.
+              */}
+              {publishBlockedEntries.length ? (
+                <div data-testid="publish-blocked-channels" role="alert" className="rounded-control border border-warning/30 bg-warning/10 p-stack text-caption text-warning">
+                  <p className="break-keep">
+                    {publishBlockedEntries.map((entry) => `${LABEL[entry.platform]}: ${entry.issue.message}`).join(" · ")}
+                    {" — 한도를 넘은 곳은 발행에서 빠집니다."}
+                  </p>
+                  <Button size="sm" className="mt-stack-tight" onClick={trimOverLimitChannels}>한도 넘는 곳만 줄이기</Button>
+                </div>
+              ) : null}
               {/* 단추 이름만으로는 무엇이 일어나는지 안 갈린다. 넷이 어떻게 다른지 한 줄로 적는다.
                   눌러 봐야 아는 단추는 없는 단추다(R191). */}
               <p className="break-keep text-caption text-subtle" data-publish-actions-note>

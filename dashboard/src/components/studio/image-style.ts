@@ -89,7 +89,19 @@ export function paletteToColors(palette?: string): string {
  * 글자를 원하지 않으면 글자 이야기를 꺼내지 않는 것이 맞다. 대신 글자가 놓일 자리가
  * 적은 장면을 그리도록 구도만 말한다.
  */
-const NO_TEXT = "clean minimal composition, plain surfaces, natural materials";
+/**
+ * 2026-09-16 실측 추가(j.the.great.investor): 생성 이미지에 깨진 영문 간판 글자
+ * ("hry lecimino Dry Cleening")가 박혔다. 주제가 "세탁소" 계열이었는데 그 업종에 맞는
+ * `INDUSTRY_SCENES` 항목이 없어 장면 묘사가 붙지 않았고, `pickImageSubject` 가 돌려준
+ * 한국어 원문이 그대로 지시문의 주인공이 됐다. 모델은 한글을 모르니 그 뜻(세탁소)만
+ * 알아듣고 **간판을 지어 그리려다** 못 읽는 라틴 글자 비슷한 것을 뭉갰다.
+ *
+ * 위에서 이미 실측한 대로 "글자 없이·간판 없이"를 부정문으로 적으면 그 낱말 자체가
+ * 더 강하게 그려진다(두 번 실측, `NO_TEXT` 아래 참고). 그래서 "간판"이라는 말을
+ * 꺼내지 않고 **간판이 나올 자리 자체를 지운다** — 실외 정면(간판이 달리는 자리) 대신
+ * 실내 근접 구도로 좁힌다.
+ */
+const NO_TEXT = "clean minimal composition, plain surfaces, natural materials, close interior framing";
 
 /**
  * 그림 지시문의 바탕이 될 말을 고른다.
@@ -157,7 +169,11 @@ const INDUSTRY_SCENES: readonly { match: RegExp; scene: string }[] = [
   { match: /금융|재테크|투자/, scene: "set at a quiet desk with a notebook and a cup of coffee" },
   { match: /여행|숙박/, scene: "set in a calm travel scene with a packed bag by a window" },
   { match: /반려동물/, scene: "set in a cozy home corner arranged for a pet" },
-  { match: /동네 가게|로컬/, scene: "set at a small neighborhood shop front in soft daylight" },
+  // "shop front"(정면 외관)는 간판이 달리는 자리라 모델이 그 위에 글자를 지어 그리려다
+  // 뭉갰다(2026-09-16 실측 "hry lecimino Dry Cleening"). 정면 대신 매장 안쪽 카운터로
+  // 좁혀 간판이 나올 자리 자체를 없앤다.
+  { match: /동네 가게|로컬/, scene: "set at a small shop's interior counter in soft daylight" },
+  { match: /세탁|드라이클리닝/, scene: "set at a tidy laundromat interior counter with folded fabrics" },
   { match: /기업|회사|B2B/i, scene: "set at a composed office meeting table" },
 ];
 
