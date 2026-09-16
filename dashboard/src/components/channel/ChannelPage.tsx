@@ -588,7 +588,7 @@ function PopularTab({ expandedPopular, setExpandedPopular }: { expandedPopular: 
                   <div className="px-pad-inset pb-stack flex items-center gap-stack border-t border-border/50 pt-stack-tight">
                     {p.engagement ? <span className="text-caption text-subtle">{String(p.engagement)}</span> : null}
                     {p.url ? (
-                      <a href={String(p.url)} target="_blank" rel="noopener noreferrer" className="text-caption text-accent hover:text-accent" onClick={(e) => e.stopPropagation()}>
+                      <a href={String(p.url)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center min-h-control-touch text-caption text-accent hover:text-accent" onClick={(e) => e.stopPropagation()}>
                         원본 보기 &rarr;
                       </a>
                     ) : null}
@@ -662,7 +662,7 @@ function ParametersSection() {
             value={vals[p.key] ?? (s[p.key] ?? "")}
             onChange={(e) => setVals((prev) => ({ ...prev, [p.key]: e.target.value }))}
             min={0}
-            className="w-20 bg-surface border border-border rounded-chip px-stack-tight py-micro text-body text-muted text-right"
+            className="min-h-control-touch w-20 bg-surface border border-border rounded-chip px-stack-tight py-micro text-body text-muted text-right"
           />
         </div>
       ))}

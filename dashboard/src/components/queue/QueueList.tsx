@@ -80,7 +80,7 @@ export function QueueList({ variant = "text", charLimit, showSeo, onEditInEditor
             <button
               key={f}
               onClick={() => setQueueFilter(f)}
-              className={`px-stack py-micro text-caption rounded-chip ${
+              className={`min-h-control-touch px-stack py-micro text-caption rounded-chip ${
                 queueFilter === f
                   ? "bg-accent/30 text-accent border border-accent/30"
                   : "text-subtle hover:bg-surface-2"
@@ -92,7 +92,7 @@ export function QueueList({ variant = "text", charLimit, showSeo, onEditInEditor
         </div>
         <div className="flex gap-stack-tight items-center flex-wrap">
           {(srcPending?.pending ?? 0) > 0 && (
-            <button onClick={handleImportFromSourcing} className="px-stack py-micro text-caption bg-accent/60 text-accent rounded-chip hover:bg-accent">
+            <button onClick={handleImportFromSourcing} className="min-h-control-touch px-stack py-micro text-caption bg-accent/60 text-accent rounded-chip hover:bg-accent">
               소싱에서 가져오기 ({srcPending!.pending})
             </button>
           )}
@@ -104,10 +104,10 @@ export function QueueList({ variant = "text", charLimit, showSeo, onEditInEditor
           )}
           {selectedIds.size > 0 && (
             <>
-              <button onClick={handleBulkApprove} className="px-stack py-micro text-caption bg-success text-status-fg rounded-chip hover:bg-success">
+              <button onClick={handleBulkApprove} className="min-h-control-touch px-stack py-micro text-caption bg-success text-status-fg rounded-chip hover:bg-success">
                 승인 ({selectedIds.size})
               </button>
-              <button onClick={handleBulkDelete} className="px-stack py-micro text-caption bg-danger text-status-fg rounded-chip hover:bg-danger">
+              <button onClick={handleBulkDelete} className="min-h-control-touch px-stack py-micro text-caption bg-danger text-status-fg rounded-chip hover:bg-danger">
                 삭제 ({selectedIds.size})
               </button>
             </>

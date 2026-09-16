@@ -30,13 +30,13 @@ function CredField({ id, label, desc, isSecret = false, value, editable, onChang
           readOnly={!editable}
           onChange={(e) => onChange(e.target.value)}
           title={isSecret && value ? "저장된 연결 정보" : value}
-          className={`w-full ${editable ? "bg-surface" : "bg-surface/50 cursor-default"} border border-border rounded-chip px-stack py-stack-tight pr-wide text-caption text-muted placeholder-subtle font-mono`}
+          className={`min-h-control-touch w-full ${editable ? "bg-surface" : "bg-surface/50 cursor-default"} border border-border rounded-chip px-stack py-stack-tight pr-wide text-caption text-muted placeholder-subtle font-mono`}
         />
         {isSecret && (
           <button
             type="button"
             onClick={() => setVisible(!visible)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-caption text-subtle hover:text-muted"
+            className="ds-touch-target absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center justify-center text-caption text-subtle hover:text-muted"
           >
             {visible ? "숨기기" : "보기"}
           </button>
@@ -117,7 +117,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
             </span>
           )}
           {hasKeys && !editing && (
-            <button onClick={() => setEditing(true)} className="text-caption text-accent hover:text-accent">
+            <button onClick={() => setEditing(true)} className="inline-flex items-center min-h-control-touch text-caption text-accent hover:text-accent">
               연결 정보 수정
             </button>
           )}
@@ -146,7 +146,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 py-stack-tight bg-accent text-accent-fg text-body-sm rounded-chip hover:bg-accent-hover disabled:opacity-50"
+            className="flex-1 min-h-control-touch py-stack-tight bg-accent text-accent-fg text-body-sm rounded-chip hover:bg-accent-hover disabled:opacity-50"
           >
             {saving ? "확인 중..." : hasKeys ? "수정 내용 저장" : (connectLabel || "연결")}
           </button>
@@ -158,7 +158,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
                 fields.forEach((f) => (v[f] = currentKeys[f] || ""));
                 setValues(v);
               }}
-              className="px-pad-inset py-stack-tight bg-surface-2 text-muted text-body-sm rounded-chip hover:bg-surface-2"
+              className="px-pad-inset py-stack-tight min-h-control-touch bg-surface-2 text-muted text-body-sm rounded-chip hover:bg-surface-2"
             >
               취소
             </button>
