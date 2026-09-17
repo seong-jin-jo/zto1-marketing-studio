@@ -49,6 +49,11 @@ vi.mock("@/lib/publish", async (importActual) => {
   return { ...actual, getChannelCred: vi.fn(async () => H.cred) };
 });
 
+vi.mock("@/lib/usage-events", () => ({
+  publicationUsageOutbox: (platform: string) => ({ usageEvent: { status: "pending", platform } }),
+  recordPublicationEvent: vi.fn(async () => ({ recorded: true, alreadyRecorded: false })),
+}));
+
 async function callPublish(body: Record<string, unknown>) {
   const { POST } = await import("@/app/api/publish/route");
   const res = await POST(

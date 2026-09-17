@@ -1,0 +1,1 @@
+ERROR: DATABASE_URL 미설정 — 대상 DB를 지정하라.

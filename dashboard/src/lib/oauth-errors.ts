@@ -62,7 +62,24 @@ export function oauthErrorMessage(raw: string, provider?: string): string {
   if (/access_blocked|has not completed the Google verification|Google 인증 절차를 완료하지|액세스 차단됨|admin_policy_enforced/i.test(msg)) {
     return `${p}구글이 아직 이 앱을 확인하지 않아 로그인을 막았습니다. 구글 콘솔에서 이 계정을 테스트 사용자로 등록하면 바로 쓸 수 있고, 모두에게 열려면 앱 심사를 받아야 합니다.`;
   }
-  if (/redirect_uri|redirect uri|callback/i.test(msg)) {
+  // Meta는 code 교환 단계에서 "테스터 명단에 없는 계정"을 거절할 때도 리다이렉트 주소
+  // 문제인 것처럼 들리는 문구를 준다: "Error validating verification code. Please make
+  // sure your redirect_uri is identical to the one you used in the OAuth dialog request."
+  // 2026-09-17 콘솔 실측: redirect_uri는 등록값과 글자까지 같았는데도 이 메시지가 떴다.
+  // 진짜 원인은 심사 전 앱이라 테스터가 아닌 계정의 code 교환을 Meta가 거절한 것이었다
+  // (ADR-006 "심사 전 한시 절차"). 기존 규칙은 이 문구의 "redirect_uri" 단어만 보고
+  // "돌아올 주소가 다릅니다"로 오역해 이틀간 엉뚱한 곳(콘솔 등록값)을 파게 만들었다.
+  // 그래서 이 문구는 반드시 redirect_uri 불일치가 아니라 심사 전 테스터 제한으로 번역하고,
+  // ADR-006이 요구하는 "심사 전 한시" 조건을 문장에 명시한다.
+  if (/error validating verification code/i.test(msg)) {
+    return `${p}이 계정은 아직 이 앱의 심사 전 테스터 명단에 없어 Meta가 연결을 거절했습니다. `
+      + `지금은 앱 심사 전이라 운영자가 테스터로 등록하고 초대를 수락한 계정만 연결할 수 있습니다(심사 전 한시 절차). `
+      + `심사 통과 뒤에는 이 절차 없이 로그인만으로 연결됩니다.`;
+  }
+  // 진짜 redirect_uri 불일치는 Meta가 authorize 단계에서 이렇게 명시적으로 말한다.
+  // "callback" 같은 느슨한 단어나 위 검증코드 문구의 부수 언급까지 여기로 오지 않도록
+  // 실제 불일치 문구로만 좁힌다(2026-09-17, redirect_uri 오역 사고 재발방지).
+  if (/invalid redirect_uri|redirect_uri.*(not allow|doesn'?t match|does not match|isn'?t (?:correct|allowed)|mismatch)|unsupported redirect_uri/i.test(msg)) {
     return `${p}연결하고 돌아올 주소가 앱 콘솔에 등록된 값과 다릅니다. 서비스 공개 주소와 등록 주소를 글자까지 같게 맞춰야 합니다.`;
   }
   if (/permission|scope|not approved|review/i.test(msg)) {

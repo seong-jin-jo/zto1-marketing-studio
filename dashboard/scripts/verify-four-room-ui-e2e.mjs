@@ -14,7 +14,9 @@ const executablePath = process.env.FOUR_ROOM_CHROME_PATH || "/Users/sj/Library/C
 const dataRoot = process.env.DATA_DIR || path.resolve(process.cwd(), "../data");
 const settingsPath = path.join(dataRoot, "tenants", workspaceId, "settings.json");
 const readyTimeoutMs = Number(process.env.FOUR_ROOM_READY_TIMEOUT_MS || "120000");
-const totalTimeoutMs = Number(process.env.FOUR_ROOM_TOTAL_TIMEOUT_MS || "300000");
+// 네 폭, 390 다크, 네 방과 복귀까지 25번 이동한다. 공유 개발 서버가 라우트를
+// 다시 컴파일하는 동안에도 각 단계 120초 상한은 지키되 전체 합계는 10분을 준다.
+const totalTimeoutMs = Number(process.env.FOUR_ROOM_TOTAL_TIMEOUT_MS || "600000");
 
 if (!operatorToken) throw new Error("DASHBOARD_AUTH_TOKEN이 필요합니다");
 if (!fs.existsSync(settingsPath)) throw new Error(`첫 사용자 설정 파일이 없습니다: ${settingsPath}`);

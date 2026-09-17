@@ -1,3 +1,31 @@
+## 2026-09-17 네 방 기본 흐름 전수 검증 v22 (qa 진행 중)
+
+current_stage: qa
+status: in-progress (승인 아님)
+
+2026-09-17 14:25 KST 재검증: localhost 기능 범위는 기본 흐름 최초·최종 11/11, 네 방 4/4, 네 폭 20화면과 복귀 5/5, Studio v1 14/14를 통과했다. 전체 Vitest 첫 실행에서 YouTube 동시 요청 테스트의 비결정적 대기 결함을 찾아 `0c596b03`으로 수리했고, 전용 5회 85/85와 전체 374파일·2,414건, TypeScript, 격리 build 184/184, seed·RLS, 디자인 lint를 다시 통과했다. v63 디자인 정합 NG, v63과 canonical 승인 v68 핀 충돌, 운영 배포와 외부 채널 실발행 미검증 때문에 qa 진행 중과 승인 불가 상태를 유지한다. 증거는 `docs/qa/osmu-four-room-basic-flow-v22-gpt-codex.md`다.
+
+## 2026-09-17 실유저 생성·발행·성과 빈틈 수정 배포 (qa 진행 중, 채널 연결은 콘솔 로그인 대기)
+
+- 단계: build→qa. 배포 run 35132988806 success(main). 승인자: 오케스트레이터(회장 위임, 배포는 회장 "다 진행해" 지시).
+- 실측 통과: 한도 초과 채널만 제외(Threads 게시 DdW1WluH6DN), 이미 올라간 글 표시, YouTube 예약·dedupe(DB 행 1건 유지), 9:16 영상(768x1356), 채널 11 라우트 under44=0, Threads 성과 views 43.
+- 미검증: 생성기 미인증 배너(재현 조건 없음).
+- 블로커(회장): Meta·X 개발자 콘솔 로그인, 생성기 마운트 `:ro` 제거(OD-2026-09-16-1), 중복 숏츠 삭제 판단.
+
+## 2026-09-17 네 방 기본 흐름 전수 검증 v19 (qa 진행 중)
+
+current_stage: qa
+status: in-progress (승인 아님)
+
+2026-09-17 02:55 KST v19 재검증: HEAD `d04c60a1`과 일치하는 localhost에서 기본 흐름 최종
+11/11, 네 방 4/4, 네 폭 20화면, 복귀 5/5, Studio v1 14/14, 전체 Vitest 371파일과 2,388건,
+TypeScript, build 184/184, seed와 RLS, 디자인 lint가 통과했다. 전체 회귀 뒤 콜드 컴파일을 정상
+성과실 실패로 오판한 단면 탐침을 재현해 전체 예산과 주소 도달 판정을 고쳤고 표적 4건과 최종
+실앱 4/4를 다시 확인했다. v63 디자인 정합 NG, v63과 v68 승인 핀 충돌, 운영 배포와 외부 채널
+실발행 미검증 때문에 qa 진행 중과 승인 불가 상태를 유지한다. 증거는
+`docs/qa/osmu-four-room-basic-flow-v19-gpt-codex.md`다. 수정과 문서 커밋은 다른 세션의 미추적
+YouTube 발행 테스트 때문에 hook이 차단한 상태다.
+
 ## 2026-09-12 네 방 기본 흐름 전수 검증 (qa 진행 중)
 
 current_stage: qa
@@ -8,7 +36,6 @@ status: in-progress (승인 아님)
 TypeScript, build 184/184, seed와 RLS, 디자인 lint가 통과했다. v63 디자인 정합 NG, v63과 v68
 승인 핀 충돌, 인증된 모바일 인체공학과 운영 배포 및 외부 채널 실발행 미검증 때문에 qa 진행 중과
 승인 불가 상태를 유지한다. 증거는 `docs/qa/osmu-four-room-basic-flow-v18-gpt-codex.md`다.
-
 
 2026-09-15 02:27 KST 재검증 결과: 감독이 시작한 서버에서 Claude CLI 설치 위치가 PATH에 없어 첫 생성이 `spawn_failed`, 후보 0장으로 끊겼다. 애플리케이션 경계의 CLI 경로 탐색을 고치고 회귀를 추가한 커밋은 `629f056d`, `957a8225`다. 수정 뒤 localhost 기본 흐름 최종 11/11, 네 방 단면 4/4, 390 라이트·다크와 768·1024·1440의 방 화면 20/20, 성과실에서 생성실 복귀 5/5, Studio v1 14/14, Vitest 353파일·2,293건, TypeScript, build 184/184, seed, health와 디자인 lint가 통과했다. v63 대비 16개 화면 디자인 정합 NG와 v63·v68 승인 핀 충돌, 운영 배포 미검증 때문에 제품 전체 QA와 배포는 NG다. 증거는 `docs/qa/osmu-four-room-basic-flow-v11-gpt-codex.md`다.
 
@@ -241,7 +268,7 @@ approved_by: 컨트롤러(Claude). 회장 승인 아님.
   단, 홈(`/`)의 기존 성과 요소는 지우지 않는다.
 
 approved_artifacts:
-- design_hub: `docs/prototype/osmu-v68-create-performance-hub-gpt-codex-20260903-0022.html`
+- design_hub: `docs/design/prototypes/legacy-prototype-20260912/prototype/osmu-v68-create-performance-hub-gpt-codex-20260903-0022.html`
 - design_system: `DESIGN.md` v37
 - clean_frames: `docs/design/clean-frames/osmu-v68-*` 24장
 - capture_audit: `docs/design/clean-frames/osmu-v68-capture-audit-gpt-codex-20260903-0022.json`
@@ -263,9 +290,9 @@ parent_release: v67 qa approved. v68은 신규 디자인 후보이며 기존 승
 design_canonical_candidate:
   version: v68
   design_system: `DESIGN.md` v37
-  routing_hub: `docs/prototype/osmu-v68-create-performance-hub-gpt-codex-20260903-0022.html`
-  wireframes: `docs/WIREFRAMES/osmu-v68-create-performance-gpt-codex-20260903-0022.md`
-  user_flow: `docs/user-flow.md` v68 최신 증분
+  routing_hub: `docs/design/prototypes/legacy-prototype-20260912/prototype/osmu-v68-create-performance-hub-gpt-codex-20260903-0022.html`
+  wireframes: `docs/design/prototypes/legacy-wireframes-20260912/WIREFRAMES/osmu-v68-create-performance-gpt-codex-20260903-0022.md`
+  user_flow: `docs/_archive/legacy-20260912/root-docs/user-flow.md` v68 최신 증분
   clean_frames: `docs/design/clean-frames/osmu-v68-{create|performance}-{normal|empty|loading|error|disabled|overflow}-{1024|390}-gpt-codex-20260903-0022.png`
   frame_stamps: same basename with `.png.stamp.txt`
   capture_audit: `docs/design/clean-frames/osmu-v68-capture-audit-gpt-codex-20260903-0022.json`
@@ -322,7 +349,7 @@ controller_handoff: `2026-09-02 06:36 KST, Codex → Claude pane openclaw-auto:0
 design_canonical_candidate:
   version: v67
   design_system: `DESIGN.md` v36
-  routing_hub: `docs/prototype/osmu-v67-edit-publish-hub-gpt-codex-20260902-0448.html`
+  routing_hub: `docs/design/prototypes/legacy-prototype-20260912/prototype/osmu-v67-edit-publish-hub-gpt-codex-20260902-0448.html`
   delta_spec: `docs/design-spec-osmu-v65-v66-delta-v1.0.0-gpt-codex-20260902-0448.md`
   clean_frames: `docs/design/clean-frames/osmu-v67-{edit|publish}-{normal|empty|loading|error|disabled|overflow}-{1024|390}-gpt-codex-20260902-0448.png`
   frame_stamps: same basename with `.png.stamp.md`
@@ -349,12 +376,12 @@ reopen_reason: v65 편집실은 디자인 승인 기록 없이 build가 먼저 �
 review_result: Design Score C, BLOCK. v65·v66이 v64 공유 셸을 상속하지 않았고, design-review·clean frame·delta design-spec·design_canonical·matched-pair 증거가 없다. `/approve design` 요청을 철회하고 v67 단일 허브 리테이크 중이다.
 
 candidate_artifacts:
-- design_hub: `docs/prototype/openclaw-auto-4room-v64.html` (기존 승인 전체 제품 정본)
+- design_hub: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v64.html` (기존 승인 전체 제품 정본)
 - design_system: `DESIGN.md` v35, commit `68062525`
-- editroom_design: `docs/prototype/osmu-editroom-v65-gpt-codex-20260901-0710.html` + `docs/WIREFRAMES/osmu-editroom-v65-gpt-codex-20260901-0710.md`, commit `66ad58dd`
+- editroom_design: `docs/design/prototypes/legacy-prototype-20260912/prototype/osmu-editroom-v65-gpt-codex-20260901-0710.html` + `docs/design/prototypes/legacy-wireframes-20260912/WIREFRAMES/osmu-editroom-v65-gpt-codex-20260901-0710.md`, commit `66ad58dd`
 - editroom_build_evidence: commits `e81caf6e`, `ddfb15d1`
-- publishfield_design: `docs/prototype/osmu-publishfield-v66-gpt-codex-20260901-0813.html` + `docs/WIREFRAMES/osmu-publishfield-v66-gpt-codex-20260901-0813.md`
-- publishfield_rules: `docs/reference/플랫폼-발행-필드-규격-2026-09-01.md`, commit `68062525`
+- publishfield_design: `docs/design/prototypes/legacy-prototype-20260912/prototype/osmu-publishfield-v66-gpt-codex-20260901-0813.html` + `docs/design/prototypes/legacy-wireframes-20260912/WIREFRAMES/osmu-publishfield-v66-gpt-codex-20260901-0813.md`
+- publishfield_rules: `docs/eng-design/reference-legacy-20260912/reference/플랫폼-발행-필드-규격-2026-09-01.md`, commit `68062525`
 - requirements: `wiki/거버넌스/요청.md` 2026-08-30 회장 2차 실사용 피드백
 - audit: `docs/qa/회장-세션발화-전건-대조표-2026-08-31.md`
 
@@ -368,7 +395,7 @@ candidate_artifacts:
 stage: build. 편집실·발행실 화면 판을 다시 발주하기 위해 승인 산출물을 핀한다.
 
 approved_artifacts:
-- design_hub: `docs/prototype/openclaw-auto-4room-v64.html`
+- design_hub: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v64.html`
 - design_system: `DESIGN.md` (정본 v64)
 - requirements: `wiki/거버넌스/요청.md` 2026-08-30 회장 2차 실사용 피드백
 - audit: `docs/qa/회장-세션발화-전건-대조표-2026-08-31.md`
@@ -412,7 +439,7 @@ stage: 운영 가동중. 회장 2차 실사용 대기.
 ★ VM 정리 완료: 컨테이너 12개 → 2개, 디스크 81% → 36%.
   정리 후 실측 /api/health {"ok":true,"db":"up","ms":9}, login 200.
 ★ 찌꺼기 재발 방지: 배포 워크플로 정리 단계(3dc8af80) + VM 주간 크론.
-★ 회장 보고서 제출: docs/rendered/osmu-인프라와-1차개선-2026-08-30.html (d8698401).
+★ 회장 보고서 제출: docs/design/captures/legacy-rendered-20260912/rendered/osmu-인프라와-1차개선-2026-08-30.html (d8698401).
 ★ R2 운영 설정 0개. 영상 원본 보관처 미정. 회장 판단 대기.
 
 게이트: 30건 대조표 재실행 전까지 "회장 피드백 전부 해결" 주장 금지.

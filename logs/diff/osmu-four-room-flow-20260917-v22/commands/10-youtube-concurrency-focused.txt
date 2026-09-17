@@ -1,0 +1,64 @@
+RUN=1
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.9 /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+
+ ✓ tests/publish/video-publish-youtube.route.test.ts (17 tests) 812ms
+   ✓ /api/video/publish — YouTube > happy path — 업로드하고 permalink를 돌려주며 published_posts에 기록한다 443ms
+
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+   Start at  14:14:41
+   Duration  1.61s (transform 332ms, setup 33ms, collect 99ms, tests 812ms, environment 0ms, prepare 108ms)
+
+RUN=2
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.9 /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+
+ ✓ tests/publish/video-publish-youtube.route.test.ts (17 tests) 887ms
+   ✓ /api/video/publish — YouTube > happy path — 업로드하고 permalink를 돌려주며 published_posts에 기록한다 485ms
+
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+   Start at  14:14:45
+   Duration  1.75s (transform 337ms, setup 34ms, collect 106ms, tests 887ms, environment 0ms, prepare 110ms)
+
+RUN=3
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.9 /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+
+ ✓ tests/publish/video-publish-youtube.route.test.ts (17 tests) 1070ms
+   ✓ /api/video/publish — YouTube > happy path — 업로드하고 permalink를 돌려주며 published_posts에 기록한다 491ms
+
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+   Start at  14:14:48
+   Duration  1.87s (transform 355ms, setup 35ms, collect 107ms, tests 1.07s, environment 0ms, prepare 113ms)
+
+RUN=4
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.9 /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+
+ ✓ tests/publish/video-publish-youtube.route.test.ts (17 tests) 814ms
+   ✓ /api/video/publish — YouTube > happy path — 업로드하고 permalink를 돌려주며 published_posts에 기록한다 457ms
+
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+   Start at  14:14:52
+   Duration  1.56s (transform 327ms, setup 34ms, collect 96ms, tests 814ms, environment 0ms, prepare 107ms)
+
+RUN=5
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.9 /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+
+ ✓ tests/publish/video-publish-youtube.route.test.ts (17 tests) 769ms
+   ✓ /api/video/publish — YouTube > happy path — 업로드하고 permalink를 돌려주며 published_posts에 기록한다 433ms
+
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+   Start at  14:14:55
+   Duration  1.49s (transform 317ms, setup 32ms, collect 98ms, tests 769ms, environment 0ms, prepare 99ms)

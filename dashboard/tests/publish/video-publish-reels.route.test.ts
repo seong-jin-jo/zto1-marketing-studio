@@ -56,7 +56,7 @@ vi.mock("@/lib/db", () => ({
         H.rows.push({ id, draft_id: draft, platform, account_id: account ?? null, status: "in_progress", external_id: null, permalink: null });
         return Promise.resolve([{ id }]);
       }
-      if (q.includes("SELECT status, external_id, permalink")) {
+      if (q.includes("SELECT status, external_id, permalink") || q.includes("SELECT id::text, status, external_id, permalink")) {
         const [, draft, platform, account] = vals as [unknown, string, string, string | null];
         const row = live(draft, platform, account);
         return Promise.resolve(row ? [row] : []);
@@ -74,7 +74,7 @@ vi.mock("@/lib/db", () => ({
       if (q.includes("UPDATE published_posts")) {
         // 전체 UPDATE(성공/실패 확정)는 값이 [status, ext, permalink, error, id, tenant],
         // catch 경로의 축약 UPDATE는 [error, id, tenant].
-        const id = vals[vals.length - 2] as string;
+        const id = vals.find((value) => H.rows.some((candidate) => candidate.id === value)) as string;
         const row = H.rows.find((r) => r.id === id);
         if (row) {
           if (vals.length >= 6) {
@@ -85,12 +85,18 @@ vi.mock("@/lib/db", () => ({
             row.status = "failed";
           }
         }
-        return Promise.resolve([]);
+        return Promise.resolve(q.includes("RETURNING id::text") && row ? [{ id: row.id }] : []);
       }
       return Promise.resolve([]);
     };
+    sql.json = (value: unknown) => value;
     return cb(sql);
   }),
+}));
+
+vi.mock("@/lib/usage-events", () => ({
+  publicationUsageOutbox: (platform: string) => ({ usageEvent: { status: "pending", platform } }),
+  recordPublicationEvent: vi.fn(async () => ({ recorded: true, alreadyRecorded: false })),
 }));
 
 vi.mock("@/lib/publish", async (importActual) => {

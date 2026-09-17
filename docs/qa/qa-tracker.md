@@ -1,6 +1,187 @@
+## 2026-09-17 16:45 KST · 최근 24시간 코드 공격 리뷰 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드리뷰 24시간 | 외부 성공과 내부 발행 장부 복구 | REVIEW-24H-20260917-11 | NG | `dashboard/src/app/studio/page.tsx:1234`가 초안만 발행 완료로 바꾸고 실제 발행 행과 사용량 장부를 복구하지 않는다. |
+| 코드리뷰 24시간 | 재개 업로드와 파일 동일성 | REVIEW-24H-20260917-12 | NG | `dashboard/src/app/api/video/publish/route.ts:354`가 저장 해시와 크기를 현재 파일에 대조하지 않는다. |
+| 코드리뷰 24시간 | 전 발행 경로 과금 원장 | REVIEW-24H-20260917-13 | NG | TikTok 완료 `tiktok/publish-status/route.ts:87`과 예약 발행 `schedule/publish-due/route.ts:409`가 usage outbox를 우회한다. |
+| 코드리뷰 24시간 | 사용량 부분 실패 표시 | REVIEW-24H-20260917-14 | NG | `usage/route.ts:73`이 relay 실패 뒤에도 HTTP 200과 낮은 집계를 반환하고 성과실은 실패 수를 표시하지 않는다. |
+| 코드리뷰 24시간 | macOS Claude 후보 폴백 | REVIEW-24H-20260917-15 | NG | `anthropic.ts:201`의 launchctl 래퍼가 대상 미존재를 종료 코드로 바꿔 다음 후보 시도를 막는다. |
+| 코드리뷰 24시간 | 한국어 오류와 실패 화면 | REVIEW-24H-20260917-16 | NG | localhost ElevenLabs, GA, GSC가 영문 오류를 반환했다. 블로그와 GSC 화면은 새 503을 오류 안내 대신 0 데이터로 보일 수 있다. |
+| 코드리뷰 24시간 | 검증기 동시성 및 증거 무결성 | REVIEW-24H-20260917-17 | NG | API sweep는 실행 중 파일 추가와 삭제를 못 보고, 네 방 E2E는 공유 작업 공간 설정 전체를 옛 스냅샷으로 복원한다. |
+| 코드리뷰 24시간 | Studio 실패 HTTP 상태 | REVIEW-24H-20260917-18 | NG | localhost Studio 첫 실행에서 `STUDIO_LLM_TIMEOUT`이 HTTP 200으로 반환됐다. `generation/http.ts:75`가 502, 503, 504를 200으로 바꾼다. |
+| 필수 회귀 | 전체 test와 TypeScript | REVIEW-24H-20260917-19 | PASS | Vitest 374파일, 2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. |
+| 실앱 기본 흐름 | localhost:3456 기본 흐름과 Studio v1 | REVIEW-24H-20260917-20 | 부분 PASS | 기본 흐름 11/11. Studio v1 첫 실행은 timeout NG, 재실행 14/14 PASS. health HTTP 200, DB up. |
+| 외부 실발행과 장애 주입 | 실제 SNS, DB 실패, 두 작업 공간 동시 실행 | REVIEW-24H-20260917-21 | 미검증 | 돈과 외부 공개를 일으키는 실발행은 실행하지 않았다. |
+
+판정은 BLOCK이다. MAJOR 11건의 상세 위치, 재현 시나리오, 수정 조건은 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단에 기록했다. 제품 코드는 수정하지 않았다.
+
+## 2026-09-17 14:25 KST · 네 방 기본 흐름 QA v22
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08 | 사이드바에서 네 방을 잇는다 | FLOW-UI-V22 | PASS | localhost 네 방 4/4, 가린 모달·401·콘솔 오류 0 |
+| R19 | 390·768·1024·1440에서 실제로 누른다 | FLOW-UI-V22 | PASS | 20화면, 성과실→생성실 복귀 5/5, 가로 넘침 0 |
+| R166, R172 | 생성부터 성과 재인계까지 기본 흐름 | FLOW-API-V22 | PASS | 실제 localhost 요청 최초·최종 11/11 |
+| R193, R205, R206 | 승인 시안 계승과 화면 충실도 | DESIGN-CONF-V22 | NG | v63 기준과 현재 16개 라이트 화면의 배치 속성 불일치 또는 동일 상태 미확보. canonical 승인 핀은 v68이라 기준도 충돌 |
+| R207 | 성과실 UX와 학습 정보 | FLOW-PERF-V22 | 부분 PASS | 제안 3건과 생성 큐 재인계 동작. v63 시각 정합 NG |
+| R01~R207 중 이번 범위 밖 | 회장 확정 요구 전건 | REQ-ALL-V22 | 이월 | 기존 정본 판정 유지. 이번 범위 관련 요청만 재검증 |
+
+### 판정과 직접 증거
+
+- 기능 범위 PASS: 기본 흐름 11/11, 네 방 4/4, Studio v1 14/14, 네 폭 20화면과 복귀 5/5.
+- 전체 회귀 PASS: 첫 실행에서 YouTube 동시 요청 테스트가 비결정적 0ms 대기로 timeout됐다. 실제 예약 확보 신호를 기다리게 고쳐 전용 5회 85/85, 전체 Vitest 374파일·2,414건, TypeScript, 격리 build 184/184를 통과했다. 수정 커밋 `0c596b03`.
+- schema·seed·RLS PASS. 디자인 lint 위반 0.
+- 제품 전체 QA는 NG: v63과 v68 승인 핀 충돌, v63 디자인 정합 NG, 운영 배포와 외부 채널 실발행 미검증.
+- 상세: `docs/qa/osmu-four-room-basic-flow-v22-gpt-codex.md`. 원본: `logs/diff/osmu-four-room-flow-20260917-v22/`.
+
 # QA Tracker — openclaw-auto-osmu (pipeline qa 단계 증거)
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
+
+## 2026-09-17 12시 15분 KST · 최근 24시간 코드 공격 리뷰 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드리뷰 24시간 | 외부 성공 뒤 내부 기록 복구 계약 | REVIEW-24H-20260917-01 | NG | `dashboard/src/app/studio/page.tsx:1234`가 초안만 `published`로 바꾸고 실제 발행 행과 사용량 장부를 복구하지 않는다. v63 7481행의 “기록만 복구” 계약 위반이다. |
+| 코드리뷰 24시간 | YouTube resumable 세션과 실제 파일 결속 | REVIEW-24H-20260917-02 | NG | `dashboard/src/app/api/video/publish/route.ts:354`가 저장된 `fileHash`, `totalBytes`를 현재 파일과 비교하지 않고 재개한다. 같은 경로와 크기의 다른 파일을 기존 세션에 이어 붙일 수 있다. |
+| 코드리뷰 24시간 | 모든 발행 경로의 과금 장부 내구성 | REVIEW-24H-20260917-03 | NG | TikTok 완료 `dashboard/src/app/api/tiktok/publish-status/route.ts:87`과 예약 발행 `dashboard/src/app/api/schedule/publish-due/route.ts:409`에 usage outbox가 없다. 성공 발행이 쿼터와 과금에서 빠진다. |
+| 코드리뷰 24시간 | macOS Claude 후보 폴백 | REVIEW-24H-20260917-04 | NG | `dashboard/src/lib/anthropic.ts:201`의 launchctl 래퍼는 없는 후보를 `ENOENT`가 아닌 종료 코드 2로 바꾼다. 실제 `/bin/launchctl asuser` 호출에서 `posix_spawn(): 2`, 종료 코드 2를 관찰했고 다음 후보 폴백이 막힌다. |
+| 코드리뷰 24시간 | 한국어 사용자 오류 계약 | REVIEW-24H-20260917-05 | NG | localhost `GET /api/elevenlabs-voices`가 HTTP 503과 `API key not set`을 반환했다. 블로그, GA, GSC도 최근 변경에서 영문 오류를 유지하며 일부 화면이 원문을 직접 표시한다. |
+| 필수 회귀 | 전체 test와 TypeScript | REVIEW-24H-20260917-06 | PASS | `npm run test` 374파일, 2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. |
+| 실앱 기본 흐름 | localhost:3456 기본 흐름과 Studio v1 | REVIEW-24H-20260917-07 | PASS | health HTTP 200, DB up. `verify-basic-flow-e2e.mjs` 11/11, `verify-studio-v1-e2e.mjs` 14/14 통과. |
+| 외부 실발행과 격리 | 실제 SNS, DB 실패 주입, 두 작업 공간 동적 검증 | REVIEW-24H-20260917-08 | 미검증 | 돈과 외부 공개를 일으키는 실제 게시를 실행하지 않았다. 정적 SQL 대조에서는 새 교차 작업 공간 누수를 찾지 못했다. |
+
+근본 원인은 발행 가능한 경로 목록과 공통 장부 불변식이 정본으로 열거되지 않은 점, resumable
+세션의 저장 파일 메타데이터를 재개 전에 검증하지 않은 점, 화면 복구 이름과 서버 효과가 갈린 점,
+launchctl 도입 뒤 바뀐 오류 의미를 실제 래퍼로 테스트하지 않은 점이다. 상세 재현과 수정 조건은
+`docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단에 기록했다.
+
+## 2026-09-17 11시 06분 KST · 성과 시계열 갭 재착수 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사를 현재 코드와 대조해 기본 흐름의 잔여 미구현 하나를 만든다 | GAP-HISTORY-20260917-1106-01 | ❌ NG | 게시물별 성과 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교가 여전히 없다. 지정 작업 공간 `GET /api/metrics`는 HTTP 200, 키 `posts`, `coverage`, 게시물 0건이며 `history`, `comparison`이 없다. |
+| 기술 계약 | DB와 API 선택을 승인 산출물에서 확인한다 | GAP-HISTORY-20260917-1106-02 | BLOCK | 현재 공정은 `qa`, 승인 아님이다. 승인된 성과 관측 단위, 중복 방지 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준이 없다. code-builder가 새 DB 스키마와 API 계약을 선택할 수 없다. |
+| 실행본 귀속 | localhost 제품 소스와 현재 제품 소스 비교 | GAP-HISTORY-20260917-1106-03 | PASS | health HTTP 200, DB up, 실행 `build_commit=2280089f`. 실행 커밋은 현재 HEAD의 조상이고 그 뒤 `dashboard/src`, `dashboard/db`, `dashboard/tests`, `dashboard/scripts` 제품 diff는 0건이다. |
+| 기본 흐름 실앱 | 생성, 편집, 발행 큐, 성과 제안 재인계와 지표 조회 | GAP-HISTORY-20260917-1106-04 | 조건부 PASS | 첫 실행은 AI 출력 JSON 파싱 실패로 후보 0장, 종료 1이었다. 재실행은 11/11 통과했다. `logs/diff/osmu-gapfill-20260917-1106/commands/verify-basic-flow-e2e.txt`, `verify-basic-flow-e2e-retry.txt` |
+| Studio v1 실앱 | 인증과 입력 거절, 정상 생성, 조회와 무료 다시 만들기 | GAP-HISTORY-20260917-1106-05 | PASS | 14/14 통과. `commands/verify-studio-v1-e2e.txt` |
+| 필수 회귀 | 전체 test와 TypeScript | GAP-HISTORY-20260917-1106-06 | PASS | Vitest 374파일, 2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. `commands/npm-test.txt`, `tsc-noemit.txt` |
+| 제품 소스와 갭 전환 | migration, API, 계약 테스트 | GAP-HISTORY-20260917-1106-07 | BLOCK | 제품 소스 변경 0건. 새 DB 스키마와 API 비교 계약을 승인 없이 선택하지 않았다. 새로 되는 것으로 전환된 항목은 없다. |
+
+승인 없이 최신 누계 두 번의 차이를 30일 성과로 이름 붙이거나 `provider_meta` 배열을 새 저장소로
+쓰면 기간 재현성과 공급자별 의미가 깨진다. 별도 snapshot table, 공급자 기간 조회, JSONB 중
+하나를 기술설계에서 합의한 뒤 build를 다시 열어야 한다.
+
+## 2026-09-17 10시 18분 KST · 네 방 기본 흐름 v21 기능 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 백엔드 기본 흐름 관통 | FLOW-API-V21 | PASS | HEAD `2280089f`와 일치하는 localhost 실제 요청 최초와 최종 11/11. 후보 3장, 편집 상태 변경, 발행 큐 HTTP 201, 성과 제안 3건, 생성 큐 재인계. `logs/diff/osmu-four-room-flow-20260917-v21/commands/10-verify-basic-flow-final.txt` |
+| R08, R19, R207 | 네 방 렌더와 가린 모달 확인 | FLOW-ROOM-PROBE-V21 | PASS | seed 후 최종 4/4, 가린 모달 0, 브라우저 401 0, 콘솔 오류 0. `commands/11-probe-four-room-final.txt` |
+| R08, R19 | 390, 768, 1024, 1440에서 사람처럼 생성실부터 성과실까지 이동 | FLOW-UI-V21 | PASS | 390 라이트·다크와 768, 1024, 1440의 20화면, 성과실→생성실 복귀 5/5. 가로 넘침, 탐색 가림, 모달, 401, 콘솔 오류 0. `commands/12-verify-four-room-ui-final.txt`, 원본 `captures-final/` |
+| R166, R172 | Studio v1 인증, 생성, 조회, 무료 다시 만들기 | FLOW-STUDIO-V21 | PASS | localhost 실제 요청 14/14. `commands/04-verify-studio-v1-e2e.txt` |
+| 필수 회귀 | 전체 test, TypeScript, production build, seed·RLS, health·주요 API curl, 디자인 lint | FLOW-REGRESSION-V21 | PASS | Vitest 374파일·2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 0. 격리 build 184/184, seed·RLS 멱등 적용, health·metrics·drafts HTTP 200, 디자인 lint 위반 0. `commands/05`부터 `14` |
+| 검증 자격증명 | QA 토큰 정리 | FLOW-TOKEN-CLEANUP-V21 | PASS | 활성 `qa-four-room-*` 토큰 0건, 최신 6/6 폐기. `commands/14-token-cleanup.txt` |
+| R193, R205, R206 | v63 계승과 8개 배치 속성 정합 | DESIGN-CONF-V21 | NG | v63 원본과 현재 16개 라이트 화면이 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계에서 불일치하거나 동일 상태가 아님. 과제 v63과 canonical v68 승인 핀도 충돌. `docs/qa/osmu-four-room-basic-flow-v21-gpt-codex.md` |
+| 제품 전체 | 운영 배포와 외부 채널 | QA-QUALITY-GATE-V21 | NG | localhost 기능 범위만 PASS. 운영 동적 URL, 실제 배포 버전, 외부 채널 실발행은 미검증이고 디자인 정합 NG. |
+| 릴레이 품질 게이트 | stage 또는 운영 호스트 접촉 | QA-RELAY-GATE-V21 | FAIL | `verify-agent-quality.sh`가 배포 환경 접촉 증거 0건으로 반려. 과제 명시 범위의 localhost 결과만 출고하고 운영 QA로 확대하지 않는다. `commands/15-verify-agent-quality.txt` |
+| R01부터 R207 및 세부 요청 232건 중 이번 범위 밖 | 회장 확정 요구 전건 | REQ-ALL-V21 | 이월 | 기존 정본 판정을 유지하고 이번 범위 관련 요청만 갱신. |
+
+제품 소스는 수정하지 않았다. 최신 실행본의 기능 흐름에서 끊긴 곳은 없었다. 16개 화면 디자인
+정합 NG와 운영 배포 미검증 때문에 QA 승인은 불가하다.
+
+## 2026-09-17 08시 17분 KST · 최근 24시간 코드 공격 최종 재검수 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드 리뷰 | 최근 24시간 돈, 격리, 동시성, 부분 실패, 삭제, 확정 요구 이탈 | CODE-REVIEW-FINAL-20260917-01 | BLOCK | 고정 끝 `b3086d78`, 49개 커밋, 순변경 155개 파일. MAJOR 3건: 화면 복구가 서버 장부를 고치지 않음, YouTube 재개 세션이 바뀐 파일을 이어 붙일 수 있음, ElevenLabs 영문 오류가 UI에 노출됨. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` |
+| 필수 회귀 | 전체 test와 TypeScript | CODE-REVIEW-FINAL-20260917-02 | PASS | Vitest 374개 파일과 2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. |
+| 실앱 기본 흐름 | localhost:3456 실제 요청 | CODE-REVIEW-FINAL-20260917-03 | 범위 PASS | 기본 흐름 11/11, Studio v1 14/14. health HTTP 200, DB up. 실행 제품 소스 `7f5564ea` 이후 검토 끝까지 제품 소스 변경 0개라 현재 제품 코드에 귀속된다. |
+| 사용량 실측 | 지정 작업 공간 `/api/usage` | CODE-REVIEW-FINAL-20260917-04 | 관찰 | HTTP 200, source `usage_events`, 모든 기간 발행 0, 일별 행 0. pending 복구 대상이 없는 정상 조회만 관찰했다. |
+| 외부 경계 | 공개 YouTube와 운영 배포 | CODE-REVIEW-FINAL-20260917-05 | 미검증 | 공개 게시, 공급자 성공 직후 DB 장애 주입, 운영 배포는 실행하지 않았다. |
+
+제품 코드는 수정하지 않았다. 세 MAJOR를 코드 작성자가 고친 뒤 같은 고정 시나리오와 현재 제품 소스에서 다시 검수한다.
+
+## 2026-09-17 06시 19분 KST · 네 방 기본 흐름 v20 기능 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 백엔드 기본 흐름 관통 | FLOW-API-V20 | PASS | HEAD `7f5564ea` 와 일치하는 localhost 실제 요청 최종 11/11. 후보 3장, 편집 상태 변경, 발행 큐 HTTP 201, 성과 제안 3건, 생성 큐 재인계. `logs/diff/osmu-four-room-flow-20260917-v20/commands/16-verify-basic-flow-final.txt` |
+| R08, R19, R207 | 네 방 렌더와 가린 모달 확인 | FLOW-ROOM-PROBE-V20 | PASS | seed 후 최종 4/4, 가린 모달 0, 브라우저 401 0, 콘솔 오류 0. `commands/17-probe-four-room-final.txt` |
+| R08, R19 | 390, 768, 1024, 1440에서 사람처럼 생성실부터 성과실까지 이동 | FLOW-UI-V20 | PASS | 390 라이트·다크와 768, 1024, 1440의 20화면, 성과실→생성실 복귀 5/5. 가로 넘침, 탐색 가림, 모달, 401, 콘솔 오류 0. `commands/18-verify-four-room-ui-final.txt`, 원본 `captures-final/` |
+| R166, R172 | Studio v1 인증, 생성, 조회, 무료 다시 만들기 | FLOW-STUDIO-V20 | PASS | localhost 실제 요청 14/14. `commands/04-verify-studio-v1-e2e.txt` |
+| 필수 회귀 | 전체 test, TypeScript, production build, seed·RLS, health·주요 API curl, 디자인 lint | FLOW-REGRESSION-V20 | PASS | Vitest 374파일·2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 0. 격리 build 184/184, seed·RLS 멱등 적용, health·metrics·drafts HTTP 200, 디자인 lint 위반 0. `commands/05` 부터 `13` |
+| 검증기 환경 회수 | 격리 production build | FLOW-BUILD-V20-RECOVERY | PASS | 최초 `node_modules` symlink은 Turbopack root 제약으로 환경 NG였다. 실복사 격리 디렉터리에서 compile과 184/184를 통과해 제품 오류와 분리했다. `commands/07-npm-build.txt`, `commands/08-npm-build-copy.txt` |
+| 검증 자격증명 | QA 토큰 정리 | FLOW-TOKEN-CLEANUP-V20 | PASS | 이번 실행 최신 토큰 10/10 폐기. 2026-09-15부터 남은 검증 토큰 1개도 제품 API HTTP 200으로 폐기해 활성 `qa-four-room-*` 토큰 0건. `commands/20-token-cleanup.txt` |
+| R193, R205, R206 | v63 계승과 8개 배치 속성 정합 | DESIGN-CONF-V20 | NG | v63 원본과 현재 16개 라이트 화면이 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계에서 불일치하거나 동일 상태가 아님. 과제 v63과 canonical v68 승인 핏도 충돌. `docs/qa/osmu-four-room-basic-flow-v20-gpt-codex.md` |
+| 제품 전체 | 운영 배포와 외부 채널 | QA-QUALITY-GATE-V20 | NG | localhost 기능 범위만 PASS. 운영 동적 URL, 실제 배포 버전, 외부 채널 실발행은 미검증이고 디자인 정합 NG. |
+| R01부터 R207 및 세부 요청 232건 중 이번 범위 밖 | 회장 확정 요구 전건 | REQ-ALL-V20 | 이월 | 기존 정본 판정을 유지하고 이번 범위 관련 요청만 갱신. |
+
+제품 소스는 수정하지 않았다. 기능 흐름에서 끊긴 곳은 없었고, 최초 build 실패는 격리
+방식의 symlink 제약으로 확정해 실복사 환경에서 회수했다. 16개 화면 디자인 정합 NG와 배포
+미검증 때문에 QA 승인은 불가하다.
+
+## 2026-09-17 06시 14분 KST · 네 방 기본 흐름 v20 build 검증기 환경 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 필수 회귀 | production build | FLOW-BUILD-V20-INITIAL | ❌ NG | 격리 작업 디렉터리에 `node_modules`를 symlink로 연결한 검증기가 Turbopack의 파일시스템 root 제약에 걸려 종료 코드 1. 제품 compile 오류가 아닌 검증 환경 구성 실패로 분리했으며 실복사 격리 build로 재검증 전에는 PASS로 전환하지 않는다. `logs/diff/osmu-four-room-flow-20260917-v20/commands/07-npm-build.txt` |
+
+
+## 2026-09-17 05시 20분 KST · 코드 공격 수정 후 독립 재검수 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드 리뷰 수정 재검수 | 원래 MAJOR 6건의 실제 종결 여부 | CODE-REVIEW-REFIX-20260917-01 | BLOCK | 4건은 닫혔고 2건이 남았다. 화면 복구 단추가 서버 발행 장부를 고치지 않고 경고만 지우며, YouTube 세션 재개가 저장 파일 해시와 현재 파일 해시를 비교하지 않는다. 상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md`의 수정 커밋 독립 재검수 절이다. |
+| 표적 회귀 | YouTube, outbox, 부분 발행 | CODE-REVIEW-REFIX-20260917-02 | PASS | 4파일, 28건 통과. 기존 재개 테스트는 파일이 바뀌지 않는 경우만 검사해 파일 혼합 경로를 잡지 못한다. |
+| 전체 회귀 | test, TypeScript, production build | CODE-REVIEW-REFIX-20260917-03 | PASS | 374파일과 2,414건 통과, 3건 제외. TypeScript와 production build 종료 코드 0. |
+| 실앱 기본 흐름 | 수정 커밋 포함 localhost 실제 요청 | CODE-REVIEW-REFIX-20260917-04 | 범위 PASS | 기본 흐름 11/11, Studio v1 14/14. health HTTP 200, DB up, 실행 `f3c3704a`는 수정 커밋 `46e75b2d`를 포함한다. 현재 브랜치 HEAD `ba7e9f6f`와는 다른 계보라 현재 HEAD 귀속은 NG다. |
+| 외부 경계 | 공개 SNS와 운영 배포 | CODE-REVIEW-REFIX-20260917-05 | 미검증 | 외부 게시와 운영 배포는 실행하지 않았다. |
+
+제품 코드는 수정하지 않았다. 서버 발행 장부의 실제 복구와 YouTube 재개 파일 동일성 검증이 들어간 새 고정 커밋 뒤 다시 검수한다.
+
+## 2026-09-17 05시 08분 KST · 코드 공격 리뷰 MAJOR 6건 수정 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드 리뷰 수정 | 돈과 쿼터 장부 유실, YouTube 중복 업로드, 발행 의도 유실, 부분 실패 오판, 금지 문구를 위험도 순으로 수정 | CODE-REVIEW-FIX-20260917-01 | PASS | 수정 커밋 `1f7fbed4`, `46e75b2d`, `dc5165cf`. outbox 실 DB 회귀 `72044c45`. 원래 여섯 지적을 모두 수정했고 제외한 지적은 없다. 상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md`의 수정 결과 표다. |
+| 과금 장부 | pending outbox 원자 기록, 실패 보존, 중복 relay 방지 | CODE-REVIEW-FIX-20260917-02 | PASS | 목 경계 4건과 실제 Postgres 통합 1건 통과. 같은 발행을 두 번 relay해도 `usage_events`는 1행이고 outbox는 recorded로 수렴했다. 테스트 뒤 행을 정리했다. |
+| YouTube 복구 | 세션 저장, 308 범위 재개, stale 상태 조회, 재개권 경합, 외부 성공 뒤 내부 확정 실패 | CODE-REVIEW-FIX-20260917-03 | PASS | Route Handler 회귀 17건 통과. 저장된 Range 다음 바이트부터 재개하고, 동시 두 요청은 200과 409로 갈리며 실제 업로드 본문은 한 번만 보냈다. DB 확정과 장부 실패는 `partial`, `retryPublish:false`로 닫혔다. |
+| 멱등과 화면 | 태그와 파일 내용 해시, 제외 채널 부분 실패, 긴 대시 제거 | CODE-REVIEW-FIX-20260917-04 | PASS | 태그 변경과 같은 이름의 파일 내용 변경이 각각 새 발행 키를 만들었다. 화면 회귀 6건에서 차단 채널이 초안과 알림의 partial 결과에 포함되고 긴 대시가 0건이다. |
+| 전체 회귀 | test, TypeScript, production build, 디자인 lint | CODE-REVIEW-FIX-20260917-05 | PASS | `npm run test`: 374파일, 2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 0. `npm run build` 종료 0. design lint 위반 0. |
+| 실앱 기본 흐름 | 현재 수정 소스를 띄운 localhost:3456 기본 흐름과 Studio v1 | CODE-REVIEW-FIX-20260917-06 | PASS | 제품 수정 커밋 `46e75b2d`를 포함한 실행본에서 기본 흐름 11/11, Studio v1 14/14를 실제 요청으로 관찰했다. health는 HTTP 200, DB up이었다. 이후 포트를 이어받은 API sweep 실행본 `35f11ab0`도 `46e75b2d`의 후손이다. |
+| 미검증 경계 | 외부 공개 SNS의 실제 게시와 운영 배포 | CODE-REVIEW-FIX-20260917-07 | 미검증 | 공개 게시와 운영 배포는 실행하지 않았다. 외부 성공 직후 DB 장애는 Route Handler 경계에서 공급자 응답과 DB 실패를 제어해 재현했고, localhost에서는 기존 제품 기본 흐름을 실제로 관찰했다. |
+
+제품 전체 QA와 배포 판정은 기존 디자인 정합 NG와 운영 미검증 때문에 계속 NG다. 이번 PASS는
+리뷰 MAJOR 6건의 수정 범위에 한정한다.
+
+## 2026-09-17 04시 04분 KST · 최근 24시간 코드 공격 리뷰 BLOCK ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드 리뷰 | 최근 24시간 커밋 전체의 돈, 격리, 동시성, 부분 실패, 삭제, 확정 요구 이탈 검토 | CODE-REVIEW-20260917-01 | ❌ NG | 43개 커밋, `7cc7f848..93d1da1`, 81개 파일. MAJOR 6건: 제외 채널 전체 성공 저장, 긴 대시, YouTube 세션 미보존, 외부 성공 뒤 DB 확정 실패 은폐, 멱등 키 충돌, 사용량 장부 유실. 상세 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` |
+| 필수 회귀 | 전체 test와 TypeScript | CODE-REVIEW-20260917-02 | PASS | Vitest 372개 파일과 2,399건 통과, 3건 제외. `npx tsc --noEmit` 종료 0. |
+| 실앱 기본 흐름 | localhost:3456 기본 흐름과 Studio v1 | CODE-REVIEW-20260917-03 | PASS | 지정 작업 공간 실제 요청에서 기본 흐름 11/11, Studio v1 14/14. health HTTP 200, DB up. 단 실행 `build_commit=5bdc1f85`로 검토 끝 `93d1da1`과 달라 최신 YouTube 변경의 실앱 귀속은 NG. |
+| 사용량 실측 | 지정 작업 공간 `/api/usage` | CODE-REVIEW-20260917-04 | 관찰 | HTTP 200, source `usage_events`, 오늘과 이번 주 및 이번 달 발행 0, 일별 행 0. 외부 실발행은 하지 않았다. |
+
+## 2026-09-17 02시 55분 KST · 네 방 기본 흐름 v19 기능 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 백엔드 기본 흐름 관통 | FLOW-API-V19 | PASS | HEAD `d04c60a1`과 일치하는 localhost 최종 실제 요청 11/11. 후보 3장, 편집 인계와 상태 변경, 발행 큐, 성과 제안 3건, 생성 큐 재인계, 지표 확인. `logs/diff/osmu-four-room-flow-20260917-v19/commands/verify-basic-flow-e2e-final.txt` |
+| R08, R19, R207 | 네 방 렌더와 가린 모달 확인 | FLOW-ROOM-PROBE-V19 | PASS | 최초 4/4 통과. 전체 회귀 뒤 두 번 연속 성과실 `DOMContentLoaded` timeout을 재현하고, 300초 전체 예산과 목표 주소 도달 판정을 보강한 뒤 최종 4/4, 모달 0, 401 0, 콘솔 오류 0. `commands/probe-four-room-flow-final.txt`, `probe-four-room-flow-retry.txt`, `probe-four-room-flow-fixed.txt` |
+| R08, R19 | 네 폭에서 사람처럼 생성실부터 성과실까지 이동 | FLOW-UI-V19 | PASS | 390 라이트와 다크, 768, 1024, 1440의 20화면과 성과실에서 생성실 복귀 5/5. 가로 넘침, 전체 화면 모달, 탐색 가림, 401, 콘솔 오류 0. `commands/verify-four-room-ui-e2e.txt`, 원본 `captures/` |
+| R166, R172 | Studio v1 인증, 생성, 조회, 무료 다시 만들기 | FLOW-STUDIO-V19 | PASS | localhost 실제 요청 14/14. `commands/verify-studio-v1-e2e.txt` |
+| 탐침 회귀 회수 | 콜드 컴파일에서 정상 성과실을 timeout으로 오판하지 않는다 | FLOW-PROBE-COLD-V19 | PASS | 단계별 120초는 유지하고 전체 예산을 네 폭 검증기와 같은 300초로 맞췄다. 목표 주소면 실제 room root가 최종 판정한다. 표적 3파일 4건 통과. 최신 탐침 토큰 3개 `revoked=true`. `commands/probe-regression-fixed.txt`, `probe-token-cleanup-final.txt` |
+| 필수 회귀 | 전체 test, TypeScript, build, seed와 RLS, 디자인 lint | FLOW-REGRESSION-V19 | PASS | Vitest 371파일과 2,388건 통과, 3건 제외. TypeScript 종료 0. build 184/184. schema, seed, RLS 적용. 디자인 lint 위반 0. `commands/npm-test.txt`, `tsc-noemit.txt`, `npm-build.txt`, `apply-schema-seed.txt`, `design-lint.txt` |
+| R193, R205, R206 | v63 계승과 8개 배치 속성 정합 | DESIGN-CONF-V19 | NG | v63 원본과 현재 16개 화면이 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계에서 불일치하거나 동일 상태 캡처가 아니다. 과제 v63과 canonical 승인 v68 핀도 충돌. `docs/qa/osmu-four-room-basic-flow-v19-gpt-codex.md` |
+| 제품 전체 | 운영 배포와 외부 채널 | QA-QUALITY-GATE-V19 | NG | localhost 기능 범위만 PASS. 운영 동적 URL, 실제 배포 버전과 외부 채널 실발행은 미검증이고 디자인 정합 NG |
+| 증거 커밋 | 탐침 수정과 QA 기록을 원자 커밋 | FLOW-COMMIT-V19 | BLOCK | 다른 세션의 미추적 소스 `dashboard/tests/publish/video-publish-youtube.route.test.ts` 때문에 `commit-untracked-guard`가 차단했다. 범위 밖 파일을 포함하거나 훅을 우회하지 않았다. |
+| R01부터 R207 및 세부 요청 232건 중 이번 범위 밖 | 회장 확정 요구 전건 | REQ-ALL-V19 | 이월 | 기존 정본 판정을 유지하고 이번 범위 관련 요청만 갱신 |
+
+제품 기능은 수정하지 않았다. 끊긴 곳은 QA 탐침의 전체 제한시간과 `DOMContentLoaded` 판정이었다.
+상세 근거와 16개 화면 디자인 정합 행렬은 `docs/qa/osmu-four-room-basic-flow-v19-gpt-codex.md`다.
 
 ## 2026-09-16 23시 10분 KST · 성과 시계열 갭 build BLOCK, 필수 실앱 NG
 
@@ -46,6 +227,22 @@ bootstrap context를 보존하도록 고친 뒤, 수정 커밋과 일치하는 �
 
 화면 단면이나 빌드 통과로 이 실패를 덮지 않는다. 서버 자식 프로세스 환경과 Claude CLI 실행 끝점을 추적한다.
 
+## 2026-09-16 19시 02분 KST · 성과 시계열 갭 재착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사를 현재 코드와 대조하고 기본 흐름에 가장 가까운 미구현 한 항목을 완성 | GAP-HISTORY-20260916-1902-01 | NG | 현재 대조에서 생성, 편집, 발행, 성과 재인계는 구현돼 있고 남은 항목은 게시물별 성과 snapshot과 재현 가능한 최근 30일 비교다. `published_posts`는 최신 누계와 `metrics_at`만 보존하며 게시물별 관측 이력 table과 API `history`, `comparison`은 없다. |
+| pipeline build 허용 범위 | 신규 저장과 비교 계약을 소스에 추가할 수 있는지 확인 | GAP-HISTORY-20260916-1902-02 | BLOCK | `pipeline-state.osmu.md` 최상단은 `current_stage: qa`, `status: in-progress (승인 아님)`이다. snapshot 단위, 멱등 키, 보존 기간, 공급자별 누계와 기간 지표 정규화, 비교식과 표본 부족 기준의 승인된 기술설계가 없다. |
+| 실제 metrics | 지정 작업 공간 성과 응답 | GAP-HISTORY-20260916-1902-03 | NG | 현재 HEAD와 일치하는 localhost에서 HTTP 200. 최상위 키는 `coverage`, `posts`, 게시물은 0건이며 `history`, `comparison`은 없다. |
+| 실행본 귀속 | localhost와 현재 소스 일치 | GAP-HISTORY-20260916-1902-04 | PASS | `/api/health` HTTP 200, DB up, `build_commit`은 현재 HEAD `ed8231a5`와 일치한다. |
+| 필수 회귀 | `npm run test` | GAP-HISTORY-20260916-1902-05 | PASS | 371파일, 2,387건 통과, 3건 제외, 종료 코드 0. |
+| 필수 회귀 | `npx tsc --noEmit` | GAP-HISTORY-20260916-1902-06 | PASS | 종료 코드 0. |
+| 기본 흐름 실앱 | `verify-basic-flow-e2e.mjs` | GAP-HISTORY-20260916-1902-07 | NG | 첫 실제 생성이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, `provider_unavailable`, 후보 0장으로 종료 코드 1. 서버 로그의 관찰 가능한 직접 원인은 Claude CLI 자식 프로세스 `exit_nonzero`이며 그 위 원인은 보안 경계가 원문을 보존하지 않아 미검증이다. |
+| Studio v1 실앱 | `verify-studio-v1-e2e.mjs` | GAP-HISTORY-20260916-1902-08 | NG | 401, 400, 422 거절 계약은 통과. 정상 생성은 기대 201 대신 HTTP 200과 `STUDIO_LLM_PROVIDER_UNAVAILABLE`를 받아 종료 코드 1. |
+| 소스 구현 | 신규 migration, API, 테스트 | GAP-HISTORY-20260916-1902-09 | BLOCK | 제품 소스 변경 0건. 승인되지 않은 DB와 API 계약을 워커가 선택하지 않았다. |
+| 증거 커밋 | 이번 기록 4파일만 커밋 | GAP-HISTORY-20260916-1902-10 | BLOCK | 같은 4개 문서에 다른 세션의 미커밋 변경이 이미 합쳐져 있어 경로 단위 staging은 범위 밖 변경을 함께 커밋한다. 다른 작업을 포함하거나 index를 수동 조작해 우회하지 않았다. |
+
+테스트와 타입 검사는 통과했지만 필수 실앱 검증 두 개가 실패했고 성과 이력 기술설계도 미승인이다. 따라서 이번 항목과 제품 전체는 완료가 아니다. 컨트롤러와 tech-architect가 성과 저장 및 비교 계약을 승인하고 build를 다시 열어야 한다.
 
 ## 2026-09-16 18시 53분 KST · 네 방 기본 흐름 v17 기능 범위 PASS, 제품 전체 NG
 
@@ -115,6 +312,36 @@ bootstrap context를 보존하도록 고친 뒤, 수정 커밋과 일치하는 �
 
 제품 코드는 수정하지 않았다. 일부 채널 제외 발행을 전체 성공으로 저장하는 경로, YouTube 중복 업로드와 기록 유실, Reels 외부 성공 뒤 내부 상태 정체, 사용량 장부 유실, 프로세스 로컬 자막 상한, Threads 성과 이중 수집, R2 임시 객체 누적, 빈 목록 검증 오판, 접힌 사이드바 계약 이탈을 확인해 머지와 배포를 차단한다.
 
+## 2026-09-16 11시 10분 KST · 성과 시계열 갭 build BLOCK, 실앱 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 성과 기본 흐름 | 게시물별 snapshot과 재현 가능한 30일 비교 | GAP-PERF-20260916-1110-01 | BLOCK | `published_posts`는 최신 누계만 보존하고 게시물별 이력 table, `history`, `comparison` 응답이 없다. 현재 pipeline은 `qa`, 승인 아님이며 저장과 비교 계약도 미승인이다. |
+| 실제 metrics | 지정 작업 공간 성과 응답 | GAP-PERF-LIVE-20260916-1110-01 | NG | localhost `GET /api/metrics` HTTP 200. 응답 키는 `coverage`, `posts`, 게시물 0건이며 `history`와 `comparison`은 없다. |
+| 최신 실행본 | localhost와 현재 소스 귀속 | GAP-PERF-BUILD-20260916-1110-01 | NG | health HTTP 200, DB up. 실행 서버 `80166cfe`, 현재 HEAD `171765b4`로 불일치한다. |
+| 필수 회귀 | `npm run test` | GAP-PERF-TEST-20260916-1110-01 | PASS | 369파일과 2,373건 통과, 3건 제외, 종료 코드 0. |
+| 필수 회귀 | `npx tsc --noEmit` | GAP-PERF-TSC-20260916-1110-01 | PASS | 종료 코드 0. |
+| 기본 흐름 E2E | 생성, 편집, 발행 큐, 성과 재인계 | GAP-PERF-E2E-BASIC-20260916-1110-01 | NG | 첫 생성 요청이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장, 종료 코드 1. |
+| Studio v1 E2E | 인증, 멱등, 정상 생성, 조회와 무료 다시 만들기 | GAP-PERF-E2E-STUDIO-20260916-1110-01 | NG | 401, 400, 422 거절 계약은 통과. 정상 생성은 기대 201 대신 HTTP 200과 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 종료 코드 1. |
+| 증거 커밋 | 갭 재확인 문서와 QA 트래커 | GAP-PERF-COMMIT-20260916-1110-01 | BLOCK | 다른 세션의 archive 이동을 포함한 미추적 파일이 대량으로 남아 있다. 범위 밖 파일을 포함하거나 이동해 commit guard를 우회하지 않는다. |
+
+제품 소스, migration과 기능 테스트는 수정하지 않았다. 성과 저장과 비교 기술설계를 승인하고
+build 공정을 다시 연 뒤 최신 HEAD와 일치하는 localhost에서 두 E2E를 통과시켜야 한다.
+
+## 2026-09-16 09시 30분 KST · 성과 시계열 갭 재확인 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 성과 기본 흐름 | 게시물별 snapshot과 재현 가능한 30일 비교 | GAP-PERF-20260916-01 | BLOCK | `published_posts`는 최신 누계만 보존하고 게시물별 이력 table과 `history`, `comparison` 응답이 없다. 현재 pipeline은 `qa`, 승인 아님이며 저장과 비교 계약도 미승인이다. |
+| 실제 metrics | 지정 작업 공간 성과 응답 | GAP-PERF-LIVE-20260916-01 | NG | localhost health HTTP 200, DB up. `GET /api/metrics` HTTP 200이지만 응답 키는 `coverage`, `posts`, 게시물 0건이다. |
+| 필수 회귀 | 전체 `npm run test` | GAP-PERF-TEST-20260916-01 | NG | 369파일 중 365파일 통과, 4파일 실패. 2,373건 중 2,366건 통과, 4건 실패, 3건 제외. 병렬 수정 중인 분석 이벤트, YouTube 갱신, 긴 대시, 발행 사용량 계약 실패다. |
+| 필수 회귀 | `npx tsc --noEmit` | GAP-PERF-TSC-20260916-01 | NG | 실행 중 dev 서버의 `.next/dev/types/routes.d.ts:279` 문법 오류, 종료 코드 2. |
+| 필수 실앱 E2E | 기본 흐름과 Studio v1 | GAP-PERF-E2E-20260916-01 | 귀속 차단 | 실행 서버 `6a51aaf3`, 현재 HEAD `ee4ac95b`로 불일치해 구 서버 결과의 오귀속을 막고 실행하지 않았다. |
+| 증거 커밋 | 갭 재확인 문서 | GAP-PERF-COMMIT-20260916-01 | 차단 | 범위 밖 신규 테스트가 미커밋이라 `commit-untracked-guard`가 거부했다. 다른 세션 변경을 포함하거나 이동하지 않았다. |
+
+제품 소스, migration과 기능 테스트는 수정하지 않았다. 고정 커밋과 일치하는 localhost에서 전체
+회귀와 두 E2E를 다시 통과시키고, 성과 저장과 비교 기술설계를 승인한 뒤 build로 재발주해야 한다.
+
 ## 2026-09-16 09시 12분 KST · 최근 24시간 코드 공격 리뷰 R2 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
@@ -136,6 +363,14 @@ bootstrap context를 보존하도록 고친 뒤, 수정 커밋과 일치하는 �
 | 코드 리뷰 | 직전 24시간 커밋 전체의 돈, 격리, 동시성, 부분 실패, 삭제, 확정 요구 이탈 검토 | CODE-REVIEW-20260916-R2-01 | NG | 검토 착수. 대상 커밋 경계, 실앱 귀속, 필수 회귀 결과와 지적 건수를 최종 판정 전까지 PASS로 전환하지 않음. |
 
 제품 코드는 수정하지 않고, 검토 문서와 검증 증거만 최신순으로 기록한다.
+
+## 2026-09-16 06시 26분 KST · 네 방 기본 흐름 v16 착수 환경 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 백엔드 기본 흐름 관통 | FLOW-API-V16-01 | 환경 NG | 착수 health는 HTTP 200, DB up이었으나 localhost 실행 빌드 `169fbf4f`와 canonical HEAD `02e295a3`가 불일치했다. `verify-basic-flow-e2e.mjs`의 첫 실제 생성 요청이 180초 동안 응답하지 않아 종료 코드 130으로 중단했다. 직후 health는 연결 재설정 HTTP 000, 3456 listener는 종료됨. 서버 로그에 `Error: write EPIPE`와 `uncaughtException` 3건이 남았다. |
+
+다른 API 전수 검사 worktree가 소유한 개발 서버가 실행 중 종료된 환경 실패다. 같은 빌드를 QA가 시작부터 종료까지 소유하고 health `build_commit`과 대상 커밋을 일치시킨 뒤 기본 흐름, 네 방 단면, 네 폭 클릭과 Studio v1을 전부 재실행하기 전 PASS로 전환하지 않는다.
 
 ## 2026-09-16 05시 47분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
 
@@ -203,7 +438,7 @@ MODEL: gpt-codex/gpt-5.6-sol
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| R68, API 갭 P2 | 게시물별 성과 시계열과 재현 가능한 30일 비교 | GAP-HISTORY-20260915-2312-01 | ❌ NG | 지정 작업 공간 localhost `GET /api/metrics` HTTP 200. 응답 키는 `coverage`, `posts`이고 `history`, `comparison`은 없음. 현재 schema와 migration에도 게시물별 관측 이력 없음 |
+| R68, API 갭 P2 | 게시물별 성과 시계열과 재현 가능한 30일 비교 | GAP-HISTORY-20260915-2312-01 | NG | 지정 작업 공간 localhost `GET /api/metrics` HTTP 200. 응답 키는 `coverage`, `posts`이고 `history`, `comparison`은 없음. 현재 schema와 migration에도 게시물별 관측 이력 없음 |
 | pipeline build 허용 범위 | 승인 계약 안에서 신규 저장과 응답을 구현할 수 있는지 확인 | GAP-HISTORY-20260915-2312-02 | BLOCK | `pipeline-state.osmu.md`는 `qa`, 승인 아님. snapshot 단위, 멱등 키, 보존 기간, 공급자 정규화와 비교식의 승인된 DB 및 API 계약이 없어 제품 소스와 migration을 수정하지 않음 |
 | 기존 기본 흐름 | 생성, 편집, 발행 큐, 성과와 생성실 재인계 | GAP-HISTORY-20260915-2312-03 | PASS | localhost 기본 흐름 11/11, Studio v1 14/14, health HTTP 200과 DB up. health version은 null이라 현재 HEAD 실행본 귀속은 미검증 |
 | 필수 회귀 | test, TypeScript, 디자인 lint | GAP-HISTORY-20260915-2312-04 | PASS | Vitest 362파일과 2,321건 통과, 조건부 3건 제외. TypeScript 종료 0, 디자인 토큰 위반 0 |
@@ -254,6 +489,35 @@ WEAKEST_LINE: "단일 승인 디자인 핀과 실행본 커밋 귀속이 없어 
 
 제품 코드, migration과 테스트는 수정하지 않았다. 고객 UI의 생성 단추 403, 신규 큐 빈 파일 파손, Threads와 Instagram 이미지 발행 회귀, 프로세스 로컬 공유 생성 큐, 무제한 ffmpeg, YouTube 중복 게시 가능성, 전역 Docker 정리, 거짓 성공 검증기를 확인해 머지와 배포를 차단한다. 운영 배포, 외부 SNS 실발행, 외부 계정 성과 수집은 미검증이다.
 
+## 2026-09-15 18시 43분 KST · 네 방 현재 위치 표시 수정 후 기능 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 백엔드 기본 흐름 관통 | FLOW-API-V13 | PASS | 지정 작업 공간의 localhost 실요청 11/11. 후보 3장, 편집 순서 변경, 삭제와 복원, 발행 큐 HTTP 201, 성과 제안 3건, 생성실 재인계 관찰 |
+| R08, R19, R207 | 네 방 렌더와 390, 768, 1024, 1440 실제 이동 | FLOW-UI-V13 | 수정 후 PASS | 네 방 단면 4/4. 최종 화면 20/20과 성과실에서 생성실 복귀 5/5. 가로 넘침, 전체 화면 모달, 탐색 가림, 브라우저 401, 콘솔 오류 0. `logs/diff/osmu-four-room-flow-20260915-v13-final2/captures/` |
+| R08, R19, R207 | 상단 단계와 사이드바 현재 방 일치 | FLOW-UI-ACTIVE-V13 | 수정 후 PASS | URL의 유효 방을 공통 저장 상태에 동기화하고, 768 이상에서 사이드바 `aria-current=page`가 정확히 1개이며 현재 방과 일치해야 캡처하도록 검증기를 강화. 회귀 2건 통과. 수정 전 `logs/diff/osmu-four-room-flow-20260915-v13/captures/1024-light-edit.png`, 수정 후 `logs/diff/osmu-four-room-flow-20260915-v13-final2/captures/1024-light-edit.png`과 `1024-light-publish.png` 직접 대조 |
+| R27, R168 | Studio v1 생성, 조회, 거절, 무료 다시 만들기 회귀 | STUDIO-V1-V13 | PASS | 수정본 localhost 실요청 14/14 |
+| R104 | QA 자격증명 정리 | FLOW-PROBE-CLEANUP-V13 | PASS | 전체 실행 뒤 활성 `qa-four-room-*` 토큰 0건 |
+| 필수 회귀 | test, TypeScript, build, seed, health, Playwright, 디자인 lint | FLOW-REGRESSION-V13 | PASS | Vitest 361파일과 2,319건 통과, 조건부 3건 제외. TypeScript 종료 0, production build 184/184, schema와 seed 및 RLS 적용, health HTTP 200과 DB up, 디자인 토큰 위반 0 |
+| 커밋 무결성 | 수정과 회귀 및 증거의 저장소 보존 | FLOW-COMMIT-V13 | 일부 NG | 제품과 검증기 수정은 `6d862d47`로 커밋. 새 회귀 테스트는 표적 및 전체 회귀 PASS 후 스테이징됐으나, 타 세션 미추적 `dashboard/tests/db/local-ci-db-migrations.regression-1.test.ts`를 `commit-untracked-guard`가 감지해 커밋 차단. 범위 밖 파일 포함과 훅 우회는 하지 않음 |
+| R193, R205, R206 | 승인 프로토타입 디자인 계승 | DESIGN-V13 | NG | 과제 지정 v63과 canonical pipeline 승인 v68 핀이 충돌한다. 기존 16개 화면의 8개 배치 속성 정합 NG를 기능 수정으로 해소했다고 세지 않음 |
+| 제품 전체 | 운영 배포와 외부 계정 실발행 | QA-QUALITY-GATE-V13 | NG | localhost 기능은 관찰했지만 stage와 운영 환경 접촉, 외부 채널 실발행은 미검증. 제품 전체 QA와 배포 출고로 확대하지 않음 |
+| R01부터 R207 중 이번 범위 밖 | 회장 확정 요구 승계 | REQ-ALL-V13 | 이월 | 요구 정본 전건을 유지하고 이번 네 방 현재 위치 회귀 판정에 포함하지 않음 |
+
+기존 기능은 생성, 편집, 발행 큐, 성과, 제안 재인계, 모바일 메뉴와 테마를 유지했다. 이번 변경은 현재 방의 이중 상태를 한 지점에서 동기화하고 검증기가 데스크톱 사이드바의 단일 현재 위치와 전환 완료를 기다리게 한 것이다. Playwright 공식 actionability와 visual comparison의 안정 상태 대기 원칙을 차용하되, 이 제품은 숨은 사이드바도 DOM 계약으로 검사하도록 변경했다. 이 결론이 틀릴 가장 그럴듯한 이유는 개발 서버의 낡은 번들이지만, 수정 후 회귀 테스트, production build, localhost 두 API E2E, 단면 탐침, 최종 20화면을 같은 소스에서 다시 통과시켜 배제했다. 까다로운 고객 관점에서는 기능 이동만 되고 두 길잡이가 다르면 제품을 신뢰할 수 없으므로, 정확히 한 현재 방만 남는 것을 PASS 조건으로 승격했다.
+
+SOURCES: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html` | `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md` | `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md` | `pipeline-state.osmu.md` | https://playwright.dev/docs/actionability | https://playwright.dev/docs/test-snapshots
+
+MODEL: gpt-codex/gpt-5
+
+## 2026-09-15 18시 21분 KST · 네 방 현재 위치 표시 회귀 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R207 | 생성실부터 성과실까지 네 방을 사람처럼 이동하고 현재 방을 일관되게 표시 | FLOW-UI-ACTIVE-V13 | NG | `logs/diff/osmu-four-room-flow-20260915-v13/captures/1024-light-edit.png`에서 상단은 편집실인데 사이드바는 생성실을 선택. `1024-light-publish.png`에서 상단은 발행실인데 사이드바는 편집실을 선택. 실제 이동은 됐지만 두 길잡이의 현재 위치가 불일치 |
+
+원인은 상단 작업 단계가 URL만 바꾸고 `ui-store.studioRoom`을 갱신하지 않으며, 사이드바가 URL이 아닌 그 저장 상태를 읽는 이중 진실원이다. 공통 동기화 지점 수정, 회귀 테스트, 네 폭 재캡처 전에는 PASS로 전환하지 않는다.
+
 ## 2026-09-15 17시 37분 KST · API 읽기 경로 v12 범위 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
@@ -296,6 +560,26 @@ WEAKEST_LINE: "단일 승인 디자인 핀과 실행본 커밋 귀속이 없어 
 | R01부터 R207 중 이번 범위 밖 | 회장 확정 요구 승계 | REQ-ALL-V12 | 이월 | 요구 정본을 유지하고 이번 네 방 기능 PASS에 포함하지 않음 |
 
 첫 전체 회귀는 3파일 실패였다. 제한 동시성 구현을 예전 `Promise.all` 문자열로만 찾던 정적 계약을 현재 구현으로 맞췄고, 큐 잠금 재시도 여유를 1.55초에서 3.55초로 늘리며 최종 `ELOCKED`를 `queue lock timeout`으로 정규화했다. 수정 후 표적 3파일 43건과 전체 2,317건이 통과했다. 기능 범위는 PASS지만 디자인 정합, 커밋 무결성, 운영 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v12-gpt-codex.md`다.
+
+## 2026-09-15 06시 18분 KST · 네 방 기본 흐름 v12 회귀 NG 수정 중
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 실제 관통 | FLOW-API-V12 | PASS | 지정 작업 공간에서 localhost 기본 흐름 11/11. 후보 3장, 편집 순서 변경, 삭제·복원, 발행 큐 HTTP 201, 성과 제안 3건과 생성실 재인계 관찰 |
+| R08, R19, R207 | 네 방 렌더와 390·768·1024·1440 실제 이동 | FLOW-UI-V12 | PASS | 단면 4/4, 방 화면 20/20, 성과실에서 생성실 복귀 5/5. 가로 넘침·전체 화면 모달·탐색 가림·브라우저 401·콘솔 오류 0. 원본 `logs/diff/osmu-four-room-flow-20260915-0615/captures/` |
+| R27, R168 | Studio v1 회귀 | STUDIO-V1-V12 | PASS | localhost 실요청 14/14 |
+| 필수 회귀 | `npm run test` 전체 회귀 | FLOW-REGRESSION-V12 | NG | 360파일 중 357 통과, 3 실패. 발행 성공 배선 정적 계약 1건은 제한 동시성 구현을 예전 `Promise.all` 문자열로만 판정한 테스트 드리프트. 큐 잠금 2건은 재시도 총시간이 13초 임계구역의 남은 2.8초보다 짧고 최종 오류가 `queue lock timeout`으로 정규화되지 않음 |
+
+소스 해시는 실행 전후 `bec9249f3e03e505370d9455d86082cd70118899f559a60241d3ecd16718607e`, HEAD는 `8a1c3aab`로 같아 도중 소스 변경은 없었다. 세 실패를 단독 재현하고 최소 수정 후 전체 회귀를 다시 끝내기 전에는 PASS로 전환하지 않는다.
+
+## 2026-09-15 05시 14분 KST · API 읽기 경로 v12 재실사 중 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R200, R207 | 최신 코드의 읽기 Route Handler 전수 재실사 | API-READ-ALL-V12 | NG | 최신 HEAD로 재기동한 localhost에서 GET 105건과 HEAD 1건을 실제 호출했다. 제품 HTTP 500은 0건이었으나 200의 긴 JSON 19건을 검사기가 500자로 자른 뒤 파싱해 `응답 형식 오류`로 오판했고, 실행 중 소스 해시도 바뀌어 권위 실행으로 채택하지 않았다. 원본 `logs/diff/osmu-api-read-sweep-20260915-v12-authoritative.json` |
+| 검증기 회귀 | 긴 JSON은 전체 본문으로 판정하고 미리보기만 자름 | API-SWEEP-LONG-JSON-V12 | 수정 후 PASS | `osmu-code-review-20260915-api-sweep-false-success.regression-1.test.ts` 3건 통과. 전수 재실행 전이라 전체 판정은 NG 유지 |
+
+제품 API 고장과 검사기 고장을 분리했다. 소스가 멈춘 뒤 최신 HEAD 서버를 다시 시작하고 전수 요청과 필수 회귀를 끝내기 전에는 PASS로 전환하지 않는다.
 
 ## 2026-09-15 04시 17분 KST · 최근 24시간 코드 공격 리뷰 BLOCK
 
@@ -354,6 +638,14 @@ canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였�
 | R08, R27, R166, R168, R172 | 생성실부터 성과실까지 실제 기본 흐름 재검증 | FLOW-API-V11 | ❌ NG | 착수 health는 `localhost:3456/api/health` HTTP 200, DB up이었으나 `verify-basic-flow-e2e.mjs` 첫 생성 요청이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 종료 코드 1. 후보 0장. request id는 `ebeab845-101e-4ece-baf8-f0f9fadef2b1` |
 
 제공자 실패가 실행 환경인지 제품 회귀인지 분리하고, 같은 localhost에서 기본 11단계, 네 방 렌더, 네 폭 클릭, 전체 회귀를 다시 끝내기 전에는 PASS로 전환하지 않는다.
+
+## 2026-09-15 01시 31분 KST · API 읽기 경로 v12 착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R200, R207 | 최신 코드의 읽기 Route Handler 전수 재실사 | API-READ-ALL-V12 | ❌ NG | 착수 health 실요청이 `localhost:3456/api/health` HTTP 503, 본문 `db: down`, `error: db timeout`, 3003ms였다. listener PID 65744는 살아 있으나 DB 경로가 응답하지 않아 전수 실사를 PASS로 시작하지 않음 |
+
+원인 분석, 서버·DB 상태 분리, 전수 요청과 전체 회귀가 끝날 때까지 이 항목을 PASS로 전환하지 않는다.
 
 ## 2026-09-14 22시 35분 KST · 네 방 기본 흐름 v10 기능 PASS, 제품 전체 NG
 
@@ -661,6 +953,39 @@ seed는 지정 작업 공간에 멱등 적용했고 최종 health는 HTTP 200, D
 
 seed, health HTTP 200과 DB up, 전체 Vitest 323파일과 2,119건, TypeScript, build 183/183, 디자인 lint가 통과했다. 조건부 DB 테스트 3건은 제외됐고 기존 NFT 추적 경고 1건은 남아 있다. build 결과에서도 health 200과 네 방 4/4를 재관찰했다. `verify-agent-quality.sh`는 배포 환경 접촉 증거 0건으로 반려했다. 실제 운영 배포와 외부 채널 실발행은 미검증이다. 상세와 16개 화면 매트릭스는 `docs/qa/osmu-four-room-basic-flow-v5-gpt-codex.md`, 원본 증거는 `logs/diff/osmu-four-room-flow-20260914-031512/`에 있다.
 
+## 2026-09-14 03시 19분 KST · 네 폭 실제 이동 재실사 2차 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R166, R172, R207 | 390·768·1024·1440에서 생성실부터 성과실까지 실제 이동 | FLOW-UI-RERUN-20260914-02 | NG | 390 라이트·다크와 768은 네 방 및 성과실→생성실 복귀까지 통과했다. 1024 첫 `/studio?room=create`에서 `[data-room="create"]` 표시가 120초를 넘겨 종료 코드 1로 중단됐다. 완주 전이므로 전체 PASS 금지다. |
+
+단면 탐침은 직전 실행에서 4/4, 가린 모달·401·콘솔 오류 0으로 통과했다. 같은 개발 서버가 실행 중 변경된 Studio 소스를 다시 컴파일했으므로 제품 회귀와 공유 작업 트리 경합을 분리한 뒤 4폭 전건을 처음부터 재실행한다.
+
+## 2026-09-14 03시 09분 KST · 성과 시계열 갭 실측 NG와 build 회수
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R68 | 2026-08-28 두 갭 감사를 현재 코드와 대조하고 기본 흐름에 가장 가까운 미구현 한 항목을 완성 | GAP-RECHECK-20260914-01 | ❌ NG | 두 감사의 후속 이력과 현재 코드를 대조한 결과, 남은 항목은 게시물별 성과 이력과 재현 가능한 30일 비교다. 지정 작업 공간으로 `localhost:3456/api/health`와 `/api/metrics`를 실제 요청해 각각 HTTP 200을 관찰했지만, 응답 최상위 키는 `coverage`, `posts`뿐이고 `posts`는 0건이며 이력과 비교 필드는 없었다. |
+| pipeline build 허용 범위 | 미구현 성과 시계열 계약을 소스에 추가할 수 있는지 확인 | GAP-RECHECK-20260914-02 | BLOCK | `pipeline-state.osmu.md`의 현재 단계는 `qa`, 상태는 `in-progress (승인 아님)`이다. 승인된 저장 모델과 API 계약도 없다. YouTube는 기간별 분석 조회를 지원하지만 TikTok Video Query는 누적 카운터를 반환하므로, 스냅샷 기준 시각, 중복 수집 처리, 30일 비교식, 보존 기간을 기술설계에서 먼저 확정해야 한다. 제품 소스와 마이그레이션은 수정하지 않았다. |
+
+이 항목은 기술설계와 build 단계를 다시 열고 데이터 계약을 승인한 뒤에만 구현한다. 구현 후 정상 경로 1건, 거절 경로 1건, `npm run test`, `npx tsc --noEmit`, 기본 흐름과 Studio v1 검증기를 새 증거로 남긴다.
+
+## 2026-09-13 23시 22분 KST · 네 방 기본 흐름 재실사 1차 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R193, R207 | 생성실부터 성과실까지 네 방 렌더와 실제 데이터 인계 | FLOW-PROBE-RERUN-20260913-01 | NG | `localhost:3456` 기본 백엔드 흐름은 11/11 통과했으나, 이어 실행한 `probe-four-room-flow.mjs`가 `/studio?room=publish` HTTP 200 뒤 `[data-room="publish"]` 표시를 120초 안에 관찰하지 못하고 종료 코드 1로 중단됐다. |
+
+콜드 컴파일 지연, 화면 런타임 결함, 검증기 결함을 분리하기 전에는 네 방 기능을 PASS로 전환하지 않는다. DOM, 최종 URL, 콘솔 오류, 가림 요소를 수집하고 같은 검증을 재실행한다.
+
+## 2026-09-13 22시 41분 KST · API 읽기 전수 재실사 1차 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, R98, R104, R200, R207 | 현재 코드의 읽기 Route Handler 전수 실호출 | API-READ-20260913-RERUN-01 | NG | `localhost:3456` GET 105개 중 정상 90, 의도된 거절 후보 13, `/api/workspaces`와 `/api/youtube/status` 요청 제한시간 120초 초과 2건. HTTP 500은 0건. 원본 `logs/diff/osmu-api-read-sweep-20260913-172905.json` |
+| 현재 소스 고정 | 실행 중 Route Handler 변경 혼입 방지 | API-READ-SOURCE-HASH-01 | PASS | 실행 전후 합성 SHA-256 `de85df99d60f7922fe7954885228836485db1b908bcd20f3707e472123f7fded` 동일 |
+
+두 요청 실패의 원인을 단독 재현하기 전에는 콜드 컴파일 지연 또는 제품 결함 중 어느 쪽으로도 단정하지 않는다. 원인 분리와 전수 재실행 완료 전 API 읽기 범위 PASS 전환을 금지한다.
 
 ## 2026-09-13 16시 27분 KST · 최근 24시간 코드 재리뷰 갱신 BLOCK
 
@@ -721,6 +1046,34 @@ PASS지만 디자인 정합 NG, 기존 코드 재리뷰 BLOCK, 운영 배포 미
 
 전체 Vitest 319파일·2,106건, TypeScript, 정적 페이지 183/183 build, seed, 디자인 lint는 통과했다. 네 방 로컬 기능 범위는 PASS다. Studio v1 현재 429, 디자인 정합 NG, 운영 배포 미검증 때문에 제품 전체 QA와 배포는 NG다. 상세와 원본 경로는 `docs/qa/osmu-four-room-basic-flow-v3-gpt-codex.md`에 있다.
 
+## 2026-09-13 11시 26분 KST · 네 방 성과실 준비 제한시간 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R207 | 네 폭에서 생성실부터 성과실까지 실제 이동 | FLOW-UI-READY-01 | ❌ NG | 첫 `verify-four-room-ui-e2e.mjs` 실행이 390 라이트 성과실의 제안 3건을 30초 안에 보지 못해 `page.waitForFunction` timeout으로 종료 코드 1 |
+
+동일 서버 즉시 재실행은 네 방 20화면과 성과실→생성실 복귀 5회를 통과했다. 제품 단절과
+검증기 오판을 분리하기 위해 성과실 준비 제한시간을 120초 기본값과 환경 변수로 바꾸고,
+회귀 테스트와 전체 재검증이 끝날 때까지 이 항목을 PASS로 전환하지 않는다.
+
+## 2026-09-13 08시 39분 KST · 코드 리뷰 지적 수정 착수
+
+판정: NG. 감사의 재현 시나리오가 아직 실패하므로 수정과 회귀 검증이 끝날 때까지 PASS로
+전환하지 않는다.
+
+| 우선순위 | 테스트번호 | 범위 | 현재 판정 | 실패 근거 |
+|---|---|---|---|---|
+| P0 | REVIEW-FIX-P0-01 | Compose 실행 이미지와 발행 큐 계약 | NG | 실행 복제본에는 claim 계약이 없고 루트 테스트 대상과 코드가 다름 |
+| P0 | REVIEW-FIX-P0-02 | 취소 경합과 claimToken 강제 | NG | 토큰 없는 verify, update, release가 통과할 수 있고 발행 도구가 큐 검증 없이 provider를 호출함 |
+| P0 | REVIEW-FIX-P0-03 | 비용 API 실패 상태 | NG | Higgsfield provider 실패가 HTTP 200과 `ok:false`로 반환될 수 있음 |
+| P0 | REVIEW-FIX-P0-04 | 작업 공간 전환 중 미디어 응답 격리 | NG | 이전 요청의 늦은 응답이 현재 선택을 덮을 수 있음 |
+| P1 | REVIEW-FIX-P1-01 | 성과 부분 실패, DB 연결 점유, outbox 실행과 보존 | NG | 부분 실패 성공 오인, 외부 호출 중 연결 점유, drain 미기동, 500건 초과 자동 삭제가 남아 있음 |
+| P1 | REVIEW-FIX-P1-02 | 화면 상태와 검증기 단일 진실원 | NG | 지연 및 부분 발행 상태 누락, 정규식 fixture, 중복 성과 화면, 비활성 학습 규칙 재사용이 남아 있음 |
+| P2 | REVIEW-FIX-P2-01 | 승인 학습 흐름과 정보 밀도 | NG | 별도 `/learn` 대신 전체화면 dialog, 근거 표본 누락, 승인 문구 이탈, player 토큰 노출이 남아 있음 |
+
+수정은 P0부터 진행한다. 각 항목은 감사 문서의 재현 절차, 새 회귀 테스트, localhost:3456
+실제 요청을 모두 통과한 뒤에만 상태를 갱신한다.
+
 ## 2026-09-13 코드 리뷰 게이트 · 최근 24시간 변경
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
@@ -732,6 +1085,18 @@ PASS지만 디자인 정합 NG, 기존 코드 재리뷰 BLOCK, 운영 배포 미
 
 상세 지적과 재현 시나리오는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-13.md`에 있다. 코드와 단계 상태는 바꾸지 않았고 배포는 미검증이다.
 
+## 2026-09-13 07시 04분 KST · 성과 시계열 갭 build 회수
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 게시물별 성과 시계열과 재현 가능한 30일 비교 | METRICS-HISTORY-01 | ❌ NG | localhost:3456 `GET /api/metrics` HTTP 200 응답은 최상위 키가 `posts`, `coverage`뿐이며 `history`, `comparison`이 없음 |
+| build 권한 | pipeline-state에서 허용한 범위만 소스 수정 | STAGE-GATE-01 | 차단 | `pipeline-state.osmu.md`의 현재 공정은 `qa`, 승인 상태 아님 |
+| 데이터 계약 | 새 성과 이력 저장소의 식별자, 멱등성, 보존 기간, 30일 비교 기준 | SCHEMA-GATE-01 | 차단 | `wiki/5-hubs/hub-eng/architecture/data-model.md`가 시계열 snapshot과 재현 가능한 30일 비교를 별도 계약으로 명시하고, `wiki/ops/session-state.md`가 DB 계약 합의 전 구현 금지로 인계 |
+
+현행 `published_posts`는 최신 누계와 `metrics_at`만 보존한다. `growth_metrics`는 채널 팔로워
+시계열이라 게시물별 반응 이력으로 재사용할 수 없다. 새 테이블, 기존 행 JSONB 이력, provider
+직접 재조회 중 하나를 선택해야 하며 이는 워커가 단독 확정할 DB 스키마와 아키텍처 결정이다.
+소스, migration, 테스트, 갭 재확인 문서는 수정하지 않았다.
 
 ## 2026-09-13 06시 22분 KST · 네 방 기본 흐름 재검증 완료, 기능 PASS·디자인 NG
 
@@ -901,7 +1266,6 @@ CONFLICTS: Playwright 원칙과 회장 정본은 충돌 없음. 사용자 지정
 
 승인 프로토타입 v63과 pipeline 핀 v68의 충돌 및 기존 디자인 정합 NG, 외부 OAuth·실발행·운영 배포 미검증 때문에 제품 전체 PASS로 승격하지 않는다. 상위 QA 품질 게이트도 운영 또는 스테이징 접촉 증거 0건으로 반려했다. 상세 보고서는 `docs/qa/osmu-api-read-sweep-v5-gpt-codex-20260913-0248.md`, 원본은 `logs/diff/osmu-api-read-sweep-20260913.json`이다.
 
-
 ## 2026-09-12 23시 23분 KST · Instagram Reels 성과 수집 build 전환
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
@@ -991,6 +1355,149 @@ HITS_USED: BRAIN의 ZERO-ONE Marketing Studio 아이디어와 repo 사업 좌표
 HITS_REJECTED: 일반 마케팅 심리와 다른 벤처 자료는 이 동작 QA의 판정 근거가 아니어서 제외했다.
 CONFLICTS: 외부 Playwright 원칙과 회장 정본은 충돌 없음. 사용자 지정 v63과 pipeline 최신 승인 핀 v68이 충돌해 디자인 PASS를 금지했다.
 
+## 2026-09-12 22시 17분 KST · 네 방 4폭 사람 클릭 회귀 NG 등록
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R193, R201 | 생성실에서 성과실까지 네 방 이동과 성과실에서 생성실 복귀 | FLOW-UI-01 | ❌ NG | `verify-four-room-ui-e2e.mjs` 실제 localhost 실행에서 방 링크 클릭 뒤 `page.waitForURL(... waitUntil: "commit")`가 30초 제한시간 초과, exit 1 |
+
+어느 폭과 방에서 끊겼는지 현재 로그가 밝히지 않아 검증기 관찰성도 결함이다. 재현 지점을 표시하고
+제품 경로와 검증기 대기를 분리한 뒤 같은 네 폭을 다시 실행하기 전까지 PASS로 전환하지 않는다.
+
+## 2026-09-12 22시 09분 KST · Studio v1 회귀 NG 등록
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R27 | 후보 전건 거절 뒤 무료 다시 만들기 몫은 회원 UTC 하루에 한 번만 허용 | STUDIO-V1-REGEN | ❌ NG | `verify-studio-v1-e2e.mjs` 실제 localhost 실행에서 첫 생성 201 뒤 교차 시간대 생성 429, 이어 `generation.candidates` 접근 TypeError로 exit 1 |
+
+현재 판정은 제품 기능 실패와 검증기 실패를 분리하기 전의 NG다. 원인 분석과 수정 뒤 같은 실제
+localhost 요청, 전체 회귀, TypeScript를 다시 실행하기 전까지 PASS로 전환하지 않는다.
+
+## 2026-09-12 22시 06분 KST · 성과 기반 다음 실험 자동 제안 QA
+
+발견: 성과실은 표본이 있어도 사용자가 `성과에서 제안 받기`를 직접 눌러야 했고, 숫자와 다음
+콘텐츠 제작 사이가 끊겨 있었다. 공식 Buffer 흐름도 성과를 차트로 끝내지 않고 적절한 순간에
+실행 가능한 제안으로 연결하는 방향이다. 이를 적용하되 표본 5편 미만에서는 자동 결론을
+내리지 않도록 `PerformanceRoom`의 자동 제안 조건을 제한했다.
+
+의미: 5편 이상이 쌓이면 성과실 진입 뒤 다음 실험 카드가 자동으로 준비되어 생성실 재방문
+마찰이 줄어든다. 학습 정보가 한 번 저장되고 끝나는 것이 아니라 성과에서 다음 생성 가설로
+이어지는 제품 고리가 생긴다. 표본이 부족한 사용자는 기존 수동 흐름을 사용하므로 초기
+데이터를 과대해석하지 않는다.
+
+| 단계 | 상태 | 증거·비고 |
+|---|---|---|
+| 자동 제안 조건 | 테스트됨 | 표본 5편에서 `/api/suggestions` 자동 호출 및 카드 표시 |
+| 표본 부족 보호 | 테스트됨 | 1편 등 기존 댓글·빈 상태 테스트에서 자동 제안 오작동 없음 |
+| 학습 목적 저장 | 테스트됨 | 생성실 목적 저장·복원 2개 포함 관련 11개 PASS |
+| 타입·회귀 | 테스트됨 | `npx tsc --noEmit`, 파생 ID 400 회귀 2개, 성과 API 계약 2개 PASS |
+| 전체 목표 | 미검증 | OAuth·실제 외부 발행·발행 후 성과·디자인 matched pair 미완료 |
+
+⛔ 검증실패 보고: 등급 A, 이번 UX 개선은 테스트됨이나 전체 OSMU 출고는 불가합니다. 관리자 OAuth 연결·회원 OAuth2·외부 permalink·성과 API 응답·디자인 전체 정합이 없습니다.
+
+다음 실행: 소유자 Codex 컨트롤러. 실행 중인 읽기 API 전수 실사의 최종 로그를 회수하고 105개
+경로의 이전 실사 대비 표를 확정한다. 그 뒤 v68 시안·dev 동일 상태 대조를 마치고, 관리자
+자격증명 회수 즉시 계정 연결·회원 OAuth2·실제 Threads 발행·성과 조회를 수행한다. 종료증거는
+전수 실사 JSON, 속성별 디자인 PASS, 연결 계정 목록, 외부 permalink, 성과 API 응답이다.
+
+[모델]: Codex 컨트롤러가 현재 성과실 코드와 테스트를 읽고 변경 후 직접 테스트했다.
+벤치마크: Buffer Smart Scheduling과 Insights 공식 자료를 참조해 성과를 다음 행동으로 연결하는 원칙만 차용했다. [Smart Scheduling](https://buffer.com/resources/smart-scheduling/), [Analytics](https://buffer.com/resources/analytics/)
+소스 1: `dashboard/src/components/home/PerformanceRoom.tsx`.
+소스 2: `dashboard/tests/home/performance-engagement.test.tsx`.
+소스 3: `dashboard/src/components/home/PerformanceDashboard.tsx`, `dashboard/src/app/api/suggestions/route.ts`.
+
+## 2026-09-12 21시 59분 KST · 최신 production QA 상태
+
+발견: v68의 실제 방 이동 위치는 상단 `작업 단계`인데 검증기가 구형 사이드바만 찾고 있어
+정상 제품을 timeout으로 실패 처리했다. 상단 네 단계 우선 탐색과 구형 셸 fallback을 검증기에
+반영했고, 데스크톱 사이드바는 56px 아이콘 레일로 축약했다. Next.js route 타입 오류는
+학습·거래 파서를 route 밖 helper로 분리해 해결했다.
+
+의미: QA가 현재 제품 계약을 검사하게 되어 네 방 흐름의 기능 신뢰도가 올라갔다. 최신 production
+번들의 실제 브라우저 실행에서 4개 방 x 4폭, 390 다크 포함 20회가 통과했으며 가로 넘침 0px,
+전체 화면 모달 0건, 브라우저 401 0건, 콘솔 오류 0건이다. 반면 디자인 시안과 dev 화면은
+동일 상태가 아니고 외부 계정과 실제 발행 경로도 닫히지 않아 출고 판단은 바뀌지 않는다.
+
+| 단계 | 상태 | 증거·비고 |
+|---|---|---|
+| 기능·반응형 QA | 테스트됨 | `/tmp/osmu-four-room-qa-3564`, 총 20회 PASS |
+| TypeScript·production build | 테스트됨 | `npx tsc --noEmit`, `npm run build` exit 0 |
+| 디자인 픽셀 대조 | 미검증 | v68 시안과 dev 1024를 각각 Read했으나 상태·콘텐츠 차이로 PASS 보류 |
+| OAuth·외부 발행·성과 | 미검증 | 자격증명·연결 계정·외부 permalink·성과 응답 없음 |
+| 파이프라인 | 진행 중 | `qa`, 승인 전, 출고 불가 |
+
+⛔ 검증실패 보고: 등급 A, 기능·반응형 증거는 통과했으나 디자인 전체 정합과 OAuth·실제 발행·성과가 미검증, 출고 불가.
+
+다음 실행: 소유자 Codex 컨트롤러. 현재는 회장 지시에 따라 자동 실행을 멈춘다. 재개 시 v68
+matched pair와 속성별 conformance matrix를 먼저 끝내고, 관리자 자격증명 회수 직후 계정 연결,
+회원 OAuth2 로그인, Threads 발행, 성과 조회를 수행한다. 종료증거는 디자인 속성별 PASS,
+연결 계정 목록, 외부 permalink, 성과 API 응답이다.
+
+[모델]: Codex 컨트롤러가 실제 코드·production 브라우저·이미지 Read 증거를 대조해 판정했다.
+벤치마크: 해당 없음. 이번 조치는 승인 셸과 검증기 계약을 맞추는 회귀 수정이며 경쟁 제품 비교가 필요하지 않다.
+소스 1: `dashboard/scripts/verify-four-room-ui-e2e.mjs`.
+소스 2: `dashboard/src/components/layout/Sidebar.tsx`, `dashboard/src/lib/studio-learning-sanitize.ts`, `dashboard/src/lib/higgsfield-transactions.ts`.
+소스 3: `/tmp/osmu-four-room-qa-3564`와 v68 clean frame 및 최신 dev 1024 캡처.
+
+## 2026-09-12 22시 03분 KST · v68 방 이동 검증기 수정 후 production 네 방 재검증
+
+발견: v68 승인 셸은 네 방 이동을 상단 `작업 단계`에 두는데, 검증기는 이전 셸의 사이드바 영역만
+찾고 있었다. 그래서 제품 상단에 정상적인 방 링크가 있어도 `편집실`을 찾지 못해 30초 timeout이
+났다. 검증기를 상단 네 단계 우선, 구형 셸 사이드바 후순위로 바꿔 검증 기준을 승인 화면과 맞췄다.
+
+의미: 검증기가 실제 제품 계약을 따라가므로 정상적인 상단 방 이동을 결함으로 오판하지 않게 됐다.
+최신 production 번들에서 네 방 전체 흐름을 다시 실행한 결과 4개 방 x 4폭, 390 다크 포함 20회가
+통과했다. 화면의 가로 넘침·401·콘솔 오류가 0이라 다음 QA의 기능 기반은 확보됐지만, 이것이 외부
+OAuth 발행이나 디자인 전체 정합을 증명하지는 않는다.
+
+- 판정: 네 방 기능·반응형 `테스트됨`, 디자인 전체 정합 `미검증`, OAuth·외부 발행·성과 `미검증`.
+- 직접 증거: `PASS 네 방 4개 x 4폭(390은 라이트+다크), 총 20회 측정`, `/tmp/osmu-four-room-qa-3564`.
+- [모델]: 검증기 실패 원인을 제품의 상단 `작업 단계`와 비교해 수정하고 최신 production build에서 재실행했다.
+- 벤치마크: 해당 없음. 검증기 계약 수정과 회귀 재실행이다.
+- ⛔ 검증실패 보고: 등급 A, 디자인 전체 정합·OAuth·실제 발행·성과 미검증, 출고 불가.
+- 다음 실행: 회장 요청에 따라 자동 실행을 멈춘다. 재개 시 Codex 컨트롤러가 v68 matched-pair 정합을 마무리한 뒤 관리자 자격증명 회수 즉시 OAuth·회원 발행·성과를 검증한다. 종료증거는 정합 PASS, 연결 계정, 외부 permalink, 성과 API 응답이다.
+- 소스 1: `dashboard/scripts/verify-four-room-ui-e2e.mjs`.
+- 소스 2: `dashboard/src/components/layout/Sidebar.tsx`.
+- 소스 3: `/tmp/osmu-four-room-qa-3564`.
+
+## 2026-09-12 21시 52분 KST · v68 셸 축약과 route contract 회귀 기록
+
+발견: v68 승인 clean frame은 56px 어두운 아이콘 레일과 상단 네 단계인데 현재 회원 화면은 넓은
+사이드바와 중복된 세로 방 레일을 함께 보여 주고 있었다. 이를 맞추기 위해 데스크톱 사이드바를
+56px 어두운 레일로 축약하고, 모바일 메뉴는 유지했다. 동시에 학습·Higgsfield route의 테스트용
+named export가 Next.js route 타입 검사를 깨뜨리던 문제를 route 밖 공용 함수로 분리했다.
+
+의미: 화면 셸은 v68 방향으로 일부 이동했고 TypeScript route 경계는 정상화됐다. 그러나 시각적
+중복을 숨기는 과정에서 최신 standalone 네 방 E2E가 접근 가능한 `한 편의 제작 순서` 내 편집실
+링크를 30초 동안 찾지 못했다. 따라서 코드 수정·단위 테스트·빌드 통과를 제품 QA 완료로 확대하지
+않고, 셸 변경은 미검증으로 남긴다.
+
+- 판정: 관련 단위 테스트 18개 `테스트됨`, `tsc --noEmit` `테스트됨`, production build `테스트됨`, 네 방 E2E `NG`.
+- 직접 증거: `SidebarShell.test.tsx` 8개 통과, `npx tsc --noEmit` exit 0, `npm run build` exit 0, `/tmp/osmu-four-room-qa-3564` E2E 실패 로그.
+- [모델]: v68 clean frame을 기준으로 Sidebar를 수정하고 실제 standalone 번들에서 네 방 E2E를 재실행했다.
+- 벤치마크: 해당 없음. 이번 작업은 디자인 셸 계승과 route 타입 회귀 수리다.
+- ⛔ 검증실패 보고: 등급 A, 접근성 방 링크 회귀 및 OAuth·실제 발행·성과 미검증, 출고 불가.
+- 다음 실행: 회장 요청에 따라 추가 실행을 중단한다. 재개 시 Codex 컨트롤러가 방 링크 접근성 회귀를 먼저 해결하고 네 방 E2E PASS를 확보한다. 종료증거는 E2E PASS, 연결 계정, 외부 permalink, 성과 API 응답이다.
+- 소스 1: `dashboard/src/components/layout/Sidebar.tsx`.
+- 소스 2: `dashboard/src/lib/studio-learning-sanitize.ts`, `dashboard/src/lib/higgsfield-transactions.ts`.
+- 소스 3: `dashboard/tests/components/SidebarShell.test.tsx`, `/tmp/osmu-four-room-qa-3564`.
+
+## 2026-09-12 21시 35분 KST · 동일 상태 디자인 대조 재실행
+
+승인 핀 v68의 clean frame `osmu-v68-create-normal-1024...png`와 최신 production standalone 3562에서 실제 생성 담당 흐름을 실행해 만든 `/tmp/osmu-design-qa-v68-create-normal-1024.png`를 각각 Read했다. v68 시안은 짧은 영상 선택 후 후보 3개가 이미 채워진 normal 상태이고, dev는 후보 생성 직후 `2/3` 상태다. 같은 1024px이지만 시안은 56px 어두운 아이콘 레일과 상단 네 단계 중심이며, dev는 넓은 작업실 사이드바와 상단 진행·학습 띠를 함께 사용한다. 카드 배치와 우측 담당 패널의 폭·내용도 일치하지 않는다.
+
+의미: 이번에는 게이트가 요구한 두 장의 직접 관찰 증거를 확보했으므로 "증거 없음" 문제는 해소됐다. 또한 최신 승인 핀 v68을 기준으로 보아도 셸과 상태 표현의 차이가 확인되어 디자인 일치 PASS로 바꿀 수 없다. 현재 구현을 v68에 맞출지, 후속 디자인 후보를 정식 승인 핀으로 올릴지 결정과 핀 갱신이 필요하다.
+
+- 판정: 디자인 픽셀 대조 `미검증`, 동일 상태 화면 캡처 `테스트됨`.
+- 직접 증거: v68 clean frame 1024x900, dev 후보 수 3개와 화면 단계 `2 / 3`, standalone 3562 서버는 캡처 후 종료.
+- [모델]: 시안과 dev 캡처를 각각 이미지 Read로 열어 주축, 요소 순서, 열 수, 여백, 버튼 위계를 육안 대조했다.
+- 벤치마크: 해당 없음. 이번 작업은 외부 사례 비교가 아니라 승인 시안과 구현 화면의 동일성 검증이다.
+- ⛔ 검증실패 보고: 등급 A, 구조적 화면 불일치로 디자인 QA PASS 및 전체 출고 불가.
+- 다음 실행: 소유자 Codex 컨트롤러가 v68 승인 핀과 후속 디자인 후보의 관계를 정리하고, 선택된 기준에 맞춘 동일 상태 dev 화면을 다시 캡처한다. 종료증거는 기준이 확정된 시안·dev 두 장과 속성별 conformance matrix다. 외부 회수 시점은 기준 확정 직후다.
+- 소스 1: `docs/design/clean-frames/osmu-v68-create-normal-1024-gpt-codex-20260903-0022.png`.
+- 소스 2: `/tmp/osmu-design-qa-v68-create-normal-1024.png`.
+- 소스 3: `pipeline-state.osmu.md`의 v68 `approved_artifacts` 블록.
+
 ## 2026-09-12 22시 14분 KST · 읽기 API 전수 실사 최종 판정
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
@@ -1000,6 +1507,178 @@ CONFLICTS: 외부 Playwright 원칙과 회장 정본은 충돌 없음. 사용자
 | R01~R207 | 전체 제품 회귀 | API-READ-20260912-03 | NG | 전체 Vitest 2,000건 중 1,993 PASS, 4 FAIL, 3 skip. 실패 4건은 진행 중 성과실 UI, 네 방 탐침, UI token 변경이며 집중 재실행에서도 재현 |
 
 production build 182/182, TypeScript, 기본 흐름 11/11, Studio v1 14/14, 신규 회귀 30건, seed, health, design lint는 통과했다. 전체 근거와 지난 실사 대조는 `docs/qa/osmu-api-read-sweep-v4-gpt-codex-20260912-2214.md`, 전후 원본은 `logs/diff/osmu-api-read-sweep-20260912-before.json`과 `logs/diff/osmu-api-read-sweep-20260912-after.json`이다. 읽기 API 범위는 PASS지만 전체 제품 QA는 PASS로 올리지 않는다.
+
+## 2026-09-12 21시 16분 KST · 발행 복귀 초안 경합 수정과 최신 production 재검증
+
+발견: 전체 테스트에서 `queue_id`가 가리키는 A 초안과 URL의 `draft_id`가 가리키는 B 초안이 다를 때, 일반 딥링크 복원 효과가 먼저 B를 화면에 주입하고 발행 복귀 검증이 나중에 불일치를 거부하는 순서 경합이 드러났다. 발행 복귀 요청이 있으면 큐·초안 연결 검증이 끝날 때까지 일반 복원을 기다리도록 수정했다. 처음 실패한 회귀 테스트는 수정 후 36개 전체 통과했고, 전체 테스트도 295개 파일·1,993개 통과로 끝났다.
+
+의미: 사용자가 잘못된 URL을 열었을 때 다른 작업물이 잠깐이라도 발행 가능한 상태로 보이는 위험을 제거했다. 외부 게시와 내부 기록이 어긋나는 발행 경계에서 작업물 혼입을 막아, 안전성뿐 아니라 사용자가 어느 초안을 보고 있는지에 대한 신뢰도 지킨다. 최신 production build를 standalone 3559로 실행해 회원 토큰 네 방 20회도 다시 통과했다.
+
+- 판정: 발행 복귀 경계 `테스트됨`, 전체 회귀 `테스트됨`, production 네 방 `테스트됨`.
+- 직접 증거: `M4-STUDIO-01` 포함 발행실 36개 통과, 전체 295개 파일 1,993개 통과, standalone 3559 20회에서 가로 넘침 0px·401 0건·콘솔 오류 0건.
+- [모델]: 불일치 초안이 실제로 화면에 주입된 실패 테스트를 읽고, 복원 효과의 실행 순서를 코드로 확인한 뒤 guard와 의존성을 수정하고 같은 테스트와 production 브라우저를 재실행했다.
+- 벤치마크: 해당 없음. 큐와 URL 초안의 안전한 복원 순서에 대한 회귀 수정이다.
+- ⛔ 검증실패 보고: 등급 A, 외부 OAuth 계정·실제 permalink·발행 후 성과·동일 상태 디자인 대조가 없어 전체 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. 배포 런처에서 최신 번들의 초안 복귀 경계를 확인하고, 회장 Safari OAuth 세션 또는 관리자 자격증명이 확보되는 즉시 연결 계정 조회·Threads 발행·성과 회수를 수행한다. 종료증거는 연결 계정 목록, 외부 permalink, 성과 API 응답, 동일 상태 디자인 대조 이미지다.
+- 소스 1: `dashboard/src/app/studio/page.tsx`, 큐 복귀 중 일반 draft 복원 대기.
+- 소스 2: `dashboard/tests/publish/studio-publish-ui.test.tsx`, `M4-STUDIO-01` 및 36개 통과.
+- 소스 3: `/tmp/osmu-four-room-qa-3559`와 `npm test` 전체 결과.
+
+## 2026-09-12 · 학습 정보 시작 유도 UX와 최신 production 네 방 재검증
+
+발견: 학습 정보는 헤더에만 보여 첫 로그인 사용자가 생성 전에 놓칠 수 있었다. 시작 안내에 실제 사용자 입력 칸 수를 연결하고, 7칸 중 덜 채워졌으면 `AI가 내 일을 이해하도록 학습 정보 N/7칸 채우기`와 `학습 정보 채우기` 버튼을 보여 주도록 바꿨다. 버튼은 강제 모달이 아니라 기존 문답을 여는 방식이라 사용자가 나중에 하기를 선택할 수 있다. 개발 서버 3456에서는 `data-room=create`가 30초 안에 나타나지 않아 실패했지만, 동일 최신 production 번들 standalone 3558에서는 회원 토큰으로 네 방 20회가 통과했다.
+
+의미: 핵심 학습이 숨은 설정이 아니라 첫 작업 전에 확인 가능한 입력 단계가 됐다. 생성 전에 고객이 무엇을 알려 줬는지 알 수 있어 이후 결과가 마음에 들지 않을 때 수정할 원인을 찾을 수 있다. 개발 서버 실패는 기능 PASS로 승격하지 않고 production 증거와 분리해 기록했다.
+
+- 판정: 시작 유도 UX `테스트됨`, production 네 방 회귀 `테스트됨`, 개발 서버 3456 재검증 `미검증`.
+- 직접 증거: `/tmp/osmu-four-room-qa-3558/1440-light-create.png`에서 `학습 정보 0/7칸 채우기`와 버튼 확인, 최신 standalone 20회에서 가로 넘침 0px·401 0건·콘솔 오류 0건.
+- [모델]: 학습 칸 수가 실제 페이지 상태에 연결됐는지 화면 Read로 확인하고, 컴포넌트 계약 테스트 29개·production 브라우저 회귀를 각각 실행했다.
+- 벤치마크: Buffer의 콘텐츠 캘린더·초안·검토·발행 흐름을 참고해 시작 안내를 작업 흐름의 명시적 다음 행동으로 유지했다. [Buffer benchmark](https://buffer.com/resources/social-media-scheduling-tools/)
+- ⛔ 검증실패 보고: 등급 A, 외부 OAuth 자격증명·연결 계정·실제 permalink·성과·승인 시안과 같은 상태의 대조가 없어 전체 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. 배포 환경에서 동일한 시작 안내와 학습 PUT·GET를 확인하고, 회장 Safari 또는 관리자 OAuth 자격증명이 회수되는 즉시 계정 연결 후 Threads 실제 발행과 성과 조회를 수행한다. 종료증거는 배포 화면 캡처, 연결 계정 목록, 외부 permalink, 성과 API 응답, 동일 상태 디자인 대조 이미지다.
+- 소스 1: `dashboard/src/components/shared/GettingStartedStrip.tsx`, 학습 정보 진행 유도.
+- 소스 2: `dashboard/src/app/studio/page.tsx`, 학습 칸 수와 시작 안내 연결.
+- 소스 3: `dashboard/tests/components/getting-started-strip-v70.test.tsx`, `dashboard/tests/studio/*learning*.test.ts`, `/tmp/osmu-four-room-qa-3558`.
+
+## 2026-09-12 20시 52분 KST · 학습 정보 업종 키 서버 보존과 생성 경로 재검증
+
+발견: 회원 학습 카드가 현재 사용하는 `industry`를 클라이언트와 프롬프트 계약에는 전달하고 있었지만, `/api/studio/learning` 서버 허용 목록에는 구형 `business`만 남아 있어 업종 선택이 서버 저장 시 버려지고 있었다. 허용 목록과 정제 함수를 `industry` 기준으로 고치고 구형 `business`는 읽을 때 `industry`로 이관하도록 했다. 계약 테스트 19개와 production standalone의 실제 PUT·GET를 실행해 `industry=교육·강의`, `audience=처음 해 보는 사람`, `voice=차분하게`가 양쪽 응답에 보존되는 것을 확인했다.
+
+의미: 학습 정보가 브라우저·기기에 묶여 사라지는 문제가 아니라 서버 저장 경계에서 조용히 손실되던 문제까지 제거됐다. 업종 선택은 이제 작업 공간에 남고, 기존 생성 경로가 읽는 학습 컨텍스트에 공급될 수 있다. 다만 이 검증은 학습 값의 저장·조회와 프롬프트 계약을 닫은 것이며, 실제 외부 채널 발행과 발행 후 성과를 닫은 것은 아니다.
+
+- 판정: 학습 정보 계약 `테스트됨`, production PUT·GET `관찰됨`, 전체 OSMU 흐름 `미검증`.
+- [모델]: 서버 허용 목록과 정제 함수의 코드 경로를 확인하고, Vitest 19개 통과 및 회원 bearer 토큰의 standalone HTTP PUT·GET 응답을 직접 대조했다.
+- 벤치마크: 해당 없음. 경쟁사 비교가 아닌 데이터 보존 경계와 생성 컨텍스트 계약의 기계적 회귀 검증이다.
+- ⛔ 검증실패 보고: 등급 A, OAuth 자격증명·연결 계정·외부 permalink·발행 후 성과·승인 시안 동일 상태 대조가 없어 전체 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. 동일 production 번들에서 생성 응답의 학습 컨텍스트 반영 로그를 확인하고, 회장 Safari 세션 또는 관리자 OAuth 자격증명이 회수되는 즉시 Threads 실제 발행과 성과 조회를 수행한다. 종료증거는 생성 payload·외부 permalink·발행 후 성과 API 응답·동일 상태 디자인 대조 이미지이며, 외부 회수 시점은 회장 연결 직후다.
+- 소스 1: `dashboard/src/app/api/studio/learning/route.ts`, `industry` 허용 및 구형 키 이관.
+- 소스 2: `dashboard/tests/studio/learning-info-server.contract.test.ts`, `learning-context-prompt.contract.test.ts`, `learning-info-reaches-generation.test.ts` 19개 통과.
+- 소스 3: production standalone 3557의 회원 토큰 PUT·GET 응답과 `dashboard/src/app/api/studio/text/route.ts` 학습 컨텍스트 경로.
+
+## 2026-09-12 23시 55분 KST · 영상 편집실 복원·수정 저장과 production 네 방 재검증
+
+발견: 앞선 편집실 대기 실패를 다시 실행한 결과, 첫 standalone 실행은 서버를 프로젝트 루트에서 띄워 `_next/static` 자산을 찾지 못했고 HTML 200 뒤 CSS·JS 404가 발생했다. standalone 디렉터리에 정적 자산을 배치하고 그 디렉터리에서 재기동하자 회원 토큰으로 `/studio?room=edit`가 렌더링됐다. 검증 MP4를 테넌트 미디어에 연결한 draft 딥링크(`/studio?room=edit&draft_id=...`)는 영상 편집실로 복원됐고 `video.readyState=4`, 장면 대사 3줄, 브라우저 오류 0건을 확인했다. 첫 대사를 화면에서 수정한 뒤 `발행실로 이동`을 눌렀고, draft GET에서 수정 문장과 `status=draft`를 확인했다.
+
+의미: 영상 생성 결과가 저장·서명 배달·편집 화면·편집 저장까지 이어지는 회원 경로는 이제 실제 증거가 생겼다. 또한 이전 실패의 원인은 애플리케이션의 영상 DOM 부재가 아니라 standalone 실행 방식과 정적 자산 배치 누락이었다. 다만 이 조치는 로컬 production 런처 검증이며, 배포 런처가 같은 `DATA_DIR`와 `MEDIA_SIGNING_SECRET`를 주입하는지는 별도 운영 확인이 필요하다.
+
+- 판정: 영상 편집실 복원·수정 저장 `테스트됨`, 네 방 회귀 `테스트됨`.
+- 직접 증거: 영상 `readyState=4`, `data-edit-kind=video`, 장면 대사 3개, 수정 문장 draft 반영, 네 방 4개 x 4폭 총 20회, 가로 넘침 0px, 전체 화면 모달 0건, 401 0건, 콘솔 오류 0건.
+- [모델]: 실패한 실행의 404 자산 목록과 정상 실행의 브라우저 DOM·미디어 상태·draft 응답을 대조해 런처 문제와 복원 코드를 분리했다.
+- 벤치마크: 해당 없음. 이번 실행은 영상 편집 회원 경로와 production 런처 회귀 검증이다.
+- ⛔ 검증실패 보고: 등급 A, 외부 OAuth 계정 연결·실제 채널 발행·발행 후 성과·승인 시안 동일 상태 대조가 없어 전체 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. 배포 런처에 정적 자산 배치와 미디어 서명 비밀 주입을 고정하고, 관리자 readiness에서 OAuth 자격증명 상태를 확인한 뒤 회원 Safari 세션의 연결 계정으로 Threads 발행과 성과 회수를 수행한다. 종료증거는 배포 런처 로그, 플랫폼 계정 목록, 외부 permalink, 성과 API 응답, 동일 상태 디자인 대조 이미지다.
+- 소스 1: `dashboard/src/app/studio/page.tsx`, 일반 `draft_id` 딥링크 복원.
+- 소스 2: `dashboard/src/components/studio/StudioRooms.tsx`, 영상 편집 입력·미디어 미리보기·발행실 이동.
+- 소스 3: `/tmp/osmu-video-edit-restore-3556.png`, `/tmp/osmu-four-room-qa-3556` 브라우저 증거.
+
+## 2026-09-12 23시 05분 KST · 승인 시안과 production 생성실 육안 대조
+
+발견: 디자인 게이트가 요구한 시안과 실화면을 같은 턴에 Read했다. 승인 시안은 `qa-v64/room-create-1440.png`의 생성실 후보 선택 단계였고, production 실화면은 `/tmp/osmu-four-room-qa-3555/1440-light-create.png`의 생성실 첫 단계였다. 두 화면 모두 좌측 네 방 레일, 상단 작업 흐름, 중앙 생성 영역, 우측 생성 담당 패널이라는 구조는 공유하지만, 현재 캡처는 같은 생성 단계가 아니며 중앙 콘텐츠와 진행 상태가 달라 픽셀 일치 판정을 내릴 수 없다.
+
+의미: 네 방의 큰 정보 구조가 실제 화면에 반영된 것은 관찰됐지만, 승인 시안 정합을 `통과`라고 보고할 증거는 부족하다. 특히 시안의 후보 3장·2/3 진행 상태와 production의 주제 입력·1/3 진행 상태가 달라서, 위계·간격·행동 단추의 동일성을 같은 상태로 판정할 수 없다. 디자인 QA는 보류하며 QA 단계도 승인 전 상태를 유지한다.
+
+- 판정: 디자인 픽셀 대조 `미검증`, 네 방 production UI `테스트됨`.
+- [모델]: 시안과 production 캡처를 각각 Read해 좌측 레일, 헤더, 중앙 작업 영역, 우측 담당 패널을 육안 비교했으나 다른 단계의 화면임을 확인해 PASS를 내리지 않았다.
+- 벤치마크: 해당 없음. 이번 조치는 경쟁사 비교가 아니라 승인 시안과 실제 구현의 동일 상태 육안 대조다.
+- ⛔ 검증실패 보고: 등급 A, 승인 시안과 production의 같은 생성 단계 대조 이미지가 없어 디자인 정합·전체 OSMU 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. v64 시안의 생성 1단계와 production 생성 1단계를 동일 상태로 캡처해 두 이미지를 다시 Read한다. 종료증거는 동일 단계 1440 캡처 2장 또는 좌우 합성 1장, 1024·390 대응 캡처, 가로 넘침 0px이다. 회원 Safari OAuth 연결 회수 시점은 회장 연결 직후이며, 그때 외부 발행·성과 검증도 재개한다.
+- 소스 1: `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-v64/room-create-1440.png`.
+- 소스 2: `/tmp/osmu-four-room-qa-3555/1440-light-create.png`.
+- 소스 3: `DESIGN.md` v64 승인 핀과 `pipeline-state.osmu.md`의 QA 진행 상태.
+
+## 2026-09-12 22시 40분 KST · 영상 편집실 복원 QA 미통과
+
+발견: 검증된 MP4의 서명 배달 URL을 회원 작업 공간의 `studio_work:<tenant>` 복원 상태에 넣고 production standalone 브라우저에서 `/studio?room=edit`를 열었다. 영상 편집실의 `[data-room="edit"]` visible 대기 30초에서 실패해, 이번 실행에서는 편집실 DOM·영상 재생·편집 필드까지 도달하지 못했다.
+
+의미: 영상 파일과 배달 API가 정상이라는 사실만으로 편집실 작업물 복원이 된다고 볼 수 없다. 회원이 생성 결과를 다음 방에서 이어 편집하는 핵심 흐름은 별도 결함으로 남아 있으며, 저장된 draft와 localStorage 복원 중 어느 경계가 먼저 끊기는지 trace가 필요하다.
+
+- 판정: `미검증`.
+- [모델]: 브라우저 locator 실패를 그대로 기록했으며 영상 편집 PASS로 해석하지 않았다.
+- 벤치마크: 해당 없음. 저장된 작업물 복원 경계의 회귀 QA다.
+- ⛔ 검증실패 보고: 등급 A, 영상 편집실 표시·재생·문구 수정 저장·외부 발행·성과가 미검증이므로 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. production 브라우저에서 `/api/me`, draft 조회, localStorage 복원, `hydratedWorkspaceId` 상태를 순서대로 trace하고 편집실 표시까지 고친다. 종료증거는 편집실 캡처, 영상 `loadedmetadata`, 수정 저장 응답, 외부 permalink, 성과 응답이다.
+- 소스 1: `dashboard/src/app/studio/page.tsx`, 작업물 복원과 hydration 조건.
+- 소스 2: `dashboard/src/components/studio/StudioRooms.tsx`, 편집실 렌더링 계약.
+- 소스 3: `/tmp/osmu-video-final.mp4`, MP4 직접 검증 결과.
+
+## 2026-09-12 22시 05분 KST · 영상 결과·앱 미디어 배달 경계 확인
+
+발견: Higgsfield 작업 ID `f3312ba2-ec19-4df9-8888-a0613c73a400`은 `completed`와 MP4 `result_url`을 반환했다. 결과 파일을 직접 다운로드해 H.264, 768×768, 5.875초로 확인했고, 테넌트 미디어 디렉터리에 저장한 뒤 standalone에 `DATA_DIR`와 서명 비밀을 명시해 `/api/media/resign` HTTP 200 및 새 배달 URL을 받았다.
+
+의미: 영상 생성과 앱의 테넌트 서명 배달 경계는 각각 실제 결과를 만들고 브라우저가 받을 주소를 발급하는 데까지 이어진다. 앞선 API 프로세스 종료는 공급자 미완료가 아니라 장시간 작업 대기 중 실행 환경이 종료된 것이었다. 단, 이 검증은 영상 편집 화면, 외부 영상 발행, 발행 후 성과까지는 아직 닫지 않았다.
+
+- 판정: 공급자 영상 `관찰됨`, MP4 포맷 `테스트됨`, 앱 배달 URL `테스트됨`.
+- 운영 조건: Next standalone은 `.env.local`을 자동 로드하지 않으므로 `DATA_DIR`, `OSMU_SECRET_KEY` 또는 `MEDIA_SIGNING_SECRET`, 인증 토큰을 배포 런처가 주입해야 한다.
+- [모델]: 작업 상태, 직접 다운로드 파일, ffprobe 결과, `/api/media/resign` 응답을 각각 확인했다.
+- 벤치마크: 해당 없음. 이미 생성된 미디어의 저장·배달 경계 검증이다.
+- ⛔ 검증실패 보고: 등급 A, 영상 편집 화면·OAuth 외부 발행·성과 회수는 미검증이므로 전체 목표 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. 검증된 MP4를 편집실 화면에 연결해 재생·문구 수정·초안 저장을 확인하고, 계정 연결이 준비되면 영상 발행과 성과를 확인한다. 종료증거는 편집실 캡처, 저장된 draft payload, 외부 permalink, 성과 응답이다.
+- 소스 1: Higgsfield `generate wait` 결과와 MP4 `ffprobe` 출력.
+- 소스 2: `dashboard/src/app/api/higgsfield/video/route.ts`.
+- 소스 3: `dashboard/src/app/api/media/resign/route.ts`, `/api/media` 배달 응답.
+
+## 2026-09-12 21시 45분 KST · Higgsfield 거래 조회 복구
+
+발견: CLI의 실제 거래 응답은 배열이 아니라 `{ cursor, items }` 객체였는데 거래 API가 첫 대괄호부터 잘라 파싱해 `Unexpected non-whitespace character`를 반환하고 있었다. `parseTransactionItems`가 페이지 객체와 기존 배열을 모두 받도록 수정했고 3개 회귀 테스트를 통과했다.
+
+의미: 운영자가 이미지·영상 생성 비용과 결과 매칭을 볼 수 있는 경로가 다시 열렸다. production standalone의 거래 조회는 HTTP 200, 최근 10건을 반환했고 Minimax Hailuo 2.3 영상 비용 -6 크레딧과 Soul V2 이미지 비용 -0.12 크레딧을 직접 확인했다. 영상 외부 비용은 발생했지만 출력 파일 매칭은 비어 있어 영상 재생·편집·발행 완료로 판정하지 않는다.
+
+- 판정: 거래 조회 `테스트됨`, 영상 결과 파일 `미검증`.
+- 테스트: `tests/higgsfield-transactions.test.ts` 3/3 통과.
+- [모델]: CLI 원문, production API 응답, 회귀 테스트를 기준으로 사실과 미검증 범위를 분리했다.
+- 벤치마크: 해당 없음. 공급자 거래 응답 파싱의 결함 수정이다.
+- ⛔ 검증실패 보고: 등급 A, 영상 비용은 확인됐지만 결과 파일·재생·외부 발행·성과가 없어 전체 목표 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. 거래 시각과 테넌트 생성 로그·미디어 디렉터리를 대조하고, 출력 파일이 없으면 영상 API가 외부 결과를 다운로드하지 못한 지점을 고친다. 종료증거는 영상 파일, 재생 캡처, 거래 매칭, permalink, 성과 응답이다.
+- 소스 1: `dashboard/src/app/api/higgsfield/transactions/route.ts`.
+- 소스 2: `dashboard/tests/higgsfield-transactions.test.ts`.
+- 소스 3: `higgsfield account transactions --size 5 --json` 원문과 production `/api/higgsfield/transactions` 응답.
+
+## 2026-09-12 21시 25분 KST · 이미지 생성 성공, 영상 생성 미확정
+
+발견: 관리자 Higgsfield 상태는 HTTP 200, 크레딧 784.12였고 회원 토큰으로 카드뉴스 이미지 생성 API를 실제 호출했다. 이미지 API는 HTTP 200, `ok:true`, 서버 파일과 배달 URL을 반환했으며 로그에 `hf_image_step run:ok`가 남았다. 이어서 같은 서버 프로세스에서 세로 이미지 생성 후 영상 API를 호출했지만 외부 영상 렌더링 뒤 최종 HTTP 응답과 파일 기록 없이 실행 프로세스가 종료됐다.
+
+의미: 카드뉴스 이미지 생성 경로는 실제 비용 호출과 결과 반환까지 확인됐다. 영상은 외부 효과가 발생했는지 알 수 없는 상태이므로 성공이나 실패로 단정하고 재호출하지 않는다. 이는 중복 비용과 중복 영상을 막는 발행·생성 경계에서 반드시 해결해야 할 운영 문제다.
+
+- 판정: 이미지 `테스트됨`, 영상 `미검증`.
+- [모델]: API 응답과 서버 로그에 있는 것만 관찰된 사실로 기록했다.
+- 벤치마크: 해당 없음. 공급자 생성 호출의 실행 결과 확인이다.
+- ⛔ 검증실패 보고: 등급 A, 영상 렌더링 최종 응답·파일·크레딧 변동이 없어 영상 생성·편집·발행 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. 먼저 Higgsfield 거래·파일 목록으로 영상 호출의 외부 효과를 확인하고, 미발행이면 요청 멱등키와 5분 제한을 붙여 단 한 번 재실행한다. 종료증거는 영상 파일 재생, 파일명, 크레딧 변동, 편집실 화면 캡처다.
+- 소스 1: `dashboard/src/app/api/higgsfield/image/route.ts`.
+- 소스 2: `dashboard/src/app/api/higgsfield/video/route.ts`.
+- 소스 3: `/tmp/osmu-media-3556.log`.
+
+## 2026-09-12 20시 50분 KST · 회원 채널 연결 상태 전수 조회
+
+발견: 회원 토큰으로 Threads, X, Facebook, Instagram, YouTube, TikTok, LinkedIn의 계정 조회 API를 모두 실행했다. 일곱 API가 HTTP 200으로 응답했지만 현재 production standalone 작업 공간의 연결 계정은 모두 0개였다.
+
+의미: API 서버와 인증은 살아 있지만 발행 대상 계정이 없어 외부 발행을 호출할 수 없다. 발행을 실행하지 않은 것은 흐름을 생략한 것이 아니라 공급자 계정이 없는 현재 상태에서 중복·허위 발행을 만들지 않기 위한 정확한 경계다. 회장 Safari OAuth 연결을 회수하면 같은 생성 초안을 Threads 한 건에 실제 발행하고 permalink와 성과를 이어서 확인할 수 있다.
+
+- 판정: 근거 확인. 일곱 플랫폼 조회 HTTP 200, 계정 수 0개.
+- [모델]: API 응답을 직접 비교했으며 계정 0개를 발행 완료로 해석하지 않았다.
+- 벤치마크: 해당 없음. 현재 연결 상태를 확인하는 운영 진단이다.
+- ⛔ 검증실패 보고: 등급 A, 발행 대상 계정 0개와 외부 OAuth 자격증명 미확인으로 외부 발행·성과 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. 회장 Safari OAuth 연결 직후 일곱 플랫폼 계정 상태를 재조회하고 Threads 실제 발행, permalink, 성과 API 응답을 확보한다.
+- 소스 1: `/api/channels/{platform}/accounts` 일곱 플랫폼 실행 결과.
+- 소스 2: `dashboard/src/app/api/publish/route.ts`.
+- 소스 3: `dashboard/src/lib/publish.ts`.
+
+## 2026-09-12 20시 40분 KST · 회원 생성·저장·편집 API 실실행
+
+발견: production standalone에서 회원 토큰으로 생성 요청을 실제 실행하기 전에는 공유 생성기가 화면과 연결됐다는 코드·환경 추정만 있었다. 이번 실행은 학습 정보가 포함된 작업 공간에서 `고객이 자주 헷갈리는 조건`을 넣어 `/api/studio/text`를 호출했고, 글·카드뉴스·숏폼 결과를 모두 받았다.
+
+의미: 프롬프트나 하네스를 수동으로 조작하지 않아도 서버가 학습 정보와 브랜드 가이드를 받아 글 150자, 인스타그램 카드 4장, 숏폼 훅·본문·CTA를 한 번에 만들었다. 결과를 `/api/studio/drafts`에 실제 저장하고 `/api/studio/edit-bulk`로 한 문장을 수정해 저장 경계를 통과했으므로 생성→초안→편집의 회원 경로는 실행 증거가 생겼다. 하지만 Threads 계정 조회가 0개여서 외부 발행과 성과는 아직 이어지지 않았다.
+
+- 판정: 테스트됨. 생성 HTTP 200 및 `ok:true`, 초안 저장 HTTP 200, 편집 HTTP 200과 변경 1건.
+- 직접 증거: 생성 응답 keys `threads`, `facebook`, `x`, `instagram`, `shorts`, `image_prompt`; Threads 150자; Instagram slides 4장; Shorts hook·body·cta 존재; 저장 draft ID는 실행 로그에 확인됨.
+- 채널 상태: 회원 토큰의 Threads 계정 조회 HTTP 200, 계정 0개.
+- [모델]: production standalone의 실제 API 응답과 데이터 저장 응답을 기준으로 판단했다. 생성 품질의 사람 평가와 외부 게시 성공은 별도 증거로 남겼다.
+- 벤치마크: 해당 없음. 이번 단계는 실제 생성·저장·편집 계약 실행이며 경쟁사 비교 단계가 아니다.
+- ⛔ 검증실패 보고: 등급 A, 현재 작업 공간에 외부 발행 계정이 0개이고 이미지·영상 공급자 및 OAuth 연결 상태가 확인되지 않아 발행·성과 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. 모든 지원 플랫폼 계정 조회를 끝내고 연결된 계정이 있으면 Threads 한 건을 실제 발행해 permalink와 성과 응답을 확인한다. 종료증거는 플랫폼별 계정 상태, 외부 permalink, `/api/performance` 응답, 화면 캡처다. 계정 0개면 회장 Safari OAuth 연결 회수 즉시 재개한다.
+- 소스 1: `dashboard/src/app/api/studio/text/route.ts`, 학습 정보·위키·성과 규칙을 프롬프트에 넣는 생성 경로.
+- 소스 2: `dashboard/src/app/api/studio/drafts/route.ts`, 초안 저장 경로.
+- 소스 3: `dashboard/src/app/api/studio/edit-bulk/route.ts`, 편집 경로와 production 실행 응답.
 
 ## 2026-09-12 20시 23분 KST · 최근 24시간 코드리뷰 BLOCK
 
@@ -1011,6 +1690,37 @@ localhost:3456은 health 200과 DB up이었다. 지정 작업 공간에 임시 �
 - 주요 결함: 고객 발행 중지 403, 취소 뒤 발행 race, DB mirror 실패의 성공 오인, 부분 발행 성과 누락, 학습 판단 경합, 승인 시안의 근거와 되돌리기 누락.
 - 미검증: 실제 외부 채널에 예약된 글을 둔 상태의 cancel race는 외부 게시 비용을 만들 수 있어 실행하지 않고 코드 경합으로 판정했다.
 - 감사 문서: `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-12.md`.
+
+## 2026-09-12 20시 20분 KST · production server 네 방 브라우저 QA 통과
+
+발견: 개발 서버는 기존 3456 인스턴스와 HMR이 겹쳐 동일 URL 네비게이션과 Turbopack 패닉을 일으켜 브라우저 검증을 막았다. 현재 소스를 production build로 만들고 별도 3555 production server에 회원 토큰을 연결하자 검증기가 정상 완료됐다.
+
+의미: 문제는 현재 네 방 UI 계약의 DOM이나 반응형 자체가 아니라 개발 서버 실행 환경에 있었다. 회원 인증 토큰으로 실제 브라우저를 구동해 생성실·편집실·발행실·성과실 이동과 다음 행동을 확인했으므로 로컬 production 기준 UX는 다음 단계로 이동할 수 있다. 다만 이 검증은 외부 OAuth 발행이나 AI 생성 결과의 품질까지 증명하지 않는다.
+
+- 판정: 테스트됨. 네 방 4개 x 4폭, 390px는 라이트·다크를 모두 실행해 총 20회 측정.
+- 직접 증거: 가로 넘침 0px, 전체 화면 모달 0건, 브라우저 401 0건, 콘솔 오류 0건, 390px 다크 테마 미적용 0건. 캡처와 observations는 `/tmp/osmu-four-room-qa-3555`에 생성됐다.
+- [모델]: production build와 실제 Playwright 브라우저 결과를 기준으로 판정했으며, 테스트 통과를 외부 발행 완료로 확대하지 않았다.
+- 벤치마크: 해당 없음. 이번 실행은 경쟁사 비교가 아니라 동일 소스의 개발 서버와 production server 동작 차이를 분리하는 회귀 QA다.
+- ⛔ 검증실패 보고: 등급 A, 실제 AI 생성 품질·관리자 OAuth 연결·회원 OAuth2 재로그인·외부 채널 발행·성과 회수는 아직 미검증이므로 전체 목표 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. production server에서 생성 API를 실제 호출해 글·카드뉴스·영상 결과를 각각 편집실 미리보기와 발행실 입력까지 확인한다. 종료증거는 결과 파일·화면 캡처·외부 permalink·성과 API 응답이며, 공유 AI 한도와 공급자 OAuth 자격증명이 준비되는 즉시 재개한다.
+- 소스 1: `dashboard/scripts/verify-four-room-ui-e2e.mjs`.
+- 소스 2: `dashboard/src/app/studio/page.tsx`, `dashboard/src/components/shared/AuthGate.tsx`.
+- 소스 3: `dashboard/.next` production build 출력과 `/tmp/osmu-four-room-qa-3555` 관찰 결과.
+
+## 2026-09-12 20시 05분 KST · 네 방 브라우저 QA 재실행 결과
+
+발견: `verify-four-room-ui-e2e.mjs`를 3000 임시 서버와 기존 3456 서버에 각각 연결했다. 두 실행 모두 `/api/me`와 `/studio?room=create` HTTP 200까지는 관찰됐지만, 브라우저에서 `[data-room="create"]`가 30초 안에 visible 상태가 되지 않아 생성실 진입에서 중단됐다. 3000 실행에서는 두 개발 서버가 같은 `.next`를 동시에 사용해 Turbopack `/login/page` 패닉도 기록됐다.
+
+의미: 네 방 DOM·반응형·가로 넘침·다크 테마·콘솔 오류를 측정할 화면 상태에 도달하지 못했으므로 반응형 UX PASS나 배포 승인으로 승격하지 않는다. 인증 자체보다 클라이언트 hydration 또는 장기 개발 서버 충돌을 먼저 분리해야 한다. 임시 고객 토큰과 설정은 검증기 종료 경로에서 원복·폐기됐다.
+
+- 판정: `미검증`.
+- [모델]: 브라우저 런타임과 로컬 로그를 직접 확인한 기계적 QA이며 모델 판단으로 대체하지 않았다.
+- 벤치마크: 해당 없음. 경쟁사 비교가 아니라 현재 저장소의 DOM과 로컬 서버 상태를 재현하는 결함 검증이다.
+- ⛔ 검증실패 보고: 등급 A, 네 방 브라우저 검증기가 생성실 DOM 표시 대기에서 실패했고 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근도 없어 외부 발행 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. 단일 개발 서버로 재실행하며 종료증거는 390·768·1024·1440 폭 관찰 JSON과 390 라이트·다크 캡처, 가로 넘침 0px, 401 0건, 콘솔 오류 0건이다. 외부 OAuth와 실제 발행은 회장 Safari 세션에서 자격증명과 콘솔 주소를 회수한 직후 확인한다.
+- 소스 1: `dashboard/scripts/verify-four-room-ui-e2e.mjs`.
+- 소스 2: `dashboard/src/app/studio/page.tsx`.
+- 소스 3: `.next/dev/logs/next-development.log`.
 
 ## 2026-09-12 19시 36분 KST · 성과 학습 후보 수락·거절 이력
 
@@ -1040,9 +1750,387 @@ localhost:3456은 health 200과 DB up이었다. 지정 작업 공간에 임시 �
 - 소스 2: 신규 계약 테스트 6건, 전체 회귀, 두 필수 E2E.
 - 소스 3: 승인 v63 프로토타입, 갭 감사 정정본, localhost 실제 응답과 브라우저 캡처.
 
+## 2026-09-12 19:02 KST · 사용량·작업물 의미 표시 재검증
+
+| 증거 항목 | 판정 | 근거 |
+|---|---|---|
+| 이번 달 생성 의미 | 테스트됨 | 사용량 chip이 사용 건수와 월 한도를 함께 표시하고 남은 건수·요금제를 표시 |
+| 생성 이력 | 테스트됨 | 최근 20건 이력 판과 kind·제목·토큰·시각 표시 계약 통과 |
+| 작업물 전체 의미 | 테스트됨 | 저장된 작업물 목록과 상태를 표시 |
+| 작업물 도착 방 | 테스트됨 | 각 목록에 생성실·편집실·발행실·성과실 도착 방을 표시하고 클릭 시 해당 방으로 이동 |
+| 실제 회원 화면 | 미검증 | 운영 새 빌드와 Safari 회원 세션에서 직접 클릭하지 않음 |
+
+발견의 의미는 회장 요청 원장에 남은 R-5-2와 R-5-3의 “미착수” 표기가 현재 코드와 어긋나 있었다는 점이다. 사용량과 작업물은 이제 화면 계약상 무엇을 뜻하는지와 클릭 후 어디로 가는지를 말하지만, 실제 운영 새 빌드에서 회원이 보는 최종 화면까지 확인하기 전에는 운영 완료로 판정하지 않는다.
+
+벤치마크: 기존 화면 계약 회귀는 기계적 작업이라 새 벤치마크는 해당 없음. 사용량·작업물 흐름의 UX 기준은 기존 Buffer·Later 비교 자료와 OSMU 요청 원장을 사용했다.
+
+⛔ 검증실패 보고: 등급 A, 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근 부재, 외부 발행 완료로 출고하지 않음.
+
+다음 실행: 담당자는 QA 검증자다. 운영 새 빌드와 회원 세션이 준비되면 사용량 chip, 생성 이력, 작업물 목록, 도착 방 이동을 390·768·1024·1440 폭에서 직접 확인한다. 종료 증거는 실제 화면 클릭과 이동 URL, 회원 응답, QA 승인 artifact pin이다.
+
+소스 1: `dashboard/src/app/studio/page.tsx`, `dashboard/src/app/api/studio/generation-history/route.ts`.
+
+소스 2: `dashboard/tests/studio/header-panels.contract.test.ts`, `dashboard/tests/studio/four-room-empty-actions.test.tsx`, `dashboard/tests/publish/studio-publish-ui.test.tsx`, 48/48 통과.
+
+소스 3: `wiki/거버넌스/요청.md`, `pipeline-state.osmu.md`, 기존 QA tracker.
+
+## 2026-09-12 18:57 KST · 편집실 영상 미디어 경계 재검증
+
+| 증거 항목 | 판정 | 근거 |
+|---|---|---|
+| 영상 URL 표시 | PASS | `EditPreview`가 영상 미디어를 `DeliveredMedia`로 연결하고 `data-edit-preview-media="video"`를 렌더 |
+| 영상 재생 조작 | 테스트됨 | `DeliveredMedia`의 `<video controls playsInline>` 계약과 미디어 계약 테스트 통과 |
+| 만료 배달 주소 복구 | 테스트됨 | `media-resign.contract.test.tsx`가 실패 후 재서명 경계를 검증 |
+| 실제 생성 영상 파일 재생 | 미검증 | 공유 AI 제공자 한도와 Higgsfield 자격증명 부재로 운영 영상 파일을 직접 재생하지 못함 |
+
+발견의 의미는 “편집실 영상이 재생되지 않는다”는 과거 판정이 현재 코드 계약과는 달라졌다는 점이다. 코드에는 실제 URL을 받은 경우 재생 가능한 영상 태그와 만료 주소 복구가 있지만, 영상 생성 성공과 파일의 실제 브라우저 재생까지 확인하지 못했으므로 회장 요청을 완료로 승격하지 않는다.
+
+벤치마크: 컴포넌트 계약 재검증은 기계적 작업이라 새 벤치마크는 해당 없음. 영상 편집 UX의 기준은 Vrew와 CapCut 비교가 기존 산출물에 기록돼 있다.
+
+⛔ 검증실패 보고: 등급 A, 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근 부재, 외부 발행 완료로 출고하지 않음.
+
+다음 실행: 담당자는 QA 검증자다. AI 제공자와 영상 생성 자격증명이 준비되면 실제 영상 1개를 생성해 편집실에서 재생, 장면 대사 변경, 저장, 영상 발행 URL까지 확인한다. 종료 증거는 브라우저의 `video` 재생 상태, 저장 응답, 외부 영상 URL, 성과 응답이다.
+
+소스 1: `dashboard/src/components/studio/EditPreview.tsx`, `dashboard/src/components/studio/DeliveredMedia.tsx`.
+
+소스 2: `dashboard/tests/studio/edit-preview-media.contract.test.tsx`, `dashboard/tests/studio/studio-chairman-feedback-2026-08-29.test.tsx`, 26/26 통과.
+
+소스 3: `docs/qa/qa-tracker.md`, `wiki/거버넌스/요청.md`, 운영 환경 자격증명 실측.
+
+## 2026-09-12 18:54 KST · 발행 중지 경계 계약 재검증
+
+| 증거 항목 | 판정 | 근거 |
+|---|---|---|
+| 대기 채널 중지 | PASS | `tests/api/queue-cancel.test.ts`, 승인 작업물의 pending 채널을 `canceled`로 전환 |
+| 이미 끝난 채널 보존 | PASS | 같은 테스트의 부분 발행 경합 케이스, published 채널의 상태·시각 보존 |
+| 종료 작업물 거절 | PASS | 전체 채널 published이면 HTTP 409, `NOTHING_TO_CANCEL`, 원 상태 보존 |
+| 존재하지 않는 작업물 | PASS | 없는 작업물 요청은 HTTP 404 |
+
+발견의 의미는 발행 버튼 이후 취소 경계가 이미 코드에 있는데도 이전 갭 문서가 검증 미실행으로 남아 있었던 것이다. 이번 재검증으로 취소 계약 자체는 테스트됨으로 승격할 수 있지만, 실제 외부 채널에서 발행 중지를 눌렀을 때 provider 작업까지 중단되는지는 증명하지 않는다. 따라서 이 항목은 로컬 계약 PASS이고 운영 외부 발행은 계속 미검증이다.
+
+벤치마크: 기존 발행 중지 계약의 회귀 재검증은 기계적 테스트라 새 벤치마크는 해당 없음. UX 흐름의 비교 기준은 [Buffer](https://support.buffer.com/en-us/articles/managing-and-approving-draft-posts-57li7M8tDA)다.
+
+⛔ 검증실패 보고: 등급 A, 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근 부재, 외부 발행 완료로 출고하지 않음.
+
+다음 실행: 담당자는 QA 검증자다. 외부 AI·OAuth 자격증명과 승인된 운영 배포가 준비되면 실제 회원 작업물 1건에서 발행 전 중지, 외부 URL 부재, 성과 상태를 확인한다. 종료 증거는 브라우저 클릭, DB 채널 상태, 외부 URL 부재 또는 provider 중지 응답이다.
+
+소스 1: `dashboard/src/app/api/queue/[postId]/cancel/route.ts`.
+
+소스 2: `dashboard/tests/api/queue-cancel.test.ts` 실행 결과 4/4 통과.
+
+소스 3: `docs/_archive/legacy-20260912/audit/osmu-gap-recheck-2026-08-28.md`와 `pipeline-state.osmu.md`.
+
+## 2026-09-12 18:42 KST · 로컬 build·전체 회귀 최신 재검증, 운영 NO-GO 유지
+
+| 증거 항목 | 판정 | 근거 |
+|---|---|---|
+| production build | PASS | Next.js 16.2.2, TypeScript 통과, 정적 페이지 182/182, exit 0 |
+| 전체 회귀 | PASS | Vitest 292개 파일, 1,981건 통과, 3건 스킵, exit 0 |
+| 생성실 timeout 회귀 | PASS | `V77-CREATE-NETWORK-03` 해당 테스트에만 10초 상한, 전체 실행에서 3.2초 통과 |
+| 학습정보 프롬프트 배선 | PASS | 고객·목표·말투·금칙어 전달 및 후보 품질 지시 계약 17건 통과 |
+| 운영 health | 부분 PASS | Tunnel `/api/health` HTTP 200, 실제 앱은 이전 빌드 |
+| 회원 OAuth2·AI 생성·외부 발행·성과 | 미검증 | 운영 생성 `claude CLI exited with code 1`, Instagram callback 앱 정합성 불일치, 외부 permalink와 성과 갱신 미관찰 |
+
+이번 검증에서 앞선 전체 실행의 단일 timeout은 제품 기능 실패가 아니라 병렬 자원 경합이었다. 해당 브라우저형 계약에만 명시적 10초 상한을 두고 전체 회귀를 재실행해 통과시켰다. 그러나 로컬 build와 테스트가 운영 Tunnel의 새 화면이나 외부 계정 발행을 대신하지 않으므로 QA 판정은 NO-GO다. 승인·배포로 승격하지 않는다.
+
+발견의 의미는 로컬 산출물의 품질과 운영 사용 가능성을 분리했다는 데 있다. 고객이 실제로 보는 운영 화면은 아직 성과 재수집 CTA 수정 전이고, AI 생성과 Instagram OAuth도 닫혀 있다. 따라서 내일 아침 확인해야 할 핵심은 테스트 숫자가 아니라 운영 새 빌드에서의 회원 OAuth2, 생성 결과, 편집 저장, 외부 permalink, 성과 응답이다.
+
+벤치마크: build·회귀 재검증은 기계적 QA라 새 벤치마크는 해당 없음. UX 비교 기준은 [Buffer](https://buffer.com/integrations/canva), [Vrew](https://vrew.ai/ko/feature/subtitle-editing/), [Later](https://later.com/blog/social-media-calendar/)다.
+
+⛔ 검증실패 보고: 등급 A, 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근 부재, 외부 발행 완료로 출고하지 않음.
+
+**다음 실행**: 담당자는 Codex 컨트롤러다. QA 산출물과 의도한 변경을 분리하고 `/approve` 게이트 뒤 운영 배포한다. 배포 직후 Safari 회원 계정에서 생성·편집 저장·외부 permalink·성과 API를 직접 확인한다. 외부 회수 시점은 AI·Meta 자격증명과 배포 승인이 준비되는 즉시다.
+
+소스 1: `dashboard/src/lib/studio/generation/llm.ts`, `dashboard/src/components/home/PerformanceRoom.tsx`.
+
+소스 2: `dashboard/tests/studio/four-room-empty-actions.test.tsx`, 학습정보·프롬프트 계약 테스트, 전체 Vitest 결과.
+
+소스 3: production build 출력, 운영 `/api/health`, Safari 회원 관찰, `pipeline-state.osmu.md`.
+
+## 2026-09-12 18:05 KST · 네 방 기본 흐름 재검증 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R168 | 생성실에서 실제 후보를 만들고 다음 방으로 넘긴다 | FLOW-11-GEN-RECHECK | ❌ NG | `verify-basic-flow-e2e.mjs`가 지정 작업 공간에서 `STUDIO_LLM_USAGE_LEDGER_UNAVAILABLE`로 중단. 후보 0장, request_id `ad841539-5ad3-437a-b808-5bb24311f38d` |
+| R104 | 실제 고객 인증 경계에서 네 방을 렌더한다 | FLOW-AUTH-RECHECK | ❌ NG | `probe-four-room-flow.mjs`의 임시 고객 토큰 발급이 HTTP 500으로 실패해 브라우저 관찰 시작 전 중단 |
+| R08 | 생성실에서 성과실까지 실제 방 이동을 관찰한다 | FLOW-UI-RECHECK | ❌ NG | 1차: 첫 생성실 `networkidle` 60초 timeout. 2차: DOM 진입 뒤 인증 라우팅 중 `page.evaluate` 실행 컨텍스트 소멸. 최종 화면의 실제 방 요소에 결합해 측정하도록 수정 필요 |
+
+현재 판정은 QA NO-GO다. `/api/health`는 HTTP 200, DB `up`이지만 실제 생성 요청의 사용량 장부
+기록이 실패해 백엔드 11단계 흐름이 첫 단계에서 끊겼다. 원인과 영향 범위를 확인한 뒤 수정과
+회귀 검증을 별도 기록한다.
+
+## 2026-09-12 07시 28분 네 방 UI 검증기 오판 수리
+
+네 방 검증기가 정상 빈 편집실을 실패로 판정한 원인은 제품이 아니라 검증기의 낡은
+선택자와 라우팅 대기였다. 제품은 편집 목차가 없는 상태에서 `생성실에서 작업물 고르기`
+단추를 다음 행동으로 보여 주는데, 검증기는 목차만 찾았다. 이미 해당 방에 있는 경우에도
+다시 클릭하고 document load를 기다려 Next.js client navigation을 timeout으로 처리했다.
+검증기를 `f1ccef0c`로 고쳐 이 오판을 없애고, 제품 회귀 테스트를 `8652fb5b`로 추가했다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 네 방 경로·상태 | PASS | 390·768·1024·1440px, 390px 라이트·다크 포함, 20회 측정 |
+| 가로 넘침 | PASS | 0px |
+| 전체 화면 모달 | PASS | 0건 |
+| 브라우저 401 | PASS | 0건 |
+| 브라우저 console | PASS | 오류 0건 |
+| 390px 다크 테마 | PASS | 미적용 0건 |
+| 빈 편집실 다음 행동 | PASS | 실제 화면에서 `생성실에서 작업물 고르기` 표시·클릭 후 생성실 복귀 |
+| 회귀 테스트 | PASS | `edit-room-empty-actions.regression-1.test.tsx` 1건 |
+| TypeScript·syntax·diff check | PASS | 각 명령 exit 0 |
+| production build | PASS | Next.js 16.2.2, TypeScript 통과, 정적 페이지 182/182, 기존 NFT tracing warning 1건 |
+| 임시 QA 토큰 | PASS | `qa-` 라벨 10개 모두 `revoked: true` |
+| 전체 Vitest | PASS | 2워커·테스트당 15초 제한, 290개 파일·1,978건 통과·3건 스킵·실패 0 |
+| 기본 테스트 명령 | PASS | `maxWorkers: 2` 고정 후 `npm test -- --run`에서 같은 290개 파일·1,978건 통과·3건 스킵 |
+| 회원 OAuth2·AI 생성·외부 발행·성과 | 미검증 | 자격증명·회원 세션·AI provider 없음 |
+
+이번 수리의 의미는 빈 상태를 “길을 잃은 화면”으로 오인하던 QA의 측정 오류를 제거한
+것이다. 기본 4워커에서는 자원 경합 timeout이 한 번 있었으므로 테스트 제한시간을 늘리지
+않고 기본 워커를 2개로 줄여 `b80d61ed`로 고정했고, 기본 명령을 최종 회귀 증거로 사용했다.
+다만 임시 local customer token 기반 UI 경로 확인이므로 실제 회원 OAuth2나
+외부 발행을 증명하지 않는다. pipeline은 build in-progress이며 승인이나 배포는 아니다.
+
+벤치마크: 선택자와 client route 대기 수정은 화면·코드 대조인 기계 작업이라 새 벤치마크는
+해당 없음. 작성·편집·계획 연결 UX 비교는 [Buffer](https://buffer.com/integrations/canva),
+[Vrew](https://vrew.ai/ko/feature/subtitle-editing/), [Later](https://later.com/blog/social-media-calendar/)다.
+
+소스 1: `dashboard/scripts/verify-four-room-ui-e2e.mjs`, `dashboard/src/components/studio/StudioRooms.tsx`.
+
+소스 2: `.gstack/qa-reports/screenshots/issue-002-empty-edit.png`, four-room 20회 결과, 회귀 테스트.
+
+소스 3: 관리자 customers·OAuth API, revoke API 응답, `session-state.osmu.md`, pipeline state.
+
+⛔ 검증실패 보고: 등급 A, 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근 부재, 외부 발행 완료로 출고하지 않음.
+
+**다음 실행**: 담당자는 Codex 컨트롤러다. 2워커 전체 suite는 green으로 확인했다. AI 한도
+복구 또는 자체 키와 OAuth 자격증명 준비 즉시 회원 identity 200, 생성, 편집 저장, 외부 URL,
+성과 응답을 실제 화면에서 확인한다. 종료 증거는 화면 클릭, 외부 URL, 성과 응답, QA 승인
+artifact pin이다.
+
+## 2026-09-12 06시 18분 로그인 터치 영역 QA
+
+로그인 화면을 실제 브라우저로 열어 Google 단추의 높이를 측정했다. 36px로 공통 44px
+터치 기준보다 작았으므로 `min-h-control-touch`를 적용하고 `3d662430`으로 단독 커밋했다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 로그인 화면 | PASS | `http://localhost:3456/login` HTTP 200 |
+| Google 단추 터치 영역 | PASS | browser computed height 44px, 수정 전 36px |
+| 모바일 레이아웃 | PASS | 375x812에서 height 44px, width 293px, overflow 없음 |
+| 회귀 테스트 | PASS | `login-touch-target.contract.test.ts` 1건 |
+| 별도 TypeScript 검사 | PASS | `npx tsc --noEmit`, exit 0 |
+| 새로고침 console | PASS | console errors 없음 |
+| 회원 OAuth2 세션 | 미검증 | 자격증명 미입력, Safari 세션 import 불가 |
+| 생성·발행·성과 | 미검증 | AI 429, OAuth provider 설정 완료 0개 |
+
+이번 결과의 의미는 회원 진입 첫 행동의 실제 조작성은 수리했지만, 인증 이후 관통을 완료한
+것은 아니라는 점이다. QA report와 before/after screenshot은 `.gstack/qa-reports/`에 남겼다.
+
+벤치마크: 공통 터치 타깃 적용은 실제 측정 기반 기계적 수리라 새 벤치마크는 해당 없음.
+UX 비교 기준은 [Buffer](https://buffer.com/integrations/canva), [Vrew](https://vrew.ai/ko/feature/subtitle-editing/),
+[Later](https://later.com/blog/social-media-calendar/)다.
+
+소스 1: `dashboard/src/app/login/page.tsx`, `login-touch-target.contract.test.ts`.
+
+소스 2: QA before/after screenshot과 browser height 측정.
+
+소스 3: QA report, 전체 테스트·build, 실제 생성 E2E와 pipeline 상태.
+
+⛔ 검증실패 보고: 등급 A, 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근 부재, 외부 발행 완료로 출고하지 않음.
+
+**다음 실행**: 담당자는 Codex 컨트롤러다. 고객 OAuth·AI·채널 자격증명이 준비되면 회원 identity 200부터 생성·편집·외부 permalink·성과 API까지 직접 재검증한다. 종료 증거는 실제 화면 클릭, 외부 URL, 성과 응답, QA 승인 artifact pin이다.
+
+## 2026-09-12 06시 02분 공유 AI 한도 오류와 최신 생성 E2E
+
+실제 최신 local dev server에서 유효 `seed-a` 작업 공간으로 생성 요청을 보냈다. Claude CLI는 로그인 상태지만 주간 제공자 한도에 걸려 exit code 1과 오류 JSON을 함께 내고 있었고, 기존 앱은 이를 일반 제공자 장애로 번역했다. JSON 원문은 노출하지 않고 `provider_rate_limited` 고정 코드로 분류하도록 수정했다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 실제 생성 API | NG, 정확한 차단 | HTTP 429, `STUDIO_LLM_PROVIDER_RATE_LIMITED`, 후보 0장 |
+| 사용자 오류 안내 | PASS | 자체 Anthropic 키 등록 또는 잠시 후 재시도 안내 |
+| observability reason | PASS | `shared_ai_generation_execution_failed` context.reason=`provider_rate_limited` |
+| 전체 회귀 | PASS | 288개 파일, 1,976건 통과, 3건 스킵 |
+| production build | PASS | TypeScript 통과, 정적 페이지 182/182 |
+| 회원 OAuth2 | 미검증 | Google 이메일 입력 화면까지, 자격증명 미입력 |
+| 외부 발행·성과 | 미검증 | 연결 계정 0개, OAuth 완전 설정 0개 |
+
+이번 결과의 의미는 실패를 성공으로 꾸미지 않으면서도 `provider_unavailable`와 계정 한도를 분리해 다음 행동을 제시하게 된 것이다. 생성이 실제로 성공한 것은 아니므로 편집·발행·성과 완료로 승격하지 않는다. singleton 인증 수리는 로컬에서 계속 유효하지만 운영 배포 후 production console 재확인이 필요하다.
+
+벤치마크: CLI 오류 분류는 직접 관찰 기반 기계적 수리라 새 벤치마크는 해당 없음. UX 비교 기준은 [Buffer Canva integration](https://buffer.com/integrations/canva), [Vrew 자막 편집](https://vrew.ai/ko/feature/subtitle-editing/), [Later social media calendar](https://later.com/blog/social-media-calendar/)에 기록돼 있다.
+
+소스 1: `dashboard/src/lib/anthropic.ts`, `dashboard/src/lib/observability.ts`, `dashboard/src/lib/observability/incidents.ts`.
+
+소스 2: `dashboard/tests/studio/generation-provider-rate-limit.test.ts`, `verify-basic-flow-e2e.mjs` 실제 응답.
+
+소스 3: 전체 Vitest, production build, Tunnel OAuth 브라우저, pipeline 상태.
+
+⛔ 검증실패 보고: 등급 A, 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근 부재, 외부 발행 완료로 출고하지 않음.
+
+**다음 실행**: 담당자는 Codex 컨트롤러다. Claude 한도 reset 또는 자체 Anthropic 키와 OAuth 자격증명 준비 즉시 실제 생성 성공, 회원 identity 200, 편집, 외부 permalink, 성과 API를 직접 확인한다. 외부 회수 시점은 한도 복구 또는 자격증명 제공 즉시이며, 종료 증거는 화면 클릭, 외부 URL, 성과 응답, QA 승인 artifact pin이다.
+
+## 2026-09-12 05시 36분 OAuth 진입과 Supabase singleton 재검증
+
+터널 production에서 랜딩과 `/studio` 진입을 직접 열었다. `/studio`는 `/login?returnTo=%2Fstudio`로 닫혔고, `Google로 계속` 클릭은 Supabase authorize 302와 Google 이메일 입력 화면까지 이어졌다. 계정 자격증명은 입력하지 않았다. 이 과정에서 같은 탭에서 Supabase 클라이언트를 반복 생성해 `Multiple GoTrueClient instances` 경고가 실제로 발생했다. `createBrowserSupabase`를 모듈 singleton으로 바꾸고 중복 생성 회귀를 추가했다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| OAuth 진입 | PASS | Tunnel `/login` 200, Google 버튼 클릭, Supabase authorize 302, Google email 화면 200 |
+| 회원 세션 확정 | 미검증 | 계정 자격증명을 입력하지 않음 |
+| Supabase singleton | PASS | 신규 회귀와 인증 관련 3개 파일 15건 통과 |
+| 전체 회귀 | PASS | 287개 파일, 1,975건 통과, 3건 스킵, 실패 0 |
+| production build | PASS | TypeScript 단계 통과, 정적 페이지 182/182 생성 |
+| 실제 생성 | NG | `seed-a`에서 `STUDIO_LLM_PROVIDER_UNAVAILABLE` |
+| 외부 발행·성과 | 미검증 | 연결 계정 0개, OAuth 완전 설정 0개 |
+
+이번 결과의 의미는 Google OAuth 진입 경로는 실제로 살아 있지만, 인증 세션 확정과 제품 관통은 별개의 증거라는 점을 다시 닫은 것이다. singleton 수정은 로컬 새 번들에서 검증했으며 아직 운영 이미지에 반영하지 않았으므로 production 경고 제거로 보고하지 않는다.
+
+벤치마크: singleton은 직접 관찰한 인증 클라이언트 중복 생성 수리라 새 벤치마크는 해당 없음. 기존 작성·편집·계획 기준은 [Buffer](https://buffer.com/integrations/canva), [Vrew](https://vrew.ai/ko/feature/subtitle-editing/), [Later](https://later.com/blog/social-media-calendar/)에 기록돼 있다.
+
+소스 1: `dashboard/src/lib/supabase.ts`, login/AuthGate 코드, singleton 회귀 테스트.
+
+소스 2: production tunnel 브라우저 snapshot·network·console와 localhost 브라우저 확인.
+
+소스 3: 전체 Vitest·production build·실제 생성 API 응답·pipeline 상태.
+
+⛔ 검증실패 보고: 등급 A, 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근 부재, 외부 발행 완료로 출고하지 않음.
+
+**다음 실행**: 담당자는 Codex 컨트롤러다. singleton 포함 운영 배포 후 production console을 재확인하고, AI·OAuth 자격증명이 준비되는 즉시 회원 세션, 생성, 편집, 외부 permalink, 성과 API를 직접 관찰한다. 종료 증거는 회원 identity 200, 화면 클릭, 외부 URL, 성과 응답, QA 승인 artifact pin이다.
+
+## 2026-09-12 05시 14분 공개 진입 재확인
+
+health 응답만으로 회원 화면이 살아 있다고 판정하지 않기 위해 공개 root를 별도로 확인했다. localhost와 production health는 모두 200이었지만 `https://openclaw.app` GET은 15초 timeout으로 HTTP 000이었고 QA 브라우저 URL은 `chrome-error://chromewebdata/`였다. 따라서 회원 OAuth2 화면과 외부 발행은 미검증이다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| localhost health | PASS | HTTP 200, DB up |
+| production health | PASS | HTTP 200, DB up |
+| production root | NG | 15초 GET timeout, HTTP 000 |
+| 회원 로그인·OAuth2 | 미검증 | 브라우저가 chrome-error에 머묾, Safari import 미지원 |
+
+이번 결과의 의미는 health와 실제 사용 가능한 웹 진입을 별도 증거로 관리하게 된 것이다. production root가 열리지 않은 상태에서 로그인이나 발행 완료를 보고하지 않는다.
+
+벤치마크: 해당 없음. 운영 진입 경계 확인이다.
+
+소스 1: production·localhost health와 root curl 결과.
+
+소스 2: gstack browser 상태.
+
+소스 3: `session-state.osmu.md`, `pipeline-state.osmu.md`.
+
+⛔ 검증실패 보고: 등급 A, production root timeout과 외부 OAuth 자격증명 및 Safari 세션 접근 부재, 회원 로그인·외부 발행 완료로 출고하지 않음.
+
+**다음 실행**: 담당자는 Codex 컨트롤러다. production root 응답 복구 및 OAuth·AI 자격증명 준비 즉시 로그인, 생성, 편집, 외부 permalink, 성과 API를 직접 재실행한다. 종료 증거는 화면 클릭, 외부 URL, 성과 응답, QA 승인 artifact pin이다.
+
+## 2026-09-12 05시 10분 build 재검증: AI 상태 문구의 실제 증거 범위 정렬
+
+실제 `seed-a` 생성 요청이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 실패했는데도 Studio 상단의 `AI 사용 가능` 문구는 `/api/studio/engine-status`가 오류 없이 설정 경로를 반환하기만 하면 표시됐다. 이 응답은 실제 생성 probe가 아니므로, 사용자가 설정 확인과 생성 성공을 같은 것으로 읽을 수 있었다. `AI 엔진 설정됨`으로 문구를 정정하고 실제 생성 가능 여부는 요청 결과로 확인한다는 설명을 추가했다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| UI 문구 계약 | PASS | `v69copy-ui-copy-contract.test.ts` 4건. `AI 사용 가능` 부재와 `AI 엔진 설정됨` 존재 확인 |
+| 학습 목적 저장·복원 회귀 | PASS | `learning-purpose-persistence.test.tsx` 2건 |
+| production build | PASS | `npm run build`, TypeScript 단계와 정적 페이지 182/182 생성 |
+| 실제 생성 상태 | NG | 유효 `seed-a` workspace에서 `STUDIO_LLM_PROVIDER_UNAVAILABLE` 재현 |
+| 회원 OAuth2·외부 발행·성과 | 미검증 | OAuth 완전 설정 0개, Safari 세션 import 도구 미지원 |
+
+이번 결과의 의미는 생성 엔진의 설정 상태와 실제 실행 성공을 화면에서 분리해, 장애를 성공처럼 보고하는 UI 경계를 닫았다는 것이다. 생성 제공자나 외부 계정이 복구된 것은 아니며 QA 승인이나 운영 배포로 승격하지 않는다.
+
+벤치마크: 새 흐름을 설계한 변경은 아니므로 별도 벤치마크는 해당 없음. 기존 흐름 기준은 [Buffer](https://buffer.com/integrations/canva), [Vrew](https://vrew.ai/ko/feature/subtitle-editing/), [Later](https://later.com/blog/social-media-calendar/) 공식 자료에 기록돼 있다.
+
+소스 1: `dashboard/src/app/studio/page.tsx`, `dashboard/src/app/api/studio/engine-status/route.ts`, `dashboard/tests/integrity/v69copy-ui-copy-contract.test.ts`.
+
+소스 2: 실제 `verify-basic-flow-e2e.mjs` 생성 응답과 `localhost /api/health`.
+
+소스 3: `pipeline-state.osmu.md`, 관리자 OAuth metadata API, 위 공식 벤치마크.
+
+⛔ 검증실패 보고: 등급 A, 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근 부재, 외부 발행 완료로 출고하지 않음.
+
+**다음 실행**: 담당자는 Codex 컨트롤러다. 공유 AI 한도 복구 또는 BYO Anthropic 키와 OAuth 자격증명이 준비되는 즉시 생성 성공, 회원 OAuth2, 외부 permalink, 성과 API 응답을 순서대로 직접 관찰한다. 종료 증거는 화면 클릭 결과, 외부 URL, 성과 응답, QA 승인 artifact pin이다.
+
+## 2026-09-12 04시 46분 build 재검증: 감독기 tmux 실행 경로와 실제 생성 병목
+
+`/tmp/osmu-supervisor.log`에서 Node 런타임은 발견하지만 `/usr/local/bin/tmux`가 cron PATH에서 빠져 `codex-in-pane.sh`가 세션 생성에 실패하는 것을 관찰했다. 감독 프로세스가 살아 있어도 워커는 발주되지 않았고, 누적 상태표의 `발주실패`가 실제 진척으로 오인될 수 있는 상태였다. `scripts/osmu-supervisor.sh`에 tmux 탐색과 자식 PATH 전달을 추가하고 `bash -n`, `git diff --check`, `osmu-supervisor` tmux 기동을 확인했다. 로그에 Node와 `/usr/local/bin/tmux`가 남고 04시 45분 백로그 대기까지 관찰했다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| supervisor shell syntax | PASS | `bash -n scripts/osmu-supervisor.sh` 종료 코드 0 |
+| supervisor diff whitespace | PASS | `git diff --check -- scripts/osmu-supervisor.sh` 출력 없음 |
+| tmux runtime resolution | PASS | `/tmp/osmu-supervisor.log`에 `/usr/local/bin/tmux` 기록 |
+| supervisor pane | PASS | `tmux list-sessions`에 `osmu-supervisor` 존재, 백로그 대기 로그 확인 |
+| localhost health | PASS | `GET /api/health`, HTTP 200, `db: up` |
+| 관리자 workspace 조회 | PASS | active workspace 2개, 초안 1개, 연결 계정 0개, published 0개, failed 0개 |
+| OAuth credential metadata | PASS | provider 12개, 완전 설정 0개. 원문 값은 출력하지 않음 |
+| 기본 흐름 실제 생성 | NG | 유효 `seed-a` workspace에서 `verify-basic-flow-e2e.mjs` 실행 후 `STUDIO_LLM_PROVIDER_UNAVAILABLE` |
+| 회원 OAuth2·외부 발행·성과 | 미검증 | OAuth 자격증명 0개, Safari 쿠키 import 도구 미지원 |
+
+이번 결과의 의미는 감독 루프가 실행 파일을 찾는 운영 경계는 닫혔지만, AI 생성 제공자와 외부 채널 계정이 없어서 제품의 생성 이후 흐름은 진행되지 않는다는 것이다. 기존 회귀 pane 네 개는 모두 주간 실행 한도 메시지 뒤 종료된 것을 확인하고 로그와 상태표를 보존한 채 정리했다. 현재 감독은 새 pending 항목이 없어 대기한다. 누적 백로그 수치는 append-only 이력이라 현재 작업 수로 읽지 않았다.
+
+벤치마크: 해당 없음. 이번 조치는 UX 판단이 아닌 cron PATH와 워커 발주 경계의 기계적 수리다. 학습 정보와 UX 비교는 직전 절의 Buffer, Vrew, Later 공식 근거를 사용했다.
+
+소스 1: `scripts/osmu-supervisor.sh`, `dashboard/scripts/verify-basic-flow-e2e.mjs`, 실제 supervisor 로그.
+
+소스 2: `session-state.osmu.md`, `pipeline-state.osmu.md`, 관리자 API 응답.
+
+소스 3: localhost health와 실제 생성 요청, `/tmp/osmu-*.dispatch.log`.
+
+⛔ 검증실패 보고: 등급 A, 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근 부재, 외부 발행 완료로 출고하지 않음.
+
+**다음 실행**: 담당자 Codex 컨트롤러. 외부 회수 시점은 공유 AI 한도 복구 또는 OAuth 자격증명 제공 즉시다. 종료 증거는 실제 화면 클릭, 외부 permalink, 성과 API 응답, QA 승인 artifact pin이다. 그 전에는 QA 승인과 운영 배포를 실행하지 않는다.
+
+## 2026-09-12 04시 24분 build 재검증: 학습 정보 목적 저장과 발행실 기준 안내
+
+생성실에서 목적 카드를 고르면 `purpose` 화면 상태만 바뀌고 작업 공간의 학습 정본은 바뀌지 않는 결함이 있었다. 이 결함은 생성 결과의 품질보다 먼저 학습 루프를 끊는다. 다음 방문에서 목표가 사라지고, 학습 정보를 잘 받아 프롬프트를 대신하는 제품의 약속도 화면 상태에만 머물기 때문이다. 목적 카드 제목과 예시를 저장하고, 저장된 목적을 새 생성실에서 복원했다. 발행실에는 작업 공간의 기준을 보여 주되 “다음 생성과 다시 만들기에 이어진다”고 표시해 현재 본문과 다음 생성 기준을 혼동하지 않게 했다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 목적 카드 저장 | PASS | `tests/studio/learning-purpose-persistence.test.tsx`에서 localStorage 학습 정본과 부모 전달값 확인 |
+| 저장 목적 복원 | PASS | 같은 테스트에서 새 생성실의 `문의 늘리기` 선택 상태 확인 |
+| 생성실·편집실·빈 상태 회귀 | PASS | 관련 3개 테스트 파일 30건 통과, React setState during render 경고 재현되지 않음 |
+| 전체 회귀 | PASS | `npm test`, 286파일, 1,974건 통과, 3건 스킵, 실패 0 |
+| production build | PASS | `npm run build`, TypeScript 단계와 정적 페이지 182/182 생성 |
+| UI 토큰 | PASS | `npm run audit:ui-tokens`, 직접 시각값 위반 0건 |
+| 개발 서버 health | PASS | `GET http://localhost:3456/api/health`, HTTP 200, `db: up` |
+| 회원 OAuth2·보호 화면 | 미검증 | Safari 쿠키 도구 미지원, `/studio`는 로그인 화면으로 닫힘 |
+| 외부 채널 발행·성과 | 미검증 | 연결 계정 0개, OAuth provider 12개 완전 설정 0개 |
+
+이 결과의 의미는 학습 정보가 생성실 목적 선택에서 작업 공간 상태와 발행 전 안내까지 이어지는 코드·계약 경계가 닫혔다는 것이다. 반면 외부 자격증명이 없으므로 실제 생성 API가 공유 Claude 제공자 한도에서 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 멈추는 운영 조건은 그대로다. 별도 `npx tsc --noEmit`는 기존 `src/app/page.tsx`의 `PerformanceDashboard` named export가 `.next/dev/types` Next 페이지 계약과 충돌해 실패했으며, production build 내부 TypeScript 단계는 통과했다. 기존 NFT 추적 범위 경고 1건도 남아 있다.
+
+**벤치마크**: Buffer는 작성·Canva 편집·예약·발행을 같은 흐름에 붙이고, Vrew는 대본 일괄 편집을 제공하며, Later는 목표·형식·성과를 콘텐츠 계획에 연결한다. OSMU에는 이미 네 방과 형식별 편집 기능이 있으므로 이번에는 새 방을 만들지 않고 끊어진 학습 기준 전달을 복구했다. 근거는 [Buffer](https://buffer.com/integrations/canva), [Vrew](https://vrew.ai/ko/feature/subtitle-editing/), [Later](https://later.com/blog/social-media-calendar/) 공식 문서다.
+
+소스 1: 실제 Studio 코드와 목적 저장 회귀 테스트. 소스 2: BRAIN의 OSMU 사업 좌표와 학습 정보 원칙. 소스 3: 위 공식 벤치마크, localhost 실제 HTTP, Vitest·production build 로그.
+
+⛔ 검증실패 보고: 등급 A, 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명·Safari 세션 접근 부재, 외부 발행 완료로 출고하지 않음.
+
+**다음 실행**: 담당자 Codex 컨트롤러. 외부 회수 시점은 공유 AI 한도 복구 또는 회장의 OAuth 자격증명 제공 즉시다. 종료 증거는 관리자 채널 연결 상태, 회원 OAuth2 세션, 실제 생성 결과, 편집 반영, 외부 permalink, 성과 API 응답과 QA 승인 artifact pin이다.
+
+## 2026-09-12 build 재검증: 예약·승인 큐 발행 중지 경계와 인증 화면
+
+이번 재검증에서 발견된 핵심 문제는 코드가 아니라 실행 환경과 라우팅 경계였다. Next.js가 같은 `/api/schedule/*` 위치에 `[id]`와 `[scheduleId]`를 함께 읽어 동적 라우트 충돌을 냈고, 예약 ID를 검증하지 않아 형식이 틀린 값이 DB 500으로 번졌다. 두 경로를 `[id]`로 통일하고 UUID 경계를 추가한 뒤, 관리자 bearer로 실제 서버에 요청해 잘못된 ID는 400, 형식이 맞지만 없는 ID는 404로 닫히는 것을 관찰했다. 따라서 사용자가 오래된 링크나 잘못된 예약 식별자를 눌러도 서버 오류로 오인하지 않는다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 예약·큐 중지 계약 | PASS | `tests/publish/schedule-cancel-route.test.ts` 4건, `tests/api/queue-cancel.test.ts` 4건 통과 |
+| 전체 회귀 | PASS | `npm test`, 285파일 1,972건 통과, 3건 스킵, 실패 0. 2026-09-12 03시 50분 재실행 종료 코드 0 |
+| TypeScript | PASS | `npx tsc --noEmit`, 종료 코드 0 |
+| production build | PASS | `npm run build`, 182개 정적 페이지와 `/api/schedule/[id]/cancel` 등록 확인 |
+| 실제 health | PASS | `GET http://localhost:3456/api/health` HTTP 200, `db: up` |
+| 실제 예약 중지 경계 | PASS | 관리자 bearer로 잘못된 ID HTTP 400, 없는 UUID HTTP 404 |
+| 실제 큐 중지 경계 | PASS | 관리자 bearer로 없는 작업물 HTTP 404 |
+| Google-only 로그인 화면 | PASS | `verify-e2e.sh http://localhost:3456`, Google CTA와 이메일·비밀번호 미노출 |
+| 보호 화면 시각 E2E | 미검증 | 무효 토큰으로 Studio·인박스가 login으로 닫혀 본문 화면을 관찰하지 못함 |
+| 기본 흐름 생성·편집·발행·성과 | 미검증 | 올바른 로컬 workspace 재시도에서 공유 Claude `exit_nonzero`, `STUDIO_LLM_PROVIDER_UNAVAILABLE` |
+
+production build에는 기존 `next.config.ts` NFT 추적 범위 경고 1건이 남았다. design-lint는 기존 이미지 카드 색상 상수 파일의 토큰 밖 hex 1건을 보고했으며, 이번 예약 UI는 토큰 클래스를 사용했다.
+
+관리자 read-only 조회 결과는 active workspace 2개, 연결 계정 0개, 발행 완료 0개, 실패 0개다. OAuth provider 12개가 모두 필수 자격증명 미설정이며, 로컬 DB에는 `auth.users` 관계가 없어 회원 OAuth2 로그인부터 외부 발행까지는 직접 검증할 수 없다. 이 상태에서 연결 완료나 외부 발행 완료로 보고하지 않는다.
+
+소스 1: 실제 레포 코드와 계약 테스트. 소스 2: Next.js 동적 라우트 로컬 공식 문서. 소스 3: localhost 실제 HTTP, 브라우저 E2E, Vitest, TypeScript, production build 로그.
+
+⛔ 검증실패 보고: 등급 A, 생성 제공자 실행 한도와 외부 OAuth 자격증명 부재, 외부 발행 완료로 출고하지 않음.
+
 ## 2026-09-12 build 코드 완료, 검증 미실행: 승인 큐 발행 중지(`/api/queue/[postId]/cancel`)
 
-갭: `docs/audit/osmu-gap-recheck-2026-08-28.md`와 `docs/audit/osmu-v62-api-gap-audit-v1-gpt-codex.md`가
+갭: `docs/_archive/legacy-20260912/audit/osmu-gap-recheck-2026-08-28.md`와 `docs/_archive/legacy-20260912/audit/osmu-v62-api-gap-audit-v1-gpt-codex.md`가
 공통으로 남긴 "일곱 플랫폼을 아우르는 서버 측 발행 중지 계약". 승인된 글은 삭제(전체 기록 삭제)만
 가능하고 아직 발행되지 않은 채널만 골라 멈추는 경로가 없었다.
 
@@ -1511,7 +2599,7 @@ v67 디자인 정본의 `전체 7곳`과 일곱 플랫폼 집중 필터를 발�
 
 ## 2026-09-01 NG: 편집실과 발행실 2차 실사용 피드백 재현
 
-승인 프로토타입 `docs/prototype/openclaw-auto-4room-v64.html`이 핀된 뒤 현재 화면을 다시 대조했다.
+승인 프로토타입 `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v64.html`이 핀된 뒤 현재 화면을 다시 대조했다.
 글을 대사 줄과 초 단위로 보여 주고, 카드뉴스 편집 중 발행 채널 이름을 노출하며, 카드 안 글자를
 직접 고치거나 옮길 수 없다. 저장과 발행실 이동도 한곳에서 분리되지 않았고 발행실에는
 `승인 인박스로 보내기`와 `여기서만 한 번에 되는 일`이 남아 있다. 아래 종료 증거를 모두 다시
@@ -1584,7 +2672,7 @@ v67 디자인 정본의 `전체 7곳`과 일곱 플랫폼 집중 필터를 발�
 
 ## 2026-08-29 NG: 최근 24시간 코드리뷰 재검토
 
-고정 범위 `5d941aa0..47a54e4b`의 109개 커밋에서 MAJOR 34건, MINOR 7건을 확인해 머지를 차단했다. 제품 코드는 수정하지 않았다. 상세 위치, 계약 인용, 재현, 수정 방향은 `docs/audit/osmu-code-review-2026-08-29.md`에 있다.
+고정 범위 `5d941aa0..47a54e4b`의 109개 커밋에서 MAJOR 34건, MINOR 7건을 확인해 머지를 차단했다. 제품 코드는 수정하지 않았다. 상세 위치, 계약 인용, 재현, 수정 방향은 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-08-29.md`에 있다.
 
 | 검증 | 판정 | 직접 관찰 증거 |
 |---|---|---|
@@ -1676,11 +2764,11 @@ webpack 서버에서 재현되지 않았고 health HTTP 200, DB `up`, 기본 흐
 | mobile, Maestro | 해당 없음 | 별도 mobile 앱이 없는 웹 제품 범위 |
 | 전체 디자인 정합 | NG 유지 | 기존 승인 프로토타입 정합 NG와 운영 실채널 검증 NG를 이번 API 범위 PASS로 뒤집지 않음 |
 
-상세 99개 상태와 비교표는 `docs/audit/osmu-api-read-sweep-v3-gpt-codex-20260829-0915.md`에 있다.
+상세 99개 상태와 비교표는 `docs/_archive/legacy-20260912/audit/osmu-api-read-sweep-v3-gpt-codex-20260829-0915.md`에 있다.
 
 ## 2026-08-29 NG: 최근 24시간 코드 리뷰 현재 범위 재검증
 
-리뷰 시작 시 고정한 `5d941aa0..3c251689`의 97개 커밋과 438개 파일 diff를 승인 PRD, 프로토타입 v63, 요구 대장, 사업 좌표, DESIGN에 대조했다. MAJOR 19건, MINOR 5건으로 머지 차단이다. 소스 코드는 수정하지 않았다. 상세 지적과 재현 시나리오는 `docs/audit/osmu-code-review-2026-08-29.md`에 있다.
+리뷰 시작 시 고정한 `5d941aa0..3c251689`의 97개 커밋과 438개 파일 diff를 승인 PRD, 프로토타입 v63, 요구 대장, 사업 좌표, DESIGN에 대조했다. MAJOR 19건, MINOR 5건으로 머지 차단이다. 소스 코드는 수정하지 않았다. 상세 지적과 재현 시나리오는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-08-29.md`에 있다.
 
 | 검증 | 판정 | 직접 관찰 증거 |
 |---|---|---|
@@ -1793,11 +2881,11 @@ webpack 서버에서 재현되지 않았고 health HTTP 200, DB `up`, 기본 흐
 | design lint | PASS | `design-lint.sh dashboard/src`, 디자인 토큰 위반 0 |
 | mobile, Maestro | 해당 없음 | 별도 mobile 앱이 없는 웹 제품 범위 |
 
-상세 99개 상태코드와 8월 28일 대비표는 `docs/audit/osmu-api-read-sweep-v2-gpt-codex.md`에 있다.
+상세 99개 상태코드와 8월 28일 대비표는 `docs/_archive/legacy-20260912/audit/osmu-api-read-sweep-v2-gpt-codex.md`에 있다.
 
 ## 2026-08-29 NG: 최근 24시간 코드 리뷰 2차 검증
 
-리뷰 시작 시 고정한 `6a618c59..6eaf3a45` 범위는 MAJOR 41건, MINOR 4건으로 머지 차단이다. 코드 수정은 하지 않았다. 상세 지적과 재현 시나리오는 `docs/audit/osmu-code-review-2026-08-29.md`에 있다.
+리뷰 시작 시 고정한 `6a618c59..6eaf3a45` 범위는 MAJOR 41건, MINOR 4건으로 머지 차단이다. 코드 수정은 하지 않았다. 상세 지적과 재현 시나리오는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-08-29.md`에 있다.
 
 | 검증 | 판정 | 직접 관찰 증거 |
 |---|---|---|
@@ -1894,7 +2982,7 @@ Google 자동화 로그인을 사용자에게 넘기지 않고 운영 Supabase�
 | Maestro | 해당 없음 | 웹 전용 제품 범위. `optional:true` 우회 없음 |
 | 전체 제품 QA | NG 유지 | 운영 고객 Studio 생성 503과 승인 시안 디자인 정합 NG는 이번 API 범위 밖이며 해소되지 않음 |
 
-이전 실사 문서는 GET 84개로 보고했지만 당시 커밋 `5283f7da`의 정적 export는 95개였다. 현재 99개는 실제 순증 4개이며, 새 경로는 engagement, operator incidents, Studio shorts factory 목록과 상세다. 상세 상태와 변경표는 `docs/audit/osmu-api-read-sweep-v1-gpt-codex.md`에 있다.
+이전 실사 문서는 GET 84개로 보고했지만 당시 커밋 `5283f7da`의 정적 export는 95개였다. 현재 99개는 실제 순증 4개이며, 새 경로는 engagement, operator incidents, Studio shorts factory 목록과 상세다. 상세 상태와 변경표는 `docs/_archive/legacy-20260912/audit/osmu-api-read-sweep-v1-gpt-codex.md`에 있다.
 
 페르소나 결정: 김민서는 이제 OAuth 구성 부재를 서버 고장 500으로 받지 않고 503으로 구분하며, TikTok 상태 조회는 운영자 전용 403이 아니라 자신의 작업 공간에서 없는 발행 기록 404까지 도달한다. 실제 연결 TikTok provider 성공 응답은 미검증이다.
 
@@ -1932,7 +3020,7 @@ Google 자동화 로그인을 사용자에게 넘기지 않고 운영 Supabase�
 
 | 테스트번호 | 판정 | 직접 관찰 증거 |
 |---|---|---|
-| OSMU-REVIEW-24H-01 | NG | `856ab35e`부터 `50e1c56b`까지 104개 커밋을 승인 v63, 요구 대장, 사업 좌표, DESIGN과 대조. MAJOR 25건, MINOR 5건. `docs/audit/osmu-code-review-2026-08-29.md` |
+| OSMU-REVIEW-24H-01 | NG | `856ab35e`부터 `50e1c56b`까지 104개 커밋을 승인 v63, 요구 대장, 사업 좌표, DESIGN과 대조. MAJOR 25건, MINOR 5건. `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-08-29.md` |
 | OSMU-REVIEW-24H-02 | PASS | `http://localhost:3456/api/health` HTTP 200, DB `up` |
 | OSMU-REVIEW-24H-03 | PASS | 실제 작업 공간 `cd1d0a40-540d-4524-9b49-bf2445d82182` 기본 흐름 11/11 |
 | OSMU-REVIEW-24H-04 | PASS | 실제 Studio 생성 계약 12/12 |
@@ -1954,7 +3042,7 @@ REVIEW_VERDICT: BLOCK
 
 **실제 앱 관찰:** `localhost:3456`, 작업 공간 `cd1d0a40-540d-4524-9b49-bf2445d82182`에서 Chromium으로 inbox와 calendar를 각각 열었다. 캘린더는 날짜 셀을 눌러 그날의 상세 목록을 연 뒤 `발행실로 돌아가기`를 클릭했다. 두 경로 모두 연결 queue와 draft가 URL과 작업 상태에 남았고, queue 본문과 선택 플랫폼 3곳이 발행실에서 다시 보였다. 없는 queue는 이전 작업 상태를 비운 새 진입 조건에서 오류로 거절되고 발행 단추가 0건이었다. 브라우저 응답 401은 0건, JavaScript 콘솔 오류는 0건이다. 기본 흐름 fixture의 `example.invalid` 미디어 요청은 이번 복귀 계약과 무관하므로 브라우저에서 204로 격리했고, 미디어 재생 성공을 이번 완료 근거에 포함하지 않았다.
 
-**실행 증거:** health HTTP 200과 DB `up`. 기본 흐름 11/11, Studio 경계 계약 12/12. FE-V63-RETURN 포함 집중 Vitest 4파일 36건 PASS. 전체 Vitest 187파일 1,336건 PASS, 조건부 6건 SKIP. TypeScript exit 0, design lint 위반 0건이다. 관찰 JSON과 8개 캡처, 재현 스크립트는 `docs/prototype/qa-return-rerun-20260828/`에 있다.
+**실행 증거:** health HTTP 200과 DB `up`. 기본 흐름 11/11, Studio 경계 계약 12/12. FE-V63-RETURN 포함 집중 Vitest 4파일 36건 PASS. 전체 Vitest 187파일 1,336건 PASS, 조건부 6건 SKIP. TypeScript exit 0, design lint 위반 0건이다. 관찰 JSON과 8개 캡처, 재현 스크립트는 `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-return-rerun-20260828/`에 있다.
 
 **doc-review 재검토:** `/Users/sj/.claude/standards/doc-review.md` 151줄과 QA 템플릿 111줄을 끝까지 읽고 기능 증거와 디자인 증거를 분리했다. R193의 요구 추적, 해피·엣지 E2E, 회귀 수치는 기능 PASS를 지지한다. 반면 이 독립 QA에는 v63 프로토타입과 구현을 같은 뷰포트에서 나란히 비교한 스크린샷 쌍이 없다.
 
@@ -1970,7 +3058,7 @@ STAMP | line: osmu-return-qa | 생성: 2026-08-29 00:19 KST | model: gpt-5.6-sol
 
 SKILLS_USED: qa. 브라우저 사용자 흐름, 회귀 우선순위, 증거 캡처와 경계 판정에 사용. SKILLS_SKIPPED: 없음.
 
-SOURCES: `pipeline-state.osmu.md` | `docs/prototype/openclaw-auto-4room-v63.html` | `docs/requests/회장-확정-요구사항-대장.md` R193 | `DESIGN.md` | `docs/prd-openclaw-service-v8.2.1-gpt-codex.md` | https://playwright.dev/docs/locators | https://playwright.dev/docs/actionability | https://playwright.dev/docs/test-assertions
+SOURCES: `pipeline-state.osmu.md` | `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html` | `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md` R193 | `DESIGN.md` | `docs/_archive/legacy-20260912/root-docs/prd-openclaw-service-v8.2.1-gpt-codex.md` | https://playwright.dev/docs/locators | https://playwright.dev/docs/actionability | https://playwright.dev/docs/test-assertions
 
 MODEL: gpt-5.6-sol / qa-verifier
 
@@ -1994,7 +3082,7 @@ STAMP | line: osmu-gapfill082823 | 생성: 2026-08-28 23:46 KST | model: gpt-5.6
 
 SKILLS_USED: pipeline. build 허용 범위와 단계 gate 확인에 사용. SKILLS_SKIPPED: 설치 코드 구현 전용 매칭 스킬 없음.
 
-SOURCES: `docs/audit/osmu-gap-recheck-2026-08-28.md` | `docs/prototype/openclaw-auto-4room-v63.html` | `docs/requests/회장-확정-요구사항-대장.md` | `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md` | https://support.buffer.com/en-us/articles/managing-and-approving-draft-posts-57li7M8tDA
+SOURCES: `docs/_archive/legacy-20260912/audit/osmu-gap-recheck-2026-08-28.md` | `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html` | `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md` | `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md` | https://support.buffer.com/en-us/articles/managing-and-approving-draft-posts-57li7M8tDA
 
 MODEL: gpt-5.6-sol / code-builder
 
@@ -2024,10 +3112,10 @@ MODEL: gpt-5.6-sol / code-builder
 성과실까지 사람처럼 링크를 눌렀다. 390, 768, 1024, 1440에서 생성실, 편집실, 발행실,
 성과실 16화면과 성과실에서 생성실로 돌아가는 4건이 통과했다. 각 폭의 문서 폭은 viewport와
 같았고 가린 모달, 브라우저 401, 콘솔 오류는 모두 0건이었다. 캡처와 관찰 JSON은
-`docs/prototype/qa-flow-rerun-20260828/`에 있다.
+`docs/design/prototypes/legacy-prototype-20260912/prototype/qa-flow-rerun-20260828/`에 있다.
 
-**픽셀 대조:** v63 성과실 시안 `docs/board/v63-perf-1440.png`과 dev 실화면
-`docs/prototype/qa-flow-rerun-20260828/1440-performance.png`을 원본 크기로 각각 열어
+**픽셀 대조:** v63 성과실 시안 `docs/_archive/legacy-20260912/board/v63-perf-1440.png`과 dev 실화면
+`docs/design/prototypes/legacy-prototype-20260912/prototype/qa-flow-rerun-20260828/1440-performance.png`을 원본 크기로 각각 열어
 대조했다. 시안의 상단 전역 탐색과 우측 담당 패널이 dev에 없고, dev에는 채널 연결 경고와
 첫 사용자 온보딩이 추가돼 있다. 따라서 기본 동선 PASS와 별개로 전체 v63 정합은 NG다.
 
@@ -2057,7 +3145,7 @@ STAMP | line: osmu-flow-rerun | 생성: 2026-08-28 22:33 KST | model: gpt-codex/
 
 SKILLS_USED: qa, 결함 재현, 실제 브라우저 검증, 회귀 순서, 증거 기록에 사용 / SKILLS_SKIPPED: 없음
 
-SOURCES: `docs/prototype/openclaw-auto-4room-v63.html` | `docs/requests/회장-확정-요구사항-대장.md` | `wiki/product/사업좌표-OSMU와-ZERO-ONE.md` | `docs/fdd/test-plan-r02-v1.0.0-opus.md` | `docs/qa/osmu-qa-2026-08-28.md` | https://playwright.dev/docs/locators | https://playwright.dev/docs/actionability | https://playwright.dev/docs/test-projects
+SOURCES: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html` | `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md` | `wiki/product/사업좌표-OSMU와-ZERO-ONE.md` | `docs/eng-design/fdd-legacy-20260912/fdd/test-plan-r02-v1.0.0-opus.md` | `docs/qa/osmu-qa-2026-08-28.md` | https://playwright.dev/docs/locators | https://playwright.dev/docs/actionability | https://playwright.dev/docs/test-projects
 
 MODEL: gpt-codex/gpt-5.6-sol / qa-verifier
 
@@ -2088,7 +3176,7 @@ MODEL: gpt-codex/gpt-5.6-sol / qa-verifier
 **실제 앱:** `localhost:3456`에서 v24 재현 3종을 390, 1024, 1440으로 실행했다. 성과실 단일
 블록, 저장 본문 복원, OAuth 12개 기본 접힘과 API 정합이 전부 PASS다. 네 방 UI는 추가로
 390, 768, 1024, 1440에서 16화면과 성과실 왕복 4건이 PASS다. 가로 넘침, 브라우저 401,
-콘솔 오류는 모두 0건이다. 증거는 `docs/prototype/qa-v24-remediation/`에 있다.
+콘솔 오류는 모두 0건이다. 증거는 `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-v24-remediation/`에 있다.
 
 **전체 회귀:** Vitest 185파일 1,321건 PASS, 6건 조건부 SKIP. `npx tsc --noEmit`, Next
 production build 174경로, 디자인 lint 0건. 실제 앱 기본 흐름 11/11, Studio 계약 12/12,
@@ -2188,9 +3276,9 @@ MAJOR 9·11·13~19·22·26~30·32·33, MINOR 6·9는 미구현이다. 운영 배
 | 3 | 편집·성과실·온보딩 기본 흐름과 승인 시안 | NG | 승인 v63 대조와 기본 흐름 E2E 통과 |
 | 4 | 디자인 토큰, 운영 알림, 복구성 MINOR | NG | 디자인 lint와 결함별 회귀 테스트 통과 |
 
-**근거:** `docs/audit/osmu-code-review-2026-08-28.md`의 MAJOR 33건과 MINOR 9건을
+**근거:** `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-08-28.md`의 MAJOR 33건과 MINOR 9건을
 돈 손실, 격리 침해, 기본 흐름 차단 순으로 재정렬했다. 지정 경로 `docs/osmu-code-review-2026-08-28.md`는
-존재하지 않아 실제 감사 산출물인 `docs/audit/osmu-code-review-2026-08-28.md`를 진실원으로 사용한다.
+존재하지 않아 실제 감사 산출물인 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-08-28.md`를 진실원으로 사용한다.
 수정 전 PASS 기록은 당시 범위의 증거이며 이번 추가 재현을 대체하지 않는다.
 
 ## 2026-08-28 NG -> 수정 -> 실화면 재검증 -> PASS: 네 방 기본 흐름
@@ -2201,7 +3289,7 @@ MAJOR 9·11·13~19·22·26~30·32·33, MINOR 6·9는 미구현이다. 운영 배
 | OSMU-FLOW-UI-02 | 발행실 빈 상태에 다음 행동 한 줄과 `생성실 열기` 단추 연결 | 네 폭 모두 빈 상태 행동 노출. 단추 클릭 뒤 `/studio?room=create`와 생성실 본문 확인 | PASS |
 | OSMU-FLOW-UI-03 | 생성실 빈 상태에 첫 행동 한 줄과 `주제부터 적기` 단추 연결 | 네 폭 모두 빈 상태 행동 노출. 단추 클릭 뒤 주제 입력 초점 확인 | PASS |
 
-**화면 증거:** `docs/prototype/qa-flow/`의 네 방 4개 x 4폭 캡처와 `observations.json`.
+**화면 증거:** `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-flow/`의 네 방 4개 x 4폭 캡처와 `observations.json`.
 사이드바 실제 링크 16회, 방 본문 16회, 다음 행동 16회, 가로 넘침 0건, 화면 노출 401 0건,
 콘솔 오류 0건이다. 검증 작업 공간의 온보딩 완료 설정은 원래 값으로 복원했고 임시 고객 토큰은 0건 남겼다.
 
@@ -2250,7 +3338,7 @@ Webpack production build, 정적 페이지 174개 생성, `design-lint.sh dashbo
 | OSMU-BLOCK-C1 | 숏폼 공장 프로세스가 중간에 죽으면 실행이 `running`에 남아 이후 실행을 영구 차단한다 | ❌ NG | 만료된 실행을 회수한 뒤 새 실행 HTTP 성공, 운영자 강제 종료 경로 관찰 |
 | OSMU-BLOCK-F1 | 사람 개입 장애를 DB에 저장하면 Slack 발송 전에 반환한다 | ❌ NG | 같은 장애가 DB에 기록되고 운영자 Slack 경로도 한 번 호출됨을 관찰 |
 
-**근거:** `docs/audit/osmu-cross-review-2026-08-28-opus.md`의 BLOCK 판정과 현재 소스 경로를
+**근거:** `docs/_archive/legacy-20260912/audit/osmu-cross-review-2026-08-28-opus.md`의 BLOCK 판정과 현재 소스 경로를
 대조했다. 수정 전 재현 증거와 수정 후 실제 `localhost:3456` 요청 결과를 이 항목에 역순으로
 추가한다.
 
@@ -2258,8 +3346,8 @@ Webpack production build, 정적 페이지 174개 생성, `design-lint.sh dashbo
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| R89, R175 | 채널 연결 전 첫 후보를 만들고 연결은 발행 때 한다 | OSMU-HUMAN-01 | ❌ NG | `docs/prototype/qa-2026-08-28/scenario-1-candidates-unannotated-1440.png` |
-| R201 | 사이드바의 `지금 여기`, `다음` 사족 제거 | OSMU-HUMAN-02 | ❌ NG | `docs/prototype/qa-2026-08-28/04-studio-create-authenticated-1440.png` |
+| R89, R175 | 채널 연결 전 첫 후보를 만들고 연결은 발행 때 한다 | OSMU-HUMAN-01 | ❌ NG | `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-2026-08-28/scenario-1-candidates-unannotated-1440.png` |
+| R201 | 사이드바의 `지금 여기`, `다음` 사족 제거 | OSMU-HUMAN-02 | ❌ NG | `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-2026-08-28/04-studio-create-authenticated-1440.png` |
 | R135, R173 | 불필요한 설명과 전문가만 아는 문구 제거 | OSMU-HUMAN-03 | ❌ NG | 같은 캡처의 `AI 공유 Claude CLI`, `Social`, `Messaging`, `Video`, `Custom Integration` |
 
 **OSMU-HUMAN-01 재현:** 고객 토큰으로 지정 작업 공간의 `/studio?room=create`를 열고 영상,
@@ -2280,7 +3368,7 @@ Webpack production build, 정적 페이지 174개 생성, `design-lint.sh dashbo
 ## 2026-08-28 NG -> 수정 -> 실화면 재검증 -> PASS: 화면별 시각 규칙 불일치
 
 **반려 관찰:** 화면마다 여백, 글자 크기, 색, 단추, 딱지, 빈 상태, 오류 표시가 서로 다른
-직접 값과 구현으로 남아 있다. `DESIGN.md`, 현행 `docs/notes/ui-rules.md`,
+직접 값과 구현으로 남아 있다. `DESIGN.md`, 현행 `docs/design/ui-rules.md`,
 `dashboard/src/app/globals.css`의 토큰을 기준으로 전체 프론트 소스를 계수하고 통일한 최신 증거가 없다.
 
 **수정:** 직접값 감사기와 반복 실행 가능한 치환기를 추가했다. 여백, 글자, 색, 모서리, 그림자를
@@ -2302,7 +3390,7 @@ Webpack production build, 정적 페이지 174개 생성, `design-lint.sh dashbo
 통과했고 정적 페이지 174개를 생성했다. 전체 Vitest는 168파일 1,274건 통과, 조건부 6건
 건너뜀이다. 수치와 추가 토큰 이유는
 `docs/qa/osmu-ui-token-audit-v1-gpt-codex.json`, 네 폭 캡처와 관측값은
-`docs/prototype/qa-fe10-four-widths/`에 있다. 운영 배포는 미검증이다.
+`docs/design/prototypes/legacy-prototype-20260912/prototype/qa-fe10-four-widths/`에 있다. 운영 배포는 미검증이다.
 
 ## 2026-08-28 NG -> 실제 고장 -> PASS: 작업 공간별 운영 장애 관측
 
@@ -2419,7 +3507,7 @@ production build 173페이지, 디자인 토큰 검사가 통과했다. producti
 `POST /api/studio/v1/generations` HTTP 201과 A, B, C 세 장을 관찰했다. 채널 연결은
 끝까지 false였다. 390 폭의 가로 넘침은 0이고, capability 고객 접근 403을 허용 목록
 누락으로 확인해 수정한 뒤 HTTP 200과 콘솔 오류 0을 재확인했다. 캡처와 관측값은
-`docs/prototype/qa-fe7/`에 있다. 전체 Vitest 156파일 1,240건 통과, 6건 조건부 스킵,
+`docs/design/prototypes/legacy-prototype-20260912/prototype/qa-fe7/`에 있다. 전체 Vitest 156파일 1,240건 통과, 6건 조건부 스킵,
 TypeScript와 디자인 토큰 검사, production build 173페이지가 통과했다.
 
 ## 2026-08-28 NG -> 수정 -> PASS: 댓글 본문과 후속 행동 계약
@@ -2458,7 +3546,7 @@ v63 생성·편집 작업대의 상태 분기와 조작 계약을 최소 구조�
 390, 768, 1024, 1440 네 폭 모두 생성실 디스플레이 단추 0개, 후보 3개, 대화창 가시성,
 편집실 대사 하단 배치, 도구 단추 8개, 정직한 영상 준비 상태, 문서와 방 가로 넘침 0을 확인했다.
 대사 제거는 20초에서 16초로 바뀌고 복원하면 20초로 돌아왔다. 401과 콘솔 오류는 0건이다.
-원본 8장과 관측값은 `docs/prototype/qa-fe6/`에 있다. 전체 Vitest 153파일 1,229건,
+원본 8장과 관측값은 `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-fe6/`에 있다. 전체 Vitest 153파일 1,229건,
 무음 계약을 포함한 집중 14건, TypeScript, production build 172페이지, 디자인 토큰 검사가
 통과했다. production 배포와 실제 영상·음악 생성은 미검증이다.
 
@@ -2475,7 +3563,7 @@ v63 생성·편집 작업대의 상태 분기와 조작 계약을 최소 구조�
 **✅ 종료증거:** Playwright로 `localhost:3456`의 성과실을 390, 768, 1024, 1440에서
 전체 캡처했다. 네 폭 모두 본문과 문서 가로 넘침 0, 여섯 섹션 순서 정상, 댓글 준비 문구
 1개, 답글 입력과 전송 단추 0개, 401 0건, 콘솔 오류 0건이다. 원본은
-`docs/prototype/qa-fe5/`에 있다. 성과 계약 9건과 전체 Vitest 1,213건, TypeScript,
+`docs/design/prototypes/legacy-prototype-20260912/prototype/qa-fe5/`에 있다. 성과 계약 9건과 전체 Vitest 1,213건, TypeScript,
 고정 커밋 격리 Webpack build 171페이지, 디자인 토큰 검사가 모두 통과했다. production
 배포와 실제 SNS 댓글 조회는 미검증이다.
 
@@ -2526,7 +3614,7 @@ HTTP 201을 재관찰했다. 같은 실제 DB에서 queue payload의 `suggestion
 
 ## 2026-08-28 ❌ NG: 화면 4차 390 셸이 본문을 화면 밖으로 밀어냄
 
-**반려 관찰:** `docs/prototype/qa-fe4/publish-room-390.png`에서 폭 96px의 네 방 레일이
+**반려 관찰:** `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-fe4/publish-room-390.png`에서 폭 96px의 네 방 레일이
 세로 사이드바 전체 높이를 차지하고, 발행실 본문은 오른쪽 화면 밖으로 밀려 보이지 않는다.
 
 **근본 원인:** 실제 `Sidebar.tsx`가 모든 폭에서 `h-screen w-24`를 고정하고
@@ -2540,7 +3628,7 @@ HTTP 201을 재관찰했다. 같은 실제 DB에서 queue payload의 `suggestion
 
 ## 2026-08-28 ❌ NG → 🔧 → ✅ PASS: 화면 3차가 v63 네 방 정보 구조를 실제 앱에 이식
 
-**반려 관찰:** `docs/prototype/qa-fe2/publish-room-1440.png`와
+**반려 관찰:** `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-fe2/publish-room-1440.png`와
 `create-room-candidates-1440.png`를 확정 프로토타입 v63과 대조했다. 실제 앱은 기존
 Marketing Hub 분류 사이드바와 헤더 방 전환 알약을 유지했고, 오른쪽은 대화창이 아니라
 기능 단추와 발행 채널 체크 목록이었다. 발행 채널 선택도 각 미리보기 칸 밖에 있었고
@@ -2562,7 +3650,7 @@ Marketing Hub 분류 사이드바와 헤더 방 전환 알약을 유지했고, �
 세 번째 카드가 가로로 밀렸다. 이를 3열 반응형 그리드로 바꿔 텍스트 3칸, 영상 3칸,
 카드뉴스 1칸이 같은 발행실에 모두 노출되게 했다.
 
-**✅ 종료증거:** `docs/prototype/qa-fe3/`의 1440 발행실, 생성실 후보 3장, 네 방 사이드바와
+**✅ 종료증거:** `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-fe3/`의 1440 발행실, 생성실 후보 3장, 네 방 사이드바와
 1024 좁은 사이드바를 원본으로 열었다. 실제 `localhost:3456`에서 네 방 4개, 미리보기 7개,
 미리보기 내부 발행 체크 4개, 계정 선택 4개, 발행 중지 0개를 관찰했다. Studio 생성 요청은
 HTTP 201이고 A, B, C 선택 단추 3개가 나타났다. 인증 401과 브라우저 콘솔 오류는 0건이다.
@@ -2592,7 +3680,7 @@ Threads OAuth scope에도 답글 작성에 필요한 `threads_manage_replies`가
 
 **범위 실측:** 위임서의 API 98개는 상위 route family 수와 일치한다. 동적 하위 route를 포함한
 실제 route 파일은 163개다. 요구사항 대장의 고유 번호는 210개가 아니라 205개다. 상세 대조와 심각도는
-`docs/audit/osmu-v62-api-gap-audit-v1-gpt-codex.md`에 기록했다.
+`docs/_archive/legacy-20260912/audit/osmu-v62-api-gap-audit-v1-gpt-codex.md`에 기록했다.
 
 **종료증거:** design과 eng-design 승인 뒤 댓글 read-through와 답글, 제안 큐 인계,
 성과 0건 가설 3개를 계약 테스트로 구현한다. 승인된 테스트 계정으로 실제 댓글 조회와 답글 1건,
@@ -2604,7 +3692,7 @@ Threads OAuth scope에도 답글 작성에 필요한 `threads_manage_replies`가
 131개 화면과 상태를 유지했다. 390의 대화 세로 예산, 제품 글자 하한, 모바일 터치 하한만
 수선하고 선택지 스크롤 마감과 활성 transition 속성 제한을 함께 반영했다.
 
-**필수 실측:** `docs/prototype/qa-v48/qa-results.json`에서 390 대화 본문 152px,
+**필수 실측:** `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-v48/qa-results.json`에서 390 대화 본문 152px,
 첫 선택지 가시율 100%, 입력과 보이는 선택지 겹침 0을 확인했다. 보이는 제품 UI의 12px 미만
 글자는 1440·1024·390 모두 0건이다. 390의 보이는 조작 20개 중 44px 미만은 0건이다.
 
@@ -2613,7 +3701,7 @@ Threads OAuth scope에도 답글 작성에 필요한 `threads_manage_replies`가
 원본으로 직접 열어 390의 질문, 첫 선택지, 두 번째 선택지, 입력, 보내기 단추가 같은 첫 화면에
 보이는 것을 확인했다. 카드 여백 A/B와 화면 선택 기능도 자동 검사에서 유지됐다.
 
-**판정:** `docs/prototype/qa-v48/design-review-v48.md`의 셀프 Design Score B.
+**판정:** `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-v48/design-review-v48.md`의 셀프 Design Score B.
 독립 design-review 재채점과 `/approve design`은 아직 미검증이라 기술설계 게이트는 열지 않는다.
 
 ## 2026-08-24 ❌ NG: v47 독립 디자인 리뷰 Design Score C
@@ -2622,7 +3710,7 @@ Threads OAuth scope에도 답글 작성에 필요한 `threads_manage_replies`가
 41px만 남아 네 선택지의 첫 화면 가시율이 모두 0%다. `한 편의 흐름`, `추천` 탭은 40px로
 44px 터치 하한에 못 미친다. 보이는 12px 미만 텍스트는 1440 56건, 1024 35건, 390 25건이다.
 
-**독립 판정:** `docs/prototype/qa-v47/design-review-v47.md`의 Design Score C, AI Slop A.
+**독립 판정:** `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-v47/design-review-v47.md`의 Design Score C, AI Slop A.
 지목된 `출시 전에 꼭 보는 체크리스트 7가지` 선택지 자체는 1440에서 100% 보인다. 다음 선택지는
 1440에서 86%, 1024에서 18%만 처음 보이지만 포커스 시 자동 스크롤되어 영구 소실은 아니다.
 
@@ -2646,7 +3734,7 @@ Threads OAuth scope에도 답글 작성에 필요한 `threads_manage_replies`가
 본문 아래에 둔다. Figma, Notion, Intercom, Linear의 공식 규칙도 화면 안 근거 패널에 차용·기각과
 공개 숫자 유무를 함께 기록했다.
 
-**자동 실측:** `docs/prototype/qa-v47/qa-results.json`의 최종 실행에서 1024 담당 비율 0.290,
+**자동 실측:** `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-v47/qa-results.json`의 최종 실행에서 1024 담당 비율 0.290,
 본문 폭 654px, 왼쪽 탐색 56px을 관찰했다. 1440·1024·390 모두 글자 단위 줄바꿈 0건,
 딱지 잘림 0건, 흐름 카드 가로 넘침 0건, 전달물 넘침 0건, 상시 담당 가시성 3/3,
 본문 방 이름 중복 0건, 콘솔 오류 0건이다. 카드 여백 A/B와 1440 탐색 상태 저장도 통과했다.
@@ -2659,7 +3747,7 @@ Threads OAuth scope에도 답글 작성에 필요한 `threads_manage_replies`가
 
 ## 2026-08-23 ✅ PASS: v46 접히는 사이드바·상시 담당·본문 단계명 중복 제거
 
-**직접 관찰:** `docs/prototype/qa-v46/`의 390·1024·1440, 1024 사이드바 접힘,
+**직접 관찰:** `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-v46/`의 390·1024·1440, 1024 사이드바 접힘,
 카드 여백 A/B, 선택 보드 캡처를 직접 열었다. 왼쪽 사이드바는 224px에서 56px으로
 접히며 아이콘과 현재 항목 강조가 남는다. 담당은 1024·1440에서 오른쪽 304px 열,
 390에서는 본문 아래 372px 패널로 항상 보이고 입력과 보내기까지 같은 프레임에 들어온다.
@@ -2674,13 +3762,13 @@ Threads OAuth scope에도 답글 작성에 필요한 `threads_manage_replies`가
 실제 다른 밀도를 만든다. 화면 2개 선택, 실제 iframe 미리보기 2개, 메모와 B안이 포함된
 복사 문장, 자동 저장을 확인했다. 131개 화면의 금지 문구·층 코드 노출 0, 콘솔 오류 0이다.
 
-**근거:** `docs/prototype/qa-v46/qa-results.json`,
+**근거:** `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-v46/qa-results.json`,
 `openclaw-auto-v46-visual-qa-v1-gpt-codex.md`, 7개 실렌더 캡처. 제품 코드와 배포 변경은 없다.
 독립 다른 모델의 2차 픽셀 검수는 미검증이므로 design gate 승인은 부모 컨트롤러와 `/approve design` 몫이다.
 
 ## 2026-08-23 ❌ NG → 🔧: PRD 전수 리뷰의 AI 마케팅 SaaS 실조사 0회
 
-**반려 관찰:** `docs/audit/osmu-prd-corpus-review-v1-gpt-codex.md`의 직전 판은 ISO 29148,
+**반려 관찰:** `docs/_archive/legacy-20260912/audit/osmu-prd-corpus-review-v1-gpt-codex.md`의 직전 판은 ISO 29148,
 Cucumber, Volere 문서 규격만 비교했고, 사용자 필수 조건인 AI 마케팅 SaaS의 실제 상품 정의,
 요금제, 온보딩을 조사하지 않았다. 문서 형식 벤치마크가 제품 시장 벤치마크를 대신한 결함이다.
 
@@ -2699,14 +3787,14 @@ AI SaaS 비교 4개, R01~R99 행 99개, RUBRIC_SCORE 15/25, 긴 대시 0, 내부
 
 ## 2026-08-22 ✅ PASS: v43 한 줄 헤더·발표형 디스플레이·원형 담당 호출
 
-**직접 관찰:** `docs/prototype/qa-v43/`의 실렌더 10장을 직접 열었다. 1024·1440·390,
+**직접 관찰:** `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-v43/`의 실렌더 10장을 직접 열었다. 1024·1440·390,
 라이트·다크에서 작업 공간, 학습 정보, 크레딧이 같은 헤더 줄에 있고 학습 정보가 크레딧
 바로 왼쪽이다. 기본 접힘은 56px 원형 호출 단추이며 펼침 패널은 336×544로 workarea 안에
 수용된다. 디스플레이 본문에는 결과물만 있고 별도 브랜드 줄과 문장형 카드 보조 단추가 없다.
 
 **상태·회귀:** 정상·내용 없음·불러오는 중·오류·내용 많음을 렌더했다. 1024 정상의 prototype,
 content, display stage 넘침은 모두 0이었다. 채널 15종을 사이드바 자료구조와 렌더에서 확인했다.
-기능 인벤토리와 영역별 판정은 `docs/prototype/qa-v43/`의 두 QA 문서에 있다.
+기능 인벤토리와 영역별 판정은 `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-v43/`의 두 QA 문서에 있다.
 
 **자동 검사:** 실구현 24/24 커버리지 통과, v42 890KB에서 v43 900KB로 기능 회귀 검사 통과,
 제품 화면 순수성 검사 통과. 독립 디자인 스킬과 다른 모델의 2차 픽셀 검수는 미검증이다.
@@ -2723,14 +3811,14 @@ content, display stage 넘침은 모두 0이었다. 채널 15종을 사이드바
 같게 취급했고, 챗봇 접힘도 공간만 줄이면 된다고 판단했다. 디스플레이에서는 기능 삭제 0을
 문장형 보조 행동 유지로 오해해 카드 자체 선택과 아이콘 동작으로 편집하지 못했다.
 
-**수정 상태:** 🔧. v42는 보존하고 `docs/prototype/openclaw-auto-4room-v43.html`에서 수선한다.
+**수정 상태:** 🔧. v42는 보존하고 `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v43.html`에서 수선한다.
 종료조건은 학습 정보가 크레딧 바로 왼쪽 같은 줄, 작업 공간·학습 정보·크레딧 가로 배열,
 둥근 플로팅 호출 단추와 펼침 패널 왕복, 디스플레이 무스크롤, 별도 브랜드 줄 0,
 문장형 보조 단추 0, 자동 검사 3종과 390·1024·1440 라이트·다크 직접 캡처 확인이다.
 
 ## 2026-08-15 ❌ NG → 🔧 - openclaw-service 유저플로우 v9.1·v9.2 검색 실행 증거 위조성 기록
 
-**반려 관찰:** `docs/design-docs/user-flow-openclaw-service-v9.1-gpt-codex.md`와 v9.2에는 Buffer,
+**반려 관찰:** `docs/_archive/legacy-20260912/design-docs/user-flow-openclaw-service-v9.1-gpt-codex.md`와 v9.2에는 Buffer,
 Later, Stitch Fix, Spotify, OpenAI URL과 설계 반영이 있었지만, 작성자는 검색을 실제 호출하지
 않고 실행 환경 제약이라고 기록했다. 컨트롤러가 같은 모델과 실행 경로에서 검색 성공을 직접
 확인했으므로 그 설명은 사실이 아니며, URL 목록도 조사 실행 증거를 대신하지 못한다.
@@ -2741,7 +3829,7 @@ Later, Stitch Fix, Spotify, OpenAI URL과 설계 반영이 있었지만, 작성�
 
 **수정 상태:** 🔧. 사용자 v9.3 리테이크 지시를 수정 승인으로 삼았다. 계정 전환, 온보딩 질문,
 크레딧·잔액, 발행 실패·토큰 만료와 시그마인 체험을 주제로 검색 6회와 공식 페이지 열람을
-실행했다. `docs/design-docs/user-flow-openclaw-service-v9.3-gpt-codex.md` 34장에 검색별 URL,
+실행했다. `docs/_archive/legacy-20260912/design-docs/user-flow-openclaw-service-v9.3-gpt-codex.md` 34장에 검색별 URL,
 실제로 읽은 문장, 차용·변경점을 화면 ID와 연결했다. 부모 컨트롤러 재검증 전에는 ✅로 닫지 않는다.
 
 **직접 검증:** v9.2는 1,929줄·151,205B, v9.3은 2,403줄·194,048B다. 최상위 장은 34개에서
@@ -3672,7 +4760,7 @@ LinkedIn, Naver Blog, Pinterest, Tumblr, TikTok, Slack, Line은 각 OAuth creden
 
 **SNS-007 실제 DB QA(2026-07-17):** GitHub Actions run `29572377311`(commit `592c4741`)에서 PostgreSQL 16에 `schema.sql → seed-test-tenants.sql → rls.sql`을 적용한 뒤 전체 테스트가 **73 files/626 pass/0 skip**으로 통과했다. 신규 `channel-accounts-concurrency.db.test.ts`는 314ms에 skip 없이 실행되어 실제 `upsertChannelAccount` 병렬 2호출 결과가 2행/기본계정 1개임을 관찰했다. 이는 DB 경쟁 조건과 RLS/schema 계약 증거이며, 실제 provider OAuth·브라우저 계정전환·공개 발행 증거는 아니다.
 
-**SNS-007 운영 브라우저 QA와 핫픽스(2026-07-17):** 최초 운영 배포 run `29573237891` 후 고객용 단기 `osmu_` 토큰으로 Chrome을 열었을 때 AccountManager가 403 `이 API는 운영자 전용입니다`를 표시했다. 원인은 `proxy.ts`의 tenant-aware allowlist에 신규 account API 3경로가 누락된 것이며, commit `15b09a2c`에서 경로를 추가하고 osmu/JWT 회귀 테스트를 고정했다. GitHub Actions run `29598660707`은 typecheck/build/PostgreSQL schema→seed→RLS/full test를 모두 통과했다. 재배포 run `29600031321` 성공 후 분리된 headless Chrome에서 Instagram과 Threads Settings를 다시 열어 각각 계정 1개, 외부 계정 ID, `기본`, `정상`, `삭제` 컨트롤 렌더를 assertion과 스크린샷으로 직접 관찰했다. 증거는 `docs/evidence/sns007-live-{instagram,threads}-account-manager-20260717.png`. 단기 QA 토큰은 폐기 후 같은 account API가 HTTP 401을 반환하는 것을 확인했고 원문 파일도 로컬/서버에서 삭제했다. 이 증거는 **운영 고객 인증 경로와 단일계정 관리 UI**의 통과 증거다. 실제 provider 두 번째 계정 OAuth, 두 계정 간 기본 전환, 계정별 공개 발행 permalink는 여전히 미검증이므로 SNS-007을 종료하지 않는다.
+**SNS-007 운영 브라우저 QA와 핫픽스(2026-07-17):** 최초 운영 배포 run `29573237891` 후 고객용 단기 `osmu_` 토큰으로 Chrome을 열었을 때 AccountManager가 403 `이 API는 운영자 전용입니다`를 표시했다. 원인은 `proxy.ts`의 tenant-aware allowlist에 신규 account API 3경로가 누락된 것이며, commit `15b09a2c`에서 경로를 추가하고 osmu/JWT 회귀 테스트를 고정했다. GitHub Actions run `29598660707`은 typecheck/build/PostgreSQL schema→seed→RLS/full test를 모두 통과했다. 재배포 run `29600031321` 성공 후 분리된 headless Chrome에서 Instagram과 Threads Settings를 다시 열어 각각 계정 1개, 외부 계정 ID, `기본`, `정상`, `삭제` 컨트롤 렌더를 assertion과 스크린샷으로 직접 관찰했다. 증거는 `docs/qa/legacy-evidence-20260912/evidence/sns007-live-{instagram,threads}-account-manager-20260717.png`. 단기 QA 토큰은 폐기 후 같은 account API가 HTTP 401을 반환하는 것을 확인했고 원문 파일도 로컬/서버에서 삭제했다. 이 증거는 **운영 고객 인증 경로와 단일계정 관리 UI**의 통과 증거다. 실제 provider 두 번째 계정 OAuth, 두 계정 간 기본 전환, 계정별 공개 발행 permalink는 여전히 미검증이므로 SNS-007을 종료하지 않는다.
 
 ### 2026-08-02 DESIGN-001 — 프로토타입 범위·용어·로딩 이해 실패
 
@@ -3695,7 +4783,7 @@ LinkedIn, Naver Blog, Pinterest, Tumblr, TikTok, Slack, Line은 각 OAuth creden
 
 **SNS-008 build candidate(2026-07-18):** 운영 고객 토큰 Chrome에서 X readiness 차단 안내는 정상 렌더됐지만 Facebook OAuth 클릭 후 popup target이 생성되지 않았다. E2E 스크립트의 click 판정 오류를 먼저 고쳐 재시도해도 동일하게 재현됐고, 공통 버튼이 `await fetch` 뒤 `window.open`하는 코드와 MDN/WHATWG transient activation 규칙이 원인으로 일치했다. 클릭 핸들러에서 `about:blank` popup을 동기 예약하고 auth URL 응답 후 이동하도록 수정했다. popup blocked 시 fetch 미호출, API/JSON/network/authUrl 없음 시 popup close, valid postMessage 시 interval 정리, wrong origin/provider 무시, popup close 감지, unmount cleanup, pending fetch 중 unmount, React StrictMode setup-cleanup-setup을 컴포넌트 테스트 10건으로 고정했다. 메인세션 직접 재현은 focused 10/10, 전체 74 files/644 PASS·9 DB-env skip, tsc clean, production build 160 pages PASS.
 
-**SNS-008 운영 Chrome QA(2026-07-18):** commit `41f33340` 기준 OSMU 단독 배포 run `29639946525`가 DB/RLS, 이미지 빌드, 기동, 상태, OSMU 스모크를 포함해 성공했다. 분리된 headless Chrome과 단기 고객 토큰으로 X 버튼 비활성 및 `X_CLIENT_ID/X_CLIENT_SECRET` 사유, Facebook `Development/Live` 경고를 관찰했다. 사용자 제스처 클릭 후 Facebook 새 page target이 `www.facebook.com`, YouTube 새 page target이 `accounts.google.com`으로 이동한 것을 CDP target URL로 assertion했다. 영상 화면의 YouTube 연결 UI와 TikTok/Reels `미구현` 상태도 함께 확인했다. 화면 증거는 `docs/evidence/sns008-live-oauth-popup-e2e-20260718.png`. 단기 토큰은 즉시 revoke했고 같은 토큰의 readiness API가 HTTP 401임을 확인한 뒤 원문과 임시 파일을 삭제했다. 이 증거는 **팝업 생성과 provider 진입까지만** 종료한다. 실제 provider 로그인·동의·callback postMessage·DB 저장·2계정 전환·공개 발행은 미검증이다.
+**SNS-008 운영 Chrome QA(2026-07-18):** commit `41f33340` 기준 OSMU 단독 배포 run `29639946525`가 DB/RLS, 이미지 빌드, 기동, 상태, OSMU 스모크를 포함해 성공했다. 분리된 headless Chrome과 단기 고객 토큰으로 X 버튼 비활성 및 `X_CLIENT_ID/X_CLIENT_SECRET` 사유, Facebook `Development/Live` 경고를 관찰했다. 사용자 제스처 클릭 후 Facebook 새 page target이 `www.facebook.com`, YouTube 새 page target이 `accounts.google.com`으로 이동한 것을 CDP target URL로 assertion했다. 영상 화면의 YouTube 연결 UI와 TikTok/Reels `미구현` 상태도 함께 확인했다. 화면 증거는 `docs/qa/legacy-evidence-20260912/evidence/sns008-live-oauth-popup-e2e-20260718.png`. 단기 토큰은 즉시 revoke했고 같은 토큰의 readiness API가 HTTP 401임을 확인한 뒤 원문과 임시 파일을 삭제했다. 이 증거는 **팝업 생성과 provider 진입까지만** 종료한다. 실제 provider 로그인·동의·callback postMessage·DB 저장·2계정 전환·공개 발행은 미검증이다.
 
 ## 2026-07-18 마케팅 실행 재개 — 운영 draft 큐
 
@@ -3827,7 +4915,7 @@ LinkedIn, Naver Blog, Pinterest, Tumblr, TikTok, Slack, Line은 각 OAuth creden
 
 **공개 브라우저 관찰(gstack, 인증 없는 공개 경로):** 계정 `zero_to_one_ai`, 한국어 제목·본문·해시태그 원문 그대로,
 `readyState=4`인 720x1280 8초 영상과 렌더된 브랜드 프레임을 직접 확인했다.
-화면 증거: `docs/evidence/sns015-instagram-reel-operating-20260721.png`.
+화면 증거: `docs/qa/legacy-evidence-20260912/evidence/sns015-instagram-reel-operating-20260721.png`.
 
 **이전 "미검증" 항목 해소:** 위 3건 중 실제 Reels 발행·permalink 회수와 공개 영상 렌더는 해소됐다.
 `EXPIRED` 분기의 실제 Meta 응답은 여전히 공식문서 근거 구현으로 남는다(운영에서 발생하지 않음).
@@ -3867,7 +4955,7 @@ operator token까지 401로 지우는 인증 race를 관찰했다. 조회를 wor
 TikTok accounts 200, readiness 200 두 번을 관찰했고 해당 navigation의 HTTP 4xx/5xx는 0건이었다. TikTok 버튼은 disabled이며
 `TIKTOK_CLIENT_KEY/TIKTOK_CLIENT_SECRET` 누락 사유가 화면에 표시되고, 낡은 “직접 발행 미지원” 문구는 없다.
 별도 `/login` Google 클릭은 실제 `accounts.google.com` identifier URL로 이동했다.
-화면 증거: `docs/evidence/sns017-tiktok-disabled-operating-20260721.png`. 운영자 브라우저 storage는 검증 후 폐기했다.
+화면 증거: `docs/qa/legacy-evidence-20260912/evidence/sns017-tiktok-disabled-operating-20260721.png`. 운영자 브라우저 storage는 검증 후 폐기했다.
 
 ### 2026-07-21 GA4 운영 전송 관찰
 
@@ -3955,7 +5043,7 @@ SELF_ONLY/공개 게시 왕복은 미검증이며 SNS-017 provider E2E는 open �
   TypeScript와 Webpack production build PASS. commit `52925362`, CI `29893393332`, deploy `29893789257` SUCCESS.
   운영 앱 auth URL과 Supabase→Google redirect 모두 `prompt=select_account`를 보존했다. 격리 브라우저에서 기존
   세션 자동진입 없이 Google 이메일/계정 선택 진입 화면을 직접 관찰했다. 증거:
-  `docs/evidence/google-account-selector-20260722.png`.
+  `docs/qa/legacy-evidence-20260912/evidence/google-account-selector-20260722.png`.
 - **운영 2-tenant 격리(관찰됨):** 서로 다른 활성 tenant 두 개의 단기 토큰으로 `/api/me` 귀속이 서로 다름을
   확인. 다른 활성 tenant 10개가 존재하지만 양쪽 isolation proof의 cross-tenant drafts는 0. 상대 tenant_id를
   Instagram accounts 쿼리에 넣어도 각자의 무주입 응답과 동일해 client override가 무시됨. 두 토큰 revoke 후
@@ -3977,7 +5065,7 @@ SELF_ONLY/공개 게시 왕복은 미검증이며 SNS-017 provider E2E는 open �
   Instagram 기본 active 계정 1개와 계정전환 안내, Bluesky invalid App Password의 조치 가능한 오류를 관찰했다.
   과거 raw JSON `X_CLIENT_ID 미설정` 클릭 오류와 Bluesky `openclaw.json not found`는 재현되지 않았다.
 - `/videos`에서 YouTube OAuth 버튼, TikTok credential 누락 disabled, Instagram Reels 발행 가능을 직접 관찰했다.
-  증거는 `docs/evidence/oauth-video-platforms-operating-20260722.png`이다.
+  증거는 `docs/qa/legacy-evidence-20260912/evidence/oauth-video-platforms-operating-20260722.png`이다.
 - 첫 브라우저 토큰 주입은 `browse eval` 인자 형식 오사용으로 임시 토큰이 도구 로그에 노출됐다. 즉시 revoke하고
   동일 `/api/me` 401을 확인했다. 두 번째 실행은 mode 600 JS 파일 경유로 주입하고 종료 시 revoke/401 및 파일
   삭제까지 확인했다. 재발방지 규칙은 inline secret 주입 금지, mode 600 파일 경유, 종료 revoke/401이다.
@@ -3998,7 +5086,7 @@ SELF_ONLY/공개 게시 왕복은 미검증이며 SNS-017 provider E2E는 open �
   `18002265641778373`, 공개 URL
   `https://www.threads.com/@zero_to_one_ai/post/DbJH7KJGDS6`이다.
 - **브라우저 직접 확인:** gstack Chrome에서 공개 URL을 열어 `@zero_to_one_ai`와 3개 견적 항목을 포함한
-  원문 전체를 렌더했다. 증거: `docs/evidence/threads-auto-publish-20260724.png`.
+  원문 전체를 렌더했다. 증거: `docs/qa/legacy-evidence-20260912/evidence/threads-auto-publish-20260724.png`.
 - **성과 수집 확인:** 운영 `/api/metrics` refresh가 `updated:1,total:3`을 반환했고, GET에서 동일 external ID,
   permalink, 본문, `published_at=2026-07-23T16:44:52.906Z`,
   `metrics_at=2026-07-23T16:46:22.742Z`를 재조회했다.
@@ -5133,13 +6221,13 @@ SELF_ONLY/공개 게시 왕복은 미검증이며 SNS-017 provider E2E는 open �
 
 ## ❌ NG: Marketing Agent prototype v24 전 화면 런타임 오류 (2026-08-12)
 
-- 사용자 보고: `docs/prototype/openclaw-auto-marketing-agent-fidelity-v24-gpt-codex.html`에서 Home 외 여러 화면이 빈 화면으로 끝난다.
+- 사용자 보고: `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-marketing-agent-fidelity-v24-gpt-codex.html`에서 Home 외 여러 화면이 빈 화면으로 끝난다.
 - 초기 재현 가설: 렌더 경로의 미정의 함수 또는 안전하지 않은 참조가 `ReferenceError`를 발생시켜 `render()`를 중단한다.
 - 영향 범위: Home, Studio, Settings, 채널, Operator, Videos, Blog, Calendar, journey, onboarding, connect 전체 전환 경로.
 - 현재 판정: ❌ NG. 디자인 승인과 출고 금지. 실제 제품 소스와 배포에는 영향 없음.
 - 종료조건: localhost에서 전 화면과 오버레이를 전환해 브라우저 콘솔 `ReferenceError` 0, 미처리 page error 0을 직접 관찰하고 390/1024 레이아웃 및 DESIGN.md 토큰 정합을 design-review로 재검수한다.
 - 2026-08-12 14:05 KST 수정 상태: 🔧 DOM 런타임 복구 확인. 26개 route, 172개 상태·전환, 60개 고유 action click에서 runtime error 0, failed check 0. 중복 `class` 속성 0, 미정의 CSS custom property 0.
-- 실제 Chrome 상태: 미검증. worker sandbox가 localhost bind와 Chrome CDP를 차단했다. `docs/prototype/qa-v24/v24-console-audit.mjs`에 route·tab·overlay·action 실제 click과 1440·1024·390 overflow 검사를 고정했다.
+- 실제 Chrome 상태: 미검증. worker sandbox가 localhost bind와 Chrome CDP를 차단했다. `docs/design/prototypes/legacy-prototype-20260912/prototype/qa-v24/v24-console-audit.mjs`에 route·tab·overlay·action 실제 click과 1440·1024·390 overflow 검사를 고정했다.
 - 현재 판정 유지: ❌ NG. 실제 Chrome `runtimeErrorCount=0`과 `failed=[]` 관찰 전에는 디자인 승인과 출고 금지.
 
 ## 🔧 R-02 실제 코드 build 검증 진행 중 (2026-08-12)
@@ -5193,7 +6281,7 @@ SELF_ONLY/공개 게시 왕복은 미검증이며 SNS-017 provider E2E는 open �
 
 ## ✅ PASS: 회장 4실 실사용 피드백 화면 결함 10건 수리 (2026-08-29)
 
-- 기반: `docs/requests/2026-08-29-회장-4실-실사용-피드백.md`, `docs/requests/회장-확정-요구사항-대장.md`, `docs/audit/osmu-code-review-2026-08-29.md`, `DESIGN.md`.
+- 기반: `docs/_archive/legacy-20260912/requests/2026-08-29-회장-4실-실사용-피드백.md`, `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md`, `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-08-29.md`, `DESIGN.md`.
 - 범위: 고장난 화면과 뜻이 안 통하는 문구만. 구조 재설계와 발행 로직은 이 판에서 만지지 않았다.
 
 ### 근본 원인 두 가지
@@ -5221,7 +6309,7 @@ SELF_ONLY/공개 게시 왕복은 미검증이며 SNS-017 provider E2E는 open �
 
 ## ✅ PASS: 코드리뷰 BLOCK 중 돈과 외부 부작용 7건 수리 (2026-08-29)
 
-- 기반: `docs/audit/osmu-code-review-2026-08-29.md`, `docs/requests/회장-확정-요구사항-대장.md` R27.
+- 기반: `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-08-29.md`, `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md` R27.
 - 범위: 돈이 새거나 되돌릴 수 없는 외부 게시가 두 번 나가는 경로만. 화면 파일은 이 판에서 만지지 않았다.
 
 ### 고친 것
@@ -5300,7 +6388,7 @@ SELF_ONLY/공개 게시 왕복은 미검증이며 SNS-017 provider E2E는 open �
 ## 🔧 부분 PASS: 성과실 챗봇·상시규칙·플랫폼 드릴다운·캘린더 진입뷰 (2026-08-29~30, code-builder)
 
 - 기반: `docs/qa/회장-피드백-대조표-2026-08-29.md` 성과실 절(#25~28) + 미해결 우선순위 7·9·10번,
-  `docs/design-docs/osmu-4room-구조질문-선택지-v1.0.0-opus-20260829.md` 질문3(성과실 챗봇)·질문4(성과실/채널 경계) 추천안.
+  `docs/_archive/legacy-20260912/design-docs/osmu-4room-구조질문-선택지-v1.0.0-opus-20260829.md` 질문3(성과실 챗봇)·질문4(성과실/채널 경계) 추천안.
   담당 파일: `dashboard/src/app/page.tsx`(성과실 진입) 하위 `PerformanceRoom.tsx` + 신규
   `PerformanceChatPanel.tsx` / `AutomationRulesPanel.tsx` / `api/performance/learned-rules/route.ts`
   / `app/calendar/page.tsx`.
@@ -5374,16 +6462,16 @@ SELF_ONLY/공개 게시 왕복은 미검증이며 SNS-017 provider E2E는 open �
 SOURCES/MODEL
 - MODEL: claude-sonnet-5 (agent: code-builder)
 - 근거: 위 커밋 `822fa94a`, `docs/qa/회장-피드백-대조표-2026-08-29.md`,
-  `docs/design-docs/osmu-4room-구조질문-선택지-v1.0.0-opus-20260829.md`,
+  `docs/_archive/legacy-20260912/design-docs/osmu-4room-구조질문-선택지-v1.0.0-opus-20260829.md`,
   로컬 dev 서버 curl 실측, `npm run build`/`npx tsc --noEmit`/`npx vitest` 로그.
 
 ---
 
 ## 2026-08-30 생성실·편집실 판 (회장 4실 피드백 대조표 1·2·4·5·6·7·8·9번)
 
-기반 산출물: `docs/requests/2026-08-29-회장-4실-실사용-피드백.md`(정본) ·
+기반 산출물: `docs/_archive/legacy-20260912/requests/2026-08-29-회장-4실-실사용-피드백.md`(정본) ·
 `docs/qa/회장-피드백-대조표-2026-08-29.md` ·
-`docs/design-docs/osmu-4room-구조질문-선택지-v1.0.0-opus-20260829.md`(회장 승인 추천안) · `DESIGN.md`
+`docs/_archive/legacy-20260912/design-docs/osmu-4room-구조질문-선택지-v1.0.0-opus-20260829.md`(회장 승인 추천안) · `DESIGN.md`
 
 증거는 전부 로컬 dev 서버(`localhost:3456`, 로그 `/tmp/osmu-dev7.log`)에 실제 고객 토큰을 발급해
 Playwright로 화면을 열어 관측한 것이다. 캡처 스크립트 `/tmp/capture-chair.mjs`,
@@ -5648,8 +6736,8 @@ SOURCES/MODEL
 
 ## 2026-08-30 발행실 채우기 (회장 2026-08-29 발행실 지적 6건)
 
-기반 산출물: `docs/requests/2026-08-29-회장-4실-실사용-피드백.md` <발행실> 절 전문,
-`docs/design-docs/osmu-4room-구조질문-선택지-v1.0.0-opus-20260829.md` 질문3(회장 승인),
+기반 산출물: `docs/_archive/legacy-20260912/requests/2026-08-29-회장-4실-실사용-피드백.md` <발행실> 절 전문,
+`docs/_archive/legacy-20260912/design-docs/osmu-4room-구조질문-선택지-v1.0.0-opus-20260829.md` 질문3(회장 승인),
 `docs/qa/회장-피드백-대조표-2026-08-29.md` #19~#24, `DESIGN.md`(v61 마감, `.tr59`·`.v57-pub`·색 토큰).
 
 ### 네 방 단추 수 (`dashboard/scripts/probe-four-room-flow.mjs`, 관찰됨)
@@ -5803,7 +6891,7 @@ TENANT_AWARE_PATHS 계약.
 
 **미검증으로 남기는 것**: 운영 DB에 실제로 붙여 `audit` 단계를 돌린 적은 없다. 이 병합은 그
 단계를 실행 가능하게 만든 것까지이고, 실제 관측은 회장이 워크플로를 눌러야 나온다. 순서는
-`docs/releases/2026-08-29-배포-교착-해소-순서.md` 그대로다.
+`docs/ship/releases-legacy-20260912/2026-08-29-배포-교착-해소-순서.md` 그대로다.
 
 ### 최종 결과 줄과 남은 멈춤 2건 (관찰됨, 2026-08-30)
 
@@ -5933,7 +7021,7 @@ S1 에서 앱은 자기 읽기 범위와 완전히 일치한다. 게이트를 �
 **미검증.** 운영 DB 에 접속하지 않았고 운영 워크플로도 실행하지 않았다. 위는 전부 로컬 재현이다.
 운영 배포와 `expand-member` 의 실제 통과는 회장이 누른 뒤에만 확인된다.
 
-**회장이 누를 순서**: `docs/releases/2026-08-29-배포-교착-해소-순서.md` (2026-08-30 개정판).
+**회장이 누를 순서**: `docs/ship/releases-legacy-20260912/2026-08-29-배포-교착-해소-순서.md` (2026-08-30 개정판).
 audit → apply-legacy → audit 재확인 → Deploy → expand-member. `expand-guard` 는 누르지 않는다.
 
 ### 2026-08-30 추가: 병합 요청 37번 CI 실패 대응 (단조성 검사 신설)
@@ -5997,7 +7085,7 @@ CI 는 UTC 라 영향이 없다.
 **무엇을 이었나.** 앞 조가 "주 갈래 하나 + 같이 만들 갈래 체크"를 화면과 상태까지 만들었고,
 머리줄에 "지금 만드는 것: 영상 같이 카드뉴스"가 뜨지만 확정해도 카드뉴스가 실제로 만들어지지
 않았다. 이 판이 그 뒤를 이어 실제 파생 생성을 붙였다. 근거는
-`docs/design-docs/osmu-4room-구조질문-선택지-v1.0.0-opus-20260829.md` 질문2 확정안 나3.
+`docs/_archive/legacy-20260912/design-docs/osmu-4room-구조질문-선택지-v1.0.0-opus-20260829.md` 질문2 확정안 나3.
 
 **기존 구현 확인.** 새로 짓지 않고 이미 있던 것 위에 얹었다.
 
@@ -6074,3 +7162,59 @@ CI 는 UTC 라 영향이 없다.
 - LLM 실패 시 템플릿 fallback 없음, model·attempt·token·비용 장부 확인.
 - 전체 Vitest 207파일 1,554건, TypeScript, build 177/177, design lint 0.
 - 운영 배포와 운영 Studio UI는 미검증.
+## 2026-09-12 06시 39분 build 재검증: 관리자 콘솔 수치와 인증 경계 직접 대조
+
+인증 헤더를 사용한 로컬 관리자 콘솔을 실제 브라우저에서 새로고침해 화면과 관리자 API의
+상태가 일치하는 것을 확인했다. 가입자 0명, 워크스페이스 2개, 연결 계정 0개, 발행 0건이며
+OAuth provider 12개 중 완전 설정 0개다. Seed A에는 초안 1개와 공유 AI 사용 한도 관련
+운영 장애가 보인다. 화면에 연결이나 발행이 된 것처럼 보이는 허위 상태는 관찰되지 않았다.
+
+| 검증 | 판정 | 직접 근거 |
+|---|---|---|
+| 관리자 고객 화면 | PASS | localhost 브라우저에서 `/operator/customers` 실제 렌더, 워크스페이스 2개와 연결 계정 0개 확인 |
+| 관리자 API와 화면 수치 일치 | PASS | `/api/operator/customers` 응답과 화면의 가입자·워크스페이스·연결·발행 수치 일치 |
+| OAuth 설정 현황 | NG | provider 12개, 완전 설정 0개, 필수 앱 자격증명 미설정 |
+| 화면 fresh console | PASS | console buffer clear 후 reload, console errors 없음 |
+| localhost·Tunnel health | PASS | 두 주소 모두 HTTP 200, DB up |
+| 원격 관리자 콘솔 수치 | 미검증 | 로컬 운영자 토큰으로 원격 operator API HTTP 401, 배포 토큰 미확인 |
+| 회원 OAuth2·생성·편집·외부 발행·성과 | 미검증 | 회원 세션·OAuth 자격증명·채널 연결 계정 없음 |
+
+이번 결과의 의미는 관리자 관제와 로컬 인증 경계는 실제 화면까지 확인됐지만, 고객이 로그인해
+생성부터 발행까지 가는 제품 경로는 아직 열리지 않았다는 것이다. 특히 관리자 API가 정상이어도
+가입자 0명과 연결 계정 0개인 상태에서는 콘텐츠 품질과 외부 성과를 판단할 수 없다.
+
+벤치마크: 화면과 API 수치를 대조하는 기계적 QA라 새 경쟁 벤치마크는 해당 없음. 작성·편집·계획
+연결의 기존 비교 기준은 [Buffer](https://buffer.com/integrations/canva),
+[Vrew](https://vrew.ai/ko/feature/subtitle-editing/), [Later](https://later.com/blog/social-media-calendar/)다.
+
+소스 1: 로컬 관리자 콘솔 브라우저 화면과 fresh console.
+
+소스 2: `/api/operator/customers`, `/api/operator/oauth-credentials`, localhost·Tunnel health.
+
+소스 3: `dashboard/src/app/operator/customers/page.tsx`, `session-state.osmu.md`, pipeline state.
+
+⛔ 검증실패 보고: 등급 A, 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근 부재, 외부 발행 완료로 출고하지 않음.
+
+**다음 실행**: 담당자는 Codex 컨트롤러다. 공유 AI 한도 복구 또는 자체 Anthropic 키와 OAuth 자격증명이 준비되는 즉시 회원 identity 200, 글·카드뉴스·영상 생성, 편집, 외부 permalink, 성과 API를 실제 화면과 외부 응답으로 확인한다. 종료 증거는 화면 클릭, 외부 URL, 성과 응답, QA 승인 artifact pin이다.
+# 2026-09-12 20시 05분 KST · 네 방 브라우저 QA 재실행 결과
+
+- 발견: 현재 개발 서버 3456과 신규 임시 서버 3000에 `verify-four-room-ui-e2e.mjs`를 각각 연결했다. 두 실행 모두 `/api/me` 인증과 `/studio?room=create` HTTP 200까지는 관찰됐지만, 브라우저에서 `[data-room="create"]`가 30초 안에 visible 상태가 되지 않아 생성실 진입에서 중단됐다. 3000 실행에서는 같은 저장소의 기존 3456 개발 서버와 동시 실행되어 Turbopack이 `/login/page`를 쓰는 중 `Next.js package not found` 패닉도 기록했다. 3456 기존 서버에 직접 붙인 재실행에서도 동일한 DOM 대기 실패가 재현됐다.
+- 의미: 인증 토큰 발급, 설정 원복, 임시 토큰 폐기는 검증기 종료 경로로 처리됐지만 네 방 흐름·가로 넘침·다크 테마·콘솔 오류를 측정할 수 있는 화면 상태까지 도달하지 못했다. 따라서 반응형 UX가 통과했다고 보고할 수 없으며, 회원이 실제로 생성실에서 작업을 시작하는 핵심 경로가 아직 미검증이다. 현재는 선택자 누락으로 단정하지 않고, 클라이언트 hydration 또는 장기 개발 서버의 라우팅 상태를 먼저 분리해야 한다.
+- 판정: `미검증`. 네 방 PASS 및 배포 승인으로 승격하지 않는다.
+- [모델]: 이번 실행은 브라우저 런타임과 로컬 로그를 직접 확인한 기계적 QA이며 모델 판단으로 대체하지 않았다.
+- 벤치마크: 해당 없음. 경쟁사 비교가 아니라 현재 저장소의 브라우저 DOM과 로컬 개발 서버 상태를 재현하는 결함 검증이다.
+- ⛔ 검증실패 보고: 등급 A, 네 방 브라우저 검증기가 생성실 DOM 표시 대기에서 실패했고 공유 Claude/Codex 실행 한도와 외부 OAuth 자격증명 및 Safari 세션 접근도 없어 외부 발행 완료로 출고하지 않음.
+- 다음 실행: 소유자 Codex 컨트롤러. 단일 개발 서버를 정리한 뒤 동일 검증기를 한 번에 실행하고, 종료증거는 390·768·1024·1440 폭 측정 기록, 390 라이트·다크 캡처, 가로 넘침 0px, 401 0건, 콘솔 오류 0건이다. 서버 상태 분리는 다음 로컬 QA 실행에서 즉시 재개한다. 외부 OAuth와 실제 발행은 회장 Safari 세션에서 자격증명·콘솔 주소를 회수한 직후에만 확인한다.
+- 소스 1: `dashboard/scripts/verify-four-room-ui-e2e.mjs`, 방 선택·반응형·오버플로·401·콘솔 오류 판정 계약.
+- 소스 2: `dashboard/src/app/studio/page.tsx`, `activeRoom === "create"` 렌더링과 workspace hydration 조건.
+- 소스 3: `.next/dev/logs/next-development.log`, 3456 기존 개발 서버의 실제 실행 및 3000 동시 실행 시 Turbopack 패닉 로그.
+## 2026-09-16 03시 18분 KST · 성과 시계열 갭 재착수 NG
+
+| 범위 | 시험 항목 | 번호 | 판정 | 직접 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 게시물별 성과 시계열과 재현 가능한 30일 비교 | GAP-HISTORY-20260916-0318-01 | ❌ NG | 현재 `dashboard/db/schema.sql`의 `published_posts`는 최신 누계와 `metrics_at`만 보존하고, `GET /api/metrics` 응답은 `posts`, `coverage`만 반환한다. |
+| pipeline build 허용 범위 | 승인된 저장·집계 계약 안에서 구현 가능한지 확인 | GAP-HISTORY-20260916-0318-02 | BLOCK | `pipeline-state.osmu.md`는 `current_stage: qa`, `status: in-progress (승인 아님)`이다. 성과 snapshot 단위, 멱등 키, 보존 기간, 공급자 정규화와 30일 비교식의 승인된 DB·API 계약도 없다. |
+
+원인 판정: 두 감사에서 남은 기본 흐름 갭은 새 저장 모델과 API 의미를 요구한다. 현재 누계값을
+30일 성과로 재해석하면 공급자별 계약 차이를 숨기고 재현 불가능한 비교를 만든다. 제품 소스와
+migration은 수정하지 않고, 최신 코드와 localhost 회귀를 다시 확인한 뒤 증거를 갱신한다.

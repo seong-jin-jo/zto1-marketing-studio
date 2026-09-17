@@ -52,9 +52,12 @@ function externalReviewReason(
   connectionState: "connected" | "reconnect" | "disconnected",
 ): string {
   if (META_REVIEW_PROVIDERS.has(provider)) {
+    // ADR-006: 테스터 등록은 심사 전 한시 절차이지 고객이 직접 콘솔에서 할 일이 아니다.
+    // 운영자가 미리 테스터로 등록해두고, 고객은 초대를 수락하기만 하면 된다(회장 2026-09-17
+    // "회원이 OAuth 로그인만 하면 자동으로 등록돼야지" — 정상 흐름은 App Review 통과로 성립).
     return connectionState === "connected"
-      ? `${label} 채널은 아직 앱 심사 전입니다. 현재 연결된 테스터 계정은 사용할 수 있지만 외부 고객 계정은 연결할 수 없습니다. 심사 승인 후에는 테스터 등록 없이 OAuth로 연결됩니다.`
-      : `${label} 채널은 아직 앱 심사 전입니다. Meta 앱에서 테스터로 등록하고 초대를 수락한 계정만 연결할 수 있습니다. 심사 승인 후에는 테스터 등록 없이 OAuth로 연결됩니다.`;
+      ? `${label} 채널은 아직 앱 심사 전입니다(심사 전 한시 절차). 운영자가 미리 등록해둔 테스터 계정은 사용할 수 있지만 외부 고객 계정은 연결할 수 없습니다. 심사 승인 후에는 테스터 등록 없이 OAuth로 연결됩니다.`
+      : `${label} 채널은 아직 앱 심사 전입니다(심사 전 한시 절차). 운영자가 미리 테스터로 등록하고 초대를 수락한 계정만 연결할 수 있습니다. 심사 승인 후에는 테스터 등록 없이 OAuth로 연결됩니다.`;
   }
   return connectionState === "connected"
     ? `${label} 계정은 연결됐지만 외부 앱 심사가 완료되기 전에는 실제 발행이 제한됩니다.`

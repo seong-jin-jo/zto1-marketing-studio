@@ -19,6 +19,7 @@ const H = vi.hoisted(() => ({
   getChannelCredCalls: [] as unknown[][],
   existingPublication: null as { external_id: string | null; permalink: string | null; published_at?: string | null } | null,
   publicationRecordError: null as Error | null,
+  usageRecordError: null as Error | null,
   markQueuePublishedCalls: [] as unknown[][],
   queueRecordError: null as Error | null,
   queueOutcome: "updated" as "updated" | "absent",
@@ -131,6 +132,15 @@ vi.mock("@/lib/queue-store", () => ({
   }),
 }));
 
+vi.mock("@/lib/usage-events", () => ({
+  publicationUsageOutbox: (platform: string) => ({ usageEvent: { status: "pending", platform } }),
+  recordPublicationEvent: vi.fn(async (tenantId: string, publicationId: string, platform: string) => {
+    if (H.usageRecordError) throw H.usageRecordError;
+    H.usageEventInserts.push([tenantId, "publication", 1, { platform, publicationId }]);
+    return { recorded: true, alreadyRecorded: false };
+  }),
+}));
+
 vi.mock("@/lib/publish", async (importActual) => {
   const actual = await importActual<typeof import("@/lib/publish")>();
   return {
@@ -174,6 +184,7 @@ beforeEach(() => {
   H.getChannelCredCalls = [];
   H.existingPublication = null;
   H.publicationRecordError = null;
+  H.usageRecordError = null;
   H.markQueuePublishedCalls = [];
   H.queueOutcome = "updated";
   H.queueRecordError = null;
@@ -577,6 +588,53 @@ describe("/api/publish — 실패/기록 분기", () => {
       },
     });
     expect(JSON.stringify(body)).not.toContain("db down");
+  });
+
+  it("CODE-REVIEW-20260917-01 거절: 외부 발행과 publication 기록 뒤 사용량 장부 실패를 전체 성공으로 응답하지 않는다", async () => {
+    H.cred = {
+      token: "tok",
+      userId: "u-1",
+      accountId: "11111111-1111-4111-8111-111111111111",
+    };
+    H.usageRecordError = new Error("usage ledger down");
+    installFetch([
+      { match: "me?fields=id", json: { id: "live-id" } },
+      { match: "fields=status", json: { status: "FINISHED" } },
+      { match: "/threads_publish", json: { id: "media-usage-9" } },
+      { match: "/threads", json: { id: "container-usage-9" } },
+      { match: "fields=permalink", json: { permalink: "https://www.threads.net/@u/post/usage-9" } },
+    ]);
+
+    const { status, body } = await callPublish({
+      platform: "threads",
+      text: "hi",
+      draft_id: "33730d99-a268-47de-9cf9-90157ea1fa79",
+      account_id: "11111111-1111-4111-8111-111111111111",
+    });
+
+    expect(status).toBe(500);
+    expect(body).toMatchObject({
+      ok: false,
+      partial: true,
+      externalPublished: true,
+      externalId: "media-usage-9",
+      persistence: {
+        ok: false,
+        stage: "usage_record",
+        publicationRecorded: true,
+        error: { code: "USAGE_RECORD_PENDING" },
+        reconciliation: {
+          required: true,
+          action: "repair_persistence_only",
+          retryPublish: false,
+        },
+      },
+    });
+    expect(H.existingPublication).toEqual({
+      external_id: "media-usage-9",
+      permalink: "https://www.threads.net/@u/post/usage-9",
+    });
+    expect(JSON.stringify(body)).not.toContain("usage ledger down");
   });
 
   // 2026-09-05 회장 계정 실측 회귀. 스튜디오에서 바로 발행한 글이 실제로 올라가고 발행

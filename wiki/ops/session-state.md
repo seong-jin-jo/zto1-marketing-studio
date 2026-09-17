@@ -1,3 +1,130 @@
+# 2026-09-17 16시 50분 최근 24시간 코드 공격 리뷰 BLOCK
+
+사용자의 명시 과제를 handoff basis로 사용했다. 여러 live tmux pane과 기존 session-state가 함께 있어 기준을 질문했으나 답이 없어, 현재 요청과 현재 git 상태를 기준으로 검토했다. tmux 작업은 인계받거나 변경하지 않았다.
+
+검토 범위는 2026-09-16 16시 45분부터 2026-09-17 16시 45분 KST까지 54개 커밋, `e5a4487e..268e49ba`다. MAJOR 11건으로 BLOCK이다. 핵심은 화면 복구가 실제 발행 장부를 고치지 않는 문제, TikTok과 예약 발행의 과금 누락, 사용량 relay 실패의 정상 수치 표시, YouTube 재개 파일 불일치, Studio 5xx의 HTTP 200 변환, 공유 QA의 설정 덮어쓰기다.
+
+Vitest 374파일과 2,414건, TypeScript, 기본 흐름 11/11은 통과했다. Studio v1은 첫 실행에서 HTTP 200 본문 `STUDIO_LLM_TIMEOUT`으로 NG였고 한 번 재실행해 14/14를 통과했다. health HTTP 200과 DB up, ElevenLabs, GA, GSC 영문 503 오류를 직접 관찰했다. 실제 외부 발행, DB 장애 주입, 두 작업 공간 동시 동적 격리는 미검증이다.
+
+제품 코드는 수정하지 않았다. 감사와 QA 원장 커밋은 `d11ea38f`다. 상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단이다. 다음 소유자는 code-builder다. 11개 MAJOR를 고친 뒤 같은 재현과 현재 제품 소스에 귀속되는 localhost에서 다시 검수해야 한다.
+
+## 2026-09-17 14:25 KST · 네 방 기본 흐름 QA v22 완료, 제품 전체 QA는 NG
+
+회장 요청 원문을 primary handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였다. localhost 실행 앱 커밋 `426bfb4c`에서 기본 흐름 최초·최종 11/11, 네 방 4/4, 390 라이트·다크와 768·1024·1440의 20화면, 성과실 복귀 5/5, Studio v1 14/14를 관찰했다.
+
+전체 Vitest 첫 실행에서 YouTube 동시 요청 테스트가 첫 요청의 실제 예약 확보보다 경쟁 요청을 먼저 시작할 수 있어 timeout됐다. 이벤트 루프 1회 대기를 실제 업로드 예약 확보 신호 대기로 바꾸고 전용 5회 85/85와 전체 374파일·2,414건을 재통과했다. 수정 커밋은 `0c596b03`이다. TypeScript, 격리 build 184/184, schema·seed·RLS, 디자인 lint도 통과했다.
+
+기능 범위는 PASS지만 과제 지정 v63과 canonical 승인 v68 핀이 충돌하고, v63 대비 16개 라이트 화면 디자인 정합이 NG이며, 운영 배포와 외부 채널 실발행은 미검증이다. 제품 전체 QA와 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v22-gpt-codex.md`, 원본은 `logs/diff/osmu-four-room-flow-20260917-v22/`다.
+
+# 2026-09-17 12시 15분 최근 24시간 코드 공격 리뷰 BLOCK
+
+사용자의 명시 과제를 handoff basis로 사용했다. tmux pane은 실행 서버와 동시 작업 확인에만
+사용했고 다른 pane의 작업을 인계받지 않았다. 커미터 시각 기준 2026-09-16 12:02:27부터
+2026-09-17 12:02:27까지 46개 커밋과 `e5a4487e..5cd501b3` 순변경을 검토했다. 제품 코드는
+수정하지 않았다.
+
+MAJOR 6건으로 BLOCK이다. 실제 발행 행을 고치지 않는 화면 복구, 다른 파일을 기존 YouTube
+세션에 이어 붙일 수 있는 재개 로직, TikTok과 예약 발행의 사용량 장부 누락, launchctl 뒤에서
+깨지는 Claude 후보 폴백, 사용자에게 노출되는 영문 오류다. 상세 재현은
+`docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단, NG 원장은
+`docs/qa/qa-tracker.md` 최상단이다.
+
+localhost health 200과 DB up을 관찰했다. Vitest 374파일과 2,414건, TypeScript, 기본 흐름
+11/11, Studio v1 14/14가 통과했다. ElevenLabs 영문 503 오류와 launchctl 종료 코드 2는 직접
+재현했다. 외부 SNS 실발행, DB 실패 주입, 두 작업 공간 동적 격리는 미검증이다. 다음 소유자는
+code-builder다. 여섯 MAJOR를 고친 뒤 같은 실패 시나리오를 회귀 테스트와 실앱에서 다시 확인해야
+한다.
+
+# 2026-09-17 11시 14분 성과 시계열 갭 build 회수
+
+사용자 명시 과제를 handoff basis로 사용했다. 두 기반 감사와 현재 코드를 다시 대조한 결과 과거
+미구현 11개 중 10개는 이미 구현됐고, 남은 하나는 게시물별 성과 관측 이력과 재현 가능한 최근
+30일 대 직전 30일 비교다. localhost metrics는 HTTP 200이지만 `history`, `comparison`이 없고,
+현재 schema는 최신 누계만 보존한다.
+
+실행 `2280089f`부터 현재 HEAD `7f730581`까지 제품 diff는 0건이다. 기본 흐름은 첫 실행에서 AI
+출력 JSON 파싱 실패로 NG, 재실행 11/11 PASS였다. Studio v1 14/14, Vitest 374파일과 2,414건,
+TypeScript가 통과했다. 상세 증거는 `logs/diff/osmu-gapfill-20260917-1106/`과 갭 감사 최상단이다.
+
+현재 pipeline은 QA 진행 중이며 관측 단위, 중복 방지 키, 보존 기간, 공급자 정규화, 비교식과
+표본 부족 기준의 승인 기술설계가 없다. 제품 소스는 수정하지 않았다. 다음 소유자는 컨트롤러와
+tech-architect다. 별도 snapshot table, 공급자 기간 조회, JSONB 중 하나를 합의하고 eng-design을
+승인한 뒤 build를 열어야 한다. 추천은 별도 snapshot table이다.
+
+# 2026-09-17 10시 18분 네 방 기본 흐름 v21 기능 PASS, 제품 전체 NG
+
+회장이 지정한 네 방 QA 과제를 handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는
+착수 때 이미 `current_stage: qa`였다. tmux pane은 실행 서버와 동시 작업 확인에만 사용했다.
+
+HEAD `2280089f`와 일치하는 localhost에서 기본 흐름 최초와 최종 11/11, 네 방 최종 4/4,
+390 라이트와 다크 및 768, 1024, 1440의 화면 20/20, 성과실에서 생성실 복귀 5/5,
+Studio v1 14/14를 관찰했다. Vitest 374파일과 2,414건, TypeScript, 격리 build 184/184,
+seed와 RLS, health·metrics·drafts HTTP 200, 디자인 lint가 통과했다. 제품 소스는 수정하지 않았다.
+
+v63 디자인 정합 NG, v63과 v68 승인 핀 충돌, 운영 배포와 외부 채널 실발행 미검증 때문에
+제품 전체 QA와 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v21-gpt-codex.md`,
+원본은 `logs/diff/osmu-four-room-flow-20260917-v21/`이다. 다음 소유자는 컨트롤러와
+product-designer다. 단일 승인 핀과 동일 콘텐츠 상태의 16화면을 확정한 뒤 재검증한다.
+
+# 2026-09-17 06시 19분 네 방 기본 흐름 v20 기능 PASS, 제품 전체 NG
+
+회장이 지정한 네 방 QA 과제를 handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는
+착수 때 이미 `current_stage: qa`였다. tmux `osmu-flowcheck091706:0.0`은 직전 QA 실행 로그를,
+`osmu-dev-restored-091705:0.0`은 localhost 서버 요청 로그를 확인하는 데만 사용했다. 작업 기준은
+사용자의 명시 과제와 지정 산출물이다.
+
+HEAD `7f5564ea`와 일치하는 localhost에서 기본 흐름 최종 11/11, 네 방 4/4,
+390 라이트·다크와 768·1024·1440의 20화면, 성과실→생성실 복귀 5/5, Studio v1
+14/14를 관찰했다. Vitest 374파일·2,414건, TypeScript, 격리 build 184/184, seed·RLS,
+health·metrics·drafts HTTP 200, 디자인 lint도 통과했다. 최초 build는 `node_modules` symlink의
+Turbopack root 제약으로 검증기 환경 NG였고, 실복사 환경에서 회수했다. 이번 실행 토큰 10개와
+2026-09-15부터 남아 있던 QA 토큰 1개를 제품 API로 폐기해 활성 검증 토큰 0건을 확인했다.
+제품 소스 변경은 없다.
+
+v63 디자인 정합 NG, v63과 canonical v68 승인 핏 충돌, 운영 배포와 외부 채널
+실발행 미검증 때문에 제품 전체 QA와 배포는 NG다. 상세는
+`docs/qa/osmu-four-room-basic-flow-v20-gpt-codex.md`, 원본은
+`logs/diff/osmu-four-room-flow-20260917-v20/`이다. 다음 소유자는 컨트롤러와 product-designer다.
+단일 승인 디자인 핏을 확정하고 같은 콘텐츠 상태의 16화면 정합을 맞춘 뒤 운영 host와
+외부 채널을 별도로 검증한다.
+
+# 2026-09-17 05시 08분 코드 공격 리뷰 여섯 건 수정 완료
+
+회장 요청 원문을 handoff basis로 사용했다. 지적은 사용량 장부 유실, 외부 YouTube 성공 뒤 내부 확정
+실패, resumable 세션 유실, 멱등 키 충돌, 제외 채널 전체 성공 오판, 금지 문구 순으로 수정했다. 틀렸다고
+제외한 지적은 없다.
+
+코드 커밋은 `1f7fbed4`, `46e75b2d`, 계약 보수는 `dc5165cf`, 실 Postgres outbox 회귀는
+`72044c45`다. 전체 Vitest 374파일과 2,414건 통과, 3건 제외, TypeScript와 production build 및
+디자인 lint가 통과했다. 실제 Postgres에서 중복 relay가 장부 한 행으로 수렴했고, 수정 소스를 띄운
+localhost에서 기본 흐름 11/11과 Studio v1 14/14를 실제 요청으로 관찰했다. 뒤이어 포트를 이어받은
+API sweep 실행본 `35f11ab0`도 제품 수정 커밋의 후손이며 health HTTP 200과 DB up이다.
+
+리뷰 수정 범위는 PASS다. 공개 SNS 실발행과 운영 배포는 미검증이다. 기존 v63과 v68 디자인 핀 충돌과
+디자인 정합 NG가 남아 제품 전체 QA와 배포는 NG를 유지한다. 상세 증거는
+`docs/qa/qa-tracker.md`와 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md`다.
+
+# 2026-09-17 04시 20분 최근 24시간 코드 공격 리뷰 BLOCK
+
+회장 요청 원문을 handoff basis로 사용했다. tmux pane은 동시 작업과 localhost 소유권 확인에만
+사용했다. 검토 범위는 2026-09-16 04시 04분부터 2026-09-17 04시 04분까지 착륙한 43개 커밋,
+`7cc7f848..93d1da1` 순변경 81개 파일이다. 제품 코드는 수정하지 않았다.
+
+MAJOR 6건을 확인했다. 일부 채널 제외를 전체 성공으로 저장하고 긴 대시를 노출한다. YouTube는
+resumable upload 세션을 영속화하지 않으며 외부 성공 뒤 DB 확정 실패도 성공으로 반환한다. 자동
+멱등 키는 태그와 파일 내용을 빼 같은 키로 충돌한다. 사용량 이벤트 실패는 버려져 발행 수와 쿼터
+장부가 영구히 누락될 수 있다. 격리 우회, 새 토큰 리터럴, 무기록 삭제 파일은 순변경에서 확인되지
+않았다. 판정은 BLOCK이다.
+
+localhost health는 HTTP 200과 DB up이나 실행 `build_commit=5bdc1f85`로 검토 끝 `93d1da1`과
+다르다. 기본 흐름 11/11과 Studio v1 14/14는 통과했다. Vitest 372개 파일과 2,399건 통과,
+3건 제외, TypeScript 종료 0이다. 지정 작업 공간 `/api/usage`는 HTTP 200이지만 source
+`usage_events`, 모든 기간 발행 0, 일별 행 0이다. 외부 SNS 실발행과 운영 배포는 미검증이다.
+
+감사 문서는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md`다. 다음 소유자는
+코드 작성자다. 여섯 MAJOR를 고친 뒤 동일 범위 회귀와 현재 HEAD에 귀속되는 localhost에서 다시
+검증해야 한다.
+
 # 2026-09-16 18시 53분 네 방 기본 흐름 v17 기능 범위 PASS, 제품 전체 NG
 
 회장 요청 원문을 handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`라 단계 값은 바꾸지 않았다. 지정 v63 프로토타입, 확정 요구 대장, 사업 좌표, 디자인 README와 captures manifest, 현재 코드와 이전 QA를 읽었다.

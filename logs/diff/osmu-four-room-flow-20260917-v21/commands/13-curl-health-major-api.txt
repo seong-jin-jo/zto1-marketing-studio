@@ -1,0 +1,22 @@
+health HTTP 200
+{
+  "ok": true,
+  "db": "up",
+  "build_commit": "2280089f42130bd1c03f3116169bd11228bc166b"
+}
+metrics HTTP 200
+{
+  "keys": [
+    "coverage",
+    "posts"
+  ],
+  "posts_count": 0
+}
+drafts HTTP 200
+{
+  "keys": [
+    "currentWork",
+    "drafts"
+  ],
+  "items_count": 0
+}

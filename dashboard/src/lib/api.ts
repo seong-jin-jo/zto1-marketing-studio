@@ -36,20 +36,20 @@ export interface ExternalPublishPersistenceFailure {
   error: string;
   persistence: {
     ok: false;
-    stage: "publication_record" | "queue_record";
+    stage: "publication_record" | "queue_record" | "usage_record";
     publicationRecorded: boolean;
-    queueRecorded: false;
+    queueRecorded: boolean;
     error: {
-      code: "PUBLICATION_RECORD_FAILED" | "QUEUE_RECORD_FAILED";
+      code: "PUBLICATION_RECORD_FAILED" | "QUEUE_RECORD_FAILED" | "USAGE_RECORD_PENDING";
       message: string;
     };
     reconciliation: {
       required: true;
       action: "repair_persistence_only";
       retryPublish: false;
-      draftId: string | null;
+      draftId?: string | null;
       platform: string;
-      accountId: string | null;
+      accountId?: string | null;
       externalId: string | null;
       permalink: string | null;
     };
