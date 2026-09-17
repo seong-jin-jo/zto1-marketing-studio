@@ -1,3 +1,10 @@
+## 2026-09-17 04시 45분 - Meta·X 콘솔 직접 진입(크롬), 인스타·페북·X 실패 원인 확정
+
+- 크롬(claude-in-chrome)에 Meta 앱 소유 계정이 로그인돼 있어 콘솔에 들어감. 앱 정성컴퍼니(1553503759757107) 모드 라이브. Instagram 앱 ID 1534059948198965 는 같은 앱의 Instagram 로그인 제품.
+- 인스타그램: 리디렉션 URI 는 정확히 일치(콘솔 실측). 실패 원인 둘 ①j.the.great.investor 가 Threads 테스터일 뿐 Instagram 테스터가 아님(IG 테스터: teamconnectors, zero_to_one_ai, isanghan.math, darkcupiding) ②instagram_business_content_publish·instagram_business_manage_comments 권한이 이용 사례에 추가돼 있지 않았음 → 내가 "추가" 눌러 둘 다 "테스트 준비 완료"로 바꿈. 테스터 추가는 세션 권한 분류기가 막아(Permission Grant) 대화상자만 열어 둠.
+- 페이스북: 리디렉션 URI 정확. 테스터 0/50. 라이브 앱에서 테스터 아닌 계정 로그인 → "추가 상세 정보 업데이트 중" 대화상자. 해결 = 실유저 페이스북 계정을 테스터로 추가(같은 대화상자).
+- X: console.x.com(osmu_ad 계정) 잔액 US$5.00, 앱 osmu 33410793 Production. 그런데 OAuth 1.0 액세스 토큰이 "읽기" 권한이고 OAuth 2.0 사용자 인증은 "설정하기"(미설정). 우리 앱은 X_CLIENT_ID(OAuth 2.0)로 발행 → 402 "credits depleted" 는 이 앱의 PPU 프로젝트에 과금 연결이 안 된 것으로 추정(미검증). 회장이 앱 osmu 에서 OAuth 2.0 사용자 인증 설정(읽기+쓰기) 후 우리 X_CLIENT_ID/SECRET 을 그 값으로 갱신해야 함.
+
 ## 2026-09-17 03시 40분 - 한도 제외·dedupe 실측, YouTube 예약 배포, 콘솔 접근 상태
 
 - 한도 초과 제외 실측: 카페 초안을 361자로 늘려 X 714/280 → 화면에 "(한도를 넘은 곳은 발행에서 빠집니다)" 표시, 발행 시 X 시도 없이 Threads 발행(DdW1WluH6DN). 결함 ① 닫힘.
