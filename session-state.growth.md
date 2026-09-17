@@ -2,6 +2,13 @@
 
 목적: OSMU 그로스(마케팅) 레인을 개시해 2026-09 첫 바퀴(전략→우선순위→개통→발주→집행)를 돌린다. 캠페인 컨셉 = 메타 데모("이 계정의 모든 게시물은 OSMU 로 만들어졌다").
 
+# 2026-09-17 22시 05분 회원 브라우저를 회장이 띄운 실회원 CDP 9333(j.the.great.investor)으로 교체
+회장: CDP 엔드포인트 분리, 하나는 관리자 계정, 하나는 실제 회원 계정으로 테스트. 9333 이 실회원.
+관찰: 9333 = Chrome for Testing 151, 탭 = instagram(j.the.great.investor, sessionid 있음=로그인), threads/tiktok/facebook 은 로그인 페이지(미로그인), Google 미로그인. localhost:3456 탭 identity=null(OSMU 고객 로그인은 Google OAuth 전용이라 Google 로그인 필요).
+조치: osmu-browsers.sh 에 OSMU_MEMBER_CDP 도입(기본 9223, 9333 지정 가능). 9223 창 종료. admin 9222 유지(운영자 로그인 상태).
+규칙: 9333 창에서 SNS 탭은 건드리지 않는다(Meta 자동 운전 금지). localhost 탭만 조작.
+다음: 회장이 9333 창에서 Google 로그인(OSMU 고객 로그인) → 컨트롤러가 고객 플로우(워크스페이스 생성·채널 연결 화면까지) 자동 검증, Meta OAuth 동의 클릭은 회장.
+
 # 2026-09-17 18시 40분 테스트 브라우저 2개(관리자·회원) 기동 완료
 회장: "Chrome for Testing 굳이 필요 없지? aside 와 뭐가 달라? 일단 만들어. 하네스에 프로필 관리 방식 이미 있을걸".
 확인: 하네스 정문 `~/.claude/harness/bin/social-browser.mjs`(SOCIAL_PROFILE → ~/.sj-agent-harness/browser-profiles/<이름>, 실제 크롬 채널)가 이미 있었다. Chrome for Testing 불필요. serve 모드(CDP_PORT) 추가.

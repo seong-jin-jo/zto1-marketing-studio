@@ -6,7 +6,7 @@
 #   실제 크롬 채널(channel: 'chrome')이라 Chrome for Testing 은 필요 없다.
 # 사용: dashboard/scripts/osmu-browsers.sh admin|member [url]     (기본 url = http://localhost:3456/)
 #       dashboard/scripts/osmu-browsers.sh status                 (두 CDP 포트 응답 확인)
-# CDP: admin=9222, member=9223. 컨트롤러는 playwright chromium.connectOverCDP('http://127.0.0.1:<port>') 로 붙는다.
+# CDP: admin=9222, member=9223(기본) 또는 OSMU_MEMBER_CDP(회장이 직접 띄운 실회원 브라우저. 그 창의 SNS 탭은 건드리지 않고 localhost 탭만 쓴다). 컨트롤러는 playwright chromium.connectOverCDP('http://127.0.0.1:<port>') 로 붙는다.
 # 로그인: admin 은 DASHBOARD_AUTH_TOKEN 을 localStorage 에 넣는 운영자 로그인(컨트롤러가 함).
 #         member 는 회장이 그 창에서 Google/소셜 로그인 1회. Meta OAuth 동의 클릭은 회장 손(ADR-005 §7, 2026-07-01 플래그 사고).
 set -euo pipefail
@@ -14,9 +14,9 @@ ROLE="${1:-}"; URL="${2:-http://localhost:3456/}"
 RUNNER="$HOME/.claude/harness/bin/social-browser.mjs"
 case "$ROLE" in
   admin)  PORT=9222; PROFILE=osmu-admin ;;
-  member) PORT=9223; PROFILE=osmu-member ;;
+  member) PORT="${OSMU_MEMBER_CDP:-9223}"; PROFILE=osmu-member ;;   # 회장이 직접 띄운 실회원 브라우저(2026-09-17: 9333, j.the.great.investor)가 있으면 OSMU_MEMBER_CDP=9333 로 가리킨다
   status)
-    for p in 9222:admin 9223:member; do
+    for p in 9222:admin "${OSMU_MEMBER_CDP:-9223}:member"; do
       port=${p%%:*}; name=${p##*:}
       if v=$(curl -s --max-time 2 "http://127.0.0.1:$port/json/version" 2>/dev/null) && [[ -n "$v" ]]; then
         echo "✓ $name (CDP $port): $(echo "$v" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("Browser"))')"
