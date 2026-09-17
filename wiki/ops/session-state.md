@@ -1,3 +1,21 @@
+# 2026-09-18 01:08 KST Meta App Review 인사이트 코드 갭 수정 검증 완료
+
+사용자의 명시 과제를 handoff basis로 사용한다. `openclaw-auto:0.0`은 중복 작업 확인에만 캡처했고
+다른 pane의 작업은 인계받거나 변경하지 않는다. 현재 브랜치는
+`session/zto1-marketing-studio-20260912`, pipeline은 QA 진행 중이며 같은 단계 안의 결함 수정
+왕복으로 IG-INSIGHTS-01/02/03과 FB-INSIGHTS-01만 다룬다.
+
+Instagram OAuth scope에 `instagram_business_manage_insights`를 추가했고 Instagram·Reels 성과 호출을
+`graph.instagram.com/v26.0` 및 `views,likes,comments`로 교정했다. Facebook은 기존
+`graph.facebook.com/v21.0`을 유지하고 참고 permission에 `read_insights`를 추가했다. 구
+`impressions` 응답 파싱은 유지했다.
+
+표적 Vitest 3파일 73건, TypeScript `tsconfig.ci.json --noEmit`, 디자인 토큰 lint가 통과했다.
+실제 Instagram·Facebook 토큰 호출, `FB_CONFIG_ID(1553247286513620)` configuration 콘솔
+확인, 운영 배포는 미검증이다. 다음 소유자는 컨트롤러와 qa-verifier다. 콘솔
+설정을 확인하고 실제 media·Page post insights 2xx와 성과실 실제 수치를 촬영한 뒤에만
+Meta App Review 제출을 진행한다.
+
 # 2026-09-18 00:41 KST 최근 24시간 코드 공격 리뷰 BLOCK
 
 사용자의 명시 과제를 handoff basis로 사용했다. `openclaw-auto:0.0`과

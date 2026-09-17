@@ -1,6 +1,6 @@
-# Meta App Review 제출 패키지 v1.1.0, 2026-09
+# Meta App Review 제출 패키지 v1.2.0, 2026-09
 
-STAMP | line: osmu-meta-app-review | 버전: v1.1.0 | 생성: 2026-09-17 18:48 KST | 독립검수: 2026-09-17 19:12 KST | model: gpt-codex/GPT-5 | agent: tech-architect-worker + eng-design-reviewer | skill: postagi-app-deploy, review | 근거: ADR-004·006, 현재 OAuth·발행·성과·댓글 코드, Meta App Review·Instagram Platform·Threads API 공식 문서, 2026-09-17 사용자 콘솔 실측 | 고민: 심사 통과 가능성을 높이기 위해 넓은 권한 신청보다 실제 화면과 API 호출로 증명되는 최소 권한만 남기되, 현재 코드가 이미 요청하는 `threads_read_replies`와 Instagram·Facebook 인사이트의 드리프트는 숨기지 않았다.
+STAMP | line: osmu-meta-app-review | 버전: v1.2.0 | 생성: 2026-09-17 18:48 KST | 코드 갱신: 2026-09-18 01:02 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: 없음 | 근거: ADR-004·006, 현재 OAuth·성과 코드, Meta Instagram Media Insights 공식 reference | 고민: 코드 계약은 공식 문서에 맞추되, 실제 토큰 호출과 콘솔 configuration 확인을 제출 종료 증거로 남겼다.
 
 ## 목차
 
@@ -18,7 +18,7 @@ STAMP | line: osmu-meta-app-review | 버전: v1.1.0 | 생성: 2026-09-17 18:48 K
 - [11. 공식 출처](#section-11)
 - [12. 독립 문서 리뷰 판정](#section-12)
 
-> **TL;DR** 고객은 테스터 등록 없이 OAuth만으로 자기 Meta 채널을 연결한다. 문서 품질은 독립 보정 후 PASS지만, 실제 App Review 제출은 NO-GO다. 액세스 인증, Instagram 인사이트의 scope·host·media metric 계약, Facebook `read_insights` 설정, 13개 권한별 최근 성공 호출, reviewer 접근, 3개 영상이 모두 확인돼야 제출할 수 있다.
+> **TL;DR** 고객은 테스터 등록 없이 OAuth만으로 자기 Meta 채널을 연결한다. Instagram scope·host·media metric과 Facebook 참고 permission 코드는 v1.2.0에서 교정했지만 실제 App Review 제출은 계속 NO-GO다. 액세스 인증, Facebook `FB_CONFIG_ID` configuration, 13개 권한별 최근 성공 호출, reviewer 접근, 3개 영상이 모두 확인돼야 제출할 수 있다.
 
 <a id="section-0"></a>
 ## 0. 문서 통제
@@ -46,6 +46,7 @@ STAMP | line: osmu-meta-app-review | 버전: v1.1.0 | 생성: 2026-09-17 18:48 K
 
 | 버전 | 시각 | 작성자 | 변경 |
 |---|---|---|---|
+| v1.2.0 | 2026-09-18 01:02 KST | code-builder | Instagram 인사이트 scope 추가, Instagram Login host를 `graph.instagram.com/v26.0`으로 교정, FEED·REELS metric을 `views,likes,comments`로 통일, Facebook 참고 permission에 `read_insights` 추가. 실제 토큰 호출과 `FB_CONFIG_ID` 콘솔 확인은 미검증으로 유지. |
 | v1.1.0 | 2026-09-17 19:12 KST | eng-design-reviewer | 목차·핀·용어·추적성 추가, 권한별 화면 증거 명세, Instagram 인사이트 host·scope·metric 계약 충돌과 Facebook Page 읽기 증거 gap 추가, 공식 URL 재검증, Codex 독립 2차 검토 반영 |
 | v1.0.0 | 2026-09-17 18:48 KST | tech-architect-worker | 최초 제출 패키지 작성 |
 
@@ -54,7 +55,7 @@ STAMP | line: osmu-meta-app-review | 버전: v1.1.0 | 생성: 2026-09-17 18:48 K
 <a id="section-1"></a>
 ## 1. 한 줄 판정
 
-정책 목표는 고객이 테스터 등록 없이 OSMU에서 Instagram, Facebook, Threads를 OAuth로 연결하는 것이다. 제출 권한은 Instagram 4개, Threads 5개, Facebook Page 4개로 잡고 `business_management`는 제외한다. 다만 현재 상태로 제출은 **NO-GO**다. Instagram 인사이트 scope·호출 host·media metric 계약 불일치, Facebook `read_insights` configuration과 `pages_read_engagement` 직접 증거 누락, 액세스 인증 미완료, 심사관 접근 계정 미확보, 권한별 최근 성공 호출과 완성 영상 미확보를 먼저 닫아야 한다.
+정책 목표는 고객이 테스터 등록 없이 OSMU에서 Instagram, Facebook, Threads를 OAuth로 연결하는 것이다. 제출 권한은 Instagram 4개, Threads 5개, Facebook Page 4개로 잡고 `business_management`는 제외한다. Instagram 인사이트 scope·호출 host·media metric과 Facebook 참고 permission 코드 불일치는 v1.2.0에서 닫았다. 다만 현재 상태로 제출은 **NO-GO**다. Facebook `FB_CONFIG_ID` configuration 확인, Instagram·Facebook 실제 성공 호출, `pages_read_engagement` 직접 증거, 액세스 인증, 심사관 접근 계정, 권한별 최근 성공 호출과 완성 영상을 먼저 확보해야 한다.
 
 ### 2026-09-17 콘솔 실측과 코드 대조
 
@@ -170,10 +171,11 @@ OSMU uses `instagram_business_manage_insights` to retrieve supported media insig
 
 - 성과 조회 구현: `dashboard/src/lib/publish.ts:811-890`, `dashboard/src/lib/metrics-collector.ts:785-814`.
 - 성과 화면 호출: `dashboard/src/components/home/PerformanceDashboard.tsx:38-85`.
-- **GAP IG-INSIGHTS-01:** `dashboard/src/lib/social-connect.ts:182-190`의 OAuth scope에는 이 권한이 없다.
-- **GAP IG-INSIGHTS-02:** Instagram Login 토큰은 공식 문서상 `graph.instagram.com`을 써야 하지만 `dashboard/src/lib/publish.ts:843-845`는 `graph.facebook.com`으로 고정돼 있다.
-- **GAP IG-INSIGHTS-03:** Meta의 Instagram account insights reference는 `impressions` 폐기와 `views` 대체를 안내하지만, 현재 Instagram media insights overview 예시는 media 요청에 `engagement,impressions,reach`를 사용한다. 공식 문서 간 범위가 일치하지 않으므로 `views`로 일괄 치환한다고 단정하지 않는다. 사용 중인 host·API 버전·media 유형에서 지원되는 metric 조합을 실제 `GET /{media-id}/insights`로 확인하고, HTTP 200과 응답 필드를 기록한 조합만 코드와 제출 문안에 고정해야 한다.
-- 위 세 갭 수정, 테스트, 최근 성공 호출, 실제 수치 화면 촬영 전에는 이 권한을 제출하지 않는다.
+- **GAP IG-INSIGHTS-01 코드 종료:** Instagram OAuth scope에 `instagram_business_manage_insights`를 추가했다. 관련 회귀 테스트는 통과했다.
+- **GAP IG-INSIGHTS-02 코드 종료:** Instagram과 Instagram Reels는 `graph.instagram.com/v26.0`, Facebook은 기존 `graph.facebook.com/v21.0`을 사용한다.
+- **GAP IG-INSIGHTS-03 코드 종료:** 2026-09-11 갱신된 Meta Instagram Media Insights reference에서 FEED·REELS의 `views`, `likes`, `comments` 지원과 2024-07-02 이후 media의 `impressions` 폐기를 확인해 요청 metric을 `views,likes,comments`로 통일했다. 응답 파싱은 기존 `views`/`impressions` 양쪽을 유지한다.
+- 코드 변경은 이 문서를 포함한 단일 커밋이며, 자기 참조 커밋 해시는 Git 구조상 문서 내에 고정할 수 없어 종료 보고의 최종 해시를 정본으로 한다.
+- Instagram 실제 토큰 `GET /{media-id}/insights` HTTP 2xx와 실제 수치 화면은 토큰이 없어 미검증이므로 제출 차단을 유지한다.
 - 촬영 증거 목표: Instagram 영상 `01:38-02:02`.
 
 ### 3.2 Threads
@@ -325,8 +327,8 @@ OSMU uses `read_insights` to retrieve insights for posts published through OSMU 
 
 - Page post `/{post-id}/insights` 호출: `dashboard/src/lib/publish.ts:811-890`.
 - 성과 수집 연결: `dashboard/src/lib/metrics-collector.ts:785-814`.
-- **GAP FB-INSIGHTS-01:** `dashboard/src/lib/social-connect.ts:334-342`의 참고 permission configuration에 `read_insights`가 없고, 실제 `FB_CONFIG_ID`가 가리키는 Facebook Login for Business configuration 포함 여부도 현재 증거가 없다.
-- 코드 참고 목록과 Meta Login configuration에 권한을 추가하고 최근 실제 성공 호출을 확보하기 전에는 제출하지 않는다.
+- **GAP FB-INSIGHTS-01 코드 부분 종료:** `FACEBOOK.scopes` 참고 permission 목록에 `read_insights`를 추가하고 회귀 테스트를 통과했다.
+- **콘솔 미검증:** `FB_CONFIG_ID(1553247286513620)`가 가리키는 Facebook Login for Business configuration에 `read_insights`가 포함돼 있는지 확인하고, 최근 실제 `/{post-id}/insights` 성공 호출을 확보하기 전에는 제출하지 않는다.
 - 촬영 증거 목표: Facebook 영상 `01:38-02:04`.
 
 <a id="section-4"></a>
@@ -440,8 +442,10 @@ OSMU uses `read_insights` to retrieve insights for posts published through OSMU 
 - [ ] `기술 제공업체 되기` 액세스 인증 완료. 현재는 완료 필요 안내가 있어 **차단**.
 - [ ] 요청할 13개 권한 모두 제출 목록에 있고, 요청하지 않는 권한은 OAuth와 제출 목록에서 제거.
 - [ ] Advanced Access를 요청할 각 권한으로 제출일 기준 최근 30일 안에 최소 1회 성공 API 호출. Meta 시스템 반영에는 최대 2일이 걸릴 수 있으므로 제출 직전이 아니라 여유 있게 실행.
-- [ ] Instagram 인사이트 scope와 `graph.instagram.com` host를 수정하고, 상충하는 공식 media metric 안내를 실제 `GET /{media-id}/insights` 성공 호출로 해소. 응답에 포함된 metric만 코드·문안·영상에 사용.
-- [ ] Facebook 참고 permission 목록과 `FB_CONFIG_ID`의 Login configuration에 `read_insights` 추가 후 실제 `/{post-id}/insights` 성공 호출.
+- [x] Instagram OAuth scope에 `instagram_business_manage_insights` 추가, Instagram Login host를 `graph.instagram.com/v26.0`으로 교정, FEED·REELS metric을 `views,likes,comments`로 통일. 회귀 테스트·TypeScript 통과. 커밋 해시는 이 문서를 포함한 종료 보고의 단일 커밋 해시 참조.
+- [ ] Instagram 실제 토큰으로 `GET /{media-id}/insights` HTTP 2xx와 `views`, `likes`, `comments` 응답 필드 확인 후 실제 수치 화면 촬영.
+- [x] Facebook 참고 permission 목록에 `read_insights` 추가. 회귀 테스트 통과. 커밋 해시는 이 문서를 포함한 종료 보고의 단일 커밋 해시 참조.
+- [ ] `FB_CONFIG_ID(1553247286513620)` configuration에 `read_insights` 포함 여부 콘솔 확인 필요. 확인 후 실제 `/{post-id}/insights` HTTP 2xx와 응답 필드를 기록.
 - [ ] Facebook `pages_read_engagement` 직접 증거로 `GET /{page-id}?fields=name` HTTP 2xx와 Page name 표시를 촬영.
 - [ ] 현재 코드의 Meta Graph API `v21.0`이 제출일에 지원되는지 공식 버전 문서와 실제 호출로 확인. 지원 종료면 지원 버전으로 올리고 전 호출을 재검증.
 - [ ] Threads OAuth와 영상에 `threads_read_replies` 포함. 또는 기능과 scope를 둘 다 제거. 현재 제품은 읽기를 사용하므로 포함이 추천안.

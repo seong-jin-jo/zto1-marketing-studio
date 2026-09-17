@@ -1,3 +1,13 @@
+## 2026-09-18 01:02 KST · Meta App Review 인사이트 코드 갭 수정 착수
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| IG-INSIGHTS-01 | Instagram OAuth에 인사이트 권한 포함 | META-INSIGHTS-20260918-01 | 🔧 수정, 테스트 PASS | `instagram_business_manage_insights` scope를 추가했고 OAuth URL 회귀 테스트가 통과했다. 실제 OAuth 승인은 미검증. |
+| IG-INSIGHTS-02/03 | Instagram Login host와 media metric 정합 | META-INSIGHTS-20260918-02 | 🔧 수정, 테스트 PASS | Meta current reference의 `graph.instagram.com`, `v26.0`, FEED·REELS `views,likes,comments`를 반영. Instagram/Reels URL·구 `impressions` 파싱 회귀 통과. 실제 토큰 호출은 미검증. |
+| FB-INSIGHTS-01 | Facebook Login configuration 참고 권한 정합 | META-INSIGHTS-20260918-03 | 부분 🔧, 콘솔 미검증 | `FACEBOOK.scopes`에 `read_insights`를 추가하고 Facebook URL 회귀를 통과했다. `FB_CONFIG_ID(1553247286513620)` configuration 포함 여부와 실제 호출은 콘솔 확인 필요. |
+
+표적 Vitest 3파일 73건과 TypeScript, 디자인 토큰 lint가 통과했다. Instagram과 Facebook 실제 API 호출은 토큰이 없어 미검증이다.
+
 ## 2026-09-18 00:41 KST · 최근 24시간 코드 공격 리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

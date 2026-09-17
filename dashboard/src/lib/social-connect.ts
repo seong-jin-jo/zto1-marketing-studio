@@ -186,7 +186,8 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
       "instagram_business_basic",
       "instagram_business_content_publish",
       "instagram_business_manage_comments",
-      // 쓰는 화면이 없어 첫 심사 범위에서 제외한다. 인사이트 화면 구현 후 2차 제출에 추가한다.
+      // 성과실이 발행한 Instagram 미디어의 insights를 조회하므로 심사 범위에 포함한다.
+      "instagram_business_manage_insights",
     ],
     appIdEnv: "IG_APP_ID",
     appSecretEnv: "IG_APP_SECRET",
@@ -335,7 +336,7 @@ export const FACEBOOK = {
   label: "facebook",
   authorizeUrl: "https://www.facebook.com/v21.0/dialog/oauth",
   // scope는 config_id 모델에서 미사용(참고용으로만 남김 — buildAuthUrl은 config_id를 보낸다).
-  scopes: ["pages_show_list", "pages_manage_posts", "pages_read_engagement"],
+  scopes: ["pages_show_list", "pages_manage_posts", "pages_read_engagement", "read_insights"],
   appIdEnv: "FB_APP_ID",
   appSecretEnv: "FB_APP_SECRET",
   configIdEnv: "FB_CONFIG_ID",

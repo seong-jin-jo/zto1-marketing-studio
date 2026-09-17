@@ -116,7 +116,7 @@ beforeEach(() => {
 });
 
 describe("GET /api/connect/instagram — OAuth 동의 URL", () => {
-  it("META-SCOPE-001 정상: 첫 심사에 필요한 Instagram 연결·발행·댓글 권한을 요청한다", async () => {
+  it("META-SCOPE-001 정상: Instagram 연결·발행·댓글·인사이트 권한을 요청한다", async () => {
     const { GET } = await import("@/app/api/connect/[provider]/route");
     const res = await GET(new Request("https://app.example/api/connect/instagram?tenant_id=tenant-1"), params("instagram"));
     const body = await res.json();
@@ -126,6 +126,7 @@ describe("GET /api/connect/instagram — OAuth 동의 URL", () => {
     expect(body.authUrl).toContain("instagram_business_basic");
     expect(body.authUrl).toContain("instagram_business_content_publish");
     expect(body.authUrl).toContain("instagram_business_manage_comments");
+    expect(body.authUrl).toContain("instagram_business_manage_insights");
     // state는 이제 base64url(payload).sig로 서명되어 있어 "tenant-1"이 그대로 노출되지 않는다 —
     // verifyState로 왕복 복원해 tenantId가 맞는지 확인한다.
     const { verifyState } = await import("@/lib/social-connect");
@@ -136,13 +137,10 @@ describe("GET /api/connect/instagram — OAuth 동의 URL", () => {
     expect(body.authUrl).toContain("api%2Fconnect%2Finstagram%2Fcallback");
   });
 
-  it("META-SCOPE-002 거절: 실제 조회 기능이 없는 Instagram 인사이트 권한은 요청하지 않는다", async () => {
-    const { GET } = await import("@/app/api/connect/[provider]/route");
-    const res = await GET(new Request("https://app.example/api/connect/instagram?tenant_id=tenant-1"), params("instagram"));
-    const body = await res.json();
+  it("META-SCOPE-002 정상: Facebook 참고 permission 목록에 read_insights를 포함한다", async () => {
+    const { FACEBOOK } = await import("@/lib/social-connect");
 
-    expect(res.status).toBe(200);
-    expect(new URL(body.authUrl).searchParams.get("scope")).not.toContain("instagram_business_manage_insights");
+    expect(FACEBOOK.scopes).toContain("read_insights");
   });
 
   it("고객 JWT tenant와 쿼리 tenant_id가 다르면 값 없이 불일치 사실만 서버 로그에 남긴다", async () => {
