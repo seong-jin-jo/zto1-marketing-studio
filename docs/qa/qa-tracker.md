@@ -1,11 +1,16 @@
-## 2026-09-18 03:11 KST · 성과 시계열 갭 재착수 ❌ NG
+## 2026-09-18 03:36 KST · 성과 시계열 갭 재확인 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| R68, API 갭 P2 | 두 갭 감사에서 현재도 없는 기본 흐름 항목을 하나 구현 | GAP-HISTORY-20260918-0311-01 | ❌ NG | 현재 schema, migration, `GET /api/metrics` 구현에는 게시물별 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교가 없다. |
-| 공정과 기술계약 | 승인 범위 안에서만 제품 소스를 수정 | GAP-HISTORY-20260918-0311-02 | BLOCK | `pipeline-state.osmu.md`의 최신 공정은 `qa`, `in-progress`, 승인 아님이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준도 승인되지 않았다. |
+| R68, API 갭 P2 | 두 갭 감사에서 현재도 없는 기본 흐름 항목을 하나 구현 | GAP-HISTORY-20260918-0311-01 | NG | 현재 schema, migration, `GET /api/metrics`에는 게시물별 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교가 없다. localhost 지정 작업 공간 응답은 HTTP 200, 최상위 키 `coverage`, `posts`, 게시물 0건이며 `history`, `comparison`은 없다. |
+| 공정과 기술계약 | 승인 범위 안에서만 제품 소스를 수정 | GAP-HISTORY-20260918-0311-02 | BLOCK | `pipeline-state.osmu.md`의 최신 공정은 `qa`, `in-progress`, 승인 아님이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준도 승인되지 않았다. 제품 소스 수정은 0건이다. |
+| 타입 계약 | 현재 소스 TypeScript 검사 | GAP-HISTORY-20260918-0311-03 | PASS | `npx tsc --noEmit` 종료 코드 0. |
+| 전체 단위 및 통합 | 실제 PostgreSQL schema, seed, RLS, legacy migration에서 전체 회귀 | GAP-HISTORY-20260918-0311-04 | PASS | 직렬 전체 실행에서 376파일, 2,429건 통과, 1건 제외, 종료 코드 0이다. 병렬 실행에서 발생한 정리 단계 교착 1건은 해당 파일 단독과 직렬 전체에서 재현되지 않았다. |
+| 기본 흐름 실앱 | 생성, 편집, 발행 큐, 성과 재인계 | GAP-HISTORY-20260918-0311-05 | PASS | 최신 HEAD `8cc2dd4f`를 띄운 localhost:3456에서 11/11 통과했다. |
+| Studio v1 실앱 | 인증, 입력 거절, 생성, 후보 거절과 무료 재생성 | GAP-HISTORY-20260918-0311-06 | NG | localhost에서 10/14 통과했다. 두 작업의 후보 전체 거절 2건, 무료 재생성 상태, 대체 후보 확인 4건이 실패했다. |
+| 디자인 토큰 | 현재 Web 소스 토큰 검사 | GAP-HISTORY-20260918-0311-07 | PASS | `design-lint.sh src` 위반 0, 종료 코드 0. |
 
-제품 소스 수정 전 판정이다. 최신 localhost 실제 응답, 전체 회귀와 두 필수 E2E 결과를 같은 절에 보강한다.
+실행본 health는 HTTP 200, DB `up`, build commit `8cc2dd4f5d61a099834271d5419e5bc8838f480a`였다. 운영 배포와 외부 SNS 공개 발행은 미검증이다.
 
 ## 2026-09-18 03:08 KST · 최근 24시간 코드 리뷰 MAJOR 10건 수정 PASS
 

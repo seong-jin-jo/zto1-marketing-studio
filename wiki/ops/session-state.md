@@ -1,3 +1,24 @@
+# 2026-09-18 03:36 KST 성과 시계열 갭 재확인 BLOCK
+
+사용자의 명시 과제를 handoff basis로 사용한다. 같은 저장소의 tmux pane은 동시 작업 확인용이며
+다른 pane의 작업을 인계받지 않는다. 두 감사와 최신 코드 대조 결과 현재도 없는 기본 흐름 항목은
+게시물별 성과 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교다. canonical
+`pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이고 저장 및 비교 기술계약도 없으므로
+제품 소스는 수정하지 않는다. QA tracker에 `GAP-HISTORY-20260918-0311-01/02`를 NG와 BLOCK으로
+등록했다.
+
+최신 HEAD `8cc2dd4f`를 띄운 localhost:3456에서 health HTTP 200과 DB up을 확인했다. 지정 작업 공간
+metrics는 HTTP 200, 키 `coverage`, `posts`, 게시물 0건이고 `history`, `comparison`은 없다. 기본
+흐름은 11/11 PASS, Studio v1은 후보 전체 거절 2건과 무료 재생성 2건이 실패해 10/14 NG다.
+TypeScript와 `design-lint.sh src`는 종료 코드 0이다. 실제 PostgreSQL에 schema, seed, RLS, legacy migration을 적용한
+전체 Vitest 병렬 실행은 2,430건 중 정리 단계 교착 1건이 실패했고, 해당 파일 단독 재실행은
+통과했다. 직렬 전체 재실행은 376파일, 2,429건 통과, 1건 제외, 종료 코드 0이다.
+
+다음 소유자는 컨트롤러와 tech-architect다. snapshot 저장 모델, 멱등 키, 보존 기간, 공급자별
+원본과 정규화 지표, 30일 비교 경계와 표본 부족 기준을 합의하고 eng-design을 승인한 뒤 build를
+다시 연다. code-builder는 그 계약 이후 migration, 수집 저장, history와 comparison 응답, 정상과
+거절과 경합 테스트를 구현하고 두 필수 E2E 25/25를 다시 통과시킨다.
+
 # 2026-09-18 01:08 KST Meta App Review 인사이트 코드 갭 수정 검증 완료
 
 사용자의 명시 과제를 handoff basis로 사용한다. `openclaw-auto:0.0`은 중복 작업 확인에만 캡처했고
