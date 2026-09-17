@@ -1,3 +1,13 @@
+# 2026-09-17 20:19 KST 최근 24시간 코드 공격 리뷰 BLOCK
+
+사용자의 명시 과제를 handoff basis로 사용했다. live tmux pane은 실행 서버와 동시 작업 확인에만 사용했고 다른 pane의 작업을 인계받거나 변경하지 않았다. 검토 범위는 작업 시작 시점의 56개 커밋, `ed8231a5..a66b4b37`로 고정했다.
+
+MAJOR 12건으로 BLOCK이다. 기존 11건이 현재 코드에 남아 있고, `oauth-errors.ts:74`가 만료된 인증 코드도 Meta 테스터 명단 누락으로 단정하는 새 회귀를 직접 재현했다. 제품 코드는 수정하지 않았다.
+
+Vitest 374파일과 2,416건, TypeScript, localhost 기본 흐름 11/11, Studio v1 14/14를 통과했다. health는 HTTP 200과 DB up이었다. 실행 커밋 `0fc65567`은 검토 끝보다 이전이므로 최신 OAuth 변경은 현재 소스 함수 직접 실행으로 검증했다. 실제 SNS 발행, DB 장애 주입, 두 작업 공간 동시 동적 격리, 운영 배포는 미검증이다.
+
+상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단, 증거 원장은 `docs/qa/qa-tracker.md` 최상단이다. 다음 소유자는 code-builder다. 12개 MAJOR를 고친 뒤 같은 재현과 최신 소스에 귀속되는 localhost에서 다시 검수해야 한다.
+
 # 2026-09-17 19:12 KST Meta App Review 패키지 독립 리뷰·보정
 
 회장이 명시한 `docs/ops/meta-app-review-2026-09.md` 독립 리뷰 과제를 handoff basis로 사용했다.

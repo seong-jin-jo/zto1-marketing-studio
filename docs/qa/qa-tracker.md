@@ -1,3 +1,22 @@
+## 2026-09-17 20:19 KST · 최근 24시간 코드 공격 리뷰 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드리뷰 24시간 | 외부 성공과 내부 발행 장부 복구 | REVIEW-24H-20260917-22 | NG | `dashboard/src/app/studio/page.tsx:1234`가 초안만 발행 완료로 바꾸고 실제 발행 행과 사용량 장부를 복구하지 않는다. |
+| 코드리뷰 24시간 | 재개 업로드와 파일 동일성 | REVIEW-24H-20260917-23 | NG | `dashboard/src/app/api/video/publish/route.ts:354`가 저장 해시와 크기를 현재 파일에 대조하지 않는다. |
+| 코드리뷰 24시간 | 전 발행 경로 과금 원장 | REVIEW-24H-20260917-24 | NG | TikTok 완료 `tiktok/publish-status/route.ts:87`과 예약 발행 `schedule/publish-due/route.ts:409`가 usage outbox를 우회한다. |
+| 코드리뷰 24시간 | 사용량 부분 실패 표시 | REVIEW-24H-20260917-25 | NG | `usage/route.ts:73`이 relay 실패 뒤에도 HTTP 200과 낮은 집계를 반환하고 성과실은 실패 수를 표시하지 않는다. |
+| 코드리뷰 24시간 | macOS Claude 후보 폴백 | REVIEW-24H-20260917-26 | NG | `anthropic.ts:201`의 launchctl 래퍼가 대상 미존재를 종료 코드로 바꿔 다음 후보 시도를 막는다. |
+| 코드리뷰 24시간 | 한국어 오류와 실패 화면 | REVIEW-24H-20260917-27 | NG | ElevenLabs 영문 오류가 사용자에게 노출되고, 블로그와 GSC 화면은 새 503을 오류 안내 대신 0 데이터로 보일 수 있다. |
+| 코드리뷰 24시간 | 검증기 동시성 및 증거 무결성 | REVIEW-24H-20260917-28 | NG | API sweep는 실행 중 파일 추가와 삭제를 못 보고, 네 방 E2E는 공유 작업 공간 설정 전체를 옛 스냅샷으로 복원한다. |
+| 코드리뷰 24시간 | Studio 실패 HTTP 상태 | REVIEW-24H-20260917-29 | NG | `generation/http.ts:75`가 502, 503, 504를 200으로 바꿔 실패를 성공으로 집계하게 만든다. |
+| 코드리뷰 24시간 | Meta OAuth 원인 분류 | REVIEW-24H-20260917-30 | NG | `oauth-errors.ts:74`가 만료된 인증 코드도 테스터 명단 누락으로 단정한다. 현재 소스 직접 실행으로 잘못된 안내를 재현했다. |
+| 필수 회귀 | 전체 test와 TypeScript | REVIEW-24H-20260917-31 | PASS | Vitest 374파일, 2,416건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. |
+| 실앱 기본 흐름 | localhost:3456 기본 흐름과 Studio v1 | REVIEW-24H-20260917-32 | 부분 PASS | 기본 흐름 11/11, Studio v1 14/14. health HTTP 200, DB up. 실행 `0fc65567`은 검토 끝 `a66b4b37`보다 이전이라 최신 OAuth 변경은 현재 소스 직접 실행으로 별도 확인했다. |
+| 외부 실발행과 장애 주입 | 실제 SNS, DB 실패, 두 작업 공간 동시 실행 | REVIEW-24H-20260917-33 | 미검증 | 돈과 외부 공개를 일으키는 실발행은 실행하지 않았다. |
+
+판정은 BLOCK이다. MAJOR 12건의 상세 위치, 재현 시나리오, 수정 조건은 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단에 기록했다. 제품 코드는 수정하지 않았다.
+
 ## 2026-09-17 19시 22분 KST · 성과 시계열 갭 build 차단 재확인
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
