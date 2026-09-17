@@ -1,3 +1,18 @@
+# 2026-09-17 10시 18분 네 방 기본 흐름 v21 기능 PASS, 제품 전체 NG
+
+회장이 지정한 네 방 QA 과제를 handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는
+착수 때 이미 `current_stage: qa`였다. tmux pane은 실행 서버와 동시 작업 확인에만 사용했다.
+
+HEAD `2280089f`와 일치하는 localhost에서 기본 흐름 최초와 최종 11/11, 네 방 최종 4/4,
+390 라이트와 다크 및 768, 1024, 1440의 화면 20/20, 성과실에서 생성실 복귀 5/5,
+Studio v1 14/14를 관찰했다. Vitest 374파일과 2,414건, TypeScript, 격리 build 184/184,
+seed와 RLS, health·metrics·drafts HTTP 200, 디자인 lint가 통과했다. 제품 소스는 수정하지 않았다.
+
+v63 디자인 정합 NG, v63과 v68 승인 핀 충돌, 운영 배포와 외부 채널 실발행 미검증 때문에
+제품 전체 QA와 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v21-gpt-codex.md`,
+원본은 `logs/diff/osmu-four-room-flow-20260917-v21/`이다. 다음 소유자는 컨트롤러와
+product-designer다. 단일 승인 핀과 동일 콘텐츠 상태의 16화면을 확정한 뒤 재검증한다.
+
 # 2026-09-17 06시 19분 네 방 기본 흐름 v20 기능 PASS, 제품 전체 NG
 
 회장이 지정한 네 방 QA 과제를 handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는

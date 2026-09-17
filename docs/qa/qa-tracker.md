@@ -2,6 +2,24 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-17 10시 18분 KST · 네 방 기본 흐름 v21 기능 범위 PASS, 제품 전체 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실부터 성과실까지 백엔드 기본 흐름 관통 | FLOW-API-V21 | PASS | HEAD `2280089f`와 일치하는 localhost 실제 요청 최초와 최종 11/11. 후보 3장, 편집 상태 변경, 발행 큐 HTTP 201, 성과 제안 3건, 생성 큐 재인계. `logs/diff/osmu-four-room-flow-20260917-v21/commands/10-verify-basic-flow-final.txt` |
+| R08, R19, R207 | 네 방 렌더와 가린 모달 확인 | FLOW-ROOM-PROBE-V21 | PASS | seed 후 최종 4/4, 가린 모달 0, 브라우저 401 0, 콘솔 오류 0. `commands/11-probe-four-room-final.txt` |
+| R08, R19 | 390, 768, 1024, 1440에서 사람처럼 생성실부터 성과실까지 이동 | FLOW-UI-V21 | PASS | 390 라이트·다크와 768, 1024, 1440의 20화면, 성과실→생성실 복귀 5/5. 가로 넘침, 탐색 가림, 모달, 401, 콘솔 오류 0. `commands/12-verify-four-room-ui-final.txt`, 원본 `captures-final/` |
+| R166, R172 | Studio v1 인증, 생성, 조회, 무료 다시 만들기 | FLOW-STUDIO-V21 | PASS | localhost 실제 요청 14/14. `commands/04-verify-studio-v1-e2e.txt` |
+| 필수 회귀 | 전체 test, TypeScript, production build, seed·RLS, health·주요 API curl, 디자인 lint | FLOW-REGRESSION-V21 | PASS | Vitest 374파일·2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 0. 격리 build 184/184, seed·RLS 멱등 적용, health·metrics·drafts HTTP 200, 디자인 lint 위반 0. `commands/05`부터 `14` |
+| 검증 자격증명 | QA 토큰 정리 | FLOW-TOKEN-CLEANUP-V21 | PASS | 활성 `qa-four-room-*` 토큰 0건, 최신 6/6 폐기. `commands/14-token-cleanup.txt` |
+| R193, R205, R206 | v63 계승과 8개 배치 속성 정합 | DESIGN-CONF-V21 | NG | v63 원본과 현재 16개 라이트 화면이 요소 순서, 열 수, 정렬과 여백, 표시와 숨김, 글꼴 단계, 버튼 위계에서 불일치하거나 동일 상태가 아님. 과제 v63과 canonical v68 승인 핀도 충돌. `docs/qa/osmu-four-room-basic-flow-v21-gpt-codex.md` |
+| 제품 전체 | 운영 배포와 외부 채널 | QA-QUALITY-GATE-V21 | NG | localhost 기능 범위만 PASS. 운영 동적 URL, 실제 배포 버전, 외부 채널 실발행은 미검증이고 디자인 정합 NG. |
+| 릴레이 품질 게이트 | stage 또는 운영 호스트 접촉 | QA-RELAY-GATE-V21 | FAIL | `verify-agent-quality.sh`가 배포 환경 접촉 증거 0건으로 반려. 과제 명시 범위의 localhost 결과만 출고하고 운영 QA로 확대하지 않는다. `commands/15-verify-agent-quality.txt` |
+| R01부터 R207 및 세부 요청 232건 중 이번 범위 밖 | 회장 확정 요구 전건 | REQ-ALL-V21 | 이월 | 기존 정본 판정을 유지하고 이번 범위 관련 요청만 갱신. |
+
+제품 소스는 수정하지 않았다. 최신 실행본의 기능 흐름에서 끊긴 곳은 없었다. 16개 화면 디자인
+정합 NG와 운영 배포 미검증 때문에 QA 승인은 불가하다.
+
 ## 2026-09-17 08시 17분 KST · 최근 24시간 코드 공격 최종 재검수 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

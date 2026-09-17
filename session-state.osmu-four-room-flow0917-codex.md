@@ -1,6 +1,6 @@
-# OSMU 네 방 기본 흐름 QA v20 핸드오프
+# OSMU 네 방 기본 흐름 QA v21 핸드오프
 
-작성: 2026-09-17 06:36 KST
+작성: 2026-09-17 10:18 KST
 
 라인: osmu
 
@@ -10,14 +10,15 @@
 
 ## 무엇을 어디까지 했나
 
-- localhost:3456 실행본 `build_commit=7f5564ea`에서 생성실부터 성과실까지 실제 요청 11/11을 통과했다.
+- 회장 요청 원문을 handoff basis로 사용했다. tmux pane은 실행 서버와 동시 작업 확인에만 썼다.
+- localhost:3456 실행본 `build_commit=2280089f`에서 생성실부터 성과실까지 실제 요청 11/11을 최초와 최종 두 번 통과했다.
 - 네 방 단면 4/4, Studio v1 14/14를 통과했다.
 - 390 라이트·다크, 768, 1024, 1440에서 네 방 20화면과 성과실에서 생성실 복귀 5/5를 관찰했다.
 - 가로 넘침, 가린 탐색, 전체 화면 모달, 브라우저 401, 콘솔 오류는 0건이었다.
 - Vitest 374파일·2,414건, TypeScript, 격리 production build 184/184, schema·seed·RLS, 주요 API curl, 디자인 lint를 통과했다.
-- 이번 실행 토큰 10개와 2026-09-15부터 남은 QA 토큰 1개를 제품 API로 폐기해 활성 검증 토큰 0건을 확인했다.
-- 제품 소스는 수정하지 않았다. QA 보고서와 원본 증거는 커밋 `7f5dd8c5`에 있다.
-- 상세 보고서는 `docs/qa/osmu-four-room-basic-flow-v20-gpt-codex.md`, 원본은 `logs/diff/osmu-four-room-flow-20260917-v20/`이다.
+- 이번 실행의 최신 QA 토큰 6/6 폐기와 활성 검증 토큰 0건을 확인했다.
+- 제품 소스는 수정하지 않았다.
+- 상세 보고서는 `docs/qa/osmu-four-room-basic-flow-v21-gpt-codex.md`, 원본은 `logs/diff/osmu-four-room-flow-20260917-v21/`이다.
 
 ## 남은 이슈·블로커
 
