@@ -23,6 +23,7 @@
 - `npm run test`: 374파일, 2,414건 통과, 3건 제외.
 - `npx tsc --noEmit`: 종료 코드 0.
 - 증거: `logs/diff/osmu-gapfill-20260917-1106/`.
+- 감사, QA, 구현 현황과 증거 커밋: `1071da9e`.
 
 ## 다음 실행
 
