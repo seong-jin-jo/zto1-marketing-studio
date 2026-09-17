@@ -37,7 +37,10 @@ const gotoRoom=async(page,url,room)=>{
 const request=(pathname,options={})=>fetch(`${base}${pathname}`,{
   ...options,
   headers:{authorization:`Bearer ${operatorToken}`,...(options.body?{"content-type":"application/json"}:{}),...(options.headers||{})},
-  signal:AbortSignal.timeout(Math.max(1,Math.min(15000,deadlineAt-Date.now()))),
+  // 새로 뜬 Next 개발 서버는 고객 토큰 API를 처음 컴파일하는 동안
+  // 15초를 넘을 수 있다. 페이지와 방 준비에 쓰는 같은 단계별 상한을 써야
+  // 응답 본문을 전송하다 끊고 제품 회귀로 오판하지 않는다.
+  signal:AbortSignal.timeout(Math.max(1,Math.min(readyTimeoutMs,deadlineAt-Date.now()))),
 });
 const cleanupRequest=(pathname,options={})=>fetch(`${base}${pathname}`,{
   ...options,

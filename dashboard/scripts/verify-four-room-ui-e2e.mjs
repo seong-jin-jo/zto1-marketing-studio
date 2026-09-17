@@ -54,7 +54,9 @@ const request = async (pathname, options = {}) => fetch(`${baseUrl}${pathname}`,
     ...(options.body ? { "content-type": "application/json" } : {}),
     ...(options.headers || {}),
   },
-  signal: AbortSignal.timeout(Math.max(1, Math.min(15_000, deadlineAt - Date.now()))),
+  // 최초 고객 토큰 발급도 공유 Next 개발 서버의 냉간 컴파일 대상이다.
+  // 방 렌더와 같은 단계별 상한을 써서 15초 조기 중단이 정상 흐름을 NG로 바꾸지 않게 한다.
+  signal: AbortSignal.timeout(Math.max(1, Math.min(readyTimeoutMs, deadlineAt - Date.now()))),
 });
 const cleanupRequest = async (pathname, options = {}) => fetch(`${baseUrl}${pathname}`, {
   ...options,
