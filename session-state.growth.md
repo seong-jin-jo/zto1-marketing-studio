@@ -2,6 +2,12 @@
 
 목적: OSMU 그로스(마케팅) 레인을 개시해 2026-09 첫 바퀴(전략→우선순위→개통→발주→집행)를 돌린다. 캠페인 컨셉 = 메타 데모("이 계정의 모든 게시물은 OSMU 로 만들어졌다").
 
+# 2026-09-17 18시 25분 회장 정정: 질문은 SNS 자동 운전이 아니라 OSMU 대시보드 테스트용 브라우저 2개(관리자·회원) 방식
+앞 턴 오독(인스타·스레드 자동 운전으로 답함) → 회장 neg 평가, hook 이 원장 적립. 실제 질문 = 관리자용 크롬 + 일반회원용 크롬을 상시 띄워 OSMU 테스트·설정 반복할 때 어떤 방식이 나은가.
+답: Playwright 영구 프로필 2개(~/.osmu-browsers/admin, member) 헤디드 + remote-debugging-port 9222/9223, 컨트롤러가 connectOverCDP 로 조작. Claude in Chrome 은 회장 프로필 1개 공유·포커스 탈취라 탈락. gstack browse state save/load 는 전환식이라 보조. 회원 창 로그인·Meta OAuth 동의 클릭만 회장 손.
+회장 답 대기: 채택안 진행 확인. 확인 즉시 dashboard/scripts/osmu-browsers.sh admin|member 작성, 두 창 기동, 회원 창 로그인 요청.
+그로스 레인 2칸 회장 확인 3건은 여전히 열림.
+
 # 2026-09-17 02시 30분 회장 질문: SNS 세팅 순서·Playwright 저장 프로필 자동 운전 가부
 회장: "뭐부터? SNS 세팅부터? Claude in Chrome 말고 Playwright 프로필로 인스타·스레드 계정 저장해 쓸 수 없나, 안 되면 다른 브라우저".
 답변(컨트롤러 직접 판단): 순서는 3칸 개통(SNS 세팅)부터가 맞음. 저장 프로필 자동 운전은 기술적으로 가능(gstack setup-browser-cookies·connect-chrome·Playwright 바이너리 실재)하나 **Meta 계정군엔 금지**: 결정.md 385행 2026-07-01 GStack 자동 운전으로 개발자 계정 플래그 실사고 + ADR-005 §7 계정 셋업 자동화 금지. 추천 = 읽기 전용 확인만, 세팅은 회장 손 + 컨트롤러 페어(URL·클릭 경로 안내, 캡처 확인).
