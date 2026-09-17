@@ -1,3 +1,13 @@
+# 2026-09-17 16시 50분 최근 24시간 코드 공격 리뷰 BLOCK
+
+사용자의 명시 과제를 handoff basis로 사용했다. 여러 live tmux pane과 기존 session-state가 함께 있어 기준을 질문했으나 답이 없어, 현재 요청과 현재 git 상태를 기준으로 검토했다. tmux 작업은 인계받거나 변경하지 않았다.
+
+검토 범위는 2026-09-16 16시 45분부터 2026-09-17 16시 45분 KST까지 54개 커밋, `e5a4487e..268e49ba`다. MAJOR 11건으로 BLOCK이다. 핵심은 화면 복구가 실제 발행 장부를 고치지 않는 문제, TikTok과 예약 발행의 과금 누락, 사용량 relay 실패의 정상 수치 표시, YouTube 재개 파일 불일치, Studio 5xx의 HTTP 200 변환, 공유 QA의 설정 덮어쓰기다.
+
+Vitest 374파일과 2,414건, TypeScript, 기본 흐름 11/11은 통과했다. Studio v1은 첫 실행에서 HTTP 200 본문 `STUDIO_LLM_TIMEOUT`으로 NG였고 한 번 재실행해 14/14를 통과했다. health HTTP 200과 DB up, ElevenLabs, GA, GSC 영문 503 오류를 직접 관찰했다. 실제 외부 발행, DB 장애 주입, 두 작업 공간 동시 동적 격리는 미검증이다.
+
+제품 코드는 수정하지 않았다. 감사와 QA 원장 커밋은 `d11ea38f`다. 상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단이다. 다음 소유자는 code-builder다. 11개 MAJOR를 고친 뒤 같은 재현과 현재 제품 소스에 귀속되는 localhost에서 다시 검수해야 한다.
+
 ## 2026-09-17 14:25 KST · 네 방 기본 흐름 QA v22 완료, 제품 전체 QA는 NG
 
 회장 요청 원문을 primary handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였다. localhost 실행 앱 커밋 `426bfb4c`에서 기본 흐름 최초·최종 11/11, 네 방 4/4, 390 라이트·다크와 768·1024·1440의 20화면, 성과실 복귀 5/5, Studio v1 14/14를 관찰했다.
