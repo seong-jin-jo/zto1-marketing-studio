@@ -291,10 +291,13 @@ describe("/api/video/publish — YouTube", () => {
   it("동시 요청 중 하나만 업로드하고, 진 요청은 409로 fail-closed", async () => {
     const draftId = "66666666-6666-6666-6666-666666666666";
     let release: (v: unknown) => void = () => {};
+    let markStarted: () => void = () => {};
     const gate = new Promise((r) => { release = r; });
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
     fetchMock = vi.fn(async (input: unknown) => {
       const url = String(input);
       if (url.includes("uploadType=resumable")) {
+        markStarted();
         await gate;
         return { ok: true, status: 200, headers: { get: (k: string) => (k === "Location" ? "https://upload.example.com/s" : null) } } as unknown as Response;
       }
@@ -306,7 +309,9 @@ describe("/api/video/publish — YouTube", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const first = callPublish({ filename: "clip.mp4", platform: "youtube", draft_id: draftId });
-    await new Promise((r) => setTimeout(r, 0));
+    // Regression: full Vitest contention can delay the first dynamic import beyond one event-loop turn.
+    // Wait for the first request to hold the upload reservation before issuing the competing request.
+    await started;
     const second = await callPublish({ filename: "clip.mp4", platform: "youtube", draft_id: draftId });
 
     expect(second.status).toBe(409);
