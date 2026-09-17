@@ -1,6 +1,6 @@
 # zto1-marketing-studio OSMU 코드 리뷰 수정 인계
 
-STAMP: 2026-09-18 03:20 KST | line: zto1-marketing-studio-osmu-codefix0918 | model: gpt-codex/gpt-5 | status: complete
+STAMP: 2026-09-18 03:16 KST | line: zto1-marketing-studio-osmu-codefix0918 | model: gpt-codex/gpt-5 | status: complete
 
 ## 무엇을 어디까지 했나
 
