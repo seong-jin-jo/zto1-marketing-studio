@@ -1,3 +1,20 @@
+# 2026-09-18 00:41 KST 최근 24시간 코드 공격 리뷰 BLOCK
+
+사용자의 명시 과제를 handoff basis로 사용했다. `openclaw-auto:0.0`과
+`osmu-regress091800:0.0`은 localhost 소유권과 중복 실행 확인에만 사용했고, 다른 pane의 작업은
+인계받거나 변경하지 않았다. 검토 범위는 2026-09-18 00:35 KST에
+`d04c60a1..08b29f31` 61개 커밋으로 고정했다. 제품 코드는 수정하지 않았다.
+
+MAJOR 10건으로 BLOCK이다. 실제 발행 원장을 고치지 않는 복구 단추, YouTube 기본 계정 ID 유실과
+재개 파일 불일치, TikTok 및 예약 발행의 사용량 누락, relay 실패의 정상 수치 표시, 브라우저 상태
+종료 코드 거짓 성공, Meta OAuth 오분류, 공유 QA 설정 경합, 금지 그림문자를 확인했다.
+
+Vitest 374파일과 2,416건, TypeScript는 통과했다. localhost health는 HTTP 200과 DB up이다.
+기본 흐름과 Studio v1은 정상 생성에서 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 둘 다 NG였다. 실제 SNS
+발행, DB 장애 주입, 두 작업 공간 동시 동적 격리, 운영 배포는 미검증이다. 감사 문서 커밋은
+`ea6cd73a`다. 다음 소유자는 code-builder다. MAJOR 10건을 고친 뒤 같은 재현과 최신 소스에
+귀속되는 localhost에서 두 필수 E2E를 다시 통과해야 한다.
+
 # 2026-09-17 23:15 KST 성과 시계열 갭 build 회수, 실앱 회귀 NG
 
 사용자의 명시 과제를 handoff basis로 사용했다. 실행 중인 `osmu-gapfill091723:0.0`은 이 위임
