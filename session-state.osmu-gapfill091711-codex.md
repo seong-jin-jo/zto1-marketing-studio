@@ -44,4 +44,4 @@ node scripts/verify-studio-v1-e2e.mjs
 - `npx tsc --noEmit`: 종료 코드 0.
 - 증거: `logs/diff/osmu-gapfill-20260917-1106/`.
 - 감사, QA, 구현 현황과 증거 커밋: `1071da9e`.
-- 이번 핸드오프 최신화 커밋은 다음 커밋에 기록한다.
+- 핸드오프 필수 항목 보강 커밋: `2357d2bf`.
