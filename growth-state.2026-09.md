@@ -5,11 +5,12 @@ sprint: 2026-09
 repo: /Users/sj/sj_code_master/zto1-marketing-studio
 lane_version: 1
 
-current_cell: instrument
-approved_cells: [strategy, priority]
+current_cell: order
+approved_cells: [strategy, priority, instrument]
 approved_artifacts:
   strategy: docs/growth/campaigns/2026-09/01-전략.md v1.0.0 (GATE 2026-09-16 03:01 KST)
   priority: docs/growth/campaigns/2026-09/02-우선순위.md v1.0.0 (GATE 2026-09-16 03:14 KST)
+  instrument: docs/growth/campaigns/2026-09/03-개통.md v1.0.0 partial (GATE 2026-09-18)
 chairman_confirms:
   priority: "2026-09-18 00:43 회장 '다 승인하니까 진행하라고' (지목 A · 수동 3건 · 정적 페이지 예외 배포)"
   order: null
