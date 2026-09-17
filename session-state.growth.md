@@ -2,6 +2,12 @@
 
 목적: OSMU 그로스(마케팅) 레인을 개시해 2026-09 첫 바퀴(전략→우선순위→개통→발주→집행)를 돌린다. 캠페인 컨셉 = 메타 데모("이 계정의 모든 게시물은 OSMU 로 만들어졌다").
 
+# 2026-09-17 18시 40분 테스트 브라우저 2개(관리자·회원) 기동 완료
+회장: "Chrome for Testing 굳이 필요 없지? aside 와 뭐가 달라? 일단 만들어. 하네스에 프로필 관리 방식 이미 있을걸".
+확인: 하네스 정문 `~/.claude/harness/bin/social-browser.mjs`(SOCIAL_PROFILE → ~/.sj-agent-harness/browser-profiles/<이름>, 실제 크롬 채널)가 이미 있었다. Chrome for Testing 불필요. serve 모드(CDP_PORT) 추가.
+만든 것: `dashboard/scripts/osmu-browsers.sh admin|member|status`. admin=osmu-admin 프로필 CDP 9222, member=osmu-member CDP 9223. 둘 다 기동 관찰(Chrome/153). admin 은 운영자 토큰 localStorage 주입으로 identity=operator 관찰. member 는 랜딩(미로그인) 상태, 회장 로그인 대기.
+다음: 회장이 member 창에서 로그인 1회 → 컨트롤러가 두 창으로 3칸 개통 검증 시작.
+
 # 2026-09-17 18시 25분 회장 정정: 질문은 SNS 자동 운전이 아니라 OSMU 대시보드 테스트용 브라우저 2개(관리자·회원) 방식
 앞 턴 오독(인스타·스레드 자동 운전으로 답함) → 회장 neg 평가, hook 이 원장 적립. 실제 질문 = 관리자용 크롬 + 일반회원용 크롬을 상시 띄워 OSMU 테스트·설정 반복할 때 어떤 방식이 나은가.
 답: Playwright 영구 프로필 2개(~/.osmu-browsers/admin, member) 헤디드 + remote-debugging-port 9222/9223, 컨트롤러가 connectOverCDP 로 조작. Claude in Chrome 은 회장 프로필 1개 공유·포커스 탈취라 탈락. gstack browse state save/load 는 전환식이라 보조. 회원 창 로그인·Meta OAuth 동의 클릭만 회장 손.
