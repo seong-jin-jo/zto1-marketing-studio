@@ -42,7 +42,8 @@ describe("SNS-007 multi-account source contracts", () => {
     // (Instagram 발행에 YouTube 계정 id가 새면 안 된다).
     expect(page).toMatch(/account_id: platform === "youtube" \? \(publishAccountId \|\| undefined\) : platform === "tiktok"/);
     expect(route).toContain('getChannelCred(tenantId, "youtube", accountId)');
-    expect(route).toContain("refreshYoutubeAccessToken(tenantId, accountId)");
+    expect(route).toContain("const resolvedAccountId = cred?.accountId ?? accountId");
+    expect(route).toContain("refreshYoutubeAccessToken(tenantId, resolvedAccountId)");
   });
 
   it("video workspace delegates YouTube/TikTok connection and account ownership to channel pages", () => {
