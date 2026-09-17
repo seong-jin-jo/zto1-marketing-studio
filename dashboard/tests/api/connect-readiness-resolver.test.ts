@@ -158,6 +158,10 @@ describe("customer readiness central resolver wiring", () => {
     expect(body.providers.threads.reason).toContain("테스터로 등록");
     expect(body.providers.threads.reason).toContain("초대를 수락");
     expect(body.providers.threads.reason).toContain("테스터 등록 없이 OAuth로 연결");
+    // ADR-006: 한시 절차임을 문장에 명시하고, 등록 주체가 고객이 아니라 운영자임을 밝힌다
+    // (회장 2026-09-17 "회원이 OAuth 로그인만 하면 자동으로 등록돼야지").
+    expect(body.providers.threads.reason).toContain("심사 전 한시 절차");
+    expect(body.providers.threads.reason).toContain("운영자가");
   });
 
   it("AR-GUIDE-001 정상: 심사 전에는 provider별 초대 수락 안내 계약을 반환한다", async () => {
