@@ -1,3 +1,22 @@
+## 2026-09-17 19시 40분 - 정책 정정(테스터 아님, App Review), 오류문구 수정 배포, 제출 패키지
+
+- 회장: 회원은 OAuth 로그인만으로 자기 SNS 에 발행해야 한다. 테스터 수동 등록은 정책이 아니다(ADR-004/006 재확인). 실수원장 [policy-misread], [codex-underuse] 기록.
+- 배포: Meta "Error validating verification code" 를 redirect 불일치로 오역하던 것을 "심사 전 테스터 명단 제외(한시)" 로 정정, readiness 문구 정리(0c1b030a, PR 58 머지·배포).
+- Codex: docs/ops/meta-app-review-2026-09.md 제출 패키지 작성(2aac6c14) + 독립 검토·보정(7c479300, 25/25). 판정: 제출 NO-GO. 막힌 것 = ①액세스 인증(비즈니스 인증, 회장 서류) ②권한별 성공 호출 증거·심사용 영상 0/13 ③Instagram 인사이트 scope 갭, Facebook read_insights 구성 갭 ④심사관용 테스트 계정.
+- 영상 증거를 만들려면 Instagram 이 실제로 연결된 계정이 필요한데 DB 에 사용자명이 채워진 인스타그램 계정이 하나도 없다(전 테넌트). 내부 테스터 계정(zero_to_one_ai 등, ADR-004 허용)으로 연결해야 한다. 그 로그인은 회장.
+- 콘솔에서 내가 한 것: instagram_business_content_publish·manage_comments 권한을 이용 사례에 추가(표준 액세스). 크롬 확장은 Meta 페이지에서 렌더러가 멈춰 그 뒤 조작 불가.
+- X: 콘솔 앱 osmu 33410793 은 OAuth 2.0 사용자 인증 미설정, OAuth 1.0 읽기 전용. 우리 X_CLIENT_ID 와의 짝 불명.
+
+## 2026-09-17 19시 35분 KST - Meta App Review 독립 리뷰 완료, 제출은 NO-GO
+
+- handoff basis: 회장이 지정한 `docs/ops/meta-app-review-2026-09.md` 독립 리뷰 과제. 기존 tmux 작업은 인계받거나 변경하지 않았다.
+- 완료한 것: `standard-doc-review.md`로 최초본을 17/25 RETAKE 판정한 뒤 v1.1.0을 25/25 PASS로 보정했다. 권한 13개를 사용자 가치, 코드, 실제 API, 영상 구간에 1:1 매핑했고, 권한별 영문 문안 13/13, 목차 앵커 13/13, 외부 URL 15/15 HTTP 200을 확인했다. 1440px 전체 웹 렌더도 육안 검수했다.
+- 독립 2차 검토: Instagram metric 과단정, Facebook Page name 과장, `pages_read_engagement` path 불일치, 예약 발행 누락 등 RETAKE 4건을 문서 §12.4와 QA 원장 `META-DOC-REVIEW-20260917-07`에 반영했다.
+- 커밋: `7c479300` (`docs: independently review Meta App Review package`). 변경 파일은 제출 패키지, QA 원장, wiki handoff 3개뿐이며 push하지 않았다. 사용자가 요구한 커밋 1개를 유지한다.
+- 현재 판정: 문서 품질은 PASS지만 Meta App Review 제출은 NO-GO다. 실제 최근 성공 호출과 영상은 0/13이다. 콘솔 앱 Live는 관찰 상태이며 액세스 인증은 미완료 차단 항목이다.
+- 남은 이슈: Instagram `instagram_business_manage_insights` scope와 `graph.instagram.com` host 수정, account·media 공식 metric 안내 충돌을 실제 media insights HTTP 2xx로 해소, Facebook Login configuration의 `read_insights`, `GET /{page-id}?fields=name` 직접 증거, reviewer 접근, API v21.0 지원 확인, 액세스 인증 완료가 남아 있다.
+- 다음 액션: code-builder가 문서 §8의 1번 기술 갭을 수정하고 실제 Instagram·Facebook insights 2xx를 남긴다. qa-verifier가 reviewer 계정으로 §4.5의 13개 권한 전부를 실행해 token 없는 요청 path, 호출시각, HTTP 2xx, 응답 필드, 제품 화면 결과를 촬영한다. 회장은 현재 콘솔에서 액세스 인증 완료 화면을 확보한다. 종료 증거는 13/13 성공 원장, 3개 1080p 영상, 액세스 인증 완료 캡처, Meta 제출 receipt다.
+
 ## 2026-09-17 04시 45분 - Meta·X 콘솔 직접 진입(크롬), 인스타·페북·X 실패 원인 확정
 
 - 크롬(claude-in-chrome)에 Meta 앱 소유 계정이 로그인돼 있어 콘솔에 들어감. 앱 정성컴퍼니(1553503759757107) 모드 라이브. Instagram 앱 ID 1534059948198965 는 같은 앱의 Instagram 로그인 제품.
