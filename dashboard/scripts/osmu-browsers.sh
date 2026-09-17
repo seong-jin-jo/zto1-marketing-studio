@@ -16,12 +16,17 @@ case "$ROLE" in
   admin)  PORT=9222; PROFILE=osmu-admin ;;
   member) PORT="${OSMU_MEMBER_CDP:-9223}"; PROFILE=osmu-member ;;   # 회장이 직접 띄운 실회원 브라우저(2026-09-17: 9333, j.the.great.investor)가 있으면 OSMU_MEMBER_CDP=9333 로 가리킨다
   status)
+    failures=0
     for p in 9222:admin "${OSMU_MEMBER_CDP:-9223}:member"; do
       port=${p%%:*}; name=${p##*:}
       if v=$(curl -s --max-time 2 "http://127.0.0.1:$port/json/version" 2>/dev/null) && [[ -n "$v" ]]; then
-        echo "✓ $name (CDP $port): $(echo "$v" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("Browser"))')"
-      else echo "✗ $name (CDP $port): 응답 없음"; fi
-    done; exit 0 ;;
+        echo "정상 $name (CDP $port): $(echo "$v" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("Browser"))')"
+      else
+        echo "오류 $name (CDP $port): 응답 없음"
+        failures=$((failures + 1))
+      fi
+    done
+    (( failures == 0 )) ;;
   *) echo "usage: $0 admin|member [url] | status" >&2; exit 2 ;;
 esac
 if curl -s --max-time 1 "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1; then
@@ -29,4 +34,4 @@ if curl -s --max-time 1 "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1; t
 LOG="$HOME/.sj-agent-harness/browser-profiles/$PROFILE.log"; mkdir -p "$(dirname "$LOG")"
 SOCIAL_PROFILE="$PROFILE" CDP_PORT="$PORT" nohup node "$RUNNER" serve "$URL" >"$LOG" 2>&1 &
 for i in $(seq 1 20); do curl -s --max-time 1 "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1 && { echo "기동: $ROLE · 프로필 $PROFILE · CDP $PORT · 로그 $LOG"; exit 0; }; sleep 0.5; done
-echo "⛔ $ROLE 기동 실패. 로그: $LOG"; tail -5 "$LOG"; exit 1
+echo "기동 실패 $ROLE. 로그: $LOG"; tail -5 "$LOG"; exit 1

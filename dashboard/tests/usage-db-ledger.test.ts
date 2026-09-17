@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const H = vi.hoisted(() => ({
   tenantId: "tenant-usage" as string | null,
   queries: [] as string[],
+  relayFailed: 0,
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({
@@ -13,6 +14,9 @@ vi.mock("@/lib/tenant-auth", () => ({
 
 vi.mock("@/lib/tenant-context", () => ({
   runWithTenant: vi.fn(async (_tenantId: string | null, cb: () => unknown) => cb()),
+}));
+vi.mock("@/lib/usage-events", () => ({
+  reconcilePendingPublicationEvents: vi.fn(async () => ({ processed: 0, failed: H.relayFailed })),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -47,6 +51,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-07-30T12:00:00.000Z"));
   H.tenantId = "tenant-usage";
   H.queries = [];
+  H.relayFailed = 0;
 });
 
 afterEach(() => {
@@ -92,5 +97,16 @@ describe("GET /api/usage — usage_events DB 정본", () => {
     expect(recordRoute).toContain("legacy mirror");
     const sourcingRoute = fs.readFileSync(path.join(process.cwd(), "src/app/api/sourcing/route.ts"), "utf8");
     expect(sourcingRoute).toContain('request.headers.get("authorization")');
+  });
+
+  it("REVIEW-24H-20260918-04 거절: 발행 사용량 relay 실패를 낮은 정상 합계로 반환하지 않는다", async () => {
+    H.relayFailed = 1;
+    const { GET } = await import("@/app/api/usage/route");
+    const response = await GET(new Request("http://localhost/api/usage?tenant_id=tenant-usage"));
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body).toMatchObject({ status: "delayed", publicationRelay: { failed: 1 } });
+    expect(body.today).toBeUndefined();
   });
 });

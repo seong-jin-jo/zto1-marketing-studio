@@ -48,6 +48,8 @@ export interface ExternalPublishPersistenceFailure {
       action: "repair_persistence_only";
       retryPublish: false;
       draftId?: string | null;
+      publicationId?: string | null;
+      stage?: "publication_record" | "queue_record" | "usage_record";
       platform: string;
       accountId?: string | null;
       externalId: string | null;

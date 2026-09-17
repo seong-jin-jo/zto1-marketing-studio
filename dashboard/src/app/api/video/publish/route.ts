@@ -132,6 +132,7 @@ function videoPersistenceFailure(input: {
         draftId: null,
         accountId: null,
         publicationId: input.publicationId,
+        stage: input.stage,
         externalId: input.externalId,
         permalink: input.permalink,
       },
@@ -227,6 +228,10 @@ export async function POST(request: Request) {
           { status: 400 },
         );
       }
+      // 요청이 계정을 생략했더라도 getChannelCred가 고른 실제 기본 계정으로 발행 의도를
+      // 고정한다. 요청값(undefined)을 계속 쓰면 기본 계정이 바뀐 뒤 서로 다른 계정의
+      // 예약과 업로드 세션이 account_id NULL 한 줄로 합쳐진다.
+      const resolvedAccountId = cred?.accountId ?? accountId;
 
       // 2026-09-17: TikTok/Reels와 같은 예약(reserve) + idempotency 계약으로 맞춘다. "지금 발행"을
       // 두 번 누르면(순차 재시도 또는 동시 클릭) 같은 영상이 YouTube에 두 번 올라가던 것을 막는다.
@@ -243,7 +248,7 @@ export async function POST(request: Request) {
         : publishReservationKey([
           "osmu-youtube-dedupe-v2",
           tenantId,
-          accountId || "",
+          resolvedAccountId || "",
           filename,
           videoHash,
           title,
@@ -255,7 +260,7 @@ export async function POST(request: Request) {
         withTenant(tenantId, (sql) => sql<{ id: string }[]>`
           INSERT INTO published_posts (tenant_id, draft_id, platform, text, status, account_id, reserved_at)
           VALUES (${tenantId}::uuid, ${idKey}::uuid, ${"youtube"}, ${description || title || null},
-                  'in_progress', ${accountId ?? null}::uuid, now())
+                  'in_progress', ${resolvedAccountId ?? null}::uuid, now())
           ON CONFLICT DO NOTHING
           RETURNING id
         `);
@@ -295,7 +300,7 @@ export async function POST(request: Request) {
              WHERE tenant_id = ${tenantId}::uuid
                AND draft_id = ${idKey}::uuid
                AND platform = ${"youtube"}
-               AND account_id IS NOT DISTINCT FROM ${accountId ?? null}::uuid
+               AND account_id IS NOT DISTINCT FROM ${resolvedAccountId ?? null}::uuid
                AND status IN ('published', 'in_progress')
              ORDER BY published_at DESC
              LIMIT 1
@@ -352,8 +357,23 @@ export async function POST(request: Request) {
           ? providerMeta.youtubeUpload as Record<string, unknown>
           : null;
         const uploadUrl = typeof uploadMeta?.url === "string" ? uploadMeta.url : "";
+        const savedFileHash = typeof uploadMeta?.fileHash === "string" ? uploadMeta.fileHash : "";
+        const savedTotalBytes = Number(uploadMeta?.totalBytes);
+        const savedSessionMatchesFile = savedFileHash === videoHash && savedTotalBytes === videoSize;
 
-        if (uploadUrl) {
+        if (uploadUrl && !savedSessionMatchesFile) {
+          // 같은 draft_id 경로의 파일이 교체됐다. 옛 세션 URI에 새 파일의 뒷부분을 붙이면
+          // 공급자에 손상된 영상이 남으므로 기존 세션을 닫고 새 예약으로 처음부터 시작한다.
+          const [discarded] = await withTenant(tenantId, (sql) => sql<{ id: string }[]>`
+            UPDATE published_posts SET status = 'failed', reserved_at = NULL,
+              error = ${"YouTube 업로드 파일이 바뀌어 기존 세션을 폐기했습니다."}
+             WHERE tenant_id = ${tenantId}::uuid AND id = ${holder.id}::uuid AND status = 'in_progress'
+             RETURNING id::text`);
+          if (discarded) {
+            const [row] = await reserve();
+            reservationId = row?.id ?? null;
+          }
+        } else if (uploadUrl) {
           const checkStatus = async (token: string) => fetch(uploadUrl, {
             method: "PUT",
             headers: {
@@ -368,7 +388,7 @@ export async function POST(request: Request) {
           try {
             statusResponse = await checkStatus(accessToken);
             if (statusResponse.status === 401) {
-              const refreshed = await refreshYoutubeAccessToken(tenantId, accountId);
+              const refreshed = await refreshYoutubeAccessToken(tenantId, resolvedAccountId);
               if (!refreshed.ok || !refreshed.accessToken) {
                 return Response.json({ error: "YouTube 인증이 만료되었습니다. 다시 연결해주세요." }, { status: 401 });
               }
@@ -518,7 +538,7 @@ export async function POST(request: Request) {
         if (!uploadUrl) {
           let initRes = await initUploadOnce(accessToken);
           if (initRes.status === 401) {
-            const refreshed = await refreshYoutubeAccessToken(tenantId, accountId);
+            const refreshed = await refreshYoutubeAccessToken(tenantId, resolvedAccountId);
             if (!refreshed.ok || !refreshed.accessToken) {
               const msg = refreshed.error || "YouTube 인증이 만료되었습니다. 다시 연결해주세요.";
               await failReservation(msg);

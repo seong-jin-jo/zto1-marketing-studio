@@ -11,6 +11,7 @@ const H = vi.hoisted(() => ({
   creator: { username: "creator-a" } as { username: string } | null,
   credentialCalls: [] as unknown[][],
   statusCalls: [] as unknown[][],
+  usageEvents: [] as unknown[][],
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({
@@ -19,7 +20,7 @@ vi.mock("@/lib/tenant-auth", () => ({
 }));
 vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async (tenantId: string, callback: (sql: unknown) => unknown) => {
-    const sql = (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const sql = Object.assign((strings: TemplateStringsArray, ...values: unknown[]) => {
       const query = strings.join(" ");
       if (query.includes("SELECT id, status, account_id")) {
         if (tenantId !== H.row.tenantId || values[2] !== H.row.externalId) return Promise.resolve([]);
@@ -45,7 +46,7 @@ vi.mock("@/lib/db", () => ({
         return Promise.resolve([]);
       }
       return Promise.resolve([]);
-    };
+    }, { json: (value: unknown) => value });
     return callback(sql);
   }),
 }));
@@ -55,6 +56,13 @@ vi.mock("@/lib/publish", () => ({
 vi.mock("@/lib/tiktok", () => ({
   fetchTikTokPostStatus: vi.fn(async (...args: unknown[]) => { H.statusCalls.push(args); return H.provider; }),
   queryTikTokCreatorInfo: vi.fn(async () => H.creator),
+}));
+vi.mock("@/lib/usage-events", () => ({
+  publicationUsageOutbox: (platform: string) => ({ usageEvent: { status: "pending", platform } }),
+  recordPublicationEvent: vi.fn(async (...args: unknown[]) => {
+    H.usageEvents.push(args);
+    return { recorded: true, alreadyRecorded: false };
+  }),
 }));
 
 async function status(publishId = "pub-1") {
@@ -72,6 +80,7 @@ describe("GET /api/tiktok/publish-status", () => {
     H.creator = { username: "creator-a" };
     H.credentialCalls = [];
     H.statusCalls = [];
+    H.usageEvents = [];
     vi.resetModules();
   });
 
@@ -110,6 +119,7 @@ describe("GET /api/tiktok/publish-status", () => {
       url: "https://www.tiktok.com/@creator-a/video/post-9",
     });
     expect(H.statusCalls).toHaveLength(1);
+    expect(H.usageEvents).toEqual([[TENANT_A, "row-1", "tiktok"]]);
   });
 
   it("persists provider failure with a fixed message and hides raw provider reasons", async () => {
@@ -155,6 +165,7 @@ describe("GET /api/tiktok/publish-status", () => {
     expect(body).toEqual({ ok: true, status: "published", publishId: "pub-1" });
     expect(H.row).toMatchObject({ status: "published", providerPostId: null, permalink: null });
     expect(H.statusCalls).toHaveLength(1);
+    expect(H.usageEvents).toEqual([[TENANT_A, "row-1", "tiktok"]]);
   });
 
   it("does not reveal or poll another tenant's reservation", async () => {

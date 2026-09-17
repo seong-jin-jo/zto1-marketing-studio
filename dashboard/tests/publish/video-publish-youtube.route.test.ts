@@ -5,10 +5,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import crypto from "crypto";
+
+const YOUTUBE_ACCOUNT_A = "22222222-2222-4222-8222-222222222222";
+const YOUTUBE_ACCOUNT_B = "33333333-3333-4333-8333-333333333333";
 
 const H = vi.hoisted(() => ({
   tenantId: "11111111-1111-1111-1111-111111111111" as string | null,
-  cred: { token: "yt-token" } as { token: string } | null,
+  cred: { token: "yt-token", accountId: "22222222-2222-4222-8222-222222222222" } as { token: string; accountId: string } | null,
   getChannelCredCalls: [] as unknown[][],
   refreshResult: { ok: true, accessToken: "yt-token-refreshed" } as Record<string, unknown>,
   refreshCalls: [] as unknown[][],
@@ -188,7 +192,7 @@ describe("/api/video/publish — YouTube", () => {
     const dir = path.join(tmpRoot, "tenants", H.tenantId as string, "videos");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "clip.mp4"), Buffer.alloc(2048, 1));
-    H.cred = { token: "yt-token" };
+    H.cred = { token: "yt-token", accountId: YOUTUBE_ACCOUNT_A };
     H.getChannelCredCalls = [];
     H.refreshCalls = [];
     H.refreshResult = { ok: true, accessToken: "yt-token-refreshed" };
@@ -222,6 +226,7 @@ describe("/api/video/publish — YouTube", () => {
       nextByte: 0,
     });
     expect(H.recordEvents.length).toBe(1);
+    expect(H.rows[0].account_id).toBe(YOUTUBE_ACCOUNT_A);
   }, 15000); // 첫 테스트는 모듈 최초 트랜스폼 비용이 커 5s 기본 타임아웃을 넘길 수 있다.
 
   it("두 번째 호출은 업로드 fetch를 부르지 않고 dedupe 응답을 준다 (draft_id 재사용)", async () => {
@@ -325,7 +330,7 @@ describe("/api/video/publish — YouTube", () => {
   it("15분 넘게 남은 좀비 예약은 회수해 재발행을 허용한다", async () => {
     const draftId = "99999999-9999-9999-9999-999999999999";
     H.rows.push({
-      id: "zombie", draft_id: draftId, platform: "youtube", account_id: null,
+      id: "zombie", draft_id: draftId, platform: "youtube", account_id: YOUTUBE_ACCOUNT_A,
       status: "in_progress", external_id: null, permalink: null,
       reserved_at: new Date().toISOString(), provider_meta: {},
     });
@@ -375,13 +380,48 @@ describe("/api/video/publish — YouTube", () => {
     expect(second.json.videoId).toBe("yt-bytes-2");
   });
 
+  it("REVIEW-24H-20260918-02 정상: 요청에서 계정을 생략해도 실제 기본 계정별로 예약을 분리한다", async () => {
+    const draftId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    await callPublish({ filename: "clip.mp4", platform: "youtube", draft_id: draftId });
+
+    H.cred = { token: "yt-token-b", accountId: YOUTUBE_ACCOUNT_B };
+    mockFetchSuccess("yt-account-b");
+    const second = await callPublish({ filename: "clip.mp4", platform: "youtube", draft_id: draftId });
+
+    expect(second.status).toBe(200);
+    expect(second.json.videoId).toBe("yt-account-b");
+    expect(H.rows.filter((row) => row.status === "published").map((row) => row.account_id).sort()).toEqual([
+      YOUTUBE_ACCOUNT_A,
+      YOUTUBE_ACCOUNT_B,
+    ]);
+  });
+
+  it("REVIEW-24H-20260918-02 거절: 저장 세션의 파일 해시가 다르면 옛 URI를 재개하지 않고 새 세션을 만든다", async () => {
+    const draftId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    H.rows.push({
+      id: "resume-wrong-file", draft_id: draftId, platform: "youtube", account_id: YOUTUBE_ACCOUNT_A,
+      status: "in_progress", external_id: null, permalink: null,
+      reserved_at: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
+      provider_meta: { youtubeUpload: { url: "https://upload.example.com/old-file", totalBytes: 2048, nextByte: 1024, fileHash: "wrong-hash" } },
+    });
+    mockFetchSuccess("yt-new-session");
+
+    const result = await callPublish({ filename: "clip.mp4", platform: "youtube", draft_id: draftId });
+
+    expect(result.status).toBe(200);
+    expect(result.json.videoId).toBe("yt-new-session");
+    expect(fetchMock.mock.calls.some(([url]) => String(url) === "https://upload.example.com/old-file")).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("uploadType=resumable"))).toBe(true);
+    expect(H.rows.find((row) => row.id === "resume-wrong-file")?.status).toBe("failed");
+  });
+
   it("CODE-REVIEW-20260917-06 복구: 저장된 세션 상태를 조회하고 받은 바이트 다음부터 이어 올린다", async () => {
     const draftId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     H.rows.push({
-      id: "resume-1", draft_id: draftId, platform: "youtube", account_id: null,
+      id: "resume-1", draft_id: draftId, platform: "youtube", account_id: YOUTUBE_ACCOUNT_A,
       status: "in_progress", external_id: null, permalink: null,
       reserved_at: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
-      provider_meta: { youtubeUpload: { url: "https://upload.example.com/resume", totalBytes: 2048, nextByte: 0 } },
+      provider_meta: { youtubeUpload: { url: "https://upload.example.com/resume", totalBytes: 2048, nextByte: 0, fileHash: crypto.createHash("sha256").update(Buffer.alloc(2048, 1)).digest("hex") } },
     });
     fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
       const range = (init?.headers as Record<string, string>)?.["Content-Range"];
@@ -403,10 +443,10 @@ describe("/api/video/publish — YouTube", () => {
   it("CODE-REVIEW-20260917-09 경합: 만료된 같은 세션의 재개권은 한 요청만 가져간다", async () => {
     const draftId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     H.rows.push({
-      id: "resume-race-1", draft_id: draftId, platform: "youtube", account_id: null,
+      id: "resume-race-1", draft_id: draftId, platform: "youtube", account_id: YOUTUBE_ACCOUNT_A,
       status: "in_progress", external_id: null, permalink: null,
       reserved_at: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
-      provider_meta: { youtubeUpload: { url: "https://upload.example.com/race", totalBytes: 2048, nextByte: 0 } },
+      provider_meta: { youtubeUpload: { url: "https://upload.example.com/race", totalBytes: 2048, nextByte: 0, fileHash: crypto.createHash("sha256").update(Buffer.alloc(2048, 1)).digest("hex") } },
     });
     let statusCalls = 0;
     let uploadCalls = 0;

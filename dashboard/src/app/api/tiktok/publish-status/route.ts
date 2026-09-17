@@ -2,6 +2,7 @@ import { effectiveTenantId, AuthError } from "@/lib/tenant-auth";
 import { withTenant } from "@/lib/db";
 import { getChannelCred } from "@/lib/publish";
 import { fetchTikTokPostStatus, queryTikTokCreatorInfo } from "@/lib/tiktok";
+import { publicationUsageOutbox, recordPublicationEvent } from "@/lib/usage-events";
 
 // publish_id는 client가 임의로 제출할 수 있지만, 이 endpoint는 먼저 현재 tenant의
 // published_posts 예약을 찾는다. 저장되지 않은 ID나 다른 tenant/account의 토큰으로는 절대
@@ -86,7 +87,9 @@ export async function GET(request: Request) {
         await withTenant(tenantId, (sql) => sql`
           UPDATE published_posts
              SET status = 'published', provider_post_id = null, permalink = null,
-                 error = null, published_at = now()
+                 error = null, published_at = now(),
+                 provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+                   || ${sql.json(publicationUsageOutbox("tiktok") as never)}::jsonb
            WHERE id = ${post.id}::uuid
              AND tenant_id = ${tenantId}::uuid
              AND platform = ${"tiktok"}
@@ -95,6 +98,16 @@ export async function GET(request: Request) {
         `);
       } catch {
         return Response.json({ error: "TikTok 완료 상태를 저장하지 못했습니다. 잠시 후 다시 확인해주세요." }, { status: 503 });
+      }
+      try {
+        await recordPublicationEvent(tenantId, post.id, "tiktok");
+      } catch {
+        return Response.json({
+          error: "TikTok 발행은 완료됐지만 사용량 반영이 대기 중입니다. 같은 영상을 다시 게시하지 마세요.",
+          status: "published",
+          publishId,
+          usagePending: true,
+        }, { status: 503, headers: { "Cache-Control": "no-store" } });
       }
       return Response.json({ ok: true, status: "published", publishId });
     }
@@ -113,7 +126,9 @@ export async function GET(request: Request) {
       await withTenant(tenantId, (sql) => sql`
         UPDATE published_posts
            SET status = 'published', provider_post_id = ${postId},
-               permalink = ${permalink}, error = null, published_at = now()
+               permalink = ${permalink}, error = null, published_at = now(),
+               provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+                 || ${sql.json(publicationUsageOutbox("tiktok") as never)}::jsonb
          WHERE id = ${post.id}::uuid
            AND tenant_id = ${tenantId}::uuid
            AND platform = ${"tiktok"}
@@ -122,6 +137,18 @@ export async function GET(request: Request) {
       `);
     } catch {
       return Response.json({ error: "TikTok 완료 상태를 저장하지 못했습니다. 중복 방지를 위해 잠시 후 다시 확인해주세요." }, { status: 503 });
+    }
+    try {
+      await recordPublicationEvent(tenantId, post.id, "tiktok");
+    } catch {
+      return Response.json({
+        error: "TikTok 발행은 완료됐지만 사용량 반영이 대기 중입니다. 같은 영상을 다시 게시하지 마세요.",
+        status: "published",
+        publishId,
+        videoId: postId,
+        url: permalink,
+        usagePending: true,
+      }, { status: 503, headers: { "Cache-Control": "no-store" } });
     }
     return Response.json({
       ok: true,

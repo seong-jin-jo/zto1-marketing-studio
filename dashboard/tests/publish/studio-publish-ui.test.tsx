@@ -809,6 +809,9 @@ describe("Studio publish result integrity", () => {
     let draftSaves = 0;
     mocks.apiPost.mockImplementation(async (path: string, body: { status?: string }) => {
       if (path === "/api/studio/drafts") { draftSaves += 1; return { id: "draft-reconcile", status: body.status }; }
+      if (path === "/api/publish/reconcile") {
+        return { ok: true, repaired: [{ platform: "threads", publicationId: "publication-1" }], failed: [] };
+      }
       if (path === "/api/publish") {
         const error = new Error("외부 게시 완료") as Error & { payload?: unknown; externalPersistence?: boolean };
         error.externalPersistence = true;
@@ -831,6 +834,7 @@ describe("Studio publish result integrity", () => {
     await waitFor(() => expect(screen.queryByTestId("publish-reconciliation-resolve")).toBeNull());
     expect(draftSaves).toBeGreaterThan(savesBefore);
     expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(1);
+    expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish/reconcile")).toHaveLength(1);
   });
 
   // 2026-09-05 회장 실사용 회귀: 발행 뒤에도 발행 버튼이 그대로 남아 다시 누르면 이미 올라간

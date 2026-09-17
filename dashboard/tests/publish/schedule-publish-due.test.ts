@@ -17,6 +17,7 @@ const H = vi.hoisted(() => ({
   updates: [] as unknown[][],
   sqlTexts: [] as string[],
   leaseOwned: true,
+  usageEvents: [] as unknown[][],
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({
@@ -41,7 +42,7 @@ vi.mock("@/lib/db", () => ({
         if (/WITH\s+due\s+AS/i.test(text)) return Promise.resolve(H.rows);
         if (/INSERT\s+INTO\s+published_posts/i.test(text)) {
           H.inserts.push(vals);
-          return Promise.resolve([]);
+          return Promise.resolve([{ id: `publication-${H.inserts.length}` }]);
         }
         if (/UPDATE\s+schedules\s+SET\s+status/i.test(text)) {
           H.updates.push(vals);
@@ -55,6 +56,14 @@ vi.mock("@/lib/db", () => ({
       { json: (value: unknown) => value },
     );
     return cb(sql);
+  }),
+}));
+
+vi.mock("@/lib/usage-events", () => ({
+  publicationUsageOutbox: (platform: string) => ({ usageEvent: { status: "pending", platform } }),
+  recordPublicationEvent: vi.fn(async (...args: unknown[]) => {
+    H.usageEvents.push(args);
+    return { recorded: true, alreadyRecorded: false };
   }),
 }));
 
@@ -90,6 +99,7 @@ beforeEach(() => {
   H.updates = [];
   H.sqlTexts = [];
   H.leaseOwned = true;
+  H.usageEvents = [];
 });
 
 describe("POST /api/schedule/publish-due — 예약 실발행 루프", () => {
@@ -136,6 +146,10 @@ describe("POST /api/schedule/publish-due — 예약 실발행 루프", () => {
     expect(H.inserts).toHaveLength(2);
     expect(H.updates).toHaveLength(1);
     expect(H.updates[0]).toContain("published");
+    expect(H.usageEvents).toEqual([
+      ["tenant-1", "publication-1", "threads"],
+      ["tenant-1", "publication-2", "x"],
+    ]);
   });
 
   it("일부 플랫폼 실패 시 published_posts에 실패 기록을 남기고 partial로 닫는다", async () => {
@@ -154,6 +168,7 @@ describe("POST /api/schedule/publish-due — 예약 실발행 루프", () => {
     expect(body.schedules[0].status).toBe("partial");
     expect(H.inserts).toHaveLength(2);
     expect(H.updates[0]).toContain("partial");
+    expect(H.usageEvents).toHaveLength(1);
   });
 });
 

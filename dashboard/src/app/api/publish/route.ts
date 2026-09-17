@@ -132,6 +132,7 @@ function partialPersistenceFailure(
     draftId: unknown;
     platform: string;
     accountId?: string;
+    publicationId?: string;
   },
 ): Response {
   const publicationRecorded = input.stage !== "publication_record";
@@ -166,6 +167,8 @@ function partialPersistenceFailure(
           action: "repair_persistence_only",
           retryPublish: false,
           draftId: typeof input.draftId === "string" ? input.draftId : null,
+          publicationId: input.publicationId ?? null,
+          stage: input.stage,
           platform: input.platform,
           accountId: input.accountId ?? null,
           externalId: result.externalId ?? null,
@@ -400,7 +403,7 @@ export async function POST(request: Request) {
         } catch {
           return partialPersistenceFailure(
             { ok: true, externalId: readback.hit.externalId, permalink: readback.hit.permalink },
-            { stage: "publication_record", draftId: draft_id, platform, accountId: cred.accountId },
+            { stage: "publication_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: conflict.id },
           );
         }
         try {
@@ -408,7 +411,7 @@ export async function POST(request: Request) {
         } catch {
           return partialPersistenceFailure(
             { ok: true, externalId: readback.hit.externalId, permalink: readback.hit.permalink },
-            { stage: "usage_record", draftId: draft_id, platform, accountId: cred.accountId },
+            { stage: "usage_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: conflict.id },
           );
         }
         return Response.json({
@@ -507,7 +510,7 @@ export async function POST(request: Request) {
         } catch {
           return partialPersistenceFailure(
             { ok: true, externalId: existing.external_id, permalink: existing.permalink ?? undefined },
-            { stage: "publication_record", draftId: draft_id, platform, accountId: cred.accountId },
+            { stage: "publication_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: existing.id },
           );
         }
         return Response.json({
@@ -541,6 +544,7 @@ export async function POST(request: Request) {
                 draftId: draft_id,
                 platform,
                 accountId: cred.accountId,
+                publicationId: existing.id,
               },
             );
           }
@@ -569,6 +573,7 @@ export async function POST(request: Request) {
             draftId: draft_id,
             platform,
             accountId: cred.accountId,
+            publicationId: existing.id,
           });
         }
       }
@@ -580,6 +585,7 @@ export async function POST(request: Request) {
           draftId: draft_id,
           platform,
           accountId: cred.accountId,
+          publicationId: existing.id,
         });
       }
       return Response.json({
@@ -720,6 +726,7 @@ export async function POST(request: Request) {
         draftId: draft_id,
         platform,
         accountId: cred.accountId,
+        publicationId: reservationId,
       });
     }
     return Response.json(
@@ -756,6 +763,7 @@ export async function POST(request: Request) {
         draftId: draft_id,
         platform,
         accountId: cred.accountId,
+        publicationId: reservationId,
       });
     }
   }
@@ -768,6 +776,7 @@ export async function POST(request: Request) {
         draftId: draft_id,
         platform,
         accountId: cred.accountId,
+        publicationId: reservationId,
       });
     }
   }

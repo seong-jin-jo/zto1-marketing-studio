@@ -1231,10 +1231,27 @@ export default function StudioPage() {
     const platforms = Object.keys(publishReconciliations);
     if (!platforms.length) return;
     try {
-      const savedDraftId = await save("published", {}, draftId);
+      const result = await apiPost<{
+        repaired?: Array<{ platform: string; publicationId: string }>;
+        failed?: Array<{ platform: string; error: string }>;
+      }>("/api/publish/reconcile", {
+        tenant_id: activeWorkspace?.id,
+        reconciliations: Object.values(publishReconciliations),
+      });
+      const repairedPlatforms = new Set((result?.repaired ?? []).map((item) => item.platform));
+      const remaining = Object.fromEntries(
+        Object.entries(publishReconciliations).filter(([platform]) => !repairedPlatforms.has(platform)),
+      );
+      if (repairedPlatforms.size === 0) throw new Error("발행 원장 복구 실패");
+      const savedDraftId = await save(Object.keys(remaining).length ? "partial" : "published", remaining, draftId);
       if (!savedDraftId) throw new Error("기록 저장 실패");
-      setPublishReconciliations({});
-      showToast(`${platforms.map((platform) => LABEL[platform as keyof typeof LABEL]).join(", ")} 은 이미 올라간 것으로 기록했습니다. 이제 다음 작업을 이어가실 수 있습니다.`, "success");
+      setPublishReconciliations(remaining);
+      const repairedLabels = [...repairedPlatforms].map((platform) => LABEL[platform as keyof typeof LABEL]).join(", ");
+      if (Object.keys(remaining).length) {
+        showToast(`${repairedLabels} 기록을 복구했습니다. 남은 채널은 잠시 뒤 다시 눌러 주세요.`, "error");
+      } else {
+        showToast(`${repairedLabels} 발행 원장과 사용량 기록을 복구했습니다. 이제 다음 작업을 이어가실 수 있습니다.`, "success");
+      }
     } catch {
       showToast("기록을 정리하지 못했습니다. 잠시 뒤 다시 눌러 주세요.", "error");
     }

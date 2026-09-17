@@ -71,6 +71,14 @@ export async function GET(request: Request) {
 
     try {
       const publicationRelay = await reconcilePendingPublicationEvents(tenantId);
+      if (publicationRelay.failed > 0) {
+        return Response.json({
+          error: "발행 사용량 반영이 지연되고 있습니다. 잠시 후 다시 확인해주세요.",
+          source: "usage_events",
+          status: "delayed",
+          publicationRelay,
+        }, { status: 503, headers: { "Cache-Control": "no-store" } });
+      }
       let tier = "starter";
       let quota: Record<string, unknown> | null = null;
       let rows: UsageRow[] = [];
