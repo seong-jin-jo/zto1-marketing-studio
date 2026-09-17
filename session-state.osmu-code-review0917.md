@@ -1,5 +1,50 @@
 # OSMU code review 2026-09-17 handoff
 
+## 2026-09-17 12시 20분 최종 핸드오프
+
+### 무엇을 어디까지 했나
+
+- 사용자 명시 요청을 handoff basis로 삼아 커미터 시각 2026-09-16 12:02:27부터 2026-09-17 12:02:27까지 최근 24시간을 고정했다.
+- `e5a4487e84fe297b5738bb56c522f33f3f171cf9..5cd501b36a7c9eacf628538efb4b26a685d1b62a`, 46개 커밋, 203개 파일, 추가 13,095줄, 삭제 236줄을 검토했다.
+- MAJOR 6건으로 BLOCK했다. 감사, QA 원장, 공용 인수인계 갱신은 `73504e47`에 커밋했다.
+- 제품 코드는 수정하지 않았다. 최신 감사는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단이다.
+
+### 남은 이슈·블로커
+
+- `dashboard/src/app/studio/page.tsx:1234`: 복구 단추가 실제 발행 행과 사용량 장부를 고치지 않고 초안만 `published`로 저장한다.
+- `dashboard/src/app/api/video/publish/route.ts:354`: 저장된 YouTube 세션의 파일 해시와 크기를 현재 파일과 대조하지 않아 다른 파일 조각을 이어 보낼 수 있다.
+- `dashboard/src/app/api/tiktok/publish-status/route.ts:87`: TikTok 완료가 사용량 outbox와 과금 원장을 쓰지 않는다.
+- `dashboard/src/app/api/schedule/publish-due/route.ts:409`: 예약 발행 성공이 사용량 outbox와 과금 원장을 쓰지 않는다.
+- `dashboard/src/lib/anthropic.ts:201`: macOS launchctl 래퍼가 없는 첫 후보를 종료 코드 2로 바꿔 다음 Claude 후보 폴백을 막는다.
+- `dashboard/src/app/api/blog-stats/route.ts:23` 등: 최근 API 오류 정규화가 영문 오류와 원문 예외를 사용자 화면에 노출한다.
+- 외부 SNS 실발행, 공급자 성공 직후 DB 실패 주입, 두 작업 공간 자격증명을 이용한 동적 격리 검증은 미검증이다.
+
+### 다음에 칠 명령
+
+다음 소유자는 code-builder다. 여섯 MAJOR의 수정 커밋을 만든 뒤 code-reviewer가 같은 재현 시나리오로 다시 공격한다.
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+npx vitest run tests/publish/video-publish-youtube.route.test.ts tests/publish/publication-usage-outbox.regression-1.test.ts tests/publish/publication-usage-outbox.db.test.ts
+npm run test
+npx tsc --noEmit
+set -a && source ./.env.local && set +a
+STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-basic-flow-e2e.mjs
+STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-studio-v1-e2e.mjs
+```
+
+종료 증거는 실제 발행 행과 사용량 장부 수렴, 파일 불일치 세션 전송 0바이트, TikTok과 예약 발행의 사용량 1회 기록, 두 번째 Claude 후보 실행, 사용자 노출 영문 오류 0건, MAJOR 0건, 전체 테스트와 TypeScript 통과, 현재 제품 소스에서 두 E2E 통과다.
+
+### 검증했나
+
+- `npm run test`: 374파일, 2,414건 통과, 3건 제외.
+- `npx tsc --noEmit`: 종료 코드 0.
+- localhost 기본 흐름 11/11, Studio v1 14/14.
+- health HTTP 200, DB up.
+- localhost ElevenLabs 미설정 응답: HTTP 503과 영문 `API key not set` 직접 관찰.
+- macOS launchctl 없는 실행 파일: `posix_spawn(): 2`와 종료 코드 2 직접 관찰.
+- 외부 게시, DB 실패 주입, 두 작업 공간 동적 격리: 미검증.
+
 ## 2026-09-17 08시 24분 최종 핸드오프
 
 ### 무엇을 어디까지 했나
