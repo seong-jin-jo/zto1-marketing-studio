@@ -1,3 +1,57 @@
+## 2026-09-18 03:11 KST · 성과 시계열 갭 재착수 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사에서 현재도 없는 기본 흐름 항목을 하나 구현 | GAP-HISTORY-20260918-0311-01 | ❌ NG | 현재 schema, migration, `GET /api/metrics` 구현에는 게시물별 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교가 없다. |
+| 공정과 기술계약 | 승인 범위 안에서만 제품 소스를 수정 | GAP-HISTORY-20260918-0311-02 | BLOCK | `pipeline-state.osmu.md`의 최신 공정은 `qa`, `in-progress`, 승인 아님이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준도 승인되지 않았다. |
+
+제품 소스 수정 전 판정이다. 최신 localhost 실제 응답, 전체 회귀와 두 필수 E2E 결과를 같은 절에 보강한다.
+
+## 2026-09-18 03:08 KST · 최근 24시간 코드 리뷰 MAJOR 10건 수정 PASS
+
+STAMP: 2026-09-18 03:08 KST | model: gpt-codex/gpt-5 | agent: code-builder | skill: qa | 근거: 감사 재현, localhost 실요청, 라이브 PostgreSQL, 전체 회귀, 공식 공급자 문서 | 고민: 외부 게시를 반복하지 않고 장부만 복구하는 경계를 가장 먼저 고정했다.
+
+### 심각도 순 수정 판정
+
+| 순위 | 테스트번호 | 위험 | 판정과 증거 |
+|---|---|---|---|
+| 1 | REVIEW-24H-20260918-03A | TikTok 완료 사용량 누락 | PASS. 두 완료 분기가 pending outbox와 relay를 남긴다. 정상과 relay 실패 7건 통과. |
+| 2 | REVIEW-24H-20260918-03B | 예약 발행 사용량 누락 | PASS. 성공 INSERT와 같은 행에 outbox를 두고 relay한다. 예약 발행 14건 통과. |
+| 3 | REVIEW-24H-20260918-04 | relay 실패를 낮은 정상 합계로 표시 | PASS. `/api/usage`가 지연 상태 503을 반환하고 성과실이 숫자 대신 지연 안내를 표시한다. 사용량 4건과 화면 계약 통과. |
+| 4 | REVIEW-24H-20260918-01 | 복구 단추가 초안만 완료 처리 | PASS. 테넌트 범위 복구 API가 발행 행, 승인 큐, 사용량을 복구하고 성공한 플랫폼만 목록에서 제거한다. localhost 임시 행 실측은 HTTP 200, `published`, 사용량 `recorded`, 장부 1건이었다. 없는 발행 식별자는 HTTP 409였다. |
+| 5 | REVIEW-24H-20260918-02A | YouTube 기본 계정 간 예약 혼선 | PASS. 실제 해석 계정 ID를 멱등 키, INSERT, SELECT, 토큰 갱신에 일관되게 쓴다. 기본 계정 A와 B 분리 회귀 포함 19건 통과. |
+| 6 | REVIEW-24H-20260918-02B | 다른 파일을 옛 YouTube 세션에 재개 | PASS. 저장 해시와 크기가 현재 파일과 다르면 옛 URI를 쓰지 않고 예약을 닫은 뒤 새 세션을 만든다. 불일치 회귀 포함 19건 통과. |
+| 7 | REVIEW-24H-20260918-05B | 네 방 검증기가 동시 설정을 삭제 | PASS. 애플리케이션과 같은 파일 잠금에서 fresh read, 필드 변경, 원자 쓰기를 수행하고 자기 `onboardingComplete`만 조건부 복구한다. localhost 네 방 20화면, 복귀 5건, 정리 종료 코드 0. |
+| 8 | REVIEW-24H-20260918-05A | 브라우저 일부 중단을 성공으로 판정 | PASS. 관리자 정상, 회원 응답 없음 실측에서 한국어 상태만 출력하고 종료 코드 1이었다. 회귀 테스트가 비정상 종료와 금지 문자를 함께 검사한다. |
+| 9 | REVIEW-24H-20260918-06 | OAuth 검증 오류를 테스터 누락으로 단정 | PASS. 구체 신호가 없는 검증 코드 오류는 재연결, 돌아올 주소, Client ID 확인으로 안내한다. 정상과 거절 11건 통과. |
+| 10 | REVIEW-24H-20260918-07 | 상태 스크립트 그림문자 | PASS. `정상`, `오류`, `기동 실패`로 바꿨고 금지 문자 출력 0건을 회귀로 고정했다. |
+
+### 통합 검증
+
+| 검증 | 결과 | 관찰 증거 |
+|---|---|---|
+| 전체 단위 및 통합 | PASS | Vitest 376파일, 2,426건 통과, 3건 제외, 종료 코드 0 |
+| TypeScript | PASS | `npx tsc --noEmit` 종료 코드 0 |
+| production build | PASS | Next.js 정적 페이지 185/185 생성, `/api/publish/reconcile` 포함, 종료 코드 0 |
+| 디자인 토큰 | PASS | `design-lint.sh src`, 위반 0 |
+| 기본 흐름 | PASS | localhost 생성부터 성과 재인계 11/11 |
+| Studio v1 | PASS | 인증과 입력 거절, 생성, 조회, 재생성 14/14 |
+| 네 방 UI | PASS | 390 라이트와 다크, 768, 1024, 1440에서 20화면, 가로 넘침 0, 401 0, 콘솔 오류 0. 증거 `logs/diff/osmu-four-room-flow-20260918-codefix/` |
+| 실제 장부 복구 | PASS | 지정 작업 공간의 임시 `in_progress` 행에 localhost 복구 API 호출, HTTP 200, 발행 `published`, 사용량 `recorded`, 사용량 이벤트 1건 확인 후 임시 데이터 삭제 |
+| health | PASS | localhost HTTP 200, DB `up`, 실행 제품 커밋 `2d62bd02` |
+
+실제 SNS 공개 발행과 공급자 과금 호출은 하지 않았다. 이 수정은 공급자 재호출 없이 기존 성공 결과의 내부 장부만 복구하도록 검증했다. 운영 배포는 미검증이다.
+
+### 레드팀과 셀프심문
+
+가장 위험한 반례는 복구 API가 다른 작업 공간의 발행 식별자를 고치는 경우다. 모든 SELECT와 UPDATE에 현재 tenant를 넣고 RLS 트랜잭션 안에서 잠갔으며, 다른 범위 식별자 회귀는 409와 변경 0건을 확인했다.
+
+이 결론이 틀렸다면 가장 그럴듯한 이유는 localhost가 이전 제품 코드를 실행한 경우다. health의 제품 커밋 `2d62bd02`가 핵심 제품 수정 `b35da4d1`, `b6117657`의 후손이고, 새 `/api/publish/reconcile`가 실제 DB 행과 사용량 행을 바꾼 것을 직접 관찰해 귀속을 확인했다.
+
+SOURCES: `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-18.md` · `docs/design/prototypes/legacy-prototype-20260912/prototype/openclaw-auto-4room-v63.html` · `docs/_archive/legacy-20260912/requests/회장-확정-요구사항-대장.md` · `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md` · https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol · https://www.rfc-editor.org/rfc/rfc6749 · https://www.postgresql.org/docs/current/explicit-locking.html
+
+MODEL: gpt-codex/gpt-5
+
 ## 2026-09-18 01:31 KST · Meta 인사이트 회귀 테스트 CI 타입 검사 🔧 전환
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
