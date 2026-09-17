@@ -1,4 +1,4 @@
-# 유입 태그 규격: OSMU
+# 유입 태그 규격: OpenClaw 마케팅 레인 (OSMU)
 
 > 상위 정본: `wiki/5-hubs/hub-mkt/gtm-plan.md` §2 (GA4 이벤트 4종·UTM 고정). 이 문서는 그 규격을 그로스 레인 3칸(개통)이 읽는 형태로 옮긴 것이다.
 

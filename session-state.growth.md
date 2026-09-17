@@ -1,4 +1,4 @@
-# session-state.growth.md — OSMU 그로스 레인 핸드오프 (최신순)
+# session-state.growth.md — OpenClaw 마케팅 레인 (OSMU) 핸드오프 (최신순)
 
 목적: OSMU 그로스(마케팅) 레인을 개시해 2026-09 첫 바퀴(전략→우선순위→개통→발주→집행)를 돌린다. 캠페인 컨셉 = 메타 데모("이 계정의 모든 게시물은 OSMU 로 만들어졌다").
 

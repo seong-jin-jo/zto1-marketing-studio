@@ -1,4 +1,4 @@
-# OSMU 운영 채널 정의서 v0.1.0
+# OpenClaw 마케팅 레인 (OSMU) 운영 채널 정의서 v0.1.0
 
 > 인지도 관문 정의 계열. 계정 식별자·연결 상태의 정본은 `wiki/4-reference/channel-status.md` 와 `wiki/5-hubs/hub-mkt/channels/`. 여기엔 레인이 읽을 요약만 둔다. 비밀값 기록 금지.
 
