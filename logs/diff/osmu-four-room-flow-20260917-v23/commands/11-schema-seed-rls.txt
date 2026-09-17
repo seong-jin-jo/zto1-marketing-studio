@@ -1,0 +1,163 @@
+[apply-schema] → /Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:5: NOTICE:  extension "pgcrypto" already exists, skipping
+CREATE EXTENSION
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:6: NOTICE:  extension "pg_trgm" already exists, skipping
+CREATE EXTENSION
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:22: NOTICE:  relation "tenants" already exists, skipping
+CREATE TABLE
+DO
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:48: NOTICE:  column "last_accessed_at" of relation "tenants" already exists, skipping
+ALTER TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:57: NOTICE:  relation "tenant_access_events" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:59: NOTICE:  relation "idx_tenant_access_events_recent" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:72: NOTICE:  relation "brand_guides" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:84: NOTICE:  relation "integrations" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:95: NOTICE:  relation "drafts" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:97: NOTICE:  relation "idx_drafts_tenant" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:98: NOTICE:  relation "uq_drafts_tenant_id" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:99: NOTICE:  relation "idx_integrations_tenant" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:115: NOTICE:  relation "studio_generation_jobs" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:117: NOTICE:  relation "idx_studio_generation_jobs_member_time" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:134: NOTICE:  relation "studio_generation_idempotency" already exists, skipping
+CREATE TABLE
+DO
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:148: NOTICE:  relation "idx_studio_generation_idempotency_job" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:165: NOTICE:  relation "studio_free_regeneration_uses" already exists, skipping
+CREATE TABLE
+DO
+DO
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:206: NOTICE:  relation "idx_studio_free_regeneration_jobs" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:221: NOTICE:  relation "studio_generation_candidate_rejections" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:223: NOTICE:  relation "idx_studio_generation_candidate_rejections_job" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:248: NOTICE:  relation "shorts_factory_runs" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:251: NOTICE:  relation "uq_shorts_factory_active_workspace" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:253: NOTICE:  relation "idx_shorts_factory_runs_member_time" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:279: NOTICE:  relation "shorts_factory_concept_runs" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:281: NOTICE:  relation "idx_shorts_factory_concepts_status" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:308: NOTICE:  relation "published_posts" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:310: NOTICE:  relation "uq_published_posts_tenant_id" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:311: NOTICE:  relation "idx_pubposts_tenant" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:333: NOTICE:  relation "engagement_items" already exists, skipping
+CREATE TABLE
+DO
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:358: NOTICE:  relation "idx_engagement_items_tenant_state" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:360: NOTICE:  relation "idx_engagement_items_post" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:379: NOTICE:  relation "queue_posts" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:380: NOTICE:  relation "idx_queue_posts_tenant" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:392: NOTICE:  relation "schedules" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:393: NOTICE:  relation "idx_schedules_tenant" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:404: NOTICE:  relation "growth_metrics" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:405: NOTICE:  relation "idx_growth_metrics_tenant" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:417: NOTICE:  relation "viral_signals" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:418: NOTICE:  relation "idx_viral_signals_tenant" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:431: NOTICE:  relation "tenant_tokens" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:432: NOTICE:  relation "idx_tenant_tokens_hash" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:445: NOTICE:  relation "wiki_docs" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:446: NOTICE:  relation "idx_wiki_docs_trgm" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:447: NOTICE:  relation "idx_wiki_docs_tenant" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:458: NOTICE:  relation "usage_events" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:459: NOTICE:  relation "idx_usage_events_tenant" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:460: NOTICE:  relation "idx_usage_events_type" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:471: NOTICE:  relation "subscriptions" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:483: NOTICE:  relation "usage_quotas" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:484: NOTICE:  relation "idx_usage_quotas_tenant_period" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:496: NOTICE:  relation "oauth_app_credentials" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:504: NOTICE:  relation "oauth_credential_audit" already exists, skipping
+CREATE TABLE
+ALTER TABLE
+ALTER TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:512: NOTICE:  relation "idx_oauth_credential_audit_provider_time" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:536: NOTICE:  relation "channel_accounts" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:537: NOTICE:  relation "idx_channel_accounts_tenant" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:540: NOTICE:  relation "uq_channel_accounts_one_default" already exists, skipping
+CREATE INDEX
+DO
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:580: NOTICE:  relation "uq_published_posts_idem" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:585: NOTICE:  relation "uq_published_posts_idem_key" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:589: NOTICE:  relation "idx_published_posts_in_progress_lease" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:613: NOTICE:  relation "operational_incidents" already exists, skipping
+CREATE TABLE
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:616: NOTICE:  relation "uq_operational_incidents_open_fingerprint" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:618: NOTICE:  relation "idx_operational_incidents_tenant_status" already exists, skipping
+CREATE INDEX
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/schema.sql:621: NOTICE:  relation "idx_operational_incidents_human_notification" already exists, skipping
+CREATE INDEX
+DO
+[apply-schema] → /Users/sj/sj_code_master/zto1-marketing-studio/dashboard/scripts/seed-test-tenants.sql
+INSERT 0 0
+INSERT 0 1
+INSERT 0 1
+INSERT 0 0
+INSERT 0 0
+INSERT 0 0
+INSERT 0 0
+[apply-schema] → /Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/rls.sql
+DO
+GRANT
+GRANT
+ALTER DEFAULT PRIVILEGES
+DO
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/rls.sql:31: NOTICE:  role "postgres" has already been granted membership in role "osmu_service" by role "postgres"
+DO
+DO
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/rls.sql:64: NOTICE:  policy "tenant_iso" for relation "oauth_app_credentials" does not exist, skipping
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/rls.sql:64: NOTICE:  policy "tenant_iso" for relation "oauth_credential_audit" does not exist, skipping
+DO
+psql:/Users/sj/sj_code_master/zto1-marketing-studio/dashboard/db/rls.sql:75: NOTICE:  policy "tenant_iso" for relation "tenant_access_events" does not exist, skipping
+DO
+[apply-schema] 검증:
+  ext: pg_trgm
+  ext: pgcrypto
+  role: osmu_service
+[apply-schema] 완료. (ext에 pgcrypto·pg_trgm, role에 osmu_service 보이면 OK)

@@ -67,19 +67,14 @@ describe("oauthErrorMessage", () => {
     expect(escapeHtml("<script>alert(1)</script>")).toBe("&lt;script&gt;alert(1)&lt;/script&gt;");
   });
 
-  // 2026-09-17 콘솔 실측: Meta는 심사 전 앱에서 테스터가 아닌 계정이 code 교환을 하면
-  // redirect_uri 문제처럼 들리는 문구를 주지만 실제로는 테스터 명단 문제다(ADR-006).
-  it("AR-ERROR-004 정상: Meta verification code 오류를 redirect_uri 불일치가 아니라 심사 전 테스터 제한으로 번역한다", () => {
+  it("REVIEW-24H-20260918-06 거절: 만료된 Meta verification code를 테스터 누락으로 단정하지 않는다", () => {
     const msg = oauthErrorMessage(
-      "Instagram 연결이 마지막 단계에서 끊겼습니다. 연결 확인을 받지 못했습니다. 다시 연결해 보시고, "
-        + "그래도 안 되면 앱 설정을 확인해야 합니다. [HTTP 400] "
-        + "(원문: Error validating verification code. Please make sure your redirect_uri is identical "
-        + "to the one you used in the OAuth dialog request.)",
+      "Error validating verification code: authorization code expired",
       "Instagram",
     );
-    expect(msg).toContain("심사 전 테스터 명단에 없어");
-    expect(msg).toContain("심사 전 한시 절차");
-    expect(msg).not.toContain("돌아올 주소가 앱 콘솔에 등록된 값과 다릅니다");
+    expect(msg).toContain("연결 확인 코드가 만료되었거나 앱 설정과 맞지 않습니다");
+    expect(msg).toContain("처음부터 다시 시도");
+    expect(msg).not.toContain("테스터 명단");
   });
 
   it("AR-ERROR-005 정상: Meta가 authorize 단계에서 실제로 주는 Invalid redirect_uri는 여전히 주소 불일치로 번역한다", () => {

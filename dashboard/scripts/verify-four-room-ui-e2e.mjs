@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import playwright from "/Users/sj/kimstudy-auto/node_modules/playwright-core/index.js";
+import lockfile from "proper-lockfile";
 import { runCleanupSteps } from "./lib/cleanup-steps.mjs";
 
 const { chromium } = playwright;
@@ -67,10 +68,11 @@ const cleanupRequest = async (pathname, options = {}) => fetch(`${baseUrl}${path
 let issuedTokenId = "";
 let browser;
 let deadlineTimer;
-const originalSettings = fs.readFileSync(settingsPath, "utf8");
 const observations = [];
 const consoleErrors = [];
 const unauthorizedUrls = [];
+let qaSettingsValue = null;
+let originalOnboarding = { present: false, value: undefined };
 
 async function closeBrowserWithin(timeoutMs) {
   if (!browser) return;
@@ -84,9 +86,37 @@ async function closeBrowserWithin(timeoutMs) {
   if (timeout) clearTimeout(timeout);
 }
 
-function firstUserSettings(raw) {
-  const parsed = JSON.parse(raw);
-  return JSON.stringify({ ...parsed, onboardingComplete: false }, null, 2);
+function writeSettingsAtomically(value) {
+  const temporaryPath = `${settingsPath}.four-room-${process.pid}.tmp`;
+  fs.writeFileSync(temporaryPath, value);
+  fs.renameSync(temporaryPath, settingsPath);
+}
+
+async function mutateSettings(mutate) {
+  const release = await lockfile.lock(settingsPath, {
+    retries: { retries: 5, factor: 2, minTimeout: 50, maxTimeout: 1000 },
+  });
+  try {
+    const current = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    const next = mutate(current);
+    if (next) writeSettingsAtomically(JSON.stringify(next, null, 2));
+  } finally {
+    await release();
+  }
+}
+
+async function restoreOwnSettingsChange() {
+  await mutateSettings((current) => {
+  // 검증 중 다른 저장이 있었으면 그 필드는 그대로 둔다. 이 검증기가 바꾼
+  // onboardingComplete만 아직 검증값(false)일 때 원래 값으로 되돌린다.
+    if (qaSettingsValue?.onboardingComplete !== false || current.onboardingComplete !== false) return null;
+    if (originalOnboarding.present) {
+      current.onboardingComplete = originalOnboarding.value;
+    } else {
+      delete current.onboardingComplete;
+    }
+    return current;
+  });
 }
 
 async function sidebar(page, width) {
@@ -232,7 +262,14 @@ try {
   if (!issued.ok || !issuedBody.token || !issuedBody.id) throw new Error(`고객 토큰 발급 실패: HTTP ${issued.status}`);
   issuedTokenId = issuedBody.id;
 
-  fs.writeFileSync(settingsPath, firstUserSettings(originalSettings));
+  await mutateSettings((latestSettingsValue) => {
+    originalOnboarding = {
+      present: Object.prototype.hasOwnProperty.call(latestSettingsValue, "onboardingComplete"),
+      value: latestSettingsValue.onboardingComplete,
+    };
+    qaSettingsValue = { ...latestSettingsValue, onboardingComplete: false };
+    return qaSettingsValue;
+  });
   fs.mkdirSync(outputDir, { recursive: true });
 
   browser = await chromium.launch({ executablePath, headless: true, timeout: remainingTimeout("브라우저 시작") });
@@ -282,7 +319,7 @@ try {
   const cleanupFailures = await runCleanupSteps([
     {
       label: "첫 사용자 설정 복구",
-      run: async () => { fs.writeFileSync(settingsPath, originalSettings); },
+      run: async () => { await restoreOwnSettingsChange(); },
     },
     {
       label: "임시 고객 토큰 폐기",

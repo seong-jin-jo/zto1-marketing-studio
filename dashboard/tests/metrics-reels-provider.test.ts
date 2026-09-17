@@ -29,8 +29,44 @@ describe("Instagram Reels Media Insights provider 계약", () => {
       attemptedIds: ["ig-media-1"],
     });
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
-      "/ig-media-1/insights?metric=views,likes,comments",
+      "https://graph.instagram.com/v26.0/ig-media-1/insights?metric=views,likes,comments",
     );
+  });
+
+  it("METRICS-IG-PROVIDER-02 정상: Instagram 피드도 Instagram host에 views 지표를 요청한다", async () => {
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({
+      data: [
+        { name: "views", values: [{ value: 81 }] },
+        { name: "likes", values: [{ value: 9 }] },
+        { name: "comments", values: [{ value: 2 }] },
+      ],
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchMetaPostMetrics(
+      { token: "test-token", userId: "ig-user" },
+      "instagram",
+      ["ig-feed-1"],
+    );
+
+    expect(result.ok && result.metrics["ig-feed-1"]).toEqual({ views: 81, likes: 9, replies: 2 });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "https://graph.instagram.com/v26.0/ig-feed-1/insights?metric=views,likes,comments",
+    );
+  });
+
+  it("METRICS-IG-PROVIDER-03 경계: 구 응답 impressions도 views로 파싱한다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      data: [{ name: "impressions", values: [{ value: 33 }] }],
+    }), { status: 200 })));
+
+    const result = await fetchMetaPostMetrics(
+      { token: "test-token", userId: "ig-user" },
+      "instagram",
+      ["legacy-media"],
+    );
+
+    expect(result.ok && result.metrics["legacy-media"].views).toBe(33);
   });
 
   it("METRICS-REELS-PROVIDER-02 거절: Instagram 토큰이 없으면 provider를 호출하지 않는다", async () => {
@@ -67,12 +103,13 @@ describe("Instagram Reels Media Insights provider 계약", () => {
   });
 
   it("항목 17 정상: Facebook 반응 유형 객체를 합산한 숫자로 반환한다", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({
       data: [
         { name: "post_impressions", values: [{ value: 20 }] },
         { name: "post_reactions_by_type_total", values: [{ value: { like: 2, love: 1 } }] },
       ],
-    }), { status: 200 })));
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
 
     const result = await fetchMetaPostMetrics(
       { token: "fb-token", userId: "page" },
@@ -81,5 +118,8 @@ describe("Instagram Reels Media Insights provider 계약", () => {
     );
 
     expect(result.ok && result.metrics["post-1"].likes).toBe(3);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "https://graph.facebook.com/v21.0/post-1/insights?metric=post_impressions,post_reactions_by_type_total",
+    );
   });
 });

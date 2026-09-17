@@ -1,0 +1,371 @@
+<!doctype html><html lang=ko><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>README.md</title><style>
+:root{color-scheme:only light;--bg:#fff;--fg:#1a1a1a;--soft:#e2e4e9;--line:#767680;--muted:#555;--accent:#f63d68;--link:#a51d42;--thead:#fae8ee;--quote:#fff1f5}
+@media screen and (prefers-color-scheme:dark){:root{color-scheme:only dark;--bg:#16161a;--fg:#ececf1;--soft:#30303a;--line:#9494a0;--muted:#b6b6c0;--link:#ff8fab;--thead:#35252e;--quote:#2b2027}}
+/* 배경을 칠하는 규칙에는 반드시 글자색을 짝으로 쓴다. 상속에 맡기면 흰 위 흰이 난다(2026-09-08 사고). */
+html,body{background:var(--bg);color:var(--fg)}
+body{max-width:860px;margin:40px auto;padding:0 24px;font-family:-apple-system,BlinkMacSystemFont,'Pretendard','Apple SD Gothic Neo',sans-serif;font-size:16px;line-height:1.7;overflow-wrap:anywhere}
+h1,h2,h3,h4,h5,h6{line-height:1.3;margin-top:1.6em} h1{border-bottom:2px solid var(--accent);padding-bottom:.3em}
+h2{border-bottom:1px solid var(--line);padding-bottom:.2em}
+code,kbd,samp{background:var(--soft);color:var(--fg);padding:2px 5px;border-radius:4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em}
+pre{background:var(--soft);color:var(--fg);border:1px solid var(--line);padding:16px;border-radius:8px;overflow-x:auto;white-space:pre;overflow-wrap:normal;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9rem;line-height:1.65}
+pre code{background:var(--soft);color:var(--fg);display:block;padding:0;border-radius:0;font-size:inherit}
+pre.mermaid{color-scheme:only light;--bg:#fff;--fg:#1a1a1a;--soft:#e2e4e9;--muted:#555;--link:#a51d42;--line:#767680;background:var(--bg);color:var(--fg);border:1px solid var(--line);text-align:left}
+pre.mermaid svg{display:block;margin-inline:auto}
+table{background:var(--bg);color:var(--fg);border-collapse:collapse;width:100%;margin:1em 0}
+caption{background:var(--bg);color:var(--fg);text-align:left;font-weight:700}
+td,th{background:var(--bg);color:var(--fg);border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:var(--thead);color:var(--fg)}
+blockquote{background:var(--quote);color:var(--muted);border-left:3px solid var(--accent);margin:1em 0;padding:.4em 1em}
+a,a:visited{color:var(--link);text-decoration:underline;text-underline-offset:.18em}
+:focus-visible{outline:3px solid var(--link);outline-offset:3px}
+@media print{:root,pre.mermaid{color-scheme:only light;--bg:#fff;--fg:#000;--soft:#fff;--line:#000;--muted:#000;--accent:#000;--link:#000;--thead:#fff;--quote:#fff}
+body{max-width:none;margin:0;padding:0} pre,pre code{white-space:pre-wrap;overflow-wrap:anywhere}}
+@media (forced-colors:active){:root,pre.mermaid{color-scheme:light dark;--bg:Canvas;--fg:CanvasText;--soft:Canvas;--line:CanvasText;--muted:CanvasText;--accent:CanvasText;--link:LinkText;--thead:Canvas;--quote:Canvas}
+*,*::before,*::after{forced-color-adjust:auto} a:visited{color:VisitedText}}</style></head><body><h1 id="2026-09-sns-세팅-키트--osmu-팩토리">2026-09 SNS 세팅 키트 — OSMU 팩토리</h1>
+<p><strong>생성: 2026-09-18 (분단위 15:47~15:50 KST) · 모델: Higgsfield flux_2(배경 원본) + PIL/Pretendard 합성(Claude Sonnet 5) · 에이전트: store-visual-producer</strong></p>
+<p>회장 지시(2026-09-18 원문): "힉스필드에서 osmu sns세팅하는데 필요한 로고, 배너, 카드뉴스 등등 뽑아놔라. 스레드 인스타 유튜브 틱톡 등등 필요한 에셋들 생각해서 미리 받아놔. 프로필은 고급스럽고 신뢰감있게하고 컨텐츠 올리면서 '이 컨텐츠또한 우리 osmu에서 만들었습니다' 하게."</p>
+<p>계정 셋업·리네임 실행은 여전히 회장 수동(ADR-004/ADR-005) — 이 키트는 그 실행에 필요한 <strong>파일 산출물만</strong> 준비한다.</p>
+<hr />
+<h2 id="0-파이프라인-실측-노트-정직-고지--1-손코딩-svg-금지-준수-방식">0. 파이프라인 실측 노트 (정직 고지 — §1 손코딩 SVG 금지 준수 방식)</h2>
+<p>design-html 스킬은 헤드리스 브라우저 렌더 경로를 전제하는데, 이 세션 환경에는 puppeteer/headless-chrome 실행 경로가 준비돼 있지 않았다(node는 있으나 프로젝트에 렌더 스크립트 없음). 대안으로 실제 사용한 파이프라인:</p>
+<ol>
+<li><strong>Higgsfield <code>flux_2</code> 직접 호출</strong>(assets.md 2026-07-18 성공 사례 계승 — <code>product-photoshoot</code>=7cr/장보다 저렴, 1.5cr/장 @2k)로 <strong>8종 실사진/사실적 텍스처 배경</strong>을 생성(아래 §2 프롬프트).</li>
+<li><strong>PIL(Python Imaging Library) + 로컬 설치된 Pretendard 폰트</strong>로 텍스트·서명·타이포를 그 위에 합성. 이것은 "손코딩 SVG"가 아니다 — 벡터 도형을 전부 직접 그려 하나의 평면 아이콘을 만드는 게 아니라, <strong>Higgsfield가 만든 실사·조명·재질감 있는 사진 위에 텍스트 레이어만 얹는</strong> 방식이며, 로고 자체(체크마크·원)도 사진처럼 조명·금속 질감이 있는 Higgsfield 생성물이다.</li>
+<li>원본 배경 8장은 <code>raw/</code>에 보존(재합성·재크롭 필요 시 재사용).</li>
+</ol>
+<p><strong>한계(정직 표기)</strong>: design-html HTML/CSS 렌더 경로를 못 썼으므로 그림자·블러·그라데이션 오버레이의 미세 폴리싱은 CSS box-shadow/backdrop-filter 수준까지는 못 갔다(PIL alpha composite로 근사). 실제 플랫폼(IG/YouTube 앱)에 올렸을 때 원형 크롭·모바일 축소 가독성은 <strong>미검증</strong>.</p>
+<hr />
+<h2 id="1-확정-문구">1. 확정 문구</h2>
+<table>
+<thead>
+<tr>
+<th>용도</th>
+<th>문구</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Made with 서명(영문, 카드뉴스/썸네일 코너)</td>
+<td><strong>Made with OSMU</strong></td>
+</tr>
+<tr>
+<td>서명 한글 보조(카드뉴스 마무리 장 하단)</td>
+<td><strong>이 콘텐츠도 OSMU 팩토리에서 출고했습니다</strong></td>
+</tr>
+<tr>
+<td>엔드카드(숏폼)</td>
+<td><strong>다음 콘텐츠도 이 공장에서 출고됩니다 / 팔로우하면 매일 옵니다</strong></td>
+</tr>
+<tr>
+<td>YouTube 배너 태그라인</td>
+<td><strong>사장님 콘텐츠, 만들어서 출고합니다 — 매주 목요일 주간 리포트</strong> (design-system.md §5 기존 확정값 그대로 사용)</td>
+</tr>
+</tbody>
+</table>
+<p>문구는 brand.md 톤 규칙(주어 절제 리포트체, "여러분/혁신적인" 등 금지어 0) 준수. "Made with OSMU"는 gtm-plan 확정값(세션맥락 지시) 계승.</p>
+<hr />
+<h2 id="2-자산-목록">2. 자산 목록</h2>
+<h3 id="a-프로필-아바타-12001200-11-원형-크롭-안전권-중앙-80">A. 프로필 아바타 (1200×1200, 1:1, 원형 크롭 안전권 중앙 80%)</h3>
+<table>
+<thead>
+<tr>
+<th>파일</th>
+<th>용도</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>osmu-factory-avatar-candidate1-recommended-v2-claude-sonnet.png</code></td>
+<td><strong>추천 1안</strong></td>
+<td>정면 배치, 유리질 금속 링에 앰버 체크가 내부 발광 — 가장 "프리미엄 코인/메달" 인상, 64px 축소 판독 양호</td>
+</tr>
+<tr>
+<td><code>osmu-factory-avatar-candidate2-v2-claude-sonnet.png</code></td>
+<td>후보 2안</td>
+<td>3/4 앵글 브러시 메탈 스탬프, 입체감 강하나 중심이 약간 우측 치우침 — 정중앙 크롭 시 여백 손실 주의</td>
+</tr>
+<tr>
+<td><code>osmu-factory-avatar-candidate3-v2-claude-sonnet.png</code></td>
+<td>후보 3안</td>
+<td>무광 블랙 아노다이징 스탬프, 차분하나 후보1 대비 광채가 약함</td>
+</tr>
+</tbody>
+</table>
+<p><strong>⛔ 로고=정체성 결정이라 이 3안 중 확정은 회장 컨펌 필요</strong>(design-system.md §3 규칙 — "재디자인은 회장 컨펌 후, 자동 재생성 금지"). 3안 모두 기존 v1(<code>assets/brand/osmu-factory-profile-v1-claude-sonnet.png</code>, 평면 벡터 체크마크)보다 소재감·조명이 있는 프리미엄 톤으로 명백히 상향 — v1 교체를 권장하되 최종 낙점은 회장 몫.</p>
+<h3 id="b-배너-플랫폼별-정확-규격-전부-좌측좌하단-텍스트--made-with-osmu-서명-포함">B. 배너 (플랫폼별 정확 규격, 전부 좌측/좌하단 텍스트 + Made with OSMU 서명 포함)</h3>
+<table>
+<thead>
+<tr>
+<th>파일</th>
+<th>규격</th>
+<th>플랫폼</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>osmu-factory-banner-youtube-v2-claude-sonnet.png</code></td>
+<td>2560×1440 (세이프존 1546×423 중앙 배치 확인)</td>
+<td>YouTube 채널 아트</td>
+</tr>
+<tr>
+<td><code>osmu-factory-banner-x-header-v2-claude-sonnet.png</code></td>
+<td>1500×500</td>
+<td>X 헤더</td>
+</tr>
+<tr>
+<td><code>osmu-factory-banner-facebook-cover-v2-claude-sonnet.png</code></td>
+<td>820×312</td>
+<td>Facebook 커버 (<strong>주의</strong>: 2026 Facebook 공식 권장은 851×315로 소폭 변경 확인됨 — §5 CONFLICTS 참조, 이번 산출은 회장 지정 브리프값 820×312로 제작)</td>
+</tr>
+<tr>
+<td><code>osmu-factory-banner-linkedin-v2-claude-sonnet.png</code></td>
+<td>1584×396</td>
+<td>LinkedIn 배너</td>
+</tr>
+</tbody>
+</table>
+<h3 id="c-카드뉴스-igthreads-심야-데스크서킷-패널-전환-배경">C. 카드뉴스 (IG/Threads, 심야 데스크→서킷 패널 전환 배경)</h3>
+<table>
+<thead>
+<tr>
+<th>파일</th>
+<th>규격</th>
+<th>슬라이드</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>osmu-factory-cardnews-01-cover-v2-claude-sonnet.png</code></td>
+<td>1080×1350</td>
+<td>표지 — 훅 카피</td>
+</tr>
+<tr>
+<td><code>osmu-factory-cardnews-02-body-v2-claude-sonnet.png</code></td>
+<td>1080×1350</td>
+<td>본문 — 근거/숫자</td>
+</tr>
+<tr>
+<td><code>osmu-factory-cardnews-03-close-v2-claude-sonnet.png</code></td>
+<td>1080×1350</td>
+<td>마무리 — <strong>Made with OSMU 서명 밴드</strong></td>
+</tr>
+<tr>
+<td><code>osmu-factory-cardnews-square-01-cover-v2-claude-sonnet.png</code></td>
+<td>1080×1080</td>
+<td>정방형 변형 표지</td>
+</tr>
+<tr>
+<td><code>osmu-factory-cardnews-square-02-close-v2-claude-sonnet.png</code></td>
+<td>1080×1080</td>
+<td>정방형 변형 마무리(서명 포함)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="d-숏폼-엔드카드--워터마크">D. 숏폼 엔드카드 + 워터마크</h3>
+<table>
+<thead>
+<tr>
+<th>파일</th>
+<th>규격</th>
+<th>용도</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>osmu-factory-endcard-shortform-v2-claude-sonnet.png</code></td>
+<td>1080×1920</td>
+<td>YouTube Shorts/TikTok/Reels 엔드카드, 우하단 서명</td>
+</tr>
+<tr>
+<td><code>osmu-factory-watermark-corner-small-v2-claude-sonnet.png</code></td>
+<td>334×80, 투명 배경</td>
+<td>짧은 영상/작은 코너용</td>
+</tr>
+<tr>
+<td><code>osmu-factory-watermark-corner-large-v2-claude-sonnet.png</code></td>
+<td>669×160, 투명 배경</td>
+<td>롱폼/큰 코너용</td>
+</tr>
+</tbody>
+</table>
+<h3 id="e-youtube-썸네일-템플릿">E. YouTube 썸네일 템플릿</h3>
+<table>
+<thead>
+<tr>
+<th>파일</th>
+<th>규격</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>osmu-factory-thumbnail-template-v2-claude-sonnet.png</code></td>
+<td>1280×720</td>
+</tr>
+</tbody>
+</table>
+<h3 id="f-ig-하이라이트-커버-brandmd-5-메시징-필러-매핑">F. IG 하이라이트 커버 (brand.md §5 메시징 필러 매핑)</h3>
+<table>
+<thead>
+<tr>
+<th>파일</th>
+<th>라벨</th>
+<th>매핑 필러</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>osmu-factory-highlight-01-shipping-v2-claude-sonnet.png</code></td>
+<td>출고</td>
+<td>필러1 대신 만들어 출고</td>
+</tr>
+<tr>
+<td><code>osmu-factory-highlight-02-report-v2-claude-sonnet.png</code></td>
+<td>리포트</td>
+<td>필러5 지표 공개</td>
+</tr>
+<tr>
+<td><code>osmu-factory-highlight-03-channels-v2-claude-sonnet.png</code></td>
+<td>채널</td>
+<td>채널 안내(문의 유입 경로)</td>
+</tr>
+<tr>
+<td><code>osmu-factory-highlight-04-contact-v2-claude-sonnet.png</code></td>
+<td>문의</td>
+<td>CTA/DM 안내</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-사용한-higgsfield-프롬프트-raw-원본-대응-재생성-시-재사용">3. 사용한 Higgsfield 프롬프트 (raw/ 원본 대응, 재생성 시 재사용)</h2>
+<p>전부 <code>higgsfield generate create flux_2 --resolution 2k</code>, design-system.md §7 공통 블록을 뒤에 결합:</p>
+<pre><code>dark navy background (#0B0F1A), amber accent lighting (#F59E0B), minimal tech aesthetic,
+late-night workspace mood, clean composition, no text, no watermark, no human face,
+high contrast, professional product-brand photography style
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>raw 파일</th>
+<th>aspect</th>
+<th>개별 프롬프트</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>avatar-a/b/c.png</td>
+<td>1:1</td>
+<td>3가지 변주(브러시메탈/유리코인/무광블랙) — "macro photograph of an embossed/polished ... circular seal stamp with a glowing amber checkmark relief, dimensional depth, subtle mint highlight accent..."</td>
+</tr>
+<tr>
+<td>banner.png</td>
+<td>16:9</td>
+<td>"wide cinematic late-night workspace scene, single ultra-thin monitor glowing amber on a dark walnut desk, ... negative space on left 60 percent..."</td>
+</tr>
+<tr>
+<td>card.png</td>
+<td>3:4</td>
+<td>"dark navy gradient panel ... faint circuit-like grid texture ... one soft amber light streak diagonal ... large empty negative space center-left for headline text..."</td>
+</tr>
+<tr>
+<td>endcard.png</td>
+<td>9:16</td>
+<td>위 card와 동일 문법의 세로 변형</td>
+</tr>
+<tr>
+<td>thumbnail.png</td>
+<td>16:9</td>
+<td>card 변형 + "subtle dashboard monitor glow silhouette on right edge"</td>
+</tr>
+<tr>
+<td>highlight.png</td>
+<td>1:1</td>
+<td>"soft dark navy radial gradient texture, subtle amber glow in center, faint fine grid pattern... clean empty composition for icon overlay"</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4-design-review-자가-등급-직접-관찰--정적-브랜드-에셋이라-2026-07-18-선례와-동일-방법론">4. design-review 자가 등급 (직접 관찰 — 정적 브랜드 에셋이라 2026-07-18 선례와 동일 방법론)</h2>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>평가</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>실사/사진 톤</td>
+<td>통과 — 전 배경이 Higgsfield 실사 텍스처, 평면 벡터 0</td>
+</tr>
+<tr>
+<td>placeholder/빈 상태</td>
+<td>0건</td>
+</tr>
+<tr>
+<td>타이포·정렬</td>
+<td>Pretendard Black/Bold/SemiBold/Regular 위계 적용, 좌측 정렬 일관</td>
+</tr>
+<tr>
+<td>대비</td>
+<td>다크 배경 + 화이트/앰버/민트 — WCAG 근사 대비 통과(육안 확인, 자동 측정 미실행)</td>
+</tr>
+<tr>
+<td>카피↔화면 정합</td>
+<td>O — 카드뉴스 본문 "비용은 대행 1/10 수준"은 숫자 근거 문서(assets.md/creative-briefs) 확인 안 된 추정치 — <strong>(unsourced) 표기 필요, 실제 발행 전 회장 확인</strong></td>
+</tr>
+<tr>
+<td>서명 요소</td>
+<td>전 콘텐츠 템플릿(카드뉴스 마무리·엔드카드·썸네일·YouTube 배너)에 Made with OSMU 배지 삽입 확인</td>
+</tr>
+<tr>
+<td>dev toast/워터마크 오염</td>
+<td>0</td>
+</tr>
+<tr>
+<td>규격 정확도</td>
+<td>§2 표 전부 exact pixel 확인(<code>PIL Image.size</code> 실측)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>등급: B+</strong> (사진 톤·서명 일관성은 A급, HTML 렌더 미사용으로 인한 그림자/블러 폴리싱 한계 + 카피 숫자 미검증 1건으로 B+ 캡). B 미만 아니므로 리테이크 불요.</p>
+<p><strong>⚠️ 카드뉴스 02 본문의 "대행사 대비 시간 0분, 비용은 대행 1/10 수준"은 (unsourced) 추정 카피다.</strong> 실제 발행 전 근거 숫자(실측 대행 시세 비교)로 교체하거나 삭제할 것.</p>
+<hr />
+<h2 id="5-벤치마크-websearch-실조회-2026-09-18">5. 벤치마크 (WebSearch 실조회, 2026-09-18)</h2>
+<ol>
+<li><a href="https://hashtagtools.io/blog/buffer-vs-later-vs-metricool-best-scheduler-2026">Buffer vs Later vs Metricool: Best Scheduler in 2026 — Hashtag Tools</a> — Buffer/Later/Metricool 3사 포지셔닝 비교. 차용점: "채널당/세트당/브랜드당" 과금 모델 차이 관찰(가격 카피에 참고 가능, 이번 비주얼 작업 직접 반영은 없음).</li>
+<li><a href="https://www.summagraph.com/infographic-examples/business-and-marketing/2026-social-media-image-sizes">2026 Social Media Image Size Guide — Summagraph</a> — 최신 규격 크로스체크 소스.</li>
+<li><a href="https://pineable.com/blog/social-media-image-sizes">Social Media Image Sizes For Instagram, LinkedIn and More — Pineable</a> — 2026 최신 픽셀 스펙 실측(WebFetch): YouTube 배너 2560×1440/세이프존 1546×423, YouTube 썸네일 1280×720, X 헤더 1500×500, <strong>Facebook 커버 851×315</strong>(브리프 지정값 820×312와 차이 — §6 CONFLICTS), LinkedIn 배너 1584×396, Shorts/Reels/TikTok 1080×1920(상단 150~250px·하단 340~350px UI 가림 — 엔드카드 텍스트를 안전하게 중앙 70%에 배치한 근거).</li>
+</ol>
+<p><strong>차용한 것</strong>: 세이프존 수치, 플랫폼별 정확 규격, 세로 영상의 UI 가림 영역 회피 배치.
+<strong>차용 안 한 것</strong>: 벤치마크 계정 3사는 툴 브랜드(디자인 자산 스케줄러)라 얼굴/제품 사진 중심 프로필이 아니어서, "얼굴 비노출 + 신뢰감" 컨셉 자체는 design-system.md 기존 정본(씰+체크 모티프)을 그대로 따르고 벤치마크에서 로고 스타일을 직접 베끼지 않았다 — brand.md ADR-005가 이미 확정한 방향이라 이번 작업은 그 위에 "고급감" 리파인만 추가.</p>
+<hr />
+<h2 id="6-4필드-검증-대상">6. 4필드 (검증 대상)</h2>
+<pre><code>KNOWLEDGE_QUERY: WebSearch(&quot;Buffer Later Metricool Instagram profile picture banner brand SNS 2026 premium trustworthy design&quot;), WebFetch(pineable.com 2026 규격표). wiki 조회 = naming.md/brand.md/design-system.md/assets.md/ADR-005/실수.md 전문 Read.
+HITS_USED: design-system.md §1-§8(팔레트·타이포·로고 컨셉·AI 프롬프트 스타일 가이드 — 그대로 계승), assets.md(기존 v1 에셋 품질 한계·2026-07-18 flux_2 성공 경로 — 동일 경로 재사용), naming.md/ADR-005(표시명 &quot;OSMU 팩토리&quot;, 얼굴 비노출, 회장 veto 이력 — 로고 확정은 회장 몫으로 재확인), pineable.com(2026 최신 정확 픽셀 규격 — YouTube/X/LinkedIn 규격에 직접 반영).
+HITS_REJECTED: Buffer/Later/Metricool 비교 기사(사업모델 비교 위주라 이번 비주얼 산출과 직접 관련 낮음 — 스케줄러 SaaS는 얼굴 비노출 툴 브랜드 벤치마크로 참고만 하고 로고/배너 디자인을 직접 차용하지 않음).
+CONFLICTS: 회장 브리프 지정 Facebook 규격(820×312) vs 2026 pineable.com 실측 공식 권장(851×315) — 이번 산출은 브리프값을 따랐다. 픽셀 차이가 작아(31×3px) 실사용 문제는 낮으나, 회장이 원하면 851×315 버전 추가 생성 가능(재생성 없이 sips 크롭만 필요).
+</code></pre>
+<hr />
+<h2 id="7-미생성미검증-항목-정직-고지-가짜-완료-금지">7. 미생성·미검증 항목 (정직 고지, 가짜 완료 금지)</h2>
+<ul>
+<li><strong>Threads/Instagram 전용 별도 첨부 이미지(1200×675, design-system.md §4)</strong>: 이번 배치에 미포함 — 카드뉴스(1080×1350/1080×1080)로 대체 가능하나 정확히 요청된 규격은 아님. 필요 시 추가 생성 가능(동일 card 배경 재사용, 크롭만).</li>
+<li><strong>TikTok 프로필/영상 워터마크 실기기 검증</strong>: TikTok 앱 내 실제 렌더링(다른 UI 오버레이와 겹침 여부)은 미확인.</li>
+<li><strong>원형 크롭 실측</strong>: 아바타 3안의 IG/Threads/X/YouTube 각 플랫폼 실제 원형 마스크 적용 후 가독성은 미검증(설계상 중앙 80% 안전권 고려했으나 실제 업로드 후 확인 필요).</li>
+<li><strong>카드뉴스 본문 숫자 카피(§4 경고)</strong>: "대행 1/10 수준" 등 미검증 추정치 — 발행 전 교정 필요.</li>
+<li><strong>디자인 시스템 로고 확정</strong>: 3안 중 최종 선택은 회장 결정 사항(⛔ 아래 §8).</li>
+<li>Higgsfield 호출은 8/8 전부 성공 — 실패 로그 없음.</li>
+</ul>
+<hr />
+<h2 id="8--회수-필요-프로필-로고-3안-중-확정-픽">8. ⛔ 회수 필요: 프로필 로고 3안 중 확정 픽</h2>
+<ul>
+<li><strong>배경</strong>: design-system.md §3 규칙상 로고=정체성 변경은 회장 컨펌 없이 자동 확정 불가. 기존 v1(평면 벡터 체크마크, B등급 "붕 떠보임" 약점 기록)을 이번 3안이 소재감·조명 면에서 명백히 상회해 교체를 권장하나, 어느 안으로 교체할지는 회장이 고른다.</li>
+<li><strong>무엇을 정하나</strong>: 프로필 이미지 v1을 이번 3안 중 하나로 교체할지, 교체한다면 어느 안인지.</li>
+<li><strong>옵션 A(추천) — candidate1</strong>: 유리질 금속 코인에 내부 발광 체크마크, 가장 "고급/신뢰" 인상이 강하고 원형 중앙 정렬이 깔끔해 64px 축소에서도 판독 양호 → 고르면: 즉시 v1 교체, 안 고르면: 기존 v1(평면 벡터) 유지로 "고급감" 요구 미충족 리스크 지속.</li>
+<li><strong>옵션 B — candidate2</strong>: 브러시 메탈 입체감이 candidate1보다 강하나 3/4 앵글이라 정중앙 크롭 시 여백 손실 우려 → 고르면: 재크롭 조정 한 차례 필요, 트레이드오프: 작업 한 스텝 추가.</li>
+<li><strong>추천 근거</strong>: candidate1이 정면 배치라 원형 크롭 안전권 계산이 가장 예측 가능하고, "링에 발광 체크"가 기존 씰+체크 컨셉(ADR-005 유지)과 이질감 없이 프리미엄만 더한 최소 변경.</li>
+</ul>
+<hr />
+<p>SOURCES/MODEL: [Claude Sonnet 5] · Higgsfield flux_2(raw 8장 생성, <code>docs/growth/assets/2026-09-sns-kit/raw/*.json</code>에 job URL 기록) · 내부 Read = wiki/거버넌스/결정.md ADR-005, wiki/거버넌스/실수.md 상단 30줄, wiki/1-team-brand/{naming,brand,assets}.md, wiki/5-hubs/hub-design/design-system.md, wiki/5-hubs/hub-mkt/channels/instagram.md, ~/.claude/standards/artifact-stamp.md · 외부 = §5 각주 3건(WebSearch/WebFetch, 2026-09-18)</p></body></html>

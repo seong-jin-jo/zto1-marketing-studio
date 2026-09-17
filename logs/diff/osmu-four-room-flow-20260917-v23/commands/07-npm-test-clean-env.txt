@@ -1,0 +1,1101 @@
+
+> dashboard@0.2.0 test
+> vitest run
+
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.9 /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+
+stderr | tests/brand/social-connect.test.ts > GET /api/connect/instagram/callback — 토큰교환·저장 > 장기 토큰 교환이 실패하면 단기 토큰을 active 계정으로 저장하지 않는다
+[connect-callback][exchange-fail] threads threads 연결이 마지막 단계에서 끊겼습니다. 연결 유지 권한(60일)을 받지 못했습니다. 다시 연결해 보시고, 그래도 안 되면 앱 설정을 확인해야 합니다. [HTTP 400] (원문: invalid exchange)
+
+stderr | tests/brand/social-connect.test.ts > GET /api/connect/instagram/callback — 토큰교환·저장 > /me 신원 검증이 실패하면 active 계정을 저장하지 않는다
+[connect-callback][catch] threads Threads 계정 검증 실패
+
+stderr | tests/brand/social-connect.test.ts > GET /api/connect/x/callback — PKCE code_verifier 쿠키 처리 > 토큰 교환 실패 결과에서도 state와 PKCE verifier를 함께 만료한다
+[connect-callback][exchange-fail] x invalid_grant
+
+ ✓ tests/brand/social-connect.test.ts (63 tests) 3524ms
+   ✓ GET /api/connect/instagram — OAuth 동의 URL > META-SCOPE-001 정상: 첫 심사에 필요한 Instagram 연결·발행·댓글 권한을 요청한다 809ms
+   ✓ GET /api/connect/linkedin — authUrl > LINKEDIN_CLIENT_ID 미설정 → 503 420ms
+stderr | tests/publish/publish-route.branch.test.ts > /api/publish — happy path (실 publish* + fetch 목) > 실패한 발행은 usage_events 발행 집계를 남기지 않는다
+{"ts":"2026-09-17T09:28:34.135Z","kind":"osmu_alert","event":"publish_failed","severity":"warning","resourceKey":"account:default","context":{"platform":"threads","reason":"http_error","httpStatus":500}}
+
+stderr | tests/publish/publish-route.branch.test.ts > /api/publish — 실패/기록 분기 > 플랫폼 API 실패 → ok:false, failed 기록 + error 저장 (HTTP는 200)
+{"ts":"2026-09-17T09:28:34.188Z","kind":"osmu_alert","event":"publish_failed","severity":"warning","resourceKey":"account:default","context":{"platform":"threads","reason":"http_error","httpStatus":400}}
+
+stderr | tests/publish/publish-route.branch.test.ts > /api/publish — 실패/기록 분기 > 외부 발행 성공 뒤 DB 기록 실패 → 500 partial failure + 재발행 금지 복구 메타데이터
+[publish][persist-fail] publication_record threads db down
+
+stdout | tests/publish/publish-route.branch.test.ts > /api/publish — 실패/기록 분기 > 승인 큐에 없는 초안의 발행 → 실패가 아니라 정상으로 닫는다
+[publish] queue_record_absent threads 승인 큐를 거치지 않은 직접 발행
+
+stderr | tests/publish/publish-route.branch.test.ts > /api/publish — 실패/기록 분기 > 외부 발행·publication 기록 성공 뒤 queue 기록 실패 → 500 partial failure + 외부 식별자 보존
+[publish][persist-fail] queue_record threads queue disk unavailable
+
+stderr | tests/publish/publish-route.branch.test.ts > /api/publish — 실패/기록 분기 > 미지원 플랫폼 → ok:false, failed 기록
+{"ts":"2026-09-17T09:28:34.222Z","kind":"osmu_alert","event":"publish_failed","severity":"warning","resourceKey":"account:default","context":{"platform":"unknown_platform","reason":"unsupported_platform"}}
+
+stderr | tests/publish/publish-route.branch.test.ts > /api/publish — 되돌릴 수 없는 외부 게시 보호 > PUB-LEASE-01 회수: 임차가 만료됐고 공급자에 그 글이 없으면 예약을 회수해 다시 발행한다
+{"ts":"2026-09-17T09:28:34.234Z","kind":"osmu_alert","event":"publish_failed","severity":"warning","resourceKey":"account:default","context":{"platform":"threads"}}
+
+stderr | tests/publish/publish-route.branch.test.ts > /api/publish — 되돌릴 수 없는 외부 게시 보호 > PUB-UNCERTAIN-01 보존: 게시 뒤 응답만 끊긴 발행은 failed 가 아니라 uncertain 으로 저장한다
+{"ts":"2026-09-17T09:28:34.245Z","kind":"osmu_alert","event":"publish_failed","severity":"warning","resourceKey":"account:default","context":{"platform":"threads","reason":"unknown"}}
+
+stderr | tests/publish/publish-route.branch.test.ts > /api/publish — 되돌릴 수 없는 외부 게시 보호 > PUB-COMMENT-01 분리: 본문 성공 + 첫 댓글 실패는 첫 댓글 상태를 failed 로 따로 남긴다
+{"ts":"2026-09-17T09:28:34.248Z","kind":"osmu_alert","event":"publish_failed","severity":"warning","resourceKey":"account:default","context":{"platform":"threads","reason":"unknown"}}
+
+ ✓ tests/publish/publish-route.branch.test.ts (32 tests) 3435ms
+   ✓ /api/publish — 입력/인증 분기 > FMT-API-02 거절: 허용하지 않은 영상 비율은 자격 조회와 외부 발행 전에 422로 막는다 3060ms
+ ✓ tests/publish/publish-messaging-channels.test.ts (51 tests) 696ms
+ ✓ tests/isolation/middleware.test.ts (70 tests) 1479ms
+   ✓ proxy Studio 독립 인증 경계 > STUDIO-AUTH-02 한국어 설명: 운영의 개발용 Studio 신원은 무효 고객 토큰으로 우회되지 않는다 975ms
+ ✓ tests/lib/channel-accounts.test.ts (21 tests) 266ms
+stderr | tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts > 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 올린 계정과 수집한 계정이 같은데 목록 끝까지 없으면 '지워진 글' 로 가른다
+[metrics][failure] {"tenantId":"tenant-retire","postId":"row-deleted","channel":"threads","code":"post_deleted","publishedAt":"2026-09-08T05:53:45.813Z","ageMinutes":13175,"evidence":"발행 13175분 전이라 유예 60분을 지났고, 단건 조회가 HTTP 400 로 거절됐으며, 계정 글 목록 1쪽을 끝까지 봤는데 이 글이 없었습니다. 이 글을 올린 계정과 수집에 쓴 계정이 같으므로 채널에서 지워진 글로 봅니다.","operator":{"externalId":"threads-deleted","postAccountId":"acct-connected","collectedWithAccountId":"acct-connected","providerStatus":400,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts > 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 올린 계정이 다르면 지워졌다고 단정하지 않는다
+[metrics][failure] {"tenantId":"tenant-retire","postId":"row-other-account","channel":"threads","code":"post_not_in_account","publishedAt":"2026-09-08T05:53:46.016Z","ageMinutes":13175,"evidence":"발행 13175분 전이라 유예 60분을 지났고, 계정 글 목록 1쪽을 끝까지 봤는데 이 글이 없었습니다. 이 글을 올린 계정이 수집에 쓴 계정과 다릅니다.","operator":{"externalId":"threads-other","postAccountId":"acct-other","collectedWithAccountId":"acct-connected","providerStatus":400,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts > 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 올린 계정 기록이 없으면 지워졌다고 단정하지 않는다
+[metrics][failure] {"tenantId":"tenant-retire","postId":"row-unknown-account","channel":"threads","code":"post_not_in_account","publishedAt":"2026-09-08T05:53:46.043Z","ageMinutes":13175,"evidence":"발행 13175분 전이라 유예 60분을 지났고, 계정 글 목록 1쪽을 끝까지 봤는데 이 글이 없었습니다. 이 글을 올린 계정 기록이 없어 지워진 글로 단정하지 않았습니다.","operator":{"externalId":"threads-unknown","postAccountId":null,"collectedWithAccountId":"acct-connected","providerStatus":400,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts > 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 판정과 동시에 왜 내려놓는지를 글에 적는다
+[metrics][failure] {"tenantId":"tenant-retire","postId":"row-deleted","channel":"threads","code":"post_deleted","publishedAt":"2026-09-08T05:53:46.063Z","ageMinutes":13175,"evidence":"발행 13175분 전이라 유예 60분을 지났고, 단건 조회가 HTTP 400 로 거절됐으며, 계정 글 목록 1쪽을 끝까지 봤는데 이 글이 없었습니다. 이 글을 올린 계정과 수집에 쓴 계정이 같으므로 채널에서 지워진 글로 봅니다.","operator":{"externalId":"threads-deleted","postAccountId":"acct-connected","collectedWithAccountId":"acct-connected","providerStatus":400,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts > 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 운영자는 글 번호로 손수 되돌릴 수 있다
+[metrics][reinstate] {"tenantId":"tenant-retire","postId":"row-retired","wasRetired":{"code":"post_deleted","at":"2026-09-14T00:00:00.000Z","evidence":"계정 글 목록을 끝까지 봤는데 없었습니다","accountId":"acct-connected"}}
+
+stderr | tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts > 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 살아 있는 글은 지워진 것으로 분류되지 않는다 - 목록에 있으면 계정 판정으로 안 간다
+[metrics][failure] {"tenantId":"tenant-retire","postId":"row-alive","channel":"threads","code":"provider_400","publishedAt":"2026-09-08T05:53:46.180Z","ageMinutes":13175,"evidence":"목록 1쪽에서 이 글을 찾았습니다. 글은 이 계정에 있는데 성과 조회만 HTTP 400 로 실패했습니다.","operator":{"externalId":"threads-alive","postAccountId":"acct-connected","collectedWithAccountId":"acct-connected","providerStatus":400,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts > 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 살아 있는 글은 지워진 것으로 분류되지 않는다 - 목록을 끝까지 못 봤으면 단정하지 않는다
+[metrics][failure] {"tenantId":"tenant-retire","postId":"row-maybe","channel":"threads","code":"metrics_lookup_incomplete","publishedAt":"2026-09-08T05:53:46.204Z","ageMinutes":13175,"evidence":"목록 상한 5쪽(최대 500편)까지 봤지만 아직 남아 있습니다. 그래서 계정에 없다고 단정하지 않았습니다.","operator":{"externalId":"threads-maybe","postAccountId":"acct-connected","collectedWithAccountId":"acct-connected","providerStatus":400,"lookupPages":5}}
+
+stderr | tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts > 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 살아 있는 글은 지워진 것으로 분류되지 않는다 - 방금 올린 글은 집계 대기다
+[metrics][failure] {"tenantId":"tenant-retire","postId":"row-fresh","channel":"threads","code":"metrics_pending_ingest","publishedAt":"2026-09-17T09:25:46.519Z","ageMinutes":3,"evidence":"발행 3분 전이라 집계 유예 60분 안입니다. 계정 목록을 확인하지 않았습니다.","operator":{"externalId":"threads-fresh","postAccountId":"acct-connected","collectedWithAccountId":"acct-connected","providerStatus":400}}
+
+stderr | tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts > 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 살아 있는 글은 지워진 것으로 분류되지 않는다 - 목록 항목에 글 번호가 없으면 대조를 포기한다
+[metrics][failure] {"tenantId":"tenant-retire","postId":"row-malformed","channel":"threads","code":"metrics_lookup_incomplete","publishedAt":"2026-09-08T05:53:46.538Z","ageMinutes":13175,"evidence":"목록 1쪽에 글 번호가 없는 항목이 있어 대조하지 못했습니다. 그래서 계정에 없다고 단정하지 않았습니다.","operator":{"externalId":"threads-malformed","postAccountId":"acct-connected","collectedWithAccountId":"acct-connected","providerStatus":400,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts > 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 살아 있는 글은 지워진 것으로 분류되지 않는다 - 정렬 지름길로 끊었으면 지워졌다고 말하지 않는다
+[metrics][failure] {"tenantId":"tenant-retire","postId":"row-shortcut","channel":"threads","code":"post_not_in_account","publishedAt":"2026-09-08T05:53:46.552Z","ageMinutes":13175,"evidence":"발행 13175분 전이라 유예 60분을 지났고, 목록 1쪽의 마지막 글(2026-09-03T12:08:46.552Z)이 이 글의 발행 시각보다 오래됐는데도 이 글이 없었습니다. 목록을 끝까지 본 것이 아니라 정렬 순서로 앞질러 끊었으므로 지워진 글로 단정하지 않았습니다.","operator":{"externalId":"threads-shortcut","postAccountId":"acct-connected","collectedWithAccountId":"acct-connected","providerStatus":400,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts > 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 살아 있는 글은 지워진 것으로 분류되지 않는다 - 발행 시각이 미래면 단정하지 않는다
+[metrics][failure] {"tenantId":"tenant-retire","postId":"row-future","channel":"threads","code":"post_not_in_account","publishedAt":"2026-09-20T20:48:46.564Z","ageMinutes":-5000,"evidence":"발행 -5000분 전이라 유예 60분을 지났고, 계정 글 목록 1쪽을 끝까지 봤는데 이 글이 없었습니다. 발행 시각이 미래로 기록돼 있어 지워진 글로 단정하지 않았습니다.","operator":{"externalId":"threads-future","postAccountId":"acct-connected","collectedWithAccountId":"acct-connected","providerStatus":400,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts > 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 채널 장애는 지워진 글로 둔갑하지 않는다
+[metrics][failure] {"tenantId":"tenant-retire","postId":"row-outage","channel":"threads","code":"provider_503","publishedAt":"2026-09-08T05:53:46.589Z","ageMinutes":13175,"evidence":"성과 조회가 HTTP 503 로 거절됐습니다. 채널 쪽 문제라 계정 확인으로 넘어가지 않았습니다.","operator":{"externalId":"threads-outage","postAccountId":"acct-connected","collectedWithAccountId":"acct-connected","providerStatus":503}}
+
+ ✓ tests/api/osmu-metrics-20260914-deleted-post-retirement.regression.test.ts (26 tests) 1131ms
+   ✓ 채널에서 사라진 글은 영원한 실패로 남지 않는다 > 살아 있는 글은 지워진 것으로 분류되지 않는다 - 방금 올린 글은 집계 대기다 303ms
+   ✓ 성과 범위 표시도 내려놓은 글을 미수집으로 세지 않는다 > 지워진 글 한 편 때문에 '8건 중 7건' 이 영원히 뜨지 않는다 312ms
+stderr | tests/publish/cancel-safety-regression.test.ts > Codex 교차 리뷰 잔여 결함 — 경계 케이스 > MAJOR 8: outbox 상한을 넘어도 미수렴 항목을 하나도 버리지 않는다
+[queue-mirror-outbox] 미수렴 항목 511건. 저장소 복구가 필요합니다.
+
+ ✓ tests/publish/cancel-safety-regression.test.ts (29 tests) 5891ms
+   ✓ 발행기 경합 — 취소가 200 을 준 뒤에는 외부 게시가 진행되지 않는다 > 워커가 가져간(claim) 글을 고객이 취소하면, 공급자 호출 직전 재검증이 발행을 막는다 635ms
+   ✓ Codex 교차 리뷰 잔여 결함 — 경계 케이스 > MAJOR 1: 잠금을 못 잡으면 조용히 진행하지 않고 실패한다(fail-open 금지) 3590ms
+ ✓ tests/publish/video-publish-youtube.route.test.ts (17 tests) 2213ms
+   ✓ /api/video/publish — YouTube > happy path — 업로드하고 permalink를 돌려주며 published_posts에 기록한다 890ms
+ ✓ tests/api/youtube-ssot.test.ts (22 tests) 2616ms
+   ✓ GET /api/youtube/status — 실 Google API bounded check > DB에 토큰이 없으면 connected=false 1251ms
+ ✓ tests/db/osmu-migration-runner.contract.test.ts (27 tests) 64ms
+ ✓ tests/publish/video-publish-reels.route.test.ts (22 tests) 3195ms
+   ✓ /api/video/publish — Instagram Reels > happy path — 501이 아니라 실제로 발행하고 permalink를 돌려준다 989ms
+   ✓ /api/video/publish — Instagram Reels > YouTube의 100자 제목 상한을 Reels에 적용하지 않는다 — 캡션 2200자 안이면 통과 356ms
+stderr | tests/anthropic-cli-safety.test.ts > claude CLI 실행 경계 — timeout / 출력상한 / spawn 에러 / 비정상 종료 > 120초 안에 종료되지 않으면 SIGTERM으로 kill하고 정확히 1회 timeout reject한다
+{"ts":"2026-09-17T09:30:57.081Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"timeout"}}
+
+stderr | tests/anthropic-cli-safety.test.ts > claude CLI 실행 경계 — timeout / 출력상한 / spawn 에러 / 비정상 종료 > SIGTERM으로도 자식이 안 죽으면(close 미도달) 3초 뒤 SIGKILL로 강제종료해 좀비를 막는다
+{"ts":"2026-09-17T09:30:57.109Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"timeout"}}
+
+stderr | tests/anthropic-cli-safety.test.ts > claude CLI 실행 경계 — timeout / 출력상한 / spawn 에러 / 비정상 종료 > kill 이후 close가 정상 도달하면 SIGKILL 유예 타이머가 취소된다(불필요한 강제종료 없음)
+{"ts":"2026-09-17T09:30:57.127Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"timeout"}}
+
+stderr | tests/anthropic-cli-safety.test.ts > claude CLI 실행 경계 — timeout / 출력상한 / spawn 에러 / 비정상 종료 > stdout이 8MiB를 넘기면 즉시 kill하고 reject — 에러 메시지에 데이터 본문을 담지 않는다
+{"ts":"2026-09-17T09:28:57.168Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"output_limit"}}
+
+stderr | tests/anthropic-cli-safety.test.ts > claude CLI 실행 경계 — timeout / 출력상한 / spawn 에러 / 비정상 종료 > spawn 자체가 error 이벤트를 내면 reject하고, 에러 메시지에 prompt 원문을 담지 않는다
+{"ts":"2026-09-17T09:28:57.181Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"spawn_failed"}}
+
+stderr | tests/anthropic-cli-safety.test.ts > claude CLI 실행 경계 — timeout / 출력상한 / spawn 에러 / 비정상 종료 > 비정상 exit code는 exit code만 담아 reject한다 — child stderr 원문은 어떤 형태로도 캡처·노출되지 않는다
+{"ts":"2026-09-17T09:28:57.208Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"exit_nonzero"}}
+
+stderr | tests/anthropic-cli-safety.test.ts > claude CLI 실행 경계 — stdin 쓰기 실패(EPIPE/동기 throw) > child.stdin이 'error' 이벤트(EPIPE 등)를 내면 child를 kill하고 안정된(prompt 미포함) 에러로 reject한다
+{"ts":"2026-09-17T09:28:57.233Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"stdin_failed"}}
+
+stderr | tests/anthropic-cli-safety.test.ts > claude CLI 실행 경계 — stdin 쓰기 실패(EPIPE/동기 throw) > child.stdin.end()가 동기적으로 throw해도 child를 kill하고 안정된 에러로 reject하며, 큐는 다음 요청으로 계속 진행된다(FIFO 미차단)
+{"ts":"2026-09-17T09:28:57.247Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"stdin_failed"}}
+
+ ✓ tests/anthropic-cli-safety.test.ts (20 tests) 612ms
+ ✓ tests/api/operator-customers.test.ts (22 tests) 935ms
+ ✓ tests/studio/generation-db.integration.test.ts (9 tests) 3213ms
+   ✓ Studio 생성 Postgres 장부 계약 > GEN-DB-01 한국어 설명: 같은 멱등 키는 실제 DB에서 작업 한 건과 같은 응답으로 수렴한다 425ms
+   ✓ Studio 생성 Postgres 장부 계약 > GEN-DB-01B 경합: pool 5에서 같은 멱등 키 20건은 작업·응답 하나로 수렴한다 392ms
+   ✓ Studio 생성 Postgres 장부 계약 > GEN-DB-05 한국어 설명: 같은 회원의 UTC 날짜 무료 몫은 워크스페이스가 달라도 한 번뿐이다 403ms
+   ✓ Studio 생성 Postgres 장부 계약 > M1-GEN-DB-06 한국어 설명: 동서 끝 시간대의 서로 다른 작업도 실제 DB에서 UTC 하루 몫을 공유한다 542ms
+   ✓ Studio 생성 Postgres 장부 계약 > M2-GEN-DB-07 거절: 무료 몫을 쓴 작업 공간을 삭제해도 같은 회원의 당일 둘째 무료 재생성을 막는다 601ms
+stderr | tests/anthropic-quota.test.ts > 공유 claude -p 월별 quota — 실패 보상 > claude -p 실패(reject) → 방금 reserve한 카운트를 GREATEST(0,used-1)로 보상
+{"ts":"2026-09-17T09:29:02.715Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"exit_nonzero"}}
+
+stderr | tests/anthropic-quota.test.ts > 공유 claude -p 월별 quota — 실패 보상 > 보상 후 다음 요청은 정상적으로 다시 reserve(한도 소진 상태로 남지 않음)
+{"ts":"2026-09-17T09:29:02.790Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"exit_nonzero"}}
+
+stderr | tests/anthropic-quota.test.ts > 공유 claude -p 월별 quota — 실패 보상 > 이미 0인데 중복 보상 시도해도 음수로 내려가지 않는다(GREATEST 0 하한)
+{"ts":"2026-09-17T09:29:02.806Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"exit_nonzero"}}
+
+ ✓ tests/anthropic-quota.test.ts (18 tests) 392ms
+ ✓ tests/api/operator-oauth-credentials.test.ts (20 tests) 319ms
+stderr | tests/isolation/tenant-auth.test.ts > effectiveTenantId — Supabase JWT 경로 > Supabase 검증 불가(env/네트워크 장애) → AuthError 503
+{"ts":"2026-09-17T09:29:03.963Z","kind":"osmu_alert","event":"auth_service_unavailable","severity":"critical","context":{"reason":"supabase_jwt_verify_unreachable"}}
+
+stderr | tests/isolation/tenant-auth.test.ts > effectiveTenantId — osmu 테넌트 토큰 경로 > DB 장애(resolveTenantToken 실패) → AuthError 503
+{"ts":"2026-09-17T09:29:03.998Z","kind":"osmu_alert","event":"auth_service_unavailable","severity":"critical","context":{"reason":"osmu_token_db_unreachable"}}
+
+stderr | tests/isolation/tenant-auth.test.ts > ensureTenantForUser — OSMU v1.0.0 공개 대시보드(가입 즉시 active) > TENANT-ACCESS-02 거절: 접속 기록 쓰기가 실패해도 기존 고객 로그인은 테넌트를 반환한다
+{"ts":"2026-09-17T09:29:04.018Z","kind":"osmu_alert","event":"auth_service_unavailable","severity":"critical","context":{"reason":"tenant_access_record_failed"}}
+
+stderr | tests/isolation/tenant-auth.test.ts > effectiveTenantId — 계정 게이트(paused/unavailable → 403, active는 통과) > status 조회 DB 장애 → AuthError 503(승인 판정 불가는 401/403으로 오분류 금지)
+{"ts":"2026-09-17T09:29:04.033Z","kind":"osmu_alert","event":"auth_service_unavailable","severity":"critical","context":{"reason":"tenant_status_db_unreachable"}}
+
+ ✓ tests/isolation/tenant-auth.test.ts (27 tests) 120ms
+stderr | tests/publish/schedule-publish-due.test.ts > POST /api/schedule/publish-due — 예약 실발행 루프 > 일부 플랫폼 실패 시 published_posts에 실패 기록을 남기고 partial로 닫는다
+{"ts":"2026-09-17T09:29:04.756Z","kind":"osmu_alert","event":"publish_failed","severity":"warning","resourceKey":"account:default","context":{"platform":"unknown_platform","reason":"unsupported_platform"}}
+
+stderr | tests/publish/schedule-publish-due.test.ts > OSMU 코드리뷰 예약 발행 회귀 > OSMU-009 거절 경로: 한 장만 받는 채널에 여러 장을 예약하면 조용히 버리지 않는다
+{"ts":"2026-09-17T09:29:04.958Z","kind":"osmu_alert","event":"publish_failed","severity":"warning","resourceKey":"account:default","context":{"platform":"threads","reason":"unknown"}}
+
+ ✓ tests/publish/schedule-publish-due.test.ts (14 tests) 1090ms
+ ✓ tests/observability/observability.test.ts (29 tests) 826ms
+stderr | tests/api/osmu-metrics-20260914-failure-identity.regression.test.ts > 수집 실패는 어느 글이 왜 실패했는지 말한다 > 실패한 글의 번호와 발행 시각과 경과 분을 응답에 싣는다
+[metrics][failure] {"tenantId":"tenant-identity","postId":"row-fresh","channel":"threads","code":"metrics_pending_ingest","publishedAt":"2026-09-17T09:26:07.486Z","ageMinutes":3,"evidence":"발행 3분 전이라 집계 유예 60분 안입니다. 계정 목록을 확인하지 않았습니다.","operator":{"externalId":"threads-fresh","postAccountId":"acct-connected","collectedWithAccountId":"acct-connected","providerStatus":403}}
+[metrics][failure] {"tenantId":"tenant-identity","postId":"row-old","channel":"threads","code":"post_not_in_account","publishedAt":"2026-09-16T23:29:07.483Z","ageMinutes":600,"evidence":"발행 600분 전이라 유예 60분을 지났고, 계정 글 목록 1쪽을 끝까지 봤는데 이 글이 없었습니다. 이 글을 올린 계정이 수집에 쓴 계정과 다릅니다.","operator":{"externalId":"threads-old","postAccountId":"acct-other","collectedWithAccountId":"acct-connected","providerStatus":403,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-failure-identity.regression.test.ts > 수집 실패는 어느 글이 왜 실패했는지 말한다 > 판정 코드마다 왜 그렇게 판정했는지 근거가 함께 실린다
+[metrics][failure] {"tenantId":"tenant-identity","postId":"row-fresh","channel":"threads","code":"metrics_pending_ingest","publishedAt":"2026-09-17T09:26:07.638Z","ageMinutes":3,"evidence":"발행 3분 전이라 집계 유예 60분 안입니다. 계정 목록을 확인하지 않았습니다.","operator":{"externalId":"threads-fresh","postAccountId":"acct-connected","collectedWithAccountId":"acct-connected","providerStatus":403}}
+[metrics][failure] {"tenantId":"tenant-identity","postId":"row-old","channel":"threads","code":"post_not_in_account","publishedAt":"2026-09-16T23:29:07.638Z","ageMinutes":600,"evidence":"발행 600분 전이라 유예 60분을 지났고, 계정 글 목록 1쪽을 끝까지 봤는데 이 글이 없었습니다. 이 글을 올린 계정이 수집에 쓴 계정과 다릅니다.","operator":{"externalId":"threads-old","postAccountId":"acct-other","collectedWithAccountId":"acct-connected","providerStatus":403,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-failure-identity.regression.test.ts > 수집 실패는 어느 글이 왜 실패했는지 말한다 > 끝까지 못 본 경우는 못 봤다는 사실이 근거로 남는다
+[metrics][failure] {"tenantId":"tenant-identity","postId":"row-deep","channel":"threads","code":"metrics_lookup_incomplete","publishedAt":"2026-08-18T09:29:07.666Z","ageMinutes":43200,"evidence":"목록 상한 5쪽(최대 500편)까지 봤지만 아직 남아 있습니다. 그래서 계정에 없다고 단정하지 않았습니다.","operator":{"externalId":"threads-deep","postAccountId":null,"collectedWithAccountId":"acct-connected","providerStatus":403,"lookupPages":5}}
+
+stderr | tests/api/osmu-metrics-20260914-failure-identity.regression.test.ts > 수집 실패는 어느 글이 왜 실패했는지 말한다 > 한도 초과는 계정을 보지 않았다는 사실까지 근거에 적는다
+[metrics][failure] {"tenantId":"tenant-identity","postId":"row-429","channel":"threads","code":"provider_429","publishedAt":"2026-09-16T23:29:07.701Z","ageMinutes":600,"evidence":"성과 조회가 HTTP 429 로 거절됐습니다. 채널 쪽 문제라 계정 확인으로 넘어가지 않았습니다.","operator":{"externalId":"threads-429","postAccountId":null,"collectedWithAccountId":"acct-connected","providerStatus":429}}
+
+stderr | tests/api/osmu-metrics-20260914-failure-identity.regression.test.ts > 수집 실패는 어느 글이 왜 실패했는지 말한다 > 운영자에게는 계정 대조까지 주고 고객에게는 주지 않는다
+[metrics][failure] {"tenantId":"tenant-identity","postId":"row-old","channel":"threads","code":"post_not_in_account","publishedAt":"2026-09-16T23:29:07.716Z","ageMinutes":600,"evidence":"발행 600분 전이라 유예 60분을 지났고, 계정 글 목록 1쪽을 끝까지 봤는데 이 글이 없었습니다. 이 글을 올린 계정이 수집에 쓴 계정과 다릅니다.","operator":{"externalId":"threads-old","postAccountId":"acct-other","collectedWithAccountId":"acct-connected","providerStatus":403,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-failure-identity.regression.test.ts > 수집 실패는 어느 글이 왜 실패했는지 말한다 > 운영자에게는 계정 대조까지 주고 고객에게는 주지 않는다
+[metrics][failure] {"tenantId":"tenant-identity","postId":"row-old","channel":"threads","code":"post_not_in_account","publishedAt":"2026-09-16T23:29:07.733Z","ageMinutes":600,"evidence":"발행 600분 전이라 유예 60분을 지났고, 계정 글 목록 1쪽을 끝까지 봤는데 이 글이 없었습니다. 이 글을 올린 계정이 수집에 쓴 계정과 다릅니다.","operator":{"externalId":"threads-old","postAccountId":"acct-other","collectedWithAccountId":"acct-connected","providerStatus":403,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-failure-identity.regression.test.ts > 수집 실패는 어느 글이 왜 실패했는지 말한다 > 목록 응답에 글 목록이 없으면 계정 불일치로 굳히지 않는다
+[metrics][failure] {"tenantId":"tenant-identity","postId":"row-broken","channel":"threads","code":"metrics_lookup_incomplete","publishedAt":"2026-09-16T23:29:07.759Z","ageMinutes":600,"evidence":"목록 응답에 글 목록이 없어 읽지 못했습니다. 그래서 계정에 없다고 단정하지 않았습니다.","operator":{"externalId":"threads-broken","postAccountId":null,"collectedWithAccountId":"acct-connected","providerStatus":403,"lookupPages":1}}
+
+ ✓ tests/api/osmu-metrics-20260914-failure-identity.regression.test.ts (8 tests) 365ms
+stderr | tests/brand/wiki-sync.test.ts > GitHub wiki sync diagnostics and branch handling > returns the server encryption-key reason instead of a public-repository hint when the key is unset
+[github] OSMU_SECRET_KEY is not configured; stored repository tokens are unavailable
+
+ ✓ tests/brand/wiki-sync.test.ts (13 tests) 632ms
+ ✓ tests/anthropic-quota-routes.test.ts (16 tests) 630ms
+ ✓ tests/isolation/authgate-contract.test.ts (21 tests) 33ms
+ ✓ tests/lib/oauth-app-credentials-storage.test.ts (15 tests) 120ms
+ ✓ tests/studio/generation-domain.test.ts (15 tests) 159ms
+stderr | tests/api/channel-config-oauth-verify.test.ts > GET /api/channel-config — Instagram/Threads 라이브 OAuth 검증 > OAuth code 190(무효 토큰)이면 connected=false, status=available, reconnectRequired=true
+{"ts":"2026-09-17T09:29:13.002Z","kind":"osmu_alert","event":"token_expired","severity":"error","context":{"provider":"instagram","reason":"token_revoked"}}
+
+stderr | tests/api/channel-config-oauth-verify.test.ts > GET /api/channel-config — Instagram/Threads 라이브 OAuth 검증 > 401도 무효 토큰으로 분류한다
+{"ts":"2026-09-17T09:29:13.040Z","kind":"osmu_alert","event":"token_expired","severity":"error","context":{"provider":"threads","reason":"token_revoked"}}
+
+stderr | tests/api/channel-config-oauth-verify.test.ts > GET /api/channel-config — Instagram/Threads 라이브 OAuth 검증 > 네트워크/타임아웃 실패면 토큰을 지우거나 무효 판정하지 않고 unverified만 세운다
+{"ts":"2026-09-17T09:29:13.076Z","kind":"osmu_alert","event":"external_service_error","severity":"warning","context":{"provider":"instagram","reason":"network_error"}}
+
+stderr | tests/api/channel-config-oauth-verify.test.ts > GET /api/channel-config — Instagram/Threads 라이브 OAuth 검증 > 5xx도 unverified로 분류하고 무효 단정하지 않는다
+{"ts":"2026-09-17T09:29:13.115Z","kind":"osmu_alert","event":"external_service_error","severity":"warning","context":{"provider":"threads","reason":"http_5xx","httpStatus":503}}
+
+ ✓ tests/api/channel-config-oauth-verify.test.ts (12 tests) 605ms
+ ✓ tests/publish/publish-threads-identity.test.ts (12 tests) 61ms
+ ✓ tests/analytics/success-only-wiring.contract.test.ts (12 tests) 209ms
+ ✓ tests/api/learned-rule-undo.integration.test.ts (11 tests) 1389ms
+ ✓ tests/studio/shorts-factory.service.test.ts (6 tests) 553ms
+   ✓ 숏폼 공장 실행 계약 > FACTORY-UNIT-01 한국어 설명: 여덟 컨셉은 설정한 동시 실행 한도를 넘지 않고 모두 끝난다 317ms
+ ✓ tests/design/safari-44px-sweep-20260916-channels.contract.test.ts (13 tests) 73ms
+ ✓ tests/studio/shorts-factory-db.integration.test.ts (5 tests) 2330ms
+   ✓ 숏폼 공장 Postgres 격리와 경합 계약 > FACTORY-DB-01 한국어 설명: 한 컨셉 실패는 실제 DB에서 일곱 성공과 분리되고 다른 작업 공간에는 보이지 않는다 1378ms
+ ✓ tests/integrity/app-touch-target-contract.test.ts (9 tests) 557ms
+   ✓ 맨 button 래칫 > QA-APP-TOUCH-08 경계: 맨 button 총수가 기준선을 넘지 않는다 500ms
+stdout | tests/db/channel-accounts-concurrency.db.test.ts > channel_accounts first-account concurrency (live Postgres) > 채널-재연결-01 정상: 같은 외부 계정을 두 번 저장하면 한 행을 갱신하고 기본 계정을 유지한다
+RECONNECT_DB_EVIDENCE first_save_success=1 second_save_success=1 provider_rows=1 token_updated=1 display_name_updated=1 default_rows=1 default_preserved=1
+
+ ✓ tests/db/channel-accounts-concurrency.db.test.ts (4 tests) 1223ms
+   ✓ channel_accounts first-account concurrency (live Postgres) > serializes two first callbacks and leaves exactly one default account 763ms
+   ✓ channel_accounts first-account concurrency (live Postgres) > 채널-재연결-02 회귀: 기존 기본계정이 앞줄이 아닐 때도 승격이 duplicate key 로 터지지 않는다 304ms
+stderr | tests/api/osmu-metrics-20260914-pending-ingest.regression.test.ts > 집계 대기와 계정 불일치를 갈라서 말한다 > 방금 올린 글은 집계 대기이고 재연결을 요구하지 않는다
+[metrics][failure] {"tenantId":"tenant-pending","postId":"row-fresh","channel":"threads","code":"metrics_pending_ingest","publishedAt":"2026-09-17T09:26:28.014Z","ageMinutes":3,"evidence":"발행 3분 전이라 집계 유예 60분 안입니다. 계정 목록을 확인하지 않았습니다.","operator":{"externalId":"threads-fresh","postAccountId":null,"collectedWithAccountId":null,"providerStatus":403}}
+
+stderr | tests/api/osmu-metrics-20260914-pending-ingest.regression.test.ts > 집계 대기와 계정 불일치를 갈라서 말한다 > 유예를 지난 글이 계정 목록에 끝까지 없으면 그때만 계정 불일치다
+[metrics][failure] {"tenantId":"tenant-pending","postId":"row-old","channel":"threads","code":"post_not_in_account","publishedAt":"2026-09-16T23:29:28.382Z","ageMinutes":600,"evidence":"발행 600분 전이라 유예 60분을 지났고, 계정 글 목록 1쪽을 끝까지 봤는데 이 글이 없었습니다. 이 글을 올린 계정 기록이 없어 지워진 글로 단정하지 않았습니다.","operator":{"externalId":"threads-missing","postAccountId":null,"collectedWithAccountId":null,"providerStatus":403,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-pending-ingest.regression.test.ts > 집계 대기와 계정 불일치를 갈라서 말한다 > 고정 글처럼 오래된 글이 목록 앞에 끼어 있어도 계정 불일치로 단정하지 않는다
+[metrics][failure] {"tenantId":"tenant-pending","postId":"row-pinned","channel":"threads","code":"metrics_lookup_incomplete","publishedAt":"2026-09-16T23:29:28.407Z","ageMinutes":600,"evidence":"목록 상한 5쪽(최대 500편)까지 봤지만 아직 남아 있습니다. 그래서 계정에 없다고 단정하지 않았습니다.","operator":{"externalId":"threads-behind-pin","postAccountId":null,"collectedWithAccountId":null,"providerStatus":403,"lookupPages":5}}
+
+stderr | tests/api/osmu-metrics-20260914-pending-ingest.regression.test.ts > 집계 대기와 계정 불일치를 갈라서 말한다 > 한도 초과와 채널 장애는 계정 판정으로 넘어가지 않는다
+[metrics][failure] {"tenantId":"tenant-pending","postId":"row-429","channel":"threads","code":"provider_429","publishedAt":"2026-09-16T23:29:28.580Z","ageMinutes":600,"evidence":"성과 조회가 HTTP 429 로 거절됐습니다. 채널 쪽 문제라 계정 확인으로 넘어가지 않았습니다.","operator":{"externalId":"threads-429","postAccountId":null,"collectedWithAccountId":null,"providerStatus":429}}
+
+stderr | tests/api/osmu-metrics-20260914-pending-ingest.regression.test.ts > 집계 대기와 계정 불일치를 갈라서 말한다 > 목록 다음 쪽이 우리가 아는 주소가 아니면 따라가지 않고 확인 못 했다고 말한다
+[metrics][failure] {"tenantId":"tenant-pending","postId":"row-evil","channel":"threads","code":"metrics_lookup_incomplete","publishedAt":"2026-09-16T23:29:28.602Z","ageMinutes":600,"evidence":"다음 쪽 주소가 우리가 아는 곳이 아니라 따라가지 않았습니다. 그래서 계정에 없다고 단정하지 않았습니다.","operator":{"externalId":"threads-evil","postAccountId":null,"collectedWithAccountId":null,"providerStatus":403,"lookupPages":1}}
+
+stderr | tests/api/osmu-metrics-20260914-pending-ingest.regression.test.ts > 집계 대기와 계정 불일치를 갈라서 말한다 > 목록 상한에 걸려 끝까지 못 보면 계정 불일치로 단정하지 않는다
+[metrics][failure] {"tenantId":"tenant-pending","postId":"row-deep","channel":"threads","code":"metrics_lookup_incomplete","publishedAt":"2026-08-18T09:29:28.621Z","ageMinutes":43200,"evidence":"목록 상한 5쪽(최대 500편)까지 봤지만 아직 남아 있습니다. 그래서 계정에 없다고 단정하지 않았습니다.","operator":{"externalId":"threads-deep","postAccountId":null,"collectedWithAccountId":null,"providerStatus":403,"lookupPages":5}}
+
+ ✓ tests/api/osmu-metrics-20260914-pending-ingest.regression.test.ts (7 tests) 642ms
+   ✓ 집계 대기와 계정 불일치를 갈라서 말한다 > 방금 올린 글은 집계 대기이고 재연결을 요구하지 않는다 372ms
+ ✓ tests/studio/generation-derivation.test.ts (12 tests) 777ms
+   ✓ 파생 생성 도메인 계약 > DRV-01 주 갈래를 확정하면 같이 고른 갈래가 갈래별 작업물로 생긴다 516ms
+ ✓ tests/isolation/self-service-tenant.db.test.ts (1 test) 2242ms
+   ✓ self-service Supabase users A/B — live PostgreSQL tenant boundary > 최초 로그인은 tenant를 멱등 provision하고 A/B OAuth 계정·콘텐츠를 서로 볼 수도 쓸 수도 없다 2236ms
+ ✓ tests/analytics/events.test.ts (19 tests) 253ms
+ ✓ tests/api/channel-config-bridge.test.ts (12 tests) 2789ms
+   ✓ POST /api/channel-config/[channel] — integrations 브리지 > SNS-005: bluesky 인증 실패 시 에러가 한국어로 정규화된다(raw JSON 미노출) 1679ms
+ ✓ tests/api/connect-readiness-resolver.test.ts (10 tests) 742ms
+ ✓ tests/api/osmu-v63-backend.test.ts (11 tests) 825ms
+ ✓ tests/studio/video-subtitle.contract.test.ts (15 tests) 147ms
+ ✓ tests/studio/stale-video-on-new-topic.regression-1.test.ts (13 tests) 97ms
+ ✓ tests/analytics/ga.test.ts (12 tests) 437ms
+ ✓ tests/api/channel-accounts.test.ts (11 tests) 520ms
+ ✓ tests/publish/video-publish-tiktok.route.test.ts (4 tests) 779ms
+   ✓ /api/video/publish — TikTok reservation > selected tenant account options are reserved and the publish_id is persisted before 202 304ms
+ ✓ tests/anthropic-shared-ai-approval.test.ts (8 tests) 384ms
+ ✓ tests/api/studio-drafts-r02.test.ts (10 tests) 320ms
+ ✓ tests/api/tiktok-publish-status.test.ts (7 tests) 365ms
+stderr | tests/studio/generation-route.integration.test.ts > Studio 생성 HTTP 통합 계약 > GEN-HTTP-01 한국어 설명: 실제 Route Handler가 생성 요청을 받아 후보 세 장을 201로 반환한다
+{"ts":"2026-09-17T09:29:59.435Z","kind":"operational_incident_recovery_failed","category":"generation_failed","source":"studio","workspace_id":"11111111-1111-4111-8111-111111111111"}
+
+stderr | tests/studio/generation-route.integration.test.ts > Studio 생성 HTTP 통합 계약 > GEN-HTTP-04 한국어 설명: 같은 원본 무료 재생성 재시도는 같은 교체 작업을 재생한다
+{"ts":"2026-09-17T09:29:59.503Z","kind":"operational_incident_recovery_failed","category":"generation_failed","source":"studio","workspace_id":"11111111-1111-4111-8111-111111111111"}
+
+stderr | tests/studio/generation-route.integration.test.ts > R27 무료 재생성 거절 관문 HTTP 계약 > R27-HTTP-01 거절: 후보를 거절하지 않은 재생성 호출은 409로 막고 몫을 태우지 않는다
+{"ts":"2026-09-17T09:29:59.657Z","kind":"operational_incident_recovery_failed","category":"generation_failed","source":"studio","workspace_id":"11111111-1111-4111-8111-111111111111"}
+
+stderr | tests/studio/generation-route.integration.test.ts > R27 무료 재생성 거절 관문 HTTP 계약 > R27-HTTP-02 거절: 후보 번호가 없는 거절 요청은 422로 막는다
+{"ts":"2026-09-17T09:29:59.674Z","kind":"operational_incident_recovery_failed","category":"generation_failed","source":"studio","workspace_id":"11111111-1111-4111-8111-111111111111"}
+
+ ✓ tests/studio/generation-route.integration.test.ts (7 tests) 1068ms
+   ✓ Studio 생성 HTTP 통합 계약 > GEN-HTTP-01 한국어 설명: 실제 Route Handler가 생성 요청을 받아 후보 세 장을 201로 반환한다 827ms
+ ✓ tests/api/images.test.ts (14 tests) 1586ms
+   ✓ POST /api/images/upload — 테넌트 격리 업로드 > 인증 없으면 401 709ms
+ ✓ tests/publish/publish-instagram.test.ts (7 tests) 91ms
+ ✓ tests/isolation/rls-crud-boundary.db.test.ts (3 tests) 507ms
+ ✓ tests/publish/video-routes-tenant-isolation.test.ts (8 tests) 1268ms
+   ✓ /api/video/publish — publicOrigin이 아니라 canonicalPublicOrigin(폴백 없음)을 쓴다 > x-forwarded-host 헤더만으로는 provider video_url의 origin이 결정되지 않는다(OSMU_PUBLIC_URL 없으면 거부) 909ms
+ ✓ tests/api/learned-rule-decisions.integration.test.ts (6 tests) 667ms
+   ✓ BE-L5-HISTORY 학습 후보 판단 이력 > BE-L5-HISTORY-01 정상 경로: 수락 판단과 출처를 남기고 활성 규칙을 만든다 303ms
+ ✓ tests/isolation/operator-token-recovery.contract.test.ts (7 tests) 16094ms
+   ✓ operator canonical token recovery contract > executes sync → exact run watch → APIs → gstack form without leaking plaintext 10639ms
+   ✓ operator canonical token recovery contract > fails closed before the browser when live operator identity is not HTTP 200 5379ms
+stderr | tests/anthropic-queue.test.ts > claude -p 공유 CLI 폴백 — FIFO 직렬화 큐 > 앞 CLI가 실패(타임아웃 등 reject)해도 큐가 풀리고 다음 대기자가 FIFO로 진행
+{"ts":"2026-09-17T09:30:13.125Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"exit_nonzero"}}
+
+ ✓ tests/anthropic-queue.test.ts (4 tests) 175ms
+ ✓ tests/api/queue.test.ts (10 tests) 1872ms
+   ✓ GET /api/queue > returns all posts with total 640ms
+ ✓ tests/db/engagement-items-concurrency.db.test.ts (2 tests) 1266ms
+   ✓ BE-V63-10 댓글 상태 tenant 격리와 답글 경합 > BE-V63-10 경합 경로: 같은 댓글의 동시 답글 claim은 하나만 얻고 다른 tenant에는 보이지 않는다 650ms
+   ✓ BE-V63-10 댓글 상태 tenant 격리와 답글 경합 > C3-BE-V63-10 회수 경로: 만료된 답글 청구는 새 요청이 회수하고 살아 있는 청구는 거절한다 613ms
+ ✓ tests/design/safari-44px-sweep-20260915.contract.test.ts (11 tests) 178ms
+ ✓ tests/observability/anthropic-alert.test.ts (4 tests) 302ms
+ ✓ tests/studio/image-style.contract.test.ts (15 tests) 168ms
+ ✓ tests/studio/shorts-factory-route.integration.test.ts (2 tests) 1092ms
+   ✓ 숏폼 공장 HTTP 통합 계약 > FACTORY-HTTP-01 한국어 설명: Route Handler가 여덟 컨셉 실행과 상태판을 201로 반환한다 1053ms
+ ✓ tests/components/delivered-media-usage.contract.test.ts (4 tests) 833ms
+   ✓ MEDIA-CONTRACT 배달 주소를 그리는 자리는 스스로 되살아난다 > 정상: 날 <img>·<video> 는 DeliveredMedia 를 쓰거나 그 자리에 이유를 남긴다 781ms
+ ✓ tests/studio/generation-llm.test.ts (4 tests) 498ms
+   ✓ Studio 실제 LLM 생성 계약 > LLM-01 정상: 후보 프롬프트가 학습 정보의 값과 채널 규격을 모두 포함한다 348ms
+ ✓ tests/studio/editor-handoff-route.integration.test.ts (6 tests) 546ms
+ ✓ tests/observability/publish-due-alert.test.ts (5 tests) 691ms
+   ✓ /api/schedule/publish-due — publish_failed 알림 경계 > 전 플랫폼 발행 성공 → reportFailure 호출 안 함 387ms
+ ✓ tests/api/me.test.ts (12 tests) 290ms
+ ✓ tests/isolation/rls.isolation.test.ts (5 tests) 839ms
+ ✓ tests/api/onboarding.test.ts (8 tests) 633ms
+ ✓ tests/studio/learning-context-prompt.contract.test.ts (5 tests) 104ms
+ ✓ tests/integrity/edit-room-design-contract.test.ts (12 tests) 73ms
+ ✓ tests/observability/publish-alert.test.ts (4 tests) 2211ms
+   ✓ /api/publish — publish_failed 알림 경계 > 발행 성공 → reportFailure 호출 안 함 2166ms
+ ✓ tests/brand/multi-account-ui.contract.test.ts (8 tests) 151ms
+ ✓ tests/lib/media-store.test.ts (7 tests) 580ms
+ ✓ tests/studio/image-prompt-learning.contract.test.ts (10 tests) 64ms
+ ✓ tests/db/publish-to-performance.db.test.ts (1 test | 1 skipped) 7ms
+ ✓ tests/publish/osmu-code-review-20260913-queue.regression.test.ts (4 tests) 1239ms
+   ✓ OSMU 코드 리뷰 1, 2, 3, 4, 23 발행 격리 계약 > 항목 23: pending을 publishing으로 원자 전이한 뒤 취소는 200이 아니라 409다 1109ms
+ ✓ tests/api/customer-route-allowlist.contract.test.ts (4 tests) 35ms
+ ✓ tests/publish/image-token.test.ts (9 tests) 410ms
+ ✓ tests/brand/studio-text-grounding.test.ts (6 tests) 1097ms
+   ✓ POST /api/studio/text — 브랜드+위키 그라운딩 주입 (셀프서브 payoff) > idea 없으면 400 351ms
+ ✓ tests/observability/tenant-auth-alert.test.ts (5 tests) 240ms
+ ✓ tests/observability/health-monitor-workflow.contract.test.ts (12 tests) 101ms
+ ✓ tests/analytics/route-tracking.test.ts (6 tests) 94ms
+ ✓ tests/publish/publish-instagram-reels.test.ts (8 tests) 53ms
+ ✓ tests/publish/media-delivery-route.test.ts (12 tests) 1983ms
+   ✓ /api/media/<token> > 유효 토큰은 해당 테넌트 영상을 배달한다 366ms
+   ✓ /api/media/<token> > 영상 확장자가 아니면 배달하지 않는다 311ms
+   ✓ /api/media/<token> > 형식이 무효한 Range(bytes= 접두 없음, 비숫자)는 416 377ms
+ ✓ tests/api/osmu-api-read-routes-status.regression-1.test.ts (9 tests) 370ms
+ ✓ tests/brand/oauth-credential-resolver-wiring.test.ts (5 tests) 304ms
+ ✓ tests/isolation/osmu-code-review-20260915-shared-generators.regression-1.test.ts (8 tests) 424ms
+ ✓ tests/vendor-host/plugin-sdk-host-parity.test.ts (10 tests) 47ms
+ ✓ tests/studio/learned-rules-reach-generation.test.ts (11 tests) 97ms
+ ✓ tests/publish/media-token.test.ts (9 tests) 41ms
+ ✓ tests/isolation/suggestions-enqueue-tenant-boundary.db.test.ts (1 test) 709ms
+   ✓ BE-V63-02 제안 큐 인계 tenant 경계 > BE-V63-02 격리 경로: A 토큰에 B tenant_id를 넣어도 A 큐에만 저장한다 705ms
+ ✓ tests/video-narration-fallback.test.ts (3 tests) 106ms
+ ✓ tests/api/engagement-route.test.ts (4 tests) 240ms
+ ✓ tests/api/connect-readiness.test.ts (5 tests) 659ms
+   ✓ GET /api/connect/readiness > SNS-003: X_CLIENT_ID/SECRET 미설정이면 x.available=false + 한국어 사유 367ms
+ ✓ tests/observability/operator-mutation-alert.test.ts (4 tests) 938ms
+   ✓ /api/operator/customers POST — operator_mutation_failed 알림 경계 > 정상 계정정지(pause_user) → reportFailure 호출 안 함 694ms
+ ✓ tests/observability/publish-f3-f4.regression-1.test.ts (2 tests) 2004ms
+   ✓ 발행 복구 신호 회귀 > OSMU-BLOCK-F3 거절: 첫 댓글 실패는 계정 장애를 열고 정상 복구로 세지 않는다 1962ms
+stderr | tests/api/osmu-code-review-20260913-metrics.regression.test.ts > 성과 수집 검수 회귀 > 항목 5, 6: 두 건 중 한 건 실패는 207 부분 실패이며 공급자 호출은 transaction 밖이다
+[metrics][failure] {"tenantId":"tenant-metrics","postId":"row-failure","channel":"threads","code":"insights_forbidden","publishedAt":null,"ageMinutes":null,"evidence":"게시물 단건 조회는 성공했고 성과 조회만 HTTP 403 로 거절됐습니다. 글은 있고 권한이 없습니다.","operator":{"externalId":"threads-failure","postAccountId":null,"collectedWithAccountId":null,"providerStatus":403}}
+
+stderr | tests/api/osmu-code-review-20260913-metrics.regression.test.ts > 성과 수집 검수 회귀 > 항목 33 거절 경로: TikTok 묶음 실패 세 건은 실패 건수와 상세 건수를 모두 3으로 센다
+[metrics][failure] {"tenantId":"tenant-metrics","postId":"row-one","channel":"tiktok","code":"tiktok_500","publishedAt":null,"ageMinutes":null,"evidence":"TikTok 조회 한 번이 통째로 실패해 이 영상까지 읽지 못했습니다(HTTP 500).","operator":{"externalId":"video-one","postAccountId":"account-tiktok","collectedWithAccountId":null,"providerStatus":500}}
+[metrics][failure] {"tenantId":"tenant-metrics","postId":"row-two","channel":"tiktok","code":"tiktok_500","publishedAt":null,"ageMinutes":null,"evidence":"TikTok 조회 한 번이 통째로 실패해 이 영상까지 읽지 못했습니다(HTTP 500).","operator":{"externalId":"video-two","postAccountId":"account-tiktok","collectedWithAccountId":null,"providerStatus":500}}
+[metrics][failure] {"tenantId":"tenant-metrics","postId":"row-three","channel":"tiktok","code":"tiktok_500","publishedAt":null,"ageMinutes":null,"evidence":"TikTok 조회 한 번이 통째로 실패해 이 영상까지 읽지 못했습니다(HTTP 500).","operator":{"externalId":"video-three","postAccountId":"account-tiktok","collectedWithAccountId":null,"providerStatus":500}}
+
+ ✓ tests/api/osmu-code-review-20260913-metrics.regression.test.ts (2 tests) 313ms
+ ✓ tests/studio/invalid-output-detail.test.ts (8 tests) 202ms
+ ✓ tests/publish/no-unsupported-channels.test.ts (7 tests) 72ms
+ ✓ tests/studio/text-card-image.test.ts (12 tests) 56ms
+ ✓ tests/studio/create-room-wiring.contract.test.tsx (5 tests) 32ms
+ ✓ tests/publish/schedule-route-account-ids.test.ts (5 tests) 227ms
+ ✓ tests/db/sns007-schema-contract.test.ts (7 tests) 61ms
+ ✓ tests/api/home-data-cutover.test.ts (9 tests) 486ms
+ ✓ tests/api/threads-insights-agent-tool-no-consent-delete.test.ts (3 tests) 78ms
+ ✓ tests/lib/home-metrics.test.ts (3 tests) 156ms
+ ✓ tests/db/engagement-c5.regression-1.test.ts (2 tests) 669ms
+   ✓ 댓글 좋아요 외부 호출 직렬화 회귀 > OSMU-BLOCK-C5 경합: 같은 댓글의 동시 요청 둘은 공급자를 한 번만 호출한다 406ms
+ ✓ tests/brand/shared-ai-migration.contract.test.ts (5 tests) 71ms
+ ✓ tests/observability/workspace-routing.test.ts (5 tests) 211ms
+ ✓ tests/studio/editor-handoff-domain.test.ts (7 tests) 62ms
+ ✓ tests/analytics/metrics-support.contract.test.ts (4 tests) 51ms
+ ✓ tests/usage-db-ledger.test.ts (3 tests) 103ms
+ ✓ tests/api/queue-cancel.test.ts (4 tests) 1598ms
+   ✓ POST /api/queue/[postId]/cancel — 발행 중지 (시험 1: 정상 경로) > 아직 발행 전인 승인된 작업물의 대기 채널을 모두 canceled 로 바꾼다 1171ms
+ ✓ tests/lib/publish-bulk.test.ts (24 tests) 214ms
+ ✓ tests/db/performance-real-data.db.test.ts (1 test | 1 skipped) 123ms
+ ✓ tests/studio/shorts-factory-operator-route.integration.test.ts (2 tests) 137ms
+ ✓ tests/studio/learning-info-reaches-generation.test.ts (8 tests) 92ms
+ ✓ tests/brand/brand-setup.test.ts (3 tests) 198ms
+ ✓ tests/publish/video-upload-limits.test.ts (6 tests) 377ms
+ ✓ tests/api/images-r2-upload.test.ts (3 tests) 784ms
+   ✓ POST /api/images/upload R2 장애 계약 > IMG-R2-01 정상 R2 저장 성공이면 기존 HMAC 배달 URL을 반환한다 496ms
+ ✓ tests/verify-channel.test.ts (9 tests) 271ms
+ ✓ tests/studio/generation-customer-identity.test.ts (4 tests) 46ms
+ ✓ tests/publish/approve-route.test.ts (5 tests) 1557ms
+   ✓ POST /api/queue/[postId]/approve — scheduledAt > hours=2 → scheduledAt = approvedAt + 2h, 영속 1050ms
+ ✓ tests/isolation/supabase-verify.test.ts (7 tests) 612ms
+   ✓ verifySupabaseJwt tri-state > 빈 토큰 → invalid 528ms
+ ✓ tests/isolation/customer-ui-api-boundary.test.ts (12 tests) 183ms
+ ✓ tests/isolation/osmu-code-review-20260915-video-subtitle-security.regression-1.test.ts (4 tests) 443ms
+ ✓ tests/publish/publish-record.db.test.ts (2 tests) 474ms
+ ❯ tests/brand/oauth-errors.test.ts (11 tests | 1 failed) 470ms
+   × oauthErrorMessage > AR-ERROR-004 정상: Meta verification code 오류를 redirect_uri 불일치가 아니라 심사 전 테스터 제한으로 번역한다 211ms
+     → expected 'Instagram 연결하고 돌아올 주소가 앱 콘솔에 등록된 값과 다…' to contain '심사 전 테스터 명단에 없어'
+ ✓ tests/publish/publication-usage-outbox.regression-1.test.ts (4 tests) 78ms
+ ✓ tests/api/low-engagement-cleanup.test.ts (3 tests) 1289ms
+   ✓ POST /api/threads/low-engagement-cleanup > rejects when no postIds are given 821ms
+ ✓ tests/publish/publish-partial-block.regression-1.test.ts (6 tests) 31ms
+ ✓ tests/studio/generation-m2.regression-1.test.ts (1 test) 1505ms
+   ✓ 무료 재생성 멱등 이름 공간 회귀 > OSMU-BLOCK-M2 정상: 사용자가 내부 모양의 생성 키를 먼저 써도 무료 재생성은 별도 멱등 영역에서 성공한다 1501ms
+ ✓ tests/api/notification-delivery.test.ts (7 tests) 549ms
+ ✓ tests/lib/operator-auth-rate-limit.test.ts (7 tests) 57ms
+ ✓ tests/integrity/next-config-root.contract.test.ts (4 tests) 28ms
+ ✓ tests/analytics/osmu-code-review-20260914-metrics-provider.regression-1.test.ts (4 tests) 211ms
+ ✓ tests/integrity/r02-acceptance-contract.test.ts (5 tests) 224ms
+ ✓ tests/lib/channel-connection.test.ts (11 tests) 249ms
+ ✓ tests/api/operator-incidents.test.ts (4 tests) 335ms
+ ✓ tests/studio/output-quality.test.ts (8 tests) 85ms
+ ✓ tests/api/tiktok-metrics-collection.integration.test.ts (2 tests) 189ms
+ ✓ tests/api/images-deliver.test.ts (7 tests) 1712ms
+   ✓ GET /api/images/deliver/[token] > 유효한 토큰이면 파일을 스트리밍하고 올바른 content-type을 준다 1411ms
+ ✓ tests/lib/engagement-provider.test.ts (5 tests) 489ms
+   ✓ BE-V63-09 provider 댓글 어댑터 > BE-V63-09 정상 경로: Threads conversation 본문을 공통 댓글 모양으로 바꾼다 322ms
+ ✓ tests/publish/osmu-code-review-20260914-approved-payload.regression-1.test.ts (3 tests) 57ms
+ ✓ tests/studio/no-blocking-confirm.contract.test.ts (4 tests) 1102ms
+   ✓ 고객 본 화면은 브라우저 기본 확인창을 쓰지 않는다 > 앱 어디에도 브라우저 기본 확인창 호출이 없다 1011ms
+ ✓ tests/publish/osmu-code-review-20260914-provider-failure.regression-1.test.ts (2 tests) 153ms
+ ✓ tests/publish/schedulable-platforms.test.ts (4 tests) 76ms
+ ✓ tests/api/reels-metrics-collection.integration.test.ts (2 tests) 294ms
+ ✓ tests/db/engagement-c4.regression-1.test.ts (1 test) 704ms
+   ✓ 답글 결과 불명 청구 회귀 > OSMU-BLOCK-C4 거절: 결과 불명 표식이 있는 청구는 lease가 지나도 다시 획득하지 않는다 700ms
+ ✓ tests/publish/image-delivery-route.test.ts (4 tests) 1938ms
+   ✓ GET /api/images/deliver/[token] > 유효 토큰의 현재 테넌트 이미지를 정확한 타입으로 스트리밍한다 1643ms
+ ✓ tests/publish/publication-usage-outbox.db.test.ts (1 test) 522ms
+   ✓ 발행 사용량 outbox 실 Postgres 통합 > CODE-REVIEW-20260917-10 경합: pending 발행을 두 번 relay해도 장부는 한 번만 늘어난다 518ms
+ ✓ tests/publish/tiktok-api.test.ts (4 tests) 190ms
+ ✓ tests/isolation/tenant-api-attack-script.contract.test.ts (3 tests) 526ms
+   ✓ 작업 공간 격리 실앱 공격 스크립트 계약 > TENANT-READ-01 한국어 설명: effectiveTenantId를 쓰는 모든 GET 읽기 경로를 공격 목록에 포함한다 465ms
+ ✓ tests/isolation/google-only-automation-contract.test.ts (7 tests) 41ms
+ ✓ tests/integrity/design-system-floor.contract.test.ts (4 tests) 1019ms
+   ✓ DESIGN.md v23 typography floor > allows no sub-12px utility outside the explicitly protected Studio render blocks 876ms
+ ✓ tests/metrics-reels-provider.test.ts (4 tests) 223ms
+ ✓ tests/observability/deploy-env-wiring.contract.test.ts (5 tests) 184ms
+ ✓ tests/studio/generation-timeout.contract.test.ts (5 tests) 57ms
+ ✓ tests/integrity/api-format.test.ts (5 tests) 1113ms
+   ✓ API response format integrity > /api/overview returns required keys 708ms
+ ✓ tests/api/channel-config-mask.test.ts (2 tests) 957ms
+   ✓ /api/channel-config secret masking > GET은 수동 저장된 토큰/키를 원문으로 내려보내지 않는다 751ms
+ ✓ tests/publish/gateway-dependency.contract.test.ts (5 tests) 141ms
+ ✓ tests/analytics/x-metrics.contract.test.ts (5 tests) 155ms
+ ✓ tests/lib/oauth-app-credentials.test.ts (5 tests) 143ms
+ ✓ tests/studio/preview-meta.contract.test.ts (5 tests) 292ms
+ ✓ tests/publish/platform-publish-fields.test.ts (8 tests) 120ms
+ ✓ tests/api/osmu-code-review-20260915-api-sweep-false-success.regression-1.test.ts (7 tests) 100ms
+ ✓ tests/publish/linkedin-publish.contract.test.ts (7 tests) 198ms
+ ✓ tests/lib/engagement-service-reply.test.ts (2 tests) 536ms
+   ✓ C4 답글 실패 확정성 계약 > C4-BE-V63-08 확정 거절: 답글 청구를 풀어 안전한 재시도를 허용한다 527ms
+ ✓ tests/publish/channel-text-limits.test.ts (5 tests) 332ms
+ ✓ tests/lib/connection-rule-single-source.contract.test.ts (5 tests) 97ms
+ ✓ tests/api/osmu-code-review-20260914-metrics-status.regression-1.test.ts (3 tests) 336ms
+ ✓ tests/lib/token-refresh.contract.test.ts (4 tests) 132ms
+ ✓ tests/isolation/tenant-access.db.test.ts (1 test) 1272ms
+   ✓ 테넌트 접속 이력 실제 PostgreSQL 계약 > TENANT-ACCESS-01 정상·경합: 15분 안 재접속은 한 행이고 15분 뒤에는 새 행이다 1267ms
+ ✓ tests/studio/discard-clears-create.contract.test.ts (5 tests) 382ms
+ ✓ tests/api/osmu-v63-review-request.test.ts (3 tests) 1052ms
+   ✓ BE-V63-05 검토 요청 단일 전환 > BE-V63-05 정상 경로: draft를 한 번의 요청으로 승인 인박스 검토 상태로 전환한다 539ms
+   ✓ BE-V63-05 검토 요청 단일 전환 > BE-V63-05 경합 경로: 같은 요청을 동시에 보내도 요청 상태 하나를 재사용한다 462ms
+ ✓ tests/analytics/osmu-code-review-20260914-metrics-lease.regression-1.test.ts (2 tests) 342ms
+   ✓ OSMU-015 테넌트별 성과 수집 lease > OSMU-015 거절 경로: 같은 테넌트의 동시 두 번째 수집은 공급자를 다시 호출하지 않는다 329ms
+ ✓ tests/publish/osmu-code-review-20260914-local-image.regression-1.test.ts (3 tests) 320ms
+ ✓ tests/publish/video-cover.contract.test.ts (5 tests) 331ms
+ ✓ tests/isolation/public-supabase-env-recovery.test.ts (5 tests) 171ms
+ ✓ tests/observability/operational-f2.regression-1.test.ts (1 test) 1155ms
+   ✓ 운영 장애 계정 단위 복구 회귀 > OSMU-BLOCK-F2 정상: 계정 B 복구는 계정 A의 열린 발행 장애를 닫지 않는다 1148ms
+ ✓ tests/studio/generation-budget.contract.test.ts (2 tests) 124ms
+ ✓ tests/brand/integrations-anthropic-verify.test.ts (3 tests) 544ms
+   ✓ POST /api/integrations — Anthropic 키 검증 (A3) > 유효한 anthropic 키(200) → 검증 호출 후 저장 472ms
+ ✓ tests/integrity/v69copy-ui-copy-contract.test.ts (4 tests) 15601ms
+   ✓ V69-COPY-04 고객 UI 문구 계약 > V69-COPY-04 거절: UI 문자열에 긴 대시를 허용하지 않는다 15569ms
+ ✓ tests/isolation/db.test.ts (5 tests) 871ms
+   ✓ withTenant 하위호환 > 기본 tier로 team DB에 트랜잭션 실행 (PRIVATE_DATABASE_URL 없이도 동작) 466ms
+ ✓ tests/db/studio-generation-deploy-compat.contract.test.ts (3 tests) 154ms
+ ✓ tests/api/keywords.test.ts (4 tests) 2495ms
+   ✓ GET /api/keywords > returns keyword list 1973ms
+ ✓ tests/api/low-engagement-candidates.test.ts (3 tests) 1456ms
+   ✓ GET /api/threads/low-engagement-candidates > excludes posts younger than 24h even with low engagement 1300ms
+ ✓ tests/api/osmu-code-review-20260916-ai-output-contract.regression-1.test.ts (4 tests) 843ms
+   ✓ OSMU-CODE-REVIEW-20260916-04 외부 모델 출력 계약 > 정상: 허용 키와 정확한 타입의 카드뉴스, 가이드, 키워드만 성공한다 569ms
+ ✓ tests/db/operational-incidents-concurrency.db.test.ts (1 test) 4040ms
+   ✓ 운영 장애 원장 동시 기록 > 관측-13 경합: 같은 작업 공간의 동일 장애 여덟 건은 열린 한 행과 발생 횟수 여덟로 합친다 4036ms
+ ✓ tests/studio/content-edit-format.test.ts (4 tests) 529ms
+ ✓ tests/studio/cli-queue-deadline.test.ts (4 tests) 91ms
+ ✓ tests/db/oauth-app-credentials-schema.contract.test.ts (3 tests) 333ms
+   ✓ global OAuth app credential schema contract > adds one encrypted global row per provider plus a secret-free audit table 317ms
+ ✓ tests/api/metrics-coverage-route.integration.test.ts (2 tests) 785ms
+   ✓ GET /api/metrics 성과 수집 범위 계약 > METRICS-COVERAGE-API-01 정상: 게시물과 함께 일곱 플랫폼 coverage를 반환한다 761ms
+ ✓ tests/api/guide.test.ts (4 tests) 2356ms
+   ✓ GET /api/guide > returns the common guide 1645ms
+   ✓ GET /api/guide/[channel] > returns common guide when no channel-specific guide exists 320ms
+   ✓ POST /api/guide/[channel] > saves a channel-specific guide 336ms
+ ✓ tests/lib/channel-capabilities.test.ts (7 tests) 249ms
+ ✓ tests/lib/github-repo-input.test.ts (14 tests) 209ms
+ ✓ tests/publish/osmu-code-review-20260914-publishing-recovery.regression-1.test.ts (2 tests) 158ms
+ ✓ tests/studio/video-base-image-source.contract.test.ts (4 tests) 54ms
+ ✓ tests/publish/schedule-route.test.ts (5 tests) 496ms
+ ✓ tests/studio/waiting-notice.test.tsx (5 tests) 257ms
+ ✓ tests/publish/queue-published-state.test.ts (1 test) 230ms
+ ✓ tests/brand/google-auth-preflight.test.ts (3 tests) 281ms
+ ✓ tests/studio/preview-no-fake-numbers.contract.test.ts (3 tests) 38ms
+ ✓ tests/channel-connection-label.test.ts (7 tests) 95ms
+ ✓ tests/metrics-youtube.test.ts (6 tests) 51ms
+ ✓ tests/studio/preview-inline-body.contract.test.ts (4 tests) 143ms
+ ✓ tests/studio/edit-bulk-ask.contract.test.ts (5 tests) 96ms
+ ✓ tests/studio/no-dash-rule.test.ts (6 tests) 23ms
+ ✓ tests/observability/operational-incidents.test.ts (3 tests) 161ms
+ ✓ tests/db/home-metrics.db.test.ts (1 test | 1 skipped) 7ms
+stderr | tests/studio/generation-provider-rate-limit.test.ts > 공유 Claude CLI 제공자 한도 오류 > CLI가 주간 한도 오류 envelope를 반환하면 provider_rate_limited로 분류한다
+{"ts":"2026-09-17T09:37:18.542Z","kind":"osmu_alert","event":"shared_ai_generation_execution_failed","severity":"error","context":{"reason":"provider_rate_limited"}}
+
+ ✓ tests/studio/generation-provider-rate-limit.test.ts (1 test) 217ms
+ ✓ tests/api/osmu-v63-publish-status.test.ts (2 tests) 2058ms
+   ✓ BE-V63-06 플랫폼별 발행 진행 상태 통합 > BE-V63-06 정상 경로: 일곱 플랫폼의 최신 상태와 URL을 한 응답으로 합친다 2025ms
+ ✓ tests/studio/work-media-video-aspect.regression-1.test.ts (5 tests) 21ms
+ ✓ tests/publish/schedule-cancel-route.test.ts (4 tests) 194ms
+ ✓ tests/studio/edit-room-direct.contract.test.ts (5 tests) 90ms
+ ✓ tests/studio/current-work-contract.test.ts (4 tests) 163ms
+ ✓ tests/lib/queue-store-migration.test.ts (2 tests) 208ms
+ ✓ tests/brand/legal-pages.test.ts (6 tests) 112ms
+ ✓ tests/studio/learning-info-server.contract.test.ts (6 tests) 120ms
+ ✓ tests/publish/platform-ssot.contract.test.ts (3 tests) 218ms
+ ✓ tests/publish/osmu-code-review-20260914-analytics-history.regression-1.test.ts (2 tests) 176ms
+ ✓ tests/api/osmu-code-review-20260913-image-resign.regression.test.ts (1 test) 368ms
+   ✓ 이미지 목적 배달 주소 재발급 > 항목 19 정상: 만료된 유효 HMAC image-purpose URL은 같은 작업 공간에서만 갱신된다 364ms
+stderr | tests/studio/generation-error-message.contract.test.ts > 생성 실패를 사람 말로 옮긴다 > 브라우저·라이브러리가 던진 영문 문구는 새지 않는다
+[create] 알 수 없는 생성 실패: The string did not match the expected pattern.
+[create] 알 수 없는 생성 실패: Unexpected token < in JSON at position 0
+[create] 알 수 없는 생성 실패: Cannot read properties of undefined (reading 'x')
+[create] 알 수 없는 생성 실패: ECONNRESET
+
+ ✓ tests/studio/generation-error-message.contract.test.ts (4 tests) 104ms
+ ✓ tests/components/osmu-code-review-20260913-ui-contract.regression.test.ts (4 tests) 16ms
+ ✓ tests/publish/video-path-resolution.contract.test.ts (3 tests) 344ms
+   ✓ 영상 파일 탐색 경로 > 작업 공간 식별자가 없어도 탐색이 예외로 죽지 않는다 313ms
+ ✓ tests/integrity/no-sensitive-data.test.ts (15 tests) 5965ms
+   ✓ no sensitive/service-specific data > forbidden term #1 must not appear in src 361ms
+   ✓ no sensitive/service-specific data > forbidden term #3 must not appear in src 343ms
+   ✓ no sensitive/service-specific data > forbidden term #5 must not appear in src 315ms
+   ✓ no sensitive/service-specific data > forbidden term #6 must not appear in src 527ms
+   ✓ no sensitive/service-specific data > forbidden term #7 must not appear in src 450ms
+   ✓ no sensitive/service-specific data > forbidden term #8 must not appear in src 620ms
+   ✓ no sensitive/service-specific data > forbidden term #9 must not appear in src 480ms
+   ✓ no sensitive/service-specific data > forbidden term #10 must not appear in src 567ms
+   ✓ no sensitive/service-specific data > forbidden term #11 must not appear in src 487ms
+   ✓ no sensitive/service-specific data > forbidden term #12 must not appear in src 403ms
+   ✓ no sensitive/service-specific data > forbidden term #13 must not appear in src 901ms
+ ✓ tests/api/tiktok-creator-info.test.ts (2 tests) 137ms
+ ✓ tests/lib/performance-metrics-coverage.test.ts (2 tests) 121ms
+ ✓ tests/generator-aspect-ratio.test.ts (6 tests) 18ms
+ ✓ tests/api/onboarding-d1.regression-1.test.ts (2 tests) 407ms
+ ✓ tests/studio/osmu-code-review-20260914-card-deck-rollback.regression-1.test.ts (3 tests) 208ms
+ ✓ tests/lib/learned-rules-context.contract.test.ts (4 tests) 51ms
+ ✓ tests/studio/brand-guide-visible.contract.test.ts (3 tests) 190ms
+ ✓ tests/studio/generation-read-connection-error.regression-1.test.ts (3 tests) 126ms
+ ✓ tests/api/osmu-api-read-sweep-contract.regression-1.test.ts (3 tests) 128ms
+ ✓ tests/studio/preview-alignment.contract.test.ts (3 tests) 40ms
+ ✓ tests/api/overview.test.ts (2 tests) 971ms
+   ✓ GET /api/overview > returns statusCounts, followers, and channel data 914ms
+ ✓ tests/integrity/four-room-probe-readiness.regression-1.test.ts (1 test) 58ms
+ ✓ tests/api/switch-account.contract.test.ts (3 tests) 39ms
+ ✓ tests/api/api-read-sweep-method-coverage.regression-1.test.ts (2 tests) 36ms
+ ✓ tests/metrics-tiktok-provider.test.ts (2 tests) 206ms
+ ✓ tests/api/settings.test.ts (3 tests) 1268ms
+   ✓ GET /api/settings > returns settings with defaults when no file exists 1109ms
+ ✓ tests/studio/rationale-not-in-body.test.ts (4 tests) 11ms
+ ✓ tests/publish/osmu-code-review-20260914-queue-lock.regression-1.test.ts (2 tests) 13791ms
+   ✓ OSMU 감사 항목 4 큐 잠금 소유권과 heartbeat > 항목 4 경합 경로: 13초 작업이 끝나기 전에 두 번째 작업이 진입하지 않는다 13780ms
+ ✓ tests/studio/proxy-swallows-5xx.test.ts (5 tests) 317ms
+ ✓ tests/api/channel-settings.test.ts (2 tests) 1177ms
+   ✓ GET /api/channel-settings/[channel] > returns feature toggles with defaults for threads 1052ms
+ ✓ tests/publish/provider-failure-status.contract.test.ts (2 tests) 87ms
+ ✓ tests/api/channel-account-default-promotion.test.ts (4 tests) 81ms
+ ✓ tests/api/onboarding-first-content.test.ts (2 tests) 336ms
+   ✓ POST /api/onboarding 첫 콘텐츠 계약 > FE7-API-01 정상: 채널 0개와 유효한 콘텐츠 갈래를 저장한다 309ms
+ ✓ tests/studio/card-set-strip.contract.test.ts (4 tests) 107ms
+ ✓ src/lib/anthropic-runtime.regression-1.test.ts (2 tests) 44ms
+ ✓ tests/analytics/deploy-wiring.contract.test.ts (3 tests) 20ms
+ ✓ tests/studio/draft-status-label.test.ts (4 tests) 18ms
+ ✓ tests/file-io.mutate.test.ts (2 tests) 722ms
+   ✓ mutateJson 동시성 > N개 동시 append → 최종 길이 N (누락 0) 384ms
+   ✓ mutateJson 동시성 > 쓰기는 원자적 — 항상 valid JSON (truncate 없음) 333ms
+ ✓ tests/studio/kind-pick-sticks.contract.test.ts (3 tests) 43ms
+ ✓ tests/integrity/r02-design-contract.test.ts (3 tests) 25ms
+ ✓ tests/studio/header-panels.contract.test.ts (2 tests) 95ms
+ ✓ tests/studio/trim-body-to-fit.contract.test.ts (3 tests) 393ms
+   ✓ trimBodyToFit > X 는 본문과 해시태그를 합쳐 가중 문자 280 안으로 줄인다 381ms
+ ✓ tests/integrity/readonly-pattern.test.ts (9 tests) 174ms
+ ✓ tests/studio/osmu-code-review-20260916-subtitle-resource.regression-1.test.ts (3 tests) 53ms
+ ✓ tests/lib/credential-expiry-gate.contract.test.ts (3 tests) 11ms
+ ✓ tests/studio/text-kind-carry.contract.test.ts (2 tests) 38ms
+ ✓ tests/isolation/osmu-compose-public-env.contract.test.ts (2 tests) 70ms
+ ✓ tests/studio/generator-refusal-status.contract.test.ts (4 tests) 158ms
+ ✓ tests/studio/video-standalone.contract.test.ts (3 tests) 233ms
+ ✓ tests/performance/room-load-priority.test.ts (4 tests) 112ms
+ ✓ tests/api/api-post-error-contract.test.ts (1 test) 206ms
+ ✓ tests/api/r2-config-no-secret.test.ts (1 test) 304ms
+ ✓ tests/studio/derivation-route-invalid-id.regression-1.test.ts (2 tests) 1519ms
+   ✓ Studio 파생 작업 경로 식별자 회귀 > GET 요청의 잘못된 파생 작업 번호를 400으로 거절한다 1487ms
+ ✓ tests/api/publish-channel-image-capacity.test.ts (2 tests) 107ms
+ ✓ tests/lib/home-data-source.test.ts (3 tests) 219ms
+ ✓ tests/contracts/osmu-code-review-20260914-qa-deadline.regression-1.test.ts (3 tests) 76ms
+ ✓ tests/seed-parse.test.ts (4 tests) 99ms
+ ✓ tests/context-sources.test.ts (3 tests) 73ms
+ ✓ tests/api/media-content-type.contract.test.ts (2 tests) 110ms
+ ✓ tests/integrity/studio-v1-e2e-quota.regression-1.test.ts (2 tests) 127ms
+ ✓ tests/studio/dev-identity-prod-guard.test.ts (3 tests) 701ms
+   ✓ studio 개발용 신원 우회 > 운영에서는 예외값 undefined와 관계없이 열리지 않는다 694ms
+ ✓ tests/integrity/four-room-performance-ready-timeout.regression-1.test.ts (1 test) 11ms
+ ✓ tests/lib/identity-failure-guidance.contract.test.ts (3 tests) 9ms
+ ✓ tests/integrity/ui-token-audit.contract.test.ts (4 tests) 3075ms
+   ✓ UI-TOKEN-01 시각값 토큰 계약 > UI-TOKEN-02 통합 경로: 실제 화면 소스의 직접 시각값은 0건이다 2819ms
+ ✓ tests/api/osmu-code-review-20260913-higgsfield.regression.test.ts (2 tests) 187ms
+ ✓ tests/integrity/dev-server-bundler.contract.test.ts (3 tests) 145ms
+ ✓ tests/lib/connect-readiness.test.ts (6 tests) 108ms
+ ✓ tests/lib/async-pool.test.ts (2 tests) 138ms
+ ✓ tests/integrity/four-room-probe-ready-timeout.regression-1.test.ts (1 test) 34ms
+ ✓ tests/brand/distill-backend.contract.test.ts (3 tests) 47ms
+ ✓ tests/db/local-ci-db-migrations.regression-1.test.ts (1 test) 10ms
+ ✓ tests/integrity/four-room-client-navigation.regression-1.test.ts (1 test) 85ms
+ ✓ tests/db/release-migration-order.contract.test.ts (7 tests) 21ms
+ ✓ tests/integrity/v24-home-density.regression-1.test.ts (1 test) 35ms
+ ✓ tests/brand/health.test.ts (2 tests) 133ms
+ ✓ tests/api/osmu-v63-first-comment-capabilities.test.ts (2 tests) 2203ms
+   ✓ BE-V63-07 첫 댓글 capability > BE-V63-07 정상 경로: 일곱 미리보기 플랫폼의 지원 여부를 빠짐없이 반환한다 2185ms
+ ✓ tests/api/api-read-sweep-timeout.regression-1.test.ts (1 test) 41ms
+ ✓ tests/integrity/four-room-token-cleanup.regression-1.test.ts (2 tests) 177ms
+ ✓ tests/db/migration-manifest-completeness.regression-1.test.ts (1 test) 152ms
+ ✓ tests/observability/health-alert-script.contract.test.ts (2 tests) 27ms
+ ✓ tests/isolation/customer-sidebar.test.ts (2 tests) 13ms
+ ✓ tests/isolation/supabase-browser-singleton.test.ts (1 test) 895ms
+   ✓ createBrowserSupabase > 같은 브라우저 세션에서는 하나의 GoTrueClient만 재사용한다 891ms
+ ✓ tests/api/api-read-sweep-dev-concurrency.regression-1.test.ts (1 test) 22ms
+ ✓ tests/deploy/r2-env-wiring.contract.test.ts (2 tests) 62ms
+ ✓ tests/integrity/four-room-capture-evidence.regression-1.test.ts (1 test) 70ms
+ ✓ tests/brand/tenant-idempotent.contract.test.ts (1 test) 16ms
+ ✓ tests/studio/generation-db-errors.test.ts (3 tests) 31ms
+ ✓ tests/integrity/osmu-persistence.contract.test.ts (2 tests) 13ms
+ ✓ tests/integrity/qa-four-room-workspace-seed.regression-2.test.ts (1 test) 151ms
+ ✓ tests/integrity/osmu-code-review-20260915-four-room-cleanup.regression-1.test.ts (1 test) 76ms
+ ✓ tests/higgsfield-transactions.test.ts (3 tests) 117ms
+ ✓ tests/integrity/v24-oauth-count.regression-1.test.ts (1 test) 102ms
+ ✓ tests/integrity/qa-four-room-workspace-seed.regression-1.test.ts (1 test) 291ms
+ ✓ tests/integrity/v24-sidebar-fidelity.regression-1.test.ts (1 test) 8ms
+ ✓ tests/integrity/osmu-code-review-20260915-docker-typecheck-gate.regression-1.test.ts (1 test) 98ms
+ ✓ tests/db/tiktok-async-schema.contract.test.ts (1 test) 8ms
+ ✓ tests/studio/osmu-code-review-20260915-edit-container-query.regression-1.test.ts (1 test) 11ms
+ ✓ tests/integrity/setup-guide-assets.test.ts (1 test) 60ms
+ ✓ tests/publish/osmu-code-review-20260916-video-timeout.regression-1.test.ts (1 test) 23ms
+ ✓ tests/integrity/login-touch-target.contract.test.ts (1 test) 10ms
+ ✓ tests/isolation/operator-entry.contract.test.ts (1 test) 31ms
+ ✓ tests/brand/tiktok-metrics-oauth-scope.contract.test.ts (1 test) 10ms
+ ✓ tests/components/SocialConnectButton.test.tsx (21 tests) 3010ms
+   ✓ SocialConnectButton — OAuth popup activation > shows not_connected as an active customer action 446ms
+   ✓ SocialConnectButton — OAuth popup activation > AR-GUIDE-005 거절: 초대 미수락 실패에는 사람 말 원인과 같은 초대 링크를 다시 보여준다 313ms
+   ✓ SocialConnectButton — OAuth popup activation > ignores postMessage from a foreign origin and still detects a closed-without-callback popup 752ms
+ ✓ tests/components/AuthGateRouting.test.tsx (23 tests) 5513ms
+   ✓ AuthGate operator route separation > redirects an operator on protected customer path / before children mount 642ms
+   ✓ AuthGate operator route separation > QA-AUTH-18 거절: /api/me 네트워크 예외는 무한 확인 중 대신 재시도 가능한 서비스 실패로 닫는다 1175ms
+   ✓ AuthGate operator route separation > still clears a legitimate Supabase SIGNED_OUT event with no reauth owner 589ms
+   ✓ AuthGate operator route separation > QA-AUTH-09 정상: 상태 검사가 일시적으로 500이면 한 번 더 물어보고 화면을 지킨다 1221ms
+stderr | tests/components/HomeDesignSystemIntegration.test.tsx > Home design-system migration interactions > FE-V63-03 경계값: 성과 표본 5건이면 실제 조회값으로 판정 막대를 만든다
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | tests/components/HomeDesignSystemIntegration.test.tsx > Home design-system migration interactions > FE-V63-10 회귀: 성과 재수집 CTA는 올린 글별 성적을 펼치지 않아도 보인다
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ tests/publish/studio-publish-ui.test.tsx (37 tests) 56347ms
+   ✓ Studio publish result integrity > FE-V63-RETURN-01 정상: 인박스 큐 작업물을 발행실 상태로 복원한다 5719ms
+   ✓ Studio publish result integrity > FE-V63-RETURN-04 경계: 본문 없는 편집 인계 초안은 큐 본문과 초안 메타데이터를 함께 복원한다 2439ms
+   ✓ Studio publish result integrity > FE-V63-RETURN-02 거절: URL의 큐 작업물이 없으면 빈 작업물을 발행 가능 상태로 만들지 않는다 1710ms
+   ✓ Studio publish result integrity > does not report 100% or completed, and never stores published, when every channel returns ok:false 2063ms
+   ✓ Studio publish result integrity > stores partial and counts only successful channels when results are mixed 2320ms
+   ✓ Studio publish result integrity > 발행-부분-03 거절: 본문 성공 뒤 첫 댓글 실패를 전체 성공과 publish_success로 세지 않는다 1712ms
+   ✓ Studio publish result integrity > 발행-병렬-04 경합: 느린 첫 채널이 끝나기 전에 둘째 채널 요청을 시작한다 1679ms
+   ✓ Studio publish result integrity > defaults publish targets to supported channels and labels generation-only video channels 1790ms
+   ✓ Studio publish result integrity > QA-PUBLISH-06 거절: 연결 계정이 0개면 모든 발행 선택과 실행을 잠그고 설정 연결을 안내한다 1839ms
+   ✓ Studio publish result integrity > FE3-PUBLISH-03 거절: 발행 이력은 발행실에 다시 노출하지 않는다 836ms
+   ✓ Studio publish result integrity > FE-CURRENT-01 정상: 작업물 전체에서 서버가 판정한 현재 작업을 편집실로 이어간다 1425ms
+   ✓ Studio publish result integrity > FE-CURRENT-02 거절: 현재 작업이 다른 초안 ID를 가리키면 이어하기를 노출하지 않는다 1115ms
+   ✓ Studio publish result integrity > FE3-PUBLISH-04 거절: 본문이 없으면 실행 단추를 노출하지 않는다 847ms
+   ✓ Studio publish result integrity > FE3-PUBLISH-05 거절: 발행실은 생성 명령과 설정 단추 목록을 노출하지 않는다 753ms
+   ✓ Studio publish result integrity > TC-F2: 발행 성공은 permalink 링크와 published 저장으로 닫힌다 1661ms
+   ✓ Studio publish result integrity > V68-PUBLISH-01 거절: 발행 성공 전에는 성과실 결과 링크를 노출하지 않는다 1571ms
+   ✓ Studio publish result integrity > FE2-PUB-01 정상: 지원 채널 첫 댓글은 미리보기에서 편집되고 발행 API에 전달된다 1910ms
+   ✓ Studio publish result integrity > FE2-PUB-02 거절: 미지원 채널은 첫 댓글 입력 대신 백엔드 사유를 표시한다 867ms
+   ✓ Studio publish result integrity > FE3-PUBLISH-01 정상: 발행 체크와 계정 선택은 각 미리보기 칸 머리에 있다 593ms
+   ✓ Studio publish result integrity > PUB-DRAFT-UI-01 정상: 플랫폼 필드와 선택 계정을 임시 저장하고 같은 초안에서 복원한다 3419ms
+   ✓ Studio publish result integrity > PUB-DRAFT-UI-02 거절: 임시 저장 오류를 사용자에게 알리고 성공으로 표시하지 않는다 1587ms
+   ✓ Studio publish result integrity > FE3-PUBLISH-02 개정: 영상 채널도 발행 대상으로 고를 수 있다 683ms
+   ✓ Studio publish result integrity > FE3-REVIEW-01 정상: 검토 요청은 큐 생성 뒤 기존 검토 API를 호출한다 1886ms
+   ✓ Studio publish result integrity > FE3-REVIEW-02 거절: 초안 저장 실패 시 큐와 검토 API를 호출하지 않는다 1734ms
+   ✓ Studio publish result integrity > M3-STUDIO-01 정상: 작업 공간을 바꾸면 각 공간의 저장 상태만 복원한다 1444ms
+   ✓ Studio publish result integrity > M3-STUDIO-02 거절: 작업 공간 없는 옛 공용 저장 키는 복원하지 않는다 597ms
+   ✓ Studio publish result integrity > M4-STUDIO-01 거절: 큐에 연결된 초안과 URL 초안이 다르면 둘 다 불러오지 않는다 862ms
+   ✓ Studio publish result integrity > M5-STUDIO-01 경합: 플랫폼 둘의 외부 성공 뒤 기록 실패를 모두 복구 지도에 보존한다 1292ms
+   ✓ Studio publish result integrity > M5-STUDIO-02 거절: 발행 전 초안 ID를 확보하지 못하면 외부 발행을 시작하지 않는다 494ms
+   ✓ Studio publish result integrity > M5-STUDIO-03 거절: 발행 전 초안 저장이 오류를 올려도 알림 뒤 외부 발행을 막는다 458ms
+   ✓ Studio publish result integrity > M5-STUDIO-04 거절: 외부 발행 뒤 결과 저장 실패를 사용자에게 알린다 866ms
+   ✓ Studio publish result integrity > 발행-복구-01 정상: 외부 게시 완료 상태를 한 번 눌러 기록으로 닫는다 1799ms
+   ✓ Studio publish result integrity > 발행-중복-01 거절: 이미 성공한 채널은 다시 눌러도 재발행하지 않는다 1744ms
+   ✓ Studio publish result integrity > V74-PUBLISH-READY-01 경합: 계정 조회가 늦어도 활성화된 뒤 발행을 시작한다 1330ms
+   ✓ Studio publish result integrity > CODE-REVIEW-20260915-30 거절: X 계정 조회가 멈춰도 먼저 끝난 Threads 계정을 독립 반영한다 1444ms
+   ✓ Studio publish result integrity > V65-PAGE-01 정상: 글을 직접 고친 뒤 저장 API를 호출하고 발행실로 이동한다 1120ms
+   ✓ Studio Higgsfield operator boundary > FE3-OPERATOR-01 거절: 발행실은 운영자 전용 생성 API와 제어를 노출하지 않는다 723ms
+ ✓ tests/components/HomeDesignSystemIntegration.test.tsx (16 tests) 21204ms
+   ✓ Home design-system migration interactions > FE-V63-01 정상 경로: 표본 0건은 안내 한 번과 예시 지표로 다음 모습을 표시한다 3271ms
+   ✓ Home design-system migration interactions > FE-V63-02 정상 경로: 제안 카드를 생성 큐 API로 인계한다 1532ms
+   ✓ Home design-system migration interactions > FE-V63-02 거절 경로: 큐 인계 실패는 다음 행동과 재시도를 남긴다 552ms
+   ✓ Home design-system migration interactions > FE-V63-03 경계값: 성과 표본 5건이면 실제 조회값으로 판정 막대를 만든다 763ms
+   ✓ Home design-system migration interactions > FE-V63-04 정상 경로: 플랫폼 집중과 성과 재수집 버튼이 실제 API에 연결된다 1139ms
+   ✓ Home design-system migration interactions > FE-V63-10 회귀: 성과 재수집 CTA는 올린 글별 성적을 펼치지 않아도 보인다 610ms
+   ✓ Home design-system migration interactions > FE5-PERF-01 정상 경로: 통한 글에서 성과 제안을 실제 API로 불러온다 1085ms
+   ✓ Home design-system migration interactions > FE5-PERF-02 거절 경로: 성과 제안 호출 실패는 오류와 재시도 동작을 남긴다 1637ms
+   ✓ Home design-system migration interactions > FE5-PERF-03 정상 경로: 댓글 본문과 원문 링크를 보여 주고 답글 행동을 연다 1809ms
+   ✓ Home design-system migration interactions > FE5-PERF-04 거절 경로: 원문 링크와 댓글 계약이 없으면 이유만 표시한다 1310ms
+   ✓ Home design-system migration interactions > OSMU-PERF-AUTO-01 정상 경로: 자동 좋아요 토글이 channel-settings API를 실제 호출한다 687ms
+   ✓ Home design-system migration interactions > OSMU-PERF-CHAT-01 정상 경로: '이거 왜 잘 됐어'가 규칙 후보를 내고 배우기가 learned-rules API를 호출한다 2203ms
+   ✓ Home design-system migration interactions > V68-PERF-01 정상: 전용 성과실은 04 단계를 표시하고 담당 대화를 처음부터 연다 1157ms
+   ✓ Home design-system migration interactions > V68-PERF-02 거절: 낮은 반응 콘텐츠는 후보만 제시하고 자동 삭제 호출을 만들지 않는다 1733ms
+   ✓ Home design-system migration interactions > V68-PERF-03 거절: 성과 재수집이 실패하면 조용히 넘기지 않고 사용자에게 알린다 904ms
+   ✓ Home design-system migration interactions > V68-PERF-04 거절: 모을 대상이 있는데 하나도 못 모으면 이유를 알린다 801ms
+ ✓ tests/studio/studio-fe2-rooms.test.tsx (19 tests) 16591ms
+   ✓ 화면 2차 생성실 계약 > FE3-CREATE-01 정상: 생성실은 상단 한 줄과 대화창을 함께 노출한다 1720ms
+   ✓ 화면 2차 생성실 계약 > V75-CREATE-01 정상: 본문에 직접 생성 동선을 추가하고 기존 대화창을 유지한다 673ms
+   ✓ 화면 2차 생성실 계약 > FE6-CREATE-02 정상: 영상 선택은 대화창에서 생성 계약으로 전달한다 3199ms
+   ✓ 화면 2차 생성실 계약 > FE2-CREATE-03 인증 경계: 고객 JWT와 화면의 active tenant로 생성한다 1872ms
+   ✓ 화면 2차 생성실 계약 > V77-CREATE-PERSIST-03 정상: 생성실 문답과 학습 정보가 함께 되살아난다 1248ms
+   ✓ 화면 2차 생성실 계약 > QA-CREATE-05 경합: 후보 생성 연타는 클라이언트에서 단일 POST로 합친다 1573ms
+   ✓ 화면 2차 생성실 계약 > QA-CREATE-06 정상: 후보 모두 거절은 기존 무료 재생성 API로 대체 후보를 받는다 1256ms
+   ✓ 화면 2차 편집실 계약 > FE2-EDIT-01 정상: 목차에서 고른 대사 줄만 수정한다 516ms
+   ✓ 화면 2차 편집실 계약 > FE6-EDIT-01 정상: 영상 장면과 아이콘 도구 뒤에 대사를 항상 배치한다 330ms
+   ✓ 화면 2차 편집실 계약 > FE6-EDIT-02 정상: 대사를 빼거나 되살리면 장면 수와 길이가 함께 바뀐다 1297ms
+   ✓ 화면 2차 편집실 계약 > FE6-EDIT-03 정상: 무음 표식이 있는 줄만 한 번에 줄인다 640ms
+   ✓ 화면 2차 편집실 계약 > FE6-EDIT-04 거절: 무음 표식이 없으면 무음 줄이기 조작을 비활성화한다 581ms
+   ✓ 화면 2차 편집실 계약 > FMT-UI-01 정상: 승인 시안의 재생 속도를 고르면 발행용 형식값으로 전달한다 1008ms
+ ✓ tests/studio/four-room-empty-actions.test.tsx (10 tests) 22133ms
+   ✓ OSMU-FLOW-UI-02 발행실 빈 상태 계약 > OSMU-FLOW-UI-02 정상 경로: 작업물이 없으면 다음 행동 한 줄과 생성실 단추를 보인다 2052ms
+   ✓ OSMU-FLOW-UI-02 발행실 빈 상태 계약 > OSMU-FLOW-UI-02 거절 조건: 빈 상태 단추는 죽은 단추가 아니라 생성실 경로를 연다 623ms
+   ✓ OSMU-FLOW-UI-03 생성실 첫 행동 계약 > OSMU-FLOW-UI-03 정상 경로: 첫 화면에 적을 칸이 아니라 고를 카드를 보인다 828ms
+   ✓ OSMU-FLOW-UI-03 생성실 첫 행동 계약 > OSMU-FLOW-UI-03 거절 조건: 카드에 없는 주제는 직접 적는 칸으로 빠져나갈 수 있다 1258ms
+   ✓ V77-CREATE-NETWORK 생성 담당 구조 선택 계약 > V77-CREATE-NETWORK-01 정상: 본문 직접 생성 동선을 유지하며 생성 담당에서 고른 주제와 구조를 text API에 보낸다 4491ms
+   ✓ V77-CREATE-NETWORK 생성 담당 구조 선택 계약 > V77-CREATE-NETWORK-03 정상: 새 초안을 만들면 이전 초안 번호를 끊는다 6043ms
+   ✓ V77-CREATE-NETWORK 생성 담당 구조 선택 계약 > V77-CREATE-NETWORK-02 거절: 주제가 비어 있으면 구조 선택과 text API 호출로 진행하지 않는다 4425ms
+   ✓ V77-CREATE-NETWORK 생성 담당 구조 선택 계약 > V78-RESET-01 정상: 새로 시작을 누르면 확인 뒤 작업물과 초안 번호를 비운다 744ms
+   ✓ V77-CREATE-NETWORK 생성 담당 구조 선택 계약 > V78-RESET-02 거절: 확인창에서 그만두면 작업물이 그대로 남는다 864ms
+   ✓ V77-CREATE-NETWORK 생성 담당 구조 선택 계약 > V78-WORKS-01 정상: 작업물 전체를 열면 숫자만큼의 작업물 목록이 보인다 798ms
+ ✓ tests/studio/studio-chairman-feedback-2026-08-29.test.tsx (22 tests) 10426ms
+   ✓ 헤더 학습 정보 (회장: 왜 헤더에 학습 정보가 사라짐?) > CHAIR-LEARN-01 정상: 헤더에 학습 정보가 진행 상태와 함께 항상 보인다 1684ms
+   ✓ 학습 정보 일곱 걸음 카드 문답 > CHAIR-CARD-02 정상: 카드를 고르면 다음 걸음으로 가고 저장된다 993ms
+   ✓ 학습 정보 일곱 걸음 카드 문답 > CHAIR-CARD-03 탈출구: 모르겠다고 하면 담당이 골라 넣고 다음으로 간다 399ms
+   ✓ 학습 정보 일곱 걸음 카드 문답 > CHAIR-CARD-04 거절 조건: 덜 채우고 닫으면 완료로 보고하지 않는다 369ms
+   ✓ 학습 정보 일곱 걸음 카드 문답 > CHAIR-CARD-05 정상: 카드에 없으면 대화 한 줄로 빠져나간다 804ms
+   ✓ 생성실 (회장: 오늘 만들 수 있는 것이 뭐하는 예시이지 / 중복 선택) > CHAIR-CREATE-01 정상: 만들 수 있는 종류가 셋뿐인 것처럼 읽히는 이름을 쓰지 않는다 512ms
+   ✓ 생성실 (회장: 오늘 만들 수 있는 것이 뭐하는 예시이지 / 중복 선택) > CHAIR-CREATE-02 정상: 만들 형식을 한 질문에서 중복 없이 여러 개 고른다 1264ms
+   ✓ 생성실 (회장: 오늘 만들 수 있는 것이 뭐하는 예시이지 / 중복 선택) > CHAIR-CREATE-03 정상: 만들 종류 세 갈래가 모두 고를 수 있게 열려 있다 587ms
+   ✓ 생성실 (회장: 오늘 만들 수 있는 것이 뭐하는 예시이지 / 중복 선택) > CHAIR-CREATE-04 정상: 만들던 것이 있으면 이어서 하기 한 줄이 뜬다 518ms
+   ✓ 편집실 미리보기 (회장: 컨텐츠가 미리볼 수 있는게 없는데 내가 어떻게 확인하냐) > CHAIR-EDIT-04 정상: 편집실 본 화면에도 준비 중 자리표시자가 아니라 미리보기가 붙는다 642ms
+   ✓ 편집실 미리보기 (회장: 컨텐츠가 미리볼 수 있는게 없는데 내가 어떻게 확인하냐) > R-S10-37 정상: 글은 초 단위 대사 줄이 아니라 하나의 문단 편집기로 고친다 349ms
+   ✓ 편집실 미리보기 (회장: 컨텐츠가 미리볼 수 있는게 없는데 내가 어떻게 확인하냐) > R-S10-32 정상: 만들 콘텐츠 형식은 글·카드뉴스·영상·음악을 모두 한곳에 보여 준다 706ms
+stderr | tests/components/SidebarShell.test.tsx > Sidebar operator/customer shell separation > clears the persisted active workspace when a customer logs out
+Not implemented: navigation to another Document
+
+ ✓ tests/components/SidebarShell.test.tsx (9 tests) 11939ms
+   ✓ Sidebar operator/customer shell separation > renders operator identity and operator navigation only, then clears persisted customer workspace 2541ms
+   ✓ Sidebar operator/customer shell separation > V75-SIDEBAR-01 한국어 라벨: 고객 사이드바의 일반 항목은 영어 이름을 노출하지 않는다 1266ms
+   ✓ Sidebar operator/customer shell separation > FE3-SIDEBAR-01 정상: 고객 셸 맨 위에 네 방 흐름과 그 아래 채널 링크를 노출한다 2642ms
+   ✓ Sidebar operator/customer shell separation > FE3-SIDEBAR-02 거절: 기존 Overview와 OSMU Studio 중복 진입로를 다시 노출하지 않는다 354ms
+   ✓ Sidebar operator/customer shell separation > V70-INBOX-05 정상: 네 방 밖 승인 인박스에서도 현재 위치를 표시하고 무의미한 분수를 숨긴다 1417ms
+   ✓ Sidebar operator/customer shell separation > FE4-SIDEBAR-01 정상: 390 셸은 닫힌 서랍과 현재 방 이름으로 본문 폭을 보존한다 1176ms
+   ✓ Sidebar operator/customer shell separation > CODE-REVIEW-20260915-23 정상: 데스크톱 네 방 흐름을 224px로 보이고 56px 접힘 상태를 저장한다 1913ms
+   ✓ Sidebar operator/customer shell separation > clears the persisted active workspace when a customer logs out 466ms
+ ✓ tests/components/create-room-v68.test.tsx (7 tests) 10789ms
+   ✓ V68 생성실 계약 > V68-CREATE-01 정상: 형식, 학습 정보, 구조 초안 세 축과 A/B/C를 함께 보여준다 2926ms
+   ✓ V68 생성실 계약 > V68-CREATE-02 거절: 형식을 고르기 전에는 다음 질문으로 진행하지 않는다 1083ms
+   ✓ V68 생성실 계약 > V77-CREATE-ROLE-01 정상: 본문 직접 생성과 생성 담당의 A 선택이 모두 형식별 후보 생성을 호출한다 3454ms
+   ✓ V68 생성실 계약 > V77-CREATE-ROLE-02 거절: 주제와 구조가 없으면 본문 직접 생성을 시작하지 않는다 632ms
+   ✓ V68 생성실 계약 > V77-CREATE-FORMAT-01 정상: 고른 영상, 카드뉴스, 글 후보를 생성 결과에 모두 보여준다 1221ms
+   ✓ V68 생성실 계약 > V77-CREATE-FORMAT-02 거절: 고르지 않은 형식 후보는 결과에 섞지 않는다 880ms
+   ✓ V68 생성실 계약 > 시험 18 정상: 글자 카드를 자산 저장소에 올린 뒤 편집과 발행 인계 콜백에 전달한다 587ms
+stderr | tests/home/performance-engagement.test.tsx > FE-V63-07 성과실 댓글 행동 > FE-V63-08 거절: 나간 글이 있는데 반응이 비면 기다리라고 하지 않고 조치를 안내한다
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | tests/home/performance-engagement.test.tsx > FE-V63-07 성과실 댓글 행동 > FE-V63-09 정상: 측정이 막힌 글은 미수집이 아니라 측정 불가로 적는다
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+stderr | tests/home/performance-engagement.test.tsx > FE-V63-07 성과실 댓글 행동 > CODE-REVIEW-20260915-22 정상: 글별 실패·제외·수집 범위를 보여주고 운영자만 되돌린다
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to PerformanceRoom inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ✓ tests/home/performance-engagement.test.tsx (8 tests) 13077ms
+   ✓ FE-V63-07 성과실 댓글 행동 > V68-PERF-03 정상: 성과실 담당 패널은 이름 있는 보조 랜드마크다 2417ms
+   ✓ FE-V63-07 성과실 댓글 행동 > V69-COPY-01 거절: 성과 요약에 이메일 형태의 작업 공간 이름을 노출하지 않는다 649ms
+   ✓ FE-V63-07 성과실 댓글 행동 > FE-V63-07 정상 경로: 본문을 읽고 다섯 후속 행동 단추가 실제 API를 호출한다 4075ms
+   ✓ FE-V63-07 성과실 댓글 행동 > FE-V63-07 거절 경로: TikTok은 되는 척하지 않고 댓글 계약 부재 이유를 표시한다 1653ms
+   ✓ FE-V63-07 성과실 댓글 행동 > FE-V63-08 거절: 나간 글이 있는데 반응이 비면 기다리라고 하지 않고 조치를 안내한다 568ms
+   ✓ FE-V63-07 성과실 댓글 행동 > FE-V63-09 정상: 측정이 막힌 글은 미수집이 아니라 측정 불가로 적는다 476ms
+   ✓ FE-V63-07 성과실 댓글 행동 > CODE-REVIEW-20260915-22 정상: 글별 실패·제외·수집 범위를 보여주고 운영자만 되돌린다 2304ms
+   ✓ FE-V63-07 성과실 댓글 행동 > V70-PERF-04 정상: 표본 5편이 쌓이면 다음 실험 제안을 자동으로 불러온다 836ms
+ ✓ tests/components/ChannelPageAutomation.test.tsx (17 tests) 7370ms
+   ✓ ChannelPage customer/operator API boundary > does not request operator-only cron data on the youtube customer channel 434ms
+   ✓ ChannelPage customer/operator API boundary > updates the tenant channel setting without requesting global cron data 2281ms
+   ✓ ChannelPage customer/operator API boundary > keeps migrated channel tabs wired to shared UI state 353ms
+   ✓ ChannelPage customer/operator API boundary > restores Instagram tenant automation settings without global cron requests 512ms
+   ✓ ChannelPage customer/operator API boundary > V69-COPY-03 정상: 채널 탭과 설정 라벨을 한국어 표준 용어로 표시한다 539ms
+   ✓ ChannelPage customer/operator API boundary > V69-COPY-03 거절: 고객 채널 화면에 기존 영어 탭과 설정 라벨을 노출하지 않는다 493ms
+   ✓ ChannelPage customer/operator API boundary > V69-COPY-05 정상: 공식 연결 단추는 항상 활성 상태로 먼저 보인다 355ms
+   ✓ ChannelPage customer/operator API boundary > V69-COPY-05 거절: 고급 연결 정보는 고객이 직접 펼치기 전에는 노출하지 않는다 562ms
+   ✓ ChannelPage customer/operator API boundary > V69-COPY-05 Instagram: 공식 연결을 유지하고 고급 연결 정보는 접어 둔다 311ms
+ ✓ tests/studio/cardnews-generate-edit-publish.contract.test.tsx (10 tests) 1285ms
+   ✓ 카드뉴스 이음매 계약 > CARD-LINK-02 편집실은 카드 3장을 3장으로 그리고 고른 장의 그림을 보여 준다 1232ms
+ ✓ tests/studio/chairman-second-feedback-learning-generation.regression-1.test.tsx (9 tests) 11662ms
+   ✓ 회장 2차 실사용 피드백 학습 정보 > 항목 2·3·4 정상: 업종, 주요 고객, 말투 예시의 의미를 질문 안에서 설명한다 808ms
+   ✓ 회장 2차 실사용 피드백 학습 정보 > 항목 5·6 정상: 7개 직접 입력 뒤 자동으로 닫지 않고 8번째 자동 학습과 저장 단계를 설명한다 2270ms
+   ✓ 회장 2차 실사용 피드백 학습 정보 > 항목 7·8 거절: 나중에 하기 설명은 분리하고 모호한 이전 문구는 노출하지 않는다 717ms
+   ✓ 회장 2차 실사용 피드백 생성실 > 항목 9·10·11·12·13·14 정상: 형식 추측과 중복 질문 없이 한 질문씩 진행한다 1434ms
+   ✓ 회장 2차 실사용 피드백 생성실 > V77-CREATE-PERSIST-01 정상: 생성실을 다시 열면 질문 진행 상태와 선택 형식을 복원한다 2007ms
+   ✓ 회장 2차 실사용 피드백 생성실 > 항목 16·17 정상: 규칙 기반 초안과 준비 중 기능을 분리하고 선택 뒤 CTA를 하나만 노출한다 2802ms
+   ✓ 회장 2차 실사용 피드백 생성실 > 항목 19 정상: 소재 권리 확인의 대상과 허가 범위를 바로 설명한다 1320ms
+ ✓ tests/components/publish-preview-media-resign.test.tsx (10 tests) 1744ms
+   ✓ PUB-MEDIA-01 발행실 미리보기는 만료된 배달 주소를 스스로 갱신한다 > 정상: threads 칸의 만료된 그림은 재서명을 불러 새 주소로 바뀐다 376ms
+   ✓ PUB-MEDIA-01 발행실 미리보기는 만료된 배달 주소를 스스로 갱신한다 > 거절: 재서명 요청 자체가 끊겨도 화면은 조용히 비지 않는다 310ms
+ ✓ tests/components/LoginModalRouting.test.tsx (9 tests) 3694ms
+   ✓ 운영자 401 복구 모달 > QA-AUTH-17 정상: 승인된 모달 표식, 영문 카피, 44px 조작 영역을 유지한다 1478ms
+   ✓ 운영자 401 복구 모달 > QA-AUTH-18 정상: Escape로 닫고 Tab과 Shift+Tab 포커스를 모달 안에 가둔다 665ms
+   ✓ 운영자 401 복구 모달 > QA-AUTH-23 경합 거절: 새 검증은 이전 검증의 늦은 성공을 무효화한다 521ms
+ ✓ tests/components/operator-get-auth.test.tsx (11 tests) 751ms
+   ✓ operator GET authentication handling > does not render raw Unauthorized when SWR receives an authentication-required error 555ms
+ ✓ tests/studio/edit-outline-card-list.contract.test.tsx (9 tests) 3734ms
+   ✓ 편집실 목차 칸의 카드 목록 > OUTLINE-01 정상: 목록에서 눌러 바로 그 장으로 간다 1658ms
+   ✓ 편집실 목차 칸의 카드 목록 > OUTLINE-07 정상: 영상 장면도 같은 목록으로 고르고 옮긴다 407ms
+   ✓ 편집실 목차 칸의 카드 목록 > OUTLINE-08 정상: 편집실의 채운 강조색 버튼은 여전히 발행실로 이동 하나뿐이다 518ms
+ ✓ tests/components/queue-card-media-resign.test.tsx (7 tests) 609ms
+   ✓ QUEUE-MEDIA-01 큐 카드는 만료된 배달 주소를 스스로 갱신한다 > 정상: 만료된 그림은 재서명을 불러 새 주소로 바뀐다 (PostCard) 312ms
+ ✓ tests/components/operator-oauth-import-ui.test.tsx (3 tests) 2741ms
+   ✓ operator OAuth credential UI lifecycle > reveals a complete env set with one button/request and refreshes DB-backed metadata 1630ms
+   ✓ operator OAuth credential UI lifecycle > toggles each pasted field independently and keeps values hidden by default 645ms
+   ✓ operator OAuth credential UI lifecycle > saves a complete unset provider set, refreshes metadata, and shows a Korean card error on failure 461ms
+ ✓ tests/components/inbox-v70-defects.test.tsx (9 tests) 2363ms
+   ✓ V70-INBOX 승인 인박스 안전 계약 > V73-INBOX-01 정상: title 없이 text만 오면 본문 영역에 표시하고 빈 제목 자리를 만들지 않는다 917ms
+ ✓ tests/components/customer-login-session-recovery.test.tsx (7 tests) 429ms
+ ✓ tests/brand/operator-oauth-setup-ui.contract.test.ts (8 tests) 1668ms
+   ✓ operator central OAuth provider ordering > places storage outages before ready providers and missing providers 1388ms
+ ✓ tests/components/PerformanceChatPanel.rule-basis.test.tsx (6 tests) 1398ms
+   ✓ FE-L5-BASIS 결정 전 근거 표시와 학습 상세 소유권 > FE-L5-BASIS-01 정상 경로: 배우기를 누르기 전에 표본·관찰 기간·적용 범위·한계가 같이 보인다 857ms
+ ✓ tests/components/getting-started-strip-v70.test.tsx (8 tests) 2936ms
+   ✓ V70-START 시작 스트립 계약 > V70-START-01 정상: 중복 배너 대신 진행도와 채널 연결 수를 한 줄에서 안내한다 2072ms
+   ✓ V70-START 시작 스트립 계약 > V70-START-02 정상: 전체 보기는 기존 다섯 단계 기능을 펼쳐 보존한다 452ms
+ ✓ tests/components/editroom-v65.test.tsx (6 tests) 2635ms
+   ✓ 편집실 v65 화면 계약 > V65-EDIT-01 정상: 형식과 채널을 분리하고 발행실 이동만 다음 단계로 둔다 1019ms
+   ✓ 편집실 v65 화면 계약 > V65-EDIT-03 정상: 카드 글자를 이미지 안에서 고치고 상단·중앙·하단으로 옮긴다 577ms
+   ✓ 편집실 v65 화면 계약 > V65-EDIT-05 거절: 빈 작업물과 저장 실패는 0으로 꾸미지 않고 다음 행동을 밝힌다 393ms
+ ✓ tests/api/channel-account-ui.test.tsx (3 tests) 1533ms
+   ✓ 연결 계정 관리 화면 > 계정-화면-01 정상: 목록, 상태, 만료 시각, 기본 의미를 보여주고 기본 전환 API를 호출한다 524ms
+   ✓ 연결 계정 관리 화면 > 계정-화면-03 거절과 정상: 연결 해제는 확인 취소 시 요청하지 않고 승인 후 한 계정만 삭제한다 907ms
+ ✓ tests/studio/media-resign.contract.test.tsx (4 tests) 168ms
+ ✓ tests/components/onboarding-first-content.test.tsx (5 tests) 3805ms
+   ✓ FE7 첫 콘텐츠 온보딩 계약 > FE7-ONBOARD-01 정상: 채널 없이 업종과 영상 갈래만 정해 생성실로 이동한다 2321ms
+   ✓ FE7 첫 콘텐츠 온보딩 계약 > FE7-ONBOARD-02 거절: 업종이나 갈래를 고르기 전에는 다음 단계로 가지 않는다 457ms
+   ✓ FE7 첫 콘텐츠 온보딩 계약 > FE7-ONBOARD-03 거절: 저장 실패는 생성실 이동 대신 재시도 가능한 오류를 남긴다 548ms
+   ✓ FE7 첫 콘텐츠 온보딩 계약 > FE7-ONBOARD-05 정상: 온보딩에서 고른 갈래를 생성실이 이어받는다 373ms
+ ✓ tests/components/studio-platform-focus-filter.test.tsx (4 tests) 1411ms
+   ✓ 발행실 플랫폼 집중 필터 계약 > PUB-FOCUS-01 정상: 전체 7곳이 기본값이며 플랫폼 카드 일곱 장을 보여 준다 757ms
+   ✓ 발행실 플랫폼 집중 필터 계약 > PUB-FOCUS-03 거절: 필터를 바꿔도 입력값과 발행 대상 선택을 지우지 않는다 379ms
+ ✓ tests/components/platform-preview-v67.test.tsx (5 tests) 1828ms
+   ✓ PUB-ACCOUNT-01 연결 계정 읽기 전용 표시 > 정상: 연결 계정의 표시 이름과 사용자명을 보여 주되 편집 입력은 만들지 않는다 1405ms
+ ✓ tests/studio/studio-command-panel.test.tsx (3 tests) 1261ms
+   ✓ FE-V63-31 Studio 담당 대화 명령 연결 > R-S10-38 정상: 편집 저장과 발행실 이동을 같은 행동 구역에서 분리한다 908ms
+ ✓ tests/components/room-flow-v68.test.tsx (9 tests) 2443ms
+   ✓ V68 네 방 상단 단계 계약 > V68-FLOW-01 정상: create 방은 자기 단계를 하나만 현재 위치로 표시한다 1566ms
+ ✓ tests/components/repo-connect.test.tsx (3 tests) 2637ms
+   ✓ RepoConnect wiki sync error banner > shows the server error string with the danger semantic token when sync returns 400 2096ms
+   ✓ RepoConnect wiki sync error banner > shows the normalized repository, branch, and folder immediately and submits only sanitized values 342ms
+ ✓ tests/components/DesignSystem.test.tsx (8 tests) 2456ms
+   ✓ shared design-system components > renders the primary button with a 44px target and uncut label contract 1679ms
+ ✓ tests/studio/studio-room-sidebar-sync.regression-1.test.tsx (2 tests) 1497ms
+   ✓ Studio URL과 사이드바 현재 방 동기화 > 정상: 저장 상태가 생성실이어도 발행실 URL을 열면 발행실로 맞춘다 1015ms
+   ✓ Studio URL과 사이드바 현재 방 동기화 > 거절: 알 수 없는 방 이름은 저장 상태를 바꾸지 않는다 478ms
+ ✓ tests/components/PerformanceChatPanel.decisions.test.tsx (2 tests) 1192ms
+   ✓ FE-L5-HISTORY 학습 후보 판단 연결 > FE-L5-HISTORY-01 정상 경로: 배우기는 표본과 기간을 포함한 수락 판단을 API에 보낸다 1012ms
+ ✓ tests/components/inbox-auth-cache-invalidation.test.tsx (1 test) 1207ms
+   ✓ V72-AUTH-CACHE 인증 단절 후 SWR 캐시 계약 > V72-AUTH-CACHE-01 거절: 성공 목록이 캐시된 뒤 재조회 401이면 옛 초안을 숨기고 안내와 비활성 행동만 남긴다 1204ms
+ ✓ tests/publish/publish-return-links.test.tsx (3 tests) 2107ms
+   ✓ FE-V63-RETURN-03 인박스와 캘린더 발행실 복귀 링크 > 정상 경로: 인박스 작업물에서 발행실 복귀 URL을 연다 1298ms
+   ✓ FE-V63-RETURN-03 인박스와 캘린더 발행실 복귀 링크 > 정상 경로: 캘린더의 선택 작업물에서 발행실 복귀 URL을 연다 671ms
+ ✓ tests/components/osmu-code-review-20260913-delivered-media.regression.test.tsx (2 tests) 329ms
+ ✓ tests/studio/osmu-code-review-20260914-publish-room.regression-1.test.tsx (4 tests) 1742ms
+   ✓ OSMU 코드리뷰 발행실 회귀 > OSMU-013 정상 경로: 인스타그램 미리보기는 실제 발행 이미지 세 장을 순서대로 보여준다 1730ms
+ ✓ tests/home/first-user-performance-access.test.tsx (2 tests) 1324ms
+   ✓ OSMU-FLOW-UI-01 첫 사용자 성과실 도달 계약 > OSMU-FLOW-UI-01 정상 경로: 채널과 성과가 없어도 성과실과 인라인 온보딩을 함께 그린다 1168ms
+ ✓ tests/components/getting-started-persistence.test.tsx (4 tests) 915ms
+   ✓ 시작 안내 유지 계약 > 채널을 연결해도 첫 발행 전이면 안내가 남는다 769ms
+ ✓ tests/studio/edit-preview-media.contract.test.tsx (4 tests) 663ms
+   ✓ 편집실 미리보기 > 카드뉴스는 만든 이미지를 그린다 408ms
+ ✓ tests/components/onboarding-d2.regression-1.test.tsx (2 tests) 3850ms
+   ✓ 온보딩 입력 복원 회귀 > OSMU-BLOCK-D2 정상: 새로고침 뒤 업종과 콘텐츠 갈래 선택을 복원한다 3398ms
+   ✓ 온보딩 입력 복원 회귀 > OSMU-BLOCK-D2 거절: 깨진 자동저장 값은 선택으로 오인하지 않고 제거한다 447ms
+ ✓ tests/studio/learning-purpose-persistence.test.tsx (2 tests) 4036ms
+   ✓ 생성실 목적 학습 정보 > 목적 카드를 고르면 작업 공간 학습 정본에 저장한다 3211ms
+   ✓ 생성실 목적 학습 정보 > 이미 저장된 목적은 새 생성실에서 다시 선택된 기준으로 복원한다 821ms
+ ✓ tests/components/osmu-code-review-20260913-cancel-ui.regression.test.tsx (2 tests) 1506ms
+   ✓ 취소 응답 표시 검수 회귀 > 항목 9 정상: DB 동기화 지연을 완전 중지 성공으로 표시하지 않는다 1351ms
+ ✓ tests/components/operator-customer-access-ui.test.tsx (2 tests) 604ms
+   ✓ 운영자 고객 접속 기록 표시 > TENANT-ACCESS-03 거절: 접속 기록이 없으면 0일 대신 접속 기록 없음을 표시한다 481ms
+ ✓ tests/components/operational-incident-panel.test.tsx (2 tests) 2297ms
+   ✓ 운영 장애 패널 계약 > 관측-04 정상: 작업 공간과 사람 개입 여부를 장애에 붙여 보여준다 658ms
+   ✓ 운영 장애 패널 계약 > 관측-05 거절: 조회 실패를 정상 상태로 위장하지 않고 오류를 표시한다 1623ms
+ ✓ tests/home/performance-core-metrics-responsive.regression-1.test.tsx (2 tests) 1010ms
+   ✓ FLOW-UI-METRICS-V14 성과실 지표 반응형 회귀 > 전용 성과실은 1024 구간을 2열로 유지하고 넓은 화면에서만 4열이 된다 698ms
+ ✓ tests/components/ImagePickerModal.test.tsx (2 tests) 148ms
+ ✓ tests/components/consent-banner-v69copy.test.tsx (2 tests) 2313ms
+   ✓ V69-COPY-02 쿠키 동의 배너 배치 계약 > V69-COPY-02 정상: 동의 단추는 선택을 저장하고 배너를 닫는다 2174ms
+ ✓ tests/components/onboarding-d1-d2.regression-1.test.tsx (1 test) 1052ms
+   ✓ 온보딩 브랜드 문서 회귀 > OSMU-BLOCK-D1 정상: 첫 콘텐츠 다음에 브랜드 문서 연결 항목을 보여 주되 생성을 막지 않는다 1048ms
+ ✓ tests/components/auth-return-to.test.ts (15 tests) 50ms
+ ✓ tests/studio/edit-room-empty-actions.regression-1.test.tsx (1 test) 638ms
+   ✓ 편집실 빈 상태의 다음 행동 > 생성실로 돌아가는 안내 단추를 보여 주고 클릭을 전달한다 635ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/brand/oauth-errors.test.ts > oauthErrorMessage > AR-ERROR-004 정상: Meta verification code 오류를 redirect_uri 불일치가 아니라 심사 전 테스터 제한으로 번역한다
+AssertionError: expected 'Instagram 연결하고 돌아올 주소가 앱 콘솔에 등록된 값과 다…' to contain '심사 전 테스터 명단에 없어'
+
+Expected: "심사 전 테스터 명단에 없어"
+Received: "Instagram 연결하고 돌아올 주소가 앱 콘솔에 등록된 값과 다릅니다. 서비스 공개 주소와 등록 주소를 글자까지 같게 맞춰야 합니다."
+
+ ❯ tests/brand/oauth-errors.test.ts:80:17
+     78|       "Instagram",
+     79|     );
+     80|     expect(msg).toContain("심사 전 테스터 명단에 없어");
+       |                 ^
+     81|     expect(msg).toContain("심사 전 한시 절차");
+     82|     expect(msg).not.toContain("돌아올 주소가 앱 콘솔에 등록된 값과 다…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed | 373 passed (374)
+      Tests  1 failed | 2415 passed | 3 skipped (2419)
+   Start at  18:28:25
+   Duration  1195.63s (transform 23.60s, setup 36.53s, collect 197.00s, tests 471.17s, environment 374.84s, prepare 394.51s)

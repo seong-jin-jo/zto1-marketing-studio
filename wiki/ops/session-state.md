@@ -1,3 +1,102 @@
+# 2026-09-18 01:08 KST Meta App Review 인사이트 코드 갭 수정 검증 완료
+
+사용자의 명시 과제를 handoff basis로 사용한다. `openclaw-auto:0.0`은 중복 작업 확인에만 캡처했고
+다른 pane의 작업은 인계받거나 변경하지 않는다. 현재 브랜치는
+`session/zto1-marketing-studio-20260912`, pipeline은 QA 진행 중이며 같은 단계 안의 결함 수정
+왕복으로 IG-INSIGHTS-01/02/03과 FB-INSIGHTS-01만 다룬다.
+
+Instagram OAuth scope에 `instagram_business_manage_insights`를 추가했고 Instagram·Reels 성과 호출을
+`graph.instagram.com/v26.0` 및 `views,likes,comments`로 교정했다. Facebook은 기존
+`graph.facebook.com/v21.0`을 유지하고 참고 permission에 `read_insights`를 추가했다. 구
+`impressions` 응답 파싱은 유지했다.
+
+표적 Vitest 3파일 73건, TypeScript `tsconfig.ci.json --noEmit`, 디자인 토큰 lint가 통과했다.
+실제 Instagram·Facebook 토큰 호출, `FB_CONFIG_ID(1553247286513620)` configuration 콘솔
+확인, 운영 배포는 미검증이다. 다음 소유자는 컨트롤러와 qa-verifier다. 콘솔
+설정을 확인하고 실제 media·Page post insights 2xx와 성과실 실제 수치를 촬영한 뒤에만
+Meta App Review 제출을 진행한다.
+
+# 2026-09-18 00:41 KST 최근 24시간 코드 공격 리뷰 BLOCK
+
+사용자의 명시 과제를 handoff basis로 사용했다. `openclaw-auto:0.0`과
+`osmu-regress091800:0.0`은 localhost 소유권과 중복 실행 확인에만 사용했고, 다른 pane의 작업은
+인계받거나 변경하지 않았다. 검토 범위는 2026-09-18 00:35 KST에
+`d04c60a1..08b29f31` 61개 커밋으로 고정했다. 제품 코드는 수정하지 않았다.
+
+MAJOR 10건으로 BLOCK이다. 실제 발행 원장을 고치지 않는 복구 단추, YouTube 기본 계정 ID 유실과
+재개 파일 불일치, TikTok 및 예약 발행의 사용량 누락, relay 실패의 정상 수치 표시, 브라우저 상태
+종료 코드 거짓 성공, Meta OAuth 오분류, 공유 QA 설정 경합, 금지 그림문자를 확인했다.
+
+Vitest 374파일과 2,416건, TypeScript는 통과했다. localhost health는 HTTP 200과 DB up이다.
+기본 흐름과 Studio v1은 정상 생성에서 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 둘 다 NG였다. 실제 SNS
+발행, DB 장애 주입, 두 작업 공간 동시 동적 격리, 운영 배포는 미검증이다. 감사 문서 커밋은
+`ea6cd73a`다. 다음 소유자는 code-builder다. MAJOR 10건을 고친 뒤 같은 재현과 최신 소스에
+귀속되는 localhost에서 두 필수 E2E를 다시 통과해야 한다.
+
+# 2026-09-17 23:15 KST 성과 시계열 갭 build 회수, 실앱 회귀 NG
+
+사용자의 명시 과제를 handoff basis로 사용했다. 실행 중인 `osmu-gapfill091723:0.0`은 이 위임
+세션 자체였고, 다른 pane은 인계받거나 변경하지 않았다. 두 기반 감사를 현재 코드와 다시 대조한
+결과 과거 미구현 항목 중 지금도 없는 것은 게시물별 성과 관측 이력과 재현 가능한 최근 30일 대
+직전 30일 비교다.
+
+localhost health는 HTTP 200, DB up이고 지정 작업 공간 metrics는 HTTP 200이지만 `history`,
+`comparison`이 없다. Vitest 374파일과 2,416건, TypeScript가 통과했다. 기본 흐름은 최초와
+재실행 모두 첫 생성에서 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 NG였고, Studio v1은 인증과 입력
+거절 세 건 통과 뒤 정상 생성에서 같은 사유로 NG였다.
+
+현재 pipeline은 `qa`, `in-progress`, 승인 아님이며 관측 단위, 멱등 키, 보존 기간, 공급자
+정규화, 비교식과 표본 부족 기준의 승인 기술설계가 없다. 제품 소스는 수정하지 않았다. 다음
+소유자는 컨트롤러와 tech-architect다. 성과 snapshot과 비교 계약을 승인하고 build를 다시 연 뒤
+구현하며, 생성 공급자 회귀를 고쳐 두 필수 E2E를 다시 통과해야 한다.
+
+# 2026-09-17 20:19 KST 최근 24시간 코드 공격 리뷰 BLOCK
+
+사용자의 명시 과제를 handoff basis로 사용했다. live tmux pane은 실행 서버와 동시 작업 확인에만 사용했고 다른 pane의 작업을 인계받거나 변경하지 않았다. 검토 범위는 작업 시작 시점의 56개 커밋, `ed8231a5..a66b4b37`로 고정했다.
+
+MAJOR 12건으로 BLOCK이다. 기존 11건이 현재 코드에 남아 있고, `oauth-errors.ts:74`가 만료된 인증 코드도 Meta 테스터 명단 누락으로 단정하는 새 회귀를 직접 재현했다. 제품 코드는 수정하지 않았다.
+
+Vitest 374파일과 2,416건, TypeScript, localhost 기본 흐름 11/11, Studio v1 14/14를 통과했다. health는 HTTP 200과 DB up이었다. 실행 커밋 `0fc65567`은 검토 끝보다 이전이므로 최신 OAuth 변경은 현재 소스 함수 직접 실행으로 검증했다. 실제 SNS 발행, DB 장애 주입, 두 작업 공간 동시 동적 격리, 운영 배포는 미검증이다.
+
+상세는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단, 증거 원장은 `docs/qa/qa-tracker.md` 최상단이다. 다음 소유자는 code-builder다. 12개 MAJOR를 고친 뒤 같은 재현과 최신 소스에 귀속되는 localhost에서 다시 검수해야 한다.
+
+# 2026-09-17 19:12 KST Meta App Review 패키지 독립 리뷰·보정
+
+회장이 명시한 `docs/ops/meta-app-review-2026-09.md` 독립 리뷰 과제를 handoff basis로 사용했다.
+live tmux pane은 존재했지만 인계 대상으로 지정되지 않아 캡처·변경하지 않았고, 현재 요청과
+commit `2aac6c14`의 문서를 기준으로 검수했다.
+
+최초본은 `standard-doc-review.md` 기준 17/25 RETAKE였다. 목차·버전핀·개정이력·RUBRIC_SCORE가
+없었고, 스크린캐스트 표에 API가 적혀 있어도 심사관 화면에 METHOD·path·HTTP 2xx·결과가 보인다는
+계약이 없었다. v1.1.0에서 권한 13개를 사용자 가치→코드→외부 API→영상 구간에 1:1 매핑하고,
+권한별 화면 증거 대장과 독립 리뷰 표를 추가해 문서 품질은 25/25 PASS로 보정했다.
+
+Codex 독립 2차 검토의 RETAKE 4건도 반영했다. Instagram account insights의 `impressions` 폐기
+안내와 media insights의 `engagement,impressions,reach` 예시가 충돌하므로 특정 metric으로 단정하지
+않고 실제 media 성공 호출을 게이트로 두었다. Facebook `pages_show_list`와 Page name 검증 경계를
+분리하고, `pages_read_engagement` 영상 path를 코드와 같은 `fields=name`으로 맞췄으며, 즉시 발행과
+사용자 예약 발행 문안을 구분했다.
+
+App Review 제출은 계속 NO-GO다. Instagram 인사이트 scope·host·media metric 계약,
+Facebook `read_insights` configuration·`pages_read_engagement` 직접 증거, Meta API v21.0 지원,
+액세스 인증, reviewer 접근, 권한별 최근 성공 호출과 실제 영상 13개 구간이 남아 있다. 출처와 공개
+URL 15개는 redirect 포함 HTTP 200을 관찰했다. QA 원장은 `META-DOC-REVIEW-20260917-01~07`이다.
+다음 소유자는 code-builder와 qa-verifier이며, 문서 §8 순서와 §4.5의 13/13 종료 증거로 닫는다.
+
+## 2026-09-17 19:12 KST 네 방 기본 흐름 QA v23, 제품 전체 QA는 NG
+
+사용자 과제 원문을 handoff 기준으로 사용했다. canonical `pipeline-state.osmu.md`는 착수 시 이미
+`current_stage: qa`여서 단계값을 바꾸지 않았다. localhost 기능 범위는 기본 흐름 11/11,
+네 방 4/4, 네 폭 20화면과 복귀 5/5, Studio v1 14/14를 통과했다. 전체 Vitest 374파일·2,416건,
+TypeScript, 격리 build 184/184, schema·seed·RLS, 디자인 lint도 통과했다. 제품 소스 변경은 없다.
+
+v63 디자인 정합 NG, v63과 canonical 승인 v68 핀 충돌, 운영 배포와 외부 채널 실발행 미검증
+때문에 qa 진행 중과 승인 불가 상태를 유지한다. `verify-agent-quality.sh`도 운영 host 접촉 증거
+0건으로 로컬 QA 출고를 반려했다. 증거는
+`docs/qa/osmu-four-room-basic-flow-v23-gpt-codex.md`와
+`logs/diff/osmu-four-room-flow-20260917-v23/`이다. 다음 행동은 단일 승인 디자인 핀을 확정하고
+동일 콘텐츠 상태의 16화면 정합을 맞춘 뒤 운영 host를 별도 검증하는 것이다.
+
 # 2026-09-17 16시 50분 최근 24시간 코드 공격 리뷰 BLOCK
 
 사용자의 명시 과제를 handoff basis로 사용했다. 여러 live tmux pane과 기존 session-state가 함께 있어 기준을 질문했으나 답이 없어, 현재 요청과 현재 git 상태를 기준으로 검토했다. tmux 작업은 인계받거나 변경하지 않았다.

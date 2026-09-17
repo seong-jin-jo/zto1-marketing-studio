@@ -1,3 +1,110 @@
+## 2026-09-18 01:31 KST · Meta 인사이트 회귀 테스트 CI 타입 검사 🔧 전환
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| CI-35245704219 | Meta 인사이트 회귀 테스트를 CI와 같은 TypeScript 설정으로 검사 | META-INSIGHTS-TYPE-20260918-01 | 🔧 수정, 테스트 PASS | GitHub Actions run `35245704219`의 Type check는 53행과 121행 `TS2493`, 종료 코드 2였다. 두 mock에 fetch의 `input`과 선택적 `init` 호출 시그니처를 부여했다. `npx tsc -p tsconfig.ci.json --noEmit` 종료 코드 0, 표적 Vitest 1파일 6건 통과. 원격 CI 재실행과 운영 배포는 미검증. |
+
+## 2026-09-18 01:02 KST · Meta App Review 인사이트 코드 갭 수정 착수
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| IG-INSIGHTS-01 | Instagram OAuth에 인사이트 권한 포함 | META-INSIGHTS-20260918-01 | 🔧 수정, 테스트 PASS | `instagram_business_manage_insights` scope를 추가했고 OAuth URL 회귀 테스트가 통과했다. 실제 OAuth 승인은 미검증. |
+| IG-INSIGHTS-02/03 | Instagram Login host와 media metric 정합 | META-INSIGHTS-20260918-02 | 🔧 수정, 테스트 PASS | Meta current reference의 `graph.instagram.com`, `v26.0`, FEED·REELS `views,likes,comments`를 반영. Instagram/Reels URL·구 `impressions` 파싱 회귀 통과. 실제 토큰 호출은 미검증. |
+| FB-INSIGHTS-01 | Facebook Login configuration 참고 권한 정합 | META-INSIGHTS-20260918-03 | 부분 🔧, 콘솔 미검증 | `FACEBOOK.scopes`에 `read_insights`를 추가하고 Facebook URL 회귀를 통과했다. `FB_CONFIG_ID(1553247286513620)` configuration 포함 여부와 실제 호출은 콘솔 확인 필요. |
+
+표적 Vitest 3파일 73건과 TypeScript, 디자인 토큰 lint가 통과했다. Instagram과 Facebook 실제 API 호출은 토큰이 없어 미검증이다.
+
+## 2026-09-18 00:41 KST · 최근 24시간 코드 공격 리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드리뷰 24시간 | 외부 성공 뒤 실제 발행 원장 복구 | REVIEW-24H-20260918-01 | NG | `dashboard/src/app/studio/page.tsx:1234`가 초안만 발행 완료로 바꾸고 복구 목록을 지운다. 실제 발행 행, 승인 큐, 사용량 outbox 복구 호출은 없다. |
+| 코드리뷰 24시간 | YouTube 계정과 업로드 파일 결속 | REVIEW-24H-20260918-02 | NG | `video/publish/route.ts:246`은 요청 account ID를 쓰고 실제 기본 계정 ID를 버린다. 같은 파일 `:354`는 저장 해시와 크기를 대조하지 않고 세션을 재개한다. |
+| 코드리뷰 24시간 | 모든 발행 경로의 사용량 원장 | REVIEW-24H-20260918-03 | NG | TikTok 완료 `tiktok/publish-status/route.ts:87`과 예약 발행 `schedule/publish-due/route.ts:409`가 새 usage outbox를 우회한다. |
+| 코드리뷰 24시간 | 사용량 부분 실패 표시 | REVIEW-24H-20260918-04 | NG | `usage/route.ts:73`이 relay 실패 뒤에도 HTTP 200과 낮은 합계를 반환하고 성과실은 실패를 표시하지 않는다. |
+| 코드리뷰 24시간 | 브라우저 상태와 공유 설정 경합 | REVIEW-24H-20260918-05 | NG | `osmu-browsers.sh status`는 회원 브라우저 응답 없음에도 종료 0이었다. 네 방 E2E는 공유 설정 전체를 최대 10분 뒤 옛 스냅샷으로 복원한다. |
+| 코드리뷰 24시간 | Meta OAuth 오류 원인 | REVIEW-24H-20260918-06 | NG | `oauth-errors.ts:74`가 만료된 승인 코드도 테스터 명단 누락으로 단정한다. 현재 소스 함수 직접 호출로 재현했다. |
+| 확정 문구 | 그림문자, 긴 대시, 영문 단추 라벨 | REVIEW-24H-20260918-07 | NG | 새 브라우저 상태 출력에 그림문자 3종이 있다. 제품 UI 노출 문구의 긴 대시와 영문 단추 라벨은 0건이었다. |
+| 필수 회귀 | 전체 test와 TypeScript | REVIEW-24H-20260918-08 | PASS | Vitest 374파일, 2,416건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. |
+| 실앱 기본 흐름 | localhost:3456 기본 흐름과 Studio v1 | REVIEW-24H-20260918-09 | NG | health HTTP 200, DB up. 기본 흐름은 첫 생성 후보 0장, Studio v1은 정상 생성 기대 201 대신 HTTP 200으로 `STUDIO_LLM_PROVIDER_UNAVAILABLE`을 반환해 둘 다 종료 코드 1. |
+| 삭제와 토큰 | 무기록 삭제 및 디자인 토큰 | REVIEW-24H-20260918-10 | PASS | 고정 커밋 범위의 삭제 파일 0개. 변경 제품 UI의 새 색상 리터럴과 인라인 스타일 0건. |
+| 외부 실발행과 장애 주입 | 실제 SNS, DB 실패, 두 작업 공간 동시 실행 | REVIEW-24H-20260918-11 | 미검증 | 돈과 외부 공개를 일으키는 실발행과 파괴적 장애 주입은 실행하지 않았다. |
+
+판정은 BLOCK이다. MAJOR 10건의 상세 위치, 재현, 수정 조건은 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-18.md`에 있다. 제품 코드는 수정하지 않았다.
+
+## 2026-09-17 23:15 KST · 성과 시계열 갭 build 차단과 실앱 회귀 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사에서 지금도 없는 기본 흐름 항목을 하나 구현 | GAP-HISTORY-20260917-2315-01 | NG | 남은 항목은 게시물별 성과 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교다. 지정 작업 공간 `GET /api/metrics` HTTP 200, 키 `coverage`, `posts`, 게시물 0건, `history`와 `comparison` 없음. |
+| 기술 계약과 공정 | 승인된 DB·API 계약 안에서만 build | GAP-HISTORY-20260917-2315-02 | BLOCK | `pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준의 승인 기술설계가 없다. |
+| 전체 회귀 | 기존 생성·편집·발행·성과 흐름 보존 | GAP-HISTORY-20260917-2315-03 | PASS | Vitest 374파일·2,416건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. |
+| 기본 흐름 실앱 | localhost 생성부터 성과 재인계 | GAP-HISTORY-20260917-2315-04 | NG | `verify-basic-flow-e2e.mjs` 최초와 재실행 모두 첫 생성 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장, 종료 코드 1. 서버 원인은 `exit_nonzero`. |
+| Studio v1 실앱 | 인증·거절·정상 생성 계약 | GAP-HISTORY-20260917-2315-05 | NG | 401·400·422 거절은 통과. 정상 생성은 기대 201 대신 HTTP 200의 공급자 오류로 종료 코드 1. |
+| 실행본 귀속 | localhost와 현재 HEAD | GAP-HISTORY-20260917-2315-06 | 부분 확인 | health HTTP 200, DB up, 실행 `7c9c9050`, HEAD `8e4585e7`. 사이의 성과 route·schema·migration·필수 E2E 변경은 0건. 운영 배포는 미검증. |
+| 신규 구현 | migration, API, 계약 테스트 | GAP-HISTORY-20260917-2315-07 | BLOCK | 제품 소스 변경 0건. 승인 없는 저장 구조를 선택하지 않았고 새로 되는 항목은 없다. |
+
+## 2026-09-17 20:19 KST · 최근 24시간 코드 공격 리뷰 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드리뷰 24시간 | 외부 성공과 내부 발행 장부 복구 | REVIEW-24H-20260917-22 | NG | `dashboard/src/app/studio/page.tsx:1234`가 초안만 발행 완료로 바꾸고 실제 발행 행과 사용량 장부를 복구하지 않는다. |
+| 코드리뷰 24시간 | 재개 업로드와 파일 동일성 | REVIEW-24H-20260917-23 | NG | `dashboard/src/app/api/video/publish/route.ts:354`가 저장 해시와 크기를 현재 파일에 대조하지 않는다. |
+| 코드리뷰 24시간 | 전 발행 경로 과금 원장 | REVIEW-24H-20260917-24 | NG | TikTok 완료 `tiktok/publish-status/route.ts:87`과 예약 발행 `schedule/publish-due/route.ts:409`가 usage outbox를 우회한다. |
+| 코드리뷰 24시간 | 사용량 부분 실패 표시 | REVIEW-24H-20260917-25 | NG | `usage/route.ts:73`이 relay 실패 뒤에도 HTTP 200과 낮은 집계를 반환하고 성과실은 실패 수를 표시하지 않는다. |
+| 코드리뷰 24시간 | macOS Claude 후보 폴백 | REVIEW-24H-20260917-26 | NG | `anthropic.ts:201`의 launchctl 래퍼가 대상 미존재를 종료 코드로 바꿔 다음 후보 시도를 막는다. |
+| 코드리뷰 24시간 | 한국어 오류와 실패 화면 | REVIEW-24H-20260917-27 | NG | ElevenLabs 영문 오류가 사용자에게 노출되고, 블로그와 GSC 화면은 새 503을 오류 안내 대신 0 데이터로 보일 수 있다. |
+| 코드리뷰 24시간 | 검증기 동시성 및 증거 무결성 | REVIEW-24H-20260917-28 | NG | API sweep는 실행 중 파일 추가와 삭제를 못 보고, 네 방 E2E는 공유 작업 공간 설정 전체를 옛 스냅샷으로 복원한다. |
+| 코드리뷰 24시간 | Studio 실패 HTTP 상태 | REVIEW-24H-20260917-29 | NG | `generation/http.ts:75`가 502, 503, 504를 200으로 바꿔 실패를 성공으로 집계하게 만든다. |
+| 코드리뷰 24시간 | Meta OAuth 원인 분류 | REVIEW-24H-20260917-30 | NG | `oauth-errors.ts:74`가 만료된 인증 코드도 테스터 명단 누락으로 단정한다. 현재 소스 직접 실행으로 잘못된 안내를 재현했다. |
+| 필수 회귀 | 전체 test와 TypeScript | REVIEW-24H-20260917-31 | PASS | Vitest 374파일, 2,416건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. |
+| 실앱 기본 흐름 | localhost:3456 기본 흐름과 Studio v1 | REVIEW-24H-20260917-32 | 부분 PASS | 기본 흐름 11/11, Studio v1 14/14. health HTTP 200, DB up. 실행 `0fc65567`은 검토 끝 `a66b4b37`보다 이전이라 최신 OAuth 변경은 현재 소스 직접 실행으로 별도 확인했다. |
+| 외부 실발행과 장애 주입 | 실제 SNS, DB 실패, 두 작업 공간 동시 실행 | REVIEW-24H-20260917-33 | 미검증 | 돈과 외부 공개를 일으키는 실발행은 실행하지 않았다. |
+
+판정은 BLOCK이다. MAJOR 12건의 상세 위치, 재현 시나리오, 수정 조건은 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단에 기록했다. 제품 코드는 수정하지 않았다.
+
+## 2026-09-17 19시 22분 KST · 성과 시계열 갭 build 차단 재확인
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사에서 지금도 없는 기본 흐름 항목을 하나 구현 | GAP-HISTORY-20260917-1922-01 | ❌ NG | 남은 항목은 게시물별 성과 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교다. 지정 작업 공간 `GET /api/metrics` HTTP 200, 키 `posts`, `coverage`, 게시물 0건, `history`와 `comparison` 없음. |
+| 기술 계약과 공정 | 승인된 DB·API 계약 안에서만 build | GAP-HISTORY-20260917-1922-02 | BLOCK | `pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준의 승인 기술설계가 없다. |
+| 전체 회귀 | 기존 생성·편집·발행·성과 흐름 보존 | GAP-HISTORY-20260917-1922-03 | PASS | Vitest 374파일·2,416건 통과, 3건 제외. TypeScript 종료 0. localhost 실제 요청 기본 흐름 11/11, Studio v1 14/14. |
+| 실행본 귀속 | localhost와 현재 HEAD | GAP-HISTORY-20260917-1922-04 | 부분 확인 | health HTTP 200, DB up, 실행 `0fc65567`. 현재 HEAD `2aac6c14`까지 제품 diff 5개는 브라우저 런처와 연결 오류 분류 변경이며 성과 route·schema·migration 변경은 없다. 운영 배포는 미검증. |
+| 신규 구현 | migration, API, 계약 테스트 | GAP-HISTORY-20260917-1922-05 | BLOCK | 제품 소스 변경 0건. 승인 없는 저장 구조를 선택하지 않았고 새로 되는 항목은 없다. |
+
+## 2026-09-17 19:12 KST · Meta App Review 제출 패키지 독립 문서 리뷰
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| Meta 문서 품질 | `standard-doc-review.md` 5축 독립 채점 | META-DOC-REVIEW-20260917-01 | 최초 ❌ NG 17/25 → 보정 PASS 25/25 | 최초본은 목차·버전핀·개정이력·RUBRIC_SCORE가 없었고 권한별 화면 증거가 문서의 API 열에만 있었다. `docs/ops/meta-app-review-2026-09.md` v1.1.0 §12에 최초·최종 점수와 보정 근거 기록. |
+| 영문 권한 문안 | Instagram 4, Threads 5, Facebook Page 4 | META-DOC-REVIEW-20260917-02 | PASS 13/13 | 권한별 사용자 가치, 사용하는 데이터·기능, 없을 때의 손실을 고유 문안으로 명시. |
+| 스크린캐스트 계약 | 권한별 실제 API 요청이 화면에 보이는가 | META-DOC-REVIEW-20260917-03 | 대본 PASS 13/13, 실행 ❌ NG 0/13 | §4.5에 permission, token 없는 METHOD·path, HTTP 2xx, 결과를 권한별로 명시. 실제 영상과 최근 성공 호출은 아직 없음. |
+| 콘솔 실측 정합 | 앱 Live, 표준 액세스 3개, redirect URI, 액세스 인증 | META-DOC-REVIEW-20260917-04 | PASS | 앱 Live는 관찰 상태, 액세스 인증은 미완료 제출 차단으로 기록. |
+| 기술 정확성 | Instagram·Facebook 인사이트 및 Page 권한 | META-DOC-REVIEW-20260917-05 | ❌ NG, 제출 차단 | Instagram scope·host·공식 account·media metric 안내 충돌, Facebook `read_insights` configuration과 `pages_read_engagement` 직접 증거가 남아 있음. 특정 Instagram metric은 실제 media 성공 호출 전 확정하지 않음. |
+| 출처 URL | 문서 내 외부 URL | META-DOC-REVIEW-20260917-06 | PASS 15/15 | redirect 포함 최종 HTTP 200. Meta 자동 수집은 429가 있었으나 직접 응답 본문과 HTTP로 재검증. |
+| Codex 독립 2차 검토 | 권한 문안·API 증거·예약 발행 경계 | META-DOC-REVIEW-20260917-07 | 최초 ❌ RETAKE 4건 → 문서 보정 PASS | Instagram metric 과단정, Facebook Page name 과장, `pages_read_engagement` path 불일치, 예약 발행 누락을 보정. 실제 성공 호출·영상 0/13은 계속 제출 차단. |
+
+문서 자체는 client-ready PASS로 보정했다. App Review 제출 준비는 실제 권한 성공 호출·영상 0/13과 기술 gap 때문에 계속 NO-GO다.
+
+## 2026-09-17 19:12 KST · 네 방 기본 흐름 QA v23
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08 | 사이드바에서 네 방을 잇는다 | FLOW-UI-V23 | PASS | localhost 네 방 4/4, 가린 모달·401·콘솔 오류 0 |
+| R19 | 390·768·1024·1440에서 실제로 누른다 | FLOW-UI-V23 | PASS | 20화면, 성과실→생성실 복귀 5/5, 가로 넘침 0 |
+| R166, R172 | 생성부터 성과 재인계까지 기본 흐름 | FLOW-API-V23 | PASS | 실제 localhost 요청 최종 11/11 |
+| R193, R205, R206 | 승인 시안 계승과 화면 충실도 | DESIGN-CONF-V23 | NG | v63 기준과 현재 16개 라이트 화면의 배치 속성 불일치 또는 동일 상태 미확보. canonical 승인 핀은 v68이라 기준도 충돌 |
+| R207 | 성과실 UX와 학습 정보 | FLOW-PERF-V23 | 부분 PASS | 제안 3건과 생성 큐 재인계 동작. v63 시각 정합 NG |
+| R01~R207 중 이번 범위 밖 | 회장 확정 요구 전건 | REQ-ALL-V23 | 이월 | 기존 정본 판정 유지. 이번 범위 관련 요청만 재검증 |
+
+기능 범위는 PASS다. 기본 흐름 11/11, 네 방 4/4, Studio v1 14/14, 네 폭 20화면과 복귀 5/5,
+전체 Vitest 374파일·2,416건, TypeScript, 격리 build 184/184, schema·seed·RLS, 디자인 lint를 통과했다.
+제품 소스는 변경하지 않았다. v63 디자인 정합 NG, v63과 v68 승인 핀 충돌, 운영 배포와 외부 채널
+실발행 미검증 때문에 제품 전체 QA는 NG다. 릴레이 품질 게이트도 운영 host 접촉 증거 0건으로 FAIL이다.
+상세는 `docs/qa/osmu-four-room-basic-flow-v23-gpt-codex.md`,
+원본은 `logs/diff/osmu-four-room-flow-20260917-v23/`이다.
+
 ## 2026-09-17 16:45 KST · 최근 24시간 코드 공격 리뷰 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

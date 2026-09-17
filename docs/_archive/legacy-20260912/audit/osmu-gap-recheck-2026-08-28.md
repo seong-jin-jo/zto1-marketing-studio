@@ -1,5 +1,91 @@
 # 갭 감사 재확인 2026-08-28
 
+## 2026-09-17 23시 15분 갭 재확인: 성과 시계열 기술계약과 실앱 회귀 NG로 build 회수
+
+두 기반 감사, 현재 schema와 migration, 성과 Route Handler, 테스트를 다시 대조했다. 감사 당시의
+다른 없음·부족 항목은 현재 코드에 구현돼 있다. 기본 흐름에서 지금도 없는 것은 게시물별 성과
+관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교 하나다.
+
+| 계약 | 현재 판정 | 직접 증거 |
+|---|---|---|
+| 게시물별 성과 이력 | 없음 | `published_posts`는 최신 누계와 `metrics_at`만 보존한다. 관측 시각별 이력 table과 migration이 없다. |
+| 재현 가능한 30일 비교 | 없음 | 지정 작업 공간 `GET /api/metrics` HTTP 200. 응답 키는 `coverage`, `posts`, 게시물 0건이며 `history`, `comparison`이 없다. |
+| 공정과 기술계약 | BLOCK | `pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준이 승인되지 않았다. |
+| 실행본 귀속 | 부분 확인 | localhost health HTTP 200, DB up, 실행 `7c9c9050`, 현재 HEAD `8e4585e7`. 두 커밋 사이 성과 route, schema, migration과 두 필수 E2E 스크립트 변경은 0건이다. |
+| 전체 회귀 | PASS | Vitest 374파일·2,416건 통과, 3건 제외. TypeScript 종료 0. |
+| 기본 흐름 실앱 | NG | `verify-basic-flow-e2e.mjs` 최초와 재실행 모두 첫 생성이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장으로 종료 코드 1이다. 서버 고정 원인은 `exit_nonzero`다. |
+| Studio v1 실앱 | NG | 인증·멱등 키·빈 본문 거절은 401·400·422로 통과했다. 정상 생성은 기대 201 대신 HTTP 200의 같은 공급자 오류를 받아 종료 코드 1이다. |
+| 제품 소스 | 변경 없음 | 승인 없는 DB 스키마와 API 의미를 선택하지 않았고, 두 필수 실앱 E2E도 통과하지 못했다. 새로 되는 것으로 전환된 항목은 없다. |
+
+외부 공식 계약도 저장 의미를 먼저 합의해야 한다는 결론을 지지한다. YouTube Analytics는
+시작일, 종료일, 지표와 차원으로 기간을 정의한다. TikTok 영상 조회 계약은 영상별 조회수,
+좋아요, 댓글과 공유의 누계값을 반환한다. 두 공급자를 하나의 기간 비교로 묶으려면 원본 의미와
+로컬 관측값을 분리해 보존하는 승인 계약이 필요하다.
+
+레드팀: 최신 누계 두 번의 차이를 최근 30일로 표시하면 화면은 빨리 채울 수 있다. 수집 누락과
+누계 감소를 기간 성과로 오판하고 같은 결과를 재계산할 수 없어 기본 흐름 완성으로 볼 수 없다.
+
+셀프심문: 이 차단이 틀렸다면 승인된 관측 이력 migration과 history·comparison API 계약이 있어야
+한다. pipeline, 데이터 모델, schema, migration, Route Handler와 실제 응답에서 찾지 못했다.
+
+회수 필요: 컨트롤러와 tech-architect가 게시물별 snapshot 저장 모델, 멱등 키, 보존 기간,
+공급자별 원본과 정규화 지표, 최근 30일과 직전 30일 비교식, 표본 부족 기준을 합의하고 eng-design을
+승인한 뒤 build를 다시 열어야 한다. 생성 공급자 실앱 회귀도 두 필수 E2E가 통과할 때까지 NG다.
+
+STAMP | line: osmu-gapfill091723-codex | 생성: 2026-09-17 23:15 KST | model: gpt-codex/gpt-5.6-sol | agent: code-builder | skill: 없음 | 근거: 두 갭 감사, pipeline, schema와 Route Handler, localhost 실제 요청, 전체 회귀, 공식 공급자 문서 | 고민: 반복 발주라도 QA 공정과 미승인 저장 계약, 실패한 실앱 검증을 우회하지 않았다.
+
+SKILLS_USED: 없음. 기존 Next.js와 PostgreSQL 성과 저장 build에 직접 대응하는 설치 스킬이 없다. SKILLS_SKIPPED: `qa`는 신규 DB와 API 기술계약 선택을 대신할 수 없고 이번 과제 범위를 제품 결함 수정으로 넓히지 않기 위해 적용하지 않았다.
+
+KNOWLEDGE_QUERY: OSMU 기본 흐름, 게시물별 성과 관측 이력, 재현 가능한 30일 비교, YouTube 기간 보고와 TikTok 누계 성과 계약을 검색했다.
+HITS_USED: BRAIN business index, repo 사업 좌표, 두 갭 감사, v63 성과 계약, Google YouTube Analytics와 TikTok Video Query 공식 문서를 잔여 갭과 저장 계약 선행 필요성 판정에 사용했다.
+HITS_REJECTED: 일반 마케팅 자료와 TikTok Research API는 고객용 저장 및 비교 계약의 근거가 아니어서 제외했다.
+CONFLICTS: 외부 공식 계약과 회장 정본의 충돌은 없다. 사용자 지정 v63과 pipeline 승인 v68 디자인 핀은 충돌하지만 이번 비화면 판정에는 영향을 주지 않는다.
+
+SOURCES: 두 갭 감사 | v63 프로토타입 | 회장 요구 대장 | OSMU 사업 좌표 | `wiki/5-hubs/hub-eng/architecture/data-model.md` | `dashboard/db/schema.sql` | `dashboard/src/app/api/metrics/route.ts` | https://developers.google.com/youtube/analytics/reference/reports/query | https://developers.tiktok.com/docs/en/tiktok-api-v1-video-query
+
+MODEL: gpt-codex/gpt-5.6-sol / code-builder
+
+## 2026-09-17 19시 22분 갭 재확인: 성과 시계열 기술계약 미승인으로 build 회수
+
+두 기반 감사를 현재 schema, migrations, 성과 Route Handler와 다시 대조했다. 감사 당시의 다른
+없음·부족 항목은 현재 코드에 구현돼 있고, 기본 흐름에서 지금도 없는 것은 게시물별 성과 관측
+이력과 재현 가능한 최근 30일 대 직전 30일 비교 하나다.
+
+| 계약 | 현재 판정 | 직접 증거 |
+|---|---|---|
+| 게시물별 성과 이력 | 없음 | `published_posts`는 최신 누계와 `metrics_at`만 보존한다. 관측 시각별 이력 table과 migration이 없다. |
+| 재현 가능한 30일 비교 | 없음 | 지정 작업 공간 `GET /api/metrics` HTTP 200. 응답 키는 `posts`, `coverage`, 게시물 0건이며 `history`, `comparison`이 없다. |
+| 공정과 기술계약 | BLOCK | `pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준이 승인되지 않았다. |
+| 회귀 | PASS | Vitest 374파일·2,416건 통과, 3건 제외. TypeScript 종료 0. localhost 기본 흐름 11/11과 Studio v1 14/14 통과. |
+| 제품 소스 | 변경 없음 | 승인 없는 DB 스키마와 API 의미를 워커가 선택하지 않았다. 새로 되는 것으로 전환된 항목은 없다. |
+
+외부 공식 계약도 같은 결론을 지지한다. YouTube Analytics는 시작일·종료일·지표·차원으로 기간을
+정의하지만 TikTok Video Query는 영상별 누계 수치를 반환한다. 두 공급자를 하나의 기간 비교로
+묶으려면 원본 의미와 로컬 관측값을 분리해 보존하는 승인 계약이 먼저 필요하다.
+
+레드팀: 최신 누계 두 번의 차이를 최근 30일로 표시하면 빠르지만 수집 누락과 누계 감소를 기간
+성과로 오판한다. 같은 결과를 다시 계산할 수 없으므로 기본 흐름 완성으로 볼 수 없다.
+
+셀프심문: 이 차단이 틀렸다면 승인된 관측 이력 migration과 history·comparison API 계약이 있어야
+한다. pipeline, data model, schema, migrations, Route Handler와 실제 응답에서 찾지 못했다.
+
+⛔ 회수 필요: 컨트롤러와 tech-architect가 게시물별 snapshot 저장 모델, 멱등 키, 보존 기간,
+공급자별 원본과 정규화 지표, 최근 30일과 직전 30일 비교식, 표본 부족 기준을 합의하고 eng-design을
+승인한 뒤 build를 다시 열어야 한다.
+
+STAMP | line: osmu-gapfill091719-codex | 생성: 2026-09-17 19:22 KST | model: gpt-codex/gpt-5 | agent: code-builder | skill: 없음 | 근거: 두 갭 감사, pipeline, schema와 Route Handler, localhost 실제 요청, 전체 회귀, 공식 공급자 문서 | 고민: 반복 발주라도 QA 공정과 미승인 저장 계약을 우회하지 않았다.
+
+SKILLS_USED: 없음. 기존 Next.js와 PostgreSQL 성과 저장 build에 직접 대응하는 설치 스킬이 없다. SKILLS_SKIPPED: `qa`는 신규 DB와 API 기술계약 선택을 대신할 수 없어 적용하지 않았다.
+
+KNOWLEDGE_QUERY: OSMU 기본 흐름, 게시물별 성과 관측 이력, 재현 가능한 30일 비교, YouTube 기간 보고와 TikTok 누계 성과 계약을 검색했다.
+HITS_USED: BRAIN business index, repo 사업 좌표, 두 갭 감사, v63 성과 계약, Google YouTube Analytics와 TikTok Video Query 공식 문서를 잔여 갭과 저장 계약 선행 필요성 판정에 사용했다.
+HITS_REJECTED: 일반 마케팅 자료와 TikTok Research API는 고객용 저장 및 비교 계약의 근거가 아니어서 제외했다.
+CONFLICTS: 외부 공식 계약과 회장 사업 정본의 충돌은 없다. 사용자 지정 v63과 pipeline 승인 v68 디자인 핀은 충돌하지만 이번 비화면 판정에는 영향을 주지 않는다.
+
+SOURCES: 두 갭 감사 | v63 프로토타입 | 회장 요구 대장 | OSMU 사업 좌표 | `wiki/5-hubs/hub-eng/architecture/data-model.md` | `dashboard/db/schema.sql` | `dashboard/src/app/api/metrics/route.ts` | https://developers.google.com/youtube/analytics/reference/reports/query | https://developers.tiktok.com/docs/en/tiktok-api-v2-video-query
+
+MODEL: gpt-codex/gpt-5 / code-builder
+
 ## 2026-09-17 11시 14분 갭 재확인: 성과 시계열 기술계약 미승인으로 build 회수
 
 두 기반 감사를 현재 API, schema, migration, 테스트와 대조했다. 감사 당시 없던 댓글 행동,

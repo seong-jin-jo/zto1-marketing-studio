@@ -8,6 +8,7 @@ import { SCHEDULABLE_PLATFORMS } from "@/lib/constants";
 import { channelImageCapacity } from "@/lib/studio/channel-image-capacity";
 import { runWithTenant } from "@/lib/tenant-context";
 import { drainQueueMirrorOutbox, listQueueMirrorOutboxTenantIds } from "@/lib/queue-mirror-outbox";
+import { publicationUsageOutbox, recordPublicationEvent } from "@/lib/usage-events";
 import {
   getChannelCred,
   publishFacebook,
@@ -405,12 +406,19 @@ async function recordPublishedPost(
   const status = result.ok
     ? "published"
     : result.failureKind === "indeterminate" ? "uncertain" : "failed";
-  await withTenant(tenantId, (sql) => sql`
-    INSERT INTO published_posts (tenant_id, draft_id, platform, external_id, permalink, text, status, error, account_id)
+  const [publication] = await withTenant(tenantId, (sql) => sql<{ id: string }[]>`
+    INSERT INTO published_posts (tenant_id, draft_id, platform, external_id, permalink, text, status, error, account_id, provider_meta)
     VALUES (${tenantId}, ${row.draft_id ?? null}, ${platform}, ${result.externalId ?? null},
             ${result.permalink ?? null}, ${text || null},
-            ${status}, ${result.error ?? null}, ${accountId ?? null})
+            ${status}, ${result.error ?? null}, ${accountId ?? null},
+            ${sql.json(result.ok ? publicationUsageOutbox(platform) as never : {} as never)}::jsonb)
+    RETURNING id::text
   `);
+  if (result.ok && publication) {
+    // relay가 잠시 실패해도 같은 INSERT에 pending outbox가 남는다. 다음 /api/usage 조회가
+    // 멱등하게 다시 처리하며, 예약 발행 자체를 실패나 재발행 대상으로 바꾸지 않는다.
+    await recordPublicationEvent(tenantId, publication.id, platform).catch(() => {});
+  }
 }
 
 // 결과를 확인하지 못한 채널이 하나라도 있으면 그 예약은 failed 로 닫지 않는다.

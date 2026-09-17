@@ -1,6 +1,34 @@
-# session-state.growth.md — OSMU 그로스 레인 핸드오프 (최신순)
+# session-state.growth.md — OpenClaw 마케팅 레인 (OSMU) 핸드오프 (최신순)
 
 목적: OSMU 그로스(마케팅) 레인을 개시해 2026-09 첫 바퀴(전략→우선순위→개통→발주→집행)를 돌린다. 캠페인 컨셉 = 메타 데모("이 계정의 모든 게시물은 OSMU 로 만들어졌다").
+
+# 2026-09-18 01시 05분 3칸 partial 닫힘 · SNS 에셋 키트 19종 생성 · 회장 승인 전부 반영
+회장 2026-09-18 00:43: 전부 승인 + Higgsfield 로 SNS 에셋(로고·배너·카드뉴스 등) 미리 뽑아둘 것 + 폴더명 zto1 개정.
+2칸 chairman-confirmed, decisions.md append, 3칸 03-개통.md status partial (verify PASS·gate-stamp). 실측: 운영 랜딩에 GA4 태그 이미 실림(빌드 시크릿 인라인), UTM 3개 보존 → 정적 도착 페이지 배포 예외 철회. 회장 수동 3건 절차서는 03 §5(GA4 소유확인·실시간 관측·내부필터 Active / Threads bio 링크 / IG bio 링크). 완성 링크 = 운영 URL + utm_source=threads|instagram&utm_medium=bio&utm_campaign=osmu-factory.
+에셋: store-visual-producer 가 docs/growth/assets/2026-09-sns-kit/ 에 19종(아바타 3안·배너 4·카드뉴스 5·엔드카드·워터마크 2·썸네일·하이라이트 4) + README. Higgsfield flux_2 배경 8회 전부 성공, 텍스트는 PIL+Pretendard 합성. 자가 등급 B+. 확정 문구 "Made with OSMU" + "이 콘텐츠도 OSMU 팩토리에서 출고했습니다". 로고 교체는 회장 선택(추천 candidate1).
+verify: store-visual-producer 트랜스크립트가 FAIL(브랜드·토큰 정본 미독) 판정. 실제로는 brand.md·design-system.md 를 sed 로 읽고 팔레트 hex 를 사용했으나 검사기가 brand-book|visual-identity|global.css|ux-writing 파일명만 센다(이 벤처 정본 이름과 불일치). hand-patch 금지라 ⛔ 라벨로 출고. 검사기 개선은 하네스 백로그.
+폴더명: git 원격 = openclaw-auto, 로컬 폴더 = zto1-marketing-studio(불일치). 다른 세션 30여 개가 붙어 있어 rename 은 세션 빈 시점에. 문서 표기는 "OpenClaw 마케팅 레인 (OSMU)" 로 개정 완료.
+남은 것: 회장 수동 3건, 로고 1안 선택, 관리자 창 운영자 토큰(권한 규칙 필요), 회원 창 구글 로그인. 4칸 발주는 제품 실발행 관찰 후.
+
+# 2026-09-18 00시 25분 로그인 시도 결과: 회원은 구글 자격증명 화면까지, 운영자는 토큰 없어 막힘
+회장 "로그인도 해봐" 지시로 직접 시도했다.
+회원(9333): 운영 홈 → "로그인 / 회원가입" → /login → "Google로 시작" 클릭까지 자동 진행. 현재 accounts.google.com 자격증명 입력 화면에서 대기. 아이디·비밀번호 입력은 금지 규정이라 멈춤. 회장이 그 화면에서 입력만 하면 됨.
+운영자(9222): 운영 /operator/customers 는 미인증이라 랜딩이 뜬다. 진입 버튼 "운영자세요? 운영자 콘솔로 →" 확인. 토큰 입력이 필요한데 운영 토큰 읽기가 권한 분류기에 막혀(Production Reads) 값을 가져올 수 없다. 회장이 붙여넣거나 읽기 권한 허용 필요.
+관찰: 관리자 창에 회장이 이미 Meta business·developers.facebook.com 앱 1553503759757107 대시보드·console.x.com 앱 33410793 탭을 로그인 상태로 열어둠.
+도구: playwright connectOverCDP 가 무거운 Meta 탭 때문에 hang 해서 /tmp/cdp-eval.mjs (페이지 타깃 하나에만 붙는 최소 CDP 클라이언트) 로 우회.
+
+# 2026-09-17 22시 15분 두 창 식별·운영 URL 전환·관리자 콘솔 탭 구성
+회장 지적 3건: 9333 창 직관 식별 / 대시보드는 로컬 아닌 운영 / 관리자 창엔 개발자 콘솔·운영자 화면.
+조치: 각 창 첫 탭에 큰 글씨 마커 탭(관리자 파랑 "관리자 · CDP 9222", 회원 빨강 "회원 · CDP 9333"), 창 배치 관리자 왼쪽·회원 오른쪽. 런처 기본 URL 을 운영 서비스(OSMU_PUBLIC_URL)로 변경. 관리자 창 탭: 운영 /operator/customers, Meta 개발자 앱 콘솔, X 콘솔(셋 다 로그인 대기). 회원 창 탭: 운영 홈(Google 로그인 대기).
+막힘: 운영 운영자 토큰 주입은 권한 분류기가 거부. 회장이 관리자 창에서 토큰 입력.
+발견: 운영 env 에 GA 측정 ID 가 이미 설정돼 있음. 그로스 가설 A "GA4 property 생성" 전제 재확인 필요(3칸에서 소유 계정·수집 실태 확인).
+
+# 2026-09-17 22시 05분 회원 브라우저를 회장이 띄운 실회원 CDP 9333(j.the.great.investor)으로 교체
+회장: CDP 엔드포인트 분리, 하나는 관리자 계정, 하나는 실제 회원 계정으로 테스트. 9333 이 실회원.
+관찰: 9333 = Chrome for Testing 151, 탭 = instagram(j.the.great.investor, sessionid 있음=로그인), threads/tiktok/facebook 은 로그인 페이지(미로그인), Google 미로그인. localhost:3456 탭 identity=null(OSMU 고객 로그인은 Google OAuth 전용이라 Google 로그인 필요).
+조치: osmu-browsers.sh 에 OSMU_MEMBER_CDP 도입(기본 9223, 9333 지정 가능). 9223 창 종료. admin 9222 유지(운영자 로그인 상태).
+규칙: 9333 창에서 SNS 탭은 건드리지 않는다(Meta 자동 운전 금지). localhost 탭만 조작.
+다음: 회장이 9333 창에서 Google 로그인(OSMU 고객 로그인) → 컨트롤러가 고객 플로우(워크스페이스 생성·채널 연결 화면까지) 자동 검증, Meta OAuth 동의 클릭은 회장.
 
 # 2026-09-17 18시 40분 테스트 브라우저 2개(관리자·회원) 기동 완료
 회장: "Chrome for Testing 굳이 필요 없지? aside 와 뭐가 달라? 일단 만들어. 하네스에 프로필 관리 방식 이미 있을걸".

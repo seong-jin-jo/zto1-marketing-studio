@@ -814,8 +814,12 @@ export async function fetchYouTubeMetrics(
  * 2026-09-09 회장 지적("성과 수집이 Threads 만") 후속. Meta 는 Graph API 의 insights 로
  * 게시물별 수치를 준다. Threads 와 같은 구조라 응답 형태만 맞추면 된다.
  *
- * 지표 이름이 채널마다 다르다. Instagram 피드는 impressions, Reels는 views, Facebook은
- * post_impressions를 쓴다. 하나로 뭉뚱그리면 해당 미디어 유형에서 빈 값이 온다.
+ * Instagram Login media insights 공식 계약(2026-09-18 확인):
+ * https://developers.facebook.com/documentation/instagram-platform/reference/instagram-media/insights
+ * - "Host URL graph.instagram.com", "The latest version is: v26.0"
+ * - "For media created after July 2, 2024, this metric is deprecated."(impressions)
+ * - views, likes, comments는 FEED/REELS에서 지원된다.
+ * Facebook Page post insights는 기존 graph.facebook.com/v21.0 계약을 유지한다.
  */
 export async function fetchMetaPostMetrics(
   cred: ChannelCred,
@@ -827,11 +831,13 @@ export async function fetchMetaPostMetrics(
   if (ids.length === 0) return { ok: true, metrics: {}, attemptedIds: [] };
   if (!cred.token) return { ok: false, error: `${platform} 연결이 없습니다.` };
 
-  const metricNames = platform === "instagram"
-    ? "impressions,likes,comments"
-    : platform === "instagram_reels"
-      ? "views,likes,comments"
-      : "post_impressions,post_reactions_by_type_total";
+  const isInstagram = platform === "instagram" || platform === "instagram_reels";
+  const metricNames = isInstagram
+    ? "views,likes,comments"
+    : "post_impressions,post_reactions_by_type_total";
+  const graphBaseUrl = isInstagram
+    ? "https://graph.instagram.com/v26.0"
+    : "https://graph.facebook.com/v21.0";
   const metrics: Record<string, { views: number; likes: number; replies: number }> = {};
   const attemptedIds: string[] = [];
   const failures: Array<{ id: string; status?: number; code: string }> = [];
@@ -841,7 +847,7 @@ export async function fetchMetaPostMetrics(
   for (const id of ids) {
     try {
       const resp = await fetch(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(id)}/insights?metric=${metricNames}&access_token=${cred.token}`,
+        `${graphBaseUrl}/${encodeURIComponent(id)}/insights?metric=${metricNames}&access_token=${cred.token}`,
         { signal: AbortSignal.timeout(8000) },
       );
       if (!resp.ok) {

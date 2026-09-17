@@ -1,4 +1,4 @@
-# 유입 태그 규격: OSMU
+# 유입 태그 규격: OpenClaw 마케팅 레인 (OSMU)
 
 > 상위 정본: `wiki/5-hubs/hub-mkt/gtm-plan.md` §2 (GA4 이벤트 4종·UTM 고정). 이 문서는 그 규격을 그로스 레인 3칸(개통)이 읽는 형태로 옮긴 것이다.
 
@@ -19,5 +19,9 @@
 ## GA4 이벤트 (gtm-plan §2 그대로)
 `waitlist_submit` · `cta_click` · `sns_outbound` · `page_view`
 
-## 미개통 (2026-09-16 기준)
-GA4 property 미생성, 랜딩 미배포. 3칸에서 실문자열을 켤 때까지 이 문서는 규격일 뿐 개통이 아니다.
+## 개통 상태 (2026-09-18 실측, 3칸 `campaigns/2026-09/03-개통.md`)
+- GA4 측정 ID: 운영 번들에 인라인돼 있음(`deploy-marketing.yml` 시크릿 주입). 속성 소유·수신은 회장 콘솔 확인 대기.
+- 도착지: 운영 랜딩 `/` (임시 호스트). UTM 3개 도착지 보존 확인. 동의(Consent Mode v2) 후에만 `page_view` 발행.
+- 발급 링크: `utm_source=threads|instagram` × `utm_medium=bio` × `utm_campaign=osmu-factory` 2건. 실문자열은 `channels.md`.
+- 코드에 있는 이벤트: `page_view`·`cta_click`(cta_id=generate_ideas 만). **`waitlist_submit`·`sns_outbound` 는 코드에 없다.** 획득 관문 바퀴에서 제품 레인 발주.
+- 예약 캠페인 값(정규식 통과): `osmu-2026-09-receipt`(가설 C) · `osmu-2026-09-report`(가설 D). 집행 전까지 변경 가능, 집행 뒤 변경 금지.

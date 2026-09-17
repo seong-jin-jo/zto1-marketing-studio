@@ -1,5 +1,48 @@
 # OSMU code review 2026-09-17 handoff
 
+## 2026-09-17 20시 27분 최종 핸드오프
+
+### 무엇을 어디까지 했나
+
+- 사용자 요청을 기준으로 2026-09-16 20:00 KST부터 2026-09-17 20:00 KST까지 최근 24시간을 공격적으로 재검토했다. 고정 범위는 `ed8231a52cc3071b53112822603c34ee93d2979d..a66b4b3709547f05911567d52dbadb558fe6c6e0`, 커미터 시각 기준 56개 커밋이다.
+- 최신 승인 v68 핀, 과제 지정 v63 프로토타입, DESIGN.md v37, 확정 요구 대장, 사업 좌표, 구현 현황, 결정과 실수 원장, BRAIN과 외부 기준을 대조했다.
+- 기존 11건이 현재 코드에 남아 있고 `dashboard/src/lib/oauth-errors.ts:74`의 Meta 오류 원인 오분류를 새로 직접 재현했다. MAJOR 12건으로 `REVIEW_VERDICT: BLOCK(MAJOR 있음)`이다.
+- 제품 코드는 수정하지 않았다. 감사, QA 원장, 공용 인계 기록은 `db30a652`에 커밋했다. 상세 감사는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단이다.
+
+### 남은 이슈·블로커
+
+- 외부 게시 성공 뒤 실제 발행 행과 사용량 장부를 복구하지 않는 화면 복구, YouTube 재개 파일 동일성 미검증, TikTok과 예약 발행의 과금 outbox 누락이 남아 있다.
+- 사용량 relay 부분 실패의 HTTP 200 처리, Studio 5xx의 HTTP 200 변환, 블로그와 GSC 장애의 0 성과 표시가 남아 있다.
+- launchctl 뒤의 Claude 후보 폴백 중단, ElevenLabs 영문 오류 노출, API sweep의 파일 집합 고정, 네 방 E2E의 공유 설정 덮어쓰기가 남아 있다.
+- `dashboard/src/lib/oauth-errors.ts:74`는 만료된 인증 코드도 Meta 테스터 명단 누락으로 단정한다. 현재 소스 함수 직접 실행으로 확인했다.
+- localhost 실행 커밋 `0fc65567`은 검토 끝 `a66b4b37`보다 이전이다. 최신 소스 귀속 실앱 E2E, 실제 외부 발행, DB 장애 주입, 두 작업 공간 동시 동적 격리, 운영 배포는 미검증이다.
+
+### 다음에 칠 명령
+
+다음 소유자는 code-builder다. 12개 MAJOR를 수정한 고정 커밋이 나온 뒤 code-reviewer가 같은 실패 시나리오로 다시 공격한다.
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+npm run test
+npx tsc --noEmit
+set -a && source ./.env.local && set +a
+STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-basic-flow-e2e.mjs
+STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-studio-v1-e2e.mjs
+npx tsx -e 'import { oauthErrorMessage } from "./src/lib/oauth-errors"; console.log(oauthErrorMessage("Error validating verification code: authorization code expired", "Instagram"))'
+```
+
+종료 증거는 MAJOR 0건, 외부 성공과 발행 장부 및 사용량 수렴, 파일 불일치 세션 전송 0바이트, 모든 발행 경로의 사용량 1회 기록, 부분 실패의 불완전 표시, 다음 Claude 후보 실행, 사용자 노출 영문 오류 0건, 공유 QA 동시 변경 보존, Studio timeout의 비2xx 응답, Meta 오류의 원인 중립 안내, 전체 테스트와 TypeScript 통과, 최신 제품 소스에 귀속되는 두 E2E 통과다.
+
+### 검증했나
+
+- `npm run test`: 374파일, 2,416건 통과, 3건 제외.
+- `npx tsc --noEmit`: 종료 코드 0.
+- localhost 기본 흐름: 11/11 PASS.
+- Studio v1: 14/14 PASS.
+- health: HTTP 200, DB up, 실행 커밋 `0fc65567`.
+- 만료된 인증 코드의 Meta 테스터 오분류: 현재 소스에서 직접 재현.
+- 실제 외부 게시, DB 실패 주입, 두 작업 공간 동시 동적 격리, 운영 배포: 미검증.
+
 ## 2026-09-17 17시 02분 최종 핸드오프
 
 ### 무엇을 어디까지 했나
