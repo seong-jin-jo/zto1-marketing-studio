@@ -15,6 +15,10 @@
 | 공개 성과 페이지 (open metrics) | 미존재 | — | playbook 우선순위 3 (insights 데이터 재노출) |
 | 채널 셋업 공개 가이드 (pSEO 시드) | 내부만 존재 | `dashboard/src/lib/setup-guides.ts` | playbook 우선순위 5 |
 
+## 2026-09-18 — SNS 세팅 키트 일습 (아바타·배너·카드뉴스·엔드카드·워터마크·썸네일·하이라이트 19종)
+
+회장 지시("힉스필드에서 osmu sns세팅하는데 필요한 로고, 배너, 카드뉴스 등등 뽑아놔")로 Threads/IG/YouTube/TikTok/X/Facebook/LinkedIn 세팅용 풀세트 생성. 경로 = flux_2 직접 호출(8장, 1.5cr×8=12cr) + PIL/Pretendard 텍스트 합성(design-html 헤드리스 렌더 환경 미비로 대체). 전부 "Made with OSMU" 서명 포함(메타 데모 컨셉). 산출물 = `docs/growth/assets/2026-09-sns-kit/`(README.md에 목록·프롬프트·design-review B+·벤치마크·4필드 전체). **프로필 로고는 3안 후보만 — 최종 확정은 회장 픽 대기**(design-system.md §3 규칙, ⛔ 회수 항목).
+
 ## 2026-07-18~19 재실행 — 성공 (크레딧 충전 후, flux_2 직접 경로)
 
 **결과: 12장 생성(아바타 4·배너 4·썸네일 4) → 카테고리별 선별 → 배너1·썸네일1·프로필1 출고.** 잔액 실측 1184cr(충전 완료 확인, 공유 풀 문제 해소).

@@ -2,6 +2,14 @@
 
 목적: OSMU 그로스(마케팅) 레인을 개시해 2026-09 첫 바퀴(전략→우선순위→개통→발주→집행)를 돌린다. 캠페인 컨셉 = 메타 데모("이 계정의 모든 게시물은 OSMU 로 만들어졌다").
 
+# 2026-09-18 01시 05분 3칸 partial 닫힘 · SNS 에셋 키트 19종 생성 · 회장 승인 전부 반영
+회장 2026-09-18 00:43: 전부 승인 + Higgsfield 로 SNS 에셋(로고·배너·카드뉴스 등) 미리 뽑아둘 것 + 폴더명 zto1 개정.
+2칸 chairman-confirmed, decisions.md append, 3칸 03-개통.md status partial (verify PASS·gate-stamp). 실측: 운영 랜딩에 GA4 태그 이미 실림(빌드 시크릿 인라인), UTM 3개 보존 → 정적 도착 페이지 배포 예외 철회. 회장 수동 3건 절차서는 03 §5(GA4 소유확인·실시간 관측·내부필터 Active / Threads bio 링크 / IG bio 링크). 완성 링크 = 운영 URL + utm_source=threads|instagram&utm_medium=bio&utm_campaign=osmu-factory.
+에셋: store-visual-producer 가 docs/growth/assets/2026-09-sns-kit/ 에 19종(아바타 3안·배너 4·카드뉴스 5·엔드카드·워터마크 2·썸네일·하이라이트 4) + README. Higgsfield flux_2 배경 8회 전부 성공, 텍스트는 PIL+Pretendard 합성. 자가 등급 B+. 확정 문구 "Made with OSMU" + "이 콘텐츠도 OSMU 팩토리에서 출고했습니다". 로고 교체는 회장 선택(추천 candidate1).
+verify: store-visual-producer 트랜스크립트가 FAIL(브랜드·토큰 정본 미독) 판정. 실제로는 brand.md·design-system.md 를 sed 로 읽고 팔레트 hex 를 사용했으나 검사기가 brand-book|visual-identity|global.css|ux-writing 파일명만 센다(이 벤처 정본 이름과 불일치). hand-patch 금지라 ⛔ 라벨로 출고. 검사기 개선은 하네스 백로그.
+폴더명: git 원격 = openclaw-auto, 로컬 폴더 = zto1-marketing-studio(불일치). 다른 세션 30여 개가 붙어 있어 rename 은 세션 빈 시점에. 문서 표기는 "OpenClaw 마케팅 레인 (OSMU)" 로 개정 완료.
+남은 것: 회장 수동 3건, 로고 1안 선택, 관리자 창 운영자 토큰(권한 규칙 필요), 회원 창 구글 로그인. 4칸 발주는 제품 실발행 관찰 후.
+
 # 2026-09-18 00시 25분 로그인 시도 결과: 회원은 구글 자격증명 화면까지, 운영자는 토큰 없어 막힘
 회장 "로그인도 해봐" 지시로 직접 시도했다.
 회원(9333): 운영 홈 → "로그인 / 회원가입" → /login → "Google로 시작" 클릭까지 자동 진행. 현재 accounts.google.com 자격증명 입력 화면에서 대기. 아이디·비밀번호 입력은 금지 규정이라 멈춤. 회장이 그 화면에서 입력만 하면 됨.
