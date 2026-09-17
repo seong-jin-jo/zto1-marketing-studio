@@ -1,3 +1,17 @@
+## 2026-09-17 19:12 KST 네 방 기본 흐름 QA v23, 제품 전체 QA는 NG
+
+사용자 과제 원문을 handoff 기준으로 사용했다. canonical `pipeline-state.osmu.md`는 착수 시 이미
+`current_stage: qa`여서 단계값을 바꾸지 않았다. localhost 기능 범위는 기본 흐름 11/11,
+네 방 4/4, 네 폭 20화면과 복귀 5/5, Studio v1 14/14를 통과했다. 전체 Vitest 374파일·2,416건,
+TypeScript, 격리 build 184/184, schema·seed·RLS, 디자인 lint도 통과했다. 제품 소스 변경은 없다.
+
+v63 디자인 정합 NG, v63과 canonical 승인 v68 핀 충돌, 운영 배포와 외부 채널 실발행 미검증
+때문에 qa 진행 중과 승인 불가 상태를 유지한다. `verify-agent-quality.sh`도 운영 host 접촉 증거
+0건으로 로컬 QA 출고를 반려했다. 증거는
+`docs/qa/osmu-four-room-basic-flow-v23-gpt-codex.md`와
+`logs/diff/osmu-four-room-flow-20260917-v23/`이다. 다음 행동은 단일 승인 디자인 핀을 확정하고
+동일 콘텐츠 상태의 16화면 정합을 맞춘 뒤 운영 host를 별도 검증하는 것이다.
+
 # 2026-09-17 16시 50분 최근 24시간 코드 공격 리뷰 BLOCK
 
 사용자의 명시 과제를 handoff basis로 사용했다. 여러 live tmux pane과 기존 session-state가 함께 있어 기준을 질문했으나 답이 없어, 현재 요청과 현재 git 상태를 기준으로 검토했다. tmux 작업은 인계받거나 변경하지 않았다.

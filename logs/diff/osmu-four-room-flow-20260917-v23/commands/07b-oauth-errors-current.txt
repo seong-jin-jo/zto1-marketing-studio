@@ -1,0 +1,10 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.9 /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+
+ ✓ tests/brand/oauth-errors.test.ts (11 tests) 26ms
+
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+   Start at  18:48:31
+   Duration  2.66s (transform 157ms, setup 70ms, collect 134ms, tests 26ms, environment 1ms, prepare 244ms)
