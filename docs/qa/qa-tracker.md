@@ -2,6 +2,22 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-17 11시 06분 KST · 성과 시계열 갭 재착수 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사를 현재 코드와 대조해 기본 흐름의 잔여 미구현 하나를 만든다 | GAP-HISTORY-20260917-1106-01 | ❌ NG | 게시물별 성과 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교가 여전히 없다. 지정 작업 공간 `GET /api/metrics`는 HTTP 200, 키 `posts`, `coverage`, 게시물 0건이며 `history`, `comparison`이 없다. |
+| 기술 계약 | DB와 API 선택을 승인 산출물에서 확인한다 | GAP-HISTORY-20260917-1106-02 | BLOCK | 현재 공정은 `qa`, 승인 아님이다. 승인된 성과 관측 단위, 중복 방지 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준이 없다. code-builder가 새 DB 스키마와 API 계약을 선택할 수 없다. |
+| 실행본 귀속 | localhost 제품 소스와 현재 제품 소스 비교 | GAP-HISTORY-20260917-1106-03 | PASS | health HTTP 200, DB up, 실행 `build_commit=2280089f`. 실행 커밋은 현재 HEAD의 조상이고 그 뒤 `dashboard/src`, `dashboard/db`, `dashboard/tests`, `dashboard/scripts` 제품 diff는 0건이다. |
+| 기본 흐름 실앱 | 생성, 편집, 발행 큐, 성과 제안 재인계와 지표 조회 | GAP-HISTORY-20260917-1106-04 | 조건부 PASS | 첫 실행은 AI 출력 JSON 파싱 실패로 후보 0장, 종료 1이었다. 재실행은 11/11 통과했다. `logs/diff/osmu-gapfill-20260917-1106/commands/verify-basic-flow-e2e.txt`, `verify-basic-flow-e2e-retry.txt` |
+| Studio v1 실앱 | 인증과 입력 거절, 정상 생성, 조회와 무료 다시 만들기 | GAP-HISTORY-20260917-1106-05 | PASS | 14/14 통과. `commands/verify-studio-v1-e2e.txt` |
+| 필수 회귀 | 전체 test와 TypeScript | GAP-HISTORY-20260917-1106-06 | PASS | Vitest 374파일, 2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. `commands/npm-test.txt`, `tsc-noemit.txt` |
+| 제품 소스와 갭 전환 | migration, API, 계약 테스트 | GAP-HISTORY-20260917-1106-07 | BLOCK | 제품 소스 변경 0건. 새 DB 스키마와 API 비교 계약을 승인 없이 선택하지 않았다. 새로 되는 것으로 전환된 항목은 없다. |
+
+승인 없이 최신 누계 두 번의 차이를 30일 성과로 이름 붙이거나 `provider_meta` 배열을 새 저장소로
+쓰면 기간 재현성과 공급자별 의미가 깨진다. 별도 snapshot table, 공급자 기간 조회, JSONB 중
+하나를 기술설계에서 합의한 뒤 build를 다시 열어야 한다.
+
 ## 2026-09-17 10시 18분 KST · 네 방 기본 흐름 v21 기능 범위 PASS, 제품 전체 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

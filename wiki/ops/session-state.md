@@ -1,3 +1,19 @@
+# 2026-09-17 11시 14분 성과 시계열 갭 build 회수
+
+사용자 명시 과제를 handoff basis로 사용했다. 두 기반 감사와 현재 코드를 다시 대조한 결과 과거
+미구현 11개 중 10개는 이미 구현됐고, 남은 하나는 게시물별 성과 관측 이력과 재현 가능한 최근
+30일 대 직전 30일 비교다. localhost metrics는 HTTP 200이지만 `history`, `comparison`이 없고,
+현재 schema는 최신 누계만 보존한다.
+
+실행 `2280089f`부터 현재 HEAD `7f730581`까지 제품 diff는 0건이다. 기본 흐름은 첫 실행에서 AI
+출력 JSON 파싱 실패로 NG, 재실행 11/11 PASS였다. Studio v1 14/14, Vitest 374파일과 2,414건,
+TypeScript가 통과했다. 상세 증거는 `logs/diff/osmu-gapfill-20260917-1106/`과 갭 감사 최상단이다.
+
+현재 pipeline은 QA 진행 중이며 관측 단위, 중복 방지 키, 보존 기간, 공급자 정규화, 비교식과
+표본 부족 기준의 승인 기술설계가 없다. 제품 소스는 수정하지 않았다. 다음 소유자는 컨트롤러와
+tech-architect다. 별도 snapshot table, 공급자 기간 조회, JSONB 중 하나를 합의하고 eng-design을
+승인한 뒤 build를 열어야 한다. 추천은 별도 snapshot table이다.
+
 # 2026-09-17 10시 18분 네 방 기본 흐름 v21 기능 PASS, 제품 전체 NG
 
 회장이 지정한 네 방 QA 과제를 handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는
