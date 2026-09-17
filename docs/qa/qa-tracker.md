@@ -1,3 +1,15 @@
+## 2026-09-17 23:15 KST · 성과 시계열 갭 build 차단과 실앱 회귀 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사에서 지금도 없는 기본 흐름 항목을 하나 구현 | GAP-HISTORY-20260917-2315-01 | NG | 남은 항목은 게시물별 성과 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교다. 지정 작업 공간 `GET /api/metrics` HTTP 200, 키 `coverage`, `posts`, 게시물 0건, `history`와 `comparison` 없음. |
+| 기술 계약과 공정 | 승인된 DB·API 계약 안에서만 build | GAP-HISTORY-20260917-2315-02 | BLOCK | `pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준의 승인 기술설계가 없다. |
+| 전체 회귀 | 기존 생성·편집·발행·성과 흐름 보존 | GAP-HISTORY-20260917-2315-03 | PASS | Vitest 374파일·2,416건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. |
+| 기본 흐름 실앱 | localhost 생성부터 성과 재인계 | GAP-HISTORY-20260917-2315-04 | NG | `verify-basic-flow-e2e.mjs` 최초와 재실행 모두 첫 생성 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장, 종료 코드 1. 서버 원인은 `exit_nonzero`. |
+| Studio v1 실앱 | 인증·거절·정상 생성 계약 | GAP-HISTORY-20260917-2315-05 | NG | 401·400·422 거절은 통과. 정상 생성은 기대 201 대신 HTTP 200의 공급자 오류로 종료 코드 1. |
+| 실행본 귀속 | localhost와 현재 HEAD | GAP-HISTORY-20260917-2315-06 | 부분 확인 | health HTTP 200, DB up, 실행 `7c9c9050`, HEAD `8e4585e7`. 사이의 성과 route·schema·migration·필수 E2E 변경은 0건. 운영 배포는 미검증. |
+| 신규 구현 | migration, API, 계약 테스트 | GAP-HISTORY-20260917-2315-07 | BLOCK | 제품 소스 변경 0건. 승인 없는 저장 구조를 선택하지 않았고 새로 되는 항목은 없다. |
+
 ## 2026-09-17 20:19 KST · 최근 24시간 코드 공격 리뷰 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

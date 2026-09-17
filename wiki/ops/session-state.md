@@ -1,3 +1,20 @@
+# 2026-09-17 23:15 KST 성과 시계열 갭 build 회수, 실앱 회귀 NG
+
+사용자의 명시 과제를 handoff basis로 사용했다. 실행 중인 `osmu-gapfill091723:0.0`은 이 위임
+세션 자체였고, 다른 pane은 인계받거나 변경하지 않았다. 두 기반 감사를 현재 코드와 다시 대조한
+결과 과거 미구현 항목 중 지금도 없는 것은 게시물별 성과 관측 이력과 재현 가능한 최근 30일 대
+직전 30일 비교다.
+
+localhost health는 HTTP 200, DB up이고 지정 작업 공간 metrics는 HTTP 200이지만 `history`,
+`comparison`이 없다. Vitest 374파일과 2,416건, TypeScript가 통과했다. 기본 흐름은 최초와
+재실행 모두 첫 생성에서 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 NG였고, Studio v1은 인증과 입력
+거절 세 건 통과 뒤 정상 생성에서 같은 사유로 NG였다.
+
+현재 pipeline은 `qa`, `in-progress`, 승인 아님이며 관측 단위, 멱등 키, 보존 기간, 공급자
+정규화, 비교식과 표본 부족 기준의 승인 기술설계가 없다. 제품 소스는 수정하지 않았다. 다음
+소유자는 컨트롤러와 tech-architect다. 성과 snapshot과 비교 계약을 승인하고 build를 다시 연 뒤
+구현하며, 생성 공급자 회귀를 고쳐 두 필수 E2E를 다시 통과해야 한다.
+
 # 2026-09-17 20:19 KST 최근 24시간 코드 공격 리뷰 BLOCK
 
 사용자의 명시 과제를 handoff basis로 사용했다. live tmux pane은 실행 서버와 동시 작업 확인에만 사용했고 다른 pane의 작업을 인계받거나 변경하지 않았다. 검토 범위는 작업 시작 시점의 56개 커밋, `ed8231a5..a66b4b37`로 고정했다.
