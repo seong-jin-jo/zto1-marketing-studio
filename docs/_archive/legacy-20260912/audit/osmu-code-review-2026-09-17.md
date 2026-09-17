@@ -1,6 +1,118 @@
 <!--
 STAMP
 line: osmu
+created_at: 2026-09-17 16:45 KST
+model: gpt-codex/gpt-5.6-sol
+agent: code-reviewer
+skills: review
+scope: 2026-09-16 16:45 KST부터 2026-09-17 16:45 KST까지 커미터 시각 기준 54개 커밋, e5a4487e..268e49ba 순변경
+basis: pipeline-state.osmu.md 승인 핀, DESIGN.md v37, 지정 v63 프로토타입, 회장 요구 대장, 사업 좌표
+benchmarks: Google YouTube resumable upload, Microsoft transactional outbox, Node.js child_process, RFC 9110
+Deliberation: 외부 성공과 내부 장부, 재개 세션과 실제 파일, 실패 상태와 HTTP 성공, 공유 검증기의 동시 실행을 각각 장애 시나리오로 대조했다.
+-->
+
+# OSMU 최근 24시간 코드 공격 리뷰, 16시 45분 재감사
+
+한 줄 결론: MAJOR 11건이다. 외부 발행과 과금 장부가 갈리고, 실패가 HTTP 200과 정상 수치로 보이며, 재개 업로드와 공유 QA가 다른 작업의 데이터를 훼손할 수 있어 머지를 막아야 한다.
+
+## 범위와 기준
+
+- 검토 창: 2026-09-16 16:45 KST부터 2026-09-17 16:45 KST까지다.
+- 고정 범위: 커미터 시각 기준 54개 커밋, `e5a4487e84fe297b5738bb56c522f33f3f171cf9..268e49ba5cc53190687c8f3061208e10a75f829c`다.
+- 순변경: 전체 241개 파일, 추가 15,313줄, 삭제 236줄이다. 상태는 추가 202개, 수정 39개, 삭제 0개다. 제품과 검증 코드 범위는 17개 파일, 추가 869줄, 삭제 140줄이다.
+- 승인 기준: `pipeline-state.osmu.md:270-274`의 v68 디자인 허브와 `DESIGN.md` v37이다. 과제에서 지정한 v63 프로토타입도 실제로 열어 계약 문구를 대조했다.
+- 기준 충돌: 과제는 v63을 지정했으나 최신 `approved_artifacts`는 v68을 가리킨다. 구조를 임의로 합치지 않고, v63의 명시적 복구 계약과 DESIGN.md의 공통 규칙만 이번 코드 판정에 사용했다.
+- 읽은 입력: 지정 v63 프로토타입, `DESIGN.md`, 회장 확정 요구 대장과 정본 `wiki/거버넌스/요청.md`, 이동된 실제 사업 좌표 `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md`, 결정과 실수 원장, BRAIN OSMU 사업 문서다.
+- 공유 작업 트리의 미커밋 변경은 검토 범위에 넣거나 되돌리지 않았다. 제품 코드는 수정하지 않았다.
+
+## 지적
+
+MAJOR: [승인 시안 이탈] dashboard/src/app/studio/page.tsx:1234: `이미 올라간 것으로 기록하기`가 초안 상태만 `published`로 저장하고 1236행에서 경고를 지운다 / v63 프로토타입 7481행의 “외부 성공 뒤 기록만 실패했다면 기록만 복구합니다”와 현재 화면 2389행의 내부 기록 복구 약속과 어긋난다 / 인증된 서버 복구 API가 `published_posts`, 외부 글 번호, permalink, 사용량 outbox를 확정한 뒤에만 경고를 닫게 해야 한다.
+
+재현: YouTube 외부 업로드 성공 뒤 DB 확정을 실패시킨다. 복구 단추를 누르면 초안과 화면 경고만 정리되고 실제 발행 행과 과금 장부는 복구되지 않는다.
+
+MAJOR: [회귀 위험] dashboard/src/app/api/video/publish/route.ts:354: 저장된 재개 URL을 읽으면서 552행에 저장한 `fileHash`와 `totalBytes`를 현재 파일과 비교하지 않고, 공급자 범위부터 563행의 현재 파일을 이어 보낸다 / Google resumable upload 계약은 같은 업로드 세션의 남은 바이트를 이어 보내도록 요구하는데 세션과 파일의 동일성을 검증하지 않는다 / 상태 조회와 PUT 전에 저장 해시, 전체 바이트, 초기화 메타데이터를 현재 요청과 대조하고 불일치하면 전송을 금지해야 한다.
+
+재현: 파일 A의 앞 절반을 보낸 뒤 프로세스를 끊고 같은 경로와 크기의 파일 B로 교체한다. 재시도하면 공급자 범위 뒤에 B의 뒷부분이 붙어 손상된 영상이 외부에 게시될 수 있다.
+
+MAJOR: [회귀 위험] dashboard/src/app/api/tiktok/publish-status/route.ts:87: TikTok 완료의 두 분기가 발행 행만 `published`로 바꾸고 새 `publicationUsageOutbox`와 `recordPublicationEvent`를 호출하지 않는다 / 최근 변경이 수동 발행 경로에 도입한 내구성 과금 원장 계약과 달리 비동기 완료는 외부 성공을 전체 성공으로 닫으면서 사용량을 잃는다 / 두 완료 분기 모두 같은 DB 확정에 pending outbox를 남기고 발행 행 번호로 한 번만 relay해야 한다.
+
+재현: TikTok 발행을 시작하고 상태 API에서 `PUBLISH_COMPLETE`를 회수한다. 발행 행은 성공이지만 `/api/usage` 발행 수는 늘지 않아 쿼터와 과금에서 빠진다.
+
+MAJOR: [회귀 위험] dashboard/src/app/api/schedule/publish-due/route.ts:409: 예약 발행 성공을 `published_posts`에 넣으면서 pending 사용량 outbox를 만들지 않는다 / 수동 발행의 새 outbox 계약을 예약 발행 경로가 우회해 같은 유료 발행이 서로 다른 장부 결과를 만든다 / 성공 행 삽입과 같은 트랜잭션에 pending outbox를 넣고 별도 멱등 relay로 `usage_events`를 확정해야 한다.
+
+재현: 기한이 된 예약을 정상 발행시킨다. 예약과 발행 행은 성공으로 닫히지만 사용량은 증가하지 않아 예약 발행을 반복해도 발행 쿼터가 소진되지 않는다.
+
+MAJOR: [회귀 위험] dashboard/src/app/api/usage/route.ts:73: pending 발행 relay의 실패 수를 받아도 115행에서 HTTP 200과 집계값을 반환하고, `PerformanceRoom.tsx:561`은 `publicationRelay.failed`를 무시한 채 0을 확정 수치처럼 표시한다 / `usage-events.ts:82`가 행별 실패를 삼켜 부분 실패를 전체 조회 성공으로 바꾸므로 돈과 쿼터가 적게 보인다 / relay 실패가 있으면 응답에 집계 불완전 상태를 강제하고 화면은 `집계 대기`를 표시해야 하며, 백그라운드 재처리가 끝나기 전 수치를 확정값으로 쓰면 안 된다.
+
+재현: pending 발행 행을 만든 뒤 `usage_events` 삽입만 실패시킨다. `/api/usage`는 HTTP 200과 낮은 발행 수를 돌려주고 성과실은 경고 없이 그 값을 표시한다.
+
+MAJOR: [회귀 위험] dashboard/src/lib/anthropic.ts:201: macOS에서는 후보 실행 파일이 `/bin/launchctl asuser` 뒤에 들어가므로 없는 후보가 child `ENOENT`가 아니라 launchctl 종료 코드로 끝나며 271-280행은 다음 후보를 시도하지 않는다 / 후보 배열의 폴백 계약이 실제 래퍼 환경에서 성립하지 않는다 / 래퍼 호출 전에 후보 실행 가능성을 검증하거나 래퍼의 대상 실행 실패를 분류하고 다음 후보를 시도하는 실제 launchctl 회귀 테스트를 추가해야 한다.
+
+재현: 첫 후보를 없는 경로, 두 번째 후보를 유효한 경로로 둔다. 첫 launchctl이 종료 코드 2를 내면 두 번째 후보가 호출되지 않고 생성 요청 전체가 실패한다.
+
+MAJOR: [승인 시안 이탈] dashboard/src/app/api/elevenlabs-voices/route.ts:13: 설정 누락과 상류 실패를 영문으로 반환하고 37행은 내부 예외 문자열을 그대로 응답하며 `ElevenLabsSettings.tsx:54`가 이를 토스트에 직접 표시한다 / `dashboard/CLAUDE.md:15`의 한국어 UI 계약과 확정 요구의 영문 라벨 금지에 어긋난다 / API는 안정된 오류 코드와 한국어 안전 문구만 반환하고 원래 예외는 서버 로그에만 남겨야 한다.
+
+재현: ElevenLabs 키가 없는 localhost에서 음성 목록을 요청한다. HTTP 503 본문의 `API key not set`이 설정 화면 토스트로 그대로 노출된다.
+
+MAJOR: [회귀 위험] dashboard/src/app/api/blog-stats/route.ts:23: 최근 변경이 설정 누락 응답을 200에서 503으로 바꿨지만 `blog-performance/page.tsx:36`은 공용 fetcher를 그대로 쓰고, `api.ts:113`은 오류 본문을 버린 채 throw한다 / 화면 39행은 data가 없으면 모든 성과를 0으로 만들고 52행의 오류 안내는 도달하지 않아 연결 장애가 실제 성과 0처럼 보인다 / SWR 오류를 별도로 처리해 코드별 설정 안내를 표시하고 실패 응답을 0 데이터로 대체하지 말아야 한다.
+
+재현: 블로그 설정을 비운 채 성과 화면을 연다. API는 503이지만 화면은 오류 본문을 받지 못해 합계와 목록을 0으로 표시한다. GSC 화면도 `gsc-analytics/route.ts:8`, `search-console/page.tsx:31`에서 같은 실패 형태다.
+
+MAJOR: [회귀 위험] dashboard/scripts/verify-api-read-sweep.mjs:170: 검증 대상 파일 목록을 실행 전에 한 번만 만들고 276행의 종료 해시도 같은 고정 목록으로 계산한다 / 실행 중 새로 생기거나 사라진 API와 소스 파일은 요청 목록과 해시 양쪽에서 빠져 `evidence_stable`이 거짓 PASS가 된다 / 종료 시 파일 목록을 다시 수집하고 경로 집합과 내용 해시를 모두 비교한 뒤 새 라우트 목록도 대조해야 한다.
+
+재현: sweep가 시작된 뒤 `src/app/api/new/route.ts`를 만든다. 새 라우트는 요청되지 않고 종료 해시에도 포함되지 않아 검증이 안정적이라고 기록될 수 있다.
+
+MAJOR: [회귀 위험] dashboard/scripts/verify-four-room-ui-e2e.mjs:70: 지정 작업 공간의 전체 `settings.json`을 통째로 스냅샷하고 235행에서 덮어쓴 뒤 285행에서 옛 파일 전체를 무조건 복원한다 / 최대 10분 동안 다른 세션이나 사용자가 저장한 설정을 조용히 지우는 동시성 회귀다 / 전용 QA 작업 공간을 사용하거나 자신이 바꾼 필드만 compare-and-set으로 복구하고 충돌이면 원본을 덮지 말아야 한다.
+
+재현: 네 방 E2E 실행 중 다른 세션에서 같은 작업 공간 설정을 바꾼다. 테스트 종료 시 10분 전 스냅샷이 다시 쓰여 새 설정이 사라진다.
+
+MAJOR: [회귀 위험] dashboard/src/lib/studio/generation/http.ts:75: 생성기 502, 503, 504 실패를 HTTP 200으로 바꾸고 원래 상태는 전용 헤더에만 둔다 / RFC 9110의 200은 요청 성공이고 504는 상류 응답 지연 실패인데, 표준 클라이언트와 프록시와 관측기는 본문 전용 오류를 성공으로 센다 / 원래 5xx 상태를 유지하고 프록시가 본문을 지우는 문제는 프록시 설정이나 별도 오류 전달 계약으로 해결해야 한다.
+
+재현: localhost Studio 생성에서 LLM 시간 초과를 발생시킨다. 실제 첫 E2E 실행에서 본문은 `STUDIO_LLM_TIMEOUT`이었지만 HTTP 200이 반환되어 성공률, 재시도, 경보가 실패를 성공으로 분류할 수 있었다.
+
+## 직접 검증 증거
+
+- `npm run test`: 374개 파일, 2,414건 통과, 3건 제외, 134.42초다.
+- `npx tsc --noEmit`: 종료 코드 0이다.
+- `dashboard/scripts/verify-basic-flow-e2e.mjs`: localhost 실제 요청 11/11 PASS다.
+- `dashboard/scripts/verify-studio-v1-e2e.mjs`: 첫 실행은 7번째 검사 뒤 HTTP 200 본문 `STUDIO_LLM_TIMEOUT`으로 NG였다. 한 번 재실행해 14/14 PASS했다. 첫 실패는 위 MAJOR의 직접 증거이므로 숨기지 않는다.
+- localhost health: HTTP 200, DB up, 실행 커밋 `426bfb4c2510a0e80ece2177d0ae3334e73140c0`이다. 해당 커밋부터 검토 고정 끝까지 `dashboard/src`와 `dashboard/scripts` 차이는 0개라 실행 결과는 검토한 제품 코드에 귀속된다.
+- localhost 직접 응답: ElevenLabs 503 `API key not set`, GA 503 `Service account not configured`, GSC 503 `GSC service account not configured`를 관찰했다.
+- 미검증: 실제 SNS 공개 게시, 외부 성공 직후 DB 장애 주입, 두 작업 공간 동시 동적 격리, 운영 배포다.
+
+## 셀프심문
+
+“내가 PASS를 준다면, 회장이 dev에서 직접 써보고 발견할 가장 그럴듯한 문제는 무엇인가?”
+
+외부 게시 성공 뒤 복구 단추를 눌렀는데 화면 경고만 사라지고 실제 발행 장부와 사용량이 계속 비는 문제다. 확인 결과 첫 번째 MAJOR로 남아 있으므로 PASS를 주지 않는다.
+
+## 근거와 조회
+
+- Google YouTube resumable upload: https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol
+- Microsoft transactional outbox: https://learn.microsoft.com/en-us/samples/azure-samples/cosmos-db-design-patterns/transactional-outbox/
+- Node.js child_process: https://nodejs.org/api/child_process.html
+- RFC 9110 상태 코드: https://www.rfc-editor.org/rfc/rfc9110.html#section-15
+- 로컬 정본: `pipeline-state.osmu.md`, `DESIGN.md`, 지정 v63 프로토타입, `wiki/거버넌스/요청.md`, `wiki/거버넌스/결정.md`, `wiki/거버넌스/실수.md`, 사업 좌표.
+
+SKILLS_USED: review
+SKILLS_SKIPPED: 없음
+SOURCES: 위 웹 4건과 로컬 정본, 최근 24시간 git diff, localhost 직접 요청 및 필수 회귀 명령.
+MODEL: gpt-codex/gpt-5.6-sol
+KNOWLEDGE_QUERY: BRAIN에서 OSMU 사업 좌표, ZERO-ONE 레버리지, 고객 경계를 검색하고 최근 24시간 코드의 과금과 복구 불변식에 대조했다.
+HITS_USED: `idea-zero-one-marketing-studio.md`, `concept-제로원-학습-상품-레버리지-루프.md`, `concept-제로원-고객경계-바이브코딩-결과물-보유자.md`. 외부 게시 결과가 재사용 자산과 유료 장부로 남아야 한다는 판단에 사용했다.
+HITS_REJECTED: 일반 마케팅 심리 문서는 코드의 동시성, 업로드, 오류 상태 계약을 판정하는 직접 근거가 아니어서 채택하지 않았다.
+CONFLICTS: 과제 지정 프로토타입은 v63이고 최신 `pipeline-state.osmu.md` 승인 핀은 v68이다. 이번 리뷰는 v63의 명시적 복구 문구와 DESIGN.md 공통 계약만 적용했고 시각 표현 우열은 판정하지 않았다.
+
+- 승인 시안 이탈: 지적 2건.
+- 회귀 위험: 지적 9건.
+- 토큰 위반: 문제없음. 최근 변경 UI 추가분에서 인라인 style, 색상 리터럴, px 리터럴을 찾지 못했다.
+- 무기록 삭제: 문제없음. 검토 범위의 삭제 파일은 0개이며, 사유 없이 제거된 화면 부품이나 기능을 찾지 못했다.
+- REVIEW_VERDICT: BLOCK
+
+<!--
+STAMP
+line: osmu
 created_at: 2026-09-17 12:15 KST
 model: gpt-codex/gpt-5.6-sol
 agent: code-reviewer

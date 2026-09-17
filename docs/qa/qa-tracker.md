@@ -1,3 +1,21 @@
+## 2026-09-17 16:45 KST · 최근 24시간 코드 공격 리뷰 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드리뷰 24시간 | 외부 성공과 내부 발행 장부 복구 | REVIEW-24H-20260917-11 | NG | `dashboard/src/app/studio/page.tsx:1234`가 초안만 발행 완료로 바꾸고 실제 발행 행과 사용량 장부를 복구하지 않는다. |
+| 코드리뷰 24시간 | 재개 업로드와 파일 동일성 | REVIEW-24H-20260917-12 | NG | `dashboard/src/app/api/video/publish/route.ts:354`가 저장 해시와 크기를 현재 파일에 대조하지 않는다. |
+| 코드리뷰 24시간 | 전 발행 경로 과금 원장 | REVIEW-24H-20260917-13 | NG | TikTok 완료 `tiktok/publish-status/route.ts:87`과 예약 발행 `schedule/publish-due/route.ts:409`가 usage outbox를 우회한다. |
+| 코드리뷰 24시간 | 사용량 부분 실패 표시 | REVIEW-24H-20260917-14 | NG | `usage/route.ts:73`이 relay 실패 뒤에도 HTTP 200과 낮은 집계를 반환하고 성과실은 실패 수를 표시하지 않는다. |
+| 코드리뷰 24시간 | macOS Claude 후보 폴백 | REVIEW-24H-20260917-15 | NG | `anthropic.ts:201`의 launchctl 래퍼가 대상 미존재를 종료 코드로 바꿔 다음 후보 시도를 막는다. |
+| 코드리뷰 24시간 | 한국어 오류와 실패 화면 | REVIEW-24H-20260917-16 | NG | localhost ElevenLabs, GA, GSC가 영문 오류를 반환했다. 블로그와 GSC 화면은 새 503을 오류 안내 대신 0 데이터로 보일 수 있다. |
+| 코드리뷰 24시간 | 검증기 동시성 및 증거 무결성 | REVIEW-24H-20260917-17 | NG | API sweep는 실행 중 파일 추가와 삭제를 못 보고, 네 방 E2E는 공유 작업 공간 설정 전체를 옛 스냅샷으로 복원한다. |
+| 코드리뷰 24시간 | Studio 실패 HTTP 상태 | REVIEW-24H-20260917-18 | NG | localhost Studio 첫 실행에서 `STUDIO_LLM_TIMEOUT`이 HTTP 200으로 반환됐다. `generation/http.ts:75`가 502, 503, 504를 200으로 바꾼다. |
+| 필수 회귀 | 전체 test와 TypeScript | REVIEW-24H-20260917-19 | PASS | Vitest 374파일, 2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. |
+| 실앱 기본 흐름 | localhost:3456 기본 흐름과 Studio v1 | REVIEW-24H-20260917-20 | 부분 PASS | 기본 흐름 11/11. Studio v1 첫 실행은 timeout NG, 재실행 14/14 PASS. health HTTP 200, DB up. |
+| 외부 실발행과 장애 주입 | 실제 SNS, DB 실패, 두 작업 공간 동시 실행 | REVIEW-24H-20260917-21 | 미검증 | 돈과 외부 공개를 일으키는 실발행은 실행하지 않았다. |
+
+판정은 BLOCK이다. MAJOR 11건의 상세 위치, 재현 시나리오, 수정 조건은 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단에 기록했다. 제품 코드는 수정하지 않았다.
+
 ## 2026-09-17 14:25 KST · 네 방 기본 흐름 QA v22
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
