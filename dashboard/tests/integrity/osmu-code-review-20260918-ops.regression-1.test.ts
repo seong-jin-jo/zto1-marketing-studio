@@ -36,4 +36,10 @@ describe("2026-09-18 운영 검증 회귀", () => {
     expect(room).toContain("data-usage-delayed");
     expect(room).toContain("발행 사용량 반영이 지연되고 있습니다");
   });
+
+  it("REVIEW-24H-20260918-E2E 정상: 기본 흐름은 새 큐 생성 201과 기존 큐 재사용 200을 모두 성공으로 검증한다", () => {
+    const source = fs.readFileSync(path.join(root, "scripts/verify-basic-flow-e2e.mjs"), "utf8");
+    expect(source).toContain("(en.status===200||en.status===201)");
+    expect(source).toContain("Boolean(ed.post?.sourceContext?.suggestionId)");
+  });
 });
