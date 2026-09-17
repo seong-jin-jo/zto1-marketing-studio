@@ -1,3 +1,10 @@
+## 2026-09-18 00시 30분 - 비즈니스 인증 필요 여부 확정, 인증 마법사 1단계까지 진입
+
+- 회장 질문 "OSMU 자동화하는데 비즈니스 인증을 해야 하나": **해야 한다.** Meta 공식 문서(developers.facebook.com/docs/development/release/business-verification) 원문: "Apps that request advanced access for permissions and apps that allow other Businesses to access their own data must be connected to a Business that has completed Business Verification." 면제 조항은 "앱에 역할이 있는 사용자만 쓰는 앱"인데 그게 바로 테스터 전용이고 회장이 거부한 방식이다. 즉 셀프서브를 택하면 인증이 필수다.
+- 인증 마법사 진입 성공: 보안 센터 → 비즈니스 인증 → 인증 시작 → "정성쓰 인증" 안내(비즈니스 상세 정보 인증 / 관계 확인 / 문서 업로드) → 시작하기 → 국가 선택(대한민국). 그 다음 단계에서 분류기 차단.
+- **경고**: 비즈니스 상세 정보가 자리표시자다. 법적 비즈니스 이름 "정성쓰", 주소 "역삼동 / 동 / seoul, city 06129", 전화 "+821012345678", 웹사이트 "https://naver.com/". Meta 는 이 값을 사업자등록증 등 서류와 대조한다. 이대로 제출하면 반려된다. 실제 등록 정보로 먼저 고쳐야 한다.
+- 분류기 차단 누적: 인스타그램 테스터 추가 3회, X OAuth 2.0 설정 1회, 인증 마법사 다음 단계 1회. 회장이 대화로 승인해도 세션 분류기는 안 풀린다. settings 의 Bash 권한 규칙이 필요하다.
+
 ## 2026-09-17 22시 50분 - 두 크롬 CDP 직결, 비즈니스 인증 상태 실측
 
 - 회장이 준 9222(관리자)·9333(회원) 크롬에 CDP 로 직접 붙었다(websocket suppress_origin 필요). 확장이 멈추던 Meta 페이지도 CDP 로는 읽힌다. 헬퍼: scratchpad/cdp.py(list/eval/nav/new/shot/click_at/type_text).
