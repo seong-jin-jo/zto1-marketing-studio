@@ -1,5 +1,53 @@
 # OSMU code review 2026-09-17 handoff
 
+## 2026-09-17 17시 02분 최종 핸드오프
+
+### 무엇을 어디까지 했나
+
+- 사용자 요청에 따라 최근 24시간 전체를 공격적으로 리뷰했다. 고정 범위는 `e5a4487e84fe297b5738bb56c522f33f3f171cf9..268e49ba5cc53190687c8f3061208e10a75f829c`, 커미터 시각 기준 54개 커밋이다.
+- 승인 v68 핀, 과제 지정 v63 프로토타입, DESIGN.md v37, 확정 요구 대장, 사업 좌표, 결정과 실수 원장, BRAIN과 외부 기준을 대조했다.
+- MAJOR 11건으로 `REVIEW_VERDICT: BLOCK`이다. 제품 코드는 수정하지 않았다.
+- 감사와 QA 원장은 `d11ea38f`, 공용 인계 기록은 `c772c377`에 커밋했다. 상세 감사는 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단이다.
+
+### 남은 이슈·블로커
+
+- `dashboard/src/app/studio/page.tsx:1234`: 복구 단추가 실제 발행 행과 사용량 장부를 고치지 않는다.
+- `dashboard/src/app/api/video/publish/route.ts:354`: YouTube 재개 세션이 저장 파일 해시와 크기를 현재 파일에 대조하지 않는다.
+- `dashboard/src/app/api/tiktok/publish-status/route.ts:87`, `dashboard/src/app/api/schedule/publish-due/route.ts:409`: TikTok 완료와 예약 발행이 과금 outbox를 우회한다.
+- `dashboard/src/app/api/usage/route.ts:73`: relay 부분 실패 뒤에도 HTTP 200과 낮은 사용량을 확정값처럼 반환한다.
+- `dashboard/src/lib/anthropic.ts:201`: launchctl 래퍼가 첫 후보 실패 뒤 다음 Claude 후보 폴백을 막는다.
+- `dashboard/src/app/api/elevenlabs-voices/route.ts:13`: 영문 오류와 내부 예외가 화면에 노출된다.
+- `dashboard/src/app/api/blog-stats/route.ts:23`: 새 503 응답이 화면에서 실제 성과 0처럼 보인다.
+- `dashboard/scripts/verify-api-read-sweep.mjs:170`: 실행 중 생기거나 사라진 파일을 안정성 해시가 놓친다.
+- `dashboard/scripts/verify-four-room-ui-e2e.mjs:70`: 공유 작업 공간 설정 전체를 옛 스냅샷으로 복원해 동시 변경을 지울 수 있다.
+- `dashboard/src/lib/studio/generation/http.ts:75`: Studio 502, 503, 504 실패를 HTTP 200으로 바꾼다.
+- 실제 외부 발행, 외부 성공 직후 DB 장애 주입, 두 작업 공간 동시 동적 격리는 미검증이다.
+
+### 다음에 칠 명령
+
+다음 소유자는 code-builder다. 위 11건을 수정한 고정 커밋이 나온 뒤 code-reviewer가 같은 실패 시나리오를 재검수한다.
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+npm run test
+npx tsc --noEmit
+set -a && source ./.env.local && set +a
+STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-basic-flow-e2e.mjs
+STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182 node scripts/verify-studio-v1-e2e.mjs
+```
+
+종료 증거는 MAJOR 0건, 외부 성공과 발행 장부 및 사용량 수렴, 파일 불일치 세션 전송 0바이트, TikTok과 예약 발행의 사용량 1회 기록, relay 실패의 불완전 표시, 두 번째 Claude 후보 실행, 사용자 노출 영문 오류 0건, 공유 QA 동시 변경 보존, Studio timeout의 비2xx 응답, 전체 테스트와 TypeScript 통과, 현재 제품 소스에 귀속되는 두 E2E 통과다.
+
+### 검증했나
+
+- `npm run test`: 374파일, 2,414건 통과, 3건 제외.
+- `npx tsc --noEmit`: 종료 코드 0.
+- localhost 기본 흐름: 11/11 PASS.
+- Studio v1: 첫 실행 HTTP 200 본문 `STUDIO_LLM_TIMEOUT`으로 NG, 한 번 재실행해 14/14 PASS.
+- health: HTTP 200, DB up. 실행 커밋 이후 검토 고정 끝까지 제품과 검증 코드 변경 0개.
+- localhost ElevenLabs, GA, GSC: 영문 503 오류 직접 관찰.
+- 실제 외부 게시, DB 실패 주입, 두 작업 공간 동시 동적 격리: 미검증.
+
 ## 2026-09-17 12시 20분 최종 핸드오프
 
 ### 무엇을 어디까지 했나
