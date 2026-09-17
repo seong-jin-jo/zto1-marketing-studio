@@ -2,6 +2,24 @@
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.
 
+## 2026-09-17 12시 15분 KST · 최근 24시간 코드 공격 리뷰 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드리뷰 24시간 | 외부 성공 뒤 내부 기록 복구 계약 | REVIEW-24H-20260917-01 | NG | `dashboard/src/app/studio/page.tsx:1234`가 초안만 `published`로 바꾸고 실제 발행 행과 사용량 장부를 복구하지 않는다. v63 7481행의 “기록만 복구” 계약 위반이다. |
+| 코드리뷰 24시간 | YouTube resumable 세션과 실제 파일 결속 | REVIEW-24H-20260917-02 | NG | `dashboard/src/app/api/video/publish/route.ts:354`가 저장된 `fileHash`, `totalBytes`를 현재 파일과 비교하지 않고 재개한다. 같은 경로와 크기의 다른 파일을 기존 세션에 이어 붙일 수 있다. |
+| 코드리뷰 24시간 | 모든 발행 경로의 과금 장부 내구성 | REVIEW-24H-20260917-03 | NG | TikTok 완료 `dashboard/src/app/api/tiktok/publish-status/route.ts:87`과 예약 발행 `dashboard/src/app/api/schedule/publish-due/route.ts:409`에 usage outbox가 없다. 성공 발행이 쿼터와 과금에서 빠진다. |
+| 코드리뷰 24시간 | macOS Claude 후보 폴백 | REVIEW-24H-20260917-04 | NG | `dashboard/src/lib/anthropic.ts:201`의 launchctl 래퍼는 없는 후보를 `ENOENT`가 아닌 종료 코드 2로 바꾼다. 실제 `/bin/launchctl asuser` 호출에서 `posix_spawn(): 2`, 종료 코드 2를 관찰했고 다음 후보 폴백이 막힌다. |
+| 코드리뷰 24시간 | 한국어 사용자 오류 계약 | REVIEW-24H-20260917-05 | NG | localhost `GET /api/elevenlabs-voices`가 HTTP 503과 `API key not set`을 반환했다. 블로그, GA, GSC도 최근 변경에서 영문 오류를 유지하며 일부 화면이 원문을 직접 표시한다. |
+| 필수 회귀 | 전체 test와 TypeScript | REVIEW-24H-20260917-06 | PASS | `npm run test` 374파일, 2,414건 통과, 3건 제외. `npx tsc --noEmit` 종료 코드 0. |
+| 실앱 기본 흐름 | localhost:3456 기본 흐름과 Studio v1 | REVIEW-24H-20260917-07 | PASS | health HTTP 200, DB up. `verify-basic-flow-e2e.mjs` 11/11, `verify-studio-v1-e2e.mjs` 14/14 통과. |
+| 외부 실발행과 격리 | 실제 SNS, DB 실패 주입, 두 작업 공간 동적 검증 | REVIEW-24H-20260917-08 | 미검증 | 돈과 외부 공개를 일으키는 실제 게시를 실행하지 않았다. 정적 SQL 대조에서는 새 교차 작업 공간 누수를 찾지 못했다. |
+
+근본 원인은 발행 가능한 경로 목록과 공통 장부 불변식이 정본으로 열거되지 않은 점, resumable
+세션의 저장 파일 메타데이터를 재개 전에 검증하지 않은 점, 화면 복구 이름과 서버 효과가 갈린 점,
+launchctl 도입 뒤 바뀐 오류 의미를 실제 래퍼로 테스트하지 않은 점이다. 상세 재현과 수정 조건은
+`docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단에 기록했다.
+
 ## 2026-09-17 11시 06분 KST · 성과 시계열 갭 재착수 ❌ NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

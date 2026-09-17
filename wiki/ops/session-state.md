@@ -1,3 +1,22 @@
+# 2026-09-17 12시 15분 최근 24시간 코드 공격 리뷰 BLOCK
+
+사용자의 명시 과제를 handoff basis로 사용했다. tmux pane은 실행 서버와 동시 작업 확인에만
+사용했고 다른 pane의 작업을 인계받지 않았다. 커미터 시각 기준 2026-09-16 12:02:27부터
+2026-09-17 12:02:27까지 46개 커밋과 `e5a4487e..5cd501b3` 순변경을 검토했다. 제품 코드는
+수정하지 않았다.
+
+MAJOR 6건으로 BLOCK이다. 실제 발행 행을 고치지 않는 화면 복구, 다른 파일을 기존 YouTube
+세션에 이어 붙일 수 있는 재개 로직, TikTok과 예약 발행의 사용량 장부 누락, launchctl 뒤에서
+깨지는 Claude 후보 폴백, 사용자에게 노출되는 영문 오류다. 상세 재현은
+`docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-17.md` 최상단, NG 원장은
+`docs/qa/qa-tracker.md` 최상단이다.
+
+localhost health 200과 DB up을 관찰했다. Vitest 374파일과 2,414건, TypeScript, 기본 흐름
+11/11, Studio v1 14/14가 통과했다. ElevenLabs 영문 503 오류와 launchctl 종료 코드 2는 직접
+재현했다. 외부 SNS 실발행, DB 실패 주입, 두 작업 공간 동적 격리는 미검증이다. 다음 소유자는
+code-builder다. 여섯 MAJOR를 고친 뒤 같은 실패 시나리오를 회귀 테스트와 실앱에서 다시 확인해야
+한다.
+
 # 2026-09-17 11시 14분 성과 시계열 갭 build 회수
 
 사용자 명시 과제를 handoff basis로 사용했다. 두 기반 감사와 현재 코드를 다시 대조한 결과 과거

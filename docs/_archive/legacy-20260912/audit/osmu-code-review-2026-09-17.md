@@ -1,6 +1,114 @@
 <!--
 STAMP
 line: osmu
+created_at: 2026-09-17 12:15 KST
+model: gpt-codex/gpt-5.6-sol
+agent: code-reviewer
+skills: review
+scope: 2026-09-16 12:02:27 KST부터 2026-09-17 12:02:27 KST까지 커미터 시각 기준 46개 커밋, e5a4487e..5cd501b3 순변경
+basis: pipeline-state.osmu.md 승인 핀, DESIGN.md v37, 지정 v63 프로토타입, v68 승인 프로토타입, 회장 요구 대장, 사업 좌표
+benchmarks: Google YouTube resumable upload, Microsoft transactional outbox, OWASP multi-tenant security
+deliberation: 외부 성공과 내부 장부, 재개 세션과 실제 파일, macOS 실행 래퍼와 후보 폴백, 사용자 노출 문구를 각각 실패 주입 관점에서 대조했다.
+-->
+
+# OSMU 최근 24시간 코드 공격 리뷰, 12시 15분 재감사
+
+한 줄 결론: MAJOR 6건이다. 외부 게시 뒤 장부 복구가 실제 발행 행을 고치지 않고, TikTok과 예약 발행이 과금 원장을 우회하며, YouTube 재개 세션이 다른 파일과 이어질 수 있어 머지를 막아야 한다.
+
+## 범위와 기준
+
+- 검토 창: 2026-09-16 12:02:27 KST부터 2026-09-17 12:02:27 KST까지다.
+- 검토 기준점: `e5a4487e84fe297b5738bb56c522f33f3f171cf9..5cd501b36a7c9eacf628538efb4b26a685d1b62a`다.
+- 검토량: 커미터 시각 기준 46개 커밋, 203개 파일, 추가 13,095줄, 삭제 236줄이다. 삭제 파일은 0개다.
+- 승인 기준: `pipeline-state.osmu.md:263-267`의 v68 디자인 허브와 `DESIGN.md` v37이다. 최신 승인 블록에는 PRD 핀이 없다.
+- 지정 기준: v63 프로토타입, 회장 확정 요구 대장과 그 정본 `wiki/거버넌스/요청.md`, 이동된 실제 사업 좌표 `wiki/2-product/build/사업좌표-OSMU와-ZERO-ONE.md`를 읽었다. 지정된 옛 사업 좌표 경로는 존재하지 않는다.
+- 기존 구현: `docs/구현현황.md`, `wiki/거버넌스/결정.md`, `wiki/거버넌스/실수.md`와 관련 호출 경로를 확인했다.
+- 공유 작업 트리의 미커밋 변경은 범위에 넣거나 되돌리지 않았다.
+
+## 지적
+
+MAJOR: [승인 시안 이탈] dashboard/src/app/studio/page.tsx:1234 — `이미 올라간 것으로 기록하기`가 초안 상태만 `published`로 저장하고 실제 `published_posts`, 외부 글 번호, 사용량 outbox를 복구하지 않은 채 1236행에서 경고를 지운다 / v63 프로토타입 7481행의 “외부 성공 뒤 기록만 실패했다면 기록만 복구합니다”와 현재 화면 2389-2393행의 “이 작업물의 내부 기록이 남지 않았습니다”, “이미 올라간 것으로 기록하기” 계약을 이행하지 않는다 / 작업 공간, 발행 행 번호, 플랫폼, 외부 글 번호를 받는 인증된 서버 복구 API가 발행 행과 사용량 outbox를 확정한 뒤에만 경고를 닫게 해야 한다.
+
+재현: YouTube 외부 업로드 성공 뒤 `video/publish`의 DB 확정을 실패시킨다. 화면에서 복구 단추를 누르면 초안만 발행 완료가 되고 경고가 사라지지만, 예약 행은 `in_progress` 또는 장부 미반영 상태로 남는다.
+
+MAJOR: [회귀 위험] dashboard/src/app/api/video/publish/route.ts:354 — 저장된 resumable URL을 읽을 때 552행에 저장한 `fileHash`와 `totalBytes`를 현재 235-236행의 파일 크기와 해시에 대조하지 않고, 공급자가 돌려준 범위부터 현재 파일의 나머지를 전송한다 / Google의 resumable upload 계약은 하나의 세션에서 같은 바이너리의 남은 바이트를 이어 보내는 구조이고, 사업 좌표 59행은 유료 경계의 멱등이 실제로 지켜져야 한다고 확정했다 / 상태 조회 전에 저장 해시, 전체 바이트, 초기화 메타데이터를 현재 요청과 비교하고 하나라도 다르면 PUT을 금지한 채 `uncertain`과 수동 확인으로 닫아야 한다.
+
+재현: 파일 A 2,048바이트의 앞 1,024바이트가 전송된 뒤 프로세스를 끊는다. 같은 경로와 크기의 파일 B로 교체하고 15분 뒤 재시도하면, 공급자 `Range: bytes=0-1023`에 따라 B의 뒤 1,024바이트가 A 세션에 붙는다.
+
+MAJOR: [회귀 위험] dashboard/src/app/api/tiktok/publish-status/route.ts:87 — TikTok `PUBLISH_COMPLETE`가 87행과 114행에서 발행 행을 `published`로 바꾸지만 최근 도입한 `publicationUsageOutbox`와 `recordPublicationEvent`를 어느 완료 분기에도 연결하지 않았다 / 사업 좌표 59행의 유료 몫과 Microsoft transactional outbox 기준은 외부 성공과 과금 원장의 부분 실패를 내구성 있게 이어야 하는데, 현재 outbox 호출 목록에는 일반 발행, YouTube, Reels만 있다 / 두 TikTok 완료 분기 모두 같은 DB 확정에 pending outbox를 넣고, 발행 응답과 분리된 멱등 relay가 `usage_events`를 기록하게 해야 한다.
+
+재현: TikTok 비동기 발행이 `PUBLISH_COMPLETE`가 될 때까지 상태 API를 조회한다. `published_posts.status`는 `published`가 되지만 `/api/usage` 발행 수는 늘지 않아 쿼터와 과금 원장에서 빠진다.
+
+MAJOR: [회귀 위험] dashboard/src/app/api/schedule/publish-due/route.ts:409 — 예약 발행 성공을 `published_posts`에 삽입하면서 pending 사용량 outbox나 `recordPublicationEvent`를 남기지 않는다 / 최근 변경이 수동 발행 경로의 장부 유실을 transactional outbox로 고쳤다는 계약과 달리, 같은 유료 발행인 예약 경로는 계속 전체 성공으로 닫고 장부에서는 사라진다 / 성공 행 삽입과 같은 트랜잭션에 pending outbox를 넣고 relay 실패를 내구 상태로 남기며, 같은 발행 행 번호로 한 번만 과금되게 해야 한다.
+
+재현: 기한이 된 Threads 예약을 정상 발행시킨다. 예약과 발행 행은 성공으로 닫히지만 `/api/usage`의 발행 수는 그대로여서 예약 발행을 반복해도 쿼터가 소진되지 않는다.
+
+MAJOR: [회귀 위험] dashboard/src/lib/anthropic.ts:201 — macOS에서는 후보 Claude 실행 파일 대신 `/bin/launchctl asuser`를 spawn하므로 존재하지 않는 후보가 child `error`의 `ENOENT`가 아니라 launchctl 종료 코드 2로 끝나고, 271-280행은 다음 후보로 넘어가지 않고 즉시 실패한다 / 기존 `CLAUDE_BINS` 후보 폴백 계약과 테스트가 기대하는 `ENOENT` 분기는 실제 macOS 래퍼 뒤에서 발생하지 않는다 / launchctl로 감싸기 전에 각 후보의 실행 가능성을 검증해 다음 후보로 넘기거나, 래퍼 종료에서 대상 미존재를 안전하게 분류할 수 있는 별도 계약과 실제 launchctl 테스트를 추가해야 한다.
+
+재현: 첫 후보를 존재하지 않는 경로로 두고 두 번째 후보를 유효하게 둔다. `/bin/launchctl asuser <uid> /없는/경로`는 실제로 `posix_spawn(): 2`와 종료 코드 2를 반환하므로 두 번째 후보가 호출되지 않고 생성 요청 전체가 실패한다.
+
+MAJOR: [승인 시안 이탈] dashboard/src/app/api/blog-stats/route.ts:23 — 최근 오류 상태 정규화가 `Blog not configured`를 그대로 반환하고, `blog-performance/page.tsx:54`가 이를 사용자에게 직접 그린다. 같은 패턴이 `elevenlabs-voices/route.ts:13,24,37`과 `ElevenLabsSettings.tsx:54`, `ga-analytics/route.ts:9,15`, `gsc-analytics/route.ts:8`에 남아 있다 / `dashboard/CLAUDE.md:15`의 “한국어 UI 텍스트”와 확정 요구의 영문 라벨 금지에 어긋나며, ElevenLabs catch는 내부 예외 문자열까지 사용자 응답으로 전달한다 / API는 안정된 오류 코드와 한국어 안전 문구만 반환하고, 화면은 코드별 한국어 행동 안내를 표시해야 한다. 원래 예외는 사용자 응답에서 제거해야 한다.
+
+재현: localhost:3456에서 ElevenLabs 키가 없는 상태로 `GET /api/elevenlabs-voices`를 호출하면 HTTP 503과 `API key not set`이 반환된다. 설정 화면은 `data.error`를 그대로 토스트에 표시한다. 블로그 미연결 상태도 같은 방식으로 영문 오류를 본문에 표시한다.
+
+MINOR: 없음.
+
+## 직접 관찰과 테스트
+
+- localhost:3456 `GET /api/health`: HTTP 200, DB `up`, 실행 커밋 `2280089f42130bd1c03f3116169bd11228bc166b`를 관찰했다. 이 커밋부터 검토 HEAD까지 `dashboard/src`, `dashboard/scripts` 제품 diff는 0건이다.
+- localhost:3456 `GET /api/elevenlabs-voices`: HTTP 503과 영문 `API key not set`을 관찰했다.
+- macOS 실제 `/bin/launchctl asuser <uid> /없는/경로`: `posix_spawn(): 2`와 종료 코드 2를 관찰했다.
+- `npm run test`: 374개 파일, 2,414건 통과, 3건 제외, 종료 코드 0이다.
+- `npx tsc --noEmit`: 종료 코드 0이다.
+- `node scripts/verify-basic-flow-e2e.mjs`: localhost 실제 요청 11/11 통과다.
+- `node scripts/verify-studio-v1-e2e.mjs`: localhost 실제 요청 14/14 통과다.
+- 실제 외부 TikTok, YouTube, 예약 발행과 운영 배포는 실행하지 않았다. DB 실패 주입과 다른 작업 공간 자격증명을 이용한 동적 격리 검증도 미검증이다.
+- 정적 격리 대조에서는 새 발행 SQL의 `tenant_id` 조건과 `withTenant` 경계를 확인했고 교차 작업 공간 누수는 찾지 못했다.
+
+## 근본 원인
+
+- 발행 경로 목록이 정본으로 관리되지 않아 outbox가 일반 발행, YouTube, Reels에만 붙고 TikTok과 예약 발행이 누락됐다.
+- resumable 세션의 URL과 진행 바이트는 저장했지만 세션이 어느 파일에 묶였는지 재개 전에 검증하지 않았다.
+- 화면의 “복구”가 서버 장부 복구가 아니라 초안 상태 변경으로 구현돼 계약 이름과 실제 효과가 갈렸다.
+- macOS 래퍼 도입 뒤 spawn 오류의 의미가 바뀌었는데 테스트는 래퍼가 없는 child `ENOENT`만 흉내 냈다.
+- API 오류 상태를 코드로 정규화하면서 사용자 노출 문자열의 한국어 계약과 원문 예외 차단을 함께 적용하지 않았다.
+
+## 셀프심문과 레드팀
+
+“내가 PASS를 준다면, 회장이 dev에서 직접 써보고 발견할 가장 그럴듯한 문제는 무엇인가?”
+
+TikTok과 예약 발행은 성공인데 사용량이 계속 0인 문제, 외부 성공 뒤 복구 단추를 눌렀는데 실제 장부가 남지 않는 문제, 재시작 뒤 생성이 첫 Claude 후보에서 멈추는 문제다. 세 문제 모두 위 MAJOR에 포함했다. 두 번째 삭제선 검토에서는 236개 삭제 줄이 오류 계약 교체와 테스트 재구성에 해당했고, 이름 있는 화면 부품과 기능의 무기록 삭제는 추가로 찾지 못했다.
+
+회의적인 운영자 관점에서는 전체 테스트 통과가 돈 장부의 경로 완전성을 증명하지 못한다. 현재 테스트는 등록된 호출 경로만 검증하고 발행 가능한 모든 플랫폼과 예약 실행기의 공통 장부 불변식을 열거하지 않는다.
+
+경쟁자 관점에서는 파일 경로와 크기가 같다는 이유로 다른 영상 바이트를 기존 업로드에 이어 붙이는 순간, 멱등 기능이 중복 방지를 넘어 콘텐츠 손상 장치가 된다. 해시 대조 없이 출시할 이유가 없다.
+
+SKILLS_USED: review
+
+SKILLS_SKIPPED: 없음
+
+SOURCES: [Google YouTube resumable upload](https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol?authuser=14), [Microsoft transactional outbox](https://learn.microsoft.com/en-us/samples/azure-samples/cosmos-db-design-patterns/transactional-outbox/), [OWASP multi-tenant security](https://cheatsheetseries.owasp.org/cheatsheets/Multi_Tenant_Security_Cheat_Sheet.html), `pipeline-state.osmu.md`, `DESIGN.md`, v63 및 v68 프로토타입, 회장 요구 정본, 사업 좌표, 최근 24시간 git diff
+
+MODEL: gpt-codex/gpt-5.6-sol
+
+KNOWLEDGE_QUERY: BRAIN의 OSMU 자동 재가공, 게시, 성과 루프와 유료 경계, 외부의 resumable upload, transactional outbox, multi-tenant 경계를 검색했다.
+
+HITS_USED: BRAIN `wiki/business/index.md`와 `wiki/business/pmf/idea-zero-one-marketing-studio.md`는 OSMU 루프와 사업 모델을 확인하는 데 썼다. Google 문서는 업로드 세션 재개 계약, Microsoft 문서는 외부 성공과 내부 장부의 부분 실패, OWASP는 작업 공간 격리 대조에 썼다.
+
+HITS_REJECTED: BRAIN의 교육 사업과 범용 마케팅 문서는 이번 코드 경로와 직접 관련이 없어 채택하지 않았다. 프로토타입의 순수 시각 표현 차이는 코드 계약 리뷰 범위 밖이라 지적으로 쓰지 않았다.
+
+CONFLICTS: 외부 벤치마크와 회장 정본의 충돌은 없다. 둘 다 실제 파일과 멱등 키의 결속, 외부 성공과 내부 장부의 내구성, 작업 공간 범위 강제를 요구한다.
+
+- 승인 시안 이탈: 지적 2건
+- 회귀 위험: 지적 4건
+- 토큰 위반: 문제없음. 최근 UI 변경에서 DESIGN.md 토큰 대신 새로 박은 색상 리터럴과 인라인 스타일을 찾지 못했다.
+- 무기록 삭제: 문제없음. 삭제 파일 0개이고 236개 삭제 줄의 대체 구현과 기록을 대조해 이름 있는 화면 부품과 기능의 사유 없는 삭제를 찾지 못했다.
+
+REVIEW_VERDICT: BLOCK
+
+<!--
+STAMP
+line: osmu
 created_at: 2026-09-17 04:18 KST
 model: gpt-codex/gpt-5
 agent: code-reviewer
