@@ -8,6 +8,20 @@
 | 실행본 귀속 | localhost와 현재 HEAD | GAP-HISTORY-20260917-1922-04 | 부분 확인 | health HTTP 200, DB up, 실행 `0fc65567`. 현재 HEAD `2aac6c14`까지 제품 diff 5개는 브라우저 런처와 연결 오류 분류 변경이며 성과 route·schema·migration 변경은 없다. 운영 배포는 미검증. |
 | 신규 구현 | migration, API, 계약 테스트 | GAP-HISTORY-20260917-1922-05 | BLOCK | 제품 소스 변경 0건. 승인 없는 저장 구조를 선택하지 않았고 새로 되는 항목은 없다. |
 
+## 2026-09-17 19:12 KST · Meta App Review 제출 패키지 독립 문서 리뷰
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| Meta 문서 품질 | `standard-doc-review.md` 5축 독립 채점 | META-DOC-REVIEW-20260917-01 | 최초 ❌ NG 17/25 → 보정 PASS 25/25 | 최초본은 목차·버전핀·개정이력·RUBRIC_SCORE가 없었고 권한별 화면 증거가 문서의 API 열에만 있었다. `docs/ops/meta-app-review-2026-09.md` v1.1.0 §12에 최초·최종 점수와 보정 근거 기록. |
+| 영문 권한 문안 | Instagram 4, Threads 5, Facebook Page 4 | META-DOC-REVIEW-20260917-02 | PASS 13/13 | 권한별 사용자 가치, 사용하는 데이터·기능, 없을 때의 손실을 고유 문안으로 명시. |
+| 스크린캐스트 계약 | 권한별 실제 API 요청이 화면에 보이는가 | META-DOC-REVIEW-20260917-03 | 대본 PASS 13/13, 실행 ❌ NG 0/13 | §4.5에 permission, token 없는 METHOD·path, HTTP 2xx, 결과를 권한별로 명시. 실제 영상과 최근 성공 호출은 아직 없음. |
+| 콘솔 실측 정합 | 앱 Live, 표준 액세스 3개, redirect URI, 액세스 인증 | META-DOC-REVIEW-20260917-04 | PASS | 앱 Live는 관찰 상태, 액세스 인증은 미완료 제출 차단으로 기록. |
+| 기술 정확성 | Instagram·Facebook 인사이트 및 Page 권한 | META-DOC-REVIEW-20260917-05 | ❌ NG, 제출 차단 | Instagram scope·host·공식 account·media metric 안내 충돌, Facebook `read_insights` configuration과 `pages_read_engagement` 직접 증거가 남아 있음. 특정 Instagram metric은 실제 media 성공 호출 전 확정하지 않음. |
+| 출처 URL | 문서 내 외부 URL | META-DOC-REVIEW-20260917-06 | PASS 15/15 | redirect 포함 최종 HTTP 200. Meta 자동 수집은 429가 있었으나 직접 응답 본문과 HTTP로 재검증. |
+| Codex 독립 2차 검토 | 권한 문안·API 증거·예약 발행 경계 | META-DOC-REVIEW-20260917-07 | 최초 ❌ RETAKE 4건 → 문서 보정 PASS | Instagram metric 과단정, Facebook Page name 과장, `pages_read_engagement` path 불일치, 예약 발행 누락을 보정. 실제 성공 호출·영상 0/13은 계속 제출 차단. |
+
+문서 자체는 client-ready PASS로 보정했다. App Review 제출 준비는 실제 권한 성공 호출·영상 0/13과 기술 gap 때문에 계속 NO-GO다.
+
 ## 2026-09-17 19:12 KST · 네 방 기본 흐름 QA v23
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

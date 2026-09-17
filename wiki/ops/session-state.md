@@ -1,3 +1,26 @@
+# 2026-09-17 19:12 KST Meta App Review 패키지 독립 리뷰·보정
+
+회장이 명시한 `docs/ops/meta-app-review-2026-09.md` 독립 리뷰 과제를 handoff basis로 사용했다.
+live tmux pane은 존재했지만 인계 대상으로 지정되지 않아 캡처·변경하지 않았고, 현재 요청과
+commit `2aac6c14`의 문서를 기준으로 검수했다.
+
+최초본은 `standard-doc-review.md` 기준 17/25 RETAKE였다. 목차·버전핀·개정이력·RUBRIC_SCORE가
+없었고, 스크린캐스트 표에 API가 적혀 있어도 심사관 화면에 METHOD·path·HTTP 2xx·결과가 보인다는
+계약이 없었다. v1.1.0에서 권한 13개를 사용자 가치→코드→외부 API→영상 구간에 1:1 매핑하고,
+권한별 화면 증거 대장과 독립 리뷰 표를 추가해 문서 품질은 25/25 PASS로 보정했다.
+
+Codex 독립 2차 검토의 RETAKE 4건도 반영했다. Instagram account insights의 `impressions` 폐기
+안내와 media insights의 `engagement,impressions,reach` 예시가 충돌하므로 특정 metric으로 단정하지
+않고 실제 media 성공 호출을 게이트로 두었다. Facebook `pages_show_list`와 Page name 검증 경계를
+분리하고, `pages_read_engagement` 영상 path를 코드와 같은 `fields=name`으로 맞췄으며, 즉시 발행과
+사용자 예약 발행 문안을 구분했다.
+
+App Review 제출은 계속 NO-GO다. Instagram 인사이트 scope·host·media metric 계약,
+Facebook `read_insights` configuration·`pages_read_engagement` 직접 증거, Meta API v21.0 지원,
+액세스 인증, reviewer 접근, 권한별 최근 성공 호출과 실제 영상 13개 구간이 남아 있다. 출처와 공개
+URL 15개는 redirect 포함 HTTP 200을 관찰했다. QA 원장은 `META-DOC-REVIEW-20260917-01~07`이다.
+다음 소유자는 code-builder와 qa-verifier이며, 문서 §8 순서와 §4.5의 13/13 종료 증거로 닫는다.
+
 ## 2026-09-17 19:12 KST 네 방 기본 흐름 QA v23, 제품 전체 QA는 NG
 
 사용자 과제 원문을 handoff 기준으로 사용했다. canonical `pipeline-state.osmu.md`는 착수 시 이미
