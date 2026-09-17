@@ -1,3 +1,9 @@
+## 2026-09-18 01:31 KST · Meta 인사이트 회귀 테스트 CI 타입 검사 🔧 전환
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| CI-35245704219 | Meta 인사이트 회귀 테스트를 CI와 같은 TypeScript 설정으로 검사 | META-INSIGHTS-TYPE-20260918-01 | 🔧 수정, 테스트 PASS | GitHub Actions run `35245704219`의 Type check는 53행과 121행 `TS2493`, 종료 코드 2였다. 두 mock에 fetch의 `input`과 선택적 `init` 호출 시그니처를 부여했다. `npx tsc -p tsconfig.ci.json --noEmit` 종료 코드 0, 표적 Vitest 1파일 6건 통과. 원격 CI 재실행과 운영 배포는 미검증. |
+
 ## 2026-09-18 01:02 KST · Meta App Review 인사이트 코드 갭 수정 착수
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

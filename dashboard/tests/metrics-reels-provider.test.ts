@@ -34,7 +34,7 @@ describe("Instagram Reels Media Insights provider 계약", () => {
   });
 
   it("METRICS-IG-PROVIDER-02 정상: Instagram 피드도 Instagram host에 views 지표를 요청한다", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({
       data: [
         { name: "views", values: [{ value: 81 }] },
         { name: "likes", values: [{ value: 9 }] },
@@ -103,7 +103,7 @@ describe("Instagram Reels Media Insights provider 계약", () => {
   });
 
   it("항목 17 정상: Facebook 반응 유형 객체를 합산한 숫자로 반환한다", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({
       data: [
         { name: "post_impressions", values: [{ value: 20 }] },
         { name: "post_reactions_by_type_total", values: [{ value: { like: 2, love: 1 } }] },
