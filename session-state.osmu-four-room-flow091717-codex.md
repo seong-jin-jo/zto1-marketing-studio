@@ -4,6 +4,12 @@
 
 라인: osmu-four-room-flow091717-codex
 
+## 2026-09-17 14:34 KST 최신성 갱신
+
+- stop gate 반려 뒤 v63 `perf-1440.png`와 dev `1440-light-performance.png`를 원본 해상도로 각각 다시 열어 직접 대조했다.
+- v63은 단일 결론 카드와 비교 막대가 중심이고, dev는 단계 헤더·연결 안내·표본 부족 상태가 중심이다. 요소 순서, 정보 밀도, 우측 담당 패널, 버튼 위계가 달라 디자인 NG를 유지한다.
+- 중복 실행으로 남은 `codex-qa-verifier-17151`은 이 세션 자체의 위임 등록이므로 결과 회수 뒤 등록을 해제한다.
+
 ## 무엇을 어디까지 했나
 
 - 회장 요청 원문을 primary handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였다.
@@ -19,6 +25,21 @@
 - v63과 현재 라이트 화면 16개는 배치 속성이 불일치하거나 동일 콘텐츠 상태가 아니다.
 - 운영 동적 URL의 배포 SHA와 외부 채널 실발행은 미검증이다.
 - 컨트롤러와 product-designer가 단일 승인 핀과 동일 콘텐츠 상태 화면을 확정한 뒤 QA가 16화면 정합과 운영 실발행을 재검증한다.
+
+## 다음에 칠 명령
+
+단일 승인 디자인 핀이 확정되고 stage 또는 운영 배포 SHA가 나온 뒤 아래 순서로 재검증한다.
+
+```bash
+cd /Users/sj/sj_code_master/zto1-marketing-studio/dashboard
+node scripts/verify-basic-flow-e2e.mjs
+node scripts/probe-four-room-flow.mjs
+node scripts/verify-studio-v1-e2e.mjs
+npm run test
+npx tsc --noEmit
+```
+
+종료 증거는 단일 기준에 대한 16화면 디자인 행렬 PASS, stage 또는 운영 health 응답의 배포 SHA, 외부 발행이 승인된 경우 실제 permalink다.
 
 ## 검증했나
 
