@@ -17,6 +17,7 @@ describe("2026-09-18 운영 검증 회귀", () => {
     expect(result.status).not.toBe(0);
     expect(output).toContain("오류 member");
     expect(output).not.toMatch(/[✓✗⛔]/u);
+    expect(output).not.toContain("unbound variable");
   });
 
   it("REVIEW-24H-20260918-05 경합: 네 방 검증기는 설정 전체 스냅샷을 복원하지 않고 자기 필드만 조건부 복구한다", () => {

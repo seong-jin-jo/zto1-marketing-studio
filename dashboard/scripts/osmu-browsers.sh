@@ -26,7 +26,7 @@ case "$ROLE" in
         failures=$((failures + 1))
       fi
     done
-    (( failures == 0 )) ;;
+    exit "$failures" ;;
   *) echo "usage: $0 admin|member [url] | status" >&2; exit 2 ;;
 esac
 if curl -s --max-time 1 "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1; then
