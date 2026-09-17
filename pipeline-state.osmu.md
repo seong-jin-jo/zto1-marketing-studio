@@ -1,3 +1,10 @@
+## 2026-09-17 네 방 기본 흐름 전수 검증 v22 (qa 진행 중)
+
+current_stage: qa
+status: in-progress (승인 아님)
+
+2026-09-17 14:25 KST 재검증: localhost 기능 범위는 기본 흐름 최초·최종 11/11, 네 방 4/4, 네 폭 20화면과 복귀 5/5, Studio v1 14/14를 통과했다. 전체 Vitest 첫 실행에서 YouTube 동시 요청 테스트의 비결정적 대기 결함을 찾아 `0c596b03`으로 수리했고, 전용 5회 85/85와 전체 374파일·2,414건, TypeScript, 격리 build 184/184, seed·RLS, 디자인 lint를 다시 통과했다. v63 디자인 정합 NG, v63과 canonical 승인 v68 핀 충돌, 운영 배포와 외부 채널 실발행 미검증 때문에 qa 진행 중과 승인 불가 상태를 유지한다. 증거는 `docs/qa/osmu-four-room-basic-flow-v22-gpt-codex.md`다.
+
 ## 2026-09-17 실유저 생성·발행·성과 빈틈 수정 배포 (qa 진행 중, 채널 연결은 콘솔 로그인 대기)
 
 - 단계: build→qa. 배포 run 35132988806 success(main). 승인자: 오케스트레이터(회장 위임, 배포는 회장 "다 진행해" 지시).

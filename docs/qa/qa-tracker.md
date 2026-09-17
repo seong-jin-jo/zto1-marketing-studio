@@ -1,3 +1,22 @@
+## 2026-09-17 14:25 KST · 네 방 기본 흐름 QA v22
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08 | 사이드바에서 네 방을 잇는다 | FLOW-UI-V22 | PASS | localhost 네 방 4/4, 가린 모달·401·콘솔 오류 0 |
+| R19 | 390·768·1024·1440에서 실제로 누른다 | FLOW-UI-V22 | PASS | 20화면, 성과실→생성실 복귀 5/5, 가로 넘침 0 |
+| R166, R172 | 생성부터 성과 재인계까지 기본 흐름 | FLOW-API-V22 | PASS | 실제 localhost 요청 최초·최종 11/11 |
+| R193, R205, R206 | 승인 시안 계승과 화면 충실도 | DESIGN-CONF-V22 | NG | v63 기준과 현재 16개 라이트 화면의 배치 속성 불일치 또는 동일 상태 미확보. canonical 승인 핀은 v68이라 기준도 충돌 |
+| R207 | 성과실 UX와 학습 정보 | FLOW-PERF-V22 | 부분 PASS | 제안 3건과 생성 큐 재인계 동작. v63 시각 정합 NG |
+| R01~R207 중 이번 범위 밖 | 회장 확정 요구 전건 | REQ-ALL-V22 | 이월 | 기존 정본 판정 유지. 이번 범위 관련 요청만 재검증 |
+
+### 판정과 직접 증거
+
+- 기능 범위 PASS: 기본 흐름 11/11, 네 방 4/4, Studio v1 14/14, 네 폭 20화면과 복귀 5/5.
+- 전체 회귀 PASS: 첫 실행에서 YouTube 동시 요청 테스트가 비결정적 0ms 대기로 timeout됐다. 실제 예약 확보 신호를 기다리게 고쳐 전용 5회 85/85, 전체 Vitest 374파일·2,414건, TypeScript, 격리 build 184/184를 통과했다. 수정 커밋 `0c596b03`.
+- schema·seed·RLS PASS. 디자인 lint 위반 0.
+- 제품 전체 QA는 NG: v63과 v68 승인 핀 충돌, v63 디자인 정합 NG, 운영 배포와 외부 채널 실발행 미검증.
+- 상세: `docs/qa/osmu-four-room-basic-flow-v22-gpt-codex.md`. 원본: `logs/diff/osmu-four-room-flow-20260917-v22/`.
+
 # QA Tracker — openclaw-auto-osmu (pipeline qa 단계 증거)
 
 > 2026-07-02 밤샘 라이브 QA(browse+curl, 직접 관찰). 형식: 증거 항목 → 결과 → 근거.

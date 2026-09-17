@@ -1,3 +1,11 @@
+## 2026-09-17 14:25 KST · 네 방 기본 흐름 QA v22 완료, 제품 전체 QA는 NG
+
+회장 요청 원문을 primary handoff basis로 사용했다. canonical `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`였다. localhost 실행 앱 커밋 `426bfb4c`에서 기본 흐름 최초·최종 11/11, 네 방 4/4, 390 라이트·다크와 768·1024·1440의 20화면, 성과실 복귀 5/5, Studio v1 14/14를 관찰했다.
+
+전체 Vitest 첫 실행에서 YouTube 동시 요청 테스트가 첫 요청의 실제 예약 확보보다 경쟁 요청을 먼저 시작할 수 있어 timeout됐다. 이벤트 루프 1회 대기를 실제 업로드 예약 확보 신호 대기로 바꾸고 전용 5회 85/85와 전체 374파일·2,414건을 재통과했다. 수정 커밋은 `0c596b03`이다. TypeScript, 격리 build 184/184, schema·seed·RLS, 디자인 lint도 통과했다.
+
+기능 범위는 PASS지만 과제 지정 v63과 canonical 승인 v68 핀이 충돌하고, v63 대비 16개 라이트 화면 디자인 정합이 NG이며, 운영 배포와 외부 채널 실발행은 미검증이다. 제품 전체 QA와 배포는 NG다. 상세는 `docs/qa/osmu-four-room-basic-flow-v22-gpt-codex.md`, 원본은 `logs/diff/osmu-four-room-flow-20260917-v22/`다.
+
 # 2026-09-17 12시 15분 최근 24시간 코드 공격 리뷰 BLOCK
 
 사용자의 명시 과제를 handoff basis로 사용했다. tmux pane은 실행 서버와 동시 작업 확인에만
