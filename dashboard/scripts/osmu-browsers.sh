@@ -4,13 +4,13 @@
 #   Claude in Chrome 은 회장 실사용 프로필 1개를 공유해 동시 세션이 안 되고 포커스를 뺏는다.
 #   프로필 관리는 하네스 정문 social-browser.mjs(SOCIAL_PROFILE → ~/.sj-agent-harness/browser-profiles/<이름>)를 그대로 쓴다.
 #   실제 크롬 채널(channel: 'chrome')이라 Chrome for Testing 은 필요 없다.
-# 사용: dashboard/scripts/osmu-browsers.sh admin|member [url]     (기본 url = http://localhost:3456/)
+# 사용: dashboard/scripts/osmu-browsers.sh admin|member [url]     (기본 url = 운영 https://openclaw.sj-onpremise-cloudflare-tunnel.cloud/)
 #       dashboard/scripts/osmu-browsers.sh status                 (두 CDP 포트 응답 확인)
 # CDP: admin=9222, member=9223(기본) 또는 OSMU_MEMBER_CDP(회장이 직접 띄운 실회원 브라우저. 그 창의 SNS 탭은 건드리지 않고 localhost 탭만 쓴다). 컨트롤러는 playwright chromium.connectOverCDP('http://127.0.0.1:<port>') 로 붙는다.
 # 로그인: admin 은 DASHBOARD_AUTH_TOKEN 을 localStorage 에 넣는 운영자 로그인(컨트롤러가 함).
 #         member 는 회장이 그 창에서 Google/소셜 로그인 1회. Meta OAuth 동의 클릭은 회장 손(ADR-005 §7, 2026-07-01 플래그 사고).
 set -euo pipefail
-ROLE="${1:-}"; URL="${2:-http://localhost:3456/}"
+ROLE="${1:-}"; URL="${2:-https://openclaw.sj-onpremise-cloudflare-tunnel.cloud/}"   # 운영 서비스가 기본. 로컬은 2번째 인자로 명시 (회장 2026-09-17 "실제 배포된 서비스를 들어가야지")
 RUNNER="$HOME/.claude/harness/bin/social-browser.mjs"
 case "$ROLE" in
   admin)  PORT=9222; PROFILE=osmu-admin ;;
