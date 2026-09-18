@@ -1,0 +1,18 @@
+이미 떠 있다: osmu-testdb
+적용: dashboard/db/schema.sql
+적용: dashboard/scripts/seed-test-tenants.sql
+적용: dashboard/db/rls.sql
+schema_fingerprint=S3|S3
+NOTICE:  relation "osmu_schema_migrations" already exists, skipping
+legacy_migration=20260828_020_engagement_items state=applied action=checksum-only
+legacy_migration=20260828_030_operational_incidents state=applied action=checksum-only
+legacy_migration=20260828_040_shorts_factory_runs state=applied action=checksum-only
+legacy_migration=20260828_050_shorts_factory_run_leases state=applied action=checksum-only
+legacy_migration=20260828_060_code_review_tenant_fk state=applied action=checksum-only
+legacy_migration=20260829_050_generation_candidate_rejections state=applied action=checksum-only
+legacy_migration=20260829_060_publish_intent_lease_uncertain state=applied action=checksum-only
+legacy_migration=20260829_070_shorts_factory_fencing state=applied action=checksum-only
+legacy_migration=20260830_010_studio_derivations state=applied action=checksum-only
+legacy_migration=20260901_010_tenant_access_history state=applied action=checksum-only
+schema_fingerprint=S3|S3
+준비됨. DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/testdb

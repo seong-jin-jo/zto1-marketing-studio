@@ -1,0 +1,16 @@
+1024-light-create.png	v25=(1024, 1200)	v63=(1024, 822)	v23_mean_abs_diff=0.064
+1024-light-edit.png	v25=(1024, 1200)	v63=(1024, 822)	v23_mean_abs_diff=0.082
+1024-light-performance.png	v25=(1024, 1200)	v63=(1024, 822)	v23_mean_abs_diff=0.081
+1024-light-publish.png	v25=(1024, 1200)	v63=(1024, 822)	v23_mean_abs_diff=10.002
+1440-light-create.png	v25=(1440, 1200)	v63=(1394, 796)	v23_mean_abs_diff=0.121
+1440-light-edit.png	v25=(1440, 1200)	v63=(1394, 796)	v23_mean_abs_diff=0.059
+1440-light-performance.png	v25=(1440, 1200)	v63=(1394, 796)	v23_mean_abs_diff=0.058
+1440-light-publish.png	v25=(1440, 1200)	v63=(1394, 796)	v23_mean_abs_diff=0.045
+390-light-create.png	v25=(390, 844)	v63=(390, 814)	v23_mean_abs_diff=16.547
+390-light-edit.png	v25=(390, 844)	v63=(390, 814)	v23_mean_abs_diff=0.923
+390-light-performance.png	v25=(390, 844)	v63=(390, 814)	v23_mean_abs_diff=0.000
+390-light-publish.png	v25=(390, 844)	v63=(390, 814)	v23_mean_abs_diff=1.956
+768-light-create.png	v25=(768, 1024)	v63=(768, 822)	v23_mean_abs_diff=18.385
+768-light-edit.png	v25=(768, 1024)	v63=(768, 822)	v23_mean_abs_diff=0.128
+768-light-performance.png	v25=(768, 1024)	v63=(768, 822)	v23_mean_abs_diff=0.000
+768-light-publish.png	v25=(768, 1024)	v63=(768, 822)	v23_mean_abs_diff=9.803

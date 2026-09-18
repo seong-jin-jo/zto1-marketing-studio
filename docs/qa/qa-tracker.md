@@ -1,3 +1,24 @@
+## 2026-09-19 02:19 KST · 네 방 기본 흐름 v25 최종 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R19, R207 | 네 방 렌더와 390·768·1024·1440 실제 이동 | FLOW-UI-V25-FINAL | PASS | 네 방 단면 4/4, 390 라이트와 다크 및 768·1024·1440의 20화면, 성과실에서 생성실 복귀 5/5. 가로 넘침, 가린 모달, 탐색 가림, 401, 콘솔 오류 0. `logs/diff/osmu-four-room-flow-20260919-v25/` |
+| R166, R172 | 생성실에서 성과실까지 백엔드 열한 단계 관통 | FLOW-API-V25-FINAL | NG | 첫 후보 생성이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 종료. 공유 Claude CLI 7일 사용량 100%, 2026-09-19 18:59 KST 리셋 실측. 모의 후보나 하드코딩으로 우회하지 않음 |
+| R166, R172 | Studio v1 인증, 생성, 조회, 재생성 계약 | STUDIO-V1-V25 | NG | 401·400·422 거절 3건은 통과, 정상 생성부터 공급자 한도로 중단. `verify-studio-v1-e2e.log` |
+| 필수 회귀 | 전체 테스트, TypeScript, production build, seed·RLS, 디자인 lint | FLOW-REGRESSION-V25 | PASS | Vitest 378파일·2,431건, 제외 3건. `npx tsc --noEmit` 최종 종료 0. 격리 build 185/185. schema fingerprint S3|S3. 디자인 토큰 위반 0 |
+| R193, R205, R206 | v63 승인 시안 계승 | DESIGN-CONF-V25 | NG | 16개 라이트 화면의 주축, 요소 순서, 열 수, 정렬, 표시, 글꼴 단계, 버튼 위계를 대조했으며 전 화면 배치 속성이 불일치. `docs/qa/osmu-four-room-basic-flow-v25-gpt-codex.md` |
+
+화면 이동은 PASS지만 핵심 생성이 BLOCK이라 제품 전체는 NG다. 공유 공급자 한도 리셋 뒤 같은 실행본에서 `verify-basic-flow-e2e.mjs`와 `verify-studio-v1-e2e.mjs`를 다시 통과하기 전에는 전환하지 않는다.
+
+## 2026-09-19 02:04 KST · 네 방 기본 흐름 v25 착수 NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R08, R166, R172 | 생성실에서 성과실까지 백엔드 열한 단계 관통 | FLOW-API-V25-INITIAL | NG | 실행 HEAD와 health `build_commit`이 `d0bc4f7b`로 일치하는 localhost:3456에서 첫 생성이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 끝나 후보 0장. HTTP health 200, DB up, 46ms. 원본 `logs/diff/osmu-four-room-flow-20260919-v25/verify-basic-flow-e2e.log`, `health.log` |
+| R08, R19, R207 | 네 방 렌더와 390·768·1024·1440 실제 이동 | FLOW-UI-V25-INITIAL | 미실시, 차단 | 백엔드 첫 생성 실패의 원인 분리와 수리 전이다. 화면을 정상으로 승격하지 않는다. |
+
+현재 판정은 NG다. 공급자 실패의 원인을 확인하고 고친 뒤 같은 localhost 실행본에서 두 필수 E2E, 네 폭 실제 클릭과 전체 회귀를 다시 관찰한다.
+
 ## 2026-09-18 18:15 KST · 최근 24시간 코드 공격 리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

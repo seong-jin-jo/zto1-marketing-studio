@@ -1,0 +1,5 @@
+통과  토큰 없이 생성 요청은 거절된다  기대 401 실제 401
+통과  멱등 키 없는 생성 요청은 거절된다  기대 400 실제 400
+통과  빈 본문은 어느 항목이 빠졌는지 밝히며 거절된다  기대 422 실제 422
+실패  일곱 층 학습 정보를 갖춘 생성 요청은 받아들여진다  기대 201 실제 200
+{"error":{"code":"STUDIO_LLM_PROVIDER_UNAVAILABLE","message":"AI 생성 엔진이 응답하지 않았습니다","retryable":true,"field_errors":[],"details":{"reason":"provider_unavailable"}},"meta":{"request_id":"fd4791ff-13a0-46cc-8883-52fc53a941f2","contract_version":"1.0"}}

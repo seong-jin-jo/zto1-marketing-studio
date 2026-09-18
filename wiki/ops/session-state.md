@@ -1,3 +1,12 @@
+## 2026-09-19 02:19 KST 네 방 기본 흐름 QA v25 BLOCK
+
+- handoff basis: 사용자의 이번 명시 과제. `osmu-flowcheck091902:0.0`은 현재 Codex 세션 자체이고 다른 pane은 localhost 소유권과 동시 작업 확인에만 사용했다.
+- canonical `pipeline-state.osmu.md`는 착수 시 이미 `current_stage: qa`, `in-progress`, 승인 아님이었다. 단계 값은 바꾸지 않았다.
+- localhost 네 방 4/4, 네 폭 20화면과 복귀 5/5, Vitest 378파일과 2,431건, TypeScript, build 185/185, seed와 RLS, 디자인 lint는 통과했다.
+- 실제 생성은 공유 Claude CLI 7일 사용량 100%로 첫 후보에서 중단됐다. 기본 흐름과 Studio v1은 NG다. 제품 코드는 수정하지 않았고 모의 성공으로 우회하지 않았다.
+- v63 기준 16개 라이트 화면 디자인 정합은 NG이며 canonical 승인 v68과 과제 v63의 핀 충돌도 남아 있다. 운영 배포와 외부 SNS 실발행은 미검증이다.
+- 다음 실행: 2026-09-19 18:59 KST 공급자 한도 리셋 뒤 두 필수 E2E를 재실행하고, 컨트롤러와 product-designer가 단일 승인 디자인 핀을 확정한다.
+
 ## 2026-09-18 12:16 KST 성과 시계열 갭 재확인 BLOCK
 
 - handoff basis: 사용자의 이번 명시 과제. 현재 tmux pane `osmu-gapfill091811:0.0`을 작업 기준으로 사용했고 다른 pane은 동시 작업 확인에만 사용했다.

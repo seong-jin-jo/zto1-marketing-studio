@@ -1,5 +1,35 @@
 # OSMU 네 방 기본 흐름 QA 핸드오프
 
+## 2026-09-19 02:19 KST · v25 현재 핸드오프
+
+### 무엇을 어디까지 했나
+
+- handoff basis는 사용자의 이번 명시 과제다. canonical main repo는 현재 경로이고 `pipeline-state.osmu.md`는 착수 때 이미 `current_stage: qa`, `in-progress`, 승인 아님이었다.
+- localhost 실행본은 health HTTP 200, DB up, `build_commit=d0bc4f7b291e8d4556f406a79e5b5eb077865d3a`로 관찰했다.
+- 네 방 단면 4/4, 390 라이트와 다크 및 768, 1024, 1440의 20화면, 성과실에서 생성실 복귀 5/5를 실제 클릭했다. 가로 넘침, 가린 모달, 탐색 가림, 401, 콘솔 오류는 0건이다.
+- 전체 Vitest 378파일과 2,431건, TypeScript, 격리 production build 185/185, schema와 seed 및 RLS, 디자인 lint가 통과했다.
+
+### 남은 이슈와 블로커
+
+- 실제 기본 흐름과 Studio v1은 첫 후보 생성에서 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 중단됐다. `usage-check.sh` 실측 공유 Claude CLI 7일 사용량은 100%이고 리셋은 2026-09-19 18:59 KST다. 별도 Anthropic 키는 환경과 작업 공간에 없다.
+- 과제 지정 v63과 canonical pipeline 승인 v68 핀이 충돌한다. v63 기준 16개 라이트 화면의 8개 배치 속성은 모두 NG다.
+- 운영 배포 버전과 외부 SNS 실발행은 미검증이다. localhost 화면 PASS를 제품 전체 PASS로 확대하지 않는다.
+
+### 다음 행동
+
+1. 공유 공급자 한도 리셋 뒤 같은 작업 공간에서 `verify-basic-flow-e2e.mjs`와 `verify-studio-v1-e2e.mjs`를 다시 실행한다.
+2. 두 흐름이 각각 11/11과 14/14일 때만 생성 경로를 PASS로 전환한다.
+3. 컨트롤러와 product-designer가 v63 또는 v68 중 단일 승인 디자인 핀을 확정한 뒤 16개 화면을 다시 대조한다.
+
+### 증거 등급
+
+- 관찰됨: health HTTP 200과 DB up, 네 방 4/4, 화면 20/20, 복귀 5/5, 생성 공급자 한도 실패.
+- 테스트됨: 전체 Vitest 2,431건, TypeScript, production build 185/185, seed와 RLS, 디자인 lint.
+- 근거 확인: `docs/qa/osmu-four-room-basic-flow-v25-gpt-codex.md`, `logs/diff/osmu-four-room-flow-20260919-v25/`.
+- 미검증: 공급자 리셋 뒤 실제 생성, 단일 승인 핀 기준 디자인 정합, 운영 배포 버전, 외부 채널 실발행.
+
+---
+
 ## 2026-09-16 18:53 KST · v17 현재 핸드오프
 
 ### 무엇을 어디까지 했나

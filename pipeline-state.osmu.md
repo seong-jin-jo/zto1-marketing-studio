@@ -1,3 +1,13 @@
+## 2026-09-19 네 방 기본 흐름 전수 검증 v25, qa 진행 중
+
+current_stage: qa
+status: in-progress (승인 아님)
+
+localhost 네 방 단면 4/4와 네 폭 20화면 및 복귀 5/5, Vitest 378파일·2,431건, TypeScript,
+격리 build 185/185, seed·RLS와 디자인 lint는 통과했다. 공유 Claude CLI 7일 사용량 100%로 실제
+후보 생성이 첫 단계에서 중단돼 기본 흐름과 Studio v1은 NG다. v63 디자인 정합 NG와 v63·v68
+승인 핀 충돌도 유지한다. 상세는 `docs/qa/osmu-four-room-basic-flow-v25-gpt-codex.md`다.
+
 ## 2026-09-17 채널 연결 정의 정정: Meta 앱 검수 승인이 종료 조건 (qa 진행 중)
 
 - 정책 재확인(ADR-004/006): 회원은 OAuth 로그인만으로 연결·발행. 테스터 등록은 심사 전 한시. 종료 조건 = Meta App Review 승인.
