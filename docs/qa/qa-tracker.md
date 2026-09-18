@@ -1,3 +1,18 @@
+## 2026-09-19 03:10 KST · 성과 시계열 갭 재확인 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사에서 현재도 없는 기본 흐름 항목 하나 구현 | GAP-HISTORY-20260919-0310-01 | NG | 현재 schema, migration, `GET /api/metrics`에는 게시물별 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교가 없다. 응답 키는 `coverage`, `posts`뿐이다. |
+| 공정과 기술계약 | 승인 범위 안에서만 제품 소스 수정 | GAP-HISTORY-20260919-0310-02 | BLOCK | `pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준의 승인 기술설계가 없다. 제품 소스 변경은 0건이다. |
+| 전체 단위 및 통합 | `npm run test` 필수 회귀 | GAP-HISTORY-20260919-0310-03 | PASS | 378파일, 2,431건 통과, 3건 제외, 종료 코드 0이다. |
+| 타입과 디자인 토큰 | TypeScript와 Web 토큰 검사 | GAP-HISTORY-20260919-0310-04 | PASS | `npx tsc --noEmit`과 `design-lint.sh src` 종료 코드 0, 토큰 위반 0이다. |
+| 기본 흐름 실앱 | 생성, 편집, 발행 큐, 성과 재인계 | GAP-HISTORY-20260919-0310-05 | NG | localhost:3456에서 첫 생성이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장으로 종료 코드 1이다. |
+| Studio v1 실앱 | 인증, 입력 거절, 생성, 조회와 재생성 | GAP-HISTORY-20260919-0310-06 | NG | 401, 400, 422 거절은 통과했다. 정상 생성은 기대 201 대신 HTTP 200의 공급자 오류다. 7일 사용량 100%, 2026-09-19 19:00 KST 초기화를 실측했다. |
+| 실행본 귀속 | localhost와 현재 HEAD 제품 소스 | GAP-HISTORY-20260919-0310-07 | 확인 | health HTTP 200, DB up, 실행 `d0bc4f7b`, 현재 HEAD `e4e6885d`. 두 커밋 사이 `dashboard/src`, `dashboard/db`, `dashboard/package.json` diff는 0건이다. |
+
+전체 회귀는 통과했지만 공정과 기술계약이 닫혀 있고 두 필수 실앱 E2E가 NG다. 제품 소스는
+수정하지 않았으며 운영 배포와 실제 SNS 공개 발행은 미검증이다.
+
 ## 2026-09-19 02:19 KST · 네 방 기본 흐름 v25 최종 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
