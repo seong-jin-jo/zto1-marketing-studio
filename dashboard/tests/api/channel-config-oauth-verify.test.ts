@@ -92,6 +92,16 @@ describe("GET /api/channel-config — Instagram/Threads 라이브 OAuth 검증",
     expect(data.telegram).toEqual(expect.objectContaining({ connected: false, connectionError: "telegram_chat_required" }));
   });
 
+  it("CHANNEL-41 Telegram 연결 화면의 Chat ID는 파일 캐시 대신 발행 기본 계정 meta를 표시한다", async () => {
+    H.rows = [{ label: "telegram", token: "bot-fixture", meta: { api: "telegram_bot", chatId: "-100NEW" } }];
+    const { GET } = await import("@/app/api/channel-config/route");
+    const data = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(data.telegram.connected).toBe(true);
+    expect(data.telegram.keys.chatId).toBe("-100NEW");
+    expect(data.telegram.keys.botToken).toBe("********");
+    expect(JSON.stringify(data)).not.toContain("bot-fixture");
+  });
+
   it("CHANNEL-23 Discord OAuth/임의 토큰과 유사 도메인은 연결로 표시하지 않는다", async () => {
     H.rows = [{ label: "discord", token: "oauth-fixture", meta: { api: "discord_oauth" } }];
     const { GET } = await import("@/app/api/channel-config/route");

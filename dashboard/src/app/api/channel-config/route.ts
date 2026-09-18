@@ -266,6 +266,15 @@ export async function GET(request: Request) {
           ch.status = "available";
           continue;
         }
+        if (label === "telegram") {
+          // 실제 direct publish는 기본 channel_accounts.meta.chatId를 읽는다. 파일 쓰기 실패 뒤
+          // gateway 캐시의 옛 대상 Chat ID를 화면에 보여주면 다른 방에 보내는 사고가 난다.
+          ch.keys = {
+            ...(ch.keys as Record<string, string>),
+            botToken: "********",
+            chatId: String(m.chatId),
+          };
+        }
         if (connectionStates[label] === "connected") {
           void reportRecovery({ workspaceId: __t, category: "token_expired", source });
         }

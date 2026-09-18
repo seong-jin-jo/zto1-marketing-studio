@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import postgres from "postgres";
 import { describe, expect, it, vi } from "vitest";
 import { createTempDir, setupTestEnv, cleanupTestEnv } from "../helpers";
@@ -83,6 +84,25 @@ describe("메시징 채널 수동 연결 실제 DB 왕복", () => {
       const repeated = await admin<{ id: string }[]>`
         SELECT id FROM channel_accounts WHERE tenant_id = ${tenantId}::uuid AND provider = 'slack'`;
       expect(repeated.map((row) => row.id)).toEqual([accounts[0].id]);
+
+      const telegramUrl = "http://localhost/api/channel-config/telegram";
+      const telegramParams = { params: Promise.resolve({ channel: "telegram" }) };
+      const telegramRequest = (chatId: string) => new Request(telegramUrl, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botToken: "fixture-bot", chatId }),
+      });
+      expect((await POST(telegramRequest("-100OLD"), telegramParams)).status).toBe(200);
+      const rename = vi.spyOn(fs, "renameSync").mockImplementationOnce(() => { throw new Error("fixture file unavailable"); });
+      const partial = await POST(telegramRequest("-100NEW"), telegramParams);
+      rename.mockRestore();
+      expect(partial.status).toBe(503);
+      const [actual] = await admin<{ meta: { chatId: string } }[]>`
+        SELECT meta FROM channel_accounts WHERE tenant_id = ${tenantId}::uuid AND provider = 'telegram' AND is_default = true`;
+      expect(actual.meta.chatId).toBe("-100NEW");
+      const afterPartial = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+      expect(afterPartial.telegram.connected).toBe(true);
+      expect(afterPartial.telegram.keys.chatId).toBe(actual.meta.chatId);
+      expect(afterPartial.telegram.keys.botToken).toBe("********");
     } finally {
       await admin`DELETE FROM tenants WHERE id = ${tenantId}::uuid`;
       if (appDb) await appDb.end({ timeout: 5 });

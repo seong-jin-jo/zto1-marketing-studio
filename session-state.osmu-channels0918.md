@@ -1,5 +1,10 @@
 # OSMU 채널 예약 발행·공유 생성 인계
 
+## 2026-09-18 21:12 KST · Telegram 실제 발행 대상 표시 보정
+
+- 첫 저장 일관성 커밋 `2eddfea1` 이후, 파일 저장 실패 때 Telegram 기본 DB 계정은 새 Chat ID를 발행 대상으로 읽지만 GET 화면은 옛 gateway 파일의 Chat ID를 보여주는 목적지 불일치를 발견했다. GET은 암호화된 기본 계정의 `meta.chatId`를 먼저 표시하고 botToken은 마스킹한다. 실제 로컬 PostgreSQL fixture에서 옛 Chat ID 저장→새 Chat ID DB 갱신→파일 rename 실패 503을 주입하고 DB의 실제 대상과 GET 표시가 같은 새 Chat ID인지 확인했다. API 19/19와 실제 DB 1/1 PASS. 최종 TypeScript 검사와 별도 보정 커밋을 이어 진행한다.
+- 다음 실행: TypeScript 종료 확인, 보정 파일만 별도 커밋하여 리뷰어·컨트롤러에 pin 전달. Slack 명시적 테스트 메시지 UI는 부모가 별도 후속으로 채택했으나 이 보정 커밋과 섞지 않는다.
+
 ## 2026-09-18 21:08 KST · 단일 기본 계정 저장 계약 최종 핀 후보
 
 - 현재 묶음에서 메시징 신규값 검증 실패·불명확은 DB와 gateway 파일의 기존 값·enabled를 보존한다. Discord는 GET 응답의 Incoming Webhook type=1·대상 channel_id를 확인한다. Slack의 malformed JSON 400은 발행 권한 증거가 아니므로 unverified이며 새 연결을 확정하지 않는다. 부분 저장 503은 서버 안내를 화면 토스트로 보여주고 입력·편집 상태를 보존한다.
