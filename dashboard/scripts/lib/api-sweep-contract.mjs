@@ -43,3 +43,46 @@ export function classifyApiReadResponse({ status, expectedRejection = null, allo
   if (status >= 500) return "서버 오류 검토";
   return "예상 밖 거절";
 }
+
+function sameOrderedStrings(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+/**
+ * A long live sweep is authoritative only when both the observed process and
+ * the complete source inventory stay fixed. Comparing only the files found at
+ * startup misses a route that is added while requests are still running.
+ *
+ * @param {object} input
+ * @param {string} input.sourceHashBefore
+ * @param {string} input.sourceHashAfter
+ * @param {string[]} input.listenerPidsBefore
+ * @param {string[]} input.listenerPidsAfter
+ * @param {string[]} input.evidenceFilesBefore
+ * @param {string[]} input.evidenceFilesAfter
+ * @param {string[]} input.routeInventoryBefore
+ * @param {string[]} input.routeInventoryAfter
+ */
+export function evaluateSweepEvidenceStability(input) {
+  const sourceHashMatches = input.sourceHashBefore === input.sourceHashAfter;
+  const listenerMatches = input.listenerPidsBefore.length > 0
+    && sameOrderedStrings(input.listenerPidsBefore, input.listenerPidsAfter);
+  const evidenceFileInventoryMatches = sameOrderedStrings(
+    input.evidenceFilesBefore,
+    input.evidenceFilesAfter,
+  );
+  const routeInventoryMatches = sameOrderedStrings(
+    input.routeInventoryBefore,
+    input.routeInventoryAfter,
+  );
+  return {
+    stable: sourceHashMatches
+      && listenerMatches
+      && evidenceFileInventoryMatches
+      && routeInventoryMatches,
+    sourceHashMatches,
+    listenerMatches,
+    evidenceFileInventoryMatches,
+    routeInventoryMatches,
+  };
+}

@@ -6,7 +6,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { classifyApiReadResponse } from "./lib/api-sweep-contract.mjs";
+import {
+  classifyApiReadResponse,
+  evaluateSweepEvidenceStability,
+} from "./lib/api-sweep-contract.mjs";
 
 const dashboardRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const apiRoot = path.join(dashboardRoot, "src", "app", "api");
@@ -152,6 +155,9 @@ if (!buildCommitMatches) {
 
 const files = await collectRouteFiles(apiRoot);
 const requests = files.flatMap(({ file, methods }) => methods.map((method) => ({ file, method })));
+const routeInventoryBefore = requests
+  .map(({ file, method }) => `${path.relative(dashboardRoot, file)}:${method}`)
+  .sort();
 const results = [];
 const deadlineAt = Date.now() + totalTimeoutMs;
 let cursor = 0;
@@ -167,12 +173,14 @@ async function collectFiles(directory) {
   return collected;
 }
 
-const evidenceFiles = [
-  ...await collectFiles(path.join(dashboardRoot, "src")),
-  ...await collectFiles(path.join(dashboardRoot, "scripts")),
-].sort();
+async function collectEvidenceFiles() {
+  return [
+    ...await collectFiles(path.join(dashboardRoot, "src")),
+    ...await collectFiles(path.join(dashboardRoot, "scripts")),
+  ].sort();
+}
 
-async function sourceHash() {
+async function sourceHash(evidenceFiles) {
   const hash = createHash("sha256");
   for (const file of evidenceFiles) {
     hash.update(path.relative(dashboardRoot, file));
@@ -194,7 +202,8 @@ function listenerPids() {
   }
 }
 
-const sourceHashBefore = await sourceHash();
+const evidenceFilesBefore = await collectEvidenceFiles();
+const sourceHashBefore = await sourceHash(evidenceFilesBefore);
 const listenerPidsBefore = listenerPids();
 
 async function inspectRoute({ file, method }) {
@@ -273,11 +282,25 @@ await Promise.all(Array.from({ length: Math.min(sweepConcurrency, files.length) 
 }));
 results.sort((left, right) => left.route.localeCompare(right.route) || left.method.localeCompare(right.method));
 
-const sourceHashAfter = await sourceHash();
+const filesAfter = await collectRouteFiles(apiRoot);
+const requestsAfter = filesAfter.flatMap(({ file, methods }) => methods.map((method) => ({ file, method })));
+const routeInventoryAfter = requestsAfter
+  .map(({ file, method }) => `${path.relative(dashboardRoot, file)}:${method}`)
+  .sort();
+const evidenceFilesAfter = await collectEvidenceFiles();
+const sourceHashAfter = await sourceHash(evidenceFilesAfter);
 const listenerPidsAfter = listenerPids();
-const evidenceStable = sourceHashBefore === sourceHashAfter
-  && JSON.stringify(listenerPidsBefore) === JSON.stringify(listenerPidsAfter)
-  && listenerPidsBefore.length > 0;
+const evidenceStability = evaluateSweepEvidenceStability({
+  sourceHashBefore,
+  sourceHashAfter,
+  listenerPidsBefore,
+  listenerPidsAfter,
+  evidenceFilesBefore: evidenceFilesBefore.map((file) => path.relative(dashboardRoot, file)),
+  evidenceFilesAfter: evidenceFilesAfter.map((file) => path.relative(dashboardRoot, file)),
+  routeInventoryBefore,
+  routeInventoryAfter,
+});
+const evidenceStable = evidenceStability.stable;
 
 const counts = Object.fromEntries(
   [...new Set(results.map((result) => result.classification))]
@@ -295,13 +318,20 @@ const report = {
   total_timeout_ms: totalTimeoutMs,
   concurrency: sweepConcurrency,
   route_count: files.length,
+  route_count_after: filesAfter.length,
   request_count: requests.length,
+  request_count_after: requestsAfter.length,
   method_counts: Object.fromEntries(READ_METHODS.map((method) => [method, requests.filter((entry) => entry.method === method).length])),
   listener_pids_before: listenerPidsBefore,
   listener_pids_after: listenerPidsAfter,
   source_hash_before: sourceHashBefore,
   source_hash_after: sourceHashAfter,
   source_hash_scope: ["src/**/*", "scripts/**/*"],
+  evidence_file_count_before: evidenceFilesBefore.length,
+  evidence_file_count_after: evidenceFilesAfter.length,
+  route_inventory_before: routeInventoryBefore,
+  route_inventory_after: routeInventoryAfter,
+  evidence_stability: evidenceStability,
   evidence_stable: evidenceStable,
   counts,
   results,
