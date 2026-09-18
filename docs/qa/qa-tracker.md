@@ -1,3 +1,17 @@
+## 2026-09-19 08:29 KST · 최근 24시간 코드 공격 리뷰 최종 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드리뷰 24시간 | 운영 dashboard 도커 빌드 유지 | REVIEW-24H-20260919-10 | NG | dashboard-only 격리 context의 `docker build --target builder`가 `next build`에서 `spawnSync git ENOENT`, 종료 코드 1. `next.config.ts:17`이 Git 없는 `node:20-alpine` builder에서 Git을 무조건 실행한다. |
+| 코드리뷰 24시간 | 실행 소스 증거의 완전한 입력 결속 | REVIEW-24H-20260919-11 | NG | 임시 Git fixture에서 `next.config.ts`만 수정하자 전체 status는 `M`이지만 source hash는 불변이고 `gitSourceState`는 `clean:true`였다. `source-evidence.mjs:6`이 `src`, `scripts`만 본다. |
+| 코드리뷰 24시간 | 자동 백로그의 정본 입력과 산출 경로 | REVIEW-24H-20260919-12 | NG | 검토 HEAD의 `refill-backlog.sh:46-47,59,131`이 존재하지 않는 `docs/requests`, `wiki/product`, `docs/audit`를 발급한다. 실제 정본은 archive requests, `wiki/2-product/build`, archive audit다. |
+| 필수 회귀 | 전체 단위 및 통합 테스트 | REVIEW-24H-20260919-13 | PASS | `npm run test` 378파일, 2,434건 통과, 3건 제외, 종료 코드 0, 401.33초. |
+| 필수 회귀 | TypeScript | REVIEW-24H-20260919-14 | NG | `npx tsc --noEmit` 두 번 모두 `.next/dev/types/validator.ts:1934`의 잘린 생성 코드로 종료 코드 1 또는 2. `npm run typecheck:ci`도 같은 원인으로 종료 코드 2. 통과로 승격하지 않음. |
+| 실앱 기본 흐름 | localhost:3456 기본 흐름과 Studio v1 | REVIEW-24H-20260919-15 | NG | health HTTP 200, 실행 `e7eea1fa`. 기본 흐름은 첫 생성 후보 0장과 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 종료 코드 1. Studio v1은 401, 400, 422 거절 3건 통과 뒤 정상 생성이 같은 공급자 오류로 종료 코드 1. |
+| 삭제, 격리, 토큰 | 무기록 삭제와 확정 요구 | REVIEW-24H-20260919-16 | PASS, 동적 격리 미검증 | 삭제 파일 0개, 제품 UI 변경 0개, 새 토큰 및 금지 문구 0개. tenant 제품 코드 변경은 없고 두 작업 공간 동시 공격은 미검증. |
+
+MAJOR 3건, MINOR 2건과 필수 TypeScript 및 실앱 E2E NG로 BLOCK이다. 상세 위치와 재현은 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-19.md`에 기록했다. 제품 코드는 수정하지 않았다.
+
 ## 2026-09-19 07:22 KST · 네 방 기본 흐름 v26 NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
