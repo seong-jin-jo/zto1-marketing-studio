@@ -14,6 +14,7 @@ const H = vi.hoisted(() => ({
   selected: [] as unknown[],
   failAccount: false,
   accountIsDefault: true,
+  failMirror: false,
 }));
 
 vi.mock("@/lib/channel-accounts", () => ({
@@ -22,7 +23,10 @@ vi.mock("@/lib/channel-accounts", () => ({
     if (H.failAccount) throw new Error("db unavailable");
     return { id: "account-1", isDefault: H.accountIsDefault, reconnected: false };
   }),
-  syncLegacyIntegration: vi.fn(async (...args: unknown[]) => { H.selected.push(["sync", ...args]); }),
+  syncLegacyIntegration: vi.fn(async (...args: unknown[]) => {
+    if (H.failMirror) throw new Error("fixture mirror unavailable");
+    H.selected.push(["sync", ...args]);
+  }),
   setDefaultAccount: vi.fn(async (...args: unknown[]) => {
     H.selected.push(["default", ...args]);
     return { ok: true };
@@ -89,6 +93,7 @@ beforeEach(() => {
   H.selected = [];
   H.failAccount = false;
   H.accountIsDefault = true;
+  H.failMirror = false;
   H.verify = { verified: true, account: "@ok" };
   process.env.OSMU_SECRET_KEY = "enc-key";
 });
@@ -189,6 +194,41 @@ describe("POST /api/channel-config/[channel] — integrations 브리지", () => 
     expect(H.selected).toHaveLength(0);
   });
 
+  it("CHANNEL-32 미러 실패는 503을 반환하고 재조회 상태를 드러내며 동일 값 재시도로 복구한다", async () => {
+    H.failMirror = true;
+    const { POST } = await import("@/app/api/channel-config/[channel]/route");
+    const request = () => post("slack", { webhookUrl: "https://hooks.slack.com/services/T1/B1/fixture" });
+    const failed = await POST(request(), params("slack"));
+    expect(failed.status).toBe(503);
+    expect((await failed.json()).verified).toBe(false);
+    expect(H.accounts).toHaveLength(1);
+    const { GET } = await import("@/app/api/channel-config/route");
+    const loaded = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(loaded.slack.connected).toBe(true);
+    H.failMirror = false;
+    const retried = await POST(request(), params("slack"));
+    expect(retried.status).toBe(200);
+    expect((await retried.json()).verified).toBe(true);
+    expect(H.selected).toEqual([["sync", "tenant-1", "slack", "account-1"]]);
+  });
+
+  it("CHANNEL-33 파일 저장 실패도 성공 응답을 막고 동일 값 재시도로 복구한다", async () => {
+    const { POST } = await import("@/app/api/channel-config/[channel]/route");
+    const rename = vi.spyOn(fs, "renameSync").mockImplementationOnce(() => { throw new Error("fixture file unavailable"); });
+    const request = () => post("slack", { webhookUrl: "https://hooks.slack.com/services/T1/B1/fixture" });
+    const failed = await POST(request(), params("slack"));
+    expect(failed.status).toBe(503);
+    expect((await failed.json()).verified).toBe(false);
+    expect(H.accounts).toHaveLength(1);
+    const { GET } = await import("@/app/api/channel-config/route");
+    const loaded = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(loaded.slack.connected).toBe(true);
+    rename.mockRestore();
+    const retried = await POST(request(), params("slack"));
+    expect(retried.status).toBe(200);
+    expect((await retried.json()).verified).toBe(true);
+  });
+
   it("CHANNEL-05 인증 검증 실패 시 테넌트 계정 생성과 기본 계정 교체를 거부한다", async () => {
     H.verify = { verified: false, error: "bad" };
     const { POST } = await import("@/app/api/channel-config/[channel]/route");
@@ -196,6 +236,25 @@ describe("POST /api/channel-config/[channel] — integrations 브리지", () => 
     expect((await res.json()).verified).toBe(false);
     expect(H.accounts).toHaveLength(0);
     expect(H.selected).toHaveLength(0);
+  });
+
+  it.each([
+    ["CHANNEL-36", { verified: false, error: "bad" }],
+    ["CHANNEL-37", { verified: false, unverified: true }],
+  ])("%s 메시징 신규 연결 실패·확인 불가면 기존 파일과 기본 계정을 보존한다", async (_id, verification) => {
+    const filePath = path.join(tmpDir, "tenants", "tenant-1", "openclaw.json");
+    const before = fs.readFileSync(filePath, "utf-8");
+    H.accounts = [{ provider: "slack", accessToken: "https://hooks.slack.com/services/OLD/DEFAULT/fixture", meta: { api: "slack_webhook" } }];
+    H.verify = verification;
+    const { POST } = await import("@/app/api/channel-config/[channel]/route");
+    const response = await POST(post("slack", { webhookUrl: "https://hooks.slack.com/services/NEW/INVALID/fixture" }), params("slack"));
+    expect((await response.json()).verified).toBe(false);
+    expect(fs.readFileSync(filePath, "utf-8")).toBe(before);
+    expect(H.accounts).toHaveLength(1);
+    expect(H.selected).toHaveLength(0);
+    const { GET } = await import("@/app/api/channel-config/route");
+    const loaded = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(loaded.slack.connected).toBe(true);
   });
 
   it("CHANNEL-15 슬랙 Webhook 저장 뒤 동일 테넌트 설정 재조회에서 연결됨을 반환한다", async () => {

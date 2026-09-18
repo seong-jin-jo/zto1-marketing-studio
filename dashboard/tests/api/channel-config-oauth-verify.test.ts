@@ -92,6 +92,24 @@ describe("GET /api/channel-config — Instagram/Threads 라이브 OAuth 검증",
     expect(data.telegram).toEqual(expect.objectContaining({ connected: false, connectionError: "telegram_chat_required" }));
   });
 
+  it("CHANNEL-23 Discord OAuth/임의 토큰과 유사 도메인은 연결로 표시하지 않는다", async () => {
+    H.rows = [{ label: "discord", token: "oauth-fixture", meta: { api: "discord_oauth" } }];
+    const { GET } = await import("@/app/api/channel-config/route");
+    let data = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(data.discord).toEqual(expect.objectContaining({ connected: false, connectionError: "discord_webhook_required" }));
+    H.rows = [{ label: "discord", token: "https://discord.com.evil.example/api/webhooks/fixture", meta: { api: "discord_webhook" } }];
+    data = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(data.discord.connected).toBe(false);
+  });
+
+  it("CHANNEL-24 Discord 실제 Webhook 기본 계정만 연결로 표시한다", async () => {
+    H.rows = [{ label: "discord", token: "https://discord.com/api/webhooks/123/fixture", meta: { api: "discord_webhook" } }];
+    const { GET } = await import("@/app/api/channel-config/route");
+    const data = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(data.discord.connected).toBe(true);
+    expect(JSON.stringify(data)).not.toContain("fixture");
+  });
+
   it("CHANNEL-16 암호화 키가 없어 메시징 자격증명을 읽지 못하면 연결됨으로 표시하지 않는다", async () => {
     H.rows = [{ label: "slack", token: null, meta: { api: "slack_webhook" } }];
     delete process.env.OSMU_SECRET_KEY;

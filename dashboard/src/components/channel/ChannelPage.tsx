@@ -250,7 +250,7 @@ export function ChannelPage({ channel, variant = "text" }: ChannelPageProps) {
                 />
               </div>
             )}
-            {(!oauthLabel || showManualCreds) && (
+            {channel !== "bluesky" && (!oauthLabel || showManualCreds) && (
               <CredentialForm
                 channelKey={channel}
                 fields={sg.fields}

@@ -146,6 +146,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ cha
   }
 
   const result = await verifyChannel(channel, p.config || {});
+  // 메시징 수동 연결은 검증되지 않은 새 값을 파일에만 쓰면 기존 DB 기본 계정과
+  // gateway 자격정보가 달라진다. 거절·확인 불가 모두 기존 연결을 보존한다.
+  if (["slack", "telegram", "discord"].includes(channel) && !result.verified) {
+    return Response.json({ ok: false, ...result });
+  }
   // 이 세 채널의 수동 연결은 발행 계정(channel_accounts)의 기본 계정이어야 한다.
   // integrations만 갱신하면 연결 화면은 미연결이고 예약 발행도 대상 계정을 찾지 못한다.
   if (result.verified && ["slack", "telegram", "discord"].includes(channel)) {
@@ -169,11 +174,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ cha
         if (!selected.ok) throw new Error("default account selection failed");
       }
     } catch {
-      return Response.json({ verified: false, error: "연결 정보를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요." }, { status: 503 });
+      // 계정 upsert가 끝난 뒤 legacy 미러가 실패했을 수 있다. 연결 실패로 단정하지 않고
+      // 재조회·동일 값 재시도를 안내한다. 같은 manual externalId upsert는 멱등이다.
+      return Response.json({ verified: false, error: "연결 저장이 완료되지 않았습니다. 새로고침해 연결 상태를 확인한 뒤 다시 저장해 주세요." }, { status: 503 });
     }
   }
   p.enabled = result.verified;
-  writeJson(cfgPath, config);
+  try {
+    writeJson(cfgPath, config);
+  } catch {
+    // DB 기본 계정과 미러가 저장된 뒤 gateway 파일만 실패한 경우도 성공으로 답하지 않는다.
+    return Response.json({ verified: false, error: "연결 저장이 완료되지 않았습니다. 새로고침해 연결 상태를 확인한 뒤 다시 저장해 주세요." }, { status: 503 });
+  }
   // facebook/instagram은 직접발행 대상 → integrations 브리지(toIntegration이 그 외 채널은 null로 무시).
   if (!["slack", "telegram", "discord"].includes(channel)) {
     await bridgeToIntegrations(__t, channel, p.config || {}, result.verified || !!result.unverified);

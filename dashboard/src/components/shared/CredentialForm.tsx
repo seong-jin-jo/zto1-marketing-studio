@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isSecretConfigKey } from "@/lib/secret-mask";
 
 interface CredFieldProps {
@@ -18,7 +18,7 @@ function CredField({ id, label, desc, isSecret = false, value, editable, onChang
 
   return (
     <div>
-      <label className="text-caption text-subtle block mb-micro">
+      <label htmlFor={id} className="text-caption text-subtle block mb-micro">
         {label} {desc && <span className="text-subtle">{desc}</span>}
       </label>
       <div className="relative">
@@ -69,18 +69,40 @@ interface CredentialFormProps {
 export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave, title, badge, connectLabel, connected, fieldGroups }: CredentialFormProps) {
   const hasKeys = Object.values(currentKeys).some((v) => v);
   const [editing, setEditing] = useState(!hasKeys);
+  const dirtyRef = useRef(false);
+  const lastChannelRef = useRef(channelKey);
   const [values, setValues] = useState<Record<string, string>>(() => {
     const v: Record<string, string> = {};
     fields.forEach((f) => (v[f] = currentKeys[f] || ""));
     return v;
   });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const keySignature = fields.map((field) => currentKeys[field] || "").join("\u0000");
+
+  // SWR 설정은 폼 첫 렌더 뒤에 도착한다. 서버 값이 바뀌어도 현재 입력을 덮어쓰지 않되,
+  // 아직 손대지 않은 폼은 저장된 마스킹 값과 편집 상태를 따라가야 한다.
+  useEffect(() => {
+    const channelChanged = lastChannelRef.current !== channelKey;
+    lastChannelRef.current = channelKey;
+    if (dirtyRef.current && !channelChanged) return;
+    dirtyRef.current = false;
+    const next: Record<string, string> = {};
+    fields.forEach((field) => { next[field] = currentKeys[field] || ""; });
+    setValues(next);
+    setEditing(!Object.values(next).some(Boolean));
+  }, [channelKey, keySignature]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async () => {
     setSaving(true);
     try {
       await onSave(values);
+      dirtyRef.current = false;
       setEditing(false);
+      setSaveError(false);
+    } catch {
+      // 호출 화면이 구체적인 사유를 알리고, 폼은 입력값을 보존해 재시도하게 한다.
+      setSaveError(true);
     } finally {
       setSaving(false);
     }
@@ -96,13 +118,17 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
         isSecret={isSecretConfigKey(f)}
         value={values[f] || ""}
         editable={editing}
-        onChange={(val) => setValues((prev) => ({ ...prev, [f]: val }))}
+        onChange={(val) => {
+          dirtyRef.current = true;
+          setValues((prev) => ({ ...prev, [f]: val }));
+        }}
       />
     );
   };
 
   return (
     <div>
+      {saveError && <p role="alert" className="mb-stack text-caption text-warning">연결 정보를 저장하지 못했습니다. 입력값을 확인하고 다시 시도해 주세요.</p>}
       <div className="flex items-center justify-between mb-stack">
         <h3 className="text-body-sm font-medium text-muted">{title || "연결 정보"}</h3>
         <div className="flex items-center gap-stack-tight">
@@ -153,6 +179,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
           {hasKeys && (
             <button
               onClick={() => {
+                dirtyRef.current = false;
                 setEditing(false);
                 const v: Record<string, string> = {};
                 fields.forEach((f) => (v[f] = currentKeys[f] || ""));

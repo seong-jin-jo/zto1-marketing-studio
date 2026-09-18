@@ -12,7 +12,7 @@ export interface ChannelConfigEntry {
   /** instagram/threads 라이브 OAuth 검증 결과(GET /api/channel-config, 2026-07-16). */
   reconnectRequired?: boolean;
   connectionStatus?: "valid" | "invalid" | "unverified" | "connected" | "disconnected" | "reconnect";
-  connectionError?: "oauth_token_invalid" | "provider_unreachable" | "no_token" | "server_key_missing" | "slack_webhook_required" | "telegram_chat_required" | null;
+  connectionError?: "oauth_token_invalid" | "provider_unreachable" | "no_token" | "server_key_missing" | "slack_webhook_required" | "discord_webhook_required" | "telegram_chat_required" | null;
   [key: string]: unknown;
 }
 

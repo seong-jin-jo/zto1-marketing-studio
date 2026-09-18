@@ -35,6 +35,9 @@ vi.mock("@/lib/api", () => ({
   fetcher: vi.fn(),
   apiPost: (...args: unknown[]) => mocks.apiPost(...args),
   handleUnauthorizedResponse: vi.fn(),
+  ApiResponseError: class ApiResponseError extends Error {
+    constructor(_status: number, _payload: unknown, message: string) { super(message); }
+  },
 }));
 
 vi.mock("@/store/ui-store", () => ({
@@ -53,7 +56,8 @@ vi.mock("@/components/layout/Toast", () => ({
 }));
 
 vi.mock("@/components/shared/CredentialForm", () => ({
-  CredentialForm: ({ title }: { title?: string }) => <section>{title}</section>,
+  CredentialForm: ({ title, onSave }: { title?: string; onSave?: (keys: Record<string, string>) => Promise<void> }) =>
+    <section>{title}<button onClick={() => { void onSave?.({ webhookUrl: "fixture" }).catch(() => {}); }}>fixture save</button></section>,
 }));
 vi.mock("@/components/channel/SocialConnectButton", () => ({
   SocialConnectButton: ({ label }: { label: string }) => <button>{label} 연결</button>,
@@ -83,6 +87,42 @@ describe("ChannelPage customer/operator API boundary", () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  it("CHANNEL-09 실제 메시징 페이지는 슬랙 Webhook 입력을 바로 보여주고 OAuth 연결을 제시하지 않는다", () => {
+    mocks.channelConfigData = { slack: { connected: false, reconnectRequired: true, connectionError: "slack_webhook_required" } };
+    render(<MessagingPage channel="slack" />);
+    expect(screen.getByText("Incoming Webhook 연결")).toBeInTheDocument();
+    expect(screen.getByText(/기존 Slack 연결은 발행에 사용할 수 없습니다/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Slack 연결" })).not.toBeInTheDocument();
+  });
+
+  it("CHANNEL-13 텔레그램 Chat ID 누락은 실제 메시징 페이지에 조치 문구를 보인다", () => {
+    mocks.channelConfigData = { telegram: { connected: false, connectionError: "telegram_chat_required" } };
+    render(<MessagingPage channel="telegram" />);
+    expect(screen.getByText(/Telegram 발행 대상 Chat ID가 없습니다/)).toBeInTheDocument();
+  });
+
+  it("CHANNEL-25 Discord 발행 불가 기본 계정에는 Webhook 재연결 조치를 보인다", () => {
+    mocks.channelConfigData = { discord: { connected: false, connectionError: "discord_webhook_required" } };
+    render(<MessagingPage channel="discord" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Discord Incoming Webhook URL");
+  });
+
+  it("CHANNEL-39 부분 저장 503은 서버의 재조회·재시도 안내를 실제 화면 알림으로 보인다", async () => {
+    mocks.channelConfigData = { slack: { connected: false } };
+    const message = "연결 저장이 완료되지 않았습니다. 새로고침해 연결 상태를 확인한 뒤 다시 저장해 주세요.";
+    const { ApiResponseError } = await import("@/lib/api");
+    mocks.apiPost.mockRejectedValueOnce(new ApiResponseError(503, {}, message));
+    render(<MessagingPage channel="slack" />);
+    fireEvent.click(screen.getByRole("button", { name: "fixture save" }));
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(message, "error"));
+    expect(mocks.mutateConfig).toHaveBeenCalled();
+  });
+
+  it("CHANNEL-10 Bluesky는 계정 관리의 앱 비밀번호 연결만 보여주고 중복 자격증명 폼을 숨긴다", () => {
+    render(<ChannelPage channel="bluesky" />);
+    expect(screen.queryByText("연결 정보")).not.toBeInTheDocument();
   });
 
   it.each(["youtube", "tiktok"])(

@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import postgres from "postgres";
 import { describe, expect, it, vi } from "vitest";
 import { createTempDir, setupTestEnv, cleanupTestEnv } from "../helpers";
@@ -15,18 +13,18 @@ vi.mock("@/lib/verify-channel", () => ({
 }));
 
 describe("메시징 채널 수동 연결 실제 DB 왕복", () => {
-  it("CHANNEL-19 로컬 DB: 저장→기본 계정·미러 암호화→설정 재조회 연결됨, 다른 tenant_id 입력 무시", async (ctx) => {
-    // Next test mode는 .env.local을 자동 주입하지 않는다. 필요한 두 값만 읽어 메모리에 둔다.
+  it("CHANNEL-19 로컬·CI 격리 DB: 저장→기본 계정·미러 암호화→설정 재조회 연결됨, 다른 tenant_id 입력 무시", async (ctx) => {
     const url = getDatabaseUrl();
-    let localEnv = "";
-    try { localEnv = readFileSync(path.resolve(process.cwd(), ".env.local"), "utf8"); } catch { /* CI env may provide values directly */ }
-    const key = process.env.OSMU_SECRET_KEY || localEnv.match(/^OSMU_SECRET_KEY=(.*)$/m)?.[1]?.trim();
-    const host = url ? new URL(url).hostname : "";
-    if (!url || !["localhost", "127.0.0.1", "::1"].includes(host) || !key) {
-      if (process.env.CI) throw new Error("CHANNEL-19 requires loopback DATABASE_URL and OSMU_SECRET_KEY");
+    const parsed = url ? new URL(url) : null;
+    const isLoopback = !!parsed && ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+    const isCiService = process.env.CI === "true" && parsed?.hostname === "postgres" && parsed.pathname === "/testdb";
+    if (!url || (!isLoopback && !isCiService)) {
+      if (process.env.CI) throw new Error("CHANNEL-19 requires loopback DB or CI postgres/testdb service");
       ctx.skip();
       return;
     }
+    // 독립 fixture 전용 키. .env.local의 개발 키나 운영 키를 읽지 않는다.
+    const key = "channel-fixture-only-key-20260918";
     const admin = postgres(url, { max: 2, idle_timeout: 5, connect_timeout: 8, onnotice: () => {} });
     const previousUrl = process.env.DATABASE_URL;
     const previousKey = process.env.OSMU_SECRET_KEY;
@@ -75,6 +73,16 @@ describe("메시징 채널 수동 연결 실제 DB 왕복", () => {
       expect(body.slack.connected).toBe(true);
       expect(body.slack.keys.webhookUrl).toBe("********");
       expect(JSON.stringify(body)).not.toContain(fakeWebhook);
+
+      // 같은 manual externalId 재시도는 새 계정을 늘리지 않고 기존 기본 계정을 갱신한다.
+      const retried = await POST(new Request("http://localhost/api/channel-config/slack", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webhookUrl: fakeWebhook }),
+      }), { params: Promise.resolve({ channel: "slack" }) });
+      expect(retried.status).toBe(200);
+      const repeated = await admin<{ id: string }[]>`
+        SELECT id FROM channel_accounts WHERE tenant_id = ${tenantId}::uuid AND provider = 'slack'`;
+      expect(repeated.map((row) => row.id)).toEqual([accounts[0].id]);
     } finally {
       await admin`DELETE FROM tenants WHERE id = ${tenantId}::uuid`;
       if (appDb) await appDb.end({ timeout: 5 });
