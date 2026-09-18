@@ -1,11 +1,25 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import postgres from "postgres";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTempDir, setupTestEnv, cleanupTestEnv } from "../helpers";
 import { getDatabaseUrl } from "../isolation/_env";
 
 const H = vi.hoisted(() => ({ tenantId: "" }));
+let fixtureTenantId = "";
+let fixtureDbUrl = "";
+afterEach(async () => {
+  // 테스트 본문의 finally 전에 Vitest가 timeout 처리하더라도 자기 fixture UUID만 회수한다.
+  if (!fixtureTenantId || !fixtureDbUrl) return;
+  const cleanup = postgres(fixtureDbUrl, { max: 1, idle_timeout: 5, connect_timeout: 8, onnotice: () => {} });
+  try {
+    await cleanup`DELETE FROM tenants WHERE id = ${fixtureTenantId}::uuid`;
+  } finally {
+    await cleanup.end({ timeout: 5 });
+    fixtureTenantId = "";
+    fixtureDbUrl = "";
+  }
+});
 vi.mock("@/lib/tenant-auth", () => ({ effectiveTenantId: vi.fn(async () => H.tenantId) }));
 // 이 테스트는 인증 테넌트 해석과 공급자 검증을 대체한다.
 // 저장·암호화·조회는 실제 로컬 PostgreSQL에서 실행하며 외부 Webhook POST는 보내지 않는다.
@@ -34,6 +48,8 @@ describe("메시징 채널 수동 연결 실제 DB 왕복", () => {
     const tenantId = randomUUID();
     const otherTenantId = randomUUID();
     H.tenantId = tenantId;
+    fixtureTenantId = tenantId;
+    fixtureDbUrl = url;
     const tmpDir = createTempDir();
     setupTestEnv(tmpDir);
     let appDb: { end: (options: { timeout: number }) => Promise<void> } | null = null;
@@ -105,6 +121,8 @@ describe("메시징 채널 수동 연결 실제 DB 왕복", () => {
       expect(afterPartial.telegram.keys.botToken).toBe("********");
     } finally {
       await admin`DELETE FROM tenants WHERE id = ${tenantId}::uuid`;
+      fixtureTenantId = "";
+      fixtureDbUrl = "";
       if (appDb) await appDb.end({ timeout: 5 });
       await admin.end({ timeout: 5 });
       cleanupTestEnv(tmpDir);
@@ -114,5 +132,5 @@ describe("메시징 채널 수동 연결 실제 DB 왕복", () => {
       else process.env.OSMU_SECRET_KEY = previousKey;
       vi.resetModules();
     }
-  });
+  }, 20_000);
 });
