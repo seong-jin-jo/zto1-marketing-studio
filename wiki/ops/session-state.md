@@ -1,3 +1,13 @@
+## 2026-09-19 03:10 KST 성과 시계열 갭 재확인 BLOCK
+
+- handoff basis: 사용자의 이번 명시 과제. `osmu-gapfill091903:0.0`은 현재 Codex 세션이고 다른 pane은 중복 작업과 localhost 소유권 확인에만 사용했다.
+- 두 감사와 현재 코드 대조 결과 지금도 없는 기본 흐름 항목은 게시물별 성과 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교다.
+- canonical `pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이다. 저장 snapshot, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준이 승인되지 않아 제품 소스를 수정하지 않았다.
+- 현재 localhost는 health HTTP 200, DB up이고 metrics HTTP 200 응답에는 `coverage`, `posts`만 있다. 실행 `d0bc4f7b`와 현재 HEAD `e4e6885d` 사이 제품 소스 diff는 0건이다.
+- 전체 Vitest 378파일과 2,431건, TypeScript와 디자인 lint는 통과했다. 기본 흐름과 Studio v1은 공유 공급자 7일 사용량 100%로 정상 생성이 실패했다. 초기화는 2026-09-19 19:00 KST다.
+- 변경 범위: 갭 재확인, QA tracker, 구현현황, 이 인계 문서만 최신순 갱신. 다른 세션의 제품과 문서 변경은 되돌리지 않는다.
+- 다음 소유자: 컨트롤러와 tech-architect가 성과 관측 이력 기술계약을 합의하고 eng-design을 승인한 뒤 build를 다시 연다. code-builder는 공급자 한도 초기화 뒤 두 필수 E2E를 종료 코드 0으로 회복하고 승인 계약대로 migration, 수집 저장, `history`, `comparison` 응답과 정상, 거절, 경합 테스트를 구현한다.
+
 ## 2026-09-19 02:19 KST 네 방 기본 흐름 QA v25 BLOCK
 
 - handoff basis: 사용자의 이번 명시 과제. `osmu-flowcheck091902:0.0`은 현재 Codex 세션 자체이고 다른 pane은 localhost 소유권과 동시 작업 확인에만 사용했다.
