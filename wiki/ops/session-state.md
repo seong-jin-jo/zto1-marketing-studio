@@ -1,3 +1,12 @@
+## 2026-09-19 04:43 KST 최근 24시간 코드 공격 리뷰 BLOCK
+
+- handoff basis: 사용자의 이번 명시 과제. `osmu-regress091904:0.0`은 현재 Codex 세션 자체이고 다른 pane은 localhost 소유권과 중복 작업 확인에만 사용했다.
+- 검토 범위는 2026-09-19 03:55 KST에 `87779ba0..3207b256` 18개 커밋으로 고정했다. 제품 코드는 수정하지 않았다.
+- MAJOR 2건으로 BLOCK이다. API 전수검사가 dirty 시작 소스를 HEAD와 결속하지 않고, 실행 중 route 변경과 원복을 두 시점 해시로 놓쳐 혼합 소스를 고정 증거로 성공 처리할 수 있다. 문자열 기반 회귀 테스트 두 건은 MINOR다.
+- 전체 Vitest 378파일과 2,431건, TypeScript는 통과했다. localhost health는 HTTP 200이며 실행 `d0bc4f7b`, 검토 HEAD `3207b256` 불일치로 API sweep은 실제 route 요청 전에 차단됐다.
+- 기본 흐름과 Studio v1은 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 정상 생성이 실패했다. 거절 계약 401, 400, 422는 통과했다. 운영 배포, 실제 SNS 발행, 두 작업 공간 동시 공격은 미검증이다.
+- 산출물은 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-19.md`다. 다음 소유자는 code-builder이며, 불변 실행본과 커밋 내용 결속, 실행 중 파일 이벤트 검출, 실제 스크립트 통합 회귀를 고친 뒤 두 E2E를 종료 코드 0으로 다시 관찰해야 한다.
+
 ## 2026-09-19 03:10 KST 성과 시계열 갭 재확인 BLOCK
 
 - handoff basis: 사용자의 이번 명시 과제. `osmu-gapfill091903:0.0`은 현재 Codex 세션이고 다른 pane은 중복 작업과 localhost 소유권 확인에만 사용했다.

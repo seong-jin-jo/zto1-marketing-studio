@@ -1,3 +1,18 @@
+## 2026-09-19 04:43 KST · 최근 24시간 코드 공격 리뷰 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| 코드리뷰 24시간 | 실행 소스를 검토 커밋에 결속 | REVIEW-24H-20260919-02 | NG | `verify-api-read-sweep.mjs:142,205`는 health의 커밋 문자열과 실행 전후 해시만 비교한다. 시작부터 dirty인 route는 HEAD와 내용이 달라도 전후 해시가 같아 해당 커밋 증거로 성공 처리할 수 있다. |
+| 코드리뷰 24시간 | 실행 중 일시 변경과 원복을 검출 | REVIEW-24H-20260919-03 | NG | `verify-api-read-sweep.mjs:205,285`의 두 시점 해시는 검사 도중 hot reload된 route가 끝나기 전에 원복되면 PID와 최종 해시가 모두 같아 혼합 소스 결과를 안정 증거로 센다. |
+| 코드리뷰 24시간 | 제한시간 회귀의 실제 배선 검증 | REVIEW-24H-20260919-04 | MINOR | `four-room-token-request-timeout.regression-1.test.ts:17`은 source 문자열 존재만 확인해 고객 토큰 요청이 다시 15초로 바뀌어도 무관한 위치의 문자열로 통과할 수 있다. |
+| 코드리뷰 24시간 | 종료 시 분모 재수집의 실제 배선 검증 | REVIEW-24H-20260919-05 | MINOR | `api-read-sweep-inventory-stability.regression-1.test.ts:21`은 helper에 손으로 넣은 배열만 검사해 실제 종료 재수집과 종료 코드 배선이 빠져도 통과한다. |
+| 필수 회귀 | 전체 테스트와 TypeScript | REVIEW-24H-20260919-06 | PASS | `npm run test` 378파일, 2,431건 통과, 3건 제외, 종료 코드 0. `npx tsc --noEmit` 종료 코드 0. |
+| 실앱 기본 흐름 | localhost:3456 기본 흐름과 Studio v1 | REVIEW-24H-20260919-07 | NG | 기본 흐름은 첫 생성에서 후보 0장과 `STUDIO_LLM_PROVIDER_UNAVAILABLE`. Studio v1은 401, 400, 422 거절 3건 통과 뒤 정상 생성이 기대 201 대신 HTTP 200 공급자 오류로 종료 코드 1. |
+| 실행본 귀속 | API 읽기 전수검사 | REVIEW-24H-20260919-08 | BLOCK | health 실행 `d0bc4f7b`, 검토 HEAD `3207b256` 불일치로 실제 route 요청 전에 종료 코드 1. |
+| 삭제, 격리, 토큰 | 무기록 삭제와 확정 요구 | REVIEW-24H-20260919-09 | PASS, 동적 격리 미검증 | 제품 및 화면 파일 삭제 0건, 새 UI 토큰과 사용자 노출 긴 대시, 그림문자, 영문 단추 라벨 0건. 이번 diff에 인증 및 tenant 제품 코드 변경은 없고 두 작업 공간 동시 공격은 미검증. |
+
+MAJOR 2건과 필수 실앱 E2E NG로 BLOCK이다. 상세 위치와 재현은 `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-19.md`에 기록했다. 제품 코드는 수정하지 않았다.
+
 ## 2026-09-19 03:10 KST · 성과 시계열 갭 재확인 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
