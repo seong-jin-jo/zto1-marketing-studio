@@ -19,6 +19,7 @@ import {
   publishTelegram,
   publishDiscord,
   publishSlack,
+  publishLinkedIn,
   type PublishResult,
 } from "@/lib/publish";
 
@@ -275,6 +276,13 @@ async function publishOne(
 
   const text = textForPlatform(platform, row.payload, row.draft_payload);
   const storedImageUrls = imageUrlsFromPayload(row.payload, row.draft_payload);
+  if (platform === "linkedin" && storedImageUrls.length > 0) {
+    return {
+      ok: false,
+      error: "LinkedIn은 현재 글만 발행할 수 있습니다. 예약에 담긴 이미지를 버리지 않도록 발행을 시작하지 않았습니다.",
+      resolvedAccountId: cred.accountId,
+    };
+  }
   if (storedImageUrls.length > channelImageCapacity(platform)) {
     return {
       ok: false,
@@ -320,6 +328,7 @@ async function publishOne(
     else if (platform === "telegram") result = await publishTelegram(cred, text, imageUrl);
     else if (platform === "discord") result = await publishDiscord(cred, text, imageUrl);
     else if (platform === "slack") result = await publishSlack(cred, text, imageUrl);
+    else if (platform === "linkedin") result = await publishLinkedIn(cred, text);
     else return { ok: false, error: `${platform} 미지원` };
     return { ...result, resolvedAccountId: cred.accountId };
   } catch (e) {

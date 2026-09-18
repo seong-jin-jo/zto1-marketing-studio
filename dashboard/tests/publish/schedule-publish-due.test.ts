@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { withTenant } from "@/lib/db";
-import { getChannelCred, publishInstagram, publishThreads, publishX } from "@/lib/publish";
+import { getChannelCred, publishInstagram, publishLinkedIn, publishThreads, publishX } from "@/lib/publish";
 
 const H = vi.hoisted(() => ({
   tenantId: "tenant-1" as string | null,
@@ -80,6 +80,7 @@ vi.mock("@/lib/publish", () => ({
   publishX: vi.fn(async () => ({ ok: true, externalId: "tw-1", permalink: "https://x/1" })),
   publishInstagram: vi.fn(async () => ({ ok: true, externalId: "ig-1" })),
   publishFacebook: vi.fn(async () => ({ ok: true, externalId: "fb-1" })),
+  publishLinkedIn: vi.fn(async () => ({ ok: true, externalId: "li-1", permalink: "https://linkedin.example/1" })),
 }));
 
 async function publishDue(body: Record<string, unknown> = {}, headers: Record<string, string> = {}) {
@@ -97,6 +98,8 @@ async function publishDue(body: Record<string, unknown> = {}, headers: Record<st
 beforeEach(() => {
   vi.clearAllMocks();
   vi.resetModules();
+  vi.mocked(getChannelCred).mockReset().mockResolvedValue({ token: "tok", userId: "u-1" });
+  vi.mocked(publishLinkedIn).mockReset().mockResolvedValue({ ok: true, externalId: "li-1", permalink: "https://linkedin.example/1" });
   delete process.env.DASHBOARD_AUTH_TOKEN;
   H.tenantId = "tenant-1";
   H.rows = [];
@@ -109,6 +112,93 @@ beforeEach(() => {
   H.sqlTexts = [];
   H.leaseOwned = true;
   H.usageEvents = [];
+});
+
+describe("POST /api/schedule/publish-due — LinkedIn 예약 계약", () => {
+  const linkedinSchedule = {
+    id: "sched-linkedin",
+    draft_id: "draft-linkedin",
+    platforms: ["linkedin"],
+    payload: { text: "LinkedIn 예약 본문", account_ids: { linkedin: "li-account" } },
+    draft_payload: null,
+  };
+
+  it("OSMU-LI-01 정상: 선택한 LinkedIn 계정으로 예약 글을 올리고 원장·사용량을 기록한다", async () => {
+    H.rows = [linkedinSchedule];
+    vi.mocked(getChannelCred).mockResolvedValue({ token: "li-token", userId: "li-person", accountId: "li-account" });
+
+    const { body } = await publishDue({ tenant_id: "tenant-1" });
+
+    expect(body.schedules[0].status).toBe("published");
+    expect(getChannelCred).toHaveBeenCalledWith("tenant-1", "linkedin", "li-account");
+    expect(publishLinkedIn).toHaveBeenCalledOnce();
+    expect(publishLinkedIn).toHaveBeenCalledWith(
+      { token: "li-token", userId: "li-person", accountId: "li-account" },
+      "LinkedIn 예약 본문",
+    );
+    expect(H.inserts).toHaveLength(1);
+    expect(H.inserts[0]).toContain("li-1");
+    expect(H.inserts[0]).toContain("li-account");
+    expect(H.usageEvents).toEqual([["tenant-1", "publication-1", "linkedin"]]);
+  });
+
+  it("OSMU-LI-02 거절: 선택 계정이 없어졌으면 기본 계정으로 새지 않고 발행하지 않는다", async () => {
+    H.rows = [linkedinSchedule];
+    vi.mocked(getChannelCred).mockResolvedValue(null);
+
+    const { body } = await publishDue({ tenant_id: "tenant-1" });
+
+    expect(body.schedules[0].status).toBe("failed");
+    expect(body.schedules[0].results[0].error).toMatch(/선택한.*계정을 찾을 수 없음/);
+    expect(getChannelCred).toHaveBeenCalledWith("tenant-1", "linkedin", "li-account");
+    expect(publishLinkedIn).not.toHaveBeenCalled();
+    expect(H.usageEvents).toHaveLength(0);
+  });
+
+  it("OSMU-LI-02B 거절: 이미지가 붙은 LinkedIn 예약은 이미지를 버리고 글만 올리지 않는다", async () => {
+    H.rows = [{ ...linkedinSchedule, payload: { ...linkedinSchedule.payload, image_urls: ["https://cdn.example/card.png"] } }];
+
+    const { body } = await publishDue({ tenant_id: "tenant-1" });
+
+    expect(body.schedules[0].status).toBe("failed");
+    expect(body.schedules[0].results[0].error).toMatch(/이미지를 버리지 않도록/);
+    expect(publishLinkedIn).not.toHaveBeenCalled();
+    expect(H.usageEvents).toHaveLength(0);
+  });
+
+  it("OSMU-LI-03 거절: 권한 오류는 확정 실패로 기록하고 사용량을 올리지 않는다", async () => {
+    H.rows = [linkedinSchedule];
+    vi.mocked(publishLinkedIn).mockResolvedValue({ ok: false, error: "다시 연결해 주세요.", failureKind: "definitive" });
+
+    const { body } = await publishDue({ tenant_id: "tenant-1" });
+
+    expect(body.schedules[0].status).toBe("failed");
+    expect(body.schedules[0].results[0].failureKind).toBe("definitive");
+    expect(H.inserts[0]).toContain("failed");
+    expect(H.usageEvents).toHaveLength(0);
+  });
+
+  it("OSMU-LI-04 중복 방지: 소유권 갱신이 실패하면 LinkedIn에 보내지 않는다", async () => {
+    H.rows = [linkedinSchedule];
+    H.leaseOwned = false;
+
+    const { body } = await publishDue({ tenant_id: "tenant-1" });
+
+    expect(body.schedules[0].results[0].error).toMatch(/소유권이 만료/);
+    expect(publishLinkedIn).not.toHaveBeenCalled();
+    expect(H.inserts).toHaveLength(0);
+  });
+
+  it("OSMU-LI-05 결과 불명: 게시 여부를 모르면 불확실로 남겨 재발행을 유도하지 않는다", async () => {
+    H.rows = [linkedinSchedule];
+    vi.mocked(publishLinkedIn).mockResolvedValue({ ok: false, error: "발행 여부 확인 필요", failureKind: "indeterminate" });
+
+    const { body } = await publishDue({ tenant_id: "tenant-1" });
+
+    expect(body.schedules[0].status).toBe("uncertain");
+    expect(H.inserts[0]).toContain("uncertain");
+    expect(H.usageEvents).toHaveLength(0);
+  });
 });
 
 describe("POST /api/schedule/publish-due — 예약 실발행 루프", () => {
