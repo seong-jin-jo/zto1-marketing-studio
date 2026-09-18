@@ -14,6 +14,7 @@ Handler를 다시 대조했다. 감사 당시의 다른 없음과 부족 항목�
 | 실행본 귀속 | 제품 소스 동일 | localhost health는 HTTP 200, DB up, build `d0bc4f7b`다. 현재 HEAD `e4e6885d`까지 `dashboard/src`, `dashboard/db`, `dashboard/package.json` diff는 0건이다. |
 | 전체 단위 및 통합 | PASS | `npm run test`는 378파일, 2,431건 통과, 3건 제외, 종료 코드 0이다. |
 | TypeScript와 디자인 토큰 | PASS | `npx tsc --noEmit`과 `design-lint.sh src` 종료 코드 0, 토큰 위반 0이다. |
+| Web production build | 조건부 NG | 격리 HEAD에서 `npm run build`는 Next.js 16 Turbopack의 한국어 주석 code frame panic으로 종료 코드 1이다. 같은 소스를 `npx next build --webpack`으로 빌드하면 185/185와 종료 코드 0이다. |
 | 기본 흐름 실앱 | NG | 지정 작업 공간에서 첫 생성이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장으로 종료 코드 1이다. |
 | Studio v1 실앱 | NG | 401, 400, 422 거절은 통과했다. 정상 생성은 기대 201 대신 HTTP 200의 같은 공급자 오류로 종료 코드 1이다. |
 | 제품 소스 | 변경 없음 | 승인 없는 DB와 API 의미를 선택하지 않았다. 새로 되는 것으로 전환된 항목은 없다. |
