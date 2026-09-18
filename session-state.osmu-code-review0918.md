@@ -9,9 +9,10 @@
 - 판정: MAJOR 7건, MINOR 1건, `REVIEW_VERDICT: BLOCK`.
 - 감사 문서: `docs/_archive/legacy-20260912/audit/osmu-code-review-2026-09-18.md`.
 - QA 원장: `docs/qa/qa-tracker.md`의 `REVIEW-24H-20260918-20`부터 `29`.
+- 리뷰 커밋: `b248da6c`.
 - 제품 코드는 수정하지 않았다.
 
-## 남은 이슈와 블로커
+## 남은 이슈·블로커
 
 1. `publish/reconcile`이 공급자 성공 증명과 기존 상태를 확인하지 않아 `failed` 발행 행도 `published`로 바꿀 수 있다.
 2. 발행 행의 `draft_id`와 요청 `draftId`를 결속하지 않아 같은 작업 공간의 다른 큐를 게시 완료로 닫을 수 있다.
@@ -24,11 +25,23 @@
 
 실제 SNS 공개 발행, 51건 적체 생성, 월경계 장애 주입, 운영 배포는 미검증이다.
 
-## 다음 소유자와 실행
+## 다음에 칠 명령
 
 다음 소유자는 code-builder다. MAJOR 7건을 수정한 뒤 공급자 성공 없는 복구 거절, 발행과 초안 결속, 단계별 복구, 독립 relay, 월경계 귀속, 51건 적체, 오류 상태 분류를 회귀 테스트로 고정해야 한다. 그 다음 최신 수정 소스에 귀속되는 localhost에서 두 E2E와 전체 테스트 및 TypeScript를 다시 통과시켜야 한다.
 
-## 검증
+```bash
+cd dashboard
+npm run test
+npx tsc --noEmit
+set -a
+source .env.local
+set +a
+export STUDIO_DEV_WORKSPACE_IDS=cd1d0a40-540d-4524-9b49-bf2445d82182
+node scripts/verify-basic-flow-e2e.mjs
+node scripts/verify-studio-v1-e2e.mjs
+```
+
+## 검증했나
 
 - 현재 작업 트리 `npm run test`: PASS. 377파일, 2,428건 통과, 3건 제외, 종료 코드 0.
 - 현재 작업 트리 `npx tsc --noEmit`: PASS, 종료 코드 0.
