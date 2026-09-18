@@ -1,3 +1,17 @@
+## 2026-09-18 12:16 KST · 성과 시계열 갭 재확인 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사에서 현재도 없는 기본 흐름 항목을 하나 구현 | GAP-HISTORY-20260918-1216-01 | NG | 현재 schema, migration, `GET /api/metrics`에는 게시물별 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교가 없다. |
+| 공정과 기술계약 | 승인 범위 안에서만 제품 소스를 수정 | GAP-HISTORY-20260918-1216-02 | BLOCK | `pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준도 승인되지 않았다. 제품 소스 수정은 0건이다. |
+| 기본 흐름 실앱 | 생성, 편집, 발행 큐, 성과 재인계 | GAP-HISTORY-20260918-1216-03 | PASS | 현재 HEAD를 임시 기동한 localhost:3456에서 `verify-basic-flow-e2e.mjs` 11/11을 관찰했다. |
+| Studio v1 실앱 | 인증, 입력 거절, 생성, 조회와 재생성 | GAP-HISTORY-20260918-1216-04 | PASS | 같은 실행본에서 `verify-studio-v1-e2e.mjs` 14/14를 관찰했다. |
+| 타입 계약 | 현재 소스 TypeScript 검사 | GAP-HISTORY-20260918-1216-05 | PASS | 개발 서버 종료 후 `npx tsc --noEmit` 재실행 종료 코드 0이다. 실행 중 처음 검사는 손상된 `.next/dev/types` 생성물로 실패했다. |
+| 전체 단위 및 통합 | `npm run test` 필수 회귀 | GAP-HISTORY-20260918-1216-06 | NG | 전체 실행은 377파일 중 3파일, 2,431건 중 7건 실패했다. 실패 파일만 재실행하자 publish 32/32와 shorts factory 5/5는 통과했고 `four-room-empty-actions.test.tsx`의 `V77-CREATE-NETWORK-03`만 10초 timeout으로 남았다. 전체 명령 종료 코드 0은 미확인이다. |
+
+실앱 두 흐름은 통과했지만 신규 성과 시계열 기술계약이 승인되지 않았고 전체 Vitest가 NG다.
+제품 소스는 수정하지 않았으며 운영 배포와 실제 SNS 공개 발행은 미검증이다.
+
 ## 2026-09-18 04:26 KST · 최근 24시간 코드 공격 리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
