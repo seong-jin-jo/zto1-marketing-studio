@@ -1,53 +1,89 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import postgres from "postgres";
+import { db } from "@/lib/db";
 import { getHomeSummary, getWeeklyReport } from "@/lib/home-metrics";
 import { getDatabaseUrl } from "../isolation/_env";
 
 type Sql = ReturnType<typeof postgres>;
 
-async function tryConnect(): Promise<Sql | null> {
+function testDatabaseUrl(): string {
   const url = getDatabaseUrl();
-  if (!url) return null;
-  // 검증 대상(src/lib/db.ts)은 process.env.DATABASE_URL 만 읽는다. 그 값이 없으면
-  // 테스트만 파일에서 URL 을 찾아 붙고 코드는 "미설정"으로 죽는다. 같은 DB 를 보지
-  // 못하는 상태이므로 이 판은 통합 검증이 성립하지 않는다. 조용히 건너뛴다.
-  if (!process.env.DATABASE_URL) return null;
-  let sql: Sql | null = null;
-  try {
-    sql = postgres(url, { max: 2, idle_timeout: 5, connect_timeout: 8, onnotice: () => {} });
-    await sql`select 1`;
-    return sql;
-  } catch {
-    if (sql) await sql.end({ timeout: 5 });
-    return null;
+  if (!url) throw new Error("R-02 DB 통합 검증에는 DATABASE_URL이 필요합니다.");
+  const parsed = new URL(url);
+  const localHost = ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
+  const ciService = process.env.CI === "true" && parsed.hostname === "postgres";
+  if ((!localHost && !ciService) || parsed.pathname !== "/testdb") {
+    throw new Error("R-02 DB 통합 검증은 로컬 또는 CI의 testdb에서만 실행합니다.");
   }
+  return url;
 }
 
 describe("R-02 홈 지표 live Postgres 통합", () => {
-  it("published_posts와 queue_posts 집계를 API 헬퍼가 같은 값으로 반환한다", async (context) => {
-    const sql = await tryConnect();
-    if (!sql) return context.skip();
+  it("R-02-DB-01 한국어 설명: 자체 테넌트의 상태·성과·주간 수치만 집계하고 테스트 데이터를 회수한다", async () => {
+    const url = testDatabaseUrl();
+    const sql = postgres(url, { max: 2, idle_timeout: 5, connect_timeout: 8, onnotice: () => {} });
+    const tenantId = randomUUID();
+    const ids = Array.from({ length: 8 }, () => randomUUID());
+    const previousUrl = process.env.DATABASE_URL;
+    let appSql: Sql | null = null;
+
     try {
-      const [tenant] = await sql<{ id: string }[]>`
-        SELECT tenant_id AS id FROM published_posts GROUP BY tenant_id ORDER BY count(*) DESC LIMIT 1`;
-      if (!tenant) return context.skip();
-      const [expected] = await sql<{ published: number; views: number; likes: number; replies: number }[]>`
-        SELECT count(*) FILTER (WHERE status = 'published')::int AS published,
-               coalesce(sum(views) FILTER (WHERE status = 'published'), 0)::int AS views,
-               coalesce(sum(likes) FILTER (WHERE status = 'published'), 0)::int AS likes,
-               coalesce(sum(replies) FILTER (WHERE status = 'published'), 0)::int AS replies
-        FROM published_posts WHERE tenant_id = ${tenant.id}`;
+      await sql`SELECT 1`;
+      await sql`INSERT INTO tenants (id, slug, name, status, tier)
+        VALUES (${tenantId}::uuid, ${`qa-home-${tenantId}`}, 'Home metrics QA', 'active', 'team')`;
+      await sql`INSERT INTO published_posts
+        (id, tenant_id, platform, external_id, text, status, published_at, views, likes, replies)
+        VALUES
+        (${ids[0]}::uuid, ${tenantId}::uuid, 'threads', ${`qa-${ids[0]}`}, '주간 인기 글', 'published', now() - interval '1 hour', 600, 30, 5),
+        (${ids[1]}::uuid, ${tenantId}::uuid, 'x', ${`qa-${ids[1]}`}, '주간 일반 글', 'published', now() - interval '2 hours', 100, 3, 2),
+        (${ids[2]}::uuid, ${tenantId}::uuid, 'instagram', ${`qa-${ids[2]}`}, '지난주 글', 'published', now() - interval '10 days', 300, 20, 1),
+        (${ids[3]}::uuid, ${tenantId}::uuid, 'threads', ${`qa-${ids[3]}`}, '실패한 글', 'failed', now() - interval '1 hour', 999, 99, 99)`;
+      await sql`INSERT INTO queue_posts (id, tenant_id, text, status, generated_at)
+        VALUES
+        (${ids[4]}::uuid, ${tenantId}::uuid, '새 초안', 'draft', now() - interval '1 hour'),
+        (${ids[5]}::uuid, ${tenantId}::uuid, '새 승인 글', 'approved', now() - interval '2 hours'),
+        (${ids[6]}::uuid, ${tenantId}::uuid, '지난주 발행 글', 'published', now() - interval '10 days'),
+        (${ids[7]}::uuid, ${tenantId}::uuid, '생성 전 실패', 'failed', NULL)`;
+      await sql`INSERT INTO growth_metrics (tenant_id, channel, followers, recorded_at)
+        VALUES (${tenantId}::uuid, 'threads', 100, now() - interval '8 days'),
+               (${tenantId}::uuid, 'threads', 125, now())`;
 
-      const summary = await getHomeSummary(tenant.id);
-      expect(summary).toMatchObject(expected);
+      // src/lib/db.ts는 환경 변수만 읽는다. 파일에서 찾은 동일 testdb를 앱 풀에도 연결한다.
+      process.env.DATABASE_URL = url;
+      appSql = db();
+      const summary = await getHomeSummary(tenantId);
+      expect(summary.statusCounts).toEqual({ draft: 1, approved: 1, published: 1, failed: 1 });
+      expect(summary).toMatchObject({
+        published: 3, views: 1000, likes: 53, replies: 8, engagementRate: 6.1,
+        followers: 125, weekDelta: 25,
+        channelCounts: { threads: 1, x: 1, instagram: 1 },
+      });
+      expect(summary.viralPosts).toEqual([{ id: ids[0], text: '주간 인기 글', views: 600, likes: 30 }]);
 
-      const [expectedDrafts] = await sql<{ count: number }[]>`
-        SELECT count(*)::int AS count FROM queue_posts
-        WHERE tenant_id = ${tenant.id} AND generated_at > now() - interval '7 days'`;
-      const weekly = await getWeeklyReport(tenant.id);
-      expect(weekly.draftedThisWeek).toBe(expectedDrafts.count);
+      const weekly = await getWeeklyReport(tenantId);
+      expect(weekly).toMatchObject({
+        publishedThisWeek: 2, draftedThisWeek: 2,
+        views: 700, likes: 33, replies: 7,
+        byPlatform: { threads: 1, x: 1 }, followers: 125, weekDelta: 25,
+      });
+      expect(weekly.viralPosts).toEqual([{ text: '주간 인기 글', views: 600, likes: 30 }]);
     } finally {
-      await sql.end({ timeout: 5 });
+      try {
+        // FK CASCADE가 이 테스트의 게시물·큐·성장 행까지 함께 회수한다.
+        await sql`DELETE FROM tenants WHERE id = ${tenantId}::uuid`;
+        const [remaining] = await sql<{ count: number }[]>`
+          SELECT (SELECT count(*) FROM tenants WHERE id = ${tenantId}::uuid)
+               + (SELECT count(*) FROM published_posts WHERE tenant_id = ${tenantId}::uuid)
+               + (SELECT count(*) FROM queue_posts WHERE tenant_id = ${tenantId}::uuid)
+               + (SELECT count(*) FROM growth_metrics WHERE tenant_id = ${tenantId}::uuid) AS count`;
+        expect(Number(remaining.count)).toBe(0);
+      } finally {
+        if (appSql) await appSql.end({ timeout: 5 });
+        await sql.end({ timeout: 5 });
+        if (previousUrl === undefined) delete process.env.DATABASE_URL;
+        else process.env.DATABASE_URL = previousUrl;
+      }
     }
   });
 });
