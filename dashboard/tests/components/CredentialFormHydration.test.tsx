@@ -35,4 +35,17 @@ describe("메시징 자격증명 폼의 비동기 설정 수신", () => {
     expect(input).toHaveValue("https://hooks.slack.com/services/FIXTURE");
     expect(screen.getByRole("button", { name: /^연결$/ })).toBeInTheDocument();
   });
+
+  it("CHANNEL-46 Slack 테스트 전송 버튼은 빠른 중복 클릭에도 한 번만 호출한다", async () => {
+    let finish!: () => void;
+    const onSave = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    render(<CredentialForm {...props} onSave={onSave} submitLabel="테스트 메시지 보내고 연결" currentKeys={{}} connected={false} />);
+    const button = screen.getByRole("button", { name: "테스트 메시지 보내고 연결" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(button).toBeDisabled();
+    finish();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "테스트 메시지 보내고 연결" })).not.toBeInTheDocument());
+  });
 });

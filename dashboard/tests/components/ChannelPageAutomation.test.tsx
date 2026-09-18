@@ -56,8 +56,8 @@ vi.mock("@/components/layout/Toast", () => ({
 }));
 
 vi.mock("@/components/shared/CredentialForm", () => ({
-  CredentialForm: ({ title, onSave }: { title?: string; onSave?: (keys: Record<string, string>) => Promise<void> }) =>
-    <section>{title}<button onClick={() => { void onSave?.({ webhookUrl: "fixture" }).catch(() => {}); }}>fixture save</button></section>,
+  CredentialForm: ({ title, submitLabel, onSave }: { title?: string; submitLabel?: string; onSave?: (keys: Record<string, string>) => Promise<void> }) =>
+    <section>{title}<span>{submitLabel}</span><button onClick={() => { void onSave?.({ webhookUrl: "fixture" }).catch(() => {}); }}>fixture save</button></section>,
 }));
 vi.mock("@/components/channel/SocialConnectButton", () => ({
   SocialConnectButton: ({ label }: { label: string }) => <button>{label} 연결</button>,
@@ -94,6 +94,8 @@ describe("ChannelPage customer/operator API boundary", () => {
     render(<MessagingPage channel="slack" />);
     expect(screen.getByText("Incoming Webhook 연결")).toBeInTheDocument();
     expect(screen.getByText(/기존 Slack 연결은 발행에 사용할 수 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/버튼을 누를 때마다 입력한 Slack 채널에 테스트 메시지 1건이 게시됩니다/)).toBeInTheDocument();
+    expect(screen.getByText("테스트 메시지 보내고 연결")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Slack 연결" })).not.toBeInTheDocument();
   });
 

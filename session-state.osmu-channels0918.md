@@ -1,5 +1,11 @@
 # OSMU 채널 예약 발행·공유 생성 인계
 
+## 2026-09-18 23:12 KST · Slack 연결 테스트 메시지 후속
+
+- 기존 연결 버튼에 매 클릭 Slack 테스트 메시지 1건 게시와 앱에서 Webhook 메시지 삭제 불가를 알리는 화면 문구를 추가했다. 버튼은 `테스트 메시지 보내고 연결`이며 중복 클릭을 동기 ref로 막는다. 기존 채널-config POST의 검증에서 고정 비밀 없는 문구를 한 번 보내고 Slack HTTP 200/plain `ok`만 verified로 저장한다. timeout·429·5xx는 게시 불명으로 미저장·자동 재전송 없음, 400은 거절이다. 실제 외부 메시지 전송은 이 작업에서 하지 않았다.
+- DB fixture의 기본 5초 timeout이 호스트 부하 시 잔존 테넌트를 남긴 사례에 따라 해당 case만 20초로 늘리고, 본문 finally가 못 끝나도 afterEach에서 자기 UUID만 삭제하는 안전망을 `936be871`로 분리 커밋했다. 실제 로컬 PostgreSQL 1/1 PASS. 컨트롤러가 첫 timeout 잔존 fixture 1건을 특정해 삭제했고 남은 channel fixture 0건을 확인했다.
+- 다음 실행: Slack 표적 Vitest·TypeScript·디자인 lint 완료 후 별도 커밋, 독립 리뷰, 컨트롤러 통합 빌드와 격리 브라우저 실제 UI를 검증한다. 외부 Slack 실계정 전송은 회원이 실제 Webhook 대상 채널을 정하고 버튼을 누를 때만 회수한다.
+
 ## 2026-09-18 21:12 KST · Telegram 실제 발행 대상 표시 보정
 
 - 첫 저장 일관성 커밋 `2eddfea1` 이후, 파일 저장 실패 때 Telegram 기본 DB 계정은 새 Chat ID를 발행 대상으로 읽지만 GET 화면은 옛 gateway 파일의 Chat ID를 보여주는 목적지 불일치를 발견했다. GET은 암호화된 기본 계정의 `meta.chatId`를 먼저 표시하고 botToken은 마스킹한다. 실제 로컬 PostgreSQL fixture에서 옛 Chat ID 저장→새 Chat ID DB 갱신→파일 rename 실패 503을 주입하고 DB의 실제 대상과 GET 표시가 같은 새 Chat ID인지 확인했다. API 19/19와 실제 DB 1/1 PASS. 최종 TypeScript 검사와 별도 보정 커밋을 이어 진행한다.

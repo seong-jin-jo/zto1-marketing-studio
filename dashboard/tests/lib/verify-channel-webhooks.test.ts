@@ -35,15 +35,17 @@ describe("메시징 Webhook URL 검증 계약", () => {
     } finally { vi.unstubAllGlobals(); }
   });
 
-  it("CHANNEL-34 Slack은 발행 불가능한 JSON의 invalid_payload를 게시 권한 미확인으로 둔다", async () => {
-    const fetchMock = vi.fn(async () => new Response("invalid_payload", { status: 400 }));
+  it("CHANNEL-34 Slack은 고정 테스트 메시지 1건의 HTTP 200 plain ok만 연결 성공으로 판정한다", async () => {
+    const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     try {
       const result = await verifyChannel("slack", { webhookUrl: "https://hooks.slack.com/services/T/B/X" });
-      expect(result.verified).toBe(false);
-      expect(result.unverified).toBe(true);
+      expect(result.verified).toBe(true);
       expect(fetchMock).toHaveBeenCalledWith("https://hooks.slack.com/services/T/B/X",
-        expect.objectContaining({ method: "POST", body: "{" }));
+        expect.objectContaining({ method: "POST", body: JSON.stringify({
+          text: "OSMU Studio 연결 확인 메시지입니다. 사용자가 연결 버튼을 눌러 보냈습니다.",
+        }) }));
+      expect(fetchMock).toHaveBeenCalledOnce();
     } finally { vi.unstubAllGlobals(); }
   });
 
@@ -53,6 +55,29 @@ describe("메시징 Webhook URL 검증 계약", () => {
     try {
       const result = await verifyChannel("slack", { webhookUrl: "https://hooks.slack.com/services/T/B/X" });
       expect(result.verified).toBe(false);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each([
+    ["CHANNEL-42", 200, "not-ok"],
+    ["CHANNEL-43", 400, "invalid_payload"],
+  ])("%s Slack HTTP %s 응답 %s는 연결 성공이 아니다", async (_id, status, responseBody) => {
+    const fetchMock = vi.fn(async () => new Response(responseBody, { status }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      expect((await verifyChannel("slack", { webhookUrl: "https://hooks.slack.com/services/T/B/X" })).verified).toBe(false);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(["CHANNEL-44", "CHANNEL-45"])("%s Slack 결과 불명확이면 자동 재전송 없이 미검증으로 남긴다", async (id) => {
+    const fetchMock = vi.fn(id === "CHANNEL-44"
+      ? async () => new Response("server_error", { status: 503 })
+      : async () => { throw new Error("timeout"); });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await verifyChannel("slack", { webhookUrl: "https://hooks.slack.com/services/T/B/X" });
+      expect(result).toEqual(expect.objectContaining({ verified: false, unverified: true }));
+      expect(fetchMock).toHaveBeenCalledOnce();
     } finally { vi.unstubAllGlobals(); }
   });
 });

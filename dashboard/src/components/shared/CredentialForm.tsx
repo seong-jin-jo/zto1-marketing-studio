@@ -60,13 +60,14 @@ interface CredentialFormProps {
   title?: string;
   badge?: { text: string; color: string };
   connectLabel?: string;
+  submitLabel?: string;
   /** 연결됨 표시 — OAuth 연결(토큰이 integrations에 있어 keys가 비어도)이나 키 저장으로 연결된 상태. */
   connected?: boolean;
   /** Group fields with section headers and borders (e.g., X's Consumer Keys / Access Token) */
   fieldGroups?: CredFieldGroup[];
 }
 
-export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave, title, badge, connectLabel, connected, fieldGroups }: CredentialFormProps) {
+export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave, title, badge, connectLabel, submitLabel, connected, fieldGroups }: CredentialFormProps) {
   const hasKeys = Object.values(currentKeys).some((v) => v);
   const [editing, setEditing] = useState(!hasKeys);
   const dirtyRef = useRef(false);
@@ -77,6 +78,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
     return v;
   });
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [saveError, setSaveError] = useState(false);
   const keySignature = fields.map((field) => currentKeys[field] || "").join("\u0000");
 
@@ -94,6 +96,8 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
   }, [channelKey, keySignature]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       await onSave(values);
@@ -104,6 +108,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
       // 호출 화면이 구체적인 사유를 알리고, 폼은 입력값을 보존해 재시도하게 한다.
       setSaveError(true);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -174,7 +179,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
             disabled={saving}
             className="flex-1 min-h-control-touch py-stack-tight bg-accent text-accent-fg text-body-sm rounded-chip hover:bg-accent-hover disabled:opacity-50"
           >
-            {saving ? "확인 중..." : hasKeys ? "수정 내용 저장" : (connectLabel || "연결")}
+            {saving ? "확인 중..." : submitLabel || (hasKeys ? "수정 내용 저장" : (connectLabel || "연결"))}
           </button>
           {hasKeys && (
             <button

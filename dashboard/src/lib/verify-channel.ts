@@ -171,22 +171,26 @@ export async function verifyChannel(channel: string, cfg: Record<string, string>
       if (!isWebhookUrl(webhookUrl, "hooks.slack.com", "/")) {
         return { verified: false, error: "Invalid Slack Webhook URL" };
       }
-      // 의도적으로 파싱 불가한 JSON은 메시지를 만들 수 없다. Slack 고유 invalid_payload만
-      // webhook 인식 증거로 인정한다. 같은 400의 user_not_found 등은 발행 불가다.
+      // 사용자가 화면의 명시적 테스트 메시지 전송 버튼을 누른 경우에만 호출된다.
+      // Slack Incoming Webhook의 HTTP 200 + plain 'ok'만 실제 게시 성공 증거다.
+      // timeout/5xx는 게시됐을 수도 있어 자동 재전송하거나 연결 완료로 단정하지 않는다.
       try {
         const res = await fetch(webhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: "{",
+          body: JSON.stringify({ text: "OSMU Studio 연결 확인 메시지입니다. 사용자가 연결 버튼을 눌러 보냈습니다." }),
           signal: AbortSignal.timeout(5000),
         });
         const responseCode = (await res.text()).trim();
-        if (res.status === 400 && responseCode === "invalid_payload") {
-          return { verified: false, unverified: true, reason: "Webhook 주소는 응답했지만 게시 권한은 확인되지 않았습니다. 연결 정보는 저장되지 않았습니다." };
+        if (res.status === 200 && responseCode === "ok") {
+          return { verified: true, account: "(Webhook verified)" };
+        }
+        if (res.status === 429 || res.status >= 500) {
+          return { verified: false, unverified: true, reason: "테스트 메시지 전송 결과를 확인하지 못했습니다. Slack 채널을 확인한 뒤 다시 시도해 주세요. 연결 정보는 저장되지 않았습니다." };
         }
         return { verified: false, error: `Webhook invalid (${res.status})` };
       } catch {
-        return { verified: false, unverified: true, reason: "네트워크 확인 실패. Webhook URL은 저장되지 않았습니다." };
+        return { verified: false, unverified: true, reason: "테스트 메시지 전송 결과를 확인하지 못했습니다. Slack 채널을 확인한 뒤 다시 시도해 주세요. 연결 정보는 저장되지 않았습니다." };
       }
     }
 

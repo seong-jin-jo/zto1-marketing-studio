@@ -146,7 +146,7 @@ Analytics, Growth, Popular를 제거하고 Settings만 노출한다.
 Instagram, Facebook은 `token_expires_at` non-null과 미만료가 필수다. 만료된 access token은
 암호화된 refresh token이 있는 provider만 연결을 유지하며, 나머지는 `reconnect`로 판정한다.
 
-2026-09-18 메시징 연결 판정: Slack·Discord는 기본 계정의 API 유형과 정확한 Incoming Webhook URL을 함께 확인한다. Telegram은 대상 Chat ID가 필수이며, 새 연결 때 채널은 봇 관리자 게시 권한, 그룹은 봇 메시지 전송 자격을 확인한다. 이 검사는 실제 게시물 전송 성공을 보장하지 않는다. 수동 연결 자격증명은 기존 gateway 호환을 위해 openclaw.json에도 저장되므로 운영자는 config 저장소 접근 권한을 제한해야 한다.
+2026-09-18 메시징 연결 판정: Slack·Discord는 기본 계정의 API 유형과 정확한 Incoming Webhook URL을 함께 확인한다. Slack 신규 연결은 회원에게 테스트 메시지 1건 게시를 알리고, 사용자가 버튼을 누를 때 고정 문구를 보내 HTTP 200/plain `ok`가 돌아와야 저장한다. 재시도 버튼을 다시 누르면 테스트 메시지가 추가될 수 있다. Telegram은 대상 Chat ID가 필수이며, 새 연결 때 채널은 봇 관리자 게시 권한, 그룹은 봇 메시지 전송 자격을 확인한다. Telegram 권한 사전 검사는 실제 게시물 전송 성공을 보장하지 않는다. 수동 연결 자격증명은 기존 gateway 호환을 위해 openclaw.json에도 저장되므로 운영자는 config 저장소 접근 권한을 제한해야 한다.
 연결 콜백은 장기 토큰 교환과 실제 계정 신원 검증을 둘 다 통과한 후에만
 `active`를 저장한다. 이 계약의 실 OAuth 재현은 운영 계정 재검증 전까지 미검증이다.
 
