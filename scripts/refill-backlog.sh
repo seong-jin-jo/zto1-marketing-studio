@@ -39,7 +39,10 @@ add() { # add <id> <lane> <프롬프트파일명>
 COMMON='
 공통 규율(어기면 반려된다):
 - 기반 산출물을 반드시 Read 하고 시작한다. 임의 재해석 금지.
-  확정 프로토타입 docs/prototype/openclaw-auto-4room-v63.html
+  승인 기준은 pipeline-state.osmu.md의 작업 대상 방별 approved_artifacts와 승인 범위에서 확인한다.
+  DESIGN.md와 docs/design/README.md를 함께 읽고 실제 채택한 승인 파일·버전·근거를 기록한다.
+  과거 v63 비교 결과는 보존한다. 후보 버전이나 다른 방의 증분 승인을 전체 승인으로 확대하지 않는다.
+  승인 기록과 문서가 어긋나면 해당 디자인 정합은 미검증으로 남기고 충돌 근거를 보고한다. 임의 기준 완화 금지.
   회장 확정 요구 대장 docs/requests/회장-확정-요구사항-대장.md
   사업 좌표 wiki/product/사업좌표-OSMU와-ZERO-ONE.md
 - 완료 = 증거. 도는 앱(localhost:3456)에 실제 요청을 보내 관찰하고 붙여라. mock 통과는 증거가 아니다.
