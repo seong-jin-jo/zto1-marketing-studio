@@ -1,3 +1,14 @@
+## 2026-09-19 네 방 기본 흐름 전수 검증 v26, qa 진행 중
+
+current_stage: qa
+status: in-progress (승인 아님)
+
+HEAD `e7eea1fa`의 localhost 네 방 4/4와 네 폭 20화면 및 복귀 5/5, Vitest 378파일과
+2,434건, TypeScript, 격리 webpack build 185/185, seed, RLS와 디자인 lint는 통과했다.
+공유 AI 제공자 7일 사용량 100%로 실제 후보 생성이 HTTP 429에서 중단돼 기본 흐름과 Studio v1은
+NG다. v63 디자인 정합 NG와 v63, v68 승인 핀 충돌도 유지한다. 상세는
+`docs/qa/osmu-four-room-basic-flow-v26-gpt-codex.md`다.
+
 ## 2026-09-19 네 방 기본 흐름 전수 검증 v25, qa 진행 중
 
 current_stage: qa

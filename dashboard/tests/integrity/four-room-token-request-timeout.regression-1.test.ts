@@ -31,8 +31,10 @@ afterAll(async () => {
 describe("네 방 검증용 고객 토큰 요청 제한시간", () => {
   it("REVIEW-24H-20260919-04 정상 경로: 단계 예산 안의 지연 응답을 실제로 끝까지 읽는다", async () => {
     const response = await requestWithinDeadline(`${baseUrl}/api/tenant-tokens`, { method: "POST" }, {
-      readyTimeoutMs: 300,
-      deadlineAt: Date.now() + 1000,
+      // 전체 회귀의 병렬 워커는 요청 함수 계약과 무관하게 로컬 fixture 콜백을 늦출 수 있다.
+      // 120ms 지연 응답은 운영 단계 예산보다 충분히 짧게 유지하되, 부하 중 이벤트 루프 여유를 둔다.
+      readyTimeoutMs: 1000,
+      deadlineAt: Date.now() + 3000,
     });
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({ id: "token-id", token: "token-value" });

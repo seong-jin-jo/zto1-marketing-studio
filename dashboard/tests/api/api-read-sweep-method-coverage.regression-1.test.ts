@@ -25,8 +25,8 @@ describe("API 읽기 전수 검증기 메서드·증거 회귀", () => {
     expect(script).toContain("listener_pids_after: listenerPidsAfter");
     expect(script).toContain("source_hash_before: sourceHashBefore");
     expect(script).toContain("source_hash_after: sourceHashAfter");
-    expect(script).toContain('collectFiles(path.join(dashboardRoot, "src"))');
-    expect(script).toContain('collectFiles(path.join(dashboardRoot, "scripts"))');
+    expect(script).toContain("collectEvidenceFiles,");
+    expect(script.match(/collectEvidenceFiles\(dashboardRoot\)/g) ?? []).toHaveLength(2);
     expect(script).toContain('source_hash_scope: ["src/**/*", "scripts/**/*"]');
     expect(script).toContain("evidence_stable: evidenceStable");
     expect(script).toContain("!evidenceStable");
