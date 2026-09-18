@@ -23,8 +23,8 @@ const buildSourceHash = execFileSync(
 
 const nextConfig: NextConfig = {
   env: {
-    OSMU_BUILD_COMMIT: buildCommit,
-    OSMU_BUILD_SOURCE_HASH: buildSourceHash,
+    OSMU_BUILD_EVIDENCE_COMMIT: buildCommit,
+    OSMU_BUILD_EVIDENCE_SOURCE_HASH: buildSourceHash,
   },
   // Next 빌드가 자체 타입 검사를 한 번 더 돌린다. 그 검사는 tsconfig.json 을 그대로 읽어
   // 테스트까지 프로그램에 넣고, 그중 아홉 개가 이웃 워크스페이스(openclaw)의 확장을 직접
