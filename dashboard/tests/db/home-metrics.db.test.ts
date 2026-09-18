@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import postgres from "postgres";
 import { db } from "@/lib/db";
 import { getHomeSummary, getWeeklyReport } from "@/lib/home-metrics";
 import { getDatabaseUrl } from "../isolation/_env";
 
 type Sql = ReturnType<typeof postgres>;
+let cleanupTarget: { url: string; tenantId: string } | null = null;
 
 function testDatabaseUrl(): string {
   const url = getDatabaseUrl();
@@ -19,6 +20,30 @@ function testDatabaseUrl(): string {
   return url;
 }
 
+async function deleteAndAssertFixture(sql: Sql, tenantId: string): Promise<void> {
+  // FK CASCADE가 이 테스트의 게시물·큐·성장 행까지 함께 회수한다.
+  await sql`DELETE FROM tenants WHERE id = ${tenantId}::uuid`;
+  const [remaining] = await sql<{ count: number }[]>`
+    SELECT (SELECT count(*) FROM tenants WHERE id = ${tenantId}::uuid)
+         + (SELECT count(*) FROM published_posts WHERE tenant_id = ${tenantId}::uuid)
+         + (SELECT count(*) FROM queue_posts WHERE tenant_id = ${tenantId}::uuid)
+         + (SELECT count(*) FROM growth_metrics WHERE tenant_id = ${tenantId}::uuid) AS count`;
+  expect(Number(remaining.count)).toBe(0);
+}
+
+afterEach(async () => {
+  const target = cleanupTarget;
+  if (!target) return;
+  // 테스트 본문이 시간 초과되어 finally 정리가 끝나지 않아도 독립 연결로 다시 지운다.
+  const sql = postgres(target.url, { max: 1, idle_timeout: 5, connect_timeout: 8, onnotice: () => {} });
+  try {
+    await deleteAndAssertFixture(sql, target.tenantId);
+  } finally {
+    cleanupTarget = null;
+    await sql.end({ timeout: 5 });
+  }
+}, 20_000);
+
 describe("R-02 홈 지표 live Postgres 통합", () => {
   it("R-02-DB-01 한국어 설명: 자체 테넌트의 상태·성과·주간 수치만 집계하고 테스트 데이터를 회수한다", async () => {
     const url = testDatabaseUrl();
@@ -27,6 +52,7 @@ describe("R-02 홈 지표 live Postgres 통합", () => {
     const ids = Array.from({ length: 8 }, () => randomUUID());
     const previousUrl = process.env.DATABASE_URL;
     let appSql: Sql | null = null;
+    cleanupTarget = { url, tenantId };
 
     try {
       await sql`SELECT 1`;
@@ -70,20 +96,19 @@ describe("R-02 홈 지표 live Postgres 통합", () => {
       expect(weekly.viralPosts).toEqual([{ text: '주간 인기 글', views: 600, likes: 30 }]);
     } finally {
       try {
-        // FK CASCADE가 이 테스트의 게시물·큐·성장 행까지 함께 회수한다.
-        await sql`DELETE FROM tenants WHERE id = ${tenantId}::uuid`;
-        const [remaining] = await sql<{ count: number }[]>`
-          SELECT (SELECT count(*) FROM tenants WHERE id = ${tenantId}::uuid)
-               + (SELECT count(*) FROM published_posts WHERE tenant_id = ${tenantId}::uuid)
-               + (SELECT count(*) FROM queue_posts WHERE tenant_id = ${tenantId}::uuid)
-               + (SELECT count(*) FROM growth_metrics WHERE tenant_id = ${tenantId}::uuid) AS count`;
-        expect(Number(remaining.count)).toBe(0);
+        await deleteAndAssertFixture(sql, tenantId);
       } finally {
-        if (appSql) await appSql.end({ timeout: 5 });
-        await sql.end({ timeout: 5 });
-        if (previousUrl === undefined) delete process.env.DATABASE_URL;
-        else process.env.DATABASE_URL = previousUrl;
+        try {
+          if (appSql) await appSql.end({ timeout: 5 });
+        } finally {
+          try {
+            await sql.end({ timeout: 5 });
+          } finally {
+            if (previousUrl === undefined) delete process.env.DATABASE_URL;
+            else process.env.DATABASE_URL = previousUrl;
+          }
+        }
       }
     }
-  });
+  }, 20_000);
 });
