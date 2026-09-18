@@ -1,3 +1,16 @@
+# 2026-09-18 10:10 KST 발행 복구·사용량 코드 수리 완료, 제품 QA 대기
+
+부모 컨트롤러가 지정한 최신 08:27 코드 감사 MAJOR 6건·MINOR 1건을 격리 브랜치
+`work/osmu-recovery0918`에서 수리했다. 서명 증표와 단계별 멱등 복구, 원시 사용량 발생
+시각, 50건 초과 pending 판정, 예약 크론의 독립 사용량 relay, 성과실 오류 구분을 구현했다.
+제품 코드 커밋은 `0092db57`이다. 표적 계약 테스트, TypeScript, 디자인 lint와 webpack
+production build 185/185가 통과했다. 독립 포트 3462의 `/login`·`/performance` HTTP 200을
+관찰했다. 다만 headless Chromium에서 성과실 본문은 10초 뒤에도 공백이고 개발 서버 HMR
+handshake 오류가 나 브라우저 스모크는 NG다. 격리 서버는 DB 설정이 없어 health 503,
+인증 후 화면·실제 SNS 발행·운영 DB 51건과 월경계는 미검증이다.
+9555/9444 브라우저와 메인 worktree는 건드리지 않았다. 다음은 부모 컨트롤러의 독립 리뷰와
+고객 DB 연결 환경에서 QA 후 배포 게이트 판정이다. 상세는 `session-state.osmu-recovery0918.md`.
+
 # 2026-09-18 09:47 KST 발행 복구·사용량 코드 수리 진행
 
 부모 컨트롤러의 최신 08:27 코드 감사 MAJOR 6건·MINOR 1건을 인계 기준으로 썼다.
