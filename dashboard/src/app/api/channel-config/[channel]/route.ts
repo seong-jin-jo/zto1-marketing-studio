@@ -134,6 +134,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ cha
   if (!pluginName) {
     return Response.json({ error: `Unknown channel: ${channel}` }, { status: 400 });
   }
+  // 테스트 메시지는 되돌릴 수 없다. DB만 새 URL이고 gateway 파일은 옛 URL인 부분 저장 상태에서
+  // 마스킹 입력을 기존 파일 값으로 복원해 보내면 다른 채널에 게시될 수 있다.
+  if (channel === "slack" && !shouldPersistSecretInput(data.webhookUrl)) {
+    return Response.json({
+      ok: false, verified: false,
+      error: "테스트 메시지를 보낼 Incoming Webhook URL 원문을 다시 입력해 주세요.",
+    }, { status: 400 });
+  }
 
   const plugins = (config.plugins ??= {}).entries ??= {};
   const p = (plugins[pluginName] ??= { enabled: false, config: {} });

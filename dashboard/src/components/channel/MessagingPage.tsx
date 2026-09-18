@@ -85,7 +85,7 @@ export function MessagingPage({ channel }: MessagingPageProps) {
       )}
       {channel === "slack" && (
         <p className="mb-stack-section rounded-control border border-warning/40 bg-warning/10 p-stack text-caption text-warning">
-          연결 버튼을 누를 때마다 입력한 Slack 채널에 테스트 메시지 1건이 게시됩니다. 이 앱에서 Webhook 메시지를 삭제할 수 없습니다.
+          연결 버튼을 누를 때마다 입력한 Slack 채널에 테스트 메시지 1건이 게시됩니다. 이 앱에서 Webhook 메시지를 삭제할 수 없습니다. 다시 시험할 때는 마스킹된 저장값 대신 Incoming Webhook URL 원문을 입력해 주세요.
         </p>
       )}
 
@@ -101,6 +101,7 @@ export function MessagingPage({ channel }: MessagingPageProps) {
             connected={connected}
             title={channel === "slack" ? "Incoming Webhook 연결" : "발행 채널 연결"}
             submitLabel={channel === "slack" ? "테스트 메시지 보내고 연결" : undefined}
+            requireFreshField={channel === "slack" ? "webhookUrl" : undefined}
           />
         </div>
 

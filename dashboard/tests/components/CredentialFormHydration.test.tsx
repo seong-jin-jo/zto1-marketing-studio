@@ -48,4 +48,14 @@ describe("메시징 자격증명 폼의 비동기 설정 수신", () => {
     finish();
     await waitFor(() => expect(screen.queryByRole("button", { name: "테스트 메시지 보내고 연결" })).not.toBeInTheDocument());
   });
+
+  it("CHANNEL-48 저장된 마스크만으로 Slack 재시험을 누르면 원문 재입력을 요구하고 전송하지 않는다", async () => {
+    const onSave = vi.fn(async () => {});
+    render(<CredentialForm {...props} onSave={onSave} submitLabel="테스트 메시지 보내고 연결"
+      requireFreshField="webhookUrl" currentKeys={{ webhookUrl: "********" }} connected />);
+    fireEvent.click(screen.getByRole("button", { name: "연결 정보 수정" }));
+    fireEvent.click(screen.getByRole("button", { name: "테스트 메시지 보내고 연결" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("원문을 다시 입력해 주세요");
+    expect(onSave).not.toHaveBeenCalled();
+  });
 });

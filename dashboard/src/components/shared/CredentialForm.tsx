@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { isSecretConfigKey } from "@/lib/secret-mask";
+import { isMaskedSecret, isSecretConfigKey } from "@/lib/secret-mask";
 
 interface CredFieldProps {
   id: string;
@@ -61,13 +61,14 @@ interface CredentialFormProps {
   badge?: { text: string; color: string };
   connectLabel?: string;
   submitLabel?: string;
+  requireFreshField?: string;
   /** 연결됨 표시 — OAuth 연결(토큰이 integrations에 있어 keys가 비어도)이나 키 저장으로 연결된 상태. */
   connected?: boolean;
   /** Group fields with section headers and borders (e.g., X's Consumer Keys / Access Token) */
   fieldGroups?: CredFieldGroup[];
 }
 
-export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave, title, badge, connectLabel, submitLabel, connected, fieldGroups }: CredentialFormProps) {
+export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave, title, badge, connectLabel, submitLabel, requireFreshField, connected, fieldGroups }: CredentialFormProps) {
   const hasKeys = Object.values(currentKeys).some((v) => v);
   const [editing, setEditing] = useState(!hasKeys);
   const dirtyRef = useRef(false);
@@ -79,7 +80,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
   });
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
-  const [saveError, setSaveError] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const keySignature = fields.map((field) => currentKeys[field] || "").join("\u0000");
 
   // SWR 설정은 폼 첫 렌더 뒤에 도착한다. 서버 값이 바뀌어도 현재 입력을 덮어쓰지 않되,
@@ -97,16 +98,20 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
 
   const handleSave = async () => {
     if (savingRef.current) return;
+    if (requireFreshField && (!values[requireFreshField]?.trim() || isMaskedSecret(values[requireFreshField]))) {
+      setSaveError("Incoming Webhook URL 원문을 다시 입력해 주세요.");
+      return;
+    }
     savingRef.current = true;
     setSaving(true);
     try {
       await onSave(values);
       dirtyRef.current = false;
       setEditing(false);
-      setSaveError(false);
+      setSaveError("");
     } catch {
       // 호출 화면이 구체적인 사유를 알리고, 폼은 입력값을 보존해 재시도하게 한다.
-      setSaveError(true);
+      setSaveError("연결 정보를 저장하지 못했습니다. 입력값을 확인하고 다시 시도해 주세요.");
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -133,7 +138,7 @@ export function CredentialForm({ channelKey, fields, labels, currentKeys, onSave
 
   return (
     <div>
-      {saveError && <p role="alert" className="mb-stack text-caption text-warning">연결 정보를 저장하지 못했습니다. 입력값을 확인하고 다시 시도해 주세요.</p>}
+      {saveError && <p role="alert" className="mb-stack text-caption text-warning">{saveError}</p>}
       <div className="flex items-center justify-between mb-stack">
         <h3 className="text-body-sm font-medium text-muted">{title || "연결 정보"}</h3>
         <div className="flex items-center gap-stack-tight">

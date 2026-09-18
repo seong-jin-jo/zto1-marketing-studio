@@ -238,6 +238,42 @@ describe("POST /api/channel-config/[channel] — integrations 브리지", () => 
     expect(H.selected).toHaveLength(0);
   });
 
+  it("CHANNEL-47 Slack 부분 저장 뒤 마스크·빈 입력은 옛 파일 Webhook 시험 전송 없이 거절하고 새 원문만 저장한다", async () => {
+    const filePath = path.join(tmpDir, "tenants", "tenant-1", "openclaw.json");
+    const config = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    config.plugins ??= {};
+    config.plugins.entries ??= {};
+    config.plugins.entries["slack-publish"] = {
+      enabled: true, config: { webhookUrl: "https://hooks.slack.com/services/OLD/FILE/fixture" },
+    };
+    fs.writeFileSync(filePath, JSON.stringify(config));
+    const before = fs.readFileSync(filePath, "utf-8");
+    H.accounts = [{
+      provider: "slack", accessToken: "https://hooks.slack.com/services/NEW/DB/fixture",
+      meta: { api: "slack_webhook" },
+    }];
+    const { POST } = await import("@/app/api/channel-config/[channel]/route");
+    const { verifyChannel } = await import("@/lib/verify-channel");
+    const verifier = vi.mocked(verifyChannel);
+    verifier.mockClear();
+    for (const webhookUrl of ["********", ""]) {
+      const refused = await POST(post("slack", { webhookUrl }), params("slack"));
+      expect(refused.status).toBe(400);
+      expect((await refused.json()).verified).toBe(false);
+    }
+    expect(verifier).not.toHaveBeenCalled();
+    expect(fs.readFileSync(filePath, "utf-8")).toBe(before);
+    expect(H.accounts).toHaveLength(1);
+
+    const newUrl = "https://hooks.slack.com/services/NEW/DB/fixture";
+    const accepted = await POST(post("slack", { webhookUrl: newUrl }), params("slack"));
+    expect(accepted.status).toBe(200);
+    expect(verifier).toHaveBeenCalledOnce();
+    expect(verifier).toHaveBeenCalledWith("slack", expect.objectContaining({ webhookUrl: newUrl }));
+    expect(H.accounts).toHaveLength(2);
+    expect((H.accounts[1] as { accessToken: string }).accessToken).toBe(newUrl);
+  });
+
   it.each([
     ["CHANNEL-36", { verified: false, error: "bad" }],
     ["CHANNEL-37", { verified: false, unverified: true }],

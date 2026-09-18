@@ -2,6 +2,8 @@
 
 ## 2026-09-18 23:12 KST · Slack 연결 테스트 메시지 후속
 
+- 독립 리뷰가 DB 새 URL·gateway 파일 옛 URL의 부분 저장에서 마스킹 폼 재시험 시 옛 Slack 채널로 메시지가 갈 수 있는 오발행 경계를 찾아 추가 보정했다. API는 원문 URL 없이 Slack POST가 오면 verifyChannel 전 400으로 거절하고, UI는 마스크·빈값일 때 호출하지 않고 원문 재입력을 요청한다. CHANNEL-47에서 옛 파일/새 DB 상태의 마스크·빈값 공급자 검증 0건, 새 원문 1건만 저장을 확인하고 CHANNEL-48은 실제 폼 거절을 확인한다. 외부 Slack 실전송은 하지 않았다.
+
 - 기존 연결 버튼에 매 클릭 Slack 테스트 메시지 1건 게시와 앱에서 Webhook 메시지 삭제 불가를 알리는 화면 문구를 추가했다. 버튼은 `테스트 메시지 보내고 연결`이며 중복 클릭을 동기 ref로 막는다. 기존 채널-config POST의 검증에서 고정 비밀 없는 문구를 한 번 보내고 Slack HTTP 200/plain `ok`만 verified로 저장한다. timeout·429·5xx는 게시 불명으로 미저장·자동 재전송 없음, 400은 거절이다. 실제 외부 메시지 전송은 이 작업에서 하지 않았다.
 - DB fixture의 기본 5초 timeout이 호스트 부하 시 잔존 테넌트를 남긴 사례에 따라 해당 case만 20초로 늘리고, 본문 finally가 못 끝나도 afterEach에서 자기 UUID만 삭제하는 안전망을 `936be871`로 분리 커밋했다. 실제 로컬 PostgreSQL 1/1 PASS. 컨트롤러가 첫 timeout 잔존 fixture 1건을 특정해 삭제했고 남은 channel fixture 0건을 확인했다.
 - 다음 실행: Slack 표적 Vitest·TypeScript·디자인 lint 완료 후 별도 커밋, 독립 리뷰, 컨트롤러 통합 빌드와 격리 브라우저 실제 UI를 검증한다. 외부 Slack 실계정 전송은 회원이 실제 Webhook 대상 채널을 정하고 버튼을 누를 때만 회수한다.

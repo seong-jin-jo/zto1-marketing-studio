@@ -95,6 +95,7 @@ describe("ChannelPage customer/operator API boundary", () => {
     expect(screen.getByText("Incoming Webhook 연결")).toBeInTheDocument();
     expect(screen.getByText(/기존 Slack 연결은 발행에 사용할 수 없습니다/)).toBeInTheDocument();
     expect(screen.getByText(/버튼을 누를 때마다 입력한 Slack 채널에 테스트 메시지 1건이 게시됩니다/)).toBeInTheDocument();
+    expect(screen.getByText(/마스킹된 저장값 대신 Incoming Webhook URL 원문을 입력해 주세요/)).toBeInTheDocument();
     expect(screen.getByText("테스트 메시지 보내고 연결")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Slack 연결" })).not.toBeInTheDocument();
   });
