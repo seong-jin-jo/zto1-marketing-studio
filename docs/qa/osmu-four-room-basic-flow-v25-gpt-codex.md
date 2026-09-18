@@ -83,6 +83,21 @@ Playwright 공식 문서의 명시 viewport, 접근 가능한 역할과 이름 �
 | R207 | 성과실 UX와 학습 정보를 구성한다 | FLOW-PERF-V25 | 부분 PASS | 성과실 렌더와 생성실 복귀는 통과. 실제 생성 재인계는 공급자 한도로 중단 |
 | R01부터 R207 및 세부 요청 중 이번 범위 밖 | 회장 확정 요구 전건 | REQ-ALL-V25 | 이월 | 기존 정본 판정을 유지하고 이번 네 방 범위만 갱신 |
 
+## 시안과 dev 실화면 육안 대조
+
+2026-09-19 02:28 KST에 아래 시안과 dev 실화면을 원본 해상도로 각각 직접 열어 대조했다.
+
+- 생성실 1440: v63은 후보 3장 선택과 회원 학습 정보가 첫 화면의 중심이다. 현재 화면은 주제 입력,
+  구성 예시와 네 단계 가로 탐색이 중심이라 요소 순서, 열 책임, 버튼 위계가 다르다.
+- 성과실 1440: v63은 실제 최근 30일 결론, 비교 막대와 지표가 첫 화면에 있다. 현재 화면은 표본 부족,
+  채널 연결 행동과 예시 지표가 중심이라 표시 상태, 정보 순서와 담당 패널 폭이 다르다.
+- 시안 원본: `docs/design/captures/osmu-four-room-prototype-v63-20260912/1440-light-create.png`,
+  `docs/design/captures/osmu-four-room-prototype-v63-20260912/1440-light-performance.png`
+- dev 원본: `logs/diff/osmu-four-room-flow-20260919-v25/captures/1440-light-create.png`,
+  `logs/diff/osmu-four-room-flow-20260919-v25/captures/1440-light-performance.png`
+
+두 쌍 모두 공통 셸, 정보 순서와 주 행동이 다르므로 디자인 정합은 NG다.
+
 ## 기존 구현 확인과 보존
 
 네 방 이동, 생성 API, 편집 상태 변경, 발행 큐, 성과 제안과 생성실 재인계가 이미 구현돼 있었다.
