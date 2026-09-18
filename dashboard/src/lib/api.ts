@@ -36,11 +36,11 @@ export interface ExternalPublishPersistenceFailure {
   error: string;
   persistence: {
     ok: false;
-    stage: "publication_record" | "queue_record" | "usage_record";
+    stage: "publication_record" | "queue_record" | "usage_record" | "first_comment_record";
     publicationRecorded: boolean;
     queueRecorded: boolean;
     error: {
-      code: "PUBLICATION_RECORD_FAILED" | "QUEUE_RECORD_FAILED" | "USAGE_RECORD_PENDING";
+      code: "PUBLICATION_RECORD_FAILED" | "QUEUE_RECORD_FAILED" | "USAGE_RECORD_PENDING" | "FIRST_COMMENT_RECORD_FAILED";
       message: string;
     };
     reconciliation: {
@@ -50,7 +50,7 @@ export interface ExternalPublishPersistenceFailure {
       draftId?: string | null;
       publicationId?: string | null;
       receipt?: string | null;
-      stage?: "publication_record" | "queue_record" | "usage_record";
+      stage?: "publication_record" | "queue_record" | "usage_record" | "first_comment_record";
       platform: string;
       accountId?: string | null;
       externalId: string | null;

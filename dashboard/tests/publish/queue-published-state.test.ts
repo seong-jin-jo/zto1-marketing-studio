@@ -70,4 +70,20 @@ describe("markQueuePublished", () => {
     expect(replayed.posts[0].publishedAt).toBe(firstPublishedAt);
     expect(H.updates.at(-1)?.text).toContain("COALESCE(published_at");
   });
+
+  it("REVIEW-20260918-15 월경계: 다음 달 복구도 원시 게시시각을 큐와 DB payload에 쓴다", async () => {
+    const original = "2026-08-31T23:59:00.000Z";
+    const tenantDir = path.join(dataDir, "tenants", tenantId);
+    fs.mkdirSync(tenantDir, { recursive: true });
+    fs.writeFileSync(path.join(tenantDir, "queue.json"), JSON.stringify({
+      version: 2, posts: [{ id: postId, status: "approved", text: "launch" }],
+    }));
+    await markQueuePublished(tenantId, postId, { platform: "threads", externalId: "media-1", publishedAt: original });
+    const queue = JSON.parse(fs.readFileSync(path.join(tenantDir, "queue.json"), "utf8"));
+    expect(queue.posts[0].publishedAt).toBe(original);
+    expect(H.updates.at(-1)?.values).toContain(original);
+    expect(H.updates.at(-1)?.values).toEqual(expect.arrayContaining([
+      expect.objectContaining({ publishedAt: original }),
+    ]));
+  });
 });

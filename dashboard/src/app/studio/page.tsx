@@ -220,6 +220,10 @@ interface VidResult {
   narration?: { requested: boolean; included: boolean; reason?: string; message?: string };
 }
 type PubStatus = "wait" | "doing" | "done" | "failed";
+type PublishProgress = {
+  running: boolean; stopped: boolean; status: Record<string, PubStatus>;
+  urls: Record<string, string>; errors: Record<string, string>; already: Record<string, string | true>;
+};
 type PublishReconciliation = ExternalPublishPersistenceFailure["persistence"]["reconciliation"];
 type PublishReconciliationMap = Record<string, PublishReconciliation>;
 
@@ -233,6 +237,18 @@ function normalizePublishReconciliations(value: unknown): PublishReconciliationM
     const reconciliation = entry[1] as Partial<PublishReconciliation> | null;
     return Boolean(reconciliation && reconciliation.retryPublish === false && reconciliation.platform === entry[0]);
   }));
+}
+
+function normalizePublishProgress(value: unknown): PublishProgress | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Partial<PublishProgress>;
+  if (!candidate.status || typeof candidate.status !== "object" || Array.isArray(candidate.status)) return null;
+  const status = Object.fromEntries(Object.entries(candidate.status).filter((entry): entry is [string, PubStatus] =>
+    ["wait", "doing", "done", "failed"].includes(entry[1])));
+  return { running: false, stopped: false, status,
+    urls: candidate.urls && typeof candidate.urls === "object" ? candidate.urls : {},
+    errors: candidate.errors && typeof candidate.errors === "object" ? candidate.errors : {},
+    already: candidate.already && typeof candidate.already === "object" ? candidate.already : {} };
 }
 
 function studioWorkStorageKey(workspaceId: string): string {
@@ -465,6 +481,7 @@ export default function StudioPage() {
   const [vid, setVid] = useState<VidResult | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [publishReconciliations, setPublishReconciliations] = useState<PublishReconciliationMap>({});
+  const [reconciliationError, setReconciliationError] = useState<string | null>(null);
   const [editorHandoff, setEditorHandoff] = useState<EditorHandoff | null>(null);
   const [includes, setIncludes] = useState<Record<string, boolean>>(() => normalizeIncludes());
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -512,18 +529,10 @@ export default function StudioPage() {
     fetcher,
   );
 
-  const [pub, setPub] = useState<{
-    running: boolean;
-    stopped: boolean;
-    status: Record<string, PubStatus>;
-    urls: Record<string, string>;
-    errors: Record<string, string>;
-    // 2026-09-16 실측(j.the.great.investor): 이미 올라간 글을 "지금 발행"으로 다시 누르면
-    // 서버가 dedupe 로 옛 글을 돌려주는데(`[publish] queue_record_absent(dedupe)`), 화면은
-    // "완료" + "새 창" 링크만 보여줘 방금 새로 올라간 것처럼 보였다. 그 발행 시각(있으면)을
-    // 따로 들고 있다가 "이미 올라간 글입니다" 로 구분해 말한다.
-    already: Record<string, string | true>;
-  }>({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
+  // 이미 올라간 글의 발행 시각은 already에 따로 둬 재발행 성공처럼 보이지 않게 한다.
+  const [pub, setPub] = useState<PublishProgress>({
+    running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {},
+  });
   // SNS-007: 플랫폼별 다중계정 중 이번 발행에 쓸 계정. 미선택(undefined)이면 getChannelCred가
   // 기본계정으로 resolve(/api/publish 계약과 동일). 계정이 1개뿐이면 셀렉터 자체를 숨긴다.
   const [accountsByPlatform, setAccountsByPlatform] = useState<Record<string, AccountOption[]>>({});
@@ -667,6 +676,7 @@ export default function StudioPage() {
         setText(w.text || null); setImg(w.img || null); setVid(w.vid || null);
         if (w.includes) setIncludes(normalizeIncludes(w.includes)); setDraftId(w.draftId || null);
         setPublishReconciliations(normalizePublishReconciliations(w.publishReconciliations ?? w.publishReconciliation));
+        setPub(normalizePublishProgress(w.publishProgress) ?? { running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
         setTitles(w.titles || {}); setHashtags(w.hashtags || {}); setTopicTags(w.topicTags || {});
         setFirstComments(w.firstComments || {}); setCaptions(w.captions || {}); setSelectedAccounts(w.selectedAccounts || {}); setEditLines(w.editLines || []); setCardTextPositions(w.cardTextPositions || []); setReviewQueueId(w.reviewQueueId || null);
         if (w.editKind === "video" || w.editKind === "card" || w.editKind === "audio" || w.editKind === "text") {
@@ -685,13 +695,13 @@ export default function StudioPage() {
     const workspaceId = activeWorkspace?.id;
     if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
     try {
-      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat }));
+      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, img, vid, includes, draftId, publishReconciliations, publishProgress: pub, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat }));
       setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
       setEditAutosaveError("");
     } catch {
       setEditAutosaveError("자동 저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.");
     }
-  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat]);
+  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, img, vid, includes, draftId, publishReconciliations, pub, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat]);
 
   const upText = (patch: Partial<TextVariants>) => setText((p) => ({ ...(p || {}), ...patch }));
   const upIg = (patch: Partial<NonNullable<TextVariants["instagram"]>>) => setText((p) => ({ ...(p || {}), instagram: { ...(p?.instagram || {}), ...patch } }));
@@ -1038,6 +1048,7 @@ export default function StudioPage() {
     // 방금 자막을 구운 영상도 같은 이유로 인자로 받는다. 상태를 기다리면 자막 없는 옛
     // 파일이 저장되고, 발행실은 저장된 것을 올린다.
     persistedVid: VidResult | null = vid,
+    persistedProgress: PublishProgress = pub,
   ) {
     const r = await apiPost<{ id?: string }>("/api/studio/drafts", {
       tenant_id: activeWorkspace?.id,
@@ -1049,6 +1060,7 @@ export default function StudioPage() {
       includes,
       status,
       publishReconciliations: reconciliations,
+      publishProgress: persistedProgress,
       titles,
       hashtags,
       topicTags,
@@ -1232,7 +1244,7 @@ export default function StudioPage() {
     if (!platforms.length) return;
     try {
       const result = await apiPost<{
-        repaired?: Array<{ platform: string; publicationId: string }>;
+        repaired?: Array<{ platform: string; publicationId: string; firstCommentStatus?: string }>;
         failed?: Array<{ platform: string; error: string }>;
       }>("/api/publish/reconcile", {
         tenant_id: activeWorkspace?.id,
@@ -1243,12 +1255,25 @@ export default function StudioPage() {
         Object.entries(publishReconciliations).filter(([platform]) => !repairedPlatforms.has(platform)),
       );
       if (repairedPlatforms.size === 0) throw new Error("발행 원장 복구 실패");
-      const savedDraftId = await save(Object.keys(remaining).length ? "partial" : "published", remaining, draftId);
+      const nextStatus = { ...pub.status };
+      for (const repaired of result?.repaired ?? []) {
+        nextStatus[repaired.platform] = repaired.firstCommentStatus === "failed" || repaired.firstCommentStatus === "uncertain"
+          ? "failed" : "done";
+      }
+      // Legacy drafts have no per-platform result. They cannot be promoted to
+      // published merely because the last persistence receipt was repaired.
+      const incomplete = Object.keys(remaining).length > 0 || Object.keys(pub.status).length === 0
+        || Object.values(nextStatus).some((status) => status !== "done");
+      const nextProgress = { ...pub, running: false, status: nextStatus };
+      const savedDraftId = await save(incomplete ? "partial" : "published", remaining,
+        draftId, editLines, img, vid, nextProgress);
       if (!savedDraftId) throw new Error("기록 저장 실패");
       setPublishReconciliations(remaining);
+      setReconciliationError(null);
+      setPub(nextProgress);
       const repairedLabels = [...repairedPlatforms].map((platform) => LABEL[platform as keyof typeof LABEL]).join(", ");
-      if (Object.keys(remaining).length) {
-        showToast(`${repairedLabels} 기록을 복구했습니다. 남은 채널은 잠시 뒤 다시 눌러 주세요.`, "error");
+      if (incomplete) {
+        showToast(`${repairedLabels} 내부 기록을 복구했습니다. 실패하거나 결과 미확인인 채널은 아직 완료되지 않았습니다.`, "error");
       } else {
         showToast(`${repairedLabels} 발행 원장과 사용량 기록을 복구했습니다. 이제 다음 작업을 이어가실 수 있습니다.`, "success");
       }
@@ -1256,7 +1281,9 @@ export default function StudioPage() {
       const failed = error instanceof ApiResponseError
         ? (error.payload as { failed?: Array<{ error?: string }> } | null)?.failed : undefined;
       const reason = failed?.map((item) => item.error).filter(Boolean).join(" ");
-      showToast(reason || "기록을 정리하지 못했습니다. 외부 게시 상태를 확인한 뒤 다시 시도해 주세요.", "error");
+      const message = reason || "기록을 정리하지 못했습니다. 외부 게시 상태를 확인한 뒤 다시 시도해 주세요.";
+      setReconciliationError(message);
+      showToast(message, "error");
     }
   }
 
@@ -1323,6 +1350,7 @@ export default function StudioPage() {
     });
     const errs: string[] = [...blockedFailure.messages];
     const pendingReconciliations: PublishReconciliationMap = {};
+    setReconciliationError(null);
     setPub({ running: true, stopped: false, status: { ...status }, urls: {}, errors: {}, already: {} });
     await runWithConcurrency(targets, PUBLISH_CONCURRENCY, async (p) => {
       status[p] = "doing";
@@ -1410,18 +1438,19 @@ export default function StudioPage() {
         already: { ...already },
       });
     });
-    setPub({
+    const completedProgress: PublishProgress = {
       running: false,
       stopped: false,
       status: { ...status },
       urls: { ...urls },
       errors: { ...errors },
       already: { ...already },
-    });
+    };
+    setPub(completedProgress);
     if (Object.keys(pendingReconciliations).length > 0) {
       setPublishReconciliations(pendingReconciliations);
       try {
-        await save("partial", pendingReconciliations, did);
+        await save("partial", pendingReconciliations, did, editLines, img, vid, completedProgress);
       } catch {
         // The same storage incident can prevent the draft write too. The state was
         // already copied to localStorage-bound React state, so keep the no-republish
@@ -1430,7 +1459,8 @@ export default function StudioPage() {
       }
     } else {
       try {
-        const savedDraftId = await save(errs.length ? "partial" : "published", {}, did);
+        const savedDraftId = await save(errs.length ? "partial" : "published", {}, did,
+          editLines, img, vid, completedProgress);
         if (!savedDraftId) errs.push("발행 결과를 저장하지 못했습니다");
       } catch {
         errs.push("발행 결과를 저장하지 못했습니다");
@@ -1450,6 +1480,8 @@ export default function StudioPage() {
     setIncludes(d.includes ? normalizeIncludes(d.includes as Record<string, boolean>) : includes); setDraftId(d.id as string);
     const savedReconciliations = normalizePublishReconciliations(d.publishReconciliations ?? d.publishReconciliation);
     setPublishReconciliations(savedReconciliations);
+    setReconciliationError(null);
+    setPub(normalizePublishProgress(d.publishProgress) ?? { running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     setEditorHandoff((d.editorHandoff as EditorHandoff) || null);
     setTitles((d.titles as Record<string, string>) || {});
     setHashtags((d.hashtags as Record<string, string>) || {});
@@ -2412,6 +2444,9 @@ export default function StudioPage() {
                   <span className="mt-stack-tight block">
                     <Button size="sm" data-testid="publish-reconciliation-resolve" onClick={resolvePublishReconciliation}>이미 올라간 것으로 기록하기</Button>
                   </span>
+                  {reconciliationError ? <p className="mt-stack-tight" role="alert">{reconciliationError}</p> : null}
+                  <p className="mt-stack-tight">증표가 만료되었거나 기록 복구가 실패하면 다시 게시하지 말고 외부 게시 주소와 작업물 번호를 준비해 지원에 문의해 주세요.</p>
+                  <a className="mt-stack-tight inline-flex text-accent underline" href="mailto:code0to1@gmail.com?subject=%EB%B0%9C%ED%96%89%20%EA%B8%B0%EB%A1%9D%20%EB%B3%B5%EA%B5%AC%20%EC%9A%94%EC%B2%AD" data-testid="publish-recovery-support">복구 문의 메일 열기</a>
                 </div>
               ) : null}
               <Stack direction="horizontal" gap={8} wrap>

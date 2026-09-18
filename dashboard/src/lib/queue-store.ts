@@ -150,12 +150,12 @@ export type QueuePublishOutcome = "updated" | "absent";
 export async function markQueuePublished(
   tenantId: string,
   postId: string,
-  result: { platform: string; externalId?: string; permalink?: string },
+  result: { platform: string; externalId?: string; permalink?: string; publishedAt?: string },
 ): Promise<QueuePublishOutcome> {
   if (!isUuid(tenantId) || !isUuid(postId)) return "absent";
 
   let found: QueueMirrorPost | null = null;
-  const publishedAt = new Date().toISOString();
+  const publishedAt = result.publishedAt ?? new Date().toISOString();
   let effectivePublishedAt = publishedAt;
   await runWithTenant(tenantId, () => mutateJson<{ version?: number; posts: QueueMirrorPost[] }>(
     dataPath("queue.json"),

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { installFetch } from "./helpers/mock-fetch";
 import { withTenant } from "@/lib/db";
 import { verifyRecoveryProof } from "@/lib/publish-recovery-proof";
+import { publishFirstComment } from "@/lib/first-comment";
 
 // ── /api/publish 분기 하네스 (인프라 無, 항상 실행) ───────────────────────────
 // 사용자 요구: "올바른 토큰 happy path / 생략(skip) / 잘못된 토큰" 전 분기를 스크립트로 박제.
@@ -20,6 +21,7 @@ const H = vi.hoisted(() => ({
   getChannelCredCalls: [] as unknown[][],
   existingPublication: null as { external_id: string | null; permalink: string | null; published_at?: string | null } | null,
   publicationRecordError: null as Error | null,
+  firstCommentRecordError: null as Error | null,
   usageRecordError: null as Error | null,
   markQueuePublishedCalls: [] as unknown[][],
   queueRecordError: null as Error | null,
@@ -30,6 +32,10 @@ const H = vi.hoisted(() => ({
   existingFirstCommentStatus: null as string | null,
   leaseTakeoverWon: true,
   firstCommentResult: null as null | { ok: boolean; error?: string; externalId?: string; failureKind?: "definitive" | "indeterminate" },
+  firstCommentThrow: false,
+  firstCommentHold: null as Promise<void> | null,
+  publishMarker: false,
+  publishMarkerError: false,
   conflictReservedAt: new Date().toISOString(),
 }));
 
@@ -58,6 +64,7 @@ vi.mock("@/lib/db", () => ({
             permalink: H.existingPublication.permalink,
             reserved_at: null,
             first_comment_status: H.existingFirstCommentStatus,
+            provider_meta: H.publishMarker ? { publishAttemptStarted: true } : {},
             published_at: H.existingPublication.published_at ?? null,
           }]);
         }
@@ -69,6 +76,7 @@ vi.mock("@/lib/db", () => ({
             permalink: null,
             reserved_at: H.conflictReservedAt,
             first_comment_status: null,
+            provider_meta: H.publishMarker ? { publishAttemptStarted: true } : {},
           }]);
         }
         return Promise.resolve([]);
@@ -77,6 +85,17 @@ vi.mock("@/lib/db", () => ({
       if (query.includes("UPDATE published_posts") && query.includes("SET reserved_at = now()")) {
         H.reservation = { tenant: null, draft: null, platform: null, text: vals[0], accountId: null };
         return Promise.resolve(H.leaseTakeoverWon ? [{ id: "22222222-2222-4222-8222-222222222222" }] : []);
+      }
+      if (query.includes("SET provider_meta =") && vals.some((value) =>
+        Boolean(value && typeof value === "object" && (value as { publishAttemptStarted?: boolean }).publishAttemptStarted))) {
+        if (H.publishMarkerError) return Promise.reject(new Error("marker DB unavailable"));
+        H.publishMarker = true;
+        return Promise.resolve([{ id: "11111111-1111-4111-8111-111111111111" }]);
+      }
+      if (query.includes("SET first_comment_status = 'in_progress'")) {
+        if (!["failed", "not_requested"].includes(H.existingFirstCommentStatus ?? "")) return Promise.resolve([]);
+        H.existingFirstCommentStatus = "in_progress";
+        return Promise.resolve([{ id: "11111111-1111-4111-8111-111111111111" }]);
       }
       if (query.includes("INSERT INTO published_posts") && H.publicationRecordError) {
         return Promise.reject(H.publicationRecordError);
@@ -97,6 +116,11 @@ vi.mock("@/lib/db", () => ({
           vals[8],
         ]);
         if (vals[3] === "published") H.existingPublication = { external_id: vals[0] as string | null, permalink: vals[1] as string | null };
+        return Promise.resolve([]);
+      }
+      if (query.includes("UPDATE published_posts") && query.includes("SET first_comment_status")) {
+        if (H.firstCommentRecordError) return Promise.reject(H.firstCommentRecordError);
+        H.existingFirstCommentStatus = vals[0] as string;
         return Promise.resolve([]);
       }
       // 2026-09-16: 성과실 발행 집계(recordPublicationEvent, lib/usage-events.ts)가 발행
@@ -120,8 +144,11 @@ vi.mock("@/lib/first-comment", async (importActual) => {
   const actual = await importActual<typeof import("@/lib/first-comment")>();
   return {
     ...actual,
-    publishFirstComment: vi.fn(async (...args: Parameters<typeof actual.publishFirstComment>) =>
-      H.firstCommentResult ?? actual.publishFirstComment(...args)),
+    publishFirstComment: vi.fn(async (...args: Parameters<typeof actual.publishFirstComment>) => {
+      if (H.firstCommentHold) await H.firstCommentHold;
+      if (H.firstCommentThrow) throw new Error("provider response lost");
+      return H.firstCommentResult ?? actual.publishFirstComment(...args);
+    }),
   };
 });
 
@@ -185,6 +212,7 @@ beforeEach(() => {
   H.getChannelCredCalls = [];
   H.existingPublication = null;
   H.publicationRecordError = null;
+  H.firstCommentRecordError = null;
   H.usageRecordError = null;
   H.markQueuePublishedCalls = [];
   H.queueOutcome = "updated";
@@ -195,6 +223,10 @@ beforeEach(() => {
   H.existingFirstCommentStatus = null;
   H.conflictReservedAt = new Date().toISOString();
   H.firstCommentResult = null;
+  H.firstCommentThrow = false;
+  H.firstCommentHold = null;
+  H.publishMarker = false;
+  H.publishMarkerError = false;
   H.leaseTakeoverWon = true;
   vi.mocked(withTenant).mockClear();
 });
@@ -204,6 +236,14 @@ afterEach(() => {
 });
 
 describe("/api/publish — 입력/인증 분기", () => {
+  it("REVIEW-20260918-17 거절: LinkedIn 이미지는 텍스트만 조용히 올리기 전에 막는다", async () => {
+    const { status, body } = await callPublish({ platform: "linkedin", text: "본문",
+      image_url: "https://example.test/image.png", idempotency_key: "linkedin-image" });
+    expect(status).toBe(422);
+    expect(body.code).toBe("LINKEDIN_IMAGE_PUBLISH_UNSUPPORTED");
+    expect(H.getChannelCredCalls).toHaveLength(0);
+    expect(H.reservation).toBeNull();
+  });
   it("FMT-API-02 거절: 허용하지 않은 영상 비율은 자격 조회와 외부 발행 전에 422로 막는다", async () => {
     const { status, body } = await callPublish({
       platform: "threads",
@@ -364,11 +404,12 @@ describe("/api/publish — happy path (실 publish* + fetch 목)", () => {
     const { body } = await callPublish({ platform: "threads", text: "hi", draft_id: draftId });
 
     expect(body.ok).toBe(true);
-    expect(H.markQueuePublishedCalls).toEqual([["tenant-1", draftId, {
+    expect(H.markQueuePublishedCalls[0]).toEqual(["tenant-1", draftId, expect.objectContaining({
       platform: "threads",
       externalId: "media-uuid",
       permalink: "https://www.threads.net/@u/post/uuid",
-    }]]);
+      publishedAt: expect.any(String),
+    })]);
   });
 
   it("동일 UUID draft/platform/account 성공 기록이 있으면 외부 발행 없이 queue만 멱등 복구한다", async () => {
@@ -844,5 +885,115 @@ describe("/api/publish — 되돌릴 수 없는 외부 게시 보호", () => {
     expect(body.firstCommentStatus).toBe("failed");
     // 본문 상태는 published 이되 첫 댓글 상태가 독립 컬럼으로 남아야 복구 대상이 사라지지 않는다.
     expect(H.inserts[0][I.status]).toBe("published");
+  });
+
+  it("REVIEW-20260918-14 정상: 댓글 공급자 성공 뒤 DB 실패는 본문 복구가 아닌 댓글 전용 증표를 준다", async () => {
+    process.env.OSMU_SECRET_KEY = "publish-recovery-test-key";
+    H.existingPublication = { external_id: "post-1", permalink: "https://example.test/post/1" };
+    H.existingFirstCommentStatus = "failed";
+    H.firstCommentResult = { ok: true, externalId: "comment-1" };
+    H.firstCommentRecordError = new Error("DB unavailable");
+    const { status, body } = await callPublish({ platform: "threads", text: "hi",
+      first_comment: "첫 댓글", idempotency_key: "comment-retry" });
+    expect(status).toBe(500);
+    expect(body.persistence).toMatchObject({ stage: "first_comment_record",
+      reconciliation: { stage: "first_comment_record", externalId: "post-1" } });
+    const proof = verifyRecoveryProof(body.persistence.reconciliation.receipt);
+    expect(proof).toMatchObject({ stage: "first_comment_record", externalId: "post-1",
+      firstComment: { status: "published", externalId: "comment-1", error: null } });
+    expect(H.existingFirstCommentStatus).toBe("in_progress");
+    expect((await callPublish({ platform: "threads", text: "hi",
+      first_comment: "첫 댓글", idempotency_key: "comment-retry" })).status).toBe(409);
+  });
+
+  it("REVIEW-20260918-21 정상: 초기 본문 기록 실패 증표는 이미 성공한 첫 댓글도 함께 보존한다", async () => {
+    process.env.OSMU_SECRET_KEY = "publish-recovery-test-key";
+    installFetch(THREADS_OK);
+    H.firstCommentResult = { ok: true, externalId: "comment-1" };
+    H.publicationRecordError = new Error("DB unavailable");
+    const { status, body } = await callPublish({ platform: "threads", text: "hi",
+      first_comment: "첫 댓글", idempotency_key: "initial-comment-success" });
+    expect(status).toBe(500);
+    expect(verifyRecoveryProof(body.persistence.reconciliation.receipt)).toMatchObject({
+      stage: "publication_record", firstComment: { status: "published", error: null, externalId: "comment-1" },
+    });
+  });
+
+  it("REVIEW-20260918-22 경합: 실패한 첫 댓글 동시 재시도는 원자 claim 한 요청만 공급자에 보낸다", async () => {
+    H.existingPublication = { external_id: "post-1", permalink: "https://example.test/post/1" };
+    H.existingFirstCommentStatus = "failed";
+    H.firstCommentResult = { ok: true, externalId: "comment-1" };
+    let release!: () => void;
+    H.firstCommentHold = new Promise<void>((resolve) => { release = resolve; });
+    vi.mocked(publishFirstComment).mockClear();
+    const first = callPublish({ platform: "threads", text: "hi", first_comment: "첫 댓글", idempotency_key: "retry" });
+    await vi.waitFor(() => expect(vi.mocked(publishFirstComment)).toHaveBeenCalledTimes(1));
+    const second = await callPublish({ platform: "threads", text: "hi", first_comment: "첫 댓글", idempotency_key: "retry" });
+    expect(second.status).toBe(409);
+    release();
+    expect((await first).status).toBe(200);
+    expect(vi.mocked(publishFirstComment)).toHaveBeenCalledTimes(1);
+  });
+
+  it("REVIEW-20260918-23 불명확: 첫 댓글 응답 유실은 uncertain으로 남겨 자동 재전송하지 않는다", async () => {
+    H.existingPublication = { external_id: "post-1", permalink: "https://example.test/post/1" };
+    H.existingFirstCommentStatus = "failed";
+    H.firstCommentThrow = true;
+    vi.mocked(publishFirstComment).mockClear();
+    const first = await callPublish({ platform: "threads", text: "hi", first_comment: "첫 댓글", idempotency_key: "retry" });
+    const second = await callPublish({ platform: "threads", text: "hi", first_comment: "첫 댓글", idempotency_key: "retry" });
+    expect(first.body.firstComment).toMatchObject({ ok: false, failureKind: "indeterminate" });
+    expect(H.existingFirstCommentStatus).toBe("uncertain");
+    expect(second.status).toBe(409);
+    expect(vi.mocked(publishFirstComment)).toHaveBeenCalledTimes(1);
+  });
+
+  it("REVIEW-20260918-23 불명확: 초기 첫 댓글 응답 유실도 본문 성공과 별도 uncertain으로 기록한다", async () => {
+    installFetch(THREADS_OK);
+    H.firstCommentThrow = true;
+    const result = await callPublish({ platform: "threads", text: "hi",
+      first_comment: "첫 댓글", idempotency_key: "initial-comment-timeout" });
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ ok: true, partial: true, firstCommentStatus: "uncertain" });
+    expect(H.inserts[0][I.status]).toBe("published");
+  });
+
+  it("REVIEW-20260918-24 보존: 본문 공급자 호출 전 marker DB 실패면 외부 호출하지 않는다", async () => {
+    H.publishMarkerError = true;
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const { status, body } = await callPublish({ platform: "threads", text: "hi", idempotency_key: "marker-fail" });
+    expect(status).toBe(503);
+    expect(body.code).toBe("PUBLISH_RESERVATION_FAILED");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("REVIEW-20260918-25 보존: 외부 시도 marker가 있는 오래된 예약은 공급자 조회가 비어도 재게시하지 않는다", async () => {
+    H.reservationClaimed = true;
+    H.publishMarker = true;
+    H.conflictReservedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const { status, body } = await callPublish({ platform: "threads", text: "hi", idempotency_key: "stale-marked" });
+    expect(status).toBe(409);
+    expect(body.code).toBe("PUBLISH_STATE_UNCERTAIN");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("REVIEW-20260918-27 보존: Threads publish 503은 failed가 아닌 uncertain이고 다음 발행을 차단한다", async () => {
+    installFetch([
+      { match: "me?fields=id", json: { id: "live-id" } },
+      { match: "fields=status", json: { status: "FINISHED" } },
+      { match: "/threads_publish", status: 503, json: {} },
+      { match: "/threads", json: { id: "container-9" } },
+    ]);
+    const first = await callPublish({ platform: "threads", text: "hi", idempotency_key: "ambiguous-503" });
+    expect(first.status).toBe(409);
+    expect(first.body.code).toBe("PUBLISH_STATE_UNCERTAIN");
+    expect(H.inserts[0][I.status]).toBe("uncertain");
+    H.reservationClaimed = true;
+    H.conflictReservedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const second = await callPublish({ platform: "threads", text: "hi", idempotency_key: "ambiguous-503" });
+    expect(second.status).toBe(409);
   });
 });

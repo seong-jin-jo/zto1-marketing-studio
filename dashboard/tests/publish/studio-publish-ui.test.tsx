@@ -837,6 +837,37 @@ describe("Studio publish result integrity", () => {
     expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish/reconcile")).toHaveLength(1);
   });
 
+  it("REVIEW-20260918-16 혼합: Threads 기록 복구 후에도 X 실패를 초안과 새로고침 상태에 남긴다", async () => {
+    restoreStudio(["threads", "x"]);
+    mocks.apiPost.mockImplementation(async (path: string, body: { platform?: string; status?: string }) => {
+      if (path === "/api/studio/drafts") return { id: "draft-mixed", status: body.status };
+      if (path === "/api/publish/reconcile") {
+        return { ok: true, repaired: [{ platform: "threads", publicationId: "publication-1" }], failed: [] };
+      }
+      if (path === "/api/publish" && body.platform === "threads") {
+        throw Object.assign(new Error("Threads 기록 실패"), { externalPersistence: true,
+          payload: { persistence: { reconciliation: { required: true, action: "repair_persistence_only",
+            retryPublish: false, platform: "threads", receipt: "signed", stage: "queue_record" } } } });
+      }
+      if (path === "/api/publish" && body.platform === "x") throw new Error("X 공급자 거절");
+      throw new Error(`unexpected path: ${path}`);
+    });
+    render(<StudioPage />);
+    fireEvent.click(await findEnabledButton("선택한 2곳에 지금 발행"));
+    fireEvent.click(await screen.findByTestId("publish-reconciliation-resolve"));
+    await waitFor(() => expect(screen.queryByTestId("publish-reconciliation-resolve")).toBeNull());
+    const drafts = mocks.apiPost.mock.calls.filter(([path]) => path === "/api/studio/drafts")
+      .map(([, body]) => body as { status: string; publishProgress?: { status: Record<string, string> } });
+    expect(drafts.at(-1)).toMatchObject({ status: "partial", publishProgress: {
+      status: { threads: "done", x: "failed" },
+    } });
+    const saved = JSON.parse(localStorage.getItem(`studio_work:${mocks.workspace.id}`) || "{}");
+    expect(saved.publishProgress.status).toMatchObject({ threads: "done", x: "failed" });
+    cleanup();
+    render(<StudioPage />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "실패한 곳만 다시 발행" })).toBeInTheDocument());
+  });
+
   it("REVIEW-20260918-13 거절: 오래된 증표 없는 복구는 안내를 보여 주고 외부 게시 잠금을 유지한다", async () => {
     restoreStudio(["threads"]);
     mocks.apiPost.mockImplementation(async (path: string) => {
@@ -863,6 +894,7 @@ describe("Studio publish result integrity", () => {
     await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
       expect.stringContaining("복구 증표가 없습니다"), "error"));
     expect(screen.getByTestId("publish-reconciliation-resolve")).toBeInTheDocument();
+    expect(screen.getByTestId("publish-recovery-support")).toHaveAttribute("href", expect.stringContaining("mailto:code0to1@gmail.com"));
     expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(1);
   });
 

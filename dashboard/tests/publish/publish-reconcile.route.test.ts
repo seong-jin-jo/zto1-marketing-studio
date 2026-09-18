@@ -17,6 +17,9 @@ const H = vi.hoisted(() => ({
     draftId: "22222222-2222-4222-8222-222222222222",
     externalId: null as string | null,
     usageStatus: null as string | null,
+    firstCommentStatus: "failed" as string | null,
+    firstCommentError: null as string | null,
+    firstCommentExternalId: null as string | null,
     status: "in_progress",
   },
   updateCalls: 0,
@@ -41,12 +44,26 @@ vi.mock("@/lib/db", () => ({
           && platform === H.row.platform
           && accountId === H.row.accountId;
         return Promise.resolve(matches ? [{ id: H.row.id, draft_id: H.row.draftId,
-          status: H.row.status, external_id: H.row.externalId, usage_status: H.row.usageStatus }] : []);
+          status: H.row.status, external_id: H.row.externalId, usage_status: H.row.usageStatus,
+          first_comment_status: H.row.firstCommentStatus,
+          first_comment_error: H.row.firstCommentError,
+          first_comment_external_id: H.row.firstCommentExternalId }] : []);
       }
       if (query.includes("UPDATE published_posts")) {
         H.updateCalls += 1;
-        H.row.status = "published";
-        H.row.externalId = "provider-1";
+        if (query.includes("SET first_comment_status")) {
+          H.row.firstCommentStatus = values[0] as string;
+          H.row.firstCommentError = values[1] as string | null;
+          H.row.firstCommentExternalId = values[2] as string | null;
+        } else {
+          H.row.status = "published";
+          H.row.externalId = "provider-1";
+          if (query.includes("first_comment_status = COALESCE")) {
+            H.row.firstCommentStatus = values[2] as string;
+            H.row.firstCommentError = values[4] as string | null;
+            H.row.firstCommentExternalId = values[6] as string | null;
+          }
+        }
         return Promise.resolve([{ id: H.row.id }]);
       }
       return Promise.resolve([]);
@@ -76,6 +93,7 @@ async function reconcile(tenantId = TENANT_A, changes: Record<string, unknown> =
     tenantId, publicationId: PUBLICATION_ID, draftId: DRAFT_ID, accountId: ACCOUNT_ID,
     platform: "threads", externalId: "provider-1", permalink: "https://example.com/post/1",
     occurredAt: "2026-08-31T23:59:00.000Z", stage,
+    firstComment: { status: "not_requested", error: null, externalId: null },
   }) : changes.receipt;
   const { POST } = await import("@/app/api/publish/reconcile/route");
   const response = await POST(new Request("http://localhost/api/publish/reconcile", {
@@ -104,7 +122,8 @@ describe("POST /api/publish/reconcile", () => {
     process.env.OSMU_SECRET_KEY = "recovery-test-key";
     H.tenantId = TENANT_A;
     H.row = { id: PUBLICATION_ID, tenantId: TENANT_A, platform: "threads", accountId: ACCOUNT_ID,
-      draftId: DRAFT_ID, externalId: null, usageStatus: null, status: "in_progress" };
+      draftId: DRAFT_ID, externalId: null, usageStatus: null, status: "in_progress",
+      firstCommentStatus: "failed", firstCommentError: null, firstCommentExternalId: null };
     H.updateCalls = 0;
     H.queueCalls = [];
     H.usageCalls = [];
@@ -121,6 +140,7 @@ describe("POST /api/publish/reconcile", () => {
       platform: "threads",
       externalId: "provider-1",
       permalink: "https://example.com/post/1",
+      publishedAt: "2026-08-31T23:59:00.000Z",
     }]]);
     expect(H.usageCalls).toEqual([[TENANT_A, PUBLICATION_ID, "threads"]]);
   });
@@ -177,5 +197,86 @@ describe("POST /api/publish/reconcile", () => {
     expect(first.response.status).toBe(200);
     expect(second.response.status).toBe(200);
     expect(H.updateCalls).toBe(1);
+  });
+
+  it("REVIEW-20260918-21 정상: 초기 본문 증표의 첫 댓글 성공을 같은 트랜잭션에서 복원한다", async () => {
+    const receipt = issueRecoveryProof({ tenantId: TENANT_A, publicationId: PUBLICATION_ID,
+      draftId: DRAFT_ID, accountId: ACCOUNT_ID, platform: "threads", externalId: "provider-1",
+      permalink: "https://example.com/post/1", occurredAt: "2026-08-31T23:59:00.000Z",
+      stage: "publication_record",
+      firstComment: { status: "published", error: null, externalId: "comment-1" } });
+    const result = await reconcile(TENANT_A, { receipt });
+    expect(result.response.status).toBe(200);
+    expect(result.body.repaired).toEqual([expect.objectContaining({ firstCommentStatus: "published" })]);
+    expect(H.row.firstCommentStatus).toBe("published");
+    expect(H.row.firstCommentExternalId).toBe("comment-1");
+    expect((await reconcile(TENANT_A, { receipt })).response.status).toBe(200);
+  });
+
+  it("REVIEW-20260918-21 정상: 댓글 미요청 증표는 not_requested로 복원해 본문 완료를 유지한다", async () => {
+    const result = await reconcile();
+    expect(result.response.status).toBe(200);
+    expect(result.body.repaired).toEqual([expect.objectContaining({ firstCommentStatus: "not_requested" })]);
+    expect(H.row.firstCommentStatus).toBe("not_requested");
+  });
+
+  it("REVIEW-20260918-15 월경계: 큐만 다음 달 복구해도 공급자 성공 시각을 넘긴다", async () => {
+    H.row.status = "published";
+    H.row.externalId = "provider-1";
+    const { response } = await reconcile(TENANT_A, { stage: "queue_record" });
+    expect(response.status).toBe(200);
+    expect(H.queueCalls[0]?.[2]).toMatchObject({ publishedAt: "2026-08-31T23:59:00.000Z" });
+    expect(H.updateCalls).toBe(0);
+  });
+
+  it("REVIEW-20260918-14 정상·멱등: 첫 댓글 성공 증표는 댓글 필드만 복구하고 재실행해도 큐·사용량을 건드리지 않는다", async () => {
+    H.row.status = "published";
+    H.row.externalId = "provider-1";
+    const receipt = issueRecoveryProof({ tenantId: TENANT_A, publicationId: PUBLICATION_ID,
+      draftId: DRAFT_ID, accountId: ACCOUNT_ID, platform: "threads", externalId: "provider-1",
+      permalink: "https://example.com/post/1", occurredAt: "2026-09-18T00:00:00Z",
+      stage: "first_comment_record",
+      firstComment: { status: "published", error: null, externalId: "comment-1" } });
+    const first = await reconcile(TENANT_A, { stage: "first_comment_record", receipt });
+    const repeat = await reconcile(TENANT_A, { stage: "first_comment_record", receipt });
+    expect(first.response.status).toBe(200);
+    expect(repeat.response.status).toBe(200);
+    expect(H.row.firstCommentStatus).toBe("published");
+    expect(H.row.firstCommentExternalId).toBe("comment-1");
+    expect(H.updateCalls).toBe(1);
+    expect(H.queueCalls).toHaveLength(0);
+    expect(H.usageCalls).toHaveLength(0);
+  });
+
+  it("REVIEW-20260918-14 거절: 첫 댓글 증표를 본문 복구 단계에 재사용하거나 다른 게시물에 적용하지 않는다", async () => {
+    H.row.status = "published";
+    H.row.externalId = "provider-1";
+    const receipt = issueRecoveryProof({ tenantId: TENANT_A, publicationId: PUBLICATION_ID,
+      draftId: DRAFT_ID, accountId: ACCOUNT_ID, platform: "threads", externalId: "provider-1",
+      permalink: "https://example.com/post/1", occurredAt: "2026-09-18T00:00:00Z",
+      stage: "first_comment_record",
+      firstComment: { status: "published", error: null, externalId: "comment-1" } });
+    expect((await reconcile(TENANT_A, { receipt, stage: "publication_record" })).response.status).toBe(409);
+    H.row.externalId = "another-post";
+    expect((await reconcile(TENANT_A, { receipt, stage: "first_comment_record" })).response.status).toBe(409);
+    expect(H.updateCalls).toBe(0);
+  });
+
+  it("REVIEW-20260918-19 만료: 서명이 맞지만 24시간 지난 증표는 재게시 금지와 지원 조치를 안내한다", async () => {
+    const issuedAt = Date.now();
+    const receipt = issueRecoveryProof({ tenantId: TENANT_A, publicationId: PUBLICATION_ID,
+      draftId: DRAFT_ID, accountId: ACCOUNT_ID, platform: "threads", externalId: "provider-1",
+      permalink: "https://example.com/post/1", occurredAt: "2026-09-18T00:00:00Z",
+      stage: "publication_record" });
+    const now = vi.spyOn(Date, "now").mockReturnValue(issuedAt + 25 * 60 * 60 * 1000);
+    try {
+      const { response, body } = await reconcile(TENANT_A, { receipt });
+      expect(response.status).toBe(409);
+      expect(body.failed).toEqual(expect.arrayContaining([expect.objectContaining({
+        error: expect.stringContaining("24시간 유효기간"),
+      })]));
+      expect(JSON.stringify(body)).toContain("다시 게시하지 마세요");
+      expect(H.updateCalls).toBe(0);
+    } finally { now.mockRestore(); }
   });
 });

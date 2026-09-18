@@ -1,6 +1,12 @@
 import crypto from "node:crypto";
 
-export type RecoveryStage = "publication_record" | "queue_record" | "usage_record";
+export type RecoveryStage = "publication_record" | "queue_record" | "usage_record" | "first_comment_record";
+
+export interface FirstCommentRecoveryResult {
+  status: "not_requested" | "published" | "failed" | "uncertain";
+  error: string | null;
+  externalId: string | null;
+}
 
 export interface RecoveryProof {
   tenantId: string;
@@ -12,6 +18,7 @@ export interface RecoveryProof {
   permalink: string | null;
   occurredAt: string;
   stage: RecoveryStage;
+  firstComment?: FirstCommentRecoveryResult;
   expiresAt: number;
 }
 
@@ -30,21 +37,35 @@ export function issueRecoveryProof(input: Omit<RecoveryProof, "expiresAt">): str
   return `${payload}.${signature}`;
 }
 
-export function verifyRecoveryProof(token: string): RecoveryProof | null {
+export function verifyRecoveryProofDetailed(token: string):
+  { proof: RecoveryProof; reason: null } | { proof: null; reason: "expired" | "invalid" } {
   const parts = token.split(".");
-  if (parts.length !== 2 || parts[0].length > 4096 || parts[1].length !== 43) return null;
+  if (parts.length !== 2 || parts[0].length > 4096 || parts[1].length !== 43) return { proof: null, reason: "invalid" };
   let expected: Buffer;
   try {
     expected = crypto.createHmac("sha256", signingKey()).update(parts[0]).digest();
     const supplied = Buffer.from(parts[1], "base64url");
-    if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return null;
+    if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return { proof: null, reason: "invalid" };
     const proof = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as RecoveryProof;
     if (!proof || typeof proof !== "object" || !Number.isSafeInteger(proof.expiresAt)
-      || proof.expiresAt < Date.now() || proof.expiresAt > Date.now() + LIFETIME_MS
-      || !["publication_record", "queue_record", "usage_record"].includes(proof.stage)
-      || !Number.isFinite(Date.parse(proof.occurredAt))) return null;
-    return proof;
+      || proof.expiresAt > Date.now() + LIFETIME_MS
+      || !["publication_record", "queue_record", "usage_record", "first_comment_record"].includes(proof.stage)
+      || (proof.firstComment && (
+        !["not_requested", "published", "failed", "uncertain"].includes(proof.firstComment.status)
+        || (["published", "not_requested"].includes(proof.firstComment.status) && proof.firstComment.error !== null)
+        || (["failed", "uncertain"].includes(proof.firstComment.status) && typeof proof.firstComment.error !== "string")
+        || (proof.firstComment.externalId !== null && typeof proof.firstComment.externalId !== "string")
+        || (proof.firstComment.status === "not_requested" && proof.firstComment.externalId !== null)))
+      || (proof.stage === "first_comment_record" && (!proof.firstComment
+        || proof.firstComment.status === "not_requested"))
+      || !Number.isFinite(Date.parse(proof.occurredAt))) return { proof: null, reason: "invalid" };
+    if (proof.expiresAt < Date.now()) return { proof: null, reason: "expired" };
+    return { proof, reason: null };
   } catch {
-    return null;
+    return { proof: null, reason: "invalid" };
   }
+}
+
+export function verifyRecoveryProof(token: string): RecoveryProof | null {
+  return verifyRecoveryProofDetailed(token).proof;
 }
