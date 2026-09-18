@@ -121,12 +121,12 @@ export const setupGuides: Record<string, SetupGuide> = {
   },
   telegram: {
     fields: ["botToken", "chatId"],
-    labels: ["Bot Token (@BotFather에서 발급)", "Chat ID (선택, 알림 발송용)"],
+    labels: ["Bot Token (@BotFather에서 발급)", "발행 대상 Chat ID"],
     quick: [
       "Telegram에서 @BotFather 검색 > /newbot 명령",
       "봇 이름 + username 설정 > Bot Token 복사",
-      "양방향 대화만 할 경우: Bot Token만 입력하면 완료",
-      "알림도 받으려면: Chat ID 입력 (아래 '더 알아보기' 참고)",
+      "발행할 대상 채팅의 Chat ID를 확인해 함께 입력",
+      "양방향 대화 설정은 Settings > Interactive Chat에서 별도로 진행",
     ],
     detail:
       "Bot Token\n@BotFather에게 /newbot 하면 발급되는 봇 전용 비밀번호입니다. 무료.\n\nChat ID란?\n봇이 '알림'을 보낼 장소입니다.\n- 없으면: 내가 봇에게 먼저 말해야 대화 가능\n- 있으면: 봇이 먼저 알림을 보낼 수 있음 (바이럴 감지, 주간 리포트 등)\n\nChat ID 확인하는 법\n1. 봇에게 아무 메시지를 보냅니다\n2. 브라우저에서 아래 주소 접속:\n   https://api.telegram.org/bot여기에토큰/getUpdates\n3. 결과에서 \"chat\":{\"id\": 숫자} ← 이 숫자가 Chat ID\n\n또는 Telegram에서 @RawDataBot 에게 메시지 보내면 바로 Chat ID를 알려줍니다.\n\n양방향 대화\nSettings > Interactive Chat에서 Bot Token을 설정하면, 봇에게 '이번 주 성과 보여줘' 같은 명령을 보낼 수 있습니다.",

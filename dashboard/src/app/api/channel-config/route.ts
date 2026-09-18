@@ -232,12 +232,31 @@ export async function GET(request: Request) {
           });
           continue;
         }
-        if (connectionStates[label] === "connected") {
-          void reportRecovery({ workspaceId: __t, category: "token_expired", source });
-        }
         if (status !== "active") continue;
         const m = (meta ?? {}) as Record<string, unknown>;
         const userId = typeof m.userId === "string" ? m.userId : "";
+
+        if (["slack", "telegram", "discord"].includes(label) && (!key || !token)) {
+          ch.connected = false;
+          ch.connectionStatus = "unverified";
+          ch.connectionError = key ? "no_token" : "server_key_missing";
+          ch.status = "available";
+          continue;
+        }
+        // OAuth로 저장된 Slack bot token은 현재 발행기가 요구하는 Incoming Webhook이 아니다.
+        // Telegram도 대상 chatId 없이는 sendMessage가 불가능하다. 계정 행만으로 연결됨이라 하지 않는다.
+        if ((label === "slack" && (m.api !== "slack_webhook" || !token?.startsWith("https://hooks.slack.com/"))) ||
+            (label === "telegram" && !m.chatId)) {
+          ch.connected = false;
+          ch.connectionStatus = "reconnect";
+          ch.reconnectRequired = true;
+          ch.connectionError = label === "slack" ? "slack_webhook_required" : "telegram_chat_required";
+          ch.status = "available";
+          continue;
+        }
+        if (connectionStates[label] === "connected") {
+          void reportRecovery({ workspaceId: __t, category: "token_expired", source });
+        }
 
         if (liveCheckable.has(label)) {
           if (!key || !token) {

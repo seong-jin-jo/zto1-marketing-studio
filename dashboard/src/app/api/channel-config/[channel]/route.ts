@@ -4,6 +4,7 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { withTenant } from "@/lib/db";
 import { isMaskedSecret } from "@/lib/secret-mask";
+import { setDefaultAccount, syncLegacyIntegration, upsertChannelAccount } from "@/lib/channel-accounts";
 
 interface OpenClawConfig {
   plugins?: {
@@ -145,10 +146,38 @@ export async function POST(request: Request, { params }: { params: Promise<{ cha
   }
 
   const result = await verifyChannel(channel, p.config || {});
+  // 이 세 채널의 수동 연결은 발행 계정(channel_accounts)의 기본 계정이어야 한다.
+  // integrations만 갱신하면 연결 화면은 미연결이고 예약 발행도 대상 계정을 찾지 못한다.
+  if (result.verified && ["slack", "telegram", "discord"].includes(channel)) {
+    const credential = toIntegration(channel, p.config || {});
+    if (!__t || !credential?.secret) {
+      return Response.json({ verified: false, error: "연결 정보를 저장할 수 없습니다. 로그인 상태를 확인하고 다시 시도해 주세요." }, { status: 503 });
+    }
+    try {
+      const account = await upsertChannelAccount({
+        tenantId: __t,
+        provider: channel,
+        externalId: "manual",
+        displayName: result.account || `${channel} webhook`,
+        accessToken: credential.secret,
+        meta: credential.meta,
+      });
+      if (account.isDefault) await syncLegacyIntegration(__t, channel, account.id);
+      else {
+        // 예전 Slack OAuth 토큰이 기본이면 webhook으로 교체해야 실제 발행이 가능하다.
+        const selected = await setDefaultAccount(__t, channel, account.id);
+        if (!selected.ok) throw new Error("default account selection failed");
+      }
+    } catch {
+      return Response.json({ verified: false, error: "연결 정보를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요." }, { status: 503 });
+    }
+  }
   p.enabled = result.verified;
   writeJson(cfgPath, config);
   // facebook/instagram은 직접발행 대상 → integrations 브리지(toIntegration이 그 외 채널은 null로 무시).
-  await bridgeToIntegrations(__t, channel, p.config || {}, result.verified || !!result.unverified);
+  if (!["slack", "telegram", "discord"].includes(channel)) {
+    await bridgeToIntegrations(__t, channel, p.config || {}, result.verified || !!result.unverified);
+  }
   return Response.json({ ok: true, enabled: p.enabled, ...result });
   });
 }

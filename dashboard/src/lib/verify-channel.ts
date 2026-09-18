@@ -64,11 +64,16 @@ export async function verifyChannel(channel: string, cfg: Record<string, string>
 
     if (channel === "telegram") {
       const token = cfg.botToken || "";
-      if (!token) return { verified: false, error: "Bot Token is empty" };
+      if (!token || !cfg.chatId?.trim()) return { verified: false, error: "발행하려면 Bot Token과 대상 Chat ID를 모두 입력해 주세요." };
       const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: AbortSignal.timeout(5000) });
       const data = await res.json();
-      if (data.ok) return { verified: true, account: `@${data.result?.username || ""}` };
-      return { verified: false, error: "Invalid bot token" };
+      if (!res.ok || !data.ok) return { verified: false, error: "Bot Token을 확인해 주세요." };
+      const chat = await fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(cfg.chatId)}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      const chatData = await chat.json();
+      if (!chat.ok || !chatData.ok) return { verified: false, error: "Chat ID를 확인하고 봇을 대상 채팅에 추가해 주세요." };
+      return { verified: true, account: `@${data.result?.username || ""}` };
     }
 
     if (channel === "x") {
