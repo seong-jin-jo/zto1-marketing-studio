@@ -100,6 +100,7 @@ afterEach(() => {
   delete process.env.OSMU_TEST_SENTINEL_SECRET;
   delete process.env.CLAUDECODE;
   delete process.env.CLAUDE_CONFIG_DIR;
+  delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
   delete process.env.SECURITYSESSIONID;
 });
 
@@ -190,6 +191,7 @@ describe("claude CLI 실행 경계 — 필수 플래그·cwd·model", () => {
     process.env.OSMU_TEST_SENTINEL_SECRET = "절대-자식에-넘기지-않음";
     process.env.CLAUDECODE = "1";
     process.env.CLAUDE_CONFIG_DIR = "/tmp/상위-워커-전용-설정";
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "synthetic-qa-oauth-token";
     process.env.SECURITYSESSIONID = "qa-login-session";
     const generateText = await importGenerateText();
     const p = generateText("hello", null);
@@ -201,6 +203,7 @@ describe("claude CLI 실행 경계 — 필수 플래그·cwd·model", () => {
     expect(childEnv?.NODE_ENV).toBeTruthy();
     expect(childEnv?.PATH).toBeTruthy();
     expect(childEnv?.SECURITYSESSIONID).toBe("qa-login-session");
+    expect(childEnv?.CLAUDE_CODE_OAUTH_TOKEN).toBe("synthetic-qa-oauth-token");
     expect(childEnv?.OSMU_TEST_SENTINEL_SECRET).toBeUndefined();
     expect(childEnv?.CLAUDECODE).toBeUndefined();
     expect(childEnv?.CLAUDE_CONFIG_DIR).toBeUndefined();
