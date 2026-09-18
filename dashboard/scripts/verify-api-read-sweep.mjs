@@ -10,8 +10,17 @@ import {
   classifyApiReadResponse,
   evaluateSweepEvidenceStability,
 } from "./lib/api-sweep-contract.mjs";
+import {
+  collectEvidenceFiles,
+  gitSourceState,
+  sourceFingerprint,
+  watchSourceChanges,
+} from "./lib/source-evidence.mjs";
 
-const dashboardRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const defaultDashboardRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const dashboardRoot = process.env.NODE_ENV === "test" && process.env.API_SWEEP_DASHBOARD_ROOT
+  ? path.resolve(process.env.API_SWEEP_DASHBOARD_ROOT)
+  : defaultDashboardRoot;
 const apiRoot = path.join(dashboardRoot, "src", "app", "api");
 const baseUrl = process.env.API_SWEEP_BASE_URL || "http://localhost:3456";
 const workspaceId = process.env.API_SWEEP_WORKSPACE_ID
@@ -139,6 +148,15 @@ const successContracts = new Map([
   ["src/app/api/images/route.ts:GET", { allowEmptyArray: true, reason: "이미지가 없는 작업 공간의 정상 빈 갤러리" }],
 ]);
 
+const sourceMonitor = watchSourceChanges(dashboardRoot);
+const sourceStateBefore = gitSourceState(dashboardRoot);
+const evidenceFilesBefore = await collectEvidenceFiles(dashboardRoot);
+const sourceHashBefore = await sourceFingerprint(dashboardRoot, evidenceFilesBefore);
+if (!sourceStateBefore.clean) {
+  sourceMonitor.close();
+  throw new Error(`검사 시작 소스가 HEAD와 다릅니다: ${sourceStateBefore.changes.join(" | ")}`);
+}
+
 const gitCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dashboardRoot, encoding: "utf8" }).trim();
 const healthResponse = await fetch(new URL("/api/health", baseUrl), {
   headers: { accept: "application/json" },
@@ -148,9 +166,18 @@ const healthBody = await healthResponse.json().catch(() => null);
 const serverBuildCommit = healthBody && typeof healthBody === "object" && typeof healthBody.build_commit === "string"
   ? healthBody.build_commit
   : "";
+const serverSourceHash = healthBody && typeof healthBody === "object" && typeof healthBody.build_source_hash === "string"
+  ? healthBody.build_source_hash
+  : "";
 const buildCommitMatches = healthResponse.ok && serverBuildCommit === gitCommit;
+const serverSourceHashMatches = healthResponse.ok && serverSourceHash === sourceHashBefore;
 if (!buildCommitMatches) {
+  sourceMonitor.close();
   throw new Error(`실행 서버 커밋 불일치: SERVER=${serverBuildCommit || "없음"} EXPECTED=${gitCommit}`);
+}
+if (!serverSourceHashMatches) {
+  sourceMonitor.close();
+  throw new Error(`실행 서버 소스 지문 불일치: SERVER=${serverSourceHash || "없음"} EXPECTED=${sourceHashBefore}`);
 }
 
 const files = await collectRouteFiles(apiRoot);
@@ -162,36 +189,10 @@ const results = [];
 const deadlineAt = Date.now() + totalTimeoutMs;
 let cursor = 0;
 
-async function collectFiles(directory) {
-  const entries = await fs.readdir(directory, { withFileTypes: true });
-  const collected = [];
-  for (const entry of entries) {
-    const fullPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) collected.push(...await collectFiles(fullPath));
-    if (entry.isFile()) collected.push(fullPath);
-  }
-  return collected;
-}
-
-async function collectEvidenceFiles() {
-  return [
-    ...await collectFiles(path.join(dashboardRoot, "src")),
-    ...await collectFiles(path.join(dashboardRoot, "scripts")),
-  ].sort();
-}
-
-async function sourceHash(evidenceFiles) {
-  const hash = createHash("sha256");
-  for (const file of evidenceFiles) {
-    hash.update(path.relative(dashboardRoot, file));
-    hash.update("\0");
-    hash.update(await fs.readFile(file));
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-}
-
 function listenerPids() {
+  if (process.env.NODE_ENV === "test" && process.env.API_SWEEP_EXPECTED_LISTENER_PID) {
+    return [process.env.API_SWEEP_EXPECTED_LISTENER_PID];
+  }
   const url = new URL(baseUrl);
   const port = url.port || (url.protocol === "https:" ? "443" : "80");
   try {
@@ -202,8 +203,6 @@ function listenerPids() {
   }
 }
 
-const evidenceFilesBefore = await collectEvidenceFiles();
-const sourceHashBefore = await sourceHash(evidenceFilesBefore);
 const listenerPidsBefore = listenerPids();
 
 async function inspectRoute({ file, method }) {
@@ -287,9 +286,14 @@ const requestsAfter = filesAfter.flatMap(({ file, methods }) => methods.map((met
 const routeInventoryAfter = requestsAfter
   .map(({ file, method }) => `${path.relative(dashboardRoot, file)}:${method}`)
   .sort();
-const evidenceFilesAfter = await collectEvidenceFiles();
-const sourceHashAfter = await sourceHash(evidenceFilesAfter);
+await new Promise((resolve) => setTimeout(resolve, 50));
+const evidenceFilesAfter = await collectEvidenceFiles(dashboardRoot);
+const sourceHashAfter = await sourceFingerprint(dashboardRoot, evidenceFilesAfter);
+const sourceStateAfter = gitSourceState(dashboardRoot);
 const listenerPidsAfter = listenerPids();
+const sourceChangeEvents = [...sourceMonitor.events];
+const sourceWatcherErrors = [...sourceMonitor.errors];
+sourceMonitor.close();
 const evidenceStability = evaluateSweepEvidenceStability({
   sourceHashBefore,
   sourceHashAfter,
@@ -299,6 +303,11 @@ const evidenceStability = evaluateSweepEvidenceStability({
   evidenceFilesAfter: evidenceFilesAfter.map((file) => path.relative(dashboardRoot, file)),
   routeInventoryBefore,
   routeInventoryAfter,
+  gitSourceCleanBefore: sourceStateBefore.clean,
+  gitSourceCleanAfter: sourceStateAfter.clean,
+  serverSourceHashMatches,
+  sourceChangeEvents,
+  sourceWatcherErrors,
 });
 const evidenceStable = evidenceStability.stable;
 
@@ -312,7 +321,9 @@ const report = {
   base_url: baseUrl,
   git_commit: gitCommit,
   server_build_commit: serverBuildCommit || null,
+  server_build_source_hash: serverSourceHash || null,
   build_commit_matches: buildCommitMatches,
+  build_source_hash_matches: serverSourceHashMatches,
   workspace_id: workspaceId,
   request_timeout_ms: requestTimeoutMs,
   total_timeout_ms: totalTimeoutMs,
@@ -331,6 +342,12 @@ const report = {
   evidence_file_count_after: evidenceFilesAfter.length,
   route_inventory_before: routeInventoryBefore,
   route_inventory_after: routeInventoryAfter,
+  git_source_clean_before: sourceStateBefore.clean,
+  git_source_clean_after: sourceStateAfter.clean,
+  git_source_changes_before: sourceStateBefore.changes,
+  git_source_changes_after: sourceStateAfter.changes,
+  source_change_events: sourceChangeEvents,
+  source_watcher_errors: sourceWatcherErrors,
   evidence_stability: evidenceStability,
   evidence_stable: evidenceStable,
   counts,
@@ -344,6 +361,8 @@ for (const result of results) {
 console.log(`합계 경로 ${files.length}개, 요청 ${requests.length}개 ${JSON.stringify(counts)}`);
 console.log(`증거 고정 ${evidenceStable ? "PASS" : "FAIL"} PID ${listenerPidsBefore.join(",") || "없음"} -> ${listenerPidsAfter.join(",") || "없음"} HASH ${sourceHashBefore} -> ${sourceHashAfter}`);
 console.log(`실행 커밋 ${buildCommitMatches ? "PASS" : "FAIL"} SERVER ${serverBuildCommit || "없음"} EXPECTED ${gitCommit}`);
+console.log(`실행 소스 ${serverSourceHashMatches ? "PASS" : "FAIL"} SERVER ${serverSourceHash || "없음"} EXPECTED ${sourceHashBefore}`);
+console.log(`실행 중 소스 변경 ${sourceChangeEvents.length}건, 감시 오류 ${sourceWatcherErrors.length}건`);
 
 if (outputPath) await fs.writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 

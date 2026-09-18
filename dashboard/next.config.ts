@@ -1,4 +1,6 @@
 import type { NextConfig } from "next";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Next.js 16 인식 오류 대응: 이 repo에는 /Users/sj/package-lock.json,
@@ -12,8 +14,18 @@ import { fileURLToPath } from "node:url";
 // 절대 쓰지 않는다. 대신 ESM 표준 방식(import.meta.url → fileURLToPath)으로 이
 // next.config.ts 파일 자신의 디렉터리(= dashboard/ 절대경로)를 고정한다.
 const dashboardRoot = fileURLToPath(new URL(".", import.meta.url));
+const buildCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dashboardRoot, encoding: "utf8" }).trim();
+const buildSourceHash = execFileSync(
+  process.execPath,
+  [path.join(dashboardRoot, "scripts", "print-source-fingerprint.mjs"), dashboardRoot],
+  { cwd: dashboardRoot, encoding: "utf8" },
+).trim();
 
 const nextConfig: NextConfig = {
+  env: {
+    OSMU_BUILD_COMMIT: buildCommit,
+    OSMU_BUILD_SOURCE_HASH: buildSourceHash,
+  },
   // Next 빌드가 자체 타입 검사를 한 번 더 돌린다. 그 검사는 tsconfig.json 을 그대로 읽어
   // 테스트까지 프로그램에 넣고, 그중 아홉 개가 이웃 워크스페이스(openclaw)의 확장을 직접
   // 부른다. 그 트리는 자기 의존성을 따로 들고 있어 CI 처럼 대시보드만 설치한 곳에서는

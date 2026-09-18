@@ -1,4 +1,5 @@
 import playwright from "/Users/sj/kimstudy-auto/node_modules/playwright-core/index.js";
+import { requestWithinDeadline } from "./lib/four-room-request.mjs";
 const exe="/Users/sj/Library/Caches/ms-playwright/chromium-1228/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing";
 const W="cd1d0a40-540d-4524-9b49-bf2445d82182";
 const base=process.env.FOUR_ROOM_BASE_URL||"http://localhost:3456";
@@ -34,14 +35,10 @@ const gotoRoom=async(page,url,room)=>{
   }
 };
 
-const request=(pathname,options={})=>fetch(`${base}${pathname}`,{
+const request=(pathname,options={})=>requestWithinDeadline(`${base}${pathname}`,{
   ...options,
   headers:{authorization:`Bearer ${operatorToken}`,...(options.body?{"content-type":"application/json"}:{}),...(options.headers||{})},
-  // 새로 뜬 Next 개발 서버는 고객 토큰 API를 처음 컴파일하는 동안
-  // 15초를 넘을 수 있다. 페이지와 방 준비에 쓰는 같은 단계별 상한을 써야
-  // 응답 본문을 전송하다 끊고 제품 회귀로 오판하지 않는다.
-  signal:AbortSignal.timeout(Math.max(1,Math.min(readyTimeoutMs,deadlineAt-Date.now()))),
-});
+},{readyTimeoutMs,deadlineAt});
 const cleanupRequest=(pathname,options={})=>fetch(`${base}${pathname}`,{
   ...options,
   headers:{authorization:`Bearer ${operatorToken}`,...(options.headers||{})},

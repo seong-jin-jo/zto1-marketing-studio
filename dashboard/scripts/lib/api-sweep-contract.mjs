@@ -62,6 +62,11 @@ function sameOrderedStrings(left, right) {
  * @param {string[]} input.evidenceFilesAfter
  * @param {string[]} input.routeInventoryBefore
  * @param {string[]} input.routeInventoryAfter
+ * @param {boolean=} input.gitSourceCleanBefore
+ * @param {boolean=} input.gitSourceCleanAfter
+ * @param {boolean=} input.serverSourceHashMatches
+ * @param {Array<object>=} input.sourceChangeEvents
+ * @param {string[]=} input.sourceWatcherErrors
  */
 export function evaluateSweepEvidenceStability(input) {
   const sourceHashMatches = input.sourceHashBefore === input.sourceHashAfter;
@@ -75,14 +80,29 @@ export function evaluateSweepEvidenceStability(input) {
     input.routeInventoryBefore,
     input.routeInventoryAfter,
   );
+  const gitSourceCleanBefore = input.gitSourceCleanBefore === true;
+  const gitSourceCleanAfter = input.gitSourceCleanAfter === true;
+  const serverSourceHashMatches = input.serverSourceHashMatches === true;
+  const sourceChangedDuringSweep = (input.sourceChangeEvents || []).length > 0;
+  const sourceWatcherHealthy = (input.sourceWatcherErrors || []).length === 0;
   return {
     stable: sourceHashMatches
       && listenerMatches
       && evidenceFileInventoryMatches
-      && routeInventoryMatches,
+      && routeInventoryMatches
+      && gitSourceCleanBefore
+      && gitSourceCleanAfter
+      && serverSourceHashMatches
+      && !sourceChangedDuringSweep
+      && sourceWatcherHealthy,
     sourceHashMatches,
     listenerMatches,
     evidenceFileInventoryMatches,
     routeInventoryMatches,
+    gitSourceCleanBefore,
+    gitSourceCleanAfter,
+    serverSourceHashMatches,
+    sourceChangedDuringSweep,
+    sourceWatcherHealthy,
   };
 }
