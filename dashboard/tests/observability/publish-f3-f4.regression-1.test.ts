@@ -44,6 +44,11 @@ vi.mock("@/lib/db", () => ({
       if (query.includes("INSERT INTO published_posts") && query.includes("'in_progress'")) {
         return Promise.resolve(H.existing ? [] : [{ id: "22222222-2222-4222-8222-222222222222" }]);
       }
+      // The first-comment failure scenario owns a fresh reservation. Its
+      // durable pre-provider marker must succeed before the mocked provider is called.
+      if (query.includes("SET provider_meta = COALESCE") && query.includes("RETURNING id::text")) {
+        return Promise.resolve([{ id: "22222222-2222-4222-8222-222222222222" }]);
+      }
       if (query.includes("SELECT id::text, status")) {
         return Promise.resolve(H.existing
           ? [{
