@@ -12,6 +12,8 @@ const H = vi.hoisted(() => ({
     draft_payload: Record<string, unknown> | null;
   }>,
   dueTenants: [] as string[], // 운영자 전체 스윕 시 db()가 돌려줄 due 테넌트 id
+  pendingUsageTenants: [] as string[],
+  usageRelayCalls: [] as string[],
   claimedTenants: [] as string[], // processTenant가 호출된 테넌트 추적
   inserts: [] as unknown[][],
   updates: [] as unknown[][],
@@ -61,6 +63,11 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/usage-events", () => ({
   publicationUsageOutbox: (platform: string) => ({ usageEvent: { status: "pending", platform } }),
+  pendingPublicationUsageTenantIds: vi.fn(async () => H.pendingUsageTenants),
+  drainPendingPublicationEvents: vi.fn(async (tenantId: string) => {
+    H.usageRelayCalls.push(tenantId);
+    return { processed: 0, failed: 0, remaining: 0 };
+  }),
   recordPublicationEvent: vi.fn(async (...args: unknown[]) => {
     H.usageEvents.push(args);
     return { recorded: true, alreadyRecorded: false };
@@ -94,6 +101,8 @@ beforeEach(() => {
   H.tenantId = "tenant-1";
   H.rows = [];
   H.dueTenants = [];
+  H.pendingUsageTenants = [];
+  H.usageRelayCalls = [];
   H.claimedTenants = [];
   H.inserts = [];
   H.updates = [];
@@ -295,6 +304,16 @@ describe("POST /api/schedule/publish-due — 운영자 전체 테넌트 스윕",
     expect(body.processed).toBe(0);
     expect(H.claimedTenants).toHaveLength(0);
     expect(H.inserts).toHaveLength(0);
+  });
+
+  it("REVIEW-20260918-12 정상: 예약 없는 사용량 적체 테넌트도 독립 크론이 비운다", async () => {
+    H.tenantId = null;
+    process.env.DASHBOARD_AUTH_TOKEN = "op-secret";
+    H.pendingUsageTenants = ["tenant-pending"];
+    const { status, body } = await publishDue({}, { Authorization: "Bearer op-secret" });
+    expect(status).toBe(200);
+    expect(body.tenantCount).toBe(1);
+    expect(H.usageRelayCalls).toEqual(["tenant-pending"]);
   });
 });
 

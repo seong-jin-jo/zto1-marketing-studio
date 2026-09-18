@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { installFetch } from "./helpers/mock-fetch";
 import { withTenant } from "@/lib/db";
+import { verifyRecoveryProof } from "@/lib/publish-recovery-proof";
 
 // ── /api/publish 분기 하네스 (인프라 無, 항상 실행) ───────────────────────────
 // 사용자 요구: "올바른 토큰 happy path / 생략(skip) / 잘못된 토큰" 전 분기를 스크립트로 박제.
@@ -557,6 +558,7 @@ describe("/api/publish — 실패/기록 분기", () => {
       { match: "fields=permalink", json: { permalink: "https://x" } },
     ]);
     H.publicationRecordError = new Error("db down");
+    process.env.OSMU_SECRET_KEY = "publish-recovery-test-key";
     const { status, body } = await callPublish({
       platform: "threads",
       text: "hi",
@@ -588,6 +590,10 @@ describe("/api/publish — 실패/기록 분기", () => {
       },
     });
     expect(JSON.stringify(body)).not.toContain("db down");
+    const reconciliation = (body as { persistence: { reconciliation: { receipt: string } } }).persistence.reconciliation;
+    expect(verifyRecoveryProof(reconciliation.receipt)).toMatchObject({
+      tenantId: "tenant-1", platform: "threads", externalId: "media-9", stage: "publication_record",
+    });
   });
 
   it("CODE-REVIEW-20260917-01 거절: 외부 발행과 publication 기록 뒤 사용량 장부 실패를 전체 성공으로 응답하지 않는다", async () => {

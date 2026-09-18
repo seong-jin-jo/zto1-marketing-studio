@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { issueRecoveryProof } from "@/lib/publish-recovery-proof";
 
 const TENANT_A = "11111111-1111-4111-8111-111111111111";
 const TENANT_B = "99999999-9999-4999-8999-999999999999";
@@ -13,8 +14,12 @@ const H = vi.hoisted(() => ({
     tenantId: "11111111-1111-4111-8111-111111111111",
     platform: "threads",
     accountId: "44444444-4444-4444-8444-444444444444",
+    draftId: "22222222-2222-4222-8222-222222222222",
+    externalId: null as string | null,
+    usageStatus: null as string | null,
     status: "in_progress",
   },
+  updateCalls: 0,
   queueCalls: [] as unknown[][],
   usageCalls: [] as unknown[][],
 }));
@@ -35,10 +40,13 @@ vi.mock("@/lib/db", () => ({
           && requestedId === H.row.id
           && platform === H.row.platform
           && accountId === H.row.accountId;
-        return Promise.resolve(matches ? [{ id: H.row.id }] : []);
+        return Promise.resolve(matches ? [{ id: H.row.id, draft_id: H.row.draftId,
+          status: H.row.status, external_id: H.row.externalId, usage_status: H.row.usageStatus }] : []);
       }
       if (query.includes("UPDATE published_posts")) {
+        H.updateCalls += 1;
         H.row.status = "published";
+        H.row.externalId = "provider-1";
         return Promise.resolve([{ id: H.row.id }]);
       }
       return Promise.resolve([]);
@@ -62,7 +70,13 @@ vi.mock("@/lib/usage-events", () => ({
   }),
 }));
 
-async function reconcile(tenantId = TENANT_A) {
+async function reconcile(tenantId = TENANT_A, changes: Record<string, unknown> = {}) {
+  const stage = (changes.stage ?? "publication_record") as "publication_record" | "queue_record" | "usage_record";
+  const receipt = changes.receipt === undefined ? issueRecoveryProof({
+    tenantId, publicationId: PUBLICATION_ID, draftId: DRAFT_ID, accountId: ACCOUNT_ID,
+    platform: "threads", externalId: "provider-1", permalink: "https://example.com/post/1",
+    occurredAt: "2026-08-31T23:59:00.000Z", stage,
+  }) : changes.receipt;
   const { POST } = await import("@/app/api/publish/reconcile/route");
   const response = await POST(new Request("http://localhost/api/publish/reconcile", {
     method: "POST",
@@ -76,6 +90,9 @@ async function reconcile(tenantId = TENANT_A) {
         accountId: ACCOUNT_ID,
         externalId: "provider-1",
         permalink: "https://example.com/post/1",
+        stage,
+        receipt,
+        ...changes,
       }],
     }),
   }));
@@ -84,8 +101,11 @@ async function reconcile(tenantId = TENANT_A) {
 
 describe("POST /api/publish/reconcile", () => {
   beforeEach(() => {
+    process.env.OSMU_SECRET_KEY = "recovery-test-key";
     H.tenantId = TENANT_A;
-    H.row = { id: PUBLICATION_ID, tenantId: TENANT_A, platform: "threads", accountId: ACCOUNT_ID, status: "in_progress" };
+    H.row = { id: PUBLICATION_ID, tenantId: TENANT_A, platform: "threads", accountId: ACCOUNT_ID,
+      draftId: DRAFT_ID, externalId: null, usageStatus: null, status: "in_progress" };
+    H.updateCalls = 0;
     H.queueCalls = [];
     H.usageCalls = [];
     vi.resetModules();
@@ -114,5 +134,48 @@ describe("POST /api/publish/reconcile", () => {
     expect(H.row.status).toBe("in_progress");
     expect(H.queueCalls).toHaveLength(0);
     expect(H.usageCalls).toHaveLength(0);
+  });
+
+  it("REVIEW-20260918-01 거절: 실패한 발행을 서버 증표로도 성공 처리하지 않는다", async () => {
+    H.row.status = "failed";
+    const { response } = await reconcile();
+    expect(response.status).toBe(409);
+    expect(H.updateCalls).toBe(0);
+    expect(H.queueCalls).toHaveLength(0);
+  });
+
+  it("REVIEW-20260918-02 거절: 같은 작업 공간의 다른 초안 큐를 닫지 않는다", async () => {
+    H.row.draftId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const { response } = await reconcile();
+    expect(response.status).toBe(409);
+    expect(H.updateCalls).toBe(0);
+    expect(H.queueCalls).toHaveLength(0);
+  });
+
+  it("REVIEW-20260918-03 정상: 사용량만 지연되면 발행 행과 큐를 다시 쓰지 않는다", async () => {
+    H.row.status = "published";
+    H.row.externalId = "provider-1";
+    H.row.usageStatus = "pending";
+    const { response } = await reconcile(TENANT_A, { stage: "usage_record" });
+    expect(response.status).toBe(200);
+    expect(H.updateCalls).toBe(0);
+    expect(H.queueCalls).toHaveLength(0);
+    expect(H.usageCalls).toEqual([[TENANT_A, PUBLICATION_ID, "threads"]]);
+  });
+
+  it("REVIEW-20260918-04 거절: 클라이언트가 외부 ID 또는 증표를 바꾸면 복구하지 않는다", async () => {
+    const changed = await reconcile(TENANT_A, { externalId: "invented-id" });
+    expect(changed.response.status).toBe(409);
+    const unsigned = await reconcile(TENANT_A, { receipt: null });
+    expect(unsigned.response.status).toBe(409);
+    expect(H.updateCalls).toBe(0);
+  });
+
+  it("REVIEW-20260918-05 멱등: 이미 복구한 발행은 다시 덮어쓰지 않는다", async () => {
+    const first = await reconcile();
+    const second = await reconcile();
+    expect(first.response.status).toBe(200);
+    expect(second.response.status).toBe(200);
+    expect(H.updateCalls).toBe(1);
   });
 });

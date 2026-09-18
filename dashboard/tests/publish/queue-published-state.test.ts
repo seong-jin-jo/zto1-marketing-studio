@@ -63,5 +63,11 @@ describe("markQueuePublished", () => {
     expect(H.updates).toHaveLength(1);
     expect(H.updates[0].text).toContain("UPDATE queue_posts");
     expect(H.updates[0].values).toContain(postId);
+
+    const firstPublishedAt = queue.posts[0].publishedAt;
+    await markQueuePublished(tenantId, postId, { platform: "threads", externalId: "media-1" });
+    const replayed = JSON.parse(fs.readFileSync(path.join(tenantDir, "queue.json"), "utf8"));
+    expect(replayed.posts[0].publishedAt).toBe(firstPublishedAt);
+    expect(H.updates.at(-1)?.text).toContain("COALESCE(published_at");
   });
 });

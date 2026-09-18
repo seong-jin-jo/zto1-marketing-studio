@@ -1,5 +1,6 @@
 import { withTenant } from "@/lib/db";
 import { publicationUsageOutbox, recordPublicationEvent } from "@/lib/usage-events";
+import { issueRecoveryProof } from "@/lib/publish-recovery-proof";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { markQueuePublished } from "@/lib/queue-store";
 import { reportFailure, reportRecovery, normalizePlatform, classifyPublishFailure } from "@/lib/observability";
@@ -128,6 +129,7 @@ export async function GET(request: Request) {
 function partialPersistenceFailure(
   result: PublishResult,
   input: {
+    tenantId: string;
     stage: PersistenceStage;
     draftId: unknown;
     platform: string;
@@ -144,6 +146,25 @@ function partialPersistenceFailure(
     : input.stage === "queue_record"
       ? "외부 게시와 발행 기록 저장에는 성공했지만 queue 상태 저장에 실패했습니다."
       : "외부 게시와 발행 기록 저장에는 성공했지만 사용량 장부 반영이 대기 중입니다.";
+
+  let receipt: string | null = null;
+  if (input.publicationId) {
+    try {
+      receipt = issueRecoveryProof({
+        tenantId: input.tenantId,
+        publicationId: input.publicationId,
+        draftId: typeof input.draftId === "string" && UUID_RE.test(input.draftId) ? input.draftId : null,
+        platform: input.platform,
+        accountId: input.accountId ?? null,
+        externalId: result.externalId ?? null,
+        permalink: result.permalink ?? null,
+        occurredAt: new Date().toISOString(),
+        stage: input.stage,
+      });
+    } catch {
+      // Keep the no-republish warning even when signing is unavailable.
+    }
+  }
 
   return Response.json(
     {
@@ -168,6 +189,7 @@ function partialPersistenceFailure(
           retryPublish: false,
           draftId: typeof input.draftId === "string" ? input.draftId : null,
           publicationId: input.publicationId ?? null,
+          receipt,
           stage: input.stage,
           platform: input.platform,
           accountId: input.accountId ?? null,
@@ -403,7 +425,7 @@ export async function POST(request: Request) {
         } catch {
           return partialPersistenceFailure(
             { ok: true, externalId: readback.hit.externalId, permalink: readback.hit.permalink },
-            { stage: "publication_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: conflict.id },
+            { tenantId: tenant_id, stage: "publication_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: conflict.id },
           );
         }
         try {
@@ -411,7 +433,7 @@ export async function POST(request: Request) {
         } catch {
           return partialPersistenceFailure(
             { ok: true, externalId: readback.hit.externalId, permalink: readback.hit.permalink },
-            { stage: "usage_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: conflict.id },
+            { tenantId: tenant_id, stage: "usage_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: conflict.id },
           );
         }
         return Response.json({
@@ -510,7 +532,7 @@ export async function POST(request: Request) {
         } catch {
           return partialPersistenceFailure(
             { ok: true, externalId: existing.external_id, permalink: existing.permalink ?? undefined },
-            { stage: "publication_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: existing.id },
+            { tenantId: tenant_id, stage: "publication_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: existing.id },
           );
         }
         return Response.json({
@@ -540,6 +562,7 @@ export async function POST(request: Request) {
             return partialPersistenceFailure(
               { ok: true, externalId: existing.external_id ?? undefined, permalink },
               {
+                tenantId: tenant_id,
                 stage: "publication_record",
                 draftId: draft_id,
                 platform,
@@ -569,6 +592,7 @@ export async function POST(request: Request) {
           }
         } catch {
           return partialPersistenceFailure(existingResult, {
+            tenantId: tenant_id,
             stage: "queue_record",
             draftId: draft_id,
             platform,
@@ -581,6 +605,7 @@ export async function POST(request: Request) {
         await recordPublicationEvent(tenant_id, existing.id, platform);
       } catch {
         return partialPersistenceFailure(existingResult, {
+          tenantId: tenant_id,
           stage: "usage_record",
           draftId: draft_id,
           platform,
@@ -722,6 +747,7 @@ export async function POST(request: Request) {
       error instanceof Error ? error.message : String(error));
     if (result.ok) {
       return partialPersistenceFailure(result, {
+        tenantId: tenant_id,
         stage: "publication_record",
         draftId: draft_id,
         platform,
@@ -759,6 +785,7 @@ export async function POST(request: Request) {
       console.error("[publish][persist-fail] queue_record", platform,
         error instanceof Error ? error.message : String(error));
       return partialPersistenceFailure(result, {
+        tenantId: tenant_id,
         stage: "queue_record",
         draftId: draft_id,
         platform,
@@ -772,6 +799,7 @@ export async function POST(request: Request) {
       await recordPublicationEvent(tenant_id, reservationId, platform);
     } catch {
       return partialPersistenceFailure(result, {
+        tenantId: tenant_id,
         stage: "usage_record",
         draftId: draft_id,
         platform,

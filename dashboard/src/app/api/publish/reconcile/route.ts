@@ -2,6 +2,7 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { withTenant } from "@/lib/db";
 import { markQueuePublished } from "@/lib/queue-store";
 import { publicationUsageOutbox, recordPublicationEvent } from "@/lib/usage-events";
+import { verifyRecoveryProof, type RecoveryStage } from "@/lib/publish-recovery-proof";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PLATFORM_RE = /^[a-z][a-z0-9_]{0,31}$/;
@@ -13,6 +14,8 @@ interface ReconciliationInput {
   accountId?: unknown;
   externalId?: unknown;
   permalink?: unknown;
+  stage?: unknown;
+  receipt?: unknown;
 }
 
 function optionalString(value: unknown, max: number): string | null {
@@ -30,65 +33,79 @@ async function repairOne(tenantId: string, raw: ReconciliationInput) {
   const accountId = optionalString(raw.accountId, 36);
   const externalId = optionalString(raw.externalId, 512);
   const permalink = optionalString(raw.permalink, 2048);
+  const stage = optionalString(raw.stage, 32);
+  const receipt = optionalString(raw.receipt, 8192);
 
   if (!platform || !PLATFORM_RE.test(platform)) throw new Error("플랫폼 형식이 올바르지 않습니다.");
   if (draftId && !UUID_RE.test(draftId)) throw new Error("초안 식별자 형식이 올바르지 않습니다.");
   if (publicationId && !UUID_RE.test(publicationId)) throw new Error("발행 식별자 형식이 올바르지 않습니다.");
   if (accountId && !UUID_RE.test(accountId)) throw new Error("계정 식별자 형식이 올바르지 않습니다.");
-  if (!publicationId && !draftId) throw new Error("복구할 발행 또는 초안 식별자가 필요합니다.");
+  if (!publicationId) throw new Error("복구할 발행 식별자가 필요합니다.");
+  if (!receipt) throw new Error("서버가 발급한 복구 증표가 없습니다. 외부 게시 상태를 확인한 뒤 운영자에게 기록 복구를 요청해주세요.");
+  const proof = verifyRecoveryProof(receipt);
+  if (!proof) throw new Error("복구 증표가 만료되었거나 올바르지 않습니다. 외부 게시 상태를 다시 확인해주세요.");
+  if (stage !== proof.stage || proof.tenantId !== tenantId || proof.platform !== platform
+    || proof.publicationId !== publicationId || proof.draftId !== draftId
+    || proof.accountId !== accountId || proof.externalId !== externalId
+    || proof.permalink !== permalink) {
+    throw new Error("복구 증표와 발행 정보가 일치하지 않습니다.");
+  }
 
-  const repairedId = await withTenant(tenantId, async (sql) => {
-    const rows = publicationId
-      ? await sql<{ id: string }[]>`
-          SELECT id::text
-            FROM published_posts
-           WHERE tenant_id = ${tenantId}::uuid
-             AND id = ${publicationId}::uuid
-             AND platform = ${platform}
-             AND (${accountId}::uuid IS NULL OR account_id = ${accountId}::uuid)
-           FOR UPDATE`
-      : await sql<{ id: string }[]>`
-          SELECT id::text
-            FROM published_posts
-           WHERE tenant_id = ${tenantId}::uuid
-             AND draft_id = ${draftId}::uuid
-             AND platform = ${platform}
-             AND account_id IS NOT DISTINCT FROM ${accountId}::uuid
-             AND status IN ('in_progress', 'uncertain', 'published')
-           ORDER BY published_at DESC
-           LIMIT 1
-           FOR UPDATE`;
+  const persisted = await withTenant(tenantId, async (sql) => {
+    const rows = await sql<{
+      id: string; draft_id: string | null; status: string; external_id: string | null;
+      usage_status: string | null;
+    }[]>`
+      SELECT id::text, draft_id::text, status, external_id,
+             provider_meta #>> '{usageEvent,status}' AS usage_status
+        FROM published_posts
+       WHERE tenant_id = ${tenantId}::uuid
+         AND id = ${publicationId}::uuid
+         AND platform = ${platform}
+         AND account_id IS NOT DISTINCT FROM ${accountId}::uuid
+       FOR UPDATE`;
     const row = rows[0];
     if (!row) throw new Error("현재 작업 공간에서 복구할 발행 기록을 찾지 못했습니다.");
-
-    const [updated] = await sql<{ id: string }[]>`
-      UPDATE published_posts
-         SET status = 'published',
-             external_id = COALESCE(${externalId}, external_id),
-             permalink = COALESCE(${permalink}, permalink),
-             error = NULL,
-             reserved_at = NULL,
-             published_at = now(),
-             provider_meta = CASE
-               WHEN provider_meta #>> '{usageEvent,status}' = 'recorded' THEN provider_meta
-               ELSE COALESCE(provider_meta, '{}'::jsonb)
-                 || ${sql.json(publicationUsageOutbox(platform) as never)}::jsonb
-             END
-       WHERE tenant_id = ${tenantId}::uuid AND id = ${row.id}::uuid
-       RETURNING id::text`;
-    if (!updated) throw new Error("발행 기록을 복구하지 못했습니다.");
-    return updated.id;
+    if (row.draft_id !== proof.draftId) throw new Error("발행 기록의 원본 초안이 복구 증표와 다릅니다.");
+    if (row.status === "failed" || !["in_progress", "uncertain", "published"].includes(row.status)) {
+      throw new Error("외부 성공이 확인되지 않은 발행 기록은 완료 처리할 수 없습니다.");
+    }
+    // A signed receipt is issued only after the provider returned success. Some
+    // providers do not return a post ID, so a null ID is part of that signed result.
+    if (stage === "publication_record") {
+      if (row.status === "published") {
+        if (row.external_id !== proof.externalId) throw new Error("이미 완료된 발행 기록의 공급자 식별자가 다릅니다.");
+      } else {
+        const [updated] = await sql<{ id: string }[]>`
+          UPDATE published_posts
+             SET status = 'published', external_id = ${proof.externalId},
+                 permalink = COALESCE(${proof.permalink}, permalink), error = NULL,
+                 reserved_at = NULL, published_at = ${proof.occurredAt}::timestamptz,
+                 provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+                   || ${sql.json(publicationUsageOutbox(platform, proof.occurredAt) as never)}::jsonb
+           WHERE tenant_id = ${tenantId}::uuid AND id = ${row.id}::uuid
+             AND status IN ('in_progress', 'uncertain')
+          RETURNING id::text`;
+        if (!updated) throw new Error("발행 기록을 복구하지 못했습니다.");
+      }
+    } else if (row.status !== "published" || row.external_id !== proof.externalId) {
+      throw new Error("발행 기록의 외부 성공 상태와 복구 증표가 일치하지 않습니다.");
+    }
+    if (stage === "usage_record" && row.usage_status !== "pending" && row.usage_status !== "recorded") {
+      throw new Error("사용량 복구 대기 기록이 없습니다.");
+    }
+    return { id: row.id, draftId: row.draft_id, stage: stage as RecoveryStage };
   });
 
-  if (draftId) {
-    await markQueuePublished(tenantId, draftId, {
+  if (persisted.draftId && persisted.stage !== "usage_record") {
+    await markQueuePublished(tenantId, persisted.draftId, {
       platform,
-      externalId: externalId ?? undefined,
-      permalink: permalink ?? undefined,
+      externalId: proof.externalId ?? undefined,
+      permalink: proof.permalink ?? undefined,
     });
   }
-  await recordPublicationEvent(tenantId, repairedId, platform);
-  return { platform, publicationId: repairedId };
+  await recordPublicationEvent(tenantId, persisted.id, platform);
+  return { platform, publicationId: persisted.id };
 }
 
 export async function POST(request: Request) {

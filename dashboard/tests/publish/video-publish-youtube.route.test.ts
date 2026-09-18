@@ -2,6 +2,7 @@
 // 계약을 검증한다. 2026-09-16 실측: 업로드는 성공하는데 published_posts에 예약 없이 INSERT만 해서
 // "지금 발행"을 두 번 누르면 YouTube에 영상이 두 번 올라갔다. 이 테스트는 그 회귀를 막는다.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { verifyRecoveryProof } from "@/lib/publish-recovery-proof";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -475,6 +476,7 @@ describe("/api/video/publish — YouTube", () => {
   });
 
   it("CODE-REVIEW-20260917-07 거절: 외부 성공 뒤 발행 확정 실패를 전체 성공으로 반환하지 않는다", async () => {
+    process.env.OSMU_SECRET_KEY = "video-recovery-test-key";
     H.publicationConfirmFail = true;
     const result = await callPublish({ filename: "clip.mp4", platform: "youtube" });
 
@@ -483,6 +485,10 @@ describe("/api/video/publish — YouTube", () => {
       ok: false,
       externalPublished: true,
       persistence: { stage: "publication_record", reconciliation: { retryPublish: false } },
+    });
+    const reconciliation = (result.json as { persistence: { reconciliation: { receipt: string } } }).persistence.reconciliation;
+    expect(verifyRecoveryProof(reconciliation.receipt)).toMatchObject({
+      platform: "youtube", stage: "publication_record", tenantId: H.tenantId,
     });
   });
 

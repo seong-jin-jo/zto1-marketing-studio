@@ -10,6 +10,7 @@ import { getChannelCred, publishInstagramReels } from "@/lib/publish";
 import { refreshYoutubeAccessToken } from "@/lib/youtube-token";
 import { withTenant } from "@/lib/db";
 import { publicationUsageOutbox, recordPublicationEvent } from "@/lib/usage-events";
+import { issueRecoveryProof } from "@/lib/publish-recovery-proof";
 import { signMediaToken } from "@/lib/media-token";
 import { canonicalPublicOrigin } from "@/lib/social-connect";
 import { MAX_VIDEO_BYTES, MAX_VIDEO_MIB } from "@/lib/video-limits";
@@ -96,6 +97,9 @@ function youtubeResumeOffset(range: string | null): number {
 }
 
 function videoPersistenceFailure(input: {
+  tenantId: string;
+  draftId: string;
+  accountId?: string | null;
   stage: "publication_record" | "usage_record";
   platform: string;
   publicationId: string;
@@ -106,6 +110,22 @@ function videoPersistenceFailure(input: {
   const message = usagePending
     ? "외부 게시와 발행 기록 저장에는 성공했지만 사용량 장부 반영이 대기 중입니다."
     : "외부 게시에는 성공했지만 발행 기록 저장에 실패했습니다.";
+  let receipt: string | null = null;
+  try {
+    receipt = issueRecoveryProof({
+      tenantId: input.tenantId,
+      publicationId: input.publicationId,
+      draftId: input.draftId,
+      accountId: input.accountId ?? null,
+      platform: input.platform,
+      externalId: input.externalId || null,
+      permalink: input.permalink || null,
+      occurredAt: new Date().toISOString(),
+      stage: input.stage,
+    });
+  } catch {
+    // Keep the no-republish warning when the signing key is unavailable.
+  }
   return Response.json({
     ok: false,
     partial: true,
@@ -129,9 +149,10 @@ function videoPersistenceFailure(input: {
         action: "repair_persistence_only",
         retryPublish: false,
         platform: input.platform,
-        draftId: null,
-        accountId: null,
+        draftId: input.draftId,
+        accountId: input.accountId ?? null,
         publicationId: input.publicationId,
+        receipt,
         stage: input.stage,
         externalId: input.externalId,
         permalink: input.permalink,
@@ -316,6 +337,7 @@ export async function POST(request: Request) {
             await recordPublicationEvent(tenantId, holder.id, "youtube");
           } catch {
             return videoPersistenceFailure({
+              tenantId, draftId: idKey, accountId: resolvedAccountId,
               stage: "usage_record",
               platform: "youtube",
               publicationId: holder.id,
@@ -426,12 +448,12 @@ export async function POST(request: Request) {
                    RETURNING id::text`);
                 if (!saved) throw new Error("publication row missing");
               } catch {
-                return videoPersistenceFailure({ stage: "publication_record", platform: "youtube", publicationId: holder.id, externalId: recoveredId, permalink });
+                return videoPersistenceFailure({ tenantId, draftId: idKey, accountId: resolvedAccountId, stage: "publication_record", platform: "youtube", publicationId: holder.id, externalId: recoveredId, permalink });
               }
               try {
                 await recordPublicationEvent(tenantId, holder.id, "youtube");
               } catch {
-                return videoPersistenceFailure({ stage: "usage_record", platform: "youtube", publicationId: holder.id, externalId: recoveredId, permalink });
+                return videoPersistenceFailure({ tenantId, draftId: idKey, accountId: resolvedAccountId, stage: "usage_record", platform: "youtube", publicationId: holder.id, externalId: recoveredId, permalink });
               }
               return Response.json({ ok: true, platform: "youtube", videoId: recoveredId, url: permalink, alreadyPublished: true, recoveredFrom: "resumable_status" });
             }
@@ -664,12 +686,12 @@ export async function POST(request: Request) {
              RETURNING id::text`);
           if (!saved) throw new Error("publication row missing");
         } catch {
-          return videoPersistenceFailure({ stage: "publication_record", platform: "youtube", publicationId: reservationId, externalId: videoId, permalink });
+          return videoPersistenceFailure({ tenantId, draftId: idKey, accountId: resolvedAccountId, stage: "publication_record", platform: "youtube", publicationId: reservationId, externalId: videoId, permalink });
         }
         try {
           await recordPublicationEvent(tenantId, reservationId, "youtube");
         } catch {
-          return videoPersistenceFailure({ stage: "usage_record", platform: "youtube", publicationId: reservationId, externalId: videoId, permalink });
+          return videoPersistenceFailure({ tenantId, draftId: idKey, accountId: resolvedAccountId, stage: "usage_record", platform: "youtube", publicationId: reservationId, externalId: videoId, permalink });
         }
 
         return Response.json({
@@ -1042,6 +1064,7 @@ export async function POST(request: Request) {
             await recordPublicationEvent(tenantId, holder.id, REELS_PLATFORM);
           } catch {
             return videoPersistenceFailure({
+              tenantId, draftId: idKey, accountId: cred.accountId,
               stage: "usage_record",
               platform: REELS_PLATFORM,
               publicationId: holder.id,
@@ -1098,6 +1121,7 @@ export async function POST(request: Request) {
       } catch {
         if (result.ok) {
           return videoPersistenceFailure({
+            tenantId, draftId: idKey, accountId: cred.accountId,
             stage: "publication_record",
             platform: REELS_PLATFORM,
             publicationId: reservationId,
@@ -1117,6 +1141,7 @@ export async function POST(request: Request) {
         await recordPublicationEvent(tenantId, reservationId, REELS_PLATFORM);
       } catch {
         return videoPersistenceFailure({
+          tenantId, draftId: idKey, accountId: cred.accountId,
           stage: "usage_record",
           platform: REELS_PLATFORM,
           publicationId: reservationId,

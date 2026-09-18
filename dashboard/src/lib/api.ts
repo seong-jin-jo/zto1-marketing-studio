@@ -49,6 +49,7 @@ export interface ExternalPublishPersistenceFailure {
       retryPublish: false;
       draftId?: string | null;
       publicationId?: string | null;
+      receipt?: string | null;
       stage?: "publication_record" | "queue_record" | "usage_record";
       platform: string;
       accountId?: string | null;
@@ -112,7 +113,10 @@ export async function fetcher<T>(url: string): Promise<T> {
     handleUnauthorizedResponse(auth.token, true);
     throw new AuthRequiredError();
   }
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({})) as { error?: string; status?: string };
+    throw new ApiResponseError(res.status, payload, payload.error || `API error: ${res.status}`);
+  }
   return res.json();
 }
 

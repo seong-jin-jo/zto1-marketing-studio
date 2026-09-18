@@ -32,7 +32,8 @@ describe("2026-09-18 운영 검증 회귀", () => {
   it("REVIEW-24H-20260918-04 정상: 성과실은 사용량 지연 상태를 낮은 숫자 대신 표시한다", () => {
     const dashboard = fs.readFileSync(path.join(root, "src/components/home/PerformanceDashboard.tsx"), "utf8");
     const room = fs.readFileSync(path.join(root, "src/components/home/PerformanceRoom.tsx"), "utf8");
-    expect(dashboard).toContain("usageDelayed={Boolean(usageError)}");
+    expect(dashboard).toContain("classifyUsageError(usageError)");
+    expect(dashboard).toContain("usageDelayed={usageProblem.delayed}");
     expect(room).toContain("data-usage-delayed");
     expect(room).toContain("발행 사용량 반영이 지연되고 있습니다");
   });

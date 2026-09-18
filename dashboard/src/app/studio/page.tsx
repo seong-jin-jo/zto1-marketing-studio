@@ -1252,8 +1252,11 @@ export default function StudioPage() {
       } else {
         showToast(`${repairedLabels} 발행 원장과 사용량 기록을 복구했습니다. 이제 다음 작업을 이어가실 수 있습니다.`, "success");
       }
-    } catch {
-      showToast("기록을 정리하지 못했습니다. 잠시 뒤 다시 눌러 주세요.", "error");
+    } catch (error) {
+      const failed = error instanceof ApiResponseError
+        ? (error.payload as { failed?: Array<{ error?: string }> } | null)?.failed : undefined;
+      const reason = failed?.map((item) => item.error).filter(Boolean).join(" ");
+      showToast(reason || "기록을 정리하지 못했습니다. 외부 게시 상태를 확인한 뒤 다시 시도해 주세요.", "error");
     }
   }
 

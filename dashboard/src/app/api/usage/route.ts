@@ -60,6 +60,7 @@ export async function GET(request: Request) {
     if (!tenantId) {
       return Response.json({
         source: "usage_events",
+        tenantId: null,
         today: emptyDay(),
         thisWeek: emptyDay(),
         thisMonth: emptyDay(),
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
 
     try {
       const publicationRelay = await reconcilePendingPublicationEvents(tenantId);
-      if (publicationRelay.failed > 0) {
+      if (publicationRelay.failed > 0 || publicationRelay.remaining > 0) {
         return Response.json({
           error: "발행 사용량 반영이 지연되고 있습니다. 잠시 후 다시 확인해주세요.",
           source: "usage_events",
@@ -122,6 +123,7 @@ export async function GET(request: Request) {
 
       return Response.json({
         source: "usage_events",
+        tenantId,
         today,
         thisWeek,
         thisMonth,
