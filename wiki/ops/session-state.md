@@ -1,3 +1,14 @@
+## 2026-09-19 07:37 KST 성과 시계열 갭 재확인 BLOCK
+
+- handoff basis: 사용자의 이번 명시 과제. `osmu-gapfill091907:0.0`은 현재 Codex 세션 자체이고, 과거 gapfill pane은 중복 작업과 기존 판정 확인에만 사용했다.
+- 두 기반 감사와 현재 schema, migration, 성과 Route Handler를 대조했다. 다른 감사 갭은 구현돼 있고, 게시물별 성과 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교가 지금도 없다.
+- canonical `pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이다. 저장 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준의 승인 기술설계가 없어 제품 소스를 수정하지 않는다.
+- localhost health는 HTTP 200, DB up, 실행 `e7eea1fa`다. 지정 작업 공간 metrics는 HTTP 200, 키 `posts`, `coverage`, 게시물 0건이며 이력과 비교는 없다. 최종 HEAD `399c08f6`까지 제품 소스 차이는 0건이다.
+- 전체 Vitest 378파일과 2,434건, 깨끗한 현재 소스 복제본의 `npx tsc --noEmit`, 디자인 lint는 통과했다. 공유 개발 서버가 만든 현재 `.next/dev/types/validator.ts`는 파손돼 작업 디렉터리 TypeScript 검사는 종료 코드 2다.
+- 기본 흐름은 후보 0장과 `STUDIO_LLM_PROVIDER_UNAVAILABLE`로 종료 코드 1이다. Studio v1은 401, 400, 422 거절 뒤 정상 생성이 기대 201 대신 HTTP 200 공급자 오류라 종료 코드 1이다.
+- 변경 범위: 갭 재확인, QA tracker, 구현현황과 이 인계 문서만 갱신했다. 제품 소스 변경과 배포는 없다. 공유 문서에는 다른 세션의 미커밋 기록이 함께 있어 범위 밖 변경을 포함하지 않고는 경로 단위 커밋할 수 없다.
+- 다음 소유자: 컨트롤러와 tech-architect가 성과 관측 이력 기술계약을 합의하고 eng-design을 승인한 뒤 build를 다시 연다. code-builder는 승인된 migration, 수집 저장, `history`, `comparison`과 정상, 거절, 경합 테스트를 구현하고 두 필수 E2E를 종료 코드 0으로 회복한다.
+
 ## 2026-09-19 04:43 KST 최근 24시간 코드 공격 리뷰 BLOCK
 
 - handoff basis: 사용자의 이번 명시 과제. `osmu-regress091904:0.0`은 현재 Codex 세션 자체이고 다른 pane은 localhost 소유권과 중복 작업 확인에만 사용했다.

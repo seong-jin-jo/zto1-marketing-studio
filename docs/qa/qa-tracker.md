@@ -13,6 +13,21 @@
 제품 런타임 코드는 변경하지 않았다. 화면 이동은 PASS지만 실제 생성이 막혀 제품 전체는 NG다.
 상세는 `docs/qa/osmu-four-room-basic-flow-v26-gpt-codex.md`다.
 
+## 2026-09-19 07:37 KST · 성과 시계열 갭 재확인 최종 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사에서 지금도 없는 기본 흐름 항목 하나 구현 | GAP-HISTORY-20260919-0737-01 | ❌ NG | 현재 schema와 migration에는 게시물별 성과 관측 이력이 없고 지정 작업 공간 `GET /api/metrics`는 HTTP 200, 키 `posts`, `coverage`, 게시물 0건이다. `history`, `comparison`은 없다. |
+| 공정과 기술계약 | 승인 범위 안에서만 제품 소스 수정 | GAP-HISTORY-20260919-0737-02 | BLOCK | `pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이다. 성과 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준의 승인된 기술설계가 없다. 제품 소스 변경은 0건이다. |
+| 실행본 귀속 | localhost 실행본과 현재 제품 소스 | GAP-HISTORY-20260919-0737-03 | 확인 | health HTTP 200, DB up, 실행 `e7eea1fa`. 최종 HEAD `399c08f6`까지 제품 `src`, `db`, `package.json` 차이는 0건이다. |
+| 전체 단위 및 통합 | `npm run test` | GAP-HISTORY-20260919-0737-04 | PASS | 378파일, 2,434건 통과, 3건 제외, 종료 코드 0이다. |
+| TypeScript | `npx tsc --noEmit` | GAP-HISTORY-20260919-0737-05 | 조건부 PASS | 공유 개발 서버가 만든 현재 `.next/dev/types/validator.ts` 파손으로 작업 디렉터리 명령은 종료 코드 2다. `.next`를 제외한 동일 현재 소스와 루트 상대 import를 복제한 깨끗한 임시 저장소에서는 같은 명령 종료 코드 0이다. |
+| 디자인 토큰 | `design-lint.sh src` | GAP-HISTORY-20260919-0737-06 | PASS | 종료 코드 0, 디자인 토큰 위반 0이다. |
+| 기본 흐름 실앱 | 생성, 편집, 발행 큐, 성과 재인계 | GAP-HISTORY-20260919-0737-07 | ❌ NG | localhost에서 첫 생성이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장으로 종료 코드 1이다. |
+| Studio v1 실앱 | 인증, 입력 거절, 생성과 조회 | GAP-HISTORY-20260919-0737-08 | ❌ NG | 401, 400, 422 거절 3건은 통과했다. 정상 생성은 기대 201 대신 HTTP 200 공급자 오류로 종료 코드 1이다. |
+
+승인 없는 DB schema와 API 의미를 선택하지 않았다. 전체 회귀는 통과했지만 신규 기술계약과 두 필수 실앱 E2E가 NG라 구현과 QA 전환은 BLOCK이다.
+
 ## 2026-09-19 04:43 KST · 최근 24시간 코드 공격 리뷰 BLOCK
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

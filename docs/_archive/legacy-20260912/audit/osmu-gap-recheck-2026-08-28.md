@@ -1,5 +1,56 @@
 # 갭 감사 재확인 2026-08-28
 
+## 2026-09-19 07시 37분 갭 재확인: 성과 시계열 기술계약 미승인으로 build BLOCK
+
+두 기반 감사, 회장 요구 대장, 사업 좌표, v63 지정 프로토타입, pipeline 승인 v68 디자인과 현재
+schema, migration, 성과 Route Handler를 대조했다. 감사 당시의 다른 없음과 부족 항목은 현재
+구현돼 있다. 기본 흐름에서 지금도 없는 것은 게시물별 성과 관측 이력과 재현 가능한 최근 30일 대
+직전 30일 비교다.
+
+| 계약 | 현재 판정 | 직접 증거 |
+|---|---|---|
+| 게시물별 성과 이력 | 없음 | `published_posts`는 최신 누계와 `metrics_at`만 보존한다. 관측 시각별 이력 table과 migration이 없다. |
+| 재현 가능한 30일 비교 | 없음 | 지정 작업 공간 `GET /api/metrics`는 HTTP 200, 키 `posts`, `coverage`, 게시물 0건이다. `history`, `comparison`은 없다. |
+| 공정과 기술계약 | BLOCK | `pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준이 승인되지 않았다. |
+| 디자인 입력 | 충돌 유지 | pipeline 승인 핀은 v68 성과실 허브다. 이번 과제는 v63을 함께 지정하고 `docs/design/README.md`도 두 핀 충돌로 디자인 정합 NG를 명시한다. 이번 비화면 판정에서 어느 한쪽을 전체 승인으로 확대하지 않았다. |
+| 실행본 귀속 | 제품 소스 동일 | health HTTP 200, DB up, 실행 `e7eea1fa`. 최종 HEAD `399c08f6`까지 `dashboard/src`, `dashboard/db`, `dashboard/package.json` 차이는 0건이다. |
+| 전체 단위 및 통합 | PASS | `npm run test`는 378파일, 2,434건 통과, 3건 제외, 종료 코드 0이다. |
+| TypeScript와 디자인 토큰 | 조건부 PASS | 현재 `.next/dev/types/validator.ts` 파손으로 작업 디렉터리 `npx tsc --noEmit`은 종료 코드 2다. `.next`를 제외한 동일 현재 소스와 루트 상대 import를 복제한 깨끗한 저장소에서는 같은 명령 종료 코드 0이다. 디자인 lint는 위반 0이다. |
+| 기본 흐름 실앱 | NG | localhost에서 첫 생성이 `STUDIO_LLM_PROVIDER_UNAVAILABLE`, 후보 0장으로 종료 코드 1이다. |
+| Studio v1 실앱 | NG | 401, 400, 422 거절은 통과했다. 정상 생성은 기대 201 대신 HTTP 200 공급자 오류로 종료 코드 1이다. |
+| 제품 소스 | 변경 없음 | 승인 없는 DB와 API 의미를 선택하지 않았다. 새로 되는 것으로 전환된 항목은 없다. |
+
+외부 공식 계약도 저장 의미를 먼저 합의해야 한다는 결론을 지지한다. YouTube Analytics는
+`startDate`, `endDate`, `metrics`와 선택적 `dimensions`로 기간 보고서를 정의한다. TikTok Video
+Query는 영상별 `view_count`, `like_count`, `comment_count`, `share_count` 누계값을 반환한다.
+두 공급자를 한 기간 비교로 묶으려면 원본 의미와 로컬 관측값을 분리하는 승인 계약이 필요하다.
+
+레드팀: 최신 누계 두 번의 차이를 최근 30일 성과로 표시하면 화면은 빨리 채울 수 있다. 수집 누락,
+게시 시점 차이와 누계 감소를 기간 성과로 오판하고 같은 결과를 재계산할 수 없어 기본 흐름 완성으로
+볼 수 없다.
+
+셀프심문: 이 차단이 틀렸다면 승인된 관측 이력 migration과 `history`, `comparison` API 계약이
+있거나 현재 공정이 build여야 한다. pipeline, schema, migration, Route Handler와 실제 응답에서
+어느 조건도 찾지 못했다.
+
+회수 필요: 컨트롤러와 tech-architect가 snapshot 저장 모델, 멱등 키, 보존 기간, 공급자별 원본과
+정규화 지표, 최근 30일과 직전 30일 비교식, 표본 부족 기준을 합의하고 eng-design을 승인한 뒤
+build를 다시 열어야 한다. 공유 생성 공급자가 회복된 실행본에서 두 필수 E2E도 종료 코드 0이어야
+한다.
+
+STAMP | line: osmu-gapfill091907-codex | 생성: 2026-09-19 07:37 KST | model: gpt-codex/gpt-5 | agent: code-builder | skill: 없음 | 근거: 두 갭 감사, pipeline, v63과 v68 디자인 입력, schema와 Route Handler, localhost 실제 요청, 전체 회귀, 공식 공급자 문서 | 고민: 구현 지시와 미승인 DB 및 API 결정 금지 사이에서 승인 계약을 우선했다.
+
+SKILLS_USED: 없음. 기존 Next.js와 PostgreSQL 성과 저장 build에 직접 대응하는 설치 스킬이 없다. SKILLS_SKIPPED: `qa`는 신규 DB와 API 기술계약 선택을 대신할 수 없어 적용하지 않았다.
+
+KNOWLEDGE_QUERY: OSMU 기본 흐름, 게시물별 성과 관측 이력, 재현 가능한 30일 비교, YouTube 기간 보고와 TikTok 누계 성과 계약을 검색했다.
+HITS_USED: BRAIN business index와 ZERO-ONE Marketing Studio 문서, repo 사업 좌표, 두 갭 감사, v63과 v68 성과 계약, Google YouTube Analytics와 TikTok Video Query 공식 문서를 잔여 갭과 저장 계약 선행 필요성 판정에 사용했다.
+HITS_REJECTED: 일반 마케팅 자료와 TikTok Research API는 고객용 저장과 비교 계약의 근거가 아니어서 제외했다.
+CONFLICTS: 외부 공식 계약과 회장 정본의 충돌은 없다. 사용자 지정 v63과 pipeline 승인 v68 디자인 핀은 충돌하며 디자인 정합은 NG로 유지한다.
+
+SOURCES: 두 갭 감사 | v63 지정 프로토타입 | pipeline 승인 v68 디자인 | 회장 요구 대장 | OSMU 사업 좌표 | `dashboard/db/schema.sql` | `dashboard/src/app/api/metrics/route.ts` | https://developers.google.com/youtube/analytics/reference/reports/query | https://developers.tiktok.com/docs/en/tiktok-api-v2-video-query
+
+MODEL: gpt-codex/gpt-5 / code-builder
+
 ## 2026-09-19 03시 10분 갭 재확인: 성과 시계열 build 게이트와 실앱 생성 BLOCK
 
 두 기반 감사, 회장 요구 대장, v63 프로토타입, 사업 좌표와 현재 schema, migration, 성과 Route
