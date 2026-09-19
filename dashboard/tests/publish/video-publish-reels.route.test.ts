@@ -16,7 +16,7 @@ const H = vi.hoisted(() => ({
   reelsCalls: [] as unknown[][],
   reelsResult: { ok: true, externalId: "media-1", permalink: "https://www.instagram.com/reel/x/" } as Record<string, unknown>,
   // published_posts 인메모리 대역. uq_published_posts_idem(partial unique on
-  // tenant+draft+platform+account WHERE status IN ('published','in_progress'))의 의미를
+  // tenant+draft+platform+account WHERE status IN ('published','in_progress','uncertain'))의 의미를
   // 그대로 흉내낸다 — 그래야 예약 INSERT ... ON CONFLICT DO NOTHING의 동시성 계약을 테스트할 수 있다.
   rows: [] as Array<{
     id: string;
@@ -26,10 +26,13 @@ const H = vi.hoisted(() => ({
     status: string;
     external_id: string | null;
     permalink: string | null;
+    publish_started_at?: string | null;
   }>,
   inserts: [] as unknown[][],
   dbFail: false,
   staleReclaim: false,
+  markerWriteFails: false,
+  uncertainWriteFails: false,
   seq: 0,
 }));
 
@@ -46,7 +49,7 @@ vi.mock("@/lib/db", () => ({
             r.draft_id === draft &&
             r.platform === platform &&
             r.account_id === (account ?? null) &&
-            (r.status === "published" || r.status === "in_progress"),
+            (r.status === "published" || r.status === "in_progress" || r.status === "uncertain"),
         );
       if (q.includes("INSERT INTO published_posts")) {
         H.inserts.push(vals);
@@ -65,13 +68,23 @@ vi.mock("@/lib/db", () => ({
         // 좀비 예약 회수 UPDATE — H.staleReclaim이 켜져 있을 때만 회수된 것으로 취급한다.
         const [, draft, platform, account] = vals as [unknown, string, string, string | null];
         const row = live(draft, platform, account);
-        if (H.staleReclaim && row && row.status === "in_progress") {
+        if (H.staleReclaim && row && row.status === "in_progress" && !row.publish_started_at) {
           row.status = "failed";
           return Promise.resolve([{ id: row.id }]);
         }
         return Promise.resolve([]);
       }
       if (q.includes("UPDATE published_posts")) {
+        if (q.includes("SET provider_meta =")) {
+          if (H.markerWriteFails) return Promise.reject(new Error("marker DB unavailable"));
+          const id = vals.find((value) => H.rows.some((candidate) => candidate.id === value)) as string;
+          const row = H.rows.find((candidate) => candidate.id === id);
+          if (row) row.publish_started_at = "2026-09-18T00:00:00Z";
+          return Promise.resolve(row ? [{ id: row.id }] : []);
+        }
+        if (H.uncertainWriteFails && vals[0] === "uncertain") {
+          return Promise.reject(new Error("final DB unavailable"));
+        }
         // 전체 UPDATE(성공/실패 확정)는 값이 [status, ext, permalink, error, id, tenant],
         // catch 경로의 축약 UPDATE는 [error, id, tenant].
         const id = vals.find((value) => H.rows.some((candidate) => candidate.id === value)) as string;
@@ -82,7 +95,7 @@ vi.mock("@/lib/db", () => ({
             row.external_id = (vals[1] as string | null) ?? null;
             row.permalink = (vals[2] as string | null) ?? null;
           } else {
-            row.status = "failed";
+            row.status = q.includes("status = 'uncertain'") ? "uncertain" : "failed";
           }
         }
         return Promise.resolve(q.includes("RETURNING id::text") && row ? [{ id: row.id }] : []);
@@ -145,6 +158,8 @@ describe("/api/video/publish — Instagram Reels", () => {
     H.rows = [];
     H.dbFail = false;
     H.staleReclaim = false;
+    H.markerWriteFails = false;
+    H.uncertainWriteFails = false;
     H.seq = 0;
     H.reelsResult = { ok: true, externalId: "media-1", permalink: "https://www.instagram.com/reel/x/" };
     vi.resetModules();
@@ -294,7 +309,7 @@ describe("/api/video/publish — Instagram Reels", () => {
     const second = await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId });
 
     expect(second.status).toBe(409);
-    expect(second.json.code).toBe("publish_in_progress");
+    expect(["publish_in_progress", "publish_state_uncertain"]).toContain(second.json.code);
     expect(second.json.ok).toBe(false);
     expect(H.reelsCalls.length).toBe(1); // 외부 media_publish는 정확히 1회
 
@@ -312,6 +327,42 @@ describe("/api/video/publish — Instagram Reels", () => {
     const retry = await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId });
     expect(retry.status).toBe(200);
     expect(H.reelsCalls.length).toBe(2);
+  });
+
+  it("REVIEW-20260918-18 거절: media_publish 결과 누락은 uncertain으로 남겨 같은 초안 재게시를 막는다", async () => {
+    const draftId = "77777777-7777-7777-7777-777777777778";
+    H.reelsResult = { ok: false, error: "결과를 확인하지 못함", failureKind: "indeterminate" };
+    const first = await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId });
+    expect(first.status).toBe(409);
+    expect(first.json.code).toBe("publish_state_uncertain");
+    expect(H.rows[0].status).toBe("uncertain");
+    const retry = await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId });
+    expect(retry.status).toBe(409);
+    expect(retry.json.code).toBe("publish_state_uncertain");
+    expect(H.reelsCalls).toHaveLength(1);
+  });
+
+  it("REVIEW-20260918-20 거절: 게시 전 durable marker 저장 실패면 공급자를 호출하지 않는다", async () => {
+    H.markerWriteFails = true;
+    const response = await callPublish({ filename: "clip.mp4", platform: "reels",
+      draft_id: "77777777-7777-7777-7777-777777777779" });
+    expect(response.status).toBe(503);
+    expect(H.reelsCalls).toHaveLength(0);
+  });
+
+  it("REVIEW-20260918-20 경합: 응답 유실 뒤 uncertain DB UPDATE 실패와 15분 경과에도 공급자 호출은 1회다", async () => {
+    const draftId = "77777777-7777-7777-7777-777777777780";
+    H.reelsResult = { ok: false, error: "응답 유실", failureKind: "indeterminate" };
+    H.uncertainWriteFails = true;
+    const first = await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId });
+    expect(first.status).toBe(409);
+    expect(H.rows[0]).toMatchObject({ status: "in_progress", publish_started_at: expect.any(String) });
+    H.staleReclaim = true;
+    const retry = await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId });
+    expect(retry.status).toBe(409);
+    expect(retry.json.code).toBe("publish_state_uncertain");
+    expect(H.reelsCalls).toHaveLength(1);
+    expect(H.rows[0].status).toBe("in_progress");
   });
 
   it("15분 넘게 남은 좀비 예약은 회수해 재발행을 허용한다(영구 409 방지)", async () => {

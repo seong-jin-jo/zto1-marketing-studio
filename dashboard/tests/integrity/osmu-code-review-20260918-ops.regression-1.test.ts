@@ -32,8 +32,18 @@ describe("2026-09-18 운영 검증 회귀", () => {
   it("REVIEW-24H-20260918-04 정상: 성과실은 사용량 지연 상태를 낮은 숫자 대신 표시한다", () => {
     const dashboard = fs.readFileSync(path.join(root, "src/components/home/PerformanceDashboard.tsx"), "utf8");
     const room = fs.readFileSync(path.join(root, "src/components/home/PerformanceRoom.tsx"), "utf8");
-    expect(dashboard).toContain("usageDelayed={Boolean(usageError)}");
+    expect(dashboard).toContain("classifyUsageError(usageError)");
+    expect(dashboard).toContain("usageDelayed={usageProblem.delayed}");
     expect(room).toContain("data-usage-delayed");
     expect(room).toContain("발행 사용량 반영이 지연되고 있습니다");
+  });
+
+  // 9d0b4302의 동등 회귀는 통합 기준 a403f533의 조상에 없었다.
+  // 충돌 중 삭제된 것이 아니라 별도 분기 계약이 통합되지 않은 것이므로 여기서 보존한다.
+  it("REVIEW-24H-20260918-E2E 정상: 성과 제안은 새 큐 201·기존 큐 200과 원본 제안 번호 일치를 검증한다", () => {
+    const source = fs.readFileSync(path.join(root, "scripts/verify-basic-flow-e2e.mjs"), "utf8");
+    expect(source).toContain("(en.status===200||en.status===201)");
+    expect(source).toContain("Boolean(ed.post?.sourceContext?.suggestionId)");
+    expect(source).toContain("ed.post.sourceContext.suggestionId===sd.suggestions[0].id");
   });
 });

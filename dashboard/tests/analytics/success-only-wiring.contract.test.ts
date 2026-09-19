@@ -80,7 +80,9 @@ describe("publish_success fires only after confirmed API success, not on click a
       "await runWithConcurrency(targets, PUBLISH_CONCURRENCY",
       preflightGuard,
     );
-    const persistPartial = block.indexOf('save("partial", pendingReconciliations, did)');
+    // The draft save also carries per-platform progress and media; match the
+    // reconciliation contract without pinning the optional trailing arguments.
+    const persistPartial = block.indexOf('save("partial", pendingReconciliations, did,');
 
     expect(preflightGuard).toBeGreaterThan(-1);
     expect(preflightGuard).toBeLessThan(apiCall);

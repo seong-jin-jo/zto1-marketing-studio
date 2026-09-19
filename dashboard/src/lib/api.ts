@@ -36,11 +36,11 @@ export interface ExternalPublishPersistenceFailure {
   error: string;
   persistence: {
     ok: false;
-    stage: "publication_record" | "queue_record" | "usage_record";
+    stage: "publication_record" | "queue_record" | "usage_record" | "first_comment_record";
     publicationRecorded: boolean;
     queueRecorded: boolean;
     error: {
-      code: "PUBLICATION_RECORD_FAILED" | "QUEUE_RECORD_FAILED" | "USAGE_RECORD_PENDING";
+      code: "PUBLICATION_RECORD_FAILED" | "QUEUE_RECORD_FAILED" | "USAGE_RECORD_PENDING" | "FIRST_COMMENT_RECORD_FAILED";
       message: string;
     };
     reconciliation: {
@@ -49,7 +49,8 @@ export interface ExternalPublishPersistenceFailure {
       retryPublish: false;
       draftId?: string | null;
       publicationId?: string | null;
-      stage?: "publication_record" | "queue_record" | "usage_record";
+      receipt?: string | null;
+      stage?: "publication_record" | "queue_record" | "usage_record" | "first_comment_record";
       platform: string;
       accountId?: string | null;
       externalId: string | null;
@@ -112,7 +113,10 @@ export async function fetcher<T>(url: string): Promise<T> {
     handleUnauthorizedResponse(auth.token, true);
     throw new AuthRequiredError();
   }
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({})) as { error?: string; status?: string };
+    throw new ApiResponseError(res.status, payload, payload.error || `API error: ${res.status}`);
+  }
   return res.json();
 }
 

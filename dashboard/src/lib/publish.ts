@@ -26,6 +26,10 @@ export interface PublishResult {
   failureKind?: "definitive" | "indeterminate";
 }
 
+export function isAmbiguousProviderHttpStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
 // SSRF 가드 1단계(lexical) — 서버가 직접 fetch하는 image_url에만 적용(현재 Bluesky uploadBlob 경로).
 // 다른 채널은 image_url을 플랫폼 API에 넘겨 "플랫폼이" 가져오므로 우리 서버 표면 아님.
 // 정당한 image_url = R2/공개 자산 URL(https). 사설·루프백·링크로컬·메타데이터 IP 리터럴 차단.
@@ -318,7 +322,8 @@ export async function publishThreads(
       method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ creation_id: containerId, access_token: cred.token }),
     });
-    if (!pub.ok) return { ok: false, error: `publish 실패(${pub.status}): Threads 채널 권한을 확인하거나 다시 연결해주세요.`, failureKind: "definitive" };
+    if (!pub.ok) return { ok: false, error: `publish 실패(${pub.status}): Threads 채널 권한을 확인하거나 다시 연결해주세요.`,
+      failureKind: isAmbiguousProviderHttpStatus(pub.status) ? "indeterminate" : "definitive" };
     const pubBody = (await pub.json()) as { id?: string };
     if (!pubBody.id) return { ok: false, error: "Threads 발행 결과를 확인하지 못했습니다. 중복 방지를 위해 상태 확인이 필요합니다.", failureKind: "indeterminate" };
     mediaId = pubBody.id;
@@ -474,7 +479,8 @@ export async function publishInstagram(
   } catch {
     return { ok: false, error: "IG 발행 결과를 확인하지 못했습니다. 자동 재발행하지 않습니다.", failureKind: "indeterminate" };
   }
-  if (!pub.ok) return { ok: false, error: `IG publish 실패(${pub.status})` };
+  if (!pub.ok) return { ok: false, error: `IG publish 실패(${pub.status})`,
+    failureKind: isAmbiguousProviderHttpStatus(pub.status) ? "indeterminate" : "definitive" };
   const { id: mediaId } = (await pub.json()) as { id: string };
   if (!mediaId) return { ok: false, error: "IG 발행 결과를 확인하지 못했습니다. 자동 재발행하지 않습니다.", failureKind: "indeterminate" };
   await persist({ state: "published", childIds: [...childIds], creationId, mediaId }).catch(() => {});
@@ -567,7 +573,7 @@ export async function publishInstagramReels(
     }
     if (i < attempts - 1) await new Promise((r) => setTimeout(r, intervalMs));
   }
-  if (!finished) return { ok: false, error: "IG Reels 미디어 처리 시간 초과 — 잠시 후 다시 시도해주세요." };
+  if (!finished) return { ok: false, error: "IG Reels 미디어 처리 시간 초과 — 잠시 후 다시 시도해주세요.", failureKind: "definitive" };
 
   let pub: Response;
   try {
@@ -578,11 +584,11 @@ export async function publishInstagramReels(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
-    return { ok: false, error: "IG Reels 발행 요청 실패 — 잠시 후 다시 시도해주세요." };
+    return { ok: false, error: "IG Reels 발행 결과를 확인하지 못했습니다. 자동 재발행하지 않습니다.", failureKind: "indeterminate" };
   }
-  if (!pub.ok) return { ok: false, error: `IG Reels publish 실패(${pub.status})` };
+  if (!pub.ok) return { ok: false, error: `IG Reels publish 결과를 확인하지 못했습니다(${pub.status}). 자동 재발행하지 않습니다.`, failureKind: "indeterminate" };
   const { id: mediaId } = (await pub.json().catch(() => ({}))) as { id?: string };
-  if (!mediaId) return { ok: false, error: "IG Reels publish 실패(응답에 media ID 없음)" };
+  if (!mediaId) return { ok: false, error: "IG Reels publish 응답에 media ID가 없어 결과를 확인할 수 없습니다. 자동 재발행하지 않습니다.", failureKind: "indeterminate" };
   // permalink 실패가 발행 성공을 뒤집지 않는다(SNS-014와 동일 계약).
   const permalink = await fetchInstagramPermalink(cred, mediaId);
   return { ok: true, externalId: mediaId, permalink };
@@ -938,13 +944,15 @@ export async function publishX(cred: ChannelCred, text: string): Promise<Publish
       return { ok: false, error: "X 가 이 계정의 권한을 받아들이지 않았습니다. 발행실에서 X 를 다시 연결해 주세요." };
     }
     if (resp.status === 429) {
-      return { ok: false, error: "X 가 잠시 요청을 제한했습니다. 조금 뒤 다시 올려 주세요." };
+      return { ok: false, error: "X 요청의 발행 결과를 확인하지 못했습니다. 채널에서 게시 여부를 확인해 주세요.", failureKind: "indeterminate" };
     }
-    return { ok: false, error: `X 에 올리지 못했습니다 (HTTP ${resp.status}). 원문: ${raw.slice(0, 160)}` };
+    return { ok: false, error: `X 에 올리지 못했습니다 (HTTP ${resp.status}). 원문: ${raw.slice(0, 160)}`,
+      failureKind: isAmbiguousProviderHttpStatus(resp.status) ? "indeterminate" : "definitive" };
   }
   const data = (await resp.json()) as { data?: { id?: string } };
   const tweetId = data.data?.id;
-  return { ok: true, externalId: tweetId, permalink: tweetId ? `https://x.com/i/web/status/${tweetId}` : undefined };
+  if (!tweetId) return { ok: false, error: "X 발행 응답에 게시물 번호가 없습니다. 발행 여부를 확인해 주세요.", failureKind: "indeterminate" };
+  return { ok: true, externalId: tweetId, permalink: `https://x.com/i/web/status/${tweetId}` };
 }
 
 export async function publishXReply(cred: ChannelCred, text: string, parentId: string): Promise<PublishResult> {
@@ -969,10 +977,12 @@ export async function publishXReply(cred: ChannelCred, text: string, parentId: s
     headers: { Authorization: buildXOAuthHeader("POST", url, keys), "Content-Type": "application/json" },
     body: JSON.stringify({ text: body, reply: { in_reply_to_tweet_id: parentId } }),
   });
-  if (!resp.ok) return { ok: false, error: `X reply 실패(${resp.status})` };
+  if (!resp.ok) return { ok: false, error: `X reply 실패(${resp.status})`,
+    failureKind: isAmbiguousProviderHttpStatus(resp.status) ? "indeterminate" : "definitive" };
   const data = (await resp.json()) as { data?: { id?: string } };
   const id = data.data?.id;
-  return { ok: true, externalId: id, permalink: id ? `https://x.com/i/web/status/${id}` : undefined };
+  if (!id) return { ok: false, error: "X reply 결과를 확인하지 못했습니다.", failureKind: "indeterminate" };
+  return { ok: true, externalId: id, permalink: `https://x.com/i/web/status/${id}` };
 }
 
 // Facebook 페이지 발행 (Graph API). imageUrl 있으면 /photos(caption), 없으면 /feed(message).
@@ -993,10 +1003,13 @@ export async function publishFacebook(cred: ChannelCred, message: string, imageU
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(params),
   });
-  if (!resp.ok) return { ok: false, error: `Facebook ${endpoint} 실패(${resp.status}): ${(await resp.text()).slice(0, 200)}` };
+  if (!resp.ok) return { ok: false, error: `Facebook ${endpoint} 실패(${resp.status}): ${(await resp.text()).slice(0, 200)}`,
+    failureKind: isAmbiguousProviderHttpStatus(resp.status) ? "indeterminate" : "definitive" };
   // photos → { id, post_id }, feed → { id }
   const data = (await resp.json()) as { id?: string; post_id?: string };
-  return { ok: true, externalId: data.post_id ?? data.id };
+  const externalId = data.post_id ?? data.id;
+  if (!externalId) return { ok: false, error: "Facebook 발행 결과 번호가 없습니다.", failureKind: "indeterminate" };
+  return { ok: true, externalId };
 }
 
 // ── 채널별 공식 한도(초과분은 발행 전 절단 — 플랫폼이 400으로 전체 거부하는 것보다 낫다) ──
@@ -1195,14 +1208,17 @@ export async function publishBluesky(cred: ChannelCred, text: string, imageUrl?:
       body: JSON.stringify({ repo: did, collection: "app.bsky.feed.post", record }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    if (!create.ok) return { ok: false, error: `Bluesky 게시 실패(${create.status}): ${(await create.text()).slice(0, 200)}` };
+    if (!create.ok) return { ok: false, error: `Bluesky 게시 실패(${create.status}): ${(await create.text()).slice(0, 200)}`,
+      failureKind: isAmbiguousProviderHttpStatus(create.status) ? "indeterminate" : "definitive" };
     const { uri } = (await create.json()) as { uri: string };
-    const rkey = uri?.split("/").pop();
+    if (!uri) return { ok: false, error: "Bluesky 게시 결과 번호가 없습니다.", failureKind: "indeterminate" };
+    const rkey = uri.split("/").pop();
     const permalink = rkey ? `https://bsky.app/profile/${handle}/post/${rkey}` : undefined;
     return { ok: true, externalId: uri, permalink };
   } catch (e) {
     // 타임아웃(AbortSignal)·네트워크 오류를 PublishResult 계약으로 강등 — 호출부(직접 발행 route)가 500 나지 않게.
-    return { ok: false, error: `Bluesky 요청 실패: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: `Bluesky 요청 실패: ${e instanceof Error ? e.message : String(e)}`,
+      failureKind: "indeterminate" };
   }
 }
 
@@ -1232,11 +1248,14 @@ export async function publishTelegram(cred: ChannelCred, text: string, imageUrl?
     });
     const data = (await resp.json().catch(() => ({}))) as { ok?: boolean; description?: string; result?: { message_id?: number } };
     if (!resp.ok || !data.ok) {
-      return { ok: false, error: `Telegram ${method} 실패(${resp.status}): ${(data.description ?? "unknown error").slice(0, 180)}` };
+      return { ok: false, error: `Telegram ${method} 실패(${resp.status}): ${(data.description ?? "unknown error").slice(0, 180)}`,
+        failureKind: isAmbiguousProviderHttpStatus(resp.status) || resp.ok ? "indeterminate" : "definitive" };
     }
-    return { ok: true, externalId: data.result?.message_id != null ? String(data.result.message_id) : undefined };
+    if (data.result?.message_id == null) return { ok: false, error: "Telegram 발행 결과 번호가 없습니다.", failureKind: "indeterminate" };
+    return { ok: true, externalId: String(data.result.message_id) };
   } catch (e) {
-    return { ok: false, error: `Telegram 요청 실패: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: `Telegram 요청 실패: ${e instanceof Error ? e.message : String(e)}`,
+      failureKind: "indeterminate" };
   }
 }
 
@@ -1271,11 +1290,14 @@ export async function publishDiscord(cred: ChannelCred, text: string, imageUrl?:
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    if (!resp.ok) return { ok: false, error: `Discord webhook 실패(${resp.status}): ${(await resp.text()).slice(0, 200)}` };
+    if (!resp.ok) return { ok: false, error: `Discord webhook 실패(${resp.status}): ${(await resp.text()).slice(0, 200)}`,
+      failureKind: isAmbiguousProviderHttpStatus(resp.status) ? "indeterminate" : "definitive" };
     const data = (await resp.json().catch(() => ({}))) as { id?: string };
+    if (!data.id) return { ok: false, error: "Discord 게시 결과 번호가 없습니다.", failureKind: "indeterminate" };
     return { ok: true, externalId: data.id };
   } catch (e) {
-    return { ok: false, error: `Discord 요청 실패: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: `Discord 요청 실패: ${e instanceof Error ? e.message : String(e)}`,
+      failureKind: "indeterminate" };
   }
 }
 
@@ -1313,10 +1335,15 @@ export async function publishSlack(cred: ChannelCred, text: string, imageUrl?: s
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    if (!resp.ok) return { ok: false, error: `Slack webhook 실패(${resp.status}): ${(await resp.text()).slice(0, 200)}` };
+    if (!resp.ok) return { ok: false, error: `Slack webhook 실패(${resp.status}): ${(await resp.text()).slice(0, 200)}`,
+      failureKind: isAmbiguousProviderHttpStatus(resp.status) ? "indeterminate" : "definitive" };
+    if ((await resp.text()).trim() !== "ok") {
+      return { ok: false, error: "Slack 발행 응답을 확인하지 못했습니다.", failureKind: "indeterminate" };
+    }
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: `Slack 요청 실패: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: `Slack 요청 실패: ${e instanceof Error ? e.message : String(e)}`,
+      failureKind: "indeterminate" };
   }
 }
 
@@ -1388,7 +1415,8 @@ export async function publishLinkedIn(cred: ChannelCred, text: string): Promise<
   }
   if (!res.ok) {
     // 제공자 원문을 그대로 노출하지 않는다(내부 구조 노출 방지). 상태만 남긴다.
-    return { ok: false, error: `LinkedIn 발행에 실패했습니다(오류 코드 ${res.status}).`, failureKind: "definitive" };
+    return { ok: false, error: `LinkedIn 발행에 실패했습니다(오류 코드 ${res.status}).`,
+      failureKind: isAmbiguousProviderHttpStatus(res.status) ? "indeterminate" : "definitive" };
   }
 
   // 식별자는 헤더 또는 본문 id 로 온다. 둘 다 없으면 성공으로 단정하지 않는다 —

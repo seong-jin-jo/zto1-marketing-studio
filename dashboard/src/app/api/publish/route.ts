@@ -1,5 +1,6 @@
 import { withTenant } from "@/lib/db";
 import { publicationUsageOutbox, recordPublicationEvent } from "@/lib/usage-events";
+import { issueRecoveryProof, type FirstCommentRecoveryResult, type RecoveryStage } from "@/lib/publish-recovery-proof";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { markQueuePublished } from "@/lib/queue-store";
 import { reportFailure, reportRecovery, normalizePlatform, classifyPublishFailure } from "@/lib/observability";
@@ -43,7 +44,7 @@ import {
   type PublishPlatform,
 } from "@/lib/studio/platform-publish-fields";
 
-type PersistenceStage = "publication_record" | "queue_record" | "usage_record";
+type PersistenceStage = RecoveryStage;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // 예약 임차 시간. 이 시간이 지나도록 in_progress 로 남은 예약은 발행 프로세스가 죽은 것으로 보고
@@ -71,6 +72,7 @@ type ReservationConflictRow = {
   permalink: string | null;
   reserved_at: string | null;
   first_comment_status: string | null;
+  provider_meta: { publishAttemptStarted?: boolean } | null;
   // 2026-09-16 실측(j.the.great.investor): 이미 올라간 글을 "지금 발행"으로 다시 누르면
   // 이 dedupe 경로가 옛 글을 돌려주는데, 화면은 그것을 새로 올라간 것처럼 "새 창" 링크만
   // 보여줬다. 언제 올라간 것인지를 응답에 실어야 화면이 구분해 말할 수 있다.
@@ -128,22 +130,48 @@ export async function GET(request: Request) {
 function partialPersistenceFailure(
   result: PublishResult,
   input: {
+    tenantId: string;
     stage: PersistenceStage;
     draftId: unknown;
     platform: string;
     accountId?: string;
     publicationId?: string;
+    firstComment?: FirstCommentRecoveryResult;
+    occurredAt?: string;
   },
 ): Response {
   const publicationRecorded = input.stage !== "publication_record";
   const code = input.stage === "publication_record"
     ? "PUBLICATION_RECORD_FAILED"
-    : input.stage === "queue_record" ? "QUEUE_RECORD_FAILED" : "USAGE_RECORD_PENDING";
+    : input.stage === "queue_record" ? "QUEUE_RECORD_FAILED"
+      : input.stage === "first_comment_record" ? "FIRST_COMMENT_RECORD_FAILED" : "USAGE_RECORD_PENDING";
   const message = input.stage === "publication_record"
     ? "외부 게시에는 성공했지만 발행 기록 저장에 실패했습니다."
     : input.stage === "queue_record"
       ? "외부 게시와 발행 기록 저장에는 성공했지만 queue 상태 저장에 실패했습니다."
-      : "외부 게시와 발행 기록 저장에는 성공했지만 사용량 장부 반영이 대기 중입니다.";
+      : input.stage === "first_comment_record"
+        ? "첫 댓글의 공급자 결과를 받았지만 댓글 상태 저장에 실패했습니다."
+        : "외부 게시와 발행 기록 저장에는 성공했지만 사용량 장부 반영이 대기 중입니다.";
+
+  let receipt: string | null = null;
+  if (input.publicationId) {
+    try {
+      receipt = issueRecoveryProof({
+        tenantId: input.tenantId,
+        publicationId: input.publicationId,
+        draftId: typeof input.draftId === "string" && UUID_RE.test(input.draftId) ? input.draftId : null,
+        platform: input.platform,
+        accountId: input.accountId ?? null,
+        externalId: result.externalId ?? null,
+        permalink: result.permalink ?? null,
+        occurredAt: input.occurredAt ?? new Date().toISOString(),
+        stage: input.stage,
+        ...(input.firstComment ? { firstComment: input.firstComment } : {}),
+      });
+    } catch {
+      // Keep the no-republish warning even when signing is unavailable.
+    }
+  }
 
   return Response.json(
     {
@@ -157,7 +185,7 @@ function partialPersistenceFailure(
         ok: false,
         stage: input.stage,
         publicationRecorded,
-        queueRecorded: input.stage === "usage_record",
+        queueRecorded: input.stage === "usage_record" || input.stage === "first_comment_record",
         error: {
           code,
           message,
@@ -168,6 +196,7 @@ function partialPersistenceFailure(
           retryPublish: false,
           draftId: typeof input.draftId === "string" ? input.draftId : null,
           publicationId: input.publicationId ?? null,
+          receipt,
           stage: input.stage,
           platform: input.platform,
           accountId: input.accountId ?? null,
@@ -290,6 +319,11 @@ export async function POST(request: Request) {
     }, { status: 422, headers: { "Cache-Control": "no-store" } });
   }
   const requestedImages = Array.isArray(image_urls) ? image_urls : image_url ? [image_url] : [];
+  if (platform === "linkedin" && requestedImages.length > 0) {
+    return Response.json({ ok: false, code: "LINKEDIN_IMAGE_PUBLISH_UNSUPPORTED",
+      error: "LinkedIn 이미지 발행은 아직 지원하지 않습니다. 이미지를 제거하거나 지원 채널을 선택해 주세요." },
+    { status: 422, headers: { "Cache-Control": "no-store" } });
+  }
   if (requestedImages.length > 0) {
     publishImageUrls = [];
     for (const requestedImage of requestedImages) {
@@ -343,6 +377,7 @@ export async function POST(request: Request) {
     const [conflict] = await withTenant(tenant_id, (sql) => sql<ReservationConflictRow[]>`
       SELECT id::text, status, external_id, permalink,
              reserved_at::text AS reserved_at, first_comment_status,
+             provider_meta,
              published_at::text AS published_at
         FROM published_posts
        WHERE tenant_id = ${tenant_id}::uuid
@@ -383,6 +418,14 @@ export async function POST(request: Request) {
           ok: false,
           code: "PUBLISH_ALREADY_IN_PROGRESS",
           error: "같은 작업물의 발행이 진행 중이거나 결과 확인이 필요합니다. 중복 게시를 막기 위해 다시 보내지 않았습니다.",
+          }, { status: 409, headers: { "Cache-Control": "no-store" } });
+      }
+      if (conflict.provider_meta?.publishAttemptStarted) {
+        return Response.json({
+          ok: false,
+          code: "PUBLISH_STATE_UNCERTAIN",
+          error: "직전 발행의 외부 결과를 확인해야 합니다. 중복 게시를 막기 위해 다시 보내지 않았습니다. 채널에서 게시 여부를 확인해 주세요.",
+          reconciliation: { required: true, action: "verify_with_provider", retryPublish: false, platform },
         }, { status: 409, headers: { "Cache-Control": "no-store" } });
       }
 
@@ -403,7 +446,7 @@ export async function POST(request: Request) {
         } catch {
           return partialPersistenceFailure(
             { ok: true, externalId: readback.hit.externalId, permalink: readback.hit.permalink },
-            { stage: "publication_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: conflict.id },
+            { tenantId: tenant_id, stage: "publication_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: conflict.id },
           );
         }
         try {
@@ -411,7 +454,7 @@ export async function POST(request: Request) {
         } catch {
           return partialPersistenceFailure(
             { ok: true, externalId: readback.hit.externalId, permalink: readback.hit.permalink },
-            { stage: "usage_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: conflict.id },
+            { tenantId: tenant_id, stage: "usage_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: conflict.id },
           );
         }
         return Response.json({
@@ -479,7 +522,7 @@ export async function POST(request: Request) {
             firstComment: { ok: true, alreadyPublished: true },
           });
         }
-        if (existing.first_comment_status === "uncertain" || existing.first_comment_status === null) {
+        if (existing.first_comment_status === "uncertain" || existing.first_comment_status === "in_progress" || existing.first_comment_status === null) {
           return Response.json({
             error: "이미 발행된 게시물의 first comment 상태를 확인할 수 없어 중복 방지를 위해 거절했습니다.",
             code: "first_comment_state_unknown",
@@ -492,12 +535,23 @@ export async function POST(request: Request) {
             code: "first_comment_recovery_unavailable",
           }, { status: 409 });
         }
-        const recovered = await publishFirstComment(
-          platform as FirstCommentPlatform,
-          cred,
-          existing.external_id,
-          firstCommentText,
-        );
+        const [claimed] = await withTenant(tenant_id, (sql) => sql<{ id: string }[]>`
+          UPDATE published_posts
+             SET first_comment_status = 'in_progress', first_comment_error = NULL
+           WHERE tenant_id = ${tenant_id}::uuid AND id = ${existing.id}::uuid
+             AND status = 'published' AND first_comment_status IN ('failed', 'not_requested')
+          RETURNING id::text
+        `);
+        if (!claimed) {
+          return Response.json({ error: "첫 댓글 발행이 진행 중이거나 결과 확인이 필요합니다. 중복 전송을 막았습니다.",
+            code: "first_comment_state_unknown" }, { status: 409 });
+        }
+        let recovered: PublishResult;
+        try {
+          recovered = await publishFirstComment(platform as FirstCommentPlatform, cred, existing.external_id, firstCommentText);
+        } catch {
+          recovered = { ok: false, error: "첫 댓글의 외부 결과를 확인할 수 없습니다.", failureKind: "indeterminate" };
+        }
         const state = firstCommentState(true, recovered);
         try {
           await withTenant(tenant_id, (sql) => sql`
@@ -510,7 +564,9 @@ export async function POST(request: Request) {
         } catch {
           return partialPersistenceFailure(
             { ok: true, externalId: existing.external_id, permalink: existing.permalink ?? undefined },
-            { stage: "publication_record", draftId: draft_id, platform, accountId: cred.accountId, publicationId: existing.id },
+            { tenantId: tenant_id, stage: "first_comment_record", draftId: draft_id, platform,
+              accountId: cred.accountId, publicationId: existing.id,
+              firstComment: state as FirstCommentRecoveryResult },
           );
         }
         return Response.json({
@@ -540,6 +596,7 @@ export async function POST(request: Request) {
             return partialPersistenceFailure(
               { ok: true, externalId: existing.external_id ?? undefined, permalink },
               {
+                tenantId: tenant_id,
                 stage: "publication_record",
                 draftId: draft_id,
                 platform,
@@ -562,6 +619,7 @@ export async function POST(request: Request) {
             platform,
             externalId: existing.external_id ?? undefined,
             permalink,
+            publishedAt: existing.published_at ?? undefined,
           });
           // 위와 같은 이유로 큐에 없는 것은 실패가 아니다.
           if (queueRecorded === "absent") {
@@ -569,11 +627,13 @@ export async function POST(request: Request) {
           }
         } catch {
           return partialPersistenceFailure(existingResult, {
+            tenantId: tenant_id,
             stage: "queue_record",
             draftId: draft_id,
             platform,
             accountId: cred.accountId,
             publicationId: existing.id,
+            occurredAt: existing.published_at ?? undefined,
           });
         }
       }
@@ -581,11 +641,13 @@ export async function POST(request: Request) {
         await recordPublicationEvent(tenant_id, existing.id, platform);
       } catch {
         return partialPersistenceFailure(existingResult, {
+          tenantId: tenant_id,
           stage: "usage_record",
           draftId: draft_id,
           platform,
           accountId: cred.accountId,
           publicationId: existing.id,
+          occurredAt: existing.published_at ?? undefined,
         });
       }
       return Response.json({
@@ -609,7 +671,26 @@ export async function POST(request: Request) {
     }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }
 
+  // The durable marker separates a reservation that never reached the provider
+  // from one whose process or DB write died after an irreversible request.
+  try {
+    const [marked] = await withTenant(tenant_id, (sql) => sql<{ id: string }[]>`
+      UPDATE published_posts
+         SET provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+           || ${sql.json({ publishAttemptStarted: true } as never)}::jsonb
+       WHERE tenant_id = ${tenant_id}::uuid AND id = ${reservationId}::uuid
+         AND status = 'in_progress'
+      RETURNING id::text
+    `);
+    if (!marked) throw new Error("reservation was not active");
+  } catch {
+    return Response.json({ ok: false, code: "PUBLISH_RESERVATION_FAILED",
+      error: "발행 시도 상태를 저장하지 못해 외부 게시를 시작하지 않았습니다." },
+    { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
+
   let result: PublishResult;
+  try {
   if (platform === "threads") {
     result = await publishThreads(cred, text || "", publishImageUrl, undefined, publishFields.topicTag);
   } else if (platform === "instagram") {
@@ -647,12 +728,21 @@ export async function POST(request: Request) {
   } else {
     result = { ok: false, error: `${platform} 미지원` };
   }
+  } catch {
+    result = { ok: false, error: "외부 게시 결과를 확인할 수 없습니다.", failureKind: "indeterminate" };
+  }
 
   let firstCommentResult: PublishResult | null = null;
   if (result.ok && firstCommentText) {
-    firstCommentResult = result.externalId
-      ? await publishFirstComment(platform as FirstCommentPlatform, cred, result.externalId, firstCommentText)
-      : { ok: false, error: "게시물 ID가 없어 first comment를 발행하지 못했습니다." };
+    if (result.externalId) {
+      try {
+        firstCommentResult = await publishFirstComment(platform as FirstCommentPlatform, cred, result.externalId, firstCommentText);
+      } catch {
+        firstCommentResult = { ok: false, error: "첫 댓글의 외부 결과를 확인할 수 없습니다.", failureKind: "indeterminate" };
+      }
+    } else {
+      firstCommentResult = { ok: false, error: "게시물 ID가 없어 first comment를 발행하지 못했습니다." };
+    }
   }
 
   // 실발행 실패 고위험 경계 — "채널 미연결"(설정 문제, 위에서 이미 400 반환)은 대상이 아니고,
@@ -694,6 +784,7 @@ export async function POST(request: Request) {
     : result.failureKind === "indeterminate" ? "uncertain" : "failed";
   // 본문과 첫 댓글은 독립 상태다. 댓글만 실패한 게시물이 전체 성공으로 보이면 안 된다.
   const commentState = firstCommentState(Boolean(firstCommentText) && result.ok, firstCommentResult);
+  const publishedAt = new Date().toISOString();
   try {
     await withTenant(tenant_id, (sql) => sql`
       UPDATE published_posts
@@ -709,9 +800,9 @@ export async function POST(request: Request) {
           provider_meta = COALESCE(provider_meta, '{}'::jsonb)
             || ${sql.json({
               ...(firstCommentResult ? { firstComment: firstCommentResult } : {}),
-              ...publicationUsageOutbox(platform),
+              ...publicationUsageOutbox(platform, publishedAt),
             } as never)}::jsonb,
-          published_at = now()
+          published_at = ${publishedAt}::timestamptz
       WHERE tenant_id = ${tenant_id}::uuid AND id = ${reservationId}::uuid
     `);
   } catch (error) {
@@ -722,11 +813,14 @@ export async function POST(request: Request) {
       error instanceof Error ? error.message : String(error));
     if (result.ok) {
       return partialPersistenceFailure(result, {
+        tenantId: tenant_id,
         stage: "publication_record",
         draftId: draft_id,
         platform,
         accountId: cred.accountId,
         publicationId: reservationId,
+        occurredAt: publishedAt,
+        firstComment: commentState as FirstCommentRecoveryResult,
       });
     }
     return Response.json(
@@ -748,6 +842,7 @@ export async function POST(request: Request) {
         platform,
         externalId: result.externalId,
         permalink: result.permalink,
+        publishedAt,
       });
       // 큐에 없는 것은 실패가 아니다. 스튜디오에서 바로 발행하면 승인 큐를 거치지 않으므로
       // 없는 것이 정상이다. 종전에는 이것을 내부 기록 실패로 보고 사용자에게 복구를
@@ -759,11 +854,13 @@ export async function POST(request: Request) {
       console.error("[publish][persist-fail] queue_record", platform,
         error instanceof Error ? error.message : String(error));
       return partialPersistenceFailure(result, {
+        tenantId: tenant_id,
         stage: "queue_record",
         draftId: draft_id,
         platform,
         accountId: cred.accountId,
         publicationId: reservationId,
+        occurredAt: publishedAt,
       });
     }
   }
@@ -772,11 +869,13 @@ export async function POST(request: Request) {
       await recordPublicationEvent(tenant_id, reservationId, platform);
     } catch {
       return partialPersistenceFailure(result, {
+        tenantId: tenant_id,
         stage: "usage_record",
         draftId: draft_id,
         platform,
         accountId: cred.accountId,
         publicationId: reservationId,
+        occurredAt: publishedAt,
       });
     }
   }

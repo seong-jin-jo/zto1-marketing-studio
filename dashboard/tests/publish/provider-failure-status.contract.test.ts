@@ -19,16 +19,21 @@ describe("영상 발행 경로의 실패 응답", () => {
   });
 
   it("제공자 실패는 ok:false 와 사람이 읽을 문구를 함께 돌려준다", () => {
-    const failures = src.match(/status:\s*PROVIDER_FAILED/g) || [];
-    expect(failures.length).toBeGreaterThanOrEqual(5);
-    // 상태만 바꾸고 ok 플래그를 빠뜨리면 화면이 성공으로 읽는다.
-    // 여러 줄로 쓴 응답도 놓치지 않게 PROVIDER_FAILED 앞 다섯 줄까지 함께 본다.
     const lines = src.split("\n");
-    lines.forEach((line, index) => {
-      if (!line.includes("PROVIDER_FAILED")) return;
-      if (line.includes("const PROVIDER_FAILED")) return; // 상수 선언 자체는 응답이 아니다
-      const window = lines.slice(Math.max(0, index - 5), index + 1).join("\n");
+    // Reels 는 결과 불명확이면 409, 명확한 거절이면 PROVIDER_FAILED 를 반환한다.
+    // 상태 표현이 조건식이어도 네 제공자 실패 응답 모두 검사한다.
+    const failureResponses = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => /status:\s*.*\bPROVIDER_FAILED\b/.test(line));
+    expect(failureResponses).toHaveLength(4);
+    failureResponses.forEach(({ index }) => {
+      // 상태만 바꾸고 ok 플래그나 오류 문구를 빠뜨리면 화면이 성공으로 읽는다.
+      const window = lines.slice(Math.max(0, index - 7), index + 1).join("\n");
+      expect(window).toContain("Response.json");
       expect(window).toContain("ok: false");
+      expect(window).toMatch(/\berror:\s*/);
     });
+    expect(src).toContain('status: result.failureKind === "indeterminate" ? 409 : PROVIDER_FAILED');
+    expect(src).toContain('code: "publish_state_uncertain"');
   });
 });

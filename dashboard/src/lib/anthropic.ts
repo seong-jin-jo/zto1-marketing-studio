@@ -75,8 +75,8 @@ function claudeCliInvocation(bin: string, args: string[]): { bin: string; args: 
 // 공유 생성 CLI에 이를 그대로 넘기면 상위 세션의 임시 설정 때문에 인증이 달라지거나
 // 비정상 종료하고, 도구를 전부 닫았어도 불필요한 앱 비밀값이 자식 프로세스에 남는다.
 //
-// CLI가 실제로 필요한 운영체제, 네트워크 변수만 새 환경으로 조립한다. Claude 전용 상태는
-// 의도적으로 승계하지 않아 언제 어떤 워커가 서버를 띄웠는지와 생성 성공 여부를 분리한다.
+// CLI가 실제로 필요한 운영체제, 네트워크 변수와 공유 생성 인증 토큰만 새 환경으로 조립한다.
+// 상위 Claude 실행 상태는 승계하지 않아 서버를 띄운 워커와 생성 성공 여부를 분리한다.
 function claudeCliEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     HOME: process.env.HOME || os.homedir(),
@@ -92,6 +92,9 @@ function claudeCliEnv(): NodeJS.ProcessEnv {
     "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
     "http_proxy", "https_proxy", "all_proxy", "no_proxy",
     "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
+    // 운영 컨테이너는 이 OAuth 토큰으로 공유 생성 CLI를 인증한다. 임의 Claude 상태값과
+    // 앱 시크릿을 넘기지 않으면서 이 값만 명시적으로 승계한다.
+    "CLAUDE_CODE_OAUTH_TOKEN",
   ]) {
     const value = process.env[key];
     if (value) env[key] = value;

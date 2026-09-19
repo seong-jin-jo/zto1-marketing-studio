@@ -179,6 +179,8 @@ export const PUBLISH_CHANNEL_GROUPS = CHANNEL_GROUP_DEFINITIONS
   .filter((group) => group.studioPublish)
   .map(({ key, title, channels }) => ({ key, title, channels }));
 
+// 연결 UI가 받는 OAuth provider ID 목록이다. Reels는 별도 provider가 아니라
+// Instagram 연결을 사용하며 /api/video/publish의 platform="reels"로 발행한다.
 export const VIDEO_PUBLISH_PLATFORMS = ["youtube", "tiktok"] as const;
 
 export function getChannelCapability(channel: string): ChannelCapability {

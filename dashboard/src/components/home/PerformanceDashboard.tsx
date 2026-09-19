@@ -22,18 +22,27 @@ import { countFilledUserSlots, readLearningInfo, type LearningInfo } from "@/com
 import { Button } from "@/components/shared/Button";
 import { useToast } from "@/components/layout/Toast";
 import Link from "next/link";
+import { classifyUsageError } from "@/lib/usage-error";
 
 export function PerformanceDashboard({ dedicatedRoom = false }: { dedicatedRoom?: boolean }) {
   const { dismissedOnboarding, dismissOnboarding, activeWorkspace } = useUIStore();
   const { showToast } = useToast();
   const { data: overview } = useOverview();
-  const { data: usageData, error: usageError } = useUsage(activeWorkspace?.id);
+  const { data: usageData, error: usageError, mutate: retryUsage } = useUsage(activeWorkspace?.id);
   const { data: channelConfig } = useChannelConfig();
   const [learningInfo, setLearningInfo] = useState<LearningInfo>({});
+  const [lastUsage, setLastUsage] = useState<{ workspaceId: string; data: Record<string, unknown> } | null>(null);
   const activeWorkspaceId = activeWorkspace?.id;
+  const currentUsageData = (usageData as { tenantId?: string | null } | undefined)?.tenantId === activeWorkspaceId
+    ? usageData : undefined;
   useEffect(() => {
     setLearningInfo(activeWorkspaceId ? readLearningInfo(activeWorkspaceId) : {});
   }, [activeWorkspaceId]);
+  useEffect(() => {
+    if (activeWorkspaceId && currentUsageData && !usageError) {
+      setLastUsage({ workspaceId: activeWorkspaceId, data: currentUsageData as Record<string, unknown> });
+    }
+  }, [activeWorkspaceId, currentUsageData, usageError]);
   const { data: me } = useSWR<{ isOperator?: boolean }>("/api/me", fetcher);
   const { data: metricsData, mutate: mutateMetrics } = useSWR<{ posts?: PerformancePost[]; coverage?: MetricsCoverageView }>(
     activeWorkspace ? `/api/metrics?tenant_id=${activeWorkspace.id}` : null, fetcher);
@@ -45,12 +54,13 @@ export function PerformanceDashboard({ dedicatedRoom = false }: { dedicatedRoom?
 
   const o = overview as Record<string, unknown> | undefined;
   const cfg = (channelConfig || {}) as unknown as Record<string, Record<string, unknown>>;
-  const usage = usageData as {
+  const usage = (currentUsageData || (lastUsage && lastUsage.workspaceId === activeWorkspaceId ? lastUsage.data : undefined)) as {
     today?: Record<string, number>;
     thisWeek?: Record<string, number>;
     tier?: string;
     quota?: any;
   } | undefined;
+  const usageProblem = classifyUsageError(usageError);
 
   if (!o) return <div className="px-region py-stack-section"><p className="text-subtle">불러오는 중...</p></div>;
 
@@ -147,7 +157,9 @@ export function PerformanceDashboard({ dedicatedRoom = false }: { dedicatedRoom?
         queuedCount={(sc.draft || 0) + (sc.approved || 0)}
         viralCount={(o.viralPosts as unknown[])?.length || 0}
         usage={usage}
-        usageDelayed={Boolean(usageError)}
+        usageDelayed={usageProblem.delayed}
+        usageError={usageProblem.message}
+        onRetryUsage={() => { void retryUsage(); }}
         collecting={collecting}
         onCollectMetrics={collectMetrics}
         failureDetails={failureDetails}

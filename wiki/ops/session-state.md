@@ -1,3 +1,81 @@
+# 2026-09-18 20:08 KST 복구 리뷰 MAJOR 보정과 실제 성과 화면 스모크
+
+독립 리뷰에서 첫 댓글 증표 복구가 댓글 결과를 버리는 결함, 월경계 큐 시각 이동,
+혼합 채널 복구 후 미발행 X를 완료로 바꾸는 결함을 확인해 수정했다. Reels 결과 불명확 시
+`uncertain`으로 잠가 자동 재발행을 막고 LinkedIn 이미지 즉시 발행은 누락 대신 선거절한다.
+계약 테스트 51+66건, 혼합 채널 새로고침 1건, TypeScript와 디자인 lint가 통과했다.
+로컬 DB fixture와 격리 포트 3463에서 고객 성과실 실제 렌더, 콘솔 오류 0, 사용량 지연
+주입 503·정상 재시도 200·일반 서버 오류 주입 500을 브라우저에서 확인했다. 캡처 네 장은
+`logs/diff/osmu-recovery0918/`, 재현 스크립트는 `dashboard/scripts/verify-recovery-usage-ui.mjs`다.
+실제 운영 장부 적체·월경계·SNS 공개 발행과 추가 변경 production build는 아직 미검증이다.
+24시간 증표 만료는 서명 확인 뒤 명시적 사유·재게시 금지·지원 메일 링크로 안내하지만,
+과거 외부 성공을 재증명할 공통 계약은 없어 운영자 회수 설계가 남는다.
+다음 소유자는 부모 컨트롤러의 독립 리뷰와 qa-verifier이며, 종료 증거는 중복 없는 실제
+발행 복구와 고객 UI·DB 원장 일치다. 9555/9444는 이 워커가 사용하지 않았다.
+
+# 2026-09-18 10:10 KST 발행 복구·사용량 코드 수리 완료, 제품 QA 대기
+
+부모 컨트롤러가 지정한 최신 08:27 코드 감사 MAJOR 6건·MINOR 1건을 격리 브랜치
+`work/osmu-recovery0918`에서 수리했다. 서명 증표와 단계별 멱등 복구, 원시 사용량 발생
+시각, 50건 초과 pending 판정, 예약 크론의 독립 사용량 relay, 성과실 오류 구분을 구현했다.
+제품 코드 커밋은 `0092db57`이다. 표적 계약 테스트, TypeScript, 디자인 lint와 webpack
+production build 185/185가 통과했다. 독립 포트 3462의 `/login`·`/performance` HTTP 200을
+관찰했다. 다만 headless Chromium에서 성과실 본문은 10초 뒤에도 공백이고 개발 서버 HMR
+handshake 오류가 나 브라우저 스모크는 NG다. 격리 서버는 DB 설정이 없어 health 503,
+인증 후 화면·실제 SNS 발행·운영 DB 51건과 월경계는 미검증이다.
+9555/9444 브라우저와 메인 worktree는 건드리지 않았다. 다음은 부모 컨트롤러의 독립 리뷰와
+고객 DB 연결 환경에서 QA 후 배포 게이트 판정이다. 상세는 `session-state.osmu-recovery0918.md`.
+
+# 2026-09-18 09:47 KST 발행 복구·사용량 코드 수리 진행
+
+부모 컨트롤러의 최신 08:27 코드 감사 MAJOR 6건·MINOR 1건을 인계 기준으로 썼다.
+`work/osmu-recovery0918` 격리 worktree에서 복구 증표, 단계별 복구, 사용량 발생 시각,
+적체 크론, 성과실 오류 구분을 구현했다. 메인 worktree와 9555/9444 브라우저는 건드리지
+않았다. 표적 Vitest 48건, 발행 분기 32건, TypeScript와 디자인 lint가 통과했다.
+Studio 테스트는 37/38로 공유 호스트 부하 탓 기존 1건 5초 시간 초과이며 표적 재검증이
+남았다. 기본 Turbopack build는 외부 node_modules symlink 환경을 거부했고 webpack build가
+실행 중이다. 상세 인계는 repo 루트 `session-state.osmu-recovery0918.md`.
+
+# 2026-09-18 04:30 KST 최근 24시간 코드 공격 리뷰 BLOCK
+
+사용자의 명시 과제를 handoff basis로 사용했다. `openclaw-auto:0.0`은 공유 서버와 동시 작업
+확인에만 사용했고 다른 pane의 작업을 인계받거나 변경하지 않았다. 검토 범위는
+`c0661fb2..87779ba0` 70개 커밋이며 제품 코드는 수정하지 않았다.
+
+MAJOR 4건으로 BLOCK이다. 복구 API가 외부 성공을 증명하지 않고 실패 행도 published로 바꿀 수
+있고, 실패 단계와 무관하게 발행 시각과 큐 및 사용량을 모두 다시 쓴다. 사용량 relay는 발생
+시각을 보존하지 않아 월경계에서 다른 과금 기간으로 이동하며, 50건을 넘는 pending 적체를
+남은 수 없이 HTTP 200 정상 합계로 반환한다.
+
+Vitest 376파일과 2,427건, 깨끗한 HEAD 사본의 TypeScript, localhost 기본 흐름 11/11, Studio v1
+14/14를 통과했다. 작업 트리 TypeScript는 실행 중 개발 서버의 손상된 `.next/dev/types/routes.d.ts`
+때문에 실패했다. 지정 작업 공간 usage는 임시 고객 토큰으로 HTTP 200, relay 처리 0, 실패 0을
+확인했고 토큰을 폐기했다. 실행본 커밋 귀속과 실제 SNS 발행 및 월경계 장애 주입은 미검증이다.
+
+감사와 QA 원장 커밋은 `74ae7475`다. 다음 소유자는 code-builder다. MAJOR 4건을 수정한 뒤 외부
+성공 증명 거절, 단계별 복구, 월경계 귀속, 51건 적체 재현과 전체 회귀를 다시 통과해야 한다.
+
+# 2026-09-18 03:36 KST 성과 시계열 갭 재확인 BLOCK
+
+사용자의 명시 과제를 handoff basis로 사용한다. 같은 저장소의 tmux pane은 동시 작업 확인용이며
+다른 pane의 작업을 인계받지 않는다. 두 감사와 최신 코드 대조 결과 현재도 없는 기본 흐름 항목은
+게시물별 성과 관측 이력과 재현 가능한 최근 30일 대 직전 30일 비교다. canonical
+`pipeline-state.osmu.md`는 `qa`, `in-progress`, 승인 아님이고 저장 및 비교 기술계약도 없으므로
+제품 소스는 수정하지 않는다. QA tracker에 `GAP-HISTORY-20260918-0311-01/02`를 NG와 BLOCK으로
+등록했다.
+
+최신 HEAD `8cc2dd4f`를 띄운 localhost:3456에서 health HTTP 200과 DB up을 확인했다. 지정 작업 공간
+metrics는 HTTP 200, 키 `coverage`, `posts`, 게시물 0건이고 `history`, `comparison`은 없다. 기본
+흐름은 11/11 PASS, Studio v1은 후보 전체 거절 2건과 무료 재생성 2건이 실패해 10/14 NG다.
+TypeScript와 `design-lint.sh src`는 종료 코드 0이다. 실제 PostgreSQL에 schema, seed, RLS, legacy migration을 적용한
+전체 Vitest 병렬 실행은 2,430건 중 정리 단계 교착 1건이 실패했고, 해당 파일 단독 재실행은
+통과했다. 직렬 전체 재실행은 376파일, 2,429건 통과, 1건 제외, 종료 코드 0이다.
+
+다음 소유자는 컨트롤러와 tech-architect다. snapshot 저장 모델, 멱등 키, 보존 기간, 공급자별
+원본과 정규화 지표, 30일 비교 경계와 표본 부족 기준을 합의하고 eng-design을 승인한 뒤 build를
+다시 연다. code-builder는 그 계약 이후 migration, 수집 저장, history와 comparison 응답, 정상과
+거절과 경합 테스트를 구현하고 두 필수 E2E 25/25를 다시 통과시킨다.
+
 # 2026-09-18 01:08 KST Meta App Review 인사이트 코드 갭 수정 검증 완료
 
 사용자의 명시 과제를 handoff basis로 사용한다. `openclaw-auto:0.0`은 중복 작업 확인에만 캡처했고
@@ -1595,3 +1673,14 @@ stage하지 않는다. 다음 액션은 편집실 계약 테스트를 먼저 추
 - 커밋: `a5ad5c14`, `ba4cc37c`, `2cd5a9bb`, `aabbb835`. 이 기록과 구현현황은 다음 문서 커밋으로 묶는다.
 - 문서 커밋: `8c750cdf`. 이후 `git push -u origin work/v71auth`를 실행했으나 실행 정책이 승인 요청을 요구했고 현재 세션은 승인 요청 불가라 명령 시작 전에 차단됐다. `git ls-remote --heads origin work/v71auth` 결과 원격 브랜치는 없다.
 - 배포: 머지와 배포는 실행하지 않았다. 다음 액션 소유자는 push 권한이 열려 있는 부모 컨트롤러다. 종료 증거는 `origin/work/v71auth` SHA와 이 워크트리 최종 HEAD의 일치다.
+# 2026-09-18 20:42 KST 외부 게시·첫 댓글 재전송 안전 경계
+
+기존 발행 복구에서 외부 POST 후 응답 유실을 실패로 저장하거나, 본문 예약·댓글 재시도를
+영속 선점 없이 자동 회수할 수 있어 중복 게시 위험이 있었다. 본문 외부 호출 전 영속
+표식, 댓글 원자 선점, 불명확 결과 잠금, 첫 댓글 결과를 포함한 초기 복구 증표를
+추가했다. Threads·IG·X·Facebook·Bluesky·Telegram·Discord·Slack·LinkedIn의
+408·429·5xx·응답 유실과 성공 증거 누락을 불명확으로 분류한다. Reels는 별도 표식이
+있다. 근거와 단계별 상태표는 `session-state.osmu-recovery0918.md` 최신 절을 참조한다.
+현재 격리 worktree `work/osmu-recovery0918`에서 표적 회귀·최종 커밋을 진행 중이다.
+다음 소유자 부모 컨트롤러는 커밋 독립 리뷰, 실 사용자 브라우저·운영 DB 검증 후
+배포를 결정한다. 종료증거는 재시도 공급자 호출 1회, 댓글 경합 1회, 원장 시각 일치다.
