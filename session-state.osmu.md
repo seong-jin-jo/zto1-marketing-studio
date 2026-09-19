@@ -1,3 +1,10 @@
+## 2026-09-19 21시 00분 - 인스타그램 연결 실패의 진짜 원인: Instagram 앱 시크릿이 Meta 앱 시크릿과 동일값
+
+- 회장이 j.the.great.investor 를 Instagram 테스터로 추가했고(9555 역할 페이지 실측 5명), 9444 회원 세션에서 동의 화면까지 정상("이전에 연결하셨습니다" 표시), 허용 클릭 후 콜백에서 다시 "Error validating verification code. Please make sure your redirect_uri is identical" HTTP 400. 테스터 미등록 가설은 이걸로 기각.
+- 운영 컨테이너 실측(값 미출력): IG_APP_ID=1534059948198965(Instagram 앱 ID, 정상), **IG_APP_SECRET 이 FB_APP_SECRET 과 동일**(길이 32). Instagram Login 제품은 Meta 앱 시크릿이 아니라 "Instagram 앱 시크릿 코드"(앱 설정 → Instagram API 설정 → 표시)를 api.instagram.com/oauth/access_token 에 요구한다. Meta 는 시크릿 불일치를 위 verification code 문구로 뭉뚱그려 돌려준다. OSMU_PUBLIC_URL 은 정상.
+- 조치(회장): 9555 Meta 콘솔에서 Instagram 앱 시크릿 코드를 복사해 OSMU 운영자 화면(/operator) Instagram 자격 칸의 Client Secret 에 저장(DB 우선이라 env 재배포 불필요). 저에게 값을 주지 않는다. 저장 후 9444 에서 재연결 실측.
+- Codex goal-run(회장 부재 중) 파악: 세션 브랜치 23커밋(대부분 문서·QA 증거), PR 60(공유 CLI 인증 복구)·61(생성 복구·안전 발행 복구·채널 연결) CI green 미머지. Codex 판정: 네 방 흐름 v26 은 Claude CLI 7일 한도 100% 로 생성 NG(21:00 현재 한도 리셋됨, 7일 1%), 성과 관측 이력·30일 비교 갭은 기술설계 미승인으로 build 차단, 디자인 핀 v63/v68 충돌, npm run build 의 Turbopack 한국어 주석 panic(webpack 은 185/185). 채널 readiness 실측: X connected, YouTube publish_pending, Instagram/Facebook not_connected, Threads publish_pending.
+
 ## 2026-09-18 08시 15분 - Google OAuth 동의 화면 상태 실측: 프로덕션·외부·미인증(100명 한도 중 4명), 관리자 크롬 9555 는 불필요해 종료
 
 - 9222(Chrome for Testing) 에서 Google Cloud 콘솔이 이미 인증돼 있어 관리자용 일반 크롬 9555 는 닫았다. Chrome for Testing 프로필을 일반 Chrome 으로 복사하는 것은 쿠키 암호화 키가 키체인 항목("Chrome for Testing Safe Storage" vs "Chrome Safe Storage")에 묶여 있어 로그인이 살아남지 않는다. 회원용 9444 만 유지.
