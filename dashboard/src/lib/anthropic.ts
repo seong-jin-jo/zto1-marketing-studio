@@ -92,11 +92,12 @@ function claudeCliEnv(): NodeJS.ProcessEnv {
     "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
     "http_proxy", "https_proxy", "all_proxy", "no_proxy",
     "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
-    // 운영 컨테이너는 호스트 ~/.claude 를 읽기 전용으로 마운트해 OAuth refresh 를 디스크에 못 남기고,
-    // 그 결과 공유 생성이 category=authentication 으로 exit 1 났다(2026-09-20 운영 로그). 운영자가
-    // 플랫폼 단위 인증을 env 로 주면 CLI 가 그것을 우선 쓰도록 이 두 키만 통과시킨다. 값은 로그·에러
-    // 메시지 어디에도 실리지 않는다(위 stderr ignore 계약 그대로).
-    "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN",
+    // 배포는 .env.osmu 로 CLAUDE_CODE_OAUTH_TOKEN 을 준다(deploy-marketing.yml). 2026-09-16 이 allowlist 가
+    // 그 키까지 걸러 컨테이너 공유 생성이 category=authentication 으로 exit 1 났다(2026-09-20 운영 로그).
+    // 이 한 키만 통과시킨다. ANTHROPIC_API_KEY 는 일부러 넣지 않는다: CLI 는 API 키를 OAuth 보다 우선해
+    // 종량 과금으로 조용히 갈아타므로 호스트에 다른 도구용 키가 있으면 구독 대신 과금된다(코드리뷰 2026-09-20).
+    // 값은 로그·에러 메시지 어디에도 실리지 않는다(위 stderr ignore 계약 그대로).
+    "CLAUDE_CODE_OAUTH_TOKEN",
   ]) {
     const value = process.env[key];
     if (value) env[key] = value;
