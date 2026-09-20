@@ -1,3 +1,10 @@
+## 2026-09-21 08시 30분 - X 연결 성공, Meta 테스터·권한 정비, TikTok 앱 심사 서류 채움, 비즈니스 인증 반려 발견
+
+- X: 회장이 @osmu_studio 계정으로 9444 에 로그인 → 새 인증 URL 로 동의 화면 → "Authorize app" → 콜백 "x 연결 완료" 관찰. 이전 시도는 PKCE 쿠키(10분) 만료로 무효였음.
+- Meta(9555): Threads 이용 사례에 threads_content_publish·manage_insights·read_replies·manage_replies 가 "추가" 상태(앱이 요청하는 스코프인데 미등록)였음 → 4개 추가해 "테스트 준비 완료". Instagram 이용 사례 instagram_business_manage_insights 도 추가. Facebook 페이지 권한 7종은 이미 준비. 앱 역할에 j.the.great.creator 를 Instagram 테스터로 추가하고 9444 Instagram 앱 및 웹사이트 → 테스터 초대 수락 완료(2026-09-21 승인). Threads 테스터는 creator 의 Threads 프로필이 없어(threads.com/@j.the.great.creator 302) 추가 불가. Instagram OAuth 시도 → "프로페셔널 계정으로 변경" 요구에서 멈춤(계정 설정 변경이라 회장 확인 대기).
+- Meta 심사 현황: 앱 검수(App Review) 미신청. 대시보드에 "기술 제공업체 되기(앱 검수 제출 전 액세스 인증 필요)" CTA. 비즈니스 인증은 9/17 제출분이 **반려**("제공된 정보로 인증하지 못했습니다. 추가 정보 필요") — 자리표시자 정보(역삼동/naver.com/010-1234-5678) 탓. 실제 사업자 정보·서류로 재제출 필요.
+- TikTok 앱 osmu.studio(Production Draft): 아이콘(1024px 생성)·카테고리 Business·설명(118자)·약관/개인정보/웹 URL·플랫폼 Web·Login Kit 리다이렉트 URI(/api/connect/tiktok/callback)·Content Posting API Direct Post 켬·스코프 user.info.basic/video.publish/video.upload/video.list·심사 설명문 428자 입력. URL 소유권은 서명 파일(PR 64, 배포 run 35543688313)로 검증 완료. 남은 필수 1건 = 데모 영상(mp4). Save 도 영상 없이는 막힘(브라우저 상태로만 남아 있음). 심사 전 실사용은 Sandbox 필요.
+
 ## 2026-09-21 01시 50분 - 운영자 콘솔 3탭·일괄 등록 배포, 격리 크롬 유입 원인 수정, 회원 채널 연결 현황
 
 - 회장 지적 "다른 사업체 보고가 9555 에 들어온다": 원인 = `~/.claude/harness/bin/show-artifact.sh` 의 AppleScript `window 1` 이 "Google Chrome" 이름으로 잡히는 프로세스(회장 기본 크롬이 꺼져 있으면 9555 격리 인스턴스)에 탭을 꽂음. 수정: CDP /json 으로 격리 창 식별해 건너뛰고, 남는 창이 없으면 바이너리를 기본 프로필로 직접 호출. 실측 9444·9555 유입 0. 9555 에 들어와 있던 BRAIN 위키 탭은 닫음.
