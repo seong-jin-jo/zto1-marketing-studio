@@ -101,6 +101,8 @@ afterEach(() => {
   delete process.env.CLAUDECODE;
   delete process.env.CLAUDE_CONFIG_DIR;
   delete process.env.SECURITYSESSIONID;
+  delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  delete process.env.ANTHROPIC_API_KEY;
 });
 
 describe("claude CLI 실행 경계 — argv에 prompt 없음 + stdin 전달", () => {
@@ -213,7 +215,7 @@ describe("claude CLI 실행 경계 — 필수 플래그·cwd·model", () => {
   // 2026-09-16 환경 정리(ISSUE-017)가 운영이 .env.osmu 로 넣던 CLAUDE_CODE_OAUTH_TOKEN 까지 걸러
   // 컨테이너의 공유 생성이 category=authentication exit 1 로 죽었다(2026-09-20 운영 로그). 플랫폼
   // 인증 두 키는 자식에 닿아야 한다. 그 외 비밀값은 여전히 걸러진다.
-  it("플랫폼 Claude 인증(CLAUDE_CODE_OAUTH_TOKEN·ANTHROPIC_API_KEY)은 자식 환경에 넘긴다", async () => {
+  it("배포가 주는 CLAUDE_CODE_OAUTH_TOKEN 은 자식 환경에 넘기고 ANTHROPIC_API_KEY 는 넘기지 않는다", async () => {
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "qa-platform-oauth";
     process.env.ANTHROPIC_API_KEY = "qa-platform-api-key";
     process.env.OSMU_TEST_SENTINEL_SECRET = "절대-자식에-넘기지-않음";
@@ -223,14 +225,13 @@ describe("claude CLI 실행 경계 — 필수 플래그·cwd·model", () => {
 
     const childEnv = H.calls[0].opts.env;
     expect(childEnv?.CLAUDE_CODE_OAUTH_TOKEN).toBe("qa-platform-oauth");
-    expect(childEnv?.ANTHROPIC_API_KEY).toBe("qa-platform-api-key");
+    // API 키가 새면 CLI 가 구독 대신 종량 과금으로 갈아탄다. 통과 금지.
+    expect(childEnv?.ANTHROPIC_API_KEY).toBeUndefined();
     expect(childEnv?.OSMU_TEST_SENTINEL_SECRET).toBeUndefined();
 
     H.calls[0].child.stdout.emit("data", Buffer.from("auth-env-ok"));
     H.calls[0].child.emit("close", 0);
     await expect(p).resolves.toBe("auth-env-ok");
-    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
-    delete process.env.ANTHROPIC_API_KEY;
   });
 });
 
