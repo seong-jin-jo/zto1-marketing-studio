@@ -13,6 +13,33 @@ vi.mock("swr", () => ({
   default: (...args: unknown[]) => mocks.swr(...args),
 }));
 
+// page.tsx는 ?tab= 을 next/navigation의 useSearchParams/useRouter로 읽고 쓴다(하우스 패턴,
+// studio/page.tsx·calendar/page.tsx와 동일). 실제 next/navigation은 앱 라우터 컨텍스트 밖에서
+// 던지므로 여기서는 window.location을 진실원으로 삼는 반응형 mock을 둔다.
+vi.mock("next/navigation", () => {
+  const listeners = new Set<() => void>();
+  function applyUrl(url: string) {
+    const [path, query] = url.split("?");
+    window.history.replaceState(null, "", query ? `${path}?${query}` : path);
+    listeners.forEach((cb) => cb());
+  }
+  return {
+    useSearchParams: () => {
+      const [, force] = React.useState(0);
+      React.useEffect(() => {
+        const cb = () => force((x) => x + 1);
+        listeners.add(cb);
+        return () => { listeners.delete(cb); };
+      }, []);
+      return new URLSearchParams(window.location.search);
+    },
+    useRouter: () => ({
+      replace: applyUrl,
+      push: applyUrl,
+    }),
+  };
+});
+
 interface TestOAuthProvider {
   provider: string;
   label: string;
@@ -95,6 +122,7 @@ describe("operator OAuth credential UI lifecycle", () => {
     localStorage.clear();
     localStorage.setItem("dashboard_auth_token", "operator-token");
     mocks.swr.mockReset();
+    window.history.replaceState(null, "", "/operator/customers");
   });
 
   afterEach(() => {
