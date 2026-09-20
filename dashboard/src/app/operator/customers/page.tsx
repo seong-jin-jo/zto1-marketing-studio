@@ -363,9 +363,9 @@ export default function OperatorCustomersPage() {
         </section>
       )}
 
-      <OperationalIncidentPanel />
-
-      <section className="mb-stack-section">
+      {/* 자격증명 등록은 운영자가 가장 자주 찾는 칸이다. 장애 목록이 길어지면 화면 아래로 밀려
+          "등록 UI 가 없다"고 오인된다(회장 2026-09-20). 요약 바로 아래에 고정하고 장애는 그 다음이다. */}
+      <section className="mb-stack-section" id="oauth-apps">
         <div className="mb-stack flex items-center justify-between gap-stack">
           <div>
             <h3 className="text-body-sm font-semibold text-text">중앙 OAuth 개발자 앱</h3>
@@ -550,6 +550,8 @@ export default function OperatorCustomersPage() {
           ))}
         </div>
       </section>
+
+      <OperationalIncidentPanel />
 
       <section className="mb-stack-section">
         <div className="flex items-center justify-between mb-stack">
