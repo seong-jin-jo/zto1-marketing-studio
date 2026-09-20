@@ -1,3 +1,15 @@
+## 2026-09-21 생성 인증 회귀 수리와 운영자 콘솔 3탭 배포, qa 진행 중
+
+current_stage: qa
+status: in-progress (승인 아님)
+
+PR 62(d417e0db)로 9/16 env allowlist 가 걸러낸 CLAUDE_CODE_OAUTH_TOKEN 을 복구해 v25·v26 의 NG 원인(공유
+생성 exit 1)을 닫았다. 운영 배포 후 회원 세션(j.the.great.creator)에서 카드뉴스·글 후보 생성을 직접 관찰했다.
+PR 63(ba186152)으로 /operator/customers 를 3탭(개요·장애/중앙 OAuth 앱/가입자)과 등록됨/미등록 일괄 등록으로
+재구성, 교차 리뷰 9건 반영, 9555 운영자 세션에서 탭 전환·딥링크·문구를 관찰했다. 채널 연결은 creator 계정 기준
+0/15: X 는 회장 X 로그인, TikTok 은 앱 Draft(Sandbox 설정), Instagram·Threads 는 테스터 등록 대기. 발행·성과
+관통 E2E 는 미검증. v63·v68 승인 핀 충돌 유지. 상세는 `session-state.osmu.md` 2026-09-21 01:50 항목.
+
 ## 2026-09-19 네 방 기본 흐름 전수 검증 v26, qa 진행 중
 
 current_stage: qa
