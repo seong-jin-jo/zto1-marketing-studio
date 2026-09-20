@@ -86,6 +86,10 @@ function swrResult(provider: TestOAuthProvider = envProvider) {
   };
 }
 
+function openOAuthTab() {
+  fireEvent.click(screen.getByRole("tab", { name: "중앙 OAuth 앱" }));
+}
+
 describe("operator OAuth credential UI lifecycle", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -111,13 +115,14 @@ describe("operator OAuth credential UI lifecycle", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const view = render(<OperatorCustomersPage />);
+    openOAuthTab();
     // F4(fdd-r02): 카드는 기본 접힘이다. 본문 상호작용 전에 펼친다.
     fireEvent.click(screen.getByRole("button", { name: "X 자격증명 카드 펼치기" }));
     expect(screen.getByText(/환경변수로 보호/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "원문 확인" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "저장된 값 보기(30초)" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "암호화 DB로 가져오기" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "원문 확인" }));
+    fireEvent.click(screen.getByRole("button", { name: "저장된 값 보기(30초)" }));
     await waitFor(() => expect(initial.mutate).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith("/api/operator/oauth-credentials", expect.objectContaining({
       method: "POST",
@@ -151,7 +156,8 @@ describe("operator OAuth credential UI lifecycle", () => {
     vi.stubGlobal("fetch", vi.fn());
 
     render(<OperatorCustomersPage />);
-    fireEvent.click(screen.getByRole("button", { name: "X 자격증명 카드 펼치기" }));
+    openOAuthTab();
+    // 미등록 채널은 입력칸이 바로 열려 있다(펼치기 클릭 불필요).
     const clientId = screen.getByLabelText("Client ID");
     const clientSecret = screen.getByLabelText("Client Secret");
     expect(clientId).toHaveAttribute("type", "password");
@@ -159,10 +165,10 @@ describe("operator OAuth credential UI lifecycle", () => {
 
     fireEvent.change(clientId, { target: { value: "pasted-id" } });
     fireEvent.change(clientSecret, { target: { value: "pasted-secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "Client ID 입력값 표시" }));
+    fireEvent.click(screen.getByRole("button", { name: "Client ID 입력 중인 값 보기" }));
     expect(clientId).toHaveAttribute("type", "text");
     expect(clientSecret).toHaveAttribute("type", "password");
-    expect(screen.getByRole("button", { name: "Client ID 입력값 숨김" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Client ID 입력 중인 값 가리기" })).toBeInTheDocument();
   });
 
   it("saves a complete unset provider set, refreshes metadata, and shows a Korean card error on failure", async () => {
@@ -181,7 +187,8 @@ describe("operator OAuth credential UI lifecycle", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const view = render(<OperatorCustomersPage />);
-    fireEvent.click(screen.getByRole("button", { name: "X 자격증명 카드 펼치기" }));
+    openOAuthTab();
+    // 미등록 채널은 입력칸이 바로 열려 있다(펼치기 클릭 불필요).
     fireEvent.change(screen.getByLabelText("Client ID"), { target: { value: "new-id" } });
     fireEvent.change(screen.getByLabelText("Client Secret"), { target: { value: "new-secret" } });
     fireEvent.click(screen.getByRole("button", { name: "전체 세트 저장" }));
@@ -201,6 +208,8 @@ describe("operator OAuth credential UI lifecycle", () => {
       updatedAt: "2026-07-30T00:00:00.000Z",
     }));
     view.rerender(<OperatorCustomersPage />);
+    // 저장 성공 후 provider가 "등록됨" 묶음으로 이동하며 기본 접힘 상태로 바뀐다.
+    fireEvent.click(screen.getByRole("button", { name: "X 자격증명 카드 펼치기" }));
     expect(screen.getByText(/Admin DB에서 완전한 세트/)).toBeInTheDocument();
   });
 });

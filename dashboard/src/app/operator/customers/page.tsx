@@ -75,12 +75,12 @@ function groupOAuthProvidersForDisplay<
     },
     {
       key: "ready",
-      label: "준비 완료",
+      label: "등록됨",
       items: providers.filter((item) => !item.unavailableReason && item.credentialsConfigured),
     },
     {
       key: "missing",
-      label: "미설정",
+      label: "미등록",
       items: providers.filter((item) => !item.unavailableReason && !item.credentialsConfigured),
     },
   ] as const;
@@ -91,6 +91,24 @@ function groupOAuthProvidersForDisplay<
       ...group,
       label: `${group.label} ${group.items.length}개`,
     }));
+}
+
+type OperatorTab = "overview" | "oauth" | "customers";
+const OPERATOR_TABS: Array<{ key: OperatorTab; label: string }> = [
+  { key: "overview", label: "개요·장애" },
+  { key: "oauth", label: "중앙 OAuth 앱" },
+  { key: "customers", label: "가입자" },
+];
+
+function readTabFromLocation(): OperatorTab {
+  if (typeof window === "undefined") return "overview";
+  try {
+    const value = new URLSearchParams(window.location.search).get("tab");
+    if (value === "oauth" || value === "customers" || value === "overview") return value;
+  } catch {
+    // ignore malformed location
+  }
+  return "overview";
 }
 
 interface AuthUser {
@@ -148,6 +166,23 @@ export default function OperatorCustomersPage() {
   const toggleProviderExpanded = (provider: string) =>
     setExpandedProviders((prev) => ({ ...prev, [provider]: !prev[provider] }));
   const revealTimers = useRef<Record<string, number>>({});
+  const [activeTab, setActiveTab] = useState<OperatorTab>(() => readTabFromLocation());
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchRowMsg, setBatchRowMsg] = useState<Record<string, string>>({});
+
+  function selectTab(tab: OperatorTab) {
+    setActiveTab(tab);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.replaceState(window.history.state, "", url.toString());
+  }
+
+  useEffect(() => {
+    const onPopState = () => setActiveTab(readTabFromLocation());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   useEffect(() => () => {
     for (const timer of Object.values(revealTimers.current)) window.clearTimeout(timer);
@@ -225,6 +260,45 @@ export default function OperatorCustomersPage() {
     } finally {
       setBusyProvider(null);
     }
+  }
+
+  async function saveAllFilledCredentialSets(items: OAuthProviderStatus[]) {
+    if (batchBusy) return;
+    const candidates = items.filter((item) => {
+      if (item.unavailableReason) return false;
+      const values = credentialInputs[item.provider] || {};
+      return item.fields.every((field) => values[field.key]?.trim());
+    });
+    if (candidates.length === 0) {
+      setBatchRowMsg({});
+      return;
+    }
+    setBatchBusy(true);
+    const results: Record<string, string> = {};
+    for (const item of candidates) {
+      const values = credentialInputs[item.provider] || {};
+      try {
+        const res = await fetch("/api/operator/oauth-credentials", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ provider: item.provider, values }),
+          cache: "no-store",
+        });
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        if (!res.ok) {
+          results[item.provider] = body.error || `저장 실패 ${res.status}`;
+          continue;
+        }
+        results[item.provider] = "저장됨";
+        setCredentialInputs((current) => ({ ...current, [item.provider]: {} }));
+        hideCredentialInputs(item.provider);
+      } catch {
+        results[item.provider] = "저장 요청에 실패했습니다.";
+      }
+    }
+    setBatchRowMsg(results);
+    setBatchBusy(false);
+    await mutate();
   }
 
   async function revealCredentialSet(item: OAuthProviderStatus) {
@@ -338,12 +412,40 @@ export default function OperatorCustomersPage() {
         <a href="/operator" className="text-caption text-subtle hover:text-muted">운영자 토큰 재입력</a>
       </div>
 
+      <div role="tablist" aria-label="운영자 콘솔 탭" className="mb-stack-section flex flex-wrap gap-stack-tight border-b border-border">
+        {OPERATOR_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            id={`operator-tab-${tab.key}`}
+            aria-selected={activeTab === tab.key}
+            aria-controls={`operator-tabpanel-${tab.key}`}
+            onClick={() => selectTab(tab.key)}
+            className={`min-h-control-touch rounded-t-control px-stack py-stack-tight text-body-sm font-medium ${
+              activeTab === tab.key
+                ? "border-b-2 border-accent text-text"
+                : "text-subtle hover:text-muted"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {isLoading && <p className="text-body-sm text-subtle">불러오는 중…</p>}
       {visibleError && (
         <div className="rounded-control border border-danger/30 bg-danger/10 p-stack text-caption text-danger mb-pad-inset">
           {visibleError}
         </div>
       )}
+
+      <div
+        role="tabpanel"
+        id="operator-tabpanel-overview"
+        aria-labelledby="operator-tab-overview"
+        hidden={activeTab !== "overview"}
+      >
 
       {summary && (
         <section className="mb-stack-section grid grid-cols-2 gap-stack-tight md:grid-cols-3 xl:grid-cols-6" aria-label="운영 요약">
@@ -362,9 +464,16 @@ export default function OperatorCustomersPage() {
           ))}
         </section>
       )}
+      </div>
 
-      {/* 자격증명 등록은 운영자가 가장 자주 찾는 칸이다. 장애 목록이 길어지면 화면 아래로 밀려
-          "등록 UI 가 없다"고 오인된다(회장 2026-09-20). 요약 바로 아래에 고정하고 장애는 그 다음이다. */}
+      <div
+        role="tabpanel"
+        id="operator-tabpanel-oauth"
+        aria-labelledby="operator-tab-oauth"
+        hidden={activeTab !== "oauth"}
+      >
+      {/* 자격증명 등록은 운영자가 가장 자주 찾는 칸이다. 등록됨/미등록 두 묶음으로 나눠 한 화면에서
+          한꺼번에 관리한다(회장 2026-09-21 탭 분리 제안 채택). */}
       <section className="mb-stack-section" id="oauth-apps">
         <div className="mb-stack flex items-center justify-between gap-stack">
           <div>
@@ -376,12 +485,32 @@ export default function OperatorCustomersPage() {
         <div className="space-y-stack-section">
           {oauthProviderGroups.map((group) => (
             <section key={group.key} aria-labelledby={`oauth-provider-group-${group.key}`}>
-              <h4 id={`oauth-provider-group-${group.key}`} className="mb-stack-tight text-caption font-semibold text-text">
-                {group.label}
-              </h4>
+              <div className="mb-stack-tight flex flex-wrap items-center justify-between gap-stack-tight">
+                <h4 id={`oauth-provider-group-${group.key}`} className="text-caption font-semibold text-text">
+                  {group.label}
+                </h4>
+                {group.key === "missing" && (
+                  <button
+                    type="button"
+                    onClick={() => void saveAllFilledCredentialSets([...group.items])}
+                    disabled={batchBusy}
+                    className="rounded-chip bg-accent px-stack py-stack-tight text-caption text-accent-fg hover:opacity-90 disabled:opacity-50"
+                  >
+                    {batchBusy ? "저장 중…" : "입력한 채널 모두 저장"}
+                  </button>
+                )}
+              </div>
+              {group.key === "missing" && Object.keys(batchRowMsg).length > 0 && (
+                <ul className="mb-stack-tight space-y-micro text-caption text-subtle">
+                  {Object.entries(batchRowMsg).map(([provider, msg]) => (
+                    <li key={provider}>{provider}: {msg}</li>
+                  ))}
+                </ul>
+              )}
               <div className="grid gap-stack xl:grid-cols-2">
                 {group.items.map((item) => {
-                  const isExpanded = Boolean(expandedProviders[item.provider]);
+                  // 미등록 채널은 입력칸이 바로 열려 있어야 한 번에 채워 저장할 수 있다(회장 2026-09-21).
+                  const isExpanded = group.key === "missing" ? true : Boolean(expandedProviders[item.provider]);
                   return (
                   <div key={item.provider} data-oauth-provider={item.provider} className="card p-pad-inset">
               <h5>
@@ -450,7 +579,7 @@ export default function OperatorCustomersPage() {
                         disabled={busyProvider === item.provider}
                         className="text-caption text-accent hover:underline disabled:opacity-50"
                       >
-                        원문 확인
+                        저장된 값 보기(30초)
                       </button>
                     ) : null}
                   </div>
@@ -475,10 +604,10 @@ export default function OperatorCustomersPage() {
                               <button
                                 type="button"
                                 onClick={() => toggleCredentialInputVisibility(item.provider, field.key)}
-                                aria-label={`${field.label} ${visibleCredentialInputs[item.provider]?.[field.key] ? "입력값 숨김" : "입력값 표시"}`}
+                                aria-label={`${field.label} ${visibleCredentialInputs[item.provider]?.[field.key] ? "입력 중인 값 가리기" : "입력 중인 값 보기"}`}
                                 className="text-caption text-accent hover:underline"
                               >
-                                {visibleCredentialInputs[item.provider]?.[field.key] ? "입력값 숨김" : "입력값 표시"}
+                                {visibleCredentialInputs[item.provider]?.[field.key] ? "입력 중인 값 가리기" : "입력 중인 값 보기"}
                               </button>
                             </div>
                           </div>
@@ -550,8 +679,23 @@ export default function OperatorCustomersPage() {
           ))}
         </div>
       </section>
+      </div>
 
-      <OperationalIncidentPanel />
+      <div
+        role="tabpanel"
+        id="operator-tabpanel-overview-incidents"
+        aria-labelledby="operator-tab-overview"
+        hidden={activeTab !== "overview"}
+      >
+        <OperationalIncidentPanel />
+      </div>
+
+      <div
+        role="tabpanel"
+        id="operator-tabpanel-customers"
+        aria-labelledby="operator-tab-customers"
+        hidden={activeTab !== "customers"}
+      >
 
       <section className="mb-stack-section">
         <div className="flex items-center justify-between mb-stack">
@@ -698,6 +842,7 @@ export default function OperatorCustomersPage() {
       {!isLoading && customers.length === 0 && !data?.error && (
         <p className="text-body-sm text-subtle">등록된 워크스페이스가 없습니다.</p>
       )}
+      </div>
     </div>
   );
 }
