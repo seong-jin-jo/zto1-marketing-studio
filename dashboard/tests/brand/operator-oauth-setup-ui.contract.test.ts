@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
@@ -14,6 +14,33 @@ const mocks = vi.hoisted(() => ({
 vi.mock("swr", () => ({
   default: (...args: unknown[]) => mocks.swr(...args),
 }));
+
+// page.tsx는 ?tab= 을 next/navigation의 useSearchParams/useRouter로 읽고 쓴다(하우스 패턴,
+// studio/page.tsx·calendar/page.tsx와 동일). 실제 next/navigation은 앱 라우터 컨텍스트 밖에서
+// 던지므로 여기서는 window.location을 진실원으로 삼는 반응형 mock을 둔다.
+vi.mock("next/navigation", () => {
+  const listeners = new Set<() => void>();
+  function applyUrl(url: string) {
+    const [path, query] = url.split("?");
+    window.history.replaceState(null, "", query ? `${path}?${query}` : path);
+    listeners.forEach((cb) => cb());
+  }
+  return {
+    useSearchParams: () => {
+      const [, force] = React.useState(0);
+      React.useEffect(() => {
+        const cb = () => force((x) => x + 1);
+        listeners.add(cb);
+        return () => { listeners.delete(cb); };
+      }, []);
+      return new URLSearchParams(window.location.search);
+    },
+    useRouter: () => ({
+      replace: applyUrl,
+      push: applyUrl,
+    }),
+  };
+});
 
 const page = fs.readFileSync(
   path.resolve(process.cwd(), "src/app/operator/customers/page.tsx"),
@@ -66,8 +93,8 @@ describe("operator central OAuth setup UI contract", () => {
       page.indexOf("Auth 가입자"),
     );
     expect(oauthSection).toContain('type={visibleCredentialInputs');
-    expect(oauthSection).toContain("표시");
-    expect(oauthSection).toContain("숨김");
+    expect(oauthSection).toContain("입력 중인 값 보기");
+    expect(oauthSection).toContain("입력 중인 값 가리기");
     expect(oauthSection).toContain("toggleCredentialInputVisibility");
   });
 
@@ -118,7 +145,10 @@ function renderProviders(providers: ReturnType<typeof provider>[]) {
     isLoading: false,
     mutate: vi.fn(),
   });
-  return render(React.createElement(OperatorCustomersPage));
+  const view = render(React.createElement(OperatorCustomersPage));
+  // OAuth 자격증명은 "중앙 OAuth 앱" 탭 안에 있다(회장 2026-09-21 탭 분리).
+  fireEvent.click(screen.getByRole("tab", { name: "중앙 OAuth 앱" }));
+  return view;
 }
 
 describe("operator central OAuth provider ordering", () => {
@@ -145,8 +175,8 @@ describe("operator central OAuth provider ordering", () => {
       "missing-a",
     ]);
     expect(screen.getByRole("heading", { name: "저장소 장애 1개" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "준비 완료 1개" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "미설정 1개" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "등록됨 1개" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "미등록 1개" })).toBeInTheDocument();
   });
 
   it("keeps the original declaration order inside every status group", () => {
@@ -183,5 +213,226 @@ describe("operator central OAuth provider ordering", () => {
 
     expect(output).toHaveLength(input.length);
     expect(new Set(output).size).toBe(input.length);
+  });
+});
+
+describe("operator console tab split", () => {
+  beforeEach(() => {
+    mocks.swr.mockReset();
+    window.history.replaceState(null, "", "/operator/customers");
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  function renderPage(providers: ReturnType<typeof provider>[] = [provider("x", true)]) {
+    mocks.swr.mockReturnValue({
+      data: {
+        customers: [],
+        authUsers: [],
+        summary: {
+          authUsers: 1,
+          workspaces: 1,
+          activeWorkspaces: 1,
+          connectedAccounts: 0,
+          published: 0,
+          failed: 0,
+        },
+        oauthProviders: providers,
+      },
+      error: undefined,
+      isLoading: false,
+      mutate: vi.fn(),
+    });
+    return render(React.createElement(OperatorCustomersPage));
+  }
+
+  it("defaults to the overview·incident tab and hides the OAuth panel", () => {
+    const { container } = renderPage();
+    expect(screen.getByRole("tab", { name: "개요·장애" })).toHaveAttribute("aria-selected", "true");
+    expect(container.querySelector("#operator-tabpanel-overview")).not.toHaveAttribute("hidden");
+    expect(container.querySelector("#operator-tabpanel-oauth")).toHaveAttribute("hidden");
+  });
+
+  it("switches to the OAuth tab on click and keeps the URL in sync via ?tab=", () => {
+    const { container } = renderPage();
+    fireEvent.click(screen.getByRole("tab", { name: "중앙 OAuth 앱" }));
+    expect(screen.getByRole("tab", { name: "중앙 OAuth 앱" })).toHaveAttribute("aria-selected", "true");
+    expect(container.querySelector("#operator-tabpanel-oauth")).not.toHaveAttribute("hidden");
+    expect(window.location.search).toContain("tab=oauth");
+  });
+
+  it("restores the requested tab from the ?tab= query on initial render", () => {
+    window.history.replaceState(null, "", "/operator/customers?tab=customers");
+    const { container } = renderPage();
+    expect(screen.getByRole("tab", { name: "가입자" })).toHaveAttribute("aria-selected", "true");
+    expect(container.querySelector("#operator-tabpanel-customers")).not.toHaveAttribute("hidden");
+  });
+});
+
+describe("operator OAuth batch save for unregistered channels", () => {
+  beforeEach(() => {
+    mocks.swr.mockReset();
+    window.history.replaceState(null, "", "/operator/customers");
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("saves every filled unregistered channel with one button and reports per-row results", async () => {
+    const missingA = provider("missing-a", false);
+    const missingB = provider("missing-b", false);
+    const fieldFor = (name: string) => ([{
+      key: "clientId" as const,
+      env: `${name.toUpperCase()}_CLIENT_ID`,
+      label: "Client ID",
+      secret: false,
+      configured: false,
+      maskedValue: null,
+    }]);
+    const providers = [
+      { ...missingA, fields: fieldFor("missing-a") },
+      { ...missingB, fields: fieldFor("missing-b") },
+    ];
+    const mutate = vi.fn();
+    mocks.swr.mockReturnValue({
+      data: { customers: [], authUsers: [], oauthProviders: providers },
+      error: undefined,
+      isLoading: false,
+      mutate,
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ ok: true, provider: "missing-a" }))
+      .mockResolvedValueOnce(Response.json({ error: "저장 실패" }, { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(React.createElement(OperatorCustomersPage));
+    fireEvent.click(screen.getByRole("tab", { name: "중앙 OAuth 앱" }));
+    const inputs = screen.getAllByLabelText("Client ID");
+    fireEvent.change(inputs[0], { target: { value: "value-a" } });
+    fireEvent.change(inputs[1], { target: { value: "value-b" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "입력한 채널 모두 저장" }));
+
+    // 성공한 채널(missing-a)은 mutate 후 등록됨으로 옮겨가는 것을 전제로 미등록 결과 줄에서 사라지고,
+    // 실패한 채널(missing-b)만 사유와 함께 남는다.
+    await screen.findByText(/missing-b: 저장 실패/);
+    expect(screen.queryByText(/missing-a:/)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mutate).toHaveBeenCalled();
+  });
+
+  it("경고 없이 그냥 return 하지 않고, 채워진 입력이 하나도 없으면 이유를 안내한다", () => {
+    const missingA = provider("missing-a", false);
+    mocks.swr.mockReturnValue({
+      data: { customers: [], authUsers: [], oauthProviders: [{ ...missingA, fields: [{
+        key: "clientId" as const,
+        env: "MISSING_A_CLIENT_ID",
+        label: "Client ID",
+        secret: false,
+        configured: false,
+        maskedValue: null,
+      }] }] },
+      error: undefined,
+      isLoading: false,
+      mutate: vi.fn(),
+    });
+    vi.stubGlobal("fetch", vi.fn());
+
+    render(React.createElement(OperatorCustomersPage));
+    fireEvent.click(screen.getByRole("tab", { name: "중앙 OAuth 앱" }));
+    fireEvent.click(screen.getByRole("button", { name: "입력한 채널 모두 저장" }));
+
+    expect(screen.getByText("저장할 입력이 없습니다. 미등록 채널의 칸을 채운 뒤 누르세요.")).toBeInTheDocument();
+  });
+
+  it("일부 필드만 채운 채널은 PUT 하지 않고 미입력 필드를 그 줄에 남긴다", () => {
+    const missingA = provider("missing-a", false);
+    mocks.swr.mockReturnValue({
+      data: { customers: [], authUsers: [], oauthProviders: [{ ...missingA, fields: [
+        {
+          key: "clientId" as const,
+          env: "MISSING_A_CLIENT_ID",
+          label: "Client ID",
+          secret: false,
+          configured: false,
+          maskedValue: null,
+        },
+        {
+          key: "clientSecret" as const,
+          env: "MISSING_A_CLIENT_SECRET",
+          label: "Client Secret",
+          secret: true,
+          configured: false,
+          maskedValue: null,
+        },
+      ] }] },
+      error: undefined,
+      isLoading: false,
+      mutate: vi.fn(),
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(React.createElement(OperatorCustomersPage));
+    fireEvent.click(screen.getByRole("tab", { name: "중앙 OAuth 앱" }));
+    fireEvent.change(screen.getByLabelText("Client ID"), { target: { value: "only-id" } });
+    fireEvent.click(screen.getByRole("button", { name: "입력한 채널 모두 저장" }));
+
+    expect(screen.getByText(/missing-a: 미입력: Client Secret/)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("미등록 카드는 기본 펼침이지만 접기 단추가 실제로 접는다", () => {
+    mocks.swr.mockReturnValue({
+      data: { customers: [], authUsers: [], oauthProviders: [provider("missing-a", false)] },
+      error: undefined,
+      isLoading: false,
+      mutate: vi.fn(),
+    });
+    vi.stubGlobal("fetch", vi.fn());
+
+    render(React.createElement(OperatorCustomersPage));
+    fireEvent.click(screen.getByRole("tab", { name: "중앙 OAuth 앱" }));
+
+    const toggle = screen.getByRole("button", { name: "missing-a 자격증명 카드 접기" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "missing-a 자격증명 카드 펼치기" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("일괄 저장 진행 중에는 단건 저장/업데이트 단추도 잠긴다", async () => {
+    const missingA = provider("missing-a", false);
+    const fieldsA = [{
+      key: "clientId" as const,
+      env: "MISSING_A_CLIENT_ID",
+      label: "Client ID",
+      secret: false,
+      configured: false,
+      maskedValue: null,
+    }];
+    mocks.swr.mockReturnValue({
+      data: { customers: [], authUsers: [], oauthProviders: [{ ...missingA, fields: fieldsA }] },
+      error: undefined,
+      isLoading: false,
+      mutate: vi.fn(),
+    });
+    let resolvePut: (() => void) | undefined;
+    const fetchMock = vi.fn().mockImplementation(() => new Promise((resolve) => {
+      resolvePut = () => resolve(Response.json({ ok: true }));
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(React.createElement(OperatorCustomersPage));
+    fireEvent.click(screen.getByRole("tab", { name: "중앙 OAuth 앱" }));
+    fireEvent.change(screen.getByLabelText("Client ID"), { target: { value: "value-a" } });
+    fireEvent.click(screen.getByRole("button", { name: "입력한 채널 모두 저장" }));
+
+    expect(screen.getByRole("button", { name: "전체 세트 저장" })).toBeDisabled();
+    resolvePut?.();
+    await waitFor(() => expect(screen.getByRole("button", { name: "입력한 채널 모두 저장" })).not.toBeDisabled());
   });
 });

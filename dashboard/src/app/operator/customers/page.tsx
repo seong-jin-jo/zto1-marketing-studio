@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { fetcher, isAuthRequiredError } from "@/lib/api";
 import { authHeaders } from "@/lib/auth";
@@ -75,12 +76,12 @@ function groupOAuthProvidersForDisplay<
     },
     {
       key: "ready",
-      label: "준비 완료",
+      label: "등록됨",
       items: providers.filter((item) => !item.unavailableReason && item.credentialsConfigured),
     },
     {
       key: "missing",
-      label: "미설정",
+      label: "미등록",
       items: providers.filter((item) => !item.unavailableReason && !item.credentialsConfigured),
     },
   ] as const;
@@ -91,6 +92,17 @@ function groupOAuthProvidersForDisplay<
       ...group,
       label: `${group.label} ${group.items.length}개`,
     }));
+}
+
+type OperatorTab = "overview" | "oauth" | "customers";
+const OPERATOR_TABS: Array<{ key: OperatorTab; label: string }> = [
+  { key: "overview", label: "개요·장애" },
+  { key: "oauth", label: "중앙 OAuth 앱" },
+  { key: "customers", label: "가입자" },
+];
+
+function parseTab(value: string | null): OperatorTab {
+  return value === "oauth" || value === "customers" ? value : "overview";
 }
 
 interface AuthUser {
@@ -145,9 +157,22 @@ export default function OperatorCustomersPage() {
   const [revealedValues, setRevealedValues] = useState<Record<string, Record<string, string>>>({});
   // 등록된 OAuth provider를 기본 접힘으로 둔다. 펼친 카드만 본문을 렌더해 스크롤 압박을 줄인다.
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({});
-  const toggleProviderExpanded = (provider: string) =>
-    setExpandedProviders((prev) => ({ ...prev, [provider]: !prev[provider] }));
+  // prev[provider]가 비어 있을 수 있어 단순 부정(!prev[provider])이 아니라 화면에 보이는
+  // 현재 펼침 상태(currentlyExpanded)를 넘겨받아 반대로 뒤집는다 — 그렇지 않으면 미등록
+  // 카드(기본값 true)를 처음 누를 때 여전히 true로 세팅돼 죽은 단추가 된다.
+  const toggleProviderExpanded = (provider: string, currentlyExpanded: boolean) =>
+    setExpandedProviders((prev) => ({ ...prev, [provider]: !currentlyExpanded }));
   const revealTimers = useRef<Record<string, number>>({});
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeTab = parseTab(searchParams?.get("tab") ?? null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchRowMsg, setBatchRowMsg] = useState<Record<string, string>>({});
+  const [batchGlobalMsg, setBatchGlobalMsg] = useState("");
+
+  function selectTab(tab: OperatorTab) {
+    router.replace(`/operator/customers?tab=${tab}`, { scroll: false });
+  }
 
   useEffect(() => () => {
     for (const timer of Object.values(revealTimers.current)) window.clearTimeout(timer);
@@ -195,7 +220,7 @@ export default function OperatorCustomersPage() {
   }
 
   async function saveCredentialSet(item: OAuthProviderStatus) {
-    if (busyProvider || item.unavailableReason) return;
+    if (busyProvider || batchBusy || item.unavailableReason) return;
     const values = credentialInputs[item.provider] || {};
     if (item.fields.some((field) => !values[field.key]?.trim())) {
       setOauthActionMsg((current) => ({ ...current, [item.provider]: "모든 필드를 한 세트로 입력해주세요." }));
@@ -225,6 +250,74 @@ export default function OperatorCustomersPage() {
     } finally {
       setBusyProvider(null);
     }
+  }
+
+  async function saveAllFilledCredentialSets(items: OAuthProviderStatus[]) {
+    if (batchBusy) return;
+    const attemptable = items.filter((item) => !item.unavailableReason);
+    // 아무 칸도 안 채운 채 눌렀으면 조용히 return 하지 않고 이유를 말한다(ADR-007).
+    const touched = attemptable.filter((item) => {
+      const values = credentialInputs[item.provider] || {};
+      return item.fields.some((field) => values[field.key]?.trim());
+    });
+    if (touched.length === 0) {
+      setBatchRowMsg({});
+      setBatchGlobalMsg("저장할 입력이 없습니다. 미등록 채널의 칸을 채운 뒤 누르세요.");
+      return;
+    }
+    setBatchGlobalMsg("");
+
+    const results: Record<string, string> = {};
+    const fullyFilled: OAuthProviderStatus[] = [];
+    for (const item of touched) {
+      const values = credentialInputs[item.provider] || {};
+      const emptyFields = item.fields.filter((field) => !values[field.key]?.trim());
+      if (emptyFields.length > 0) {
+        // 부분 입력은 PUT 하지 않고 그 줄에 무엇이 비었는지 남긴다.
+        results[item.provider] = `미입력: ${emptyFields.map((field) => field.label).join(", ")}`;
+        continue;
+      }
+      fullyFilled.push(item);
+    }
+
+    if (fullyFilled.length === 0) {
+      setBatchRowMsg(results);
+      return;
+    }
+
+    setBatchBusy(true);
+    for (const item of fullyFilled) {
+      const values = credentialInputs[item.provider] || {};
+      try {
+        const res = await fetch("/api/operator/oauth-credentials", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ provider: item.provider, values }),
+          cache: "no-store",
+        });
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        if (!res.ok) {
+          results[item.provider] = body.error || `저장 실패 ${res.status}`;
+          continue;
+        }
+        results[item.provider] = "저장됨";
+        setCredentialInputs((current) => ({ ...current, [item.provider]: {} }));
+        hideCredentialInputs(item.provider);
+      } catch {
+        results[item.provider] = "저장 요청에 실패했습니다.";
+      }
+    }
+    setBatchRowMsg(results);
+    setBatchBusy(false);
+    await mutate();
+    // 성공한 채널은 등록됨 묶음으로 옮겨가므로 미등록 머리 밑에 잔존시키지 않는다.
+    setBatchRowMsg((current) => {
+      const next = { ...current };
+      for (const [provider, msg] of Object.entries(current)) {
+        if (msg === "저장됨") delete next[provider];
+      }
+      return next;
+    });
   }
 
   async function revealCredentialSet(item: OAuthProviderStatus) {
@@ -338,12 +431,40 @@ export default function OperatorCustomersPage() {
         <a href="/operator" className="text-caption text-subtle hover:text-muted">운영자 토큰 재입력</a>
       </div>
 
+      <div role="tablist" aria-label="운영자 콘솔 탭" className="mb-stack-section flex flex-wrap gap-stack-tight border-b border-border">
+        {OPERATOR_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            id={`operator-tab-${tab.key}`}
+            aria-selected={activeTab === tab.key}
+            aria-controls={`operator-tabpanel-${tab.key}`}
+            onClick={() => selectTab(tab.key)}
+            className={`min-h-control-touch rounded-t-control px-stack py-stack-tight text-body-sm font-medium ${
+              activeTab === tab.key
+                ? "border-b-2 border-accent text-text"
+                : "text-subtle hover:text-muted"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {isLoading && <p className="text-body-sm text-subtle">불러오는 중…</p>}
       {visibleError && (
         <div className="rounded-control border border-danger/30 bg-danger/10 p-stack text-caption text-danger mb-pad-inset">
           {visibleError}
         </div>
       )}
+
+      <div
+        role="tabpanel"
+        id="operator-tabpanel-overview"
+        aria-labelledby="operator-tab-overview"
+        hidden={activeTab !== "overview"}
+      >
 
       {summary && (
         <section className="mb-stack-section grid grid-cols-2 gap-stack-tight md:grid-cols-3 xl:grid-cols-6" aria-label="운영 요약">
@@ -362,32 +483,63 @@ export default function OperatorCustomersPage() {
           ))}
         </section>
       )}
+      <OperationalIncidentPanel />
+      </div>
 
-      {/* 자격증명 등록은 운영자가 가장 자주 찾는 칸이다. 장애 목록이 길어지면 화면 아래로 밀려
-          "등록 UI 가 없다"고 오인된다(회장 2026-09-20). 요약 바로 아래에 고정하고 장애는 그 다음이다. */}
+      <div
+        role="tabpanel"
+        id="operator-tabpanel-oauth"
+        aria-labelledby="operator-tab-oauth"
+        hidden={activeTab !== "oauth"}
+      >
+      {/* 자격증명 등록은 운영자가 가장 자주 찾는 칸이다. 등록됨/미등록 두 묶음으로 나눠 한 화면에서
+          한꺼번에 관리한다(회장 2026-09-21 탭 분리 제안 채택). */}
       <section className="mb-stack-section" id="oauth-apps">
         <div className="mb-stack flex items-center justify-between gap-stack">
           <div>
             <h3 className="text-body-sm font-semibold text-text">중앙 OAuth 개발자 앱</h3>
             <p className="mt-micro text-caption text-subtle">운영자 전용 암호화 저장소입니다. 기본 화면은 마스킹하며, 원문은 명시적으로 확인한 뒤 30초 후 자동 삭제합니다.</p>
           </div>
-          <span className="text-caption text-subtle">{oauthProviders.filter((item) => item.credentialsConfigured).length}/{oauthProviders.length} 준비</span>
+          <span className="text-caption text-subtle">{oauthProviders.filter((item) => item.credentialsConfigured).length}/{oauthProviders.length} 등록됨</span>
         </div>
         <div className="space-y-stack-section">
           {oauthProviderGroups.map((group) => (
             <section key={group.key} aria-labelledby={`oauth-provider-group-${group.key}`}>
-              <h4 id={`oauth-provider-group-${group.key}`} className="mb-stack-tight text-caption font-semibold text-text">
-                {group.label}
-              </h4>
+              <div className="mb-stack-tight flex flex-wrap items-center justify-between gap-stack-tight">
+                <h4 id={`oauth-provider-group-${group.key}`} className="text-caption font-semibold text-text">
+                  {group.label}
+                </h4>
+                {group.key === "missing" && (
+                  <button
+                    type="button"
+                    onClick={() => void saveAllFilledCredentialSets([...group.items])}
+                    disabled={batchBusy || Boolean(busyProvider)}
+                    className="rounded-chip bg-accent px-stack py-stack-tight text-caption text-accent-fg hover:opacity-90 disabled:opacity-50"
+                  >
+                    {batchBusy ? "저장 중…" : "입력한 채널 모두 저장"}
+                  </button>
+                )}
+              </div>
+              {group.key === "missing" && batchGlobalMsg && (
+                <p className="mb-stack-tight text-caption text-warning">{batchGlobalMsg}</p>
+              )}
+              {group.key === "missing" && Object.keys(batchRowMsg).length > 0 && (
+                <ul className="mb-stack-tight space-y-micro text-caption text-subtle">
+                  {Object.entries(batchRowMsg).map(([provider, msg]) => (
+                    <li key={provider}>{group.items.find((item) => item.provider === provider)?.label ?? provider}: {msg}</li>
+                  ))}
+                </ul>
+              )}
               <div className="grid gap-stack xl:grid-cols-2">
                 {group.items.map((item) => {
-                  const isExpanded = Boolean(expandedProviders[item.provider]);
+                  // 미등록 채널은 기본 펼침이지만(입력칸 즉시 노출) 접을 수도 있다 — 눌러도 반응 없는 죽은 단추 금지(ADR-007).
+                  const isExpanded = expandedProviders[item.provider] ?? group.key === "missing";
                   return (
                   <div key={item.provider} data-oauth-provider={item.provider} className="card p-pad-inset">
               <h5>
               <button
                 type="button"
-                onClick={() => toggleProviderExpanded(item.provider)}
+                onClick={() => toggleProviderExpanded(item.provider, isExpanded)}
                 aria-expanded={isExpanded}
                 aria-controls={`oauth-provider-panel-${item.provider}`}
                 id={`oauth-provider-trigger-${item.provider}`}
@@ -406,12 +558,12 @@ export default function OperatorCustomersPage() {
                         ? item.source === "db"
                           ? "Admin DB에서 완전한 세트 확인"
                           : "완전한 세트가 환경변수로 보호되어 있습니다. 원문 확인 시 암호화 DB로 옮긴 뒤 표시합니다."
-                        : `미설정/불완전: ${item.missing.join(", ")}`}
+                        : `미등록: ${item.missing.join(", ")}`}
                   </p>
                   <p className="mt-micro text-caption text-subtle">출처 {item.source.toUpperCase()} · 갱신 {fmtDate(item.updatedAt)}</p>
                 </div>
                 <span className={`shrink-0 rounded-chip px-stack-tight py-micro text-caption ${item.unavailableReason ? "bg-danger/15 text-danger" : item.credentialsConfigured ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>
-                  {item.unavailableReason ? "저장소 장애" : item.credentialsConfigured ? "준비" : "차단"}
+                  {item.unavailableReason ? "저장소 장애" : item.credentialsConfigured ? "등록됨" : "미등록"}
                 </span>
               </button>
               </h5>
@@ -450,7 +602,7 @@ export default function OperatorCustomersPage() {
                         disabled={busyProvider === item.provider}
                         className="text-caption text-accent hover:underline disabled:opacity-50"
                       >
-                        원문 확인
+                        저장된 값 보기(30초)
                       </button>
                     ) : null}
                   </div>
@@ -475,10 +627,10 @@ export default function OperatorCustomersPage() {
                               <button
                                 type="button"
                                 onClick={() => toggleCredentialInputVisibility(item.provider, field.key)}
-                                aria-label={`${field.label} ${visibleCredentialInputs[item.provider]?.[field.key] ? "입력값 숨김" : "입력값 표시"}`}
+                                aria-label={`${field.label} ${visibleCredentialInputs[item.provider]?.[field.key] ? "입력 중인 값 가리기" : "입력 중인 값 보기"}`}
                                 className="text-caption text-accent hover:underline"
                               >
-                                {visibleCredentialInputs[item.provider]?.[field.key] ? "입력값 숨김" : "입력값 표시"}
+                                {visibleCredentialInputs[item.provider]?.[field.key] ? "입력 중인 값 가리기" : "입력 중인 값 보기"}
                               </button>
                             </div>
                           </div>
@@ -514,7 +666,7 @@ export default function OperatorCustomersPage() {
                     <button
                       type="button"
                       onClick={() => void saveCredentialSet(item)}
-                      disabled={Boolean(item.unavailableReason) || busyProvider === item.provider}
+                      disabled={Boolean(item.unavailableReason) || busyProvider === item.provider || batchBusy}
                       className="rounded-chip bg-accent px-stack py-stack-tight text-caption text-accent-fg hover:opacity-90 disabled:opacity-50"
                     >
                       {busyProvider === item.provider ? "처리 중…" : item.credentialsConfigured ? "전체 세트 업데이트" : "전체 세트 저장"}
@@ -550,8 +702,14 @@ export default function OperatorCustomersPage() {
           ))}
         </div>
       </section>
+      </div>
 
-      <OperationalIncidentPanel />
+      <div
+        role="tabpanel"
+        id="operator-tabpanel-customers"
+        aria-labelledby="operator-tab-customers"
+        hidden={activeTab !== "customers"}
+      >
 
       <section className="mb-stack-section">
         <div className="flex items-center justify-between mb-stack">
@@ -698,6 +856,7 @@ export default function OperatorCustomersPage() {
       {!isLoading && customers.length === 0 && !data?.error && (
         <p className="text-body-sm text-subtle">등록된 워크스페이스가 없습니다.</p>
       )}
+      </div>
     </div>
   );
 }
