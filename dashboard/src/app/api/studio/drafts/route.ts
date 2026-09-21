@@ -2,6 +2,10 @@ import { withTenant } from "@/lib/db";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
 import { resolveCurrentWork } from "@/lib/studio/current-work";
+import { validateCardDeck, CardDeckValidationError, deckProjection } from "@/lib/studio/card-deck-contract";
+
+/** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
+const CARD_DECK_MAX_BYTES = 64 * 1024;
 
 // Studio 초안/발행 이력 — Supabase drafts 테이블(테넌트별). payload jsonb에 본문 보관.
 interface DraftRow {
@@ -20,6 +24,7 @@ interface DraftRow {
     editKind?: unknown;
     editLines?: unknown;
     cardTextPositions?: unknown;
+    cardDeck?: unknown;
     titles?: unknown;
     captions?: unknown;
     hashtags?: unknown;
@@ -69,6 +74,7 @@ export async function GET(request: Request) {
       editKind: r.payload?.editKind ?? null,
       editLines: r.payload?.editLines ?? null,
       cardTextPositions: r.payload?.cardTextPositions ?? null,
+      cardDeck: r.payload?.cardDeck ?? null,
       titles: r.payload?.titles ?? {},
       captions: r.payload?.captions ?? {},
       hashtags: r.payload?.hashtags ?? {},
@@ -109,6 +115,29 @@ export async function POST(request: Request) {
       error: "선택 계정값을 확인해 주세요",
     }, { status: 422, headers: { "Cache-Control": "no-store" } });
   }
+  let cardDeckProjectedLines: string[] | null = null;
+  if (body.cardDeck !== undefined && body.cardDeck !== null) {
+    const serialized = JSON.stringify(body.cardDeck);
+    if (Buffer.byteLength(serialized, "utf8") > CARD_DECK_MAX_BYTES) {
+      return Response.json({
+        ok: false,
+        code: "CARD_DECK_TOO_LARGE",
+        error: "카드 덱이 너무 큽니다",
+      }, { status: 413, headers: { "Cache-Control": "no-store" } });
+    }
+    try {
+      validateCardDeck(body.cardDeck);
+      cardDeckProjectedLines = deckProjection(body.cardDeck).lines;
+    } catch (e) {
+      const rule = e instanceof CardDeckValidationError ? e.rule : "unknown";
+      return Response.json({
+        ok: false,
+        code: "INVALID_CARD_DECK",
+        rule,
+        error: e instanceof Error ? e.message : "카드 덱을 확인해 주세요",
+      }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
+  }
   const tenantId = await effectiveTenantId(request, body.tenant_id);
   if (!tenantId) return Response.json({ error: "tenant_id required" }, { status: 400 });
   const payload = {
@@ -118,8 +147,11 @@ export async function POST(request: Request) {
     publishReconciliation: body.publishReconciliation ?? null,
     editFormat: body.editFormat ?? null,
     editKind: body.editKind ?? null,
-    editLines: body.editLines ?? null,
+    // cardDeck 이 있으면 그 투영이 진실원이다(§3.3 "cardDeck 이 이긴다"). 클라이언트가
+    // 보낸 editLines 와 다르면 여기서 덮어쓴다.
+    editLines: cardDeckProjectedLines ?? body.editLines ?? null,
     cardTextPositions: body.cardTextPositions ?? null,
+    cardDeck: body.cardDeck ?? null,
     titles: body.titles ?? {},
     captions: body.captions ?? {},
     hashtags: body.hashtags ?? {},

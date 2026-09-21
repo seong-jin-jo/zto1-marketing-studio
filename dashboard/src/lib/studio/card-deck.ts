@@ -22,6 +22,8 @@ import {
   type CardTheme,
   type TextCardInput,
 } from "./text-card-image";
+import type { CardDeck, CardTemplate } from "./card-deck-contract";
+import { CARD_TEMPLATE_RENDERERS } from "./card-templates";
 
 /** 편집실이 쓰는 아홉 자리 표기를 카드 그리기가 쓰는 세 자리로 줄인다. */
 export function verticalFrom(position: string | undefined): CardTextVerticalPosition {
@@ -41,6 +43,10 @@ export type CardDeckSpec = {
   theme?: CardTheme;
   /** 장마다의 글자 자리. 편집실 표기(top-center 등)를 그대로 받는다. */
   positions?: (string | undefined)[];
+  /** "plain"(기존 글자 카드) | "chat_bubble"(신규). 없으면 plain 으로 본다(회귀 0). */
+  template?: CardTemplate;
+  /** template="chat_bubble" 일 때만 쓴다. 렌더 입력은 이 덱의 slides 에서 직접 만든다. */
+  deck?: CardDeck;
 };
 
 /**
@@ -76,11 +82,30 @@ export type CardDeckUpload = {
 
 export class CardDeckError extends Error {}
 
+/** template="chat_bubble" 일 때 덱의 slides 순서대로 PNG data URL 목록을 그린다. */
+function renderChatBubbleDeck(deck: CardDeck): string[] {
+  const renderer = CARD_TEMPLATE_RENDERERS.chat_bubble;
+  const total = deck.slides.length;
+  return deck.slides.map((slide, index) => {
+    const dataUrl = renderer({ deck, slide, index, total });
+    if (!dataUrl) throw new CardDeckError("이 브라우저에서는 카드를 그릴 수 없습니다.");
+    return dataUrl;
+  });
+}
+
 /**
  * 한 벌을 그려 전부 저장하고 배달 주소 목록을 돌려준다.
  * 한 장이라도 저장에 실패하면 전체를 실패로 본다. 반쪽 카드뉴스는 올리면 안 된다.
+ *
+ * template 이 "chat_bubble" 이면 spec.deck 의 slides 로 그린다(글자 위치 9칸 경로 대신).
+ * template 이 없거나 "plain" 이면 기존 lines 기반 경로 그대로(회귀 0).
  */
 export async function renderAndUploadCardDeck(spec: CardDeckSpec, deps: CardDeckDeps): Promise<string[]> {
+  if (spec.template === "chat_bubble") {
+    if (!spec.deck) throw new CardDeckError("chat_bubble 템플릿에는 deck 이 필요합니다.");
+    const drawn = renderChatBubbleDeck(spec.deck);
+    return uploadDrawnCards(drawn, deps);
+  }
   const inputs = cardDeckRenderInputs(spec);
   if (!inputs.length) throw new CardDeckError("카드로 만들 글자가 없습니다.");
   const render = deps.render ?? renderTextCard;
@@ -90,6 +115,10 @@ export async function renderAndUploadCardDeck(spec: CardDeckSpec, deps: CardDeck
     if (!dataUrl) throw new CardDeckError("이 브라우저에서는 카드를 그릴 수 없습니다.");
     drawn.push(dataUrl);
   }
+  return uploadDrawnCards(drawn, deps);
+}
+
+async function uploadDrawnCards(drawn: string[], deps: CardDeckDeps): Promise<string[]> {
   const urls: string[] = [];
   const rollbacks: Array<() => Promise<void>> = [];
   try {

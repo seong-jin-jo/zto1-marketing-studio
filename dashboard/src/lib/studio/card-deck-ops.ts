@@ -1,0 +1,379 @@
+/**
+ * 03c 편집도구(카드컨셉13-채팅말풍선/03c-편집도구-통합.html)의 말풍선·슬라이드 연산을
+ * DOM 무관 순수 함수로 옮긴다.
+ *
+ * 03c 는 `contenteditable`·`document.createRange`·`localStorage` 에 묶여 있어 그대로
+ * 못 옮긴다(설계 §5 F1). 아래는 그 파일의 어느 함수를 어디로 옮겼는지 표다(원본 행 번호는
+ * 이 파일 작성 시점 03c 스냅샷 기준).
+ *
+ * | 03c 함수 (행)              | 이식 대상            |
+ * |----------------------------|-----------------------|
+ * | runBubbleAction('add') 402 | addBubble              |
+ * | 'split' 403~408            | splitBubble            |
+ * | 'merge' 409~414            | mergeBubble            |
+ * | 'delete' 415               | deleteBubble           |
+ * | 'toggle' 416                | toggleSpeaker          |
+ * | 'up'/'down' 417~418         | moveBubble             |
+ * | rich/saveEditor 254~275     | toggleBold + normalizeSegments |
+ * | moveSlide 436~454           | moveSlide              |
+ * | addSlide 464~476            | addSlide               |
+ * | deleteSlide 477~488         | deleteSlide            |
+ *
+ * 모든 연산은 새 객체를 반환한다(불변 — 원본 deck 을 mutate 하지 않는다). revision 은
+ * 호출부(EditRoom)가 저장 직전에 +1 하지만, 여기서도 반환값에 revision+1 을 반영해
+ * "연산 = 상태 변화" 를 단일하게 유지한다. 실패는 CardDeckOpsError(code, message) 로
+ * 이유를 데리고 나온다(실수.md 2026-09-09).
+ */
+import type { Bubble, CardDeck, CardSlide, Segment, SlideRole } from "./card-deck-contract";
+import { newBubbleId, newSlideId } from "./card-deck-contract";
+
+export class CardDeckOpsError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+  }
+}
+
+function withRevision(deck: CardDeck, slides: CardSlide[]): CardDeck {
+  return { ...deck, slides, revision: deck.revision + 1 };
+}
+
+function findSlide(deck: CardDeck, slideId: string): { slide: CardSlide; index: number } {
+  const index = deck.slides.findIndex((s) => s.id === slideId);
+  if (index < 0) throw new CardDeckOpsError("OPS_SLIDE_NOT_FOUND", `slide ${slideId} not found`);
+  return { slide: deck.slides[index], index };
+}
+
+function findBubble(slide: CardSlide, bubbleId: string): { bubble: Bubble; index: number } {
+  const bubbles = slide.bubbles ?? [];
+  const index = bubbles.findIndex((b) => b.id === bubbleId);
+  if (index < 0) throw new CardDeckOpsError("OPS_BUBBLE_NOT_FOUND", `bubble ${bubbleId} not found`);
+  return { bubble: bubbles[index], index };
+}
+
+function reindexBubbles(bubbles: Bubble[]): Bubble[] {
+  return bubbles.map((b, order) => ({ ...b, order }));
+}
+
+function replaceSlide(deck: CardDeck, slideIndex: number, updated: CardSlide): CardSlide[] {
+  return deck.slides.map((s, i) => (i === slideIndex ? updated : s));
+}
+
+// ---------------------------------------------------------------------------
+// 말풍선 연산 (03c runBubbleAction)
+// ---------------------------------------------------------------------------
+
+/** 03c 'add' 402행: 뒤에 같은 화자 빈 말풍선. */
+export function addBubble(deck: CardDeck, slideId: string, afterBubbleId: string | null): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  const bubbles = slide.bubbles ?? [];
+  const afterIndex = afterBubbleId ? findBubble(slide, afterBubbleId).index : bubbles.length - 1;
+  const speaker = bubbles[afterIndex]?.speaker ?? "brand";
+  const next: Bubble = {
+    id: newBubbleId(),
+    order: 0,
+    speaker,
+    segments: [{ text: "", bold: false }],
+    reaction: null,
+  };
+  const updatedBubbles = reindexBubbles([
+    ...bubbles.slice(0, afterIndex + 1),
+    next,
+    ...bubbles.slice(afterIndex + 1),
+  ]);
+  return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, bubbles: updatedBubbles }));
+}
+
+/**
+ * 03c 'split' 403~408 + splitRichValue 306~316: 원본은 `<br>` 기준으로만 쪼갠다.
+ * 여기서는 캐럿 위치(세그먼트 인덱스 + 오프셋)로 쪼갠다(줄바꿈이 없어도 동작).
+ * 세그먼트 경계가 아니면 그 세그먼트를 둘로 나누고 bold 를 양쪽에 복사한다.
+ */
+export function splitBubble(
+  deck: CardDeck,
+  slideId: string,
+  bubbleId: string,
+  at: { segmentIndex: number; offset: number },
+): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  const bubbles = slide.bubbles ?? [];
+  const { bubble, index: bubbleIndex } = findBubble(slide, bubbleId);
+  const segments = bubble.segments;
+  if (at.segmentIndex < 0 || at.segmentIndex >= segments.length) {
+    throw new CardDeckOpsError("OPS_SPLIT_OUT_OF_RANGE", "split position segmentIndex out of range");
+  }
+  const target = segments[at.segmentIndex];
+  const offset = Math.max(0, Math.min(at.offset, target.text.length));
+
+  const before: Segment[] = [
+    ...segments.slice(0, at.segmentIndex),
+    ...(offset > 0 ? [{ text: target.text.slice(0, offset), bold: target.bold }] : []),
+  ];
+  const after: Segment[] = [
+    ...(offset < target.text.length ? [{ text: target.text.slice(offset), bold: target.bold }] : []),
+    ...segments.slice(at.segmentIndex + 1),
+  ];
+  if (!before.length || !after.length) {
+    throw new CardDeckOpsError("OPS_SPLIT_EMPTY", "split would produce an empty bubble");
+  }
+
+  const first: Bubble = { ...bubble, id: bubble.id, segments: before };
+  const second: Bubble = { ...bubble, id: newBubbleId(), segments: after };
+  const updatedBubbles = reindexBubbles([
+    ...bubbles.slice(0, bubbleIndex),
+    first,
+    second,
+    ...bubbles.slice(bubbleIndex + 1),
+  ]);
+  return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, bubbles: updatedBubbles }));
+}
+
+/**
+ * 03c 'merge' 409~414: 다음 말풍선과 합친다. 화자가 다르면 거부한다(OPS_SPEAKER_MISMATCH —
+ * 원본에는 없던 가드지만, 화자 색이 다른 말풍선을 하나로 합치면 렌더가 어느 색을 써야
+ * 할지 알 수 없다).
+ */
+export function mergeBubble(deck: CardDeck, slideId: string, bubbleId: string): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  const bubbles = slide.bubbles ?? [];
+  const { bubble, index: bubbleIndex } = findBubble(slide, bubbleId);
+  const next = bubbles[bubbleIndex + 1];
+  if (!next) throw new CardDeckOpsError("OPS_MERGE_NO_NEXT", "there is no next bubble to merge with");
+  if (next.speaker !== bubble.speaker) {
+    throw new CardDeckOpsError("OPS_SPEAKER_MISMATCH", "cannot merge bubbles with different speakers");
+  }
+  // 다음 말풍선의 첫 조각 앞에 줄바꿈 텍스트 세그먼트를 넣는다(03c 관습: <br> 삽입).
+  const nextSegments = next.segments.map((segment, index) =>
+    index === 0 ? { ...segment, text: `\n${segment.text}` } : segment);
+  const merged: Bubble = { ...bubble, segments: [...bubble.segments, ...nextSegments] };
+  const updatedBubbles = reindexBubbles([
+    ...bubbles.slice(0, bubbleIndex),
+    merged,
+    ...bubbles.slice(bubbleIndex + 2),
+  ]);
+  return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, bubbles: updatedBubbles }));
+}
+
+/** 03c 'delete' 415행. 장에 말풍선이 1개면 거부한다(장이 비면 validator 위반). */
+export function deleteBubble(deck: CardDeck, slideId: string, bubbleId: string): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  const bubbles = slide.bubbles ?? [];
+  if (bubbles.length <= 1) {
+    throw new CardDeckOpsError("OPS_DELETE_LAST_BUBBLE", "cannot delete the only bubble in a slide");
+  }
+  const { index: bubbleIndex } = findBubble(slide, bubbleId);
+  const updatedBubbles = reindexBubbles(bubbles.filter((_, i) => i !== bubbleIndex));
+  return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, bubbles: updatedBubbles }));
+}
+
+/** 03c 'toggle' 416행: student↔mentor → reader↔brand. */
+export function toggleSpeaker(deck: CardDeck, slideId: string, bubbleId: string): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  const bubbles = slide.bubbles ?? [];
+  const { index: bubbleIndex } = findBubble(slide, bubbleId);
+  const updatedBubbles = bubbles.map((b, i) =>
+    i === bubbleIndex ? { ...b, speaker: b.speaker === "reader" ? "brand" as const : "reader" as const } : b);
+  return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, bubbles: updatedBubbles }));
+}
+
+/** 03c 'up'/'down' 417~418행: 자리 맞바꿈. direction 은 -1(위) 또는 +1(아래). */
+export function moveBubble(deck: CardDeck, slideId: string, bubbleId: string, direction: -1 | 1): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  const bubbles = slide.bubbles ?? [];
+  const { index: bubbleIndex } = findBubble(slide, bubbleId);
+  const target = bubbleIndex + direction;
+  if (target < 0 || target >= bubbles.length) {
+    throw new CardDeckOpsError("OPS_MOVE_OUT_OF_RANGE", "cannot move bubble beyond slide bounds");
+  }
+  const swapped = [...bubbles];
+  [swapped[bubbleIndex], swapped[target]] = [swapped[target], swapped[bubbleIndex]];
+  return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, bubbles: reindexBubbles(swapped) }));
+}
+
+/**
+ * 03c rich/cleanRich/saveEditor 254~275행(HTML `<strong>` 왕복)을 세그먼트 조작으로 대체.
+ * range 는 말풍선 전체 텍스트 기준 문자 오프셋(from ≤ to)이다. 그 범위만 bold:true 로
+ * 분리하고, 인접한 같은 bold 값의 세그먼트는 병합한다(normalizeSegments). 이미 장에
+ * 볼드 덩이가 있는데 이 토글로 두 번째 덩이가 생기면 OPS_BOLD_LIMIT.
+ */
+export function toggleBold(
+  deck: CardDeck,
+  slideId: string,
+  bubbleId: string,
+  range: { from: number; to: number },
+): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  const bubbles = slide.bubbles ?? [];
+  const { bubble, index: bubbleIndex } = findBubble(slide, bubbleId);
+  const fullText = bubble.segments.map((s) => s.text).join("");
+  const from = Math.max(0, Math.min(range.from, fullText.length));
+  const to = Math.max(from, Math.min(range.to, fullText.length));
+  if (from === to) throw new CardDeckOpsError("OPS_BOLD_EMPTY_RANGE", "bold range must be non-empty");
+
+  const willBold = !isFullyBold(bubble.segments, from, to);
+  const rebuilt = normalizeSegments(applyBoldRange(bubble.segments, from, to, willBold));
+  const updatedBubble: Bubble = { ...bubble, segments: rebuilt };
+  const updatedBubbles = bubbles.map((b, i) => (i === bubbleIndex ? updatedBubble : b));
+  const updatedSlide: CardSlide = { ...slide, bubbles: updatedBubbles };
+
+  if (willBold) {
+    const chunks = countBoldChunksInBubbles(updatedBubbles);
+    if (chunks > 1) throw new CardDeckOpsError("OPS_BOLD_LIMIT", "한 장에 굵은 덩이는 하나입니다");
+  }
+  return withRevision(deck, replaceSlide(deck, slideIndex, updatedSlide));
+}
+
+function isFullyBold(segments: Segment[], from: number, to: number): boolean {
+  let cursor = 0;
+  for (const segment of segments) {
+    const start = cursor;
+    const end = cursor + segment.text.length;
+    cursor = end;
+    const overlapStart = Math.max(start, from);
+    const overlapEnd = Math.min(end, to);
+    if (overlapStart < overlapEnd && !segment.bold) return false;
+  }
+  return true;
+}
+
+function applyBoldRange(segments: Segment[], from: number, to: number, bold: boolean): Segment[] {
+  const result: Segment[] = [];
+  let cursor = 0;
+  for (const segment of segments) {
+    const start = cursor;
+    const end = cursor + segment.text.length;
+    cursor = end;
+    const overlapStart = Math.max(start, from);
+    const overlapEnd = Math.min(end, to);
+    if (overlapStart >= overlapEnd) {
+      result.push(segment);
+      continue;
+    }
+    if (overlapStart > start) result.push({ text: segment.text.slice(0, overlapStart - start), bold: segment.bold });
+    result.push({ text: segment.text.slice(overlapStart - start, overlapEnd - start), bold });
+    if (overlapEnd < end) result.push({ text: segment.text.slice(overlapEnd - start), bold: segment.bold });
+  }
+  return result;
+}
+
+/** 인접 동일 bold 세그먼트 병합, 빈 세그먼트 제거. */
+export function normalizeSegments(segments: Segment[]): Segment[] {
+  const nonEmpty = segments.filter((s) => s.text.length > 0);
+  const merged: Segment[] = [];
+  for (const segment of nonEmpty) {
+    const last = merged[merged.length - 1];
+    if (last && last.bold === segment.bold) {
+      last.text += segment.text;
+    } else {
+      merged.push({ ...segment });
+    }
+  }
+  return merged.length ? merged : [{ text: "", bold: false }];
+}
+
+function countBoldChunksInBubbles(bubbles: Bubble[]): number {
+  let chunks = 0;
+  let inChunk = false;
+  for (const bubble of bubbles) {
+    for (const segment of bubble.segments) {
+      if (segment.bold && segment.text) {
+        if (!inChunk) { chunks += 1; inChunk = true; }
+      } else {
+        inChunk = false;
+      }
+    }
+  }
+  return chunks;
+}
+
+// ---------------------------------------------------------------------------
+// 슬라이드 연산 (03c moveSlide/addSlide/deleteSlide 436~488행)
+// ---------------------------------------------------------------------------
+
+function assertNotEdgeLocked(deck: CardDeck, index: number, action: string): void {
+  const isFirst = index === 0;
+  const isLast = index === deck.slides.length - 1;
+  if (isFirst || isLast) {
+    throw new CardDeckOpsError("OPS_SLIDE_LOCKED", `cannot ${action} the cover or cta slide`);
+  }
+}
+
+/** 03c moveSlide 436~454행: 표지·마지막(CTA) 고정 채 교환. */
+export function moveSlide(deck: CardDeck, from: number, to: number): CardDeck {
+  if (from < 0 || from >= deck.slides.length || to < 0 || to >= deck.slides.length) {
+    throw new CardDeckOpsError("OPS_SLIDE_OUT_OF_RANGE", "slide index out of range");
+  }
+  assertNotEdgeLocked(deck, from, "move");
+  assertNotEdgeLocked(deck, to, "move");
+  const swapped = [...deck.slides];
+  [swapped[from], swapped[to]] = [swapped[to], swapped[from]];
+  return withRevision(deck, swapped.map((s, order) => ({ ...s, order })));
+}
+
+/** 03c addSlide 464~476행: 새 chat 장 삽입(질문·답 견본). 11장 초과면 거부. */
+export function addSlide(deck: CardDeck, afterIndex: number): CardDeck {
+  if (deck.slides.length >= 11) {
+    throw new CardDeckOpsError("OPS_SLIDE_LIMIT", "cardDeck cannot exceed 11 slides");
+  }
+  if (afterIndex < 0 || afterIndex >= deck.slides.length - 1) {
+    throw new CardDeckOpsError("OPS_SLIDE_OUT_OF_RANGE", "cannot add a slide after the cta slide");
+  }
+  const newSlide: CardSlide = {
+    id: newSlideId(),
+    order: 0,
+    role: "chat" as SlideRole,
+    bubbles: [
+      { id: newBubbleId(), order: 0, speaker: "reader", segments: [{ text: "질문을 입력하세요", bold: false }], reaction: null },
+      { id: newBubbleId(), order: 1, speaker: "brand", segments: [{ text: "답변을 입력하세요", bold: false }], reaction: null },
+    ],
+    image_url: null,
+  };
+  const inserted = [
+    ...deck.slides.slice(0, afterIndex + 1),
+    newSlide,
+    ...deck.slides.slice(afterIndex + 1),
+  ];
+  return withRevision(deck, inserted.map((s, order) => ({ ...s, order })));
+}
+
+/** 03c deleteSlide 477~488행: 표지·마지막 제외 삭제. 7장 미만이 되면 거부. */
+export function deleteSlide(deck: CardDeck, index: number): CardDeck {
+  assertNotEdgeLocked(deck, index, "delete");
+  if (deck.slides.length <= 7) {
+    throw new CardDeckOpsError("OPS_SLIDE_MIN", "cardDeck cannot go below 7 slides");
+  }
+  const remaining = deck.slides.filter((_, i) => i !== index);
+  return withRevision(deck, remaining.map((s, order) => ({ ...s, order })));
+}
+
+// ---------------------------------------------------------------------------
+// 렌더러 전용: 저장 구조가 아니라 그리기 직전에만 같은 화자 연속을 turn 으로 묶는다.
+// 03c rowsFromItems 286~293행.
+// ---------------------------------------------------------------------------
+
+export type Turn = { speaker: Bubble["speaker"]; bubbles: Bubble[] };
+
+export function groupTurns(bubbles: Bubble[]): Turn[] {
+  const turns: Turn[] = [];
+  for (const bubble of bubbles) {
+    const last = turns[turns.length - 1];
+    if (last && last.speaker === bubble.speaker) {
+      last.bubbles.push(bubble);
+    } else {
+      turns.push({ speaker: bubble.speaker, bubbles: [bubble] });
+    }
+  }
+  return turns;
+}
+
+// ---------------------------------------------------------------------------
+// 저장 전 정리: placeholder 빈 말풍선(UI 가 add 직후 넣는 안내문 자리)을 제거.
+// ---------------------------------------------------------------------------
+
+export function pruneEmptyBubbles(deck: CardDeck): CardDeck {
+  const slides = deck.slides.map((slide) => {
+    if (!slide.bubbles) return slide;
+    const bubbles = reindexBubbles(slide.bubbles.filter((b) => b.segments.some((s) => s.text.trim().length > 0)));
+    return { ...slide, bubbles };
+  });
+  return { ...deck, slides };
+}
