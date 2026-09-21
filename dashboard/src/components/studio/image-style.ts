@@ -124,13 +124,45 @@ const NO_TEXT = "clean minimal composition, plain surfaces, natural materials, c
  * 순서를 바꾼다. **주제가 무엇을 그릴지 정하고 시각 묘사는 그것을 꾸민다.** 둘 다 있으면
  * 둘 다 싣되 주제를 앞에 둔다. 앞에 오는 말이 그림의 주인공이 된다.
  */
-export function pickImageSubject(input: { imagePrompt?: string; topic?: string }): string {
-  const visual = (input.imagePrompt || "").trim();
+/**
+ * 2026-09-22 실측(j.the.great.creator): `/api/studio/text` 가 낸 `image_prompt` 에
+ * "a dashboard with icons and charts" 처럼 글자가 놓일 물체 이름이 그대로 들어 있었다.
+ * 지시문 규격(route.ts)을 고쳐도 LLM 이 규격을 완전히 지키리라는 보장은 없다. 부정문으로
+ * "화면 없이"를 더하면 위 `NO_TEXT` 주석의 실측대로 그 낱말이 오히려 더 그려진다. 그래서
+ * 규격을 어기고 들어온 위험 명사를 **지시문에서 통째로 지운다** — 없던 일로 만든다.
+ *
+ * 명사만 지운다(형용사·동사는 남긴다). 지우고 남은 문장이 너무 짧아지면(피사체가
+ * 사라지면) 호출부가 업종 장면으로 보강한다.
+ */
+const RISKY_NOUN_PATTERN = /\b(screens?|monitors?|displays?|dashboards?|documents?|papers?|signs?|signage|signboards?|storefronts?|icons?|charts?|graphs?|infographics?|speech\s?bubbles?|chat\s?bubbles?|notifications?|badges?|tags?|labels?|logos?|banners?|posters?|billboards?|menus?|receipts?|invoices?|keyboards?\s+with\s+text|texts?|lettering|typography|captions?|subtitles?|watermarks?|uis?|apps?|interfaces?|websites?|webpages?)\b/gi;
+
+/** LLM 이 규격을 어기고 낸 위험 명사를 지시문에서 지운다. */
+export function stripRiskyNouns(text: string): string {
+  return text
+    .replace(RISKY_NOUN_PATTERN, " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.])/g, "$1")
+    .replace(/,\s*,/g, ",")
+    .trim();
+}
+
+/** 명사를 지우고 남은 말이 피사체를 잃을 만큼 빈약한지 본다(단어 3개 미만이면 빈약). */
+function isThin(text: string): boolean {
+  return text.split(/\s+/).filter(Boolean).length < 3;
+}
+
+export function pickImageSubject(input: { imagePrompt?: string; topic?: string; industry?: string }): string {
+  const visualRaw = (input.imagePrompt || "").trim();
+  const visual = visualRaw ? stripRiskyNouns(visualRaw) : "";
   const topic = (input.topic || "").trim();
   // 주제어도 길면 문장일 가능성이 높다. 짧을 때만 쓴다.
   const usableTopic = topic && [...topic].length <= 30 ? topic : "";
-  if (usableTopic && visual) return `${usableTopic}. ${visual}`;
-  if (visual) return visual;
+  const industryScene = INDUSTRY_SCENES.find((one) => one.match.test(input.industry || ""))?.scene;
+  const visualUsable = visual && !isThin(visual) ? visual : "";
+  if (usableTopic && visualUsable) return `${usableTopic}. ${visualUsable}`;
+  // 규격을 어기고 온 시각 묘사가 위험 명사를 지우고 나서 빈약해지면, 피사체 없이 내보내지
+  // 않고 업종 장면으로 보강한다(업종을 모르면 기존 계약대로 무난한 장면 하나만 쓴다).
+  if (visualRaw && !visualUsable) return usableTopic ? `${usableTopic}. ${industryScene || "brand lifestyle scene"}` : (industryScene || "brand lifestyle scene");
   if (usableTopic) return usableTopic;
   return "brand lifestyle scene";
 }

@@ -400,6 +400,30 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const [quickBlockReason, setQuickBlockReason] = useState<string | null>(null);
   const generationInFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * 2026-09-22 실측(j.the.great.creator): "초안 만들기" 를 눌러 약 40초 뒤
+   * `/api/studio/text` 가 200 으로 후보를 만들었는데, 화면 상단 "구조 초안" 카운터는
+   * 그대로 0 이고 결과는 아래 "고른 형식의 생성 후보" 섹션에만 붙어 회장이 "안 되는 것
+   * 같다" 고 판단했다. 그 카운터는 A/B/C 구조 선택지(`candidates`) 를 세는 것이지 이
+   * 빠른 길의 결과(`quickDraftSections`) 를 세지 않는다 — 서로 다른 값이다. 결과가
+   * 생겼음을 화면이 스스로 알리지 않으면 사용자는 완료를 알 길이 없다.
+   */
+  const quickDraftResultRef = useRef<HTMLDivElement>(null);
+  const [justCompletedDraft, setJustCompletedDraft] = useState(false);
+  const prevQuickDraftLoading = useRef(quickDraftLoading);
+  useEffect(() => {
+    const wasLoading = prevQuickDraftLoading.current;
+    prevQuickDraftLoading.current = quickDraftLoading;
+    if (wasLoading && !quickDraftLoading && quickDraft && !quickDraftError) {
+      // jsdom(이 프로젝트의 다른 시험 다수)은 scrollIntoView 를 안 채워 둔다. 없는
+      // 환경에서 부르면 그 테스트가 죽으므로 있을 때만 부른다.
+      quickDraftResultRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      setJustCompletedDraft(true);
+      const timer = setTimeout(() => setJustCompletedDraft(false), 2600);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [quickDraftLoading, quickDraft, quickDraftError]);
   // 부모가 "새로 시작" 을 확정하면 이 방도 처음으로 돌아간다. 부모 상태만 비우고 여기를
   // 두면 화면에는 지운 적 없는 후보가 남아 사용자는 무엇이 버려졌는지 알 수 없다.
   const firstReset = useRef(true);
@@ -835,10 +859,14 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
             {quickBlockReason ? <p role="alert" className="text-caption text-danger">{quickBlockReason}</p> : null}
             {quickDraftError ? <p role="alert" className="text-caption text-danger">{quickDraftError}</p> : null}
           </section>
-          <section className="grid gap-stack sm:grid-cols-3" aria-label="생성실 요약">
+          <section className="grid gap-stack sm:grid-cols-4" aria-label="생성실 요약">
             <article className="card p-pad-inset"><span className="text-caption text-subtle">선택한 형식</span><b className="mt-micro block text-body text-text">{primaryKind ? CREATE_KIND_LABELS[primaryKind] : "선택 전"}</b></article>
             <article className="card p-pad-inset"><span className="text-caption text-subtle">반영한 학습 정보</span><b className="mt-micro block text-body text-text">{learnedCount}개</b></article>
-            <article className="card p-pad-inset"><span className="text-caption text-subtle">구조 초안</span><b className="mt-micro block text-body text-text">{candidates.length}개</b></article>
+            {/* "구조 초안"은 A, B, C 구조 예시(아래 카드)를 세는 값이다. "초안 만들기"가
+                낸 결과는 이 값이 아니라 "생성한 후보" 칸에 뜬다 — 서로 다른 수를 같은
+                이름으로 부르면 결과가 생겼는데도 "안 된다"로 오해한다(2026-09-22 실측). */}
+            <article className="card p-pad-inset"><span className="text-caption text-subtle">구조 예시(A/B/C)</span><b className="mt-micro block text-body text-text">{candidates.length}개</b></article>
+            <article className="card p-pad-inset" data-quick-draft-count={quickDraftSections.length}><span className="text-caption text-subtle">생성한 후보</span><b className="mt-micro block text-body text-text">{quickDraftLoading ? "만드는 중" : `${quickDraftSections.length}개`}</b></article>
           </section>
           <section className="min-w-0" aria-labelledby="create-display-title">
             <div className="mb-stack flex items-center justify-between border-b border-border pb-stack">
@@ -882,8 +910,19 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
             </div>
           </section>
           {quickDraftSections.length ? (
-            <section className="rounded-surface border border-success/30 bg-success/10 p-pad-inset" aria-labelledby="quick-draft-result-title" data-quick-draft-result>
+            <section
+              ref={quickDraftResultRef}
+              className={`rounded-surface border p-pad-inset transition-colors duration-500 ${justCompletedDraft ? "border-accent bg-accent-soft" : "border-success/30 bg-success/10"}`}
+              aria-labelledby="quick-draft-result-title"
+              data-quick-draft-result
+              data-quick-draft-just-completed={justCompletedDraft || undefined}
+            >
               <h3 id="quick-draft-result-title" className="text-body font-bold text-text">고른 형식의 생성 후보</h3>
+              {justCompletedDraft ? (
+                <p role="status" className="mt-stack-tight text-caption font-semibold text-accent" data-quick-draft-toast>
+                  후보 {quickDraftSections.length}개가 만들어졌습니다. 아래에서 확인하세요.
+                </p>
+              ) : null}
               <div className="mt-stack grid gap-stack md:grid-cols-2">
                 {quickDraftSections.map((section) => (
                   <article key={section.kind} className="rounded-control border border-success/30 bg-surface p-stack" data-quick-draft-format={section.kind}>

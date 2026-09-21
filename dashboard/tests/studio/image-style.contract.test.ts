@@ -109,3 +109,30 @@ describe("업종 장면은 간판이 나올 자리를 피한다", () => {
     expect(out).not.toMatch(/text|letter|signage|watermark|logo|label|sign\b/i);
   });
 });
+
+// 2026-09-22 실측(j.the.great.creator): 힉스필드 대표 이미지가 뭉개진 영문 글자·UI
+// 대시보드·태그가 가득한 범용 플랫 일러스트로 나왔다. `/api/studio/text` 규격을 고쳐도
+// LLM 이 규격을 어기고 화면·아이콘·차트 같은 명사를 낼 수 있다. 그 명사는 지시문에서
+// 지운다(부정문 추가가 아니라 삭제).
+describe("위험 명사 제거", () => {
+  it("화면·아이콘·차트·대시보드·태그를 지시문에서 지운다", () => {
+    const bad1 = "A laptop screen showing a dashboard with charts and icons";
+    const bad2 = "A hand holding a phone with notification badges and tags on the UI";
+    const bad3 = "A shop sign with a logo and text, a poster on the wall";
+    for (const bad of [bad1, bad2, bad3]) {
+      const out = pickImageSubject({ imagePrompt: bad, industry: "앱" });
+      expect(out).not.toMatch(/screen|dashboard|chart|icon|badge|tag|sign|logo|text|poster|ui\b/i);
+    }
+  });
+
+  it("명사를 지우고 남은 문장이 빈약하면 업종 장면으로 보강한다", () => {
+    const out = pickImageSubject({ imagePrompt: "A screen with a dashboard", industry: "카페" });
+    expect(out).not.toMatch(/screen|dashboard/i);
+    expect(out.length).toBeGreaterThan(10);
+  });
+
+  it("기존 image-style 계약은 회귀 없이 그대로다", () => {
+    expect(pickImageSubject({ imagePrompt: "a sunlit cafe counter", topic: "카페" }))
+      .toBe("카페. a sunlit cafe counter");
+  });
+});
