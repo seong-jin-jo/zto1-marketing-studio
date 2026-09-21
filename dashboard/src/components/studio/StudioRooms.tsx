@@ -400,6 +400,30 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const [quickBlockReason, setQuickBlockReason] = useState<string | null>(null);
   const generationInFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * 2026-09-22 실측(j.the.great.creator): "초안 만들기" 를 눌러 약 40초 뒤
+   * `/api/studio/text` 가 200 으로 후보를 만들었는데, 화면 상단 "구조 초안" 카운터는
+   * 그대로 0 이고 결과는 아래 "고른 형식의 생성 후보" 섹션에만 붙어 회장이 "안 되는 것
+   * 같다" 고 판단했다. 그 카운터는 A/B/C 구조 선택지(`candidates`) 를 세는 것이지 이
+   * 빠른 길의 결과(`quickDraftSections`) 를 세지 않는다 — 서로 다른 값이다. 결과가
+   * 생겼음을 화면이 스스로 알리지 않으면 사용자는 완료를 알 길이 없다.
+   */
+  const quickDraftResultRef = useRef<HTMLDivElement>(null);
+  const [justCompletedDraft, setJustCompletedDraft] = useState(false);
+  const prevQuickDraftLoading = useRef(quickDraftLoading);
+  useEffect(() => {
+    const wasLoading = prevQuickDraftLoading.current;
+    prevQuickDraftLoading.current = quickDraftLoading;
+    if (wasLoading && !quickDraftLoading && quickDraft && !quickDraftError) {
+      // jsdom(이 프로젝트의 다른 시험 다수)은 scrollIntoView 를 안 채워 둔다. 없는
+      // 환경에서 부르면 그 테스트가 죽으므로 있을 때만 부른다.
+      quickDraftResultRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      setJustCompletedDraft(true);
+      const timer = setTimeout(() => setJustCompletedDraft(false), 2600);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [quickDraftLoading, quickDraft, quickDraftError]);
   // 부모가 "새로 시작" 을 확정하면 이 방도 처음으로 돌아간다. 부모 상태만 비우고 여기를
   // 두면 화면에는 지운 적 없는 후보가 남아 사용자는 무엇이 버려졌는지 알 수 없다.
   const firstReset = useRef(true);
@@ -835,10 +859,19 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
             {quickBlockReason ? <p role="alert" className="text-caption text-danger">{quickBlockReason}</p> : null}
             {quickDraftError ? <p role="alert" className="text-caption text-danger">{quickDraftError}</p> : null}
           </section>
-          <section className="grid gap-stack sm:grid-cols-3" aria-label="생성실 요약">
+          <section className="grid gap-stack sm:grid-cols-4" aria-label="생성실 요약">
             <article className="card p-pad-inset"><span className="text-caption text-subtle">선택한 형식</span><b className="mt-micro block text-body text-text">{primaryKind ? CREATE_KIND_LABELS[primaryKind] : "선택 전"}</b></article>
             <article className="card p-pad-inset"><span className="text-caption text-subtle">반영한 학습 정보</span><b className="mt-micro block text-body text-text">{learnedCount}개</b></article>
-            <article className="card p-pad-inset"><span className="text-caption text-subtle">구조 초안</span><b className="mt-micro block text-body text-text">{candidates.length}개</b></article>
+            {/*
+              2026-09-22 실측(j.the.great.creator): "초안 만들기" 결과(`quickDraftSections`)와
+              이 "구조 초안"(A, B, C 구조 예시, `candidates`) 은 서로 다른 값인데 이름이 같아,
+              결과가 생겼는데도 이 칸이 0 으로 보여 "안 된다"로 오해했다. 승인된 V68 계약
+              (tests/components/create-room-v68.test.tsx)이 라벨에 "구조 초안" 문구를
+              고정해 두었으므로 그 문구는 유지하고, A/B/C 축임을 괄호로 덧붙이고 별도로
+              "생성한 후보" 칸을 새로 둬서 구분한다.
+            */}
+            <article className="card p-pad-inset"><span className="text-caption text-subtle">구조 초안(A/B/C)</span><b className="mt-micro block text-body text-text">{candidates.length}개</b></article>
+            <article className="card p-pad-inset" data-quick-draft-count={quickDraftSections.length}><span className="text-caption text-subtle">생성한 후보</span><b className="mt-micro block text-body text-text">{quickDraftLoading ? "만드는 중" : `${quickDraftSections.length}개`}</b></article>
           </section>
           <section className="min-w-0" aria-labelledby="create-display-title">
             <div className="mb-stack flex items-center justify-between border-b border-border pb-stack">
@@ -882,8 +915,30 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
             </div>
           </section>
           {quickDraftSections.length ? (
-            <section className="rounded-surface border border-success/30 bg-success/10 p-pad-inset" aria-labelledby="quick-draft-result-title" data-quick-draft-result>
+            <section
+              ref={quickDraftResultRef}
+              className={`rounded-surface border p-pad-inset transition-colors duration-500 ${justCompletedDraft ? "border-accent bg-accent-soft" : "border-success/30 bg-success/10"} ${quickDraftLoading ? "opacity-50" : ""}`}
+              aria-labelledby="quick-draft-result-title"
+              data-quick-draft-result
+              data-quick-draft-just-completed={justCompletedDraft || undefined}
+              data-quick-draft-stale={quickDraftLoading || undefined}
+            >
               <h3 id="quick-draft-result-title" className="text-body font-bold text-text">고른 형식의 생성 후보</h3>
+              {justCompletedDraft ? (
+                <p role="status" className="mt-stack-tight text-caption font-semibold text-accent" data-quick-draft-toast>
+                  후보 {quickDraftSections.length}개가 만들어졌습니다. 아래에서 확인하세요.
+                </p>
+              ) : null}
+              {/*
+                2026-09-22 교차 리뷰 MINOR: 다시 만드는 중에는 이 섹션에 여전히 "이전"
+                후보가 떠 있다. 무엇이 새 결과인지 헷갈리지 않게, 만드는 동안은 옅게
+                흐리고 "이전 결과" 라고 알린다(위 카운터는 이미 "만드는 중" 이라고 말한다).
+              */}
+              {quickDraftLoading ? (
+                <p className="mt-stack-tight text-caption text-subtle" data-quick-draft-stale-notice>
+                  다시 만드는 중입니다. 아래는 이전 결과입니다.
+                </p>
+              ) : null}
               <div className="mt-stack grid gap-stack md:grid-cols-2">
                 {quickDraftSections.map((section) => (
                   <article key={section.kind} className="rounded-control border border-success/30 bg-surface p-stack" data-quick-draft-format={section.kind}>

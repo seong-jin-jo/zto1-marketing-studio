@@ -74,7 +74,7 @@ ${NO_DASH_RULE}
  "x": "X용 (${CHANNEL_TEXT_LIMITS.x}자 이내, 압축)",
  "instagram": {"caption": "IG 캡션", "hashtags": ["태그", ...], "slides": ["카드1(표지 훅)", "카드2", "카드3", "카드4(CTA)"]},
  "shorts": {"hook": "0~3초 훅", "body": "3~20초 3포인트", "cta": "20~30초 CTA"},
- "image_prompt": "히어로 이미지 생성용 영문 프롬프트(텍스트 없이, 플랫 일러스트)"
+ "image_prompt": "히어로 이미지 생성용 영문 프롬프트. 영어 1~2문장. 사람의 손·물건·공간 같은 실물 피사체 하나와 구도·빛·재질만 묘사한다. 한국어·브랜드명·제품명 금지. 화면·모니터·문서·간판·아이콘·차트·말풍선처럼 글자가 놓일 물체는 절대 등장시키지 않는다(부정어로 적지 말고 그냥 다른 피사체를 골라라). 예: 'A hand pouring coffee into a ceramic cup on a wooden table, soft morning light.' / 'Two people shaking hands in a bright office, warm natural light.' / 'A pair of running shoes resting on a park bench, dappled shade.'"
 }`;
   try {
     // 고객이 자기 Anthropic 키 등록 시 그 키로(고객 과금), 없으면 공유 claude -p
