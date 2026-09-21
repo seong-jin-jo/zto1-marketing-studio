@@ -214,35 +214,96 @@ function drawBubble(
   return bubbleHeight;
 }
 
-/** 세그먼트 배열을 줄바꿈 단위로 쪼갠다(굵기 차이를 반영한 측정으로 wrapLines 를 재사용). */
-function wrapSegments(ctx: CanvasRenderingContext2D, segments: Segment[], size: number, maxWidth: number): Segment[][] {
-  // 우선 일반 굵기 기준으로 줄바꿈 위치를 찾고, 그 경계에 맞춰 세그먼트를 재분배한다.
-  const fullText = segments.map((s) => s.text).join("");
-  ctx.font = `500 ${size}px ${FONT_FAMILY}`;
-  const lines = wrapLines((t) => ctx.measureText(t).width, fullText, maxWidth);
+/** 굵기가 붙은 한 글자. wrapSegments 가 줄바꿈 계산을 이 단위로 직접 한다(위치 재매핑 없음). */
+type BoldChar = { ch: string; bold: boolean };
 
-  const result: Segment[][] = [];
-  let cursor = 0;
-  for (const line of lines) {
-    const lineSegments: Segment[] = [];
-    let remaining = line.length;
-    let consumedInLine = 0;
-    let segCursor = 0;
-    for (const segment of segments) {
-      const segStart = segCursor;
-      const segEnd = segCursor + segment.text.length;
-      segCursor = segEnd;
-      const overlapStart = Math.max(segStart, cursor);
-      const overlapEnd = Math.min(segEnd, cursor + remaining + consumedInLine);
-      if (overlapStart < overlapEnd) {
-        const text = segment.text.slice(overlapStart - segStart, overlapEnd - segStart);
-        if (text) lineSegments.push({ text, bold: segment.bold });
-        consumedInLine += text.length;
-      }
-    }
-    cursor += line.length;
-    result.push(lineSegments.length ? lineSegments : [{ text: line, bold: false }]);
+function toBoldChars(segments: Segment[]): BoldChar[] {
+  const chars: BoldChar[] = [];
+  for (const segment of segments) {
+    for (const ch of segment.text) chars.push({ ch, bold: !!segment.bold });
   }
+  return chars;
+}
+
+/** 연속한 굵기 조각 폭을 합산 측정한다(굵기가 바뀔 때만 font 를 바꿔 잰다). */
+function measureBoldChars(ctx: CanvasRenderingContext2D, chars: BoldChar[], size: number): number {
+  let total = 0;
+  let i = 0;
+  while (i < chars.length) {
+    const bold = chars[i].bold;
+    let text = "";
+    while (i < chars.length && chars[i].bold === bold) {
+      text += chars[i].ch;
+      i += 1;
+    }
+    ctx.font = `${bold ? 700 : 500} ${size}px ${FONT_FAMILY}`;
+    total += ctx.measureText(text).width;
+  }
+  return total;
+}
+
+/** 굵기가 섞인 글자 배열을 세그먼트 배열로 되접는다(연속 동일 굵기를 한 세그먼트로). */
+function boldCharsToSegments(chars: BoldChar[]): Segment[] {
+  const segments: Segment[] = [];
+  let i = 0;
+  while (i < chars.length) {
+    const bold = chars[i].bold;
+    let text = "";
+    while (i < chars.length && chars[i].bold === bold) {
+      text += chars[i].ch;
+      i += 1;
+    }
+    segments.push({ text, bold });
+  }
+  return segments.length ? segments : [{ text: "", bold: false }];
+}
+
+/**
+ * 세그먼트 배열을 줄바꿈 단위로 쪼갠다. text-card-image.ts 의 wrapLines 와 같은 낱말 우선·
+ * 글자 단위 폴백 알고리즘을 굵기가 붙은 글자 배열 위에서 직접 돌린다 — "일반 굵기로 줄을
+ * 나눈 뒤 그 경계를 세그먼트에 재매핑"하는 방식은 줄바꿈이 삼키는 공백 한 글자만큼 매 줄
+ * 커서가 밀려 다음 줄부터 글자가 잘리거나 중복되는 버그가 있었다(2026-09-21 실측: 굵은
+ * 세그먼트가 없는 홑 세그먼트 말풍선에서도 재현 — 굵기 문제가 아니라 커서 드리프트였다).
+ */
+export function wrapSegments(ctx: CanvasRenderingContext2D, segments: Segment[], size: number, maxWidth: number): Segment[][] {
+  const chars = toBoldChars(segments);
+  const words: BoldChar[][] = [];
+  let word: BoldChar[] = [];
+  for (const c of chars) {
+    if (c.ch === " ") {
+      words.push(word);
+      word = [];
+    } else {
+      word.push(c);
+    }
+  }
+  words.push(word);
+
+  const lines: BoldChar[][] = [];
+  let current: BoldChar[] = [];
+  for (const w of words) {
+    const candidate = current.length ? [...current, { ch: " ", bold: false }, ...w] : w;
+    if (measureBoldChars(ctx, candidate, size) <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+    if (current.length) {
+      lines.push(current);
+      current = [];
+    }
+    let piece: BoldChar[] = [];
+    for (const c of w) {
+      if (piece.length && measureBoldChars(ctx, [...piece, c], size) > maxWidth) {
+        lines.push(piece);
+        piece = [];
+      }
+      piece.push(c);
+    }
+    current = piece;
+  }
+  lines.push(current);
+
+  const result = lines.map(boldCharsToSegments);
   return result.length ? result : [[{ text: "", bold: false }]];
 }
 
