@@ -244,11 +244,11 @@ export function EditPreview({
             </div>
           ) : kind === "video" && mediaType === "video" && activeMediaUrl ? null : (
             // 2026-09-21 회장 지적: 영상 탭에서 "재생도 안 된다". 원인은 이 자리표시 레이어가
-            // 영상 유무와 상관없이 항상 그려져 DeliveredMedia 의 <video controls> 위를
+            // 영상 유무와 상관없이 항상 그려져 DeliveredMedia 가 그리는 영상 재생 컨트롤 위를
             // absolute inset-0 로 덮고 있었던 것이다(포인터 이벤트가 이 div 로 먼저 잡혀
-            // 재생·탐색 버튼을 못 눌렀다). 실제로 <video> 태그가 그려질 때(mediaType==="video")만
-            // 이 레이어를 렌더하지 않아 video 가 최상위에서 클릭을 받게 한다. 영상 편집 중
-            // 바탕 이미지만 있을 때(mediaType==="image")는 <video> 가 없으므로 이 레이어가
+            // 재생·탐색 버튼을 못 눌렀다). 실제로 영상 태그가 그려질 때(mediaType==="video")만
+            // 이 레이어를 렌더하지 않아 재생 화면이 최상위에서 클릭을 받게 한다. 영상 편집 중
+            // 바탕 이미지만 있을 때(mediaType==="image")는 영상 태그가 없으므로 이 레이어가
             // 계속 "아직 영상이 없습니다" 안내를 보여준다(교차 리뷰 PR #66 minor 5).
             <div className="absolute inset-0 grid place-items-center p-pad-inset text-center">
               <div className="min-w-0">
@@ -269,7 +269,7 @@ export function EditPreview({
 
           {kind === "video" ? (
             // pointer-events-none: 표시 전용 오버레이다. 1:1·16:9 처럼 아래 여백이 없는 규격에서는
-            // 이 p가 실제 <video controls> 바(크롬 기준 약 48px) 위에 겹치는데, 이벤트를 흡수하면
+            // 이 p가 실제 영상 재생 컨트롤 바(크롬 기준 약 48px) 위에 겹치는데, 이벤트를 흡수하면
             // 재생·탐색 버튼을 못 누른다(교차 리뷰 PR #66 MAJOR 3).
             <p
               data-edit-preview-subtitle={subtitleHidden ? "가림" : "보임"}
