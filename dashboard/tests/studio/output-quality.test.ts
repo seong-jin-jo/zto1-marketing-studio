@@ -150,6 +150,35 @@ describe("카드 덱이 계약의 의미까지 지켰는지 잰다", () => {
     expect(issue?.detail).toContain(`${chatIndex + 1}번 장`);
   });
 
+  it("hook_type=number: 학습 정보의 알려진 숫자를 표지에 쓰면 통과한다", () => {
+    const deck = cardDeckFixture();
+    deck.hook_type = "number";
+    deck.slides[0].cover = { headline: "3배 늘어난 이유", sub: null };
+    const report = checkCardDeckQuality(deck, { knownNumbers: ["3배", "3"] });
+    expect(report.issues.map((i) => i.rule)).not.toContain("hook_type");
+  });
+
+  it("hook_type=number: 학습 정보에 없는 지어낸 숫자를 표지에 쓰면 반려한다", () => {
+    const deck = cardDeckFixture();
+    deck.hook_type = "number";
+    deck.slides[0].cover = { headline: "300% 늘어난 이유", sub: null };
+    const report = checkCardDeckQuality(deck, { knownNumbers: ["3", "10"] });
+    expect(report.passed).toBe(false);
+    const issue = report.issues.find((i) => i.rule === "hook_type");
+    expect(issue?.detail).toContain("300");
+  });
+
+  it("hook_type=number: knownNumbers 가 빈 배열인데 표지에 숫자가 있으면 반려한다(조용한 스킵 금지, ADR-007)", () => {
+    const deck = cardDeckFixture();
+    deck.hook_type = "number";
+    deck.slides[0].cover = { headline: "12가지 이유", sub: null };
+    const report = checkCardDeckQuality(deck, { knownNumbers: [] });
+    expect(report.passed).toBe(false);
+    const issue = report.issues.find((i) => i.rule === "hook_type");
+    expect(issue?.detail).toContain("학습 정보에 숫자가 없는데");
+    expect(issue?.detail).toContain("12");
+  });
+
   it("기존 금지어 검사도 말풍선·표지 텍스트에 돈다(런타임 첫 배선)", () => {
     const deck = cardDeckFixture();
     deck.slides[0].cover = { headline: deck.slides[0].cover!.headline + "\n업계 최저가", sub: null };

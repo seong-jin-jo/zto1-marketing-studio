@@ -111,8 +111,9 @@ export type CardDeckExpectation = {
   /**
    * hook_type이 "number"일 때 표지에 쓸 수 있는 숫자 전체 집합. 학습 정보 본문에서
    * `\d[\d,.%]*` 로 뽑은 값이다. 표지 숫자가 이 집합의 부분집합이 아니면 지어낸 숫자다
-   * (설계 F3 "숫자형은 학습 정보의 실적만"). 비어 있으면 검사를 건너뛴다(호출측이
-   * 학습 정보를 안 넘긴 경우까지 여기서 막으면 과거 통과하던 덱이 갑자기 반려된다).
+   * (설계 F3 "숫자형은 학습 정보의 실적만"). `undefined`(호출측이 학습 정보 자체를 안
+   * 넘긴 경우)면만 검사를 건너뛴다. 빈 배열(학습 정보는 넘겼는데 숫자가 없음)은 검사
+   * 대상이다 — 그때 표지에 숫자가 있으면 전부 지어낸 것이므로 반려한다(ADR-007).
    */
   knownNumbers?: readonly string[];
 };
@@ -180,14 +181,20 @@ export function checkCardDeckQuality(deck: CardDeck, expect: CardDeckExpectation
     issues.push({ rule: "hook_type", detail: `훅 공식이 ${expect.fixedHookType} 이어야 하는데 ${deck.hook_type} 입니다` });
   } else if (!HOOK_TYPE_MARKERS[deck.hook_type].test(coverHeadline)) {
     issues.push({ rule: "hook_type", detail: `표지가 선언한 훅 공식(${deck.hook_type})의 표식을 담고 있지 않습니다: "${coverHeadline}"` });
-  } else if (deck.hook_type === "number" && expect.knownNumbers && expect.knownNumbers.length > 0) {
+  } else if (deck.hook_type === "number" && expect.knownNumbers !== undefined) {
     // number 훅은 "학습 정보에 있는 실적만" 쓰기로 돼 있다(설계 F3). 표지 숫자 하나라도
-    // 학습 정보 어디에도 없으면 모델이 지어낸 것이다.
+    // 학습 정보 어디에도 없으면 모델이 지어낸 것이다. knownNumbers 가 빈 배열(학습 정보에
+    // 숫자가 아예 없음)이라도 검사는 돌린다 — 건너뛰면 아무 숫자나 지어내도 통과한다
+    // (ADR-007 조용한 실패 금지: 검사를 조용히 스킵하는 것도 같은 결의 구멍이다).
+    // 호출측이 knownNumbers 자체를 안 넘긴 경우(undefined)에만 건너뛴다.
     const known = new Set(expect.knownNumbers);
     const coverNumbers = coverHeadline.match(/\d[\d,.%]*/g) ?? [];
     const madeUp = coverNumbers.filter((value) => !known.has(value.trim()));
     if (madeUp.length > 0) {
-      issues.push({ rule: "hook_type", detail: `표지 숫자가 학습 정보에 없습니다: ${madeUp.join(", ")}` });
+      const detail = expect.knownNumbers.length === 0
+        ? `학습 정보에 숫자가 없는데 표지에 숫자가 있습니다: ${madeUp.join(", ")}`
+        : `표지 숫자가 학습 정보에 없습니다: ${madeUp.join(", ")}`;
+      issues.push({ rule: "hook_type", detail });
     }
   }
 

@@ -525,7 +525,12 @@ export function parseDerivationOutput(
   kind: DerivationKind,
   cardOptions?: CardDerivationOptions,
   forbiddenPhrases: readonly string[] = [],
-  knownNumbers: readonly string[] = [],
+  // 기본값을 undefined 로 둔다. 빈 배열([])을 기본값으로 쓰면 "호출측이 학습 정보를
+  // 안 넘긴 경우"와 "학습 정보는 넘겼는데 숫자가 없는 경우"가 구분이 안 되어, number
+  // 훅 검사가 학습 정보 없이 호출되는 모든 자리(F3-02 같은 단위테스트 포함)에서 표지의
+  // 정상 숫자까지 "지어낸 숫자"로 오반려했다(ADR-007 조용한 실패 금지와 반대로, 이번엔
+  // 조용한 과잉반려였다).
+  knownNumbers?: readonly string[],
 ): DerivationPayload {
   const value = jsonObject(text);
   if (kind === "text") {

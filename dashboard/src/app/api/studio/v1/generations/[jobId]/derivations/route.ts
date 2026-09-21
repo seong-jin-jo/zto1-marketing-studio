@@ -16,7 +16,7 @@ import {
 const CARD_HOOK_TYPES = ["question", "number", "pain", "auto"] as const;
 
 /** body.options.card.hook_type. 값이 없으면 auto(모델이 고르고 선언). 값이 있는데 허용 밖이면 422. */
-function parseDerivationOptions(body: Record<string, unknown> | null): DerivationOptions | undefined {
+export function parseDerivationOptions(body: Record<string, unknown> | null): DerivationOptions | undefined {
   const options = body?.options;
   if (!options || typeof options !== "object") return undefined;
   const card = (options as Record<string, unknown>).card;
