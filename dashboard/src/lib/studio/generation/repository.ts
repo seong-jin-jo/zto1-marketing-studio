@@ -46,6 +46,15 @@ function postgresCode(error: unknown): string | null {
 
 export function mapGenerationDatabaseError(error: unknown): StudioApiError {
   const code = postgresCode(error);
+  // ADR-007: 마지막으로 원인을 볼 수 있는 자리다. StudioApiError 로 바꾸면서 postgres
+  // 코드·제약조건·메시지를 버리면 studioFailure 는 "무결성 조건을 확인하지 못했습니다"
+  // 밖에 못 본다. request_id 로 찾을 수 있게 원본을 남긴다(자격증명은 담기지 않는 필드만).
+  console.error("[studio][generation-repository] DB 오류", {
+    postgres_code: code,
+    constraint: error instanceof Error ? (error as PostgresError).constraint_name : undefined,
+    error_name: error instanceof Error ? error.name : typeof error,
+    error_message: error instanceof Error ? error.message : String(error),
+  });
   if (
     code === "CONNECT_TIMEOUT"
     || code === "CONNECTION_CLOSED"

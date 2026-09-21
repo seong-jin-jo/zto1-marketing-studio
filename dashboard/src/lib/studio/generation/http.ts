@@ -52,7 +52,10 @@ export function studioSuccess(data: unknown, status = 200): Response {
  */
 const PROXY_REWRITES = new Set([502, 503, 504]);
 
-export function studioFailure(error: unknown): Response {
+/** studioFailure 로그에 곁들일 요청 맥락. 자격증명·토큰 등 비밀값은 절대 넣지 않는다. */
+export type StudioFailureContext = Record<string, string | number | boolean | undefined>;
+
+export function studioFailure(error: unknown, context?: StudioFailureContext): Response {
   const requestId = crypto.randomUUID();
   const known = isStudioApiError(error)
     ? error
@@ -62,6 +65,31 @@ export function studioFailure(error: unknown): Response {
       message: "Studio 요청을 처리하지 못했습니다",
       retryable: false,
     });
+  // ADR-007: 예외를 삼키지 않는다. 알 수 없는(대개 500) error 는 request_id 로 나중에 찾을
+  // 수 있게 원인 전체를 남기고, 알려진 StudioApiError 는 5xx 만 error, 4xx 는 warn 한 줄.
+  if (!isStudioApiError(error)) {
+    console.error("[studio] 처리되지 않은 오류", {
+      request_id: requestId,
+      ...context,
+      error_name: error instanceof Error ? error.name : typeof error,
+      error_message: error instanceof Error ? error.message : String(error),
+      error_stack: error instanceof Error ? error.stack : undefined,
+    });
+  } else if (known.status >= 500) {
+    console.error("[studio] StudioApiError 5xx", {
+      request_id: requestId,
+      ...context,
+      code: known.code,
+      message: known.message,
+    });
+  } else {
+    console.warn("[studio] StudioApiError", {
+      request_id: requestId,
+      ...context,
+      status: known.status,
+      code: known.code,
+    });
+  }
   return Response.json({
     error: {
       code: known.code,
