@@ -38,7 +38,11 @@ export const CONNECT_READINESS_LABELS: Record<ConnectReadinessStatus, string> = 
   connected: "연결됨",
   not_connected: "미연결",
   opening_soon: "오픈 준비중",
-  publish_pending: "발행 준비중",
+  // 2026-09-21: "발행 준비중"은 발행이 막힌 것처럼 읽히지만 이 상태에서도 발행은 된다(publish_pending
+  // 은 OAUTH_APP_REVIEW_APPROVED_PROVIDERS 미등재 provider에 붙는 표시용 라벨일 뿐, 서버가 발행을
+  // 막지 않는다 — 같은 라벨의 Instagram이 실제 발행에 성공했다). 연결·발행 자체는 이미 가능하다는
+  // 사실을 남기고, 경고 화면이 뜰 수 있다는 것만 알린다(ADR-007 거짓 제한 금지).
+  publish_pending: "연결됨 (심사 전 경고 화면 가능)",
   error: "확인 필요",
 };
 

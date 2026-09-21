@@ -47,4 +47,27 @@ describe("편집실 미리보기", () => {
     );
     expect(container.querySelector("[data-edit-preview-media]")).toBeNull();
   });
+
+  // 2026-09-21 회장 지적: 영상 탭에서 "재생도 안 된다". 원인은 자리표시 레이어가 영상 유무와
+  // 상관없이 항상 absolute inset-0 로 <video controls> 위를 덮어 클릭이 그 레이어로 먼저
+  // 잡히던 것이었다. 영상 주소가 있을 때는 그 레이어가 아예 없어야 video 가 클릭을 받는다.
+  it("영상 URL이 있으면 자리표시 레이어가 video 위를 덮지 않는다(컨트롤이 클릭 가능)", () => {
+    const { container } = render(
+      <EditPreview kind="video" lines={["한 줄"]} activeLine={0} onActiveLine={() => {}} renderReady mediaUrl="/api/media/vid" mediaType="video" />,
+    );
+    const video = container.querySelector('[data-edit-preview-media="video"]');
+    expect(video).toBeInTheDocument();
+    // 프레임 안에 video 형제로 absolute inset-0 자리표시 레이어가 남아있으면 안 된다.
+    const frame = container.querySelector("[data-edit-preview-frame]");
+    const overlays = frame ? Array.from(frame.querySelectorAll("div.absolute.inset-0")) : [];
+    expect(overlays).toHaveLength(0);
+  });
+
+  it("영상이 아직 없으면 조용히 빈 화면 대신 명시 안내 문구를 보여준다", () => {
+    render(
+      <EditPreview kind="video" lines={["한 줄"]} activeLine={0} onActiveLine={() => {}} mediaType="video" />,
+    );
+    expect(document.body.textContent).toContain("아직 영상이 없습니다");
+    expect(document.body.textContent).toContain("숏폼 영상 만들기");
+  });
 });

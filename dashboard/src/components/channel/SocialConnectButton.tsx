@@ -181,13 +181,14 @@ export function SocialConnectButton({ provider, label, onConnected }: { provider
     && !readinessEntry.guidance
     ? readinessEntry.reason
     : null;
-  const connectLabel = readinessStatus === "connected"
+  // publish_pending은 이미 연결된 상태(resolveConnectReadiness가 connectionState==="connected"일
+  // 때만 이 status를 돌려준다)이므로 connected와 같은 버튼 문구를 쓴다. "발행 준비중"이라고 쓰면
+  // 발행이 막힌 것처럼 읽히지만 실제로는 막지 않는다(2026-09-21 회장 지적, ADR-007).
+  const connectLabel = readinessStatus === "connected" || readinessStatus === "publish_pending"
     ? "다른 계정 연결"
     : readinessStatus === "opening_soon"
       ? "오픈 준비중"
-      : readinessStatus === "publish_pending"
-        ? "발행 준비중"
-        : `${label} OAuth 연결`;
+      : `${label} OAuth 연결`;
 
   const connect = async (switchAccount = false) => {
     if (!activeWorkspace) {
