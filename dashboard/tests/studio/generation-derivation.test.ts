@@ -69,7 +69,8 @@ describe("파생 생성 도메인 계약", () => {
     const video = buildDerivationPayload(candidate, "video");
 
     expect(text.kind === "text" && text.body).toContain(candidate.title);
-    expect(card.kind === "card" && card.slides.length).toBe(candidate.format.outline.length + 2);
+    expect(card.kind === "card" && card.deck.slides.length).toBe(candidate.format.outline.length + 2);
+    expect(card.kind === "card" && card.deck.template).toBe("plain");
     expect(video.kind === "video" && video.scenes.length).toBe(candidate.format.outline.length);
     expect(video.kind === "video" && video.scenes[0].lines.length).toBe(2);
     // 아직 렌더한 파일이 없으므로 없는 주소를 지어내지 않는다.

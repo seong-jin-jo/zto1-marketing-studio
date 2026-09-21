@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import type { CardDeck, HookType } from "@/lib/studio/card-deck-contract";
 import { StudioApiError } from "./errors";
 import type { GenerationCandidate } from "./service";
 
@@ -26,9 +27,12 @@ export type DerivationQuote = {
   assumptions: string[];
 };
 
+// 카드 갈래는 계약 v2 덱을 진실원으로 옮긴다(결정.md D-2026-09-21-2 OD-A/OD-C). `slides`
+// 납작 목록은 더는 이 payload 에 실리지 않는다 — 필요한 소비자(editor-handoff·발행 큐)는
+// `deckProjection(deck)` 으로 그 자리에서 만든다(§3.3).
 export type DerivationPayload =
   | { kind: "text"; body: string }
-  | { kind: "card"; slides: { id: string; order: number; text: string; image_url: null }[] }
+  | { kind: "card"; deck: CardDeck }
   | {
       kind: "video";
       asset_url: string;
@@ -185,22 +189,29 @@ export function buildDerivationPayload(candidate: GenerationCandidate, kind: Der
     return { kind, body };
   }
   if (kind === "card") {
-    const slides = [
-      { id: crypto.randomUUID(), order: 0, text: candidate.title, image_url: null as null },
-      ...outline.map((entry, index) => ({
+    // LLM 이 아니라 뼈대를 그대로 옮기는 자리라 계약이 요구하는 9장 구성을 채울 수 없다
+    // (chat 6장·comment_prompt 1장을 뼈대 2~5줄에서 만들어내는 것은 지어내기다). `template:
+    // "plain"` 승격 트랙(upgradeLegacyDeck 과 같은 완화 규칙)으로 최소 계약만 만족시킨다.
+    const editLines = [candidate.title, ...outline, "여기까지 보셨다면 다음 장에서 이어 보세요"];
+    const deck: CardDeck = {
+      contract_version: "2.0",
+      template: "plain",
+      ratio: "4:5",
+      theme: { background: "#12100E", foreground: "#F7F3EE", accent: "#E8843C" },
+      brand: { display_name: "브랜드", handle: null },
+      hook_type: "pain",
+      cta: { keyword: "궁금해요", comment_example: "궁금해요", save_reason: "다음에 다시 보려고 저장해요" },
+      slides: editLines.map((text, index) => ({
         id: crypto.randomUUID(),
-        order: index + 1,
-        text: entry,
-        image_url: null as null,
+        order: index,
+        role: index === 0 ? "cover" : index === editLines.length - 1 ? "cta" : "chat",
+        cover: index === 0 ? { headline: text, sub: null } : undefined,
+        bubbles: index === 0 ? undefined : [{ id: crypto.randomUUID(), order: 0, speaker: "brand", segments: [{ text, bold: false }], reaction: null }],
+        image_url: null,
       })),
-      {
-        id: crypto.randomUUID(),
-        order: outline.length + 1,
-        text: "여기까지 보셨다면 다음 장에서 이어 보세요",
-        image_url: null as null,
-      },
-    ];
-    return { kind, slides };
+      revision: 0,
+    };
+    return { kind, deck };
   }
   const scenes = outline.map((entry, index) => ({
     id: crypto.randomUUID(),

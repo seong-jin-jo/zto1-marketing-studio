@@ -2,10 +2,31 @@ import crypto from "node:crypto";
 import { generateTextWithUsage, type GeneratedTextResult } from "@/lib/anthropic";
 import { withTenant } from "@/lib/db";
 import { configPath, readJson } from "@/lib/file-io";
+import {
+  CARD_DECK_CONTRACT_VERSION,
+  CardDeckValidationError,
+  COVER_HEADLINE_MAX_CHARS_PER_LINE,
+  newBubbleId,
+  newSlideId,
+  validateCardDeck,
+  type Bubble,
+  type CardDeck,
+  type CardSlide,
+  type HookType,
+  type Segment,
+  type SlideRole,
+  type Speaker,
+} from "@/lib/studio/card-deck-contract";
+import { DEFAULT_CARD_THEME } from "@/lib/studio/text-card-image-theme";
+import { checkCardDeckQuality, checkOutputQuality } from "@/lib/studio/output-quality";
 import type { GenerationRequest } from "./contracts";
 import type { DerivationKind, DerivationPayload } from "./derivation";
 import type { GenerationCandidate } from "./service";
 import defaults from "./studio-llm.defaults.json";
+
+/** 요청 시점 카드 갈래 옵션. `POST …/derivations` body `options.card.hook_type`. */
+export type CardDerivationOptions = { hookType: HookType | "auto" };
+const CARD_HOOK_TYPES: readonly HookType[] = ["question", "number", "pain"];
 
 type ModelConfig = {
   primary?: unknown;
@@ -65,6 +86,7 @@ export interface StudioContentGenerator {
     request: GenerationRequest;
     candidate: GenerationCandidate;
     kind: DerivationKind;
+    cardOptions?: CardDerivationOptions;
   }): Promise<DerivationPayload>;
 }
 
@@ -100,7 +122,7 @@ function supportedModel(model: string): boolean {
   return !model.includes("/") || model.startsWith("anthropic/") || model.startsWith("claude-cli/");
 }
 
-export function resolveStudioLlmConfig(): ResolvedConfig {
+export function resolveStudioLlmConfig(kind?: DerivationKind): ResolvedConfig {
   const shared = readJson<OpenClawConfig>(configPath("openclaw.json"));
   const configured = shared?.agents?.defaults?.model;
   const envPrimary = process.env.STUDIO_LLM_MODEL?.trim();
@@ -118,11 +140,27 @@ export function resolveStudioLlmConfig(): ResolvedConfig {
     (model, index, all) => all.indexOf(model) === index,
   );
   const maxAttempts = configuredPositiveInt("STUDIO_LLM_MAX_ATTEMPTS", defaults.max_attempts, 1, 3);
+  // 카드 갈래는 9장 구조 JSON(말풍선·세그먼트 중첩)이라 글 파생보다 출력 토큰이 늘어난다.
+  // 실측(PR3, 2026-09-21, `claude -p` 공유 CLI 로 이 프롬프트를 3회 실행): output_tokens
+  // 1672 / 1701 / 3816. 기존 상한(8000, 이 함수의 clamp 상한과 동일)은 세 번 다 `end_turn`
+  // 으로 끝나 잘림이 없었다(관측치 최댓값 대비 여유 2.1배). 그래서 `max_output_tokens_card_
+  // multiplier` 기본값은 1(변경 없음)로 둔다 — 배수를 올려도 clamp 상한(8000)에 막혀 아무
+  // 효과가 없다. 상한 자체를 올리는 것은 이번 3회 실측만으로는 (unsourced) — 잘림이 실제로
+  // 관측되면(`invalid_output: 결과가 중간에 잘렸습니다`) 그때 `STUDIO_LLM_MAX_OUTPUT_TOKENS_
+  // CARD` 를 env 로 올리거나 이 clamp 상한 자체를 넓힌다.
+  const baseMaxOutputTokens = configuredPositiveInt("STUDIO_LLM_MAX_OUTPUT_TOKENS", defaults.max_output_tokens, 256, 8_000);
+  const cardMultiplier = defaults.max_output_tokens_card_multiplier ?? 1;
+  const cardMaxOutputTokens = configuredPositiveInt(
+    "STUDIO_LLM_MAX_OUTPUT_TOKENS_CARD",
+    Math.min(8_000, Math.round(defaults.max_output_tokens * cardMultiplier)),
+    256,
+    8_000,
+  );
   return {
     models: modelChain.slice(0, maxAttempts),
     maxAttempts,
     timeoutMs: configuredPositiveInt("STUDIO_LLM_TIMEOUT_MS", defaults.timeout_ms, 5_000, 120_000),
-    maxOutputTokens: configuredPositiveInt("STUDIO_LLM_MAX_OUTPUT_TOKENS", defaults.max_output_tokens, 256, 8_000),
+    maxOutputTokens: kind === "card" ? cardMaxOutputTokens : baseMaxOutputTokens,
   };
 }
 
@@ -264,10 +302,18 @@ export function buildCandidatePrompt(request: GenerationRequest): string {
   ].join("\n");
 }
 
+/** 훅 공식 3종의 사람이 읽는 지시문. 계약(card-deck-contract.ts)의 HookType 과 1:1. */
+const HOOK_TYPE_PROMPT_LINES: Record<HookType, string> = {
+  question: "question(질문형): 독자가 스스로에게 되묻게 만드는 물음표로 끝나는 문장",
+  number: "number(숫자형): 학습 정보에 있는 실적·수치를 그대로 써서 구체성을 주는 문장(숫자를 지어내지 마세요)",
+  pain: "pain(고통 인식형): '아닙니다', '못 하는 게 아니라', '때문입니다' 처럼 자책을 멈추게 하는 단정 문장",
+};
+
 function buildDerivationPrompt(
   request: GenerationRequest,
   candidate: GenerationCandidate,
   kind: DerivationKind,
+  cardOptions?: CardDerivationOptions,
 ): string {
   const common = [
     "고른 주 갈래 결과를 새 갈래에 맞게 실제 내용으로 개작하세요.",
@@ -282,7 +328,40 @@ function buildDerivationPrompt(
     return [...common, '형식: {"body":"완성된 한국어 글 본문"}'].join("\n");
   }
   if (kind === "card") {
-    return [...common, '형식: {"slides":[{"text":"표지 문구"},{"text":"본문 문구"},{"text":"마무리 문구"}]}', "슬라이드는 4장 이상 10장 이하로 만드세요."].join("\n");
+    const hookType = cardOptions?.hookType ?? "auto";
+    const hookInstruction = hookType === "auto"
+      ? [
+          "표지 headline 은 아래 세 공식 중 이 내용에 가장 잘 맞는 하나를 골라 쓰고, 고른 공식을",
+          '"hook_type" 값으로 정확히 선언하세요(question|number|pain 중 하나).',
+          ...Object.values(HOOK_TYPE_PROMPT_LINES).map((line) => `  - ${line}`),
+        ]
+      : [
+          `표지 headline 은 반드시 ${hookType} 공식으로 쓰세요: ${HOOK_TYPE_PROMPT_LINES[hookType]}`,
+          `"hook_type" 값은 정확히 "${hookType}" 로 선언하세요.`,
+        ];
+    return [
+      ...common,
+      "카드뉴스는 카카오톡 대화 형식입니다. 독자(reader)가 묻고 브랜드(brand)가 답합니다.",
+      "장 구성은 정확히 이 순서와 개수로 만드세요: cover 1장, chat 6장, comment_prompt 1장, cta 1장(합계 9장).",
+      ...hookInstruction,
+      `표지 headline 은 3줄 이내, 줄마다 ${COVER_HEADLINE_MAX_CHARS_PER_LINE}자 이내로 짧게 끊으세요. 링크·URL·"프로필" 같은 말은 쓰지 마세요.`,
+      "각 chat 장은 reader 말풍선 1개 이상과 brand 말풍선 1개 이상을 반드시 포함하고, 한 장에는 주장 하나만 담으세요.",
+      "각 말풍선의 segments 는 {\"text\":\"...\",\"bold\":true|false} 조각의 배열입니다. 굵게 강조할 조각만 bold:true 로 표시하고, 한 장(chat 장 전체)에서 bold:true 조각은 서로 붙어 있는 한 덩이만 두세요.",
+      "comment_prompt 장(8번째)은 독자가 댓글에 남길 만한 키워드 하나를 brand 말풍선에서 제안하세요(2~8자 명사).",
+      "cta 장(마지막 9번째)의 brand 말풍선에는 반드시 \"댓글에 '키워드' 남겨주세요\" 형태로 그 키워드를 작은따옴표와 함께 넣고, 저장해 둘 이유를 한 문장 더하세요. 링크·URL·프로필 언급 금지.",
+      "숫자와 실적은 학습 정보에 있는 것만 쓰고, 없으면 숫자를 만들지 마세요.",
+      [
+        '형식: {"hook_type":"question|number|pain",',
+        '"cta":{"keyword":"2~8자 명사","comment_example":"댓글 예시 문장","save_reason":"저장할 이유(6자 이상)"},',
+        '"slides":[',
+        '  {"role":"cover","headline":"줄1\\n줄2","sub":null},',
+        '  {"role":"chat","bubbles":[{"speaker":"reader","segments":[{"text":"...","bold":false}]},{"speaker":"brand","segments":[{"text":"...","bold":false}]}]},',
+        '  ... (chat 장 총 6개) ...,',
+        '  {"role":"comment_prompt","bubbles":[{"speaker":"brand","segments":[{"text":"...","bold":false}]}]},',
+        '  {"role":"cta","bubbles":[{"speaker":"brand","segments":[{"text":"...","bold":false}]}]}',
+        ']}',
+      ].join("\n"),
+    ].join("\n");
   }
   return [
     ...common,
@@ -367,16 +446,137 @@ export function parseCandidateOutput(text: string, forbiddenPhrases: readonly st
   return candidates;
 }
 
-export function parseDerivationOutput(text: string, kind: DerivationKind): DerivationPayload {
+/** 카드 갈래 JSON 원문 조각을 계약이 요구하는 Segment[] 로 만든다. */
+function coerceSegments(value: unknown, field: string): Segment[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new StudioLlmExecutionError("invalid_output", true, `${field}.segments 가 비어 있습니다`);
+  }
+  return value.map((entry, index) => {
+    const seg = entry !== null && typeof entry === "object" ? entry as Record<string, unknown> : {};
+    if (typeof seg.text !== "string" || !seg.text.trim()) {
+      throw new StudioLlmExecutionError("invalid_output", true, `${field}.segments[${index}].text 가 비었습니다`);
+    }
+    return { text: seg.text, bold: seg.bold === true };
+  });
+}
+
+function coerceBubbles(value: unknown, field: string): Bubble[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new StudioLlmExecutionError("invalid_output", true, `${field}.bubbles 가 비어 있습니다`);
+  }
+  return value.map((entry, order) => {
+    const raw = entry !== null && typeof entry === "object" ? entry as Record<string, unknown> : {};
+    const speaker = raw.speaker === "reader" || raw.speaker === "brand" ? (raw.speaker as Speaker) : null;
+    if (!speaker) {
+      throw new StudioLlmExecutionError("invalid_output", true, `${field}.bubbles[${order}].speaker 는 reader 또는 brand 여야 합니다`);
+    }
+    return {
+      id: newBubbleId(),
+      order,
+      speaker,
+      segments: coerceSegments(raw.segments, `${field}.bubbles[${order}]`),
+      reaction: null,
+    };
+  });
+}
+
+/** 모델 응답 slides 원문을 계약 CardSlide[] 로 조립한다. id·order 는 서버가 부여한다. */
+function coerceCardSlides(value: unknown): CardSlide[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new StudioLlmExecutionError("invalid_output", true, "slides 가 비어 있습니다");
+  }
+  return value.map((entry, order) => {
+    const raw = entry !== null && typeof entry === "object" ? entry as Record<string, unknown> : {};
+    const role = raw.role as SlideRole;
+    if (!["cover", "chat", "comment_prompt", "cta"].includes(role)) {
+      throw new StudioLlmExecutionError("invalid_output", true, `slides[${order}].role 이 올바르지 않습니다: ${String(raw.role)}`);
+    }
+    const field = `slides[${order}]`;
+    if (role === "cover") {
+      // 프롬프트 형식(설계 §5 F3)은 cover 장에서 headline/sub 를 슬라이드 바로 아래 평평하게
+      // 둔다(`{"role":"cover","headline":"...","sub":null}`) — 계약 타입의 `cover:{...}`
+      // 중첩과는 다르다. 모델이 중첩해 보내는 경우(`raw.cover.headline`)도 함께 받는다.
+      const nested = raw.cover !== null && typeof raw.cover === "object" ? raw.cover as Record<string, unknown> : null;
+      const headline = typeof raw.headline === "string" ? raw.headline : (typeof nested?.headline === "string" ? nested.headline : "");
+      if (!headline.trim()) {
+        throw new StudioLlmExecutionError("invalid_output", true, `${field}.headline 이 비었습니다`);
+      }
+      const sub = typeof raw.sub === "string" ? raw.sub : (typeof nested?.sub === "string" ? nested.sub : null);
+      return {
+        id: newSlideId(), order, role,
+        cover: { headline, sub },
+        bubbles: undefined, image_url: null,
+      };
+    }
+    return {
+      id: newSlideId(), order, role,
+      cover: undefined,
+      bubbles: coerceBubbles(raw.bubbles, field),
+      image_url: null,
+    };
+  });
+}
+
+export function parseDerivationOutput(
+  text: string,
+  kind: DerivationKind,
+  cardOptions?: CardDerivationOptions,
+  forbiddenPhrases: readonly string[] = [],
+): DerivationPayload {
   const value = jsonObject(text);
-  if (kind === "text") return { kind, body: requiredText(value.body, 80, 20_000) };
+  if (kind === "text") {
+    const body = requiredText(value.body, 80, 20_000);
+    // 글 파생이 checkOutputQuality 를 처음 런타임에서 탄다(설계 §5 F3 "공짜 이득").
+    // 금지어는 여기서 걸러야 저장 전에 잡힌다 — 편집실에서 사람이 눈으로 보고 걸러내던
+    // 것을 자로 대신한다(실수.md 2026-09-11 "화면을 봤다는 것과 확인했다는 것은 다르다").
+    const quality = checkOutputQuality(body, { forbiddenPhrases });
+    if (!quality.passed) {
+      const [first] = quality.issues;
+      throw new StudioLlmExecutionError("invalid_output", true, `${first.rule}: ${first.detail}`);
+    }
+    return { kind, body };
+  }
   if (kind === "card") {
-    const slides = requiredTextList(
-      Array.isArray(value.slides) ? value.slides.map((entry) => (entry as Record<string, unknown>)?.text) : value.slides,
-      4,
-      10,
-    ).map((entry, order) => ({ id: crypto.randomUUID(), order, text: entry, image_url: null as null }));
-    return { kind, slides };
+    const hookType = typeof value.hook_type === "string" ? value.hook_type as HookType : ("" as HookType);
+    if (!["question", "number", "pain"].includes(hookType)) {
+      throw new StudioLlmExecutionError("invalid_output", true, `hook_type 이 question|number|pain 중 하나가 아닙니다: ${String(value.hook_type)}`);
+    }
+    const ctaRaw = value.cta !== null && typeof value.cta === "object" ? value.cta as Record<string, unknown> : {};
+    const cta = {
+      keyword: requiredText(ctaRaw.keyword, 2, 8, "cta.keyword"),
+      comment_example: requiredText(ctaRaw.comment_example, 2, 200, "cta.comment_example"),
+      save_reason: requiredText(ctaRaw.save_reason, 6, 200, "cta.save_reason"),
+    };
+    // brand 는 모델이 채우지 않는다(서버가 워크스페이스 이름으로 채움, 설계 §5 F3). validator
+    // 는 빈 값을 거부하므로 저장 전까지 쓰는 자리표시 값을 둔다(upgradeLegacyDeck 과 같은 관습).
+    const deck: CardDeck = {
+      contract_version: CARD_DECK_CONTRACT_VERSION,
+      template: "chat_bubble",
+      ratio: "4:5",
+      theme: DEFAULT_CARD_THEME,
+      brand: { display_name: "브랜드", handle: null },
+      hook_type: hookType,
+      cta,
+      slides: coerceCardSlides(value.slides),
+      revision: 0,
+    };
+    try {
+      validateCardDeck(deck);
+    } catch (error) {
+      if (error instanceof CardDeckValidationError) {
+        throw new StudioLlmExecutionError("invalid_output", true, `${error.rule}: ${error.message}`);
+      }
+      throw error;
+    }
+    const quality = checkCardDeckQuality(deck, {
+      fixedHookType: cardOptions?.hookType !== "auto" ? cardOptions?.hookType : undefined,
+      forbiddenPhrases,
+    });
+    if (!quality.passed) {
+      const [first] = quality.issues;
+      throw new StudioLlmExecutionError("invalid_output", true, `${first.rule}: ${first.detail}`);
+    }
+    return { kind, deck };
   }
   if (!Array.isArray(value.scenes) || value.scenes.length < 3 || value.scenes.length > 8) {
     const count = Array.isArray(value.scenes) ? `${value.scenes.length}개` : "장면 목록이 없음";
@@ -514,8 +714,9 @@ export class LlmStudioContentGenerator implements StudioContentGenerator {
     operation: string;
     prompt: string;
     parse: (text: string) => T;
+    kind?: DerivationKind;
   }): Promise<T> {
-    const config = resolveStudioLlmConfig();
+    const config = resolveStudioLlmConfig(input.kind);
     let lastReason: StudioLlmFailureReason = "provider_unavailable";
     // 2026-09-09: 검사 자리마다 이유를 붙여 놓고도 화면에는 여전히 이유가 안 나왔다.
     // 여기서 마지막 실패를 다시 던질 때 detail 을 빼먹고 있었기 때문이다. **이유를 붙이는
@@ -575,13 +776,15 @@ export class LlmStudioContentGenerator implements StudioContentGenerator {
     request: GenerationRequest;
     candidate: GenerationCandidate;
     kind: DerivationKind;
+    cardOptions?: CardDerivationOptions;
   }): Promise<DerivationPayload> {
     return this.execute({
       workspaceId: input.workspaceId,
       memberId: input.memberId,
       operation: `generation.derivation.${input.kind}`,
-      prompt: buildDerivationPrompt(input.request, input.candidate, input.kind),
-      parse: (text) => parseDerivationOutput(text, input.kind),
+      kind: input.kind,
+      prompt: buildDerivationPrompt(input.request, input.candidate, input.kind, input.cardOptions),
+      parse: (text) => parseDerivationOutput(text, input.kind, input.cardOptions, input.request.learningContext.u3.forbiddenPhrases),
     });
   }
 }

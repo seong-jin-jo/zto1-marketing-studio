@@ -2,6 +2,8 @@ import { studioFailure, studioSuccess, readJson } from "@/lib/studio/generation/
 import { resolveStudioPrincipal } from "@/lib/studio/generation/identity";
 import { StudioApiError } from "@/lib/studio/generation/errors";
 import { generationRuntime } from "@/lib/studio/generation/runtime";
+import type { DerivationOptions } from "@/lib/studio/generation/service";
+import type { HookType } from "@/lib/studio/card-deck-contract";
 import {
   DERIVATION_KINDS,
   derivationQuote,
@@ -10,6 +12,21 @@ import {
   publicQuote,
   type DerivationKind,
 } from "@/lib/studio/generation/derivation";
+
+const CARD_HOOK_TYPES = ["question", "number", "pain", "auto"] as const;
+
+/** body.options.card.hook_type. 없거나 모르는 값이면 auto(모델이 고르고 선언). */
+function parseDerivationOptions(body: Record<string, unknown> | null): DerivationOptions | undefined {
+  const options = body?.options;
+  if (!options || typeof options !== "object") return undefined;
+  const card = (options as Record<string, unknown>).card;
+  if (!card || typeof card !== "object") return undefined;
+  const raw = (card as Record<string, unknown>).hook_type;
+  const hookType: HookType | "auto" = typeof raw === "string" && (CARD_HOOK_TYPES as readonly string[]).includes(raw)
+    ? (raw as HookType | "auto")
+    : "auto";
+  return { card: { hookType } };
+}
 
 type RouteContext = { params: Promise<{ jobId: string }> };
 
@@ -55,6 +72,8 @@ export async function POST(request: Request, context: RouteContext) {
       body?.acknowledged_cost,
       request.headers.get("Idempotency-Key") ?? "",
       [...principal.allowedWorkspaceIds],
+      new Date(),
+      parseDerivationOptions(body),
     );
     // 한 갈래라도 실패하면 201 로 성공을 알리지 않는다. 화면이 갈래별 결과를 그대로 보이게 한다.
     return studioSuccess(publicBatch(batch), batch.status === "succeeded" ? 201 : 207);
