@@ -19,7 +19,7 @@
  * | addSlide 464~476            | addSlide               |
  * | deleteSlide 477~488         | deleteSlide            |
  *
- * 모든 연산은 새 객체를 반환한다(불변 — 원본 deck 을 mutate 하지 않는다). revision 은
+ * 모든 연산은 새 객체를 반환한다(불변. 원본 deck 을 mutate 하지 않는다). revision 은
  * 호출부(EditRoom)가 저장 직전에 +1 하지만, 여기서도 반환값에 revision+1 을 반영해
  * "연산 = 상태 변화" 를 단일하게 유지한다. 실패는 CardDeckOpsError(code, message) 로
  * 이유를 데리고 나온다(실수.md 2026-09-09).
@@ -117,7 +117,10 @@ export function splitBubble(
   }
 
   const first: Bubble = { ...bubble, id: bubble.id, segments: before };
-  const second: Bubble = { ...bubble, id: newBubbleId(), segments: after };
+  // reaction 은 원본 말풍선 하나에 달린 것이지 쪼갠 둘 다에 있는 게 아니다(2026-09-21
+  // 코드리뷰 MINOR. split 이 reaction 을 두 말풍선에 복제하고 있었다). 첫 조각이 갖고,
+  // 새로 생긴 둘째 조각은 null 로 시작한다.
+  const second: Bubble = { ...bubble, id: newBubbleId(), segments: after, reaction: null };
   const updatedBubbles = reindexBubbles([
     ...bubbles.slice(0, bubbleIndex),
     first,
@@ -128,7 +131,7 @@ export function splitBubble(
 }
 
 /**
- * 03c 'merge' 409~414: 다음 말풍선과 합친다. 화자가 다르면 거부한다(OPS_SPEAKER_MISMATCH —
+ * 03c 'merge' 409~414: 다음 말풍선과 합친다. 화자가 다르면 거부한다(OPS_SPEAKER_MISMATCH .
  * 원본에는 없던 가드지만, 화자 색이 다른 말풍선을 하나로 합치면 렌더가 어느 색을 써야
  * 할지 알 수 없다).
  */

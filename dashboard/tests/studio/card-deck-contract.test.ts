@@ -97,10 +97,18 @@ describe("card-deck-contract validateCardDeck (TC-F1-01)", () => {
     expectRule(deck, "cover_lines");
   });
 
-  it("표지 헤드라인 한 줄이 19자면 cover_lines 거부", () => {
+  it("표지 헤드라인 한 줄이 11자(렌더 폭 초과 경계)면 cover_lines 거부", () => {
+    // 2026-09-21 코드리뷰 MAJOR 2: 상한을 18자→10자로 낮췄다(렌더 폭 864px 역산,
+    // COVER_HEADLINE_MAX_CHARS_PER_LINE 주석 참조). 경계값 11자로 갱신.
     const deck = clone(validDeck);
-    deck.slides[0].cover!.headline = "가".repeat(19);
+    deck.slides[0].cover!.headline = "가".repeat(11);
     expectRule(deck, "cover_lines");
+  });
+
+  it("표지 헤드라인 한 줄이 10자(경계값)면 통과한다", () => {
+    const deck = clone(validDeck);
+    deck.slides[0].cover!.headline = "가".repeat(10);
+    expect(() => validateCardDeck(deck)).not.toThrow();
   });
 
   it("세그먼트에 HTML 이 섞이면 no_html 거부", () => {
@@ -110,8 +118,10 @@ describe("card-deck-contract validateCardDeck (TC-F1-01)", () => {
   });
 
   it("줄표(—)가 있으면 no_dash 거부", () => {
+    // 10자 상한(COVER_HEADLINE_MAX_CHARS_PER_LINE) 안에 들어가는 문구로 cover_lines
+    // 보다 먼저 no_dash 에 걸리게 한다(2026-09-21 코드리뷰 MAJOR 2 상한 변경 반영).
     const deck = clone(validDeck);
-    deck.slides[0].cover!.headline = "안 오르는 건 — 순서입니다";
+    deck.slides[0].cover!.headline = "실력 — 순서";
     expectRule(deck, "no_dash");
   });
 });
@@ -154,6 +164,37 @@ describe("upgradeLegacyDeck (FR-12)", () => {
     expect(deck.slides).toHaveLength(3);
     expect(deck.slides[0].role).toBe("cover");
     expect(deck.slides[2].role).toBe("cta");
-    expect(deck.slides[0].position).toBe("top-center");
+    // "top-center" 는 CardSlide["position"] 타입("top"|"center"|"bottom")에 없다.
+    // prefix 로 접힌 값이어야 한다(2026-09-21 코드리뷰 MAJOR 5. 타입이 거짓말하던 결함).
+    expect(deck.slides[0].position).toBe("top");
+    expect(deck.slides[1].position).toBe("center");
+    expect(deck.slides[2].position).toBe("bottom");
+  });
+
+  it("승격 결과는 그 자체로 validateCardDeck 을 통과한다(2026-09-21 코드리뷰 MAJOR 5 회귀. FR-12 '첫 저장부터 v2')", () => {
+    const deck = upgradeLegacyDeck(
+      ["표지 문구", "본문 문구", "마무리 문구"],
+      undefined,
+      "4:5",
+      { background: "#000", foreground: "#fff", accent: "#f00" },
+    );
+    expect(() => validateCardDeck(deck)).not.toThrow();
+  });
+
+  it("editLines 가 1줄(빈 라인 제외 후)이어도 cover/cta 최소 2장을 보장하고 통과한다", () => {
+    const deck = upgradeLegacyDeck(["표지 문구만"], undefined, "1:1", {
+      background: "#000", foreground: "#fff", accent: "#f00",
+    });
+    expect(deck.slides).toHaveLength(2);
+    expect(deck.slides[0].role).toBe("cover");
+    expect(deck.slides[1].role).toBe("cta");
+    expect(() => validateCardDeck(deck)).not.toThrow();
+  });
+
+  it("editLines 가 전부 빈 줄이어도 승격이 던지지 않고 validateCardDeck 을 통과한다", () => {
+    const deck = upgradeLegacyDeck(["", "  ", ""], undefined, "4:5", {
+      background: "#000", foreground: "#fff", accent: "#f00",
+    });
+    expect(() => validateCardDeck(deck)).not.toThrow();
   });
 });

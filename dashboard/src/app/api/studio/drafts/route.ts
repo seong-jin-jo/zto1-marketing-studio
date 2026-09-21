@@ -140,6 +140,21 @@ export async function POST(request: Request) {
   }
   const tenantId = await effectiveTenantId(request, body.tenant_id);
   if (!tenantId) return Response.json({ error: "tenant_id required" }, { status: 400 });
+  // cardDeck: 요청에 키가 아예 없으면 payload 에도 빼서 JSONB `||` 병합 대상에서
+  // 제외한다(undefined 유지 → 기존 덱 보존). 지우려면 명시 플래그 `clearCardDeck:true`
+  // 를 보낸다(2026-09-21 코드리뷰 MAJOR 4. 이전에는 `body.cardDeck ?? null` 이 병합에
+  // null 을 얹어, cardDeck 을 안 싣는 모든 저장 경로가 자동저장 한 번에 기존 덱을 지웠다).
+  // 스프레드로만 넣는다. payload 를 넓은 타입(Record<string, unknown>)으로 선언하고
+  // 사후에 mutate 하면 `sql.json()` 이 기대하는 JSONValue 로 좁혀지지 않는다.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- sql.json() 의 JSONValue
+  // 타입은 이미 검증된 임의 JSON 트리(cardDeck)를 구조적으로 받아들이지 못한다. 이
+  // 지점은 validateCardDeck() 을 이미 통과했다(위 CARD_DECK_MAX_BYTES 분기).
+  const cardDeckPatch: { cardDeck?: any } = {};
+  if (body.clearCardDeck === true) {
+    cardDeckPatch.cardDeck = null;
+  } else if (Object.prototype.hasOwnProperty.call(body, "cardDeck") && body.cardDeck != null) {
+    cardDeckPatch.cardDeck = body.cardDeck;
+  }
   const payload = {
     text: body.text ?? null, img: body.img ?? null, vid: body.vid ?? null,
     includes: body.includes ?? {},
@@ -151,7 +166,6 @@ export async function POST(request: Request) {
     // 보낸 editLines 와 다르면 여기서 덮어쓴다.
     editLines: cardDeckProjectedLines ?? body.editLines ?? null,
     cardTextPositions: body.cardTextPositions ?? null,
-    cardDeck: body.cardDeck ?? null,
     titles: body.titles ?? {},
     captions: body.captions ?? {},
     hashtags: body.hashtags ?? {},
@@ -159,6 +173,7 @@ export async function POST(request: Request) {
     firstComments: body.firstComments ?? {},
     selectedAccounts: body.selectedAccounts ?? {},
     reviewQueueId: body.reviewQueueId ?? null,
+    ...cardDeckPatch,
   };
   const status = body.status || "draft";
   const idea = body.idea || "";

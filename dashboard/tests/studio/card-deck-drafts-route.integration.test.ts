@@ -94,7 +94,7 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     expect(body.drafts[0].cardDeck).toEqual(deckD100);
   });
 
-  it("cardDeck 이 없는 요청은 기존처럼 통과한다(회귀 0)", async () => {
+  it("cardDeck 이 없는 요청은 기존처럼 통과하고, 기존 덱을 지우지 않는다(2026-09-21 코드리뷰 MAJOR 4 회귀)", async () => {
     H.rows = [{ id: "draft-legacy-1" }];
     const { POST } = await import("@/app/api/studio/drafts/route");
     const response = await POST(new Request("http://localhost/api/studio/drafts", {
@@ -102,8 +102,23 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
       body: JSON.stringify({ tenant_id: "tenant-1", idea: "레거시 저장", editLines: ["줄1", "줄2"] }),
     }));
     expect(response.status).toBe(200);
-    const savedPayload = H.jsonValues[0] as { cardDeck: unknown; editLines: string[] };
-    expect(savedPayload.cardDeck).toBeNull();
+    const savedPayload = H.jsonValues[0] as Record<string, unknown>;
+    // cardDeck 키 자체가 병합 대상에 없어야 한다. JSONB `||` 병합은 없는 키를 건드리지
+    // 않으므로 이 초안에 이미 저장돼 있던 cardDeck 이 있었다면 그대로 남는다. `null` 을
+    // 실어 보내면(옛 동작) 그 자리에서 지워졌다.
+    expect(Object.prototype.hasOwnProperty.call(savedPayload, "cardDeck")).toBe(false);
     expect(savedPayload.editLines).toEqual(["줄1", "줄2"]);
+  });
+
+  it("clearCardDeck:true 를 보내면 명시적으로 cardDeck 을 지운다", async () => {
+    H.rows = [{ id: "draft-legacy-2" }];
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "덱 삭제", clearCardDeck: true }),
+    }));
+    expect(response.status).toBe(200);
+    const savedPayload = H.jsonValues[0] as Record<string, unknown>;
+    expect(savedPayload.cardDeck).toBeNull();
   });
 });

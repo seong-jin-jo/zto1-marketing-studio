@@ -14,7 +14,7 @@ import { groupTurns } from "../card-deck-ops";
 export const SAFE_ZONE_PX = 40;
 
 export const COVER_HEADLINE_RATIO = 0.075; // 표지 헤드라인 폭 7.5% 굵기 800
-export const BODY_RATIO = 0.036; // 본문 글자 폭 3.6% — COVER_HEADLINE_RATIO / BODY_RATIO ≥ 2.0 (F5 ④축)
+export const BODY_RATIO = 0.036; // 본문 글자 폭 3.6%. COVER_HEADLINE_RATIO / BODY_RATIO ≥ 2.0 (F5 ④축)
 
 const CHAT_HEADER_RATIO = 0.08;
 const BRAND_LABEL_RATIO = 0.032;
@@ -40,11 +40,11 @@ export type ChatBubbleRenderInput = {
 };
 
 /**
- * 한 장을 그려 PNG data URL 로 돌려준다. 브라우저에서만 부른다(canvas 필요). 서버에서
- * 부르면 null. 말풍선이 세이프존을 넘으면 글자를 줄이지 않고 렌더 실패로 이유를 던진다
- * ("3번 장 말풍선이 카드보다 깁니다. 쪼개세요" — DESIGN.md "장이 안 담기면 나눈다").
+ * 실제로 그리는 곳. 테스트가 픽셀을 직접 샘플링할 수 있게 캔버스 자체를 돌려준다
+ * (TC-F2-01·03, 2026-09-21 코드리뷰 MAJOR 9). `renderChatBubbleSlide` 는 이 함수 위에
+ * data URL 계약만 얹는다.
  */
-export function renderChatBubbleSlide(input: ChatBubbleRenderInput): string | null {
+export function renderChatBubbleSlideToCanvas(input: ChatBubbleRenderInput): HTMLCanvasElement | null {
   if (typeof document === "undefined") return null;
   const { deck, slide, index, total } = input;
   const { width, height } = CARD_PIXELS[deck.ratio as CardRatio] ?? CARD_PIXELS["4:5"];
@@ -63,7 +63,17 @@ export function renderChatBubbleSlide(input: ChatBubbleRenderInput): string | nu
     drawChatSlide(ctx, deck, slide, width, height, index, total);
   }
 
-  return canvas.toDataURL("image/png");
+  return canvas;
+}
+
+/**
+ * 한 장을 그려 PNG data URL 로 돌려준다. 브라우저에서만 부른다(canvas 필요). 서버에서
+ * 부르면 null. 말풍선이 세이프존을 넘으면 글자를 줄이지 않고 렌더 실패로 이유를 던진다
+ * ("3번 장 말풍선이 카드보다 깁니다. 쪼개세요". DESIGN.md "장이 안 담기면 나눈다").
+ */
+export function renderChatBubbleSlide(input: ChatBubbleRenderInput): string | null {
+  const canvas = renderChatBubbleSlideToCanvas(input);
+  return canvas ? canvas.toDataURL("image/png") : null;
 }
 
 function drawCover(
@@ -104,13 +114,30 @@ function drawCover(
     ctx.fillText(sub, margin, y + headlineSize * 0.2);
   }
 
+  drawBrandFooterLabel(ctx, deck, width, height, margin);
+  drawPageNumber(ctx, deck, width, height, margin, index, total);
+}
+
+/**
+ * 좌하단 브랜드 표시명(FR-08 AC "표지·CTA 에 좌하단 표시명, 우하단 페이지 번호").
+ * 표지와 CTA 장이 공유한다(2026-09-21 코드리뷰 MAJOR 8. CTA 장은 이 라벨이 빠져 있었다).
+ */
+function drawBrandFooterLabel(
+  ctx: CanvasRenderingContext2D,
+  deck: CardDeck,
+  width: number,
+  height: number,
+  margin: number,
+): void {
   ctx.font = `600 ${Math.round(width * COVER_BRAND_RATIO)}px ${FONT_FAMILY}`;
   ctx.fillStyle = deck.theme.accent;
+  ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   const brandLabel = deck.brand.handle ? `${deck.brand.display_name} ${deck.brand.handle}` : deck.brand.display_name;
-  ctx.fillText(brandLabel, margin, height - margin * 0.6);
-
-  drawPageNumber(ctx, deck, width, height, margin, index, total);
+  // 세이프존(SAFE_ZONE_PX) 을 밑변에서 실제로 보장한다. 이전에는 margin*0.6 만큼만 띄워
+  // margin 이 65px 일 때 바닥에서 39px(<SAFE_ZONE_PX) 로 세이프존을 어겼다(2026-09-21
+  // 코드리뷰 MINOR. 상수는 있는데 실배치에 안 걸림).
+  ctx.fillText(brandLabel, margin, height - Math.max(SAFE_ZONE_PX, margin * 0.6));
 }
 
 function drawChatSlide(
@@ -125,8 +152,10 @@ function drawChatSlide(
   const margin = Math.max(SAFE_ZONE_PX, Math.round(width * 0.06));
   const maxBubbleWidth = width * 0.66;
 
-  // 채팅 헤더
-  const headerHeight = height * CHAT_HEADER_RATIO;
+  // 채팅 헤더. 설계 §5 F2 표 "높이 폭 8%". 폭(width) 기준이지 세로(height) 기준이 아니다
+  // (2026-09-21 코드리뷰 MINOR. height*ratio 로 잘못 계산돼 있었다. 4:5 비율에서는
+  // height>width 라 헤더가 설계보다 25% 더 두꺼워졌다).
+  const headerHeight = width * CHAT_HEADER_RATIO;
   ctx.font = `700 ${Math.round(width * BRAND_LABEL_RATIO)}px ${FONT_FAMILY}`;
   ctx.fillStyle = deck.theme.foreground;
   ctx.textAlign = "left";
@@ -164,6 +193,7 @@ function drawChatSlide(
 
   if (slide.role === "cta") {
     drawCtaFooter(ctx, deck, width, height, margin);
+    drawBrandFooterLabel(ctx, deck, width, height, margin);
   }
 
   drawPageNumber(ctx, deck, width, height, margin, index, total);
@@ -209,6 +239,18 @@ function drawBubble(
       lineX += ctx.measureText(segment.text).width;
     }
     lineY += lineHeight;
+  }
+
+  // reaction:"heart". 계약 필드가 어디에도 그려지지 않던 결함(2026-09-21 코드리뷰 MINOR).
+  // 말풍선 바깥쪽 아래 모서리에 작게 찍는다(카카오톡 하트 리액션 관습 위치).
+  if (bubble.reaction === "heart") {
+    const heartSize = Math.round(bodySize * 0.9);
+    ctx.font = `${heartSize}px ${FONT_FAMILY}`;
+    ctx.textAlign = isReader ? "right" : "left";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = READER_BUBBLE_BG;
+    const heartX = isReader ? x + bubbleWidth : x;
+    ctx.fillText("♥", heartX, top + bubbleHeight + 2);
   }
 
   return bubbleHeight;
@@ -260,13 +302,16 @@ function boldCharsToSegments(chars: BoldChar[]): Segment[] {
 
 /**
  * 세그먼트 배열을 줄바꿈 단위로 쪼갠다. text-card-image.ts 의 wrapLines 와 같은 낱말 우선·
- * 글자 단위 폴백 알고리즘을 굵기가 붙은 글자 배열 위에서 직접 돌린다 — "일반 굵기로 줄을
+ * 글자 단위 폴백 알고리즘을 굵기가 붙은 글자 배열 위에서 직접 돌린다. "일반 굵기로 줄을
  * 나눈 뒤 그 경계를 세그먼트에 재매핑"하는 방식은 줄바꿈이 삼키는 공백 한 글자만큼 매 줄
  * 커서가 밀려 다음 줄부터 글자가 잘리거나 중복되는 버그가 있었다(2026-09-21 실측: 굵은
- * 세그먼트가 없는 홑 세그먼트 말풍선에서도 재현 — 굵기 문제가 아니라 커서 드리프트였다).
+ * 세그먼트가 없는 홑 세그먼트 말풍선에서도 재현. 굵기 문제가 아니라 커서 드리프트였다).
  */
-export function wrapSegments(ctx: CanvasRenderingContext2D, segments: Segment[], size: number, maxWidth: number): Segment[][] {
-  const chars = toBoldChars(segments);
+/**
+ * 세그먼트 배열을 줄바꿈 단위로 쪼갠다(단락 하나). "\n" 은 별도 처리하지 않는다 .
+ * 호출부(wrapSegments)가 "\n" 마다 이 함수를 나눠 부른다.
+ */
+function wrapParagraph(ctx: CanvasRenderingContext2D, chars: BoldChar[], size: number, maxWidth: number): BoldChar[][] {
   const words: BoldChar[][] = [];
   let word: BoldChar[] = [];
   for (const c of chars) {
@@ -302,6 +347,28 @@ export function wrapSegments(ctx: CanvasRenderingContext2D, segments: Segment[],
     current = piece;
   }
   lines.push(current);
+  return lines;
+}
+
+export function wrapSegments(ctx: CanvasRenderingContext2D, segments: Segment[], size: number, maxWidth: number): Segment[][] {
+  const chars = toBoldChars(segments);
+
+  // "\n" 은 강제 줄바꿈이다(mergeBubble 이 합칠 때 넣는 관습, 표지가 이미 headline 에서
+  // split("\n") 하는 것과 같은 취급. 2026-09-21 코드리뷰 MAJOR 7. 이전에는 "\n" 을 낱말
+  // 경계로 보지 않아 일반 글자처럼 측정·렌더돼 줄바꿈 없이 이어지고 빈 글리프가 생겼다).
+  const paragraphs: BoldChar[][] = [];
+  let paragraph: BoldChar[] = [];
+  for (const c of chars) {
+    if (c.ch === "\n") {
+      paragraphs.push(paragraph);
+      paragraph = [];
+    } else {
+      paragraph.push(c);
+    }
+  }
+  paragraphs.push(paragraph);
+
+  const lines: BoldChar[][] = paragraphs.flatMap((p) => wrapParagraph(ctx, p, size, maxWidth));
 
   const result = lines.map(boldCharsToSegments);
   return result.length ? result : [[{ text: "", bold: false }]];
@@ -352,5 +419,6 @@ function drawPageNumber(
   ctx.textAlign = "right";
   ctx.textBaseline = "alphabetic";
   const page = `${String(index + 1).padStart(2, "0")}/${String(total).padStart(2, "0")}`;
-  ctx.fillText(page, width - margin, height - margin * 0.6);
+  // drawBrandFooterLabel 과 같은 세이프존 보정(2026-09-21 코드리뷰 MINOR).
+  ctx.fillText(page, width - margin, height - Math.max(SAFE_ZONE_PX, margin * 0.6));
 }
