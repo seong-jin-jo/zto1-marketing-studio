@@ -1,3 +1,13 @@
+## 2026-09-21 15시 30분 - 회장 격노 대응: TikTok 샌드박스 연결 완료, 품질 문제의 근본 원인(이미지 생성기 로그아웃) 발견, 품질 벤치마크 v1
+
+- 회장 평가(부정): 콘텐츠 품질·편집 UX, 막히면 뚫어라, 키는 네가 넣어라, YouTube 경고·발행 제한 문구, Facebook "사용할 수 없는 기능", 회원 초대 수락 강제 여부, 영상 재생 안 됨.
+- TikTok: 샌드박스 자격증명을 9555 TikTok 페이지에서 운영자 API 로 브라우저 간 전달(값은 컨트롤러 컨텍스트 미출력). 9444 osmu_biseo 동의 → 콜백 "tiktok 연결 완료".
+- YouTube: readiness publish_pending 은 심사 승인 목록 env 미포함 시 붙는 라벨일 뿐 서버가 발행을 막지 않음(Instagram 이 같은 라벨로 발행 성공). "실제 발행이 제한됩니다" 문구가 오해를 만듦 → 문구 결함. Google 미인증 앱 경고는 인증 센터 검증 전까지 뜸.
+- Facebook "사용할 수 없는 기능": 개발 모드에서 Facebook 로그인(비즈니스)은 앱 역할 보유 계정만 통과. creator FB 계정은 역할 없음. 대안 = 페이지 관리자 FB 계정으로 9444 에서 연결.
+- Threads: 시크릿 대조는 Meta 기본 설정 "보기"가 비밀번호 재입력을 요구해 중단(회장 손).
+- 품질 근본 원인: "숏폼 영상 만들기" → "이미지 생성기에 로그인되어 있지 않습니다". 운영 컨테이너 Higgsfield 자격증명 사망. 이미지 생성이 죽어 생성실은 무료 글자 카드(단색+텍스트)만 냈고 그것이 회장이 본 산출물. 로컬 맥 로그인은 살아 있음(9/19). 배포 시크릿은 9/12 스냅샷. 시크릿 갱신 명령은 분류기가 차단 → 회장 실행 + 배포 force_generator_credentials=true.
+- 품질 벤치마크 v1(product-designer, verify PASS, Design Score B, RUBRIC 22/25): docs/design/osmu-content-quality-benchmark-v1-claude-opus.html, PR 65. 결론 "디자인이 아니라 콘텐츠 구조가 없다": 9축 중 7축 0점. 로드맵 2주/4주/8주.
+
 ## 2026-09-21 09시 50분 - creator 계정 X·Instagram 관통 E2E 성공(생성→편집→발행→성과 수집), Threads 는 장기 토큰 단계에서 막힘
 
 - Instagram: 프로페셔널 전환 후 OAuth 재시도 → 콜백 "연결 새로 고침" 관찰, readiness publish_pending(테스터 연결). Threads: 앱 역할에 creator Threads 테스터 추가, 9444 threads.com 웹사이트 권한 → 초대 수락, 동의 화면 승인까지 갔으나 장기 토큰 교환(graph.threads.net/access_token th_exchange_token)이 "This action requires the threads_basic permission. You must submit for app review" HTTP 400. 단기 교환은 통과. 20분 뒤 재시도 동일. 가설: Threads 앱 시크릿(DB 9/8 저장분)이 Threads 전용 시크릿이 아닐 가능성, 또는 오늘 추가한 4개 권한 반영 지연. 미해결.
