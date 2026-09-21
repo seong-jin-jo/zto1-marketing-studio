@@ -1,3 +1,13 @@
+## 2026-09-21 22:30 품질 1단계 PR1+PR2 운영 반영, build 진행 중(승인 아님)
+
+current_stage: build (품질 1단계) · qa (네 방 기본 흐름)
+status: in-progress (승인 아님)
+
+PR 68(덱 계약 v2·말풍선 연산·채팅 말풍선 렌더러) 교차 리뷰 APPROVE·CI 2493 tests 후 머지. 배포 run 35601203627 은
+canvas 네이티브 빌드로 실패(운영 무사) → PR 69 optionalDependencies 격리 → 배포 run 35604116034 success.
+운영 실측: 이 두 PR 은 UI 배선 전이라 회원 화면 변화 없음(미검증 아님, 변화 대상 없음). PR3(생성 프롬프트·품질
+lint 배선) 위임 중. 게이트 승인은 PR5(QA 게이트)까지 끝난 뒤 /approve 로만.
+
 ## 2026-09-21 품질 1단계 착수(eng-design 승인·build 진행), qa 진행 중
 
 current_stage: build (품질 1단계 라인) · qa (네 방 기본 흐름)
