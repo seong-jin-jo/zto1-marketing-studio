@@ -59,14 +59,28 @@ function externalReviewReason(
       ? `${label} 채널은 아직 앱 심사 전입니다(심사 전 한시 절차). 운영자가 미리 등록해둔 테스터 계정은 사용할 수 있지만 외부 고객 계정은 연결할 수 없습니다. 심사 승인 후에는 테스터 등록 없이 OAuth로 연결됩니다.`
       : `${label} 채널은 아직 앱 심사 전입니다(심사 전 한시 절차). 운영자가 미리 테스터로 등록하고 초대를 수락한 계정만 연결할 수 있습니다. 심사 승인 후에는 테스터 등록 없이 OAuth로 연결됩니다.`;
   }
-  // 2026-09-21 회장 지적: 이 문구가 "심사 끝나야 발행된다"고 말했는데 사실이 아니었다.
-  // publish_pending 은 OAUTH_APP_REVIEW_APPROVED_PROVIDERS 미등재 provider에 붙는 표시용
-  // 라벨일 뿐, 서버는 이 상태에서 발행을 막지 않는다(같은 라벨이 붙은 Instagram이 실제로
-  // 발행에 성공했다). 거짓 제한을 말하지 않는다(ADR-007) — 실제로 뜨는 것은 OAuth 동의
-  // 화면의 "확인되지 않은 앱" 경고이지 발행 차단이 아니다.
+  // 2026-09-21 1차 수정: "심사 끝나야 발행된다"는 거짓 문구를 "발행은 됩니다"로 고쳤으나,
+  // 교차 리뷰(PR #66)가 짚었다. publish_pending이 발행을 막지는 않지만 provider마다 실제로
+  // 벌어지는 일이 다르다 — YouTube는 미심사 앱의 videos.insert가 강제로 비공개(private)로
+  // 잠기고(`api/video/publish/route.ts`가 privacyStatus:"public"을 보내도 YouTube가 덮어씀),
+  // TikTok은 미감사 시 본인만 보기(SELF_ONLY)로 게시된다(설계 계약
+  // `docs/design-docs/channel-capability-and-readiness-contract-v1-opus.md` §B
+  // "미심사 앱 private"). 이 둘은 사실을 아는 만큼 구체적으로 말하고, 나머지(naver_blog·
+  // pinterest·x·linkedin·tumblr 등)는 확인된 사실이 없으니 과장하지 않고 "제한될 수 있다"로만
+  // 둔다. 지난 일("경고가 뜰 수 있지만")이 아니라 지금 무슨 일이 벌어지는지만 말한다(ADR-007).
+  if (provider === "youtube") {
+    return connectionState === "connected"
+      ? `${label} 계정이 연결됐습니다. 앱 심사 전에는 올린 영상이 자동으로 비공개로 게시됩니다. 공개하려면 YouTube 스튜디오에서 직접 공개로 바꾸거나, 심사 승인 후 다시 올리세요.`
+      : `${label} 은 앱 심사 전에도 연결할 수 있습니다. 다만 심사 전에는 올린 영상이 자동으로 비공개로 게시됩니다.`;
+  }
+  if (provider === "tiktok") {
+    return connectionState === "connected"
+      ? `${label} 계정이 연결됐습니다. 앱 심사 전에는 올린 게시물이 본인만 보기로 게시됩니다. 공개 범위를 바꾸려면 TikTok 앱에서 직접 바꾸거나, 심사 승인 후 다시 올리세요.`
+      : `${label} 은 앱 심사 전에도 연결할 수 있습니다. 다만 심사 전에는 올린 게시물이 본인만 보기로 게시됩니다.`;
+  }
   return connectionState === "connected"
-    ? `${label} 계정이 연결됐습니다. 앱 심사 전이라 연결 화면에 "확인되지 않은 앱" 경고가 뜰 수 있지만 발행은 정상적으로 됩니다.`
-    : `${label} 은 앱 심사 전에도 연결할 수 있습니다. 연결 중 "확인되지 않은 앱" 경고가 뜨면 "고급"을 누르고 이동하세요.`;
+    ? `${label} 계정이 연결됐습니다. 앱 심사 전에는 발행 범위가 제한될 수 있습니다.`
+    : `${label} 은 앱 심사 전에도 연결할 수 있습니다. 다만 심사 전에는 발행 범위가 제한될 수 있습니다.`;
 }
 
 // GET /api/connect/readiness?tenant_id=... — 고객 UI가 "연결" 버튼을 그리기 전에 먼저 물어보는

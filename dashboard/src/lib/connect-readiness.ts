@@ -38,11 +38,11 @@ export const CONNECT_READINESS_LABELS: Record<ConnectReadinessStatus, string> = 
   connected: "연결됨",
   not_connected: "미연결",
   opening_soon: "오픈 준비중",
-  // 2026-09-21: "발행 준비중"은 발행이 막힌 것처럼 읽히지만 이 상태에서도 발행은 된다(publish_pending
-  // 은 OAUTH_APP_REVIEW_APPROVED_PROVIDERS 미등재 provider에 붙는 표시용 라벨일 뿐, 서버가 발행을
-  // 막지 않는다 — 같은 라벨의 Instagram이 실제 발행에 성공했다). 연결·발행 자체는 이미 가능하다는
-  // 사실을 남기고, 경고 화면이 뜰 수 있다는 것만 알린다(ADR-007 거짓 제한 금지).
-  publish_pending: "연결됨 (심사 전 경고 화면 가능)",
+  // 2026-09-21 교차 리뷰(PR #66): 1차 수정에서 "연결됨 (심사 전 경고 화면 가능)"으로 고쳤는데
+  // 이 라벨은 15개 provider 공용이고, "경고 화면"은 Google(YouTube) 한정 현상이라 다른 provider
+  // 에 걸면 또 거짓이 된다. 라벨은 provider 중립으로 "무엇이 남았나"만 말하고, provider별 실제
+  // 결과(YouTube 비공개 게시·TikTok 본인만 보기 등)는 reason(externalReviewReason)에 싣는다.
+  publish_pending: "연결됨 · 심사 전",
   error: "확인 필요",
 };
 

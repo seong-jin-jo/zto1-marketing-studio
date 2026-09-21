@@ -61,6 +61,19 @@ describe("편집실 미리보기", () => {
     const frame = container.querySelector("[data-edit-preview-frame]");
     const overlays = frame ? Array.from(frame.querySelectorAll("div.absolute.inset-0")) : [];
     expect(overlays).toHaveLength(0);
+    // 자막 등 video 뒤(DOM 순서상 다음)에 오는 위치지정(absolute/fixed) 형제는 전부
+    // pointer-events-none 이어야 한다 — 안 그러면 그 형제가 클릭을 가로챈다(교차 리뷰 PR #66
+    // MAJOR 3, 1:1·16:9처럼 하단 여백이 없는 규격에서 자막이 크롬 컨트롤 바를 덮는 사례).
+    let node: Element | null = video;
+    const blockingSiblings: Element[] = [];
+    while (node && (node = node.nextElementSibling)) {
+      const style = window.getComputedStyle(node);
+      const positioned = style.position === "absolute" || style.position === "fixed" || node.className.includes("absolute");
+      if (positioned && style.pointerEvents !== "none" && !node.className.includes("pointer-events-none")) {
+        blockingSiblings.push(node);
+      }
+    }
+    expect(blockingSiblings).toHaveLength(0);
   });
 
   it("영상이 아직 없으면 조용히 빈 화면 대신 명시 안내 문구를 보여준다", () => {
