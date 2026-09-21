@@ -30,6 +30,10 @@
   --player-text: rgb(244 244 245);
   --player-on: rgb(37 99 235);
   --player-on-text: rgb(255 255 255);
+  /* 카톡 말풍선 카드뉴스(F2) 독자 말풍선 배경. 캔버스 렌더러(chat-bubble.ts READER_BUBBLE_BG)
+     가 그리는 것과 같은 고정 브랜드색이라 테마 무관 — light/dark 재정의 없음
+     (2026-09-22 코드리뷰 MINOR 1, 편집실 미리보기 UI가 캔버스 결과와 어긋나면 안 된다). */
+  --chat-reader-bg: #FEE500;
   --focus: color-mix(in srgb, var(--accent) 35%, transparent);
   --shadow: 0 4px 12px rgba(16,24,40,0.08);
 
@@ -109,6 +113,7 @@
   --color-success-soft: var(--success-soft);
   --color-warning-soft: var(--warning-soft);
   --color-danger-soft:  var(--danger-soft);
+  --color-chat-reader-bg: var(--chat-reader-bg);
   --color-status-fg:    var(--status-fg);
   --color-player-surface: var(--player-surface);
   --color-player-panel:   var(--player-panel);

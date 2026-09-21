@@ -15,12 +15,14 @@ import {
   CardDeckOpsError,
   addBubble,
   addSlide,
+  caretToSegment,
   deleteBubble,
   deleteSlide,
   groupTurns,
   mergeBubble,
   moveBubble,
   moveSlide,
+  setBubbleText,
   splitBubble,
   toggleBold,
   toggleSpeaker,
@@ -40,10 +42,12 @@ const SLIDE_ROLE_LABEL: Record<CardSlide["role"], string> = {
  * 으로 강제하므로, 배지는 그 필드를 그대로 읽을 뿐 인덱스로 역할을 추정하지 않는다.
  */
 const SLIDE_ROLE_BADGE_CLASS: Record<CardSlide["role"], string> = {
-  cover: "border-accent/40 bg-accent-soft text-accent",
+  cover: "border-accent bg-accent-soft text-accent",
   chat: "border-border bg-surface-2 text-muted",
-  comment_prompt: "border-warning/40 bg-warning/10 text-warning",
-  cta: "border-success/40 bg-success/10 text-success",
+  // 2026-09-22 코드리뷰 MINOR 3: `bg-warning/10`·`bg-success/10` 은 임의 opacity 변형.
+  // `--color-warning-soft`·`--color-success-soft`(globals.css) 가 이미 있다.
+  comment_prompt: "border-warning bg-warning-soft text-warning",
+  cta: "border-success bg-success-soft text-success",
 };
 
 export interface BubbleEditorProps {
@@ -92,22 +96,11 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
 
   const currentSlideId = slide.id;
 
+  // 2026-09-22 코드리뷰 MAJOR 5: 세그먼트를 첫 조각 값으로 갈아엎지 않고
+  // `card-deck-ops.setBubbleText`(비율 재분배로 기존 볼드 조각 보존)만 거친다. 헤더 주석
+  // "모든 상태 변화는 card-deck-ops.ts 의 순수 함수만 거친다" 를 텍스트 입력에도 지킨다.
   function updateBubbleText(bubbleId: string, text: string) {
-    // 텍스트 직접 편집은 연산이 아니라 상태 대입이지만, segments 구조를 지키기 위해
-    // 첫 세그먼트만 교체하는 단일-세그먼트 편집으로 제한한다(볼드 범위는 toggleBold 로만).
-    run((d) => ({
-      ...d,
-      slides: d.slides.map((s) => {
-        if (s.id !== currentSlideId) return s;
-        return {
-          ...s,
-          bubbles: (s.bubbles ?? []).map((b) =>
-            b.id === bubbleId ? { ...b, segments: [{ text, bold: b.segments[0]?.bold ?? false }] } : b,
-          ),
-        };
-      }),
-      revision: d.revision + 1,
-    }));
+    run((d) => setBubbleText(d, currentSlideId, bubbleId, text));
   }
 
   function handleToggleBold(bubble: Bubble) {
@@ -129,15 +122,15 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
       </div>
       {error ? <p role="alert" className="rounded-control border border-danger/30 bg-danger/10 p-stack text-caption text-danger" data-bubble-editor-error>{error}</p> : null}
       <ul className="space-y-stack-tight" data-bubble-editor-turns>
-        {turns.map((turn, turnIndex) => (
-          <li key={turnIndex} className={turn.speaker === "reader" ? "flex justify-end" : "flex justify-start"}>
+        {turns.map((turn) => (
+          <li key={turn.bubbles[0].id} className={turn.speaker === "reader" ? "flex justify-end" : "flex justify-start"}>
             <ul className="max-w-[80%] space-y-stack-tight">
               {turn.bubbles.map((bubble) => (
                 <li
                   key={bubble.id}
                   data-bubble-id={bubble.id}
                   data-bubble-speaker={bubble.speaker}
-                  className={`rounded-surface border p-stack ${bubble.speaker === "reader" ? "border-transparent bg-[#FEE500]" : "border-border bg-surface"}`}
+                  className={`rounded-surface border p-stack ${bubble.speaker === "reader" ? "border-transparent bg-chat-reader-bg" : "border-border bg-surface"}`}
                   onClick={() => setSelectedBubbleId(bubble.id)}
                 >
                   <textarea
@@ -155,9 +148,12 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
                     <Button size="sm" onClick={() => run((d) => moveBubble(d, slide.id, bubble.id, -1))}>▲</Button>
                     <Button size="sm" onClick={() => run((d) => moveBubble(d, slide.id, bubble.id, 1))}>▼</Button>
                     <Button size="sm" onClick={() => {
+                      // 2026-09-22 코드리뷰 MAJOR 5: caret 은 말풍선 전체 텍스트 기준인데
+                      // splitBubble 은 세그먼트 좌표를 받는다. caretToSegment 로 바꾼다
+                      // (세그먼트가 2개 이상이면 예전 코드는 잘못된 자리에서 쪼갰다).
                       const el = textareaRefs.current[bubble.id];
-                      const at = el?.selectionStart ?? bubbleText(bubble).length;
-                      run((d) => splitBubble(d, slide.id, bubble.id, { segmentIndex: 0, offset: at }));
+                      const caret = el?.selectionStart ?? bubbleText(bubble).length;
+                      run((d) => splitBubble(d, slide.id, bubble.id, caretToSegment(bubble.segments, caret)));
                     }}>쪼개기</Button>
                     <Button size="sm" onClick={() => run((d) => mergeBubble(d, slide.id, bubble.id))}>합치기</Button>
                     <Button size="sm" variant="secondary" onClick={() => run((d) => deleteBubble(d, slide.id, bubble.id))}>삭제</Button>

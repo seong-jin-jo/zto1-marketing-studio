@@ -460,8 +460,12 @@ export function applyProjection(deck: CardDeck, lines: string[], refs: Projectio
   return { ...deck, slides, revision: deck.revision + 1 };
 }
 
-/** 세그먼트의 원래 bold 비율을 유지하면서 새 텍스트로 재조립한다. */
-function retextSegments(segments: Segment[], newText: string): Segment[] {
+/**
+ * 세그먼트의 원래 bold 비율을 유지하면서 새 텍스트로 재조립한다. `applyProjection`
+ * 전용이 아니라 `card-deck-ops.ts setBubbleText`(말풍선 textarea 직접 편집, 2026-09-22
+ * 코드리뷰 MAJOR 5)도 같은 로직을 쓴다 — 한 자리에서만 정한다(§9 재발방지 관습).
+ */
+export function retextSegments(segments: Segment[], newText: string): Segment[] {
   const originalLength = segmentsText(segments).length;
   if (originalLength === 0 || segments.length === 1) {
     return [{ text: newText, bold: segments[0]?.bold ?? false }];

@@ -29,7 +29,7 @@ describe("BubbleEditor (F4, PR4)", () => {
     const chatSlide = d.slides.find((s) => s.role === "chat")!;
     const onDeckChange = vi.fn();
     render(<BubbleEditor deck={d} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
-    const bubbleEl = document.querySelector(`[data-bubble-id="${chatSlide.bubbles![0].id}"]`)!;
+    const bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${chatSlide.bubbles![0].id}"]`)!;
     fireEvent.click(within(bubbleEl).getByText("화자 전환"));
     expect(onDeckChange).toHaveBeenCalledTimes(1);
     const next = onDeckChange.mock.calls[0][0] as CardDeck;
@@ -48,7 +48,7 @@ describe("BubbleEditor (F4, PR4)", () => {
     };
     const onDeckChange = vi.fn();
     render(<BubbleEditor deck={onlyOne} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
-    const bubbleEl = document.querySelector(`[data-bubble-id="${chatSlide.bubbles![0].id}"]`)!;
+    const bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${chatSlide.bubbles![0].id}"]`)!;
     fireEvent.click(within(bubbleEl).getByText("삭제"));
     expect(onDeckChange).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(/./);

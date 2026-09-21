@@ -7,6 +7,7 @@ import { EditPreview, type CardTextPosition } from "./EditPreview";
 import { EditOutline } from "./EditOutline";
 import { CardDeckPanel } from "./BubbleEditor";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import { deckProjection, applyProjection } from "@/lib/studio/card-deck-contract";
 import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
 import {
@@ -252,7 +253,15 @@ interface CreateRoomProps {
  * 잘 나뉘었는지 확인할 길이 없다. 편집실에서 쓰는 같은 렌더러(`chat-bubble.ts`)를 그대로
  * 재사용해 생성실에도 실제 그림을 보여 준다(설계 §5 F2, "미리보기와 결과가 같은 코드").
  */
-function CardDeckThumbnailStrip({ deck }: { deck: CardDeck }) {
+/**
+ * 2026-09-22 코드리뷰 MAJOR 4: 렌더러(`renderChatBubbleSlideToCanvas`)는 말풍선이
+ * 세이프존을 넘으면 던진다(설계 F2 "넘침 = 렌더 실패로 이유 반환"). 회원 브라우저 폰트로
+ * 한 장이라도 넘치면 이 useEffect 가 잡지 않은 예외는 React 가 가장 가까운 error
+ * boundary 까지 언마운트하고, 그러면 돈 내고 만든 결과 화면이 통째로 사라진다. 장별로
+ * try/catch 해서 실패한 장은 이유 칩으로만 대체한다(`CardDeckPanel` 의 미리보기와 같은
+ * 패턴, BubbleEditor.tsx:224-241).
+ */
+export function CardDeckThumbnailStrip({ deck }: { deck: CardDeck }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const host = hostRef.current;
@@ -260,13 +269,17 @@ function CardDeckThumbnailStrip({ deck }: { deck: CardDeck }) {
     host.innerHTML = "";
     const total = deck.slides.length;
     deck.slides.forEach((slide, index) => {
-      const canvas = renderChatBubbleSlideToCanvas({ deck, slide, index, total });
-      if (!canvas) return;
-      canvas.style.width = "4.5rem";
-      canvas.style.height = "auto";
-      canvas.style.borderRadius = "0.375rem";
-      canvas.style.border = "1px solid var(--color-border, #d9d3c8)";
-      host.appendChild(canvas);
+      try {
+        const canvas = renderChatBubbleSlideToCanvas({ deck, slide, index, total });
+        if (!canvas) return;
+        canvas.className = "h-auto w-[4.5rem] rounded-control border border-border";
+        host.appendChild(canvas);
+      } catch (cause) {
+        const chip = document.createElement("p");
+        chip.className = "rounded-chip border border-dashed border-danger/30 bg-danger/10 px-micro text-caption text-danger";
+        chip.textContent = `${index + 1}번 장: ${cause instanceof Error ? cause.message : "미리보기를 그리지 못했습니다."}`;
+        host.appendChild(chip);
+      }
     });
   }, [deck]);
   return <div ref={hostRef} data-card-deck-thumbnail-strip className="flex flex-wrap gap-stack-tight" aria-label={`카톡 말풍선 카드뉴스 ${deck.slides.length}장 미리보기`} />;
@@ -1400,7 +1413,14 @@ export function EditRoom({
   onCardDeckChange,
 }: EditRoomProps) {
   const formatKind = kind;
-  const safeLines = lines.length ? lines : [""];
+  // 2026-09-22 코드리뷰 MAJOR 3: chat_bubble 이면 `lines`(옛 `editLines` 상태)가 아니라
+  // 덱 자체를 문장 단위로 투영한다. 말풍선을 직접 고친 직후 담당 대화창(`askBulk`)이 고친
+  // 전 문장을 보고 일괄 편집하던 것(D-2026-09-09-1 "두 길이 다 열려 있어야 한다" 위반)을
+  // 막는다. `deckProj.refs` 는 askBulk 결과를 다시 덱에 역적용할 때 각 줄이 어느
+  // 장/말풍선에서 왔는지 찾는 데 쓴다.
+  const isChatDeck = kind === "card" && Boolean(cardDeck) && cardDeck!.template === "chat_bubble";
+  const deckProj = useMemo(() => (isChatDeck ? deckProjection(cardDeck!) : null), [isChatDeck, cardDeck]);
+  const safeLines = isChatDeck ? (deckProj!.lines.length ? deckProj!.lines : [""]) : (lines.length ? lines : [""]);
   const [activeLine, setActiveLine] = useState(0);
   const [activeTool, setActiveTool] = useState<ToolName>("비율");
   const [toolValues, setToolValues] = useState<ToolValues>(() => toolValuesFromFormat(
@@ -1511,7 +1531,14 @@ export function EditRoom({
         setBulkMessage(data.error || "고치지 못했습니다. 잠시 후 다시 시도해 주세요.");
         return;
       }
-      onLinesChange(data.lines);
+      // chat_bubble 이면 결과 줄을 덱에 역적용한다(applyProjection). 그냥 onLinesChange 로
+      // 보내면 editLines 로만 저장되는데, 저장 시 서버가 항상 cardDeck 투영으로 그
+      // editLines 를 덮어써서(§3.3 "cardDeck 이 이긴다") AI 편집 결과가 조용히 사라진다.
+      if (isChatDeck && cardDeck && deckProj && onCardDeckChange) {
+        onCardDeckChange(applyProjection(cardDeck, data.lines, deckProj.refs));
+      } else {
+        onLinesChange(data.lines);
+      }
       setBulkAsk("");
       setBulkMessage(data.changed ? `${data.changed}개 줄을 고쳤습니다.` : "바꿀 것이 없었습니다.");
     } catch {

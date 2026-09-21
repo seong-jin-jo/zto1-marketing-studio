@@ -12,6 +12,9 @@ import {
   deleteSlide,
   groupTurns,
   pruneEmptyBubbles,
+  emptyBubbleSlideNumber,
+  setBubbleText,
+  caretToSegment,
   CardDeckOpsError,
 } from "@/lib/studio/card-deck-ops";
 import { validateCardDeck, type CardDeck } from "@/lib/studio/card-deck-contract";
@@ -214,5 +217,78 @@ describe("groupTurns / pruneEmptyBubbles", () => {
     const withEmpty = addBubble(d, d.slides[1].id, d.slides[1].bubbles![0].id);
     const pruned = pruneEmptyBubbles(withEmpty);
     expect(pruned.slides[1].bubbles).toHaveLength(2);
+  });
+
+  it("emptyBubbleSlideNumber: 정리 뒤에도 빈 말풍선이 남는 장이 없으면 null(2026-09-22 코드리뷰 MAJOR 2)", () => {
+    const d = deck();
+    expect(emptyBubbleSlideNumber(d)).toBeNull();
+  });
+
+  it("emptyBubbleSlideNumber: 말풍선이 하나도 안 남는 장의 1-based 번호를 돌려준다", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const onlyBubble = slide.bubbles![0];
+    const emptied = {
+      ...d,
+      slides: d.slides.map((s) => (s.id === slide.id ? { ...s, bubbles: [] } : s)),
+    };
+    void onlyBubble;
+    expect(emptyBubbleSlideNumber(emptied)).toBe(2);
+  });
+});
+
+describe("setBubbleText / caretToSegment (2026-09-22 코드리뷰 MAJOR 5)", () => {
+  it("setBubbleText: 부분 볼드가 있는 말풍선에서 글자를 고쳐도 볼드 비율이 보존된다(전체 교체 금지)", () => {
+    const d = deck();
+    // slides[1] 은 b-1-1 에 이미 볼드 덩이가 있다(장당 볼드 덩이 ≤1). slides[2] 는 없다.
+    const slide = d.slides[2];
+    const bubbleId = slide.bubbles![0].id;
+    const withBold = toggleBold(d, slide.id, bubbleId, { from: 0, to: 2 });
+    const boldedBubble = withBold.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    expect(boldedBubble.segments.some((s) => s.bold)).toBe(true);
+    const originalText = boldedBubble.segments.map((s) => s.text).join("");
+    const next = setBubbleText(withBold, slide.id, bubbleId, `${originalText}!`);
+    const nextBubble = next.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    // 전체가 한 덩이(단일 세그먼트, bold=첫 조각값)로 갈아엎어졌다면 이 검증이 실패한다.
+    expect(nextBubble.segments.some((s) => s.bold)).toBe(true);
+    expect(nextBubble.segments.some((s) => !s.bold)).toBe(true);
+  });
+
+  it("setBubbleText: 볼드 없는 말풍선은 전체가 non-bold 단일 세그먼트로 재구성된다", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const bubbleId = slide.bubbles![0].id;
+    const next = setBubbleText(d, slide.id, bubbleId, "새 문장");
+    const nextBubble = next.slides[1].bubbles!.find((b) => b.id === bubbleId)!;
+    expect(nextBubble.segments.map((s) => s.text).join("")).toBe("새 문장");
+    expect(nextBubble.segments.every((s) => !s.bold)).toBe(true);
+  });
+
+  it("caretToSegment: 단일 세그먼트면 segmentIndex 0 과 caret 그대로", () => {
+    expect(caretToSegment([{ text: "안녕하세요", bold: false }], 2)).toEqual({ segmentIndex: 0, offset: 2 });
+  });
+
+  it("caretToSegment: caret 이 둘째 세그먼트 안이면 그 세그먼트의 상대 offset 을 돌려준다", () => {
+    const segments = [{ text: "안녕", bold: false }, { text: "하세요", bold: true }];
+    // "안녕하세요" 전체 기준 caret=4 는 "하세요"(둘째 세그먼트) 의 두 번째 글자 앞.
+    expect(caretToSegment(segments, 4)).toEqual({ segmentIndex: 1, offset: 2 });
+  });
+
+  it("caretToSegment: caret 이 세그먼트 경계(2)면 앞 세그먼트의 끝으로 본다", () => {
+    const segments = [{ text: "안녕", bold: false }, { text: "하세요", bold: true }];
+    expect(caretToSegment(segments, 2)).toEqual({ segmentIndex: 0, offset: 2 });
+  });
+
+  it("splitBubble + caretToSegment: 둘째 세그먼트 안에서 쪼개도 거부되지 않는다(구 코드는 segmentIndex 0 을 고정해 거부됐다)", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubbleId = slide.bubbles![0].id;
+    const withBold = toggleBold(d, slide.id, bubbleId, { from: 0, to: 2 });
+    const boldedBubble = withBold.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    const fullText = boldedBubble.segments.map((s) => s.text).join("");
+    // 텍스트 끝 쪽(둘째 세그먼트 안)에서 쪼갠다.
+    const caret = fullText.length - 1;
+    const at = caretToSegment(boldedBubble.segments, caret);
+    expect(() => splitBubble(withBold, slide.id, bubbleId, at)).not.toThrow();
   });
 });

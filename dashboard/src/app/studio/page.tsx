@@ -28,6 +28,8 @@ import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
 import { browserCardUploader, cardRatioFrom, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
+import { emptyBubbleSlideNumber, pruneEmptyBubbles } from "@/lib/studio/card-deck-ops";
 import { limitedChannelNotice, planChannelImages } from "@/lib/studio/channel-image-capacity";
 import { decideVideoRequest, droppedMediaNotice, mediaTopicKey, stalePublishBlock } from "@/lib/studio/work-media";
 import { themeFromPalette } from "@/lib/studio/text-card-image";
@@ -657,7 +659,7 @@ export default function StudioPage() {
     setIdea(""); setText(null); setImg(null); setVid(null); setDraftId(null);
     setIncludes(normalizeIncludes()); setPublishReconciliations({}); setEditorHandoff(null);
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
-    setEditLines([]); setCardTextPositions([]); setReviewQueueId(null); setSelectedCandidate(null);
+    setEditLines([]); setCardTextPositions([]); setCardDeck(null); setReviewQueueId(null); setSelectedCandidate(null);
     setCreateBranch("video"); setCreatePrimaryKind(null); setEditKind("video"); setEditFormat(defaultContentEditFormat("video"));
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     if (!workspaceId) return;
@@ -763,7 +765,7 @@ export default function StudioPage() {
         // 화면이 멀쩡해 보여 그대로 발행된다. 새 작업물에는 새 매체만 붙는다.
         // 남기고 경고만 띄우는 안은 버렸다(근거: lib/studio/work-media.ts droppedMediaNotice).
         const dropped = droppedMediaNotice({ img: Boolean(img), vid: Boolean(vid) });
-        setImg(null); setVid(null); setCardTextPositions([]);
+        setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null);
         if (dropped) showToast(dropped, "success");
         const nextKind = createPrimaryKind ?? "text";
         const nextLines = nextKind === "video"
@@ -891,7 +893,7 @@ export default function StudioPage() {
     generationAbort.current = null;
     setBusy(null);
     setIdea(""); setText(null); setImg(null); setVid(null); setDraftId(null);
-    setEditLines([]); setEditorHandoff(null);
+    setEditLines([]); setEditorHandoff(null); setCardDeck(null);
     setPublishReconciliations({});
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
@@ -1536,6 +1538,11 @@ export default function StudioPage() {
   // 정의는 아래 편집실 렌더 직전). 모든 hook 은 1990행 조건부 early return 앞에서 불러야
   // 렌더마다 순서가 같다.
   const cardDeckAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // setTimeout 콜백이 클로저로 오래된 draftId 를 붙잡지 않게(2026-09-22 코드리뷰 MINOR 6:
+  // 발행실 이동이 타이머보다 먼저 끝나면 뒤늦은 콜백이 draftId=null 로 중복 초안을 만든다).
+  const draftIdRef = useRef<string | null>(null);
+  draftIdRef.current = draftId;
+  useEffect(() => () => { if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current); }, []);
   useEffect(() => {
     if (!publishReturnRequest || !publishReturnQueue?.posts) return;
     const loadKey = `${publishReturnRequest.sourceRoute}:${publishReturnRequest.queuePostId}`;
@@ -2066,17 +2073,29 @@ export default function StudioPage() {
   const resolvedEditLines = editLines.length ? editLines : [text?.shorts?.hook || "", text?.shorts?.body || "", text?.shorts?.cta || ""].filter(Boolean);
 
   // 카드뉴스 v2 덱 연산 후 800ms 디바운스 자동저장(설계 §5 F4). 연산마다 즉시 서버에 쏘면
-  // 타이핑·연속 클릭마다 요청이 나간다. ref 는 위(다른 useRef 들 옆)에서 선언한다 — 이
-  // 자리는 1990행 조건부 조기 return 뒤라 hook 순서가 렌더마다 달라졌다(2026-09-22 실측:
-  // studio-publish-ui.test.tsx 37건이 "Rendered more hooks than during the previous
-  // render" 로 전멸. `useRef` 는 다른 hook 처럼 early return 앞에서만 불러야 한다).
+  // 타이핑·연속 클릭마다 요청이 나간다. hook(useRef·useEffect)은 위(다른 useRef 들 옆,
+  // 1990행 조건부 조기 return 앞)에서 선언한다 — 이 자리는 여러 방 early return 사이라
+  // hook 순서가 렌더마다 달라진다(2026-09-22 실측: studio-publish-ui.test.tsx 37건이
+  // "Rendered more hooks than during the previous render" 로 전멸했던 것과 같은 유형).
+  //
+  // 2026-09-22 코드리뷰 MAJOR 2·MINOR 6 반영: 빈 말풍선(추가 직후 placeholder)을 그대로
+  // 저장하면 서버 validator 가 400 을 낸다. 저장 전에 `pruneEmptyBubbles` 로 걷어내고,
+  // 그래도 말풍선이 하나도 안 남는 장이 있으면 저장 자체를 보류하고 이유를 보여준다(조용한
+  // 실패 금지). `draftId` 는 setTimeout 콜백이 오래된 값을 캡처하지 않게 최신 ref 로 읽는다
+  // (ref 갱신·언마운트 정리는 위 early return 앞에서 한다).
   function onCardDeckChange(nextDeck: CardDeck) {
     setCardDeck(nextDeck);
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
     cardDeckAutosaveTimer.current = setTimeout(() => {
-      save("draft", publishReconciliations, draftId, editLines, img, vid, nextDeck)
+      const pruned = pruneEmptyBubbles(nextDeck);
+      const emptySlide = emptyBubbleSlideNumber(pruned);
+      if (emptySlide !== null) {
+        setEditAutosaveError(`${emptySlide}번 장에 말풍선이 비어 있어 자동 저장을 보류했습니다. 내용을 채우면 저장됩니다.`);
+        return;
+      }
+      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, pruned)
         .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setEditAutosaveError(""); })
-        .catch(() => setEditAutosaveError("자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+        .catch((error) => setEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
     }, 800);
   }
 

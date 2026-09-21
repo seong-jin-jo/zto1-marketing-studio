@@ -25,7 +25,7 @@
  * 이유를 데리고 나온다(실수.md 2026-09-09).
  */
 import type { Bubble, CardDeck, CardSlide, Segment, SlideRole } from "./card-deck-contract";
-import { newBubbleId, newSlideId } from "./card-deck-contract";
+import { newBubbleId, newSlideId, retextSegments } from "./card-deck-contract";
 
 export class CardDeckOpsError extends Error {
   constructor(readonly code: string, message: string) {
@@ -128,6 +128,47 @@ export function splitBubble(
     ...bubbles.slice(bubbleIndex + 1),
   ]);
   return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, bubbles: updatedBubbles }));
+}
+
+/**
+ * textarea 직접 입력을 세그먼트 구조에 반영한다(2026-09-22 코드리뷰 MAJOR 5).
+ *
+ * 이전에는 `BubbleEditor.tsx updateBubbleText` 가 `segments: [{text, bold: 첫조각값}]`
+ * 로 전체를 한 덩이로 갈아엎었다 — 부분 볼드가 있는 말풍선(`[일반][굵게][일반]`)에서 글자
+ * 하나만 고쳐도 볼드가 통째로 사라지거나 전부 붙었다. 헤더 주석 "모든 상태 변화는
+ * card-deck-ops.ts 의 순수 함수만 거친다" 를 텍스트 입력에도 지키게 한다.
+ *
+ * `applyProjection` 의 `retextSegments` 와 같은 비율 재분배를 재사용한다(같은 문제,
+ * 같은 해법 — 한 자리에서만 정한다).
+ */
+export function setBubbleText(deck: CardDeck, slideId: string, bubbleId: string, text: string): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  const bubbles = slide.bubbles ?? [];
+  const { bubble, index: bubbleIndex } = findBubble(slide, bubbleId);
+  const updatedBubble: Bubble = { ...bubble, segments: retextSegments(bubble.segments, text) };
+  const updatedBubbles = bubbles.map((b, i) => (i === bubbleIndex ? updatedBubble : b));
+  return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, bubbles: updatedBubbles }));
+}
+
+/**
+ * textarea 의 `selectionStart`(말풍선 전체 텍스트 기준 캐럿)를 `splitBubble` 이 받는
+ * 세그먼트 좌표 `{segmentIndex, offset}` 로 바꾼다(2026-09-22 코드리뷰 MAJOR 5: 이전에는
+ * `{segmentIndex: 0, offset: caret}` 을 그대로 넘겨, 세그먼트가 2개 이상이면 caret 이
+ * 0번 세그먼트 길이를 넘어 엉뚱한 자리에서 쪼개지거나 ops 가 거부했다).
+ * caret 이 두 세그먼트 경계에 걸치면 앞 세그먼트의 끝으로 본다(빈 뒤 세그먼트 생성 회피).
+ */
+export function caretToSegment(segments: Segment[], caret: number): { segmentIndex: number; offset: number } {
+  const total = segments.reduce((sum, s) => sum + s.text.length, 0);
+  const clamped = Math.max(0, Math.min(caret, total));
+  let cursor = 0;
+  for (let i = 0; i < segments.length; i += 1) {
+    const length = segments[i].text.length;
+    if (clamped <= cursor + length || i === segments.length - 1) {
+      return { segmentIndex: i, offset: clamped - cursor };
+    }
+    cursor += length;
+  }
+  return { segmentIndex: 0, offset: 0 };
 }
 
 /**
@@ -379,4 +420,15 @@ export function pruneEmptyBubbles(deck: CardDeck): CardDeck {
     return { ...slide, bubbles };
   });
   return { ...deck, slides };
+}
+
+/**
+ * `pruneEmptyBubbles` 뒤 말풍선이 하나도 안 남은 장(있으면 안 됨. `validateCardDeck` 이
+ * "bubbles must be a non-empty array" 로 거부한다)의 1-based 장 번호를 돌려준다. 없으면
+ * `null`. 자동저장을 조용히 400 으로 죽이는 대신, 저장 전에 이 자리를 찾아 저장을 보류하고
+ * 이유를 보여주는 데 쓴다(2026-09-22 코드리뷰 MAJOR 2).
+ */
+export function emptyBubbleSlideNumber(deck: CardDeck): number | null {
+  const index = deck.slides.findIndex((slide) => slide.bubbles && slide.bubbles.length === 0);
+  return index === -1 ? null : index + 1;
 }
