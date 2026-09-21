@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { parseGenerationRequest } from "@/lib/studio/generation/contracts";
 import { GenerationService } from "@/lib/studio/generation/service";
 import { isStudioApiError } from "@/lib/studio/generation/errors";
+import { parseDerivationOptions } from "@/app/api/studio/v1/generations/[jobId]/derivations/route";
 import {
   buildDerivationPayload,
   derivationQuote,
@@ -69,7 +70,8 @@ describe("파생 생성 도메인 계약", () => {
     const video = buildDerivationPayload(candidate, "video");
 
     expect(text.kind === "text" && text.body).toContain(candidate.title);
-    expect(card.kind === "card" && card.slides.length).toBe(candidate.format.outline.length + 2);
+    expect(card.kind === "card" && card.deck.slides.length).toBe(candidate.format.outline.length + 2);
+    expect(card.kind === "card" && card.deck.template).toBe("plain");
     expect(video.kind === "video" && video.scenes.length).toBe(candidate.format.outline.length);
     expect(video.kind === "video" && video.scenes[0].lines.length).toBe(2);
     // 아직 렌더한 파일이 없으므로 없는 주소를 지어내지 않는다.
@@ -217,5 +219,18 @@ describe("파생 생성 도메인 계약", () => {
     expect(derivationQuote(["card", "video"]).totalMinor).toBe(1500);
     process.env.STUDIO_DERIVATION_COST_CARD_MINOR = "500";
     expect(derivationQuote(["card"]).totalMinor).toBe(500);
+  });
+
+  it("DRV-13 허용 외 hook_type 은 422 DERIVATION_OPTION_INVALID 로 반려한다", () => {
+    try {
+      parseDerivationOptions({ options: { card: { hook_type: "억지" } } });
+      throw new Error("반려됐어야 합니다");
+    } catch (error) {
+      expect(isStudioApiError(error)).toBe(true);
+      if (isStudioApiError(error)) {
+        expect(error.status).toBe(422);
+        expect(error.code).toBe("DERIVATION_OPTION_INVALID");
+      }
+    }
   });
 });

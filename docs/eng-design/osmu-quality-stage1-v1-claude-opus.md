@@ -230,7 +230,7 @@ export type Segment = { text: string; bold: boolean };       // text ≥1자, �
 export type Bubble = { id: string; order: number; speaker: Speaker; segments: Segment[]; reaction: "heart" | null };
 export type CardSlide = {
   id: string; order: number; role: SlideRole;
-  cover?: { headline: string; sub: string | null };          // role=cover 필수. headline 줄바꿈 ≤2(3줄), 줄당 ≤ 18자
+  cover?: { headline: string; sub: string | null };          // role=cover 필수. headline 줄바꿈 ≤2(3줄), 줄당 ≤ 10자
   bubbles?: Bubble[];                                         // role∈{chat,comment_prompt,cta} 필수 1~8개
   image_url: string | null;                                   // 렌더·업로드 뒤 채움. data:/javascript: 금지
   position?: "top" | "center" | "bottom";                     // template=plain 전용
@@ -256,7 +256,7 @@ export type CardDeck = {
 4. 각 `chat` 장: 말풍선 1~8, 화자 두 종류 **모두** 등장(질문→답 리듬. 벤치마크 REF A-1 "장마다 질문→답").
 5. 볼드 덩이: 장당 `bold=true` 세그먼트 연속 묶음 ≤ 1 (REF A-1 "굵은 글씨는 한 장에 한 덩이").
 6. CTA 장: 말풍선 본문 합산에 `댓글` 포함 + `'${cta.keyword}'` 정확 포함. `cta.save_reason` ≥ 6자.
-7. `cover.headline`: 줄 ≤ 3, 줄당 ≤ 18자, 표면 링크(`http`, `.com`, `링크`) 금지.
+7. `cover.headline`: 줄 ≤ 3, 줄당 ≤ 10자, 표면 링크(`http`, `.com`, `링크`) 금지.
 8. 어디에도 줄표(`—`, `–`) 없음(기존 dash 규칙).
 
 ### 3.3 하위호환 투영 (`deckProjection(deck)`)
@@ -291,7 +291,7 @@ export function applyProjection(deck: CardDeck, lines: string[], refs): CardDeck
 |---|---|---|---|---|---|---|---|
 | FR-01 | ⑥ | 카드 파생 기본 9장 = 표지1+대화6+댓글유도1+CTA1. 허용 7~11 | F1·F3 | `POST …/derivations` | CreateRoom | `drafts.payload.cardDeck.slides` | **G** 카드 갈래를 고르고 확정 **W** 파생 완료 **T** `slides.length===9`, `[0].role==="cover"`, `[8].role==="cta"`, `comment_prompt` 1건 |
 | FR-02 | ③ | 대화 장은 말풍선 목록, 화자 2종(reader 우측 노랑 `#FEE500`, brand 좌측 흰색+이름) | F1·F2 | 없음(렌더) | chat-bubble 렌더러 | `slides[].bubbles[]` | **G** chat 장 **W** 캔버스 렌더 **T** reader 말풍선 x≥ 폭 45%, brand 말풍선 x≤ 폭 55%, brand 첫 말풍선 위에 `brand.display_name` 텍스트 존재(픽셀 검사는 TC-F2-03 픽셀 샘플링) |
-| FR-03 | ① | 표지 헤드라인은 훅 3공식 중 하나. `hook_type` 필수. 3줄 이내, 줄당 18자 | F3 | `POST …/derivations` | 생성 담당(StudioCommandPanel) 선택 칩 | `cardDeck.hook_type`, `slides[0].cover.headline` | **G** `hook_type=auto` 요청 **W** 모델 응답 **T** 응답 `hook_type∈{question,number,pain}` 아니면 `invalid_output`(재시도) · 사용자가 `pain` 고정 시 모델이 다른 값을 내면 반려 |
+| FR-03 | ① | 표지 헤드라인은 훅 3공식 중 하나. `hook_type` 필수. 3줄 이내, 줄당 10자 | F3 | `POST …/derivations` | 생성 담당(StudioCommandPanel) 선택 칩 | `cardDeck.hook_type`, `slides[0].cover.headline` | **G** `hook_type=auto` 요청 **W** 모델 응답 **T** 응답 `hook_type∈{question,number,pain}` 아니면 `invalid_output`(재시도) · 사용자가 `pain` 고정 시 모델이 다른 값을 내면 반려 |
 | FR-04 | ⑦ | CTA 장 = 댓글 키워드 유도 + 댓글 예시 + 저장 명분. 표면 링크 금지. 빈 CTA 반려 | F3 | `POST …/derivations` | 없음 | `cardDeck.cta.*`, `slides[last]` | **G** 모델 응답의 CTA 장에 `댓글`·`'키워드'` 가 없음 **W** 파싱 **T** `StudioLlmExecutionError("invalid_output", retryable, "CTA 장에 댓글 키워드 유도가 없습니다: …")` 로 반려, 재시도 상한 후 사용자 화면에 이유 표시(ADR-007) |
 | FR-05 | ④ | 말풍선 안 부분 볼드. 장당 볼드 덩이 ≤1 | F1·F2·F4 | `POST /api/studio/drafts` | BubbleEditor | `segments[].bold` | **G** 말풍선 글 일부 선택 **W** `굵게` 토글 **T** 선택 범위만 `bold:true` 세그먼트로 분리·병합, 렌더에 700 굵기 반영, 두 번째 덩이 시도 시 경고 "한 장에 굵은 덩이는 하나입니다" 후 거부 |
 | FR-06 | ③ | 편집실 말풍선 추가·쪼개기·합치기·삭제·화자 전환·위/아래 이동 | F1·F4 | `POST /api/studio/drafts` | BubbleEditor · EditOutline | `slides[].bubbles[]`, `revision` | **G** chat 장에서 말풍선 선택 **W** 각 버튼 **T** 03c 와 동일 결과(§5 F1 표) · `revision+1` · 2초 내 자동저장 상태 "저장됨 HH:MM" |
@@ -387,7 +387,7 @@ export function applyProjection(deck: CardDeck, lines: string[], refs): CardDeck
 ```
 카드뉴스는 카카오톡 대화 형식입니다. 독자(reader)가 묻고 브랜드(brand)가 답합니다.
 장 구성은 정확히: cover 1장 → chat 6장 → comment_prompt 1장 → cta 1장 (총 9장).
-표지 headline 은 아래 셋 중 {hook_type 지시} 공식으로 3줄 이내, 줄당 18자 이내:
+표지 headline 은 아래 셋 중 {hook_type 지시} 공식으로 3줄 이내, 줄당 10자 이내:
   question(질문형) · number(숫자형, 숫자에는 학습 정보의 실적만) · pain(고통 인식형, 자책을 멈추게 하는 단정)
 각 chat 장은 reader 말풍선 1개 이상과 brand 말풍선 1개 이상을 포함하고, 한 장에 주장 하나만 둡니다.
 굵게 강조할 조각은 "bold": true 로 표시하되 한 장에 한 덩이만.
@@ -410,7 +410,7 @@ cta 장 brand 말풍선에 반드시 "댓글에 '키워드' 남겨 주세요" �
 | `cta_link` | CTA·표지에 `http`, `www.`, `.com`, `링크`, `프로필` | "CTA 에 표면 링크 표현이 있습니다: 링크" |
 | `cta_save_reason` | `save_reason` < 6자 또는 없음 | "저장 명분이 비었습니다" |
 | `hook_type` | 값 없음/허용 외/고정값과 불일치 | "훅 공식이 pain 이어야 하는데 question 입니다" |
-| `cover_lines` | headline 줄 > 3 또는 줄당 > 18자 | "표지 2번째 줄이 21자입니다(상한 18)" |
+| `cover_lines` | headline 줄 > 3 또는 줄당 > 10자 | "표지 2번째 줄이 21자입니다(상한 10)" |
 | `deck_shape` | 장수·역할 배치·화자 2종 미달 | "5번 장에 brand 말풍선이 없습니다" |
 
 `checkCardDeckQuality(deck, expect)` 가 각 말풍선·표지 텍스트에 기존 `checkOutputQuality`(금지어·누출·줄표·빈 값)도 돌린다. 글 파생(`kind==="text"`)도 같은 자리에서 `checkOutputQuality(body, {forbiddenPhrases: u3.forbiddenPhrases})` 를 통과해야 한다(첫 런타임 배선).
@@ -712,6 +712,7 @@ DB: `db/schema.sql`·`db/migrations/*`·`migration-manifest.tsv` **무변경**(O
 | 담당 대화창 60줄 상한과 말풍선 수 충돌 | 일괄 편집 막힘 | §7.4 "이 장만" 기본 |
 | 2단계 배경 레이어가 계약을 또 바꿀 위험 | 재작업 | `CardSlide` 에 `background?: {...}` 를 **예약 필드로 문서화만**(구현 0). `template` enum 에 `photo_cover` 예약 |
 | 03c 의 `aspiration`(열망 장)·`ratio-bubble`(비율 막대 말풍선) 미이식 | D-100 완전 재현 불가(1단계) | 벤치마크 로드맵상 2단계. 여기서 명시해 잊지 않는다 |
+| number 훅 숫자 출처는 이제 검사하지만(PR3 MAJOR2), 가짜 희소성 표현("오늘만"·"선착순"·"마감임박")은 1단계 규칙 6개 범위 밖이라 아직 안 막는다(윤리 1선·BRAIN 유저심리 6단계 "거짓·가짜 희소성 금지") | 회원이 거짓 긴급성을 만들 수 있음 | 2단계에서 `forbiddenPhrases` 기본 세트에 편입하거나 별도 `checkCardDeckQuality` 규칙 추가로 다룬다(회장 리뷰 2026-09-21 MAJOR2 후속) |
 
 오픈이슈: §8 OD-A~D 4건(회장). 이 외 세션이 닫을 수 있는 미결은 없다.
 
@@ -743,6 +744,7 @@ DB: `db/schema.sql`·`db/migrations/*`·`migration-manifest.tsv` **무변경**(O
 | 버전 | 일자 | 변경 |
 |---|---|---|
 | v1.0.0 | 2026-09-21 19:40 KST | 최초. 벤치마크 v1 §4 1단계 6항목 전량 설계. OD-A~D 미확정 회수. |
+| v1.0.1 | 2026-09-21 | §5 F3 표지 줄당 글자수 상한 오기 정정: 18자 → 10자. PR68에서 이미 `COVER_HEADLINE_MAX_CHARS_PER_LINE=10`으로 확정 구현됐는데 본문이 18로 남아 있었다(회장 리뷰 MINOR7, 구현이 맞고 설계서가 낡은 경우). |
 
 ---
 

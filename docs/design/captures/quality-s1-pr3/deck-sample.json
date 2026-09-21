@@ -1,0 +1,341 @@
+{
+  "_comment": "sink 통과본(회장 리뷰 2026-09-21 MINOR5). derivation-sink.ts EditorDerivationSink.createDraft() 가 만든 drafts.payload 모양 그대로: brand.display_name 이 워크스페이스 표시명(seed-local-demo.sql 의 '모노스튜디오')으로 치환됐고, editLines 가 같이 저장된다. 종전 deck-sample.json 은 sink 를 거치지 않은 원본(brand.display_name='브랜드' placeholder)이었다.",
+  "cardDeck": {
+    "contract_version": "2.0",
+    "template": "chat_bubble",
+    "ratio": "4:5",
+    "theme": {
+      "background": "#12100E",
+      "foreground": "#F7F3EE",
+      "accent": "#E8843C"
+    },
+    "brand": {
+      "display_name": "모노스튜디오",
+      "handle": null
+    },
+    "hook_type": "pain",
+    "cta": {
+      "keyword": "실패점검",
+      "comment_example": "실패점검 남깁니다",
+      "save_reason": "다음에 자동화가 멈춘 날 바로 꺼내 보는 점검표"
+    },
+    "slides": [
+      {
+        "id": "0d354dec-96a3-4a47-b1f0-7ac72edfde17",
+        "order": 0,
+        "role": "cover",
+        "cover": {
+          "headline": "자동화가\n멈춘 건\n실력 탓 아닙니다",
+          "sub": null
+        },
+        "image_url": null
+      },
+      {
+        "id": "9f8c4c59-ca7d-4d33-8074-5ec42bb30888",
+        "order": 1,
+        "role": "chat",
+        "bubbles": [
+          {
+            "id": "2a7c1812-c211-47a2-a2d5-20d9373f72e7",
+            "order": 0,
+            "speaker": "reader",
+            "segments": [
+              {
+                "text": "어제 잘 돌던 자동화가 오늘 아침에 멈춰 있었어요. 뭐부터 봐야 하죠?",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          },
+          {
+            "id": "cc4d46be-f581-4a82-b10e-dd875919d4ee",
+            "order": 1,
+            "speaker": "brand",
+            "segments": [
+              {
+                "text": "고치기 전에 ",
+                "bold": false
+              },
+              {
+                "text": "실패 신호부터 셋으로 나눕니다",
+                "bold": true
+              },
+              {
+                "text": ". 입력이 바뀌었나, 연결이 끊겼나, 조건이 안 맞았나. 이 셋 중 하나가 거의 전부입니다.",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          }
+        ],
+        "image_url": null
+      },
+      {
+        "id": "251bc8a3-ec81-4fae-9ef5-d97058374b10",
+        "order": 2,
+        "role": "chat",
+        "bubbles": [
+          {
+            "id": "94920909-f90d-4723-9358-9c0ce5d61cf3",
+            "order": 0,
+            "speaker": "reader",
+            "segments": [
+              {
+                "text": "첫 번째, 입력이 바뀌었다는 게 무슨 뜻이에요?",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          },
+          {
+            "id": "7bf98a05-c4d4-493f-a472-1d566040586d",
+            "order": 1,
+            "speaker": "brand",
+            "segments": [
+              {
+                "text": "자동화는 들어오는 데이터 모양을 믿고 움직입니다. ",
+                "bold": false
+              },
+              {
+                "text": "시트 열 이름 하나, 날짜 형식 하나만 바뀌어도",
+                "bold": true
+              },
+              {
+                "text": " 그 자리에서 멈춥니다. 마지막으로 성공한 입력과 오늘 입력을 나란히 놓고 다른 칸을 찾으세요.",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          }
+        ],
+        "image_url": null
+      },
+      {
+        "id": "502740de-6869-49f2-8951-17b0dffaaaae",
+        "order": 3,
+        "role": "chat",
+        "bubbles": [
+          {
+            "id": "35fd276c-346d-46e7-9317-a7d5dd0bd716",
+            "order": 0,
+            "speaker": "reader",
+            "segments": [
+              {
+                "text": "두 번째, 연결이 끊겼다는 건요?",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          },
+          {
+            "id": "7f8787cb-4ce8-4c32-8ecd-e4cc413fa523",
+            "order": 1,
+            "speaker": "brand",
+            "segments": [
+              {
+                "text": "외부 서비스 로그인이 만료됐거나 권한이 바뀐 경우입니다. 실행 기록에서 ",
+                "bold": false
+              },
+              {
+                "text": "401, 403 같은 숫자나 '인증' 단어",
+                "bold": true
+              },
+              {
+                "text": "가 보이면 이쪽입니다. 다시 로그인해 연결만 살려도 대부분 돌아옵니다.",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          }
+        ],
+        "image_url": null
+      },
+      {
+        "id": "adb57446-9a97-4f63-9aa0-0711c49173a6",
+        "order": 4,
+        "role": "chat",
+        "bubbles": [
+          {
+            "id": "6e8b060c-878f-419a-b09e-dff655b625fe",
+            "order": 0,
+            "speaker": "reader",
+            "segments": [
+              {
+                "text": "세 번째, 조건이 안 맞았다는 건 오류도 안 나던데요?",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          },
+          {
+            "id": "13f5558d-f634-4865-8c6e-c2e2328cc1ca",
+            "order": 1,
+            "speaker": "brand",
+            "segments": [
+              {
+                "text": "맞습니다. 이 경우는 오류 없이 조용히 건너뜁니다. ",
+                "bold": false
+              },
+              {
+                "text": "'금액이 0보다 크면' 같은 분기 조건",
+                "bold": true
+              },
+              {
+                "text": "에 오늘 데이터가 하나도 안 걸린 겁니다. 실행 기록에서 '건너뜀'이나 처리 건수 0을 확인하세요.",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          }
+        ],
+        "image_url": null
+      },
+      {
+        "id": "40ad4393-b55e-4693-b3df-f412dc9ef6ca",
+        "order": 5,
+        "role": "chat",
+        "bubbles": [
+          {
+            "id": "a7bbe1cd-6bc8-4a71-990d-4d9515f01634",
+            "order": 0,
+            "speaker": "reader",
+            "segments": [
+              {
+                "text": "셋 다 확인하려면 시간이 꽤 걸리지 않나요?",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          },
+          {
+            "id": "5496387e-80ea-4125-b24c-9eeb7612e9ab",
+            "order": 1,
+            "speaker": "brand",
+            "segments": [
+              {
+                "text": "순서를 지키면 짧습니다. ",
+                "bold": false
+              },
+              {
+                "text": "연결, 입력, 조건 순으로",
+                "bold": true
+              },
+              {
+                "text": " 봅니다. 연결은 실행 기록 첫 줄에서 바로 드러나고, 입력은 비교 한 번, 조건은 처리 건수 한 번이면 끝납니다.",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          }
+        ],
+        "image_url": null
+      },
+      {
+        "id": "b50f35f2-531c-4861-8955-6e899b2e87a8",
+        "order": 6,
+        "role": "chat",
+        "bubbles": [
+          {
+            "id": "05f445fa-9e8a-4be1-84a3-74750e099cd7",
+            "order": 0,
+            "speaker": "reader",
+            "segments": [
+              {
+                "text": "다음에 또 멈추면 같은 고생을 반복할 것 같아요.",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          },
+          {
+            "id": "839f46af-5825-471f-a0d5-662a9bf08ce0",
+            "order": 1,
+            "speaker": "brand",
+            "segments": [
+              {
+                "text": "그래서 고친 뒤에 한 줄을 남깁니다. ",
+                "bold": false
+              },
+              {
+                "text": "날짜, 어느 신호였나, 무엇을 바꿨나",
+                "bold": true
+              },
+              {
+                "text": ". 이 기록이 쌓이면 다음 멈춤은 원인부터 짐작할 수 있습니다.",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          }
+        ],
+        "image_url": null
+      },
+      {
+        "id": "28020951-321a-46e9-9641-24dd390eb60b",
+        "order": 7,
+        "role": "comment_prompt",
+        "bubbles": [
+          {
+            "id": "d891acbb-9b03-426a-8e01-3047bb5b8d6d",
+            "order": 0,
+            "speaker": "brand",
+            "segments": [
+              {
+                "text": "세 가지 점검 순서를 한 장으로 정리해 두었습니다. 댓글에 ",
+                "bold": false
+              },
+              {
+                "text": "실패점검",
+                "bold": true
+              },
+              {
+                "text": " 이라고 남겨 주세요.",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          }
+        ],
+        "image_url": null
+      },
+      {
+        "id": "066fc045-d78c-4388-9ea3-a26f5b3c02ee",
+        "order": 8,
+        "role": "cta",
+        "bubbles": [
+          {
+            "id": "05f72088-1872-4060-9c79-5b9e89f36124",
+            "order": 0,
+            "speaker": "brand",
+            "segments": [
+              {
+                "text": "댓글에 '실패점검' 남겨주세요. 자동화가 멈춘 날 바로 꺼내 볼 수 있게 이 글은 저장해 두세요.",
+                "bold": false
+              }
+            ],
+            "reaction": null
+          }
+        ],
+        "image_url": null
+      }
+    ],
+    "revision": 0
+  },
+  "editLines": [
+    "자동화가\n멈춘 건\n실력 탓 아닙니다",
+    "어제 잘 돌던 자동화가 오늘 아침에 멈춰 있었어요. 뭐부터 봐야 하죠?",
+    "고치기 전에 실패 신호부터 셋으로 나눕니다. 입력이 바뀌었나, 연결이 끊겼나, 조건이 안 맞았나. 이 셋 중 하나가 거의 전부입니다.",
+    "첫 번째, 입력이 바뀌었다는 게 무슨 뜻이에요?",
+    "자동화는 들어오는 데이터 모양을 믿고 움직입니다. 시트 열 이름 하나, 날짜 형식 하나만 바뀌어도 그 자리에서 멈춥니다. 마지막으로 성공한 입력과 오늘 입력을 나란히 놓고 다른 칸을 찾으세요.",
+    "두 번째, 연결이 끊겼다는 건요?",
+    "외부 서비스 로그인이 만료됐거나 권한이 바뀐 경우입니다. 실행 기록에서 401, 403 같은 숫자나 '인증' 단어가 보이면 이쪽입니다. 다시 로그인해 연결만 살려도 대부분 돌아옵니다.",
+    "세 번째, 조건이 안 맞았다는 건 오류도 안 나던데요?",
+    "맞습니다. 이 경우는 오류 없이 조용히 건너뜁니다. '금액이 0보다 크면' 같은 분기 조건에 오늘 데이터가 하나도 안 걸린 겁니다. 실행 기록에서 '건너뜀'이나 처리 건수 0을 확인하세요.",
+    "셋 다 확인하려면 시간이 꽤 걸리지 않나요?",
+    "순서를 지키면 짧습니다. 연결, 입력, 조건 순으로 봅니다. 연결은 실행 기록 첫 줄에서 바로 드러나고, 입력은 비교 한 번, 조건은 처리 건수 한 번이면 끝납니다.",
+    "다음에 또 멈추면 같은 고생을 반복할 것 같아요.",
+    "그래서 고친 뒤에 한 줄을 남깁니다. 날짜, 어느 신호였나, 무엇을 바꿨나. 이 기록이 쌓이면 다음 멈춤은 원인부터 짐작할 수 있습니다.",
+    "세 가지 점검 순서를 한 장으로 정리해 두었습니다. 댓글에 실패점검 이라고 남겨 주세요.",
+    "댓글에 '실패점검' 남겨주세요. 자동화가 멈춘 날 바로 꺼내 볼 수 있게 이 글은 저장해 두세요."
+  ]
+}

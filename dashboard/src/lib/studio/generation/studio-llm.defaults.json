@@ -5,5 +5,6 @@
   ],
   "max_attempts": 1,
   "timeout_ms": 120000,
-  "max_output_tokens": 8000
+  "max_output_tokens": 8000,
+  "max_output_tokens_card_multiplier": 1
 }

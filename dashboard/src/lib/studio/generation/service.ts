@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
+import type { HookType } from "@/lib/studio/card-deck-contract";
 import type { GenerationRequest, RequestedTarget } from "./contracts";
 import { StudioApiError } from "./errors";
-import { StudioLlmExecutionError, type StudioContentGenerator } from "./llm";
+import { StudioLlmExecutionError, type CardDerivationOptions, type StudioContentGenerator } from "./llm";
 import {
   assertAcknowledgedCost,
   batchStatus,
@@ -14,6 +15,9 @@ import {
   type DerivationKind,
   type DerivationPayload,
 } from "./derivation";
+
+/** `POST …/derivations` body `options.card.hook_type`. 기본은 auto(모델이 고르고 선언). */
+export type DerivationOptions = { card?: { hookType?: HookType | "auto" } };
 
 export type CostEstimate = {
   status: "quoted" | "unavailable";
@@ -475,6 +479,7 @@ export class GenerationService {
     idempotencyKey: string,
     allowedWorkspaceIds: readonly string[],
     now = new Date(),
+    options?: DerivationOptions,
   ): Promise<DerivationBatch> {
     if (!idempotencyKey || idempotencyKey.length > 255) {
       throw new StudioApiError({
@@ -506,12 +511,16 @@ export class GenerationService {
     for (const kind of kinds) {
       const summary = derivationSummary(candidate, kind);
       try {
+        const cardOptions: CardDerivationOptions | undefined = kind === "card"
+          ? { hookType: options?.card?.hookType ?? "auto" }
+          : undefined;
         const payload = await this.generator().generateDerivation({
           memberId,
           workspaceId: job.workspaceId,
           request: job.request,
           candidate,
           kind,
+          cardOptions,
         });
         const saved = await this.sink().createDraft({
           workspaceId: job.workspaceId,
