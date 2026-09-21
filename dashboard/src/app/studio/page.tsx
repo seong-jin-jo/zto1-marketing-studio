@@ -1093,9 +1093,28 @@ export default function StudioPage() {
    *
    * 못 그리면 막지 않고 밝힌다. 그리기는 브라우저 캔버스에 달려 있어 환경에 따라 없을 수
    * 있고, 그때 발행실로 가는 길까지 닫으면 사용자는 이유도 모른 채 갇힌다.
+   *
+   * 2026-09-22 PR4 배선: `cardDeck.template === "chat_bubble"` 이면 옛 9칸 글자 자리(lines·
+   * positions) 경로가 아니라 말풍선 덱을 그대로 `card-templates/chat-bubble.ts` 렌더러로
+   * 9장 그린다(설계 §5 F2·F4). `cardDeck` 이 없거나 `template==="plain"` 이면 기존 글자
+   * 카드 3장 경로는 한 글자도 안 바뀐다(회귀 0, 기존 테스트 그대로 통과).
    */
   async function recompositeCards(lines: string[]): Promise<ImgResult | null> {
     if (editKind !== "card") return null;
+    if (cardDeck && cardDeck.template === "chat_bubble") {
+      try {
+        const urls = await renderAndUploadCardDeck(
+          { lines: [], ratio: cardRatioFrom(cardAspectRatio), template: "chat_bubble", deck: cardDeck },
+          { upload: browserCardUploader(authHeaders()) },
+        );
+        const next: ImgResult = { url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
+        setImg(next);
+        return next;
+      } catch (error) {
+        showToast(extractApiErrorMessage(error, "카드뉴스 9장을 다시 그리지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요."), "error");
+        return null;
+      }
+    }
     if (!lines.some((line) => line.trim())) return null;
     try {
       const urls = await renderAndUploadCardDeck({
@@ -2006,6 +2025,10 @@ export default function StudioPage() {
         quickDraftError={lastError}
         onQuickDraftGenerate={generateQuickDraft}
         onGenerateCardImages={generateCardImages}
+        cardDeckByDraftId={(draftId) => {
+          const draft = hist?.drafts.find((d) => d.id === draftId);
+          return (draft?.cardDeck as CardDeck | undefined) ?? null;
+        }}
         onTextCardsCreated={(urls, cardLines) => {
           if (!urls.length) return;
           setImg({ url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) });

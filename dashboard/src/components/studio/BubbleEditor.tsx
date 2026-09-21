@@ -34,6 +34,18 @@ const SLIDE_ROLE_LABEL: Record<CardSlide["role"], string> = {
   cta: "CTA",
 };
 
+/**
+ * 4역할 배지 색(세션맥락 과제 ③). `card-deck-contract.ts` 의 `SlideRole` 이 이미
+ * 표지=0번·CTA=마지막·댓글유도=CTA 바로 앞 한 장이라는 순서 불변식을 `validateCardDeck`
+ * 으로 강제하므로, 배지는 그 필드를 그대로 읽을 뿐 인덱스로 역할을 추정하지 않는다.
+ */
+const SLIDE_ROLE_BADGE_CLASS: Record<CardSlide["role"], string> = {
+  cover: "border-accent/40 bg-accent-soft text-accent",
+  chat: "border-border bg-surface-2 text-muted",
+  comment_prompt: "border-warning/40 bg-warning/10 text-warning",
+  cta: "border-success/40 bg-success/10 text-success",
+};
+
 export interface BubbleEditorProps {
   deck: CardDeck;
   slideId: string;
@@ -257,7 +269,15 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
                 data-slide-role={slide.role}
                 className={`flex w-full items-center justify-between rounded-control border p-stack text-left text-caption ${slide.id === activeSlideId ? "border-accent bg-accent-soft" : "border-border bg-surface"}`}
               >
-                <span>{index + 1}. {SLIDE_ROLE_LABEL[slide.role]}</span>
+                <span className="flex items-center gap-stack-tight">
+                  <span>{index + 1}.</span>
+                  <span
+                    data-slide-role-badge={slide.role}
+                    className={`rounded-chip border px-micro text-caption font-semibold ${SLIDE_ROLE_BADGE_CLASS[slide.role]}`}
+                  >
+                    {SLIDE_ROLE_LABEL[slide.role]}
+                  </span>
+                </span>
               </button>
               <div className="flex gap-stack-tight">
                 <Button size="sm" onClick={() => runSlide((d) => moveSlide(d, index, index - 1))} disabled={locked || index === 0}>▲</Button>

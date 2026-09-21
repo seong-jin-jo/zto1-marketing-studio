@@ -24,6 +24,7 @@ import { workspaceDisplayName } from "@/lib/workspace-display-name";
 import { IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
 import { themeFromPalette, type CardRatio } from "@/lib/studio/text-card-image";
 import { browserCardUploader, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
+import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
 import {
   CARD_ASPECT_RATIOS,
   EDIT_BACKGROUNDS,
@@ -232,6 +233,43 @@ interface CreateRoomProps {
   madeVideoUrl?: string | null;
   cardImageBusy?: boolean;
   onQuickDraftGenerate?: (structure: CreateStructureChoice) => Promise<void> | void;
+  /**
+   * "다른 형식도 같이" 로 만든 카톡 말풍선 카드뉴스의 실제 덱을 draft_id 로 찾는다.
+   *
+   * 2026-09-22 PR4: `deck_summary`(장수·훅·CTA 키워드) 텍스트만으로는 "방금 만든 것"을
+   * 눈으로 확인할 수 없다. 목록(`GET /api/studio/drafts`)에 이미 `cardDeck` 이 실려
+   * 오므로(§7.3) 그것을 찾아 캔버스로 실제 9장을 그린다. 못 찾으면(아직 목록에 안 온
+   * 낙관적 응답 구간 등) 조용히 비우지 않고 기존 텍스트 요약으로 물러선다.
+   */
+  cardDeckByDraftId?: (draftId: string) => CardDeck | null;
+}
+
+/**
+ * 카드 덱 한 벌을 작은 썸네일 9장으로 캔버스에 그린다("방금 만든 것" 실물 확인).
+ *
+ * 2026-09-22 실측: PR3 까지는 카드뉴스 생성 직후 화면에 "9장을 만들었습니다(훅: pain,
+ * 댓글 키워드: '순서')" 라는 글줄만 떴다. 글자로는 훅 표지가 무엇을 만들었는지, 말풍선이
+ * 잘 나뉘었는지 확인할 길이 없다. 편집실에서 쓰는 같은 렌더러(`chat-bubble.ts`)를 그대로
+ * 재사용해 생성실에도 실제 그림을 보여 준다(설계 §5 F2, "미리보기와 결과가 같은 코드").
+ */
+function CardDeckThumbnailStrip({ deck }: { deck: CardDeck }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    host.innerHTML = "";
+    const total = deck.slides.length;
+    deck.slides.forEach((slide, index) => {
+      const canvas = renderChatBubbleSlideToCanvas({ deck, slide, index, total });
+      if (!canvas) return;
+      canvas.style.width = "4.5rem";
+      canvas.style.height = "auto";
+      canvas.style.borderRadius = "0.375rem";
+      canvas.style.border = "1px solid var(--color-border, #d9d3c8)";
+      host.appendChild(canvas);
+    });
+  }, [deck]);
+  return <div ref={hostRef} data-card-deck-thumbnail-strip className="flex flex-wrap gap-stack-tight" aria-label={`카톡 말풍선 카드뉴스 ${deck.slides.length}장 미리보기`} />;
 }
 
 const CREATE_EXAMPLES = [
@@ -371,7 +409,7 @@ function useLearnedRules(workspaceId: string): string {
   return text;
 }
 
-export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardRatio = "4:5", cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
+export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardRatio = "4:5", cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null, cardDeckByDraftId }: CreateRoomProps) {
   const topicInputRef = useRef<HTMLInputElement>(null);
   const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
   const [primaryKind, setPrimaryKind] = useState<CreateKind | null>(null);
@@ -1170,17 +1208,23 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
               <div className="space-y-stack rounded-surface border border-border bg-surface p-stack" data-create-also-result={alsoBatch.status}>
                 <b className="block text-caption font-semibold text-text">{alsoBatch.discarded_at ? "추가 구성 초안을 버렸습니다" : "추가 형식의 구성 초안"}</b>
                 <ul className="space-y-stack-tight">
-                  {alsoBatch.items.map((item) => (
-                    <li key={item.kind} className="break-keep text-caption text-muted" data-also-item={item.kind} data-also-item-status={item.status}>
-                      {item.label}: {item.status === "succeeded"
-                        ? (item.kind === "video"
-                          ? "대본과 장면 구성을 준비했습니다. 영상 렌더링은 아직 제공하지 않습니다"
-                          : item.kind === "card" && item.deck_summary
-                            ? `카톡 말풍선 카드뉴스 ${item.deck_summary.slides}장을 만들었습니다(훅: ${item.deck_summary.hook_type}, 댓글 키워드: '${item.deck_summary.cta_keyword}')`
-                            : "구성 초안을 준비했습니다")
-                        : `구성 초안을 만들지 못했습니다. ${item.failure_reason ?? ""}`}
-                    </li>
-                  ))}
+                  {alsoBatch.items.map((item) => {
+                    const deck = item.kind === "card" && item.deck_summary && item.draft_id
+                      ? cardDeckByDraftId?.(item.draft_id) ?? null
+                      : null;
+                    return (
+                      <li key={item.kind} className="break-keep text-caption text-muted" data-also-item={item.kind} data-also-item-status={item.status}>
+                        {item.label}: {item.status === "succeeded"
+                          ? (item.kind === "video"
+                            ? "대본과 장면 구성을 준비했습니다. 영상 렌더링은 아직 제공하지 않습니다"
+                            : item.kind === "card" && item.deck_summary
+                              ? `카톡 말풍선 카드뉴스 ${item.deck_summary.slides}장을 만들었습니다(훅: ${item.deck_summary.hook_type}, 댓글 키워드: '${item.deck_summary.cta_keyword}')`
+                              : "구성 초안을 준비했습니다")
+                          : `구성 초안을 만들지 못했습니다. ${item.failure_reason ?? ""}`}
+                        {deck ? <div className="mt-stack-tight"><CardDeckThumbnailStrip deck={deck} /></div> : null}
+                      </li>
+                    );
+                  })}
                 </ul>
                 <p className="text-caption text-subtle">나간 값 {alsoBatch.cost.charged_minor.toLocaleString("ko-KR")}원</p>
                 {alsoBatch.discarded_at ? null : <Button onClick={discardAlso} disabled={alsoBusy}>추가 구성 초안 버리기</Button>}
