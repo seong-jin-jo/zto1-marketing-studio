@@ -2,6 +2,10 @@ import { withTenant } from "@/lib/db";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
 import { resolveCurrentWork } from "@/lib/studio/current-work";
+import { validateCardDeck, CardDeckValidationError, deckProjection } from "@/lib/studio/card-deck-contract";
+
+/** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
+const CARD_DECK_MAX_BYTES = 64 * 1024;
 
 // Studio 초안/발행 이력 — Supabase drafts 테이블(테넌트별). payload jsonb에 본문 보관.
 interface DraftRow {
@@ -20,6 +24,7 @@ interface DraftRow {
     editKind?: unknown;
     editLines?: unknown;
     cardTextPositions?: unknown;
+    cardDeck?: unknown;
     titles?: unknown;
     captions?: unknown;
     hashtags?: unknown;
@@ -69,6 +74,7 @@ export async function GET(request: Request) {
       editKind: r.payload?.editKind ?? null,
       editLines: r.payload?.editLines ?? null,
       cardTextPositions: r.payload?.cardTextPositions ?? null,
+      cardDeck: r.payload?.cardDeck ?? null,
       titles: r.payload?.titles ?? {},
       captions: r.payload?.captions ?? {},
       hashtags: r.payload?.hashtags ?? {},
@@ -109,8 +115,46 @@ export async function POST(request: Request) {
       error: "선택 계정값을 확인해 주세요",
     }, { status: 422, headers: { "Cache-Control": "no-store" } });
   }
+  let cardDeckProjectedLines: string[] | null = null;
+  if (body.cardDeck !== undefined && body.cardDeck !== null) {
+    const serialized = JSON.stringify(body.cardDeck);
+    if (Buffer.byteLength(serialized, "utf8") > CARD_DECK_MAX_BYTES) {
+      return Response.json({
+        ok: false,
+        code: "CARD_DECK_TOO_LARGE",
+        error: "카드 덱이 너무 큽니다",
+      }, { status: 413, headers: { "Cache-Control": "no-store" } });
+    }
+    try {
+      validateCardDeck(body.cardDeck);
+      cardDeckProjectedLines = deckProjection(body.cardDeck).lines;
+    } catch (e) {
+      const rule = e instanceof CardDeckValidationError ? e.rule : "unknown";
+      return Response.json({
+        ok: false,
+        code: "INVALID_CARD_DECK",
+        rule,
+        error: e instanceof Error ? e.message : "카드 덱을 확인해 주세요",
+      }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
+  }
   const tenantId = await effectiveTenantId(request, body.tenant_id);
   if (!tenantId) return Response.json({ error: "tenant_id required" }, { status: 400 });
+  // cardDeck: 요청에 키가 아예 없으면 payload 에도 빼서 JSONB `||` 병합 대상에서
+  // 제외한다(undefined 유지 → 기존 덱 보존). 지우려면 명시 플래그 `clearCardDeck:true`
+  // 를 보낸다(2026-09-21 코드리뷰 MAJOR 4. 이전에는 `body.cardDeck ?? null` 이 병합에
+  // null 을 얹어, cardDeck 을 안 싣는 모든 저장 경로가 자동저장 한 번에 기존 덱을 지웠다).
+  // 스프레드로만 넣는다. payload 를 넓은 타입(Record<string, unknown>)으로 선언하고
+  // 사후에 mutate 하면 `sql.json()` 이 기대하는 JSONValue 로 좁혀지지 않는다.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- sql.json() 의 JSONValue
+  // 타입은 이미 검증된 임의 JSON 트리(cardDeck)를 구조적으로 받아들이지 못한다. 이
+  // 지점은 validateCardDeck() 을 이미 통과했다(위 CARD_DECK_MAX_BYTES 분기).
+  const cardDeckPatch: { cardDeck?: any } = {};
+  if (body.clearCardDeck === true) {
+    cardDeckPatch.cardDeck = null;
+  } else if (Object.prototype.hasOwnProperty.call(body, "cardDeck") && body.cardDeck != null) {
+    cardDeckPatch.cardDeck = body.cardDeck;
+  }
   const payload = {
     text: body.text ?? null, img: body.img ?? null, vid: body.vid ?? null,
     includes: body.includes ?? {},
@@ -118,7 +162,9 @@ export async function POST(request: Request) {
     publishReconciliation: body.publishReconciliation ?? null,
     editFormat: body.editFormat ?? null,
     editKind: body.editKind ?? null,
-    editLines: body.editLines ?? null,
+    // cardDeck 이 있으면 그 투영이 진실원이다(§3.3 "cardDeck 이 이긴다"). 클라이언트가
+    // 보낸 editLines 와 다르면 여기서 덮어쓴다.
+    editLines: cardDeckProjectedLines ?? body.editLines ?? null,
     cardTextPositions: body.cardTextPositions ?? null,
     titles: body.titles ?? {},
     captions: body.captions ?? {},
@@ -127,6 +173,7 @@ export async function POST(request: Request) {
     firstComments: body.firstComments ?? {},
     selectedAccounts: body.selectedAccounts ?? {},
     reviewQueueId: body.reviewQueueId ?? null,
+    ...cardDeckPatch,
   };
   const status = body.status || "draft";
   const idea = body.idea || "";
