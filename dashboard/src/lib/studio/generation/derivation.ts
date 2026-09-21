@@ -171,8 +171,14 @@ function outlineOf(candidate: GenerationCandidate): string[] {
   return candidate.format.outline.filter((entry) => entry.trim().length > 0);
 }
 
-// 갈래를 옮길 때 문장을 그대로 복사하지 않는다. 글은 이어지는 본문, 카드뉴스는 장별 한 문장,
-// 영상은 장면 제목과 대사다. 마지막 칸은 갈래마다 마무리 모양으로 바꾼다.
+/**
+ * @deprecated 런타임 호출처가 0이다(service.ts는 PR3 이후 LlmStudioContentGenerator를
+ * 통해 실제 모델로 파생을 만든다). 이 함수는 뼈대를 그대로 복사하며, card 갈래는
+ * `hook_type:"pain"`, `cta.keyword:"궁금해요"` 를 고정값으로 지어낸다 — 설계 §9 "템플릿
+ * 폴백 제거" 원칙과 어긋난다(회장 리뷰 2026-09-21 MINOR8). 삭제하지 않고 남긴 이유는
+ * `tests/studio/generation-derivation.test.ts` 가 아직 이 함수로 DerivationPayload 모양
+ * 자체(3갈래 필드 구조)를 테스트하기 때문 — 실서비스 경로에서 이 함수를 호출하지 마라.
+ */
 export function buildDerivationPayload(candidate: GenerationCandidate, kind: DerivationKind): DerivationPayload {
   const outline = outlineOf(candidate);
   if (outline.length < 2) {

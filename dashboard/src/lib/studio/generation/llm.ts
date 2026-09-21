@@ -18,7 +18,7 @@ import {
   type Speaker,
 } from "@/lib/studio/card-deck-contract";
 import { DEFAULT_CARD_THEME } from "@/lib/studio/text-card-image-theme";
-import { checkCardDeckQuality, checkOutputQuality } from "@/lib/studio/output-quality";
+import { checkCardDeckQuality, checkOutputQuality, extractKnownNumbers } from "@/lib/studio/output-quality";
 import type { GenerationRequest } from "./contracts";
 import type { DerivationKind, DerivationPayload } from "./derivation";
 import type { GenerationCandidate } from "./service";
@@ -142,7 +142,10 @@ export function resolveStudioLlmConfig(kind?: DerivationKind): ResolvedConfig {
   const maxAttempts = configuredPositiveInt("STUDIO_LLM_MAX_ATTEMPTS", defaults.max_attempts, 1, 3);
   // 카드 갈래는 9장 구조 JSON(말풍선·세그먼트 중첩)이라 글 파생보다 출력 토큰이 늘어난다.
   // 실측(PR3, 2026-09-21, `claude -p` 공유 CLI 로 이 프롬프트를 3회 실행): output_tokens
-  // 1672 / 1701 / 3816. 기존 상한(8000, 이 함수의 clamp 상한과 동일)은 세 번 다 `end_turn`
+  // 1672 / 1701 / 3816. 재현 방법·재실측 기록은
+  // docs/design/captures/quality-s1-pr3/max-output-tokens-measurement.md 를 본다(회장
+  // 리뷰 2026-09-21 MINOR9 — 원문 로그를 그 자리에서 안 남겼던 것을 여기서 보완). 기존
+  // 상한(8000, 이 함수의 clamp 상한과 동일)은 세 번 다 `end_turn`
   // 으로 끝나 잘림이 없었다(관측치 최댓값 대비 여유 2.1배). 그래서 `max_output_tokens_card_
   // multiplier` 기본값은 1(변경 없음)로 둔다 — 배수를 올려도 clamp 상한(8000)에 막혀 아무
   // 효과가 없다. 상한 자체를 올리는 것은 이번 3회 실측만으로는 (unsourced) — 잘림이 실제로
@@ -522,6 +525,7 @@ export function parseDerivationOutput(
   kind: DerivationKind,
   cardOptions?: CardDerivationOptions,
   forbiddenPhrases: readonly string[] = [],
+  knownNumbers: readonly string[] = [],
 ): DerivationPayload {
   const value = jsonObject(text);
   if (kind === "text") {
@@ -571,6 +575,7 @@ export function parseDerivationOutput(
     const quality = checkCardDeckQuality(deck, {
       fixedHookType: cardOptions?.hookType !== "auto" ? cardOptions?.hookType : undefined,
       forbiddenPhrases,
+      knownNumbers,
     });
     if (!quality.passed) {
       const [first] = quality.issues;
@@ -633,6 +638,10 @@ export interface StudioLlmUsageRecorder {
     model: string;
     attempt: number;
     reason?: StudioLlmFailureReason;
+    /** 어느 규칙에서 걸렸는지. meta.failure_detail 로 남아야 설계 §12 "반려율을 meta.reason
+     * 으로 집계"가 규칙 단위로도 가능하다(reason 만으로는 invalid_output 안의 아홉 가지
+     * 규칙을 구분 못 한다). */
+    detail?: string;
     result?: GeneratedTextResult;
   }): Promise<void>;
 }
@@ -672,6 +681,7 @@ class StudioLlmUsageLedger implements StudioLlmUsageRecorder {
     model: string;
     attempt: number;
     reason?: StudioLlmFailureReason;
+    detail?: string;
     result?: GeneratedTextResult;
   }): Promise<void> {
     const usage = input.result?.usage;
@@ -686,6 +696,7 @@ class StudioLlmUsageLedger implements StudioLlmUsageRecorder {
           model: input.result?.model ?? input.model,
           attempt: input.attempt,
           failure_reason: input.reason ?? null,
+          failure_detail: input.detail ?? null,
           input_tokens: usage?.inputTokens ?? null,
           cache_creation_input_tokens: usage?.cacheCreationInputTokens ?? null,
           cache_read_input_tokens: usage?.cacheReadInputTokens ?? null,
@@ -725,10 +736,16 @@ export class LlmStudioContentGenerator implements StudioContentGenerator {
     for (const [index, model] of config.models.entries()) {
       const attempt = index + 1;
       const eventId = await this.ledger.start({ ...input, model, attempt });
+      // 반려 사유를 다음 모델에게 그대로 다시 보내면 같은 실수를 반복한다(회장 리뷰
+      // 2026-09-21 MINOR6). invalid_output 으로 걸린 경우에만 붙인다 — provider 오류 등은
+      // 프롬프트 문제가 아니라서 붙여도 소용없다.
+      const promptForAttempt = attempt > 1 && lastDetail
+        ? `${input.prompt}\n\n## 직전 시도 반려 사유(반드시 고쳐서 다시 만드세요)\n${lastDetail}`
+        : input.prompt;
       let generated: GeneratedTextResult;
       try {
         generated = await this.runner({
-          prompt: input.prompt,
+          prompt: promptForAttempt,
           tenantId: input.workspaceId,
           model,
           timeoutMs: config.timeoutMs,
@@ -737,7 +754,7 @@ export class LlmStudioContentGenerator implements StudioContentGenerator {
       } catch (error) {
         lastReason = failureReason(error);
         lastDetail = failureDetail(error);
-        await this.ledger.finish({ ...input, eventId, model, attempt, status: "failed", reason: lastReason });
+        await this.ledger.finish({ ...input, eventId, model, attempt, status: "failed", reason: lastReason, detail: lastDetail });
         // 줄이 밀린 것은 모델을 바꿔도 같은 줄이다. 보조 모델로 재시도하면 줄만 더 길어진다.
         if (lastReason === "approval_required" || lastReason === "quota_exhausted" || lastReason === "provider_rate_limited" || lastReason === "provider_unsupported" || lastReason === "queue_busy") break;
         continue;
@@ -749,7 +766,7 @@ export class LlmStudioContentGenerator implements StudioContentGenerator {
       } catch (error) {
         lastReason = failureReason(error);
         lastDetail = failureDetail(error);
-        await this.ledger.finish({ ...input, eventId, model, attempt, status: "failed", reason: lastReason, result: generated });
+        await this.ledger.finish({ ...input, eventId, model, attempt, status: "failed", reason: lastReason, result: generated, detail: lastDetail });
         if (lastReason === "usage_ledger_unavailable") break;
       }
     }
@@ -784,7 +801,13 @@ export class LlmStudioContentGenerator implements StudioContentGenerator {
       operation: `generation.derivation.${input.kind}`,
       kind: input.kind,
       prompt: buildDerivationPrompt(input.request, input.candidate, input.kind, input.cardOptions),
-      parse: (text) => parseDerivationOutput(text, input.kind, input.cardOptions, input.request.learningContext.u3.forbiddenPhrases),
+      parse: (text) => parseDerivationOutput(
+        text,
+        input.kind,
+        input.cardOptions,
+        input.request.learningContext.u3.forbiddenPhrases,
+        extractKnownNumbers(describeLearningContext(input.request.learningContext)),
+      ),
     });
   }
 }

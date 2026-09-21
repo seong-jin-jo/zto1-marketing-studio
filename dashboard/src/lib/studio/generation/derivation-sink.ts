@@ -8,7 +8,10 @@ import type { DerivationDraftSink } from "./service";
  * 카드 갈래는 계약 v2 덱이 진실원이다(D-2026-09-21-2 OD-A). `editor_handoff.payload` 는
  * 아직(F4·PR4 전까지) 납작한 `slides:[{text}]` 만 아는 소비자(발행 큐)를 위해 `deckProjection`
  * 으로 만든 투영을 싣는다. 편집실이 여는 진실원은 `drafts.payload.cardDeck` 이고, 그 값은
- * 아래 `withCardDeckColumn` 이 같은 트랜잭션에서 채운다.
+ * `saveEditorHandoff` 가 초안을 만드는 트랜잭션과 **별도** 트랜잭션인 아래 `UPDATE drafts`
+ * 가 채운다(같은 트랜잭션이 아니다 — 한 줄 위 문장이 실물과 어긋났던 자리, 회장 리뷰
+ * 2026-09-21). 그래서 UPDATE 가 실패하면 초안·handoff 는 이미 커밋된 채로 `cardDeck` 이
+ * 없는 반쪽 초안이 남는다. 그 자리를 남기지 않으려고 실패 시 초안을 보상 삭제한다.
  */
 function flattenForHandoff(deck: CardDeck): { id: string; order: number; text: string; image_url: string | null }[] {
   const { lines, refs } = deckProjection(deck);
@@ -48,10 +51,18 @@ export class EditorDerivationSink implements DerivationDraftSink {
       // 여기서는 이미 찾아봤고 실패해도 회원이 결과를 잃지 않는 쪽을 택한다).
       const displayName = await this.workspaceDisplayName(input.workspaceId);
       const finalDeck: CardDeck = displayName ? { ...deck, brand: { ...deck.brand, display_name: displayName } } : deck;
-      await withTenant(input.workspaceId, (sql) => sql`
-        UPDATE drafts
-        SET payload = COALESCE(payload, '{}'::jsonb) || ${sql.json({ cardDeck: finalDeck, editLines: deckProjection(finalDeck).lines })}::jsonb
-        WHERE id = ${saved.draftId} AND tenant_id = ${input.workspaceId}`);
+      try {
+        await withTenant(input.workspaceId, (sql) => sql`
+          UPDATE drafts
+          SET payload = COALESCE(payload, '{}'::jsonb) || ${sql.json({ cardDeck: finalDeck, editLines: deckProjection(finalDeck).lines })}::jsonb
+          WHERE id = ${saved.draftId} AND tenant_id = ${input.workspaceId}`);
+      } catch (error) {
+        // 초안·handoff 는 이미 커밋됐다. cardDeck 없는 반쪽 초안을 편집실에 남기지 않도록
+        // 보상 삭제한다 — 회원은 다시 확정을 눌러 새로 받는다(실수.md 반쪽 상태 방치 금지).
+        console.warn(`[derivation-sink] draft ${saved.draftId} cardDeck UPDATE 실패, 보상 삭제`, error);
+        await this.deleteDrafts(input.workspaceId, [saved.draftId]);
+        throw error;
+      }
     }
     return { draftId: saved.draftId, handoffId: saved.handoff.handoff_id };
   }
@@ -62,7 +73,8 @@ export class EditorDerivationSink implements DerivationDraftSink {
         SELECT name FROM tenants WHERE id = ${workspaceId}`);
       const name = rows[0]?.name?.trim();
       return name || null;
-    } catch {
+    } catch (error) {
+      console.warn(`[derivation-sink] workspace ${workspaceId} 표시명 조회 실패, 자리표시 값으로 진행`, error);
       return null;
     }
   }

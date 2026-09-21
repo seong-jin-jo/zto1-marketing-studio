@@ -108,7 +108,20 @@ export type CardDeckExpectation = {
   /** hook_type 를 사용자가 고정한 경우에만 채운다. auto 면 비운다(모델이 고른 값을 그대로 받는다). */
   fixedHookType?: HookType;
   forbiddenPhrases?: readonly string[];
+  /**
+   * hook_type이 "number"일 때 표지에 쓸 수 있는 숫자 전체 집합. 학습 정보 본문에서
+   * `\d[\d,.%]*` 로 뽑은 값이다. 표지 숫자가 이 집합의 부분집합이 아니면 지어낸 숫자다
+   * (설계 F3 "숫자형은 학습 정보의 실적만"). 비어 있으면 검사를 건너뛴다(호출측이
+   * 학습 정보를 안 넘긴 경우까지 여기서 막으면 과거 통과하던 덱이 갑자기 반려된다).
+   */
+  knownNumbers?: readonly string[];
 };
+
+/** 학습 정보 직렬화 문자열에서 숫자 토큰만 뽑는다. number 훅이 지어낸 숫자인지 대조할 기준값. */
+export function extractKnownNumbers(text: string): string[] {
+  const matches = String(text ?? "").match(/\d[\d,.%]*/g) ?? [];
+  return Array.from(new Set(matches.map((value) => value.trim()).filter(Boolean)));
+}
 
 function slideBubbleTexts(deck: CardDeck): string[] {
   const texts: string[] = [];
@@ -128,7 +141,7 @@ function slideBubbleTexts(deck: CardDeck): string[] {
 const HOOK_TYPE_MARKERS: Record<HookType, RegExp> = {
   question: /\?/,
   number: /\d/,
-  pain: /아닙니다|아니라|때문입니다|못\s|안\s|하지\s마세요/,
+  pain: /아닙니다|아니라|때문입니다|못\s|하지\s마세요/,
 };
 
 /**
@@ -167,6 +180,15 @@ export function checkCardDeckQuality(deck: CardDeck, expect: CardDeckExpectation
     issues.push({ rule: "hook_type", detail: `훅 공식이 ${expect.fixedHookType} 이어야 하는데 ${deck.hook_type} 입니다` });
   } else if (!HOOK_TYPE_MARKERS[deck.hook_type].test(coverHeadline)) {
     issues.push({ rule: "hook_type", detail: `표지가 선언한 훅 공식(${deck.hook_type})의 표식을 담고 있지 않습니다: "${coverHeadline}"` });
+  } else if (deck.hook_type === "number" && expect.knownNumbers && expect.knownNumbers.length > 0) {
+    // number 훅은 "학습 정보에 있는 실적만" 쓰기로 돼 있다(설계 F3). 표지 숫자 하나라도
+    // 학습 정보 어디에도 없으면 모델이 지어낸 것이다.
+    const known = new Set(expect.knownNumbers);
+    const coverNumbers = coverHeadline.match(/\d[\d,.%]*/g) ?? [];
+    const madeUp = coverNumbers.filter((value) => !known.has(value.trim()));
+    if (madeUp.length > 0) {
+      issues.push({ rule: "hook_type", detail: `표지 숫자가 학습 정보에 없습니다: ${madeUp.join(", ")}` });
+    }
   }
 
   // rule: cover_lines — 줄 수·줄당 글자수 상한(계약과 같은 상수를 재사용).
