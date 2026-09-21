@@ -1,3 +1,10 @@
+## 2026-09-22 00시 05분 - PR 70(생성 프롬프트 v2·품질 lint 배선) 머지·배포, 회원 화면엔 아직 미노출(PR4 배선 필요)
+
+- PR 70: 교차 리뷰 1차 MAJOR 3(422 조용한 폴백·숫자형 훅 출처 미검사·sink 두 트랜잭션 고아 초안)·MINOR 7 → a66bfdcf, 잔여 2건(knownNumbers 빈 배열 스킵·테스트) → f8001d69 → CI pass → 머지 → 배포 run 35613141947 success(사이트 200).
+- 운영 실측(9444, 23:55): 생성실 "주제로 바로 초안 만들기"는 buildCandidatePrompt(legacy 4줄 후보)만 돈다. 9장 덱은 derivations 라우트(template chat_bubble) 경유인데 UI 진입점이 없음 → 회원 화면 변화 없음(설계대로 PR4 범위). PR4(생성실 배선·편집실 말풍선 UI·발행실 9장 연결) code-builder 위임 중.
+- 부수 발견(PR3): output-quality 가 그동안 런타임 호출 0 이었음 → 최초 배선. 실측 3회로 maxOutputTokens 8000 유지.
+- Codex 사용량 한도(9/26)로 이번 세션 리뷰는 전부 Claude 단독 벤더. 한도 해제 후 PR 68·70 재리뷰 백로그.
+
 ## 2026-09-21 22시 30분 - PR 68 머지·배포(빌드 실패 → PR 69 복구), PR3 생성 프롬프트 위임 중
 
 - PR 68(덱 계약 v2·말풍선 연산·채팅 말풍선 렌더러) 교차 리뷰 MAJOR 9 → 4b6c21f1 반영 → 재리뷰 APPROVE(파일:줄 9건) → CI pass(2493 tests) → 머지. 배포 run 35601203627 은 Docker 빌드에서 canvas node-gyp 실패(alpine·python 없음). 운영 무사(200). PR 69 로 canvas 를 optionalDependencies 로 이동 → CI pass → 머지 → 배포 run 35604116034 success.

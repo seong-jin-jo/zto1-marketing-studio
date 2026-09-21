@@ -1,3 +1,12 @@
+## 2026-09-22 00:05 품질 1단계 PR3 운영 반영, PR4 진행 중(build, 승인 아님)
+
+current_stage: build (품질 1단계) · qa (네 방 기본 흐름)
+status: in-progress (승인 아님)
+
+PR 70(생성 프롬프트 v2·output-quality 배선) 교차 리뷰 반영 후 머지, 배포 run 35613141947 success. 운영 실측: 회원
+생성실은 아직 legacy 후보 경로라 덱이 노출되지 않음(PR4 배선 필요, 미검증 아님·의도된 순서). PR4 위임 중. PR5(QA 게이트)
+후 /approve.
+
 ## 2026-09-21 22:30 품질 1단계 PR1+PR2 운영 반영, build 진행 중(승인 아님)
 
 current_stage: build (품질 1단계) · qa (네 방 기본 흐름)
