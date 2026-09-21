@@ -257,13 +257,17 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
           const locked = slide.role === "cover" || slide.role === "cta";
           return (
             <div key={slide.id} className="space-y-stack-tight">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 onClick={() => setActiveSlideId(slide.id)}
                 aria-pressed={slide.id === activeSlideId}
                 data-slide-id={slide.id}
                 data-slide-role={slide.role}
-                className={`flex w-full items-center justify-between rounded-control border p-stack text-left text-caption ${slide.id === activeSlideId ? "border-accent bg-accent-soft" : "border-border bg-surface"}`}
+                // 2026-09-22 코드리뷰 CI 재검토: 맨 button 태그 대신 공용 Button 을 쓴다
+                // (QA-APP-TOUCH-08 기준선 239→238). Button 기본값(inline-flex·
+                // justify-center·px 만 있는 size 패딩)과 이 목록 행의 레이아웃(꽉 찬
+                // 너비·양끝 정렬·상하좌우 패딩·왼쪽 정렬)이 충돌하는 자리만 `!` 로 이긴다.
+                className={`!flex w-full !justify-between !p-stack text-left text-caption ${slide.id === activeSlideId ? "!border-accent !bg-accent-soft" : "!border-border !bg-surface"}`}
               >
                 <span className="flex items-center gap-stack-tight">
                   <span>{index + 1}.</span>
@@ -274,7 +278,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
                     {SLIDE_ROLE_LABEL[slide.role]}
                   </span>
                 </span>
-              </button>
+              </Button>
               <div className="flex gap-stack-tight">
                 <Button size="sm" onClick={() => runSlide((d) => moveSlide(d, index, index - 1))} disabled={locked || index === 0}>▲</Button>
                 <Button size="sm" onClick={() => runSlide((d) => moveSlide(d, index, index + 1))} disabled={locked || index === deck.slides.length - 1}>▼</Button>
