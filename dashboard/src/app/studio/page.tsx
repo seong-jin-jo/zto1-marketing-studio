@@ -1532,6 +1532,10 @@ export default function StudioPage() {
     commentHandoffLoaded.current = requestedDraftId;
   }, [hist?.drafts, publishReturnRequest, setActiveRoom]);
   const publishReturnLoaded = useRef<string | null>(null);
+  // 카드뉴스 v2 덱 연산 후 800ms 디바운스 자동저장이 쓰는 타이머(설계 §5 F4, onCardDeckChange
+  // 정의는 아래 편집실 렌더 직전). 모든 hook 은 1990행 조건부 early return 앞에서 불러야
+  // 렌더마다 순서가 같다.
+  const cardDeckAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!publishReturnRequest || !publishReturnQueue?.posts) return;
     const loadKey = `${publishReturnRequest.sourceRoute}:${publishReturnRequest.queuePostId}`;
@@ -2062,8 +2066,10 @@ export default function StudioPage() {
   const resolvedEditLines = editLines.length ? editLines : [text?.shorts?.hook || "", text?.shorts?.body || "", text?.shorts?.cta || ""].filter(Boolean);
 
   // 카드뉴스 v2 덱 연산 후 800ms 디바운스 자동저장(설계 §5 F4). 연산마다 즉시 서버에 쏘면
-  // 타이핑·연속 클릭마다 요청이 나간다.
-  const cardDeckAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 타이핑·연속 클릭마다 요청이 나간다. ref 는 위(다른 useRef 들 옆)에서 선언한다 — 이
+  // 자리는 1990행 조건부 조기 return 뒤라 hook 순서가 렌더마다 달라졌다(2026-09-22 실측:
+  // studio-publish-ui.test.tsx 37건이 "Rendered more hooks than during the previous
+  // render" 로 전멸. `useRef` 는 다른 hook 처럼 early return 앞에서만 불러야 한다).
   function onCardDeckChange(nextDeck: CardDeck) {
     setCardDeck(nextDeck);
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
