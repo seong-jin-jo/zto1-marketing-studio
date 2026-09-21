@@ -867,6 +867,14 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       const succeededCard = batch.items.find((item) => item.kind === "card" && item.status === "succeeded");
       if (succeededCard?.draft_id) {
         await onDerivationSucceeded?.(succeededCard.draft_id);
+      } else {
+        // M7(재리뷰 2026-09-22): 서버(GenerationService.derive)는 실패 배치도 그대로
+        // persist 하고, 같은 Idempotency-Key 가 오면 status 와 무관하게 그 배치를
+        // 돌려준다(service.ts). m1 에서 재시도 간 키를 재사용하게 고쳤더니 "다시
+        // 만들기" 가 서버에서 LLM 을 다시 안 부르고 같은 실패를 되돌려주는 부작용이
+        // 생겼다. 실패하면 키를 비워 다음 클릭이 새 배치를 만들게 한다(실패는 청구
+        // 0 이라 중복 청구 위험이 없다).
+        primaryCardDeckIdemKeyRef.current = null;
       }
     } catch (cause) {
       setError(generationErrorMessage(cause));
@@ -1469,7 +1477,14 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                   <p className="text-caption text-subtle">나간 값 {primaryCardDeckBatch.cost.charged_minor.toLocaleString("ko-KR")}원</p>
                   {succeeded ? (
                     <Stack gap={8}>
-                      <Button variant="primary" onClick={() => onOpenEditor?.(item?.draft_id ?? undefined)}>편집실에서 다듬기</Button>
+                      {/*
+                        m7(재리뷰 2026-09-22): makePrimaryCardDeck 은 setPrimaryCardDeckBatch(batch)
+                        직후에도 onDerivationSucceeded(hist 재검증)가 끝날 때까지
+                        primaryCardDeckBusy 를 true 로 둔다. 그 창에서 이 단추를 누르면
+                        page.tsx 의 hist.drafts.find 가 아직 갱신 전 목록이라 못 찾고
+                        덱 없이 편집실이 열린다. busy 동안은 눌러도 소용없게 막는다.
+                      */}
+                      <Button variant="primary" onClick={() => onOpenEditor?.(item?.draft_id ?? undefined)} disabled={primaryCardDeckBusy}>편집실에서 다듬기</Button>
                       <Button onClick={discardPrimaryCardDeck} disabled={primaryCardDeckBusy}>버리고 다시 만들기</Button>
                     </Stack>
                   ) : null}

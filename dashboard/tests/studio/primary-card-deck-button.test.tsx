@@ -200,14 +200,14 @@ describe("(a)(b) 주 형식이 카드뉴스면 카톡 말풍선 카드뉴스 9�
 
     render(<CreateRoom {...baseProps()} cardDeckByDraftId={deckByDraftId} onDerivationSucceeded={onDerivationSucceeded} />);
 
-    const button = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" });
+    const button = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 });
     expect(button).toBeEnabled();
     // 견적이 실제로 화면에 보인 뒤에만 확정할 수 있다(설계 §7.1 확정 전 값 노출 계약).
     expect(screen.getByText("300원")).toBeInTheDocument();
 
     fireEvent.click(button);
 
-    await waitFor(() => expect(postBody).not.toBeNull());
+    await waitFor(() => expect(postBody).not.toBeNull(), { timeout: 10000 });
     expect(postBody).toMatchObject({
       candidate_id: "candidate-a-1",
       kinds: ["card"],
@@ -217,16 +217,17 @@ describe("(a)(b) 주 형식이 카드뉴스면 카톡 말풍선 카드뉴스 9�
     expect(idempotencyKey).toBeTruthy();
 
     // (M3) hist 재검증 콜백이 실제로 draft_id 와 함께 불린다(목 주입만으로 통과시키지 않음).
-    await waitFor(() => expect(onDerivationSucceeded).toHaveBeenCalledWith("draft-primary-card-1"));
+    await waitFor(() => expect(onDerivationSucceeded).toHaveBeenCalledWith("draft-primary-card-1"), { timeout: 10000 });
 
     // (b) 응답 draft_id로 찾은 덱이 9장 썸네일 스트립으로 렌더된다.
     await waitFor(() => {
       const strip = document.querySelector("[data-card-deck-thumbnail-strip]");
       expect(strip).not.toBeNull();
       expect(strip!.childElementCount).toBe(deck.slides.length);
-    });
-    // 9장 캔버스 렌더는 CI 부하 아래서 기본 5000ms 를 넘을 수 있다(다른 카드덱 렌더
-    // 테스트들도 같은 이유로 실측상 5~7초씩 걸렸다).
+    }, { timeout: 10000 });
+    // 9장 캔버스 렌더는 CI 부하 아래서 기본 waitFor 1000ms·it 5000ms 를 넘을 수 있다
+    // (CI run 35648090908 에서 이 테스트가 실제로 타임아웃 — 풀스위트 병렬 실행의
+    // CPU 경합 아래서 로컬 단독 실행보다 훨씬 느리다. waitFor 마진을 넉넉히 잡는다).
   }, 15000);
 
   it("훅 공식 칩을 바꾸고 확정하면 그 값이 options.card.hook_type 에 실린다", async () => {
@@ -246,12 +247,12 @@ describe("(a)(b) 주 형식이 카드뉴스면 카톡 말풍선 카드뉴스 9�
 
     render(<CreateRoom {...baseProps()} />);
 
-    const confirmBlock = await screen.findByText("카톡 말풍선 카드뉴스 9장");
+    const confirmBlock = await screen.findByText("카톡 말풍선 카드뉴스 9장", undefined, { timeout: 10000 });
     const group = confirmBlock.closest("[data-create-primary-card-deck-confirm]") as HTMLElement;
     fireEvent.click(within(group).getByRole("button", { name: "질문형" }));
     fireEvent.click(within(group).getByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }));
 
-    await waitFor(() => expect(postBody).not.toBeNull());
+    await waitFor(() => expect(postBody).not.toBeNull(), { timeout: 10000 });
     expect(postBody).toMatchObject({ options: { card: { hook_type: "question" } } });
   });
 });
@@ -277,35 +278,37 @@ describe("M1 후보가 바뀌면 이전 후보의 카드 덱 상태가 남지 �
 
     render(<CreateRoom {...baseProps()} cardDeckByDraftId={deckByDraftId} />);
 
-    const buttonA = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" });
+    const buttonA = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 });
     fireEvent.click(buttonA);
     await waitFor(() => {
       const strip = document.querySelector("[data-card-deck-thumbnail-strip]");
       expect(strip).not.toBeNull();
-    });
+    }, { timeout: 10000 });
 
     // 다른 후보를 다시 고른다.
     fireEvent.click(screen.getByRole("button", { name: "구조 초안 다시 고르기" }));
-    fireEvent.click(await screen.findByRole("button", { name: "B 구조 초안 선택" }));
+    fireEvent.click(await screen.findByRole("button", { name: "B 구조 초안 선택" }, { timeout: 10000 }));
 
     // 옛 후보(A)의 결과 블록이 새 후보(B) 밑에 남지 않는다.
     await waitFor(() => {
       expect(document.querySelector("[data-create-primary-card-deck-result]")).toBeNull();
-    });
+    }, { timeout: 10000 });
     // B 에서도 확정 버튼이 다시 뜬다(전에는 primaryCardDeckBatch 가 안 비워져 영구히 숨었다).
-    expect(await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 })).toBeEnabled();
   }, 15000);
 });
 
 describe("M2 실패한 배치도 재시도할 수 있다", () => {
-  it("실패 사유를 보여주고 '다시 만들기' 로 재시도하면 새로 확정할 수 있다", async () => {
+  it("실패 사유를 보여주고 '다시 만들기' 로 재시도하면 새로 확정할 수 있다(다른 Idempotency-Key로)", async () => {
     seedDraft({ primaryKind: "card", candidates: [candidate()], selected: "A" });
     let postCount = 0;
+    const idempotencyKeys: string[] = [];
     const fetchMock = withLearnedRulesStub(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (!init || init.method === undefined) return quoteResponse(300);
       if (init.method === "POST") {
         postCount += 1;
+        idempotencyKeys.push((init.headers as Record<string, string>)["Idempotency-Key"]);
         if (postCount === 1) return failedBatchResponse({ candidateId: "candidate-a-1", reason: "invalid_output: CTA 장에 댓글 키워드 유도가 없습니다" });
         return succeededBatchResponse({ candidateId: "candidate-a-1", draftId: "draft-retry-1" });
       }
@@ -315,16 +318,57 @@ describe("M2 실패한 배치도 재시도할 수 있다", () => {
 
     render(<CreateRoom {...baseProps()} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }));
-    await screen.findByText(/만들지 못했습니다/);
+    fireEvent.click(await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 }));
+    await screen.findByText(/만들지 못했습니다/, undefined, { timeout: 10000 });
     expect(screen.getByText(/CTA 장에 댓글 키워드 유도가 없습니다/)).toBeInTheDocument();
 
-    const retryButton = await screen.findByRole("button", { name: "다시 만들기" });
+    const retryButton = await screen.findByRole("button", { name: "다시 만들기" }, { timeout: 10000 });
     expect(retryButton).toBeEnabled();
     fireEvent.click(retryButton);
 
-    await waitFor(() => expect(postCount).toBe(2));
-    await waitFor(() => expect(screen.getByText(/9장을 만들었습니다/)).toBeInTheDocument());
+    await waitFor(() => expect(postCount).toBe(2), { timeout: 10000 });
+    await waitFor(() => expect(screen.getByText(/9장을 만들었습니다/)).toBeInTheDocument(), { timeout: 10000 });
+
+    // M7(재리뷰 2026-09-22): 서버는 같은 Idempotency-Key 면 status 와 무관하게 같은
+    // 배치를 그대로 돌려준다(아래 서비스 계약 테스트가 실제 코드로 증명). m1 에서
+    // 재시도 간 키를 재사용하도록 고쳤다면 "다시 만들기" 가 같은 실패를 반복 반환할
+    // 뻔했다. 실패하면 키를 비워 재시도가 반드시 새 키를 쓰게 고쳤으므로 두 POST 의
+    // Idempotency-Key 는 서로 달라야 한다.
+    expect(idempotencyKeys).toHaveLength(2);
+    expect(idempotencyKeys[0]).toBeTruthy();
+    expect(idempotencyKeys[1]).toBeTruthy();
+    expect(idempotencyKeys[0]).not.toBe(idempotencyKeys[1]);
+  }, 15000);
+});
+
+describe("M7 서버(GenerationService.derive)는 같은 Idempotency-Key 면 실패 배치도 그대로 돌려준다", () => {
+  it("같은 키로 다시 부르면 같은 실패 배치가 반환되고(서버 멱등의 한계), 다른 키로 부르면 새 배치가 만들어진다", async () => {
+    const repository = new MemoryGenerationRepository();
+    // "card" 파생은 항상 실패하게 만든다(MemoryDerivationSink failKinds).
+    const sink = new MemoryDerivationSink(["card"]);
+    const service = new GenerationService(repository, sink, FIXTURE_STUDIO_CONTENT_GENERATOR);
+
+    const request = parseGenerationRequest(generationRequestFixture());
+    const job = await service.create("member-m7", `create-${crypto.randomUUID()}`, request);
+    const quote = derivationQuote(["card"]);
+    const acknowledgedCost = { currency: quote.currency, total_minor: quote.totalMinor };
+
+    const sameKey = `idem-m7-${crypto.randomUUID()}`;
+    const first = await service.derive("member-m7", job.jobId, job.candidates[0].candidateId, ["card"], acknowledgedCost, sameKey, [WORKSPACE_ID]);
+    expect(first.status).toBe("failed");
+
+    const second = await service.derive("member-m7", job.jobId, job.candidates[0].candidateId, ["card"], acknowledgedCost, sameKey, [WORKSPACE_ID]);
+    // 서버 실측: 같은 키는 실패 배치를 그대로 재반환한다. LLM 을 다시 안 부른다 —
+    // 이것이 M7 이 지적한 회귀의 근본 원인이다.
+    expect(second.batchId).toBe(first.batchId);
+    expect(second.status).toBe("failed");
+
+    const newKey = `idem-m7-retry-${crypto.randomUUID()}`;
+    const third = await service.derive("member-m7", job.jobId, job.candidates[0].candidateId, ["card"], acknowledgedCost, newKey, [WORKSPACE_ID]);
+    // 다른 키(=클라이언트가 실패 후 비운 idempotencyKeyRef 로 다시 만든 요청)는
+    // 서버가 실제로 새 파생 시도를 만든다. makePrimaryCardDeck 의 "실패하면 키를
+    // 비운다" 고침이 실제로 재시도를 되살리는지 서버 코드로 증명한다.
+    expect(third.batchId).not.toBe(first.batchId);
   });
 });
 
@@ -340,12 +384,12 @@ describe("M4 성공한 덱은 편집실 진입 때 draft_id 를 넘긴다", () =
     const onOpenEditor = vi.fn();
 
     render(<CreateRoom {...baseProps()} onOpenEditor={onOpenEditor} />);
-    fireEvent.click(await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }));
-    await waitFor(() => expect(screen.getByText(/9장을 만들었습니다/)).toBeInTheDocument());
+    fireEvent.click(await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 }));
+    await waitFor(() => expect(screen.getByText(/9장을 만들었습니다/)).toBeInTheDocument(), { timeout: 10000 });
 
     fireEvent.click(screen.getByRole("button", { name: "편집실에서 다듬기" }));
     expect(onOpenEditor).toHaveBeenCalledWith("draft-edit-1");
-  });
+  }, 15000);
 });
 
 describe("M6 견적을 못 불러오면 이유와 재시도를 보여준다", () => {
@@ -365,16 +409,16 @@ describe("M6 견적을 못 불러오면 이유와 재시도를 보여준다", ()
 
     render(<CreateRoom {...baseProps()} />);
 
-    await screen.findByText(/비용을 불러오지 못했습니다/);
+    await screen.findByText(/비용을 불러오지 못했습니다/, undefined, { timeout: 10000 });
     const confirmButton = screen.getByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" });
     expect(confirmButton).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
 
-    await waitFor(() => expect(screen.getByText("300원")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("300원")).toBeInTheDocument(), { timeout: 10000 });
     expect(screen.queryByText(/비용을 불러오지 못했습니다/)).toBeNull();
     expect(confirmButton).toBeEnabled();
-  });
+  }, 15000);
 });
 
 describe("m1 더블클릭은 중복 청구를 만들지 않는다", () => {
@@ -394,15 +438,15 @@ describe("m1 더블클릭은 중복 청구를 만들지 않는다", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CreateRoom {...baseProps()} />);
-    const button = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" });
+    const button = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 });
     fireEvent.click(button);
     fireEvent.click(button);
     fireEvent.click(button);
 
-    await waitFor(() => expect(postCount).toBe(1));
+    await waitFor(() => expect(postCount).toBe(1), { timeout: 10000 });
     resolvePostRef.current?.();
-    await waitFor(() => expect(screen.getByText(/9장을 만들었습니다/)).toBeInTheDocument());
-  });
+    await waitFor(() => expect(screen.getByText(/9장을 만들었습니다/)).toBeInTheDocument(), { timeout: 10000 });
+  }, 15000);
 });
 
 describe("부정 케이스: 주 형식이 카드뉴스가 아니면 primary 확정 블록이 안 뜬다", () => {
@@ -412,7 +456,7 @@ describe("부정 케이스: 주 형식이 카드뉴스가 아니면 primary 확�
 
     render(<CreateRoom {...baseProps()} />);
 
-    await screen.findByRole("button", { name: "편집실에서 다듬기" });
+    await screen.findByRole("button", { name: "편집실에서 다듬기" }, { timeout: 10000 });
     expect(screen.queryByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" })).toBeNull();
     expect(document.querySelector("[data-create-primary-card-deck-confirm]")).toBeNull();
   });
@@ -430,7 +474,7 @@ describe("(d) 기존 주형식 text + also=card 경로는 회귀 0으로 유지�
 
     render(<CreateRoom {...baseProps()} />);
 
-    const button = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" });
+    const button = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 });
     // also 블록 소속(확정 단추의 부모가 also-confirm 영역)임을 실제로 확인한다.
     expect(button.closest("[data-create-also-confirm]")).not.toBeNull();
     // primary 전용 확정 블록은 렌더되지 않는다(주 형식이 card 가 아니므로).
