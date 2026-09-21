@@ -1,3 +1,10 @@
+## 2026-09-21 09시 50분 - creator 계정 X·Instagram 관통 E2E 성공(생성→편집→발행→성과 수집), Threads 는 장기 토큰 단계에서 막힘
+
+- Instagram: 프로페셔널 전환 후 OAuth 재시도 → 콜백 "연결 새로 고침" 관찰, readiness publish_pending(테스터 연결). Threads: 앱 역할에 creator Threads 테스터 추가, 9444 threads.com 웹사이트 권한 → 초대 수락, 동의 화면 승인까지 갔으나 장기 토큰 교환(graph.threads.net/access_token th_exchange_token)이 "This action requires the threads_basic permission. You must submit for app review" HTTP 400. 단기 교환은 통과. 20분 뒤 재시도 동일. 가설: Threads 앱 시크릿(DB 9/8 저장분)이 Threads 전용 시크릿이 아닐 가능성, 또는 오늘 추가한 4개 권한 반영 지연. 미해결.
+- E2E(관찰됨): 생성실 초안(카드뉴스+글) → "글자 카드로 만들기" 3장 → 편집실 → 발행실(X 285→280 자동 줄이기) → "선택한 2곳에 지금 발행" → 발행 완료 X https://x.com/i/web/status/2101833562949599524 · Instagram https://www.instagram.com/p/Ddh5IvAHyFg/ → 성과실 "성과 2건을 새로 모았습니다"(조회 0, 발행 직후).
+- TikTok: Sandbox "osmu-sandbox" 생성(7687688182300952583), Business 카테고리·설명·URL·Web·Login Kit 리다이렉트·Content Posting Direct Post·스코프 4개 Apply 완료, Target user osmu_biseo(9444 TikTok 계정) 승인 완료. 샌드박스 client key/secret 은 회장이 /operator ▸TikTok 에 넣어야 회원 연결 테스트 가능. Production 폼은 데모 영상 없이는 저장 불가라 입력분 소실(재입력 필요, URL 검증은 유지).
+- Meta 비즈니스 인증: 회장이 9/20 다시 시작했으나 "제출 대기 중"(미제출). 마법사 진행 = 국가(대한민국) → 비즈니스 유형 선택 단계에서 멈춤. 9/17 제출분은 반려.
+
 ## 2026-09-21 08시 30분 - X 연결 성공, Meta 테스터·권한 정비, TikTok 앱 심사 서류 채움, 비즈니스 인증 반려 발견
 
 - X: 회장이 @osmu_studio 계정으로 9444 에 로그인 → 새 인증 URL 로 동의 화면 → "Authorize app" → 콜백 "x 연결 완료" 관찰. 이전 시도는 PKCE 쿠키(10분) 만료로 무효였음.
