@@ -5,6 +5,9 @@ import { Button } from "@/components/shared/Button";
 import { StateNotice } from "@/components/shared/StateNotice";
 import { EditPreview, type CardTextPosition } from "./EditPreview";
 import { EditOutline } from "./EditOutline";
+import { CardDeckPanel } from "./BubbleEditor";
+import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import { deckProjection, applyProjection } from "@/lib/studio/card-deck-contract";
 import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
 import {
@@ -22,6 +25,7 @@ import { workspaceDisplayName } from "@/lib/workspace-display-name";
 import { IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
 import { themeFromPalette, type CardRatio } from "@/lib/studio/text-card-image";
 import { browserCardUploader, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
+import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
 import {
   CARD_ASPECT_RATIOS,
   EDIT_BACKGROUNDS,
@@ -230,6 +234,55 @@ interface CreateRoomProps {
   madeVideoUrl?: string | null;
   cardImageBusy?: boolean;
   onQuickDraftGenerate?: (structure: CreateStructureChoice) => Promise<void> | void;
+  /**
+   * "다른 형식도 같이" 로 만든 카톡 말풍선 카드뉴스의 실제 덱을 draft_id 로 찾는다.
+   *
+   * 2026-09-22 PR4: `deck_summary`(장수·훅·CTA 키워드) 텍스트만으로는 "방금 만든 것"을
+   * 눈으로 확인할 수 없다. 목록(`GET /api/studio/drafts`)에 이미 `cardDeck` 이 실려
+   * 오므로(§7.3) 그것을 찾아 캔버스로 실제 9장을 그린다. 못 찾으면(아직 목록에 안 온
+   * 낙관적 응답 구간 등) 조용히 비우지 않고 기존 텍스트 요약으로 물러선다.
+   */
+  cardDeckByDraftId?: (draftId: string) => CardDeck | null;
+}
+
+/**
+ * 카드 덱 한 벌을 작은 썸네일 9장으로 캔버스에 그린다("방금 만든 것" 실물 확인).
+ *
+ * 2026-09-22 실측: PR3 까지는 카드뉴스 생성 직후 화면에 "9장을 만들었습니다(훅: pain,
+ * 댓글 키워드: '순서')" 라는 글줄만 떴다. 글자로는 훅 표지가 무엇을 만들었는지, 말풍선이
+ * 잘 나뉘었는지 확인할 길이 없다. 편집실에서 쓰는 같은 렌더러(`chat-bubble.ts`)를 그대로
+ * 재사용해 생성실에도 실제 그림을 보여 준다(설계 §5 F2, "미리보기와 결과가 같은 코드").
+ */
+/**
+ * 2026-09-22 코드리뷰 MAJOR 4: 렌더러(`renderChatBubbleSlideToCanvas`)는 말풍선이
+ * 세이프존을 넘으면 던진다(설계 F2 "넘침 = 렌더 실패로 이유 반환"). 회원 브라우저 폰트로
+ * 한 장이라도 넘치면 이 useEffect 가 잡지 않은 예외는 React 가 가장 가까운 error
+ * boundary 까지 언마운트하고, 그러면 돈 내고 만든 결과 화면이 통째로 사라진다. 장별로
+ * try/catch 해서 실패한 장은 이유 칩으로만 대체한다(`CardDeckPanel` 의 미리보기와 같은
+ * 패턴, BubbleEditor.tsx:224-241).
+ */
+export function CardDeckThumbnailStrip({ deck }: { deck: CardDeck }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    host.innerHTML = "";
+    const total = deck.slides.length;
+    deck.slides.forEach((slide, index) => {
+      try {
+        const canvas = renderChatBubbleSlideToCanvas({ deck, slide, index, total });
+        if (!canvas) return;
+        canvas.className = "h-auto w-[4.5rem] rounded-control border border-border";
+        host.appendChild(canvas);
+      } catch (cause) {
+        const chip = document.createElement("p");
+        chip.className = "rounded-chip border border-dashed border-danger/30 bg-danger/10 px-micro text-caption text-danger";
+        chip.textContent = `${index + 1}번 장: ${cause instanceof Error ? cause.message : "미리보기를 그리지 못했습니다."}`;
+        host.appendChild(chip);
+      }
+    });
+  }, [deck]);
+  return <div ref={hostRef} data-card-deck-thumbnail-strip className="flex flex-wrap gap-stack-tight" aria-label={`카톡 말풍선 카드뉴스 ${deck.slides.length}장 미리보기`} />;
 }
 
 const CREATE_EXAMPLES = [
@@ -369,7 +422,7 @@ function useLearnedRules(workspaceId: string): string {
   return text;
 }
 
-export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardRatio = "4:5", cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
+export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardRatio = "4:5", cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null, cardDeckByDraftId }: CreateRoomProps) {
   const topicInputRef = useRef<HTMLInputElement>(null);
   const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
   const [primaryKind, setPrimaryKind] = useState<CreateKind | null>(null);
@@ -396,6 +449,8 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const [alsoQuote, setAlsoQuote] = useState<StudioDerivationQuote | null>(null);
   const [alsoBatch, setAlsoBatch] = useState<StudioDerivationBatch | null>(null);
   const [alsoBusy, setAlsoBusy] = useState(false);
+  // 카톡 말풍선 카드뉴스 9장의 표지 훅 공식. 기본은 모델이 고르는 auto(설계 §8 OD-D 추천안).
+  const [cardHookType, setCardHookType] = useState<"auto" | "question" | "number" | "pain">("auto");
   // 초안을 못 만드는 이유를 단추 옆에서 말한다(조용한 비활성 금지).
   const [quickBlockReason, setQuickBlockReason] = useState<string | null>(null);
   const generationInFlight = useRef(false);
@@ -695,6 +750,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
         kinds: alsoKinds,
         acknowledgedCost: { currency: alsoQuote.currency, totalMinor: alsoQuote.total_minor },
         token: getAuthToken(),
+        cardHookType,
       }));
     } catch (cause) {
       setError(generationErrorMessage(cause));
@@ -1197,19 +1253,46 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                   <span>구성 초안 생성 비용</span>
                   <span>{alsoQuote.total_minor.toLocaleString("ko-KR")}원</span>
                 </p>
+                {alsoKinds.includes("card") ? (
+                  <div role="group" aria-label="표지 훅 공식" className="space-y-stack-tight" data-card-hook-type-picker>
+                    <span className="text-caption text-subtle">표지 헤드라인 공식(카톡 말풍선 카드뉴스 9장)</span>
+                    <div className="flex flex-wrap gap-stack-tight">
+                      {([
+                        ["auto", "자동(모델이 고름)"],
+                        ["question", "질문형"],
+                        ["number", "숫자형"],
+                        ["pain", "고통 인식형"],
+                      ] as const).map(([value, label]) => (
+                        <Button key={value} size="sm" variant={cardHookType === value ? "primary" : "secondary"} aria-pressed={cardHookType === value} onClick={() => setCardHookType(value)}>{label}</Button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <p className="break-keep text-caption text-subtle">완성 미디어가 아니라 선택한 구조를 다른 형식에 맞춘 구성 초안입니다. 실패한 형식은 청구하지 않습니다.</p>
-                <Button variant="primary" onClick={confirmAlsoKinds} disabled={alsoBusy}>{alsoBusy ? "구성 초안 만드는 중" : "선택한 형식의 구성 초안 만들기"}</Button>
+                <Button variant="primary" onClick={confirmAlsoKinds} disabled={alsoBusy}>{alsoBusy ? "구성 초안 만드는 중" : alsoKinds.includes("card") && alsoKinds.length === 1 ? "카톡 말풍선 카드뉴스 9장 만들기" : "선택한 형식의 구성 초안 만들기"}</Button>
               </div>
             ) : null}
             {alsoBatch ? (
               <div className="space-y-stack rounded-surface border border-border bg-surface p-stack" data-create-also-result={alsoBatch.status}>
                 <b className="block text-caption font-semibold text-text">{alsoBatch.discarded_at ? "추가 구성 초안을 버렸습니다" : "추가 형식의 구성 초안"}</b>
                 <ul className="space-y-stack-tight">
-                  {alsoBatch.items.map((item) => (
-                    <li key={item.kind} className="break-keep text-caption text-muted" data-also-item={item.kind} data-also-item-status={item.status}>
-                      {item.label}: {item.status === "succeeded" ? (item.kind === "video" ? "대본과 장면 구성을 준비했습니다. 영상 렌더링은 아직 제공하지 않습니다" : "구성 초안을 준비했습니다") : `구성 초안을 만들지 못했습니다. ${item.failure_reason ?? ""}`}
-                    </li>
-                  ))}
+                  {alsoBatch.items.map((item) => {
+                    const deck = item.kind === "card" && item.deck_summary && item.draft_id
+                      ? cardDeckByDraftId?.(item.draft_id) ?? null
+                      : null;
+                    return (
+                      <li key={item.kind} className="break-keep text-caption text-muted" data-also-item={item.kind} data-also-item-status={item.status}>
+                        {item.label}: {item.status === "succeeded"
+                          ? (item.kind === "video"
+                            ? "대본과 장면 구성을 준비했습니다. 영상 렌더링은 아직 제공하지 않습니다"
+                            : item.kind === "card" && item.deck_summary
+                              ? `카톡 말풍선 카드뉴스 ${item.deck_summary.slides}장을 만들었습니다(훅: ${item.deck_summary.hook_type}, 댓글 키워드: '${item.deck_summary.cta_keyword}')`
+                              : "구성 초안을 준비했습니다")
+                          : `구성 초안을 만들지 못했습니다. ${item.failure_reason ?? ""}`}
+                        {deck ? <div className="mt-stack-tight"><CardDeckThumbnailStrip deck={deck} /></div> : null}
+                      </li>
+                    );
+                  })}
                 </ul>
                 <p className="text-caption text-subtle">나간 값 {alsoBatch.cost.charged_minor.toLocaleString("ko-KR")}원</p>
                 {alsoBatch.discarded_at ? null : <Button onClick={discardAlso} disabled={alsoBusy}>추가 구성 초안 버리기</Button>}
@@ -1254,6 +1337,12 @@ interface EditRoomProps {
   lastSavedAt?: string;
   moveBusy?: boolean;
   autosaveError?: string;
+  /**
+   * 카드뉴스 v2 덱(PR4). 있으면 `template==="chat_bubble"` 편집을 `CardDeckPanel` 이
+   * 대신하고, 없으면 기존 `lines` 편집 그대로다(회귀 0 — 세션맥락).
+   */
+  cardDeck?: CardDeck | null;
+  onCardDeckChange?: (deck: CardDeck) => void;
 }
 type ToolName = "비율" | "배경" | "목소리" | "속도" | "자막" | "음악" | "음량";
 const VIDEO_TOOLS: ToolName[] = ["비율", "목소리", "속도", "자막"];
@@ -1375,9 +1464,18 @@ export function EditRoom({
   lastSavedAt,
   moveBusy = false,
   autosaveError,
+  cardDeck = null,
+  onCardDeckChange,
 }: EditRoomProps) {
   const formatKind = kind;
-  const safeLines = lines.length ? lines : [""];
+  // 2026-09-22 코드리뷰 MAJOR 3: chat_bubble 이면 `lines`(옛 `editLines` 상태)가 아니라
+  // 덱 자체를 문장 단위로 투영한다. 말풍선을 직접 고친 직후 담당 대화창(`askBulk`)이 고친
+  // 전 문장을 보고 일괄 편집하던 것(D-2026-09-09-1 "두 길이 다 열려 있어야 한다" 위반)을
+  // 막는다. `deckProj.refs` 는 askBulk 결과를 다시 덱에 역적용할 때 각 줄이 어느
+  // 장/말풍선에서 왔는지 찾는 데 쓴다.
+  const isChatDeck = kind === "card" && Boolean(cardDeck) && cardDeck!.template === "chat_bubble";
+  const deckProj = useMemo(() => (isChatDeck ? deckProjection(cardDeck!) : null), [isChatDeck, cardDeck]);
+  const safeLines = isChatDeck ? (deckProj!.lines.length ? deckProj!.lines : [""]) : (lines.length ? lines : [""]);
   const [activeLine, setActiveLine] = useState(0);
   const [activeTool, setActiveTool] = useState<ToolName>("비율");
   const [toolValues, setToolValues] = useState<ToolValues>(() => toolValuesFromFormat(
@@ -1488,7 +1586,14 @@ export function EditRoom({
         setBulkMessage(data.error || "고치지 못했습니다. 잠시 후 다시 시도해 주세요.");
         return;
       }
-      onLinesChange(data.lines);
+      // chat_bubble 이면 결과 줄을 덱에 역적용한다(applyProjection). 그냥 onLinesChange 로
+      // 보내면 editLines 로만 저장되는데, 저장 시 서버가 항상 cardDeck 투영으로 그
+      // editLines 를 덮어써서(§3.3 "cardDeck 이 이긴다") AI 편집 결과가 조용히 사라진다.
+      if (isChatDeck && cardDeck && deckProj && onCardDeckChange) {
+        onCardDeckChange(applyProjection(cardDeck, data.lines, deckProj.refs));
+      } else {
+        onLinesChange(data.lines);
+      }
       setBulkAsk("");
       setBulkMessage(data.changed ? `${data.changed}개 줄을 고쳤습니다.` : "바꿀 것이 없었습니다.");
     } catch {
@@ -1531,6 +1636,14 @@ export function EditRoom({
               <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
+              {kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
+                <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench>
+                  <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-card-deck-editor-note>
+                    말풍선 카드뉴스는 직접 편집이 기본입니다. 여기서 고친 내용은 자동 저장됩니다.
+                  </p>
+                  <CardDeckPanel deck={cardDeck} onDeckChange={onCardDeckChange} />
+                </div>
+              ) : (
               <div className={`card overflow-hidden ${styles.editWorkbench}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined}>
                 {/*
                   2026-09-14. 여기는 `1. 첫 장` 같은 글자 목록이었고, 장을 옮기려면 미리보기
@@ -1697,6 +1810,7 @@ export function EditRoom({
                   )}
                 </div>
               </div>
+              )}
             </>
           ) : roomState === "empty" ? (
             <StateNotice tone="empty" title="아직 편집할 작업물이 없습니다" description="생성실에서 초안을 고르면 글, 카드뉴스, 영상 형식에 맞는 편집 도구가 열립니다." actionLabel="생성실에서 작업물 고르기" onAction={onOpenCreate} className="min-h-80 justify-center" />

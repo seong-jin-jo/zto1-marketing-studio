@@ -27,6 +27,9 @@ import { SchedulePanel } from "@/components/studio/SchedulePanel";
 import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
 import { browserCardUploader, cardRatioFrom, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
+import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
+import { emptyBubbleSlideNumber, pruneEmptyBubbles } from "@/lib/studio/card-deck-ops";
 import { limitedChannelNotice, planChannelImages } from "@/lib/studio/channel-image-capacity";
 import { decideVideoRequest, droppedMediaNotice, mediaTopicKey, stalePublishBlock } from "@/lib/studio/work-media";
 import { themeFromPalette } from "@/lib/studio/text-card-image";
@@ -479,6 +482,8 @@ export default function StudioPage() {
   const [publishChatDraft, setPublishChatDraft] = useState("");
   const [editLines, setEditLines] = useState<string[]>([]);
   const [cardTextPositions, setCardTextPositions] = useState<CardTextPosition[]>([]);
+  // 카드뉴스 v2 덱(PR4). 있으면 편집실이 CardDeckPanel(말풍선 직접 편집)을 그린다.
+  const [cardDeck, setCardDeck] = useState<CardDeck | null>(null);
   const [editSavedAt, setEditSavedAt] = useState("");
   const [editAutosaveError, setEditAutosaveError] = useState("");
   const [moveToPublishBusy, setMoveToPublishBusy] = useState(false);
@@ -654,7 +659,7 @@ export default function StudioPage() {
     setIdea(""); setText(null); setImg(null); setVid(null); setDraftId(null);
     setIncludes(normalizeIncludes()); setPublishReconciliations({}); setEditorHandoff(null);
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
-    setEditLines([]); setCardTextPositions([]); setReviewQueueId(null); setSelectedCandidate(null);
+    setEditLines([]); setCardTextPositions([]); setCardDeck(null); setReviewQueueId(null); setSelectedCandidate(null);
     setCreateBranch("video"); setCreatePrimaryKind(null); setEditKind("video"); setEditFormat(defaultContentEditFormat("video"));
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     if (!workspaceId) return;
@@ -760,7 +765,7 @@ export default function StudioPage() {
         // 화면이 멀쩡해 보여 그대로 발행된다. 새 작업물에는 새 매체만 붙는다.
         // 남기고 경고만 띄우는 안은 버렸다(근거: lib/studio/work-media.ts droppedMediaNotice).
         const dropped = droppedMediaNotice({ img: Boolean(img), vid: Boolean(vid) });
-        setImg(null); setVid(null); setCardTextPositions([]);
+        setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null);
         if (dropped) showToast(dropped, "success");
         const nextKind = createPrimaryKind ?? "text";
         const nextLines = nextKind === "video"
@@ -888,7 +893,7 @@ export default function StudioPage() {
     generationAbort.current = null;
     setBusy(null);
     setIdea(""); setText(null); setImg(null); setVid(null); setDraftId(null);
-    setEditLines([]); setEditorHandoff(null);
+    setEditLines([]); setEditorHandoff(null); setCardDeck(null);
     setPublishReconciliations({});
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
@@ -1038,6 +1043,8 @@ export default function StudioPage() {
     // 방금 자막을 구운 영상도 같은 이유로 인자로 받는다. 상태를 기다리면 자막 없는 옛
     // 파일이 저장되고, 발행실은 저장된 것을 올린다.
     persistedVid: VidResult | null = vid,
+    // 방금 연산한 덱도 같은 이유로 인자로 받는다(§5 F4 자동저장, 800ms 디바운스).
+    persistedCardDeck: CardDeck | null = cardDeck,
   ) {
     const r = await apiPost<{ id?: string }>("/api/studio/drafts", {
       tenant_id: activeWorkspace?.id,
@@ -1057,6 +1064,8 @@ export default function StudioPage() {
       selectedAccounts,
       editLines: persistedEditLines,
       cardTextPositions,
+      // cardDeck 키가 아예 없으면 서버가 기존 덱을 보존한다(route.ts). 있을 때만 보낸다.
+      ...(persistedCardDeck ? { cardDeck: persistedCardDeck } : {}),
       editKind,
       editFormat,
       reviewQueueId,
@@ -1086,9 +1095,28 @@ export default function StudioPage() {
    *
    * 못 그리면 막지 않고 밝힌다. 그리기는 브라우저 캔버스에 달려 있어 환경에 따라 없을 수
    * 있고, 그때 발행실로 가는 길까지 닫으면 사용자는 이유도 모른 채 갇힌다.
+   *
+   * 2026-09-22 PR4 배선: `cardDeck.template === "chat_bubble"` 이면 옛 9칸 글자 자리(lines·
+   * positions) 경로가 아니라 말풍선 덱을 그대로 `card-templates/chat-bubble.ts` 렌더러로
+   * 9장 그린다(설계 §5 F2·F4). `cardDeck` 이 없거나 `template==="plain"` 이면 기존 글자
+   * 카드 3장 경로는 한 글자도 안 바뀐다(회귀 0, 기존 테스트 그대로 통과).
    */
   async function recompositeCards(lines: string[]): Promise<ImgResult | null> {
     if (editKind !== "card") return null;
+    if (cardDeck && cardDeck.template === "chat_bubble") {
+      try {
+        const urls = await renderAndUploadCardDeck(
+          { lines: [], ratio: cardRatioFrom(cardAspectRatio), template: "chat_bubble", deck: cardDeck },
+          { upload: browserCardUploader(authHeaders()) },
+        );
+        const next: ImgResult = { url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
+        setImg(next);
+        return next;
+      } catch (error) {
+        showToast(extractApiErrorMessage(error, "카드뉴스 9장을 다시 그리지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요."), "error");
+        return null;
+      }
+    }
     if (!lines.some((line) => line.trim())) return null;
     try {
       const urls = await renderAndUploadCardDeck({
@@ -1456,6 +1484,7 @@ export default function StudioPage() {
     setSelectedAccounts((d.selectedAccounts as Record<string, string>) || {});
     setEditLines((d.editLines as string[]) || []);
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
+    setCardDeck((d.cardDeck as CardDeck) || null);
     setReviewQueueId((d.reviewQueueId as string) || null);
     const savedFormat = validateContentEditFormat(d.editFormat);
     if (savedFormat.valid) {
@@ -1505,6 +1534,15 @@ export default function StudioPage() {
     commentHandoffLoaded.current = requestedDraftId;
   }, [hist?.drafts, publishReturnRequest, setActiveRoom]);
   const publishReturnLoaded = useRef<string | null>(null);
+  // 카드뉴스 v2 덱 연산 후 800ms 디바운스 자동저장이 쓰는 타이머(설계 §5 F4, onCardDeckChange
+  // 정의는 아래 편집실 렌더 직전). 모든 hook 은 1990행 조건부 early return 앞에서 불러야
+  // 렌더마다 순서가 같다.
+  const cardDeckAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // setTimeout 콜백이 클로저로 오래된 draftId 를 붙잡지 않게(2026-09-22 코드리뷰 MINOR 6:
+  // 발행실 이동이 타이머보다 먼저 끝나면 뒤늦은 콜백이 draftId=null 로 중복 초안을 만든다).
+  const draftIdRef = useRef<string | null>(null);
+  draftIdRef.current = draftId;
+  useEffect(() => () => { if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current); }, []);
   useEffect(() => {
     if (!publishReturnRequest || !publishReturnQueue?.posts) return;
     const loadKey = `${publishReturnRequest.sourceRoute}:${publishReturnRequest.queuePostId}`;
@@ -1559,6 +1597,7 @@ export default function StudioPage() {
       setSelectedAccounts((linkedDraft?.selectedAccounts as Record<string, string>) || {});
       setEditLines((linkedDraft?.editLines as string[]) || []);
       setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
+      setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
       const linkedFormat = validateContentEditFormat(linkedDraft?.editFormat);
       if (linkedFormat.valid) {
         setEditKind(linkedFormat.value.kind);
@@ -1997,6 +2036,10 @@ export default function StudioPage() {
         quickDraftError={lastError}
         onQuickDraftGenerate={generateQuickDraft}
         onGenerateCardImages={generateCardImages}
+        cardDeckByDraftId={(draftId) => {
+          const draft = hist?.drafts.find((d) => d.id === draftId);
+          return (draft?.cardDeck as CardDeck | undefined) ?? null;
+        }}
         onTextCardsCreated={(urls, cardLines) => {
           if (!urls.length) return;
           setImg({ url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) });
@@ -2029,6 +2072,33 @@ export default function StudioPage() {
   // 편집실 본 화면과 대화창이 같은 대사를 본다. 대화창만 빈 배열을 받으면 일괄 편집이 죽은 단추가 된다.
   const resolvedEditLines = editLines.length ? editLines : [text?.shorts?.hook || "", text?.shorts?.body || "", text?.shorts?.cta || ""].filter(Boolean);
 
+  // 카드뉴스 v2 덱 연산 후 800ms 디바운스 자동저장(설계 §5 F4). 연산마다 즉시 서버에 쏘면
+  // 타이핑·연속 클릭마다 요청이 나간다. hook(useRef·useEffect)은 위(다른 useRef 들 옆,
+  // 1990행 조건부 조기 return 앞)에서 선언한다 — 이 자리는 여러 방 early return 사이라
+  // hook 순서가 렌더마다 달라진다(2026-09-22 실측: studio-publish-ui.test.tsx 37건이
+  // "Rendered more hooks than during the previous render" 로 전멸했던 것과 같은 유형).
+  //
+  // 2026-09-22 코드리뷰 MAJOR 2·MINOR 6 반영: 빈 말풍선(추가 직후 placeholder)을 그대로
+  // 저장하면 서버 validator 가 400 을 낸다. 저장 전에 `pruneEmptyBubbles` 로 걷어내고,
+  // 그래도 말풍선이 하나도 안 남는 장이 있으면 저장 자체를 보류하고 이유를 보여준다(조용한
+  // 실패 금지). `draftId` 는 setTimeout 콜백이 오래된 값을 캡처하지 않게 최신 ref 로 읽는다
+  // (ref 갱신·언마운트 정리는 위 early return 앞에서 한다).
+  function onCardDeckChange(nextDeck: CardDeck) {
+    setCardDeck(nextDeck);
+    if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
+    cardDeckAutosaveTimer.current = setTimeout(() => {
+      const pruned = pruneEmptyBubbles(nextDeck);
+      const emptySlide = emptyBubbleSlideNumber(pruned);
+      if (emptySlide !== null) {
+        setEditAutosaveError(`${emptySlide}번 장에 말풍선이 비어 있어 자동 저장을 보류했습니다. 내용을 채우면 저장됩니다.`);
+        return;
+      }
+      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, pruned)
+        .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setEditAutosaveError(""); })
+        .catch((error) => setEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
+    }, 800);
+  }
+
   if (activeRoom === "edit") return (
     <div className="px-stack-section py-pad-inset">
       {showWizard && activeWorkspace ? <LearningCardWizard workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onSaved={(info, completed) => { setLearningInfo(info); if (completed) { setShowWizard(false); mutateBrand(); showToast("학습 정보를 배웠습니다"); } else { setLearningFlash((value) => value + 1); } }} onClose={() => setShowWizard(false)} /> : null}
@@ -2050,6 +2120,8 @@ export default function StudioPage() {
         previewVideoUrl={vid?.file || vid?.url || null}
         cardTextPositions={cardTextPositions}
         onCardTextPositionsChange={setCardTextPositions}
+        cardDeck={cardDeck}
+        onCardDeckChange={onCardDeckChange}
         onOpenCreate={() => changeRoom("create")}
         onOpenPublish={moveToPublish}
         lastSavedAt={editSavedAt}
