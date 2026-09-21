@@ -5,6 +5,8 @@ import { Button } from "@/components/shared/Button";
 import { StateNotice } from "@/components/shared/StateNotice";
 import { EditPreview, type CardTextPosition } from "./EditPreview";
 import { EditOutline } from "./EditOutline";
+import { CardDeckPanel } from "./BubbleEditor";
+import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
 import {
@@ -396,6 +398,8 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const [alsoQuote, setAlsoQuote] = useState<StudioDerivationQuote | null>(null);
   const [alsoBatch, setAlsoBatch] = useState<StudioDerivationBatch | null>(null);
   const [alsoBusy, setAlsoBusy] = useState(false);
+  // 카톡 말풍선 카드뉴스 9장의 표지 훅 공식. 기본은 모델이 고르는 auto(설계 §8 OD-D 추천안).
+  const [cardHookType, setCardHookType] = useState<"auto" | "question" | "number" | "pain">("auto");
   // 초안을 못 만드는 이유를 단추 옆에서 말한다(조용한 비활성 금지).
   const [quickBlockReason, setQuickBlockReason] = useState<string | null>(null);
   const generationInFlight = useRef(false);
@@ -671,6 +675,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
         kinds: alsoKinds,
         acknowledgedCost: { currency: alsoQuote.currency, totalMinor: alsoQuote.total_minor },
         token: getAuthToken(),
+        cardHookType,
       }));
     } catch (cause) {
       setError(generationErrorMessage(cause));
@@ -1142,8 +1147,23 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                   <span>구성 초안 생성 비용</span>
                   <span>{alsoQuote.total_minor.toLocaleString("ko-KR")}원</span>
                 </p>
+                {alsoKinds.includes("card") ? (
+                  <div role="group" aria-label="표지 훅 공식" className="space-y-stack-tight" data-card-hook-type-picker>
+                    <span className="text-caption text-subtle">표지 헤드라인 공식(카톡 말풍선 카드뉴스 9장)</span>
+                    <div className="flex flex-wrap gap-stack-tight">
+                      {([
+                        ["auto", "자동(모델이 고름)"],
+                        ["question", "질문형"],
+                        ["number", "숫자형"],
+                        ["pain", "고통 인식형"],
+                      ] as const).map(([value, label]) => (
+                        <Button key={value} size="sm" variant={cardHookType === value ? "primary" : "secondary"} aria-pressed={cardHookType === value} onClick={() => setCardHookType(value)}>{label}</Button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <p className="break-keep text-caption text-subtle">완성 미디어가 아니라 선택한 구조를 다른 형식에 맞춘 구성 초안입니다. 실패한 형식은 청구하지 않습니다.</p>
-                <Button variant="primary" onClick={confirmAlsoKinds} disabled={alsoBusy}>{alsoBusy ? "구성 초안 만드는 중" : "선택한 형식의 구성 초안 만들기"}</Button>
+                <Button variant="primary" onClick={confirmAlsoKinds} disabled={alsoBusy}>{alsoBusy ? "구성 초안 만드는 중" : alsoKinds.includes("card") && alsoKinds.length === 1 ? "카톡 말풍선 카드뉴스 9장 만들기" : "선택한 형식의 구성 초안 만들기"}</Button>
               </div>
             ) : null}
             {alsoBatch ? (
@@ -1152,7 +1172,13 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                 <ul className="space-y-stack-tight">
                   {alsoBatch.items.map((item) => (
                     <li key={item.kind} className="break-keep text-caption text-muted" data-also-item={item.kind} data-also-item-status={item.status}>
-                      {item.label}: {item.status === "succeeded" ? (item.kind === "video" ? "대본과 장면 구성을 준비했습니다. 영상 렌더링은 아직 제공하지 않습니다" : "구성 초안을 준비했습니다") : `구성 초안을 만들지 못했습니다. ${item.failure_reason ?? ""}`}
+                      {item.label}: {item.status === "succeeded"
+                        ? (item.kind === "video"
+                          ? "대본과 장면 구성을 준비했습니다. 영상 렌더링은 아직 제공하지 않습니다"
+                          : item.kind === "card" && item.deck_summary
+                            ? `카톡 말풍선 카드뉴스 ${item.deck_summary.slides}장을 만들었습니다(훅: ${item.deck_summary.hook_type}, 댓글 키워드: '${item.deck_summary.cta_keyword}')`
+                            : "구성 초안을 준비했습니다")
+                        : `구성 초안을 만들지 못했습니다. ${item.failure_reason ?? ""}`}
                     </li>
                   ))}
                 </ul>
@@ -1199,6 +1225,12 @@ interface EditRoomProps {
   lastSavedAt?: string;
   moveBusy?: boolean;
   autosaveError?: string;
+  /**
+   * 카드뉴스 v2 덱(PR4). 있으면 `template==="chat_bubble"` 편집을 `CardDeckPanel` 이
+   * 대신하고, 없으면 기존 `lines` 편집 그대로다(회귀 0 — 세션맥락).
+   */
+  cardDeck?: CardDeck | null;
+  onCardDeckChange?: (deck: CardDeck) => void;
 }
 type ToolName = "비율" | "배경" | "목소리" | "속도" | "자막" | "음악" | "음량";
 const VIDEO_TOOLS: ToolName[] = ["비율", "목소리", "속도", "자막"];
@@ -1320,6 +1352,8 @@ export function EditRoom({
   lastSavedAt,
   moveBusy = false,
   autosaveError,
+  cardDeck = null,
+  onCardDeckChange,
 }: EditRoomProps) {
   const formatKind = kind;
   const safeLines = lines.length ? lines : [""];
@@ -1476,6 +1510,14 @@ export function EditRoom({
               <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
+              {kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
+                <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench>
+                  <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-card-deck-editor-note>
+                    말풍선 카드뉴스는 직접 편집이 기본입니다. 여기서 고친 내용은 자동 저장됩니다.
+                  </p>
+                  <CardDeckPanel deck={cardDeck} onDeckChange={onCardDeckChange} />
+                </div>
+              ) : (
               <div className={`card overflow-hidden ${styles.editWorkbench}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined}>
                 {/*
                   2026-09-14. 여기는 `1. 첫 장` 같은 글자 목록이었고, 장을 옮기려면 미리보기
@@ -1642,6 +1684,7 @@ export function EditRoom({
                   )}
                 </div>
               </div>
+              )}
             </>
           ) : roomState === "empty" ? (
             <StateNotice tone="empty" title="아직 편집할 작업물이 없습니다" description="생성실에서 초안을 고르면 글, 카드뉴스, 영상 형식에 맞는 편집 도구가 열립니다." actionLabel="생성실에서 작업물 고르기" onAction={onOpenCreate} className="min-h-80 justify-center" />

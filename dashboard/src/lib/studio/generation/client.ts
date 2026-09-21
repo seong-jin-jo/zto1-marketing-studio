@@ -195,6 +195,8 @@ export interface StudioDerivationBatch {
     summary: string;
     charged_minor: number;
     failure_reason: string | null;
+    /** kind==="card" 성공 항목에만 온다(§7.1). 9장 카톡 말풍선 덱 요약. */
+    deck_summary?: { slides: number; hook_type: string; cta_keyword: string; template: string } | null;
   }>;
   discarded_at: string | null;
 }
@@ -217,12 +219,16 @@ export async function quoteStudioDerivations(
   return body.data.quote;
 }
 
+export type StudioDerivationHookType = "auto" | "question" | "number" | "pain";
+
 export async function requestStudioDerivations(input: {
   jobId: string;
   candidateId: string;
   kinds: readonly StudioDerivationKind[];
   acknowledgedCost: { currency: string; totalMinor: number };
   token: string;
+  /** kinds 에 "card" 가 있을 때만 의미가 있다(§7.1 options.card.hook_type). 기본 auto. */
+  cardHookType?: StudioDerivationHookType;
 }): Promise<StudioDerivationBatch> {
   const authorization = required(input.token, "Studio 인증");
   const response = await fetch(
@@ -241,6 +247,7 @@ export async function requestStudioDerivations(input: {
           currency: input.acknowledgedCost.currency,
           total_minor: input.acknowledgedCost.totalMinor,
         },
+        ...(input.kinds.includes("card") ? { options: { card: { hook_type: input.cardHookType ?? "auto" } } } : {}),
       }),
     },
   );
