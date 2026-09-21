@@ -44,7 +44,7 @@ export function InstallPrompt({ compactOnNarrow = false }: { compactOnNarrow?: b
     <Button
       onClick={handleInstall}
       variant="secondary"
-      className="min-w-full w-full justify-start gap-stack-tight border-0 bg-transparent px-micro py-micro text-caption text-subtle hover:bg-transparent hover:text-accent"
+      className="min-w-full w-full justify-start gap-stack-tight border-0 bg-transparent px-micro py-micro text-caption text-subtle hover:bg-transparent hover:text-muted"
       title="홈 화면에 추가"
     >
       <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
