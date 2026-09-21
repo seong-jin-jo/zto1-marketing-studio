@@ -55,6 +55,39 @@ const PROXY_REWRITES = new Set([502, 503, 504]);
 /** studioFailure 로그에 곁들일 요청 맥락. 자격증명·토큰 등 비밀값은 절대 넣지 않는다. */
 export type StudioFailureContext = Record<string, string | number | boolean | undefined>;
 
+/** 잦은 4xx(만료 토큰·요청 폭주)는 요청마다 warn 을 남기면 로그가 그 소음으로 덮인다.
+ * 알려진 오남용 패턴은 debug 로 내려 기본 로그레벨에서는 안 보이게 한다(PR#75 리뷰 MINOR). */
+const SAMPLED_CLIENT_STATUS = new Set([401, 429]);
+
+/** 원인 문자열은 1KB 를 넘기지 않는다. postgres.js 오류는 message 에 SQL 파라미터가
+ * 섞이지 않지만(안전 검증됨), 임의 non-Error 객체를 그대로 로그에 흘리면 통제가 어렵다. */
+function safeString(value: unknown): string {
+  if (value instanceof Error) return value.message.slice(0, 1024);
+  if (typeof value === "string") return value.slice(0, 1024);
+  try {
+    return JSON.stringify(value)?.slice(0, 1024) ?? String(value).slice(0, 1024);
+  } catch {
+    return String(value).slice(0, 1024);
+  }
+}
+
+/** error.cause(주로 mapGenerationDatabaseError 가 실어 보낸 postgres 원본)를 얕게 요약한다.
+ * cause 자체를 통째로 로그에 펼치지 않고, 상관관계에 필요한 필드만 뽑는다. */
+function causeSummary(error: unknown): Record<string, unknown> | undefined {
+  const cause = error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined;
+  if (cause === undefined) return undefined;
+  if (cause instanceof Error) {
+    const pg = cause as Error & { code?: string; constraint_name?: string };
+    return {
+      cause_name: cause.name,
+      cause_message: safeString(cause.message),
+      postgres_code: typeof pg.code === "string" ? pg.code : undefined,
+      constraint: typeof pg.constraint_name === "string" ? pg.constraint_name : undefined,
+    };
+  }
+  return { cause_message: safeString(cause) };
+}
+
 export function studioFailure(error: unknown, context?: StudioFailureContext): Response {
   const requestId = crypto.randomUUID();
   const known = isStudioApiError(error)
@@ -67,25 +100,38 @@ export function studioFailure(error: unknown, context?: StudioFailureContext): R
     });
   // ADR-007: 예외를 삼키지 않는다. 알 수 없는(대개 500) error 는 request_id 로 나중에 찾을
   // 수 있게 원인 전체를 남기고, 알려진 StudioApiError 는 5xx 만 error, 4xx 는 warn 한 줄.
+  // context 를 먼저 펼치고 request_id 를 뒤에 둔다 — 호출자가 실수로 request_id 키를
+  // context 에 넣어도 여기서 만든 진짜 request_id 가 항상 이긴다(PR#75 리뷰 MINOR).
   if (!isStudioApiError(error)) {
     console.error("[studio] 처리되지 않은 오류", {
-      request_id: requestId,
       ...context,
+      request_id: requestId,
       error_name: error instanceof Error ? error.name : typeof error,
-      error_message: error instanceof Error ? error.message : String(error),
+      error_message: safeString(error instanceof Error ? error.message : error),
       error_stack: error instanceof Error ? error.stack : undefined,
+      ...causeSummary(error),
     });
   } else if (known.status >= 500) {
+    // M1(PR#75): postgres 원인은 mapGenerationDatabaseError 가 이 자리로 cause 에 실어
+    // 보낸다. request_id 와 원인을 한 줄에 같이 찍어야 동시 요청에서도 상관관계가 선다.
     console.error("[studio] StudioApiError 5xx", {
-      request_id: requestId,
       ...context,
+      request_id: requestId,
       code: known.code,
       message: known.message,
+      ...causeSummary(known),
+    });
+  } else if (!SAMPLED_CLIENT_STATUS.has(known.status)) {
+    console.warn("[studio] StudioApiError", {
+      ...context,
+      request_id: requestId,
+      status: known.status,
+      code: known.code,
     });
   } else {
-    console.warn("[studio] StudioApiError", {
-      request_id: requestId,
+    console.debug("[studio] StudioApiError(샘플링됨)", {
       ...context,
+      request_id: requestId,
       status: known.status,
       code: known.code,
     });

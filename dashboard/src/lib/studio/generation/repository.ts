@@ -46,15 +46,10 @@ function postgresCode(error: unknown): string | null {
 
 export function mapGenerationDatabaseError(error: unknown): StudioApiError {
   const code = postgresCode(error);
-  // ADR-007: 마지막으로 원인을 볼 수 있는 자리다. StudioApiError 로 바꾸면서 postgres
-  // 코드·제약조건·메시지를 버리면 studioFailure 는 "무결성 조건을 확인하지 못했습니다"
-  // 밖에 못 본다. request_id 로 찾을 수 있게 원본을 남긴다(자격증명은 담기지 않는 필드만).
-  console.error("[studio][generation-repository] DB 오류", {
-    postgres_code: code,
-    constraint: error instanceof Error ? (error as PostgresError).constraint_name : undefined,
-    error_name: error instanceof Error ? error.name : typeof error,
-    error_message: error instanceof Error ? error.message : String(error),
-  });
+  // ADR-007 + PR#75 리뷰(M1): 여기서 찍으면 request_id 가 아직 없어 studioFailure 가 나중에
+  // 만드는 request_id 와 이 로그를 못 잇는다(동시 요청 아래서 어느 원인이 어느 request_id인지
+  // 불명). 그래서 여기서는 안 찍고 원본을 StudioApiError.cause 에 실어 던지기만 한다.
+  // studioFailure 의 5xx 분기가 request_id 와 cause 를 한 줄로 찍는다.
   if (
     code === "CONNECT_TIMEOUT"
     || code === "CONNECTION_CLOSED"
@@ -71,6 +66,7 @@ export function mapGenerationDatabaseError(error: unknown): StudioApiError {
       message: "생성 저장소 연결이 불안정해 잠시 후 다시 시도해야 합니다",
       retryable: true,
       details: { retry_after_ms: 1500 },
+      cause: error,
     });
   }
   if (code === "55P03" || code === "40001" || code === "40P01") {
@@ -80,6 +76,7 @@ export function mapGenerationDatabaseError(error: unknown): StudioApiError {
       message: "생성 요청이 몰려 잠시 후 다시 시도해야 합니다",
       retryable: true,
       details: { retry_after_ms: 1500 },
+      cause: error,
     });
   }
   if (code === "57014") {
@@ -89,6 +86,7 @@ export function mapGenerationDatabaseError(error: unknown): StudioApiError {
       message: "생성 저장 시간이 초과되어 잠시 후 다시 시도해야 합니다",
       retryable: true,
       details: { retry_after_ms: 1500 },
+      cause: error,
     });
   }
   if (code === "42P10") {
@@ -96,12 +94,14 @@ export function mapGenerationDatabaseError(error: unknown): StudioApiError {
       status: 500,
       code: "GENERATION_DB_DEPLOYMENT_MISMATCH",
       message: "생성 저장소 배포 상태가 일치하지 않습니다",
+      cause: error,
     });
   }
   return new StudioApiError({
     status: 500,
     code: "GENERATION_DB_INVARIANT_VIOLATION",
     message: "생성 저장소의 무결성 조건을 확인하지 못했습니다",
+    cause: error,
   });
 }
 

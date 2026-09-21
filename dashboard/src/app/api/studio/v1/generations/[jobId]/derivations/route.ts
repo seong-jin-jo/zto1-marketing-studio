@@ -58,7 +58,11 @@ export async function GET(request: Request, context: RouteContext) {
 // 주 갈래를 확정하면서 같이 고른 갈래로 옮겨 만든다. 무료 재생성 몫은 건드리지 않는다.
 export async function POST(request: Request, context: RouteContext) {
   let jobId: string | undefined;
-  let kindsRaw: unknown;
+  // PR#75 리뷰(M2): body.kinds 원문은 검증 전에는 절대 로그에 싣지 않는다. readJson 에
+  // 본문 크기 제한이 없어, 검증 통과 전 원문을 그대로 join 하면 회원 입력값으로 로그
+  // 한 줄을 무한정 늘릴 수 있다. 로그에는 parseDerivationKinds 를 통과한, 즉 "text"·
+  // "card"·"video" 중 하나로만 이뤄진 정규화 값만 싣는다.
+  let kindsParsed: readonly DerivationKind[] | undefined;
   try {
     const principal = await resolveStudioPrincipal(request);
     ({ jobId } = await context.params);
@@ -72,8 +76,8 @@ export async function POST(request: Request, context: RouteContext) {
         fieldErrors: [{ field: "candidate_id", reason: "필수 문자열입니다" }],
       });
     }
-    kindsRaw = body?.kinds;
     const kinds = parseDerivationKinds(body?.kinds);
+    kindsParsed = kinds;
     const batch = await generationRuntime().derive(
       principal.memberId,
       jobId,
@@ -91,7 +95,7 @@ export async function POST(request: Request, context: RouteContext) {
     return studioFailure(error, {
       route: "derivations.POST",
       job_id: jobId,
-      kinds: Array.isArray(kindsRaw) ? kindsRaw.join(",") : undefined,
+      kinds: kindsParsed?.join(","),
     });
   }
 }

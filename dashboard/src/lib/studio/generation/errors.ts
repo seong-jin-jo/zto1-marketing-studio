@@ -18,8 +18,11 @@ export class StudioApiError extends Error {
     retryable?: boolean;
     fieldErrors?: StudioFieldError[];
     details?: Record<string, unknown>;
+    /** 사람에게 보여주는 message 뒤에 숨은 원인(예: postgres 원본 error). 응답 본문에는
+     * 절대 안 나가고, studioFailure 가 5xx 일 때만 request_id 와 한 줄로 로그에 얹는 데 쓴다. */
+    cause?: unknown;
   }) {
-    super(input.message);
+    super(input.message, input.cause !== undefined ? { cause: input.cause } : undefined);
     this.name = "StudioApiError";
     this.status = input.status;
     this.code = input.code;
