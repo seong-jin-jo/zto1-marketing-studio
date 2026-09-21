@@ -13,6 +13,11 @@ import { CreateRoom, type QuickDraftResult } from "@/components/studio/StudioRoo
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  // 2026-09-22 교차 리뷰 MINOR: jsdom 은 scrollIntoView 를 애초에 안 채워 두므로
+  // `Element.prototype.scrollIntoView = spy` 로 직접 대입하면 vi.restoreAllMocks() 가
+  // 원복하지 못하고(스파이가 아니라 일반 대입이라서) 이 파일 뒤에 도는 테스트로 샌다.
+  // 매 시험 끝에 직접 지운다.
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
 });
 
 const QUICK_DRAFT: QuickDraftResult = {
@@ -38,7 +43,7 @@ function baseProps() {
 describe("생성 후보 완료 노출", () => {
   it("상단 카운터는 A/B/C 구조 예시와 실제 생성한 후보를 구분해서 보여준다", () => {
     render(<CreateRoom {...baseProps()} quickDraft={QUICK_DRAFT} />);
-    expect(screen.getByText("구조 예시(A/B/C)")).toBeInTheDocument();
+    expect(screen.getByText("구조 초안(A/B/C)")).toBeInTheDocument();
     expect(screen.getByText("생성한 후보")).toBeInTheDocument();
     const countCard = document.querySelector('[data-quick-draft-count="1"]');
     expect(countCard).not.toBeNull();

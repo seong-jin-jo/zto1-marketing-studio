@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildImagePrompt, paletteToColors, pickImageSubject, learningVisualHints, IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
+import { buildImagePrompt, paletteToColors, pickImageSubject, stripRiskyNouns, learningVisualHints, IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
 
 // 회장 2026-09-08: "생성할 때 여러 옵션은 안 받는 거냐. 고객은 이것저것 결을 보고 선택한
 // 다음 생성하고 싶어할 듯." 종전에는 결을 고를 자리가 없어 같은 글감이면 늘 같은 결만
@@ -114,25 +114,52 @@ describe("업종 장면은 간판이 나올 자리를 피한다", () => {
 // 대시보드·태그가 가득한 범용 플랫 일러스트로 나왔다. `/api/studio/text` 규격을 고쳐도
 // LLM 이 규격을 어기고 화면·아이콘·차트 같은 명사를 낼 수 있다. 그 명사는 지시문에서
 // 지운다(부정문 추가가 아니라 삭제).
+//
+// 2026-09-22 교차 리뷰(REQUEST_CHANGES MAJOR-4): 낱말만 지우는 정규식은 ①동사로도 쓰이는
+// 낱말(signs/displays/labels/papers)을 동사 자리에서도 지워 술어를 없애고 ②지운 자리에
+// 관사·전치사만 남겼다("A laptop showing a with and"). 아래는 그 실측 나쁜 샘플 7개에
+// 대해 실제로 돌아온 문장을 통째로 단언한다(길이·부분일치가 아니라 값 자체).
 describe("위험 명사 제거", () => {
-  it("화면·아이콘·차트·대시보드·태그를 지시문에서 지운다", () => {
-    const bad1 = "A laptop screen showing a dashboard with charts and icons";
-    const bad2 = "A hand holding a phone with notification badges and tags on the UI";
-    const bad3 = "A shop sign with a logo and text, a poster on the wall";
-    for (const bad of [bad1, bad2, bad3]) {
-      const out = pickImageSubject({ imagePrompt: bad, industry: "앱" });
-      expect(out).not.toMatch(/screen|dashboard|chart|icon|badge|tag|sign|logo|text|poster|ui\b/i);
-    }
+  it("명사만 지우고 동사·비문·고아 관사는 만들지 않는다(실측 7개 값 단언)", () => {
+    // 명사 위치의 위험 낱말(화면·대시보드·차트·아이콘·알림뱃지·태그·UI)은 지우고, 지운
+    // 자리에 남는 관사·전치사·접속사도 함께 걷어낸다.
+    expect(stripRiskyNouns("A laptop screen showing a dashboard with charts and icons")).toBe("A laptop");
+    expect(stripRiskyNouns("A hand holding a phone with notification badges and tags on the UI")).toBe("A hand holding a phone");
+    // "signs/displays" 는 여기서 동사다(주어 뒤). 동사 자리는 손대지 않아 문장이 안 깨진다.
+    expect(stripRiskyNouns("A woman signs a contract at a wooden desk, warm light")).toBe("A woman signs a contract at a wooden desk, warm light");
+    expect(stripRiskyNouns("A barista displays a latte on the counter")).toBe("A barista displays a latte on the counter");
+    // "paper" 는 관사 바로 뒤라 명사로 보고 지운다. 뒤 구("at a rustic table")는 안 건드린다.
+    expect(stripRiskyNouns("A chef reading a paper menu at a rustic table")).toBe("A chef reading at a rustic table");
+    // "screen" 은 늘 명사로 보되, 지운 자리에 진짜 명사("door")가 남으면 관사는 지우지 않는다.
+    expect(stripRiskyNouns("A hand opening a screen door to a sunlit garden")).toBe("A hand opening a door to a sunlit garden");
+    // "label" 은 관사 바로 뒤가 아니라("fabric" 뒤) 손대지 않는다 — 과잉 삭제보다 안전이 우선.
+    expect(stripRiskyNouns("A tailor sewing a fabric label onto a linen jacket")).toBe("A tailor sewing a fabric label onto a linen jacket");
   });
 
-  it("명사를 지우고 남은 문장이 빈약하면 업종 장면으로 보강한다", () => {
+  it("업종 안 물어도 명사만 지운 결과가 위험 명사를 안 담는다", () => {
+    const out = pickImageSubject({ imagePrompt: "A shop sign with a logo and text, a poster on the wall", industry: "앱" });
+    expect(out).not.toMatch(/logo|text|poster|dashboard|\bui\b/i);
+  });
+
+  it("명사를 지우고 남은 문장이 빈약하면(내용어 2개 미만) 업종 장면으로 보강한다", () => {
+    // "A screen with a dashboard" 는 지우면 내용어가 0개(고아 관사·전치사까지 다 걷힌다).
+    expect(stripRiskyNouns("A screen with a dashboard")).toBe("");
     const out = pickImageSubject({ imagePrompt: "A screen with a dashboard", industry: "카페" });
-    expect(out).not.toMatch(/screen|dashboard/i);
-    expect(out.length).toBeGreaterThan(10);
+    expect(out).toBe("set at a warm neighborhood cafe counter");
   });
 
   it("기존 image-style 계약은 회귀 없이 그대로다", () => {
     expect(pickImageSubject({ imagePrompt: "a sunlit cafe counter", topic: "카페" }))
       .toBe("카페. a sunlit cafe counter");
+  });
+
+  it("[회귀 방지] 위험 명사가 없는 정상 image_prompt는 주제가 없거나 길어도 버려지지 않는다", () => {
+    // 2026-09-22 교차 리뷰 MAJOR-1: pickImageSubject 에서 "시각 묘사만 있으면 그것을
+    // 쓴다" 분기가 사라져, 주제가 없거나 30자를 넘으면 위험 명사가 전혀 없는 정상
+    // image_prompt 까지 통째로 버리고 "brand lifestyle scene" 만 나가고 있었다.
+    expect(pickImageSubject({ imagePrompt: "a sunlit cafe counter" })).toBe("a sunlit cafe counter");
+    const longTopic = "처음 온 고객 열 명 중 아홉 명이 같은 실수를 하는 이유 세 가지, 바로 예약 없이 오는 것입니다";
+    expect(pickImageSubject({ imagePrompt: "a sunlit cafe counter with fresh bread", topic: longTopic }))
+      .toBe("a sunlit cafe counter with fresh bread");
   });
 });

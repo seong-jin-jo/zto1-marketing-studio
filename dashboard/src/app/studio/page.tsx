@@ -839,7 +839,7 @@ export default function StudioPage() {
       // 2026-09-14 이전에는 여기 지시문이 고정 문자열이라 주제도 학습 정보도 실리지 않았다.
       // 무엇에 관한 영상이든 같은 지시가 갔고, 결과가 주제와 무관하게 나오는 원인 중 하나였다.
       const motion = buildMotionPrompt(
-        pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea }),
+        pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea, industry: learningInfo.industry }),
         learningInfo,
       );
       const r = await apiPost<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { localPath: source.localPath, filename: source.filename, prompt: motion, model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
@@ -934,7 +934,7 @@ export default function StudioPage() {
       // 글자로 그려서 쓸 수 없는 이미지가 나온다(2026-09-08 실측).
       await genImage(
         buildImagePrompt(
-          pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea }),
+          pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea, industry: learningInfo.industry }),
           { id: imageStyleId, custom: imageStyleCustom },
           learningInfo,
         ),
@@ -1000,7 +1000,7 @@ export default function StudioPage() {
         setBusy("영상 바탕 그림 만드는 중");
         source = await genImage(
           buildImagePrompt(
-            pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea }),
+            pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea, industry: learningInfo.industry }),
             { id: imageStyleId, custom: imageStyleCustom },
             learningInfo,
           ),

@@ -862,10 +862,15 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
           <section className="grid gap-stack sm:grid-cols-4" aria-label="생성실 요약">
             <article className="card p-pad-inset"><span className="text-caption text-subtle">선택한 형식</span><b className="mt-micro block text-body text-text">{primaryKind ? CREATE_KIND_LABELS[primaryKind] : "선택 전"}</b></article>
             <article className="card p-pad-inset"><span className="text-caption text-subtle">반영한 학습 정보</span><b className="mt-micro block text-body text-text">{learnedCount}개</b></article>
-            {/* "구조 초안"은 A, B, C 구조 예시(아래 카드)를 세는 값이다. "초안 만들기"가
-                낸 결과는 이 값이 아니라 "생성한 후보" 칸에 뜬다 — 서로 다른 수를 같은
-                이름으로 부르면 결과가 생겼는데도 "안 된다"로 오해한다(2026-09-22 실측). */}
-            <article className="card p-pad-inset"><span className="text-caption text-subtle">구조 예시(A/B/C)</span><b className="mt-micro block text-body text-text">{candidates.length}개</b></article>
+            {/*
+              2026-09-22 실측(j.the.great.creator): "초안 만들기" 결과(`quickDraftSections`)와
+              이 "구조 초안"(A, B, C 구조 예시, `candidates`) 은 서로 다른 값인데 이름이 같아,
+              결과가 생겼는데도 이 칸이 0 으로 보여 "안 된다"로 오해했다. 승인된 V68 계약
+              (tests/components/create-room-v68.test.tsx)이 라벨에 "구조 초안" 문구를
+              고정해 두었으므로 그 문구는 유지하고, A/B/C 축임을 괄호로 덧붙이고 별도로
+              "생성한 후보" 칸을 새로 둬서 구분한다.
+            */}
+            <article className="card p-pad-inset"><span className="text-caption text-subtle">구조 초안(A/B/C)</span><b className="mt-micro block text-body text-text">{candidates.length}개</b></article>
             <article className="card p-pad-inset" data-quick-draft-count={quickDraftSections.length}><span className="text-caption text-subtle">생성한 후보</span><b className="mt-micro block text-body text-text">{quickDraftLoading ? "만드는 중" : `${quickDraftSections.length}개`}</b></article>
           </section>
           <section className="min-w-0" aria-labelledby="create-display-title">
@@ -912,15 +917,26 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
           {quickDraftSections.length ? (
             <section
               ref={quickDraftResultRef}
-              className={`rounded-surface border p-pad-inset transition-colors duration-500 ${justCompletedDraft ? "border-accent bg-accent-soft" : "border-success/30 bg-success/10"}`}
+              className={`rounded-surface border p-pad-inset transition-colors duration-500 ${justCompletedDraft ? "border-accent bg-accent-soft" : "border-success/30 bg-success/10"} ${quickDraftLoading ? "opacity-50" : ""}`}
               aria-labelledby="quick-draft-result-title"
               data-quick-draft-result
               data-quick-draft-just-completed={justCompletedDraft || undefined}
+              data-quick-draft-stale={quickDraftLoading || undefined}
             >
               <h3 id="quick-draft-result-title" className="text-body font-bold text-text">고른 형식의 생성 후보</h3>
               {justCompletedDraft ? (
                 <p role="status" className="mt-stack-tight text-caption font-semibold text-accent" data-quick-draft-toast>
                   후보 {quickDraftSections.length}개가 만들어졌습니다. 아래에서 확인하세요.
+                </p>
+              ) : null}
+              {/*
+                2026-09-22 교차 리뷰 MINOR: 다시 만드는 중에는 이 섹션에 여전히 "이전"
+                후보가 떠 있다. 무엇이 새 결과인지 헷갈리지 않게, 만드는 동안은 옅게
+                흐리고 "이전 결과" 라고 알린다(위 카운터는 이미 "만드는 중" 이라고 말한다).
+              */}
+              {quickDraftLoading ? (
+                <p className="mt-stack-tight text-caption text-subtle" data-quick-draft-stale-notice>
+                  다시 만드는 중입니다. 아래는 이전 결과입니다.
                 </p>
               ) : null}
               <div className="mt-stack grid gap-stack md:grid-cols-2">

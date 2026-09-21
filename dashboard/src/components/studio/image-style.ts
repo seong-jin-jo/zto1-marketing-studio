@@ -35,8 +35,11 @@ export const IMAGE_STYLES: readonly ImageStyle[] = [
     prompt: "warm cozy lifestyle scene, golden hour light, inviting atmosphere" },
   { id: "bold", title: "눈에 띄는 강한 색", hint: "피드에서 시선을 잡는 선명한 색",
     prompt: "bold saturated colors, high contrast, striking graphic composition" },
+  // 2026-09-22 교차리뷰 MINOR: "for text overlay" 는 NO_TEXT 주석이 실측한 대로
+  // "text" 라는 낱말을 그림 속 글자로 그리게 한다. 뜻(카드 글자를 얹기 좋은 구도)은
+  // 살리되 "text" 를 말하지 않는다.
   { id: "calm", title: "차분한 여백", hint: "글자를 얹기 좋은 넉넉한 빈 공간",
-    prompt: "calm minimal composition with generous negative space for text overlay" },
+    prompt: "calm minimal composition, generous negative space, uncluttered open area" },
   { id: "illust", title: "부드러운 일러스트", hint: "사진 대신 그림체로",
     prompt: "soft flat illustration, gentle shapes, limited color palette" },
 ] as const;
@@ -129,26 +132,106 @@ const NO_TEXT = "clean minimal composition, plain surfaces, natural materials, c
  * "a dashboard with icons and charts" 처럼 글자가 놓일 물체 이름이 그대로 들어 있었다.
  * 지시문 규격(route.ts)을 고쳐도 LLM 이 규격을 완전히 지키리라는 보장은 없다. 부정문으로
  * "화면 없이"를 더하면 위 `NO_TEXT` 주석의 실측대로 그 낱말이 오히려 더 그려진다. 그래서
- * 규격을 어기고 들어온 위험 명사를 **지시문에서 통째로 지운다** — 없던 일로 만든다.
+ * 규격을 어기고 들어온 위험 명사를 **지시문에서 지운다** — 없던 일로 만든다.
  *
- * 명사만 지운다(형용사·동사는 남긴다). 지우고 남은 문장이 너무 짧아지면(피사체가
- * 사라지면) 호출부가 업종 장면으로 보강한다.
+ * 2026-09-22 교차 리뷰(REQUEST_CHANGES MAJOR-4) 실측: 단순 정규식으로 낱말만 지우면
+ * ①"sign/display/label/paper" 처럼 동사로도 흔한 낱말이 동사 자리에서도 지워져 술어가
+ * 사라진다("A woman signs a contract" → "A woman a contract") ②지운 자리에 관사·전치사만
+ * 남는다("with charts and icons" → "with and"). 그 비문이 그대로 생성기로 갔다.
+ *
+ * 토큰 단위로 고친다.
+ * ① 동사 오탐: `sign/display/label/paper` 는 **바로 앞 낱말이 관사류(a/an/the/...)일
+ *   때만** 명사로 본다 — 동사는 주어 뒤에 오지 관사 뒤에 오지 않는다("A woman signs" 의
+ *   "signs" 는 앞이 "woman"이라 명사로 안 본다. "a paper menu" 의 "paper"는 앞이 "a"라
+ *   명사로 본다).
+ * ② 고아 관사·전치사: 명사를 지운 자리의 관사(a/the/...)·전치사(with/on/at/showing/...)는,
+ *   그 뒤로 다음 전치사·구두점·문장 끝을 만날 때까지 훑어 살아남는 낱말이 하나도 없을
+ *   때만 같이 지운다("and/or" 는 훑고 지나간다 — 목록을 잇는 말이라 그 앞뒤가 둘 다
+ *   지워지면 "and" 도 비어야 한다). 이 연쇄를 몇 차례 반복해 잡는다.
  */
-const RISKY_NOUN_PATTERN = /\b(screens?|monitors?|displays?|dashboards?|documents?|papers?|signs?|signage|signboards?|storefronts?|icons?|charts?|graphs?|infographics?|speech\s?bubbles?|chat\s?bubbles?|notifications?|badges?|tags?|labels?|logos?|banners?|posters?|billboards?|menus?|receipts?|invoices?|keyboards?\s+with\s+text|texts?|lettering|typography|captions?|subtitles?|watermarks?|uis?|apps?|interfaces?|websites?|webpages?)\b/gi;
+const DETERMINERS = new Set(["a", "an", "the", "this", "that", "these", "those", "some", "any", "no", "his", "her", "its", "their", "your", "my", "our"]);
+const CONJUNCTIONS = new Set(["and", "or"]);
+const CLAUSE_PREPOSITIONS = new Set(["with", "of", "on", "at", "in", "by", "for", "near", "onto", "into", "to", "showing", "having", "displaying", "containing"]);
+const FUNCTION_WORDS: ReadonlySet<string> = new Set([...DETERMINERS, ...CONJUNCTIONS, ...CLAUSE_PREPOSITIONS]);
 
-/** LLM 이 규격을 어기고 낸 위험 명사를 지시문에서 지운다. */
-export function stripRiskyNouns(text: string): string {
-  return text
-    .replace(RISKY_NOUN_PATTERN, " ")
-    .replace(/\s{2,}/g, " ")
-    .replace(/\s+([,.])/g, "$1")
-    .replace(/,\s*,/g, ",")
-    .trim();
+// 언제나 명사(글자가 놓일 물체)로 본다. 이 자리에 흔히 쓰이는 동사가 없다.
+const RISKY_NOUNS = new Set([
+  "screen", "screens", "monitor", "monitors", "dashboard", "dashboards", "document", "documents",
+  "signage", "signboard", "signboards", "storefront", "storefronts", "icon", "icons", "chart", "charts",
+  "graph", "graphs", "infographic", "infographics", "bubble", "bubbles", "notification", "notifications",
+  "badge", "badges", "tag", "tags", "logo", "logos", "banner", "banners", "poster", "posters",
+  "billboard", "billboards", "menu", "menus", "receipt", "receipts", "invoice", "invoices",
+  "lettering", "typography", "caption", "captions", "subtitle", "subtitles", "watermark", "watermarks",
+  "ui", "uis", "app", "apps", "interface", "interfaces", "website", "websites", "webpage", "webpages",
+  "text", "texts",
+]);
+
+// 흔히 동사로도 쓰인다("she signs", "it displays", "he labels/papers/texts"). 바로 앞이
+// 관사류일 때만 명사로 본다.
+const RISKY_NOUNS_IF_AFTER_DETERMINER = new Set(["sign", "signs", "display", "displays", "label", "labels", "paper", "papers"]);
+
+function tokenize(text: string): string[] {
+  return text.match(/[A-Za-z][A-Za-z'-]*|[,.]/g) || [];
 }
 
-/** 명사를 지우고 남은 말이 피사체를 잃을 만큼 빈약한지 본다(단어 3개 미만이면 빈약). */
+function joinTokens(tokens: readonly string[]): string {
+  let out = "";
+  for (const tok of tokens) {
+    if (tok === "," || tok === ".") { out = out.trimEnd() + tok; continue; }
+    out += (out ? " " : "") + tok;
+  }
+  return out.replace(/\s{2,}/g, " ").replace(/,\s*,/g, ",").trim();
+}
+
+/** LLM 이 규격을 어기고 낸 위험 명사를 지시문에서 지운다. 위 주석의 토큰 규칙을 따른다. */
+export function stripRiskyNouns(text: string): string {
+  const tokens = tokenize(text);
+  const removed = new Array(tokens.length).fill(false);
+
+  for (let i = 0; i < tokens.length; i++) {
+    const word = tokens[i].toLowerCase();
+    if (RISKY_NOUNS.has(word)) { removed[i] = true; continue; }
+    if (RISKY_NOUNS_IF_AFTER_DETERMINER.has(word)) {
+      const prevWord = i > 0 ? tokens[i - 1].toLowerCase() : "";
+      if (DETERMINERS.has(prevWord)) removed[i] = true;
+    }
+  }
+
+  // 관사·전치사가 고아로 남는지 훑는다. 연쇄(관사를 지우면 그 앞 전치사도 비는 경우)가
+  // 있어 안정될 때까지 몇 차례 반복한다.
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    for (let i = 0; i < tokens.length; i++) {
+      if (removed[i]) continue;
+      const word = tokens[i].toLowerCase();
+      // 관사·전치사뿐 아니라 접속사(and/or)도 양쪽이 다 비면 고아로 남는다
+      // ("charts and icons" 에서 둘 다 지워지면 "and" 도 지워야 한다).
+      if (!DETERMINERS.has(word) && !CLAUSE_PREPOSITIONS.has(word) && !CONJUNCTIONS.has(word)) continue;
+      let foundContent = false;
+      for (let j = i + 1; j < tokens.length; j++) {
+        if (removed[j]) continue;
+        const next = tokens[j].toLowerCase();
+        if (next === "," || next === ".") break; // 구두점 = 경계
+        if (CONJUNCTIONS.has(next)) continue; // and/or 는 훑고 지나간다
+        if (CLAUSE_PREPOSITIONS.has(next)) break; // 새 구가 시작되면 경계
+        foundContent = true; // 살아있는 낱말(관사류 포함)을 만나면 내용이 있다고 본다
+        break;
+      }
+      if (!foundContent) { removed[i] = true; changed = true; }
+    }
+    if (!changed) break;
+  }
+
+  return joinTokens(tokens.filter((_, i) => !removed[i]));
+}
+
+/** 위험 명사를 지우고 남은 말이 피사체를 잃을 만큼 빈약한지, 내용어(기능어 제외) 수로 본다. */
 function isThin(text: string): boolean {
-  return text.split(/\s+/).filter(Boolean).length < 3;
+  const contentWords = tokenize(text).filter((tok) => {
+    if (tok === "," || tok === ".") return false;
+    return !FUNCTION_WORDS.has(tok.toLowerCase());
+  });
+  return contentWords.length < 2;
 }
 
 export function pickImageSubject(input: { imagePrompt?: string; topic?: string; industry?: string }): string {
@@ -160,6 +243,10 @@ export function pickImageSubject(input: { imagePrompt?: string; topic?: string; 
   const industryScene = INDUSTRY_SCENES.find((one) => one.match.test(input.industry || ""))?.scene;
   const visualUsable = visual && !isThin(visual) ? visual : "";
   if (usableTopic && visualUsable) return `${usableTopic}. ${visualUsable}`;
+  // 2026-09-22 교차 리뷰 MAJOR-1 회귀 수선: 여기 있던 "시각 묘사만 있으면 그것을 쓴다"
+  // 분기가 사라지는 바람에, 주제가 없거나 30자를 넘기면(글감은 문장형이 흔하다) 위험
+  // 명사가 하나도 없는 정상 image_prompt 까지 통째로 버리고 있었다. 되살린다.
+  if (visualUsable) return visualUsable;
   // 규격을 어기고 온 시각 묘사가 위험 명사를 지우고 나서 빈약해지면, 피사체 없이 내보내지
   // 않고 업종 장면으로 보강한다(업종을 모르면 기존 계약대로 무난한 장면 하나만 쓴다).
   if (visualRaw && !visualUsable) return usableTopic ? `${usableTopic}. ${industryScene || "brand lifestyle scene"}` : (industryScene || "brand lifestyle scene");
