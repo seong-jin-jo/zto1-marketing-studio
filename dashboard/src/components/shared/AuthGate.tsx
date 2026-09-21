@@ -382,7 +382,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const pollGeneration = useRef(0);
   const pollAbortController = useRef<AbortController | null>(null);
   const setActiveWorkspace = useUIStore((state) => state.setActiveWorkspace);
-  const isPublicPath = ["/login", "/signup", "/operator", "/privacy", "/terms", "/data-deletion"].includes(pathname);
+  const isPublicPath = ["/login", "/signup", "/operator", "/privacy", "/terms", "/data-deletion", "/offline"].includes(pathname);
   const isCustomerProtectedPath = !isPublicPath && pathname !== "/" && !pathname.startsWith("/operator");
 
   useEffect(() => {

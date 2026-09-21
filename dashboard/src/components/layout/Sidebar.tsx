@@ -15,6 +15,7 @@ import { useUIStore, type StudioRoom, type Workspace } from "@/store/ui-store";
 import { fetcher } from "@/lib/api";
 import { clearAuthToken, getAuthToken } from "@/lib/auth";
 import { ThemeToggle } from "./ThemeToggle";
+import { InstallPrompt } from "./InstallPrompt";
 
 interface MeResponse {
   isOperator?: boolean;
@@ -241,6 +242,7 @@ function SidebarFooter({ isOperator, compactOnNarrow = false }: { isOperator: bo
   return (
     <div className="shrink-0 px-pad-inset py-stack border-t border-border/50 space-y-stack-tight max-xl:px-stack-tight md:px-micro md:py-stack-tight">
       <ThemeToggle compactOnNarrow={compactOnNarrow} />
+      <InstallPrompt compactOnNarrow={compactOnNarrow} />
       <button
         onClick={async () => {
           try {
