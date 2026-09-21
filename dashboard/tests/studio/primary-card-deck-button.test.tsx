@@ -201,7 +201,12 @@ describe("(a)(b) 주 형식이 카드뉴스면 카톡 말풍선 카드뉴스 9�
     render(<CreateRoom {...baseProps()} cardDeckByDraftId={deckByDraftId} onDerivationSucceeded={onDerivationSucceeded} />);
 
     const button = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 });
-    expect(button).toBeEnabled();
+    // CI 풀스위트에서만 겪은 실패(run 35650517215)의 공통 패턴: 확정 버튼은 견적
+    // GET 이 끝나기 전에도 먼저 렌더된다(disabled 만 다르다). findByRole 은 "존재"만
+    // 기다리므로, CPU 경합 아래 견적이 늦게 오면 이 시점에 버튼이 아직 disabled 일
+    // 수 있다 — 그 상태로 클릭하면 jsdom 이 disabled 엘리먼트의 클릭을 무시해
+    // 아무 요청도 안 나간다. 활성화를 명시적으로 기다린 뒤에만 클릭한다.
+    await waitFor(() => expect(button).toBeEnabled(), { timeout: 10000 });
     // 견적이 실제로 화면에 보인 뒤에만 확정할 수 있다(설계 §7.1 확정 전 값 노출 계약).
     expect(screen.getByText("300원")).toBeInTheDocument();
 
@@ -250,7 +255,14 @@ describe("(a)(b) 주 형식이 카드뉴스면 카톡 말풍선 카드뉴스 9�
     const confirmBlock = await screen.findByText("카톡 말풍선 카드뉴스 9장", undefined, { timeout: 10000 });
     const group = confirmBlock.closest("[data-create-primary-card-deck-confirm]") as HTMLElement;
     fireEvent.click(within(group).getByRole("button", { name: "질문형" }));
-    fireEvent.click(within(group).getByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }));
+    const confirmButton = within(group).getByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" });
+    // CI 풀스위트 재현 실패 대응(2026-09-22 CI run 35650517215): 확정 블록은 견적
+    // GET 이 아직 안 끝난 상태에서도 먼저 렌더된다(disabled 만 다르다). findByRole 은
+    // "존재"만 기다리고 "활성화"는 안 기다리므로, 견적이 늦게 도착하는 CPU 경합
+    // 아래서는 disabled 버튼을 클릭해 아무 일도 안 일어난다(jsdom 도 disabled
+    // 엘리먼트의 click 알고리즘을 지킨다). 클릭 전 항상 활성화를 명시적으로 기다린다.
+    await waitFor(() => expect(confirmButton).toBeEnabled(), { timeout: 10000 });
+    fireEvent.click(confirmButton);
 
     await waitFor(() => expect(postBody).not.toBeNull(), { timeout: 10000 });
     expect(postBody).toMatchObject({ options: { card: { hook_type: "question" } } });
@@ -279,6 +291,9 @@ describe("M1 후보가 바뀌면 이전 후보의 카드 덱 상태가 남지 �
     render(<CreateRoom {...baseProps()} cardDeckByDraftId={deckByDraftId} />);
 
     const buttonA = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 });
+    // CI 풀스위트 재현 실패 대응(run 35650517215): 견적이 도착하기 전엔 버튼이
+    // disabled 다 — 그 상태로 클릭하면 아무 요청도 안 나간다.
+    await waitFor(() => expect(buttonA).toBeEnabled(), { timeout: 10000 });
     fireEvent.click(buttonA);
     await waitFor(() => {
       const strip = document.querySelector("[data-card-deck-thumbnail-strip]");
@@ -294,7 +309,10 @@ describe("M1 후보가 바뀌면 이전 후보의 카드 덱 상태가 남지 �
       expect(document.querySelector("[data-create-primary-card-deck-result]")).toBeNull();
     }, { timeout: 10000 });
     // B 에서도 확정 버튼이 다시 뜬다(전에는 primaryCardDeckBatch 가 안 비워져 영구히 숨었다).
-    expect(await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 })).toBeEnabled();
+    // B 는 새 견적을 다시 받아야 하므로(fetchPrimaryCardDeckQuote 가 candidate_id 변경에
+    // 걸려 재실행) 버튼이 존재해도 잠깐 disabled 일 수 있다 — 활성화까지 기다려 확인한다.
+    const buttonB = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 });
+    await waitFor(() => expect(buttonB).toBeEnabled(), { timeout: 10000 });
   }, 15000);
 });
 
@@ -318,7 +336,11 @@ describe("M2 실패한 배치도 재시도할 수 있다", () => {
 
     render(<CreateRoom {...baseProps()} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 }));
+    const confirmButton = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 });
+    // CI 풀스위트 재현 실패 대응(run 35650517215): 견적이 도착하기 전엔 버튼이
+    // disabled 다 — 그 상태로 클릭하면 아무 요청도 안 나가 이 시나리오 자체가 성립 안 한다.
+    await waitFor(() => expect(confirmButton).toBeEnabled(), { timeout: 10000 });
+    fireEvent.click(confirmButton);
     await screen.findByText(/만들지 못했습니다/, undefined, { timeout: 10000 });
     expect(screen.getByText(/CTA 장에 댓글 키워드 유도가 없습니다/)).toBeInTheDocument();
 
@@ -384,7 +406,10 @@ describe("M4 성공한 덱은 편집실 진입 때 draft_id 를 넘긴다", () =
     const onOpenEditor = vi.fn();
 
     render(<CreateRoom {...baseProps()} onOpenEditor={onOpenEditor} />);
-    fireEvent.click(await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 }));
+    const confirmButton = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 });
+    // CI 풀스위트 재현 실패 대응(run 35650517215): 견적이 도착하기 전엔 버튼이 disabled 다.
+    await waitFor(() => expect(confirmButton).toBeEnabled(), { timeout: 10000 });
+    fireEvent.click(confirmButton);
     await waitFor(() => expect(screen.getByText(/9장을 만들었습니다/)).toBeInTheDocument(), { timeout: 10000 });
 
     fireEvent.click(screen.getByRole("button", { name: "편집실에서 다듬기" }));
@@ -439,6 +464,11 @@ describe("m1 더블클릭은 중복 청구를 만들지 않는다", () => {
 
     render(<CreateRoom {...baseProps()} />);
     const button = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }, { timeout: 10000 });
+    // CI 풀스위트 재현 실패 대응(run 35650517215): 견적이 도착하기 전엔 버튼이
+    // disabled 다 — 그 상태로 클릭 3연타를 해도 하나도 안 나가 postCount 가 계속
+    // 0 이라 "1이어야 한다" 단언이 타임아웃까지 실패한다(m1 더블클릭 방어가 아니라
+    // 애초에 클릭 자체가 안 먹힌 것). 활성화를 기다린 뒤에만 연타한다.
+    await waitFor(() => expect(button).toBeEnabled(), { timeout: 10000 });
     fireEvent.click(button);
     fireEvent.click(button);
     fireEvent.click(button);
