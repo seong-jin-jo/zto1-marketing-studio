@@ -2025,7 +2025,22 @@ export default function StudioPage() {
         onTopicChange={setIdea}
         onOpenLearning={() => setShowWizard(true)}
         onCandidateSelect={chooseCandidate}
-        onOpenEditor={() => changeRoom("edit")}
+        onOpenEditor={(draftId) => {
+          // 설계 §6.1 "201 batch → 편집실 진입(draft 로드)" 계약. draftId 가 있으면(방금
+          // 카톡 말풍선 카드뉴스 9장을 확정) 그 초안을 실어 넣고 연다 — 안 그러면
+          // 회원이 돈을 내고 만든 덱이 편집실에서 안 보인다(코드리뷰 2026-09-22 M4).
+          if (draftId) {
+            const draft = hist?.drafts.find((d) => d.id === draftId);
+            if (draft) loadDraft(draft);
+          }
+          changeRoom("edit");
+        }}
+        onDerivationSucceeded={async () => {
+          // 확정 성공 직후 초안 목록을 재검증해야 cardDeckByDraftId 가 방금 만든 덱을
+          // 실제로 찾는다 — 안 하면 탭 포커스가 바뀔 때까지 썸네일이 안 뜬다
+          // (코드리뷰 2026-09-22 M3, "형식만 통과하는 얕은 테스트" 재발 방지).
+          await mutateHist();
+        }}
         onAlsoKindsChange={setAlsoKinds}
         onLearningInfoChange={setLearningInfo}
         learningVersion={learningFlash + countFilledUserSlots(learningInfo, { guide })}
