@@ -229,6 +229,11 @@ export async function requestStudioDerivations(input: {
   token: string;
   /** kinds 에 "card" 가 있을 때만 의미가 있다(§7.1 options.card.hook_type). 기본 auto. */
   cardHookType?: StudioDerivationHookType;
+  /**
+   * 호출부가 재시도 간 같은 키를 재사용하면(Stripe 관행) 서버 멱등이 더블클릭 중복
+   * 청구를 실제로 막는다. 안 주면 매 호출 새 키를 만든다(기존 동작 유지).
+   */
+  idempotencyKey?: string;
 }): Promise<StudioDerivationBatch> {
   const authorization = required(input.token, "Studio 인증");
   const response = await fetch(
@@ -238,7 +243,7 @@ export async function requestStudioDerivations(input: {
       headers: {
         Authorization: `Bearer ${authorization}`,
         "Content-Type": "application/json",
-        "Idempotency-Key": crypto.randomUUID(),
+        "Idempotency-Key": input.idempotencyKey || crypto.randomUUID(),
       },
       body: JSON.stringify({
         candidate_id: input.candidateId,

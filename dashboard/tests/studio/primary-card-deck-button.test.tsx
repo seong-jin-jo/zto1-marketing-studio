@@ -6,20 +6,15 @@
  * derivations를 부르는데, 카드 덱(chat_bubble)은 그 derivations(kinds=["card"])에서만
  * 만들어진다. 주 형식이 기본값인 카드뉴스면 회원은 말풍선 덱을 영원히 못 만든다.
  *
- * 계약:
- *  (a) 주 형식이 card면 구조 선택 직후 alsoKinds 선택과 무관하게 버튼이 뜬다. 클릭하면
- *      kinds=["card"]로 확정 요청이 나간다.
- *  (b) 응답의 draft_id로 찾은 덱을 CardDeckThumbnailStrip으로 9장 렌더한다.
- *  (c) 서버(service.derive)는 "주 갈래와 같은 kind" 를 거부하지 않는다(계약 확인).
- *  (d) 기존 주형식 text + also=card 경로는 회귀 0으로 유지된다(소스 계약).
+ * PR #74 교차 리뷰(REQUEST_CHANGES, scratchpad/pr74-review.md) MAJOR 6건 반영판. 형식만
+ * 통과하는 얕은 테스트(회장 지적, 실수.md 2026-09-11 "눈이 아니라 자로")를 재발시키지
+ * 않도록 (b)(M3)는 콜백 호출까지, (d)는 실제 DOM 렌더까지 확인한다.
  *
  * 로그인 벽 뒤 실제 클릭 자체(브라우저 왕복)는 이 테스트가 검증하지 못한다 — "미검증"으로
  * 남기고 9444 운영 회원 계정 실측은 컨트롤러가 별도로 한다.
  */
 import "@testing-library/jest-dom/vitest";
-import fs from "fs";
-import path from "path";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreateRoom } from "@/components/studio/StudioRooms";
 import type { StudioGenerationCandidate } from "@/lib/studio/generation/client";
@@ -31,9 +26,8 @@ import { parseGenerationRequest } from "@/lib/studio/generation/contracts";
 import { derivationQuote } from "@/lib/studio/generation/derivation";
 
 const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
-const roomsSrc = fs.readFileSync(path.resolve(__dirname, "../../src/components/studio/StudioRooms.tsx"), "utf8");
 
-function candidateFixture(): StudioGenerationCandidate {
+function candidate(overrides: Partial<StudioGenerationCandidate> = {}): StudioGenerationCandidate {
   return {
     generation_id: "job-primary-card-1",
     candidate_id: "candidate-a-1",
@@ -43,20 +37,26 @@ function candidateFixture(): StudioGenerationCandidate {
     title: "1인 사업자를 위한 100일 준비",
     rationale: "문제 제시형",
     format: { content_branch: "text_image", preview_kind: "structured_storyboard", quality: "draft", outline: ["기초", "실행", "점검"] },
+    ...overrides,
   };
 }
 
-function seedSelectedCardDraft() {
+function seedDraft(input: {
+  primaryKind: "card" | "text" | "video";
+  alsoKinds?: ("card" | "text" | "video")[];
+  candidates: StudioGenerationCandidate[];
+  selected: "A" | "B" | "C" | null;
+}) {
   const value = {
-    primaryKind: "card",
-    alsoKinds: [],
+    primaryKind: input.primaryKind,
+    alsoKinds: input.alsoKinds ?? [],
     questionIndex: 5,
     purpose: "신뢰 높이기",
     audience: "예비 고객",
     rightsConfirmed: true,
     topicOpen: false,
-    candidates: [candidateFixture()],
-    selected: "A",
+    candidates: input.candidates,
+    selected: input.selected,
     quickStructure: null,
   };
   localStorage.setItem(`studio_create_state:${WORKSPACE_ID}`, JSON.stringify(value));
@@ -69,15 +69,100 @@ function baseProps() {
     guide: "",
     topic: "100일 준비 로드맵",
     onTopicChange: vi.fn(),
+    onOpenLearning: vi.fn(),
     onCandidateSelect: vi.fn(),
     onOpenEditor: vi.fn(),
     onPrimaryKindChange: vi.fn(),
     onAlsoKindsChange: vi.fn(),
-  } as const;
+  };
 }
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+/**
+ * `CreateRoom` 은 마운트되면 헤더 학습 규칙 표시를 위해 항상
+ * `/api/performance/learned-rules` 를 GET 으로 부른다(useLearnedRules). 이 호출이
+ * 파생(derivations) 견적 GET 과 "method 없음" 이라는 특징을 공유해서, 예전 판은
+ * 이 무관한 호출이 quoteCallCount 를 먼저 소비해 M6(견적 실패) 시나리오가 실제로는
+ * 한 번도 실패하지 않은 채 통과 판정을 받을 뻔했다(2026-09-22 자체 재현). URL 로
+ * 명시적으로 갈라 무관한 호출은 조용히 빈 값을 돌려주고, derivations 호출만 시나리오
+ * 핸들러로 넘긴다.
+ */
+function withLearnedRulesStub(
+  handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+): ReturnType<typeof vi.fn> {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes("/api/performance/learned-rules")) return jsonResponse({ rules: [] });
+    return handler(input, init);
+  });
+}
+
+function quoteResponse(totalMinor = 300) {
+  return jsonResponse({
+    data: {
+      quote: {
+        currency: "KRW",
+        total_minor: totalMinor,
+        lines: [{ kind: "card", label: "카드뉴스", unit_minor: totalMinor }],
+        assumptions: [],
+      },
+    },
+  });
+}
+
+function succeededBatchResponse(input: { candidateId: string; draftId: string; hookType?: string }) {
+  return jsonResponse({
+    data: {
+      batch_id: `batch-${input.draftId}`,
+      job_id: "job-primary-card-1",
+      candidate_id: input.candidateId,
+      status: "succeeded",
+      cost: { currency: "KRW", quoted_minor: 300, charged_minor: 300, free_regeneration_consumed: false },
+      items: [
+        {
+          kind: "card",
+          label: "카드뉴스",
+          status: "succeeded",
+          draft_id: input.draftId,
+          handoff_id: `handoff-${input.draftId}`,
+          summary: "카드뉴스 파생",
+          charged_minor: 300,
+          failure_reason: null,
+          deck_summary: { slides: 9, hook_type: input.hookType ?? "auto", cta_keyword: "순서", template: "chat_bubble" },
+        },
+      ],
+      discarded_at: null,
+    },
+  }, 201);
+}
+
+function failedBatchResponse(input: { candidateId: string; reason: string }) {
+  return jsonResponse({
+    data: {
+      batch_id: "batch-failed-1",
+      job_id: "job-primary-card-1",
+      candidate_id: input.candidateId,
+      status: "failed",
+      cost: { currency: "KRW", quoted_minor: 300, charged_minor: 0, free_regeneration_consumed: false },
+      items: [
+        {
+          kind: "card",
+          label: "카드뉴스",
+          status: "failed",
+          draft_id: null,
+          handoff_id: null,
+          summary: "카드뉴스 파생",
+          charged_minor: 0,
+          failure_reason: input.reason,
+          deck_summary: null,
+        },
+      ],
+      discarded_at: null,
+    },
+  }, 207);
 }
 
 afterEach(() => {
@@ -91,77 +176,265 @@ beforeEach(() => {
 });
 
 describe("(a)(b) 주 형식이 카드뉴스면 카톡 말풍선 카드뉴스 9장 버튼이 alsoKinds와 무관하게 뜬다", () => {
-  it("버튼이 노출되고 클릭하면 kinds=[\"card\"]로 확정 요청이 나가며, 응답 덱이 9장 썸네일로 렌더된다", async () => {
-    seedSelectedCardDraft();
+  it("버튼 클릭 시 kinds/acknowledged_cost/options.card.hook_type 을 실은 요청이 나가고, 응답 덱이 9장 썸네일로 렌더되며 onDerivationSucceeded 가 draft_id 로 불린다", async () => {
+    seedDraft({ primaryKind: "card", candidates: [candidate()], selected: "A" });
     const deck = cardDeckFixture();
     let postBody: Record<string, unknown> | null = null;
+    let idempotencyKey: string | null = null;
 
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = withLearnedRulesStub(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes("/derivations") && (!init || init.method === undefined)) {
-        // GET 견적
-        return jsonResponse({
-          data: {
-            quote: {
-              currency: "KRW",
-              total_minor: 300,
-              lines: [{ kind: "card", label: "카드뉴스", unit_minor: 300 }],
-              assumptions: [],
-            },
-          },
-        });
-      }
-      if (url.includes("/derivations") && init?.method === "POST") {
+      if (!url.includes("/derivations")) throw new Error(`예상하지 못한 fetch 호출: ${url}`);
+      if (!init || init.method === undefined) return quoteResponse(300);
+      if (init.method === "POST") {
         postBody = JSON.parse(String(init.body));
-        return jsonResponse({
-          data: {
-            batch_id: "batch-1",
-            job_id: "job-primary-card-1",
-            candidate_id: "candidate-a-1",
-            status: "succeeded",
-            cost: { currency: "KRW", quoted_minor: 300, charged_minor: 300, free_regeneration_consumed: false },
-            items: [
-              {
-                kind: "card",
-                label: "카드뉴스",
-                status: "succeeded",
-                draft_id: "draft-primary-card-1",
-                handoff_id: "handoff-1",
-                summary: "카드뉴스 파생",
-                charged_minor: 300,
-                failure_reason: null,
-                deck_summary: { slides: 9, hook_type: "pain", cta_keyword: "순서", template: "chat_bubble" },
-              },
-            ],
-            discarded_at: null,
-          },
-        }, 201);
+        idempotencyKey = (init.headers as Record<string, string>)["Idempotency-Key"];
+        return succeededBatchResponse({ candidateId: "candidate-a-1", draftId: "draft-primary-card-1" });
       }
-      throw new Error(`예상하지 못한 fetch 호출: ${url}`);
+      throw new Error(`예상하지 못한 메서드: ${init.method}`);
     });
     vi.stubGlobal("fetch", fetchMock);
 
+    const onDerivationSucceeded = vi.fn(async () => undefined);
     const deckByDraftId = (draftId: string): CardDeck | null => (draftId === "draft-primary-card-1" ? deck : null);
 
-    render(<CreateRoom {...baseProps()} cardDeckByDraftId={deckByDraftId} />);
+    render(<CreateRoom {...baseProps()} cardDeckByDraftId={deckByDraftId} onDerivationSucceeded={onDerivationSucceeded} />);
 
     const button = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" });
     expect(button).toBeEnabled();
+    // 견적이 실제로 화면에 보인 뒤에만 확정할 수 있다(설계 §7.1 확정 전 값 노출 계약).
+    expect(screen.getByText("300원")).toBeInTheDocument();
 
     fireEvent.click(button);
 
     await waitFor(() => expect(postBody).not.toBeNull());
-    expect(postBody).toMatchObject({ candidate_id: "candidate-a-1", kinds: ["card"] });
+    expect(postBody).toMatchObject({
+      candidate_id: "candidate-a-1",
+      kinds: ["card"],
+      acknowledged_cost: { currency: "KRW", total_minor: 300 },
+      options: { card: { hook_type: "auto" } },
+    });
+    expect(idempotencyKey).toBeTruthy();
+
+    // (M3) hist 재검증 콜백이 실제로 draft_id 와 함께 불린다(목 주입만으로 통과시키지 않음).
+    await waitFor(() => expect(onDerivationSucceeded).toHaveBeenCalledWith("draft-primary-card-1"));
 
     // (b) 응답 draft_id로 찾은 덱이 9장 썸네일 스트립으로 렌더된다.
     await waitFor(() => {
       const strip = document.querySelector("[data-card-deck-thumbnail-strip]");
       expect(strip).not.toBeNull();
+      expect(strip!.childElementCount).toBe(deck.slides.length);
     });
-    const strip = document.querySelector("[data-card-deck-thumbnail-strip]")!;
+    // 9장 캔버스 렌더는 CI 부하 아래서 기본 5000ms 를 넘을 수 있다(다른 카드덱 렌더
+    // 테스트들도 같은 이유로 실측상 5~7초씩 걸렸다).
+  }, 15000);
+
+  it("훅 공식 칩을 바꾸고 확정하면 그 값이 options.card.hook_type 에 실린다", async () => {
+    seedDraft({ primaryKind: "card", candidates: [candidate()], selected: "A" });
+    let postBody: Record<string, unknown> | null = null;
+
+    const fetchMock = withLearnedRulesStub(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!init || init.method === undefined) return quoteResponse(300);
+      if (init.method === "POST") {
+        postBody = JSON.parse(String(init.body));
+        return succeededBatchResponse({ candidateId: "candidate-a-1", draftId: "draft-primary-card-1", hookType: "question" });
+      }
+      throw new Error(`예상하지 못한 fetch 호출: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CreateRoom {...baseProps()} />);
+
+    const confirmBlock = await screen.findByText("카톡 말풍선 카드뉴스 9장");
+    const group = confirmBlock.closest("[data-create-primary-card-deck-confirm]") as HTMLElement;
+    fireEvent.click(within(group).getByRole("button", { name: "질문형" }));
+    fireEvent.click(within(group).getByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }));
+
+    await waitFor(() => expect(postBody).not.toBeNull());
+    expect(postBody).toMatchObject({ options: { card: { hook_type: "question" } } });
+  });
+});
+
+describe("M1 후보가 바뀌면 이전 후보의 카드 덱 상태가 남지 않는다", () => {
+  it("'구조 초안 다시 고르기' 로 다른 후보를 고르면 옛 덱 결과가 사라지고 새 후보에 확정 버튼이 다시 뜬다", async () => {
+    const candidateA = candidate({ candidate_id: "candidate-a-1", label: "A" });
+    const candidateB = candidate({ candidate_id: "candidate-b-1", label: "B", title: "다른 구조" });
+    seedDraft({ primaryKind: "card", candidates: [candidateA, candidateB], selected: "A" });
+
+    const fetchMock = withLearnedRulesStub(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!init || init.method === undefined) return quoteResponse(300);
+      if (init.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { candidate_id: string };
+        return succeededBatchResponse({ candidateId: body.candidate_id, draftId: `draft-${body.candidate_id}` });
+      }
+      throw new Error(`예상하지 못한 fetch 호출: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const deck = cardDeckFixture();
+    const deckByDraftId = (draftId: string): CardDeck | null => (draftId === "draft-candidate-a-1" ? deck : null);
+
+    render(<CreateRoom {...baseProps()} cardDeckByDraftId={deckByDraftId} />);
+
+    const buttonA = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" });
+    fireEvent.click(buttonA);
     await waitFor(() => {
-      expect(strip.childElementCount).toBe(deck.slides.length);
+      const strip = document.querySelector("[data-card-deck-thumbnail-strip]");
+      expect(strip).not.toBeNull();
     });
+
+    // 다른 후보를 다시 고른다.
+    fireEvent.click(screen.getByRole("button", { name: "구조 초안 다시 고르기" }));
+    fireEvent.click(await screen.findByRole("button", { name: "B 구조 초안 선택" }));
+
+    // 옛 후보(A)의 결과 블록이 새 후보(B) 밑에 남지 않는다.
+    await waitFor(() => {
+      expect(document.querySelector("[data-create-primary-card-deck-result]")).toBeNull();
+    });
+    // B 에서도 확정 버튼이 다시 뜬다(전에는 primaryCardDeckBatch 가 안 비워져 영구히 숨었다).
+    expect(await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" })).toBeEnabled();
+  }, 15000);
+});
+
+describe("M2 실패한 배치도 재시도할 수 있다", () => {
+  it("실패 사유를 보여주고 '다시 만들기' 로 재시도하면 새로 확정할 수 있다", async () => {
+    seedDraft({ primaryKind: "card", candidates: [candidate()], selected: "A" });
+    let postCount = 0;
+    const fetchMock = withLearnedRulesStub(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!init || init.method === undefined) return quoteResponse(300);
+      if (init.method === "POST") {
+        postCount += 1;
+        if (postCount === 1) return failedBatchResponse({ candidateId: "candidate-a-1", reason: "invalid_output: CTA 장에 댓글 키워드 유도가 없습니다" });
+        return succeededBatchResponse({ candidateId: "candidate-a-1", draftId: "draft-retry-1" });
+      }
+      throw new Error(`예상하지 못한 fetch 호출: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CreateRoom {...baseProps()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }));
+    await screen.findByText(/만들지 못했습니다/);
+    expect(screen.getByText(/CTA 장에 댓글 키워드 유도가 없습니다/)).toBeInTheDocument();
+
+    const retryButton = await screen.findByRole("button", { name: "다시 만들기" });
+    expect(retryButton).toBeEnabled();
+    fireEvent.click(retryButton);
+
+    await waitFor(() => expect(postCount).toBe(2));
+    await waitFor(() => expect(screen.getByText(/9장을 만들었습니다/)).toBeInTheDocument());
+  });
+});
+
+describe("M4 성공한 덱은 편집실 진입 때 draft_id 를 넘긴다", () => {
+  it("'편집실에서 다듬기' 를 누르면 onOpenEditor 가 방금 만든 draft_id 를 받는다", async () => {
+    seedDraft({ primaryKind: "card", candidates: [candidate()], selected: "A" });
+    const fetchMock = withLearnedRulesStub(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!init || init.method === undefined) return quoteResponse(300);
+      if (init.method === "POST") return succeededBatchResponse({ candidateId: "candidate-a-1", draftId: "draft-edit-1" });
+      throw new Error(`예상하지 못한 fetch 호출: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onOpenEditor = vi.fn();
+
+    render(<CreateRoom {...baseProps()} onOpenEditor={onOpenEditor} />);
+    fireEvent.click(await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" }));
+    await waitFor(() => expect(screen.getByText(/9장을 만들었습니다/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "편집실에서 다듬기" }));
+    expect(onOpenEditor).toHaveBeenCalledWith("draft-edit-1");
+  });
+});
+
+describe("M6 견적을 못 불러오면 이유와 재시도를 보여준다", () => {
+  it("GET 견적이 실패하면 단추만 죽이지 않고 이유 문구 + 다시 시도 버튼을 보여주며, 재시도가 성공하면 정상 확정할 수 있다", async () => {
+    seedDraft({ primaryKind: "card", candidates: [candidate()], selected: "A" });
+    let quoteCallCount = 0;
+    const fetchMock = withLearnedRulesStub(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!init || init.method === undefined) {
+        quoteCallCount += 1;
+        if (quoteCallCount === 1) return jsonResponse({ error: { message: "일시적으로 값을 계산할 수 없습니다" } }, 500);
+        return quoteResponse(300);
+      }
+      if (init.method === "POST") return succeededBatchResponse({ candidateId: "candidate-a-1", draftId: "draft-quote-retry-1" });
+      throw new Error(`예상하지 못한 fetch 호출: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CreateRoom {...baseProps()} />);
+
+    await screen.findByText(/비용을 불러오지 못했습니다/);
+    const confirmButton = screen.getByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" });
+    expect(confirmButton).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+
+    await waitFor(() => expect(screen.getByText("300원")).toBeInTheDocument());
+    expect(screen.queryByText(/비용을 불러오지 못했습니다/)).toBeNull();
+    expect(confirmButton).toBeEnabled();
+  });
+});
+
+describe("m1 더블클릭은 중복 청구를 만들지 않는다", () => {
+  it("확정 단추를 연속으로 두 번 눌러도 POST 는 한 번만 나간다", async () => {
+    seedDraft({ primaryKind: "card", candidates: [candidate()], selected: "A" });
+    let postCount = 0;
+    const resolvePostRef: { current: (() => void) | null } = { current: null };
+    const fetchMock = withLearnedRulesStub(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!init || init.method === undefined) return quoteResponse(300);
+      if (init.method === "POST") {
+        postCount += 1;
+        await new Promise<void>((resolve) => { resolvePostRef.current = resolve; });
+        return succeededBatchResponse({ candidateId: "candidate-a-1", draftId: "draft-dedupe-1" });
+      }
+      throw new Error(`예상하지 못한 fetch 호출: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CreateRoom {...baseProps()} />);
+    const button = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => expect(postCount).toBe(1));
+    resolvePostRef.current?.();
+    await waitFor(() => expect(screen.getByText(/9장을 만들었습니다/)).toBeInTheDocument());
+  });
+});
+
+describe("부정 케이스: 주 형식이 카드뉴스가 아니면 primary 확정 블록이 안 뜬다", () => {
+  it.each(["text", "video"] as const)("primaryKind=%s 면 카톡 말풍선 카드뉴스 9장 확정 블록이 없다", async (kind) => {
+    seedDraft({ primaryKind: kind, candidates: [candidate({ format: { content_branch: kind === "video" ? "video" : "text_image", preview_kind: "structured_storyboard", quality: "draft", outline: ["기초", "실행", "점검"] } })], selected: "A" });
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("이 시험에서는 fetch 가 불리면 안 된다"); }));
+
+    render(<CreateRoom {...baseProps()} />);
+
+    await screen.findByRole("button", { name: "편집실에서 다듬기" });
+    expect(screen.queryByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" })).toBeNull();
+    expect(document.querySelector("[data-create-primary-card-deck-confirm]")).toBeNull();
+  });
+});
+
+describe("(d) 기존 주형식 text + also=card 경로는 회귀 0으로 유지된다(실제 DOM)", () => {
+  it("also=card 를 고르면 also 블록에서만 카톡 말풍선 카드뉴스 9장 버튼이 뜨고 primary 확정 블록은 없다", async () => {
+    seedDraft({ primaryKind: "text", alsoKinds: ["card"], candidates: [candidate({ format: { content_branch: "text_image", preview_kind: "structured_storyboard", quality: "draft", outline: ["기초", "실행", "점검"] } })], selected: "A" });
+    const fetchMock = withLearnedRulesStub(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("kinds=card") && (!init || init.method === undefined)) return quoteResponse(300);
+      throw new Error(`예상하지 못한 fetch 호출: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CreateRoom {...baseProps()} />);
+
+    const button = await screen.findByRole("button", { name: "카톡 말풍선 카드뉴스 9장 만들기" });
+    // also 블록 소속(확정 단추의 부모가 also-confirm 영역)임을 실제로 확인한다.
+    expect(button.closest("[data-create-also-confirm]")).not.toBeNull();
+    // primary 전용 확정 블록은 렌더되지 않는다(주 형식이 card 가 아니므로).
+    expect(document.querySelector("[data-create-primary-card-deck-confirm]")).toBeNull();
   });
 });
 
@@ -191,19 +464,6 @@ describe("(c) 서버는 주 갈래와 같은 kind(card)의 파생을 거부하�
     expect(batch.items).toHaveLength(1);
     expect(batch.items[0].kind).toBe("card");
     expect(batch.items[0].status).toBe("succeeded");
-  });
-});
-
-describe("(d) 기존 주형식 text + also=card 경로는 회귀 0으로 유지된다", () => {
-  it("alsoQuote/alsoBatch 렌더 조건과 confirmAlsoKinds 배선이 그대로 남아 있다", () => {
-    // 새 버튼(primaryCardDeckBatch)을 추가하면서 기존 also 흐름의 조건문을 건드리지
-    // 않았는지 소스로 고정한다. 이 문자열이 사라지면 기존 also=card 경로가 깨진 것이다.
-    expect(roomsSrc).toContain("selectedCandidate && alsoQuote && !alsoBatch");
-    expect(roomsSrc).toContain("onClick={confirmAlsoKinds}");
-    expect(roomsSrc).toMatch(/alsoKinds\.includes\("card"\) && alsoKinds\.length === 1 \? "카톡 말풍선 카드뉴스 9장 만들기" : "선택한 형식의 구성 초안 만들기"/);
-    // 새 버튼 블록은 alsoBatch/alsoQuote 상태를 건드리지 않는 별도 상태(primaryCardDeckBatch)를 쓴다.
-    expect(roomsSrc).toContain("primaryCardDeckBatch");
-    expect(roomsSrc).toContain("setPrimaryCardDeckBatch(null)");
   });
 
   it("주 형식 text + also=card 파생도 서버에서 여전히 성공한다(회귀 확인)", async () => {

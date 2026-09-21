@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/shared/Button";
 import { StateNotice } from "@/components/shared/StateNotice";
 import { EditPreview, type CardTextPosition } from "./EditPreview";
@@ -186,7 +186,14 @@ interface CreateRoomProps {
   onTopicChange: (value: string) => void;
   onOpenLearning: () => void;
   onCandidateSelect: (candidate: StudioGenerationCandidate) => void;
-  onOpenEditor?: () => void;
+  /** draftId 를 주면(카톡 말풍선 카드뉴스 9장을 방금 만들었을 때) 그 초안을 실어 편집실로 연다. */
+  onOpenEditor?: (draftId?: string) => void;
+  /**
+   * 파생(derivations) 확정이 성공하면 draft_id 를 준다. 부모가 초안 목록을 재검증
+   * (SWR mutate)해야 `cardDeckByDraftId` 가 방금 만든 덱을 실제로 찾는다 — 안 하면
+   * 탭 포커스가 바뀔 때까지 썸네일이 안 뜬다(코드리뷰 2026-09-22 M3).
+   */
+  onDerivationSucceeded?: (draftId: string) => Promise<void> | void;
   /** 생성실에서 첫 형식을 고르기 전 헤더가 특정 형식을 추측하지 않게 현재 선택을 전달한다. */
   onPrimaryKindChange?: (kind: CreateKind | null) => void;
   /** 같이 만들 갈래가 바뀌면 헤더 상태판이 따라 바뀐다 */
@@ -283,6 +290,31 @@ export function CardDeckThumbnailStrip({ deck }: { deck: CardDeck }) {
     });
   }, [deck]);
   return <div ref={hostRef} data-card-deck-thumbnail-strip className="flex flex-wrap gap-stack-tight" aria-label={`카톡 말풍선 카드뉴스 ${deck.slides.length}장 미리보기`} />;
+}
+
+type CardHookType = "auto" | "question" | "number" | "pain";
+const CARD_HOOK_TYPE_OPTIONS: ReadonlyArray<readonly [CardHookType, string]> = [
+  ["auto", "자동(모델이 고름)"],
+  ["question", "질문형"],
+  ["number", "숫자형"],
+  ["pain", "고통 인식형"],
+];
+
+/**
+ * 표지 훅 공식 4칩. also(다른 형식도 같이)와 주 형식=card 확정 블록 둘 다 같은 선택지를
+ * 쓴다(코드리뷰 2026-09-22 m4 — 복붙 두 벌이었다).
+ */
+function CardHookTypePicker({ value, onChange, label = "표지 헤드라인 공식" }: { value: CardHookType; onChange: (next: CardHookType) => void; label?: string }) {
+  return (
+    <div role="group" aria-label="표지 훅 공식" className="space-y-stack-tight" data-card-hook-type-picker>
+      <span className="text-caption text-subtle">{label}</span>
+      <div className="flex flex-wrap gap-stack-tight">
+        {CARD_HOOK_TYPE_OPTIONS.map(([optionValue, optionLabel]) => (
+          <Button key={optionValue} size="sm" variant={value === optionValue ? "primary" : "secondary"} aria-pressed={value === optionValue} onClick={() => onChange(optionValue)}>{optionLabel}</Button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 const CREATE_EXAMPLES = [
@@ -422,7 +454,7 @@ function useLearnedRules(workspaceId: string): string {
   return text;
 }
 
-export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardRatio = "4:5", cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null, cardDeckByDraftId }: CreateRoomProps) {
+export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onDerivationSucceeded, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardRatio = "4:5", cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null, cardDeckByDraftId }: CreateRoomProps) {
   const topicInputRef = useRef<HTMLInputElement>(null);
   const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
   const [primaryKind, setPrimaryKind] = useState<CreateKind | null>(null);
@@ -457,8 +489,15 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
    * 무관하게 항상 이 버튼을 보여 별도 흐름으로 견적·확정한다(alsoKinds 흐름은 그대로 둔다).
    */
   const [primaryCardDeckQuote, setPrimaryCardDeckQuote] = useState<StudioDerivationQuote | null>(null);
+  const [primaryCardDeckQuoteError, setPrimaryCardDeckQuoteError] = useState<string | null>(null);
   const [primaryCardDeckBatch, setPrimaryCardDeckBatch] = useState<StudioDerivationBatch | null>(null);
   const [primaryCardDeckBusy, setPrimaryCardDeckBusy] = useState(false);
+  /**
+   * 재시도 간 같은 Idempotency-Key 를 재사용한다(Stripe 관행, 코드리뷰 2026-09-22 m1).
+   * 후보가 바뀌면(새 확정 대상) 비운다. 실패 재시도는 같은 값을 그대로 쓴다.
+   */
+  const primaryCardDeckIdemKeyRef = useRef<string | null>(null);
+  const primaryCardDeckInFlight = useRef(false);
   // 카톡 말풍선 카드뉴스 9장의 표지 훅 공식. 기본은 모델이 고르는 auto(설계 §8 OD-D 추천안).
   const [cardHookType, setCardHookType] = useState<"auto" | "question" | "number" | "pain">("auto");
   // 초안을 못 만드는 이유를 단추 옆에서 말한다(조용한 비활성 금지).
@@ -500,9 +539,11 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     setPrimaryKind(null); setAlsoKinds([]);
     setCandidates([]); setSelected(null); setQuickStructure(null);
     setAlsoQuote(null); setAlsoBatch(null); setQuickBlockReason(null); setError(null);
-    setPrimaryCardDeckQuote(null); setPrimaryCardDeckBatch(null);
+    setPrimaryCardDeckQuote(null); setPrimaryCardDeckQuoteError(null); setPrimaryCardDeckBatch(null);
+    primaryCardDeckIdemKeyRef.current = null;
     try { localStorage.removeItem(`${CREATE_DRAFT_STORAGE_PREFIX}:${workspaceId}`); } catch { /* 저장이 막혀 있어도 화면은 이미 비웠다 */ }
   }, [resetToken, workspaceId]);
+
 
   const facts = useMemo(() => guide.trim() ? [guide.trim()] : [], [guide]);
   /**
@@ -521,6 +562,20 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const learnedCount = countFilledLearningSlots(learning, { guide });
   const missing = [!primaryKind && "만들 형식", !topic.trim() && "주제", !purpose.trim() && "목표", !audience.trim() && "고객", !rightsConfirmed && "사용 권리 확인"].filter(Boolean) as string[];
   const selectedCandidate = candidates.find((candidate) => candidate.label === selected) ?? null;
+  /*
+   * M1(코드리뷰 2026-09-22): 워크스페이스 전환·regenerateAll·"구조 초안 다시 고르기"
+   * 는 모두 고른 후보(candidate_id)를 바꾸거나 비운다. 그 값이 바뀔 때마다 이전
+   * 후보에 딸린 카드 덱 견적·배치·멱등키를 비워, 새 후보 밑에 옛 결과가 붙거나 새
+   * 후보로는 버튼이 영영 안 뜨는 것을 막는다(resetToken 리셋 하나로는 이 경로들을 못
+   * 덮었다 — PR #71 "리셋 경로 누락" 재발 유형). `selected` 라벨(A/B/C)만 보면 다른
+   * 워크스페이스의 같은 라벨과 헷갈리므로 candidate_id 로 가른다.
+   */
+  const selectedCandidateId = selectedCandidate?.candidate_id ?? null;
+  useEffect(() => {
+    setPrimaryCardDeckQuote(null); setPrimaryCardDeckQuoteError(null); setPrimaryCardDeckBatch(null);
+    primaryCardDeckIdemKeyRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCandidateId]);
   const displayCandidates = candidates.length ? candidates : CREATE_EXAMPLES;
   const question = CREATE_QUESTIONS[questionIndex];
   const stage = selected ? { count: "3 / 3", label: "선택한 구조 확인" } : candidates.length ? { count: "2 / 3", label: "구조 초안 고르기" } : { count: "1 / 3", label: `만들 조건 확인 ${Math.min(questionIndex + 1, 6)} / 6` };
@@ -772,30 +827,63 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
 
   // 주 형식이 카드뉴스면 alsoKinds 선택과 무관하게 카톡 말풍선 카드뉴스 9장 견적을 미리
   // 받아 둔다(위 alsoQuote 효과와 같은 이유 — 값을 못 본 채로는 확정 단추를 안 보인다).
-  useEffect(() => {
+  // 재시도 단추가 같은 함수를 다시 부를 수 있게 effect 밖 함수로 뺐다(코드리뷰 2026-09-22 M6).
+  const fetchPrimaryCardDeckQuote = useCallback(() => {
     const jobId = candidates[0]?.generation_id;
-    if (primaryKind !== "card" || !selectedCandidate || !jobId) { setPrimaryCardDeckQuote(null); return; }
+    if (primaryKind !== "card" || !selectedCandidate || !jobId) { setPrimaryCardDeckQuote(null); setPrimaryCardDeckQuoteError(null); return () => {}; }
     let live = true;
+    setPrimaryCardDeckQuoteError(null);
     quoteStudioDerivations(jobId, ["card"], getAuthToken())
-      .then((quote) => { if (live) setPrimaryCardDeckQuote(quote); })
-      .catch(() => { if (live) setPrimaryCardDeckQuote(null); });
+      .then((quote) => { if (live) { setPrimaryCardDeckQuote(quote); setPrimaryCardDeckQuoteError(null); } })
+      .catch((cause) => { if (live) { setPrimaryCardDeckQuote(null); setPrimaryCardDeckQuoteError(generationErrorMessage(cause)); } });
     return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primaryKind, selectedCandidate, candidates]);
+  useEffect(() => fetchPrimaryCardDeckQuote(), [fetchPrimaryCardDeckQuote]);
 
   async function makePrimaryCardDeck() {
+    // 더블클릭 방어(코드리뷰 2026-09-22 m1). generate()의 generationInFlight ref 관습과 같다.
+    if (primaryCardDeckInFlight.current) return;
     const jobId = candidates[0]?.generation_id;
     if (!jobId || !selectedCandidate || !primaryCardDeckQuote) return;
+    primaryCardDeckInFlight.current = true;
     setPrimaryCardDeckBusy(true);
     setError(null);
+    if (!primaryCardDeckIdemKeyRef.current) primaryCardDeckIdemKeyRef.current = crypto.randomUUID();
     try {
-      setPrimaryCardDeckBatch(await requestStudioDerivations({
+      const batch = await requestStudioDerivations({
         jobId,
         candidateId: selectedCandidate.candidate_id,
         kinds: ["card"],
         acknowledgedCost: { currency: primaryCardDeckQuote.currency, totalMinor: primaryCardDeckQuote.total_minor },
         token: getAuthToken(),
         cardHookType,
-      }));
+        idempotencyKey: primaryCardDeckIdemKeyRef.current,
+      });
+      setPrimaryCardDeckBatch(batch);
+      // M3(코드리뷰 2026-09-22): 성공하면 부모가 초안 목록(SWR)을 재검증해야
+      // cardDeckByDraftId 가 방금 만든 덱을 실제로 찾는다. 목 주입 없이 이 콜백이
+      // 진짜로 안 불리면 화면은 탭 포커스가 바뀔 때까지 썸네일을 못 그린다.
+      const succeededCard = batch.items.find((item) => item.kind === "card" && item.status === "succeeded");
+      if (succeededCard?.draft_id) {
+        await onDerivationSucceeded?.(succeededCard.draft_id);
+      }
+    } catch (cause) {
+      setError(generationErrorMessage(cause));
+    } finally {
+      setPrimaryCardDeckBusy(false);
+      primaryCardDeckInFlight.current = false;
+    }
+  }
+
+  async function discardPrimaryCardDeck() {
+    if (!primaryCardDeckBatch) return;
+    setPrimaryCardDeckBusy(true);
+    setError(null);
+    try {
+      setPrimaryCardDeckBatch(await discardStudioDerivations(primaryCardDeckBatch.batch_id, getAuthToken()));
+      // 버렸으면 다음은 새 시도다 — 같은 키를 재사용하면 서버가 버린 결과를 그대로 돌려줄 수 있다.
+      primaryCardDeckIdemKeyRef.current = null;
     } catch (cause) {
       setError(generationErrorMessage(cause));
     } finally {
@@ -1298,19 +1386,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                   <span>{alsoQuote.total_minor.toLocaleString("ko-KR")}원</span>
                 </p>
                 {alsoKinds.includes("card") ? (
-                  <div role="group" aria-label="표지 훅 공식" className="space-y-stack-tight" data-card-hook-type-picker>
-                    <span className="text-caption text-subtle">표지 헤드라인 공식(카톡 말풍선 카드뉴스 9장)</span>
-                    <div className="flex flex-wrap gap-stack-tight">
-                      {([
-                        ["auto", "자동(모델이 고름)"],
-                        ["question", "질문형"],
-                        ["number", "숫자형"],
-                        ["pain", "고통 인식형"],
-                      ] as const).map(([value, label]) => (
-                        <Button key={value} size="sm" variant={cardHookType === value ? "primary" : "secondary"} aria-pressed={cardHookType === value} onClick={() => setCardHookType(value)}>{label}</Button>
-                      ))}
-                    </div>
-                  </div>
+                  <CardHookTypePicker value={cardHookType} onChange={setCardHookType} label="표지 헤드라인 공식(카톡 말풍선 카드뉴스 9장)" />
                 ) : null}
                 <p className="break-keep text-caption text-subtle">완성 미디어가 아니라 선택한 구조를 다른 형식에 맞춘 구성 초안입니다. 실패한 형식은 청구하지 않습니다.</p>
                 <Button variant="primary" onClick={confirmAlsoKinds} disabled={alsoBusy}>{alsoBusy ? "구성 초안 만드는 중" : alsoKinds.includes("card") && alsoKinds.length === 1 ? "카톡 말풍선 카드뉴스 9장 만들기" : "선택한 형식의 구성 초안 만들기"}</Button>
@@ -1347,50 +1423,72 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
               (2026-09-22 실측: 카드뉴스를 주 형식으로 고른 회원은 이전까지 "다른 형식도
               같이" 를 함께 골라야만 이 버튼을 만났다 — 기본 경로에서 말풍선 덱을 영원히
               못 만드는 결함이었다.)
+              확정 블록은 아직 시도한 적이 없거나(!primaryCardDeckBatch), 실패했거나
+              (status !== "succeeded"), 성공했지만 버렸을 때(discarded_at) 다시 뜬다
+              (코드리뷰 2026-09-22 M2 — 실패해도 "새로 시작" 으로 후보까지 버리지 않고
+              바로 다시 만들 수 있어야 한다).
             */}
-            {selectedCandidate && primaryKind === "card" && !primaryCardDeckBatch ? (
+            {selectedCandidate && primaryKind === "card" && (!primaryCardDeckBatch || primaryCardDeckBatch.status !== "succeeded" || Boolean(primaryCardDeckBatch.discarded_at)) ? (
               <div className="space-y-stack rounded-surface border border-border bg-surface p-stack" data-create-primary-card-deck-confirm>
                 <b className="block text-caption font-semibold text-text">카톡 말풍선 카드뉴스 9장</b>
                 <p className="break-keep text-caption text-subtle">고른 구조를 재료로 대화형 말풍선 카드뉴스 9장을 만듭니다.</p>
-                <div role="group" aria-label="표지 훅 공식" className="space-y-stack-tight" data-card-hook-type-picker>
-                  <span className="text-caption text-subtle">표지 헤드라인 공식</span>
-                  <div className="flex flex-wrap gap-stack-tight">
-                    {([
-                      ["auto", "자동(모델이 고름)"],
-                      ["question", "질문형"],
-                      ["number", "숫자형"],
-                      ["pain", "고통 인식형"],
-                    ] as const).map(([value, label]) => (
-                      <Button key={value} size="sm" variant={cardHookType === value ? "primary" : "secondary"} aria-pressed={cardHookType === value} onClick={() => setCardHookType(value)}>{label}</Button>
-                    ))}
-                  </div>
-                </div>
+                <CardHookTypePicker value={cardHookType} onChange={setCardHookType} />
                 {primaryCardDeckQuote ? (
                   <p className="flex justify-between border-t border-border pt-stack-tight text-caption font-semibold text-text" data-primary-card-deck-total-minor={primaryCardDeckQuote.total_minor}>
                     <span>생성 비용</span>
                     <span>{primaryCardDeckQuote.total_minor.toLocaleString("ko-KR")}원</span>
                   </p>
+                ) : primaryCardDeckQuoteError ? (
+                  // 조용한 비활성 금지(464행 관습, 설계 §7.4). 이유 없이 단추만 죽어 있으면
+                  // 못 쓰는 화면으로 읽힌다.
+                  <div className="space-y-stack-tight rounded-control border border-warning/30 bg-warning/10 p-stack-tight" data-primary-card-deck-quote-error>
+                    <p className="break-keep text-caption text-warning">비용을 불러오지 못했습니다. {primaryCardDeckQuoteError}</p>
+                    <Button size="sm" onClick={fetchPrimaryCardDeckQuote}>다시 시도</Button>
+                  </div>
                 ) : null}
-                <Button variant="primary" onClick={makePrimaryCardDeck} disabled={primaryCardDeckBusy || !primaryCardDeckQuote}>{primaryCardDeckBusy ? "만드는 중" : "카톡 말풍선 카드뉴스 9장 만들기"}</Button>
+                <Button variant="primary" onClick={makePrimaryCardDeck} disabled={primaryCardDeckBusy || !primaryCardDeckQuote}>
+                  {primaryCardDeckBusy ? "만드는 중" : primaryCardDeckBatch ? "다시 만들기" : "카톡 말풍선 카드뉴스 9장 만들기"}
+                </Button>
               </div>
             ) : null}
             {primaryCardDeckBatch ? (() => {
               const item = primaryCardDeckBatch.items.find((one) => one.kind === "card");
               const deck = item?.draft_id ? cardDeckByDraftId?.(item.draft_id) ?? null : null;
+              const succeeded = item?.status === "succeeded" && !primaryCardDeckBatch.discarded_at;
               return (
-                <div className="space-y-stack rounded-surface border border-border bg-surface p-stack" data-create-primary-card-deck-result={primaryCardDeckBatch.status}>
+                <div aria-live="polite" className="space-y-stack rounded-surface border border-border bg-surface p-stack" data-create-primary-card-deck-result={primaryCardDeckBatch.status}>
                   <b className="block text-caption font-semibold text-text">카톡 말풍선 카드뉴스</b>
                   <p className="break-keep text-caption text-muted">
-                    {item?.status === "succeeded" && item.deck_summary
-                      ? `${item.deck_summary.slides}장을 만들었습니다(훅: ${item.deck_summary.hook_type}, 댓글 키워드: '${item.deck_summary.cta_keyword}')`
-                      : `만들지 못했습니다. ${item?.failure_reason ?? ""}`}
+                    {primaryCardDeckBatch.discarded_at
+                      ? "카톡 말풍선 카드뉴스를 버렸습니다"
+                      : item?.status === "succeeded" && item.deck_summary
+                        ? `${item.deck_summary.slides}장을 만들었습니다(훅: ${item.deck_summary.hook_type}, 댓글 키워드: '${item.deck_summary.cta_keyword}')`
+                        : `만들지 못했습니다. ${item?.failure_reason ?? ""}`}
                   </p>
-                  {deck ? <div className="mt-stack-tight"><CardDeckThumbnailStrip deck={deck} /></div> : null}
+                  {succeeded && deck ? <div className="mt-stack-tight"><CardDeckThumbnailStrip deck={deck} /></div> : null}
                   <p className="text-caption text-subtle">나간 값 {primaryCardDeckBatch.cost.charged_minor.toLocaleString("ko-KR")}원</p>
+                  {succeeded ? (
+                    <Stack gap={8}>
+                      <Button variant="primary" onClick={() => onOpenEditor?.(item?.draft_id ?? undefined)}>편집실에서 다듬기</Button>
+                      <Button onClick={discardPrimaryCardDeck} disabled={primaryCardDeckBusy}>버리고 다시 만들기</Button>
+                    </Stack>
+                  ) : null}
                 </div>
               );
             })() : null}
-            {selectedCandidate && (alsoKinds.length === 0 || Boolean(alsoBatch)) ? <Stack gap={8}><Button variant="primary" onClick={onOpenEditor}>편집실에서 다듬기</Button><Button onClick={() => setSelected(null)}>구조 초안 다시 고르기</Button></Stack> : null}
+            {(() => {
+              // 성공한 primary 카드 덱 결과 블록이 이미 "편집실에서 다듬기" 를 draft_id 와
+              // 함께 보여준다(M4). 여기서 또 보이면 어느 쪽을 눌러야 덱이 실리는지
+              // 헷갈리므로 중복 없이 하나만 둔다 — "구조 초안 다시 고르기" 는 항상 남긴다.
+              const primaryDeckAlreadyOffersEditor = primaryKind === "card" && primaryCardDeckBatch?.status === "succeeded" && !primaryCardDeckBatch.discarded_at;
+              if (!selectedCandidate || !(alsoKinds.length === 0 || Boolean(alsoBatch))) return null;
+              return (
+                <Stack gap={8}>
+                  {primaryDeckAlreadyOffersEditor ? null : <Button variant="primary" onClick={() => onOpenEditor?.()} disabled={primaryKind === "card" && primaryCardDeckBusy}>편집실에서 다듬기</Button>}
+                  <Button onClick={() => setSelected(null)}>구조 초안 다시 고르기</Button>
+                </Stack>
+              );
+            })()}
             {quickDraftError ? <p role="alert" className="text-caption text-danger">{quickDraftError}</p> : null}
             {error ? <p role="alert" className="text-caption text-danger">{error}</p> : null}
           </Stack>
