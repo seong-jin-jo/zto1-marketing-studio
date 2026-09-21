@@ -242,22 +242,38 @@ export function EditPreview({
                 className="min-h-control-touch w-full resize-none rounded-control border border-border bg-surface p-stack text-center text-body font-bold text-text"
               />
             </div>
-          ) : <div className="absolute inset-0 grid place-items-center p-pad-inset text-center">
-            <div className="min-w-0">
-              <span className="text-caption font-semibold text-accent">
-                {renderReady ? "미리보기" : `${unit} ${activeLine + 1}`}
-              </span>
-              {/* 영상과 카드뉴스는 같은 문장을 아래 자막이 이미 들고 있다. 가운데는 화면에 무엇이 놓이는지만 말한다. */}
-              <p className="mt-stack break-keep text-body font-bold text-text">
-                {line ? `여기에 ${unit} 화면이 놓입니다` : `이 ${unit}은 비어 있습니다`}
-              </p>
+          ) : kind === "video" && mediaType === "video" && activeMediaUrl ? null : (
+            // 2026-09-21 회장 지적: 영상 탭에서 "재생도 안 된다". 원인은 이 자리표시 레이어가
+            // 영상 유무와 상관없이 항상 그려져 DeliveredMedia 가 그리는 영상 재생 컨트롤 위를
+            // absolute inset-0 로 덮고 있었던 것이다(포인터 이벤트가 이 div 로 먼저 잡혀
+            // 재생·탐색 버튼을 못 눌렀다). 실제로 영상 태그가 그려질 때(mediaType==="video")만
+            // 이 레이어를 렌더하지 않아 재생 화면이 최상위에서 클릭을 받게 한다. 영상 편집 중
+            // 바탕 이미지만 있을 때(mediaType==="image")는 영상 태그가 없으므로 이 레이어가
+            // 계속 "아직 영상이 없습니다" 안내를 보여준다(교차 리뷰 PR #66 minor 5).
+            <div className="absolute inset-0 grid place-items-center p-pad-inset text-center">
+              <div className="min-w-0">
+                <span className="text-caption font-semibold text-accent">
+                  {renderReady ? "미리보기" : `${unit} ${activeLine + 1}`}
+                </span>
+                {/* 영상과 카드뉴스는 같은 문장을 아래 자막이 이미 들고 있다. 가운데는 화면에 무엇이 놓이는지만 말한다. */}
+                <p className="mt-stack break-keep text-body font-bold text-text">
+                  {kind === "video"
+                    ? `아직 영상이 없습니다. 생성실에서 "숏폼 영상 만들기"를 누르면 여기서 재생됩니다.`
+                    : line
+                      ? `여기에 ${unit} 화면이 놓입니다`
+                      : `이 ${unit}은 비어 있습니다`}
+                </p>
+              </div>
             </div>
-          </div>}
+          )}
 
           {kind === "video" ? (
+            // pointer-events-none: 표시 전용 오버레이다. 1:1·16:9 처럼 아래 여백이 없는 규격에서는
+            // 이 p가 실제 영상 재생 컨트롤 바(크롬 기준 약 48px) 위에 겹치는데, 이벤트를 흡수하면
+            // 재생·탐색 버튼을 못 누른다(교차 리뷰 PR #66 MAJOR 3).
             <p
               data-edit-preview-subtitle={subtitleHidden ? "가림" : "보임"}
-              className={`absolute inset-x-0 px-stack text-center font-semibold text-text ${SUBTITLE_CLASS[subtitleSize] || "text-body-sm"} ${SUBTITLE_BOTTOM_CLASS[Math.max(spec.safeBottom, 6) + 2]}`}
+              className={`pointer-events-none absolute inset-x-0 px-stack text-center font-semibold text-text ${SUBTITLE_CLASS[subtitleSize] || "text-body-sm"} ${SUBTITLE_BOTTOM_CLASS[Math.max(spec.safeBottom, 6) + 2]}`}
             >
               {line}
             </p>

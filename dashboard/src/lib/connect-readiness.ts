@@ -38,7 +38,11 @@ export const CONNECT_READINESS_LABELS: Record<ConnectReadinessStatus, string> = 
   connected: "연결됨",
   not_connected: "미연결",
   opening_soon: "오픈 준비중",
-  publish_pending: "발행 준비중",
+  // 2026-09-21 교차 리뷰(PR #66): 1차 수정에서 "연결됨 (심사 전 경고 화면 가능)"으로 고쳤는데
+  // 이 라벨은 15개 provider 공용이고, "경고 화면"은 Google(YouTube) 한정 현상이라 다른 provider
+  // 에 걸면 또 거짓이 된다. 라벨은 provider 중립으로 "무엇이 남았나"만 말하고, provider별 실제
+  // 결과(YouTube 비공개 게시·TikTok 본인만 보기 등)는 reason(externalReviewReason)에 싣는다.
+  publish_pending: "연결됨 · 심사 전",
   error: "확인 필요",
 };
 
