@@ -1,3 +1,18 @@
+## 2026-09-23 01:32 핫픽스 PR #78 생성, PR #77 머지 조건 3건 코드 확인
+
+current_stage: build (R-23) · qa (네 방 기본 흐름)
+status: in-progress (승인 아님)
+
+핫픽스 PR #78(fix/canvas-static-import-hotfix, 9e2177e7): canvas 정적 import 를 top-level await + try/catch
+동적 로드로 바꾸고 모듈명을 변수로 넘겨 tsc 가 타입 선언을 정적으로 찾지 않게 함. canvas 없으면 해당 describe
+skip. 원인 규명이 정확했다 — canvas 는 optionalDependencies 이고 배포 이미지(alpine, musl)에는 prebuilt 가
+없어 설치가 빠지는데 CI(bookworm, glibc)에는 설치되므로 CI 만 녹색이었다.
+
+PR #77 머지 조건 3건 코드 확인(관찰됨): page.tsx:2444 title 이 selectedAccounts 기준으로 정정,
+실수.md 18행에 "측정 하네스가 실제 조건을 재현하지 않아 delta 0px 보고가 거짓" count:9 기록,
+PlatformPreview.tsx:647 배지를 bottom-16 right-3 로 이동해 오버레이 사각형 밖으로 뺌.
+둘 다 CI 대기 중. 핫픽스 먼저 머지 후 #77 머지, 그 다음 한 번에 배포.
+
 ## 2026-09-23 01:22 PR #77 교차리뷰 "머지 가능", 머지 전 조건 3건
 
 current_stage: build (R-23) · qa (네 방 기본 흐름)
