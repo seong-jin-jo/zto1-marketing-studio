@@ -495,6 +495,20 @@ export default function StudioPage() {
   const [reviewBusy, setReviewBusy] = useState(false);
   const [publishChatDraft, setPublishChatDraft] = useState("");
   const [editLines, setEditLines] = useState<string[]>([]);
+  // 2026-09-23 사고: 카드덱 경로(생성실→편집실)는 말풍선 13개를 `editLines`에 담아
+  // 저장하지만, 발행실 본문(`text`)은 이 경로에서 한 번도 채워진 적이 없다(별도
+  // 파생 API로만 채워짐). 그래서 편집실엔 내용이 있는데 발행실은 "본문이 없다"고
+  // 말했다 — 회장이 "하나도 안 올라갔다"고 지적한 근본 원인. 새 규칙을 만들지 않고
+  // 편집실이 이미 쓰는 `editLines`를 발행 본문의 대체 원천으로 그대로 잇는다. 채널별
+  // 상한을 넘는 경우는 발행실에 이미 있는 `trimBodyToFit`·"한도 넘긴 곳만 줄이기"
+  // 경로가 그대로 처리한다(여기서는 원문만 잇는다). early room return(생성실 등)보다
+  // 앞에 둬야 한다 — platformText/publish() 같은 클로저가 렌더 도중(생성실·편집실
+  // 방에서도) 호출될 수 있어, 아래쪽에 두면 TDZ로 죽는다(2026-09-23 vitest 전체
+  // 실행에서 9개 파일 실패로 실측).
+  const deckFallbackBody = !text && editLines.some((line) => line.trim())
+    ? editLines.filter((line) => line.trim()).join("\n\n")
+    : "";
+  const hasPublishableBody = Boolean(text) || Boolean(deckFallbackBody);
   const [cardTextPositions, setCardTextPositions] = useState<CardTextPosition[]>([]);
   // 카드뉴스 v2 덱(PR4). 있으면 편집실이 CardDeckPanel(말풍선 직접 편집)을 그린다.
   const [cardDeck, setCardDeck] = useState<CardDeck | null>(null);
@@ -1305,10 +1319,10 @@ export default function StudioPage() {
     if (p === "shorts" || p === "reels" || p === "tiktok") {
       const override = captions[p];
       if (typeof override === "string") return override;
-      if (!text) return "";
+      if (!text) return deckFallbackBody;
       return [text.shorts?.hook, text.shorts?.body, text.shorts?.cta].filter(Boolean).join("\n") || text.threads || "";
     }
-    if (!text) return "";
+    if (!text) return deckFallbackBody;
     if (p === "threads") return text.threads || "";
     if (p === "facebook") return text.facebook || "";
     if (p === "x") return text.x || "";
@@ -1373,7 +1387,7 @@ export default function StudioPage() {
   async function publish() {
     // 2026-09-05 회장 계정 실측: 발행 단추를 눌렀는데 요청도 안 나가고 알림도 없었다.
     // 여기서 아무 말 없이 돌아섰기 때문이다. 조용한 반환은 고장으로 읽힌다. 이유를 말한다.
-    if (!text) {
+    if (!text && !editLines.some((line) => line.trim())) {
       showToast("발행할 본문이 없습니다. 생성실이나 작업물 전체에서 올릴 작업물을 먼저 가져와 주세요.", "error");
       return;
     }
@@ -1872,7 +1886,7 @@ export default function StudioPage() {
   }
 
   async function requestReview() {
-    if (!text || !activeWorkspace) {
+    if ((!text && !editLines.some((line) => line.trim())) || !activeWorkspace) {
       showToast("검토할 작업물이 없습니다", "error");
       return;
     }
@@ -2344,7 +2358,7 @@ export default function StudioPage() {
             채로 아무 말도 하지 않았다. 왜 비었는지도, 어디로 가야 하는지도 없다. 조용한
             실패다(ADR-007). 비었으면 그 사실과 빠져나갈 길을 같이 준다.
           */}
-          {!text ? (
+          {!hasPublishableBody ? (
             <div data-testid="publish-empty" role="status" className="rounded-surface border border-warning/30 bg-warning/10 p-stack-section">
               <b className="block text-body text-text">올릴 본문이 아직 없습니다</b>
               <p className="mt-stack-tight break-keep text-body-sm text-muted">
@@ -2422,7 +2436,7 @@ export default function StudioPage() {
               }}
             />
           ) : null}
-          {text ? (
+          {hasPublishableBody ? (
             <div className="card space-y-stack p-stack">
               <div className="flex flex-wrap items-center gap-stack">
               <b className="mr-auto min-w-0 truncate text-body text-text">{idea || "현재 작업물"}</b>
@@ -2548,12 +2562,12 @@ export default function StudioPage() {
             <div><b className="block text-body text-text">발행 담당</b><span className="text-caption text-success">지금 대기 중</span></div>
           </div>
           <div className="space-y-stack bg-surface-2 p-stack">
-            <div className="max-w-[90%] rounded-surface rounded-tl-chip border border-border bg-surface p-stack text-body-sm text-text" data-empty-next={!text ? "publish" : undefined}>
-              {text
+            <div className="max-w-[90%] rounded-surface rounded-tl-chip border border-border bg-surface p-stack text-body-sm text-text" data-empty-next={!hasPublishableBody ? "publish" : undefined}>
+              {hasPublishableBody
                 ? `일곱 칸을 하나씩 고치지 않으셔도 됩니다. 지금 ${selectedTargets.length}곳이 골라져 있습니다.`
                 : "발행할 작업물을 먼저 가져와 주세요."}
             </div>
-            {text ? (
+            {hasPublishableBody ? (
               <div className="flex flex-wrap gap-stack-tight" aria-label="발행 담당 빠른 답장">
                 <Button size="sm" onClick={publish} disabled={!accountsLoaded || publishTargets.length === 0 || pub.running}>{publishRetryOnly ? "실패한 곳만 다시 발행" : "지금 발행하기"}</Button>
                 <Button size="sm" onClick={() => setShowSchedule(true)}>시간은 내가 골라 줘</Button>
@@ -2563,7 +2577,7 @@ export default function StudioPage() {
               <Button variant="primary" onClick={() => changeRoom("create")}>생성실 열기</Button>
             )}
           </div>
-          {text ? (
+          {hasPublishableBody ? (
             <div className="space-y-stack border-t border-border bg-surface-2 p-stack" data-chat-only-actions="publish">
               <span className="text-caption font-semibold text-text">여러 채널 함께 바꾸기</span>
               <p className="break-keep text-caption text-subtle">

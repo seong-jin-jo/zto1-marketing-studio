@@ -47,6 +47,10 @@ export type DerivationItem = {
   summary: string;
   chargedMinor: number;
   failureReason: string | null;
+  /** kind==="card" 성공 항목에만 채운다. 화면(§7.1)이 "만들지 못했습니다"와
+   * 구분해 성공 문구를 쓰는 데 쓰는 필드다 — 이게 없으면 성공을 실패로 보인다
+   * (ADR-007 조용한 실패 금지, 2026-09-23 사고). */
+  deckSummary?: { slides: number; hookType: string; ctaKeyword: string; template: string } | null;
 };
 
 export type DerivationBatch = {
@@ -270,6 +274,14 @@ export function publicBatch(batch: DerivationBatch) {
       summary: item.summary,
       charged_minor: item.chargedMinor,
       failure_reason: item.failureReason,
+      deck_summary: item.deckSummary
+        ? {
+            slides: item.deckSummary.slides,
+            hook_type: item.deckSummary.hookType,
+            cta_keyword: item.deckSummary.ctaKeyword,
+            template: item.deckSummary.template,
+          }
+        : null,
     })),
     created_at: batch.createdAt,
     discarded_at: batch.discardedAt,
