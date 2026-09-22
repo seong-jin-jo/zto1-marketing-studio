@@ -148,7 +148,16 @@ function tsxFiles(dir: string, acc: string[] = []): string[] {
 describe("맨 button 래칫", () => {
   // 2026-09-14 실측 기준선. 공용 `Button` 을 안 쓰는 맨 `<button>` 의 전체 수다. 이 수는
   // 줄기만 해야 한다. 늘리려는 변경은 공용 `Button` 을 쓸 수 없는 이유를 먼저 대야 한다.
-  const BASELINE = 238;
+  //
+  // 2026-09-22 교차 코드리뷰 MINOR 대응 +1(239): PlatformPreview.tsx MediaCarousel 의
+  // 점 인디케이터를 비의미 <span> 에서 role="group" 안 <button> 으로 바꿨다(키보드로
+  // 카드를 직접 고를 수 있게, 접근성 개선). 소스에는 map 안 button 하나뿐이라(런타임에
+  // 카드 수만큼 찍혀도 소스 리터럴은 하나) 순증은 +1.
+  //
+  // 2026-09-22 4라운드: PublishEditSidebar(오른쪽 사이드바 채팅형 편집)를 이 브랜치에서
+  // 뺐다(세 라운드 연속 싱글턴이 깨져 별도 브랜치로 이관). EditTrigger·사이드바 자체
+  // 버튼(닫기·취소·저장)이 전부 사라져 기준선이 240 에서 239 로 내려간다.
+  const BASELINE = 239;
 
   it("QA-APP-TOUCH-08 경계: 맨 button 총수가 기준선을 넘지 않는다", () => {
     const count = tsxFiles(resolve(root, "src"))

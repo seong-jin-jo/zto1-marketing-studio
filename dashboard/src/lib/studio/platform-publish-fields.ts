@@ -1,5 +1,10 @@
 import twitterText from "twitter-text";
 
+// 2026-09-22 교차 코드리뷰 J3: shorts 제목 상한을 여기 하나로 못박아 내보낸다. 예전에
+// PlatformPreview.tsx 가 사이드바 카운터 표시용으로 같은 숫자를 리터럴 100 으로 또
+// 적었다(사이드바는 이번 라운드에서 뺐지만, 상한이 두 군데 적히면 언젠가 또 어긋난다).
+export const SHORTS_TITLE_LIMIT = 100;
+
 export type PublishPlatform = "threads" | "x" | "facebook" | "instagram" | "shorts" | "reels" | "tiktok";
 
 export type PlatformPublishInput = {
@@ -28,7 +33,6 @@ export type PlatformFieldContract = {
   hashtags: boolean;
   topicTag: boolean;
   firstComment: boolean;
-  unknownLimitLabel?: string;
 };
 
 export const PLATFORM_FIELD_CONTRACT: Record<PublishPlatform, PlatformFieldContract> = {
@@ -40,7 +44,6 @@ export const PLATFORM_FIELD_CONTRACT: Record<PublishPlatform, PlatformFieldContr
     hashtags: true,
     topicTag: false,
     firstComment: true,
-    unknownLimitLabel: "본문 상한은 규격 확인 필요",
   },
   instagram: { bodyLabel: "캡션", title: false, hashtags: true, topicTag: false, firstComment: true },
   shorts: { bodyLabel: "설명", title: true, hashtags: true, topicTag: false, firstComment: false },
@@ -59,16 +62,27 @@ function textAndHashtags(input: PlatformPublishInput): string {
   return [input.body?.trim(), input.hashtags?.trim()].filter(Boolean).join("\n\n");
 }
 
-function codePointLength(value: string): number {
+// 2026-09-22 교차 코드리뷰 M2: 글자수를 보여주는 자리와 실제로 차단 판정하는 자리가
+// 세는 방식이 둘로 갈리면 표시와 판정이 어긋난다(당시엔 오른쪽 사이드바가 있었고 지금은
+// 4라운드에서 빠졌지만, 인라인 표시(Counter 컴포넌트)도 같은 이유로 여기 함수를 그대로
+// 쓴다 — export 는 이 원칙을 지키는 유일한 소스로 남긴다).
+export function codePointLength(value: string): number {
   return [...(value ?? "")].length;
 }
 
-function utf8ByteLength(value: string): number {
+export function utf8ByteLength(value: string): number {
   return new TextEncoder().encode(value ?? "").length;
 }
 
-function utf16UnitLength(value: string): number {
+export function utf16UnitLength(value: string): number {
   return (value ?? "").length;
+}
+
+// 2026-09-22 교차 코드리뷰 J3: 사이드바가 X 를 코드포인트 근사치로 재면서 "근사치"라고
+// 주석만 달아놨는데, 그 근사치가 실제로 한글 140자를 280 이 아니라 140 으로 보여줘
+// 이미 차단인데 통과할 것처럼 안심시켰다. 근사가 아니라 X 의 실제 계산기를 그대로 쓴다.
+export function xWeightedLength(value: string): number {
+  return twitterText.parseTweet(value ?? "").weightedLength;
 }
 
 function pushHardLimit(
@@ -111,13 +125,25 @@ export function validatePlatformPublish(
     if (hashtagCount > 2) {
       result.warnings.push({ field: "hashtags", message: "해시태그는 2개 이하 사용을 권장합니다." });
     }
+  } else if (platform === "facebook") {
+    // 2026-09-22 교차 코드리뷰 M4 정정: 처음엔 이 상한의 출처를 Meta Graph API Page Feed
+    // 레퍼런스 문서로 잘못 적었다. 그 문서는 message 필드의 숫자 상한을 명시하지 않는다
+    // (재확인, developers.facebook.com/docs/graph-api/reference/page/feed/). 63,206자는
+    // 2011년 Facebook 이 상태 업데이트 글자수 상한을 공개 발표한 수치이고(Adweek,
+    // "Facebook Increases Status Update Character Limit From 5K to 60K+",
+    // https://www.adweek.com/performance-marketing/tldr-facebook-increases-status-update-character-limit-from-5k-to-60k/),
+    // Page Feed 의 message 필드도 이 값을 그대로 따른다고 다수 3자 자료가 보고한다
+    // (TypeCount, "Facebook Post Character Limit 2026", https://typecount.com/blog/
+    // facebook-post-character-limit-2026). Graph API 공식 문서에 숫자로 박혀 있지 않다는
+    // 점은 화면에도 남긴다. 헤더에 상시 배지로 띄우지 않는 이유다(PlatformPreview.tsx).
+    pushHardLimit(result, "body", codePointLength(combined), 63_206, "자", "게시물 본문과 해시태그");
   } else if (platform === "instagram" || platform === "reels") {
     pushHardLimit(result, "body", codePointLength(combined), 2_200, "자", "캡션과 해시태그");
     if (hashtagCount > 30) {
       result.blocking.push({ field: "hashtags", message: `해시태그는 30개까지 입력할 수 있습니다. 현재 ${hashtagCount}개입니다.` });
     }
   } else if (platform === "shorts") {
-    pushHardLimit(result, "title", codePointLength(input.title ?? ""), 100, "자", "제목");
+    pushHardLimit(result, "title", codePointLength(input.title ?? ""), SHORTS_TITLE_LIMIT, "자", "제목");
     pushHardLimit(result, "body", utf8ByteLength(combined), 5_000, "바이트", "설명과 해시태그");
     if (hashtagCount > 60) {
       result.warnings.push({ field: "hashtags", message: "해시태그가 60개를 넘으면 모든 해시태그가 무시될 수 있습니다." });

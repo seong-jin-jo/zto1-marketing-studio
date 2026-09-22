@@ -93,6 +93,15 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
   const [phase, setPhase] = useState<"ready" | "renewing" | "failed">(() =>
     isDeliveryUrlExpired(src) ? "renewing" : "ready",
   );
+  /*
+    2026-09-22 교차 코드리뷰 M5: poster 는 src 와 똑같은 서명 주소인데 만료 판정도
+    재서명도 없이 문자열 그대로 <video poster> 에 꽂았다. 어제 만든 초안을 오늘 열면
+    src 는 스스로 되살아나는데 poster 만 죽은 채 남아 "썸네일 없음" 조차 못 뜨는
+    조용한 실패였다(ADR-007). src 와 같은 되살리기 경로를 poster 에도 그대로 적용한다.
+  */
+  const [posterUrl, setPosterUrl] = useState(() => (poster && !isDeliveryUrlExpired(poster) ? poster : ""));
+  const [posterDead, setPosterDead] = useState(() => Boolean(poster) && isDeliveryUrlExpired(poster || ""));
+  const posterRetried = useRef<string>("");
   // 주소 하나당 되살리기는 한 번만. 진짜로 사라진 파일에 무한히 요청하지 않는다.
   // 작업 공간까지 키에 넣는다. 작업 공간은 화면이 뜬 뒤에 따라 들어오므로, 그 전에 보낸
   // 한 번을 "이미 해 봤다" 로 세면 제대로 된 요청을 영영 못 보낸다(2026-09-13).
@@ -125,6 +134,22 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
     });
     return () => { canceled = true; };
   }, [src, tenantId, attemptKey]);
+
+  useEffect(() => {
+    if (!poster) { setPosterUrl(""); setPosterDead(false); return; }
+    if (!isDeliveryUrlExpired(poster)) { setPosterUrl(poster); setPosterDead(false); return; }
+    const posterKey = `${tenantId || ""}|${poster}`;
+    if (posterRetried.current === posterKey) return;
+    posterRetried.current = posterKey;
+    let canceled = false;
+    setPosterUrl("");
+    void resignDeliveryUrl(poster, tenantId).then((next) => {
+      if (canceled) return;
+      if (next) { setPosterUrl(next); setPosterDead(false); }
+      else setPosterDead(true);
+    });
+    return () => { canceled = true; };
+  }, [poster, tenantId]);
 
   async function handleError() {
     if (retried.current === attemptKey) { setPhase("failed"); return; }
@@ -166,18 +191,52 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
   }
 
   if (type === "video") {
+    /*
+      2026-09-22 교차 코드리뷰 J5(4라운드) 재수정. 3라운드에서 relative wrapper 로
+      감싸 봤는데, 호출자가 넘긴 className 을 wrapper 에도 그대로 씌우자 EditPreview.tsx
+      가 쓰는 "absolute inset-0" 같은 위치 클래스가 이 wrapper div 에 복제돼
+      tests/studio/edit-preview-media.contract.test.tsx 의 "자리표시 레이어 없음" 계약을
+      깼다(그 테스트는 video 형제로 남는 `div.absolute.inset-0` 이 없어야 한다고
+      본다. wrapper 자신이 그 모양이 돼버렸다). 배지 위치 기준을 호출자에게 의존하는
+      기존 동작으로 되돌린다(PlatformPreview 의 실제 사용처는 이미 relative 컨테이너
+      안이라 실사용에는 문제가 없었다. 새 wrapper 는 실익보다 회귀 위험이 컸다).
+
+      문구는 되돌린다: "썸네일 없음"(poster 자체가 애초에 없음, 조치 불필요)과
+      "대문 이미지를 다시 불러오지 못했습니다"(있었는데 만료·재발급 실패, 다시
+      시도하면 될 수도 있음)는 서로 다른 사유다. 3라운드에서 둘 다 "썸네일 없음"
+      으로 합쳐 ADR-007 §5(사유를 구체적으로 말한다)를 어겼다.
+    */
     return (
-      <video
-        {...dataAttr}
-        data-testid={testId}
-        src={url}
-        className={className}
-        controls
-        playsInline
-        preload={preload}
-        poster={poster}
-        onError={handleError}
-      />
+      <>
+        <video
+          {...dataAttr}
+          data-testid={testId}
+          src={url}
+          className={className}
+          controls
+          playsInline
+          preload={preload}
+          poster={posterUrl || undefined}
+          onError={handleError}
+        />
+        {/*
+          2026-09-23 교차 코드리뷰 5라운드(재반려): PlatformPreview 의 영상 분기는
+          vid 있을 때 title/hashtags 오버레이를 absolute left-3 right-3 top-3 로
+          전체 폭에 올린다. 이 배지를 top-3 right-3 로 옮긴 1차 수정은 여전히 그
+          오버레이 사각형 안이었다(겹쳐 보이지 않은 건 오버레이가 배경 없는 좌측
+          정렬 텍스트였을 뿐). 오버레이가 아예 쓰지 않는 하단(네이티브 컨트롤 바
+          위 여유 공간)으로 옮긴다.
+        */}
+        {poster && posterDead && !posterUrl ? (
+          <span
+            data-testid={testId ? `${testId}-poster-expired` : undefined}
+            role="status"
+            className="absolute bottom-16 right-3 rounded-pill bg-player-surface/70 px-stack-tight py-micro text-caption text-text"
+          >
+            대문 이미지를 다시 불러오지 못했습니다
+          </span>
+        ) : null}
+      </>
     );
   }
   return (

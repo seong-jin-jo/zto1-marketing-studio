@@ -17,6 +17,7 @@
     "e2e:operator": "bash scripts/verify-operator-form-e2e.sh",
     "e2e:r02": "node scripts/verify-r02-e2e.mjs",
     "e2e:four-room": "node scripts/verify-four-room-ui-e2e.mjs",
+    "qa:publish-room-alignment": "node scripts/measure-publish-room-alignment.mjs",
     "ops:recover-operator-token": "bash scripts/recover-operator-token.sh"
   },
   "dependencies": {
@@ -43,6 +44,7 @@
     "@types/react-dom": "^19",
     "@types/twitter-text": "3.1.10",
     "jsdom": "^29.1.1",
+    "playwright-core": "^1.61.1",
     "tailwindcss": "^4",
     "typebox": "^1.1.39",
     "typescript": "^5",

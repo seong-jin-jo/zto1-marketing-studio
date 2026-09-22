@@ -23,13 +23,18 @@ function editor(overrides: Partial<PreviewInlineEditor> = {}): PreviewInlineEdit
   };
 }
 
-describe("PUB-ACCOUNT-01 연결 계정 읽기 전용 표시", () => {
-  it("정상: 연결 계정의 표시 이름과 사용자명을 보여 주되 편집 입력은 만들지 않는다", () => {
+// 2026-09-22 회장 질문(R-23-4): "컨텐츠 밑에 '읽기 전용' 으로 되어있는 계정정보는 왜
+// 필요한거?" 카드 하단의 별도 계정 카드(테두리·아바타·"읽기 전용" 문구)를 없애고, 머리줄
+// 안 배지 하나로 합쳤다. 표시 이름은 배지 하나에 다 담지 않고 핸들만 짧게 보여 준다
+// (핸들이 실제 발행 대상 계정을 가장 명확히 특정한다). 미연결·오류·확인 중 상태는 여전히
+// 조용히 사라지지 않고 경고 배지로 남는다(ADR-007).
+describe("PUB-ACCOUNT-01 계정 정보는 머리줄 배지 하나로 합친다", () => {
+  it("정상: 연결 계정의 핸들을 머리줄 배지로 보여 주되 편집 입력은 만들지 않는다", () => {
     render(<PlatformPreview platform="threads" text={{ threads: "정상 본문" }} media={{}} editor={editor()} />);
 
-    expect(screen.getByTestId("preview-account-threads")).toHaveAttribute("data-account-state", "connected");
-    expect(screen.getByText("운영 계정")).toBeInTheDocument();
-    expect(screen.getByText("@operator")).toBeInTheDocument();
+    const badge = screen.getByTestId("preview-account-threads");
+    expect(badge).toHaveAttribute("data-account-state", "connected");
+    expect(badge).toHaveTextContent("@operator");
     expect(screen.queryByRole("textbox", { name: "threads 표시 이름" })).not.toBeInTheDocument();
   });
 

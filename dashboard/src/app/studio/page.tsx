@@ -2489,85 +2489,121 @@ export default function StudioPage() {
                       tenantId={activeWorkspace?.id}
                       editor={previewEditor(platform)}
                       headerRight={
-                        <div className="flex flex-wrap items-center justify-end gap-stack-tight">
-                          {PUBLISH_SUPPORTED.has(platform) ? (
-                            /* DESIGN.md 발행실 절: 「선택 체크의 보이는 표식은 20px, 실제
-                               조작면은 44px이다」. 표식은 그대로 두고 label 을 44px 조작면으로
-                               쓴다(2026-09-14 실측: 390 에서 체크 7개가 13x13 이었다). */
-                            <label className="ds-touch-target flex min-h-control-touch items-center gap-micro px-stack-tight text-caption text-muted">
-                              <input aria-label={`${LABEL[platform]} 발행`} type="checkbox" className="h-5 w-5 shrink-0" checked={Boolean(includes[platform])} disabled={Boolean(accountLoadPending[platform]) || (accountsByPlatform[platform] || []).length === 0} onChange={(event) => setIncludes((current) => ({ ...current, [platform]: event.target.checked }))} />
-                              발행
-                            </label>
-                          ) : (
-                            <label className="ds-touch-target flex min-h-control-touch items-center gap-micro px-stack-tight text-caption text-warning">
-                              <input aria-label={`${LABEL[platform]} 발행 미지원`} type="checkbox" className="h-5 w-5 shrink-0" checked={false} disabled />
-                              미지원
-                            </label>
-                          )}
-                          {/*
-                            2026-09-09 회장 지적: "영상에서는 뭘 대문 썸네일로 지정할지도
-                            세팅해야하지않나 API있지." 실제로 있었고 우리가 안 쓰고 있었다.
-                            안 주면 플랫폼이 첫 프레임을 쓰는데, 숏폼에서 첫 프레임은 대개
-                            아직 아무것도 안 보이는 순간이라 가장 나쁜 대문이 된다.
-                            시점으로 정할 수 있는 채널만 이 칸을 준다. YouTube 는 이미지를
-                            따로 올려야 해서 시점으로는 안 되고, 그 사실을 글로 적는다.
-                          */}
-                          {supportsCoverTimestamp(platform) ? (
-                            <label className="flex items-center gap-micro text-caption text-muted" title="영상에서 이 시점 화면을 대문으로 씁니다">
-                              대문
-                              <input
-                                type="number"
-                                min={0}
-                                max={600}
-                                step={0.5}
-                                aria-label={`${LABEL[platform]} 대문 시점(초)`}
-                                data-cover-seconds={platform}
-                                value={coverSeconds[platform] ?? DEFAULT_COVER_SECONDS}
-                                onChange={(event) => setCoverSeconds((current) => ({ ...current, [platform]: Number(event.target.value) }))}
-                                className="min-h-control-touch w-16 rounded-control border border-border bg-surface px-stack-tight text-caption text-text"
-                              />
-                              초
-                            </label>
-                          ) : coverUnsupportedReason(platform) ? (
-                            <span className="text-caption text-subtle" data-cover-note={platform} title={coverUnsupportedReason(platform) || undefined}>
-                              대문 자동
-                            </span>
-                          ) : null}
-                          {!accountLoadPending[platform] && PUBLISH_SUPPORTED.has(platform) && (accountsByPlatform[platform] || []).length === 0 ? (
-                            <Link
-                              href={channelHref(platform)}
-                              data-testid={`publish-connect-link-${platform}`}
-                              title={`${LABEL[platform]} 연결 화면으로 갑니다. 연결한 뒤 그 화면에서 기본 계정도 정할 수 있습니다`}
-                              className="inline-flex min-h-control-touch items-center rounded-control border border-accent/40 bg-accent-soft px-stack-tight text-caption font-semibold text-accent hover:bg-surface"
-                            >
-                              계정 연결하기
-                            </Link>
-                          ) : null}
-                          {ACCOUNT_SELECTABLE.has(platform) && (accountsByPlatform[platform] || []).length > 0 ? (
-                            <>
-                              <select
-                                aria-label={`${LABEL[platform]} 발행 계정`}
-                                data-testid={`publish-account-select-${platform}`}
-                                value={selectedAccounts[platform] ?? ""}
-                                onChange={(event) => setSelectedAccounts((current) => ({ ...current, [platform]: event.target.value }))}
-                                className="min-h-control-touch max-w-32 rounded-control border border-border bg-surface-2 px-stack-tight text-caption text-text"
-                              >
-                                {/* 어느 계정으로 올라가는지 이름으로 말한다. "기본계정"만 적으면 그게 누구인지 화면이 답을 못 한다. */}
-                                <option value="">
-                                  기본 {(accountsByPlatform[platform] || []).find((account) => account.is_default)?.label || "계정"}
-                                </option>
-                                {(accountsByPlatform[platform] || []).map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}
-                              </select>
+                        /*
+                          2026-09-23 교차 코드리뷰(PR #77) 5라운드: headerRight 가 한
+                          flex-wrap 줄에 있으면 채널마다 조각 수·글자 길이가 달라 줄바꿈
+                          위치가 제각각이었다(9444 실측 44/72/124px, 5라운드 재실측
+                          reels·tiktok 96px). 상한으로 자르면 조작면이 숨고(3라운드), 하한만
+                          주면 줄 수가 여전히 채널마다 갈린다(4라운드). 진짜 해법은 줄 수를
+                          채널과 무관하게 고정하는 것 — 발행 체크박스/대문 컨트롤을 항상
+                          1행, 계정 영역을 항상 2행에 둔다. 내용이 없는 채널도 자리(빈 span)
+                          를 유지해 줄 수가 흔들리지 않는다. 계정 select 는 폭을 고정하고
+                          긴 이름은 truncate 한다(무제한으로 늘어나 다시 줄바꿈을 만들지
+                          않는다).
+                        */
+                        <div className="flex flex-col items-end gap-micro">
+                          <div className="flex items-center justify-end gap-stack-tight">
+                            {PUBLISH_SUPPORTED.has(platform) ? (
+                              /* DESIGN.md 발행실 절: 「선택 체크의 보이는 표식은 20px, 실제
+                                 조작면은 44px이다」. 표식은 그대로 두고 label 을 44px 조작면으로
+                                 쓴다(2026-09-14 실측: 390 에서 체크 7개가 13x13 이었다). */
+                              <label className="ds-touch-target flex min-h-control-touch items-center gap-micro px-stack-tight text-caption text-muted">
+                                <input aria-label={`${LABEL[platform]} 발행`} type="checkbox" className="h-5 w-5 shrink-0" checked={Boolean(includes[platform])} disabled={Boolean(accountLoadPending[platform]) || (accountsByPlatform[platform] || []).length === 0} onChange={(event) => setIncludes((current) => ({ ...current, [platform]: event.target.checked }))} />
+                                발행
+                              </label>
+                            ) : (
+                              <label className="ds-touch-target flex min-h-control-touch items-center gap-micro px-stack-tight text-caption text-warning">
+                                <input aria-label={`${LABEL[platform]} 발행 미지원`} type="checkbox" className="h-5 w-5 shrink-0" checked={false} disabled />
+                                미지원
+                              </label>
+                            )}
+                            {/*
+                              2026-09-09 회장 지적: "영상에서는 뭘 대문 썸네일로 지정할지도
+                              세팅해야하지않나 API있지." 실제로 있었고 우리가 안 쓰고 있었다.
+                              안 주면 플랫폼이 첫 프레임을 쓰는데, 숏폼에서 첫 프레임은 대개
+                              아직 아무것도 안 보이는 순간이라 가장 나쁜 대문이 된다.
+                              시점으로 정할 수 있는 채널만 이 칸을 준다. YouTube 는 이미지를
+                              따로 올려야 해서 시점으로는 안 되고, 그 사실을 글로 적는다.
+                            */}
+                            {supportsCoverTimestamp(platform) ? (
+                              <label className="flex items-center gap-micro text-caption text-muted" title="영상에서 이 시점 화면을 대문으로 씁니다">
+                                대문
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={600}
+                                  step={0.5}
+                                  aria-label={`${LABEL[platform]} 대문 시점(초)`}
+                                  data-cover-seconds={platform}
+                                  value={coverSeconds[platform] ?? DEFAULT_COVER_SECONDS}
+                                  onChange={(event) => setCoverSeconds((current) => ({ ...current, [platform]: Number(event.target.value) }))}
+                                  className="min-h-control-touch w-16 rounded-control border border-border bg-surface px-stack-tight text-caption text-text"
+                                />
+                                초
+                              </label>
+                            ) : coverUnsupportedReason(platform) ? (
+                              <span className="text-caption text-subtle" data-cover-note={platform} title={coverUnsupportedReason(platform) || undefined}>
+                                대문 자동
+                              </span>
+                            ) : (
+                              // 채널마다 이 슬롯 유무가 갈리면 1행 줄바꿈 위치가 갈린다. 빈
+                              // 자리라도 유지해 slot 을 고정한다(5라운드 재발 방지).
+                              <span aria-hidden="true" className="text-caption text-transparent select-none">대문 자동</span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-end gap-stack-tight">
+                            {!accountLoadPending[platform] && PUBLISH_SUPPORTED.has(platform) && (accountsByPlatform[platform] || []).length === 0 ? (
                               <Link
                                 href={channelHref(platform)}
-                                data-testid={`publish-account-manage-${platform}`}
-                                title={`${LABEL[platform]} 계정을 더 연결하거나 기본 계정을 바꿉니다`}
-                                className="inline-flex min-h-control-touch items-center rounded-control border border-border bg-surface-2 px-stack-tight text-caption font-semibold text-muted hover:bg-surface"
+                                data-testid={`publish-connect-link-${platform}`}
+                                title={`${LABEL[platform]} 연결 화면으로 갑니다. 연결한 뒤 그 화면에서 기본 계정도 정할 수 있습니다`}
+                                className="inline-flex min-h-control-touch items-center rounded-control border border-accent/40 bg-accent-soft px-stack-tight text-caption font-semibold text-accent hover:bg-surface"
                               >
-                                계정 관리
+                                계정 연결하기
                               </Link>
-                            </>
-                          ) : null}
+                            ) : ACCOUNT_SELECTABLE.has(platform) && (accountsByPlatform[platform] || []).length > 0 ? (
+                              <>
+                                <select
+                                  aria-label={`${LABEL[platform]} 발행 계정`}
+                                  data-testid={`publish-account-select-${platform}`}
+                                  value={selectedAccounts[platform] ?? ""}
+                                  onChange={(event) => setSelectedAccounts((current) => ({ ...current, [platform]: event.target.value }))}
+                                  // 2026-09-23 5라운드: 계정 이름이 길면 select 가 계속 자라
+                                  // 1행처럼 슬롯을 고정해도 다시 줄바꿈을 만들었다(9444 실측
+                                  // "기본 {계정명}" 이 128px 까지 자람). 폭을 고정하고 넘치는
+                                  // 이름은 잘라 보여준다. 전체 이름은 title 속성으로 접근.
+                                  //
+                                  // 2026-09-23 교차 코드리뷰 재반려: title 이 항상 기본 계정
+                                  // 이름을 가리켰다(신규 버그). 사용자가 기본이 아닌 계정을
+                                  // 고르면 잘린 글자 위 툴팁이 다른 계정 이름을 말했다.
+                                  // selectedAccounts 로 실제 선택된 계정을 찾아 그 이름을
+                                  // 쓴다(빈 값이면 기본 계정으로 자연히 떨어진다).
+                                  title={(
+                                    (accountsByPlatform[platform] || []).find(
+                                      (account) => account.id === (selectedAccounts[platform] || ""),
+                                    ) || (accountsByPlatform[platform] || []).find((account) => account.is_default)
+                                  )?.label || undefined}
+                                  className="min-h-control-touch w-28 truncate rounded-control border border-border bg-surface-2 px-stack-tight text-caption text-text"
+                                >
+                                  {/* 어느 계정으로 올라가는지 이름으로 말한다. "기본계정"만 적으면 그게 누구인지 화면이 답을 못 한다. */}
+                                  <option value="">
+                                    기본 {(accountsByPlatform[platform] || []).find((account) => account.is_default)?.label || "계정"}
+                                  </option>
+                                  {(accountsByPlatform[platform] || []).map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}
+                                </select>
+                                <Link
+                                  href={channelHref(platform)}
+                                  data-testid={`publish-account-manage-${platform}`}
+                                  title={`${LABEL[platform]} 계정을 더 연결하거나 기본 계정을 바꿉니다`}
+                                  className="inline-flex min-h-control-touch items-center rounded-control border border-border bg-surface-2 px-stack-tight text-caption font-semibold text-muted hover:bg-surface"
+                                >
+                                  계정 관리
+                                </Link>
+                              </>
+                            ) : (
+                              <span aria-hidden="true" className="min-h-control-touch text-caption text-transparent select-none">-</span>
+                            )}
+                          </div>
                         </div>
                       }
                     />
