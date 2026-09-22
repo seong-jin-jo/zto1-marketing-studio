@@ -49,7 +49,10 @@ afterEach(() => cleanup());
 describe("PR4 잔여 배선 ① 발행실 9장 업로드", () => {
   it("recompositeCards가 chat_bubble 덱이면 template/deck 을 그대로 renderAndUploadCardDeck 에 넘긴다", () => {
     expect(pageSrc).toContain('cardDeck && cardDeck.template === "chat_bubble"');
-    expect(pageSrc).toContain('template: "chat_bubble", deck: cardDeck');
+    // D(2026-09-22 코드리뷰 4차): 렌더는 원본 cardDeck이 아니라 검사에 쓴 것과 같은
+    // pruned 덱을 써야 한다(검사·렌더가 갈리면 검사를 통과한 뒤에도 빈 말풍선이 PNG에
+    // 찍힌다). template은 그대로 "chat_bubble".
+    expect(pageSrc).toContain('template: "chat_bubble", deck: pruned');
   });
 
   it("cardDeck 없는 기존 글자 카드 3장 경로(lines/positions)는 그대로 남아 있다(회귀 0)", () => {

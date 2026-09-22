@@ -5,8 +5,10 @@
  *
  * "직접 편집 기본, AI는 보조"(D-2026-09-09-1) — 이 컴포넌트는 순수 직접 편집 도구다.
  * 모든 상태 변화는 `card-deck-ops.ts` 의 순수 함수만 거친다(직접 상태 조작 금지, 세션맥락).
- * 실패는 `CardDeckOpsError(code, message)` 로 이유를 데리고 나오므로, 그 이유를 그대로
- * 화면에 문구로 보여준다(조용한 실패 금지).
+ * 실패는 `CardDeckOpsError(code, message)` 로 이유를 데리고 나온다(조용한 실패 금지) —
+ * 다만 message는 개발자용 영문 원문이라 그대로 찍지 않는다. `cardDeckOpsErrorMessage(code)`
+ * 로 옮긴 한국어 고정 문구를 화면에 보여주고, 원문은 console.error로만 보낸다(F4,
+ * 2026-09-22 코드리뷰 3차).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
@@ -258,8 +260,10 @@ function HookChips({ onPick }: { onPick: (text: string) => void }) {
  * 그린다(J1, 2026-09-22 코드리뷰 2차). 편집실 미리보기(`CardDeckPanel`)와 발행 경로
  * (`studio/page.tsx` recompositeCards → renderAndUploadCardDeck)가 같은 렌더러를 쓰므로
  * 여기서 고른 사진은 저장 즉시 미리보기에 반영되고, 발행 시 나가는 PNG에도 그대로
- * 들어간다. 다만 사진 로딩 실패(CORS·만료·타임아웃)는 지금은 평면 배경으로 조용히
- * 물러난다 — 이 실패 경로는 F3로 별도 추적 중이다.
+ * 들어간다. 사진을 못 불러오면(만료된 서명 URL·타임아웃 등, F3, 2026-09-22 코드리뷰
+ * 3차) 조용히 배경색으로 물러나지 않고 렌더 자체를 실패시킨다 — 미리보기·생성실
+ * 썸네일·발행 경로 모두 그 이유를 화면에 보여주고 발행을 막는다(ADR-007). 사진이 오래
+ * 최대 8초씩, 9장이면 최악 72초까지 걸릴 수 있다(H, 4차: 진행 표시는 아직 없다).
  */
 function CoverImagePicker({ imageUrl, onChange }: { imageUrl: string | null; onChange: (url: string | null) => void }) {
   const [busy, setBusy] = useState(false);
@@ -301,7 +305,7 @@ function CoverImagePicker({ imageUrl, onChange }: { imageUrl: string | null; onC
       ) : (
         <p className="text-caption text-muted" data-cover-image-empty>아직 사진을 고르지 않았습니다.</p>
       )}
-      <p className="text-caption text-subtle" data-cover-image-render-status>미리보기와 발행 결과물에 그대로 반영됩니다.</p>
+      <p className="text-caption text-subtle" data-cover-image-render-status>미리보기와 발행 결과물에 그대로 반영됩니다. 사진을 불러오는 데 장당 최대 8초 걸릴 수 있습니다.</p>
       <div className="flex flex-wrap gap-stack-tight">
         <Button size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "올리는 중…" : "사진 올리기"}</Button>
         {imageUrl ? <Button size="sm" variant="secondary" onClick={() => onChange(null)}>사진 빼기</Button> : null}

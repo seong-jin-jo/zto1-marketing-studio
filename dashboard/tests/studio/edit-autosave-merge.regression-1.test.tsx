@@ -40,8 +40,8 @@ function clone<T>(value: T): T {
  * 800ms, 카드덱은 prune+보류, 영상은 빈 항목이면 통째로 보류)를 가진 하네스. "구조 대조"
  * describe가 이 구조와 page.tsx 소스가 실제로 일치하는지 문자열로 대조한다.
  */
-function Harness({ onSave }: { onSave: (payload: { cardDeck?: CardDeck | null; videoEdit?: VideoEdit | null }) => void }) {
-  const [deck, setDeck] = useState<CardDeck>(clone(deckD100) as unknown as CardDeck);
+function Harness({ onSave, initialDeck }: { onSave: (payload: { cardDeck?: CardDeck | null; videoEdit?: VideoEdit | null }) => void; initialDeck?: CardDeck }) {
+  const [deck, setDeck] = useState<CardDeck>(initialDeck ?? (clone(deckD100) as unknown as CardDeck));
   const [edit, setEdit] = useState<VideoEdit>(emptyVideoEdit());
   const cardDeckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoEditTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -122,19 +122,23 @@ describe("R1 회귀: 카드덱·영상 자동저장이 독립 타이머로 각�
     expect(videoEditSaves[0].videoEdit!.overlays[0].text).toBe("3초 만에 원인 하나");
   });
 
-  it("카드덱이 빈 말풍선으로 보류돼도 영상 저장은 막히지 않는다(F5 계열)", async () => {
-    const saves: Array<{ cardDeck?: CardDeck | null; videoEdit?: VideoEdit | null }> = [];
-    render(<Harness onSave={(payload) => saves.push(payload)} />);
+  it("F: 카드덱이 진짜로 빈 말풍선 상태로 보류되고(직접 단언), 그 상태에서도 영상 저장은 막히지 않는다", async () => {
+    // 이전 판(3차)은 UI 삭제 버튼을 반복 클릭해 "가능한 만큼" 비웠을 뿐, ops가 마지막
+    // 말풍선 삭제를 거부해 실제로는 한 번도 진짜 빈 상태에 도달하지 못했다 — 그런데도
+    // 이름은 "보류됐다"고 주장했다(F 지적). 여기서는 초기 deck 자체를 1번 장 bubbles:[]로
+    // 만들어 emptyBubbleSlideNumber가 반드시 걸리게 하고, 그 보류가 실제로 일어났는지
+    // holdMessage로 직접 단언한다.
+    const brokenDeck = clone(deckD100) as unknown as CardDeck;
+    brokenDeck.slides[1] = { ...brokenDeck.slides[1], bubbles: [] };
 
-    // 대화 장(1번)으로 이동해 말풍선을 전부 지운다.
-    const chatSlideButtons = document.querySelectorAll("[data-slide-role='chat']");
-    fireEvent.click(chatSlideButtons[0]);
-    // 삭제를 반복해 그 장의 말풍선을 최대한 비운다(마지막 하나는 ops가 막으므로, 그 직전
-    // 상태로도 emptyBubbleSlideNumber 재현이 안 되면 이 테스트는 스킵 판정 대신 아래
-    // 대체 경로로 videoEdit만 검증한다).
-    const deleteButtons = () => Array.from(document.querySelectorAll("[data-bubble-controls] button")).filter((b) => b.textContent === "삭제");
-    let guard = 0;
-    while (deleteButtons().length > 0 && guard < 20) { fireEvent.click(deleteButtons()[0]); guard += 1; }
+    const saves: Array<{ cardDeck?: CardDeck | null; videoEdit?: VideoEdit | null }> = [];
+    render(<Harness onSave={(payload) => saves.push(payload)} initialDeck={brokenDeck} />);
+
+    // 카드덱을 "건드리기만"(값은 그대로, 여전히 1번 장이 비어 있는 채) 해 카드덱 타이머를
+    // 예약시킨다 — 표지 헤드라인 칩을 눌러도 되지만, 1번 장이 비어 있다는 사실 자체가
+    // 핵심이므로 표지만 살짝 바꾼다.
+    const cardDeckPanel = document.querySelector("[data-card-deck-panel]") as HTMLElement;
+    fireEvent.click(within(cardDeckPanel).getByText("왜 나만\n안 될까".replace("\n", " ")));
 
     const overlayEditor2 = document.querySelector("[data-video-overlay-editor]") as HTMLElement;
     fireEvent.click(within(overlayEditor2).getByText("후킹"));
@@ -143,6 +147,12 @@ describe("R1 회귀: 카드덱·영상 자동저장이 독립 타이머로 각�
 
     await vi.advanceTimersByTimeAsync(900);
 
+    // 카드덱은 실제로 보류됐다(직접 단언 — 이전 판은 이 줄이 없어서 0회여도 초록이었다).
+    expect(document.querySelector("[data-hold-message]")!.textContent).toContain("2번 장");
+    const cardDeckSaves = saves.filter((s) => s.cardDeck);
+    expect(cardDeckSaves).toHaveLength(0);
+
+    // 영상은 그 보류와 무관하게 저장된다.
     const videoEditSaves = saves.filter((s) => s.videoEdit);
     expect(videoEditSaves).toHaveLength(1);
     expect(videoEditSaves[0].videoEdit!.overlays[0].text).toBe("3초 만에 원인 하나");
@@ -159,12 +169,28 @@ describe("구조 대조: page.tsx가 독립 타이머로 되돌아갔는지", ()
   });
 
   it("onCardDeckChange는 cardDeckAutosaveTimer만, onVideoEditChange는 videoEditAutosaveTimer만 쓴다", () => {
-    const onCardDeckChange = pageSrc.slice(pageSrc.indexOf("function onCardDeckChange("), pageSrc.indexOf("function onCardDeckChange(") + 800);
-    const onVideoEditChange = pageSrc.slice(pageSrc.indexOf("function onVideoEditChange("), pageSrc.indexOf("function onVideoEditChange(") + 800);
+    const onCardDeckChange = pageSrc.slice(pageSrc.indexOf("function onCardDeckChange("), pageSrc.indexOf("function onCardDeckChange(") + 1300);
+    const onVideoEditChange = pageSrc.slice(pageSrc.indexOf("function onVideoEditChange("), pageSrc.indexOf("function onVideoEditChange(") + 1300);
     expect(onCardDeckChange).toContain("cardDeckAutosaveTimer.current");
     expect(onCardDeckChange).not.toContain("videoEditAutosaveTimer");
     expect(onVideoEditChange).toContain("videoEditAutosaveTimer.current");
     expect(onVideoEditChange).not.toContain("cardDeckAutosaveTimer");
+  });
+
+  it("A/B(4차): onCardDeckChange는 videoEdit 자리에 명시 null을, onVideoEditChange는 cardDeck 자리에 명시 null을 넘긴다", () => {
+    const onCardDeckChange = pageSrc.slice(pageSrc.indexOf("function onCardDeckChange("), pageSrc.indexOf("function onCardDeckChange(") + 1300);
+    const onVideoEditChange = pageSrc.slice(pageSrc.indexOf("function onVideoEditChange("), pageSrc.indexOf("function onVideoEditChange(") + 1300);
+    expect(onCardDeckChange, "카드덱 자동저장이 videoEdit 자리에 null을 안 넘기면 state의 videoEdit이 검증 없이 같이 나간다").toContain("pruned, null)");
+    expect(onVideoEditChange, "영상 자동저장이 cardDeck 자리에 null을 안 넘기면 state의 cardDeck이 pruning 없이 같이 나간다").toContain("null, nextEdit)");
+  });
+
+  it("C(4차): 카드덱·영상 자동저장 보류 사유가 서로 다른 state를 쓴다(공유 state가 서로를 지우지 않는다)", () => {
+    const onCardDeckChange = pageSrc.slice(pageSrc.indexOf("function onCardDeckChange("), pageSrc.indexOf("function onCardDeckChange(") + 1300);
+    const onVideoEditChange = pageSrc.slice(pageSrc.indexOf("function onVideoEditChange("), pageSrc.indexOf("function onVideoEditChange(") + 1300);
+    expect(onCardDeckChange).toContain("setCardDeckAutosaveError");
+    expect(onCardDeckChange).not.toContain("setVideoEditAutosaveError");
+    expect(onVideoEditChange).toContain("setVideoEditAutosaveError");
+    expect(onVideoEditChange).not.toContain("setCardDeckAutosaveError");
   });
 
   it("onVideoEditChange는 sanitizeForSave(부분 삭제 위험)가 아니라 videoEditIncompleteEntryReason(보류)을 쓴다(R2)", () => {
@@ -176,8 +202,11 @@ describe("구조 대조: page.tsx가 독립 타이머로 되돌아갔는지", ()
 
   it("saveDraftWithNotice·recompositeCards도 emptyBubbleSlideNumber 검사를 거친다(F5)", () => {
     const saveDraftWithNotice = pageSrc.slice(pageSrc.indexOf("async function saveDraftWithNotice()"), pageSrc.indexOf("async function saveDraftWithNotice()") + 900);
-    const recomposite = pageSrc.slice(pageSrc.indexOf("async function recompositeCards("), pageSrc.indexOf("async function recompositeCards(") + 900);
+    const recomposite = pageSrc.slice(pageSrc.indexOf("async function recompositeCards("), pageSrc.indexOf("async function recompositeCards(") + 1300);
     expect(saveDraftWithNotice).toContain("emptyBubbleSlideNumber(pruned)");
-    expect(recomposite).toContain("emptyBubbleSlideNumber(pruneEmptyBubbles(cardDeck))");
+    expect(recomposite).toContain("const pruned = pruneEmptyBubbles(cardDeck)");
+    expect(recomposite).toContain("emptyBubbleSlideNumber(pruned)");
+    // D(4차): 검사만 하고 렌더는 원본을 쓰면 안 된다 — 렌더 호출도 pruned를 써야 한다.
+    expect(recomposite).toContain("deck: pruned");
   });
 });

@@ -37,6 +37,9 @@ const COVER_IMAGE_LOAD_TIMEOUT_MS = 8000;
 /** 사진 위 글자 가독성용 하단 스크림 구간·농도(F3 MINOR: 리터럴 대신 이름 붙은 상수로). */
 const PHOTO_SCRIM_START_RATIO = 0.35;
 const PHOTO_SCRIM_MAX_OPACITY = 0.6;
+/** 사진 배경 위 글자색(MINOR, 2026-09-22 코드리뷰 4차: 리터럴 대신 이름 붙은 상수로). */
+const PHOTO_TEXT_PRIMARY = "#FFFFFF";
+const PHOTO_TEXT_SECONDARY = "rgba(255,255,255,0.85)";
 
 export type ChatBubbleRenderInput = {
   deck: CardDeck;
@@ -71,7 +74,14 @@ function loadCoverImage(url: string): Promise<HTMLImageElement> {
   }
   return new Promise((resolve, reject) => {
     const img = new Image();
-    const timer = setTimeout(() => reject(new ChatBubbleRenderError("사진을 불러오는 데 시간이 너무 걸렸습니다.")), COVER_IMAGE_LOAD_TIMEOUT_MS);
+    // H(2026-09-22 코드리뷰 4차): 타임아웃으로 reject한 뒤에도 img.src는 그대로라 로딩이
+    // 백그라운드에서 계속 돈다. src=""로 실제로 중단한다.
+    const timer = setTimeout(() => {
+      img.onload = null;
+      img.onerror = null;
+      img.src = "";
+      reject(new ChatBubbleRenderError("사진을 불러오는 데 시간이 너무 걸렸습니다."));
+    }, COVER_IMAGE_LOAD_TIMEOUT_MS);
     img.onload = () => { clearTimeout(timer); resolve(img); };
     img.onerror = () => { clearTimeout(timer); reject(new ChatBubbleRenderError("사진을 불러오지 못했습니다.")); };
     img.src = url;
@@ -158,7 +168,7 @@ function drawCover(
 
   // 사진 배경 위에서는 테마 전경색 대신 흰 글자로 고정한다(drawBackgroundPhoto의 하단
   // 그라데이션과 짝 — 벤치마크 REF "흰 볼드 2줄").
-  ctx.fillStyle = hasPhoto ? "#FFFFFF" : deck.theme.foreground;
+  ctx.fillStyle = hasPhoto ? PHOTO_TEXT_PRIMARY : deck.theme.foreground;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
 
@@ -181,7 +191,7 @@ function drawCover(
     // F2(2026-09-22 코드리뷰 3차): 헤드라인만 흰 글자로 고정하고 보조 문구는 테마
     // accent 그대로였다 — 사진 위에서 accent 색이 안 읽힐 수 있다. 보조 문구도 같이
     // 고정한다(흰 배경 위 accent와 구분되게 살짝 옅게).
-    ctx.fillStyle = hasPhoto ? "rgba(255,255,255,0.85)" : deck.theme.accent;
+    ctx.fillStyle = hasPhoto ? PHOTO_TEXT_SECONDARY : deck.theme.accent;
     ctx.fillText(sub, margin, y + headlineSize * 0.2);
   }
 
@@ -202,7 +212,7 @@ function drawBrandFooterLabel(
   hasPhoto = false,
 ): void {
   ctx.font = `600 ${Math.round(width * COVER_BRAND_RATIO)}px ${FONT_FAMILY}`;
-  ctx.fillStyle = hasPhoto ? "rgba(255,255,255,0.85)" : deck.theme.accent;
+  ctx.fillStyle = hasPhoto ? PHOTO_TEXT_SECONDARY : deck.theme.accent;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   const brandLabel = deck.brand.handle ? `${deck.brand.display_name} ${deck.brand.handle}` : deck.brand.display_name;
@@ -232,7 +242,7 @@ function drawChatSlide(
   // 푸터)는 흰 글자로 고정한다 — 말풍선 자체는 불투명 배경이라 영향받지 않는다.
   const headerHeight = width * CHAT_HEADER_RATIO;
   ctx.font = `700 ${Math.round(width * BRAND_LABEL_RATIO)}px ${FONT_FAMILY}`;
-  ctx.fillStyle = hasPhoto ? "#FFFFFF" : deck.theme.foreground;
+  ctx.fillStyle = hasPhoto ? PHOTO_TEXT_PRIMARY : deck.theme.foreground;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillText(deck.brand.display_name, margin, headerHeight / 2);
@@ -471,12 +481,12 @@ function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w:
 function drawCtaFooter(ctx: CanvasRenderingContext2D, deck: CardDeck, width: number, height: number, margin: number, hasPhoto = false): void {
   const y = height - height * 0.14;
   ctx.font = `700 ${Math.round(width * BODY_RATIO)}px ${FONT_FAMILY}`;
-  ctx.fillStyle = hasPhoto ? "rgba(255,255,255,0.85)" : deck.theme.accent;
+  ctx.fillStyle = hasPhoto ? PHOTO_TEXT_SECONDARY : deck.theme.accent;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.fillText(`댓글 예시: ${deck.cta.comment_example}`, margin, y);
   ctx.font = `500 ${Math.round(width * TIMESTAMP_RATIO)}px ${FONT_FAMILY}`;
-  ctx.fillStyle = hasPhoto ? "#FFFFFF" : deck.theme.foreground;
+  ctx.fillStyle = hasPhoto ? PHOTO_TEXT_PRIMARY : deck.theme.foreground;
   ctx.fillText(deck.cta.save_reason, margin, y + width * BODY_RATIO * 1.5);
 }
 
