@@ -9,10 +9,13 @@ import { PlatformPreview, type PreviewPlatform } from "@/components/studio/Platf
  *
  * 2026-09-22 교차 코드리뷰(PR #77) 3라운드: 2라운드 하네스는 media={{}} 로 미디어를
  * 빼고 headerRight 를 아예 안 넘겨서, 진짜 기계적 원인(headerRight 가 채널마다
- * 44/72/124px 로 줄바꿈되는 것)을 측정에서 빼놓고 쟀다. 이번엔 page.tsx 의 headerRight
- * JSX(발행 체크박스 · 대문 시점/자동 · 계정 연결/관리)를 채널별 상태까지 갖춰 재현한다:
- * facebook 은 계정 미연결(연결 링크만), threads/x/instagram/shorts 는 연결+계정 선택
- * 가능, reels/tiktok 은 대문 시점 입력까지 붙어 실제 124px 케이스를 재현한다.
+ * 44/72/124px 로 줄바꿈되는 것)을 측정에서 빼놓고 쟀다. 3라운드에서 headerRight 는
+ * 채워 넣었지만 media={{}} 는 그대로였다.
+ *
+ * 4라운드: media 도 실제로 넣는다(모든 텍스트/카드뉴스 채널에 이미지, 영상 채널에
+ * 영상+커버 이미지). headerRight 도 page.tsx:2354 와 같은 wrapping div 구조로
+ * 감싼다(원본은 Fragment 가 아니라 `<div className="flex flex-wrap ...">` 하나가
+ * 자식을 감싸 넘긴다 — 구조가 다르면 실제 레이아웃과 다른 걸 재는 셈이다).
  */
 const GROUPS: { title: string; platforms: PreviewPlatform[] }[] = [
   { title: "텍스트", platforms: ["threads", "x", "facebook"] },
@@ -58,13 +61,18 @@ function editorFor(platform: PreviewPlatform) {
   };
 }
 
-/** page.tsx 의 headerRight JSX를 채널 상태까지 갖춰 재현한다(주석은 그쪽 원본 참고). */
+/**
+ * page.tsx 의 headerRight JSX 를 채널 상태까지 갖춰 재현한다(주석은 그쪽 원본 참고).
+ * page.tsx:2354 는 이 내용을 Fragment 가 아니라 `<div className="flex flex-wrap
+ * items-center justify-end gap-stack-tight">` 하나로 감싸 PlatformPreview 에 넘긴다.
+ * 구조가 다르면 다른 것을 재는 셈이라 그대로 맞춘다(2026-09-22 4라운드).
+ */
 function HeaderRightFor({ platform }: { platform: PreviewPlatform }) {
   const connected = CONNECTED[platform] !== false;
   const hasCoverTimestamp = HAS_COVER_TIMESTAMP[platform] === true;
   const isVideo = platform === "shorts" || platform === "reels" || platform === "tiktok";
   return (
-    <>
+    <div className="flex flex-wrap items-center justify-end gap-stack-tight">
       <label className="ds-touch-target flex min-h-control-touch items-center gap-micro px-stack-tight text-caption text-muted">
         <input aria-label={`${LABEL[platform]} 발행`} type="checkbox" className="h-5 w-5 shrink-0" readOnly checked={false} />
         발행
@@ -97,9 +105,17 @@ function HeaderRightFor({ platform }: { platform: PreviewPlatform }) {
           </span>
         </>
       )}
-    </>
+    </div>
   );
 }
+
+// 2026-09-22 4라운드: media={{}} 로 이미지를 빼고 쟀다는 지적을 반영해 실제 이미지를
+// 넘긴다. 레포에 안전하게 참조 가능한 정적 자산(public/logo.svg)을 쓴다 — 네트워크
+// 의존 없이 재현 가능해야 한다는 J6 요구와 같은 이유다. 영상(vidUrl)은 이 레포에 커밋된
+// 샘플 영상 자산이 없어 이번 라운드에서 채우지 못했다(정직하게 밝힌다). headerRight
+// 측정(이번 라운드의 핵심)에는 영상 여부가 영향을 주지 않는다 — 헤더 영역은 media 와
+// 무관하게 그려진다.
+const PLACEHOLDER_IMAGE = "/logo.svg";
 
 export function AlignmentHarnessGrid() {
   return (
@@ -116,7 +132,7 @@ export function AlignmentHarnessGrid() {
                 <PlatformPreview
                   platform={platform}
                   text={{ threads: TEXT.threads, facebook: TEXT.facebook, x: TEXT.x, instagram: { caption: "카드뉴스 캡션 예시", hashtags: ["카드뉴스", "예시"] } }}
-                  media={{}}
+                  media={{ imgUrl: PLACEHOLDER_IMAGE }}
                   editor={editorFor(platform)}
                   headerRight={<HeaderRightFor platform={platform} />}
                 />

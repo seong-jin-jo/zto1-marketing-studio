@@ -149,16 +149,15 @@ describe("맨 button 래칫", () => {
   // 2026-09-14 실측 기준선. 공용 `Button` 을 안 쓰는 맨 `<button>` 의 전체 수다. 이 수는
   // 줄기만 해야 한다. 늘리려는 변경은 공용 `Button` 을 쓸 수 없는 이유를 먼저 대야 한다.
   //
-  // 2026-09-22 +1(239): PublishEditSidebar.tsx 의 EditTrigger 하나. 미리보기 안 편집
-  // 가능 요소(본문·제목·해시태그 등)를 왼쪽 정렬 텍스트로 감싸는 클릭 트리거라 공용
-  // `Button`(내용 중앙 정렬 전제)을 그대로 못 쓴다. 사이드바 자체의 닫기·취소·저장 3개는
-  // 공용 `Button` 으로 옮겨 순증을 최소화했다(원래 늘 것은 +4).
+  // 2026-09-22 교차 코드리뷰 MINOR 대응 +1(239): PlatformPreview.tsx MediaCarousel 의
+  // 점 인디케이터를 비의미 <span> 에서 role="group" 안 <button> 으로 바꿨다(키보드로
+  // 카드를 직접 고를 수 있게, 접근성 개선). 소스에는 map 안 button 하나뿐이라(런타임에
+  // 카드 수만큼 찍혀도 소스 리터럴은 하나) 순증은 +1.
   //
-  // 2026-09-22 교차 코드리뷰 MINOR 대응 +1(240): PlatformPreview.tsx MediaCarousel 의
-  // 점 인디케이터를 비의미 <span> 에서 role="tab" <button> 으로 바꿨다(키보드로 카드를
-  // 직접 고를 수 있게, 접근성 개선). 소스에는 map 안 button 하나뿐이라(런타임에 카드
-  // 수만큼 찍혀도 소스 리터럴은 하나) 순증은 +1.
-  const BASELINE = 240;
+  // 2026-09-22 4라운드: PublishEditSidebar(오른쪽 사이드바 채팅형 편집)를 이 브랜치에서
+  // 뺐다(세 라운드 연속 싱글턴이 깨져 별도 브랜치로 이관). EditTrigger·사이드바 자체
+  // 버튼(닫기·취소·저장)이 전부 사라져 기준선이 240 에서 239 로 내려간다.
+  const BASELINE = 239;
 
   it("QA-APP-TOUCH-08 경계: 맨 button 총수가 기준선을 넘지 않는다", () => {
     const count = tsxFiles(resolve(root, "src"))

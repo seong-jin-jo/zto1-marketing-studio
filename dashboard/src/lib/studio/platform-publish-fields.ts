@@ -1,5 +1,10 @@
 import twitterText from "twitter-text";
 
+// 2026-09-22 교차 코드리뷰 J3: shorts 제목 상한을 여기 하나로 못박아 내보낸다. 예전에
+// PlatformPreview.tsx 가 사이드바 카운터 표시용으로 같은 숫자를 리터럴 100 으로 또
+// 적었다(사이드바는 이번 라운드에서 뺐지만, 상한이 두 군데 적히면 언젠가 또 어긋난다).
+export const SHORTS_TITLE_LIMIT = 100;
+
 export type PublishPlatform = "threads" | "x" | "facebook" | "instagram" | "shorts" | "reels" | "tiktok";
 
 export type PlatformPublishInput = {
@@ -136,7 +141,7 @@ export function validatePlatformPublish(
       result.blocking.push({ field: "hashtags", message: `해시태그는 30개까지 입력할 수 있습니다. 현재 ${hashtagCount}개입니다.` });
     }
   } else if (platform === "shorts") {
-    pushHardLimit(result, "title", codePointLength(input.title ?? ""), 100, "자", "제목");
+    pushHardLimit(result, "title", codePointLength(input.title ?? ""), SHORTS_TITLE_LIMIT, "자", "제목");
     pushHardLimit(result, "body", utf8ByteLength(combined), 5_000, "바이트", "설명과 해시태그");
     if (hashtagCount > 60) {
       result.warnings.push({ field: "hashtags", message: "해시태그가 60개를 넘으면 모든 해시태그가 무시될 수 있습니다." });

@@ -9,7 +9,6 @@ import { ImagePickerModal } from "@/components/queue/ImagePickerModal";
 import { ConsentBanner, PrivacySettingsLink } from "@/components/shared/ConsentBanner";
 import { RouteTracker } from "@/components/shared/RouteTracker";
 import { ServiceWorkerRegister } from "@/components/layout/ServiceWorkerRegister";
-import { PublishEditSidebarMount } from "@/components/studio/PublishEditSidebar";
 
 export const metadata: Metadata = {
   title: "Marketing Hub",
@@ -58,12 +57,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <LoginModal />
           <ConfirmHost />
           <ImagePickerModal />
-          {/*
-            2026-09-22 교차 코드리뷰(PR #77) N3: 발행실 카드(Frame)마다 한 번씩 마운트되던
-            것을 여기 한 번으로 옮겼다. LoginModal·ConfirmHost·ImagePickerModal 과 같은
-            "화면에 하나만 있으면 되는 전역 오버레이" 자리다. 이제 소유권 경쟁 자체가 없다.
-          */}
-          <PublishEditSidebarMount />
           {/* GA4 consent-gated 트래킹(dashboard/src/lib/analytics/) — 동의 전엔 완전 no-op */}
           <RouteTracker />
           <ConsentBanner />

@@ -191,6 +191,21 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
   }
 
   if (type === "video") {
+    /*
+      2026-09-22 교차 코드리뷰 J5(4라운드) 재수정. 3라운드에서 relative wrapper 로
+      감싸 봤는데, 호출자가 넘긴 className 을 wrapper 에도 그대로 씌우자 EditPreview.tsx
+      가 쓰는 "absolute inset-0" 같은 위치 클래스가 이 wrapper div 에 복제돼
+      tests/studio/edit-preview-media.contract.test.tsx 의 "자리표시 레이어 없음" 계약을
+      깼다(그 테스트는 video 형제로 남는 `div.absolute.inset-0` 이 없어야 한다고
+      본다 — wrapper 자신이 그 모양이 돼버렸다). 배지 위치 기준을 호출자에게 의존하는
+      기존 동작으로 되돌린다(PlatformPreview 의 실제 사용처는 이미 relative 컨테이너
+      안이라 실사용에는 문제가 없었다 — 새 wrapper 는 실익보다 회귀 위험이 컸다).
+
+      문구는 되돌린다: "썸네일 없음"(poster 자체가 애초에 없음, 조치 불필요)과
+      "대문 이미지를 다시 불러오지 못했습니다"(있었는데 만료·재발급 실패, 다시
+      시도하면 될 수도 있음)는 서로 다른 사유다. 3라운드에서 둘 다 "썸네일 없음"
+      으로 합쳐 ADR-007 §5(사유를 구체적으로 말한다)를 어겼다.
+    */
     return (
       <>
         <video
@@ -204,22 +219,13 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
           poster={posterUrl || undefined}
           onError={handleError}
         />
-        {/*
-          poster 가 주어졌지만 만료됐고 되살리기도 실패했다. 조용히 검정 화면으로 두지
-          않는다(ADR-007). 재생 자체는 src 가 살아 있으면 그대로 된다.
-
-          2026-09-22 교차 코드리뷰 J5: sr-only 로만 알리면 화면을 보는 사람에게는
-          여전히 검정 상자였다. PlatformPreview 의 "썸네일 없음" 배지(poster 를 아예
-          안 넘긴 경우)와 같은 자리·같은 모양으로 눈에 보이게 띄운다. vid 는 있는데
-          poster 만 죽은 경우는 그 배지 조건(vid && !img)의 사각지대였다.
-        */}
         {poster && posterDead && !posterUrl ? (
           <span
             data-testid={testId ? `${testId}-poster-expired` : undefined}
             role="status"
             className="absolute top-3 left-3 rounded-pill bg-player-surface/70 px-stack-tight py-micro text-caption text-text"
           >
-            썸네일 없음
+            대문 이미지를 다시 불러오지 못했습니다
           </span>
         ) : null}
       </>
