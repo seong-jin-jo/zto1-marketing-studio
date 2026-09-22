@@ -2434,8 +2434,18 @@ export default function StudioPage() {
                                   // 2026-09-23 5라운드: 계정 이름이 길면 select 가 계속 자라
                                   // 1행처럼 슬롯을 고정해도 다시 줄바꿈을 만들었다(9444 실측
                                   // "기본 {계정명}" 이 128px 까지 자람). 폭을 고정하고 넘치는
-                                  // 이름은 잘라 보여준다 — 전체 이름은 title 속성으로 접근.
-                                  title={(accountsByPlatform[platform] || []).find((account) => account.is_default)?.label || undefined}
+                                  // 이름은 잘라 보여준다. 전체 이름은 title 속성으로 접근.
+                                  //
+                                  // 2026-09-23 교차 코드리뷰 재반려: title 이 항상 기본 계정
+                                  // 이름을 가리켰다(신규 버그). 사용자가 기본이 아닌 계정을
+                                  // 고르면 잘린 글자 위 툴팁이 다른 계정 이름을 말했다.
+                                  // selectedAccounts 로 실제 선택된 계정을 찾아 그 이름을
+                                  // 쓴다(빈 값이면 기본 계정으로 자연히 떨어진다).
+                                  title={(
+                                    (accountsByPlatform[platform] || []).find(
+                                      (account) => account.id === (selectedAccounts[platform] || ""),
+                                    ) || (accountsByPlatform[platform] || []).find((account) => account.is_default)
+                                  )?.label || undefined}
                                   className="min-h-control-touch w-28 truncate rounded-control border border-border bg-surface-2 px-stack-tight text-caption text-text"
                                 >
                                   {/* 어느 계정으로 올라가는지 이름으로 말한다. "기본계정"만 적으면 그게 누구인지 화면이 답을 못 한다. */}

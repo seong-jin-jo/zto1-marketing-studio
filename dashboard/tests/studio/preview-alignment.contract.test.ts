@@ -85,12 +85,20 @@ describe("미리보기 카드가 한 줄에서 시작한다(회귀 가드. 실�
     expect(preview).toMatch(/contract\.title && !isVideoPlatform \? \(/);
   });
 
-  it("영상 오버레이 고지 배지가 title/hashtags 오버레이와 같은 자리를 쓰지 않는다(5라운드: DOM 순서상 오버레이가 고지를 덮었다)", () => {
+  it("영상 고지 배지는 상단 오버레이가 쓰는 자리를 정말로 피한다. 같은 top-* 자리로 옮기는 재발을 막는다(5라운드 재반려)", () => {
+    // 2026-09-23 1차 수정("top-3 right-3 로 옮긴다")은 이 문자열 존재만 확인했는데,
+    // vid 일 때 오버레이 컨테이너 자체가 absolute left-3 right-3 top-3(전체 폭)라
+    // 오른쪽으로 옮겨도 여전히 같은 사각형 안이었다. jsdom 은 실제 레이아웃 엔진이
+    // 없어 진짜 교집합은 이 파일로 증명 못 한다(파일 머리 주석 참고) — 대신 두
+    // 요소가 서로 다른 축(오버레이=top, 배지=bottom)에 고정돼 있음을 확인해, 같은
+    // top-* 계열 자리로 되돌아가는 재발만은 막는다. 실제 시각 겹침은 폭 1792
+    // 스크린샷으로 사람이 확인해야 한다(이 테스트의 한계로 남긴다).
     const preview = src("components/studio/PlatformPreview.tsx");
     const delivered = src("components/studio/DeliveredMedia.tsx");
-    // 오버레이는 top-3 left-3(vid 있을 때 left-3 right-3), 고지 배지는 반대쪽 top-3 right-3.
-    expect(preview).toMatch(/preview-poster-missing-\$\{k\}[\s\S]{0,80}top-3 right-3/);
-    expect(delivered).toMatch(/poster-expired[\s\S]{0,120}top-3 right-3/);
+    expect(preview, "poster-missing 배지가 다시 top-* 자리를 쓴다")
+      .toMatch(/preview-poster-missing-\$\{k\}[\s\S]{0,80}bottom-16 right-3/);
+    expect(delivered, "poster-expired 배지가 다시 top-* 자리를 쓴다")
+      .toMatch(/poster-expired[\s\S]{0,120}bottom-16 right-3/);
   });
 
   it("발행실 카드에는 오른쪽 사이드바 채팅형 편집이 없다(4라운드: 세 번 깨진 싱글턴을 별도 브랜치로 이관)", () => {

@@ -637,12 +637,14 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
           : img ? <DeliveredMedia type="image" src={img} tenantId={tenantId} testId={`preview-media-${k}`} className="w-full h-full object-cover" />
           : <div className="w-full h-full grid place-items-center text-subtle text-caption" data-testid={`preview-media-${k}-empty`}>영상 생성 대기 · 썸네일 없음</div>}
         {/*
-          2026-09-23 교차 코드리뷰 5라운드: 이 배지가 title/hashtags 오버레이(아래,
-          vid 있을 때 absolute left-3 right-3 top-3)와 같은 top-3 left-3 자리를 써서
-          DOM 순서상 나중에 오는 오버레이가 이 고지를 덮었다. 반대쪽(top-3 right-3)
-          으로 옮겨 겹치지 않게 한다.
+          2026-09-23 교차 코드리뷰 5라운드(재반려): top-3 right-3 로 옮겼던 1차 수정은
+          틀렸다. vid 일 때 title/hashtags 오버레이 컨테이너 자체가 absolute left-3
+          right-3 top-3 로 전체 폭을 덮으므로, 오른쪽으로 옮겨도 여전히 같은 사각형
+          안이었다(그 순간 안 겹쳐 보인 건 오버레이가 배경 없는 좌측 정렬 텍스트라서일
+          뿐, 핸들·제목이 길어지면 다시 덮는다). 오버레이가 아예 안 쓰는 위치(하단,
+          네이티브 컨트롤 바 위 여유 공간)로 옮겨 두 사각형이 실제로 겹치지 않게 한다.
         */}
-        {vid && !img ? <span data-testid={`preview-poster-missing-${k}`} className="absolute top-3 right-3 rounded-pill bg-player-surface/70 px-stack-tight py-micro text-caption text-text">썸네일 없음</span> : null}
+        {vid && !img ? <span data-testid={`preview-poster-missing-${k}`} className="absolute bottom-16 right-3 rounded-pill bg-player-surface/70 px-stack-tight py-micro text-caption text-text">썸네일 없음</span> : null}
         {/*
           2026-09-22 교차 코드리뷰 C2(회귀): 이 블록이 `{!vid && ...}` 안에만 있어서,
           영상이 실제로 있으면(vid 존재) 제목·해시태그를 여는 입구가 통째로 사라졌다.

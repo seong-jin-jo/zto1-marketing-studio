@@ -220,16 +220,18 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
           onError={handleError}
         />
         {/*
-          2026-09-23 교차 코드리뷰 5라운드: PlatformPreview 의 영상 분기가 vid 있을 때
-          title/hashtags 오버레이를 absolute left-3 right-3 top-3 로 올린다. 이 배지도
-          top-3 left-3 였던 탓에 DOM 순서상 나중인 오버레이가 이 고지를 덮었다. 반대쪽
-          (top-3 right-3)으로 옮겨 겹치지 않게 한다.
+          2026-09-23 교차 코드리뷰 5라운드(재반려): PlatformPreview 의 영상 분기는
+          vid 있을 때 title/hashtags 오버레이를 absolute left-3 right-3 top-3 로
+          전체 폭에 올린다. 이 배지를 top-3 right-3 로 옮긴 1차 수정은 여전히 그
+          오버레이 사각형 안이었다(겹쳐 보이지 않은 건 오버레이가 배경 없는 좌측
+          정렬 텍스트였을 뿐). 오버레이가 아예 쓰지 않는 하단(네이티브 컨트롤 바
+          위 여유 공간)으로 옮긴다.
         */}
         {poster && posterDead && !posterUrl ? (
           <span
             data-testid={testId ? `${testId}-poster-expired` : undefined}
             role="status"
-            className="absolute top-3 right-3 rounded-pill bg-player-surface/70 px-stack-tight py-micro text-caption text-text"
+            className="absolute bottom-16 right-3 rounded-pill bg-player-surface/70 px-stack-tight py-micro text-caption text-text"
           >
             대문 이미지를 다시 불러오지 못했습니다
           </span>
