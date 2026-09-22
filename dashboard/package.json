@@ -18,6 +18,7 @@
     "e2e:r02": "node scripts/verify-r02-e2e.mjs",
     "e2e:four-room": "node scripts/verify-four-room-ui-e2e.mjs",
     "qa:publish-room-alignment": "node scripts/measure-publish-room-alignment.mjs",
+    "qa:publish-room-alignment:ci": "bash scripts/ci-publish-room-alignment.sh",
     "ops:recover-operator-token": "bash scripts/recover-operator-token.sh"
   },
   "dependencies": {

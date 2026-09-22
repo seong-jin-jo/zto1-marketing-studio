@@ -108,7 +108,10 @@ describe("편집실 밖 조작 영역 하한 계약", () => {
   it("QA-APP-TOUCH-05 경계: 발행실 체크는 표식 20px · 조작면 44px 로 분리한다", () => {
     // DESIGN.md 발행실 절의 문장 그대로다. 체크 입력 자체를 44px 로 키우면 표식이 커져
     // 계약을 반대로 어긴다. 표식은 20px(h-5 w-5)로 두고 감싼 label 이 조작면이 된다.
-    const studio = read("src/app/studio/page.tsx");
+    // 2026-09-23: 이 마크업은 발행실 화면과 QA 정렬 하네스가 손으로 두 벌 유지하다
+    // 드리프트를 냈다(실수 원장 count:9). 공용 PublishHeaderControls 하나로 합쳤으므로
+    // 계약도 그 파일을 본다.
+    const studio = read("src/components/studio/PublishHeaderControls.tsx");
     const labels = studio.match(/<label className="ds-touch-target flex min-h-control-touch[^"]*"[\s\S]{0,400}?type="checkbox"[^>]*>/g) ?? [];
     expect(labels.length, "발행 · 미지원 두 자리 모두 조작면이 있어야 한다").toBe(2);
     for (const label of labels) expect(label).toMatch(/className="h-5 w-5 shrink-0"/);

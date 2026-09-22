@@ -43,9 +43,13 @@ describe("영상 대문 시점", () => {
 
   it("화면이 그 값을 고르게 하고 발행에 실어 보낸다", () => {
     const page = src("app/studio/page.tsx");
-    expect(page).toContain("data-cover-seconds={platform}");
+    // 대문 시점 컨트롤은 공용 PublishHeaderControls 가 그린다(2026-09-23 복제본 제거).
+    // 화면은 그 값을 상태로 들고 발행 요청에 실어 보내는 쪽을 책임진다.
+    const header = src("components/studio/PublishHeaderControls.tsx");
+    expect(header).toContain("data-cover-seconds={platform}");
     expect(page).toMatch(/cover_seconds: supportsCoverTimestamp\(p\)/);
+    expect(page).toContain("coverSeconds[platform] ?? DEFAULT_COVER_SECONDS");
     // 못 하는 채널에는 칸을 주지 않되 이유는 보인다.
-    expect(page).toContain("data-cover-note={platform}");
+    expect(header).toContain("data-cover-note={platform}");
   });
 });

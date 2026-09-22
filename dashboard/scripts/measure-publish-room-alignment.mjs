@@ -33,9 +33,14 @@ async function main() {
   try {
     browser = await chromium.launch({ headless: true });
   } catch (error) {
+    // 2026-09-23 count:9: "브라우저가 없어서 건너뛰었다"로 통과시키면 이 게이트는
+    // 있으나 마나다. 조용한 skip 경로를 두지 않는다 — 항상 실패로 끝낸다.
     console.error(
-      "\n브라우저를 못 띄웠습니다. `npx playwright install chromium` 을 먼저 실행하세요.\n" +
-        `원본 에러: ${error.message}\n`,
+      "\n==================== 정렬 측정 실패(건너뛰기 아님) ====================\n" +
+        "브라우저를 못 띄웠습니다. `npx playwright install chromium` 을 먼저 실행하세요.\n" +
+        "CI 에서는 scripts/ci-publish-room-alignment.sh 가 chromium 을 직접 확보합니다.\n" +
+        `원본 에러: ${error.message}\n` +
+        "=====================================================================\n",
     );
     process.exitCode = 1;
     return;
