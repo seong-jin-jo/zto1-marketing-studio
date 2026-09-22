@@ -80,7 +80,12 @@ describe("publish_success fires only after confirmed API success, not on click a
       "await runWithConcurrency(targets, PUBLISH_CONCURRENCY",
       preflightGuard,
     );
-    const persistPartial = block.indexOf('save("partial", pendingReconciliations, did)');
+    // 2026-09-22 코드리뷰 5차 항목1: save()의 cardDeck/videoEdit 기본값을 없애 필수
+    // 인자로 만들면서 이 호출부도 그 두 자리를 명시(null,null — 발행 원장 기록은 카드덱·
+    // 영상 도메인과 무관하므로 건드리지 않는다)하게 됐다. 문구 모양이 바뀌었을 뿐 이
+    // 테스트가 실제로 지키는 계약(파셜 저장이 partialGuard 뒤에 오고, 그 사이에
+    // publish_success가 없다)은 그대로다 — 새 리터럴로 갱신한다.
+    const persistPartial = block.indexOf('save("partial", pendingReconciliations, did, undefined, undefined, undefined, null, null)');
 
     expect(preflightGuard).toBeGreaterThan(-1);
     expect(preflightGuard).toBeLessThan(apiCall);
