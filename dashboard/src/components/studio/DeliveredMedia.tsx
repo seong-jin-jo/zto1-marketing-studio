@@ -93,6 +93,15 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
   const [phase, setPhase] = useState<"ready" | "renewing" | "failed">(() =>
     isDeliveryUrlExpired(src) ? "renewing" : "ready",
   );
+  /*
+    2026-09-22 교차 코드리뷰 M5: poster 는 src 와 똑같은 서명 주소인데 만료 판정도
+    재서명도 없이 문자열 그대로 <video poster> 에 꽂았다. 어제 만든 초안을 오늘 열면
+    src 는 스스로 되살아나는데 poster 만 죽은 채 남아 "썸네일 없음" 조차 못 뜨는
+    조용한 실패였다(ADR-007). src 와 같은 되살리기 경로를 poster 에도 그대로 적용한다.
+  */
+  const [posterUrl, setPosterUrl] = useState(() => (poster && !isDeliveryUrlExpired(poster) ? poster : ""));
+  const [posterDead, setPosterDead] = useState(() => Boolean(poster) && isDeliveryUrlExpired(poster || ""));
+  const posterRetried = useRef<string>("");
   // 주소 하나당 되살리기는 한 번만. 진짜로 사라진 파일에 무한히 요청하지 않는다.
   // 작업 공간까지 키에 넣는다. 작업 공간은 화면이 뜬 뒤에 따라 들어오므로, 그 전에 보낸
   // 한 번을 "이미 해 봤다" 로 세면 제대로 된 요청을 영영 못 보낸다(2026-09-13).
@@ -125,6 +134,22 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
     });
     return () => { canceled = true; };
   }, [src, tenantId, attemptKey]);
+
+  useEffect(() => {
+    if (!poster) { setPosterUrl(""); setPosterDead(false); return; }
+    if (!isDeliveryUrlExpired(poster)) { setPosterUrl(poster); setPosterDead(false); return; }
+    const posterKey = `${tenantId || ""}|${poster}`;
+    if (posterRetried.current === posterKey) return;
+    posterRetried.current = posterKey;
+    let canceled = false;
+    setPosterUrl("");
+    void resignDeliveryUrl(poster, tenantId).then((next) => {
+      if (canceled) return;
+      if (next) { setPosterUrl(next); setPosterDead(false); }
+      else setPosterDead(true);
+    });
+    return () => { canceled = true; };
+  }, [poster, tenantId]);
 
   async function handleError() {
     if (retried.current === attemptKey) { setPhase("failed"); return; }
@@ -167,17 +192,26 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
 
   if (type === "video") {
     return (
-      <video
-        {...dataAttr}
-        data-testid={testId}
-        src={url}
-        className={className}
-        controls
-        playsInline
-        preload={preload}
-        poster={poster}
-        onError={handleError}
-      />
+      <>
+        <video
+          {...dataAttr}
+          data-testid={testId}
+          src={url}
+          className={className}
+          controls
+          playsInline
+          preload={preload}
+          poster={posterUrl || undefined}
+          onError={handleError}
+        />
+        {/* poster 가 주어졌지만 만료됐고 되살리기도 실패했다. 조용히 검정 화면으로
+            두지 않고 말한다(ADR-007). 재생 자체는 src 가 살아 있으면 그대로 된다. */}
+        {poster && posterDead && !posterUrl ? (
+          <span data-testid={testId ? `${testId}-poster-expired` : undefined} className="sr-only" role="status">
+            대문 이미지를 다시 불러오지 못했습니다
+          </span>
+        ) : null}
+      </>
     );
   }
   return (

@@ -28,7 +28,6 @@ export type PlatformFieldContract = {
   hashtags: boolean;
   topicTag: boolean;
   firstComment: boolean;
-  unknownLimitLabel?: string;
 };
 
 export const PLATFORM_FIELD_CONTRACT: Record<PublishPlatform, PlatformFieldContract> = {
@@ -58,15 +57,17 @@ function textAndHashtags(input: PlatformPublishInput): string {
   return [input.body?.trim(), input.hashtags?.trim()].filter(Boolean).join("\n\n");
 }
 
-function codePointLength(value: string): number {
+// PublishEditSidebar 도 같은 잣대로 실시간 글자수를 재야 해서 내보낸다(2026-09-22
+// 교차 코드리뷰 M2. 세는 방식이 둘로 갈리면 사이드바 표시와 실제 차단 판정이 어긋난다).
+export function codePointLength(value: string): number {
   return [...(value ?? "")].length;
 }
 
-function utf8ByteLength(value: string): number {
+export function utf8ByteLength(value: string): number {
   return new TextEncoder().encode(value ?? "").length;
 }
 
-function utf16UnitLength(value: string): number {
+export function utf16UnitLength(value: string): number {
   return (value ?? "").length;
 }
 
@@ -111,9 +112,16 @@ export function validatePlatformPublish(
       result.warnings.push({ field: "hashtags", message: "해시태그는 2개 이하 사용을 권장합니다." });
     }
   } else if (platform === "facebook") {
-    // Meta Graph API Page Feed(POST /{page-id}/feed) 의 message 필드 상한은 63,206자다.
-    // 출처: Meta for Developers, Graph API Reference - Page > Feed, "message" 필드 설명
-    // (https://developers.facebook.com/docs/graph-api/reference/page/feed/), 2026-09-22 확인.
+    // 2026-09-22 교차 코드리뷰 M4 정정: 처음엔 이 상한의 출처를 Meta Graph API Page Feed
+    // 레퍼런스 문서로 잘못 적었다. 그 문서는 message 필드의 숫자 상한을 명시하지 않는다
+    // (재확인, developers.facebook.com/docs/graph-api/reference/page/feed/). 63,206자는
+    // 2011년 Facebook 이 상태 업데이트 글자수 상한을 공개 발표한 수치이고(Adweek,
+    // "Facebook Increases Status Update Character Limit From 5K to 60K+",
+    // https://www.adweek.com/performance-marketing/tldr-facebook-increases-status-update-character-limit-from-5k-to-60k/),
+    // Page Feed 의 message 필드도 이 값을 그대로 따른다고 다수 3자 자료가 보고한다
+    // (TypeCount, "Facebook Post Character Limit 2026", https://typecount.com/blog/
+    // facebook-post-character-limit-2026). Graph API 공식 문서에 숫자로 박혀 있지 않다는
+    // 점은 화면에도 남긴다. 헤더에 상시 배지로 띄우지 않는 이유다(PlatformPreview.tsx).
     pushHardLimit(result, "body", codePointLength(combined), 63_206, "자", "게시물 본문과 해시태그");
   } else if (platform === "instagram" || platform === "reels") {
     pushHardLimit(result, "body", codePointLength(combined), 2_200, "자", "캡션과 해시태그");

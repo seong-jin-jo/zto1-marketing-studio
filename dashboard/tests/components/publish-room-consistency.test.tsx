@@ -56,16 +56,32 @@ describe("R-23-5 클릭하면 오른쪽 사이드바에서 고친다", () => {
     expect(screen.queryByTestId("publish-edit-sidebar")).not.toBeInTheDocument();
   });
 
-  it("키보드 Enter/Space 로도 트리거가 열린다(접근성)", () => {
+  it("키보드로 트리거를 활성화하면 사이드바가 열린다(접근성)", () => {
+    // 2026-09-22 교차 코드리뷰 M6: tagName === "BUTTON" 만 보는 건 "네이티브 button 이니
+    // 브라우저가 Enter/Space 를 클릭으로 바꿔줄 것이다" 라는 가정만 확인할 뿐, 실제로
+    // 열리는지는 안 본다. jsdom 은 그 브라우저 기본 동작(키보드→클릭 변환)을 구현하지
+    // 않으므로, 네이티브 button 이 보장하는 결과(키 입력이 클릭으로 이어진다)를 직접
+    // 재현해 "그 결과로 사이드바가 실제로 열리는지" 를 검증한다.
     render(<PlatformPreview platform="shorts" text={{}} media={{}} editor={editor()} />);
     const trigger = screen.getByTestId("preview-overlay-shorts-title");
     expect(trigger.tagName).toBe("BUTTON");
+    expect(trigger).toHaveAttribute("type", "button");
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter", code: "Enter" });
+    // 네이티브 button 이 브라우저에서 보장하는 Enter→click 변환을 재현한다. 여기서는
+    // fireEvent.click 을 쓴다 — 원소의 네이티브 .click() 은 testing-library 의 act()
+    // 래핑을 거치지 않아 React 18 자동 배치 아래에서 상태 갱신이 이 동기 단언 전에
+    // 반영되지 않을 수 있다(리뷰 대응 중 실제로 재현: .click() 만으로는 이 테스트
+    // 자체가 거짓 실패했다 — 앱 결함이 아니라 테스트 도구 사용 문제였다).
+    fireEvent.click(trigger);
+    expect(screen.getByTestId("publish-edit-sidebar")).toBeInTheDocument();
   });
 });
 
 describe("R-23-3 Facebook 상한이 규격 확인 필요로 방치되지 않는다", () => {
   it("Facebook 계약에 unknownLimitLabel 이 없다", () => {
-    expect(PLATFORM_FIELD_CONTRACT.facebook.unknownLimitLabel).toBeUndefined();
+    expect("unknownLimitLabel" in PLATFORM_FIELD_CONTRACT.facebook).toBe(false);
   });
 
   it("63,206자를 넘기면 차단한다", () => {

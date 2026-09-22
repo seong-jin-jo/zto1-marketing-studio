@@ -153,7 +153,12 @@ describe("맨 button 래칫", () => {
   // 가능 요소(본문·제목·해시태그 등)를 왼쪽 정렬 텍스트로 감싸는 클릭 트리거라 공용
   // `Button`(내용 중앙 정렬 전제)을 그대로 못 쓴다. 사이드바 자체의 닫기·취소·저장 3개는
   // 공용 `Button` 으로 옮겨 순증을 최소화했다(원래 늘 것은 +4).
-  const BASELINE = 239;
+  //
+  // 2026-09-22 교차 코드리뷰 MINOR 대응 +1(240): PlatformPreview.tsx MediaCarousel 의
+  // 점 인디케이터를 비의미 <span> 에서 role="tab" <button> 으로 바꿨다(키보드로 카드를
+  // 직접 고를 수 있게, 접근성 개선). 소스에는 map 안 button 하나뿐이라(런타임에 카드
+  // 수만큼 찍혀도 소스 리터럴은 하나) 순증은 +1.
+  const BASELINE = 240;
 
   it("QA-APP-TOUCH-08 경계: 맨 button 총수가 기준선을 넘지 않는다", () => {
     const count = tsxFiles(resolve(root, "src"))

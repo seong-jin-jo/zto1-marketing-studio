@@ -45,8 +45,13 @@ describe("발행실 메타정보", () => {
     const preview = src("components/studio/PlatformPreview.tsx");
     expect(preview).toContain('testId="preview-firstcomment-threads"');
     expect(preview).toContain("FIRST_COMMENT_IN_PREVIEW");
-    // 미리보기에서 고치는 형식은 아래 같은 칸을 또 두지 않는다.
-    expect(preview).toMatch(/!FIRST_COMMENT_IN_PREVIEW\.has\(platform\)/);
+    // 2026-09-22 교차 코드리뷰 C3 정리 중 발견한 결함 수정: 예전 식은 threads 처럼
+    // 미리보기 안에서 이미 첫 댓글을 고치는 채널까지 "미지원" 문구를 냈다. 지금은
+    // firstCommentInline 변수로 한 번 계산해 재사용하지만(그래서 리터럴 부정식이
+    // 아니라 변수로 표현된다), 미리보기에서 고치는 형식은 여전히 아래 같은 칸을
+    // 또 두지 않는다.
+    expect(preview).toContain("const firstCommentInline = FIRST_COMMENT_IN_PREVIEW.has(platform);");
+    expect(preview).toMatch(/contract\.firstComment && !firstCommentInline && editor\.firstCommentSupported/);
   });
 
   it("아래에 같은 해시태그 칸을 또 두지 않는다", () => {

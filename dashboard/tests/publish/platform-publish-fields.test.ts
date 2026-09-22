@@ -10,9 +10,10 @@ describe("PUB-FIELD-01 플랫폼별 실제 입력 필드", () => {
     expect(PLATFORM_FIELD_CONTRACT.threads).toMatchObject({ topicTag: true, hashtags: false, title: false });
     expect(PLATFORM_FIELD_CONTRACT.shorts).toMatchObject({ topicTag: false, hashtags: true, title: true });
     // 2026-09-22 R-23-3("x같은경우엔 글자수 제한이 다르다면 그거에 맞게 맞춰야하는거아니냐"):
-    // Meta Graph API Page Feed message 상한(63,206자, developers.facebook.com/docs/graph-api/
-    // reference/page/feed/)을 반영해 "규격 확인 필요" 방치를 없앴다.
-    expect(PLATFORM_FIELD_CONTRACT.facebook.unknownLimitLabel).toBeUndefined();
+    // Facebook 상태 업데이트 상한(63,206자, 2011 Adweek 발표 + 다수 3자 자료 corroborate,
+    // 상세 출처는 platform-publish-fields.ts 주석 참고 — Graph API 공식 문서엔 숫자로
+    // 없다는 점도 그 주석에 남겼다)을 반영해 "규격 확인 필요" 방치를 없앴다.
+    expect("unknownLimitLabel" in PLATFORM_FIELD_CONTRACT.facebook).toBe(false);
   });
 
   it("거절: Threads 주제 태그의 금지 문자와 길이를 차단한다", () => {
@@ -40,7 +41,7 @@ describe("PUB-LIMIT-01 플랫폼별 하드 한도", () => {
     expect(result.blocking.map((issue) => issue.field)).toEqual(["body", "hashtags"]);
   });
 
-  it("정상: Facebook은 Graph API 상한(63,206자) 안이면 통과하고 초과하면 차단한다", () => {
+  it("정상: Facebook은 상한(63,206자) 안이면 통과하고 초과하면 차단한다", () => {
     const under = validatePlatformPublish("facebook", { body: "가".repeat(60_000), hashtags: "#소식" });
     expect(under.blocking).toEqual([]);
     expect(under.counters.body).toMatchObject({ limit: 63_206, unit: "자" });
