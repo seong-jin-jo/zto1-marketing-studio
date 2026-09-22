@@ -1,3 +1,19 @@
+## 2026-09-22 23:55 PR #76 교차리뷰 5차 PASS(CRITICAL 0), 머지 전 조건 3건
+
+current_stage: build (R-23) · qa (네 방 기본 흐름)
+status: in-progress (승인 아님)
+
+5차(905447e0) 리뷰 판정 PASS. **리뷰어가 빌더 자기신고를 직접 재현 검증**: A·B 수정을 되돌리면 회귀 테스트
+2건 FAIL, 복구하면 PASS 를 분리 워크트리에서 확인. 이 레포에서 자기신고가 검증된 첫 사례(종전 7회는 불일치).
+종결 A·B·D·E·F·I / 부분 C·G·H.
+
+머지 전 조건 3건 지시: (1) save() 의 persistedCardDeck·persistedVideoEdit 기본값 제거해 필수 인자화(남은
+호출부 5곳이 여전히 남의 도메인·원본 덱을 싣는다. 기본값이 남으면 6차가 또 난다) (2) videoEditAutosaveError
+가 영상 저장 성공으로만 지워져 발행실 이동 단추가 영구 비활성이 되는 경로에 빠져나갈 길 제공(ADR-007 §1·§3)
+(3) drafts/route.ts:203 editLines 가 키 부재 보존 규칙 밖이라 영상 자동저장 때 덱 투영 editLines 가 덮인다.
+
+판정과 조건은 PR #76 코멘트로 게시(issuecomment-5778722575). CI verify pass.
+
 ## 2026-09-22 23:30 PR #76 4차 반려, 공통 뿌리 1개로 수렴(최소 수정 5차)
 
 current_stage: build (R-23) · qa (네 방 기본 흐름)
