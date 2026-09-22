@@ -148,7 +148,12 @@ function tsxFiles(dir: string, acc: string[] = []): string[] {
 describe("맨 button 래칫", () => {
   // 2026-09-14 실측 기준선. 공용 `Button` 을 안 쓰는 맨 `<button>` 의 전체 수다. 이 수는
   // 줄기만 해야 한다. 늘리려는 변경은 공용 `Button` 을 쓸 수 없는 이유를 먼저 대야 한다.
-  const BASELINE = 238;
+  //
+  // 2026-09-22 +1(239): PublishEditSidebar.tsx 의 EditTrigger 하나. 미리보기 안 편집
+  // 가능 요소(본문·제목·해시태그 등)를 왼쪽 정렬 텍스트로 감싸는 클릭 트리거라 공용
+  // `Button`(내용 중앙 정렬 전제)을 그대로 못 쓴다. 사이드바 자체의 닫기·취소·저장 3개는
+  // 공용 `Button` 으로 옮겨 순증을 최소화했다(원래 늘 것은 +4).
+  const BASELINE = 239;
 
   it("QA-APP-TOUCH-08 경계: 맨 button 총수가 기준선을 넘지 않는다", () => {
     const count = tsxFiles(resolve(root, "src"))

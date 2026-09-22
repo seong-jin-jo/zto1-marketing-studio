@@ -40,7 +40,6 @@ export const PLATFORM_FIELD_CONTRACT: Record<PublishPlatform, PlatformFieldContr
     hashtags: true,
     topicTag: false,
     firstComment: true,
-    unknownLimitLabel: "본문 상한은 규격 확인 필요",
   },
   instagram: { bodyLabel: "캡션", title: false, hashtags: true, topicTag: false, firstComment: true },
   shorts: { bodyLabel: "설명", title: true, hashtags: true, topicTag: false, firstComment: false },
@@ -111,6 +110,11 @@ export function validatePlatformPublish(
     if (hashtagCount > 2) {
       result.warnings.push({ field: "hashtags", message: "해시태그는 2개 이하 사용을 권장합니다." });
     }
+  } else if (platform === "facebook") {
+    // Meta Graph API Page Feed(POST /{page-id}/feed) 의 message 필드 상한은 63,206자다.
+    // 출처: Meta for Developers, Graph API Reference - Page > Feed, "message" 필드 설명
+    // (https://developers.facebook.com/docs/graph-api/reference/page/feed/), 2026-09-22 확인.
+    pushHardLimit(result, "body", codePointLength(combined), 63_206, "자", "게시물 본문과 해시태그");
   } else if (platform === "instagram" || platform === "reels") {
     pushHardLimit(result, "body", codePointLength(combined), 2_200, "자", "캡션과 해시태그");
     if (hashtagCount > 30) {

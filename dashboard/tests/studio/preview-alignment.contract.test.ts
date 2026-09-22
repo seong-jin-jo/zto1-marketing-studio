@@ -20,7 +20,11 @@ describe("미리보기 카드가 한 줄에서 시작한다", () => {
 
   it("카드 안에서 미리보기가 남은 높이를 채운다", () => {
     const preview = src("components/studio/PlatformPreview.tsx");
-    expect(preview).toContain('className="flex h-full w-full max-w-sm flex-col"');
+    // 2026-09-22 실측(폭 1792, 같은 줄 카드 최대 80px 어긋남): self-stretch 를 더해 그리드
+    // 셀이 준 높이를 명시적으로 받도록 강화했다. 남은 원인(그리드 셀 래퍼 data-room-preview
+    // div가 h-full 을 안 받는 것, app/studio/page.tsx)은 이번 위임 범위 밖이라
+    // PR 본문에 회수 항목으로 남긴다.
+    expect(preview).toContain('className="flex h-full w-full max-w-sm flex-col self-stretch"');
     expect(preview).toContain('<div className="flex flex-1 flex-col">{children}</div>');
   });
 
