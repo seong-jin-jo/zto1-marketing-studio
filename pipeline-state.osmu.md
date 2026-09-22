@@ -1,3 +1,19 @@
+## 2026-09-23 01:15 배포 실패(main), 발행실 고정 슬롯 재작성 교차검증 착수
+
+current_stage: build (R-23) · qa (네 방 기본 흐름)
+status: in-progress (승인 아님)
+
+**배포 실패**: PR #76 머지 후 배포 run 35749656554 가 이미지 빌드에서 실패. 새 테스트
+card-templates-chat-bubble-cover-photo.render.test.ts:12 가 optionalDependencies 인 canvas 를 정적 import 해
+Dockerfile:19 의 `npm run typecheck:ci`(tsc -p tsconfig.ci.json, 테스트 포함)가 TS2307·TS2578 로 죽었다.
+CI·vitest·next build 는 전부 통과하고 배포에서만 터지는 구멍. 핫픽스 위임. 운영 화면은 이전 버전 유지.
+교훈: 종료조건에 `npm run typecheck:ci` 를 상시 포함한다(기존 vitest·build 만으로는 안 잡힌다).
+
+**발행실 5차(e16494c4)**: headerRight 를 채널 무관 고정 2행 슬롯으로 재작성(1행 발행·대문 컨트롤, 없는 채널은
+투명 spacer / 2행 계정 영역, select w-28 truncate). 하네스를 실제 계정명 길이·실제 vidUrl·다장 imgUrls 로
+교체, 헤더 delta 를 측정 스크립트 실패 게이트로 승격, 오버레이-배지 겹침 분리, px 리터럴 토큰화.
+빌더 실측 보고: 7채널 헤더 177px 수렴, 편집칸 delta 0px, typecheck:ci EXIT=0. 자기신고이므로 교차검증 중.
+
 ## 2026-09-23 00:50 PR #76 머지 완료(main 28dba452), 운영 배포 실행
 
 current_stage: build (R-23) · qa (네 방 기본 흐름)
