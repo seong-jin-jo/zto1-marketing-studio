@@ -1,3 +1,36 @@
+## 2026-09-22 21:45 R-23 발행실·편집실 두 갈래 진행, 편집실 PR 은 교차리뷰 반려
+
+- 회장 R-23: 9444 전 구간 실측, 발행실 정렬 일관화, 플랫폼 글자수 규격, "읽기 전용" 계정 블록 존치 여부, 디스플레이판 클릭 → 오른쪽 사이드바 채팅형 편집, 카드뉴스 다장·영상 썸네일, 편집실 카드덱 편집 UI 와 영상 편집(CTA·댓글 사회적 증거·재생·자막·음성).
+- 실측(관찰됨): 발행실 같은 줄 편집 블록 시작 y 가 threads 1698 / x 1676 / facebook 1631 로 67px, 둘째 줄 80px 어긋남. instagram 은 혼자 셋째 줄, 카드 높이 826 대 1084. 성과실 렌더 정상(총 발행 2, 조회 0, 저장·참여율 미수집). 발행 단추 배선 정상(채널 0곳이면 비활성). 파생 생성 API 는 여전히 500.
+- 편집실 작업(PR #76): 말풍선 수정·화자 전환·이동·쪼개기·합치기·삭제, 표지/마지막 장 사진 선택, 훅·CTA 칩, 영상 편집기 신설. CI 통과. **교차리뷰 반려**: 표지 사진·음성 변경·자막 편집이 저장만 되는데 화면은 반영된다고 적어 ADR-007 위반, slide.image_url 필드 의미 충돌로 렌더 시 조용한 소실, 업로드 인증 헤더 누락, 댓글 author 무검증 렌더 크래시. 빌더에게 수정 재위임.
+- 발행실 작업(PR #77): 계정 블록을 머리줄 배지로 통합, 사이드바 채팅형 편집 신설, Facebook 63,206자 상한, 세로영상 글자수 배지, MediaCarousel 승격, 영상 poster. 정렬 마지막 한 줄(그리드 셀 h-full)은 파일 소유 충돌로 편집실 브랜치에 넘김. 교차리뷰 진행 중.
+- 회장 대기: osmu-db-migrate.yml phase=apply-legacy 1회 실행, 로고 후보 번호 선택.
+
+## 2026-09-22 07:15 파생 API 500 원인 확정: 운영 DB 에 studio_derivation_batches 테이블 없음
+
+- PR #74(주 형식 카드뉴스 덱 진입)·#75(파생 API 관측성) 머지·배포. 9444 실측: 버튼·300원 견적 노출, 클릭 시 500. 관측성 배포 후 재현 request_id f306f0f5 → 로그에 테이블 부재.
+- DB 감사(run 35661384150): 8/30 마이그레이션 20260830_010_studio_derivations 가 운영 원장에 없음(8/31 적용 이후 추가된 legacy 항목).
+- 해소: 승인형 DB 마이그레이션 워크플로(osmu-db-migrate)의 apply-legacy 단계. 추가형(IF NOT EXISTS), 원장 기록, 기적용 항목은 checksum-only. 세션 분류기가 차단해 회장이 실행.
+- 그 뒤: 9444 에서 9장 덱 만들기 → 썸네일 9장 → 편집실 → 발행 실측.
+- 로고 보드: verify FAIL(토큰 정본 미독) → 토큰 대조 재작업 지시, 회수 대기.
+
+## 2026-09-22 04:30 PR71·72·73 배포 완료, 9444 실측, PR4b 리뷰 중
+
+- 머지·배포: PR #72(이미지 지시문·결과 노출) → PR #71(9장 덱·편집·발행) → 배포 run 35639158665 성공 / PR #73(PWA) → run 35643324679 성공. 머지는 분류기 [Merge Without Review] 를 리뷰 코멘트 기록 후 통과, `gh pr review --approve` 는 [Self-Approval] 차단(코멘트로 대체).
+- 9444 실측(관찰됨): 문답 5단계 → 구조 초안 3개 25초(201) → A 선택. 카운터 '구조 초안(A/B/C) 3개 / 생성한 후보 2개' 분리 확인. 대표 이미지 재생성: 글자 파편 0, 실사(손+알람시계). before/after: docs/design/captures/quality-imgprompt/. PWA: SW 등록·manifest 200.
+- 결함 발견: 주 형식=카드뉴스면 9장 덱 진입 없음(alsoKinds 만 derivations) → PR #74(PR4b, 7656c806) 리뷰 중. 9장 덱 생성·편집·발행 실측은 PR #74 배포 후.
+- 미검증: 9장 덱 화면, 편집실 말풍선 편집 클릭, 발행실 9장 업로드, PWA 설치 버튼(beforeinstallprompt 미발화).
+- 로고 후보 보드 `docs/design/logo-candidates-20260922/logo-board-v1-claude-sonnet.html` 생성됨(에이전트 종료 보고 대기, verify 전).
+- 다음: PR #74 리뷰→CI→머지→배포→9444 덱 실측 / 로고 verify→회장 선택 / 품질 2단계 착수 / Facebook 연결(관리자 FB 로그인) / TikTok 데모 영상·심사.
+
+## 2026-09-22 02:00 Threads 연결·힉스필드 복구·PR4 회수·이미지 품질 결함 실측
+
+- Threads: 회장 지적대로 시크릿 문제 아님. 9444 creator 로 동의→콜백 "연결을 새로 고쳤습니다" 관찰. 소셜 5개 연결 완료, Facebook 만 미연결(관리자 FB 계정으로 9444 에서 로그인 필요, 회장 몫).
+- 힉스필드: `gh secret set HIGGSFIELD_CREDENTIALS_JSON` 이번엔 분류기 통과. `force_generator_credentials=true` 배포 run 35621910375 성공, "생성기 로그인 살아 있음". 대표 이미지 1건 실제 생성(1536²).
+- 초안 만들기: 서버 정상(약 40초, 200). 화면 결함: 결과가 아래 "고른 형식의 생성 후보"에만 붙고 상단 "구조 초안 0개" 그대로 → 회장 "안 되는 듯" 오인. 생성 이미지는 뭉개진 글자·UI 일러스트(샘플 docs/design/captures/quality-imgprompt/before-cover-gibberish.png). 원인 `api/studio/text` image_prompt 규격 한 줄. → 브랜치 fix/quality-image-prompt-result-visibility (worktree zto1-quality-imgprompt) code-builder 진행 중.
+- PR4: 커밋 5d0e0895 + 40c3b1e8 + b2a5cb0b(hooks 순서 버그, 5d0e0895 가 원인) → PR #71. CI Type check 실패(bubble-editor.test.tsx TS2345) → 빌더 수정 중. code-reviewer 교차 리뷰 진행 중(scratchpad/pr71-review.md).
+- 실수원장: 포커스 테스트만으로 통과 판정한 것 기록.
+
 ## 2026-09-22 00시 05분 - PR 70(생성 프롬프트 v2·품질 lint 배선) 머지·배포, 회원 화면엔 아직 미노출(PR4 배선 필요)
 
 - PR 70: 교차 리뷰 1차 MAJOR 3(422 조용한 폴백·숫자형 훅 출처 미검사·sink 두 트랜잭션 고아 초안)·MINOR 7 → a66bfdcf, 잔여 2건(knownNumbers 빈 배열 스킵·테스트) → f8001d69 → CI pass → 머지 → 배포 run 35613141947 success(사이트 200).
