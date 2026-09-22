@@ -1875,18 +1875,6 @@ export function EditRoom({
               <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
-              {kind === "video" && onVideoEditChange ? (
-                <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-video-edit-workbench>
-                  <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-video-edit-editor-note>
-                    후킹 CTA·댓글 오버레이·자막·음성을 여기서 편집합니다. 여기서 고친 내용은 자동 저장됩니다.
-                  </p>
-                  <VideoEditor
-                    videoEdit={videoEdit ?? EMPTY_VIDEO_EDIT}
-                    onVideoEditChange={onVideoEditChange}
-                    previewVideoUrl={previewVideoUrl}
-                  />
-                </div>
-              ) : null}
               {kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench>
                   <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-card-deck-editor-note>
@@ -1896,6 +1884,20 @@ export function EditRoom({
                 </div>
               ) : (
               <div className={`card overflow-hidden ${styles.editWorkbench}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined}>
+                {/*
+                  2026-09-23 세션맥락(과업 C): 카드뉴스가 말풍선 덱(chat_bubble)이 아니면
+                  위 CardDeckPanel 분기를 안 타 말풍선 편집 기능이 통째로 안 보인다.
+                  회장이 지적한 "카드뉴스 화면에 아무것도 안 뜬다"를 조용히 두지 않는다
+                  (ADR-007 조용한 실패 금지). 왜 안 보이는지와 만드는 경로만 안내하고,
+                  생성이 지금 실패한다고 단정하지 않는다(로컬·운영 상태가 다를 수 있음,
+                  세션맥락 원문).
+                */}
+                {kind === "card" && (!cardDeck || cardDeck.template !== "chat_bubble") ? (
+                  <p className="m-pad-inset rounded-control border border-border bg-surface-2 p-stack text-caption text-muted" data-card-deck-missing-note>
+                    말풍선 대화 편집은 카톡 말풍선 카드뉴스 9장 덱에만 있습니다. 이 작업물은 아직 그 덱이 아니라 아래 목록형 편집만 보입니다.{" "}
+                    {onOpenCreate ? <Button size="sm" variant="secondary" onClick={onOpenCreate}>생성실에서 &ldquo;카톡 말풍선 카드뉴스 9장 만들기&rdquo;로 가기</Button> : null}
+                  </p>
+                ) : null}
                 {/*
                   2026-09-14. 여기는 `1. 첫 장` 같은 글자 목록이었고, 장을 옮기려면 미리보기
                   아래 `앞 장`·`다음 장` 화살표를 여러 번 눌러야 했다. 카드뉴스는 장과 장의
@@ -2057,6 +2059,25 @@ export function EditRoom({
                           </Button>
                         </div>
                       </section>
+                      {/*
+                        2026-09-23 세션맥락: 영상 탭에서 이 표준 편집 작업대(장면 순서·본문·
+                        비율·자막)와 후킹 CTA·댓글 오버레이·음성 편집기(VideoEditor)가 별도
+                        카드 두 장으로 겹쳐 떴다(회장 지적 "씹창"). 두 편집기는 서로 다른
+                        대상(장면 대본 vs 오버레이/음성)을 고치므로 기능은 둘 다 필요하지만,
+                        작업대는 한 벌이어야 한다. VideoEditor를 별도 카드로 앞세우지 않고
+                        이 카드 안의 한 구획으로 접어 넣는다. 상단 안내 문구는 지운다 —
+                        VideoEditor가 영상 유무에 따라 스스로 정확한 문구를 낸다(ADR-007
+                        조용한 실패 금지 — 실제 상태와 다른 말을 미리 단정하지 않는다).
+                      */}
+                      {kind === "video" && onVideoEditChange ? (
+                        <section className="mt-pad-inset border-t border-border pt-pad-inset" aria-label="후킹 CTA·댓글·음성 편집" data-video-edit-workbench>
+                          <VideoEditor
+                            videoEdit={videoEdit ?? EMPTY_VIDEO_EDIT}
+                            onVideoEditChange={onVideoEditChange}
+                            previewVideoUrl={previewVideoUrl}
+                          />
+                        </section>
+                      ) : null}
                     </>
                   )}
                 </div>
