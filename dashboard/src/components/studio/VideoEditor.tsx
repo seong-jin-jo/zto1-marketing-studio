@@ -56,14 +56,22 @@ export interface VideoEditorProps {
   videoEdit: VideoEdit;
   onVideoEditChange: (edit: VideoEdit) => void;
   previewVideoUrl: string | null;
-  tenantId?: string;
 }
 
 function formatSec(sec: number): string {
   return Number.isInteger(sec) ? `${sec}` : sec.toFixed(1);
 }
 
-export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, tenantId }: VideoEditorProps) {
+/** VideoEditValidationError.rule → 화면에 보여줄 고정 한국어 문구(N3). */
+function videoEditErrorMessage(rule: string): string {
+  if (rule === "overlay_text") return "오버레이 문구를 입력해 주세요.";
+  if (rule === "comment_author" ) return "작성자를 입력해 주세요.";
+  if (rule === "comment_text") return "댓글 내용을 입력해 주세요.";
+  if (rule.startsWith("range_")) return "구간의 시작·끝 시간을 확인해 주세요.";
+  return "입력한 값을 확인해 주세요.";
+}
+
+export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl }: VideoEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [playhead, setPlayhead] = useState(0);
@@ -74,7 +82,14 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, ten
       setError(null);
       onVideoEditChange(op(videoEdit));
     } catch (cause) {
-      setError(cause instanceof VideoEditValidationError ? cause.message : "영상 편집 내용을 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      // N3(2026-09-22 코드리뷰): VideoEditValidationError.message는 영문 내부 필드 경로
+      // 원문이다. 원문은 로그로만 보내고 화면은 고정 한국어 문구로 바꾼다.
+      if (cause instanceof VideoEditValidationError) {
+        console.error("영상 편집 조작 실패", cause.rule, cause.message);
+        setError(videoEditErrorMessage(cause.rule));
+      } else {
+        setError("영상 편집 내용을 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      }
     }
   }
 
@@ -152,7 +167,7 @@ function VideoPlayback({
             key={overlay.id}
             data-video-overlay-active
             data-video-overlay-kind={overlay.kind}
-            className={`pointer-events-none absolute inset-x-0 bottom-4 mx-auto w-fit max-w-[90%] rounded-chip px-stack py-micro text-center text-caption font-semibold ${overlay.kind === "hook" ? "bg-accent-soft text-accent" : "bg-success-soft text-success"}`}
+            className={`pointer-events-none absolute inset-x-0 bottom-4 mx-auto w-fit max-w-11/12 rounded-chip px-stack py-micro text-center text-caption font-semibold ${overlay.kind === "hook" ? "bg-accent-soft text-accent" : "bg-success-soft text-success"}`}
           >
             {overlay.text}
           </div>
@@ -275,7 +290,7 @@ function CommentOverlayEditor({ edit, duration, playhead, run }: { edit: VideoEd
       <p className="text-caption text-muted">실제 수집된 댓글이 아직 연결되지 않아 여기서는 직접 입력만 가능합니다. 가짜 후기로 오해되지 않도록 발행 전에 꼭 실제 댓글로 바꾸거나 "예시"임을 밝혀 주세요.</p>
       <div className="flex flex-wrap gap-stack-tight">
         <input aria-label="작성자" value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="작성자 (예: 실제 아이디)" className="w-40 rounded-control border border-border bg-surface p-stack text-body text-text" />
-        <input aria-label="댓글 내용" value={text} onChange={(e) => setText(e.target.value)} placeholder="댓글 내용" className="flex-1 min-w-[10rem] rounded-control border border-border bg-surface p-stack text-body text-text" />
+        <input aria-label="댓글 내용" value={text} onChange={(e) => setText(e.target.value)} placeholder="댓글 내용" className="flex-1 min-w-40 rounded-control border border-border bg-surface p-stack text-body text-text" />
       </div>
       <Button
         size="sm"
@@ -289,7 +304,7 @@ function CommentOverlayEditor({ edit, duration, playhead, run }: { edit: VideoEd
         {formatSec(playhead)}초 구간에 추가
       </Button>
       {hasManual ? (
-        <p role="alert" className="rounded-control border border-warning/30 bg-warning-soft p-stack text-caption text-warning" data-video-comment-fake-warning>
+        <p role="alert" className="rounded-control border border-warning bg-warning-soft p-stack text-caption text-warning" data-video-comment-fake-warning>
           직접 입력한 댓글이 있습니다. 실제 댓글이 아니라면 발행 전에 "예시"라고 밝혀야 합니다.
         </p>
       ) : null}
@@ -338,7 +353,7 @@ function SubtitleCutEditor({ edit, run }: { edit: VideoEdit; run: (op: (e: Video
       <b className="text-caption font-semibold text-text">자막 기반 편집</b>
       <p className="text-caption text-muted">자막 줄을 입력하고, 빼고 싶은 줄은 "컷 표시"를 누르세요. 지금은 여기 적은 자막이 영상에 굽히지 않습니다. 자막 반영과 컷 구간 삭제 렌더링은 모두 다음 단계입니다.</p>
       <div className="flex flex-wrap gap-stack-tight">
-        <input aria-label="자막 줄" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLine()} placeholder="자막 한 줄" className="flex-1 min-w-[10rem] rounded-control border border-border bg-surface p-stack text-body text-text" />
+        <input aria-label="자막 줄" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLine()} placeholder="자막 한 줄" className="flex-1 min-w-40 rounded-control border border-border bg-surface p-stack text-body text-text" />
         <Button size="sm" disabled={!draft.trim()} onClick={addLine}>줄 추가</Button>
       </div>
       <ul className="space-y-stack-tight" data-video-subtitle-list>
@@ -366,7 +381,10 @@ function VoiceSelector({ edit, run }: { edit: VideoEdit; run: (op: (e: VideoEdit
       .then(async (res) => {
         const data = (await res.json().catch(() => null)) as { voices?: Array<{ id: string; name: string; category: string }>; code?: string } | null;
         if (cancelled) return;
-        if (res.ok && data && Array.isArray(data.voices) && data.voices.length) {
+        // MINOR(2026-09-22 코드리뷰): res.ok인데 voices가 빈 배열이면 그것도 성공이다
+        // ("목록 없음"과 "호출 실패"는 다른 사건). 빈 배열도 voices에 담아 성공 분기로
+        // 보내고, 화면은 "목소리가 없다"를 loadError가 아닌 안내문으로 따로 보여준다.
+        if (res.ok && data && Array.isArray(data.voices)) {
           setVoices(data.voices);
           return;
         }
@@ -389,6 +407,7 @@ function VoiceSelector({ edit, run }: { edit: VideoEdit; run: (op: (e: VideoEdit
       <b className="text-caption font-semibold text-text">음성 변경</b>
       {loadError ? <p className="text-caption text-danger" data-video-voice-error>{loadError}</p> : null}
       {!voices && !loadError ? <p className="text-caption text-muted">목소리 목록을 불러오는 중입니다.</p> : null}
+      {voices && voices.length === 0 ? <p className="text-caption text-muted" data-video-voice-empty>연결된 음성 설정에 등록된 목소리가 없습니다.</p> : null}
       {voices ? (
         <div className="flex flex-wrap gap-stack-tight" data-video-voice-options>
           {voices.map((voice) => (

@@ -23,6 +23,8 @@ import {
   moveBubble,
   moveSlide,
   setBubbleText,
+  setSlideCover,
+  setSlideCoverImage,
   splitBubble,
   toggleBold,
   toggleSpeaker,
@@ -92,16 +94,8 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
     return (
       <CoverEditor
         slide={slide}
-        onChange={(cover) => run((d) => ({
-          ...d,
-          slides: d.slides.map((s) => (s.id === slide.id ? { ...s, cover } : s)),
-          revision: d.revision + 1,
-        }))}
-        onImageChange={(cover_image_url) => run((d) => ({
-          ...d,
-          slides: d.slides.map((s) => (s.id === slide.id ? { ...s, cover_image_url } : s)),
-          revision: d.revision + 1,
-        }))}
+        onChange={(cover) => run((d) => setSlideCover(d, slide.id, cover))}
+        onImageChange={(cover_image_url) => run((d) => setSlideCoverImage(d, slide.id, cover_image_url))}
       />
     );
   }
@@ -132,7 +126,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
         <b className="text-caption font-semibold text-text">{SLIDE_ROLE_LABEL[slide.role]} 장 · 말풍선 {bubbles.length}개</b>
         <Button size="sm" onClick={() => run((d) => addBubble(d, slide.id, selectedBubbleId))}>말풍선 추가</Button>
       </div>
-      {error ? <p role="alert" className="rounded-control border border-danger/30 bg-danger/10 p-stack text-caption text-danger" data-bubble-editor-error>{error}</p> : null}
+      {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-bubble-editor-error>{error}</p> : null}
       <ul className="space-y-stack-tight" data-bubble-editor-turns>
         {turns.map((turn) => (
           <li key={turn.bubbles[0].id} className={turn.speaker === "reader" ? "flex justify-end" : "flex justify-start"}>
@@ -184,11 +178,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
             <div className="mt-stack-tight">
               <CoverImagePicker
                 imageUrl={slide.cover_image_url ?? null}
-                onChange={(cover_image_url) => run((d) => ({
-                  ...d,
-                  slides: d.slides.map((s) => (s.id === slide.id ? { ...s, cover_image_url } : s)),
-                  revision: d.revision + 1,
-                }))}
+                onChange={(cover_image_url) => run((d) => setSlideCoverImage(d, slide.id, cover_image_url))}
               />
             </div>
           </div>
@@ -358,30 +348,38 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
     const host = canvasHostRef.current;
     if (!host || !activeSlide) return;
     // 300ms 디바운스(설계 §5 F4). 연산마다 즉시 다시 그리면 타이핑 중 캔버스가 계속
-    // 깜빡인다.
+    // 깜빡인다. J1(2026-09-22 코드리뷰): 표지·CTA 사진 로딩을 기다려야 해서 렌더가
+    // 비동기로 바뀌었다 — `cancelled`로 그 사이 deck이 또 바뀌면 옛 결과를 host에 못
+    // 붙이게 막는다(경쟁 상태 방지).
+    let cancelled = false;
     const timer = setTimeout(() => {
-      host.innerHTML = "";
-      try {
-        const canvas = renderChatBubbleSlideToCanvas({
-          deck,
-          slide: activeSlide,
-          index: deck.slides.findIndex((s) => s.id === activeSlide.id),
-          total: deck.slides.length,
-        });
-        if (canvas) {
-          canvas.style.width = "100%";
-          canvas.style.height = "auto";
-          canvas.style.borderRadius = "var(--radius-surface, 12px)";
-          host.appendChild(canvas);
+      void (async () => {
+        try {
+          const canvas = await renderChatBubbleSlideToCanvas({
+            deck,
+            slide: activeSlide,
+            index: deck.slides.findIndex((s) => s.id === activeSlide.id),
+            total: deck.slides.length,
+          });
+          if (cancelled) return;
+          host.innerHTML = "";
+          if (canvas) {
+            canvas.style.width = "100%";
+            canvas.style.height = "auto";
+            canvas.style.borderRadius = "var(--radius-surface, 12px)";
+            host.appendChild(canvas);
+          }
+        } catch (cause) {
+          if (cancelled) return;
+          host.innerHTML = "";
+          const p = document.createElement("p");
+          p.className = "text-caption text-danger";
+          p.textContent = cause instanceof Error ? cause.message : "미리보기를 그리지 못했습니다.";
+          host.appendChild(p);
         }
-      } catch (cause) {
-        const p = document.createElement("p");
-        p.className = "text-caption text-danger";
-        p.textContent = cause instanceof Error ? cause.message : "미리보기를 그리지 못했습니다.";
-        host.appendChild(p);
-      }
+      })();
     }, 300);
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [deck, activeSlide]);
 
   function runSlide(op: (deck: CardDeck) => CardDeck) {

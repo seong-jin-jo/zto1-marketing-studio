@@ -28,7 +28,7 @@ import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
 import { browserCardUploader, cardRatioFrom, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
-import type { VideoEdit } from "@/lib/studio/video-edit-contract";
+import { sanitizeForSave, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
 import { emptyBubbleSlideNumber, pruneEmptyBubbles } from "@/lib/studio/card-deck-ops";
 import { limitedChannelNotice, planChannelImages } from "@/lib/studio/channel-image-capacity";
@@ -185,9 +185,21 @@ function extractApiErrorMessage(e: unknown, fallback: string): string {
   // 사용자에게 아무 뜻이 없고 다음에 무엇을 하면 되는지도 말해 주지 않는다.
   // 서버 문구가 있으면 그것을 쓰고, 없으면 상태 코드가 아니라 사람 말로 바꿔 준다.
   if (e instanceof ApiResponseError) {
-    const payload = e.payload as { error?: string; nsfw?: boolean; credits?: boolean } | null;
+    const payload = e.payload as { error?: string; code?: string; nsfw?: boolean; credits?: boolean } | null;
     if (payload?.nsfw) return "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요.";
     if (payload?.credits) return "생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다.";
+    // N3(2026-09-22 코드리뷰): INVALID_CARD_DECK/INVALID_VIDEO_EDIT의 payload.error는
+    // 서버 검증기의 영문 필드 경로 원문("comments[0].author must be...")이다. 그걸 그대로
+    // 찍으면 회장 화면에 영문 디버그 문구가 뜬다. 원문은 로그로만 보내고 화면은 고정
+    // 한국어 문구로 바꾼다.
+    if (payload?.code === "INVALID_CARD_DECK" || payload?.code === "CARD_DECK_TOO_LARGE") {
+      console.error("카드덱 저장 검증 실패", payload);
+      return "카드덱 내용에 저장할 수 없는 값이 있어 자동 저장을 보류했습니다. 방금 고친 내용을 확인해 주세요.";
+    }
+    if (payload?.code === "INVALID_VIDEO_EDIT" || payload?.code === "VIDEO_EDIT_TOO_LARGE") {
+      console.error("영상 편집 저장 검증 실패", payload);
+      return "영상 편집 내용에 저장할 수 없는 값이 있어 자동 저장을 보류했습니다. 방금 고친 내용을 확인해 주세요.";
+    }
     if (payload?.error) return payload.error;
     if (e.status === 401 || e.status === 403) return "권한이 없어 요청이 막혔습니다. 로그아웃 후 다시 로그인해 주세요.";
     if (e.status === 429) return "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.";
@@ -1544,6 +1556,12 @@ export default function StudioPage() {
   // 정의는 아래 편집실 렌더 직전). 모든 hook 은 1990행 조건부 early return 앞에서 불러야
   // 렌더마다 순서가 같다.
   const editAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // N1(2026-09-22 코드리뷰): 타이머를 하나로 합치면서 카드덱·영상 각각 "이번에 실제로
+  // 바뀐 값"을 따로 들고 있어야 한다. 안 그러면 800ms 안에 둘 다 바뀔 때 나중 change가
+  // 먼저 것의 타이머를 죽이고, 저장 시점엔 한쪽만 반영된다. 발화 시점에 두 pending을
+  // 각각 보고 저장하고, 저장 뒤 비운다(다음 발화가 새로 채운다).
+  const pendingCardDeck = useRef<CardDeck | null>(null);
+  const pendingVideoEdit = useRef<VideoEdit | null>(null);
   // setTimeout 콜백이 클로저로 오래된 draftId 를 붙잡지 않게(2026-09-22 코드리뷰 MINOR 6:
   // 발행실 이동이 타이머보다 먼저 끝나면 뒤늦은 콜백이 draftId=null 로 중복 초안을 만든다).
   const draftIdRef = useRef<string | null>(null);
@@ -2108,32 +2126,63 @@ export default function StudioPage() {
   // 그래도 말풍선이 하나도 안 남는 장이 있으면 저장 자체를 보류하고 이유를 보여준다(조용한
   // 실패 금지). `draftId` 는 setTimeout 콜백이 오래된 값을 캡처하지 않게 최신 ref 로 읽는다
   // (ref 갱신·언마운트 정리는 위 early return 앞에서 한다).
-  function onCardDeckChange(nextDeck: CardDeck) {
-    setCardDeck(nextDeck);
+  /**
+   * 카드덱·영상 편집 공용 자동저장(N1 재설계, 2026-09-22 코드리뷰). 800ms 타이머는 하나만
+   * 두되, 발화 시점에 "이번에 실제로 바뀐 값"을 pendingCardDeck/pendingVideoEdit에 각각
+   * 적어 둔다. 발화가 오면 그 둘을 함께 저장한다 — 한쪽만 바뀐 배치에서 다른 쪽을 건드려
+   * 지우지 않는다(J4: 빈 말풍선으로 카드덱 저장이 보류돼도 영상은 그대로 저장된다).
+   * 카드덱이 비어 있는 말풍선이면 그 부분만 payload에서 빼서 보류하고(기존 서버 값 보존),
+   * 영상 쪽은 sanitizeForSave로 빈 문구/작성자 항목만 걸러 저장에서 뺀다(N2).
+   */
+  function scheduleEditAutosave() {
     if (editAutosaveTimer.current) clearTimeout(editAutosaveTimer.current);
     editAutosaveTimer.current = setTimeout(() => {
-      const pruned = pruneEmptyBubbles(nextDeck);
-      const emptySlide = emptyBubbleSlideNumber(pruned);
-      if (emptySlide !== null) {
-        setEditAutosaveError(`${emptySlide}번 장에 말풍선이 비어 있어 자동 저장을 보류했습니다. 내용을 채우면 저장됩니다.`);
-        return;
+      const deckToSave = pendingCardDeck.current;
+      const editToSave = pendingVideoEdit.current;
+      pendingCardDeck.current = null;
+      pendingVideoEdit.current = null;
+
+      let deckForSave: CardDeck | null = null;
+      let holdMessage = "";
+      if (deckToSave) {
+        const pruned = pruneEmptyBubbles(deckToSave);
+        const emptySlide = emptyBubbleSlideNumber(pruned);
+        if (emptySlide !== null) {
+          holdMessage = `${emptySlide}번 장에 말풍선이 비어 있어 카드덱 자동 저장을 보류했습니다. 내용을 채우면 저장됩니다.`;
+        } else {
+          deckForSave = pruned;
+        }
       }
-      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, pruned)
-        .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setEditAutosaveError(""); })
+
+      let editForSave: VideoEdit | null = null;
+      if (editToSave) {
+        const { deck: sanitized, droppedCount } = sanitizeForSave(editToSave);
+        editForSave = sanitized;
+        if (droppedCount > 0) {
+          const note = "빈 문구·작성자 항목은 채울 때까지 저장에서 빠집니다.";
+          holdMessage = holdMessage ? `${holdMessage} ${note}` : note;
+        }
+      }
+
+      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, deckForSave, editForSave)
+        .then(() => {
+          setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
+          setEditAutosaveError(holdMessage);
+        })
         .catch((error) => setEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
     }, 800);
   }
 
+  function onCardDeckChange(nextDeck: CardDeck) {
+    setCardDeck(nextDeck);
+    pendingCardDeck.current = nextDeck;
+    scheduleEditAutosave();
+  }
+
   function onVideoEditChange(nextEdit: VideoEdit) {
     setVideoEdit(nextEdit);
-    // M8: cardDeck 자동저장과 같은 타이머를 공유한다. cardDeck이 800ms 안에 같이 바뀌어도
-    // pruneEmptyBubbles 없이 현재 cardDeck 상태를 그대로 실어 서로 덮어쓰지 않는다.
-    if (editAutosaveTimer.current) clearTimeout(editAutosaveTimer.current);
-    editAutosaveTimer.current = setTimeout(() => {
-      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, cardDeck, nextEdit)
-        .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setEditAutosaveError(""); })
-        .catch((error) => setEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
-    }, 800);
+    pendingVideoEdit.current = nextEdit;
+    scheduleEditAutosave();
   }
 
   if (activeRoom === "edit") return (

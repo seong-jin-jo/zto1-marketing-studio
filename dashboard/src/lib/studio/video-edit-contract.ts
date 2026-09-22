@@ -230,3 +230,17 @@ export function setVoice(edit: VideoEdit, voice: VoiceSelection): VideoEdit {
 export function cutRanges(edit: VideoEdit): Array<{ startSec: number; endSec: number }> {
   return edit.subtitles.filter((s) => s.cut).map((s) => ({ startSec: s.startSec, endSec: s.endSec }));
 }
+
+/**
+ * N2(2026-09-22 코드리뷰): updateOverlay/updateComment는 range만 보고 text/author 빈
+ * 문자열은 막지 않는다. 사용자가 문구·작성자 칸을 지우고 다시 타이핑하는 정상 동작
+ * 중간에 800ms 자동저장이 오면 서버가 400을 낸다. 저장 직전에만 빈 항목을 걸러낸다 —
+ * 화면의 편집 중인 상태(videoEdit)는 건드리지 않고, 저장 페이로드만 정리한다. 사용자가
+ * 마저 입력을 끝내면 다음 자동저장에 다시 포함된다.
+ */
+export function sanitizeForSave(edit: VideoEdit): { deck: VideoEdit; droppedCount: number } {
+  const overlays = edit.overlays.filter((o) => o.text.trim().length > 0);
+  const comments = edit.comments.filter((c) => c.author.trim().length > 0 && c.text.trim().length > 0);
+  const droppedCount = (edit.overlays.length - overlays.length) + (edit.comments.length - comments.length);
+  return { deck: { ...edit, overlays, comments }, droppedCount };
+}

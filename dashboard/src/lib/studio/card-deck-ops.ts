@@ -59,6 +59,30 @@ function replaceSlide(deck: CardDeck, slideIndex: number, updated: CardSlide): C
 }
 
 // ---------------------------------------------------------------------------
+// 표지·CTA 슬라이드 연산 (MINOR 2026-09-22 코드리뷰: BubbleEditor.tsx가 순수 함수를 안
+// 거치고 인라인 스프레드로 직접 slides 배열을 조작하던 것을 이 파일의 나머지 연산과 같은
+// 패턴으로 맞춘다 — 파일 헤더 "모든 연산은 새 객체를 반환한다"를 표지/CTA 편집에도 지킨다.
+// ---------------------------------------------------------------------------
+
+/** 표지 장의 headline/sub을 바꾼다. slide.role이 "cover"가 아니면 거부한다. */
+export function setSlideCover(deck: CardDeck, slideId: string, cover: NonNullable<CardSlide["cover"]>): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  if (slide.role !== "cover") {
+    throw new CardDeckOpsError("OPS_NOT_COVER_SLIDE", "cover can only be set on the cover slide");
+  }
+  return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, cover }));
+}
+
+/** 표지·CTA(마지막) 장의 배경 사진(cover_image_url)을 바꾼다. */
+export function setSlideCoverImage(deck: CardDeck, slideId: string, coverImageUrl: string | null): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  if (slide.role !== "cover" && slide.role !== "cta") {
+    throw new CardDeckOpsError("OPS_NOT_COVER_OR_CTA_SLIDE", "cover_image_url can only be set on the cover or cta slide");
+  }
+  return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, cover_image_url: coverImageUrl }));
+}
+
+// ---------------------------------------------------------------------------
 // 말풍선 연산 (03c runBubbleAction)
 // ---------------------------------------------------------------------------
 

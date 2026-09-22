@@ -10,10 +10,6 @@ import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { deckProjection, applyProjection } from "@/lib/studio/card-deck-contract";
 import { VideoEditor } from "./VideoEditor";
 import { emptyVideoEdit, type VideoEdit } from "@/lib/studio/video-edit-contract";
-
-// M5(2026-09-22 코드리뷰): 매 렌더 새 객체를 만들지 않게 모듈 스코프에서 한 번만 만든다.
-// videoEdit는 순수함수(video-edit-contract.ts)로만 바뀌므로 이 상수를 직접 변형하지 않는다.
-const EMPTY_VIDEO_EDIT: VideoEdit = emptyVideoEdit();
 import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
 import {
@@ -59,6 +55,10 @@ import {
 import styles from "./StudioRooms.module.css";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
+
+// M5(2026-09-22 코드리뷰): 매 렌더 새 객체를 만들지 않게 모듈 스코프에서 한 번만 만든다.
+// videoEdit는 순수함수(video-edit-contract.ts)로만 바뀌므로 이 상수를 직접 변형하지 않는다.
+const EMPTY_VIDEO_EDIT: VideoEdit = emptyVideoEdit();
 
 export type CreateContentBranch = "text_image" | "video";
 export type EditContentKind = "video" | "card" | "audio" | "text";
@@ -279,21 +279,31 @@ export function CardDeckThumbnailStrip({ deck }: { deck: CardDeck }) {
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    // J1(2026-09-22 코드리뷰): 렌더러가 표지·CTA 사진 로딩을 기다리는 비동기 함수로
+    // 바뀌었다. `cancelled`로 deck이 또 바뀌기 전에 그린 결과만 host에 붙인다.
+    let cancelled = false;
     host.innerHTML = "";
     const total = deck.slides.length;
-    deck.slides.forEach((slide, index) => {
-      try {
-        const canvas = renderChatBubbleSlideToCanvas({ deck, slide, index, total });
-        if (!canvas) return;
-        canvas.className = "h-auto w-[4.5rem] rounded-control border border-border";
-        host.appendChild(canvas);
-      } catch (cause) {
-        const chip = document.createElement("p");
-        chip.className = "rounded-chip border border-dashed border-danger/30 bg-danger/10 px-micro text-caption text-danger";
-        chip.textContent = `${index + 1}번 장: ${cause instanceof Error ? cause.message : "미리보기를 그리지 못했습니다."}`;
-        host.appendChild(chip);
+    void (async () => {
+      for (let index = 0; index < deck.slides.length; index += 1) {
+        if (cancelled) return;
+        const slide = deck.slides[index];
+        try {
+          const canvas = await renderChatBubbleSlideToCanvas({ deck, slide, index, total });
+          if (cancelled) return;
+          if (!canvas) continue;
+          canvas.className = "h-auto w-[4.5rem] rounded-control border border-border";
+          host.appendChild(canvas);
+        } catch (cause) {
+          if (cancelled) return;
+          const chip = document.createElement("p");
+          chip.className = "rounded-chip border border-dashed border-danger bg-danger-soft px-micro text-caption text-danger";
+          chip.textContent = `${index + 1}번 장: ${cause instanceof Error ? cause.message : "미리보기를 그리지 못했습니다."}`;
+          host.appendChild(chip);
+        }
       }
-    });
+    })();
+    return () => { cancelled = true; };
   }, [deck]);
   return <div ref={hostRef} data-card-deck-thumbnail-strip className="flex flex-wrap gap-stack-tight" aria-label={`카톡 말풍선 카드뉴스 ${deck.slides.length}장 미리보기`} />;
 }
@@ -1865,7 +1875,6 @@ export function EditRoom({
                     videoEdit={videoEdit ?? EMPTY_VIDEO_EDIT}
                     onVideoEditChange={onVideoEditChange}
                     previewVideoUrl={previewVideoUrl}
-                    tenantId={workspaceId}
                   />
                 </div>
               ) : null}

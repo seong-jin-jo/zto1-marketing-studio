@@ -15,7 +15,7 @@
 import "@testing-library/jest-dom/vitest";
 import fs from "fs";
 import path from "path";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CardDeckPanel, type BubbleEditorProps } from "@/components/studio/BubbleEditor";
 import { CardDeckThumbnailStrip } from "@/components/studio/StudioRooms";
@@ -67,17 +67,20 @@ describe("PR4 잔여 배선 ② 생성실 실제 썸네일", () => {
     expect(roomsSrc).toContain("카톡 말풍선 카드뉴스 ${item.deck_summary.slides}장을 만들었습니다");
   });
 
-  it("2026-09-22 코드리뷰 MAJOR 4 회귀: 한 장이 렌더 실패해도 CardDeckThumbnailStrip 은 언마운트되지 않고 나머지 장 + 이유 칩을 보여준다", () => {
+  it("2026-09-22 코드리뷰 MAJOR 4 회귀: 한 장이 렌더 실패해도 CardDeckThumbnailStrip 은 언마운트되지 않고 나머지 장 + 이유 칩을 보여준다", async () => {
     // vi.mock 위에서 index===0(표지) 렌더를 항상 throw 하게 만들었다. try/catch 없이
     // 우회했던 옛 코드라면 이 render() 호출 자체가 throw 로 실패한다.
+    // J1(2026-09-22 코드리뷰) 이후 렌더러가 비동기라 장마다 순서대로 그려진다 — waitFor로
+    // 마지막 장까지 다 그려질 때까지 기다린다.
     render(<CardDeckThumbnailStrip deck={deck()} />);
     const strip = document.querySelector("[data-card-deck-thumbnail-strip]")!;
     expect(strip).toBeTruthy();
+    await waitFor(() => {
+      expect(strip.querySelectorAll("canvas").length).toBe(deck().slides.length - 1);
+    });
     // 실패한 장은 canvas 대신 이유 칩(문단)으로 대체된다.
     expect(strip.textContent).toContain("1번 장");
     expect(strip.textContent).toContain("카드보다 깁니다");
-    // 실패하지 않은 나머지 장은 여전히 canvas 로 그려진다.
-    expect(strip.querySelectorAll("canvas").length).toBe(deck().slides.length - 1);
   });
 });
 
@@ -91,14 +94,16 @@ describe("PR4 잔여 배선 M3: 담당 대화창 일괄 편집이 chat_bubble �
 });
 
 describe("PR4 잔여 배선 M2: 자동저장 전 빈 말풍선을 정리하고 보류 이유를 보여준다", () => {
-  it("page.tsx onCardDeckChange 가 저장 전 pruneEmptyBubbles + emptyBubbleSlideNumber 를 부른다(2026-09-22 코드리뷰 MAJOR 2)", () => {
-    const onCardDeckChange = pageSrc.slice(
-      pageSrc.indexOf("function onCardDeckChange(nextDeck: CardDeck)"),
-      pageSrc.indexOf("function onCardDeckChange(nextDeck: CardDeck)") + 1200,
+  // N1(2026-09-22 코드리뷰) 재설계로 이 로직은 onCardDeckChange 본문이 아니라 카드덱·영상
+  // 공용 타이머 scheduleEditAutosave 로 옮겨졌다(둘 다 바뀌어도 서로 덮어쓰지 않게).
+  it("page.tsx scheduleEditAutosave 가 저장 전 pruneEmptyBubbles + emptyBubbleSlideNumber 를 부른다(2026-09-22 코드리뷰 MAJOR 2)", () => {
+    const scheduleEditAutosave = pageSrc.slice(
+      pageSrc.indexOf("function scheduleEditAutosave()"),
+      pageSrc.indexOf("function scheduleEditAutosave()") + 1600,
     );
-    expect(onCardDeckChange).toContain("pruneEmptyBubbles(nextDeck)");
-    expect(onCardDeckChange).toContain("emptyBubbleSlideNumber(pruned)");
-    expect(onCardDeckChange, "빈 말풍선이 남으면 저장을 진행하지 않고 보류해야 한다").toMatch(/emptySlide !== null[\s\S]{0,220}return/);
+    expect(scheduleEditAutosave).toContain("pruneEmptyBubbles(deckToSave)");
+    expect(scheduleEditAutosave).toContain("emptyBubbleSlideNumber(pruned)");
+    expect(scheduleEditAutosave, "빈 말풍선이 남으면 카드덱을 payload에서 빼고 보류 문구를 남겨야 한다").toMatch(/emptySlide !== null[\s\S]{0,220}holdMessage/);
   });
 });
 

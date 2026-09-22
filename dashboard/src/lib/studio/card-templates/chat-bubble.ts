@@ -44,7 +44,41 @@ export type ChatBubbleRenderInput = {
  * (TC-F2-01·03, 2026-09-21 코드리뷰 MAJOR 9). `renderChatBubbleSlide` 는 이 함수 위에
  * data URL 계약만 얹는다.
  */
-export function renderChatBubbleSlideToCanvas(input: ChatBubbleRenderInput): HTMLCanvasElement | null {
+/**
+ * `slide.cover_image_url`을 브라우저 Image로 불러온다(J1, 2026-09-22 코드리뷰: 표지·CTA
+ * 사진 선택이 저장만 되고 렌더러에 안 갔다는 지적). 못 불러오면(네트워크·CORS·8초 타임아웃)
+ * null을 돌려주고 호출부는 배경색으로 조용히 물러난다 — 사진 하나 실패로 카드 전체 렌더가
+ * 죽으면 안 된다(플랫 배경이 원래 기본값이었다).
+ */
+function loadCoverImage(url: string): Promise<HTMLImageElement | null> {
+  if (typeof Image === "undefined") return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    const timer = setTimeout(() => resolve(null), 8000);
+    img.onload = () => { clearTimeout(timer); resolve(img); };
+    img.onerror = () => { clearTimeout(timer); resolve(null); };
+    img.src = url;
+  });
+}
+
+/**
+ * cover-fit으로 캔버스 전체를 채우고, 그 위에 글자가 읽히도록 하단이 짙어지는 스크림을
+ * 얹는다(벤치마크 REF: "풀블리드 실사 + 하단 그라데이션 + 흰 볼드 2줄").
+ */
+function drawBackgroundPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement, width: number, height: number): void {
+  const scale = Math.max(width / img.width, height / img.height);
+  const drawWidth = img.width * scale;
+  const drawHeight = img.height * scale;
+  ctx.drawImage(img, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+  const gradient = ctx.createLinearGradient(0, height * 0.35, 0, height);
+  gradient.addColorStop(0, "rgba(0,0,0,0)");
+  gradient.addColorStop(1, "rgba(0,0,0,0.6)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+}
+
+export async function renderChatBubbleSlideToCanvas(input: ChatBubbleRenderInput): Promise<HTMLCanvasElement | null> {
   if (typeof document === "undefined") return null;
   const { deck, slide, index, total } = input;
   const { width, height } = CARD_PIXELS[deck.ratio as CardRatio] ?? CARD_PIXELS["4:5"];
@@ -57,8 +91,17 @@ export function renderChatBubbleSlideToCanvas(input: ChatBubbleRenderInput): HTM
   ctx.fillStyle = deck.theme.background;
   ctx.fillRect(0, 0, width, height);
 
+  let hasPhoto = false;
+  if ((slide.role === "cover" || slide.role === "cta") && slide.cover_image_url) {
+    const img = await loadCoverImage(slide.cover_image_url);
+    if (img) {
+      drawBackgroundPhoto(ctx, img, width, height);
+      hasPhoto = true;
+    }
+  }
+
   if (slide.role === "cover") {
-    drawCover(ctx, deck, slide, width, height, index, total);
+    drawCover(ctx, deck, slide, width, height, index, total, hasPhoto);
   } else {
     drawChatSlide(ctx, deck, slide, width, height, index, total);
   }
@@ -71,8 +114,8 @@ export function renderChatBubbleSlideToCanvas(input: ChatBubbleRenderInput): HTM
  * 부르면 null. 말풍선이 세이프존을 넘으면 글자를 줄이지 않고 렌더 실패로 이유를 던진다
  * ("3번 장 말풍선이 카드보다 깁니다. 쪼개세요". DESIGN.md "장이 안 담기면 나눈다").
  */
-export function renderChatBubbleSlide(input: ChatBubbleRenderInput): string | null {
-  const canvas = renderChatBubbleSlideToCanvas(input);
+export async function renderChatBubbleSlide(input: ChatBubbleRenderInput): Promise<string | null> {
+  const canvas = await renderChatBubbleSlideToCanvas(input);
   return canvas ? canvas.toDataURL("image/png") : null;
 }
 
@@ -84,13 +127,16 @@ function drawCover(
   height: number,
   index: number,
   total: number,
+  hasPhoto = false,
 ): void {
   const headline = slide.cover?.headline ?? "";
   const sub = slide.cover?.sub ?? "";
   const margin = Math.max(SAFE_ZONE_PX, Math.round(width * 0.1));
   const maxWidth = width - margin * 2;
 
-  ctx.fillStyle = deck.theme.foreground;
+  // 사진 배경 위에서는 테마 전경색 대신 흰 글자로 고정한다(drawBackgroundPhoto의 하단
+  // 그라데이션과 짝 — 벤치마크 REF "흰 볼드 2줄").
+  ctx.fillStyle = hasPhoto ? "#FFFFFF" : deck.theme.foreground;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
 

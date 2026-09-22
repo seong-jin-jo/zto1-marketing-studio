@@ -62,37 +62,37 @@ describe("chat-bubble 렌더러 상수 (F5 ④축)", () => {
 });
 
 describe("renderChatBubbleSlide 실물 렌더 (TC-F2-01~04)", () => {
-  it("표지 장을 PNG data URL 로 그린다", () => {
-    const dataUrl = renderChatBubbleSlide({ deck, slide: deck.slides[0], index: 0, total: deck.slides.length });
+  it("표지 장을 PNG data URL 로 그린다", async () => {
+    const dataUrl = await renderChatBubbleSlide({ deck, slide: deck.slides[0], index: 0, total: deck.slides.length });
     expect(dataUrl).toMatch(/^data:image\/png;base64,/);
     mkdirSync(OUT_DIR, { recursive: true });
     writeFileSync(resolve(OUT_DIR, "01-cover.png"), dataUrlToBuffer(dataUrl!));
   });
 
-  it("대화 장을 PNG data URL 로 그린다(화자 2종 좌우 배치)", () => {
-    const dataUrl = renderChatBubbleSlide({ deck, slide: deck.slides[1], index: 1, total: deck.slides.length });
+  it("대화 장을 PNG data URL 로 그린다(화자 2종 좌우 배치)", async () => {
+    const dataUrl = await renderChatBubbleSlide({ deck, slide: deck.slides[1], index: 1, total: deck.slides.length });
     expect(dataUrl).toMatch(/^data:image\/png;base64,/);
     mkdirSync(OUT_DIR, { recursive: true });
     writeFileSync(resolve(OUT_DIR, "02-chat.png"), dataUrlToBuffer(dataUrl!));
   });
 
-  it("CTA 장을 PNG data URL 로 그린다(댓글 예시 + 저장 명분 포함)", () => {
+  it("CTA 장을 PNG data URL 로 그린다(댓글 예시 + 저장 명분 포함)", async () => {
     const last = deck.slides[deck.slides.length - 1];
-    const dataUrl = renderChatBubbleSlide({ deck, slide: last, index: deck.slides.length - 1, total: deck.slides.length });
+    const dataUrl = await renderChatBubbleSlide({ deck, slide: last, index: deck.slides.length - 1, total: deck.slides.length });
     expect(dataUrl).toMatch(/^data:image\/png;base64,/);
     mkdirSync(OUT_DIR, { recursive: true });
     writeFileSync(resolve(OUT_DIR, "03-cta.png"), dataUrlToBuffer(dataUrl!));
   });
 
-  it("말풍선이 세이프존을 넘치면 렌더 실패 이유를 던진다(글자를 줄이지 않는다)", () => {
+  it("말풍선이 세이프존을 넘치면 렌더 실패 이유를 던진다(글자를 줄이지 않는다)", async () => {
     const overflowing = {
       ...deck,
       slides: deck.slides.map((s, i) => (i === 1
         ? { ...s, bubbles: (s.bubbles ?? []).map((b) => ({ ...b, segments: [{ text: "매우 긴 문장을 ".repeat(30), bold: false }] })) }
         : s)),
     };
-    expect(() => renderChatBubbleSlide({ deck: overflowing, slide: overflowing.slides[1], index: 1, total: overflowing.slides.length }))
-      .toThrowError(/말풍선이 카드보다 깁니다/);
+    await expect(renderChatBubbleSlide({ deck: overflowing, slide: overflowing.slides[1], index: 1, total: overflowing.slides.length }))
+      .rejects.toThrowError(/말풍선이 카드보다 깁니다/);
   });
 
   it("서버(document 없음)에서 부르면 null 이다(text-card-image.ts 와 같은 계약)", async () => {
@@ -103,8 +103,8 @@ describe("renderChatBubbleSlide 실물 렌더 (TC-F2-01~04)", () => {
 });
 
 describe("TC-F2-01·03 픽셀 샘플링: reader 말풍선(#FEE500) 은 우측에만 칠해진다", () => {
-  it("4:5 대화 장에서 #FEE500 픽셀이 하나 이상 있고 전부 폭 중앙선 오른쪽이다", () => {
-    const canvas = renderChatBubbleSlideToCanvas({ deck, slide: deck.slides[1], index: 1, total: deck.slides.length })!;
+  it("4:5 대화 장에서 #FEE500 픽셀이 하나 이상 있고 전부 폭 중앙선 오른쪽이다", async () => {
+    const canvas = (await renderChatBubbleSlideToCanvas({ deck, slide: deck.slides[1], index: 1, total: deck.slides.length }))!;
     const pixels = samplePixels(canvas);
     const yellow = pixels.filter((p) => p.a > 0 && closeTo(p.r, READER_BUBBLE_BG[0]) && closeTo(p.g, READER_BUBBLE_BG[1]) && closeTo(p.b, READER_BUBBLE_BG[2]));
     expect(yellow.length).toBeGreaterThan(0);
@@ -114,8 +114,8 @@ describe("TC-F2-01·03 픽셀 샘플링: reader 말풍선(#FEE500) 은 우측에
     }
   });
 
-  it("brand 말풍선(#FFFFFF) 은 좌측에도 나타난다(화자 2종 좌우 배치 확인)", () => {
-    const canvas = renderChatBubbleSlideToCanvas({ deck, slide: deck.slides[1], index: 1, total: deck.slides.length })!;
+  it("brand 말풍선(#FFFFFF) 은 좌측에도 나타난다(화자 2종 좌우 배치 확인)", async () => {
+    const canvas = (await renderChatBubbleSlideToCanvas({ deck, slide: deck.slides[1], index: 1, total: deck.slides.length }))!;
     const pixels = samplePixels(canvas);
     const half = canvas.width / 2;
     const leftWhite = pixels.filter((p) => p.x < half && p.a > 0 && closeTo(p.r, 255, 3) && closeTo(p.g, 255, 3) && closeTo(p.b, 255, 3));
@@ -143,15 +143,15 @@ describe("TC-F2-02: 표지·CTA 좌하단에 display_name 이 실제로 그려�
 
   const bg: [number, number, number] = [0x12, 0x10, 0x0e]; // deck.theme.background = "#12100E"
 
-  it("표지 좌하단에 배경과 다른 픽셀(표시명 라벨)이 있다", () => {
-    const canvas = renderChatBubbleSlideToCanvas({ deck, slide: deck.slides[0], index: 0, total: deck.slides.length })!;
+  it("표지 좌하단에 배경과 다른 픽셀(표시명 라벨)이 있다", async () => {
+    const canvas = (await renderChatBubbleSlideToCanvas({ deck, slide: deck.slides[0], index: 0, total: deck.slides.length }))!;
     const region = { x0: 60, x1: 420, y0: canvas.height - 80, y1: canvas.height - 20 };
     expect(hasNonBackgroundPixel(canvas, region, bg)).toBe(true);
   });
 
-  it("CTA 좌하단에 배경과 다른 픽셀(표시명 라벨)이 있다", () => {
+  it("CTA 좌하단에 배경과 다른 픽셀(표시명 라벨)이 있다", async () => {
     const last = deck.slides[deck.slides.length - 1];
-    const canvas = renderChatBubbleSlideToCanvas({ deck, slide: last, index: deck.slides.length - 1, total: deck.slides.length })!;
+    const canvas = (await renderChatBubbleSlideToCanvas({ deck, slide: last, index: deck.slides.length - 1, total: deck.slides.length }))!;
     const region = { x0: 60, x1: 420, y0: canvas.height - 80, y1: canvas.height - 20 };
     expect(hasNonBackgroundPixel(canvas, region, bg)).toBe(true);
   });
@@ -195,8 +195,8 @@ describe("TC-F2-04: bold(700) 세그먼트는 500 세그먼트와 다른 폭으�
     expect(normalCalls.length).toBeGreaterThan(0);
   });
 
-  it("실제 캔버스에서도 500/700 폰트 문자열 자체는 다르게 설정된다(문자열 계약 확인)", () => {
-    const canvas = renderChatBubbleSlideToCanvas({ deck, slide: deck.slides[0], index: 0, total: deck.slides.length })!;
+  it("실제 캔버스에서도 500/700 폰트 문자열 자체는 다르게 설정된다(문자열 계약 확인)", async () => {
+    const canvas = (await renderChatBubbleSlideToCanvas({ deck, slide: deck.slides[0], index: 0, total: deck.slides.length }))!;
     const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
     const bodySize = Math.round(canvas.width * BODY_RATIO);
     ctx.font = `500 ${bodySize}px ${FONT_FAMILY}`;
@@ -208,15 +208,15 @@ describe("TC-F2-04: bold(700) 세그먼트는 500 세그먼트와 다른 폭으�
 });
 
 describe("1:1 비율 렌더", () => {
-  it("ratio:1:1 덱을 렌더하면 캔버스 크기가 CARD_PIXELS['1:1'] 과 같다", () => {
+  it("ratio:1:1 덱을 렌더하면 캔버스 크기가 CARD_PIXELS['1:1'] 과 같다", async () => {
     const squareDeck: CardDeck = { ...deck, ratio: "1:1" };
-    const cover = renderChatBubbleSlideToCanvas({ deck: squareDeck, slide: squareDeck.slides[0], index: 0, total: squareDeck.slides.length })!;
+    const cover = (await renderChatBubbleSlideToCanvas({ deck: squareDeck, slide: squareDeck.slides[0], index: 0, total: squareDeck.slides.length }))!;
     expect(cover.width).toBe(CARD_PIXELS["1:1"].width);
     expect(cover.height).toBe(CARD_PIXELS["1:1"].height);
-    const chat = renderChatBubbleSlideToCanvas({ deck: squareDeck, slide: squareDeck.slides[1], index: 1, total: squareDeck.slides.length })!;
+    const chat = (await renderChatBubbleSlideToCanvas({ deck: squareDeck, slide: squareDeck.slides[1], index: 1, total: squareDeck.slides.length }))!;
     expect(chat.width).toBe(CARD_PIXELS["1:1"].width);
     expect(chat.height).toBe(CARD_PIXELS["1:1"].height);
-    const dataUrl = renderChatBubbleSlide({ deck: squareDeck, slide: squareDeck.slides[0], index: 0, total: squareDeck.slides.length });
+    const dataUrl = await renderChatBubbleSlide({ deck: squareDeck, slide: squareDeck.slides[0], index: 0, total: squareDeck.slides.length });
     expect(dataUrl).toMatch(/^data:image\/png;base64,/);
   });
 });
