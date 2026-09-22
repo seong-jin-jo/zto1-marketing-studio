@@ -1,3 +1,22 @@
+## 2026-09-23 01:45 PR #78·#77 머지 완료, 재배포 실행
+
+current_stage: build (R-23) · qa (네 방 기본 흐름)
+status: in-progress (승인 아님)
+
+main: 9ccd80f0(#77 발행실) ← ead1fe84(#78 canvas 핫픽스) ← 28dba452(#76 편집실).
+#78 근본원인 확정(빌더가 실제 배포 경로로 재현 검증): canvas 는 optionalDependencies 네이티브 바인딩이라
+CI(bookworm, glibc)에는 prebuilt 가 설치되고 배포 이미지(alpine, musl)에는 조용히 빠진다. 같은 명령이
+이미지마다 다른 결과를 내 CI 만 녹색이었다. 빌더가 node_modules 에서 canvas 를 지운 뒤 Docker RUN 명령을
+그대로 로컬 실행해 exit 0 과 해당 테스트 skip(5건)을 확인했고 canvas 복구 시 통과(5건)도 확인했다.
+#77 머지 조건 3건 코드 확인 완료(title 정정, 실수.md count:9 기록, 배지 bottom-16 right-3 이동).
+
+배포 run 35755933433 실행. 완료 후 9444 재실측 예정(종료증거: 채널별 머리줄 높이 동일, 표지 사진이 실제
+카드에 나옴, 저장 후 새로고침해도 편집 내용 유지).
+
+후속 백로그: headerRight 공용 컴포넌트 추출(하네스 드리프트 원천 차단), qa:publish-room-alignment 를 CI 연결,
+계정명 가시 폭, 로딩 중 침묵 문구, flex-wrap·min-w-0 부재, 긴 첫 댓글 케이스 게이트화, QA 라우트 공개 경로 조건,
+계약 테스트가 소스 문자열을 보는 형태 정리, 사이드바 채팅 편집(feat/publish-edit-sidebar).
+
 ## 2026-09-23 01:32 핫픽스 PR #78 생성, PR #77 머지 조건 3건 코드 확인
 
 current_stage: build (R-23) · qa (네 방 기본 흐름)
