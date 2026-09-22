@@ -537,6 +537,14 @@ export class GenerationService {
           summary,
           chargedMinor: derivationUnitMinor(kind),
           failureReason: null,
+          deckSummary: payload.kind === "card"
+            ? {
+                slides: payload.deck.slides.length,
+                hookType: payload.deck.hook_type,
+                ctaKeyword: payload.deck.cta.keyword,
+                template: payload.deck.template,
+              }
+            : null,
         });
       } catch (error) {
         // 한 갈래가 실패해도 나머지를 계속 만든다. 실패는 실패로 적는다.
