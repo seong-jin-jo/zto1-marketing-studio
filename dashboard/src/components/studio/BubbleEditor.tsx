@@ -28,6 +28,7 @@ import {
   toggleSpeaker,
 } from "@/lib/studio/card-deck-ops";
 import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
+import { DeliveredMedia } from "./DeliveredMedia";
 
 const SLIDE_ROLE_LABEL: Record<CardSlide["role"], string> = {
   cover: "표지",
@@ -87,11 +88,21 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
     return <p className="text-caption text-danger" data-bubble-editor-missing-slide>이 장을 찾지 못했습니다.</p>;
   }
   if (slide.role === "cover") {
-    return <CoverEditor slide={slide} onChange={(cover) => run((d) => ({
-      ...d,
-      slides: d.slides.map((s) => (s.id === slide.id ? { ...s, cover } : s)),
-      revision: d.revision + 1,
-    }))} />;
+    return (
+      <CoverEditor
+        slide={slide}
+        onChange={(cover) => run((d) => ({
+          ...d,
+          slides: d.slides.map((s) => (s.id === slide.id ? { ...s, cover } : s)),
+          revision: d.revision + 1,
+        }))}
+        onImageChange={(image_url) => run((d) => ({
+          ...d,
+          slides: d.slides.map((s) => (s.id === slide.id ? { ...s, image_url } : s)),
+          revision: d.revision + 1,
+        }))}
+      />
+    );
   }
 
   const currentSlideId = slide.id;
@@ -164,12 +175,127 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
           </li>
         ))}
       </ul>
-      {slide.role === "cta" ? <CtaEditor deck={deck} onChange={(cta) => run((d) => ({ ...d, cta, revision: d.revision + 1 }))} /> : null}
+      {slide.role === "cta" ? (
+        <>
+          <CtaEditor deck={deck} onChange={(cta) => run((d) => ({ ...d, cta, revision: d.revision + 1 }))} />
+          <div>
+            <span className="block text-caption text-muted">마지막 장 사진</span>
+            <div className="mt-stack-tight">
+              <CoverImagePicker
+                imageUrl={slide.image_url}
+                onChange={(image_url) => run((d) => ({
+                  ...d,
+                  slides: d.slides.map((s) => (s.id === slide.id ? { ...s, image_url } : s)),
+                  revision: d.revision + 1,
+                }))}
+              />
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
 
-function CoverEditor({ slide, onChange }: { slide: CardSlide; onChange: (cover: NonNullable<CardSlide["cover"]>) => void }) {
+/**
+ * 후킹 헤드라인 프리셋(세션맥락 과제 A-4). 표지 훅 3공식(질문형·숫자형·고통인식형) — 근거는
+ * docs/design/osmu-content-quality-benchmark-v1-claude-opus.html REF A-3(표지 훅 3공식,
+ * 첫 장 3줄 이내)과 §⑦CTA(댓글 키워드 유도·댓글 예시 칩·저장 명분, 표면 링크 금지).
+ * `COVER_HEADLINE_MAX_CHARS_PER_LINE`(10자) 안에 들어가는 짧은 문장만 담았다.
+ */
+const HOOK_PRESETS: Record<"question" | "number" | "pain", string[]> = {
+  question: ["이거 순서가\n틀렸다면?", "왜 나만\n안 될까"],
+  number: ["3초 만에\n원인 하나", "10년차가 짚은\n딱 한 가지"],
+  pain: ["안 되는 건\n재능이 아니다", "머리가 아니라\n순서였다"],
+};
+const CTA_KEYWORD_PRESETS = ["순서", "방법", "정리본"];
+const CTA_COMMENT_EXAMPLE_PRESETS = ["댓글에 '순서' 남기면 보내줄게", "댓글 남기면 DM으로 보내줄게"];
+const CTA_SAVE_REASON_PRESETS = ["저장해두고 나중에 다시 펴봐", "저장해두고 D-90에 다시 봐"];
+
+function HookChips({ onPick }: { onPick: (text: string) => void }) {
+  return (
+    <div className="space-y-stack-tight" data-hook-chip-bank>
+      {(Object.keys(HOOK_PRESETS) as Array<keyof typeof HOOK_PRESETS>).map((hookType) => (
+        <div key={hookType} className="flex flex-wrap items-center gap-stack-tight">
+          <span className="text-caption text-subtle">{hookType === "question" ? "질문형" : hookType === "number" ? "숫자형" : "고통인식형"}</span>
+          {HOOK_PRESETS[hookType].map((preset) => (
+            <Button key={preset} size="sm" variant="secondary" onClick={() => onPick(preset)} data-hook-chip={preset}>
+              {preset.replace("\n", " ")}
+            </Button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 대문·마지막 장 사진 선택(세션맥락 과제 A-3). 업로드는 기존 `/api/images/upload`
+ * (SNS-016, 테넌트 격리·서명 URL)를 그대로 쓴다 — 새 업로드 API를 만들지 않는다.
+ */
+function CoverImagePicker({ imageUrl, onChange }: { imageUrl: string | null; onChange: (url: string | null) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  async function handleFile(file: File) {
+    setBusy(true);
+    setUploadError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/images/upload", { method: "POST", body: form });
+      const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        setUploadError(data.error || "사진을 올리지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        return;
+      }
+      onChange(data.url);
+    } catch {
+      setUploadError("연결이 끊겨 사진을 올리지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-stack-tight" data-cover-image-picker>
+      {imageUrl ? (
+        <DeliveredMedia
+          src={imageUrl}
+          type="image"
+          alt="선택된 표지 사진"
+          className="h-24 w-24 rounded-control border border-border object-cover"
+          testId="cover-image-picker-preview"
+        />
+      ) : (
+        <p className="text-caption text-muted" data-cover-image-empty>아직 사진을 고르지 않았습니다. 이 장은 배경색으로만 나갑니다.</p>
+      )}
+      <div className="flex flex-wrap gap-stack-tight">
+        <Button size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "올리는 중…" : "사진 올리기"}</Button>
+        {imageUrl ? <Button size="sm" variant="secondary" onClick={() => onChange(null)}>사진 빼기</Button> : null}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void handleFile(file);
+          event.target.value = "";
+        }}
+      />
+      {uploadError ? <p role="alert" className="text-caption text-danger" data-cover-image-error>{uploadError}</p> : null}
+    </div>
+  );
+}
+
+function CoverEditor({ slide, onChange, onImageChange }: {
+  slide: CardSlide;
+  onChange: (cover: NonNullable<CardSlide["cover"]>) => void;
+  onImageChange: (url: string | null) => void;
+}) {
   const cover = slide.cover ?? { headline: "", sub: null };
   return (
     <div className="space-y-stack" data-bubble-editor-cover>
@@ -181,6 +307,10 @@ function CoverEditor({ slide, onChange }: { slide: CardSlide; onChange: (cover: 
           rows={3}
         />
       </label>
+      <div>
+        <span className="block text-caption text-muted">후킹 문구 바로 넣기</span>
+        <div className="mt-stack-tight"><HookChips onPick={(text) => onChange({ ...cover, headline: text })} /></div>
+      </div>
       <label className="block text-caption text-muted">보조 문구
         <input
           value={cover.sub ?? ""}
@@ -188,6 +318,10 @@ function CoverEditor({ slide, onChange }: { slide: CardSlide; onChange: (cover: 
           className="mt-stack-tight w-full rounded-control border border-border bg-surface-2 p-stack text-body text-text"
         />
       </label>
+      <div>
+        <span className="block text-caption text-muted">표지 사진</span>
+        <div className="mt-stack-tight"><CoverImagePicker imageUrl={slide.image_url} onChange={onImageChange} /></div>
+      </div>
     </div>
   );
 }
@@ -312,12 +446,27 @@ function CtaEditor({ deck, onChange }: { deck: CardDeck; onChange: (cta: CardDec
       <label className="block text-caption text-muted">댓글 키워드
         <input value={cta.keyword} onChange={(event) => onChange({ ...cta, keyword: event.target.value })} className="mt-stack-tight w-full rounded-control border border-border bg-surface p-stack text-body text-text" />
       </label>
+      <div className="flex flex-wrap gap-stack-tight" data-cta-keyword-chips>
+        {CTA_KEYWORD_PRESETS.map((preset) => (
+          <Button key={preset} size="sm" variant="secondary" onClick={() => onChange({ ...cta, keyword: preset })}>{preset}</Button>
+        ))}
+      </div>
       <label className="block text-caption text-muted">댓글 예시
         <input value={cta.comment_example} onChange={(event) => onChange({ ...cta, comment_example: event.target.value })} className="mt-stack-tight w-full rounded-control border border-border bg-surface p-stack text-body text-text" />
       </label>
+      <div className="flex flex-wrap gap-stack-tight" data-cta-comment-chips>
+        {CTA_COMMENT_EXAMPLE_PRESETS.map((preset) => (
+          <Button key={preset} size="sm" variant="secondary" onClick={() => onChange({ ...cta, comment_example: preset })}>{preset}</Button>
+        ))}
+      </div>
       <label className="block text-caption text-muted">저장 명분
         <input value={cta.save_reason} onChange={(event) => onChange({ ...cta, save_reason: event.target.value })} className="mt-stack-tight w-full rounded-control border border-border bg-surface p-stack text-body text-text" />
       </label>
+      <div className="flex flex-wrap gap-stack-tight" data-cta-save-chips>
+        {CTA_SAVE_REASON_PRESETS.map((preset) => (
+          <Button key={preset} size="sm" variant="secondary" onClick={() => onChange({ ...cta, save_reason: preset })}>{preset}</Button>
+        ))}
+      </div>
     </div>
   );
 }

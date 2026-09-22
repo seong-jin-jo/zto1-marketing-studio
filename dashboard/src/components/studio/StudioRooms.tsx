@@ -8,6 +8,8 @@ import { EditOutline } from "./EditOutline";
 import { CardDeckPanel } from "./BubbleEditor";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { deckProjection, applyProjection } from "@/lib/studio/card-deck-contract";
+import { VideoEditor } from "./VideoEditor";
+import type { VideoEdit } from "@/lib/studio/video-edit-contract";
 import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
 import {
@@ -1548,6 +1550,13 @@ interface EditRoomProps {
    */
   cardDeck?: CardDeck | null;
   onCardDeckChange?: (deck: CardDeck) => void;
+  /**
+   * 영상 편집 v1(세션맥락 과업 B). 있으면 `kind==="video"` 편집 워크벤치 위에
+   * `VideoEditor`(후킹 CTA·댓글 오버레이·자막 기반 편집·음성 변경)를 얹는다. 기존
+   * VIDEO_TOOLS(비율·목소리·속도·자막 셀렉트)는 그대로 두고 회귀시키지 않는다.
+   */
+  videoEdit?: VideoEdit | null;
+  onVideoEditChange?: (edit: VideoEdit) => void;
 }
 type ToolName = "비율" | "배경" | "목소리" | "속도" | "자막" | "음악" | "음량";
 const VIDEO_TOOLS: ToolName[] = ["비율", "목소리", "속도", "자막"];
@@ -1671,6 +1680,8 @@ export function EditRoom({
   autosaveError,
   cardDeck = null,
   onCardDeckChange,
+  videoEdit = null,
+  onVideoEditChange,
 }: EditRoomProps) {
   const formatKind = kind;
   // 2026-09-22 코드리뷰 MAJOR 3: chat_bubble 이면 `lines`(옛 `editLines` 상태)가 아니라
@@ -1841,6 +1852,19 @@ export function EditRoom({
               <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
+              {kind === "video" && onVideoEditChange ? (
+                <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-video-edit-workbench>
+                  <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-video-edit-editor-note>
+                    후킹 CTA·댓글 오버레이·자막·음성을 여기서 편집합니다. 여기서 고친 내용은 자동 저장됩니다.
+                  </p>
+                  <VideoEditor
+                    videoEdit={videoEdit ?? { contract_version: "1.0", overlays: [], comments: [], subtitles: [], voice: null, revision: 0 }}
+                    onVideoEditChange={onVideoEditChange}
+                    previewVideoUrl={previewVideoUrl}
+                    tenantId={workspaceId}
+                  />
+                </div>
+              ) : null}
               {kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench>
                   <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-card-deck-editor-note>

@@ -3,9 +3,12 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
 import { resolveCurrentWork } from "@/lib/studio/current-work";
 import { validateCardDeck, CardDeckValidationError, deckProjection } from "@/lib/studio/card-deck-contract";
+import { validateVideoEdit, VideoEditValidationError } from "@/lib/studio/video-edit-contract";
 
 /** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
 const CARD_DECK_MAX_BYTES = 64 * 1024;
+/** videoEdit 도 같은 상한을 쓴다(오버레이·댓글·자막 목록 크기가 카드덱과 비슷한 자릿수). */
+const VIDEO_EDIT_MAX_BYTES = 64 * 1024;
 
 // Studio 초안/발행 이력 — Supabase drafts 테이블(테넌트별). payload jsonb에 본문 보관.
 interface DraftRow {
@@ -25,6 +28,7 @@ interface DraftRow {
     editLines?: unknown;
     cardTextPositions?: unknown;
     cardDeck?: unknown;
+    videoEdit?: unknown;
     titles?: unknown;
     captions?: unknown;
     hashtags?: unknown;
@@ -75,6 +79,7 @@ export async function GET(request: Request) {
       editLines: r.payload?.editLines ?? null,
       cardTextPositions: r.payload?.cardTextPositions ?? null,
       cardDeck: r.payload?.cardDeck ?? null,
+      videoEdit: r.payload?.videoEdit ?? null,
       titles: r.payload?.titles ?? {},
       captions: r.payload?.captions ?? {},
       hashtags: r.payload?.hashtags ?? {},
@@ -138,6 +143,27 @@ export async function POST(request: Request) {
       }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
   }
+  if (body.videoEdit !== undefined && body.videoEdit !== null) {
+    const serialized = JSON.stringify(body.videoEdit);
+    if (Buffer.byteLength(serialized, "utf8") > VIDEO_EDIT_MAX_BYTES) {
+      return Response.json({
+        ok: false,
+        code: "VIDEO_EDIT_TOO_LARGE",
+        error: "영상 편집 내용이 너무 큽니다",
+      }, { status: 413, headers: { "Cache-Control": "no-store" } });
+    }
+    try {
+      validateVideoEdit(body.videoEdit);
+    } catch (e) {
+      const rule = e instanceof VideoEditValidationError ? e.rule : "unknown";
+      return Response.json({
+        ok: false,
+        code: "INVALID_VIDEO_EDIT",
+        rule,
+        error: e instanceof Error ? e.message : "영상 편집 내용을 확인해 주세요",
+      }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
+  }
   const tenantId = await effectiveTenantId(request, body.tenant_id);
   if (!tenantId) return Response.json({ error: "tenant_id required" }, { status: 400 });
   // cardDeck: 요청에 키가 아예 없으면 payload 에도 빼서 JSONB `||` 병합 대상에서
@@ -154,6 +180,14 @@ export async function POST(request: Request) {
     cardDeckPatch.cardDeck = null;
   } else if (Object.prototype.hasOwnProperty.call(body, "cardDeck") && body.cardDeck != null) {
     cardDeckPatch.cardDeck = body.cardDeck;
+  }
+  // videoEdit도 cardDeck과 같은 보존 규칙: 키가 없으면 payload 병합에서 빠져 기존 값을
+  // 지키고, 명시 플래그 clearVideoEdit로만 지운다.
+  const videoEditPatch: { videoEdit?: any } = {};
+  if (body.clearVideoEdit === true) {
+    videoEditPatch.videoEdit = null;
+  } else if (Object.prototype.hasOwnProperty.call(body, "videoEdit") && body.videoEdit != null) {
+    videoEditPatch.videoEdit = body.videoEdit;
   }
   const payload = {
     text: body.text ?? null, img: body.img ?? null, vid: body.vid ?? null,
@@ -174,6 +208,7 @@ export async function POST(request: Request) {
     selectedAccounts: body.selectedAccounts ?? {},
     reviewQueueId: body.reviewQueueId ?? null,
     ...cardDeckPatch,
+    ...videoEditPatch,
   };
   const status = body.status || "draft";
   const idea = body.idea || "";

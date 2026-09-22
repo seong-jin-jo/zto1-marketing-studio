@@ -28,6 +28,7 @@ import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
 import { browserCardUploader, cardRatioFrom, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import type { VideoEdit } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
 import { emptyBubbleSlideNumber, pruneEmptyBubbles } from "@/lib/studio/card-deck-ops";
 import { limitedChannelNotice, planChannelImages } from "@/lib/studio/channel-image-capacity";
@@ -484,6 +485,8 @@ export default function StudioPage() {
   const [cardTextPositions, setCardTextPositions] = useState<CardTextPosition[]>([]);
   // 카드뉴스 v2 덱(PR4). 있으면 편집실이 CardDeckPanel(말풍선 직접 편집)을 그린다.
   const [cardDeck, setCardDeck] = useState<CardDeck | null>(null);
+  // 영상 편집 v1(세션맥락 과업 B). 있으면 편집실이 VideoEditor를 그린다.
+  const [videoEdit, setVideoEdit] = useState<VideoEdit | null>(null);
   const [editSavedAt, setEditSavedAt] = useState("");
   const [editAutosaveError, setEditAutosaveError] = useState("");
   const [moveToPublishBusy, setMoveToPublishBusy] = useState(false);
@@ -1045,6 +1048,7 @@ export default function StudioPage() {
     persistedVid: VidResult | null = vid,
     // 방금 연산한 덱도 같은 이유로 인자로 받는다(§5 F4 자동저장, 800ms 디바운스).
     persistedCardDeck: CardDeck | null = cardDeck,
+    persistedVideoEdit: VideoEdit | null = videoEdit,
   ) {
     const r = await apiPost<{ id?: string }>("/api/studio/drafts", {
       tenant_id: activeWorkspace?.id,
@@ -1066,6 +1070,7 @@ export default function StudioPage() {
       cardTextPositions,
       // cardDeck 키가 아예 없으면 서버가 기존 덱을 보존한다(route.ts). 있을 때만 보낸다.
       ...(persistedCardDeck ? { cardDeck: persistedCardDeck } : {}),
+      ...(persistedVideoEdit ? { videoEdit: persistedVideoEdit } : {}),
       editKind,
       editFormat,
       reviewQueueId,
@@ -1485,6 +1490,7 @@ export default function StudioPage() {
     setEditLines((d.editLines as string[]) || []);
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
     setCardDeck((d.cardDeck as CardDeck) || null);
+    setVideoEdit((d.videoEdit as VideoEdit) || null);
     setReviewQueueId((d.reviewQueueId as string) || null);
     const savedFormat = validateContentEditFormat(d.editFormat);
     if (savedFormat.valid) {
@@ -1543,6 +1549,10 @@ export default function StudioPage() {
   const draftIdRef = useRef<string | null>(null);
   draftIdRef.current = draftId;
   useEffect(() => () => { if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current); }, []);
+  // 영상 편집 v1 자동저장(800ms 디바운스, cardDeck과 같은 패턴). 저장 자체는 검증만 하고
+  // (video-edit-contract.ts) 렌더링 반영은 하지 않는다 — VideoEditor.tsx 상단 주석 참조.
+  const videoEditAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current); }, []);
   useEffect(() => {
     if (!publishReturnRequest || !publishReturnQueue?.posts) return;
     const loadKey = `${publishReturnRequest.sourceRoute}:${publishReturnRequest.queuePostId}`;
@@ -1598,6 +1608,7 @@ export default function StudioPage() {
       setEditLines((linkedDraft?.editLines as string[]) || []);
       setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
       setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
+      setVideoEdit((linkedDraft?.videoEdit as VideoEdit) || null);
       const linkedFormat = validateContentEditFormat(linkedDraft?.editFormat);
       if (linkedFormat.valid) {
         setEditKind(linkedFormat.value.kind);
@@ -2114,6 +2125,16 @@ export default function StudioPage() {
     }, 800);
   }
 
+  function onVideoEditChange(nextEdit: VideoEdit) {
+    setVideoEdit(nextEdit);
+    if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
+    videoEditAutosaveTimer.current = setTimeout(() => {
+      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, cardDeck, nextEdit)
+        .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setEditAutosaveError(""); })
+        .catch((error) => setEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
+    }, 800);
+  }
+
   if (activeRoom === "edit") return (
     <div className="px-stack-section py-pad-inset">
       {showWizard && activeWorkspace ? <LearningCardWizard workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onSaved={(info, completed) => { setLearningInfo(info); if (completed) { setShowWizard(false); mutateBrand(); showToast("학습 정보를 배웠습니다"); } else { setLearningFlash((value) => value + 1); } }} onClose={() => setShowWizard(false)} /> : null}
@@ -2137,6 +2158,8 @@ export default function StudioPage() {
         onCardTextPositionsChange={setCardTextPositions}
         cardDeck={cardDeck}
         onCardDeckChange={onCardDeckChange}
+        videoEdit={videoEdit}
+        onVideoEditChange={onVideoEditChange}
         onOpenCreate={() => changeRoom("create")}
         onOpenPublish={moveToPublish}
         lastSavedAt={editSavedAt}
