@@ -1,6 +1,8 @@
 "use client";
 
 import { PlatformPreview, type PreviewPlatform } from "@/components/studio/PlatformPreview";
+import { PublishHeaderControls } from "@/components/studio/PublishHeaderControls";
+import { DEFAULT_COVER_SECONDS } from "@/lib/video-cover";
 
 /**
  * app/studio/page.tsx 발행실 그리드(GROUPS.map)의 실제 마크업을 그대로 재현한다.
@@ -46,13 +48,13 @@ const ACCOUNT_LABEL: Partial<Record<PreviewPlatform, string>> = {
   shorts: "OSMU 공식 채널", reels: "osmu_reels_studio_2026", tiktok: "osmufactory",
 };
 const CONNECTED: Partial<Record<PreviewPlatform, boolean>> = { facebook: false };
-const HAS_COVER_TIMESTAMP: Partial<Record<PreviewPlatform, boolean>> = { reels: true, tiktok: true };
-const PLACEHOLDER_IMAGE = "/logo.svg";
-// 레포에 커밋된 재생 가능한 샘플 영상이 없어 data: URI 로 최소 유효 mp4 를 만든다
-// (1x1, 무음, 네트워크 의존 없음). video 분기가 실제로 렌더되는지 재는 것이
-// 목적이라 재생 품질은 무관하다.
-const SAMPLE_VIDEO =
-  "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAt1tZGF0AAAC";
+// 측정 입력은 실제 조건을 재현해야 의미가 있다(2026-09-23 count:9: 짧은 플레이스홀더로
+// 재서 "우연히 통과"를 만들었다). 아래 자산은 레포에 커밋된 **실물**이다.
+// - 영상: 실제 H.264 mp4(9:16, 2초). data: URI 가짜 바이트가 아니라 진짜로 디코딩된다.
+// - 카드뉴스: 1080x1350 실제 JPEG 3장 — instagram 다장 캐러셀 분기를 실제로 태운다.
+const SAMPLE_IMAGES = ["/qa/alignment-card-1.jpg", "/qa/alignment-card-2.jpg", "/qa/alignment-card-3.jpg"];
+const SAMPLE_IMAGE = SAMPLE_IMAGES[0];
+const SAMPLE_VIDEO = "/qa/alignment-sample.mp4";
 
 function editorFor(platform: PreviewPlatform) {
   const connected = CONNECTED[platform] !== false;
@@ -77,63 +79,36 @@ function editorFor(platform: PreviewPlatform) {
 
 function mediaFor(platform: PreviewPlatform) {
   const isVideo = platform === "shorts" || platform === "reels" || platform === "tiktok";
-  if (isVideo) return { vidUrl: SAMPLE_VIDEO, imgUrl: PLACEHOLDER_IMAGE };
-  if (platform === "instagram") return { imgUrls: [PLACEHOLDER_IMAGE, PLACEHOLDER_IMAGE, PLACEHOLDER_IMAGE] };
-  return { imgUrl: PLACEHOLDER_IMAGE };
+  if (isVideo) return { vidUrl: SAMPLE_VIDEO, imgUrl: SAMPLE_IMAGE };
+  if (platform === "instagram") return { imgUrls: SAMPLE_IMAGES };
+  return { imgUrl: SAMPLE_IMAGE };
 }
 
 /**
- * page.tsx:2354 headerRight JSX 를 채널 상태까지 갖춰 재현한다. 2026-09-23
- * 5라운드에서 page.tsx 쪽을 고정 2행(발행/대문 · 계정) 구조로 바꿨으므로 여기도
- * 같은 구조 + 실제 계정명 길이로 맞춘다.
+ * 2026-09-23 count:9 봉합: 예전에는 이 자리에 page.tsx 의 headerRight JSX 를 손으로
+ * 베낀 복제본이 있었다. 이제 발행실과 **같은** PublishHeaderControls 를 렌더한다.
+ * 이 함수는 마크업을 만들지 않고, 실제 조건을 재현하는 **데이터**만 만든다.
  */
-function HeaderRightFor({ platform }: { platform: PreviewPlatform }) {
+function headerPropsFor(platform: PreviewPlatform) {
   const connected = CONNECTED[platform] !== false;
-  const hasCoverTimestamp = HAS_COVER_TIMESTAMP[platform] === true;
-  const isVideo = platform === "shorts" || platform === "reels" || platform === "tiktok";
   const label = ACCOUNT_LABEL[platform] || "운영계정";
-  return (
-    <div className="flex flex-col items-end gap-micro">
-      <div className="flex items-center justify-end gap-stack-tight">
-        <label className="ds-touch-target flex min-h-control-touch items-center gap-micro px-stack-tight text-caption text-muted">
-          <input aria-label={`${LABEL[platform]} 발행`} type="checkbox" className="h-5 w-5 shrink-0" readOnly checked={false} />
-          발행
-        </label>
-        {hasCoverTimestamp ? (
-          <label className="flex items-center gap-micro text-caption text-muted" title="영상에서 이 시점 화면을 대문으로 씁니다">
-            대문
-            <input
-              type="number"
-              aria-label={`${LABEL[platform]} 대문 시점(초)`}
-              defaultValue={0}
-              className="min-h-control-touch w-16 rounded-control border border-border bg-surface px-stack-tight text-caption text-text"
-            />
-            초
-          </label>
-        ) : isVideo ? (
-          <span className="text-caption text-subtle">대문 자동</span>
-        ) : (
-          <span aria-hidden="true" className="text-caption text-transparent select-none">대문 자동</span>
-        )}
-      </div>
-      <div className="flex items-center justify-end gap-stack-tight">
-        {!connected ? (
-          <span className="inline-flex min-h-control-touch items-center rounded-control border border-accent/40 bg-accent-soft px-stack-tight text-caption font-semibold text-accent">
-            계정 연결하기
-          </span>
-        ) : (
-          <>
-            <select aria-label={`${LABEL[platform]} 발행 계정`} className="min-h-control-touch w-28 truncate rounded-control border border-border bg-surface-2 px-stack-tight text-caption text-text" defaultValue="">
-              <option value="">기본 {label}</option>
-            </select>
-            <span className="inline-flex min-h-control-touch items-center rounded-control border border-border bg-surface-2 px-stack-tight text-caption font-semibold text-muted">
-              계정 관리
-            </span>
-          </>
-        )}
-      </div>
-    </div>
-  );
+  return {
+    platform,
+    label: LABEL[platform],
+    publishSupported: true,
+    accountSelectable: true,
+    checked: false,
+    checkboxDisabled: false,
+    onCheckedChange: () => {},
+    coverSeconds: DEFAULT_COVER_SECONDS,
+    onCoverSecondsChange: () => {},
+    accountsLoading: false,
+    // 미연결 채널(facebook)은 목록이 비어 "계정 연결하기" 분기로 떨어진다.
+    accounts: connected ? [{ id: `${platform}-1`, label, isDefault: true }] : [],
+    selectedAccountId: "",
+    onSelectedAccountChange: () => {},
+    channelHref: `/channels/${platform}`,
+  };
 }
 
 export function AlignmentHarnessGrid() {
@@ -153,7 +128,7 @@ export function AlignmentHarnessGrid() {
                   text={{ threads: TEXT.threads, facebook: TEXT.facebook, x: TEXT.x, instagram: { caption: "카드뉴스 캡션 예시", hashtags: ["카드뉴스", "예시"] } }}
                   media={mediaFor(platform)}
                   editor={editorFor(platform)}
-                  headerRight={<HeaderRightFor platform={platform} />}
+                  headerRight={<PublishHeaderControls {...headerPropsFor(platform)} />}
                 />
               </div>
             ))}
