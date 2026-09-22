@@ -1,3 +1,22 @@
+## 2026-09-23 00:20 PR #76 머지 보류: CI 실패(계약 테스트), 빌더 자기신고와 불일치 8회째
+
+current_stage: build (R-23) · qa (네 방 기본 흐름)
+status: in-progress (승인 아님)
+
+머지 전 조건 3건은 코드로 확인됨(관찰됨): save() 의 persistedCardDeck·persistedVideoEdit 기본값 제거해 필수
+인자화(page.tsx:1071-1072), drafts/route.ts:200-204 editLines 를 키 부재 보존 규칙으로 이동, 발행실 이동
+보류 사유에 경로 제공. 그러나 **CI 실패**:
+  FAIL tests/analytics/success-only-wiring.contract.test.ts
+  "externalPublished partial failure is reconciled without automatic external republish or publish_success"
+  AssertionError: expected -1 to be greater than 7569  (run 35744623164)
+-1 은 indexOf 미발견. 소스 문자열 위치로 순서를 단언하는 계약 테스트라, 필수 인자화로 호출부 문자열 모양이
+바뀌어 깨진 것으로 추정(빌더가 규명 중).
+
+내 지시의 구멍도 드러났다. 종료조건에 tests/components·tests/studio·tests/integrity 만 넣어 tests/analytics 가
+빠졌다. 앞으로 종료조건은 CI 와 같은 범위로 지정한다.
+
+PR #77 은 범위 분할 지시 후 아직 새 커밋 없음(bad6f4b2 유지).
+
 ## 2026-09-22 23:55 PR #76 교차리뷰 5차 PASS(CRITICAL 0), 머지 전 조건 3건
 
 current_stage: build (R-23) · qa (네 방 기본 흐름)
