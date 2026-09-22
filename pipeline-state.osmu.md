@@ -1,3 +1,27 @@
+## 2026-09-23 01:22 PR #77 교차리뷰 "머지 가능", 머지 전 조건 3건
+
+current_stage: build (R-23) · qa (네 방 기본 흐름)
+status: in-progress (승인 아님)
+
+5차(e16494c4) 판정 CRITICAL 0. 고정 2행 슬롯이 CSS 상 줄바꿈을 원천 차단함을 확인(1·2행 컨테이너 flex
+nowrap, 조건부로 통째 사라지지 않고 양 분기 모두 빈 슬롯 유지). 하네스 조건이 이번엔 실제와 일치(계정
+문자열 형태·길이, vidUrl, instagram 3장, facebook 미연결, 대문 시각 채널 = video-cover.ts 와 일치).
+측정 게이트 실재(임계 2px, 헤더·편집칸 둘 다 실패 코드).
+**배포 함정 없음 전수 확인**: 측정 스크립트가 .mjs 라 tsconfig include 밖, dashboard .ts/.tsx 에
+playwright·canvas 정적 import 0건, 하네스 라우트 사슬에 playwright 없음, 운영에서는 notFound().
+1~4차 지적 9건 중 8건 종결.
+
+머지 전 조건 3건 지시: (1) page.tsx:2424 title 이 선택 계정이 아니라 항상 기본 계정을 가리키는 신규 버그
+(2) 실수.md 에 4라운드 사고(하네스 조건 미재현으로 거짓 실측) 기록 (3) 배지를 옮겼으나 오버레이가 vid 일 때
+left-3 right-3 전 폭이라 여전히 같은 사각형 안이고 DOM 순서도 그대로 — 긴 핸들·제목에서 재발. 그 겹침을
+본다는 계약 테스트가 실제로는 클래스 문자열 grep.
+
+후속 최우선: page.tsx 의 headerRight 를 공용 컴포넌트로 추출해 발행실·하네스가 같은 것을 렌더(드리프트를
+물리적으로 불가능하게. 이 브랜치가 5라운드를 돈 근본 원인). 그리고 qa:publish-room-alignment 가 CI·Dockerfile·
+npm test 어디에서도 호출되지 않는다 — 아무도 안 부르는 게이트는 게이트가 아니다.
+
+main 은 아직 배포 불가 상태(canvas 정적 import). 핫픽스 PR 미생성, 빌더 작업 중.
+
 ## 2026-09-23 01:15 배포 실패(main), 발행실 고정 슬롯 재작성 교차검증 착수
 
 current_stage: build (R-23) · qa (네 방 기본 흐름)
