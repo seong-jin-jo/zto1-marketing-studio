@@ -1,3 +1,19 @@
+## 2026-09-22 22:10 R-23 발행실·편집실 개편 착수, 9444 실측(승인 아님)
+
+current_stage: build (품질 1단계 + R-23) · qa (네 방 기본 흐름)
+status: in-progress (승인 아님)
+
+9444 운영 실측(관찰됨): 성과실 렌더 정상(총 발행 2, 조회 0, 저장·참여율 미수집), 발행실 발행 단추 배선 정상
+(채널 0곳 선택이면 비활성), 파생 생성 API 는 운영 DB 테이블 부재로 여전히 500. 발행실 카드 정렬 실측에서
+같은 줄 편집 블록 시작점이 threads 1698 / x 1676 / facebook 1631 로 67px 어긋나고, 둘째 줄은 80px,
+instagram 은 혼자 셋째 줄에 떨어짐. 회장이 지적한 "삐뚤빼뚤"의 정체.
+
+두 갈래 위임: (1) 발행실 일관성·플랫폼 상한·사이드바 채팅형 편집·다장 넘기기·영상 썸네일,
+(2) 편집실 카드덱 편집기(메시지 수정·역할 바꾸기·대문/마지막 장·후킹 CTA)와 영상 편집기(CTA 오버레이·
+댓글 사회적 증거·재생·자막 기반 컷·음성 변경).
+
+회장 대기: osmu-db-migrate.yml phase=apply-legacy 1회 실행(분류기가 세션 실행을 막음).
+
 ## 2026-09-22 00:05 품질 1단계 PR3 운영 반영, PR4 진행 중(build, 승인 아님)
 
 current_stage: build (품질 1단계) · qa (네 방 기본 흐름)
@@ -64,6 +80,34 @@ localhost 네 방 단면 4/4와 네 폭 20화면 및 복귀 5/5, Vitest 378파�
 
 ## 2026-09-17 채널 연결 정의 정정: Meta 앱 검수 승인이 종료 조건 (qa 진행 중)
 
+- 2026-09-22 20:36 로고: 후보 4개+비교 보드 완료(토큰 대조 추가, 자체 등급 B-~A-, 추천 후보3 무한 순환 O). verify 는 여전히 FAIL(정본 Read 증거 1/2) → 검증실패 라벨 달아 출고, 회장 선택은 참고용. 파생 API 500 원인 확정, 운영 DB 마이그레이션 회장 실행 대기.
+- 2026-09-22 07:15 ship 실측: PR #75 배포 run 35659730532 성공. 9444 재현 request_id f306f0f5 → 운영 로그(관찰됨): studio_derivation_batches 테이블 없음. DB 감사 run 35661384150: 20260830_010_studio_derivations 가 운영 원장에 없음(8/30 마이그레이션 미적용). 원인 확정. 해소 = 승인형 DB 마이그레이션 워크플로 apply-legacy 단계(추가형) 인데 세션 분류기가 차단 → 회장 실행 필요. 9장 덱 실측 미검증. 승인 아님.
+- 2026-09-22 06:55 ship 진행: PR #75 CI green → 머지 0a205e2a → 배포 run 35659730532. 배포 후 9444 재클릭으로 500 원인 로그 확정 예정. 승인 아님.
+- 2026-09-22 06:42 build 진행: PR #75 재작업 cd095d16(M1 cause 연결·M2 kinds 정규화, vitest 928 PASS) → 재리뷰·CI 중. 승인 아님.
+- 2026-09-22 06:36 build 진행: PR #75 리뷰 REQUEST_CHANGES(MAJOR 2: DB 오류 로그에 request_id 미연결, kinds 원문 무제한 로그) → 빌더 반영 중. 승인 아님.
+- 2026-09-22 06:32 build 진행: 파생 API 관측성 PR #75(45b744be, vitest 922 PASS, 로컬 DB 재현 불가) 리뷰·CI 중. 승인 아님.
+- 2026-09-22 06:25 ship 실측: PR #74 배포 run 35654081123 성공. 9444 실측: '카톡 말풍선 카드뉴스 9장 만들기' 버튼·300원 견적 노출(관찰됨) → 클릭 시 derivations POST 500 INTERNAL_ERROR. kinds=text(0원) 도 500 → derivations POST 전체가 운영에서 죽어 있음(PR 70 이후 미실측). 서버 로그 0줄(studioFailure 가 error 삼킴). → fix/derivations-500-observability 착수(로그+원인). 9장 덱 실측 미검증. 승인 아님.
+- 2026-09-22 06:00 ship 진행: PR #74 CI green(a099e2ec) → 머지 73b789e2 → 배포 run 35654081123 시작. 배포 후 9444 에서 9장 덱 생성→편집→발행 실측 예정. 승인 아님.
+- 2026-09-22 05:45 build 진행: PR #74 4차 a099e2ec(테스트만: 확정 버튼 toBeEnabled 대기 9곳, 가설=CI 경합으로 disabled 클릭). CI 대기. 승인 아님.
+- 2026-09-22 05:40 build 진행: PR #74 CI 3차 실패(CI 전용: 확정 클릭 후 POST 0회, 3건). 리뷰는 APPROVE. 빌더 4차: CI 환경 차 원인 규명. GitHub API 한도 → 어노테이션은 9555 웹으로 확보. 승인 아님.
+- 2026-09-22 05:30 build 진행: PR #74 3차 커밋 d350bd35 → 재리뷰 APPROVE(M7 해소, 실서비스 계약 테스트). CI run 35650517215 실행 중(GitHub API 2차 한도로 저빈도 폴링). 승인 아님.
+- 2026-09-22 05:10 build 진행: PR #74 재작업 7993aa77 → CI 새 테스트 4건 실패(로컬 통과·CI 실패, 환경 차) + 재리뷰 M7(재시도가 실패 배치 멱등 재반환) → 빌더 3차 작업. 로고 종료 보고 미회수. 승인 아님.
+- 2026-09-22 04:47 build 진행: PR #74 빌더 재작업 중(tsc TS2349 1건 + 리뷰 MAJOR 6). 로고 보드 종료 보고 회수 대기. 9장 덱 화면 미검증. qa 미착수, 승인 아님.
+- 2026-09-22 04:35 build 진행: PR #74(PR4b) CI Type check 실패(TS2741) + 리뷰 REQUEST_CHANGES MAJOR 6(리셋 미초기화 재발, 실패 복구 0, mutateHist 미호출로 썸네일 미표시, 편집실 진입 시 덱 미로드, 테스트 반검증, 조용한 비활성) → 빌더 재작업. 실수원장 3-strike(빌더 검증 자기신고) 강화 제안 등록. 승인 아님.
+- 2026-09-22 04:30 ship: PWA PR #73 머지(4e04cdd5) 배포 run 35643324679 성공. 운영 실측(관찰됨): /manifest.webmanifest 200 application/manifest+json, /sw.js 200, offline.html inline onclick, 9444 에서 SW 등록 sw.js?v=1790018752798 확인. '홈 화면에 추가' 버튼은 beforeinstallprompt 미발화로 미노출(미검증). PR4b = PR #74(7656c806, vitest 884 PASS) 리뷰 중. 로고 후보 보드 생성됨(회수 전). qa 미착수, 승인 아님.
+- 2026-09-22 04:05 ship 실측: 배포 run 35639158665 성공(main 9fd28b3d = PR #71+#72). 9444 실측(관찰됨): 문답→구조 초안 3개 25초 201, A 선택 OK, 카운터 '구조 초안(A/B/C) 3개 / 생성한 후보 2개' 분리 확인, 대표 이미지 재생성 → 글자 파편 0·실사(손+알람시계) docs/design/captures/quality-imgprompt/after-cover-pr72.png. 결함 발견: 주 형식=카드뉴스면 9장 덱 진입 없음(alsoKinds 만 derivations) → PR4b 착수(feat/quality-s1-pr4b-primary-card-deck). PWA PR #73 재리뷰 APPROVE, CI 대기. qa 미착수, 승인 아님.
+- 2026-09-22 03:35 build→배포 진행: PR #72 머지(4aa5cbeb), PR #71 머지(9fd28b3d), 배포 run 35639158665 시작. PWA PR #73 리뷰 REQUEST_CHANGES(MAJOR 4: 오프라인 폴백 JS 미캐시, 캐시 버전 상수, dev SW 잔존, 테스트 0) → 빌더 재작업. 미검증: 9444 실측 전. qa 미착수, 승인 아님.
+- 2026-09-22 03:20 build 진행: PR #72 재리뷰 APPROVE(M1~M4 실행 확인, 새 샘플 5개 비문 0). PR #71·#72 모두 리뷰 APPROVE, CI 실행 중. 잔여 MINOR(tokenize 숫자 손실) 후속 커밋 후보. 승인 아님.
+- 2026-09-22 03:15 build 진행: PR #71 래칫 수정 2b7075d3(vitest 871 PASS·tsc 0) CI 대기, 리뷰 APPROVE 유지. PR #72 재작업 5d442aab(MAJOR 4·V68 복구, vitest 771 PASS) CI 대기·재리뷰 발주. PWA 빌더 전체 테스트 중. 승인 아님.
+- 2026-09-22 03:00 build 진행: PWA 빌더 npm ci 대기로 일시 정지 → 재개 지시. PR #71 래칫 수정·PR #72 재작업·로고 후보 제작 병행. 미검증: 운영 실측 전. 승인 아님.
+- 2026-09-22 02:55 build 진행: PR #71 재리뷰 APPROVE(전/후 실행 증거, M1~M6 해소). CI 잔여 1건(맨 button 래칫 238→239) 빌더 수정 중. 회장 02:46 요청 R-22-1~6 요청.md 등록: PWA(feat/pwa-install 착수), 로고 후보 4개(힉스필드, 회장 선택 대기 예정), 학습 계층·댓글 오버레이는 벤치마크 v1 2·3단계 로드맵. 승인 아님.
+- 2026-09-22 02:50 build 진행: PR #71 재작업 커밋 5bab2ebc(MAJOR 6 전부 반영, tsc 전체 0, vitest 784 PASS 테스트됨) → 재리뷰·CI(run 35633751353) 진행 중. PR #72 재작업 중. 승인 아님.
+- 2026-09-22 02:45 build 진행: PR #72 교차 리뷰 REQUEST_CHANGES(MAJOR 4: visual 분기 삭제 회귀, industry 미배선, 과잉 삭제로 비문, 테스트 형식 통과) → 빌더에 V68 계약 수정과 함께 재작업. 승인 아님.
+- 2026-09-22 02:40 build 진행: PR #72 CI 실패(V68 생성실 계약 테스트, 카운터 라벨 변경 충돌) → 빌더 재작업. PR #71 재작업 계속. 승인 아님.
+- 2026-09-22 02:25 build 진행: 이미지 지시문·초안 결과 노출 수정 = PR #72(b2808c06, verify PASS, vitest 521 PASS·tsc 0) → 교차 리뷰 중. PR #71 재작업 계속. 미검증: 운영 실측 전. 승인 아님.
+- 2026-09-22 02:05 build 진행: PR #71 교차 리뷰 REQUEST_CHANGES(MAJOR 6: 리셋 경로 덱 미초기화 회귀, pruneEmptyBubbles·deckProjection 미배선, 썸네일 예외 미처리, 부분 볼드 파괴, 테스트 형식 통과). code-builder 재작업 중. 미검증: 9444 실측 전. qa 미착수, 승인 아님.
+- 2026-09-22 02:00 build 진행: PR4 = PR #71(5d0e0895·40c3b1e8·b2a5cb0b). CI Type check 실패(테스트 TS2345) 수정 중, code-reviewer 교차 리뷰 중. 별도 fix/quality-image-prompt-result-visibility 브랜치 착수(이미지 지시문·초안 결과 노출). 채널 연결: Threads 완료(관찰됨), Facebook 만 미연결. 힉스필드 운영 로그인 복구(run 35621910375). qa 미착수, 승인 아님.
+- 2026-09-22 00:20 build 진행: PR4 1차(5d0e0895, 편집실 BubbleEditor/CardDeckPanel + 생성실 배선) verify PASS. 잔여 3건(발행실 9장 PNG·생성실 실썸네일·역할 배지) 동일 브랜치에서 code-builder 진행 중. 미검증: 9444 실측 전. qa 미착수, 승인 아님.
 - 정책 재확인(ADR-004/006): 회원은 OAuth 로그인만으로 연결·발행. 테스터 등록은 심사 전 한시. 종료 조건 = Meta App Review 승인.
 - 배포: 연결 오류 문구 정정(0c1b030a, main 46ef153a, 배포 success). 제출 패키지 docs/ops/meta-app-review-2026-09.md(Codex 검토 25/25).
 - 블로커(회장): 비즈니스 인증 서류, 내부 테스터 계정 인스타그램 연결 1회, X 앱 OAuth 2.0 설정.
