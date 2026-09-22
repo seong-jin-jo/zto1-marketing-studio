@@ -71,6 +71,13 @@ export function utf16UnitLength(value: string): number {
   return (value ?? "").length;
 }
 
+// 2026-09-22 교차 코드리뷰 J3: 사이드바가 X 를 코드포인트 근사치로 재면서 "근사치"라고
+// 주석만 달아놨는데, 그 근사치가 실제로 한글 140자를 280 이 아니라 140 으로 보여줘
+// 이미 차단인데 통과할 것처럼 안심시켰다. 근사가 아니라 X 의 실제 계산기를 그대로 쓴다.
+export function xWeightedLength(value: string): number {
+  return twitterText.parseTweet(value ?? "").weightedLength;
+}
+
 function pushHardLimit(
   target: PlatformPublishValidation,
   field: PublishFieldKey,

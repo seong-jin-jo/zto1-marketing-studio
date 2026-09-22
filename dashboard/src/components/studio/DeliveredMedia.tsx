@@ -204,11 +204,22 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
           poster={posterUrl || undefined}
           onError={handleError}
         />
-        {/* poster 가 주어졌지만 만료됐고 되살리기도 실패했다. 조용히 검정 화면으로
-            두지 않고 말한다(ADR-007). 재생 자체는 src 가 살아 있으면 그대로 된다. */}
+        {/*
+          poster 가 주어졌지만 만료됐고 되살리기도 실패했다. 조용히 검정 화면으로 두지
+          않는다(ADR-007). 재생 자체는 src 가 살아 있으면 그대로 된다.
+
+          2026-09-22 교차 코드리뷰 J5: sr-only 로만 알리면 화면을 보는 사람에게는
+          여전히 검정 상자였다. PlatformPreview 의 "썸네일 없음" 배지(poster 를 아예
+          안 넘긴 경우)와 같은 자리·같은 모양으로 눈에 보이게 띄운다. vid 는 있는데
+          poster 만 죽은 경우는 그 배지 조건(vid && !img)의 사각지대였다.
+        */}
         {poster && posterDead && !posterUrl ? (
-          <span data-testid={testId ? `${testId}-poster-expired` : undefined} className="sr-only" role="status">
-            대문 이미지를 다시 불러오지 못했습니다
+          <span
+            data-testid={testId ? `${testId}-poster-expired` : undefined}
+            role="status"
+            className="absolute top-3 left-3 rounded-pill bg-player-surface/70 px-stack-tight py-micro text-caption text-text"
+          >
+            썸네일 없음
           </span>
         ) : null}
       </>

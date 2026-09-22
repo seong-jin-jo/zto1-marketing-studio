@@ -5,7 +5,14 @@ import { PlatformPreview, type PreviewPlatform } from "@/components/studio/Platf
 /**
  * app/studio/page.tsx 발행실 그리드(GROUPS.map)의 실제 마크업을 그대로 재현한다.
  * 헤더줄·그리드 클래스·카드 래퍼 클래스가 원본과 한 글자도 다르지 않아야 측정값이
- * 의미가 있다 — 원본은 이번 위임에서 편집 금지 대상이라 여기서 복제해 측정한다.
+ * 의미가 있다. 원본은 이번 위임에서 편집 금지 대상이라 여기서 복제해 측정한다.
+ *
+ * 2026-09-22 교차 코드리뷰(PR #77) 3라운드: 2라운드 하네스는 media={{}} 로 미디어를
+ * 빼고 headerRight 를 아예 안 넘겨서, 진짜 기계적 원인(headerRight 가 채널마다
+ * 44/72/124px 로 줄바꿈되는 것)을 측정에서 빼놓고 쟀다. 이번엔 page.tsx 의 headerRight
+ * JSX(발행 체크박스 · 대문 시점/자동 · 계정 연결/관리)를 채널별 상태까지 갖춰 재현한다:
+ * facebook 은 계정 미연결(연결 링크만), threads/x/instagram/shorts 는 연결+계정 선택
+ * 가능, reels/tiktok 은 대문 시점 입력까지 붙어 실제 124px 케이스를 재현한다.
  */
 const GROUPS: { title: string; platforms: PreviewPlatform[] }[] = [
   { title: "텍스트", platforms: ["threads", "x", "facebook"] },
@@ -19,16 +26,24 @@ const LABEL: Record<PreviewPlatform, string> = {
 };
 
 // 실제 회장 계정에서 나올 법한, 서로 다른 길이의 초안을 채널마다 준다. 전부 같은
-// 길이면 line-clamp 캡핑 효과를 측정할 수 없다 — 일부러 들쭉날쭉하게 만든다.
+// 길이면 캡핑 효과를 측정할 수 없다. 일부러 들쭉날쭉하게 만든다.
 const TEXT: Record<string, string> = {
   threads: "오늘 콘텐츠 초안입니다. 짧게 씁니다.",
   x: "이건 조금 더 긴 초안입니다. X 는 가중 문자라 한글이 두 배로 잡히니 실제로는 더 짧게 써야 발행이 됩니다. 그래도 테스트를 위해 이 정도 길이로 둡니다.",
   facebook: "Facebook 은 상한이 넉넉해서 사람들이 보통 길게 씁니다. 오늘 있었던 일, 제품 소식, 다음 주 일정까지 한 번에 다 적는 경우가 많고, 이 미리보기도 그런 실제 초안 길이를 흉내 냅니다. 문단이 두세 개는 되어야 실감이 납니다.",
 };
 
+// 채널별로 계정 연결 상태를 다르게 흉내 낸다(회장 실측: facebook 44px 은 "발행|계정
+// 연결하기" 두 조각뿐인 미연결 상태였다).
+const CONNECTED: Partial<Record<PreviewPlatform, boolean>> = { facebook: false };
+const HAS_COVER_TIMESTAMP: Partial<Record<PreviewPlatform, boolean>> = { reels: true, tiktok: true };
+
 function editorFor(platform: PreviewPlatform) {
+  const connected = CONNECTED[platform] !== false;
   return {
-    account: { status: "connected" as const, displayName: "운영 계정", username: "operator" },
+    account: connected
+      ? { status: "connected" as const, displayName: "운영 계정", username: "operator" }
+      : { status: "missing" as const },
     title: platform === "shorts" ? "제목 예시" : "",
     caption: platform === "shorts" ? "숏폼 설명입니다" : platform === "reels" ? "" : platform === "tiktok" ? "틱톡 캡션 예시로 조금 더 긴 문장을 넣어 봅니다" : (TEXT[platform] ?? ""),
     hashtags: platform === "instagram" ? "#카드뉴스 #예시" : "",
@@ -41,6 +56,49 @@ function editorFor(platform: PreviewPlatform) {
     onTopicTagChange: () => {},
     onFirstCommentChange: () => {},
   };
+}
+
+/** page.tsx 의 headerRight JSX를 채널 상태까지 갖춰 재현한다(주석은 그쪽 원본 참고). */
+function HeaderRightFor({ platform }: { platform: PreviewPlatform }) {
+  const connected = CONNECTED[platform] !== false;
+  const hasCoverTimestamp = HAS_COVER_TIMESTAMP[platform] === true;
+  const isVideo = platform === "shorts" || platform === "reels" || platform === "tiktok";
+  return (
+    <>
+      <label className="ds-touch-target flex min-h-control-touch items-center gap-micro px-stack-tight text-caption text-muted">
+        <input aria-label={`${LABEL[platform]} 발행`} type="checkbox" className="h-5 w-5 shrink-0" readOnly checked={false} />
+        발행
+      </label>
+      {hasCoverTimestamp ? (
+        <label className="flex items-center gap-micro text-caption text-muted" title="영상에서 이 시점 화면을 대문으로 씁니다">
+          대문
+          <input
+            type="number"
+            aria-label={`${LABEL[platform]} 대문 시점(초)`}
+            defaultValue={0}
+            className="min-h-control-touch w-16 rounded-control border border-border bg-surface px-stack-tight text-caption text-text"
+          />
+          초
+        </label>
+      ) : isVideo ? (
+        <span className="text-caption text-subtle">대문 자동</span>
+      ) : null}
+      {!connected ? (
+        <span className="inline-flex min-h-control-touch items-center rounded-control border border-accent/40 bg-accent-soft px-stack-tight text-caption font-semibold text-accent">
+          계정 연결하기
+        </span>
+      ) : (
+        <>
+          <select aria-label={`${LABEL[platform]} 발행 계정`} className="min-h-control-touch max-w-32 rounded-control border border-border bg-surface-2 px-stack-tight text-caption text-text" defaultValue="">
+            <option value="">기본 계정</option>
+          </select>
+          <span className="inline-flex min-h-control-touch items-center rounded-control border border-border bg-surface-2 px-stack-tight text-caption font-semibold text-muted">
+            계정 관리
+          </span>
+        </>
+      )}
+    </>
+  );
 }
 
 export function AlignmentHarnessGrid() {
@@ -60,6 +118,7 @@ export function AlignmentHarnessGrid() {
                   text={{ threads: TEXT.threads, facebook: TEXT.facebook, x: TEXT.x, instagram: { caption: "카드뉴스 캡션 예시", hashtags: ["카드뉴스", "예시"] } }}
                   media={{}}
                   editor={editorFor(platform)}
+                  headerRight={<HeaderRightFor platform={platform} />}
                 />
               </div>
             ))}
