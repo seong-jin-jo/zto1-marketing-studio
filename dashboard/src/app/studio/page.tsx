@@ -1064,8 +1064,12 @@ export default function StudioPage() {
     // 파일이 저장되고, 발행실은 저장된 것을 올린다.
     persistedVid: VidResult | null = vid,
     // 방금 연산한 덱도 같은 이유로 인자로 받는다(§5 F4 자동저장, 800ms 디바운스).
-    persistedCardDeck: CardDeck | null = cardDeck,
-    persistedVideoEdit: VideoEdit | null = videoEdit,
+    // (2026-09-22 코드리뷰 5차 항목1) 기본값을 없애 필수 인자로 만들었다. state를 대신
+    // 넣는 기본값이 있으면 호출부가 자기 도메인만 저장할 뜻이어도 남의 도메인 state가
+    // 검증 없이 같이 실린다(4차 A·B가 그 결함이었다). 기본값을 없애면 컴파일러가 모든
+    // 호출부를 짚어 강제로 명시하게 한다 — 다음에 같은 결함이 또 나는 것을 막는다.
+    persistedCardDeck: CardDeck | null,
+    persistedVideoEdit: VideoEdit | null,
   ) {
     const r = await apiPost<{ id?: string }>("/api/studio/drafts", {
       tenant_id: activeWorkspace?.id,
@@ -1104,7 +1108,7 @@ export default function StudioPage() {
     // (onVideoEditChange)이 pruning 없이 원본 cardDeck을 실어 보내는 네 번째 경로였다.
     // 지금 이 파일 안에서 pruneEmptyBubbles를 실제로 부르는 자리는: onCardDeckChange,
     // 이 함수, recompositeCards, moveToPublish 넷이다(grep으로 재확인 가능).
-    let prunedCardDeck: CardDeck | undefined;
+    let prunedCardDeck: CardDeck | null = null;
     if (cardDeck) {
       const pruned = pruneEmptyBubbles(cardDeck);
       const emptySlide = emptyBubbleSlideNumber(pruned);
@@ -1118,7 +1122,10 @@ export default function StudioPage() {
       setCardDeck(pruned);
     }
     try {
-      const savedDraftId = await save("draft", undefined, undefined, undefined, undefined, undefined, prunedCardDeck);
+      // 수동 "임시 저장"은 카드덱·영상 자동저장과 달리 도메인 한정 저장이 아니라 전체
+      // 스냅샷 저장이다 — 카드덱만 pruned로 검사·교체하고(위에서 이미 함) videoEdit는
+      // 현재 state를 그대로 싣는다(이전 기본값 동작과 동일, 이번엔 명시적으로만 적었다).
+      const savedDraftId = await save("draft", undefined, undefined, undefined, undefined, undefined, prunedCardDeck, videoEdit);
       if (!savedDraftId) {
         showToast("초안을 저장하지 못했습니다", "error");
         return;
@@ -1277,7 +1284,10 @@ export default function StudioPage() {
         "draft", publishReconciliations, draftId, linesToPersist,
         redrawn ?? img,
         subtitled.kind === "done" ? subtitled.vid : vid,
-        cardDeck ? pruneEmptyBubbles(cardDeck) : undefined,
+        cardDeck ? pruneEmptyBubbles(cardDeck) : null,
+        // 발행실로 넘어가기 직전 전체 스냅샷 저장이다(도메인 한정 자동저장이 아니다) —
+        // 현재 videoEdit state를 그대로 싣는다(이전 기본값 동작과 동일, 이번엔 명시).
+        videoEdit,
       );
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
       if (!editLines.length) setEditLines(linesToPersist);
@@ -1343,7 +1353,9 @@ export default function StudioPage() {
         Object.entries(publishReconciliations).filter(([platform]) => !repairedPlatforms.has(platform)),
       );
       if (repairedPlatforms.size === 0) throw new Error("발행 원장 복구 실패");
-      const savedDraftId = await save(Object.keys(remaining).length ? "partial" : "published", remaining, draftId);
+      // 발행 원장 기록만 남기는 호출이다 — 카드덱·영상 내용은 이 호출의 관심사가
+      // 아니므로 null,null로 키 자체를 빼서 서버에 이미 저장된 값을 건드리지 않는다.
+      const savedDraftId = await save(Object.keys(remaining).length ? "partial" : "published", remaining, draftId, undefined, undefined, undefined, null, null);
       if (!savedDraftId) throw new Error("기록 저장 실패");
       setPublishReconciliations(remaining);
       const repairedLabels = [...repairedPlatforms].map((platform) => LABEL[platform as keyof typeof LABEL]).join(", ");
@@ -1392,7 +1404,9 @@ export default function StudioPage() {
       }
       showToast(`한도를 넘은 곳은 빼고 발행합니다. ${summary}`, "error");
     }
-    const draftPersistence = await attemptRequiredDraftPersistence(() => save("draft"));
+    // 발행 직전 초안 존재를 확인하는 저장이다 — 카드덱·영상은 moveToPublish가 이미
+    // 커밋했으므로 여기서는 건드리지 않는다(null,null로 키를 빼 서버 값을 보존한다).
+    const draftPersistence = await attemptRequiredDraftPersistence(() => save("draft", undefined, undefined, undefined, undefined, undefined, null, null));
     if (!draftPersistence.ok) {
       showToast("발행할 초안을 저장하지 못했습니다", "error");
       return;
@@ -1518,7 +1532,8 @@ export default function StudioPage() {
     if (Object.keys(pendingReconciliations).length > 0) {
       setPublishReconciliations(pendingReconciliations);
       try {
-        await save("partial", pendingReconciliations, did);
+        // 발행 결과 기록만 남긴다 — 카드덱·영상은 이 호출의 관심사가 아니다.
+        await save("partial", pendingReconciliations, did, undefined, undefined, undefined, null, null);
       } catch {
         // The same storage incident can prevent the draft write too. The state was
         // already copied to localStorage-bound React state, so keep the no-republish
@@ -1527,7 +1542,8 @@ export default function StudioPage() {
       }
     } else {
       try {
-        const savedDraftId = await save(errs.length ? "partial" : "published", {}, did);
+        // 발행 결과 기록만 남긴다 — 카드덱·영상은 이 호출의 관심사가 아니다.
+        const savedDraftId = await save(errs.length ? "partial" : "published", {}, did, undefined, undefined, undefined, null, null);
         if (!savedDraftId) errs.push("발행 결과를 저장하지 못했습니다");
       } catch {
         errs.push("발행 결과를 저장하지 못했습니다");
@@ -1863,7 +1879,8 @@ export default function StudioPage() {
     try {
       let queueId = reviewQueueId;
       if (!queueId) {
-        const linkedDraftId = draftId || await save("draft");
+        // 검토 큐에 걸 초안이 아직 없으면 지금 전체 스냅샷으로 만든다(이전 기본값과 동일).
+        const linkedDraftId = draftId || await save("draft", undefined, undefined, undefined, undefined, undefined, cardDeck, videoEdit);
         if (!linkedDraftId) throw new Error("검토 요청용 초안을 저장하지 못했습니다");
         const added = await apiPost<{ post?: { id?: string } }>("/api/queue/add", {
           tenant_id: activeWorkspace.id,
@@ -2260,6 +2277,8 @@ export default function StudioPage() {
         lastSavedAt={editSavedAt}
         moveBusy={moveToPublishBusy}
         autosaveError={[editAutosaveError, cardDeckAutosaveError, videoEditAutosaveError].filter(Boolean).join(" ")}
+        cardDeckAutosaveError={cardDeckAutosaveError}
+        videoEditAutosaveError={videoEditAutosaveError}
       />
     </div>
   );

@@ -191,6 +191,18 @@ export async function POST(request: Request) {
   } else if (Object.prototype.hasOwnProperty.call(body, "videoEdit") && body.videoEdit != null) {
     videoEditPatch.videoEdit = body.videoEdit as VideoEdit;
   }
+  // 항목3(2026-09-22 코드리뷰 5차): editLines는 cardDeck·videoEdit와 달리 "키 없으면
+  // 보존" 규칙 밖이라 매번 무조건 덮었다(`?? null`). 영상 자동저장이 cardDeck 키를 안
+  // 보내게 된(4차 B) 지금, cardDeckProjectedLines가 null이 되어 서버의 덱 투영 editLines
+  // 가 body.editLines(보통 비어 있거나 옛 값)로 교체될 수 있었다. cardDeck·videoEdit와
+  // 같은 보존 규칙으로 옮긴다: cardDeck을 보냈으면(투영 갱신) 또는 body에 editLines 키가
+  // 명시로 있으면만 payload에 싣고, 둘 다 없으면 키 자체를 빼 기존 값을 지킨다.
+  const editLinesPatch: { editLines?: string[] | null } = {};
+  if (cardDeckProjectedLines !== null) {
+    editLinesPatch.editLines = cardDeckProjectedLines;
+  } else if (Object.prototype.hasOwnProperty.call(body, "editLines")) {
+    editLinesPatch.editLines = body.editLines ?? null;
+  }
   const payload = {
     text: body.text ?? null, img: body.img ?? null, vid: body.vid ?? null,
     includes: body.includes ?? {},
@@ -198,9 +210,6 @@ export async function POST(request: Request) {
     publishReconciliation: body.publishReconciliation ?? null,
     editFormat: body.editFormat ?? null,
     editKind: body.editKind ?? null,
-    // cardDeck 이 있으면 그 투영이 진실원이다(§3.3 "cardDeck 이 이긴다"). 클라이언트가
-    // 보낸 editLines 와 다르면 여기서 덮어쓴다.
-    editLines: cardDeckProjectedLines ?? body.editLines ?? null,
     cardTextPositions: body.cardTextPositions ?? null,
     titles: body.titles ?? {},
     captions: body.captions ?? {},
@@ -211,6 +220,7 @@ export async function POST(request: Request) {
     reviewQueueId: body.reviewQueueId ?? null,
     ...cardDeckPatch,
     ...videoEditPatch,
+    ...editLinesPatch,
   };
   const status = body.status || "draft";
   const idea = body.idea || "";
