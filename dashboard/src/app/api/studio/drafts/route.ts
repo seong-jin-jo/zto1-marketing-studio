@@ -3,9 +3,12 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
 import { resolveCurrentWork } from "@/lib/studio/current-work";
 import { validateCardDeck, CardDeckValidationError, deckProjection } from "@/lib/studio/card-deck-contract";
+import { validateVideoEdit, VideoEditValidationError, type VideoEdit } from "@/lib/studio/video-edit-contract";
 
 /** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
 const CARD_DECK_MAX_BYTES = 64 * 1024;
+/** videoEdit 도 같은 상한을 쓴다(오버레이·댓글·자막 목록 크기가 카드덱과 비슷한 자릿수). */
+const VIDEO_EDIT_MAX_BYTES = 64 * 1024;
 
 // Studio 초안/발행 이력 — Supabase drafts 테이블(테넌트별). payload jsonb에 본문 보관.
 interface DraftRow {
@@ -25,6 +28,7 @@ interface DraftRow {
     editLines?: unknown;
     cardTextPositions?: unknown;
     cardDeck?: unknown;
+    videoEdit?: unknown;
     titles?: unknown;
     captions?: unknown;
     hashtags?: unknown;
@@ -75,6 +79,7 @@ export async function GET(request: Request) {
       editLines: r.payload?.editLines ?? null,
       cardTextPositions: r.payload?.cardTextPositions ?? null,
       cardDeck: r.payload?.cardDeck ?? null,
+      videoEdit: r.payload?.videoEdit ?? null,
       titles: r.payload?.titles ?? {},
       captions: r.payload?.captions ?? {},
       hashtags: r.payload?.hashtags ?? {},
@@ -138,6 +143,27 @@ export async function POST(request: Request) {
       }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
   }
+  if (body.videoEdit !== undefined && body.videoEdit !== null) {
+    const serialized = JSON.stringify(body.videoEdit);
+    if (Buffer.byteLength(serialized, "utf8") > VIDEO_EDIT_MAX_BYTES) {
+      return Response.json({
+        ok: false,
+        code: "VIDEO_EDIT_TOO_LARGE",
+        error: "영상 편집 내용이 너무 큽니다",
+      }, { status: 413, headers: { "Cache-Control": "no-store" } });
+    }
+    try {
+      validateVideoEdit(body.videoEdit);
+    } catch (e) {
+      const rule = e instanceof VideoEditValidationError ? e.rule : "unknown";
+      return Response.json({
+        ok: false,
+        code: "INVALID_VIDEO_EDIT",
+        rule,
+        error: e instanceof Error ? e.message : "영상 편집 내용을 확인해 주세요",
+      }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
+  }
   const tenantId = await effectiveTenantId(request, body.tenant_id);
   if (!tenantId) return Response.json({ error: "tenant_id required" }, { status: 400 });
   // cardDeck: 요청에 키가 아예 없으면 payload 에도 빼서 JSONB `||` 병합 대상에서
@@ -155,6 +181,28 @@ export async function POST(request: Request) {
   } else if (Object.prototype.hasOwnProperty.call(body, "cardDeck") && body.cardDeck != null) {
     cardDeckPatch.cardDeck = body.cardDeck;
   }
+  // videoEdit도 cardDeck과 같은 보존 규칙: 키가 없으면 payload 병합에서 빠져 기존 값을
+  // 지키고, 명시 플래그 clearVideoEdit로만 지운다.
+  // M7(2026-09-22 코드리뷰): `any` 대신 VideoEdit로 좁힌다. body.videoEdit는 위에서 이미
+  // validateVideoEdit()을 통과했다(개발 시점 assertion으로 VideoEdit로 좁혀져 있다).
+  const videoEditPatch: { videoEdit?: VideoEdit | null } = {};
+  if (body.clearVideoEdit === true) {
+    videoEditPatch.videoEdit = null;
+  } else if (Object.prototype.hasOwnProperty.call(body, "videoEdit") && body.videoEdit != null) {
+    videoEditPatch.videoEdit = body.videoEdit as VideoEdit;
+  }
+  // 항목3(2026-09-22 코드리뷰 5차): editLines는 cardDeck·videoEdit와 달리 "키 없으면
+  // 보존" 규칙 밖이라 매번 무조건 덮었다(`?? null`). 영상 자동저장이 cardDeck 키를 안
+  // 보내게 된(4차 B) 지금, cardDeckProjectedLines가 null이 되어 서버의 덱 투영 editLines
+  // 가 body.editLines(보통 비어 있거나 옛 값)로 교체될 수 있었다. cardDeck·videoEdit와
+  // 같은 보존 규칙으로 옮긴다: cardDeck을 보냈으면(투영 갱신) 또는 body에 editLines 키가
+  // 명시로 있으면만 payload에 싣고, 둘 다 없으면 키 자체를 빼 기존 값을 지킨다.
+  const editLinesPatch: { editLines?: string[] | null } = {};
+  if (cardDeckProjectedLines !== null) {
+    editLinesPatch.editLines = cardDeckProjectedLines;
+  } else if (Object.prototype.hasOwnProperty.call(body, "editLines")) {
+    editLinesPatch.editLines = body.editLines ?? null;
+  }
   const payload = {
     text: body.text ?? null, img: body.img ?? null, vid: body.vid ?? null,
     includes: body.includes ?? {},
@@ -162,9 +210,6 @@ export async function POST(request: Request) {
     publishReconciliation: body.publishReconciliation ?? null,
     editFormat: body.editFormat ?? null,
     editKind: body.editKind ?? null,
-    // cardDeck 이 있으면 그 투영이 진실원이다(§3.3 "cardDeck 이 이긴다"). 클라이언트가
-    // 보낸 editLines 와 다르면 여기서 덮어쓴다.
-    editLines: cardDeckProjectedLines ?? body.editLines ?? null,
     cardTextPositions: body.cardTextPositions ?? null,
     titles: body.titles ?? {},
     captions: body.captions ?? {},
@@ -174,6 +219,8 @@ export async function POST(request: Request) {
     selectedAccounts: body.selectedAccounts ?? {},
     reviewQueueId: body.reviewQueueId ?? null,
     ...cardDeckPatch,
+    ...videoEditPatch,
+    ...editLinesPatch,
   };
   const status = body.status || "draft";
   const idea = body.idea || "";

@@ -82,15 +82,21 @@ export type CardDeckUpload = {
 
 export class CardDeckError extends Error {}
 
-/** template="chat_bubble" 일 때 덱의 slides 순서대로 PNG data URL 목록을 그린다. */
-function renderChatBubbleDeck(deck: CardDeck): string[] {
+/**
+ * template="chat_bubble" 일 때 덱의 slides 순서대로 PNG data URL 목록을 그린다.
+ * 표지·CTA 사진(J1)을 기다려야 해서 장마다 순서대로 await 한다(Promise.all 로 동시에
+ * 돌리면 실패한 장의 순번을 특정하기 어렵고, 사진 여러 장을 한꺼번에 내려받게 된다).
+ */
+async function renderChatBubbleDeck(deck: CardDeck): Promise<string[]> {
   const renderer = CARD_TEMPLATE_RENDERERS.chat_bubble;
   const total = deck.slides.length;
-  return deck.slides.map((slide, index) => {
-    const dataUrl = renderer({ deck, slide, index, total });
+  const out: string[] = [];
+  for (let index = 0; index < deck.slides.length; index += 1) {
+    const dataUrl = await renderer({ deck, slide: deck.slides[index], index, total });
     if (!dataUrl) throw new CardDeckError("이 브라우저에서는 카드를 그릴 수 없습니다.");
-    return dataUrl;
-  });
+    out.push(dataUrl);
+  }
+  return out;
 }
 
 /**
@@ -103,7 +109,7 @@ function renderChatBubbleDeck(deck: CardDeck): string[] {
 export async function renderAndUploadCardDeck(spec: CardDeckSpec, deps: CardDeckDeps): Promise<string[]> {
   if (spec.template === "chat_bubble") {
     if (!spec.deck) throw new CardDeckError("chat_bubble 템플릿에는 deck 이 필요합니다.");
-    const drawn = renderChatBubbleDeck(spec.deck);
+    const drawn = await renderChatBubbleDeck(spec.deck);
     return uploadDrawnCards(drawn, deps);
   }
   const inputs = cardDeckRenderInputs(spec);

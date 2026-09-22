@@ -15,7 +15,7 @@
 import "@testing-library/jest-dom/vitest";
 import fs from "fs";
 import path from "path";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CardDeckPanel, type BubbleEditorProps } from "@/components/studio/BubbleEditor";
 import { CardDeckThumbnailStrip } from "@/components/studio/StudioRooms";
@@ -49,7 +49,10 @@ afterEach(() => cleanup());
 describe("PR4 잔여 배선 ① 발행실 9장 업로드", () => {
   it("recompositeCards가 chat_bubble 덱이면 template/deck 을 그대로 renderAndUploadCardDeck 에 넘긴다", () => {
     expect(pageSrc).toContain('cardDeck && cardDeck.template === "chat_bubble"');
-    expect(pageSrc).toContain('template: "chat_bubble", deck: cardDeck');
+    // D(2026-09-22 코드리뷰 4차): 렌더는 원본 cardDeck이 아니라 검사에 쓴 것과 같은
+    // pruned 덱을 써야 한다(검사·렌더가 갈리면 검사를 통과한 뒤에도 빈 말풍선이 PNG에
+    // 찍힌다). template은 그대로 "chat_bubble".
+    expect(pageSrc).toContain('template: "chat_bubble", deck: pruned');
   });
 
   it("cardDeck 없는 기존 글자 카드 3장 경로(lines/positions)는 그대로 남아 있다(회귀 0)", () => {
@@ -67,17 +70,20 @@ describe("PR4 잔여 배선 ② 생성실 실제 썸네일", () => {
     expect(roomsSrc).toContain("카톡 말풍선 카드뉴스 ${item.deck_summary.slides}장을 만들었습니다");
   });
 
-  it("2026-09-22 코드리뷰 MAJOR 4 회귀: 한 장이 렌더 실패해도 CardDeckThumbnailStrip 은 언마운트되지 않고 나머지 장 + 이유 칩을 보여준다", () => {
+  it("2026-09-22 코드리뷰 MAJOR 4 회귀: 한 장이 렌더 실패해도 CardDeckThumbnailStrip 은 언마운트되지 않고 나머지 장 + 이유 칩을 보여준다", async () => {
     // vi.mock 위에서 index===0(표지) 렌더를 항상 throw 하게 만들었다. try/catch 없이
     // 우회했던 옛 코드라면 이 render() 호출 자체가 throw 로 실패한다.
+    // J1(2026-09-22 코드리뷰) 이후 렌더러가 비동기라 장마다 순서대로 그려진다 — waitFor로
+    // 마지막 장까지 다 그려질 때까지 기다린다.
     render(<CardDeckThumbnailStrip deck={deck()} />);
     const strip = document.querySelector("[data-card-deck-thumbnail-strip]")!;
     expect(strip).toBeTruthy();
+    await waitFor(() => {
+      expect(strip.querySelectorAll("canvas").length).toBe(deck().slides.length - 1);
+    });
     // 실패한 장은 canvas 대신 이유 칩(문단)으로 대체된다.
     expect(strip.textContent).toContain("1번 장");
     expect(strip.textContent).toContain("카드보다 깁니다");
-    // 실패하지 않은 나머지 장은 여전히 canvas 로 그려진다.
-    expect(strip.querySelectorAll("canvas").length).toBe(deck().slides.length - 1);
   });
 });
 
@@ -91,6 +97,8 @@ describe("PR4 잔여 배선 M3: 담당 대화창 일괄 편집이 chat_bubble �
 });
 
 describe("PR4 잔여 배선 M2: 자동저장 전 빈 말풍선을 정리하고 보류 이유를 보여준다", () => {
+  // R1(2026-09-22 코드리뷰 3차)로 통합 타이머(scheduleEditAutosave)를 되돌렸다 — 이 검사는
+  // 다시 onCardDeckChange 본문을 본다(카드덱·영상은 독립 타이머).
   it("page.tsx onCardDeckChange 가 저장 전 pruneEmptyBubbles + emptyBubbleSlideNumber 를 부른다(2026-09-22 코드리뷰 MAJOR 2)", () => {
     const onCardDeckChange = pageSrc.slice(
       pageSrc.indexOf("function onCardDeckChange(nextDeck: CardDeck)"),

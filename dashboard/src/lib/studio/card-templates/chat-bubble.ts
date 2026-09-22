@@ -32,6 +32,15 @@ const BUBBLE_TEXT = "#12100E";
 
 export class ChatBubbleRenderError extends Error {}
 
+/** 사진 로딩 대기 상한(F3, 2026-09-22 코드리뷰 3차: 리터럴 대신 이름 붙은 상수로). */
+const COVER_IMAGE_LOAD_TIMEOUT_MS = 8000;
+/** 사진 위 글자 가독성용 하단 스크림 구간·농도(F3 MINOR: 리터럴 대신 이름 붙은 상수로). */
+const PHOTO_SCRIM_START_RATIO = 0.35;
+const PHOTO_SCRIM_MAX_OPACITY = 0.6;
+/** 사진 배경 위 글자색(MINOR, 2026-09-22 코드리뷰 4차: 리터럴 대신 이름 붙은 상수로). */
+const PHOTO_TEXT_PRIMARY = "#FFFFFF";
+const PHOTO_TEXT_SECONDARY = "rgba(255,255,255,0.85)";
+
 export type ChatBubbleRenderInput = {
   deck: CardDeck;
   slide: CardSlide;
@@ -44,7 +53,58 @@ export type ChatBubbleRenderInput = {
  * (TC-F2-01·03, 2026-09-21 코드리뷰 MAJOR 9). `renderChatBubbleSlide` 는 이 함수 위에
  * data URL 계약만 얹는다.
  */
-export function renderChatBubbleSlideToCanvas(input: ChatBubbleRenderInput): HTMLCanvasElement | null {
+/**
+ * `slide.cover_image_url`을 브라우저 Image로 불러온다(J1, 2026-09-22 코드리뷰: 표지·CTA
+ * 사진 선택이 저장만 되고 렌더러에 안 갔다는 지적).
+ *
+ * F3(2026-09-22 코드리뷰 3차): 예전에는 못 불러오면(네트워크·CORS·타임아웃) null을 돌려주고
+ * 호출부가 배경색으로 조용히 물러났다 — 편집 중에는 표지 사진이 있었는데 며칠 뒤 발행하면
+ * 사진이 빠진 카드가 그대로 나갔다(조용한 실패, ADR-007 위반. 되돌리기 비싼 경로다).
+ * 이제 이 함수는 null을 반환하지 않는다 — 실패하면 그 자리에서 던진다. 호출부
+ * (`renderChatBubbleSlideToCanvas`)가 이를 `ChatBubbleRenderError`로 다시 던져 렌더 자체를
+ * 실패시킨다. 그러면 이미 이 렌더러를 감싸는 기존 세 호출부가 전부 "실패 이유를 보여주고
+ * 멈춘다"를 이미 하고 있다: 편집실 미리보기(BubbleEditor.tsx)·생성실 썸네일
+ * (StudioRooms.tsx CardDeckThumbnailStrip)은 캔버스 대신 이유 칩을 보여주고, 발행 경로
+ * (card-deck.ts renderChatBubbleDeck)는 try/catch가 없어 CardDeckError로 발행 자체를
+ * 막는다. 새 UI를 만들지 않고 기존 실패 경로에 편승한다.
+ */
+function loadCoverImage(url: string): Promise<HTMLImageElement> {
+  if (typeof Image === "undefined") {
+    return Promise.reject(new ChatBubbleRenderError("이 화면에서는 사진을 불러올 수 없습니다."));
+  }
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    // H(2026-09-22 코드리뷰 4차): 타임아웃으로 reject한 뒤에도 img.src는 그대로라 로딩이
+    // 백그라운드에서 계속 돈다. src=""로 실제로 중단한다.
+    const timer = setTimeout(() => {
+      img.onload = null;
+      img.onerror = null;
+      img.src = "";
+      reject(new ChatBubbleRenderError("사진을 불러오는 데 시간이 너무 걸렸습니다."));
+    }, COVER_IMAGE_LOAD_TIMEOUT_MS);
+    img.onload = () => { clearTimeout(timer); resolve(img); };
+    img.onerror = () => { clearTimeout(timer); reject(new ChatBubbleRenderError("사진을 불러오지 못했습니다.")); };
+    img.src = url;
+  });
+}
+
+/**
+ * cover-fit으로 캔버스 전체를 채우고, 그 위에 글자가 읽히도록 하단이 짙어지는 스크림을
+ * 얹는다(벤치마크 REF: "풀블리드 실사 + 하단 그라데이션 + 흰 볼드 2줄").
+ */
+function drawBackgroundPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement, width: number, height: number): void {
+  const scale = Math.max(width / img.width, height / img.height);
+  const drawWidth = img.width * scale;
+  const drawHeight = img.height * scale;
+  ctx.drawImage(img, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+  const gradient = ctx.createLinearGradient(0, height * PHOTO_SCRIM_START_RATIO, 0, height);
+  gradient.addColorStop(0, "rgba(0,0,0,0)");
+  gradient.addColorStop(1, `rgba(0,0,0,${PHOTO_SCRIM_MAX_OPACITY})`);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+}
+
+export async function renderChatBubbleSlideToCanvas(input: ChatBubbleRenderInput): Promise<HTMLCanvasElement | null> {
   if (typeof document === "undefined") return null;
   const { deck, slide, index, total } = input;
   const { width, height } = CARD_PIXELS[deck.ratio as CardRatio] ?? CARD_PIXELS["4:5"];
@@ -57,10 +117,25 @@ export function renderChatBubbleSlideToCanvas(input: ChatBubbleRenderInput): HTM
   ctx.fillStyle = deck.theme.background;
   ctx.fillRect(0, 0, width, height);
 
+  let hasPhoto = false;
+  if ((slide.role === "cover" || slide.role === "cta") && slide.cover_image_url) {
+    try {
+      const img = await loadCoverImage(slide.cover_image_url);
+      drawBackgroundPhoto(ctx, img, width, height);
+      hasPhoto = true;
+    } catch (cause) {
+      // F3(2026-09-22 코드리뷰 3차): 조용히 배경색으로 물러나지 않는다. 사진을 골랐으면
+      // 그 사진이 안 들어간 카드가 조용히 발행되면 안 된다 — 이유를 들고 던져 기존 세
+      // 호출부(편집실 미리보기·생성실 썸네일·발행 경로)의 실패 처리에 그대로 태운다.
+      const reason = cause instanceof Error ? cause.message : "사진을 불러오지 못했습니다.";
+      throw new ChatBubbleRenderError(`${index + 1}번 장 ${reason}`);
+    }
+  }
+
   if (slide.role === "cover") {
-    drawCover(ctx, deck, slide, width, height, index, total);
+    drawCover(ctx, deck, slide, width, height, index, total, hasPhoto);
   } else {
-    drawChatSlide(ctx, deck, slide, width, height, index, total);
+    drawChatSlide(ctx, deck, slide, width, height, index, total, hasPhoto);
   }
 
   return canvas;
@@ -71,8 +146,8 @@ export function renderChatBubbleSlideToCanvas(input: ChatBubbleRenderInput): HTM
  * 부르면 null. 말풍선이 세이프존을 넘으면 글자를 줄이지 않고 렌더 실패로 이유를 던진다
  * ("3번 장 말풍선이 카드보다 깁니다. 쪼개세요". DESIGN.md "장이 안 담기면 나눈다").
  */
-export function renderChatBubbleSlide(input: ChatBubbleRenderInput): string | null {
-  const canvas = renderChatBubbleSlideToCanvas(input);
+export async function renderChatBubbleSlide(input: ChatBubbleRenderInput): Promise<string | null> {
+  const canvas = await renderChatBubbleSlideToCanvas(input);
   return canvas ? canvas.toDataURL("image/png") : null;
 }
 
@@ -84,13 +159,16 @@ function drawCover(
   height: number,
   index: number,
   total: number,
+  hasPhoto = false,
 ): void {
   const headline = slide.cover?.headline ?? "";
   const sub = slide.cover?.sub ?? "";
   const margin = Math.max(SAFE_ZONE_PX, Math.round(width * 0.1));
   const maxWidth = width - margin * 2;
 
-  ctx.fillStyle = deck.theme.foreground;
+  // 사진 배경 위에서는 테마 전경색 대신 흰 글자로 고정한다(drawBackgroundPhoto의 하단
+  // 그라데이션과 짝 — 벤치마크 REF "흰 볼드 2줄").
+  ctx.fillStyle = hasPhoto ? PHOTO_TEXT_PRIMARY : deck.theme.foreground;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
 
@@ -110,11 +188,14 @@ function drawCover(
 
   if (sub) {
     ctx.font = `600 ${Math.round(width * COVER_SUB_RATIO)}px ${FONT_FAMILY}`;
-    ctx.fillStyle = deck.theme.accent;
+    // F2(2026-09-22 코드리뷰 3차): 헤드라인만 흰 글자로 고정하고 보조 문구는 테마
+    // accent 그대로였다 — 사진 위에서 accent 색이 안 읽힐 수 있다. 보조 문구도 같이
+    // 고정한다(흰 배경 위 accent와 구분되게 살짝 옅게).
+    ctx.fillStyle = hasPhoto ? PHOTO_TEXT_SECONDARY : deck.theme.accent;
     ctx.fillText(sub, margin, y + headlineSize * 0.2);
   }
 
-  drawBrandFooterLabel(ctx, deck, width, height, margin);
+  drawBrandFooterLabel(ctx, deck, width, height, margin, hasPhoto);
   drawPageNumber(ctx, deck, width, height, margin, index, total);
 }
 
@@ -128,9 +209,10 @@ function drawBrandFooterLabel(
   width: number,
   height: number,
   margin: number,
+  hasPhoto = false,
 ): void {
   ctx.font = `600 ${Math.round(width * COVER_BRAND_RATIO)}px ${FONT_FAMILY}`;
-  ctx.fillStyle = deck.theme.accent;
+  ctx.fillStyle = hasPhoto ? PHOTO_TEXT_SECONDARY : deck.theme.accent;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   const brandLabel = deck.brand.handle ? `${deck.brand.display_name} ${deck.brand.handle}` : deck.brand.display_name;
@@ -148,6 +230,7 @@ function drawChatSlide(
   height: number,
   index: number,
   total: number,
+  hasPhoto = false,
 ): void {
   const margin = Math.max(SAFE_ZONE_PX, Math.round(width * 0.06));
   const maxBubbleWidth = width * 0.66;
@@ -155,9 +238,11 @@ function drawChatSlide(
   // 채팅 헤더. 설계 §5 F2 표 "높이 폭 8%". 폭(width) 기준이지 세로(height) 기준이 아니다
   // (2026-09-21 코드리뷰 MINOR. height*ratio 로 잘못 계산돼 있었다. 4:5 비율에서는
   // height>width 라 헤더가 설계보다 25% 더 두꺼워졌다).
+  // F2(2026-09-22 코드리뷰 3차): CTA 장에 사진이 깔리면(hasPhoto) 말풍선 밖 글자(헤더·
+  // 푸터)는 흰 글자로 고정한다 — 말풍선 자체는 불투명 배경이라 영향받지 않는다.
   const headerHeight = width * CHAT_HEADER_RATIO;
   ctx.font = `700 ${Math.round(width * BRAND_LABEL_RATIO)}px ${FONT_FAMILY}`;
-  ctx.fillStyle = deck.theme.foreground;
+  ctx.fillStyle = hasPhoto ? PHOTO_TEXT_PRIMARY : deck.theme.foreground;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillText(deck.brand.display_name, margin, headerHeight / 2);
@@ -192,8 +277,8 @@ function drawChatSlide(
   }
 
   if (slide.role === "cta") {
-    drawCtaFooter(ctx, deck, width, height, margin);
-    drawBrandFooterLabel(ctx, deck, width, height, margin);
+    drawCtaFooter(ctx, deck, width, height, margin, hasPhoto);
+    drawBrandFooterLabel(ctx, deck, width, height, margin, hasPhoto);
   }
 
   drawPageNumber(ctx, deck, width, height, margin, index, total);
@@ -393,15 +478,15 @@ function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w:
   ctx.closePath();
 }
 
-function drawCtaFooter(ctx: CanvasRenderingContext2D, deck: CardDeck, width: number, height: number, margin: number): void {
+function drawCtaFooter(ctx: CanvasRenderingContext2D, deck: CardDeck, width: number, height: number, margin: number, hasPhoto = false): void {
   const y = height - height * 0.14;
   ctx.font = `700 ${Math.round(width * BODY_RATIO)}px ${FONT_FAMILY}`;
-  ctx.fillStyle = deck.theme.accent;
+  ctx.fillStyle = hasPhoto ? PHOTO_TEXT_SECONDARY : deck.theme.accent;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.fillText(`댓글 예시: ${deck.cta.comment_example}`, margin, y);
   ctx.font = `500 ${Math.round(width * TIMESTAMP_RATIO)}px ${FONT_FAMILY}`;
-  ctx.fillStyle = deck.theme.foreground;
+  ctx.fillStyle = hasPhoto ? PHOTO_TEXT_PRIMARY : deck.theme.foreground;
   ctx.fillText(deck.cta.save_reason, margin, y + width * BODY_RATIO * 1.5);
 }
 

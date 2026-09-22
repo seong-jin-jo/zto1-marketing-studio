@@ -5,8 +5,10 @@
  *
  * "직접 편집 기본, AI는 보조"(D-2026-09-09-1) — 이 컴포넌트는 순수 직접 편집 도구다.
  * 모든 상태 변화는 `card-deck-ops.ts` 의 순수 함수만 거친다(직접 상태 조작 금지, 세션맥락).
- * 실패는 `CardDeckOpsError(code, message)` 로 이유를 데리고 나오므로, 그 이유를 그대로
- * 화면에 문구로 보여준다(조용한 실패 금지).
+ * 실패는 `CardDeckOpsError(code, message)` 로 이유를 데리고 나온다(조용한 실패 금지) —
+ * 다만 message는 개발자용 영문 원문이라 그대로 찍지 않는다. `cardDeckOpsErrorMessage(code)`
+ * 로 옮긴 한국어 고정 문구를 화면에 보여주고, 원문은 console.error로만 보낸다(F4,
+ * 2026-09-22 코드리뷰 3차).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
@@ -23,11 +25,15 @@ import {
   moveBubble,
   moveSlide,
   setBubbleText,
+  setSlideCover,
+  setSlideCoverImage,
   splitBubble,
   toggleBold,
   toggleSpeaker,
 } from "@/lib/studio/card-deck-ops";
 import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
+import { DeliveredMedia } from "./DeliveredMedia";
+import { authHeaders } from "@/lib/auth";
 
 const SLIDE_ROLE_LABEL: Record<CardSlide["role"], string> = {
   cover: "표지",
@@ -56,6 +62,34 @@ export interface BubbleEditorProps {
   onDeckChange: (deck: CardDeck) => void;
 }
 
+/**
+ * F4(2026-09-22 코드리뷰 3차): CardDeckOpsError.message는 개발자용 영문 원문
+ * ("cannot merge bubbles with different speakers" 류)이다. 원문은 console.error로만
+ * 보내고(run/runSlide) 화면에는 code별 고정 한국어 문구만 보여준다. ops 함수의 message
+ * 자체는 바꾸지 않는다 — 기존 테스트가 code만 검사해 그쪽엔 영향 없다.
+ */
+function cardDeckOpsErrorMessage(code: string): string {
+  switch (code) {
+    case "OPS_SLIDE_NOT_FOUND": return "이 장을 찾지 못했습니다.";
+    case "OPS_BUBBLE_NOT_FOUND": return "이 말풍선을 찾지 못했습니다.";
+    case "OPS_NOT_COVER_SLIDE": return "표지 장에서만 바꿀 수 있습니다.";
+    case "OPS_NOT_COVER_OR_CTA_SLIDE": return "표지·마지막 장에서만 사진을 바꿀 수 있습니다.";
+    case "OPS_SPLIT_OUT_OF_RANGE": return "그 자리에서는 쪼갤 수 없습니다.";
+    case "OPS_SPLIT_EMPTY": return "쪼개면 빈 말풍선이 생겨 쪼갤 수 없습니다.";
+    case "OPS_MERGE_NO_NEXT": return "합칠 다음 말풍선이 없습니다.";
+    case "OPS_SPEAKER_MISMATCH": return "화자가 다른 말풍선은 합칠 수 없습니다.";
+    case "OPS_DELETE_LAST_BUBBLE": return "장에 말풍선이 하나뿐이면 지울 수 없습니다.";
+    case "OPS_MOVE_OUT_OF_RANGE": return "그 방향으로는 옮길 수 없습니다.";
+    case "OPS_BOLD_EMPTY_RANGE": return "굵게 만들 글을 먼저 선택해 주세요.";
+    case "OPS_BOLD_LIMIT": return "한 장에 굵은 덩이는 하나입니다.";
+    case "OPS_SLIDE_LOCKED": return "표지·CTA 장은 옮기거나 지울 수 없습니다.";
+    case "OPS_SLIDE_OUT_OF_RANGE": return "그 자리에는 장을 넣을 수 없습니다.";
+    case "OPS_SLIDE_LIMIT": return "카드는 11장을 넘을 수 없습니다.";
+    case "OPS_SLIDE_MIN": return "카드는 7장 아래로 줄일 수 없습니다.";
+    default: return "카드덱을 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  }
+}
+
 function bubbleText(bubble: Bubble): string {
   return bubble.segments.map((s) => s.text).join("");
 }
@@ -76,7 +110,8 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
       onDeckChange(op(deck));
     } catch (cause) {
       if (cause instanceof CardDeckOpsError) {
-        setError(cause.message);
+        console.error("카드덱 연산 실패", cause.code, cause.message);
+        setError(cardDeckOpsErrorMessage(cause.code));
       } else {
         setError("말풍선을 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.");
       }
@@ -87,11 +122,13 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
     return <p className="text-caption text-danger" data-bubble-editor-missing-slide>이 장을 찾지 못했습니다.</p>;
   }
   if (slide.role === "cover") {
-    return <CoverEditor slide={slide} onChange={(cover) => run((d) => ({
-      ...d,
-      slides: d.slides.map((s) => (s.id === slide.id ? { ...s, cover } : s)),
-      revision: d.revision + 1,
-    }))} />;
+    return (
+      <CoverEditor
+        slide={slide}
+        onChange={(cover) => run((d) => setSlideCover(d, slide.id, cover))}
+        onImageChange={(cover_image_url) => run((d) => setSlideCoverImage(d, slide.id, cover_image_url))}
+      />
+    );
   }
 
   const currentSlideId = slide.id;
@@ -120,11 +157,11 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
         <b className="text-caption font-semibold text-text">{SLIDE_ROLE_LABEL[slide.role]} 장 · 말풍선 {bubbles.length}개</b>
         <Button size="sm" onClick={() => run((d) => addBubble(d, slide.id, selectedBubbleId))}>말풍선 추가</Button>
       </div>
-      {error ? <p role="alert" className="rounded-control border border-danger/30 bg-danger/10 p-stack text-caption text-danger" data-bubble-editor-error>{error}</p> : null}
+      {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-bubble-editor-error>{error}</p> : null}
       <ul className="space-y-stack-tight" data-bubble-editor-turns>
         {turns.map((turn) => (
           <li key={turn.bubbles[0].id} className={turn.speaker === "reader" ? "flex justify-end" : "flex justify-start"}>
-            <ul className="max-w-[80%] space-y-stack-tight">
+            <ul className="max-w-4/5 space-y-stack-tight">
               {turn.bubbles.map((bubble) => (
                 <li
                   key={bubble.id}
@@ -164,12 +201,136 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
           </li>
         ))}
       </ul>
-      {slide.role === "cta" ? <CtaEditor deck={deck} onChange={(cta) => run((d) => ({ ...d, cta, revision: d.revision + 1 }))} /> : null}
+      {slide.role === "cta" ? (
+        <>
+          <CtaEditor deck={deck} onChange={(cta) => run((d) => ({ ...d, cta, revision: d.revision + 1 }))} />
+          <div>
+            <span className="block text-caption text-muted">마지막 장 사진</span>
+            <div className="mt-stack-tight">
+              <CoverImagePicker
+                imageUrl={slide.cover_image_url ?? null}
+                onChange={(cover_image_url) => run((d) => setSlideCoverImage(d, slide.id, cover_image_url))}
+              />
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
 
-function CoverEditor({ slide, onChange }: { slide: CardSlide; onChange: (cover: NonNullable<CardSlide["cover"]>) => void }) {
+/**
+ * 후킹 헤드라인 프리셋(세션맥락 과제 A-4). 표지 훅 3공식(질문형·숫자형·고통인식형) — 근거는
+ * docs/design/osmu-content-quality-benchmark-v1-claude-opus.html REF A-3(표지 훅 3공식,
+ * 첫 장 3줄 이내)과 §⑦CTA(댓글 키워드 유도·댓글 예시 칩·저장 명분, 표면 링크 금지).
+ * `COVER_HEADLINE_MAX_CHARS_PER_LINE`(10자) 안에 들어가는 짧은 문장만 담았다.
+ */
+const HOOK_PRESETS: Record<"question" | "number" | "pain", string[]> = {
+  question: ["이거 순서가\n틀렸다면?", "왜 나만\n안 될까"],
+  number: ["3초 만에\n원인 하나", "10년차가 짚은\n딱 한 가지"],
+  pain: ["안 되는 건\n재능이 아니다", "머리가 아니라\n순서였다"],
+};
+const CTA_KEYWORD_PRESETS = ["순서", "방법", "정리본"];
+const CTA_COMMENT_EXAMPLE_PRESETS = ["댓글에 '순서' 남기면 보내줄게", "댓글 남기면 DM으로 보내줄게"];
+const CTA_SAVE_REASON_PRESETS = ["저장해두고 나중에 다시 펴봐", "저장해두고 D-90에 다시 봐"];
+
+function HookChips({ onPick }: { onPick: (text: string) => void }) {
+  return (
+    <div className="space-y-stack-tight" data-hook-chip-bank>
+      {(Object.keys(HOOK_PRESETS) as Array<keyof typeof HOOK_PRESETS>).map((hookType) => (
+        <div key={hookType} className="flex flex-wrap items-center gap-stack-tight">
+          <span className="text-caption text-subtle">{hookType === "question" ? "질문형" : hookType === "number" ? "숫자형" : "고통인식형"}</span>
+          {HOOK_PRESETS[hookType].map((preset) => (
+            <Button key={preset} size="sm" variant="secondary" onClick={() => onPick(preset)} data-hook-chip={preset}>
+              {preset.replace("\n", " ")}
+            </Button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 대문·마지막 장 사진 선택(세션맥락 과제 A-3). 업로드는 기존 `/api/images/upload`
+ * (SNS-016, 테넌트 격리·서명 URL)를 그대로 쓴다 — 새 업로드 API를 만들지 않는다.
+ *
+ * `cover_image_url`(렌더 산출 슬롯 `image_url`과 별개 필드, C2)은 `card-templates/
+ * chat-bubble.ts`의 `loadCoverImage`/`drawBackgroundPhoto`가 실제로 불러와 캔버스에
+ * 그린다(J1, 2026-09-22 코드리뷰 2차). 편집실 미리보기(`CardDeckPanel`)와 발행 경로
+ * (`studio/page.tsx` recompositeCards → renderAndUploadCardDeck)가 같은 렌더러를 쓰므로
+ * 여기서 고른 사진은 저장 즉시 미리보기에 반영되고, 발행 시 나가는 PNG에도 그대로
+ * 들어간다. 사진을 못 불러오면(만료된 서명 URL·타임아웃 등, F3, 2026-09-22 코드리뷰
+ * 3차) 조용히 배경색으로 물러나지 않고 렌더 자체를 실패시킨다 — 미리보기·생성실
+ * 썸네일·발행 경로 모두 그 이유를 화면에 보여주고 발행을 막는다(ADR-007). 사진이 오래
+ * 최대 8초씩, 9장이면 최악 72초까지 걸릴 수 있다(H, 4차: 진행 표시는 아직 없다).
+ */
+function CoverImagePicker({ imageUrl, onChange }: { imageUrl: string | null; onChange: (url: string | null) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  async function handleFile(file: File) {
+    setBusy(true);
+    setUploadError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      // M3: authHeaders()는 FormData 요청에도 Content-Type을 안 얹는다(card-deck.ts
+      // browserCardUploader와 동일 패턴) — multipart boundary는 브라우저가 직접 채운다.
+      const res = await fetch("/api/images/upload", { method: "POST", headers: authHeaders(), body: form });
+      const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        setUploadError(data.error || "사진을 올리지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        return;
+      }
+      onChange(data.url);
+    } catch {
+      setUploadError("연결이 끊겨 사진을 올리지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-stack-tight" data-cover-image-picker>
+      {imageUrl ? (
+        <DeliveredMedia
+          src={imageUrl}
+          type="image"
+          alt="선택된 표지 사진"
+          className="h-24 w-24 rounded-control border border-border object-cover"
+          testId="cover-image-picker-preview"
+        />
+      ) : (
+        <p className="text-caption text-muted" data-cover-image-empty>아직 사진을 고르지 않았습니다.</p>
+      )}
+      <p className="text-caption text-subtle" data-cover-image-render-status>미리보기와 발행 결과물에 그대로 반영됩니다. 사진을 불러오는 데 장당 최대 8초 걸릴 수 있습니다.</p>
+      <div className="flex flex-wrap gap-stack-tight">
+        <Button size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "올리는 중…" : "사진 올리기"}</Button>
+        {imageUrl ? <Button size="sm" variant="secondary" onClick={() => onChange(null)}>사진 빼기</Button> : null}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void handleFile(file);
+          event.target.value = "";
+        }}
+      />
+      {uploadError ? <p role="alert" className="text-caption text-danger" data-cover-image-error>{uploadError}</p> : null}
+    </div>
+  );
+}
+
+function CoverEditor({ slide, onChange, onImageChange }: {
+  slide: CardSlide;
+  onChange: (cover: NonNullable<CardSlide["cover"]>) => void;
+  onImageChange: (url: string | null) => void;
+}) {
   const cover = slide.cover ?? { headline: "", sub: null };
   return (
     <div className="space-y-stack" data-bubble-editor-cover>
@@ -181,6 +342,10 @@ function CoverEditor({ slide, onChange }: { slide: CardSlide; onChange: (cover: 
           rows={3}
         />
       </label>
+      <div>
+        <span className="block text-caption text-muted">후킹 문구 바로 넣기</span>
+        <div className="mt-stack-tight"><HookChips onPick={(text) => onChange({ ...cover, headline: text })} /></div>
+      </div>
       <label className="block text-caption text-muted">보조 문구
         <input
           value={cover.sub ?? ""}
@@ -188,6 +353,10 @@ function CoverEditor({ slide, onChange }: { slide: CardSlide; onChange: (cover: 
           className="mt-stack-tight w-full rounded-control border border-border bg-surface-2 p-stack text-body text-text"
         />
       </label>
+      <div>
+        <span className="block text-caption text-muted">표지 사진</span>
+        <div className="mt-stack-tight"><CoverImagePicker imageUrl={slide.cover_image_url ?? null} onChange={onImageChange} /></div>
+      </div>
     </div>
   );
 }
@@ -215,30 +384,38 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
     const host = canvasHostRef.current;
     if (!host || !activeSlide) return;
     // 300ms 디바운스(설계 §5 F4). 연산마다 즉시 다시 그리면 타이핑 중 캔버스가 계속
-    // 깜빡인다.
+    // 깜빡인다. J1(2026-09-22 코드리뷰): 표지·CTA 사진 로딩을 기다려야 해서 렌더가
+    // 비동기로 바뀌었다 — `cancelled`로 그 사이 deck이 또 바뀌면 옛 결과를 host에 못
+    // 붙이게 막는다(경쟁 상태 방지).
+    let cancelled = false;
     const timer = setTimeout(() => {
-      host.innerHTML = "";
-      try {
-        const canvas = renderChatBubbleSlideToCanvas({
-          deck,
-          slide: activeSlide,
-          index: deck.slides.findIndex((s) => s.id === activeSlide.id),
-          total: deck.slides.length,
-        });
-        if (canvas) {
-          canvas.style.width = "100%";
-          canvas.style.height = "auto";
-          canvas.style.borderRadius = "var(--radius-surface, 12px)";
-          host.appendChild(canvas);
+      void (async () => {
+        try {
+          const canvas = await renderChatBubbleSlideToCanvas({
+            deck,
+            slide: activeSlide,
+            index: deck.slides.findIndex((s) => s.id === activeSlide.id),
+            total: deck.slides.length,
+          });
+          if (cancelled) return;
+          host.innerHTML = "";
+          if (canvas) {
+            canvas.style.width = "100%";
+            canvas.style.height = "auto";
+            canvas.style.borderRadius = "var(--radius-surface, 12px)";
+            host.appendChild(canvas);
+          }
+        } catch (cause) {
+          if (cancelled) return;
+          host.innerHTML = "";
+          const p = document.createElement("p");
+          p.className = "text-caption text-danger";
+          p.textContent = cause instanceof Error ? cause.message : "미리보기를 그리지 못했습니다.";
+          host.appendChild(p);
         }
-      } catch (cause) {
-        const p = document.createElement("p");
-        p.className = "text-caption text-danger";
-        p.textContent = cause instanceof Error ? cause.message : "미리보기를 그리지 못했습니다.";
-        host.appendChild(p);
-      }
+      })();
     }, 300);
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [deck, activeSlide]);
 
   function runSlide(op: (deck: CardDeck) => CardDeck) {
@@ -246,7 +423,12 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
       setSlideError(null);
       onDeckChange(op(deck));
     } catch (cause) {
-      setSlideError(cause instanceof CardDeckOpsError ? cause.message : "장을 바꾸지 못했습니다.");
+      if (cause instanceof CardDeckOpsError) {
+        console.error("카드덱 연산 실패", cause.code, cause.message);
+        setSlideError(cardDeckOpsErrorMessage(cause.code));
+      } else {
+        setSlideError("장을 바꾸지 못했습니다.");
+      }
     }
   }
 
@@ -312,12 +494,27 @@ function CtaEditor({ deck, onChange }: { deck: CardDeck; onChange: (cta: CardDec
       <label className="block text-caption text-muted">댓글 키워드
         <input value={cta.keyword} onChange={(event) => onChange({ ...cta, keyword: event.target.value })} className="mt-stack-tight w-full rounded-control border border-border bg-surface p-stack text-body text-text" />
       </label>
+      <div className="flex flex-wrap gap-stack-tight" data-cta-keyword-chips>
+        {CTA_KEYWORD_PRESETS.map((preset) => (
+          <Button key={preset} size="sm" variant="secondary" onClick={() => onChange({ ...cta, keyword: preset })}>{preset}</Button>
+        ))}
+      </div>
       <label className="block text-caption text-muted">댓글 예시
         <input value={cta.comment_example} onChange={(event) => onChange({ ...cta, comment_example: event.target.value })} className="mt-stack-tight w-full rounded-control border border-border bg-surface p-stack text-body text-text" />
       </label>
+      <div className="flex flex-wrap gap-stack-tight" data-cta-comment-chips>
+        {CTA_COMMENT_EXAMPLE_PRESETS.map((preset) => (
+          <Button key={preset} size="sm" variant="secondary" onClick={() => onChange({ ...cta, comment_example: preset })}>{preset}</Button>
+        ))}
+      </div>
       <label className="block text-caption text-muted">저장 명분
         <input value={cta.save_reason} onChange={(event) => onChange({ ...cta, save_reason: event.target.value })} className="mt-stack-tight w-full rounded-control border border-border bg-surface p-stack text-body text-text" />
       </label>
+      <div className="flex flex-wrap gap-stack-tight" data-cta-save-chips>
+        {CTA_SAVE_REASON_PRESETS.map((preset) => (
+          <Button key={preset} size="sm" variant="secondary" onClick={() => onChange({ ...cta, save_reason: preset })}>{preset}</Button>
+        ))}
+      </div>
     </div>
   );
 }

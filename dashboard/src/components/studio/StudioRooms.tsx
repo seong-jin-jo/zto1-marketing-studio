@@ -8,6 +8,8 @@ import { EditOutline } from "./EditOutline";
 import { CardDeckPanel } from "./BubbleEditor";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { deckProjection, applyProjection } from "@/lib/studio/card-deck-contract";
+import { VideoEditor } from "./VideoEditor";
+import { emptyVideoEdit, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
 import {
@@ -53,6 +55,10 @@ import {
 import styles from "./StudioRooms.module.css";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
+
+// M5(2026-09-22 코드리뷰): 매 렌더 새 객체를 만들지 않게 모듈 스코프에서 한 번만 만든다.
+// videoEdit는 순수함수(video-edit-contract.ts)로만 바뀌므로 이 상수를 직접 변형하지 않는다.
+const EMPTY_VIDEO_EDIT: VideoEdit = emptyVideoEdit();
 
 export type CreateContentBranch = "text_image" | "video";
 export type EditContentKind = "video" | "card" | "audio" | "text";
@@ -273,21 +279,31 @@ export function CardDeckThumbnailStrip({ deck }: { deck: CardDeck }) {
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    // J1(2026-09-22 코드리뷰): 렌더러가 표지·CTA 사진 로딩을 기다리는 비동기 함수로
+    // 바뀌었다. `cancelled`로 deck이 또 바뀌기 전에 그린 결과만 host에 붙인다.
+    let cancelled = false;
     host.innerHTML = "";
     const total = deck.slides.length;
-    deck.slides.forEach((slide, index) => {
-      try {
-        const canvas = renderChatBubbleSlideToCanvas({ deck, slide, index, total });
-        if (!canvas) return;
-        canvas.className = "h-auto w-[4.5rem] rounded-control border border-border";
-        host.appendChild(canvas);
-      } catch (cause) {
-        const chip = document.createElement("p");
-        chip.className = "rounded-chip border border-dashed border-danger/30 bg-danger/10 px-micro text-caption text-danger";
-        chip.textContent = `${index + 1}번 장: ${cause instanceof Error ? cause.message : "미리보기를 그리지 못했습니다."}`;
-        host.appendChild(chip);
+    void (async () => {
+      for (let index = 0; index < deck.slides.length; index += 1) {
+        if (cancelled) return;
+        const slide = deck.slides[index];
+        try {
+          const canvas = await renderChatBubbleSlideToCanvas({ deck, slide, index, total });
+          if (cancelled) return;
+          if (!canvas) continue;
+          canvas.className = "h-auto w-[4.5rem] rounded-control border border-border";
+          host.appendChild(canvas);
+        } catch (cause) {
+          if (cancelled) return;
+          const chip = document.createElement("p");
+          chip.className = "rounded-chip border border-dashed border-danger bg-danger-soft px-micro text-caption text-danger";
+          chip.textContent = `${index + 1}번 장: ${cause instanceof Error ? cause.message : "미리보기를 그리지 못했습니다."}`;
+          host.appendChild(chip);
+        }
       }
-    });
+    })();
+    return () => { cancelled = true; };
   }, [deck]);
   return <div ref={hostRef} data-card-deck-thumbnail-strip className="flex flex-wrap gap-stack-tight" aria-label={`카톡 말풍선 카드뉴스 ${deck.slides.length}장 미리보기`} />;
 }
@@ -1543,11 +1559,25 @@ interface EditRoomProps {
   moveBusy?: boolean;
   autosaveError?: string;
   /**
+   * 항목2(2026-09-22 코드리뷰 5차): autosaveError가 하나로 합쳐지면 어느 도메인이
+   * 막고 있는지, 어디로 가야 풀리는지 화면이 말을 못 한다 — 영구 잠금(ADR-007 위반).
+   * 도메인별로 따로 받아 그 도메인 편집으로 바로 갈 수 있는 단추를 붙인다.
+   */
+  cardDeckAutosaveError?: string;
+  videoEditAutosaveError?: string;
+  /**
    * 카드뉴스 v2 덱(PR4). 있으면 `template==="chat_bubble"` 편집을 `CardDeckPanel` 이
    * 대신하고, 없으면 기존 `lines` 편집 그대로다(회귀 0 — 세션맥락).
    */
   cardDeck?: CardDeck | null;
   onCardDeckChange?: (deck: CardDeck) => void;
+  /**
+   * 영상 편집 v1(세션맥락 과업 B). 있으면 `kind==="video"` 편집 워크벤치 위에
+   * `VideoEditor`(후킹 CTA·댓글 오버레이·자막 기반 편집·음성 변경)를 얹는다. 기존
+   * VIDEO_TOOLS(비율·목소리·속도·자막 셀렉트)는 그대로 두고 회귀시키지 않는다.
+   */
+  videoEdit?: VideoEdit | null;
+  onVideoEditChange?: (edit: VideoEdit) => void;
 }
 type ToolName = "비율" | "배경" | "목소리" | "속도" | "자막" | "음악" | "음량";
 const VIDEO_TOOLS: ToolName[] = ["비율", "목소리", "속도", "자막"];
@@ -1669,8 +1699,12 @@ export function EditRoom({
   lastSavedAt,
   moveBusy = false,
   autosaveError,
+  cardDeckAutosaveError,
+  videoEditAutosaveError,
   cardDeck = null,
   onCardDeckChange,
+  videoEdit = null,
+  onVideoEditChange,
 }: EditRoomProps) {
   const formatKind = kind;
   // 2026-09-22 코드리뷰 MAJOR 3: chat_bubble 이면 `lines`(옛 `editLines` 상태)가 아니라
@@ -1841,6 +1875,18 @@ export function EditRoom({
               <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
+              {kind === "video" && onVideoEditChange ? (
+                <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-video-edit-workbench>
+                  <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-video-edit-editor-note>
+                    후킹 CTA·댓글 오버레이·자막·음성을 여기서 편집합니다. 여기서 고친 내용은 자동 저장됩니다.
+                  </p>
+                  <VideoEditor
+                    videoEdit={videoEdit ?? EMPTY_VIDEO_EDIT}
+                    onVideoEditChange={onVideoEditChange}
+                    previewVideoUrl={previewVideoUrl}
+                  />
+                </div>
+              ) : null}
               {kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench>
                   <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-card-deck-editor-note>
@@ -2076,6 +2122,24 @@ export function EditRoom({
               </div>
               {bulkMessage ? <p className="mt-stack text-caption text-success" aria-live="polite">{bulkMessage}</p> : null}
             </div>
+            {/*
+              항목2(2026-09-22 코드리뷰 5차): 영상 편집기의 미완성 오버레이 하나가
+              카드덱만 손보고 있는 사용자에게 "발행실로 이동"을 영구히 막았는데, 문구는
+              영상 얘기만 했고 그 방으로 가는 길이 없었다(ADR-007 §1·§3 위반). 어느
+              도메인이 막고 있는지와 그 도메인 편집으로 바로 가는 단추를 붙인다.
+            */}
+            {cardDeckAutosaveError ? (
+              <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-blocked-domain="card">
+                {cardDeckAutosaveError}{" "}
+                {kind !== "card" ? <Button size="sm" variant="secondary" onClick={() => onKindChange?.("card")}>카드덱 편집으로 가기</Button> : null}
+              </p>
+            ) : null}
+            {videoEditAutosaveError ? (
+              <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-blocked-domain="video">
+                {videoEditAutosaveError}{" "}
+                {kind !== "video" ? <Button size="sm" variant="secondary" onClick={() => onKindChange?.("video")}>영상 편집으로 가기</Button> : null}
+              </p>
+            ) : null}
             <div className={styles.editHelperFooter}>
               <small className={autosaveError ? "text-caption text-danger" : "text-caption text-success"}>{autosaveError || (lastSavedAt ? `마지막 자동 저장 ${lastSavedAt}` : "고치는 대로 자동 저장됨")}</small>
               <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>

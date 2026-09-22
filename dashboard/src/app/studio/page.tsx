@@ -28,6 +28,7 @@ import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
 import { browserCardUploader, cardRatioFrom, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
 import { emptyBubbleSlideNumber, pruneEmptyBubbles } from "@/lib/studio/card-deck-ops";
 import { limitedChannelNotice, planChannelImages } from "@/lib/studio/channel-image-capacity";
@@ -184,9 +185,21 @@ function extractApiErrorMessage(e: unknown, fallback: string): string {
   // 사용자에게 아무 뜻이 없고 다음에 무엇을 하면 되는지도 말해 주지 않는다.
   // 서버 문구가 있으면 그것을 쓰고, 없으면 상태 코드가 아니라 사람 말로 바꿔 준다.
   if (e instanceof ApiResponseError) {
-    const payload = e.payload as { error?: string; nsfw?: boolean; credits?: boolean } | null;
+    const payload = e.payload as { error?: string; code?: string; nsfw?: boolean; credits?: boolean } | null;
     if (payload?.nsfw) return "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요.";
     if (payload?.credits) return "생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다.";
+    // N3(2026-09-22 코드리뷰): INVALID_CARD_DECK/INVALID_VIDEO_EDIT의 payload.error는
+    // 서버 검증기의 영문 필드 경로 원문("comments[0].author must be...")이다. 그걸 그대로
+    // 찍으면 회장 화면에 영문 디버그 문구가 뜬다. 원문은 로그로만 보내고 화면은 고정
+    // 한국어 문구로 바꾼다.
+    if (payload?.code === "INVALID_CARD_DECK" || payload?.code === "CARD_DECK_TOO_LARGE") {
+      console.error("카드덱 저장 검증 실패", payload);
+      return "카드덱 내용에 저장할 수 없는 값이 있어 자동 저장을 보류했습니다. 방금 고친 내용을 확인해 주세요.";
+    }
+    if (payload?.code === "INVALID_VIDEO_EDIT" || payload?.code === "VIDEO_EDIT_TOO_LARGE") {
+      console.error("영상 편집 저장 검증 실패", payload);
+      return "영상 편집 내용에 저장할 수 없는 값이 있어 자동 저장을 보류했습니다. 방금 고친 내용을 확인해 주세요.";
+    }
     if (payload?.error) return payload.error;
     if (e.status === 401 || e.status === 403) return "권한이 없어 요청이 막혔습니다. 로그아웃 후 다시 로그인해 주세요.";
     if (e.status === 429) return "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.";
@@ -484,8 +497,15 @@ export default function StudioPage() {
   const [cardTextPositions, setCardTextPositions] = useState<CardTextPosition[]>([]);
   // 카드뉴스 v2 덱(PR4). 있으면 편집실이 CardDeckPanel(말풍선 직접 편집)을 그린다.
   const [cardDeck, setCardDeck] = useState<CardDeck | null>(null);
+  // 영상 편집 v1(세션맥락 과업 B). 있으면 편집실이 VideoEditor를 그린다.
+  const [videoEdit, setVideoEdit] = useState<VideoEdit | null>(null);
   const [editSavedAt, setEditSavedAt] = useState("");
   const [editAutosaveError, setEditAutosaveError] = useState("");
+  // C(2026-09-22 코드리뷰 4차): 카드덱·영상 자동저장이 editAutosaveError 하나를 공유하면
+  // 영상 쪽 보류 사유("N번째 오버레이 문구가 비어 있어 보류")를 직후에 도는 카드덱 타이머의
+  // 성공(빈 문자열 set)이 지운다 — 사용자는 저장된 줄 알고 방을 뜬다. 도메인별로 쪼갠다.
+  const [cardDeckAutosaveError, setCardDeckAutosaveError] = useState("");
+  const [videoEditAutosaveError, setVideoEditAutosaveError] = useState("");
   const [moveToPublishBusy, setMoveToPublishBusy] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<StudioGenerationCandidate | null>(null);
   const [createBranch, setCreateBranch] = useState<CreateContentBranch>("video");
@@ -1044,7 +1064,12 @@ export default function StudioPage() {
     // 파일이 저장되고, 발행실은 저장된 것을 올린다.
     persistedVid: VidResult | null = vid,
     // 방금 연산한 덱도 같은 이유로 인자로 받는다(§5 F4 자동저장, 800ms 디바운스).
-    persistedCardDeck: CardDeck | null = cardDeck,
+    // (2026-09-22 코드리뷰 5차 항목1) 기본값을 없애 필수 인자로 만들었다. state를 대신
+    // 넣는 기본값이 있으면 호출부가 자기 도메인만 저장할 뜻이어도 남의 도메인 state가
+    // 검증 없이 같이 실린다(4차 A·B가 그 결함이었다). 기본값을 없애면 컴파일러가 모든
+    // 호출부를 짚어 강제로 명시하게 한다 — 다음에 같은 결함이 또 나는 것을 막는다.
+    persistedCardDeck: CardDeck | null,
+    persistedVideoEdit: VideoEdit | null,
   ) {
     const r = await apiPost<{ id?: string }>("/api/studio/drafts", {
       tenant_id: activeWorkspace?.id,
@@ -1066,6 +1091,7 @@ export default function StudioPage() {
       cardTextPositions,
       // cardDeck 키가 아예 없으면 서버가 기존 덱을 보존한다(route.ts). 있을 때만 보낸다.
       ...(persistedCardDeck ? { cardDeck: persistedCardDeck } : {}),
+      ...(persistedVideoEdit ? { videoEdit: persistedVideoEdit } : {}),
       editKind,
       editFormat,
       reviewQueueId,
@@ -1074,8 +1100,32 @@ export default function StudioPage() {
     if (r?.id) setDraftId(r.id); mutateHist(); return r?.id;
   }
   async function saveDraftWithNotice() {
+    // F5(2026-09-22 코드리뷰 3차): 자동저장 경로(onCardDeckChange)만 pruneEmptyBubbles·
+    // emptyBubbleSlideNumber를 거치고 이 수동 "임시 저장" 경로는 빠져 있었다. 빈 말풍선
+    // 상태에서 누르면 서버가 400을 내고 이유 없는 토스트만 떴다. 자동저장과 같은 검사를
+    // 그대로 적용한다.
+    // B(4차): "세 경로를 같게 맞췄다"는 3차 커밋 메시지는 거짓이었다 — 영상 자동저장
+    // (onVideoEditChange)이 pruning 없이 원본 cardDeck을 실어 보내는 네 번째 경로였다.
+    // 지금 이 파일 안에서 pruneEmptyBubbles를 실제로 부르는 자리는: onCardDeckChange,
+    // 이 함수, recompositeCards, moveToPublish 넷이다(grep으로 재확인 가능).
+    let prunedCardDeck: CardDeck | null = null;
+    if (cardDeck) {
+      const pruned = pruneEmptyBubbles(cardDeck);
+      const emptySlide = emptyBubbleSlideNumber(pruned);
+      if (emptySlide !== null) {
+        showToast(`${emptySlide}번 장에 말풍선이 비어 있어 저장하지 못했습니다. 내용을 채운 뒤 다시 눌러 주세요.`, "error");
+        return;
+      }
+      prunedCardDeck = pruned;
+      // MINOR(4차): 서버엔 pruned를 보내면서 화면 state는 원본 그대로라 다음 자동저장이
+      // 다시 원본을 기준으로 돌았다. state도 맞춘다.
+      setCardDeck(pruned);
+    }
     try {
-      const savedDraftId = await save("draft");
+      // 수동 "임시 저장"은 카드덱·영상 자동저장과 달리 도메인 한정 저장이 아니라 전체
+      // 스냅샷 저장이다 — 카드덱만 pruned로 검사·교체하고(위에서 이미 함) videoEdit는
+      // 현재 state를 그대로 싣는다(이전 기본값 동작과 동일, 이번엔 명시적으로만 적었다).
+      const savedDraftId = await save("draft", undefined, undefined, undefined, undefined, undefined, prunedCardDeck, videoEdit);
       if (!savedDraftId) {
         showToast("초안을 저장하지 못했습니다", "error");
         return;
@@ -1093,8 +1143,9 @@ export default function StudioPage() {
    * 때문이다. 나가는 그림을 생성실과 같은 렌더러(renderTextCard)로 다시 그려 그 불일치를
    * 없앤다(설계 §2.2).
    *
-   * 못 그리면 막지 않고 밝힌다. 그리기는 브라우저 캔버스에 달려 있어 환경에 따라 없을 수
-   * 있고, 그때 발행실로 가는 길까지 닫으면 사용자는 이유도 모른 채 갇힌다.
+   * 못 그리면 이유를 밝히고 발행실로 넘어가지 않는다(막는다) — 안 막으면 그림 없는
+   * 초안이 발행실에 그대로 뜬다. MINOR(2026-09-22 코드리뷰 4차): 이 주석이 실제 구현보다
+   * 낙관적으로 쓰여 있었다(이전엔 "막지 않고 밝힌다"였는데 실제로는 return null로 막는다).
    *
    * 2026-09-22 PR4 배선: `cardDeck.template === "chat_bubble"` 이면 옛 9칸 글자 자리(lines·
    * positions) 경로가 아니라 말풍선 덱을 그대로 `card-templates/chat-bubble.ts` 렌더러로
@@ -1104,16 +1155,39 @@ export default function StudioPage() {
   async function recompositeCards(lines: string[]): Promise<ImgResult | null> {
     if (editKind !== "card") return null;
     if (cardDeck && cardDeck.template === "chat_bubble") {
+      // F5(2026-09-22 코드리뷰 3차)·D(4차): 발행 경로도 자동저장·수동저장과 같은 검사를
+      // 거친다. D 수정: 검사는 pruned로 하고 렌더는 원본으로 하면 검사를 통과한 뒤에도
+      // prune이 걷어냈어야 할 빈 말풍선이 그대로 PNG에 찍힌다 — 검사와 렌더가 같은
+      // pruned 값을 봐야 한다. state도 pruned로 맞춰(setCardDeck) 이후 자동저장과 갈리지
+      // 않게 한다.
+      const pruned = pruneEmptyBubbles(cardDeck);
+      const emptySlide = emptyBubbleSlideNumber(pruned);
+      if (emptySlide !== null) {
+        showToast(`${emptySlide}번 장에 말풍선이 비어 있어 카드를 다시 그리지 못했습니다. 내용을 채운 뒤 다시 시도해 주세요.`, "error");
+        return null;
+      }
+      setCardDeck(pruned);
       try {
         const urls = await renderAndUploadCardDeck(
-          { lines: [], ratio: cardRatioFrom(cardAspectRatio), template: "chat_bubble", deck: cardDeck },
+          { lines: [], ratio: cardRatioFrom(cardAspectRatio), template: "chat_bubble", deck: pruned },
           { upload: browserCardUploader(authHeaders()) },
         );
         const next: ImgResult = { url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
         setImg(next);
         return next;
       } catch (error) {
-        showToast(extractApiErrorMessage(error, "카드뉴스 9장을 다시 그리지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요."), "error");
+        // G(2026-09-22 코드리뷰 4차): 사진 로딩 실패(서명 URL 만료 등)면 "다시 시도"만으로는
+        // 안 풀린다 — 만료된 URL은 다시 시도해도 계속 만료돼 있다. 빠져나갈 길을 문구에
+        // 담는다(ADR-007 §3). 자동으로 사진을 빼는 것까지는 이번에 안 하지만("확인 없이
+        // 사용자 데이터를 지우지 않는다"), 무엇을 하면 되는지는 말한다.
+        const message = extractApiErrorMessage(error, "카드뉴스 9장을 다시 그리지 못했습니다.");
+        const isPhotoFailure = /사진/.test(message);
+        showToast(
+          isPhotoFailure
+            ? `${message} 편집실에서 그 장의 사진을 빼거나 새 사진으로 바꾼 뒤 다시 시도해 주세요.`
+            : `${message} 다시 시도해 주세요.`,
+          "error",
+        );
         return null;
       }
     }
@@ -1202,10 +1276,18 @@ export default function StudioPage() {
       const subtitled = await burnVideoSubtitles(linesToPersist);
       // 자막을 못 구웠으면 넘어가지 않는다. 넘어가면 무자막 파일이 그대로 발행된다.
       if (subtitled.kind === "failed") return;
+      // D(2026-09-22 코드리뷰 4차): recompositeCards가 내부에서 pruned 덱으로 렌더·
+      // setCardDeck 했지만, 그 setState는 비동기라 여기 클로저의 `cardDeck`은 아직 옛
+      // 값일 수 있다(리액트 배치). 발행 직전 저장은 그 클로저 값에 기대지 않고 여기서
+      // 다시 한번 명시적으로 prune해 렌더된 것과 저장되는 것을 같게 만든다.
       const savedDraftId = await save(
         "draft", publishReconciliations, draftId, linesToPersist,
         redrawn ?? img,
         subtitled.kind === "done" ? subtitled.vid : vid,
+        cardDeck ? pruneEmptyBubbles(cardDeck) : null,
+        // 발행실로 넘어가기 직전 전체 스냅샷 저장이다(도메인 한정 자동저장이 아니다) —
+        // 현재 videoEdit state를 그대로 싣는다(이전 기본값 동작과 동일, 이번엔 명시).
+        videoEdit,
       );
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
       if (!editLines.length) setEditLines(linesToPersist);
@@ -1271,7 +1353,9 @@ export default function StudioPage() {
         Object.entries(publishReconciliations).filter(([platform]) => !repairedPlatforms.has(platform)),
       );
       if (repairedPlatforms.size === 0) throw new Error("발행 원장 복구 실패");
-      const savedDraftId = await save(Object.keys(remaining).length ? "partial" : "published", remaining, draftId);
+      // 발행 원장 기록만 남기는 호출이다 — 카드덱·영상 내용은 이 호출의 관심사가
+      // 아니므로 null,null로 키 자체를 빼서 서버에 이미 저장된 값을 건드리지 않는다.
+      const savedDraftId = await save(Object.keys(remaining).length ? "partial" : "published", remaining, draftId, undefined, undefined, undefined, null, null);
       if (!savedDraftId) throw new Error("기록 저장 실패");
       setPublishReconciliations(remaining);
       const repairedLabels = [...repairedPlatforms].map((platform) => LABEL[platform as keyof typeof LABEL]).join(", ");
@@ -1320,7 +1404,9 @@ export default function StudioPage() {
       }
       showToast(`한도를 넘은 곳은 빼고 발행합니다. ${summary}`, "error");
     }
-    const draftPersistence = await attemptRequiredDraftPersistence(() => save("draft"));
+    // 발행 직전 초안 존재를 확인하는 저장이다 — 카드덱·영상은 moveToPublish가 이미
+    // 커밋했으므로 여기서는 건드리지 않는다(null,null로 키를 빼 서버 값을 보존한다).
+    const draftPersistence = await attemptRequiredDraftPersistence(() => save("draft", undefined, undefined, undefined, undefined, undefined, null, null));
     if (!draftPersistence.ok) {
       showToast("발행할 초안을 저장하지 못했습니다", "error");
       return;
@@ -1446,7 +1532,8 @@ export default function StudioPage() {
     if (Object.keys(pendingReconciliations).length > 0) {
       setPublishReconciliations(pendingReconciliations);
       try {
-        await save("partial", pendingReconciliations, did);
+        // 발행 결과 기록만 남긴다 — 카드덱·영상은 이 호출의 관심사가 아니다.
+        await save("partial", pendingReconciliations, did, undefined, undefined, undefined, null, null);
       } catch {
         // The same storage incident can prevent the draft write too. The state was
         // already copied to localStorage-bound React state, so keep the no-republish
@@ -1455,7 +1542,8 @@ export default function StudioPage() {
       }
     } else {
       try {
-        const savedDraftId = await save(errs.length ? "partial" : "published", {}, did);
+        // 발행 결과 기록만 남긴다 — 카드덱·영상은 이 호출의 관심사가 아니다.
+        const savedDraftId = await save(errs.length ? "partial" : "published", {}, did, undefined, undefined, undefined, null, null);
         if (!savedDraftId) errs.push("발행 결과를 저장하지 못했습니다");
       } catch {
         errs.push("발행 결과를 저장하지 못했습니다");
@@ -1485,6 +1573,7 @@ export default function StudioPage() {
     setEditLines((d.editLines as string[]) || []);
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
     setCardDeck((d.cardDeck as CardDeck) || null);
+    setVideoEdit((d.videoEdit as VideoEdit) || null);
     setReviewQueueId((d.reviewQueueId as string) || null);
     const savedFormat = validateContentEditFormat(d.editFormat);
     if (savedFormat.valid) {
@@ -1538,11 +1627,21 @@ export default function StudioPage() {
   // 정의는 아래 편집실 렌더 직전). 모든 hook 은 1990행 조건부 early return 앞에서 불러야
   // 렌더마다 순서가 같다.
   const cardDeckAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // R1(2026-09-22 코드리뷰 3차): 타이머 통합(2차)이 CRITICAL을 두 라운드 연달아 냈다
+  // (2차: 영상저장 삼킴 · 3차: 실패/언마운트 시 pending 유실). "덜 만들고 되돌린다" —
+  // 카드덱·영상 자동저장을 독립 타이머로 되돌린다. 각자 최신 state를 통째로 실어
+  // 보내는 구 방식은 다음 자동저장에서 자연 복구되는 성질이 있다(한쪽이 실패해도
+  // 다음 변경이 다시 최신 state를 통째로 보낸다). 두 저장이 서로 덮는 문제는 회장이
+  // 실제로 밟은 적 없는 가설이었고, 재설계가 만든 유실 경로가 더 비쌌다.
+  const videoEditAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // setTimeout 콜백이 클로저로 오래된 draftId 를 붙잡지 않게(2026-09-22 코드리뷰 MINOR 6:
   // 발행실 이동이 타이머보다 먼저 끝나면 뒤늦은 콜백이 draftId=null 로 중복 초안을 만든다).
   const draftIdRef = useRef<string | null>(null);
   draftIdRef.current = draftId;
-  useEffect(() => () => { if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current); }, []);
+  useEffect(() => () => {
+    if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
+    if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
+  }, []);
   useEffect(() => {
     if (!publishReturnRequest || !publishReturnQueue?.posts) return;
     const loadKey = `${publishReturnRequest.sourceRoute}:${publishReturnRequest.queuePostId}`;
@@ -1598,6 +1697,7 @@ export default function StudioPage() {
       setEditLines((linkedDraft?.editLines as string[]) || []);
       setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
       setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
+      setVideoEdit((linkedDraft?.videoEdit as VideoEdit) || null);
       const linkedFormat = validateContentEditFormat(linkedDraft?.editFormat);
       if (linkedFormat.valid) {
         setEditKind(linkedFormat.value.kind);
@@ -1779,7 +1879,8 @@ export default function StudioPage() {
     try {
       let queueId = reviewQueueId;
       if (!queueId) {
-        const linkedDraftId = draftId || await save("draft");
+        // 검토 큐에 걸 초안이 아직 없으면 지금 전체 스냅샷으로 만든다(이전 기본값과 동일).
+        const linkedDraftId = draftId || await save("draft", undefined, undefined, undefined, undefined, undefined, cardDeck, videoEdit);
         if (!linkedDraftId) throw new Error("검토 요청용 초안을 저장하지 못했습니다");
         const added = await apiPost<{ post?: { id?: string } }>("/api/queue/add", {
           tenant_id: activeWorkspace.id,
@@ -2105,12 +2206,44 @@ export default function StudioPage() {
       const pruned = pruneEmptyBubbles(nextDeck);
       const emptySlide = emptyBubbleSlideNumber(pruned);
       if (emptySlide !== null) {
-        setEditAutosaveError(`${emptySlide}번 장에 말풍선이 비어 있어 자동 저장을 보류했습니다. 내용을 채우면 저장됩니다.`);
+        setCardDeckAutosaveError(`${emptySlide}번 장에 말풍선이 비어 있어 자동 저장을 보류했습니다. 내용을 채우면 저장됩니다.`);
         return;
       }
-      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, pruned)
-        .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setEditAutosaveError(""); })
-        .catch((error) => setEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
+      // A(2026-09-22 코드리뷰 4차): save()의 8번째 인자(videoEdit)를 생략하면 기본값이
+      // 현재 videoEdit state를 통째로 실어 보낸다. 이 타이머는 카드덱 도메인만 책임진다 —
+      // 사용자가 영상 오버레이 문구를 지우고 다시 타이핑하는 중(정상 편집 중, 보류
+      // 대상)이면 그 state가 여기 실려가 서버 validateVideoEdit 400을 내고, 카드덱
+      // 저장까지 함께 실패한다. null을 명시해 videoEdit 키 자체를 payload에서 뺀다
+      // (drafts/route.ts는 키가 없으면 기존 값을 보존한다).
+      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, pruned, null)
+        .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setCardDeckAutosaveError(""); })
+        .catch((error) => setCardDeckAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
+    }, 800);
+  }
+
+  /**
+   * R2(2026-09-22 코드리뷰 3차): sanitizeForSave(빈 항목만 걸러 보냄)를 되돌렸다.
+   * drafts/route.ts는 videoEdit를 통째 치환한다(부분 병합 아님) — 걸러낸 전체 객체를
+   * 보내면 서버에 이미 저장돼 있던 항목까지 조용히 사라진다(화면엔 남아 있어 사용자는
+   * 모르고 새로고침하면 사라져 있었다). 그래서 빈 항목이 있으면 저장 자체를 보류한다
+   * (cardDeck의 pruneEmptyBubbles/emptyBubbleSlideNumber와 같은 패턴).
+   */
+  function onVideoEditChange(nextEdit: VideoEdit) {
+    setVideoEdit(nextEdit);
+    if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
+    videoEditAutosaveTimer.current = setTimeout(() => {
+      const blockedReason = videoEditIncompleteEntryReason(nextEdit);
+      if (blockedReason) {
+        setVideoEditAutosaveError(blockedReason);
+        return;
+      }
+      // B(2026-09-22 코드리뷰 4차): 반대 방향의 같은 결함. 이 타이머는 영상 도메인만
+      // 책임진다 — cardDeck을 그대로 실으면(pruning 없이) 빈 말풍선이 서버에 그대로
+      // 박히거나, 저장 자체가 카드덱 검증 실패로 통째로 막힌다. null을 명시해 cardDeck
+      // 키 자체를 payload에서 뺀다(기존 서버 값 보존).
+      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, null, nextEdit)
+        .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setVideoEditAutosaveError(""); })
+        .catch((error) => setVideoEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
     }, 800);
   }
 
@@ -2137,11 +2270,15 @@ export default function StudioPage() {
         onCardTextPositionsChange={setCardTextPositions}
         cardDeck={cardDeck}
         onCardDeckChange={onCardDeckChange}
+        videoEdit={videoEdit}
+        onVideoEditChange={onVideoEditChange}
         onOpenCreate={() => changeRoom("create")}
         onOpenPublish={moveToPublish}
         lastSavedAt={editSavedAt}
         moveBusy={moveToPublishBusy}
-        autosaveError={editAutosaveError}
+        autosaveError={[editAutosaveError, cardDeckAutosaveError, videoEditAutosaveError].filter(Boolean).join(" ")}
+        cardDeckAutosaveError={cardDeckAutosaveError}
+        videoEditAutosaveError={videoEditAutosaveError}
       />
     </div>
   );

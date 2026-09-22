@@ -52,6 +52,14 @@ export type CardSlide = {
   bubbles?: Bubble[];
   /** 렌더·업로드 뒤 채워진다. 저장 전에는 null. */
   image_url: string | null;
+  /**
+   * 사용자가 표지·CTA(마지막) 장에 직접 고른 배경 사진(코드리뷰 CRITICAL C2, 2026-09-22).
+   * `image_url` 은 렌더 산출물(PNG) 전용 슬롯이라 재사용하면 한 번 렌더한 뒤 사용자가
+   * 고른 사진이 렌더 결과로 조용히 덮인다. role="cover"|"cta" 일 때만 의미가 있다.
+   * 렌더러 배선 전까지는 저장만 되고 실제 그림에는 아직 반영되지 않는다(BubbleEditor.tsx
+   * CoverImagePicker 안내 문구 참조 — ADR-007 조용한 실패 금지).
+   */
+  cover_image_url?: string | null;
   /** template="plain" 전용(기존 9칸 배치). chat_bubble 에서는 쓰지 않는다. */
   position?: "top" | "center" | "bottom";
 };
@@ -121,7 +129,7 @@ const VALID_POSITIONS = ["top", "center", "bottom", undefined];
 const DECK_ALLOWED_KEYS = new Set([
   "contract_version", "template", "ratio", "theme", "brand", "hook_type", "cta", "slides", "revision",
 ]);
-const SLIDE_ALLOWED_KEYS = new Set(["id", "order", "role", "cover", "bubbles", "image_url", "position"]);
+const SLIDE_ALLOWED_KEYS = new Set(["id", "order", "role", "cover", "bubbles", "image_url", "cover_image_url", "position"]);
 const BUBBLE_ALLOWED_KEYS = new Set(["id", "order", "speaker", "segments", "reaction"]);
 
 function assertNoUnknownKeys(value: Record<string, unknown>, allowed: Set<string>, field: string): void {
@@ -260,6 +268,11 @@ export function validateCardDeck(deck: unknown): asserts deck is CardDeck {
     if (slide.image_url !== null && slide.image_url !== undefined) {
       if (typeof slide.image_url !== "string" || UNSAFE_URL_SCHEME.test(slide.image_url)) {
         throw new CardDeckValidationError("image_url", `cardDeck.slides[${index}].image_url must be null or a safe URL`);
+      }
+    }
+    if (slide.cover_image_url !== null && slide.cover_image_url !== undefined) {
+      if (typeof slide.cover_image_url !== "string" || UNSAFE_URL_SCHEME.test(slide.cover_image_url)) {
+        throw new CardDeckValidationError("cover_image_url", `cardDeck.slides[${index}].cover_image_url must be null or a safe URL`);
       }
     }
 

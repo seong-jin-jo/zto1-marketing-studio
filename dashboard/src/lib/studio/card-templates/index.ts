@@ -6,7 +6,9 @@ import type { CardDeck, CardSlide, CardTemplate } from "../card-deck-contract";
 import { renderChatBubbleSlide } from "./chat-bubble";
 
 export type TemplateRenderInput = { deck: CardDeck; slide: CardSlide; index: number; total: number };
-export type TemplateRenderer = (input: TemplateRenderInput) => string | null;
+// J1(2026-09-22 코드리뷰): 표지·CTA 사진 배경을 그리려면 Image 로딩을 기다려야 해서
+// 렌더러가 비동기로 바뀌었다(chat-bubble.ts).
+export type TemplateRenderer = (input: TemplateRenderInput) => Promise<string | null>;
 
 export const CARD_TEMPLATE_RENDERERS: Record<Exclude<CardTemplate, "plain">, TemplateRenderer> = {
   chat_bubble: renderChatBubbleSlide,
