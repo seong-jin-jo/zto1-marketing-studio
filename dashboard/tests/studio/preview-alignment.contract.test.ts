@@ -13,7 +13,7 @@ import { resolve } from "node:path";
 // 갈리는 것(headerRight 줄바꿈)이었지만, 그 수정(max-h+overflow-y-auto 112px)도
 // 실측 최대치(124px)보다 낮게 잡아 "계정 관리" 같은 주 조작면을 스크롤 뒤로 숨겼다.
 // 4라운드에서 상한으로 자르는 접근 자체를 버리고 min-height 만 준다(overflow 제한
-// 없음) — 짧은 카드는 채워서 맞추고, 긴 카드는 잘리지 않고 자연스럽게 자란다.
+// 없음). 짧은 카드는 채워서 맞추고, 긴 카드는 잘리지 않고 자연스럽게 자란다.
 //
 // ⚠️ 이 파일은 소스 문자열만 대조하는 정적 계약이다. jsdom 은 실제 CSS 레이아웃
 // 엔진이 없어 getBoundingClientRect 가 항상 0을 반환한다. 그래서 "정말로 같은
@@ -24,7 +24,7 @@ import { resolve } from "node:path";
 // 되돌아가지 않는다"를 지키는 회귀 가드일 뿐이다.
 const src = (p: string) => readFileSync(resolve(__dirname, "../../src", p), "utf8");
 
-describe("미리보기 카드가 한 줄에서 시작한다(회귀 가드 — 실측 증거는 qa:publish-room-alignment)", () => {
+describe("미리보기 카드가 한 줄에서 시작한다(회귀 가드. 실측 증거는 qa:publish-room-alignment)", () => {
   it("그리드가 카드를 같은 높이로 늘리려 하지 않는다(카드 높이를 강제로 맞추지 않는다)", () => {
     const page = src("app/studio/page.tsx");
     expect(page).not.toContain('className="grid items-start gap-stack-section md:grid-cols-2 xl:grid-cols-3"');

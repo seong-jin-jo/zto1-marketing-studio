@@ -197,9 +197,9 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
       가 쓰는 "absolute inset-0" 같은 위치 클래스가 이 wrapper div 에 복제돼
       tests/studio/edit-preview-media.contract.test.tsx 의 "자리표시 레이어 없음" 계약을
       깼다(그 테스트는 video 형제로 남는 `div.absolute.inset-0` 이 없어야 한다고
-      본다 — wrapper 자신이 그 모양이 돼버렸다). 배지 위치 기준을 호출자에게 의존하는
+      본다. wrapper 자신이 그 모양이 돼버렸다). 배지 위치 기준을 호출자에게 의존하는
       기존 동작으로 되돌린다(PlatformPreview 의 실제 사용처는 이미 relative 컨테이너
-      안이라 실사용에는 문제가 없었다 — 새 wrapper 는 실익보다 회귀 위험이 컸다).
+      안이라 실사용에는 문제가 없었다. 새 wrapper 는 실익보다 회귀 위험이 컸다).
 
       문구는 되돌린다: "썸네일 없음"(poster 자체가 애초에 없음, 조치 불필요)과
       "대문 이미지를 다시 불러오지 못했습니다"(있었는데 만료·재발급 실패, 다시

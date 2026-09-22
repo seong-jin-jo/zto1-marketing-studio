@@ -15,7 +15,7 @@ import { PlatformPreview, type PreviewPlatform } from "@/components/studio/Platf
  * 4라운드: media 도 실제로 넣는다(모든 텍스트/카드뉴스 채널에 이미지, 영상 채널에
  * 영상+커버 이미지). headerRight 도 page.tsx:2354 와 같은 wrapping div 구조로
  * 감싼다(원본은 Fragment 가 아니라 `<div className="flex flex-wrap ...">` 하나가
- * 자식을 감싸 넘긴다 — 구조가 다르면 실제 레이아웃과 다른 걸 재는 셈이다).
+ * 자식을 감싸 넘긴다. 구조가 다르면 실제 레이아웃과 다른 걸 재는 셈이다).
  */
 const GROUPS: { title: string; platforms: PreviewPlatform[] }[] = [
   { title: "텍스트", platforms: ["threads", "x", "facebook"] },
@@ -110,10 +110,10 @@ function HeaderRightFor({ platform }: { platform: PreviewPlatform }) {
 }
 
 // 2026-09-22 4라운드: media={{}} 로 이미지를 빼고 쟀다는 지적을 반영해 실제 이미지를
-// 넘긴다. 레포에 안전하게 참조 가능한 정적 자산(public/logo.svg)을 쓴다 — 네트워크
+// 넘긴다. 레포에 안전하게 참조 가능한 정적 자산(public/logo.svg)을 쓴다. 네트워크
 // 의존 없이 재현 가능해야 한다는 J6 요구와 같은 이유다. 영상(vidUrl)은 이 레포에 커밋된
 // 샘플 영상 자산이 없어 이번 라운드에서 채우지 못했다(정직하게 밝힌다). headerRight
-// 측정(이번 라운드의 핵심)에는 영상 여부가 영향을 주지 않는다 — 헤더 영역은 media 와
+// 측정(이번 라운드의 핵심)에는 영상 여부가 영향을 주지 않는다. 헤더 영역은 media 와
 // 무관하게 그려진다.
 const PLACEHOLDER_IMAGE = "/logo.svg";
 

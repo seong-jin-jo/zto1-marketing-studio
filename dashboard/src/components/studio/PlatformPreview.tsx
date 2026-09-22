@@ -274,7 +274,7 @@ function EditablePreviewBody({
 /**
  * 발행실 카드 하단의 메타 편집 입력 칸.
  *
- * 2026-09-22 교차 코드리뷰(PR #77) 4라운드 — 오른쪽 사이드바 채팅형 편집(PublishEditSidebar)
+ * 2026-09-22 교차 코드리뷰(PR #77) 4라운드. 오른쪽 사이드바 채팅형 편집(PublishEditSidebar)
  * 을 이 브랜치에서 뺀다. 세 라운드 연속으로 "카드마다 하나씩 뜨는 전역 패널" 의 싱글턴이
  * 깨졌다(C1: Context 서브트리 오판, N3: 렌더 단계 뮤테이션이 React 19/StrictMode/SSR 에서
  * 또 깨짐). 사이드바는 별도 브랜치(feat/publish-edit-sidebar)에서 다시 설계하고, 이

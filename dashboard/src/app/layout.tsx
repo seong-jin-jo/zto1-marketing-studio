@@ -57,7 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <LoginModal />
           <ConfirmHost />
           <ImagePickerModal />
-          {/* GA4 consent-gated 트래킹(dashboard/src/lib/analytics/) — 동의 전엔 완전 no-op */}
+          {/* GA4 consent-gated 트래킹(dashboard/src/lib/analytics/). 동의 전엔 완전 no-op */}
           <RouteTracker />
           <ConsentBanner />
           <PrivacySettingsLink />
