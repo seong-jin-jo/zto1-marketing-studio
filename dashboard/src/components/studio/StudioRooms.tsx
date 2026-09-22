@@ -9,7 +9,11 @@ import { CardDeckPanel } from "./BubbleEditor";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { deckProjection, applyProjection } from "@/lib/studio/card-deck-contract";
 import { VideoEditor } from "./VideoEditor";
-import type { VideoEdit } from "@/lib/studio/video-edit-contract";
+import { emptyVideoEdit, type VideoEdit } from "@/lib/studio/video-edit-contract";
+
+// M5(2026-09-22 코드리뷰): 매 렌더 새 객체를 만들지 않게 모듈 스코프에서 한 번만 만든다.
+// videoEdit는 순수함수(video-edit-contract.ts)로만 바뀌므로 이 상수를 직접 변형하지 않는다.
+const EMPTY_VIDEO_EDIT: VideoEdit = emptyVideoEdit();
 import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
 import {
@@ -1858,7 +1862,7 @@ export function EditRoom({
                     후킹 CTA·댓글 오버레이·자막·음성을 여기서 편집합니다. 여기서 고친 내용은 자동 저장됩니다.
                   </p>
                   <VideoEditor
-                    videoEdit={videoEdit ?? { contract_version: "1.0", overlays: [], comments: [], subtitles: [], voice: null, revision: 0 }}
+                    videoEdit={videoEdit ?? EMPTY_VIDEO_EDIT}
                     onVideoEditChange={onVideoEditChange}
                     previewVideoUrl={previewVideoUrl}
                     tenantId={workspaceId}

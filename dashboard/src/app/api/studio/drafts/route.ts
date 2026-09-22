@@ -3,7 +3,7 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
 import { resolveCurrentWork } from "@/lib/studio/current-work";
 import { validateCardDeck, CardDeckValidationError, deckProjection } from "@/lib/studio/card-deck-contract";
-import { validateVideoEdit, VideoEditValidationError } from "@/lib/studio/video-edit-contract";
+import { validateVideoEdit, VideoEditValidationError, type VideoEdit } from "@/lib/studio/video-edit-contract";
 
 /** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
 const CARD_DECK_MAX_BYTES = 64 * 1024;
@@ -183,11 +183,13 @@ export async function POST(request: Request) {
   }
   // videoEdit도 cardDeck과 같은 보존 규칙: 키가 없으면 payload 병합에서 빠져 기존 값을
   // 지키고, 명시 플래그 clearVideoEdit로만 지운다.
-  const videoEditPatch: { videoEdit?: any } = {};
+  // M7(2026-09-22 코드리뷰): `any` 대신 VideoEdit로 좁힌다. body.videoEdit는 위에서 이미
+  // validateVideoEdit()을 통과했다(개발 시점 assertion으로 VideoEdit로 좁혀져 있다).
+  const videoEditPatch: { videoEdit?: VideoEdit | null } = {};
   if (body.clearVideoEdit === true) {
     videoEditPatch.videoEdit = null;
   } else if (Object.prototype.hasOwnProperty.call(body, "videoEdit") && body.videoEdit != null) {
-    videoEditPatch.videoEdit = body.videoEdit;
+    videoEditPatch.videoEdit = body.videoEdit as VideoEdit;
   }
   const payload = {
     text: body.text ?? null, img: body.img ?? null, vid: body.vid ?? null,

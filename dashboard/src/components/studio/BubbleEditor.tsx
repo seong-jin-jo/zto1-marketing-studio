@@ -29,6 +29,7 @@ import {
 } from "@/lib/studio/card-deck-ops";
 import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
 import { DeliveredMedia } from "./DeliveredMedia";
+import { authHeaders } from "@/lib/auth";
 
 const SLIDE_ROLE_LABEL: Record<CardSlide["role"], string> = {
   cover: "표지",
@@ -96,9 +97,9 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
           slides: d.slides.map((s) => (s.id === slide.id ? { ...s, cover } : s)),
           revision: d.revision + 1,
         }))}
-        onImageChange={(image_url) => run((d) => ({
+        onImageChange={(cover_image_url) => run((d) => ({
           ...d,
-          slides: d.slides.map((s) => (s.id === slide.id ? { ...s, image_url } : s)),
+          slides: d.slides.map((s) => (s.id === slide.id ? { ...s, cover_image_url } : s)),
           revision: d.revision + 1,
         }))}
       />
@@ -182,10 +183,10 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
             <span className="block text-caption text-muted">마지막 장 사진</span>
             <div className="mt-stack-tight">
               <CoverImagePicker
-                imageUrl={slide.image_url}
-                onChange={(image_url) => run((d) => ({
+                imageUrl={slide.cover_image_url ?? null}
+                onChange={(cover_image_url) => run((d) => ({
                   ...d,
-                  slides: d.slides.map((s) => (s.id === slide.id ? { ...s, image_url } : s)),
+                  slides: d.slides.map((s) => (s.id === slide.id ? { ...s, cover_image_url } : s)),
                   revision: d.revision + 1,
                 }))}
               />
@@ -232,6 +233,11 @@ function HookChips({ onPick }: { onPick: (text: string) => void }) {
 /**
  * 대문·마지막 장 사진 선택(세션맥락 과제 A-3). 업로드는 기존 `/api/images/upload`
  * (SNS-016, 테넌트 격리·서명 URL)를 그대로 쓴다 — 새 업로드 API를 만들지 않는다.
+ *
+ * 2026-09-22 코드리뷰 CRITICAL C1·C2: 이 사진은 아직 렌더러(`card-templates/chat-bubble.ts`)
+ * 와 발행 경로(`studio/page.tsx` publishDeck)에 배선돼 있지 않다. 지금은 `cover_image_url`
+ * (렌더 산출 슬롯 `image_url` 과 별개 필드)에 저장만 되고, 실제 카드 그림에는 아직
+ * 반영되지 않는다. 배선 전까지 안내 문구가 "적용된 척" 하지 않게 한다(ADR-007).
  */
 function CoverImagePicker({ imageUrl, onChange }: { imageUrl: string | null; onChange: (url: string | null) => void }) {
   const [busy, setBusy] = useState(false);
@@ -244,7 +250,9 @@ function CoverImagePicker({ imageUrl, onChange }: { imageUrl: string | null; onC
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/images/upload", { method: "POST", body: form });
+      // M3: authHeaders()는 FormData 요청에도 Content-Type을 안 얹는다(card-deck.ts
+      // browserCardUploader와 동일 패턴) — multipart boundary는 브라우저가 직접 채운다.
+      const res = await fetch("/api/images/upload", { method: "POST", headers: authHeaders(), body: form });
       const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
       if (!res.ok || !data.url) {
         setUploadError(data.error || "사진을 올리지 못했습니다. 잠시 후 다시 시도해 주세요.");
@@ -269,8 +277,9 @@ function CoverImagePicker({ imageUrl, onChange }: { imageUrl: string | null; onC
           testId="cover-image-picker-preview"
         />
       ) : (
-        <p className="text-caption text-muted" data-cover-image-empty>아직 사진을 고르지 않았습니다. 이 장은 배경색으로만 나갑니다.</p>
+        <p className="text-caption text-muted" data-cover-image-empty>아직 사진을 고르지 않았습니다.</p>
       )}
+      <p className="text-caption text-subtle" data-cover-image-render-status>지금은 저장만 됩니다. 실제 카드 그림에 반영하는 것은 다음 단계입니다.</p>
       <div className="flex flex-wrap gap-stack-tight">
         <Button size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "올리는 중…" : "사진 올리기"}</Button>
         {imageUrl ? <Button size="sm" variant="secondary" onClick={() => onChange(null)}>사진 빼기</Button> : null}
@@ -320,7 +329,7 @@ function CoverEditor({ slide, onChange, onImageChange }: {
       </label>
       <div>
         <span className="block text-caption text-muted">표지 사진</span>
-        <div className="mt-stack-tight"><CoverImagePicker imageUrl={slide.image_url} onChange={onImageChange} /></div>
+        <div className="mt-stack-tight"><CoverImagePicker imageUrl={slide.cover_image_url ?? null} onChange={onImageChange} /></div>
       </div>
     </div>
   );

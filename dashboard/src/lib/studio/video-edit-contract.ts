@@ -95,6 +95,24 @@ export function emptyVideoEdit(): VideoEdit {
   };
 }
 
+const OVERLAY_ALLOWED_KEYS = new Set(["id", "order", "kind", "text", "startSec", "endSec"]);
+const COMMENT_ALLOWED_KEYS = new Set(["id", "order", "author", "text", "source", "startSec", "endSec"]);
+const SUBTITLE_ALLOWED_KEYS = new Set(["id", "order", "text", "startSec", "endSec", "cut"]);
+
+function assertNoUnknownKeys(value: Record<string, unknown>, allowed: Set<string>, field: string): void {
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      throw new VideoEditValidationError("unknown_key", `${field} has an unknown key: ${key}`);
+    }
+  }
+}
+
+function assertValidOrder(order: unknown, field: string): void {
+  if (typeof order !== "number" || !Number.isInteger(order) || order < 0) {
+    throw new VideoEditValidationError("order", `${field}.order must be a non-negative integer`);
+  }
+}
+
 /** `unknown` 저장값을 계약대로 검증한다. 하나라도 어긋나면 이유를 담아 던진다(조용한 실패 금지). */
 export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
   if (typeof value !== "object" || value === null) {
@@ -106,24 +124,31 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
   }
   if (!Array.isArray(v.overlays)) throw new VideoEditValidationError("overlays_not_array", "videoEdit.overlays must be an array");
   v.overlays.forEach((overlay, index) => {
+    assertNoUnknownKeys(overlay as Record<string, unknown>, OVERLAY_ALLOWED_KEYS, `overlays[${index}]`);
     const o = overlay as Partial<VideoOverlay>;
     if (typeof o.id !== "string" || !o.id) throw new VideoEditValidationError("overlay_id", `overlays[${index}].id must be a non-empty string`);
+    assertValidOrder(o.order, `overlays[${index}]`);
     if (o.kind !== "hook" && o.kind !== "cta") throw new VideoEditValidationError("overlay_kind", `overlays[${index}].kind must be hook|cta`);
     if (typeof o.text !== "string" || !o.text.trim()) throw new VideoEditValidationError("overlay_text", `overlays[${index}].text must not be empty`);
     assertValidRange(o.startSec, o.endSec, `overlays[${index}]`);
   });
   if (!Array.isArray(v.comments)) throw new VideoEditValidationError("comments_not_array", "videoEdit.comments must be an array");
   v.comments.forEach((comment, index) => {
+    assertNoUnknownKeys(comment as Record<string, unknown>, COMMENT_ALLOWED_KEYS, `comments[${index}]`);
     const c = comment as Partial<VideoComment>;
     if (typeof c.id !== "string" || !c.id) throw new VideoEditValidationError("comment_id", `comments[${index}].id must be a non-empty string`);
+    assertValidOrder(c.order, `comments[${index}]`);
+    if (typeof c.author !== "string" || !c.author.trim()) throw new VideoEditValidationError("comment_author", `comments[${index}].author must be a non-empty string`);
     if (typeof c.text !== "string" || !c.text.trim()) throw new VideoEditValidationError("comment_text", `comments[${index}].text must not be empty`);
     if (c.source !== "collected" && c.source !== "manual") throw new VideoEditValidationError("comment_source", `comments[${index}].source must be collected|manual`);
     assertValidRange(c.startSec, c.endSec, `comments[${index}]`);
   });
   if (!Array.isArray(v.subtitles)) throw new VideoEditValidationError("subtitles_not_array", "videoEdit.subtitles must be an array");
   v.subtitles.forEach((line, index) => {
+    assertNoUnknownKeys(line as Record<string, unknown>, SUBTITLE_ALLOWED_KEYS, `subtitles[${index}]`);
     const s = line as Partial<SubtitleLine>;
     if (typeof s.id !== "string" || !s.id) throw new VideoEditValidationError("subtitle_id", `subtitles[${index}].id must be a non-empty string`);
+    assertValidOrder(s.order, `subtitles[${index}]`);
     if (typeof s.text !== "string") throw new VideoEditValidationError("subtitle_text", `subtitles[${index}].text must be a string`);
     if (typeof s.cut !== "boolean") throw new VideoEditValidationError("subtitle_cut", `subtitles[${index}].cut must be a boolean`);
     assertValidRange(s.startSec, s.endSec, `subtitles[${index}]`);
@@ -138,7 +163,7 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
   }
 }
 
-function newId(prefix: string): string {
+export function newId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -146,13 +171,22 @@ function withRevision(edit: VideoEdit, patch: Partial<VideoEdit>): VideoEdit {
   return { ...edit, ...patch, revision: edit.revision + 1 };
 }
 
+/**
+ * M2(2026-09-22 코드리뷰): addOverlay/updateOverlay/addComment가 assertValidRange 를 안
+ * 거쳐 VideoEditor.tsx 의 try/catch 가 죽은 코드였다. 영상 끝에서 추가하면 startSec===endSec
+ * 이 만들어져 800ms 뒤 자동저장이 400 으로 실패했다. 여기서 즉시 던진다.
+ */
 export function addOverlay(edit: VideoEdit, kind: VideoOverlay["kind"], text: string, startSec: number, endSec: number): VideoEdit {
+  assertValidRange(startSec, endSec, "overlay");
+  if (!text.trim()) throw new VideoEditValidationError("overlay_text", "overlay text must not be empty");
   const overlay: VideoOverlay = { id: newId("ov"), order: edit.overlays.length, kind, text, startSec, endSec };
   return withRevision(edit, { overlays: [...edit.overlays, overlay] });
 }
 
 export function updateOverlay(edit: VideoEdit, id: string, patch: Partial<Omit<VideoOverlay, "id" | "order">>): VideoEdit {
   const overlays = edit.overlays.map((o) => (o.id === id ? { ...o, ...patch } : o));
+  const updated = overlays.find((o) => o.id === id);
+  if (updated) assertValidRange(updated.startSec, updated.endSec, "overlay");
   return withRevision(edit, { overlays });
 }
 
@@ -162,6 +196,9 @@ export function removeOverlay(edit: VideoEdit, id: string): VideoEdit {
 }
 
 export function addComment(edit: VideoEdit, comment: Omit<VideoComment, "id" | "order">): VideoEdit {
+  assertValidRange(comment.startSec, comment.endSec, "comment");
+  if (!comment.author.trim()) throw new VideoEditValidationError("comment_author", "comment author must not be empty");
+  if (!comment.text.trim()) throw new VideoEditValidationError("comment_text", "comment text must not be empty");
   const next: VideoComment = { ...comment, id: newId("cm"), order: edit.comments.length };
   return withRevision(edit, { comments: [...edit.comments, next] });
 }

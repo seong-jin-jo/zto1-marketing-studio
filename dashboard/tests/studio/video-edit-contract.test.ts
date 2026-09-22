@@ -50,8 +50,12 @@ describe("video-edit-contract", () => {
     expect(edit.overlays[0].id).toBe(id);
   });
 
-  it("rejects an overlay whose endSec is not after startSec", () => {
-    const edit = addOverlay(emptyVideoEdit(), "hook", "훅", 3, 3);
+  it("addOverlay rejects an overlay whose endSec is not after startSec (M2: 즉시 던진다, 800ms 뒤 자동저장 400으로 미루지 않는다)", () => {
+    expect(() => addOverlay(emptyVideoEdit(), "hook", "훅", 3, 3)).toThrow(VideoEditValidationError);
+  });
+
+  it("validateVideoEdit also rejects a persisted payload whose overlay range is invalid (belt-and-suspenders)", () => {
+    const edit = { ...emptyVideoEdit(), overlays: [{ id: "ov-x", order: 0, kind: "hook" as const, text: "훅", startSec: 3, endSec: 3 }] };
     expect(() => validateVideoEdit(edit)).toThrow(VideoEditValidationError);
   });
 

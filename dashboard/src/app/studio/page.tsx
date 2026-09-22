@@ -1543,16 +1543,15 @@ export default function StudioPage() {
   // 카드뉴스 v2 덱 연산 후 800ms 디바운스 자동저장이 쓰는 타이머(설계 §5 F4, onCardDeckChange
   // 정의는 아래 편집실 렌더 직전). 모든 hook 은 1990행 조건부 early return 앞에서 불러야
   // 렌더마다 순서가 같다.
-  const cardDeckAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // setTimeout 콜백이 클로저로 오래된 draftId 를 붙잡지 않게(2026-09-22 코드리뷰 MINOR 6:
   // 발행실 이동이 타이머보다 먼저 끝나면 뒤늦은 콜백이 draftId=null 로 중복 초안을 만든다).
   const draftIdRef = useRef<string | null>(null);
   draftIdRef.current = draftId;
-  useEffect(() => () => { if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current); }, []);
-  // 영상 편집 v1 자동저장(800ms 디바운스, cardDeck과 같은 패턴). 저장 자체는 검증만 하고
-  // (video-edit-contract.ts) 렌더링 반영은 하지 않는다 — VideoEditor.tsx 상단 주석 참조.
-  const videoEditAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current); }, []);
+  // M8(2026-09-22 코드리뷰): cardDeck과 videoEdit 자동저장이 각자 타이머를 들면 800ms 안에
+  // 둘 다 바뀔 때 서로를 덮어쓴다(늦게 도는 setTimeout이 먼저 저장한 필드를 안 실은 채
+  // save()를 다시 불러 옛 값으로 되돌린다). 편집실 자동저장 타이머는 하나만 둔다.
+  useEffect(() => () => { if (editAutosaveTimer.current) clearTimeout(editAutosaveTimer.current); }, []);
   useEffect(() => {
     if (!publishReturnRequest || !publishReturnQueue?.posts) return;
     const loadKey = `${publishReturnRequest.sourceRoute}:${publishReturnRequest.queuePostId}`;
@@ -2111,8 +2110,8 @@ export default function StudioPage() {
   // (ref 갱신·언마운트 정리는 위 early return 앞에서 한다).
   function onCardDeckChange(nextDeck: CardDeck) {
     setCardDeck(nextDeck);
-    if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
-    cardDeckAutosaveTimer.current = setTimeout(() => {
+    if (editAutosaveTimer.current) clearTimeout(editAutosaveTimer.current);
+    editAutosaveTimer.current = setTimeout(() => {
       const pruned = pruneEmptyBubbles(nextDeck);
       const emptySlide = emptyBubbleSlideNumber(pruned);
       if (emptySlide !== null) {
@@ -2127,8 +2126,10 @@ export default function StudioPage() {
 
   function onVideoEditChange(nextEdit: VideoEdit) {
     setVideoEdit(nextEdit);
-    if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
-    videoEditAutosaveTimer.current = setTimeout(() => {
+    // M8: cardDeck 자동저장과 같은 타이머를 공유한다. cardDeck이 800ms 안에 같이 바뀌어도
+    // pruneEmptyBubbles 없이 현재 cardDeck 상태를 그대로 실어 서로 덮어쓰지 않는다.
+    if (editAutosaveTimer.current) clearTimeout(editAutosaveTimer.current);
+    editAutosaveTimer.current = setTimeout(() => {
       save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, cardDeck, nextEdit)
         .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setEditAutosaveError(""); })
         .catch((error) => setEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));

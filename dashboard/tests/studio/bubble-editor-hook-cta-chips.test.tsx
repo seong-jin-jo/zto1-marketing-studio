@@ -29,7 +29,12 @@ describe("BubbleEditor 후킹·CTA 칩", () => {
 
     expect(deck.slides[0].cover?.headline).toBe("이거 순서가\n틀렸다면?");
     expect(() => validateCardDeck(deck)).not.toThrow();
+
+    // 컨트롤드 컴포넌트라 부모가 다음 렌더에 새 deck을 되먹여야 실제 화면에도 반영된다.
+    // rerender 뒤 textarea 값이 바뀐 headline을 실제로 보여주는지까지 확인한다.
     rerender(<CardDeckPanel deck={deck} onDeckChange={handleChange} />);
+    const headlineTextarea = screen.getByLabelText(/표지 헤드라인/) as HTMLTextAreaElement;
+    expect(headlineTextarea.value).toBe("이거 순서가\n틀렸다면?");
   });
 
   it("CTA 장에서 댓글 키워드 칩을 고르면 cta.keyword가 바뀐다", () => {
