@@ -219,11 +219,17 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
           poster={posterUrl || undefined}
           onError={handleError}
         />
+        {/*
+          2026-09-23 교차 코드리뷰 5라운드: PlatformPreview 의 영상 분기가 vid 있을 때
+          title/hashtags 오버레이를 absolute left-3 right-3 top-3 로 올린다. 이 배지도
+          top-3 left-3 였던 탓에 DOM 순서상 나중인 오버레이가 이 고지를 덮었다. 반대쪽
+          (top-3 right-3)으로 옮겨 겹치지 않게 한다.
+        */}
         {poster && posterDead && !posterUrl ? (
           <span
             data-testid={testId ? `${testId}-poster-expired` : undefined}
             role="status"
-            className="absolute top-3 left-3 rounded-pill bg-player-surface/70 px-stack-tight py-micro text-caption text-text"
+            className="absolute top-3 right-3 rounded-pill bg-player-surface/70 px-stack-tight py-micro text-caption text-text"
           >
             대문 이미지를 다시 불러오지 못했습니다
           </span>

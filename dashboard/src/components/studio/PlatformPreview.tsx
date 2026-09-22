@@ -492,18 +492,18 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
         "편집 입구 소실" 결함이 이미지가 붙는 순간 재발). 그 overflow-hidden 상자를
         없앤다. 헤더 줄바꿈(Frame 주석)을 고친 뒤에도 threads(주제 태그+첫 댓글)·
         x(간결)·facebook(해시태그+3버튼 footer)이 서로 다른 구조라 자연 높이가 갈려
-        남아 있었다. min-h-[660px](overflow-hidden 없음, 절대 안 잘린다. N2 교훈)로
+        남아 있었다. min-h-[var(--preview-text-body-min-h)](overflow-hidden 없음, 절대 안 잘린다. N2 교훈)로
         가장 키가 큰 경우(실측: 실제 이미지 1장 포함 facebook)에 짧은 카드를 맞춘다.
         내용이 660px 를 넘는 카드는 자연스럽게 더 자라날 뿐 잘리지 않는다. 값은
         scripts/measure-publish-room-alignment.mjs 로 media 를 포함해 실측하며 다시
         구했다(2026-09-22 4라운드. 3라운드 260px 는 media={{}} 로 이미지 없이 잰
         수치라 실제 이미지가 붙는 순간 다시 어긋났다).
       */}
-      <div className="bg-surface text-text rounded-surface border border-border px-pad-inset py-stack min-h-[660px]">
+      <div className="bg-surface text-text rounded-surface border border-border px-pad-inset py-stack min-h-[var(--preview-text-body-min-h)]">
         <div className="flex gap-stack"><Av />
           <div className="flex-1 min-w-0">
             <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="shrink-0 text-subtle text-body-sm ml-micro">지금</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
-            <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-threads" label="threads 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.45] mt-micro max-h-[100px] overflow-y-auto" />
+            <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-threads" label="threads 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.45] mt-micro max-h-[var(--preview-body-caption-max-h)] overflow-y-auto" />
             {/*
               2026-09-09 회장 지적: "해시태그나 첫댓글도 미리보기화면에서 직관적으로
               수정할수있게 하는게 낫지않겠어?" 실제 게시물에서 해시태그는 본문 바로 아래
@@ -550,11 +550,11 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
   );
   if (platform === "x") return (
     <Frame p="x" label="X" headerRight={headerRight} characterCount={characterCount} account={editor?.account}>
-      <div className="bg-surface text-text rounded-surface border border-border px-pad-inset py-stack min-h-[660px]">
+      <div className="bg-surface text-text rounded-surface border border-border px-pad-inset py-stack min-h-[var(--preview-text-body-min-h)]">
         <div className="flex gap-stack"><Av />
           <div className="flex-1 min-w-0">
             <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="min-w-0 truncate text-subtle ml-micro">@{handle} · 지금</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
-            <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-x" label="x 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.4] mt-micro max-h-[100px] overflow-y-auto" />
+            <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-x" label="x 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.4] mt-micro max-h-[var(--preview-body-caption-max-h)] overflow-y-auto" />
         <EditablePreviewBody value={editor?.hashtags ?? ""} onChange={editor?.onHashtagsChange} testId="preview-tags-x" label="x 해시태그" locked={editor?.account.status === "loading"} placeholder="#해시태그" className="text-body-sm text-accent whitespace-pre-wrap mt-stack-tight" />
             {images.length > 0 ? (
               <div className="mt-stack-tight overflow-hidden rounded-surface border border-border">
@@ -573,9 +573,9 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
   );
   if (platform === "facebook") return (
     <Frame p="facebook" label="Facebook" headerRight={headerRight} characterCount={characterCount} account={editor?.account}>
-      <div className="bg-surface text-text rounded-control border border-border overflow-hidden min-h-[660px]">
+      <div className="bg-surface text-text rounded-control border border-border overflow-hidden min-h-[var(--preview-text-body-min-h)]">
         <div className="flex items-center gap-stack-tight px-stack pt-stack"><Av /><div className="min-w-0"><div className="truncate font-semibold text-body leading-tight">{handle}</div><div className="text-subtle text-caption">방금 · 전체 공개</div></div><div className="ml-auto text-subtle">{P(I.more)}</div></div>
-        <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-facebook" label="facebook 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="px-stack py-stack-tight text-body whitespace-pre-wrap leading-snug max-h-[100px] overflow-y-auto" />
+        <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-facebook" label="facebook 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="px-stack py-stack-tight text-body whitespace-pre-wrap leading-snug max-h-[var(--preview-body-caption-max-h)] overflow-y-auto" />
         <EditablePreviewBody value={editor?.hashtags ?? ""} onChange={editor?.onHashtagsChange} testId="preview-tags-facebook" label="facebook 해시태그" locked={editor?.account.status === "loading"} placeholder="#해시태그" className="px-stack pb-stack-tight text-body-sm text-accent whitespace-pre-wrap" />
         {images.length > 0 ? (
           <MediaCarousel cards={images.map((url) => ({ type: "img" as const, v: url }))} tenantId={tenantId} testId="preview-media-facebook" />
@@ -595,19 +595,18 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
           <MediaCarousel cards={cards} tenantId={tenantId} testId="preview-media-instagram" />
           <div className="flex items-center gap-pad-inset px-stack pt-stack">{P(I.heart)}{P(I.chat)}{P(I.send)}<div className="ml-auto">{P(I.bookmark)}</div></div>
           <div className="px-stack pt-stack-tight text-body-sm text-subtle" data-preview-engagement="instagram">올리면 여기에 좋아요가 쌓입니다</div>
-          <div className="px-stack pt-micro pb-stack text-body-sm"><b className="break-all">{handle}</b> <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-instagram" label="instagram 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-muted inline-block align-top max-h-[72px] overflow-y-auto" />
+          <div className="px-stack pt-micro pb-stack text-body-sm"><b className="break-all">{handle}</b> <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-instagram" label="instagram 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-muted inline-block align-top max-h-[var(--preview-instagram-caption-max-h)] overflow-y-auto" />
             {/*
               2026-09-22: instagram 해시태그는 전에 어디서도 고칠 수 없었다(static 표시만
-              있었다). 캡션 바로 아래, 실제 게시물에서 해시태그가 붙는 그 자리에 클릭 트리거를
-              둔다. contentEditable 이 아니라 사이드바로 여는 이유는 R-23-5 지시대로다.
+              있었다). 캡션 바로 아래, 실제 게시물에서 해시태그가 붙는 그 자리에서 바로
+              고친다(다른 텍스트 채널과 같은 contentEditable 패턴, 4라운드에서 사이드바를
+              뺀 뒤로 이 방식으로 통일했다).
 
-              2026-09-22 교차 코드리뷰 J3: 여기 counter 를 아직 안 넘긴다. Instagram
-              상한(2,200자)은 캡션+해시태그 합계라 해시태그 칸 하나만 떼어 "2200자 중
-              n자"로 보여주면 거짓이 된다(캡션이 이미 1,900자를 썼으면 해시태그는 300자
-              밖에 못 쓰는데 이 필드만 보면 2,200자가 남은 것처럼 보인다). 캡션 길이를
-              여기로도 넘겨야 정확해지는데 이 트리거 범위를 넘는 구조 변경이라, 숫자를
-              꾸며내지 않고 비워 둔다(저장 시 validatePlatformPublish 가 합계로 정확히
-              차단한다).
+              Instagram 상한(2,200자)은 캡션+해시태그 합계다. 이 자리는 별도 카운터를
+              보여주지 않는다 — 해시태그 칸 하나만 떼어 숫자를 보이면 거짓이 된다(캡션이
+              이미 1,900자를 썼으면 해시태그는 300자밖에 못 쓰는데 이 필드만 보면 2,200자가
+              남은 것처럼 보인다). 상한 판정 자체는 저장 시 validatePlatformPublish 가
+              합계로 정확히 한다.
             */}
             <EditablePreviewBody
               value={editor?.hashtags ?? (text.instagram?.hashtags || []).map((h) => `#${h.replace(/^#/, "")}`).join(" ")}
@@ -637,7 +636,13 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
         {vid ? <DeliveredMedia key={vid} type="video" src={vid} tenantId={tenantId} preload="metadata" poster={img} testId={`preview-media-${k}`} className="w-full h-full object-cover" />
           : img ? <DeliveredMedia type="image" src={img} tenantId={tenantId} testId={`preview-media-${k}`} className="w-full h-full object-cover" />
           : <div className="w-full h-full grid place-items-center text-subtle text-caption" data-testid={`preview-media-${k}-empty`}>영상 생성 대기 · 썸네일 없음</div>}
-        {vid && !img ? <span data-testid={`preview-poster-missing-${k}`} className="absolute top-3 left-3 rounded-pill bg-player-surface/70 px-stack-tight py-micro text-caption text-text">썸네일 없음</span> : null}
+        {/*
+          2026-09-23 교차 코드리뷰 5라운드: 이 배지가 title/hashtags 오버레이(아래,
+          vid 있을 때 absolute left-3 right-3 top-3)와 같은 top-3 left-3 자리를 써서
+          DOM 순서상 나중에 오는 오버레이가 이 고지를 덮었다. 반대쪽(top-3 right-3)
+          으로 옮겨 겹치지 않게 한다.
+        */}
+        {vid && !img ? <span data-testid={`preview-poster-missing-${k}`} className="absolute top-3 right-3 rounded-pill bg-player-surface/70 px-stack-tight py-micro text-caption text-text">썸네일 없음</span> : null}
         {/*
           2026-09-22 교차 코드리뷰 C2(회귀): 이 블록이 `{!vid && ...}` 안에만 있어서,
           영상이 실제로 있으면(vid 존재) 제목·해시태그를 여는 입구가 통째로 사라졌다.

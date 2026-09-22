@@ -62,8 +62,10 @@ function textAndHashtags(input: PlatformPublishInput): string {
   return [input.body?.trim(), input.hashtags?.trim()].filter(Boolean).join("\n\n");
 }
 
-// PublishEditSidebar 도 같은 잣대로 실시간 글자수를 재야 해서 내보낸다(2026-09-22
-// 교차 코드리뷰 M2. 세는 방식이 둘로 갈리면 사이드바 표시와 실제 차단 판정이 어긋난다).
+// 2026-09-22 교차 코드리뷰 M2: 글자수를 보여주는 자리와 실제로 차단 판정하는 자리가
+// 세는 방식이 둘로 갈리면 표시와 판정이 어긋난다(당시엔 오른쪽 사이드바가 있었고 지금은
+// 4라운드에서 빠졌지만, 인라인 표시(Counter 컴포넌트)도 같은 이유로 여기 함수를 그대로
+// 쓴다 — export 는 이 원칙을 지키는 유일한 소스로 남긴다).
 export function codePointLength(value: string): number {
   return [...(value ?? "")].length;
 }
