@@ -65,7 +65,7 @@ function formatSec(sec: number): string {
 /** VideoEditValidationError.rule → 화면에 보여줄 고정 한국어 문구(N3). */
 function videoEditErrorMessage(rule: string): string {
   if (rule === "overlay_text") return "오버레이 문구를 입력해 주세요.";
-  if (rule === "comment_author" ) return "작성자를 입력해 주세요.";
+  if (rule === "comment_author") return "작성자를 입력해 주세요.";
   if (rule === "comment_text") return "댓글 내용을 입력해 주세요.";
   if (rule.startsWith("range_")) return "구간의 시작·끝 시간을 확인해 주세요.";
   return "입력한 값을 확인해 주세요.";
@@ -267,6 +267,7 @@ function OverlayEditor({ edit, duration, playhead, run }: { edit: VideoEdit; dur
               className="w-16 rounded-control border border-border bg-surface-2 p-micro text-caption"
             />
             <Button size="sm" variant="secondary" aria-label={`${overlayIndex + 1}번째 오버레이 삭제`} onClick={() => run((d) => removeOverlay(d, overlay.id))}>삭제</Button>
+            {!overlay.text.trim() ? <p className="w-full text-caption text-warning" data-video-overlay-incomplete>문구가 비어 있는 동안 저장되지 않습니다.</p> : null}
           </li>
         ))}
       </ul>
@@ -325,6 +326,7 @@ function CommentOverlayEditor({ edit, duration, playhead, run }: { edit: VideoEd
               className="min-w-0 flex-1 rounded-control border border-border bg-surface-2 p-micro text-caption text-text"
             />
             <Button size="sm" variant="secondary" aria-label={`${commentIndex + 1}번째 댓글 삭제`} onClick={() => run((d) => removeComment(d, comment.id))}>삭제</Button>
+            {!comment.author.trim() || !comment.text.trim() ? <p className="w-full text-caption text-warning" data-video-comment-incomplete>작성자·내용이 비어 있는 동안 저장되지 않습니다.</p> : null}
           </li>
         ))}
       </ul>

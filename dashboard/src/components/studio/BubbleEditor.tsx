@@ -60,6 +60,34 @@ export interface BubbleEditorProps {
   onDeckChange: (deck: CardDeck) => void;
 }
 
+/**
+ * F4(2026-09-22 코드리뷰 3차): CardDeckOpsError.message는 개발자용 영문 원문
+ * ("cannot merge bubbles with different speakers" 류)이다. 원문은 console.error로만
+ * 보내고(run/runSlide) 화면에는 code별 고정 한국어 문구만 보여준다. ops 함수의 message
+ * 자체는 바꾸지 않는다 — 기존 테스트가 code만 검사해 그쪽엔 영향 없다.
+ */
+function cardDeckOpsErrorMessage(code: string): string {
+  switch (code) {
+    case "OPS_SLIDE_NOT_FOUND": return "이 장을 찾지 못했습니다.";
+    case "OPS_BUBBLE_NOT_FOUND": return "이 말풍선을 찾지 못했습니다.";
+    case "OPS_NOT_COVER_SLIDE": return "표지 장에서만 바꿀 수 있습니다.";
+    case "OPS_NOT_COVER_OR_CTA_SLIDE": return "표지·마지막 장에서만 사진을 바꿀 수 있습니다.";
+    case "OPS_SPLIT_OUT_OF_RANGE": return "그 자리에서는 쪼갤 수 없습니다.";
+    case "OPS_SPLIT_EMPTY": return "쪼개면 빈 말풍선이 생겨 쪼갤 수 없습니다.";
+    case "OPS_MERGE_NO_NEXT": return "합칠 다음 말풍선이 없습니다.";
+    case "OPS_SPEAKER_MISMATCH": return "화자가 다른 말풍선은 합칠 수 없습니다.";
+    case "OPS_DELETE_LAST_BUBBLE": return "장에 말풍선이 하나뿐이면 지울 수 없습니다.";
+    case "OPS_MOVE_OUT_OF_RANGE": return "그 방향으로는 옮길 수 없습니다.";
+    case "OPS_BOLD_EMPTY_RANGE": return "굵게 만들 글을 먼저 선택해 주세요.";
+    case "OPS_BOLD_LIMIT": return "한 장에 굵은 덩이는 하나입니다.";
+    case "OPS_SLIDE_LOCKED": return "표지·CTA 장은 옮기거나 지울 수 없습니다.";
+    case "OPS_SLIDE_OUT_OF_RANGE": return "그 자리에는 장을 넣을 수 없습니다.";
+    case "OPS_SLIDE_LIMIT": return "카드는 11장을 넘을 수 없습니다.";
+    case "OPS_SLIDE_MIN": return "카드는 7장 아래로 줄일 수 없습니다.";
+    default: return "카드덱을 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  }
+}
+
 function bubbleText(bubble: Bubble): string {
   return bubble.segments.map((s) => s.text).join("");
 }
@@ -80,7 +108,8 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
       onDeckChange(op(deck));
     } catch (cause) {
       if (cause instanceof CardDeckOpsError) {
-        setError(cause.message);
+        console.error("카드덱 연산 실패", cause.code, cause.message);
+        setError(cardDeckOpsErrorMessage(cause.code));
       } else {
         setError("말풍선을 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.");
       }
@@ -130,7 +159,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
       <ul className="space-y-stack-tight" data-bubble-editor-turns>
         {turns.map((turn) => (
           <li key={turn.bubbles[0].id} className={turn.speaker === "reader" ? "flex justify-end" : "flex justify-start"}>
-            <ul className="max-w-[80%] space-y-stack-tight">
+            <ul className="max-w-4/5 space-y-stack-tight">
               {turn.bubbles.map((bubble) => (
                 <li
                   key={bubble.id}
@@ -224,10 +253,13 @@ function HookChips({ onPick }: { onPick: (text: string) => void }) {
  * 대문·마지막 장 사진 선택(세션맥락 과제 A-3). 업로드는 기존 `/api/images/upload`
  * (SNS-016, 테넌트 격리·서명 URL)를 그대로 쓴다 — 새 업로드 API를 만들지 않는다.
  *
- * 2026-09-22 코드리뷰 CRITICAL C1·C2: 이 사진은 아직 렌더러(`card-templates/chat-bubble.ts`)
- * 와 발행 경로(`studio/page.tsx` publishDeck)에 배선돼 있지 않다. 지금은 `cover_image_url`
- * (렌더 산출 슬롯 `image_url` 과 별개 필드)에 저장만 되고, 실제 카드 그림에는 아직
- * 반영되지 않는다. 배선 전까지 안내 문구가 "적용된 척" 하지 않게 한다(ADR-007).
+ * `cover_image_url`(렌더 산출 슬롯 `image_url`과 별개 필드, C2)은 `card-templates/
+ * chat-bubble.ts`의 `loadCoverImage`/`drawBackgroundPhoto`가 실제로 불러와 캔버스에
+ * 그린다(J1, 2026-09-22 코드리뷰 2차). 편집실 미리보기(`CardDeckPanel`)와 발행 경로
+ * (`studio/page.tsx` recompositeCards → renderAndUploadCardDeck)가 같은 렌더러를 쓰므로
+ * 여기서 고른 사진은 저장 즉시 미리보기에 반영되고, 발행 시 나가는 PNG에도 그대로
+ * 들어간다. 다만 사진 로딩 실패(CORS·만료·타임아웃)는 지금은 평면 배경으로 조용히
+ * 물러난다 — 이 실패 경로는 F3로 별도 추적 중이다.
  */
 function CoverImagePicker({ imageUrl, onChange }: { imageUrl: string | null; onChange: (url: string | null) => void }) {
   const [busy, setBusy] = useState(false);
@@ -269,7 +301,7 @@ function CoverImagePicker({ imageUrl, onChange }: { imageUrl: string | null; onC
       ) : (
         <p className="text-caption text-muted" data-cover-image-empty>아직 사진을 고르지 않았습니다.</p>
       )}
-      <p className="text-caption text-subtle" data-cover-image-render-status>지금은 저장만 됩니다. 실제 카드 그림에 반영하는 것은 다음 단계입니다.</p>
+      <p className="text-caption text-subtle" data-cover-image-render-status>미리보기와 발행 결과물에 그대로 반영됩니다.</p>
       <div className="flex flex-wrap gap-stack-tight">
         <Button size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "올리는 중…" : "사진 올리기"}</Button>
         {imageUrl ? <Button size="sm" variant="secondary" onClick={() => onChange(null)}>사진 빼기</Button> : null}
@@ -387,7 +419,12 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
       setSlideError(null);
       onDeckChange(op(deck));
     } catch (cause) {
-      setSlideError(cause instanceof CardDeckOpsError ? cause.message : "장을 바꾸지 못했습니다.");
+      if (cause instanceof CardDeckOpsError) {
+        console.error("카드덱 연산 실패", cause.code, cause.message);
+        setSlideError(cardDeckOpsErrorMessage(cause.code));
+      } else {
+        setSlideError("장을 바꾸지 못했습니다.");
+      }
     }
   }
 

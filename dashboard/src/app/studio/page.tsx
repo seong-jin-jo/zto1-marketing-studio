@@ -28,7 +28,7 @@ import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
 import { browserCardUploader, cardRatioFrom, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
-import { sanitizeForSave, type VideoEdit } from "@/lib/studio/video-edit-contract";
+import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
 import { emptyBubbleSlideNumber, pruneEmptyBubbles } from "@/lib/studio/card-deck-ops";
 import { limitedChannelNotice, planChannelImages } from "@/lib/studio/channel-image-capacity";
@@ -1091,8 +1091,22 @@ export default function StudioPage() {
     if (r?.id) setDraftId(r.id); mutateHist(); return r?.id;
   }
   async function saveDraftWithNotice() {
+    // F5(2026-09-22 코드리뷰 3차): 자동저장 경로(onCardDeckChange)만 pruneEmptyBubbles·
+    // emptyBubbleSlideNumber를 거치고 이 수동 "임시 저장" 경로는 빠져 있었다. 빈 말풍선
+    // 상태에서 누르면 서버가 400을 내고 이유 없는 토스트만 떴다. 자동저장과 같은 검사를
+    // 그대로 적용한다(세 경로를 같게 맞춘다).
+    let prunedCardDeck: CardDeck | undefined;
+    if (cardDeck) {
+      const pruned = pruneEmptyBubbles(cardDeck);
+      const emptySlide = emptyBubbleSlideNumber(pruned);
+      if (emptySlide !== null) {
+        showToast(`${emptySlide}번 장에 말풍선이 비어 있어 저장하지 못했습니다. 내용을 채운 뒤 다시 눌러 주세요.`, "error");
+        return;
+      }
+      prunedCardDeck = pruned;
+    }
     try {
-      const savedDraftId = await save("draft");
+      const savedDraftId = await save("draft", undefined, undefined, undefined, undefined, undefined, prunedCardDeck);
       if (!savedDraftId) {
         showToast("초안을 저장하지 못했습니다", "error");
         return;
@@ -1121,6 +1135,13 @@ export default function StudioPage() {
   async function recompositeCards(lines: string[]): Promise<ImgResult | null> {
     if (editKind !== "card") return null;
     if (cardDeck && cardDeck.template === "chat_bubble") {
+      // F5(2026-09-22 코드리뷰 3차): 발행 경로도 자동저장·수동저장과 같은 검사를 거친다.
+      // 빈 말풍선 장을 그대로 렌더하면 그 장만 텅 빈 채로 발행물에 나간다(조용한 실패).
+      const emptySlide = emptyBubbleSlideNumber(pruneEmptyBubbles(cardDeck));
+      if (emptySlide !== null) {
+        showToast(`${emptySlide}번 장에 말풍선이 비어 있어 카드를 다시 그리지 못했습니다. 내용을 채운 뒤 다시 시도해 주세요.`, "error");
+        return null;
+      }
       try {
         const urls = await renderAndUploadCardDeck(
           { lines: [], ratio: cardRatioFrom(cardAspectRatio), template: "chat_bubble", deck: cardDeck },
@@ -1555,21 +1576,22 @@ export default function StudioPage() {
   // 카드뉴스 v2 덱 연산 후 800ms 디바운스 자동저장이 쓰는 타이머(설계 §5 F4, onCardDeckChange
   // 정의는 아래 편집실 렌더 직전). 모든 hook 은 1990행 조건부 early return 앞에서 불러야
   // 렌더마다 순서가 같다.
-  const editAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // N1(2026-09-22 코드리뷰): 타이머를 하나로 합치면서 카드덱·영상 각각 "이번에 실제로
-  // 바뀐 값"을 따로 들고 있어야 한다. 안 그러면 800ms 안에 둘 다 바뀔 때 나중 change가
-  // 먼저 것의 타이머를 죽이고, 저장 시점엔 한쪽만 반영된다. 발화 시점에 두 pending을
-  // 각각 보고 저장하고, 저장 뒤 비운다(다음 발화가 새로 채운다).
-  const pendingCardDeck = useRef<CardDeck | null>(null);
-  const pendingVideoEdit = useRef<VideoEdit | null>(null);
+  const cardDeckAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // R1(2026-09-22 코드리뷰 3차): 타이머 통합(2차)이 CRITICAL을 두 라운드 연달아 냈다
+  // (2차: 영상저장 삼킴 · 3차: 실패/언마운트 시 pending 유실). "덜 만들고 되돌린다" —
+  // 카드덱·영상 자동저장을 독립 타이머로 되돌린다. 각자 최신 state를 통째로 실어
+  // 보내는 구 방식은 다음 자동저장에서 자연 복구되는 성질이 있다(한쪽이 실패해도
+  // 다음 변경이 다시 최신 state를 통째로 보낸다). 두 저장이 서로 덮는 문제는 회장이
+  // 실제로 밟은 적 없는 가설이었고, 재설계가 만든 유실 경로가 더 비쌌다.
+  const videoEditAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // setTimeout 콜백이 클로저로 오래된 draftId 를 붙잡지 않게(2026-09-22 코드리뷰 MINOR 6:
   // 발행실 이동이 타이머보다 먼저 끝나면 뒤늦은 콜백이 draftId=null 로 중복 초안을 만든다).
   const draftIdRef = useRef<string | null>(null);
   draftIdRef.current = draftId;
-  // M8(2026-09-22 코드리뷰): cardDeck과 videoEdit 자동저장이 각자 타이머를 들면 800ms 안에
-  // 둘 다 바뀔 때 서로를 덮어쓴다(늦게 도는 setTimeout이 먼저 저장한 필드를 안 실은 채
-  // save()를 다시 불러 옛 값으로 되돌린다). 편집실 자동저장 타이머는 하나만 둔다.
-  useEffect(() => () => { if (editAutosaveTimer.current) clearTimeout(editAutosaveTimer.current); }, []);
+  useEffect(() => () => {
+    if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
+    if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
+  }, []);
   useEffect(() => {
     if (!publishReturnRequest || !publishReturnQueue?.posts) return;
     const loadKey = `${publishReturnRequest.sourceRoute}:${publishReturnRequest.queuePostId}`;
@@ -2126,63 +2148,42 @@ export default function StudioPage() {
   // 그래도 말풍선이 하나도 안 남는 장이 있으면 저장 자체를 보류하고 이유를 보여준다(조용한
   // 실패 금지). `draftId` 는 setTimeout 콜백이 오래된 값을 캡처하지 않게 최신 ref 로 읽는다
   // (ref 갱신·언마운트 정리는 위 early return 앞에서 한다).
-  /**
-   * 카드덱·영상 편집 공용 자동저장(N1 재설계, 2026-09-22 코드리뷰). 800ms 타이머는 하나만
-   * 두되, 발화 시점에 "이번에 실제로 바뀐 값"을 pendingCardDeck/pendingVideoEdit에 각각
-   * 적어 둔다. 발화가 오면 그 둘을 함께 저장한다 — 한쪽만 바뀐 배치에서 다른 쪽을 건드려
-   * 지우지 않는다(J4: 빈 말풍선으로 카드덱 저장이 보류돼도 영상은 그대로 저장된다).
-   * 카드덱이 비어 있는 말풍선이면 그 부분만 payload에서 빼서 보류하고(기존 서버 값 보존),
-   * 영상 쪽은 sanitizeForSave로 빈 문구/작성자 항목만 걸러 저장에서 뺀다(N2).
-   */
-  function scheduleEditAutosave() {
-    if (editAutosaveTimer.current) clearTimeout(editAutosaveTimer.current);
-    editAutosaveTimer.current = setTimeout(() => {
-      const deckToSave = pendingCardDeck.current;
-      const editToSave = pendingVideoEdit.current;
-      pendingCardDeck.current = null;
-      pendingVideoEdit.current = null;
-
-      let deckForSave: CardDeck | null = null;
-      let holdMessage = "";
-      if (deckToSave) {
-        const pruned = pruneEmptyBubbles(deckToSave);
-        const emptySlide = emptyBubbleSlideNumber(pruned);
-        if (emptySlide !== null) {
-          holdMessage = `${emptySlide}번 장에 말풍선이 비어 있어 카드덱 자동 저장을 보류했습니다. 내용을 채우면 저장됩니다.`;
-        } else {
-          deckForSave = pruned;
-        }
+  function onCardDeckChange(nextDeck: CardDeck) {
+    setCardDeck(nextDeck);
+    if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
+    cardDeckAutosaveTimer.current = setTimeout(() => {
+      const pruned = pruneEmptyBubbles(nextDeck);
+      const emptySlide = emptyBubbleSlideNumber(pruned);
+      if (emptySlide !== null) {
+        setEditAutosaveError(`${emptySlide}번 장에 말풍선이 비어 있어 자동 저장을 보류했습니다. 내용을 채우면 저장됩니다.`);
+        return;
       }
-
-      let editForSave: VideoEdit | null = null;
-      if (editToSave) {
-        const { deck: sanitized, droppedCount } = sanitizeForSave(editToSave);
-        editForSave = sanitized;
-        if (droppedCount > 0) {
-          const note = "빈 문구·작성자 항목은 채울 때까지 저장에서 빠집니다.";
-          holdMessage = holdMessage ? `${holdMessage} ${note}` : note;
-        }
-      }
-
-      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, deckForSave, editForSave)
-        .then(() => {
-          setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
-          setEditAutosaveError(holdMessage);
-        })
+      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, pruned)
+        .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setEditAutosaveError(""); })
         .catch((error) => setEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
     }, 800);
   }
 
-  function onCardDeckChange(nextDeck: CardDeck) {
-    setCardDeck(nextDeck);
-    pendingCardDeck.current = nextDeck;
-    scheduleEditAutosave();
-  }
-
+  /**
+   * R2(2026-09-22 코드리뷰 3차): sanitizeForSave(빈 항목만 걸러 보냄)를 되돌렸다.
+   * drafts/route.ts는 videoEdit를 통째 치환한다(부분 병합 아님) — 걸러낸 전체 객체를
+   * 보내면 서버에 이미 저장돼 있던 항목까지 조용히 사라진다(화면엔 남아 있어 사용자는
+   * 모르고 새로고침하면 사라져 있었다). 그래서 빈 항목이 있으면 저장 자체를 보류한다
+   * (cardDeck의 pruneEmptyBubbles/emptyBubbleSlideNumber와 같은 패턴).
+   */
   function onVideoEditChange(nextEdit: VideoEdit) {
     setVideoEdit(nextEdit);
-    pendingVideoEdit.current = nextEdit;
-    scheduleEditAutosave();
+    if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
+    videoEditAutosaveTimer.current = setTimeout(() => {
+      const blockedReason = videoEditIncompleteEntryReason(nextEdit);
+      if (blockedReason) {
+        setEditAutosaveError(blockedReason);
+        return;
+      }
+      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, cardDeck, nextEdit)
+        .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setEditAutosaveError(""); })
+        .catch((error) => setEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
+    }, 800);
   }
 
   if (activeRoom === "edit") return (

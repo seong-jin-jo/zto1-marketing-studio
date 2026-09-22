@@ -94,16 +94,16 @@ describe("PR4 잔여 배선 M3: 담당 대화창 일괄 편집이 chat_bubble �
 });
 
 describe("PR4 잔여 배선 M2: 자동저장 전 빈 말풍선을 정리하고 보류 이유를 보여준다", () => {
-  // N1(2026-09-22 코드리뷰) 재설계로 이 로직은 onCardDeckChange 본문이 아니라 카드덱·영상
-  // 공용 타이머 scheduleEditAutosave 로 옮겨졌다(둘 다 바뀌어도 서로 덮어쓰지 않게).
-  it("page.tsx scheduleEditAutosave 가 저장 전 pruneEmptyBubbles + emptyBubbleSlideNumber 를 부른다(2026-09-22 코드리뷰 MAJOR 2)", () => {
-    const scheduleEditAutosave = pageSrc.slice(
-      pageSrc.indexOf("function scheduleEditAutosave()"),
-      pageSrc.indexOf("function scheduleEditAutosave()") + 1600,
+  // R1(2026-09-22 코드리뷰 3차)로 통합 타이머(scheduleEditAutosave)를 되돌렸다 — 이 검사는
+  // 다시 onCardDeckChange 본문을 본다(카드덱·영상은 독립 타이머).
+  it("page.tsx onCardDeckChange 가 저장 전 pruneEmptyBubbles + emptyBubbleSlideNumber 를 부른다(2026-09-22 코드리뷰 MAJOR 2)", () => {
+    const onCardDeckChange = pageSrc.slice(
+      pageSrc.indexOf("function onCardDeckChange(nextDeck: CardDeck)"),
+      pageSrc.indexOf("function onCardDeckChange(nextDeck: CardDeck)") + 1200,
     );
-    expect(scheduleEditAutosave).toContain("pruneEmptyBubbles(deckToSave)");
-    expect(scheduleEditAutosave).toContain("emptyBubbleSlideNumber(pruned)");
-    expect(scheduleEditAutosave, "빈 말풍선이 남으면 카드덱을 payload에서 빼고 보류 문구를 남겨야 한다").toMatch(/emptySlide !== null[\s\S]{0,220}holdMessage/);
+    expect(onCardDeckChange).toContain("pruneEmptyBubbles(nextDeck)");
+    expect(onCardDeckChange).toContain("emptyBubbleSlideNumber(pruned)");
+    expect(onCardDeckChange, "빈 말풍선이 남으면 저장을 진행하지 않고 보류해야 한다").toMatch(/emptySlide !== null[\s\S]{0,220}return/);
   });
 });
 

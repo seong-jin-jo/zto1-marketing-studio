@@ -232,15 +232,28 @@ export function cutRanges(edit: VideoEdit): Array<{ startSec: number; endSec: nu
 }
 
 /**
- * N2(2026-09-22 코드리뷰): updateOverlay/updateComment는 range만 보고 text/author 빈
- * 문자열은 막지 않는다. 사용자가 문구·작성자 칸을 지우고 다시 타이핑하는 정상 동작
- * 중간에 800ms 자동저장이 오면 서버가 400을 낸다. 저장 직전에만 빈 항목을 걸러낸다 —
- * 화면의 편집 중인 상태(videoEdit)는 건드리지 않고, 저장 페이로드만 정리한다. 사용자가
- * 마저 입력을 끝내면 다음 자동저장에 다시 포함된다.
+ * N2(2026-09-22 코드리뷰) → R2(3차 재검토로 되돌림): updateOverlay/updateComment는
+ * range만 보고 text/author 빈 문자열은 막지 않는다. 사용자가 문구·작성자 칸을 지우고
+ * 다시 타이핑하는 정상 동작 중간에 800ms 자동저장이 오면 서버가 400을 낸다.
+ *
+ * 2차 수정은 저장 직전에 빈 항목만 걸러(sanitizeForSave) 보냈는데, `/api/studio/drafts`
+ * 는 videoEdit를 부분 병합이 아니라 통째로 치환한다(route.ts videoEditPatch). 그래서
+ * 걸러낸 "일부 빠진 전체 객체"를 보내면 서버에 이미 저장돼 있던 항목까지 조용히
+ * 사라진다 — 화면 state엔 남아 있어 사용자는 모르고, 새로고침하면 사라져 있었다.
+ * 400을 없애는 대가로 조용한 데이터 삭제를 만든 셈이라 더 나쁘다.
+ *
+ * 그래서 걸러 보내는 대신, 빈 항목이 있는 동안 저장 자체를 보류한다(빠짐없이 이유를
+ * 화면에 보여준다 — ADR-007). cardDeck의 pruneEmptyBubbles + emptyBubbleSlideNumber와
+ * 같은 "보류" 패턴이다.
  */
-export function sanitizeForSave(edit: VideoEdit): { deck: VideoEdit; droppedCount: number } {
-  const overlays = edit.overlays.filter((o) => o.text.trim().length > 0);
-  const comments = edit.comments.filter((c) => c.author.trim().length > 0 && c.text.trim().length > 0);
-  const droppedCount = (edit.overlays.length - overlays.length) + (edit.comments.length - comments.length);
-  return { deck: { ...edit, overlays, comments }, droppedCount };
+export function videoEditIncompleteEntryReason(edit: VideoEdit): string | null {
+  const emptyOverlayIndex = edit.overlays.findIndex((o) => !o.text.trim());
+  if (emptyOverlayIndex !== -1) {
+    return `${emptyOverlayIndex + 1}번째 오버레이 문구가 비어 있어 자동 저장을 보류했습니다. 문구를 채우면 저장됩니다.`;
+  }
+  const emptyCommentIndex = edit.comments.findIndex((c) => !c.author.trim() || !c.text.trim());
+  if (emptyCommentIndex !== -1) {
+    return `${emptyCommentIndex + 1}번째 댓글의 작성자 또는 내용이 비어 있어 자동 저장을 보류했습니다. 채우면 저장됩니다.`;
+  }
+  return null;
 }
