@@ -1,3 +1,18 @@
+## 2026-09-23 00:35 PR #77 범위 축소 반영(7e5a6431), 재리뷰 착수
+
+current_stage: build (R-23) · qa (네 방 기본 흐름)
+status: in-progress (승인 아님)
+
+PR #77 4차: 사이드바 편집 제거하고 카드 하단 인라인 편집 복구, 근본원인(렌더 단계 공유 가변 상태로는 단일
+인스턴스 보장 불가)을 실수.md 에 기록 후 feat/publish-edit-sidebar 로 이관. 정렬은 상한 클리핑을 버리고
+min-height 만 사용(조작면이 숨을 수 없는 구조), flex-nowrap 도 원복. 측정 도구는 playwright-core 를
+devDependencies 에 실제 설치하고 절대경로 제거, 하네스에 실제 이미지·headerRight 반영.
+빌더 보고 실측: 편집칸 delta 0px, 머리줄 129px 로 수렴. **자기신고이므로 재리뷰 중.**
+빌더가 자기 판단으로 보류한 지시 1건(poster 배지 자체 wrapper) 사유를 PR 코멘트에 명시 — 지시 일부를 근거와
+함께 보류한 것은 정상 동작으로 인정.
+
+PR #76 은 CI 계약 테스트 실패로 머지 보류, 원인 규명 중. 종료조건을 CI 와 동일한 `npx vitest run` 전체로 정정.
+
 ## 2026-09-23 00:20 PR #76 머지 보류: CI 실패(계약 테스트), 빌더 자기신고와 불일치 8회째
 
 current_stage: build (R-23) · qa (네 방 기본 흐름)
