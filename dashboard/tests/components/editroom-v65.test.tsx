@@ -4,6 +4,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
+import type { ContentEditFormat } from "@/lib/studio/content-edit-format";
 
 afterEach(() => cleanup());
 
@@ -98,5 +99,33 @@ describe("편집실 v65 화면 계약", () => {
     expect(screen.getByRole("button", { name: "목소리 도구" })).toBeInTheDocument();
     expect(screen.queryByText(/배경음악 음량/)).not.toBeInTheDocument();
     expect(screen.queryByText(/음악 파일 생성은 아직 제공하지 않습니다/)).not.toBeInTheDocument();
+  });
+
+  it("V65-EDIT-07 거절: 보존할 음악 값이 같으면 제어형 포맷 갱신을 반복하지 않는다", () => {
+    let renderCount = 0;
+    function ControlledAudioEditRoom() {
+      renderCount += 1;
+      if (renderCount > 12) throw new Error("같은 나레이션 포맷을 반복 갱신했습니다");
+      const [format, setFormat] = React.useState<ContentEditFormat>({
+        kind: "audio",
+        voice: "차분한 남성",
+        musicTrack: "잔잔한 로파이",
+        musicVolume: 35,
+      });
+      return (
+        <EditRoom
+          lines={["나레이션 대사"]}
+          onLinesChange={vi.fn()}
+          kind="audio"
+          initialFormat={format}
+          onFormatChange={setFormat}
+        />
+      );
+    }
+
+    render(<ControlledAudioEditRoom />);
+
+    expect(screen.getByRole("button", { name: "목소리 도구" })).toBeInTheDocument();
+    expect(renderCount).toBeLessThanOrEqual(3);
   });
 });

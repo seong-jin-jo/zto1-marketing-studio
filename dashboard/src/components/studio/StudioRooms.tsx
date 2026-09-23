@@ -1723,7 +1723,11 @@ export function EditRoom({
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkAsk, setBulkAsk] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
-  const preservedAudio = useMemo(() => audioSettingsFromFormat(initialFormat), [initialFormat]);
+  const initialAudioSettings = audioSettingsFromFormat(initialFormat);
+  const preservedAudio = useMemo<PreservedAudioSettings>(() => ({
+    musicTrack: initialAudioSettings.musicTrack,
+    musicVolume: initialAudioSettings.musicVolume,
+  }), [initialAudioSettings.musicTrack, initialAudioSettings.musicVolume]);
   const selectedFormat = useMemo(
     () => formatFromToolValues(formatKind, toolValues, preservedAudio),
     [formatKind, preservedAudio, toolValues],
