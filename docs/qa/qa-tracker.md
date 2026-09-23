@@ -1,3 +1,11 @@
+## 2026-09-24 06:14 KST · PR 83 세 번째 CI OOM 회수, 렌더 루프 원인 수정
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR83-CI-MEMORY-R3 | 경량화 뒤에도 반복된 두 Vitest 워커 OOM의 실제 원인 특정 | V65-EDIT-07 | ❌ NG → 🔧 수정, 로컬 PASS | 기준 `origin/main` 40de32ee는 같은 CI run `35810020143`에서 성공했고 PR HEAD ed3fe076은 run `35916251802`에서 398/400 뒤 두 워커가 2,038.5MB와 2,013.2MB 힙에서 종료됐다. CI 로그와 전체 테스트 파일 목록의 차집합은 `studio-publish-ui.test.tsx`, `edit-autosave-cross-domain.regression-1.test.tsx`였다. 직전의 신규 회귀 파일 경량화 가설은 기각한다. |
+| PR83-RENDER-LOOP | 나레이션 음악 보존이 제어형 포맷을 무한 재전달하지 않음 | V65-EDIT-07 | PASS | `preservedAudio`가 `initialFormat` 객체 전체를 의존해 `selectedFormat → onFormatChange → 부모 setEditFormat → 새 initialFormat` 순환을 만들었다. 수정 전 `edit-autosave-cross-domain`은 168초에도 첫 테스트를 끝내지 못했고 워커 RSS 635MB를 관찰했다. `studio-publish-ui`는 499초에도 끝나지 않았고 워커 RSS 3,346MB를 관찰했다. 음악 트랙과 음량 원시값만 의존하게 고친 뒤 각각 10.30초·힙 77MB, 21.99초·힙 204MB로 끝났다. |
+| PR83-TARGETED-R3 | 변경 관련 대형 UI와 편집 계약 회귀 | PR83-R3-TARGETED | PASS | Vitest 6파일 92건 통과. 두 CI 미완료 파일도 포함했고 파일 종료 힙은 `studio-publish-ui` 121MB, `edit-autosave-cross-domain` 79MB였다. `npm run typecheck:ci` 종료 코드 0. 디자인 lint는 저장소 기존 hex 6파일 경고를 유지하며 이번 변경은 스타일을 추가하지 않았다. 원격 CI는 push 뒤 재검증한다. |
+
 ## 2026-09-24 03:57 KST · PR 83 회귀 테스트 메모리와 돌연변이 검증 🔧 전환
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

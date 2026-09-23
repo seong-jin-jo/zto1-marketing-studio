@@ -1,3 +1,12 @@
+# 2026-09-24 06:14 KST PR 83 세 번째 CI OOM 원인 수정, push·원격 CI 대기
+
+- handoff basis: 사용자가 지정한 세 번째 회수 과제, 워크트리 `/private/tmp/zto1-editroom-main`, PR 83 run `35916251802`를 기준으로 삼았다. `osmu-review-pr83:0.0`은 이전 표적 테스트 로그 확인에만 사용했다.
+- 원인 판정: `origin/main` 40de32ee의 동일 CI run `35810020143`은 성공했고 PR HEAD ed3fe076은 398/400 뒤 2,038.5MB와 2,013.2MB 힙 OOM으로 실패했다. 미완료 두 파일은 `studio-publish-ui.test.tsx`와 `edit-autosave-cross-domain.regression-1.test.tsx`다. 신규 회귀 경량화 가설은 기각됐다.
+- 근본 원인: PR 83의 `preservedAudio`가 `initialFormat` 객체 전체를 의존해 `selectedFormat → onFormatChange → 부모 setEditFormat → 새 initialFormat` 렌더 순환을 만들었다. 수정 전 표적은 168초·RSS 635MB, 499초·RSS 3,346MB에서도 미종료였다.
+- 수정: 음악 트랙과 음량 값만 메모이제이션 의존성으로 사용하고, 제어형 포맷 반복 갱신 거절 테스트를 추가했다. 코드 커밋은 `c987018b`다.
+- 검증: 수정 뒤 두 표적은 10.30초·힙 77MB와 21.99초·힙 204MB로 종료했다. 관련 Vitest 6파일 92건, `npm run typecheck:ci`가 통과했다. 디자인 lint는 기존 hex 6파일 경고이며 새 스타일 변경은 없다.
+- 다음 실행: 문서 커밋 뒤 브랜치를 push하고 PR 83 CI를 종료까지 관찰한다. 운영 배포는 범위 밖이며 미검증이다.
+
 # 2026-09-24 03:57 KST PR 83 CI 메모리 수정과 돌연변이 검증, push 대기
 
 - handoff basis: 사용자가 명시한 워크트리 `/private/tmp/zto1-editroom-main`, 브랜치 `fix/edit-room-no-order-music-main`, 커밋 `e90ef3a7`과 이번 과제를 기준으로 삼았다. 기존 pane `osmu-review-pr83:0.0`은 표적 테스트 5/5 로그 확인에만 사용했고 다른 작업은 인계받지 않았다.
