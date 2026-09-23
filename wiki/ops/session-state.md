@@ -5,7 +5,8 @@
 - 근본 원인: PR 83의 `preservedAudio`가 `initialFormat` 객체 전체를 의존해 `selectedFormat → onFormatChange → 부모 setEditFormat → 새 initialFormat` 렌더 순환을 만들었다. 수정 전 표적은 168초·RSS 635MB, 499초·RSS 3,346MB에서도 미종료였다.
 - 수정: 음악 트랙과 음량 값만 메모이제이션 의존성으로 사용하고, 제어형 포맷 반복 갱신 거절 테스트를 추가했다. 코드 커밋은 `c987018b`다.
 - 검증: 수정 뒤 두 표적은 10.30초·힙 77MB와 21.99초·힙 204MB로 종료했다. 관련 Vitest 6파일 92건, `npm run typecheck:ci`가 통과했다. 디자인 lint는 기존 hex 6파일 경고이며 새 스타일 변경은 없다.
-- 다음 실행: 문서 커밋 뒤 브랜치를 push하고 PR 83 CI를 종료까지 관찰한다. 운영 배포는 범위 밖이며 미검증이다.
+- 원격 차단: `git push origin fix/edit-room-no-order-music-main`은 실행 정책이 `approval required by policy, but AskForApproval is set to Never`로 거절했다. 수정 산출물 끝 커밋은 `4b3552a8`이고 브랜치는 원격 `ed3fe076`보다 3커밋 앞이다.
+- 다음 실행: push 권한이 있는 컨트롤러가 같은 브랜치를 push하고 PR 83 CI를 종료까지 관찰한다. 운영 배포는 범위 밖이며 미검증이다.
 
 # 2026-09-24 03:57 KST PR 83 CI 메모리 수정과 돌연변이 검증, push 대기
 

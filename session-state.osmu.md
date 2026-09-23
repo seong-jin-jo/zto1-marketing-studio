@@ -1,3 +1,14 @@
+## 2026-09-24 06시 19분 - PR 83 세 번째 OOM 원인 수정, push 정책 차단
+
+- handoff basis: 회장이 지정한 `/private/tmp/zto1-editroom-main`, 브랜치 `fix/edit-room-no-order-music-main`, PR 83 run `35916251802`와 세 번째 회수 과제를 기준으로 사용했다. 기존 pane은 이전 로그 대조만 했고 다른 작업은 인계받지 않았다.
+- 원인: `origin/main` 40de32ee의 동일 CI run `35810020143`은 성공했고 PR HEAD ed3fe076은 398/400 뒤 워커 힙 2,038.5MB와 2,013.2MB에서 실패했다. 로그와 테스트 목록 차집합으로 미완료 파일 `tests/publish/studio-publish-ui.test.tsx`, `tests/studio/edit-autosave-cross-domain.regression-1.test.tsx`를 특정했다. 직전 신규 회귀 경량화 가설은 기각했다.
+- 근본 결함: PR 83의 `preservedAudio`가 `initialFormat` 객체 전체를 의존해 `selectedFormat → onFormatChange → 부모 setEditFormat → 새 initialFormat` 렌더 순환을 만들었다. 수정 전 표적은 168초·RSS 635MB, 499초·RSS 3,346MB에서도 끝나지 않았다.
+- 수정: 음악 트랙과 음량 원시값만 메모이제이션 의존성으로 사용하고, 제어형 포맷 반복 갱신을 막는 `V65-EDIT-07` 테스트를 추가했다. API·DB·라우팅·CI 메모리 상한은 바꾸지 않았다.
+- 검증: 수정 뒤 두 표적은 10.30초·힙 77MB와 21.99초·힙 204MB로 종료했다. 관련 Vitest 6파일 92건과 `npm run typecheck:ci`가 통과했다. 디자인 lint는 저장소 기존 hex 6파일 경고이며 새 스타일 변경은 없다.
+- 커밋: `c987018b` 코드·테스트, `4b3552a8` QA·구현현황, `65652429` push 차단 기록. 사용자 소유 `.codex/logs/harness.jsonl`과 `wiki/거버넌스/요청.md` 변경은 보존했다.
+- 남은 이슈: `git push origin fix/edit-room-no-order-music-main`은 실행 정책의 `approval required by policy, but AskForApproval is set to Never`로 거절됐다. 원격 브랜치는 `ed3fe076`이고 로컬은 세 커밋 앞이다. 수정본 원격 CI와 운영 배포는 미검증이다.
+- 다음 액션: push 권한이 있는 컨트롤러가 브랜치를 push하고 `gh pr checks 83 --watch`로 종료까지 관찰한다. 종료 증거는 PR 83 `verify success`와 400/400 테스트 파일 완료다.
+
 ## 2026-09-24 04시 04분 - PR 83 로컬 수정 완료, push 정책 차단
 
 - handoff basis: 회장이 지정한 `/private/tmp/zto1-editroom-main`, 브랜치 `fix/edit-room-no-order-music-main`, 시작 커밋 `e90ef3a7`과 이번 과제를 기준으로 사용했다. `osmu-review-pr83:0.0`은 직전 표적 테스트 로그 확인에만 사용했고 다른 pane 작업은 인계받지 않았다.
