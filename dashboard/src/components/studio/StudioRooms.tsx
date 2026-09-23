@@ -1198,8 +1198,6 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
               <span className="block">일곱 칸 학습 정보를 반영한 구성 초안 3개</span>
               <span className="block">카드뉴스 대표 이미지(만들기 전 비용을 보여 드립니다)</span>
               <span className="block">숏폼 영상(대표 이미지를 움직이는 영상으로)</span>
-              <b className="mt-stack-tight block text-text">준비 중</b>
-              <span className="block">배경 음악</span>
             </div>
             {/*
               사업계획 v0.4 10절이 첫 매체를 카드뉴스로 정했고 7절이 만들기 전 비용 승인
