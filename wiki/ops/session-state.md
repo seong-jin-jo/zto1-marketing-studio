@@ -4,7 +4,8 @@
 - 원인: PR run `35895736674`에서 새 회귀는 정상 종료했지만 파일 추가로 스케줄이 바뀌어 기존 대형 `StudioPage` 테스트 두 개가 워커 수명 끝에 남았다. 워커는 각각 약 2.04GB에서 죽었다. 새 파일 단독은 힙 78MB·RSS 206MB였고, `studio-publish-ui` 단독은 RSS 982MB를 넘었다.
 - 수정: 신규 회귀를 중복 jsdom 렌더 없는 소스 배선 계약으로 바꿔 힙 14MB·RSS 125MB로 줄였다. 생성실의 빈 `준비 중` 묶음과 `배경 음악` 예고를 제거했다. 코드 커밋은 `ea7714a8`이다.
 - 검증: 표적 5/5, TypeScript 종료 0. 8개 제품 돌연변이가 각각 01~05 단언을 실패시키고 원복 뒤 최종 통과했다. 디자인 lint는 저장소 기존 hex 경고 6파일을 보고했으며 이번 변경의 새 스타일 위반은 없다.
-- 다음 실행: 문서 커밋 후 push하고 `gh pr checks 83 --watch`로 CI 종료까지 관찰한다. 실패하면 해당 원인을 수정하고 다시 push한다. 운영 배포는 범위 밖이며 미검증이다.
+- 원격 차단: 로컬 HEAD `bfbbe13f`는 원격 `e90ef3a7`보다 두 커밋 앞이지만, `git push origin fix/edit-room-no-order-music-main`은 실행 정책이 `approval required by policy, but AskForApproval is set to Never`로 거절했다. `gh pr checks 83`은 아직 이전 run `35895736674`의 실패를 가리킨다.
+- 다음 실행: push 권한이 있는 세션이 `git push origin fix/edit-room-no-order-music-main`을 실행한 뒤 `gh pr checks 83 --watch`로 CI 종료까지 관찰한다. 실패하면 해당 원인을 수정하고 다시 push한다. 운영 배포는 범위 밖이며 미검증이다.
 
 # 2026-09-24 01:33 KST 편집실 글 순서·배경 음악 조작면 제거 진행 중
 
