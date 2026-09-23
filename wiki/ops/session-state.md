@@ -1696,3 +1696,12 @@ stage하지 않는다. 다음 액션은 편집실 계약 테스트를 먼저 추
 - 커밋: `a5ad5c14`, `ba4cc37c`, `2cd5a9bb`, `aabbb835`. 이 기록과 구현현황은 다음 문서 커밋으로 묶는다.
 - 문서 커밋: `8c750cdf`. 이후 `git push -u origin work/v71auth`를 실행했으나 실행 정책이 승인 요청을 요구했고 현재 세션은 승인 요청 불가라 명령 시작 전에 차단됐다. `git ls-remote --heads origin work/v71auth` 결과 원격 브랜치는 없다.
 - 배포: 머지와 배포는 실행하지 않았다. 다음 액션 소유자는 push 권한이 열려 있는 부모 컨트롤러다. 종료 증거는 `origin/work/v71auth` SHA와 이 워크트리 최종 HEAD의 일치다.
+## 2026-09-23 11:43 KST 성과 시계열 갭 재확인 BLOCK
+
+- handoff basis: 사용자가 지정한 두 갭 감사 대조 과제. `osmu-gapfill092311:0.0`과 `osmu-dev-restored:0.0`은 중복 작업과 localhost 소유권 확인에만 사용했다.
+- 현재 pipeline은 `qa`, `in-progress`, 승인 아님이다. 두 감사의 다른 갭은 현재 구현으로 닫혔고, 게시물별 성과 관측 이력과 재현 가능한 30일 비교만 남았다.
+- 승인된 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준이 없어 제품 소스를 수정하지 않았다.
+- 정상 QA DB를 주입한 현재 HEAD `aa8b574a` 실행본에서 health HTTP 200, DB up과 지정 작업 공간 metrics HTTP 200을 관찰했다. 응답 키는 `coverage`, `posts`이고 `history`, `comparison`은 없다.
+- 기본 흐름 11/11, Studio v1 14/14, 전체 Vitest 378파일과 2,445건 및 조건부 제외 1건, TypeScript, production build 185/185, 디자인 lint 위반 0이다. 파손된 `.next/dev/types` 생성물은 `/tmp`로 격리했고 제품 소스는 수정하지 않았다.
+- 변경 범위: 갭 재확인, QA tracker, 구현현황과 이 인계 문서만 갱신했다. 운영 배포와 실제 SNS 공개 발행은 미검증이다.
+- 다음 소유자: 컨트롤러와 tech-architect가 성과 관측 이력 기술계약을 합의하고 eng-design을 승인한 뒤 build를 다시 연다. code-builder는 승인된 migration, 수집 저장, `history`, `comparison`과 정상, 거절, 경합 테스트를 구현한다.

@@ -7541,3 +7541,19 @@ OAuth provider 12개 중 완전 설정 0개다. Seed A에는 초안 1개와 공�
 원인 판정: 두 감사에서 남은 기본 흐름 갭은 새 저장 모델과 API 의미를 요구한다. 현재 누계값을
 30일 성과로 재해석하면 공급자별 계약 차이를 숨기고 재현 불가능한 비교를 만든다. 제품 소스와
 migration은 수정하지 않고, 최신 코드와 localhost 회귀를 다시 확인한 뒤 증거를 갱신한다.
+## 2026-09-23 11:43 KST · 성과 시계열 갭 재확인 BLOCK
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| R68, API 갭 P2 | 두 갭 감사에서 지금도 없는 기본 흐름 항목 하나 구현 | GAP-HISTORY-20260923-1109-01 | NG | schema·migration·`GET /api/metrics`에 게시물별 성과 관측 이력과 `history`, `comparison` 계약이 없다. |
+| 승인 범위 | pipeline에서 허용된 build 범위만 수정 | GAP-HISTORY-20260923-1109-02 | BLOCK | `pipeline-state.osmu.md`의 현재 공정은 `qa`, `in-progress`, 승인 아님이다. 관측 단위, 멱등 키, 보존 기간, 공급자 정규화, 비교식과 표본 부족 기준도 승인되지 않았다. 제품 소스 변경은 0건이다. |
+| 실행본 귀속 | localhost:3456과 현재 HEAD | GAP-HISTORY-20260923-1109-03 | PASS | 정상 QA DB를 주입한 현재 HEAD `aa8b574a` 실행본에서 health HTTP 200, DB up을 관찰했다. |
+| 실제 성과 계약 | 지정 작업 공간의 인증된 `GET /api/metrics` | GAP-HISTORY-20260923-1109-04 | NG | HTTP 200, 키 `coverage`, `posts`, 게시물 0건이다. `history`, `comparison`은 없다. |
+| 기본 흐름 실앱 | `verify-basic-flow-e2e.mjs` | GAP-HISTORY-20260923-1109-05 | PASS | localhost 실제 요청 11/11, 종료 코드 0이다. |
+| Studio v1 실앱 | `verify-studio-v1-e2e.mjs` | GAP-HISTORY-20260923-1109-06 | PASS | localhost 실제 요청 14/14, 종료 코드 0이다. |
+| 전체 단위 및 통합 | `npm run test` | GAP-HISTORY-20260923-1109-07 | PASS | schema, seed, RLS 적용 뒤 378파일, 2,445건 통과, 1건 조건부 제외, 종료 코드 0이다. |
+| TypeScript | `npx tsc --noEmit` | GAP-HISTORY-20260923-1109-08 | PASS | 파손된 `.next/dev/types` 생성물을 격리한 뒤 종료 코드 0이다. 제품 소스 변경은 없다. |
+| Web build | `npm run build` | GAP-HISTORY-20260923-1109-09 | PASS, 경고 1 | 185/185 생성, 종료 코드 0이다. 기존 NFT 동적 파일 추적 경고 1건이 남는다. |
+| 디자인 토큰 | `design-lint.sh dashboard/src` | GAP-HISTORY-20260923-1109-10 | PASS | 토큰 위반 0, 종료 코드 0이다. |
+
+현재 판정은 BLOCK이다. 기존 생성, 편집, 발행, 성과 흐름과 전체 회귀는 통과했지만 승인 기술설계와 build 공정 재개 없이 신규 DB·API 의미를 임의 구현하지 않는다. 운영 배포와 실제 SNS 공개 발행은 미검증이다.
