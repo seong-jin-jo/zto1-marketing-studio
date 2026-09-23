@@ -847,6 +847,14 @@ export default function StudioPage() {
             : (r?.error || "이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
         setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
       }
+      // ADR-007: `ok: true` 인데 배달 주소가 비어 있으면 setImg 가 빈 값을 들고 조용히
+      // 성립한다 — "방금 만든 것" 칸을 그리는 조건(madeImageUrl = img.file || img.url)이
+      // 거짓이 되어 화면엔 아무것도 안 뜨고, 그렇다고 오류 토스트도 안 뜬다. 성공인데
+      // 아무 표시가 없는 것은 실패보다 나쁘다 — 사용자는 다시 눌러야 할지도 모른다.
+      if (!r.file && !r.url) {
+        const msg = "이미지를 만들었지만 화면에 걸 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.";
+        setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
+      }
       // 만든 그림에 주제 도장과 비율 도장을 찍는다. 주제 도장은 재사용 여부를,
       // 비율 도장은 영상 바탕으로 써도 되는지를 가른다(work-media.ts isReusableVideoBaseImage,
       // 2026-09-16 실측: 1:1 대표 이미지를 영상 바탕으로 재사용해 정사각 영상이 나갔다).
@@ -889,6 +897,11 @@ export default function StudioPage() {
           : r?.credits
             ? "영상 생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다."
             : (r?.error || "영상을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
+      }
+      // ADR-007: 이미지와 같은 이유로 배달 주소 없는 "성공"을 성공으로 두지 않는다.
+      if (!r.file && !r.url) {
+        const msg = "영상을 만들었지만 화면에 걸 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.";
         setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
       }
       const stamped = { ...r, topicKey: mediaTopicKey(idea) };
@@ -950,24 +963,28 @@ export default function StudioPage() {
     const slides = text?.instagram?.slides?.length ? text.instagram.slides : [];
     if (!slides.length) { showToast("먼저 카드뉴스 초안을 만들어 주세요", "error"); return; }
 
-    const est = await apiPost<{
-      ok?: boolean; min_minor?: number; max_minor?: number;
-      estimated_seconds_min?: number; estimated_seconds_max?: number; assumptions?: string[];
-    }>("/api/studio/estimate", { tenant_id: activeWorkspace.id, kind: "card", count: 1 });
-    if (!est?.ok) { showToast("비용을 산정하지 못했습니다. 잠시 후 다시 시도해 주세요.", "error"); return; }
-
-    const approved = await askCostApproval({
-      title: "카드뉴스 대표 이미지",
-      description: "고른 구조의 첫 장을 대표 이미지로 만듭니다. 정사각형으로 나옵니다.",
-      minMinor: est.min_minor, maxMinor: est.max_minor,
-      secondsMin: est.estimated_seconds_min, secondsMax: est.estimated_seconds_max,
-      assumptions: est.assumptions,
-    });
-    if (!approved) { showToast("만들지 않았습니다", "success"); return; }
-
-    generationAbort.current = new AbortController();
-    setBusy("카드뉴스 이미지 만드는 중");
+    // ADR-007: 비용 산정·승인 단계가 여기서 예외를 던지면(네트워크 오류·401 등)
+    // try 밖이라 아무도 못 잡아 "눌러도 아무 일이 없다"가 됐다(2026-09-23 회장 지적,
+    // 생성실 스모크에서 카드 이미지 이후 상태가 흔들릴 때 이 자리가 조용히 죽었다).
+    // 비용 산정부터 생성 호출까지 전부 한 try 안에 넣어 어디서 죽어도 이유를 말한다.
     try {
+      const est = await apiPost<{
+        ok?: boolean; min_minor?: number; max_minor?: number;
+        estimated_seconds_min?: number; estimated_seconds_max?: number; assumptions?: string[];
+      }>("/api/studio/estimate", { tenant_id: activeWorkspace.id, kind: "card", count: 1 });
+      if (!est?.ok) { showToast("비용을 산정하지 못했습니다. 잠시 후 다시 시도해 주세요.", "error"); return; }
+
+      const approved = await askCostApproval({
+        title: "카드뉴스 대표 이미지",
+        description: "고른 구조의 첫 장을 대표 이미지로 만듭니다. 정사각형으로 나옵니다.",
+        minMinor: est.min_minor, maxMinor: est.max_minor,
+        secondsMin: est.estimated_seconds_min, secondsMax: est.estimated_seconds_max,
+        assumptions: est.assumptions,
+      });
+      if (!approved) { showToast("만들지 않았습니다", "success"); return; }
+
+      generationAbort.current = new AbortController();
+      setBusy("카드뉴스 이미지 만드는 중");
       // 학습 정보를 **통째로** 실어 보낸다. 2026-09-14 이전에는 브랜드 색 한 칸만 실리고
       // 업종·말투·목표·금지어는 고객이 골라 뒀는데도 그림에 한 번도 닿지 않았다.
       // 카드뉴스 본문을 그림 지시문으로 넘기지 않는다. 넘기면 생성기가 그 말을 그림 속
@@ -980,6 +997,11 @@ export default function StudioPage() {
         ),
         "1:1",
       );
+    } catch (e) {
+      // genImage 자체는 이미 실패 사유를 화면에 말한다. 여기서 잡는 것은 그 앞뒤
+      // (비용 산정·승인 단계)에서 던진 예외다 — 이유를 말하지 않으면 조용한 실패다.
+      const msg = extractApiErrorMessage(e, "카드뉴스 이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      setLastError(`이미지: ${msg}`); showToast(msg, "error");
     } finally {
       generationAbort.current = null;
       setBusy(null);
@@ -998,44 +1020,50 @@ export default function StudioPage() {
     // 으로 썼고, 영상이 이미 있으면 사용자는 무엇이 일어났는지 알 길이 없었다. 주제 도장으로
     // 가른다: 도장이 다르면 묻지 않고 새로 만들고(옛것이 발행되면 안 된다), 같으면 한 번
     // 물어 중복 과금을 막는다(근거: lib/studio/work-media.ts decideVideoRequest).
-    const decision = decideVideoRequest({ idea, img, vid });
-    if (decision.action === "confirm" && decision.confirm) {
-      const again = await askConfirm({
-        title: decision.confirm.title,
-        description: decision.confirm.description,
-        confirmLabel: "다시 만들기",
-        cancelLabel: "지금 영상 그대로 두기",
-      });
-      if (!again) { showToast("지금 영상을 그대로 둡니다", "success"); return; }
-    }
-    let source = decision.baseImage === "reuse" ? img : null;
-    const needsBaseImage = !source;
-    if (decision.notice) showToast(decision.notice, "success");
-
-    const est = await apiPost<{
-      ok?: boolean; min_minor?: number; max_minor?: number;
-      estimated_seconds_min?: number; estimated_seconds_max?: number; assumptions?: string[];
-    }>("/api/studio/estimate", { tenant_id: activeWorkspace.id, kind: "video", count: 1 });
-    if (!est?.ok) { showToast("비용을 산정하지 못했습니다. 잠시 후 다시 시도해 주세요.", "error"); return; }
-
-    const approved = await askCostApproval({
-      title: "숏폼 영상",
-      description: needsBaseImage
-        ? "바탕이 될 그림을 먼저 만들고, 그 그림을 움직이는 영상으로 바꿉니다. 소리는 없습니다."
-        : "방금 만든 대표 이미지를 움직이는 영상으로 바꿉니다. 소리는 없습니다.",
-      minMinor: est.min_minor, maxMinor: est.max_minor,
-      secondsMin: est.estimated_seconds_min, secondsMax: est.estimated_seconds_max,
-      assumptions: est.assumptions,
-    });
-    if (!approved) { showToast("만들지 않았습니다", "success"); return; }
-
-    // 옛 주제 영상은 만들기 시작하는 순간 내린다. 생성이 실패해도 화면에 남아 발행되면
-    // 안 된다. 승인 **뒤**에 내리는 이유는, 비용 승인 창에서 취소한 사용자에게서까지
-    // 되돌릴 수 없이 영상을 뺏지 않기 위해서다(2026-09-14 Codex 교차리뷰 P1).
-    // 취소하고 그대로 두더라도 발행 문에서 다시 막힌다(stalePublishBlock).
-    if (decision.notice) setVid(null);
-    generationAbort.current = new AbortController();
+    //
+    // ADR-007: 아래 비용 산정·승인·생성 전체를 한 try 로 감싼다. 종전에는 비용 산정
+    // (est) 과 승인 호출이 try 밖에 있어, 거기서 예외가 나면 아무도 못 잡고 함수가
+    // 조용히 죽었다 — 화면은 "숏폼 영상 만들기" 를 누른 그대로였고 토스트도, 진행
+    // 표시도, 오류 문구도 없었다(2026-09-23 회장 지적 "영상이 없으면 만들어서라도
+    // 배포해야지"의 직접 원인 중 하나: 실패조차 보이지 않아 재시도할 계기가 없었다).
     try {
+      const decision = decideVideoRequest({ idea, img, vid });
+      if (decision.action === "confirm" && decision.confirm) {
+        const again = await askConfirm({
+          title: decision.confirm.title,
+          description: decision.confirm.description,
+          confirmLabel: "다시 만들기",
+          cancelLabel: "지금 영상 그대로 두기",
+        });
+        if (!again) { showToast("지금 영상을 그대로 둡니다", "success"); return; }
+      }
+      let source = decision.baseImage === "reuse" ? img : null;
+      const needsBaseImage = !source;
+      if (decision.notice) showToast(decision.notice, "success");
+
+      const est = await apiPost<{
+        ok?: boolean; min_minor?: number; max_minor?: number;
+        estimated_seconds_min?: number; estimated_seconds_max?: number; assumptions?: string[];
+      }>("/api/studio/estimate", { tenant_id: activeWorkspace.id, kind: "video", count: 1 });
+      if (!est?.ok) { showToast("비용을 산정하지 못했습니다. 잠시 후 다시 시도해 주세요.", "error"); return; }
+
+      const approved = await askCostApproval({
+        title: "숏폼 영상",
+        description: needsBaseImage
+          ? "바탕이 될 그림을 먼저 만들고, 그 그림을 움직이는 영상으로 바꿉니다. 소리는 없습니다."
+          : "방금 만든 대표 이미지를 움직이는 영상으로 바꿉니다. 소리는 없습니다.",
+        minMinor: est.min_minor, maxMinor: est.max_minor,
+        secondsMin: est.estimated_seconds_min, secondsMax: est.estimated_seconds_max,
+        assumptions: est.assumptions,
+      });
+      if (!approved) { showToast("만들지 않았습니다", "success"); return; }
+
+      // 옛 주제 영상은 만들기 시작하는 순간 내린다. 생성이 실패해도 화면에 남아 발행되면
+      // 안 된다. 승인 **뒤**에 내리는 이유는, 비용 승인 창에서 취소한 사용자에게서까지
+      // 되돌릴 수 없이 영상을 뺏지 않기 위해서다(2026-09-14 Codex 교차리뷰 P1).
+      // 취소하고 그대로 두더라도 발행 문에서 다시 막힌다(stalePublishBlock).
+      if (decision.notice) setVid(null);
+      generationAbort.current = new AbortController();
       if (needsBaseImage) {
         setBusy("영상 바탕 그림 만드는 중");
         source = await genImage(
@@ -1061,6 +1089,11 @@ export default function StudioPage() {
         return;
       }
       await genVideo({ localPath: source?.localPath, filename: baseFilename });
+    } catch (e) {
+      // genImage/genVideo 는 각자 실패 사유를 이미 화면에 말한다. 여기서 잡는 것은
+      // 그 앞뒤(주제 재확인·비용 산정·승인) 단계에서 던진 예외다.
+      const msg = extractApiErrorMessage(e, "영상을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      setLastError(`영상: ${msg}`); showToast(msg, "error");
     } finally {
       generationAbort.current = null;
       setBusy(null);
