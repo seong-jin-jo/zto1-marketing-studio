@@ -1,3 +1,12 @@
+# 2026-09-24 08:11 KST PR 83 남은 테스트 1건 수정·표적 검증 완료
+
+- handoff basis: 사용자가 지정한 네 번째 회수 과제, 워크트리 `/private/tmp/zto1-editroom-main`, PR 83 run `35930955966`을 primary로 삼았다. `osmu-review-pr83:0.0`은 직전 표적 테스트 로그 확인에만 사용했다.
+- 판정: 제품 회귀가 아니다. `StudioCommandPanel`은 저장 Promise가 끝날 때까지 `busy`로 발행 버튼을 비활성화하는데, 테스트는 `onSaveEdit` 호출만 기다리고 저장 완료 전에 발행 버튼을 눌렀다. 음악 제거가 새 기능을 깨뜨린 것이 아니라 CI 부하에서 드러난 낡은 비동기 단언이다.
+- 수정: 저장 완료 문구가 나타난 뒤 발행실 이동을 누르도록 표적 테스트 1줄을 보강하고 `docs/qa/qa-tracker.md`를 🔧 전환했다. 제품 코드는 변경하지 않았다. 테스트 커밋은 `0a38b4d1`이다.
+- 검증: `npx vitest run tests/studio/studio-command-panel.test.tsx` 1파일·3건, `npm run typecheck:ci`가 종료 코드 0으로 통과했다. 전체 묶음은 회장 지시대로 실행하지 않았다. 운영 배포는 미검증이다.
+- 원격 차단: `git push origin fix/edit-room-no-order-music-main`은 `approval required by policy, but AskForApproval is set to Never`로 거절됐다. 로컬 끝 커밋은 문서 amend 뒤 확정하며 원격 `ce526f6f`보다 두 커밋 앞이다.
+- 다음 실행: push 권한이 있는 컨트롤러가 같은 브랜치를 push하고 PR 83 CI를 종료까지 관찰한다.
+
 # 2026-09-24 06:14 KST PR 83 세 번째 CI OOM 원인 수정, push·원격 CI 대기
 
 - handoff basis: 사용자가 지정한 세 번째 회수 과제, 워크트리 `/private/tmp/zto1-editroom-main`, PR 83 run `35916251802`를 기준으로 삼았다. `osmu-review-pr83:0.0`은 이전 표적 테스트 로그 확인에만 사용했다.
