@@ -1,3 +1,10 @@
+## 2026-09-23 11:2x 성과 수집 정상 확인(앞선 "거절" 보고는 컨트롤러 오독)
+
+- /api/metrics 응답 실측: {"ok":true,"updated":5,"total":5,"failed":0,"partial":false,"collectionBlocked":false,"failures":[],"excluded":[]}. 발행 5건 전부 수집 갱신됨.
+- 앞 보고의 "수집 거절"은 화면 안내 문구("거절 안내가 뜨면 그 안내대로 채널을 다시 연결해 주세요")의 단어를 잡은 오독이었다. 같은 방식의 오독이 이미지 생성 판정에서도 1회 있었다(실수원장 substring-false-positive).
+- 조회·좋아요·답글이 0 인 것은 수집 실패가 아니라 발행 직후라 플랫폼에 수치가 아직 없기 때문으로 보인다. 시간을 두고 재수집해 확인 필요(미검증).
+- 인스타그램 게시물 external_id 18432192496183284, permalink https://www.instagram.com/p/Ddm0HKzExlm/ 로 실제 연결 확인.
+
 ## 2026-09-23 11:0x 코덱스 교차 진단 회수: 편집 품질 저하의 근본은 데이터 모델
 
 코덱스(GPT-5 계열) 진단 요지(파일:줄 근거 있음, 대상 StudioRooms.tsx EditRoom):
