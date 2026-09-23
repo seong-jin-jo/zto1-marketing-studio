@@ -1,3 +1,10 @@
+# 2026-09-24 01:33 KST 편집실 글 순서·배경 음악 조작면 제거 진행 중
+
+- handoff basis: 사용자가 명시한 작업 원문과 `origin/main` 40de32ee 기준 깨끗한 워크트리다. `openclaw-auto:1.1`은 이 워커 자체 패널이어서 별도 인계 소스로 사용하지 않았다.
+- 현재 확인: 글은 `EditOutline` 이동·추가·삭제 콜백이 이미 없지만 회귀 계약이 없다. 형식 목록의 음악, audio의 음악·음량 도구 및 미지원 경고는 남아 있고 목소리 도구는 숨겨져 있다.
+- 보존 계약: 카드뉴스·영상 순서 이동, 기존 `kind=audio` 초안 데이터, 저장 payload의 `musicTrack`·`musicVolume`, 목소리 편집은 유지한다.
+- 다음 실행: 제품 코드와 낡은 테스트를 고치고, 신규 회귀 테스트의 돌연변이 실패를 확인한 뒤 전체 components·studio, TypeScript, design lint를 종료한다.
+
 # 2026-09-18 01:08 KST Meta App Review 인사이트 코드 갭 수정 검증 완료
 
 사용자의 명시 과제를 handoff basis로 사용한다. `openclaw-auto:0.0`은 중복 작업 확인에만 캡처했고

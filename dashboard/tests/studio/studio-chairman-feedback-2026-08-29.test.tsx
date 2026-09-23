@@ -222,14 +222,15 @@ describe("편집실 미리보기 (회장: 컨텐츠가 미리볼 수 있는게 �
     expect(onLinesChange).toHaveBeenLastCalledWith(["고친 첫 문단", "고친 둘째 문단"]);
   });
 
-  it("R-S10-32 정상: 만들 콘텐츠 형식은 글·카드뉴스·영상·음악을 모두 한곳에 보여 준다", () => {
+  it("R-S10-32 정상: 만들 콘텐츠 형식은 글·카드뉴스·영상만 한곳에 보여 준다", () => {
     const onKindChange = vi.fn();
     render(<EditRoom lines={["본문"]} onLinesChange={noop} kind="text" onKindChange={onKindChange} />);
 
     const group = screen.getByRole("group", { name: "만들 콘텐츠 형식" });
-    for (const label of ["글", "카드뉴스", "영상", "음악"]) {
+    for (const label of ["글", "카드뉴스", "영상"]) {
       expect(group.querySelector(`button[aria-label="${label}"]`)).not.toBeNull();
     }
+    expect(group.querySelector('button[aria-label="음악"]')).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "영상" }));
     expect(onKindChange).toHaveBeenCalledWith("video");
   });

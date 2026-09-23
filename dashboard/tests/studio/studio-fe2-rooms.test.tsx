@@ -312,11 +312,12 @@ describe("화면 2차 편집실 계약", () => {
     })));
   });
 
-  it("FE6-EDIT-05 거절: 음악 백엔드가 없을 때 파일이나 파형을 완성된 것처럼 표시하지 않는다", () => {
+  it("FE6-EDIT-05 정상: 기존 나레이션은 배경 음악 조작 없이 목소리만 편집한다", () => {
     render(<EditRoom lines={["나레이션"]} onLinesChange={vi.fn()} kind="audio" />);
-    expect(screen.getByText("음악 파일 생성은 아직 제공하지 않습니다. 지금은 나레이션 대사만 편집할 수 있습니다.")).toBeInTheDocument();
-    expect(document.querySelector("[data-edit-stage]")).not.toBeInTheDocument();
-    expect(document.querySelector("[data-edit-tools]")).not.toBeInTheDocument();
+    expect(screen.getByText("나레이션 대사 편집")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "목소리 도구" })).toBeInTheDocument();
+    expect(screen.queryByText(/음악 파일 생성은 아직 제공하지 않습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/배경음악 음량/)).not.toBeInTheDocument();
   });
 
   it("QA-EDIT-06 정상: 글 형식은 카드뉴스가 아니라 글 문단과 연속 문서 편집기로 전환된다", () => {
