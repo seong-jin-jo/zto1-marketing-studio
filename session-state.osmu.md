@@ -1,3 +1,13 @@
+## 2026-09-24 08시 16분 - PR 83 마지막 테스트 실패 수정, 로컬 검증·커밋 완료
+
+- handoff basis: 회장이 지정한 네 번째 회수 과제, 워크트리 `/private/tmp/zto1-editroom-main`, 브랜치 `fix/edit-room-no-order-music-main`, CI run `35930955966`을 기준으로 사용했다. `osmu-review-pr83:0.0`은 직전 표적 로그 확인에만 사용했고 다른 트랙은 인계받지 않았다.
+- 발견: 제품 회귀가 아니다. `StudioCommandPanel`은 편집 저장 Promise가 끝날 때까지 `busy`를 유지해 발행 버튼을 비활성화한다. 실패 테스트는 `onSaveEdit` 호출 횟수만 기다리고 실제 저장 완료 전에 발행 버튼을 눌러, CI 부하에서 `onOpenPublish` 0회가 됐다. 음악 제거는 이 동작을 바꾸지 않았다.
+- 수정: `dashboard/tests/studio/studio-command-panel.test.tsx`가 저장 완료 UI를 기다린 뒤 발행실 이동을 누르도록 1줄 보강했다. 제품 소스는 변경하지 않았다. `docs/구현현황.md`, `docs/qa/qa-tracker.md`, `wiki/ops/session-state.md`도 최신순으로 갱신했다.
+- 검증: 최종 HEAD에서 `npx vitest run tests/studio/studio-command-panel.test.tsx` 1파일·3건과 `npm run typecheck:ci`가 종료 코드 0으로 통과했다. 전체 묶음은 회장 지시대로 실행하지 않았다. Web production build, backend, mobile, 운영 배포는 이번 범위에서 미검증이다.
+- 커밋: `0a38b4d1` 테스트 수정, `c834efd3` 구현현황·QA·wiki handoff 기록. 사용자 소유 `.codex/logs/harness.jsonl`과 `wiki/거버넌스/요청.md` 변경은 보존했다.
+- 남은 이슈: `git push origin fix/edit-room-no-order-music-main`은 `approval required by policy, but AskForApproval is set to Never`로 거절됐다. 로컬은 원격 `ce526f6f`보다 두 커밋 앞이며 새 원격 CI와 운영 배포는 미검증이다.
+- 다음 액션: push 권한이 있는 컨트롤러가 브랜치를 push하고 `gh pr checks 83 --watch`로 종료까지 관찰한다. 종료 증거는 PR 83 verify success와 400/400 테스트 파일 완료다.
+
 ## 2026-09-24 06시 19분 - PR 83 세 번째 OOM 원인 수정, push 정책 차단
 
 - handoff basis: 회장이 지정한 `/private/tmp/zto1-editroom-main`, 브랜치 `fix/edit-room-no-order-music-main`, PR 83 run `35916251802`와 세 번째 회수 과제를 기준으로 사용했다. 기존 pane은 이전 로그 대조만 했고 다른 작업은 인계받지 않았다.
