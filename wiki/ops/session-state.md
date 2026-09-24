@@ -1,3 +1,38 @@
+# 2026-09-24 08:11 KST PR 83 남은 테스트 1건 수정·표적 검증 완료
+
+- handoff basis: 사용자가 지정한 네 번째 회수 과제, 워크트리 `/private/tmp/zto1-editroom-main`, PR 83 run `35930955966`을 primary로 삼았다. `osmu-review-pr83:0.0`은 직전 표적 테스트 로그 확인에만 사용했다.
+- 판정: 제품 회귀가 아니다. `StudioCommandPanel`은 저장 Promise가 끝날 때까지 `busy`로 발행 버튼을 비활성화하는데, 테스트는 `onSaveEdit` 호출만 기다리고 저장 완료 전에 발행 버튼을 눌렀다. 음악 제거가 새 기능을 깨뜨린 것이 아니라 CI 부하에서 드러난 낡은 비동기 단언이다.
+- 수정: 저장 완료 문구가 나타난 뒤 발행실 이동을 누르도록 표적 테스트 1줄을 보강하고 `docs/qa/qa-tracker.md`를 🔧 전환했다. 제품 코드는 변경하지 않았다. 테스트 커밋은 `0a38b4d1`이다.
+- 검증: `npx vitest run tests/studio/studio-command-panel.test.tsx` 1파일·3건, `npm run typecheck:ci`가 종료 코드 0으로 통과했다. 전체 묶음은 회장 지시대로 실행하지 않았다. 운영 배포는 미검증이다.
+- 원격 차단: `git push origin fix/edit-room-no-order-music-main`은 `approval required by policy, but AskForApproval is set to Never`로 거절됐다. 로컬 끝 커밋은 문서 amend 뒤 확정하며 원격 `ce526f6f`보다 두 커밋 앞이다.
+- 다음 실행: push 권한이 있는 컨트롤러가 같은 브랜치를 push하고 PR 83 CI를 종료까지 관찰한다.
+
+# 2026-09-24 06:14 KST PR 83 세 번째 CI OOM 원인 수정, push·원격 CI 대기
+
+- handoff basis: 사용자가 지정한 세 번째 회수 과제, 워크트리 `/private/tmp/zto1-editroom-main`, PR 83 run `35916251802`를 기준으로 삼았다. `osmu-review-pr83:0.0`은 이전 표적 테스트 로그 확인에만 사용했다.
+- 원인 판정: `origin/main` 40de32ee의 동일 CI run `35810020143`은 성공했고 PR HEAD ed3fe076은 398/400 뒤 2,038.5MB와 2,013.2MB 힙 OOM으로 실패했다. 미완료 두 파일은 `studio-publish-ui.test.tsx`와 `edit-autosave-cross-domain.regression-1.test.tsx`다. 신규 회귀 경량화 가설은 기각됐다.
+- 근본 원인: PR 83의 `preservedAudio`가 `initialFormat` 객체 전체를 의존해 `selectedFormat → onFormatChange → 부모 setEditFormat → 새 initialFormat` 렌더 순환을 만들었다. 수정 전 표적은 168초·RSS 635MB, 499초·RSS 3,346MB에서도 미종료였다.
+- 수정: 음악 트랙과 음량 값만 메모이제이션 의존성으로 사용하고, 제어형 포맷 반복 갱신 거절 테스트를 추가했다. 코드 커밋은 `c987018b`다.
+- 검증: 수정 뒤 두 표적은 10.30초·힙 77MB와 21.99초·힙 204MB로 종료했다. 관련 Vitest 6파일 92건, `npm run typecheck:ci`가 통과했다. 디자인 lint는 기존 hex 6파일 경고이며 새 스타일 변경은 없다.
+- 원격 차단: `git push origin fix/edit-room-no-order-music-main`은 실행 정책이 `approval required by policy, but AskForApproval is set to Never`로 거절했다. 수정 산출물 끝 커밋은 `4b3552a8`이고 브랜치는 원격 `ed3fe076`보다 3커밋 앞이다.
+- 다음 실행: push 권한이 있는 컨트롤러가 같은 브랜치를 push하고 PR 83 CI를 종료까지 관찰한다. 운영 배포는 범위 밖이며 미검증이다.
+
+# 2026-09-24 03:57 KST PR 83 CI 메모리 수정과 돌연변이 검증, push 대기
+
+- handoff basis: 사용자가 명시한 워크트리 `/private/tmp/zto1-editroom-main`, 브랜치 `fix/edit-room-no-order-music-main`, 커밋 `e90ef3a7`과 이번 과제를 기준으로 삼았다. 기존 pane `osmu-review-pr83:0.0`은 표적 테스트 5/5 로그 확인에만 사용했고 다른 작업은 인계받지 않았다.
+- 원인: PR run `35895736674`에서 새 회귀는 정상 종료했지만 파일 추가로 스케줄이 바뀌어 기존 대형 `StudioPage` 테스트 두 개가 워커 수명 끝에 남았다. 워커는 각각 약 2.04GB에서 죽었다. 새 파일 단독은 힙 78MB·RSS 206MB였고, `studio-publish-ui` 단독은 RSS 982MB를 넘었다.
+- 수정: 신규 회귀를 중복 jsdom 렌더 없는 소스 배선 계약으로 바꿔 힙 14MB·RSS 125MB로 줄였다. 생성실의 빈 `준비 중` 묶음과 `배경 음악` 예고를 제거했다. 코드 커밋은 `ea7714a8`이다.
+- 검증: 표적 5/5, TypeScript 종료 0. 8개 제품 돌연변이가 각각 01~05 단언을 실패시키고 원복 뒤 최종 통과했다. 디자인 lint는 저장소 기존 hex 경고 6파일을 보고했으며 이번 변경의 새 스타일 위반은 없다.
+- 원격 차단: 로컬 HEAD `bfbbe13f`는 원격 `e90ef3a7`보다 두 커밋 앞이지만, `git push origin fix/edit-room-no-order-music-main`은 실행 정책이 `approval required by policy, but AskForApproval is set to Never`로 거절했다. `gh pr checks 83`은 아직 이전 run `35895736674`의 실패를 가리킨다.
+- 다음 실행: push 권한이 있는 세션이 `git push origin fix/edit-room-no-order-music-main`을 실행한 뒤 `gh pr checks 83 --watch`로 CI 종료까지 관찰한다. 실패하면 해당 원인을 수정하고 다시 push한다. 운영 배포는 범위 밖이며 미검증이다.
+
+# 2026-09-24 01:33 KST 편집실 글 순서·배경 음악 조작면 제거 진행 중
+
+- handoff basis: 사용자가 명시한 작업 원문과 `origin/main` 40de32ee 기준 깨끗한 워크트리다. `openclaw-auto:1.1`은 이 워커 자체 패널이어서 별도 인계 소스로 사용하지 않았다.
+- 현재 확인: 글은 `EditOutline` 이동·추가·삭제 콜백이 이미 없지만 회귀 계약이 없다. 형식 목록의 음악, audio의 음악·음량 도구 및 미지원 경고는 남아 있고 목소리 도구는 숨겨져 있다.
+- 보존 계약: 카드뉴스·영상 순서 이동, 기존 `kind=audio` 초안 데이터, 저장 payload의 `musicTrack`·`musicVolume`, 목소리 편집은 유지한다.
+- 다음 실행: 제품 코드와 낡은 테스트를 고치고, 신규 회귀 테스트의 돌연변이 실패를 확인한 뒤 전체 components·studio, TypeScript, design lint를 종료한다.
+
 # 2026-09-18 01:08 KST Meta App Review 인사이트 코드 갭 수정 검증 완료
 
 사용자의 명시 과제를 handoff basis로 사용한다. `openclaw-auto:0.0`은 중복 작업 확인에만 캡처했고

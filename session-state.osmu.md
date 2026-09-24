@@ -1,3 +1,33 @@
+## 2026-09-24 08시 16분 - PR 83 마지막 테스트 실패 수정, 로컬 검증·커밋 완료
+
+- handoff basis: 회장이 지정한 네 번째 회수 과제, 워크트리 `/private/tmp/zto1-editroom-main`, 브랜치 `fix/edit-room-no-order-music-main`, CI run `35930955966`을 기준으로 사용했다. `osmu-review-pr83:0.0`은 직전 표적 로그 확인에만 사용했고 다른 트랙은 인계받지 않았다.
+- 발견: 제품 회귀가 아니다. `StudioCommandPanel`은 편집 저장 Promise가 끝날 때까지 `busy`를 유지해 발행 버튼을 비활성화한다. 실패 테스트는 `onSaveEdit` 호출 횟수만 기다리고 실제 저장 완료 전에 발행 버튼을 눌러, CI 부하에서 `onOpenPublish` 0회가 됐다. 음악 제거는 이 동작을 바꾸지 않았다.
+- 수정: `dashboard/tests/studio/studio-command-panel.test.tsx`가 저장 완료 UI를 기다린 뒤 발행실 이동을 누르도록 1줄 보강했다. 제품 소스는 변경하지 않았다. `docs/구현현황.md`, `docs/qa/qa-tracker.md`, `wiki/ops/session-state.md`도 최신순으로 갱신했다.
+- 검증: 최종 HEAD에서 `npx vitest run tests/studio/studio-command-panel.test.tsx` 1파일·3건과 `npm run typecheck:ci`가 종료 코드 0으로 통과했다. 전체 묶음은 회장 지시대로 실행하지 않았다. Web production build, backend, mobile, 운영 배포는 이번 범위에서 미검증이다.
+- 커밋: `0a38b4d1` 테스트 수정, `c834efd3` 구현현황·QA·wiki handoff 기록. 사용자 소유 `.codex/logs/harness.jsonl`과 `wiki/거버넌스/요청.md` 변경은 보존했다.
+- 남은 이슈: `git push origin fix/edit-room-no-order-music-main`은 `approval required by policy, but AskForApproval is set to Never`로 거절됐다. 로컬은 원격 `ce526f6f`보다 두 커밋 앞이며 새 원격 CI와 운영 배포는 미검증이다.
+- 다음 액션: push 권한이 있는 컨트롤러가 브랜치를 push하고 `gh pr checks 83 --watch`로 종료까지 관찰한다. 종료 증거는 PR 83 verify success와 400/400 테스트 파일 완료다.
+
+## 2026-09-24 06시 19분 - PR 83 세 번째 OOM 원인 수정, push 정책 차단
+
+- handoff basis: 회장이 지정한 `/private/tmp/zto1-editroom-main`, 브랜치 `fix/edit-room-no-order-music-main`, PR 83 run `35916251802`와 세 번째 회수 과제를 기준으로 사용했다. 기존 pane은 이전 로그 대조만 했고 다른 작업은 인계받지 않았다.
+- 원인: `origin/main` 40de32ee의 동일 CI run `35810020143`은 성공했고 PR HEAD ed3fe076은 398/400 뒤 워커 힙 2,038.5MB와 2,013.2MB에서 실패했다. 로그와 테스트 목록 차집합으로 미완료 파일 `tests/publish/studio-publish-ui.test.tsx`, `tests/studio/edit-autosave-cross-domain.regression-1.test.tsx`를 특정했다. 직전 신규 회귀 경량화 가설은 기각했다.
+- 근본 결함: PR 83의 `preservedAudio`가 `initialFormat` 객체 전체를 의존해 `selectedFormat → onFormatChange → 부모 setEditFormat → 새 initialFormat` 렌더 순환을 만들었다. 수정 전 표적은 168초·RSS 635MB, 499초·RSS 3,346MB에서도 끝나지 않았다.
+- 수정: 음악 트랙과 음량 원시값만 메모이제이션 의존성으로 사용하고, 제어형 포맷 반복 갱신을 막는 `V65-EDIT-07` 테스트를 추가했다. API·DB·라우팅·CI 메모리 상한은 바꾸지 않았다.
+- 검증: 수정 뒤 두 표적은 10.30초·힙 77MB와 21.99초·힙 204MB로 종료했다. 관련 Vitest 6파일 92건과 `npm run typecheck:ci`가 통과했다. 디자인 lint는 저장소 기존 hex 6파일 경고이며 새 스타일 변경은 없다.
+- 커밋: `c987018b` 코드·테스트, `4b3552a8` QA·구현현황, `65652429` push 차단 기록. 사용자 소유 `.codex/logs/harness.jsonl`과 `wiki/거버넌스/요청.md` 변경은 보존했다.
+- 남은 이슈: `git push origin fix/edit-room-no-order-music-main`은 실행 정책의 `approval required by policy, but AskForApproval is set to Never`로 거절됐다. 원격 브랜치는 `ed3fe076`이고 로컬은 세 커밋 앞이다. 수정본 원격 CI와 운영 배포는 미검증이다.
+- 다음 액션: push 권한이 있는 컨트롤러가 브랜치를 push하고 `gh pr checks 83 --watch`로 종료까지 관찰한다. 종료 증거는 PR 83 `verify success`와 400/400 테스트 파일 완료다.
+
+## 2026-09-24 04시 04분 - PR 83 로컬 수정 완료, push 정책 차단
+
+- handoff basis: 회장이 지정한 `/private/tmp/zto1-editroom-main`, 브랜치 `fix/edit-room-no-order-music-main`, 시작 커밋 `e90ef3a7`과 이번 과제를 기준으로 사용했다. `osmu-review-pr83:0.0`은 직전 표적 테스트 로그 확인에만 사용했고 다른 pane 작업은 인계받지 않았다.
+- 완료: PR run `35895736674`의 완료 파일을 main 성공 run `35810020143`과 대조해, 새 회귀는 정상 종료했고 기존 대형 `StudioPage` 테스트 두 개가 워커 수명 끝에 남아 약 2.04GB에서 죽은 것을 확인했다. 신규 회귀는 jsdom 전체 렌더를 제거해 힙 78MB→14MB, 최대 RSS 206MB→125MB, Vitest 내부 시간 30.26초→6.05초로 줄였다. 생성실의 유일한 `준비 중: 배경 음악` 묶음도 최신 음악 제거 계약에 맞춰 삭제했다.
+- 검증: 표적 회귀 최종 5/5, `npm run typecheck:ci` 종료 코드 0. 제품 돌연변이 8종은 글 조작 복원·카드/영상 이동 제거·음악 형식/도구/경고/예고 복원·audio 보존 필드 유실·헤더 음악 복원을 각각 01~05 단언으로 실패시켰고 매번 원복했다. 디자인 lint는 이번 변경의 새 스타일 위반 없이 저장소 기존 hex 경고 6파일을 보고했다.
+- 커밋: `ea7714a8` 코드와 회귀 경량화, `bfbbe13f` QA·구현현황, `f31987c6` push 차단 기록. 로컬 HEAD는 원격 `e90ef3a7`보다 세 커밋 앞이다. 사용자 소유 `.codex/logs/harness.jsonl`과 `wiki/거버넌스/요청.md` 변경은 건드리지 않았다.
+- 남은 이슈: `git push origin fix/edit-room-no-order-music-main`이 실행 정책의 `approval required by policy, but AskForApproval is set to Never`로 거절됐다. 따라서 PR 83은 아직 이전 `verify fail` run `35895736674`를 가리키며 새 CI는 미검증이다. 운영 배포도 미검증이다.
+- 다음 액션: push 권한이 있는 컨트롤러가 위 브랜치를 push한 뒤 `gh pr checks 83 --watch`로 새 CI 종료를 확인한다. 실패하면 실패 로그의 미완료 파일과 원인을 대조해 수정 후 재push한다. 종료 증거는 PR 83 `verify success`다.
+
 ## 2026-09-18 01시 55분 - PR 59 CI green, 머지는 분류기 차단으로 회장 몫
 
 - Codex 두 커밋(95d74ca5 코드 갭 3건 해소 verify PASS, 8ce90a80 CI 타입 수정) push 후 PR 59 CI green(run 35248276901, verify pass 9m47s). 컨트롤러 `gh pr merge 59` 는 분류기 [Merge Without Review] 로 차단. 회장이 머지하면 main 배포 CI 가 돌고 컨트롤러가 green 을 확인한다.

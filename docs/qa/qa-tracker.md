@@ -1,3 +1,26 @@
+## 2026-09-24 08:11 KST · PR 83 Studio 담당 대화 명령 테스트 🔧 전환
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR83-CI-STUDIO-COMMAND | 저장 뒤 발행실 이동 콜백이 CI에서도 안정적으로 호출됨 | R-S10-38 | ❌ NG → 🔧 테스트 수정, 로컬 PASS | run `35930955966`은 400파일 중 399파일·2,666건 통과 뒤 `onOpenPublish` 0회로 실패했다. 제품은 저장 Promise 동안 발행을 의도적으로 비활성화한다. 테스트가 콜백 호출만 기다리던 것을 저장 완료 UI까지 기다리도록 수정했다. 표적 Vitest 1파일·3건과 `npm run typecheck:ci` 종료 코드 0. 제품 소스 변경 0건, 원격 CI는 push 정책 차단으로 미검증. |
+
+## 2026-09-24 06:14 KST · PR 83 세 번째 CI OOM 회수, 렌더 루프 원인 수정
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR83-CI-MEMORY-R3 | 경량화 뒤에도 반복된 두 Vitest 워커 OOM의 실제 원인 특정 | V65-EDIT-07 | ❌ NG → 🔧 수정, 로컬 PASS | 기준 `origin/main` 40de32ee는 같은 CI run `35810020143`에서 성공했고 PR HEAD ed3fe076은 run `35916251802`에서 398/400 뒤 두 워커가 2,038.5MB와 2,013.2MB 힙에서 종료됐다. CI 로그와 전체 테스트 파일 목록의 차집합은 `studio-publish-ui.test.tsx`, `edit-autosave-cross-domain.regression-1.test.tsx`였다. 직전의 신규 회귀 파일 경량화 가설은 기각한다. |
+| PR83-RENDER-LOOP | 나레이션 음악 보존이 제어형 포맷을 무한 재전달하지 않음 | V65-EDIT-07 | PASS | `preservedAudio`가 `initialFormat` 객체 전체를 의존해 `selectedFormat → onFormatChange → 부모 setEditFormat → 새 initialFormat` 순환을 만들었다. 수정 전 `edit-autosave-cross-domain`은 168초에도 첫 테스트를 끝내지 못했고 워커 RSS 635MB를 관찰했다. `studio-publish-ui`는 499초에도 끝나지 않았고 워커 RSS 3,346MB를 관찰했다. 음악 트랙과 음량 원시값만 의존하게 고친 뒤 각각 10.30초·힙 77MB, 21.99초·힙 204MB로 끝났다. |
+| PR83-TARGETED-R3 | 변경 관련 대형 UI와 편집 계약 회귀 | PR83-R3-TARGETED | PASS | Vitest 6파일 92건 통과. 두 CI 미완료 파일도 포함했고 파일 종료 힙은 `studio-publish-ui` 121MB, `edit-autosave-cross-domain` 79MB였다. `npm run typecheck:ci` 종료 코드 0. 디자인 lint는 저장소 기존 hex 6파일 경고를 유지하며 이번 변경은 스타일을 추가하지 않았다. 원격 CI는 push 뒤 재검증한다. |
+
+## 2026-09-24 03:57 KST · PR 83 회귀 테스트 메모리와 돌연변이 검증 🔧 전환
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR83-CI-MEMORY | CI의 Vitest 워커 2개 메모리 부족 원인 제거 | EDITROOM-NO-DEAD-CONTROLS-MEMORY | ❌ NG → 🔧 수정, 로컬 PASS, 원격 대기 | 실패 run `35895736674`는 400파일 중 398파일과 2,635건을 통과한 뒤 두 워커가 약 2.04GB 힙에서 종료됐다. 새 회귀 파일은 단독 힙 78MB, 최대 RSS 206MB였고 CI에서도 통과했다. 다만 이 파일 추가로 기존 `StudioPage` 전체 마운트 파일 두 개가 워커 수명 끝에 남았다. 그중 `studio-publish-ui.test.tsx`는 단독 실행에서도 RSS 982MB를 넘고 4분 이상 걸려 중단했다. 새 회귀를 DOM 전체 마운트 없이 소스 배선 계약으로 바꿔 힙 14MB, 최대 RSS 125MB, 30.26초에서 6.05초로 줄였다. Vitest 메모리 상한과 CI 설정은 바꾸지 않았다. |
+| PR83-MUTATION | 글 순서와 음악 제거 회귀가 실제 제품 되돌림을 잡는지 확인 | EDITROOM-NO-DEAD-CONTROLS-01~05 | PASS | 표적 파일 하나만 실행했다. 글 이동 복원은 01·02, 카드·영상 이동 제거는 01·02, 음악 형식 복원·음악 도구 복원·미지원 경고 복원·배경 음악 예고 복원은 03, 기존 audio 음악 필드 덮어쓰기는 04, 헤더 `음악` 복원은 05가 각각 종료 코드 1로 잡았다. 매 돌연변이는 즉시 원복했고 최종 5/5 통과했다. |
+| PR83-MUSIC-ROADMAP | 생성실의 `준비 중: 배경 음악` 제거 | EDITROOM-NO-DEAD-CONTROLS-03 | 🔧 수정, 로컬 PASS | 제품의 제공 형식과 편집 조작면에서 음악을 제거했으므로 유일한 준비 중 항목까지 남기면 제품 약속이 모순된다. `현재 제공` 세 항목은 유지하고 빈 `준비 중` 묶음과 배경 음악 한 줄만 제거했다. |
+| PR83-TYPECHECK | 변경 코드와 테스트 TypeScript 계약 | TYPECHECK-CI | PASS | `npm run typecheck:ci` 종료 코드 0. 표적 Vitest 1파일 5건 통과. 디자인 lint는 이번 변경에서 새 위반은 없지만 저장소 기존 토큰 밖 hex 6파일 경고를 계속 보고했다. |
+
 ## 2026-09-18 01:31 KST · Meta 인사이트 회귀 테스트 CI 타입 검사 🔧 전환
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
@@ -7325,3 +7348,9 @@ OAuth provider 12개 중 완전 설정 0개다. Seed A에는 초안 1개와 공�
 원인 판정: 두 감사에서 남은 기본 흐름 갭은 새 저장 모델과 API 의미를 요구한다. 현재 누계값을
 30일 성과로 재해석하면 공급자별 계약 차이를 숨기고 재현 불가능한 비교를 만든다. 제품 소스와
 migration은 수정하지 않고, 최신 코드와 localhost 회귀를 다시 확인한 뒤 증거를 갱신한다.
+## 2026-09-24 01:33 KST · 편집실 글 순서·배경 음악 죽은 조작면 ❌ NG 등록
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-20260924 | 글 형식에서 순서 이동을 노출하지 않고 카드·영상 순서는 보존 | EDITROOM-NO-DEAD-CONTROLS-01 | ❌ NG | 현재 글의 목차 콜백은 이미 차단됐으나 이를 직접 고정하는 회귀 계약이 없다. 음악 형식·배경 음악 도구·미지원 경고는 아직 노출된다. |
+| EDITROOM-20260924 | 목소리 편집 보존, 기존 audio 초안의 `musicTrack`·`musicVolume` 저장값 보존 | EDITROOM-NO-DEAD-CONTROLS-02 | ❌ NG | audio 분기가 배경 음악 조작과 경고만 노출하고 목소리 도구는 숨긴다. UI 제거 후 payload 보존 회귀 테스트가 없다. |
