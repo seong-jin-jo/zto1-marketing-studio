@@ -245,12 +245,14 @@ services:
       # claude CLI 폴백 인증(테넌트 Anthropic 키 미등록 시 `claude -p`). 호스트가 사전 인증된 ~/.claude 필요.
       # 테넌트가 자기 API 키 등록 시 이 경로 불필요(HTTP API로 감). 인증 없으면 폴백만 502(고객 키 경로는 정상).
       - ${HOME}/.claude:/root/.claude:ro
-      # 이미지·영상 생성기 자격증명. claude 와 같은 방식으로 호스트에서 읽기 전용 마운트한다.
+      # 이미지·영상 생성기 자격증명. Higgsfield CLI는 조회만 해도 잠금 파일을 만들고,
+      # 접근 토큰 만료 시 갱신 결과를 credentials.json에 다시 쓴다. 읽기 전용 마운트면
+      # `Failed to acquire credentials lock`으로 인증 확인부터 실패하므로 이 경로만 쓰기 허용한다.
       # 배포에서는 HIGGSFIELD_CREDENTIALS_JSON 시크릿을 이 경로에 렌더한다(deploy-marketing.yml).
       # 배포 VM 은 브라우저가 없어 서버에서 로그인할 수 없기 때문이다.
       # 로컬에서는 `higgsfield auth login` 을 한 번 해 두면 컨테이너가 그것을 읽는다.
       # 없으면 생성 요청이 "생성기가 아직 준비되지 않았습니다"로 정직하게 닫힌다.
-      - ${HOME}/.config/higgsfield:/root/.config/higgsfield:ro
+      - ${HOME}/.config/higgsfield:/root/.config/higgsfield:rw
     env_file: .env.osmu
     environment:
       DATA_DIR: /app/data

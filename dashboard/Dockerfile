@@ -36,7 +36,8 @@ RUN apk add --no-cache docker-cli ffmpeg font-noto-cjk
 RUN npm install -g @anthropic-ai/claude-code
 # 이미지·영상 생성기. 2026-09-06 실측으로 운영 컨테이너에 이 실행기가 없어 고객이 카드뉴스를
 # 만들 수 없다는 것이 드러났다(생성 요청이 곧바로 502). 자격증명은 이미지에 넣지 않고
-# claude 와 같은 방식으로 호스트에서 읽기 전용 마운트한다.
+# 호스트에서 마운트한다. CLI가 잠금 파일과 갱신 자격증명을 써야 하므로 compose에서 이 경로만
+# 쓰기 허용한다. 이미지 계층에는 자격증명을 넣지 않는다.
 RUN npm install -g @higgsfield/cli
 WORKDIR /app
 ENV NODE_ENV=production

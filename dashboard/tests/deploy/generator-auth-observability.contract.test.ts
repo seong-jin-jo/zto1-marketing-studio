@@ -7,6 +7,10 @@ const workflow = readFileSync(
   resolve(__dirname, "../../../.github/workflows/deploy-marketing.yml"),
   "utf8",
 );
+const compose = readFileSync(
+  resolve(__dirname, "../../../docker-compose.postagi-4tenants.yml"),
+  "utf8",
+);
 const redactExpression = "s/(ya29|eyJ)[A-Za-z0-9_.\\-]+/[가림]/g";
 
 describe("생성기 인증 관측 계약", () => {
@@ -29,5 +33,16 @@ describe("생성기 인증 관측 계약", () => {
     expect(output).not.toContain("eyJsecret.payload.signature");
     expect(output).toContain("Error: refresh token is invalid or expired");
     expect(workflow.match(/s\/\(ya29\|eyJ\)\[A-Za-z0-9_.\\-\]\+\/\[가림\]\/g/g)).toHaveLength(2);
+  });
+
+  it("GEN-AUTH-OBS-03 정상 갱신 경로는 Higgsfield 설정만 쓰기 허용하고 Claude 설정은 읽기 전용으로 유지한다", () => {
+    expect(compose).toContain("${HOME}/.config/higgsfield:/root/.config/higgsfield:rw");
+    expect(compose).not.toContain("${HOME}/.config/higgsfield:/root/.config/higgsfield:ro");
+    expect(compose).toContain("${HOME}/.claude:/root/.claude:ro");
+  });
+
+  it("GEN-AUTH-OBS-04 거절 원인을 시크릿 만료로 추측하지 않고 실제 오류 확인으로 안내한다", () => {
+    expect(workflow).not.toContain("HIGGSFIELD_CREDENTIALS_JSON 시크릿이 만료됐다");
+    expect(workflow).toContain("바로 위의 가린 실제 오류를 확인해야 한다");
   });
 });
