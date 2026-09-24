@@ -7,7 +7,7 @@ STAMP: 2026-09-25 07:42 KST | model: gpt-codex/GPT-5 | agent: code-builder | ski
 | 검증 | 명령·대상 | 결과 |
 |---|---|---|
 | 타입 | `npm run typecheck:ci` | PASS, 종료 코드 0 |
-| 표적 회귀 | 편집실·저장 route Vitest 10파일 | PASS, 52건 |
+| 표적 회귀 | 편집실·저장 route Vitest 10파일 | PASS, 53건 |
 | 돌연변이 | 카드 스테이지 폭 520px → 496px | 신규 V70-CARD-01 실패, 종료 코드 1, 원복 뒤 5건 PASS |
 | 프로덕션 빌드 | `npm run build` | PASS, `/studio` 정적 경로 생성 |
 | dev 서버 | `npm run dev -- -p 3760`, `/studio?room=edit` | Ready 758ms, HTTP 200 |

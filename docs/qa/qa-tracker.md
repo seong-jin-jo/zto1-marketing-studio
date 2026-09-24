@@ -6,7 +6,7 @@
 | EDITROOM-V70-TEXT | 680px 시트, 문단 순서 UI 0, 채널 상한 미터 | V70-TEXT-01~02 | PASS | DOM에서 글 `data-edit-outline` 0, X 한글 가중 경계 통과. CSS 토큰 `42.5rem`, X 280·Threads 500·Instagram 2,200 계약 통과. |
 | EDITROOM-V70-CARD | 112px 스트립, 520px 4:5 스테이지, 말풍선 1클릭 직접 편집, 우측 열 제거 | V70-CARD-01~03 | PASS | DOM 스테이지와 선택 도구 5개, 미선택 도구 0개, 우측 `data-card-deck-editor` 0건. 520px→496px 돌연변이는 V70-CARD-01이 실패시켰고 원복 뒤 통과. |
 | EDITROOM-V70-SAVE | 반대 도메인 null, 음악 데이터 보존, UI 미부활 | CROSS-DOMAIN A·B, route null 보존, EDITROOM-NO-DEAD-CONTROLS-03~04 | PASS | 카드 저장은 `videoEdit:null`, 영상 저장은 `cardDeck:null`. route 통합 테스트는 clear 플래그 없는 null을 병합 대상에서 제외한다. 음악 UI 문자열 0건, 보존 필드 계약 통과. |
-| EDITROOM-V70-VERIFY | 타입·빌드·브라우저 스모크 | V70-P1-FINAL | PASS, 운영 미검증 | 관련 Vitest 10파일 52건, `typecheck:ci`, `npm run build` PASS. dev Ready 758ms, `/studio?room=edit` HTTP 200, Chrome 앱 콘솔 오류 0. 운영 배포·실회원 초안 저장은 미검증. |
+| EDITROOM-V70-VERIFY | 타입·빌드·브라우저 스모크 | V70-P1-FINAL | PASS, 운영 미검증 | 관련 Vitest 10파일 53건, `typecheck:ci`, `npm run build` PASS. dev Ready 758ms, `/studio?room=edit` HTTP 200, Chrome 앱 콘솔 오류 0. 운영 배포·실회원 초안 저장은 미검증. |
 
 ## 2026-09-25 07:20 KST · 편집실 v70 1단계 필수 디자인 입력 결손 ❌ NG
 

@@ -101,6 +101,10 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
   const slide = deck.slides.find((s) => s.id === slideId) ?? null;
   const bubbles = slide?.bubbles ?? [];
 
+  useEffect(() => {
+    setSelectedBubbleId(null);
+  }, [slideId]);
+
   function run(op: (deck: CardDeck) => CardDeck) {
     try {
       setError(null);

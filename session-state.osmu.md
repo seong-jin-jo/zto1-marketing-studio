@@ -3,7 +3,7 @@
 - handoff basis: 회장이 지정한 `/private/tmp/wt-v70p1`, `feat/editroom-v70-p1`, HEAD `cc878a82`와 재지시 원문을 primary로 사용했다. 직전 차단은 `cc878a82`가 v70 설계 두 파일을 추가해 해소됐다.
 - 변경: 글 편집 목차를 렌더하지 않고 680px 문서 시트와 X·Threads·Instagram 상한 미터를 추가했다. 카드 편집은 112px 스트립과 520px 4:5 DOM 스테이지로 바꾸고 말풍선 1클릭 직접 입력, 선택 시 5개 도구만 노출한다. 우측 편집 열은 제거했다. 저장 payload는 반대 도메인 null을 명시한다.
 - 보존: 헤더·사이드바·담당 대화창, 영상 편집, 카드 장 순서, 표지·CTA 잠금, `musicTrack`·`musicVolume` 데이터는 유지했다. 음악 UI는 되살리지 않았다.
-- 검증: 관련 Vitest 10파일 52건, typecheck, production build, 토큰 감사 통과. 520px→496px 돌연변이 실패와 원복 후 PASS 확인. dev 3760 Ready, `/studio?room=edit` 200, Chrome 앱 콘솔 오류 0.
+- 검증: 관련 Vitest 10파일 53건, typecheck, production build, 토큰 감사 통과. 520px→496px 돌연변이 실패와 원복 후 PASS 확인. dev 3760 Ready, `/studio?room=edit` 200, Chrome 앱 콘솔 오류 0. 랜딩 전 리뷰에서 장 전환 뒤 이전 말풍선 선택이 남는 회귀를 찾아 초기화와 테스트를 추가했다.
 - 커밋: `cc103a37` 제품 코드·회귀 테스트. 다음 실행은 문서 커밋, 리뷰, push, base main PR 생성, CI 확인이다. 운영 배포와 실제 회원 초안 저장은 미검증이다.
 
 ## 2026-09-24 08:16 KST - PR 83 마지막 테스트 실패 수정, 로컬 검증·커밋 완료

@@ -3,7 +3,7 @@
 - handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, 설계 커밋 `cc878a82`와 재지시 원문을 primary로 사용했다. tmux `openclaw-auto:1.1`은 직전 차단 확인에만 썼다.
 - 변경: 글은 680px 문서 시트와 X 280 한글가중2·Threads 500·Instagram 2,200 미터로 바꿨고 문단 목차 렌더를 제거했다. 카드는 112px 스트립과 520px 4:5 DOM 스테이지, 말풍선 한 번 클릭 직접 입력으로 바꿨으며 우측 편집 열을 제거했다. 저장 payload는 반대 도메인을 null로 명시한다.
 - 보존: 셸, 영상 편집, 카드 장 순서, 표지·CTA 잠금, AI 일괄 편집, `musicTrack`·`musicVolume` 데이터는 유지했다. 음악 UI는 되살리지 않았다.
-- 검증: 관련 Vitest 10파일 52건, typecheck, production build, 토큰 감사 통과. 520px→496px 돌연변이는 신규 테스트가 실패시켰고 원복 후 통과했다. dev 3760 Ready, `/studio?room=edit` HTTP 200, Chrome 앱 콘솔 오류 0.
+- 검증: 관련 Vitest 10파일 53건, typecheck, production build, 토큰 감사 통과. 520px→496px 돌연변이는 신규 테스트가 실패시켰고 원복 후 통과했다. dev 3760 Ready, `/studio?room=edit` HTTP 200, Chrome 앱 콘솔 오류 0. 랜딩 전 리뷰에서 장 전환 뒤 이전 말풍선 선택이 남는 회귀를 찾아 초기화와 테스트를 추가했다.
 - 커밋: `cc103a37` 제품 코드·회귀 테스트. 다음 실행은 문서 커밋과 독립 diff 리뷰, push, base main PR 생성, CI 종료 확인이다. 운영 배포와 실제 회원 초안 저장은 미검증이다.
 
 # 2026-09-25 07:25 KST 편집실 v70 1단계 설계 입력 복구, 구현 진행 중
