@@ -1,3 +1,23 @@
+# 2026-09-25 02:58 KST 생성기 생존 탐침 출고 전 재검증 완료
+
+- handoff basis: 회장이 지정한 워크트리, 브랜치 `fix/generator-liveness-probe`, HEAD `4fe08408`, 미커밋 diff를 primary로 삼았다. 같은 워크트리의 tmux pane `openclaw-auto:1.1`은 보조 확인했으며 캡처 내용은 비어 있어 충돌하는 작업이 없었다.
+- 재검증: 전체 묶음은 실행하지 않았다. 표적 Vitest `generator-liveness.contract.test.ts` 1파일 5건 PASS(28.86초), Python `yaml.safe_load` PASS(`jobs=1`), `bash -n scripts/probe-generator-session.sh` PASS를 새로 확인했다.
+- 다음 실행: 자동 기록 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`를 제외하고 커밋과 push, PR CI 확인, squash merge, main 기준 `Deploy openclaw (marketing VM)` 실행, 배포 로그의 생성기 생존 단계 판정까지 완료한다.
+
+# 2026-09-25 01:45 KST 생성기 API 생존 탐침 로컬 검증 완료
+
+- handoff basis: 사용자가 지정한 브랜치 `fix/generator-liveness-probe`, HEAD `4fe08408`, 미커밋 diff를 primary로 삼았다. 같은 worktree의 tmux pane은 인계 기준이 아니며 이번 지시 원문과 git 상태를 기준으로 이어받았다.
+- 변경: 저장 토큰 출력이 아니라 `higgsfield account status`로 세션 생존을 판정한다. 배포 기동 성공 뒤 최대 3회 확인한 최종 실패는 단계 실패와 Job Summary `DEGRADED`로 남기되 글자 카드와 앱 배포는 계속한다. 명령 원문은 전부 폐기하고 종료 코드만 기록하며 호스트·컨테이너 이중 타임아웃에 강제 종료 유예를 둔다.
+- 검증: 표적 Vitest `generator-liveness.contract.test.ts` 1파일 5건 PASS, Python `yaml.safe_load` PASS(`jobs=1`), `bash -n scripts/probe-generator-session.sh` PASS. TERM 무시 프로세스 강제 종료, 계정 명령 원문 비노출, 죽은 자격증명 교체 분기를 계약으로 고정했다. 운영 Actions와 운영 컨테이너 응답은 아직 미검증이다.
+- 다음 실행: 랜딩 전 diff 검수 결과를 반영하고 관련 파일만 커밋한 뒤 `fix/generator-liveness-probe`를 origin에 push한다. `.codex/logs/harness.jsonl`과 `wiki/거버넌스/요청.md`의 자동 기록은 이 변경 커밋에서 제외한다.
+
+# 2026-09-25 01:16 KST 생성기 API 생존 탐침 수정 착수
+
+- handoff basis: 회장이 명시한 `origin/main`과 과제 원문을 primary로 삼았다. 기존 공유 작업 트리는 사용자 변경 2천여 파일이 있어 보존하고, 깨끗한 별도 worktree `/private/tmp/zto1-generator-liveness.WDxQpi`, 브랜치 `fix/generator-liveness-probe`에서 진행한다. tmux pane은 인계 기준이 아니므로 읽거나 변경하지 않았다.
+- 원인: 배포 워크플로가 `higgsfield auth token`의 종료 코드만 보고 세션 생존을 판정한다. 이 명령은 저장 토큰을 출력할 뿐 API 유효성을 확인하지 않아 run `36020015657`이 죽은 세션을 살아 있다고 보고했다.
+- 현재 판정: `docs/qa/qa-tracker.md`에 `GENERATOR-LIVENESS-01`을 ❌ NG로 등록했다. 공식 Higgsfield 설치·생성 가이드와 저장소의 `diagnose-generator.yml`은 모두 읽기 전용 실제 API 확인으로 `higgsfield account status`를 사용한다.
+- 다음 실행: 워크플로 정적 계약 테스트를 먼저 추가해 기존 구현에서 실패를 확인하고, 안전한 출력 가림·종료 코드 기록·허용된 단계 실패로 배포 워크플로를 수정한다. YAML 파싱과 표적 테스트 뒤 리뷰, 커밋, push한다.
+
 # 2026-09-24 08:11 KST PR 83 남은 테스트 1건 수정·표적 검증 완료
 
 - handoff basis: 사용자가 지정한 네 번째 회수 과제, 워크트리 `/private/tmp/zto1-editroom-main`, PR 83 run `35930955966`을 primary로 삼았다. `osmu-review-pr83:0.0`은 직전 표적 테스트 로그 확인에만 사용했다.

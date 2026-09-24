@@ -1,31 +1,24 @@
 #!/usr/bin/env bash
 
-set -u
+set -uo pipefail
 
 container="${1:-openclaw-dashboard-osmu}"
+outer_timeout="${GENERATOR_PROBE_OUTER_TIMEOUT:-35s}"
+inner_timeout="${GENERATOR_PROBE_INNER_TIMEOUT:-30s}"
+kill_after="${GENERATOR_PROBE_KILL_AFTER:-5s}"
 
 # `account status`는 계정 API를 실제로 호출하는 읽기 전용 명령이다. 생성 요청은 하지 않는다.
-# 종료 코드를 잃지 않도록 파이프 밖에서 먼저 받고, 출력은 diagnose-generator.yml과 같은
-# 토큰 가림에 이메일 가림을 더한 뒤에만 로그로 보낸다.
+# 종료 코드는 보존하되 명령 출력은 로그에 내보내지 않는다. 계정 명령의 오류 출력에는
+# 예측하지 못한 형식의 토큰이나 계정 식별자가 섞일 수 있어 부분 마스킹만으로는 안전하지 않다.
 set +e
-probe_output="$(timeout 30s docker exec "$container" higgsfield account status 2>&1)"
+# 바깥 timeout은 docker 클라이언트를, 안쪽 timeout은 컨테이너 안 CLI를 종료한다.
+# API가 멎어도 컨테이너에 고아 higgsfield 프로세스를 남기지 않는다.
+timeout -k "$kill_after" "$outer_timeout" \
+  docker exec "$container" timeout -k "$kill_after" "$inner_timeout" \
+  higgsfield account status >/dev/null 2>&1
 probe_status=$?
 set -e
 
-echo "-- 생성기 API 생존 확인 출력 (민감정보 가림) --"
-if [ -n "$probe_output" ]; then
-  if safe_output="$(printf '%s\n' "$probe_output" \
-      | sed -E \
-        -e 's/(ya29|eyJ)[A-Za-z0-9_./+=-]+/[가림]/g' \
-        -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[이메일 가림]/g' \
-      | tail -20)"; then
-    printf '%s\n' "$safe_output"
-  else
-    echo "(민감정보 가림 실패로 출력 숨김)"
-  fi
-else
-  echo "(출력 없음)"
-fi
 echo "생성기 API 생존 확인 종료 코드: $probe_status"
 
 exit "$probe_status"

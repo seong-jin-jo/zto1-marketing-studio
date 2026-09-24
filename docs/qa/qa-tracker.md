@@ -1,3 +1,9 @@
+## 2026-09-25 01:36 KST · 생성기 생존 탐침 거짓 양성 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| GENERATOR-LIVENESS-01 | 배포가 저장 토큰 존재가 아니라 실제 API 세션 생존을 판정 | GENERATOR-LIVENESS-01~05 | 🔧 수정, 로컬 PASS, 운영 미검증 | 생존 확인을 비용 없는 `higgsfield account status`로 교체하고 명령 원문은 폐기한 채 종료 코드만 기록한다. 배포 기동 성공 뒤 탐침을 최대 3회 확인하고, 최종 실패는 단계 실패와 Job Summary `DEGRADED`로 남기되 글자 카드와 앱 배포는 계속한다. `generator-liveness.contract.test.ts` 단독 Vitest 5건, Python `yaml.safe_load`, 셸 구문 검사가 PASS했다. fake docker 성공 0·실패 7·타임아웃 124, TERM 무시 프로세스 강제 종료, 원문 비노출, 죽은 자격증명 교체 분기를 확인했다. 운영 workflow 실행은 미검증. |
+
 ## 2026-09-24 08:11 KST · PR 83 Studio 담당 대화 명령 테스트 🔧 전환
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
