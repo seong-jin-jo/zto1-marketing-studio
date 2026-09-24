@@ -1,0 +1,1382 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OSMU 편집실 전면 재설계 v70 · 검수 허브</title>
+<style>
+/* ──────────────────────────────────────────────────────────────
+   토큰은 dashboard/src/app/globals.css :root 실값을 그대로 상속한다.
+   새 디자인 시스템을 발명하지 않는다 (standard-design.md §1-3).
+   ────────────────────────────────────────────────────────────── */
+:root{
+  --bg:rgb(251 251 252); --surface:rgb(255 255 255); --surface-2:rgb(244 244 245);
+  --border:rgb(228 228 231); --text:rgb(24 24 27); --muted:rgb(82 82 91); --subtle:rgb(102 102 110);
+  --accent:rgb(37 99 235); --accent-hover:rgb(29 78 216); --accent-ink:#fff; --accent-soft:rgb(239 244 255);
+  --success:rgb(22 163 74); --warning:rgb(180 83 9); --danger:rgb(220 38 38);
+  --success-soft:color-mix(in srgb,var(--success) 12%,transparent);
+  --warning-soft:color-mix(in srgb,var(--warning) 12%,transparent);
+  --danger-soft:color-mix(in srgb,var(--danger) 12%,transparent);
+  --chat-reader-bg:#FEE500;
+  --player-surface:rgb(13 17 23); --player-panel:rgb(22 27 34); --player-control:rgb(48 54 61);
+  --player-line:rgb(110 118 129); --player-text:rgb(244 244 245); --player-on:rgb(37 99 235);
+  --focus:color-mix(in srgb,var(--accent) 35%,transparent);
+  --shadow:0 4px 12px rgba(16,24,40,.08);
+  --elevation-floating:0 4px 16px color-mix(in srgb,var(--accent) 16%,transparent);
+  --micro:4px; --tight:8px; --stack:12px; --inset:16px; --section:24px; --region:32px;
+  --r-chip:6px; --r-control:8px; --r-surface:12px; --r-pill:99px;
+  --fs-caption:12px; --lh-caption:18px; --fs-bodysm:13px; --lh-bodysm:20px;
+  --fs-body:15px; --lh-body:24px; --fs-lead:17px; --lh-lead:26px;
+  --fs-sub:20px; --lh-sub:28px; --fs-head:24px; --lh-head:32px; --fs-display:30px; --lh-display:36px;
+  --font:Pretendard,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+  --fast:120ms; --base:200ms; --slow:320ms; --ease:cubic-bezier(.2,0,0,1);
+  /* 검수 셸 전용 (제품 토큰 아님) */
+  --shell-bg:#111114; --shell-panel:#17171b; --shell-line:#26262c; --shell-text:#e6e6ea; --shell-dim:#8b8b95;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--shell-bg);color:var(--shell-text);font-family:var(--font);font-size:var(--fs-bodysm);line-height:var(--lh-bodysm);-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+/* ── 검수 셸 골격 ───────────────────────────────────────────── */
+.shell{display:grid;grid-template-columns:284px minmax(0,1fr) 360px;min-height:100vh}
+@media (max-width:1400px){.shell{grid-template-columns:248px minmax(0,1fr) 320px}}
+
+/* 좌: 전역 플로우 레일 (standard-design.md §51) */
+.rail{background:var(--shell-panel);border-right:1px solid var(--shell-line);padding:20px 16px 40px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.rail h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--shell-dim);margin:0 0 4px}
+.rail .railsub{font-size:11px;line-height:16px;color:var(--shell-dim);margin:0 0 16px}
+.node{display:block;width:100%;text-align:left;border:1px solid var(--shell-line);border-radius:10px;padding:9px 10px;margin:0;background:#1c1c21;transition:border-color var(--fast) var(--ease),background var(--fast) var(--ease)}
+.node:hover{border-color:#3a3a45}
+.node.is-current{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,#1c1c21)}
+.node.is-new{border-left:3px solid var(--warning)}
+.node .nname{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#fff}
+.node .nbadge{font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 5px;border-radius:var(--r-chip);border:1px solid}
+.b-new{color:#ffbf6b;border-color:#8a5a15;background:#3a2708}
+.b-keep{color:#9ad5ae;border-color:#265c37;background:#0f2a1a}
+.b-del{color:#ff9a9a;border-color:#7a2626;background:#330f0f}
+.node .nroute{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;line-height:15px;color:#8fb6ff;margin-top:3px;word-break:break-all}
+.node .nmeta{display:block;font-size:10px;line-height:15px;color:var(--shell-dim);margin-top:2px}
+.node .ndiff{display:block;font-size:10px;line-height:15px;color:#d6b98a;margin-top:2px}
+.arrow{color:#4a4a55;font-size:11px;text-align:center;margin:2px 0;line-height:1}
+.railgroup{margin:0 0 14px;padding:0 0 12px;border-bottom:1px dashed var(--shell-line)}
+.railgroup:last-child{border-bottom:0}
+.railgroup>h3{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#63636e;margin:0 0 6px}
+
+/* 중앙: 무대 */
+.stage{padding:18px 24px 64px;min-width:0}
+.topbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}
+.topbar .tb-group{display:flex;gap:4px;background:var(--shell-panel);border:1px solid var(--shell-line);border-radius:var(--r-pill);padding:3px}
+.tb{font-size:11px;font-weight:600;padding:6px 11px;border-radius:var(--r-pill);color:var(--shell-dim);transition:background var(--fast) var(--ease),color var(--fast) var(--ease)}
+.tb:hover{color:#fff}
+.tb[aria-pressed="true"]{background:var(--accent);color:#fff}
+.tb-label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#5c5c66;align-self:center;margin-right:2px}
+.screentitle{margin:14px 0 2px;font-size:19px;line-height:26px;font-weight:800;color:#fff}
+.screenlede{margin:0 0 16px;font-size:12px;line-height:18px;color:var(--shell-dim);max-width:70ch}
+
+/* 디바이스 아트보드: 이 안에는 검수 주석이 0개다 (§56 PNG 추출 대비) */
+.frames{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.artboard{background:var(--bg);color:var(--text);font-size:var(--fs-body);line-height:var(--lh-body);
+  border-radius:var(--r-surface);overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.45);flex:0 0 auto}
+.artboard[data-vp="1440"]{width:1440px;height:900px}
+.artboard[data-vp="1024"]{width:1024px;height:820px}
+.artboard[data-vp="390"]{width:390px;height:844px}
+.scaler{transform-origin:top left}
+
+/* ── 제품 셸 (DESIGN.md §4 계승: 헤더 2줄 → 사이드바 + 본문 + 상시 담당) ── */
+.app{display:flex;flex-direction:column;height:100%;background:var(--bg)}
+.gnb{flex:0 0 auto;border-bottom:1px solid var(--border);background:var(--surface)}
+.gnb-1{display:flex;align-items:center;gap:var(--inset);padding:10px var(--section);border-bottom:1px solid var(--border)}
+.brand{display:flex;align-items:center;gap:var(--tight);font-weight:800;font-size:var(--fs-body);letter-spacing:-.01em}
+.brand .dot{width:18px;height:18px;border-radius:var(--r-chip);background:var(--accent)}
+.ws{font-size:var(--fs-caption);color:var(--muted);display:flex;gap:6px;align-items:center}
+.ws b{color:var(--text);font-weight:700}
+.gnb-1 .spacer{flex:1}
+.pill{font-size:var(--fs-caption);line-height:var(--lh-caption);border:1px solid var(--border);border-radius:var(--r-pill);padding:3px 10px;color:var(--muted);background:var(--surface)}
+.gnb-2{display:flex;align-items:center;gap:0;padding:0 var(--section)}
+.step{position:relative;display:flex;align-items:center;gap:6px;padding:10px 14px;font-size:var(--fs-caption);color:var(--muted);border-bottom:2px solid transparent}
+.step b{font-weight:700}
+.step .cnt{font-size:var(--fs-caption);background:var(--surface-2);border-radius:var(--r-pill);padding:0 6px;color:var(--subtle)}
+.step[aria-current="step"]{color:var(--accent);border-bottom-color:var(--accent)}
+.step[aria-current="step"] .cnt{background:var(--accent-soft);color:var(--accent)}
+.stepsep{color:var(--border)}
+.body{flex:1;display:flex;min-height:0}
+.side{flex:0 0 224px;border-right:1px solid var(--border);background:var(--surface);padding:var(--inset) var(--stack);overflow-y:auto}
+.side h4{margin:0 0 6px;font-size:var(--fs-caption);letter-spacing:.1em;text-transform:uppercase;color:var(--subtle)}
+.side a{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r-control);font-size:var(--fs-bodysm);color:var(--muted);text-decoration:none}
+.side a.on{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.side .grp{margin-bottom:var(--inset)}
+.main{flex:1;display:flex;min-width:0}
+.work{flex:1;min-width:0;display:flex;flex-direction:column;padding:var(--inset) var(--section);overflow:hidden}
+.chat{flex:0 0 304px;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+.chat .ch-h{padding:var(--stack) var(--inset);border-bottom:1px solid var(--border);font-size:var(--fs-caption);color:var(--muted)}
+.chat .ch-b{flex:1;overflow-y:auto;padding:var(--inset);display:flex;flex-direction:column;gap:var(--stack)}
+.msg{max-width:88%;font-size:var(--fs-bodysm);line-height:20px;border-radius:var(--r-surface);padding:9px 12px}
+.msg.a{background:var(--surface-2);color:var(--text);border-top-left-radius:var(--r-chip)}
+.msg.u{background:var(--accent);color:#fff;align-self:flex-end;border-top-right-radius:var(--r-chip)}
+.chat .ch-f{border-top:1px solid var(--border);padding:var(--stack) var(--inset);display:flex;gap:var(--tight)}
+.chat .ch-f input{flex:1;min-width:0;border:1px solid var(--border);border-radius:var(--r-control);padding:9px 10px;font:inherit;font-size:var(--fs-bodysm);background:var(--surface-2)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:var(--r-control);font-size:var(--fs-bodysm);font-weight:600;padding:8px 13px;border:1px solid var(--border);background:var(--surface);color:var(--text);transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease)}
+.btn:hover{background:var(--surface-2)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.pri:hover{background:var(--accent-hover)}
+.btn.sm{padding:5px 9px;font-size:var(--fs-caption)}
+
+/* 형식 탭 + 저장 줄 */
+.worktop{display:flex;align-items:center;gap:var(--stack);flex-wrap:wrap;margin-bottom:var(--inset)}
+.kindtabs{display:flex;gap:var(--micro);background:var(--surface-2);border-radius:var(--r-pill);padding:3px}
+.kindtabs button{font-size:var(--fs-bodysm);font-weight:600;padding:6px 14px;border-radius:var(--r-pill);color:var(--muted)}
+.kindtabs button[aria-selected="true"]{background:var(--surface);color:var(--accent);box-shadow:var(--shadow)}
+.savestate{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:var(--fs-caption);color:var(--subtle)}
+.savedot{width:7px;height:7px;border-radius:50%;background:var(--success)}
+.savedot.busy{background:var(--warning);animation:pulse 1.2s infinite var(--ease)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* ── 글 편집 (EDIT-TEXT) ── */
+.doc{flex:1;min-height:0;display:flex;flex-direction:column;gap:var(--stack)}
+.limits{display:flex;gap:var(--tight);flex-wrap:wrap}
+.limit{display:flex;align-items:center;gap:6px;font-size:var(--fs-caption);border:1px solid var(--border);border-radius:var(--r-pill);padding:3px 10px;background:var(--surface)}
+.limit .bar{width:34px;height:4px;border-radius:var(--r-pill);background:var(--surface-2);overflow:hidden}
+.limit .bar i{display:block;height:100%;background:var(--success);transition:width var(--base) var(--ease)}
+.limit.warn .bar i{background:var(--warning)}
+.limit.over{border-color:var(--danger);color:var(--danger)}
+.limit.over .bar i{background:var(--danger)}
+.docsheet{flex:1;min-height:0;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-surface);padding:var(--region) 0}
+.docsheet .inner{max-width:680px;margin:0 auto;padding:0 var(--region)}
+.docsheet h1{font-size:var(--fs-head);line-height:var(--lh-head);font-weight:800;margin:0 0 var(--inset);letter-spacing:-.015em}
+.docsheet p{font-size:var(--fs-lead);line-height:30px;margin:0 0 var(--section);color:var(--text);word-break:keep-all}
+.docsheet p strong{background:linear-gradient(transparent 62%,color-mix(in srgb,var(--accent) 22%,transparent) 62%);font-weight:700}
+.selhi{background:color-mix(in srgb,var(--accent) 18%,transparent);border-radius:2px}
+.floattool{position:absolute;display:flex;gap:2px;background:var(--text);border-radius:var(--r-control);padding:3px;box-shadow:var(--elevation-floating);z-index:9}
+.floattool button{font-size:var(--fs-caption);font-weight:600;color:#fff;padding:5px 9px;border-radius:var(--r-chip)}
+.floattool button:hover{background:rgba(255,255,255,.16)}
+.floattool .sep{width:1px;background:rgba(255,255,255,.2);margin:4px 2px}
+
+/* ── 카드뉴스 편집 (EDIT-CARD) ── */
+.cardwrap{flex:1;min-height:0;display:grid;grid-template-columns:112px minmax(0,1fr);gap:var(--inset)}
+.strip{overflow-y:auto;display:flex;flex-direction:column;gap:var(--tight);padding-right:2px}
+.stripitem{flex:0 0 auto;position:relative;border:2px solid var(--border);border-radius:var(--r-control);background:var(--surface);padding:0;overflow:hidden;text-align:left;transition:border-color var(--fast) var(--ease)}
+.stripitem[aria-pressed="true"]{border-color:var(--accent)}
+.stripitem .thumb{aspect-ratio:4/5;background:var(--surface-2);display:flex;flex-direction:column;justify-content:center;gap:4px;padding:8px}
+.stripitem .thumb .tb1{background:var(--chat-reader-bg);color:#181818;border-radius:var(--r-chip);padding:2px 4px;align-self:flex-end;max-width:84%}
+.stripitem .thumb .tb2{background:#fff;border:1px solid var(--border);border-radius:var(--r-chip);padding:2px 4px;align-self:flex-start;max-width:84%}
+.stripitem .cap{display:flex;align-items:center;justify-content:space-between;gap:2px;padding:4px 5px;font-size:var(--fs-caption);line-height:var(--lh-caption);border-top:1px solid var(--border)}
+.rolebadge{font-size:var(--fs-caption);line-height:16px;font-weight:700;border-radius:var(--r-chip);padding:0 4px;border:1px solid;white-space:nowrap}
+.r-cover{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.r-chat{color:var(--subtle);border-color:var(--border);background:var(--surface-2)}
+.r-prompt{color:var(--warning);border-color:var(--warning);background:var(--warning-soft)}
+.r-cta{color:var(--success);border-color:var(--success);background:var(--success-soft)}
+.cardstage{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;overflow-y:auto;position:relative}
+.card{width:520px;max-width:100%;aspect-ratio:4/5;background:#fff;border:1px solid var(--border);border-radius:var(--r-surface);box-shadow:var(--shadow);padding:22px 18px;display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden}
+.card .kakaobar{display:flex;align-items:center;gap:6px;font-size:var(--fs-caption);color:var(--subtle);border-bottom:1px solid var(--border);padding-bottom:7px;margin-bottom:2px}
+.card .kakaobar .av{width:15px;height:15px;border-radius:50%;background:var(--surface-2)}
+.bubblerow{display:flex;gap:6px;align-items:flex-end}
+.bubblerow.me{justify-content:flex-end}
+.bubble{max-width:76%;font-size:13px;line-height:19px;padding:8px 11px;border-radius:var(--r-surface);word-break:keep-all;position:relative;cursor:text}
+.bubble.other{background:#fff;border:1px solid #e3e3e6;border-top-left-radius:var(--r-chip)}
+.bubble.me{background:var(--chat-reader-bg);color:#181818;border-top-right-radius:var(--r-chip)}
+.bubble strong{font-weight:800}
+.bubble[data-editing="true"]{box-shadow:0 0 0 2px var(--accent);background:#fff7d6}
+.bubblerow:has(.bubble[data-editing="true"]){margin-bottom:30px}
+.bubble:hover{box-shadow:0 0 0 1px var(--accent)}
+.bubbletool{position:absolute;bottom:-26px;left:0;display:flex;gap:2px;background:var(--text);border-radius:var(--r-chip);padding:2px;z-index:8;box-shadow:var(--elevation-floating);white-space:nowrap}
+.bubblerow.me .bubbletool{left:auto;right:0}
+.bubbletool button{font-size:var(--fs-caption);line-height:16px;color:#fff;padding:4px 8px;border-radius:var(--r-chip);min-height:24px}
+.bubbletool button:hover{background:rgba(255,255,255,.18)}
+.inserthandle{height:18px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity var(--fast) var(--ease)}
+.inserthandle:hover,.bubblerow:hover+.inserthandle{opacity:1}
+.inserthandle button{font-size:var(--fs-caption);color:var(--accent);border:1px dashed var(--accent);border-radius:var(--r-pill);padding:0 9px;background:var(--surface);line-height:18px}
+.card .cover{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;margin:-22px -18px;padding:18px;background:linear-gradient(180deg,rgba(0,0,0,.12) 0%,rgba(0,0,0,.72) 100%),var(--surface-2);background-size:cover;background-position:center;color:#fff}
+.card .cover h2{margin:0;font-size:31px;line-height:37px;font-weight:900;letter-spacing:-.02em;cursor:text}
+.card .cover .sub{font-size:13px;opacity:.92;cursor:text}
+.card .photoslot{position:absolute;inset:0;background:var(--surface-2);display:grid;place-items:center;color:var(--subtle);font-size:var(--fs-caption)}
+.cardfoot{display:flex;align-items:center;gap:var(--tight);margin-top:var(--stack);flex-wrap:wrap;justify-content:center}
+.chip{font-size:var(--fs-caption);border:1px solid var(--border);border-radius:var(--r-pill);padding:4px 11px;background:var(--surface);color:var(--muted)}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ── 영상 편집 (EDIT-VIDEO) ── */
+.vidwrap{flex:1;min-height:0;display:grid;grid-template-rows:minmax(0,1fr) 168px;gap:var(--stack)}
+.vidtop{display:grid;grid-template-columns:288px minmax(0,1fr);gap:var(--inset);min-height:0}
+.player{background:var(--player-surface);border-radius:var(--r-surface);display:flex;flex-direction:column;overflow:hidden;position:relative}
+.player .screen{flex:1;position:relative;display:grid;place-items:center;background:
+  radial-gradient(120% 80% at 50% 0%,#233047 0%,#10151f 100%)}
+.player .screen .subs{position:absolute;left:12px;right:12px;bottom:56px;text-align:center;font-size:15px;line-height:22px;font-weight:800;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.8);word-break:keep-all}
+.player .screen .ovl{position:absolute;left:50%;transform:translateX(-50%);padding:5px 12px;border-radius:var(--r-pill);font-size:12px;font-weight:700;max-width:90%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.player .screen .ovl.hook{top:22px;background:var(--accent);color:#fff}
+.player .screen .ovl.cta{bottom:14px;background:var(--success);color:#fff}
+.player .screen .cmt{position:absolute;left:12px;bottom:108px;display:flex;gap:6px;align-items:center;background:rgba(0,0,0,.6);border-radius:var(--r-pill);padding:4px 10px 4px 4px;font-size:var(--fs-caption);color:#fff}
+.player .screen .cmt .av{width:18px;height:18px;border-radius:50%;background:#4a5568}
+.player .ctrl{flex:0 0 auto;background:var(--player-panel);padding:8px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:var(--player-text);font-size:var(--fs-caption)}
+.player .ctrl>*{white-space:nowrap}
+.player .ctrl .voice{flex:1 0 100%;border-left:0 !important;padding-left:0 !important;color:var(--player-line)}
+.player .ctrl .play{width:28px;height:28px;border-radius:50%;background:var(--player-on);color:#fff;display:grid;place-items:center;font-size:var(--fs-caption)}
+.player .ctrl .track{flex:1;height:4px;border-radius:var(--r-pill);background:var(--player-control);position:relative}
+.player .ctrl .track i{position:absolute;inset:0 auto 0 0;background:var(--player-on);border-radius:var(--r-pill)}
+.player .ctrl .track b{position:absolute;top:-3px;width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.6)}
+.script{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-surface);display:flex;flex-direction:column;min-height:0}
+.script .sc-h{display:flex;align-items:center;gap:var(--tight);padding:9px var(--inset);border-bottom:1px solid var(--border);font-size:var(--fs-caption);color:var(--muted);flex-wrap:wrap}
+.script .sc-b{flex:1;overflow-y:auto;padding:var(--tight) 0}
+.line{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:var(--stack);align-items:baseline;padding:7px var(--inset);border-left:3px solid transparent;cursor:text}
+.line:hover{background:var(--surface-2)}
+.line[aria-current="true"]{background:var(--accent-soft);border-left-color:var(--accent)}
+.line .t{font-family:ui-monospace,Menlo,monospace;font-size:var(--fs-caption);color:var(--subtle)}
+.line .x{font-size:var(--fs-body);line-height:23px;word-break:keep-all}
+.line[data-cut="true"] .x{text-decoration:line-through;color:var(--subtle)}
+.line[data-cut="true"]{background:var(--danger-soft);border-left-color:var(--danger)}
+.line .act{opacity:0;font-size:var(--fs-caption);color:var(--subtle)}
+.line:hover .act{opacity:1}
+.timeline{background:var(--player-panel);border-radius:var(--r-surface);padding:var(--stack) var(--inset);display:flex;flex-direction:column;gap:7px;overflow-x:auto;color:var(--player-text)}
+.tl-lane{display:flex;align-items:center;gap:var(--tight);min-width:max-content}
+.tl-lane .lbl{flex:0 0 62px;font-size:var(--fs-caption);color:var(--player-line);letter-spacing:.06em;text-transform:uppercase}
+.blk{height:28px;border-radius:var(--r-chip);display:flex;align-items:center;padding:0 8px;font-size:var(--fs-caption);font-weight:600;white-space:nowrap;overflow:hidden}
+.blk.sub{background:var(--player-control);color:var(--player-text)}
+.blk.sub.cut{background:color-mix(in srgb,var(--danger) 45%,var(--player-control));color:#ffd9d9;text-decoration:line-through}
+.blk.hook{background:var(--accent);color:#fff}
+.blk.cta{background:var(--success);color:#fff}
+.blk.cmt{background:#5a4a1f;color:#ffe6a8}
+.blk.gap{background:transparent}
+.tl-ruler{display:flex;gap:0;min-width:max-content;font-size:var(--fs-caption);color:var(--player-line);border-top:1px solid var(--player-control);padding-top:3px}
+.tl-ruler span{flex:0 0 60px}
+.playhead{position:relative}
+.playhead:before{content:"";position:absolute;top:-6px;bottom:-6px;width:2px;background:#fff;box-shadow:0 0 6px rgba(255,255,255,.7)}
+
+/* 상태 화면 */
+.statebox{flex:1;display:grid;place-items:center;text-align:center;padding:var(--region)}
+.statebox .inner2{max-width:420px;display:flex;flex-direction:column;gap:var(--stack);align-items:center}
+.statebox h3{margin:0;font-size:var(--fs-sub);line-height:var(--lh-sub);font-weight:800}
+.statebox p{margin:0;font-size:var(--fs-bodysm);line-height:20px;color:var(--muted);word-break:keep-all}
+.spinner{width:30px;height:30px;border-radius:50%;border:3px solid var(--surface-2);border-top-color:var(--accent);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.skel{width:100%;height:12px;border-radius:var(--r-chip);background:linear-gradient(90deg,var(--surface-2) 25%,#ebebee 50%,var(--surface-2) 75%);background-size:280% 100%;animation:sh 1.3s infinite linear}
+@keyframes sh{to{background-position:-280% 0}}
+.alertbox{border:1px solid var(--danger);background:var(--danger-soft);border-radius:var(--r-control);padding:var(--stack) var(--inset);font-size:var(--fs-bodysm);color:var(--danger);text-align:left;display:flex;flex-direction:column;gap:var(--tight)}
+
+/* 우: 검수 패널 */
+.insp{background:var(--shell-panel);border-left:1px solid var(--shell-line);padding:20px 18px 64px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.insp h2{margin:0 0 3px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--shell-dim)}
+.insp .now{margin:0 0 16px;font-size:14px;font-weight:800;color:#fff}
+.icard{border:1px solid var(--shell-line);border-radius:10px;padding:11px 12px;margin-bottom:10px;background:#1b1b20}
+.icard h3{margin:0 0 6px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#7c7c88;display:flex;align-items:center;gap:6px}
+.icard h3 .n{width:15px;height:15px;border-radius:4px;background:#2c2c34;color:#c9c9d4;display:grid;place-items:center;font-size:9px}
+.icard p,.icard li{margin:0 0 5px;font-size:11.5px;line-height:17px;color:#c6c6d0}
+.icard ul{margin:0;padding-left:15px}
+.icard a{color:#8fb6ff}
+.icard strong{color:#fff}
+.icard.chg{border-color:#8a5a15;background:#2a1f0c}
+.icard.chg h3{color:#ffbf6b}
+.feas{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-left:4px;vertical-align:1px}
+.f1{background:#0f2a1a;color:#9ad5ae;border:1px solid #265c37}
+.f2{background:#3a2708;color:#ffbf6b;border:1px solid #8a5a15}
+.f3{background:#330f0f;color:#ff9a9a;border:1px solid #7a2626}
+
+/* 비교 보드 */
+.board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--inset);align-items:start}
+.boardcol{background:var(--shell-panel);border:1px solid var(--shell-line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.boardcol.rec{border-color:var(--accent)}
+.boardcol h3{margin:0;font-size:13px;color:#fff;display:flex;align-items:center;gap:6px}
+.boardcol .why{font-size:11px;line-height:16px;color:var(--shell-dim);margin:0}
+.boardcol .mini{background:var(--bg);border-radius:8px;padding:10px;color:var(--text);overflow:hidden}
+.boardcol label{display:flex;gap:6px;align-items:center;font-size:12px;color:#fff}
+.boardcol textarea{width:100%;min-height:62px;background:#0f0f12;border:1px solid var(--shell-line);border-radius:8px;color:#e6e6ea;font:inherit;font-size:11.5px;padding:7px;resize:vertical}
+.boardacts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
+#copyOut{width:100%;min-height:110px;margin-top:10px;background:#0f0f12;border:1px solid var(--shell-line);border-radius:8px;color:#e6e6ea;font-family:ui-monospace,Menlo,monospace;font-size:11px;padding:8px}
+
+/* 클릭 수 표 */
+.clicks{width:100%;border-collapse:collapse;font-size:11.5px}
+.clicks th,.clicks td{border-bottom:1px solid var(--shell-line);padding:5px 6px;text-align:left;vertical-align:top}
+.clicks th{color:#7c7c88;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700}
+.clicks .was{color:#ff9a9a;font-weight:700}
+.clicks .now2{color:#9ad5ae;font-weight:700}
+
+/* STAMP */
+.stamp{grid-column:1/-1;background:#0b0b0d;border-top:1px solid var(--shell-line);padding:14px 22px;font-family:ui-monospace,Menlo,monospace;font-size:10.5px;line-height:17px;color:#7c7c88}
+.stamp b{color:#c9c9d4}
+.hidden{display:none !important}
+/* 390 터치 하한 44px (DESIGN.md v49). 말풍선 툴바가 좁은 폭에서 미니 칩으로 남으면 누를 수 없다. */
+.artboard[data-vp="390"] .bubbletool{position:static;margin-top:8px;flex-wrap:wrap;border-radius:var(--r-control)}
+.artboard[data-vp="390"] .bubbletool button{min-height:44px;padding:0 12px;font-size:var(--fs-bodysm)}
+.artboard[data-vp="390"] .bubblerow:has(.bubble[data-editing="true"]){margin-bottom:0}
+.artboard[data-vp="390"] .inserthandle button{min-height:32px}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ══════════ 좌: 전역 플로우 레일 (아트보드 밖. clean export 시 제거) ══════════ -->
+<aside class="rail" aria-label="전역 화면 흐름">
+  <h2>OSMU 전역 흐름</h2>
+  <p class="railsub">노드마다 실제 라우터 경로 · 어디서 들어오나 · 신규인가 기존 수정인가를 글자로 박았다. 이번 판이 건드리는 자리는 편집실 하나다.</p>
+
+  <div class="railgroup">
+    <h3>진입</h3>
+    <button class="node" data-goto="" disabled>
+      <span class="nname">로그인 <span class="nbadge b-keep">유지</span></span>
+      <span class="nroute">dashboard/src/app/login/page.tsx</span>
+      <span class="nmeta">진입: 외부 URL · 다음: 생성실</span>
+    </button>
+    <div class="arrow">↓</div>
+    <button class="node" data-goto="" disabled>
+      <span class="nname">생성실 <span class="nbadge b-keep">유지</span></span>
+      <span class="nroute">/studio?room=create</span>
+      <span class="nmeta">진입: 로그인 · 사이드바 · 성과실 복귀 고리</span>
+      <span class="ndiff">수정: 형식 고르기에서 "음악" 칸 삭제(R-25-5)</span>
+    </button>
+  </div>
+
+  <div class="railgroup">
+    <h3>이번 판 (편집실)</h3>
+    <div class="arrow">↓ 초안 넘김</div>
+    <button class="node" data-goto="text">
+      <span class="nname">편집실 · 글 <span class="nbadge b-new">전면개편</span></span>
+      <span class="nroute">/studio?room=edit&amp;kind=text</span>
+      <span class="nmeta">진입: 생성실 "편집실로" · 헤더 2층 편집 단계 · 사이드바 편집실</span>
+      <span class="ndiff">수정: 좌측 "글 문단" 목록 나브 삭제, 번호·▲▼·+문단·삭제 전부 제거(R-25-6). 단일 문서 한 판 + 선택 시 뜨는 플로팅 툴바로 교체</span>
+    </button>
+    <div class="arrow">↕ 형식 탭</div>
+    <button class="node" data-goto="card">
+      <span class="nname">편집실 · 카드뉴스 <span class="nbadge b-new">전면개편</span></span>
+      <span class="nroute">/studio?room=edit&amp;kind=card</span>
+      <span class="nmeta">진입: 생성실 "카톡 말풍선 카드뉴스 9장" · 형식 탭</span>
+      <span class="ndiff">수정: 캔버스 미리보기 + 우측 textarea 칸(BubbleEditor 18rem) 구조를 폐기. 카드 DOM 위 말풍선 직접 편집 + 말풍선에 붙는 플로팅 툴바로 교체(R-25-2·R-25-4)</span>
+    </button>
+    <div class="arrow">↕ 형식 탭</div>
+    <button class="node" data-goto="video">
+      <span class="nname">편집실 · 영상 <span class="nbadge b-new">전면개편</span></span>
+      <span class="nroute">/studio?room=edit&amp;kind=video</span>
+      <span class="nmeta">진입: 생성실 세로 영상 · 형식 탭</span>
+      <span class="ndiff">수정: VideoEditor 4단 아코디언(오버레이·댓글·자막·음성)과 초 숫자 입력칸을 폐기. 플레이어 + 자막 문서 + 타임라인 3판으로 교체(R-25-3)</span>
+    </button>
+    <div class="arrow">↕ 형식 탭</div>
+    <button class="node is-new" data-goto="music">
+      <span class="nname">편집실 · 음악 <span class="nbadge b-del">삭제</span></span>
+      <span class="nroute">/studio?room=edit&amp;kind=audio (폐기)</span>
+      <span class="nmeta">진입: 형식 탭 4번째 칸</span>
+      <span class="ndiff">삭제: 생성 0 · 발행 채널 0 · 편집 화면은 경고문 한 줄. 근거는 이 화면에 있다(R-25-5)</span>
+    </button>
+  </div>
+
+  <div class="railgroup">
+    <h3>상태 분기 (편집실 공통)</h3>
+    <button class="node" data-goto="states">
+      <span class="nname">빈·로딩·실패·넘침 <span class="nbadge b-new">신규</span></span>
+      <span class="nroute">/studio?room=edit (같은 라우트의 상태)</span>
+      <span class="nmeta">진입: 편집실 세 형식 전부에서 갈린다</span>
+      <span class="ndiff">신규: 실패 화면에 "무엇이 없어서 못 하나 + 빠져나갈 길" 명시(ADR-007)</span>
+    </button>
+  </div>
+
+  <div class="railgroup">
+    <h3>이후</h3>
+    <div class="arrow">↓ 편집 결과 넘김</div>
+    <button class="node" data-goto="" disabled>
+      <span class="nname">발행실 <span class="nbadge b-keep">유지</span></span>
+      <span class="nroute">/studio?room=publish</span>
+      <span class="nmeta">진입: 편집실 "발행실로" · 헤더 2층</span>
+      <span class="ndiff">영향: 카드 PNG 굽기 시점이 "편집 중 상시"에서 "발행 직전 1회"로 옮겨간다</span>
+    </button>
+    <div class="arrow">↓</div>
+    <button class="node" data-goto="" disabled>
+      <span class="nname">성과실 <span class="nbadge b-keep">유지</span></span>
+      <span class="nroute">/performance</span>
+      <span class="nmeta">진입: 발행실 · 사이드바 · 헤더 2층</span>
+      <span class="ndiff">3단계 연결점: 실제 수집 댓글을 영상 댓글 오버레이로 끌어오는 출처</span>
+    </button>
+  </div>
+
+  <div class="railgroup">
+    <h3>검수용</h3>
+    <button class="node" data-goto="model" style="margin-bottom:6px">
+      <span class="nname">3형식 데이터 모델 <span class="nbadge b-new">필수</span></span>
+      <span class="nroute">card-deck-contract.ts · video-edit-contract.ts · content-edit-format.ts</span>
+      <span class="nmeta">화면만 정하고 모델을 안 정하면 같은 결과가 난다</span>
+    </button>
+    <button class="node" data-goto="shotgun">
+      <span class="nname">카드 편집 3안 비교 <span class="nbadge b-new">결정판</span></span>
+      <span class="nroute">(검수 셸 전용 · 제품 화면 아님)</span>
+      <span class="nmeta">회장이 고를 자리. 고른 뒤 그 안만 남긴다</span>
+    </button>
+    <button class="node" data-goto="stage" style="margin-top:6px">
+      <span class="nname">구현 단계 나누기 <span class="nbadge b-new">결정판</span></span>
+      <span class="nroute">(검수 셸 전용)</span>
+      <span class="nmeta">1단계 = 말풍선 하나 고치기가 안 답답한가</span>
+    </button>
+  </div>
+</aside>
+
+<!-- ══════════ 중앙: 무대 ══════════ -->
+<main class="stage">
+  <div class="topbar">
+    <span class="tb-label">화면</span>
+    <div class="tb-group" id="navScreens"></div>
+    <span class="tb-label" style="margin-left:8px">폭</span>
+    <div class="tb-group" id="navVp">
+      <button class="tb" data-vp="390">390</button>
+      <button class="tb" data-vp="1024">1024</button>
+      <button class="tb" data-vp="1440" aria-pressed="true">1440</button>
+    </div>
+    <span class="tb-label" style="margin-left:8px">상태</span>
+    <div class="tb-group" id="navState">
+      <button class="tb" data-state="editing" aria-pressed="true">편집 중</button>
+      <button class="tb" data-state="saved">저장됨</button>
+      <button class="tb" data-state="empty">빈 상태</button>
+      <button class="tb" data-state="loading">로딩</button>
+      <button class="tb" data-state="error">실패</button>
+      <button class="tb" data-state="overflow">데이터 과다</button>
+    </div>
+  </div>
+
+  <h1 class="screentitle" id="scTitle">편집실 · 카드뉴스</h1>
+  <p class="screenlede" id="scLede"></p>
+
+  <div class="frames" id="frames"></div>
+</main>
+
+<!-- ══════════ 우: 검수 패널 (4요소 + 이번 개정 변경점) ══════════ -->
+<aside class="insp" aria-label="검수 패널">
+  <h2>검수 패널</h2>
+  <p class="now" id="inspNow">편집실 · 카드뉴스</p>
+  <div id="inspBody"></div>
+</aside>
+
+<div class="stamp">
+🏷 <b>STAMP</b> | line: <b>osmu</b> | 생성: <b>2026-09-23 09:56 KST</b> | model: <b>claude-opus-5[1m]</b> | agent: <b>product-designer</b><br>
+skills: design-shotgun(카드 편집 3안 발산), design-html(이 허브), design-review(Score 아래 명시) | v70 (직전 정본 v68 통합 후보 계승)<br>
+근거: docs/design/DESIGN.md v37 §4 셸 계약 상속 · globals.css :root 실토큰 상속 · wiki/거버넌스/요청.md R-23/R-24/R-25 · 결정.md ADR-007, D-2026-09-09-1, D-2026-09-21-1<br>
+벤치: <a href="https://vrew.ai/en/feature/text-based-video-editing/">vrew.ai 자막 기반 편집</a> · <a href="https://help.descript.com/hc/en-us/articles/15726742913933-Edit-like-a-doc">Descript edit like a doc</a> · <a href="https://www.capcut.com/help/interface-and-settings">CapCut UI</a> · <a href="https://www.canva.com/help/add-and-edit-text/">Canva 캔버스 직접 편집</a> · d-edu/prototypes/brand-dedu-product/카드컨셉13-채팅말풍선/03c-편집도구-통합.html<br>
+고민: 카드 편집을 캔버스에 오버레이 입력칸을 띄우는 방식(현행 유지 + 최소 수정)으로 갈지, 렌더러를 DOM으로 갈아엎을지 마지막까지 저울질했다. 오버레이 방식은 싸지만 폰트 지표가 캔버스와 어긋나 글자가 튀고, 그 순간 "미리보기와 최종이 일치한다"는 편집실 최우선 계약이 깨진다. DOM 렌더로 갈아엎되 발행 PNG는 같은 레이아웃 규격을 공유하는 쪽을 택했다.
+</div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   실데이터. D-EDU 카드컨셉13 "수능 100일" 덱의 실제 문장 톤을 따른다.
+   로렘입숨·홍길동 없음 (standard-design.md §1-6).
+   ══════════════════════════════════════════════════════════════ */
+const DECK = {
+  cover:{headline:"성적이 안 오른\n진짜 이유",sub:"수능 D-100 · 9장으로 정리"},
+  slides:[
+    {role:"cover"},
+    {role:"chat",bubbles:[
+      {who:"other",t:"쌤 저 진짜 열심히 하는데 왜 점수가 그대로예요"},
+      {who:"me",t:"하루 몇 시간 해?"},
+      {who:"other",t:"순공 9시간이요"}]},
+    {role:"chat",bubbles:[
+      {who:"me",t:"그럼 시간이 문제가 아니네."},
+      {who:"me",t:"9시간 중에 <b>채점하고 틀린 거 다시 푸는 시간</b>이 몇 분이야?"},
+      {who:"other",t:"...거의 없는데요"}]},
+    {role:"chat",bubbles:[
+      {who:"me",t:"그게 이유야. 넌 공부를 한 게 아니라 <b>진도를 나간 거</b>야."},
+      {who:"other",t:"둘이 다른 거예요?"}]},
+    {role:"chat",bubbles:[
+      {who:"me",t:"진도는 새 걸 보는 거고 공부는 틀린 걸 없애는 거야."},
+      {who:"me",t:"점수는 아는 걸로 오르는 게 아니라 <b>모르는 게 줄어서</b> 올라."}]},
+    {role:"chat",bubbles:[
+      {who:"other",t:"그럼 뭐부터 해요 D-100인데"},
+      {who:"me",t:"오늘부터 새 문제집 사지 마."},
+      {who:"me",t:"푼 것 중에 틀린 것만 모아. 그게 네 시험 범위야."}]},
+    {role:"chat",bubbles:[
+      {who:"me",t:"100일 동안 그 노트 세 번 돌면 등급 바뀐다."},
+      {who:"other",t:"세 번이면 충분해요?"},
+      {who:"me",t:"세 번째에 안 틀리면 그건 이제 네 거야."}]},
+    {role:"comment_prompt",bubbles:[
+      {who:"me",t:"이거 순서대로 정리한 <b>D-100 체크리스트</b> 있는데"},
+      {who:"other",t:"그거 주세요!!"}]},
+    {role:"cta",bubbles:[
+      {who:"me",t:"댓글에 <b>'순서'</b> 남기면 DM으로 보내줄게."},
+      {who:"me",t:"저장해두고 D-90에 다시 펴봐."}]}
+  ]
+};
+const ROLE_LABEL={cover:"표지",chat:"대화",comment_prompt:"댓글유도",cta:"CTA"};
+const ROLE_CLASS={cover:"r-cover",chat:"r-chat",comment_prompt:"r-prompt",cta:"r-cta"};
+
+const TEXTDOC={
+  title:"9시간 공부하고 점수가 그대로인 이유",
+  paras:[
+    "학생이 순공 9시간을 찍고 있다고 했다. 그런데 그 9시간 중에 <strong>채점하고 틀린 문제를 다시 푸는 시간</strong>이 거의 0분이었다. 이건 공부가 아니라 진도다.",
+    "진도는 새로운 걸 보는 일이고 공부는 틀린 걸 없애는 일이다. 점수는 아는 게 늘어서 오르는 게 아니라 모르는 게 줄어서 오른다. 이 둘을 구분하지 못하면 시간을 아무리 부어도 그래프는 평평하다.",
+    "그래서 D-100에 할 일은 새 문제집을 사는 게 아니다. 이미 푼 것 중에 틀린 것만 모으는 것이다. 그 노트가 당신의 진짜 시험 범위다. 100일 동안 세 번 돌린다. 세 번째에도 안 틀리면 그건 이제 당신 것이다."
+  ]
+};
+
+const SUBS=[
+  {t:"00:00",x:"쌤 저 진짜 열심히 하는데 왜 점수가 그대로예요",cut:false,w:150},
+  {t:"00:03",x:"하루에 몇 시간 하냐고 물었더니 아홉 시간이래요",cut:false,w:160},
+  {t:"00:06",x:"어 근데 그게 어 그러니까 음",cut:true,w:80},
+  {t:"00:08",x:"그럼 시간이 문제가 아니죠",cut:false,w:110},
+  {t:"00:10",x:"아홉 시간 중에 틀린 거 다시 푸는 시간이 몇 분이냐",cut:false,w:180},
+  {t:"00:14",x:"거의 없다고 하더라고요",cut:false,w:100},
+  {t:"00:16",x:"그게 이유입니다. 공부를 한 게 아니라 진도를 나간 거예요",cut:false,w:190},
+  {t:"00:20",x:"점수는 아는 걸로 오르는 게 아니라 모르는 게 줄어서 올라요",cut:false,w:200},
+  {t:"00:25",x:"댓글에 순서 남기면 D-100 체크리스트 보내드릴게요",cut:false,w:170}
+];
+
+/* ══════════ 화면 정의 ══════════ */
+const SCREENS={
+  text:{label:"글",title:"편집실 · 글",
+    lede:"순서 개념을 지웠다. 글은 문단 배열이 아니라 한 덩어리다. 남는 것은 문서 한 판과, 고를 때만 나타나는 툴바다."},
+  card:{label:"카드뉴스",title:"편집실 · 카드뉴스",
+    lede:"말풍선을 화면 안에서 직접 고친다. 캔버스 그림과 입력칸이 따로 놀던 구조를 버리고 카드 자체가 편집 대상이 된다."},
+  video:{label:"영상",title:"편집실 · 영상",
+    lede:"자막이 곧 타임라인이다. 줄을 지우면 그 구간이 잘린다. 초 숫자를 타이핑하는 칸은 하나도 없다."},
+  music:{label:"음악(삭제)",title:"편집실 · 음악 형식 제거",
+    lede:"왜 지워야 하는지를 화면으로 보인다. 생성 경로 0, 발행 채널 0, 편집 화면은 경고문 한 줄이었다."},
+  states:{label:"상태",title:"편집실 · 상태 분기",
+    lede:"빈 상태·로딩·실패·데이터 과다를 한 자리에서 본다. 실패는 이유와 빠져나갈 길을 같이 준다."},
+  model:{label:"데이터 모델",title:"3형식 데이터 모델과 캔버스 편집 방식 판정",
+    lede:"화면만 그리고 모델을 안 정하면 같은 결과가 난다. 지금 모델은 목표를 담을 수 없다. 형식마다 모델을 따로 정하고, 캔버스 직접 편집 방식을 골랐다."},
+  shotgun:{label:"3안 비교",title:"카드 편집 배치 3안 비교",
+    lede:"회장이 고를 자리다. 세 안은 레이아웃 축이 서로 다르다. 색·서체는 DESIGN.md v37 토큰으로 고정했다."},
+  stage:{label:"구현 단계",title:"구현 난이도와 단계",
+    lede:"한 번에 다 못 만든다. 1단계 합격선은 하나다. 말풍선 하나 고치는 데 답답하지 않은가."}
+};
+
+/* ══════════ 검수 패널 내용 (4요소 + 변경점) ══════════ */
+const INSPECT={
+ card:{
+  chg:[
+   "<strong>캔버스를 DOM으로 바꿨다.</strong> 현행 <code>renderChatBubbleSlideToCanvas</code>가 그린 픽셀은 원리적으로 클릭할 수 없다. 그래서 편집칸이 카드 밖 18rem 칸으로 쫓겨났고, 회장이 본 그림과 고치는 칸이 영원히 따로 놀았다.",
+   "<strong>말풍선 아래 붙어 있던 버튼 7개(굵게·화자 전환·▲·▼·쪼개기·합치기·삭제)를 상시 노출에서 뺐다.</strong> 고른 말풍선에만 플로팅으로 붙는다. 9장에 말풍선 24개면 현행은 버튼 168개가 상시로 떠 있다.",
+   "<strong>회장 원문 대조</strong> — R-25-2 \"편집은 거의 개쓰레기 수준, 채팅 다시 치기도 힘든 수준\" / R-25-4 \"이미지는 디에듀에서 한거처럼 여러장넘기면서 사진내에 텍스트 등 화면 안에서 편집하는거\"."
+  ],
+  psy:["<strong>Fitts</strong>: 고칠 대상과 조작 도구의 거리를 0으로 만든다. 현행은 카드(가운데)와 입력칸(오른쪽 288px)이 평균 600px 떨어져 있어 매번 눈이 왕복한다.",
+   "<strong>Jakob</strong>: Canva·Figma·PowerPoint가 전부 캔버스 위 더블클릭 편집이다. 이 제품만 다르게 만들 이유가 없다.",
+   "<strong>Nielsen 1(가시성)·2(실세계 일치)</strong>: 편집 결과가 300ms 뒤 다른 자리에 나타나는 것이 아니라 그 자리에서 즉시 바뀐다.",
+   "<strong>Hick</strong>: 상시 168개였던 조작 선택지를 선택 시 5개로 줄였다."],
+  bench:["<strong>D-EDU 03c 편집도구</strong> (회장 지정 기준 프레임워크) — <code>contenteditable</code> 말풍선 + <code>.bubble-controls</code>가 hover·focus에서만 그 말풍선에 붙어 뜬다. <b>차용</b>: 인플레이스 편집, 말풍선 단위 플로팅 컨트롤, 역할 구분(커버·본문·CTA). <b>버림</b>: 9장을 세로로 다 펼치는 배치(우리는 우측 담당 대화창이 304px을 이미 먹어 폭이 모자란다).",
+   "<a href='https://www.canva.com/help/add-and-edit-text/'>Canva</a> — 더블클릭으로 편집 진입, 선택 요소에 맞춰 바뀌는 플로팅 툴바. <b>차용</b>: 툴바가 선택 대상을 따라온다. <b>버림</b>: 자유 배치(우리 카드는 말풍선 세로 흐름이 규격이다).",
+   "<a href='https://linear.app/docs/board-layout'>Linear</a> — 좌측 세로 스트립의 밀도와 24px 리듬. DESIGN.md §4가 이미 이 값을 상속했다."],
+  impl:["<b>계승</b>: 헤더 2층(작업공간 줄 + 네 단계 줄), 좌 사이드바 224px, 우 상시 담당 304px, 형식 탭 위치, 저장 상태 표시. 전부 <code>StudioRooms.tsx</code> EditRoom과 <code>Sidebar.tsx</code> 실물 그대로다.",
+   "<b>계승</b>: 역할 4종 배지 색 = <code>BubbleEditor.tsx</code>의 <code>SLIDE_ROLE_BADGE_CLASS</code> 그대로. 말풍선 노란색 = <code>--chat-reader-bg #FEE500</code> (globals.css 실값).",
+   "<b>신규</b>: 카드 스테이지의 DOM 카드, 말풍선 플로팅 툴바, 말풍선 사이 삽입 핸들.",
+   "<b>폐기</b>: <code>CardDeckPanel</code>의 3열 그리드 <code>lg:grid-cols-[14rem_minmax(0,1fr)_18rem]</code>, 우측 <code>BubbleEditor</code> textarea 열, 장별 ▲▼+장/삭제 버튼 줄."],
+  prd:["R-25-2 말풍선 재입력 난이도 · R-25-4 D-EDU 방식 인플레이스 편집 · R-23-7 컨셉 선택 후 편집 UI(메시지 수정·역할 바꾸기·대문/마지막 장 사진·후킹 CTA) · R-1-2 이미지 위 문구와 배치를 직접 · R-1-3 여러 장 한 세트.",
+   "D-2026-09-09-1 (직접 조작과 AI 챗봇 역할 분담) 준수: 말풍선 하나 고치기는 손, \"전체 어투 반말로\"는 우측 담당."],
+  feas:[["카드 DOM 렌더러","f1","<code>chat-bubble.ts</code>의 레이아웃 상수를 CSS로 옮기면 된다. 같은 규격을 PNG 굽기와 공유한다"],
+   ["말풍선 인플레이스 편집","f1","<code>contenteditable</code> + 기존 <code>card-deck-ops.ts</code> 순수 함수 재사용"],
+   ["플로팅 툴바","f1","선택 말풍선 기준 절대 위치. 새 API 0개"],
+   ["미리보기와 발행 PNG 100% 일치","f2","DOM과 canvas 두 렌더 경로가 남으면 어긋난다. 발행 PNG를 같은 DOM에서 뜨는 방식으로 정리해야 완전히 닫힌다"],
+   ["표지 사진 위 글자 자유 이동","f3","이번 범위 밖. 현행도 상·중·하 3단 고정이고 그대로 둔다"]]
+ },
+ video:{
+  chg:[
+   "<strong>자막이 타임라인이 됐다.</strong> 현행은 자막 줄을 손으로 입력하고 \"컷 표시\" 버튼을 누르는데, 그 자막이 영상과 아무 관계가 없다(<code>SubtitleCutEditor</code> 자체 주석: \"줄 목록 조회 API가 없다\"). 재생 위치와 자막과 컷이 한 축에 올라간다.",
+   "<strong>초 숫자 입력칸을 전부 없앴다.</strong> 현행 오버레이 편집은 시작 초·끝 초를 <code>&lt;input type=number&gt;</code>에 직접 타이핑한다. 타임라인 블록을 끌어서 정한다.",
+   "<strong>4단 세로 아코디언을 3판으로 바꿨다.</strong> 현행은 플레이어 아래에 오버레이·댓글·자막·음성 네 섹션이 세로로 쌓여 화면 밖으로 밀린다.",
+   "<strong>회장 원문 대조</strong> — R-25-3 \"영상은 캡컷이나 Vrew처럼 재생 및 자막기반 편집 등이 있어야하고\" / R-23-8 \"후킹 CTA 선택, 댓글 보여주면서 사회적 증거, 재생, 자막기반 편집, 음성변경\"."
+  ],
+  psy:["<strong>Nielsen 2(실세계 일치)</strong>: 영상은 시간축 위에 있다. 시간축 없이 목록으로 다루면 머릿속에서 매번 변환해야 한다.",
+   "<strong>Jakob</strong>: 타깃이 이미 쓰는 도구가 CapCut·Vrew다. 그 배치를 따르면 배울 게 없다.",
+   "<strong>Miller(7±2)</strong>: 한 번에 보이는 조작 종류를 자막·오버레이·댓글 3레인으로 묶었다.",
+   "<strong>사회적 증거</strong>: 댓글 오버레이는 사회적 증거 장치다. 다만 직접 입력분은 경고 배지를 유지한다(가짜 후기 금지, ADR-007과 윤리 1선)."],
+  bench:["<a href='https://vrew.ai/en/feature/text-based-video-editing/'>Vrew</a> — 대본을 지우면 그 구간 영상이 사라진다. <b>차용</b>: 자막 줄 = 컷 단위, 무음·군말 일괄 컷. <b>버림</b>: 자동 전사(우리는 자막을 생성실이 이미 대본으로 갖고 있어 전사가 불필요하다).",
+   "<a href='https://help.descript.com/hc/en-us/articles/15726742913933-Edit-like-a-doc'>Descript</a> — 지우기와 무시(ignore)를 구분해 무시한 줄은 취소선으로 남긴다. <b>차용</b>: 컷을 삭제가 아니라 취소선으로 남겨 되돌릴 수 있게 한다. 되돌리기 비용이 0이어야 손이 과감해진다.",
+   "<a href='https://www.capcut.com/help/interface-and-settings'>CapCut</a> — 상단 소스·프리뷰·속성, 하단 전폭 타임라인. <b>차용</b>: 하단 전폭 타임라인 + 레인 구조. <b>버림</b>: 다중 비디오 트랙·키프레임(우리 산출물은 9:16 한 트랙이다).",
+   "<a href='https://www.veed.io/tools/text-based-video-editing'>VEED</a> — 텍스트 기반 편집의 보조 확인."],
+  impl:["<b>계승</b>: 재생기 전용 토큰 7종(<code>--player-surface</code> 외). DESIGN.md §2가 \"재생기는 테마를 따르지 않는다\"고 이미 못박았고 이 화면이 그 유일한 소비처다.",
+   "<b>계승</b>: <code>video-edit-contract.ts</code>의 <code>overlays / comments / subtitles / voice</code> 4필드 계약과 순수 함수 패턴. 자료 구조는 그대로 두고 화면만 바꾼다.",
+   "<b>계승</b>: 직접 입력 댓글의 경고 배지, 목소리 목록 <code>/api/elevenlabs-voices</code>.",
+   "<b>신규</b>: 타임라인 3레인, 자막 줄 클릭 → 플레이헤드 점프, 컷 취소선.",
+   "<b>정직 고지 유지</b>: 오버레이·댓글·컷이 실제 mp4에 아직 굽히지 않는다는 사실은 화면에서 계속 밝힌다(ADR-007). 이번 판은 편집 UI이지 렌더 파이프라인이 아니다."],
+  prd:["R-25-3 재생·자막 기반 편집 · R-23-8 후킹 CTA·댓글 오버레이·재생·자막 기반 편집·음성 변경 · R-1-4 Vrew처럼 장면 대사를 보고 자막·음성을 바로 · R-1-7 편집실 영상이 재생되지 않는다.",
+   "D-2026-09-21-1 로드맵 1단계(영상 재생) 계승, 3단계(성과실 실제 댓글 연결)로 가는 자리를 댓글 레인에 비워 뒀다."],
+  feas:[["재생 + 자막 줄 클릭 점프","f1","<code>video.currentTime</code> 한 줄. 이미 <code>VideoPlayback</code>에 ref가 있다"],
+   ["자막 줄 편집 · 컷 취소선","f1","<code>video-edit-contract.ts</code> <code>toggleSubtitleCut</code> 그대로 재사용"],
+   ["타임라인 블록 드래그로 구간 지정","f2","포인터 이벤트 + 시간↔픽셀 변환. 새 API 없음. 손이 좀 간다"],
+   ["자막 줄 ↔ 실제 영상 구간 매핑","f2","생성 시점에 장면별 시작·끝 초를 같이 저장해야 한다. 생성실 산출 계약 한 칸 추가"],
+   ["컷이 실제 mp4에 반영","f3","렌더 파이프라인 작업이다. 이번 디자인 범위 밖이고 화면에는 계속 미반영이라고 적는다"]]
+ },
+ text:{
+  chg:[
+   "<strong>좌측 문단 목록 나브를 통째로 지웠다.</strong> 번호·▲·▼·＋문단·삭제가 전부 사라진다.",
+   "<strong>왜 순서가 필요 없나</strong> — 발행되는 실제 산출물은 문단 배열이 아니라 <code>safeLines.join(\"\\n\\n\")</code> 한 덩어리 문자열이다. 지금 구현도 이미 그렇게 합쳐서 쓴다. 즉 문단 목록은 데이터에 없는 구조를 화면이 지어낸 것이고, 커서가 엔터 하나로 하는 일을 버튼 네 개로 옮겨 놓은 것이라 더 느리다.",
+   "<strong>대신 들어온 것</strong>: 채널별 글자수 미터(X 280 가중 문자 포함), 선택 시 나타나는 플로팅 툴바, 저장 상태 한 줄.",
+   "<strong>회장 원문 대조</strong> — R-25-6 \"글은 순서 있을필요가없지않냐고 한 4번 얘기한듯\" / R-1-8 \"글·카드뉴스에는 목차가 굳이 필요 없다\"."
+  ],
+  psy:["<strong>편집자 원칙(김지홍/토스)</strong>: 무엇을 뺄지 결정했다. 이 화면에서 뺀 것이 이 화면의 설계다.",
+   "<strong>Hick</strong>: 문단마다 4개씩 붙던 조작을 0으로 만들면 남는 결정은 \"무엇을 쓸까\" 하나다.",
+   "<strong>Nielsen 8(미니멀)</strong>: 글 쓰는 화면에 글 아닌 것이 없다.",
+   "<strong>Zeigarnik + 손실회피</strong>: 저장 상태를 상시로 보여 \"쓴 게 날아갈까\"를 닫는다. 자동 저장인데 표시가 없으면 사용자는 매번 불안하다."],
+  bench:["<a href='https://www.notion.com/en-gb/help/navigate-with-the-sidebar'>Notion</a> — 본문 폭 고정, 선택 시 뜨는 툴바, 문단 번호 없음. <b>차용</b>: 선택 기반 툴바. <b>버림</b>: 블록 핸들(우리는 블록 개념 자체를 지우는 게 목적이라 정반대다).",
+   "<a href='https://help.medium.com/hc/en-us'>Medium</a> — 680px 본문 폭과 큰 행간. <b>차용</b>: 680px 정렬선, 17px/30px 본문. 콘텐츠 제작 도구인데 화면이 읽기 어려우면 결과물도 읽기 어렵다.",
+   "<a href='https://developer.x.com/en/docs/counting-characters'>X 문자 계산</a> — 한글은 가중치 2다. 상한 미터가 이 가중을 반영한다. 실제로 R-24 실측에서 X 발행이 591/280으로 막혔다."],
+  impl:["<b>계승</b>: 현행 <code>kind===\"text\"</code> 분기의 단일 textarea 사상(<code>StudioRooms.tsx</code>는 이미 글에서 <code>onMove/onAdd/onRemove</code>를 <code>undefined</code>로 넘긴다). 반쯤 가 있던 것을 끝까지 민다.",
+   "<b>계승</b>: 글자수 표시, 자동 저장 문구, 우측 담당 일괄 변경(<code>/api/studio/edit-bulk</code>).",
+   "<b>신규</b>: 채널별 상한 미터, 선택 플로팅 툴바, 680px 정렬선.",
+   "<b>폐기</b>: <code>EditOutline</code> 컴포넌트의 글 분기 호출. 카드·영상에서는 남는다."],
+  prd:["R-25-6 글 순서 불필요(4회 반복) · R-1-1 글은 에디터에서 직접 · R-1-8 목차 불필요 · R-23-3 플랫폼별 글자수 상한 준수.",
+   "<b>미해결 표기</b>: R-1-6 \"편집실 AI 챗봇 UI가 다른 방과 다르다\"는 이번 판에서 우측 담당을 네 방 공통 셸로 두는 것으로 맞췄다. 다만 실제 코드 통합 여부는 미검증이다."],
+  feas:[["문단 목록 제거","f1","호출부 한 곳을 지우면 된다"],
+   ["채널별 상한 미터","f1","<code>platform-publish-fields.ts</code>와 <code>twitter-text</code>가 이미 있다"],
+   ["선택 플로팅 툴바","f1","<code>selectionchange</code> + 범위 좌표"],
+   ["굵게가 발행까지 살아남기","f2","채널마다 서식 지원이 다르다. Threads·X는 평문이라 굵게가 유니코드 변환이거나 사라진다. 어느 쪽인지 정해야 한다"]]
+ },
+ music:{
+  chg:["<strong>형식 목록이 4개에서 3개로 줄었다.</strong> 글·카드뉴스·영상만 남는다.",
+   "<strong>회장 원문 대조</strong> — R-25-5 \"음악은 왜 있는지 모르겠고\"."],
+  psy:["<strong>편집자 원칙</strong>: 쓰이지 않는 칸은 중립이 아니다. 매번 \"이건 뭐지\"를 묻게 만드는 비용을 계속 물린다.",
+   "<strong>goodwill 저수지</strong>: 눌렀는데 경고문만 나오는 탭은 신뢰를 깎는다. ADR-007이 금지한 조용한 실패의 사촌이다."],
+  bench:["별도 벤치마크를 하지 않았다. 이건 취향 문제가 아니라 사실 확인이라 코드에서 셌다. <b>(unsourced 아님 — 아래 근거는 전부 레포 실측이다)</b>"],
+  impl:["<b>실측 1 · 생성</b>: 음악 파일을 만드는 경로가 없다. 편집실 <code>kind===\"audio\"</code> 분기가 화면에 직접 적어 뒀다 — \"음악 파일 생성은 아직 제공하지 않습니다. 지금은 나레이션 대사만 편집할 수 있습니다.\"",
+   "<b>실측 2 · 발행</b>: <code>platform-publish-fields.ts</code>와 발행 라우트에 <code>audio</code> 분기가 0건이다. 연결된 7채널(Instagram·Threads·X·Facebook·Shorts·Reels·TikTok) 중 오디오 단독 게시를 받는 곳이 없다.",
+   "<b>실측 3 · 편집</b>: audio 분기의 본문은 빈 회색 상자 하나와 경고문 한 줄이 전부다. 조작 가능한 요소는 목소리·음악·음량 셀렉트 3개인데 그 값이 어디에도 안 쓰인다.",
+   "<b>남길 것</b>: 나레이션 <b>목소리</b>는 실제로 쓰인다. 다만 그것은 영상의 속성이지 독립 형식이 아니다. 영상 편집기 상단 줄로 흡수한다. <code>ContentEditFormat</code>의 <code>audio</code> 갈래는 마이그레이션 없이 화면에서만 내린다(기존 초안 보존)."],
+  prd:["R-25-5 음악 형식 존재 이유 불명 → 제거 또는 근거 제시. 이 화면이 제거 근거다.",
+   "영향 화면: 생성실 형식 고르기(\"배경 음악\" 칸), 편집실 형식 탭, <code>EDIT_KIND_ORDER</code>. 발행실·성과실은 영향 0(원래 안 받는다)."],
+  feas:[["형식 탭에서 내리기","f1","<code>EDIT_KIND_ORDER</code> 한 줄"],
+   ["기존 audio 초안 보존","f1","데이터는 그대로 두고 화면만 안 띄운다. 파괴적 변경 0"],
+   ["목소리를 영상으로 흡수","f1","<code>video-edit-contract.ts</code>에 <code>voice</code>가 이미 있다"]]
+ },
+ states:{
+  chg:["<strong>실패 화면이 이유와 빠져나갈 길을 같이 준다.</strong> ADR-007 4항 \"실패 사유를 버리지 않는다\"를 화면 규격으로 고정했다.",
+   "<strong>데이터 과다 상태를 처음으로 그렸다.</strong> 말풍선 11장·자막 40줄·글 8000자에서 무엇이 잘리고 무엇이 남는지 규칙을 못박는다.",
+   "<strong>로딩을 스피너 하나로 때우지 않는다.</strong> 표지 사진이 장당 최대 8초, 9장이면 최악 72초 걸린다는 사실이 현행 코드 주석에 적혀 있는데 화면에는 진행 표시가 없다."],
+  psy:["<strong>Nielsen 1(가시성)</strong>: 72초 걸릴 수 있는 일에 진행 표시가 없으면 사용자는 고장으로 읽는다.",
+   "<strong>Nielsen 9(복구)</strong>: 실패에 원인 + 다음 행동. \"잠시 후 다시 시도\"만 있는 문구는 다음 행동이 아니다.",
+   "<strong>빈 상태 = 첫 행동 유도 화면</strong>(ux-writing.md). 빈 편집실은 생성실로 가는 단추를 준다."],
+  bench:["<a href='https://www.nngroup.com/articles/progress-indicators/'>NN/g 진행 표시 가이드</a> — 10초 넘는 작업은 퍼센트 진행률이 필요하다. 우리 표지 렌더가 정확히 그 구간이다.",
+   "현행 <code>DeliveredMedia.tsx</code>의 만료 주소 복구 패턴을 그대로 계승한다. 레포 안에 이미 제일 좋은 실패 처리 예시가 있다."],
+  impl:["<b>계승</b>: <code>data-card-deck-editor-note</code>·<code>data-video-editor-empty</code> 등 현행 빈 상태 문구와 <code>data-*</code> 훅. 테스트가 이 선택자를 잡고 있어 유지한다.",
+   "<b>계승</b>: <code>cardDeckAutosaveError</code>·<code>videoEditAutosaveError</code> 도메인 분리(2026-09-22 코드리뷰 5차 결과물). 잘 돼 있는 것이라 그대로 쓴다.",
+   "<b>신규</b>: 진행률 표시, 데이터 과다 규칙, 실패 화면의 빠져나갈 길 단추."],
+  prd:["ADR-007 전 5항 · R-24-2 편집기가 화면에 안 나타나는 결함 · standard-design.md §1-5 상태 완전성(empty/loading/error/disabled/overflow)."],
+  feas:[["빈·실패 화면","f1","현행 문구를 배치만 바꾼다"],
+   ["표지 렌더 진행률","f1","9장 루프에 카운터 하나"],
+   ["데이터 과다 규칙","f1","카드 11장 상한은 <code>card-deck-ops.ts</code>에 이미 있다(OPS_SLIDE_LIMIT)"]]
+ },
+ model:{
+  chg:["<strong>이번 판의 진짜 발견</strong>: 편집실이 못 쓰는 이유는 배치만이 아니다. <b>모든 형식이 <code>string[]</code> 하나로 추상화돼 있어</b> 타임코드·좌표·스타일 범위를 담을 자리가 없다. 그래서 CapCut·Vrew 식 편집도 캔버스 직접 편집도 지금 모델 위에서는 원리적으로 못 만든다.",
+   "<strong>인덱스 평행 배열을 폐기한다.</strong> 현행은 <code>lines[i]</code>·<code>visibleLines[i]</code>·<code>cardTextPositions[i]</code> 셋이 같은 인덱스로 묶여 있어 장을 옮기거나 지울 때마다 셋을 손으로 맞춘다(<code>moveLineTo</code>가 그 일을 한다). 기능이 늘수록 어긋남은 필연이다. 안정 ID를 가진 객체 배열로 바꾼다.",
+   "<strong>EditRoom 하나가 형식 전환·목록·미리보기·도구·대본·일괄 편집을 전부 맡는다.</strong> 그래서 형식별 전문 편집기 대신 공용 목록 UI에 기능을 계속 덧붙이게 됐다. <code>EditShell</code> 하나 + 형식별 편집기 셋으로 쪼갠다.",
+   "<strong>교차 진단 출처</strong>: Codex(GPT-5 계열) 독립 진단. 다만 Codex가 읽은 트리에는 <code>BubbleEditor.tsx</code>·<code>VideoEditor.tsx</code>·<code>card-deck-ops.ts</code>가 없었다(구 브랜치). 그 셋은 origin/main 기준으로 이쪽에서 직접 읽고 판정했다."],
+  psy:["모델 이야기지만 사용자가 겪는 일로 번역하면 이렇다. <strong>Nielsen 2(실세계 일치)</strong> — 영상은 시간 위에 있는데 모델에 시간이 없다. 그래서 화면에 시간이 못 나오고, 사용자는 머릿속에서 매번 \"몇 번째 줄이 몇 초쯤\"을 변환한다.",
+   "<strong>손실회피</strong> — 컷을 삭제가 아니라 <code>enabled:false</code>로 두면 되돌리기가 공짜다. 되돌리기가 공짜여야 손이 과감해지고, 과감해져야 편집이 빨라진다."],
+  bench:["<a href='https://help.descript.com/hc/en-us/articles/15726742913933-Edit-like-a-doc'>Descript</a>·<a href='https://vrew.ai/en/feature/text-based-video-editing/'>Vrew</a> 둘 다 내부 모델이 \"텍스트 조각 ↔ 원본 구간\" 쌍이다. 자막 줄이 곧 컷이라는 UX는 그 모델에서만 나온다. 화면을 흉내 내도 모델이 없으면 그 동작이 안 나온다.",
+   "<a href='https://www.canva.com/help/add-and-edit-text/'>Canva</a>는 요소마다 좌표를 갖는다. 우리 말풍선 덱은 반대로 <b>흐름 배치</b>가 규격이라 좌표 모델을 전면 도입하면 오히려 카톡처럼 안 보인다. 남의 모델을 통째로 베끼지 않은 자리다."],
+  impl:["<b>계승</b>: <code>card-deck-contract.ts</code>의 <code>Bubble{id,speaker,segments[]}</code>는 이미 ID와 스타일 범위를 갖는 제대로 된 모델이다. 버리지 않고 블록 모델의 한 갈래로 승격한다. 마이그레이션이 싸다.",
+   "<b>계승</b>: <code>card-deck-ops.ts</code>의 순수 함수 + <code>revision</code> 패턴, <code>video-edit-contract.ts</code>의 4필드 구성. 자료 구조를 바꾸되 이 규율은 그대로 간다.",
+   "<b>폐기</b>: <code>EditRoom</code>의 <code>lines:string[]</code> 단일 추상화, <code>visibleLines</code>, <code>cardTextPositions</code>, <code>index × 4초</code> 시간 추정(<code>secondsPerLine</code>).",
+   "<b>주의</b>: 1단계에서 DOM 미리보기와 canvas 발행 렌더가 잠시 공존한다. 레이아웃 상수를 한 파일에서 공유하고 2단계에 발행도 DOM 경로로 통일한다. 이 기간이 이번 판의 가장 큰 회귀 위험이다."],
+  prd:["Codex 교차 진단 1·2·3·4·5 전항 · R-25-3 Vrew식 · R-25-4 캔버스 직접 편집 · D-2026-09-21-1 로드맵.",
+   "OD 신설 필요: 카드 덱 저장 위치가 <code>drafts.payload.cardDeck</code> JSONB(D-2026-09-21-2 OD-A)이므로 블록 모델 확장은 마이그레이션 없이 들어간다. 영상 세그먼트도 같은 자리를 쓴다."],
+  feas:[["글 모델 교체","f1","<code>lines.join(\"\\n\\n\")</code> 1회. 무손실"],
+   ["카드 블록 모델","f1","기존 <code>bubbles</code>를 <code>kind:\"bubble\"</code> 블록으로 감싼다. JSONB라 마이그레이션 0"],
+   ["영상 세그먼트 모델","f2","구조는 쉽다. 어려운 건 실제 <code>sourceInMs/OutMs</code>를 생성실이 내려주게 하는 것"],
+   ["EditRoom 3분할","f2","2,173줄 컴포넌트 분해. 회귀 테스트가 붙어 있어 안전망은 있다"],
+   ["발행 렌더 DOM 통일","f2","2단계. 발행실 회귀 위험이라 교차 코드리뷰 대상"]]
+ },
+ shotgun:{
+  chg:["<strong>단일안으로 직행하지 않았다.</strong> 카드 편집 배치는 이번 판에서 가장 되돌리기 비싼 결정이라 3안을 만들어 회장이 고르게 한다.",
+   "세 안은 <b>레이아웃 축</b>과 <b>한 번에 보는 장 수</b>가 서로 다르다. 색·서체는 DESIGN.md v37 토큰으로 고정했다(새 디자인 시스템 발명 금지)."],
+  psy:["<strong>A(무대형)</strong>: 한 화면 한 결정. 지금 고치는 장 하나에 시선을 모은다.",
+   "<strong>B(필름형)</strong>: 장과 장의 연결이 곧 상품이라는 관점. 흐름이 한눈에 보인다.",
+   "<strong>C(대본형)</strong>: 카톡 대화는 원래 이어진 하나다. 장 경계는 발행 규격일 뿐이라는 관점."],
+  bench:["A ← Canva·Figma 캔버스형 · B ← D-EDU 03c 원본·Google Slides 세로 뷰 · C ← 실제 카카오톡 대화창·Notion 문서형."],
+  impl:["세 안 모두 헤더·사이드바·담당 대화창 셸은 동일하다. 다른 것은 가운데 작업 영역뿐이다(과업 C 요구)."],
+  prd:["standard-design.md §1-12 방향 산출 단일안 금지 · stages.yaml design 주석 ①~⑤."],
+  feas:[["A 무대형","f1","가장 싸다. 카드 1장만 DOM으로 그린다"],
+   ["B 필름형","f2","9장을 동시에 DOM으로. 폭 288px이라 카드가 작아진다"],
+   ["C 대본형","f2","장 경계 표시와 넘침 경고를 새로 설계해야 한다"]]
+ },
+ stage:{
+  chg:["<strong>1단계 합격선을 하나로 못박았다</strong> — 회장이 말풍선 하나를 고치는 데 답답하지 않은가.",
+   "나머지는 전부 2단계 이후다. 1단계에 욕심을 넣으면 또 아무것도 안 끝난다."],
+  psy:["<strong>Fogg B=MAP</strong>: 지금 막힌 것은 능력(ability)이지 동기가 아니다. 회장은 쓰려고 했고 못 썼다. 그래서 1단계는 능력만 푼다."],
+  bench:["없음. 이건 우리 레포 사정이라 판단으로 나눴다."],
+  impl:["1단계가 건드리는 파일은 <code>BubbleEditor.tsx</code>·<code>chat-bubble.ts</code>·<code>StudioRooms.tsx</code> EditRoom 분기 셋이다. API·DB·발행실 0."],
+  prd:["과업 D. R-25-8 \"코덱스 적극적으로 써서 개선해라\" → 1단계는 렌더러 치환이라 크로스모델 리뷰 대상이다."],
+  feas:[]
+ }
+};
+
+/* ══════════ 렌더 ══════════ */
+let cur="card", vp="1440", st="editing";
+
+const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;if(h!=null)n.innerHTML=h;return n};
+
+function appShell(kind, inner, opts){
+  opts=opts||{};
+  const saved = st==="saved";
+  return `
+  <div class="app">
+    <div class="gnb">
+      <div class="gnb-1">
+        <div class="brand"><span class="dot"></span>OSMU</div>
+        <div class="ws">작업 공간 <b>제로원 스튜디오</b></div>
+        <div class="spacer"></div>
+        <span class="pill">크레딧 12,400</span>
+        <span class="pill">알림 2</span>
+        <span class="pill">조성진</span>
+      </div>
+      <div class="gnb-2">
+        <div class="step"><b>생성</b><span class="cnt">1</span></div><span class="stepsep">›</span>
+        <div class="step" aria-current="step"><b>편집</b><span class="cnt">1</span></div><span class="stepsep">›</span>
+        <div class="step"><b>발행</b><span class="cnt">0</span></div><span class="stepsep">›</span>
+        <div class="step"><b>성과</b><span class="cnt">2</span></div>
+      </div>
+    </div>
+    <div class="body">
+      <nav class="side">
+        <div class="grp"><h4>일의 흐름</h4>
+          <a href="#">생성실</a><a href="#" class="on">편집실</a><a href="#">발행실</a><a href="#">성과실</a></div>
+        <div class="grp"><h4>대상</h4>
+          <a href="#">채널</a><a href="#">데이터</a><a href="#">키워드</a><a href="#">자산</a><a href="#">설정</a></div>
+      </nav>
+      <div class="main">
+        <div class="work">
+          <div class="worktop">
+            <div class="kindtabs" role="tablist">
+              <button role="tab" aria-selected="${kind==='text'}">글</button>
+              <button role="tab" aria-selected="${kind==='card'}">카드뉴스</button>
+              <button role="tab" aria-selected="${kind==='video'}">영상</button>
+              ${opts.showMusicTab?'<button role="tab" aria-selected="false" style="color:var(--danger)">음악</button>':''}
+            </div>
+            <div class="savestate"><span class="savedot ${saved?'':'busy'}"></span>${saved?'방금 저장됨':'자동 저장 중'}</div>
+          </div>
+          ${inner}
+        </div>
+        <aside class="chat">
+          <div class="ch-h">담당 · 여러 곳을 한 번에 바꿀 때 말로 시키세요</div>
+          <div class="ch-b">
+            <div class="msg a">${opts.chat1||'카드 9장 다 만들어 뒀어요. 말풍선을 눌러서 바로 고치시면 돼요.'}</div>
+            <div class="msg u">${opts.chat2||'전체 어투를 좀 더 단호하게 바꿔줘'}</div>
+            <div class="msg a">${opts.chat3||'9장 중 6장의 말끝을 고쳤어요. 어느 장인지 왼쪽에 파란 점으로 표시했습니다.'}</div>
+          </div>
+          <div class="ch-f"><input placeholder="말로 시킬 일을 적으세요"><button class="btn pri">보내기</button></div>
+        </aside>
+      </div>
+    </div>
+  </div>`;
+}
+
+function slideThumbHTML(s,i){
+  if(s.role==="cover") return `<div class="thumb" style="background:linear-gradient(180deg,#43506b,#1d2434);color:#fff;justify-content:flex-end"><b style="font-size:10px;line-height:12px">성적이 안 오른<br>진짜 이유</b></div>`;
+  /* 썸네일은 글자를 자르지 않는다. 중간에서 잘린 한국어는 읽히지도 않고 노이즈만 만든다.
+     말풍선의 길이와 좌우(화자)만 그림으로 보인다 = 장을 구분하는 데 필요한 최소 정보. */
+  const bs=(s.bubbles||[]).slice(0,4).map(b=>{
+    const len=b.t.replace(/<[^>]+>/g,'').length;
+    const w=Math.max(34,Math.min(88,Math.round(len*2.2)));
+    return `<div class="${b.who==='me'?'tb1':'tb2'}" style="width:${w}%;height:7px;padding:0;border-radius:var(--r-pill)"></div>`;
+  }).join("");
+  return `<div class="thumb">${bs}</div>`;
+}
+
+function cardBubblesHTML(s, activeIdx){
+  return (s.bubbles||[]).map((b,i)=>{
+    const on = i===activeIdx;
+    const tool = on?`<div class="bubbletool"><button>굵게</button><button>화자 ↔</button><button>쪼개기</button><button>합치기</button><button>삭제</button></div>`:"";
+    return `<div class="bubblerow ${b.who==='me'?'me':''}">
+      <div class="bubble ${b.who==='me'?'me':'other'}" ${on?'data-editing="true"':''} contenteditable="false">${b.t.replace(/<b>/g,'<strong>').replace(/<\/b>/g,'</strong>')}${tool}</div>
+    </div>
+    <div class="inserthandle"><button>＋ 여기에 말풍선</button></div>`;
+  }).join("");
+}
+
+/* ── 화면별 본문 ── */
+function bodyText(){
+  if(st==="empty") return stateEmpty("아직 편집할 글이 없습니다","생성실에서 글 초안을 먼저 만들면 여기서 바로 고칠 수 있습니다.","생성실에서 글 초안 만들기");
+  if(st==="loading") return `<div class="doc"><div class="limits">${[1,2,3].map(()=>`<span class="limit"><span class="skel" style="width:54px"></span></span>`).join("")}</div>
+    <div class="docsheet"><div class="inner">${[80,100,100,64,0,100,92,100,72].map(w=>w?`<div class="skel" style="width:${w}%;height:18px;margin-bottom:14px"></div>`:`<div style="height:18px"></div>`).join("")}</div></div></div>`;
+  if(st==="error") return `<div class="doc"><div class="docsheet"><div class="inner">
+      <div class="alertbox"><b>자동 저장이 12:41부터 막혀 있습니다.</b>
+      <span>작업 공간 크레딧이 0이라 서버가 저장을 거절했습니다. 지금까지 쓴 글은 이 브라우저에 남아 있고 사라지지 않았습니다.</span>
+      <span style="display:flex;gap:8px;margin-top:4px"><button class="btn pri sm">크레딧 충전하고 저장하기</button><button class="btn sm">지금 글 복사해 두기</button></span></div>
+      <p style="margin-top:24px;color:var(--subtle)">아래 글은 계속 고칠 수 있습니다. 저장만 막혀 있습니다.</p>
+      <p>${TEXTDOC.paras[0]}</p></div></div></div>`;
+  const over = st==="overflow";
+  const paras = over ? TEXTDOC.paras.concat(TEXTDOC.paras, TEXTDOC.paras) : TEXTDOC.paras;
+  const chars = paras.join("").replace(/<[^>]+>/g,"").length;
+  const lim=(n,max)=>{const pct=Math.min(100,Math.round(n/max*100));const cls=n>max?"over":pct>80?"warn":"";
+    return `<span class="limit ${cls}"><b>${n>max?'초과':''}</b>${n.toLocaleString()} / ${max.toLocaleString()}<span class="bar"><i style="width:${pct}%"></i></span></span>`};
+  return `<div class="doc">
+    <div class="limits">
+      <span class="limit" style="border-style:dashed;color:var(--subtle)">채널 상한</span>
+      ${lim(Math.round(chars*2),280)}<span style="font-size:var(--fs-caption);color:var(--subtle);align-self:center">X(한글 가중 2)</span>
+      ${lim(chars,500)}<span style="font-size:var(--fs-caption);color:var(--subtle);align-self:center">Threads</span>
+      ${lim(chars,2200)}<span style="font-size:var(--fs-caption);color:var(--subtle);align-self:center">Instagram</span>
+    </div>
+    <div class="docsheet"><div class="inner">
+      <h1 contenteditable="false">${TEXTDOC.title}</h1>
+      ${paras.map((p,i)=>i===1?`<p>학생이 순공 9시간을 찍고 있다고 했다. <span class="selhi">그런데 그 9시간 중에 채점하고 틀린 문제를 다시 푸는 시간이 거의 0분이었다.</span> 이건 공부가 아니라 진도다.</p>`:`<p>${p}</p>`).join("")}
+      ${over?`<p style="color:var(--subtle);font-size:13px;border-top:1px dashed var(--border);padding-top:16px">X와 Threads 상한을 넘었습니다. 발행실에서 채널별로 줄여야 합니다. 여기서는 자르지 않습니다.</p>`:``}
+    </div>
+    <div class="floattool" style="left:58%;top:206px">
+      <button><b>B</b></button><button>H</b></button><div class="sep"></div><button>이 문단 다시 쓰기</button><button>짧게</button>
+    </div>
+    </div>
+  </div>`;
+}
+
+function bodyCard(){
+  if(st==="empty") return stateEmpty("아직 카드뉴스가 없습니다","생성실에서 카톡 말풍선 카드뉴스 9장을 만들면 여기서 말풍선을 눌러 바로 고칩니다.","생성실에서 카드 9장 만들기");
+  if(st==="loading") return `<div class="cardwrap">
+    <div class="strip">${DECK.slides.map(()=>`<div class="stripitem"><div class="thumb"><div class="skel" style="height:8px"></div><div class="skel" style="height:8px;width:70%"></div></div></div>`).join("")}</div>
+    <div class="cardstage"><div class="card" style="align-items:center;justify-content:center;gap:14px">
+      <div class="spinner"></div>
+      <b style="font-size:15px">표지 사진을 불러오는 중 · 3 / 9장</b>
+      <div style="width:70%;height:5px;border-radius:99px;background:var(--surface-2);overflow:hidden"><i style="display:block;width:33%;height:100%;background:var(--accent)"></i></div>
+      <p style="font-size:12px;color:var(--muted);text-align:center;margin:0">사진이 걸린 장은 한 장에 최대 8초 걸립니다. 9장이면 길게는 1분이 넘습니다.</p>
+    </div></div></div>`;
+  if(st==="error") return `<div class="cardwrap">
+    <div class="strip">${DECK.slides.map((s,i)=>`<div class="stripitem" ${i===0?'aria-pressed="true"':''} style="${i===0?'border-color:var(--danger)':''}">${slideThumbHTML(s,i)}<div class="cap"><span class="rolebadge ${ROLE_CLASS[s.role]}">${ROLE_LABEL[s.role]}</span>${i+1}</div></div>`).join("")}</div>
+    <div class="cardstage"><div style="width:360px;display:flex;flex-direction:column;gap:12px">
+      <div class="alertbox"><b>1장(표지)의 사진을 불러오지 못했습니다.</b>
+        <span>사진 주소가 만료됐습니다(업로드 후 7일). 이 상태로는 발행 PNG가 회색으로 나가기 때문에 발행을 막아 뒀습니다.</span>
+        <span style="display:flex;gap:8px;margin-top:4px"><button class="btn pri sm">사진 다시 올리기</button><button class="btn sm">사진 없이 글자만으로 가기</button></span></div>
+      <div class="card"><div class="photoslot">사진 자리 · 불러오기 실패</div></div>
+    </div></div></div>`;
+
+  const over = st==="overflow";
+  const active = over?6:2;
+  const slides = DECK.slides;
+  const s = slides[active];
+  const bubbles = over
+    ? {role:"chat",bubbles:[
+        {who:"other",t:"쌤 근데 제가 진짜 궁금한 게 있는데요 저는 모의고사를 볼 때마다 시간이 항상 모자라서 마지막 세 문제를 아예 못 풀고 찍는데 이게 실력 문제인지 아니면 푸는 순서 문제인지 도저히 모르겠어요"},
+        {who:"me",t:"그건 실력도 순서도 아니고 <b>버리는 연습을 안 한 것</b>이야"},
+        {who:"other",t:"버린다고요?"},
+        {who:"me",t:"응"},{who:"other",t:"어떻게요"},
+        {who:"me",t:"1분 넘어가면 표시하고 넘겨. 그 1분이 뒤의 세 문제야."}]}
+    : s;
+
+  return `<div class="cardwrap">
+    <div class="strip">${slides.map((sl,i)=>`
+      <button class="stripitem" ${i===active?'aria-pressed="true"':''}>
+        ${slideThumbHTML(sl,i)}
+        <div class="cap"><span class="rolebadge ${ROLE_CLASS[sl.role]}">${ROLE_LABEL[sl.role]}</span><span style="color:var(--subtle)">${i+1}</span></div>
+      </button>`).join("")}
+    </div>
+    <div class="cardstage">
+      <div class="card">
+        ${active===0?`<div class="cover" style="background-image:linear-gradient(180deg,rgba(0,0,0,.15),rgba(0,0,0,.78)),radial-gradient(120% 90% at 30% 10%,#5c6b8c,#1b2130)">
+            <h2 contenteditable="false">성적이 안 오른<br>진짜 이유</h2>
+            <div class="sub" contenteditable="false">수능 D-100 · 9장으로 정리</div></div>`
+        :`<div class="kakaobar"><span class="av"></span><b style="color:var(--text);font-weight:700">10년차 국어쌤</b><span style="margin-left:auto">${active+1} / 9</span></div>
+          ${cardBubblesHTML(bubbles, over?0:1)}`}
+      </div>
+      <div class="cardfoot">
+        ${active===0?`<button class="chip">질문형 훅</button><button class="chip">숫자형 훅</button><button class="chip">고통인식형 훅</button><button class="chip">표지 사진 바꾸기</button>`
+        :`<button class="chip">이 장 복제</button><button class="chip">이 장 삭제</button><button class="chip">말풍선 추가</button>`}
+      </div>
+      ${over?`<p style="max-width:360px;font-size:12px;line-height:18px;color:var(--muted);margin-top:12px;text-align:center">말풍선이 카드 높이를 넘으면 자동으로 다음 장으로 넘깁니다. 글자를 줄여서 우겨 넣지 않습니다. 지금 이 장은 <b>2장으로 나뉩니다</b>.</p>`:``}
+    </div>
+  </div>`;
+}
+
+function bodyVideo(){
+  if(st==="empty") return stateEmpty("아직 편집할 영상이 없습니다","생성실에서 세로 영상을 만들면 여기서 재생하면서 자막으로 바로 자릅니다.","생성실에서 세로 영상 만들기");
+  if(st==="loading") return `<div class="vidwrap"><div class="vidtop">
+      <div class="player"><div class="screen"><div class="spinner"></div></div><div class="ctrl"><span>영상을 불러오는 중</span></div></div>
+      <div class="script"><div class="sc-h">자막 대본</div><div class="sc-b">${SUBS.map(()=>`<div class="line"><span class="t"><span class="skel" style="width:30px;height:10px"></span></span><span class="x"><span class="skel" style="width:78%;height:12px"></span></span><span></span></div>`).join("")}</div></div>
+    </div><div class="timeline"><div class="tl-lane"><span class="lbl">자막</span><div class="skel" style="width:640px;height:26px"></div></div></div></div>`;
+  if(st==="error") return `<div class="vidwrap"><div class="vidtop">
+      <div class="player"><div class="screen" style="background:#1a1013"><div style="text-align:center;padding:24px;color:#ffb4b4;font-size:13px;line-height:20px">영상 파일을 불러오지 못했습니다</div></div><div class="ctrl"><span>재생 불가</span></div></div>
+      <div class="script"><div class="sc-h">자막 대본</div><div class="sc-b" style="padding:16px">
+        <div class="alertbox"><b>영상 주소가 만료됐습니다(생성 후 7일).</b>
+        <span>자막·오버레이·컷 편집 내용은 그대로 남아 있습니다. 같은 대본으로 영상만 다시 만들면 편집이 그대로 얹힙니다.</span>
+        <span style="display:flex;gap:8px;margin-top:4px"><button class="btn pri sm">같은 대본으로 영상 다시 만들기</button><button class="btn sm">자막만 글로 내보내기</button></span></div>
+      </div></div>
+    </div><div class="timeline" style="opacity:.4"><div class="tl-lane"><span class="lbl">자막</span><span style="font-size:var(--fs-caption);color:var(--player-line)">영상 길이를 알 수 없어 타임라인을 그릴 수 없습니다</span></div></div></div>`;
+
+  const over = st==="overflow";
+  const subs = over ? SUBS.concat(SUBS,SUBS,SUBS).map((s,i)=>({...s,t:"00:"+String(i*3).padStart(2,"0")})) : SUBS;
+  const shown = over ? subs.slice(0,14) : subs;
+  return `<div class="vidwrap">
+    <div class="vidtop">
+      <div class="player">
+        <div class="screen">
+          <div class="ovl hook">9시간 공부하고 그대로인 이유</div>
+          <div class="cmt"><span class="av"></span>고3맘 · 이거 진짜 우리애 얘기</div>
+          <div class="subs">점수는 아는 걸로 오르는 게 아니라<br>모르는 게 줄어서 올라요</div>
+          <div class="ovl cta">댓글에 '순서'</div>
+        </div>
+        <div class="ctrl">
+          <button class="play">▶</button>
+          <span id="tcur">00:20</span>
+          <div class="track"><i style="width:69%"></i><b style="left:calc(69% - 5px)"></b></div>
+          <span>00:29</span>
+          <span class="voice">목소리 · 차분한 남성</span>
+        </div>
+      </div>
+      <div class="script">
+        <div class="sc-h">
+          <b style="color:var(--text)">자막 대본</b>
+          <span>줄을 고치면 자막이 바뀌고, 줄을 지우면 그 구간이 잘립니다</span>
+          <span style="margin-left:auto;display:flex;gap:6px">
+            <button class="btn sm">무음·군말 한번에 컷</button>
+            <button class="btn sm">＋ 훅</button><button class="btn sm">＋ CTA</button><button class="btn sm">＋ 댓글</button>
+          </span>
+        </div>
+        <div class="sc-b">
+          ${shown.map((s,i)=>`<div class="line" ${i===7&&!over?'aria-current="true"':''} data-cut="${s.cut}">
+            <span class="t">${s.t}</span>
+            <span class="x">${s.x}</span>
+            <span class="act">${s.cut?'컷 취소':'컷'}</span></div>`).join("")}
+          ${over?`<div style="padding:12px 16px;font-size:12px;line-height:18px;color:var(--muted);border-top:1px dashed var(--border)">아래 22줄 더 있습니다. 대본이 길면 잘라서 숨기지 않고 계속 스크롤합니다. <b>타임라인은 5초 단위로 묶어 보여 줍니다.</b></div>`:``}
+        </div>
+      </div>
+    </div>
+    <div class="timeline">
+      <div class="tl-lane"><span class="lbl">자막</span>
+        ${(over?subs.slice(0,16):subs).map(s=>`<div class="blk sub ${s.cut?'cut':''}" style="width:${over?Math.round(s.w*.45):s.w}px">${s.x.slice(0,over?7:15)}</div>`).join("")}
+      </div>
+      <div class="tl-lane"><span class="lbl">훅·CTA</span>
+        <div class="blk gap" style="width:8px"></div><div class="blk hook" style="width:150px">훅 · 9시간 공부하고</div>
+        <div class="blk gap" style="width:${over?250:430}px"></div><div class="blk cta" style="width:170px">CTA · 댓글에 '순서'</div>
+      </div>
+      <div class="tl-lane"><span class="lbl">댓글</span>
+        <div class="blk gap" style="width:${over?160:320}px"></div><div class="blk cmt" style="width:190px">고3맘 · 우리애 얘기</div>
+        <span style="font-size:var(--fs-caption);color:var(--player-line);margin-left:10px">성과실 실제 댓글 연결은 다음 단계</span>
+      </div>
+      <div class="tl-ruler"><span>0초</span><span>5</span><span>10</span><span>15</span><span>20</span><span>25</span><span>30</span>
+        <span style="flex:0 0 auto;margin-left:12px;color:#cfa96a">← 옆으로 밀어 더 보기</span></div>
+    </div>
+  </div>`;
+}
+
+function stateEmpty(h,p,cta){
+  return `<div class="statebox"><div class="inner2">
+    <div style="width:46px;height:46px;border-radius:12px;background:var(--surface-2);display:grid;place-items:center;font-size:20px">✎</div>
+    <h3>${h}</h3><p>${p}</p><button class="btn pri">${cta}</button></div></div>`;
+}
+
+function bodyMusic(){
+  return `<div style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start">
+    <div>
+      <div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--danger);font-weight:700;margin-bottom:8px">지금 (v68)</div>
+      <div style="border:1px solid var(--danger);border-radius:12px;overflow:hidden">
+        <div style="display:flex;gap:4px;background:var(--surface-2);padding:3px">
+          ${["글","카드뉴스","영상","음악"].map((k,i)=>`<span style="font-size:13px;font-weight:600;padding:6px 14px;border-radius:99px;${i===3?'background:var(--surface);color:var(--danger);box-shadow:var(--shadow)':'color:var(--muted)'}">${k}</span>`).join("")}
+        </div>
+        <div style="padding:20px">
+          <div style="min-height:140px;display:grid;place-items:center;background:var(--surface-2);border-radius:12px;color:var(--muted);font-size:15px;font-weight:700">나레이션 대사 편집</div>
+          <div style="margin-top:12px;border:1px solid var(--warning);background:var(--warning-soft);color:var(--warning);border-radius:8px;padding:12px;font-size:13px;line-height:20px">음악 파일 생성은 아직 제공하지 않습니다. 지금은 나레이션 대사만 편집할 수 있습니다.</div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            ${["목소리 · 차분한 남성","음악 · 없음","음량 · 20%"].map(t=>`<span class="chip">${t}</span>`).join("")}
+          </div>
+          <p style="font-size:12px;color:var(--subtle);margin:10px 0 0">이 세 값은 저장되지만 어디에서도 쓰이지 않습니다.</p>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--success);font-weight:700;margin-bottom:8px">제안 (v70)</div>
+      <div style="border:1px solid var(--success);border-radius:12px;overflow:hidden">
+        <div style="display:flex;gap:4px;background:var(--surface-2);padding:3px">
+          ${["글","카드뉴스","영상"].map((k,i)=>`<span style="font-size:13px;font-weight:600;padding:6px 14px;border-radius:99px;${i===2?'background:var(--surface);color:var(--accent);box-shadow:var(--shadow)':'color:var(--muted)'}">${k}</span>`).join("")}
+        </div>
+        <div style="padding:20px">
+          <div style="min-height:140px;border-radius:12px;background:var(--player-surface);display:flex;flex-direction:column;justify-content:flex-end;padding:12px">
+            <div style="color:var(--player-text);font-size:12px">재생기 · 목소리를 여기서 고른다</div>
+            <div style="display:flex;gap:6px;margin-top:8px">
+              ${["차분한 남성","밝은 여성","또렷한 남성"].map((t,i)=>`<span style="font-size:var(--fs-caption);padding:4px 10px;border-radius:99px;background:${i===0?'var(--player-on)':'var(--player-control)'};color:#fff">${t}</span>`).join("")}
+            </div>
+          </div>
+          <p style="font-size:13px;line-height:20px;color:var(--text);margin:12px 0 0">목소리는 영상의 속성이지 독립 형식이 아니다. 영상 편집기 안으로 들어간다.</p>
+          <p style="font-size:12px;line-height:18px;color:var(--muted);margin:8px 0 0">이미 만들어 둔 음악 초안 데이터는 지우지 않는다. 화면에서만 내린다.</p>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function bodyStates(){
+  const cells=[
+    ["빈 상태","카드뉴스","생성실로 가는 단추 하나. 빈 화면에 안내문만 두지 않는다."],
+    ["로딩","카드뉴스","9장 중 3장 · 진행률. 표지 사진은 장당 최대 8초라 스피너만으로는 고장으로 읽힌다."],
+    ["실패","카드뉴스","무엇이 없어서 못 하나 + 빠져나갈 길 두 개. ADR-007."],
+    ["데이터 과다","카드뉴스","말풍선이 카드 높이를 넘으면 자동으로 다음 장. 글자를 줄여 우겨 넣지 않는다."],
+    ["빈 상태","영상","생성실로. \"영상 없음\"으로 끝내지 않는다(R-25-1)."],
+    ["실패","영상","영상 주소 만료. 편집 내용은 살아 있다는 사실을 먼저 말한다."],
+    ["데이터 과다","영상","자막 36줄. 대본은 계속 스크롤, 타임라인은 5초 단위로 묶는다."],
+    ["실패","글","저장 막힘. 쓴 글이 사라지지 않았다는 것을 맨 앞에 둔다."]
+  ];
+  return `<div style="flex:1;overflow-y:auto">
+  <p style="font-size:13px;line-height:20px;color:var(--muted);margin:0 0 16px">상태를 하나씩 보려면 위 상태 토글을 쓰세요. 이 표는 어느 형식이 어떤 상태를 갖고, 그 화면이 무엇을 책임지는지의 목록입니다.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr>${["상태","형식","이 화면이 책임지는 것"].map(h=>`<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);font-size:var(--fs-caption);letter-spacing:.08em;text-transform:uppercase;color:var(--subtle)">${h}</th>`).join("")}</tr></thead>
+    <tbody>${cells.map(r=>`<tr><td style="padding:9px 10px;border-bottom:1px solid var(--border);font-weight:700;white-space:nowrap">${r[0]}</td><td style="padding:9px 10px;border-bottom:1px solid var(--border);color:var(--muted);white-space:nowrap">${r[1]}</td><td style="padding:9px 10px;border-bottom:1px solid var(--border);color:var(--muted);word-break:keep-all">${r[2]}</td></tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+/* ── 데이터 모델 (검수 셸. 디바이스 프레임 없음) ── */
+function renderModel(){
+  const code=(s)=>`<pre style="margin:0;background:#0f0f12;border:1px solid var(--shell-line);border-radius:8px;padding:11px 12px;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:17.5px;color:#d6d6e0;overflow-x:auto;white-space:pre">${s}</pre>`;
+  const col=(t,sub,body)=>`<div class="boardcol"><h3>${t}</h3><p class="why">${sub}</p>${body}</div>`;
+  return `<div>
+  <div style="border:1px solid var(--shell-line);border-radius:12px;padding:14px 16px;margin-bottom:18px;background:#1b1b20">
+    <b style="color:#fff;font-size:14px">공통 원칙 셋</b>
+    <ol style="margin:8px 0 0;padding-left:18px;font-size:12.5px;line-height:20px;color:#c6c6d0">
+      <li><b>형식마다 모델이 다르다.</b> <code>string[]</code> 공용 추상화를 버린다. 영상 자막과 카드 문구와 글 문단은 같은 물건이 아니다.</li>
+      <li><b>인덱스 평행 배열을 버리고 안정 ID를 쓴다.</b> 옮기고 지울 때 손으로 맞출 배열이 없어야 한다.</li>
+      <li><b>모델이 목표를 담을 수 있어야 한다.</b> 담을 자리가 없으면 화면을 아무리 잘 그려도 그 동작이 안 나온다.</li>
+    </ol>
+  </div>
+
+  <div class="board" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+    ${col("글 · TextDoc","배열 자체를 없앤다. 순서 UI가 존재할 근거를 모델에서 지운다.",
+      code(`type TextDoc = {
+  id: string
+  title: string
+  body: string        // 문단은 빈 줄이
+                      // 만든다. 배열 아님
+  marks?: {           // 오프셋 기반 서식
+    from: number
+    to: number
+    kind: "bold"
+  }[]
+  revision: number
+}`)+`<p class="why" style="color:#9ad5ae">근거 · 발행 산출물은 이미 <code>lines.join("\\n\\n")</code> 한 덩어리다. 배열은 화면이 지어낸 구조였다.</p>
+<p class="why" style="color:#ffbf6b">이관 · <code>join</code> 1회. 무손실.</p>`)}
+
+    ${col("카드뉴스 · 블록","흐름 배치가 기본이고 좌표는 선택. 한 모델이 지금과 나중을 다 담는다.",
+      code(`type CardSlide = {
+  id: string
+  role: "cover" | "chat"
+      | "comment_prompt" | "cta"
+  background?: ImageRef
+  blocks: Block[]
+}
+type Block =
+ | { id, kind:"bubble",
+     speaker:"author"|"reader",
+     segments:{text,bold}[],
+     frame: null }        // 흐름
+ | { id, kind:"text",
+     segments:{text,bold}[],
+     frame: Frame | null }
+ | { id, kind:"image",
+     src, frame: Frame }
+
+type Frame = {            // % 기준
+  xPct, yPct, wPct, hPct
+  rotate?: number
+}`)+`<p class="why" style="color:#9ad5ae">핵심 · <code>frame:null</code> = 흐름 배치. <code>frame</code> 있음 = 자유 배치. <b>2단계 확장에 마이그레이션이 없다.</b></p>
+<p class="why" style="color:#ffbf6b">이관 · 기존 <code>bubbles</code>를 블록으로 감싼다. <code>cardTextPositions</code> 평행 배열은 <code>frame</code>으로 흡수. JSONB 저장이라 DB 변경 0.</p>`)}
+
+    ${col("영상 · 세그먼트","이게 코어다. 자막과 컷과 타임라인이 한 물건이 된다.",
+      code(`type VideoEdit = {
+  id, sourceUrl
+  sourceDurationMs: number
+  segments: Segment[]   // 자막 = 컷
+                        // = 타임라인
+  overlays: Overlay[]
+  comments: CommentOverlay[]
+  voice?: { voiceId, voiceName }
+  revision: number
+}
+type Segment = {
+  id, text
+  sourceInMs: number    // 원본 어디를
+  sourceOutMs: number   // 쓰나
+  enabled: boolean      // false = 컷
+  estimated?: boolean   // 1단계 추정값
+}
+type Overlay = { id,
+  kind:"hook"|"cta", text,
+  startMs, endMs,
+  anchor:"top"|"bottom" }`)+`<p class="why" style="color:#9ad5ae">파생 계산 · 편집 타임라인 위치 = enabled 구간 누적. 최종 길이 = Σ enabled.</p>
+<p class="why" style="color:#ff9a9a">전제 · 생성실이 장면별 실제 시작·끝 ms를 같이 내려줘야 한다. 지금은 안 준다. 그래서 2단계다.</p>`)}
+  </div>
+
+  <h3 style="margin:28px 0 8px;font-size:15px;color:#fff">현행과 무엇이 다른가 (그래서 무엇이 가능해지나)</h3>
+  <table class="clicks">
+    <thead><tr><th style="width:120px">지금 (v68)</th><th style="width:150px">v70 모델</th><th>이것 때문에 지금 못 하는 것</th></tr></thead>
+    <tbody>
+      <tr><td class="was">lines: string[]<br>(4형식 공용)</td><td class="now2">형식별 전용 모델 3종</td><td>타임코드·좌표·서식 범위를 담을 자리가 없다. 어떤 화면을 그려도 Vrew·Canva식 동작이 안 나온다</td></tr>
+      <tr><td class="was">visibleLines[i]<br>토글</td><td class="now2">Segment.enabled</td><td>컷이 실제 시간 구간이 아니라 "몇 번째 줄을 숨길까"다. 내보낼 때 이어 붙일 구간 정보가 아예 없다</td></tr>
+      <tr><td class="was">index × 4초<br>(secondsPerLine)</td><td class="now2">sourceInMs / sourceOutMs</td><td>화면에 보이는 시각이 실제 영상 시각이 아니다. 줄을 눌러 그 장면으로 가는 것 자체가 성립하지 않는다</td></tr>
+      <tr><td class="was">재생 상태 없음</td><td class="now2">플레이어 시간 ↔ 활성 세그먼트 양방향</td><td>재생 위치와 편집 대상이 연결되지 않는다. 지금 어디를 고치고 있는지 화면이 모른다</td></tr>
+      <tr><td class="was">cardTextPositions<br>상·중·하 3단</td><td class="now2">Block.frame (% 좌표, null 허용)</td><td>사진 위 글자를 원하는 자리에 못 둔다. 그리고 평행 배열이라 장을 옮기면 남의 위치가 따라붙는다</td></tr>
+      <tr><td class="was">EditRoom 2,173줄<br>단일 컴포넌트</td><td class="now2">EditShell + 형식별 편집기 3</td><td>형식 전용 도구를 만들 자리가 없어 공용 목록 UI에 계속 덧붙이게 된다</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin:28px 0 8px;font-size:15px;color:#fff">캔버스 직접 편집 방식 판정 · (a)(b)(c) 중 무엇을 고르나</h3>
+  <p style="font-size:12px;color:var(--shell-dim);margin:0 0 12px;line-height:18px">Codex 추천은 (c) 하이브리드였다. <b>그대로 받지 않고 다시 평가했다.</b></p>
+  <div class="board">
+    <div class="boardcol rec">
+      <h3>(a) DOM 편집 <span class="nbadge b-new">채택</span></h3>
+      <p class="why">카드 자체를 DOM으로 그리고 말풍선을 <code>contenteditable</code>로 직접 고친다.</p>
+      <p class="why" style="color:#9ad5ae">한글 입력기가 네이티브로 돈다. 접근성·되돌리기·선택이 브라우저 기본으로 공짜다. D-EDU 03c가 이 방식으로 이미 돌았고 회장이 그것을 기준으로 지목했다.</p>
+      <p class="why" style="color:#ff9a9a">확대·회전·자유 배치가 늘면 한계가 온다.</p>
+    </div>
+    <div class="boardcol">
+      <h3>(b) Fabric · Konva 캔버스 객체 <span class="nbadge b-del">기각</span></h3>
+      <p class="why">캔버스 위 객체로 선택·이동·크기 조절.</p>
+      <p class="why" style="color:#9ad5ae">조작 경험이 가장 좋다.</p>
+      <p class="why" style="color:#ff9a9a">한글 입력기를 직접 다뤄야 하고, 접근성·되돌리기를 다시 만들고, 서버 렌더 좌표를 따로 맞춰야 한다. 우리 산출물은 정형 템플릿이라 이 값을 치를 이유가 없다.</p>
+    </div>
+    <div class="boardcol">
+      <h3>(c) 하이브리드 <span class="nbadge b-keep">보류 · 조건부</span></h3>
+      <p class="why">이동·선택은 캔버스, 입력 중에는 DOM 입력칸을 겹친다.</p>
+      <p class="why" style="color:#9ad5ae">자유 배치가 실제로 필요해지면 가장 좋다.</p>
+      <p class="why" style="color:#ff9a9a">동기화 난도가 가장 높다. 그리고 <b>지금 이 값을 사는 이유가 없다.</b></p>
+    </div>
+  </div>
+
+  <div style="border:1px solid var(--accent);border-radius:12px;padding:14px 16px;margin-top:16px;background:color-mix(in srgb,var(--accent) 12%,#1b1b20)">
+    <b style="color:#fff;font-size:13.5px">(c)를 지금 안 고르는 이유</b>
+    <p style="margin:6px 0 0;font-size:12.5px;line-height:19.5px;color:#c6c6d0">(c)는 <b>요소가 자유 좌표를 갖는다</b>는 전제 위에서만 값을 한다. 그런데 우리가 고치려는 것은 카톡 말풍선 덱이고, 말풍선은 자유 좌표 물건이 아니다. <b>세로 흐름 + 화자별 좌우 정렬이 그 템플릿의 규격 자체다.</b> 말풍선에 x·y를 주는 순간 카톡처럼 안 보인다. 즉 (c)가 비싼 값을 치르고 사는 것(선택·이동·크기 조절)을 이 템플릿은 쓰지 않는다.</p>
+    <p style="margin:8px 0 0;font-size:12.5px;line-height:19.5px;color:#c6c6d0">자유 배치가 진짜로 필요한 자리는 <b>표지·CTA 장의 사진 위 글자 하나뿐</b>이다. 그 한 자리는 <code>Block.frame</code>이 비어 있다가 채워지는 것뿐이라, 그때 그 장만 (c)로 올리면 된다. 모델 교체가 없다.</p>
+    <p style="margin:8px 0 0;font-size:12px;line-height:18px;color:#ffbf6b"><b>레드팀 수용</b> — 회장이 나중에 "카드 배경 위에 글자를 아무 데나 놓고 싶다"고 하면 (a)만으로는 부족하다. 그래서 <code>frame</code>을 지금 모델에 미리 넣어 둔다. 전면 (b)로 가는 일은 없다.</p>
+  </div>
+
+  <h3 style="margin:28px 0 8px;font-size:15px;color:#fff">1단계가 나중 길을 막지 않는가</h3>
+  <table class="clicks">
+    <thead><tr><th style="width:80px">형식</th><th style="width:210px">1단계에서 하는 것</th><th style="width:70px">막나</th><th>근거</th></tr></thead>
+    <tbody>
+      <tr><td>글</td><td>배열 → 문자열</td><td class="now2">안 막음</td><td>되돌릴 일이 없다. 더 단순해지는 방향이다</td></tr>
+      <tr><td>카드</td><td>블록 모델 도입, <code>frame</code>은 전부 <code>null</code></td><td class="now2">안 막음</td><td>2단계에 <code>frame</code>을 채우면 끝. 필드가 이미 있으니 마이그레이션이 없다</td></tr>
+      <tr><td>영상</td><td>세그먼트 모델 도입. <code>sourceInMs/OutMs</code>는 추정값을 넣고 <code>estimated:true</code> 표시</td><td class="now2">안 막음</td><td>추정값을 <code>visibleLines</code>처럼 다른 자료구조에 두지 않는 것이 핵심이다. 2단계에 실값으로 덮으면 구조는 그대로다</td></tr>
+      <tr><td colspan="2">위험 1건 · DOM 미리보기와 canvas 발행 렌더 공존</td><td class="was">주의</td><td>이 기간에 미리보기와 발행 PNG가 어긋날 수 있다. 완화 = 레이아웃 상수를 한 파일에서 공유, 2단계에 발행도 DOM 경로로 통일. <b>1단계 QA는 이 한 가지를 집중해서 본다</b></td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:11.5px;color:var(--shell-dim);margin:12px 0 0;line-height:17px"><b>증거 등급</b> · 위 현행 분석은 전부 <code>origin/main</code> 코드에서 읽은 것이다(근거 확인). 실제 조작 재현과 한글 입력 끊김 재현은 미검증이다. 개발 착수 시 재현 테스트가 첫 항목이다.</p>
+  </div>`;
+}
+
+/* ── 비교 보드 (검수 셸. 디바이스 프레임 없음) ── */
+function renderShotgun(){
+  const opts=[
+    {k:"A",n:"무대형 (Stage)",rec:true,
+     why:"좌측 세로 스트립 + 가운데 카드 한 장 크게. 지금 고치는 장에 시선을 모은다. Canva·Figma 캔버스와 같은 심상.",
+     pro:"한 장이 크게 보여 말풍선 글자가 실제 발행 크기에 가깝다. 구현이 가장 싸다.",
+     con:"장과 장의 흐름은 스트립 썸네일로만 본다.",
+     mini:`<div style="display:grid;grid-template-columns:34px 1fr;gap:6px;height:150px">
+       <div style="display:flex;flex-direction:column;gap:3px">${[0,1,2,3,4].map(i=>`<div style="flex:1;border:1.5px solid ${i===2?'var(--accent)':'var(--border)'};border-radius:4px;background:var(--surface-2)"></div>`).join("")}</div>
+       <div style="border:1px solid var(--border);border-radius:6px;background:#fff;padding:8px;display:flex;flex-direction:column;gap:5px">
+         ${[0,1,0,1].map(m=>`<div style="align-self:${m?'flex-end':'flex-start'};width:${m?54:66}px;height:13px;border-radius:7px;background:${m?'var(--chat-reader-bg)':'var(--surface-2)'};border:1px solid ${m?'transparent':'var(--border)'}"></div>`).join("")}
+         <div style="align-self:flex-end;width:60px;height:13px;border-radius:7px;background:var(--chat-reader-bg);box-shadow:0 0 0 2px var(--accent)"></div>
+       </div></div>`},
+    {k:"B",n:"필름형 (Filmstrip)",rec:false,
+     why:"9장을 세로로 전부 늘어놓고 스크롤하며 고친다. D-EDU 03c 원본의 배치 그대로.",
+     pro:"장과 장의 연결이 한눈에 보인다. 흐름이 곧 상품인 카드뉴스와 맞는다.",
+     con:"우측 담당 대화창 304px을 빼면 본문 폭이 좁아 카드가 작아진다. 1024에서는 한 장이 240px 밑으로 내려간다.",
+     mini:`<div style="height:150px;overflow:hidden;display:flex;flex-direction:column;gap:6px">
+       ${[0,1,2].map(i=>`<div style="display:flex;gap:6px;align-items:flex-start">
+         <div style="width:52px;height:64px;border:1.5px solid ${i===1?'var(--accent)':'var(--border)'};border-radius:5px;background:#fff;padding:4px;display:flex;flex-direction:column;gap:3px">
+           <div style="align-self:flex-start;width:32px;height:7px;border-radius:4px;background:var(--surface-2)"></div>
+           <div style="align-self:flex-end;width:28px;height:7px;border-radius:4px;background:var(--chat-reader-bg)"></div></div>
+         <div style="flex:1;display:flex;flex-direction:column;gap:3px;padding-top:3px">
+           <div style="width:56%;height:6px;background:var(--surface-2);border-radius:3px"></div>
+           <div style="width:38%;height:6px;background:var(--surface-2);border-radius:3px"></div></div></div>`).join("")}</div>`},
+    {k:"C",n:"대본형 (Script)",rec:false,
+     why:"왼쪽에 카드 미리보기를 고정하고, 오른쪽에 9장 전체 대화를 이어진 하나의 카톡 화면처럼 놓고 고친다. 장 경계는 얇은 구분선.",
+     pro:"카톡 대화는 원래 이어진 하나다. 대화 흐름과 어투를 통으로 읽으며 고치기 가장 좋다.",
+     con:"어디서 장이 끊기는지가 약해져 \"이 말풍선이 몇 장에 들어가지\"를 놓친다. 장 넘침 경고를 새로 설계해야 한다.",
+     mini:`<div style="display:grid;grid-template-columns:62px 1fr;gap:8px;height:150px">
+       <div style="border:1.5px solid var(--border);border-radius:5px;background:#fff"></div>
+       <div style="border:1px solid var(--border);border-radius:6px;background:#fff;padding:7px;display:flex;flex-direction:column;gap:4px;overflow:hidden">
+         ${[0,1,1,0,1,0].map((m,i)=>`${i===3?`<div style="display:flex;align-items:center;gap:4px;font-size:7px;color:var(--subtle)"><span style="flex:1;height:1px;background:var(--border)"></span>4장<span style="flex:1;height:1px;background:var(--border)"></span></div>`:''}
+           <div style="align-self:${m?'flex-end':'flex-start'};width:${m?50:62}px;height:11px;border-radius:6px;background:${m?'var(--chat-reader-bg)':'var(--surface-2)'};border:1px solid ${m?'transparent':'var(--border)'}"></div>`).join("")}
+       </div></div>`}
+  ];
+  return `<div>
+   <div class="board">
+    ${opts.map(o=>`<div class="boardcol ${o.rec?'rec':''}">
+      <h3>${o.k}. ${o.n} ${o.rec?'<span class="nbadge b-new">추천</span>':''}</h3>
+      <div class="mini">${o.mini}</div>
+      <p class="why">${o.why}</p>
+      <p class="why" style="color:#9ad5ae">좋은 점 · ${o.pro}</p>
+      <p class="why" style="color:#ff9a9a">대가 · ${o.con}</p>
+      <label><input type="radio" name="pick" value="${o.k}" ${o.rec?'checked':''}> 이 안으로 간다</label>
+      <textarea data-memo="${o.k}" placeholder="이 안에 대한 메모 (왜 골랐나 / 대신 이렇게 해라)"></textarea>
+    </div>`).join("")}
+   </div>
+   <div class="boardacts">
+     <button class="btn pri" id="btnCopy">고른 결과 복사</button>
+     <button class="btn" id="btnReset">초기화</button>
+     <span style="font-size:11px;color:var(--shell-dim)">선택과 메모는 이 브라우저에 자동 저장됩니다. 메모가 빈 항목은 복사본에서 빠집니다.</span>
+   </div>
+   <textarea id="copyOut" readonly placeholder="복사 버튼을 누르면 붙여넣을 마크다운이 여기 생깁니다."></textarea>
+
+   <h3 style="margin:28px 0 6px;font-size:14px;color:#fff">공통 · 말풍선 하나 고치는 데 몇 번 누르나</h3>
+   <p style="font-size:11.5px;color:var(--shell-dim);margin:0 0 10px">현행 수치는 <code>BubbleEditor.tsx</code>·<code>StudioRooms.tsx</code> 코드에서 센 값이다(근거 확인). 실제 조작 시간은 미검증이다.</p>
+   <table class="clicks">
+     <thead><tr><th>하려는 일</th><th>지금 (v68)</th><th>v70 목표</th><th>무엇이 줄었나</th></tr></thead>
+     <tbody>
+       <tr><td>말풍선 한 줄의 글자를 고친다</td><td class="was">4회 + 좌우 시선 왕복</td><td class="now2">1회</td><td>장 선택 → 오른쪽 칸에서 해당 말풍선 찾기 → 칸 클릭 → 전체 선택. 이 넷이 "카드 위 그 말풍선 클릭" 하나가 된다</td></tr>
+       <tr><td>말풍선 화자를 바꾼다</td><td class="was">3회</td><td class="now2">2회</td><td>그 말풍선에 붙은 툴바에서 바로</td></tr>
+       <tr><td>말풍선 하나를 지운다</td><td class="was">3회</td><td class="now2">2회</td><td>같음</td></tr>
+       <tr><td>표지 훅 문구를 바꾼다</td><td class="was">2회 + 스크롤</td><td class="now2">1회</td><td>표지 글자를 화면에서 바로 누른다</td></tr>
+       <tr><td>고친 결과를 확인한다</td><td class="was">300ms 대기 후 다른 자리를 본다</td><td class="now2">0회 · 그 자리에서 즉시</td><td>미리보기와 편집 대상이 같은 물건이 된다</td></tr>
+     </tbody>
+   </table>
+   <p style="font-size:11.5px;color:var(--shell-dim);margin:10px 0 0;line-height:17px"><b>클릭 수보다 중요한 것</b>: 지금 구조의 진짜 비용은 클릭이 아니라 <b>어느 칸이 어느 말풍선인지를 눈으로 맞추는 일</b>이다. 카드 9장에 말풍선 24개면 오른쪽 288px 칸에 입력칸 24개와 버튼 168개가 쌓인다. 셋째 줄을 고치려면 카드를 보고, 오른쪽을 보고, 세어서 찾아야 한다. 그 왕복이 "채팅 다시 치기도 힘든" 감각의 정체다.</p>
+
+   <h3 style="margin:24px 0 6px;font-size:14px;color:#fff">추가 의심 · 한글 입력이 끊기는 구조</h3>
+   <p style="font-size:11.5px;color:#c6c6d0;line-height:17px;margin:0"><code>BubbleEditor.tsx</code>의 말풍선 입력칸은 <code>value={bubbleText(bubble)}</code>로 값을 파생시키고, 글자 하나마다 <code>setBubbleText</code>가 세그먼트를 <b>비율로 재분배</b>해 덱 전체를 새로 만든다. 제어 입력칸의 값이 매 타건마다 변환을 거쳐 되돌아오는 구조다. 한글은 조합 중인 글자가 하나의 입력으로 계속 갱신되기 때문에, 이 패턴에서 조합이 끊기거나 커서가 튀는 것이 알려진 실패 형태다. <b>증거 등급 = 근거 확인(코드).</b> 실제 타건 재현은 미검증이라 개발 착수 시 제일 먼저 재현 테스트를 붙여야 한다. 만약 이게 사실이면 배치를 아무리 고쳐도 "다시 치기 힘든" 감각은 안 없어진다.</p>
+  </div>`;
+}
+
+function renderStagePlan(){
+  const rows=[
+    ["1단계","말풍선 하나 고치기가 안 답답하다","카드 렌더러를 DOM으로 치환 · 말풍선 인플레이스 편집 · 플로팅 툴바 · 우측 BubbleEditor 열 제거 · 글 형식 문단 목록 제거 · 음악 탭 내리기","BubbleEditor.tsx · chat-bubble.ts · StudioRooms.tsx(EditRoom 분기)","f1","API 0 · DB 0 · 발행실 0. 되돌리기 쉽다"],
+    ["1단계","영상이 재생되고 자막 줄을 눌러 그 시점으로 간다","플레이어 + 자막 대본 2판 · 줄 클릭 점프 · 줄 편집 · 컷 취소선","VideoEditor.tsx · video-edit-contract.ts","f1","계약 그대로. 화면만 바꾼다"],
+    ["2단계","자막 줄이 실제 영상 구간과 맞는다","생성 시 장면별 시작·끝 초를 같이 저장 · 타임라인 블록 드래그 · 무음 일괄 컷","생성실 산출 계약 1칸 추가 · 타임라인 신규","f2","생성실을 건드린다. 기존 초안 하위호환 필요"],
+    ["2단계","미리보기와 발행 PNG가 100% 같다","발행 PNG 굽기를 편집 화면과 같은 레이아웃 규격으로 통일","card PNG 파이프라인","f2","발행실 회귀 위험. 교차 코드리뷰 대상"],
+    ["2단계","채널별 글자수 상한이 글 편집 중에 보인다","상한 미터 · 초과 시 발행실에서 줄이도록 유도","platform-publish-fields.ts 재사용","f1","싸다. 1단계에 넣어도 되지만 우선순위가 아니다"],
+    ["3단계","오버레이·댓글·컷이 실제 mp4에 굽힌다","렌더 파이프라인 작업","영상 렌더 서비스","f3","이번 디자인 범위 밖. 그때까지 화면은 계속 미반영이라고 적는다"],
+    ["3단계","성과실 실제 댓글이 영상 위에 뜬다","성과 수집 → 댓글 레인 연결","성과실 ↔ 편집실","f3","D-2026-09-21-1 로드맵 3단계와 같은 항목"]
+  ];
+  return `<div>
+   <div style="border:1px solid var(--accent);border-radius:12px;padding:14px 16px;margin-bottom:18px;background:color-mix(in srgb,var(--accent) 12%,#1b1b20)">
+     <b style="color:#fff;font-size:14px">1단계 합격선은 하나다</b>
+     <p style="margin:6px 0 0;font-size:12.5px;line-height:19px;color:#c6c6d0">회장이 말풍선 하나를 고치는 데 답답하지 않은가. 이 문장에 예라고 답할 수 없으면 1단계는 안 끝난 것이다. 나머지 항목은 전부 이 뒤다.</p>
+   </div>
+   <table class="clicks">
+     <thead><tr><th style="width:56px">단계</th><th style="width:180px">이 단계가 끝났다는 뜻</th><th>무엇을 만드나</th><th style="width:150px">건드리는 파일</th><th style="width:44px">난이도</th><th style="width:170px">위험</th></tr></thead>
+     <tbody>${rows.map(r=>`<tr><td><b style="color:${r[0]==='1단계'?'#9ad5ae':r[0]==='2단계'?'#ffbf6b':'#ff9a9a'}">${r[0]}</b></td><td>${r[1]}</td><td style="color:#c6c6d0">${r[2]}</td><td style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#8fb6ff">${r[3]}</td><td><span class="feas ${r[4]}">${r[4]==='f1'?'쉬움':r[4]==='f2'?'중간':'큼'}</span></td><td style="color:var(--shell-dim)">${r[5]}</td></tr>`).join("")}</tbody>
+   </table>
+   <p style="font-size:11.5px;color:var(--shell-dim);margin:14px 0 0;line-height:17px"><b>순서를 이렇게 잡은 이유</b>: 1단계는 API·DB·발행실을 하나도 안 건드린다. 화면 컴포넌트 셋만 바꾼다. 그래서 잘못돼도 되돌리기가 싸고, 회장이 바로 열어서 판정할 수 있다. 2단계부터는 생성실 산출 계약과 발행 PNG를 건드려 회귀 위험이 생긴다. 그건 1단계가 회장 판정을 통과한 뒤에 한다.</p>
+  </div>`;
+}
+
+/* ── 조립 ── */
+function render(){
+  const sc=SCREENS[cur];
+  document.getElementById("scTitle").textContent=sc.title;
+  document.getElementById("scLede").textContent=sc.lede;
+  document.getElementById("inspNow").textContent=sc.title;
+
+  document.querySelectorAll("#navScreens .tb").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.goto===cur)));
+  document.querySelectorAll(".rail .node").forEach(b=>b.classList.toggle("is-current",b.dataset.goto===cur));
+  document.querySelectorAll("#navVp .tb").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.vp===vp)));
+  document.querySelectorAll("#navState .tb").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.state===st)));
+
+  const shellOnly = cur==="shotgun"||cur==="stage"||cur==="model";
+  document.getElementById("navVp").classList.toggle("hidden",shellOnly);
+  document.getElementById("navState").classList.toggle("hidden",shellOnly||cur==="music"||cur==="states");
+  document.querySelectorAll(".tb-label").forEach((l,i)=>{if(i>0)l.classList.toggle("hidden",shellOnly||(i===2&&(cur==="music"||cur==="states")))});
+
+  const frames=document.getElementById("frames");
+  frames.innerHTML="";
+
+  if(cur==="model"){frames.innerHTML=renderModel();renderInspect();return}
+  if(cur==="shotgun"){frames.innerHTML=renderShotgun();wireBoard();renderInspect();return}
+  if(cur==="stage"){frames.innerHTML=renderStagePlan();renderInspect();return}
+
+  let inner, opts={};
+  if(cur==="text"){inner=bodyText();opts={chat1:"초안 다 썼어요. 문단 나누기는 엔터로 하시면 됩니다.",chat2:"어투를 좀 더 단호하게 바꿔줘",chat3:"세 문단 전부 말끝을 고쳤어요."}}
+  else if(cur==="card"){inner=bodyCard()}
+  else if(cur==="video"){inner=bodyVideo();opts={chat1:"영상 29초로 나왔어요. 자막 줄을 눌러 그 장면으로 바로 갑니다.",chat2:"군말 있는 줄 다 잘라줘",chat3:"3번 줄 하나 잘랐어요. 취소선으로 남겼으니 되돌릴 수 있습니다."}}
+  else if(cur==="music"){inner=bodyMusic();opts={showMusicTab:true,chat1:"음악 형식은 이번 판에서 내립니다. 왼쪽이 지금, 오른쪽이 제안입니다.",chat2:"음악 왜 있는지 모르겠고",chat3:"만드는 경로도 발행할 곳도 없어서 자리만 차지하고 있었습니다."}}
+  else if(cur==="states"){inner=bodyStates()}
+
+  const w = vp==="390"?390:vp==="1024"?1024:1440;
+  const maxw = Math.min(frames.clientWidth||1000, 1180);
+  const scale = Math.min(1, maxw/w);
+  const h = vp==="390"?844:vp==="1024"?820:900;
+
+  const holder=el("div");
+  holder.style.width=(w*scale)+"px"; holder.style.height=(h*scale)+"px";
+  const art=el("div","artboard scaler", appShell(cur==="music"?"video":cur, inner, opts));
+  art.dataset.vp=vp;
+  art.style.transform=`scale(${scale})`;
+  if(vp==="390") art.classList.add("narrow");
+  holder.appendChild(art);
+  frames.appendChild(holder);
+
+  if(vp==="390"){
+    /* 390: 사이드바는 서랍으로 접히고 담당은 아래 상시 시트 (DESIGN.md §4 v61) */
+    const a=art.querySelector(".side"); if(a) a.style.display="none";
+    const m=art.querySelector(".main"); if(m){m.style.flexDirection="column"}
+    const c=art.querySelector(".chat"); if(c){c.style.flex="0 0 152px";c.style.borderLeft="0";c.style.borderTop="1px solid var(--border)"}
+    const g=art.querySelector(".gnb-2"); if(g){g.style.overflowX="auto";g.style.padding="0 16px"}
+    const g1=art.querySelector(".gnb-1"); if(g1){g1.style.padding="10px 16px";g1.querySelectorAll(".pill").forEach((p,i)=>{if(i<2)p.style.display="none"})}
+    const wk=art.querySelector(".work"); if(wk){wk.style.padding="12px 16px"}
+    const cw=art.querySelector(".cardwrap"); if(cw){cw.style.gridTemplateColumns="minmax(0,1fr)";cw.style.gridTemplateRows="auto minmax(0,1fr)";
+      const sp=cw.querySelector(".strip"); if(sp){sp.style.flexDirection="row";sp.style.overflowX="auto";sp.style.overflowY="hidden";
+        sp.querySelectorAll(".stripitem").forEach(x=>{x.style.flex="0 0 56px"})}}
+    const cd=art.querySelector(".card"); if(cd){cd.style.width="100%";cd.style.maxWidth="310px"}
+    const vt=art.querySelector(".vidtop"); if(vt){vt.style.gridTemplateColumns="minmax(0,1fr)";vt.style.gridTemplateRows="180px minmax(0,1fr)"}
+    const vw=art.querySelector(".vidwrap"); if(vw){vw.style.gridTemplateRows="minmax(0,1fr) 108px"}
+    const ds=art.querySelector(".docsheet .inner"); if(ds){ds.style.padding="0 16px"}
+    const ft=art.querySelector(".floattool"); if(ft){ft.style.left="16px";ft.style.top="150px"}
+  }
+  if(vp==="1024"){
+    const a=art.querySelector(".side"); if(a){a.style.flex="0 0 56px";a.style.padding="16px 8px";
+      a.querySelectorAll("h4").forEach(x=>x.style.display="none");
+      a.querySelectorAll("a").forEach(x=>{x.style.justifyContent="center";x.style.fontSize="var(--fs-caption)";x.style.padding="8px 2px"})}
+    const c=art.querySelector(".chat"); if(c){c.style.flex="0 0 30%";c.style.minWidth="240px"}
+    const cw=art.querySelector(".cardwrap"); if(cw){cw.style.gridTemplateColumns="100px minmax(0,1fr)"}
+    /* 1024 에서도 영상은 두 판을 유지한다. 세로로 쌓으면 플레이어가 납작해져
+       9:16 세로 영상의 모습이 사라지고, 자막 대본이 화면 밖으로 밀린다. */
+    const vt=art.querySelector(".vidtop"); if(vt){vt.style.gridTemplateColumns="212px minmax(0,1fr)"}
+    const vw2=art.querySelector(".vidwrap"); if(vw2){vw2.style.gridTemplateRows="minmax(0,1fr) 150px"}
+  }
+  renderInspect();
+  startMotion(art);
+}
+
+function renderInspect(){
+  const d=INSPECT[cur]; const box=document.getElementById("inspBody");
+  if(!d){box.innerHTML="";return}
+  const sec=(n,title,items)=>`<div class="icard"><h3><span class="n">${n}</span>${title}</h3><ul>${items.map(x=>`<li>${x}</li>`).join("")}</ul></div>`;
+  let h="";
+  // 변경점은 화면별 우측 검수 패널에만 둔다. 허브 상단 일괄 나열 금지, 디바이스 프레임 안 침범 금지.
+  h+=`<div class="icard chg" data-changelog data-changelog-screen="${cur}"><h3><span class="n">Δ</span>이번 개정(v68 → v70) 변경점</h3><ul>${d.chg.map(x=>`<li data-changelog-item>${x}</li>`).join("")}</ul></div>`;
+  h+=sec("1","심리 · 설득 근거",d.psy);
+  h+=sec("2","벤치마크 (차용 / 버림)",d.bench);
+  h+=sec("3","실구현 계승 근거",d.impl);
+  h+=sec("4","요구 대응 (R번호 · ADR)",d.prd);
+  if(d.feas&&d.feas.length){
+    h+=`<div class="icard"><h3><span class="n">?</span>구현 가능성 판정</h3><ul>${d.feas.map(f=>`<li><strong>${f[0]}</strong><span class="feas ${f[1]}">${f[1]==='f1'?'바로 됨':f[1]==='f2'?'손이 간다':'범위 밖'}</span><br>${f[2]}</li>`).join("")}</ul></div>`;
+  }
+  box.innerHTML=h;
+}
+
+/* 모션: 재생 시간 카운트업 (§11.1 — 숫자가 변하는 연출은 세는 로직까지) */
+let motionTimer=null;
+function startMotion(art){
+  if(motionTimer) cancelAnimationFrame(motionTimer);
+  const cur2=art.querySelector("#tcur"); const bar=art.querySelector(".player .track i"); const knob=art.querySelector(".player .track b");
+  if(!cur2||!bar) return;
+  let t=20.0, dir=1, last=performance.now();
+  const step=(now)=>{
+    const dt=(now-last)/1000; last=now;
+    t+=dt*dir; if(t>=29){t=29;dir=-1} if(t<=0){t=0;dir=1}
+    cur2.textContent="00:"+String(Math.floor(t)).padStart(2,"0");
+    const p=(t/29*100).toFixed(1);
+    bar.style.width=p+"%"; if(knob) knob.style.left=`calc(${p}% - 5px)`;
+    motionTimer=requestAnimationFrame(step);
+  };
+  motionTimer=requestAnimationFrame(step);
+}
+
+/* 비교 보드 저장 */
+function wireBoard(){
+  const KEY="osmu-v70-editroom-pick";
+  const load=()=>{try{return JSON.parse(localStorage.getItem(KEY)||"{}")}catch{return{}}};
+  const save=()=>{const s={pick:document.querySelector("input[name=pick]:checked")?.value||"",memo:{}};
+    document.querySelectorAll("[data-memo]").forEach(t=>s.memo[t.dataset.memo]=t.value);
+    localStorage.setItem(KEY,JSON.stringify(s))};
+  const s=load();
+  if(s.pick){const r=document.querySelector(`input[name=pick][value="${s.pick}"]`);if(r)r.checked=true}
+  if(s.memo)Object.entries(s.memo).forEach(([k,v])=>{const t=document.querySelector(`[data-memo="${k}"]`);if(t)t.value=v});
+  document.querySelectorAll("input[name=pick],[data-memo]").forEach(n=>n.addEventListener("input",save));
+  document.getElementById("btnCopy").addEventListener("click",()=>{
+    const pick=document.querySelector("input[name=pick]:checked")?.value||"(고르지 않음)";
+    let out=`## OSMU 편집실 v70 · 카드 편집 배치 결정\n\n- 고른 안: **${pick}**\n`;
+    document.querySelectorAll("[data-memo]").forEach(t=>{if(t.value.trim())out+=`- ${t.dataset.memo} 메모: ${t.value.trim()}\n`});
+    const o=document.getElementById("copyOut"); o.value=out; o.select();
+    try{navigator.clipboard.writeText(out)}catch{}
+  });
+  document.getElementById("btnReset").addEventListener("click",()=>{localStorage.removeItem(KEY);location.reload()});
+}
+
+/* 내비 조립 */
+const navS=document.getElementById("navScreens");
+Object.entries(SCREENS).forEach(([k,v])=>{
+  const b=el("button","tb",v.label); b.dataset.goto=k;
+  b.addEventListener("click",()=>{cur=k;if(k==="music"||k==="states")st="editing";render()});
+  navS.appendChild(b);
+});
+document.querySelectorAll("#navVp .tb").forEach(b=>b.addEventListener("click",()=>{vp=b.dataset.vp;render()}));
+document.querySelectorAll("#navState .tb").forEach(b=>b.addEventListener("click",()=>{st=b.dataset.state;render()}));
+document.querySelectorAll(".rail .node").forEach(b=>{if(b.dataset.goto)b.addEventListener("click",()=>{cur=b.dataset.goto;render()})});
+window.addEventListener("resize",()=>render());
+render();
+</script>
+</body>
+</html>
