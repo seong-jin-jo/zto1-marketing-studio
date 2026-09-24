@@ -1,3 +1,25 @@
+# 2026-09-25 07:42 KST 편집실 v70 1단계 구현·로컬 검증 완료, 출고 진행 중
+
+- handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, 설계 커밋 `cc878a82`와 재지시 원문을 primary로 사용했다. tmux `openclaw-auto:1.1`은 직전 차단 확인에만 썼다.
+- 변경: 글은 680px 문서 시트와 X 280 한글가중2·Threads 500·Instagram 2,200 미터로 바꿨고 문단 목차 렌더를 제거했다. 카드는 112px 스트립과 520px 4:5 DOM 스테이지, 말풍선 한 번 클릭 직접 입력으로 바꿨으며 우측 편집 열을 제거했다. 저장 payload는 반대 도메인을 null로 명시한다.
+- 보존: 셸, 영상 편집, 카드 장 순서, 표지·CTA 잠금, AI 일괄 편집, `musicTrack`·`musicVolume` 데이터는 유지했다. 음악 UI는 되살리지 않았다.
+- 검증: 관련 Vitest 10파일 52건, typecheck, production build, 토큰 감사 통과. 520px→496px 돌연변이는 신규 테스트가 실패시켰고 원복 후 통과했다. dev 3760 Ready, `/studio?room=edit` HTTP 200, Chrome 앱 콘솔 오류 0.
+- 커밋: `cc103a37` 제품 코드·회귀 테스트. 다음 실행은 문서 커밋과 독립 diff 리뷰, push, base main PR 생성, CI 종료 확인이다. 운영 배포와 실제 회원 초안 저장은 미검증이다.
+
+# 2026-09-25 07:25 KST 편집실 v70 1단계 설계 입력 복구, 구현 진행 중
+
+- handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, HEAD `cc878a82`, 이번 재지시 원문을 primary로 삼았다. tmux `openclaw-auto:1.1`은 직전 차단 로그 확인에만 썼다.
+- 입력 복구: `docs/design/design-spec-editroom-v70.md`와 `docs/design/prototypes/osmu-editroom-v70-hub-claude-opus-20260923-0956.html`이 HEAD `cc878a82`에 존재하며 전문을 읽었다. 기존 07:20 차단은 해소됐다. v70 승인 핀 부재는 이번 판에서 이 설계를 쓰라는 회장 확정으로 진행한다.
+- 구현 방향: 글은 목차·순서 조작 렌더 경로를 제거하고 680px 문서 시트와 X·Threads·Instagram 상한 미터로 교체한다. 카드는 112px 썸네일 스트립과 520px 4:5 DOM 스테이지로 바꾸고, 선택한 말풍선을 그 자리에서 한 번의 클릭으로 편집한다. 저장 payload는 반대 도메인에 `null`을 명시한다.
+- 다음 실행: 제품 코드와 회귀 테스트를 수정한 뒤 표적 Vitest, 돌연변이 실패, 원복 후 최종 Vitest·typecheck·dev 서버 스모크·design lint를 끝낸다. 이후 문서와 QA 원장을 갱신하고 리뷰, 커밋, push, PR을 수행한다.
+
+# 2026-09-25 07:20 KST 편집실 v70 1단계 필수 디자인 입력 결손으로 회수
+
+- handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, HEAD `57850570`, 이번 과제 원문을 primary로 삼았다. tmux `openclaw-auto:1.1`은 이 워커 자신의 진행 로그여서 별도 인계 소스로 쓰지 않았다.
+- 차단 원인: 필수 입력 `docs/design/design-spec-editroom-v70.md`와 `docs/design/prototypes/osmu-editroom-v70-hub-claude-opus-20260923-0956.html`이 현재 트리와 origin의 모든 브랜치에 없다. `/Users/sj`와 `/private/tmp` 전체 및 GitHub 코드 검색에서도 발견되지 않았다. 최신 canonical 핀은 `pipeline-state.osmu.md`의 v68이며 v70 승인 핀이 없다.
+- 현재 변경: QA 원장에 `EDITROOM-V70-P1-INPUT`을 ❌ NG로 등록했다. 제품 코드·테스트·CSS는 변경하지 않았다. 자동 기록 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 보존한다.
+- 다음 실행: 두 v70 설계 파일을 이 브랜치에 추가하거나 실제 경로·커밋을 전달받는다. 파일 전문을 읽고 최신 승인 핀을 확인한 뒤 `.work` 내부 EDIT-TEXT·EDIT-CARD만 테스트 우선으로 구현하고, 돌연변이 실패→원복→최종 Vitest·typecheck·dev 서버 스모크·design lint·리뷰·커밋·push·PR까지 끝낸다.
+
 # 2026-09-25 02:58 KST 생성기 생존 탐침 출고 전 재검증 완료
 
 - handoff basis: 회장이 지정한 워크트리, 브랜치 `fix/generator-liveness-probe`, HEAD `4fe08408`, 미커밋 diff를 primary로 삼았다. 같은 워크트리의 tmux pane `openclaw-auto:1.1`은 보조 확인했으며 캡처 내용은 비어 있어 충돌하는 작업이 없었다.

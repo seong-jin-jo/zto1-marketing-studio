@@ -1,4 +1,12 @@
-## 2026-09-24 08시 16분 - PR 83 마지막 테스트 실패 수정, 로컬 검증·커밋 완료
+## 2026-09-25 07:42 KST - 편집실 v70 1단계 구현·로컬 검증 완료, 출고 진행 중
+
+- handoff basis: 회장이 지정한 `/private/tmp/wt-v70p1`, `feat/editroom-v70-p1`, HEAD `cc878a82`와 재지시 원문을 primary로 사용했다. 직전 차단은 `cc878a82`가 v70 설계 두 파일을 추가해 해소됐다.
+- 변경: 글 편집 목차를 렌더하지 않고 680px 문서 시트와 X·Threads·Instagram 상한 미터를 추가했다. 카드 편집은 112px 스트립과 520px 4:5 DOM 스테이지로 바꾸고 말풍선 1클릭 직접 입력, 선택 시 5개 도구만 노출한다. 우측 편집 열은 제거했다. 저장 payload는 반대 도메인 null을 명시한다.
+- 보존: 헤더·사이드바·담당 대화창, 영상 편집, 카드 장 순서, 표지·CTA 잠금, `musicTrack`·`musicVolume` 데이터는 유지했다. 음악 UI는 되살리지 않았다.
+- 검증: 관련 Vitest 10파일 52건, typecheck, production build, 토큰 감사 통과. 520px→496px 돌연변이 실패와 원복 후 PASS 확인. dev 3760 Ready, `/studio?room=edit` 200, Chrome 앱 콘솔 오류 0.
+- 커밋: `cc103a37` 제품 코드·회귀 테스트. 다음 실행은 문서 커밋, 리뷰, push, base main PR 생성, CI 확인이다. 운영 배포와 실제 회원 초안 저장은 미검증이다.
+
+## 2026-09-24 08:16 KST - PR 83 마지막 테스트 실패 수정, 로컬 검증·커밋 완료
 
 - handoff basis: 회장이 지정한 네 번째 회수 과제, 워크트리 `/private/tmp/zto1-editroom-main`, 브랜치 `fix/edit-room-no-order-music-main`, CI run `35930955966`을 기준으로 사용했다. `osmu-review-pr83:0.0`은 직전 표적 로그 확인에만 사용했고 다른 트랙은 인계받지 않았다.
 - 발견: 제품 회귀가 아니다. `StudioCommandPanel`은 편집 저장 Promise가 끝날 때까지 `busy`를 유지해 발행 버튼을 비활성화한다. 실패 테스트는 `onSaveEdit` 호출 횟수만 기다리고 실제 저장 완료 전에 발행 버튼을 눌러, CI 부하에서 `onOpenPublish` 0회가 됐다. 음악 제거는 이 동작을 바꾸지 않았다.
