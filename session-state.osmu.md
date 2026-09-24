@@ -1,3 +1,10 @@
+## 2026-09-25 07:48 KST - 편집실 v70 1단계 로컬 출고 완료, push 정책 차단
+
+- 최종 로컬 HEAD: `7008af6e`. 제품·테스트 `cc103a37`, 검증 문서 `cfc5e880`, 리뷰 회귀 수정 `7008af6e`다. `origin/main` 최신 `57850570`을 조상으로 포함한다.
+- 최종 검증: 관련 Vitest 10파일 53건, `typecheck:ci`, production build, 토큰 감사 모두 종료 코드 0. 돌연변이 실패와 원복 PASS, dev HTTP 200과 앱 콘솔 오류 0을 확인했다. 랜딩 전 리뷰의 장 전환 선택 잔존 결함도 수정했다.
+- 원격 차단: `git push -u origin feat/editroom-v70-p1`은 `approval required by policy, but AskForApproval is set to Never`로 실행 전 거절됐다. GitHub 인증은 유효하고 같은 head의 PR은 0건이다. PR 본문 완성본은 `/tmp/editroom-v70-pr-body.md`에 있다.
+- 다음 실행: push 권한이 있는 컨트롤러가 이 브랜치를 origin에 push하고 `/tmp/editroom-v70-pr-body.md`로 base main PR을 만든 뒤 CI 종료를 확인한다. 운영 배포와 실제 회원 초안 저장은 미검증이다.
+
 ## 2026-09-25 07:42 KST - 편집실 v70 1단계 구현·로컬 검증 완료, 출고 진행 중
 
 - handoff basis: 회장이 지정한 `/private/tmp/wt-v70p1`, `feat/editroom-v70-p1`, HEAD `cc878a82`와 재지시 원문을 primary로 사용했다. 직전 차단은 `cc878a82`가 v70 설계 두 파일을 추가해 해소됐다.
