@@ -269,7 +269,16 @@ jobs:
           # "러너에서는 되는데 앱에서는 안 되는" 상태를 못 잡는다. 앱 컨테이너가 읽는 그
           # 파일을, 앱 컨테이너 안에서 물어본다.
           probe_generator() {
-            docker exec openclaw-dashboard-osmu higgsfield auth token >/dev/null 2>&1
+            local probe_output probe_status
+            set +e
+            probe_output="$(docker exec openclaw-dashboard-osmu higgsfield auth token 2>&1)"
+            probe_status=$?
+            set -e
+            echo "-- higgsfield auth token (exit $probe_status, 비밀값 가림) --"
+            printf '%s\n' "$probe_output" \
+              | sed -E 's/(ya29|eyJ)[A-Za-z0-9_.\-]+/[가림]/g' \
+              | tail -20
+            return "$probe_status"
           }
           container_up() {
             [ "$(docker inspect -f '{{.State.Running}}' openclaw-dashboard-osmu 2>/dev/null)" = "true" ]
@@ -348,11 +357,24 @@ jobs:
         # 실제로 그랬다(2026-09-10 회장 지적으로 발견). 그래서 실패를 눈에 띄게 남긴다.
         if: ${{ always() && (github.event.inputs.services == '' || contains(github.event.inputs.services, 'osmu')) }}
         run: |
+          umask 077
+          probe_generator() {
+            local probe_output probe_status
+            set +e
+            probe_output="$(docker exec openclaw-dashboard-osmu higgsfield auth token 2>&1)"
+            probe_status=$?
+            set -e
+            echo "-- higgsfield auth token (exit $probe_status, 비밀값 가림) --"
+            printf '%s\n' "$probe_output" \
+              | sed -E 's/(ya29|eyJ)[A-Za-z0-9_.\-]+/[가림]/g' \
+              | tail -20
+            return "$probe_status"
+          }
           if [ "$(docker inspect -f '{{.State.Running}}' openclaw-dashboard-osmu 2>/dev/null)" != "true" ]; then
             echo "::warning::앱 컨테이너가 떠 있지 않아 생성기 확인을 못 했다"
             exit 0
           fi
-          if docker exec openclaw-dashboard-osmu higgsfield auth token >/dev/null 2>&1; then
+          if probe_generator; then
             echo "생성기 로그인 살아 있음 — 카드뉴스 이미지·숏폼 영상 생성 가능"
           else
             echo "::warning::생성기 로그인이 죽어 있다. 카드뉴스 사진 이미지와 숏폼 영상이 만들어지지 않는다. 글자 카드는 영향 없다. HIGGSFIELD_CREDENTIALS_JSON 시크릿 갱신이 필요하다."

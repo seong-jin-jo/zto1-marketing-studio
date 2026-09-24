@@ -1,3 +1,10 @@
+## 2026-09-24 23:48 KST 생성기 인증 오류 관측 패치 착수
+
+- handoff basis: 회장이 지정한 `origin/main` `e2949e5b`, 새 브랜치 `fix/generator-auth-observability`, 과제 원문을 primary로 삼았다. 기존 repo pane은 다른 작업이고 생성기 인증 중복 실행 pane은 없었다.
+- 현재 원인 판정: 미확정. run `36012777008`은 `higgsfield auth token`의 stdout·stderr를 버려 갱신 토큰 회전 여부를 확인할 증거가 없다.
+- 작업 중: `.github/workflows/deploy-marketing.yml`의 배치 전·배포 후 probe가 종료 코드와 가린 출력을 남기게 수정하고 정적 계약 테스트를 추가한다. 자격증명 파일 내용은 출력하지 않는다.
+- 다음 실행: 표적 테스트와 YAML 구문 검사를 통과시키고 커밋·push한 뒤 해당 브랜치의 배포 워크플로를 `services=openclaw-dashboard-osmu`로 실행한다. 로그의 실제 오류 문구로 원인을 확정한다.
+
 # 2026-09-24 08:11 KST PR 83 남은 테스트 1건 수정·표적 검증 완료
 
 - handoff basis: 사용자가 지정한 네 번째 회수 과제, 워크트리 `/private/tmp/zto1-editroom-main`, PR 83 run `35930955966`을 primary로 삼았다. `osmu-review-pr83:0.0`은 직전 표적 테스트 로그 확인에만 사용했다.
