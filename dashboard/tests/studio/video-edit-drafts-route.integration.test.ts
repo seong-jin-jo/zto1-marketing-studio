@@ -98,6 +98,18 @@ describe("POST /api/studio/drafts videoEdit 저장·검증 (M6)", () => {
     expect(Object.prototype.hasOwnProperty.call(savedPayload, "videoEdit")).toBe(false);
   });
 
+  it("videoEdit:null도 clear 플래그가 없으면 기존 편집값을 보존한다", async () => {
+    H.rows = [{ id: "draft-null-video-edit" }];
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "반대 도메인 null", videoEdit: null }),
+    }));
+    expect(response.status).toBe(200);
+    const savedPayload = H.jsonValues[0] as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(savedPayload, "videoEdit")).toBe(false);
+  });
+
   it("clearVideoEdit:true는 videoEdit를 명시적으로 null로 지운다", async () => {
     H.rows = [{ id: "draft-video-3" }];
     const { POST } = await import("@/app/api/studio/drafts/route");

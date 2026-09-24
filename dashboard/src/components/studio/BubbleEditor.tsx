@@ -10,7 +10,7 @@
  * 로 옮긴 한국어 고정 문구를 화면에 보여주고, 원문은 console.error로만 보낸다(F4,
  * 2026-09-22 코드리뷰 3차).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
 import type { Bubble, CardDeck, CardSlide } from "@/lib/studio/card-deck-contract";
 import {
@@ -20,9 +20,7 @@ import {
   caretToSegment,
   deleteBubble,
   deleteSlide,
-  groupTurns,
   mergeBubble,
-  moveBubble,
   moveSlide,
   setBubbleText,
   setSlideCover,
@@ -31,9 +29,9 @@ import {
   toggleBold,
   toggleSpeaker,
 } from "@/lib/studio/card-deck-ops";
-import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
 import { DeliveredMedia } from "./DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
+import styles from "./BubbleEditor.module.css";
 
 const SLIDE_ROLE_LABEL: Record<CardSlide["role"], string> = {
   cover: "표지",
@@ -102,7 +100,6 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
 
   const slide = deck.slides.find((s) => s.id === slideId) ?? null;
   const bubbles = slide?.bubbles ?? [];
-  const turns = useMemo(() => groupTurns(bubbles), [bubbles]);
 
   function run(op: (deck: CardDeck) => CardDeck) {
     try {
@@ -158,32 +155,32 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
         <Button size="sm" onClick={() => run((d) => addBubble(d, slide.id, selectedBubbleId))}>말풍선 추가</Button>
       </div>
       {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-bubble-editor-error>{error}</p> : null}
-      <ul className="space-y-stack-tight" data-bubble-editor-turns>
-        {turns.map((turn) => (
-          <li key={turn.bubbles[0].id} className={turn.speaker === "reader" ? "flex justify-end" : "flex justify-start"}>
-            <ul className="max-w-4/5 space-y-stack-tight">
-              {turn.bubbles.map((bubble) => (
-                <li
-                  key={bubble.id}
-                  data-bubble-id={bubble.id}
-                  data-bubble-speaker={bubble.speaker}
-                  className={`rounded-surface border p-stack ${bubble.speaker === "reader" ? "border-transparent bg-chat-reader-bg" : "border-border bg-surface"}`}
+      <ul className={styles.bubbleTurns} data-bubble-editor-turns>
+        {bubbles.map((bubble) => {
+          const selected = selectedBubbleId === bubble.id;
+          return (
+            <li
+              key={bubble.id}
+              data-bubble-id={bubble.id}
+              data-bubble-speaker={bubble.speaker}
+              data-bubble-editing={selected ? "true" : undefined}
+              className={`${styles.bubbleRow} ${bubble.speaker === "reader" ? styles.bubbleRowReader : ""}`}
+            >
+              <div className={`${styles.bubble} ${bubble.speaker === "reader" ? styles.bubbleReader : styles.bubbleBrand}`}>
+                <textarea
+                  ref={(el) => { textareaRefs.current[bubble.id] = el; }}
+                  value={bubbleText(bubble)}
+                  onChange={(event) => updateBubbleText(bubble.id, event.target.value)}
+                  onFocus={() => setSelectedBubbleId(bubble.id)}
                   onClick={() => setSelectedBubbleId(bubble.id)}
-                >
-                  <textarea
-                    ref={(el) => { textareaRefs.current[bubble.id] = el; }}
-                    value={bubbleText(bubble)}
-                    onChange={(event) => updateBubbleText(bubble.id, event.target.value)}
-                    onFocus={() => setSelectedBubbleId(bubble.id)}
-                    aria-label="말풍선 내용"
-                    className="w-full resize-none bg-transparent text-body text-text"
-                    rows={2}
-                  />
-                  <div className="mt-stack-tight flex flex-wrap gap-stack-tight" data-bubble-controls>
+                  aria-label={`말풍선 내용 ${bubble.order + 1}`}
+                  className={styles.bubbleTextarea}
+                  rows={Math.max(1, bubbleText(bubble).split("\n").length)}
+                />
+                {selected ? (
+                  <div className={styles.bubbleToolbar} data-bubble-controls aria-label="선택한 말풍선 도구">
                     <Button size="sm" onClick={() => handleToggleBold(bubble)}>굵게</Button>
                     <Button size="sm" onClick={() => run((d) => toggleSpeaker(d, slide.id, bubble.id))}>화자 전환</Button>
-                    <Button size="sm" onClick={() => run((d) => moveBubble(d, slide.id, bubble.id, -1))}>▲</Button>
-                    <Button size="sm" onClick={() => run((d) => moveBubble(d, slide.id, bubble.id, 1))}>▼</Button>
                     <Button size="sm" onClick={() => {
                       // 2026-09-22 코드리뷰 MAJOR 5: caret 은 말풍선 전체 텍스트 기준인데
                       // splitBubble 은 세그먼트 좌표를 받는다. caretToSegment 로 바꾼다
@@ -195,11 +192,11 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
                     <Button size="sm" onClick={() => run((d) => mergeBubble(d, slide.id, bubble.id))}>합치기</Button>
                     <Button size="sm" variant="secondary" onClick={() => run((d) => deleteBubble(d, slide.id, bubble.id))}>삭제</Button>
                   </div>
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
       </ul>
       {slide.role === "cta" ? (
         <>
@@ -362,15 +359,13 @@ function CoverEditor({ slide, onChange, onImageChange }: {
 }
 
 /**
- * 편집실 카드 탭 전체 패널: 좌 9장 목록(역할 배지) · 중 실시간 캔버스 미리보기 ·
- * 우/하 BubbleEditor. `EditRoom` 이 `cardDeck` 을 받았을 때 기존 EditOutline/EditPreview
- * 대신 이 패널을 그린다(F4). 03c 직접 편집 우선 정책(D-2026-09-09-1) — AI 자동 배치는
- * 여기서 다루지 않는다.
+ * 편집실 카드 탭 전체 패널. 좌측 112px 썸네일과 520px 4:5 DOM 스테이지를 쓴다.
+ * 캔버스 미리보기와 우측 textarea를 분리하던 구조를 없애서 말풍선 한 번 클릭이 곧
+ * 그 자리 편집이 되게 한다(EDIT-CARD v70 §3).
  */
 export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckChange: (deck: CardDeck) => void }) {
   const [activeSlideId, setActiveSlideId] = useState(deck.slides[0]?.id ?? "");
   const [slideError, setSlideError] = useState<string | null>(null);
-  const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const activeIndex = deck.slides.findIndex((s) => s.id === activeSlideId);
   const activeSlide = activeIndex >= 0 ? deck.slides[activeIndex] : deck.slides[0];
 
@@ -379,44 +374,6 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
       setActiveSlideId(deck.slides[0]?.id ?? "");
     }
   }, [deck.slides, activeSlideId]);
-
-  useEffect(() => {
-    const host = canvasHostRef.current;
-    if (!host || !activeSlide) return;
-    // 300ms 디바운스(설계 §5 F4). 연산마다 즉시 다시 그리면 타이핑 중 캔버스가 계속
-    // 깜빡인다. J1(2026-09-22 코드리뷰): 표지·CTA 사진 로딩을 기다려야 해서 렌더가
-    // 비동기로 바뀌었다 — `cancelled`로 그 사이 deck이 또 바뀌면 옛 결과를 host에 못
-    // 붙이게 막는다(경쟁 상태 방지).
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      void (async () => {
-        try {
-          const canvas = await renderChatBubbleSlideToCanvas({
-            deck,
-            slide: activeSlide,
-            index: deck.slides.findIndex((s) => s.id === activeSlide.id),
-            total: deck.slides.length,
-          });
-          if (cancelled) return;
-          host.innerHTML = "";
-          if (canvas) {
-            canvas.style.width = "100%";
-            canvas.style.height = "auto";
-            canvas.style.borderRadius = "var(--radius-surface, 12px)";
-            host.appendChild(canvas);
-          }
-        } catch (cause) {
-          if (cancelled) return;
-          host.innerHTML = "";
-          const p = document.createElement("p");
-          p.className = "text-caption text-danger";
-          p.textContent = cause instanceof Error ? cause.message : "미리보기를 그리지 못했습니다.";
-          host.appendChild(p);
-        }
-      })();
-    }, 300);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [deck, activeSlide]);
 
   function runSlide(op: (deck: CardDeck) => CardDeck) {
     try {
@@ -433,12 +390,12 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
   }
 
   return (
-    <div className="grid min-w-0 gap-pad-inset lg:grid-cols-[14rem_minmax(0,1fr)_18rem]" data-card-deck-panel>
-      <nav aria-label="카드 목록" className="min-w-0 space-y-stack-tight" data-card-deck-slide-list>
+    <div className={styles.cardDeckPanel} data-card-deck-panel>
+      <nav aria-label="카드 목록" className={styles.thumbnailStrip} data-card-deck-slide-list data-card-deck-thumbnail-strip>
         {deck.slides.map((slide, index) => {
           const locked = slide.role === "cover" || slide.role === "cta";
           return (
-            <div key={slide.id} className="space-y-stack-tight">
+            <div key={slide.id} className={styles.thumbnailItem}>
               <Button
                 variant="secondary"
                 onClick={() => setActiveSlideId(slide.id)}
@@ -449,19 +406,15 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
                 // (QA-APP-TOUCH-08 기준선 239→238). Button 기본값(inline-flex·
                 // justify-center·px 만 있는 size 패딩)과 이 목록 행의 레이아웃(꽉 찬
                 // 너비·양끝 정렬·상하좌우 패딩·왼쪽 정렬)이 충돌하는 자리만 `!` 로 이긴다.
-                className={`!flex w-full !justify-between !p-stack text-left text-caption ${slide.id === activeSlideId ? "!border-accent !bg-accent-soft" : "!border-border !bg-surface"}`}
+                className={`${styles.thumbnailButton} ${slide.id === activeSlideId ? styles.thumbnailButtonActive : ""}`}
               >
-                <span className="flex items-center gap-stack-tight">
-                  <span>{index + 1}.</span>
-                  <span
-                    data-slide-role-badge={slide.role}
-                    className={`rounded-chip border px-micro text-caption font-semibold ${SLIDE_ROLE_BADGE_CLASS[slide.role]}`}
-                  >
-                    {SLIDE_ROLE_LABEL[slide.role]}
-                  </span>
+                <span className={styles.thumbnailMeta}>
+                  <span>{index + 1}</span>
+                  <span data-slide-role-badge={slide.role} className={`rounded-chip border px-micro text-caption font-semibold ${SLIDE_ROLE_BADGE_CLASS[slide.role]}`}>{SLIDE_ROLE_LABEL[slide.role]}</span>
                 </span>
+                <span className={styles.thumbnailBars} aria-hidden="true"><i /><i /><i /></span>
               </Button>
-              <div className="flex gap-stack-tight">
+              <div className={styles.thumbnailActions}>
                 <Button size="sm" onClick={() => runSlide((d) => moveSlide(d, index, index - 1))} disabled={locked || index === 0}>▲</Button>
                 <Button size="sm" onClick={() => runSlide((d) => moveSlide(d, index, index + 1))} disabled={locked || index === deck.slides.length - 1}>▼</Button>
                 <Button size="sm" onClick={() => runSlide((d) => addSlide(d, index))} disabled={index === deck.slides.length - 1}>+장</Button>
@@ -475,12 +428,17 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
           );
         })}
       </nav>
-      <section aria-label="카드 미리보기" className="min-w-0" data-card-deck-preview>
-        <div ref={canvasHostRef} className="overflow-hidden rounded-surface border border-border bg-surface-2" />
+      <section aria-label="카드 편집 스테이지" className={styles.stageColumn} data-card-deck-preview>
+        <div className={styles.cardStage} data-card-deck-stage data-card-deck-stage-ratio="4:5">
+          {activeSlide && activeSlide.role !== "cover" ? (
+            <header className={styles.cardBrandBar}>
+              <b>{deck.brand.display_name}</b>
+              <span>{deck.brand.handle ?? "브랜드"}</span>
+            </header>
+          ) : null}
+          {activeSlide ? <BubbleEditor deck={deck} slideId={activeSlide.id} onDeckChange={onDeckChange} /> : null}
+        </div>
         {slideError ? <p role="alert" className="mt-stack-tight text-caption text-danger">{slideError}</p> : null}
-      </section>
-      <section aria-label="말풍선 편집" className="min-w-0" data-card-deck-editor>
-        {activeSlide ? <BubbleEditor deck={deck} slideId={activeSlide.id} onDeckChange={onDeckChange} /> : null}
       </section>
     </div>
   );

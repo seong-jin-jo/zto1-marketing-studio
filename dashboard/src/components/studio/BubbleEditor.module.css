@@ -1,0 +1,186 @@
+.cardDeckPanel {
+  --editroom-thumbnail-width: 7rem;
+  --editroom-stage-width: 32.5rem;
+  --editroom-bubble-max-width: 76%;
+  --editroom-bubble-font-size: 0.8125rem;
+  --editroom-bubble-line-height: 1.1875rem;
+  --editroom-mobile-toolbar-height: 2.75rem;
+  --editroom-card-paper: white;
+  display: grid;
+  grid-template-columns: var(--editroom-thumbnail-width) minmax(0, 1fr);
+  gap: var(--pad-inset);
+  min-width: 0;
+}
+
+.thumbnailStrip {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--stack-tight);
+}
+
+.thumbnailItem {
+  display: grid;
+  gap: var(--space-micro);
+}
+
+.thumbnailButton {
+  display: grid !important;
+  aspect-ratio: 4 / 5;
+  width: 100%;
+  align-content: space-between;
+  justify-items: stretch !important;
+  padding: var(--stack-tight) !important;
+  border-color: var(--border) !important;
+  background: var(--surface) !important;
+  text-align: left;
+}
+
+.thumbnailButtonActive {
+  border-color: var(--accent) !important;
+  background: var(--accent-soft) !important;
+}
+
+.thumbnailMeta {
+  display: grid;
+  gap: var(--space-micro);
+  justify-items: start;
+  color: var(--text);
+  font-size: var(--font-caption-size);
+}
+
+.thumbnailBars {
+  display: grid;
+  gap: var(--space-micro);
+}
+
+.thumbnailBars i {
+  display: block;
+  height: 0.25rem;
+  border-radius: var(--shape-pill);
+  background: var(--border);
+}
+
+.thumbnailBars i:nth-child(2) {
+  width: 78%;
+}
+
+.thumbnailBars i:nth-child(3) {
+  width: 58%;
+}
+
+.thumbnailActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-micro);
+}
+
+.stageColumn {
+  min-width: 0;
+}
+
+.cardStage {
+  aspect-ratio: 4 / 5;
+  width: 100%;
+  max-width: var(--editroom-stage-width);
+  margin-inline: auto;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-surface);
+  background: var(--editroom-card-paper);
+  padding: var(--pad-inset);
+  box-shadow: var(--shadow);
+}
+
+.cardBrandBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--stack-tight);
+  margin-bottom: var(--stack);
+  padding-bottom: var(--stack-tight);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: var(--font-caption-size);
+}
+
+.cardBrandBar span {
+  color: var(--muted);
+}
+
+.bubbleTurns {
+  display: grid;
+  gap: var(--stack-tight);
+}
+
+.bubbleRow {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.bubbleRowReader {
+  justify-content: flex-end;
+}
+
+.bubble {
+  width: fit-content;
+  max-width: var(--editroom-bubble-max-width);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-surface);
+  padding: var(--stack-tight) var(--stack);
+}
+
+.bubbleBrand {
+  background: var(--editroom-card-paper);
+}
+
+.bubbleReader {
+  border-color: transparent;
+  background: var(--chat-reader-bg);
+}
+
+.bubbleTextarea {
+  display: block;
+  width: 100%;
+  min-width: 8rem;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--editroom-bubble-font-size);
+  line-height: var(--editroom-bubble-line-height);
+}
+
+.bubbleToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-micro);
+  margin-top: var(--stack-tight);
+  padding-top: var(--stack-tight);
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 48rem) {
+  .cardDeckPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .thumbnailStrip {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: var(--stack-tight);
+  }
+
+  .thumbnailItem {
+    width: var(--editroom-thumbnail-width);
+    flex: 0 0 var(--editroom-thumbnail-width);
+  }
+
+  .bubbleToolbar {
+    position: sticky;
+    bottom: 0;
+    min-height: var(--editroom-mobile-toolbar-height);
+    background: var(--surface);
+  }
+}
