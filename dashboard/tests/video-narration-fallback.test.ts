@@ -69,6 +69,13 @@ vi.mock("@/lib/media-token", () => ({
   signMediaToken: vi.fn(() => "signed"),
 }));
 
+// 2026-09-25 코드리뷰 MAJOR-0b: video 라우트가 더 이상 localPath를 받지 않고 filename만 받아
+// resolveGeneratedFile로 서버 경로를 직접 푼다. 이 판의 관심사는 무음 폴백 응답 계약이므로
+// 파일 탐색 자체는 항상 성공한 것으로 둔다.
+vi.mock("@/lib/storage", () => ({
+  resolveGeneratedFile: vi.fn(() => "/tmp/input.png"),
+}));
+
 beforeEach(() => {
   vi.resetModules();
   H.higgsNarration = { ok: false, reason: "server_tts_unavailable" };
@@ -80,7 +87,7 @@ describe("내레이션 무음 폴백 응답 계약", () => {
     const response = await POST(new Request("http://localhost/api/higgsfield/video", {
       method: "POST",
       body: JSON.stringify({
-        localPath: "/tmp/input.png",
+        filename: "input.png",
         prompt: "motion",
         narration: "읽어줄 문장",
         tenant_id: "11111111-1111-4111-8111-111111111111",

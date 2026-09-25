@@ -88,19 +88,35 @@ export function listMedia(tenantId: string, exts: Set<string>): Array<{ filename
     });
 }
 
+// 옛 공용 영상 폴더 — 인자 tenantId만으로 고정한다(코드리뷰 MAJOR-0a, ADR-007).
+// dataPath("videos")는 "호출 시점의 테넌트 컨텍스트(AsyncLocalStorage)"로 경로를 고르므로,
+// runWithTenant(...)로 감싸지 않은 채(media/resign, higgsfield/video 라우트가 그랬다) 이
+// 함수를 부르면 인자 tenantId와 무관하게 그 순간의 요청 컨텍스트가, 컨텍스트가 없으면
+// 운영자 공유 루트가 선택된다. 테넌트 A로 불러도 운영자의 data/videos가 뒤진 이유가
+// 이것이다(리뷰어 탐침 P1 실측, 2026-09-25). 인자만으로 계산하면 호출부의 컨텍스트
+// 유무와 무관하게 항상 같은 값이 나온다.
+function tenantScopedVideosDir(tenantId: string | null | undefined): string {
+  const t = safeTenantId(tenantId);
+  return t ? path.join(DATA_DIR, "tenants", t, "videos") : path.join(DATA_DIR, "videos");
+}
+
 /**
- * 만들어진 영상이 놓일 수 있는 폴더 목록. 호출 시점의 테넌트 컨텍스트에 속한
- * data/videos를 먼저 보고, 유효한 작업 공간이면 data/studio/{tenantId}도 본다.
+ * 만들어진 영상이 놓일 수 있는 폴더 목록. 인자 tenantId로 고정한 data/tenants/{id}/videos
+ * (tenantId가 없으면 운영자 공유 data/videos)를 먼저 보고, 유효한 작업 공간이면
+ * data/studio/{tenantId}도 본다.
  *
  * 목록과 단건 해석이 이 함수를 함께 써야 새 저장 위치가 추가될 때 한쪽만 낡지 않는다.
  */
 export function generatedMediaDirs(tenantId: string | null | undefined): string[] {
-  const dirs = [dataPath("videos")];
+  const dirs = [tenantScopedVideosDir(tenantId)];
   try {
     // 작업 공간 식별자가 비었거나 형식이 틀리면 tenantMediaDir 이 예외를 던진다. 탐색이
     // 그것 때문에 죽으면 옛 폴더에 있는 파일까지 못 찾는다. 한 곳이라도 볼 수 있으면 본다.
     if (tenantId) dirs.push(tenantMediaDir(tenantId));
-  } catch { /* 작업 공간 폴더는 건너뛴다 */ }
+  } catch (e) {
+    // ADR-007: 조용히 삼키지 않는다 — 무엇을 왜 건너뛰는지 남긴다(파일 내용은 남기지 않음).
+    console.warn(`[storage.generatedMediaDirs] tenantMediaDir 건너뜀: invalid tenantId, reason=${e instanceof Error ? e.message : String(e)}`);
+  }
   return dirs;
 }
 
@@ -141,7 +157,11 @@ export function resolveGeneratedFile(tenantId: string, filename: string): string
   if (filename.includes("/") || filename.includes("\\") || filename.includes("..") || filename.includes("\0")) return null;
   const matches: string[] = [];
   for (const dir of generatedMediaDirs(tenantId)) {
-    if (!isGeneratedMediaDirSafe(dir)) continue;
+    if (!isGeneratedMediaDirSafe(dir)) {
+      // ADR-007: 폴더 하나를 통째로 건너뛰는 결정이다 — 왜인지 남긴다(파일명 내용은 남기지 않음).
+      console.warn(`[storage.resolveGeneratedFile] 안전하지 않은 폴더 건너뜀: dir=${dir}`);
+      continue;
+    }
     const fp = path.join(dir, filename);
     try {
       // lstat 으로 마지막 경로 요소의 심볼릭 링크를 거부한다. realpath containment 는
@@ -152,7 +172,7 @@ export function resolveGeneratedFile(tenantId: string, filename: string): string
       const canonicalFile = fs.realpathSync(fp);
       if (!canonicalFile.startsWith(canonicalDir + path.sep)) continue;
       matches.push(fp);
-    } catch { /* 읽을 수 없으면 없는 것으로 본다 */ }
+    } catch { /* ENOENT 등 정상적인 "없음" — 폴더 자체는 안전이 확인됐으므로 조용해도 된다 */ }
   }
   // 같은 파일명이 두 저장소에 겹치면 어느 파일인지 이름만으로 안정적으로 식별할 수 없다.
   // 임의 우선순위로 다른 바이트를 배달하지 않고 충돌을 해소할 때까지 닫는다.

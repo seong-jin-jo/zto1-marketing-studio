@@ -21,7 +21,11 @@ export async function GET(request: Request) {
     const candidatesByName = new Map<string, Array<{ size: number; createdAt: number }>>();
 
     for (const dir of dirs) {
-      if (!isGeneratedMediaDirSafe(dir)) continue;
+      if (!isGeneratedMediaDirSafe(dir)) {
+        // ADR-007: 폴더 하나를 통째로 건너뛰는 결정이다 — 왜인지 남긴다(파일 내용은 남기지 않음).
+        console.warn(`[video/list] 안전하지 않은 폴더 건너뜀: dir=${dir}`);
+        continue;
+      }
       try {
         const files = await fs.promises.readdir(dir, { withFileTypes: true });
         const candidates = files.filter(
@@ -50,8 +54,10 @@ export async function GET(request: Request) {
             candidatesByName.set(f, matches);
           }
         }
-      } catch {
-        // 아직 없거나 읽을 수 없는 폴더 하나는 건너뛰고 나머지 폴더를 계속 본다.
+      } catch (e) {
+        // ADR-007: 아직 없거나 읽을 수 없는 폴더 하나는 건너뛰고 나머지 폴더를 계속 본다 —
+        // 다만 왜 건너뛰는지는 남긴다(파일 내용은 남기지 않음).
+        console.warn(`[video/list] 폴더 읽기 실패, 건너뜀: dir=${dir}, reason=${e instanceof Error ? e.message : String(e)}`);
       }
     }
 

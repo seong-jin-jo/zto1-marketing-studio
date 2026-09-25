@@ -24,8 +24,20 @@ describe("영상 파일 탐색 경로", () => {
   it("폴더 목록 정본이 두 곳을 모두 본다", () => {
     const src = read("lib/storage.ts");
     const fn = src.slice(src.indexOf("export function generatedMediaDirs"));
-    expect(fn).toContain('dataPath("videos")');
+    // 2026-09-25 코드리뷰 MAJOR-0a: dataPath("videos")는 호출 시점의 테넌트 컨텍스트
+    // (AsyncLocalStorage)로 경로를 고른다 — runWithTenant로 감싸지 않은 호출부(media/resign,
+    // higgsfield/video)에서 부르면 인자 tenantId와 무관한 폴더가 나왔다(리뷰어 탐침 P1 실측).
+    // 컨텍스트에 기대지 않고 인자만으로 고정하는 tenantScopedVideosDir로 바꿨다.
+    expect(fn).toContain("tenantScopedVideosDir(tenantId)");
+    expect(fn).not.toContain('dataPath("videos")');
     expect(fn).toContain("tenantMediaDir");
+  });
+
+  it("옛 공용 영상 폴더는 테넌트 컨텍스트가 아니라 인자로만 고정된다(교차 접근 회귀 가드)", () => {
+    const src = read("lib/storage.ts");
+    const fn = src.slice(src.indexOf("function tenantScopedVideosDir"), src.indexOf("export function generatedMediaDirs"));
+    expect(fn).not.toContain("dataPath(");
+    expect(fn).toContain("DATA_DIR");
   });
 
   it("목록과 단건 해석이 같은 폴더 목록 정본을 쓴다", () => {
