@@ -709,6 +709,11 @@ export default function StudioPage() {
         setPublishReconciliations(normalizePublishReconciliations(w.publishReconciliations ?? w.publishReconciliation));
         setTitles(w.titles || {}); setHashtags(w.hashtags || {}); setTopicTags(w.topicTags || {});
         setFirstComments(w.firstComments || {}); setCaptions(w.captions || {}); setSelectedAccounts(w.selectedAccounts || {}); setEditLines(w.editLines || []); setCardTextPositions(w.cardTextPositions || []); setReviewQueueId(w.reviewQueueId || null);
+        // B1(교차 리뷰 BLOCK): videoEdit이 이 복원 블록에 없어서 새로고침(draft_id 없이
+        // localStorage만 있는 경로)하면 편집기가 빈 videoEdit을 받았다. 자막이 0개면
+        // VideoEditor가 자동 시딩→800ms 뒤 서버에 그 빈 videoEdit을 저장해 오버레이·댓글·
+        // 목소리·컷이 지워졌다(drafts/route.ts가 videoEdit을 통째 치환한다).
+        if (w.videoEdit) setVideoEdit(w.videoEdit as VideoEdit);
         if (w.editKind === "video" || w.editKind === "card" || w.editKind === "audio" || w.editKind === "text") {
           setEditKind(w.editKind);
           const formatKind = w.editKind;
@@ -725,13 +730,13 @@ export default function StudioPage() {
     const workspaceId = activeWorkspace?.id;
     if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
     try {
-      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat }));
+      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat, videoEdit }));
       setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
       setEditAutosaveError("");
     } catch {
       setEditAutosaveError("자동 저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.");
     }
-  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat]);
+  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat, videoEdit]);
 
   const upText = (patch: Partial<TextVariants>) => setText((p) => ({ ...(p || {}), ...patch }));
   const upIg = (patch: Partial<NonNullable<TextVariants["instagram"]>>) => setText((p) => ({ ...(p || {}), instagram: { ...(p?.instagram || {}), ...patch } }));
@@ -1608,6 +1613,11 @@ export default function StudioPage() {
     } else showToast("발행 완료", "success");
   }
   function loadDraft(d: Record<string, unknown>) {
+    // B1(교차 리뷰 BLOCK): 서버 초안을 불러오는 이 순간 이전에 예약돼 있던 자동 저장
+    // 타이머가 있으면(예: 방금 전 영상 탭에서 시딩·조작으로 예약된 저장) 그 타이머가
+    // 지금 불러오는 이 초안 위에 낡은 값을 덮어쓴다. 불러오기 전에 반드시 끈다.
+    if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+    if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setIdea((d.idea as string) || ""); setText((d.text as TextVariants) || null);
     setImg((d.img as ImgResult) || null); setVid((d.vid as VidResult) || null);
     setIncludes(d.includes ? normalizeIncludes(d.includes as Record<string, boolean>) : includes); setDraftId(d.id as string);
@@ -1688,6 +1698,17 @@ export default function StudioPage() {
   // 발행실 이동이 타이머보다 먼저 끝나면 뒤늦은 콜백이 draftId=null 로 중복 초안을 만든다).
   const draftIdRef = useRef<string | null>(null);
   draftIdRef.current = draftId;
+  /**
+   * B3(교차 리뷰 BLOCK): cardDeck/videoEdit 자동저장 타이머는 이 함수가 "예약되는 시점"의
+   * `editLines` 클로저를 800ms 뒤에 그대로 쓴다. 자막 문구 수정은 `onLinesChange`와
+   * `onVideoEditChange`를 같은 이벤트에서 함께 부르는데, 그 이벤트가 실행되는 순간에는
+   * 아직 리렌더 전이라 `onVideoEditChange`(이전 렌더에서 만들어진 함수)가 닫고 있는
+   * `editLines`는 이번 수정 이전 값이다. 그래서 컷·문구 수정이 서버 자막에는 한 박자
+   * 늦게(또는 전혀) 반영되지 않았다. ref는 매 렌더 값을 즉시 갱신하므로 타이머가 "실행되는
+   * 시점"에 최신 editLines를 읽는다(draftIdRef와 같은 패턴).
+   */
+  const editLinesRef = useRef<string[]>([]);
+  editLinesRef.current = editLines;
   useEffect(() => () => {
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
     if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
@@ -1725,6 +1746,9 @@ export default function StudioPage() {
         return;
       }
       const tagText = work.hashtags.map((tag) => tag.replace(/^#/, "")).join(" ");
+      // B1(교차 리뷰 BLOCK): loadDraft와 같은 이유. 이 경로도 videoEdit을 직접 세팅한다.
+      if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+      if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
       setIdea((linkedDraft?.idea as string) || work.idea);
       setText({
         threads: work.body,
@@ -2265,7 +2289,7 @@ export default function StudioPage() {
       // 대상)이면 그 state가 여기 실려가 서버 validateVideoEdit 400을 내고, 카드덱
       // 저장까지 함께 실패한다. null을 명시해 videoEdit 키 자체를 payload에서 뺀다
       // (drafts/route.ts는 키가 없으면 기존 값을 보존한다).
-      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, pruned, null)
+      save("draft", publishReconciliations, draftIdRef.current, editLinesRef.current, img, vid, pruned, null)
         .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setCardDeckAutosaveError(""); })
         .catch((error) => setCardDeckAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
     }, 800);
@@ -2291,7 +2315,7 @@ export default function StudioPage() {
       // 책임진다 — cardDeck을 그대로 실으면(pruning 없이) 빈 말풍선이 서버에 그대로
       // 박히거나, 저장 자체가 카드덱 검증 실패로 통째로 막힌다. null을 명시해 cardDeck
       // 키 자체를 payload에서 뺀다(기존 서버 값 보존).
-      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, null, nextEdit)
+      save("draft", publishReconciliations, draftIdRef.current, editLinesRef.current, img, vid, null, nextEdit)
         .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setVideoEditAutosaveError(""); })
         .catch((error) => setVideoEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
     }, 800);

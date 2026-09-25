@@ -175,19 +175,21 @@ describe("v70 §4: 영상 편집 워크벤치(플레이어+자막 대본+타임�
     expect(texts).toEqual(["첫 장면 대사", "둘째 장면 대사"]);
   });
 
-  it("자막 줄에서 컷하면 취소선으로 남고, lines에서는 빠진다(발행에 반영)", () => {
+  it("자막 줄에서 컷하면 취소선으로 남지만 lines(발행 원문)는 그대로다(M2/M4 갱신)", () => {
+    // 교차 리뷰 M2/M4: 컷이 lines를 줄이면 전부 컷했을 때 편집실이 "빈 작업물"로
+    // 튕겨 되돌리기 단추까지 함께 사라졌다. 컷은 이제 미리보기 표시 전용이다 —
+    // 자막 글자·영상·음성은 그대로 발행되고, lines는 컷과 무관하게 항상 그대로다.
     stubVoicesUnconfigured();
     const onLinesChangeSpy = vi.fn();
     render(<VideoRoomHarness initialLines={["첫 장면 대사", "둘째 장면 대사"]} onLinesChangeSpy={onLinesChangeSpy} />);
     const cutButtons = document.querySelectorAll("[data-video-subtitle-cut-toggle]");
     fireEvent.click(cutButtons[0]);
-    expect(onLinesChangeSpy).toHaveBeenCalledWith(["둘째 장면 대사"]);
+    expect(onLinesChangeSpy).not.toHaveBeenCalled();
     const row = document.querySelectorAll("[data-video-subtitle-id]")[0];
     expect(row.getAttribute("data-video-subtitle-cut")).toBe("true");
-    // 되돌리기: 다시 lines에 포함되고 컷 표시가 풀린다.
     const undoButton = row.querySelector("[data-video-subtitle-cut-toggle]")!;
     fireEvent.click(undoButton);
-    expect(onLinesChangeSpy).toHaveBeenLastCalledWith(["첫 장면 대사", "둘째 장면 대사"]);
+    expect(onLinesChangeSpy).not.toHaveBeenCalled();
     expect(row.getAttribute("data-video-subtitle-cut")).toBe("false");
   });
 

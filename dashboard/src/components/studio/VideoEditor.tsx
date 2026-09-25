@@ -36,11 +36,8 @@ import {
   removeOverlay,
   setSubtitles,
   setVoice,
-  toggleSubtitleCut,
   updateComment,
   updateOverlay,
-  updateSubtitleText,
-  updateSubtitleTiming,
 } from "@/lib/studio/video-edit-contract";
 
 /** 1초를 몇 px로 그리는지. design-spec-editroom-v70.md §4.4 "1초 ≈ 12px". */
@@ -69,6 +66,8 @@ export interface VideoEditorProps {
    */
   lines?: string[];
   onLinesChange?: (lines: string[]) => void;
+  /** M6(교차 리뷰 MAJOR): 영상이 없는 빈 상태에 빠져나갈 길을 준다(ADR-007, 규격 §6). */
+  onOpenCreate?: () => void;
 }
 
 function formatSec(sec: number): string {
@@ -91,12 +90,16 @@ function videoEditErrorMessage(rule: string): string {
   return "입력한 값을 확인해 주세요.";
 }
 
-export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange }: VideoEditorProps) {
+export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate }: VideoEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // M3(교차 리뷰): 플레이어 미리보기 자막도 대본·타임라인과 같은 재구성 결과를 봐야
+  // 서버에 아직 커밋 안 된(시딩만 된) 상태에서도 글자가 보인다 — 셋이 서로 다른 자막을
+  // 보여주면 어느 게 진짜인지 알 수 없다(B2와 같은 이유로 한 계산을 공유한다).
+  const displaySubtitles = useMemo(() => reconcileSubtitles(videoEdit.subtitles, lines, duration), [videoEdit.subtitles, lines, duration]);
 
   function run(op: (edit: VideoEdit) => VideoEdit) {
     try {
@@ -133,10 +136,17 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   }
 
   if (!previewVideoUrl) {
+    // M6(교차 리뷰 MAJOR, ADR-007): 영상이 없어도 대본은 편집할 수 있어야 하고, 빈
+    // 상태에는 빠져나갈 길이 있어야 한다. 플레이어·타임라인만 없다고 알리고, 자막 대본
+    // 편집기(장면 대사)는 그대로 연다 — 생성실에서 영상이 나오면 이 대본이 그대로 이어진다.
     return (
-      <div className="space-y-stack-tight rounded-surface border border-dashed border-border bg-surface-2 p-pad-inset" data-video-editor-empty>
-        <b className="block text-body font-semibold text-text">아직 편집할 영상이 없습니다</b>
-        <p className="text-caption text-muted">생성실에서 영상을 먼저 만들면 여기서 자막·컷·후킹 CTA·댓글 오버레이·음성을 편집할 수 있습니다.</p>
+      <div className="space-y-stack" data-video-editor data-video-editor-empty>
+        <div className="space-y-stack-tight rounded-surface border border-dashed border-border bg-surface-2 p-pad-inset">
+          <b className="block text-body font-semibold text-text">아직 편집할 영상이 없습니다</b>
+          <p className="text-caption text-muted">플레이어·타임라인·후킹 CTA·댓글 오버레이·음성은 영상이 있어야 편집할 수 있습니다. 아래 대본은 지금도 고칠 수 있고, 영상이 나오면 그대로 이어집니다.</p>
+          {onOpenCreate ? <Button size="sm" onClick={onOpenCreate}>생성실에서 영상 만들기</Button> : null}
+        </div>
+        <SubtitleScriptEditor lines={lines} onLinesChange={onLinesChange} edit={videoEdit} playhead={0} onSeek={() => {}} run={run} />
       </div>
     );
   }
@@ -144,6 +154,9 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   return (
     <div className="space-y-stack" data-video-editor>
       {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-video-editor-error>{error}</p> : null}
+      {/* M8(교차 리뷰 MAJOR): 390px 폭에서는 타임라인 칸(108px)이 낮아 이 안내가 블록에
+          가려졌다. 편집기 맨 위 머리줄로 올린다 — 타임라인 안에는 더 안 둔다. */}
+      <p className="text-caption text-subtle" data-video-timeline-hint>← 옆으로 밀어 더 보기 · 블록을 끌어서 구간을 바꿉니다</p>
       <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_10.5rem] max-[64rem]:[grid-template-rows:minmax(0,1fr)_9.375rem] max-[26rem]:[grid-template-rows:auto_6.75rem]">
         <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
@@ -151,7 +164,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             videoRef={videoRef}
             overlays={videoEdit.overlays}
             comments={videoEdit.comments}
-            activeSubtitleText={activeSubtitleText(videoEdit.subtitles, playhead)}
+            activeSubtitleText={activeSubtitleText(displaySubtitles, playhead)}
             playhead={playhead}
             duration={duration}
             playing={playing}
@@ -167,6 +180,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
               onLinesChange={onLinesChange}
               edit={videoEdit}
               playhead={playhead}
+              duration={duration}
               onSeek={seek}
               run={run}
             />
@@ -295,53 +309,75 @@ function VideoPlayback({
  * "무음·군말 한번에 컷"은 넣지 않는다. 실제 무음 검출 데이터가 없다(세션맥락 지시,
  * ADR-007) — 이전 판의 그 단추는 정규식(`/…|\.{3}|^\s*$/`)으로 무음을 흉내 낸 것이었다.
  */
+/**
+ * 자막 목록을 장면 대사(`lines`) 기준으로 순수하게 다시 맞춘다. 부작용이 없다 — 아무것도
+ * 저장하거나 dispatch하지 않는다.
+ *
+ * B1/B2/M1(교차 리뷰 BLOCK·MAJOR): 이전 판은 마운트 시 `edit.subtitles`가 비어 있으면
+ * 곧바로 `run()`으로 시딩을 dispatch했다. 서버 값이 아직 도착하기 전(새로고침 직후,
+ * draft_id 로드 경합 중)에 이게 실행되면 빈 videoEdit이 800ms 뒤 서버로 나가
+ * 오버레이·댓글·목소리·컷을 통째로 지웠다(drafts/route.ts가 videoEdit을 부분 병합이 아니라
+ * 통째 치환한다). 같은 함수가 이전 형식 데이터를 열 때(자막 목록과 장면 대사가 다를 때)와
+ * 일괄 편집으로 대사가 바뀔 때도 동일하게 "장면 대사가 사라진다/되돌아간다" 버그를 냈다 —
+ * 이유는 같다: 시딩·동기화가 저장을 유발하는 부작용이었기 때문이다.
+ *
+ * 고친 모델: 화면에 보여줄 자막 목록은 항상 `lines`에서 매 렌더 다시 계산한다(위치로
+ * 대응, 문구는 항상 `lines[i]`를 따른다). 서버에는 사용자가 실제로 조작(문구 수정·컷·
+ * 타임라인 드래그)할 때만 그 시점의 계산 결과를 커밋해서 내보낸다.
+ */
+/**
+ * M3(교차 리뷰 MAJOR): 새로 만드는 구간의 시간은 굽기와 같은 규칙(영상 길이를 줄 수로
+ * 고르게 나눈다, `video-subtitle.ts` `subtitleCues`와 동일)을 쓴다. 이전 판은 줄당
+ * 고정 3초를 썼는데, 6초짜리 클립에 대사가 다섯 줄이면 미리보기와 실제 자막 타이밍이
+ * 서로 달랐다. `duration`을 모르면(플레이어 로드 전) 그 함수와 같은 기본값 6초를 쓴다.
+ */
+function reconcileSubtitles(subtitles: SubtitleLine[], lines: string[], duration: number | null): SubtitleLine[] {
+  const total = duration && duration > 0 ? duration : 6;
+  const slot = lines.length > 0 ? total / lines.length : total;
+  return lines.map((text, index) => {
+    const existing = subtitles[index];
+    if (existing) return { ...existing, text, order: index };
+    const startSec = index * slot;
+    const endSec = index === lines.length - 1 ? total : (index + 1) * slot;
+    return { id: newId("sub"), order: index, text, startSec, endSec: Math.max(startSec + 0.1, endSec), cut: false };
+  });
+}
+
 function SubtitleScriptEditor({
-  lines, onLinesChange, edit, playhead, onSeek, run,
+  lines, onLinesChange, edit, playhead, duration = null, onSeek, run,
 }: {
   lines: string[];
   onLinesChange?: (lines: string[]) => void;
   edit: VideoEdit;
   playhead: number;
+  duration?: number | null;
   onSeek: (sec: number) => void;
   run: (op: (e: VideoEdit) => VideoEdit) => void;
 }) {
-  const seeded = useRef(false);
-  useEffect(() => {
-    if (seeded.current) return;
-    if (edit.subtitles.length > 0) { seeded.current = true; return; }
-    const nonEmpty = lines.filter((l) => l.trim());
-    if (!nonEmpty.length) return;
-    seeded.current = true;
-    const seededLines: SubtitleLine[] = nonEmpty.map((text, index) => ({
-      id: newId("sub"), order: index, text, startSec: index * 3, endSec: index * 3 + 3, cut: false,
-    }));
-    run((e) => setSubtitles(e, seededLines));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lines.join("\u0001")]);
+  const displaySubtitles = useMemo(() => reconcileSubtitles(edit.subtitles, lines, duration), [edit.subtitles, lines, duration]);
+  // 서버에 저장된 그대로(재구성 전)와 화면에 보이는 것(재구성 후)이 다르면 아직 저장 안 한
+  // 시딩·재동기화 상태다 — 조작 전에는 절대 dispatch하지 않았다는 것을 화면에도 밝힌다.
+  const pendingCommit = edit.subtitles.length !== displaySubtitles.length
+    || edit.subtitles.some((s, i) => s.text !== displaySubtitles[i]?.text);
 
-  /** 컷 안 된 자막 문구를 순서대로 발행용 `lines`에 반영한다(발행은 이 배열만 읽는다). */
-  function syncLines(subtitles: SubtitleLine[]) {
-    if (!onLinesChange) return;
-    onLinesChange(subtitles.filter((s) => !s.cut).map((s) => s.text));
+  /**
+   * 문구 수정만 `lines`(발행 원문)에도 반영한다 — 발행 자막은 여전히 `lines`를 굽는다.
+   * 컷·타임라인 조작은 `lines`를 건드리지 않는다(M2/M4: 컷은 미리보기 표시 전용, 전부
+   * 컷해도 방이 빈 상태로 떨어지지 않는다. 영상·음성은 물론 자막 글자도 실제로는 그대로
+   * 나간다 — "구간 자르기"는 다음 단계다).
+   */
+  function commitText(index: number, text: string) {
+    const nextSubtitles = displaySubtitles.map((s, i) => (i === index ? { ...s, text } : s));
+    run((e) => setSubtitles(e, nextSubtitles));
+    onLinesChange?.(lines.map((l, i) => (i === index ? text : l)));
   }
 
-  function editText(id: string, text: string) {
-    run((e) => {
-      const next = updateSubtitleText(e, id, text);
-      syncLines(next.subtitles);
-      return next;
-    });
+  function commitCut(index: number) {
+    const nextSubtitles = displaySubtitles.map((s, i) => (i === index ? { ...s, cut: !s.cut } : s));
+    run((e) => setSubtitles(e, nextSubtitles));
   }
 
-  function toggleCut(id: string) {
-    run((e) => {
-      const next = toggleSubtitleCut(e, id);
-      syncLines(next.subtitles);
-      return next;
-    });
-  }
-
-  const cutCount = edit.subtitles.filter((s) => s.cut).length;
+  const cutCount = displaySubtitles.filter((s) => s.cut).length;
 
   return (
     <section aria-label="자막 대본" className="space-y-stack-tight rounded-surface border border-border bg-surface-2 p-pad-inset" data-video-subtitle-script>
@@ -353,11 +389,11 @@ function SubtitleScriptEditor({
           <Button size="sm" variant="secondary" onClick={() => run((e) => addComment(e, { author: "예시", text: "여기에 실제 댓글로 바꿔주세요", source: "manual", startSec: Math.max(0, playhead), endSec: playhead + 3 }))}>＋댓글</Button>
         </div>
       </div>
-      {edit.subtitles.length === 0 ? (
+      {displaySubtitles.length === 0 ? (
         <p className="text-caption text-muted" data-video-subtitle-empty>장면 대사가 없어 자막 컷이 아직 없습니다. 생성실 대본을 채우면 여기 한 줄씩 나타납니다.</p>
       ) : (
-        <ol className="max-h-96 space-y-micro overflow-y-auto" data-video-subtitle-list>
-          {edit.subtitles.map((line) => {
+        <ol className="max-h-96 space-y-micro overflow-y-auto" data-video-subtitle-list data-video-subtitle-pending={pendingCommit}>
+          {displaySubtitles.map((line, index) => {
             const isCurrent = !line.cut && playhead >= line.startSec && playhead < line.endSec;
             return (
               <li
@@ -382,21 +418,20 @@ function SubtitleScriptEditor({
                 <input
                   aria-label="자막 문구"
                   value={line.text}
-                  disabled={line.cut}
                   onFocus={() => onSeek(line.startSec)}
-                  onChange={(e) => editText(line.id, e.target.value)}
+                  onChange={(e) => commitText(index, e.target.value)}
                   onKeyDown={(e) => {
                     // §4.3 "줄 삭제(Backspace) = 그 구간 컷". 문구가 이미 비어 있을 때만
                     // 컷 처리한다 — 글자를 지우는 중인 보통의 Backspace를 가로채지 않는다.
                     if (e.key === "Backspace" && line.text.length === 0 && !line.cut) {
                       e.preventDefault();
-                      toggleCut(line.id);
+                      commitCut(index);
                     }
                   }}
                   className={`min-w-0 rounded-control border-0 bg-transparent px-micro text-body text-text outline-none [word-break:keep-all] ${line.cut ? "line-through text-subtle" : ""}`}
                   data-video-subtitle-text
                 />
-                <Button size="sm" variant="secondary" onClick={() => toggleCut(line.id)} data-video-subtitle-cut-toggle>
+                <Button size="sm" variant="secondary" onClick={() => commitCut(index)} data-video-subtitle-cut-toggle>
                   {line.cut ? "되돌리기" : "컷"}
                 </Button>
               </li>
@@ -404,7 +439,9 @@ function SubtitleScriptEditor({
           })}
         </ol>
       )}
-      {cutCount > 0 ? <p className="text-caption text-subtle" data-video-subtitle-cut-count>컷 표시된 줄 {cutCount}개. 발행 영상에서 빠지고, 되돌리기로 되살릴 수 있습니다.</p> : null}
+      {/* M4(교차 리뷰): 컷은 자막 글자를 미리보기에서만 표시로 뺀다. 영상·음성·실제 발행
+          자막은 그대로 나간다 — 발행에서 빼는 "구간 자르기"는 아직 없다(다음 단계). */}
+      {cutCount > 0 ? <p className="text-caption text-subtle" data-video-subtitle-cut-count>컷 표시 {cutCount}개. 미리보기 표시만 바뀌고, 자막 글자·영상·음성은 그대로 발행됩니다. 되돌리기로 표시를 되돌릴 수 있습니다.</p> : null}
     </section>
   );
 }
@@ -650,20 +687,24 @@ function VideoTimeline({ edit, duration, playhead, onSeek, run }: {
     setDrag({ lane, id, edge, originStart: startSec, originEnd: endSec, originClientX: clientX });
   }
 
+  // M7(교차 리뷰 MAJOR): 눈금·재생위치 선은 트랙 전체(레인 라벨 62px 포함)를 기준으로
+  // 그려졌는데, 블록은 레인 라벨 오른쪽의 내용 칸을 기준으로 그려졌다 — 두 좌표계가
+  // 62px + 레인 간격만큼 어긋나 블록이 항상 눈금보다 오른쪽에 떠 있었다. 레인 라벨 폭을
+  // 상수로 두고 간격 없이 붙여, 눈금 오버레이도 같은 상수만큼 오프셋해 같은 원점을 쓴다.
+  const LANE_LABEL_WIDTH = 62;
   return (
     <div data-video-timeline className="min-w-0 space-y-micro rounded-surface border border-border bg-surface-2 p-stack-tight">
-      <p className="text-caption text-subtle" data-video-timeline-hint>← 옆으로 밀어 더 보기 · 블록을 끌어서 구간을 바꿉니다</p>
       <div className="overflow-x-auto" data-video-timeline-scroll>
-        <div ref={trackRef} className="relative" style={{ width: `${Math.max(trackWidth, 240)}px` }} data-video-timeline-track>
+        <div ref={trackRef} className="relative" style={{ width: `${LANE_LABEL_WIDTH + Math.max(trackWidth, 240)}px` }} data-video-timeline-track>
           <div className="pointer-events-none absolute inset-0" aria-hidden="true">
             {ticks.map((t) => (
-              <div key={t} className="absolute top-0 bottom-0 border-l border-border/60" style={{ left: `${t * PX_PER_SEC}px` }}>
+              <div key={t} className="absolute top-0 bottom-0 border-l border-border/60" style={{ left: `${LANE_LABEL_WIDTH + t * PX_PER_SEC}px` }}>
                 <span className="absolute -top-4 left-0.5 text-caption text-subtle">{formatClock(t)}</span>
               </div>
             ))}
-            <div className="absolute top-0 bottom-0 w-px bg-accent" style={{ left: `${playhead * PX_PER_SEC}px` }} data-video-timeline-playhead />
+            <div className="absolute top-0 bottom-0 w-px bg-accent" style={{ left: `${LANE_LABEL_WIDTH + playhead * PX_PER_SEC}px` }} data-video-timeline-playhead />
           </div>
-          <TimelineLane label="자막">
+          <TimelineLane label="자막" labelWidth={LANE_LABEL_WIDTH}>
             {edit.subtitles.map((s) => (
               <Button
                 key={s.id}
@@ -679,7 +720,7 @@ function VideoTimeline({ edit, duration, playhead, onSeek, run }: {
               </Button>
             ))}
           </TimelineLane>
-          <TimelineLane label="훅·CTA">
+          <TimelineLane label="훅·CTA" labelWidth={LANE_LABEL_WIDTH}>
             {edit.overlays.map((o) => (
               <div
                 key={o.id}
@@ -703,7 +744,7 @@ function VideoTimeline({ edit, duration, playhead, onSeek, run }: {
               </div>
             ))}
           </TimelineLane>
-          <TimelineLane label="댓글">
+          <TimelineLane label="댓글" labelWidth={LANE_LABEL_WIDTH}>
             {edit.comments.map((c) => (
               <div
                 key={c.id}
@@ -733,10 +774,12 @@ function VideoTimeline({ edit, duration, playhead, onSeek, run }: {
   );
 }
 
-function TimelineLane({ label, children }: { label: string; children: React.ReactNode }) {
+function TimelineLane({ label, labelWidth, children }: { label: string; labelWidth: number; children: React.ReactNode }) {
+  // 간격을 두지 않는다 — 이 라벨 폭이 곧 위 눈금 오버레이의 오프셋 상수와 같아야
+  // 블록이 눈금과 같은 원점에서 시작한다(M7).
   return (
-    <div className="relative flex h-9 items-center gap-stack-tight border-t border-border/40 pt-micro first:border-t-0" data-video-timeline-lane={label}>
-      <span className="sticky left-0 z-[1] w-[62px] shrink-0 bg-surface-2 text-caption uppercase text-subtle" data-video-timeline-lane-label>{label}</span>
+    <div className="relative flex h-9 items-center border-t border-border/40 pt-micro first:border-t-0" data-video-timeline-lane={label}>
+      <span className="sticky left-0 z-[1] shrink-0 bg-surface-2 text-caption uppercase text-subtle" style={{ width: `${labelWidth}px` }} data-video-timeline-lane-label>{label}</span>
       <div className="relative h-7 min-w-0 flex-1">{children}</div>
     </div>
   );
