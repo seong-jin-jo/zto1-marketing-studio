@@ -10,7 +10,7 @@
  * 로 옮긴 한국어 고정 문구를 화면에 보여주고, 원문은 console.error로만 보낸다(F4,
  * 2026-09-22 코드리뷰 3차).
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/shared/Button";
 import type { Bubble, CardDeck, CardSlide, Segment } from "@/lib/studio/card-deck-contract";
 import {
@@ -186,13 +186,29 @@ function textOffsetWithinElement(root: HTMLElement, node: Node, offset: number):
  * `<br>`을 통째로 건너뛰어 줄바꿈을 잃는다. 둘 다 안 쓰고 `textOffsetWithinElement`와 같은
  * TreeWalker 규칙(텍스트 노드 이어붙이기 + `<br>` 1글자)으로 직접 뽑는다.
  */
+/**
+ * BLOCKER(PR 재리뷰, Playwright 3브라우저 실측): 브라우저 기본 Enter는 `<br>`이 아니라
+ * `<div>`(WebKit은 Shift+Enter도 `<div>`)를 만든다. 이 함수가 `<br>`만 줄바꿈으로 세던
+ * 시절엔 화면은 두 줄인데 저장본·발행 PNG는 한 줄이 됐다(probe-{chromium,webkit,firefox}.log
+ * 실측). 이제 `onKeyDown`에서 Enter를 가로채 항상 리터럴 `\n` 텍스트 노드를 직접 넣어
+ * `<div>` 생성 자체를 막지만(1차 방어), 그걸로도 못 막는 경로(합성 입력·미래의 붙여넣기
+ * 변경 등)에 대비해 여기서도 DIV·P 경계를 `\n` 한 글자로 센다(2차 방어, 리뷰어 지시).
+ */
 function elementToPlainText(el: HTMLElement): string {
   let text = "";
+  let sawContent = false;
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_ALL);
   let current: Node | null = walker.nextNode();
   while (current) {
-    if (current.nodeType === Node.TEXT_NODE) text += current.textContent ?? "";
-    else if (current.nodeName === "BR") text += "\n";
+    if (current.nodeType === Node.TEXT_NODE) {
+      const value = current.textContent ?? "";
+      text += value;
+      if (value.length > 0) sawContent = true;
+    } else if (current.nodeName === "BR") {
+      text += "\n";
+    } else if ((current.nodeName === "DIV" || current.nodeName === "P") && sawContent) {
+      text += "\n";
+    }
     current = walker.nextNode();
   }
   return text;
@@ -206,6 +222,52 @@ function getEditableSelectionOffsets(root: HTMLElement): { start: number; end: n
   const start = textOffsetWithinElement(root, range.startContainer, range.startOffset);
   const end = textOffsetWithinElement(root, range.endContainer, range.endOffset);
   return { start: Math.min(start, end), end: Math.max(start, end) };
+}
+
+/**
+ * `textOffsetWithinElement`의 역함수: root 기준 문자 오프셋을 실제 (텍스트 노드, 그 안의
+ * 오프셋)으로 되찾는다. MINOR(1, PR 재리뷰): 굵게를 누르면 포커스가 툴바 버튼으로 넘어가며
+ * 선택이 사라진다 — 굵게 적용 후 같은 글자 범위를 이 함수로 다시 찾아 재선택한다.
+ */
+function pointAtOffset(root: HTMLElement, offset: number): { node: Node; offset: number } {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ALL);
+  let remaining = offset;
+  let current: Node | null = walker.nextNode();
+  let last: { node: Node; offset: number } = { node: root, offset: 0 };
+  while (current) {
+    if (current.nodeType === Node.TEXT_NODE) {
+      const length = (current.textContent ?? "").length;
+      if (remaining <= length) return { node: current, offset: Math.max(0, remaining) };
+      remaining -= length;
+      last = { node: current, offset: length };
+    } else if (current.nodeName === "BR") {
+      if (remaining <= 0) {
+        const parent = current.parentNode ?? root;
+        return { node: parent, offset: Array.prototype.indexOf.call(parent.childNodes, current) };
+      }
+      remaining -= 1;
+    }
+    current = walker.nextNode();
+  }
+  return last;
+}
+
+/** `pointAtOffset`으로 root 안의 [start,end) 문자 범위를 실제로 다시 선택하고 포커스한다. */
+function restoreSelectionRange(root: HTMLElement, start: number, end: number): void {
+  const selection = typeof window !== "undefined" ? window.getSelection() : null;
+  if (!selection) return;
+  const startPoint = pointAtOffset(root, start);
+  const endPoint = pointAtOffset(root, end);
+  const range = document.createRange();
+  try {
+    range.setStart(startPoint.node, startPoint.offset);
+    range.setEnd(endPoint.node, endPoint.offset);
+  } catch {
+    return;
+  }
+  root.focus();
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 /**
@@ -259,10 +321,84 @@ function BubbleContentEditable({
   function handleInput() {
     const el = localRef.current;
     if (!el || isComposingRef.current) return;
-    const text = elementToPlainText(el).replace(/\n$/, "");
+    // BLOCKER 재확인 중 실측: 끝에 캐럿을 두고 Enter를 치면 텍스트가 "...\n"으로 끝난다.
+    // 예전엔 여기서 `.replace(/\n$/, "")`로 그 끝 개행을 잘랐다(당시엔 브라우저가 넣는
+    // 트레일링 <br> 흔적을 지우려던 의도로 보인다) — 지금은 Enter를 직접 가로채 진짜
+    // 개행만 넣으므로, 이 트림이 "메시지 끝에서 Enter" 라는 가장 흔한 경우의 줄바꿈을
+    // 그대로 삼켜버렸다(재리뷰 BLOCKER 대응 중 자체 회귀 테스트로 실측). 더는 자르지 않는다.
+    const text = elementToPlainText(el);
     lastSyncedHtmlRef.current = el.innerHTML;
     onTextChange(text);
     reportCaret();
+  }
+
+  /**
+   * BLOCKER(PR 재리뷰): 브라우저 기본 Enter/Shift+Enter가 `<div>`를 만들어 저장본이
+   * 한 줄로 뭉개지는 문제를 근본에서 막는다. `contentEditable="plaintext-only"`는
+   * 리뷰어가 1순위로 권한 방법이지만 Playwright 3브라우저 실측 시점 기준 WebKit·Firefox
+   * 지원이 엇갈려(probe-*.log) 이 자리에선 쓰지 않았다 — 대신 리뷰어가 준 대안대로 Enter를
+   * `preventDefault`하고 캐럿 자리에 리터럴 `\n` 텍스트 노드를 직접 넣는다. Shift 유무를
+   * 가리지 않는다(이 편집기엔 "문단 나누기"와 "줄만 바꾸기"의 구분이 없다 — 둘 다 같은
+   * `\n`). `white-space: pre-wrap`(module.css)이 이 리터럴 개행을 그대로 줄바꿈으로
+   * 그려서 `<br>` 없이도 화면·저장본·`elementToPlainText`가 전부 같은 값을 본다.
+   */
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    const el = localRef.current;
+    const selection = typeof window !== "undefined" ? window.getSelection() : null;
+    if (!el || !selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    const newline = document.createTextNode("\n");
+    range.insertNode(newline);
+    range.setStartAfter(newline);
+    range.setEndAfter(newline);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    handleInput();
+  }
+
+  /**
+   * M-B(PR 재리뷰): onPaste가 없어 리치 클립보드의 굵게 태그·문단 태그·`onerror` 달린
+   * 이미지 태그가 그대로 편집칸에 꽂혔다(paste.mjs 실측 — 이미지가 실제로 로드를 시도했다,
+   * XSS 표면). 항상
+   * `text/plain`만 꺼내 캐럿 자리에 텍스트로 넣는다(서식·이미지·스크립트 전부 버려진다).
+   */
+  function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const text = event.clipboardData.getData("text/plain");
+    const el = localRef.current;
+    const selection = typeof window !== "undefined" ? window.getSelection() : null;
+    if (!el || !selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    const node = document.createTextNode(text);
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.setEndAfter(node);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    handleInput();
+  }
+
+  /**
+   * M-A(PR 재리뷰) + MINOR(2): 저장본은 `retextSegments`(card-deck-contract.ts)가 글자
+   * 수 "비율"로 굵은 구간을 다시 나눈다 — 사용자가 입력한 실제 자리와 다를 수 있다(설계상
+   * 알려진 한계, "근본 해결"은 DOM의 `<strong>` 경계를 그대로 세그먼트로 읽는 것이라 이번
+   * 범위 밖). 화면은 편집 중 리렌더를 막아두느라(IME 보호) 그 어긋남을 그대로 들고 있다가
+   * blur 뒤에도 안 고쳐졌다 — blur 시점엔 이 말풍선이 더는 활성 요소가 아니므로, 무조건
+   * 최신 `bubble.segments`(서버로 나갈 그 값)로 다시 그려 화면·저장본을 강제로 맞춘다.
+   * 같은 자리에서 MINOR(2)도 닫는다: `compositionend` 없이 blur되면(창 전환·다른 말풍선
+   * 클릭 등) `isComposingRef`가 true로 남아 그 뒤 입력이 전부 버려진다 — blur마다 리셋한다.
+   */
+  function handleBlur() {
+    isComposingRef.current = false;
+    const el = localRef.current;
+    if (!el) return;
+    const html = segmentsToHtml(bubble.segments);
+    el.innerHTML = html;
+    lastSyncedHtmlRef.current = html;
   }
 
   return (
@@ -276,7 +412,10 @@ function BubbleContentEditable({
       data-bubble-content-editable
       className={styles.bubbleContent}
       onInput={handleInput}
+      onKeyDown={handleKeyDown}
+      onPaste={handlePaste}
       onFocus={onFocus}
+      onBlur={handleBlur}
       onClick={() => { onFocus(); reportCaret(); }}
       onKeyUp={reportCaret}
       onCompositionStart={() => { isComposingRef.current = true; }}
@@ -351,6 +490,10 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
     run((d) => setBubbleText(d, currentSlideId, bubbleId, text));
   }
 
+  // MINOR(1, PR 재리뷰): 굵게 버튼을 누르면 포커스가 버튼으로 넘어가며(probe2.mjs
+  // sel_after_bold: collapsed) 선택이 사라졌다. 적용한 그 글자 범위를 저장해뒀다가,
+  // 상태가 갱신된 뒤(다음 페인트 전 microtask) 같은 범위를 다시 선택하고 편집칸에
+  // 포커스를 되돌린다.
   function handleToggleBold(bubble: Bubble) {
     const el = editableRefs.current[bubble.id];
     const offsets = el ? getEditableSelectionOffsets(el) : null;
@@ -360,7 +503,12 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
       setError("굵게 만들 글을 먼저 선택해 주세요.");
       return;
     }
-    run((d) => toggleBold(d, currentSlideId, bubble.id, { from, to }));
+    const next = run((d) => toggleBold(d, currentSlideId, bubble.id, { from, to }));
+    if (!next) return;
+    queueMicrotask(() => {
+      const target = editableRefs.current[bubble.id];
+      if (target) restoreSelectionRange(target, from, to);
+    });
   }
 
   // M3: 삭제 성공 시 선택을 지운 자리의 이전 말풍선(없으면 다음, 그것도 없으면 null)으로
@@ -384,6 +532,12 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
       <ul className={styles.bubbleTurns} data-bubble-editor-turns>
         {bubbles.map((bubble) => {
           const selected = selectedBubbleId === bubble.id;
+          // MINOR(4, PR 재리뷰): 빈 말풍선을 그대로 저장하면 서버 계약
+          // (card-deck-contract.ts validateCardDeck: "segments[].text must be
+          // non-empty")에 걸려 저장 요청 전체가 400으로 거부된다 — 그런데 화면에는
+          // 이유가 안 보였다. 저장을 막지는 않되(타이핑 중일 수 있다), 비어 있는 동안은
+          // 그 자리에서 이유와 다음 행동(삭제)을 말해준다(ADR-007 조용한 실패 금지).
+          const isEmpty = bubbleText(bubble).trim().length === 0;
           return (
             <li
               key={bubble.id}
@@ -400,6 +554,11 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
                   onFocus={() => setSelectedBubbleId(bubble.id)}
                   onCaretChange={(caret) => { caretRefs.current[bubble.id] = caret; }}
                 />
+                {isEmpty ? (
+                  <p className="mt-stack-tight text-caption text-danger" data-bubble-empty-hint>
+                    빈 말풍선은 저장되지 않습니다. 내용을 입력하거나 삭제하세요.
+                  </p>
+                ) : null}
                 {selected ? (
                   <div className={styles.bubbleToolbar} data-bubble-controls aria-label="선택한 말풍선 도구">
                     <Button size="sm" onClick={() => handleToggleBold(bubble)}>굵게</Button>
