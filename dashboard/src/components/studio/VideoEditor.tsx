@@ -14,11 +14,14 @@
  * 텍스트)에 걸려 있어 그대로 둔다. 다만 각 오버레이 행의 초 숫자 입력칸은 규격 위반이라
  * 없애고, 시간 조정은 타임라인 드래그로만 한다.
  *
- * 렌더 반영 범위(정직하게 명시, ADR-007): 자막 문구 편집·컷은 `lines`(발행이 쓰는
- * 배열)에 그대로 반영되어 `/api/video/subtitle` 굽기에 실제로 실린다. 그러나 자막·오버레이·
- * 댓글의 시간 배치(타임라인 드래그)는 편집실 미리보기 전용이다 — 굽기는 지금도 영상
- * 길이를 줄 수만큼 균등하게 나눈다(video-subtitle.ts subtitleCues). 오버레이·댓글·음성은
- * 여전히 편집 상태로만 저장되고 mp4에는 굽히지 않는다. 이 사실을 화면에 그대로 적는다.
+ * 렌더 반영 범위(정직하게 명시, ADR-007): 자막 **문구** 편집은 `lines`(발행이 쓰는
+ * 배열)에 그대로 반영되어 `/api/video/subtitle` 굽기에 실제로 실린다. **컷은 미리보기
+ * 표시 전용이다** — lines를 건드리지 않으므로 자막 글자·영상·음성은 컷 여부와 무관하게
+ * 그대로 발행된다(구간을 실제로 잘라내는 것은 다음 단계). 자막·오버레이·댓글의 시간
+ * 배치(타임라인 드래그)도 편집실 미리보기 전용이다 — 굽기는 지금도 영상 길이를 줄
+ * 수만큼 균등하게 나눈다(video-subtitle.ts subtitleCues). 오버레이·댓글·음성은 여전히
+ * 편집 상태로만 저장되고 mp4에는 굽히지 않는다. 재리뷰 MAJOR: 이전 판은 "컷도 발행에
+ * 반영된다"는 화면 문구와 이 주석이 서로 어긋났다 — 화면 문구를 이 사실 하나로 통일한다.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
@@ -164,7 +167,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             videoRef={videoRef}
             overlays={videoEdit.overlays}
             comments={videoEdit.comments}
-            activeSubtitleText={activeSubtitleText(displaySubtitles, playhead)}
+            activeSubtitle={activeSubtitle(displaySubtitles, playhead)}
             playhead={playhead}
             duration={duration}
             playing={playing}
@@ -189,29 +192,35 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             <VoiceSelector edit={videoEdit} run={run} />
           </div>
         </div>
-        <VideoTimeline edit={videoEdit} duration={duration} playhead={playhead} onSeek={seek} run={run} />
+        <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seek} run={run} />
       </div>
       <p className="text-caption text-subtle" data-render-status-note>
-        자막 문구·컷은 실제 발행 영상에 반영됩니다. 타임라인에서 끌어서 바꾼 시간 배치와 후킹·CTA·댓글 오버레이·음성 선택은
-        지금은 편집실 미리보기에서만 보이고, 나가는 영상 파일에 굽는 것은 다음 단계입니다.
+        자막 문구 수정은 실제 발행 영상에 반영됩니다. 컷은 미리보기 표시 전용입니다. 자막 글자·영상·음성은 컷과 무관하게 그대로 발행됩니다.
+        타임라인에서 끌어서 바꾼 시간 배치와 후킹·CTA·댓글 오버레이·음성 선택도 지금은 편집실 미리보기에서만 보이고, 나가는 영상 파일에 굽는 것은 다음 단계입니다.
       </p>
     </div>
   );
 }
 
-function activeSubtitleText(subtitles: SubtitleLine[], playhead: number): string | null {
-  const line = subtitles.find((s) => !s.cut && playhead >= s.startSec && playhead < s.endSec);
-  return line ? line.text : null;
+/**
+ * M4(교차 리뷰 재리뷰): 컷은 lines를 안 건드리므로 실제 발행 mp4에는 컷된 줄도 그대로
+ * 굽힌다. 그런데 이전 판은 미리보기에서 컷한 줄을 아예 숨겼다 — 그러면 미리보기가
+ * "안 나갈 것"처럼 보여 실제 출력과 어긋난다. 컷한 줄도 계속 보여주되, 컷 여부를
+ * 함께 돌려줘 흐리게 표시한다(출력과 같은 모습, 편집 의도만 다르게 표시).
+ */
+function activeSubtitle(subtitles: SubtitleLine[], playhead: number): { text: string; cut: boolean } | null {
+  const line = subtitles.find((s) => playhead >= s.startSec && playhead < s.endSec);
+  return line ? { text: line.text, cut: line.cut } : null;
 }
 
 function VideoPlayback({
-  src, videoRef, overlays, comments, activeSubtitleText, playhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
+  src, videoRef, overlays, comments, activeSubtitle, playhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
 }: {
   src: string;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   overlays: VideoOverlay[];
   comments: VideoComment[];
-  activeSubtitleText: string | null;
+  activeSubtitle: { text: string; cut: boolean } | null;
   playhead: number;
   duration: number | null;
   playing: boolean;
@@ -263,9 +272,13 @@ function VideoPlayback({
             <span className="truncate">{activeComment.author}: {activeComment.text}</span>
           </div>
         ) : null}
-        {activeSubtitleText ? (
-          <p data-video-subtitle-active className="pointer-events-none absolute inset-x-2 bottom-[56px] text-center text-body font-extrabold text-player-text [text-shadow:0_2px_6px_rgba(0,0,0,.8)]">
-            {activeSubtitleText}
+        {activeSubtitle ? (
+          <p
+            data-video-subtitle-active
+            data-video-subtitle-active-cut={activeSubtitle.cut}
+            className={`pointer-events-none absolute inset-x-2 bottom-[56px] text-center text-body font-extrabold [text-shadow:0_2px_6px_rgba(0,0,0,.8)] ${activeSubtitle.cut ? "text-player-text/45" : "text-player-text"}`}
+          >
+            {activeSubtitle.text}
           </p>
         ) : null}
       </div>
@@ -331,11 +344,21 @@ function VideoPlayback({
  * 고정 3초를 썼는데, 6초짜리 클립에 대사가 다섯 줄이면 미리보기와 실제 자막 타이밍이
  * 서로 달랐다. `duration`을 모르면(플레이어 로드 전) 그 함수와 같은 기본값 6초를 쓴다.
  */
+/**
+ * P4(교차 리뷰 재리뷰 MAJOR): 위치(index)로만 기존 컷·타이밍을 이어 붙이면, 대사 줄
+ * 수가 바뀐 사이(맨 앞에 줄이 빠지거나 끼어드는 등) 자막이 엉뚱한 줄에 붙는다 —
+ * 예: 서버 자막 [첫째(안컷), 둘째(컷), 셋째(안컷)]인데 lines가 ["둘째","셋째"]로
+ * 바뀌면(첫째가 빠짐) 옛 코드는 "둘째"에 첫째의 "안컷"을, "셋째"에 둘째의 "컷"을 붙였다
+ * — 실제로 컷한 줄과 정반대로 보였다. 줄 수가 서버 값과 다르면 위치 대응 자체를
+ * 신뢰할 수 없으므로 컷·타이밍을 비우고 새로 시작한다(순서가 바뀐 것도 같은 이유로
+ * 포함해 둔다 — 실제 콘텐츠 매칭 없이는 어느 줄이 어느 줄인지 구분할 수 없다).
+ */
 function reconcileSubtitles(subtitles: SubtitleLine[], lines: string[], duration: number | null): SubtitleLine[] {
   const total = duration && duration > 0 ? duration : 6;
   const slot = lines.length > 0 ? total / lines.length : total;
+  const trustPositions = subtitles.length === lines.length;
   return lines.map((text, index) => {
-    const existing = subtitles[index];
+    const existing = trustPositions ? subtitles[index] : undefined;
     if (existing) return { ...existing, text, order: index };
     const startSec = index * slot;
     const endSec = index === lines.length - 1 ? total : (index + 1) * slot;
@@ -629,8 +652,12 @@ type DragState = { lane: "overlay" | "comment"; id: string; edge: "move" | "star
  * 시각화이고(초 숫자 입력칸 없이 대본에서 편집·컷한다 — 위 SubtitleScriptEditor 담당),
  * 훅·CTA·댓글 블록은 여기서 끌어서 구간을 바꾼다. 넘치면 가로 스크롤 + 안내 문구.
  */
-function VideoTimeline({ edit, duration, playhead, onSeek, run }: {
+function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run }: {
   edit: VideoEdit;
+  /** P3(교차 리뷰 재리뷰 MAJOR): 자막 레인은 서버 원본(edit.subtitles)이 아니라 대본
+   * 재구성 결과를 그린다 — 대본·타임라인이 서로 다른 자막을 보여주면 어느 게 진짜인지
+   * 알 수 없다(자막 대본 패널과 같은 계산을 공유한다). */
+  displaySubtitles: SubtitleLine[];
   duration: number | null;
   playhead: number;
   onSeek: (sec: number) => void;
@@ -641,7 +668,7 @@ function VideoTimeline({ edit, duration, playhead, onSeek, run }: {
 
   const total = Math.max(
     duration ?? 0,
-    ...edit.subtitles.map((s) => s.endSec),
+    ...displaySubtitles.map((s) => s.endSec),
     ...edit.overlays.map((o) => o.endSec),
     ...edit.comments.map((c) => c.endSec),
     10,
@@ -705,7 +732,7 @@ function VideoTimeline({ edit, duration, playhead, onSeek, run }: {
             <div className="absolute top-0 bottom-0 w-px bg-accent" style={{ left: `${LANE_LABEL_WIDTH + playhead * PX_PER_SEC}px` }} data-video-timeline-playhead />
           </div>
           <TimelineLane label="자막" labelWidth={LANE_LABEL_WIDTH}>
-            {edit.subtitles.map((s) => (
+            {displaySubtitles.map((s) => (
               <Button
                 key={s.id}
                 size="sm"

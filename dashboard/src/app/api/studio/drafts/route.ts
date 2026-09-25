@@ -10,6 +10,13 @@ const CARD_DECK_MAX_BYTES = 64 * 1024;
 /** videoEdit 도 같은 상한을 쓴다(오버레이·댓글·자막 목록 크기가 카드덱과 비슷한 자릿수). */
 const VIDEO_EDIT_MAX_BYTES = 64 * 1024;
 
+/** 교차 리뷰 BLOCKER 1: 뒤처진 revision의 videoEdit 저장을 막는 신호. */
+class StaleVideoEditRevisionError extends Error {
+  constructor(readonly serverRevision: number, readonly clientRevision: number) {
+    super(`videoEdit revision stale: server=${serverRevision} client=${clientRevision}`);
+  }
+}
+
 // Studio 초안/발행 이력 — Supabase drafts 테이블(테넌트별). payload jsonb에 본문 보관.
 interface DraftRow {
   id: string;
@@ -227,6 +234,19 @@ export async function POST(request: Request) {
   try {
     const id = await withTenant(tenantId, async (sql) => {
       if (body.id) {
+        // 교차 리뷰 BLOCKER 1: 클라이언트가 videoEdit을 보낼 때, 그 사이 서버 값이
+        // 더 앞서 나갔으면(다른 탭·기기가 먼저 저장했거나 localStorage가 오래됐으면)
+        // 뒤처진 값으로 덮어쓰지 않는다. revision이 뒤로 가면 409로 거절해 클라이언트가
+        // 최신 서버 값을 다시 읽고 그 위에서 다시 시도하게 한다.
+        if (videoEditPatch.videoEdit) {
+          const [existing] = await sql<{ revision: number | null }[]>`
+            SELECT (payload->'videoEdit'->>'revision')::int AS revision FROM drafts
+            WHERE id = ${body.id} AND tenant_id = ${tenantId}`;
+          const existingRevision = existing?.revision;
+          if (existingRevision != null && videoEditPatch.videoEdit.revision < existingRevision) {
+            throw new StaleVideoEditRevisionError(existingRevision, videoEditPatch.videoEdit.revision);
+          }
+        }
         const [row] = await sql<{ id: string }[]>`
           UPDATE drafts SET idea = ${idea}, payload = COALESCE(payload, '{}'::jsonb) || ${sql.json(payload)}::jsonb, status = ${status}, updated_at = now()
           WHERE id = ${body.id} AND tenant_id = ${tenantId} RETURNING id`;
@@ -239,6 +259,15 @@ export async function POST(request: Request) {
     });
     return Response.json({ ok: true, id });
   } catch (e) {
+    if (e instanceof StaleVideoEditRevisionError) {
+      return Response.json({
+        ok: false,
+        code: "VIDEO_EDIT_STALE_REVISION",
+        error: "다른 곳에서 더 최신으로 저장된 영상 편집이 있습니다. 최신 값을 다시 불러온 뒤 다시 시도해 주세요.",
+        serverRevision: e.serverRevision,
+        clientRevision: e.clientRevision,
+      }, { status: 409, headers: { "Cache-Control": "no-store" } });
+    }
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

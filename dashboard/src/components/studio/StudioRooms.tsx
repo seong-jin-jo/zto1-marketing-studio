@@ -2002,23 +2002,32 @@ export function EditRoom({
                     // v70 §4: 영상은 전용 편집기 한 벌(플레이어+자막 대본+타임라인)이 본체다.
                     // 옛 표준 편집 작업대(장면 순서·비율·자막 크기 도구줄)와 VideoEditor를
                     // 겹쳐 띄우던 것이 회장이 지적한 "씹창"이었다 — 이번엔 형식마다 전용
-                    // 편집기로 가르되, 비율·자막 크기(굽기 값)·재생 속도·목소리 도구줄은
-                    // 사유 없이 지운 게 아니라 이 얇은 줄로 남긴다(교차 리뷰 M5).
+                    // 편집기로 가르되, 비율·자막 크기(굽기 값)·재생 속도 도구줄은 사유
+                    // 없이 지운 게 아니라 이 얇은 줄로 남긴다(교차 리뷰 M5). 목소리는 여기서
+                    // 뺐다 — VideoEditor 안의 VoiceSelector가 이미 그 조작을 갖고 있어
+                    // 둘을 두면 같은 것을 두 군데서 고르게 된다(교차 리뷰 재리뷰 MAJOR).
                     <>
                       <section className="mb-pad-inset flex flex-wrap gap-stack-tight border-b border-border pb-pad-inset" aria-label="형식 도구" data-edit-tools>
-                        {tools.map((tool) => (
+                        {tools.filter((tool) => tool !== "목소리").map((tool) => (
                           <Button key={tool} size="sm" variant="secondary" className={activeTool === tool ? "border-accent bg-accent-soft text-accent" : ""} onClick={() => setActiveTool(tool)} aria-pressed={activeTool === tool} aria-label={`${visibleToolName(kind, tool)} 도구`}>
                             <ToolIcon tool={tool} /><span>{visibleToolName(kind, tool)}: {visibleToolValue(tool, toolValues[tool], kind)}</span>
                           </Button>
                         ))}
                       </section>
-                      <div className="mb-pad-inset flex flex-wrap gap-stack-tight" aria-label={`${visibleToolName(kind, activeTool)} 선택지`}>
+                      <div className="mb-stack-tight flex flex-wrap gap-stack-tight" aria-label={`${visibleToolName(kind, activeTool)} 선택지`}>
                         {toolOptions(formatKind, activeTool).map((option) => (
                           <Button key={option} size="sm" variant="secondary" className={toolValues[activeTool] === option ? "border-accent bg-accent-soft text-accent" : ""} aria-pressed={toolValues[activeTool] === option} onClick={() => setToolValues((current) => ({ ...current, [activeTool]: option }))}>
                             {visibleToolValue(activeTool, option, kind)}
                           </Button>
                         ))}
                       </div>
+                      {/* 재리뷰 MAJOR: 이 줄의 값이 실제로 반영되는지 사실대로 말한다 —
+                          자막 크기만 굽기에 실제 쓰이고(video-subtitle.ts
+                          subtitleFontSize), 비율·재생 속도는 아직 발행 파일에 반영되지
+                          않는다. */}
+                      <p className="mb-pad-inset text-caption text-subtle" data-video-tools-status-note>
+                        자막 크기만 발행 영상에 실제로 반영됩니다. 비율·재생 속도는 아직 반영되지 않습니다.
+                      </p>
                       <VideoEditor
                         videoEdit={videoEdit ?? EMPTY_VIDEO_EDIT}
                         onVideoEditChange={onVideoEditChange}
