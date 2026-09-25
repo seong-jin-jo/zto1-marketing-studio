@@ -244,27 +244,27 @@ function VideoPlayback({
           </div>
         ) : null}
         {activeComment ? (
-          <div data-video-comment-active className="pointer-events-none absolute bottom-[108px] left-3 flex max-w-[70%] items-center gap-micro rounded-chip bg-black/60 px-stack-tight py-micro text-caption text-white">
-            <span className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-pill bg-white/20 text-[10px]" aria-hidden="true">{activeComment.author.slice(0, 1)}</span>
+          <div data-video-comment-active className="pointer-events-none absolute bottom-[108px] left-3 flex max-w-[70%] items-center gap-micro rounded-chip bg-player-surface/60 px-stack-tight py-micro text-caption text-player-text">
+            <span className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-pill bg-player-text/20 text-caption" aria-hidden="true">{activeComment.author.slice(0, 1)}</span>
             <span className="truncate">{activeComment.author}: {activeComment.text}</span>
           </div>
         ) : null}
         {activeSubtitleText ? (
-          <p data-video-subtitle-active className="pointer-events-none absolute inset-x-2 bottom-[56px] text-center text-[15px] font-extrabold leading-[22px] text-white [text-shadow:0_2px_6px_rgba(0,0,0,.8)]">
+          <p data-video-subtitle-active className="pointer-events-none absolute inset-x-2 bottom-[56px] text-center text-body font-extrabold text-player-text [text-shadow:0_2px_6px_rgba(0,0,0,.8)]">
             {activeSubtitleText}
           </p>
         ) : null}
       </div>
       <div className="flex items-center gap-stack-tight rounded-control bg-player-panel p-stack-tight" data-video-controls>
-        <button
-          type="button"
+        <Button
+          variant="primary"
           aria-label={playing ? "일시정지" : "재생"}
           onClick={onTogglePlay}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-pill bg-accent text-accent-fg"
+          className="!min-h-0 h-7 w-7 min-w-0 shrink-0 rounded-pill p-none"
           data-video-play-toggle
         >
           {playing ? "❚❚" : "▶"}
-        </button>
+        </Button>
         {duration ? (
           <input
             aria-label="재생 위치"
@@ -369,9 +369,16 @@ function SubtitleScriptEditor({
                   line.cut ? "border-l-danger bg-danger-soft text-subtle" : isCurrent ? "border-l-accent bg-accent-soft" : "border-l-border bg-surface"
                 }`}
               >
-                <button type="button" className="font-mono text-[12px] text-subtle" aria-label={`${formatClock(line.startSec)}로 이동`} onClick={() => onSeek(line.startSec)} data-video-subtitle-seek>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="!min-h-0 min-w-0 border-0 bg-transparent p-none font-mono text-caption text-subtle"
+                  aria-label={`${formatClock(line.startSec)}로 이동`}
+                  onClick={() => onSeek(line.startSec)}
+                  data-video-subtitle-seek
+                >
                   {formatClock(line.startSec)}
-                </button>
+                </Button>
                 <input
                   aria-label="자막 문구"
                   value={line.text}
@@ -386,7 +393,7 @@ function SubtitleScriptEditor({
                       toggleCut(line.id);
                     }
                   }}
-                  className={`min-w-0 rounded-control border-0 bg-transparent px-micro text-[15px] leading-[23px] text-text outline-none [word-break:keep-all] ${line.cut ? "line-through text-subtle" : ""}`}
+                  className={`min-w-0 rounded-control border-0 bg-transparent px-micro text-body text-text outline-none [word-break:keep-all] ${line.cut ? "line-through text-subtle" : ""}`}
                   data-video-subtitle-text
                 />
                 <Button size="sm" variant="secondary" onClick={() => toggleCut(line.id)} data-video-subtitle-cut-toggle>
@@ -651,24 +658,25 @@ function VideoTimeline({ edit, duration, playhead, onSeek, run }: {
           <div className="pointer-events-none absolute inset-0" aria-hidden="true">
             {ticks.map((t) => (
               <div key={t} className="absolute top-0 bottom-0 border-l border-border/60" style={{ left: `${t * PX_PER_SEC}px` }}>
-                <span className="absolute -top-4 left-0.5 text-[10px] text-subtle">{formatClock(t)}</span>
+                <span className="absolute -top-4 left-0.5 text-caption text-subtle">{formatClock(t)}</span>
               </div>
             ))}
             <div className="absolute top-0 bottom-0 w-px bg-accent" style={{ left: `${playhead * PX_PER_SEC}px` }} data-video-timeline-playhead />
           </div>
           <TimelineLane label="자막">
             {edit.subtitles.map((s) => (
-              <button
-                type="button"
+              <Button
                 key={s.id}
+                size="sm"
+                variant="secondary"
                 onClick={() => onSeek(s.startSec)}
                 data-video-timeline-block="subtitle"
                 data-video-timeline-block-id={s.id}
-                className={`absolute top-0 h-7 rounded-control px-micro text-left text-[12px] ${s.cut ? "bg-danger/45 line-through text-subtle" : "bg-surface text-text"} border border-border`}
+                className={`!min-h-0 absolute top-0 h-7 min-w-0 justify-start rounded-control px-micro text-left text-caption ${s.cut ? "bg-danger/45 line-through text-subtle" : "bg-surface text-text"} border border-border`}
                 style={{ left: `${s.startSec * PX_PER_SEC}px`, width: `${Math.max(4, (s.endSec - s.startSec) * PX_PER_SEC)}px` }}
               >
                 <span className="block truncate">{s.text || "(빈 자막)"}</span>
-              </button>
+              </Button>
             ))}
           </TimelineLane>
           <TimelineLane label="훅·CTA">
@@ -677,18 +685,18 @@ function VideoTimeline({ edit, duration, playhead, onSeek, run }: {
                 key={o.id}
                 data-video-timeline-block="overlay"
                 data-video-timeline-block-id={o.id}
-                className={`absolute top-0 flex h-7 items-center rounded-control px-micro text-[12px] font-semibold ${o.kind === "hook" ? "bg-accent-soft text-accent" : "bg-success-soft text-success"} border border-border`}
+                className={`absolute top-0 flex h-7 items-center rounded-control px-micro text-caption font-semibold ${o.kind === "hook" ? "bg-accent-soft text-accent" : "bg-success-soft text-success"} border border-border`}
                 style={{ left: `${o.startSec * PX_PER_SEC}px`, width: `${Math.max(4, (o.endSec - o.startSec) * PX_PER_SEC)}px` }}
                 onPointerDown={(e) => startDrag("overlay", o.id, "move", o.startSec, o.endSec, e.clientX)}
               >
                 <span
-                  className="mr-1 h-full w-1.5 shrink-0 cursor-ew-resize"
+                  className="mr-micro h-full w-1.5 shrink-0 cursor-ew-resize"
                   onPointerDown={(e) => { e.stopPropagation(); startDrag("overlay", o.id, "start", o.startSec, o.endSec, e.clientX); }}
                   aria-hidden="true"
                 />
                 <span className="truncate">{o.text}</span>
                 <span
-                  className="ml-1 h-full w-1.5 shrink-0 cursor-ew-resize"
+                  className="ml-micro h-full w-1.5 shrink-0 cursor-ew-resize"
                   onPointerDown={(e) => { e.stopPropagation(); startDrag("overlay", o.id, "end", o.startSec, o.endSec, e.clientX); }}
                   aria-hidden="true"
                 />
@@ -701,18 +709,18 @@ function VideoTimeline({ edit, duration, playhead, onSeek, run }: {
                 key={c.id}
                 data-video-timeline-block="comment"
                 data-video-timeline-block-id={c.id}
-                className="absolute top-0 flex h-7 items-center rounded-control border border-border bg-surface px-micro text-[12px]"
+                className="absolute top-0 flex h-7 items-center rounded-control border border-border bg-surface px-micro text-caption"
                 style={{ left: `${c.startSec * PX_PER_SEC}px`, width: `${Math.max(4, (c.endSec - c.startSec) * PX_PER_SEC)}px` }}
                 onPointerDown={(e) => startDrag("comment", c.id, "move", c.startSec, c.endSec, e.clientX)}
               >
                 <span
-                  className="mr-1 h-full w-1.5 shrink-0 cursor-ew-resize"
+                  className="mr-micro h-full w-1.5 shrink-0 cursor-ew-resize"
                   onPointerDown={(e) => { e.stopPropagation(); startDrag("comment", c.id, "start", c.startSec, c.endSec, e.clientX); }}
                   aria-hidden="true"
                 />
                 <span className="truncate">{c.author}: {c.text}</span>
                 <span
-                  className="ml-1 h-full w-1.5 shrink-0 cursor-ew-resize"
+                  className="ml-micro h-full w-1.5 shrink-0 cursor-ew-resize"
                   onPointerDown={(e) => { e.stopPropagation(); startDrag("comment", c.id, "end", c.startSec, c.endSec, e.clientX); }}
                   aria-hidden="true"
                 />
@@ -727,8 +735,8 @@ function VideoTimeline({ edit, duration, playhead, onSeek, run }: {
 
 function TimelineLane({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="relative flex h-9 items-center gap-stack-tight border-t border-border/40 pt-1 first:border-t-0" data-video-timeline-lane={label}>
-      <span className="sticky left-0 z-[1] w-[62px] shrink-0 bg-surface-2 text-[12px] uppercase text-subtle" data-video-timeline-lane-label>{label}</span>
+    <div className="relative flex h-9 items-center gap-stack-tight border-t border-border/40 pt-micro first:border-t-0" data-video-timeline-lane={label}>
+      <span className="sticky left-0 z-[1] w-[62px] shrink-0 bg-surface-2 text-caption uppercase text-subtle" data-video-timeline-lane-label>{label}</span>
       <div className="relative h-7 min-w-0 flex-1">{children}</div>
     </div>
   );
