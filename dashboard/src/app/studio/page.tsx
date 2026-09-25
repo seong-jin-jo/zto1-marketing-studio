@@ -726,7 +726,15 @@ export default function StudioPage() {
         // 오면 서버 값으로 다시 덮는다. 그 전까지는 videoEdit 자동저장을 보류한다
         // (videoEditReconciledRef).
         setVideoEdit((w.videoEdit as VideoEdit) ?? null);
+        // B-5(5차 재리뷰 BLOCKER): 목록이 도착하기 전 창에서 이 ref만 false였고 화면이
+        // 보는 syncing(videoEditReconciling state)은 그대로 false라, +훅 등 컨트롤이
+        // 계속 열려 있었다 — 그 창에서 만든 편집이 목록 도착 후 재동기화에 조용히
+        // 덮여 사라졌다. "재조정이 끝나기 전에는 편집 불가"를 하나의 신호(state)로
+        // 묶는다: 복원된 draftId가 있으면 이 시점부터 syncing을 true로 켜서 run()·
+        // startDrag 게이트가 즉시 잠그게 한다. 재동기화 효과(reconcileVideoEditFromServer)
+        // 가 끝나야 false로 풀린다.
         videoEditReconciledRef.current = !w.draftId;
+        if (w.draftId) setVideoEditReconciling(true);
         reconciledDraftIdRef.current = null;
         if (w.editKind === "video" || w.editKind === "card" || w.editKind === "audio" || w.editKind === "text") {
           setEditKind(w.editKind);
@@ -1810,7 +1818,12 @@ export default function StudioPage() {
       // 다시 시도할 수 있게 reconciling만 풀고, videoEdit을 지우거나 "맞춰짐" 처리하지
       // 않는다(맞춰짐 처리하면 그 다음 자동저장이 안 맞춘 값을 서버로 내보낼 수 있다).
       setVideoEditReconciling(false);
-      showToast("서버 값을 다시 불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.", "error");
+      // MINOR(5차 재리뷰): 안내만 뜨고 재시도 길이 없었다 — 토스트 자체에 "다시 시도"를
+      // 달아 force 재조회로 바로 이어지게 한다.
+      showToast("서버 값을 다시 불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.", "error", {
+        label: "다시 시도",
+        onClick: () => { void reconcileVideoEditFromServer(id, true); },
+      });
       return;
     }
     const serverVideoEdit = (serverDraft?.videoEdit as VideoEdit | undefined) ?? null;

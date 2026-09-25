@@ -164,7 +164,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
           <p className="text-caption text-muted">플레이어·타임라인·후킹 CTA·댓글 오버레이·음성은 영상이 있어야 편집할 수 있습니다. 아래 대본은 지금도 고칠 수 있고, 영상이 나오면 그대로 이어집니다.</p>
           {onOpenCreate ? <Button size="sm" onClick={onOpenCreate}>생성실에서 영상 만들기</Button> : null}
         </div>
-        <SubtitleScriptEditor lines={lines} onLinesChange={onLinesChange} edit={videoEdit} playhead={0} onSeek={() => {}} run={run} />
+        <SubtitleScriptEditor lines={lines} onLinesChange={onLinesChange} edit={videoEdit} playhead={0} onSeek={() => {}} run={run} syncing={syncing} />
       </div>
     );
   }
@@ -430,6 +430,11 @@ function SubtitleScriptEditor({
    * 나간다 — "구간 자르기"는 다음 단계다).
    */
   function commitText(index: number, text: string) {
+    // MINOR(5차 재리뷰): syncing 중에는 run()이 videoEdit 쪽을 거절하는데, 이 함수는
+    // 그와 상관없이 onLinesChange(대본 원문)를 항상 실행해왔다 — videoEdit과 lines가
+    // 서로 다른 상태(하나는 안 바뀌고 하나만 바뀐)로 갈라졌다. run()이 실제로 거절했는지
+    // syncing 값으로 먼저 확인하고, 거절되면 lines도 함께 보류한다.
+    if (syncing) return;
     const nextSubtitles = displaySubtitles.map((s, i) => (i === index ? { ...s, text } : s));
     run((e) => setSubtitles(e, nextSubtitles));
     onLinesChange?.(lines.map((l, i) => (i === index ? text : l)));
