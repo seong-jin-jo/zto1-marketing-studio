@@ -1,9 +1,8 @@
 import fs from "fs";
-import path from "path";
-import { dataPath } from "@/lib/file-io";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { isSafeMediaFilename } from "@/lib/media-token";
+import { resolveGeneratedFile } from "@/lib/storage";
 
 export async function POST(request: Request) {
   const data = await request.json();
@@ -17,9 +16,10 @@ export async function POST(request: Request) {
   const tenantId = await effectiveTenantId(request, null);
 
   return runWithTenant(tenantId, async () => {
-    // dataPath()는 runWithTenant 컨텍스트 "안"에서 호출 — 테넌트별 격리(finding 6과 동일 함정).
-    const filepath = path.join(dataPath("videos"), filename);
-    if (fs.existsSync(filepath)) {
+    // 목록·배달·삭제가 같은 저장 위치 정본을 쓴다. 생성실 영상도 목록에서 보이는 즉시
+    // 삭제할 수 있고, resolveGeneratedFile 이 현재 테넌트 밖의 폴더는 보지 않는다.
+    const filepath = resolveGeneratedFile(tenantId || "", filename);
+    if (filepath) {
       fs.unlinkSync(filepath);
       return Response.json({ ok: true });
     }

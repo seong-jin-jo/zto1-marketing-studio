@@ -4,7 +4,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { dataPath } from "@/lib/file-io";
+import { DATA_DIR, dataPath } from "@/lib/file-io";
 
 // 모든 테넌트 미디어의 루트 (data/studio).
 export const MEDIA_ROOT = dataPath("studio");
@@ -89,6 +89,43 @@ export function listMedia(tenantId: string, exts: Set<string>): Array<{ filename
 }
 
 /**
+ * 만들어진 영상이 놓일 수 있는 폴더 목록. 호출 시점의 테넌트 컨텍스트에 속한
+ * data/videos를 먼저 보고, 유효한 작업 공간이면 data/studio/{tenantId}도 본다.
+ *
+ * 목록과 단건 해석이 이 함수를 함께 써야 새 저장 위치가 추가될 때 한쪽만 낡지 않는다.
+ */
+export function generatedMediaDirs(tenantId: string | null | undefined): string[] {
+  const dirs = [dataPath("videos")];
+  try {
+    // 작업 공간 식별자가 비었거나 형식이 틀리면 tenantMediaDir 이 예외를 던진다. 탐색이
+    // 그것 때문에 죽으면 옛 폴더에 있는 파일까지 못 찾는다. 한 곳이라도 볼 수 있으면 본다.
+    if (tenantId) dirs.push(tenantMediaDir(tenantId));
+  } catch { /* 작업 공간 폴더는 건너뛴다 */ }
+  return dirs;
+}
+
+/**
+ * 생성 미디어 폴더가 DATA_DIR 아래의 논리 경로 그대로인지 확인한다.
+ * DATA_DIR 자체가 운영상 심볼릭 링크인 것은 허용하지만, 그 아래 tenants/studio 경로가
+ * 다른 작업 공간으로 연결된 경우는 목록·배달·삭제 모두에서 거부한다.
+ */
+export function isGeneratedMediaDirSafe(dir: string): boolean {
+  try {
+    const logicalRoot = path.resolve(DATA_DIR);
+    const logicalDir = path.resolve(dir);
+    const relative = path.relative(logicalRoot, logicalDir);
+    if (!relative || relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative)) return false;
+    const dirStat = fs.lstatSync(logicalDir);
+    if (!dirStat.isDirectory() || dirStat.isSymbolicLink()) return false;
+    const canonicalRoot = fs.realpathSync(logicalRoot);
+    const canonicalDir = fs.realpathSync(logicalDir);
+    return canonicalDir === path.join(canonicalRoot, relative);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 만들어진 파일 하나를 이름으로 찾아 서버 경로를 돌려준다. 못 찾으면 null.
  *
  * 파일이 두 뿌리에 흩어져 산다. 옛 공용 폴더(data/videos)와 작업 공간별 폴더다.
@@ -102,17 +139,22 @@ export function listMedia(tenantId: string, exts: Set<string>): Array<{ filename
 export function resolveGeneratedFile(tenantId: string, filename: string): string | null {
   if (!filename) return null;
   if (filename.includes("/") || filename.includes("\\") || filename.includes("..") || filename.includes("\0")) return null;
-  const dirs: string[] = [dataPath("videos")];
-  try {
-    // 작업 공간 식별자가 비었거나 형식이 틀리면 tenantMediaDir 이 예외를 던진다. 탐색이
-    // 그것 때문에 죽으면 옛 폴더에 있는 파일까지 못 찾는다. 한 곳이라도 볼 수 있으면 본다.
-    if (tenantId) dirs.push(tenantMediaDir(tenantId));
-  } catch { /* 작업 공간 폴더는 건너뛴다 */ }
-  for (const dir of dirs) {
+  const matches: string[] = [];
+  for (const dir of generatedMediaDirs(tenantId)) {
+    if (!isGeneratedMediaDirSafe(dir)) continue;
     const fp = path.join(dir, filename);
     try {
-      if (fs.existsSync(fp) && fs.statSync(fp).isFile()) return fp;
+      // lstat 으로 마지막 경로 요소의 심볼릭 링크를 거부한다. realpath containment 는
+      // 중간 경로가 링크로 바뀐 경우에도 정본 폴더 밖 파일을 선택하지 않게 한다.
+      const stat = fs.lstatSync(fp);
+      if (!stat.isFile() || stat.isSymbolicLink()) continue;
+      const canonicalDir = fs.realpathSync(dir);
+      const canonicalFile = fs.realpathSync(fp);
+      if (!canonicalFile.startsWith(canonicalDir + path.sep)) continue;
+      matches.push(fp);
     } catch { /* 읽을 수 없으면 없는 것으로 본다 */ }
   }
-  return null;
+  // 같은 파일명이 두 저장소에 겹치면 어느 파일인지 이름만으로 안정적으로 식별할 수 없다.
+  // 임의 우선순위로 다른 바이트를 배달하지 않고 충돌을 해소할 때까지 닫는다.
+  return matches.length === 1 ? matches[0] : null;
 }
