@@ -20,6 +20,10 @@ function tenantVideosDir(tenant: string) {
   return path.join(tmpRoot, "tenants", tenant, "videos");
 }
 
+function studioVideosDir(tenant: string) {
+  return path.join(tmpRoot, "studio", tenant);
+}
+
 beforeEach(() => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "osmu-video-iso-"));
   process.env.DATA_DIR = tmpRoot;
@@ -47,6 +51,101 @@ describe("/api/video/list — 테넌트 격리", () => {
     expect(json.videos[0].url).toMatch(/^\/api\/media\//);
     expect(json.videos[0].url).not.toContain("a-only.mp4");
     expect(json.videos[0].url).not.toContain(TENANT_A);
+  });
+
+  it("VIDEO-LIST-STUDIO-01 작업 공간 폴더에만 있는 생성실 영상을 최신순 목록과 서명 URL로 준다", async () => {
+    fs.mkdirSync(studioVideosDir(TENANT_A), { recursive: true });
+    fs.writeFileSync(path.join(studioVideosDir(TENANT_A), "vid_200.mp4"), Buffer.alloc(12, 4));
+    fs.utimesSync(path.join(tenantVideosDir(TENANT_A), "a-only.mp4"), new Date(100_000), new Date(100_000));
+    fs.utimesSync(path.join(studioVideosDir(TENANT_A), "vid_200.mp4"), new Date(200_000), new Date(200_000));
+
+    const { GET } = await import("@/app/api/video/list/route");
+    const res = await GET(new Request("http://internal.local/api/video/list"));
+    const json = (await res.json()) as { videos: Array<{ filename: string; url: string; size: number }> };
+
+    expect(json.videos.map((video) => video.filename)).toEqual(["vid_200.mp4", "a-only.mp4"]);
+    expect(json.videos[0]).toMatchObject({ filename: "vid_200.mp4", size: 12 });
+    expect(json.videos[0].url).toMatch(/^\/api\/media\//);
+    expect(json.videos[0].url).not.toContain("vid_200.mp4");
+    expect(json.videos[0].url).not.toContain(TENANT_A);
+  });
+
+  it("VIDEO-LIST-STUDIO-02 다른 작업 공간의 생성실 영상은 파일명이 알려져도 노출하지 않는다", async () => {
+    fs.mkdirSync(studioVideosDir(TENANT_A), { recursive: true });
+    fs.mkdirSync(studioVideosDir(TENANT_B), { recursive: true });
+    fs.writeFileSync(path.join(studioVideosDir(TENANT_A), "a-studio.mp4"), Buffer.alloc(7, 5));
+    fs.writeFileSync(path.join(studioVideosDir(TENANT_B), "b-studio.mp4"), Buffer.alloc(8, 6));
+
+    const { GET } = await import("@/app/api/video/list/route");
+    const res = await GET(new Request("http://internal.local/api/video/list"));
+    const json = (await res.json()) as { videos: Array<{ filename: string }> };
+
+    expect(json.videos.map((video) => video.filename)).toContain("a-studio.mp4");
+    expect(json.videos.map((video) => video.filename)).not.toContain("b-studio.mp4");
+  });
+
+  it("VIDEO-LIST-STUDIO-03 같은 파일명이 두 폴더에 있으면 다른 파일로 갈아타지 않게 목록·배달 모두 거부한다", async () => {
+    fs.mkdirSync(studioVideosDir(TENANT_A), { recursive: true });
+    fs.writeFileSync(path.join(tenantVideosDir(TENANT_A), "same.mp4"), Buffer.alloc(11, 7));
+    fs.writeFileSync(path.join(studioVideosDir(TENANT_A), "same.mp4"), Buffer.alloc(22, 8));
+    fs.utimesSync(path.join(tenantVideosDir(TENANT_A), "same.mp4"), new Date(100_000), new Date(100_000));
+    fs.utimesSync(path.join(studioVideosDir(TENANT_A), "same.mp4"), new Date(200_000), new Date(200_000));
+
+    const { GET } = await import("@/app/api/video/list/route");
+    const { resolveGeneratedFile } = await import("@/lib/storage");
+    const { runWithTenant } = await import("@/lib/tenant-context");
+    const res = await GET(new Request("http://internal.local/api/video/list"));
+    const json = (await res.json()) as { videos: Array<{ filename: string; size: number; createdAt: number }> };
+    expect(json.videos.map((video) => video.filename)).not.toContain("same.mp4");
+    expect(runWithTenant(TENANT_A, () => resolveGeneratedFile(TENANT_A, "same.mp4"))).toBeNull();
+  });
+
+  it("VIDEO-LIST-STUDIO-05 다른 작업 공간 파일을 가리키는 심볼릭 링크는 목록·배달에서 거부한다", async () => {
+    const linkedName = "linked-secret.mp4";
+    fs.symlinkSync(
+      path.join(tenantVideosDir(TENANT_B), "b-only.mp4"),
+      path.join(tenantVideosDir(TENANT_A), linkedName),
+    );
+
+    const { GET } = await import("@/app/api/video/list/route");
+    const { resolveGeneratedFile } = await import("@/lib/storage");
+    const { runWithTenant } = await import("@/lib/tenant-context");
+    const res = await GET(new Request("http://internal.local/api/video/list"));
+    const json = (await res.json()) as { videos: Array<{ filename: string }> };
+
+    expect(json.videos.map((video) => video.filename)).not.toContain(linkedName);
+    expect(runWithTenant(TENANT_A, () => resolveGeneratedFile(TENANT_A, linkedName))).toBeNull();
+  });
+
+  it("VIDEO-LIST-STUDIO-06 다른 작업 공간 폴더를 가리키는 링크는 목록·배달·삭제에서 모두 거부한다", async () => {
+    const linkedName = "directory-linked.mp4";
+    fs.mkdirSync(studioVideosDir(TENANT_B), { recursive: true });
+    fs.writeFileSync(path.join(studioVideosDir(TENANT_B), linkedName), Buffer.alloc(13, 9));
+    fs.symlinkSync(studioVideosDir(TENANT_B), studioVideosDir(TENANT_A));
+
+    const { GET: listVideos } = await import("@/app/api/video/list/route");
+    const listRes = await listVideos(new Request("http://internal.local/api/video/list"));
+    const listJson = (await listRes.json()) as { videos: Array<{ filename: string }> };
+    expect(listJson.videos.map((video) => video.filename)).not.toContain(linkedName);
+
+    const { signMediaToken } = await import("@/lib/media-token");
+    const { GET: deliverMedia } = await import("@/app/api/media/[token]/route");
+    const token = signMediaToken(TENANT_A, linkedName)!;
+    const deliveryRes = await deliverMedia(new Request(`http://internal.local/api/media/${token}`), {
+      params: Promise.resolve({ token }),
+    });
+    expect(deliveryRes.status).toBe(404);
+
+    const { POST: deleteVideo } = await import("@/app/api/video/delete/route");
+    const deleteRes = await deleteVideo(
+      new Request("http://internal.local/api/video/delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ filename: linkedName }),
+      }),
+    );
+    expect(deleteRes.status).toBe(404);
+    expect(fs.existsSync(path.join(studioVideosDir(TENANT_B), linkedName))).toBe(true);
   });
 
   it("B로 요청하면 B의 파일만 보인다 — A 파일이 새지 않는다", async () => {
@@ -106,6 +205,26 @@ describe("/api/video/delete — 테넌트 격리", () => {
     );
     expect(res.status).toBe(200);
     expect(fs.existsSync(path.join(tenantVideosDir(TENANT_A), "a-only.mp4"))).toBe(false);
+  });
+
+  it("VIDEO-LIST-STUDIO-04 목록에 나온 A의 생성실 영상을 삭제하고 B의 생성실 영상은 유지한다", async () => {
+    fs.mkdirSync(studioVideosDir(TENANT_A), { recursive: true });
+    fs.mkdirSync(studioVideosDir(TENANT_B), { recursive: true });
+    fs.writeFileSync(path.join(studioVideosDir(TENANT_A), "studio-delete.mp4"), Buffer.alloc(7, 5));
+    fs.writeFileSync(path.join(studioVideosDir(TENANT_B), "studio-delete.mp4"), Buffer.alloc(8, 6));
+
+    const { POST } = await import("@/app/api/video/delete/route");
+    const res = await POST(
+      new Request("http://internal.local/api/video/delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ filename: "studio-delete.mp4" }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(fs.existsSync(path.join(studioVideosDir(TENANT_A), "studio-delete.mp4"))).toBe(false);
+    expect(fs.existsSync(path.join(studioVideosDir(TENANT_B), "studio-delete.mp4"))).toBe(true);
   });
 });
 
