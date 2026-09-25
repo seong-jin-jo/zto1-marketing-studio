@@ -5,6 +5,12 @@ import { signMediaToken } from "@/lib/media-token";
 import { runWithTenant } from "@/lib/tenant-context";
 import { hfRun, extractJson, findResultUrl, downloadTo, addNarration, logGen, recordMediaGenerationEvent, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError, assertHiggsfieldReady, studioDir, assetUrl } from "@/lib/higgsfield";
 import { resolveGeneratedFile } from "@/lib/storage";
+import { isSafeMediaFilename } from "@/lib/media-token";
+
+// 바탕 그림으로 받아들이는 확장자 화이트리스트. 생성실이 만드는 이미지 형식만 허용하고
+// (MINOR-4, 코드리뷰 2026-09-25) 그 밖의 파일(예: 다른 라우트가 만든 임의 확장자)이
+// --image 인자로 생성기 CLI에 흘러들어가지 않게 한다.
+const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 // POST /api/higgsfield/video — image→video. body: { filename, prompt, model?, narration? }
 // filename = /api/higgsfield/image 가 반환한 생성실 파일 이름. 이 라우트가 resolveGeneratedFile로
@@ -42,7 +48,8 @@ export async function POST(request: Request) {
   // 직접 푼다(같은 규칙을 발행·배달·재서명 라우트와 공유 — MAJOR-0a와 같은 정본 함수).
   // 그래서 방금 만든 그림도, 승인함·달력에서 가져온 작업물(파일 이름만 앎)도 같은 방식으로 된다.
   const filename = typeof body.filename === "string" ? body.filename : "";
-  const localPath = filename ? resolveGeneratedFile(tenantId, filename) : null;
+  const filenameValid = filename && isSafeMediaFilename(filename) && IMAGE_EXTS.has(path.extname(filename).toLowerCase());
+  const localPath = filenameValid ? resolveGeneratedFile(tenantId, filename) : null;
   if (!localPath || !fs.existsSync(localPath)) {
     return Response.json({
       ok: false,

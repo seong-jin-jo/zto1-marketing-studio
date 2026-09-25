@@ -2,8 +2,8 @@ import fs from "fs";
 import path from "path";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
-import { signMediaToken, isSafeMediaFilename } from "@/lib/media-token";
-import { generatedMediaDirs, isGeneratedMediaDirSafe } from "@/lib/storage";
+import { signMediaToken, isVideoFilename } from "@/lib/media-token";
+import { generatedMediaDirs, checkGeneratedMediaDirSafety } from "@/lib/storage";
 
 // SNS-015: 테넌트별로 자기 영상만 본다(운영자는 기존과 동일한 공유 루트 + /videos/ 정적 경로를
 // 유지 — 운영자는 대시보드 인증(Bearer=DASHBOARD_AUTH_TOKEN)을 이미 통과한 신뢰 주체라 서명
@@ -15,13 +15,18 @@ export async function GET(request: Request) {
 
   return runWithTenant(tenantId, async () => {
     const dirs = generatedMediaDirs(tenantId);
+    // tenantId 형식이 틀리면(MINOR-5) generatedMediaDirs가 빈 배열을 돌려준다(fail closed) —
+    // dirs[0]이 없을 수 있으므로 폴더 생성도, 이후 탐색도 건너뛰고 즉시 빈 목록으로 답한다.
+    if (dirs.length === 0) return Response.json({ videos: [] });
     // 기존 계약: 목록을 처음 열면 업로드 폴더가 준비된다. 생성실 폴더는 생성기가 만든다.
     fs.mkdirSync(dirs[0], { recursive: true });
     const videos: Array<{ filename: string; url: string; size: number; createdAt: number }> = [];
     const candidatesByName = new Map<string, Array<{ size: number; createdAt: number }>>();
 
     for (const dir of dirs) {
-      if (!isGeneratedMediaDirSafe(dir)) {
+      const safety = checkGeneratedMediaDirSafety(dir);
+      if (safety === "missing") continue; // 아직 없을 뿐 — 정상, 조용히 건너뜀 (MINOR-1)
+      if (safety === "unsafe") {
         // ADR-007: 폴더 하나를 통째로 건너뛰는 결정이다 — 왜인지 남긴다(파일 내용은 남기지 않음).
         console.warn(`[video/list] 안전하지 않은 폴더 건너뜀: dir=${dir}`);
         continue;
@@ -29,7 +34,7 @@ export async function GET(request: Request) {
       try {
         const files = await fs.promises.readdir(dir, { withFileTypes: true });
         const candidates = files.filter(
-          (entry) => entry.isFile() && entry.name.endsWith(".mp4") && isSafeMediaFilename(entry.name),
+          (entry) => entry.isFile() && isVideoFilename(entry.name),
         );
         // 파일시스템 작업은 이벤트 루프를 막지 않되, 한 작업 공간에 영상이 많이 쌓여도
         // 동시에 여는 파일 수가 폭증하지 않게 작은 묶음으로 stat 한다.

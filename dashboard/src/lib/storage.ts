@@ -95,10 +95,21 @@ export function listMedia(tenantId: string, exts: Set<string>): Array<{ filename
 // 운영자 공유 루트가 선택된다. 테넌트 A로 불러도 운영자의 data/videos가 뒤진 이유가
 // 이것이다(리뷰어 탐침 P1 실측, 2026-09-25). 인자만으로 계산하면 호출부의 컨텍스트
 // 유무와 무관하게 항상 같은 값이 나온다.
-function tenantScopedVideosDir(tenantId: string | null | undefined): string {
+//
+// tenantId가 null/undefined(=운영자, 공유 루트를 claim하지 않음)인 경우와, tenantId는
+// 있는데 형식이 틀린 경우를 구분한다. 후자를 전자와 같이 취급해 운영자 공유 폴더로
+// 떨어뜨리면 형식만 깨뜨린 요청이 다른 테넌트의 운영자 공유 자산을 보게 된다(MINOR-5,
+// 코드리뷰 2026-09-25). 형식이 틀리면 null을 돌려주어 호출부가 그 폴더를 차단하게 한다.
+export function tenantScopedVideosDir(tenantId: string | null | undefined): string | null {
+  if (tenantId == null) return path.join(DATA_DIR, "videos");
   const t = safeTenantId(tenantId);
-  return t ? path.join(DATA_DIR, "tenants", t, "videos") : path.join(DATA_DIR, "videos");
+  return t ? path.join(DATA_DIR, "tenants", t, "videos") : null;
 }
+
+// clipping.ts 등 storage.ts 밖에서 "이 테넌트의 영상 저장 폴더"를 직접 계산해야 하는
+// 호출부를 위한 공개 별칭. 이름을 tenantScopedVideosDir 그대로 export하면 이 파일 안에서
+// generatedMediaDirs가 부르는 이름과 외부에 공개하는 이름이 같아 혼동이 적다.
+export const tenantVideosDir = tenantScopedVideosDir;
 
 /**
  * 만들어진 영상이 놓일 수 있는 폴더 목록. 인자 tenantId로 고정한 data/tenants/{id}/videos
@@ -108,7 +119,13 @@ function tenantScopedVideosDir(tenantId: string | null | undefined): string {
  * 목록과 단건 해석이 이 함수를 함께 써야 새 저장 위치가 추가될 때 한쪽만 낡지 않는다.
  */
 export function generatedMediaDirs(tenantId: string | null | undefined): string[] {
-  const dirs = [tenantScopedVideosDir(tenantId)];
+  // tenantId가 주어졌는데 형식이 틀리면(MINOR-5) videosDir이 null이고, 아래 tenantMediaDir도
+  // 같은 이유로 throw한다 — 즉 dirs가 빈 배열로 남아 어떤 폴더도 보지 않는다(fail closed).
+  // 운영자(tenantId === null/undefined)는 그대로 공유 루트를 본다.
+  const dirs: string[] = [];
+  const videosDir = tenantScopedVideosDir(tenantId);
+  if (videosDir) dirs.push(videosDir);
+  else if (tenantId) console.warn(`[storage.generatedMediaDirs] tenantScopedVideosDir 건너뜀: invalid tenantId format`);
   try {
     // 작업 공간 식별자가 비었거나 형식이 틀리면 tenantMediaDir 이 예외를 던진다. 탐색이
     // 그것 때문에 죽으면 옛 폴더에 있는 파일까지 못 찾는다. 한 곳이라도 볼 수 있으면 본다.
@@ -120,25 +137,45 @@ export function generatedMediaDirs(tenantId: string | null | undefined): string[
   return dirs;
 }
 
+// "safe" = 안전하게 열람 가능 / "missing" = 아직 없을 뿐(ENOENT, 정상 상태) /
+// "unsafe" = 경로 이탈·심볼릭 링크 등 실제 위협.
+// list/delete 호출부는 "missing"을 경고 없이 건너뛰고 "unsafe"만 경고한다(MINOR-1,
+// 코드리뷰 2026-09-25 — 테넌트 폴더가 아직 안 생겼을 뿐인데 "안전하지 않은 폴더"로
+// 찍혀 로그 소음이 됐다).
+export type MediaDirSafety = "safe" | "missing" | "unsafe";
+
 /**
  * 생성 미디어 폴더가 DATA_DIR 아래의 논리 경로 그대로인지 확인한다.
  * DATA_DIR 자체가 운영상 심볼릭 링크인 것은 허용하지만, 그 아래 tenants/studio 경로가
  * 다른 작업 공간으로 연결된 경우는 목록·배달·삭제 모두에서 거부한다.
  */
-export function isGeneratedMediaDirSafe(dir: string): boolean {
+export function checkGeneratedMediaDirSafety(dir: string): MediaDirSafety {
+  const logicalRoot = path.resolve(DATA_DIR);
+  const logicalDir = path.resolve(dir);
+  const relative = path.relative(logicalRoot, logicalDir);
+  if (!relative || relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative)) return "unsafe";
+  let dirStat: fs.Stats;
   try {
-    const logicalRoot = path.resolve(DATA_DIR);
-    const logicalDir = path.resolve(dir);
-    const relative = path.relative(logicalRoot, logicalDir);
-    if (!relative || relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative)) return false;
-    const dirStat = fs.lstatSync(logicalDir);
-    if (!dirStat.isDirectory() || dirStat.isSymbolicLink()) return false;
+    dirStat = fs.lstatSync(logicalDir);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return "missing";
+    // ENOENT 외(EACCES, ELOOP 등)는 "없음"이 아니라 실제 이상이다 — unsafe로 취급해
+    // 호출부가 경고를 남기게 한다(MINOR-2).
+    return "unsafe";
+  }
+  if (!dirStat.isDirectory() || dirStat.isSymbolicLink()) return "unsafe";
+  try {
     const canonicalRoot = fs.realpathSync(logicalRoot);
     const canonicalDir = fs.realpathSync(logicalDir);
-    return canonicalDir === path.join(canonicalRoot, relative);
+    return canonicalDir === path.join(canonicalRoot, relative) ? "safe" : "unsafe";
   } catch {
-    return false;
+    return "unsafe";
   }
+}
+
+/** 하위호환 boolean 판정 — "missing"과 "unsafe"를 구분해야 하는 호출부는 checkGeneratedMediaDirSafety를 쓴다. */
+export function isGeneratedMediaDirSafe(dir: string): boolean {
+  return checkGeneratedMediaDirSafety(dir) === "safe";
 }
 
 /**
@@ -157,7 +194,9 @@ export function resolveGeneratedFile(tenantId: string, filename: string): string
   if (filename.includes("/") || filename.includes("\\") || filename.includes("..") || filename.includes("\0")) return null;
   const matches: string[] = [];
   for (const dir of generatedMediaDirs(tenantId)) {
-    if (!isGeneratedMediaDirSafe(dir)) {
+    const safety = checkGeneratedMediaDirSafety(dir);
+    if (safety === "missing") continue; // 아직 없을 뿐 — 정상, 조용히 건너뜀 (MINOR-1)
+    if (safety === "unsafe") {
       // ADR-007: 폴더 하나를 통째로 건너뛰는 결정이다 — 왜인지 남긴다(파일명 내용은 남기지 않음).
       console.warn(`[storage.resolveGeneratedFile] 안전하지 않은 폴더 건너뜀: dir=${dir}`);
       continue;
@@ -172,7 +211,13 @@ export function resolveGeneratedFile(tenantId: string, filename: string): string
       const canonicalFile = fs.realpathSync(fp);
       if (!canonicalFile.startsWith(canonicalDir + path.sep)) continue;
       matches.push(fp);
-    } catch { /* ENOENT 등 정상적인 "없음" — 폴더 자체는 안전이 확인됐으므로 조용해도 된다 */ }
+    } catch (e) {
+      // ENOENT는 정상적인 "없음" — 조용히 건너뛴다. 그 외(EACCES, ELOOP 등)는 실제
+      // 이상이므로 warn으로 남긴다(MINOR-2, 파일명 내용은 남기지 않음).
+      if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") {
+        console.warn(`[storage.resolveGeneratedFile] 파일 확인 실패, 건너뜀: dir=${dir}, reason=${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
   }
   // 같은 파일명이 두 저장소에 겹치면 어느 파일인지 이름만으로 안정적으로 식별할 수 없다.
   // 임의 우선순위로 다른 바이트를 배달하지 않고 충돌을 해소할 때까지 닫는다.

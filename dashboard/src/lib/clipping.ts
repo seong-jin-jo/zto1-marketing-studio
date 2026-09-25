@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { readJson, dataPath } from "./file-io";
+import { tenantVideosDir } from "./storage";
 
 export interface ClippingConfig {
   provider?: "reap" | "ssemble" | "";
@@ -30,9 +31,16 @@ export function getClippingConfig(): ClippingConfig {
   return readJson<ClippingConfig>(CONFIG_PATH) || {};
 }
 
-async function downloadClipToLocal(originalUrl: string, clipId: string): Promise<string> {
+// tenantId를 인자로 받아 storage.tenantVideosDir로 폴더를 고정한다(MAJOR, 코드리뷰
+// 2026-09-25 파생건). 종전엔 dataPath("videos")를 썼는데, 이 함수는 호출 시점의
+// AsyncLocalStorage 테넌트 컨텍스트로 경로를 고른다 — repurpose 라우트가 runWithTenant로
+// 감싸지 않은 채 repurposeVideo를 불렀으므로 테넌트로 로그인해 만든 클립이 실제로는
+// 운영자 공유 data/videos에 저장됐다. storage.ts의 saveMedia/tenantVideosDir처럼 인자
+// tenantId만으로 경로를 계산하면 호출부의 컨텍스트 유무와 무관하게 항상 같은 값이 나온다.
+async function downloadClipToLocal(originalUrl: string, clipId: string, tenantId: string | null): Promise<string> {
   try {
-    const videosDir = dataPath("videos");
+    const videosDir = tenantVideosDir(tenantId);
+    if (!videosDir) throw new Error("invalid tenant id");
     if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
     const filename = `clip-${clipId}-${Date.now()}.mp4`;
     const filePath = path.join(videosDir, filename);
@@ -47,7 +55,7 @@ async function downloadClipToLocal(originalUrl: string, clipId: string): Promise
   }
 }
 
-async function callReap(apiKey: string, videoUrl: string, options: any = {}): Promise<RepurposeResult> {
+async function callReap(apiKey: string, videoUrl: string, tenantId: string | null, options: any = {}): Promise<RepurposeResult> {
   const base = "https://api.reap.video/v1/automation";
   // Example based on public docs: create clips job
   const createRes = await fetch(`${base}/clips`, {
@@ -99,13 +107,13 @@ async function callReap(apiKey: string, videoUrl: string, options: any = {}): Pr
 
   const clips: ClipCandidate[] = await Promise.all(rawClips.map(async (c: any) => ({
     ...c,
-    url: await downloadClipToLocal(c.url, c.id),
+    url: await downloadClipToLocal(c.url, c.id, tenantId),
   })));
 
   return { provider: "reap", clips, raw: data };
 }
 
-async function callSsemble(apiKey: string, videoUrl: string, options: any = {}): Promise<RepurposeResult> {
+async function callSsemble(apiKey: string, videoUrl: string, tenantId: string | null, options: any = {}): Promise<RepurposeResult> {
   const base = "https://aiclipping.ssemble.com/api/v1";
   const createRes = await fetch(`${base}/shorts/create`, {
     method: "POST",
@@ -158,7 +166,7 @@ async function callSsemble(apiKey: string, videoUrl: string, options: any = {}):
 
   const clips: ClipCandidate[] = await Promise.all(rawClips.map(async (c: any) => ({
     ...c,
-    url: await downloadClipToLocal(c.url, c.id),
+    url: await downloadClipToLocal(c.url, c.id, tenantId),
   })));
 
   return { provider: "ssemble", clips, raw: final };
@@ -168,7 +176,7 @@ async function callSsemble(apiKey: string, videoUrl: string, options: any = {}):
  * Main entry: repurpose long video using configured provider.
  * Supports YouTube URL (and file ref later).
  */
-export async function repurposeVideo(input: { videoUrl?: string; fileRef?: string }, options: any = {}): Promise<RepurposeResult> {
+export async function repurposeVideo(input: { videoUrl?: string; fileRef?: string }, tenantId: string | null, options: any = {}): Promise<RepurposeResult> {
   const cfg = getClippingConfig();
   const provider = (cfg.provider || "reap") as "reap" | "ssemble";
   const apiKey = cfg.apiKey || "";
@@ -188,7 +196,7 @@ export async function repurposeVideo(input: { videoUrl?: string; fileRef?: strin
   if (!url) throw new Error("videoUrl required for now (file support later)");
 
   if (provider === "ssemble") {
-    return callSsemble(apiKey, url, options);
+    return callSsemble(apiKey, url, tenantId, options);
   }
-  return callReap(apiKey, url, options);
+  return callReap(apiKey, url, tenantId, options);
 }

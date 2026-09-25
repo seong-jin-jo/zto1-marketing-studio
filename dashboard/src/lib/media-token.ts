@@ -63,6 +63,16 @@ function unb64u(s: string): Buffer {
   return Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
 
+/**
+ * "영상 파일명"의 단일 정본 판정. video/list(대소문자 구분 .endsWith)와 video/delete
+ * (대소문자 무시)가 서로 다른 기준을 썼다 — list엔 보이는데 delete는 "invalid filename"으로
+ * 막히거나, 반대로 delete가 list엔 안 보이는 파일을 지울 수 있는 불일치였다(MINOR-3,
+ * 코드리뷰 2026-09-25). 두 라우트가 이 함수 하나만 쓰게 한다.
+ */
+export function isVideoFilename(name: string): boolean {
+  return isSafeMediaFilename(name) && name.toLowerCase().endsWith(".mp4");
+}
+
 /** 파일명 화이트리스트 — 단일 파일명만, 경로 구분자/상위참조/NUL 금지. */
 export function isSafeMediaFilename(name: string): boolean {
   if (!name || name.length > 200) return false;

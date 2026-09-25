@@ -1,5 +1,6 @@
 import { repurposeVideo, getClippingConfig } from "@/lib/clipping";
 import { effectiveTenantId } from "@/lib/tenant-auth";
+import { runWithTenant } from "@/lib/tenant-context";
 
 // POST /api/video/repurpose
 // body: { videoUrl?: string, uploadRef?: string, provider?: string, ...options }
@@ -29,38 +30,46 @@ export async function POST(request: Request) {
     // allow mock for dev
   }
 
-  try {
-    // For uploadRef (local), in full impl we would make it accessible (copy to R2 or temp url).
-    // For 0차 MVP: prefer videoUrl (YT). Local uploadRef can be handled by passing local path if provider supports, but here we expect caller to provide accessible url.
-    const input = { videoUrl }; // uploadRef for local long not supported for input yet (use public YT URL)
-
-    const result = await repurposeVideo(input, {
-      provider: body.provider,
-      numClips: body.numClips || 6,
-      ...body.options,
-    });
-
-    // Record usage
+  // runWithTenant로 감싼다 — clipping.ts 경유로 만들어지는 클립이 dataPath 기반의 다른
+  // 헬퍼(예: getClippingConfig)를 호출할 때도 항상 올바른 테넌트 컨텍스트 안에 있게
+  // 한다(MAJOR, 코드리뷰 2026-09-25 파생건). 실제 저장 경로 자체는 downloadClipToLocal이
+  // tenantId 인자로 storage.tenantVideosDir을 직접 고정하므로 컨텍스트 유무와 무관하지만,
+  // 이 라우트가 유일하게 runWithTenant 없이 테넌트 요청을 처리하던 곳이었다는 사실 자체가
+  // 재발 방지 대상이라 다른 video/* 라우트와 동일한 패턴을 맞춘다.
+  return runWithTenant(tenantId, async () => {
     try {
-      const auth = request.headers.get('Authorization') || '';
-      await fetch(new URL('/api/usage/record', request.url), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': auth,
-        },
-        body: JSON.stringify({ event: 'shortsGeneration', count: result.clips.length }),
-      });
-    } catch {}
+      // For uploadRef (local), in full impl we would make it accessible (copy to R2 or temp url).
+      // For 0차 MVP: prefer videoUrl (YT). Local uploadRef can be handled by passing local path if provider supports, but here we expect caller to provide accessible url.
+      const input = { videoUrl }; // uploadRef for local long not supported for input yet (use public YT URL)
 
-    return Response.json({
-      ok: true,
-      provider: result.provider,
-      clips: result.clips,
-      // Add tenant context for later refinement
-      tenant_id: tenantId,
-    });
-  } catch (e: any) {
-    return Response.json({ error: e.message || String(e) }, { status: 500 });
-  }
+      const result = await repurposeVideo(input, tenantId, {
+        provider: body.provider,
+        numClips: body.numClips || 6,
+        ...body.options,
+      });
+
+      // Record usage
+      try {
+        const auth = request.headers.get('Authorization') || '';
+        await fetch(new URL('/api/usage/record', request.url), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': auth,
+          },
+          body: JSON.stringify({ event: 'shortsGeneration', count: result.clips.length }),
+        });
+      } catch {}
+
+      return Response.json({
+        ok: true,
+        provider: result.provider,
+        clips: result.clips,
+        // Add tenant context for later refinement
+        tenant_id: tenantId,
+      });
+    } catch (e: any) {
+      return Response.json({ error: e.message || String(e) }, { status: 500 });
+    }
+  });
 }

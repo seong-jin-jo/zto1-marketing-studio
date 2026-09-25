@@ -228,6 +228,95 @@ describe("/api/video/delete — 테넌트 격리", () => {
   });
 });
 
+describe("/api/video/list — MINOR-5: 형식이 틀린 tenantId는 운영자 공유 폴더로 떨어지지 않는다", () => {
+  it("tenantId가 있는데 형식이 틀리면(슬래시 포함) 빈 목록을 돌려주고 공유 폴더 파일은 새지 않는다", async () => {
+    H.tenantId = "../not-a-valid-tenant";
+    fs.mkdirSync(path.join(tmpRoot, "videos"), { recursive: true });
+    fs.writeFileSync(path.join(tmpRoot, "videos", "operator-shared.mp4"), Buffer.alloc(5, 3));
+    const { GET } = await import("@/app/api/video/list/route");
+    const res = await GET(new Request("http://internal.local/api/video/list"));
+    const json = (await res.json()) as { videos: Array<{ filename: string }> };
+    expect(json.videos).toEqual([]);
+  });
+
+  it("delete도 형식이 틀린 tenantId로는 운영자 공유 폴더의 파일을 절대 못 찾는다(404)", async () => {
+    H.tenantId = "not valid tenant";
+    fs.mkdirSync(path.join(tmpRoot, "videos"), { recursive: true });
+    fs.writeFileSync(path.join(tmpRoot, "videos", "operator-shared.mp4"), Buffer.alloc(5, 3));
+    const { POST } = await import("@/app/api/video/delete/route");
+    const res = await POST(
+      new Request("http://internal.local/api/video/delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ filename: "operator-shared.mp4" }),
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect(fs.existsSync(path.join(tmpRoot, "videos", "operator-shared.mp4"))).toBe(true);
+  });
+});
+
+describe("/api/video/repurpose — 테넌트 격리 (MAJOR)", () => {
+  it("만들어진 클립은 테넌트 videos 폴더에만 저장되고 운영자 공유 data/videos엔 생기지 않는다", async () => {
+    // clipping-config.json은 module-scope dataPath("clipping-config.json")로 항상 공유 루트에서
+    // 읽힌다(설계상 공유 3rd-party 자격증명, 감사 판정: 안전) — 그래서 여기 직접 쓴다.
+    fs.writeFileSync(
+      path.join(tmpRoot, "clipping-config.json"),
+      JSON.stringify({ provider: "reap", apiKey: "test-key" }),
+    );
+
+    const fetchMock = vi.fn(async (input: any) => {
+      const url = String(input);
+      if (url.endsWith("/clips")) {
+        return { ok: true, json: async () => ({ projectId: "p1" }) } as Response;
+      }
+      if (url.includes("/status/")) {
+        return { ok: true, json: async () => ({ status: "completed" }) } as Response;
+      }
+      if (url.endsWith("/clips/p1")) {
+        return {
+          ok: true,
+          json: async () => ({ clips: [{ id: "c1", url: "https://example.com/clip1.mp4" }] }),
+        } as Response;
+      }
+      // 클립 바이트 다운로드
+      return { ok: true, arrayBuffer: async () => new ArrayBuffer(10) } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    vi.useFakeTimers();
+    try {
+      const { POST } = await import("@/app/api/video/repurpose/route");
+      const resPromise = POST(
+        new Request("http://internal.local/api/video/repurpose", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ videoUrl: "https://youtube.com/watch?v=x" }),
+        }),
+      );
+      // callReap의 폴링 루프가 setTimeout(3000ms) 한 번을 기다린다.
+      await vi.advanceTimersByTimeAsync(3000);
+      const res = await resPromise;
+      const json = (await res.json()) as { ok: boolean; clips: Array<{ url: string }> };
+      expect(res.status).toBe(200);
+      expect(json.ok).toBe(true);
+
+      const tenantFiles = fs.readdirSync(tenantVideosDir(TENANT_A));
+      expect(tenantFiles.some((f) => f.startsWith("clip-c1-") && f.endsWith(".mp4"))).toBe(true);
+
+      // 운영자 공유 data/videos 폴더엔 클립이 생기지 않았다 — 생성 안 됐거나(폴더 자체가 없음)
+      // 만들어졌더라도 비어 있다.
+      const sharedVideos = path.join(tmpRoot, "videos");
+      const sharedClips = fs.existsSync(sharedVideos)
+        ? fs.readdirSync(sharedVideos).filter((f) => f.startsWith("clip-"))
+        : [];
+      expect(sharedClips).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 10000);
+});
+
 describe("/api/video/generate — 테넌트 격리(module-scope dataPath 회귀 가드)", () => {
   it("VIDEO_OUTPUT_DIR을 모듈 스코프 상수로 재도입하지 않았다(finding 6 회귀 방지, 소스 가드)", async () => {
     const src = await import("node:fs/promises").then((m) =>
