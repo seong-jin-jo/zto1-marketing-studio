@@ -10,7 +10,9 @@ const pageSource = readFileSync("src/app/studio/page.tsx", "utf8");
 
 describe("편집실의 글 순서와 배경 음악 제거 회귀", () => {
   it("EDITROOM-NO-DEAD-CONTROLS-01 거절: 글은 순서·추가·삭제 조작을 노출하지 않는다", () => {
-    expect(roomSource).toContain('{kind !== "text" ? <nav');
+    // v70 §4: 영상이 새 VideoEditor 워크벤치로 그려질 때만 목차를 더 안 보인다(회귀
+    // 테스트는 그대로 있고, legacy 경로에서는 여전히 목차가 있다 — 조건이 한 항 늘었다).
+    expect(roomSource).toContain('{kind !== "text" && !(kind === "video" && onVideoEditChange) ? <nav');
     expect(roomSource).toContain('<TextDocumentEditor lines={safeLines} onLinesChange={onLinesChange} />');
     expect(roomSource).not.toContain('onMove={kind === "text" ? undefined : moveLine}');
     expect(roomSource).not.toContain('onMoveTo={kind === "text" ? undefined : moveLineTo}');

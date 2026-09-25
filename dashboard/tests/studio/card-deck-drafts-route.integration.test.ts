@@ -39,7 +39,8 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     }));
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, id: "draft-deck-1" });
+    // videoEdit이 없는 저장은 서버 판 번호가 없다(3차 재리뷰 BLOCKER a).
+    expect(await response.json()).toEqual({ ok: true, id: "draft-deck-1", videoEditServerRevision: null });
     const savedPayload = H.jsonValues[0] as { cardDeck: unknown; editLines: string[] };
     expect(savedPayload.cardDeck).toEqual(deckD100);
     expect(Array.isArray(savedPayload.editLines)).toBe(true);

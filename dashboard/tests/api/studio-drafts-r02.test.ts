@@ -132,7 +132,7 @@ describe("GET /api/studio/drafts R-02 본문 복원", () => {
     }));
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, id: "draft-format" });
+    expect(await response.json()).toEqual({ ok: true, id: "draft-format", videoEditServerRevision: null });
   });
 
   it("FMT-DRAFT-04 정상: 글 편집 형식은 카드뉴스로 바꾸지 않고 저장한다", async () => {
@@ -144,7 +144,7 @@ describe("GET /api/studio/drafts R-02 본문 복원", () => {
     }));
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, id: "draft-text" });
+    expect(await response.json()).toEqual({ ok: true, id: "draft-text", videoEditServerRevision: null });
   });
 
   it("FMT-DRAFT-03 거절: 허용하지 않은 카드 비율은 DB 접근 전에 422로 막는다", async () => {
