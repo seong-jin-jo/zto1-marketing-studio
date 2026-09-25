@@ -66,7 +66,11 @@ describe("EDIT-CARD v70", () => {
     expect(within(toolbar).queryByText("▲")).not.toBeInTheDocument();
     expect(within(toolbar).queryByText("▼")).not.toBeInTheDocument();
 
-    fireEvent.change(input, { target: { value: "한 번 클릭해 바로 고침" } });
+    // PR 리뷰(M1·M2, 2026-09-25)로 말풍선 입력칸이 rows 고정 textarea에서
+    // contentEditable(줄바꿈 안 잘림·굵게 즉시 표시)로 바뀌었다 — .value 세터가 없으므로
+    // 실제 타이핑처럼 textContent를 바꾼 뒤 input 이벤트를 쏜다.
+    input.textContent = "한 번 클릭해 바로 고침";
+    fireEvent.input(input);
     expect(onDeckChange).toHaveBeenCalledTimes(1);
   });
 

@@ -12,7 +12,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
-import type { Bubble, CardDeck, CardSlide } from "@/lib/studio/card-deck-contract";
+import type { Bubble, CardDeck, CardSlide, Segment } from "@/lib/studio/card-deck-contract";
 import {
   CardDeckOpsError,
   addBubble,
@@ -29,9 +29,18 @@ import {
   toggleBold,
   toggleSpeaker,
 } from "@/lib/studio/card-deck-ops";
+import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
 import { DeliveredMedia } from "./DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
 import styles from "./BubbleEditor.module.css";
+
+/**
+ * 편집 중 레이아웃 검사 디바운스(M6, PR 리뷰). `renderChatBubbleSlideToCanvas` 는 발행과
+ * 같은 렌더러라 말풍선이 카드보다 길거나 표지 헤드라인이 3줄을 넘으면 그 자리에서
+ * `ChatBubbleRenderError` 를 던진다(chat-bubble.ts). 키 입력마다 캔버스를 다시 그리면
+ * 무겁고 미완성 문장에서 계속 경고가 깜빡이므로 400ms 멈춘 뒤에만 검사한다.
+ */
+const SLIDE_RENDER_CHECK_DEBOUNCE_MS = 400;
 
 const SLIDE_ROLE_LABEL: Record<CardSlide["role"], string> = {
   cover: "표지",
@@ -92,11 +101,199 @@ function bubbleText(bubble: Bubble): string {
   return bubble.segments.map((s) => s.text).join("");
 }
 
+/**
+ * M2(PR 리뷰): 굵게를 눌러도 평문 textarea라 굵기가 안 보이던 문제. segments를 그대로
+ * HTML로 옮겨 `contentEditable` 안에서 굵은 구간이 실제로 굵게 보이게 한다. 줄바꿈은
+ * `<br>`로만 옮긴다 — 블록 요소(`<div>` 등)를 쓰면 `innerText` 추출 시 개행이 이중으로
+ * 붙는다.
+ */
+function escapeHtmlText(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function segmentsToHtml(segments: Segment[]): string {
+  const html = segments
+    .map((segment) => {
+      const escaped = escapeHtmlText(segment.text).replace(/\n/g, "<br>");
+      return segment.bold ? `<strong>${escaped}</strong>` : escaped;
+    })
+    .join("");
+  return html.length ? html : "<br>";
+}
+
+/**
+ * `contentEditable` 안의 캐럿/선택 영역을 세그먼트 텍스트 이어붙인 기준 문자 오프셋으로
+ * 바꾼다(기존 textarea의 `selectionStart`/`selectionEnd`와 같은 역할). `<br>`는
+ * TreeWalker가 텍스트 노드가 아니라 건너뛰므로 별도로 개행 1글자를 셈에 더한다.
+ */
+/** `node`가 시작되는 지점의 문자 오프셋(root 기준). node===root면 0. */
+function offsetAtNodeStart(root: HTMLElement, node: Node): number {
+  if (node === root) return 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ALL);
+  let offset = 0;
+  let current: Node | null = walker.nextNode();
+  while (current) {
+    if (current === node) return offset;
+    if (current.nodeType === Node.TEXT_NODE) {
+      offset += (current.textContent ?? "").length;
+    } else if (current.nodeName === "BR") {
+      offset += 1;
+    }
+    current = walker.nextNode();
+  }
+  return offset;
+}
+
+/** `node` 서브트리 전체의 문자 길이. */
+function subtreeTextLength(node: Node): number {
+  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").length;
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_ALL);
+  let length = 0;
+  let current: Node | null = walker.nextNode();
+  while (current) {
+    if (current.nodeType === Node.TEXT_NODE) length += (current.textContent ?? "").length;
+    else if (current.nodeName === "BR") length += 1;
+    current = walker.nextNode();
+  }
+  return length;
+}
+
+/**
+ * Range boundary point(container node + child/character offset)를 root 기준 문자
+ * 오프셋으로 바꾼다. `Range.selectNodeContents(div)`(전체 선택, Ctrl+A 계열)나 빈 칸의
+ * caret은 container가 **요소**(텍스트 노드가 아님)로 온다 — 텍스트 노드만 가정하면
+ * "전체 선택 후 굵게"가 항상 빈 선택(0글자)으로 계산돼 조용히 실패한다(2026-09-25 PR
+ * 리뷰 대응 중 mutation 테스트로 실측).
+ */
+function textOffsetWithinElement(root: HTMLElement, node: Node, offset: number): number {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return offsetAtNodeStart(root, node) + offset;
+  }
+  const children = node.childNodes;
+  if (offset < children.length) {
+    return offsetAtNodeStart(root, children[offset]);
+  }
+  // 마지막 자식 뒤(또는 자식 없음) = 이 노드가 담은 내용의 끝.
+  return offsetAtNodeStart(root, node) + subtreeTextLength(node);
+}
+
+/**
+ * `element.innerText`는 jsdom(vitest 테스트 환경)이 구현하지 않아 `undefined`를 돌려준다
+ * (실브라우저에서는 되지만 CI가 죽는다 — 2026-09-25 PR 리뷰 대응 중 실측). `textContent`는
+ * `<br>`을 통째로 건너뛰어 줄바꿈을 잃는다. 둘 다 안 쓰고 `textOffsetWithinElement`와 같은
+ * TreeWalker 규칙(텍스트 노드 이어붙이기 + `<br>` 1글자)으로 직접 뽑는다.
+ */
+function elementToPlainText(el: HTMLElement): string {
+  let text = "";
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_ALL);
+  let current: Node | null = walker.nextNode();
+  while (current) {
+    if (current.nodeType === Node.TEXT_NODE) text += current.textContent ?? "";
+    else if (current.nodeName === "BR") text += "\n";
+    current = walker.nextNode();
+  }
+  return text;
+}
+
+function getEditableSelectionOffsets(root: HTMLElement): { start: number; end: number } | null {
+  const selection = typeof window !== "undefined" ? window.getSelection() : null;
+  if (!selection || selection.rangeCount === 0) return null;
+  const range = selection.getRangeAt(0);
+  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
+  const start = textOffsetWithinElement(root, range.startContainer, range.startOffset);
+  const end = textOffsetWithinElement(root, range.endContainer, range.endOffset);
+  return { start: Math.min(start, end), end: Math.max(start, end) };
+}
+
+/**
+ * M1+M2(PR 리뷰): 말풍선 한 칸을 `contentEditable`로 그린다.
+ *
+ * - M1(넘침): `<div>`는 textarea와 달리 `rows`로 높이를 못박지 않고 내용만큼 자란다.
+ *   `.bubble{width:fit-content;max-width:76%}`가 그대로 폭 상한이라 자연히 줄바꿈된다.
+ * - M2(굵게 표시): segments를 `segmentsToHtml`로 그려 굵은 구간이 그 자리에서 굵게 보인다.
+ * - 한글 입력기(IME) 조합이 끊기지 않게, **포커스 중에는 React가 이 DOM을 다시 쓰지
+ *   않는다.** `bubble.segments`가 바뀌어도 `document.activeElement`가 이 div가 아닐 때만
+ *   `innerHTML`을 새로 앉힌다. 조합 중(`compositionstart`~`compositionend`)에는 상위로
+ *   텍스트 변경을 아예 올리지 않아 리렌더 자체가 없다.
+ */
+function BubbleContentEditable({
+  bubble,
+  editableRef,
+  onTextChange,
+  onFocus,
+  onCaretChange,
+}: {
+  bubble: Bubble;
+  editableRef: (el: HTMLDivElement | null) => void;
+  onTextChange: (text: string) => void;
+  onFocus: () => void;
+  onCaretChange: (caret: number) => void;
+}) {
+  const localRef = useRef<HTMLDivElement | null>(null);
+  const isComposingRef = useRef(false);
+  const lastSyncedHtmlRef = useRef<string>("");
+
+  useEffect(() => {
+    const el = localRef.current;
+    if (!el) return;
+    // 이 말풍선이 지금 포커스돼 있으면(사용자가 타이핑/조합 중) DOM을 건드리지 않는다 —
+    // 건드리면 캐럿이 튀거나 조합 중인 글자가 끊긴다.
+    if (document.activeElement === el) return;
+    const html = segmentsToHtml(bubble.segments);
+    if (html !== lastSyncedHtmlRef.current) {
+      el.innerHTML = html;
+      lastSyncedHtmlRef.current = html;
+    }
+  }, [bubble]);
+
+  function reportCaret() {
+    const el = localRef.current;
+    if (!el) return;
+    const offsets = getEditableSelectionOffsets(el);
+    if (offsets) onCaretChange(offsets.end);
+  }
+
+  function handleInput() {
+    const el = localRef.current;
+    if (!el || isComposingRef.current) return;
+    const text = elementToPlainText(el).replace(/\n$/, "");
+    lastSyncedHtmlRef.current = el.innerHTML;
+    onTextChange(text);
+    reportCaret();
+  }
+
+  return (
+    <div
+      ref={(el) => { localRef.current = el; editableRef(el); }}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline="true"
+      aria-label={`말풍선 내용 ${bubble.order + 1}`}
+      data-bubble-content-editable
+      className={styles.bubbleContent}
+      onInput={handleInput}
+      onFocus={onFocus}
+      onClick={() => { onFocus(); reportCaret(); }}
+      onKeyUp={reportCaret}
+      onCompositionStart={() => { isComposingRef.current = true; }}
+      onCompositionEnd={() => {
+        isComposingRef.current = false;
+        handleInput();
+      }}
+    />
+  );
+}
+
 /** 편집실 카드 탭: 선택된 장(chat/comment_prompt/cta)의 말풍선을 직접 편집한다. */
 export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
-  const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const editableRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const caretRefs = useRef<Record<string, number>>({});
 
   const slide = deck.slides.find((s) => s.id === slideId) ?? null;
   const bubbles = slide?.bubbles ?? [];
@@ -105,10 +302,22 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
     setSelectedBubbleId(null);
   }, [slideId]);
 
-  function run(op: (deck: CardDeck) => CardDeck) {
+  // M3(PR 리뷰): 삭제뿐 아니라 합치기 등 어떤 연산이든 선택했던 말풍선이 사라지면
+  // selectedBubbleId 가 죽은 id 를 들고 있어 "말풍선 추가"가 OPS_BUBBLE_NOT_FOUND 로
+  // 실패했다. 매 렌더마다 현재 목록에 없는 선택을 비운다(삭제 버튼은 아래에서 인접
+  // 말풍선으로 더 친절하게 옮겨준다 — 이 효과는 그 외 경로의 안전망).
+  useEffect(() => {
+    if (selectedBubbleId && !bubbles.some((b) => b.id === selectedBubbleId)) {
+      setSelectedBubbleId(null);
+    }
+  }, [bubbles, selectedBubbleId]);
+
+  function run(op: (deck: CardDeck) => CardDeck): CardDeck | null {
     try {
       setError(null);
-      onDeckChange(op(deck));
+      const next = op(deck);
+      onDeckChange(next);
+      return next;
     } catch (cause) {
       if (cause instanceof CardDeckOpsError) {
         console.error("카드덱 연산 실패", cause.code, cause.message);
@@ -116,6 +325,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
       } else {
         setError("말풍선을 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.");
       }
+      return null;
     }
   }
 
@@ -142,14 +352,26 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
   }
 
   function handleToggleBold(bubble: Bubble) {
-    const el = textareaRefs.current[bubble.id];
-    const from = el?.selectionStart ?? 0;
-    const to = el?.selectionEnd ?? bubbleText(bubble).length;
+    const el = editableRefs.current[bubble.id];
+    const offsets = el ? getEditableSelectionOffsets(el) : null;
+    const from = offsets?.start ?? 0;
+    const to = offsets?.end ?? 0;
     if (from === to) {
       setError("굵게 만들 글을 먼저 선택해 주세요.");
       return;
     }
     run((d) => toggleBold(d, currentSlideId, bubble.id, { from, to }));
+  }
+
+  // M3: 삭제 성공 시 선택을 지운 자리의 이전 말풍선(없으면 다음, 그것도 없으면 null)으로
+  // 옮긴다. 실패(장에 말풍선이 하나뿐)하면 선택을 건드리지 않는다.
+  function handleDeleteBubble(bubble: Bubble) {
+    const bubbleIndex = bubbles.findIndex((b) => b.id === bubble.id);
+    const next = run((d) => deleteBubble(d, currentSlideId, bubble.id));
+    if (!next) return;
+    const remaining = next.slides.find((s) => s.id === currentSlideId)?.bubbles ?? [];
+    const fallback = remaining[Math.max(0, bubbleIndex - 1)]?.id ?? remaining[0]?.id ?? null;
+    setSelectedBubbleId(fallback);
   }
 
   return (
@@ -171,15 +393,12 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
               className={`${styles.bubbleRow} ${bubble.speaker === "reader" ? styles.bubbleRowReader : ""}`}
             >
               <div className={`${styles.bubble} ${bubble.speaker === "reader" ? styles.bubbleReader : styles.bubbleBrand}`}>
-                <textarea
-                  ref={(el) => { textareaRefs.current[bubble.id] = el; }}
-                  value={bubbleText(bubble)}
-                  onChange={(event) => updateBubbleText(bubble.id, event.target.value)}
+                <BubbleContentEditable
+                  bubble={bubble}
+                  editableRef={(el) => { editableRefs.current[bubble.id] = el; }}
+                  onTextChange={(text) => updateBubbleText(bubble.id, text)}
                   onFocus={() => setSelectedBubbleId(bubble.id)}
-                  onClick={() => setSelectedBubbleId(bubble.id)}
-                  aria-label={`말풍선 내용 ${bubble.order + 1}`}
-                  className={styles.bubbleTextarea}
-                  rows={Math.max(1, bubbleText(bubble).split("\n").length)}
+                  onCaretChange={(caret) => { caretRefs.current[bubble.id] = caret; }}
                 />
                 {selected ? (
                   <div className={styles.bubbleToolbar} data-bubble-controls aria-label="선택한 말풍선 도구">
@@ -189,12 +408,13 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
                       // 2026-09-22 코드리뷰 MAJOR 5: caret 은 말풍선 전체 텍스트 기준인데
                       // splitBubble 은 세그먼트 좌표를 받는다. caretToSegment 로 바꾼다
                       // (세그먼트가 2개 이상이면 예전 코드는 잘못된 자리에서 쪼갰다).
-                      const el = textareaRefs.current[bubble.id];
-                      const caret = el?.selectionStart ?? bubbleText(bubble).length;
+                      const el = editableRefs.current[bubble.id];
+                      const offsets = el ? getEditableSelectionOffsets(el) : null;
+                      const caret = offsets?.start ?? caretRefs.current[bubble.id] ?? bubbleText(bubble).length;
                       run((d) => splitBubble(d, slide.id, bubble.id, caretToSegment(bubble.segments, caret)));
                     }}>쪼개기</Button>
                     <Button size="sm" onClick={() => run((d) => mergeBubble(d, slide.id, bubble.id))}>합치기</Button>
-                    <Button size="sm" variant="secondary" onClick={() => run((d) => deleteBubble(d, slide.id, bubble.id))}>삭제</Button>
+                    <Button size="sm" variant="secondary" onClick={() => handleDeleteBubble(bubble)}>삭제</Button>
                   </div>
                 ) : null}
               </div>
@@ -367,11 +587,62 @@ function CoverEditor({ slide, onChange, onImageChange }: {
  * 캔버스 미리보기와 우측 textarea를 분리하던 구조를 없애서 말풍선 한 번 클릭이 곧
  * 그 자리 편집이 되게 한다(EDIT-CARD v70 §3).
  */
+/**
+ * M5+M6(PR 리뷰): 편집 중인 장을 발행 렌더러(`renderChatBubbleSlideToCanvas`, 발행
+ * 경로와 100% 같은 코드)로 400ms 디바운스해 다시 그려본다. 표지·CTA는 그 결과 캔버스를
+ * 그대로 보여줘 사진·그라데이션·헤드라인 줄 수가 실제 발행 모습과 같은지 편집 중에 볼 수
+ * 있게 하고(M5), 모든 장은 던져진 `ChatBubbleRenderError` 메시지를 스테이지 아래 한 줄
+ * 경고로 보여줘 말풍선 넘침·헤드라인 3줄 초과를 발행 직전이 아니라 편집 중에 알린다(M6).
+ * 그리는 것 자체가 목적이 아니라 검사가 목적이므로, chat/comment_prompt 장은 캔버스를
+ * 버리고 에러 메시지만 남긴다(스테이지는 이미 DOM 직접 편집이 실물이다).
+ */
+function useSlideRenderCheck(deck: CardDeck, slide: CardSlide | undefined, index: number, total: number) {
+  const [state, setState] = useState<{ canvas: HTMLCanvasElement | null; warning: string | null }>({ canvas: null, warning: null });
+  useEffect(() => {
+    if (!slide) {
+      setState({ canvas: null, warning: null });
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const canvas = await renderChatBubbleSlideToCanvas({ deck, slide, index, total });
+          if (cancelled) return;
+          setState({ canvas: slide.role === "cover" || slide.role === "cta" ? canvas : null, warning: null });
+        } catch (cause) {
+          if (cancelled) return;
+          const message = cause instanceof Error ? cause.message : "이 장의 레이아웃을 확인하지 못했습니다.";
+          setState({ canvas: null, warning: message });
+        }
+      })();
+    }, SLIDE_RENDER_CHECK_DEBOUNCE_MS);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [deck, slide, index, total]);
+  return state;
+}
+
+/** 캔버스를 컨테이너에 그대로 붙인다(`CardDeckThumbnailStrip`과 같은 패턴). */
+function SlideRenderPreview({ canvas }: { canvas: HTMLCanvasElement | null }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    host.innerHTML = "";
+    if (canvas) {
+      canvas.className = styles.slideRenderCanvas;
+      host.appendChild(canvas);
+    }
+  }, [canvas]);
+  return canvas ? <div ref={hostRef} data-slide-render-preview aria-label="발행 미리보기" /> : null;
+}
+
 export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckChange: (deck: CardDeck) => void }) {
   const [activeSlideId, setActiveSlideId] = useState(deck.slides[0]?.id ?? "");
   const [slideError, setSlideError] = useState<string | null>(null);
   const activeIndex = deck.slides.findIndex((s) => s.id === activeSlideId);
   const activeSlide = activeIndex >= 0 ? deck.slides[activeIndex] : deck.slides[0];
+  const { canvas: renderPreview, warning: renderWarning } = useSlideRenderCheck(deck, activeSlide, Math.max(0, activeIndex), deck.slides.length);
 
   useEffect(() => {
     if (!deck.slides.find((s) => s.id === activeSlideId)) {
@@ -433,15 +704,22 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
         })}
       </nav>
       <section aria-label="카드 편집 스테이지" className={styles.stageColumn} data-card-deck-preview>
+        {activeSlide && (activeSlide.role === "cover" || activeSlide.role === "cta") ? (
+          <SlideRenderPreview canvas={renderPreview} />
+        ) : null}
         <div className={styles.cardStage} data-card-deck-stage data-card-deck-stage-ratio="4:5">
           {activeSlide && activeSlide.role !== "cover" ? (
+            // M(MINOR, PR 리뷰): 채팅 헤더는 발행 PNG(`chat-bubble.ts drawChatSlide`)와
+            // 같은 규칙을 따른다 — 그 렌더러는 헤더에 handle을 그리지 않고
+            // `deck.brand.display_name`만 그린다. "브랜드" placeholder를 지어내지 않고
+            // PNG와 똑같이 handle 칸 자체를 비운다.
             <header className={styles.cardBrandBar}>
               <b>{deck.brand.display_name}</b>
-              <span>{deck.brand.handle ?? "브랜드"}</span>
             </header>
           ) : null}
           {activeSlide ? <BubbleEditor deck={deck} slideId={activeSlide.id} onDeckChange={onDeckChange} /> : null}
         </div>
+        {renderWarning ? <p role="alert" className={styles.slideLayoutWarning} data-slide-layout-warning>{renderWarning}</p> : null}
         {slideError ? <p role="alert" className="mt-stack-tight text-caption text-danger">{slideError}</p> : null}
       </section>
     </div>

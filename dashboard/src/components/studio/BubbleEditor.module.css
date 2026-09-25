@@ -90,6 +90,19 @@
   background: var(--editroom-card-paper);
   padding: var(--pad-inset);
   box-shadow: var(--shadow);
+  /*
+   * M4(PR 리뷰): 카드 배경은 테마와 무관하게 항상 흰색(발행 PNG와 같아야 한다,
+   * design-spec-editroom-v70.md §3.2)인데 안의 글자·폼은 --text 등 다크 테마 토큰을
+   * 그대로 따라가 다크 테마에서 흰 배경 위 옅은 글자(대비 1.1:1)가 됐다. 이 스테이지
+   * 안에서만 라이트 테마 값으로 고정해 어느 테마에서도 흰 카드 위 검은 잉크로 보이게
+   * 한다 — 전역 테마 토큰은 그대로 두고 이 서브트리에서만 그림자처럼 덮어쓴다.
+   */
+  --text: rgb(24 24 27);
+  --text-muted: rgb(82 82 91);
+  --text-subtle: rgb(102 102 110);
+  --surface: rgb(255 255 255);
+  --surface-2: rgb(244 244 245);
+  --border: rgb(228 228 231);
 }
 
 .cardBrandBar {
@@ -105,7 +118,27 @@
 }
 
 .cardBrandBar span {
-  color: var(--muted);
+  color: var(--text-muted);
+}
+
+.slideRenderCanvas {
+  display: block;
+  width: 100%;
+  max-width: var(--editroom-stage-width);
+  margin: 0 auto var(--stack-tight);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-surface);
+  box-shadow: var(--shadow);
+}
+
+.slideLayoutWarning {
+  margin-top: var(--stack-tight);
+  border: 1px solid var(--warning);
+  background: var(--warning-soft);
+  border-radius: var(--shape-control);
+  padding: var(--stack-tight) var(--stack);
+  color: var(--warning);
+  font-size: var(--font-caption-size);
 }
 
 .bubbleTurns {
@@ -139,17 +172,28 @@
   background: var(--chat-reader-bg);
 }
 
-.bubbleTextarea {
+/*
+ * M1+M2(PR 리뷰): 종전 `.bubbleTextarea`(고정 rows textarea)를 `contentEditable` div로
+ * 대체했다. `white-space: pre-wrap`이 줄바꿈(`<br>`)과 자동 줄바꿈을 모두 살리고,
+ * 높이는 `rows` 없이 내용만큼 자란다(넘침 방지). 폭은 부모 `.bubble`의 `max-width: 76%`가
+ * 그대로 상한이라 한 줄이 넘으면 자동으로 줄바꿈된다.
+ */
+.bubbleContent {
   display: block;
   width: 100%;
   min-width: 8rem;
-  resize: none;
-  border: 0;
+  min-height: var(--editroom-bubble-line-height);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   outline: 0;
   background: transparent;
   color: var(--text);
   font-size: var(--editroom-bubble-font-size);
   line-height: var(--editroom-bubble-line-height);
+}
+
+.bubbleContent strong {
+  font-weight: 800;
 }
 
 .bubbleToolbar {
