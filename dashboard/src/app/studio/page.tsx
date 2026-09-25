@@ -1179,7 +1179,18 @@ export default function StudioPage() {
       reviewQueueId,
       publishedAt: status === "published" ? new Date().toISOString() : undefined,
     });
-    if (r?.id) setDraftId(r.id);
+    // B-2(4차 재리뷰 BLOCKER): 새 초안의 첫 저장이 draftId state를 채우면, 그 state를
+    // 지켜보는 reconcile 효과가 발동해 방금 저장한 videoEdit을 "아직 서버와 안 맞춘 것"
+    // 취급하고 다시 맞추려 든다. 그 사이 창에서 한 편집이 화면·서버 양쪽에서 지워졌다.
+    // setDraftId(r.id)가 그 효과를 트리거하기 전에, 지금 저장한 id는 이미 서버와 맞춘
+    // 상태라고 먼저 기록해 둔다 — 자기가 만든 초안을 자기가 다시 조회해 덮어쓰지 않는다.
+    if (r?.id) {
+      if (persistedVideoEdit) {
+        reconciledDraftIdRef.current = r.id;
+        videoEditReconciledRef.current = true;
+      }
+      setDraftId(r.id);
+    }
     if (persistedVideoEdit && r && Object.prototype.hasOwnProperty.call(r, "videoEditServerRevision")) {
       videoEditBaseRevisionRef.current = r.videoEditServerRevision ?? null;
     }
@@ -1762,19 +1773,45 @@ export default function StudioPage() {
    * videoEditReconciling으로 편집을 막는다(사용자 수정이 조용히 사라지는 것을 막는
    * 더 단순하고 안전한 쪽 — 코드리뷰가 준 두 선택지 중 "막는다"를 택했다).
    */
-  async function reconcileVideoEditFromServer(id: string) {
+  async function reconcileVideoEditFromServer(id: string, force = false) {
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     videoEditReconciledRef.current = false;
     setVideoEditReconciling(true);
-    let serverDraft = hist?.drafts?.find((d) => d.id === id) as Record<string, unknown> | undefined;
+    // M-1(4차 재리뷰 MAJOR): "다시 불러오기" 버튼은 force=true로 부른다. hist 목록
+    // 캐시(LIMIT 50)를 먼저 보면, 방금 충돌난 초안이 그 목록에 없을 때 다시 불러오기가
+    // 아무것도 못 읽고 409가 무한 반복된다 — force면 목록 지름길을 건너뛰고 항상 단건
+    // GET으로 읽는다.
+    let serverDraft = force ? undefined : hist?.drafts?.find((d) => d.id === id) as Record<string, unknown> | undefined;
+    let fetchFailed = false;
     if (!serverDraft) {
+      const controller = new AbortController();
+      // MINOR(4차 재리뷰): 단건 조회가 걸려 있으면 reconciling이 영원히 안 풀린다 —
+      // 타임아웃을 걸어 실패로 확정짓는다.
+      const timeoutId = setTimeout(() => controller.abort(), 10_000);
       try {
-        const res = await fetch(`/api/studio/drafts?tenant_id=${encodeURIComponent(activeWorkspace?.id ?? "")}&id=${encodeURIComponent(id)}`, { headers: authHeaders() });
+        const res = await fetch(`/api/studio/drafts?tenant_id=${encodeURIComponent(activeWorkspace?.id ?? "")}&id=${encodeURIComponent(id)}`, { headers: authHeaders(), signal: controller.signal });
         if (res.ok) {
           const data = await res.json().catch(() => null) as { draft?: Record<string, unknown> } | null;
           serverDraft = data?.draft ?? undefined;
+        } else if (res.status !== 404) {
+          // MINOR(4차 재리뷰): 500·403 등은 "서버에 없음"이 아니라 오류다. 없음으로
+          // 오인하면 videoEdit을 null로 덮어써 있던 값을 지운다.
+          fetchFailed = true;
         }
-      } catch { /* 네트워크 실패 — 아래에서 null(서버에 없음 취급)로 진행한다 */ }
+      } catch {
+        // 네트워크 실패·타임아웃도 "없음"이 아니라 오류다 — 아래에서 별도 처리한다.
+        fetchFailed = true;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+    if (fetchFailed) {
+      // 오류면 지금 화면 값(옛 상태)을 그대로 두고 맞추는 시도만 접는다 — 사용자가
+      // 다시 시도할 수 있게 reconciling만 풀고, videoEdit을 지우거나 "맞춰짐" 처리하지
+      // 않는다(맞춰짐 처리하면 그 다음 자동저장이 안 맞춘 값을 서버로 내보낼 수 있다).
+      setVideoEditReconciling(false);
+      showToast("서버 값을 다시 불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.", "error");
+      return;
     }
     const serverVideoEdit = (serverDraft?.videoEdit as VideoEdit | undefined) ?? null;
     setVideoEdit(serverVideoEdit);
@@ -1783,6 +1820,7 @@ export default function StudioPage() {
     videoEditReconciledRef.current = true;
     setVideoEditReconciling(false);
     setVideoEditConflict(false);
+    if (force) mutateHist();
   }
   useEffect(() => {
     if (!draftId) { videoEditReconciledRef.current = true; videoEditBaseRevisionRef.current = null; return; }
@@ -2464,7 +2502,7 @@ export default function StudioPage() {
         cardDeckAutosaveError={cardDeckAutosaveError}
         videoEditAutosaveError={videoEditAutosaveError}
         videoEditConflict={videoEditConflict}
-        onVideoEditReload={() => { if (draftIdRef.current) void reconcileVideoEditFromServer(draftIdRef.current); }}
+        onVideoEditReload={() => { if (draftIdRef.current) void reconcileVideoEditFromServer(draftIdRef.current, true); }}
         videoEditReconciling={videoEditReconciling}
       />
     </div>

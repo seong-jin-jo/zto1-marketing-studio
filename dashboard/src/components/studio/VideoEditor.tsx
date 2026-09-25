@@ -107,7 +107,19 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   // 보여주면 어느 게 진짜인지 알 수 없다(B2와 같은 이유로 한 계산을 공유한다).
   const displaySubtitles = useMemo(() => reconcileSubtitles(videoEdit.subtitles, lines, duration), [videoEdit.subtitles, lines, duration]);
 
+  /**
+   * B-1(4차 재리뷰 BLOCKER): 이 함수가 videoEdit을 바꾸는 유일한 입구다(오버레이·댓글·
+   * 목소리·자막 문구·컷·타임라인 드래그 전부 여기를 거친다). 서버 값과 맞추는 중
+   * (syncing)에는 여기서 거절한다 — 컨트롤 하나하나에 disabled를 붙이는 대신 이
+   * 한 곳만 막으면 새로 생기는 컨트롤도 자동으로 안전하다. syncing이 시작되기 전
+   * localStorage 잠정값 위에서 만든 편집본이 이 문을 통과해 서버 최신값을 덮는 것을
+   * 막는다.
+   */
   function run(op: (edit: VideoEdit) => VideoEdit) {
+    if (syncing) {
+      setError("서버 값과 맞추는 중입니다. 잠시 뒤 다시 시도해 주세요.");
+      return;
+    }
     try {
       setError(null);
       onVideoEditChange(op(videoEdit));
@@ -191,12 +203,12 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
               run={run}
               syncing={syncing}
             />
-            <OverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} />
-            <CommentOverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} />
-            <VoiceSelector edit={videoEdit} run={run} />
+            <OverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
+            <CommentOverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
+            <VoiceSelector edit={videoEdit} run={run} syncing={syncing} />
           </div>
         </div>
-        <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seek} run={run} />
+        <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seek} run={run} syncing={syncing} />
       </div>
       <p className="text-caption text-subtle" data-render-status-note>
         자막 문구 수정은 실제 발행 영상에 반영됩니다. 컷은 미리보기 표시 전용입니다. 자막 글자·영상·음성은 컷과 무관하게 그대로 발행됩니다.
@@ -374,12 +386,18 @@ function reconcileSubtitles(subtitles: SubtitleLine[], lines: string[], duration
         ? atIndex
         : subtitles.find((s) => s.text === text && !used.has(s.id));
     }
-    if (existing) {
-      used.add(existing.id);
-      return { ...existing, text, order: index };
-    }
+    // MINOR(4차 재리뷰): 위치는 바뀌었는데 글자가 같은 줄(중복 문장)을 매칭할 때, 매칭된
+    // 줄의 옛 시간(startSec/endSec)을 그대로 들고 오면 재배열된 순서와 시간이 어긋나
+    // 타이밍이 뒤죽박죽(역순)이 될 수 있다 — 예: "그리고"가 옛 4~6초 자리에서 새 순서
+    // 0번으로 오면 0번 줄인데 4초에서 시작해버린다. cut 여부 등 메타는 매칭된 줄에서
+    // 이어받되, startSec/endSec은 항상 지금 순서(index) 기준으로 다시 계산해 시간이
+    // 항상 앞에서 뒤로 흐르게 한다.
     const startSec = index * slot;
     const endSec = index === lines.length - 1 ? total : (index + 1) * slot;
+    if (existing) {
+      used.add(existing.id);
+      return { ...existing, text, order: index, startSec, endSec: Math.max(startSec + 0.1, endSec) };
+    }
     return { id: newId("sub"), order: index, text, startSec, endSec: Math.max(startSec + 0.1, endSec), cut: false };
   });
 }
@@ -429,9 +447,9 @@ function SubtitleScriptEditor({
       <div className="flex flex-wrap items-center justify-between gap-stack-tight">
         <b className="text-caption font-semibold text-text">자막 대본</b>
         <div className="flex flex-wrap gap-stack-tight" data-video-script-quick-add>
-          <Button size="sm" variant="secondary" onClick={() => run((e) => addOverlay(e, "hook", VIDEO_HOOK_PRESETS[0], Math.max(0, playhead), playhead + 3))}>＋훅</Button>
-          <Button size="sm" variant="secondary" onClick={() => run((e) => addOverlay(e, "cta", VIDEO_CTA_PRESETS[0], Math.max(0, playhead), playhead + 3))}>＋CTA</Button>
-          <Button size="sm" variant="secondary" onClick={() => run((e) => addComment(e, { author: "예시", text: "여기에 실제 댓글로 바꿔주세요", source: "manual", startSec: Math.max(0, playhead), endSec: playhead + 3 }))}>＋댓글</Button>
+          <Button size="sm" variant="secondary" disabled={syncing} onClick={() => run((e) => addOverlay(e, "hook", VIDEO_HOOK_PRESETS[0], Math.max(0, playhead), playhead + 3))}>＋훅</Button>
+          <Button size="sm" variant="secondary" disabled={syncing} onClick={() => run((e) => addOverlay(e, "cta", VIDEO_CTA_PRESETS[0], Math.max(0, playhead), playhead + 3))}>＋CTA</Button>
+          <Button size="sm" variant="secondary" disabled={syncing} onClick={() => run((e) => addComment(e, { author: "예시", text: "여기에 실제 댓글로 바꿔주세요", source: "manual", startSec: Math.max(0, playhead), endSec: playhead + 3 }))}>＋댓글</Button>
         </div>
       </div>
       {syncing ? <p className="text-caption text-subtle" data-video-syncing-note>서버 값과 맞추는 중입니다. 잠시만요.</p> : null}
@@ -494,7 +512,7 @@ function SubtitleScriptEditor({
   );
 }
 
-function OverlayEditor({ edit, duration, playhead, run }: { edit: VideoEdit; duration: number | null; playhead: number; run: (op: (e: VideoEdit) => VideoEdit) => void }) {
+function OverlayEditor({ edit, duration, playhead, run, syncing = false }: { edit: VideoEdit; duration: number | null; playhead: number; run: (op: (e: VideoEdit) => VideoEdit) => void; syncing?: boolean }) {
   const [text, setText] = useState("");
   const [kind, setKind] = useState<VideoOverlay["kind"]>("hook");
   const presets = kind === "hook" ? VIDEO_HOOK_PRESETS : VIDEO_CTA_PRESETS;
@@ -526,7 +544,7 @@ function OverlayEditor({ edit, duration, playhead, run }: { edit: VideoEdit; dur
       />
       <Button
         size="sm"
-        disabled={!text.trim()}
+        disabled={!text.trim() || syncing}
         onClick={() => {
           run((e) => addOverlay(e, kind, text.trim(), overlayStart, overlayEnd));
           setText("");
@@ -554,7 +572,7 @@ function OverlayEditor({ edit, duration, playhead, run }: { edit: VideoEdit; dur
   );
 }
 
-function CommentOverlayEditor({ edit, duration, playhead, run }: { edit: VideoEdit; duration: number | null; playhead: number; run: (op: (e: VideoEdit) => VideoEdit) => void }) {
+function CommentOverlayEditor({ edit, duration, playhead, run, syncing = false }: { edit: VideoEdit; duration: number | null; playhead: number; run: (op: (e: VideoEdit) => VideoEdit) => void; syncing?: boolean }) {
   const [author, setAuthor] = useState("");
   const [text, setText] = useState("");
   const clipEnd = duration ?? playhead + 3;
@@ -573,7 +591,7 @@ function CommentOverlayEditor({ edit, duration, playhead, run }: { edit: VideoEd
       </div>
       <Button
         size="sm"
-        disabled={!text.trim() || !author.trim()}
+        disabled={!text.trim() || !author.trim() || syncing}
         onClick={() => {
           run((e) => addComment(e, { author: author.trim(), text: text.trim(), source: "manual", startSec: commentStart, endSec: commentEnd }));
           setAuthor("");
@@ -612,7 +630,7 @@ function CommentOverlayEditor({ edit, duration, playhead, run }: { edit: VideoEd
   );
 }
 
-function VoiceSelector({ edit, run }: { edit: VideoEdit; run: (op: (e: VideoEdit) => VideoEdit) => void }) {
+function VoiceSelector({ edit, run, syncing = false }: { edit: VideoEdit; run: (op: (e: VideoEdit) => VideoEdit) => void; syncing?: boolean }) {
   const [voices, setVoices] = useState<Array<{ id: string; name: string; category: string }> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -656,6 +674,7 @@ function VoiceSelector({ edit, run }: { edit: VideoEdit; run: (op: (e: VideoEdit
               size="sm"
               variant={edit.voice?.voiceId === voice.id ? "primary" : "secondary"}
               aria-pressed={edit.voice?.voiceId === voice.id}
+              disabled={syncing}
               onClick={() => run((e) => setVoice(e, { voiceId: voice.id, voiceName: voice.name }))}
             >
               {voice.name}
@@ -677,7 +696,7 @@ type DragState = { lane: "overlay" | "comment"; id: string; edge: "move" | "star
  * 시각화이고(초 숫자 입력칸 없이 대본에서 편집·컷한다 — 위 SubtitleScriptEditor 담당),
  * 훅·CTA·댓글 블록은 여기서 끌어서 구간을 바꾼다. 넘치면 가로 스크롤 + 안내 문구.
  */
-function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run }: {
+function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run, syncing = false }: {
   edit: VideoEdit;
   /** P3(교차 리뷰 재리뷰 MAJOR): 자막 레인은 서버 원본(edit.subtitles)이 아니라 대본
    * 재구성 결과를 그린다 — 대본·타임라인이 서로 다른 자막을 보여주면 어느 게 진짜인지
@@ -687,6 +706,7 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
   playhead: number;
   onSeek: (sec: number) => void;
   run: (op: (e: VideoEdit) => VideoEdit) => void;
+  syncing?: boolean;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<DragState>(null);
@@ -735,7 +755,12 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drag]);
 
+  // B-1(4차 재리뷰 BLOCKER): 드래그 시작점을 여기 한 곳에서 막는다 — 6개 pointerDown
+  // 호출부마다 syncing 체크를 반복하는 대신, 드래그를 여는 이 함수가 거절하면 그 아래
+  // onMove가 도는 run() 호출 자체가 발생하지 않는다(run()도 별도로 다시 막지만, 여기서
+  // 막으면 드래그 중 화면이 움직이다 뚝 끊기는 어색함도 없앤다).
   function startDrag(lane: "overlay" | "comment", id: string, edge: "move" | "start" | "end", startSec: number, endSec: number, clientX: number) {
+    if (syncing) return;
     setDrag({ lane, id, edge, originStart: startSec, originEnd: endSec, originClientX: clientX });
   }
 
@@ -745,7 +770,11 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
   // 상수로 두고 간격 없이 붙여, 눈금 오버레이도 같은 상수만큼 오프셋해 같은 원점을 쓴다.
   const LANE_LABEL_WIDTH = 62;
   return (
-    <div data-video-timeline className="min-w-0 space-y-micro rounded-surface border border-border bg-surface-2 p-stack-tight">
+    <div
+      data-video-timeline
+      data-syncing={syncing || undefined}
+      className={`min-w-0 space-y-micro rounded-surface border border-border bg-surface-2 p-stack-tight ${syncing ? "pointer-events-none opacity-60" : ""}`}
+    >
       <div className="overflow-x-auto" data-video-timeline-scroll>
         <div ref={trackRef} className="relative" style={{ width: `${LANE_LABEL_WIDTH + Math.max(trackWidth, 240)}px` }} data-video-timeline-track>
           <div className="pointer-events-none absolute inset-0" aria-hidden="true">

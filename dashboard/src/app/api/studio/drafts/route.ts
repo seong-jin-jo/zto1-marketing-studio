@@ -267,19 +267,22 @@ export async function POST(request: Request) {
           const videoEditClientPayload = videoEditPatch.videoEdit; // revision 키는 아래에서 서버가 덮어쓴다
           const restPayload = { ...payload };
           delete (restPayload as { videoEdit?: unknown }).videoEdit;
+          // M-2(4차 재리뷰 BLOCKER, PostgreSQL 16.14 실측 재현): CTE(`WITH old AS (...)`)는
+          // 문장 시작 시점에 한 번 평가되는 스냅샷이다. UPDATE가 행 잠금을 기다리는 동안
+          // 다른 트랜잭션이 먼저 커밋해도, 이 문장의 WHERE·SET은 여전히 그 스냅샷(구 값)과
+          // 비교한다 — 동시 저장 두 건이 서로 다른 스냅샷을 각자 통과해버린다(둘 다 성공).
+          // 행 자신의 컬럼(drafts.payload->...)을 직접 참조하면 PostgreSQL이 잠금 대기
+          // 해제 후 그 행의 "지금 커밋된" 값으로 WHERE를 재평가한다 — 나중 트랜잭션은
+          // baseRevision이 이미 어긋나 있으므로 0행(409)으로 떨어진다.
           const [row] = await sql<{ id: string; server_revision: number }[]>`
-            WITH old AS (
-              SELECT (payload->'videoEdit'->>'revision')::int AS rev FROM drafts
-              WHERE id = ${body.id} AND tenant_id = ${tenantId}
-            )
             UPDATE drafts SET
               idea = ${idea},
               payload = (COALESCE(drafts.payload, '{}'::jsonb) || ${sql.json(restPayload)}::jsonb)
                 || jsonb_build_object('videoEdit', ${sql.json(videoEditClientPayload)}::jsonb
-                  || jsonb_build_object('revision', COALESCE((SELECT rev FROM old), -1) + 1)),
+                  || jsonb_build_object('revision', COALESCE((drafts.payload->'videoEdit'->>'revision')::int, -1) + 1)),
               status = ${status}, updated_at = now()
             WHERE drafts.id = ${body.id} AND drafts.tenant_id = ${tenantId}
-              AND (SELECT rev FROM old) IS NOT DISTINCT FROM ${baseRevision}::int
+              AND (drafts.payload->'videoEdit'->>'revision')::int IS NOT DISTINCT FROM ${baseRevision}::int
             RETURNING drafts.id, (drafts.payload->'videoEdit'->>'revision')::int AS server_revision`;
           if (row) return { id: row.id, videoEditServerRevision: row.server_revision };
           const [existsRow] = await sql<{ id: string; revision: number | null }[]>`
