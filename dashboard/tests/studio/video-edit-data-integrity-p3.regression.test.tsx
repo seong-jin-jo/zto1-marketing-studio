@@ -138,14 +138,20 @@ describe("P5: 목록 밖 초안은 단건 조회로 서버 값을 맞춘다", ()
     localStorage.setItem(storageKey("tenant-video-integrity"), JSON.stringify({ idea: "i", vid: VID, draftId: "draft-outside-list", editLines: ["첫 장면"], editKind: "video" }));
     window.history.replaceState(null, "", "/studio?room=edit");
     render(<StudioPage />);
-    const overlayEditor = await waitFor(() => {
+    await waitFor(() => {
       const el = document.querySelector("[data-video-overlay-editor]");
       if (!el) throw new Error("아직 안 뜸");
       return el as HTMLElement;
     });
-    const overlayItem = overlayEditor.querySelector('[data-video-overlay-id="ov-x"]');
-    expect(overlayItem).toBeTruthy();
-    expect((overlayItem?.querySelector("input") as HTMLInputElement | null)?.value).toBe("목록 밖 오버레이");
+    // 목록 밖 초안은 단건 조회(GET ?id=)가 끝난 뒤에야 오버레이가 화면에 나타난다 —
+    // 그 요청은 fetch 왕복이 하나 더 있어 CI처럼 느린 환경에서는 위 첫 waitFor보다
+    // 늦게 끝날 수 있다. 오버레이 항목 자체를 기다린다(더 넉넉한 시간).
+    const overlayItem = await waitFor(() => {
+      const el = document.querySelector('[data-video-overlay-id="ov-x"]');
+      if (!el) throw new Error("단건 조회 결과가 아직 안 반영됨");
+      return el as HTMLElement;
+    }, { timeout: 10000 });
+    expect((overlayItem.querySelector("input") as HTMLInputElement | null)?.value).toBe("목록 밖 오버레이");
   }, 20000);
 });
 
