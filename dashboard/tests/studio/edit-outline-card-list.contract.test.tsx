@@ -135,20 +135,19 @@ describe("편집실 목차 칸의 카드 목록", () => {
     expect(outline.querySelector('[data-outline-thumb="1"]')).toHaveAttribute("src", "https://example.test/card-2.png");
   });
 
-  it("OUTLINE-07 정상: 영상 장면도 같은 목록으로 고르고 옮긴다", () => {
-    const onLinesChange = vi.fn();
-    render(<EditRoom lines={["첫 장면", "둘째 장면"]} onLinesChange={onLinesChange} kind="video" />);
-
-    const outline = document.querySelector("[data-edit-outline]")!;
-    expect(outline).toHaveAttribute("aria-label", "영상 장면");
-    expect(outline.querySelector("[data-outline-count]")).toHaveTextContent("2장면");
-    // 카드가 아닌 형식에는 표지·마무리 배지를 달지 않는다.
-    expect(outline.querySelector("[data-outline-role]")).toBeNull();
-
-    fireEvent.click(outline.querySelector('[data-outline-item="0"]')!);
-    fireEvent.keyDown(outline.querySelector('[data-outline-item="0"]')!, { key: "ArrowDown", altKey: true });
-    expect(onLinesChange).toHaveBeenLastCalledWith(["둘째 장면", "첫 장면"]);
-    expect(outline.querySelector("[data-outline-up], [data-outline-down]")).toBeNull();
+  it("OUTLINE-07 v70로 대체: 영상은 이제 이 공용 목차 대신 VideoEditor 안의 자막 대본을 쓴다", () => {
+    // 이 테스트는 원래 영상도 카드와 같은 목차 나브로 장면을 고르고 옮긴다고 고정했다.
+    // design-spec-editroom-v70.md §4가 영상 전용 편집기(플레이어+자막 대본+타임라인)로
+    // 완전히 갈랐고, 목차 나브는 그 자리에서 걷어냈다(같은 장면 목록이 두 곳에서 따로
+    // 노는 것을 막기 위해서다 — StudioRooms.tsx 세션맥락 주석 참조). 그래서 이 단언은
+    // "목차가 없다"로 뒤집는다. 순서 이동은 자막 대본에 없다 — 장면 순서는 생성 시점
+    // 순서를 그대로 쓰고, 컷(§4.3)으로 뺄 수만 있다(디자인 결정, design-spec §4.3).
+    //
+    // onVideoEditChange가 실제 서비스처럼 있을 때만 새 워크벤치로 완전히 갈린다.
+    // 없는 legacy 경로(레거시 테스트 전용, 실서비스에는 없다)는 옛 목차를 그대로 둔다
+    // (회귀 0 — studio-fe2-rooms.test.tsx FE6-EDIT-01 참조).
+    render(<EditRoom lines={["첫 장면", "둘째 장면"]} onLinesChange={vi.fn()} kind="video" onVideoEditChange={vi.fn()} previewVideoUrl={null} />);
+    expect(document.querySelector("[data-edit-outline]")).toBeNull();
   });
 
   it("OUTLINE-08 정상: 편집실의 채운 강조색 버튼은 여전히 발행실로 이동 하나뿐이다", () => {

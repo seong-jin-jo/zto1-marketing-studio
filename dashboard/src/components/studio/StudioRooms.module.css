@@ -22,6 +22,15 @@
   display: block;
 }
 
+/*
+  v70 §4: 영상은 목차 나브가 없어 .editWorkbench의 2열(11rem/1fr) 그리드에 자식이
+  하나뿐이다. 그대로 두면 그 하나뿐인 자식이 11rem 첫 열에 눌려 플레이어·타임라인이
+  176px짜리 칸에 눌린다. text와 같은 방식으로 1열로 되돌린다.
+*/
+.videoDocumentWorkbench {
+  display: block;
+}
+
 .textDocumentCanvas {
   min-width: 0;
   overflow-y: auto;
@@ -161,6 +170,10 @@
   }
 
   .textDocumentWorkbench {
+    grid-template-columns: none;
+  }
+
+  .videoDocumentWorkbench {
     grid-template-columns: none;
   }
 }

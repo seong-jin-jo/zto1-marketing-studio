@@ -1806,6 +1806,8 @@ export function EditRoom({
   const duration = visibleCount * secondsPerLine;
   const durationLabel = Number.isInteger(duration) ? String(duration) : duration.toFixed(1);
   const selectedLine = safeLines[activeLine] ?? "";
+  // v70 §4.3: 실제 서비스는 이 값을 읽지 않는다(위 참조). onVideoEditChange 없는 legacy
+  // 경로(레거시 테스트)에서만 옛 "무음 구간 줄이기" 단추가 이 값을 쓴다 — 회귀 0 유지.
   const silenceIndexes = safeLines.map((line, index) => (/…|\.{3}|^\s*$/.test(line) ? index : -1)).filter((index) => index >= 0);
   const visibleSilences = silenceIndexes.filter((index) => visibleLines[index]).length;
   const tools = kind === "card" || kind === "text" ? CARD_TOOLS : kind === "audio" ? NARRATION_TOOLS : VIDEO_TOOLS;
@@ -1946,7 +1948,7 @@ export function EditRoom({
                   <CardDeckPanel deck={cardDeck} onDeckChange={onCardDeckChange} />
                 </div>
               ) : (
-              <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined}>
+              <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""} ${kind === "video" && onVideoEditChange ? styles.videoDocumentWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined}>
                 {/*
                   2026-09-23 세션맥락(과업 C): 카드뉴스가 말풍선 덱(chat_bubble)이 아니면
                   위 CardDeckPanel 분기를 안 타 말풍선 편집 기능이 통째로 안 보인다.
@@ -1967,7 +1969,14 @@ export function EditRoom({
                   흐름이 곧 상품인데 그 흐름이 화면에 없었다. DESIGN.md §4 가 이 칸을 이미
                   계약해 뒀으므로 새 칸을 만들지 않고 있는 집을 채운다.
                 */}
-                {kind !== "text" ? <nav className={`min-w-0 p-pad-inset ${styles.editOutline}`} aria-label={outlineTitle} data-edit-outline>
+                {/*
+                  v70 §4: 영상이 새 VideoEditor(플레이어+자막 대본+타임라인)로 그려질
+                  때는 목차 나브를 같이 두지 않는다 — 같은 장면 목록이 두 곳에서 따로 놀아
+                  어느 쪽이 진짜인지 알 수 없다. onVideoEditChange가 없는 legacy 경로(옛
+                  4단 도구줄, 레거시 테스트 전용 — 실제 서비스는 항상 onVideoEditChange를
+                  준다)는 예전처럼 목차를 그대로 둔다(회귀 0).
+                */}
+                {kind !== "text" && !(kind === "video" && onVideoEditChange) ? <nav className={`min-w-0 p-pad-inset ${styles.editOutline}`} aria-label={outlineTitle} data-edit-outline>
                   <EditOutline
                     title={outlineTitle}
                     unit={unit}
@@ -1989,6 +1998,18 @@ export function EditRoom({
                 <div className={kind === "text" ? "min-w-0" : "min-w-0 p-pad-inset"}>
                   {kind === "text" ? (
                     <TextDocumentEditor lines={safeLines} onLinesChange={onLinesChange} />
+                  ) : kind === "video" && onVideoEditChange ? (
+                    // v70 §4: 영상은 전용 편집기 한 벌(플레이어+자막 대본+타임라인)만 그린다.
+                    // 옛 표준 편집 작업대(장면 순서·비율·자막 크기 도구줄)와 VideoEditor를
+                    // 겹쳐 띄우던 것이 회장이 지적한 "씹창"이었다 — 이번엔 형식마다 전용
+                    // 편집기로 완전히 가른다(design-spec-editroom-v70.md §0).
+                    <VideoEditor
+                      videoEdit={videoEdit ?? EMPTY_VIDEO_EDIT}
+                      onVideoEditChange={onVideoEditChange}
+                      previewVideoUrl={previewVideoUrl}
+                      lines={safeLines}
+                      onLinesChange={onLinesChange}
+                    />
                   ) : (
                     <>
                       {kind === "audio" ? (
@@ -2070,6 +2091,15 @@ export function EditRoom({
                             ) : null}
                           </section>
                           <section className="mt-pad-inset border-b border-border pb-pad-inset" aria-label="간편 편집 도구" data-edit-tools>
+                            {/*
+                              v70 §4.3: 실제 서비스(onVideoEditChange 있음)는 이 분기에
+                              닿지 않는다 — 위에서 VideoEditor(플레이어+자막 대본+타임라인)로
+                              완전히 갈랐고, 새 자막 대본에는 "무음·군말 한번에 컷" 단추를
+                              넣지 않았다(실제 무음 검출 데이터가 없다 — 옛 trimSilences는
+                              정규식(말줄임표·빈 줄)으로 흉내 낸 것이었다, ADR-007). 이 아래
+                              단추는 onVideoEditChange가 없는 legacy 경로(레거시 테스트 전용)
+                              에서만 보이는 옛 동작이라 회귀 0을 위해 그대로 남긴다.
+                            */}
                             <div className="flex flex-wrap gap-stack-tight">{tools.map((tool) => <Button key={tool} size="sm" variant="secondary" className={activeTool === tool ? "border-accent bg-accent-soft text-accent" : ""} onClick={() => setActiveTool(tool)} aria-pressed={activeTool === tool} aria-label={`${visibleToolName(kind, tool)} 도구`}><ToolIcon tool={tool} /><span>{visibleToolName(kind, tool)}: {visibleToolValue(tool, toolValues[tool], kind)}</span></Button>)}
                               {kind === "video" ? <Button size="sm" onClick={trimSilences} disabled={visibleSilences === 0}>무음 구간 {visibleSilences}개 줄이기</Button> : null}
                             </div>
@@ -2119,25 +2149,6 @@ export function EditRoom({
                           </Button>
                         </div>
                       </section>
-                      {/*
-                        2026-09-23 세션맥락: 영상 탭에서 이 표준 편집 작업대(장면 순서·본문·
-                        비율·자막)와 후킹 CTA·댓글 오버레이·음성 편집기(VideoEditor)가 별도
-                        카드 두 장으로 겹쳐 떴다(회장 지적 "씹창"). 두 편집기는 서로 다른
-                        대상(장면 대본 vs 오버레이/음성)을 고치므로 기능은 둘 다 필요하지만,
-                        작업대는 한 벌이어야 한다. VideoEditor를 별도 카드로 앞세우지 않고
-                        이 카드 안의 한 구획으로 접어 넣는다. 상단 안내 문구는 지운다 —
-                        VideoEditor가 영상 유무에 따라 스스로 정확한 문구를 낸다(ADR-007
-                        조용한 실패 금지 — 실제 상태와 다른 말을 미리 단정하지 않는다).
-                      */}
-                      {kind === "video" && onVideoEditChange ? (
-                        <section className="mt-pad-inset border-t border-border pt-pad-inset" aria-label="후킹 CTA·댓글·음성 편집" data-video-edit-workbench>
-                          <VideoEditor
-                            videoEdit={videoEdit ?? EMPTY_VIDEO_EDIT}
-                            onVideoEditChange={onVideoEditChange}
-                            previewVideoUrl={previewVideoUrl}
-                          />
-                        </section>
-                      ) : null}
                     </>
                   )}
                 </div>

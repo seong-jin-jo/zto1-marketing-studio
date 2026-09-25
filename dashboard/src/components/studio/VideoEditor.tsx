@@ -1,26 +1,31 @@
 "use client";
 
 /**
- * 편집실 영상 편집 UI (세션맥락 과업 B, PR4 뒤).
+ * 편집실 영상 편집 UI — v70 2단계(design-spec-editroom-v70.md §4).
  *
- * 회장이 직접 지목한 네 기능: 후킹 CTA 오버레이 선택 · 영상 위 댓글(사회적 증거) 오버레이 ·
- * 재생 · 자막 기반 편집 · 음성 변경. `BubbleEditor.tsx` 와 같은 원칙(D-2026-09-09-1 직접
- * 편집 기본, ADR-007 조용한 실패 금지)을 따른다 — 상태 변화는 `video-edit-contract.ts` 의
- * 순수 함수만 거치고, 실패는 이유를 화면에 그대로 보여준다.
+ * 1단계(과업 B)는 4단 세로 아코디언 + 초 숫자 입력칸이었다. 회장 R-25가 "편집실이
+ * 못 쓸 물건", "영상 편집은 CapCut·Vrew 수준이어야 한다"고 지적했다(20번 가까이 "왜
+ * 멈추냐"). 이번 판은 규격표 §4 그대로: 플레이어(288px) + 자막 대본(1fr) 위, 3레인
+ * 타임라인(168px) 아래. 자막 한 줄 = 한 컷. 초 숫자 입력칸은 타임라인 드래그로 대체한다.
  *
- * 렌더 반영 범위(정직하게 명시): 오버레이·댓글·컷·음성은 이 화면에서 저장은 되지만, 실제
- * 나가는 mp4 에 굽는 것은 자막만 기존 `/api/video/subtitle` 로 연결돼 있다. 나머지는
- * "렌더 반영은 다음 단계입니다" 배지를 옆에 붙인다 — 적용된 척 숨기지 않는다.
+ * 유지: 오버레이 추가 폼(`OverlayEditor`)·댓글 폼(`CommentOverlayEditor`)·음성 선택
+ * (`VoiceSelector`)은 기존 회귀 테스트(video-editor-overlay-boundary.test.tsx,
+ * edit-autosave-merge.regression-1.test.tsx)가 그 정확한 DOM(라벨·프리셋 문구·버튼
+ * 텍스트)에 걸려 있어 그대로 둔다. 다만 각 오버레이 행의 초 숫자 입력칸은 규격 위반이라
+ * 없애고, 시간 조정은 타임라인 드래그로만 한다.
  *
- * 근거: docs/eng-design/osmu-quality-stage1-v1-claude-opus.md, wiki/거버넌스/결정.md
- * ADR-007, card-deck-ops.ts(같은 순수함수+revision 패턴), DeliveredMedia.tsx(video 태그
- * 실패 처리 패턴).
+ * 렌더 반영 범위(정직하게 명시, ADR-007): 자막 문구 편집·컷은 `lines`(발행이 쓰는
+ * 배열)에 그대로 반영되어 `/api/video/subtitle` 굽기에 실제로 실린다. 그러나 자막·오버레이·
+ * 댓글의 시간 배치(타임라인 드래그)는 편집실 미리보기 전용이다 — 굽기는 지금도 영상
+ * 길이를 줄 수만큼 균등하게 나눈다(video-subtitle.ts subtitleCues). 오버레이·댓글·음성은
+ * 여전히 편집 상태로만 저장되고 mp4에는 굽히지 않는다. 이 사실을 화면에 그대로 적는다.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
 import { authHeaders } from "@/lib/auth";
 import {
   type SubtitleLine,
+  type VideoComment,
   type VideoEdit,
   type VideoOverlay,
   VideoEditValidationError,
@@ -34,13 +39,15 @@ import {
   toggleSubtitleCut,
   updateComment,
   updateOverlay,
+  updateSubtitleText,
+  updateSubtitleTiming,
 } from "@/lib/studio/video-edit-contract";
 
-/**
- * 훅/CTA 문구 칩 — 카드덱 `HOOK_BANK`(BubbleEditor.tsx)와 같은 출처
- * (docs/design/osmu-content-quality-benchmark-v1-claude-opus.html §REF A-3·⑦CTA)의
- * 영상판. 표지 훅 3공식(질문·숫자·고통인식)과 댓글 유도 CTA를 영상 오버레이 문구로 옮겼다.
- */
+/** 1초를 몇 px로 그리는지. design-spec-editroom-v70.md §4.4 "1초 ≈ 12px". */
+const PX_PER_SEC = 12;
+/** 눈금 간격(초). §4.4 "5초 간격". */
+const TICK_SEC = 5;
+
 const VIDEO_HOOK_PRESETS = [
   "이거 순서가 틀렸다면?",
   "3초 만에 원인 하나",
@@ -56,10 +63,23 @@ export interface VideoEditorProps {
   videoEdit: VideoEdit;
   onVideoEditChange: (edit: VideoEdit) => void;
   previewVideoUrl: string | null;
+  /**
+   * 장면 대본(발행이 쓰는 원문 배열). 있으면 자막 대본 편집기가 이 값을 자막 컷의
+   * 출발점으로 삼고, 문구 편집·컷은 이 배열에도 그대로 반영한다(§4.3).
+   */
+  lines?: string[];
+  onLinesChange?: (lines: string[]) => void;
 }
 
 function formatSec(sec: number): string {
   return Number.isInteger(sec) ? `${sec}` : sec.toFixed(1);
+}
+
+function formatClock(sec: number): string {
+  const safe = Number.isFinite(sec) && sec >= 0 ? sec : 0;
+  const m = Math.floor(safe / 60);
+  const s = Math.floor(safe % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 /** VideoEditValidationError.rule → 화면에 보여줄 고정 한국어 문구(N3). */
@@ -71,10 +91,11 @@ function videoEditErrorMessage(rule: string): string {
   return "입력한 값을 확인해 주세요.";
 }
 
-export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl }: VideoEditorProps) {
+export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange }: VideoEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [playhead, setPlayhead] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   function run(op: (edit: VideoEdit) => VideoEdit) {
@@ -93,11 +114,29 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl }: V
     }
   }
 
+  function seek(sec: number) {
+    if (videoRef.current) videoRef.current.currentTime = sec;
+    setPlayhead(sec);
+  }
+
+  function togglePlay() {
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.paused) {
+      const p = el.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+      setPlaying(true);
+    } else {
+      el.pause();
+      setPlaying(false);
+    }
+  }
+
   if (!previewVideoUrl) {
     return (
       <div className="space-y-stack-tight rounded-surface border border-dashed border-border bg-surface-2 p-pad-inset" data-video-editor-empty>
         <b className="block text-body font-semibold text-text">아직 편집할 영상이 없습니다</b>
-        <p className="text-caption text-muted">생성실에서 영상을 먼저 만들면 여기서 후킹 CTA·댓글 오버레이·자막·음성을 편집할 수 있습니다.</p>
+        <p className="text-caption text-muted">생성실에서 영상을 먼저 만들면 여기서 자막·컷·후킹 CTA·댓글 오버레이·음성을 편집할 수 있습니다.</p>
       </div>
     );
   }
@@ -105,89 +144,261 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl }: V
   return (
     <div className="space-y-stack" data-video-editor>
       {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-video-editor-error>{error}</p> : null}
-      <VideoPlayback
-        src={previewVideoUrl}
-        videoRef={videoRef}
-        overlays={videoEdit.overlays}
-        playhead={playhead}
-        duration={duration}
-        onLoadedMetadata={(d) => setDuration(d)}
-        onTimeUpdate={(t) => setPlayhead(t)}
-        onSeek={(t) => {
-          if (videoRef.current) videoRef.current.currentTime = t;
-          setPlayhead(t);
-        }}
-      />
-      <OverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} />
-      <CommentOverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} />
-      <SubtitleCutEditor edit={videoEdit} run={run} />
-      <VoiceSelector edit={videoEdit} run={run} />
+      <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_10.5rem] max-[64rem]:[grid-template-rows:minmax(0,1fr)_9.375rem] max-[26rem]:[grid-template-rows:auto_6.75rem]">
+        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[26rem]:grid-cols-1">
+          <VideoPlayback
+            src={previewVideoUrl}
+            videoRef={videoRef}
+            overlays={videoEdit.overlays}
+            comments={videoEdit.comments}
+            activeSubtitleText={activeSubtitleText(videoEdit.subtitles, playhead)}
+            playhead={playhead}
+            duration={duration}
+            playing={playing}
+            onTogglePlay={togglePlay}
+            voiceName={videoEdit.voice?.voiceName ?? null}
+            onLoadedMetadata={(d) => setDuration(d)}
+            onTimeUpdate={(t) => setPlayhead(t)}
+            onSeek={seek}
+          />
+          <div className="min-w-0 space-y-stack" data-video-script-column>
+            <SubtitleScriptEditor
+              lines={lines}
+              onLinesChange={onLinesChange}
+              edit={videoEdit}
+              playhead={playhead}
+              onSeek={seek}
+              run={run}
+            />
+            <OverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} />
+            <CommentOverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} />
+            <VoiceSelector edit={videoEdit} run={run} />
+          </div>
+        </div>
+        <VideoTimeline edit={videoEdit} duration={duration} playhead={playhead} onSeek={seek} run={run} />
+      </div>
+      <p className="text-caption text-subtle" data-render-status-note>
+        자막 문구·컷은 실제 발행 영상에 반영됩니다. 타임라인에서 끌어서 바꾼 시간 배치와 후킹·CTA·댓글 오버레이·음성 선택은
+        지금은 편집실 미리보기에서만 보이고, 나가는 영상 파일에 굽는 것은 다음 단계입니다.
+      </p>
     </div>
   );
 }
 
+function activeSubtitleText(subtitles: SubtitleLine[], playhead: number): string | null {
+  const line = subtitles.find((s) => !s.cut && playhead >= s.startSec && playhead < s.endSec);
+  return line ? line.text : null;
+}
+
 function VideoPlayback({
-  src, videoRef, overlays, playhead, duration, onLoadedMetadata, onTimeUpdate, onSeek,
+  src, videoRef, overlays, comments, activeSubtitleText, playhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
 }: {
   src: string;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   overlays: VideoOverlay[];
+  comments: VideoComment[];
+  activeSubtitleText: string | null;
   playhead: number;
   duration: number | null;
+  playing: boolean;
+  onTogglePlay: () => void;
+  voiceName: string | null;
   onLoadedMetadata: (duration: number) => void;
   onTimeUpdate: (time: number) => void;
   onSeek: (time: number) => void;
 }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const activeOverlays = overlays.filter((o) => playhead >= o.startSec && playhead <= o.endSec);
+  const activeComment = comments.find((c) => playhead >= c.startSec && playhead <= c.endSec) ?? null;
+  const hook = activeOverlays.find((o) => o.kind === "hook");
+  const cta = activeOverlays.find((o) => o.kind === "cta");
 
   return (
-    <div className="space-y-stack-tight" data-video-playback>
-      <div className="relative overflow-hidden rounded-surface border border-border bg-surface-2">
+    <div className="min-w-0 space-y-stack-tight" data-video-playback>
+      <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface" data-video-screen>
         {loadFailed ? (
           <p className="p-pad-inset text-caption text-danger" data-video-load-failed>영상을 불러오지 못했습니다. 생성실에서 다시 만들어 주세요.</p>
         ) : (
           // 오버레이·자막·컷 구간은 재생 위치와 맞춰야 해서 video DOM ref와
-          // onTimeUpdate/onLoadedMetadata를 직접 잡는다(DeliveredMedia는 이 훅을 밖으로
-          // 내보내지 않는다). raw-media-ok: onError로 로드 실패를 이미 문구로 보여준다.
+          // onTimeUpdate/onLoadedMetadata를 직접 잡는다. controls는 규격 §4.2 커스텀
+          // 조작 줄로 대체한다(raw-media-ok: onError로 로드 실패를 이미 문구로 보여준다).
           <video
             ref={videoRef}
             src={src}
-            controls
             preload="metadata"
-            className="w-full"
+            className="h-full w-full object-contain"
             onLoadedMetadata={(e) => onLoadedMetadata(e.currentTarget.duration)}
             onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
             onError={() => setLoadFailed(true)}
             data-video-el
           />
         )}
-        {activeOverlays.map((overlay) => (
-          <div
-            key={overlay.id}
-            data-video-overlay-active
-            data-video-overlay-kind={overlay.kind}
-            className={`pointer-events-none absolute inset-x-0 bottom-4 mx-auto w-fit max-w-11/12 rounded-chip px-stack py-micro text-center text-caption font-semibold ${overlay.kind === "hook" ? "bg-accent-soft text-accent" : "bg-success-soft text-success"}`}
-          >
-            {overlay.text}
+        {hook ? (
+          <div data-video-overlay-active data-video-overlay-kind="hook" className="pointer-events-none absolute inset-x-2 top-[22px] mx-auto w-fit max-w-[90%] truncate rounded-chip bg-accent px-stack-tight py-micro text-center text-caption font-bold text-accent-fg">
+            {hook.text}
           </div>
-        ))}
+        ) : null}
+        {cta ? (
+          <div data-video-overlay-active data-video-overlay-kind="cta" className="pointer-events-none absolute inset-x-2 bottom-[14px] mx-auto w-fit max-w-[90%] truncate rounded-chip bg-success px-stack-tight py-micro text-center text-caption font-bold text-status-fg">
+            {cta.text}
+          </div>
+        ) : null}
+        {activeComment ? (
+          <div data-video-comment-active className="pointer-events-none absolute bottom-[108px] left-3 flex max-w-[70%] items-center gap-micro rounded-chip bg-black/60 px-stack-tight py-micro text-caption text-white">
+            <span className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-pill bg-white/20 text-[10px]" aria-hidden="true">{activeComment.author.slice(0, 1)}</span>
+            <span className="truncate">{activeComment.author}: {activeComment.text}</span>
+          </div>
+        ) : null}
+        {activeSubtitleText ? (
+          <p data-video-subtitle-active className="pointer-events-none absolute inset-x-2 bottom-[56px] text-center text-[15px] font-extrabold leading-[22px] text-white [text-shadow:0_2px_6px_rgba(0,0,0,.8)]">
+            {activeSubtitleText}
+          </p>
+        ) : null}
       </div>
-      {duration ? (
-        <input
-          aria-label="재생 위치"
-          type="range"
-          min={0}
-          max={duration}
-          step={0.1}
-          value={playhead}
-          onChange={(e) => onSeek(Number.parseFloat(e.target.value))}
-          className="w-full"
-          data-video-scrubber
-        />
-      ) : null}
-      <p className="text-caption text-muted">{formatSec(playhead)}초 / {duration ? `${formatSec(duration)}초` : "길이 확인 중"}</p>
+      <div className="flex items-center gap-stack-tight rounded-control bg-player-panel p-stack-tight" data-video-controls>
+        <button
+          type="button"
+          aria-label={playing ? "일시정지" : "재생"}
+          onClick={onTogglePlay}
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-pill bg-accent text-accent-fg"
+          data-video-play-toggle
+        >
+          {playing ? "❚❚" : "▶"}
+        </button>
+        {duration ? (
+          <input
+            aria-label="재생 위치"
+            type="range"
+            min={0}
+            max={duration}
+            step={0.1}
+            value={playhead}
+            onChange={(e) => onSeek(Number.parseFloat(e.target.value))}
+            className="h-1 min-w-0 flex-1"
+            data-video-scrubber
+          />
+        ) : <span className="flex-1 text-caption text-subtle">길이 확인 중</span>}
+        <span className="shrink-0 text-caption text-subtle">{formatSec(playhead)}초 / {duration ? `${formatSec(duration)}초` : "-"}</span>
+      </div>
+      <p className="text-caption text-subtle" data-video-voice-row>
+        목소리: {voiceName ?? "기존 음성 그대로"}
+      </p>
     </div>
+  );
+}
+
+/**
+ * §4.3 자막 대본. 한 줄 = 한 컷. `lines`(발행 원문)를 자막 컷의 출발점으로 삼아
+ * `videoEdit.subtitles`를 한 번 시딩하고, 그 뒤로는 문구 편집·컷이 두 곳 모두에
+ * 반영된다 — 발행은 `lines`를 읽고(subtitleCues), 미리보기는 `subtitles`의 시간을 읽는다.
+ *
+ * "무음·군말 한번에 컷"은 넣지 않는다. 실제 무음 검출 데이터가 없다(세션맥락 지시,
+ * ADR-007) — 이전 판의 그 단추는 정규식(`/…|\.{3}|^\s*$/`)으로 무음을 흉내 낸 것이었다.
+ */
+function SubtitleScriptEditor({
+  lines, onLinesChange, edit, playhead, onSeek, run,
+}: {
+  lines: string[];
+  onLinesChange?: (lines: string[]) => void;
+  edit: VideoEdit;
+  playhead: number;
+  onSeek: (sec: number) => void;
+  run: (op: (e: VideoEdit) => VideoEdit) => void;
+}) {
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current) return;
+    if (edit.subtitles.length > 0) { seeded.current = true; return; }
+    const nonEmpty = lines.filter((l) => l.trim());
+    if (!nonEmpty.length) return;
+    seeded.current = true;
+    const seededLines: SubtitleLine[] = nonEmpty.map((text, index) => ({
+      id: newId("sub"), order: index, text, startSec: index * 3, endSec: index * 3 + 3, cut: false,
+    }));
+    run((e) => setSubtitles(e, seededLines));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines.join("\u0001")]);
+
+  /** 컷 안 된 자막 문구를 순서대로 발행용 `lines`에 반영한다(발행은 이 배열만 읽는다). */
+  function syncLines(subtitles: SubtitleLine[]) {
+    if (!onLinesChange) return;
+    onLinesChange(subtitles.filter((s) => !s.cut).map((s) => s.text));
+  }
+
+  function editText(id: string, text: string) {
+    run((e) => {
+      const next = updateSubtitleText(e, id, text);
+      syncLines(next.subtitles);
+      return next;
+    });
+  }
+
+  function toggleCut(id: string) {
+    run((e) => {
+      const next = toggleSubtitleCut(e, id);
+      syncLines(next.subtitles);
+      return next;
+    });
+  }
+
+  const cutCount = edit.subtitles.filter((s) => s.cut).length;
+
+  return (
+    <section aria-label="자막 대본" className="space-y-stack-tight rounded-surface border border-border bg-surface-2 p-pad-inset" data-video-subtitle-script>
+      <div className="flex flex-wrap items-center justify-between gap-stack-tight">
+        <b className="text-caption font-semibold text-text">자막 대본</b>
+        <div className="flex flex-wrap gap-stack-tight" data-video-script-quick-add>
+          <Button size="sm" variant="secondary" onClick={() => run((e) => addOverlay(e, "hook", VIDEO_HOOK_PRESETS[0], Math.max(0, playhead), playhead + 3))}>＋훅</Button>
+          <Button size="sm" variant="secondary" onClick={() => run((e) => addOverlay(e, "cta", VIDEO_CTA_PRESETS[0], Math.max(0, playhead), playhead + 3))}>＋CTA</Button>
+          <Button size="sm" variant="secondary" onClick={() => run((e) => addComment(e, { author: "예시", text: "여기에 실제 댓글로 바꿔주세요", source: "manual", startSec: Math.max(0, playhead), endSec: playhead + 3 }))}>＋댓글</Button>
+        </div>
+      </div>
+      {edit.subtitles.length === 0 ? (
+        <p className="text-caption text-muted" data-video-subtitle-empty>장면 대사가 없어 자막 컷이 아직 없습니다. 생성실 대본을 채우면 여기 한 줄씩 나타납니다.</p>
+      ) : (
+        <ol className="max-h-96 space-y-micro overflow-y-auto" data-video-subtitle-list>
+          {edit.subtitles.map((line) => {
+            const isCurrent = !line.cut && playhead >= line.startSec && playhead < line.endSec;
+            return (
+              <li
+                key={line.id}
+                data-video-subtitle-id={line.id}
+                data-video-subtitle-cut={line.cut}
+                data-video-subtitle-current={isCurrent}
+                className={`grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-stack-tight rounded-control border-l-[3px] p-stack-tight text-caption ${
+                  line.cut ? "border-l-danger bg-danger-soft text-subtle" : isCurrent ? "border-l-accent bg-accent-soft" : "border-l-border bg-surface"
+                }`}
+              >
+                <button type="button" className="font-mono text-[12px] text-subtle" aria-label={`${formatClock(line.startSec)}로 이동`} onClick={() => onSeek(line.startSec)} data-video-subtitle-seek>
+                  {formatClock(line.startSec)}
+                </button>
+                <input
+                  aria-label="자막 문구"
+                  value={line.text}
+                  disabled={line.cut}
+                  onFocus={() => onSeek(line.startSec)}
+                  onChange={(e) => editText(line.id, e.target.value)}
+                  onKeyDown={(e) => {
+                    // §4.3 "줄 삭제(Backspace) = 그 구간 컷". 문구가 이미 비어 있을 때만
+                    // 컷 처리한다 — 글자를 지우는 중인 보통의 Backspace를 가로채지 않는다.
+                    if (e.key === "Backspace" && line.text.length === 0 && !line.cut) {
+                      e.preventDefault();
+                      toggleCut(line.id);
+                    }
+                  }}
+                  className={`min-w-0 rounded-control border-0 bg-transparent px-micro text-[15px] leading-[23px] text-text outline-none [word-break:keep-all] ${line.cut ? "line-through text-subtle" : ""}`}
+                  data-video-subtitle-text
+                />
+                <Button size="sm" variant="secondary" onClick={() => toggleCut(line.id)} data-video-subtitle-cut-toggle>
+                  {line.cut ? "되돌리기" : "컷"}
+                </Button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {cutCount > 0 ? <p className="text-caption text-subtle" data-video-subtitle-cut-count>컷 표시된 줄 {cutCount}개. 발행 영상에서 빠지고, 되돌리기로 되살릴 수 있습니다.</p> : null}
+    </section>
   );
 }
 
@@ -241,37 +452,12 @@ function OverlayEditor({ edit, duration, playhead, run }: { edit: VideoEdit; dur
               onChange={(e) => run((d) => updateOverlay(d, overlay.id, { text: e.target.value }))}
               className="min-w-0 flex-1 rounded-control border border-border bg-surface-2 p-micro text-caption text-text"
             />
-            <input
-              aria-label={`${overlayIndex + 1}번째 오버레이 시작 초`}
-              type="number"
-              min={0}
-              step={0.1}
-              value={overlay.startSec}
-              onChange={(e) => {
-                const next = Number.parseFloat(e.target.value);
-                if (Number.isFinite(next)) run((d) => updateOverlay(d, overlay.id, { startSec: next }));
-              }}
-              className="w-16 rounded-control border border-border bg-surface-2 p-micro text-caption"
-            />
-            <span>~</span>
-            <input
-              aria-label={`${overlayIndex + 1}번째 오버레이 끝 초`}
-              type="number"
-              min={0}
-              step={0.1}
-              value={overlay.endSec}
-              onChange={(e) => {
-                const next = Number.parseFloat(e.target.value);
-                if (Number.isFinite(next)) run((d) => updateOverlay(d, overlay.id, { endSec: next }));
-              }}
-              className="w-16 rounded-control border border-border bg-surface-2 p-micro text-caption"
-            />
+            <span className="text-subtle" data-video-overlay-range>{formatClock(overlay.startSec)}~{formatClock(overlay.endSec)} · 타임라인에서 끌어 바꿉니다</span>
             <Button size="sm" variant="secondary" aria-label={`${overlayIndex + 1}번째 오버레이 삭제`} onClick={() => run((d) => removeOverlay(d, overlay.id))}>삭제</Button>
             {!overlay.text.trim() ? <p className="w-full text-caption text-warning" data-video-overlay-incomplete>문구가 비어 있는 동안 저장되지 않습니다.</p> : null}
           </li>
         ))}
       </ul>
-      <p className="text-caption text-subtle" data-render-status-note>렌더 반영은 다음 단계입니다. 지금은 편집실 미리보기에만 겹쳐 보입니다.</p>
     </section>
   );
 }
@@ -334,43 +520,6 @@ function CommentOverlayEditor({ edit, duration, playhead, run }: { edit: VideoEd
   );
 }
 
-/** 자막 기반 편집. 기존 `/api/video/subtitle` 은 굽기 전용(줄 목록 조회 API가 없다)이라
- * 여기서는 수동으로 줄을 입력·삭제한다(삭제=컷 표시). 렌더링 굽기 자체는 저장 시
- * 기존 subtitle API가 그대로 처리한다(별도 API 신설 없음, 세션맥락 "있으면 재사용"). */
-function SubtitleCutEditor({ edit, run }: { edit: VideoEdit; run: (op: (e: VideoEdit) => VideoEdit) => void }) {
-  const [draft, setDraft] = useState("");
-  const cutCount = useMemo(() => edit.subtitles.filter((s) => s.cut).length, [edit.subtitles]);
-
-  function addLine() {
-    const text = draft.trim();
-    if (!text) return;
-    const lastEnd = edit.subtitles.length ? edit.subtitles[edit.subtitles.length - 1].endSec : 0;
-    const line: SubtitleLine = { id: newId("sub"), order: edit.subtitles.length, text, startSec: lastEnd, endSec: lastEnd + 3, cut: false };
-    run((e) => setSubtitles(e, [...e.subtitles, line]));
-    setDraft("");
-  }
-
-  return (
-    <section aria-label="자막 기반 편집" className="space-y-stack-tight rounded-surface border border-border bg-surface-2 p-pad-inset" data-video-subtitle-editor>
-      <b className="text-caption font-semibold text-text">자막 기반 편집</b>
-      <p className="text-caption text-muted">자막 줄을 입력하고, 빼고 싶은 줄은 "컷 표시"를 누르세요. 지금은 여기 적은 자막이 영상에 굽히지 않습니다. 자막 반영과 컷 구간 삭제 렌더링은 모두 다음 단계입니다.</p>
-      <div className="flex flex-wrap gap-stack-tight">
-        <input aria-label="자막 줄" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLine()} placeholder="자막 한 줄" className="flex-1 min-w-40 rounded-control border border-border bg-surface p-stack text-body text-text" />
-        <Button size="sm" disabled={!draft.trim()} onClick={addLine}>줄 추가</Button>
-      </div>
-      <ul className="space-y-stack-tight" data-video-subtitle-list>
-        {edit.subtitles.map((line) => (
-          <li key={line.id} className={`flex items-center gap-stack-tight rounded-control border p-stack text-caption ${line.cut ? "border-danger bg-danger-soft text-danger line-through" : "border-border bg-surface text-text"}`} data-video-subtitle-id={line.id} data-video-subtitle-cut={line.cut}>
-            <span className="flex-1">{line.text}</span>
-            <Button size="sm" variant="secondary" onClick={() => run((d) => toggleSubtitleCut(d, line.id))}>{line.cut ? "컷 취소" : "컷 표시"}</Button>
-          </li>
-        ))}
-      </ul>
-      <p className="text-caption text-subtle">컷 표시된 줄 {cutCount}개</p>
-    </section>
-  );
-}
-
 function VoiceSelector({ edit, run }: { edit: VideoEdit; run: (op: (e: VideoEdit) => VideoEdit) => void }) {
   const [voices, setVoices] = useState<Array<{ id: string; name: string; category: string }> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -383,9 +532,6 @@ function VoiceSelector({ edit, run }: { edit: VideoEdit; run: (op: (e: VideoEdit
       .then(async (res) => {
         const data = (await res.json().catch(() => null)) as { voices?: Array<{ id: string; name: string; category: string }>; code?: string } | null;
         if (cancelled) return;
-        // MINOR(2026-09-22 코드리뷰): res.ok인데 voices가 빈 배열이면 그것도 성공이다
-        // ("목록 없음"과 "호출 실패"는 다른 사건). 빈 배열도 voices에 담아 성공 분기로
-        // 보내고, 화면은 "목소리가 없다"를 loadError가 아닌 안내문으로 따로 보여준다.
         if (res.ok && data && Array.isArray(data.voices)) {
           setVoices(data.voices);
           return;
@@ -429,5 +575,161 @@ function VoiceSelector({ edit, run }: { edit: VideoEdit; run: (op: (e: VideoEdit
         {edit.voice ? `선택된 목소리: ${edit.voice.voiceName}. 지금은 선택만 저장됩니다. 실제 목소리 교체는 다음 단계입니다.` : "아직 목소리를 고르지 않았습니다. 지금 이 영상은 기존 음성을 그대로 씁니다."}
       </p>
     </section>
+  );
+}
+
+type DragState = { lane: "overlay" | "comment"; id: string; edge: "move" | "start" | "end"; originStart: number; originEnd: number; originClientX: number } | null;
+
+/**
+ * §4.4 타임라인. 레인 3개(자막 / 훅·CTA / 댓글). 자막 레인은 생성된 컷을 그대로 보여주는
+ * 시각화이고(초 숫자 입력칸 없이 대본에서 편집·컷한다 — 위 SubtitleScriptEditor 담당),
+ * 훅·CTA·댓글 블록은 여기서 끌어서 구간을 바꾼다. 넘치면 가로 스크롤 + 안내 문구.
+ */
+function VideoTimeline({ edit, duration, playhead, onSeek, run }: {
+  edit: VideoEdit;
+  duration: number | null;
+  playhead: number;
+  onSeek: (sec: number) => void;
+  run: (op: (e: VideoEdit) => VideoEdit) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const [drag, setDrag] = useState<DragState>(null);
+
+  const total = Math.max(
+    duration ?? 0,
+    ...edit.subtitles.map((s) => s.endSec),
+    ...edit.overlays.map((o) => o.endSec),
+    ...edit.comments.map((c) => c.endSec),
+    10,
+  );
+  const trackWidth = total * PX_PER_SEC;
+  const ticks = useMemo(() => {
+    const out: number[] = [];
+    for (let t = 0; t <= total; t += TICK_SEC) out.push(t);
+    return out;
+  }, [total]);
+
+  useEffect(() => {
+    if (!drag) return;
+    function onMove(event: PointerEvent) {
+      if (!drag) return;
+      const deltaSec = (event.clientX - drag.originClientX) / PX_PER_SEC;
+      let nextStart = drag.originStart;
+      let nextEnd = drag.originEnd;
+      if (drag.edge === "move") {
+        const span = drag.originEnd - drag.originStart;
+        nextStart = Math.max(0, drag.originStart + deltaSec);
+        nextEnd = nextStart + span;
+      } else if (drag.edge === "start") {
+        nextStart = Math.max(0, Math.min(drag.originEnd - 0.2, drag.originStart + deltaSec));
+      } else {
+        nextEnd = Math.max(drag.originStart + 0.2, drag.originEnd + deltaSec);
+      }
+      run((e) => (drag.lane === "overlay"
+        ? updateOverlay(e, drag.id, { startSec: nextStart, endSec: nextEnd })
+        : updateComment(e, drag.id, { startSec: nextStart, endSec: nextEnd })));
+    }
+    function onUp() { setDrag(null); }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drag]);
+
+  function startDrag(lane: "overlay" | "comment", id: string, edge: "move" | "start" | "end", startSec: number, endSec: number, clientX: number) {
+    setDrag({ lane, id, edge, originStart: startSec, originEnd: endSec, originClientX: clientX });
+  }
+
+  return (
+    <div data-video-timeline className="min-w-0 space-y-micro rounded-surface border border-border bg-surface-2 p-stack-tight">
+      <p className="text-caption text-subtle" data-video-timeline-hint>← 옆으로 밀어 더 보기 · 블록을 끌어서 구간을 바꿉니다</p>
+      <div className="overflow-x-auto" data-video-timeline-scroll>
+        <div ref={trackRef} className="relative" style={{ width: `${Math.max(trackWidth, 240)}px` }} data-video-timeline-track>
+          <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+            {ticks.map((t) => (
+              <div key={t} className="absolute top-0 bottom-0 border-l border-border/60" style={{ left: `${t * PX_PER_SEC}px` }}>
+                <span className="absolute -top-4 left-0.5 text-[10px] text-subtle">{formatClock(t)}</span>
+              </div>
+            ))}
+            <div className="absolute top-0 bottom-0 w-px bg-accent" style={{ left: `${playhead * PX_PER_SEC}px` }} data-video-timeline-playhead />
+          </div>
+          <TimelineLane label="자막">
+            {edit.subtitles.map((s) => (
+              <button
+                type="button"
+                key={s.id}
+                onClick={() => onSeek(s.startSec)}
+                data-video-timeline-block="subtitle"
+                data-video-timeline-block-id={s.id}
+                className={`absolute top-0 h-7 rounded-control px-micro text-left text-[12px] ${s.cut ? "bg-danger/45 line-through text-subtle" : "bg-surface text-text"} border border-border`}
+                style={{ left: `${s.startSec * PX_PER_SEC}px`, width: `${Math.max(4, (s.endSec - s.startSec) * PX_PER_SEC)}px` }}
+              >
+                <span className="block truncate">{s.text || "(빈 자막)"}</span>
+              </button>
+            ))}
+          </TimelineLane>
+          <TimelineLane label="훅·CTA">
+            {edit.overlays.map((o) => (
+              <div
+                key={o.id}
+                data-video-timeline-block="overlay"
+                data-video-timeline-block-id={o.id}
+                className={`absolute top-0 flex h-7 items-center rounded-control px-micro text-[12px] font-semibold ${o.kind === "hook" ? "bg-accent-soft text-accent" : "bg-success-soft text-success"} border border-border`}
+                style={{ left: `${o.startSec * PX_PER_SEC}px`, width: `${Math.max(4, (o.endSec - o.startSec) * PX_PER_SEC)}px` }}
+                onPointerDown={(e) => startDrag("overlay", o.id, "move", o.startSec, o.endSec, e.clientX)}
+              >
+                <span
+                  className="mr-1 h-full w-1.5 shrink-0 cursor-ew-resize"
+                  onPointerDown={(e) => { e.stopPropagation(); startDrag("overlay", o.id, "start", o.startSec, o.endSec, e.clientX); }}
+                  aria-hidden="true"
+                />
+                <span className="truncate">{o.text}</span>
+                <span
+                  className="ml-1 h-full w-1.5 shrink-0 cursor-ew-resize"
+                  onPointerDown={(e) => { e.stopPropagation(); startDrag("overlay", o.id, "end", o.startSec, o.endSec, e.clientX); }}
+                  aria-hidden="true"
+                />
+              </div>
+            ))}
+          </TimelineLane>
+          <TimelineLane label="댓글">
+            {edit.comments.map((c) => (
+              <div
+                key={c.id}
+                data-video-timeline-block="comment"
+                data-video-timeline-block-id={c.id}
+                className="absolute top-0 flex h-7 items-center rounded-control border border-border bg-surface px-micro text-[12px]"
+                style={{ left: `${c.startSec * PX_PER_SEC}px`, width: `${Math.max(4, (c.endSec - c.startSec) * PX_PER_SEC)}px` }}
+                onPointerDown={(e) => startDrag("comment", c.id, "move", c.startSec, c.endSec, e.clientX)}
+              >
+                <span
+                  className="mr-1 h-full w-1.5 shrink-0 cursor-ew-resize"
+                  onPointerDown={(e) => { e.stopPropagation(); startDrag("comment", c.id, "start", c.startSec, c.endSec, e.clientX); }}
+                  aria-hidden="true"
+                />
+                <span className="truncate">{c.author}: {c.text}</span>
+                <span
+                  className="ml-1 h-full w-1.5 shrink-0 cursor-ew-resize"
+                  onPointerDown={(e) => { e.stopPropagation(); startDrag("comment", c.id, "end", c.startSec, c.endSec, e.clientX); }}
+                  aria-hidden="true"
+                />
+              </div>
+            ))}
+          </TimelineLane>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineLane({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="relative flex h-9 items-center gap-stack-tight border-t border-border/40 pt-1 first:border-t-0" data-video-timeline-lane={label}>
+      <span className="sticky left-0 z-[1] w-[62px] shrink-0 bg-surface-2 text-[12px] uppercase text-subtle" data-video-timeline-lane-label>{label}</span>
+      <div className="relative h-7 min-w-0 flex-1">{children}</div>
+    </div>
   );
 }
