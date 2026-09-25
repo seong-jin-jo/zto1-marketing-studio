@@ -84,6 +84,12 @@ SSRF_BLOCKLIST.addSubnet("fc00::", 7, "ipv6");
 SSRF_BLOCKLIST.addSubnet("::", 96, "ipv6");
 SSRF_BLOCKLIST.addSubnet("::ffff:0:0:0", 96, "ipv6");
 SSRF_BLOCKLIST.addSubnet("64:ff9b::", 96, "ipv6");
+// 예약/미할당(240.0.0.0/4, "class E" — 라우팅 안 되지만 로컬 스택은 받아들인다),
+// IPv6 멀티캐스트(ff00::/8), 6to4 터널링(2002::/16 — 내부 32비트가 임의 IPv4를 실어
+// 나른다) — 전부 클립 다운로드 대상이 될 이유가 없다(재리뷰 2026-09-26 후속 MINOR).
+SSRF_BLOCKLIST.addSubnet("240.0.0.0", 4, "ipv4");
+SSRF_BLOCKLIST.addSubnet("ff00::", 8, "ipv6");
+SSRF_BLOCKLIST.addSubnet("2002::", 16, "ipv6");
 
 // normalizeIpLiteral / isPrivateOrLoopbackHost / isSafeExternalMediaUrl은 회귀 테스트가
 // 우회 케이스(IPv4-mapped IPv6 두 종, 도메인 오탐 등)를 이 함수들에 직접 걸어 검증할 수
@@ -125,6 +131,12 @@ let ssrfBlocklistCheckOverrideForTests: ((address: string, family: "ipv4" | "ipv
 export function __setSsrfBlocklistCheckForTests(
   override: ((address: string, family: "ipv4" | "ipv6") => boolean) | null,
 ): void {
+  // 재리뷰 MINOR(2026-09-26 후속): 운영 코드가 실수로(또는 침해된 경로가 고의로) 이
+  // 함수를 부르면 SSRF 방어 전체가 조용히 꺼진다 — NODE_ENV=test가 아니면 즉시 던져서
+  // 그 경로 자체를 막는다.
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("__setSsrfBlocklistCheckForTests is test-only (NODE_ENV must be \"test\")");
+  }
   ssrfBlocklistCheckOverrideForTests = override;
 }
 
@@ -244,7 +256,7 @@ export async function fetchClipWithValidatedRedirects(startUrl: string): Promise
   throw new Error(`too many redirects (> ${MAX_CLIP_REDIRECTS})`);
 }
 
-async function downloadClipToLocal(originalUrl: string, tenantId: string | null): Promise<{ url: string; localSaveFailed: boolean }> {
+export async function downloadClipToLocal(originalUrl: string, tenantId: string | null): Promise<{ url: string; localSaveFailed: boolean }> {
   try {
     const videosDir = tenantVideosDir(tenantId);
     if (!videosDir) throw new Error("invalid tenant id");
@@ -273,7 +285,14 @@ async function downloadClipToLocal(originalUrl: string, tenantId: string | null)
       throw new Error("path containment violation");
     }
     const res = await fetchClipWithValidatedRedirects(originalUrl);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      // 재리뷰 MINOR(2026-09-26 후속): 4xx/5xx 응답 본문을 안 읽고 버리면 그 커넥션이
+      // keep-alive 상태로 최대 idleTimeout(기본 수십 초)까지 열린 채 남는다(404 5회 뒤
+      // 연결 4~5개가 남아있는 것이 실측됐다). throw하기 전에 반드시 비운다 — 성공 응답은
+      // 아래에서 arrayBuffer()로 바디를 직접 소비하므로 별도 cancel이 필요 없다.
+      await res.body?.cancel();
+      throw new Error(`HTTP ${res.status}`);
+    }
     const buf = Buffer.from(await res.arrayBuffer());
     fs.writeFileSync(filePath, buf);
     return { url: filename, localSaveFailed: false };
