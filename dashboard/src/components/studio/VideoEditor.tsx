@@ -71,6 +71,9 @@ export interface VideoEditorProps {
   onLinesChange?: (lines: string[]) => void;
   /** M6(교차 리뷰 MAJOR): 영상이 없는 빈 상태에 빠져나갈 길을 준다(ADR-007, 규격 §6). */
   onOpenCreate?: () => void;
+  /** MAJOR2(3차 재리뷰): 서버 값과 맞추는 동안 편집을 막는다 — 안 막으면 맞추는 도중의
+   * 수정이 조용히 사라질 수 있다. */
+  syncing?: boolean;
 }
 
 function formatSec(sec: number): string {
@@ -93,7 +96,7 @@ function videoEditErrorMessage(rule: string): string {
   return "입력한 값을 확인해 주세요.";
 }
 
-export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate }: VideoEditorProps) {
+export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false }: VideoEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [playhead, setPlayhead] = useState(0);
@@ -186,6 +189,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
               duration={duration}
               onSeek={seek}
               run={run}
+              syncing={syncing}
             />
             <OverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} />
             <CommentOverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} />
@@ -356,10 +360,24 @@ function VideoPlayback({
 function reconcileSubtitles(subtitles: SubtitleLine[], lines: string[], duration: number | null): SubtitleLine[] {
   const total = duration && duration > 0 ? duration : 6;
   const slot = lines.length > 0 ? total / lines.length : total;
-  const trustPositions = subtitles.length === lines.length;
+  const sameCount = subtitles.length === lines.length;
+  const used = new Set<string>();
   return lines.map((text, index) => {
-    const existing = trustPositions ? subtitles[index] : undefined;
-    if (existing) return { ...existing, text, order: index };
+    let existing: SubtitleLine | undefined;
+    if (sameCount) {
+      // P7(3차 재리뷰 MAJOR): 줄 수는 같아도 순서가 바뀔 수 있다(끌어서 옮기기 등).
+      // 위치만 믿으면 컷·타이밍이 엉뚱한 줄로 간다 — 그 자리 글자가 같을 때만 그대로
+      // 쓰고, 다르면 같은 글자를 가진 아직 안 쓴 줄을 찾아 그 줄의 컷·타이밍을 옮긴다.
+      // 어디에도 같은 글자가 없으면(진짜 새 줄) 아래에서 새로 시작한다.
+      const atIndex = subtitles[index];
+      existing = atIndex && atIndex.text === text && !used.has(atIndex.id)
+        ? atIndex
+        : subtitles.find((s) => s.text === text && !used.has(s.id));
+    }
+    if (existing) {
+      used.add(existing.id);
+      return { ...existing, text, order: index };
+    }
     const startSec = index * slot;
     const endSec = index === lines.length - 1 ? total : (index + 1) * slot;
     return { id: newId("sub"), order: index, text, startSec, endSec: Math.max(startSec + 0.1, endSec), cut: false };
@@ -367,7 +385,7 @@ function reconcileSubtitles(subtitles: SubtitleLine[], lines: string[], duration
 }
 
 function SubtitleScriptEditor({
-  lines, onLinesChange, edit, playhead, duration = null, onSeek, run,
+  lines, onLinesChange, edit, playhead, duration = null, onSeek, run, syncing = false,
 }: {
   lines: string[];
   onLinesChange?: (lines: string[]) => void;
@@ -376,12 +394,16 @@ function SubtitleScriptEditor({
   duration?: number | null;
   onSeek: (sec: number) => void;
   run: (op: (e: VideoEdit) => VideoEdit) => void;
+  syncing?: boolean;
 }) {
   const displaySubtitles = useMemo(() => reconcileSubtitles(edit.subtitles, lines, duration), [edit.subtitles, lines, duration]);
   // 서버에 저장된 그대로(재구성 전)와 화면에 보이는 것(재구성 후)이 다르면 아직 저장 안 한
   // 시딩·재동기화 상태다 — 조작 전에는 절대 dispatch하지 않았다는 것을 화면에도 밝힌다.
   const pendingCommit = edit.subtitles.length !== displaySubtitles.length
     || edit.subtitles.some((s, i) => s.text !== displaySubtitles[i]?.text);
+  // MINOR(3차 재리뷰): 줄 수가 달라 컷·타이밍을 초기화했을 때 그 사실을 알린다(위
+  // reconcileSubtitles의 P4 규칙 — 매칭되는 글자가 없으면 새로 시작한다).
+  const resetByCountMismatch = edit.subtitles.length > 0 && edit.subtitles.length !== lines.length;
 
   /**
    * 문구 수정만 `lines`(발행 원문)에도 반영한다 — 발행 자막은 여전히 `lines`를 굽는다.
@@ -412,6 +434,8 @@ function SubtitleScriptEditor({
           <Button size="sm" variant="secondary" onClick={() => run((e) => addComment(e, { author: "예시", text: "여기에 실제 댓글로 바꿔주세요", source: "manual", startSec: Math.max(0, playhead), endSec: playhead + 3 }))}>＋댓글</Button>
         </div>
       </div>
+      {syncing ? <p className="text-caption text-subtle" data-video-syncing-note>서버 값과 맞추는 중입니다. 잠시만요.</p> : null}
+      {resetByCountMismatch ? <p className="text-caption text-warning" data-video-subtitle-reset-note>장면 대사 수가 바뀌어 컷·시간 표시를 새로 시작했습니다.</p> : null}
       {displaySubtitles.length === 0 ? (
         <p className="text-caption text-muted" data-video-subtitle-empty>장면 대사가 없어 자막 컷이 아직 없습니다. 생성실 대본을 채우면 여기 한 줄씩 나타납니다.</p>
       ) : (
@@ -441,6 +465,7 @@ function SubtitleScriptEditor({
                 <input
                   aria-label="자막 문구"
                   value={line.text}
+                  disabled={syncing}
                   onFocus={() => onSeek(line.startSec)}
                   onChange={(e) => commitText(index, e.target.value)}
                   onKeyDown={(e) => {
@@ -454,7 +479,7 @@ function SubtitleScriptEditor({
                   className={`min-w-0 rounded-control border-0 bg-transparent px-micro text-body text-text outline-none [word-break:keep-all] ${line.cut ? "line-through text-subtle" : ""}`}
                   data-video-subtitle-text
                 />
-                <Button size="sm" variant="secondary" onClick={() => commitCut(index)} data-video-subtitle-cut-toggle>
+                <Button size="sm" variant="secondary" disabled={syncing} onClick={() => commitCut(index)} data-video-subtitle-cut-toggle>
                   {line.cut ? "되돌리기" : "컷"}
                 </Button>
               </li>

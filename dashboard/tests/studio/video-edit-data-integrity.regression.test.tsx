@@ -82,15 +82,6 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
 
 describe("B1: 새로고침(localStorage 복원)이 서버 videoEdit을 지우지 않는다", () => {
   it("draft_id 없이 localStorage만으로 복원해도 기존 오버레이가 빈 값으로 저장되지 않는다", async () => {
-    mocks.swr.mockImplementation((key: string | null) => {
-      if (key === "/api/me") return { data: { isOperator: false }, mutate: vi.fn() };
-      if (key === "/api/studio/drafts?tenant_id=tenant-video-integrity") return { data: { drafts: [], currentWork: null }, mutate: vi.fn() };
-      if (key === "/api/studio/brand-setup?tenant_id=tenant-video-integrity") return { data: { guide: null }, mutate: vi.fn() };
-      if (key === "/api/publish/first-comment-capabilities") return { data: { capabilities: [] }, mutate: vi.fn() };
-      return { data: undefined, mutate: vi.fn() };
-    });
-    setupFetch();
-
     // 이전 세션이 이미 저장해 둔 영상 편집(오버레이 1개 포함)을 localStorage에 심는다.
     // B1 이전 코드는 이 videoEdit을 복원 블록에서 읽지 않아 VideoEditor가 EMPTY_VIDEO_EDIT을
     // 받았다.
@@ -102,6 +93,31 @@ describe("B1: 새로고침(localStorage 복원)이 서버 videoEdit을 지우지
       voice: null,
       revision: 3,
     };
+    // 3차 재리뷰 BLOCKER(a): localStorage 값은 잠정치일 뿐이다 — 서버 재동기화 효과가
+    // hist.drafts에서 이 draftId를 찾아 서버 값으로 다시 맞춘다. 그 재동기화가 이
+    // localStorage와 같은 오버레이를 가진 서버 초안을 찾도록 목록에 심어 둔다(이게
+    // 바로 "서버가 이미 갖고 있던 값"이라는 이 테스트의 전제다).
+    mocks.swr.mockImplementation((key: string | null) => {
+      if (key === "/api/me") return { data: { isOperator: false }, mutate: vi.fn() };
+      if (key === "/api/studio/drafts?tenant_id=tenant-video-integrity") {
+        return {
+          data: {
+            drafts: [{
+              id: "draft-integrity-1", idea: "새로고침 복원 검증", editKind: "video", editLines: ["첫 장면"],
+              vid: { url: "/api/media/test-video", file: "/api/media/test-video", model: "기존 작업물" },
+              status: "draft", savedAt: new Date().toISOString(), videoEdit: seededVideoEdit,
+            }],
+            currentWork: null,
+          },
+          mutate: vi.fn(),
+        };
+      }
+      if (key === "/api/studio/brand-setup?tenant_id=tenant-video-integrity") return { data: { guide: null }, mutate: vi.fn() };
+      if (key === "/api/publish/first-comment-capabilities") return { data: { capabilities: [] }, mutate: vi.fn() };
+      return { data: undefined, mutate: vi.fn() };
+    });
+    setupFetch();
+
     localStorage.setItem(storageKey("tenant-video-integrity"), JSON.stringify({
       idea: "새로고침 복원 검증",
       vid: { url: "/api/media/test-video", file: "/api/media/test-video", model: "기존 작업물" },

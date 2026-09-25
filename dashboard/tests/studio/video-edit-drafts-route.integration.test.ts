@@ -45,7 +45,8 @@ describe("POST /api/studio/drafts videoEdit 저장·검증 (M6)", () => {
     }));
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, id: "draft-video-1" });
+    // 3차 재리뷰 BLOCKER(a): 새 초안(첫 저장)의 서버 판 번호는 1에서 시작한다.
+    expect(await response.json()).toEqual({ ok: true, id: "draft-video-1", videoEditServerRevision: 1 });
     const savedPayload = H.jsonValues[0] as { videoEdit: unknown };
     expect(savedPayload.videoEdit).toEqual(videoEdit);
   });

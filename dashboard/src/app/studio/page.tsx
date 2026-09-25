@@ -703,7 +703,7 @@ export default function StudioPage() {
     setIncludes(normalizeIncludes()); setPublishReconciliations({}); setEditorHandoff(null);
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
     setEditLines([]); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
-    videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null;
+    videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     setCreateBranch("video"); setCreatePrimaryKind(null); setEditKind("video"); setEditFormat(defaultContentEditFormat("video"));
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     if (!workspaceId) return;
@@ -824,7 +824,7 @@ export default function StudioPage() {
         if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
         if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
         setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null);
-        videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null;
+        videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
         if (dropped) showToast(dropped, "success");
         const nextKind = createPrimaryKind ?? "text";
         const nextLines = nextKind === "video"
@@ -970,7 +970,7 @@ export default function StudioPage() {
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setIdea(""); setText(null); setImg(null); setVid(null); setDraftId(null);
     setEditLines([]); setEditorHandoff(null); setCardDeck(null); setVideoEdit(null);
-    videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null;
+    videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     setPublishReconciliations({});
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
@@ -1148,7 +1148,7 @@ export default function StudioPage() {
     persistedCardDeck: CardDeck | null,
     persistedVideoEdit: VideoEdit | null,
   ) {
-    const r = await apiPost<{ id?: string }>("/api/studio/drafts", {
+    const r = await apiPost<{ id?: string; videoEditServerRevision?: number | null }>("/api/studio/drafts", {
       tenant_id: activeWorkspace?.id,
       id: persistedDraftId,
       idea,
@@ -1171,12 +1171,19 @@ export default function StudioPage() {
       // 섞여 상대 도메인 state를 덮어쓴 과거 회귀를 payload 계약으로 드러낸다.
       cardDeck: persistedCardDeck,
       videoEdit: persistedVideoEdit,
+      // 3차 재리뷰 BLOCKER(a): 서버가 소유한 판 번호. 마지막으로 서버와 맞춘 값을 보내면
+      // 서버가 그 값과 지금 저장된 값이 정확히 같을 때만 저장한다(compare-and-set).
+      videoEditBaseRevision: persistedVideoEdit ? videoEditBaseRevisionRef.current : undefined,
       editKind,
       editFormat,
       reviewQueueId,
       publishedAt: status === "published" ? new Date().toISOString() : undefined,
     });
-    if (r?.id) setDraftId(r.id); mutateHist(); return r?.id;
+    if (r?.id) setDraftId(r.id);
+    if (persistedVideoEdit && r && Object.prototype.hasOwnProperty.call(r, "videoEditServerRevision")) {
+      videoEditBaseRevisionRef.current = r.videoEditServerRevision ?? null;
+    }
+    mutateHist(); return r?.id;
   }
   async function saveDraftWithNotice() {
     // F5(2026-09-22 코드리뷰 3차): 자동저장 경로(onCardDeckChange)만 pruneEmptyBubbles·
@@ -1742,14 +1749,46 @@ export default function StudioPage() {
    */
   const videoEditReconciledRef = useRef(true);
   const reconciledDraftIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!draftId) { videoEditReconciledRef.current = true; return; }
-    if (reconciledDraftIdRef.current === draftId) return;
-    if (!hist?.drafts) return; // 아직 로딩 중 — reconciled는 false로 둔 채 기다린다.
-    const serverDraft = hist.drafts.find((d) => d.id === draftId);
-    if (serverDraft) setVideoEdit((serverDraft.videoEdit as VideoEdit | undefined) ?? null);
-    reconciledDraftIdRef.current = draftId;
+  /** 3차 재리뷰 BLOCKER(a): 서버가 소유한 videoEdit 판 번호. 저장 요청에 실어 보내
+   * compare-and-set 기준으로 쓴다(save() 참조). */
+  const videoEditBaseRevisionRef = useRef<number | null>(null);
+  const [videoEditReconciling, setVideoEditReconciling] = useState(false);
+  const [videoEditConflict, setVideoEditConflict] = useState(false);
+  /**
+   * 서버 값으로 videoEdit을 다시 맞춘다. draftId가 목록(LIMIT 50) 안에 있으면 그 값을
+   * 쓰고, 없으면(BLOCKER b) 단건 조회(GET ?id=)로 직접 읽는다. MAJOR2: 맞추는 동안
+   * 대기 중이던 자동저장 타이머를 반드시 먼저 끈다 — 안 그러면 재동기화 도중 그 타이머가
+   * 잠정값을 서버로 내보내 방금 서버에서 읽어온 최신 값을 덮어쓴다. 맞추는 동안은
+   * videoEditReconciling으로 편집을 막는다(사용자 수정이 조용히 사라지는 것을 막는
+   * 더 단순하고 안전한 쪽 — 코드리뷰가 준 두 선택지 중 "막는다"를 택했다).
+   */
+  async function reconcileVideoEditFromServer(id: string) {
+    if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
+    videoEditReconciledRef.current = false;
+    setVideoEditReconciling(true);
+    let serverDraft = hist?.drafts?.find((d) => d.id === id) as Record<string, unknown> | undefined;
+    if (!serverDraft) {
+      try {
+        const res = await fetch(`/api/studio/drafts?tenant_id=${encodeURIComponent(activeWorkspace?.id ?? "")}&id=${encodeURIComponent(id)}`, { headers: authHeaders() });
+        if (res.ok) {
+          const data = await res.json().catch(() => null) as { draft?: Record<string, unknown> } | null;
+          serverDraft = data?.draft ?? undefined;
+        }
+      } catch { /* 네트워크 실패 — 아래에서 null(서버에 없음 취급)로 진행한다 */ }
+    }
+    const serverVideoEdit = (serverDraft?.videoEdit as VideoEdit | undefined) ?? null;
+    setVideoEdit(serverVideoEdit);
+    videoEditBaseRevisionRef.current = serverVideoEdit?.revision ?? null;
+    reconciledDraftIdRef.current = id;
     videoEditReconciledRef.current = true;
+    setVideoEditReconciling(false);
+    setVideoEditConflict(false);
+  }
+  useEffect(() => {
+    if (!draftId) { videoEditReconciledRef.current = true; videoEditBaseRevisionRef.current = null; return; }
+    if (reconciledDraftIdRef.current === draftId) return;
+    if (!hist?.drafts) return; // SWR 로딩 중 — hist가 도착하면 이 효과가 다시 돈다.
+    void reconcileVideoEditFromServer(draftId);
   }, [draftId, hist?.drafts]);
   useEffect(() => () => {
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
@@ -1848,7 +1887,10 @@ export default function StudioPage() {
     if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setCardDeck(null); setVideoEdit(null);
-    videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null;
+    // MINOR(3차 재리뷰): draftId도 끊는다 — 남겨 두면 다음 저장이 이 후보와 무관한
+    // 옛 초안 id 위에 그대로 얹혀 저장된다.
+    setDraftId(null);
+    videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     setSelectedCandidate(candidate);
     /*
       ★rationale 은 **고객에게 보여 줄 글이 아니다.** "이 구조를 왜 골랐는가" 를 우리가
@@ -2375,7 +2417,15 @@ export default function StudioPage() {
         // 키 자체를 payload에서 뺀다(기존 서버 값 보존).
         save("draft", publishReconciliations, draftIdRef.current, editLinesRef.current, img, vid, null, nextEdit)
           .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setVideoEditAutosaveError(""); })
-          .catch((error) => setVideoEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
+          .catch((error) => {
+            // MAJOR1(3차 재리뷰): 409가 나면 빠져나갈 길("서버 값 다시 불러오기")을 준다.
+            if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "VIDEO_EDIT_STALE_REVISION") {
+              setVideoEditConflict(true);
+              setVideoEditAutosaveError("다른 곳에서 더 최신으로 저장된 영상 편집이 있습니다. 최신 값을 다시 불러온 뒤 다시 시도해 주세요.");
+              return;
+            }
+            setVideoEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+          });
       }, 800);
     };
     attempt(10);
@@ -2413,6 +2463,9 @@ export default function StudioPage() {
         autosaveError={[editAutosaveError, cardDeckAutosaveError, videoEditAutosaveError].filter(Boolean).join(" ")}
         cardDeckAutosaveError={cardDeckAutosaveError}
         videoEditAutosaveError={videoEditAutosaveError}
+        videoEditConflict={videoEditConflict}
+        onVideoEditReload={() => { if (draftIdRef.current) void reconcileVideoEditFromServer(draftIdRef.current); }}
+        videoEditReconciling={videoEditReconciling}
       />
     </div>
   );

@@ -1561,6 +1561,12 @@ interface EditRoomProps {
    */
   cardDeckAutosaveError?: string;
   videoEditAutosaveError?: string;
+  /** MAJOR1(3차 재리뷰): 409(다른 탭·기기가 먼저 저장함)가 나면 빠져나갈 길을 준다. */
+  videoEditConflict?: boolean;
+  onVideoEditReload?: () => void;
+  /** MAJOR2(3차 재리뷰): 서버 값과 맞추는 동안 편집을 막는다 — 안 막으면 맞추는 도중의
+   * 수정이 조용히 사라질 수 있다. */
+  videoEditReconciling?: boolean;
   /**
    * 카드뉴스 v2 덱(PR4). 있으면 `template==="chat_bubble"` 편집을 `CardDeckPanel` 이
    * 대신하고, 없으면 기존 `lines` 편집 그대로다(회귀 0 — 세션맥락).
@@ -1756,6 +1762,9 @@ export function EditRoom({
   autosaveError,
   cardDeckAutosaveError,
   videoEditAutosaveError,
+  videoEditConflict = false,
+  onVideoEditReload,
+  videoEditReconciling = false,
   cardDeck = null,
   onCardDeckChange,
   videoEdit = null,
@@ -2035,6 +2044,7 @@ export function EditRoom({
                         lines={safeLines}
                         onLinesChange={onLinesChange}
                         onOpenCreate={onOpenCreate}
+                        syncing={videoEditReconciling}
                       />
                     </>
                   ) : (
@@ -2257,6 +2267,7 @@ export function EditRoom({
               <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-blocked-domain="video">
                 {videoEditAutosaveError}{" "}
                 {kind !== "video" ? <Button size="sm" variant="secondary" onClick={() => onKindChange?.("video")}>영상 편집으로 가기</Button> : null}
+                {videoEditConflict && onVideoEditReload ? <Button size="sm" onClick={onVideoEditReload} data-video-edit-reload>서버 값 다시 불러오기</Button> : null}
               </p>
             ) : null}
             <div className={styles.editHelperFooter}>
