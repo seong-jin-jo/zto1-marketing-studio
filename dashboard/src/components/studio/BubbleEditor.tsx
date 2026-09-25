@@ -190,27 +190,58 @@ function textOffsetWithinElement(root: HTMLElement, node: Node, offset: number):
  * BLOCKER(PR 재리뷰, Playwright 3브라우저 실측): 브라우저 기본 Enter는 `<br>`이 아니라
  * `<div>`(WebKit은 Shift+Enter도 `<div>`)를 만든다. 이 함수가 `<br>`만 줄바꿈으로 세던
  * 시절엔 화면은 두 줄인데 저장본·발행 PNG는 한 줄이 됐다(probe-{chromium,webkit,firefox}.log
- * 실측). 이제 `onKeyDown`에서 Enter를 가로채 항상 리터럴 `\n` 텍스트 노드를 직접 넣어
- * `<div>` 생성 자체를 막지만(1차 방어), 그걸로도 못 막는 경로(합성 입력·미래의 붙여넣기
- * 변경 등)에 대비해 여기서도 DIV·P 경계를 `\n` 한 글자로 센다(2차 방어, 리뷰어 지시).
+ * 실측).
+ *
+ * BLOCKER 2차 재검증(E2E 스크립트 실측): `handleKeyDown`은 Enter를 가로챈 뒤
+ * `document.execCommand('insertText', false, '\n')`로 실제 삽입을 브라우저에 맡긴다(손으로
+ * Range를 조작하던 1차 수정은 jsdom에선 통과했지만 실제 Chromium에서 다음 타이핑 때 방금
+ * 넣은 내용을 지워버려 폐기했다 — 자세한 경위는 그 함수 주석). 그 결과 Chromium·WebKit은
+ * 빈 줄을 `<div><br></div>`로, Firefox는 리터럴 `\n` 텍스트 노드 뒤에 표시용 `<br>`을
+ * 짝으로 남긴다 — 이 함수는 이 두 형태와 일반 DIV·P 문단 경계를 전부 정확히 한 글자의
+ * 개행으로만 센다(이중 카운트 방지 규칙은 아래 BR 분기 주석 참조). "무엇이 들어오든 이
+ * 함수가 맞게 읽는다"가 설계 원칙이라, 브라우저가 내부적으로 어떤 표현을 쓰든 흔들리지
+ * 않는다.
  */
 function elementToPlainText(el: HTMLElement): string {
-  let text = "";
-  let sawContent = false;
+  const nodes: Node[] = [];
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_ALL);
   let current: Node | null = walker.nextNode();
   while (current) {
-    if (current.nodeType === Node.TEXT_NODE) {
-      const value = current.textContent ?? "";
-      text += value;
-      if (value.length > 0) sawContent = true;
-    } else if (current.nodeName === "BR") {
-      text += "\n";
-    } else if ((current.nodeName === "DIV" || current.nodeName === "P") && sawContent) {
-      text += "\n";
-    }
+    nodes.push(current);
     current = walker.nextNode();
   }
+  let text = "";
+  let sawContent = false;
+  nodes.forEach((node, index) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const value = node.textContent ?? "";
+      text += value;
+      if (value.length > 0) sawContent = true;
+      return;
+    }
+    if (node.nodeName === "BR") {
+      // 2차 재검증: `execCommand('insertText', false, "\n")`(handleKeyDown)이 낳는 실제
+      // 브라우저별 구조 두 가지를 이중 카운트하지 않는다.
+      // - Chromium·WebKit: 빈 줄을 `<div><br></div>`로 쓴다 — 그 DIV의 유일한 자식인
+      //   이 <br>은 DIV 경계(아래 분기)가 이미 그 줄의 개행을 센 것의 표시일 뿐이다.
+      const parent = node.parentNode;
+      const isSoleChildOfBlock = !!parent
+        && (parent.nodeName === "DIV" || parent.nodeName === "P")
+        && parent.childNodes.length === 1;
+      if (isSoleChildOfBlock) return;
+      // - Firefox: 리터럴 "\n" 텍스트 노드 뒤에 표시용 <br>을 짝으로 남긴다 — 그 텍스트
+      //   노드의 "\n" 자체가 이미 개행 한 글자를 셌다.
+      const isTrailing = index === nodes.length - 1;
+      const prev = index > 0 ? nodes[index - 1] : null;
+      const isHelperPair = prev?.nodeType === Node.TEXT_NODE && (prev.textContent ?? "").endsWith("\n");
+      if (isTrailing && isHelperPair) return;
+      text += "\n";
+      return;
+    }
+    if ((node.nodeName === "DIV" || node.nodeName === "P") && sawContent) {
+      text += "\n";
+    }
+  });
   return text;
 }
 
@@ -321,11 +352,6 @@ function BubbleContentEditable({
   function handleInput() {
     const el = localRef.current;
     if (!el || isComposingRef.current) return;
-    // BLOCKER 재확인 중 실측: 끝에 캐럿을 두고 Enter를 치면 텍스트가 "...\n"으로 끝난다.
-    // 예전엔 여기서 `.replace(/\n$/, "")`로 그 끝 개행을 잘랐다(당시엔 브라우저가 넣는
-    // 트레일링 <br> 흔적을 지우려던 의도로 보인다) — 지금은 Enter를 직접 가로채 진짜
-    // 개행만 넣으므로, 이 트림이 "메시지 끝에서 Enter" 라는 가장 흔한 경우의 줄바꿈을
-    // 그대로 삼켜버렸다(재리뷰 BLOCKER 대응 중 자체 회귀 테스트로 실측). 더는 자르지 않는다.
     const text = elementToPlainText(el);
     lastSyncedHtmlRef.current = el.innerHTML;
     onTextChange(text);
@@ -333,14 +359,26 @@ function BubbleContentEditable({
   }
 
   /**
-   * BLOCKER(PR 재리뷰): 브라우저 기본 Enter/Shift+Enter가 `<div>`를 만들어 저장본이
-   * 한 줄로 뭉개지는 문제를 근본에서 막는다. `contentEditable="plaintext-only"`는
-   * 리뷰어가 1순위로 권한 방법이지만 Playwright 3브라우저 실측 시점 기준 WebKit·Firefox
-   * 지원이 엇갈려(probe-*.log) 이 자리에선 쓰지 않았다 — 대신 리뷰어가 준 대안대로 Enter를
-   * `preventDefault`하고 캐럿 자리에 리터럴 `\n` 텍스트 노드를 직접 넣는다. Shift 유무를
-   * 가리지 않는다(이 편집기엔 "문단 나누기"와 "줄만 바꾸기"의 구분이 없다 — 둘 다 같은
-   * `\n`). `white-space: pre-wrap`(module.css)이 이 리터럴 개행을 그대로 줄바꿈으로
-   * 그려서 `<br>` 없이도 화면·저장본·`elementToPlainText`가 전부 같은 값을 본다.
+   * BLOCKER(PR 재리뷰) + BLOCKER 잔여(2차 재검증, E2E 스크립트 실측): 브라우저 기본
+   * Enter/Shift+Enter가 `<div>`를 만들어 저장본이 한 줄로 뭉개지는 문제를 근본에서 막는다.
+   * `contentEditable="plaintext-only"`는 리뷰어가 1순위로 권한 방법이지만 Playwright
+   * 3브라우저 실측 시점 기준 WebKit·Firefox 지원이 엇갈려(probe-*.log) 쓰지 않았다.
+   *
+   * 1차 수정은 `event.preventDefault()` 뒤 `Range.insertNode`로 리터럴 `\n` 텍스트
+   * 노드를 손으로 넣었다 — jsdom에서는 통과했지만, 이 스크립트(scripts/
+   * verify-bubble-editor-toolbar-e2e.mjs)로 실제 Chromium에 돌려 보니 그 자리에서 바로
+   * 다음 글자를 치면 Chromium이 방금 넣은 `\n`과 렌더 보조 `<br>`을 통째로 지워버렸다
+   * (부모 요소·자식 인덱스 기준으로 잡은 caret을 Chromium의 타이핑 커맨드가 못 미더워하는
+   * 것으로 보인다 — jsdom은 이 정리 동작 자체가 없어 못 잡았다). 손으로 caret과 DOM
+   * 구조를 둘 다 관리하는 대신, `document.execCommand('insertText', false, '\n')`으로
+   * 브라우저 자신의 캐럿·줄바꿈 처리에 맡긴다 — 부작용으로 Chromium·WebKit은 다시
+   * `<div>`(빈 줄이면 `<div><br></div>`)를 쓰지만(엔진 고유 표현일 뿐 나쁜 것이 아니다),
+   * `elementToPlainText`가 DIV 경계를 이미 개행으로 세므로 결과는 항상 올바르다 — "무엇을
+   * 쓰든 elementToPlainText가 맞게 읽는다"가 유일하게 3엔진 모두에서 검증된 설계다.
+   * MINOR(4)도 이걸로 같이 닫힌다: `execCommand`는 실행취소 기록에 남는다.
+   * execCommand를 지원하지 않는 환경(예: 미래의 비표준 임베더)에서만 손으로 순수 `\n`
+   * 텍스트 노드를 넣는 최소 대체로 물러난다(그 갈래엔 렌더 보조 `<br>`을 더는 안 붙인다 —
+   * 그 트릭 자체가 이번 회귀의 원인이었다).
    */
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
@@ -348,37 +386,61 @@ function BubbleContentEditable({
     const el = localRef.current;
     const selection = typeof window !== "undefined" ? window.getSelection() : null;
     if (!el || !selection || selection.rangeCount === 0) return;
-    const range = selection.getRangeAt(0);
-    range.deleteContents();
-    const newline = document.createTextNode("\n");
-    range.insertNode(newline);
-    range.setStartAfter(newline);
-    range.setEndAfter(newline);
-    selection.removeAllRanges();
-    selection.addRange(range);
+    let inserted = false;
+    if (typeof document.execCommand === "function") {
+      try {
+        inserted = document.execCommand("insertText", false, "\n");
+      } catch {
+        inserted = false;
+      }
+    }
+    if (!inserted) {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      const newline = document.createTextNode("\n");
+      range.insertNode(newline);
+      range.setStart(newline, newline.textContent.length);
+      range.setEnd(newline, newline.textContent.length);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
     handleInput();
   }
 
   /**
    * M-B(PR 재리뷰): onPaste가 없어 리치 클립보드의 굵게 태그·문단 태그·`onerror` 달린
    * 이미지 태그가 그대로 편집칸에 꽂혔다(paste.mjs 실측 — 이미지가 실제로 로드를 시도했다,
-   * XSS 표면). 항상
-   * `text/plain`만 꺼내 캐럿 자리에 텍스트로 넣는다(서식·이미지·스크립트 전부 버려진다).
+   * XSS 표면). 항상 `text/plain`만 꺼내 캐럿 자리에 텍스트로 넣는다(서식·이미지·스크립트
+   * 전부 버려진다). MINOR(3): Windows 클립보드의 `\r\n`을 `\n`으로 정규화한다(정규화 없이
+   * 그대로 들어가면 `elementToPlainText`·`retextSegments` 기준 문자 수가 실제 줄 수와
+   * 어긋난다, r2-paste.log 실측: `"한줄\r\n두줄\nQ..."`). MINOR(4): `execCommand`로 실행취소
+   * 기록에 남긴다 — 붙여넣기는 (Enter와 달리) 브라우저가 알아서 줄바꿈 자체를 만들
+   * 일이 없으므로(우리가 만든 텍스트를 그대로 꽂을 뿐) `<div>` 부작용 걱정이 없다.
    */
   function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
     event.preventDefault();
-    const text = event.clipboardData.getData("text/plain");
+    const text = event.clipboardData.getData("text/plain").replace(/\r\n/g, "\n");
     const el = localRef.current;
     const selection = typeof window !== "undefined" ? window.getSelection() : null;
     if (!el || !selection || selection.rangeCount === 0) return;
-    const range = selection.getRangeAt(0);
-    range.deleteContents();
-    const node = document.createTextNode(text);
-    range.insertNode(node);
-    range.setStartAfter(node);
-    range.setEndAfter(node);
-    selection.removeAllRanges();
-    selection.addRange(range);
+    let inserted = false;
+    if (typeof document.execCommand === "function") {
+      try {
+        inserted = document.execCommand("insertText", false, text);
+      } catch {
+        inserted = false;
+      }
+    }
+    if (!inserted) {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      const node = document.createTextNode(text);
+      range.insertNode(node);
+      range.setStart(node, node.textContent!.length);
+      range.setEnd(node, node.textContent!.length);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
     handleInput();
   }
 
@@ -387,16 +449,24 @@ function BubbleContentEditable({
    * 수 "비율"로 굵은 구간을 다시 나눈다 — 사용자가 입력한 실제 자리와 다를 수 있다(설계상
    * 알려진 한계, "근본 해결"은 DOM의 `<strong>` 경계를 그대로 세그먼트로 읽는 것이라 이번
    * 범위 밖). 화면은 편집 중 리렌더를 막아두느라(IME 보호) 그 어긋남을 그대로 들고 있다가
-   * blur 뒤에도 안 고쳐졌다 — blur 시점엔 이 말풍선이 더는 활성 요소가 아니므로, 무조건
-   * 최신 `bubble.segments`(서버로 나갈 그 값)로 다시 그려 화면·저장본을 강제로 맞춘다.
-   * 같은 자리에서 MINOR(2)도 닫는다: `compositionend` 없이 blur되면(창 전환·다른 말풍선
-   * 클릭 등) `isComposingRef`가 true로 남아 그 뒤 입력이 전부 버려진다 — blur마다 리셋한다.
+   * blur 뒤에도 안 고쳐졌다 — blur 시점엔 이 말풍선이 더는 활성 요소가 아니므로, 최신
+   * `bubble.segments`(서버로 나갈 그 값)로 다시 그려 화면·저장본을 맞춘다. 같은 자리에서
+   * MINOR(2)도 닫는다: `compositionend` 없이 blur되면(창 전환·다른 말풍선 클릭 등)
+   * `isComposingRef`가 true로 남아 그 뒤 입력이 전부 버려진다 — blur마다 리셋한다.
+   *
+   * BLOCKER(PR 재검증, probe3.mjs BOLD_click_model): 이 함수가 조건 없이 매번
+   * `innerHTML`을 다시 썼던 것이, 툴바 버튼을 실제 마우스로 누를 때(mousedown이 먼저
+   * blur를 일으킴) 방금 만든 선택을 (root,0)으로 무너뜨려 굵게·쪼개기가 항상 실패하게
+   * 만든 진짜 원인이었다(주 수정은 툴바 버튼 `onMouseDown` preventDefault로 blur 자체를
+   * 막는 것 — 이 함수는 리뷰어 지시대로 "DOM이 이미 모델과 같으면 안 그린다"로 좁혀
+   * Tab 이동처럼 다른 경로로 blur가 나도 불필요하게 선택을 건드리지 않는 2차 방어선이다).
    */
   function handleBlur() {
     isComposingRef.current = false;
     const el = localRef.current;
     if (!el) return;
     const html = segmentsToHtml(bubble.segments);
+    if (html === el.innerHTML) return;
     el.innerHTML = html;
     lastSyncedHtmlRef.current = html;
   }
@@ -560,10 +630,19 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
                   </p>
                 ) : null}
                 {selected ? (
+                  // BLOCKER(PR 재검증, Playwright 3엔진 실측 probe3.mjs BOLD_click_model·
+                  // SPLIT_alerts): 버튼을 실제 마우스로 누르면 mousedown이 먼저 편집칸을
+                  // blur시키고, 그 blur가 handleBlur의 innerHTML 재작성을 불러 선택이
+                  // (root,0)으로 무너졌다 — 그 뒤 click에서 읽는 선택은 이미 빈 채라 "굵게
+                  // 만들 글을 먼저 선택해 주세요"·"쪼개면 빈 말풍선이 생겨 쪼갤 수 없습니다"로
+                  // 항상 실패했다. jsdom은 클릭에서 blur를 안 일으켜 기존 테스트가 못 잡았다.
+                  // 표준 관행대로 각 버튼 mousedown의 기본 동작(포커스 이동)을 막아
+                  // 편집칸이 blur되는 것 자체를 없앤다 — 그러면 click이 실행될 때도 선택이
+                  // 그대로 살아 있다.
                   <div className={styles.bubbleToolbar} data-bubble-controls aria-label="선택한 말풍선 도구">
-                    <Button size="sm" onClick={() => handleToggleBold(bubble)}>굵게</Button>
-                    <Button size="sm" onClick={() => run((d) => toggleSpeaker(d, slide.id, bubble.id))}>화자 전환</Button>
-                    <Button size="sm" onClick={() => {
+                    <Button size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => handleToggleBold(bubble)}>굵게</Button>
+                    <Button size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => run((d) => toggleSpeaker(d, slide.id, bubble.id))}>화자 전환</Button>
+                    <Button size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => {
                       // 2026-09-22 코드리뷰 MAJOR 5: caret 은 말풍선 전체 텍스트 기준인데
                       // splitBubble 은 세그먼트 좌표를 받는다. caretToSegment 로 바꾼다
                       // (세그먼트가 2개 이상이면 예전 코드는 잘못된 자리에서 쪼갰다).
@@ -572,8 +651,8 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
                       const caret = offsets?.start ?? caretRefs.current[bubble.id] ?? bubbleText(bubble).length;
                       run((d) => splitBubble(d, slide.id, bubble.id, caretToSegment(bubble.segments, caret)));
                     }}>쪼개기</Button>
-                    <Button size="sm" onClick={() => run((d) => mergeBubble(d, slide.id, bubble.id))}>합치기</Button>
-                    <Button size="sm" variant="secondary" onClick={() => handleDeleteBubble(bubble)}>삭제</Button>
+                    <Button size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => run((d) => mergeBubble(d, slide.id, bubble.id))}>합치기</Button>
+                    <Button size="sm" variant="secondary" onMouseDown={(e) => e.preventDefault()} onClick={() => handleDeleteBubble(bubble)}>삭제</Button>
                   </div>
                 ) : null}
               </div>

@@ -344,8 +344,12 @@ export function validateCardDeck(deck: unknown): asserts deck is CardDeck {
         throw new CardDeckValidationError("segments", `cardDeck.slides[${index}].bubbles[${bubbleIndex}] segments exceed 120 chars (got ${totalLength})`);
       }
       bubble.segments.forEach((segment, segmentIndex) => {
-        if (typeof segment.text !== "string" || !segment.text) {
-          throw new CardDeckValidationError("segments", `cardDeck.slides[${index}].bubbles[${bubbleIndex}].segments[${segmentIndex}].text must be non-empty`);
+        // MINOR(2, PR 재검증): `!segment.text`는 "\n"(길이 1, truthy) 같은 개행·공백뿐인
+        // 텍스트를 그대로 통과시켰다 — 전체 선택 후 Backspace로 지운 말풍선이 실제로는
+        // 비어 있는데도 저장됐다(r2-probe3-*.log EMPTY_model: "\n"). trim 기준으로 바꾸고
+        // 안내 문구도 "비어 있다"는 사실에 맞게 고친다.
+        if (typeof segment.text !== "string" || segment.text.trim().length === 0) {
+          throw new CardDeckValidationError("segments", `cardDeck.slides[${index}].bubbles[${bubbleIndex}].segments[${segmentIndex}].text must not be empty or whitespace-only`);
         }
         if (typeof segment.bold !== "boolean") {
           throw new CardDeckValidationError("segments", `cardDeck.slides[${index}].bubbles[${bubbleIndex}].segments[${segmentIndex}].bold must be boolean`);

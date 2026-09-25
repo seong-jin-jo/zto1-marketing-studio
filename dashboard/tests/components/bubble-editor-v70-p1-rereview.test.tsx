@@ -366,6 +366,6 @@ describe("코드 대조: BLOCKER·M-B 수정이 실제로 들어갔다(정적 �
     expect(tsxSrc).toMatch(/onPaste=\{handlePaste\}/);
     expect(tsxSrc).toMatch(/onBlur=\{handleBlur\}/);
     expect(tsxSrc).toMatch(/getData\("text\/plain"\)/);
-    expect(tsxSrc).toMatch(/nodeName === "DIV" \|\| current\.nodeName === "P"/);
+    expect(tsxSrc).toMatch(/nodeName === "DIV" \|\| node\.nodeName === "P"/);
   });
 });
