@@ -189,7 +189,12 @@ export function isGeneratedMediaDirSafe(dir: string): boolean {
  * 승인함이나 달력에서 가져온 작업물로는 영상을 만들 수 없었다(코드 감사 F-05).
  * 복사본이 넷이면 넷이 서로 다르게 낡는다. 한 곳으로 모은다.
  */
-export function resolveGeneratedFile(tenantId: string, filename: string): string | null {
+// tenantId는 null(운영자/공유 루트)일 수 있다 — 빈 문자열("")과 null은 다르다.
+// 예전엔 호출부가 `tenantId || ""`로 null을 빈 문자열로 뭉갰는데, generatedMediaDirs가
+// 그 둘을 다르게 처리하게 되면서(운영자=공유 루트를 보되, 형식이 틀린 "실제" 문자열은
+// 차단) 빈 문자열이 "형식 오류"로 분류돼 운영자 요청이 통째로 막히는 회귀가 났다
+// (MAJOR-1, 코드리뷰 2026-09-26). null을 그대로 받아 그대로 넘긴다.
+export function resolveGeneratedFile(tenantId: string | null, filename: string): string | null {
   if (!filename) return null;
   if (filename.includes("/") || filename.includes("\\") || filename.includes("..") || filename.includes("\0")) return null;
   const matches: string[] = [];

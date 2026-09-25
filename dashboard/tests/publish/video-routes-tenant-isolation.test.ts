@@ -301,8 +301,11 @@ describe("/api/video/repurpose — 테넌트 격리 (MAJOR)", () => {
       expect(res.status).toBe(200);
       expect(json.ok).toBe(true);
 
+      // MAJOR-2(코드리뷰 2026-09-26) 이후 파일명은 clipId가 아니라 crypto.randomUUID()
+      // 기반이다(clip-<uuid>.mp4) — clipId를 파일명에 그대로 섞으면 제공자가 통제하는
+      // 값으로 경로 이탈을 만들 수 있어서 clipId를 파일명 생성에서 완전히 제거했다.
       const tenantFiles = fs.readdirSync(tenantVideosDir(TENANT_A));
-      expect(tenantFiles.some((f) => f.startsWith("clip-c1-") && f.endsWith(".mp4"))).toBe(true);
+      expect(tenantFiles.some((f) => /^clip-[0-9a-f-]{36}\.mp4$/.test(f))).toBe(true);
 
       // 운영자 공유 data/videos 폴더엔 클립이 생기지 않았다 — 생성 안 됐거나(폴더 자체가 없음)
       // 만들어졌더라도 비어 있다.

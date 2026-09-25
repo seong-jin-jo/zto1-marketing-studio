@@ -70,7 +70,15 @@ function unb64u(s: string): Buffer {
  * 코드리뷰 2026-09-25). 두 라우트가 이 함수 하나만 쓰게 한다.
  */
 export function isVideoFilename(name: string): boolean {
-  return isSafeMediaFilename(name) && name.toLowerCase().endsWith(".mp4");
+  if (!isSafeMediaFilename(name)) return false;
+  const lower = name.toLowerCase();
+  if (!lower.endsWith(".mp4")) return false;
+  // 이름 없는 파일(".mp4" 자체, "..mp4" 계열)을 거부한다 — isSafeMediaFilename은 ".."를
+  // "상위 참조"로만 걸러서 확장자 앞이 통째로 점만 있는 이런 값은 통과시킨다(MINOR-4,
+  // 코드리뷰 2026-09-26, 리뷰어 P7 재현: isVideoFilename(".mp4") === true였다).
+  const base = name.slice(0, name.length - 4);
+  if (!base || /^\.+$/.test(base)) return false;
+  return true;
 }
 
 /** 파일명 화이트리스트 — 단일 파일명만, 경로 구분자/상위참조/NUL 금지. */

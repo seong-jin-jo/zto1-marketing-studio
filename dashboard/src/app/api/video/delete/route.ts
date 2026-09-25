@@ -21,7 +21,9 @@ export async function POST(request: Request) {
   return runWithTenant(tenantId, async () => {
     // 목록·배달·삭제가 같은 저장 위치 정본을 쓴다. 생성실 영상도 목록에서 보이는 즉시
     // 삭제할 수 있고, resolveGeneratedFile 이 현재 테넌트 밖의 폴더는 보지 않는다.
-    const filepath = resolveGeneratedFile(tenantId || "", filename);
+    // tenantId를 `|| ""`로 뭉개지 않는다 — null(운영자)과 ""(형식 오류)는 다르게 처리돼야
+    // 하고, 뭉개면 운영자의 삭제가 통째로 404가 된다(MAJOR-1, 코드리뷰 2026-09-26).
+    const filepath = resolveGeneratedFile(tenantId, filename);
     if (filepath) {
       fs.unlinkSync(filepath);
       return Response.json({ ok: true });
