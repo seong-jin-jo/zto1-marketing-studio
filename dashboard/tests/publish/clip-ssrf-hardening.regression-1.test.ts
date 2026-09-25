@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import http from "http";
+import dns from "dns";
 
 // 2026-09-26 재리뷰(MINOR 5건) 재발 방지. PR #89(580251fe, main 머지)가 SSRF를 정규식으로
 // 막았는데, 리뷰어가 IPv4-mapped IPv6 리터럴(`[::ffff:127.0.0.1]`, `[::ffff:a9fe:a9fe]`)로
@@ -332,4 +333,108 @@ describe("MINOR-4 — 운영자(null)로 /api/video/publish를 부르는 라우�
     expect(res.status).toBe(400);
     expect(json.error).toContain("테넌트를 확인할 수 없습니다");
   });
+});
+
+// 2026-09-26 재재리뷰(BLOCK, MAJOR-1) 재발 방지. happy-eyeballs 때문에 net.connect가
+// connect.lookup 훅을 options.all=true로 부르고 "주소 배열"을 기대하는데, 이전 판 훅은
+// 항상 "단일 주소"만 돌려줘서 Node 20/22 둘 다에서 ERR_INVALID_IP_ADDRESS로 클립
+// 다운로드가 전부 실패했다(example.com·google robots.txt 모두 재현). 리뷰어 지적: 위
+// MINOR-2 성공 테스트가 fetch를 mock해서 이 훅이 단 한 번도 실제로 실행되지 않았다 —
+// 그래서 결함을 놓쳤다. 이 블록의 테스트는 fetch를 절대 mock하지 않는다. 실제
+// fetchClipWithValidatedRedirects(=repurpose가 실제로 쓰는 함수)를 로컬 HTTP 서버에
+// 직접 태워 dispatcher·lookup 훅 경로 전체를 통과시킨다.
+describe("BLOCK — connect.lookup 훅이 options.all 배열 계약을 지킨다(재리뷰 2026-09-26)", () => {
+  it("훅 단위: options.all=true면 주소 배열을, false면 단일 주소를 돌려준다", async () => {
+    const { ssrfAwareLookup } = await import("@/lib/clipping");
+    const allResult = await new Promise<{ err: unknown; address: unknown; family: unknown }>((resolve) => {
+      ssrfAwareLookup("example.com", { all: true } as any, (err, address, family) => resolve({ err, address, family }));
+    });
+    expect(allResult.err).toBeNull();
+    expect(Array.isArray(allResult.address)).toBe(true);
+    expect((allResult.address as any[]).length).toBeGreaterThan(0);
+
+    const singleResult = await new Promise<{ err: unknown; address: unknown; family: unknown }>((resolve) => {
+      ssrfAwareLookup("example.com", {} as any, (err, address, family) => resolve({ err, address, family }));
+    });
+    expect(singleResult.err).toBeNull();
+    expect(typeof singleResult.address).toBe("string");
+    expect(typeof singleResult.family).toBe("number");
+  });
+
+  it("성공 경로(mock 없음): 실제 dispatcher가 로컬 HTTP 서버에서 200을 받는다", async () => {
+    const { fetchClipWithValidatedRedirects, __setSsrfBlocklistCheckForTests } = await import("@/lib/clipping");
+    const srv = http.createServer((_, res) => res.end("REAL-DISPATCHER-OK")).listen(0, "127.0.0.1");
+    await new Promise((r) => srv.once("listening", r));
+    const port = (srv.address() as any).port;
+    // 이 테스트의 목적은 서버가 루프백이라는 사실 자체가 아니라 "dispatcher/lookup 훅이
+    // 실제 요청을 흘려보내는가"다. 반드시 "호스트명 조회"를 거치게 한다 — 리터럴
+    // IP(127.0.0.1)로 접근하면 net.connect가 DNS 조회를 아예 건너뛰어 connect.lookup
+    // 훅이 한 번도 호출되지 않는다(실측: 리터럴 IP로는 옛 결함이 있는 훅으로도 이 테스트가
+    // 그냥 통과해버렸다 — happy-eyeballs 배열 계약은 오직 "호스트명 조회" 경로에서만
+    // 문제가 됐다). "localhost"(점 없이)는 isPrivateOrLoopbackHost의 문자열 검사가
+    // dispatcher까지 가기 전에 먼저 막아버려 훅 경로를 못 탄다 — 그래서
+    // "localhost."(끝에 점, 문자열 검사는 통과하고 DNS는 loopback으로 푸는 값)를 쓴다.
+    // 루프백 차단 자체는 이미 위 MINOR-1 테스트가 실제 루프백 서버로 검증했으므로, 여기서는
+    // 판정 함수만 일시적으로 열어 dispatcher/lookup 훅 경로(happy-eyeballs 포함)만 본다.
+    __setSsrfBlocklistCheckForTests(() => false);
+    try {
+      const res = await fetchClipWithValidatedRedirects(`http://localhost.:${port}/`);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("REAL-DISPATCHER-OK");
+    } finally {
+      __setSsrfBlocklistCheckForTests(null);
+      srv.close();
+    }
+  }, 15000);
+
+  it("localhost.(트레일링 닷)은 문자열 검사를 통과해도 lookup 훅이 해석된 주소로 막는다", async () => {
+    const { fetchClipWithValidatedRedirects, isSafeExternalMediaUrl } = await import("@/lib/clipping");
+    const srv = http.createServer((_, res) => res.end("SHOULD-NOT-BE-REACHED")).listen(0, "127.0.0.1");
+    await new Promise((r) => srv.once("listening", r));
+    const port = (srv.address() as any).port;
+    const url = `http://localhost.:${port}/`;
+
+    // 문자열 수준 검사(isPrivateOrLoopbackHost/isSafeExternalMediaUrl)는 "localhost"와
+    // 정확히 일치하거나 ".localhost"로 끝나는 것만 본다 — "localhost."(끝에 점)는
+    // 통과한다. 이게 통과한다는 사실 자체가, 이 케이스를 잡는 게 문자열 검사가 아니라
+    // connect.lookup 훅(해석된 IP 검사)이라는 것을 보여준다.
+    expect(isSafeExternalMediaUrl(url)).toBe(true);
+
+    await expect(fetchClipWithValidatedRedirects(url)).rejects.toThrow();
+    srv.close();
+  }, 15000);
+
+  it("돌연변이 검증: 훅이 항상 단일 주소만 돌려주면(재리뷰가 실측한 원래 결함) 성공 경로가 깨진다", async () => {
+    // 재리뷰가 실측한 원래 결함을 그대로 재현한다: options.all을 무시하고 항상
+    // (err, address, family) 단일 계약으로만 응답하는 훅.
+    const brokenHook = (
+      hostname: string,
+      _options: unknown,
+      callback: (err: Error | null, address?: string, family?: number) => void,
+    ) => {
+      dns.lookup(hostname, { all: true }, (err: NodeJS.ErrnoException | null, addresses: dns.LookupAddress[]) => {
+        if (err) return callback(err);
+        const first = addresses[0];
+        callback(null, first.address, first.family);
+      });
+    };
+    const { Agent } = await import("undici");
+    const brokenDispatcher = new Agent({ connect: { lookup: brokenHook as any } });
+
+    const srv = http.createServer((_, res) => res.end("x")).listen(0, "127.0.0.1");
+    await new Promise((r) => srv.once("listening", r));
+    const port = (srv.address() as any).port;
+    try {
+      // happy-eyeballs가 배열을 기대했는데 단일 주소를 받으면 ERR_INVALID_IP_ADDRESS로
+      // fetch 자체가 reject해야 한다 — 재리뷰가 실측한 그 결함 그대로. resolve되면
+      // 돌연변이가 결함을 재현하지 못한 것이므로 이 expect가 실패해야 정상이다.
+      // 반드시 "호스트명"으로 접근한다 — 리터럴 IP(127.0.0.1)를 바로 쓰면 net.connect가
+      // DNS 조회 자체를 건너뛰어(lookup 훅이 아예 호출되지 않는다) 이 돌연변이가 아무
+      // 결함도 재현하지 못한 채 통과해버린다(실제로 그렇게 재확인함 — 리터럴 IP로는
+      // status 200이 그대로 돌아왔다). "localhost"로 호스트명 조회를 강제해야 훅이 불린다.
+      await expect(fetch(`http://localhost:${port}/`, { dispatcher: brokenDispatcher } as any)).rejects.toThrow();
+    } finally {
+      srv.close();
+    }
+  }, 15000);
 });

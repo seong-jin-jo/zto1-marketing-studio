@@ -67,11 +67,23 @@ SSRF_BLOCKLIST.addSubnet("192.168.0.0", 16, "ipv4");
 SSRF_BLOCKLIST.addSubnet("169.254.0.0", 16, "ipv4");
 SSRF_BLOCKLIST.addSubnet("100.64.0.0", 10, "ipv4");
 SSRF_BLOCKLIST.addSubnet("198.18.0.0", 15, "ipv4");
+// 멀티캐스트(224.0.0.0/4)·제한 브로드캐스트(255.255.255.255/32) — 클립 다운로드 대상이
+// 될 이유가 없는 트래픽이다(MINOR, 재리뷰 2026-09-26).
+SSRF_BLOCKLIST.addSubnet("224.0.0.0", 4, "ipv4");
+SSRF_BLOCKLIST.addAddress("255.255.255.255", "ipv4");
 // IPv6: 루프백(::1), 미지정(::), 링크로컬(fe80::/10), ULA(fc00::/7).
 SSRF_BLOCKLIST.addAddress("::1", "ipv6");
 SSRF_BLOCKLIST.addAddress("::", "ipv6");
 SSRF_BLOCKLIST.addSubnet("fe80::", 10, "ipv6");
 SSRF_BLOCKLIST.addSubnet("fc00::", 7, "ipv6");
+// IPv4-compatible(::/96, 사실상 폐지됐지만 하위 32비트가 IPv4로 해석될 수 있다),
+// IPv4-translated(::ffff:0:0:0/96, RFC 6052 — IPv4-mapped(::ffff:0:0/96)와 다른 대역),
+// NAT64(64:ff9b::/96) — 전부 안에 IPv4 주소를 실어나를 수 있는 특수 IPv6 대역이라
+// normalizeIpLiteral이 못 푸는 형태로도 사설/루프백 IPv4를 가리킬 수 있다(MINOR,
+// 재리뷰 2026-09-26).
+SSRF_BLOCKLIST.addSubnet("::", 96, "ipv6");
+SSRF_BLOCKLIST.addSubnet("::ffff:0:0:0", 96, "ipv6");
+SSRF_BLOCKLIST.addSubnet("64:ff9b::", 96, "ipv6");
 
 // normalizeIpLiteral / isPrivateOrLoopbackHost / isSafeExternalMediaUrl은 회귀 테스트가
 // 우회 케이스(IPv4-mapped IPv6 두 종, 도메인 오탐 등)를 이 함수들에 직접 걸어 검증할 수
@@ -103,12 +115,31 @@ export function normalizeIpLiteral(hostnameRaw: string): { address: string; fami
   return null;
 }
 
+// 테스트 전용 주입 지점 — 루프백을 진짜로 여는 대신 "차단목록 판정 함수" 자체를
+// 바꿔치기해, 실제 dispatcher·connect.lookup 훅 경로를 로컬 HTTP 서버로 통째로
+// 실측할 수 있게 한다(재리뷰 2026-09-26: mock fetch로는 훅이 한 번도 실행되지 않아
+// 이 결함을 놓쳤다는 지적 — 그래서 fetch는 절대 mock하지 않고, 이 판정 함수만 바꾼다).
+// 프로덕션 코드 경로는 이 값을 절대 설정하지 않는다.
+let ssrfBlocklistCheckOverrideForTests: ((address: string, family: "ipv4" | "ipv6") => boolean) | null = null;
+
+export function __setSsrfBlocklistCheckForTests(
+  override: ((address: string, family: "ipv4" | "ipv6") => boolean) | null,
+): void {
+  ssrfBlocklistCheckOverrideForTests = override;
+}
+
+function ssrfBlocklistCheck(address: string, family: "ipv4" | "ipv6"): boolean {
+  return ssrfBlocklistCheckOverrideForTests
+    ? ssrfBlocklistCheckOverrideForTests(address, family)
+    : SSRF_BLOCKLIST.check(address, family);
+}
+
 export function isPrivateOrLoopbackHost(hostnameRaw: string): boolean {
   const h = hostnameRaw.toLowerCase();
   if (h === "localhost" || h.endsWith(".localhost")) return true;
   const norm = normalizeIpLiteral(h);
   if (!norm) return false; // IP 리터럴이 아닌 도메인명 — connect-lookup 훅이 해석된 주소를 따로 검사한다.
-  return SSRF_BLOCKLIST.check(norm.address, norm.family);
+  return ssrfBlocklistCheck(norm.address, norm.family);
 }
 
 export function isSafeExternalMediaUrl(raw: string): boolean {
@@ -133,35 +164,56 @@ export function isSafeExternalMediaUrl(raw: string): boolean {
 // 막을 수 없는 시나리오). 또한 이 dispatcher를 지나지 않는 fetch 호출(다른 모듈이 별도
 // dispatcher 없이 fetch를 쓰는 경우)에는 이 방어가 적용되지 않는다 — clipping.ts 안의
 // 모든 외부 클립 다운로드 fetch가 이 dispatcher를 쓰도록 통일했다.
-type NodeLookupCallback = (err: NodeJS.ErrnoException | null, address: string, family: number) => void;
+//
+// BLOCK(2026-09-26 재리뷰 MAJOR-1) — happy-eyeballs 때문에 net.connect가 이 훅을
+// options.all=true로 부르고 "주소 배열"을 기대하는데, 이전 판은 항상 "단일 주소"
+// (err, address, family)만 돌려줬다. Node 20/22 둘 다에서 ERR_INVALID_IP_ADDRESS로
+// 클립 다운로드가 전부 실패했다(example.com·google robots.txt 모두 재현, scratchpad/
+// disp.mjs). 콜백 계약은 options.all 값을 그대로 따른다 — all이면 배열, 아니면 첫
+// 주소 하나. 차단 목록 검사는 어느 경우든 해석된 주소 "전부"에 적용한다.
+type NodeLookupCallback = (
+  err: NodeJS.ErrnoException | null,
+  address: string | dns.LookupAddress[],
+  family?: number,
+) => void;
+
+// 독립 함수로 뽑아 export한다 — 회귀 테스트가 undici Agent 생성 없이 이 훅 하나만
+// 단위로 부를 수 있게(options.all=true일 때 배열을 돌려주는지 등, 재리뷰 2026-09-26).
+export function ssrfAwareLookup(hostname: string, options: dns.LookupOptions, callback: NodeLookupCallback): void {
+  dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
+    if (err) return callback(err, "");
+    if (!addresses || addresses.length === 0) {
+      return callback(new Error(`SSRF lookup: ${hostname} resolved to no addresses`), "");
+    }
+    for (const a of addresses) {
+      const fam = a.family === 6 ? "ipv6" : "ipv4";
+      if (ssrfBlocklistCheck(a.address, fam)) {
+        callback(new Error(`SSRF blocked: ${hostname} resolved to private/loopback address ${a.address}`), "");
+        return;
+      }
+    }
+    // net.connect(happy-eyeballs)가 all:true로 부르면 배열 계약, 아니면 단일 주소
+    // 계약이다 — 호출부가 무엇을 요청했는지에 맞춰 그대로 돌려준다.
+    if (options.all) {
+      callback(null, addresses);
+      return;
+    }
+    const first = addresses[0];
+    callback(null, first.address, first.family);
+  });
+}
 
 const ssrfSafeDispatcher = new Agent({
   connect: {
-    // net.connect의 lookup 훅 계약은 "단일 주소" 콜백((err, address, family))이다.
-    // 내부적으로는 all:true로 조회해 반환된 주소 전부를 차단목록과 대조하고(DNS가 공개
-    // IP와 사설 IP를 섞어 돌려주는 경우까지 잡는다), 통과하면 첫 주소 하나만 그 계약대로
-    // 돌려준다.
-    lookup: (hostname: string, options: dns.LookupOptions, callback: NodeLookupCallback) => {
-      dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
-        if (err) return callback(err, "", 0);
-        if (!addresses || addresses.length === 0) {
-          return callback(new Error(`SSRF lookup: ${hostname} resolved to no addresses`), "", 0);
-        }
-        for (const a of addresses) {
-          const fam = a.family === 6 ? "ipv6" : "ipv4";
-          if (SSRF_BLOCKLIST.check(a.address, fam)) {
-            callback(new Error(`SSRF blocked: ${hostname} resolved to private/loopback address ${a.address}`), "", 0);
-            return;
-          }
-        }
-        const first = addresses[0];
-        callback(null, first.address, first.family);
-      });
-    },
+    lookup: ssrfAwareLookup,
   },
 });
 
 const MAX_CLIP_REDIRECTS = 3;
+// 클립 하나를 받는 데 걸릴 수 있는 최대 시간. 제공자가 응답을 시작만 하고 끝내지 않으면
+// (또는 느린 네트워크) repurpose 요청 전체가 무한정 걸린다 — 상한을 둔다(MINOR, 재리뷰
+// 2026-09-26).
+const CLIP_DOWNLOAD_TIMEOUT_MS = 60_000;
 
 /**
  * 매 hop마다 URL을 재검사하며 리다이렉트를 최대 MAX_CLIP_REDIRECTS번까지만 따라간다.
@@ -169,15 +221,19 @@ const MAX_CLIP_REDIRECTS = 3;
  * 우리가 직접 검증한 뒤에만 다음 요청을 보낸다 — 첫 URL은 공개 호스트를 가리키다가
  * 리다이렉트로 사설 IP를 가리키는 우회를 막는다(MINOR-3, 코드리뷰 2026-09-26).
  */
-async function fetchClipWithValidatedRedirects(startUrl: string): Promise<Response> {
+export async function fetchClipWithValidatedRedirects(startUrl: string): Promise<Response> {
   let currentUrl = startUrl;
+  const signal = AbortSignal.timeout(CLIP_DOWNLOAD_TIMEOUT_MS);
   for (let hop = 0; hop <= MAX_CLIP_REDIRECTS; hop++) {
     if (!isSafeExternalMediaUrl(currentUrl)) {
       throw new Error(`unsafe external url at redirect hop ${hop} (scheme or private/loopback host)`);
     }
-    const res = await fetch(currentUrl, { redirect: "manual", dispatcher: ssrfSafeDispatcher } as RequestInit);
+    const res = await fetch(currentUrl, { redirect: "manual", dispatcher: ssrfSafeDispatcher, signal } as RequestInit);
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get("location");
+      // 이 hop의 응답 본문을 다 안 읽고 버리면 커넥션이 안 닫힌 채 쌓인다(재리뷰
+      // 2026-09-26 MINOR) — 다음 hop으로 넘어가기 전에 반드시 비운다.
+      await res.body?.cancel();
       if (!location) throw new Error(`redirect without Location header at hop ${hop}`);
       if (hop === MAX_CLIP_REDIRECTS) throw new Error(`too many redirects (> ${MAX_CLIP_REDIRECTS})`);
       currentUrl = new URL(location, currentUrl).toString();
