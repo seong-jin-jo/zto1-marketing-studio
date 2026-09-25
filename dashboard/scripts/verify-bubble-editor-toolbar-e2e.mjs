@@ -243,6 +243,25 @@ async function runScenario(engineName) {
       startsWithNewline: leadingEnterModel.startsWith("\n"),
     }, { startsWithNewline: true });
 
+    // MINOR(1, 5차 재검증, F2): "기존 빈 줄 바로 앞"에 새 Enter를 치면 Firefox에서
+    // 사라지던 결함. 이미 있는 개행 두 개(빈 줄 하나) 사이에 캐럿을 두고 한 번 더 Enter를
+    // 쳐 개행이 셋(빈 줄 둘)이 되는지 본다 — 짝(pair) 판정을 "직전이 개행으로 끝나는
+    // 텍스트" 하나로만 걸면 이 새로 낀 br이 기존 짝으로 오판돼 줄이 통째로 사라진다.
+    // 여러 줄이 되면 caretAt(id, 숫자)가 가정하는 "el.firstChild가 곧 그 텍스트 노드"가
+    // 깨진다(execCommand가 줄마다 <div>로 쪼갠다) — 숫자 오프셋 대신 브라우저 고유의
+    // ArrowUp으로 "기존 빈 줄"에 도달한다(세 엔진 공통 동작).
+    await nav("slide-7");
+    await ed("b-7-0").click();
+    await caretAt("b-7-0", "end");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // 끝에 빈 줄 하나: "...요\n\n" (캐럿은 지금 셋째 줄, 맨 마지막 빈 줄)
+    await page.keyboard.press("ArrowUp"); // 캐럿을 한 줄 위(기존 빈 줄, 둘째 줄)로 옮긴다.
+    await page.keyboard.press("Enter"); // 그 기존 빈 줄 바로 앞에 새 개행을 하나 더 끼워넣는다.
+    const f2After = await model("b-7-0");
+    record("MINOR(1, F2): 기존 빈 줄 바로 앞에 친 Enter가 Firefox에서도 살아남는다", {
+      lineCount: f2After.split("\n").length,
+    }, { lineCount: 4 });
+
     // MINOR(2): 마우스 mousedown 없이(그래서 onMouseDown preventDefault 보호를 안 거치고)
     // 편집칸 밖으로 포커스가 옮겨진 뒤 굵게를 누른다 — WebKit은 그 blur에서 Selection을
     // 비운다. 키보드 Tab으로 재현하려 했으나 WebKit(Safari 기본값, "전체 키보드 접근"이
@@ -275,6 +294,74 @@ async function runScenario(engineName) {
       hasBold: keyboardBoldModel,
       alerts: await alerts(),
     }, { hasBold: true, alerts: [] });
+
+    // MAJOR(5차 재검증, S1): 선택 후 다른 자리로 캐럿만 옮기고 타이핑해도, 그 낡은 선택
+    // 범위가 굵게 폴백으로 남아 조용히 딴 자리에 적용되면 안 된다 — 다시 "먼저 선택해
+    // 주세요"가 떠야 한다(재현 76379c8c가 만든 회귀: `**새 교**재가…`처럼 엉뚱한 자리에
+    // 조용히 굵게가 붙었었다).
+    await nav("slide-5");
+    await ed("b-5-0").click();
+    await selectRange("b-5-0", 0, 3);
+    await page.waitForTimeout(50); // selectionchange가 selectionRefs에 저장될 시간을 준다.
+    await caretAt("b-5-0", 8);
+    await page.waitForTimeout(50);
+    await page.keyboard.type("가");
+    await page.locator('[data-bubble-id="b-5-0"] button', { hasText: "굵게" }).click();
+    await page.waitForTimeout(100);
+    const s1HasBold = await page.evaluate((bid) => {
+      for (const s of window.__deck.slides) for (const b of s.bubbles || []) if (b.id === bid) return b.segments.some((x) => x.bold);
+      return false;
+    }, "b-5-0");
+    record("MAJOR(5차 재검증, S1): 선택 뒤 캐럿만 옮기고 타이핑해도 낡은 범위로 조용히 굵게가 적용되지 않는다", {
+      hasBold: s1HasBold,
+      alerts: await alerts(),
+    }, { hasBold: false, alerts: ["굵게 만들 글을 먼저 선택해 주세요."] });
+
+    // MAJOR(5차 재검증, S3): 선택 범위를 타이핑으로 통째로 대체해도(선택이 사라지고
+    // 대체된 글자 뒤에 캐럿만 남는 것과 같은 효과) 그 낡은 범위로 조용히 굵게가 적용되면
+    // 안 된다.
+    await nav("slide-8");
+    await ed("b-8-0").click();
+    await selectRange("b-8-0", 0, 4);
+    await page.waitForTimeout(50);
+    await page.keyboard.type("모든등급");
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(50);
+    await page.locator('[data-bubble-id="b-8-0"] button', { hasText: "굵게" }).click();
+    await page.waitForTimeout(100);
+    const s3HasBold = await page.evaluate((bid) => {
+      for (const s of window.__deck.slides) for (const b of s.bubbles || []) if (b.id === bid) return b.segments.some((x) => x.bold);
+      return false;
+    }, "b-8-0");
+    record("MAJOR(5차 재검증, S3): 선택을 타이핑으로 대체한 뒤 화살표로 캐럿만 옮겨도 낡은 범위로 조용히 굵게가 적용되지 않는다", {
+      hasBold: s3HasBold,
+      alerts: await alerts(),
+    }, { hasBold: false, alerts: ["굵게 만들 글을 먼저 선택해 주세요."] });
+
+    // MAJOR 회귀(5차 재검증, T1): blur의 끝 개행 트림이 이미 있는 굵은 구간의 경계를
+    // 밀면 안 된다 — 전용 연산(trimBubbleTrailingNewline)이 마지막 세그먼트의 끝
+    // 개행만 지우고 다른 세그먼트는 안 건드리는지 확인한다.
+    await nav("slide-6");
+    await ed("b-6-1").click();
+    await selectRange("b-6-1", 0, 2);
+    await page.locator('[data-bubble-id="b-6-1"] button', { hasText: "굵게" }).click();
+    await page.waitForTimeout(100);
+    await caretAt("b-6-1", "end");
+    await page.keyboard.press("Enter");
+    await page.evaluate(() => document.activeElement.blur());
+    await page.waitForTimeout(100);
+    const t1Segments = await page.evaluate((bid) => {
+      for (const s of window.__deck.slides) for (const b of s.bubbles || []) if (b.id === bid) return b.segments.map((x) => ({ text: x.text, bold: x.bold }));
+      return null;
+    }, "b-6-1");
+    record("MAJOR 회귀(T1): blur 끝 개행 트림이 이미 있는 굵은 구간 경계를 안 옮긴다", {
+      segments: t1Segments,
+    }, {
+      segments: [
+        { text: "점수", bold: true },
+        { text: "가 오히려 내려갑니다", bold: false },
+      ],
+    });
 
     // Shift+Enter도 같은 경로.
     await nav("slide-2");

@@ -15,6 +15,7 @@ import {
   emptyBubbleSlideNumber,
   setBubbleText,
   caretToSegment,
+  trimBubbleTrailingNewline,
   CardDeckOpsError,
 } from "@/lib/studio/card-deck-ops";
 import { validateCardDeck, type CardDeck } from "@/lib/studio/card-deck-contract";
@@ -290,5 +291,66 @@ describe("setBubbleText / caretToSegment (2026-09-22 코드리뷰 MAJOR 5)", () 
     const caret = fullText.length - 1;
     const at = caretToSegment(boldedBubble.segments, caret);
     expect(() => splitBubble(withBold, slide.id, bubbleId, at)).not.toThrow();
+  });
+});
+
+describe("trimBubbleTrailingNewline (PR #85 5차 재검증 MAJOR, T1)", () => {
+  it("마지막 세그먼트의 끝 개행만 지우고, 굵은 구간 경계는 전혀 안 옮긴다", () => {
+    const d = deck();
+    const slide = d.slides[2]; // slides[2]는 이 파일 다른 테스트가 확인했듯 볼드가 없어 자유롭게 쓸 수 있다.
+    const bubbleId = slide.bubbles![0].id;
+    const withBold = toggleBold(d, slide.id, bubbleId, { from: 0, to: 2 });
+    const boldedBubble = withBold.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    expect(boldedBubble.segments).toEqual([
+      { text: boldedBubble.segments[0].text, bold: true },
+      { text: boldedBubble.segments[1].text, bold: false },
+    ]);
+    // 편집 중 Enter로 끝에 개행이 붙었다고 가정한다(실제로는 handleInput이 매 키입력마다
+    // setBubbleText를 태우지만, 이 테스트는 blur 시점 트림 연산 자체를 단위로 검증한다).
+    const withTrailingNewline = {
+      ...withBold,
+      slides: withBold.slides.map((s, i) => (i === 2 ? {
+        ...s,
+        bubbles: s.bubbles!.map((b) => (b.id === bubbleId
+          ? { ...b, segments: b.segments.map((seg, idx) => (idx === b.segments.length - 1 ? { ...seg, text: `${seg.text}\n\n` } : seg)) }
+          : b)),
+      } : s)),
+    };
+    const trimmed = trimBubbleTrailingNewline(withTrailingNewline, slide.id, bubbleId);
+    const trimmedBubble = trimmed.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    // 첫 세그먼트(굵게 경계)는 글자 하나도 안 움직였다 — retextSegments 비율 재분배였다면
+    // 개행 두 글자가 빠지는 길이 변화만으로도 이 경계가 흔들릴 수 있었다(T1 재현).
+    expect(trimmedBubble.segments[0]).toEqual(boldedBubble.segments[0]);
+    expect(trimmedBubble.segments[1].text).toBe(boldedBubble.segments[1].text);
+    expect(trimmedBubble.segments[1].bold).toBe(false);
+    expect(trimmedBubble.segments.map((s) => s.text).join("")).not.toMatch(/\n$/);
+  });
+
+  it("지울 끝 개행이 없으면 무동작이다(불필요한 revision 증가 없음)", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const bubbleId = slide.bubbles![0].id;
+    const before = d;
+    const after = trimBubbleTrailingNewline(before, slide.id, bubbleId);
+    expect(after).toBe(before); // 참조 동일성까지 — 정말 아무 것도 안 했다는 뜻이다.
+  });
+
+  it("말풍선 전체가 개행뿐이던 마지막 세그먼트를 트림하면 그 세그먼트를 통째로 뺀다(다른 세그먼트에 내용이 남아있을 때)", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubbleId = slide.bubbles![0].id;
+    const withExtraEmptySegment = {
+      ...d,
+      slides: d.slides.map((s, i) => (i === 2 ? {
+        ...s,
+        bubbles: s.bubbles!.map((b) => (b.id === bubbleId
+          ? { ...b, segments: [...b.segments, { text: "\n\n", bold: false }] }
+          : b)),
+      } : s)),
+    };
+    const trimmed = trimBubbleTrailingNewline(withExtraEmptySegment, slide.id, bubbleId);
+    const trimmedBubble = trimmed.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    expect(trimmedBubble.segments).toHaveLength(1);
+    expect(trimmedBubble.segments[0].text).not.toMatch(/\n$/);
   });
 });

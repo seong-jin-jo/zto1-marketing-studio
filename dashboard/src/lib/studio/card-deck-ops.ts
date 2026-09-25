@@ -175,6 +175,33 @@ export function setBubbleText(deck: CardDeck, slideId: string, bubbleId: string,
 }
 
 /**
+ * MAJOR(5차 재검증, T1): blur 시점 끝 개행 트림을 `setBubbleText`(→`retextSegments` 글자수
+ * 비율 재분배) 경로로 태웠더니, 개행 한두 글자가 빠지는 길이 변화만으로도 반올림 경계가
+ * 흔들려 굵은 구간 경계가 한 글자 밀렸다(재현 T1: `**새 교재**가…` 가 blur 후
+ * `**새 교**재가…`로 바뀜). 세그먼트 구조·굵기 경계는 그대로 두고 **마지막 세그먼트의
+ * 끝에 붙은 개행만** 지우는 전용 연산으로 바꾼다 — 다른 세그먼트를 전혀 안 건드리니
+ * 경계가 밀릴 여지가 없다. 트림으로 마지막 세그먼트가 통째로 빈 문자열이 되면(다른
+ * 세그먼트에 실제 내용이 남아 있을 때만) 그 세그먼트 자체를 뺀다.
+ */
+export function trimBubbleTrailingNewline(deck: CardDeck, slideId: string, bubbleId: string): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  const bubbles = slide.bubbles ?? [];
+  const { bubble, index: bubbleIndex } = findBubble(slide, bubbleId);
+  const segments = bubble.segments;
+  if (segments.length === 0) return deck;
+  const lastIndex = segments.length - 1;
+  const lastText = segments[lastIndex].text;
+  const trimmedLastText = lastText.replace(/\n+$/, "");
+  if (trimmedLastText === lastText) return deck; // 지울 끝 개행이 없으면 무동작(불필요한 revision 증가 방지).
+  const nextSegments: Segment[] = trimmedLastText.length === 0 && segments.length > 1
+    ? segments.slice(0, lastIndex)
+    : segments.map((s, i) => (i === lastIndex ? { ...s, text: trimmedLastText } : s));
+  const updatedBubble: Bubble = { ...bubble, segments: nextSegments };
+  const updatedBubbles = bubbles.map((b, i) => (i === bubbleIndex ? updatedBubble : b));
+  return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, bubbles: updatedBubbles }));
+}
+
+/**
  * textarea 의 `selectionStart`(말풍선 전체 텍스트 기준 캐럿)를 `splitBubble` 이 받는
  * 세그먼트 좌표 `{segmentIndex, offset}` 로 바꾼다(2026-09-22 코드리뷰 MAJOR 5: 이전에는
  * `{segmentIndex: 0, offset: caret}` 을 그대로 넘겨, 세그먼트가 2개 이상이면 caret 이

@@ -101,6 +101,11 @@ jobs:
         # 확인한다(이번 라운드 확인 로그: 27/27 통과, chromium/webkit/firefox 전부).
         # 이 스텝은 MAJOR(끝 개행 WYSIWYG 불일치)·MINOR(선행 Enter, 키보드 전용 굵게)
         # 회귀를 실측 브라우저로 잡는다 — mock/jsdom으로는 못 잡는 축이다.
+        # MINOR(3, 5차 재검증): `npx playwright install`은 package.json에 없는
+        # `playwright`(풀 패키지)를 매번 최신판(예: 1.63)으로 새로 받아 브라우저 버전이
+        # 고정 안 된다 — 이 레포는 `playwright-core`만 devDependency로 쓴다(스크립트가
+        # 실제 임포트하는 것도 그것). `npx playwright-core install`로 바꿔 이미 npm ci로
+        # 설치된, package-lock.json이 고정한 그 버전의 브라우저를 받는다.
         run: |
-          npx playwright install --with-deps chromium
+          npx playwright-core install --with-deps chromium
           npm run e2e:bubble-editor:chromium

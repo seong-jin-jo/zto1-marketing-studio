@@ -28,6 +28,7 @@ import {
   splitBubble,
   toggleBold,
   toggleSpeaker,
+  trimBubbleTrailingNewline,
 } from "@/lib/studio/card-deck-ops";
 import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
 import { DeliveredMedia } from "./DeliveredMedia";
@@ -247,8 +248,22 @@ function elementToPlainText(el: HTMLElement): string {
       // 통째로 증발한다(MINOR 1). sawContent가 true였다면 DIV 진입이 이미 셌으니
       // 중복이라 건너뛴다.
       if (isSoleChildOfBlock && sawContent) return;
+      // MINOR(1, 5차 재검증, F2): 짝 판정을 "직전이 개행으로 끝나는 텍스트 노드"로만
+      // 걸었더니, Firefox에서 기존 빈 줄 바로 앞에 Enter를 새로 치면 그 br이 "짝 있는
+      // 렌더 보조"로 오판돼 스킵됐다 — 새로 친 줄 하나가 통째로 사라졌다(F2 재현).
+      // 진짜 Firefox 짝(리터럴 "\n" 텍스트 노드 + 그 개행을 화면에 실제로 그리기 위한
+      // 보조 br)은 그 br이 **부모의 마지막 자식**일 때만 성립한다 — 뒤에 형제가 더
+      // 있으면(F2처럼 그 다음에 기존 빈 줄이 이어지면) 보조가 아니라 진짜 줄이다.
+      const isBrLastChildOfParent = !!parent && parent.lastChild === node;
       const prev = index > 0 ? nodes[index - 1] : null;
-      const isPairedWithLiteralNewline = prev?.nodeType === Node.TEXT_NODE && (prev.textContent ?? "").endsWith("\n");
+      // F2 실측 추가 확인: Firefox는 문단 끝에 아무 것도 안 친 채 개행을 여러 번 치면(뒤에
+      // 이어지는 내용이 없으면) <div> 없이 <br>을 연달아 쌓고, 그 "맨 마지막" br 하나만
+      // 커서를 보이게 하는 렌더 보조다(진짜 줄은 br 개수-1개). 직전 노드가 개행으로 끝나는
+      // 텍스트일 때만이 아니라 직전이 다른 br일 때도(=연속된 br 묶음의 맨 끝) 같은 보조로
+      // 봐야 한다 — 안 그러면 "부모의 마지막 자식"인 그 br이 실제 줄로 잘못 세어져
+      // ArrowUp으로 기존 빈 줄 자리에 Enter를 추가로 쳤을 때 줄 수가 하나 더 불어난다.
+      const isPairedWithLiteralNewline = isBrLastChildOfParent
+        && ((prev?.nodeType === Node.TEXT_NODE && (prev.textContent ?? "").endsWith("\n")) || prev?.nodeName === "BR");
       if (isPairedWithLiteralNewline) return;
       text += "\n";
       return;
@@ -331,12 +346,14 @@ function BubbleContentEditable({
   bubble,
   editableRef,
   onTextChange,
+  onTrimTrailingNewline,
   onFocus,
   onCaretChange,
 }: {
   bubble: Bubble;
   editableRef: (el: HTMLDivElement | null) => void;
   onTextChange: (text: string) => void;
+  onTrimTrailingNewline: () => void;
   onFocus: () => void;
   onCaretChange: (caret: number) => void;
 }) {
@@ -485,13 +502,17 @@ function BubbleContentEditable({
     // 그러면 저장본엔 트레일링 "\n"이 남는데, 발행 PNG(chat-bubble.ts wrapSegments)는
     // 모든 "\n"을 강제 줄바꿈으로 취급해 그 자리에 빈 줄을 하나 더 그린다 — 편집
     // 화면과 PNG가 달라지고, 대화 장엔 캔버스 미리보기가 없어 발행 전엔 아무도 그
-    // 차이를 못 본다(M2·M3b·Firefox 재현 전부 이 경로). 세그먼트 구조(굵기 경계)는
-    // 그대로 두고 끝쪽 개행만 지운다 — 통째로 갈아엎으면(`onTextChange`가
-    // `retextSegments`의 비율 재분배를 다시 태워) 굵은 위치가 흔들린다.
+    // 차이를 못 본다(M2·M3b·Firefox 재현 전부 이 경로).
+    //
+    // MAJOR(5차 재검증, T1): 이 트림을 `onTextChange`(→ `setBubbleText` →
+    // `retextSegments` 글자수 비율 재분배) 경로로 태웠더니, 개행 한두 글자가 빠지는
+    // 길이 변화만으로도 반올림 경계가 흔들려 굵은 구간 경계가 한 글자 밀렸다(재현 T1).
+    // 세그먼트 구조(굵기 경계)를 아예 재계산하지 않는 전용 연산
+    // `trimBubbleTrailingNewline`(card-deck-ops.ts, 마지막 세그먼트의 끝 개행만 지움)으로
+    // 바꿔 경계가 밀릴 여지를 없앴다.
     const liveText = elementToPlainText(el);
-    const trimmedText = liveText.replace(/\n+$/, "");
-    if (trimmedText !== liveText) {
-      onTextChange(trimmedText);
+    if (/\n+$/.test(liveText)) {
+      onTrimTrailingNewline();
     }
     const html = segmentsToHtml(bubble.segments);
     if (html === el.innerHTML) return;
@@ -552,9 +573,15 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
       const el = editableRefs.current[selectedBubbleId];
       if (!el) return;
       const offsets = getEditableSelectionOffsets(el);
-      if (offsets && offsets.start !== offsets.end) {
-        selectionRefs.current[selectedBubbleId] = offsets;
+      if (!offsets) return; // 선택이 편집칸 밖(예: WebKit이 포커스를 Tab으로 빼며 Selection 자체를 무효화)이면 폴백을 건드리지 않는다 — MINOR(2)가 기대는 바로 이 경로다.
+      if (offsets.start === offsets.end) {
+        // MAJOR(5차 재검증, S1): 선택이 빈 캐럿으로 줄었다는 건 사용자가 다른 곳을 골랐거나
+        // 그냥 캐럿을 옮겼다는 뜻이다 — 여기서 지우지 않으면 낡은 범위가 폴백에 남아, 전혀
+        // 다른 자리에 조용히 굵게가 적용된다(재현 S1).
+        delete selectionRefs.current[selectedBubbleId];
+        return;
       }
+      selectionRefs.current[selectedBubbleId] = offsets;
     }
     document.addEventListener("selectionchange", handleSelectionChange);
     return () => document.removeEventListener("selectionchange", handleSelectionChange);
@@ -606,6 +633,10 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
   // `card-deck-ops.setBubbleText`(비율 재분배로 기존 볼드 조각 보존)만 거친다. 헤더 주석
   // "모든 상태 변화는 card-deck-ops.ts 의 순수 함수만 거친다" 를 텍스트 입력에도 지킨다.
   function updateBubbleText(bubbleId: string, text: string) {
+    // MAJOR(5차 재검증, S1·S3): 타이핑이 났다는 건 이 말풍선의 선택 상태가 바뀌었다는
+    // 뜻이다 — selectionRefs에 남아 있던 이전 범위를 지우지 않으면, 그 낡은 범위가
+    // 굵게 폴백으로 계속 쓰여 방금 타이핑한 자리와 무관한 곳에 조용히 굵게가 적용된다.
+    delete selectionRefs.current[bubbleId];
     run((d) => setBubbleText(d, currentSlideId, bubbleId, text));
   }
 
@@ -617,8 +648,11 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
     const el = editableRefs.current[bubble.id];
     const liveOffsets = el ? getEditableSelectionOffsets(el) : null;
     // 실제 선택이 살아있으면(mousedown preventDefault가 지켜낸 정상 경로) 그것을 쓰고,
-    // WebKit 키보드 경로처럼 비어 있으면 selectionchange가 저장해둔 마지막 범위로
-    // 대신한다.
+    // 아니면 selectionchange가 저장해둔 마지막 범위로 대신한다. MAJOR(5차 재검증)로
+    // selectionRefs는 이제 "선택이 빈 캐럿으로 줄거나(공백 클릭·화살표) 타이핑이 났으면"
+    // 즉시 비워지므로, 여기 남아 있는 값은 "편집칸이 포커스를 잃은 직후, 그 사이 입력도
+    // 캐럿 이동도 없었을 때"(WebKit이 Tab으로 포커스를 뺏으며 Selection 자체를 무효화하는
+    // 경로, MINOR 2)만 해당한다 — 낡은 범위가 아니다.
     const offsets = (liveOffsets && liveOffsets.start !== liveOffsets.end) ? liveOffsets : selectionRefs.current[bubble.id];
     const from = offsets?.start ?? 0;
     const to = offsets?.end ?? 0;
@@ -675,6 +709,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
                   bubble={bubble}
                   editableRef={(el) => { editableRefs.current[bubble.id] = el; }}
                   onTextChange={(text) => updateBubbleText(bubble.id, text)}
+                  onTrimTrailingNewline={() => run((d) => trimBubbleTrailingNewline(d, currentSlideId, bubble.id))}
                   onFocus={() => setSelectedBubbleId(bubble.id)}
                   onCaretChange={(caret) => { caretRefs.current[bubble.id] = caret; }}
                 />

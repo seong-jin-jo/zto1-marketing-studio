@@ -316,8 +316,132 @@ describe("MAJOR(4차 재검증): 끝 개행은 편집 중엔 남고 blur에서�
     expect(finalText).toBe("왜 저만 안 오르죠?");
   });
 
-  it("코드 대조: handleBlur가 elementToPlainText로 라이브 텍스트를 읽어 끝 개행만 replace로 잘라낸다", () => {
-    expect(tsxSrc).toMatch(/trimmedText = liveText\.replace\(\/\\n\+\$\/, ""\)/);
+  it("코드 대조: handleBlur가 끝 개행 유무만 검사하고, 실제 트림은 전용 연산(onTrimTrailingNewline)에 맡긴다", () => {
+    // 5차 재검증(T1)에서 `onTextChange`(→ retextSegments 비율 재분배) 경로를 버리고
+    // 전용 연산으로 옮겼다 — 그 사실 자체를 코드에서 대조한다.
+    expect(tsxSrc).toMatch(/if \(\/\\n\+\$\/\.test\(liveText\)\) \{\s*\n\s*onTrimTrailingNewline\(\);/);
+    expect(tsxSrc).not.toMatch(/onTextChange\(trimmedText\)/);
+  });
+});
+
+describe("MAJOR 회귀(5차 재검증, T1): blur의 끝 개행 트림이 이미 있는 굵은 구간 경계를 옮기지 않는다", () => {
+  it("전용 연산 trimBubbleTrailingNewline이 마지막 세그먼트의 끝 개행만 지우고 굵은 경계는 그대로 둔다", () => {
+    const d = deck();
+    const chatSlide = d.slides.find((s) => s.role === "chat" && !(s.bubbles ?? []).some((b) => b.segments.some((seg) => seg.bold)))!;
+    const bubble = chatSlide.bubbles![0];
+    let currentDeck = d;
+    const onDeckChange = vi.fn((next: CardDeck) => { currentDeck = next; });
+    const { rerender } = render(<BubbleEditor deck={currentDeck} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
+    let bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${bubble.id}"]`)!;
+    let editable = within(bubbleEl).getByRole("textbox");
+
+    // 먼저 앞 두 글자를 굵게 만든다(경계를 만든다).
+    editable.focus();
+    fireEvent.focus(editable);
+    const range = document.createRange();
+    const textNode = editable.firstChild!;
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 2);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    fireEvent.click(within(bubbleEl).getByText("굵게"));
+    const afterBold = currentDeck.slides.find((s) => s.id === chatSlide.id)!.bubbles!.find((b) => b.id === bubble.id)!;
+    expect(afterBold.segments[0].bold).toBe(true);
+    const boldedFirstSegment = afterBold.segments[0];
+
+    rerender(<BubbleEditor deck={currentDeck} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
+    bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${bubble.id}"]`)!;
+    editable = within(bubbleEl).getByRole("textbox");
+    editable.focus();
+    fireEvent.focus(editable);
+    setCaretAtEnd(editable);
+    fireEvent.keyDown(editable, { key: "Enter" });
+    fireEvent.blur(editable);
+
+    const finalBubble = currentDeck.slides.find((s) => s.id === chatSlide.id)!.bubbles!.find((b) => b.id === bubble.id)!;
+    // 첫(굵은) 세그먼트는 글자 하나도 안 움직였다 — retextSegments 비율 재분배였다면
+    // 개행 한 글자가 빠지는 길이 변화만으로도 이 경계가 흔들릴 수 있었다(T1 재현).
+    expect(finalBubble.segments[0]).toEqual(boldedFirstSegment);
+    expect(finalBubble.segments.map((s) => s.text).join("")).not.toMatch(/\n$/);
+  });
+
+  it("코드 대조: card-deck-ops.trimBubbleTrailingNewline을 쓴다(setBubbleText 재사용 아님)", () => {
+    expect(tsxSrc).toMatch(/trimBubbleTrailingNewline/);
+  });
+});
+
+describe("MAJOR 회귀(5차 재검증, S1·S3): 선택이 무효화되면 selectionRefs 폴백도 같이 지워진다", () => {
+  it("S1: 선택 뒤 캐럿만 다른 자리로 옮기면(입력 전에도) 그 낡은 범위로 굵게가 적용되지 않는다", () => {
+    const d = deck();
+    const chatSlide = d.slides.find((s) => s.role === "chat" && !(s.bubbles ?? []).some((b) => b.segments.some((seg) => seg.bold)))!;
+    const bubble = chatSlide.bubbles![0];
+    const onDeckChange = vi.fn();
+    render(<BubbleEditor deck={d} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
+    const bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${bubble.id}"]`)!;
+    const editable = within(bubbleEl).getByRole("textbox");
+    editable.focus();
+    fireEvent.focus(editable);
+
+    const textNode = editable.firstChild!;
+    const sel = window.getSelection()!;
+    const selectRange = document.createRange();
+    selectRange.setStart(textNode, 0);
+    selectRange.setEnd(textNode, 3);
+    sel.removeAllRanges();
+    sel.addRange(selectRange);
+    fireEvent(document, new Event("selectionchange")); // selectionRefs에 {0,3} 저장.
+
+    // 캐럿만 뒤쪽으로 옮긴다(빈 선택) — 타이핑은 아직 없었다.
+    const collapsedRange = document.createRange();
+    collapsedRange.setStart(textNode, textNode.textContent!.length);
+    collapsedRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(collapsedRange);
+    fireEvent(document, new Event("selectionchange")); // 이 빈 캐럿이 selectionRefs를 지워야 한다.
+
+    fireEvent.click(within(bubbleEl).getByText("굵게"));
+
+    expect(onDeckChange).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe("굵게 만들 글을 먼저 선택해 주세요.");
+  });
+
+  it("S3: 선택 범위를 새 텍스트로 통째로 대체해도(입력 발생) 그 낡은 범위로 굵게가 적용되지 않는다", () => {
+    const d = deck();
+    const chatSlide = d.slides.find((s) => s.role === "chat" && !(s.bubbles ?? []).some((b) => b.segments.some((seg) => seg.bold)))!;
+    const bubble = chatSlide.bubbles![0];
+    let currentDeck = d;
+    const onDeckChange = vi.fn((next: CardDeck) => { currentDeck = next; });
+    render(<BubbleEditor deck={currentDeck} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
+    const bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${bubble.id}"]`)!;
+    const editable = within(bubbleEl).getByRole("textbox");
+    editable.focus();
+    fireEvent.focus(editable);
+
+    const textNode = editable.firstChild!;
+    const sel = window.getSelection()!;
+    const selectRange = document.createRange();
+    selectRange.setStart(textNode, 0);
+    selectRange.setEnd(textNode, 4);
+    sel.removeAllRanges();
+    sel.addRange(selectRange);
+    fireEvent(document, new Event("selectionchange")); // selectionRefs에 {0,4} 저장.
+
+    // 선택을 새 텍스트로 대체하는 입력을 흉내낸다 — handleInput이 onTextChange를 태운다.
+    const original = bubble.segments.map((s) => s.text).join("");
+    editable.textContent = `모든등급${original.slice(4)}`;
+    fireEvent.input(editable);
+
+    onDeckChange.mockClear(); // 방금 입력의 setBubbleText 호출은 이 테스트가 보는 게 아니다.
+    fireEvent.click(within(bubbleEl).getByText("굵게"));
+
+    expect(onDeckChange).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe("굵게 만들 글을 먼저 선택해 주세요.");
+  });
+
+  it("코드 대조: handleSelectionChange가 빈 캐럿에서 selectionRefs를 지우고, updateBubbleText도 입력에서 지운다", () => {
+    expect(tsxSrc).toMatch(/delete selectionRefs\.current\[selectedBubbleId\];/);
+    expect(tsxSrc).toMatch(/delete selectionRefs\.current\[bubbleId\];/);
   });
 });
 
@@ -339,6 +463,35 @@ describe("MINOR(1, 4차 재검증): 말풍선 맨 앞 Enter가 Chromium·WebKit�
     const nextBubble = currentDeck.slides.find((s) => s.id === chatSlide.id)!.bubbles!.find((b) => b.id === bubbleId)!;
     const text = nextBubble.segments.map((s) => s.text).join("");
     expect(text).toBe("\n왜 저만 안 오르죠?");
+  });
+
+  it("F2(5차 재검증): 짝 br이 부모의 마지막 자식이 아니면(뒤에 형제가 더 있으면) 짝으로 스킵하지 않고 실제 줄바꿈으로 센다", () => {
+    // Firefox에서 "기존 빈 줄 바로 앞"에 새 Enter를 치면, 그 개행을 그리는 <br>이 더는
+    // 부모의 마지막 자식이 아니게 된다(뒤에 기존 내용이 이어진다). 짝 판정을 "직전이
+    // 개행으로 끝나는 텍스트"만으로 걸면 이 br이 렌더 보조로 오판돼 줄 하나가 통째로
+    // 사라진다(옛 코드에서 이 구조를 넣으면 "첫줄\n둘째줄"로 나와 개행 하나를 잃는다).
+    const d = deck();
+    const chatSlide = d.slides.find((s) => s.role === "chat")!;
+    const bubbleId = chatSlide.bubbles![0].id;
+    let currentDeck = d;
+    const onDeckChange = vi.fn((next: CardDeck) => { currentDeck = next; });
+    render(<BubbleEditor deck={currentDeck} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
+    const bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${bubbleId}"]`)!;
+    const editable = within(bubbleEl).getByRole("textbox");
+    editable.focus();
+    fireEvent.focus(editable);
+    editable.innerHTML = "";
+    editable.appendChild(document.createTextNode("첫줄\n"));
+    editable.appendChild(document.createElement("br"));
+    editable.appendChild(document.createTextNode("둘째줄"));
+    fireEvent.input(editable);
+    const nextBubble = currentDeck.slides.find((s) => s.id === chatSlide.id)!.bubbles!.find((b) => b.id === bubbleId)!;
+    const text = nextBubble.segments.map((s) => s.text).join("");
+    expect(text).toBe("첫줄\n\n둘째줄");
+  });
+
+  it("코드 대조: 짝 판정이 parent.lastChild === node 를 확인한다(F2 고정)", () => {
+    expect(tsxSrc).toMatch(/isBrLastChildOfParent = !!parent && parent\.lastChild === node/);
   });
 
   it("Firefox 실측(중간 분할)은 여전히 선행 개행 없이 정확하다(회귀 방지)", () => {
