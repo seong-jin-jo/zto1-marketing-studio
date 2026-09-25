@@ -7382,3 +7382,17 @@ migration은 수정하지 않고, 최신 코드와 localhost 회귀를 다시 �
 |---|---|---|---|---|
 | EDITROOM-20260924 | 글 형식에서 순서 이동을 노출하지 않고 카드·영상 순서는 보존 | EDITROOM-NO-DEAD-CONTROLS-01 | ❌ NG | 현재 글의 목차 콜백은 이미 차단됐으나 이를 직접 고정하는 회귀 계약이 없다. 음악 형식·배경 음악 도구·미지원 경고는 아직 노출된다. |
 | EDITROOM-20260924 | 목소리 편집 보존, 기존 audio 초안의 `musicTrack`·`musicVolume` 저장값 보존 | EDITROOM-NO-DEAD-CONTROLS-02 | ❌ NG | audio 분기가 배경 음악 조작과 경고만 노출하고 목소리 도구는 숨긴다. UI 제거 후 payload 보존 회귀 테스트가 없다. |
+## 2026-09-25 12:40 KST · 영상 목록/삭제 저장 위치 결손 수정 확인
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| VIDEO-LIST-STUDIO | `/api/video/list`가 생성실(`data/studio/<tenant>`) 영상도 최신순으로 보여준다 | VIDEO-LIST-STUDIO-01 | ✅ PASS | `dashboard/tests/publish/video-routes-tenant-isolation.test.ts`, 작업공간 폴더 전용 영상이 목록에 서명 URL로 나옴을 실행 확인 |
+| VIDEO-LIST-STUDIO | 다른 테넌트의 생성실 영상은 파일명이 알려져도 새지 않는다 | VIDEO-LIST-STUDIO-02 | ✅ PASS | 동일 파일, 테넌트 격리 실행 확인 |
+| VIDEO-LIST-STUDIO | 두 폴더에 같은 파일명이 있으면 목록·배달·삭제가 임의로 고르지 않고 모두 숨긴다(fail closed) | VIDEO-LIST-STUDIO-03 | ✅ PASS | `resolveGeneratedFile`이 충돌 시 null 반환함을 실행 확인 |
+| VIDEO-LIST-STUDIO | 목록에 뜬 생성실 영상을 `/api/video/delete`가 실제로 지운다(이전 404 결함) | VIDEO-LIST-STUDIO-04 | ✅ PASS | 삭제 200, 대상 파일만 사라지고 다른 테넌트 파일 보존 확인 |
+| VIDEO-LIST-STUDIO | 다른 테넌트 파일을 가리키는 심볼릭 링크는 목록·배달에서 거부 | VIDEO-LIST-STUDIO-05 | ✅ PASS | lstat+realpath containment 확인 |
+| VIDEO-LIST-STUDIO | 다른 테넌트 폴더를 가리키는 링크는 목록·배달·삭제 모두에서 거부 | VIDEO-LIST-STUDIO-06 | ✅ PASS | 배달 404, 삭제 404, 파일 보존 확인 |
+
+돌연변이 검증: 수정 3파일(`lib/storage.ts`, `api/video/list/route.ts`, `api/video/delete/route.ts`)을 되돌려 같은 19건 중 10건 FAIL 확인, 원복 후 19건 PASS 재확인. `npm run typecheck:ci` PASS. 전체 `npx vitest run` 종료 코드는 build-log.md 2026-09-25 12:40 항목에 기재.
+
+SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-isolation.test.ts`, `dashboard/tests/publish/video-path-resolution.contract.test.ts` 실행 로그

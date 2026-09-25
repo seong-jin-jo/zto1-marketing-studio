@@ -227,7 +227,7 @@ interface TextVariants {
 // 도장이 없으면 새 주제에 어제 영상이 그대로 붙는다. 2026-09-14 실측 사고.
 // aspectRatio = 이 그림이 어떤 비율로 만들어졌는지(work-media.ts isReusableVideoBaseImage).
 // 1:1 대표 이미지를 영상 바탕으로 잘못 재사용해 정사각 영상이 나오는 것을 막는다(2026-09-16).
-interface ImgResult { url: string; file: string; localPath: string; imageUrls?: string[]; topicKey?: string; aspectRatio?: string }
+interface ImgResult { url: string; file: string; filename?: string; imageUrls?: string[]; topicKey?: string; aspectRatio?: string }
 interface VidResult {
   url: string;
   file: string;
@@ -875,10 +875,10 @@ export default function StudioPage() {
       setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
     }
   }
-  // 바탕 그림을 서버 내부 경로로도, 파일 이름으로도 넘길 수 있게 한다.
-  // 방금 만든 그림은 내부 경로를 갖고 있지만, 승인함이나 달력에서 가져온 작업물은
-  // 웹 주소만 갖고 있다. 종전에는 후자로 영상을 만들 수 없었다(코드 감사 F-05).
-  async function genVideo(source: { localPath?: string; filename?: string }) {
+  // 바탕 그림은 파일 이름으로만 넘긴다(2026-09-25 코드리뷰 MAJOR-0b: 서버 절대경로를 클라이언트가
+  // 들고 다니며 그대로 서버에 되돌려주는 통로를 없앴다). 방금 만든 그림도, 승인함이나 달력에서
+  // 가져온 작업물(파일 이름만 앎)도 이 한 가지 방식으로 처리된다(코드 감사 F-05 취지 유지).
+  async function genVideo(source: { filename?: string }) {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return null; }
     setLastError(null);
     const s = text?.shorts;
@@ -890,7 +890,7 @@ export default function StudioPage() {
         pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea, industry: learningInfo.industry }),
         learningInfo,
       );
-      const r = await apiPost<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { localPath: source.localPath, filename: source.filename, prompt: motion, model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
+      const r = await apiPost<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { filename: source.filename, prompt: motion, model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
       if (!r?.ok) {
         const msg = r?.nsfw
           ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요."
@@ -1077,10 +1077,11 @@ export default function StudioPage() {
         if (!source) return; // 실패 사유는 genImage 가 이미 화면에 말했다
       }
       setBusy("숏폼 영상 만드는 중");
-      // 내부 경로가 없으면 배달 주소에서 파일 이름을 꺼내 넘긴다. 서버가 그것으로 찾는다.
+      // 방금 만든 그림은 /api/higgsfield/image가 filename을 직접 준다. 승인함·달력에서 가져온
+      // 작업물은 filename이 없고 배달 주소만 있으니 거기서 파일 이름을 꺼낸다.
       // 여기서 `img` 로 한 번 더 떨어지면 방금 가른 것이 무의미해진다. 바탕은 source 뿐이다.
-      const baseFilename = videoFilename(source?.file || source?.url || "");
-      if (!source?.localPath && !baseFilename) {
+      const baseFilename = source?.filename || videoFilename(source?.file || source?.url || "");
+      if (!baseFilename) {
         // 잠깐 뜨는 알림만으로는 옛 영상이 화면에 남아 있는 것을 사용자가 알 수 없다.
         // 사라지지 않는 자리에도 남긴다(ADR-007).
         const msg = "영상의 바탕이 될 그림을 찾지 못했습니다. 생성실에서 그림을 다시 만들어 주세요.";
@@ -1088,7 +1089,7 @@ export default function StudioPage() {
         showToast(msg, "error");
         return;
       }
-      await genVideo({ localPath: source?.localPath, filename: baseFilename });
+      await genVideo({ filename: baseFilename });
     } catch (e) {
       // genImage/genVideo 는 각자 실패 사유를 이미 화면에 말한다. 여기서 잡는 것은
       // 그 앞뒤(주제 재확인·비용 산정·승인) 단계에서 던진 예외다.
@@ -1222,7 +1223,7 @@ export default function StudioPage() {
           { lines: [], ratio: cardRatioFrom(cardAspectRatio), template: "chat_bubble", deck: pruned },
           { upload: browserCardUploader(authHeaders()) },
         );
-        const next: ImgResult = { url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
+        const next: ImgResult = { url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
         setImg(next);
         return next;
       } catch (error) {
@@ -1251,7 +1252,7 @@ export default function StudioPage() {
         theme: themeFromPalette(learningInfo.palette),
         positions: cardTextPositions,
       }, { upload: browserCardUploader(authHeaders()) });
-      const next: ImgResult = { url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
+      const next: ImgResult = { url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
       setImg(next);
       return next;
     } catch (error) {
@@ -1733,7 +1734,7 @@ export default function StudioPage() {
         instagram: { caption: work.body, hashtags: work.hashtags.map((tag) => tag.replace(/^#/, "")) },
         shorts: { hook: work.body, body: "", cta: "" },
       });
-      setImg(work.imageUrl ? { url: work.imageUrl, file: work.imageUrl, localPath: work.imageUrl } : null);
+      setImg(work.imageUrl ? { url: work.imageUrl, file: work.imageUrl } : null);
       setVid(work.videoUrl ? { url: work.videoUrl, file: work.videoUrl, model: "기존 작업물" } : null);
       setIncludes(work.includedPlatforms.length
         ? normalizeIncludes(Object.fromEntries(ALL.map((platform) => [platform, work.includedPlatforms.includes(platform)])))
@@ -2208,7 +2209,7 @@ export default function StudioPage() {
         }}
         onTextCardsCreated={(urls, cardLines) => {
           if (!urls.length) return;
-          setImg({ url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) });
+          setImg({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) });
           setEditKind("card");
           setEditFormat((current) => {
             const base = defaultContentEditFormat("card");

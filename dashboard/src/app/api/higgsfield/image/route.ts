@@ -6,7 +6,10 @@ import { toGeneratorRatio } from "@/lib/generator-aspect-ratio";
 import { hfRun, extractJson, findResultUrl, downloadTo, logGen, recordMediaGenerationEvent, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError, assertHiggsfieldReady, studioDir, assetUrl } from "@/lib/higgsfield";
 
 // POST /api/higgsfield/image — Soul V2 text→image. body: { prompt, aspectRatio?, quality?, label? }
-// 반환: { url(cloudfront), file(/studio-assets/..), localPath } — video 단계에서 localPath 재사용
+// 반환: { url(cloudfront), file(/studio-assets/..), filename } — video 단계에서 filename 재사용.
+// 2026-09-25 코드리뷰 MAJOR-0b: 종전엔 서버 절대경로(localPath)를 그대로 클라이언트에 돌려주고
+// video 라우트가 그 경로를 검증 없이 그대로 받아 썼다 — 임의 경로 주입 통로였다(리뷰어 탐침
+// 실측). 파일 이름만 주고, 서버 경로는 video 라우트가 resolveGeneratedFile로 직접 푼다.
 // img·video 태그는 인증 헤더를 못 붙인다. 그래서 헤더 인증만 있는 자산 경로로는 화면에
 // 아무것도 안 뜬다. 이미 있는 서명 배달 경로로 돌려준다. 서명이 없으면(비밀 미설정)
 // 종전 자산 경로로 떨어뜨려 최소한 운영자 화면에서는 보이게 한다.
@@ -66,7 +69,7 @@ export async function POST(request: Request) {
     await downloadTo(url, localPath);
     runWithTenant(tenantId, () => logGen("image", "Higgsfield Soul V2", label));
     await recordMediaGenerationEvent(tenantId, "image", "Higgsfield Soul V2", label);
-    return Response.json({ ok: true, url, file: deliverUrl(tenantId, fname), localPath });
+    return Response.json({ ok: true, url, file: deliverUrl(tenantId, fname), filename: fname });
   } catch (e) {
     // 2026-09-16 실측: execFile 오류 메시지는 "Command failed: <긴 명령>\n<stderr>" 라 앞 300자만
     // 남기면 명령만 보이고 생성기가 말한 이유(stderr)는 잘린다. 이유가 있는 끝쪽을 남긴다.
