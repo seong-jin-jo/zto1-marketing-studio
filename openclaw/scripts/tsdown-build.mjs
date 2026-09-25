@@ -43,7 +43,22 @@ const MIN_TSDOWN_MAX_OLD_SPACE_MB = 2048;
 // 3,584MB 를 남기면 위 머신에서 힙 상한이 약 4,357MB 가 되고 운영체제와 컨테이너 몫이
 // 남는다. 메모리가 큰 기계는 영향이 없다. 상한이 min(12288, 총량 - 여유) 라서 총량이
 // 15.8GB 를 넘으면 12,288MB 로 그대로 걸린다.
-const TSDOWN_CGROUP_MEMORY_HEADROOM_MB = 3584;
+//
+// 2026-09-26 재실측: 이 값은 실제로 그 머신에서 불안정했다. run 36177984718 이 커밋
+// 3a3a15db(dashboard 전용 변경 — 게이트웨이 build context `./openclaw` 밖이라 무관함을
+// git diff --stat 과 docker-compose.postagi-4tenants.yml 의 context 확인으로 배제)에서
+// attempt 1·2 모두 같은 지점(tsdown, 125.7s)에서 heap out of memory 로 죽었다.
+// SSH로 그 머신을 직접 열어 계산 입력값을 그대로 재현: cgroup memory.max=max(무제한)라
+// /proc/meminfo MemTotal=8,103,680kB(≈7,913MB)를 쓰고, headroom 3,584MB 를 빼면
+// cgroupCap=max(2048, 7913-3584)=4,329MB. defaultMaxOldSpaceMb(12,288)와의 min 이라
+// 실제 힙 상한은 4,329MB 였다 — 바로 위 Dockerfile 주석이 명시하는 하한(힙 4,608MB,
+// 8-플러그인 구성 실측치)에 못 미친다. 즉 이 머신에서 이 값은 "가끔 성공하는 도박"이었고
+// 이번엔 졌다. 같은 시각 SSH 실측(free -h): MemAvailable 6,086MB, 실행 중이던 8개
+// 컨테이너의 RSS 합은 700MB 미만(docker stats) — 힙을 올릴 여유는 충분히 있었다.
+// 헤드룸을 3,200MB 로 낮춰 힙 상한을 ≈4,713MB(=7,913-3,200)로 올린다. Dockerfile 이
+// 명시한 4,608MB 하한보다 여유를 두면서도, 2026-09-14 머신을 멈춰 세운 768MB 헤드룸
+// (힙 7,173MB)과는 충분히 떨어져 있다.
+const TSDOWN_CGROUP_MEMORY_HEADROOM_MB = 3200;
 const CGROUP_MEMORY_LIMIT_PATHS = [
   "/sys/fs/cgroup/memory.max",
   "/sys/fs/cgroup/memory/memory.limit_in_bytes",
