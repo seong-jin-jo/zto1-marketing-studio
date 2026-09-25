@@ -1138,9 +1138,11 @@ export default function StudioPage() {
       selectedAccounts,
       editLines: persistedEditLines,
       cardTextPositions,
-      // cardDeck 키가 아예 없으면 서버가 기존 덱을 보존한다(route.ts). 있을 때만 보낸다.
-      ...(persistedCardDeck ? { cardDeck: persistedCardDeck } : {}),
-      ...(persistedVideoEdit ? { videoEdit: persistedVideoEdit } : {}),
+      // 자기 도메인만 저장하는 호출도 반대 도메인을 명시적으로 null로 보낸다. route.ts는
+      // clear 플래그가 없는 null을 "기존 값 보존"으로 다룬다. 키 생략과 위치 인자 기본값이
+      // 섞여 상대 도메인 state를 덮어쓴 과거 회귀를 payload 계약으로 드러낸다.
+      cardDeck: persistedCardDeck,
+      videoEdit: persistedVideoEdit,
       editKind,
       editFormat,
       reviewQueueId,

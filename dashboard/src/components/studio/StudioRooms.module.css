@@ -12,6 +12,113 @@
   container-name: edit-workbench;
 }
 
+.textDocumentWorkbench {
+  --editroom-document-width: 42.5rem;
+  --editroom-document-min-height: 38rem;
+  --editroom-document-body-min-height: 24rem;
+  --editroom-document-line-height: 1.875rem;
+  --editroom-meter-bar-width: 2.125rem;
+  --editroom-meter-height: 1.5rem;
+  display: block;
+}
+
+.textDocumentCanvas {
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--surface-2);
+  padding: var(--space-region) var(--pad-inset);
+}
+
+.textDocumentSheet {
+  display: grid;
+  width: 100%;
+  max-width: var(--editroom-document-width);
+  min-height: var(--editroom-document-min-height);
+  margin-inline: auto;
+  grid-template-rows: auto minmax(var(--editroom-document-body-min-height), 1fr) auto;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-surface);
+  background: var(--surface);
+  padding: var(--space-region);
+  box-shadow: var(--shadow);
+}
+
+.textDocumentHeader {
+  padding-bottom: var(--stack-section);
+}
+
+.textDocumentHeader h3 {
+  color: var(--text);
+  font-size: var(--font-heading-size);
+  font-weight: 800;
+  line-height: var(--font-heading-leading);
+}
+
+.textDocumentHeader p {
+  margin-top: var(--stack-tight);
+  color: var(--text-subtle);
+  font-size: var(--font-caption-size);
+  line-height: var(--font-caption-leading);
+}
+
+.textDocumentBody {
+  width: 100%;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--font-lead-size);
+  line-height: var(--editroom-document-line-height);
+  word-break: keep-all;
+}
+
+.channelMeters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--stack-tight);
+  padding-top: var(--stack-section);
+  border-top: 1px solid var(--border);
+}
+
+.channelMeter {
+  display: inline-grid;
+  min-height: var(--editroom-meter-height);
+  grid-template-columns: auto var(--editroom-meter-bar-width) auto;
+  align-items: center;
+  gap: var(--stack-tight);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-pill);
+  padding-inline: var(--stack-tight);
+  color: var(--text-muted);
+  font-size: var(--font-caption-size);
+  line-height: var(--font-caption-leading);
+}
+
+.channelMeter meter {
+  width: var(--editroom-meter-bar-width);
+  height: var(--space-micro);
+  accent-color: var(--accent);
+}
+
+.channelMeter[data-channel-limit-tone="warning"] {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.channelMeter[data-channel-limit-tone="danger"] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.channelMeter[data-channel-limit-tone="warning"] meter {
+  accent-color: var(--warning);
+}
+
+.channelMeter[data-channel-limit-tone="danger"] meter {
+  accent-color: var(--danger);
+}
+
 .editOutline {
   border-bottom: 1px solid var(--border);
   /* 목차와 본문은 각각 세로로 구르고 화면 가로 폭을 밀지 않는다(DESIGN.md §4 넘침 규칙). */
@@ -51,6 +158,20 @@
   .editOutline {
     border-right: 1px solid var(--border);
     border-bottom: 0;
+  }
+
+  .textDocumentWorkbench {
+    grid-template-columns: none;
+  }
+}
+
+@media (max-width: 30rem) {
+  .textDocumentCanvas {
+    padding-inline: var(--pad-inset);
+  }
+
+  .textDocumentSheet {
+    padding: var(--pad-inset);
   }
 }
 

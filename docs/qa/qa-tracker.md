@@ -1,3 +1,25 @@
+## 2026-09-25 11:39 KST · PR 85 편집실 v70 낡은 목차 계약 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR85-CI-EDIT-OUTLINE | 글 편집은 문단 목차 없이 글 전체 편집기만 노출 | QA-EDIT-06 | ❌ NG, 수정 착수 | PR 85 CI는 402파일 중 401파일을 통과했고 `studio-fe2-rooms.test.tsx:327`만 실패했다. 제품과 v70 전용 회귀는 글 `data-edit-outline` 부재를 계약하지만 이 테스트만 옛 `aria-label="글 문단"` 목차 존재를 요구한다. 글 전체 textbox와 문단별 textbox 부재 단언은 현재 계약과 일치한다. |
+
+## 2026-09-25 07:42 KST · 편집실 v70 1단계 입력 복구 후 🔧 구현, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V70-P1-INPUT | v70 수치 규격과 프로토타입을 읽고 `.work` 내부만 구현 | EDITROOM-V70-P1-INPUT-01 | ❌ NG → 🔧 입력 복구 | HEAD `cc878a82`에서 두 필수 설계 파일 전문을 읽고 기존 구현·ADR-007과 대조했다. 이전 07:20 결손은 해소됐다. |
+| EDITROOM-V70-TEXT | 680px 시트, 문단 순서 UI 0, 채널 상한 미터 | V70-TEXT-01~02 | PASS | DOM에서 글 `data-edit-outline` 0, X 한글 가중 경계 통과. CSS 토큰 `42.5rem`, X 280·Threads 500·Instagram 2,200 계약 통과. |
+| EDITROOM-V70-CARD | 112px 스트립, 520px 4:5 스테이지, 말풍선 1클릭 직접 편집, 우측 열 제거 | V70-CARD-01~03 | PASS | DOM 스테이지와 선택 도구 5개, 미선택 도구 0개, 우측 `data-card-deck-editor` 0건. 520px→496px 돌연변이는 V70-CARD-01이 실패시켰고 원복 뒤 통과. |
+| EDITROOM-V70-SAVE | 반대 도메인 null, 음악 데이터 보존, UI 미부활 | CROSS-DOMAIN A·B, route null 보존, EDITROOM-NO-DEAD-CONTROLS-03~04 | PASS | 카드 저장은 `videoEdit:null`, 영상 저장은 `cardDeck:null`. route 통합 테스트는 clear 플래그 없는 null을 병합 대상에서 제외한다. 음악 UI 문자열 0건, 보존 필드 계약 통과. |
+| EDITROOM-V70-VERIFY | 타입·빌드·브라우저 스모크 | V70-P1-FINAL | PASS, 운영 미검증 | 관련 Vitest 10파일 53건, `typecheck:ci`, `npm run build` PASS. dev Ready 758ms, `/studio?room=edit` HTTP 200, Chrome 앱 콘솔 오류 0. 운영 배포·실회원 초안 저장은 미검증. |
+
+## 2026-09-25 07:20 KST · 편집실 v70 1단계 필수 디자인 입력 결손 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V70-P1-INPUT | 승인된 EDIT-TEXT·EDIT-CARD 수치 규격과 프로토타입을 읽고 `.work` 내부만 구현 | EDITROOM-V70-P1-INPUT-01 | ❌ NG, 구현 차단 | 사용자 지정 `docs/design/design-spec-editroom-v70.md`와 `docs/design/prototypes/osmu-editroom-v70-hub-claude-opus-20260923-0956.html`이 HEAD `57850570`, 로컬 `/Users/sj`·`/private/tmp`, origin의 모든 원격 브랜치, GitHub 코드 검색에 없다. `pipeline-state.osmu.md`의 최신 `approved_artifacts`도 v68만 가리킨다. 승인 입력 없이 680px·112px·520px 외 나머지 토큰과 상태·상호작용을 추정하지 않았고 제품 코드·테스트는 변경하지 않았다. |
+
 ## 2026-09-25 01:36 KST · 생성기 생존 탐침 거짓 양성 🔧 수정, 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

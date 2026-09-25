@@ -30,6 +30,7 @@ describe("BubbleEditor (F4, PR4)", () => {
     const onDeckChange = vi.fn();
     render(<BubbleEditor deck={d} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
     const bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${chatSlide.bubbles![0].id}"]`)!;
+    fireEvent.focus(within(bubbleEl).getByRole("textbox"));
     fireEvent.click(within(bubbleEl).getByText("화자 전환"));
     expect(onDeckChange).toHaveBeenCalledTimes(1);
     const next = onDeckChange.mock.calls[0][0] as CardDeck;
@@ -49,6 +50,7 @@ describe("BubbleEditor (F4, PR4)", () => {
     const onDeckChange = vi.fn();
     render(<BubbleEditor deck={onlyOne} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
     const bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${chatSlide.bubbles![0].id}"]`)!;
+    fireEvent.focus(within(bubbleEl).getByRole("textbox"));
     fireEvent.click(within(bubbleEl).getByText("삭제"));
     expect(onDeckChange).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(/./);
@@ -82,5 +84,22 @@ describe("CardDeckPanel (표지·CTA 고정, 세션맥락: card-deck-ops 순수 
     const secondSlide = d.slides[1];
     fireEvent.click(document.querySelector(`[data-slide-id="${secondSlide.id}"]`)!);
     expect(document.querySelector(`[data-slide-id="${secondSlide.id}"]`)).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("장 전환은 이전 말풍선 선택을 비워 새 장 추가가 옛 ID를 참조하지 않는다", () => {
+    const d = deck();
+    const onDeckChange = vi.fn();
+    render(<CardDeckPanel deck={d} onDeckChange={onDeckChange} />);
+
+    fireEvent.click(document.querySelector(`[data-slide-id="${d.slides[1].id}"]`)!);
+    fireEvent.click(screen.getByRole("textbox", { name: "말풍선 내용 1" }));
+    expect(screen.getByLabelText("선택한 말풍선 도구")).toBeInTheDocument();
+
+    fireEvent.click(document.querySelector(`[data-slide-id="${d.slides[2].id}"]`)!);
+    expect(screen.queryByLabelText("선택한 말풍선 도구")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "말풍선 추가" }));
+
+    expect(onDeckChange).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

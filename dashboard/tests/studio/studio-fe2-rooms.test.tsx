@@ -320,13 +320,13 @@ describe("화면 2차 편집실 계약", () => {
     expect(screen.queryByText(/배경음악 음량/)).not.toBeInTheDocument();
   });
 
-  it("QA-EDIT-06 정상: 글 형식은 카드뉴스가 아니라 글 문단과 연속 문서 편집기로 전환된다", () => {
+  it("QA-EDIT-06 정상: 글 형식은 목차 없이 연속 문서 편집기로 전환된다", () => {
     render(<EditRoom lines={["첫 문단", "둘째 문단"]} onLinesChange={vi.fn()} kind="text" />);
 
     expect(document.querySelector('[data-edit-kind="text"]')).toBeInTheDocument();
-    expect(document.querySelector("[data-edit-outline]")).toHaveAttribute("aria-label", "글 문단");
+    expect(document.querySelector("[data-edit-outline]")).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "글 전체" })).toHaveValue("첫 문단\n\n둘째 문단");
     expect(screen.queryByRole("textbox", { name: "문단 1" })).not.toBeInTheDocument();
-    expect(screen.getByText("공백 포함 11자 · 문단 2개")).toBeInTheDocument();
+    expect(screen.getByText("공백 포함 11자")).toBeInTheDocument();
   });
 });

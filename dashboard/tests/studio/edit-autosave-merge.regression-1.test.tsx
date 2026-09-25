@@ -31,6 +31,25 @@ import deckD100 from "./fixtures/deck-d100.v2.json";
 
 const pageSrc = fs.readFileSync(path.resolve(__dirname, "../../src/app/studio/page.tsx"), "utf8");
 
+/**
+ * PR #87 리뷰(2026-09-25) 실측 회귀: 이 파일만 `HTMLCanvasElement.getContext`를 null로
+ * 죽이지 않아, `CardDeckPanel`이 v70에서 새로 붙은 `useSlideRenderCheck`(발행 렌더러를
+ * 400ms 디바운스로 다시 그려 표지·CTA 미리보기와 레이아웃 경고를 만드는 훅, M5·M6)를 통해
+ * jsdom이 자동 로드하는 진짜 "canvas" npm 네이티브 바인딩으로 실제 픽셀을 그렸다.
+ * `vi.useFakeTimers()`는 setTimeout의 "논리 시간"만 앞당길 뿐, 그 콜백 안에서 실제로 도는
+ * 네이티브 캔버스 그리기(한글 폰트 메트릭 조회 포함)의 "실제 CPU 시간"은 그대로다 — 이
+ * 공유 머신처럼 다른 vitest 워커와 CPU를 다툴 때 그 실제 시간이 이 테스트의 5000ms 실벽시계
+ * testTimeout을 넘겼다(p1 단독 재현, p2 단독 통과 — p2엔 이 훅이 없다). 다른 형제 테스트
+ * (`bubble-editor.test.tsx`, `editroom-v70-phase1.regression.test.tsx` 등)는 이미 이 자리를
+ * null로 죽여 캔버스를 안 그리는 관행을 쓴다 — 여기만 빠져 있었다. 테스트 제한시간을
+ * 늘리는 대신(회장 지시: 덮지 말 것) 같은 관행을 따라 실제 원인(불필요한 실캔버스 렌더)을
+ * 없앤다 — 실제 발행 렌더러 자체의 회귀는 `card-templates-chat-bubble.render.test.ts`가
+ * 이미 전담해 커버한다.
+ */
+if (typeof HTMLCanvasElement !== "undefined") {
+  HTMLCanvasElement.prototype.getContext = (() => null) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+}
+
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }

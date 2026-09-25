@@ -93,3 +93,19 @@ jobs:
         # 다섯 라운드 동안 아무도 못 잡았다. 이제 CI 의 실제 스텝이다.
         # 브라우저를 못 구하면 조용히 건너뛰지 않고 실패한다(스크립트 안에 명시).
         run: bash scripts/ci-publish-room-alignment.sh
+
+      - name: 말풍선 에디터 WYSIWYG 회귀 게이트 (chromium)
+        # PR #85 4차 재검증 MINOR(4). webkit·firefox 는 CI(self-hosted 러너 반복 실행)에
+        # 매번 설치하기엔 브라우저 바이너리 값이 커서, chromium만 CI 게이트로 걸고 나머지
+        # 두 엔진은 로컬에서 수동으로 3엔진 전체(`npm run e2e:bubble-editor`)를 돌려
+        # 확인한다(이번 라운드 확인 로그: 27/27 통과, chromium/webkit/firefox 전부).
+        # 이 스텝은 MAJOR(끝 개행 WYSIWYG 불일치)·MINOR(선행 Enter, 키보드 전용 굵게)
+        # 회귀를 실측 브라우저로 잡는다 — mock/jsdom으로는 못 잡는 축이다.
+        # MINOR(3, 5차 재검증): `npx playwright install`은 package.json에 없는
+        # `playwright`(풀 패키지)를 매번 최신판(예: 1.63)으로 새로 받아 브라우저 버전이
+        # 고정 안 된다 — 이 레포는 `playwright-core`만 devDependency로 쓴다(스크립트가
+        # 실제 임포트하는 것도 그것). `npx playwright-core install`로 바꿔 이미 npm ci로
+        # 설치된, package-lock.json이 고정한 그 버전의 브라우저를 받는다.
+        run: |
+          npx playwright-core install --with-deps chromium
+          npm run e2e:bubble-editor:chromium

@@ -1676,6 +1676,62 @@ function ToolIcon({ tool }: { tool: ToolName }) {
   return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[tool]}</svg>;
 }
 
+const CHANNEL_TEXT_LIMITS = [
+  { key: "x", label: "X", limit: 280, weighted: true },
+  { key: "threads", label: "Threads", limit: 500, weighted: false },
+  { key: "instagram", label: "Instagram", limit: 2200, weighted: false },
+] as const;
+
+/** v70 §2: X의 한글은 2칸, 나머지 문자는 1칸으로 센다. */
+export function countXWeightedCharacters(value: string): number {
+  return Array.from(value).reduce((total, character) => (
+    /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/u.test(character) ? total + 2 : total + 1
+  ), 0);
+}
+
+function ChannelLimitMeter({ label, count, limit, channel }: { label: string; count: number; limit: number; channel: string }) {
+  const ratio = count / limit;
+  const tone = ratio > 1 ? "danger" : ratio >= 0.8 ? "warning" : "normal";
+  return (
+    <div className={styles.channelMeter} data-channel-limit={channel} data-channel-limit-tone={tone}>
+      <span>{label}</span>
+      <meter min={0} max={limit} low={limit * 0.8} high={limit} optimum={0} value={Math.min(count, limit)} aria-label={`${label} 글자 수 ${count}/${limit}`} />
+      <b>{count.toLocaleString("ko-KR")}/{limit.toLocaleString("ko-KR")}</b>
+    </div>
+  );
+}
+
+function TextDocumentEditor({ lines, onLinesChange }: { lines: string[]; onLinesChange: (lines: string[]) => void }) {
+  const body = lines.join("\n\n");
+  return (
+    <section className={styles.textDocumentCanvas} aria-labelledby="whole-text-title" data-edit-stage>
+      <article className={styles.textDocumentSheet} data-text-document-sheet>
+        <header className={styles.textDocumentHeader}>
+          <h3 id="whole-text-title">글 전체 편집</h3>
+          <p>공백 포함 {Array.from(body).length.toLocaleString("ko-KR")}자</p>
+        </header>
+        <textarea
+          aria-label="글 전체"
+          value={body}
+          onChange={(event) => onLinesChange(event.target.value.split(/\n\s*\n/))}
+          className={styles.textDocumentBody}
+        />
+        <footer className={styles.channelMeters} aria-label="채널별 글자 수 상한">
+          {CHANNEL_TEXT_LIMITS.map((channel) => (
+            <ChannelLimitMeter
+              key={channel.key}
+              channel={channel.key}
+              label={channel.label}
+              limit={channel.limit}
+              count={channel.weighted ? countXWeightedCharacters(body) : Array.from(body).length}
+            />
+          ))}
+        </footer>
+      </article>
+    </section>
+  );
+}
+
 export function EditRoom({
   workspaceId,
   lines,
@@ -1890,7 +1946,7 @@ export function EditRoom({
                   <CardDeckPanel deck={cardDeck} onDeckChange={onCardDeckChange} />
                 </div>
               ) : (
-              <div className={`card overflow-hidden ${styles.editWorkbench}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined}>
+              <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined}>
                 {/*
                   2026-09-23 세션맥락(과업 C): 카드뉴스가 말풍선 덱(chat_bubble)이 아니면
                   위 CardDeckPanel 분기를 안 타 말풍선 편집 기능이 통째로 안 보인다.
@@ -1911,7 +1967,7 @@ export function EditRoom({
                   흐름이 곧 상품인데 그 흐름이 화면에 없었다. DESIGN.md §4 가 이 칸을 이미
                   계약해 뒀으므로 새 칸을 만들지 않고 있는 집을 채운다.
                 */}
-                <nav className={`min-w-0 p-pad-inset ${styles.editOutline}`} aria-label={outlineTitle} data-edit-outline>
+                {kind !== "text" ? <nav className={`min-w-0 p-pad-inset ${styles.editOutline}`} aria-label={outlineTitle} data-edit-outline>
                   <EditOutline
                     title={outlineTitle}
                     unit={unit}
@@ -1924,27 +1980,15 @@ export function EditRoom({
                     tenantId={workspaceId}
                     showRoles={kind === "card"}
                     note={kind === "card" ? "순서는 끌어서 놓거나 ▲▼로 바꿉니다. 자유 배치는 아직 제공하지 않습니다. 글자는 상단·중앙·하단 중에서 고릅니다." : undefined}
-                    onMove={kind === "text" ? undefined : moveLine}
-                    onMoveTo={kind === "text" ? undefined : moveLineTo}
-                    onAdd={kind === "text" ? undefined : addLine}
-                    onRemove={kind === "text" ? undefined : removeLine}
+                    onMove={moveLine}
+                    onMoveTo={moveLineTo}
+                    onAdd={addLine}
+                    onRemove={removeLine}
                   />
-                </nav>
-                <div className="min-w-0 p-pad-inset">
+                </nav> : null}
+                <div className={kind === "text" ? "min-w-0" : "min-w-0 p-pad-inset"}>
                   {kind === "text" ? (
-                    <section aria-labelledby="whole-text-title" data-edit-stage>
-                      <div className="mb-stack flex flex-wrap items-start justify-between gap-stack-tight">
-                        <div><b id="whole-text-title" className="text-body text-text">글 전체 편집</b><p className="text-caption text-subtle">공백 포함 {safeLines.join("\n\n").length}자 · 문단 {safeLines.length}개</p></div>
-                      </div>
-                      <textarea
-                        aria-label="글 전체"
-                        value={safeLines.join("\n\n")}
-                        rows={14}
-                        onChange={(event) => onLinesChange(event.target.value.split(/\n\s*\n/))}
-                        className="min-h-80 w-full resize-y overflow-y-auto rounded-control border border-border bg-surface p-pad-inset text-body leading-relaxed text-text"
-                      />
-                      <p className="mt-stack-tight text-caption text-subtle">문단을 나누거나 합쳐도 자동 저장됩니다.</p>
-                    </section>
+                    <TextDocumentEditor lines={safeLines} onLinesChange={onLinesChange} />
                   ) : (
                     <>
                       {kind === "audio" ? (
