@@ -67,6 +67,10 @@ vi.mock("@/lib/tenant-context", () => ({
 
 vi.mock("@/lib/media-token", () => ({
   signMediaToken: vi.fn(() => "signed"),
+  // MINOR-4(코드리뷰 2026-09-25): higgsfield/video 라우트가 filename 검증에
+  // isSafeMediaFilename을 새로 쓴다 — 이 판의 관심사(무음 폴백 응답 계약)와 무관하니
+  // 항상 통과시킨다.
+  isSafeMediaFilename: vi.fn(() => true),
 }));
 
 // 2026-09-25 코드리뷰 MAJOR-0b: video 라우트가 더 이상 localPath를 받지 않고 filename만 받아

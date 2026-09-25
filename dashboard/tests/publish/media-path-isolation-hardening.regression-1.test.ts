@@ -224,7 +224,13 @@ describe("MINOR — video/delete는 .mp4만 지운다 (리뷰어 탐침 P3)", ()
   });
 
   it("돌연변이 검증: 확장자 검사를 되돌리면 이 회귀가 재발한다(소스 가드)", () => {
-    const src = fs.readFileSync(path.resolve(__dirname, "../../src/app/api/video/delete/route.ts"), "utf8");
-    expect(src).toMatch(/\.endsWith\(["']\.mp4["']\)/i);
+    // MINOR-3(코드리뷰 2026-09-25): list(대소문자 구분 .endsWith)와 delete(대소문자 무시)가
+    // 서로 다른 기준을 쓰던 것을 media-token.ts의 isVideoFilename 하나로 통일했다. delete
+    // 라우트가 그 정본 함수를 실제로 쓰는지, 그 함수가 여전히 .mp4로 제한하는지를 함께 가드한다.
+    const routeSrc = fs.readFileSync(path.resolve(__dirname, "../../src/app/api/video/delete/route.ts"), "utf8");
+    expect(routeSrc).toMatch(/isVideoFilename\(/);
+    const tokenSrc = fs.readFileSync(path.resolve(__dirname, "../../src/lib/media-token.ts"), "utf8");
+    const fn = tokenSrc.slice(tokenSrc.indexOf("export function isVideoFilename"));
+    expect(fn).toMatch(/\.endsWith\(["']\.mp4["']\)/i);
   });
 });
