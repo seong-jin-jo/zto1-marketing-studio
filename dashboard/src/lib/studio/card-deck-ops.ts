@@ -180,23 +180,54 @@ export function setBubbleText(deck: CardDeck, slideId: string, bubbleId: string,
  * 흔들려 굵은 구간 경계가 한 글자 밀렸다(재현 T1: `**새 교재**가…` 가 blur 후
  * `**새 교**재가…`로 바뀜). 세그먼트 구조·굵기 경계는 그대로 두고 **마지막 세그먼트의
  * 끝에 붙은 개행만** 지우는 전용 연산으로 바꾼다 — 다른 세그먼트를 전혀 안 건드리니
- * 경계가 밀릴 여지가 없다. 트림으로 마지막 세그먼트가 통째로 빈 문자열이 되면(다른
- * 세그먼트에 실제 내용이 남아 있을 때만) 그 세그먼트 자체를 뺀다.
+ * 경계가 밀릴 여지가 없다.
+ *
+ * MAJOR(6차 재검증): 마지막 세그먼트 "하나만" 한 번 자르고 끝냈더니, 재분배 결과가
+ * `[{"…요\n"}, {"\n", bold:true}]`처럼 **끝 개행이 여러 세그먼트에 걸쳐 나뉜 경우**를
+ * 놓쳤다(재현: 마지막 글자를 굵게 만든 뒤 Enter 두 번 + blur — 마지막 세그먼트("\n"
+ * 하나)만 비워 통째로 빠지고, 그 앞 세그먼트("…요\n")에 남은 개행은 안 건드려 저장본에
+ * "\n"이 그대로 남았다. 화면 1줄인데 PNG는 2줄, 게다가 그 개행을 담았던 볼드 세그먼트가
+ * 통째로 사라져 굵게 표시도 없어졌다). 뒤에서부터 반복한다: 마지막 세그먼트의 끝 개행을
+ * 지우고, 비면 그 세그먼트를 통째로 빼고, 그 결과 새 마지막 세그먼트가 또 "\n"으로
+ * 끝나면 계속 반복한다 — 개행이 세그먼트 경계를 몇 번을 걸쳐 있든 전부 걷힌다.
  */
+/**
+ * `trimBubbleTrailingNewline`의 순수 세그먼트 변환만 떼어낸 것 — deck/slide/bubble
+ * 조회 없이 세그먼트 배열만 받아 끝 개행을 반복해서 걷어낸다.
+ *
+ * MAJOR(6차 재검증, 속성 테스트가 잡음): `BubbleEditor.tsx handleBlur`가 이 로직을
+ * "connected 연산(`trimBubbleTrailingNewline` + `run()`)을 호출한 뒤, **같은 함수
+ * 안에서** `bubble.segments`(트림 전 값 — `run()`의 상태 갱신은 다음 렌더까지 반영
+ * 안 됨)로 화면을 다시 그리는" 순서로 짰다가, 트림한 개행이 그 자리에서 `<br>`로
+ * 되살아나 화면에 남았다(모델엔 없는데 화면에만 보이는 개행 — "화면=저장본" 계약
+ * 위반). 그 즉시-재동기화가 다음 렌더를 기다리지 않고 "트림 후 상태"를 **그 자리에서
+ * 직접 계산**할 수 있도록, deck 배관과 분리한 순수 함수로 뽑아 `handleBlur`와
+ * `trimBubbleTrailingNewline` 양쪽이 정확히 같은 로직을 쓰게 한다(로직을 두 곳에
+ * 따로 베끼면 또 어긋난다 — 이 PR 전체가 반복해서 겪은 실수다).
+ */
+export function trimSegmentsTrailingNewline(segments: Segment[]): Segment[] {
+  let result = segments;
+  let changed = false;
+  while (result.length > 0) {
+    const lastIndex = result.length - 1;
+    const lastText = result[lastIndex].text;
+    const trimmedLastText = lastText.replace(/\n+$/, "");
+    if (trimmedLastText === lastText) break; // 이 세그먼트엔 지울 끝 개행이 없다 — 반복 종료.
+    changed = true;
+    result = trimmedLastText.length === 0 && result.length > 1
+      ? result.slice(0, lastIndex)
+      : result.map((s, i) => (i === lastIndex ? { ...s, text: trimmedLastText } : s));
+  }
+  return changed ? result : segments; // 무변화면 참조를 그대로 돌려줘 불필요한 갱신을 피한다.
+}
+
 export function trimBubbleTrailingNewline(deck: CardDeck, slideId: string, bubbleId: string): CardDeck {
   const { slide, index: slideIndex } = findSlide(deck, slideId);
   const bubbles = slide.bubbles ?? [];
   const { bubble, index: bubbleIndex } = findBubble(slide, bubbleId);
-  const segments = bubble.segments;
-  if (segments.length === 0) return deck;
-  const lastIndex = segments.length - 1;
-  const lastText = segments[lastIndex].text;
-  const trimmedLastText = lastText.replace(/\n+$/, "");
-  if (trimmedLastText === lastText) return deck; // 지울 끝 개행이 없으면 무동작(불필요한 revision 증가 방지).
-  const nextSegments: Segment[] = trimmedLastText.length === 0 && segments.length > 1
-    ? segments.slice(0, lastIndex)
-    : segments.map((s, i) => (i === lastIndex ? { ...s, text: trimmedLastText } : s));
-  const updatedBubble: Bubble = { ...bubble, segments: nextSegments };
+  const segments = trimSegmentsTrailingNewline(bubble.segments);
+  if (segments === bubble.segments) return deck; // 지울 끝 개행이 전혀 없으면 무동작(불필요한 revision 증가 방지).
+  const updatedBubble: Bubble = { ...bubble, segments };
   const updatedBubbles = bubbles.map((b, i) => (i === bubbleIndex ? updatedBubble : b));
   return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, bubbles: updatedBubbles }));
 }

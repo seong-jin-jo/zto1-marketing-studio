@@ -289,6 +289,29 @@ describe("MAJOR(4차 재검증): 끝 개행은 편집 중엔 남고 blur에서�
     expect(finalText.split("\n").length).toBe(1);
   });
 
+  it("M2 재현(6차 재검증, 속성 테스트가 잡음): blur 직후 DOM 자체에도 지워진 개행이 <br>로 되살아나 남지 않는다", () => {
+    // 저장본(segments)은 위 테스트가 이미 확인했다 — 이건 "화면"(실제 DOM) 쪽 계약을
+    // 직접 확인한다. handleBlur가 트림 직후 여전히 트림 전 bubble.segments로 화면을
+    // 다시 그리면, 모델엔 없는 개행이 <br>로 화면에만 남는다(6차 재검증 MAJOR 회귀 —
+    // 속성 테스트가 잡았다).
+    const d = deck();
+    const chatSlide = d.slides.find((s) => s.role === "chat")!;
+    const bubbleId = chatSlide.bubbles![0].id; // "왜 저만 안 오르죠?"
+    let currentDeck = d;
+    const onDeckChange = vi.fn((next: CardDeck) => { currentDeck = next; });
+    render(<BubbleEditor deck={currentDeck} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
+    const bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${bubbleId}"]`)!;
+    const editable = within(bubbleEl).getByRole("textbox");
+    editable.focus();
+    fireEvent.focus(editable);
+    setCaretAtEnd(editable);
+    fireEvent.keyDown(editable, { key: "Enter" });
+    fireEvent.blur(editable);
+
+    expect(editable.innerHTML).not.toMatch(/<br>/);
+    expect(editable.innerHTML).toBe("왜 저만 안 오르죠?");
+  });
+
   it("M3b 재현: 끝에서 Enter 3번, 글자 입력, Backspace 2번 뒤 blur하면 끝의 개행 두 개가 전부 잘린다", () => {
     const d = deck();
     const chatSlide = d.slides.find((s) => s.role === "chat")!;
@@ -319,8 +342,12 @@ describe("MAJOR(4차 재검증): 끝 개행은 편집 중엔 남고 blur에서�
   it("코드 대조: handleBlur가 끝 개행 유무만 검사하고, 실제 트림은 전용 연산(onTrimTrailingNewline)에 맡긴다", () => {
     // 5차 재검증(T1)에서 `onTextChange`(→ retextSegments 비율 재분배) 경로를 버리고
     // 전용 연산으로 옮겼다 — 그 사실 자체를 코드에서 대조한다.
-    expect(tsxSrc).toMatch(/if \(\/\\n\+\$\/\.test\(liveText\)\) \{\s*\n\s*onTrimTrailingNewline\(\);/);
+    expect(tsxSrc).toMatch(/const hasTrailingNewline = \/\\n\+\$\/\.test\(liveText\);\s*\n\s*if \(hasTrailingNewline\) \{\s*\n\s*onTrimTrailingNewline\(\);/);
     expect(tsxSrc).not.toMatch(/onTextChange\(trimmedText\)/);
+  });
+
+  it("코드 대조(6차 재검증): handleBlur의 즉시 재동기화가 trimSegmentsTrailingNewline(순수 함수)로 '트림 후' 상태를 직접 계산한다 — 다음 렌더를 기다리는 stale bubble.segments를 안 쓴다", () => {
+    expect(tsxSrc).toMatch(/const segmentsForHtml = hasTrailingNewline \? trimSegmentsTrailingNewline\(bubble\.segments\) : bubble\.segments;/);
   });
 });
 
@@ -368,6 +395,56 @@ describe("MAJOR 회귀(5차 재검증, T1): blur의 끝 개행 트림이 이미 
 
   it("코드 대조: card-deck-ops.trimBubbleTrailingNewline을 쓴다(setBubbleText 재사용 아님)", () => {
     expect(tsxSrc).toMatch(/trimBubbleTrailingNewline/);
+  });
+
+  it("6차 재검증 MAJOR 1 재현: 끝 글자를 굵게 만들고 Enter 두 번+blur해도 화면·저장본·PNG 줄 수가 같다(세그먼트 경계를 넘는 트림)", () => {
+    const d = deck();
+    const chatSlide = d.slides.find((s) => s.role === "chat" && !(s.bubbles ?? []).some((b) => b.segments.some((seg) => seg.bold)))!;
+    const bubble = chatSlide.bubbles![0];
+    let currentDeck = d;
+    const onDeckChange = vi.fn((next: CardDeck) => { currentDeck = next; });
+    const { rerender } = render(<BubbleEditor deck={currentDeck} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
+    let bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${bubble.id}"]`)!;
+    let editable = within(bubbleEl).getByRole("textbox");
+    editable.focus();
+    fireEvent.focus(editable);
+
+    // 마지막 글자를 굵게 만든다(재현 그대로: "…요" 대신 이 픽스처의 마지막 글자).
+    const fullText = bubble.segments.map((s) => s.text).join("");
+    const range = document.createRange();
+    const textNode = editable.firstChild!;
+    range.setStart(textNode, fullText.length - 1);
+    range.setEnd(textNode, fullText.length);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    fireEvent.click(within(bubbleEl).getByText("굵게"));
+    const afterBold = currentDeck.slides.find((s) => s.id === chatSlide.id)!.bubbles!.find((b) => b.id === bubble.id)!;
+    expect(afterBold.segments[afterBold.segments.length - 1].bold).toBe(true);
+
+    rerender(<BubbleEditor deck={currentDeck} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
+    bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${bubble.id}"]`)!;
+    editable = within(bubbleEl).getByRole("textbox");
+    editable.focus();
+    fireEvent.focus(editable);
+    setCaretAtEnd(editable);
+    fireEvent.keyDown(editable, { key: "Enter" });
+    fireEvent.keyDown(editable, { key: "Enter" });
+    fireEvent.blur(editable);
+
+    const finalBubble = currentDeck.slides.find((s) => s.id === chatSlide.id)!.bubbles!.find((b) => b.id === bubble.id)!;
+    const finalText = finalBubble.segments.map((s) => s.text).join("");
+    // 화면 = 저장본 = PNG 계약: blur 후엔 끝 개행이 하나도 안 남아야 한다 — 재분배가
+    // 끝 개행을 [{"…\n"},{"\n",bold}]처럼 세그먼트 두 개에 걸쳐 나눠놔도(경계를 넘어도)
+    // 전부 걷혀야 한다. 마지막 글자에 준 굵게도 사라지면 안 된다.
+    expect(finalText).not.toMatch(/\n$/);
+    expect(finalText).toBe(fullText);
+    expect(finalBubble.segments.some((s) => s.bold)).toBe(true);
+  });
+
+  it("코드 대조: trimBubbleTrailingNewline이 while 루프로 세그먼트 경계를 넘어 반복한다(6차 재검증 고정)", () => {
+    const opsSrc = readFileSync(resolve(__dirname, "../../src/lib/studio/card-deck-ops.ts"), "utf8");
+    expect(opsSrc).toMatch(/while \(result\.length > 0\) \{/);
   });
 });
 
@@ -490,8 +567,60 @@ describe("MINOR(1, 4차 재검증): 말풍선 맨 앞 Enter가 Chromium·WebKit�
     expect(text).toBe("첫줄\n\n둘째줄");
   });
 
-  it("코드 대조: 짝 판정이 parent.lastChild === node 를 확인한다(F2 고정)", () => {
-    expect(tsxSrc).toMatch(/isBrLastChildOfParent = !!parent && parent\.lastChild === node/);
+  it("코드 대조: 짝 판정이 parent === el(편집칸 루트) && parent.lastChild === node 를 확인한다(6차 재검증 고정)", () => {
+    expect(tsxSrc).toMatch(/isBrLastChildOfParent = !!parent && parent === el && parent\.lastChild === node/);
+  });
+
+  it("6차 재검증 MAJOR 2 재현: <strong> 안의 br은 편집칸 루트의 마지막 자식이 아니므로 짝으로 스킵되지 않는다(사용자가 친 빈 줄을 먹지 않는다)", () => {
+    // 실제 버그 메커니즘의 최소 재현: 편집칸 루트 바로 밑 <br>(root의 마지막 자식이
+    // 아님) 다음에 <strong> 안에 br 하나(그 strong 안에서는 마지막 자식)가 온다.
+    // "부모의 마지막 자식"만 보던 5차 규칙은 이 <strong> 안 br의 직전 노드가 br이라는
+    // 이유로(넓힌 "짝 br" 규칙) 통째로 스킵해 개행 하나를 먹었다 — 굵은 구간에 개행이
+    // 걸리면 사용자가 실제로 친 빈 줄이 사라졌다(재현: "…요\n\n"을 굵게 만든 뒤 편집을
+    // 이어가면 저장본이 한 줄 짧아졌다).
+    const d = deck();
+    const chatSlide = d.slides.find((s) => s.role === "chat")!;
+    const bubbleId = chatSlide.bubbles![0].id;
+    let currentDeck = d;
+    const onDeckChange = vi.fn((next: CardDeck) => { currentDeck = next; });
+    render(<BubbleEditor deck={currentDeck} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
+    const bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${bubbleId}"]`)!;
+    const editable = within(bubbleEl).getByRole("textbox");
+    editable.focus();
+    fireEvent.focus(editable);
+    editable.innerHTML = "";
+    editable.appendChild(document.createTextNode("3, 4등급은요?"));
+    editable.appendChild(document.createElement("br")); // 편집칸 루트 바로 밑 br(root의 마지막 자식 아님).
+    const strong = document.createElement("strong");
+    strong.appendChild(document.createElement("br")); // strong 안에서는 마지막 자식(진짜 줄바꿈이어야 함).
+    editable.appendChild(strong);
+    fireEvent.input(editable);
+    const nextBubble = currentDeck.slides.find((s) => s.id === chatSlide.id)!.bubbles!.find((b) => b.id === bubbleId)!;
+    const text = nextBubble.segments.map((s) => s.text).join("");
+    expect(text).toBe("3, 4등급은요?\n\n");
+  });
+
+  it("5차 F2는 여전히 기존 텍스트 \"\\n\" 짝 규칙으로 막힌다(루트 제한이 F2를 안 깬다)", () => {
+    // MAJOR 2 수정(parent === el 제한)이 5차 F2가 고친 "직전이 개행으로 끝나는 텍스트
+    // 노드"+"직전이 다른 br" 짝 규칙 자체를 깨지 않는지 회귀 확인 — 이 케이스는 br이
+    // 여전히 편집칸 루트 바로 밑에 있으므로 parent===el 제한을 그대로 통과해야 한다.
+    const d = deck();
+    const chatSlide = d.slides.find((s) => s.role === "chat")!;
+    const bubbleId = chatSlide.bubbles![0].id;
+    let currentDeck = d;
+    const onDeckChange = vi.fn((next: CardDeck) => { currentDeck = next; });
+    render(<BubbleEditor deck={currentDeck} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
+    const bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${bubbleId}"]`)!;
+    const editable = within(bubbleEl).getByRole("textbox");
+    editable.focus();
+    fireEvent.focus(editable);
+    editable.innerHTML = "";
+    editable.appendChild(document.createTextNode("첫줄\n")); // 리터럴 개행으로 끝나는 텍스트.
+    editable.appendChild(document.createElement("br")); // 편집칸 루트의 마지막 자식 — 진짜 짝.
+    fireEvent.input(editable);
+    const nextBubble = currentDeck.slides.find((s) => s.id === chatSlide.id)!.bubbles!.find((b) => b.id === bubbleId)!;
+    const text = nextBubble.segments.map((s) => s.text).join("");
+    expect(text).toBe("첫줄\n"); // 짝으로 인정돼 br이 개행을 중복으로 안 더한다.
   });
 
   it("Firefox 실측(중간 분할)은 여전히 선행 개행 없이 정확하다(회귀 방지)", () => {

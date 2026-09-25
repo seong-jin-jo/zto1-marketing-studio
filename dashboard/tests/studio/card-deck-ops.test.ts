@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import { resolve } from "node:path";
 import {
   addBubble,
   splitBubble,
@@ -352,5 +354,56 @@ describe("trimBubbleTrailingNewline (PR #85 5차 재검증 MAJOR, T1)", () => {
     const trimmedBubble = trimmed.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
     expect(trimmedBubble.segments).toHaveLength(1);
     expect(trimmedBubble.segments[0].text).not.toMatch(/\n$/);
+  });
+
+  it("6차 재검증 MAJOR 1 재현: 끝 개행이 세그먼트 경계에 걸쳐 있어도([{'a\\n'},{'\\n',bold}]) 전부 걷힌다", () => {
+    // 재현: 마지막 글자를 굵게 만들고 끝에서 Enter 두 번 + blur하면 재분배 결과가
+    // [{"…요\n", bold:false}, {"\n", bold:true}]가 됐다. 이전 구현은 마지막 세그먼트
+    // 하나만 한 번 잘라 그 세그먼트가 통째로 비어 빠지는 것까지만 하고 멈췄다 — 앞
+    // 세그먼트("…요\n")에 남은 개행은 그대로 저장돼, 화면은 1줄인데 PNG는 2줄이 되고
+    // 그 개행을 담았던 볼드 세그먼트가 사라져 굵게 표시도 없어졌다(재현 그대로).
+    const d = deck();
+    const slide = d.slides[2];
+    const bubbleId = slide.bubbles![0].id;
+    const withSplitTrailingNewline = {
+      ...d,
+      slides: d.slides.map((s, i) => (i === 2 ? {
+        ...s,
+        bubbles: s.bubbles!.map((b) => (b.id === bubbleId
+          ? { ...b, segments: [{ text: "a\n", bold: false }, { text: "\n", bold: true }] }
+          : b)),
+      } : s)),
+    };
+    const trimmed = trimBubbleTrailingNewline(withSplitTrailingNewline, slide.id, bubbleId);
+    const trimmedBubble = trimmed.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    // 개행이 두 세그먼트에 걸쳐 있었으니 한 번만 자르면 끝나지 않는다 — 반복해서 전부
+    // 걷어야 화면·저장본·PNG 줄 수가 같아진다(핵심 계약: "화면 = 저장본 = PNG").
+    expect(trimmedBubble.segments.map((s) => s.text).join("")).toBe("a");
+    expect(trimmedBubble.segments.map((s) => s.text).join("")).not.toMatch(/\n$/);
+    // 두 번째(굵은) 세그먼트가 개행만 담고 있었으므로 통째로 빠지고 첫 세그먼트만 남는다.
+    expect(trimmedBubble.segments).toEqual([{ text: "a", bold: false }]);
+  });
+
+  it("6차 재검증: 개행이 세 세그먼트에 걸쳐 있어도(끝까지 반복) 전부 걷힌다", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubbleId = slide.bubbles![0].id;
+    const withTripleSplit = {
+      ...d,
+      slides: d.slides.map((s, i) => (i === 2 ? {
+        ...s,
+        bubbles: s.bubbles!.map((b) => (b.id === bubbleId
+          ? { ...b, segments: [{ text: "본문", bold: false }, { text: "\n", bold: true }, { text: "\n", bold: false }] }
+          : b)),
+      } : s)),
+    };
+    const trimmed = trimBubbleTrailingNewline(withTripleSplit, slide.id, bubbleId);
+    const trimmedBubble = trimmed.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    expect(trimmedBubble.segments).toEqual([{ text: "본문", bold: false }]);
+  });
+
+  it("코드 대조: 반복(while) 루프로 세그먼트 경계를 넘어 트림한다", () => {
+    expect(fs.readFileSync(resolve(__dirname, "../../src/lib/studio/card-deck-ops.ts"), "utf8"))
+      .toMatch(/while \(result\.length > 0\) \{/);
   });
 });

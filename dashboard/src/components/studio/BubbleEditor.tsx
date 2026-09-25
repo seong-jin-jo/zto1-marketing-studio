@@ -29,6 +29,7 @@ import {
   toggleBold,
   toggleSpeaker,
   trimBubbleTrailingNewline,
+  trimSegmentsTrailingNewline,
 } from "@/lib/studio/card-deck-ops";
 import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
 import { DeliveredMedia } from "./DeliveredMedia";
@@ -221,7 +222,11 @@ function textOffsetWithinElement(root: HTMLElement, node: Node, offset: number):
  * 편집 중에 이렇게 셈한 값에 끝 개행이 남아 있는 건 의도다(다음 줄을 계속 치게) —
  * 커밋 시점(blur)에 `handleBlur`가 그 끝 개행만 잘라낸다.
  */
-function elementToPlainText(el: HTMLElement): string {
+// 6차 재검증: "화면 = 저장본 = PNG" 계약을 직접 검사하는 속성 테스트(tests/components/
+// bubble-editor-wysiwyg-invariant.property-1.test.tsx)가 실제 DOM에서 "화면이 지금
+// 몇 줄인가"를 읽을 때, 프로덕션 코드가 쓰는 이 함수 자체를 그대로 써야 재구현
+// 드리프트가 안 생긴다 — 그래서 테스트 전용으로 export한다(동작 변화 없음).
+export function elementToPlainText(el: HTMLElement): string {
   const nodes: Node[] = [];
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_ALL);
   let current: Node | null = walker.nextNode();
@@ -231,6 +236,14 @@ function elementToPlainText(el: HTMLElement): string {
   }
   let text = "";
   let sawContent = false;
+  // 6차 재검증(속성 테스트가 잡음): `segmentsToHtml([])`은 완전히 빈 말풍선을
+  // `"<br>"` 하나로 그린다(빈 편집칸에 캐럿을 보이게 하는 자리표시자일 뿐, 사용자가
+  // 친 줄이 아니다). 이 br은 "부모가 편집칸 자신이고 sawContent가 아직 false"라는
+  // 점에서 MINOR(1)의 선행 개행(`<div><br></div>text`)과 구조가 똑같아 보이지만,
+  // 다른 점은 **이 br이 전체 트리의 유일한 노드**라는 것이다(뒤에 아무 내용도 안
+  // 온다) — 선행 개행은 항상 그 뒤에 실제 내용이 이어진다. 그 하나만 있을 때만
+  // 자리표시자로 보고 건너뛴다.
+  const isOnlyNodeInEditable = nodes.length === 1;
   nodes.forEach((node, index) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const value = node.textContent ?? "";
@@ -248,13 +261,24 @@ function elementToPlainText(el: HTMLElement): string {
       // 통째로 증발한다(MINOR 1). sawContent가 true였다면 DIV 진입이 이미 셌으니
       // 중복이라 건너뛴다.
       if (isSoleChildOfBlock && sawContent) return;
+      if (isOnlyNodeInEditable) return; // 빈 말풍선 자리표시자 br — 위 주석 참고.
       // MINOR(1, 5차 재검증, F2): 짝 판정을 "직전이 개행으로 끝나는 텍스트 노드"로만
       // 걸었더니, Firefox에서 기존 빈 줄 바로 앞에 Enter를 새로 치면 그 br이 "짝 있는
       // 렌더 보조"로 오판돼 스킵됐다 — 새로 친 줄 하나가 통째로 사라졌다(F2 재현).
       // 진짜 Firefox 짝(리터럴 "\n" 텍스트 노드 + 그 개행을 화면에 실제로 그리기 위한
       // 보조 br)은 그 br이 **부모의 마지막 자식**일 때만 성립한다 — 뒤에 형제가 더
       // 있으면(F2처럼 그 다음에 기존 빈 줄이 이어지면) 보조가 아니라 진짜 줄이다.
-      const isBrLastChildOfParent = !!parent && parent.lastChild === node;
+      //
+      // MAJOR(6차 재검증): "부모의 마지막 자식"만으로는 부족했다 — 굵은 구간이 개행을
+      // 포함하면(`<strong>…\n</strong>`처럼) 그 br의 부모는 `<strong>`이고, 그 br이
+      // `<strong>` 안에서는 마지막 자식이니 이 규칙이 그것도 "짝"으로 오판해 사용자가
+      // 실제로 친 줄바꿈을 먹어버렸다(재현: "3, 4등급은요?\n\n"을 굵게 만든 뒤 다시
+      // 들어가 "!"를 치면 저장본이 한 줄 짧아졌다). Firefox의 진짜 짝-br 렌더 보조는
+      // **편집칸 루트 바로 밑**에서만 나타난다(볼드 같은 inline 서식 요소 안에는 안
+      // 들어간다) — 그래서 짝 판정을 "부모가 편집칸 루트(el) 자신이고, 그 루트의
+      // 마지막 자식일 때"로 좁힌다. `<strong>` 등 inline 요소 안의 br은 이 조건에서
+      // 제외돼 항상 실제 줄바꿈으로 센다.
+      const isBrLastChildOfParent = !!parent && parent === el && parent.lastChild === node;
       const prev = index > 0 ? nodes[index - 1] : null;
       // F2 실측 추가 확인: Firefox는 문단 끝에 아무 것도 안 친 채 개행을 여러 번 치면(뒤에
       // 이어지는 내용이 없으면) <div> 없이 <br>을 연달아 쌓고, 그 "맨 마지막" br 하나만
@@ -480,7 +504,12 @@ function BubbleContentEditable({
    * M-A(PR 재리뷰) + MINOR(2): 저장본은 `retextSegments`(card-deck-contract.ts)가 글자
    * 수 "비율"로 굵은 구간을 다시 나눈다 — 사용자가 입력한 실제 자리와 다를 수 있다(설계상
    * 알려진 한계, "근본 해결"은 DOM의 `<strong>` 경계를 그대로 세그먼트로 읽는 것이라 이번
-   * 범위 밖). 화면은 편집 중 리렌더를 막아두느라(IME 보호) 그 어긋남을 그대로 들고 있다가
+   * 범위 밖). ★ B1(6차 재검증에서 리뷰어 탐침 probe5.mjs로 재확인): 굵은 구간 "중간"에서
+   * 타이핑하면(예: `**공통점**` 뒤에 이어 치기) 이 비율 재분배가 경계를 한두 글자
+   * 흔들 수 있다 — 머지를 막는 결함이 아니라 **후속 과제로 확정**됐다(회장 승인 필요,
+   * `<strong>` 경계 직독으로 세그먼트를 재구성하는 별도 작업). blur 시점 트림
+   * (`trimBubbleTrailingNewline`/`trimSegmentsTrailingNewline`)은 이 경로를 안 타므로
+   * 이 한계와 무관하다 — 혼동하지 말 것. 화면은 편집 중 리렌더를 막아두느라(IME 보호) 그 어긋남을 그대로 들고 있다가
    * blur 뒤에도 안 고쳐졌다 — blur 시점엔 이 말풍선이 더는 활성 요소가 아니므로, 최신
    * `bubble.segments`(서버로 나갈 그 값)로 다시 그려 화면·저장본을 맞춘다. 같은 자리에서
    * MINOR(2)도 닫는다: `compositionend` 없이 blur되면(창 전환·다른 말풍선 클릭 등)
@@ -510,11 +539,23 @@ function BubbleContentEditable({
     // 세그먼트 구조(굵기 경계)를 아예 재계산하지 않는 전용 연산
     // `trimBubbleTrailingNewline`(card-deck-ops.ts, 마지막 세그먼트의 끝 개행만 지움)으로
     // 바꿔 경계가 밀릴 여지를 없앴다.
+    //
+    // MAJOR(6차 재검증, 속성 테스트가 잡음): `onTrimTrailingNewline()`은 `run()`을 거쳐
+    // deck 상태를 갱신하지만, 그 갱신은 다음 렌더에서야 `bubble` prop으로 내려온다 —
+    // 바로 다음 줄에서 (아직 트림 전인) `bubble.segments`로 `html`을 계산하면, 방금
+    // 지운 끝 개행이 `segmentsToHtml`의 `\n`→`<br>` 변환을 거쳐 화면에 다시 나타난다
+    // (모델엔 없는데 화면에만 `<br>`가 남는다 — "화면=저장본" 계약 위반, 속성 테스트가
+    // 이 자리에서 실패로 잡았다). `bubble` prop이 새 렌더로 내려오길 기다리지 않고,
+    // `trimSegmentsTrailingNewline`(card-deck-ops.ts, `trimBubbleTrailingNewline`이
+    // 쓰는 것과 정확히 같은 순수 함수)을 여기서도 직접 호출해 "트림 후 상태"를 그
+    // 자리에서 계산한다 — 로직을 두 곳에 따로 베끼지 않으니 어긋날 수 없다.
     const liveText = elementToPlainText(el);
-    if (/\n+$/.test(liveText)) {
+    const hasTrailingNewline = /\n+$/.test(liveText);
+    if (hasTrailingNewline) {
       onTrimTrailingNewline();
     }
-    const html = segmentsToHtml(bubble.segments);
+    const segmentsForHtml = hasTrailingNewline ? trimSegmentsTrailingNewline(bubble.segments) : bubble.segments;
+    const html = segmentsToHtml(segmentsForHtml);
     if (html === el.innerHTML) return;
     el.innerHTML = html;
     lastSyncedHtmlRef.current = html;

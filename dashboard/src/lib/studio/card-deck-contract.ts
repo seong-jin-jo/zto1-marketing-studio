@@ -492,6 +492,38 @@ export function retextSegments(segments: Segment[], newText: string): Segment[] 
   if (originalLength === 0 || segments.length === 1) {
     return [{ text: newText, bold: segments[0]?.bold ?? false }];
   }
+  // MAJOR(6차 재검증): "끝에 이어치기"·"끝에서 지우기"(Enter도 execCommand로 끝에 문자를
+  // 붙이는 것과 같다 — 실사용 타이핑의 절대다수)는 굳이 비율로 다시 나눌 이유가 없다.
+  // 그런데도 비율 반올림을 태웠더니, 마지막 세그먼트가 아주 짧을 때(예: 굵은 글자 1개)
+  // `Math.round`가 그 앞 세그먼트 쪽으로 경계를 밀어 짧은 마지막 세그먼트를 통째로
+  // 삼켰다(재현: 마지막 글자를 굵게 → Enter 두 번 → blur — probe7.mjs/jt-trim-probe.
+  // test.ts로 재확인, "화면=저장본=PNG" 계약과는 별개로 굵게 자체가 사라지는 더 심한
+  // 증상이었다). 끝 이어치기·끝 지우기는 재분배 없이 **마지막 세그먼트만** 직접 늘리거나
+  // 줄인다 — 다른 세그먼트는 전혀 안 건드리니 반올림이 끼어들 자리가 없다. 순수 접두/
+  // 접미 관계가 아닌 진짜 "다른 텍스트로 교체"(자동완성·IME 커밋 등)는 아래 비율
+  // 재분배로 그대로 떨어진다.
+  const oldText = segmentsText(segments);
+  if (newText.startsWith(oldText) && newText.length > oldText.length) {
+    const suffix = newText.slice(oldText.length);
+    const lastIndex = segments.length - 1;
+    return segments.map((s, i) => (i === lastIndex ? { ...s, text: s.text + suffix } : s));
+  }
+  if (oldText.startsWith(newText) && newText.length < oldText.length) {
+    let removeCount = oldText.length - newText.length;
+    let result = segments.slice();
+    while (removeCount > 0 && result.length > 0) {
+      const lastIndex = result.length - 1;
+      const lastLen = result[lastIndex].text.length;
+      if (lastLen <= removeCount) {
+        removeCount -= lastLen;
+        result = result.slice(0, lastIndex);
+      } else {
+        result = result.map((s, i) => (i === lastIndex ? { ...s, text: s.text.slice(0, lastLen - removeCount) } : s));
+        removeCount = 0;
+      }
+    }
+    return result.length ? result : [{ text: newText, bold: false }];
+  }
   const ratio = newText.length / originalLength;
   const result: Segment[] = [];
   let consumed = 0;

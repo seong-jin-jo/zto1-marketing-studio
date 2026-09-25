@@ -295,23 +295,90 @@ async function runScenario(engineName) {
       alerts: await alerts(),
     }, { hasBold: true, alerts: [] });
 
+    // MAJOR 2(6차 재검증): 굵게 안에 개행이 걸리면(짝 br 판정을 넓혔던 5차 F2 수정이
+    // <strong> 안의 br까지 "짝"으로 오판해) 사용자가 실제로 친 빈 줄을 먹었다. 재현
+    // 3단계: 끝에서 Enter 두 번 → "뒤" 입력 → blur(여기까지 빈 줄 하나 생김) →
+    // 다시 들어가 그 전체("3, 4등급은요?\n\n")를 선택해 굵게 → 다시 들어가 "!" 입력 →
+    // blur. 저장본이 3줄이어야 한다(화면도 3줄이어야 한다 — 화면=저장본=PNG).
+    await nav("slide-5");
+    await ed("b-5-0").click();
+    await caretAt("b-5-0", "end");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("뒤");
+    await page.evaluate(() => document.activeElement.blur());
+    await page.waitForTimeout(100);
+    await ed("b-5-0").click();
+    await page.evaluate((s) => {
+      // blur 뒤 innerHTML은 "\n"마다 <br>로 흩어져 있어(3, 4등급은요?<br><br>뒤) 더는
+      // el.firstChild 하나가 전체 텍스트가 아니다 — 문자 오프셋을 실제 (노드,오프셋)으로
+      // 되찾는 TreeWalker가 필요하다(프로덕션의 pointAtOffset과 같은 방식).
+      const el = document.querySelector(s);
+      el.focus();
+      function pointAt(offset) {
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_ALL);
+        let remaining = offset;
+        let current = walker.nextNode();
+        let last = { node: el, offset: 0 };
+        while (current) {
+          if (current.nodeType === Node.TEXT_NODE) {
+            const len = (current.textContent || "").length;
+            if (remaining <= len) return { node: current, offset: Math.max(0, remaining) };
+            remaining -= len;
+            last = { node: current, offset: len };
+          } else if (current.nodeName === "BR") {
+            if (remaining <= 0) {
+              const parent = current.parentNode || el;
+              return { node: parent, offset: Array.prototype.indexOf.call(parent.childNodes, current) };
+            }
+            remaining -= 1;
+          }
+          current = walker.nextNode();
+        }
+        return last;
+      }
+      const boldEndOffset = 9 + 2; // "3, 4등급은요?"(9글자) + 두 개행(2) — "뒤" 바로 앞까지.
+      const startPt = pointAt(0);
+      const endPt = pointAt(boldEndOffset);
+      const r = document.createRange();
+      r.setStart(startPt.node, startPt.offset);
+      r.setEnd(endPt.node, endPt.offset);
+      getSelection().removeAllRanges();
+      getSelection().addRange(r);
+    }, sel("b-5-0"));
+    await page.waitForTimeout(50);
+    await page.locator('[data-bubble-id="b-5-0"] button', { hasText: "굵게" }).click();
+    await page.waitForTimeout(100);
+    await ed("b-5-0").click();
+    await caretAt("b-5-0", "end");
+    await page.keyboard.type("!");
+    await page.evaluate(() => document.activeElement.blur());
+    await page.waitForTimeout(100);
+    const major2Model = await model("b-5-0");
+    record("MAJOR 2(6차 재검증): 굵게 안에 개행이 걸려도 사용자가 친 빈 줄을 안 먹는다(화면=저장본=PNG)", {
+      lineCount: major2Model.split("\n").length,
+    }, { lineCount: 3 });
+
     // MAJOR(5차 재검증, S1): 선택 후 다른 자리로 캐럿만 옮기고 타이핑해도, 그 낡은 선택
     // 범위가 굵게 폴백으로 남아 조용히 딴 자리에 적용되면 안 된다 — 다시 "먼저 선택해
     // 주세요"가 떠야 한다(재현 76379c8c가 만든 회귀: `**새 교**재가…`처럼 엉뚱한 자리에
     // 조용히 굵게가 붙었었다).
-    await nav("slide-5");
-    await ed("b-5-0").click();
-    await selectRange("b-5-0", 0, 3);
+    // 6차 재검증에서 슬라이드5/b-5-0("3, 4등급은요?")를 MAJOR 2의 3단계 흐름 재현이
+    // 가져가면서(그 세그먼트 원문이 그대로 있어야 하는 재현이라 순서를 먼저 씀), S1은
+    // 여태 안 쓴 b-4-0("1등급은요?")로 옮겼다.
+    await nav("slide-4");
+    await ed("b-4-0").click();
+    await selectRange("b-4-0", 0, 3);
     await page.waitForTimeout(50); // selectionchange가 selectionRefs에 저장될 시간을 준다.
-    await caretAt("b-5-0", 8);
+    await caretAt("b-4-0", 5);
     await page.waitForTimeout(50);
     await page.keyboard.type("가");
-    await page.locator('[data-bubble-id="b-5-0"] button', { hasText: "굵게" }).click();
+    await page.locator('[data-bubble-id="b-4-0"] button', { hasText: "굵게" }).click();
     await page.waitForTimeout(100);
     const s1HasBold = await page.evaluate((bid) => {
       for (const s of window.__deck.slides) for (const b of s.bubbles || []) if (b.id === bid) return b.segments.some((x) => x.bold);
       return false;
-    }, "b-5-0");
+    }, "b-4-0");
     record("MAJOR(5차 재검증, S1): 선택 뒤 캐럿만 옮기고 타이핑해도 낡은 범위로 조용히 굵게가 적용되지 않는다", {
       hasBold: s1HasBold,
       alerts: await alerts(),
