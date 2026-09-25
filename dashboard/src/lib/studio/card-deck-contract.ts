@@ -343,13 +343,18 @@ export function validateCardDeck(deck: unknown): asserts deck is CardDeck {
       if (totalLength > 120) {
         throw new CardDeckValidationError("segments", `cardDeck.slides[${index}].bubbles[${bubbleIndex}] segments exceed 120 chars (got ${totalLength})`);
       }
+      // MINOR(2, 4차 재검증): 세그먼트별 trim 검사(직전 판)는 "굵은 스페이스"처럼 그
+      // 세그먼트만 공백뿐인 정상적인 하위 세그먼트가 하나만 있어도 — 말풍선 전체엔 실제
+      // 내용이 있는데도 — 저장 전체를 400으로 거부했다. 검사를 말풍선 전체 텍스트
+      // 기준으로 올린다: 트림 후에도 완전히 비면(전체 선택 후 Backspace 등, r2-probe3-*.log
+      // EMPTY_model: "\n") 그때만 거부한다. llm.ts(생성 결과 검증)도 이 함수를 그대로
+      // 호출하므로 같이 고쳐진다.
+      if (segmentsText(bubble.segments).trim().length === 0) {
+        throw new CardDeckValidationError("segments", `cardDeck.slides[${index}].bubbles[${bubbleIndex}] text must not be empty or whitespace-only`);
+      }
       bubble.segments.forEach((segment, segmentIndex) => {
-        // MINOR(2, PR 재검증): `!segment.text`는 "\n"(길이 1, truthy) 같은 개행·공백뿐인
-        // 텍스트를 그대로 통과시켰다 — 전체 선택 후 Backspace로 지운 말풍선이 실제로는
-        // 비어 있는데도 저장됐다(r2-probe3-*.log EMPTY_model: "\n"). trim 기준으로 바꾸고
-        // 안내 문구도 "비어 있다"는 사실에 맞게 고친다.
-        if (typeof segment.text !== "string" || segment.text.trim().length === 0) {
-          throw new CardDeckValidationError("segments", `cardDeck.slides[${index}].bubbles[${bubbleIndex}].segments[${segmentIndex}].text must not be empty or whitespace-only`);
+        if (typeof segment.text !== "string" || segment.text.length === 0) {
+          throw new CardDeckValidationError("segments", `cardDeck.slides[${index}].bubbles[${bubbleIndex}].segments[${segmentIndex}].text must be non-empty`);
         }
         if (typeof segment.bold !== "boolean") {
           throw new CardDeckValidationError("segments", `cardDeck.slides[${index}].bubbles[${bubbleIndex}].segments[${segmentIndex}].bold must be boolean`);

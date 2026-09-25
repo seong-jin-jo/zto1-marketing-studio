@@ -4,12 +4,18 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CardDeckPanel } from "@/components/studio/BubbleEditor";
+import { wrapSegments } from "@/lib/studio/card-templates/chat-bubble";
+import type { Segment } from "@/lib/studio/card-deck-contract";
 import deckJson from "../../../tests/studio/fixtures/deck-d100.v2.json";
 
 declare global {
   interface Window {
     __deck: unknown;
     __changes: number;
+    // MAJOR 회귀(4차 재검증): 발행 PNG가 실제로 쓰는 그 줄바꿈 함수를 편집실 E2E가
+    // 직접 불러 "화면 줄 수 == PNG 줄 수"를 검증한다 — 재구현이 아니라 그 함수 자체를
+    // 그대로 쓴다.
+    __wrapSegmentsLineCount: (segments: Segment[]) => number;
   }
 }
 
@@ -28,6 +34,15 @@ function App() {
     />
   );
 }
+
+window.__wrapSegmentsLineCount = (segments) => {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas 2d context를 못 만들었다");
+  // 글자 크기·최대 폭은 줄바꿈(word-wrap)이 안 끼어들게 넉넉히 준다 — 이 검증이 보는
+  // 것은 "\n" 강제 줄바꿈 개수지 폭에 의한 자동 줄바꿈이 아니다.
+  return wrapSegments(ctx, segments, 24, 5000).length;
+};
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("root element missing");

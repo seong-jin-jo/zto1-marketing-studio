@@ -141,7 +141,7 @@ async function runScenario(engineName) {
       }
     }
     await page.goto("file://" + path.join(outDir, "index.html"));
-    const { nav, ed, model, bubbleTexts, caretAt, selectRange, alerts } = makeHelpers(page);
+    const { nav, sel, ed, model, bubbleTexts, caretAt, selectRange, alerts } = makeHelpers(page);
 
     // BLOCKER: 굵게 — 실제 마우스 클릭으로 선택 → 굵게 버튼 클릭. mousedown
     // preventDefault가 없으면 클릭 전에 blur가 나 선택이 무너지고 "먼저 선택해 주세요"
@@ -195,6 +195,86 @@ async function runScenario(engineName) {
     record("MAJOR: blur 뒤에도 줄 수가 그대로다(렌더 보조 br 중복 없음)", {
       lineCount: afterBlurModel.split("\n").length,
     }, { lineCount: 3 });
+
+    // MAJOR 회귀(4차 재검증, 회장 기준 "보이는 대로 발행"): 끝 Enter 후 blur했을 때
+    // "화면에 보이는 줄 수"와 "발행 PNG가 실제로 쓰는 wrapSegments의 줄 수"가 같아야
+    // 한다. M2 재현: 끝에서 Enter만 치고 아무것도 안 친 채 blur한다 — 예전엔 저장본에
+    // 끝 개행이 남아 PNG엔 빈 줄이 하나 더 생기는데 화면엔 그게 안 보였다.
+    await nav("slide-3");
+    await ed("b-3-0").click();
+    await caretAt("b-3-0", "end");
+    await page.keyboard.press("Enter");
+    await page.evaluate(() => document.activeElement.blur());
+    await page.waitForTimeout(100);
+    const m2Model = await model("b-3-0");
+    const { m2ScreenLineCount, m2WrapLineCount } = await page.evaluate(
+      ([selector, bid]) => {
+        const el = document.querySelector(selector);
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const screenLineCount = range.getClientRects().length;
+        let segments = [];
+        for (const s of window.__deck.slides) {
+          for (const b of s.bubbles || []) {
+            if (b.id === bid) segments = b.segments;
+          }
+        }
+        return { m2ScreenLineCount: screenLineCount, m2WrapLineCount: window.__wrapSegmentsLineCount(segments) };
+      },
+      [sel("b-3-0"), "b-3-0"],
+    );
+    record("MAJOR 회귀: 끝 Enter 후 blur — 저장본에 끝 개행이 안 남고, 화면 줄 수와 발행 PNG(wrapSegments) 줄 수가 같다", {
+      modelHasTrailingNewline: m2Model.endsWith("\n"),
+      screenLineCount: m2ScreenLineCount,
+      wrapSegmentsLineCount: m2WrapLineCount,
+    }, {
+      modelHasTrailingNewline: false,
+      screenLineCount: m2WrapLineCount,
+      wrapSegmentsLineCount: m2WrapLineCount,
+    });
+
+    // MINOR(1): 말풍선 맨 앞에서 Enter — Chromium·WebKit에서 사라지던 그 결함.
+    await nav("slide-2");
+    await ed("b-2-1").click();
+    await caretAt("b-2-1", "start");
+    await page.keyboard.press("Enter");
+    const leadingEnterModel = await model("b-2-1");
+    record("MINOR(1): 말풍선 맨 앞 Enter가 선행 개행으로 살아남는다", {
+      startsWithNewline: leadingEnterModel.startsWith("\n"),
+    }, { startsWithNewline: true });
+
+    // MINOR(2): 마우스 mousedown 없이(그래서 onMouseDown preventDefault 보호를 안 거치고)
+    // 편집칸 밖으로 포커스가 옮겨진 뒤 굵게를 누른다 — WebKit은 그 blur에서 Selection을
+    // 비운다. 키보드 Tab으로 재현하려 했으나 WebKit(Safari 기본값, "전체 키보드 접근"이
+    // 꺼진 상태)은 <button>을 애초에 Tab 순서에 안 넣는다(직접 실측: Tab을 눌러도
+    // document.activeElement가 body로 간다 — 이 자체가 실제 Safari 기본 동작과 같다).
+    // 그래서 같은 메커니즘(마우스 mousedown 없이 포커스가 버튼으로 넘어감)을 재현하는
+    // 표준 방법인 `button.focus()`(스크린리더 등 접근성 기술이 실제로 쓰는 경로,
+    // probe3.mjs의 "BOLD via keyboard-free: dispatch click without mousedown"과 동일
+    // 패턴)로 만든다.
+    // slide-4/b-4-1은 위 BLOCKER 굵게 테스트가 이미 굵게를 적용해 그 슬라이드는 "한 장에
+    // 굵은 덩이는 하나" 한도를 다 썼다 — 아직 굵은 구간이 없는 slide-3/b-3-1을 쓴다.
+    await nav("slide-3");
+    await ed("b-3-1").click();
+    await caretAt("b-3-1", 0);
+    await page.keyboard.press("Shift+ArrowRight");
+    await page.keyboard.press("Shift+ArrowRight");
+    await page.keyboard.press("Shift+ArrowRight");
+    await page.waitForTimeout(50); // selectionchange가 selectionRefs에 저장될 시간을 준다.
+    await page.evaluate((bid) => {
+      const btn = [...document.querySelectorAll(`[data-bubble-id="${bid}"] button`)].find((b) => b.textContent === "굵게");
+      btn.focus(); // mousedown 없이 포커스만 옮긴다 — 편집칸이 blur된다.
+      btn.click();
+    }, "b-3-1");
+    await page.waitForTimeout(100);
+    const keyboardBoldModel = await page.evaluate((bid) => {
+      for (const s of window.__deck.slides) for (const b of s.bubbles || []) if (b.id === bid) return b.segments.some((x) => x.bold);
+      return false;
+    }, "b-3-1");
+    record("MINOR(2): mousedown 없는 포커스 이동 뒤 굵게가 WebKit에서도 selectionchange로 저장된 범위를 쓴다", {
+      hasBold: keyboardBoldModel,
+      alerts: await alerts(),
+    }, { hasBold: true, alerts: [] });
 
     // Shift+Enter도 같은 경로.
     await nav("slide-2");

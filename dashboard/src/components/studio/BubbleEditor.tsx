@@ -197,10 +197,28 @@ function textOffsetWithinElement(root: HTMLElement, node: Node, offset: number):
  * Range를 조작하던 1차 수정은 jsdom에선 통과했지만 실제 Chromium에서 다음 타이핑 때 방금
  * 넣은 내용을 지워버려 폐기했다 — 자세한 경위는 그 함수 주석). 그 결과 Chromium·WebKit은
  * 빈 줄을 `<div><br></div>`로, Firefox는 리터럴 `\n` 텍스트 노드 뒤에 표시용 `<br>`을
- * 짝으로 남긴다 — 이 함수는 이 두 형태와 일반 DIV·P 문단 경계를 전부 정확히 한 글자의
- * 개행으로만 센다(이중 카운트 방지 규칙은 아래 BR 분기 주석 참조). "무엇이 들어오든 이
- * 함수가 맞게 읽는다"가 설계 원칙이라, 브라우저가 내부적으로 어떤 표현을 쓰든 흔들리지
- * 않는다.
+ * 짝으로 남긴다.
+ *
+ * 4차 재검증: "직전 형제가 `\n`으로 끝나는 텍스트 노드인 맨 끝 br만 무시" 규칙은
+ * 위치(맨 앞/중간/맨 끝) 기반이라 두 가지를 동시에 틀리게 했다 — (a) 말풍선 맨 앞에서
+ * Enter를 치면(`<div><br></div>`가 맨 앞에 옴) 짝짓기 조건이 아직 안 맞아 그 개행이
+ * 통째로 사라졌다(MINOR 1, Chromium·WebKit 실측). (b) 반대로 짝짓기 조건이 우연히
+ * 맞아떨어지는 중간 상태에서는 실제로 필요한 개행까지 지워 Firefox에서 끝에 개행이
+ * 하나 더 남는 등 꼬였다(MAJOR M3b 재현). "이 개행이 이미 다른 자리에서 셌는가"만
+ * 보는 구조 규칙으로 다시 세운다 — `sawContent`(지금까지 실제 글자를 봤는가)를 단일
+ * 기준으로 두 자리에서 함께 쓴다:
+ *
+ * - DIV·P 경계는 `sawContent`가 true일 때만 개행 한 글자로 센다(그 앞에 이미 내용이
+ *   있어야 "줄이 바뀐다"는 뜻이 성립한다 — 맨 앞 DIV는 그저 브라우저가 첫 줄을 감싼
+ *   것일 수도 있다, Firefox의 `<div>줄1</div><div>줄2</div>` 실측이 그 예다).
+ * - `<br>`는 그 부모 DIV·P의 유일한 자식이고 **그 DIV에 들어올 때 `sawContent`가 이미
+ *   true였을 때만**(=DIV 경계가 실제로 개행을 셌을 때만) 건너뛴다 — 셌으면 중복이고,
+ *   아직 안 셌으면(맨 앞 `<div><br></div>`, MINOR 1) 이 br이 그 줄의 유일한 표시이므로
+ *   건너뛰지 않고 그대로 센다. 또는 바로 앞 형제가 리터럴 `\n`으로 끝나는 텍스트
+ *   노드면 건너뛴다(그 `\n`이 이미 셌다, Firefox의 `text\n` + 표시용 `<br>` 짝).
+ *
+ * 편집 중에 이렇게 셈한 값에 끝 개행이 남아 있는 건 의도다(다음 줄을 계속 치게) —
+ * 커밋 시점(blur)에 `handleBlur`가 그 끝 개행만 잘라낸다.
  */
 function elementToPlainText(el: HTMLElement): string {
   const nodes: Node[] = [];
@@ -220,21 +238,18 @@ function elementToPlainText(el: HTMLElement): string {
       return;
     }
     if (node.nodeName === "BR") {
-      // 2차 재검증: `execCommand('insertText', false, "\n")`(handleKeyDown)이 낳는 실제
-      // 브라우저별 구조 두 가지를 이중 카운트하지 않는다.
-      // - Chromium·WebKit: 빈 줄을 `<div><br></div>`로 쓴다 — 그 DIV의 유일한 자식인
-      //   이 <br>은 DIV 경계(아래 분기)가 이미 그 줄의 개행을 센 것의 표시일 뿐이다.
       const parent = node.parentNode;
       const isSoleChildOfBlock = !!parent
         && (parent.nodeName === "DIV" || parent.nodeName === "P")
         && parent.childNodes.length === 1;
-      if (isSoleChildOfBlock) return;
-      // - Firefox: 리터럴 "\n" 텍스트 노드 뒤에 표시용 <br>을 짝으로 남긴다 — 그 텍스트
-      //   노드의 "\n" 자체가 이미 개행 한 글자를 셌다.
-      const isTrailing = index === nodes.length - 1;
+      // sawContent가 이 시점에도 여전히 false면, 이 br을 품은 DIV 경계(아래 분기)가
+      // 방금 이 시점까지는 한 번도 안 셌다는 뜻이다 — 그러면 이 br을 건너뛰면 그 줄이
+      // 통째로 증발한다(MINOR 1). sawContent가 true였다면 DIV 진입이 이미 셌으니
+      // 중복이라 건너뛴다.
+      if (isSoleChildOfBlock && sawContent) return;
       const prev = index > 0 ? nodes[index - 1] : null;
-      const isHelperPair = prev?.nodeType === Node.TEXT_NODE && (prev.textContent ?? "").endsWith("\n");
-      if (isTrailing && isHelperPair) return;
+      const isPairedWithLiteralNewline = prev?.nodeType === Node.TEXT_NODE && (prev.textContent ?? "").endsWith("\n");
+      if (isPairedWithLiteralNewline) return;
       text += "\n";
       return;
     }
@@ -465,6 +480,19 @@ function BubbleContentEditable({
     isComposingRef.current = false;
     const el = localRef.current;
     if (!el) return;
+    // MAJOR(4차 재검증, 회장 기준 "보이는 대로 발행"): 편집 중엔 끝 개행을 그대로
+    // 두지만(다음 줄을 계속 치게), blur — 더는 편집하지 않는 시점 — 엔 잘라낸다. 안
+    // 그러면 저장본엔 트레일링 "\n"이 남는데, 발행 PNG(chat-bubble.ts wrapSegments)는
+    // 모든 "\n"을 강제 줄바꿈으로 취급해 그 자리에 빈 줄을 하나 더 그린다 — 편집
+    // 화면과 PNG가 달라지고, 대화 장엔 캔버스 미리보기가 없어 발행 전엔 아무도 그
+    // 차이를 못 본다(M2·M3b·Firefox 재현 전부 이 경로). 세그먼트 구조(굵기 경계)는
+    // 그대로 두고 끝쪽 개행만 지운다 — 통째로 갈아엎으면(`onTextChange`가
+    // `retextSegments`의 비율 재분배를 다시 태워) 굵은 위치가 흔들린다.
+    const liveText = elementToPlainText(el);
+    const trimmedText = liveText.replace(/\n+$/, "");
+    if (trimmedText !== liveText) {
+      onTextChange(trimmedText);
+    }
     const html = segmentsToHtml(bubble.segments);
     if (html === el.innerHTML) return;
     el.innerHTML = html;
@@ -503,6 +531,13 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
   const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
   const editableRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const caretRefs = useRef<Record<string, number>>({});
+  // MINOR(2, 4차 재검증): WebKit에서 키보드만으로(마우스 클릭 없이 Shift+화살표로 범위를
+  // 고르고 Tab으로 굵게 버튼에 포커스를 옮겨 Enter/Space로 누르면) 그 Tab 이동 자체가
+  // 편집칸을 blur시키는데, WebKit은 그 blur에서 Selection 객체를 (마우스 클릭 때와
+  // 달리) 비워버린다 — 버튼 click 시점에 `getEditableSelectionOffsets`로 읽으면 이미
+  // 빈 선택이라 "먼저 선택해 주세요"로 실패한다. 쪼개기가 이미 쓰던 것과 같은 패턴으로,
+  // `selectionchange`가 날 때마다 범위를 ref에 저장해뒀다가 굵게에서 그 값을 대신 쓴다.
+  const selectionRefs = useRef<Record<string, { start: number; end: number }>>({});
 
   const slide = deck.slides.find((s) => s.id === slideId) ?? null;
   const bubbles = slide?.bubbles ?? [];
@@ -510,6 +545,20 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
   useEffect(() => {
     setSelectedBubbleId(null);
   }, [slideId]);
+
+  useEffect(() => {
+    function handleSelectionChange() {
+      if (!selectedBubbleId) return;
+      const el = editableRefs.current[selectedBubbleId];
+      if (!el) return;
+      const offsets = getEditableSelectionOffsets(el);
+      if (offsets && offsets.start !== offsets.end) {
+        selectionRefs.current[selectedBubbleId] = offsets;
+      }
+    }
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => document.removeEventListener("selectionchange", handleSelectionChange);
+  }, [selectedBubbleId]);
 
   // M3(PR 리뷰): 삭제뿐 아니라 합치기 등 어떤 연산이든 선택했던 말풍선이 사라지면
   // selectedBubbleId 가 죽은 id 를 들고 있어 "말풍선 추가"가 OPS_BUBBLE_NOT_FOUND 로
@@ -566,7 +615,11 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
   // 포커스를 되돌린다.
   function handleToggleBold(bubble: Bubble) {
     const el = editableRefs.current[bubble.id];
-    const offsets = el ? getEditableSelectionOffsets(el) : null;
+    const liveOffsets = el ? getEditableSelectionOffsets(el) : null;
+    // 실제 선택이 살아있으면(mousedown preventDefault가 지켜낸 정상 경로) 그것을 쓰고,
+    // WebKit 키보드 경로처럼 비어 있으면 selectionchange가 저장해둔 마지막 범위로
+    // 대신한다.
+    const offsets = (liveOffsets && liveOffsets.start !== liveOffsets.end) ? liveOffsets : selectionRefs.current[bubble.id];
     const from = offsets?.start ?? 0;
     const to = offsets?.end ?? 0;
     if (from === to) {
@@ -575,6 +628,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
     }
     const next = run((d) => toggleBold(d, currentSlideId, bubble.id, { from, to }));
     if (!next) return;
+    delete selectionRefs.current[bubble.id]; // 방금 쓴 범위는 굵기가 바뀌어 더는 유효하지 않다.
     queueMicrotask(() => {
       const target = editableRefs.current[bubble.id];
       if (target) restoreSelectionRange(target, from, to);
