@@ -3,3 +3,7 @@
 export function authHeaders(): Record<string, string> {
   return {};
 }
+
+export function getAuthToken(): string | null {
+  return null;
+}

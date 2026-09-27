@@ -1,3 +1,12 @@
+## 2026-09-28 08:50 KST · PR 85 편집실 v70 8차 리뷰 ❌ NG → 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR85-R8-BLOCKER-01 | 필수 발행실 UI 회귀 테스트 통과 | studio-publish-ui:940 | 🔧 수정, 로컬 PASS | 수정 전 `The given element does not have a value setter`, 종료 1. contentEditable `input`과 구조화 `editFormat.segments` 계약으로 교정 후 필수 파일을 포함한 관련 회귀 통과. |
+| PR85-R8-MAJOR-01 | 연속 넘침도 다음 장까지 자동 분할 | PR85-R8-MAJOR-01 | 🔧 수정, 로컬 PASS | 수정 전 4개 단일 장 기대에 2장만 생성. 분할 뒤 새 장을 검사 대상으로 넘긴 뒤 4장 모두 단일 말풍선 PASS. |
+| PR85-R8-MAJOR-02 | 리치 붙여넣기 뒤 화면과 저장 세그먼트 일치 | PR85-R8-MAJOR-02 | 🔧 수정, 로컬 PASS | 수정 전 paste 기본 동작 허용 `true`. 평문 전용 핸들러 추가 뒤 Vitest와 Chromium·WebKit·Firefox에서 DOM=`붙여넣은 평문`, 모델=`붙여넣은 평문`, 리치 노드 0건. |
+| PR85-R8-FINAL | 관련 회귀와 타입·빌드·렌더 | PR85-R8-FINAL-01~05 | ✅ PASS | Vitest 16파일 203건, 무작위 300회 포함. `typecheck:ci`, 프로덕션 빌드, 3엔진 E2E 종료 코드 0. dev 3762 Ready 805ms, `/studio` HTTP 200, body 표시, 콘솔 오류 0. 운영 배포·실회원 저장은 미검증. |
+
 ## 2026-09-28 07:52 KST · PR 85 편집실 v70 7차 리뷰 ✅ PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

@@ -4,14 +4,17 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CardDeckPanel } from "@/components/studio/BubbleEditor";
+import { EditRoom } from "@/components/studio/StudioRooms";
 import { wrapSegments } from "@/lib/studio/card-templates/chat-bubble";
 import type { Segment } from "@/lib/studio/card-deck-contract";
+import type { ContentEditFormat } from "@/lib/studio/content-edit-format";
 import deckJson from "../../../tests/studio/fixtures/deck-d100.v2.json";
 
 declare global {
   interface Window {
     __deck: unknown;
     __changes: number;
+    __textFormat: ContentEditFormat;
     // MAJOR 회귀(4차 재검증): 발행 PNG가 실제로 쓰는 그 줄바꿈 함수를 편집실 E2E가
     // 직접 불러 "화면 줄 수 == PNG 줄 수"를 검증한다 — 재구현이 아니라 그 함수 자체를
     // 그대로 쓴다.
@@ -21,17 +24,29 @@ declare global {
 
 function App() {
   const [deck, setDeck] = useState(() => JSON.parse(JSON.stringify(deckJson)));
+  const [textLines, setTextLines] = useState(["원문"]);
+  const [textFormat, setTextFormat] = useState<ContentEditFormat>({ kind: "text", segments: [{ text: "원문", bold: false }] });
   window.__deck = deck;
+  window.__textFormat = textFormat;
   window.__changes = window.__changes ?? 0;
   return (
-    <CardDeckPanel
-      deck={deck}
-      onDeckChange={(next) => {
-        window.__changes += 1;
-        window.__deck = next;
-        setDeck(next);
-      }}
-    />
+    <>
+      <CardDeckPanel
+        deck={deck}
+        onDeckChange={(next) => {
+          window.__changes += 1;
+          window.__deck = next;
+          setDeck(next);
+        }}
+      />
+      <EditRoom
+        lines={textLines}
+        onLinesChange={setTextLines}
+        kind="text"
+        initialFormat={textFormat}
+        onFormatChange={setTextFormat}
+      />
+    </>
   );
 }
 

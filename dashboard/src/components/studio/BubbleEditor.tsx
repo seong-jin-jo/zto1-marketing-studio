@@ -1024,6 +1024,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
   const [slideError, setSlideError] = useState<string | null>(null);
   const [draggedSlideIndex, setDraggedSlideIndex] = useState<number | null>(null);
   const [splitNotice, setSplitNotice] = useState<string | null>(null);
+  const autoSplitTargetRef = useRef<string | null>(null);
   const activeIndex = deck.slides.findIndex((s) => s.id === activeSlideId);
   const activeSlide = activeIndex >= 0 ? deck.slides[activeIndex] : deck.slides[0];
   const { canvas: renderPreview, warning: renderWarning, checkedRevision } = useSlideRenderCheck(deck, activeSlide, Math.max(0, activeIndex), deck.slides.length);
@@ -1035,6 +1036,10 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
   }, [deck.slides, activeSlideId]);
 
   useEffect(() => {
+    if (autoSplitTargetRef.current === activeSlideId) {
+      autoSplitTargetRef.current = null;
+      return;
+    }
     setSplitNotice(null);
   }, [activeSlideId]);
 
@@ -1100,6 +1105,13 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
           next = splitSlideAtBubbleOffset(deck, activeIndex, 0, fit);
         }
         onDeckChange(next);
+        // 새 장에 옮긴 나머지도 카드 높이를 넘을 수 있다. 검사 대상을 새 장으로 넘겨
+        // 같은 렌더 검사와 분할을 반복하고, 모든 후속 장이 맞을 때 멈춘다.
+        const continuation = next.slides[activeIndex + 1];
+        if (continuation?.role === "chat") {
+          autoSplitTargetRef.current = continuation.id;
+          setActiveSlideId(continuation.id);
+        }
         setSplitNotice("이 장은 2장으로 나뉩니다");
       } catch (cause) {
         if (cause instanceof CardDeckOpsError) setSlideError(cardDeckOpsErrorMessage(cause.code));

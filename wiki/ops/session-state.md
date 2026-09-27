@@ -1,3 +1,26 @@
+## 2026-09-28 08:50 KST PR 85 편집실 v70 8차 리뷰 로컬 수정·검증 완료
+
+- handoff basis: 사용자가 지정한 `.pr85-review8.md`, 워크트리 `/private/tmp/wt-v70p1`, HEAD `bc539b95`를 primary로 사용했다. tmux `371:0.2`는 종료된 8차 리뷰 로그만 남은 상태라 동시 수정이 없음을 확인했다.
+- 수정 전 재현: 필수 발행실 UI는 contentEditable `value setter` 오류, 연속 넘침은 4장 기대에 2장, 글 리치 붙여넣기는 기본 동작 허용 `true`로 각각 실패했다.
+- 변경: 자동 분할 뒤 새 장을 다음 검사 대상으로 넘긴다. 글 전체 편집은 리치 붙여넣기 기본 동작을 막고 평문만 저장한다. 필수 발행실 테스트는 contentEditable 입력과 구조화 세그먼트를 검증한다.
+- 검증: 관련 Vitest 16파일 203건, TypeScript, 프로덕션 빌드, Chromium·WebKit·Firefox E2E PASS. 3엔진에서 글 DOM과 저장 모델 `붙여넣은 평문` 일치, 리치 노드 0건을 관찰했다. dev 3762는 Ready 805ms, `/studio` HTTP 200, body 표시, 콘솔 오류 0이었다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr85-review7.md`, `.pr85-review8.md`는 커밋하지 않는다. 다음 실행은 의도 파일만 커밋하고 부모 컨트롤러가 push한다.
+
+## 2026-09-28 07:52 KST PR 85 편집실 v70 7차 리뷰 로컬 수정·검증 완료
+
+- handoff basis: 사용자가 지정한 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, 시작 HEAD `355b856c`, 7차 리뷰 전문을 primary로 사용했다. tmux `371:0.2`는 종료된 직전 리뷰 세션임을 확인했다.
+- 변경: 말풍선 DOM을 구조화 세그먼트로 직렬화하고 굵기 결과 불변식을 검사한다. 영상 자동저장은 `editLines`를 생략한다. v70 글 선택 도구막대, 넘침 자동 분할, 카드 DnD, 말풍선 기준 툴바, 키보드 포커스를 구현했다.
+- 검증: 수정 전 속성 테스트 18건 FAIL. 수정 후 관련 Vitest 162건과 추가 자동분할 46건, 3엔진 E2E, typecheck, build, 변경 소스 design-lint, dev `/studio` HTTP 200·콘솔 오류 0 PASS.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, 기존 session-state 변경, `.pr85-review7.md`는 커밋하지 않는다.
+- 다음 실행: 의도 파일만 커밋하고 부모 컨트롤러가 push한다. PR 제목·본문 수정, 머지, 배포는 하지 않는다.
+
+## 2026-09-25 11:39 KST PR 85 편집실 v70 낡은 테스트 계약 수정 착수
+
+- handoff basis: 사용자가 지정한 과제, 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, HEAD `dea8d81c`를 primary로 사용한다. 같은 cwd의 tmux `openclaw-auto:1.1`은 직전 v70 기록과 일치하는 보조 확인만 했다.
+- 원인: `dashboard/tests/studio/studio-fe2-rooms.test.tsx`의 QA-EDIT-06만 글 `data-edit-outline` 존재를 요구한다. v70 제품과 전용 회귀는 글 목차 부재, 글 전체 textbox 존재, 문단 textbox 부재를 계약한다.
+- 현재 판정: `docs/qa/qa-tracker.md`에 `PR85-CI-EDIT-OUTLINE`을 ❌ NG로 등록했다. 자동 기록 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 보존한다.
+- 다음 실행: QA-EDIT-06을 목차 부재 단언으로 바꾸고 전체 Vitest와 `typecheck:ci`를 실행한다. 통과하면 QA 원장과 이 핸드오프를 갱신하고 의도 파일만 커밋한 뒤 push한다.
+
 # 2026-09-25 07:48 KST 편집실 v70 1단계 로컬 출고 완료, push 정책 차단
 
 - 최종 로컬 HEAD: `7008af6e`. 제품·테스트 `cc103a37`, 검증 문서 `cfc5e880`, 리뷰 회귀 수정 `7008af6e`다. 최신 `origin/main` `57850570`을 조상으로 포함한다.

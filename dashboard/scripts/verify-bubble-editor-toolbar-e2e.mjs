@@ -508,6 +508,36 @@ async function runScenario(engineName) {
       // "<b"만 보면 "<br>"(정상 렌더 요소)까지 걸린다 — 실제 서식 태그(<b>, <b style=...)만 잡는다.
       hasHtmlTag: /<b[\s>]/i.test(await ed("b-6-0").innerHTML()),
     }, { hasCarriageReturn: false, startsWithNormalized: true, hasHtmlTag: false });
+
+    // 8차 MAJOR 2: 글 전체 편집기도 브라우저 기본 리치 HTML 삽입을 막고 text/plain만
+    // 저장해야 한다. DOM에 <b>/<img>가 남으면 화면은 굵고 저장 모델은 평문이라 갈린다.
+    const textEditor = page.getByRole("textbox", { name: "글 전체" });
+    await textEditor.click();
+    await page.keyboard.press("ControlOrMeta+A");
+    await page.evaluate(async () => {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob(['<b style="font-weight:900">붙여넣은 평문</b><img src="x" onerror="window.__r8=1">'], { type: "text/html" }),
+          "text/plain": new Blob(["붙여넣은 평문"], { type: "text/plain" }),
+        }),
+      ]);
+    });
+    await page.keyboard.press("ControlOrMeta+V");
+    await page.waitForTimeout(200);
+    const textPaste = await page.evaluate(() => {
+      const editor = document.querySelector('[aria-label="글 전체"]');
+      const format = window.__textFormat;
+      return {
+        domText: editor?.textContent ?? "",
+        hasRichNode: Boolean(editor?.querySelector("b, img")),
+        model: format.kind === "text" ? (format.segments ?? []).map((segment) => segment.text).join("") : "WRONG_KIND",
+      };
+    });
+    record("PR85-R8-M2: 글 리치 붙여넣기는 DOM과 저장 모델에 평문만 남긴다", textPaste, {
+      domText: "붙여넣은 평문",
+      hasRichNode: false,
+      model: "붙여넣은 평문",
+    });
   } finally {
     await browser.close();
   }

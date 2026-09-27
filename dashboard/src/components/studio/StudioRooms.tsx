@@ -1759,6 +1759,33 @@ function TextDocumentEditor({ lines, segments, onLinesChange, onSegmentsChange }
     onLinesChange(next.map((segment) => segment.text).join("").split(/\n\s*\n/));
   };
 
+  const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const editor = editorRef.current;
+    const browserSelection = window.getSelection();
+    if (!editor || !browserSelection || browserSelection.rangeCount === 0) return;
+    const text = event.clipboardData.getData("text/plain").replace(/\r\n/g, "\n");
+    let inserted = false;
+    if (typeof document.execCommand === "function") {
+      try {
+        inserted = document.execCommand("insertText", false, text);
+      } catch {
+        inserted = false;
+      }
+    }
+    if (!inserted) {
+      const range = browserSelection.getRangeAt(0);
+      range.deleteContents();
+      const node = document.createTextNode(text);
+      range.insertNode(node);
+      range.setStart(node, node.textContent!.length);
+      range.setEnd(node, node.textContent!.length);
+      browserSelection.removeAllRanges();
+      browserSelection.addRange(range);
+    }
+    commitDom();
+  };
+
   const toggleSelectedBold = () => {
     const editor = editorRef.current;
     if (!editor || !selection) return;
@@ -1782,6 +1809,7 @@ function TextDocumentEditor({ lines, segments, onLinesChange, onSegmentsChange }
           role="textbox"
           aria-multiline="true"
           aria-label="글 전체"
+          onPaste={handlePaste}
           onInput={commitDom}
           className={styles.textDocumentBody}
         />
