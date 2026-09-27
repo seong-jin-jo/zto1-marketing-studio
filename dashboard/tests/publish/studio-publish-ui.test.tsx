@@ -227,6 +227,44 @@ describe("Studio publish result integrity", () => {
     expect(screen.getByRole("checkbox", { name: "X 발행" })).not.toBeChecked();
   });
 
+  it("MINOR-1 경계: draft_id 없는 인박스 발행 복귀는 진행 중인 영상 맞춤을 취소하고 편집 잠금을 푼다", async () => {
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "이전 영상 초안",
+      draftId: "old-video-draft",
+      editKind: "video",
+      editLines: ["이전 영상 대사"],
+      vid: { url: "/api/media/old-video", file: "/api/media/old-video", model: "test" },
+      videoEdit: {
+        contract_version: "1.0",
+        overlays: [],
+        comments: [],
+        subtitles: [],
+        voice: null,
+        revision: 1,
+      },
+    }));
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=Q1");
+    mocks.returnPosts = [{
+      id: "Q1",
+      text: "인박스에서 되돌린 영상 본문",
+      topic: "영상 복귀 작업물",
+      videoUrl: "/api/media/returned-video",
+      channels: { threads: { status: "pending" } },
+      publishContext: { sourceRoute: "inbox", queuePostId: "Q1", draftId: null },
+    }];
+
+    const page = render(<StudioPage />);
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+
+    window.history.replaceState(null, "", "/studio?room=edit");
+    page.rerender(<StudioPage />);
+
+    await waitFor(() => expect(document.querySelector("[data-video-subtitle-list]")).toBeTruthy());
+    expect(document.querySelector("[data-video-syncing-note]"), "draftId가 없어진 뒤 영상 편집 잠금이 남으면 안 된다").toBeNull();
+    expect(document.querySelector("[data-video-subtitle-text]"), "복귀한 영상 대본을 편집할 수 있어야 한다").toBeEnabled();
+  });
+
   it("FE-V63-RETURN-04 경계: 본문 없는 편집 인계 초안은 큐 본문과 초안 메타데이터를 함께 복원한다", async () => {
     window.history.replaceState(null, "", "/studio?room=publish&queue_id=queue-handoff&from=calendar&draft_id=draft-handoff");
     mocks.drafts = [{

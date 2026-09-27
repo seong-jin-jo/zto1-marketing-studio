@@ -1996,6 +1996,11 @@ export default function StudioPage() {
       setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
       setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
       setVideoEdit((linkedDraft?.videoEdit as VideoEdit) || null);
+      // MINOR(7차 재리뷰): 이 분기도 videoEdit을 reconcile 밖에서 직접 세팅한다(워크스페이스
+      // 전환·새 작업·후보 선택·버리고 새로 시작과 같은 계열) — 그 아래 setDraftId(linkedDraftId)가
+      // null일 수 있는데, 그러면 진행 중이던 맞춤의 syncing 잠금이 안 풀릴 수 있었다. 다른 네 곳과
+      // 같은 invalidateVideoEditReconcile()로 세대를 올리고 잠금을 확실히 푼다.
+      invalidateVideoEditReconcile();
       const linkedFormat = validateContentEditFormat(linkedDraft?.editFormat);
       if (linkedFormat.valid) {
         setEditKind(linkedFormat.value.kind);
