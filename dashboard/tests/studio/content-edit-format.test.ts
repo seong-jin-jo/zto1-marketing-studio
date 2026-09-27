@@ -3,6 +3,12 @@ import { POST as validateContent } from "@/app/api/content/validate/route";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
 
 describe("Studio 편집 형식 계약", () => {
+  it("PR85-R7-M4 글 굵기 세그먼트를 검증하고 보존한다", () => {
+    const segments = [{ text: "강조", bold: true }, { text: " 본문", bold: false }];
+    const result = validateContentEditFormat({ kind: "text", segments });
+    expect(result.valid).toBe(true);
+    if (result.valid) expect(result.value).toEqual({ kind: "text", segments });
+  });
   it("FMT-UNIT-01 정상: 승인된 영상 비율·자막·속도·목소리를 정규값으로 받는다", () => {
     const result = validateContentEditFormat({
       kind: "video",

@@ -86,6 +86,23 @@ describe("CardDeckPanel (표지·CTA 고정, 세션맥락: card-deck-ops 순수 
     expect(document.querySelector(`[data-slide-id="${secondSlide.id}"]`)).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("PR85-R7-M6 본문 장을 끌어 놓아 순서를 바꾸고 표지·CTA는 draggable이 아니다", () => {
+    const d = deck();
+    const onDeckChange = vi.fn();
+    render(<CardDeckPanel deck={d} onDeckChange={onDeckChange} />);
+    const items = Array.from(document.querySelectorAll<HTMLElement>("[data-slide-draggable]"));
+    expect(items[0]).toHaveAttribute("data-slide-draggable", "false");
+    expect(items.at(-1)).toHaveAttribute("data-slide-draggable", "false");
+    const transfer = { effectAllowed: "none", setData: vi.fn(), getData: vi.fn(() => "1") };
+    fireEvent.dragStart(items[1], { dataTransfer: transfer });
+    fireEvent.dragOver(items[2], { dataTransfer: transfer });
+    fireEvent.drop(items[2], { dataTransfer: transfer });
+    const next = onDeckChange.mock.calls[0][0] as CardDeck;
+    expect(next.slides[2].id).toBe(d.slides[1].id);
+    expect(next.slides[0].role).toBe("cover");
+    expect(next.slides.at(-1)?.role).toBe("cta");
+  });
+
   it("장 전환은 이전 말풍선 선택을 비워 새 장 추가가 옛 ID를 참조하지 않는다", () => {
     const d = deck();
     const onDeckChange = vi.fn();

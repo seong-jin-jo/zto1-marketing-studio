@@ -347,7 +347,8 @@ describe("MAJOR(4차 재검증): 끝 개행은 편집 중엔 남고 blur에서�
   });
 
   it("코드 대조(6차 재검증): handleBlur의 즉시 재동기화가 trimSegmentsTrailingNewline(순수 함수)로 '트림 후' 상태를 직접 계산한다 — 다음 렌더를 기다리는 stale bubble.segments를 안 쓴다", () => {
-    expect(tsxSrc).toMatch(/const segmentsForHtml = hasTrailingNewline \? trimSegmentsTrailingNewline\(bubble\.segments\) : bubble\.segments;/);
+    expect(tsxSrc).toMatch(/const segmentsForHtml = hasTrailingNewline \? trimSegmentsTrailingNewline\(liveSegments\) : liveSegments;/);
+    expect(tsxSrc).not.toMatch(/trimSegmentsTrailingNewline\(bubble\.segments\)/);
   });
 });
 

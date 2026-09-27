@@ -16,6 +16,9 @@ import {
   pruneEmptyBubbles,
   emptyBubbleSlideNumber,
   setBubbleText,
+  setBubbleSegments,
+  splitSlideAtBubble,
+  splitSlideAtBubbleOffset,
   caretToSegment,
   trimBubbleTrailingNewline,
   CardDeckOpsError,
@@ -160,6 +163,14 @@ describe("toggleBold (TC-F1-05·06)", () => {
     const slide = d.slides[1]; // b-1-1에 이미 볼드 한 덩이가 있다
     expectOpsCode(() => toggleBold(d, slide.id, slide.bubbles![0].id, { from: 0, to: 2 }), "OPS_BOLD_LIMIT");
   });
+
+  it("PR85-R7-M2 굵은 구간 가운데를 해제해 두 덩이가 되면 OPS_BOLD_LIMIT", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubble = slide.bubbles![0];
+    const bold = toggleBold(d, slide.id, bubble.id, { from: 0, to: 5 });
+    expectOpsCode(() => toggleBold(bold, slide.id, bubble.id, { from: 1, to: 4 }), "OPS_BOLD_LIMIT");
+  });
 });
 
 describe("슬라이드 연산 moveSlide/addSlide/deleteSlide (TC-F1-10·11)", () => {
@@ -241,6 +252,14 @@ describe("groupTurns / pruneEmptyBubbles", () => {
 });
 
 describe("setBubbleText / caretToSegment (2026-09-22 코드리뷰 MAJOR 5)", () => {
+  it("PR85-R7-M1 DOM에서 읽은 중간 편집 세그먼트를 비율 재분배 없이 그대로 저장한다", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubbleId = slide.bubbles![0].id;
+    const segments = [{ text: "앞중간삽입", bold: false }, { text: "공통점 하나를 찾았어요\n다음", bold: true }];
+    const next = setBubbleSegments(d, slide.id, bubbleId, segments);
+    expect(next.slides[2].bubbles![0].segments).toEqual(segments);
+  });
   it("setBubbleText: 부분 볼드가 있는 말풍선에서 글자를 고쳐도 볼드 비율이 보존된다(전체 교체 금지)", () => {
     const d = deck();
     // slides[1] 은 b-1-1 에 이미 볼드 덩이가 있다(장당 볼드 덩이 ≤1). slides[2] 는 없다.
@@ -293,6 +312,32 @@ describe("setBubbleText / caretToSegment (2026-09-22 코드리뷰 MAJOR 5)", () 
     const caret = fullText.length - 1;
     const at = caretToSegment(boldedBubble.segments, caret);
     expect(() => splitBubble(withBold, slide.id, bubbleId, at)).not.toThrow();
+  });
+});
+
+describe("splitSlideAtBubble (PR85-R7-M5)", () => {
+  it("넘친 경계 뒤 말풍선을 다음 chat 장으로 옮기고 표지·CTA 순서를 보존한다", () => {
+    const d = deck();
+    const original = d.slides[1].bubbles!;
+    const next = splitSlideAtBubble(d, 1, 1);
+    expect(next.slides).toHaveLength(d.slides.length + 1);
+    expect(next.slides[1].bubbles).toEqual([{ ...original[0], order: 0 }]);
+    expect(next.slides[2].bubbles).toEqual([{ ...original[1], order: 0 }]);
+    expect(next.slides[0].role).toBe("cover");
+    expect(next.slides.at(-1)?.role).toBe("cta");
+  });
+
+  it("말풍선 하나가 넘치면 굵기 경계를 보존한 채 문자 위치에서 다음 장으로 나눈다", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubble = slide.bubbles![0];
+    const bold = toggleBold(d, slide.id, bubble.id, { from: 0, to: 2 });
+    const next = splitSlideAtBubbleOffset(bold, 2, 0, 3);
+    const first = next.slides[2].bubbles![0];
+    const second = next.slides[3].bubbles![0];
+    expect(first.segments.map((segment) => segment.text).join("")).toBe(bubble.segments.map((segment) => segment.text).join("").slice(0, 3));
+    expect(second.segments.map((segment) => segment.text).join("")).toBe(bubble.segments.map((segment) => segment.text).join("").slice(3));
+    expect(first.segments[0].bold).toBe(true);
   });
 });
 

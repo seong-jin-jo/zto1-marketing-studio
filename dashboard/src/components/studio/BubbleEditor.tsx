@@ -22,10 +22,12 @@ import {
   deleteSlide,
   mergeBubble,
   moveSlide,
-  setBubbleText,
+  setBubbleSegments,
   setSlideCover,
   setSlideCoverImage,
   splitBubble,
+  splitSlideAtBubble,
+  splitSlideAtBubbleOffset,
   toggleBold,
   toggleSpeaker,
   trimBubbleTrailingNewline,
@@ -116,7 +118,7 @@ function escapeHtmlText(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
-function segmentsToHtml(segments: Segment[]): string {
+export function segmentsToHtml(segments: Segment[]): string {
   const html = segments
     .map((segment) => {
       const escaped = escapeHtmlText(segment.text).replace(/\n/g, "<br>");
@@ -226,7 +228,7 @@ function textOffsetWithinElement(root: HTMLElement, node: Node, offset: number):
 // bubble-editor-wysiwyg-invariant.property-1.test.tsx)가 실제 DOM에서 "화면이 지금
 // 몇 줄인가"를 읽을 때, 프로덕션 코드가 쓰는 이 함수 자체를 그대로 써야 재구현
 // 드리프트가 안 생긴다 — 그래서 테스트 전용으로 export한다(동작 변화 없음).
-export function elementToPlainText(el: HTMLElement): string {
+export function elementToSegments(el: HTMLElement): Segment[] {
   const nodes: Node[] = [];
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_ALL);
   let current: Node | null = walker.nextNode();
@@ -234,7 +236,17 @@ export function elementToPlainText(el: HTMLElement): string {
     nodes.push(current);
     current = walker.nextNode();
   }
-  let text = "";
+  const segments: Segment[] = [];
+  const append = (text: string, bold: boolean) => {
+    if (!text) return;
+    const last = segments[segments.length - 1];
+    if (last?.bold === bold) last.text += text;
+    else segments.push({ text, bold });
+  };
+  const isBoldNode = (node: Node) => {
+    const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
+    return Boolean(element?.closest("strong"));
+  };
   let sawContent = false;
   // 6차 재검증(속성 테스트가 잡음): `segmentsToHtml([])`은 완전히 빈 말풍선을
   // `"<br>"` 하나로 그린다(빈 편집칸에 캐럿을 보이게 하는 자리표시자일 뿐, 사용자가
@@ -247,7 +259,7 @@ export function elementToPlainText(el: HTMLElement): string {
   nodes.forEach((node, index) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const value = node.textContent ?? "";
-      text += value;
+      append(value, isBoldNode(node));
       if (value.length > 0) sawContent = true;
       return;
     }
@@ -289,17 +301,21 @@ export function elementToPlainText(el: HTMLElement): string {
       const isPairedWithLiteralNewline = isBrLastChildOfParent
         && ((prev?.nodeType === Node.TEXT_NODE && (prev.textContent ?? "").endsWith("\n")) || prev?.nodeName === "BR");
       if (isPairedWithLiteralNewline) return;
-      text += "\n";
+      append("\n", isBoldNode(node));
       return;
     }
     if ((node.nodeName === "DIV" || node.nodeName === "P") && sawContent) {
-      text += "\n";
+      append("\n", isBoldNode(node));
     }
   });
-  return text;
+  return segments.length ? segments : [{ text: "", bold: false }];
 }
 
-function getEditableSelectionOffsets(root: HTMLElement): { start: number; end: number } | null {
+export function elementToPlainText(el: HTMLElement): string {
+  return elementToSegments(el).map((segment) => segment.text).join("");
+}
+
+export function getEditableSelectionOffsets(root: HTMLElement): { start: number; end: number } | null {
   const selection = typeof window !== "undefined" ? window.getSelection() : null;
   if (!selection || selection.rangeCount === 0) return null;
   const range = selection.getRangeAt(0);
@@ -338,7 +354,7 @@ function pointAtOffset(root: HTMLElement, offset: number): { node: Node; offset:
 }
 
 /** `pointAtOffset`으로 root 안의 [start,end) 문자 범위를 실제로 다시 선택하고 포커스한다. */
-function restoreSelectionRange(root: HTMLElement, start: number, end: number): void {
+export function restoreSelectionRange(root: HTMLElement, start: number, end: number): void {
   const selection = typeof window !== "undefined" ? window.getSelection() : null;
   if (!selection) return;
   const startPoint = pointAtOffset(root, start);
@@ -369,14 +385,14 @@ function restoreSelectionRange(root: HTMLElement, start: number, end: number): v
 function BubbleContentEditable({
   bubble,
   editableRef,
-  onTextChange,
+  onSegmentsChange,
   onTrimTrailingNewline,
   onFocus,
   onCaretChange,
 }: {
   bubble: Bubble;
   editableRef: (el: HTMLDivElement | null) => void;
-  onTextChange: (text: string) => void;
+  onSegmentsChange: (segments: Segment[]) => void;
   onTrimTrailingNewline: () => void;
   onFocus: () => void;
   onCaretChange: (caret: number) => void;
@@ -408,9 +424,9 @@ function BubbleContentEditable({
   function handleInput() {
     const el = localRef.current;
     if (!el || isComposingRef.current) return;
-    const text = elementToPlainText(el);
+    const segments = elementToSegments(el);
     lastSyncedHtmlRef.current = el.innerHTML;
-    onTextChange(text);
+    onSegmentsChange(segments);
     reportCaret();
   }
 
@@ -501,17 +517,11 @@ function BubbleContentEditable({
   }
 
   /**
-   * M-A(PR 재리뷰) + MINOR(2): 저장본은 `retextSegments`(card-deck-contract.ts)가 글자
-   * 수 "비율"로 굵은 구간을 다시 나눈다 — 사용자가 입력한 실제 자리와 다를 수 있다(설계상
-   * 알려진 한계, "근본 해결"은 DOM의 `<strong>` 경계를 그대로 세그먼트로 읽는 것이라 이번
-   * 범위 밖). ★ B1(6차 재검증에서 리뷰어 탐침 probe5.mjs로 재확인): 굵은 구간 "중간"에서
-   * 타이핑하면(예: `**공통점**` 뒤에 이어 치기) 이 비율 재분배가 경계를 한두 글자
-   * 흔들 수 있다 — 머지를 막는 결함이 아니라 **후속 과제로 확정**됐다(회장 승인 필요,
-   * `<strong>` 경계 직독으로 세그먼트를 재구성하는 별도 작업). blur 시점 트림
-   * (`trimBubbleTrailingNewline`/`trimSegmentsTrailingNewline`)은 이 경로를 안 타므로
-   * 이 한계와 무관하다 — 혼동하지 말 것. 화면은 편집 중 리렌더를 막아두느라(IME 보호) 그 어긋남을 그대로 들고 있다가
-   * blur 뒤에도 안 고쳐졌다 — blur 시점엔 이 말풍선이 더는 활성 요소가 아니므로, 최신
-   * `bubble.segments`(서버로 나갈 그 값)로 다시 그려 화면·저장본을 맞춘다. 같은 자리에서
+   * PR85 7차 MAJOR 1 + MINOR(2): 입력 때 DOM을 평문으로 납작하게 만든 뒤 기존 세그먼트를
+   * 글자 수 비율로 재분배하면 굵은 구간 중간 편집에서 경계가 움직였다. 이제 매 입력마다
+   * `elementToSegments`가 `<strong>`과 줄바꿈을 구조화 세그먼트로 직렬화하고 그 배열을
+   * 저장 원본으로 올린다. blur도 stale prop이 아니라 같은 live DOM 세그먼트를 다시 읽어
+   * 끝 개행만 자른 뒤 그 투영을 그린다. 같은 자리에서
    * MINOR(2)도 닫는다: `compositionend` 없이 blur되면(창 전환·다른 말풍선 클릭 등)
    * `isComposingRef`가 true로 남아 그 뒤 입력이 전부 버려진다 — blur마다 리셋한다.
    *
@@ -549,12 +559,13 @@ function BubbleContentEditable({
     // `trimSegmentsTrailingNewline`(card-deck-ops.ts, `trimBubbleTrailingNewline`이
     // 쓰는 것과 정확히 같은 순수 함수)을 여기서도 직접 호출해 "트림 후 상태"를 그
     // 자리에서 계산한다 — 로직을 두 곳에 따로 베끼지 않으니 어긋날 수 없다.
-    const liveText = elementToPlainText(el);
+    const liveSegments = elementToSegments(el);
+    const liveText = liveSegments.map((segment) => segment.text).join("");
     const hasTrailingNewline = /\n+$/.test(liveText);
     if (hasTrailingNewline) {
       onTrimTrailingNewline();
     }
-    const segmentsForHtml = hasTrailingNewline ? trimSegmentsTrailingNewline(bubble.segments) : bubble.segments;
+    const segmentsForHtml = hasTrailingNewline ? trimSegmentsTrailingNewline(liveSegments) : liveSegments;
     const html = segmentsToHtml(segmentsForHtml);
     if (html === el.innerHTML) return;
     el.innerHTML = html;
@@ -670,15 +681,14 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
 
   const currentSlideId = slide.id;
 
-  // 2026-09-22 코드리뷰 MAJOR 5: 세그먼트를 첫 조각 값으로 갈아엎지 않고
-  // `card-deck-ops.setBubbleText`(비율 재분배로 기존 볼드 조각 보존)만 거친다. 헤더 주석
-  // "모든 상태 변화는 card-deck-ops.ts 의 순수 함수만 거친다" 를 텍스트 입력에도 지킨다.
-  function updateBubbleText(bubbleId: string, text: string) {
+  // PR85 7차 MAJOR 1: DOM의 `<strong>` 경계를 읽은 구조화 세그먼트를 그대로 순수 연산에
+  // 넘긴다. 평문→글자 수 비율 재분배 경로는 직접 편집에서 사용하지 않는다.
+  function updateBubbleSegments(bubbleId: string, segments: Segment[]) {
     // MAJOR(5차 재검증, S1·S3): 타이핑이 났다는 건 이 말풍선의 선택 상태가 바뀌었다는
     // 뜻이다 — selectionRefs에 남아 있던 이전 범위를 지우지 않으면, 그 낡은 범위가
     // 굵게 폴백으로 계속 쓰여 방금 타이핑한 자리와 무관한 곳에 조용히 굵게가 적용된다.
     delete selectionRefs.current[bubbleId];
-    run((d) => setBubbleText(d, currentSlideId, bubbleId, text));
+    run((d) => setBubbleSegments(d, currentSlideId, bubbleId, segments));
   }
 
   // MINOR(1, PR 재리뷰): 굵게 버튼을 누르면 포커스가 버튼으로 넘어가며(probe2.mjs
@@ -706,7 +716,11 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
     delete selectionRefs.current[bubble.id]; // 방금 쓴 범위는 굵기가 바뀌어 더는 유효하지 않다.
     queueMicrotask(() => {
       const target = editableRefs.current[bubble.id];
-      if (target) restoreSelectionRange(target, from, to);
+      const nextBubble = next.slides.find((candidate) => candidate.id === currentSlideId)?.bubbles?.find((candidate) => candidate.id === bubble.id);
+      if (target && nextBubble) {
+        target.innerHTML = segmentsToHtml(nextBubble.segments);
+        restoreSelectionRange(target, from, to);
+      }
     });
   }
 
@@ -749,7 +763,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
                 <BubbleContentEditable
                   bubble={bubble}
                   editableRef={(el) => { editableRefs.current[bubble.id] = el; }}
-                  onTextChange={(text) => updateBubbleText(bubble.id, text)}
+                  onSegmentsChange={(segments) => updateBubbleSegments(bubble.id, segments)}
                   onTrimTrailingNewline={() => run((d) => trimBubbleTrailingNewline(d, currentSlideId, bubble.id))}
                   onFocus={() => setSelectedBubbleId(bubble.id)}
                   onCaretChange={(caret) => { caretRefs.current[bubble.id] = caret; }}
@@ -965,10 +979,10 @@ function CoverEditor({ slide, onChange, onImageChange }: {
  * 버리고 에러 메시지만 남긴다(스테이지는 이미 DOM 직접 편집이 실물이다).
  */
 function useSlideRenderCheck(deck: CardDeck, slide: CardSlide | undefined, index: number, total: number) {
-  const [state, setState] = useState<{ canvas: HTMLCanvasElement | null; warning: string | null }>({ canvas: null, warning: null });
+  const [state, setState] = useState<{ canvas: HTMLCanvasElement | null; warning: string | null; checkedRevision: number }>({ canvas: null, warning: null, checkedRevision: -1 });
   useEffect(() => {
     if (!slide) {
-      setState({ canvas: null, warning: null });
+      setState({ canvas: null, warning: null, checkedRevision: deck.revision });
       return;
     }
     let cancelled = false;
@@ -977,11 +991,11 @@ function useSlideRenderCheck(deck: CardDeck, slide: CardSlide | undefined, index
         try {
           const canvas = await renderChatBubbleSlideToCanvas({ deck, slide, index, total });
           if (cancelled) return;
-          setState({ canvas: slide.role === "cover" || slide.role === "cta" ? canvas : null, warning: null });
+          setState({ canvas: slide.role === "cover" || slide.role === "cta" ? canvas : null, warning: null, checkedRevision: deck.revision });
         } catch (cause) {
           if (cancelled) return;
           const message = cause instanceof Error ? cause.message : "이 장의 레이아웃을 확인하지 못했습니다.";
-          setState({ canvas: null, warning: message });
+          setState({ canvas: null, warning: message, checkedRevision: deck.revision });
         }
       })();
     }, SLIDE_RENDER_CHECK_DEBOUNCE_MS);
@@ -1008,15 +1022,91 @@ function SlideRenderPreview({ canvas }: { canvas: HTMLCanvasElement | null }) {
 export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckChange: (deck: CardDeck) => void }) {
   const [activeSlideId, setActiveSlideId] = useState(deck.slides[0]?.id ?? "");
   const [slideError, setSlideError] = useState<string | null>(null);
+  const [draggedSlideIndex, setDraggedSlideIndex] = useState<number | null>(null);
+  const [splitNotice, setSplitNotice] = useState<string | null>(null);
   const activeIndex = deck.slides.findIndex((s) => s.id === activeSlideId);
   const activeSlide = activeIndex >= 0 ? deck.slides[activeIndex] : deck.slides[0];
-  const { canvas: renderPreview, warning: renderWarning } = useSlideRenderCheck(deck, activeSlide, Math.max(0, activeIndex), deck.slides.length);
+  const { canvas: renderPreview, warning: renderWarning, checkedRevision } = useSlideRenderCheck(deck, activeSlide, Math.max(0, activeIndex), deck.slides.length);
 
   useEffect(() => {
     if (!deck.slides.find((s) => s.id === activeSlideId)) {
       setActiveSlideId(deck.slides[0]?.id ?? "");
     }
   }, [deck.slides, activeSlideId]);
+
+  useEffect(() => {
+    setSplitNotice(null);
+  }, [activeSlideId]);
+
+  useEffect(() => {
+    if (checkedRevision !== deck.revision || !renderWarning?.includes("말풍선이 카드보다 깁니다") || !activeSlide || activeSlide.role !== "chat") return;
+    const bubbles = activeSlide.bubbles ?? [];
+    if (bubbles.length === 0) return;
+    if (deck.slides.length >= 11) {
+      setSlideError(cardDeckOpsErrorMessage("OPS_SLIDE_LIMIT"));
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      let firstMoved = -1;
+      for (let count = 1; count <= bubbles.length; count += 1) {
+        try {
+          await renderChatBubbleSlideToCanvas({
+            deck,
+            slide: { ...activeSlide, bubbles: bubbles.slice(0, count) },
+            index: Math.max(0, activeIndex),
+            total: deck.slides.length + 1,
+          });
+        } catch (cause) {
+          if (cause instanceof Error && cause.message.includes("말풍선이 카드보다 깁니다")) firstMoved = count - 1;
+          break;
+        }
+      }
+      if (cancelled || firstMoved < 0) return;
+      try {
+        let next: CardDeck;
+        if (firstMoved > 0) {
+          next = splitSlideAtBubble(deck, activeIndex, firstMoved);
+        } else {
+          const bubble = bubbles[0];
+          const totalCharacters = bubble.segments.reduce((sum, segment) => sum + segment.text.length, 0);
+          let low = 1;
+          let high = totalCharacters - 1;
+          let fit = 0;
+          while (low <= high) {
+            const middle = Math.floor((low + high) / 2);
+            let cursor = 0;
+            const prefix = bubble.segments.flatMap((segment) => {
+              if (cursor >= middle) return [];
+              const take = Math.min(segment.text.length, middle - cursor);
+              cursor += segment.text.length;
+              return take > 0 ? [{ ...segment, text: segment.text.slice(0, take) }] : [];
+            });
+            try {
+              await renderChatBubbleSlideToCanvas({
+                deck,
+                slide: { ...activeSlide, bubbles: [{ ...bubble, segments: prefix }] },
+                index: Math.max(0, activeIndex),
+                total: deck.slides.length + 1,
+              });
+              fit = middle;
+              low = middle + 1;
+            } catch (cause) {
+              if (!(cause instanceof Error) || !cause.message.includes("말풍선이 카드보다 깁니다")) return;
+              high = middle - 1;
+            }
+          }
+          if (fit <= 0) return;
+          next = splitSlideAtBubbleOffset(deck, activeIndex, 0, fit);
+        }
+        onDeckChange(next);
+        setSplitNotice("이 장은 2장으로 나뉩니다");
+      } catch (cause) {
+        if (cause instanceof CardDeckOpsError) setSlideError(cardDeckOpsErrorMessage(cause.code));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeIndex, activeSlide, checkedRevision, deck, onDeckChange, renderWarning]);
 
   function runSlide(op: (deck: CardDeck) => CardDeck) {
     try {
@@ -1038,7 +1128,28 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
         {deck.slides.map((slide, index) => {
           const locked = slide.role === "cover" || slide.role === "cta";
           return (
-            <div key={slide.id} className={styles.thumbnailItem}>
+            <div
+              key={slide.id}
+              className={styles.thumbnailItem}
+              draggable={!locked}
+              data-slide-draggable={locked ? "false" : "true"}
+              onDragStart={(event) => {
+                if (locked) return;
+                setDraggedSlideIndex(index);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", String(index));
+              }}
+              onDragOver={(event) => {
+                if (!locked && draggedSlideIndex !== null) event.preventDefault();
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const from = draggedSlideIndex ?? Number.parseInt(event.dataTransfer.getData("text/plain"), 10);
+                setDraggedSlideIndex(null);
+                if (!locked && Number.isInteger(from) && from !== index) runSlide((d) => moveSlide(d, from, index));
+              }}
+              onDragEnd={() => setDraggedSlideIndex(null)}
+            >
               <Button
                 variant="secondary"
                 onClick={() => setActiveSlideId(slide.id)}
@@ -1087,6 +1198,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
           ) : null}
           {activeSlide ? <BubbleEditor deck={deck} slideId={activeSlide.id} onDeckChange={onDeckChange} /> : null}
         </div>
+        {splitNotice ? <p role="status" className={styles.slideLayoutWarning} data-slide-split-notice>{splitNotice}</p> : null}
         {renderWarning ? <p role="alert" className={styles.slideLayoutWarning} data-slide-layout-warning>{renderWarning}</p> : null}
         {slideError ? <p role="alert" className="mt-stack-tight text-caption text-danger">{slideError}</p> : null}
       </section>

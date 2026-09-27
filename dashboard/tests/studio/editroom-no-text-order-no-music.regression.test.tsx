@@ -11,7 +11,10 @@ const pageSource = readFileSync("src/app/studio/page.tsx", "utf8");
 describe("편집실의 글 순서와 배경 음악 제거 회귀", () => {
   it("EDITROOM-NO-DEAD-CONTROLS-01 거절: 글은 순서·추가·삭제 조작을 노출하지 않는다", () => {
     expect(roomSource).toContain('{kind !== "text" ? <nav');
-    expect(roomSource).toContain('<TextDocumentEditor lines={safeLines} onLinesChange={onLinesChange} />');
+    expect(roomSource).toContain('<TextDocumentEditor');
+    expect(roomSource).toContain('segments={textSegments}');
+    expect(roomSource).toContain('onLinesChange={onLinesChange}');
+    expect(roomSource).toContain('onSegmentsChange={setTextSegments}');
     expect(roomSource).not.toContain('onMove={kind === "text" ? undefined : moveLine}');
     expect(roomSource).not.toContain('onMoveTo={kind === "text" ? undefined : moveLineTo}');
     expect(roomSource).not.toContain('onAdd={kind === "text" ? undefined : addLine}');
@@ -37,7 +40,7 @@ describe("편집실의 글 순서와 배경 음악 제거 회귀", () => {
     expect(roomSource).toContain('const audio = format?.kind === "audio" ? format : defaultContentEditFormat("audio") as AudioFormat;');
     expect(roomSource).toContain("return { musicTrack: audio.musicTrack, musicVolume: audio.musicVolume };");
     expect(roomSource).toContain(": { kind, voice: values.목소리, ...preservedAudio };");
-    expect(roomSource).toContain("() => formatFromToolValues(formatKind, toolValues, preservedAudio)");
+    expect(roomSource).toContain("() => formatFromToolValues(formatKind, toolValues, preservedAudio, textSegments)");
     expect(pageSource).toContain("edit_format: editFormat");
   });
 

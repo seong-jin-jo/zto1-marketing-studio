@@ -34,6 +34,14 @@ describe("EDIT-TEXT v70", () => {
     expect(countXWeightedCharacters("가a")).toBe(3);
     expect(countXWeightedCharacters("한글 AB")).toBe(7);
   });
+
+  it("PR85-R7-M4/MINOR1 글 굵기 강조와 선택 도구막대, 키보드 초점 표시 토큰을 쓴다", () => {
+    expect(roomCss).toContain(".textDocumentBody strong");
+    expect(roomCss).toContain("linear-gradient(transparent 62%");
+    expect(roomCss).toContain(".textSelectionToolbar");
+    expect(roomCss).toContain("background: var(--text)");
+    expect(roomCss).toContain(".textDocumentBody:focus-visible");
+  });
 });
 
 describe("EDIT-CARD v70", () => {
@@ -80,5 +88,16 @@ describe("EDIT-CARD v70", () => {
     fireEvent.click(document.querySelector(`[data-slide-id="${d.slides[1].id}"]`)!);
 
     expect(screen.queryByLabelText("선택한 말풍선 도구")).not.toBeInTheDocument();
+  });
+
+  it("PR85-R7-M6/M7/MINOR1 카드 끌어 놓기와 말풍선 기준 도구막대·모바일 44px·초점 표시가 연결된다", () => {
+    const d = deck();
+    render(<CardDeckPanel deck={d} onDeckChange={vi.fn()} />);
+    expect(document.querySelectorAll('[data-slide-draggable="true"]').length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('[data-slide-draggable="false"]')).toHaveLength(2);
+    expect(bubbleCss).toContain("bottom: -1.625rem");
+    expect(bubbleCss).toContain(".bubbleRowReader .bubbleToolbar");
+    expect(bubbleCss).toContain("min-height: var(--editroom-mobile-toolbar-height)");
+    expect(bubbleCss).toContain(".bubbleContent:focus-visible");
   });
 });

@@ -30,6 +30,7 @@
 }
 
 .textDocumentSheet {
+  position: relative;
   display: grid;
   width: 100%;
   max-width: var(--editroom-document-width);
@@ -71,6 +72,33 @@
   font-size: var(--font-lead-size);
   line-height: var(--editroom-document-line-height);
   word-break: keep-all;
+}
+
+.textDocumentBody:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: var(--space-micro);
+}
+
+.textDocumentBody strong {
+  background: linear-gradient(transparent 62%, color-mix(in srgb, var(--accent) 22%, transparent) 62%);
+  font-weight: 700;
+}
+
+.textSelectionToolbar {
+  position: absolute;
+  z-index: 9;
+  display: flex;
+  gap: var(--space-micro);
+  border-radius: var(--shape-control);
+  background: var(--text);
+  padding: var(--space-micro);
+  box-shadow: var(--elevation-floating);
+}
+
+.textSelectionToolbar :global(button) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent-fg);
 }
 
 .channelMeters {

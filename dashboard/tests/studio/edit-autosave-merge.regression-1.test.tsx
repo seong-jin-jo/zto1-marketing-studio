@@ -203,6 +203,13 @@ describe("구조 대조: page.tsx가 독립 타이머로 되돌아갔는지", ()
     expect(onVideoEditChange, "영상 자동저장이 cardDeck 자리에 null을 안 넘기면 state의 cardDeck이 pruning 없이 같이 나간다").toContain("null, nextEdit)");
   });
 
+  it("PR85-R7-M3 영상 자동저장은 낡은 editLines를 보내지 않고 undefined로 생략한다", () => {
+    const onVideoEditChange = pageSrc.slice(pageSrc.indexOf("function onVideoEditChange("), pageSrc.indexOf("function onVideoEditChange(") + 1800);
+    expect(onVideoEditChange).toContain("draftIdRef.current, undefined, img, vid, null, nextEdit");
+    const save = pageSrc.slice(pageSrc.indexOf("async function save("), pageSrc.indexOf("async function saveDraftWithNotice()"));
+    expect(save).toContain("persistedEditLines === undefined ? {} : { editLines: persistedEditLines }");
+  });
+
   it("C(4차): 카드덱·영상 자동저장 보류 사유가 서로 다른 state를 쓴다(공유 state가 서로를 지우지 않는다)", () => {
     const onCardDeckChange = pageSrc.slice(pageSrc.indexOf("function onCardDeckChange("), pageSrc.indexOf("function onCardDeckChange(") + 1300);
     const onVideoEditChange = pageSrc.slice(pageSrc.indexOf("function onVideoEditChange("), pageSrc.indexOf("function onVideoEditChange(") + 1300);

@@ -5,8 +5,9 @@ import { Button } from "@/components/shared/Button";
 import { StateNotice } from "@/components/shared/StateNotice";
 import { EditPreview, type CardTextPosition } from "./EditPreview";
 import { EditOutline } from "./EditOutline";
-import { CardDeckPanel } from "./BubbleEditor";
-import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import { CardDeckPanel, elementToSegments, getEditableSelectionOffsets, restoreSelectionRange, segmentsToHtml } from "./BubbleEditor";
+import type { CardDeck, Segment } from "@/lib/studio/card-deck-contract";
+import { toggleSegmentsBold } from "@/lib/studio/card-deck-ops";
 import { deckProjection, applyProjection } from "@/lib/studio/card-deck-contract";
 import { VideoEditor } from "./VideoEditor";
 import { emptyVideoEdit, type VideoEdit } from "@/lib/studio/video-edit-contract";
@@ -1653,9 +1654,10 @@ function formatFromToolValues(
   kind: ContentEditFormat["kind"],
   values: ToolValues,
   preservedAudio: PreservedAudioSettings,
+  textSegments: Segment[] = [],
 ): ContentEditFormat {
   const candidate = kind === "text"
-    ? { kind }
+    ? { kind, segments: textSegments }
     : kind === "video"
     ? { kind, aspectRatio: values.비율, subtitleSize: values.자막, playbackSpeed: Number.parseFloat(values.속도), voice: values.목소리 }
     : kind === "card"
@@ -1701,8 +1703,71 @@ function ChannelLimitMeter({ label, count, limit, channel }: { label: string; co
   );
 }
 
-function TextDocumentEditor({ lines, onLinesChange }: { lines: string[]; onLinesChange: (lines: string[]) => void }) {
-  const body = lines.join("\n\n");
+function TextDocumentEditor({ lines, segments, onLinesChange, onSegmentsChange }: {
+  lines: string[];
+  segments: Segment[];
+  onLinesChange: (lines: string[]) => void;
+  onSegmentsChange: (segments: Segment[]) => void;
+}) {
+  const body = segments.map((segment) => segment.text).join("");
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const [selection, setSelection] = useState<{ from: number; to: number; left: number; top: number } | null>(null);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || document.activeElement === editor) return;
+    const html = segmentsToHtml(segments);
+    if (editor.innerHTML !== html) editor.innerHTML = html;
+  }, [segments]);
+
+  useEffect(() => {
+    const updateSelection = () => {
+      const editor = editorRef.current;
+      const browserSelection = window.getSelection();
+      if (!editor || !browserSelection || browserSelection.rangeCount === 0) return setSelection(null);
+      const offsets = getEditableSelectionOffsets(editor);
+      if (!offsets || offsets.start === offsets.end) return setSelection(null);
+      const selectedRange = browserSelection.getRangeAt(0);
+      const rect = typeof selectedRange.getBoundingClientRect === "function"
+        ? selectedRange.getBoundingClientRect()
+        : editor.getBoundingClientRect();
+      const host = editor.parentElement?.getBoundingClientRect();
+      setSelection({
+        from: offsets.start,
+        to: offsets.end,
+        left: Math.max(0, rect.left - (host?.left ?? 0)),
+        top: Math.max(0, rect.top - (host?.top ?? 0) - 40),
+      });
+    };
+    document.addEventListener("selectionchange", updateSelection);
+    return () => document.removeEventListener("selectionchange", updateSelection);
+  }, []);
+
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar || !selection) return;
+    toolbar.style.left = `${selection.left}px`;
+    toolbar.style.top = `${selection.top}px`;
+  }, [selection]);
+
+  const commitDom = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const next = elementToSegments(editor);
+    onSegmentsChange(next);
+    onLinesChange(next.map((segment) => segment.text).join("").split(/\n\s*\n/));
+  };
+
+  const toggleSelectedBold = () => {
+    const editor = editorRef.current;
+    if (!editor || !selection) return;
+    const next = toggleSegmentsBold(segments, { from: selection.from, to: selection.to });
+    editor.innerHTML = segmentsToHtml(next);
+    onSegmentsChange(next);
+    restoreSelectionRange(editor, selection.from, selection.to);
+  };
+
   return (
     <section className={styles.textDocumentCanvas} aria-labelledby="whole-text-title" data-edit-stage>
       <article className={styles.textDocumentSheet} data-text-document-sheet>
@@ -1710,12 +1775,26 @@ function TextDocumentEditor({ lines, onLinesChange }: { lines: string[]; onLines
           <h3 id="whole-text-title">글 전체 편집</h3>
           <p>공백 포함 {Array.from(body).length.toLocaleString("ko-KR")}자</p>
         </header>
-        <textarea
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-multiline="true"
           aria-label="글 전체"
-          value={body}
-          onChange={(event) => onLinesChange(event.target.value.split(/\n\s*\n/))}
+          onInput={commitDom}
           className={styles.textDocumentBody}
         />
+        {selection ? (
+          <div
+            ref={toolbarRef}
+            className={styles.textSelectionToolbar}
+            data-text-selection-toolbar
+            aria-label="선택한 글 도구"
+          >
+            <Button size="sm" onMouseDown={(event) => event.preventDefault()} onClick={toggleSelectedBold}>굵게</Button>
+          </div>
+        ) : null}
         <footer className={styles.channelMeters} aria-label="채널별 글자 수 상한">
           {CHANNEL_TEXT_LIMITS.map((channel) => (
             <ChannelLimitMeter
@@ -1770,11 +1849,16 @@ export function EditRoom({
   const isChatDeck = kind === "card" && Boolean(cardDeck) && cardDeck!.template === "chat_bubble";
   const deckProj = useMemo(() => (isChatDeck ? deckProjection(cardDeck!) : null), [isChatDeck, cardDeck]);
   const safeLines = isChatDeck ? (deckProj!.lines.length ? deckProj!.lines : [""]) : (lines.length ? lines : [""]);
+  const safeBody = safeLines.join("\n\n");
   const [activeLine, setActiveLine] = useState(0);
   const [activeTool, setActiveTool] = useState<ToolName>(() => kind === "audio" ? "목소리" : "비율");
   const [toolValues, setToolValues] = useState<ToolValues>(() => toolValuesFromFormat(
     initialFormat?.kind === formatKind ? initialFormat : defaultContentEditFormat(formatKind),
   ));
+  const [textSegments, setTextSegments] = useState<Segment[]>(() => {
+    if (initialFormat?.kind === "text" && initialFormat.segments?.length) return initialFormat.segments;
+    return [{ text: lines.join("\n\n"), bold: false }];
+  });
   const [visibleLines, setVisibleLines] = useState<boolean[]>(() => safeLines.map(() => true));
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkAsk, setBulkAsk] = useState("");
@@ -1785,8 +1869,8 @@ export function EditRoom({
     musicVolume: initialAudioSettings.musicVolume,
   }), [initialAudioSettings.musicTrack, initialAudioSettings.musicVolume]);
   const selectedFormat = useMemo(
-    () => formatFromToolValues(formatKind, toolValues, preservedAudio),
-    [formatKind, preservedAudio, toolValues],
+    () => formatFromToolValues(formatKind, toolValues, preservedAudio, textSegments),
+    [formatKind, preservedAudio, textSegments, toolValues],
   );
   const lastEmittedFormat = useRef("");
   useEffect(() => { setVisibleLines((current) => safeLines.map((_, index) => current[index] ?? true)); setActiveLine((current) => Math.min(current, safeLines.length - 1)); }, [safeLines.length]);
@@ -1794,9 +1878,23 @@ export function EditRoom({
     const nextFormat = initialFormat?.kind === formatKind ? initialFormat : defaultContentEditFormat(formatKind);
     if (JSON.stringify(nextFormat) !== lastEmittedFormat.current) {
       setToolValues(toolValuesFromFormat(nextFormat));
+      if (nextFormat.kind === "text") {
+        setTextSegments(nextFormat.segments?.length ? nextFormat.segments : [{ text: lines.join("\n\n"), bold: false }]);
+      }
     }
     setActiveTool(kind === "audio" ? "목소리" : "비율");
   }, [formatKind, initialFormat, kind]);
+  useEffect(() => {
+    if (formatKind !== "text") return;
+    setTextSegments((current) => {
+      if (current.map((segment) => segment.text).join("") === safeBody) return current;
+      const persisted = initialFormat?.kind === "text" ? initialFormat.segments : undefined;
+      if (persisted?.map((segment) => segment.text).join("") === safeBody) return persisted;
+      // AI 일괄 변경처럼 editLines만 외부에서 교체된 경우 새 평문을 새 원본으로 받는다.
+      // 로컬 직접 편집은 위 비교에서 이미 같은 구조화 세그먼트를 보존한다.
+      return [{ text: safeBody, bold: false }];
+    });
+  }, [formatKind, initialFormat, safeBody]);
   useEffect(() => {
     lastEmittedFormat.current = JSON.stringify(selectedFormat);
     onFormatChange?.(selectedFormat);
@@ -1988,7 +2086,12 @@ export function EditRoom({
                 </nav> : null}
                 <div className={kind === "text" ? "min-w-0" : "min-w-0 p-pad-inset"}>
                   {kind === "text" ? (
-                    <TextDocumentEditor lines={safeLines} onLinesChange={onLinesChange} />
+                    <TextDocumentEditor
+                      lines={safeLines}
+                      segments={textSegments}
+                      onLinesChange={onLinesChange}
+                      onSegmentsChange={setTextSegments}
+                    />
                   ) : (
                     <>
                       {kind === "audio" ? (

@@ -430,6 +430,52 @@ async function runScenario(engineName) {
       ],
     });
 
+    // 7차 MAJOR 1: 굵은 구간의 중간에 실제로 타이핑했을 때 평문 길이 비율로 경계를
+    // 다시 추정하지 않고, 브라우저 DOM의 <strong> 경계를 구조화 세그먼트로 직렬화한다.
+    await ed("b-6-1").click();
+    await page.evaluate((selector) => {
+      const strongText = document.querySelector(selector).querySelector("strong").firstChild;
+      const range = document.createRange();
+      range.setStart(strongText, 1);
+      range.collapse(true);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+    }, sel("b-6-1"));
+    await page.keyboard.type("중");
+    const middleEdit = await page.evaluate((bid) => {
+      const element = document.querySelector(`[data-bubble-id="${bid}"] [data-bubble-content-editable]`);
+      const bubble = window.__deck.slides.flatMap((slide) => slide.bubbles || []).find((candidate) => candidate.id === bid);
+      return {
+        domBold: element.querySelector("strong")?.textContent || "",
+        modelBold: bubble.segments.filter((segment) => segment.bold).map((segment) => segment.text).join(""),
+      };
+    }, "b-6-1");
+    record("PR85-R7-M1: 굵은 구간 중간 편집 뒤 DOM 경계와 저장 세그먼트가 같다", middleEdit, {
+      domBold: "점중수",
+      modelBold: "점중수",
+    });
+
+    // 7차 MAJOR 2: 가운데 한 글자의 굵기를 끄면 결과가 두 bold 덩이가 된다. 방향과
+    // 무관하게 결과 불변식을 검사해 연산을 거절하고 원본을 보존해야 한다.
+    await page.evaluate((selector) => {
+      const strongText = document.querySelector(selector).querySelector("strong").firstChild;
+      const range = document.createRange();
+      range.setStart(strongText, 1);
+      range.setEnd(strongText, 2);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+    }, sel("b-6-1"));
+    await page.locator('[data-bubble-id="b-6-1"] button', { hasText: "굵게" }).click();
+    await page.waitForTimeout(100);
+    const middleUnbold = await page.evaluate((bid) => {
+      const bubble = window.__deck.slides.flatMap((slide) => slide.bubbles || []).find((candidate) => candidate.id === bid);
+      return bubble.segments.filter((segment) => segment.bold).map((segment) => segment.text).join("");
+    }, "b-6-1");
+    record("PR85-R7-M2: 굵기 해제가 두 덩이를 만들면 거절하고 원본을 보존한다", {
+      modelBold: middleUnbold,
+      hasLimitAlert: (await alerts()).includes("한 장에 굵은 덩이는 하나입니다."),
+    }, { modelBold: "점중수", hasLimitAlert: true });
+
     // Shift+Enter도 같은 경로.
     await nav("slide-2");
     await ed("b-2-0").click();

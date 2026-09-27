@@ -325,7 +325,7 @@ describe("화면 2차 편집실 계약", () => {
 
     expect(document.querySelector('[data-edit-kind="text"]')).toBeInTheDocument();
     expect(document.querySelector("[data-edit-outline]")).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "글 전체" })).toHaveValue("첫 문단\n\n둘째 문단");
+    expect(screen.getByRole("textbox", { name: "글 전체" }).innerHTML).toBe("첫 문단<br><br>둘째 문단");
     expect(screen.queryByRole("textbox", { name: "문단 1" })).not.toBeInTheDocument();
     expect(screen.getByText("공백 포함 11자")).toBeInTheDocument();
   });

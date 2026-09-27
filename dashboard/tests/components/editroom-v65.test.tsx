@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
 import type { ContentEditFormat } from "@/lib/studio/content-edit-format";
@@ -32,10 +32,59 @@ describe("편집실 v65 화면 계약", () => {
     render(<EditRoom lines={["첫 문단", "둘째 문단"]} onLinesChange={onLinesChange} kind="text" />);
 
     const editor = screen.getByRole("textbox", { name: "글 전체" });
-    expect(editor).toHaveValue("첫 문단\n\n둘째 문단");
-    fireEvent.change(editor, { target: { value: "고친 첫 문단\n\n고친 둘째 문단" } });
+    expect(editor.innerHTML).toBe("첫 문단<br><br>둘째 문단");
+    editor.innerHTML = "고친 첫 문단<br><br>고친 둘째 문단";
+    fireEvent.input(editor);
     expect(onLinesChange).toHaveBeenLastCalledWith(["고친 첫 문단", "고친 둘째 문단"]);
     expect(screen.queryByRole("textbox", { name: "문단 1" })).not.toBeInTheDocument();
+  });
+
+  it("PR85-R7-M4 글을 선택할 때만 플로팅 도구막대가 뜨고 굵기 세그먼트를 저장한다", () => {
+    const onFormatChange = vi.fn();
+    render(<EditRoom lines={["강조할 본문"]} onLinesChange={vi.fn()} kind="text" onFormatChange={onFormatChange} />);
+    const editor = screen.getByRole("textbox", { name: "글 전체" });
+    expect(screen.queryByLabelText("선택한 글 도구")).not.toBeInTheDocument();
+    const range = document.createRange();
+    range.setStart(editor.firstChild!, 0);
+    range.setEnd(editor.firstChild!, 3);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+    fireEvent.click(screen.getByRole("button", { name: "굵게" }));
+    expect(editor.querySelector("strong")).toHaveTextContent("강조할");
+    expect(onFormatChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      kind: "text",
+      segments: expect.arrayContaining([expect.objectContaining({ text: "강조할", bold: true })]),
+    }));
+  });
+
+  it("PR85-R7-M4 정상: 인공지능 일괄 편집 결과가 오면 기존 굵기 모델 대신 새 본문을 표시한다", async () => {
+    const initialFormat: ContentEditFormat = {
+      kind: "text",
+      segments: [{ text: "원문", bold: true }],
+    };
+    const view = render(
+      <EditRoom
+        lines={["원문"]}
+        onLinesChange={vi.fn()}
+        kind="text"
+        initialFormat={initialFormat}
+      />,
+    );
+
+    view.rerender(
+      <EditRoom
+        lines={["인공지능이 고친 본문"]}
+        onLinesChange={vi.fn()}
+        kind="text"
+        initialFormat={initialFormat}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "글 전체" })).toHaveTextContent("인공지능이 고친 본문");
+    });
   });
 
   it("V65-EDIT-03 정상: 카드 글자를 이미지 안에서 고치고 상단·중앙·하단으로 옮긴다", () => {

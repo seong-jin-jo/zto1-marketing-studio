@@ -8,7 +8,7 @@
  *
  *   화면 줄 수 = elementToPlainText 줄 수 = wrapSegments 줄 수(끝 개행 trim 후)
  *
- * Enter·입력·굵게·선택을 섞은 수백 개의 무작위(시드 고정, 재현 가능) 시퀀스를 돌려
+ * Enter·끝/중간 입력·굵게 경계 변경·선택을 섞은 수백 개의 무작위(시드 고정, 재현 가능) 시퀀스를 돌려
  * 매 시퀀스 끝(blur) 시점에 이 계약이 깨지지 않는지 확인한다. 시드를 고정해 실패가
  * 재현 가능하게 한다(우연히만 통과하는 걸 방지).
  *
@@ -24,7 +24,7 @@ import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { BubbleEditor, elementToPlainText } from "@/components/studio/BubbleEditor";
+import { BubbleEditor, elementToPlainText, elementToSegments } from "@/components/studio/BubbleEditor";
 import { wrapSegments } from "@/lib/studio/card-templates/chat-bubble";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import deckD100 from "../studio/fixtures/deck-d100.v2.json";
@@ -109,6 +109,26 @@ function backspaceOnePreservingDom(el: HTMLElement): void {
   }
 }
 
+/** 굵은 구간 안과 경계 양쪽을 포함해 임의 텍스트 노드 중간에 한 글자를 넣는다. */
+function insertInMiddlePreservingDom(el: HTMLElement, ch: string, rng: () => number): void {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  let current = walker.nextNode();
+  while (current) {
+    if ((current.textContent ?? "").length > 0) nodes.push(current as Text);
+    current = walker.nextNode();
+  }
+  if (!nodes.length) return;
+  const node = pick(rng, nodes);
+  const offset = Math.floor(rng() * ((node.textContent ?? "").length + 1));
+  node.insertData(offset, ch);
+}
+
+/** jsdom 속성 테스트에서 보이는 DOM의 strong 경계를 저장 세그먼트와 직접 대조한다. */
+function inlineDomSegments(el: HTMLElement): Array<{ text: string; bold: boolean }> {
+  return elementToSegments(el).filter((segment) => segment.text.length > 0);
+}
+
 describe("속성 테스트(6차 재검증 구조 보강): 화면 = 저장본 = PNG(끝 개행 trim 후)", () => {
   const TRIALS = 300;
   const rng = mulberry32(20260926);
@@ -129,7 +149,6 @@ describe("속성 테스트(6차 재검증 구조 보강): 화면 = 저장본 = P
       fireEvent.focus(editable);
 
       const stepCount = 1 + Math.floor(rng() * 6); // 1~6 단계.
-      let boldUsed = false;
       try {
         for (let step = 0; step < stepCount; step += 1) {
           const el = document.querySelector<HTMLElement>(`[data-bubble-id="${bubbleId}"] [data-bubble-content-editable]`);
@@ -140,6 +159,12 @@ describe("속성 테스트(6차 재검증 구조 보강): 화면 = 저장본 = P
             // 추가한다 — 굵게로 생긴 <strong>이 있어도 안 날아간다, 위 헬퍼 주석 참고).
             () => {
               appendCharPreservingDom(el, pick(rng, CHARS));
+              fireEvent.input(el);
+            },
+            // 중간 편집: 굵은 구간 내부나 경계에 실제 글자를 삽입한다. 종전 생성기는
+            // 끝 편집만 만들어 `retextSegments`의 비율 재분배 결함을 통과시켰다.
+            () => {
+              insertInMiddlePreservingDom(el, pick(rng, CHARS), rng);
               fireEvent.input(el);
             },
             // Enter: jsdom은 execCommand가 없어 항상 폴백(리터럴 "\n" 삽입) 경로를 탄다.
@@ -170,21 +195,31 @@ describe("속성 테스트(6차 재검증 구조 보강): 화면 = 저장본 = P
               fireEvent.input(el);
             },
           ];
-          // 굵게는 편집칸이 단일 텍스트 노드일 때만(선택 좌표를 안전하게 잡을 수 있을 때만) 시도한다.
-          if (!boldUsed && el.childNodes.length === 1 && el.firstChild?.nodeType === Node.TEXT_NODE && liveText.length >= 2) {
+          // 첫 굵게 뒤에도 strong 안 일부를 다시 선택해 굵기를 해제한다. 이 경계 변경이
+          // 결과 bold 덩어리 2개를 만들면 연산은 거절해야 한다.
+          const textWalker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          const selectableNodes: Text[] = [];
+          let selectable = textWalker.nextNode();
+          while (selectable) {
+            if ((selectable.textContent ?? "").length >= 2) selectableNodes.push(selectable as Text);
+            selectable = textWalker.nextNode();
+          }
+          if (selectableNodes.length > 0 && liveText.length >= 2) {
             actions.push(() => {
-              const len = liveText.length;
+              const node = pick(rng, selectableNodes);
+              const len = (node.textContent ?? "").length;
               const from = Math.floor(rng() * (len - 1));
               const to = from + 1 + Math.floor(rng() * (len - from));
               const range = document.createRange();
-              range.setStart(el.firstChild!, from);
-              range.setEnd(el.firstChild!, to);
+              range.setStart(node, from);
+              range.setEnd(node, to);
               const sel = window.getSelection()!;
               sel.removeAllRanges();
               sel.addRange(range);
               const boldBtn = within(bubbleEl).queryByText("굵게");
               if (boldBtn) fireEvent.click(boldBtn);
-              boldUsed = true;
+              fireEvent.blur(el);
+              fireEvent.focus(el);
             });
           }
           pick(rng, actions)();
@@ -197,7 +232,7 @@ describe("속성 테스트(6차 재검증 구조 보강): 화면 = 저장본 = P
           rerenderNow();
 
           // 매 단계 직후(blur 전): 화면(elementToPlainText)과 저장본(segments 결합 텍스트)이
-          // 같아야 한다 — handleInput이 매 입력마다 onTextChange로 동기화하는 그 자체의 계약.
+          // 같아야 한다 — handleInput이 매 입력마다 구조화 세그먼트로 동기화하는 계약.
           const elAfter = document.querySelector<HTMLElement>(`[data-bubble-id="${bubbleId}"] [data-bubble-content-editable]`);
           if (elAfter) {
             const screenText = elementToPlainText(elAfter);
@@ -206,6 +241,11 @@ describe("속성 테스트(6차 재검증 구조 보강): 화면 = 저장본 = P
               const modelText = bubbleNow.segments.map((s) => s.text).join("");
               if (screenText !== modelText) {
                 failures.push(`trial=${trial} step=${step}: 화면="${screenText}" != 저장본="${modelText}"`);
+              }
+              const screenSegments = inlineDomSegments(elAfter);
+              const modelSegments = bubbleNow.segments.filter((segment) => segment.text.length > 0);
+              if (JSON.stringify(screenSegments) !== JSON.stringify(modelSegments)) {
+                failures.push(`trial=${trial} step=${step}: DOM 세그먼트=${JSON.stringify(screenSegments)} != 저장 세그먼트=${JSON.stringify(modelSegments)}`);
               }
             }
           }
