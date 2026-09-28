@@ -1143,6 +1143,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
             <div
               key={slide.id}
               className={styles.thumbnailItem}
+              data-slide-selected={slide.id === activeSlideId ? "true" : "false"}
               draggable={!locked}
               data-slide-draggable={locked ? "false" : "true"}
               onDragStart={(event) => {
@@ -1180,21 +1181,24 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
                 </span>
                 <span className={styles.thumbnailBars} aria-hidden="true"><i /><i /><i /></span>
               </Button>
-              <div className={styles.thumbnailActions}>
-                <Button size="sm" onClick={() => runSlide((d) => moveSlide(d, index, index - 1))} disabled={locked || index === 0}>▲</Button>
-                <Button size="sm" onClick={() => runSlide((d) => moveSlide(d, index, index + 1))} disabled={locked || index === deck.slides.length - 1}>▼</Button>
-                <Button size="sm" onClick={() => runSlide((d) => addSlide(d, index))} disabled={index === deck.slides.length - 1}>+장</Button>
-                {locked ? (
-                  <span className="rounded-chip border border-dashed border-border px-micro text-caption text-subtle" data-slide-locked>{SLIDE_ROLE_LABEL[slide.role]}는 지울 수 없습니다</span>
-                ) : (
-                  <Button size="sm" variant="secondary" onClick={() => runSlide((d) => deleteSlide(d, index))}>삭제</Button>
-                )}
-              </div>
             </div>
           );
         })}
       </nav>
       <section aria-label="카드 편집 스테이지" className={styles.stageColumn} data-card-deck-preview>
+        {activeSlide ? (
+          <div className={styles.slideToolbar} data-selected-slide-toolbar>
+            <span className="text-caption text-subtle">{activeIndex + 1}장</span>
+            <Button size="sm" onClick={() => runSlide((d) => moveSlide(d, activeIndex, activeIndex - 1))} disabled={activeSlide.role !== "chat" || activeIndex <= 1}>▲</Button>
+            <Button size="sm" onClick={() => runSlide((d) => moveSlide(d, activeIndex, activeIndex + 1))} disabled={activeSlide.role !== "chat" || activeIndex >= deck.slides.length - 2}>▼</Button>
+            <Button size="sm" onClick={() => runSlide((d) => addSlide(d, activeIndex))} disabled={activeIndex === deck.slides.length - 1}>+장</Button>
+            {activeSlide.role === "cover" || activeSlide.role === "cta" ? (
+              <span className="rounded-chip border border-dashed border-border px-micro text-caption text-subtle" data-slide-locked>{SLIDE_ROLE_LABEL[activeSlide.role]}는 지울 수 없습니다</span>
+            ) : (
+              <Button size="sm" variant="secondary" onClick={() => runSlide((d) => deleteSlide(d, activeIndex))}>삭제</Button>
+            )}
+          </div>
+        ) : null}
         {activeSlide && (activeSlide.role === "cover" || activeSlide.role === "cta") ? (
           <SlideRenderPreview canvas={renderPreview} />
         ) : null}

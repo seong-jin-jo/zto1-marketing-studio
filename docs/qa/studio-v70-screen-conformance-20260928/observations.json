@@ -43,6 +43,45 @@
       "inputCount": 3
     },
     {
+      "screen": "edit-bubble-deck",
+      "width": 1440,
+      "height": 900,
+      "geometry": {
+        "strip": {
+          "left": 265,
+          "right": 377,
+          "top": 464,
+          "bottom": 1114,
+          "width": 112,
+          "height": 650
+        },
+        "thumbnail": {
+          "left": 265,
+          "right": 377,
+          "top": 464,
+          "bottom": 604,
+          "width": 112
+        },
+        "stage": {
+          "left": 500,
+          "right": 1020,
+          "top": 516,
+          "bottom": 1166,
+          "width": 520,
+          "height": 650
+        },
+        "stripDirection": "column"
+      },
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "thumbnailCount": 9,
+      "toolbarCount": 1
+    },
+    {
       "screen": "edit-video-empty",
       "width": 1440,
       "height": 900,
@@ -231,6 +270,45 @@
         "scopeScroll": 920
       },
       "inputCount": 3
+    },
+    {
+      "screen": "edit-bubble-deck",
+      "width": 1024,
+      "height": 820,
+      "geometry": {
+        "strip": {
+          "left": 97,
+          "right": 197,
+          "top": 429,
+          "bottom": 1079,
+          "width": 100,
+          "height": 650
+        },
+        "thumbnail": {
+          "left": 97,
+          "right": 197,
+          "top": 429,
+          "bottom": 554,
+          "width": 100
+        },
+        "stage": {
+          "left": 213,
+          "right": 711,
+          "top": 481,
+          "bottom": 1103.5,
+          "width": 498,
+          "height": 622.5
+        },
+        "stripDirection": "column"
+      },
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "thumbnailCount": 9,
+      "toolbarCount": 1
     },
     {
       "screen": "edit-video-empty",
@@ -423,6 +501,45 @@
       "inputCount": 3
     },
     {
+      "screen": "edit-bubble-deck",
+      "width": 390,
+      "height": 844,
+      "geometry": {
+        "strip": {
+          "left": 41,
+          "right": 349,
+          "top": 697,
+          "bottom": 775,
+          "width": 308,
+          "height": 78
+        },
+        "thumbnail": {
+          "left": 41,
+          "right": 97,
+          "top": 697,
+          "bottom": 767,
+          "width": 56
+        },
+        "stage": {
+          "left": 41,
+          "right": 349,
+          "top": 843,
+          "bottom": 1228,
+          "width": 308,
+          "height": 385
+        },
+        "stripDirection": "row"
+      },
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "thumbnailCount": 9,
+      "toolbarCount": 1
+    },
+    {
       "screen": "edit-video-empty",
       "width": 390,
       "height": 844,
@@ -573,6 +690,7 @@
   ],
   "consoleErrorCount": 0,
   "outputDir": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928",
+  "referenceComparison": true,
   "videoReferenceNote": "v70 영상 빈 상태 clean-frame은 1440만 있어 1024·390 대조에도 1440 원본을 사용",
   "publishReferenceNote": "v70 발행실 clean-frame 부재로 최신 기존 clean-frame인 v67 normal을 비교 원본으로 사용"
 }

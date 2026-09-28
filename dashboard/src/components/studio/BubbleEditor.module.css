@@ -14,9 +14,11 @@
 
 .thumbnailStrip {
   display: flex;
+  max-height: calc(var(--editroom-stage-width) * 5 / 4);
   min-width: 0;
   flex-direction: column;
   gap: var(--stack-tight);
+  overflow-y: auto;
 }
 
 .thumbnailItem {
@@ -77,10 +79,12 @@
   width: 58%;
 }
 
-.thumbnailActions {
+.slideToolbar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-micro);
+  margin-bottom: var(--stack-tight);
 }
 
 .stageColumn {
@@ -241,14 +245,23 @@
   left: auto;
 }
 
+@media (max-width: 64rem) {
+  .cardDeckPanel {
+    --editroom-thumbnail-width: 6.25rem;
+  }
+}
+
 @media (max-width: 48rem) {
   .cardDeckPanel {
+    --editroom-thumbnail-width: 3.5rem;
     grid-template-columns: 1fr;
   }
 
   .thumbnailStrip {
+    max-height: none;
     flex-direction: row;
     overflow-x: auto;
+    overflow-y: hidden;
     padding-bottom: var(--stack-tight);
   }
 

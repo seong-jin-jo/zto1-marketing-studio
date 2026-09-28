@@ -647,10 +647,17 @@ export default function StudioPage() {
   const selectedTargets = selectedPublishTargets(includes)
     .filter((platform) => !publishGuard(platform).disabledReason);
   const usableAccounts = (platform: PreviewPlatform) => (accountsByPlatform[platform] || []).filter((account) => account.connectionState === "connected");
+  const selectedConnectedAccountId = (platform: PreviewPlatform) => {
+    const selectedId = selectedAccounts[platform];
+    return selectedId && usableAccounts(platform).some((account) => account.id === selectedId)
+      ? selectedId
+      : undefined;
+  };
   const publishTargets = selectedTargets.filter((platform) => usableAccounts(platform).length > 0);
-  // 다시 연결해야 올릴 수 있는 채널. Buffer 도 끊긴 채널을 목록 위로 올려 재연결을 먼저 시킨다.
-  const reconnectTargets = selectedTargets.filter((platform) =>
-    (accountsByPlatform[platform] || []).length > 0 && usableAccounts(platform).length === 0);
+  // 선택이 자동으로 꺼진 뒤에도 재연결 행동이 사라지면 사용자는 복구할 길이 없다.
+  // 현재 발행 체크와 무관하게 만료·해제 계정이 하나라도 있는 채널을 안내한다.
+  const reconnectTargets = ALL.filter((platform) =>
+    (accountsByPlatform[platform] || []).some((account) => account.connectionState === "reconnect"));
   // 일부만 성공한 뒤에는 버튼이 '다시 발행'이 아니라 '실패한 곳만'이어야 한다.
   const publishRetryOnly = publishTargets.some((platform) => pub.status[platform] === "done")
     && publishTargets.some((platform) => pub.status[platform] === "failed");
@@ -758,18 +765,33 @@ export default function StudioPage() {
         }),
       );
       if (cancelled) return;
-      setSelectedAccounts((current) => Object.fromEntries(Object.entries(current).filter(([platform, accountId]) => (
-        (resolvedAccounts[platform] || []).some((account) => account.id === accountId)
-      ))));
       setIncludes((current) => Object.fromEntries(ALL.map((platform) => [
         platform,
-        Boolean(current[platform]) && (resolvedAccounts[platform]?.length ?? 0) > 0,
+        Boolean(current[platform])
+          && (resolvedAccounts[platform] || []).some((account) => account.connectionState === "connected"),
       ])));
       setAccountLoadPending({});
       setAccountsLoaded(true);
     })();
     return () => { cancelled = true; };
   }, [activeRoom, activeWorkspace]);
+
+  useEffect(() => {
+    if (!accountsLoaded) return;
+    const invalidPlatforms = Object.entries(selectedAccounts)
+      .filter(([platform, accountId]) => !(accountsByPlatform[platform] || [])
+        .some((account) => account.id === accountId && account.connectionState === "connected"))
+      .map(([platform]) => platform);
+    if (!invalidPlatforms.length) return;
+    const invalid = new Set(invalidPlatforms);
+    setSelectedAccounts((current) => Object.fromEntries(
+      Object.entries(current).filter(([platform]) => !invalid.has(platform)),
+    ));
+    setIncludes((current) => ({
+      ...current,
+      ...Object.fromEntries(invalidPlatforms.map((platform) => [platform, false])),
+    }));
+  }, [accountsByPlatform, accountsLoaded, selectedAccounts]);
   const cancelRef = useRef(false);
   const drawerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
@@ -1878,7 +1900,8 @@ export default function StudioPage() {
               platform: VIDEO_PUBLISH_NAME[p] || p,
               title: titles[p] || idea || "",
               description: publishText(p),
-              account_id: selectedAccounts[p] || undefined,
+              // 저장된 ID가 연결 해제·만료 상태로 바뀌어도 발행 요청에는 절대 싣지 않는다.
+              account_id: selectedConnectedAccountId(p),
               draft_id: did,
               // 대문으로 쓸 시점. 지원하는 플랫폼만 실제로 쓴다(lib/video-cover.ts).
               cover_seconds: supportsCoverTimestamp(p) ? (coverSeconds[p] ?? DEFAULT_COVER_SECONDS) : undefined,
@@ -1907,7 +1930,7 @@ export default function StudioPage() {
             : undefined,
           draft_id: did,
           publish_fields: platformPublishInput(p),
-          account_id: selectedAccounts[p] || undefined,
+          account_id: selectedConnectedAccountId(p),
           first_comment: capabilityFor(p).supported && firstComments[p]?.trim() ? firstComments[p].trim() : undefined,
           edit_format: editFormat,
         }, { signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS) });

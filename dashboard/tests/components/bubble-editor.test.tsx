@@ -70,11 +70,13 @@ describe("BubbleEditor (F4, PR4)", () => {
 });
 
 describe("CardDeckPanel (표지·CTA 고정, 세션맥락: card-deck-ops 순수 함수만 호출)", () => {
-  it("표지·CTA 삭제 버튼은 비활성이고 이유 칩이 보인다", () => {
+  it("PR94-R1-MAJOR-01 정상: 장 조작은 선택 장용 툴바 하나에만 있고 표지·CTA는 잠긴다", () => {
     const d = deck();
     render(<CardDeckPanel deck={d} onDeckChange={vi.fn()} />);
     const lockedChips = document.querySelectorAll("[data-slide-locked]");
-    expect(lockedChips.length).toBe(2);
+    expect(document.querySelectorAll("[data-selected-slide-toolbar]")).toHaveLength(1);
+    expect(document.querySelector("[data-card-deck-thumbnail-strip] [data-selected-slide-toolbar]")).toBeNull();
+    expect(lockedChips.length).toBe(1);
     expect(lockedChips[0]).toHaveTextContent("는 지울 수 없습니다");
   });
 

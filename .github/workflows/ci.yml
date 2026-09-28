@@ -110,6 +110,21 @@ jobs:
           npx playwright-core install --with-deps chromium
           npm run e2e:bubble-editor:chromium
 
+      - name: 편집실 v70 화면 정합 회귀 게이트 (일반 카드·말풍선 덱·발행실)
+        timeout-minutes: 4
+        env:
+          STUDIO_V70_BASE_URL: http://127.0.0.1:3472
+          STUDIO_V70_OUTPUT_DIR: /tmp/studio-v70-screen-conformance
+          # clean-frame PNG 원본은 운영 디자인 작업본이라 Git 미추적이다. CI에서는 같은
+          # 스크립트의 수치·겹침·넘침 단언을 돌리고, 로컬 출고에서만 원본 합성을 수행한다.
+          STUDIO_V70_COMPARE: "0"
+        run: |
+          npm run start -- -p 3472 > /tmp/studio-v70-dev.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+          timeout --kill-after=5s 60s bash -c 'until curl -fsS http://127.0.0.1:3472/studio >/dev/null; do sleep 1; done'
+          timeout --kill-after=10s 150s npm run e2e:studio-v70-screen
+
       - name: 편집실 본문 충돌 복구 두 탭 회귀 게이트 (chromium)
         timeout-minutes: 3
         run: |

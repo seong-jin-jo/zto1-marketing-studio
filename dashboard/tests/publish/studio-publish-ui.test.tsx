@@ -489,6 +489,43 @@ describe("Studio publish result integrity", () => {
     expect(screen.getByText("아직 연결된 채널이 없어 발행할 수 없습니다.", { exact: false })).toBeInTheDocument();
   });
 
+  it("PR94-R1-MAJOR-02 거절: 저장된 해제 계정은 선택과 발행 요청에서 제거하고 다시 연결을 안내한다", async () => {
+    restoreStudio(["threads"]);
+    const storageKey = `studio_work:${mocks.workspace.id}`;
+    const stored = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    localStorage.setItem(storageKey, JSON.stringify({
+      ...stored,
+      selectedAccounts: { threads: "threads-reconnect" },
+    }));
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const provider = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
+      const accounts = provider === "threads"
+        ? [
+            { id: "threads-reconnect", display_name: "예전 계정", username: "threads.expired", is_default: false, connection_state: "reconnect" },
+            { id: "threads-connected", display_name: "운영 계정", username: "threads.live", is_default: true, connection_state: "connected" },
+          ]
+        : [];
+      return Response.json({ accounts });
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-account-reconnect" };
+      if (path === "/api/publish") return { ok: false, error: "테스트 발행 거절" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+
+    const checkbox = await screen.findByRole("checkbox", { name: "Threads 발행" });
+    await waitFor(() => expect(checkbox).not.toBeChecked());
+    expect(screen.getByTestId("publish-reconnect-link-threads")).toHaveAttribute("href", "/channels/threads");
+
+    fireEvent.click(checkbox);
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+    await waitFor(() => expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(1));
+    const publishBody = mocks.apiPost.mock.calls.find(([path]) => path === "/api/publish")?.[1] as { account_id?: string };
+    expect(publishBody.account_id).not.toBe("threads-reconnect");
+  });
+
   it("FE3-PUBLISH-03 거절: 발행 이력은 발행실에 다시 노출하지 않는다", async () => {
     mocks.drafts = [{
       id: "draft-history",
