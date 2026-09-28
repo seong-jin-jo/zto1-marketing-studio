@@ -1,3 +1,9 @@
+## 2026-09-28 09:23 KST · PR 85 편집실 v70 9차 리뷰 ❌ NG → 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR85-R9-BLOCKER-01 | 글 전체 편집기 계약을 유지하면서 낡은 textarea 단언을 contentEditable 입력 계약으로 교정 | R-S10-37 | 🔧 수정, 로컬 PASS | 수정 전 표적은 1건 실패·21건 통과, `toHaveValue` 실제값 `undefined`. 현재 DOM의 `<br><br>` 문단 경계를 직접 단언하고 `innerHTML` 변경 뒤 `input` 이벤트로 저장 콜백을 검증했다. CI와 같은 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 `npx vitest run` 408파일·2,778건 통과·1건 건너뜀·실패 0. `tsc`, build, 발행실 정렬, Chromium WYSIWYG 게이트도 종료 코드 0. 원격 CI는 미검증. |
+
 ## 2026-09-28 08:50 KST · PR 85 편집실 v70 8차 리뷰 ❌ NG → 🔧 수정, 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

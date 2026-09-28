@@ -1,10 +1,18 @@
+## 2026-09-28 09:23 KST PR 85 편집실 v70 9차 리뷰 로컬 수정·검증 완료
+
+- handoff basis: 사용자가 지정한 `.pr85-review9.md`, 워크트리 `/private/tmp/wt-v70p1`, 시작 HEAD `ef73d2c2`를 primary로 사용했다. tmux `371:0.2`는 종료된 8차 리뷰 로그라 동시 수정이 없음을 확인했다.
+- 수정 전 재현: `R-S10-37`은 contentEditable에 textarea용 `toHaveValue`를 호출해 실제값 `undefined`, 표적 1건 실패·21건 통과였다.
+- 변경: 제품 소스는 유지했다. 테스트가 `<br><br>` 문단 경계를 확인하고 `innerHTML` 변경 뒤 `input` 이벤트로 `onLinesChange`를 검증하게 했다.
+- 검증: 표적 22건 PASS. CI와 같은 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 `npx vitest run`은 408파일·2,778건 PASS, 1건 SKIP, 실패 0. TypeScript, 프로덕션 빌드, 발행실 정렬 delta 0px, Chromium WYSIWYG 전부 PASS. 임시 DB는 삭제했다. 원격 CI는 push 전이라 미검증이다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr85-review7.md`, `.pr85-review8.md`, `.pr85-review9.md`는 커밋하지 않는다. 다음 실행은 의도 파일만 커밋하고 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다.
+
 ## 2026-09-28 08:50 KST PR 85 편집실 v70 8차 리뷰 로컬 수정·검증 완료
 
 - handoff basis: 사용자가 지정한 `.pr85-review8.md`, 워크트리 `/private/tmp/wt-v70p1`, HEAD `bc539b95`를 primary로 사용했다. tmux `371:0.2`는 종료된 8차 리뷰 로그만 남은 상태라 동시 수정이 없음을 확인했다.
 - 수정 전 재현: 필수 발행실 UI는 contentEditable `value setter` 오류, 연속 넘침은 4장 기대에 2장, 글 리치 붙여넣기는 기본 동작 허용 `true`로 각각 실패했다.
 - 변경: 자동 분할 뒤 새 장을 다음 검사 대상으로 넘긴다. 글 전체 편집은 리치 붙여넣기 기본 동작을 막고 평문만 저장한다. 필수 발행실 테스트는 contentEditable 입력과 구조화 세그먼트를 검증한다.
 - 검증: 관련 Vitest 16파일 203건, TypeScript, 프로덕션 빌드, Chromium·WebKit·Firefox E2E PASS. 3엔진에서 글 DOM과 저장 모델 `붙여넣은 평문` 일치, 리치 노드 0건을 관찰했다. dev 3762는 Ready 805ms, `/studio` HTTP 200, body 표시, 콘솔 오류 0이었다.
-- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr85-review7.md`, `.pr85-review8.md`는 커밋하지 않는다. 다음 실행은 의도 파일만 커밋하고 부모 컨트롤러가 push한다.
+- 커밋: `ef73d2c2`. `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr85-review7.md`, `.pr85-review8.md`는 커밋하지 않았다. 다음 실행은 부모 컨트롤러가 push하고 8차 리뷰를 재요청한다.
 
 ## 2026-09-28 07:52 KST PR 85 편집실 v70 7차 리뷰 로컬 수정·검증 완료
 
