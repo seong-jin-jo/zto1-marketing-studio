@@ -1,3 +1,11 @@
+## 2026-09-28 발행실 7채널 계정 행 정합 반려 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| STUDIO-V70-PUBLISH-ACCOUNT-01 | 7개 채널 모두 `[발행][@핸들][계정 관리]`를 같은 첫 행에 표시하고 긴 핸들은 말줄임과 title로 보존 | V70-PUBLISH-ACCOUNT-ROW-01 | ❌ NG | 기존 1440 캡처에서 Threads·Facebook·Shorts·Reels의 계정 칩과 관리 링크가 2~3행으로 갈렸고, 칩 마지막 글자가 반쪽으로 잘렸다. |
+| STUDIO-V70-PUBLISH-COVER-02 | Shorts·Reels·TikTok 표지 제어를 계정 행 바로 아래 같은 위치·모양으로 표시 | V70-PUBLISH-COVER-ROW-02 | ❌ NG | 기존 캡처에서 Shorts는 계정 관리 옆 `표지 자동`, Reels는 다음 행 숫자 입력, TikTok은 체크 옆 계정 칩 뒤 다음 행에 계정 관리와 표지 입력이 갈렸다. |
+| STUDIO-V70-PUBLISH-GEOMETRY-03 | 계정 행의 카드 기준 top 좌표 편차 ≤2px, 칩은 폭을 넘기지 않거나 ellipsis 적용 | V70-PUBLISH-GEOMETRY-03 | ❌ NG | 기존 E2E는 각 행 자식의 겹침만 검사해 카드 간 상대 top과 실제 텍스트 클리핑을 측정하지 않았다. |
+
 ## 2026-09-28 편집실 v70·발행실 캡처 직접 검수 반려 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
