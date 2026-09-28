@@ -8,7 +8,7 @@
 #   tenant4  gateway 18793 / dashboard 34564
 #
 # 가동 전 1회 작업:
-#   ./bootstrap-postagi-4tenants.sh  (data/config 디렉토리 생성 + templates 복사)
+#   ./bootstrap-postagi-4tenants.sh  (~/openclaw-persist에 data/config 생성 + templates 복사)
 #
 # 가동:
 #   docker-compose -f docker-compose.postagi-4tenants.yml up -d
@@ -71,7 +71,7 @@ services:
         target: /home/node/data
         bind:
           create_host_path: false
-    env_file: .env.tenant2
+    env_file: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/.env.tenant2
     environment:
       HOME: /home/node
       TZ: Asia/Seoul
@@ -86,6 +86,9 @@ services:
   openclaw-dashboard-tenant2:
     <<: *dashboard-base
     container_name: openclaw-dashboard-tenant2
+    user: "1000:1000"
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID from the host docker socket group}"
     volumes:
       - type: bind
         source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/data-tenant2
@@ -98,7 +101,7 @@ services:
         bind:
           create_host_path: false
       - /var/run/docker.sock:/var/run/docker.sock
-    env_file: .env.tenant2
+    env_file: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/.env.tenant2
     environment:
       DATA_DIR: /app/data
       CONFIG_DIR: /app/config
@@ -124,7 +127,7 @@ services:
         target: /home/node/data
         bind:
           create_host_path: false
-    env_file: .env.tenant3
+    env_file: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/.env.tenant3
     environment:
       HOME: /home/node
       TZ: Asia/Seoul
@@ -139,6 +142,9 @@ services:
   openclaw-dashboard-tenant3:
     <<: *dashboard-base
     container_name: openclaw-dashboard-tenant3
+    user: "1000:1000"
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID from the host docker socket group}"
     volumes:
       - type: bind
         source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/data-tenant3
@@ -151,7 +157,7 @@ services:
         bind:
           create_host_path: false
       - /var/run/docker.sock:/var/run/docker.sock
-    env_file: .env.tenant3
+    env_file: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/.env.tenant3
     environment:
       DATA_DIR: /app/data
       CONFIG_DIR: /app/config
@@ -177,7 +183,7 @@ services:
         target: /home/node/data
         bind:
           create_host_path: false
-    env_file: .env.tenant4
+    env_file: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/.env.tenant4
     environment:
       HOME: /home/node
       TZ: Asia/Seoul
@@ -192,6 +198,9 @@ services:
   openclaw-dashboard-tenant4:
     <<: *dashboard-base
     container_name: openclaw-dashboard-tenant4
+    user: "1000:1000"
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID from the host docker socket group}"
     volumes:
       - type: bind
         source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/data-tenant4
@@ -204,7 +213,7 @@ services:
         bind:
           create_host_path: false
       - /var/run/docker.sock:/var/run/docker.sock
-    env_file: .env.tenant4
+    env_file: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/.env.tenant4
     environment:
       DATA_DIR: /app/data
       CONFIG_DIR: /app/config
