@@ -27,6 +27,7 @@ case "$1" in
     if [ "$2" = "--format" ]; then format="$3"; target="$4"; else target="$2"; fi
     case "$format" in
       *State.Running*) [ -f "$state/$target.stopped" ] && echo false || echo true ;;
+      *State.Paused*) echo true ;;
       *State.ExitCode*) echo 0 ;;
       *State.Pid*) echo 4242 ;;
       *) if [ -n "$format" ]; then echo abcdef0123456789; else exit 0; fi ;;
@@ -116,7 +117,15 @@ function runDivergentMigration() {
     env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, OPENCLAW_PERSIST_ROOT: persistRoot, DOCKER_GID: "999", FAKE_DOCKER_LOG: dockerLog, FAKE_DOCKER_STATE: dockerState },
     encoding: "utf8",
   });
-  return { tempRoot, persistRoot, dockerLog, result };
+  return { tempRoot, sandbox, persistRoot, binDir, dockerLog, dockerState, result };
+}
+
+function resumePendingMigration(run: ReturnType<typeof runCutoverMigration>) {
+  return spawnSync("bash", ["migrate-postagi-persist-mounts.sh", "--resume-pending"], {
+    cwd: run.sandbox,
+    env: { ...process.env, PATH: `${run.binDir}:${process.env.PATH}`, OPENCLAW_PERSIST_ROOT: run.persistRoot, DOCKER_GID: "999", FAKE_DOCKER_LOG: run.dockerLog, FAKE_DOCKER_STATE: run.dockerState, FAKE_HEALTH_FAILS: "2" },
+    encoding: "utf8",
+  });
 }
 
 function runCutoverMigration(healthFailures: number) {
@@ -139,7 +148,7 @@ function runCutoverMigration(healthFailures: number) {
     env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, OPENCLAW_PERSIST_ROOT: persistRoot, DOCKER_GID: "999", FAKE_DOCKER_LOG: dockerLog, FAKE_DOCKER_STATE: dockerState, FAKE_HEALTH_FAILS: String(healthFailures) },
     encoding: "utf8",
   });
-  return { tempRoot, persistRoot, dockerLog, result };
+  return { tempRoot, sandbox, persistRoot, binDir, dockerLog, dockerState, result };
 }
 
 describe("PR93 independent review regressions", () => {
@@ -176,9 +185,11 @@ describe("PR93 independent review regressions", () => {
     expect(migration).not.toContain('docker stop --timeout 0 "$container"');
     expect(migration).toContain("create_mount_holder");
     expect(migration).toContain("archive_holders");
-    const cutover = migration.split("STOP_ATTEMPTED=1")[1] ?? "";
-    expect(cutover.split("archive_holders")[0]).not.toContain('docker unpause "$container"');
-    expect(cutover).not.toContain("docker cp");
+    const stopIndex = migration.lastIndexOf("STOP_ATTEMPTED=1");
+    const archiveIndex = migration.indexOf("# holder의 추가 bind", stopIndex);
+    const stoppedWindow = migration.slice(stopIndex, archiveIndex);
+    expect(stoppedWindow).not.toContain('docker unpause "$container"');
+    expect(stoppedWindow).not.toContain("docker cp");
     expect(migration).toContain("mount --bind");
   });
 
@@ -211,6 +222,11 @@ describe("PR93 independent review regressions", () => {
       expect(fs.existsSync(path.join(failedRecovery.persistRoot, ".mount-v2-ready"))).toBe(false);
       expect(fs.existsSync(path.join(failedRecovery.persistRoot, ".mount-v2-pending"))).toBe(true);
       expect(fs.readFileSync(path.join(failedRecovery.persistRoot, ".mount-v2-pending"), "utf8")).toContain("status=pending-health");
+      const resumed = resumePendingMigration(failedRecovery);
+      expect(resumed.status, `${resumed.stdout}\n${resumed.stderr}`).toBe(0);
+      expect(resumed.stdout).toContain("이전 재개 완료");
+      expect(fs.existsSync(path.join(failedRecovery.persistRoot, ".mount-v2-ready"))).toBe(true);
+      expect(fs.existsSync(path.join(failedRecovery.persistRoot, ".mount-v2-pending"))).toBe(false);
     } finally {
       fs.rmSync(failedRecovery.tempRoot, { recursive: true, force: true });
     }

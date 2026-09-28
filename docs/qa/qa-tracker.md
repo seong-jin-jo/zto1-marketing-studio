@@ -6,7 +6,7 @@
 | PR93-B2 | gateway/dashboard divergent mount 모두 보존 | PR93-B2 | ✅ PASS | 임시 디렉터리 fake Docker에서 device·inode와 내용이 다르면 양쪽 frozen 사본을 recovery에 남기고 ready marker 없이 실패함. |
 | PR93-B3 | 운영자 안내와 live-mount 회수 순서 일치 | PR93-B3 | ✅ PASS | bootstrap이 실행 중 컨테이너를 멈추지 말고 migration을 먼저 실행하도록 안내함. |
 | PR93-M1 | 무쓰기창과 graceful shutdown 최종 쓰기 보존 | PR93-M1, holder 실Docker | ✅ PASS | pause 뒤 mount namespace holder를 준비하고 30초 stop을 실행함. 실제 Docker에서 기존 state와 종료 최종 쓰기 모두 보존. |
-| PR93-M2 | 기존 이미지 자동 재기동과 실패 복구 자료 | PR93-M2 | ✅ PASS | 첫 health 실패 후 같은 조건 재시도 성공, 2회 실패 시 ready 없음·pending과 recovery 보존을 임시 디렉터리 시뮬레이션으로 확인. |
+| PR93-M2 | 기존 이미지 자동 재기동과 실패 복구 자료 | PR93-M2 | ✅ PASS | 첫 health 실패 후 같은 조건 재시도 성공, 2회 실패 시 ready 없음·pending과 recovery 보존, `--resume-pending` 재검증 성공 뒤 ready 승격을 임시 디렉터리 시뮬레이션으로 확인. |
 | PR93-M3 | OSMU 단독 배포 격리 | PR93-M3 | ✅ PASS | tenant 영속 검증은 전체 또는 tenant2·3·4 선택 때만 실행하고 Docker GID는 공통으로 내보냄. |
 | PR93-M4 | 부분 bootstrap 승격 금지 | PR93-M4 | ✅ PASS | marker 없는 일부 target은 실패하고 검증된 fresh-bootstrap 재개만 허용함. |
 

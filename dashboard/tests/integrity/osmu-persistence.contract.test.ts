@@ -167,6 +167,7 @@ case "$1" in
     if [ "$2" = "--format" ]; then format="$3"; target="$4"; else target="$2"; fi
     case "$format" in
       *State.Running*) [ -f "$state/$target.stopped" ] && echo false || echo true ;;
+      *State.Paused*) echo true ;;
       *State.ExitCode*) echo 0 ;;
       *State.Pid*) echo 4242 ;;
       *) if [ -n "$format" ]; then echo abcdef0123456789; else exit 0; fi ;;
@@ -258,6 +259,7 @@ case "$1" in
       --format)
         case "$3" in
           *State.Running*) echo "true" ;;
+          *State.Paused*) echo "true" ;;
           *) echo "abcdef0123456789" ;;
         esac
         ;;

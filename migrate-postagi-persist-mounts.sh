@@ -16,6 +16,12 @@ TENANT_SERVICES=(
   openclaw-gateway-tenant3 openclaw-dashboard-tenant3
   openclaw-gateway-tenant4 openclaw-dashboard-tenant4
 )
+RESUME_PENDING=0
+case "${1:-}" in
+  "") ;;
+  --resume-pending) RESUME_PENDING=1 ;;
+  *) echo "사용법: bash $0 [--resume-pending]" >&2; exit 2 ;;
+esac
 
 if [ "$(uname -s)" = "Linux" ] && [ "$(id -u)" != "$RUNTIME_UID" ]; then
   echo "오류: OpenClaw 런타임과 같은 UID 1000 계정으로 실행해야 합니다." >&2
@@ -26,15 +32,29 @@ if [ -e "$MARKER" ]; then
   echo "오류: 이전 표식이 이미 있습니다. 재실행하지 않습니다: $MARKER" >&2
   exit 1
 fi
-if [ -e "$PENDING_MARKER" ]; then
+if [ -e "$PENDING_MARKER" ] && [ "$RESUME_PENDING" != "1" ]; then
   echo "오류: 이전 시도의 pending 표식이 있습니다. recovery 디렉터리와 상태를 먼저 점검하십시오: $PENDING_MARKER" >&2
+  echo "health 장애를 해소한 뒤 bash $0 --resume-pending 으로 재검증하십시오." >&2
+  exit 1
+fi
+if [ "$RESUME_PENDING" = "1" ] && [ ! -f "$PENDING_MARKER" ]; then
+  echo "오류: 재개할 pending 표식이 없습니다: $PENDING_MARKER" >&2
   exit 1
 fi
 
 install -d -m 0750 "$PERSIST_ROOT"
+if [ "$RESUME_PENDING" = "1" ]; then
+  RECOVERY_ROOT="$(awk -F= '$1 == "recovery_root" { print $2 }' "$PENDING_MARKER")"
+  case "$RECOVERY_ROOT" in
+    "${PERSIST_ROOT}"/recovery-mount-v1-*) ;;
+    *) echo "오류: pending 표식의 recovery_root가 영속 루트 밖이거나 유효하지 않습니다: $RECOVERY_ROOT" >&2; exit 1 ;;
+  esac
+  [ -d "$RECOVERY_ROOT" ] || { echo "오류: pending 표식의 recovery 자료가 없습니다: $RECOVERY_ROOT" >&2; exit 1; }
+else
+  RECOVERY_ROOT="${PERSIST_ROOT}/recovery-mount-v1-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  install -d -m 0700 "$RECOVERY_ROOT"
+fi
 STAGE="$(mktemp -d "${PERSIST_ROOT}/.mount-v2-stage.XXXXXX")"
-RECOVERY_ROOT="${PERSIST_ROOT}/recovery-mount-v1-$(date -u +%Y%m%dT%H%M%SZ)-$$"
-install -d -m 0700 "$RECOVERY_ROOT"
 MIGRATION_COMPLETE=0
 PAUSE_ATTEMPTED=0
 STOP_ATTEMPTED=0
@@ -84,6 +104,60 @@ compose_with_root() {
 compose_no_build() {
   compose_with_root "$PERSIST_ROOT" "$@"
 }
+
+start_and_verify_cutover() {
+  local attempt
+  for attempt in 1 2; do
+    if compose_no_build up -d --no-build --force-recreate --wait --wait-timeout 120 "${TENANT_SERVICES[@]}"; then
+      return 0
+    fi
+    echo "경고: 기존 이미지의 새 영속 마운트 재기동과 health 확인이 실패했습니다. 동일 조건으로 1회 재시도합니다." >&2
+  done
+  return 1
+}
+
+publish_ready_marker() {
+  sed 's/^status=pending-health$/status=ready/' "$PENDING_MARKER" > "${STAGE}/.mount-v2-ready"
+  grep -qx 'status=ready' "${STAGE}/.mount-v2-ready" || {
+    echo "오류: pending 표식을 ready 상태로 변환하지 못했습니다." >&2
+    return 1
+  }
+  chmod 0600 "${STAGE}/.mount-v2-ready"
+  mv "${STAGE}/.mount-v2-ready" "$MARKER"
+  rm -f "$PENDING_MARKER"
+}
+
+if [ "$RESUME_PENDING" = "1" ]; then
+  grep -qx 'schema=2' "$PENDING_MARKER" \
+    && grep -qx 'source=mount-namespace-holder' "$PENDING_MARKER" \
+    && grep -qx 'status=pending-health' "$PENDING_MARKER" || {
+      echo "오류: 재개할 pending 표식의 schema/source/status가 유효하지 않습니다." >&2
+      exit 1
+    }
+  for tenant in 2 3 4; do
+    for kind in config data; do
+      target="${PERSIST_ROOT}/${kind}-tenant${tenant}"
+      [ -d "$target" ] && [ -n "$(find "$target" -mindepth 1 -print -quit)" ] || {
+        echo "오류: pending 재개의 필수 영속 경로가 없거나 비었습니다: $target" >&2
+        exit 1
+      }
+    done
+    [ -s "${PERSIST_ROOT}/.env.tenant${tenant}" ] || {
+      echo "오류: pending 재개의 환경파일이 없거나 비었습니다: ${PERSIST_ROOT}/.env.tenant${tenant}" >&2
+      exit 1
+    }
+  done
+  STOP_ATTEMPTED=1
+  WRITERS_STOPPED=1
+  if ! start_and_verify_cutover; then
+    echo "오류: 재시도 후에도 health 확인에 실패했습니다. pending 표식을 유지합니다." >&2
+    exit 1
+  fi
+  publish_ready_marker
+  MIGRATION_COMPLETE=1
+  echo "이전 재개 완료: 새 영속 마운트의 health를 확인하고 ready 표식을 공개했습니다."
+  exit 0
+fi
 
 role_paths() {
   case "$1" in
@@ -296,6 +370,17 @@ for container in "${running_before[@]}"; do
   docker pause "$container" >/dev/null
 done
 for tenant in 2 3 4; do
+  for role in gateway dashboard; do
+    container="openclaw-${role}-tenant${tenant}"
+    expected_id="$(tr -d '\n' < "${STAGE}/${role}-tenant${tenant}.container-id")"
+    actual_id="$(docker inspect --format '{{.Id}}' "$container")"
+    if [ "$actual_id" != "$expected_id" ] || [ "$(docker inspect --format '{{.State.Paused}}' "$container")" != "true" ]; then
+      echo "오류: preflight 뒤 원본 컨테이너가 교체됐거나 pause되지 않았습니다: $container" >&2
+      exit 1
+    fi
+  done
+done
+for tenant in 2 3 4; do
   capture_frozen_snapshot "$tenant"
 done
 
@@ -315,6 +400,12 @@ for container in "${running_before[@]}"; do
 done
 for stop_pid in "${stop_pids[@]}"; do
   if ! wait "$stop_pid"; then
+    stop_failed=1
+  fi
+done
+for container in "${running_before[@]}"; do
+  if [ "$(docker inspect --format '{{.State.ExitCode}}' "$container")" = "137" ]; then
+    echo "오류: $container 가 grace period 안에 종료되지 않아 SIGKILL됐습니다." >&2
     stop_failed=1
   fi
 done
@@ -366,25 +457,15 @@ done
 chmod 0600 "${STAGE}/.mount-v2-pending"
 mv "${STAGE}/.mount-v2-pending" "$PENDING_MARKER"
 
-cutover_healthy=0
-for attempt in 1 2; do
-  if compose_no_build up -d --no-build --force-recreate --wait --wait-timeout 120 "${TENANT_SERVICES[@]}"; then
-    cutover_healthy=1
-    break
-  fi
-  echo "경고: 기존 이미지의 새 영속 마운트 재기동과 health 확인이 실패했습니다. 동일 조건으로 1회 재시도합니다." >&2
-done
-if [ "$cutover_healthy" != "1" ]; then
+if ! start_and_verify_cutover; then
   echo "오류: 재시도 후에도 health 확인에 실패했습니다. ready 표식은 만들지 않습니다." >&2
   echo "pending 표식: $PENDING_MARKER" >&2
   echo "복구 자료: $RECOVERY_ROOT" >&2
+  echo "health 장애 해소 후 재개: bash $0 --resume-pending" >&2
   exit 1
 fi
 
-sed 's/^status=pending-health$/status=ready/' "$PENDING_MARKER" > "${STAGE}/.mount-v2-ready"
-chmod 0600 "${STAGE}/.mount-v2-ready"
-mv "${STAGE}/.mount-v2-ready" "$MARKER"
-rm -f "$PENDING_MARKER"
+publish_ready_marker
 MIGRATION_COMPLETE=1
 
 echo "이전 완료: $PERSIST_ROOT"
