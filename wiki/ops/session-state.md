@@ -1,3 +1,11 @@
+## 2026-09-29 08:17 KST PR #94 리뷰 r5 로컬 수정·검증 완료
+
+- handoff basis: 사용자가 지정한 `review94-r5.md`, 원격 CI run `36495350609`, 현재 HEAD `2e80750e`를 primary로 삼았다. tmux `371:0.0`은 컨트롤러가 같은 두 결함을 지목하고 빌더 수정을 기다리는 상태임을 확인했다.
+- 수정 전 재현: 원격과 로컬 모두 `ui-token-audit.contract.test.ts`의 직접값 1건과 `editroom-video-single-workbench.regression.test.tsx`의 잘못된 화면 높이 단언 1건만 실패했다. 로컬 표적 결과는 2파일, 14건 중 2건 실패다.
+- 수정: 모바일 재생기 간격을 DESIGN `none` 토큰으로 바꾸고, 회귀 테스트가 전체 재생기 180px와 내부 화면 축소 계약을 각각 검사하게 고쳤다.
+- 검증: 표적 Vitest 2파일 14건과 UI 토큰 감사 직접값 0건이 통과했다. 전체 스위트와 시안 스크립트는 사용자 지시대로 실행하지 않았다.
+- 다음 실행: 현재 작은 범위를 커밋한다. push와 원격 CI 재실행은 컨트롤러 소유이며 현재 미검증이다.
+
 ## 2026-09-29 07:52 KST PR #94 리뷰 r4 로컬 수정·검증 완료
 
 - handoff basis: 사용자가 지정한 HEAD `b2a0b620`, `review94-r4.md`, 원격 CI green을 primary로 삼았다. 이전 r1·r2 pane은 이번 판단 근거로 쓰지 않았다.

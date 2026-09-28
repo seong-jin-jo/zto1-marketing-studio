@@ -168,7 +168,12 @@ describe("v70 §4: 영상 편집 워크벤치(플레이어+자막 대본+타임�
   it("PR94-R3-VIDEO-01 정상: 390 플레이어는 180px이고 대본과 108px 타임라인이 뒤따른다", () => {
     stubVoicesUnconfigured();
     render(<VideoRoomHarness initialLines={["첫 장면 대사"]} />);
-    expect(document.querySelector("[data-video-screen]")?.className).toContain("max-[26rem]:h-[11.25rem]");
+    const playback = document.querySelector("[data-video-playback]");
+    const screen = document.querySelector("[data-video-screen]");
+    expect(playback?.className).toContain("max-[26rem]:h-[11.25rem]");
+    expect(playback?.className).toContain("max-[26rem]:space-y-none");
+    expect(screen?.className).toContain("max-[26rem]:min-h-0");
+    expect(screen?.className).toContain("max-[26rem]:aspect-auto");
     expect(document.querySelector("[data-video-workbench]")?.className).toContain("max-[26rem]:[grid-template-rows:auto_6.75rem]");
     expect(document.querySelector("[data-video-script-column]")).toBeInTheDocument();
   });
