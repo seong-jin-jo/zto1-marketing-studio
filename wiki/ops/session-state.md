@@ -1,3 +1,20 @@
+## 2026-09-28 21:00 KST 편집실 v70·발행실 운영 화면 정합 구현·3폭 실측
+
+- handoff basis: 회장이 지정한 동일 worktree와 `origin/main@af458794`, 운영 캡처 5장, v70 design-spec·clean-frame을 기준으로 이어갔다. 직전 1440 캡처를 버리지 않고 1024·390을 완성했다.
+- 수정: 일반 카드 v70 셸, URL kind 딥링크, 영상 빈 상태, 발행 계정 단일 행, X 한도·미디어 누락 체크 차단과 복구 행동을 연결했다. 새 구조 초안 선택 시 이전 작업물 해시태그를 초기화한다. 죽은 계정 선택 콜백을 제거하고 카드 썸네일 포커스 표시를 추가했다.
+- 직접 관찰: Chromium 1440·1024·390에서 카드·영상 빈 상태·발행실 총 9화면을 캡처했다. 좌우 넘침 0, 지정 요소 겹침 0, 콘솔 오류 0이며 비교 PNG는 `docs/qa/studio-v70-screen-conformance-20260928/`에 있다. v70 영상 빈 상태 원본은 1440만 있어 좁은 폭도 그 원본을 썼고, v70 발행 원본은 없어 최신 v67을 사용했다.
+- 테스트: 정책 충돌 회귀 6파일 51건과 해시태그 회귀가 통과했다. 최종 코드에서 PostgreSQL schema→seed→RLS·migration matrix 뒤 전체 421파일·2,866건 PASS, 1건 SKIP, 실패 0이다. TypeScript·production build·UI 토큰 감사도 종료 0이다.
+- 다음 실행: 최종 diff와 커밋 대상만 확인해 로컬 커밋한다. push·배포는 하지 않는다. 이후 컨트롤러가 push와 원격 CI green을 확인한다.
+
+## 2026-09-28 19:5x KST 편집실 v70·발행실 운영 화면 정합 수정 착수
+
+- handoff basis: 회장이 지정한 `origin/main@af458794`, 운영 캡처 5장, 편집실 v70 수치 규격과 clean-frame을 기준으로 고정했다. tmux `371:0.0`은 같은 운영 결함을 관찰한 컨트롤러 기록으로 확인했으며 과제 기준은 사용자 요청을 따른다.
+- 격리 작업: 공유 루트 작업 트리의 대규모 기존 변경을 보존하기 위해 `/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance`에 `fix/studio-screen-v70-conformance` 브랜치를 만들었다. 기준 커밋은 `af4587940d6cd9f080787f7ce516f27de25d2300`이다.
+- 확인한 입력: `CLAUDE.md`, dashboard 하위 지침, `pipeline-state.osmu.md`, 편집실·발행실 ADR, 실수 원장의 `[화면-검수-누락]`, v70 design-spec, 디자인 README와 기존 구현·QA 기록이다. 운영 캡처와 clean-frame은 다음 단계에서 픽셀·구조 대조한다.
+- 이웃 영향 후보: 편집실 text/card/video 탭·자동저장, 일반 카드와 말풍선 덱 공용 셸, 발행 계정 선택·체크 상태, X 글자수 제한, 미디어 준비 상태, 모바일·태블릿·데스크톱 반응형이다.
+- 현재 판정: 운영에서 관찰된 화면 불일치를 `docs/qa/qa-tracker.md` 최상단에 ❌ NG로 등록했다. 제품 코드는 아직 수정하지 않았다.
+- 다음 행동: clean-frame·운영 캡처 7장을 직접 열어 대조한 뒤 현재 구현·테스트 배선을 추적한다. 수정 후 1440·1024·390 실브라우저 캡처와 가로 넘침·요소 겹침 단언 E2E로 닫는다.
+
 ## 2026-09-28 16:37 KST PR 87 재리뷰 r6 연속 409 보관본 로컬 완료
 
 - handoff basis: 회장이 지정한 `.pr87-review-r6.md`와 시작 HEAD `6abafccc`를 primary로 삼았다. tmux `371:0.1`은 비활성 zsh pane이라 별도 인계원으로 쓰지 않았다.

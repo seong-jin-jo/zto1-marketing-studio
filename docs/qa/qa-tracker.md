@@ -1,3 +1,13 @@
+## 2026-09-28 편집실 v70·발행실 운영 화면 시안 불일치 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| STUDIO-V70-SCREEN-01 | 일반 카드뉴스도 112px 스트립·520px 4:5 카드 셸을 쓰고 중복·겹침 없이 편집 | V70-CONFORMANCE-CARD | ✅ 로컬 PASS | Chromium 1440에서 스트립 112px·무대 520px, 1024에서 스트립 112px·가용 무대 428px, 390에서 가로 스트립 276px·무대 250px을 실측했다. 세 폭 모두 문구 입력 3개가 실제 값과 함께 보이고 중복 비율 선택기·안내 겹침은 0건이다. |
+| STUDIO-V70-SCREEN-02 | `kind=text\|card\|video` 딥링크와 영상 빈 상태가 v70 규격대로 동작 | V70-CONFORMANCE-VIDEO | ✅ 로컬 PASS | 세 폭 모두 `/studio?room=edit&kind=video`가 `data-edit-kind=video`로 열리고 영상 빈 상태와 생성실 이동 행동을 표시했다. |
+| STUDIO-V70-SCREEN-03 | 발행 계정 행 단일화, 내부 ID 비노출, 글자수·미디어 발행 불가 상태 일치 | V70-CONFORMANCE-PUBLISH | ✅ 로컬 PASS | 계정 select 0개, 내부 UUID·`@연결 계정` 노출 0건, X 281/280 체크 비활성, 영상 없는 Shorts·Reels·TikTok 체크 3개 비활성, 생성실 행동과 `표지로 쓸 장면(초)` 문구를 확인했다. |
+| STUDIO-V70-HASHTAG-01 | 새 구조 초안 선택 시 이전 작업물 해시태그를 승계하지 않음 | V70-CREATE-HASHTAG-01 | ✅ 로컬 PASS | 이전 X·Instagram 해시태그를 저장한 뒤 새 구조 초안을 선택하는 실제 `StudioPage` 회귀에서 저장 상태 `hashtags`가 빈 객체로 초기화됐다. |
+| STUDIO-V70-SCREEN-FINAL | 1440·1024·390 캡처 대조, 가로 넘침 0·겹침 0, 타입·회귀 | V70-CONFORMANCE-E2E | ✅ 로컬 PASS, 원격 미검증 | 세 폭 9개 화면에서 document·방 scope의 scrollWidth=clientWidth, 카드 스트립·무대와 발행 계정행 겹침 0, 콘솔 오류 0을 단언했다. 비교 PNG 9개는 `docs/qa/studio-v70-screen-conformance-20260928/`에 있다. PostgreSQL 전체 421파일·2,866건 PASS, 1건 SKIP, 실패 0이며 TypeScript·production build·UI 토큰 감사도 통과했다. 원격 CI와 운영 재배포는 push 전이라 미검증이다. |
+
 ## 2026-09-28 PR 87 재리뷰 r6 연속 본문 충돌 보관본·CI 제한시간 ❌ NG → 🔧 수정, 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

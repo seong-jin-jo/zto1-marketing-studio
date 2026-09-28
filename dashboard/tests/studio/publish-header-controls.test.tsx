@@ -43,75 +43,46 @@ function renderHeader(platform: PreviewPlatform, accountLabel: string) {
       accountsLoading={false}
       accounts={[{ id: `${platform}-1`, label: accountLabel, isDefault: true }]}
       selectedAccountId=""
-      onSelectedAccountChange={() => {}}
       channelHref={`/channels/${platform}`}
     />,
   );
 }
 
-/** 높이를 결정하는 것만 추린 서명. 내용(문구·컨트롤 종류)은 채널마다 달라도 된다. */
-function heightSignature(root: HTMLElement) {
-  const header = root.querySelector("[data-publish-header-controls]");
-  if (!header) throw new Error("헤더 컨테이너가 없다");
-  const rows = Array.from(header.children) as HTMLElement[];
-  return {
-    rowCount: rows.length,
-    rows: rows.map((row) => ({
-      name: row.getAttribute("data-publish-header-row"),
-      slotCount: row.children.length,
-      // 각 행은 44px 조작면(min-h-control-touch) 슬롯을 최소 하나 갖는다. 이것이
-      // 행 높이를 채널과 무관하게 고정하는 장치다.
-      hasTouchTarget: Array.from(row.querySelectorAll("*")).some((el) =>
-        el.className.toString().split(/\s+/).includes("min-h-control-touch"),
-      ),
-    })),
-  };
-}
-
 afterEach(cleanup);
 
-describe("발행실 헤더는 7개 채널에서 같은 높이 구조를 갖는다", () => {
-  it("모든 채널이 고정 2행(발행/대문 · 계정)이고 각 행이 44px 조작면을 갖는다", () => {
+describe("발행실 계정 영역은 한 줄에 한 번만 나온다", () => {
+  it("모든 채널이 [발행][계정 전체 이름][계정 관리] 한 줄을 쓴다", () => {
     for (const platform of CHANNELS) {
       const { container } = renderHeader(platform, "osmu_official_account");
-      const signature = heightSignature(container);
-      expect(signature.rowCount, `${platform} 행 수가 2가 아니다`).toBe(2);
-      expect(signature.rows.map((r) => r.name)).toEqual(["toggle", "account"]);
-      for (const row of signature.rows) {
-        expect(row.hasTouchTarget, `${platform} ${row.name} 행에 min-h-control-touch 슬롯이 없다`).toBe(true);
-      }
+      expect(container.querySelectorAll('[data-publish-header-row="primary"]')).toHaveLength(1);
+      expect(container.querySelector(`[data-testid="publish-account-label-${platform}"]`)).toHaveTextContent("계정: osmu_official_account");
+      expect(container.querySelector(`[data-testid="publish-account-manage-${platform}"]`)).toBeInTheDocument();
+      expect(container.querySelector("select")).not.toBeInTheDocument();
       cleanup();
     }
   });
 
-  it("7개 채널의 높이 서명이 서로 완전히 같다(한 채널만 달라지면 실패한다)", () => {
-    const signatures = CHANNELS.map((platform) => {
-      const { container } = renderHeader(platform, "osmu_official_account");
-      const signature = heightSignature(container);
-      cleanup();
-      return [platform, signature] as const;
-    });
-    const [, baseline] = signatures[0];
-    for (const [platform, signature] of signatures) {
-      expect(signature, `${platform} 헤더의 높이 구조가 다른 채널과 다르다`).toEqual(baseline);
-    }
-  });
-
-  it("계정 이름이 아무리 길어도 select 는 폭을 고정하고 잘라, 줄 수를 늘리지 않는다", () => {
-    // 4라운드 실패의 진짜 변수. 짧은 플레이스홀더로 재면 이 조건이 사라진다.
+  it("긴 계정 이름은 화면 폭을 밀지 않고 title로 전체 값을 제공한다", () => {
     const { container } = renderHeader("threads", "osmu_factory_official_account_2026_very_long");
-    const select = container.querySelector("select");
-    expect(select?.className).toContain("w-28");
-    expect(select?.className).toContain("truncate");
+    const label = container.querySelector('[data-testid="publish-account-label-threads"]');
+    expect(label?.className).toContain("truncate");
+    expect(label).toHaveAttribute("title", "osmu_factory_official_account_2026_very_long");
   });
 
-  it("대문 컨트롤이 없는 채널도 1행 슬롯 수를 유지한다(투명 placeholder)", () => {
-    const { container: withCover } = renderHeader("reels", "osmu_reels_studio_2026");
-    const coverSlots = withCover.querySelector('[data-publish-header-row="toggle"]')!.children.length;
-    cleanup();
-    const { container: withoutCover } = renderHeader("threads", "오스무팩토리");
-    const plainSlots = withoutCover.querySelector('[data-publish-header-row="toggle"]')!.children.length;
-    expect(plainSlots).toBe(coverSlots);
+  it("미디어가 없으면 체크를 막고 생성실 복구 행동을 같은 자리에 준다", () => {
+    const { container } = render(
+      <PublishHeaderControls
+        platform="shorts" label="Shorts" publishSupported accountSelectable checked={false}
+        checkboxDisabled onCheckedChange={() => {}} coverSeconds={0} onCoverSecondsChange={() => {}}
+        accountsLoading={false} accounts={[{ id: "1", label: "@shorts", isDefault: true }]}
+        selectedAccountId="" channelHref="/channels/youtube"
+        disabledReason="발행할 영상이 아직 없습니다."
+        createHref="/studio?room=create&kind=video"
+        createActionLabel="생성실에서 영상 만들기"
+      />,
+    );
+    expect(container.querySelector('input[type="checkbox"]')).toBeDisabled();
+    expect(container.querySelector('[data-testid="publish-create-media-shorts"]')).toHaveTextContent("생성실에서 영상 만들기");
   });
 });
 
@@ -127,17 +98,17 @@ describe("헤더 마크업은 레포 안에 한 군데만 존재한다", () => {
     return out;
   }
 
-  it("발행 체크박스 + 계정 select 를 직접 그리는 파일은 PublishHeaderControls 하나뿐이다", () => {
+  it("발행 체크박스 + 계정 제어를 직접 그리는 파일은 PublishHeaderControls 하나뿐이다", () => {
     const owners = walk(srcRoot).filter((file) => {
       const body = readFileSync(file, "utf8");
-      return body.includes("data-testid={`publish-account-select-") || body.includes('data-testid={`publish-connect-link-');
+      return body.includes("data-testid={`publish-account-label-") || body.includes('data-testid={`publish-connect-link-');
     });
     expect(owners.map((f) => f.slice(srcRoot.length + 1))).toEqual(["components/studio/PublishHeaderControls.tsx"]);
   });
 
-  it("고정 2행 컨테이너 클래스도 한 군데에만 있다", () => {
+  it("단일 계정행 컨테이너도 한 군데에만 있다", () => {
     const owners = walk(srcRoot).filter((file) =>
-      readFileSync(file, "utf8").includes('data-publish-header-row="toggle"'),
+      readFileSync(file, "utf8").includes('data-publish-header-row="primary"'),
     );
     expect(owners.map((f) => f.slice(srcRoot.length + 1))).toEqual(["components/studio/PublishHeaderControls.tsx"]);
   });

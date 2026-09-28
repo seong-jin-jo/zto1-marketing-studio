@@ -641,7 +641,11 @@ export default function StudioPage() {
   const [accountsLoaded, setAccountsLoaded] = useState(false);
   // 복원한 작업물의 선택 상태는 계정 조회와 별개다. 계정 조회가 느려도 본문과 선택 채널은
   // 먼저 복원해 보여 주고, 실제 발행 가능 대상만 조회 완료 뒤 따로 좁힌다.
-  const selectedTargets = selectedPublishTargets(includes);
+  // 저장된 선택 의도는 보존하되, 화면의 체크 수와 발행 버튼에는 지금 올릴 수 있는
+  // 채널만 포함한다. 초기 복원 중 잠깐 비어 있는 본문 때문에 includes 자체를 지우면
+  // 정상 본문이 들어온 뒤에도 사용자가 고른 채널이 돌아오지 않는 경쟁이 생긴다.
+  const selectedTargets = selectedPublishTargets(includes)
+    .filter((platform) => !publishGuard(platform).disabledReason);
   const usableAccounts = (platform: PreviewPlatform) => (accountsByPlatform[platform] || []).filter((account) => account.connectionState === "connected");
   const publishTargets = selectedTargets.filter((platform) => usableAccounts(platform).length > 0);
   // 다시 연결해야 올릴 수 있는 채널. Buffer 도 끊긴 채널을 목록 위로 올려 재연결을 먼저 시킨다.
@@ -656,9 +660,31 @@ export default function StudioPage() {
     if (requested !== storedRoom) setActiveRoom(requested);
   }, [search, setActiveRoom, storedRoom]);
 
+  const requestedEditKind = (() => {
+    const value = searchParams?.get("kind");
+    return value === "text" || value === "card" || value === "video" ? value : null;
+  })();
+
   const changeRoom = (room: StudioRoom) => {
     setActiveRoom(room);
-    window.history.replaceState(null, "", `/studio?room=${room}`);
+    const kindQuery = room === "edit" && editKind !== "audio" ? `&kind=${editKind}` : "";
+    window.history.replaceState(null, "", `/studio?room=${room}${kindQuery}`);
+    setShowWorks(false);
+  };
+
+  const changeEditKind = (nextKind: EditContentKind) => {
+    setEditKind(nextKind);
+    setEditFormat(defaultContentEditFormat(nextKind));
+    const kindQuery = nextKind === "audio" ? "" : `&kind=${nextKind}`;
+    window.history.replaceState(null, "", `/studio?room=edit${kindQuery}`);
+  };
+
+  const openCreateForEditKind = () => {
+    const nextKind: CreateKind = editKind === "audio" ? "text" : editKind;
+    setCreateBranch(nextKind === "video" ? "video" : "text_image");
+    setCreatePrimaryKind(nextKind);
+    setActiveRoom("create");
+    window.history.replaceState(null, "", `/studio?room=create&kind=${nextKind}`);
     setShowWorks(false);
   };
 
@@ -710,7 +736,9 @@ export default function StudioPage() {
             if (ok) {
               opts = (d.accounts ?? []).map((a: { id: string; display_name: string | null; username: string | null; is_default: boolean; connection_state?: string }) => ({
                 id: a.id,
-                label: a.display_name || (a.username ? `@${a.username}` : a.id.slice(0, 8)),
+                // 내부 UUID는 사용자에게 계정 이름이 아니다. 표시 이름·핸들이 모두
+                // 비어도 제공자 이름으로 설명하고, id는 요청에만 쓴다.
+                label: a.display_name || (a.username ? `@${a.username.replace(/^@/, "")}` : `${LABEL[p]} 연결 계정`),
                 displayName: a.display_name || undefined,
                 username: a.username || undefined,
                 is_default: a.is_default,
@@ -819,6 +847,24 @@ export default function StudioPage() {
     } catch { /* noop */ }
     setHydratedWorkspaceId(workspaceId);
   }, [activeWorkspace?.id]);
+  // user-flow.md의 딥링크 계약. 로컬 초안 복원이 먼저 실행돼도 URL에 명시된 형식이
+  // 마지막 선택권을 가진다. 종전에는 항상 저장된 카드 형식이 이 값을 덮어
+  // /studio?room=edit&kind=video 에서도 카드 화면이 열렸다.
+  useEffect(() => {
+    if (activeRoom !== "edit" || !requestedEditKind) return;
+    if (editKind !== requestedEditKind) {
+      setEditKind(requestedEditKind);
+      setEditFormat(defaultContentEditFormat(requestedEditKind));
+    }
+  }, [activeRoom, editKind, hydratedWorkspaceId, requestedEditKind]);
+  // 발행실의 미디어 누락 복구 행동은 "영상 만들기"·"카드 만들기"라고 약속한다.
+  // URL만 create로 바꾸고 kind를 소비하지 않으면 직전 생성 종류가 남아 그 약속과 다른
+  // 생성기가 열린다. 생성실 딥링크도 편집실과 같은 kind를 실제 선택 상태로 반영한다.
+  useEffect(() => {
+    if (activeRoom !== "create" || !requestedEditKind) return;
+    setCreateBranch(requestedEditKind === "video" ? "video" : "text_image");
+    setCreatePrimaryKind(requestedEditKind);
+  }, [activeRoom, requestedEditKind]);
   useEffect(() => {
     const workspaceId = activeWorkspace?.id;
     if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
@@ -1674,6 +1720,30 @@ export default function StudioPage() {
     };
   }
 
+  function publishGuard(platform: PreviewPlatform): {
+    disabledReason?: string;
+    createHref?: string;
+    createActionLabel?: string;
+  } {
+    if (isVideo(platform) && !(vid?.file || vid?.url)) {
+      return {
+        disabledReason: "발행할 영상이 아직 없습니다.",
+        createHref: "/studio?room=create&kind=video",
+        createActionLabel: "생성실에서 영상 만들기",
+      };
+    }
+    if (platform === "instagram" && publishDeck.length === 0) {
+      return {
+        disabledReason: "발행할 카드뉴스가 아직 없습니다.",
+        createHref: "/studio?room=create&kind=card",
+        createActionLabel: "생성실에서 카드 만들기",
+      };
+    }
+    const blocking = validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0];
+    if (blocking) return { disabledReason: blocking.message };
+    return {};
+  }
+
   function publishText(p: PreviewPlatform): string {
     return buildPlatformPublishText(p, platformPublishInput(p));
   }
@@ -2270,6 +2340,11 @@ export default function StudioPage() {
     videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setSelectedCandidate(candidate);
+    // 새 구조 초안은 새 작업물이다. 본문만 교체하고 이전 작업물의 해시태그를 남기면
+    // 모든 채널에 무관한 태그가 따라가고, X 글자수 한도까지 그 태그 때문에 부풀어 오른다.
+    // 후보를 고르는 순간 기존 발행 메타에서 해시태그만 명시적으로 끊는다. 새 본문이
+    // 실제 태그를 제공하면 아래 text 동기화 효과가 새 값으로 다시 채운다.
+    setHashtags({});
     /*
       ★rationale 은 **고객에게 보여 줄 글이 아니다.** "이 구조를 왜 골랐는가" 를 우리가
       우리에게 설명하는 내부 메모다. 예: "결과(사례)를 먼저 보여줘서 신뢰를 쌓고, 그 사례가
@@ -2364,11 +2439,12 @@ export default function StudioPage() {
   // 눌리지" 상태로 남았다. 발행 단추 옆에 계속 보이는 자리를 둬 어느 채널이 왜 막혔는지와
   // 바로 고치는 단추를 붙인다.
   const publishBlockedEntries = partitionBlockedPublishTargets(
-    publishTargets,
+    ALL.filter((platform) => usableAccounts(platform).length > 0),
     (platform) => validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0],
   ).blocked;
   const bulkTargets = ALL.filter((platform) => PUBLISH_SUPPORTED.has(platform)) as BulkPlatform[];
-  const connectedTargets = bulkTargets.filter((platform) => (accountsByPlatform[platform] || []).length > 0);
+  const connectedTargets = bulkTargets.filter((platform) =>
+    (accountsByPlatform[platform] || []).length > 0 && !publishGuard(platform).disabledReason);
   const previewTargets = ALL as BulkPlatform[];
 
   function selectAllChannels() {
@@ -2386,6 +2462,8 @@ export default function StudioPage() {
   }
   function keepOnlyChannel(platform: BulkPlatform) {
     if (!(accountsByPlatform[platform] || []).length) { showToast(`${LABEL[platform]} 계정이 아직 연결되지 않았습니다`, "error"); return; }
+    const guard = publishGuard(platform as PreviewPlatform);
+    if (guard.disabledReason) { showToast(guard.disabledReason, "error"); return; }
     setIncludes((current) => ({ ...current, ...Object.fromEntries(bulkTargets.map((p) => [p, p === platform])) }));
     showToast(`${LABEL[platform]} 한 곳만 남겼습니다`, "success");
   }
@@ -2666,6 +2744,7 @@ export default function StudioPage() {
         topic={idea}
         contentBranch={createBranch}
         onContentBranchChange={setCreateBranch}
+        requestedPrimaryKind={requestedEditKind}
         onPrimaryKindChange={setCreatePrimaryKind}
         onTopicChange={setIdea}
         onOpenLearning={() => setShowWizard(true)}
@@ -2844,10 +2923,7 @@ export default function StudioPage() {
         lines={resolvedEditLines}
         onLinesChange={syncEditLines}
         kind={editKind}
-        onKindChange={(nextKind) => {
-          setEditKind(nextKind);
-          setEditFormat(defaultContentEditFormat(nextKind));
-        }}
+        onKindChange={changeEditKind}
         initialFormat={editFormat}
         onFormatChange={setEditFormat}
         previewReady={editKind === "video" ? Boolean(vid?.file) : editKind === "card" ? Boolean(img?.file) : false}
@@ -2860,7 +2936,7 @@ export default function StudioPage() {
         onCardDeckChange={onCardDeckChange}
         videoEdit={videoEdit}
         onVideoEditChange={onVideoEditChange}
-        onOpenCreate={() => changeRoom("create")}
+        onOpenCreate={openCreateForEditKind}
         onOpenPublish={moveToPublish}
         lastSavedAt={editSavedAt}
         moveBusy={moveToPublishBusy}
@@ -3074,6 +3150,10 @@ export default function StudioPage() {
                   <div className="grid gap-stack-section md:grid-cols-2 xl:grid-cols-3">
                     {visiblePlatforms.map((platform) => (
                   <div key={platform} data-room-preview={platform} className="flex min-w-0 flex-col rounded-surface border border-border bg-surface p-stack">
+                    {(() => {
+                      const guard = publishGuard(platform);
+                      const accountUnavailable = Boolean(accountLoadPending[platform]) || (accountsByPlatform[platform] || []).length === 0;
+                      return (
                     <PlatformPreview
                       platform={platform}
                       text={text || {}}
@@ -3089,27 +3169,31 @@ export default function StudioPage() {
                           2026-09-23 실수 원장 count:9 봉합: 이 마크업은 측정 하네스
                           (qa-alignment-harness)와 손으로 두 번 베껴 유지되다 드리프트로
                           "delta 0px 수렴" 거짓 보고를 다섯 라운드 냈다. 이제 화면과 하네스가
-                          같은 PublishHeaderControls 를 렌더한다. 고정 2행 구조(1행 발행/대문 ·
-                          2행 계정)와 슬롯 고정은 그 컴포넌트가 단독으로 책임진다.
+                          같은 PublishHeaderControls 를 렌더한다. 한 줄 구조(발행 · 계정 ·
+                          계정 관리 · 영상 표지 시점)는 그 컴포넌트가 단독으로 책임진다.
                         */
                         <PublishHeaderControls
                           platform={platform}
                           label={LABEL[platform]}
                           publishSupported={PUBLISH_SUPPORTED.has(platform)}
                           accountSelectable={ACCOUNT_SELECTABLE.has(platform)}
-                          checked={Boolean(includes[platform])}
-                          checkboxDisabled={Boolean(accountLoadPending[platform]) || (accountsByPlatform[platform] || []).length === 0}
+                          checked={Boolean(includes[platform]) && !guard.disabledReason}
+                          checkboxDisabled={accountUnavailable || Boolean(guard.disabledReason)}
                           onCheckedChange={(next) => setIncludes((current) => ({ ...current, [platform]: next }))}
                           coverSeconds={coverSeconds[platform] ?? DEFAULT_COVER_SECONDS}
                           onCoverSecondsChange={(next) => setCoverSeconds((current) => ({ ...current, [platform]: next }))}
                           accountsLoading={Boolean(accountLoadPending[platform])}
                           accounts={(accountsByPlatform[platform] || []).map((account) => ({ id: account.id, label: account.label, isDefault: Boolean(account.is_default) }))}
                           selectedAccountId={selectedAccounts[platform] ?? ""}
-                          onSelectedAccountChange={(next) => setSelectedAccounts((current) => ({ ...current, [platform]: next }))}
                           channelHref={channelHref(platform)}
+                          disabledReason={guard.disabledReason}
+                          createHref={guard.createHref}
+                          createActionLabel={guard.createActionLabel}
                         />
                       }
                     />
+                      );
+                    })()}
                   </div>
                     ))}
                   </div>

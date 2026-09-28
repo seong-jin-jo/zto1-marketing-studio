@@ -1,0 +1,170 @@
+{
+  "observations": [
+    {
+      "screen": "edit-card",
+      "width": 1440,
+      "height": 900,
+      "geometry": {
+        "strip": {
+          "left": 281,
+          "right": 393,
+          "top": 454,
+          "bottom": 1298,
+          "width": 112
+        },
+        "stage": {
+          "left": 500,
+          "right": 1020,
+          "top": 523,
+          "bottom": 1173,
+          "width": 520
+        }
+      },
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "inputCount": 3
+    },
+    {
+      "screen": "edit-video-empty",
+      "width": 1440,
+      "height": 900,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "deepLinkKind": "video"
+    },
+    {
+      "screen": "publish-cards",
+      "width": 1440,
+      "height": 900,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "xChecked": false,
+      "missingMediaDisabled": 3,
+      "accountSelectCount": 0
+    },
+    {
+      "screen": "edit-card",
+      "width": 1024,
+      "height": 820,
+      "geometry": {
+        "strip": {
+          "left": 113,
+          "right": 225,
+          "top": 454,
+          "bottom": 1237.109375,
+          "width": 112
+        },
+        "stage": {
+          "left": 254,
+          "right": 682,
+          "top": 523,
+          "bottom": 1058,
+          "width": 428
+        }
+      },
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "inputCount": 3
+    },
+    {
+      "screen": "edit-video-empty",
+      "width": 1024,
+      "height": 820,
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "deepLinkKind": "video"
+    },
+    {
+      "screen": "publish-cards",
+      "width": 1024,
+      "height": 820,
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "xChecked": false,
+      "missingMediaDisabled": 3,
+      "accountSelectCount": 0
+    },
+    {
+      "screen": "edit-card",
+      "width": 390,
+      "height": 844,
+      "geometry": {
+        "strip": {
+          "left": 57,
+          "right": 333,
+          "top": 641,
+          "bottom": 937.203125,
+          "width": 276
+        },
+        "stage": {
+          "left": 70,
+          "right": 320,
+          "top": 1074.203125,
+          "bottom": 1386.703125,
+          "width": 250
+        }
+      },
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "inputCount": 3
+    },
+    {
+      "screen": "edit-video-empty",
+      "width": 390,
+      "height": 844,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "deepLinkKind": "video"
+    },
+    {
+      "screen": "publish-cards",
+      "width": 390,
+      "height": 844,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "xChecked": false,
+      "missingMediaDisabled": 3,
+      "accountSelectCount": 0
+    }
+  ],
+  "consoleErrorCount": 0,
+  "outputDir": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928",
+  "videoReferenceNote": "v70 영상 빈 상태 clean-frame은 1440만 있어 1024·390 대조에도 1440 원본을 사용",
+  "publishReferenceNote": "v70 발행실 clean-frame 부재로 최신 기존 clean-frame인 v67 normal을 비교 원본으로 사용"
+}

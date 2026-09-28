@@ -30,6 +30,80 @@
 .videoDocumentWorkbench {
   display: block;
 }
+
+.plainCardWorkbench {
+  display: block;
+  padding: var(--pad-inset);
+}
+
+/* design-spec-editroom-v70.md §3.1: 112px 스트립 + 남은 폭의 520px 카드 무대. */
+.plainCardShell {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: var(--pad-inset);
+}
+
+.plainCardStrip {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--stack-tight);
+}
+
+.plainCardThumb {
+  position: relative;
+  display: grid;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  align-content: end;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface-2);
+  padding: var(--stack-tight);
+  text-align: left;
+}
+
+.plainCardThumb[data-active="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.plainCardThumb:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.plainCardThumbMedia {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.plainCardThumbLabel {
+  position: relative;
+  z-index: 1;
+  border-radius: var(--shape-chip);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  padding: var(--space-micro);
+  color: var(--text);
+  font-size: var(--font-caption-size);
+  line-height: var(--font-caption-leading);
+}
+
+.plainCardStage {
+  min-width: 0;
+}
+
+.plainCardScript {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding-top: var(--pad-inset);
+}
 .textDocumentCanvas {
   min-width: 0;
   overflow-y: auto;
@@ -205,6 +279,21 @@
 }
 
 @media (max-width: 30rem) {
+  .plainCardShell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .plainCardStrip {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: var(--stack-tight);
+  }
+
+  .plainCardThumb {
+    width: 7rem;
+    flex: 0 0 7rem;
+  }
+
   .textDocumentCanvas {
     padding-inline: var(--pad-inset);
   }

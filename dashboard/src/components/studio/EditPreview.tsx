@@ -109,6 +109,7 @@ export function EditPreview({
   onCardTextPositionsChange,
   aspectRatio,
   onAspectRatioChange,
+  stageSize = "default",
 }: {
   kind: EditContentKind;
   /** 화면에 남아 있는 대사만 넘긴다 */
@@ -150,6 +151,8 @@ export function EditPreview({
   onCardTextPositionsChange?: (positions: CardTextPosition[]) => void;
   aspectRatio?: string;
   onAspectRatioChange?: (aspectRatio: string) => void;
+  /** v70 카드 편집실은 520px 무대를 쓴다. 다른 레거시 미리보기 폭은 그대로 둔다. */
+  stageSize?: "default" | "card-v70";
 }) {
   const specs = useMemo(() => PREVIEW_SPECS.filter((spec) => spec.kinds.includes(kind)), [kind]);
   const matchingSpec = specs.find((one) => one.ratio.replaceAll(" ", "").replace("/", ":") === aspectRatio);
@@ -183,7 +186,7 @@ export function EditPreview({
 
       <div className="grid place-items-center rounded-surface border border-border bg-surface-2 p-stack">
         <div
-          className={`relative w-full max-w-sm overflow-hidden rounded-control bg-accent-soft ${RATIO_CLASS[spec.ratio]}`}
+          className={`relative w-full overflow-hidden rounded-control bg-accent-soft ${stageSize === "card-v70" ? styles.cardStageFrame : "max-w-sm"} ${RATIO_CLASS[spec.ratio]}`}
           data-edit-preview-frame={spec.ratio}
           data-card-canvas={kind === "card" ? "true" : undefined}
           onPointerUp={(event) => {

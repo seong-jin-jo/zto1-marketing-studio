@@ -289,9 +289,13 @@ describe("Studio publish result integrity", () => {
     await waitFor(() => {
       expect(screen.getByRole("checkbox", { name: "Threads 발행" })).toBeEnabled();
       expect(screen.getByRole("checkbox", { name: "X 발행" })).toBeEnabled();
-      expect(screen.getByRole("checkbox", { name: "Instagram 발행" })).toBeEnabled();
+      expect(screen.getByRole("checkbox", { name: "Instagram 발행" })).toBeDisabled();
     });
-    expect(screen.getByRole("button", { name: "선택한 3곳에 지금 발행" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "생성실에서 카드 만들기" })).toHaveAttribute(
+      "href",
+      "/studio?room=create&kind=card",
+    );
+    expect(screen.getByRole("button", { name: "선택한 2곳에 지금 발행" })).toBeInTheDocument();
   });
 
   it("FE-V63-RETURN-02 거절: URL의 큐 작업물이 없으면 빈 작업물을 발행 가능 상태로 만들지 않는다", async () => {
@@ -406,7 +410,7 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    const publishButton = await findEnabledButton("선택한 3곳에 지금 발행");
+    const publishButton = await findEnabledButton("선택한 2곳에 지금 발행");
     // 2026-09-08 개정: 영상 채널(쇼츠·릴스·틱톡)은 발행 기능이 이미 있었는데 발행실이
     // 영상 발행 경로를 부르지 않아 "미지원" 으로 닫혀 있었다(회장 "왜 영상쪽은 다 미지원
     // 이라고 뜸"). 이제 발행실이 그 경로를 부르므로 잠기지 않는다.
@@ -419,12 +423,12 @@ describe("Studio publish result integrity", () => {
 
     fireEvent.click(publishButton);
     await waitFor(() => {
-      expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(3);
+      expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(2);
     });
     expect(mocks.apiPost.mock.calls
       .filter(([path]) => path === "/api/publish")
       .map(([, body]) => (body as { platform: string }).platform))
-      .toEqual(["threads", "x", "instagram"]);
+      .toEqual(["threads", "x"]);
     expect(mocks.apiPost.mock.calls
       .filter(([path]) => path === "/api/publish")
       .every(([, body]) => JSON.stringify((body as { edit_format?: unknown }).edit_format) === JSON.stringify({
@@ -598,7 +602,7 @@ describe("Studio publish result integrity", () => {
     expect(screen.getByRole("complementary", { name: "발행 담당 대화창" })).toBeInTheDocument();
   });
 
-  it("PUB-DRAFT-UI-01 정상: 플랫폼 필드와 선택 계정을 임시 저장하고 같은 초안에서 복원한다", async () => {
+  it("PUB-DRAFT-UI-01 정상: 플랫폼 필드를 임시 저장하고 계정은 한 줄 표시·관리 링크로만 다룬다", async () => {
     restoreStudio(["threads", "instagram"]);
     mocks.apiPost.mockResolvedValue({ id: "draft-v67" });
 
@@ -607,7 +611,9 @@ describe("Studio publish result integrity", () => {
     fireEvent.change(screen.getByLabelText("instagram 캡션"), { target: { value: "채널별 캡션" } });
     fireEvent.change(screen.getByLabelText("instagram 해시태그"), { target: { value: "#하나 #둘" } });
     fireEvent.change(screen.getByLabelText("threads 주제 태그"), { target: { value: "운영팁" } });
-    fireEvent.change(screen.getByTestId("publish-account-select-instagram"), { target: { value: "instagram-account" } });
+    expect(screen.queryByTestId("publish-account-select-instagram")).not.toBeInTheDocument();
+    expect(screen.getByTestId("publish-account-label-instagram")).toHaveAttribute("title", expect.stringMatching(/instagram/i));
+    expect(screen.getByTestId("publish-account-manage-instagram")).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button", { name: "임시 저장하기" })[0]);
 
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
@@ -616,7 +622,7 @@ describe("Studio publish result integrity", () => {
       captions: expect.objectContaining({ instagram: "채널별 캡션" }),
       hashtags: expect.objectContaining({ instagram: "#하나 #둘" }),
       topicTags: expect.objectContaining({ threads: "운영팁" }),
-      selectedAccounts: expect.objectContaining({ instagram: "instagram-account" }),
+      selectedAccounts: {},
     })));
   });
 

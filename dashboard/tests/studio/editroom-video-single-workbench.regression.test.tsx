@@ -20,7 +20,7 @@
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
@@ -93,8 +93,8 @@ describe("과업 A: 영상 탭 편집 작업대는 한 벌만 뜬다", () => {
   });
 });
 
-describe("과업 C: 말풍선 덱이 아닌 카드뉴스는 왜 안 보이는지 말한다", () => {
-  it("cardDeck이 chat_bubble이 아니면(=undefined) 조용히 비지 않고 안내와 생성실 이동 경로를 보여준다", () => {
+describe("과업 C: 일반 카드 작업물도 v70 카드 편집 셸에서 연다", () => {
+  it("cardDeck이 chat_bubble이 아니면 일반 카드 스트립·무대·문구 입력을 보여준다", () => {
     const onOpenCreate = vi.fn();
     render(
       <EditRoom
@@ -105,11 +105,10 @@ describe("과업 C: 말풍선 덱이 아닌 카드뉴스는 왜 안 보이는지
         onOpenCreate={onOpenCreate}
       />,
     );
-    const note = document.querySelector("[data-card-deck-missing-note]");
-    expect(note).toBeTruthy();
-    expect(note!.textContent).toContain("카톡 말풍선 카드뉴스 9장");
-    // 생성이 지금 실패한다고 단정하지 않는다(로컬·운영 상태가 다를 수 있음).
-    expect(note!.textContent).not.toMatch(/실패|에러|오류|500/);
+    expect(document.querySelector("[data-plain-card-shell]")).toBeTruthy();
+    expect(document.querySelectorAll("[data-card-thumbnail]")).toHaveLength(1);
+    expect(screen.getByRole("textbox", { name: "문구 1" })).toHaveValue("카드 한 장");
+    expect(document.querySelector("[data-card-deck-missing-note]")).toBeNull();
   });
 
   it("chat_bubble 덱이 있으면 안내 대신 말풍선 편집(CardDeckPanel)이 뜨고 안내문은 없다", () => {
