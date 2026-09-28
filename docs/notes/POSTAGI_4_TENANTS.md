@@ -95,4 +95,13 @@ WSL2 런너에서 충분 (16GB+ 권장).
 - **포트 충돌** — 기본 인스턴스(34560)와 겹치지 않게 34561~ 사용
 - **영속 경로 오류** — Linux에서는 gateway의 `node` 사용자와 같은 UID 1000 계정으로 bootstrap·배포를 실행하고, config는 0700·data는 0750을 유지. 대시보드는 UID 1000으로 실행하며 Docker 소켓 GID는 배포가 자동 주입한다.
 
-기존 checkout 상대 마운트에서 전환하는 첫 배포는 tenant2·3·4 컨테이너가 아직 실행 중일 때 `bash migrate-postagi-persist-mounts.sh`를 UID 1000 운영 계정으로 실행한다. 이 도구는 컨테이너를 pause해 쓰기를 동결하고, 살아 있는 삭제 bind mount에서 최신 config/data를 회수한 뒤 영속 `.env.tenantN`과 검증 표식을 만든다. 스냅샷이 끝나면 unpause 후 즉시 정지하며, 실패하면 자동 unpause한다. 이미 컨테이너가 멈췄다면 삭제된 마운트는 자동 회수하지 않고 기존 영속 백업 복원을 요구한다. 성공 전에는 기존 영속 경로를 교체하지 않으며, 이전 영속 경로는 백업 폴더로 옮긴다. 이 절차 없이 배포하면 워크플로가 데이터 손실을 막기 위해 실패한다.
+기존 checkout 상대 마운트에서 전환하는 첫 배포는 tenant2·3·4 컨테이너가 아직 실행 중일 때 `bash migrate-postagi-persist-mounts.sh`를 UID 1000 운영 계정으로 실행한다. 도구는 아래 phase를 `${HOME}/openclaw-persist/.mount-v2-pending`에 원자적으로 기록한다. 어느 단계에서 끊겨도 원본 컨테이너를 직접 시작하지 말고 같은 명령을 다시 실행한다. `--resume-pending`은 호환 별칭이며 일반 재실행도 journal을 감지해 자동 재개한다.
+
+| phase | 보존 상태 | 재실행 동작 |
+|---|---|---|
+| `holders-ready` | 여섯 mount holder가 삭제된 bind mount를 잡고 있고 원본 writer는 pause 또는 stop 진행 상태 | writer 정지를 멱등 실행하고 archive를 다시 생성한다. archive가 비거나 손상되면 검증되지 않은 holder를 제거하지 않는다. |
+| `archives-ready` | config/data 최종 archive의 크기, tar 구조, 추출 내용, gateway/dashboard 일치를 검증했다 | holder에 `USR2` release를 보내고 여섯 target을 임시 디렉터리에 staging한다. |
+| `targets-staged` | 여섯 target의 완성본이 영속 루트의 숨김 임시 디렉터리에 있고 기존 target 백업 경로가 journal에 기록됐다 | 이미 교체된 target은 내용 비교로 건너뛰고 나머지만 rename한다. 각 rename 뒤 journal을 원자 갱신한다. |
+| `pending-health` | 여섯 target과 `.env.tenantN` 설치가 끝났고 ready 승격 전이다 | 기존 이미지로 강제 재생성하고 health를 두 번까지 확인한 뒤 `.mount-v2-ready`를 공개한다. |
+
+`holders-ready` 이후 오류가 나면 원본 컨테이너를 절대 재시작하지 않는다. 검증되지 않은 holder가 남아 있으면 먼저 같은 migration 명령으로 archive 재시도를 끝낸다. `archives-ready` 이후에는 검증된 recovery archive가 재개의 정본이므로 원본 컨테이너가 이미 정지됐어도 재개할 수 있다. `.mount-v2-ready`가 생기기 전 배포 워크플로를 실행하지 않는다. 성공 전 기존 target은 `backup-mount-v1-*`에 한 번만 보존하며, 새 target은 별도 디렉터리에서 전부 복사·대조한 뒤 rename한다.

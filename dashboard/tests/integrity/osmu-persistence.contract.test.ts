@@ -166,7 +166,11 @@ case "$1" in
     format=""; target=""
     if [ "$2" = "--format" ]; then format="$3"; target="$4"; else target="$2"; fi
     case "$format" in
-      *State.Running*) [ -f "$state/$target.stopped" ] && echo false || echo true ;;
+      *State.Running*)
+        case "$target" in
+          openclaw-mount-holder-*) [ -f "$state/$target.released" ] && echo false || echo true ;;
+          *) [ -f "$state/$target.stopped" ] && echo false || echo true ;;
+        esac ;;
       *State.Paused*) echo true ;;
       *State.ExitCode*) echo 0 ;;
       *State.Pid*) echo 4242 ;;
@@ -195,15 +199,16 @@ case "$1" in
     printf '%s\\n' "$control" > "$state/$name.control"
     echo fake-holder ;;
   kill)
-    holder="$4"
-    control="$(cat "$state/$holder.control")"
+    signal="$3"; holder="$4"; control="$(cat "$state/$holder.control")"
     fixture="$(mktemp -d "$state/holder.XXXXXX")"
     mkdir -p "$fixture/config" "$fixture/data"
     printf 'snapshot\n' > "$fixture/config/state.json"
     printf 'snapshot\n' > "$fixture/data/state.json"
     tar -cf "$control/config.tar" -C "$fixture/config" .
     tar -cf "$control/data.tar" -C "$fixture/data" .
-    touch "$state/$holder.stopped" ;;
+    printf ready > "$control/archive-ready"
+    [ "$signal" != "USR2" ] || touch "$state/$holder.released" ;;
+  wait) exit 0 ;;
   *) exit 1 ;;
 esac
 `, { mode: 0o755 });

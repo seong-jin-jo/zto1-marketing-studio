@@ -5,9 +5,9 @@ name: CI (dashboard)
 on:
   push:
     branches: [main]
-    paths: ['dashboard/**', '.github/workflows/ci.yml']
+    paths: ['dashboard/**', '.github/workflows/ci.yml', 'migrate-postagi-persist-mounts.sh', 'scripts/verify-openclaw-mount-holder.sh']
   pull_request:
-    paths: ['dashboard/**', '.github/workflows/ci.yml']
+    paths: ['dashboard/**', '.github/workflows/ci.yml', 'migrate-postagi-persist-mounts.sh', 'scripts/verify-openclaw-mount-holder.sh']
 
 # 같은 ref의 이전 CI는 취소. (deploy 워크플로는 건드리지 않음 — 단일 marketing_runner가 잡을 자연 직렬화)
 concurrency:
@@ -109,3 +109,11 @@ jobs:
         run: |
           npx playwright-core install --with-deps chromium
           npm run e2e:bubble-editor:chromium
+
+  holder-verifier:
+    name: OpenClaw mount holder 중단·재시도 검증
+    runs-on: [self-hosted, marketing_runner]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: timeout 180 bash scripts/verify-openclaw-mount-holder.sh
