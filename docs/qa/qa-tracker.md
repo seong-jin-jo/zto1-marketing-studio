@@ -1,10 +1,11 @@
-## 2026-09-28 발행실 7채널 계정 행 정합 반려 ❌ NG
+## 2026-09-28 발행실 7채널 계정 행 정합 반려 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| STUDIO-V70-PUBLISH-ACCOUNT-01 | 7개 채널 모두 `[발행][@핸들][계정 관리]`를 같은 첫 행에 표시하고 긴 핸들은 말줄임과 title로 보존 | V70-PUBLISH-ACCOUNT-ROW-01 | ❌ NG | 기존 1440 캡처에서 Threads·Facebook·Shorts·Reels의 계정 칩과 관리 링크가 2~3행으로 갈렸고, 칩 마지막 글자가 반쪽으로 잘렸다. |
-| STUDIO-V70-PUBLISH-COVER-02 | Shorts·Reels·TikTok 표지 제어를 계정 행 바로 아래 같은 위치·모양으로 표시 | V70-PUBLISH-COVER-ROW-02 | ❌ NG | 기존 캡처에서 Shorts는 계정 관리 옆 `표지 자동`, Reels는 다음 행 숫자 입력, TikTok은 체크 옆 계정 칩 뒤 다음 행에 계정 관리와 표지 입력이 갈렸다. |
-| STUDIO-V70-PUBLISH-GEOMETRY-03 | 계정 행의 카드 기준 top 좌표 편차 ≤2px, 칩은 폭을 넘기지 않거나 ellipsis 적용 | V70-PUBLISH-GEOMETRY-03 | ❌ NG | 기존 E2E는 각 행 자식의 겹침만 검사해 카드 간 상대 top과 실제 텍스트 클리핑을 측정하지 않았다. |
+| STUDIO-V70-PUBLISH-ACCOUNT-01 | 7개 채널 모두 `[발행][@핸들][계정 관리]`를 같은 첫 행에 표시하고 긴 핸들은 말줄임과 title로 보존 | V70-PUBLISH-ACCOUNT-ROW-01 | ✅ 로컬 PASS | 공용 헤더를 3열 grid로 고정했다. 1440에서 긴 7개 핸들은 `text-overflow: ellipsis`, `overflow: hidden`, `white-space: nowrap`이며 title은 전체 핸들과 일치했다. 390에서는 칩만 가변 폭으로 줄고 발행·계정 관리 순서는 유지됐다. |
+| STUDIO-V70-PUBLISH-COVER-02 | Shorts·Reels·TikTok 표지 제어를 계정 행 바로 아래 같은 위치·모양으로 표시 | V70-PUBLISH-COVER-ROW-02 | ✅ 로컬 PASS | 영상 3종 모두 첫 행 바로 아래 공용 `data-publish-header-row=cover`를 사용한다. Shorts는 같은 패널에 `자동`, Reels·TikTok은 같은 위치에 초 입력을 표시한다. 1440·390 실화면 캡처를 직접 확인했다. |
+| STUDIO-V70-PUBLISH-GEOMETRY-03 | 계정 행의 카드 기준 top 좌표 편차 ≤2px, 칩은 폭을 넘기지 않거나 ellipsis 적용 | V70-PUBLISH-GEOMETRY-03 | ✅ 로컬 PASS | 수정 전 강화 E2E는 title 불일치와 긴 핸들 클리핑으로 실패했다. 수정 뒤 1440·1024·390 모두 7개 카드의 상대 top이 33px, 편차 0px이며 칩은 폭 안에 맞거나 ellipsis 계약을 만족했다. 영상 3종 표지 행 top 편차 0px, 높이 편차 ≤2px, 계정 행과 간격 편차 0px이다. 콘솔 오류 0이다. |
+| STUDIO-V70-PUBLISH-ACCOUNT-04 | 재연결이 필요한 계정만 있으면 발행 체크·전체 선택을 잠그고 발행 대상으로 세지 않음 | V70-PUBLISH-RECONNECT-01 | ✅ 로컬 PASS | `connection_state=reconnect` 계정만 응답하는 실제 `StudioPage` 회귀에서 Threads 체크는 비활성·해제, 전체 선택 2종은 비활성, 계정 핸들은 `@threads.paused`, 연결 채널 수는 0으로 표시됐다. |
 
 ## 2026-09-28 편집실 v70·발행실 캡처 직접 검수 반려 ❌ NG → ✅ 로컬 PASS
 

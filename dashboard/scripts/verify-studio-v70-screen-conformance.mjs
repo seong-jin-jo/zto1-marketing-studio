@@ -123,6 +123,39 @@ async function assertPublishAccountRows(room, viewportWidth) {
   return { delta, rows };
 }
 
+async function assertVideoCoverRows(room, viewportWidth) {
+  const platforms = ["shorts", "reels", "tiktok"];
+  const rows = await Promise.all(platforms.map(async (platform) => {
+    const card = room.locator(`[data-room-preview="${platform}"]`);
+    const primary = card.locator('[data-publish-header-row="primary"]');
+    const cover = card.locator('[data-publish-header-row="cover"]');
+    const [cardRect, primaryRect, coverRect] = await Promise.all([
+      card.boundingBox(),
+      primary.boundingBox(),
+      cover.boundingBox(),
+    ]);
+    if (!cardRect || !primaryRect || !coverRect) {
+      throw new Error(`${platform} 표지 행 좌표를 측정하지 못했습니다`);
+    }
+    const gap = coverRect.y - (primaryRect.y + primaryRect.height);
+    if (gap < 0) throw new Error(`${platform} 표지 행이 계정 행과 ${Math.abs(gap)}px 겹칩니다`);
+    await assertDirectChildrenDoNotOverlap(cover, `${platform} 표지행 ${viewportWidth}`);
+    return {
+      platform,
+      relativeTop: coverRect.y - cardRect.y,
+      height: coverRect.height,
+      gap,
+    };
+  }));
+  const topDelta = Math.max(...rows.map((row) => row.relativeTop)) - Math.min(...rows.map((row) => row.relativeTop));
+  const heightDelta = Math.max(...rows.map((row) => row.height)) - Math.min(...rows.map((row) => row.height));
+  const gapDelta = Math.max(...rows.map((row) => row.gap)) - Math.min(...rows.map((row) => row.gap));
+  if (topDelta > 2 || heightDelta > 2 || gapDelta > 2) {
+    throw new Error(`${viewportWidth} 영상 표지 행 정렬 편차: ${JSON.stringify({ topDelta, heightDelta, gapDelta, rows })}`);
+  }
+  return { topDelta, heightDelta, gapDelta, rows };
+}
+
 async function assertVisibleEditorControlsDoNotOverlap(locator, label) {
   const collision = await locator.evaluate((root) => {
     const candidates = Array.from(new Set(root.querySelectorAll([
@@ -337,6 +370,7 @@ async function capturePublish(viewport) {
     await assertDirectChildrenDoNotOverlap(row, `발행 계정행 ${viewport.width}`);
   }
   const accountRows = await assertPublishAccountRows(room, viewport.width);
+  const coverRows = await assertVideoCoverRows(room, viewport.width);
   const overflow = await assertNoOverflow(page, '[data-room="publish"]', `발행실 ${viewport.width}`);
   const xCard = room.locator('[data-room-preview="x"]');
   await xCard.evaluate((node) => {
@@ -352,7 +386,7 @@ async function capturePublish(viewport) {
   });
   const missingMediaScreenshot = path.join(outputDir, `publish-missing-media-${viewport.width}x${viewport.height}.png`);
   await page.screenshot({ path: missingMediaScreenshot });
-  observations.push({ screen: "publish-cards", ...viewport, overflow, accountRows, xChecked: false, missingMediaDisabled: 3, accountSelectCount: 0, missingMediaScreenshot });
+  observations.push({ screen: "publish-cards", ...viewport, overflow, accountRows, coverRows, xChecked: false, missingMediaDisabled: 3, accountSelectCount: 0, missingMediaScreenshot });
   return { screenshot, missingMediaScreenshot };
 }
 

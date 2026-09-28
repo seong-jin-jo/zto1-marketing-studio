@@ -64,6 +64,127 @@
         "scopeClient": 1168,
         "scopeScroll": 1168
       },
+      "accountRows": {
+        "delta": 0,
+        "rows": [
+          {
+            "platform": "threads",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 148,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@threads.official.full.handle",
+              "text": "@threads.official.full.handle"
+            }
+          },
+          {
+            "platform": "x",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 113,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@x.official.full.handle",
+              "text": "@x.official.full.handle"
+            }
+          },
+          {
+            "platform": "instagram",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 161,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@instagram.official.full.handle",
+              "text": "@instagram.official.full.handle"
+            }
+          },
+          {
+            "platform": "facebook",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 157,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@facebook.official.full.handle",
+              "text": "@facebook.official.full.handle"
+            }
+          },
+          {
+            "platform": "shorts",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 151,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@youtube.official.full.handle",
+              "text": "@youtube.official.full.handle"
+            }
+          },
+          {
+            "platform": "reels",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 161,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@instagram.official.full.handle",
+              "text": "@instagram.official.full.handle"
+            }
+          },
+          {
+            "platform": "tiktok",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 137,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@tiktok.official.full.handle",
+              "text": "@tiktok.official.full.handle"
+            }
+          }
+        ]
+      },
+      "coverRows": {
+        "topDelta": 0,
+        "heightDelta": 2,
+        "gapDelta": 0,
+        "rows": [
+          {
+            "platform": "shorts",
+            "relativeTop": 81,
+            "height": 44,
+            "gap": 4
+          },
+          {
+            "platform": "reels",
+            "relativeTop": 81,
+            "height": 46,
+            "gap": 4
+          },
+          {
+            "platform": "tiktok",
+            "relativeTop": 81,
+            "height": 46,
+            "gap": 4
+          }
+        ]
+      },
       "xChecked": false,
       "missingMediaDisabled": 3,
       "accountSelectCount": 0,
@@ -133,6 +254,127 @@
         "scopeClient": 920,
         "scopeScroll": 920
       },
+      "accountRows": {
+        "delta": 0,
+        "rows": [
+          {
+            "platform": "threads",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 148,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@threads.official.full.handle",
+              "text": "@threads.official.full.handle"
+            }
+          },
+          {
+            "platform": "x",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 119,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@x.official.full.handle",
+              "text": "@x.official.full.handle"
+            }
+          },
+          {
+            "platform": "instagram",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 161,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@instagram.official.full.handle",
+              "text": "@instagram.official.full.handle"
+            }
+          },
+          {
+            "platform": "facebook",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 157,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@facebook.official.full.handle",
+              "text": "@facebook.official.full.handle"
+            }
+          },
+          {
+            "platform": "shorts",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 151,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@youtube.official.full.handle",
+              "text": "@youtube.official.full.handle"
+            }
+          },
+          {
+            "platform": "reels",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 161,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@instagram.official.full.handle",
+              "text": "@instagram.official.full.handle"
+            }
+          },
+          {
+            "platform": "tiktok",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 137,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@tiktok.official.full.handle",
+              "text": "@tiktok.official.full.handle"
+            }
+          }
+        ]
+      },
+      "coverRows": {
+        "topDelta": 0,
+        "heightDelta": 2,
+        "gapDelta": 0,
+        "rows": [
+          {
+            "platform": "shorts",
+            "relativeTop": 81,
+            "height": 44,
+            "gap": 4
+          },
+          {
+            "platform": "reels",
+            "relativeTop": 81,
+            "height": 46,
+            "gap": 4
+          },
+          {
+            "platform": "tiktok",
+            "relativeTop": 81,
+            "height": 46,
+            "gap": 4
+          }
+        ]
+      },
       "xChecked": false,
       "missingMediaDisabled": 3,
       "accountSelectCount": 0,
@@ -201,6 +443,127 @@
         "documentScroll": 390,
         "scopeClient": 342,
         "scopeScroll": 342
+      },
+      "accountRows": {
+        "delta": 0,
+        "rows": [
+          {
+            "platform": "threads",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 148,
+              "scrollWidth": 148,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@threads.official.full.handle",
+              "text": "@threads.official.full.handle"
+            }
+          },
+          {
+            "platform": "x",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 185,
+              "scrollWidth": 185,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@x.official.full.handle",
+              "text": "@x.official.full.handle"
+            }
+          },
+          {
+            "platform": "instagram",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 161,
+              "scrollWidth": 161,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@instagram.official.full.handle",
+              "text": "@instagram.official.full.handle"
+            }
+          },
+          {
+            "platform": "facebook",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 157,
+              "scrollWidth": 157,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@facebook.official.full.handle",
+              "text": "@facebook.official.full.handle"
+            }
+          },
+          {
+            "platform": "shorts",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 151,
+              "scrollWidth": 151,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@youtube.official.full.handle",
+              "text": "@youtube.official.full.handle"
+            }
+          },
+          {
+            "platform": "reels",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 161,
+              "scrollWidth": 161,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@instagram.official.full.handle",
+              "text": "@instagram.official.full.handle"
+            }
+          },
+          {
+            "platform": "tiktok",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 149,
+              "scrollWidth": 149,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@tiktok.official.full.handle",
+              "text": "@tiktok.official.full.handle"
+            }
+          }
+        ]
+      },
+      "coverRows": {
+        "topDelta": 0,
+        "heightDelta": 2,
+        "gapDelta": 0,
+        "rows": [
+          {
+            "platform": "shorts",
+            "relativeTop": 81,
+            "height": 44,
+            "gap": 4
+          },
+          {
+            "platform": "reels",
+            "relativeTop": 81,
+            "height": 46,
+            "gap": 4
+          },
+          {
+            "platform": "tiktok",
+            "relativeTop": 81,
+            "height": 46,
+            "gap": 4
+          }
+        ]
       },
       "xChecked": false,
       "missingMediaDisabled": 3,

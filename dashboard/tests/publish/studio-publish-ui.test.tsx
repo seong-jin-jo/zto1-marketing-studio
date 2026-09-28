@@ -467,6 +467,28 @@ describe("Studio publish result integrity", () => {
     expect(mocks.apiPost).not.toHaveBeenCalledWith("/api/publish", expect.anything());
   });
 
+  it("STUDIO-V70-PUBLISH-ACCOUNT-04 거절: 재연결 계정만 있으면 체크와 전체 선택을 잠근다", async () => {
+    restoreStudio(["threads"]);
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const provider = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
+      const accounts = provider === "threads"
+        ? [{ id: "threads-reconnect", display_name: "Threads 운영 계정", username: "threads.paused", is_default: true, connection_state: "reconnect" }]
+        : [];
+      return Response.json({ accounts });
+    }));
+
+    render(<StudioPage />);
+
+    const checkbox = await screen.findByRole("checkbox", { name: "Threads 발행" });
+    await waitFor(() => expect(screen.getByTestId("account-state-threads")).toHaveTextContent("missing"));
+    expect(checkbox).toBeDisabled();
+    expect(checkbox).not.toBeChecked();
+    expect(screen.getByTestId("publish-account-label-threads")).toHaveTextContent("@threads.paused");
+    expect(screen.getByTestId("publish-select-all")).toBeDisabled();
+    expect(screen.getByTestId("publish-bulk-select-all")).toBeDisabled();
+    expect(screen.getByText("아직 연결된 채널이 없어 발행할 수 없습니다.", { exact: false })).toBeInTheDocument();
+  });
+
   it("FE3-PUBLISH-03 거절: 발행 이력은 발행실에 다시 노출하지 않는다", async () => {
     mocks.drafts = [{
       id: "draft-history",

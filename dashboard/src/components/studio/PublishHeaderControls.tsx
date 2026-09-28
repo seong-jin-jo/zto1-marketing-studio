@@ -19,7 +19,8 @@ import { DEFAULT_COVER_SECONDS, coverUnsupportedReason, supportsCoverTimestamp }
  * 것이 이 파일의 존재 이유 전부다.
  *
  * v70 운영 실측에서 계정 배지·select·미리보기 머리에 같은 값이 세 번 나왔다.
- * 계정 제어는 이 한 줄만 소유한다: [발행] [계정 전체 이름] [계정 관리].
+ * 계정 제어는 이 한 줄만 소유한다: [발행] [@핸들] [계정 관리].
+ * 영상 3종의 표지 제어는 그 바로 아래 공용 두 번째 행을 쓴다.
  */
 
 /** 화면이 쓰는 계정 한 줄. 목록 원본에서 필요한 것만 추린다. */
@@ -175,13 +176,13 @@ export function PublishHeaderControls({
               className="min-h-control-touch w-16 rounded-control border border-border bg-surface px-stack-tight text-caption text-text"
             />
           ) : (
-          <span
-            className="whitespace-nowrap text-caption text-subtle"
-            data-cover-note={platform}
-            title={coverReason || undefined}
-          >
-            자동
-          </span>
+            <span
+              className="whitespace-nowrap text-caption text-subtle"
+              data-cover-note={platform}
+              title={coverReason || undefined}
+            >
+              자동
+            </span>
           )}
         </div>
       ) : null}
@@ -189,13 +190,13 @@ export function PublishHeaderControls({
         <div className="flex min-w-0 flex-wrap items-center gap-stack-tight text-caption text-warning" data-publish-disabled-reason={platform}>
           <span>{disabledReason}</span>
           {createHref && createActionLabel ? (
-          <Link
-            href={createHref}
-            data-testid={`publish-create-media-${platform}`}
-            className="inline-flex min-h-control-touch items-center rounded-control border border-accent/40 bg-accent-soft px-stack-tight text-caption font-semibold text-accent hover:bg-surface"
-          >
-            {createActionLabel}
-          </Link>
+            <Link
+              href={createHref}
+              data-testid={`publish-create-media-${platform}`}
+              className="inline-flex min-h-control-touch items-center rounded-control border border-accent/40 bg-accent-soft px-stack-tight text-caption font-semibold text-accent hover:bg-surface"
+            >
+              {createActionLabel}
+            </Link>
           ) : null}
         </div>
       ) : null}

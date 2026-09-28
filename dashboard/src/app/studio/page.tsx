@@ -2404,7 +2404,7 @@ export default function StudioPage() {
     if (!PUBLISH_SUPPORTED.has(platform)) return { status: "unsupported" };
     if (accountLoadPending[platform]) return { status: "loading" };
     if (accountLoadErrors[platform]) return { status: "error" };
-    const accounts = accountsByPlatform[platform] || [];
+    const accounts = usableAccounts(platform);
     if (!accounts.length) return { status: "missing" };
     const selected = accounts.find((account) => account.id === selectedAccounts[platform])
       || accounts.find((account) => account.is_default)
@@ -2446,7 +2446,7 @@ export default function StudioPage() {
   ).blocked;
   const bulkTargets = ALL.filter((platform) => PUBLISH_SUPPORTED.has(platform)) as BulkPlatform[];
   const connectedTargets = bulkTargets.filter((platform) =>
-    (accountsByPlatform[platform] || []).length > 0 && !publishGuard(platform).disabledReason);
+    usableAccounts(platform).length > 0 && !publishGuard(platform).disabledReason);
   const previewTargets = ALL as BulkPlatform[];
 
   function selectAllChannels() {
@@ -2463,7 +2463,7 @@ export default function StudioPage() {
     showToast(`${LABEL[platform]}만 빼고 두었습니다`, "success");
   }
   function keepOnlyChannel(platform: BulkPlatform) {
-    if (!(accountsByPlatform[platform] || []).length) { showToast(`${LABEL[platform]} 계정이 아직 연결되지 않았습니다`, "error"); return; }
+    if (!usableAccounts(platform).length) { showToast(`${LABEL[platform]} 계정을 다시 연결해야 합니다`, "error"); return; }
     const guard = publishGuard(platform as PreviewPlatform);
     if (guard.disabledReason) { showToast(guard.disabledReason, "error"); return; }
     setIncludes((current) => ({ ...current, ...Object.fromEntries(bulkTargets.map((p) => [p, p === platform])) }));
@@ -3154,7 +3154,7 @@ export default function StudioPage() {
                   <div key={platform} data-room-preview={platform} className="flex min-w-0 flex-col rounded-surface border border-border bg-surface p-stack">
                     {(() => {
                       const guard = publishGuard(platform);
-                      const accountUnavailable = Boolean(accountLoadPending[platform]) || (accountsByPlatform[platform] || []).length === 0;
+                      const accountUnavailable = Boolean(accountLoadPending[platform]) || usableAccounts(platform).length === 0;
                       return (
                     <PlatformPreview
                       platform={platform}
@@ -3171,15 +3171,15 @@ export default function StudioPage() {
                           2026-09-23 실수 원장 count:9 봉합: 이 마크업은 측정 하네스
                           (qa-alignment-harness)와 손으로 두 번 베껴 유지되다 드리프트로
                           "delta 0px 수렴" 거짓 보고를 다섯 라운드 냈다. 이제 화면과 하네스가
-                          같은 PublishHeaderControls 를 렌더한다. 한 줄 구조(발행 · 계정 ·
-                          계정 관리 · 영상 표지 시점)는 그 컴포넌트가 단독으로 책임진다.
+                          같은 PublishHeaderControls 를 렌더한다. 첫 행(발행 · 계정 · 계정 관리)과
+                          영상 공용 둘째 행(표지 시점)은 그 컴포넌트가 단독으로 책임진다.
                         */
                         <PublishHeaderControls
                           platform={platform}
                           label={LABEL[platform]}
                           publishSupported={PUBLISH_SUPPORTED.has(platform)}
                           accountSelectable={ACCOUNT_SELECTABLE.has(platform)}
-                          checked={Boolean(includes[platform]) && !guard.disabledReason}
+                          checked={Boolean(includes[platform]) && !guard.disabledReason && !accountUnavailable}
                           checkboxDisabled={accountUnavailable || Boolean(guard.disabledReason)}
                           onCheckedChange={(next) => setIncludes((current) => ({ ...current, [platform]: next }))}
                           coverSeconds={coverSeconds[platform] ?? DEFAULT_COVER_SECONDS}

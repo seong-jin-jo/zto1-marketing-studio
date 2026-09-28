@@ -59,7 +59,9 @@ describe("미리보기 카드가 한 줄에서 시작한다(회귀 가드. 실�
     expect(shared).toContain('data-publish-header-row="primary"');
     expect(shared).toContain('data-testid={`publish-account-label-');
     expect(shared).not.toContain("<select");
-    expect(shared).toMatch(/max-w-40[\s\S]*truncate/);
+    expect(shared).toContain("grid-cols-[auto_minmax(0,1fr)_auto]");
+    expect(shared).toMatch(/data-testid=\{`publish-account-label-[\s\S]*truncate/);
+    expect(shared).not.toMatch(/data-publish-header-row="primary"[\s\S]{0,180}flex-wrap/);
     // 화면과 측정 하네스는 그 컴포넌트를 부르기만 한다(복제본 부활 차단).
     for (const [name, body] of [["page.tsx", page], ["AlignmentHarnessGrid.tsx", harness]] as const) {
       expect(body, `${name} 가 PublishHeaderControls 를 안 쓴다`).toContain("<PublishHeaderControls");
