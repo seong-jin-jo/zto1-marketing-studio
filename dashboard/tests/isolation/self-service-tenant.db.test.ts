@@ -152,5 +152,7 @@ describe("self-service Supabase users A/B — live PostgreSQL tenant boundary", 
       delete process.env.DATA_DIR;
       vi.resetModules();
     }
-  });
+  // tenant provision, RLS 읽기/쓰기, 정리까지 실제 PostgreSQL을 왕복한다. 전체 CI 병렬
+  // 실행에서 기본 5초를 넘겨도 계약 실패로 오인하지 않도록 명시적 DB 예산을 둔다.
+  }, 30_000);
 });

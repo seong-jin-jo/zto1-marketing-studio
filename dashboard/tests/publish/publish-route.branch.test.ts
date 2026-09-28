@@ -221,7 +221,9 @@ describe("/api/publish — 입력/인증 분기", () => {
     expect(body.issues).toEqual(expect.arrayContaining([expect.objectContaining({ field: "aspectRatio" })]));
     expect(H.getChannelCredCalls).toHaveLength(0);
     expect(H.inserts).toHaveLength(0);
-  });
+  // 이 파일의 첫 호출은 Route Handler 모듈을 동적으로 적재한다. 전체 스위트 병렬 부하로
+  // 기본 5초를 근소하게 넘겨 입력 거절 계약이 오판되지 않게 초기 적재 예산을 분리한다.
+  }, 15_000);
 
   it("PUB-LIMIT-API-01 거절: 플랫폼 하드 한도 초과는 자격 조회와 외부 발행 전에 422로 막는다", async () => {
     const { status, body } = await callPublish({

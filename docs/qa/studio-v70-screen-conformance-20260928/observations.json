@@ -248,11 +248,20 @@
       "missingMediaScreenshot": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928/publish-missing-media-1440x900.png"
     },
     {
+      "screen": "edit-card-stage-diff",
+      "width": 1440,
+      "height": 900,
+      "stageDiffScore": 0.03685504118807286,
+      "stageDiffThreshold": 0.36,
+      "reference": "dashboard/public/qa/alignment-card-1.jpg"
+    },
+    {
       "screen": "edit-bubble-stage-diff",
       "width": 1440,
       "height": 900,
       "stageDiffScore": 0.04509548671539622,
       "stageDiffThreshold": 0.36,
+      "gateMode": "report-only",
       "reference": "docs/design/clean-frames/osmu-v70-편집실-카드뉴스-편집중@1440x900.png"
     },
     {
@@ -503,11 +512,20 @@
       "missingMediaScreenshot": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928/publish-missing-media-1024x820.png"
     },
     {
+      "screen": "edit-card-stage-diff",
+      "width": 1024,
+      "height": 820,
+      "stageDiffScore": 0.03685861468847894,
+      "stageDiffThreshold": 0.36,
+      "reference": "dashboard/public/qa/alignment-card-1.jpg"
+    },
+    {
       "screen": "edit-bubble-stage-diff",
       "width": 1024,
       "height": 820,
       "stageDiffScore": 0.048380229725026105,
       "stageDiffThreshold": 0.36,
+      "gateMode": "report-only",
       "reference": "docs/design/clean-frames/osmu-v70-편집실-카드뉴스-편집중@1024x820.png"
     },
     {
@@ -620,6 +638,34 @@
         "scopeScroll": 342
       },
       "deepLinkKind": "video"
+    },
+    {
+      "screen": "edit-video-actual",
+      "width": 390,
+      "height": 844,
+      "geometry": {
+        "screen": {
+          "top": 16,
+          "bottom": 196,
+          "height": 180
+        },
+        "script": {
+          "top": 290,
+          "bottom": 1340,
+          "height": 1050
+        },
+        "timeline": {
+          "top": 1356,
+          "bottom": 1464,
+          "height": 108
+        }
+      },
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      }
     },
     {
       "screen": "publish-cards",
@@ -758,16 +804,25 @@
       "missingMediaScreenshot": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928/publish-missing-media-390x844.png"
     },
     {
+      "screen": "edit-card-stage-diff",
+      "width": 390,
+      "height": 844,
+      "stageDiffScore": 0.05951056967165565,
+      "stageDiffThreshold": 0.36,
+      "reference": "dashboard/public/qa/alignment-card-1.jpg"
+    },
+    {
       "screen": "edit-bubble-stage-diff",
       "width": 390,
       "height": 844,
       "stageDiffScore": 0.17146406775728043,
       "stageDiffThreshold": 0.36,
+      "gateMode": "report-only",
       "reference": "docs/design/clean-frames/osmu-v70-편집실-카드뉴스-편집중@390x844.png"
     }
   ],
   "consoleErrorCount": 0,
   "outputDir": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928",
   "referenceComparison": true,
-  "imageDiffNote": "화면별 v70 카드뉴스 clean-frame에서 편집 카드 면만 잘라 비교해 바깥 셸 차이를 제외"
+  "imageDiffNote": "일반 카드는 생성 이미지 fixture와 실제 무대를 비교해 CI 판정한다. 말풍선 덱은 승인 clean-frame의 카드 영역과 대조 리포트만 만들며, CI는 폭·비율·겹침·툴바 위치 수치 계약으로 판정한다."
 }
