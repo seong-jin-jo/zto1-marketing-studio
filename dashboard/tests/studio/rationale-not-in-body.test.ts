@@ -18,7 +18,7 @@ describe("내부 메모는 본문에 들어가지 않는다", () => {
   });
 
   it("편집실 줄 목록에도 메모를 넣지 않는다", () => {
-    expect(src).toContain("replaceEditLines([candidate.title, ...candidate.format.outline], true)");
+    expect(src).toContain("replaceBodySnapshot([candidate.title, ...candidate.format.outline], candidateText, { replaceDocument: true, revision: 0 })");
     expect(src).not.toContain("...candidate.format.outline, candidate.rationale]");
   });
 

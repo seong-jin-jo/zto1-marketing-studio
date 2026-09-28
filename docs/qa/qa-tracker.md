@@ -1,3 +1,11 @@
+## 2026-09-28 PR 87 재리뷰 r3 본문 revision 경합 ❌ NG → 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-R3-BLOCKER-01 | 초안 A 저장 중 B 전환 경합을 실시간 대기 없이 결정적으로 검증 | PR87-R2-CTX | 🔧 수정, 로컬 PASS | `draft-A`를 시딩하고 입력 잠금 해제를 기다린 뒤 fake timer 800ms와 저장 시작·해제 Promise로 순서를 직접 제어한다. 전체 테스트 3회에서 모두 통과했다. |
+| PR87-R3-MAJOR-01~03 | 모든 본문 저장이 `(draft id, body revision)` 단일 규칙을 거치고 오래된 저장·응답을 거절 | PR87-R3-REV-01~06, PR87-R3-DB-01~02 | 🔧 수정, 로컬 PASS | `text`·`editLines`·revision을 한 스냅샷으로 묶고 모든 저장이 같은 큐와 API 계약을 거친다. 실제 PostgreSQL 동시 UPDATE에서 같은 revision 두 요청 중 1건만 200, 다른 1건은 409이며 승자 본문이 유지됨을 확인했다. |
+| PR87-R3-FINAL | CI 동일 전체 회귀 3회, 타입·빌드·렌더 | PR87-R3-FINAL-01~05 | ✅ 로컬 PASS | 매회 420파일·2,863건 PASS·1건 SKIP·실패 0. TypeScript와 production build 종료 0. dev `localhost:3458/studio?room=edit` HTTP 200·콘솔 오류 0. 원격 CI는 push 전이라 미검증이다. |
+
 ## 2026-09-28 PR 87 재리뷰 r2 글 최신값 경합 ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

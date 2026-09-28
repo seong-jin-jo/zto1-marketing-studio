@@ -1,5 +1,26 @@
 # OSMU build log
 
+## 2026-09-28 13:44 KST · PR 87 재리뷰 r3 본문 revision CAS
+
+STAMP: 2026-09-28 13:44 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-review-r3.md`, 실제 PostgreSQL 경합, CI 동일 전체 로그 3회 | 고민: 클라이언트 큐만 믿지 않고 서버 저장 경계에서도 초안 id와 본문 revision을 원자적으로 검사했다.
+
+| 검증 | 결과 |
+|---|---|
+| 결정적 CI 회귀 | 실제 sleep 제거, fake timer 800ms와 명시적 저장 Promise로 A 저장 중 B 전환 순서 고정 |
+| 표적·DB 회귀 | 관련 9파일·53건 PASS. 실제 PostgreSQL에서 같은 revision 경합은 200 1건·409 1건, stale 요청 뒤 승자 본문 유지 |
+| CI 동일 전체 Test 3회 | 각 회차 420파일·2,863건 PASS, 1건 SKIP, 실패 0. 261.88초, 327.88초, 274.10초 |
+| TypeScript·build | `CI=true npx tsc --noEmit -p tsconfig.ci.json`, `CI=true npm run build` 종료 코드 0 |
+| dev 스모크 | `localhost:3458/studio?room=edit` HTTP 200, title `Marketing Hub`, 콘솔 오류 0 |
+
+원격 CI와 운영 배포는 push 전이므로 미검증이다.
+
+KNOWLEDGE_QUERY: `.pr87-review-r3.md`, 모든 본문 변경 지점, 모든 `save()` 호출, drafts route, CI workflow를 조회했다.
+HITS_USED: 리뷰어의 세 stale 경로를 클라이언트 단일 스냅샷과 서버 원자적 revision 규칙으로 통합했다.
+HITS_REJECTED: 외부 벤치마크는 이미 확정된 저장 계약의 버그 수정이어서 적용하지 않았다.
+CONFLICTS: 직전 세대+직렬 큐만으로 충분하다는 가정이 서버 경합 재현과 충돌해 서버 CAS를 추가했다.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr87-review-r3.md`, `dashboard/src/app/studio/page.tsx`, drafts route, 관련 회귀 테스트, `.github/workflows/ci.yml`, `/tmp/pr87-r3-{target4,full-1,full-2,full-3,tsc2,build,dev,smoke}.log`
+
 ## 2026-09-28 12:06 KST · PR 87 재리뷰 r2 본문 세대·저장 직렬화
 
 STAMP: 2026-09-28 12:06 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-review-r2.md`, 수정 전·후 재현 로그, CI 동일 전체 로그 | 고민: 두 상태의 도착 순서를 맞추는 임시 보정보다 본문 정본과 저장 순서를 구조적으로 하나로 제한했다.

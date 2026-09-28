@@ -1,3 +1,12 @@
+## 2026-09-28 PR 87 재리뷰 r3 본문 revision 경합 로컬 수정·검증 완료
+
+- handoff basis: 회장이 지정한 커밋 `0a69057c`와 `.pr87-review-r3.md`를 primary로 삼았다. tmux `371:0.1`은 이전 워커 종료 로그만 남아 있어 동시 수정이 없음을 확인했다.
+- 수정: 글 본문 `text`·`editLines`·revision을 한 `bodySnapshotRef`로 묶고 모든 저장을 같은 직렬 큐로 보낸다. 서버는 기존 초안 저장에 body revision을 요구하며 PostgreSQL 단일 UPDATE에서 더 오래된 판과 같은 판의 다른 본문을 거절한다. 새 초안은 id ref와 문서 세대를 같은 tick에 끊는다.
+- 테스트 결정성: `PR87-R2-CTX`는 실제 sleep을 제거하고 `draft-A` 시딩, 입력 잠금 해제, fake timer, 저장 시작·해제 Promise로 순서를 명시했다.
+- 검증: 관련 9파일 53건 PASS. 실제 PostgreSQL 동시 경합에서 200 1건·409 1건과 승자 본문 보존 확인. `CI=true npx vitest run` 전체 3회 모두 420파일·2,863건 PASS·1건 SKIP·실패 0. TypeScript·build 종료 0. dev `localhost:3458/studio?room=edit` HTTP 200·콘솔 오류 0.
+- 제외: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 의도한 코드·테스트·증거 문서만 커밋한다. 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
 ## 2026-09-28 PR 87 재리뷰 r2 MAJOR 2건 로컬 수정·검증 완료
 
 - handoff basis: 회장이 지정한 커밋 `05f5d1b4`와 `.pr87-review-r2.md`를 primary로 삼았다. tmux `371:0.1`은 이전 워커 종료 로그만 남아 있고 동시 수정은 없다.

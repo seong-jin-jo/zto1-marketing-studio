@@ -19,7 +19,7 @@
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StudioPage from "@/app/studio/page";
 
@@ -67,7 +67,7 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); localStorage.clear(); });
 
 async function list() {
   return waitFor(() => { const el = document.querySelector("[data-video-subtitle-list]"); if (!el) throw new Error("no list"); return el as HTMLElement; });
@@ -176,8 +176,29 @@ describe("PROBE6 회귀 — B-6·B-7", () => {
   }, 30000);
 
   it("PR87-R2-CTX: A 저장 응답 중 B로 전환해도 B 본문을 A 초안에 후속 저장하지 않는다", async () => {
-    swrByTenant({ "tenant-video-integrity-p6-a": [], "tenant-video-integrity-p6-b": [] });
-    fakeServer({ postDelay: 1500 });
+    const draftA = {
+      id: "draft-A", idea: "A", vid: VID, editLines: ["A 대사"], editKind: "video", bodyRevision: 3,
+      videoEdit: {
+        contract_version: "1.0", overlays: [], comments: [],
+        subtitles: [{ id: "sub-a", order: 0, text: "A 대사", startSec: 0, endSec: 3, cut: false }],
+        voice: null, revision: 1,
+      },
+    };
+    swrByTenant({ "tenant-video-integrity-p6-a": [draftA], "tenant-video-integrity-p6-b": [] });
+    let markPostStarted!: () => void;
+    const postStarted = new Promise<void>((resolve) => { markPostStarted = resolve; });
+    let releasePost!: () => void;
+    const postRelease = new Promise<void>((resolve) => { releasePost = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (typeof url === "string" && url.includes("/api/studio/drafts") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body ?? "{}"));
+        fetchCalls.push({ url, body });
+        markPostStarted();
+        await postRelease;
+        return new Response(JSON.stringify({ ok: true, id: body.id, bodyRevision: body.bodyRevision }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ accounts: [] }), { status: 200 });
+    }));
     localStorage.setItem(storageKey("tenant-video-integrity-p6-a"), JSON.stringify({
       idea: "A", vid: VID, draftId: "draft-A", editLines: ["A 대사"], editKind: "video", videoEdit: {
         contract_version: "1.0", overlays: [], comments: [],
@@ -192,12 +213,15 @@ describe("PROBE6 회귀 — B-6·B-7", () => {
     window.history.replaceState(null, "", "/studio?room=edit");
     const rendered = render(<StudioPage />);
     const subtitleList = await list();
+    await waitFor(() => expect(inputDisabled()).toBe(false));
+    vi.useFakeTimers();
     fireEvent.change(subtitleList.querySelector("[data-video-subtitle-text]") as HTMLInputElement, { target: { value: "A 수정 대사" } });
-    await waitFor(() => expect(fetchCalls.some((call) => call.body.tenant_id === "tenant-video-integrity-p6-a")).toBe(true), { timeout: 5000 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+    await postStarted;
 
     mocks.workspace = { id: "tenant-video-integrity-p6-b", name: "B" };
     rendered.rerender(<StudioPage />);
-    await sleep(2200);
+    await act(async () => { releasePost(); await postRelease; await Promise.resolve(); });
 
     const tenantAPosts = fetchCalls.filter((call) => call.body.tenant_id === "tenant-video-integrity-p6-a");
     expect(tenantAPosts).toHaveLength(1);

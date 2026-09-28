@@ -213,15 +213,30 @@ describe("구조 대조: page.tsx가 독립 타이머로 되돌아갔는지", ()
     expect(onVideoEditChange).not.toContain("pendingVideoSubtitleLinesRef");
     const save = pageSrc.slice(pageSrc.indexOf("async function save("), pageSrc.indexOf("async function saveDraftWithNotice()"));
     expect(save).toContain("draftSaveQueueRef.current");
-    expect(save).toContain("const editLinesSnapshot = sameDocument");
-    expect(save).toContain("? editLinesSnapshotRef.current");
-    expect(save).toContain("editLines: editLinesSnapshot.lines");
-    expect(save).toContain("editLinesSnapshot.generation === editLinesSnapshotRef.current.generation");
+    expect(save).toContain("const bodySnapshot = sameDocument");
+    expect(save).toContain("? bodySnapshotRef.current");
+    expect(save).toContain("editLines: bodySnapshot.lines");
+    expect(save).toContain("bodySnapshot.generation === bodySnapshotRef.current.generation");
     expect(save).toContain("editDocumentGenerationRef.current === saveDocumentGeneration");
     expect(save).toContain("activeWorkspaceIdRef.current === saveTenantId");
-    expect(save).toContain("invocationEditLinesSnapshot");
+    expect(save).toContain("invocationBodySnapshot");
     expect(save).toContain("if (!stillSameDocument) break");
     expect(save).not.toContain("persistedVideoEdit?.subtitles.length");
+  });
+
+  it("PR87-R3-REV-01 모든 저장은 초안 id와 본문 revision이 결속된 단일 스냅샷을 보낸다", () => {
+    const save = pageSrc.slice(pageSrc.indexOf("async function save("), pageSrc.indexOf("async function saveDraftWithNotice()"));
+    expect(save).toContain("bodyRevision: bodySnapshot.revision");
+    expect(save).toContain("text: bodySnapshot.text");
+    expect(save).toContain("editLines: bodySnapshot.lines");
+    expect(save).not.toMatch(/^\s*text,\s*$/m);
+  });
+
+  it("PR87-R3-REV-02 새 초안 생성은 이전 draft id와 문서 세대를 같은 tick에 끊는다", () => {
+    const generateStart = pageSrc.indexOf("async function generateQuickDraft");
+    const generate = pageSrc.slice(generateStart, generateStart + 7000);
+    expect(generate).toContain("draftIdRef.current = null");
+    expect(generate).toContain("replaceBodySnapshot(nextLines, result, { replaceDocument: true");
   });
 
   it("C(4차): 카드덱·영상 자동저장 보류 사유가 서로 다른 state를 쓴다(공유 state가 서로를 지우지 않는다)", () => {

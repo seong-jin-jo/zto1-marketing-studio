@@ -40,27 +40,27 @@ beforeEach(() => {
 
 describe("POST /api/studio/drafts videoEdit compare-and-set (3차 재리뷰 BLOCKER a)", () => {
   it("baseRevision이 저장된 판 번호와 같으면 저장되고, 서버가 판 번호를 +1해 응답으로 돌려준다", async () => {
-    H.queue = [[{ id: "d1", server_revision: 6 }]]; // CAS UPDATE ... RETURNING
+    H.queue = [[{ id: "d1", body_revision: 0, server_revision: 6 }]]; // CAS UPDATE ... RETURNING
     const videoEdit = addOverlay(emptyVideoEdit(), "hook", "훅", 0, 3);
     const { POST } = await import("@/app/api/studio/drafts/route");
     const res = await POST(new Request("http://x", {
       method: "POST",
-      body: JSON.stringify({ tenant_id: "tenant-1", id: "d1", idea: "i", videoEdit, videoEditBaseRevision: 5 }),
+      body: JSON.stringify({ tenant_id: "tenant-1", id: "d1", idea: "i", bodyRevision: 0, videoEdit, videoEditBaseRevision: 5 }),
     }));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, id: "d1", videoEditServerRevision: 6 });
+    expect(await res.json()).toEqual({ ok: true, id: "d1", bodyRevision: 0, videoEditServerRevision: 6 });
   });
 
   it("클라이언트 조작 횟수(videoEdit.revision)가 서버보다 훨씬 커도 baseRevision이 다르면 409로 거절한다", async () => {
     // CAS UPDATE가 0행(불일치) → 존재 확인이 지금 저장된 판 번호(9)를 돌려준다.
-    H.queue = [[], [{ id: "d1", revision: 9 }]];
+    H.queue = [[], [{ id: "d1", body_revision: -1, revision: 9 }]];
     let videoEdit = emptyVideoEdit();
     for (let i = 0; i < 20; i += 1) videoEdit = addOverlay(videoEdit, "hook", `훅 ${i}`, 0, 3);
     expect(videoEdit.revision).toBeGreaterThan(9); // 옛 규칙(client<server만 거절)이면 통과했을 조건
     const { POST } = await import("@/app/api/studio/drafts/route");
     const res = await POST(new Request("http://x", {
       method: "POST",
-      body: JSON.stringify({ tenant_id: "tenant-1", id: "d1", idea: "i", videoEdit, videoEditBaseRevision: 3 }),
+      body: JSON.stringify({ tenant_id: "tenant-1", id: "d1", idea: "i", bodyRevision: 0, videoEdit, videoEditBaseRevision: 3 }),
     }));
     expect(res.status).toBe(409);
     const body = await res.json();
@@ -68,34 +68,34 @@ describe("POST /api/studio/drafts videoEdit compare-and-set (3차 재리뷰 BLOC
   });
 
   it("baseRevision을 안 보냈는데 서버에 이미 판 번호가 있으면 거절한다(GET으로 먼저 맞춰야 한다)", async () => {
-    H.queue = [[], [{ id: "d1", revision: 2 }]];
+    H.queue = [[], [{ id: "d1", body_revision: -1, revision: 2 }]];
     const videoEdit = addOverlay(emptyVideoEdit(), "hook", "훅", 0, 3);
     const { POST } = await import("@/app/api/studio/drafts/route");
     const res = await POST(new Request("http://x", {
       method: "POST",
-      body: JSON.stringify({ tenant_id: "tenant-1", id: "d1", idea: "i", videoEdit }),
+      body: JSON.stringify({ tenant_id: "tenant-1", id: "d1", idea: "i", bodyRevision: 0, videoEdit }),
     }));
     expect(res.status).toBe(409);
   });
 
   it("두 탭이 같은 판 번호를 baseRevision으로 보내면 먼저 저장한 쪽만 성공하고 나중 쪽은 409다", async () => {
     // 탭 A: CAS 성공(0행이 아님).
-    H.queue = [[{ id: "d1", server_revision: 4 }]];
+    H.queue = [[{ id: "d1", body_revision: 0, server_revision: 4 }]];
     const editA = addOverlay(emptyVideoEdit(), "hook", "A", 0, 3);
     const { POST } = await import("@/app/api/studio/drafts/route");
     const resA = await POST(new Request("http://x", {
       method: "POST",
-      body: JSON.stringify({ tenant_id: "tenant-1", id: "d1", idea: "i", videoEdit: editA, videoEditBaseRevision: 3 }),
+      body: JSON.stringify({ tenant_id: "tenant-1", id: "d1", idea: "i", bodyRevision: 0, videoEdit: editA, videoEditBaseRevision: 3 }),
     }));
     expect(resA.status).toBe(200);
 
     // 탭 B: 같은 baseRevision(3)으로 뒤늦게 도착 — A가 이미 4로 올려놔서 이번엔 CAS가
     // 0행을 돌려주고(불일치), 존재 확인이 4를 돌려준다.
-    H.queue = [[], [{ id: "d1", revision: 4 }]];
+    H.queue = [[], [{ id: "d1", body_revision: -1, revision: 4 }]];
     const editB = addOverlay(emptyVideoEdit(), "hook", "B", 0, 3);
     const resB = await POST(new Request("http://x", {
       method: "POST",
-      body: JSON.stringify({ tenant_id: "tenant-1", id: "d1", idea: "i", videoEdit: editB, videoEditBaseRevision: 3 }),
+      body: JSON.stringify({ tenant_id: "tenant-1", id: "d1", idea: "i", bodyRevision: 0, videoEdit: editB, videoEditBaseRevision: 3 }),
     }));
     expect(resB.status).toBe(409);
   });

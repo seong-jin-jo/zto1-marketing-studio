@@ -405,5 +405,6 @@ describe("PR87-MERGE-R1-MAJOR-01: 형식 전환 뒤 영상 자동저장이 최�
 
     await waitFor(() => expect(fetchCalls.filter((call) => call.url.includes("/api/studio/drafts"))).toHaveLength(2));
     expect(fetchCalls.at(-1)?.body.editLines).toEqual(["응답 중 입력한 최신 글 B"]);
+    expect((fetchCalls.at(-1)?.body.text as { threads?: string })?.threads).toBe("응답 중 입력한 최신 글 B");
   }, 20000);
 });
