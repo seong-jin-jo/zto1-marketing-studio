@@ -1,5 +1,17 @@
 # OSMU build log
 
+## 2026-09-29 08:18 KST · PR #94 리뷰 r5 토큰·영상 회귀 수정
+
+STAMP: 2026-09-29 08:18 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa | 근거: `review94-r5.md`, GitHub Actions run `36495350609`, 로컬 표적 Vitest·UI 토큰 감사 | 고민: 180px 계약의 소유 요소와 내부 화면 축소 계약을 분리해 테스트가 구현 구조를 정확히 감시하게 했다.
+
+| 검증 | 결과 |
+|---|---|
+| 수정 전 표적 재현 | 2파일·14건 중 2건 실패. 토큰 직접값 1건과 잘못된 화면 높이 단언 1건 |
+| 수정 뒤 표적 Vitest | 2파일·14건 PASS, 실패 0 |
+| UI 토큰 감사 | 직접값 0건, spacing·typography·color·radius·elevation·contrast 모두 0 |
+
+전체 스위트·시안 스크립트·TypeScript는 사용자 지시로 재실행하지 않았다. 원격 CI 재실행과 push는 컨트롤러 소유이며 미검증이다.
+
 ## 2026-09-28 16:37 KST · PR 87 재리뷰 r6 연속 본문 충돌 보관본·CI 제한시간
 
 STAMP: 2026-09-28 16:37 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-review-r6.md`, 연속 409 Vitest·두 탭 Chromium·PostgreSQL 16 전체 스위트 | 고민: 충돌마다 현재 편집기를 다시 캡처하지 않고 최초 사용자 입력과 변하는 서버 최신판의 소유권을 분리했다.
