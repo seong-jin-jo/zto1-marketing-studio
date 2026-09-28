@@ -7446,3 +7446,11 @@ migration은 수정하지 않고, 최신 코드와 localhost 회귀를 다시 �
 돌연변이 검증: 수정 3파일(`lib/storage.ts`, `api/video/list/route.ts`, `api/video/delete/route.ts`)을 되돌려 같은 19건 중 10건 FAIL 확인, 원복 후 19건 PASS 재확인. `npm run typecheck:ci` PASS. 전체 `npx vitest run` 종료 코드는 build-log.md 2026-09-25 12:40 항목에 기재.
 
 SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-isolation.test.ts`, `dashboard/tests/publish/video-path-resolution.contract.test.ts` 실행 로그
+## 2026-09-28 12:55 KST · PR #93 영속 마운트 2차 독립 리뷰 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR93-R2-B1 | holder 아카이브 검증 전 mount namespace 해제·강제 삭제 금지 | PR93-R2-B1 | ✅ 로컬 PASS | 실제 Docker에서 0바이트 archive 검증 실패 뒤 holder 생존, 재archive 성공, 종료 직전 쓰기 보존을 관찰함. |
+| PR93-R2-M1 | 첫 파괴적 변경 전 원자적 journal 기록과 6개 target 중단·재실행 멱등성 | PR93-R2-M1 | ✅ 로컬 PASS | 여섯 target 각각의 첫 rename을 exit 74로 중단한 뒤 원본 writer 재시작 없이 일반 재실행해 ready 상태와 동일 내용으로 수렴함. |
+| PR93-R2-M2 | 운영 runbook을 실제 phase·holder 보존·재개 금지조건과 일치 | PR93-R2-M2 | ✅ 로컬 PASS | `holders-ready`부터 `pending-health`까지 보존 상태, 자동 재개, holder 보존, 원본 재시작 금지를 문서화함. |
+| PR93-R2-N1 | 실제 Docker holder 실패·재시도 검증을 제한시간 CI에 연결 | PR93-R2-N1 | ✅ 로컬 PASS | host runner 별도 job이 `timeout 180`으로 verifier를 실행하며 Docker CLI·daemon 부재는 exit 1로 실패함. 원격 CI는 미검증. |
