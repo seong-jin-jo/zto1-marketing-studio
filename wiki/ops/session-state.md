@@ -1,9 +1,12 @@
-## 2026-09-28 10:19 KST tenant2·3·4 영속 마운트 운영 장애 수정 착수
+## 2026-09-28 10:51 KST tenant2·3·4 영속 마운트 장애 로컬 수정 완료
 
-- handoff basis: 사용자가 지정한 과제, 워크트리 `_wt-osmu-gateway-mounts`, 브랜치 `fix/gateway-persist-mounts`, 시작 HEAD `9a3dc645`를 primary로 사용한다. 같은 cwd의 tmux pane은 없어 중복 실행이 없음을 확인했다.
-- 관찰된 장애: 운영 gateway-tenant2·3·4가 삭제된 체크아웃 bind mount를 붙잡아 `/home/node/.openclaw/state` 생성 EACCES를 반복한 뒤 CPU 100%로 멈췄다.
-- 현재 판정: `docker-compose.postagi-4tenants.yml`의 tenant2·3·4 게이트웨이와 대시보드가 `./config-*`, `./data-*`를 사용하고, 배포 워크플로가 `~/openclaw-persist`를 체크아웃으로 복사한다. `openclaw-dashboard-osmu`는 이미 고정 named volume이라 같은 결함이 없다. legacy tenant1은 변경하지 않는다.
-- 다음 실행: 영속 경로 계약 테스트를 추가하고 compose와 배포 워크플로를 `$HOME/openclaw-persist` 정본으로 맞춘 뒤 compose config, 표적 Vitest, 관련 배포 테스트를 실행한다. 운영 서버와 실제 배포는 미검증으로 남긴다.
+- handoff basis: 사용자가 지정한 과제, 워크트리 `_wt-osmu-gateway-mounts`, 브랜치 `fix/gateway-persist-mounts`, 실제 시작 HEAD `a211ca81`을 primary로 사용했다. 같은 cwd의 tmux pane은 없었다.
+- 변경: tenant2·3·4 gateway/dashboard의 config/data와 `.env.tenantN`을 `${OPENCLAW_PERSIST_ROOT:-$HOME/openclaw-persist}`로 고정했다. dashboard는 UID 1000과 실제 Docker 소켓 GID를 사용한다. OSMU dashboard named volume과 legacy tenant1 profile은 그대로다.
+- 운영 이전: `migrate-postagi-persist-mounts.sh`는 여섯 컨테이너가 실행 중인지 먼저 확인하고 pause로 삭제된 bind mount의 쓰기를 동결한 뒤 스냅샷한다. 실패 시 unpause하며, 성공 시 검증 표식을 만든 뒤 즉시 정지한다. 운영 서버에서는 실행하지 않았다.
+- 검증: Compose config가 tenant2·3·4의 12개 bind source를 영속 루트로 해석하고 dashboard `user: 1000:1000`, Docker GID 987을 반영했다. legacy tenant1 상대 경로와 OSMU named volume은 유지됐다. 관련 Vitest 7파일 33건, 셸 문법, workflow YAML parse가 PASS했다.
+- 리뷰: 독립 testing·maintainability·simplification·adversarial 검토에서 환경파일, 권한, 마이그레이션 실패 복구, 삭제 bind mount 수명주기 결함을 수정했다. 3회 검토 상한 뒤 마지막 수정은 테스트로 닫았으므로 리뷰 상태는 `미수렴`, 현재 알려진 미해결 finding은 0이다.
+- 커밋: `3f0b4744`, `f201aca7`, `9efd715c`, `fe808ecb`, `0b5679b2`. push하지 않았다. 자동 기록 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 보존하고 커밋하지 않는다.
+- 다음 실행: 운영자가 UID 1000 계정으로 컨테이너가 살아 있을 때 `bash migrate-postagi-persist-mounts.sh`를 실행한다. 성공 뒤 배포 워크플로를 실행하고 운영 로그의 EACCES 0건, gateway health, CPU 정상화를 직접 관찰해야 완료다.
 
 ## 2026-09-28 09:23 KST PR 85 편집실 v70 9차 리뷰 로컬 수정·검증 완료
 

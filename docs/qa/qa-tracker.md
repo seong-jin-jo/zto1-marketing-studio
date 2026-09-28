@@ -1,8 +1,12 @@
-## 2026-09-28 10:19 KST · tenant2·3·4 영속 마운트 운영 장애 ❌ NG, 수정 착수
+## 2026-09-28 10:51 KST · tenant2·3·4 영속 마운트 운영 장애 🔧 수정, 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| GATEWAY-PERSIST-01 | tenant2·3·4 게이트웨이와 대시보드의 config/data를 Actions 체크아웃 밖 영속 경로에 고정 | GATEWAY-PERSIST-01~04 | ❌ NG, 수정 착수 | 운영 로그에서 `/home/node/.openclaw/state` 생성 EACCES와 CPU 100% 멈춤이 관찰됐다. 현재 compose는 tenant2·3·4의 config/data를 `./` 상대 경로에 bind mount하고, 배포 워크플로는 `~/openclaw-persist`를 매 체크아웃으로 복사한다. 실행 중 컨테이너가 삭제된 체크아웃 디렉터리를 계속 붙잡을 수 있는 구조다. legacy tenant1은 변경 범위에서 제외한다. |
+| GATEWAY-PERSIST-01 | tenant2·3·4 gateway/dashboard의 config/data를 체크아웃 밖 영속 경로에 고정 | GATEWAY-PERSIST-01 | ✅ 로컬 PASS | Compose config에서 12개 bind source가 영속 루트로 해석됐다. checkout 상대 경로 0건. |
+| GATEWAY-PERSIST-02 | legacy tenant1과 OSMU named volume 보존 | GATEWAY-PERSIST-02 | ✅ 로컬 PASS | legacy profile의 `./config-tenant1`, `./data-tenant1` 유지. OSMU `openclaw-osmu-{config,data}` 유지. |
+| GATEWAY-PERSIST-03 | UID·권한·환경파일·Docker 소켓 GID 배포 계약 | GATEWAY-PERSIST-03 | ✅ 로컬 PASS | workflow가 UID 1000, config 0700, data 0750, `.env.tenantN`, schema 2 표식, Docker socket GID를 검증하고 `up --wait`를 사용한다. |
+| GATEWAY-PERSIST-04~07 | 신규 bootstrap, 구 checkout 거절, live bind snapshot, 실패 복구 | GATEWAY-PERSIST-04~07 | ✅ 로컬 PASS | hermetic 계약 테스트가 fresh bootstrap과 pause snapshot을 실행했다. snapshot 실패 exit 42에서 표식 0건, 자동 unpause를 확인했다. |
+| GATEWAY-PERSIST-FINAL | 관련 배포 회귀 | 7 files, 33 tests | ✅ PASS | Vitest 7파일 33건, 셸 문법, workflow YAML parse, Compose config 종료 코드 0. 운영 이전·배포·CPU와 EACCES 소멸은 미검증. |
 
 ## 2026-09-28 09:23 KST · PR 85 편집실 v70 9차 리뷰 ❌ NG → 🔧 수정, 로컬 PASS
 

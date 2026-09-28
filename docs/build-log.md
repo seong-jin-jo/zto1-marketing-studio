@@ -1,5 +1,26 @@
 # OSMU build log
 
+## 2026-09-28 10:51 KST · tenant2·3·4 gateway 영속 마운트 전환
+
+STAMP: 2026-09-28 10:51 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: review | 근거: 운영 EACCES 로그, Compose·GitHub Actions 계약, Docker 공식 bind mount 문서 | 고민: 삭제된 bind mount의 최신 상태를 checkout에서 다시 복사하지 않고 살아 있는 컨테이너를 pause해 회수하도록 했다.
+
+| 검증 | 결과 |
+|---|---|
+| Compose 해석 | tenant2·3·4 gateway/dashboard 12개 bind source가 영속 루트. dashboard UID 1000·Docker GID 987. legacy tenant1 상대 경로와 OSMU named volume 유지 |
+| 계약·배포 회귀 | Vitest 7파일 33건 PASS |
+| 마이그레이션 경계 | fresh bootstrap, 기존 checkout 거절, pause snapshot, snapshot 실패 자동 unpause PASS |
+| 정적 검증 | bootstrap·migration `bash -n`, workflow YAML parse, 의도 파일 `git diff --check` PASS |
+| 운영 | 서버 접속·마이그레이션·배포 미실행. EACCES 소멸과 CPU 정상화 미검증 |
+
+독립 리뷰는 환경파일 유실, Docker 소켓 GID, 빈 표식, 실패 시 정지 잔존, 삭제 bind mount의 stop 후 회수 불가를 발견해 수정했다. 3회 검토 상한 뒤 마지막 수명주기 수정은 테스트로 닫았으며 리뷰 상태는 미수렴이다.
+
+KNOWLEDGE_QUERY: BRAIN business 허브와 OSMU 관련 페이지, 레포 ADR·실수 원장·기존 persistence 계약, Docker 공식 bind mount·Compose volume 문서를 조회했다.
+HITS_USED: 레포의 체크아웃 밖 `~/openclaw-persist` 계약과 Docker의 host-path 결합 특성을 채택해 long bind syntax와 명시적 이전 절차를 사용했다.
+HITS_REJECTED: BRAIN PMF·마케팅 문서는 운영 마운트 구현 근거가 아니어서 반영하지 않았다. Docker named volume 전환은 기존 운영 경로·백업 계약을 바꾸므로 OSMU 기존 서비스에만 유지했다.
+CONFLICTS: 없음.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `wiki/거버넌스/{결정,실수}.md`, `docker-compose.postagi-4tenants.yml`, `.github/workflows/deploy-marketing.yml`, `dashboard/tests/integrity/osmu-persistence.contract.test.ts`, https://docs.docker.com/engine/storage/bind-mounts/, https://docs.docker.com/reference/compose-file/volumes/
+
 ## 2026-09-28 09:23 KST · PR 85 편집실 v70 9차 CI 계약 교정
 
 STAMP: 2026-09-28 09:23 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa | 근거: `.pr85-review9.md`, GitHub Actions run 36360534701, 수정 전·후 표적 로그, CI Test 전체 로그 | 고민: 테스트 의도를 지우지 않고 textarea의 value 계약만 실제 contentEditable DOM·input 계약으로 옮겼다.
