@@ -1,5 +1,161 @@
 # OSMU build log
 
+## 2026-09-28 16:37 KST · PR 87 재리뷰 r6 연속 본문 충돌 보관본·CI 제한시간
+
+STAMP: 2026-09-28 16:37 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-review-r6.md`, 연속 409 Vitest·두 탭 Chromium·PostgreSQL 16 전체 스위트 | 고민: 충돌마다 현재 편집기를 다시 캡처하지 않고 최초 사용자 입력과 변하는 서버 최신판의 소유권을 분리했다.
+
+| 검증 | 결과 |
+|---|---|
+| 연속 409 회귀 | fake timer 컴포넌트 3건 PASS. 최신본 확인 뒤 후속 409에서도 최초 `탭 B 마지막 영상 변경`을 base 6·7 요청에 유지 |
+| 두 탭 실브라우저 | revision 5→6→7→8, 연속 충돌 요청 base 6, 최종 재적용 base 7, 보존 입력 `탭 B 내 변경`, 콘솔 오류 0 |
+| CI 동일 전체 Test | PostgreSQL 16 schema→seed→RLS와 migration matrix 뒤 421파일·2,867건 PASS, 1건 SKIP, 실패 0 |
+| TypeScript·production build | `npm run typecheck:ci`, `npm run build` 종료 코드 0 |
+| CI 브라우저 게이트 | 발행실 정렬 delta 0px, Chromium 말풍선 편집 회귀 전부 PASS |
+| 제한시간 | 본문 충돌 E2E step 3분, 준비 60초·강제종료 5초, E2E 90초·강제종료 10초, EXIT kill+wait 적용 |
+
+추가 마이그레이션은 없다. UI 토큰 감사는 위반 0건이다. design-lint의 기존 인라인 style 1파일·hex 6파일과 artifact lint의 기존 산출물 경고 28건은 이번 diff 밖이다. 원격 CI와 운영 배포는 push 전이라 미검증이다.
+
+KNOWLEDGE_QUERY: `.pr87-review-r6.md`, ADR-007, 본문 충돌 상태·재시도 큐·CI workflow, GitHub Actions step timeout 공식 문서를 조회했다.
+HITS_USED: 최초 local 불변과 후속 latest 갱신 분리를 코드·회귀에 채택하고, GitHub `timeout-minutes`에 shell 강제종료를 겹쳤다.
+HITS_REJECTED: 새로고침 뒤 충돌 보관본 복원은 이번 요구의 “후속 응답” 범위를 넘어 별도 지속성·문서 전환 계약이 필요하므로 이번 수정에 섞지 않았다.
+CONFLICTS: 없음.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr87-review-r6.md`, `dashboard/src/app/studio/page.tsx`, `dashboard/tests/studio/body-conflict-recovery.regression.test.tsx`, `dashboard/scripts/verify-body-conflict-recovery-e2e.mjs`, `.github/workflows/ci.yml`, https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax, `/tmp/pr87-r6-{target2,typecheck2,build-final,e2e,full,matrix,alignment,bubble}.log`
+
+## 2026-09-28 15:40 KST · PR 87 재리뷰 r5 본문 충돌 복구
+
+STAMP: 2026-09-28 15:40 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-review-r5.md`, ADR-007, v70 디자인 규격, RFC 9110 §15.5.10, 두 탭 Chromium 실측 | 고민: 409를 오류 문구로만 끝내지 않고 서버 최신본과 실패 직전 로컬 입력을 동시에 보존해 사용자가 어느 쪽도 잃지 않게 했다.
+
+| 검증 | 결과 |
+|---|---|
+| 표적 회귀 | fake timer 기반 실제 `StudioPage` 충돌→최신본→재적용·본문/영상 이중 충돌·늦은 두 번째 409 3건 PASS |
+| CI 동일 전체 Test | Node 20.20.2, PostgreSQL 16 schema→seed→RLS. 421파일 PASS, 2,867건 PASS, 1건 SKIP, 실패 0, 214.52초 |
+| TypeScript·production build | `npm run typecheck:ci`, `npm run build` 종료 코드 0 |
+| DB·브라우저 게이트 | migration matrix PASS. 발행실 정렬 delta 0px. Chromium 말풍선 E2E 전부 PASS |
+| 두 탭 dev 스모크 | `localhost:3471/studio?room=edit`, 탭 2개, revision 5→6→7, 재적용 base 6, 콘솔 오류 0 |
+
+스키마 마이그레이션은 없다. 기존 JSONB `bodyRevision`과 409 `latestBody` 계약만 사용했다. 독립 리뷰에서 재적용 중 잠금 해제, 연속 충돌의 단일 retry 슬롯 덮어쓰기, 본문·영상 이중 충돌, 발행실의 복구 UI 부재를 찾아 수정했다. design lint의 기존 인라인 style 1파일·토큰 밖 hex 6파일 경고는 남아 있으나 이번 diff는 토큰 클래스와 공용 `Button`만 사용해 신규 위반이 없다. 원격 CI와 운영 배포는 push 전이므로 미검증이다.
+
+KNOWLEDGE_QUERY: `.pr87-review-r5.md`, ADR-007, v70 충돌·실패 상태, 기존 영상 CAS UI, RFC 9110의 409 복구·재제출 계약을 조회했다.
+HITS_USED: 409가 충돌 원인을 설명하고 사용자가 해소·재제출할 수 있어야 한다는 RFC 원칙을 최신본 확인과 명시적 재적용 행동에 적용했다.
+HITS_REJECTED: 제품 방향·시장 BRAIN 지식은 이미 확정된 동시성 버그 수정 범위와 무관해 채택하지 않았다.
+CONFLICTS: 없음.
+
+SKILLS_USED: qa — 충돌 재현·회귀·실브라우저 검증, review — 커밋 전 동시성·CI·적대적 UX 병렬 검수에 사용.
+SKILLS_SKIPPED: 없음.
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr87-review-r5.md`, `wiki/거버넌스/{결정.md,실수.md}`, `docs/design/design-spec-editroom-v70.md`, `dashboard/src/app/{studio/page.tsx,api/studio/drafts/route.ts}`, https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.10, `/tmp/pr87-r5-{full-vitest-final4,node20-type-build-final4,migration-final4,body-e2e-final5}.log`
+
+## 2026-09-28 14:37 KST · PR 87 재리뷰 r4 서버 발급 본문 revision CAS
+
+STAMP: 2026-09-28 14:37 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: 없음 | 근거: `.pr87-review-r4.md`, 기존 영상 편집 CAS, PostgreSQL 공식 트랜잭션 문서, 실제 PostgreSQL 두 탭 재현 | 고민: 탭의 편집 횟수를 최신성으로 오인하지 않고 서버가 발급한 기준판 하나만 저장 자격으로 사용하게 했다.
+
+| 검증 | 결과 |
+|---|---|
+| 수정 전 재현 | route·실DB 계약 2파일에서 4건 FAIL, 11건 PASS. 로컬 revision 100인 오래된 탭이 서버 revision 4를 덮는 경로를 확인 |
+| 표적·실DB 회귀 | 관련 8파일·48건 PASS. fake timer 100ms 현재 탭 저장 뒤 800ms 오래된 탭 저장을 409로 거절하고 승자 본문·server revision 1 유지 |
+| CI 동일 전체 Test | 420파일 PASS. 2,864건 PASS, 1건 SKIP, 실패 0, 256.43초 |
+| TypeScript·production build | `CI=true npx tsc --noEmit -p tsconfig.ci.json`, `CI=true npm run build` 종료 코드 0 |
+| DB·브라우저 게이트 | migration matrix PASS. 발행실 정렬 delta 0px. Chromium 편집 E2E 전부 PASS |
+| dev 스모크 | `localhost:3465/studio?room=edit` HTTP 200, title `Marketing Hub`, 콘솔 오류 0 |
+
+스키마 마이그레이션은 없다. `bodyRevision`은 기존 JSONB 필드를 유지한다. 원격 CI와 운영 배포는 push 전이므로 미검증이다. design lint는 기존 인라인 style 1파일·토큰 밖 hex 6파일을 경고했고 이번 변경의 스타일 diff는 0건이다.
+
+KNOWLEDGE_QUERY: `.pr87-review-r4.md`, 기존 영상 CAS, drafts route·클라이언트 저장 큐, PostgreSQL Read Committed의 조건부 UPDATE 동작을 조회했다.
+HITS_USED: 영상 CAS의 마지막 서버 revision 정확 비교와 PostgreSQL의 현재 행 재평가 규칙을 본문 저장에 적용했다.
+HITS_REJECTED: BRAIN의 제품·시장 지식은 이미 확정된 동시성 결함 수정 범위와 무관해 채택하지 않았다.
+CONFLICTS: 탭별 큰 로컬 revision을 더 최신으로 보던 기존 규칙이 서버 발급 기준판 계약과 충돌해 폐기했다.
+
+SKILLS_USED: 없음
+SKILLS_SKIPPED: review·investigate는 현재 available-skills 목록에 없고, qa는 단일 결함의 지정 구현 범위를 전면 웹 QA로 넓히므로 사용하지 않았다.
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr87-review-r4.md`, `dashboard/src/app/{api/studio/drafts/route.ts,studio/page.tsx}`, https://www.postgresql.org/docs/current/transaction-iso.html, `/tmp/pr87-r4-{red,related2,full-rerun,tsc,build,migration,publish-browser,bubble-e2e,dev,smoke}.log`
+
+## 2026-09-28 13:44 KST · PR 87 재리뷰 r3 본문 revision CAS
+
+STAMP: 2026-09-28 13:44 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-review-r3.md`, 실제 PostgreSQL 경합, CI 동일 전체 로그 3회 | 고민: 클라이언트 큐만 믿지 않고 서버 저장 경계에서도 초안 id와 본문 revision을 원자적으로 검사했다.
+
+| 검증 | 결과 |
+|---|---|
+| 결정적 CI 회귀 | 실제 sleep 제거, fake timer 800ms와 명시적 저장 Promise로 A 저장 중 B 전환 순서 고정 |
+| 표적·DB 회귀 | 관련 9파일·53건 PASS. 실제 PostgreSQL에서 같은 revision 경합은 200 1건·409 1건, stale 요청 뒤 승자 본문 유지 |
+| CI 동일 전체 Test 3회 | 각 회차 420파일·2,863건 PASS, 1건 SKIP, 실패 0. 261.88초, 327.88초, 274.10초 |
+| TypeScript·build | `CI=true npx tsc --noEmit -p tsconfig.ci.json`, `CI=true npm run build` 종료 코드 0 |
+| dev 스모크 | `localhost:3458/studio?room=edit` HTTP 200, title `Marketing Hub`, 콘솔 오류 0 |
+
+원격 CI와 운영 배포는 push 전이므로 미검증이다.
+
+KNOWLEDGE_QUERY: `.pr87-review-r3.md`, 모든 본문 변경 지점, 모든 `save()` 호출, drafts route, CI workflow를 조회했다.
+HITS_USED: 리뷰어의 세 stale 경로를 클라이언트 단일 스냅샷과 서버 원자적 revision 규칙으로 통합했다.
+HITS_REJECTED: 외부 벤치마크는 이미 확정된 저장 계약의 버그 수정이어서 적용하지 않았다.
+CONFLICTS: 직전 세대+직렬 큐만으로 충분하다는 가정이 서버 경합 재현과 충돌해 서버 CAS를 추가했다.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr87-review-r3.md`, `dashboard/src/app/studio/page.tsx`, drafts route, 관련 회귀 테스트, `.github/workflows/ci.yml`, `/tmp/pr87-r3-{target4,full-1,full-2,full-3,tsc2,build,dev,smoke}.log`
+
+## 2026-09-28 12:06 KST · PR 87 재리뷰 r2 본문 세대·저장 직렬화
+
+STAMP: 2026-09-28 12:06 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-review-r2.md`, 수정 전·후 재현 로그, CI 동일 전체 로그 | 고민: 두 상태의 도착 순서를 맞추는 임시 보정보다 본문 정본과 저장 순서를 구조적으로 하나로 제한했다.
+
+| 검증 | 결과 |
+|---|---|
+| 결함 선행 재현 | 리뷰어 반대 순서와 기존 초안 검토 경로가 수정 전 2건 실패·44건 통과 |
+| 표적·관련 회귀 | 반대 순서, 응답 중 세대 변경, 기존 초안 검토 저장 포함 9파일·72건 PASS. 추가 정적 계약 3파일·26건 PASS |
+| CI 동일 전체 Test | 418파일·2,855건 PASS, 1건 SKIP, 실패 0 |
+| TypeScript·build | `npx tsc --noEmit -p tsconfig.ci.json`, `npm run build` 종료 코드 0 |
+| DB·브라우저 게이트 | schema→seed→RLS, migration matrix PASS. 발행실 정렬 delta 0px, Chromium 편집 E2E 전부 PASS |
+| dev 스모크 | `localhost:3770/studio?room=edit` HTTP 200, body HTML 11,966자, 콘솔 오류 0 |
+
+원격 CI와 운영 배포는 push 전이므로 미검증이다. artifact lint는 상태파일 정합 PASS와 기존 산출물 경고 28건이며, design lint는 기존 인라인 style·hex 경고만 남고 이번 변경의 스타일 diff는 0건이다.
+
+KNOWLEDGE_QUERY: `.pr87-review-r2.md`, 본문 변경 지점 전수, 모든 `save()` 호출, CI workflow를 조회했다.
+HITS_USED: 리뷰어의 두 상태 순서와 기존 초안 검토 경로를 실제 컴포넌트 회귀로 고정했다.
+HITS_REJECTED: 외부 벤치마크는 확정된 저장 계약의 경합 버그 수정이라 적용하지 않았다.
+CONFLICTS: 직전 pending 자막 소유권 방식이 반대 상태 순서 재현과 충돌해 폐기했다.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr87-review-r2.md`, `dashboard/src/app/studio/page.tsx`, 관련 회귀 테스트, `.github/workflows/ci.yml`, `/tmp/pr87-r2-{red,vitest-ci-final,tsc-ci-final,build-ci-final,migration-final2,alignment-ci-final,e2e-chromium-ci-final,dev-smoke-browser-final2}.log`
+
+## 2026-09-28 11:11 KST · PR 87 병합 리뷰 글 저장 회귀 봉합
+
+STAMP: 2026-09-28 11:11 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-mergereview.md`, 수정 전·후 회귀 로그, CI 동일 전체 로그 | 고민: 영상 자막과 글 원문이 갈라질 수 있는 형식 전환에서 어느 상태가 저장을 소유하는지 변경 시점에 명시했다.
+
+| 검증 | 결과 |
+|---|---|
+| 결함 선행 재현 | 실제 `StudioPage` 3경로가 수정 전 3건 실패·39건 통과. 비자막 영상 저장은 옛 자막을 전송했고 수동·검토 저장은 최신 글을 생략 |
+| 표적 회귀 | 관련 3파일·51건 PASS. 자막 직접 편집 동기화와 형식 전환 뒤 비자막 저장 격리를 함께 검증 |
+| CI 동일 전체 Test | 임시 PostgreSQL schema→seed→RLS, migration matrix 뒤 418파일·2,850건 PASS, 1건 SKIP, 실패 0 |
+| TypeScript·build | `npx tsc --noEmit -p tsconfig.ci.json`, `npm run build` 종료 코드 0 |
+| 실브라우저 | Chromium 편집 시나리오 전부 PASS. 발행실 카드 정렬 최대 delta 0px |
+| dev 스모크 | `localhost:3462/qa-alignment-harness?room=publish` HTTP 200, 카드 28개, 콘솔 오류 0 |
+
+원격 CI와 운영 배포는 push 전이므로 미검증이다. artifact lint는 상태파일 2개 정합 PASS와 기존 산출물 경고 28건이다.
+
+KNOWLEDGE_QUERY: `.pr87-mergereview.md`, 저장 호출부, route의 키 생략 보존 계약, CI workflow를 조회했다.
+HITS_USED: 리뷰어 재현과 기존 테스트의 자막 직접 편집 계약을 함께 채택해 도메인별 dirty 상태를 분리했다.
+HITS_REJECTED: 외부 벤치마크는 확정된 저장 계약의 국소 회귀 수정이라 적용하지 않았다.
+CONFLICTS: 이전 병합 기록의 “자막 스냅샷 역투영이 안전하다”는 판단이 실제 형식 전환 재현과 충돌해 폐기했다.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr87-mergereview.md`, `dashboard/src/app/studio/page.tsx`, 관련 회귀 3파일, `.github/workflows/ci.yml`, `/tmp/pr87-mergereview-{red,targeted,vitest-full,tsc-ci,build,smoke}.log`
+
+## 2026-09-28 10:19 KST · PR 87 main 병합과 p1/p2 경계 회귀 봉합
+
+STAMP: 2026-09-28 10:19 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa | 근거: `origin/main` a211ca81, p2 b121ad6a, 3-way diff, CI 동일 전체 로그 | 고민: main의 영상 자동저장 격리와 p2의 자막 CAS 저장을 둘 다 만족시키기 위해 오래된 React 클로저 대신 동일 영상 스냅샷에서 대사를 파생했다.
+
+| 검증 | 결과 |
+|---|---|
+| 병합 경계 | p1 말풍선·글·카드덱은 main 최종본, p2 영상 편집 CAS·발행 복귀 잠금 해제는 보존 |
+| 교차 회귀 | 영상 자동저장 payload의 대사를 같은 `videoEdit.subtitles` 스냅샷에서 파생, 표적 2파일·12건 PASS |
+| CI 동일 전체 Test | 임시 PostgreSQL schema→seed→RLS, migration matrix 뒤 418파일·2,849건 PASS, 1건 SKIP, 실패 0 |
+| TypeScript·build | `npx tsc --noEmit -p tsconfig.ci.json`, `npm run build` 종료 코드 0 |
+| 실브라우저 | 발행실 카드 정렬 최대 delta 0px, Chromium·WebKit·Firefox 말풍선 편집 51개 시나리오 전부 PASS |
+| dev 스모크 | `localhost:3764/studio?room=edit` HTTP 200, Ready 876ms, 본문 표시, 콘솔 오류 0 |
+
+원격 CI와 운영 배포는 push 전이므로 미검증이다.
+
+KNOWLEDGE_QUERY: `origin/main`과 p2의 3-way diff, CI workflow, v70 저장 회귀를 조회했다.
+HITS_USED: main의 p1 구조화 편집기와 p2의 영상 CAS·발행 복귀 무효화 계약을 각각 정본으로 채택했다.
+HITS_REJECTED: 외부 벤치마크는 이미 확정된 두 브랜치의 기계적 병합·버그 수정이라 적용하지 않았다.
+CONFLICTS: main의 낡은 `editLines` 클로저 차단과 p2의 자막 저장 요구가 충돌해 동일 CAS 스냅샷 파생으로 해소했다.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `origin/main` a211ca81, p2 b121ad6a, `.github/workflows/ci.yml`, `/tmp/pr87-merge-full-ci-test-r2.log`, `/tmp/pr87-merge-{alignment,bubble-e2e}.log`
+
 ## 2026-09-28 09:23 KST · PR 85 편집실 v70 9차 CI 계약 교정
 
 STAMP: 2026-09-28 09:23 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa | 근거: `.pr85-review9.md`, GitHub Actions run 36360534701, 수정 전·후 표적 로그, CI Test 전체 로그 | 고민: 테스트 의도를 지우지 않고 textarea의 value 계약만 실제 contentEditable DOM·input 계약으로 옮겼다.

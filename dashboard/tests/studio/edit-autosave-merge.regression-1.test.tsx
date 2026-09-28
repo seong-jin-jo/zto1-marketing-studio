@@ -30,6 +30,10 @@ import { emptyVideoEdit, videoEditIncompleteEntryReason, type VideoEdit } from "
 import deckD100 from "./fixtures/deck-d100.v2.json";
 
 const pageSrc = fs.readFileSync(path.resolve(__dirname, "../../src/app/studio/page.tsx"), "utf8");
+const onVideoEditChangeSrc = pageSrc.slice(
+  pageSrc.indexOf("function onVideoEditChange("),
+  pageSrc.indexOf('\n  if (activeRoom === "edit")', pageSrc.indexOf("function onVideoEditChange(")),
+);
 
 /**
  * PR #87 리뷰(2026-09-25) 실측 회귀: 이 파일만 `HTMLCanvasElement.getContext`를 null로
@@ -189,7 +193,7 @@ describe("구조 대조: page.tsx가 독립 타이머로 되돌아갔는지", ()
 
   it("onCardDeckChange는 cardDeckAutosaveTimer만, onVideoEditChange는 videoEditAutosaveTimer만 쓴다", () => {
     const onCardDeckChange = pageSrc.slice(pageSrc.indexOf("function onCardDeckChange("), pageSrc.indexOf("function onCardDeckChange(") + 1300);
-    const onVideoEditChange = pageSrc.slice(pageSrc.indexOf("function onVideoEditChange("), pageSrc.indexOf("function onVideoEditChange(") + 1300);
+    const onVideoEditChange = onVideoEditChangeSrc;
     expect(onCardDeckChange).toContain("cardDeckAutosaveTimer.current");
     expect(onCardDeckChange).not.toContain("videoEditAutosaveTimer");
     expect(onVideoEditChange).toContain("videoEditAutosaveTimer.current");
@@ -198,21 +202,48 @@ describe("구조 대조: page.tsx가 독립 타이머로 되돌아갔는지", ()
 
   it("A/B(4차): onCardDeckChange는 videoEdit 자리에 명시 null을, onVideoEditChange는 cardDeck 자리에 명시 null을 넘긴다", () => {
     const onCardDeckChange = pageSrc.slice(pageSrc.indexOf("function onCardDeckChange("), pageSrc.indexOf("function onCardDeckChange(") + 1300);
-    const onVideoEditChange = pageSrc.slice(pageSrc.indexOf("function onVideoEditChange("), pageSrc.indexOf("function onVideoEditChange(") + 1300);
+    const onVideoEditChange = onVideoEditChangeSrc;
     expect(onCardDeckChange, "카드덱 자동저장이 videoEdit 자리에 null을 안 넘기면 state의 videoEdit이 검증 없이 같이 나간다").toContain("pruned, null)");
     expect(onVideoEditChange, "영상 자동저장이 cardDeck 자리에 null을 안 넘기면 state의 cardDeck이 pruning 없이 같이 나간다").toContain("null, nextEdit)");
   });
 
-  it("PR85-R7-M3 영상 자동저장은 낡은 editLines를 보내지 않고 undefined로 생략한다", () => {
-    const onVideoEditChange = pageSrc.slice(pageSrc.indexOf("function onVideoEditChange("), pageSrc.indexOf("function onVideoEditChange(") + 1800);
-    expect(onVideoEditChange).toContain("draftIdRef.current, undefined, img, vid, null, nextEdit");
+  it("PR87-R2-MAJOR-01 영상·수동·검토 저장은 세대가 붙은 최신 editLines 단일 경로를 쓴다", () => {
+    const onVideoEditChange = onVideoEditChangeSrc;
+    expect(onVideoEditChange).toContain("syncEditLines(nextSubtitleLines)");
+    expect(onVideoEditChange).not.toContain("pendingVideoSubtitleLinesRef");
     const save = pageSrc.slice(pageSrc.indexOf("async function save("), pageSrc.indexOf("async function saveDraftWithNotice()"));
-    expect(save).toContain("persistedEditLines === undefined ? {} : { editLines: persistedEditLines }");
+    expect(save).toContain("draftSaveQueueRef.current");
+    expect(save).toContain("const bodySnapshot = sameDocument");
+    expect(save).toContain("? bodySnapshotRef.current");
+    expect(save).toContain("editLines: bodySnapshot.lines");
+    expect(save).toContain("bodySnapshot.generation === bodySnapshotRef.current.generation");
+    expect(save).toContain("editDocumentGenerationRef.current === saveDocumentGeneration");
+    expect(save).toContain("activeWorkspaceIdRef.current === saveTenantId");
+    expect(save).toContain("invocationBodySnapshot");
+    expect(save).toContain("if (!stillSameDocument) break");
+    expect(save).not.toContain("persistedVideoEdit?.subtitles.length");
+  });
+
+  it("PR87-R4-CLIENT-01 모든 저장은 마지막 서버 revision을 bodyBaseRevision으로 보낸다", () => {
+    const save = pageSrc.slice(pageSrc.indexOf("async function save("), pageSrc.indexOf("async function saveDraftWithNotice()"));
+    expect(save).toContain("bodyBaseRevision: currentDraftId ? bodySnapshot.serverRevision : undefined");
+    expect(save).toContain("bodySnapshotRef.current = { ...bodySnapshotRef.current, serverRevision }");
+    expect(save).toContain("setBodyServerRevision(serverRevision)");
+    expect(save).toContain("text: bodySnapshot.text");
+    expect(save).toContain("editLines: bodySnapshot.lines");
+    expect(save).not.toMatch(/^\s*text,\s*$/m);
+  });
+
+  it("PR87-R3-REV-02 새 초안 생성은 이전 draft id와 문서 세대를 같은 tick에 끊는다", () => {
+    const generateStart = pageSrc.indexOf("async function generateQuickDraft");
+    const generate = pageSrc.slice(generateStart, generateStart + 7000);
+    expect(generate).toContain("draftIdRef.current = null");
+    expect(generate).toContain("replaceBodySnapshot(nextLines, result, { replaceDocument: true");
   });
 
   it("C(4차): 카드덱·영상 자동저장 보류 사유가 서로 다른 state를 쓴다(공유 state가 서로를 지우지 않는다)", () => {
     const onCardDeckChange = pageSrc.slice(pageSrc.indexOf("function onCardDeckChange("), pageSrc.indexOf("function onCardDeckChange(") + 1300);
-    const onVideoEditChange = pageSrc.slice(pageSrc.indexOf("function onVideoEditChange("), pageSrc.indexOf("function onVideoEditChange(") + 1300);
+    const onVideoEditChange = onVideoEditChangeSrc;
     expect(onCardDeckChange).toContain("setCardDeckAutosaveError");
     expect(onCardDeckChange).not.toContain("setVideoEditAutosaveError");
     expect(onVideoEditChange).toContain("setVideoEditAutosaveError");

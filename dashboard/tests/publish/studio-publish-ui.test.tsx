@@ -113,6 +113,7 @@ vi.mock("@/lib/auth", () => ({
 function restoreStudio(platforms: string[]) {
   localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
     idea: "부분 성공 테스트",
+    editLines: ["가장 최신 문단"],
     text: {
       threads: "Threads 본문",
       x: "X 본문",
@@ -225,6 +226,44 @@ describe("Studio publish result integrity", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "선택한 1곳에 지금 발행" })).toBeInTheDocument());
     expect(screen.getByRole("checkbox", { name: "Threads 발행" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "X 발행" })).not.toBeChecked();
+  });
+
+  it("MINOR-1 경계: draft_id 없는 인박스 발행 복귀는 진행 중인 영상 맞춤을 취소하고 편집 잠금을 푼다", async () => {
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "이전 영상 초안",
+      draftId: "old-video-draft",
+      editKind: "video",
+      editLines: ["이전 영상 대사"],
+      vid: { url: "/api/media/old-video", file: "/api/media/old-video", model: "test" },
+      videoEdit: {
+        contract_version: "1.0",
+        overlays: [],
+        comments: [],
+        subtitles: [],
+        voice: null,
+        revision: 1,
+      },
+    }));
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=Q1");
+    mocks.returnPosts = [{
+      id: "Q1",
+      text: "인박스에서 되돌린 영상 본문",
+      topic: "영상 복귀 작업물",
+      videoUrl: "/api/media/returned-video",
+      channels: { threads: { status: "pending" } },
+      publishContext: { sourceRoute: "inbox", queuePostId: "Q1", draftId: null },
+    }];
+
+    const page = render(<StudioPage />);
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+
+    window.history.replaceState(null, "", "/studio?room=edit");
+    page.rerender(<StudioPage />);
+
+    await waitFor(() => expect(document.querySelector("[data-video-subtitle-list]")).toBeTruthy());
+    expect(document.querySelector("[data-video-syncing-note]"), "draftId가 없어진 뒤 영상 편집 잠금이 남으면 안 된다").toBeNull();
+    expect(document.querySelector("[data-video-subtitle-text]"), "복귀한 영상 대본을 편집할 수 있어야 한다").toBeEnabled();
   });
 
   it("FE-V63-RETURN-04 경계: 본문 없는 편집 인계 초안은 큐 본문과 초안 메타데이터를 함께 복원한다", async () => {
@@ -572,6 +611,7 @@ describe("Studio publish result integrity", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "임시 저장하기" })[0]);
 
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
+      editLines: ["가장 최신 문단"],
       titles: expect.objectContaining({ shorts: "쇼츠 제목" }),
       captions: expect.objectContaining({ instagram: "채널별 캡션" }),
       hashtags: expect.objectContaining({ instagram: "#하나 #둘" }),
@@ -622,6 +662,10 @@ describe("Studio publish result integrity", () => {
       "/api/queue/add",
       expect.objectContaining({ draftId: "draft-review" }),
     );
+    expect(mocks.apiPost).toHaveBeenCalledWith(
+      "/api/studio/drafts",
+      expect.objectContaining({ editLines: ["가장 최신 문단"] }),
+    );
     expect(mocks.showToast).toHaveBeenCalledWith("검토 요청을 보냈습니다", "success");
   });
 
@@ -638,6 +682,38 @@ describe("Studio publish result integrity", () => {
     await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("초안 저장 실패", "error"));
     expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/queue/add")).toBe(false);
     expect(mocks.apiPost.mock.calls.some(([path]) => String(path).includes("request-review"))).toBe(false);
+  });
+
+  it("PR87-R2-M2 정상: 기존 초안도 검토 큐를 만들기 전에 최신 본문을 먼저 저장한다", async () => {
+    // Regression: PR87-R2-M2 — 기존 draftId의 단축 평가가 최신 편집 저장을 건너뛰었다.
+    // Found by reviewer on 2026-09-28.
+    // Report: .pr87-review-r2.md
+    restoreStudio(["threads"]);
+    const key = `studio_work:${mocks.workspace.id}`;
+    const restored = JSON.parse(localStorage.getItem(key) || "{}");
+    localStorage.setItem(key, JSON.stringify({ ...restored, draftId: "draft-existing-review" }));
+    mocks.drafts = [{ id: "draft-existing-review", editLines: ["서버의 이전 문단"], status: "draft" }];
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-existing-review" };
+      if (path === "/api/queue/add") return { post: { id: "queue-existing-review" } };
+      if (path === "/api/queue/queue-existing-review/request-review") return { reused: false };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "검토 요청하기" }));
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
+      "/api/queue/queue-existing-review/request-review",
+      expect.objectContaining({ tenant_id: "tenant-a" }),
+    ));
+    const calls = mocks.apiPost.mock.calls.map(([path]) => path);
+    expect(calls.indexOf("/api/studio/drafts")).toBeGreaterThanOrEqual(0);
+    expect(calls.indexOf("/api/studio/drafts")).toBeLessThan(calls.indexOf("/api/queue/add"));
+    expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
+      id: "draft-existing-review",
+      editLines: ["가장 최신 문단"],
+    }));
   });
 
   it("M3-STUDIO-01 정상: 작업 공간을 바꾸면 각 공간의 저장 상태만 복원한다", async () => {
@@ -957,6 +1033,35 @@ describe("Studio publish result integrity", () => {
     })));
     expect(mocks.setStudioRoom).toHaveBeenCalledWith("publish");
     expect(window.location.pathname + window.location.search).toBe("/studio?room=publish");
+  });
+
+  it("PR87-R2-M1 정상: 편집줄이 비어도 생성 본문을 최신값 정본으로 승격한 뒤 저장한다", async () => {
+    window.history.replaceState(null, "", "/studio?room=edit");
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "생성 본문 직행 테스트",
+      text: {
+        threads: "생성된 스레드 본문",
+        x: "생성된 X 본문",
+        facebook: "생성된 페이스북 본문",
+        instagram: { caption: "생성된 인스타 본문", slides: ["생성된 인스타 본문"] },
+        shorts: { hook: "첫 문단", body: "둘째 문단", cta: "셋째 문단" },
+      },
+      editLines: [],
+      editKind: "text",
+      editFormat: { kind: "text" },
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-derived-lines" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "발행실로 이동" }));
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
+      editLines: ["첫 문단", "둘째 문단", "셋째 문단"],
+    })));
+    expect(mocks.setStudioRoom).toHaveBeenCalledWith("publish");
   });
 });
 

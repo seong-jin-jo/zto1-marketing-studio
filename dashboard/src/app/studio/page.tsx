@@ -223,6 +223,11 @@ interface TextVariants {
   shorts?: { hook?: string; body?: string; cta?: string };
   image_prompt?: string;
 }
+interface BodyRevisionConflict {
+  latest: { lines: string[]; text: TextVariants | null; serverRevision: number };
+  local: { lines: string[]; text: TextVariants | null };
+  viewingLatest: boolean;
+}
 // topicKey = 이 매체가 **어느 주제로** 만들어졌는지 찍는 도장(lib/studio/work-media.ts).
 // 도장이 없으면 새 주제에 어제 영상이 그대로 붙는다. 2026-09-14 실측 사고.
 // aspectRatio = 이 그림이 어떤 비율로 만들어졌는지(work-media.ts isReusableVideoBaseImage).
@@ -345,7 +350,10 @@ export default function StudioPage() {
     activeWorkspace ? `/api/studio/engine-status?tenant_id=${activeWorkspace.id}` : "/api/studio/engine-status",
     fetcher,
   );
-  const { data: hist, mutate: mutateHist } = useSWR<{ drafts: Array<Record<string, unknown>>; currentWork?: CurrentWork | null }>(activeWorkspace ? `/api/studio/drafts?tenant_id=${activeWorkspace.id}` : null, fetcher);
+  // B-6(6차 재리뷰 BLOCKER): 목록 조회가 실패하면 아래 reconcile 감시 효과가
+  // `!hist?.drafts`에 영원히 걸려 편집이 잠긴 채로 안 풀렸다 — error를 받아 그 경우
+  // 단건 GET으로 대체 경로를 연다.
+  const { data: hist, error: histError, mutate: mutateHist } = useSWR<{ drafts: Array<Record<string, unknown>>; currentWork?: CurrentWork | null }>(activeWorkspace ? `/api/studio/drafts?tenant_id=${activeWorkspace.id}` : null, fetcher);
   const { data: publishReturnQueue } = useSWR<{ posts: Array<Record<string, unknown>> }>(
     activeWorkspace && publishReturnRequest
       ? `/api/queue?status=all&returnTo=${publishReturnRequest.sourceRoute}&tenant_id=${activeWorkspace.id}`
@@ -443,6 +451,8 @@ export default function StudioPage() {
   }
   const [lastError, setLastError] = useState<string | null>(null);
   const [text, setText] = useState<TextVariants | null>(null);
+  const textRef = useRef<TextVariants | null>(null);
+  textRef.current = text;
 
   /**
    * 생성이 만든 채널별 메타를 발행실 칸에 채운다.
@@ -495,6 +505,64 @@ export default function StudioPage() {
   const [reviewBusy, setReviewBusy] = useState(false);
   const [publishChatDraft, setPublishChatDraft] = useState("");
   const [editLines, setEditLines] = useState<string[]>([]);
+  /**
+   * PR87 재리뷰 r3: 글 본문의 유일한 최신값 출처.
+   *
+   * React state는 렌더 뒤에 갱신되므로 디바운스 타이머와 비동기 저장이 닫힌 값을 잡으면
+   * 더 최신인 사용자 입력을 이전 값으로 되돌릴 수 있다. 모든 본문 교체는 이 함수로만
+   * 들어오며, ref의 세대와 값은 같은 tick에 먼저 바뀐다. 저장은 아래 직렬 큐에서 이
+   * 스냅샷만 읽고, 응답을 기다리는 동안 세대가 바뀌면 최신 세대를 다시 저장한다.
+   * `text`와 `editLines`는 같은 서버 기준판 안에서만 저장한다. 로컬 변경 순서는
+   * generation이 맡고, serverRevision은 마지막 저장 성공 때 서버가 돌려준 값만 가진다.
+   * 오래된 탭·타이머·응답이 로컬 편집 횟수로 최신 본문을 덮을 수 없어야 한다.
+  */
+  const bodySnapshotRef = useRef<{
+    generation: number;
+    serverRevision: number;
+    lines: string[];
+    text: TextVariants | null;
+  }>({ generation: 0, serverRevision: 0, lines: [], text: null });
+  // 서버 판이 바뀌면 localStorage 효과도 다시 실행돼 재접속 기준판이 낡지 않게 한다.
+  const [bodyServerRevision, setBodyServerRevision] = useState(0);
+  const [bodyRevisionConflict, setBodyRevisionConflict] = useState<BodyRevisionConflict | null>(null);
+  const [bodyConflictResolving, setBodyConflictResolving] = useState(false);
+  const bodyConflictRetryRef = useRef<Array<{
+    retry: () => Promise<string | undefined>;
+    retryWithoutVideo: () => Promise<string | undefined>;
+  }>>([]);
+  const editDocumentGenerationRef = useRef(0);
+  const draftSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  function replaceBodySnapshot(
+    nextLines: string[],
+    nextText: TextVariants | null,
+    options: { replaceDocument?: boolean; serverRevision?: number } = {},
+  ) {
+    const lines = [...nextLines];
+    if (options.replaceDocument) {
+      editDocumentGenerationRef.current += 1;
+      setBodyRevisionConflict(null);
+      setBodyConflictResolving(false);
+      bodyConflictRetryRef.current = [];
+    }
+    const serverRevision = options.serverRevision
+      ?? (options.replaceDocument ? 0 : bodySnapshotRef.current.serverRevision);
+    bodySnapshotRef.current = {
+      generation: bodySnapshotRef.current.generation + 1,
+      serverRevision,
+      lines,
+      text: nextText,
+    };
+    setBodyServerRevision(serverRevision);
+    textRef.current = nextText;
+    setText(nextText);
+    setEditLines(lines);
+  }
+  function replaceEditLines(nextLines: string[], replaceDocument = false) {
+    replaceBodySnapshot(nextLines, textRef.current, { replaceDocument });
+  }
+  function replaceText(nextText: TextVariants | null) {
+    replaceBodySnapshot(bodySnapshotRef.current.lines, nextText);
+  }
   // 2026-09-23 사고: 카드덱 경로(생성실→편집실)는 말풍선 13개를 `editLines`에 담아
   // 저장하지만, 발행실 본문(`text`)은 이 경로에서 한 번도 채워진 적이 없다(별도
   // 파생 API로만 채워짐). 그래서 편집실엔 내용이 있는데 발행실은 "본문이 없다"고
@@ -690,11 +758,21 @@ export default function StudioPage() {
   useEffect(() => {
     setSelectedAccounts({});
     const workspaceId = activeWorkspace?.id ?? null;
+    // [보안](교차 리뷰 BLOCK): 워크스페이스를 바꾸는 이 효과가 cardDeck은 비우면서
+    // videoEdit은 비우지 않았다 — 옛 워크스페이스의 오버레이·댓글이 새 워크스페이스로
+    // 그대로 넘어가 있다가, 새 워크스페이스의 draft가 videoEdit을 안 갖고 있으면(또는
+    // localStorage에 그 키가 없으면) 그 남의 값이 그대로 저장됐다. 대기 중인 자동저장
+    // 타이머도 반드시 같이 끈다 — 안 그러면 이미 예약된 저장이 새 워크스페이스로 넘어간
+    // 뒤에 옛 워크스페이스의 videoEdit을 그 위에 그대로 쏜다.
+    if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+    if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setHydratedWorkspaceId(null);
-    setIdea(""); setText(null); setImg(null); setVid(null); setDraftId(null);
+    setIdea(""); setImg(null); setVid(null); setDraftId(null);
     setIncludes(normalizeIncludes()); setPublishReconciliations({}); setEditorHandoff(null);
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
-    setEditLines([]); setCardTextPositions([]); setCardDeck(null); setReviewQueueId(null); setSelectedCandidate(null);
+    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
+    videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
+    invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setCreateBranch("video"); setCreatePrimaryKind(null); setEditKind("video"); setEditFormat(defaultContentEditFormat("video"));
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     if (!workspaceId) return;
@@ -704,11 +782,31 @@ export default function StudioPage() {
       if (raw) {
         const w = JSON.parse(raw);
         setIdea(w.idea || "");
-        setText(w.text || null); setImg(w.img || null); setVid(w.vid || null);
+        setImg(w.img || null); setVid(w.vid || null);
         if (w.includes) setIncludes(normalizeIncludes(w.includes)); setDraftId(w.draftId || null);
         setPublishReconciliations(normalizePublishReconciliations(w.publishReconciliations ?? w.publishReconciliation));
         setTitles(w.titles || {}); setHashtags(w.hashtags || {}); setTopicTags(w.topicTags || {});
-        setFirstComments(w.firstComments || {}); setCaptions(w.captions || {}); setSelectedAccounts(w.selectedAccounts || {}); setEditLines(w.editLines || []); setCardTextPositions(w.cardTextPositions || []); setReviewQueueId(w.reviewQueueId || null);
+        setFirstComments(w.firstComments || {}); setCaptions(w.captions || {}); setSelectedAccounts(w.selectedAccounts || {});
+        replaceBodySnapshot(w.editLines || [], w.text || null, { replaceDocument: true, serverRevision: Number.isSafeInteger(w.bodyRevision) ? w.bodyRevision : 0 });
+        setCardTextPositions(w.cardTextPositions || []); setReviewQueueId(w.reviewQueueId || null);
+        // B1(교차 리뷰 BLOCK, 재리뷰로 절반만 닫힘 지적): videoEdit이 이 복원 블록에
+        // 없으면 편집기가 빈 videoEdit을 받았다. 이제 무조건 세팅한다(없으면 null —
+        // 이전 워크스페이스 값이 남아 있으면 안 된다, 위 리셋과 짝). 다만 localStorage
+        // 값은 오래됐을 수 있다(다른 탭·기기가 서버에 더 최신을 저장했을 수 있다) — 그래서
+        // draftId가 있으면 이 값을 잠정치로만 쓰고, 아래 서버 재동기화 효과가 draft 목록이
+        // 오면 서버 값으로 다시 덮는다. 그 전까지는 videoEdit 자동저장을 보류한다
+        // (videoEditReconciledRef).
+        setVideoEdit((w.videoEdit as VideoEdit) ?? null);
+        // B-5(5차 재리뷰 BLOCKER): 목록이 도착하기 전 창에서 이 ref만 false였고 화면이
+        // 보는 syncing(videoEditReconciling state)은 그대로 false라, +훅 등 컨트롤이
+        // 계속 열려 있었다 — 그 창에서 만든 편집이 목록 도착 후 재동기화에 조용히
+        // 덮여 사라졌다. "재조정이 끝나기 전에는 편집 불가"를 하나의 신호(state)로
+        // 묶는다: 복원된 draftId가 있으면 이 시점부터 syncing을 true로 켜서 run()·
+        // startDrag 게이트가 즉시 잠그게 한다. 재동기화 효과(reconcileVideoEditFromServer)
+        // 가 끝나야 false로 풀린다.
+        videoEditReconciledRef.current = !w.draftId;
+        if (w.draftId) setVideoEditReconciling(true);
+        reconciledDraftIdRef.current = null;
         if (w.editKind === "video" || w.editKind === "card" || w.editKind === "audio" || w.editKind === "text") {
           setEditKind(w.editKind);
           const formatKind = w.editKind;
@@ -725,23 +823,26 @@ export default function StudioPage() {
     const workspaceId = activeWorkspace?.id;
     if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
     try {
-      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat }));
+      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat, videoEdit }));
       setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
       setEditAutosaveError("");
     } catch {
       setEditAutosaveError("자동 저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.");
     }
-  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat]);
+  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, bodyServerRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat, videoEdit]);
 
-  const upText = (patch: Partial<TextVariants>) => setText((p) => ({ ...(p || {}), ...patch }));
-  const upIg = (patch: Partial<NonNullable<TextVariants["instagram"]>>) => setText((p) => ({ ...(p || {}), instagram: { ...(p?.instagram || {}), ...patch } }));
+  const upText = (patch: Partial<TextVariants>) => replaceText({ ...(textRef.current || {}), ...patch });
+  const upIg = (patch: Partial<NonNullable<TextVariants["instagram"]>>) => replaceText({
+    ...(textRef.current || {}),
+    instagram: { ...(textRef.current?.instagram || {}), ...patch },
+  });
   const syncEditLines = (nextLines: string[]) => {
-    setEditLines(nextLines);
-    setText((current) => {
-      if (!current) return current;
+    const current = textRef.current;
+    let nextText = current;
+    if (current) {
       const body = nextLines.join("\n\n");
       if (editKind === "text") {
-        return {
+        nextText = {
           ...current,
           threads: body,
           x: body,
@@ -750,16 +851,16 @@ export default function StudioPage() {
         };
       }
       if (editKind === "card") {
-        return { ...current, instagram: { ...(current.instagram || {}), slides: nextLines } };
+        nextText = { ...current, instagram: { ...(current.instagram || {}), slides: nextLines } };
       }
       if (editKind === "video") {
         const [hook = "", ...rest] = nextLines;
         const cta = rest.length > 0 ? rest[rest.length - 1] : "";
         const middle = rest.length > 1 ? rest.slice(0, -1) : [];
-        return { ...current, shorts: { ...(current.shorts || {}), hook, body: middle.join("\n"), cta } };
+        nextText = { ...current, shorts: { ...(current.shorts || {}), hook, body: middle.join("\n"), cta } };
       }
-      return current;
-    });
+    }
+    replaceBodySnapshot(nextLines, nextText);
   };
 
   async function genText(structure?: CreateStructureChoice) {
@@ -774,7 +875,6 @@ export default function StudioPage() {
       if (!r?.ok) { const msg = r?.error || "텍스트 생성 실패"; setLastError(`텍스트: ${msg}`); showToast(msg, "error"); return null; }
       // API가 성공을 확인한 뒤에만 발행한다. 클릭 시점 아님.
       trackEvent({ name: "content_generate", params: { kind: "text" } });
-      setText(r);
       return r;
     } catch (e) {
       const msg = extractApiErrorMessage(e, "텍스트 생성 실패");
@@ -792,6 +892,7 @@ export default function StudioPage() {
         // 그 번호가 이미 발행된 것이면 발행이 매번 "이미 올라갔습니다"로 닫혔다. 스튜디오에서
         // 두 번째 글을 영영 못 올리는 상태였다. 새로 만든 것은 새 작업물이므로 이전 번호와
         // 발행 흔적을 끊는다. 끊지 않으면 새 글이 옛 글의 발행 기록에 덮어써진다.
+        draftIdRef.current = null;
         setDraftId(null);
         setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
         setPublishReconciliations({});
@@ -800,7 +901,13 @@ export default function StudioPage() {
         // 화면이 멀쩡해 보여 그대로 발행된다. 새 작업물에는 새 매체만 붙는다.
         // 남기고 경고만 띄우는 안은 버렸다(근거: lib/studio/work-media.ts droppedMediaNotice).
         const dropped = droppedMediaNotice({ img: Boolean(img), vid: Boolean(vid) });
-        setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null);
+        // [보안](교차 리뷰 재리뷰 BLOCK 2): 새 초안을 만드는 이 경로도 cardDeck만 비우고
+        // videoEdit은 그대로 뒀다 — 옛 주제의 오버레이·댓글이 새 초안에 그대로 남았다.
+        if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+        if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
+        setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null);
+        videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
+        invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
         if (dropped) showToast(dropped, "success");
         const nextKind = createPrimaryKind ?? "text";
         const nextLines = nextKind === "video"
@@ -818,7 +925,7 @@ export default function StudioPage() {
               .filter(Boolean);
         setEditKind(nextKind);
         setEditFormat(defaultContentEditFormat(nextKind));
-        setEditLines(nextLines);
+        replaceBodySnapshot(nextLines, result, { replaceDocument: true, serverRevision: 0 });
         showToast(`${structure.label} 구조로 초안을 만들었습니다`, "success");
       }
     } finally {
@@ -940,8 +1047,14 @@ export default function StudioPage() {
     generationAbort.current?.abort();
     generationAbort.current = null;
     setBusy(null);
-    setIdea(""); setText(null); setImg(null); setVid(null); setDraftId(null);
-    setEditLines([]); setEditorHandoff(null); setCardDeck(null);
+    // [보안](교차 리뷰 재리뷰 BLOCK 2): "버리고 새로"도 cardDeck만 비우고 videoEdit은
+    // 그대로 뒀다.
+    if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+    if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
+    setIdea(""); setImg(null); setVid(null); draftIdRef.current = null; setDraftId(null);
+    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setEditorHandoff(null); setCardDeck(null); setVideoEdit(null);
+    videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
+    invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setPublishReconciliations({});
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
@@ -1106,7 +1219,6 @@ export default function StudioPage() {
     status: "draft" | "published" | "partial" | "stopped" = "draft",
     reconciliations: PublishReconciliationMap = publishReconciliations,
     persistedDraftId: string | null = draftId,
-    persistedEditLines: string[] | undefined,
     // 방금 다시 그린 카드는 아직 상태에 반영되기 전이다. 상태를 기다리면 옛 그림이 저장된다.
     persistedImg: ImgResult | null = img,
     // 방금 자막을 구운 영상도 같은 이유로 인자로 받는다. 상태를 기다리면 자막 없는 옛
@@ -1119,36 +1231,220 @@ export default function StudioPage() {
     // 호출부를 짚어 강제로 명시하게 한다 — 다음에 같은 결함이 또 나는 것을 막는다.
     persistedCardDeck: CardDeck | null,
     persistedVideoEdit: VideoEdit | null,
+    bodyConflictRetryPlacement: "tail" | "head" = "tail",
   ) {
-    const r = await apiPost<{ id?: string }>("/api/studio/drafts", {
-      tenant_id: activeWorkspace?.id,
-      id: persistedDraftId,
-      idea,
-      text,
-      img: persistedImg,
-      vid: persistedVid,
-      includes,
-      status,
-      publishReconciliations: reconciliations,
-      titles,
-      hashtags,
-      topicTags,
-      firstComments,
-      captions,
-      selectedAccounts,
-      ...(persistedEditLines === undefined ? {} : { editLines: persistedEditLines }),
-      cardTextPositions,
-      // 자기 도메인만 저장하는 호출도 반대 도메인을 명시적으로 null로 보낸다. route.ts는
-      // clear 플래그가 없는 null을 "기존 값 보존"으로 다룬다. 키 생략과 위치 인자 기본값이
-      // 섞여 상대 도메인 state를 덮어쓴 과거 회귀를 payload 계약으로 드러낸다.
-      cardDeck: persistedCardDeck,
-      videoEdit: persistedVideoEdit,
-      editKind,
-      editFormat,
-      reviewQueueId,
-      publishedAt: status === "published" ? new Date().toISOString() : undefined,
+    const saveTenantId = activeWorkspace?.id ?? null;
+    const saveDocumentGeneration = editDocumentGenerationRef.current;
+    const invocationBodySnapshot = bodySnapshotRef.current;
+    // PR87 재리뷰 r2 MAJOR 1: 모든 저장을 한 큐에서 직렬 실행한다. 네트워크 응답 순서가
+    // 뒤집혀도 먼저 시작한 요청이 나중 요청 뒤에 서버를 덮을 수 없다. 각 실행은 호출
+    // 시점의 인자에서 글 본문만 예외로 두고, 반드시 유일한 최신값 출처를 읽는다.
+    const queuedSave = draftSaveQueueRef.current.catch(() => undefined).then(async () => {
+      const sameDocumentAtStart = editDocumentGenerationRef.current === saveDocumentGeneration
+        && activeWorkspaceIdRef.current === saveTenantId;
+      let currentDraftId = persistedDraftId ?? (sameDocumentAtStart ? draftIdRef.current : null);
+      let savedDraftId: string | undefined;
+
+      for (;;) {
+        const sameDocument = editDocumentGenerationRef.current === saveDocumentGeneration
+          && activeWorkspaceIdRef.current === saveTenantId;
+        // 작업 공간·초안을 바꾼 뒤에는 새 문서의 최신값을 옛 저장에 섞지 않는다. 전환 전
+        // 호출이 소유한 스냅샷을 한 번만 저장하고 현재 화면 state도 건드리지 않는다.
+        const bodySnapshot = sameDocument
+          ? bodySnapshotRef.current
+          : invocationBodySnapshot;
+        // B-7 두 번째 방어선(6차 재리뷰 BLOCKER, 보안): 자동저장 타이머가 들고 온 영상이
+        // 현재 작업 공간 소유가 아니면 이 저장에서 영상 편집만 제외한다.
+        const videoEditTenantMismatch = persistedVideoEdit !== null
+          && videoEditTenantRef.current !== null
+          && videoEditTenantRef.current !== saveTenantId;
+        const safeVideoEdit = videoEditTenantMismatch ? null : persistedVideoEdit;
+        let r: { id?: string; bodyRevision?: number; videoEditServerRevision?: number | null } | null;
+        try {
+          r = await apiPost<{ id?: string; bodyRevision?: number; videoEditServerRevision?: number | null }>("/api/studio/drafts", {
+            tenant_id: saveTenantId,
+            id: currentDraftId,
+            idea,
+            text: bodySnapshot.text,
+            bodyBaseRevision: currentDraftId ? bodySnapshot.serverRevision : undefined,
+            img: persistedImg,
+            vid: persistedVid,
+            includes,
+            status,
+            publishReconciliations: reconciliations,
+            titles,
+            hashtags,
+            topicTags,
+            firstComments,
+            captions,
+            selectedAccounts,
+            editLines: bodySnapshot.lines,
+            cardTextPositions,
+            // 자기 도메인만 저장하는 호출도 반대 도메인을 명시적으로 null로 보낸다. route.ts는
+            // clear 플래그가 없는 null을 "기존 값 보존"으로 다룬다.
+            cardDeck: persistedCardDeck,
+            videoEdit: safeVideoEdit,
+            videoEditBaseRevision: safeVideoEdit ? videoEditBaseRevisionRef.current : undefined,
+            editKind,
+            editFormat,
+            reviewQueueId,
+            publishedAt: status === "published" ? new Date().toISOString() : undefined,
+          });
+        } catch (error) {
+          const payload = error instanceof ApiResponseError
+            ? error.payload as { code?: string; latestBody?: { text?: TextVariants | null; editLines?: string[]; bodyRevision?: number } }
+            : undefined;
+          const latest = payload?.latestBody;
+          const stillSameDocument = editDocumentGenerationRef.current === saveDocumentGeneration
+            && activeWorkspaceIdRef.current === saveTenantId
+            && draftIdRef.current === currentDraftId;
+          if (payload?.code === "BODY_STALE_REVISION"
+            && stillSameDocument
+            && latest
+            && Array.isArray(latest.editLines)
+            && Number.isSafeInteger(latest.bodyRevision)) {
+            const local = bodySnapshotRef.current;
+            const latestLines = [...latest.editLines];
+            const latestText = latest.text ?? null;
+            const latestServerRevision = latest.bodyRevision as number;
+            setBodyRevisionConflict((current) => ({
+              latest: {
+                lines: latestLines,
+                text: latestText,
+                serverRevision: latestServerRevision,
+              },
+              // 최초 409에서 실패 직전 사용자 입력을 한 번만 보관한다. 사용자가 최신본을
+              // 확인한 뒤 대기 중이던 저장이 다시 409를 받아도 현재 편집기(서버 본문)를
+              // local로 재캡처하면 복구할 원문이 사라진다. 해결할 때까지 이 슬롯은 불변이다.
+              local: current?.local ?? { lines: [...local.lines], text: local.text },
+              // 후속 409가 더 새 서버판을 알렸으므로, 직전에 최신본을 보고 있었더라도
+              // 이제 화면의 본문은 최신이 아니다. 사용자가 새 최신본을 다시 불러오게 한다.
+              viewingLatest: false,
+            }));
+            // 저장 큐에 카드·영상 의도가 연달아 들어와 둘 다 같은 본문 충돌을 만나도
+            // 마지막 한 건으로 덮지 않는다. 최신 기준판을 받은 뒤 원래 순서대로 모두
+            // 재시도해야 각 도메인의 자동저장 변경이 남는다.
+            const retryIntent = {
+              retry: () => save(
+                status,
+                reconciliations,
+                currentDraftId,
+                persistedImg,
+                persistedVid,
+                persistedCardDeck,
+                safeVideoEdit,
+                "head",
+              ),
+              retryWithoutVideo: () => save(
+                status,
+                reconciliations,
+                currentDraftId,
+                persistedImg,
+                persistedVid,
+                persistedCardDeck,
+                null,
+                "head",
+              ),
+            };
+            // 원본 저장 충돌은 직렬 큐 도착 순서대로 tail에 쌓는다. 재적용 중 같은
+            // intent가 또 충돌하면 원래 자리인 head로 돌아가야 한다. tail로 보내면
+            // [옛 A, 최신 B]가 [B, A]로 역전돼 A가 마지막에 덮을 수 있다.
+            if (bodyConflictRetryPlacement === "head") bodyConflictRetryRef.current.unshift(retryIntent);
+            else bodyConflictRetryRef.current.push(retryIntent);
+            // 공통 save는 발행실에서도 호출된다. 복구 UI가 있는 편집실로 데려가지 않으면
+            // 사용자는 일반 저장 실패만 보고 최신본/재적용 행동을 찾을 수 없다.
+            if (activeRoom !== "edit") changeRoom("edit");
+          }
+          throw error;
+        }
+        savedDraftId = r?.id ?? savedDraftId;
+        currentDraftId = r?.id ?? currentDraftId;
+
+        // B-2(4차 재리뷰 BLOCKER): 첫 저장으로 받은 id는 state보다 ref에 먼저 반영해
+        // 같은 직렬 큐의 다음 저장이 중복 초안을 만들지 않게 한다.
+        const stillSameDocument = editDocumentGenerationRef.current === saveDocumentGeneration
+          && activeWorkspaceIdRef.current === saveTenantId;
+        if (r?.id && stillSameDocument) {
+          if (safeVideoEdit) {
+            reconciledDraftIdRef.current = r.id;
+            videoEditReconciledRef.current = true;
+          }
+          draftIdRef.current = r.id;
+          setDraftId(r.id);
+        }
+        if (stillSameDocument && Number.isSafeInteger(r?.bodyRevision)) {
+          const serverRevision = r!.bodyRevision as number;
+          bodySnapshotRef.current = { ...bodySnapshotRef.current, serverRevision };
+          setBodyServerRevision(serverRevision);
+        }
+        if (safeVideoEdit && stillSameDocument && r && Object.prototype.hasOwnProperty.call(r, "videoEditServerRevision")) {
+          videoEditBaseRevisionRef.current = r.videoEditServerRevision ?? null;
+        }
+        if (!stillSameDocument) break;
+        // 요청을 기다리는 동안 글이 바뀌었으면 같은 저장 계약으로 최신 세대를 한 번 더
+        // 보낸다. 따라서 오래된 응답은 잠깐 도착할 수 있어도 최종 서버값이 될 수 없다.
+        if (bodySnapshot.generation === bodySnapshotRef.current.generation) break;
+      }
+
+      mutateHist();
+      return savedDraftId;
     });
-    if (r?.id) setDraftId(r.id); mutateHist(); return r?.id;
+    draftSaveQueueRef.current = queuedSave.then(() => undefined, () => undefined);
+    return queuedSave;
+  }
+  function loadLatestBodyAfterConflict() {
+    if (!bodyRevisionConflict) return;
+    const { latest } = bodyRevisionConflict;
+    replaceBodySnapshot(latest.lines, latest.text, { serverRevision: latest.serverRevision });
+    setBodyRevisionConflict((current) => current ? { ...current, viewingLatest: true } : current);
+  }
+  async function reapplyLocalBodyAfterConflict() {
+    if (!bodyRevisionConflict || bodyConflictResolving) return;
+    const { local, latest } = bodyRevisionConflict;
+    replaceBodySnapshot(local.lines, local.text, { serverRevision: latest.serverRevision });
+    // 재저장이 끝나기 전에는 충돌 상태와 보관본을 유지한다. 여기서 먼저 지우면 느린
+    // 네트워크 동안 workbench의 inert가 풀려, 사용자가 보관본 위에 제3의 편집을 섞거나
+    // 실패 뒤 복구 단추 자체를 잃을 수 있다.
+    setBodyRevisionConflict((current) => current ? { ...current, viewingLatest: false } : current);
+    setBodyConflictResolving(true);
+    try {
+      // 스냅샷으로 한 번만 복사하지 않는다. 첫 충돌 UI가 열린 뒤에도 앞서 직렬 큐에
+      // 들어간 다른 저장이 늦게 409를 받아 새 의도를 추가할 수 있다. shift→await를
+      // 반복하면 현재 재시도보다 앞에 있던 원본 저장이 모두 끝난 뒤, 그 과정에서 새로
+      // 들어온 의도까지 같은 잠금 안에서 끝까지 drain한다.
+      for (;;) {
+        const pending = bodyConflictRetryRef.current.shift();
+        if (!pending) break;
+        try {
+          await pending.retry();
+        } catch (error) {
+          const code = error instanceof ApiResponseError
+            ? (error.payload as { code?: string } | undefined)?.code
+            : undefined;
+          if (code === "BODY_STALE_REVISION") {
+            // save()가 새 latestBody와 현재 의도를 큐 머리에 다시 넣었다. 기존 대기 의도도
+            // ref에 그대로 있으므로 충돌 UI를 유지한 채 사용자의 다음 선택을 기다린다.
+            return;
+          }
+          if (code === "VIDEO_EDIT_STALE_REVISION") {
+            // 서버는 본문 CAS를 먼저 검사한다. 둘 다 stale이면 본문 재적용에서 뒤늦게
+            // 영상 충돌이 드러나므로, 원래 영상 자동저장 catch와 같은 복구 UI를 연다.
+            // 본문 재시도에서는 영상을 빼 이 충돌이 본문 복구까지 영구히 막지 않게 한다.
+            bodyConflictRetryRef.current.unshift({ retry: pending.retryWithoutVideo, retryWithoutVideo: pending.retryWithoutVideo });
+            setVideoEditConflict(true);
+            setVideoEditAutosaveError("다른 곳에서 더 최신으로 저장된 영상 편집이 있습니다. 최신 값을 다시 불러온 뒤 다시 시도해 주세요.");
+            return;
+          }
+          bodyConflictRetryRef.current.unshift(pending);
+          showToast(extractApiErrorMessage(error, "내 변경을 다시 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."), "error");
+          return;
+        }
+      }
+      setBodyRevisionConflict(null);
+      bodyConflictRetryRef.current = [];
+    } finally {
+      setBodyConflictResolving(false);
+    }
   }
   async function saveDraftWithNotice() {
     // F5(2026-09-22 코드리뷰 3차): 자동저장 경로(onCardDeckChange)만 pruneEmptyBubbles·
@@ -1176,7 +1472,7 @@ export default function StudioPage() {
       // 수동 "임시 저장"은 카드덱·영상 자동저장과 달리 도메인 한정 저장이 아니라 전체
       // 스냅샷 저장이다 — 카드덱만 pruned로 검사·교체하고(위에서 이미 함) videoEdit는
       // 현재 state를 그대로 싣는다(이전 기본값 동작과 동일, 이번엔 명시적으로만 적었다).
-      const savedDraftId = await save("draft", undefined, undefined, undefined, undefined, undefined, prunedCardDeck, videoEdit);
+      const savedDraftId = await save("draft", undefined, undefined, undefined, undefined, prunedCardDeck, videoEdit);
       if (!savedDraftId) {
         showToast("초안을 저장하지 못했습니다", "error");
         return;
@@ -1327,12 +1623,16 @@ export default function StudioPage() {
       const subtitled = await burnVideoSubtitles(linesToPersist);
       // 자막을 못 구웠으면 넘어가지 않는다. 넘어가면 무자막 파일이 그대로 발행된다.
       if (subtitled.kind === "failed") return;
+      // 생성 결과에서 곧장 발행실로 이동해 editLines가 아직 비어 있어도, 저장보다 먼저
+      // 파생 본문을 유일한 최신값 경로에 올린다. save에 별도 본문 인자를 다시 만들면
+      // 자동저장과 같은 경합이 재발하므로 정본 자체를 승격시킨 뒤 같은 경로를 쓴다.
+      if (!bodySnapshotRef.current.lines.length) replaceEditLines(linesToPersist);
       // D(2026-09-22 코드리뷰 4차): recompositeCards가 내부에서 pruned 덱으로 렌더·
       // setCardDeck 했지만, 그 setState는 비동기라 여기 클로저의 `cardDeck`은 아직 옛
       // 값일 수 있다(리액트 배치). 발행 직전 저장은 그 클로저 값에 기대지 않고 여기서
       // 다시 한번 명시적으로 prune해 렌더된 것과 저장되는 것을 같게 만든다.
       const savedDraftId = await save(
-        "draft", publishReconciliations, draftId, linesToPersist,
+        "draft", publishReconciliations, draftId,
         redrawn ?? img,
         subtitled.kind === "done" ? subtitled.vid : vid,
         cardDeck ? pruneEmptyBubbles(cardDeck) : null,
@@ -1341,7 +1641,6 @@ export default function StudioPage() {
         videoEdit,
       );
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
-      if (!editLines.length) setEditLines(linesToPersist);
       changeRoom("publish");
       showToast("편집 내용을 저장하고 발행실로 이동했습니다", "success");
     } catch (error) {
@@ -1406,7 +1705,7 @@ export default function StudioPage() {
       if (repairedPlatforms.size === 0) throw new Error("발행 원장 복구 실패");
       // 발행 원장 기록만 남기는 호출이다 — 카드덱·영상 내용은 이 호출의 관심사가
       // 아니므로 null,null로 키 자체를 빼서 서버에 이미 저장된 값을 건드리지 않는다.
-      const savedDraftId = await save(Object.keys(remaining).length ? "partial" : "published", remaining, draftId, undefined, undefined, undefined, null, null);
+      const savedDraftId = await save(Object.keys(remaining).length ? "partial" : "published", remaining, draftId, undefined, undefined, null, null);
       if (!savedDraftId) throw new Error("기록 저장 실패");
       setPublishReconciliations(remaining);
       const repairedLabels = [...repairedPlatforms].map((platform) => LABEL[platform as keyof typeof LABEL]).join(", ");
@@ -1457,7 +1756,7 @@ export default function StudioPage() {
     }
     // 발행 직전 초안 존재를 확인하는 저장이다 — 카드덱·영상은 moveToPublish가 이미
     // 커밋했으므로 여기서는 건드리지 않는다(null,null로 키를 빼 서버 값을 보존한다).
-    const draftPersistence = await attemptRequiredDraftPersistence(() => save("draft", undefined, undefined, undefined, undefined, undefined, null, null));
+    const draftPersistence = await attemptRequiredDraftPersistence(() => save("draft", undefined, undefined, undefined, undefined, null, null));
     if (!draftPersistence.ok) {
       showToast("발행할 초안을 저장하지 못했습니다", "error");
       return;
@@ -1584,7 +1883,7 @@ export default function StudioPage() {
       setPublishReconciliations(pendingReconciliations);
       try {
         // 발행 결과 기록만 남긴다 — 카드덱·영상은 이 호출의 관심사가 아니다.
-        await save("partial", pendingReconciliations, did, undefined, undefined, undefined, null, null);
+        await save("partial", pendingReconciliations, did, undefined, undefined, null, null);
       } catch {
         // The same storage incident can prevent the draft write too. The state was
         // already copied to localStorage-bound React state, so keep the no-republish
@@ -1594,7 +1893,7 @@ export default function StudioPage() {
     } else {
       try {
         // 발행 결과 기록만 남긴다 — 카드덱·영상은 이 호출의 관심사가 아니다.
-        const savedDraftId = await save(errs.length ? "partial" : "published", {}, did, undefined, undefined, undefined, null, null);
+        const savedDraftId = await save(errs.length ? "partial" : "published", {}, did, undefined, undefined, null, null);
         if (!savedDraftId) errs.push("발행 결과를 저장하지 못했습니다");
       } catch {
         errs.push("발행 결과를 저장하지 못했습니다");
@@ -1609,7 +1908,12 @@ export default function StudioPage() {
     } else showToast("발행 완료", "success");
   }
   function loadDraft(d: Record<string, unknown>) {
-    setIdea((d.idea as string) || ""); setText((d.text as TextVariants) || null);
+    // B1(교차 리뷰 BLOCK): 서버 초안을 불러오는 이 순간 이전에 예약돼 있던 자동 저장
+    // 타이머가 있으면(예: 방금 전 영상 탭에서 시딩·조작으로 예약된 저장) 그 타이머가
+    // 지금 불러오는 이 초안 위에 낡은 값을 덮어쓴다. 불러오기 전에 반드시 끈다.
+    if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+    if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
+    setIdea((d.idea as string) || "");
     setImg((d.img as ImgResult) || null); setVid((d.vid as VidResult) || null);
     setIncludes(d.includes ? normalizeIncludes(d.includes as Record<string, boolean>) : includes); setDraftId(d.id as string);
     const savedReconciliations = normalizePublishReconciliations(d.publishReconciliations ?? d.publishReconciliation);
@@ -1621,7 +1925,11 @@ export default function StudioPage() {
     setFirstComments((d.firstComments as Record<string, string>) || {});
     setCaptions((d.captions as Record<string, string>) || {});
     setSelectedAccounts((d.selectedAccounts as Record<string, string>) || {});
-    setEditLines((d.editLines as string[]) || []);
+    replaceBodySnapshot(
+      (d.editLines as string[]) || [],
+      (d.text as TextVariants) || null,
+      { replaceDocument: true, serverRevision: Number.isSafeInteger(d.bodyRevision) ? d.bodyRevision as number : 0 },
+    );
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
     setCardDeck((d.cardDeck as CardDeck) || null);
     setVideoEdit((d.videoEdit as VideoEdit) || null);
@@ -1689,6 +1997,166 @@ export default function StudioPage() {
   // 발행실 이동이 타이머보다 먼저 끝나면 뒤늦은 콜백이 draftId=null 로 중복 초안을 만든다).
   const draftIdRef = useRef<string | null>(null);
   draftIdRef.current = draftId;
+  // B-7(6차 재리뷰 BLOCKER, 보안): reconcile은 비동기라 await 중에 워크스페이스·초안이
+  // 바뀔 수 있다. tenant도 draftIdRef와 같은 패턴으로 매 렌더 최신값을 ref에 담아,
+  // await가 끝난 시점에 "그 결과가 지금도 유효한 요청인지" 판정할 수 있게 한다.
+  const activeWorkspaceIdRef = useRef<string | null>(null);
+  activeWorkspaceIdRef.current = activeWorkspace?.id ?? null;
+  // 영상 편집 state의 최신값은 닫힌 클로저 대신 ref로 비교한다. 글 본문은 위의
+  // bodySnapshotRef 하나만 소유하므로 영상 전용 pending 복사본을 두지 않는다.
+  const videoEditRef = useRef<VideoEdit | null>(null);
+  videoEditRef.current = videoEdit;
+  /**
+   * [보안·데이터 유실](교차 리뷰 재리뷰 BLOCK 1) localStorage의 videoEdit은 잠정치다 —
+   * 다른 탭·기기가 서버에 더 최신을 저장했을 수 있다. draftId가 있는 동안은 이 값이
+   * false다가, 아래 서버 재동기화 효과가 hist.drafts에서 그 draft를 찾아 서버 값으로
+   * 덮은 뒤에야 true가 된다. onVideoEditChange의 자동저장은 이 값이 true일 때만 실제로
+   * 나간다 — 그 전에 나가면 서버의 최신 오버레이·댓글·목소리를 잠정치로 덮어쓴다.
+   */
+  const videoEditReconciledRef = useRef(true);
+  const reconciledDraftIdRef = useRef<string | null>(null);
+  /**
+   * B-7(6차 재리뷰 BLOCKER, 보안): "비동기 맞춤 결과는 발급 세대가 현재 세대와 같을
+   * 때만 반영한다"는 단일 원칙. 맞추기 시작마다(reconcileVideoEditFromServer 호출)
+   * +1 해서 자기 세대 번호를 갖고, 워크스페이스 전환·새 작업·후보 선택·버리고 새로
+   * 시작 네 곳도 이 카운터를 올려 "지금 진행 중인 맞춤은 전부 낡았다"고 선언한다.
+   * await 뒤에 이 값이 자기 세대와 다르면(다른 곳이 먼저 올렸으면) 결과를 버린다 —
+   * 증상(워크스페이스 하나, 탭 하나)마다 따로 막지 않고 이 카운터 하나로 전부 막는다.
+   */
+  const videoEditReconcileGenerationRef = useRef(0);
+  const videoEditReconcileAbortRef = useRef<AbortController | null>(null);
+  /**
+   * B-7 두 번째 방어선: 지금 `videoEdit` state가 "어느 테넌트 것인지" 기록한다.
+   * reconcile 가드가 대부분 막지만, 자동저장 타이머의 클로저가 전환 직전 순간의
+   * persistedVideoEdit을 들고 있다가 전환 뒤에 실행되는 경로까지 막으려면 save() 쪽에도
+   * 독립된 출처 확인이 필요하다(단일 원칙을 한 곳만 믿지 않고 저장 직전에도 다시 잰다).
+   */
+  const videoEditTenantRef = useRef<string | null>(null);
+  /** 3차 재리뷰 BLOCKER(a): 서버가 소유한 videoEdit 판 번호. 저장 요청에 실어 보내
+   * compare-and-set 기준으로 쓴다(save() 참조). */
+  const videoEditBaseRevisionRef = useRef<number | null>(null);
+  const [videoEditReconciling, setVideoEditReconciling] = useState(false);
+  const [videoEditConflict, setVideoEditConflict] = useState(false);
+  /**
+   * 서버 값으로 videoEdit을 다시 맞춘다. draftId가 목록(LIMIT 50) 안에 있으면 그 값을
+   * 쓰고, 없으면(BLOCKER b) 단건 조회(GET ?id=)로 직접 읽는다. MAJOR2: 맞추는 동안
+   * 대기 중이던 자동저장 타이머를 반드시 먼저 끈다 — 안 그러면 재동기화 도중 그 타이머가
+   * 잠정값을 서버로 내보내 방금 서버에서 읽어온 최신 값을 덮어쓴다. 맞추는 동안은
+   * videoEditReconciling으로 편집을 막는다(사용자 수정이 조용히 사라지는 것을 막는
+   * 더 단순하고 안전한 쪽 — 코드리뷰가 준 두 선택지 중 "막는다"를 택했다).
+   */
+  /**
+   * B-7(6차 재리뷰 BLOCKER, 보안): 워크스페이스 전환·새 작업·후보 선택·버리고 새로
+   * 시작 네 곳이 전부 이 함수를 부른다. 세대를 올려 진행 중이던 reconcile의 결과가
+   * 반영되지 않게 하고, 기다리는 단건 GET이 있으면 그 자리에서 끊고, 잠금(syncing)도
+   * 같이 풀어 다음 화면이 "맞추는 중" 상태로 시작하지 않게 한다.
+   */
+  function invalidateVideoEditReconcile() {
+    videoEditReconcileGenerationRef.current += 1;
+    videoEditReconcileAbortRef.current?.abort();
+    videoEditReconcileAbortRef.current = null;
+    setVideoEditReconciling(false);
+    // 호출부가 전부 곧이어 setVideoEdit(null)도 함께 하므로, "지금 videoEdit이 어느
+    // 테넌트 것인지" 표식도 같이 비운다 — null 상태에 남의 테넌트 표식이 붙어 있으면
+    // 안 된다.
+    videoEditTenantRef.current = null;
+  }
+  async function reconcileVideoEditFromServer(id: string, force = false) {
+    // B-7(6차 재리뷰 BLOCKER, 보안): 이 호출의 세대 번호와 시작 시점의 테넌트를 찍어
+    // 둔다. await 뒤에 세대가 바뀌었거나(다른 reconcile·리셋이 먼저 올렸다) 그 사이
+    // draftId·워크스페이스가 바뀌었으면, 이 결과는 "이미 낡은 요청"이라 절대 반영하지
+    // 않는다 — A 테넌트에서 시작한 조회가 B 테넌트로 전환된 화면에 A의 값을 칠하는
+    // 것을 이 한 판정으로 막는다.
+    const myGeneration = ++videoEditReconcileGenerationRef.current;
+    const myTenantId = activeWorkspaceIdRef.current;
+    if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
+    videoEditReconciledRef.current = false;
+    setVideoEditReconciling(true);
+    // M-1(4차 재리뷰 MAJOR): "다시 불러오기" 버튼은 force=true로 부른다. hist 목록
+    // 캐시(LIMIT 50)를 먼저 보면, 방금 충돌난 초안이 그 목록에 없을 때 다시 불러오기가
+    // 아무것도 못 읽고 409가 무한 반복된다 — force면 목록 지름길을 건너뛰고 항상 단건
+    // GET으로 읽는다.
+    let serverDraft = force ? undefined : hist?.drafts?.find((d) => d.id === id) as Record<string, unknown> | undefined;
+    let fetchFailed = false;
+    if (!serverDraft) {
+      const controller = new AbortController();
+      videoEditReconcileAbortRef.current = controller;
+      // MINOR(4차 재리뷰): 단건 조회가 걸려 있으면 reconciling이 영원히 안 풀린다 —
+      // 타임아웃을 걸어 실패로 확정짓는다.
+      const timeoutId = setTimeout(() => controller.abort(), 10_000);
+      try {
+        const res = await fetch(`/api/studio/drafts?tenant_id=${encodeURIComponent(myTenantId ?? "")}&id=${encodeURIComponent(id)}`, { headers: authHeaders(), signal: controller.signal });
+        if (res.ok) {
+          const data = await res.json().catch(() => null) as { draft?: Record<string, unknown> } | null;
+          serverDraft = data?.draft ?? undefined;
+        } else if (res.status !== 404) {
+          // MINOR(4차 재리뷰): 500·403 등은 "서버에 없음"이 아니라 오류다. 없음으로
+          // 오인하면 videoEdit을 null로 덮어써 있던 값을 지운다.
+          fetchFailed = true;
+        }
+      } catch {
+        // 네트워크 실패·타임아웃(또는 B-7 리셋이 abort() 한 경우)도 "없음"이 아니라
+        // 오류다 — 아래에서 별도 처리한다. 리셋으로 abort된 경우는 아래 세대 판정이
+        // fetchFailed 분기보다 먼저 걸려 조용히 버려진다.
+        fetchFailed = true;
+      } finally {
+        clearTimeout(timeoutId);
+        if (videoEditReconcileAbortRef.current === controller) videoEditReconcileAbortRef.current = null;
+      }
+    }
+    // B-7 핵심 판정: 이 시점에도 여전히 "지금 세대"이고, draftId·워크스페이스가 그
+    // 사이 안 바뀌었을 때만 아래에서 결과를 반영한다. 넷 중 하나라도 어긋나면 이
+    // 함수는 화면 상태를 전혀 건드리지 않고 조용히 끝난다(리셋 쪽이 이미
+    // videoEditReconciling=false 등 정리를 마쳤다).
+    const stillCurrent = videoEditReconcileGenerationRef.current === myGeneration
+      && draftIdRef.current === id
+      && activeWorkspaceIdRef.current === myTenantId;
+    if (!stillCurrent) return;
+    if (fetchFailed) {
+      // 오류면 지금 화면 값(옛 상태)을 그대로 두고 맞추는 시도만 접는다 — 사용자가
+      // 다시 시도할 수 있게 reconciling만 풀고, videoEdit을 지우거나 "맞춰짐" 처리하지
+      // 않는다(맞춰짐 처리하면 그 다음 자동저장이 안 맞춘 값을 서버로 내보낼 수 있다).
+      setVideoEditReconciling(false);
+      // MINOR(5차 재리뷰): 안내만 뜨고 재시도 길이 없었다 — 토스트 자체에 "다시 시도"를
+      // 달아 force 재조회로 바로 이어지게 한다.
+      showToast("서버 값을 다시 불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.", "error", {
+        label: "다시 시도",
+        onClick: () => { void reconcileVideoEditFromServer(id, true); },
+      });
+      return;
+    }
+    const serverVideoEdit = (serverDraft?.videoEdit as VideoEdit | undefined) ?? null;
+    setVideoEdit(serverVideoEdit);
+    videoEditBaseRevisionRef.current = serverVideoEdit?.revision ?? null;
+    reconciledDraftIdRef.current = id;
+    videoEditTenantRef.current = myTenantId; // B-7: 이 값은 myTenantId 테넌트 것이라고 기록
+    videoEditReconciledRef.current = true;
+    setVideoEditReconciling(false);
+    setVideoEditConflict(false);
+    if (force) mutateHist();
+  }
+  // B-7(6차 재리뷰 BLOCKER, 보안 — 자체 실측으로 추가 발견): 워크스페이스를 바꾸면
+  // hist(SWR) 데이터의 "객체 참조"도 바뀐다(다른 테넌트의 새 목록이므로) — 내용이
+  // 똑같이 빈 배열이어도 참조가 다르면 React가 "바뀌었다"고 보고 이 효과를 그 커밋
+  // 안에서 즉시 다시 돌린다. 그런데 그 커밋에서는 아직 옛 draftId(예: A의 XA)가
+  // state에 남아 있다(setDraftId(null)이 워크스페이스 리셋 효과 안에서 예약됐을 뿐
+  // 아직 반영 전) — 그래서 "지금 워크스페이스는 B인데 A의 draftId로" 재조회를 새로
+  // 시작해버리는 유령 호출이 생겼다(reconcile 내부의 stillCurrent 판정이 결과 반영은
+  // 막지만, 그 유령 호출이 올린 syncing=true를 아무도 꺼주지 않아 B가 잠긴 채 남았다).
+  // hist?.drafts의 "내용 유무"(불리언)만 의존값으로 삼으면 참조가 바뀌어도 유무가
+  // 똑같은 한(빈 배열→빈 배열) 이 커밋에서 다시 안 돈다 — draftId가 실제로 바뀐 다음
+  // 커밋에서만, 그때는 이미 최신 draftId(null)로 정확히 판단한다.
+  const histDraftsReady = Boolean(hist?.drafts);
+  useEffect(() => {
+    if (!draftId) { videoEditReconciledRef.current = true; videoEditBaseRevisionRef.current = null; return; }
+    if (reconciledDraftIdRef.current === draftId) return;
+    // B-6(6차 재리뷰 BLOCKER): 목록(SWR)이 계속 로딩 중이면 다음 도착을 기다리는 게
+    // 맞지만, 목록 자체가 에러로 끝났으면(histError) 영원히 안 온다 — 그 경우 목록을
+    // 포기하고 단건 GET(force)으로 넘어간다. 그래야 "잠근 채 12초 뒤에도 안 풀림"이
+    // 아니라 최소한 10초 타임아웃(reconcileVideoEditFromServer 내부)까지만 잠긴다.
+    if (!histDraftsReady && !histError) return; // SWR 로딩 중 — hist가 도착하면 이 효과가 다시 돈다.
+    void reconcileVideoEditFromServer(draftId, Boolean(histError));
+  }, [draftId, histDraftsReady, histError]);
   useEffect(() => () => {
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
     if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
@@ -1726,14 +2194,17 @@ export default function StudioPage() {
         return;
       }
       const tagText = work.hashtags.map((tag) => tag.replace(/^#/, "")).join(" ");
+      // B1(교차 리뷰 BLOCK): loadDraft와 같은 이유. 이 경로도 videoEdit을 직접 세팅한다.
+      if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+      if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
       setIdea((linkedDraft?.idea as string) || work.idea);
-      setText({
+      const returnedText: TextVariants = {
         threads: work.body,
         x: work.body,
         facebook: work.body,
         instagram: { caption: work.body, hashtags: work.hashtags.map((tag) => tag.replace(/^#/, "")) },
         shorts: { hook: work.body, body: "", cta: "" },
-      });
+      };
       setImg(work.imageUrl ? { url: work.imageUrl, file: work.imageUrl } : null);
       setVid(work.videoUrl ? { url: work.videoUrl, file: work.videoUrl, model: "기존 작업물" } : null);
       setIncludes(work.includedPlatforms.length
@@ -1745,10 +2216,19 @@ export default function StudioPage() {
       setFirstComments((linkedDraft?.firstComments as Record<string, string>) || {});
       setCaptions((linkedDraft?.captions as Record<string, string>) || {});
       setSelectedAccounts((linkedDraft?.selectedAccounts as Record<string, string>) || {});
-      setEditLines((linkedDraft?.editLines as string[]) || []);
+      replaceBodySnapshot(
+        (linkedDraft?.editLines as string[]) || [],
+        returnedText,
+        { replaceDocument: true, serverRevision: Number.isSafeInteger(linkedDraft?.bodyRevision) ? linkedDraft?.bodyRevision as number : 0 },
+      );
       setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
       setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
       setVideoEdit((linkedDraft?.videoEdit as VideoEdit) || null);
+      // MINOR(7차 재리뷰): 이 분기도 videoEdit을 reconcile 밖에서 직접 세팅한다(워크스페이스
+      // 전환·새 작업·후보 선택·버리고 새로 시작과 같은 계열) — 그 아래 setDraftId(linkedDraftId)가
+      // null일 수 있는데, 그러면 진행 중이던 맞춤의 syncing 잠금이 안 풀릴 수 있었다. 다른 네 곳과
+      // 같은 invalidateVideoEditReconcile()로 세대를 올리고 잠금을 확실히 푼다.
+      invalidateVideoEditReconcile();
       const linkedFormat = validateContentEditFormat(linkedDraft?.editFormat);
       if (linkedFormat.valid) {
         setEditKind(linkedFormat.value.kind);
@@ -1777,6 +2257,18 @@ export default function StudioPage() {
           : "발행 완료";
   const LABEL: Record<string, string> = { threads: "Threads", x: "X", facebook: "Facebook", instagram: "Instagram", shorts: "Shorts", reels: "Reels", tiktok: "TikTok" };
   function chooseCandidate(candidate: StudioGenerationCandidate) {
+    // [보안](교차 리뷰 재리뷰 BLOCK 2): 후보를 고르는 이 경로는 cardDeck·videoEdit
+    // 둘 다 비우지 않아 이전 후보(또는 이전 세션)의 오버레이·댓글이 새 후보로 그대로
+    // 넘어갔다.
+    if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+    if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
+    setCardDeck(null); setVideoEdit(null);
+    // MINOR(3차 재리뷰): draftId도 끊는다 — 남겨 두면 다음 저장이 이 후보와 무관한
+    // 옛 초안 id 위에 그대로 얹혀 저장된다.
+    draftIdRef.current = null;
+    setDraftId(null);
+    videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
+    invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setSelectedCandidate(candidate);
     /*
       ★rationale 은 **고객에게 보여 줄 글이 아니다.** "이 구조를 왜 골랐는가" 를 우리가
@@ -1792,7 +2284,7 @@ export default function StudioPage() {
       설명하는 자리에만 쓴다.
     */
     const body = [candidate.title, ...candidate.format.outline].join("\n");
-    setText({
+    const candidateText: TextVariants = {
       threads: body,
       x: trimToChannelLimit(body, "x"),
       facebook: body,
@@ -1804,8 +2296,8 @@ export default function StudioPage() {
         body: candidate.format.outline.join("\n"),
         cta: candidate.format.outline[candidate.format.outline.length - 1] ?? candidate.title,
       },
-    });
-    setEditLines([candidate.title, ...candidate.format.outline]);
+    };
+    replaceBodySnapshot([candidate.title, ...candidate.format.outline], candidateText, { replaceDocument: true, serverRevision: 0 });
     /*
       2026-09-09 실사용에서 찾았다. 생성실에서 "글" 을 골라 구조를 고르고 편집실로 갔더니
       종류가 카드뉴스로 잡혔다. content_branch 는 text_image 와 video 둘뿐이라 글과
@@ -1928,11 +2420,12 @@ export default function StudioPage() {
     }
     setReviewBusy(true);
     try {
+      // 신규·기존 초안과 기존 검토 큐를 가리지 않고, 검토 요청은 반드시 최신 본문
+      // 스냅샷 저장이 끝난 뒤에만 진행한다. draftId 단축 평가는 저장을 건너뛰므로 금지한다.
+      const linkedDraftId = await save("draft", undefined, undefined, undefined, undefined, cardDeck, videoEdit);
+      if (!linkedDraftId) throw new Error("검토 요청용 초안을 저장하지 못했습니다");
       let queueId = reviewQueueId;
       if (!queueId) {
-        // 검토 큐에 걸 초안이 아직 없으면 지금 전체 스냅샷으로 만든다(이전 기본값과 동일).
-        const linkedDraftId = draftId || await save("draft", undefined, undefined, undefined, undefined, undefined, cardDeck, videoEdit);
-        if (!linkedDraftId) throw new Error("검토 요청용 초안을 저장하지 못했습니다");
         const added = await apiPost<{ post?: { id?: string } }>("/api/queue/add", {
           tenant_id: activeWorkspace.id,
           draftId: linkedDraftId,
@@ -2218,7 +2711,7 @@ export default function StudioPage() {
           });
           // 그림만 넘기면 편집실은 카드가 몇 장인지 모른다. 실제로 그래서 3장을 만들어도
           // 편집실이 `1 / 1` 을 그렸다(2026-09-14 실측). 장에 적힌 글자를 같이 넘긴다.
-          if (cardLines.length) setEditLines(cardLines);
+          if (cardLines.length) replaceEditLines(cardLines);
         }}
         cardRatio={cardAspectRatio}
         onGenerateVideo={generateShortVideo}
@@ -2260,15 +2753,18 @@ export default function StudioPage() {
         setCardDeckAutosaveError(`${emptySlide}번 장에 말풍선이 비어 있어 자동 저장을 보류했습니다. 내용을 채우면 저장됩니다.`);
         return;
       }
-      // A(2026-09-22 코드리뷰 4차): save()의 8번째 인자(videoEdit)를 생략하면 기본값이
+      // A(2026-09-22 코드리뷰 4차): save()의 마지막 인자(videoEdit)를 생략하면 기본값이
       // 현재 videoEdit state를 통째로 실어 보낸다. 이 타이머는 카드덱 도메인만 책임진다 —
       // 사용자가 영상 오버레이 문구를 지우고 다시 타이핑하는 중(정상 편집 중, 보류
       // 대상)이면 그 state가 여기 실려가 서버 validateVideoEdit 400을 내고, 카드덱
       // 저장까지 함께 실패한다. null을 명시해 videoEdit 키 자체를 payload에서 뺀다
       // (drafts/route.ts는 키가 없으면 기존 값을 보존한다).
-      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, pruned, null)
+      save("draft", publishReconciliations, draftIdRef.current, img, vid, pruned, null)
         .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setCardDeckAutosaveError(""); })
-        .catch((error) => setCardDeckAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
+        .catch((error) => {
+          if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "BODY_STALE_REVISION") return;
+          setCardDeckAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+        });
     }, 800);
   }
 
@@ -2280,24 +2776,63 @@ export default function StudioPage() {
    * (cardDeck의 pruneEmptyBubbles/emptyBubbleSlideNumber와 같은 패턴).
    */
   function onVideoEditChange(nextEdit: VideoEdit) {
+    const previousSubtitleLines = [...(videoEditRef.current?.subtitles ?? [])]
+      .sort((left, right) => left.order - right.order)
+      .map((subtitle) => subtitle.text);
+    const nextSubtitleLines = [...nextEdit.subtitles]
+      .sort((left, right) => left.order - right.order)
+      .map((subtitle) => subtitle.text);
+    if (previousSubtitleLines.length !== nextSubtitleLines.length
+      || previousSubtitleLines.some((line, index) => line !== nextSubtitleLines[index])) {
+      // 자막 변경도 다른 글 편집과 같은 최신값 경로를 즉시 통과한다. 이후 글 화면에서
+      // 더 새 값을 쓰면 그 세대가 이 값을 자연스럽게 대체한다.
+      syncEditLines(nextSubtitleLines);
+    }
     setVideoEdit(nextEdit);
+    videoEditRef.current = nextEdit;
     if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
-    videoEditAutosaveTimer.current = setTimeout(() => {
-      const blockedReason = videoEditIncompleteEntryReason(nextEdit);
-      if (blockedReason) {
-        setVideoEditAutosaveError(blockedReason);
-        return;
-      }
-      // B(2026-09-22 코드리뷰 4차): 반대 방향의 같은 결함. 이 타이머는 영상 도메인만
-      // 책임진다 — cardDeck을 그대로 실으면(pruning 없이) 빈 말풍선이 서버에 그대로
-      // 박히거나, 저장 자체가 카드덱 검증 실패로 통째로 막힌다. null을 명시해 cardDeck
-      // 키 자체를 payload에서 뺀다(기존 서버 값 보존).
-      // 영상만 바꾸는 저장은 editLines 키를 아예 보내지 않는다. 타이머가 잡은 낡은
-      // 클로저 값을 보내면 서버의 최신 글/카드 투영을 되돌릴 수 있다.
-      save("draft", publishReconciliations, draftIdRef.current, undefined, img, vid, null, nextEdit)
-        .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setVideoEditAutosaveError(""); })
-        .catch((error) => setVideoEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
-    }, 800);
+    const attempt = (retriesLeft: number) => {
+      videoEditAutosaveTimer.current = setTimeout(() => {
+        // [보안·데이터 유실](교차 리뷰 재리뷰 BLOCK 1): 서버 값을 아직 못 읽었으면(같은
+        // draft를 다른 탭·기기가 먼저 저장했을 수 있는 창) 저장을 미룬다. 짧게 재시도하고,
+        // 그래도 안 되면(오프라인 등) 포기하지 않고 그냥 보낸다 — 서버가 revision으로
+        // 한 번 더 막는다(드래프트 route.ts StaleVideoEditRevisionError, 409).
+        if (!videoEditReconciledRef.current && retriesLeft > 0) {
+          attempt(retriesLeft - 1);
+          return;
+        }
+        const blockedReason = videoEditIncompleteEntryReason(nextEdit);
+        if (blockedReason) {
+          setVideoEditAutosaveError(blockedReason);
+          return;
+        }
+        // B(2026-09-22 코드리뷰 4차): 반대 방향의 같은 결함. 이 타이머는 영상 도메인만
+        // 책임진다 — cardDeck을 그대로 실으면(pruning 없이) 빈 말풍선이 서버에 그대로
+        // 박히거나, 저장 자체가 카드덱 검증 실패로 통째로 막힌다. null을 명시해 cardDeck
+        // 키 자체를 payload에서 뺀다(기존 서버 값 보존).
+        // 영상 저장도 수동 저장·카드 자동저장·검토 요청과 같은 save 경로를 쓴다. save가
+        // 실행 시점의 본문 세대를 읽으므로 예약 당시 자막 복사본은 존재하지 않는다.
+        save("draft", publishReconciliations, draftIdRef.current, img, vid, null, nextEdit)
+          .then(() => {
+            setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
+            setVideoEditAutosaveError("");
+          })
+          .catch((error) => {
+            // 본문 충돌은 save()가 로컬 입력과 latestBody를 함께 보관하고 전용 복구 UI를
+            // 연다. 영상 오류로도 중복 표시하면 복구 성공 뒤 영상 오류가 남아 발행을
+            // 계속 막으므로 이 경로에서는 별도 오류를 만들지 않는다.
+            if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "BODY_STALE_REVISION") return;
+            // MAJOR1(3차 재리뷰): 409가 나면 빠져나갈 길("서버 값 다시 불러오기")을 준다.
+            if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "VIDEO_EDIT_STALE_REVISION") {
+              setVideoEditConflict(true);
+              setVideoEditAutosaveError("다른 곳에서 더 최신으로 저장된 영상 편집이 있습니다. 최신 값을 다시 불러온 뒤 다시 시도해 주세요.");
+              return;
+            }
+            setVideoEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+          });
+      }, 800);
+    };
+    attempt(10);
   }
 
   if (activeRoom === "edit") return (
@@ -2332,6 +2867,14 @@ export default function StudioPage() {
         autosaveError={[editAutosaveError, cardDeckAutosaveError, videoEditAutosaveError].filter(Boolean).join(" ")}
         cardDeckAutosaveError={cardDeckAutosaveError}
         videoEditAutosaveError={videoEditAutosaveError}
+        videoEditConflict={videoEditConflict}
+        onVideoEditReload={() => { if (draftIdRef.current) void reconcileVideoEditFromServer(draftIdRef.current, true); }}
+        videoEditReconciling={videoEditReconciling}
+        bodyEditConflict={Boolean(bodyRevisionConflict)}
+        bodyConflictViewingLatest={Boolean(bodyRevisionConflict?.viewingLatest)}
+        bodyConflictResolving={bodyConflictResolving}
+        onBodyConflictLoadLatest={loadLatestBodyAfterConflict}
+        onBodyConflictReapply={() => { void reapplyLocalBodyAfterConflict(); }}
       />
     </div>
   );

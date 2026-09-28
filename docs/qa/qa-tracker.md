@@ -1,3 +1,59 @@
+## 2026-09-28 PR 87 재리뷰 r6 연속 본문 충돌 보관본·CI 제한시간 ❌ NG → 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-R6-MAJOR-01 | 연속 409에서도 최초 로컬 본문을 사용자가 해결할 때까지 불변 보관하고 당시 최신 서버 revision 위에 재적용 | PR87-R6-RECOVERY-01, PR87-R6-E2E-01 | 🔧 수정, 로컬 PASS | fake timer 3건과 실제 Chromium 두 탭에서 최신본 확인 뒤 연속 409를 고정했다. base 6·7 요청 모두 최초 로컬 입력을 유지했고 revision 5→6→7→8, 콘솔 오류 0이다. |
+| PR87-R6-MAJOR-02 | 본문 충돌 E2E 전체가 유한 시간 안에 종료 | PR87-R6-CI-01 | 🔧 수정, 로컬 PASS | CI step 3분, 준비 60초·kill-after 5초, E2E 90초·kill-after 10초, EXIT kill+wait를 적용했다. PostgreSQL 16 전체 421파일·2,867건 PASS·1건 SKIP·실패 0이다. |
+
+## 2026-09-28 PR 87 재리뷰 r5 본문 충돌 복구 흐름 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-R5-MAJOR-01 | 본문 409 뒤 로컬 입력을 보존하고 최신본 불러오기·내 변경 다시 적용 두 행동으로 저장을 재개 | PR87-R5-RECOVERY-01~05, PR87-R5-E2E-01 | 🔧 수정, 로컬 PASS | fake timer `StudioPage` 회귀 3건과 실제 Chromium 두 탭에서 입력 보존, 재저장 중 편집 잠금, 최신본 표시, base revision 6 재적용, 본문·영상 이중 충돌 분리, 응답이 늦은 두 번째 저장 의도 보존을 확인했다. 서버 revision 5→6→7, 콘솔 오류 0. 전체 421파일·2,867건 PASS·1건 SKIP·실패 0. 원격 CI는 push 전이라 미검증이다. |
+
+## 2026-09-28 PR 87 재리뷰 r4 서버 기준 본문 CAS ❌ NG → 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-R4-MAJOR-01 | 오래된 탭의 큰 로컬 편집 횟수가 최신 서버 본문을 덮지 못함 | PR87-R4-REV-01~04, PR87-R4-DB-01~02 | 🔧 수정, 로컬 PASS | 실제 PostgreSQL과 fake timer로 현재 탭 100ms 저장 뒤 오래된 탭 800ms 저장을 고정했다. 현재 탭은 base 0으로 200·server revision 1, 로컬 revision 100인 오래된 탭도 base 0이라 409이며 최신 본문·revision 1을 반환한다. DB 승자 본문이 유지된다. |
+| PR87-R4-FINAL | CI 동일 전체 회귀, 타입·빌드·브라우저 | PR87-R4-FINAL-01~06 | ✅ 로컬 PASS | 관련 8파일 48건, 전체 420파일·2,864건 PASS·1건 SKIP·실패 0. TypeScript·build·migration matrix·발행실 정렬·Chromium E2E PASS. dev `localhost:3465/studio?room=edit` HTTP 200·콘솔 오류 0. 원격 CI는 push 전이라 미검증이다. |
+
+## 2026-09-28 PR 87 재리뷰 r3 본문 revision 경합 ❌ NG → 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-R3-BLOCKER-01 | 초안 A 저장 중 B 전환 경합을 실시간 대기 없이 결정적으로 검증 | PR87-R2-CTX | 🔧 수정, 로컬 PASS | `draft-A`를 시딩하고 입력 잠금 해제를 기다린 뒤 fake timer 800ms와 저장 시작·해제 Promise로 순서를 직접 제어한다. 전체 테스트 3회에서 모두 통과했다. |
+| PR87-R3-MAJOR-01~03 | 모든 본문 저장이 `(draft id, body revision)` 단일 규칙을 거치고 오래된 저장·응답을 거절 | PR87-R3-REV-01~06, PR87-R3-DB-01~02 | 🔧 수정, 로컬 PASS | `text`·`editLines`·revision을 한 스냅샷으로 묶고 모든 저장이 같은 큐와 API 계약을 거친다. 실제 PostgreSQL 동시 UPDATE에서 같은 revision 두 요청 중 1건만 200, 다른 1건은 409이며 승자 본문이 유지됨을 확인했다. |
+| PR87-R3-FINAL | CI 동일 전체 회귀 3회, 타입·빌드·렌더 | PR87-R3-FINAL-01~05 | ✅ 로컬 PASS | 매회 420파일·2,863건 PASS·1건 SKIP·실패 0. TypeScript와 production build 종료 0. dev `localhost:3458/studio?room=edit` HTTP 200·콘솔 오류 0. 원격 CI는 push 전이라 미검증이다. |
+
+## 2026-09-28 PR 87 재리뷰 r2 글 최신값 경합 ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-R2-MAJOR-01 | 자막 A′ 자동저장 대기 중 더 최신 글 B가 입력되면 B를 보존 | PR87-R2-M1 | ✅ 로컬 PASS | 본문 세대와 저장 큐를 단일 경로로 묶었다. A′→B→타이머, B→영상 편집, 저장 응답 대기 중 B 입력을 실제 `StudioPage`에서 모두 고정했다. |
+| PR87-R2-MAJOR-02 | 기존 초안도 검토 요청 전에 최신 본문을 저장 | PR87-R2-M2 | ✅ 로컬 PASS | 기존 초안도 `/api/studio/drafts`에 최신 본문을 먼저 저장한 뒤 큐 생성·검토 요청을 수행함을 호출 순서로 검증했다. |
+| PR87-R2-FINAL | CI 동일 전체 회귀와 타입·빌드·브라우저 | PR87-R2-FINAL-01~06 | ✅ 로컬 PASS | 전체 Vitest 418파일·2,855건 PASS·1건 SKIP·실패 0. TypeScript, build, migration matrix, 발행실 정렬, Chromium E2E PASS. dev `localhost:3770/studio?room=edit` HTTP 200·콘솔 오류 0. |
+
+## 2026-09-28 PR 87 병합 리뷰 글 저장 회귀 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-MERGE-R1-MAJOR-01 | 영상의 비자막 필드 자동저장이 최신 글 원문을 이전 영상 자막으로 되돌리지 않음 | PR87-MERGE-R1-M1 | 🔧 수정, 로컬 PASS | 실제 `StudioPage`에서 글 A→B 편집 뒤 영상 훅만 바꾸는 경로가 수정 전 옛 자막 A를 `editLines`로 보낸 것을 재현했다. 저장 의도를 자막 변경 시점에만 별도 보관하고, 훅·CTA 등 비자막 변경은 `editLines` 키를 생략하도록 수정했다. |
+| PR87-MERGE-R1-MAJOR-02 | 임시 저장과 검토 요청이 현재 글 원문 전체 스냅샷을 저장함 | PR87-MERGE-R1-M2 | 🔧 수정, 로컬 PASS | 두 전체 저장 경로가 `editLinesRef.current`를 명시적으로 보내도록 수정했다. 수정 전 표적 3건 실패·39건 통과, 수정 뒤 관련 3파일 51건 통과. |
+| PR87-MERGE-R1-FINAL | CI 동일 전체 회귀와 타입·빌드·렌더 | PR87-MERGE-R1-FINAL-01~05 | ✅ 로컬 PASS | 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 전체 Vitest 418파일·2,850건 통과·1건 건너뜀·실패 0. CI TypeScript와 production build 종료 0. Chromium 편집 탐침 전부 통과. dev `/qa-alignment-harness?room=publish` HTTP 200·카드 28개·콘솔 오류 0. 원격 CI·운영 배포는 push 전이라 미검증. |
+
+## 2026-09-28 PR 87 main 병합 충돌 해결 ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-MERGE-MAIN | `origin/main`의 p1 최종본을 기준으로 p2 영상 편집 변경을 보존해 merge | PR87-MERGE-01 | ✅ 로컬 PASS | 12개 충돌을 p1 main 우선, p2 영상 CAS·발행 복귀 잠금 해제 보존 원칙으로 해결했다. 교차 회귀는 동일 영상 스냅샷에서 저장 대사를 파생해 닫았다. CI 동일 임시 PostgreSQL schema→seed→RLS·migration matrix 뒤 418파일·2,849건 통과·1건 건너뜀·실패 0, TypeScript와 build 종료 0, 발행실 정렬 최대 delta 0px, Chromium·WebKit·Firefox 편집 51개 시나리오 PASS. dev `localhost:3764/studio?room=edit` HTTP 200·콘솔 오류 0. 원격 CI는 push 전이라 미검증이다. |
+
+## 2026-09-28 07:08 KST · PR 87 영상 편집 MINOR-1 잠금 회귀 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-VIDEO-MINOR-1 | `draft_id` 없는 인박스 발행 복귀에서 이전 영상 맞춤 잠금 제거 | MINOR-1, P11(B-5) | ❌ NG → 🔧 수정, 로컬 PASS | 발행 복귀 else 분기가 `videoEdit`과 `draftId=null`을 직접 세팅하면서 진행 중 맞춤 세대를 무효화하지 않았다. 해당 분기에서 공용 `invalidateVideoEditReconcile()`을 호출했다. `draftId=null` 감시 효과에서 잠금을 푸는 초안은 복원 직후 B-5 잠금을 조기에 해제해 P11을 실패시켰으므로 제거했다. 실제 `StudioPage` 마운트 회귀 39/39와 `typecheck:ci`가 통과했다. 운영 배포는 미검증이다. |
+
 ## 2026-09-28 09:23 KST · PR 85 편집실 v70 9차 리뷰 ❌ NG → 🔧 수정, 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

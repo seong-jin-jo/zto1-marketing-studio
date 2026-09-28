@@ -10,7 +10,9 @@ const pageSource = readFileSync("src/app/studio/page.tsx", "utf8");
 
 describe("편집실의 글 순서와 배경 음악 제거 회귀", () => {
   it("EDITROOM-NO-DEAD-CONTROLS-01 거절: 글은 순서·추가·삭제 조작을 노출하지 않는다", () => {
-    expect(roomSource).toContain('{kind !== "text" ? <nav');
+    // p2 영상 전용 작업대도 목차를 숨긴다. 핵심 계약은 글에서 목차가 열리지 않는 것이므로
+    // text 거절 조건과 video 전용 분기를 함께 고정한다.
+    expect(roomSource).toContain('{kind !== "text" && !(kind === "video" && onVideoEditChange) ? <nav');
     expect(roomSource).toContain('<TextDocumentEditor');
     expect(roomSource).toContain('segments={textSegments}');
     expect(roomSource).toContain('onLinesChange={onLinesChange}');

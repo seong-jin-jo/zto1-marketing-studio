@@ -1,3 +1,91 @@
+## 2026-09-28 16:37 KST PR 87 재리뷰 r6 연속 409 보관본 로컬 완료
+
+- handoff basis: 회장이 지정한 `.pr87-review-r6.md`와 시작 HEAD `6abafccc`를 primary로 삼았다. tmux `371:0.1`은 비활성 zsh pane이라 별도 인계원으로 쓰지 않았다.
+- 수정: 첫 409에서만 로컬 본문을 불변 보관하고 후속 409는 최신 서버 본문·revision만 갱신한다. 재적용은 최초 보관본을 그 시점의 최신 revision 위에 저장한다. CI 본문 충돌 E2E에 step 3분과 준비 60초·E2E 90초 kill-after 제한, 서버 kill+wait를 적용했다.
+- 검증: fake timer 회귀 3건, 실제 Chromium 두 탭 revision 5→6→7→8·base 7 재적용·콘솔 오류 0, PostgreSQL 16 전체 421파일·2,867건 PASS·1건 SKIP·실패 0. TypeScript·build·migration matrix·발행실 정렬·Chromium 말풍선 E2E PASS.
+- 마이그레이션: 없음. 기존 React 충돌 상태와 서버 발급 `bodyRevision`을 재사용했다. 원격 CI와 운영 배포는 push 전이라 미검증이다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 merge도 하지 않는다.
+- 다음 실행: 로컬 수정 커밋은 완료했다. 부모 컨트롤러가 원격 push 뒤 PR verify green을 확인한다.
+
+## 2026-09-28 PR 87 재리뷰 r6 연속 409 보관본 수정 착수
+
+- handoff basis: 회장이 지정한 `.pr87-review-r6.md`와 현재 HEAD `6abafccc`를 primary로 삼았다. tmux `371:0.1`은 이 워크트리의 비활성 zsh pane으로 확인했으며, 사용자가 이번 과제를 명시했으므로 별도 인계원으로 채택하지 않았다.
+- 원인 확인: 본문 409 처리부가 충돌 상태 존재 여부와 무관하게 현재 `bodySnapshotRef`를 `local`에 다시 캡처한다. 사용자가 최신본을 확인한 뒤 연속 409가 오면 서버 본문이 최초 로컬 입력을 덮는다. CI는 준비 루프만 제한하고 E2E 실행 본체는 무제한이다.
+- 구현 계약: 최초 409에서만 로컬 보관 슬롯을 채우고 해결 전 후속 409는 최신 서버 본문·revision만 갱신한다. 재적용은 최초 보관본을 그 시점의 최신 revision 위에 저장한다. CI step과 shell 명령 양쪽에 제한시간을 둔다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 merge도 하지 않는다.
+- 다음 실행: 연속 409 회귀를 먼저 추가해 결함을 고정하고 제품 코드·CI를 수정한 뒤 전체 CI 동일 스위트와 실제 두 탭 E2E를 검증한다.
+
+## 2026-09-28 15:40 KST PR 87 재리뷰 r5 본문 충돌 복구 로컬 완료
+
+- handoff basis: 회장이 지정한 시작 커밋 `c74eb1fe`와 `.pr87-review-r5.md`를 primary로 삼았다. tmux `371:0.1`은 종료된 리뷰 pane이며 동시 수정은 없었다.
+- 수정: 공통 저장 경계가 `BODY_STALE_REVISION.latestBody`와 실패 직전 로컬 본문을 함께 보관한다. 충돌 중과 재저장 중 편집을 잠그고 정확한 안내와 `최신본 불러오기`, `내 변경 다시 적용`을 제공한다. 연속 409의 저장 의도를 큐로 보존하며 본문·영상 이중 충돌과 발행실 충돌에도 복구 경로를 연결했다.
+- 검증: Node 20.20.2·PostgreSQL 16 전체 Vitest 421파일·2,867건 PASS, 1건 SKIP, 실패 0. 표적 회귀 3건, TypeScript·build·migration matrix·발행실 정렬·Chromium 편집 E2E PASS. 실제 Next `localhost:3471` 두 탭에서 revision 5→6→7, retry base 6, 재저장 중 잠금, 로컬 입력 보존, 콘솔 오류 0을 관찰했다.
+- 마이그레이션: 없음. 기존 JSONB `bodyRevision`과 `latestBody` 응답 계약을 재사용했다. 원격 CI와 운영 배포는 push 전이라 미검증이다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 로컬 커밋은 완료했다. 부모 컨트롤러가 push한 뒤 원격 verify green을 확인한다.
+
+## 2026-09-28 15:00 KST PR 87 재리뷰 r5 본문 충돌 복구 흐름 수정 착수
+
+- handoff basis: 회장이 지정한 시작 커밋 `c74eb1fe`와 `.pr87-review-r5.md`를 primary로 삼았다. tmux `371:0.1`은 종료된 5차 리뷰 pane이며 동시 수정은 없다.
+- 원인 확인: 서버는 `BODY_STALE_REVISION` 409에 `latestBody`를 반환하지만 공통 `save()`는 오류를 그대로 던진다. 영상 자동저장 catch도 영상 전용 충돌만 상태로 전환해 본문 충돌은 반복 실패한다.
+- 구현 계약: 충돌 시 편집을 멈추고 로컬 입력을 별도 보존한다. 화면에는 `다른 곳에서 먼저 수정됐어요`, `최신본 불러오기`, `내 변경 다시 적용`을 표시한다. 최신본은 서버 판으로 전환하고, 내 변경 재적용은 보존한 로컬 본문을 그 판 위에 얹어 다음 저장이 통과하게 한다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 수정·커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 기존 영상 충돌 UI를 상속해 본문 충돌 상태·두 행동을 연결하고, 실제 `StudioPage` 두 탭 회귀와 실브라우저 흐름, CI 동일 전체 테스트를 통과시킨다.
+
+## 2026-09-28 14:37 KST PR 87 재리뷰 r4 서버 발급 본문 CAS 로컬 수정·검증 완료
+
+- handoff basis: 회장이 지정한 과제, 워크트리 `/private/tmp/wt-v70p2`, 시작 HEAD `b26314cf`, `.pr87-review-r4.md`를 primary로 삼았다. tmux `371:0.1`은 같은 결함을 남긴 종료된 리뷰 pane이며 동시 수정은 없었다.
+- 원인과 수정: 탭별 로컬 편집 횟수였던 `bodyRevision`을 최신성 근거로 쓰지 않는다. 클라이언트는 마지막 서버 revision을 `bodyBaseRevision`으로 보내고, 서버는 정확 일치 UPDATE에서만 저장하며 revision을 1 올린다. 불일치는 409와 최신 본문 전체를 반환한다. 기존 영상 CAS 방식을 재사용했고 DB 마이그레이션은 없다.
+- 결정적 재현: 실제 PostgreSQL에서 fake timer로 현재 탭 100ms, 오래된 탭 800ms를 고정했다. 현재 탭은 200·revision 1, 로컬 revision 100인 오래된 탭은 409이며 DB에는 현재 탭 본문이 남는다.
+- 검증: 관련 8파일 48건 PASS. 전체 Vitest 420파일·2,864건 PASS·1건 SKIP·실패 0. TypeScript·production build·migration matrix·발행실 정렬·Chromium 편집 E2E PASS. dev `localhost:3465/studio?room=edit` HTTP 200·콘솔 오류 0.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 의도한 코드·테스트·증거 문서만 커밋한다. 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
+## 2026-09-28 PR 87 재리뷰 r3 본문 revision 경합 로컬 수정·검증 완료
+
+- handoff basis: 회장이 지정한 커밋 `0a69057c`와 `.pr87-review-r3.md`를 primary로 삼았다. tmux `371:0.1`은 이전 워커 종료 로그만 남아 있어 동시 수정이 없음을 확인했다.
+- 수정: 글 본문 `text`·`editLines`·revision을 한 `bodySnapshotRef`로 묶고 모든 저장을 같은 직렬 큐로 보낸다. 서버는 기존 초안 저장에 body revision을 요구하며 PostgreSQL 단일 UPDATE에서 더 오래된 판과 같은 판의 다른 본문을 거절한다. 새 초안은 id ref와 문서 세대를 같은 tick에 끊는다.
+- 테스트 결정성: `PR87-R2-CTX`는 실제 sleep을 제거하고 `draft-A` 시딩, 입력 잠금 해제, fake timer, 저장 시작·해제 Promise로 순서를 명시했다.
+- 검증: 관련 9파일 53건 PASS. 실제 PostgreSQL 동시 경합에서 200 1건·409 1건과 승자 본문 보존 확인. `CI=true npx vitest run` 전체 3회 모두 420파일·2,863건 PASS·1건 SKIP·실패 0. TypeScript·build 종료 0. dev `localhost:3458/studio?room=edit` HTTP 200·콘솔 오류 0.
+- 제외: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 의도한 코드·테스트·증거 문서만 커밋한다. 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
+## 2026-09-28 PR 87 재리뷰 r2 MAJOR 2건 로컬 수정·검증 완료
+
+- handoff basis: 회장이 지정한 커밋 `05f5d1b4`와 `.pr87-review-r2.md`를 primary로 삼았다. tmux `371:0.1`은 이전 워커 종료 로그만 남아 있고 동시 수정은 없다.
+- 수정 전 재현: 영상 자막 A→A′ 뒤 글 B를 입력한 순서와 기존 `draftId` 검토 요청이 실제 `StudioPage`에서 2건 실패·44건 통과였다.
+- 수정: 본문 변경을 세대가 붙은 단일 ref로 모으고 모든 초안 저장을 한 promise 큐에서 직렬화했다. 응답 중 세대가 바뀌면 최신 본문을 후속 저장한다. 문서 세대·tenant가 달라진 응답은 현재 작업 공간에 재적용하지 않는다. 검토 요청은 신규·기존 초안 모두 저장 완료 뒤 진행한다.
+- 검증: 관련 9파일 72건, 정적 계약 3파일 26건, 전체 Vitest 418파일·2,855건 PASS·1건 SKIP·실패 0. TypeScript·build·migration matrix·발행실 정렬·Chromium E2E PASS. dev `localhost:3770/studio?room=edit` HTTP 200·콘솔 오류 0.
+- 제외: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 사용자·하네스 파일이라 수정·커밋하지 않는다.
+- 다음 실행: 의도한 코드·테스트·증거 문서만 커밋한다. 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
+## 2026-09-28 PR 87 병합 리뷰 MAJOR 2건 로컬 수정·검증 완료
+
+- handoff basis: 회장이 지정한 merge commit `4d6600cb`와 `.pr87-mergereview.md`를 primary로 삼았다. tmux `371:0.1`은 직전 병합 워커가 종료된 로그만 남아 동시 수정이 없음을 확인했다.
+- 수정 전 재현: 실제 `StudioPage`에서 글 A→B 편집 뒤 영상 훅만 바꾸면 A를 `editLines`로 다시 전송했다. 임시 저장과 검토 요청은 B를 보내지 않았다. 표적 3건 실패·39건 통과였다.
+- 수정: 영상 자동저장은 자막 순서·문구를 실제로 바꾼 경우의 dirty 배열만 성공 시점까지 보관해 전송한다. 훅·CTA 등 비자막 변경은 `editLines`를 생략한다. 임시 저장과 검토 요청은 최신 `editLinesRef.current`를 명시한다.
+- 검증: 관련 3파일 51건 PASS. CI 동일 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 전체 Vitest 418파일·2,850건 PASS·1건 SKIP·실패 0. CI TypeScript와 production build 종료 0. Chromium 편집 탐침과 발행실 정렬 PASS. dev `localhost:3462/qa-alignment-harness?room=publish` HTTP 200·카드 28개·콘솔 오류 0.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-mergereview.md`, `.vite/vitest/results.json`은 커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 의도한 코드·테스트·증거 문서만 커밋한다. 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
+## 2026-09-28 PR 87 main 병합 충돌 해결 로컬 완료
+
+- handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p2`, 브랜치 `feat/editroom-v70-p2`, HEAD `b121ad6a`, `origin/main` `a211ca81`을 primary로 삼았다. tmux `371:0.1`은 같은 워크트리의 이전 p2 작업 종료 로그로 확인했다.
+- 병합 원칙: p1 영역인 말풍선·글 편집·카드덱은 main의 squash 최종본을 따른다. p2 전용 영상 편집 CAS, 발행 복귀 잠금 해제, 관련 테스트는 p2 diff에서 보존한다. rebase·push·PR merge는 하지 않는다.
+- 해결: 12개 충돌 가운데 p1 전용 파일은 main을 채택했다. 혼합 파일은 main의 구조화 글 편집과 p2 영상 전용 편집기·CAS를 함께 보존했다. 영상 자동저장은 낡은 `editLines` 클로저를 보내지 않고 동일 `videoEdit.subtitles` 스냅샷에서 저장용 대사를 파생한다.
+- 검증: 표적 교차 회귀 2파일 12건 PASS. CI 동일 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 전체 Vitest 418파일·2,849건 PASS·1건 SKIP·실패 0. TypeScript와 production build 종료 0. 발행실 정렬 최대 delta 0px, Chromium·WebKit·Firefox 말풍선 편집 51개 시나리오 전부 PASS. dev `localhost:3764/studio?room=edit` HTTP 200·본문 표시·콘솔 오류 0. 임시 DB 삭제 확인.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 커밋에서 제외한다. push와 PR merge는 하지 않는다.
+- 출고: 두 부모가 p2 `b121ad6a`와 main `a211ca81`인 merge commit을 만들었다. rebase, push, PR merge는 수행하지 않았다.
+- 다음 실행: 부모 컨트롤러가 현재 HEAD를 push하고 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
+## 2026-09-28 07:12 KST PR 87 MINOR-1 로컬 완료, push 정책 차단
+
+- handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p2`, HEAD `d6e7744b`, PR 87 7차 리뷰 코멘트 `5839629237`, 기존 미커밋 `page.tsx` diff를 primary로 삼았다. tmux `371:0.1`은 같은 워크트리의 과거 로그 확인에만 썼다.
+- 수정: `draft_id` 없는 인박스 발행 복귀 else 분기를 공용 `invalidateVideoEditReconcile()`에 연결했다. 이전 빌더의 전역 `draftId=null` 잠금 해제는 초기 복원 B-5 잠금을 조기에 푸는 회귀를 실제 P11 실패로 확인해 제거했다. 실제 `StudioPage` 마운트 MINOR-1 회귀를 추가했다.
+- 검증: 발행실·B-5 통합 회귀 2파일 39건 PASS, 기존 P4·P6 6건 PASS, `npm run typecheck:ci` 종료 0. artifact lint는 실체·슬롯·버전 정합 PASS와 기존 핀 경고 28건, design lint는 기존 인라인 style 1파일·hex 6파일 경고이며 이번 변경은 스타일 0건이다.
+- 로컬 커밋: `b121ad6a4e1685168f20a45fcddb17c8f75cead2`. 의도한 4파일만 포함했고 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 제외했다.
+- 원격 차단: `git push origin feat/editroom-v70-p2`가 `approval required by policy, but AskForApproval is set to Never`로 실행 전에 거절됐다. origin과 PR 87은 계속 `d6e7744b`다. 다음 실행은 push 권한이 있는 컨트롤러가 같은 브랜치를 push하고 PR 87 원격 CI를 종료까지 확인하는 것이다. PR 제목·본문·머지는 건드리지 않는다.
+
 ## 2026-09-28 09:23 KST PR 85 편집실 v70 9차 리뷰 로컬 수정·검증 완료
 
 - handoff basis: 사용자가 지정한 `.pr85-review9.md`, 워크트리 `/private/tmp/wt-v70p1`, 시작 HEAD `ef73d2c2`를 primary로 사용했다. tmux `371:0.2`는 종료된 8차 리뷰 로그라 동시 수정이 없음을 확인했다.

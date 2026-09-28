@@ -85,7 +85,7 @@ describe("publish_success fires only after confirmed API success, not on click a
     // 영상 도메인과 무관하므로 건드리지 않는다)하게 됐다. 문구 모양이 바뀌었을 뿐 이
     // 테스트가 실제로 지키는 계약(파셜 저장이 partialGuard 뒤에 오고, 그 사이에
     // publish_success가 없다)은 그대로다 — 새 리터럴로 갱신한다.
-    const persistPartial = block.indexOf('save("partial", pendingReconciliations, did, undefined, undefined, undefined, null, null)');
+    const persistPartial = block.indexOf('save("partial", pendingReconciliations, did, undefined, undefined, null, null)');
 
     expect(preflightGuard).toBeGreaterThan(-1);
     expect(preflightGuard).toBeLessThan(apiCall);

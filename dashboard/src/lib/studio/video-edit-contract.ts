@@ -222,6 +222,23 @@ export function toggleSubtitleCut(edit: VideoEdit, id: string): VideoEdit {
   return withRevision(edit, { subtitles });
 }
 
+/** v70 §4.3: 그 자리에서 자막 문구를 고친다. 순서·구간은 손대지 않는다. */
+export function updateSubtitleText(edit: VideoEdit, id: string, text: string): VideoEdit {
+  const subtitles = edit.subtitles.map((s) => (s.id === id ? { ...s, text } : s));
+  return withRevision(edit, { subtitles });
+}
+
+/**
+ * v70 §4.4: 타임라인에서 블록을 끌어 구간을 바꾼다. 자막은 생성 시 정해진 순번이 있어
+ * `assertValidRange` 를 그대로 통과해야 한다 — 끌어서 시작이 끝을 넘는 조작은 여기서 막는다.
+ */
+export function updateSubtitleTiming(edit: VideoEdit, id: string, patch: { startSec?: number; endSec?: number }): VideoEdit {
+  const subtitles = edit.subtitles.map((s) => (s.id === id ? { ...s, ...patch } : s));
+  const updated = subtitles.find((s) => s.id === id);
+  if (updated) assertValidRange(updated.startSec, updated.endSec, "subtitle");
+  return withRevision(edit, { subtitles });
+}
+
 export function setVoice(edit: VideoEdit, voice: VoiceSelection): VideoEdit {
   return withRevision(edit, { voice });
 }
