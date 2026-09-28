@@ -62,6 +62,13 @@ function bubbleWork() {
   };
 }
 
+function videoWork() {
+  return {
+    ...work("video"),
+    vid: { url: "/qa/alignment-sample.mp4", file: "/qa/alignment-sample.mp4" },
+  };
+}
+
 function overlaps(a, b) {
   return Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5
     && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5;
@@ -267,6 +274,38 @@ async function makeStageComparison(referencePath, actualStagePath, outputPath, v
   return score;
 }
 
+async function makeDirectStageComparison(referencePath, actualStagePath, outputPath, viewportWidth) {
+  if (!fs.existsSync(referencePath)) throw new Error(`말풍선 비교 원본 없음: ${referencePath}`);
+  const normalized = { width: 260, height: 325 };
+  const [referenceInput, actualInput] = await Promise.all([
+    sharp(referencePath).resize(normalized).png().toBuffer(),
+    sharp(actualStagePath).resize(normalized).png().toBuffer(),
+  ]);
+  const [referenceRaw, actualRaw] = await Promise.all([
+    sharp(referenceInput).greyscale().blur(4).raw().toBuffer(),
+    sharp(actualInput).greyscale().blur(4).raw().toBuffer(),
+  ]);
+  let absoluteDifference = 0;
+  for (let index = 0; index < referenceRaw.length; index += 1) {
+    absoluteDifference += Math.abs(referenceRaw[index] - actualRaw[index]);
+  }
+  const score = absoluteDifference / (referenceRaw.length * 255);
+  const labelHeight = 44;
+  const label = Buffer.from(`<svg width="${normalized.width * 2}" height="${labelHeight}"><rect width="100%" height="100%" fill="#111827"/><text x="20" y="29" fill="white" font-family="Arial" font-size="18" font-weight="700">REFERENCE</text><text x="${normalized.width + 20}" y="29" fill="white" font-family="Arial" font-size="18" font-weight="700">IMPLEMENTATION</text></svg>`);
+  await sharp({ create: { width: normalized.width * 2, height: normalized.height + labelHeight, channels: 4, background: "#e5e7eb" } })
+    .composite([
+      { input: label, left: 0, top: 0 },
+      { input: referenceInput, left: 0, top: labelHeight },
+      { input: actualInput, left: normalized.width, top: labelHeight },
+    ])
+    .png()
+    .toFile(outputPath);
+  if (score > stageDiffThreshold) {
+    throw new Error(`${viewportWidth} 말풍선 스테이지 이미지 차이 ${score.toFixed(4)}가 임계값 ${stageDiffThreshold}를 넘었습니다`);
+  }
+  return score;
+}
+
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: viewports[0] });
 await context.addInitScript(({ id, initial }) => {
@@ -339,6 +378,10 @@ async function captureCard(viewport) {
   if (await room.locator("[data-card-thumbnail]").evaluateAll((nodes) => nodes.some((node) => (node.textContent || "").includes("문제") || (node.textContent || "").includes("원인")))) {
     throw new Error("일반 카드 스트립 썸네일에 본문 글자가 남았습니다");
   }
+  if (await room.locator("[data-card-thumbnail-image]").count() !== images.length) {
+    throw new Error("일반 카드의 장별 생성 이미지 썸네일이 모두 보이지 않습니다");
+  }
+  await room.locator('[data-edit-preview-media="image"]').waitFor();
   const inputValues = await room.locator("[data-line-input]").evaluateAll((nodes) => nodes.map((node) => node.value));
   if (inputValues.some((value) => !value.trim())) throw new Error(`카드 문구 입력이 비었습니다: ${JSON.stringify(inputValues)}`);
   const geometry = await room.evaluate((root) => {
@@ -391,8 +434,10 @@ async function captureCard(viewport) {
   });
   const screenshot = path.join(outputDir, `edit-card-${viewport.width}x${viewport.height}.png`);
   await page.screenshot({ path: screenshot });
+  const stageScreenshot = path.join(outputDir, `edit-card-stage-${viewport.width}x${viewport.height}.png`);
+  await room.locator("[data-edit-preview-frame]").screenshot({ path: stageScreenshot });
   observations.push({ screen: "edit-card", ...viewport, geometry, overflow, inputCount: inputValues.length });
-  return screenshot;
+  return { screenshot, stageScreenshot };
 }
 
 async function captureVideoEmpty(viewport) {
@@ -418,6 +463,39 @@ async function captureVideoEmpty(viewport) {
     await selectedFormat.waitFor();
     if ((await selectedFormat.textContent())?.trim() !== "영상") throw new Error("영상 빈 상태 복구 행동이 영상 생성실을 열지 않았습니다");
   }
+  return screenshot;
+}
+
+async function captureVideoActual(viewport) {
+  await page.setViewportSize(viewport);
+  await setWork(videoWork());
+  await page.goto(`${baseUrl}/studio?room=edit&kind=video`, { waitUntil: "networkidle", timeout: 60_000 });
+  const room = page.locator('[data-room="edit"][data-edit-kind="video"]');
+  await room.locator("[data-video-screen]").waitFor();
+  await room.locator("[data-video-subtitle-script]").waitFor();
+  const geometry = await room.evaluate((root) => {
+    const screen = root.querySelector("[data-video-screen]").getBoundingClientRect();
+    const script = root.querySelector("[data-video-script-column]").getBoundingClientRect();
+    const timeline = root.querySelector("[data-video-timeline]").getBoundingClientRect();
+    return {
+      screen: { top: screen.top, bottom: screen.bottom, height: screen.height },
+      script: { top: script.top, bottom: script.bottom, height: script.height },
+      timeline: { top: timeline.top, bottom: timeline.bottom, height: timeline.height },
+    };
+  });
+  if (viewport.width === 390) {
+    if (Math.abs(geometry.screen.height - 180) > 1) throw new Error(`390 영상 플레이어가 180px이 아닙니다: ${JSON.stringify(geometry)}`);
+    if (geometry.script.top >= viewport.height) throw new Error(`390 첫 화면에 대본이 보이지 않습니다: ${JSON.stringify(geometry)}`);
+    if (Math.abs(geometry.timeline.height - 108) > 1) throw new Error(`390 영상 타임라인이 108px이 아닙니다: ${JSON.stringify(geometry)}`);
+  }
+  const overflow = await assertNoOverflow(page, '[data-room="edit"]', `실제 영상 ${viewport.width}`);
+  await room.locator("[data-video-workbench]").evaluate((node) => {
+    node.scrollIntoView({ block: "start" });
+    window.scrollBy(0, -16);
+  });
+  const screenshot = path.join(outputDir, `edit-video-actual-${viewport.width}x${viewport.height}.png`);
+  await page.screenshot({ path: screenshot });
+  observations.push({ screen: "edit-video-actual", ...viewport, geometry, overflow });
   return screenshot;
 }
 
@@ -557,14 +635,18 @@ async function capturePublish(viewport) {
 
 try {
   for (const viewport of viewports) {
-    const cardShot = await captureCard(viewport);
+    const cardShots = await captureCard(viewport);
     const bubbleShots = await captureBubbleDeck(viewport);
-    const videoShot = await captureVideoEmpty(viewport);
-    const publishShots = await capturePublish(viewport);
+    await captureVideoEmpty(viewport);
+    if (viewport.width === 390) await captureVideoActual(viewport);
+    await capturePublish(viewport);
     const cardReference = path.join(referenceRoot, `osmu-v70-편집실-카드뉴스-편집중@${viewport.width}x${viewport.height}.png`);
+    const bubbleReference = path.join(referenceRoot, `osmu-v70-편집실-말풍선덱@${viewport.width}x${viewport.height}.png`);
     if (compareWithReferences) {
-      const stageDiffScore = await makeStageComparison(cardReference, bubbleShots.stageScreenshot, path.join(outputDir, `compare-edit-bubble-stage-${viewport.width}.png`), viewport.width);
-      observations.push({ screen: "edit-bubble-stage-diff", ...viewport, stageDiffScore, stageDiffThreshold, reference: path.relative(repoRoot, cardReference) });
+      const cardStageDiffScore = await makeStageComparison(cardReference, cardShots.stageScreenshot, path.join(outputDir, `compare-edit-card-stage-${viewport.width}.png`), viewport.width);
+      const bubbleStageDiffScore = await makeDirectStageComparison(bubbleReference, bubbleShots.stageScreenshot, path.join(outputDir, `compare-edit-bubble-stage-${viewport.width}.png`), viewport.width);
+      observations.push({ screen: "edit-card-stage-diff", ...viewport, stageDiffScore: cardStageDiffScore, stageDiffThreshold, reference: path.relative(repoRoot, cardReference) });
+      observations.push({ screen: "edit-bubble-stage-diff", ...viewport, stageDiffScore: bubbleStageDiffScore, stageDiffThreshold, reference: path.relative(repoRoot, bubbleReference) });
     }
   }
   if (consoleErrors.length) throw new Error(`브라우저 콘솔 오류 ${consoleErrors.length}건: ${consoleErrors.slice(0, 5).join(" | ")}`);
@@ -576,7 +658,7 @@ try {
     consoleErrorCount: 0,
     outputDir,
     referenceComparison: compareWithReferences,
-    imageDiffNote: "화면별 v70 카드뉴스 clean-frame에서 편집 카드 면만 잘라 비교해 바깥 셸 차이를 제외",
+    imageDiffNote: "일반 카드는 화면별 v70 clean-frame의 카드 면 crop과 실제 일반 카드 무대를 비교하고, 말풍선 덱은 별도 화면별 기준과 실제 말풍선 무대를 비교",
   };
   fs.writeFileSync(path.join(outputDir, "observations.json"), `${JSON.stringify(report, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

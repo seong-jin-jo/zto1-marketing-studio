@@ -70,6 +70,22 @@ describe("발행실 계정 영역은 한 줄에 한 번만 나온다", () => {
     expect(label).toHaveAttribute("title", "@osmu_factory_official_account_2026_very_long");
   });
 
+  it("저장된 과거 선택보다 계정 관리에서 정한 현재 기본 계정을 표시한다", () => {
+    const { container } = render(
+      <PublishHeaderControls
+        platform="threads" label="Threads" publishSupported accountSelectable checked={false}
+        checkboxDisabled={false} onCheckedChange={() => {}} coverSeconds={0} onCoverSecondsChange={() => {}}
+        accountsLoading={false}
+        accounts={[
+          { id: "old-saved", label: "@old.saved", isDefault: false },
+          { id: "current-default", label: "@current.default", isDefault: true },
+        ]}
+        selectedAccountId="old-saved" channelHref="/channels/threads"
+      />,
+    );
+    expect(container.querySelector('[data-testid="publish-account-label-threads"]')).toHaveTextContent("@current.default");
+  });
+
   it("영상 3종은 계정 행 바로 아래 같은 표지 행 구조를 쓴다", () => {
     for (const platform of ["shorts", "reels", "tiktok"] as PreviewPlatform[]) {
       const { container } = renderHeader(platform, `@${platform}.official`);

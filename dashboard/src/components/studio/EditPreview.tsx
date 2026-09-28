@@ -209,7 +209,7 @@ export function EditPreview({
           {/* 만든 것을 배경으로 깔고 그 위에 글자와 자막을 얹는다. 실제 결과에 가깝게 보여야
               무엇을 고칠지 판단할 수 있다. 종전에는 이 자리가 비어 "여기에 화면이 놓입니다"
               라는 자리표시자만 있었다(2026-09-08 회장 실사용). */}
-          {activeMediaUrl && !(kind === "card" && stageSize === "card-v70") ? (
+          {activeMediaUrl ? (
             <DeliveredMedia
               type={mediaType === "video" ? "video" : "image"}
               src={activeMediaUrl}

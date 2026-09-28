@@ -526,6 +526,40 @@ describe("Studio publish result integrity", () => {
     expect(publishBody.account_id).not.toBe("threads-reconnect");
   });
 
+  it("PR94-R3-MAJOR-03 정상: 보이는 기본 계정과 실제 발행 요청 계정이 같다", async () => {
+    restoreStudio(["threads"]);
+    const storageKey = `studio_work:${mocks.workspace.id}`;
+    const stored = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    localStorage.setItem(storageKey, JSON.stringify({
+      ...stored,
+      selectedAccounts: { threads: "threads-old-saved" },
+    }));
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const provider = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
+      const accounts = provider === "threads"
+        ? [
+            { id: "threads-old-saved", display_name: "예전 계정", username: "old.saved", is_default: false, connection_state: "connected" },
+            { id: "threads-current-default", display_name: "현재 기본 계정", username: "current.default", is_default: true, connection_state: "connected" },
+          ]
+        : [];
+      return Response.json({ accounts });
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-current-default" };
+      if (path === "/api/publish") return { ok: false, error: "테스트 발행 거절" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+
+    const visibleHandle = await screen.findByTestId("publish-account-label-threads");
+    expect(visibleHandle).toHaveTextContent("@current.default");
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+    await waitFor(() => expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/publish")).toBe(true));
+    const publishBody = mocks.apiPost.mock.calls.find(([path]) => path === "/api/publish")?.[1] as { account_id?: string };
+    expect(publishBody.account_id).toBe("threads-current-default");
+  });
+
   it("FE3-PUBLISH-03 거절: 발행 이력은 발행실에 다시 노출하지 않는다", async () => {
     mocks.drafts = [{
       id: "draft-history",

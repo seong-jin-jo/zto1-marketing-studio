@@ -120,7 +120,7 @@ describe("편집실 v65 화면 계약", () => {
     // 고정 셋 + 시키기 + 발행실 이동 = 다섯.
     expect(helper.querySelectorAll("button")).toHaveLength(5);
     expect(helper.querySelector("[data-bulk-ask]")).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "빈 줄 걷어내기" }));
+    fireEvent.click(screen.getByRole("button", { name: "빈 줄 정리" }));
     expect(onLinesChange).toHaveBeenCalledWith(["아주 긴 문장을 스물네 글자보다 길게 작성해서 줄이는 동작을 확인한다"]);
   });
 

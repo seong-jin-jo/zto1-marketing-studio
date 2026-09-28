@@ -2193,7 +2193,13 @@ export function EditRoom({
                       <nav className={styles.plainCardStrip} aria-label="카드 목록" data-plain-card-strip>
                         {safeLines.map((_, index) => (
                           <div key={`plain-card-thumb-${index}`} className={styles.plainCardThumb} data-active={activeLine === index}>
-                            <CardStripThumbnail index={index} selected={activeLine === index} onClick={() => setActiveLine(index)} />
+                            <CardStripThumbnail
+                              index={index}
+                              selected={activeLine === index}
+                              imageUrl={previewImageUrls?.[index] ?? (index === 0 ? previewImageUrl ?? undefined : undefined)}
+                              tenantId={workspaceId}
+                              onClick={() => setActiveLine(index)}
+                            />
                           </div>
                         ))}
                       </nav>

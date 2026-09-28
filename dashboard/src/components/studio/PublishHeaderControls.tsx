@@ -79,8 +79,12 @@ export function PublishHeaderControls({
   createActionLabel,
 }: PublishHeaderControlsProps) {
   const defaultAccount = accounts.find((account) => account.isDefault);
-  const selectedAccount = accounts.find((account) => account.id === selectedAccountId);
-  const visibleAccount = selectedAccount || defaultAccount || accounts[0];
+  // v70 발행실은 계정 행을 읽기 전용으로 단순화했다. 화면에서 바꿀 수 없는 과거
+  // selectedAccountId가 기본 계정보다 우선하면 보이는 핸들과 계정 관리에서 정한 기본값이
+  // 갈라진다. 따라서 이 행의 유일한 정본은 현재 기본 계정이며, selectedAccountId는
+  // 레거시 저장 형식 호환을 위해서만 prop으로 남긴다.
+  void selectedAccountId;
+  const visibleAccount = defaultAccount || accounts[0];
   const needsConnect = !accountsLoading && !accountLoadError && publishSupported && accounts.length === 0;
   const hasAccount = accountSelectable && accounts.length > 0;
   const coverSupported = supportsCoverTimestamp(platform);

@@ -36,6 +36,7 @@
 
 .thumbnailButton {
   display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto;
   aspect-ratio: 4 / 5;
   width: 100%;
   align-content: space-between;
@@ -44,6 +45,15 @@
   border-color: var(--border) !important;
   background: var(--surface) !important;
   text-align: left;
+}
+
+.thumbnailImage {
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--shape-control);
+  object-fit: cover;
 }
 
 .thumbnailButtonActive {

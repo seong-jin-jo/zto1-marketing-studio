@@ -95,7 +95,11 @@ describe("EDIT-CARD v70", () => {
     render(<CardDeckPanel deck={d} onDeckChange={vi.fn()} />);
     expect(document.querySelectorAll('[data-slide-draggable="true"]').length).toBeGreaterThan(0);
     expect(document.querySelectorAll('[data-slide-draggable="false"]')).toHaveLength(2);
-    expect(bubbleCss).toContain("bottom: -1.625rem");
+    // v70 후속 육안 검수에서 음수 bottom은 선택 말풍선 본문을 덮었다. 데스크톱은
+    // 말풍선 바로 아래 한 줄, 390만 기존 static 내부 배치를 유지하는 새 계약이다.
+    expect(bubbleCss).toContain("top: calc(100% + var(--space-micro))");
+    expect(bubbleCss).toContain("bottom: auto");
+    expect(bubbleCss).not.toContain("bottom: -1.625rem");
     expect(bubbleCss).toContain(".bubbleRowReader .bubbleToolbar");
     expect(bubbleCss).toContain("min-height: var(--editroom-mobile-toolbar-height)");
     expect(bubbleCss).toContain(".bubbleContent:focus-visible");

@@ -78,6 +78,8 @@ export function CardStripThumbnail({
   selected,
   role,
   slideId,
+  imageUrl,
+  tenantId,
   onClick,
   onKeyDown,
 }: {
@@ -85,6 +87,9 @@ export function CardStripThumbnail({
   selected: boolean;
   role?: CardSlide["role"];
   slideId?: string;
+  /** 일반 카드뉴스는 장별 생성 이미지가 있으면 그 그림을 보여준다. 말풍선 덱과 이미지 없는 장은 막대다. */
+  imageUrl?: string;
+  tenantId?: string;
   onClick: () => void;
   onKeyDown?: (event: KeyboardEvent<HTMLButtonElement>) => void;
 }) {
@@ -94,12 +99,25 @@ export function CardStripThumbnail({
       onClick={onClick}
       onKeyDown={onKeyDown}
       aria-pressed={selected}
+      aria-current={selected}
       data-card-thumbnail={index}
       data-slide-id={slideId}
       data-slide-role={role}
       className={`${styles.thumbnailButton} ${selected ? styles.thumbnailButtonActive : ""}`}
     >
-      <span className={styles.thumbnailBars} aria-hidden="true"><i /><i /><i /><i /></span>
+      {imageUrl ? (
+        <DeliveredMedia
+          type="image"
+          src={imageUrl}
+          tenantId={tenantId}
+          alt={`${index + 1}장 미리보기`}
+          loading="lazy"
+          dataAttr={{ "data-card-thumbnail-image": String(index) }}
+          className={styles.thumbnailImage}
+        />
+      ) : (
+        <span className={styles.thumbnailBars} aria-hidden="true"><i /><i /><i /><i /></span>
+      )}
       <span className={styles.thumbnailCaption}>
         {role ? <span data-slide-role-badge={role} className={`rounded-chip border px-micro text-caption font-semibold ${SLIDE_ROLE_BADGE_CLASS[role]}`}>{SLIDE_ROLE_LABEL[role]}</span> : null}
         <span>{index + 1}장</span>

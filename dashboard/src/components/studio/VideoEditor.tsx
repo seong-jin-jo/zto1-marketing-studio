@@ -254,7 +254,7 @@ function VideoPlayback({
 
   return (
     <div className="min-w-0 space-y-stack-tight" data-video-playback>
-      <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface" data-video-screen>
+      <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:h-[11.25rem] max-[26rem]:aspect-auto" data-video-screen>
         {loadFailed ? (
           <p className="p-pad-inset text-caption text-danger" data-video-load-failed>영상을 불러오지 못했습니다. 생성실에서 다시 만들어 주세요.</p>
         ) : (

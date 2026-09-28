@@ -7529,3 +7529,12 @@ migration은 수정하지 않고, 최신 코드와 localhost 회귀를 다시 �
 돌연변이 검증: 수정 3파일(`lib/storage.ts`, `api/video/list/route.ts`, `api/video/delete/route.ts`)을 되돌려 같은 19건 중 10건 FAIL 확인, 원복 후 19건 PASS 재확인. `npm run typecheck:ci` PASS. 전체 `npx vitest run` 종료 코드는 build-log.md 2026-09-25 12:40 항목에 기재.
 
 SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-isolation.test.ts`, `dashboard/tests/publish/video-path-resolution.contract.test.ts` 실행 로그
+## 2026-09-29 PR #94 독립 리뷰 r3 일반 카드·모바일 영상·발행 계정·시각 비교 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR94-R3-MAJOR-01 | 일반 카드와 장 썸네일에 생성 이미지를 복원하고 이미지 없는 장만 막대로 표시 | CARD-LINK-02, OUTLINE-06 | ❌ NG | v70 카드 분기가 실제 미디어를 렌더링하지 않고 일반 카드 스트립도 막대만 표시한다. |
+| PR94-R3-MAJOR-02 | 390 영상 플레이어를 180px로 제한해 대본과 108px 타임라인을 첫 흐름에 노출 | PR94-R3-VIDEO-01 | ❌ NG | 390 실측 플레이어 높이 547.5px로 승인값 180px를 초과한다. |
+| PR94-R3-MAJOR-03 | 읽기 전용 계정 행의 보이는 핸들과 실제 발행 계정을 현재 기본 계정으로 일치 | PR94-R3-ACCOUNT-01 | ❌ NG | 저장된 비기본 계정이 새 기본 계정보다 우선되며 화면에서 바꿀 수 없다. |
+| PR94-R3-MAJOR-04 | 일반 카드 캡처를 일반 카드 기준과 비교하고 말풍선은 별도 기준을 사용 | PR94-R3-VISUAL-01 | ❌ NG | `cardShot`을 만들고 쓰지 않으며 일반 카드 기준을 말풍선 무대와 비교한다. |
+| PR94-R3-CI-01 | CI 전체 스위트의 5개 실패 파일을 현재 v70 계약과 유효한 기존 계약으로 정합 | V65-EDIT-04, PR85-R7, OUTLINE-01 | ❌ NG | 원격 run 36467804880에서 5개 파일 6개 테스트가 실패했다. |

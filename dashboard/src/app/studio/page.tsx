@@ -647,12 +647,13 @@ export default function StudioPage() {
   const selectedTargets = selectedPublishTargets(includes)
     .filter((platform) => !publishGuard(platform).disabledReason);
   const usableAccounts = (platform: PreviewPlatform) => (accountsByPlatform[platform] || []).filter((account) => account.connectionState === "connected");
-  const selectedConnectedAccountId = (platform: PreviewPlatform) => {
-    const selectedId = selectedAccounts[platform];
-    return selectedId && usableAccounts(platform).some((account) => account.id === selectedId)
-      ? selectedId
-      : undefined;
+  const defaultConnectedAccount = (platform: PreviewPlatform) => {
+    const accounts = usableAccounts(platform);
+    return accounts.find((account) => account.is_default) || accounts[0];
   };
+  // 계정 선택 UI가 없는 v70에서는 계정 관리에서 정한 현재 기본 계정이 화면과 요청의
+  // 공통 정본이다. 저장된 과거 작업별 선택값을 보내면 사용자가 고칠 수 없는 숨은 상태가 된다.
+  const selectedConnectedAccountId = (platform: PreviewPlatform) => defaultConnectedAccount(platform)?.id;
   const publishTargets = selectedTargets.filter((platform) => usableAccounts(platform).length > 0);
   // 선택이 자동으로 꺼진 뒤에도 재연결 행동이 사라지면 사용자는 복구할 길이 없다.
   // 현재 발행 체크와 무관하게 만료·해제 계정이 하나라도 있는 채널을 안내한다.
@@ -2429,10 +2430,8 @@ export default function StudioPage() {
     if (accountLoadErrors[platform]) return { status: "error" };
     const accounts = usableAccounts(platform);
     if (!accounts.length) return { status: "missing" };
-    const selected = accounts.find((account) => account.id === selectedAccounts[platform])
-      || accounts.find((account) => account.is_default)
-      || accounts[0];
-    return { status: "connected", displayName: selected.displayName, username: selected.username };
+    const selected = defaultConnectedAccount(platform);
+    return { status: "connected", displayName: selected?.displayName, username: selected?.username };
   }
 
   function previewEditor(platform: PreviewPlatform): PreviewInlineEditor {
@@ -3210,7 +3209,7 @@ export default function StudioPage() {
                           accountsLoading={Boolean(accountLoadPending[platform])}
                           accountLoadError={Boolean(accountLoadErrors[platform])}
                           accounts={(accountsByPlatform[platform] || []).map((account) => ({ id: account.id, label: account.label, isDefault: Boolean(account.is_default) }))}
-                          selectedAccountId={selectedAccounts[platform] ?? ""}
+                          selectedAccountId={defaultConnectedAccount(platform)?.id ?? ""}
                           channelHref={channelHref(platform)}
                           disabledReason={guard.disabledReason}
                           createHref={guard.createHref}

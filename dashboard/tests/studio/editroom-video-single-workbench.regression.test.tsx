@@ -165,6 +165,14 @@ describe("v70 §4: 영상 편집 워크벤치(플레이어+자막 대본+타임�
     expect(document.querySelectorAll('[data-video-timeline] input[type="number"]').length).toBe(0);
   });
 
+  it("PR94-R3-VIDEO-01 정상: 390 플레이어는 180px이고 대본과 108px 타임라인이 뒤따른다", () => {
+    stubVoicesUnconfigured();
+    render(<VideoRoomHarness initialLines={["첫 장면 대사"]} />);
+    expect(document.querySelector("[data-video-screen]")?.className).toContain("max-[26rem]:h-[11.25rem]");
+    expect(document.querySelector("[data-video-workbench]")?.className).toContain("max-[26rem]:[grid-template-rows:auto_6.75rem]");
+    expect(document.querySelector("[data-video-script-column]")).toBeInTheDocument();
+  });
+
   it("자막 대본이 lines에서 시딩되고, 한 줄 = 한 컷이다", () => {
     stubVoicesUnconfigured();
     render(<VideoRoomHarness initialLines={["첫 장면 대사", "둘째 장면 대사"]} />);
