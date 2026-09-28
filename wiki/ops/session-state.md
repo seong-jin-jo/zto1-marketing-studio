@@ -1,3 +1,20 @@
+## 2026-09-28 15:40 KST PR 87 재리뷰 r5 본문 충돌 복구 로컬 완료
+
+- handoff basis: 회장이 지정한 시작 커밋 `c74eb1fe`와 `.pr87-review-r5.md`를 primary로 삼았다. tmux `371:0.1`은 종료된 리뷰 pane이며 동시 수정은 없었다.
+- 수정: 공통 저장 경계가 `BODY_STALE_REVISION.latestBody`와 실패 직전 로컬 본문을 함께 보관한다. 충돌 중과 재저장 중 편집을 잠그고 정확한 안내와 `최신본 불러오기`, `내 변경 다시 적용`을 제공한다. 연속 409의 저장 의도를 큐로 보존하며 본문·영상 이중 충돌과 발행실 충돌에도 복구 경로를 연결했다.
+- 검증: Node 20.20.2·PostgreSQL 16 전체 Vitest 421파일·2,867건 PASS, 1건 SKIP, 실패 0. 표적 회귀 3건, TypeScript·build·migration matrix·발행실 정렬·Chromium 편집 E2E PASS. 실제 Next `localhost:3471` 두 탭에서 revision 5→6→7, retry base 6, 재저장 중 잠금, 로컬 입력 보존, 콘솔 오류 0을 관찰했다.
+- 마이그레이션: 없음. 기존 JSONB `bodyRevision`과 `latestBody` 응답 계약을 재사용했다. 원격 CI와 운영 배포는 push 전이라 미검증이다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 로컬 커밋은 완료했다. 부모 컨트롤러가 push한 뒤 원격 verify green을 확인한다.
+
+## 2026-09-28 15:00 KST PR 87 재리뷰 r5 본문 충돌 복구 흐름 수정 착수
+
+- handoff basis: 회장이 지정한 시작 커밋 `c74eb1fe`와 `.pr87-review-r5.md`를 primary로 삼았다. tmux `371:0.1`은 종료된 5차 리뷰 pane이며 동시 수정은 없다.
+- 원인 확인: 서버는 `BODY_STALE_REVISION` 409에 `latestBody`를 반환하지만 공통 `save()`는 오류를 그대로 던진다. 영상 자동저장 catch도 영상 전용 충돌만 상태로 전환해 본문 충돌은 반복 실패한다.
+- 구현 계약: 충돌 시 편집을 멈추고 로컬 입력을 별도 보존한다. 화면에는 `다른 곳에서 먼저 수정됐어요`, `최신본 불러오기`, `내 변경 다시 적용`을 표시한다. 최신본은 서버 판으로 전환하고, 내 변경 재적용은 보존한 로컬 본문을 그 판 위에 얹어 다음 저장이 통과하게 한다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 수정·커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 기존 영상 충돌 UI를 상속해 본문 충돌 상태·두 행동을 연결하고, 실제 `StudioPage` 두 탭 회귀와 실브라우저 흐름, CI 동일 전체 테스트를 통과시킨다.
+
 ## 2026-09-28 14:37 KST PR 87 재리뷰 r4 서버 발급 본문 CAS 로컬 수정·검증 완료
 
 - handoff basis: 회장이 지정한 과제, 워크트리 `/private/tmp/wt-v70p2`, 시작 HEAD `b26314cf`, `.pr87-review-r4.md`를 primary로 삼았다. tmux `371:0.1`은 같은 결함을 남긴 종료된 리뷰 pane이며 동시 수정은 없었다.

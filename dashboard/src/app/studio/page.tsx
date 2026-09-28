@@ -223,6 +223,11 @@ interface TextVariants {
   shorts?: { hook?: string; body?: string; cta?: string };
   image_prompt?: string;
 }
+interface BodyRevisionConflict {
+  latest: { lines: string[]; text: TextVariants | null; serverRevision: number };
+  local: { lines: string[]; text: TextVariants | null };
+  viewingLatest: boolean;
+}
 // topicKey = 이 매체가 **어느 주제로** 만들어졌는지 찍는 도장(lib/studio/work-media.ts).
 // 도장이 없으면 새 주제에 어제 영상이 그대로 붙는다. 2026-09-14 실측 사고.
 // aspectRatio = 이 그림이 어떤 비율로 만들어졌는지(work-media.ts isReusableVideoBaseImage).
@@ -519,6 +524,12 @@ export default function StudioPage() {
   }>({ generation: 0, serverRevision: 0, lines: [], text: null });
   // 서버 판이 바뀌면 localStorage 효과도 다시 실행돼 재접속 기준판이 낡지 않게 한다.
   const [bodyServerRevision, setBodyServerRevision] = useState(0);
+  const [bodyRevisionConflict, setBodyRevisionConflict] = useState<BodyRevisionConflict | null>(null);
+  const [bodyConflictResolving, setBodyConflictResolving] = useState(false);
+  const bodyConflictRetryRef = useRef<Array<{
+    retry: () => Promise<string | undefined>;
+    retryWithoutVideo: () => Promise<string | undefined>;
+  }>>([]);
   const editDocumentGenerationRef = useRef(0);
   const draftSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   function replaceBodySnapshot(
@@ -527,7 +538,12 @@ export default function StudioPage() {
     options: { replaceDocument?: boolean; serverRevision?: number } = {},
   ) {
     const lines = [...nextLines];
-    if (options.replaceDocument) editDocumentGenerationRef.current += 1;
+    if (options.replaceDocument) {
+      editDocumentGenerationRef.current += 1;
+      setBodyRevisionConflict(null);
+      setBodyConflictResolving(false);
+      bodyConflictRetryRef.current = [];
+    }
     const serverRevision = options.serverRevision
       ?? (options.replaceDocument ? 0 : bodySnapshotRef.current.serverRevision);
     bodySnapshotRef.current = {
@@ -1215,6 +1231,7 @@ export default function StudioPage() {
     // 호출부를 짚어 강제로 명시하게 한다 — 다음에 같은 결함이 또 나는 것을 막는다.
     persistedCardDeck: CardDeck | null,
     persistedVideoEdit: VideoEdit | null,
+    bodyConflictRetryPlacement: "tail" | "head" = "tail",
   ) {
     const saveTenantId = activeWorkspace?.id ?? null;
     const saveDocumentGeneration = editDocumentGenerationRef.current;
@@ -1242,35 +1259,96 @@ export default function StudioPage() {
           && videoEditTenantRef.current !== null
           && videoEditTenantRef.current !== saveTenantId;
         const safeVideoEdit = videoEditTenantMismatch ? null : persistedVideoEdit;
-        const r = await apiPost<{ id?: string; bodyRevision?: number; videoEditServerRevision?: number | null }>("/api/studio/drafts", {
-          tenant_id: saveTenantId,
-          id: currentDraftId,
-          idea,
-          text: bodySnapshot.text,
-          bodyBaseRevision: currentDraftId ? bodySnapshot.serverRevision : undefined,
-          img: persistedImg,
-          vid: persistedVid,
-          includes,
-          status,
-          publishReconciliations: reconciliations,
-          titles,
-          hashtags,
-          topicTags,
-          firstComments,
-          captions,
-          selectedAccounts,
-          editLines: bodySnapshot.lines,
-          cardTextPositions,
-          // 자기 도메인만 저장하는 호출도 반대 도메인을 명시적으로 null로 보낸다. route.ts는
-          // clear 플래그가 없는 null을 "기존 값 보존"으로 다룬다.
-          cardDeck: persistedCardDeck,
-          videoEdit: safeVideoEdit,
-          videoEditBaseRevision: safeVideoEdit ? videoEditBaseRevisionRef.current : undefined,
-          editKind,
-          editFormat,
-          reviewQueueId,
-          publishedAt: status === "published" ? new Date().toISOString() : undefined,
-        });
+        let r: { id?: string; bodyRevision?: number; videoEditServerRevision?: number | null } | null;
+        try {
+          r = await apiPost<{ id?: string; bodyRevision?: number; videoEditServerRevision?: number | null }>("/api/studio/drafts", {
+            tenant_id: saveTenantId,
+            id: currentDraftId,
+            idea,
+            text: bodySnapshot.text,
+            bodyBaseRevision: currentDraftId ? bodySnapshot.serverRevision : undefined,
+            img: persistedImg,
+            vid: persistedVid,
+            includes,
+            status,
+            publishReconciliations: reconciliations,
+            titles,
+            hashtags,
+            topicTags,
+            firstComments,
+            captions,
+            selectedAccounts,
+            editLines: bodySnapshot.lines,
+            cardTextPositions,
+            // 자기 도메인만 저장하는 호출도 반대 도메인을 명시적으로 null로 보낸다. route.ts는
+            // clear 플래그가 없는 null을 "기존 값 보존"으로 다룬다.
+            cardDeck: persistedCardDeck,
+            videoEdit: safeVideoEdit,
+            videoEditBaseRevision: safeVideoEdit ? videoEditBaseRevisionRef.current : undefined,
+            editKind,
+            editFormat,
+            reviewQueueId,
+            publishedAt: status === "published" ? new Date().toISOString() : undefined,
+          });
+        } catch (error) {
+          const payload = error instanceof ApiResponseError
+            ? error.payload as { code?: string; latestBody?: { text?: TextVariants | null; editLines?: string[]; bodyRevision?: number } }
+            : undefined;
+          const latest = payload?.latestBody;
+          const stillSameDocument = editDocumentGenerationRef.current === saveDocumentGeneration
+            && activeWorkspaceIdRef.current === saveTenantId
+            && draftIdRef.current === currentDraftId;
+          if (payload?.code === "BODY_STALE_REVISION"
+            && stillSameDocument
+            && latest
+            && Array.isArray(latest.editLines)
+            && Number.isSafeInteger(latest.bodyRevision)) {
+            const local = bodySnapshotRef.current;
+            setBodyRevisionConflict({
+              latest: {
+                lines: [...latest.editLines],
+                text: latest.text ?? null,
+                serverRevision: latest.bodyRevision as number,
+              },
+              local: { lines: [...local.lines], text: local.text },
+              viewingLatest: false,
+            });
+            // 저장 큐에 카드·영상 의도가 연달아 들어와 둘 다 같은 본문 충돌을 만나도
+            // 마지막 한 건으로 덮지 않는다. 최신 기준판을 받은 뒤 원래 순서대로 모두
+            // 재시도해야 각 도메인의 자동저장 변경이 남는다.
+            const retryIntent = {
+              retry: () => save(
+                status,
+                reconciliations,
+                currentDraftId,
+                persistedImg,
+                persistedVid,
+                persistedCardDeck,
+                safeVideoEdit,
+                "head",
+              ),
+              retryWithoutVideo: () => save(
+                status,
+                reconciliations,
+                currentDraftId,
+                persistedImg,
+                persistedVid,
+                persistedCardDeck,
+                null,
+                "head",
+              ),
+            };
+            // 원본 저장 충돌은 직렬 큐 도착 순서대로 tail에 쌓는다. 재적용 중 같은
+            // intent가 또 충돌하면 원래 자리인 head로 돌아가야 한다. tail로 보내면
+            // [옛 A, 최신 B]가 [B, A]로 역전돼 A가 마지막에 덮을 수 있다.
+            if (bodyConflictRetryPlacement === "head") bodyConflictRetryRef.current.unshift(retryIntent);
+            else bodyConflictRetryRef.current.push(retryIntent);
+            // 공통 save는 발행실에서도 호출된다. 복구 UI가 있는 편집실로 데려가지 않으면
+            // 사용자는 일반 저장 실패만 보고 최신본/재적용 행동을 찾을 수 없다.
+            if (activeRoom !== "edit") changeRoom("edit");
+          }
+          throw error;
+        }
         savedDraftId = r?.id ?? savedDraftId;
         currentDraftId = r?.id ?? currentDraftId;
 
@@ -1305,6 +1383,60 @@ export default function StudioPage() {
     });
     draftSaveQueueRef.current = queuedSave.then(() => undefined, () => undefined);
     return queuedSave;
+  }
+  function loadLatestBodyAfterConflict() {
+    if (!bodyRevisionConflict) return;
+    const { latest } = bodyRevisionConflict;
+    replaceBodySnapshot(latest.lines, latest.text, { serverRevision: latest.serverRevision });
+    setBodyRevisionConflict((current) => current ? { ...current, viewingLatest: true } : current);
+  }
+  async function reapplyLocalBodyAfterConflict() {
+    if (!bodyRevisionConflict || bodyConflictResolving) return;
+    const { local, latest } = bodyRevisionConflict;
+    replaceBodySnapshot(local.lines, local.text, { serverRevision: latest.serverRevision });
+    // 재저장이 끝나기 전에는 충돌 상태와 보관본을 유지한다. 여기서 먼저 지우면 느린
+    // 네트워크 동안 workbench의 inert가 풀려, 사용자가 보관본 위에 제3의 편집을 섞거나
+    // 실패 뒤 복구 단추 자체를 잃을 수 있다.
+    setBodyRevisionConflict((current) => current ? { ...current, viewingLatest: false } : current);
+    setBodyConflictResolving(true);
+    try {
+      // 스냅샷으로 한 번만 복사하지 않는다. 첫 충돌 UI가 열린 뒤에도 앞서 직렬 큐에
+      // 들어간 다른 저장이 늦게 409를 받아 새 의도를 추가할 수 있다. shift→await를
+      // 반복하면 현재 재시도보다 앞에 있던 원본 저장이 모두 끝난 뒤, 그 과정에서 새로
+      // 들어온 의도까지 같은 잠금 안에서 끝까지 drain한다.
+      for (;;) {
+        const pending = bodyConflictRetryRef.current.shift();
+        if (!pending) break;
+        try {
+          await pending.retry();
+        } catch (error) {
+          const code = error instanceof ApiResponseError
+            ? (error.payload as { code?: string } | undefined)?.code
+            : undefined;
+          if (code === "BODY_STALE_REVISION") {
+            // save()가 새 latestBody와 현재 의도를 큐 머리에 다시 넣었다. 기존 대기 의도도
+            // ref에 그대로 있으므로 충돌 UI를 유지한 채 사용자의 다음 선택을 기다린다.
+            return;
+          }
+          if (code === "VIDEO_EDIT_STALE_REVISION") {
+            // 서버는 본문 CAS를 먼저 검사한다. 둘 다 stale이면 본문 재적용에서 뒤늦게
+            // 영상 충돌이 드러나므로, 원래 영상 자동저장 catch와 같은 복구 UI를 연다.
+            // 본문 재시도에서는 영상을 빼 이 충돌이 본문 복구까지 영구히 막지 않게 한다.
+            bodyConflictRetryRef.current.unshift({ retry: pending.retryWithoutVideo, retryWithoutVideo: pending.retryWithoutVideo });
+            setVideoEditConflict(true);
+            setVideoEditAutosaveError("다른 곳에서 더 최신으로 저장된 영상 편집이 있습니다. 최신 값을 다시 불러온 뒤 다시 시도해 주세요.");
+            return;
+          }
+          bodyConflictRetryRef.current.unshift(pending);
+          showToast(extractApiErrorMessage(error, "내 변경을 다시 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."), "error");
+          return;
+        }
+      }
+      setBodyRevisionConflict(null);
+      bodyConflictRetryRef.current = [];
+    } finally {
+      setBodyConflictResolving(false);
+    }
   }
   async function saveDraftWithNotice() {
     // F5(2026-09-22 코드리뷰 3차): 자동저장 경로(onCardDeckChange)만 pruneEmptyBubbles·
@@ -2621,7 +2753,10 @@ export default function StudioPage() {
       // (drafts/route.ts는 키가 없으면 기존 값을 보존한다).
       save("draft", publishReconciliations, draftIdRef.current, img, vid, pruned, null)
         .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setCardDeckAutosaveError(""); })
-        .catch((error) => setCardDeckAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
+        .catch((error) => {
+          if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "BODY_STALE_REVISION") return;
+          setCardDeckAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+        });
     }, 800);
   }
 
@@ -2675,6 +2810,10 @@ export default function StudioPage() {
             setVideoEditAutosaveError("");
           })
           .catch((error) => {
+            // 본문 충돌은 save()가 로컬 입력과 latestBody를 함께 보관하고 전용 복구 UI를
+            // 연다. 영상 오류로도 중복 표시하면 복구 성공 뒤 영상 오류가 남아 발행을
+            // 계속 막으므로 이 경로에서는 별도 오류를 만들지 않는다.
+            if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "BODY_STALE_REVISION") return;
             // MAJOR1(3차 재리뷰): 409가 나면 빠져나갈 길("서버 값 다시 불러오기")을 준다.
             if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "VIDEO_EDIT_STALE_REVISION") {
               setVideoEditConflict(true);
@@ -2723,6 +2862,11 @@ export default function StudioPage() {
         videoEditConflict={videoEditConflict}
         onVideoEditReload={() => { if (draftIdRef.current) void reconcileVideoEditFromServer(draftIdRef.current, true); }}
         videoEditReconciling={videoEditReconciling}
+        bodyEditConflict={Boolean(bodyRevisionConflict)}
+        bodyConflictViewingLatest={Boolean(bodyRevisionConflict?.viewingLatest)}
+        bodyConflictResolving={bodyConflictResolving}
+        onBodyConflictLoadLatest={loadLatestBodyAfterConflict}
+        onBodyConflictReapply={() => { void reapplyLocalBodyAfterConflict(); }}
       />
     </div>
   );

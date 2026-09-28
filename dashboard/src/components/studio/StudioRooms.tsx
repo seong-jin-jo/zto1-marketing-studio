@@ -1568,6 +1568,12 @@ interface EditRoomProps {
   /** MAJOR2(3차 재리뷰): 서버 값과 맞추는 동안 편집을 막는다 — 안 막으면 맞추는 도중의
    * 수정이 조용히 사라질 수 있다. */
   videoEditReconciling?: boolean;
+  /** 본문 기준판 충돌. 해소 전에는 편집기를 잠그고 로컬 입력을 버리지 않는 두 복구 행동을 제공한다. */
+  bodyEditConflict?: boolean;
+  bodyConflictViewingLatest?: boolean;
+  bodyConflictResolving?: boolean;
+  onBodyConflictLoadLatest?: () => void;
+  onBodyConflictReapply?: () => void;
   /**
    * 카드뉴스 v2 덱(PR4). 있으면 `template==="chat_bubble"` 편집을 `CardDeckPanel` 이
    * 대신하고, 없으면 기존 `lines` 편집 그대로다(회귀 0 — 세션맥락).
@@ -1871,6 +1877,11 @@ export function EditRoom({
   videoEditConflict = false,
   onVideoEditReload,
   videoEditReconciling = false,
+  bodyEditConflict = false,
+  bodyConflictViewingLatest = false,
+  bodyConflictResolving = false,
+  onBodyConflictLoadLatest,
+  onBodyConflictReapply,
   cardDeck = null,
   onCardDeckChange,
   videoEdit = null,
@@ -2065,6 +2076,7 @@ export function EditRoom({
                     aria-pressed={kind === editKind}
                     variant="secondary"
                     className={kind === editKind ? "border-accent bg-accent-soft text-accent" : ""}
+                    disabled={bodyEditConflict}
                     onClick={() => onKindChange?.(editKind)}
                   >
                     {EDIT_KIND_LABELS[editKind]}
@@ -2075,14 +2087,14 @@ export function EditRoom({
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
               {kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
-                <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench>
+                <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                   <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-card-deck-editor-note>
                     말풍선 카드뉴스는 직접 편집이 기본입니다. 여기서 고친 내용은 자동 저장됩니다.
                   </p>
                   <CardDeckPanel deck={cardDeck} onDeckChange={onCardDeckChange} />
                 </div>
               ) : (
-              <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""} ${kind === "video" && onVideoEditChange ? styles.videoDocumentWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined}>
+              <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""} ${kind === "video" && onVideoEditChange ? styles.videoDocumentWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined} inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                 {/*
                   2026-09-23 세션맥락(과업 C): 카드뉴스가 말풍선 덱(chat_bubble)이 아니면
                   위 CardDeckPanel 분기를 안 타 말풍선 편집 기능이 통째로 안 보인다.
@@ -2363,21 +2375,21 @@ export function EditRoom({
                   value={bulkAsk}
                   onChange={(event) => setBulkAsk(event.target.value)}
                   placeholder="예: 자막 어투를 더 부드럽게 바꿔줘"
-                  disabled={!hasEditableContent || bulkBusy}
+                  disabled={!hasEditableContent || bulkBusy || bodyEditConflict}
                   className="min-h-control-touch min-w-0 flex-1 rounded-control border border-border bg-surface px-stack text-body-sm text-text"
                 />
                 {/*
                   이 방의 다음 단계는 "발행실로 이동" 하나다. 도구 단추가 같은 강조를 가지면
                   다음 단계가 묻힌다. 강조는 방마다 하나여야 한다.
                 */}
-                <Button type="submit" disabled={!hasEditableContent || bulkBusy || !bulkAsk.trim()}>
+                <Button type="submit" disabled={!hasEditableContent || bulkBusy || !bulkAsk.trim() || bodyEditConflict}>
                   {bulkBusy ? "고치는 중" : "시키기"}
                 </Button>
               </form>
               <div className="mt-pad-inset grid gap-stack-tight">
-                <Button className="w-full min-w-0 justify-start" onClick={shortenAll} disabled={!hasEditableContent}>전부 짧게 줄이기</Button>
-                <Button className="w-full min-w-0 justify-start" onClick={politeAll} disabled={!hasEditableContent}>말끝을 높임말로 맞추기</Button>
-                <Button className="w-full min-w-0 justify-start" onClick={dropEmpty} disabled={!hasEditableContent}>빈 줄 걷어내기</Button>
+                <Button className="w-full min-w-0 justify-start" onClick={shortenAll} disabled={!hasEditableContent || bodyEditConflict}>전부 짧게 줄이기</Button>
+                <Button className="w-full min-w-0 justify-start" onClick={politeAll} disabled={!hasEditableContent || bodyEditConflict}>말끝을 높임말로 맞추기</Button>
+                <Button className="w-full min-w-0 justify-start" onClick={dropEmpty} disabled={!hasEditableContent || bodyEditConflict}>빈 줄 걷어내기</Button>
               </div>
               {bulkMessage ? <p className="mt-stack text-caption text-success" aria-live="polite">{bulkMessage}</p> : null}
             </div>
@@ -2400,9 +2412,21 @@ export function EditRoom({
                 {videoEditConflict && onVideoEditReload ? <Button size="sm" onClick={onVideoEditReload} data-video-edit-reload>서버 값 다시 불러오기</Button> : null}
               </p>
             ) : null}
+            {bodyEditConflict ? (
+              <div role="alert" className="space-y-stack-tight rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-body-edit-conflict>
+                <strong className="block">다른 곳에서 먼저 수정됐어요</strong>
+                <p>{bodyConflictViewingLatest
+                  ? "최신본을 불러왔습니다. 작성 중이던 내 변경은 보관되어 있으며 다시 적용할 수 있습니다."
+                  : "작성 중이던 내 변경은 보관했습니다. 최신본을 확인하거나, 최신 기준판 위에 내 변경을 다시 적용할 수 있습니다."}</p>
+                <div className="flex flex-wrap gap-stack-tight">
+                  <Button size="sm" variant="secondary" onClick={onBodyConflictLoadLatest} disabled={bodyConflictResolving || bodyConflictViewingLatest} data-body-conflict-load-latest>최신본 불러오기</Button>
+                  <Button size="sm" onClick={onBodyConflictReapply} disabled={bodyConflictResolving} data-body-conflict-reapply>{bodyConflictResolving ? "다시 적용 중" : "내 변경 다시 적용"}</Button>
+                </div>
+              </div>
+            ) : null}
             <div className={styles.editHelperFooter}>
               <small className={autosaveError ? "text-caption text-danger" : "text-caption text-success"}>{autosaveError || (lastSavedAt ? `마지막 자동 저장 ${lastSavedAt}` : "고치는 대로 자동 저장됨")}</small>
-              <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>
+              <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || bodyEditConflict || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>
             </div>
           </aside>
         )}

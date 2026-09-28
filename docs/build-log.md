@@ -1,5 +1,28 @@
 # OSMU build log
 
+## 2026-09-28 15:40 KST · PR 87 재리뷰 r5 본문 충돌 복구
+
+STAMP: 2026-09-28 15:40 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-review-r5.md`, ADR-007, v70 디자인 규격, RFC 9110 §15.5.10, 두 탭 Chromium 실측 | 고민: 409를 오류 문구로만 끝내지 않고 서버 최신본과 실패 직전 로컬 입력을 동시에 보존해 사용자가 어느 쪽도 잃지 않게 했다.
+
+| 검증 | 결과 |
+|---|---|
+| 표적 회귀 | fake timer 기반 실제 `StudioPage` 충돌→최신본→재적용·본문/영상 이중 충돌·늦은 두 번째 409 3건 PASS |
+| CI 동일 전체 Test | Node 20.20.2, PostgreSQL 16 schema→seed→RLS. 421파일 PASS, 2,867건 PASS, 1건 SKIP, 실패 0, 214.52초 |
+| TypeScript·production build | `npm run typecheck:ci`, `npm run build` 종료 코드 0 |
+| DB·브라우저 게이트 | migration matrix PASS. 발행실 정렬 delta 0px. Chromium 말풍선 E2E 전부 PASS |
+| 두 탭 dev 스모크 | `localhost:3471/studio?room=edit`, 탭 2개, revision 5→6→7, 재적용 base 6, 콘솔 오류 0 |
+
+스키마 마이그레이션은 없다. 기존 JSONB `bodyRevision`과 409 `latestBody` 계약만 사용했다. 독립 리뷰에서 재적용 중 잠금 해제, 연속 충돌의 단일 retry 슬롯 덮어쓰기, 본문·영상 이중 충돌, 발행실의 복구 UI 부재를 찾아 수정했다. design lint의 기존 인라인 style 1파일·토큰 밖 hex 6파일 경고는 남아 있으나 이번 diff는 토큰 클래스와 공용 `Button`만 사용해 신규 위반이 없다. 원격 CI와 운영 배포는 push 전이므로 미검증이다.
+
+KNOWLEDGE_QUERY: `.pr87-review-r5.md`, ADR-007, v70 충돌·실패 상태, 기존 영상 CAS UI, RFC 9110의 409 복구·재제출 계약을 조회했다.
+HITS_USED: 409가 충돌 원인을 설명하고 사용자가 해소·재제출할 수 있어야 한다는 RFC 원칙을 최신본 확인과 명시적 재적용 행동에 적용했다.
+HITS_REJECTED: 제품 방향·시장 BRAIN 지식은 이미 확정된 동시성 버그 수정 범위와 무관해 채택하지 않았다.
+CONFLICTS: 없음.
+
+SKILLS_USED: qa — 충돌 재현·회귀·실브라우저 검증, review — 커밋 전 동시성·CI·적대적 UX 병렬 검수에 사용.
+SKILLS_SKIPPED: 없음.
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr87-review-r5.md`, `wiki/거버넌스/{결정.md,실수.md}`, `docs/design/design-spec-editroom-v70.md`, `dashboard/src/app/{studio/page.tsx,api/studio/drafts/route.ts}`, https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.10, `/tmp/pr87-r5-{full-vitest-final4,node20-type-build-final4,migration-final4,body-e2e-final5}.log`
+
 ## 2026-09-28 14:37 KST · PR 87 재리뷰 r4 서버 발급 본문 revision CAS
 
 STAMP: 2026-09-28 14:37 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: 없음 | 근거: `.pr87-review-r4.md`, 기존 영상 편집 CAS, PostgreSQL 공식 트랜잭션 문서, 실제 PostgreSQL 두 탭 재현 | 고민: 탭의 편집 횟수를 최신성으로 오인하지 않고 서버가 발급한 기준판 하나만 저장 자격으로 사용하게 했다.
