@@ -191,11 +191,13 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
-      - name: 영속 config/data 복원 (~/openclaw-persist → 체크아웃)
+      - name: 영속 config/data 준비 (체크아웃 밖 ~/openclaw-persist)
         run: |
           shopt -s nullglob
-          for d in "$HOME"/openclaw-persist/config-* "$HOME"/openclaw-persist/data-*; do
-            cp -a "$d" ./ && echo "복원: $(basename "$d")"
+          for tenant in 2 3 4; do
+            install -d -m 0755 "$HOME/openclaw-persist/config-tenant${tenant}"
+            install -d -m 0755 "$HOME/openclaw-persist/data-tenant${tenant}"
+            echo "영속 경로 준비: config-tenant${tenant}, data-tenant${tenant}"
           done
           for f in "$HOME"/openclaw-persist/.env.*; do
             [ -f "$f" ] && cp -a "$f" ./ && echo "복원: $(basename "$f")"

@@ -61,8 +61,16 @@ services:
     <<: *gateway-base
     container_name: openclaw-gateway-tenant2
     volumes:
-      - ./config-tenant2:/home/node/.openclaw
-      - ./data-tenant2:/home/node/data
+      - type: bind
+        source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/config-tenant2
+        target: /home/node/.openclaw
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/data-tenant2
+        target: /home/node/data
+        bind:
+          create_host_path: false
     env_file: .env.tenant2
     environment:
       HOME: /home/node
@@ -79,8 +87,16 @@ services:
     <<: *dashboard-base
     container_name: openclaw-dashboard-tenant2
     volumes:
-      - ./data-tenant2:/app/data
-      - ./config-tenant2:/app/config
+      - type: bind
+        source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/data-tenant2
+        target: /app/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/config-tenant2
+        target: /app/config
+        bind:
+          create_host_path: false
       - /var/run/docker.sock:/var/run/docker.sock
     env_file: .env.tenant2
     environment:
@@ -98,8 +114,16 @@ services:
     <<: *gateway-base
     container_name: openclaw-gateway-tenant3
     volumes:
-      - ./config-tenant3:/home/node/.openclaw
-      - ./data-tenant3:/home/node/data
+      - type: bind
+        source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/config-tenant3
+        target: /home/node/.openclaw
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/data-tenant3
+        target: /home/node/data
+        bind:
+          create_host_path: false
     env_file: .env.tenant3
     environment:
       HOME: /home/node
@@ -116,8 +140,16 @@ services:
     <<: *dashboard-base
     container_name: openclaw-dashboard-tenant3
     volumes:
-      - ./data-tenant3:/app/data
-      - ./config-tenant3:/app/config
+      - type: bind
+        source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/data-tenant3
+        target: /app/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/config-tenant3
+        target: /app/config
+        bind:
+          create_host_path: false
       - /var/run/docker.sock:/var/run/docker.sock
     env_file: .env.tenant3
     environment:
@@ -135,8 +167,16 @@ services:
     <<: *gateway-base
     container_name: openclaw-gateway-tenant4
     volumes:
-      - ./config-tenant4:/home/node/.openclaw
-      - ./data-tenant4:/home/node/data
+      - type: bind
+        source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/config-tenant4
+        target: /home/node/.openclaw
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/data-tenant4
+        target: /home/node/data
+        bind:
+          create_host_path: false
     env_file: .env.tenant4
     environment:
       HOME: /home/node
@@ -153,8 +193,16 @@ services:
     <<: *dashboard-base
     container_name: openclaw-dashboard-tenant4
     volumes:
-      - ./data-tenant4:/app/data
-      - ./config-tenant4:/app/config
+      - type: bind
+        source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/data-tenant4
+        target: /app/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}/config-tenant4
+        target: /app/config
+        bind:
+          create_host_path: false
       - /var/run/docker.sock:/var/run/docker.sock
     env_file: .env.tenant4
     environment:
