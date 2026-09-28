@@ -68,7 +68,7 @@ describe("OSMU production persistence contract", () => {
     expect(deployWorkflow).toContain('persist_root="${OPENCLAW_PERSIST_ROOT:-$HOME/openclaw-persist}"');
     expect(deployWorkflow).toContain('[ "$(id -u)" != "1000" ]');
     expect(deployWorkflow).toContain("grep -qx 'schema=2'");
-    expect(deployWorkflow).toContain("fresh-bootstrap|paused-container-copy");
+    expect(deployWorkflow).toContain("fresh-bootstrap|mount-namespace-holder");
     expect(deployWorkflow).toContain('chmod 0700 "$config_dir"');
     expect(deployWorkflow).toContain('chmod 0750 "$data_dir"');
     expect(deployWorkflow).toContain("DOCKER_GID=$docker_gid");
@@ -156,28 +156,53 @@ describe("OSMU production persistence contract", () => {
     installFakeUname(binDir);
     const dockerPath = path.join(binDir, "docker");
     const dockerLog = path.join(tempRoot, "docker.log");
+    const dockerState = path.join(tempRoot, "docker-state");
     fs.writeFileSync(dockerPath, `#!/bin/sh
 printf '%s\\n' "$*" >> "$FAKE_DOCKER_LOG"
+state="$FAKE_DOCKER_STATE"
+mkdir -p "$state"
 case "$1" in
   inspect)
-    case "$2" in
-      --format)
-        case "$3" in
-          *State.Running*) echo "true" ;;
-          *) echo "abcdef0123456789" ;;
-        esac
-        ;;
-      *) exit 0 ;;
+    format=""; target=""
+    if [ "$2" = "--format" ]; then format="$3"; target="$4"; else target="$2"; fi
+    case "$format" in
+      *State.Running*) [ -f "$state/$target.stopped" ] && echo false || echo true ;;
+      *State.ExitCode*) echo 0 ;;
+      *State.Pid*) echo 4242 ;;
+      *) if [ -n "$format" ]; then echo abcdef0123456789; else exit 0; fi ;;
     esac
     ;;
-  exec) echo "2049:12345" ;;
+  exec) [ "$3" != "stat" ] || echo "2049:12345" ;;
   compose) exit 0 ;;
-  pause|unpause|stop|start) exit 0 ;;
+  image|pull|pause|unpause|stop|rm|logs) exit 0 ;;
   cp)
     [ "\${FAKE_DOCKER_FAIL_CP:-0}" != "1" ] || exit 42
     mkdir -p "$3"
     printf 'snapshot\n' > "$3/state.json"
     ;;
+  run)
+    shift; name=""; control=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --name) name="$2"; shift 2 ;;
+        -v) control="\${2%:/control}"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    mkdir -p "$control"
+    printf ready > "$control/ready"
+    printf '%s\\n' "$control" > "$state/$name.control"
+    echo fake-holder ;;
+  kill)
+    holder="$4"
+    control="$(cat "$state/$holder.control")"
+    fixture="$(mktemp -d "$state/holder.XXXXXX")"
+    mkdir -p "$fixture/config" "$fixture/data"
+    printf 'snapshot\n' > "$fixture/config/state.json"
+    printf 'snapshot\n' > "$fixture/data/state.json"
+    tar -cf "$control/config.tar" -C "$fixture/config" .
+    tar -cf "$control/data.tar" -C "$fixture/data" .
+    touch "$state/$holder.stopped" ;;
   *) exit 1 ;;
 esac
 `, { mode: 0o755 });
@@ -189,13 +214,14 @@ esac
     try {
       const result = spawnSync("bash", ["migrate-postagi-persist-mounts.sh"], {
         cwd: sandbox,
-        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, OPENCLAW_PERSIST_ROOT: persistRoot, DOCKER_GID: "999", FAKE_DOCKER_LOG: dockerLog },
+        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, OPENCLAW_PERSIST_ROOT: persistRoot, DOCKER_GID: "999", FAKE_DOCKER_LOG: dockerLog, FAKE_DOCKER_STATE: dockerState },
         encoding: "utf8",
       });
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
       const marker = fs.readFileSync(path.join(persistRoot, ".mount-v2-ready"), "utf8");
       expect(marker).toContain("schema=2");
-      expect(marker).toContain("source=paused-container-copy");
+      expect(marker).toContain("source=mount-namespace-holder");
+      expect(marker).toContain("status=ready");
       for (const tenant of [2, 3, 4]) {
         expect(marker).toContain(`tenant${tenant}_gateway_container=abcdef0123456789`);
         expect(marker).toContain(`tenant${tenant}_dashboard_container=abcdef0123456789`);
@@ -205,7 +231,8 @@ esac
       }
       expect(migration).toContain('docker pause "$container"');
       expect(migration).toContain('docker stop --timeout 30 "$container"');
-      expect(migration).toContain('docker start "$container"');
+      expect(migration).not.toContain('docker start "$container"');
+      expect(migration).toContain("mount --bind");
       expect(fs.readFileSync(dockerLog, "utf8")).toContain("pause openclaw-gateway-tenant2");
       expect(fs.readFileSync(dockerLog, "utf8")).toContain("stop --timeout 30 openclaw-gateway-tenant2");
       expect(fs.readFileSync(dockerLog, "utf8")).not.toContain("unpause openclaw-gateway-tenant2");
@@ -239,7 +266,7 @@ case "$1" in
     ;;
   exec) echo "2049:12345" ;;
   compose) exit 0 ;;
-  pause|unpause|stop|start) exit 0 ;;
+  image|pull|pause|unpause|stop|start) exit 0 ;;
   cp) exit 42 ;;
   *) exit 1 ;;
 esac
@@ -256,7 +283,7 @@ esac
         encoding: "utf8",
       });
       expect(result.status).toBe(42);
-      expect(result.stderr).toContain("동결했던 컨테이너를 다시 실행 상태로 돌립니다");
+      expect(result.stderr).toContain("아직 실행 중인 원본 컨테이너의 pause를 해제합니다");
       const log = fs.readFileSync(dockerLog, "utf8");
       expect(log).toContain("pause openclaw-gateway-tenant2");
       expect(log).toContain("unpause openclaw-gateway-tenant2");
