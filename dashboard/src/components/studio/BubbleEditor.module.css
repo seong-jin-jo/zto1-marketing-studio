@@ -51,22 +51,15 @@
   background: var(--accent-soft) !important;
 }
 
-.thumbnailMeta {
-  display: grid;
-  gap: var(--space-micro);
-  justify-items: start;
-  color: var(--text);
-  font-size: var(--font-caption-size);
-}
-
 .thumbnailBars {
   display: grid;
   gap: var(--space-micro);
+  align-content: center;
 }
 
 .thumbnailBars i {
   display: block;
-  height: 0.25rem;
+  height: 0.4375rem;
   border-radius: var(--shape-pill);
   background: var(--border);
 }
@@ -79,12 +72,28 @@
   width: 58%;
 }
 
-.slideToolbar {
+.thumbnailBars i:nth-child(4) {
+  width: 86%;
+}
+
+.thumbnailCaption {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-micro);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-micro);
+  color: var(--text-muted);
+  font-size: var(--font-caption-size);
+}
+
+.selectedSlideActions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-micro);
-  margin-bottom: var(--stack-tight);
+  justify-content: center;
+  gap: var(--stack-tight);
+  margin-top: var(--stack-tight);
 }
 
 .stageColumn {
@@ -93,8 +102,8 @@
 
 .cardStage {
   aspect-ratio: 4 / 5;
-  width: 100%;
-  max-width: var(--editroom-stage-width);
+  width: var(--editroom-stage-width);
+  max-width: none;
   margin-inline: auto;
   overflow-y: auto;
   border: 1px solid var(--border);
@@ -131,6 +140,19 @@
 
 .cardBrandBar span {
   color: var(--text-muted);
+}
+
+.cardBrandBar b {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--stack-tight);
+}
+
+.cardBrandMark {
+  width: var(--stack);
+  height: var(--stack);
+  border-radius: var(--shape-pill);
+  background: var(--surface-2);
 }
 
 .slideRenderCanvas {
@@ -268,6 +290,10 @@
   .thumbnailItem {
     width: var(--editroom-thumbnail-width);
     flex: 0 0 var(--editroom-thumbnail-width);
+  }
+
+  .cardStage {
+    width: min(100%, 19.375rem);
   }
 
   .bubbleToolbar {

@@ -12,6 +12,7 @@ import {
   moveSlide,
   addSlide,
   deleteSlide,
+  duplicateSlide,
   groupTurns,
   pruneEmptyBubbles,
   emptyBubbleSlideNumber,
@@ -213,6 +214,22 @@ describe("슬라이드 연산 moveSlide/addSlide/deleteSlide (TC-F1-10·11)", ()
     const result = moveSlide(d, 1, 2);
     expect(result.slides[1].id).toBe(d.slides[2].id);
     expect(result.slides.map((s) => s.order)).toEqual(result.slides.map((_, i) => i));
+  });
+
+  it("PR94-R2-03 선택한 대화 장 복제는 새 장·말풍선 ID로 바로 뒤에 삽입한다", () => {
+    const d = deck();
+    const result = duplicateSlide(d, 1);
+    expect(result.slides).toHaveLength(d.slides.length + 1);
+    expect(result.slides[2].role).toBe("chat");
+    expect(result.slides[2].id).not.toBe(d.slides[1].id);
+    expect(result.slides[2].bubbles?.map((bubble) => bubble.id)).not.toEqual(d.slides[1].bubbles?.map((bubble) => bubble.id));
+    expect(result.slides.map((slide) => slide.order)).toEqual(result.slides.map((_, index) => index));
+  });
+
+  it("PR94-R2-03 표지·CTA 복제는 거절한다", () => {
+    const d = deck();
+    expectOpsCode(() => duplicateSlide(d, 0), "OPS_SLIDE_LOCKED");
+    expectOpsCode(() => duplicateSlide(d, d.slides.length - 1), "OPS_SLIDE_LOCKED");
   });
 });
 

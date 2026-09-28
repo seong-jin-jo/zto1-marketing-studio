@@ -16,10 +16,10 @@ import type { Bubble, CardDeck, CardSlide, Segment } from "@/lib/studio/card-dec
 import {
   CardDeckOpsError,
   addBubble,
-  addSlide,
   caretToSegment,
   deleteBubble,
   deleteSlide,
+  duplicateSlide,
   mergeBubble,
   moveSlide,
   setBubbleSegments,
@@ -71,6 +71,41 @@ export interface BubbleEditorProps {
   deck: CardDeck;
   slideId: string;
   onDeckChange: (deck: CardDeck) => void;
+}
+
+export function CardStripThumbnail({
+  index,
+  selected,
+  role,
+  slideId,
+  onClick,
+  onKeyDown,
+}: {
+  index: number;
+  selected: boolean;
+  role?: CardSlide["role"];
+  slideId?: string;
+  onClick: () => void;
+  onKeyDown?: (event: KeyboardEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <Button
+      variant="secondary"
+      onClick={onClick}
+      onKeyDown={onKeyDown}
+      aria-pressed={selected}
+      data-card-thumbnail={index}
+      data-slide-id={slideId}
+      data-slide-role={role}
+      className={`${styles.thumbnailButton} ${selected ? styles.thumbnailButtonActive : ""}`}
+    >
+      <span className={styles.thumbnailBars} aria-hidden="true"><i /><i /><i /><i /></span>
+      <span className={styles.thumbnailCaption}>
+        {role ? <span data-slide-role-badge={role} className={`rounded-chip border px-micro text-caption font-semibold ${SLIDE_ROLE_BADGE_CLASS[role]}`}>{SLIDE_ROLE_LABEL[role]}</span> : null}
+        <span>{index + 1}장</span>
+      </span>
+    </Button>
+  );
 }
 
 /**
@@ -736,11 +771,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
   }
 
   return (
-    <div className="space-y-stack" data-bubble-editor data-bubble-editor-slide-role={slide.role}>
-      <div className="flex items-center justify-between">
-        <b className="text-caption font-semibold text-text">{SLIDE_ROLE_LABEL[slide.role]} 장 · 말풍선 {bubbles.length}개</b>
-        <Button size="sm" onClick={() => run((d) => addBubble(d, slide.id, selectedBubbleId))}>말풍선 추가</Button>
-      </div>
+    <div className="space-y-stack" data-bubble-editor data-bubble-editor-slide-role={slide.role} aria-label={`${SLIDE_ROLE_LABEL[slide.role]} 장, 말풍선 ${bubbles.length}개`}>
       {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-bubble-editor-error>{error}</p> : null}
       <ul className={styles.bubbleTurns} data-bubble-editor-turns>
         {bubbles.map((bubble) => {
@@ -1120,10 +1151,12 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
     return () => { cancelled = true; };
   }, [activeIndex, activeSlide, checkedRevision, deck, onDeckChange, renderWarning]);
 
-  function runSlide(op: (deck: CardDeck) => CardDeck) {
+  function runSlide(op: (deck: CardDeck) => CardDeck): CardDeck | null {
     try {
       setSlideError(null);
-      onDeckChange(op(deck));
+      const next = op(deck);
+      onDeckChange(next);
+      return next;
     } catch (cause) {
       if (cause instanceof CardDeckOpsError) {
         console.error("카드덱 연산 실패", cause.code, cause.message);
@@ -1131,6 +1164,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
       } else {
         setSlideError("장을 바꾸지 못했습니다.");
       }
+      return null;
     }
   }
 
@@ -1163,42 +1197,24 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
               }}
               onDragEnd={() => setDraggedSlideIndex(null)}
             >
-              <Button
-                variant="secondary"
+              <CardStripThumbnail
+                index={index}
+                selected={slide.id === activeSlideId}
+                role={slide.role}
+                slideId={slide.id}
                 onClick={() => setActiveSlideId(slide.id)}
-                aria-pressed={slide.id === activeSlideId}
-                data-slide-id={slide.id}
-                data-slide-role={slide.role}
-                // 2026-09-22 코드리뷰 CI 재검토: 맨 button 태그 대신 공용 Button 을 쓴다
-                // (QA-APP-TOUCH-08 기준선 239→238). Button 기본값(inline-flex·
-                // justify-center·px 만 있는 size 패딩)과 이 목록 행의 레이아웃(꽉 찬
-                // 너비·양끝 정렬·상하좌우 패딩·왼쪽 정렬)이 충돌하는 자리만 `!` 로 이긴다.
-                className={`${styles.thumbnailButton} ${slide.id === activeSlideId ? styles.thumbnailButtonActive : ""}`}
-              >
-                <span className={styles.thumbnailMeta}>
-                  <span>{index + 1}</span>
-                  <span data-slide-role-badge={slide.role} className={`rounded-chip border px-micro text-caption font-semibold ${SLIDE_ROLE_BADGE_CLASS[slide.role]}`}>{SLIDE_ROLE_LABEL[slide.role]}</span>
-                </span>
-                <span className={styles.thumbnailBars} aria-hidden="true"><i /><i /><i /></span>
-              </Button>
+                onKeyDown={(event) => {
+                  if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+                  event.preventDefault();
+                  const destination = index + (event.key === "ArrowUp" ? -1 : 1);
+                  runSlide((d) => moveSlide(d, index, destination));
+                }}
+              />
             </div>
           );
         })}
       </nav>
       <section aria-label="카드 편집 스테이지" className={styles.stageColumn} data-card-deck-preview>
-        {activeSlide ? (
-          <div className={styles.slideToolbar} data-selected-slide-toolbar>
-            <span className="text-caption text-subtle">{activeIndex + 1}장</span>
-            <Button size="sm" onClick={() => runSlide((d) => moveSlide(d, activeIndex, activeIndex - 1))} disabled={activeSlide.role !== "chat" || activeIndex <= 1}>▲</Button>
-            <Button size="sm" onClick={() => runSlide((d) => moveSlide(d, activeIndex, activeIndex + 1))} disabled={activeSlide.role !== "chat" || activeIndex >= deck.slides.length - 2}>▼</Button>
-            <Button size="sm" onClick={() => runSlide((d) => addSlide(d, activeIndex))} disabled={activeIndex === deck.slides.length - 1}>+장</Button>
-            {activeSlide.role === "cover" || activeSlide.role === "cta" ? (
-              <span className="rounded-chip border border-dashed border-border px-micro text-caption text-subtle" data-slide-locked>{SLIDE_ROLE_LABEL[activeSlide.role]}는 지울 수 없습니다</span>
-            ) : (
-              <Button size="sm" variant="secondary" onClick={() => runSlide((d) => deleteSlide(d, activeIndex))}>삭제</Button>
-            )}
-          </div>
-        ) : null}
         {activeSlide && (activeSlide.role === "cover" || activeSlide.role === "cta") ? (
           <SlideRenderPreview canvas={renderPreview} />
         ) : null}
@@ -1209,11 +1225,22 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
             // `deck.brand.display_name`만 그린다. "브랜드" placeholder를 지어내지 않고
             // PNG와 똑같이 handle 칸 자체를 비운다.
             <header className={styles.cardBrandBar}>
-              <b>{deck.brand.display_name}</b>
+              <b><span className={styles.cardBrandMark} aria-hidden="true" />{deck.brand.display_name}</b>
+              <span>{activeIndex + 1} / {deck.slides.length}</span>
             </header>
           ) : null}
           {activeSlide ? <BubbleEditor deck={deck} slideId={activeSlide.id} onDeckChange={onDeckChange} /> : null}
         </div>
+        {activeSlide ? (
+          <div className={styles.selectedSlideActions} data-selected-slide-actions>
+            <Button size="sm" variant="secondary" disabled={activeSlide.role !== "chat"} onClick={() => {
+              const next = runSlide((d) => duplicateSlide(d, activeIndex));
+              if (next) setActiveSlideId(next.slides[activeIndex + 1]?.id ?? activeSlide.id);
+            }}>이 장 복제</Button>
+            <Button size="sm" variant="secondary" disabled={activeSlide.role !== "chat"} onClick={() => runSlide((d) => deleteSlide(d, activeIndex))}>이 장 삭제</Button>
+            <Button size="sm" disabled={activeSlide.role !== "chat" && activeSlide.role !== "comment_prompt"} onClick={() => runSlide((d) => addBubble(d, activeSlide.id, activeSlide.bubbles?.at(-1)?.id ?? null))}>말풍선 추가</Button>
+          </div>
+        ) : null}
         {splitNotice ? <p role="status" className={styles.slideLayoutWarning} data-slide-split-notice>{splitNotice}</p> : null}
         {renderWarning ? <p role="alert" className={styles.slideLayoutWarning} data-slide-layout-warning>{renderWarning}</p> : null}
         {slideError ? <p role="alert" className="mt-stack-tight text-caption text-danger">{slideError}</p> : null}

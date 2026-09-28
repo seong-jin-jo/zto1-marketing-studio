@@ -154,7 +154,9 @@ export function EditPreview({
   /** v70 카드 편집실은 520px 무대를 쓴다. 다른 레거시 미리보기 폭은 그대로 둔다. */
   stageSize?: "default" | "card-v70";
 }) {
-  const specs = useMemo(() => PREVIEW_SPECS.filter((spec) => spec.kinds.includes(kind)), [kind]);
+  const specs = useMemo(() => PREVIEW_SPECS.filter((spec) => (
+    spec.kinds.includes(kind) && (stageSize !== "card-v70" || spec.key === "card-portrait")
+  )), [kind, stageSize]);
   const matchingSpec = specs.find((one) => one.ratio.replaceAll(" ", "").replace("/", ":") === aspectRatio);
   const [specKey, setSpecKey] = useState(matchingSpec?.key ?? specs[0]?.key ?? "shorts");
   useEffect(() => {
@@ -184,9 +186,9 @@ export function EditPreview({
         <span className="ml-auto text-caption text-subtle" data-edit-preview-size>{spec.size}픽셀</span>
       </div>
 
-      <div className="grid place-items-center rounded-surface border border-border bg-surface-2 p-stack">
+      <div className={`grid place-items-center rounded-surface border border-border bg-surface-2 p-stack ${stageSize === "card-v70" ? styles.cardV70StageShell : ""}`} data-edit-preview-stage-shell>
         <div
-          className={`relative w-full overflow-hidden rounded-control bg-accent-soft ${stageSize === "card-v70" ? styles.cardStageFrame : "max-w-sm"} ${RATIO_CLASS[spec.ratio]}`}
+          className={`relative overflow-hidden rounded-control ${stageSize === "card-v70" ? `${styles.cardStageFrame} ${styles.cardV70Canvas}` : "w-full max-w-sm bg-accent-soft"} ${RATIO_CLASS[spec.ratio]}`}
           data-edit-preview-frame={spec.ratio}
           data-card-canvas={kind === "card" ? "true" : undefined}
           onPointerUp={(event) => {
@@ -207,7 +209,7 @@ export function EditPreview({
           {/* 만든 것을 배경으로 깔고 그 위에 글자와 자막을 얹는다. 실제 결과에 가깝게 보여야
               무엇을 고칠지 판단할 수 있다. 종전에는 이 자리가 비어 "여기에 화면이 놓입니다"
               라는 자리표시자만 있었다(2026-09-08 회장 실사용). */}
-          {activeMediaUrl ? (
+          {activeMediaUrl && !(kind === "card" && stageSize === "card-v70") ? (
             <DeliveredMedia
               type={mediaType === "video" ? "video" : "image"}
               src={activeMediaUrl}
@@ -220,7 +222,7 @@ export function EditPreview({
 
           {kind === "card" ? (
             <div
-              className={`absolute z-10 w-4/5 rounded-control border border-border p-stack shadow-lg ${styles.cardTextOverlay} ${CARD_POSITION_CLASS[cardPosition]}`}
+              className={`absolute z-10 w-4/5 rounded-control border border-border p-stack shadow-lg ${stageSize === "card-v70" ? styles.cardV70TextOverlay : styles.cardTextOverlay} ${CARD_POSITION_CLASS[cardPosition]}`}
               data-card-text-position={cardPosition}
             >
               <button

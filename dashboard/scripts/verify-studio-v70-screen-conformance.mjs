@@ -2,12 +2,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import sharp from "sharp";
 
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, "../..");
 const baseUrl = process.env.STUDIO_V70_BASE_URL || "http://127.0.0.1:3470";
-const outputDir = process.env.STUDIO_V70_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/qa/studio-v70-screen-conformance-20260928");
-const referenceRoot = process.env.STUDIO_V70_REFERENCE_ROOT || "/Users/sj/sj_code_master/zto1-marketing-studio/docs/design/clean-frames";
+const outputDir = process.env.STUDIO_V70_OUTPUT_DIR || path.join(repoRoot, "docs/qa/studio-v70-screen-conformance-20260928");
+const referenceRoot = process.env.STUDIO_V70_REFERENCE_ROOT || path.join(repoRoot, "docs/design/clean-frames");
 const compareWithReferences = process.env.STUDIO_V70_COMPARE !== "0";
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const viewports = [
@@ -17,7 +20,13 @@ const viewports = [
 ];
 const lines = ["첫 장에서 문제를 짚습니다", "두 번째 장에서 원인을 설명합니다", "마지막 장에서 다음 행동을 제안합니다"];
 const images = ["/qa/alignment-card-1.jpg", "/qa/alignment-card-2.jpg", "/qa/alignment-card-3.jpg"];
-const bubbleDeck = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "tests/studio/fixtures/deck-d100.v2.json"), "utf8"));
+const bubbleDeck = JSON.parse(fs.readFileSync(path.join(repoRoot, "dashboard/tests/studio/fixtures/deck-d100.v2.json"), "utf8"));
+const referenceStageCrops = {
+  1440: { left: 483, top: 168, width: 520, height: 650 },
+  1024: { left: 196, top: 168, width: 520, height: 650 },
+  390: { left: 40, top: 276, width: 310, height: 387.5 },
+};
+const stageDiffThreshold = Number(process.env.STUDIO_V70_STAGE_DIFF_THRESHOLD || "0.36");
 
 fs.mkdirSync(outputDir, { recursive: true });
 
@@ -213,33 +222,49 @@ async function assertVisibleEditorControlsDoNotOverlap(locator, label) {
   if (collision) throw new Error(`${label} 보이는 조작 요소 겹침: ${JSON.stringify(collision)}`);
 }
 
-async function makeComparison(referencePath, actualPath, outputPath) {
+async function makeStageComparison(referencePath, actualStagePath, outputPath, viewportWidth) {
   if (!fs.existsSync(referencePath)) throw new Error(`비교 원본 없음: ${referencePath}`);
-  const [referenceMeta, actualMeta] = await Promise.all([sharp(referencePath).metadata(), sharp(actualPath).metadata()]);
-  const referenceWidth = referenceMeta.width || 1;
-  const actualWidth = actualMeta.width || 1;
-  const referenceHeight = referenceMeta.height || 1;
-  const rawActualHeight = actualMeta.height || 1;
-  // 모바일 clean-frame은 DPR 2(780px)이고 Playwright 캡처는 CSS 픽셀(390px)이다.
-  // 폭을 맞추지 않으면 구현이 절반 크기로 붙어 육안 대조 자체가 거짓이 된다.
-  const actualInput = actualWidth === referenceWidth
-    ? actualPath
-    : await sharp(actualPath).resize({ width: referenceWidth }).png().toBuffer();
-  const actualHeight = actualWidth === referenceWidth
-    ? rawActualHeight
-    : Math.round(rawActualHeight * (referenceWidth / actualWidth));
+  const cssCrop = referenceStageCrops[viewportWidth];
+  if (!cssCrop) throw new Error(`${viewportWidth} 화면별 v70 기준 crop이 없습니다`);
+  const referenceMetadata = await sharp(referencePath).metadata();
+  const referenceScale = (referenceMetadata.width || viewportWidth) / viewportWidth;
+  const crop = {
+    left: Math.round(cssCrop.left * referenceScale),
+    top: Math.round(cssCrop.top * referenceScale),
+    width: Math.round(cssCrop.width * referenceScale),
+    height: Math.round(cssCrop.height * referenceScale),
+  };
+  const normalized = { width: 260, height: 325 };
+  const referenceInput = await sharp(referencePath).extract(crop).png().toBuffer();
+  const actualInput = await sharp(actualStagePath).resize(normalized).png().toBuffer();
+  const [referenceRaw, actualRaw] = await Promise.all([
+    sharp(referenceInput).resize(normalized).greyscale().blur(4).raw().toBuffer(),
+    sharp(actualInput).greyscale().blur(4).raw().toBuffer(),
+  ]);
+  let absoluteDifference = 0;
+  for (let index = 0; index < referenceRaw.length; index += 1) {
+    absoluteDifference += Math.abs(referenceRaw[index] - actualRaw[index]);
+  }
+  const score = absoluteDifference / (referenceRaw.length * 255);
+  const referenceWidth = crop.width;
+  const referenceHeight = crop.height;
+  const presentationActual = await sharp(actualStagePath).resize({ width: referenceWidth, height: referenceHeight }).png().toBuffer();
   const labelHeight = 44;
   const canvasWidth = referenceWidth * 2;
-  const canvasHeight = Math.max(referenceHeight, actualHeight) + labelHeight;
+  const canvasHeight = referenceHeight + labelHeight;
   const label = Buffer.from(`<svg width="${canvasWidth}" height="${labelHeight}"><rect width="100%" height="100%" fill="#111827"/><text x="20" y="29" fill="white" font-family="Arial" font-size="18" font-weight="700">REFERENCE</text><text x="${referenceWidth + 20}" y="29" fill="white" font-family="Arial" font-size="18" font-weight="700">IMPLEMENTATION</text></svg>`);
   await sharp({ create: { width: canvasWidth, height: canvasHeight, channels: 4, background: "#e5e7eb" } })
     .composite([
       { input: label, left: 0, top: 0 },
-      { input: referencePath, left: 0, top: labelHeight },
-      { input: actualInput, left: referenceWidth, top: labelHeight },
+      { input: referenceInput, left: 0, top: labelHeight },
+      { input: presentationActual, left: referenceWidth, top: labelHeight },
     ])
     .png()
     .toFile(outputPath);
+  if (score > stageDiffThreshold) {
+    throw new Error(`${viewportWidth} 편집 스테이지 이미지 차이 ${score.toFixed(4)}가 임계값 ${stageDiffThreshold}를 넘었습니다`);
+  }
+  return score;
 }
 
 const browser = await chromium.launch({ headless: true });
@@ -310,18 +335,27 @@ async function captureCard(viewport) {
   }
   if (await room.locator("[data-card-deck-missing-note]").count()) throw new Error("일반 카드 위에 말풍선 안내 상자가 남았습니다");
   if (await room.getByRole("group", { name: "콘텐츠 크기 고르기" }).count() !== 1) throw new Error("카드 비율 선택기가 한 벌이 아닙니다");
+  if (await room.getByRole("group", { name: "콘텐츠 크기 고르기" }).getByRole("button").count() !== 1) throw new Error("일반 카드에 4:5 외 비율 선택지가 남았습니다");
+  if (await room.locator("[data-card-thumbnail]").evaluateAll((nodes) => nodes.some((node) => (node.textContent || "").includes("문제") || (node.textContent || "").includes("원인")))) {
+    throw new Error("일반 카드 스트립 썸네일에 본문 글자가 남았습니다");
+  }
   const inputValues = await room.locator("[data-line-input]").evaluateAll((nodes) => nodes.map((node) => node.value));
   if (inputValues.some((value) => !value.trim())) throw new Error(`카드 문구 입력이 비었습니다: ${JSON.stringify(inputValues)}`);
   const geometry = await room.evaluate((root) => {
     const strip = root.querySelector("[data-plain-card-strip]").getBoundingClientRect();
     const thumbnail = root.querySelector("[data-card-thumbnail]").getBoundingClientRect();
     const stage = root.querySelector("[data-edit-preview-frame]").getBoundingClientRect();
+    const frame = root.querySelector("[data-edit-preview-frame]");
     const faceCopy = root.querySelector("[data-card-face-copy]").getBoundingClientRect();
+    const assistant = root.querySelector("[data-edit-helper]").getBoundingClientRect();
+    const chatLog = root.querySelector("[data-edit-chat-log]").getBoundingClientRect();
     return {
       strip: { left: strip.left, right: strip.right, top: strip.top, bottom: strip.bottom, width: strip.width },
       thumbnail: { left: thumbnail.left, right: thumbnail.right, top: thumbnail.top, bottom: thumbnail.bottom, width: thumbnail.width },
-      stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom, width: stage.width },
+      stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom, width: stage.width, height: stage.height, ratio: frame.getAttribute("data-edit-preview-frame"), background: getComputedStyle(frame).backgroundColor },
       faceCopy: { left: faceCopy.left, right: faceCopy.right, top: faceCopy.top, bottom: faceCopy.bottom, width: faceCopy.width },
+      assistant: { width: assistant.width, height: assistant.height },
+      chatLog: { width: chatLog.width, height: chatLog.height },
     };
   });
   if (overlaps(geometry.strip, geometry.stage)) throw new Error(`카드 스트립과 무대가 겹칩니다: ${JSON.stringify(geometry)}`);
@@ -329,8 +363,21 @@ async function captureCard(viewport) {
   if (Math.abs(geometry.thumbnail.width - expectedStripWidth) > 1) {
     throw new Error(`${viewport.width} 카드 썸네일 폭 불일치: ${JSON.stringify({ expectedStripWidth, geometry })}`);
   }
-  if (viewport.width === 1440 && (geometry.strip.width < 110 || geometry.strip.width > 114 || geometry.stage.width < 500 || geometry.stage.width > 522)) {
-    throw new Error(`1440 카드 규격 불일치: ${JSON.stringify(geometry)}`);
+  const expectedStageWidth = viewport.width === 390 ? "300~310" : 520;
+  const stageWidthMatches = viewport.width === 390
+    ? geometry.stage.width >= 300 && geometry.stage.width <= 310
+    : Math.abs(geometry.stage.width - 520) <= 1;
+  if (!stageWidthMatches || geometry.stage.ratio !== "4 / 5") {
+    throw new Error(`${viewport.width} 카드 520px·4:5 규격 불일치: ${JSON.stringify({ expectedStageWidth, geometry })}`);
+  }
+  if (geometry.stage.background !== "rgb(255, 255, 255)") {
+    throw new Error(`${viewport.width} 일반 카드 캔버스가 흰색이 아닙니다: ${geometry.stage.background}`);
+  }
+  if (viewport.width >= 1024 && Math.abs(geometry.assistant.width - 304) > 1) {
+    throw new Error(`${viewport.width} 편집 담당 폭이 304px이 아닙니다: ${JSON.stringify(geometry.assistant)}`);
+  }
+  if (geometry.chatLog.height < 200) {
+    throw new Error(`${viewport.width} 편집 담당 대화 흐름이 숨겨졌습니다: ${JSON.stringify(geometry.chatLog)}`);
   }
   if (geometry.faceCopy.left < geometry.stage.left || geometry.faceCopy.right > geometry.stage.right
     || geometry.faceCopy.top < geometry.stage.top || geometry.faceCopy.bottom > geometry.stage.bottom) {
@@ -382,6 +429,7 @@ async function captureBubbleDeck(viewport) {
   const panel = room.locator("[data-card-deck-panel]");
   await panel.waitFor({ timeout: 10_000 });
   await panel.locator("[data-slide-id]").nth(2).click();
+  await panel.locator("[data-bubble-content-editable]").nth(1).click();
   const thumbnailCount = await panel.locator("[data-slide-id]").count();
   if (thumbnailCount !== bubbleDeck.slides.length) {
     throw new Error(`말풍선 덱 장 수 불일치: 기대 ${bubbleDeck.slides.length}, 실제 ${thumbnailCount}`);
@@ -389,9 +437,21 @@ async function captureBubbleDeck(viewport) {
   if (await panel.locator("[data-card-deck-thumbnail-strip] [data-selected-slide-toolbar]").count()) {
     throw new Error("말풍선 장 조작 툴바가 스트립 안에 반복 렌더됐습니다");
   }
-  if (await panel.locator("[data-selected-slide-toolbar]").count() !== 1) {
-    throw new Error("선택 장 조작 툴바가 정확히 한 벌이 아닙니다");
+  if (await panel.locator("[data-selected-slide-toolbar]").count() !== 0) {
+    throw new Error("선택 장 위 ▲▼+장 툴바가 남았습니다");
   }
+  const actionLabels = await panel.locator("[data-selected-slide-actions] button").allTextContents();
+  if (JSON.stringify(actionLabels.map((label) => label.trim())) !== JSON.stringify(["이 장 복제", "이 장 삭제", "말풍선 추가"])) {
+    throw new Error(`카드 아래 장 작업 단추가 규격과 다릅니다: ${JSON.stringify(actionLabels)}`);
+  }
+  const selectedSlide = panel.locator("[data-slide-id]").nth(2);
+  const selectedSlideId = await selectedSlide.getAttribute("data-slide-id");
+  const nextSlideIdBefore = await panel.locator("[data-slide-id]").nth(3).getAttribute("data-slide-id");
+  await selectedSlide.focus();
+  await selectedSlide.press("Alt+ArrowDown");
+  if (await panel.locator("[data-slide-id]").nth(3).getAttribute("data-slide-id") !== selectedSlideId) throw new Error("Alt+↓ 키보드 순서 이동이 동작하지 않습니다");
+  await panel.locator(`[data-slide-id="${selectedSlideId}"]`).press("Alt+ArrowUp");
+  if (await panel.locator("[data-slide-id]").nth(3).getAttribute("data-slide-id") !== nextSlideIdBefore) throw new Error("Alt+↑ 키보드 순서 복원이 동작하지 않습니다");
   const geometry = await panel.evaluate((root) => {
     const strip = root.querySelector("[data-card-deck-thumbnail-strip]").getBoundingClientRect();
     const thumbnail = root.querySelector("[data-slide-id]").getBoundingClientRect();
@@ -422,8 +482,10 @@ async function captureBubbleDeck(viewport) {
   const screenshot = path.join(outputDir, `edit-bubble-deck-${viewport.width}x${viewport.height}.png`);
   await page.screenshot({ path: screenshot });
   await assertVisibleEditorControlsDoNotOverlap(panel, `말풍선 덱 편집 영역 ${viewport.width}`);
-  observations.push({ screen: "edit-bubble-deck", ...viewport, geometry, overflow, thumbnailCount, toolbarCount: 1 });
-  return screenshot;
+  const stageScreenshot = path.join(outputDir, `edit-bubble-stage-${viewport.width}x${viewport.height}.png`);
+  await panel.locator("[data-card-deck-stage]").screenshot({ path: stageScreenshot });
+  observations.push({ screen: "edit-bubble-deck", ...viewport, geometry, overflow, thumbnailCount, toolbarCount: 0 });
+  return { screenshot, stageScreenshot };
 }
 
 async function capturePublish(viewport) {
@@ -471,17 +533,13 @@ async function capturePublish(viewport) {
 try {
   for (const viewport of viewports) {
     const cardShot = await captureCard(viewport);
-    const bubbleShot = await captureBubbleDeck(viewport);
+    const bubbleShots = await captureBubbleDeck(viewport);
     const videoShot = await captureVideoEmpty(viewport);
     const publishShots = await capturePublish(viewport);
     const cardReference = path.join(referenceRoot, `osmu-v70-편집실-카드뉴스-편집중@${viewport.width}x${viewport.height}.png`);
-    const videoReference = path.join(referenceRoot, "osmu-v70-편집실-영상-빈상태@1440x900.png");
-    const publishReference = path.join(referenceRoot, viewport.width === 390 ? "osmu-v67-publish-normal-390-gpt-codex-20260902-0448.png" : "osmu-v67-publish-normal-1024-gpt-codex-20260902-0448.png");
     if (compareWithReferences) {
-      await makeComparison(cardReference, cardShot, path.join(outputDir, `compare-edit-card-${viewport.width}.png`));
-      await makeComparison(cardReference, bubbleShot, path.join(outputDir, `compare-edit-bubble-deck-${viewport.width}.png`));
-      await makeComparison(videoReference, videoShot, path.join(outputDir, `compare-edit-video-empty-${viewport.width}.png`));
-      await makeComparison(publishReference, publishShots.screenshot, path.join(outputDir, `compare-publish-cards-${viewport.width}.png`));
+      const stageDiffScore = await makeStageComparison(cardReference, bubbleShots.stageScreenshot, path.join(outputDir, `compare-edit-bubble-stage-${viewport.width}.png`), viewport.width);
+      observations.push({ screen: "edit-bubble-stage-diff", ...viewport, stageDiffScore, stageDiffThreshold, reference: path.relative(repoRoot, cardReference) });
     }
   }
   if (consoleErrors.length) throw new Error(`브라우저 콘솔 오류 ${consoleErrors.length}건: ${consoleErrors.slice(0, 5).join(" | ")}`);
@@ -493,8 +551,7 @@ try {
     consoleErrorCount: 0,
     outputDir,
     referenceComparison: compareWithReferences,
-    videoReferenceNote: "v70 영상 빈 상태 clean-frame은 1440만 있어 1024·390 대조에도 1440 원본을 사용",
-    publishReferenceNote: "v70 발행실 clean-frame 부재로 최신 기존 clean-frame인 v67 normal을 비교 원본으로 사용",
+    imageDiffNote: "화면별 v70 카드뉴스 clean-frame에서 편집 카드 면만 잘라 비교해 바깥 셸 차이를 제외",
   };
   fs.writeFileSync(path.join(outputDir, "observations.json"), `${JSON.stringify(report, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

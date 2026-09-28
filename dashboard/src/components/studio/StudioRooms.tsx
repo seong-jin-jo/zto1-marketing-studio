@@ -5,7 +5,7 @@ import { Button } from "@/components/shared/Button";
 import { StateNotice } from "@/components/shared/StateNotice";
 import { EditPreview, type CardTextPosition } from "./EditPreview";
 import { EditOutline } from "./EditOutline";
-import { CardDeckPanel, elementToSegments, getEditableSelectionOffsets, restoreSelectionRange, segmentsToHtml } from "./BubbleEditor";
+import { CardDeckPanel, CardStripThumbnail, elementToSegments, getEditableSelectionOffsets, restoreSelectionRange, segmentsToHtml } from "./BubbleEditor";
 import type { CardDeck, Segment } from "@/lib/studio/card-deck-contract";
 import { toggleSegmentsBold } from "@/lib/studio/card-deck-ops";
 import { deckProjection, applyProjection } from "@/lib/studio/card-deck-contract";
@@ -169,14 +169,14 @@ function readCreateDraft(workspaceId: string): PersistedCreateDraft | null {
   }
 }
 
-function AssistantPanel({ title, children }: { title: string; children: ReactNode }) {
+function AssistantPanel({ title, children, className = "", compactOnNarrow = true }: { title: string; children: ReactNode; className?: string; compactOnNarrow?: boolean }) {
   return (
-    <aside className="card h-fit min-w-0 overflow-y-auto max-lg:sticky max-lg:bottom-0 max-lg:z-30 max-lg:max-h-44 max-lg:rounded-b-none lg:sticky lg:top-pad-inset" aria-label={`${title} 대화창`} data-chat-dock="persistent" data-chat-always="true">
+    <aside className={`card h-fit min-w-0 overflow-y-auto lg:sticky lg:top-pad-inset ${compactOnNarrow ? "max-lg:sticky max-lg:bottom-0 max-lg:z-30 max-lg:max-h-44 max-lg:rounded-b-none" : ""} ${className}`} aria-label={`${title} 대화창`} data-chat-dock="persistent" data-chat-always="true" data-edit-helper={title === "편집 담당" ? "true" : undefined}>
       <div className="flex items-center gap-stack-tight border-b border-border p-stack">
         <div className="grid h-10 w-10 place-items-center rounded-pill bg-accent text-body font-bold text-accent-fg" aria-hidden="true">O</div>
         <div><b className="block text-body text-text">{title}</b><span className="text-caption text-success">지금 대기 중</span></div>
       </div>
-      <div className="bg-surface-2 p-stack">{children}</div>
+      <div className="flex min-h-0 flex-col gap-pad-inset bg-surface-2 p-stack">{children}</div>
     </aside>
   );
 }
@@ -2191,31 +2191,10 @@ export function EditRoom({
                   ) : kind === "card" ? (
                     <div className={styles.plainCardShell} data-plain-card-shell>
                       <nav className={styles.plainCardStrip} aria-label="카드 목록" data-plain-card-strip>
-                        {safeLines.map((line, index) => (
-                          <Button
-                            key={`plain-card-thumb-${index}`}
-                            size="sm"
-                            className={`${styles.plainCardThumb} ds-label-fill min-w-0`}
-                            data-active={activeLine === index}
-                            data-card-thumbnail={index}
-                            aria-current={activeLine === index}
-                            onClick={() => setActiveLine(index)}
-                          >
-                            {previewImageUrls?.[index] ? (
-                              <DeliveredMedia
-                                type="image"
-                                src={previewImageUrls[index]}
-                                tenantId={workspaceId}
-                                alt=""
-                                loading="lazy"
-                                className={styles.plainCardThumbMedia}
-                              />
-                            ) : null}
-                            <span className={styles.plainCardThumbLabel}>
-                              <span>{index + 1}장</span>
-                              <span className={styles.plainCardThumbCopy}> · {line || "빈 문구"}</span>
-                            </span>
-                          </Button>
+                        {safeLines.map((_, index) => (
+                          <div key={`plain-card-thumb-${index}`} className={styles.plainCardThumb} data-active={activeLine === index}>
+                            <CardStripThumbnail index={index} selected={activeLine === index} onClick={() => setActiveLine(index)} />
+                          </div>
                         ))}
                       </nav>
                       <div className={styles.plainCardStage}>
@@ -2433,21 +2412,24 @@ export function EditRoom({
             편집실만 이 자리가 버튼판이었다. 같은 역할이면 같은 모양이어야 한다.
             대화창 안에 넣되, 편집실이 하는 일(전체 일괄 변경과 발행실 이동)은 그대로 둔다.
           */
-          <aside className={`card p-pad-inset ${styles.editHelper}`} aria-label="편집 담당 대화창" data-edit-helper>
+          <AssistantPanel title="편집 담당" className={styles.editHelper} compactOnNarrow={false}>
             <div className={styles.editHelperActions}>
-              <div className="flex items-center gap-stack-tight border-b border-border pb-stack">
-                <div className="grid h-10 w-10 place-items-center rounded-pill bg-accent text-body font-bold text-accent-fg" aria-hidden="true">O</div>
-                <div><b className="block text-body text-text">편집 담당</b><span className="text-caption text-success">지금 대기 중</span></div>
+              <div className={styles.editQuickActions} aria-label="빠른 작업">
+                <Button size="sm" variant="secondary" onClick={shortenAll} disabled={!hasEditableContent || bodyEditConflict}>전부 짧게</Button>
+                <Button size="sm" variant="secondary" onClick={politeAll} disabled={!hasEditableContent || bodyEditConflict}>높임말</Button>
+                <Button size="sm" variant="secondary" onClick={dropEmpty} disabled={!hasEditableContent || bodyEditConflict}>빈 줄 정리</Button>
               </div>
-              <h2 className="mt-stack text-body font-bold text-text">전체에 한 번에 적용</h2>
-              <p className="mt-stack-tight break-keep text-caption text-muted">한 곳을 정확히 고치는 것은 손이 빠릅니다. 여러 곳을 같은 규칙으로 바꾸는 것은 말이 빠릅니다.</p>
+              <div className={styles.editChatLog} role="log" aria-label="편집 담당 대화 기록" data-edit-chat-log>
+                <div className={styles.editChatBubble}>고칠 내용을 말해 주세요. 현재 초안 전체에 같은 규칙으로 적용할 수 있습니다.</div>
+                {bulkMessage ? <div className={`${styles.editChatBubble} ${styles.editChatBubbleUser}`} aria-live="polite">{bulkMessage}</div> : null}
+              </div>
               {/*
                 2026-09-09 회장 지시: "AI 챗봇에서는 '자막에서 어투 이렇게 바꿔줘' 이렇게
                 요청할수도있는거고." 고정 단추 셋으로는 그 말을 받을 수 없었다. 자유롭게
                 시킬 자리를 연다. 줄 수와 순서는 서버가 지킨다(app/api/studio/edit-bulk).
               */}
               <form
-                className="mt-pad-inset flex gap-stack-tight"
+                className="flex gap-stack-tight"
                 data-bulk-ask-form
                 onSubmit={(event) => { event.preventDefault(); void askBulk(); }}
               >
@@ -2468,12 +2450,6 @@ export function EditRoom({
                   {bulkBusy ? "고치는 중" : "시키기"}
                 </Button>
               </form>
-              <div className="mt-pad-inset grid gap-stack-tight">
-                <Button className="w-full min-w-0 justify-start" onClick={shortenAll} disabled={!hasEditableContent || bodyEditConflict}>전부 짧게 줄이기</Button>
-                <Button className="w-full min-w-0 justify-start" onClick={politeAll} disabled={!hasEditableContent || bodyEditConflict}>말끝을 높임말로 맞추기</Button>
-                <Button className="w-full min-w-0 justify-start" onClick={dropEmpty} disabled={!hasEditableContent || bodyEditConflict}>빈 줄 걷어내기</Button>
-              </div>
-              {bulkMessage ? <p className="mt-stack text-caption text-success" aria-live="polite">{bulkMessage}</p> : null}
             </div>
             {/*
               항목2(2026-09-22 코드리뷰 5차): 영상 편집기의 미완성 오버레이 하나가
@@ -2510,7 +2486,7 @@ export function EditRoom({
               <small className={autosaveError ? "text-caption text-danger" : "text-caption text-success"}>{autosaveError || (lastSavedAt ? `마지막 자동 저장 ${lastSavedAt}` : "고치는 대로 자동 저장됨")}</small>
               <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || bodyEditConflict || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>
             </div>
-          </aside>
+          </AssistantPanel>
         )}
       </div>
     </section>

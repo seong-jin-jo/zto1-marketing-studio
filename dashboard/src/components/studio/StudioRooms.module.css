@@ -52,17 +52,7 @@
 }
 
 .plainCardThumb {
-  position: relative;
-  display: grid;
   width: 100%;
-  aspect-ratio: 4 / 5;
-  overflow: hidden;
-  align-content: end;
-  border: 1px solid var(--border);
-  border-radius: var(--shape-control);
-  background: var(--surface-2);
-  padding: var(--stack-tight);
-  text-align: left;
 }
 
 .plainCardThumb[data-active="true"] {
@@ -73,30 +63,6 @@
 .plainCardThumb:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
-}
-
-.plainCardThumbMedia {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.plainCardThumbLabel {
-  position: relative;
-  z-index: 1;
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  border-radius: var(--shape-chip);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  padding: var(--space-micro);
-  color: var(--text);
-  font-size: var(--font-caption-size);
-  line-height: var(--font-caption-leading);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .plainCardStage {
@@ -264,6 +230,41 @@
   margin-top: auto;
 }
 
+.editQuickActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-micro);
+}
+
+.editChatLog {
+  display: flex;
+  min-height: 18rem;
+  max-height: 28rem;
+  flex-direction: column;
+  gap: var(--stack-tight);
+  overflow-y: auto;
+  border-block: 1px solid var(--border);
+  padding-block: var(--stack);
+}
+
+.editChatBubble {
+  max-width: 88%;
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-surface);
+  background: var(--surface);
+  padding: var(--stack-tight);
+  color: var(--text-muted);
+  font-size: var(--font-caption-size);
+}
+
+.editChatBubbleUser {
+  align-self: flex-end;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
 @media (min-width: 51.25rem) {
   .editWorkbench {
     grid-template-columns: 11rem minmax(0, 1fr);
@@ -284,6 +285,10 @@
 }
 
 @media (max-width: 30rem) {
+  .plainCardWorkbench {
+    padding: 0;
+  }
+
   .plainCardShell {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -297,11 +302,6 @@
   .plainCardThumb {
     width: 3.5rem;
     flex: 0 0 3.5rem;
-    padding: var(--space-micro);
-  }
-
-  .plainCardThumbCopy {
-    display: none;
   }
 
   .textDocumentCanvas {
@@ -319,23 +319,22 @@
   }
 }
 
-@media (min-width: 64rem) {
+@media (min-width: 51.25rem) {
   .editRoomGrid {
-    grid-template-columns: minmax(0, 1fr) 15.5rem;
+    grid-template-columns: minmax(0, 1fr) 19rem;
   }
 }
 
-@media (max-width: 63.99rem) {
-  .editHelper {
-    position: sticky;
-    bottom: 0;
-    z-index: 10;
-    max-height: 10.5rem;
-    border-radius: var(--shape-surface) var(--shape-surface) 0 0;
-    box-shadow: 0 -8px 24px color-mix(in srgb, var(--text) 10%, transparent);
+@media (min-width: 51.25rem) and (max-width: 64rem) {
+  .editRoomGrid {
+    gap: var(--stack-tight);
   }
 
-  .editHelperActions {
-    display: none;
+  .plainCardWorkbench {
+    padding: var(--stack-tight);
+  }
+
+  .plainCardShell {
+    gap: var(--stack-tight);
   }
 }

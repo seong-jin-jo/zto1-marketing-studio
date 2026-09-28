@@ -115,9 +115,9 @@ jobs:
         env:
           STUDIO_V70_BASE_URL: http://127.0.0.1:3472
           STUDIO_V70_OUTPUT_DIR: /tmp/studio-v70-screen-conformance
-          # clean-frame PNG 원본은 운영 디자인 작업본이라 Git 미추적이다. CI에서는 같은
-          # 스크립트의 수치·겹침·넘침 단언을 돌리고, 로컬 출고에서만 원본 합성을 수행한다.
-          STUDIO_V70_COMPARE: "0"
+          # 화면별 v70 clean-frame을 저장소 상대경로로 읽고 카드 면만 잘라 이미지 차이를
+          # 판정한다. 바깥 제품 셸 차이는 비교 대상이 아니다.
+          STUDIO_V70_COMPARE: "1"
         run: |
           npm run start -- -p 3472 > /tmp/studio-v70-dev.log 2>&1 &
           SERVER_PID=$!
