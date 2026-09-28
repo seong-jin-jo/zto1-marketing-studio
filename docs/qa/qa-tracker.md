@@ -1,3 +1,9 @@
+## 2026-09-28 10:19 KST · tenant2·3·4 영속 마운트 운영 장애 ❌ NG, 수정 착수
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| GATEWAY-PERSIST-01 | tenant2·3·4 게이트웨이와 대시보드의 config/data를 Actions 체크아웃 밖 영속 경로에 고정 | GATEWAY-PERSIST-01~04 | ❌ NG, 수정 착수 | 운영 로그에서 `/home/node/.openclaw/state` 생성 EACCES와 CPU 100% 멈춤이 관찰됐다. 현재 compose는 tenant2·3·4의 config/data를 `./` 상대 경로에 bind mount하고, 배포 워크플로는 `~/openclaw-persist`를 매 체크아웃으로 복사한다. 실행 중 컨테이너가 삭제된 체크아웃 디렉터리를 계속 붙잡을 수 있는 구조다. legacy tenant1은 변경 범위에서 제외한다. |
+
 ## 2026-09-28 09:23 KST · PR 85 편집실 v70 9차 리뷰 ❌ NG → 🔧 수정, 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
