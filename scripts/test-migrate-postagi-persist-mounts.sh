@@ -29,7 +29,8 @@ run_case() {
     grep -q 'stop -t 30' "$tmp/docker.log" && grep -q 'up -d --no-build --force-recreate --wait --wait-timeout 60' "$tmp/docker.log"
     echo "PASS: success copies six targets, preserves timestamp backup, and restarts healthy services"
   else
-    [ "$rc" -eq 42 ] && ! grep -q 'up -d' "$tmp/docker.log" && grep -q '복구 방법' "$tmp/err"
+    [ "$rc" -eq 42 ] && ! grep -q 'up -d' "$tmp/docker.log" && grep -q '복구 방법' "$tmp/err" && grep -q 'stop -t 30' "$tmp/err" && grep -q 'rsync -a --delete' "$tmp/err"
+    for tenant in 2 3 4; do for kind in config data; do grep -qx "old-$kind-$tenant" "$persist"/backup-pre-cutover-*"/$kind-tenant$tenant/state"; done; done
     echo "PASS: injected mid-copy failure exits immediately and prints recovery without restart"
   fi
   rm -rf "$tmp"

@@ -1,26 +1,14 @@
-## 2026-09-28 11:57 KST · PR #93 영속 마운트 독립 리뷰 ❌ NG → ✅ 로컬 PASS
+## 2026-09-28 13:21 KST · PR #93 정지형 영속 이전 단순화 ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| PR93-B1 | legacy tenant1 config/data 복원 보존 | PR93-B1 | ✅ PASS | 선택 배포 때 `.env`, config, data를 영속 루트에서 checkout으로 복원하는 계약 테스트 통과. |
-| PR93-B2 | gateway/dashboard divergent mount 모두 보존 | PR93-B2 | ✅ PASS | 임시 디렉터리 fake Docker에서 device·inode와 내용이 다르면 양쪽 frozen 사본을 recovery에 남기고 ready marker 없이 실패함. |
-| PR93-B3 | 운영자 안내와 live-mount 회수 순서 일치 | PR93-B3 | ✅ PASS | bootstrap이 실행 중 컨테이너를 멈추지 말고 migration을 먼저 실행하도록 안내함. |
-| PR93-M1 | 무쓰기창과 graceful shutdown 최종 쓰기 보존 | PR93-M1, holder 실Docker | ✅ PASS | pause 뒤 mount namespace holder를 준비하고 30초 stop을 실행함. 실제 Docker에서 기존 state와 종료 최종 쓰기 모두 보존. |
-| PR93-M2 | 기존 이미지 자동 재기동과 실패 복구 자료 | PR93-M2 | ✅ PASS | 첫 health 실패 후 같은 조건 재시도 성공, 2회 실패 시 ready 없음·pending과 recovery 보존, `--resume-pending` 재검증 성공 뒤 ready 승격을 임시 디렉터리 시뮬레이션으로 확인. |
-| PR93-M3 | OSMU 단독 배포 격리 | PR93-M3 | ✅ PASS | tenant 영속 검증은 전체 또는 tenant2·3·4 선택 때만 실행하고 Docker GID는 공통으로 내보냄. |
-| PR93-M4 | 부분 bootstrap 승격 금지 | PR93-M4 | ✅ PASS | marker 없는 일부 target은 실패하고 검증된 fresh-bootstrap 재개만 허용함. |
+| PR93-R3-B1 | 실패하던 전용 holder CI 제거, 기존 verify에 정지형 시뮬레이션 편입 | PR93-R3-B1 | ✅ PASS | 별도 job과 실Docker holder 스크립트를 제거하고 `verify` 안에서 임시 디렉터리 테스트를 실행한다. workflow YAML 해석 성공. |
+| PR93-R3-M1 | archive·holder 실패면 회수 경로가 사라지는 구조 제거 | PR93-R3-M1 | ✅ PASS | live holder·signal·archive 코드를 제거했다. 스크립트는 326줄에서 39줄로 감소했다. |
+| PR93-R3-M2 | journal 전 중단 시 pause만 남는 구조 제거 | PR93-R3-M2 | ✅ PASS | 임의 중단 재개 계약을 폐기하고 stop→전체 백업→복사→health 순서로 전환했다. data-tenant3 복사 exit 42에서 즉시 종료, up 호출 0회, 복구 방법 출력을 확인했다. |
+| PR93-R3-SUCCESS | 정지형 이전 정상 경로 | PR93-R3-SUCCESS | ✅ PASS | 여섯 checkout target이 persist에 복사되고 기존 persist는 timestamp backup에 보존되며 60초 health 대기 재기동이 호출됐다. |
+| PR93-R3-SCOPE | tenant1·OSMU와 다른 배포 동작 보존 | GATEWAY-PERSIST-01~05 | ✅ PASS | Compose config의 tenant2~4 bind 12개, legacy tenant1 상대 마운트, OSMU named volume을 확인했다. 관련 배포 Vitest 6파일 24건 통과. |
 
-운영 서버 접속·실제 이전·배포는 하지 않았다. 운영 EACCES와 CPU 정상화는 QA/배포 단계에서 미검증이다.
-
-## 2026-09-28 10:51 KST · tenant2·3·4 영속 마운트 운영 장애 🔧 수정, 로컬 PASS
-
-| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
-|---|---|---|---|---|
-| GATEWAY-PERSIST-01 | tenant2·3·4 gateway/dashboard의 config/data를 체크아웃 밖 영속 경로에 고정 | GATEWAY-PERSIST-01 | ✅ 로컬 PASS | Compose config에서 12개 bind source가 영속 루트로 해석됐다. checkout 상대 경로 0건. |
-| GATEWAY-PERSIST-02 | legacy tenant1과 OSMU named volume 보존 | GATEWAY-PERSIST-02 | ✅ 로컬 PASS | legacy profile의 `./config-tenant1`, `./data-tenant1` 유지. OSMU `openclaw-osmu-{config,data}` 유지. |
-| GATEWAY-PERSIST-03 | UID·권한·환경파일·Docker 소켓 GID 배포 계약 | GATEWAY-PERSIST-03 | ✅ 로컬 PASS | workflow가 UID 1000, config 0700, data 0750, `.env.tenantN`, schema 2 표식, Docker socket GID를 검증하고 `up --wait`를 사용한다. |
-| GATEWAY-PERSIST-04~07 | 신규 bootstrap, 구 checkout 거절, live bind snapshot, 실패 복구 | GATEWAY-PERSIST-04~07 | ✅ 로컬 PASS | hermetic 계약 테스트가 fresh bootstrap과 pause snapshot을 실행했다. snapshot 실패 exit 42에서 표식 0건, 자동 unpause를 확인했다. |
-| GATEWAY-PERSIST-FINAL | 관련 배포 회귀 | 7 files, 33 tests | ✅ PASS | Vitest 7파일 33건, 셸 문법, workflow YAML parse, Compose config 종료 코드 0. 운영 이전·배포·CPU와 EACCES 소멸은 미검증. |
+운영 서버 접속·실제 이전·배포는 하지 않았다. 운영 EACCES 0건과 CPU 정상화는 QA/배포 단계에서 미검증이다.
 
 ## 2026-09-28 09:23 KST · PR 85 편집실 v70 9차 리뷰 ❌ NG → 🔧 수정, 로컬 PASS
 

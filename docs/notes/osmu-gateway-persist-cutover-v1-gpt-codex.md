@@ -24,7 +24,7 @@ OPENCLAW_PERSIST_ROOT="${HOME}/openclaw-persist" bash migrate-postagi-persist-mo
 3. 체크아웃의 여섯 config/data를 persist에 `rsync --delete`로 복사하고 config 0700, data 0750을 적용한다.
 4. 기존 이미지를 새 마운트로 강제 재생성하고 최대 60초 동안 Compose health를 확인한다.
 
-성공하면 `이전 완료. 백업: <경로>`가 출력된다. 실패하면 즉시 중단하며 stderr에 백업 복구 명령과 재기동 명령을 출력한다. 복사 전 실패는 persist를 바꾸지 않으므로 출력된 재기동 명령만 실행한다. 복사 도중 또는 health 실패는 출력된 백업 복구 명령을 먼저 실행한 뒤 재기동한다.
+성공하면 `이전 완료. 백업: <경로>`가 출력된다. 실패하면 즉시 중단하며 stderr에 재정지, 백업 복구, 재기동 명령을 출력한다. 복사 전 실패는 persist를 바꾸지 않으므로 출력된 재기동 명령만 실행한다. 복사 도중 또는 health 실패는 출력 순서대로 서비스를 다시 정지하고 백업을 복구한 뒤 재기동한다.
 
 ## 종료 확인
 
@@ -38,6 +38,6 @@ docker logs --since 5m openclaw-gateway-tenant3 2>&1 | grep -F EACCES || true
 docker logs --since 5m openclaw-gateway-tenant4 2>&1 | grep -F EACCES || true
 ```
 
-여섯 서비스가 running 또는 healthy이고 세 gateway의 최근 로그에 `EACCES`가 0건이면 자동 배포를 다시 연다. 백업은 다음 정상 배포과 상태 쓰기 확인 전까지 보존한다.
+여섯 서비스가 running 또는 healthy이고 세 gateway의 최근 로그에 `EACCES`가 0건이면 자동 배포를 다시 연다. 백업은 다음 정상 배포와 상태 쓰기 확인 전까지 보존한다.
 
 SOURCES/MODEL: gpt-codex/GPT-5 | `.pr93-review3.md`, `docker-compose.postagi-4tenants.yml`, `migrate-postagi-persist-mounts.sh`, https://docs.docker.com/reference/cli/docker/compose/up/, https://rsync.samba.org/documentation.html

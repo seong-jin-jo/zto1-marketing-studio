@@ -1,12 +1,11 @@
-## 2026-09-28 10:51 KST tenant2·3·4 영속 마운트 장애 로컬 수정 완료
+## 2026-09-28 13:21 KST PR #93 정지형 영속 마운트 이전 단순화 완료
 
 - handoff basis: 사용자가 지정한 과제, 워크트리 `_wt-osmu-gateway-mounts`, 브랜치 `fix/gateway-persist-mounts`, 실제 시작 HEAD `a211ca81`을 primary로 사용했다. 같은 cwd의 tmux pane은 없었다.
-- 변경: tenant2·3·4 gateway/dashboard의 config/data와 `.env.tenantN`을 `${OPENCLAW_PERSIST_ROOT:-$HOME/openclaw-persist}`로 고정했다. dashboard는 UID 1000과 실제 Docker 소켓 GID를 사용한다. OSMU dashboard named volume과 legacy tenant1 profile은 그대로다.
-- 운영 이전: `migrate-postagi-persist-mounts.sh`는 여섯 컨테이너가 실행 중인지 먼저 확인하고 pause로 삭제된 bind mount의 쓰기를 동결한 뒤 스냅샷한다. 실패 시 unpause하며, 성공 시 검증 표식을 만든 뒤 즉시 정지한다. 운영 서버에서는 실행하지 않았다.
-- 검증: Compose config가 tenant2·3·4의 12개 bind source를 영속 루트로 해석하고 dashboard `user: 1000:1000`, Docker GID 987을 반영했다. legacy tenant1 상대 경로와 OSMU named volume은 유지됐다. 관련 Vitest 7파일 33건, 셸 문법, workflow YAML parse가 PASS했다.
-- 리뷰: 독립 testing·maintainability·simplification·adversarial 검토에서 환경파일, 권한, 마이그레이션 실패 복구, 삭제 bind mount 수명주기 결함을 수정했다. 3회 검토 상한 뒤 마지막 수정은 테스트로 닫았으므로 리뷰 상태는 `미수렴`, 현재 알려진 미해결 finding은 0이다.
-- 커밋: `3f0b4744`, `f201aca7`, `9efd715c`, `fe808ecb`, `0b5679b2`, `099b2350`, `91b811fc`. push하지 않았다. 자동 기록 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 보존하고 커밋하지 않는다.
-- 다음 실행: 운영자가 UID 1000 계정으로 컨테이너가 살아 있을 때 `bash migrate-postagi-persist-mounts.sh`를 실행한다. 성공 뒤 배포 워크플로를 실행하고 운영 로그의 EACCES 0건, gateway health, CPU 정상화를 직접 관찰해야 완료다.
+- 방향 전환: 3차 리뷰까지 결함이 반복된 무중단 holder·snapshot·journal·임의 재개 장치와 전용 CI job을 제거했다. 1회성 이전은 39줄의 stop→timestamp backup→checkout→persist rsync→60초 health 재기동으로 축소했다.
+- 보존: tenant2·3·4 직접 영속 bind, dashboard UID 1000·Docker GID, legacy tenant1 상대 마운트와 선택 복원, OSMU named volume을 유지했다.
+- 검증: 임시 디렉터리 성공·data-tenant3 중간 실패 테스트, 관련 배포 Vitest 6파일 24건, Compose config, 셸 문법, workflow YAML이 PASS했다. 실패 사례는 exit 42, 재기동 0회, 복구 방법 출력이다.
+- 커밋: 핵심 단순화 `3ec42e39`. push하지 않았다. 자동 기록 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr93-review*.md`는 보존하고 커밋하지 않는다.
+- 다음 실행: 문서·QA 기록 커밋 뒤 운영자가 2분 유지보수 창에서 runbook대로 1회 이전한다. 운영 EACCES 0건, six-service health, CPU 정상화는 아직 미검증이다.
 
 ## 2026-09-28 09:23 KST PR 85 편집실 v70 9차 리뷰 로컬 수정·검증 완료
 
