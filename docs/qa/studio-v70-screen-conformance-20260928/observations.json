@@ -12,12 +12,26 @@
           "bottom": 1298,
           "width": 112
         },
+        "thumbnail": {
+          "left": 281,
+          "right": 393,
+          "top": 454,
+          "bottom": 594,
+          "width": 112
+        },
         "stage": {
           "left": 500,
           "right": 1020,
           "top": 523,
           "bottom": 1173,
           "width": 520
+        },
+        "faceCopy": {
+          "left": 565,
+          "right": 955,
+          "top": 821.5,
+          "bottom": 919.5,
+          "width": 390
         }
       },
       "overflow": {
@@ -52,7 +66,8 @@
       },
       "xChecked": false,
       "missingMediaDisabled": 3,
-      "accountSelectCount": 0
+      "accountSelectCount": 0,
+      "missingMediaScreenshot": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928/publish-missing-media-1440x900.png"
     },
     {
       "screen": "edit-card",
@@ -61,17 +76,31 @@
       "geometry": {
         "strip": {
           "left": 113,
-          "right": 225,
+          "right": 213,
           "top": 454,
-          "bottom": 1237.109375,
-          "width": 112
+          "bottom": 1198,
+          "width": 100
+        },
+        "thumbnail": {
+          "left": 113,
+          "right": 213,
+          "top": 454,
+          "bottom": 579,
+          "width": 100
         },
         "stage": {
-          "left": 254,
+          "left": 242,
           "right": 682,
           "top": 523,
-          "bottom": 1058,
-          "width": 428
+          "bottom": 1073,
+          "width": 440
+        },
+        "faceCopy": {
+          "left": 299,
+          "right": 625,
+          "top": 771.5,
+          "bottom": 869.5,
+          "width": 326
         }
       },
       "overflow": {
@@ -106,7 +135,8 @@
       },
       "xChecked": false,
       "missingMediaDisabled": 3,
-      "accountSelectCount": 0
+      "accountSelectCount": 0,
+      "missingMediaScreenshot": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928/publish-missing-media-1024x820.png"
     },
     {
       "screen": "edit-card",
@@ -117,15 +147,29 @@
           "left": 57,
           "right": 333,
           "top": 641,
-          "bottom": 937.203125,
+          "bottom": 719,
           "width": 276
+        },
+        "thumbnail": {
+          "left": 57,
+          "right": 113,
+          "top": 641,
+          "bottom": 711,
+          "width": 56
         },
         "stage": {
           "left": 70,
           "right": 320,
-          "top": 1074.203125,
-          "bottom": 1386.703125,
+          "top": 856,
+          "bottom": 1168.5,
           "width": 250
+        },
+        "faceCopy": {
+          "left": 108,
+          "right": 282,
+          "top": 985.75,
+          "bottom": 1083.75,
+          "width": 174
         }
       },
       "overflow": {
@@ -160,7 +204,8 @@
       },
       "xChecked": false,
       "missingMediaDisabled": 3,
-      "accountSelectCount": 0
+      "accountSelectCount": 0,
+      "missingMediaScreenshot": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928/publish-missing-media-390x844.png"
     }
   ],
   "consoleErrorCount": 0,

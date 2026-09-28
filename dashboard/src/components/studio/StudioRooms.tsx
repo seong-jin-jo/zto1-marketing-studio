@@ -2195,7 +2195,7 @@ export function EditRoom({
                           <Button
                             key={`plain-card-thumb-${index}`}
                             size="sm"
-                            className={`${styles.plainCardThumb} min-w-0`}
+                            className={`${styles.plainCardThumb} ds-label-fill min-w-0`}
                             data-active={activeLine === index}
                             data-card-thumbnail={index}
                             aria-current={activeLine === index}
@@ -2207,10 +2207,14 @@ export function EditRoom({
                                 src={previewImageUrls[index]}
                                 tenantId={workspaceId}
                                 alt=""
+                                loading="lazy"
                                 className={styles.plainCardThumbMedia}
                               />
                             ) : null}
-                            <span className={styles.plainCardThumbLabel}>{index + 1}장 · {line || "빈 문구"}</span>
+                            <span className={styles.plainCardThumbLabel}>
+                              <span>{index + 1}장</span>
+                              <span className={styles.plainCardThumbCopy}> · {line || "빈 문구"}</span>
+                            </span>
                           </Button>
                         ))}
                       </nav>

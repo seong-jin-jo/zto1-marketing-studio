@@ -3183,6 +3183,7 @@ export default function StudioPage() {
                           coverSeconds={coverSeconds[platform] ?? DEFAULT_COVER_SECONDS}
                           onCoverSecondsChange={(next) => setCoverSeconds((current) => ({ ...current, [platform]: next }))}
                           accountsLoading={Boolean(accountLoadPending[platform])}
+                          accountLoadError={Boolean(accountLoadErrors[platform])}
                           accounts={(accountsByPlatform[platform] || []).map((account) => ({ id: account.id, label: account.label, isDefault: Boolean(account.is_default) }))}
                           selectedAccountId={selectedAccounts[platform] ?? ""}
                           channelHref={channelHref(platform)}

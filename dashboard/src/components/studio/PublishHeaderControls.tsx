@@ -45,6 +45,8 @@ export interface PublishHeaderControlsProps {
   onCoverSecondsChange: (next: number) => void;
   /** 계정 목록을 아직 불러오는 중이면 "계정 연결하기" 를 성급히 띄우지 않는다. */
   accountsLoading: boolean;
+  /** 연결 여부와 별개인 일시 조회 실패. 재연결 필요 상태로 오인시키지 않는다. */
+  accountLoadError?: boolean;
   accounts: PublishHeaderAccount[];
   selectedAccountId: string;
   /** 이 채널의 연결/계정 관리 화면 주소. */
@@ -67,6 +69,7 @@ export function PublishHeaderControls({
   coverSeconds,
   onCoverSecondsChange,
   accountsLoading,
+  accountLoadError = false,
   accounts,
   selectedAccountId,
   channelHref,
@@ -76,7 +79,7 @@ export function PublishHeaderControls({
 }: PublishHeaderControlsProps) {
   const defaultAccount = accounts.find((account) => account.isDefault);
   const selectedAccount = accounts.find((account) => account.id === selectedAccountId);
-  const needsConnect = !accountsLoading && publishSupported && accounts.length === 0;
+  const needsConnect = !accountsLoading && !accountLoadError && publishSupported && accounts.length === 0;
   const hasAccount = accountSelectable && accounts.length > 0;
 
   return (
@@ -102,7 +105,16 @@ export function PublishHeaderControls({
             미지원
           </label>
         )}
-        {needsConnect ? (
+        {accountLoadError ? (
+          <Link
+            href={channelHref}
+            data-testid={`publish-account-error-${platform}`}
+            title={`${label} 연결 계정 조회에 실패했습니다. 계정 관리에서 상태를 확인합니다`}
+            className="inline-flex min-h-control-touch items-center rounded-control border border-warning/40 bg-warning-soft px-stack-tight text-caption font-semibold text-warning hover:bg-surface"
+          >
+            계정을 확인하지 못했습니다. 계정 관리
+          </Link>
+        ) : needsConnect ? (
           <Link
             href={channelHref}
             data-testid={`publish-connect-link-${platform}`}

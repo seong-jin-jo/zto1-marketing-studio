@@ -84,6 +84,19 @@ describe("발행실 계정 영역은 한 줄에 한 번만 나온다", () => {
     expect(container.querySelector('input[type="checkbox"]')).toBeDisabled();
     expect(container.querySelector('[data-testid="publish-create-media-shorts"]')).toHaveTextContent("생성실에서 영상 만들기");
   });
+
+  it("계정 조회 실패는 미연결로 오인하지 않고 계정 관리 복구 행동을 준다", () => {
+    const { container } = render(
+      <PublishHeaderControls
+        platform="threads" label="Threads" publishSupported accountSelectable checked={false}
+        checkboxDisabled onCheckedChange={() => {}} coverSeconds={0} onCoverSecondsChange={() => {}}
+        accountsLoading={false} accountLoadError accounts={[]} selectedAccountId=""
+        channelHref="/channels/threads"
+      />,
+    );
+    expect(container.querySelector('[data-testid="publish-account-error-threads"]')).toHaveTextContent("계정을 확인하지 못했습니다. 계정 관리");
+    expect(container.querySelector('[data-testid="publish-connect-link-threads"]')).not.toBeInTheDocument();
+  });
 });
 
 describe("헤더 마크업은 레포 안에 한 군데만 존재한다", () => {

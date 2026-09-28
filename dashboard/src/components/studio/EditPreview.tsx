@@ -220,13 +220,13 @@ export function EditPreview({
 
           {kind === "card" ? (
             <div
-              className={`absolute z-10 w-4/5 rounded-control border border-border bg-surface/90 p-stack shadow-lg ${CARD_POSITION_CLASS[cardPosition]}`}
+              className={`absolute z-10 w-4/5 rounded-control border border-border p-stack shadow-lg ${styles.cardTextOverlay} ${CARD_POSITION_CLASS[cardPosition]}`}
               data-card-text-position={cardPosition}
             >
               <button
                 type="button"
                 aria-label="카드 글자 끌어 옮기기"
-                className="mb-stack-tight min-h-control-touch w-full cursor-move rounded-control border border-border bg-surface-2 px-stack text-caption font-semibold text-muted"
+                className={`mb-stack-tight min-h-control-touch w-full cursor-move rounded-control border border-border px-stack text-caption font-semibold ${styles.cardTextHandle}`}
                 onPointerDown={(event) => {
                   movingCardText.current = true;
                   event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -236,13 +236,14 @@ export function EditPreview({
               </button>
               <textarea
                 aria-label={`카드 ${activeLine + 1} 글자`}
+                data-card-face-copy
                 value={line}
                 rows={3}
                 onChange={(event) => {
                   const next = lines.map((value, index) => index === activeLine ? event.target.value : value);
                   onLinesChange?.(next);
                 }}
-                className="min-h-control-touch w-full resize-none rounded-control border border-border bg-surface p-stack text-center text-body font-bold text-text"
+                className={`min-h-control-touch w-full resize-none rounded-control border p-stack text-center text-body font-bold ${styles.cardTextInput}`}
               />
             </div>
           ) : kind === "video" && mediaType === "video" && activeMediaUrl ? null : (

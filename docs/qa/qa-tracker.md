@@ -1,12 +1,20 @@
+## 2026-09-28 편집실 v70·발행실 캡처 직접 검수 반려 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| STUDIO-V70-SCREEN-R2-01 | 1440·1024·390에서 112·100·56px 썸네일이 비율 버튼과 겹치지 않음 | V70-VISIBLE-INTERSECTION-01 | ✅ 로컬 PASS | 수정 전 강화 검사에서 첫 썸네일과 `세로 카드 4:5` 단추의 교차 면적 2,009px²로 실패했다. 수정 뒤 모든 보이는 button·input·textarea·select·thumbnail 쌍의 교차 0, 실제 썸네일 폭 112·100·56px을 Chromium으로 단언했다. |
+| STUDIO-V70-SCREEN-R2-02 | 일반 카드 본문이 4:5 카드 면 위에 표시됨 | V70-CARD-CONTENT-01 | ✅ 로컬 PASS | 세 폭 모두 `data-card-face-copy` 사각형이 카드 무대 경계 안에 있고, 새 캡처에서 첫 장 문구가 고대비 편집 레이어로 카드 면 중앙에 보인다. |
+| STUDIO-V70-SCREEN-R2-03 | 발행 채널 카드의 계정 행·체크 제한·복구 행동이 캡처에 포함됨 | V70-PUBLISH-CAPTURE-01 | ✅ 로컬 PASS | 세 폭에서 X 카드와 미디어 없는 Shorts 카드로 각각 스크롤해 캡처했다. X 체크 해제·573/280 경고·계정 행, Shorts 체크 해제·`생성실에서 영상 만들기`가 실제 화면에 보인다. |
+
 ## 2026-09-28 편집실 v70·발행실 운영 화면 시안 불일치 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| STUDIO-V70-SCREEN-01 | 일반 카드뉴스도 112px 스트립·520px 4:5 카드 셸을 쓰고 중복·겹침 없이 편집 | V70-CONFORMANCE-CARD | ✅ 로컬 PASS | Chromium 1440에서 스트립 112px·무대 520px, 1024에서 스트립 112px·가용 무대 428px, 390에서 가로 스트립 276px·무대 250px을 실측했다. 세 폭 모두 문구 입력 3개가 실제 값과 함께 보이고 중복 비율 선택기·안내 겹침은 0건이다. |
+| STUDIO-V70-SCREEN-01 | 일반 카드뉴스도 112px 스트립·520px 4:5 카드 셸을 쓰고 중복·겹침 없이 편집 | V70-CONFORMANCE-CARD | ✅ 로컬 PASS | Chromium 1440에서 썸네일 112px·무대 520px, 1024에서 썸네일 100px·가용 무대 440px, 390에서 56px 썸네일 가로줄·무대 250px을 실측했다. 세 폭 모두 문구 입력 3개가 실제 값과 함께 보이고 중복 비율 선택기·보이는 조작 요소 겹침은 0건이다. |
 | STUDIO-V70-SCREEN-02 | `kind=text\|card\|video` 딥링크와 영상 빈 상태가 v70 규격대로 동작 | V70-CONFORMANCE-VIDEO | ✅ 로컬 PASS | 세 폭 모두 `/studio?room=edit&kind=video`가 `data-edit-kind=video`로 열리고 영상 빈 상태와 생성실 이동 행동을 표시했다. |
 | STUDIO-V70-SCREEN-03 | 발행 계정 행 단일화, 내부 ID 비노출, 글자수·미디어 발행 불가 상태 일치 | V70-CONFORMANCE-PUBLISH | ✅ 로컬 PASS | 계정 select 0개, 내부 UUID·`@연결 계정` 노출 0건, X 281/280 체크 비활성, 영상 없는 Shorts·Reels·TikTok 체크 3개 비활성, 생성실 행동과 `표지로 쓸 장면(초)` 문구를 확인했다. |
 | STUDIO-V70-HASHTAG-01 | 새 구조 초안 선택 시 이전 작업물 해시태그를 승계하지 않음 | V70-CREATE-HASHTAG-01 | ✅ 로컬 PASS | 이전 X·Instagram 해시태그를 저장한 뒤 새 구조 초안을 선택하는 실제 `StudioPage` 회귀에서 저장 상태 `hashtags`가 빈 객체로 초기화됐다. |
-| STUDIO-V70-SCREEN-FINAL | 1440·1024·390 캡처 대조, 가로 넘침 0·겹침 0, 타입·회귀 | V70-CONFORMANCE-E2E | ✅ 로컬 PASS, 원격 미검증 | 세 폭 9개 화면에서 document·방 scope의 scrollWidth=clientWidth, 카드 스트립·무대와 발행 계정행 겹침 0, 콘솔 오류 0을 단언했다. 비교 PNG 9개는 `docs/qa/studio-v70-screen-conformance-20260928/`에 있다. PostgreSQL 전체 421파일·2,866건 PASS, 1건 SKIP, 실패 0이며 TypeScript·production build·UI 토큰 감사도 통과했다. 원격 CI와 운영 재배포는 push 전이라 미검증이다. |
+| STUDIO-V70-SCREEN-FINAL | 1440·1024·390 캡처 대조, 가로 넘침 0·겹침 0, 타입·회귀 | V70-CONFORMANCE-E2E | ✅ 로컬 PASS, 원격 미검증 | 세 폭 12개 실화면에서 document·방 scope의 scrollWidth=clientWidth, 카드 편집 영역의 보이는 조작 요소와 발행 계정행 겹침 0, 콘솔 오류 0을 단언했다. 비교 PNG 9개는 `docs/qa/studio-v70-screen-conformance-20260928/`에 있다. 표적 5파일 52건, TypeScript·production build·UI 토큰 감사도 통과했다. 원격 CI와 운영 재배포는 push 전이라 미검증이다. |
 
 ## 2026-09-28 PR 87 재리뷰 r6 연속 본문 충돌 보관본·CI 제한시간 ❌ NG → 🔧 수정, 로컬 PASS
 

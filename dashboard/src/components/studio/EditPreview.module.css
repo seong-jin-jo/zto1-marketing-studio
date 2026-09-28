@@ -23,6 +23,24 @@
   max-width: 32.5rem;
 }
 
+.cardTextOverlay {
+  background: color-mix(in srgb, var(--text) 82%, transparent);
+  color: var(--accent-ink);
+}
+
+.cardTextHandle {
+  background: color-mix(in srgb, var(--surface) 18%, transparent);
+  color: var(--accent-ink);
+}
+
+.cardTextInput {
+  border-color: color-mix(in srgb, var(--accent-ink) 48%, transparent);
+  background: transparent;
+  color: var(--accent-ink);
+  overflow-wrap: break-word;
+  word-break: keep-all;
+}
+
 .height8 {
   height: 8%;
 }

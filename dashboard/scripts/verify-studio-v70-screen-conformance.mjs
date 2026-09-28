@@ -82,6 +82,52 @@ async function assertDirectChildrenDoNotOverlap(locator, label) {
   if (collision) throw new Error(`${label} 요소 겹침: ${JSON.stringify(collision)}`);
 }
 
+async function assertVisibleEditorControlsDoNotOverlap(locator, label) {
+  const collision = await locator.evaluate((root) => {
+    const candidates = Array.from(new Set(root.querySelectorAll([
+      "button",
+      "input",
+      "textarea",
+      "select",
+      "[data-card-thumbnail]",
+    ].join(","))));
+    const visible = candidates.filter((node) => {
+      const style = getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && Number(style.opacity) > 0
+        && rect.width > 0
+        && rect.height > 0;
+    });
+    const describe = (node) => ({
+      tag: node.tagName.toLowerCase(),
+      label: node.getAttribute("aria-label") || node.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) || "",
+      thumbnail: node.getAttribute("data-card-thumbnail"),
+    });
+    for (let i = 0; i < visible.length; i += 1) {
+      for (let j = i + 1; j < visible.length; j += 1) {
+        const first = visible[i];
+        const second = visible[j];
+        if (first.contains(second) || second.contains(first)) continue;
+        const a = first.getBoundingClientRect();
+        const b = second.getBoundingClientRect();
+        const width = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        if (width > 0.5 && height > 0.5) {
+          return {
+            first: describe(first),
+            second: describe(second),
+            intersectionArea: Math.round(width * height),
+          };
+        }
+      }
+    }
+    return null;
+  });
+  if (collision) throw new Error(`${label} 보이는 조작 요소 겹침: ${JSON.stringify(collision)}`);
+}
+
 async function makeComparison(referencePath, actualPath, outputPath) {
   if (!fs.existsSync(referencePath)) throw new Error(`비교 원본 없음: ${referencePath}`);
   const [referenceMeta, actualMeta] = await Promise.all([sharp(referencePath).metadata(), sharp(actualPath).metadata()]);
@@ -169,14 +215,34 @@ async function captureCard(viewport) {
   if (inputValues.some((value) => !value.trim())) throw new Error(`카드 문구 입력이 비었습니다: ${JSON.stringify(inputValues)}`);
   const geometry = await room.evaluate((root) => {
     const strip = root.querySelector("[data-plain-card-strip]").getBoundingClientRect();
+    const thumbnail = root.querySelector("[data-card-thumbnail]").getBoundingClientRect();
     const stage = root.querySelector("[data-edit-preview-frame]").getBoundingClientRect();
-    return { strip: { left: strip.left, right: strip.right, top: strip.top, bottom: strip.bottom, width: strip.width }, stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom, width: stage.width } };
+    const faceCopy = root.querySelector("[data-card-face-copy]").getBoundingClientRect();
+    return {
+      strip: { left: strip.left, right: strip.right, top: strip.top, bottom: strip.bottom, width: strip.width },
+      thumbnail: { left: thumbnail.left, right: thumbnail.right, top: thumbnail.top, bottom: thumbnail.bottom, width: thumbnail.width },
+      stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom, width: stage.width },
+      faceCopy: { left: faceCopy.left, right: faceCopy.right, top: faceCopy.top, bottom: faceCopy.bottom, width: faceCopy.width },
+    };
   });
   if (overlaps(geometry.strip, geometry.stage)) throw new Error(`카드 스트립과 무대가 겹칩니다: ${JSON.stringify(geometry)}`);
+  const expectedStripWidth = viewport.width === 1440 ? 112 : viewport.width === 1024 ? 100 : 56;
+  if (Math.abs(geometry.thumbnail.width - expectedStripWidth) > 1) {
+    throw new Error(`${viewport.width} 카드 썸네일 폭 불일치: ${JSON.stringify({ expectedStripWidth, geometry })}`);
+  }
   if (viewport.width === 1440 && (geometry.strip.width < 110 || geometry.strip.width > 114 || geometry.stage.width < 500 || geometry.stage.width > 522)) {
     throw new Error(`1440 카드 규격 불일치: ${JSON.stringify(geometry)}`);
   }
+  if (geometry.faceCopy.left < geometry.stage.left || geometry.faceCopy.right > geometry.stage.right
+    || geometry.faceCopy.top < geometry.stage.top || geometry.faceCopy.bottom > geometry.stage.bottom) {
+    throw new Error(`카드 문구가 카드 면 밖에 있습니다: ${JSON.stringify(geometry)}`);
+  }
+  await assertVisibleEditorControlsDoNotOverlap(room, `카드 편집 영역 ${viewport.width}`);
   const overflow = await assertNoOverflow(page, '[data-room="edit"]', `카드 ${viewport.width}`);
+  await room.locator("[data-plain-card-shell]").evaluate((node) => {
+    node.scrollIntoView({ block: "start" });
+    window.scrollBy(0, -16);
+  });
   const screenshot = path.join(outputDir, `edit-card-${viewport.width}x${viewport.height}.png`);
   await page.screenshot({ path: screenshot });
   observations.push({ screen: "edit-card", ...viewport, geometry, overflow, inputCount: inputValues.length });
@@ -192,6 +258,10 @@ async function captureVideoEmpty(viewport) {
   await room.getByText("아직 편집할 영상이 없습니다", { exact: true }).waitFor();
   await room.getByRole("button", { name: "생성실에서 영상 만들기" }).waitFor();
   const overflow = await assertNoOverflow(page, '[data-room="edit"]', `영상 빈 상태 ${viewport.width}`);
+  await room.locator("[data-video-editor-empty]").evaluate((node) => {
+    node.scrollIntoView({ block: "start" });
+    window.scrollBy(0, -16);
+  });
   const screenshot = path.join(outputDir, `edit-video-empty-${viewport.width}x${viewport.height}.png`);
   await page.screenshot({ path: screenshot });
   observations.push({ screen: "edit-video-empty", ...viewport, overflow, deepLinkKind: await room.getAttribute("data-edit-kind") });
@@ -227,23 +297,35 @@ async function capturePublish(viewport) {
     await assertDirectChildrenDoNotOverlap(row, `발행 계정행 ${viewport.width}`);
   }
   const overflow = await assertNoOverflow(page, '[data-room="publish"]', `발행실 ${viewport.width}`);
+  const xCard = room.locator('[data-room-preview="x"]');
+  await xCard.evaluate((node) => {
+    node.scrollIntoView({ block: "start" });
+    window.scrollBy(0, -16);
+  });
   const screenshot = path.join(outputDir, `publish-cards-${viewport.width}x${viewport.height}.png`);
   await page.screenshot({ path: screenshot });
-  observations.push({ screen: "publish-cards", ...viewport, overflow, xChecked: false, missingMediaDisabled: 3, accountSelectCount: 0 });
-  return screenshot;
+  const missingMediaCard = room.locator('[data-room-preview="shorts"]');
+  await missingMediaCard.evaluate((node) => {
+    node.scrollIntoView({ block: "start" });
+    window.scrollBy(0, -16);
+  });
+  const missingMediaScreenshot = path.join(outputDir, `publish-missing-media-${viewport.width}x${viewport.height}.png`);
+  await page.screenshot({ path: missingMediaScreenshot });
+  observations.push({ screen: "publish-cards", ...viewport, overflow, xChecked: false, missingMediaDisabled: 3, accountSelectCount: 0, missingMediaScreenshot });
+  return { screenshot, missingMediaScreenshot };
 }
 
 try {
   for (const viewport of viewports) {
     const cardShot = await captureCard(viewport);
     const videoShot = await captureVideoEmpty(viewport);
-    const publishShot = await capturePublish(viewport);
+    const publishShots = await capturePublish(viewport);
     const cardReference = path.join(referenceRoot, `osmu-v70-편집실-카드뉴스-편집중@${viewport.width}x${viewport.height}.png`);
     const videoReference = path.join(referenceRoot, "osmu-v70-편집실-영상-빈상태@1440x900.png");
     const publishReference = path.join(referenceRoot, viewport.width === 390 ? "osmu-v67-publish-normal-390-gpt-codex-20260902-0448.png" : "osmu-v67-publish-normal-1024-gpt-codex-20260902-0448.png");
     await makeComparison(cardReference, cardShot, path.join(outputDir, `compare-edit-card-${viewport.width}.png`));
     await makeComparison(videoReference, videoShot, path.join(outputDir, `compare-edit-video-empty-${viewport.width}.png`));
-    await makeComparison(publishReference, publishShot, path.join(outputDir, `compare-publish-cards-${viewport.width}.png`));
+    await makeComparison(publishReference, publishShots.screenshot, path.join(outputDir, `compare-publish-cards-${viewport.width}.png`));
   }
   if (consoleErrors.length) throw new Error(`브라우저 콘솔 오류 ${consoleErrors.length}건: ${consoleErrors.slice(0, 5).join(" | ")}`);
   for (const name of fs.readdirSync(outputDir)) {
