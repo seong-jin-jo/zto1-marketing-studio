@@ -147,7 +147,7 @@ describe("OSMU production persistence contract", () => {
     }
   });
 
-  it("GATEWAY-PERSIST-06: 이전 도구가 정지 컨테이너를 스냅샷한 뒤에만 검증 표식을 만든다", () => {
+  it("GATEWAY-PERSIST-06: 이전 도구가 pause한 컨테이너를 스냅샷한 뒤에만 검증 표식을 만든다", () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "osmu-persist-migrate-"));
     const sandbox = path.join(tempRoot, "repo");
     const persistRoot = path.join(tempRoot, "persist");
@@ -170,7 +170,7 @@ case "$1" in
       *) exit 0 ;;
     esac
     ;;
-  stop|start) exit 0 ;;
+  pause|unpause|stop|start) exit 0 ;;
   cp)
     [ "\${FAKE_DOCKER_FAIL_CP:-0}" != "1" ] || exit 42
     mkdir -p "$3"
@@ -200,15 +200,18 @@ esac
         expect(fs.existsSync(path.join(persistRoot, `data-tenant${tenant}/state.json`))).toBe(true);
         expect(fs.statSync(path.join(persistRoot, `.env.tenant${tenant}`)).mode & 0o777).toBe(0o600);
       }
-      expect(migration).toContain('docker stop "${containers[@]}"');
-      expect(migration).toContain('docker start "${running_before[@]}"');
+      expect(migration).toContain('docker pause "$container"');
+      expect(migration).toContain('docker stop --timeout 0 "$container"');
+      expect(migration).toContain('docker start "$container"');
+      expect(fs.readFileSync(dockerLog, "utf8")).toContain("pause openclaw-gateway-tenant2");
+      expect(fs.readFileSync(dockerLog, "utf8")).toContain("unpause openclaw-gateway-tenant2");
       expect(fs.readFileSync(dockerLog, "utf8")).not.toContain("start openclaw-");
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
   });
 
-  it("GATEWAY-PERSIST-07: 스냅샷 실패 시 원래 실행 중이던 컨테이너를 복구한다", () => {
+  it("GATEWAY-PERSIST-07: 스냅샷 실패 시 pause한 컨테이너를 다시 실행 상태로 돌린다", () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "osmu-persist-rollback-"));
     const sandbox = path.join(tempRoot, "repo");
     const persistRoot = path.join(tempRoot, "persist");
@@ -230,7 +233,7 @@ case "$1" in
       *) exit 0 ;;
     esac
     ;;
-  stop|start) exit 0 ;;
+  pause|unpause|stop|start) exit 0 ;;
   cp) exit 42 ;;
   *) exit 1 ;;
 esac
@@ -247,10 +250,12 @@ esac
         encoding: "utf8",
       });
       expect(result.status).toBe(42);
-      expect(result.stderr).toContain("원래 실행 중이던 컨테이너를 복구합니다");
+      expect(result.stderr).toContain("동결했던 컨테이너를 다시 실행 상태로 돌립니다");
       const log = fs.readFileSync(dockerLog, "utf8");
-      expect(log).toContain("stop openclaw-gateway-tenant2");
-      expect(log).toContain("start openclaw-gateway-tenant2");
+      expect(log).toContain("pause openclaw-gateway-tenant2");
+      expect(log).toContain("unpause openclaw-gateway-tenant2");
+      expect(log).not.toContain("stop openclaw-gateway-tenant2");
+      expect(log).not.toContain("start openclaw-gateway-tenant2");
       expect(log).toContain("openclaw-dashboard-tenant4");
       expect(fs.existsSync(path.join(persistRoot, ".mount-v2-ready"))).toBe(false);
     } finally {

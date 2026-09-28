@@ -1,6 +1,6 @@
 #!/bin/bash
-# tenant2·3·4의 삭제된 checkout bind mount를 정지 컨테이너에서 영속 루트로 1회 이전한다.
-# 운영 서버에서 UID 1000 계정으로 명시 실행한다. 성공 후에도 컨테이너는 정지 상태로 둔다.
+# tenant2·3·4의 삭제된 checkout bind mount를 살아 있는 컨테이너에서 영속 루트로 1회 이전한다.
+# 운영 서버에서 UID 1000 계정으로 명시 실행한다. pause로 쓰기를 동결해 복사하고 성공 후 정지한다.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -22,20 +22,31 @@ fi
 install -d -m 0750 "$PERSIST_ROOT"
 STAGE="$(mktemp -d "${PERSIST_ROOT}/.mount-v2-stage.XXXXXX")"
 MIGRATION_COMPLETE=0
+PAUSE_ATTEMPTED=0
 STOP_ATTEMPTED=0
 running_before=()
 cleanup() {
   case "$STAGE" in
     "${PERSIST_ROOT}"/.mount-v2-stage.*) rm -rf "$STAGE" ;;
   esac
-  if [ "$STOP_ATTEMPTED" = "1" ] && [ "$MIGRATION_COMPLETE" != "1" ] && [ "${#running_before[@]}" -gt 0 ]; then
+  if [ "$MIGRATION_COMPLETE" != "1" ] && [ -f "$MARKER" ]; then
+    rm -f "$MARKER"
+  fi
+  if [ "$PAUSE_ATTEMPTED" = "1" ] && [ "$MIGRATION_COMPLETE" != "1" ]; then
+    echo "이전 실패: 동결했던 컨테이너를 다시 실행 상태로 돌립니다." >&2
+    for container in "${running_before[@]}"; do
+      docker unpause "$container" >/dev/null 2>&1 || true
+    done
+  fi
+  if [ "$STOP_ATTEMPTED" = "1" ] && [ "$MIGRATION_COMPLETE" != "1" ]; then
     echo "이전 실패: 원래 실행 중이던 컨테이너를 복구합니다." >&2
-    docker start "${running_before[@]}" >/dev/null || echo "경고: 컨테이너 자동 복구 실패. 수동 확인이 필요합니다." >&2
+    for container in "${running_before[@]}"; do
+      docker start "$container" >/dev/null 2>&1 || true
+    done
   fi
 }
 trap cleanup EXIT
 
-containers=()
 for tenant in 2 3 4; do
   if [ -s "${PERSIST_ROOT}/.env.tenant${tenant}" ]; then
     cp -p "${PERSIST_ROOT}/.env.tenant${tenant}" "${STAGE}/.env.tenant${tenant}"
@@ -53,16 +64,20 @@ for tenant in 2 3 4; do
       echo "오류: 이전 원본 컨테이너가 없습니다: $container" >&2
       exit 1
     }
-    containers+=("$container")
-    if [ "$(docker inspect --format '{{.State.Running}}' "$container")" = "true" ]; then
-      running_before+=("$container")
+    if [ "$(docker inspect --format '{{.State.Running}}' "$container")" != "true" ]; then
+      echo "오류: 삭제된 bind mount를 회수하려면 컨테이너가 실행 중이어야 합니다: $container" >&2
+      echo "이미 정지됐다면 자동 회수하지 말고 기존 영속 백업에서 복원하십시오." >&2
+      exit 1
     fi
+    running_before+=("$container")
   done
 done
 
-echo "tenant2·3·4 gateway/dashboard를 정지합니다. 성공 후 배포가 다시 기동합니다."
-STOP_ATTEMPTED=1
-docker stop "${containers[@]}" >/dev/null
+echo "tenant2·3·4 gateway/dashboard 쓰기를 pause로 동결하고 bind mount를 회수합니다."
+PAUSE_ATTEMPTED=1
+for container in "${running_before[@]}"; do
+  docker pause "$container" >/dev/null
+done
 
 for tenant in 2 3 4; do
   gateway="openclaw-gateway-tenant${tenant}"
@@ -107,6 +122,15 @@ done
 } > "${STAGE}/.mount-v2-ready"
 chmod 0600 "${STAGE}/.mount-v2-ready"
 mv "${STAGE}/.mount-v2-ready" "$MARKER"
+
+for container in "${running_before[@]}"; do
+  docker unpause "$container" >/dev/null
+done
+PAUSE_ATTEMPTED=0
+STOP_ATTEMPTED=1
+for container in "${running_before[@]}"; do
+  docker stop --timeout 0 "$container" >/dev/null
+done
 MIGRATION_COMPLETE=1
 
 echo "이전 완료: $PERSIST_ROOT"

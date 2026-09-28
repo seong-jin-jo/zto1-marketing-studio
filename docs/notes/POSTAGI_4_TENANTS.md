@@ -95,4 +95,4 @@ WSL2 런너에서 충분 (16GB+ 권장).
 - **포트 충돌** — 기본 인스턴스(34560)와 겹치지 않게 34561~ 사용
 - **영속 경로 오류** — Linux에서는 gateway의 `node` 사용자와 같은 UID 1000 계정으로 bootstrap·배포를 실행하고, config는 0700·data는 0750을 유지. 대시보드는 UID 1000으로 실행하며 Docker 소켓 GID는 배포가 자동 주입한다.
 
-기존 checkout 상대 마운트에서 전환하는 첫 배포는 `bash migrate-postagi-persist-mounts.sh`를 UID 1000 운영 계정으로 실행한다. 이 도구는 tenant2·3·4 gateway와 dashboard를 먼저 멈춘 뒤, 삭제된 호스트 경로를 붙잡고 있는 정지 컨테이너에서 최신 config/data를 회수하고 영속 `.env.tenantN`과 검증 표식을 만든다. 성공 전에는 기존 영속 경로를 교체하지 않으며, 이전 checkout 데이터는 백업 폴더로 옮긴다. 이 절차 없이 배포하면 워크플로가 데이터 손실을 막기 위해 실패한다.
+기존 checkout 상대 마운트에서 전환하는 첫 배포는 tenant2·3·4 컨테이너가 아직 실행 중일 때 `bash migrate-postagi-persist-mounts.sh`를 UID 1000 운영 계정으로 실행한다. 이 도구는 컨테이너를 pause해 쓰기를 동결하고, 살아 있는 삭제 bind mount에서 최신 config/data를 회수한 뒤 영속 `.env.tenantN`과 검증 표식을 만든다. 스냅샷이 끝나면 unpause 후 즉시 정지하며, 실패하면 자동 unpause한다. 이미 컨테이너가 멈췄다면 삭제된 마운트는 자동 회수하지 않고 기존 영속 백업 복원을 요구한다. 성공 전에는 기존 영속 경로를 교체하지 않으며, 이전 영속 경로는 백업 폴더로 옮긴다. 이 절차 없이 배포하면 워크플로가 데이터 손실을 막기 위해 실패한다.
