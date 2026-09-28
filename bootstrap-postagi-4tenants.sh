@@ -1,7 +1,7 @@
 #!/bin/bash
 # 멀티 테넌트 openclaw 인스턴스 초기 셋업 (브랜드/도메인은 fork-local data/tenants.json에서 설정)
 # - 각 서비스용 data-{slug}/, config-{slug}/ 디렉토리 생성
-# - templates/{slug}.prompt-guide.txt → data-{slug}/prompt-guide.txt 복사
+# - data/templates/general.* → 영속 data-{slug}/ 콘텐츠 가이드·검색어 복사
 # - .env.{slug} 자동 생성 (포트/토큰 placeholder)
 # - data/config 정본은 체크아웃 밖 ${OPENCLAW_PERSIST_ROOT:-$HOME/openclaw-persist}
 #

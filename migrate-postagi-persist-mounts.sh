@@ -21,15 +21,32 @@ fi
 
 install -d -m 0750 "$PERSIST_ROOT"
 STAGE="$(mktemp -d "${PERSIST_ROOT}/.mount-v2-stage.XXXXXX")"
+MIGRATION_COMPLETE=0
+STOP_ATTEMPTED=0
+running_before=()
 cleanup() {
   case "$STAGE" in
     "${PERSIST_ROOT}"/.mount-v2-stage.*) rm -rf "$STAGE" ;;
   esac
+  if [ "$STOP_ATTEMPTED" = "1" ] && [ "$MIGRATION_COMPLETE" != "1" ] && [ "${#running_before[@]}" -gt 0 ]; then
+    echo "이전 실패: 원래 실행 중이던 컨테이너를 복구합니다." >&2
+    docker start "${running_before[@]}" >/dev/null || echo "경고: 컨테이너 자동 복구 실패. 수동 확인이 필요합니다." >&2
+  fi
 }
 trap cleanup EXIT
 
 containers=()
 for tenant in 2 3 4; do
+  if [ -s "${PERSIST_ROOT}/.env.tenant${tenant}" ]; then
+    cp -p "${PERSIST_ROOT}/.env.tenant${tenant}" "${STAGE}/.env.tenant${tenant}"
+  elif [ -s ".env.tenant${tenant}" ]; then
+    cp -p ".env.tenant${tenant}" "${STAGE}/.env.tenant${tenant}"
+  else
+    echo "오류: tenant${tenant} 환경파일을 checkout 또는 영속 루트에서 찾지 못했습니다." >&2
+    exit 1
+  fi
+  chmod 0600 "${STAGE}/.env.tenant${tenant}"
+
   for kind in gateway dashboard; do
     container="openclaw-${kind}-tenant${tenant}"
     docker inspect "$container" >/dev/null 2>&1 || {
@@ -37,10 +54,14 @@ for tenant in 2 3 4; do
       exit 1
     }
     containers+=("$container")
+    if [ "$(docker inspect --format '{{.State.Running}}' "$container")" = "true" ]; then
+      running_before+=("$container")
+    fi
   done
 done
 
 echo "tenant2·3·4 gateway/dashboard를 정지합니다. 성공 후 배포가 다시 기동합니다."
+STOP_ATTEMPTED=1
 docker stop "${containers[@]}" >/dev/null
 
 for tenant in 2 3 4; do
@@ -61,15 +82,6 @@ for tenant in 2 3 4; do
     exit 1
   }
 
-  if [ -s "${PERSIST_ROOT}/.env.tenant${tenant}" ]; then
-    cp -p "${PERSIST_ROOT}/.env.tenant${tenant}" "${STAGE}/.env.tenant${tenant}"
-  elif [ -s ".env.tenant${tenant}" ]; then
-    cp -p ".env.tenant${tenant}" "${STAGE}/.env.tenant${tenant}"
-  else
-    echo "오류: tenant${tenant} 환경파일을 checkout 또는 영속 루트에서 찾지 못했습니다." >&2
-    exit 1
-  fi
-  chmod 0600 "${STAGE}/.env.tenant${tenant}"
   docker inspect --format '{{.Id}}' "$gateway" > "${STAGE}/tenant${tenant}.container-id"
 done
 
@@ -95,6 +107,7 @@ done
 } > "${STAGE}/.mount-v2-ready"
 chmod 0600 "${STAGE}/.mount-v2-ready"
 mv "${STAGE}/.mount-v2-ready" "$MARKER"
+MIGRATION_COMPLETE=1
 
 echo "이전 완료: $PERSIST_ROOT"
 echo "이전 영속 경로 백업: $BACKUP_ROOT"

@@ -155,16 +155,24 @@ describe("OSMU production persistence contract", () => {
     fs.mkdirSync(sandbox, { recursive: true });
     installFakeUname(binDir);
     const dockerPath = path.join(binDir, "docker");
+    const dockerLog = path.join(tempRoot, "docker.log");
     fs.writeFileSync(dockerPath, `#!/bin/sh
+printf '%s\\n' "$*" >> "$FAKE_DOCKER_LOG"
 case "$1" in
   inspect)
     case "$2" in
-      --format) echo "abcdef0123456789" ;;
+      --format)
+        case "$3" in
+          *State.Running*) echo "true" ;;
+          *) echo "abcdef0123456789" ;;
+        esac
+        ;;
       *) exit 0 ;;
     esac
     ;;
-  stop) exit 0 ;;
+  stop|start) exit 0 ;;
   cp)
+    [ "\${FAKE_DOCKER_FAIL_CP:-0}" != "1" ] || exit 42
     mkdir -p "$3"
     printf 'snapshot\n' > "$3/state.json"
     ;;
@@ -179,7 +187,7 @@ esac
     try {
       const result = spawnSync("bash", ["migrate-postagi-persist-mounts.sh"], {
         cwd: sandbox,
-        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, OPENCLAW_PERSIST_ROOT: persistRoot },
+        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, OPENCLAW_PERSIST_ROOT: persistRoot, FAKE_DOCKER_LOG: dockerLog },
         encoding: "utf8",
       });
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
@@ -193,6 +201,58 @@ esac
         expect(fs.statSync(path.join(persistRoot, `.env.tenant${tenant}`)).mode & 0o777).toBe(0o600);
       }
       expect(migration).toContain('docker stop "${containers[@]}"');
+      expect(migration).toContain('docker start "${running_before[@]}"');
+      expect(fs.readFileSync(dockerLog, "utf8")).not.toContain("start openclaw-");
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("GATEWAY-PERSIST-07: 스냅샷 실패 시 원래 실행 중이던 컨테이너를 복구한다", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "osmu-persist-rollback-"));
+    const sandbox = path.join(tempRoot, "repo");
+    const persistRoot = path.join(tempRoot, "persist");
+    const binDir = path.join(tempRoot, "bin");
+    const dockerLog = path.join(tempRoot, "docker.log");
+    fs.mkdirSync(sandbox, { recursive: true });
+    installFakeUname(binDir);
+    fs.writeFileSync(path.join(binDir, "docker"), `#!/bin/sh
+printf '%s\\n' "$*" >> "$FAKE_DOCKER_LOG"
+case "$1" in
+  inspect)
+    case "$2" in
+      --format)
+        case "$3" in
+          *State.Running*) echo "true" ;;
+          *) echo "abcdef0123456789" ;;
+        esac
+        ;;
+      *) exit 0 ;;
+    esac
+    ;;
+  stop|start) exit 0 ;;
+  cp) exit 42 ;;
+  *) exit 1 ;;
+esac
+`, { mode: 0o755 });
+    fs.copyFileSync(migrationPath, path.join(sandbox, "migrate-postagi-persist-mounts.sh"));
+    for (const tenant of [2, 3, 4]) {
+      fs.writeFileSync(path.join(sandbox, `.env.tenant${tenant}`), "TOKEN=dummy\n", { mode: 0o600 });
+    }
+
+    try {
+      const result = spawnSync("bash", ["migrate-postagi-persist-mounts.sh"], {
+        cwd: sandbox,
+        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, OPENCLAW_PERSIST_ROOT: persistRoot, FAKE_DOCKER_LOG: dockerLog },
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(42);
+      expect(result.stderr).toContain("원래 실행 중이던 컨테이너를 복구합니다");
+      const log = fs.readFileSync(dockerLog, "utf8");
+      expect(log).toContain("stop openclaw-gateway-tenant2");
+      expect(log).toContain("start openclaw-gateway-tenant2");
+      expect(log).toContain("openclaw-dashboard-tenant4");
+      expect(fs.existsSync(path.join(persistRoot, ".mount-v2-ready"))).toBe(false);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
