@@ -407,8 +407,8 @@ async function captureCard(viewport) {
         .map((node) => ({ room: node.getAttribute("data-room"), kind: node.getAttribute("data-edit-kind") })),
       storedWork: localStorage.getItem(`studio_work:${id}`),
       bodyText: document.body.innerText.slice(0, 800),
-      consoleErrors: consoleErrors.slice(0, 10),
     }), { id: workspaceId });
+    diagnostic.consoleErrors = consoleErrors.slice(0, 10);
     await page.screenshot({ path: path.join(outputDir, `failed-edit-card-${viewport.width}x${viewport.height}.png`) });
     throw new Error(`카드 작업대가 열리지 않았습니다: ${JSON.stringify(diagnostic)}`, { cause: error });
   }
