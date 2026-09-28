@@ -205,7 +205,7 @@ jobs:
           fi
           migration_source="$(awk -F= '$1 == "source" { print $2 }' "$persist_root/.mount-v2-ready")"
           case "$migration_source" in
-            fresh-bootstrap|stopped-container-copy) ;;
+            fresh-bootstrap|paused-container-copy) ;;
             *) echo "::error::검증되지 않은 영속 마운트 이전 표식이다: $migration_source"; exit 1 ;;
           esac
           docker_gid="$(stat -c '%g' /var/run/docker.sock)"
@@ -225,7 +225,7 @@ jobs:
               echo "::error::테넌트 환경파일이 영속 경로에 없거나 비었다: $env_file"
               exit 1
             fi
-            if [ "$migration_source" = "stopped-container-copy" ]; then
+            if [ "$migration_source" = "paused-container-copy" ]; then
               grep -Eq "^tenant${tenant}_container=[0-9a-f]+$" "$persist_root/.mount-v2-ready" || {
                 echo "::error::tenant${tenant} 컨테이너 스냅샷 증거가 이전 표식에 없다."
                 exit 1

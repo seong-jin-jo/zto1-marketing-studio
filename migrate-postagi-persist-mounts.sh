@@ -113,7 +113,7 @@ done
 
 {
   echo "schema=2"
-  echo "source=stopped-container-copy"
+  echo "source=paused-container-copy"
   for tenant in 2 3 4; do
     printf 'tenant%s_container=' "$tenant"
     tr -d '\n' < "${STAGE}/tenant${tenant}.container-id"

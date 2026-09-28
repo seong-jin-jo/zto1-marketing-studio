@@ -68,7 +68,7 @@ describe("OSMU production persistence contract", () => {
     expect(deployWorkflow).toContain('persist_root="${OPENCLAW_PERSIST_ROOT:-$HOME/openclaw-persist}"');
     expect(deployWorkflow).toContain('[ "$(id -u)" != "1000" ]');
     expect(deployWorkflow).toContain("grep -qx 'schema=2'");
-    expect(deployWorkflow).toContain("fresh-bootstrap|stopped-container-copy");
+    expect(deployWorkflow).toContain("fresh-bootstrap|paused-container-copy");
     expect(deployWorkflow).toContain('chmod 0700 "$config_dir"');
     expect(deployWorkflow).toContain('chmod 0750 "$data_dir"');
     expect(deployWorkflow).toContain("DOCKER_GID=$docker_gid");
@@ -193,7 +193,7 @@ esac
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
       const marker = fs.readFileSync(path.join(persistRoot, ".mount-v2-ready"), "utf8");
       expect(marker).toContain("schema=2");
-      expect(marker).toContain("source=stopped-container-copy");
+      expect(marker).toContain("source=paused-container-copy");
       for (const tenant of [2, 3, 4]) {
         expect(marker).toContain(`tenant${tenant}_container=abcdef0123456789`);
         expect(fs.existsSync(path.join(persistRoot, `config-tenant${tenant}/state.json`))).toBe(true);
