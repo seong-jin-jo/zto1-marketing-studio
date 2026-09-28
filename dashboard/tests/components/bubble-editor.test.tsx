@@ -30,6 +30,7 @@ describe("BubbleEditor (F4, PR4)", () => {
     const onDeckChange = vi.fn();
     render(<BubbleEditor deck={d} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
     const bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${chatSlide.bubbles![0].id}"]`)!;
+    fireEvent.focus(within(bubbleEl).getByRole("textbox"));
     fireEvent.click(within(bubbleEl).getByText("화자 전환"));
     expect(onDeckChange).toHaveBeenCalledTimes(1);
     const next = onDeckChange.mock.calls[0][0] as CardDeck;
@@ -49,6 +50,7 @@ describe("BubbleEditor (F4, PR4)", () => {
     const onDeckChange = vi.fn();
     render(<BubbleEditor deck={onlyOne} slideId={chatSlide.id} onDeckChange={onDeckChange} />);
     const bubbleEl = document.querySelector<HTMLElement>(`[data-bubble-id="${chatSlide.bubbles![0].id}"]`)!;
+    fireEvent.focus(within(bubbleEl).getByRole("textbox"));
     fireEvent.click(within(bubbleEl).getByText("삭제"));
     expect(onDeckChange).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(/./);
@@ -82,5 +84,39 @@ describe("CardDeckPanel (표지·CTA 고정, 세션맥락: card-deck-ops 순수 
     const secondSlide = d.slides[1];
     fireEvent.click(document.querySelector(`[data-slide-id="${secondSlide.id}"]`)!);
     expect(document.querySelector(`[data-slide-id="${secondSlide.id}"]`)).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("PR85-R7-M6 본문 장을 끌어 놓아 순서를 바꾸고 표지·CTA는 draggable이 아니다", () => {
+    const d = deck();
+    const onDeckChange = vi.fn();
+    render(<CardDeckPanel deck={d} onDeckChange={onDeckChange} />);
+    const items = Array.from(document.querySelectorAll<HTMLElement>("[data-slide-draggable]"));
+    expect(items[0]).toHaveAttribute("data-slide-draggable", "false");
+    expect(items.at(-1)).toHaveAttribute("data-slide-draggable", "false");
+    const transfer = { effectAllowed: "none", setData: vi.fn(), getData: vi.fn(() => "1") };
+    fireEvent.dragStart(items[1], { dataTransfer: transfer });
+    fireEvent.dragOver(items[2], { dataTransfer: transfer });
+    fireEvent.drop(items[2], { dataTransfer: transfer });
+    const next = onDeckChange.mock.calls[0][0] as CardDeck;
+    expect(next.slides[2].id).toBe(d.slides[1].id);
+    expect(next.slides[0].role).toBe("cover");
+    expect(next.slides.at(-1)?.role).toBe("cta");
+  });
+
+  it("장 전환은 이전 말풍선 선택을 비워 새 장 추가가 옛 ID를 참조하지 않는다", () => {
+    const d = deck();
+    const onDeckChange = vi.fn();
+    render(<CardDeckPanel deck={d} onDeckChange={onDeckChange} />);
+
+    fireEvent.click(document.querySelector(`[data-slide-id="${d.slides[1].id}"]`)!);
+    fireEvent.click(screen.getByRole("textbox", { name: "말풍선 내용 1" }));
+    expect(screen.getByLabelText("선택한 말풍선 도구")).toBeInTheDocument();
+
+    fireEvent.click(document.querySelector(`[data-slide-id="${d.slides[2].id}"]`)!);
+    expect(screen.queryByLabelText("선택한 말풍선 도구")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "말풍선 추가" }));
+
+    expect(onDeckChange).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

@@ -110,6 +110,18 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     expect(savedPayload.editLines).toEqual(["줄1", "줄2"]);
   });
 
+  it("cardDeck:null도 clear 플래그가 없으면 기존 덱을 보존한다", async () => {
+    H.rows = [{ id: "draft-null-card-deck" }];
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "반대 도메인 null", cardDeck: null }),
+    }));
+    expect(response.status).toBe(200);
+    const savedPayload = H.jsonValues[0] as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(savedPayload, "cardDeck")).toBe(false);
+  });
+
   it("clearCardDeck:true 를 보내면 명시적으로 cardDeck 을 지운다", async () => {
     H.rows = [{ id: "draft-legacy-2" }];
     const { POST } = await import("@/app/api/studio/drafts/route");

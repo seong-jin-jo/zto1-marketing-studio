@@ -1,3 +1,63 @@
+## 2026-09-28 09:23 KST PR 85 편집실 v70 9차 리뷰 로컬 수정·검증 완료
+
+- handoff basis: 사용자가 지정한 `.pr85-review9.md`, 워크트리 `/private/tmp/wt-v70p1`, 시작 HEAD `ef73d2c2`를 primary로 사용했다. tmux `371:0.2`는 종료된 8차 리뷰 로그라 동시 수정이 없음을 확인했다.
+- 수정 전 재현: `R-S10-37`은 contentEditable에 textarea용 `toHaveValue`를 호출해 실제값 `undefined`, 표적 1건 실패·21건 통과였다.
+- 변경: 제품 소스는 유지했다. 테스트가 `<br><br>` 문단 경계를 확인하고 `innerHTML` 변경 뒤 `input` 이벤트로 `onLinesChange`를 검증하게 했다.
+- 검증: 표적 22건 PASS. CI와 같은 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 `npx vitest run`은 408파일·2,778건 PASS, 1건 SKIP, 실패 0. TypeScript, 프로덕션 빌드, 발행실 정렬 delta 0px, Chromium WYSIWYG 전부 PASS. 임시 DB는 삭제했다. 원격 CI는 push 전이라 미검증이다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr85-review7.md`, `.pr85-review8.md`, `.pr85-review9.md`는 커밋하지 않는다. 다음 실행은 의도 파일만 커밋하고 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다.
+
+## 2026-09-28 08:50 KST PR 85 편집실 v70 8차 리뷰 로컬 수정·검증 완료
+
+- handoff basis: 사용자가 지정한 `.pr85-review8.md`, 워크트리 `/private/tmp/wt-v70p1`, HEAD `bc539b95`를 primary로 사용했다. tmux `371:0.2`는 종료된 8차 리뷰 로그만 남은 상태라 동시 수정이 없음을 확인했다.
+- 수정 전 재현: 필수 발행실 UI는 contentEditable `value setter` 오류, 연속 넘침은 4장 기대에 2장, 글 리치 붙여넣기는 기본 동작 허용 `true`로 각각 실패했다.
+- 변경: 자동 분할 뒤 새 장을 다음 검사 대상으로 넘긴다. 글 전체 편집은 리치 붙여넣기 기본 동작을 막고 평문만 저장한다. 필수 발행실 테스트는 contentEditable 입력과 구조화 세그먼트를 검증한다.
+- 검증: 관련 Vitest 16파일 203건, TypeScript, 프로덕션 빌드, Chromium·WebKit·Firefox E2E PASS. 3엔진에서 글 DOM과 저장 모델 `붙여넣은 평문` 일치, 리치 노드 0건을 관찰했다. dev 3762는 Ready 805ms, `/studio` HTTP 200, body 표시, 콘솔 오류 0이었다.
+- 커밋: `ef73d2c2`. `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr85-review7.md`, `.pr85-review8.md`는 커밋하지 않았다. 다음 실행은 부모 컨트롤러가 push하고 8차 리뷰를 재요청한다.
+
+## 2026-09-28 07:52 KST PR 85 편집실 v70 7차 리뷰 로컬 수정·검증 완료
+
+- handoff basis: 사용자가 지정한 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, 시작 HEAD `355b856c`, 7차 리뷰 전문을 primary로 사용했다. tmux `371:0.2`는 종료된 직전 리뷰 세션임을 확인했다.
+- 변경: 말풍선 DOM을 구조화 세그먼트로 직렬화하고 굵기 결과 불변식을 검사한다. 영상 자동저장은 `editLines`를 생략한다. v70 글 선택 도구막대, 넘침 자동 분할, 카드 DnD, 말풍선 기준 툴바, 키보드 포커스를 구현했다.
+- 검증: 수정 전 속성 테스트 18건 FAIL. 수정 후 관련 Vitest 162건과 추가 자동분할 46건, 3엔진 E2E, typecheck, build, 변경 소스 design-lint, dev `/studio` HTTP 200·콘솔 오류 0 PASS.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, 기존 session-state 변경, `.pr85-review7.md`는 커밋하지 않는다.
+- 다음 실행: 의도 파일만 커밋하고 부모 컨트롤러가 push한다. PR 제목·본문 수정, 머지, 배포는 하지 않는다.
+
+## 2026-09-25 11:39 KST PR 85 편집실 v70 낡은 테스트 계약 수정 착수
+
+- handoff basis: 사용자가 지정한 과제, 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, HEAD `dea8d81c`를 primary로 사용한다. 같은 cwd의 tmux `openclaw-auto:1.1`은 직전 v70 기록과 일치하는 보조 확인만 했다.
+- 원인: `dashboard/tests/studio/studio-fe2-rooms.test.tsx`의 QA-EDIT-06만 글 `data-edit-outline` 존재를 요구한다. v70 제품과 전용 회귀는 글 목차 부재, 글 전체 textbox 존재, 문단 textbox 부재를 계약한다.
+- 현재 판정: `docs/qa/qa-tracker.md`에 `PR85-CI-EDIT-OUTLINE`을 ❌ NG로 등록했다. 자동 기록 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 보존한다.
+- 다음 실행: QA-EDIT-06을 목차 부재 단언으로 바꾸고 전체 Vitest와 `typecheck:ci`를 실행한다. 통과하면 QA 원장과 이 핸드오프를 갱신하고 의도 파일만 커밋한 뒤 push한다.
+
+# 2026-09-25 07:48 KST 편집실 v70 1단계 로컬 출고 완료, push 정책 차단
+
+- 최종 로컬 HEAD: `7008af6e`. 제품·테스트 `cc103a37`, 검증 문서 `cfc5e880`, 리뷰 회귀 수정 `7008af6e`다. 최신 `origin/main` `57850570`을 조상으로 포함한다.
+- 최종 검증: 관련 Vitest 10파일 53건, `typecheck:ci`, production build, 토큰 감사 모두 종료 코드 0. 520px→496px 돌연변이 실패와 원복 PASS, dev HTTP 200과 앱 콘솔 오류 0을 확인했다. 랜딩 전 리뷰의 장 전환 선택 잔존 결함도 수정했다.
+- 원격 차단: `git push -u origin feat/editroom-v70-p1`은 `approval required by policy, but AskForApproval is set to Never`로 실행 전 거절됐다. GitHub 인증은 유효하고 같은 head PR은 0건이다. 완성한 PR 본문은 `/tmp/editroom-v70-pr-body.md`에 있다.
+- 다음 실행: push 권한이 있는 컨트롤러가 브랜치를 push하고 base main PR을 생성한 뒤 CI 종료를 확인한다. 운영 배포와 실제 회원 초안 저장은 미검증이다.
+
+# 2026-09-25 07:42 KST 편집실 v70 1단계 구현·로컬 검증 완료, 출고 진행 중
+
+- handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, 설계 커밋 `cc878a82`와 재지시 원문을 primary로 사용했다. tmux `openclaw-auto:1.1`은 직전 차단 확인에만 썼다.
+- 변경: 글은 680px 문서 시트와 X 280 한글가중2·Threads 500·Instagram 2,200 미터로 바꿨고 문단 목차 렌더를 제거했다. 카드는 112px 스트립과 520px 4:5 DOM 스테이지, 말풍선 한 번 클릭 직접 입력으로 바꿨으며 우측 편집 열을 제거했다. 저장 payload는 반대 도메인을 null로 명시한다.
+- 보존: 셸, 영상 편집, 카드 장 순서, 표지·CTA 잠금, AI 일괄 편집, `musicTrack`·`musicVolume` 데이터는 유지했다. 음악 UI는 되살리지 않았다.
+- 검증: 관련 Vitest 10파일 53건, typecheck, production build, 토큰 감사 통과. 520px→496px 돌연변이는 신규 테스트가 실패시켰고 원복 후 통과했다. dev 3760 Ready, `/studio?room=edit` HTTP 200, Chrome 앱 콘솔 오류 0. 랜딩 전 리뷰에서 장 전환 뒤 이전 말풍선 선택이 남는 회귀를 찾아 초기화와 테스트를 추가했다.
+- 커밋: `cc103a37` 제품 코드·회귀 테스트. 다음 실행은 문서 커밋과 독립 diff 리뷰, push, base main PR 생성, CI 종료 확인이다. 운영 배포와 실제 회원 초안 저장은 미검증이다.
+
+# 2026-09-25 07:25 KST 편집실 v70 1단계 설계 입력 복구, 구현 진행 중
+
+- handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, HEAD `cc878a82`, 이번 재지시 원문을 primary로 삼았다. tmux `openclaw-auto:1.1`은 직전 차단 로그 확인에만 썼다.
+- 입력 복구: `docs/design/design-spec-editroom-v70.md`와 `docs/design/prototypes/osmu-editroom-v70-hub-claude-opus-20260923-0956.html`이 HEAD `cc878a82`에 존재하며 전문을 읽었다. 기존 07:20 차단은 해소됐다. v70 승인 핀 부재는 이번 판에서 이 설계를 쓰라는 회장 확정으로 진행한다.
+- 구현 방향: 글은 목차·순서 조작 렌더 경로를 제거하고 680px 문서 시트와 X·Threads·Instagram 상한 미터로 교체한다. 카드는 112px 썸네일 스트립과 520px 4:5 DOM 스테이지로 바꾸고, 선택한 말풍선을 그 자리에서 한 번의 클릭으로 편집한다. 저장 payload는 반대 도메인에 `null`을 명시한다.
+- 다음 실행: 제품 코드와 회귀 테스트를 수정한 뒤 표적 Vitest, 돌연변이 실패, 원복 후 최종 Vitest·typecheck·dev 서버 스모크·design lint를 끝낸다. 이후 문서와 QA 원장을 갱신하고 리뷰, 커밋, push, PR을 수행한다.
+
+# 2026-09-25 07:20 KST 편집실 v70 1단계 필수 디자인 입력 결손으로 회수
+
+- handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, HEAD `57850570`, 이번 과제 원문을 primary로 삼았다. tmux `openclaw-auto:1.1`은 이 워커 자신의 진행 로그여서 별도 인계 소스로 쓰지 않았다.
+- 차단 원인: 필수 입력 `docs/design/design-spec-editroom-v70.md`와 `docs/design/prototypes/osmu-editroom-v70-hub-claude-opus-20260923-0956.html`이 현재 트리와 origin의 모든 브랜치에 없다. `/Users/sj`와 `/private/tmp` 전체 및 GitHub 코드 검색에서도 발견되지 않았다. 최신 canonical 핀은 `pipeline-state.osmu.md`의 v68이며 v70 승인 핀이 없다.
+- 현재 변경: QA 원장에 `EDITROOM-V70-P1-INPUT`을 ❌ NG로 등록했다. 제품 코드·테스트·CSS는 변경하지 않았다. 자동 기록 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 보존한다.
+- 다음 실행: 두 v70 설계 파일을 이 브랜치에 추가하거나 실제 경로·커밋을 전달받는다. 파일 전문을 읽고 최신 승인 핀을 확인한 뒤 `.work` 내부 EDIT-TEXT·EDIT-CARD만 테스트 우선으로 구현하고, 돌연변이 실패→원복→최종 Vitest·typecheck·dev 서버 스모크·design lint·리뷰·커밋·push·PR까지 끝낸다.
+
 # 2026-09-25 02:58 KST 생성기 생존 탐침 출고 전 재검증 완료
 
 - handoff basis: 회장이 지정한 워크트리, 브랜치 `fix/generator-liveness-probe`, HEAD `4fe08408`, 미커밋 diff를 primary로 삼았다. 같은 워크트리의 tmux pane `openclaw-auto:1.1`은 보조 확인했으며 캡처 내용은 비어 있어 충돌하는 작업이 없었다.

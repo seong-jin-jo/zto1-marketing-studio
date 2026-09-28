@@ -214,11 +214,12 @@ describe("편집실 미리보기 (회장: 컨텐츠가 미리볼 수 있는게 �
     render(<EditRoom lines={["첫 문단", "둘째 문단"]} onLinesChange={onLinesChange} kind="text" />);
 
     const editor = screen.getByRole("textbox", { name: "글 전체" });
-    expect(editor).toHaveValue("첫 문단\n\n둘째 문단");
+    expect(editor.innerHTML).toBe("첫 문단<br><br>둘째 문단");
     expect(screen.queryByText(/초부터/)).not.toBeInTheDocument();
     expect(screen.queryByText("대사")).not.toBeInTheDocument();
 
-    fireEvent.change(editor, { target: { value: "고친 첫 문단\n\n고친 둘째 문단" } });
+    editor.innerHTML = "고친 첫 문단<br><br>고친 둘째 문단";
+    fireEvent.input(editor);
     expect(onLinesChange).toHaveBeenLastCalledWith(["고친 첫 문단", "고친 둘째 문단"]);
   });
 

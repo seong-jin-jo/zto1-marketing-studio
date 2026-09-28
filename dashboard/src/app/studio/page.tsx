@@ -1106,7 +1106,7 @@ export default function StudioPage() {
     status: "draft" | "published" | "partial" | "stopped" = "draft",
     reconciliations: PublishReconciliationMap = publishReconciliations,
     persistedDraftId: string | null = draftId,
-    persistedEditLines: string[] = editLines,
+    persistedEditLines: string[] | undefined,
     // 방금 다시 그린 카드는 아직 상태에 반영되기 전이다. 상태를 기다리면 옛 그림이 저장된다.
     persistedImg: ImgResult | null = img,
     // 방금 자막을 구운 영상도 같은 이유로 인자로 받는다. 상태를 기다리면 자막 없는 옛
@@ -1136,11 +1136,13 @@ export default function StudioPage() {
       firstComments,
       captions,
       selectedAccounts,
-      editLines: persistedEditLines,
+      ...(persistedEditLines === undefined ? {} : { editLines: persistedEditLines }),
       cardTextPositions,
-      // cardDeck 키가 아예 없으면 서버가 기존 덱을 보존한다(route.ts). 있을 때만 보낸다.
-      ...(persistedCardDeck ? { cardDeck: persistedCardDeck } : {}),
-      ...(persistedVideoEdit ? { videoEdit: persistedVideoEdit } : {}),
+      // 자기 도메인만 저장하는 호출도 반대 도메인을 명시적으로 null로 보낸다. route.ts는
+      // clear 플래그가 없는 null을 "기존 값 보존"으로 다룬다. 키 생략과 위치 인자 기본값이
+      // 섞여 상대 도메인 state를 덮어쓴 과거 회귀를 payload 계약으로 드러낸다.
+      cardDeck: persistedCardDeck,
+      videoEdit: persistedVideoEdit,
       editKind,
       editFormat,
       reviewQueueId,
@@ -2290,7 +2292,9 @@ export default function StudioPage() {
       // 책임진다 — cardDeck을 그대로 실으면(pruning 없이) 빈 말풍선이 서버에 그대로
       // 박히거나, 저장 자체가 카드덱 검증 실패로 통째로 막힌다. null을 명시해 cardDeck
       // 키 자체를 payload에서 뺀다(기존 서버 값 보존).
-      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, null, nextEdit)
+      // 영상만 바꾸는 저장은 editLines 키를 아예 보내지 않는다. 타이머가 잡은 낡은
+      // 클로저 값을 보내면 서버의 최신 글/카드 투영을 되돌릴 수 있다.
+      save("draft", publishReconciliations, draftIdRef.current, undefined, img, vid, null, nextEdit)
         .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setVideoEditAutosaveError(""); })
         .catch((error) => setVideoEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
     }, 800);

@@ -175,6 +175,78 @@ export function setBubbleText(deck: CardDeck, slideId: string, bubbleId: string,
 }
 
 /**
+ * WYSIWYG 직접 편집의 정본 경로. 브라우저 DOM에서 읽은 텍스트와 굵기 경계를 그대로
+ * 저장하며, 글자 수 비율로 기존 경계를 추정하지 않는다. DOM은 입력 표면일 뿐이고 이
+ * 정규화된 세그먼트 배열이 저장·렌더의 단일 원본이다.
+ */
+export function setBubbleSegments(deck: CardDeck, slideId: string, bubbleId: string, segments: Segment[]): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  const bubbles = slide.bubbles ?? [];
+  const { bubble, index: bubbleIndex } = findBubble(slide, bubbleId);
+  const updatedBubble: Bubble = { ...bubble, segments: normalizeSegments(segments) };
+  const updatedBubbles = bubbles.map((b, i) => (i === bubbleIndex ? updatedBubble : b));
+  return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, bubbles: updatedBubbles }));
+}
+
+/**
+ * MAJOR(5차 재검증, T1): blur 시점 끝 개행 트림을 `setBubbleText`(→`retextSegments` 글자수
+ * 비율 재분배) 경로로 태웠더니, 개행 한두 글자가 빠지는 길이 변화만으로도 반올림 경계가
+ * 흔들려 굵은 구간 경계가 한 글자 밀렸다(재현 T1: `**새 교재**가…` 가 blur 후
+ * `**새 교**재가…`로 바뀜). 세그먼트 구조·굵기 경계는 그대로 두고 **마지막 세그먼트의
+ * 끝에 붙은 개행만** 지우는 전용 연산으로 바꾼다 — 다른 세그먼트를 전혀 안 건드리니
+ * 경계가 밀릴 여지가 없다.
+ *
+ * MAJOR(6차 재검증): 마지막 세그먼트 "하나만" 한 번 자르고 끝냈더니, 재분배 결과가
+ * `[{"…요\n"}, {"\n", bold:true}]`처럼 **끝 개행이 여러 세그먼트에 걸쳐 나뉜 경우**를
+ * 놓쳤다(재현: 마지막 글자를 굵게 만든 뒤 Enter 두 번 + blur — 마지막 세그먼트("\n"
+ * 하나)만 비워 통째로 빠지고, 그 앞 세그먼트("…요\n")에 남은 개행은 안 건드려 저장본에
+ * "\n"이 그대로 남았다. 화면 1줄인데 PNG는 2줄, 게다가 그 개행을 담았던 볼드 세그먼트가
+ * 통째로 사라져 굵게 표시도 없어졌다). 뒤에서부터 반복한다: 마지막 세그먼트의 끝 개행을
+ * 지우고, 비면 그 세그먼트를 통째로 빼고, 그 결과 새 마지막 세그먼트가 또 "\n"으로
+ * 끝나면 계속 반복한다 — 개행이 세그먼트 경계를 몇 번을 걸쳐 있든 전부 걷힌다.
+ */
+/**
+ * `trimBubbleTrailingNewline`의 순수 세그먼트 변환만 떼어낸 것 — deck/slide/bubble
+ * 조회 없이 세그먼트 배열만 받아 끝 개행을 반복해서 걷어낸다.
+ *
+ * MAJOR(6차 재검증, 속성 테스트가 잡음): `BubbleEditor.tsx handleBlur`가 이 로직을
+ * "connected 연산(`trimBubbleTrailingNewline` + `run()`)을 호출한 뒤, **같은 함수
+ * 안에서** `bubble.segments`(트림 전 값 — `run()`의 상태 갱신은 다음 렌더까지 반영
+ * 안 됨)로 화면을 다시 그리는" 순서로 짰다가, 트림한 개행이 그 자리에서 `<br>`로
+ * 되살아나 화면에 남았다(모델엔 없는데 화면에만 보이는 개행 — "화면=저장본" 계약
+ * 위반). 그 즉시-재동기화가 다음 렌더를 기다리지 않고 "트림 후 상태"를 **그 자리에서
+ * 직접 계산**할 수 있도록, deck 배관과 분리한 순수 함수로 뽑아 `handleBlur`와
+ * `trimBubbleTrailingNewline` 양쪽이 정확히 같은 로직을 쓰게 한다(로직을 두 곳에
+ * 따로 베끼면 또 어긋난다 — 이 PR 전체가 반복해서 겪은 실수다).
+ */
+export function trimSegmentsTrailingNewline(segments: Segment[]): Segment[] {
+  let result = segments;
+  let changed = false;
+  while (result.length > 0) {
+    const lastIndex = result.length - 1;
+    const lastText = result[lastIndex].text;
+    const trimmedLastText = lastText.replace(/\n+$/, "");
+    if (trimmedLastText === lastText) break; // 이 세그먼트엔 지울 끝 개행이 없다 — 반복 종료.
+    changed = true;
+    result = trimmedLastText.length === 0 && result.length > 1
+      ? result.slice(0, lastIndex)
+      : result.map((s, i) => (i === lastIndex ? { ...s, text: trimmedLastText } : s));
+  }
+  return changed ? result : segments; // 무변화면 참조를 그대로 돌려줘 불필요한 갱신을 피한다.
+}
+
+export function trimBubbleTrailingNewline(deck: CardDeck, slideId: string, bubbleId: string): CardDeck {
+  const { slide, index: slideIndex } = findSlide(deck, slideId);
+  const bubbles = slide.bubbles ?? [];
+  const { bubble, index: bubbleIndex } = findBubble(slide, bubbleId);
+  const segments = trimSegmentsTrailingNewline(bubble.segments);
+  if (segments === bubble.segments) return deck; // 지울 끝 개행이 전혀 없으면 무동작(불필요한 revision 증가 방지).
+  const updatedBubble: Bubble = { ...bubble, segments };
+  const updatedBubbles = bubbles.map((b, i) => (i === bubbleIndex ? updatedBubble : b));
+  return withRevision(deck, replaceSlide(deck, slideIndex, { ...slide, bubbles: updatedBubbles }));
+}
+
+/**
  * textarea 의 `selectionStart`(말풍선 전체 텍스트 기준 캐럿)를 `splitBubble` 이 받는
  * 세그먼트 좌표 `{segmentIndex, offset}` 로 바꾼다(2026-09-22 코드리뷰 MAJOR 5: 이전에는
  * `{segmentIndex: 0, offset: caret}` 을 그대로 넘겨, 세그먼트가 2개 이상이면 caret 이
@@ -277,17 +349,26 @@ export function toggleBold(
   const to = Math.max(from, Math.min(range.to, fullText.length));
   if (from === to) throw new CardDeckOpsError("OPS_BOLD_EMPTY_RANGE", "bold range must be non-empty");
 
-  const willBold = !isFullyBold(bubble.segments, from, to);
-  const rebuilt = normalizeSegments(applyBoldRange(bubble.segments, from, to, willBold));
+  const rebuilt = toggleSegmentsBold(bubble.segments, { from, to });
   const updatedBubble: Bubble = { ...bubble, segments: rebuilt };
   const updatedBubbles = bubbles.map((b, i) => (i === bubbleIndex ? updatedBubble : b));
   const updatedSlide: CardSlide = { ...slide, bubbles: updatedBubbles };
 
-  if (willBold) {
-    const chunks = countBoldChunksInBubbles(updatedBubbles);
-    if (chunks > 1) throw new CardDeckOpsError("OPS_BOLD_LIMIT", "한 장에 굵은 덩이는 하나입니다");
-  }
+  // 굵기를 켤 때뿐 아니라 기존 굵은 구간의 가운데를 끌 때도 결과가 두 덩이로 갈라질
+  // 수 있다. 연산 방향이 아니라 결과 불변식을 검사한다.
+  const chunks = countBoldChunksInBubbles(updatedBubbles);
+  if (chunks > 1) throw new CardDeckOpsError("OPS_BOLD_LIMIT", "한 장에 굵은 덩이는 하나입니다");
   return withRevision(deck, replaceSlide(deck, slideIndex, updatedSlide));
+}
+
+/** 카드/글 편집기가 공유하는 구조화된 굵기 토글. 카드의 장당 1덩이 제한은 호출자가 검증한다. */
+export function toggleSegmentsBold(segments: Segment[], range: { from: number; to: number }): Segment[] {
+  const fullText = segments.map((segment) => segment.text).join("");
+  const from = Math.max(0, Math.min(range.from, fullText.length));
+  const to = Math.max(from, Math.min(range.to, fullText.length));
+  if (from === to) throw new CardDeckOpsError("OPS_BOLD_EMPTY_RANGE", "bold range must be non-empty");
+  const willBold = !isFullyBold(segments, from, to);
+  return normalizeSegments(applyBoldRange(segments, from, to, willBold));
 }
 
 function isFullyBold(segments: Segment[], from: number, to: number): boolean {
@@ -401,6 +482,71 @@ export function addSlide(deck: CardDeck, afterIndex: number): CardDeck {
     ...deck.slides.slice(afterIndex + 1),
   ];
   return withRevision(deck, inserted.map((s, order) => ({ ...s, order })));
+}
+
+/** 넘친 chat 장의 말풍선 경계에서 다음 장을 만든다. 텍스트/굵기 세그먼트는 그대로 이동한다. */
+export function splitSlideAtBubble(deck: CardDeck, slideIndex: number, firstMovedBubbleIndex: number): CardDeck {
+  if (deck.slides.length >= 11) throw new CardDeckOpsError("OPS_SLIDE_LIMIT", "cardDeck cannot exceed 11 slides");
+  const slide = deck.slides[slideIndex];
+  if (!slide || slide.role !== "chat") throw new CardDeckOpsError("OPS_SLIDE_LOCKED", "only chat slides can auto-split");
+  const bubbles = slide.bubbles ?? [];
+  if (firstMovedBubbleIndex <= 0 || firstMovedBubbleIndex >= bubbles.length) {
+    throw new CardDeckOpsError("OPS_SLIDE_OUT_OF_RANGE", "auto-split boundary must leave bubbles on both slides");
+  }
+  const first: CardSlide = { ...slide, bubbles: reindexBubbles(bubbles.slice(0, firstMovedBubbleIndex)) };
+  const second: CardSlide = {
+    ...slide,
+    id: newSlideId(),
+    order: 0,
+    bubbles: reindexBubbles(bubbles.slice(firstMovedBubbleIndex)),
+    image_url: null,
+  };
+  const slides = [...deck.slides.slice(0, slideIndex), first, second, ...deck.slides.slice(slideIndex + 1)]
+    .map((candidate, order) => ({ ...candidate, order }));
+  return withRevision(deck, slides);
+}
+
+function splitSegmentsAtCharacter(segments: Segment[], offset: number): [Segment[], Segment[]] {
+  const before: Segment[] = [];
+  const after: Segment[] = [];
+  let cursor = 0;
+  for (const segment of segments) {
+    const end = cursor + segment.text.length;
+    if (end <= offset) before.push(segment);
+    else if (cursor >= offset) after.push(segment);
+    else {
+      before.push({ ...segment, text: segment.text.slice(0, offset - cursor) });
+      after.push({ ...segment, text: segment.text.slice(offset - cursor) });
+    }
+    cursor = end;
+  }
+  return [normalizeSegments(before), normalizeSegments(after)];
+}
+
+/** 첫 말풍선 하나가 카드보다 긴 경우, 세그먼트 경계를 보존해 문자 위치에서 다음 장으로 나눈다. */
+export function splitSlideAtBubbleOffset(deck: CardDeck, slideIndex: number, bubbleIndex: number, offset: number): CardDeck {
+  if (deck.slides.length >= 11) throw new CardDeckOpsError("OPS_SLIDE_LIMIT", "cardDeck cannot exceed 11 slides");
+  const slide = deck.slides[slideIndex];
+  if (!slide || slide.role !== "chat") throw new CardDeckOpsError("OPS_SLIDE_LOCKED", "only chat slides can auto-split");
+  const bubbles = slide.bubbles ?? [];
+  const bubble = bubbles[bubbleIndex];
+  const length = bubble?.segments.reduce((sum, segment) => sum + segment.text.length, 0) ?? 0;
+  if (!bubble || offset <= 0 || offset >= length) throw new CardDeckOpsError("OPS_SLIDE_OUT_OF_RANGE", "auto-split text boundary is invalid");
+  const [beforeSegments, afterSegments] = splitSegmentsAtCharacter(bubble.segments, offset);
+  const first: CardSlide = {
+    ...slide,
+    bubbles: reindexBubbles([...bubbles.slice(0, bubbleIndex), { ...bubble, segments: beforeSegments }]),
+  };
+  const second: CardSlide = {
+    ...slide,
+    id: newSlideId(),
+    order: 0,
+    bubbles: reindexBubbles([{ ...bubble, id: newBubbleId(), segments: afterSegments, reaction: null }, ...bubbles.slice(bubbleIndex + 1)]),
+    image_url: null,
+  };
+  const slides = [...deck.slides.slice(0, slideIndex), first, second, ...deck.slides.slice(slideIndex + 1)]
+    .map((candidate, order) => ({ ...candidate, order }));
+  return withRevision(deck, slides);
 }
 
 /** 03c deleteSlide 477~488행: 표지·마지막 제외 삭제. 7장 미만이 되면 거부. */

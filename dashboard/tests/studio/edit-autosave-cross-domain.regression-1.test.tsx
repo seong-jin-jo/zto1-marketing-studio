@@ -113,8 +113,8 @@ beforeEach(() => {
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-describe("A·B 회귀: 실제 StudioPage에서 자동저장이 자기 도메인만 보낸다", () => {
-  it("A: 카드덱만 바꾼 자동저장은 videoEdit 키를 payload에서 뺀다(state에 미완성 videoEdit가 있어도)", async () => {
+describe("A·B 회귀: 실제 StudioPage에서 자동저장이 반대 도메인에 null을 명시한다", () => {
+  it("A: 카드덱만 바꾼 자동저장은 videoEdit:null을 보낸다(state에 미완성 videoEdit가 있어도)", async () => {
     render(<StudioPage />);
 
     const cardDeckPanel = await waitFor(() => {
@@ -129,13 +129,13 @@ describe("A·B 회귀: 실제 StudioPage에서 자동저장이 자기 도메인�
     const cardDeckPosts = fetchCalls.filter((c) => Object.prototype.hasOwnProperty.call(c.body, "cardDeck"));
     expect(cardDeckPosts.length).toBeGreaterThan(0);
     const last = cardDeckPosts[cardDeckPosts.length - 1];
-    // 옛 결함(A)이라면 여기 videoEdit 키가 있고, 그 값은 미완성(overlays[0].text==="")이라
-    // 실제 서버라면 400을 냈을 것이다. 고친 코드는 이 배치에서 videoEdit 키 자체가 없어야
-    // 한다(서버가 기존 값을 그대로 보존한다).
-    expect(Object.prototype.hasOwnProperty.call(last.body, "videoEdit")).toBe(false);
+    // 옛 결함(A)이라면 여기 미완성 videoEdit state가 실려 실제 서버가 400을 냈다.
+    // null은 route.ts에서 clear 플래그가 없을 때 기존 값을 보존한다.
+    expect(Object.prototype.hasOwnProperty.call(last.body, "videoEdit")).toBe(true);
+    expect(last.body.videoEdit).toBeNull();
   }, 20000);
 
-  it("B: 영상만 바꾼 자동저장은 cardDeck 키를 payload에서 뺀다(state에 빈 말풍선 장이 있어도)", async () => {
+  it("B: 영상만 바꾼 자동저장은 cardDeck:null을 보낸다(state에 빈 말풍선 장이 있어도)", async () => {
     window.history.replaceState(null, "", "/studio?room=edit&draft_id=draft-cross-2");
     render(<StudioPage />);
 
@@ -153,8 +153,9 @@ describe("A·B 회귀: 실제 StudioPage에서 자동저장이 자기 도메인�
     const videoEditPosts = fetchCalls.filter((c) => Object.prototype.hasOwnProperty.call(c.body, "videoEdit"));
     expect(videoEditPosts.length).toBeGreaterThan(0);
     const last = videoEditPosts[videoEditPosts.length - 1];
-    // 옛 결함(B)이라면 cardDeck 키가 있고 그 값은 1번 장 bubbles:[]인 손상된 덱이다.
-    // 고친 코드는 이 배치에서 cardDeck 키 자체가 없어야 한다.
-    expect(Object.prototype.hasOwnProperty.call(last.body, "cardDeck")).toBe(false);
+    // 옛 결함(B)이라면 cardDeck 값은 1번 장 bubbles:[]인 손상된 덱이었다.
+    // 명시적 null은 반대 도메인 state를 보내지 않았음을 payload에서 바로 확인하게 한다.
+    expect(Object.prototype.hasOwnProperty.call(last.body, "cardDeck")).toBe(true);
+    expect(last.body.cardDeck).toBeNull();
   }, 20000);
 });

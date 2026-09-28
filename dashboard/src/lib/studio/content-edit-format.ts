@@ -10,6 +10,8 @@ export const EDIT_MUSIC_VOLUMES = [0, 10, 20, 35] as const;
 export type ContentEditFormat =
   | {
     kind: "text";
+    /** 글 편집의 저장 원본. DOM/평문은 이 세그먼트의 투영이다. */
+    segments?: Array<{ text: string; bold: boolean }>;
   }
   | {
     kind: "video";
@@ -75,7 +77,16 @@ export function validateContentEditFormat(value: unknown): ContentEditFormatVali
   }
   const issues: ContentEditFormatIssue[] = [];
   if (value.kind === "text") {
-    return { valid: true, value: { kind: "text" }, issues: [] };
+    if (value.segments === undefined) return { valid: true, value: { kind: "text" }, issues: [] };
+    if (!Array.isArray(value.segments)) {
+      return { valid: false, value: null, issues: [{ field: "segments", message: "segments는 배열이어야 합니다" }] };
+    }
+    const segments = value.segments.filter((segment) => isRecord(segment) && typeof segment.text === "string" && typeof segment.bold === "boolean")
+      .map((segment) => ({ text: segment.text as string, bold: segment.bold as boolean }));
+    if (segments.length !== value.segments.length) {
+      return { valid: false, value: null, issues: [{ field: "segments", message: "segments 항목은 text와 bold를 가져야 합니다" }] };
+    }
+    return { valid: true, value: { kind: "text", segments }, issues: [] };
   }
   if (value.kind === "video") {
     const aspectRatio = oneOf(value, "aspectRatio", VIDEO_ASPECT_RATIOS, issues);

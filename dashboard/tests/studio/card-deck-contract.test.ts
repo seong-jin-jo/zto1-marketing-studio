@@ -6,6 +6,7 @@ import {
   applyProjection,
   ProjectionMismatchError,
   upgradeLegacyDeck,
+  retextSegments,
   type CardDeck,
 } from "@/lib/studio/card-deck-contract";
 import deckD100 from "./fixtures/deck-d100.v2.json";
@@ -196,5 +197,55 @@ describe("upgradeLegacyDeck (FR-12)", () => {
       background: "#000", foreground: "#fff", accent: "#f00",
     });
     expect(() => validateCardDeck(deck)).not.toThrow();
+  });
+});
+
+describe("retextSegments — 끝 이어치기·끝 지우기는 비율 재분배 없이 마지막 세그먼트만 건드린다(PR #85 6차 재검증 MAJOR 1)", () => {
+  it("재현: 마지막 글자 하나가 굵은 상태에서 끝에 한 글자씩 이어쳐도(Enter 시뮬레이션) 그 굵은 글자가 안 사라진다", () => {
+    // "새 교재가 아니라 시험 운영이 먼저예요" 마지막 글자 "요"만 굵게 → Enter 두 번을
+    // 한 글자씩(실제 브라우저 keydown이 그렇듯) 이어친다. 비율 반올림 경로였다면(수정
+    // 전) round()가 짧은 마지막(굵은) 세그먼트를 삼켜 첫 Enter만으로도 굵게가 사라졌다
+    // (probe7.mjs/jt-trim-probe.test.ts 실측 재현 — "화면=저장본=PNG"와는 별개로 굵게
+    // 자체가 사라지는 더 심한 증상이었다).
+    const segments = [
+      { text: "새 교재가 아니라 시험 운영이 먼저예", bold: false },
+      { text: "요", bold: true },
+    ];
+    const afterEnter1 = retextSegments(segments, "새 교재가 아니라 시험 운영이 먼저예요\n");
+    expect(afterEnter1).toEqual([
+      { text: "새 교재가 아니라 시험 운영이 먼저예", bold: false },
+      { text: "요\n", bold: true },
+    ]);
+    const afterEnter2 = retextSegments(afterEnter1, "새 교재가 아니라 시험 운영이 먼저예요\n\n");
+    expect(afterEnter2).toEqual([
+      { text: "새 교재가 아니라 시험 운영이 먼저예", bold: false },
+      { text: "요\n\n", bold: true },
+    ]);
+  });
+
+  it("끝에서 한 글자씩 지워도(Backspace 시뮬레이션) 마지막 세그먼트만 줄어들고 다른 세그먼트는 안 건드린다", () => {
+    const segments = [
+      { text: "가나다", bold: false },
+      { text: "라마", bold: true },
+    ];
+    const afterBackspace1 = retextSegments(segments, "가나다라");
+    expect(afterBackspace1).toEqual([
+      { text: "가나다", bold: false },
+      { text: "라", bold: true },
+    ]);
+    // 마지막 세그먼트를 완전히 지우면(경계를 넘으면) 그 세그먼트가 빠지고 앞 세그먼트가 줄어든다.
+    const afterBackspace2 = retextSegments(afterBackspace1, "가나");
+    expect(afterBackspace2).toEqual([{ text: "가나", bold: false }]);
+  });
+
+  it("접두/접미 관계가 아닌 진짜 교체(자동완성 등)는 여전히 비율 재분배를 탄다(회귀 방지)", () => {
+    const segments = [
+      { text: "안녕", bold: false },
+      { text: "하세요", bold: true },
+    ];
+    // "안녕하세요"(5자)를 완전히 다른 "반갑습니다"(5자)로 교체 — 접두/접미 관계가 아니다.
+    const replaced = retextSegments(segments, "반갑습니다");
+    expect(replaced.map((s) => s.text).join("")).toBe("반갑습니다");
+    expect(replaced.some((s) => s.bold)).toBe(true); // 비율 재분배 경로이므로 굵기 비율은 유지된다.
   });
 });
