@@ -457,11 +457,26 @@ async function captureBubbleDeck(viewport) {
     const thumbnail = root.querySelector("[data-slide-id]").getBoundingClientRect();
     const stage = root.querySelector("[data-card-deck-stage]").getBoundingClientRect();
     const stripStyle = getComputedStyle(root.querySelector("[data-card-deck-thumbnail-strip]"));
+    const selectedBubbleRow = root.querySelector('[data-bubble-editing="true"]');
+    const selectedBubble = selectedBubbleRow?.firstElementChild;
+    const toolbar = selectedBubbleRow?.querySelector("[data-bubble-controls]");
+    const bubbleRect = selectedBubble?.getBoundingClientRect();
+    const toolbarRect = toolbar?.getBoundingClientRect();
+    const toolbarButtonRects = [...(toolbar?.querySelectorAll("button") ?? [])].map((button) => button.getBoundingClientRect());
+    const intersectionWidth = bubbleRect && toolbarRect ? Math.max(0, Math.min(bubbleRect.right, toolbarRect.right) - Math.max(bubbleRect.left, toolbarRect.left)) : 0;
+    const intersectionHeight = bubbleRect && toolbarRect ? Math.max(0, Math.min(bubbleRect.bottom, toolbarRect.bottom) - Math.max(bubbleRect.top, toolbarRect.top)) : 0;
     return {
       strip: { left: strip.left, right: strip.right, top: strip.top, bottom: strip.bottom, width: strip.width, height: strip.height },
       thumbnail: { left: thumbnail.left, right: thumbnail.right, top: thumbnail.top, bottom: thumbnail.bottom, width: thumbnail.width },
       stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom, width: stage.width, height: stage.height },
       stripDirection: stripStyle.flexDirection,
+      bubbleToolbar: toolbar && toolbarRect ? {
+        position: getComputedStyle(toolbar).position,
+        intersectionArea: intersectionWidth * intersectionHeight,
+        buttonTopDelta: toolbarButtonRects.length ? Math.max(...toolbarButtonRects.map((rect) => rect.top)) - Math.min(...toolbarButtonRects.map((rect) => rect.top)) : 0,
+        top: toolbarRect.top,
+        bottom: toolbarRect.bottom,
+      } : null,
     };
   });
   const expectedWidth = viewport.width === 1440 ? 112 : viewport.width === 1024 ? 100 : 56;
@@ -473,6 +488,16 @@ async function captureBubbleDeck(viewport) {
   }
   if (viewport.width !== 390 && geometry.strip.bottom > geometry.stage.bottom + 1) {
     throw new Error(`${viewport.width} 말풍선 스트립이 카드 아래로 넘습니다: ${JSON.stringify(geometry)}`);
+  }
+  if (!geometry.bubbleToolbar) throw new Error(`${viewport.width} 선택 말풍선 툴바를 찾지 못했습니다`);
+  if (viewport.width !== 390 && geometry.bubbleToolbar.intersectionArea > 0.5) {
+    throw new Error(`${viewport.width} 선택 말풍선과 툴바가 겹칩니다: ${JSON.stringify(geometry.bubbleToolbar)}`);
+  }
+  if (viewport.width !== 390 && geometry.bubbleToolbar.buttonTopDelta > 1) {
+    throw new Error(`${viewport.width} 말풍선 툴바가 한 줄이 아닙니다: ${JSON.stringify(geometry.bubbleToolbar)}`);
+  }
+  if (viewport.width === 390 && geometry.bubbleToolbar.position !== "static") {
+    throw new Error(`390 말풍선 내부 툴바 배치가 유지되지 않았습니다: ${JSON.stringify(geometry.bubbleToolbar)}`);
   }
   const overflow = await assertNoOverflow(page, '[data-room="edit"]', `말풍선 덱 ${viewport.width}`);
   await panel.evaluate((node) => {

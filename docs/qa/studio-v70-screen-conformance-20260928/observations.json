@@ -81,7 +81,14 @@
           "width": 520,
           "height": 650
         },
-        "stripDirection": "column"
+        "stripDirection": "column",
+        "bubbleToolbar": {
+          "position": "absolute",
+          "intersectionArea": 0,
+          "buttonTopDelta": 0,
+          "top": 605,
+          "bottom": 637
+        }
       },
       "overflow": {
         "viewport": 1440,
@@ -244,7 +251,7 @@
       "screen": "edit-bubble-stage-diff",
       "width": 1440,
       "height": 900,
-      "stageDiffScore": 0.06111813435433345,
+      "stageDiffScore": 0.04509548671539622,
       "stageDiffThreshold": 0.36,
       "reference": "docs/design/clean-frames/osmu-v70-편집실-카드뉴스-편집중@1440x900.png"
     },
@@ -329,7 +336,14 @@
           "width": 520,
           "height": 650
         },
-        "stripDirection": "column"
+        "stripDirection": "column",
+        "bubbleToolbar": {
+          "position": "absolute",
+          "intersectionArea": 0,
+          "buttonTopDelta": 0,
+          "top": 570,
+          "bottom": 602
+        }
       },
       "overflow": {
         "viewport": 1024,
@@ -492,7 +506,7 @@
       "screen": "edit-bubble-stage-diff",
       "width": 1024,
       "height": 820,
-      "stageDiffScore": 0.06456396333681401,
+      "stageDiffScore": 0.048380229725026105,
       "stageDiffThreshold": 0.36,
       "reference": "docs/design/clean-frames/osmu-v70-편집실-카드뉴스-편집중@1024x820.png"
     },
@@ -577,7 +591,14 @@
           "width": 308,
           "height": 385
         },
-        "stripDirection": "row"
+        "stripDirection": "row",
+        "bubbleToolbar": {
+          "position": "static",
+          "intersectionArea": 18223.4375,
+          "buttonTopDelta": 48,
+          "top": 449,
+          "bottom": 549
+        }
       },
       "overflow": {
         "viewport": 390,
