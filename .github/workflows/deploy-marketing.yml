@@ -191,7 +191,13 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
-      - name: 영속 config/data 검증 (체크아웃 밖 ~/openclaw-persist)
+      - name: Docker socket GID 확인
+        run: |
+          docker_gid="$(stat -c '%g' /var/run/docker.sock)"
+          echo "DOCKER_GID=$docker_gid" >> "$GITHUB_ENV"
+          echo "Docker socket group 확인: GID $docker_gid"
+      - name: tenant2·3·4 영속 config/data 검증
+        if: ${{ github.event.inputs.services == '' || contains(github.event.inputs.services, 'tenant2') || contains(github.event.inputs.services, 'tenant3') || contains(github.event.inputs.services, 'tenant4') }}
         run: |
           shopt -s nullglob
           persist_root="${OPENCLAW_PERSIST_ROOT:-$HOME/openclaw-persist}"
@@ -208,9 +214,6 @@ jobs:
             fresh-bootstrap|paused-container-copy) ;;
             *) echo "::error::검증되지 않은 영속 마운트 이전 표식이다: $migration_source"; exit 1 ;;
           esac
-          docker_gid="$(stat -c '%g' /var/run/docker.sock)"
-          echo "DOCKER_GID=$docker_gid" >> "$GITHUB_ENV"
-          echo "Docker socket group 확인: GID $docker_gid"
           for tenant in 2 3 4; do
             config_dir="$persist_root/config-tenant${tenant}"
             data_dir="$persist_root/data-tenant${tenant}"
@@ -226,10 +229,12 @@ jobs:
               exit 1
             fi
             if [ "$migration_source" = "paused-container-copy" ]; then
-              grep -Eq "^tenant${tenant}_container=[0-9a-f]+$" "$persist_root/.mount-v2-ready" || {
-                echo "::error::tenant${tenant} 컨테이너 스냅샷 증거가 이전 표식에 없다."
-                exit 1
-              }
+              for kind in gateway dashboard; do
+                grep -Eq "^tenant${tenant}_${kind}_container=[0-9a-f]+$" "$persist_root/.mount-v2-ready" || {
+                  echo "::error::tenant${tenant} ${kind} 컨테이너 스냅샷 증거가 이전 표식에 없다."
+                  exit 1
+                }
+              done
               [ -n "$(find "$config_dir" -mindepth 1 -print -quit)" ] || {
                 echo "::error::이전된 config-tenant${tenant}가 비었다."
                 exit 1
@@ -239,7 +244,13 @@ jobs:
             chmod 0750 "$data_dir"
             echo "영속 경로 확인: config-tenant${tenant}, data-tenant${tenant}"
           done
+      - name: legacy tenant1 체크아웃 데이터 복원
+        if: ${{ contains(github.event.inputs.services, 'tenant1') }}
+        run: |
+          persist_root="${OPENCLAW_PERSIST_ROOT:-$HOME/openclaw-persist}"
           [ -f "$persist_root/.env.tenant1" ] && cp -a "$persist_root/.env.tenant1" ./ && echo "legacy tenant1 환경파일 복원"
+          [ -d "$persist_root/config-tenant1" ] && cp -a "$persist_root/config-tenant1" ./config-tenant1 && echo "legacy tenant1 config 복원"
+          [ -d "$persist_root/data-tenant1" ] && cp -a "$persist_root/data-tenant1" ./data-tenant1 && echo "legacy tenant1 data 복원"
       - name: OSMU SaaS .env 렌더 (GitHub Secrets → .env.osmu)
         run: |
           umask 077

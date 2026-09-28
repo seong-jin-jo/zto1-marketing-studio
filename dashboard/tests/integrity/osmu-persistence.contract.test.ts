@@ -73,7 +73,7 @@ describe("OSMU production persistence contract", () => {
     expect(deployWorkflow).toContain('chmod 0750 "$data_dir"');
     expect(deployWorkflow).toContain("DOCKER_GID=$docker_gid");
     expect(deployWorkflow).not.toContain('cp -a "$d" ./');
-    expect(deployWorkflow).not.toMatch(/(?:cp|rsync|install|mkdir)[^\n]*(?:\.\/|\$GITHUB_WORKSPACE)[^\n]*(?:config|data)-tenant/);
+    expect(deployWorkflow).not.toMatch(/(?:cp|rsync|install|mkdir)[^\n]*(?:\.\/|\$GITHUB_WORKSPACE)[^\n]*(?:config|data)-tenant[234]/);
     expect(deployWorkflow).not.toContain('cp -a "$f" ./');
     expect(deployWorkflow).toContain("up -d --wait --wait-timeout 120");
   });
@@ -170,6 +170,8 @@ case "$1" in
       *) exit 0 ;;
     esac
     ;;
+  exec) echo "2049:12345" ;;
+  compose) exit 0 ;;
   pause|unpause|stop|start) exit 0 ;;
   cp)
     [ "\${FAKE_DOCKER_FAIL_CP:-0}" != "1" ] || exit 42
@@ -187,7 +189,7 @@ esac
     try {
       const result = spawnSync("bash", ["migrate-postagi-persist-mounts.sh"], {
         cwd: sandbox,
-        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, OPENCLAW_PERSIST_ROOT: persistRoot, FAKE_DOCKER_LOG: dockerLog },
+        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, OPENCLAW_PERSIST_ROOT: persistRoot, DOCKER_GID: "999", FAKE_DOCKER_LOG: dockerLog },
         encoding: "utf8",
       });
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
@@ -195,16 +197,18 @@ esac
       expect(marker).toContain("schema=2");
       expect(marker).toContain("source=paused-container-copy");
       for (const tenant of [2, 3, 4]) {
-        expect(marker).toContain(`tenant${tenant}_container=abcdef0123456789`);
+        expect(marker).toContain(`tenant${tenant}_gateway_container=abcdef0123456789`);
+        expect(marker).toContain(`tenant${tenant}_dashboard_container=abcdef0123456789`);
         expect(fs.existsSync(path.join(persistRoot, `config-tenant${tenant}/state.json`))).toBe(true);
         expect(fs.existsSync(path.join(persistRoot, `data-tenant${tenant}/state.json`))).toBe(true);
         expect(fs.statSync(path.join(persistRoot, `.env.tenant${tenant}`)).mode & 0o777).toBe(0o600);
       }
       expect(migration).toContain('docker pause "$container"');
-      expect(migration).toContain('docker stop --timeout 0 "$container"');
+      expect(migration).toContain('docker stop --timeout 30 "$container"');
       expect(migration).toContain('docker start "$container"');
       expect(fs.readFileSync(dockerLog, "utf8")).toContain("pause openclaw-gateway-tenant2");
-      expect(fs.readFileSync(dockerLog, "utf8")).toContain("unpause openclaw-gateway-tenant2");
+      expect(fs.readFileSync(dockerLog, "utf8")).toContain("stop --timeout 30 openclaw-gateway-tenant2");
+      expect(fs.readFileSync(dockerLog, "utf8")).not.toContain("unpause openclaw-gateway-tenant2");
       expect(fs.readFileSync(dockerLog, "utf8")).not.toContain("start openclaw-");
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -233,6 +237,8 @@ case "$1" in
       *) exit 0 ;;
     esac
     ;;
+  exec) echo "2049:12345" ;;
+  compose) exit 0 ;;
   pause|unpause|stop|start) exit 0 ;;
   cp) exit 42 ;;
   *) exit 1 ;;
@@ -246,7 +252,7 @@ esac
     try {
       const result = spawnSync("bash", ["migrate-postagi-persist-mounts.sh"], {
         cwd: sandbox,
-        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, OPENCLAW_PERSIST_ROOT: persistRoot, FAKE_DOCKER_LOG: dockerLog },
+        env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, OPENCLAW_PERSIST_ROOT: persistRoot, DOCKER_GID: "999", FAKE_DOCKER_LOG: dockerLog },
         encoding: "utf8",
       });
       expect(result.status).toBe(42);
