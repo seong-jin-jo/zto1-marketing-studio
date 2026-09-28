@@ -5,7 +5,7 @@
 - 운영 이전: `migrate-postagi-persist-mounts.sh`는 여섯 컨테이너가 실행 중인지 먼저 확인하고 pause로 삭제된 bind mount의 쓰기를 동결한 뒤 스냅샷한다. 실패 시 unpause하며, 성공 시 검증 표식을 만든 뒤 즉시 정지한다. 운영 서버에서는 실행하지 않았다.
 - 검증: Compose config가 tenant2·3·4의 12개 bind source를 영속 루트로 해석하고 dashboard `user: 1000:1000`, Docker GID 987을 반영했다. legacy tenant1 상대 경로와 OSMU named volume은 유지됐다. 관련 Vitest 7파일 33건, 셸 문법, workflow YAML parse가 PASS했다.
 - 리뷰: 독립 testing·maintainability·simplification·adversarial 검토에서 환경파일, 권한, 마이그레이션 실패 복구, 삭제 bind mount 수명주기 결함을 수정했다. 3회 검토 상한 뒤 마지막 수정은 테스트로 닫았으므로 리뷰 상태는 `미수렴`, 현재 알려진 미해결 finding은 0이다.
-- 커밋: `3f0b4744`, `f201aca7`, `9efd715c`, `fe808ecb`, `0b5679b2`. push하지 않았다. 자동 기록 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 보존하고 커밋하지 않는다.
+- 커밋: `3f0b4744`, `f201aca7`, `9efd715c`, `fe808ecb`, `0b5679b2`, `099b2350`, `91b811fc`. push하지 않았다. 자동 기록 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 보존하고 커밋하지 않는다.
 - 다음 실행: 운영자가 UID 1000 계정으로 컨테이너가 살아 있을 때 `bash migrate-postagi-persist-mounts.sh`를 실행한다. 성공 뒤 배포 워크플로를 실행하고 운영 로그의 EACCES 0건, gateway health, CPU 정상화를 직접 관찰해야 완료다.
 
 ## 2026-09-28 09:23 KST PR 85 편집실 v70 9차 리뷰 로컬 수정·검증 완료
