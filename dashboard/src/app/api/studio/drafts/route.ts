@@ -17,10 +17,20 @@ class StaleVideoEditRevisionError extends Error {
   }
 }
 
-/** PR87 r3: 저장된 본문보다 오래됐거나 같은 판에서 값이 갈린 요청을 막는 신호. */
+interface LatestBodySnapshot {
+  text: unknown | null;
+  editLines: unknown | null;
+  bodyRevision: number;
+}
+
+/** PR87 r4: 마지막으로 읽은 서버 판과 현재 서버 판이 다른 본문 저장을 막는 신호. */
 class StaleBodyRevisionError extends Error {
-  constructor(readonly serverRevision: number, readonly clientRevision: number) {
-    super(`body revision stale: server=${serverRevision} client=${clientRevision}`);
+  constructor(
+    readonly serverRevision: number,
+    readonly clientBaseRevision: number,
+    readonly latestBody: LatestBodySnapshot,
+  ) {
+    super(`body revision stale: server=${serverRevision} clientBase=${clientBaseRevision}`);
   }
 }
 
@@ -201,15 +211,15 @@ export async function POST(request: Request) {
   }
   const tenantId = await effectiveTenantId(request, body.tenant_id);
   if (!tenantId) return Response.json({ error: "tenant_id required" }, { status: 400 });
-  if (body.id && (!Number.isSafeInteger(body.bodyRevision) || body.bodyRevision < 0)) {
+  if (body.id && (!Number.isSafeInteger(body.bodyBaseRevision) || body.bodyBaseRevision < 0)) {
     return Response.json({
       ok: false,
-      code: "BODY_REVISION_REQUIRED",
-      error: "본문 판 번호를 확인해 주세요",
+      code: "BODY_BASE_REVISION_REQUIRED",
+      error: "마지막으로 받은 본문 판 번호를 확인해 주세요",
     }, { status: 422, headers: { "Cache-Control": "no-store" } });
   }
-  const bodyRevision = Number.isSafeInteger(body.bodyRevision) && body.bodyRevision >= 0
-    ? body.bodyRevision as number
+  const bodyBaseRevision = Number.isSafeInteger(body.bodyBaseRevision) && body.bodyBaseRevision >= 0
+    ? body.bodyBaseRevision as number
     : 0;
   // cardDeck: 요청에 키가 아예 없으면 payload 에도 빼서 JSONB `||` 병합 대상에서
   // 제외한다(undefined 유지 → 기존 덱 보존). 지우려면 명시 플래그 `clearCardDeck:true`
@@ -252,7 +262,8 @@ export async function POST(request: Request) {
   const bodyLines = editLinesPatch.editLines ?? null;
   const payload = {
     text: bodyText,
-    bodyRevision,
+    // 새 초안의 첫 서버 판은 0이다. 기존 초안은 아래 UPDATE가 현재 서버 판을 +1한다.
+    bodyRevision: 0,
     img: body.img ?? null, vid: body.vid ?? null,
     includes: body.includes ?? {},
     publishReconciliations: body.publishReconciliations ?? {},
@@ -276,10 +287,10 @@ export async function POST(request: Request) {
   try {
     const result = await withTenant(tenantId, async (sql) => {
       if (body.id) {
-        // PR87 r3: 모든 저장은 같은 본문 revision 규칙을 지난다. 더 큰 revision만 본문을
-        // 교체하고, 같은 revision은 text와 editLines가 서버 값과 정확히 같을 때만 멱등
-        // 저장으로 허용한다. 더 작거나 같은 판에서 값이 갈리면 0행이 되어 아래에서 409다.
-        // 조건은 행 컬럼을 직접 참조하므로 잠금 대기 뒤 PostgreSQL이 최신 행으로 재평가한다.
+        // PR87 r4: bodyBaseRevision은 클라이언트 조작 횟수가 아니라 마지막으로 읽은 서버
+        // 판 번호다. 현재 서버 판과 정확히 같을 때만 본문을 저장하고 서버가 +1한다.
+        // 조건은 행 컬럼을 직접 참조하므로 잠금 대기 뒤 PostgreSQL이 최신 행으로 다시
+        // 평가한다. 오래된 탭이 로컬에서 100번 편집했어도 기준판이 낡았으면 통과 못 한다.
         const nonBodyPayload = { ...payload };
         delete (nonBodyPayload as { text?: unknown }).text;
         delete (nonBodyPayload as { editLines?: unknown }).editLines;
@@ -294,16 +305,15 @@ export async function POST(request: Request) {
               payload = (COALESCE(drafts.payload, '{}'::jsonb) || ${sql.json(nonBodyPayload)}::jsonb)
                 || jsonb_build_object('videoEdit', ${sql.json(videoEditClientPayload)}::jsonb
                   || jsonb_build_object('revision', COALESCE((drafts.payload->'videoEdit'->>'revision')::int, -1) + 1))
-                || CASE WHEN COALESCE((drafts.payload->>'bodyRevision')::int, -1) < ${bodyRevision}
-                  THEN jsonb_build_object('text', ${sql.json(bodyText)}::jsonb, 'editLines', ${sql.json(bodyLines)}::jsonb, 'bodyRevision', ${bodyRevision}::int)
-                  ELSE '{}'::jsonb END,
+                || jsonb_build_object(
+                  'text', ${sql.json(bodyText)}::jsonb,
+                  'editLines', ${sql.json(bodyLines)}::jsonb,
+                  'bodyRevision', COALESCE((drafts.payload->>'bodyRevision')::int, 0) + 1
+                ),
               status = ${status}, updated_at = now()
             WHERE drafts.id = ${body.id} AND drafts.tenant_id = ${tenantId}
               AND (drafts.payload->'videoEdit'->>'revision')::int IS NOT DISTINCT FROM ${baseRevision}::int
-              AND (COALESCE((drafts.payload->>'bodyRevision')::int, -1) < ${bodyRevision}
-                OR (COALESCE((drafts.payload->>'bodyRevision')::int, -1) = ${bodyRevision}
-                  AND drafts.payload->'text' IS NOT DISTINCT FROM ${sql.json(bodyText)}::jsonb
-                  AND drafts.payload->'editLines' IS NOT DISTINCT FROM ${sql.json(bodyLines)}::jsonb))
+              AND COALESCE((drafts.payload->>'bodyRevision')::int, 0) = ${bodyBaseRevision}
             RETURNING drafts.id, (drafts.payload->>'bodyRevision')::int AS body_revision,
               (drafts.payload->'videoEdit'->>'revision')::int AS server_revision`;
           if (row) return { id: row.id, bodyRevision: row.body_revision, videoEditServerRevision: row.server_revision };
@@ -311,33 +321,37 @@ export async function POST(request: Request) {
           const [row] = await sql<{ id: string; body_revision: number }[]>`
             UPDATE drafts SET idea = ${idea},
               payload = (COALESCE(drafts.payload, '{}'::jsonb) || ${sql.json(nonBodyPayload)}::jsonb)
-                || CASE WHEN COALESCE((drafts.payload->>'bodyRevision')::int, -1) < ${bodyRevision}
-                  THEN jsonb_build_object('text', ${sql.json(bodyText)}::jsonb, 'editLines', ${sql.json(bodyLines)}::jsonb, 'bodyRevision', ${bodyRevision}::int)
-                  ELSE '{}'::jsonb END,
+                || jsonb_build_object(
+                  'text', ${sql.json(bodyText)}::jsonb,
+                  'editLines', ${sql.json(bodyLines)}::jsonb,
+                  'bodyRevision', COALESCE((drafts.payload->>'bodyRevision')::int, 0) + 1
+                ),
               status = ${status}, updated_at = now()
             WHERE id = ${body.id} AND tenant_id = ${tenantId}
-              AND (COALESCE((drafts.payload->>'bodyRevision')::int, -1) < ${bodyRevision}
-                OR (COALESCE((drafts.payload->>'bodyRevision')::int, -1) = ${bodyRevision}
-                  AND drafts.payload->'text' IS NOT DISTINCT FROM ${sql.json(bodyText)}::jsonb
-                  AND drafts.payload->'editLines' IS NOT DISTINCT FROM ${sql.json(bodyLines)}::jsonb))
+              AND COALESCE((drafts.payload->>'bodyRevision')::int, 0) = ${bodyBaseRevision}
             RETURNING id, (payload->>'bodyRevision')::int AS body_revision`;
           if (row) return { id: row.id, bodyRevision: row.body_revision, videoEditServerRevision: null };
         }
         const [existsRow] = await sql<{
           id: string;
           body_revision: number | null;
-          body_matches: boolean;
+          text: unknown | null;
+          edit_lines: unknown | null;
           revision: number | null;
         }[]>`
-          SELECT id, COALESCE((payload->>'bodyRevision')::int, -1) AS body_revision,
-            (payload->'text' IS NOT DISTINCT FROM ${sql.json(bodyText)}::jsonb
-              AND payload->'editLines' IS NOT DISTINCT FROM ${sql.json(bodyLines)}::jsonb) AS body_matches,
+          SELECT id, COALESCE((payload->>'bodyRevision')::int, 0) AS body_revision,
+            payload->'text' AS text,
+            payload->'editLines' AS edit_lines,
             (payload->'videoEdit'->>'revision')::int AS revision
           FROM drafts WHERE id = ${body.id} AND tenant_id = ${tenantId}`;
         if (existsRow) {
-          const serverBodyRevision = existsRow.body_revision ?? -1;
-          if (bodyRevision < serverBodyRevision || (bodyRevision === serverBodyRevision && !existsRow.body_matches)) {
-            throw new StaleBodyRevisionError(serverBodyRevision, bodyRevision);
+          const serverBodyRevision = existsRow.body_revision ?? 0;
+          if (bodyBaseRevision !== serverBodyRevision) {
+            throw new StaleBodyRevisionError(serverBodyRevision, bodyBaseRevision, {
+              text: existsRow.text,
+              editLines: existsRow.edit_lines,
+              bodyRevision: serverBodyRevision,
+            });
           }
           if (videoEditPatch.videoEdit) {
             const baseRevision = typeof body.videoEditBaseRevision === "number" ? body.videoEditBaseRevision : null;
@@ -348,7 +362,7 @@ export async function POST(request: Request) {
       const [row] = await sql<{ id: string }[]>`
         INSERT INTO drafts (tenant_id, idea, payload, status)
         VALUES (${tenantId}, ${idea}, ${sql.json(payload)}, ${status}) RETURNING id`;
-      return { id: row.id, bodyRevision, videoEditServerRevision: videoEditPatch.videoEdit ? (videoEditPatch.videoEdit.revision ?? 0) : null };
+      return { id: row.id, bodyRevision: 0, videoEditServerRevision: videoEditPatch.videoEdit ? (videoEditPatch.videoEdit.revision ?? 0) : null };
     });
     return Response.json({ ok: true, id: result.id, bodyRevision: result.bodyRevision, videoEditServerRevision: result.videoEditServerRevision });
   } catch (e) {
@@ -358,7 +372,8 @@ export async function POST(request: Request) {
         code: "BODY_STALE_REVISION",
         error: "다른 곳에서 더 최신으로 저장된 본문이 있습니다. 최신 값을 다시 불러온 뒤 다시 시도해 주세요.",
         serverRevision: e.serverRevision,
-        clientRevision: e.clientRevision,
+        clientBaseRevision: e.clientBaseRevision,
+        latestBody: e.latestBody,
       }, { status: 409, headers: { "Cache-Control": "no-store" } });
     }
     if (e instanceof StaleVideoEditRevisionError) {

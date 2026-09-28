@@ -1,3 +1,10 @@
+## 2026-09-28 PR 87 재리뷰 r4 서버 기준 본문 CAS ❌ NG → 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-R4-MAJOR-01 | 오래된 탭의 큰 로컬 편집 횟수가 최신 서버 본문을 덮지 못함 | PR87-R4-REV-01~04, PR87-R4-DB-01~02 | 🔧 수정, 로컬 PASS | 실제 PostgreSQL과 fake timer로 현재 탭 100ms 저장 뒤 오래된 탭 800ms 저장을 고정했다. 현재 탭은 base 0으로 200·server revision 1, 로컬 revision 100인 오래된 탭도 base 0이라 409이며 최신 본문·revision 1을 반환한다. DB 승자 본문이 유지된다. |
+| PR87-R4-FINAL | CI 동일 전체 회귀, 타입·빌드·브라우저 | PR87-R4-FINAL-01~06 | ✅ 로컬 PASS | 관련 8파일 48건, 전체 420파일·2,864건 PASS·1건 SKIP·실패 0. TypeScript·build·migration matrix·발행실 정렬·Chromium E2E PASS. dev `localhost:3465/studio?room=edit` HTTP 200·콘솔 오류 0. 원격 CI는 push 전이라 미검증이다. |
+
 ## 2026-09-28 PR 87 재리뷰 r3 본문 revision 경합 ❌ NG → 🔧 수정, 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

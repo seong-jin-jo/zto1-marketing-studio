@@ -224,9 +224,11 @@ describe("구조 대조: page.tsx가 독립 타이머로 되돌아갔는지", ()
     expect(save).not.toContain("persistedVideoEdit?.subtitles.length");
   });
 
-  it("PR87-R3-REV-01 모든 저장은 초안 id와 본문 revision이 결속된 단일 스냅샷을 보낸다", () => {
+  it("PR87-R4-CLIENT-01 모든 저장은 마지막 서버 revision을 bodyBaseRevision으로 보낸다", () => {
     const save = pageSrc.slice(pageSrc.indexOf("async function save("), pageSrc.indexOf("async function saveDraftWithNotice()"));
-    expect(save).toContain("bodyRevision: bodySnapshot.revision");
+    expect(save).toContain("bodyBaseRevision: currentDraftId ? bodySnapshot.serverRevision : undefined");
+    expect(save).toContain("bodySnapshotRef.current = { ...bodySnapshotRef.current, serverRevision }");
+    expect(save).toContain("setBodyServerRevision(serverRevision)");
     expect(save).toContain("text: bodySnapshot.text");
     expect(save).toContain("editLines: bodySnapshot.lines");
     expect(save).not.toMatch(/^\s*text,\s*$/m);

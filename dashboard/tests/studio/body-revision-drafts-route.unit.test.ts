@@ -25,46 +25,70 @@ beforeEach(() => {
 });
 
 describe("POST /api/studio/drafts 본문 revision 단일 계약", () => {
-  it("PR87-R3-REV-03 정상: 더 최신 본문 revision은 저장되고 응답·조회에 같은 값을 돌려준다", async () => {
-    H.queue = [[{ id: "d1", body_revision: 8 }]];
+  it("PR87-R4-REV-00 거절: 기존 초안은 마지막 서버 기준판 없이는 저장하지 않는다", async () => {
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1", id: "d1", idea: "기준판 없는 본문",
+        text: { threads: "본문" }, editLines: ["본문"], bodyRevision: 100,
+      }),
+    }));
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual(expect.objectContaining({ code: "BODY_BASE_REVISION_REQUIRED" }));
+  });
+
+  it("PR87-R4-REV-01 정상: 서버 기준판이 일치하면 서버가 revision을 +1해 반환한다", async () => {
+    H.queue = [[{ id: "d1", body_revision: 9 }]];
     const { POST } = await import("@/app/api/studio/drafts/route");
     const response = await POST(new Request("http://localhost/api/studio/drafts", {
       method: "POST",
       body: JSON.stringify({
         tenant_id: "tenant-1", id: "d1", idea: "최신 본문",
-        text: { threads: "최신 본문" }, editLines: ["최신 본문"], bodyRevision: 8,
+        text: { threads: "최신 본문" }, editLines: ["최신 본문"], bodyBaseRevision: 8,
       }),
     }));
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(expect.objectContaining({ id: "d1", bodyRevision: 8 }));
+    expect(await response.json()).toEqual(expect.objectContaining({ id: "d1", bodyRevision: 9 }));
   });
 
-  it("PR87-R3-REV-04 거절: 서버보다 오래된 본문 revision은 영상·자동저장·검토 경로를 가리지 않고 409로 막는다", async () => {
-    H.queue = [[], [{ id: "d1", body_revision: 9 }]];
+  it("PR87-R4-REV-02 거절: 서버 기준판과 다른 요청은 로컬 편집 횟수가 커도 409와 최신 본문을 반환한다", async () => {
+    H.queue = [[], [{
+      id: "d1", body_revision: 9,
+      text: { threads: "서버 최신 본문" }, edit_lines: ["서버 최신 본문"], revision: null,
+    }]];
     const { POST } = await import("@/app/api/studio/drafts/route");
     const response = await POST(new Request("http://localhost/api/studio/drafts", {
       method: "POST",
       body: JSON.stringify({
         tenant_id: "tenant-1", id: "d1", idea: "오래된 본문",
-        text: { threads: "오래된 본문" }, editLines: ["오래된 본문"], bodyRevision: 7,
+        text: { threads: "오래된 본문" }, editLines: ["오래된 본문"],
+        bodyBaseRevision: 7, bodyRevision: 100,
       }),
     }));
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual(expect.objectContaining({
-      code: "BODY_STALE_REVISION", serverRevision: 9, clientRevision: 7,
+      code: "BODY_STALE_REVISION", serverRevision: 9, clientBaseRevision: 7,
+      latestBody: {
+        text: { threads: "서버 최신 본문" }, editLines: ["서버 최신 본문"], bodyRevision: 9,
+      },
     }));
   });
 
-  it("PR87-R3-REV-05 거절: 같은 revision인데 본문 값이 다르면 다른 탭의 최신 본문을 덮지 않는다", async () => {
-    H.queue = [[], [{ id: "d1", body_revision: 8 }]];
+  it("PR87-R4-REV-03 거절: 같은 서버 기준판으로 두 번째 저장한 탭은 최신 본문을 덮지 않는다", async () => {
+    H.queue = [[], [{
+      id: "d1", body_revision: 9,
+      text: { threads: "먼저 저장한 탭" }, edit_lines: ["먼저 저장한 탭"], revision: null,
+    }]];
     const { POST } = await import("@/app/api/studio/drafts/route");
     const response = await POST(new Request("http://localhost/api/studio/drafts", {
       method: "POST",
       body: JSON.stringify({
         tenant_id: "tenant-1", id: "d1", idea: "충돌 본문",
-        text: { threads: "탭 A의 값" }, editLines: ["탭 A의 값"], bodyRevision: 8,
+        text: { threads: "뒤늦은 탭" }, editLines: ["뒤늦은 탭"], bodyBaseRevision: 8,
       }),
     }));
 
@@ -72,7 +96,7 @@ describe("POST /api/studio/drafts 본문 revision 단일 계약", () => {
     expect((await response.json()).code).toBe("BODY_STALE_REVISION");
   });
 
-  it("PR87-R3-REV-06 조회: 저장된 본문 revision을 클라이언트 재개 기준으로 노출한다", async () => {
+  it("PR87-R4-REV-04 조회: 저장된 서버 revision을 클라이언트 재개 기준으로 노출한다", async () => {
     H.queue = [[{
       id: "d1", tenant_id: "tenant-1", idea: "본문", status: "draft",
       payload: { text: { threads: "본문" }, editLines: ["본문"], bodyRevision: 11 },

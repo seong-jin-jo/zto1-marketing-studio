@@ -1,5 +1,29 @@
 # OSMU build log
 
+## 2026-09-28 14:37 KST · PR 87 재리뷰 r4 서버 발급 본문 revision CAS
+
+STAMP: 2026-09-28 14:37 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: 없음 | 근거: `.pr87-review-r4.md`, 기존 영상 편집 CAS, PostgreSQL 공식 트랜잭션 문서, 실제 PostgreSQL 두 탭 재현 | 고민: 탭의 편집 횟수를 최신성으로 오인하지 않고 서버가 발급한 기준판 하나만 저장 자격으로 사용하게 했다.
+
+| 검증 | 결과 |
+|---|---|
+| 수정 전 재현 | route·실DB 계약 2파일에서 4건 FAIL, 11건 PASS. 로컬 revision 100인 오래된 탭이 서버 revision 4를 덮는 경로를 확인 |
+| 표적·실DB 회귀 | 관련 8파일·48건 PASS. fake timer 100ms 현재 탭 저장 뒤 800ms 오래된 탭 저장을 409로 거절하고 승자 본문·server revision 1 유지 |
+| CI 동일 전체 Test | 420파일 PASS. 2,864건 PASS, 1건 SKIP, 실패 0, 256.43초 |
+| TypeScript·production build | `CI=true npx tsc --noEmit -p tsconfig.ci.json`, `CI=true npm run build` 종료 코드 0 |
+| DB·브라우저 게이트 | migration matrix PASS. 발행실 정렬 delta 0px. Chromium 편집 E2E 전부 PASS |
+| dev 스모크 | `localhost:3465/studio?room=edit` HTTP 200, title `Marketing Hub`, 콘솔 오류 0 |
+
+스키마 마이그레이션은 없다. `bodyRevision`은 기존 JSONB 필드를 유지한다. 원격 CI와 운영 배포는 push 전이므로 미검증이다. design lint는 기존 인라인 style 1파일·토큰 밖 hex 6파일을 경고했고 이번 변경의 스타일 diff는 0건이다.
+
+KNOWLEDGE_QUERY: `.pr87-review-r4.md`, 기존 영상 CAS, drafts route·클라이언트 저장 큐, PostgreSQL Read Committed의 조건부 UPDATE 동작을 조회했다.
+HITS_USED: 영상 CAS의 마지막 서버 revision 정확 비교와 PostgreSQL의 현재 행 재평가 규칙을 본문 저장에 적용했다.
+HITS_REJECTED: BRAIN의 제품·시장 지식은 이미 확정된 동시성 결함 수정 범위와 무관해 채택하지 않았다.
+CONFLICTS: 탭별 큰 로컬 revision을 더 최신으로 보던 기존 규칙이 서버 발급 기준판 계약과 충돌해 폐기했다.
+
+SKILLS_USED: 없음
+SKILLS_SKIPPED: review·investigate는 현재 available-skills 목록에 없고, qa는 단일 결함의 지정 구현 범위를 전면 웹 QA로 넓히므로 사용하지 않았다.
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr87-review-r4.md`, `dashboard/src/app/{api/studio/drafts/route.ts,studio/page.tsx}`, https://www.postgresql.org/docs/current/transaction-iso.html, `/tmp/pr87-r4-{red,related2,full-rerun,tsc,build,migration,publish-browser,bubble-e2e,dev,smoke}.log`
+
 ## 2026-09-28 13:44 KST · PR 87 재리뷰 r3 본문 revision CAS
 
 STAMP: 2026-09-28 13:44 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-review-r3.md`, 실제 PostgreSQL 경합, CI 동일 전체 로그 3회 | 고민: 클라이언트 큐만 믿지 않고 서버 저장 경계에서도 초안 id와 본문 revision을 원자적으로 검사했다.

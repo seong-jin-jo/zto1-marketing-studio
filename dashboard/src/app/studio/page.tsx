@@ -507,32 +507,36 @@ export default function StudioPage() {
    * 더 최신인 사용자 입력을 이전 값으로 되돌릴 수 있다. 모든 본문 교체는 이 함수로만
    * 들어오며, ref의 세대와 값은 같은 tick에 먼저 바뀐다. 저장은 아래 직렬 큐에서 이
    * 스냅샷만 읽고, 응답을 기다리는 동안 세대가 바뀌면 최신 세대를 다시 저장한다.
-   * `text`와 `editLines`는 같은 revision 안에서만 바뀐다. 서버도 이 revision을 비교해
-   * 오래된 탭·타이머·응답이 최신 본문을 덮지 못하게 한다.
+   * `text`와 `editLines`는 같은 서버 기준판 안에서만 저장한다. 로컬 변경 순서는
+   * generation이 맡고, serverRevision은 마지막 저장 성공 때 서버가 돌려준 값만 가진다.
+   * 오래된 탭·타이머·응답이 로컬 편집 횟수로 최신 본문을 덮을 수 없어야 한다.
   */
   const bodySnapshotRef = useRef<{
     generation: number;
-    revision: number;
+    serverRevision: number;
     lines: string[];
     text: TextVariants | null;
-  }>({ generation: 0, revision: 0, lines: [], text: null });
+  }>({ generation: 0, serverRevision: 0, lines: [], text: null });
+  // 서버 판이 바뀌면 localStorage 효과도 다시 실행돼 재접속 기준판이 낡지 않게 한다.
+  const [bodyServerRevision, setBodyServerRevision] = useState(0);
   const editDocumentGenerationRef = useRef(0);
   const draftSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   function replaceBodySnapshot(
     nextLines: string[],
     nextText: TextVariants | null,
-    options: { replaceDocument?: boolean; revision?: number } = {},
+    options: { replaceDocument?: boolean; serverRevision?: number } = {},
   ) {
     const lines = [...nextLines];
     if (options.replaceDocument) editDocumentGenerationRef.current += 1;
-    const revision = options.revision
-      ?? (options.replaceDocument ? 0 : bodySnapshotRef.current.revision + 1);
+    const serverRevision = options.serverRevision
+      ?? (options.replaceDocument ? 0 : bodySnapshotRef.current.serverRevision);
     bodySnapshotRef.current = {
       generation: bodySnapshotRef.current.generation + 1,
-      revision,
+      serverRevision,
       lines,
       text: nextText,
     };
+    setBodyServerRevision(serverRevision);
     textRef.current = nextText;
     setText(nextText);
     setEditLines(lines);
@@ -750,7 +754,7 @@ export default function StudioPage() {
     setIdea(""); setImg(null); setVid(null); setDraftId(null);
     setIncludes(normalizeIncludes()); setPublishReconciliations({}); setEditorHandoff(null);
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
-    replaceBodySnapshot([], null, { replaceDocument: true, revision: 0 }); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
+    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
     videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setCreateBranch("video"); setCreatePrimaryKind(null); setEditKind("video"); setEditFormat(defaultContentEditFormat("video"));
@@ -767,7 +771,7 @@ export default function StudioPage() {
         setPublishReconciliations(normalizePublishReconciliations(w.publishReconciliations ?? w.publishReconciliation));
         setTitles(w.titles || {}); setHashtags(w.hashtags || {}); setTopicTags(w.topicTags || {});
         setFirstComments(w.firstComments || {}); setCaptions(w.captions || {}); setSelectedAccounts(w.selectedAccounts || {});
-        replaceBodySnapshot(w.editLines || [], w.text || null, { replaceDocument: true, revision: Number.isSafeInteger(w.bodyRevision) ? w.bodyRevision : 0 });
+        replaceBodySnapshot(w.editLines || [], w.text || null, { replaceDocument: true, serverRevision: Number.isSafeInteger(w.bodyRevision) ? w.bodyRevision : 0 });
         setCardTextPositions(w.cardTextPositions || []); setReviewQueueId(w.reviewQueueId || null);
         // B1(교차 리뷰 BLOCK, 재리뷰로 절반만 닫힘 지적): videoEdit이 이 복원 블록에
         // 없으면 편집기가 빈 videoEdit을 받았다. 이제 무조건 세팅한다(없으면 null —
@@ -803,13 +807,13 @@ export default function StudioPage() {
     const workspaceId = activeWorkspace?.id;
     if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
     try {
-      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.revision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat, videoEdit }));
+      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat, videoEdit }));
       setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
       setEditAutosaveError("");
     } catch {
       setEditAutosaveError("자동 저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.");
     }
-  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat, videoEdit]);
+  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, bodyServerRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat, videoEdit]);
 
   const upText = (patch: Partial<TextVariants>) => replaceText({ ...(textRef.current || {}), ...patch });
   const upIg = (patch: Partial<NonNullable<TextVariants["instagram"]>>) => replaceText({
@@ -905,7 +909,7 @@ export default function StudioPage() {
               .filter(Boolean);
         setEditKind(nextKind);
         setEditFormat(defaultContentEditFormat(nextKind));
-        replaceBodySnapshot(nextLines, result, { replaceDocument: true, revision: 0 });
+        replaceBodySnapshot(nextLines, result, { replaceDocument: true, serverRevision: 0 });
         showToast(`${structure.label} 구조로 초안을 만들었습니다`, "success");
       }
     } finally {
@@ -1032,7 +1036,7 @@ export default function StudioPage() {
     if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setIdea(""); setImg(null); setVid(null); draftIdRef.current = null; setDraftId(null);
-    replaceBodySnapshot([], null, { replaceDocument: true, revision: 0 }); setEditorHandoff(null); setCardDeck(null); setVideoEdit(null);
+    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setEditorHandoff(null); setCardDeck(null); setVideoEdit(null);
     videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setPublishReconciliations({});
@@ -1243,7 +1247,7 @@ export default function StudioPage() {
           id: currentDraftId,
           idea,
           text: bodySnapshot.text,
-          bodyRevision: bodySnapshot.revision,
+          bodyBaseRevision: currentDraftId ? bodySnapshot.serverRevision : undefined,
           img: persistedImg,
           vid: persistedVid,
           includes,
@@ -1281,6 +1285,11 @@ export default function StudioPage() {
           }
           draftIdRef.current = r.id;
           setDraftId(r.id);
+        }
+        if (stillSameDocument && Number.isSafeInteger(r?.bodyRevision)) {
+          const serverRevision = r!.bodyRevision as number;
+          bodySnapshotRef.current = { ...bodySnapshotRef.current, serverRevision };
+          setBodyServerRevision(serverRevision);
         }
         if (safeVideoEdit && stillSameDocument && r && Object.prototype.hasOwnProperty.call(r, "videoEditServerRevision")) {
           videoEditBaseRevisionRef.current = r.videoEditServerRevision ?? null;
@@ -1779,7 +1788,7 @@ export default function StudioPage() {
     replaceBodySnapshot(
       (d.editLines as string[]) || [],
       (d.text as TextVariants) || null,
-      { replaceDocument: true, revision: Number.isSafeInteger(d.bodyRevision) ? d.bodyRevision as number : 0 },
+      { replaceDocument: true, serverRevision: Number.isSafeInteger(d.bodyRevision) ? d.bodyRevision as number : 0 },
     );
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
     setCardDeck((d.cardDeck as CardDeck) || null);
@@ -2070,7 +2079,7 @@ export default function StudioPage() {
       replaceBodySnapshot(
         (linkedDraft?.editLines as string[]) || [],
         returnedText,
-        { replaceDocument: true, revision: Number.isSafeInteger(linkedDraft?.bodyRevision) ? linkedDraft?.bodyRevision as number : 0 },
+        { replaceDocument: true, serverRevision: Number.isSafeInteger(linkedDraft?.bodyRevision) ? linkedDraft?.bodyRevision as number : 0 },
       );
       setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
       setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
@@ -2148,7 +2157,7 @@ export default function StudioPage() {
         cta: candidate.format.outline[candidate.format.outline.length - 1] ?? candidate.title,
       },
     };
-    replaceBodySnapshot([candidate.title, ...candidate.format.outline], candidateText, { replaceDocument: true, revision: 0 });
+    replaceBodySnapshot([candidate.title, ...candidate.format.outline], candidateText, { replaceDocument: true, serverRevision: 0 });
     /*
       2026-09-09 실사용에서 찾았다. 생성실에서 "글" 을 골라 구조를 고르고 편집실로 갔더니
       종류가 카드뉴스로 잡혔다. content_branch 는 text_image 와 video 둘뿐이라 글과

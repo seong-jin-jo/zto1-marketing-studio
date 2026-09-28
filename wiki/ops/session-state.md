@@ -1,3 +1,12 @@
+## 2026-09-28 14:37 KST PR 87 재리뷰 r4 서버 발급 본문 CAS 로컬 수정·검증 완료
+
+- handoff basis: 회장이 지정한 과제, 워크트리 `/private/tmp/wt-v70p2`, 시작 HEAD `b26314cf`, `.pr87-review-r4.md`를 primary로 삼았다. tmux `371:0.1`은 같은 결함을 남긴 종료된 리뷰 pane이며 동시 수정은 없었다.
+- 원인과 수정: 탭별 로컬 편집 횟수였던 `bodyRevision`을 최신성 근거로 쓰지 않는다. 클라이언트는 마지막 서버 revision을 `bodyBaseRevision`으로 보내고, 서버는 정확 일치 UPDATE에서만 저장하며 revision을 1 올린다. 불일치는 409와 최신 본문 전체를 반환한다. 기존 영상 CAS 방식을 재사용했고 DB 마이그레이션은 없다.
+- 결정적 재현: 실제 PostgreSQL에서 fake timer로 현재 탭 100ms, 오래된 탭 800ms를 고정했다. 현재 탭은 200·revision 1, 로컬 revision 100인 오래된 탭은 409이며 DB에는 현재 탭 본문이 남는다.
+- 검증: 관련 8파일 48건 PASS. 전체 Vitest 420파일·2,864건 PASS·1건 SKIP·실패 0. TypeScript·production build·migration matrix·발행실 정렬·Chromium 편집 E2E PASS. dev `localhost:3465/studio?room=edit` HTTP 200·콘솔 오류 0.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 의도한 코드·테스트·증거 문서만 커밋한다. 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
 ## 2026-09-28 PR 87 재리뷰 r3 본문 revision 경합 로컬 수정·검증 완료
 
 - handoff basis: 회장이 지정한 커밋 `0a69057c`와 `.pr87-review-r3.md`를 primary로 삼았다. tmux `371:0.1`은 이전 워커 종료 로그만 남아 있어 동시 수정이 없음을 확인했다.

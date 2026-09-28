@@ -195,12 +195,12 @@ describe("PROBE6 회귀 — B-6·B-7", () => {
         fetchCalls.push({ url, body });
         markPostStarted();
         await postRelease;
-        return new Response(JSON.stringify({ ok: true, id: body.id, bodyRevision: body.bodyRevision }), { status: 200, headers: { "content-type": "application/json" } });
+        return new Response(JSON.stringify({ ok: true, id: body.id, bodyRevision: body.bodyBaseRevision + 1 }), { status: 200, headers: { "content-type": "application/json" } });
       }
       return new Response(JSON.stringify({ accounts: [] }), { status: 200 });
     }));
     localStorage.setItem(storageKey("tenant-video-integrity-p6-a"), JSON.stringify({
-      idea: "A", vid: VID, draftId: "draft-A", editLines: ["A 대사"], editKind: "video", videoEdit: {
+      idea: "A", vid: VID, draftId: "draft-A", bodyRevision: 3, editLines: ["A 대사"], editKind: "video", videoEdit: {
         contract_version: "1.0", overlays: [], comments: [],
         subtitles: [{ id: "sub-a", order: 0, text: "A 대사", startSec: 0, endSec: 3, cut: false }],
         voice: null, revision: 1,
@@ -225,6 +225,7 @@ describe("PROBE6 회귀 — B-6·B-7", () => {
 
     const tenantAPosts = fetchCalls.filter((call) => call.body.tenant_id === "tenant-video-integrity-p6-a");
     expect(tenantAPosts).toHaveLength(1);
+    expect(tenantAPosts[0].body.bodyBaseRevision).toBe(3);
     expect(tenantAPosts[0].body.editLines).toEqual(["A 수정 대사"]);
     expect(tenantAPosts.some((call) => JSON.stringify(call.body.editLines).includes("B 최신 본문"))).toBe(false);
   }, 30000);
