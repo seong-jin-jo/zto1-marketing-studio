@@ -1304,15 +1304,23 @@ export default function StudioPage() {
             && Array.isArray(latest.editLines)
             && Number.isSafeInteger(latest.bodyRevision)) {
             const local = bodySnapshotRef.current;
-            setBodyRevisionConflict({
+            const latestLines = [...latest.editLines];
+            const latestText = latest.text ?? null;
+            const latestServerRevision = latest.bodyRevision as number;
+            setBodyRevisionConflict((current) => ({
               latest: {
-                lines: [...latest.editLines],
-                text: latest.text ?? null,
-                serverRevision: latest.bodyRevision as number,
+                lines: latestLines,
+                text: latestText,
+                serverRevision: latestServerRevision,
               },
-              local: { lines: [...local.lines], text: local.text },
+              // 최초 409에서 실패 직전 사용자 입력을 한 번만 보관한다. 사용자가 최신본을
+              // 확인한 뒤 대기 중이던 저장이 다시 409를 받아도 현재 편집기(서버 본문)를
+              // local로 재캡처하면 복구할 원문이 사라진다. 해결할 때까지 이 슬롯은 불변이다.
+              local: current?.local ?? { lines: [...local.lines], text: local.text },
+              // 후속 409가 더 새 서버판을 알렸으므로, 직전에 최신본을 보고 있었더라도
+              // 이제 화면의 본문은 최신이 아니다. 사용자가 새 최신본을 다시 불러오게 한다.
               viewingLatest: false,
-            });
+            }));
             // 저장 큐에 카드·영상 의도가 연달아 들어와 둘 다 같은 본문 충돌을 만나도
             // 마지막 한 건으로 덮지 않는다. 최신 기준판을 받은 뒤 원래 순서대로 모두
             // 재시도해야 각 도메인의 자동저장 변경이 남는다.

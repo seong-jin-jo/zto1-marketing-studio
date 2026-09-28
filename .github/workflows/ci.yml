@@ -111,9 +111,10 @@ jobs:
           npm run e2e:bubble-editor:chromium
 
       - name: 편집실 본문 충돌 복구 두 탭 회귀 게이트 (chromium)
+        timeout-minutes: 3
         run: |
           npm run start -- -p 3471 > /tmp/body-conflict-dev.log 2>&1 &
           SERVER_PID=$!
-          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
-          timeout 60 bash -c 'until curl -fsS http://127.0.0.1:3471/studio >/dev/null; do sleep 1; done'
-          npm run e2e:body-conflict
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+          timeout --kill-after=5s 60s bash -c 'until curl -fsS http://127.0.0.1:3471/studio >/dev/null; do sleep 1; done'
+          timeout --kill-after=10s 90s npm run e2e:body-conflict

@@ -1,5 +1,27 @@
 # OSMU build log
 
+## 2026-09-28 16:37 KST · PR 87 재리뷰 r6 연속 본문 충돌 보관본·CI 제한시간
+
+STAMP: 2026-09-28 16:37 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-review-r6.md`, 연속 409 Vitest·두 탭 Chromium·PostgreSQL 16 전체 스위트 | 고민: 충돌마다 현재 편집기를 다시 캡처하지 않고 최초 사용자 입력과 변하는 서버 최신판의 소유권을 분리했다.
+
+| 검증 | 결과 |
+|---|---|
+| 연속 409 회귀 | fake timer 컴포넌트 3건 PASS. 최신본 확인 뒤 후속 409에서도 최초 `탭 B 마지막 영상 변경`을 base 6·7 요청에 유지 |
+| 두 탭 실브라우저 | revision 5→6→7→8, 연속 충돌 요청 base 6, 최종 재적용 base 7, 보존 입력 `탭 B 내 변경`, 콘솔 오류 0 |
+| CI 동일 전체 Test | PostgreSQL 16 schema→seed→RLS와 migration matrix 뒤 421파일·2,867건 PASS, 1건 SKIP, 실패 0 |
+| TypeScript·production build | `npm run typecheck:ci`, `npm run build` 종료 코드 0 |
+| CI 브라우저 게이트 | 발행실 정렬 delta 0px, Chromium 말풍선 편집 회귀 전부 PASS |
+| 제한시간 | 본문 충돌 E2E step 3분, 준비 60초·강제종료 5초, E2E 90초·강제종료 10초, EXIT kill+wait 적용 |
+
+추가 마이그레이션은 없다. UI 토큰 감사는 위반 0건이다. design-lint의 기존 인라인 style 1파일·hex 6파일과 artifact lint의 기존 산출물 경고 28건은 이번 diff 밖이다. 원격 CI와 운영 배포는 push 전이라 미검증이다.
+
+KNOWLEDGE_QUERY: `.pr87-review-r6.md`, ADR-007, 본문 충돌 상태·재시도 큐·CI workflow, GitHub Actions step timeout 공식 문서를 조회했다.
+HITS_USED: 최초 local 불변과 후속 latest 갱신 분리를 코드·회귀에 채택하고, GitHub `timeout-minutes`에 shell 강제종료를 겹쳤다.
+HITS_REJECTED: 새로고침 뒤 충돌 보관본 복원은 이번 요구의 “후속 응답” 범위를 넘어 별도 지속성·문서 전환 계약이 필요하므로 이번 수정에 섞지 않았다.
+CONFLICTS: 없음.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr87-review-r6.md`, `dashboard/src/app/studio/page.tsx`, `dashboard/tests/studio/body-conflict-recovery.regression.test.tsx`, `dashboard/scripts/verify-body-conflict-recovery-e2e.mjs`, `.github/workflows/ci.yml`, https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax, `/tmp/pr87-r6-{target2,typecheck2,build-final,e2e,full,matrix,alignment,bubble}.log`
+
 ## 2026-09-28 15:40 KST · PR 87 재리뷰 r5 본문 충돌 복구
 
 STAMP: 2026-09-28 15:40 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-review-r5.md`, ADR-007, v70 디자인 규격, RFC 9110 §15.5.10, 두 탭 Chromium 실측 | 고민: 409를 오류 문구로만 끝내지 않고 서버 최신본과 실패 직전 로컬 입력을 동시에 보존해 사용자가 어느 쪽도 잃지 않게 했다.

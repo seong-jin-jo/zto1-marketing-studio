@@ -207,7 +207,7 @@ describe("PR87-R5-MAJOR-01 두 탭 본문 충돌 복구", () => {
     expect(document.querySelector("[data-video-edit-reload]")).toBeTruthy();
   }, 20_000);
 
-  it("첫 충돌 뒤 응답 대기 중이던 두 번째 저장 의도까지 재적용 큐에서 끝까지 보존한다", async () => {
+  it("PR87-R6-RECOVERY-01 연속 409에서도 최초 로컬 본문을 보존해 최신 revision 위에 다시 적용한다", async () => {
     const posts: Array<Record<string, unknown>> = [];
     let attempt = 0;
     let releaseSecondConflict!: () => void;
@@ -252,17 +252,22 @@ describe("PR87-R5-MAJOR-01 두 탭 본문 충돌 복구", () => {
 
     await act(async () => { await vi.advanceTimersByTimeAsync(900); });
     await waitFor(() => expect(posts).toHaveLength(2));
+    fireEvent.click(document.querySelector("[data-body-conflict-load-latest]") as HTMLButtonElement);
+    await waitFor(() => expect((document.querySelector("[data-video-subtitle-text]") as HTMLInputElement).value).toBe("탭 A 최신본"));
+    await act(async () => { releaseSecondConflict(); await secondConflictGate; });
+    await waitFor(() => expect((document.querySelector("[data-body-conflict-load-latest]") as HTMLButtonElement).disabled).toBe(false));
+
     fireEvent.click(document.querySelector("[data-body-conflict-reapply]") as HTMLButtonElement);
     await waitFor(() => expect(document.body.textContent).toContain("다시 적용 중"));
-    await act(async () => { releaseSecondConflict(); await secondConflictGate; });
-
     await waitFor(() => expect(posts).toHaveLength(3));
     expect(posts[2].bodyBaseRevision).toBe(6);
+    expect(posts[2].editLines).toEqual(["탭 B 마지막 영상 변경"]);
     expect(document.querySelector("[data-body-edit-conflict]")).toBeTruthy();
 
     fireEvent.click(document.querySelector("[data-body-conflict-reapply]") as HTMLButtonElement);
     await waitFor(() => expect(posts).toHaveLength(5));
     expect(posts[3].bodyBaseRevision).toBe(7);
+    expect(posts[3].editLines).toEqual(["탭 B 마지막 영상 변경"]);
     expect((posts[3].vid as { file?: string }).file).toBe((posts[0].vid as { file?: string }).file);
     expect(posts[4].bodyBaseRevision).toBe(8);
     expect((posts[4].vid as { file?: string }).file).toBe((posts[1].vid as { file?: string }).file);

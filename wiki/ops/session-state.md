@@ -1,3 +1,20 @@
+## 2026-09-28 16:37 KST PR 87 재리뷰 r6 연속 409 보관본 로컬 완료
+
+- handoff basis: 회장이 지정한 `.pr87-review-r6.md`와 시작 HEAD `6abafccc`를 primary로 삼았다. tmux `371:0.1`은 비활성 zsh pane이라 별도 인계원으로 쓰지 않았다.
+- 수정: 첫 409에서만 로컬 본문을 불변 보관하고 후속 409는 최신 서버 본문·revision만 갱신한다. 재적용은 최초 보관본을 그 시점의 최신 revision 위에 저장한다. CI 본문 충돌 E2E에 step 3분과 준비 60초·E2E 90초 kill-after 제한, 서버 kill+wait를 적용했다.
+- 검증: fake timer 회귀 3건, 실제 Chromium 두 탭 revision 5→6→7→8·base 7 재적용·콘솔 오류 0, PostgreSQL 16 전체 421파일·2,867건 PASS·1건 SKIP·실패 0. TypeScript·build·migration matrix·발행실 정렬·Chromium 말풍선 E2E PASS.
+- 마이그레이션: 없음. 기존 React 충돌 상태와 서버 발급 `bodyRevision`을 재사용했다. 원격 CI와 운영 배포는 push 전이라 미검증이다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 merge도 하지 않는다.
+- 다음 실행: 로컬 수정 커밋은 완료했다. 부모 컨트롤러가 원격 push 뒤 PR verify green을 확인한다.
+
+## 2026-09-28 PR 87 재리뷰 r6 연속 409 보관본 수정 착수
+
+- handoff basis: 회장이 지정한 `.pr87-review-r6.md`와 현재 HEAD `6abafccc`를 primary로 삼았다. tmux `371:0.1`은 이 워크트리의 비활성 zsh pane으로 확인했으며, 사용자가 이번 과제를 명시했으므로 별도 인계원으로 채택하지 않았다.
+- 원인 확인: 본문 409 처리부가 충돌 상태 존재 여부와 무관하게 현재 `bodySnapshotRef`를 `local`에 다시 캡처한다. 사용자가 최신본을 확인한 뒤 연속 409가 오면 서버 본문이 최초 로컬 입력을 덮는다. CI는 준비 루프만 제한하고 E2E 실행 본체는 무제한이다.
+- 구현 계약: 최초 409에서만 로컬 보관 슬롯을 채우고 해결 전 후속 409는 최신 서버 본문·revision만 갱신한다. 재적용은 최초 보관본을 그 시점의 최신 revision 위에 저장한다. CI step과 shell 명령 양쪽에 제한시간을 둔다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 merge도 하지 않는다.
+- 다음 실행: 연속 409 회귀를 먼저 추가해 결함을 고정하고 제품 코드·CI를 수정한 뒤 전체 CI 동일 스위트와 실제 두 탭 E2E를 검증한다.
+
 ## 2026-09-28 15:40 KST PR 87 재리뷰 r5 본문 충돌 복구 로컬 완료
 
 - handoff basis: 회장이 지정한 시작 커밋 `c74eb1fe`와 `.pr87-review-r5.md`를 primary로 삼았다. tmux `371:0.1`은 종료된 리뷰 pane이며 동시 수정은 없었다.

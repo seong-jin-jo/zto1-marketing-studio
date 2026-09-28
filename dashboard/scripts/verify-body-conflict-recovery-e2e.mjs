@@ -72,7 +72,7 @@ await context.route("**/api/**", async (route) => {
     if (body.videoEdit && body.videoEditBaseRevision !== serverVideoRevision) {
       return json(route, { ok: false, code: "VIDEO_EDIT_STALE_REVISION", error: "다른 곳에서 더 최신으로 저장된 영상 편집이 있습니다." }, 409);
     }
-    if (body.bodyBaseRevision === 6 && body.videoEdit) await recoveryGate;
+    if (body.bodyBaseRevision === 7 && body.videoEdit) await recoveryGate;
     serverBodyRevision += 1;
     serverLines = body.editLines;
     serverText = body.text;
@@ -136,23 +136,37 @@ try {
 
   await pageB.locator("[data-body-conflict-load-latest]").click();
   await pageB.waitForFunction(() => document.querySelector("[data-video-subtitle-text]")?.value === "탭 A 최신본");
+
+  // 탭 B가 최신본을 확인한 직후 탭 A가 다시 저장한 상황을 만든다. 다음 재적용은
+  // 409를 한 번 더 받아야 하며, 이때도 최초 탭 B 입력을 보관해야 한다.
+  serverBodyRevision = 7;
+  serverLines = ["탭 A 두 번째 최신본"];
+  serverText = { shorts: { hook: "탭 A 두 번째 최신본", body: "", cta: "" }, threads: "탭 A 두 번째 최신본" };
   await pageB.locator("[data-body-conflict-reapply]").click();
-  await waitUntil(() => posts.some((post) => post.bodyBaseRevision === 6 && post.videoEdit), 10_000, "복구 저장 요청이 시작되지 않았습니다");
+  await waitUntil(() => posts.some((post) => post.bodyBaseRevision === 6 && post.videoEdit), 10_000, "첫 복구 저장 요청이 시작되지 않았습니다");
+  const consecutiveConflictPost = posts.find((post) => post.bodyBaseRevision === 6 && post.videoEdit);
+  if (JSON.stringify(consecutiveConflictPost?.editLines) !== JSON.stringify(["탭 B 내 변경"])) {
+    throw new Error(`연속 409 요청에서 최초 로컬 본문이 유실됐습니다: ${JSON.stringify(consecutiveConflictPost?.editLines)}`);
+  }
+  await pageB.locator("[data-body-conflict-load-latest]").click();
+  await pageB.waitForFunction(() => document.querySelector("[data-video-subtitle-text]")?.value === "탭 A 두 번째 최신본");
+  await pageB.locator("[data-body-conflict-reapply]").click();
+  await waitUntil(() => posts.some((post) => post.bodyBaseRevision === 7 && post.videoEdit), 10_000, "두 번째 복구 저장 요청이 시작되지 않았습니다");
   if (!await pageB.locator("[data-edit-workspace]").evaluate((element) => element.hasAttribute("inert"))) throw new Error("복구 저장 중 편집기 잠금이 풀렸습니다");
   if (!await pageB.locator("[data-body-edit-conflict]").isVisible()) throw new Error("복구 저장 중 충돌 안내가 사라졌습니다");
   releaseRecovery();
   await pageB.locator("[data-body-edit-conflict]").waitFor({ state: "detached", timeout: 10_000 });
   await pageB.waitForFunction(() => document.querySelector("[data-video-subtitle-text]")?.value === "탭 B 내 변경");
   await waitUntil(
-    () => serverBodyRevision === 7,
+    () => serverBodyRevision === 8,
     10_000,
     `복구 저장이 끝나지 않았습니다. 현재 revision=${serverBodyRevision}, 요청=${JSON.stringify(posts.map((post) => ({ bodyBaseRevision: post.bodyBaseRevision, videoEditBaseRevision: post.videoEditBaseRevision, editLines: post.editLines })))}`,
   );
 
   const retry = posts.at(-1);
-  if (retry.bodyBaseRevision !== 6) throw new Error(`재적용 기준판이 ${retry.bodyBaseRevision}입니다`);
+  if (retry.bodyBaseRevision !== 7) throw new Error(`재적용 기준판이 ${retry.bodyBaseRevision}입니다`);
   if (JSON.stringify(retry.editLines) !== JSON.stringify(["탭 B 내 변경"])) throw new Error(`재적용 본문이 다릅니다: ${JSON.stringify(retry.editLines)}`);
-  if (serverBodyRevision !== 7) throw new Error(`복구 저장 뒤 본문 revision이 ${serverBodyRevision}입니다`);
+  if (serverBodyRevision !== 8) throw new Error(`복구 저장 뒤 본문 revision이 ${serverBodyRevision}입니다`);
   if (browserErrors.length) throw new Error(`브라우저 오류 ${browserErrors.length}건: ${browserErrors.join(" | ")}`);
 
   console.log(JSON.stringify({
@@ -160,6 +174,8 @@ try {
     tabs: 2,
     firstSaveRevision: 6,
     recoverySaveRevision: serverBodyRevision,
+    consecutiveConflictBaseRevision: consecutiveConflictPost.bodyBaseRevision,
+    consecutiveConflictPreservedLocal: consecutiveConflictPost.editLines,
     retryBaseRevision: retry.bodyBaseRevision,
     preservedLocal: retry.editLines,
     conflictCopy,
