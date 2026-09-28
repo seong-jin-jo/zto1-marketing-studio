@@ -1,3 +1,12 @@
+## 2026-09-28 PR 87 병합 리뷰 MAJOR 2건 로컬 수정·검증 완료
+
+- handoff basis: 회장이 지정한 merge commit `4d6600cb`와 `.pr87-mergereview.md`를 primary로 삼았다. tmux `371:0.1`은 직전 병합 워커가 종료된 로그만 남아 동시 수정이 없음을 확인했다.
+- 수정 전 재현: 실제 `StudioPage`에서 글 A→B 편집 뒤 영상 훅만 바꾸면 A를 `editLines`로 다시 전송했다. 임시 저장과 검토 요청은 B를 보내지 않았다. 표적 3건 실패·39건 통과였다.
+- 수정: 영상 자동저장은 자막 순서·문구를 실제로 바꾼 경우의 dirty 배열만 성공 시점까지 보관해 전송한다. 훅·CTA 등 비자막 변경은 `editLines`를 생략한다. 임시 저장과 검토 요청은 최신 `editLinesRef.current`를 명시한다.
+- 검증: 관련 3파일 51건 PASS. CI 동일 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 전체 Vitest 418파일·2,850건 PASS·1건 SKIP·실패 0. CI TypeScript와 production build 종료 0. Chromium 편집 탐침과 발행실 정렬 PASS. dev `localhost:3462/qa-alignment-harness?room=publish` HTTP 200·카드 28개·콘솔 오류 0.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-mergereview.md`, `.vite/vitest/results.json`은 커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 의도한 코드·테스트·증거 문서만 커밋한다. 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
 ## 2026-09-28 PR 87 main 병합 충돌 해결 로컬 완료
 
 - handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p2`, 브랜치 `feat/editroom-v70-p2`, HEAD `b121ad6a`, `origin/main` `a211ca81`을 primary로 삼았다. tmux `371:0.1`은 같은 워크트리의 이전 p2 작업 종료 로그로 확인했다.

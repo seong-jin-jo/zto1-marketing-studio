@@ -705,7 +705,7 @@ export default function StudioPage() {
     setIdea(""); setText(null); setImg(null); setVid(null); setDraftId(null);
     setIncludes(normalizeIncludes()); setPublishReconciliations({}); setEditorHandoff(null);
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
-    setEditLines([]); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
+    setEditLines([]); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null); pendingVideoSubtitleLinesRef.current = null; setReviewQueueId(null); setSelectedCandidate(null);
     videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setCreateBranch("video"); setCreatePrimaryKind(null); setEditKind("video"); setEditFormat(defaultContentEditFormat("video"));
@@ -730,6 +730,7 @@ export default function StudioPage() {
         // 오면 서버 값으로 다시 덮는다. 그 전까지는 videoEdit 자동저장을 보류한다
         // (videoEditReconciledRef).
         setVideoEdit((w.videoEdit as VideoEdit) ?? null);
+        pendingVideoSubtitleLinesRef.current = null;
         // B-5(5차 재리뷰 BLOCKER): 목록이 도착하기 전 창에서 이 ref만 false였고 화면이
         // 보는 syncing(videoEditReconciling state)은 그대로 false라, +훅 등 컨트롤이
         // 계속 열려 있었다 — 그 창에서 만든 편집이 목록 도착 후 재동기화에 조용히
@@ -835,7 +836,7 @@ export default function StudioPage() {
         // videoEdit은 그대로 뒀다 — 옛 주제의 오버레이·댓글이 새 초안에 그대로 남았다.
         if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
         if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
-        setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null);
+        setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null); pendingVideoSubtitleLinesRef.current = null;
         videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
         invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
         if (dropped) showToast(dropped, "success");
@@ -982,7 +983,7 @@ export default function StudioPage() {
     if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setIdea(""); setText(null); setImg(null); setVid(null); setDraftId(null);
-    setEditLines([]); setEditorHandoff(null); setCardDeck(null); setVideoEdit(null);
+    setEditLines([]); setEditorHandoff(null); setCardDeck(null); setVideoEdit(null); pendingVideoSubtitleLinesRef.current = null;
     videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setPublishReconciliations({});
@@ -1175,15 +1176,11 @@ export default function StudioPage() {
     if (videoEditTenantMismatch) {
       persistedVideoEdit = null;
     }
-    // p1은 영상 자동저장이 렌더 시점의 editLines 클로저를 보내지 않도록 undefined를
-    // 넘긴다. p2 자막 편집은 같은 요청의 videoEdit.subtitles에 이미 최신 문구를
-    // 구조화해 담는다. 그 동일 스냅샷에서 대사를 파생하면 낡은 글 투영을 덮지 않으면서
-    // 영상 자막 문구와 저장 대사를 한 요청으로 원자적으로 맞출 수 있다.
-    if (persistedEditLines === undefined && persistedVideoEdit?.subtitles.length) {
-      persistedEditLines = [...persistedVideoEdit.subtitles]
-        .sort((left, right) => left.order - right.order)
-        .map((subtitle) => subtitle.text);
-    }
+    // PR87 병합 리뷰 MAJOR 1: undefined는 "글 원문을 건드리지 않는다"는 저장 계약이다.
+    // 영상 훅·CTA만 고친 요청에서 videoEdit.subtitles를 글 원문으로 다시 투영하면, 사용자가
+    // 글 형식에서 이미 고친 최신 문단을 옛 자막이 덮는다. 자막 문구 변경만
+    // onVideoEditChange가 명시적인 persistedEditLines를 넘기고, 그 밖의 영상 변경은 이
+    // 함수가 추측하지 않는다.
     const r = await apiPost<{ id?: string; videoEditServerRevision?: number | null }>("/api/studio/drafts", {
       tenant_id: activeWorkspace?.id,
       id: persistedDraftId,
@@ -1258,7 +1255,7 @@ export default function StudioPage() {
       // 수동 "임시 저장"은 카드덱·영상 자동저장과 달리 도메인 한정 저장이 아니라 전체
       // 스냅샷 저장이다 — 카드덱만 pruned로 검사·교체하고(위에서 이미 함) videoEdit는
       // 현재 state를 그대로 싣는다(이전 기본값 동작과 동일, 이번엔 명시적으로만 적었다).
-      const savedDraftId = await save("draft", undefined, undefined, undefined, undefined, undefined, prunedCardDeck, videoEdit);
+      const savedDraftId = await save("draft", undefined, undefined, editLinesRef.current, undefined, undefined, prunedCardDeck, videoEdit);
       if (!savedDraftId) {
         showToast("초안을 저장하지 못했습니다", "error");
         return;
@@ -1712,6 +1709,7 @@ export default function StudioPage() {
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
     setCardDeck((d.cardDeck as CardDeck) || null);
     setVideoEdit((d.videoEdit as VideoEdit) || null);
+    pendingVideoSubtitleLinesRef.current = null;
     setReviewQueueId((d.reviewQueueId as string) || null);
     const savedFormat = validateContentEditFormat(d.editFormat);
     if (savedFormat.valid) {
@@ -1782,16 +1780,18 @@ export default function StudioPage() {
   const activeWorkspaceIdRef = useRef<string | null>(null);
   activeWorkspaceIdRef.current = activeWorkspace?.id ?? null;
   /**
-   * B3(교차 리뷰 BLOCK): cardDeck/videoEdit 자동저장 타이머는 이 함수가 "예약되는 시점"의
-   * `editLines` 클로저를 800ms 뒤에 그대로 쓴다. 자막 문구 수정은 `onLinesChange`와
-   * `onVideoEditChange`를 같은 이벤트에서 함께 부르는데, 그 이벤트가 실행되는 순간에는
-   * 아직 리렌더 전이라 `onVideoEditChange`(이전 렌더에서 만들어진 함수)가 닫고 있는
-   * `editLines`는 이번 수정 이전 값이다. 그래서 컷·문구 수정이 서버 자막에는 한 박자
-   * 늦게(또는 전혀) 반영되지 않았다. ref는 매 렌더 값을 즉시 갱신하므로 타이머가 "실행되는
-   * 시점"에 최신 editLines를 읽는다(draftIdRef와 같은 패턴).
+   * 전체 스냅샷 저장과 카드 자동저장은 예약 시점의 `editLines` 클로저 대신 실행 시점의
+   * 최신 값을 읽는다. 영상 자막 편집은 아래 pendingVideoSubtitleLinesRef가 별도 소유한다.
    */
   const editLinesRef = useRef<string[]>([]);
   editLinesRef.current = editLines;
+  // PR87 병합 리뷰 MAJOR 1: 영상 전체 편집과 자막 문구 저장 의도를 분리한다. 현재 영상
+  // 스냅샷은 "자막 글자 자체가 바뀌었는지"만 판정하는 기준이고, pending 배열은 그 변경이
+  // 서버에 성공할 때까지 유지한다. 자막 직후 훅을 고쳐 디바운스 타이머가 교체되어도 최신
+  // 자막 원문을 잃지 않으며, 글 형식에서 고친 문단은 영상의 옛 자막으로 역투영하지 않는다.
+  const videoEditRef = useRef<VideoEdit | null>(null);
+  videoEditRef.current = videoEdit;
+  const pendingVideoSubtitleLinesRef = useRef<string[] | null>(null);
   /**
    * [보안·데이터 유실](교차 리뷰 재리뷰 BLOCK 1) localStorage의 videoEdit은 잠정치다 —
    * 다른 탭·기기가 서버에 더 최신을 저장했을 수 있다. draftId가 있는 동안은 이 값이
@@ -1913,6 +1913,7 @@ export default function StudioPage() {
     }
     const serverVideoEdit = (serverDraft?.videoEdit as VideoEdit | undefined) ?? null;
     setVideoEdit(serverVideoEdit);
+    pendingVideoSubtitleLinesRef.current = null;
     videoEditBaseRevisionRef.current = serverVideoEdit?.revision ?? null;
     reconciledDraftIdRef.current = id;
     videoEditTenantRef.current = myTenantId; // B-7: 이 값은 myTenantId 테넌트 것이라고 기록
@@ -2006,6 +2007,7 @@ export default function StudioPage() {
       setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
       setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
       setVideoEdit((linkedDraft?.videoEdit as VideoEdit) || null);
+      pendingVideoSubtitleLinesRef.current = null;
       // MINOR(7차 재리뷰): 이 분기도 videoEdit을 reconcile 밖에서 직접 세팅한다(워크스페이스
       // 전환·새 작업·후보 선택·버리고 새로 시작과 같은 계열) — 그 아래 setDraftId(linkedDraftId)가
       // null일 수 있는데, 그러면 진행 중이던 맞춤의 syncing 잠금이 안 풀릴 수 있었다. 다른 네 곳과
@@ -2044,7 +2046,7 @@ export default function StudioPage() {
     // 넘어갔다.
     if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
-    setCardDeck(null); setVideoEdit(null);
+    setCardDeck(null); setVideoEdit(null); pendingVideoSubtitleLinesRef.current = null;
     // MINOR(3차 재리뷰): draftId도 끊는다 — 남겨 두면 다음 저장이 이 후보와 무관한
     // 옛 초안 id 위에 그대로 얹혀 저장된다.
     setDraftId(null);
@@ -2204,7 +2206,7 @@ export default function StudioPage() {
       let queueId = reviewQueueId;
       if (!queueId) {
         // 검토 큐에 걸 초안이 아직 없으면 지금 전체 스냅샷으로 만든다(이전 기본값과 동일).
-        const linkedDraftId = draftId || await save("draft", undefined, undefined, undefined, undefined, undefined, cardDeck, videoEdit);
+        const linkedDraftId = draftId || await save("draft", undefined, undefined, editLinesRef.current, undefined, undefined, cardDeck, videoEdit);
         if (!linkedDraftId) throw new Error("검토 요청용 초안을 저장하지 못했습니다");
         const added = await apiPost<{ post?: { id?: string } }>("/api/queue/add", {
           tenant_id: activeWorkspace.id,
@@ -2553,7 +2555,18 @@ export default function StudioPage() {
    * (cardDeck의 pruneEmptyBubbles/emptyBubbleSlideNumber와 같은 패턴).
    */
   function onVideoEditChange(nextEdit: VideoEdit) {
+    const previousSubtitleLines = [...(videoEditRef.current?.subtitles ?? [])]
+      .sort((left, right) => left.order - right.order)
+      .map((subtitle) => subtitle.text);
+    const nextSubtitleLines = [...nextEdit.subtitles]
+      .sort((left, right) => left.order - right.order)
+      .map((subtitle) => subtitle.text);
+    if (previousSubtitleLines.length !== nextSubtitleLines.length
+      || previousSubtitleLines.some((line, index) => line !== nextSubtitleLines[index])) {
+      pendingVideoSubtitleLinesRef.current = nextSubtitleLines;
+    }
     setVideoEdit(nextEdit);
+    videoEditRef.current = nextEdit;
     if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
     const attempt = (retriesLeft: number) => {
       videoEditAutosaveTimer.current = setTimeout(() => {
@@ -2574,10 +2587,16 @@ export default function StudioPage() {
         // 책임진다 — cardDeck을 그대로 실으면(pruning 없이) 빈 말풍선이 서버에 그대로
         // 박히거나, 저장 자체가 카드덱 검증 실패로 통째로 막힌다. null을 명시해 cardDeck
         // 키 자체를 payload에서 뺀다(기존 서버 값 보존).
-        // 영상 자동저장은 글/카드 투영을 소유하지 않는다. 오래된 타이머가 최신 글을
-        // 되돌리지 않도록 editLines 키를 생략하면서 영상 revision CAS만 수행한다.
-        save("draft", publishReconciliations, draftIdRef.current, undefined, img, vid, null, nextEdit)
-          .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setVideoEditAutosaveError(""); })
+        // 영상 자동저장은 글/카드 투영을 소유하지 않는다. 다만 사용자가 자막 문구 자체를
+        // 고친 경우에만 그 변경을 별도 dirty 계약으로 함께 저장한다. 훅·CTA·댓글·목소리·
+        // 컷·시간만 바꾼 요청은 undefined를 보내 editLines 키를 생략한다.
+        const pendingSubtitleLines = pendingVideoSubtitleLinesRef.current;
+        save("draft", publishReconciliations, draftIdRef.current, pendingSubtitleLines ?? undefined, img, vid, null, nextEdit)
+          .then(() => {
+            if (pendingVideoSubtitleLinesRef.current === pendingSubtitleLines) pendingVideoSubtitleLinesRef.current = null;
+            setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
+            setVideoEditAutosaveError("");
+          })
           .catch((error) => {
             // MAJOR1(3차 재리뷰): 409가 나면 빠져나갈 길("서버 값 다시 불러오기")을 준다.
             if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "VIDEO_EDIT_STALE_REVISION") {

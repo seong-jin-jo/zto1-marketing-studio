@@ -1,3 +1,11 @@
+## 2026-09-28 PR 87 병합 리뷰 글 저장 회귀 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-MERGE-R1-MAJOR-01 | 영상의 비자막 필드 자동저장이 최신 글 원문을 이전 영상 자막으로 되돌리지 않음 | PR87-MERGE-R1-M1 | 🔧 수정, 로컬 PASS | 실제 `StudioPage`에서 글 A→B 편집 뒤 영상 훅만 바꾸는 경로가 수정 전 옛 자막 A를 `editLines`로 보낸 것을 재현했다. 저장 의도를 자막 변경 시점에만 별도 보관하고, 훅·CTA 등 비자막 변경은 `editLines` 키를 생략하도록 수정했다. |
+| PR87-MERGE-R1-MAJOR-02 | 임시 저장과 검토 요청이 현재 글 원문 전체 스냅샷을 저장함 | PR87-MERGE-R1-M2 | 🔧 수정, 로컬 PASS | 두 전체 저장 경로가 `editLinesRef.current`를 명시적으로 보내도록 수정했다. 수정 전 표적 3건 실패·39건 통과, 수정 뒤 관련 3파일 51건 통과. |
+| PR87-MERGE-R1-FINAL | CI 동일 전체 회귀와 타입·빌드·렌더 | PR87-MERGE-R1-FINAL-01~05 | ✅ 로컬 PASS | 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 전체 Vitest 418파일·2,850건 통과·1건 건너뜀·실패 0. CI TypeScript와 production build 종료 0. Chromium 편집 탐침 전부 통과. dev `/qa-alignment-harness?room=publish` HTTP 200·카드 28개·콘솔 오류 0. 원격 CI·운영 배포는 push 전이라 미검증. |
+
 ## 2026-09-28 PR 87 main 병합 충돌 해결 ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

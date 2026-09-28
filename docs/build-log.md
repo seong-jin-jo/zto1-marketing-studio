@@ -1,5 +1,27 @@
 # OSMU build log
 
+## 2026-09-28 11:11 KST · PR 87 병합 리뷰 글 저장 회귀 봉합
+
+STAMP: 2026-09-28 11:11 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-mergereview.md`, 수정 전·후 회귀 로그, CI 동일 전체 로그 | 고민: 영상 자막과 글 원문이 갈라질 수 있는 형식 전환에서 어느 상태가 저장을 소유하는지 변경 시점에 명시했다.
+
+| 검증 | 결과 |
+|---|---|
+| 결함 선행 재현 | 실제 `StudioPage` 3경로가 수정 전 3건 실패·39건 통과. 비자막 영상 저장은 옛 자막을 전송했고 수동·검토 저장은 최신 글을 생략 |
+| 표적 회귀 | 관련 3파일·51건 PASS. 자막 직접 편집 동기화와 형식 전환 뒤 비자막 저장 격리를 함께 검증 |
+| CI 동일 전체 Test | 임시 PostgreSQL schema→seed→RLS, migration matrix 뒤 418파일·2,850건 PASS, 1건 SKIP, 실패 0 |
+| TypeScript·build | `npx tsc --noEmit -p tsconfig.ci.json`, `npm run build` 종료 코드 0 |
+| 실브라우저 | Chromium 편집 시나리오 전부 PASS. 발행실 카드 정렬 최대 delta 0px |
+| dev 스모크 | `localhost:3462/qa-alignment-harness?room=publish` HTTP 200, 카드 28개, 콘솔 오류 0 |
+
+원격 CI와 운영 배포는 push 전이므로 미검증이다. artifact lint는 상태파일 2개 정합 PASS와 기존 산출물 경고 28건이다.
+
+KNOWLEDGE_QUERY: `.pr87-mergereview.md`, 저장 호출부, route의 키 생략 보존 계약, CI workflow를 조회했다.
+HITS_USED: 리뷰어 재현과 기존 테스트의 자막 직접 편집 계약을 함께 채택해 도메인별 dirty 상태를 분리했다.
+HITS_REJECTED: 외부 벤치마크는 확정된 저장 계약의 국소 회귀 수정이라 적용하지 않았다.
+CONFLICTS: 이전 병합 기록의 “자막 스냅샷 역투영이 안전하다”는 판단이 실제 형식 전환 재현과 충돌해 폐기했다.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr87-mergereview.md`, `dashboard/src/app/studio/page.tsx`, 관련 회귀 3파일, `.github/workflows/ci.yml`, `/tmp/pr87-mergereview-{red,targeted,vitest-full,tsc-ci,build,smoke}.log`
+
 ## 2026-09-28 10:19 KST · PR 87 main 병합과 p1/p2 경계 회귀 봉합
 
 STAMP: 2026-09-28 10:19 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa | 근거: `origin/main` a211ca81, p2 b121ad6a, 3-way diff, CI 동일 전체 로그 | 고민: main의 영상 자동저장 격리와 p2의 자막 CAS 저장을 둘 다 만족시키기 위해 오래된 React 클로저 대신 동일 영상 스냅샷에서 대사를 파생했다.

@@ -113,6 +113,7 @@ vi.mock("@/lib/auth", () => ({
 function restoreStudio(platforms: string[]) {
   localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
     idea: "부분 성공 테스트",
+    editLines: ["가장 최신 문단"],
     text: {
       threads: "Threads 본문",
       x: "X 본문",
@@ -610,6 +611,7 @@ describe("Studio publish result integrity", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "임시 저장하기" })[0]);
 
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
+      editLines: ["가장 최신 문단"],
       titles: expect.objectContaining({ shorts: "쇼츠 제목" }),
       captions: expect.objectContaining({ instagram: "채널별 캡션" }),
       hashtags: expect.objectContaining({ instagram: "#하나 #둘" }),
@@ -659,6 +661,10 @@ describe("Studio publish result integrity", () => {
     expect(mocks.apiPost).toHaveBeenCalledWith(
       "/api/queue/add",
       expect.objectContaining({ draftId: "draft-review" }),
+    );
+    expect(mocks.apiPost).toHaveBeenCalledWith(
+      "/api/studio/drafts",
+      expect.objectContaining({ editLines: ["가장 최신 문단"] }),
     );
     expect(mocks.showToast).toHaveBeenCalledWith("검토 요청을 보냈습니다", "success");
   });

@@ -16,7 +16,7 @@
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StudioPage from "@/app/studio/page";
 
@@ -236,5 +236,62 @@ describe("B3: 자막 문구 수정이 서버 대사에 한 박자 늦지 않는�
     const last = videoEditPosts[videoEditPosts.length - 1];
     // B3 이전이라면 여기 editLines가 이 수정 이전 값("첫 장면")으로 닫힌 클로저였다.
     expect(last.body.editLines).toEqual(["고친 첫 장면", "둘째 장면"]);
+  }, 20000);
+});
+
+describe("PR87-MERGE-R1-MAJOR-01: 형식 전환 뒤 영상 자동저장이 최신 글을 되돌리지 않는다", () => {
+  it("글을 B로 고친 뒤 영상 훅만 바꾸면 옛 자막 A를 editLines로 다시 보내지 않는다", async () => {
+    // Reviewer attribution: .pr87-mergereview.md MAJOR 1의 실제 사용자 경로를 그대로 돈다.
+    // 정적 소스 검사가 아니라 StudioPage의 글 편집기, 형식 전환, 영상 자동저장과 실제
+    // /api/studio/drafts payload를 함께 실행해 교차 도메인 덮어쓰기를 잡는다.
+    mocks.swr.mockImplementation((key: string | null) => {
+      if (key === "/api/me") return { data: { isOperator: false }, mutate: vi.fn() };
+      if (key === "/api/studio/drafts?tenant_id=tenant-video-integrity") return { data: { drafts: [], currentWork: null }, mutate: vi.fn() };
+      if (key === "/api/studio/brand-setup?tenant_id=tenant-video-integrity") return { data: { guide: null }, mutate: vi.fn() };
+      if (key === "/api/publish/first-comment-capabilities") return { data: { capabilities: [] }, mutate: vi.fn() };
+      return { data: undefined, mutate: vi.fn() };
+    });
+    setupFetch();
+    localStorage.setItem(storageKey("tenant-video-integrity"), JSON.stringify({
+      idea: "형식 전환 저장 검증",
+      text: { threads: "옛 자막 A", x: "옛 자막 A", facebook: "옛 자막 A", instagram: { caption: "옛 자막 A" } },
+      vid: { url: "/api/media/test-video", file: "/api/media/test-video", model: "기존 작업물" },
+      editLines: ["옛 자막 A"],
+      editKind: "video",
+      editFormat: { kind: "video", aspectRatio: "9:16", subtitleSize: "보통", playbackSpeed: 1, voice: "차분한 남성" },
+      videoEdit: {
+        contract_version: "1.0",
+        overlays: [{ id: "ov-old", order: 0, kind: "hook", text: "기존 훅", startSec: 0, endSec: 3 }],
+        comments: [],
+        subtitles: [{ id: "sub-old", order: 0, text: "옛 자막 A", startSec: 0, endSec: 3, cut: false }],
+        voice: null,
+        revision: 4,
+      },
+    }));
+    window.history.replaceState(null, "", "/studio?room=edit");
+
+    render(<StudioPage />);
+    await screen.findByDisplayValue("기존 훅");
+
+    fireEvent.click(screen.getByRole("button", { name: "글" }));
+    const documentEditor = await waitFor(() => {
+      const el = document.querySelector('[data-text-document-sheet] [contenteditable="true"]');
+      if (!el) throw new Error("글 전체 편집기가 아직 안 떴다");
+      return el as HTMLDivElement;
+    });
+    documentEditor.textContent = "최신 문단 B";
+    fireEvent.input(documentEditor);
+
+    fireEvent.click(screen.getByRole("button", { name: "영상" }));
+    const hookInput = await screen.findByLabelText("1번째 오버레이 문구");
+    fireEvent.change(hookInput, { target: { value: "고친 훅" } });
+
+    await new Promise((resolve) => setTimeout(resolve, 900));
+
+    const videoEditPosts = fetchCalls.filter((call) => Object.prototype.hasOwnProperty.call(call.body, "videoEdit") && call.body.videoEdit);
+    expect(videoEditPosts.length).toBeGreaterThan(0);
+    const last = videoEditPosts[videoEditPosts.length - 1];
+    expect((last.body.videoEdit as { overlays: Array<{ text: string }> }).overlays[0].text).toBe("고친 훅");
+    expect(last.body).not.toHaveProperty("editLines");
   }, 20000);
 });
