@@ -1,8 +1,46 @@
+## 2026-09-28 PR 87 main 병합 충돌 해결 ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-MERGE-MAIN | `origin/main`의 p1 최종본을 기준으로 p2 영상 편집 변경을 보존해 merge | PR87-MERGE-01 | ✅ 로컬 PASS | 12개 충돌을 p1 main 우선, p2 영상 CAS·발행 복귀 잠금 해제 보존 원칙으로 해결했다. 교차 회귀는 동일 영상 스냅샷에서 저장 대사를 파생해 닫았다. CI 동일 임시 PostgreSQL schema→seed→RLS·migration matrix 뒤 418파일·2,849건 통과·1건 건너뜀·실패 0, TypeScript와 build 종료 0, 발행실 정렬 최대 delta 0px, Chromium·WebKit·Firefox 편집 51개 시나리오 PASS. dev `localhost:3764/studio?room=edit` HTTP 200·콘솔 오류 0. 원격 CI는 push 전이라 미검증이다. |
+
 ## 2026-09-28 07:08 KST · PR 87 영상 편집 MINOR-1 잠금 회귀 🔧 수정, 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
 | PR87-VIDEO-MINOR-1 | `draft_id` 없는 인박스 발행 복귀에서 이전 영상 맞춤 잠금 제거 | MINOR-1, P11(B-5) | ❌ NG → 🔧 수정, 로컬 PASS | 발행 복귀 else 분기가 `videoEdit`과 `draftId=null`을 직접 세팅하면서 진행 중 맞춤 세대를 무효화하지 않았다. 해당 분기에서 공용 `invalidateVideoEditReconcile()`을 호출했다. `draftId=null` 감시 효과에서 잠금을 푸는 초안은 복원 직후 B-5 잠금을 조기에 해제해 P11을 실패시켰으므로 제거했다. 실제 `StudioPage` 마운트 회귀 39/39와 `typecheck:ci`가 통과했다. 운영 배포는 미검증이다. |
+
+## 2026-09-28 09:23 KST · PR 85 편집실 v70 9차 리뷰 ❌ NG → 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR85-R9-BLOCKER-01 | 글 전체 편집기 계약을 유지하면서 낡은 textarea 단언을 contentEditable 입력 계약으로 교정 | R-S10-37 | 🔧 수정, 로컬 PASS | 수정 전 표적은 1건 실패·21건 통과, `toHaveValue` 실제값 `undefined`. 현재 DOM의 `<br><br>` 문단 경계를 직접 단언하고 `innerHTML` 변경 뒤 `input` 이벤트로 저장 콜백을 검증했다. CI와 같은 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 `npx vitest run` 408파일·2,778건 통과·1건 건너뜀·실패 0. `tsc`, build, 발행실 정렬, Chromium WYSIWYG 게이트도 종료 코드 0. 원격 CI는 미검증. |
+
+## 2026-09-28 08:50 KST · PR 85 편집실 v70 8차 리뷰 ❌ NG → 🔧 수정, 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR85-R8-BLOCKER-01 | 필수 발행실 UI 회귀 테스트 통과 | studio-publish-ui:940 | 🔧 수정, 로컬 PASS | 수정 전 `The given element does not have a value setter`, 종료 1. contentEditable `input`과 구조화 `editFormat.segments` 계약으로 교정 후 필수 파일을 포함한 관련 회귀 통과. |
+| PR85-R8-MAJOR-01 | 연속 넘침도 다음 장까지 자동 분할 | PR85-R8-MAJOR-01 | 🔧 수정, 로컬 PASS | 수정 전 4개 단일 장 기대에 2장만 생성. 분할 뒤 새 장을 검사 대상으로 넘긴 뒤 4장 모두 단일 말풍선 PASS. |
+| PR85-R8-MAJOR-02 | 리치 붙여넣기 뒤 화면과 저장 세그먼트 일치 | PR85-R8-MAJOR-02 | 🔧 수정, 로컬 PASS | 수정 전 paste 기본 동작 허용 `true`. 평문 전용 핸들러 추가 뒤 Vitest와 Chromium·WebKit·Firefox에서 DOM=`붙여넣은 평문`, 모델=`붙여넣은 평문`, 리치 노드 0건. |
+| PR85-R8-FINAL | 관련 회귀와 타입·빌드·렌더 | PR85-R8-FINAL-01~05 | ✅ PASS | Vitest 16파일 203건, 무작위 300회 포함. `typecheck:ci`, 프로덕션 빌드, 3엔진 E2E 종료 코드 0. dev 3762 Ready 805ms, `/studio` HTTP 200, body 표시, 콘솔 오류 0. 운영 배포·실회원 저장은 미검증. |
+
+## 2026-09-28 07:52 KST · PR 85 편집실 v70 7차 리뷰 ✅ PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR85-R7-M1~M3 | 구조화 세그먼트 보존, 굵기 상한, 영상 자동저장 격리 | PR85-R7-DATA-01~03 | ✅ PASS | 강화 속성 300회 PASS, 3엔진 E2E에서 `점중수` DOM·모델 일치와 중간 굵기 해제 거절 확인. 영상 저장은 `editLines` 키를 생략하는 계약 테스트 통과. |
+| PR85-R7-M4~M7 | 글 선택 도구막대, 카드 자동 분할, 스트립 끌어 놓기, 말풍선 기준 도구막대 | PR85-R7-SPEC-04~07 | ✅ PASS | 선택 시에만 글 도구막대 노출·세그먼트 저장, 말풍선/문자 경계 자동분할, DnD와 표지·CTA 고정, 데스크톱 -26px·모바일 44px 계약 통과. |
+| PR85-R7-N1 | 편집칸 키보드 초점 표시 | PR85-R7-FOCUS-01 | ✅ PASS | 글·말풍선 편집칸에 토큰 기반 `:focus-visible` 대체 윤곽 추가, 변경 소스 design-lint 위반 0. |
+| PR85-R7-FINAL | 타입·빌드·실브라우저·dev 스모크 | PR85-R7-FINAL-01~04 | ✅ PASS | 관련 Vitest 164건, 추가 자동분할 46건, typecheck, build, 3엔진 E2E, `/studio` HTTP 200·콘솔 오류 0. |
+
+운영 배포와 실제 회원 초안 원격 저장은 미검증이다.
+
+## 2026-09-25 11:39 KST · PR 85 편집실 v70 낡은 목차 계약 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR85-CI-EDIT-OUTLINE | 글 편집은 문단 목차 없이 글 전체 편집기만 노출 | QA-EDIT-06 | ❌ NG, 수정 착수 | PR 85 CI는 402파일 중 401파일을 통과했고 `studio-fe2-rooms.test.tsx:327`만 실패했다. 제품과 v70 전용 회귀는 글 `data-edit-outline` 부재를 계약하지만 이 테스트만 옛 `aria-label="글 문단"` 목차 존재를 요구한다. 글 전체 textbox와 문단별 textbox 부재 단언은 현재 계약과 일치한다. |
 
 ## 2026-09-25 07:42 KST · 편집실 v70 1단계 입력 복구 후 🔧 구현, 로컬 PASS
 
@@ -7382,3 +7420,17 @@ migration은 수정하지 않고, 최신 코드와 localhost 회귀를 다시 �
 |---|---|---|---|---|
 | EDITROOM-20260924 | 글 형식에서 순서 이동을 노출하지 않고 카드·영상 순서는 보존 | EDITROOM-NO-DEAD-CONTROLS-01 | ❌ NG | 현재 글의 목차 콜백은 이미 차단됐으나 이를 직접 고정하는 회귀 계약이 없다. 음악 형식·배경 음악 도구·미지원 경고는 아직 노출된다. |
 | EDITROOM-20260924 | 목소리 편집 보존, 기존 audio 초안의 `musicTrack`·`musicVolume` 저장값 보존 | EDITROOM-NO-DEAD-CONTROLS-02 | ❌ NG | audio 분기가 배경 음악 조작과 경고만 노출하고 목소리 도구는 숨긴다. UI 제거 후 payload 보존 회귀 테스트가 없다. |
+## 2026-09-25 12:40 KST · 영상 목록/삭제 저장 위치 결손 수정 확인
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| VIDEO-LIST-STUDIO | `/api/video/list`가 생성실(`data/studio/<tenant>`) 영상도 최신순으로 보여준다 | VIDEO-LIST-STUDIO-01 | ✅ PASS | `dashboard/tests/publish/video-routes-tenant-isolation.test.ts`, 작업공간 폴더 전용 영상이 목록에 서명 URL로 나옴을 실행 확인 |
+| VIDEO-LIST-STUDIO | 다른 테넌트의 생성실 영상은 파일명이 알려져도 새지 않는다 | VIDEO-LIST-STUDIO-02 | ✅ PASS | 동일 파일, 테넌트 격리 실행 확인 |
+| VIDEO-LIST-STUDIO | 두 폴더에 같은 파일명이 있으면 목록·배달·삭제가 임의로 고르지 않고 모두 숨긴다(fail closed) | VIDEO-LIST-STUDIO-03 | ✅ PASS | `resolveGeneratedFile`이 충돌 시 null 반환함을 실행 확인 |
+| VIDEO-LIST-STUDIO | 목록에 뜬 생성실 영상을 `/api/video/delete`가 실제로 지운다(이전 404 결함) | VIDEO-LIST-STUDIO-04 | ✅ PASS | 삭제 200, 대상 파일만 사라지고 다른 테넌트 파일 보존 확인 |
+| VIDEO-LIST-STUDIO | 다른 테넌트 파일을 가리키는 심볼릭 링크는 목록·배달에서 거부 | VIDEO-LIST-STUDIO-05 | ✅ PASS | lstat+realpath containment 확인 |
+| VIDEO-LIST-STUDIO | 다른 테넌트 폴더를 가리키는 링크는 목록·배달·삭제 모두에서 거부 | VIDEO-LIST-STUDIO-06 | ✅ PASS | 배달 404, 삭제 404, 파일 보존 확인 |
+
+돌연변이 검증: 수정 3파일(`lib/storage.ts`, `api/video/list/route.ts`, `api/video/delete/route.ts`)을 되돌려 같은 19건 중 10건 FAIL 확인, 원복 후 19건 PASS 재확인. `npm run typecheck:ci` PASS. 전체 `npx vitest run` 종료 코드는 build-log.md 2026-09-25 12:40 항목에 기재.
+
+SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-isolation.test.ts`, `dashboard/tests/publish/video-path-resolution.contract.test.ts` 실행 로그

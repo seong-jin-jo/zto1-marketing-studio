@@ -132,6 +132,17 @@ RUN if printf '%s\n' "$OPENCLAW_EXTENSIONS" | tr ',' ' ' | tr ' ' '\n' | grep -q
     # 필터에 넣으면 "unknown id" 로 죽는다. 우리 루트 extensions/ 25개도 마찬가지다.
     # 실측(맥, 힙 4,608MB 강제, RAYON 4스레드): 70개 = heap OOM, 8개 = 통과(RSS 6.3GB).
     # 힙 3,072 에서는 8개도 죽는다. 즉 힙 4.6GB 가 하한이고 VM 은 12GB 가 있어야 한다.
+    #
+    # 2026-09-26: marketing VM(≈7.9GB, 위 "VM 12GB" 전제에 못 미친다)에서 tsdown이 heap
+    # out of memory 로 두 번 연속 죽었다(run 36177984718). 힙 상한을 올려 맞추는 안은
+    # 반려됐다 — 이 빌드는 운영과 같은 VM 에서 돌고 BuildKit 이 빌드에 메모리 상한을 안
+    # 걸어서, 힙을 올리면 VM 전체가 멈출 여유가 거의 안 남는다(추정 200~400MB). 대신 힙
+    # 밖에서 rolldown(Rust)이 코어 수만큼(이 머신은 4) 띄우는 rayon 작업 스레드를 1개로
+    # 묶는다. scripts/tsdown-build.mjs 의 resolveTsdownEnv 는 RAYON_NUM_THREADS 가 이미
+    # 설정돼 있으면 그 값을 존중하므로, 여기 export 가 그 파일의 메모리 기반 자동계산
+    # (스레드당 약 1,024MB 가정)을 덮는다. 계산이 맞는지는 배포 로그의
+    # `[tsdown-build] memTotal=… heapCap=… rayon=…` 한 줄로 다음 배포에서 확인한다.
+    export RAYON_NUM_THREADS=1 && \
     export OPENCLAW_BUNDLED_PLUGIN_BUILD_IDS="${OPENCLAW_BUNDLED_PLUGIN_BUILD_IDS:-anthropic,openai,google,ollama,device-pair,memory-core,phone-control,talk-voice}" && \
         pnpm_config_verify_deps_before_run=false pnpm build:docker
 # Force pnpm for UI build (Bun may fail on ARM/Synology architectures)

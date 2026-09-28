@@ -227,7 +227,7 @@ interface TextVariants {
 // 도장이 없으면 새 주제에 어제 영상이 그대로 붙는다. 2026-09-14 실측 사고.
 // aspectRatio = 이 그림이 어떤 비율로 만들어졌는지(work-media.ts isReusableVideoBaseImage).
 // 1:1 대표 이미지를 영상 바탕으로 잘못 재사용해 정사각 영상이 나오는 것을 막는다(2026-09-16).
-interface ImgResult { url: string; file: string; localPath: string; imageUrls?: string[]; topicKey?: string; aspectRatio?: string }
+interface ImgResult { url: string; file: string; filename?: string; imageUrls?: string[]; topicKey?: string; aspectRatio?: string }
 interface VidResult {
   url: string;
   file: string;
@@ -912,10 +912,10 @@ export default function StudioPage() {
       setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
     }
   }
-  // 바탕 그림을 서버 내부 경로로도, 파일 이름으로도 넘길 수 있게 한다.
-  // 방금 만든 그림은 내부 경로를 갖고 있지만, 승인함이나 달력에서 가져온 작업물은
-  // 웹 주소만 갖고 있다. 종전에는 후자로 영상을 만들 수 없었다(코드 감사 F-05).
-  async function genVideo(source: { localPath?: string; filename?: string }) {
+  // 바탕 그림은 파일 이름으로만 넘긴다(2026-09-25 코드리뷰 MAJOR-0b: 서버 절대경로를 클라이언트가
+  // 들고 다니며 그대로 서버에 되돌려주는 통로를 없앴다). 방금 만든 그림도, 승인함이나 달력에서
+  // 가져온 작업물(파일 이름만 앎)도 이 한 가지 방식으로 처리된다(코드 감사 F-05 취지 유지).
+  async function genVideo(source: { filename?: string }) {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return null; }
     setLastError(null);
     const s = text?.shorts;
@@ -927,7 +927,7 @@ export default function StudioPage() {
         pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea, industry: learningInfo.industry }),
         learningInfo,
       );
-      const r = await apiPost<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { localPath: source.localPath, filename: source.filename, prompt: motion, model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
+      const r = await apiPost<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { filename: source.filename, prompt: motion, model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
       if (!r?.ok) {
         const msg = r?.nsfw
           ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요."
@@ -1120,10 +1120,11 @@ export default function StudioPage() {
         if (!source) return; // 실패 사유는 genImage 가 이미 화면에 말했다
       }
       setBusy("숏폼 영상 만드는 중");
-      // 내부 경로가 없으면 배달 주소에서 파일 이름을 꺼내 넘긴다. 서버가 그것으로 찾는다.
+      // 방금 만든 그림은 /api/higgsfield/image가 filename을 직접 준다. 승인함·달력에서 가져온
+      // 작업물은 filename이 없고 배달 주소만 있으니 거기서 파일 이름을 꺼낸다.
       // 여기서 `img` 로 한 번 더 떨어지면 방금 가른 것이 무의미해진다. 바탕은 source 뿐이다.
-      const baseFilename = videoFilename(source?.file || source?.url || "");
-      if (!source?.localPath && !baseFilename) {
+      const baseFilename = source?.filename || videoFilename(source?.file || source?.url || "");
+      if (!baseFilename) {
         // 잠깐 뜨는 알림만으로는 옛 영상이 화면에 남아 있는 것을 사용자가 알 수 없다.
         // 사라지지 않는 자리에도 남긴다(ADR-007).
         const msg = "영상의 바탕이 될 그림을 찾지 못했습니다. 생성실에서 그림을 다시 만들어 주세요.";
@@ -1131,7 +1132,7 @@ export default function StudioPage() {
         showToast(msg, "error");
         return;
       }
-      await genVideo({ localPath: source?.localPath, filename: baseFilename });
+      await genVideo({ filename: baseFilename });
     } catch (e) {
       // genImage/genVideo 는 각자 실패 사유를 이미 화면에 말한다. 여기서 잡는 것은
       // 그 앞뒤(주제 재확인·비용 산정·승인) 단계에서 던진 예외다.
@@ -1148,7 +1149,7 @@ export default function StudioPage() {
     status: "draft" | "published" | "partial" | "stopped" = "draft",
     reconciliations: PublishReconciliationMap = publishReconciliations,
     persistedDraftId: string | null = draftId,
-    persistedEditLines: string[] = editLines,
+    persistedEditLines: string[] | undefined,
     // 방금 다시 그린 카드는 아직 상태에 반영되기 전이다. 상태를 기다리면 옛 그림이 저장된다.
     persistedImg: ImgResult | null = img,
     // 방금 자막을 구운 영상도 같은 이유로 인자로 받는다. 상태를 기다리면 자막 없는 옛
@@ -1174,6 +1175,15 @@ export default function StudioPage() {
     if (videoEditTenantMismatch) {
       persistedVideoEdit = null;
     }
+    // p1은 영상 자동저장이 렌더 시점의 editLines 클로저를 보내지 않도록 undefined를
+    // 넘긴다. p2 자막 편집은 같은 요청의 videoEdit.subtitles에 이미 최신 문구를
+    // 구조화해 담는다. 그 동일 스냅샷에서 대사를 파생하면 낡은 글 투영을 덮지 않으면서
+    // 영상 자막 문구와 저장 대사를 한 요청으로 원자적으로 맞출 수 있다.
+    if (persistedEditLines === undefined && persistedVideoEdit?.subtitles.length) {
+      persistedEditLines = [...persistedVideoEdit.subtitles]
+        .sort((left, right) => left.order - right.order)
+        .map((subtitle) => subtitle.text);
+    }
     const r = await apiPost<{ id?: string; videoEditServerRevision?: number | null }>("/api/studio/drafts", {
       tenant_id: activeWorkspace?.id,
       id: persistedDraftId,
@@ -1190,7 +1200,7 @@ export default function StudioPage() {
       firstComments,
       captions,
       selectedAccounts,
-      editLines: persistedEditLines,
+      ...(persistedEditLines === undefined ? {} : { editLines: persistedEditLines }),
       cardTextPositions,
       // 자기 도메인만 저장하는 호출도 반대 도메인을 명시적으로 null로 보낸다. route.ts는
       // clear 플래그가 없는 null을 "기존 값 보존"으로 다룬다. 키 생략과 위치 인자 기본값이
@@ -1295,7 +1305,7 @@ export default function StudioPage() {
           { lines: [], ratio: cardRatioFrom(cardAspectRatio), template: "chat_bubble", deck: pruned },
           { upload: browserCardUploader(authHeaders()) },
         );
-        const next: ImgResult = { url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
+        const next: ImgResult = { url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
         setImg(next);
         return next;
       } catch (error) {
@@ -1324,7 +1334,7 @@ export default function StudioPage() {
         theme: themeFromPalette(learningInfo.palette),
         positions: cardTextPositions,
       }, { upload: browserCardUploader(authHeaders()) });
-      const next: ImgResult = { url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
+      const next: ImgResult = { url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
       setImg(next);
       return next;
     } catch (error) {
@@ -1981,7 +1991,7 @@ export default function StudioPage() {
         instagram: { caption: work.body, hashtags: work.hashtags.map((tag) => tag.replace(/^#/, "")) },
         shorts: { hook: work.body, body: "", cta: "" },
       });
-      setImg(work.imageUrl ? { url: work.imageUrl, file: work.imageUrl, localPath: work.imageUrl } : null);
+      setImg(work.imageUrl ? { url: work.imageUrl, file: work.imageUrl } : null);
       setVid(work.videoUrl ? { url: work.videoUrl, file: work.videoUrl, model: "기존 작업물" } : null);
       setIncludes(work.includedPlatforms.length
         ? normalizeIncludes(Object.fromEntries(ALL.map((platform) => [platform, work.includedPlatforms.includes(platform)])))
@@ -2472,7 +2482,7 @@ export default function StudioPage() {
         }}
         onTextCardsCreated={(urls, cardLines) => {
           if (!urls.length) return;
-          setImg({ url: urls[0], file: urls[0], localPath: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) });
+          setImg({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) });
           setEditKind("card");
           setEditFormat((current) => {
             const base = defaultContentEditFormat("card");
@@ -2564,7 +2574,9 @@ export default function StudioPage() {
         // 책임진다 — cardDeck을 그대로 실으면(pruning 없이) 빈 말풍선이 서버에 그대로
         // 박히거나, 저장 자체가 카드덱 검증 실패로 통째로 막힌다. null을 명시해 cardDeck
         // 키 자체를 payload에서 뺀다(기존 서버 값 보존).
-        save("draft", publishReconciliations, draftIdRef.current, editLinesRef.current, img, vid, null, nextEdit)
+        // 영상 자동저장은 글/카드 투영을 소유하지 않는다. 오래된 타이머가 최신 글을
+        // 되돌리지 않도록 editLines 키를 생략하면서 영상 revision CAS만 수행한다.
+        save("draft", publishReconciliations, draftIdRef.current, undefined, img, vid, null, nextEdit)
           .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setVideoEditAutosaveError(""); })
           .catch((error) => {
             // MAJOR1(3차 재리뷰): 409가 나면 빠져나갈 길("서버 값 다시 불러오기")을 준다.

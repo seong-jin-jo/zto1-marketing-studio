@@ -5,9 +5,19 @@ import { signMediaToken } from "@/lib/media-token";
 import { runWithTenant } from "@/lib/tenant-context";
 import { hfRun, extractJson, findResultUrl, downloadTo, addNarration, logGen, recordMediaGenerationEvent, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError, assertHiggsfieldReady, studioDir, assetUrl } from "@/lib/higgsfield";
 import { resolveGeneratedFile } from "@/lib/storage";
+import { isSafeMediaFilename } from "@/lib/media-token";
 
-// POST /api/higgsfield/video — image→video. body: { localPath 또는 filename, prompt, model?, narration? }
-// localPath = /api/higgsfield/image 가 반환한 서버측 절대경로(CLI가 자동 업로드).
+// 바탕 그림으로 받아들이는 확장자 화이트리스트. 생성실이 만드는 이미지 형식만 허용하고
+// (MINOR-4, 코드리뷰 2026-09-25) 그 밖의 파일(예: 다른 라우트가 만든 임의 확장자)이
+// --image 인자로 생성기 CLI에 흘러들어가지 않게 한다.
+const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+
+// POST /api/higgsfield/video — image→video. body: { filename, prompt, model?, narration? }
+// filename = /api/higgsfield/image 가 반환한 생성실 파일 이름. 이 라우트가 resolveGeneratedFile로
+// 직접 서버 경로를 풀기 때문에 클라이언트가 서버 절대경로를 알거나 지정할 필요가 없다.
+// 2026-09-25 코드리뷰 MAJOR-0b: 종전엔 body.localPath(서버 절대경로 문자열)를 그대로 받아
+// fs.existsSync만 확인했다 — 인증된 누구든 서버의 임의 파일 경로(예: /etc/hosts)를 그대로
+// 넘겨 생성기 CLI에 --image로 먹일 수 있었다(리뷰어 탐침 실측). 입력에서 경로를 완전히 없앤다.
 // model 기본 minimax_hailuo(6cr) — 무음. narration 주면 생성 후 TTS 음성 ffmpeg 합성(소리 추가).
 // img·video 태그는 인증 헤더를 못 붙인다. 그래서 헤더 인증만 있는 자산 경로로는 화면에
 // 아무것도 안 뜬다. 이미 있는 서명 배달 경로로 돌려준다. 서명이 없으면(비밀 미설정)
@@ -34,17 +44,12 @@ export async function POST(request: Request) {
   const tenantId = await effectiveTenantId(request, body.tenant_id);
   if (!tenantId) return Response.json({ error: "테넌트를 식별할 수 없습니다." }, { status: 401 });
 
-  // 바탕 그림을 어떻게 받는가.
-  // 종전에는 서버 내부 경로(localPath)만 받았다. 그래서 방금 만든 그림으로는 영상이 됐지만,
-  // 승인함이나 달력에서 가져온 작업물로는 안 됐다. 그쪽은 웹 주소만 갖고 있기 때문이다.
-  // 화면에는 "valid localPath required" 라는 개발자 말이 그대로 떴다(코드 감사 F-05).
-  // 발행 경로는 이미 파일 이름으로 서버 경로를 푼다. 생성 경로만 달랐다. 같게 만든다.
+  // 바탕 그림을 파일 이름으로만 받는다. 서버 절대경로는 이 라우트가 resolveGeneratedFile로
+  // 직접 푼다(같은 규칙을 발행·배달·재서명 라우트와 공유 — MAJOR-0a와 같은 정본 함수).
+  // 그래서 방금 만든 그림도, 승인함·달력에서 가져온 작업물(파일 이름만 앎)도 같은 방식으로 된다.
   const filename = typeof body.filename === "string" ? body.filename : "";
-  let localPath: string = typeof body.localPath === "string" ? body.localPath : "";
-  if (filename) {
-    const resolved = resolveGeneratedFile(tenantId, filename);
-    if (resolved) localPath = resolved;
-  }
+  const filenameValid = filename && isSafeMediaFilename(filename) && IMAGE_EXTS.has(path.extname(filename).toLowerCase());
+  const localPath = filenameValid ? resolveGeneratedFile(tenantId, filename) : null;
   if (!localPath || !fs.existsSync(localPath)) {
     return Response.json({
       ok: false,

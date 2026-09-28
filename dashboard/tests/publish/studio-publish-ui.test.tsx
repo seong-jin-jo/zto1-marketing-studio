@@ -975,13 +975,17 @@ describe("Studio publish result integrity", () => {
 
     render(<StudioPage />);
     const editor = await screen.findByRole("textbox", { name: "글 전체" });
-    fireEvent.change(editor, { target: { value: "발행실로 넘길 본문" } });
+    editor.textContent = "발행실로 넘길 본문";
+    fireEvent.input(editor);
     fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
 
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
       id: null,
       editKind: "text",
-      editFormat: { kind: "text" },
+      editFormat: expect.objectContaining({
+        kind: "text",
+        segments: [{ text: "발행실로 넘길 본문", bold: false }],
+      }),
       editLines: ["발행실로 넘길 본문"],
       text: expect.objectContaining({
         threads: "발행실로 넘길 본문",

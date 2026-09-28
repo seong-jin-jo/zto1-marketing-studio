@@ -200,7 +200,9 @@ export async function POST(request: Request) {
   const tenantId = await effectiveTenantId(request, null);
 
   return runWithTenant(tenantId, async () => {
-    const videoPath = resolveGeneratedFile(tenantId || "", filename);
+    // tenantId를 `|| ""`로 뭉개지 않는다 — null(운영자)과 ""(형식 오류)는 다르게 처리돼야
+    // 하고, 뭉개면 운영자의 발행이 통째로 "video not found"가 된다(MAJOR-1, 코드리뷰 2026-09-26).
+    const videoPath = resolveGeneratedFile(tenantId, filename);
     if (!videoPath) {
       return Response.json({ error: "video not found" }, { status: 404 });
     }

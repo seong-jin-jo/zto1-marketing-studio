@@ -1,3 +1,52 @@
+## 2026-09-28 PR 87 main 병합 충돌 해결 로컬 완료
+
+- handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p2`, 브랜치 `feat/editroom-v70-p2`, HEAD `b121ad6a`, `origin/main` `a211ca81`을 primary로 삼았다. tmux `371:0.1`은 같은 워크트리의 이전 p2 작업 종료 로그로 확인했다.
+- 병합 원칙: p1 영역인 말풍선·글 편집·카드덱은 main의 squash 최종본을 따른다. p2 전용 영상 편집 CAS, 발행 복귀 잠금 해제, 관련 테스트는 p2 diff에서 보존한다. rebase·push·PR merge는 하지 않는다.
+- 해결: 12개 충돌 가운데 p1 전용 파일은 main을 채택했다. 혼합 파일은 main의 구조화 글 편집과 p2 영상 전용 편집기·CAS를 함께 보존했다. 영상 자동저장은 낡은 `editLines` 클로저를 보내지 않고 동일 `videoEdit.subtitles` 스냅샷에서 저장용 대사를 파생한다.
+- 검증: 표적 교차 회귀 2파일 12건 PASS. CI 동일 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 전체 Vitest 418파일·2,849건 PASS·1건 SKIP·실패 0. TypeScript와 production build 종료 0. 발행실 정렬 최대 delta 0px, Chromium·WebKit·Firefox 말풍선 편집 51개 시나리오 전부 PASS. dev `localhost:3764/studio?room=edit` HTTP 200·본문 표시·콘솔 오류 0. 임시 DB 삭제 확인.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 커밋에서 제외한다. push와 PR merge는 하지 않는다.
+- 출고: 두 부모가 p2 `b121ad6a`와 main `a211ca81`인 merge commit을 만들었다. rebase, push, PR merge는 수행하지 않았다.
+- 다음 실행: 부모 컨트롤러가 현재 HEAD를 push하고 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
+## 2026-09-28 07:12 KST PR 87 MINOR-1 로컬 완료, push 정책 차단
+
+- handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p2`, HEAD `d6e7744b`, PR 87 7차 리뷰 코멘트 `5839629237`, 기존 미커밋 `page.tsx` diff를 primary로 삼았다. tmux `371:0.1`은 같은 워크트리의 과거 로그 확인에만 썼다.
+- 수정: `draft_id` 없는 인박스 발행 복귀 else 분기를 공용 `invalidateVideoEditReconcile()`에 연결했다. 이전 빌더의 전역 `draftId=null` 잠금 해제는 초기 복원 B-5 잠금을 조기에 푸는 회귀를 실제 P11 실패로 확인해 제거했다. 실제 `StudioPage` 마운트 MINOR-1 회귀를 추가했다.
+- 검증: 발행실·B-5 통합 회귀 2파일 39건 PASS, 기존 P4·P6 6건 PASS, `npm run typecheck:ci` 종료 0. artifact lint는 실체·슬롯·버전 정합 PASS와 기존 핀 경고 28건, design lint는 기존 인라인 style 1파일·hex 6파일 경고이며 이번 변경은 스타일 0건이다.
+- 로컬 커밋: `b121ad6a4e1685168f20a45fcddb17c8f75cead2`. 의도한 4파일만 포함했고 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 제외했다.
+- 원격 차단: `git push origin feat/editroom-v70-p2`가 `approval required by policy, but AskForApproval is set to Never`로 실행 전에 거절됐다. origin과 PR 87은 계속 `d6e7744b`다. 다음 실행은 push 권한이 있는 컨트롤러가 같은 브랜치를 push하고 PR 87 원격 CI를 종료까지 확인하는 것이다. PR 제목·본문·머지는 건드리지 않는다.
+
+## 2026-09-28 09:23 KST PR 85 편집실 v70 9차 리뷰 로컬 수정·검증 완료
+
+- handoff basis: 사용자가 지정한 `.pr85-review9.md`, 워크트리 `/private/tmp/wt-v70p1`, 시작 HEAD `ef73d2c2`를 primary로 사용했다. tmux `371:0.2`는 종료된 8차 리뷰 로그라 동시 수정이 없음을 확인했다.
+- 수정 전 재현: `R-S10-37`은 contentEditable에 textarea용 `toHaveValue`를 호출해 실제값 `undefined`, 표적 1건 실패·21건 통과였다.
+- 변경: 제품 소스는 유지했다. 테스트가 `<br><br>` 문단 경계를 확인하고 `innerHTML` 변경 뒤 `input` 이벤트로 `onLinesChange`를 검증하게 했다.
+- 검증: 표적 22건 PASS. CI와 같은 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 `npx vitest run`은 408파일·2,778건 PASS, 1건 SKIP, 실패 0. TypeScript, 프로덕션 빌드, 발행실 정렬 delta 0px, Chromium WYSIWYG 전부 PASS. 임시 DB는 삭제했다. 원격 CI는 push 전이라 미검증이다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr85-review7.md`, `.pr85-review8.md`, `.pr85-review9.md`는 커밋하지 않는다. 다음 실행은 의도 파일만 커밋하고 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다.
+
+## 2026-09-28 08:50 KST PR 85 편집실 v70 8차 리뷰 로컬 수정·검증 완료
+
+- handoff basis: 사용자가 지정한 `.pr85-review8.md`, 워크트리 `/private/tmp/wt-v70p1`, HEAD `bc539b95`를 primary로 사용했다. tmux `371:0.2`는 종료된 8차 리뷰 로그만 남은 상태라 동시 수정이 없음을 확인했다.
+- 수정 전 재현: 필수 발행실 UI는 contentEditable `value setter` 오류, 연속 넘침은 4장 기대에 2장, 글 리치 붙여넣기는 기본 동작 허용 `true`로 각각 실패했다.
+- 변경: 자동 분할 뒤 새 장을 다음 검사 대상으로 넘긴다. 글 전체 편집은 리치 붙여넣기 기본 동작을 막고 평문만 저장한다. 필수 발행실 테스트는 contentEditable 입력과 구조화 세그먼트를 검증한다.
+- 검증: 관련 Vitest 16파일 203건, TypeScript, 프로덕션 빌드, Chromium·WebKit·Firefox E2E PASS. 3엔진에서 글 DOM과 저장 모델 `붙여넣은 평문` 일치, 리치 노드 0건을 관찰했다. dev 3762는 Ready 805ms, `/studio` HTTP 200, body 표시, 콘솔 오류 0이었다.
+- 커밋: `ef73d2c2`. `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr85-review7.md`, `.pr85-review8.md`는 커밋하지 않았다. 다음 실행은 부모 컨트롤러가 push하고 8차 리뷰를 재요청한다.
+
+## 2026-09-28 07:52 KST PR 85 편집실 v70 7차 리뷰 로컬 수정·검증 완료
+
+- handoff basis: 사용자가 지정한 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, 시작 HEAD `355b856c`, 7차 리뷰 전문을 primary로 사용했다. tmux `371:0.2`는 종료된 직전 리뷰 세션임을 확인했다.
+- 변경: 말풍선 DOM을 구조화 세그먼트로 직렬화하고 굵기 결과 불변식을 검사한다. 영상 자동저장은 `editLines`를 생략한다. v70 글 선택 도구막대, 넘침 자동 분할, 카드 DnD, 말풍선 기준 툴바, 키보드 포커스를 구현했다.
+- 검증: 수정 전 속성 테스트 18건 FAIL. 수정 후 관련 Vitest 162건과 추가 자동분할 46건, 3엔진 E2E, typecheck, build, 변경 소스 design-lint, dev `/studio` HTTP 200·콘솔 오류 0 PASS.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, 기존 session-state 변경, `.pr85-review7.md`는 커밋하지 않는다.
+- 다음 실행: 의도 파일만 커밋하고 부모 컨트롤러가 push한다. PR 제목·본문 수정, 머지, 배포는 하지 않는다.
+
+## 2026-09-25 11:39 KST PR 85 편집실 v70 낡은 테스트 계약 수정 착수
+
+- handoff basis: 사용자가 지정한 과제, 워크트리 `/private/tmp/wt-v70p1`, 브랜치 `feat/editroom-v70-p1`, HEAD `dea8d81c`를 primary로 사용한다. 같은 cwd의 tmux `openclaw-auto:1.1`은 직전 v70 기록과 일치하는 보조 확인만 했다.
+- 원인: `dashboard/tests/studio/studio-fe2-rooms.test.tsx`의 QA-EDIT-06만 글 `data-edit-outline` 존재를 요구한다. v70 제품과 전용 회귀는 글 목차 부재, 글 전체 textbox 존재, 문단 textbox 부재를 계약한다.
+- 현재 판정: `docs/qa/qa-tracker.md`에 `PR85-CI-EDIT-OUTLINE`을 ❌ NG로 등록했다. 자동 기록 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 보존한다.
+- 다음 실행: QA-EDIT-06을 목차 부재 단언으로 바꾸고 전체 Vitest와 `typecheck:ci`를 실행한다. 통과하면 QA 원장과 이 핸드오프를 갱신하고 의도 파일만 커밋한 뒤 push한다.
+
 # 2026-09-25 07:48 KST 편집실 v70 1단계 로컬 출고 완료, push 정책 차단
 
 - 최종 로컬 HEAD: `7008af6e`. 제품·테스트 `cc103a37`, 검증 문서 `cfc5e880`, 리뷰 회귀 수정 `7008af6e`다. 최신 `origin/main` `57850570`을 조상으로 포함한다.

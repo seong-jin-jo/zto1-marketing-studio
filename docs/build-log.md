@@ -1,5 +1,119 @@
 # OSMU build log
 
+## 2026-09-28 10:19 KST · PR 87 main 병합과 p1/p2 경계 회귀 봉합
+
+STAMP: 2026-09-28 10:19 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa | 근거: `origin/main` a211ca81, p2 b121ad6a, 3-way diff, CI 동일 전체 로그 | 고민: main의 영상 자동저장 격리와 p2의 자막 CAS 저장을 둘 다 만족시키기 위해 오래된 React 클로저 대신 동일 영상 스냅샷에서 대사를 파생했다.
+
+| 검증 | 결과 |
+|---|---|
+| 병합 경계 | p1 말풍선·글·카드덱은 main 최종본, p2 영상 편집 CAS·발행 복귀 잠금 해제는 보존 |
+| 교차 회귀 | 영상 자동저장 payload의 대사를 같은 `videoEdit.subtitles` 스냅샷에서 파생, 표적 2파일·12건 PASS |
+| CI 동일 전체 Test | 임시 PostgreSQL schema→seed→RLS, migration matrix 뒤 418파일·2,849건 PASS, 1건 SKIP, 실패 0 |
+| TypeScript·build | `npx tsc --noEmit -p tsconfig.ci.json`, `npm run build` 종료 코드 0 |
+| 실브라우저 | 발행실 카드 정렬 최대 delta 0px, Chromium·WebKit·Firefox 말풍선 편집 51개 시나리오 전부 PASS |
+| dev 스모크 | `localhost:3764/studio?room=edit` HTTP 200, Ready 876ms, 본문 표시, 콘솔 오류 0 |
+
+원격 CI와 운영 배포는 push 전이므로 미검증이다.
+
+KNOWLEDGE_QUERY: `origin/main`과 p2의 3-way diff, CI workflow, v70 저장 회귀를 조회했다.
+HITS_USED: main의 p1 구조화 편집기와 p2의 영상 CAS·발행 복귀 무효화 계약을 각각 정본으로 채택했다.
+HITS_REJECTED: 외부 벤치마크는 이미 확정된 두 브랜치의 기계적 병합·버그 수정이라 적용하지 않았다.
+CONFLICTS: main의 낡은 `editLines` 클로저 차단과 p2의 자막 저장 요구가 충돌해 동일 CAS 스냅샷 파생으로 해소했다.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `origin/main` a211ca81, p2 b121ad6a, `.github/workflows/ci.yml`, `/tmp/pr87-merge-full-ci-test-r2.log`, `/tmp/pr87-merge-{alignment,bubble-e2e}.log`
+
+## 2026-09-28 09:23 KST · PR 85 편집실 v70 9차 CI 계약 교정
+
+STAMP: 2026-09-28 09:23 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa | 근거: `.pr85-review9.md`, GitHub Actions run 36360534701, 수정 전·후 표적 로그, CI Test 전체 로그 | 고민: 테스트 의도를 지우지 않고 textarea의 value 계약만 실제 contentEditable DOM·input 계약으로 옮겼다.
+
+| 검증 | 수정 전 | 수정 뒤 |
+|---|---|---|
+| R-S10-37 표적 | `toHaveValue` 실제값 `undefined`, 1건 실패·21건 통과 | `<br><br>` 문단 경계와 `input` 저장 콜백을 직접 검증, 22건 PASS |
+| CI Test 동일 명령 | GitHub run 36360534701에서 동일 테스트 실패 | 임시 PostgreSQL에 schema→seed→RLS 적용 후 `npx vitest run`: 408파일·2,778건 PASS, 1건 SKIP, 실패 0 |
+| migration matrix | 해당 없음 | `PGTZ=UTC`로 CI 시간대까지 맞춰 전 항목 PASS, 임시 DB 삭제 확인 |
+| TypeScript·build | 해당 없음 | `npx tsc --noEmit -p tsconfig.ci.json`, `npm run build` 종료 코드 0 |
+| CI 브라우저 게이트 | 후속 스텝이 원격에서 건너뜀 | 발행실 정렬 delta 0px, Chromium WYSIWYG 전부 PASS |
+
+제품 소스와 런타임 동작은 바꾸지 않았다. 원격 CI green은 push 전이라 미검증이다.
+
+KNOWLEDGE_QUERY: `.pr85-review9.md`, CI 워크플로 `verify` 잡, 같은 contentEditable을 검증하는 기존 편집실 테스트를 조회했다.
+HITS_USED: `editroom-v65.test.tsx`의 `innerHTML`·`fireEvent.input` 패턴을 동일 컴포넌트 계약으로 채택했다.
+HITS_REJECTED: 제품 편집기 변경과 테스트 삭제는 기능 계약을 약화하거나 범위를 넓히므로 제외했다.
+CONFLICTS: 없음.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr85-review9.md`, `.github/workflows/ci.yml`, `dashboard/tests/{studio/studio-chairman-feedback-2026-08-29,components/editroom-v65}.test.tsx`, `/tmp/pr85-r9-*.log`
+
+## 2026-09-28 08:50 KST · PR 85 편집실 v70 8차 리뷰 차단 해소
+
+STAMP: 2026-09-28 08:50 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa | 근거: `.pr85-review8.md`, `studio-publish-ui.test.tsx`, 연속 넘침·리치 붙여넣기 재현 탐침 | 고민: 한 번의 분할 성공을 완료로 보지 않고 새 장을 다시 렌더 검사하는 상태 전이로 닫았다.
+
+| 검증 | 수정 전 | 수정 뒤 |
+|---|---|---|
+| 필수 발행실 UI | contentEditable에 `fireEvent.change`, `value setter` 오류로 FAIL | contentEditable `input`과 구조화 세그먼트 저장 PASS |
+| 연속 넘침 | 4개 단일 말풍선 장 기대, 2장에서 중단 | 새 장을 연속 검사해 4장 모두 단일 말풍선 PASS |
+| 글 리치 붙여넣기 | paste 기본 동작 허용 `true`, 리치 DOM 잔존 | 기본 동작 차단, 평문 DOM·모델 일치 PASS |
+| 관련 회귀 | 해당 없음 | Vitest 16파일 203건 PASS |
+| 실브라우저 | 해당 없음 | Chromium·WebKit·Firefox 전부 PASS, 글 리치 노드 0건 |
+| 타입·빌드 | 해당 없음 | `typecheck:ci`, `npm run build` PASS |
+| dev 스모크 | 해당 없음 | dev 3762 Ready 805ms, `/studio` HTTP 200, body 표시, 콘솔 오류 0 |
+
+운영 배포와 실회원 원격 저장은 미검증이다.
+
+KNOWLEDGE_QUERY: 새 BRAIN·웹 조회 없음. 승인된 구조와 8차 리뷰 재현을 고치는 버그 수정이라 기존 7차의 에디터 데이터 모델 조사 결과를 유지했다.
+HITS_USED: `.pr85-review8.md`, 수정 전 Vitest 로그, 기존 카드 말풍선 `handlePaste` 패턴을 채택했다.
+HITS_REJECTED: 새 편집기 라이브러리 도입은 두 국소 회귀의 수정 범위를 넘으므로 배제했다.
+CONFLICTS: 없음.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr85-review8.md`, `dashboard/src/components/studio/BubbleEditor.tsx`, `dashboard/src/components/studio/StudioRooms.tsx`, `dashboard/tests/publish/studio-publish-ui.test.tsx`
+
+## 2026-09-28 07:52 KST · PR 85 편집실 v70 7차 리뷰 차단 해소
+
+STAMP: 2026-09-28 07:52 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa | 근거: `.pr85-review7.md`, `docs/design/design-spec-editroom-v70.md`, v70 hub prototype, ADR, BRAIN 에디터 데이터 모델, ProseMirror·MDN 공식 문서 | 고민: 평문 길이 비율로 굵기 경계를 추정하는 경로를 증상별로 보정하지 않고 구조화 세그먼트를 저장 원본으로 바꿨다.
+
+- 데이터 무결성: 말풍선 DOM의 텍스트·`strong`·줄바꿈을 세그먼트로 직접 직렬화한다. 굵기 토글은 방향과 무관하게 결과의 굵은 덩이 수를 검사한다. 영상 자동저장은 `editLines`를 생략해 낡은 클로저가 글 투영을 덮지 못하게 했다.
+- v70 명세: 글 선택 시 플로팅 굵기 도구막대와 굵기 세그먼트 저장, 카드 넘침 자동 다음 장 분할, 썸네일 끌어 놓기, 말풍선 기준 `bottom:-26px` 도구막대와 모바일 44px, `:focus-visible` 표시를 구현했다.
+
+| 검증 | 명령·대상 | 결과 |
+|---|---|---|
+| 결함 선행 재현 | 강화 속성 테스트 300회 | 수정 전 18건 FAIL, `/tmp/pr85-r7-property-before.log` |
+| 관련 회귀 | Vitest 14파일 | 164건 PASS, 종료 코드 0 |
+| 추가 자동분할 계약 | card-deck ops + v70 회귀 | 46건 PASS, 종료 코드 0 |
+| 실브라우저 | `verify-bubble-editor-toolbar-e2e.mjs all` | Chromium·WebKit·Firefox 전부 PASS, R7 M1·M2 포함 |
+| 타입·빌드 | `typecheck:ci`, `npm run build` | PASS, 종료 코드 0 |
+| dev 스모크 | dev 3761, `/studio` | Ready, HTTP 200, body 표시, 콘솔 오류 0 |
+| 디자인 토큰 | 변경 소스만 `design-lint.sh` | 위반 0 |
+
+운영 배포와 실제 회원 초안의 원격 저장은 범위 밖이라 미검증이다.
+
+KNOWLEDGE_QUERY: BRAIN `cto/index.md`에서 에디터 데이터 모델·직렬화로 좁혀 조회하고, ProseMirror 상태·트랜잭션·뷰 흐름과 MDN contenteditable 입력·HTML Drag and Drop을 웹 검색했다.
+HITS_USED: `concept-에디터-데이터모델-ProseMirror-직렬화.md`의 “모델이 진실, DOM은 투영” 원칙, ProseMirror Guide의 transaction/state/view 흐름, MDN의 draggable·dragover·drop 계약을 구조화 세그먼트와 스트립 끌어 놓기에 적용했다.
+HITS_REJECTED: ProseMirror/Tiptap 라이브러리 전면 도입은 현재 카드 세그먼트 스키마와 PR 수정 범위를 넘으므로 채택하지 않았다. `beforeinput.getTargetRanges()` 선점 방식도 세 엔진 E2E가 검증된 기존 IME 흐름을 바꾸므로 보류했다.
+CONFLICTS: 없음. 회장 정본과 외부 공식 문서는 모두 상태를 원본으로 두고 DOM을 투영으로 다루라는 방향에서 일치했다.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr85-review7.md`, `docs/design/design-spec-editroom-v70.md`, `docs/design/prototypes/osmu-editroom-v70-hub-claude-opus-20260923-0956.html`, `/Users/sj/SJ_BRAIN_wiki/wiki/cto/개발/concept-에디터-데이터모델-ProseMirror-직렬화.md`, https://prosemirror.net/docs/guide/, https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
+
+## 2026-09-25 12:40 KST · 영상 목록이 생성실 폴더를 안 본 결함 수정
+
+STAMP: 2026-09-25 12:40 KST | model: claude-sonnet-5 | agent: code-builder | skill: 없음(코드 수정, 매칭 스킬 없음) | 근거: `dashboard/src/lib/storage.ts`의 `resolveGeneratedFile` 계약, wiki/거버넌스/실수.md의 "경로 한쪽만 본다" 반복 사고 | 고민: 목록·삭제·배달·발행 네 라우트가 저장 위치를 각자 나열하면 다섯 번째 사고가 또 난다. 폴더 목록 정본(`generatedMediaDirs`)을 하나로 묶고 나머지가 그것만 참조하게 했다.
+
+- 결함: `/api/video/list`가 `data/videos` 한 곳만 읽어 생성실(`data/studio/<tenant>/vid*.mp4`)이 만든 영상이 목록에 안 떴다(운영 실측 `{"videos":[]}`). `/api/video/delete`도 같은 한 폴더만 봐서 생성실 영상 삭제가 404였다.
+- 수정: `lib/storage.ts`에 `generatedMediaDirs(tenantId)`(찾을 폴더 목록 정본)와 `isGeneratedMediaDirSafe(dir)`(심볼릭 링크로 다른 테넌트 폴더를 가리키는 경우 거부)를 신설. `resolveGeneratedFile`이 이 목록을 쓰도록 고쳐 배달·발행과 동일 정본을 공유한다. `/api/video/list`가 두 폴더를 모두 훑어 최신순으로 합치고, 같은 파일명이 두 폴더에 겹치면 어느 쪽인지 안정적으로 고를 수 없으므로 목록·배달·삭제 모두에서 해당 파일명을 숨긴다(fail closed). `/api/video/delete`가 `resolveGeneratedFile`을 쓰도록 교체해 생성실 영상도 지울 수 있게 했다.
+- 이전 Codex 리뷰가 잡은 계약 결함 2건(폴더 우선순위 불일치, 삭제 404)도 이 변경으로 닫혔다.
+
+| 검증 | 명령 | 결과 |
+|---|---|---|
+| 관련 vitest | `npx vitest run tests/publish/video-path-resolution.contract.test.ts tests/publish/video-routes-tenant-isolation.test.ts` | 2파일 19건 PASS |
+| 돌연변이 검증 | 수정 3파일을 되돌리고 같은 테스트 재실행 → 10건 FAIL, 원복 후 19건 PASS 재확인 | PASS |
+| 타입체크 | `npm run typecheck:ci` | PASS |
+| 전체 vitest | `npx vitest run`(백그라운드, 종료 코드 확인) | 아래 표에 종료 코드 기재 |
+
+KNOWLEDGE_QUERY: BRAIN·웹 조사 없음 — 버그 픽스이자 기존 계약(§2.3 면제 대상: 이미 정해진 규격대로의 구현)이라 조회 강제 대상 아님. 대신 레포 내부 정본(`storage.ts` 주석, `wiki/거버넌스/실수.md`)만 확인.
+HITS_USED: `resolveGeneratedFile` 기존 구현과 그 주석(2026-09-08 F-05 교훈) — 배달·발행이 이미 정본을 참조하던 패턴을 목록·삭제에도 그대로 확장.
+HITS_REJECTED: 해당 없음.
+CONFLICTS: 없음.
+
+SOURCES/MODEL: claude-sonnet-5 | `dashboard/src/lib/storage.ts`, `dashboard/src/app/api/video/{list,delete,publish}/route.ts`, `dashboard/src/app/api/media/[token]/route.ts`, `dashboard/tests/publish/video-routes-tenant-isolation.test.ts`
+
 ## 2026-09-25 07:42 KST · 편집실 v70 1단계 EDIT-TEXT·EDIT-CARD
 
 STAMP: 2026-09-25 07:42 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: ship, review | 근거: `docs/design/design-spec-editroom-v70.md`, v70 hub prototype, ADR-007, Canva 직접 편집 도움말, X·Meta 공식 상한 문서 | 고민: 글의 불필요한 구조 조작을 없애고 카드 문구를 결과물 위에서 한 번에 고치게 하되 기존 자동저장과 숨겨진 음악 데이터는 보존했다.

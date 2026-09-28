@@ -10,10 +10,13 @@ const pageSource = readFileSync("src/app/studio/page.tsx", "utf8");
 
 describe("편집실의 글 순서와 배경 음악 제거 회귀", () => {
   it("EDITROOM-NO-DEAD-CONTROLS-01 거절: 글은 순서·추가·삭제 조작을 노출하지 않는다", () => {
-    // v70 §4: 영상이 새 VideoEditor 워크벤치로 그려질 때만 목차를 더 안 보인다(회귀
-    // 테스트는 그대로 있고, legacy 경로에서는 여전히 목차가 있다 — 조건이 한 항 늘었다).
+    // p2 영상 전용 작업대도 목차를 숨긴다. 핵심 계약은 글에서 목차가 열리지 않는 것이므로
+    // text 거절 조건과 video 전용 분기를 함께 고정한다.
     expect(roomSource).toContain('{kind !== "text" && !(kind === "video" && onVideoEditChange) ? <nav');
-    expect(roomSource).toContain('<TextDocumentEditor lines={safeLines} onLinesChange={onLinesChange} />');
+    expect(roomSource).toContain('<TextDocumentEditor');
+    expect(roomSource).toContain('segments={textSegments}');
+    expect(roomSource).toContain('onLinesChange={onLinesChange}');
+    expect(roomSource).toContain('onSegmentsChange={setTextSegments}');
     expect(roomSource).not.toContain('onMove={kind === "text" ? undefined : moveLine}');
     expect(roomSource).not.toContain('onMoveTo={kind === "text" ? undefined : moveLineTo}');
     expect(roomSource).not.toContain('onAdd={kind === "text" ? undefined : addLine}');
@@ -39,7 +42,7 @@ describe("편집실의 글 순서와 배경 음악 제거 회귀", () => {
     expect(roomSource).toContain('const audio = format?.kind === "audio" ? format : defaultContentEditFormat("audio") as AudioFormat;');
     expect(roomSource).toContain("return { musicTrack: audio.musicTrack, musicVolume: audio.musicVolume };");
     expect(roomSource).toContain(": { kind, voice: values.목소리, ...preservedAudio };");
-    expect(roomSource).toContain("() => formatFromToolValues(formatKind, toolValues, preservedAudio)");
+    expect(roomSource).toContain("() => formatFromToolValues(formatKind, toolValues, preservedAudio, textSegments)");
     expect(pageSource).toContain("edit_format: editFormat");
   });
 
