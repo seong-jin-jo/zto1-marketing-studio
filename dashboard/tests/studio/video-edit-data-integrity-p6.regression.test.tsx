@@ -78,11 +78,12 @@ type Draft = Record<string, unknown> & { id: string; videoEdit?: Record<string, 
 const store = new Map<string, Draft>();
 const gets: string[] = [];
 
-function fakeServer(opts: { getDelay?: number } = {}) {
+function fakeServer(opts: { getDelay?: number; postDelay?: number } = {}) {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (typeof url === "string" && url.includes("/api/studio/drafts") && init?.method === "POST") {
       const body = JSON.parse(String(init.body ?? "{}"));
       fetchCalls.push({ url, body });
+      if (opts.postDelay) await sleep(opts.postDelay);
       return new Response(JSON.stringify({ ok: true, id: "new-1", videoEditServerRevision: body.videoEdit ? (body.videoEdit.revision ?? 0) : null }), { status: 200, headers: { "content-type": "application/json" } });
     }
     if (typeof url === "string" && url.includes("/api/studio/drafts") && url.includes("&id=")) {
@@ -172,5 +173,35 @@ describe("PROBE6 회귀 — B-6·B-7", () => {
       const overlays = ((post.body.videoEdit as { overlays?: Array<{ text: string }> } | null)?.overlays ?? []).map((o) => o.text);
       expect(overlays, "B의 저장 요청에 A 오버레이가 실리면 안 된다").not.toContain("A테넌트오버레이");
     }
+  }, 30000);
+
+  it("PR87-R2-CTX: A 저장 응답 중 B로 전환해도 B 본문을 A 초안에 후속 저장하지 않는다", async () => {
+    swrByTenant({ "tenant-video-integrity-p6-a": [], "tenant-video-integrity-p6-b": [] });
+    fakeServer({ postDelay: 1500 });
+    localStorage.setItem(storageKey("tenant-video-integrity-p6-a"), JSON.stringify({
+      idea: "A", vid: VID, draftId: "draft-A", editLines: ["A 대사"], editKind: "video", videoEdit: {
+        contract_version: "1.0", overlays: [], comments: [],
+        subtitles: [{ id: "sub-a", order: 0, text: "A 대사", startSec: 0, endSec: 3, cut: false }],
+        voice: null, revision: 1,
+      },
+    }));
+    localStorage.setItem(storageKey("tenant-video-integrity-p6-b"), JSON.stringify({
+      idea: "B", vid: VID, draftId: "draft-B", editLines: ["B 최신 본문"], editKind: "video",
+    }));
+    mocks.workspace = { id: "tenant-video-integrity-p6-a", name: "A" };
+    window.history.replaceState(null, "", "/studio?room=edit");
+    const rendered = render(<StudioPage />);
+    const subtitleList = await list();
+    fireEvent.change(subtitleList.querySelector("[data-video-subtitle-text]") as HTMLInputElement, { target: { value: "A 수정 대사" } });
+    await waitFor(() => expect(fetchCalls.some((call) => call.body.tenant_id === "tenant-video-integrity-p6-a")).toBe(true), { timeout: 5000 });
+
+    mocks.workspace = { id: "tenant-video-integrity-p6-b", name: "B" };
+    rendered.rerender(<StudioPage />);
+    await sleep(2200);
+
+    const tenantAPosts = fetchCalls.filter((call) => call.body.tenant_id === "tenant-video-integrity-p6-a");
+    expect(tenantAPosts).toHaveLength(1);
+    expect(tenantAPosts[0].body.editLines).toEqual(["A 수정 대사"]);
+    expect(tenantAPosts.some((call) => JSON.stringify(call.body.editLines).includes("B 최신 본문"))).toBe(false);
   }, 30000);
 });

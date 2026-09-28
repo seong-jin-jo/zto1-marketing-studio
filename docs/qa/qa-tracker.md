@@ -1,3 +1,11 @@
+## 2026-09-28 PR 87 재리뷰 r2 글 최신값 경합 ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR87-R2-MAJOR-01 | 자막 A′ 자동저장 대기 중 더 최신 글 B가 입력되면 B를 보존 | PR87-R2-M1 | ✅ 로컬 PASS | 본문 세대와 저장 큐를 단일 경로로 묶었다. A′→B→타이머, B→영상 편집, 저장 응답 대기 중 B 입력을 실제 `StudioPage`에서 모두 고정했다. |
+| PR87-R2-MAJOR-02 | 기존 초안도 검토 요청 전에 최신 본문을 저장 | PR87-R2-M2 | ✅ 로컬 PASS | 기존 초안도 `/api/studio/drafts`에 최신 본문을 먼저 저장한 뒤 큐 생성·검토 요청을 수행함을 호출 순서로 검증했다. |
+| PR87-R2-FINAL | CI 동일 전체 회귀와 타입·빌드·브라우저 | PR87-R2-FINAL-01~06 | ✅ 로컬 PASS | 전체 Vitest 418파일·2,855건 PASS·1건 SKIP·실패 0. TypeScript, build, migration matrix, 발행실 정렬, Chromium E2E PASS. dev `localhost:3770/studio?room=edit` HTTP 200·콘솔 오류 0. |
+
 ## 2026-09-28 PR 87 병합 리뷰 글 저장 회귀 🔧 수정, 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

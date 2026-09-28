@@ -684,6 +684,38 @@ describe("Studio publish result integrity", () => {
     expect(mocks.apiPost.mock.calls.some(([path]) => String(path).includes("request-review"))).toBe(false);
   });
 
+  it("PR87-R2-M2 정상: 기존 초안도 검토 큐를 만들기 전에 최신 본문을 먼저 저장한다", async () => {
+    // Regression: PR87-R2-M2 — 기존 draftId의 단축 평가가 최신 편집 저장을 건너뛰었다.
+    // Found by reviewer on 2026-09-28.
+    // Report: .pr87-review-r2.md
+    restoreStudio(["threads"]);
+    const key = `studio_work:${mocks.workspace.id}`;
+    const restored = JSON.parse(localStorage.getItem(key) || "{}");
+    localStorage.setItem(key, JSON.stringify({ ...restored, draftId: "draft-existing-review" }));
+    mocks.drafts = [{ id: "draft-existing-review", editLines: ["서버의 이전 문단"], status: "draft" }];
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-existing-review" };
+      if (path === "/api/queue/add") return { post: { id: "queue-existing-review" } };
+      if (path === "/api/queue/queue-existing-review/request-review") return { reused: false };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "검토 요청하기" }));
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
+      "/api/queue/queue-existing-review/request-review",
+      expect.objectContaining({ tenant_id: "tenant-a" }),
+    ));
+    const calls = mocks.apiPost.mock.calls.map(([path]) => path);
+    expect(calls.indexOf("/api/studio/drafts")).toBeGreaterThanOrEqual(0);
+    expect(calls.indexOf("/api/studio/drafts")).toBeLessThan(calls.indexOf("/api/queue/add"));
+    expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
+      id: "draft-existing-review",
+      editLines: ["가장 최신 문단"],
+    }));
+  });
+
   it("M3-STUDIO-01 정상: 작업 공간을 바꾸면 각 공간의 저장 상태만 복원한다", async () => {
     localStorage.setItem("studio_work:tenant-a", JSON.stringify({
       idea: "A 작업물",
@@ -1001,6 +1033,35 @@ describe("Studio publish result integrity", () => {
     })));
     expect(mocks.setStudioRoom).toHaveBeenCalledWith("publish");
     expect(window.location.pathname + window.location.search).toBe("/studio?room=publish");
+  });
+
+  it("PR87-R2-M1 정상: 편집줄이 비어도 생성 본문을 최신값 정본으로 승격한 뒤 저장한다", async () => {
+    window.history.replaceState(null, "", "/studio?room=edit");
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "생성 본문 직행 테스트",
+      text: {
+        threads: "생성된 스레드 본문",
+        x: "생성된 X 본문",
+        facebook: "생성된 페이스북 본문",
+        instagram: { caption: "생성된 인스타 본문", slides: ["생성된 인스타 본문"] },
+        shorts: { hook: "첫 문단", body: "둘째 문단", cta: "셋째 문단" },
+      },
+      editLines: [],
+      editKind: "text",
+      editFormat: { kind: "text" },
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-derived-lines" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "발행실로 이동" }));
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
+      editLines: ["첫 문단", "둘째 문단", "셋째 문단"],
+    })));
+    expect(mocks.setStudioRoom).toHaveBeenCalledWith("publish");
   });
 });
 

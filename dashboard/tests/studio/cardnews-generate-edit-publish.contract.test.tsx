@@ -30,7 +30,7 @@ describe("카드뉴스 이음매 계약", () => {
     // 컴포넌트에 자리가 있어도 페이지가 안 이으면 고객은 못 본다. 배선까지 계약이다.
     expect(roomsSrc).toContain("onTextCardsCreated?.(persisted, lines)");
     expect(pageSrc).toContain("onTextCardsCreated={(urls, cardLines) => {");
-    expect(pageSrc, "카드 글자가 편집실 목록으로 안 넘어간다").toContain("if (cardLines.length) setEditLines(cardLines)");
+    expect(pageSrc, "카드 글자가 편집실의 최신 본문 정본으로 안 넘어간다").toContain("if (cardLines.length) replaceEditLines(cardLines)");
     expect(pageSrc, "카드 한 벌이 편집실로 안 넘어간다").toContain("previewImageUrls={img?.imageUrls ?? null}");
   });
 

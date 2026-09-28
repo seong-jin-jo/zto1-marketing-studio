@@ -207,12 +207,20 @@ describe("구조 대조: page.tsx가 독립 타이머로 되돌아갔는지", ()
     expect(onVideoEditChange, "영상 자동저장이 cardDeck 자리에 null을 안 넘기면 state의 cardDeck이 pruning 없이 같이 나간다").toContain("null, nextEdit)");
   });
 
-  it("PR87-MERGE-R1-MAJOR-01 영상 자동저장은 자막 변경분만 명시하고 비자막 편집은 editLines를 생략한다", () => {
+  it("PR87-R2-MAJOR-01 영상·수동·검토 저장은 세대가 붙은 최신 editLines 단일 경로를 쓴다", () => {
     const onVideoEditChange = onVideoEditChangeSrc;
-    expect(onVideoEditChange).toContain("pendingVideoSubtitleLinesRef.current = nextSubtitleLines");
-    expect(onVideoEditChange).toContain("pendingSubtitleLines ?? undefined");
+    expect(onVideoEditChange).toContain("syncEditLines(nextSubtitleLines)");
+    expect(onVideoEditChange).not.toContain("pendingVideoSubtitleLinesRef");
     const save = pageSrc.slice(pageSrc.indexOf("async function save("), pageSrc.indexOf("async function saveDraftWithNotice()"));
-    expect(save).toContain("persistedEditLines === undefined ? {} : { editLines: persistedEditLines }");
+    expect(save).toContain("draftSaveQueueRef.current");
+    expect(save).toContain("const editLinesSnapshot = sameDocument");
+    expect(save).toContain("? editLinesSnapshotRef.current");
+    expect(save).toContain("editLines: editLinesSnapshot.lines");
+    expect(save).toContain("editLinesSnapshot.generation === editLinesSnapshotRef.current.generation");
+    expect(save).toContain("editDocumentGenerationRef.current === saveDocumentGeneration");
+    expect(save).toContain("activeWorkspaceIdRef.current === saveTenantId");
+    expect(save).toContain("invocationEditLinesSnapshot");
+    expect(save).toContain("if (!stillSameDocument) break");
     expect(save).not.toContain("persistedVideoEdit?.subtitles.length");
   });
 

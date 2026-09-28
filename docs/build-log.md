@@ -1,5 +1,27 @@
 # OSMU build log
 
+## 2026-09-28 12:06 KST · PR 87 재리뷰 r2 본문 세대·저장 직렬화
+
+STAMP: 2026-09-28 12:06 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-review-r2.md`, 수정 전·후 재현 로그, CI 동일 전체 로그 | 고민: 두 상태의 도착 순서를 맞추는 임시 보정보다 본문 정본과 저장 순서를 구조적으로 하나로 제한했다.
+
+| 검증 | 결과 |
+|---|---|
+| 결함 선행 재현 | 리뷰어 반대 순서와 기존 초안 검토 경로가 수정 전 2건 실패·44건 통과 |
+| 표적·관련 회귀 | 반대 순서, 응답 중 세대 변경, 기존 초안 검토 저장 포함 9파일·72건 PASS. 추가 정적 계약 3파일·26건 PASS |
+| CI 동일 전체 Test | 418파일·2,855건 PASS, 1건 SKIP, 실패 0 |
+| TypeScript·build | `npx tsc --noEmit -p tsconfig.ci.json`, `npm run build` 종료 코드 0 |
+| DB·브라우저 게이트 | schema→seed→RLS, migration matrix PASS. 발행실 정렬 delta 0px, Chromium 편집 E2E 전부 PASS |
+| dev 스모크 | `localhost:3770/studio?room=edit` HTTP 200, body HTML 11,966자, 콘솔 오류 0 |
+
+원격 CI와 운영 배포는 push 전이므로 미검증이다. artifact lint는 상태파일 정합 PASS와 기존 산출물 경고 28건이며, design lint는 기존 인라인 style·hex 경고만 남고 이번 변경의 스타일 diff는 0건이다.
+
+KNOWLEDGE_QUERY: `.pr87-review-r2.md`, 본문 변경 지점 전수, 모든 `save()` 호출, CI workflow를 조회했다.
+HITS_USED: 리뷰어의 두 상태 순서와 기존 초안 검토 경로를 실제 컴포넌트 회귀로 고정했다.
+HITS_REJECTED: 외부 벤치마크는 확정된 저장 계약의 경합 버그 수정이라 적용하지 않았다.
+CONFLICTS: 직전 pending 자막 소유권 방식이 반대 상태 순서 재현과 충돌해 폐기했다.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr87-review-r2.md`, `dashboard/src/app/studio/page.tsx`, 관련 회귀 테스트, `.github/workflows/ci.yml`, `/tmp/pr87-r2-{red,vitest-ci-final,tsc-ci-final,build-ci-final,migration-final2,alignment-ci-final,e2e-chromium-ci-final,dev-smoke-browser-final2}.log`
+
 ## 2026-09-28 11:11 KST · PR 87 병합 리뷰 글 저장 회귀 봉합
 
 STAMP: 2026-09-28 11:11 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: `.pr87-mergereview.md`, 수정 전·후 회귀 로그, CI 동일 전체 로그 | 고민: 영상 자막과 글 원문이 갈라질 수 있는 형식 전환에서 어느 상태가 저장을 소유하는지 변경 시점에 명시했다.

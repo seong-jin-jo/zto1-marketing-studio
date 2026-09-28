@@ -292,6 +292,118 @@ describe("PR87-MERGE-R1-MAJOR-01: 형식 전환 뒤 영상 자동저장이 최�
     expect(videoEditPosts.length).toBeGreaterThan(0);
     const last = videoEditPosts[videoEditPosts.length - 1];
     expect((last.body.videoEdit as { overlays: Array<{ text: string }> }).overlays[0].text).toBe("고친 훅");
-    expect(last.body).not.toHaveProperty("editLines");
+    expect(last.body.editLines).toEqual(["최신 문단 B"]);
+  }, 20000);
+
+  it("PR87-R2-M1 정상: 자막 A′ 뒤 글 B를 고치면 늦은 영상 자동저장도 B만 저장한다", async () => {
+    // Regression: PR87-R2-M1 — 대기 중인 자막 투영값이 더 최신 글 본문을 원복했다.
+    // Found by reviewer on 2026-09-28.
+    // Report: .pr87-review-r2.md
+    mocks.swr.mockImplementation((key: string | null) => {
+      if (key === "/api/me") return { data: { isOperator: false }, mutate: vi.fn() };
+      if (key === "/api/studio/drafts?tenant_id=tenant-video-integrity") return { data: { drafts: [], currentWork: null }, mutate: vi.fn() };
+      if (key === "/api/studio/brand-setup?tenant_id=tenant-video-integrity") return { data: { guide: null }, mutate: vi.fn() };
+      if (key === "/api/publish/first-comment-capabilities") return { data: { capabilities: [] }, mutate: vi.fn() };
+      return { data: undefined, mutate: vi.fn() };
+    });
+    setupFetch();
+    localStorage.setItem(storageKey("tenant-video-integrity"), JSON.stringify({
+      idea: "반대 순서 저장 검증",
+      text: { threads: "자막 A", x: "자막 A", facebook: "자막 A", instagram: { caption: "자막 A" } },
+      vid: { url: "/api/media/test-video", file: "/api/media/test-video", model: "기존 작업물" },
+      editLines: ["자막 A"],
+      editKind: "video",
+      editFormat: { kind: "video", aspectRatio: "9:16", subtitleSize: "보통", playbackSpeed: 1, voice: "차분한 남성" },
+      videoEdit: {
+        contract_version: "1.0",
+        overlays: [],
+        comments: [],
+        subtitles: [{ id: "sub-old", order: 0, text: "자막 A", startSec: 0, endSec: 3, cut: false }],
+        voice: null,
+        revision: 4,
+      },
+    }));
+    window.history.replaceState(null, "", "/studio?room=edit");
+
+    render(<StudioPage />);
+    const subtitleInput = await screen.findByDisplayValue("자막 A");
+    fireEvent.change(subtitleInput, { target: { value: "자막 A′" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "글" }));
+    const documentEditor = await waitFor(() => {
+      const el = document.querySelector('[data-text-document-sheet] [contenteditable="true"]');
+      if (!el) throw new Error("글 전체 편집기가 아직 안 떴다");
+      return el as HTMLDivElement;
+    });
+    documentEditor.textContent = "최신 글 B";
+    fireEvent.input(documentEditor);
+
+    await new Promise((resolve) => setTimeout(resolve, 900));
+
+    const videoEditPosts = fetchCalls.filter((call) => Object.prototype.hasOwnProperty.call(call.body, "videoEdit") && call.body.videoEdit);
+    expect(videoEditPosts.length).toBeGreaterThan(0);
+    expect(videoEditPosts.at(-1)?.body.editLines).toEqual(["최신 글 B"]);
+  }, 20000);
+
+  it("PR87-R2-M1 경계: 저장 응답 대기 중 글 B가 생겨도 후속 세대 저장이 B로 끝낸다", async () => {
+    let releaseFirstSave!: () => void;
+    let firstSaveStarted!: () => void;
+    const firstSaveStartedPromise = new Promise<void>((resolve) => { firstSaveStarted = resolve; });
+    const releaseFirstSavePromise = new Promise<void>((resolve) => { releaseFirstSave = resolve; });
+    let saveCount = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (typeof url === "string" && url.includes("/api/studio/drafts") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body ?? "{}"));
+        fetchCalls.push({ url, body });
+        saveCount += 1;
+        if (saveCount === 1) {
+          firstSaveStarted();
+          await releaseFirstSavePromise;
+        }
+        return new Response(JSON.stringify({ ok: true, id: "draft-integrity-generation" }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (typeof url === "string" && url.includes("elevenlabs-voices")) {
+        return new Response(JSON.stringify({ code: "ELEVENLABS_NOT_CONFIGURED" }), { status: 503 });
+      }
+      return new Response(JSON.stringify({ accounts: [] }), { status: 200 });
+    }));
+    mocks.swr.mockImplementation((key: string | null) => {
+      if (key === "/api/me") return { data: { isOperator: false }, mutate: vi.fn() };
+      if (key === "/api/studio/drafts?tenant_id=tenant-video-integrity") return { data: { drafts: [], currentWork: null }, mutate: vi.fn() };
+      if (key === "/api/studio/brand-setup?tenant_id=tenant-video-integrity") return { data: { guide: null }, mutate: vi.fn() };
+      if (key === "/api/publish/first-comment-capabilities") return { data: { capabilities: [] }, mutate: vi.fn() };
+      return { data: undefined, mutate: vi.fn() };
+    });
+    localStorage.setItem(storageKey("tenant-video-integrity"), JSON.stringify({
+      idea: "응답 중 세대 변경",
+      text: { threads: "자막 A", x: "자막 A", facebook: "자막 A", instagram: { caption: "자막 A" } },
+      vid: { url: "/api/media/test-video", file: "/api/media/test-video", model: "기존 작업물" },
+      editLines: ["자막 A"],
+      editKind: "video",
+      editFormat: { kind: "video", aspectRatio: "9:16", subtitleSize: "보통", playbackSpeed: 1, voice: "차분한 남성" },
+      videoEdit: {
+        contract_version: "1.0", overlays: [], comments: [],
+        subtitles: [{ id: "sub-old", order: 0, text: "자막 A", startSec: 0, endSec: 3, cut: false }],
+        voice: null, revision: 4,
+      },
+    }));
+    window.history.replaceState(null, "", "/studio?room=edit");
+
+    render(<StudioPage />);
+    fireEvent.change(await screen.findByDisplayValue("자막 A"), { target: { value: "자막 A′" } });
+    await firstSaveStartedPromise;
+
+    fireEvent.click(screen.getByRole("button", { name: "글" }));
+    const documentEditor = await waitFor(() => {
+      const el = document.querySelector('[data-text-document-sheet] [contenteditable="true"]');
+      if (!el) throw new Error("글 전체 편집기가 아직 안 떴다");
+      return el as HTMLDivElement;
+    });
+    documentEditor.textContent = "응답 중 입력한 최신 글 B";
+    fireEvent.input(documentEditor);
+    releaseFirstSave();
+
+    await waitFor(() => expect(fetchCalls.filter((call) => call.url.includes("/api/studio/drafts"))).toHaveLength(2));
+    expect(fetchCalls.at(-1)?.body.editLines).toEqual(["응답 중 입력한 최신 글 B"]);
   }, 20000);
 });

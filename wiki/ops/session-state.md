@@ -1,3 +1,12 @@
+## 2026-09-28 PR 87 재리뷰 r2 MAJOR 2건 로컬 수정·검증 완료
+
+- handoff basis: 회장이 지정한 커밋 `05f5d1b4`와 `.pr87-review-r2.md`를 primary로 삼았다. tmux `371:0.1`은 이전 워커 종료 로그만 남아 있고 동시 수정은 없다.
+- 수정 전 재현: 영상 자막 A→A′ 뒤 글 B를 입력한 순서와 기존 `draftId` 검토 요청이 실제 `StudioPage`에서 2건 실패·44건 통과였다.
+- 수정: 본문 변경을 세대가 붙은 단일 ref로 모으고 모든 초안 저장을 한 promise 큐에서 직렬화했다. 응답 중 세대가 바뀌면 최신 본문을 후속 저장한다. 문서 세대·tenant가 달라진 응답은 현재 작업 공간에 재적용하지 않는다. 검토 요청은 신규·기존 초안 모두 저장 완료 뒤 진행한다.
+- 검증: 관련 9파일 72건, 정적 계약 3파일 26건, 전체 Vitest 418파일·2,855건 PASS·1건 SKIP·실패 0. TypeScript·build·migration matrix·발행실 정렬·Chromium E2E PASS. dev `localhost:3770/studio?room=edit` HTTP 200·콘솔 오류 0.
+- 제외: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 사용자·하네스 파일이라 수정·커밋하지 않는다.
+- 다음 실행: 의도한 코드·테스트·증거 문서만 커밋한다. 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
 ## 2026-09-28 PR 87 병합 리뷰 MAJOR 2건 로컬 수정·검증 완료
 
 - handoff basis: 회장이 지정한 merge commit `4d6600cb`와 `.pr87-mergereview.md`를 primary로 삼았다. tmux `371:0.1`은 직전 병합 워커가 종료된 로그만 남아 동시 수정이 없음을 확인했다.
