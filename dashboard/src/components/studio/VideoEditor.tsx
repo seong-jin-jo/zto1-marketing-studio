@@ -253,8 +253,8 @@ function VideoPlayback({
   const cta = activeOverlays.find((o) => o.kind === "cta");
 
   return (
-    <div className="min-w-0 space-y-stack-tight" data-video-playback>
-      <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:h-[11.25rem] max-[26rem]:aspect-auto" data-video-screen>
+    <div className="min-w-0 space-y-stack-tight max-[26rem]:grid max-[26rem]:h-[11.25rem] max-[26rem]:grid-rows-[minmax(0,1fr)_auto_auto] max-[26rem]:gap-stack-tight max-[26rem]:space-y-0" data-video-playback>
+      <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:min-h-0 max-[26rem]:aspect-auto" data-video-screen>
         {loadFailed ? (
           <p className="p-pad-inset text-caption text-danger" data-video-load-failed>영상을 불러오지 못했습니다. 생성실에서 다시 만들어 주세요.</p>
         ) : (

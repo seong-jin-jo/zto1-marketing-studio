@@ -7538,3 +7538,11 @@ SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-is
 | PR94-R3-MAJOR-03 | 읽기 전용 계정 행의 보이는 핸들과 실제 발행 계정을 현재 기본 계정으로 일치 | PR94-R3-ACCOUNT-01 | ❌ NG | 저장된 비기본 계정이 새 기본 계정보다 우선되며 화면에서 바꿀 수 없다. |
 | PR94-R3-MAJOR-04 | 일반 카드 캡처를 일반 카드 기준과 비교하고 말풍선은 별도 기준을 사용 | PR94-R3-VISUAL-01 | ❌ NG | `cardShot`을 만들고 쓰지 않으며 일반 카드 기준을 말풍선 무대와 비교한다. |
 | PR94-R3-CI-01 | CI 전체 스위트의 5개 실패 파일을 현재 v70 계약과 유효한 기존 계약으로 정합 | V65-EDIT-04, PR85-R7, OUTLINE-01 | ❌ NG | 원격 run 36467804880에서 5개 파일 6개 테스트가 실패했다. |
+## 2026-09-29 PR #94 독립 리뷰 r4 재생기·발행 계정·이어 편집·시각 게이트 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR94-R4-MAJOR-01 | 390에서 영상 면이 아니라 재생기 컨테이너 전체를 180px로 고정 | PR94-R4-VIDEO-01 | ❌ NG | Chromium 실측에서 `data-video-playback` 258px, `data-video-screen` 180px. 검증기도 화면 면만 측정해 오판했다. |
+| PR94-R4-MAJOR-02 | 화면 계정과 실제 발행 POST 계정을 같은 정본으로 결정 | PR94-R4-ACCOUNT-01 | ❌ NG | 재연결 기본 계정이 화면에 보이지만 POST는 연결된 비기본 계정으로 나가는 조합이 재현됐다. |
+| PR94-R4-MAJOR-03 | 카드 현재 작업 이어 편집에서 카드 형식을 URL 기록 전에 확정 | PR94-R4-RESUME-01 | ❌ NG | 이전 `editKind=video`가 `/studio?room=edit&kind=video`에 기록돼 카드 초안이 영상으로 열린다. |
+| PR94-R4-MAJOR-04 | 잘못된 이미지와 검정 화면을 시각 게이트가 거절 | PR94-R4-VISUAL-01 | ❌ NG | 기존 임계값 0.36에서 잘못된 이미지 0.0667·0.1333, 검정 화면 0.2627이 모두 통과했다. |

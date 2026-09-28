@@ -483,7 +483,8 @@ describe("Studio publish result integrity", () => {
     await waitFor(() => expect(screen.getByTestId("account-state-threads")).toHaveTextContent("missing"));
     expect(checkbox).toBeDisabled();
     expect(checkbox).not.toBeChecked();
-    expect(screen.getByTestId("publish-account-label-threads")).toHaveTextContent("@threads.paused");
+    expect(screen.queryByTestId("publish-account-label-threads")).not.toBeInTheDocument();
+    expect(screen.getByTestId("publish-reconnect-link-threads")).toHaveAttribute("href", "/channels/threads");
     expect(screen.getByTestId("publish-select-all")).toBeDisabled();
     expect(screen.getByTestId("publish-bulk-select-all")).toBeDisabled();
     expect(screen.getByText("아직 연결된 채널이 없어 발행할 수 없습니다.", { exact: false })).toBeInTheDocument();
@@ -560,6 +561,36 @@ describe("Studio publish result integrity", () => {
     expect(publishBody.account_id).toBe("threads-current-default");
   });
 
+  it("PR94-R4-MAJOR-02 정상: 재연결 기본 계정을 숨기고 보이는 연결 계정과 실제 POST 계정을 일치시킨다", async () => {
+    restoreStudio(["threads"]);
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const provider = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
+      const accounts = provider === "threads"
+        ? [
+            { id: "threads-default-reconnect", display_name: "끊긴 기본", username: "default.reconnect", is_default: true, connection_state: "reconnect" },
+            { id: "threads-live-nondefault", display_name: "연결된 비기본", username: "live.nondefault", is_default: false, connection_state: "connected" },
+          ]
+        : [];
+      return Response.json({ accounts });
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-r4-account" };
+      if (path === "/api/publish") return { ok: false, error: "테스트 발행 거절" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+
+    const visibleHandle = await screen.findByTestId("publish-account-label-threads");
+    expect(visibleHandle).toHaveTextContent("@live.nondefault");
+    expect(visibleHandle).not.toHaveTextContent("@default.reconnect");
+    expect(screen.getByTestId("publish-reconnect-link-threads")).toHaveAttribute("href", "/channels/threads");
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+    await waitFor(() => expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/publish")).toBe(true));
+    const publishBody = mocks.apiPost.mock.calls.find(([path]) => path === "/api/publish")?.[1] as { account_id?: string };
+    expect(publishBody.account_id).toBe("threads-live-nondefault");
+  });
+
   it("FE3-PUBLISH-03 거절: 발행 이력은 발행실에 다시 노출하지 않는다", async () => {
     mocks.drafts = [{
       id: "draft-history",
@@ -581,6 +612,8 @@ describe("Studio publish result integrity", () => {
       idea: "고객 사례 카드뉴스",
       text: { threads: "서버에 저장된 현재 본문" },
       includes: { threads: true },
+      editKind: "card",
+      editFormat: { kind: "card", aspectRatio: "4:5", background: "화이트", subtitleSize: "보통" },
       status: "draft",
       savedAt: "2026-08-29T08:10:00.000Z",
     }];
@@ -593,6 +626,7 @@ describe("Studio publish result integrity", () => {
       savedAt: "2026-08-29T08:10:00.000Z",
     };
 
+    window.history.replaceState(null, "", "/studio?room=publish&kind=video");
     render(<StudioPage />);
     fireEvent.click(screen.getByRole("button", { name: /작업물 전체/ }));
 
@@ -603,6 +637,7 @@ describe("Studio publish result integrity", () => {
     fireEvent.click(screen.getByRole("button", { name: "이어 편집하기" }));
 
     expect(mocks.setStudioRoom).toHaveBeenCalledWith("edit");
+    expect(window.location.pathname + window.location.search).toBe("/studio?room=edit&kind=card");
     expect(mocks.showToast).toHaveBeenCalledWith("불러옴. 수정 후 재발행 가능", "success");
   });
 

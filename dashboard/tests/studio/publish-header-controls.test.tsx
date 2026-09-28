@@ -42,7 +42,7 @@ function renderHeader(platform: PreviewPlatform, accountLabel: string) {
       onCoverSecondsChange={() => {}}
       accountsLoading={false}
       accounts={[{ id: `${platform}-1`, label: accountLabel, isDefault: true }]}
-      selectedAccountId=""
+      selectedAccountId={`${platform}-1`}
       channelHref={`/channels/${platform}`}
     />,
   );
@@ -70,7 +70,7 @@ describe("발행실 계정 영역은 한 줄에 한 번만 나온다", () => {
     expect(label).toHaveAttribute("title", "@osmu_factory_official_account_2026_very_long");
   });
 
-  it("저장된 과거 선택보다 계정 관리에서 정한 현재 기본 계정을 표시한다", () => {
+  it("PR94-R4-MAJOR-02: 부모가 실제 발행 대상으로 확정한 계정만 표시한다", () => {
     const { container } = render(
       <PublishHeaderControls
         platform="threads" label="Threads" publishSupported accountSelectable checked={false}
@@ -83,7 +83,7 @@ describe("발행실 계정 영역은 한 줄에 한 번만 나온다", () => {
         selectedAccountId="old-saved" channelHref="/channels/threads"
       />,
     );
-    expect(container.querySelector('[data-testid="publish-account-label-threads"]')).toHaveTextContent("@current.default");
+    expect(container.querySelector('[data-testid="publish-account-label-threads"]')).toHaveTextContent("@old.saved");
   });
 
   it("영상 3종은 계정 행 바로 아래 같은 표지 행 구조를 쓴다", () => {

@@ -31,7 +31,11 @@ const referenceStageCrops = {
   1024: { left: 196, top: 168, width: 520, height: 650 },
   390: { left: 40, top: 276, width: 310, height: 387.5 },
 };
-const stageDiffThreshold = Number(process.env.STUDIO_V70_STAGE_DIFF_THRESHOLD || "0.36");
+// 일반 카드에는 위치 이동 단추와 편집 문구가 겹치므로 전체 평균을 쓰면 올바른 이미지도
+// 약 0.06까지 올라가고, 다른 이미지(0.0667)와 분리가 거의 안 된다. 편집 UI가 없는 카드
+// 상단 내부만 비교하면 올바른 fixture는 0, 다른 fixture와 검정 화면은 확실히 갈린다.
+const directStageDiffRegion = { left: 26, top: 26, width: 208, height: 39 };
+const stageDiffThreshold = Number(process.env.STUDIO_V70_STAGE_DIFF_THRESHOLD || "0.025");
 
 fs.mkdirSync(outputDir, { recursive: true });
 
@@ -279,6 +283,36 @@ async function makeStageComparison(referencePath, actualStagePath, outputPath, v
   return score;
 }
 
+async function directStageDiffScore(referenceInput, actualInput) {
+  const normalized = { width: 260, height: 325 };
+  const [referenceRaw, actualRaw] = await Promise.all([
+    sharp(referenceInput).resize(normalized).extract(directStageDiffRegion).raw().toBuffer(),
+    sharp(actualInput).resize(normalized).extract(directStageDiffRegion).raw().toBuffer(),
+  ]);
+  let absoluteDifference = 0;
+  for (let index = 0; index < referenceRaw.length; index += 1) {
+    absoluteDifference += Math.abs(referenceRaw[index] - actualRaw[index]);
+  }
+  return absoluteDifference / (referenceRaw.length * 255);
+}
+
+async function assertDirectStageDiffRejectsMutants() {
+  const referencePath = path.join(repoRoot, "dashboard/public/qa/alignment-card-1.jpg");
+  const wrongImagePath = path.join(repoRoot, "dashboard/public/qa/alignment-card-2.jpg");
+  const blackFrame = await sharp({
+    create: { width: 260, height: 325, channels: 3, background: "#000000" },
+  }).jpeg().toBuffer();
+  const [sameScore, wrongImageScore, blackFrameScore] = await Promise.all([
+    directStageDiffScore(referencePath, referencePath),
+    directStageDiffScore(referencePath, wrongImagePath),
+    directStageDiffScore(referencePath, blackFrame),
+  ]);
+  if (sameScore > stageDiffThreshold || wrongImageScore <= stageDiffThreshold || blackFrameScore <= stageDiffThreshold) {
+    throw new Error(`일반 카드 이미지 차이 판정 돌연변이 실패: ${JSON.stringify({ sameScore, wrongImageScore, blackFrameScore, stageDiffThreshold, directStageDiffRegion })}`);
+  }
+  return { sameScore, wrongImageScore, blackFrameScore, stageDiffThreshold, directStageDiffRegion };
+}
+
 async function makeDirectStageComparison(referencePath, actualStagePath, outputPath, viewportWidth, kindLabel = "스테이지") {
   if (!fs.existsSync(referencePath)) throw new Error(`${kindLabel} 비교 원본 없음: ${referencePath}`);
   const normalized = { width: 260, height: 325 };
@@ -286,15 +320,7 @@ async function makeDirectStageComparison(referencePath, actualStagePath, outputP
     sharp(referencePath).resize(normalized).png().toBuffer(),
     sharp(actualStagePath).resize(normalized).png().toBuffer(),
   ]);
-  const [referenceRaw, actualRaw] = await Promise.all([
-    sharp(referenceInput).greyscale().blur(4).raw().toBuffer(),
-    sharp(actualInput).greyscale().blur(4).raw().toBuffer(),
-  ]);
-  let absoluteDifference = 0;
-  for (let index = 0; index < referenceRaw.length; index += 1) {
-    absoluteDifference += Math.abs(referenceRaw[index] - actualRaw[index]);
-  }
-  const score = absoluteDifference / (referenceRaw.length * 255);
+  const score = await directStageDiffScore(referenceInput, actualInput);
   const labelHeight = 44;
   const label = Buffer.from(`<svg width="${normalized.width * 2}" height="${labelHeight}"><rect width="100%" height="100%" fill="#111827"/><text x="20" y="29" fill="white" font-family="Arial" font-size="18" font-weight="700">REFERENCE</text><text x="${normalized.width + 20}" y="29" fill="white" font-family="Arial" font-size="18" font-weight="700">IMPLEMENTATION</text></svg>`);
   await sharp({ create: { width: normalized.width * 2, height: normalized.height + labelHeight, channels: 4, background: "#e5e7eb" } })
@@ -311,6 +337,7 @@ async function makeDirectStageComparison(referencePath, actualStagePath, outputP
   return score;
 }
 
+const visualDiffMutationCheck = await assertDirectStageDiffRejectsMutants();
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: viewports[0] });
 await context.addInitScript(({ id, initial }) => {
@@ -503,17 +530,19 @@ async function captureVideoActual(viewport) {
     window.scrollBy(0, -16);
   });
   const geometry = await room.evaluate((root) => {
+    const playback = root.querySelector("[data-video-playback]").getBoundingClientRect();
     const screen = root.querySelector("[data-video-screen]").getBoundingClientRect();
     const script = root.querySelector("[data-video-script-column]").getBoundingClientRect();
     const timeline = root.querySelector("[data-video-timeline]").getBoundingClientRect();
     return {
+      playback: { top: playback.top, bottom: playback.bottom, height: playback.height },
       screen: { top: screen.top, bottom: screen.bottom, height: screen.height },
       script: { top: script.top, bottom: script.bottom, height: script.height },
       timeline: { top: timeline.top, bottom: timeline.bottom, height: timeline.height },
     };
   });
   if (viewport.width === 390) {
-    if (Math.abs(geometry.screen.height - 180) > 1) throw new Error(`390 영상 플레이어가 180px이 아닙니다: ${JSON.stringify(geometry)}`);
+    if (Math.abs(geometry.playback.height - 180) > 1) throw new Error(`390 영상 플레이어 전체가 180px이 아닙니다: ${JSON.stringify(geometry)}`);
     if (geometry.script.top >= viewport.height) throw new Error(`390 첫 화면에 대본이 보이지 않습니다: ${JSON.stringify(geometry)}`);
     if (Math.abs(geometry.timeline.height - 108) > 1) throw new Error(`390 영상 타임라인이 108px이 아닙니다: ${JSON.stringify(geometry)}`);
   }
@@ -695,6 +724,7 @@ try {
     consoleErrorCount: 0,
     outputDir,
     referenceComparison: compareWithReferences,
+    visualDiffMutationCheck,
     imageDiffNote: "일반 카드는 생성 이미지 fixture와 실제 무대를 비교해 CI 판정한다. 말풍선 덱은 승인 clean-frame의 카드 영역과 대조 리포트만 만들며, CI는 폭·비율·겹침·툴바 위치 수치 계약으로 판정한다.",
   };
   fs.writeFileSync(path.join(outputDir, "observations.json"), `${JSON.stringify(report, null, 2)}\n`);

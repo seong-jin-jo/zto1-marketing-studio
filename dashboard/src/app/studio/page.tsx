@@ -673,9 +673,9 @@ export default function StudioPage() {
     return value === "text" || value === "card" || value === "video" ? value : null;
   })();
 
-  const changeRoom = (room: StudioRoom) => {
+  const changeRoom = (room: StudioRoom, resolvedEditKind: EditContentKind = editKind) => {
     setActiveRoom(room);
-    const kindQuery = room === "edit" && editKind !== "audio" ? `&kind=${editKind}` : "";
+    const kindQuery = room === "edit" && resolvedEditKind !== "audio" ? `&kind=${resolvedEditKind}` : "";
     window.history.replaceState(null, "", `/studio?room=${room}${kindQuery}`);
     setShowWorks(false);
   };
@@ -2003,7 +2003,7 @@ export default function StudioPage() {
       showToast(`${head}실패 ${errs.join(" / ")}`.slice(0, 180), "error");
     } else showToast("발행 완료", "success");
   }
-  function loadDraft(d: Record<string, unknown>) {
+  function loadDraft(d: Record<string, unknown>): EditContentKind | null {
     // B1(교차 리뷰 BLOCK): 서버 초안을 불러오는 이 순간 이전에 예약돼 있던 자동 저장
     // 타이머가 있으면(예: 방금 전 영상 탭에서 시딩·조작으로 예약된 저장) 그 타이머가
     // 지금 불러오는 이 초안 위에 낡은 값을 덮어쓴다. 불러오기 전에 반드시 끈다.
@@ -2031,10 +2031,13 @@ export default function StudioPage() {
     setVideoEdit((d.videoEdit as VideoEdit) || null);
     setReviewQueueId((d.reviewQueueId as string) || null);
     const savedFormat = validateContentEditFormat(d.editFormat);
+    let loadedEditKind: EditContentKind | null = null;
     if (savedFormat.valid) {
+      loadedEditKind = savedFormat.value.kind;
       setEditKind(savedFormat.value.kind);
       setEditFormat(savedFormat.value);
     } else if (d.editKind === "video" || d.editKind === "card" || d.editKind === "audio" || d.editKind === "text") {
+      loadedEditKind = d.editKind;
       setEditKind(d.editKind);
       setEditFormat(defaultContentEditFormat(d.editKind));
     }
@@ -2044,18 +2047,19 @@ export default function StudioPage() {
         : "불러옴. 수정 후 재발행 가능",
       Object.keys(savedReconciliations).length > 0 ? "error" : "success",
     );
+    return loadedEditKind;
   }
   function resumeCurrentWork() {
     const current = hist?.currentWork;
     if (!current) return;
     const draft = hist.drafts.find((item) => item.id === current.draftId);
     if (!draft) return;
-    loadDraft(draft);
+    const loadedEditKind = loadDraft(draft);
     if (current.stage === "performance") {
       window.location.assign("/performance");
       return;
     }
-    changeRoom(current.stage);
+    changeRoom(current.stage, loadedEditKind ?? editKind);
   }
   const commentHandoffLoaded = useRef<string | null>(null);
   useEffect(() => {
@@ -2777,11 +2781,12 @@ export default function StudioPage() {
           // 설계 §6.1 "201 batch → 편집실 진입(draft 로드)" 계약. draftId 가 있으면(방금
           // 카톡 말풍선 카드뉴스 9장을 확정) 그 초안을 실어 넣고 연다 — 안 그러면
           // 회원이 돈을 내고 만든 덱이 편집실에서 안 보인다(코드리뷰 2026-09-22 M4).
+          let loadedEditKind: EditContentKind | null = null;
           if (draftId) {
             const draft = hist?.drafts.find((d) => d.id === draftId);
-            if (draft) loadDraft(draft);
+            if (draft) loadedEditKind = loadDraft(draft);
           }
-          changeRoom("edit");
+          changeRoom("edit", loadedEditKind ?? editKind);
         }}
         onDerivationSucceeded={async () => {
           // 확정 성공 직후 초안 목록을 재검증해야 cardDeckByDraftId 가 방금 만든 덱을

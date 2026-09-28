@@ -105,7 +105,7 @@ function headerPropsFor(platform: PreviewPlatform) {
     accountsLoading: false,
     // 미연결 채널(facebook)은 목록이 비어 "계정 연결하기" 분기로 떨어진다.
     accounts: connected ? [{ id: `${platform}-1`, label, isDefault: true }] : [],
-    selectedAccountId: "",
+    selectedAccountId: connected ? `${platform}-1` : "",
     channelHref: `/channels/${platform}`,
   };
 }
