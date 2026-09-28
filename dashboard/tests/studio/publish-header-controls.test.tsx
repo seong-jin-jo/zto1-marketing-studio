@@ -53,9 +53,10 @@ afterEach(cleanup);
 describe("발행실 계정 영역은 한 줄에 한 번만 나온다", () => {
   it("모든 채널이 [발행][계정 전체 이름][계정 관리] 한 줄을 쓴다", () => {
     for (const platform of CHANNELS) {
-      const { container } = renderHeader(platform, "osmu_official_account");
+      const { container } = renderHeader(platform, "@osmu_official_account");
       expect(container.querySelectorAll('[data-publish-header-row="primary"]')).toHaveLength(1);
-      expect(container.querySelector(`[data-testid="publish-account-label-${platform}"]`)).toHaveTextContent("계정: osmu_official_account");
+      expect(container.querySelector(`[data-testid="publish-account-label-${platform}"]`)).toHaveTextContent("@osmu_official_account");
+      expect(container.querySelector(`[data-testid="publish-account-label-${platform}"]`)).not.toHaveTextContent("계정:");
       expect(container.querySelector(`[data-testid="publish-account-manage-${platform}"]`)).toBeInTheDocument();
       expect(container.querySelector("select")).not.toBeInTheDocument();
       cleanup();
@@ -63,10 +64,22 @@ describe("발행실 계정 영역은 한 줄에 한 번만 나온다", () => {
   });
 
   it("긴 계정 이름은 화면 폭을 밀지 않고 title로 전체 값을 제공한다", () => {
-    const { container } = renderHeader("threads", "osmu_factory_official_account_2026_very_long");
+    const { container } = renderHeader("threads", "@osmu_factory_official_account_2026_very_long");
     const label = container.querySelector('[data-testid="publish-account-label-threads"]');
     expect(label?.className).toContain("truncate");
-    expect(label).toHaveAttribute("title", "osmu_factory_official_account_2026_very_long");
+    expect(label).toHaveAttribute("title", "@osmu_factory_official_account_2026_very_long");
+  });
+
+  it("영상 3종은 계정 행 바로 아래 같은 표지 행 구조를 쓴다", () => {
+    for (const platform of ["shorts", "reels", "tiktok"] as PreviewPlatform[]) {
+      const { container } = renderHeader(platform, `@${platform}.official`);
+      const rows = container.querySelectorAll('[data-publish-header-row]');
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toHaveAttribute("data-publish-header-row", "primary");
+      expect(rows[1]).toHaveAttribute("data-publish-header-row", "cover");
+      expect(rows[1]).toHaveTextContent("표지로 쓸 장면(초)");
+      cleanup();
+    }
   });
 
   it("미디어가 없으면 체크를 막고 생성실 복구 행동을 같은 자리에 준다", () => {

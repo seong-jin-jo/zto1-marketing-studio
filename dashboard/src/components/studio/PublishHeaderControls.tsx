@@ -79,16 +79,23 @@ export function PublishHeaderControls({
 }: PublishHeaderControlsProps) {
   const defaultAccount = accounts.find((account) => account.isDefault);
   const selectedAccount = accounts.find((account) => account.id === selectedAccountId);
+  const visibleAccount = selectedAccount || defaultAccount || accounts[0];
   const needsConnect = !accountsLoading && !accountLoadError && publishSupported && accounts.length === 0;
   const hasAccount = accountSelectable && accounts.length > 0;
+  const coverSupported = supportsCoverTimestamp(platform);
+  const coverReason = coverUnsupportedReason(platform);
+  const hasCoverControl = coverSupported || Boolean(coverReason);
 
   return (
     <div className="flex min-w-0 flex-col gap-micro" data-publish-header-controls={platform}>
-      <div className="flex min-w-0 flex-wrap items-center gap-stack-tight" data-publish-header-row="primary">
+      <div
+        className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-stack-tight"
+        data-publish-header-row="primary"
+      >
         {publishSupported ? (
           /* DESIGN.md 발행실 절: 「선택 체크의 보이는 표식은 20px, 실제 조작면은 44px이다」.
              표식은 그대로 두고 label 을 44px 조작면으로 쓴다. */
-          <label className="ds-touch-target flex min-h-control-touch items-center gap-micro px-stack-tight text-caption text-muted">
+          <label className="ds-touch-target flex min-h-control-touch shrink-0 items-center gap-micro text-caption text-muted">
             <input
               aria-label={`${label} 발행`}
               type="checkbox"
@@ -100,7 +107,7 @@ export function PublishHeaderControls({
             <span>발행</span>
           </label>
         ) : (
-          <label className="ds-touch-target flex min-h-control-touch items-center gap-micro px-stack-tight text-caption text-warning">
+          <label className="ds-touch-target flex min-h-control-touch shrink-0 items-center gap-micro text-caption text-warning">
             <input aria-label={`${label} 발행 미지원`} type="checkbox" className="h-5 w-5 shrink-0" checked={false} disabled readOnly />
             미지원
           </label>
@@ -110,7 +117,7 @@ export function PublishHeaderControls({
             href={channelHref}
             data-testid={`publish-account-error-${platform}`}
             title={`${label} 연결 계정 조회에 실패했습니다. 계정 관리에서 상태를 확인합니다`}
-            className="inline-flex min-h-control-touch items-center rounded-control border border-warning/40 bg-warning-soft px-stack-tight text-caption font-semibold text-warning hover:bg-surface"
+            className="col-span-2 inline-flex min-h-control-touch min-w-0 items-center truncate rounded-control border border-warning/40 bg-warning-soft px-stack-tight text-caption font-semibold text-warning hover:bg-surface"
           >
             계정을 확인하지 못했습니다. 계정 관리
           </Link>
@@ -119,34 +126,42 @@ export function PublishHeaderControls({
             href={channelHref}
             data-testid={`publish-connect-link-${platform}`}
             title={`${label} 연결 화면으로 갑니다. 연결한 뒤 그 화면에서 기본 계정도 정할 수 있습니다`}
-            className="inline-flex min-h-control-touch items-center rounded-control border border-accent/40 bg-accent-soft px-stack-tight text-caption font-semibold text-accent hover:bg-surface"
+            className="col-span-2 inline-flex min-h-control-touch min-w-0 items-center truncate rounded-control border border-accent/40 bg-accent-soft px-stack-tight text-caption font-semibold text-accent hover:bg-surface"
           >
             계정 연결하기
           </Link>
         ) : hasAccount ? (
-          <span
-            data-testid={`publish-account-label-${platform}`}
-            className="inline-flex min-h-control-touch min-w-0 max-w-40 items-center truncate rounded-control border border-border bg-surface-2 px-stack-tight text-caption text-text"
-            title={(selectedAccount || defaultAccount)?.label || undefined}
-          >
-            계정: {(selectedAccount || defaultAccount)?.label}
+          <span className="grid min-h-control-touch min-w-0 items-center overflow-hidden rounded-control border border-border bg-surface-2 px-stack-tight">
+            <span
+              data-testid={`publish-account-label-${platform}`}
+              className="block min-w-0 truncate text-caption text-text"
+              title={visibleAccount?.label || undefined}
+            >
+              {visibleAccount?.label}
+            </span>
           </span>
         ) : accountsLoading ? (
-          <span className="inline-flex min-h-control-touch items-center text-caption text-subtle">계정 확인 중</span>
+          <span className="inline-flex min-h-control-touch min-w-0 items-center truncate text-caption text-subtle">계정 확인 중</span>
         ) : null}
         {hasAccount ? (
           <Link
             href={channelHref}
             data-testid={`publish-account-manage-${platform}`}
             title={`${label} 계정을 더 연결하거나 기본 계정을 바꿉니다`}
-            className="inline-flex min-h-control-touch shrink-0 items-center rounded-control border border-border bg-surface-2 px-stack-tight text-caption font-semibold text-muted hover:bg-surface"
+            className="inline-flex min-h-control-touch shrink-0 items-center text-caption font-semibold text-muted underline decoration-border underline-offset-4 hover:text-text"
           >
             계정 관리
           </Link>
         ) : null}
-        {supportsCoverTimestamp(platform) ? (
-          <label className="flex min-h-control-touch items-center gap-micro text-caption text-muted" title="영상에서 이 시점 화면을 표지로 씁니다">
-            표지로 쓸 장면(초)
+      </div>
+      {hasCoverControl ? (
+        <div
+          className="grid min-h-control-touch min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-stack-tight rounded-control border border-border bg-surface-2 px-stack-tight text-caption text-muted"
+          data-publish-header-row="cover"
+          data-cover-row={platform}
+        >
+          <span>표지로 쓸 장면(초)</span>
+          {coverSupported ? (
             <input
               type="number"
               min={0}
@@ -156,19 +171,20 @@ export function PublishHeaderControls({
               data-cover-seconds={platform}
               value={coverSeconds}
               onChange={(event) => onCoverSecondsChange(Number(event.target.value))}
+              title="영상에서 이 시점 화면을 표지로 씁니다"
               className="min-h-control-touch w-16 rounded-control border border-border bg-surface px-stack-tight text-caption text-text"
             />
-          </label>
-        ) : coverUnsupportedReason(platform) ? (
+          ) : (
           <span
-            className="text-caption text-subtle"
+            className="whitespace-nowrap text-caption text-subtle"
             data-cover-note={platform}
-            title={coverUnsupportedReason(platform) || undefined}
+            title={coverReason || undefined}
           >
-            표지 자동
+            자동
           </span>
-        ) : null}
-      </div>
+          )}
+        </div>
+      ) : null}
       {disabledReason ? (
         <div className="flex min-w-0 flex-wrap items-center gap-stack-tight text-caption text-warning" data-publish-disabled-reason={platform}>
           <span>{disabledReason}</span>

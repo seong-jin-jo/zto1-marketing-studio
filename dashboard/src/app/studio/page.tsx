@@ -738,7 +738,9 @@ export default function StudioPage() {
                 id: a.id,
                 // 내부 UUID는 사용자에게 계정 이름이 아니다. 표시 이름·핸들이 모두
                 // 비어도 제공자 이름으로 설명하고, id는 요청에만 쓴다.
-                label: a.display_name || (a.username ? `@${a.username.replace(/^@/, "")}` : `${LABEL[p]} 연결 계정`),
+                // 발행실 계정 행은 사람 이름보다 실제 공개 핸들을 우선한다. 핸들이
+                // 없을 때만 표시 이름으로 물러나며 내부 id나 "@연결 계정"은 만들지 않는다.
+                label: a.username ? `@${a.username.replace(/^@/, "")}` : (a.display_name || `${LABEL[p]} 계정`),
                 displayName: a.display_name || undefined,
                 username: a.username || undefined,
                 is_default: a.is_default,

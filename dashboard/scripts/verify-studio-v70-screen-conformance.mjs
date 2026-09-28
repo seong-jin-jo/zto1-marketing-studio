@@ -82,6 +82,47 @@ async function assertDirectChildrenDoNotOverlap(locator, label) {
   if (collision) throw new Error(`${label} 요소 겹침: ${JSON.stringify(collision)}`);
 }
 
+async function assertPublishAccountRows(room, viewportWidth) {
+  const platforms = ["threads", "x", "instagram", "facebook", "shorts", "reels", "tiktok"];
+  const rows = await Promise.all(platforms.map(async (platform) => {
+    const card = room.locator(`[data-room-preview="${platform}"]`);
+    const row = card.locator('[data-publish-header-row="primary"]');
+    const chip = card.locator(`[data-testid="publish-account-label-${platform}"]`);
+    const [cardRect, rowRect, chipGeometry] = await Promise.all([
+      card.boundingBox(),
+      row.boundingBox(),
+      chip.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return {
+          clientWidth: node.clientWidth,
+          scrollWidth: node.scrollWidth,
+          overflowX: style.overflowX,
+          textOverflow: style.textOverflow,
+          whiteSpace: style.whiteSpace,
+          title: node.getAttribute("title"),
+          text: node.textContent?.trim() || "",
+        };
+      }),
+    ]);
+    if (!cardRect || !rowRect) throw new Error(`${platform} 계정 행 좌표를 측정하지 못했습니다`);
+    const fits = chipGeometry.scrollWidth <= chipGeometry.clientWidth + 1;
+    const ellipsizes = chipGeometry.textOverflow === "ellipsis"
+      && chipGeometry.overflowX === "hidden"
+      && chipGeometry.whiteSpace === "nowrap";
+    if (!fits && !ellipsizes) {
+      throw new Error(`${platform} 계정 칩이 말줄임 없이 잘립니다: ${JSON.stringify(chipGeometry)}`);
+    }
+    if (!chipGeometry.title || chipGeometry.title !== chipGeometry.text) {
+      throw new Error(`${platform} 계정 칩 title이 전체 핸들을 보존하지 않습니다: ${JSON.stringify(chipGeometry)}`);
+    }
+    return { platform, relativeTop: rowRect.y - cardRect.y, chipGeometry };
+  }));
+  const tops = rows.map((row) => row.relativeTop);
+  const delta = Math.max(...tops) - Math.min(...tops);
+  if (delta > 2) throw new Error(`${viewportWidth} 계정 행 top 편차 ${delta}px: ${JSON.stringify(rows)}`);
+  return { delta, rows };
+}
+
 async function assertVisibleEditorControlsDoNotOverlap(locator, label) {
   const collision = await locator.evaluate((root) => {
     const candidates = Array.from(new Set(root.querySelectorAll([
@@ -177,8 +218,7 @@ await page.route("**/api/**", async (route) => {
   if (pathname === "/api/publish/first-comment-capabilities") return json(route, { capabilities: [] });
   if (/^\/api\/channels\/[^/]+\/accounts$/.test(pathname)) {
     const provider = pathname.split("/")[3];
-    const noPublicName = provider === "tiktok";
-    return json(route, { accounts: [{ id: "e2696d98-6dfa-40d4-8bd7-internal-only", display_name: noPublicName ? null : `${provider} 운영 계정 전체 이름`, username: noPublicName ? null : `${provider}.official.full.handle`, is_default: true, connection_state: "connected" }] });
+    return json(route, { accounts: [{ id: "e2696d98-6dfa-40d4-8bd7-internal-only", display_name: `${provider} 운영 계정 전체 이름`, username: `${provider}.official.full.handle`, is_default: true, connection_state: "connected" }] });
   }
   if (pathname === "/api/queue") return json(route, { posts: [] });
   if (pathname === "/api/images") return json(route, { images: [] });
@@ -296,6 +336,7 @@ async function capturePublish(viewport) {
   for (const row of await room.locator('[data-publish-header-row="primary"]').all()) {
     await assertDirectChildrenDoNotOverlap(row, `발행 계정행 ${viewport.width}`);
   }
+  const accountRows = await assertPublishAccountRows(room, viewport.width);
   const overflow = await assertNoOverflow(page, '[data-room="publish"]', `발행실 ${viewport.width}`);
   const xCard = room.locator('[data-room-preview="x"]');
   await xCard.evaluate((node) => {
@@ -311,7 +352,7 @@ async function capturePublish(viewport) {
   });
   const missingMediaScreenshot = path.join(outputDir, `publish-missing-media-${viewport.width}x${viewport.height}.png`);
   await page.screenshot({ path: missingMediaScreenshot });
-  observations.push({ screen: "publish-cards", ...viewport, overflow, xChecked: false, missingMediaDisabled: 3, accountSelectCount: 0, missingMediaScreenshot });
+  observations.push({ screen: "publish-cards", ...viewport, overflow, accountRows, xChecked: false, missingMediaDisabled: 3, accountSelectCount: 0, missingMediaScreenshot });
   return { screenshot, missingMediaScreenshot };
 }
 
