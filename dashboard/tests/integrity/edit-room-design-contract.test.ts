@@ -64,15 +64,15 @@ describe("편집실 조작 영역 하한 계약", () => {
   });
 });
 
-describe("편집실 3영역 골격 계약 (DESIGN.md §4 v65)", () => {
+describe("편집실 3영역 골격 계약 (design-spec-editroom-v70.md §4)", () => {
   it("QA-EDIT-GRID-01 정상: 목차 칸이 176px(11rem)이고 본문이 남는 폭을 다 쓴다", () => {
-    // 격자는 한 겹이 아니라 두 겹이다. 작업대가 `176px | 1fr`, 방이 `1fr | 248px` 이라
-    // 합쳐서 계약값 `176px | minmax(0,1fr) | 248px` 이 나온다.
+    // 격자는 한 겹이 아니라 두 겹이다. 작업대가 `176px | 1fr`, 방이 `1fr | 304px` 이라
+    // 합쳐서 계약값 `176px | minmax(0,1fr) | 304px` 이 나온다.
     expect(studioRoomsCss).toMatch(/\.editWorkbench\s*\{[\s\S]*?grid-template-columns:\s*11rem minmax\(0, 1fr\)/);
   });
 
-  it("QA-EDIT-GRID-02 정상: 편집 담당 칸이 248px(15.5rem)이다", () => {
-    expect(studioRoomsCss).toMatch(/\.editRoomGrid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 15\.5rem/);
+  it("QA-EDIT-GRID-02 정상: v70 편집 담당 칸이 304px(19rem)이다", () => {
+    expect(studioRoomsCss).toMatch(/\.editRoomGrid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 19rem/);
   });
 
   it("QA-EDIT-GRID-03 경계: 390 에서 목차 최대 높이가 144px(9rem)이다", () => {

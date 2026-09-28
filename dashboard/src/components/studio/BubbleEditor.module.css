@@ -14,9 +14,11 @@
 
 .thumbnailStrip {
   display: flex;
+  max-height: calc(var(--editroom-stage-width) * 5 / 4);
   min-width: 0;
   flex-direction: column;
   gap: var(--stack-tight);
+  overflow-y: auto;
 }
 
 .thumbnailItem {
@@ -34,6 +36,7 @@
 
 .thumbnailButton {
   display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto;
   aspect-ratio: 4 / 5;
   width: 100%;
   align-content: space-between;
@@ -44,27 +47,29 @@
   text-align: left;
 }
 
+.thumbnailImage {
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--shape-control);
+  object-fit: cover;
+}
+
 .thumbnailButtonActive {
   border-color: var(--accent) !important;
   background: var(--accent-soft) !important;
 }
 
-.thumbnailMeta {
-  display: grid;
-  gap: var(--space-micro);
-  justify-items: start;
-  color: var(--text);
-  font-size: var(--font-caption-size);
-}
-
 .thumbnailBars {
   display: grid;
   gap: var(--space-micro);
+  align-content: center;
 }
 
 .thumbnailBars i {
   display: block;
-  height: 0.25rem;
+  height: 0.4375rem;
   border-radius: var(--shape-pill);
   background: var(--border);
 }
@@ -77,10 +82,28 @@
   width: 58%;
 }
 
-.thumbnailActions {
+.thumbnailBars i:nth-child(4) {
+  width: 86%;
+}
+
+.thumbnailCaption {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-micro);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-micro);
+  color: var(--text-muted);
+  font-size: var(--font-caption-size);
+}
+
+.selectedSlideActions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-micro);
+  justify-content: center;
+  gap: var(--stack-tight);
+  margin-top: var(--stack-tight);
 }
 
 .stageColumn {
@@ -89,8 +112,8 @@
 
 .cardStage {
   aspect-ratio: 4 / 5;
-  width: 100%;
-  max-width: var(--editroom-stage-width);
+  width: var(--editroom-stage-width);
+  max-width: none;
   margin-inline: auto;
   overflow-y: auto;
   border: 1px solid var(--border);
@@ -129,6 +152,19 @@
   color: var(--text-muted);
 }
 
+.cardBrandBar b {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--stack-tight);
+}
+
+.cardBrandMark {
+  width: var(--stack);
+  height: var(--stack);
+  border-radius: var(--shape-pill);
+  background: var(--surface-2);
+}
+
 .slideRenderCanvas {
   display: block;
   width: 100%;
@@ -164,7 +200,7 @@
 }
 
 .bubbleRow[data-bubble-editing="true"] {
-  margin-bottom: 1.875rem;
+  margin-bottom: calc(var(--control-touch) + var(--space-micro));
 }
 
 .bubble {
@@ -216,11 +252,14 @@
 
 .bubbleToolbar {
   position: absolute;
-  bottom: -1.625rem;
+  top: calc(100% + var(--space-micro));
+  bottom: auto;
   left: 0;
   z-index: 8;
   display: flex;
-  flex-wrap: wrap;
+  width: max-content;
+  max-width: none;
+  flex-wrap: nowrap;
   gap: var(--space-micro);
   border-radius: var(--shape-chip);
   background: var(--text);
@@ -241,14 +280,23 @@
   left: auto;
 }
 
+@media (max-width: 64rem) {
+  .cardDeckPanel {
+    --editroom-thumbnail-width: 6.25rem;
+  }
+}
+
 @media (max-width: 48rem) {
   .cardDeckPanel {
+    --editroom-thumbnail-width: 3.5rem;
     grid-template-columns: 1fr;
   }
 
   .thumbnailStrip {
+    max-height: none;
     flex-direction: row;
     overflow-x: auto;
+    overflow-y: hidden;
     padding-bottom: var(--stack-tight);
   }
 
@@ -257,8 +305,15 @@
     flex: 0 0 var(--editroom-thumbnail-width);
   }
 
+  .cardStage {
+    width: min(100%, 19.375rem);
+  }
+
   .bubbleToolbar {
     position: static;
+    width: auto;
+    max-width: 100%;
+    flex-wrap: wrap;
     min-height: var(--editroom-mobile-toolbar-height);
     margin-top: var(--stack-tight);
     border-radius: var(--shape-control);

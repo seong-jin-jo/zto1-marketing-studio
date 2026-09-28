@@ -18,6 +18,63 @@
   aspect-ratio: 1.91 / 1;
 }
 
+/* design-spec-editroom-v70.md §3.1: 데스크톱·1024 카드 무대는 정확히 520px. */
+.cardStageFrame {
+  width: 32.5rem;
+  max-width: none;
+}
+
+.cardV70Canvas {
+  background: white;
+}
+
+@media (max-width: 30rem) {
+  .cardV70StageShell {
+    border: 0;
+    background: transparent;
+    padding: 0;
+  }
+
+  .cardStageFrame {
+    width: min(100%, 19.375rem);
+  }
+}
+
+.cardTextOverlay {
+  background: color-mix(in srgb, var(--text) 82%, transparent);
+  color: var(--accent-ink);
+}
+
+.cardV70TextOverlay {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+}
+
+.cardV70TextOverlay .cardTextHandle {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.cardV70TextOverlay .cardTextInput {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.cardTextHandle {
+  background: color-mix(in srgb, var(--surface) 18%, transparent);
+  color: var(--accent-ink);
+}
+
+.cardTextInput {
+  border-color: color-mix(in srgb, var(--accent-ink) 48%, transparent);
+  background: transparent;
+  color: var(--accent-ink);
+  overflow-wrap: break-word;
+  word-break: keep-all;
+}
+
 .height8 {
   height: 8%;
 }

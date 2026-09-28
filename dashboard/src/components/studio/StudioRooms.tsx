@@ -5,7 +5,7 @@ import { Button } from "@/components/shared/Button";
 import { StateNotice } from "@/components/shared/StateNotice";
 import { EditPreview, type CardTextPosition } from "./EditPreview";
 import { EditOutline } from "./EditOutline";
-import { CardDeckPanel, elementToSegments, getEditableSelectionOffsets, restoreSelectionRange, segmentsToHtml } from "./BubbleEditor";
+import { CardDeckPanel, CardStripThumbnail, elementToSegments, getEditableSelectionOffsets, restoreSelectionRange, segmentsToHtml } from "./BubbleEditor";
 import type { CardDeck, Segment } from "@/lib/studio/card-deck-contract";
 import { toggleSegmentsBold } from "@/lib/studio/card-deck-ops";
 import { deckProjection, applyProjection } from "@/lib/studio/card-deck-contract";
@@ -169,14 +169,14 @@ function readCreateDraft(workspaceId: string): PersistedCreateDraft | null {
   }
 }
 
-function AssistantPanel({ title, children }: { title: string; children: ReactNode }) {
+function AssistantPanel({ title, children, className = "", compactOnNarrow = true }: { title: string; children: ReactNode; className?: string; compactOnNarrow?: boolean }) {
   return (
-    <aside className="card h-fit min-w-0 overflow-y-auto max-lg:sticky max-lg:bottom-0 max-lg:z-30 max-lg:max-h-44 max-lg:rounded-b-none lg:sticky lg:top-pad-inset" aria-label={`${title} 대화창`} data-chat-dock="persistent" data-chat-always="true">
+    <aside className={`card h-fit min-w-0 overflow-y-auto lg:sticky lg:top-pad-inset ${compactOnNarrow ? "max-lg:sticky max-lg:bottom-0 max-lg:z-30 max-lg:max-h-44 max-lg:rounded-b-none" : ""} ${className}`} aria-label={`${title} 대화창`} data-chat-dock="persistent" data-chat-always="true" data-edit-helper={title === "편집 담당" ? "true" : undefined}>
       <div className="flex items-center gap-stack-tight border-b border-border p-stack">
         <div className="grid h-10 w-10 place-items-center rounded-pill bg-accent text-body font-bold text-accent-fg" aria-hidden="true">O</div>
         <div><b className="block text-body text-text">{title}</b><span className="text-caption text-success">지금 대기 중</span></div>
       </div>
-      <div className="bg-surface-2 p-stack">{children}</div>
+      <div className="flex min-h-0 flex-col gap-pad-inset bg-surface-2 p-stack">{children}</div>
     </aside>
   );
 }
@@ -188,6 +188,8 @@ interface CreateRoomProps {
   topic: string;
   contentBranch?: CreateContentBranch;
   onContentBranchChange?: (branch: CreateContentBranch) => void;
+  /** `?room=create&kind=...`처럼 사용자가 명시해 들어온 생성 형식. 저장본 복원보다 우선한다. */
+  requestedPrimaryKind?: CreateKind | null;
   onTopicChange: (value: string) => void;
   onOpenLearning: () => void;
   onCandidateSelect: (candidate: StudioGenerationCandidate) => void;
@@ -469,7 +471,7 @@ function useLearnedRules(workspaceId: string): string {
   return text;
 }
 
-export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onDerivationSucceeded, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardRatio = "4:5", cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null, cardDeckByDraftId }: CreateRoomProps) {
+export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, requestedPrimaryKind = null, onTopicChange, onCandidateSelect, onOpenEditor, onDerivationSucceeded, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardRatio = "4:5", cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null, cardDeckByDraftId }: CreateRoomProps) {
   const topicInputRef = useRef<HTMLInputElement>(null);
   const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
   const [primaryKind, setPrimaryKind] = useState<CreateKind | null>(null);
@@ -669,6 +671,17 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     }
     setHydratedCreateWorkspaceId(workspaceId);
   }, [onLearningInfoChange, workspaceId]);
+
+  // 저장된 생성실 상태를 먼저 복원한 뒤 URL의 명시 형식을 마지막에 적용한다. 이 순서가
+  // 아니면 발행실의 "영상 만들기"로 들어와도 이전 카드 선택이 다시 화면을 덮는다.
+  useEffect(() => {
+    if (!requestedPrimaryKind || !workspaceId || hydratedCreateWorkspaceId !== workspaceId) return;
+    pickedByHand.current = true;
+    setPrimaryKind(requestedPrimaryKind);
+    setAlsoKinds((current) => current.filter((kind) => kind !== requestedPrimaryKind));
+    onPrimaryKindChange?.(requestedPrimaryKind);
+    onContentBranchChange?.(kindToBranch(requestedPrimaryKind));
+  }, [hydratedCreateWorkspaceId, onContentBranchChange, onPrimaryKindChange, requestedPrimaryKind, workspaceId]);
 
   useEffect(() => {
     if (!workspaceId || hydratedCreateWorkspaceId !== workspaceId) return;
@@ -2094,21 +2107,7 @@ export function EditRoom({
                   <CardDeckPanel deck={cardDeck} onDeckChange={onCardDeckChange} />
                 </div>
               ) : (
-              <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""} ${kind === "video" && onVideoEditChange ? styles.videoDocumentWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined} inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
-                {/*
-                  2026-09-23 세션맥락(과업 C): 카드뉴스가 말풍선 덱(chat_bubble)이 아니면
-                  위 CardDeckPanel 분기를 안 타 말풍선 편집 기능이 통째로 안 보인다.
-                  회장이 지적한 "카드뉴스 화면에 아무것도 안 뜬다"를 조용히 두지 않는다
-                  (ADR-007 조용한 실패 금지). 왜 안 보이는지와 만드는 경로만 안내하고,
-                  생성이 지금 실패한다고 단정하지 않는다(로컬·운영 상태가 다를 수 있음,
-                  세션맥락 원문).
-                */}
-                {kind === "card" && (!cardDeck || cardDeck.template !== "chat_bubble") ? (
-                  <p className="m-pad-inset rounded-control border border-border bg-surface-2 p-stack text-caption text-muted" data-card-deck-missing-note>
-                    말풍선 대화 편집은 카톡 말풍선 카드뉴스 9장 덱에만 있습니다. 이 작업물은 아직 그 덱이 아니라 아래 목록형 편집만 보입니다.{" "}
-                    {onOpenCreate ? <Button size="sm" variant="secondary" onClick={onOpenCreate}>생성실에서 &ldquo;카톡 말풍선 카드뉴스 9장 만들기&rdquo;로 가기</Button> : null}
-                  </p>
-                ) : null}
+              <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""} ${kind === "video" && onVideoEditChange ? styles.videoDocumentWorkbench : ""} ${kind === "card" ? styles.plainCardWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined} inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                 {/*
                   2026-09-14. 여기는 `1. 첫 장` 같은 글자 목록이었고, 장을 옮기려면 미리보기
                   아래 `앞 장`·`다음 장` 화살표를 여러 번 눌러야 했다. 카드뉴스는 장과 장의
@@ -2122,7 +2121,7 @@ export function EditRoom({
                   4단 도구줄, 레거시 테스트 전용 — 실제 서비스는 항상 onVideoEditChange를
                   준다)는 예전처럼 목차를 그대로 둔다(회귀 0).
                 */}
-                {kind !== "text" && !(kind === "video" && onVideoEditChange) ? <nav className={`min-w-0 p-pad-inset ${styles.editOutline}`} aria-label={outlineTitle} data-edit-outline>
+                {kind !== "text" && kind !== "card" && !(kind === "video" && onVideoEditChange) ? <nav className={`min-w-0 p-pad-inset ${styles.editOutline}`} aria-label={outlineTitle} data-edit-outline>
                   <EditOutline
                     title={outlineTitle}
                     unit={unit}
@@ -2131,10 +2130,10 @@ export function EditRoom({
                     onSelect={setActiveLine}
                     visibleLines={visibleLines}
                     // 카드뉴스만 장마다 그림이 다르다. 나머지 형식은 순번 자리표시자를 쓴다.
-                    thumbnails={kind === "card" ? (previewImageUrls ?? undefined) : undefined}
+                    thumbnails={undefined}
                     tenantId={workspaceId}
-                    showRoles={kind === "card"}
-                    note={kind === "card" ? "순서는 끌어서 놓거나 ▲▼로 바꿉니다. 자유 배치는 아직 제공하지 않습니다. 글자는 상단·중앙·하단 중에서 고릅니다." : undefined}
+                    showRoles={false}
+                    note={undefined}
                     onMove={moveLine}
                     onMoveTo={moveLineTo}
                     onAdd={addLine}
@@ -2189,6 +2188,74 @@ export function EditRoom({
                         syncing={videoEditReconciling}
                       />
                     </>
+                  ) : kind === "card" ? (
+                    <div className={styles.plainCardShell} data-plain-card-shell>
+                      <nav className={styles.plainCardStrip} aria-label="카드 목록" data-plain-card-strip>
+                        {safeLines.map((_, index) => (
+                          <div key={`plain-card-thumb-${index}`} className={styles.plainCardThumb} data-active={activeLine === index}>
+                            <CardStripThumbnail
+                              index={index}
+                              selected={activeLine === index}
+                              imageUrl={previewImageUrls?.[index] ?? (index === 0 ? previewImageUrl ?? undefined : undefined)}
+                              tenantId={workspaceId}
+                              onClick={() => setActiveLine(index)}
+                            />
+                          </div>
+                        ))}
+                      </nav>
+                      <div className={styles.plainCardStage}>
+                        <EditPreview
+                          kind="card"
+                          lines={safeLines.map((line, index) => (visibleLines[index] ? line : ""))}
+                          activeLine={activeLine}
+                          onActiveLine={setActiveLine}
+                          subtitleSize={toolValues.자막}
+                          renderReady={previewReady}
+                          mediaUrl={previewImageUrl || undefined}
+                          mediaUrls={previewImageUrls ?? undefined}
+                          mediaType="image"
+                          tenantId={workspaceId}
+                          onLinesChange={onLinesChange}
+                          cardTextPositions={cardTextPositions}
+                          onCardTextPositionsChange={onCardTextPositionsChange}
+                          aspectRatio={toolValues.비율}
+                          onAspectRatioChange={(aspectRatio) => {
+                            if (toolOptions(formatKind, "비율").includes(aspectRatio)) {
+                              setToolValues((current) => ({ ...current, 비율: aspectRatio }));
+                            }
+                          }}
+                          stageSize="card-v70"
+                        />
+                      </div>
+                      <section className={styles.plainCardScript} aria-labelledby="plain-card-script-title" data-edit-script>
+                        <div className="mb-stack flex flex-wrap items-center justify-between gap-stack-tight">
+                          <b id="plain-card-script-title" className="text-body text-text">카드 문구</b>
+                          <span className="text-caption text-subtle">{visibleCount}개 장</span>
+                        </div>
+                        <ol className="space-y-stack-tight">
+                          {safeLines.map((line, index) => (
+                            <li key={`plain-card-script-${index}`} className={`grid gap-stack-tight rounded-control border border-border bg-surface-2 p-stack md:grid-cols-[4rem_minmax(0,1fr)_auto] ${visibleLines[index] ? "" : "opacity-60"}`} data-script-line={index + 1}>
+                              <span className="text-caption text-subtle">{index + 1}장</span>
+                              <input
+                                aria-label={`문구 ${index + 1}`}
+                                data-line-input={index}
+                                value={line}
+                                onChange={(event) => onLinesChange(safeLines.map((current, lineIndex) => lineIndex === index ? event.target.value : current))}
+                                onFocus={() => setActiveLine(index)}
+                                placeholder="빈 문구"
+                                className={`min-h-control-touch min-w-0 rounded-control border px-stack text-body-sm text-text ${activeLine === index ? "border-accent bg-accent-soft/30" : "border-transparent bg-surface hover:border-border"} ${visibleLines[index] ? "" : "line-through opacity-60"}`}
+                              />
+                              <div className="flex shrink-0 gap-micro">
+                                <Button size="sm" aria-label={`${index + 1}번째를 위로`} data-line-up={index} disabled={index === 0} onClick={() => moveLine(index, -1)}>▲</Button>
+                                <Button size="sm" aria-label={`${index + 1}번째를 아래로`} data-line-down={index} disabled={index === safeLines.length - 1} onClick={() => moveLine(index, 1)}>▼</Button>
+                                <Button size="sm" onClick={() => toggleLine(index)}>{visibleLines[index] ? "빼기" : "되살리기"}</Button>
+                              </div>
+                            </li>
+                          ))}
+                        </ol>
+                        <Button size="sm" className="mt-stack" data-line-add onClick={addLine}>카드 추가</Button>
+                      </section>
+                    </div>
                   ) : (
                     <>
                       {kind === "audio" ? (
@@ -2207,7 +2274,7 @@ export function EditRoom({
                         </>
                       ) : (
                         <>
-                          <section aria-label={kind === "card" ? "카드뉴스 미리보기" : "영상 미리보기"} data-edit-stage>
+                          <section aria-label="영상 미리보기" data-edit-stage>
                             <EditPreview
                               kind={kind}
                               lines={safeLines.map((line, index) => (visibleLines[index] ? line : ""))}
@@ -2217,10 +2284,10 @@ export function EditRoom({
                               renderReady={previewReady}
                               // 영상은 대표 이미지를 움직여 만든다. 영상이 아직 없으면 그 바탕이 된
                               // 이미지를 보여 주는 편이 자리표시자보다 결과에 가깝다.
-                              mediaUrl={(kind === "video" ? (previewVideoUrl || previewImageUrl) : previewImageUrl) || undefined}
+                              mediaUrl={(previewVideoUrl || previewImageUrl) || undefined}
                               // 카드뉴스는 장마다 그림이 다르다. 한 벌을 통째로 넘겨 고른 장의
                               // 그림을 그린다(2026-09-14 실측: 늘 대표 한 장만 보였다).
-                              mediaUrls={kind === "card" ? (previewImageUrls ?? undefined) : undefined}
+                              mediaUrls={undefined}
                               mediaType={kind === "video" && previewVideoUrl ? "video" : "image"}
                               // 만료된 배달 주소를 되살릴 때 어느 작업 공간인지 함께 보낸다.
                               // 없으면 운영자 경로에서 401 로 닫힌다(2026-09-13).
@@ -2287,9 +2354,9 @@ export function EditRoom({
                         </>
                       )}
                       <section className="mt-pad-inset" aria-labelledby="edit-script-title" data-edit-script>
-                        <div className="mb-stack flex flex-wrap items-center justify-between gap-stack-tight"><b id="edit-script-title" className="text-body text-text">{kind === "card" ? "카드 문구" : kind === "audio" ? "나레이션 대사" : "장면 대사"}</b><span className="text-caption text-subtle" data-edit-duration={kind === "video" ? durationLabel : undefined}>{visibleCount}개 {unit}{kind === "video" ? ` · ${durationLabel}초` : ""}</span></div>
+                        <div className="mb-stack flex flex-wrap items-center justify-between gap-stack-tight"><b id="edit-script-title" className="text-body text-text">{kind === "audio" ? "나레이션 대사" : "장면 대사"}</b><span className="text-caption text-subtle" data-edit-duration={kind === "video" ? durationLabel : undefined}>{visibleCount}개 {unit}{kind === "video" ? ` · ${durationLabel}초` : ""}</span></div>
                         <ol className="space-y-stack-tight">{safeLines.map((line, index) => <li key={`script-${index}`} className={`grid gap-stack-tight rounded-control border border-border bg-surface-2 p-stack md:grid-cols-[4rem_minmax(0,1fr)_auto] ${visibleLines[index] ? "" : "opacity-60"}`} data-script-line={index + 1}>
-                          <span className="text-caption text-subtle">{kind === "card" ? `${index + 1}장` : kind === "audio" ? `${index + 1}번째` : `${index * secondsPerLine}초부터`}</span>
+                          <span className="text-caption text-subtle">{kind === "audio" ? `${index + 1}번째` : `${index * secondsPerLine}초부터`}</span>
                           {/*
                             2026-09-09 회장 지적("목차의 의미 몰라? vrew 처럼 장면 대사보고
                             자막이나 음성 바로 편집가능하게하는건데")과 경쟁사 조사 반영.
@@ -2301,12 +2368,12 @@ export function EditRoom({
                             언제나 입력칸이다. 고르는 단계를 없앤다.
                           */}
                           <input
-                            aria-label={`${kind === "card" ? "문구" : "대사"} ${index + 1}`}
+                            aria-label={`대사 ${index + 1}`}
                             data-line-input={index}
                             value={line}
                             onChange={(event) => onLinesChange(safeLines.map((current, lineIndex) => lineIndex === index ? event.target.value : current))}
                             onFocus={() => setActiveLine(index)}
-                            placeholder={kind === "card" ? "빈 문구" : "빈 대사"}
+                            placeholder="빈 대사"
                             className={`min-h-control-touch min-w-0 rounded-control border px-stack text-body-sm text-text ${activeLine === index ? "border-accent bg-accent-soft/30" : "border-transparent bg-transparent hover:border-border hover:bg-surface"} ${visibleLines[index] ? "" : "line-through opacity-60"}`}
                           />
                           {/*
@@ -2324,7 +2391,7 @@ export function EditRoom({
                         </li>)}</ol>
                         <div className="mt-stack flex flex-wrap gap-stack-tight">
                           <Button size="sm" data-line-add onClick={() => onLinesChange([...safeLines, ""])}>
-                            {kind === "card" ? "카드 추가" : kind === "audio" ? "대사 추가" : "장면 추가"}
+                            {kind === "audio" ? "대사 추가" : "장면 추가"}
                           </Button>
                         </div>
                       </section>
@@ -2351,21 +2418,24 @@ export function EditRoom({
             편집실만 이 자리가 버튼판이었다. 같은 역할이면 같은 모양이어야 한다.
             대화창 안에 넣되, 편집실이 하는 일(전체 일괄 변경과 발행실 이동)은 그대로 둔다.
           */
-          <aside className={`card p-pad-inset ${styles.editHelper}`} aria-label="편집 담당 대화창" data-edit-helper>
+          <AssistantPanel title="편집 담당" className={styles.editHelper} compactOnNarrow={false}>
             <div className={styles.editHelperActions}>
-              <div className="flex items-center gap-stack-tight border-b border-border pb-stack">
-                <div className="grid h-10 w-10 place-items-center rounded-pill bg-accent text-body font-bold text-accent-fg" aria-hidden="true">O</div>
-                <div><b className="block text-body text-text">편집 담당</b><span className="text-caption text-success">지금 대기 중</span></div>
+              <div className={styles.editQuickActions} aria-label="빠른 작업">
+                <Button size="sm" variant="secondary" onClick={shortenAll} disabled={!hasEditableContent || bodyEditConflict}>전부 짧게</Button>
+                <Button size="sm" variant="secondary" onClick={politeAll} disabled={!hasEditableContent || bodyEditConflict}>높임말</Button>
+                <Button size="sm" variant="secondary" onClick={dropEmpty} disabled={!hasEditableContent || bodyEditConflict}>빈 줄 정리</Button>
               </div>
-              <h2 className="mt-stack text-body font-bold text-text">전체에 한 번에 적용</h2>
-              <p className="mt-stack-tight break-keep text-caption text-muted">한 곳을 정확히 고치는 것은 손이 빠릅니다. 여러 곳을 같은 규칙으로 바꾸는 것은 말이 빠릅니다.</p>
+              <div className={styles.editChatLog} role="log" aria-label="편집 담당 대화 기록" data-edit-chat-log>
+                <div className={styles.editChatBubble}>고칠 내용을 말해 주세요. 현재 초안 전체에 같은 규칙으로 적용할 수 있습니다.</div>
+                {bulkMessage ? <div className={`${styles.editChatBubble} ${styles.editChatBubbleUser}`} aria-live="polite">{bulkMessage}</div> : null}
+              </div>
               {/*
                 2026-09-09 회장 지시: "AI 챗봇에서는 '자막에서 어투 이렇게 바꿔줘' 이렇게
                 요청할수도있는거고." 고정 단추 셋으로는 그 말을 받을 수 없었다. 자유롭게
                 시킬 자리를 연다. 줄 수와 순서는 서버가 지킨다(app/api/studio/edit-bulk).
               */}
               <form
-                className="mt-pad-inset flex gap-stack-tight"
+                className="flex gap-stack-tight"
                 data-bulk-ask-form
                 onSubmit={(event) => { event.preventDefault(); void askBulk(); }}
               >
@@ -2386,12 +2456,6 @@ export function EditRoom({
                   {bulkBusy ? "고치는 중" : "시키기"}
                 </Button>
               </form>
-              <div className="mt-pad-inset grid gap-stack-tight">
-                <Button className="w-full min-w-0 justify-start" onClick={shortenAll} disabled={!hasEditableContent || bodyEditConflict}>전부 짧게 줄이기</Button>
-                <Button className="w-full min-w-0 justify-start" onClick={politeAll} disabled={!hasEditableContent || bodyEditConflict}>말끝을 높임말로 맞추기</Button>
-                <Button className="w-full min-w-0 justify-start" onClick={dropEmpty} disabled={!hasEditableContent || bodyEditConflict}>빈 줄 걷어내기</Button>
-              </div>
-              {bulkMessage ? <p className="mt-stack text-caption text-success" aria-live="polite">{bulkMessage}</p> : null}
             </div>
             {/*
               항목2(2026-09-22 코드리뷰 5차): 영상 편집기의 미완성 오버레이 하나가
@@ -2428,7 +2492,7 @@ export function EditRoom({
               <small className={autosaveError ? "text-caption text-danger" : "text-caption text-success"}>{autosaveError || (lastSavedAt ? `마지막 자동 저장 ${lastSavedAt}` : "고치는 대로 자동 저장됨")}</small>
               <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || bodyEditConflict || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>
             </div>
-          </aside>
+          </AssistantPanel>
         )}
       </div>
     </section>

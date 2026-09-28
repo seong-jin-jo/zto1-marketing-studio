@@ -47,12 +47,12 @@ describe("카드뉴스 이음매 계약", () => {
       />,
     );
     // 장 목록이 3개다. 한 장으로 접히지 않는다.
-    expect(container.querySelectorAll("[data-card-strip-item]")).toHaveLength(3);
-    expect(screen.getByLabelText("장 전체 3개")).toBeInTheDocument();
+    expect(container.querySelectorAll("[data-card-thumbnail]")).toHaveLength(3);
+    expect(screen.getByLabelText("카드 목록")).toBeInTheDocument();
     // 첫 장을 보고 있으면 첫 장의 그림이 걸린다.
     expect(container.querySelector('[data-edit-preview-media="image"]')?.getAttribute("src")).toBe(deck[0]);
     // 둘째 장을 누르면 둘째 장의 그림으로 바뀐다. 종전에는 어느 장을 눌러도 대표 한 장이었다.
-    fireEvent.click(container.querySelector('[data-card-strip-item="1"]') as HTMLElement);
+    fireEvent.click(container.querySelector('[data-card-thumbnail="1"]') as HTMLElement);
     expect(container.querySelector('[data-edit-preview-media="image"]')?.getAttribute("src")).toBe(deck[1]);
   });
 

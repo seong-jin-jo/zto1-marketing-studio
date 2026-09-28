@@ -56,56 +56,12 @@ export function Logo({ p }: { p: PreviewPlatform }) {
   return <svg className={c} viewBox="0 0 24 24" fill="currentColor"><path d="M16 3c.3 2.3 1.8 4.1 4 4.4v3c-1.5 0-2.9-.4-4.1-1.2v6.1a5.7 5.7 0 11-5.7-5.7c.3 0 .6 0 .9.1v3.1a2.7 2.7 0 102 2.6V3z"/></svg>;
 }
 
-/**
- * 계정 배지: 미리보기 머리줄 안에 붙는다.
- *
- * 2026-09-22 회장 질문(R-23-4): "컨텐츠 밑에 '읽기 전용' 으로 되어있는 계정정보는 왜
- * 필요한거?" 전에는 이 정보가 카드 아래쪽에 테두리 있는 카드로 따로 떠 있었다. 미리보기
- * 머리줄에 이미 핸들이 나오는데 같은 정보가 두 번 보이면서 세로 공간만 먹고, 같은 줄
- * 카드끼리 높이를 어긋나게 만드는 원인 중 하나였다(§ Frame 주석). 실측(2026-09-22, 폭
- * 1792)에서 같은 줄 카드 편집 칸 시작점이 최대 80px 차이 났다. 중복 블록을 없애고 머리줄에
- * 한 줄로 합친다. 미연결·오류는 조용히 사라지지 않고 경고 배지로 남는다(ADR-007).
- */
-function AccountBadge({ platform, account }: { platform: PreviewPlatform; account: PreviewAccount }) {
-  if (account.status === "connected") {
-    const username = account.username?.replace(/^@/, "");
-    return (
-      <span
-        data-testid={`preview-account-${platform}`}
-        data-account-state="connected"
-        className="inline-flex min-w-0 max-w-full items-center gap-micro rounded-pill bg-surface-2 px-stack-tight py-micro text-caption text-subtle"
-        title={account.displayName || username}
-      >
-        <span className="truncate">@{username || account.displayName || "연결 계정"}</span>
-      </span>
-    );
-  }
-  const statusLabel = account.status === "loading"
-    ? "연결 계정 확인 중"
-    : account.status === "error"
-      ? "연결 계정을 확인하지 못했습니다"
-      : account.status === "unsupported"
-        ? "이 플랫폼 발행은 아직 지원하지 않습니다"
-        : "연결된 계정이 없습니다";
-  const isWarning = account.status !== "loading";
-  return (
-    <span
-      data-testid={`preview-account-${platform}`}
-      data-account-state={account.status}
-      className={`inline-flex min-w-0 max-w-full items-center gap-micro rounded-pill px-stack-tight py-micro text-caption ${isWarning ? "bg-warning-soft text-warning" : "bg-surface-2 text-subtle"}`}
-    >
-      <span className="truncate">{statusLabel}</span>
-    </span>
-  );
-}
-
-function Frame({ p, label, children, headerRight, characterCount, account }: {
+function Frame({ p, label, children, headerRight, characterCount }: {
   p: PreviewPlatform;
   label: string;
   children: React.ReactNode;
   headerRight?: React.ReactNode;
   characterCount?: { current: number; limit: number };
-  account?: PreviewAccount;
 }) {
   return (
     /*
@@ -173,16 +129,6 @@ function Frame({ p, label, children, headerRight, characterCount, account }: {
           </span>
         )}
       </div>
-      {/*
-        2026-09-22 교차 코드리뷰 M1(1차): 배지를 위 줄(icon+label)에 같이 넣으면 핸들
-        길이·미지원 문구 길이가 채널마다 달라 그 줄이 2줄로 감기는 카드와 1줄인 카드가
-        섞였다. 배지를 별도의 고정 한 줄로 뺀다.
-      */}
-      {account ? (
-        <div className="mb-stack-tight min-h-control-touch px-micro">
-          <AccountBadge platform={p} account={account} />
-        </div>
-      ) : null}
       {/*
         2026-09-22 교차 코드리뷰 4라운드: headerRight(발행 체크박스·대문 시점·계정
         연결/관리)를 독립된 줄로 뺀다. min-height 만 주고 max-height·overflow 제한은
@@ -456,10 +402,12 @@ function VideoRail({ kind }: { kind: "shorts" | "reels" | "tiktok" }) {
 // 토큰으로 들어온 요청은 본문의 tenant_id 가 유일한 단서라 이것이 없으면 401 로 닫힌다
 // (tenant-auth.ts effectiveTenantId). 2026-09-13 Codex 교차리뷰 지적.
 export function PlatformPreview({ platform, text, media, headerRight, editor, tenantId }: { platform: PreviewPlatform; text: PreviewText; media: PreviewMedia; headerRight?: React.ReactNode; editor?: PreviewInlineEditor; tenantId?: string }) {
-  const handle = (editor?.account.username || editor?.account.displayName || "연결 계정 없음").replace(/^@/, "");
+  const label = PREVIEW_PLATFORMS.find((x) => x.key === platform)?.label || platform;
+  // 계정 이름은 PublishHeaderControls의 한 줄에서만 보여준다. 미리보기 머리에 다시
+  // 복제하면 긴 핸들이 잘리고, 같은 계정이 배지·제어·미리보기에 세 번 보인다.
+  const previewIdentity = `${label} 미리보기`;
   const images = media.imgUrls?.filter(Boolean).length ? media.imgUrls.filter(Boolean) : media.imgUrl ? [media.imgUrl] : [];
   const img = images[0]; const vid = media.vidUrl;
-  const label = PREVIEW_PLATFORMS.find((x) => x.key === platform)?.label || platform;
   const previewBody = platform === "threads"
     ? text.threads || ""
     : platform === "facebook"
@@ -480,7 +428,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
   const characterCount = bodyCounter && platform !== "facebook" ? { current: bodyCounter.current, limit: bodyCounter.limit } : undefined;
 
   if (platform === "threads") return (
-    <Frame p="threads" label="Threads" headerRight={headerRight} characterCount={characterCount} account={editor?.account}>
+    <Frame p="threads" label="Threads" headerRight={headerRight} characterCount={characterCount}>
       {/*
         2026-09-22 교차 코드리뷰 C3 실측(scripts/measure-publish-room-alignment.mjs, 폭
         1792): line-clamp 로 캡션 길이 변동은 없앴는데도 threads·x·facebook 이 서로
@@ -502,7 +450,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
       <div className="bg-surface text-text rounded-surface border border-border px-pad-inset py-stack min-h-[var(--preview-text-body-min-h)]">
         <div className="flex gap-stack"><Av />
           <div className="flex-1 min-w-0">
-            <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="shrink-0 text-subtle text-body-sm ml-micro">지금</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
+            <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{previewIdentity}</b><span className="shrink-0 text-subtle text-body-sm ml-micro">지금</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
             <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-threads" label="threads 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.45] mt-micro max-h-[var(--preview-body-caption-max-h)] overflow-y-auto" />
             {/*
               2026-09-09 회장 지적: "해시태그나 첫댓글도 미리보기화면에서 직관적으로
@@ -549,11 +497,11 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
     </Frame>
   );
   if (platform === "x") return (
-    <Frame p="x" label="X" headerRight={headerRight} characterCount={characterCount} account={editor?.account}>
+    <Frame p="x" label="X" headerRight={headerRight} characterCount={characterCount}>
       <div className="bg-surface text-text rounded-surface border border-border px-pad-inset py-stack min-h-[var(--preview-text-body-min-h)]">
         <div className="flex gap-stack"><Av />
           <div className="flex-1 min-w-0">
-            <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{handle}</b><span className="min-w-0 truncate text-subtle ml-micro">@{handle} · 지금</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
+            <div className="flex min-w-0 items-center gap-micro text-body"><b className="min-w-0 truncate">{previewIdentity}</b><span className="shrink-0 text-subtle ml-micro">· 지금</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
             <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-x" label="x 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-body whitespace-pre-wrap leading-[1.4] mt-micro max-h-[var(--preview-body-caption-max-h)] overflow-y-auto" />
         <EditablePreviewBody value={editor?.hashtags ?? ""} onChange={editor?.onHashtagsChange} testId="preview-tags-x" label="x 해시태그" locked={editor?.account.status === "loading"} placeholder="#해시태그" className="text-body-sm text-accent whitespace-pre-wrap mt-stack-tight" />
             {images.length > 0 ? (
@@ -572,9 +520,9 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
     </Frame>
   );
   if (platform === "facebook") return (
-    <Frame p="facebook" label="Facebook" headerRight={headerRight} characterCount={characterCount} account={editor?.account}>
+    <Frame p="facebook" label="Facebook" headerRight={headerRight} characterCount={characterCount}>
       <div className="bg-surface text-text rounded-control border border-border overflow-hidden min-h-[var(--preview-text-body-min-h)]">
-        <div className="flex items-center gap-stack-tight px-stack pt-stack"><Av /><div className="min-w-0"><div className="truncate font-semibold text-body leading-tight">{handle}</div><div className="text-subtle text-caption">방금 · 전체 공개</div></div><div className="ml-auto text-subtle">{P(I.more)}</div></div>
+        <div className="flex items-center gap-stack-tight px-stack pt-stack"><Av /><div className="min-w-0"><div className="truncate font-semibold text-body leading-tight">{previewIdentity}</div><div className="text-subtle text-caption">방금 · 전체 공개</div></div><div className="ml-auto text-subtle">{P(I.more)}</div></div>
         <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-facebook" label="facebook 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="px-stack py-stack-tight text-body whitespace-pre-wrap leading-snug max-h-[var(--preview-body-caption-max-h)] overflow-y-auto" />
         <EditablePreviewBody value={editor?.hashtags ?? ""} onChange={editor?.onHashtagsChange} testId="preview-tags-facebook" label="facebook 해시태그" locked={editor?.account.status === "loading"} placeholder="#해시태그" className="px-stack pb-stack-tight text-body-sm text-accent whitespace-pre-wrap" />
         {images.length > 0 ? (
@@ -589,13 +537,13 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
   if (platform === "instagram") {
     const cards = images.map((url) => ({ type: "img" as const, v: url }));
     return (
-      <Frame p="instagram" label="Instagram" headerRight={headerRight} characterCount={characterCount} account={editor?.account}>
+      <Frame p="instagram" label="Instagram" headerRight={headerRight} characterCount={characterCount}>
         <div className="bg-surface text-text rounded-control border border-border overflow-hidden">
-          <div className="flex items-center gap-stack px-stack py-stack"><Av s={32} /><b className="min-w-0 truncate text-body-sm">{handle}</b><span className="shrink-0 text-subtle text-caption">· 팔로우</span><div className="ml-auto text-subtle">{P(I.more)}</div></div>
+          <div className="flex items-center gap-stack px-stack py-stack"><Av s={32} /><b className="min-w-0 truncate text-body-sm">{previewIdentity}</b><div className="ml-auto text-subtle">{P(I.more)}</div></div>
           <MediaCarousel cards={cards} tenantId={tenantId} testId="preview-media-instagram" />
           <div className="flex items-center gap-pad-inset px-stack pt-stack">{P(I.heart)}{P(I.chat)}{P(I.send)}<div className="ml-auto">{P(I.bookmark)}</div></div>
           <div className="px-stack pt-stack-tight text-body-sm text-subtle" data-preview-engagement="instagram">올리면 여기에 좋아요가 쌓입니다</div>
-          <div className="px-stack pt-micro pb-stack text-body-sm"><b className="break-all">{handle}</b> <EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-instagram" label="instagram 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-muted inline-block align-top max-h-[var(--preview-instagram-caption-max-h)] overflow-y-auto" />
+          <div className="px-stack pt-micro pb-stack text-body-sm"><EditablePreviewBody value={previewBody} onChange={editor?.onCaptionChange} testId="preview-body-instagram" label="instagram 캡션" locked={editor?.account.status === "loading"} placeholder="여기에 본문을 적으세요" className="text-muted inline-block align-top max-h-[var(--preview-instagram-caption-max-h)] overflow-y-auto" />
             {/*
               2026-09-22: instagram 해시태그는 전에 어디서도 고칠 수 없었다(static 표시만
               있었다). 캡션 바로 아래, 실제 게시물에서 해시태그가 붙는 그 자리에서 바로
@@ -626,7 +574,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
   const k = platform as "shorts" | "reels" | "tiktok";
   const cap = editor?.caption || text.shorts?.hook || text.instagram?.caption || "";
   return (
-    <Frame p={platform} label={label} headerRight={headerRight} characterCount={characterCount} account={editor?.account}>
+    <Frame p={platform} label={label} headerRight={headerRight} characterCount={characterCount}>
       <div className="relative rounded-surface overflow-hidden bg-surface-2 aspect-[9/16] border border-border">
         {/*
           2026-09-22 R-23-6("영상쪽은 썸네일도 확인되고?"): 대문 그림(poster)을 안 넘기면
@@ -660,7 +608,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
           <VideoRail kind={k} />
         </>}
         <div className={vid ? "absolute left-3 right-3 top-3 text-text" : "absolute left-3 right-12 bottom-3 text-text"}>
-          <div className="truncate text-body-sm font-bold">@{handle}</div>
+          <div className="truncate text-body-sm font-bold">{previewIdentity}</div>
           {editor && PLATFORM_FIELD_CONTRACT[platform].title ? (
             <EditablePreviewBody
               value={editor.title}
@@ -690,7 +638,7 @@ export function PlatformPreview({ platform, text, media, headerRight, editor, te
               className="mt-micro block w-full line-clamp-1 text-caption opacity-90"
             />
           ) : null}
-          {!vid && k === "tiktok" && <div className="text-caption mt-micro opacity-90">원본 사운드 · {handle}</div>}
+          {!vid && k === "tiktok" && <div className="text-caption mt-micro opacity-90">원본 사운드</div>}
         </div>
       </div>
       {editor ? <PublishMetaFields platform={platform} editor={editor} /> : null}

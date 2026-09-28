@@ -30,6 +30,51 @@
 .videoDocumentWorkbench {
   display: block;
 }
+
+.plainCardWorkbench {
+  display: block;
+  padding: var(--pad-inset);
+}
+
+/* design-spec-editroom-v70.md §3.1: 112px 스트립 + 남은 폭의 520px 카드 무대. */
+.plainCardShell {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: var(--pad-inset);
+}
+
+.plainCardStrip {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--stack-tight);
+}
+
+.plainCardThumb {
+  width: 100%;
+}
+
+.plainCardThumb[data-active="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.plainCardThumb:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.plainCardStage {
+  min-width: 0;
+}
+
+.plainCardScript {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding-top: var(--pad-inset);
+}
 .textDocumentCanvas {
   min-width: 0;
   overflow-y: auto;
@@ -185,6 +230,41 @@
   margin-top: auto;
 }
 
+.editQuickActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-micro);
+}
+
+.editChatLog {
+  display: flex;
+  min-height: 18rem;
+  max-height: 28rem;
+  flex-direction: column;
+  gap: var(--stack-tight);
+  overflow-y: auto;
+  border-block: 1px solid var(--border);
+  padding-block: var(--stack);
+}
+
+.editChatBubble {
+  max-width: 88%;
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-surface);
+  background: var(--surface);
+  padding: var(--stack-tight);
+  color: var(--text-muted);
+  font-size: var(--font-caption-size);
+}
+
+.editChatBubbleUser {
+  align-self: flex-end;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
 @media (min-width: 51.25rem) {
   .editWorkbench {
     grid-template-columns: 11rem minmax(0, 1fr);
@@ -205,6 +285,25 @@
 }
 
 @media (max-width: 30rem) {
+  .plainCardWorkbench {
+    padding: 0;
+  }
+
+  .plainCardShell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .plainCardStrip {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: var(--stack-tight);
+  }
+
+  .plainCardThumb {
+    width: 3.5rem;
+    flex: 0 0 3.5rem;
+  }
+
   .textDocumentCanvas {
     padding-inline: var(--pad-inset);
   }
@@ -214,23 +313,28 @@
   }
 }
 
-@media (min-width: 64rem) {
-  .editRoomGrid {
-    grid-template-columns: minmax(0, 1fr) 15.5rem;
+@media (min-width: 30.01rem) and (max-width: 64rem) {
+  .plainCardShell {
+    grid-template-columns: 6.25rem minmax(0, 1fr);
   }
 }
 
-@media (max-width: 63.99rem) {
-  .editHelper {
-    position: sticky;
-    bottom: 0;
-    z-index: 10;
-    max-height: 10.5rem;
-    border-radius: var(--shape-surface) var(--shape-surface) 0 0;
-    box-shadow: 0 -8px 24px color-mix(in srgb, var(--text) 10%, transparent);
+@media (min-width: 51.25rem) {
+  .editRoomGrid {
+    grid-template-columns: minmax(0, 1fr) 19rem;
+  }
+}
+
+@media (min-width: 51.25rem) and (max-width: 64rem) {
+  .editRoomGrid {
+    gap: var(--stack-tight);
   }
 
-  .editHelperActions {
-    display: none;
+  .plainCardWorkbench {
+    padding: var(--stack-tight);
+  }
+
+  .plainCardShell {
+    gap: var(--stack-tight);
   }
 }

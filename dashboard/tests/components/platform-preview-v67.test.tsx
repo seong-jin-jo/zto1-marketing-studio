@@ -28,41 +28,27 @@ function editor(overrides: Partial<PreviewInlineEditor> = {}): PreviewInlineEdit
 // 안 배지 하나로 합쳤다. 표시 이름은 배지 하나에 다 담지 않고 핸들만 짧게 보여 준다
 // (핸들이 실제 발행 대상 계정을 가장 명확히 특정한다). 미연결·오류·확인 중 상태는 여전히
 // 조용히 사라지지 않고 경고 배지로 남는다(ADR-007).
-describe("PUB-ACCOUNT-01 계정 정보는 머리줄 배지 하나로 합친다", () => {
-  it("정상: 연결 계정의 핸들을 머리줄 배지로 보여 주되 편집 입력은 만들지 않는다", () => {
+describe("PUB-ACCOUNT-01 계정 정보는 발행 제어 한 줄만 소유한다", () => {
+  it("정상: 미리보기는 연결 계정 핸들을 다시 복제하지 않는다", () => {
     render(<PlatformPreview platform="threads" text={{ threads: "정상 본문" }} media={{}} editor={editor()} />);
 
-    const badge = screen.getByTestId("preview-account-threads");
-    expect(badge).toHaveAttribute("data-account-state", "connected");
-    expect(badge).toHaveTextContent("@operator");
+    expect(screen.queryByTestId("preview-account-threads")).not.toBeInTheDocument();
+    expect(screen.queryByText("@operator")).not.toBeInTheDocument();
+    expect(screen.getByText("Threads 미리보기")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "threads 표시 이름" })).not.toBeInTheDocument();
   });
 
-  it("거절: 계정 조회 오류를 가짜 계정 이름으로 대신하지 않는다", () => {
-    render(<PlatformPreview platform="threads" text={{ threads: "정상 본문" }} media={{}} editor={editor({ account: { status: "error" } })} />);
-
-    expect(screen.getByTestId("preview-account-threads")).toHaveAttribute("data-account-state", "error");
-    expect(screen.getByText("연결 계정을 확인하지 못했습니다")).toBeInTheDocument();
-    expect(screen.queryByText("운영 계정")).not.toBeInTheDocument();
-  });
-
-  it("경계: 계정 확인 중에는 게시 필드를 잠그고 미연결 상태는 별도로 밝힌다", () => {
-    const { rerender } = render(
+  it("경계: 계정 확인 중에는 게시 필드를 잠그고 계정 상태 문구는 제어줄에 맡긴다", () => {
+    render(
       <PlatformPreview platform="threads" text={{ threads: "정상 본문" }} media={{}} editor={editor({ account: { status: "loading" } })} />,
     );
 
-    expect(screen.getByTestId("preview-account-threads")).toHaveAttribute("data-account-state", "loading");
-    expect(screen.getByText("연결 계정 확인 중")).toBeInTheDocument();
     // 2026-09-09: 본문은 이제 미리보기 안에서 직접 고친다(회장 "미리보기 화면 자체에서
     // 본문 수정해야지"). 별도 캡션 칸이 사라졌으므로 잠금도 그 자리에서 확인한다.
     // 계정을 아직 못 불러온 동안에는 편집을 막는다. 그때 고친 값은 어느 계정으로 갈지 모른다.
     const body = screen.getByTestId("preview-body-threads");
     expect(body).toHaveAttribute("aria-disabled", "true");
     expect(body).not.toHaveAttribute("contenteditable");
-
-    rerender(<PlatformPreview platform="threads" text={{ threads: "정상 본문" }} media={{}} editor={editor({ account: { status: "missing" } })} />);
-    expect(screen.getByTestId("preview-account-threads")).toHaveAttribute("data-account-state", "missing");
-    expect(screen.getByText("연결된 계정이 없습니다")).toBeInTheDocument();
   });
 });
 

@@ -109,6 +109,7 @@ export function EditPreview({
   onCardTextPositionsChange,
   aspectRatio,
   onAspectRatioChange,
+  stageSize = "default",
 }: {
   kind: EditContentKind;
   /** 화면에 남아 있는 대사만 넘긴다 */
@@ -150,8 +151,12 @@ export function EditPreview({
   onCardTextPositionsChange?: (positions: CardTextPosition[]) => void;
   aspectRatio?: string;
   onAspectRatioChange?: (aspectRatio: string) => void;
+  /** v70 카드 편집실은 520px 무대를 쓴다. 다른 레거시 미리보기 폭은 그대로 둔다. */
+  stageSize?: "default" | "card-v70";
 }) {
-  const specs = useMemo(() => PREVIEW_SPECS.filter((spec) => spec.kinds.includes(kind)), [kind]);
+  const specs = useMemo(() => PREVIEW_SPECS.filter((spec) => (
+    spec.kinds.includes(kind) && (stageSize !== "card-v70" || spec.key === "card-portrait")
+  )), [kind, stageSize]);
   const matchingSpec = specs.find((one) => one.ratio.replaceAll(" ", "").replace("/", ":") === aspectRatio);
   const [specKey, setSpecKey] = useState(matchingSpec?.key ?? specs[0]?.key ?? "shorts");
   useEffect(() => {
@@ -181,9 +186,9 @@ export function EditPreview({
         <span className="ml-auto text-caption text-subtle" data-edit-preview-size>{spec.size}픽셀</span>
       </div>
 
-      <div className="grid place-items-center rounded-surface border border-border bg-surface-2 p-stack">
+      <div className={`grid place-items-center rounded-surface border border-border bg-surface-2 p-stack ${stageSize === "card-v70" ? styles.cardV70StageShell : ""}`} data-edit-preview-stage-shell>
         <div
-          className={`relative w-full max-w-sm overflow-hidden rounded-control bg-accent-soft ${RATIO_CLASS[spec.ratio]}`}
+          className={`relative overflow-hidden rounded-control ${stageSize === "card-v70" ? `${styles.cardStageFrame} ${styles.cardV70Canvas}` : "w-full max-w-sm bg-accent-soft"} ${RATIO_CLASS[spec.ratio]}`}
           data-edit-preview-frame={spec.ratio}
           data-card-canvas={kind === "card" ? "true" : undefined}
           onPointerUp={(event) => {
@@ -217,13 +222,13 @@ export function EditPreview({
 
           {kind === "card" ? (
             <div
-              className={`absolute z-10 w-4/5 rounded-control border border-border bg-surface/90 p-stack shadow-lg ${CARD_POSITION_CLASS[cardPosition]}`}
+              className={`absolute z-10 w-4/5 rounded-control border border-border p-stack shadow-lg ${stageSize === "card-v70" ? styles.cardV70TextOverlay : styles.cardTextOverlay} ${CARD_POSITION_CLASS[cardPosition]}`}
               data-card-text-position={cardPosition}
             >
               <button
                 type="button"
                 aria-label="카드 글자 끌어 옮기기"
-                className="mb-stack-tight min-h-control-touch w-full cursor-move rounded-control border border-border bg-surface-2 px-stack text-caption font-semibold text-muted"
+                className={`mb-stack-tight min-h-control-touch w-full cursor-move rounded-control border border-border px-stack text-caption font-semibold ${styles.cardTextHandle}`}
                 onPointerDown={(event) => {
                   movingCardText.current = true;
                   event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -233,13 +238,14 @@ export function EditPreview({
               </button>
               <textarea
                 aria-label={`카드 ${activeLine + 1} 글자`}
+                data-card-face-copy
                 value={line}
                 rows={3}
                 onChange={(event) => {
                   const next = lines.map((value, index) => index === activeLine ? event.target.value : value);
                   onLinesChange?.(next);
                 }}
-                className="min-h-control-touch w-full resize-none rounded-control border border-border bg-surface p-stack text-center text-body font-bold text-text"
+                className={`min-h-control-touch w-full resize-none rounded-control border p-stack text-center text-body font-bold ${styles.cardTextInput}`}
               />
             </div>
           ) : kind === "video" && mediaType === "video" && activeMediaUrl ? null : (

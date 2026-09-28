@@ -1,3 +1,70 @@
+## 2026-09-29 PR #94 독립 리뷰 r5 디자인 토큰·영상 회귀 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR94-R5-MAJOR-01 | 390 영상 재생기 모바일 간격을 DESIGN의 `none` 토큰으로 표현 | UI-TOKEN-02 | ✅ 로컬 PASS | 원격 CI run `36495350609`와 로컬 표적 실행에서 `max-[26rem]:space-y-0` 직접값 1건을 재현했다. `space-y-none` 토큰으로 교체한 뒤 토큰 감사 직접값 0건을 확인했다. |
+| PR94-R5-MAJOR-02 | 180px 높이 계약을 영상 면이 아닌 전체 재생기 컨테이너에서 검증 | PR94-R3-VIDEO-01 | ✅ 로컬 PASS | 원격 CI와 로컬 표적 실행에서 회귀가 `[data-video-screen]`에 높이를 잘못 요구해 실패했다. `[data-video-playback]` 높이와 내부 화면의 `min-h-0`·`aspect-auto`를 분리 단언했고 표적 2파일 14건이 통과했다. |
+
+## 2026-09-29 PR #94 독립 리뷰 r4 재생기·발행 계정·이어 편집·시각 게이트 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR94-R4-MAJOR-01 | 390에서 영상 면이 아니라 재생기 컨테이너 전체를 180px로 고정 | PR94-R4-VIDEO-01 | ✅ 로컬 PASS | Chromium 390 실측에서 `data-video-playback` 180px, 내부 화면 102px, 대본 시작 top 212px, 타임라인 108px이다. 검증기도 컨테이너 전체를 측정한다. |
+| PR94-R4-MAJOR-02 | 화면 계정과 실제 발행 POST 계정을 같은 정본으로 결정 | PR94-R4-ACCOUNT-01 | ✅ 로컬 PASS | 재연결 기본 계정과 연결 비기본 계정 조합에서 화면 `@live.nondefault`와 POST `threads-live-nondefault`가 같은 `selectedAccountId` 정본을 쓴다. 재연결 행동은 유지했다. |
+| PR94-R4-MAJOR-03 | 카드 현재 작업 이어 편집에서 카드 형식을 URL 기록 전에 확정 | PR94-R4-RESUME-01 | ✅ 로컬 PASS | 이전 URL이 `kind=video`여도 카드 초안 로드 결과를 `changeRoom`에 직접 전달해 `/studio?room=edit&kind=card`로 기록하는 회귀를 통과했다. |
+| PR94-R4-MAJOR-04 | 잘못된 이미지와 검정 화면을 시각 게이트가 거절 | PR94-R4-VISUAL-01 | ✅ 로컬 PASS | 편집 UI가 없는 카드 상단 내부를 비교한다. 정상 0, 잘못된 이미지 0.0667, 검정 화면 0.2654, 임계값 0.025이며 스크립트 자체 돌연변이 검사가 세 값을 단언한다. |
+
+## 2026-09-29 PR #94 r2 육안 재검수 말풍선 툴바 겹침 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR94-R2-VISUAL-02 | 1440·1024에서 선택 말풍선과 툴바 교차 0, 툴바 한 줄 유지. 390 내부 배치는 보존 | PR94-R2-BUBBLE-TOOLBAR-02 | ✅ 로컬 PASS | 수정 전 Chromium에서 1440 교차 면적 8,489.7px²·버튼 top 편차 28px로 실패했다. 수정 뒤 1440·1024는 교차 0·top 편차 0px, 390은 `position: static`·두 줄 내부 배치를 유지했다. 세 폭 캡처와 1440 좌우 대조를 직접 열어 본문 노출을 확인했다. |
+
+## 2026-09-29 PR #94 독립 리뷰 r2 편집실 v70 완전 정합 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR94-R2-MAJOR-01 | 일반 카드뉴스를 4:5·흰 캔버스·글자 없는 막대 스트립으로 고정 | PR94-R2-CARD-01 | ✅ 로컬 PASS | Chromium 세 폭에서 비율 선택은 4:5 하나, 캔버스는 `rgb(255,255,255)`, 썸네일은 본문 없는 막대 4개로 단언했다. 1440·1024는 520×650px, 390은 308×385px이다. |
+| PR94-R2-MAJOR-02 | 말풍선 덱을 스트립 drag reorder와 카드 아래 복제·삭제·말풍선 추가 행동으로 정합 | PR94-R2-DECK-01 | ✅ 로컬 PASS | 선택 장 위 툴바를 제거했다. drag-and-drop과 Alt+↑↓ 순서 이동을 실제 DOM 순서로 검증했고 카드 아래 세 행동과 복제 시 깊은 ID 재발급을 41건 회귀에 포함했다. |
+| PR94-R2-MAJOR-03 | 우측 304px 담당 대화 로그·입력·보내기를 세 폭에서 유지 | PR94-R2-ASSISTANT-01 | ✅ 로컬 PASS | 공용 담당 패널을 편집실에도 연결했다. 1440·1024에서 304px 대화 로그·입력·보내기가 보이고, 390에서는 카드 아래로 쌓인 채 대화 흐름이 유지된다. |
+| PR94-R2-MAJOR-04 | 일반 카드와 말풍선 덱 스테이지를 1440·1024에서 520px로 고정 | PR94-R2-STAGE-01 | ✅ 로컬 PASS | 일반 카드와 9장 말풍선 fixture 모두 1440·1024에서 520×650px, 스트립 썸네일은 112·100px이다. 390은 308×385px와 56px 가로 스트립이며 문서·편집 영역 가로 넘침과 보이는 조작 요소 겹침이 0이다. |
+| PR94-R2-MINOR-01 | 저장소 상대 baseline과 편집 영역 crop 이미지 차이를 CI에서 판정 | PR94-R2-VISUAL-01 | ✅ 로컬 PASS, 원격 미검증 | 화면별 v70 clean-frame을 저장소 상대경로로 읽고 카드 면만 crop한 흐림·회색조 MAE를 CI에서 활성화했다. 점수는 1440 0.0611, 1024 0.0646, 390 0.1715로 임계값 0.36 이하다. 원격 CI는 push 전이라 미검증이다. |
+
+## 2026-09-28 PR #94 독립 리뷰 r1 말풍선 스트립·해제 계정·시안 E2E ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR94-R1-MAJOR-01 | 말풍선 덱 스트립을 1440·1024·390에서 112·100·56px로 유지하고 상시 장 조작 단추를 제거 | PR94-R1-BUBBLE-01 | ✅ 로컬 PASS | 9장 각각의 조작줄을 없애고 선택 장용 외부 툴바 1개만 남겼다. Chromium 실측에서 1440은 112px 세로 스트립, 390은 56px 가로 스트립이며 스트립은 카드 높이를 넘지 않고 패널 내부 조작 요소 겹침이 0이다. |
+| PR94-R1-MAJOR-02 | 연결 해제·만료 계정을 선택과 발행 요청에서 제외하고 체크 해제·재연결 행동 제공 | PR94-R1-ACCOUNT-01 | ✅ 로컬 PASS | 저장 선택이 `reconnect`이고 같은 채널에 연결 계정도 있는 회귀에서 선택 제거·체크 해제·재연결 링크를 확인했다. 다시 체크해 발행한 요청 본문에는 해제 계정 ID가 없었다. |
+| PR94-R1-MINOR-01 | 말풍선 덱 fixture를 시안 검증에 포함하고 제한시간 있는 CI verify 단계에서 실행 | PR94-R1-VISUAL-01 | ✅ 로컬 PASS, 원격 미검증 | v70 시안 스크립트가 실제 9장 fixture를 열어 폭·방향·높이·겹침·넘침을 단언하고 비교 PNG를 만든다. CI verify에 4분 step, 서버 60초, E2E 150초 제한과 종료 trap을 연결했다. 원격 CI는 push 전이라 미검증이다. |
+
+## 2026-09-28 발행실 7채널 계정 행 정합 반려 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| STUDIO-V70-PUBLISH-ACCOUNT-01 | 7개 채널 모두 `[발행][@핸들][계정 관리]`를 같은 첫 행에 표시하고 긴 핸들은 말줄임과 title로 보존 | V70-PUBLISH-ACCOUNT-ROW-01 | ✅ 로컬 PASS | 공용 헤더를 3열 grid로 고정했다. 1440에서 긴 7개 핸들은 `text-overflow: ellipsis`, `overflow: hidden`, `white-space: nowrap`이며 title은 전체 핸들과 일치했다. 390에서는 칩만 가변 폭으로 줄고 발행·계정 관리 순서는 유지됐다. |
+| STUDIO-V70-PUBLISH-COVER-02 | Shorts·Reels·TikTok 표지 제어를 계정 행 바로 아래 같은 위치·모양으로 표시 | V70-PUBLISH-COVER-ROW-02 | ✅ 로컬 PASS | 영상 3종 모두 첫 행 바로 아래 공용 `data-publish-header-row=cover`를 사용한다. Shorts는 같은 패널에 `자동`, Reels·TikTok은 같은 위치에 초 입력을 표시한다. 1440·390 실화면 캡처를 직접 확인했다. |
+| STUDIO-V70-PUBLISH-GEOMETRY-03 | 계정 행의 카드 기준 top 좌표 편차 ≤2px, 칩은 폭을 넘기지 않거나 ellipsis 적용 | V70-PUBLISH-GEOMETRY-03 | ✅ 로컬 PASS | 수정 전 강화 E2E는 title 불일치와 긴 핸들 클리핑으로 실패했다. 수정 뒤 1440·1024·390 모두 7개 카드의 상대 top이 33px, 편차 0px이며 칩은 폭 안에 맞거나 ellipsis 계약을 만족했다. 영상 3종 표지 행 top 편차 0px, 높이 편차 ≤2px, 계정 행과 간격 편차 0px이다. 콘솔 오류 0이다. |
+| STUDIO-V70-PUBLISH-ACCOUNT-04 | 재연결이 필요한 계정만 있으면 발행 체크·전체 선택을 잠그고 발행 대상으로 세지 않음 | V70-PUBLISH-RECONNECT-01 | ✅ 로컬 PASS | `connection_state=reconnect` 계정만 응답하는 실제 `StudioPage` 회귀에서 Threads 체크는 비활성·해제, 전체 선택 2종은 비활성, 계정 핸들은 `@threads.paused`, 연결 채널 수는 0으로 표시됐다. |
+
+## 2026-09-28 편집실 v70·발행실 캡처 직접 검수 반려 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| STUDIO-V70-SCREEN-R2-01 | 1440·1024·390에서 112·100·56px 썸네일이 비율 버튼과 겹치지 않음 | V70-VISIBLE-INTERSECTION-01 | ✅ 로컬 PASS | 수정 전 강화 검사에서 첫 썸네일과 `세로 카드 4:5` 단추의 교차 면적 2,009px²로 실패했다. 수정 뒤 모든 보이는 button·input·textarea·select·thumbnail 쌍의 교차 0, 실제 썸네일 폭 112·100·56px을 Chromium으로 단언했다. |
+| STUDIO-V70-SCREEN-R2-02 | 일반 카드 본문이 4:5 카드 면 위에 표시됨 | V70-CARD-CONTENT-01 | ✅ 로컬 PASS | 세 폭 모두 `data-card-face-copy` 사각형이 카드 무대 경계 안에 있고, 새 캡처에서 첫 장 문구가 고대비 편집 레이어로 카드 면 중앙에 보인다. |
+| STUDIO-V70-SCREEN-R2-03 | 발행 채널 카드의 계정 행·체크 제한·복구 행동이 캡처에 포함됨 | V70-PUBLISH-CAPTURE-01 | ✅ 로컬 PASS | 세 폭에서 X 카드와 미디어 없는 Shorts 카드로 각각 스크롤해 캡처했다. X 체크 해제·573/280 경고·계정 행, Shorts 체크 해제·`생성실에서 영상 만들기`가 실제 화면에 보인다. |
+
+## 2026-09-28 편집실 v70·발행실 운영 화면 시안 불일치 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| STUDIO-V70-SCREEN-01 | 일반 카드뉴스도 112px 스트립·520px 4:5 카드 셸을 쓰고 중복·겹침 없이 편집 | V70-CONFORMANCE-CARD | ✅ 로컬 PASS | Chromium 1440에서 썸네일 112px·무대 520px, 1024에서 썸네일 100px·가용 무대 440px, 390에서 56px 썸네일 가로줄·무대 250px을 실측했다. 세 폭 모두 문구 입력 3개가 실제 값과 함께 보이고 중복 비율 선택기·보이는 조작 요소 겹침은 0건이다. |
+| STUDIO-V70-SCREEN-02 | `kind=text\|card\|video` 딥링크와 영상 빈 상태가 v70 규격대로 동작 | V70-CONFORMANCE-VIDEO | ✅ 로컬 PASS | 세 폭 모두 `/studio?room=edit&kind=video`가 `data-edit-kind=video`로 열리고 영상 빈 상태와 생성실 이동 행동을 표시했다. |
+| STUDIO-V70-SCREEN-03 | 발행 계정 행 단일화, 내부 ID 비노출, 글자수·미디어 발행 불가 상태 일치 | V70-CONFORMANCE-PUBLISH | ✅ 로컬 PASS | 계정 select 0개, 내부 UUID·`@연결 계정` 노출 0건, X 281/280 체크 비활성, 영상 없는 Shorts·Reels·TikTok 체크 3개 비활성, 생성실 행동과 `표지로 쓸 장면(초)` 문구를 확인했다. |
+| STUDIO-V70-HASHTAG-01 | 새 구조 초안 선택 시 이전 작업물 해시태그를 승계하지 않음 | V70-CREATE-HASHTAG-01 | ✅ 로컬 PASS | 이전 X·Instagram 해시태그를 저장한 뒤 새 구조 초안을 선택하는 실제 `StudioPage` 회귀에서 저장 상태 `hashtags`가 빈 객체로 초기화됐다. |
+| STUDIO-V70-SCREEN-FINAL | 1440·1024·390 캡처 대조, 가로 넘침 0·겹침 0, 타입·회귀 | V70-CONFORMANCE-E2E | ✅ 로컬 PASS, 원격 미검증 | 세 폭 12개 실화면에서 document·방 scope의 scrollWidth=clientWidth, 카드 편집 영역의 보이는 조작 요소와 발행 계정행 겹침 0, 콘솔 오류 0을 단언했다. 비교 PNG 9개는 `docs/qa/studio-v70-screen-conformance-20260928/`에 있다. 표적 5파일 52건, TypeScript·production build·UI 토큰 감사도 통과했다. 원격 CI와 운영 재배포는 push 전이라 미검증이다. |
+
 ## 2026-09-28 PR 87 재리뷰 r6 연속 본문 충돌 보관본·CI 제한시간 ❌ NG → 🔧 수정, 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
@@ -7478,3 +7545,12 @@ migration은 수정하지 않고, 최신 코드와 localhost 회귀를 다시 �
 돌연변이 검증: 수정 3파일(`lib/storage.ts`, `api/video/list/route.ts`, `api/video/delete/route.ts`)을 되돌려 같은 19건 중 10건 FAIL 확인, 원복 후 19건 PASS 재확인. `npm run typecheck:ci` PASS. 전체 `npx vitest run` 종료 코드는 build-log.md 2026-09-25 12:40 항목에 기재.
 
 SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-isolation.test.ts`, `dashboard/tests/publish/video-path-resolution.contract.test.ts` 실행 로그
+## 2026-09-29 PR #94 독립 리뷰 r3 일반 카드·모바일 영상·발행 계정·시각 비교 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR94-R3-MAJOR-01 | 일반 카드와 장 썸네일에 생성 이미지를 복원하고 이미지 없는 장만 막대로 표시 | CARD-LINK-02, OUTLINE-06 | ❌ NG | v70 카드 분기가 실제 미디어를 렌더링하지 않고 일반 카드 스트립도 막대만 표시한다. |
+| PR94-R3-MAJOR-02 | 390 영상 플레이어를 180px로 제한해 대본과 108px 타임라인을 첫 흐름에 노출 | PR94-R3-VIDEO-01 | ❌ NG | 390 실측 플레이어 높이 547.5px로 승인값 180px를 초과한다. |
+| PR94-R3-MAJOR-03 | 읽기 전용 계정 행의 보이는 핸들과 실제 발행 계정을 현재 기본 계정으로 일치 | PR94-R3-ACCOUNT-01 | ❌ NG | 저장된 비기본 계정이 새 기본 계정보다 우선되며 화면에서 바꿀 수 없다. |
+| PR94-R3-MAJOR-04 | 일반 카드 캡처를 일반 카드 기준과 비교하고 말풍선은 별도 기준을 사용 | PR94-R3-VISUAL-01 | ❌ NG | `cardShot`을 만들고 쓰지 않으며 일반 카드 기준을 말풍선 무대와 비교한다. |
+| PR94-R3-CI-01 | CI 전체 스위트의 5개 실패 파일을 현재 v70 계약과 유효한 기존 계약으로 정합 | V65-EDIT-04, PR85-R7, OUTLINE-01 | ❌ NG | 원격 run 36467804880에서 5개 파일 6개 테스트가 실패했다. |
