@@ -205,15 +205,6 @@ jobs:
             echo "::error::배포 러너 UID가 1000이 아니다. gateway의 node 사용자와 bind mount 소유자가 달라 EACCES가 재발한다."
             exit 1
           fi
-          if [ ! -f "$persist_root/.mount-v2-ready" ] || ! grep -qx 'schema=2' "$persist_root/.mount-v2-ready"; then
-            echo "::error::검증된 영속 마운트 이전 표식이 없다. UID 1000 계정으로 migrate-postagi-persist-mounts.sh를 실행해야 한다."
-            exit 1
-          fi
-          migration_source="$(awk -F= '$1 == "source" { print $2 }' "$persist_root/.mount-v2-ready")"
-          case "$migration_source" in
-            fresh-bootstrap|mount-namespace-holder) ;;
-            *) echo "::error::검증되지 않은 영속 마운트 이전 표식이다: $migration_source"; exit 1 ;;
-          esac
           for tenant in 2 3 4; do
             config_dir="$persist_root/config-tenant${tenant}"
             data_dir="$persist_root/data-tenant${tenant}"
@@ -227,22 +218,6 @@ jobs:
             if [ ! -s "$env_file" ]; then
               echo "::error::테넌트 환경파일이 영속 경로에 없거나 비었다: $env_file"
               exit 1
-            fi
-            if [ "$migration_source" = "mount-namespace-holder" ]; then
-              grep -qx 'status=ready' "$persist_root/.mount-v2-ready" || {
-                echo "::error::영속 마운트 이전 표식이 health 검증 완료 상태가 아니다."
-                exit 1
-              }
-              for kind in gateway dashboard; do
-                grep -Eq "^tenant${tenant}_${kind}_container=[0-9a-f]+$" "$persist_root/.mount-v2-ready" || {
-                  echo "::error::tenant${tenant} ${kind} 컨테이너 스냅샷 증거가 이전 표식에 없다."
-                  exit 1
-                }
-              done
-              [ -n "$(find "$config_dir" -mindepth 1 -print -quit)" ] || {
-                echo "::error::이전된 config-tenant${tenant}가 비었다."
-                exit 1
-              }
             fi
             chmod 0700 "$config_dir"
             chmod 0750 "$data_dir"

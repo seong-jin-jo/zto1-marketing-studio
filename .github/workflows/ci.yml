@@ -5,9 +5,9 @@ name: CI (dashboard)
 on:
   push:
     branches: [main]
-    paths: ['dashboard/**', '.github/workflows/ci.yml', 'migrate-postagi-persist-mounts.sh', 'scripts/verify-openclaw-mount-holder.sh']
+    paths: ['dashboard/**', '.github/workflows/ci.yml', 'migrate-postagi-persist-mounts.sh', 'scripts/test-migrate-postagi-persist-mounts.sh']
   pull_request:
-    paths: ['dashboard/**', '.github/workflows/ci.yml', 'migrate-postagi-persist-mounts.sh', 'scripts/verify-openclaw-mount-holder.sh']
+    paths: ['dashboard/**', '.github/workflows/ci.yml', 'migrate-postagi-persist-mounts.sh', 'scripts/test-migrate-postagi-persist-mounts.sh']
 
 # 같은 ref의 이전 CI는 취소. (deploy 워크플로는 건드리지 않음 — 단일 marketing_runner가 잡을 자연 직렬화)
 concurrency:
@@ -72,8 +72,12 @@ jobs:
       - name: Build
         run: npm run build   # NEXT_PUBLIC_SUPABASE_* 미설정도 빌드 OK(런타임만 영향)
 
-      - name: Install psql client
-        run: apt-get update && apt-get install -y --no-install-recommends postgresql-client
+      - name: Install psql client and rsync
+        run: apt-get update && apt-get install -y --no-install-recommends postgresql-client rsync
+
+      - name: 영속 마운트 정지형 이전 시뮬레이션
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/test-migrate-postagi-persist-mounts.sh
 
       - name: "Apply schema → seed → rls (순서 중요 — seed가 FORCE RLS 전)"
         run: |
@@ -109,11 +113,3 @@ jobs:
         run: |
           npx playwright-core install --with-deps chromium
           npm run e2e:bubble-editor:chromium
-
-  holder-verifier:
-    name: OpenClaw mount holder 중단·재시도 검증
-    runs-on: [self-hosted, marketing_runner]
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - run: timeout 180 bash scripts/verify-openclaw-mount-holder.sh

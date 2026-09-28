@@ -95,13 +95,4 @@ WSL2 런너에서 충분 (16GB+ 권장).
 - **포트 충돌** — 기본 인스턴스(34560)와 겹치지 않게 34561~ 사용
 - **영속 경로 오류** — Linux에서는 gateway의 `node` 사용자와 같은 UID 1000 계정으로 bootstrap·배포를 실행하고, config는 0700·data는 0750을 유지. 대시보드는 UID 1000으로 실행하며 Docker 소켓 GID는 배포가 자동 주입한다.
 
-기존 checkout 상대 마운트에서 전환하는 첫 배포는 tenant2·3·4 컨테이너가 아직 실행 중일 때 `bash migrate-postagi-persist-mounts.sh`를 UID 1000 운영 계정으로 실행한다. 도구는 아래 phase를 `${HOME}/openclaw-persist/.mount-v2-pending`에 원자적으로 기록한다. 어느 단계에서 끊겨도 원본 컨테이너를 직접 시작하지 말고 같은 명령을 다시 실행한다. `--resume-pending`은 호환 별칭이며 일반 재실행도 journal을 감지해 자동 재개한다.
-
-| phase | 보존 상태 | 재실행 동작 |
-|---|---|---|
-| `holders-ready` | 여섯 mount holder가 삭제된 bind mount를 잡고 있고 원본 writer는 pause 또는 stop 진행 상태 | writer 정지를 멱등 실행하고 archive를 다시 생성한다. archive가 비거나 손상되면 검증되지 않은 holder를 제거하지 않는다. |
-| `archives-ready` | config/data 최종 archive의 크기, tar 구조, 추출 내용, gateway/dashboard 일치를 검증했다 | holder에 `USR2` release를 보내고 여섯 target을 임시 디렉터리에 staging한다. |
-| `targets-staged` | 여섯 target의 완성본이 영속 루트의 숨김 임시 디렉터리에 있고 기존 target 백업 경로가 journal에 기록됐다 | 이미 교체된 target은 내용 비교로 건너뛰고 나머지만 rename한다. 각 rename 뒤 journal을 원자 갱신한다. |
-| `pending-health` | 여섯 target과 `.env.tenantN` 설치가 끝났고 ready 승격 전이다 | 기존 이미지로 강제 재생성하고 health를 두 번까지 확인한 뒤 `.mount-v2-ready`를 공개한다. |
-
-`holders-ready` 이후 오류가 나면 원본 컨테이너를 절대 재시작하지 않는다. 검증되지 않은 holder가 남아 있으면 먼저 같은 migration 명령으로 archive 재시도를 끝낸다. `archives-ready` 이후에는 검증된 recovery archive가 재개의 정본이므로 원본 컨테이너가 이미 정지됐어도 재개할 수 있다. `.mount-v2-ready`가 생기기 전 배포 워크플로를 실행하지 않는다. 성공 전 기존 target은 `backup-mount-v1-*`에 한 번만 보존하며, 새 target은 별도 디렉터리에서 전부 복사·대조한 뒤 rename한다.
+기존 checkout 상대 마운트에서 처음 전환할 때는 2분 이내 유지보수 창을 잡고 UID 1000 운영 계정으로 `bash migrate-postagi-persist-mounts.sh`를 실행한다. 무중단 live snapshot이나 임의 중단 재개는 지원하지 않는다. 정지, 타임스탬프 백업, checkout→persist 복사, 재기동과 health 확인, 실패 복구는 [tenant2·3·4 게이트웨이 영속 경로 이전](./osmu-gateway-persist-cutover-v1-gpt-codex.md)을 따른다.
