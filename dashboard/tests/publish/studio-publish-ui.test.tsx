@@ -899,7 +899,10 @@ describe("Studio publish result integrity", () => {
     expect(mocks.showToast).toHaveBeenCalledWith("검토 요청을 보냈습니다", "success");
   });
 
-  it("PR95-R6-REVIEW-01 카드에서 영상으로 바꾼 검토 요청은 현재 영상 형식의 필드만 보낸다", async () => {
+  it.each([
+    ["영상", "video"],
+    ["글", "text"],
+  ] as const)("PR95-R6-REVIEW-01 카드에서 %s 형식으로 바꾼 검토 요청은 현재 형식의 필드만 보낸다", async (kindLabel, expectedKind) => {
     window.history.replaceState(null, "", "/studio?room=edit&kind=card");
     localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
       idea: "형식 전환 검토",
@@ -924,7 +927,7 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "영상" }));
+    fireEvent.click(await screen.findByRole("button", { name: kindLabel }));
     fireEvent.click(await findEnabledButton("발행실로 이동"));
     fireEvent.click(await screen.findByRole("button", { name: "검토 요청하기" }));
 
@@ -936,7 +939,7 @@ describe("Studio publish result integrity", () => {
     expect(queueBody).toEqual(expect.objectContaining({
       draftId: "draft-kind-transition",
       editLines: ["카드에 있던 문구"],
-      editFormat: expect.objectContaining({ kind: "video" }),
+      editFormat: expect.objectContaining({ kind: expectedKind }),
     }));
     expect(queueBody).not.toHaveProperty("imageUrl");
     expect(queueBody).not.toHaveProperty("imageUrls");
