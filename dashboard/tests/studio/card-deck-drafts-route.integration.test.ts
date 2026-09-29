@@ -95,6 +95,34 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     expect(body.drafts[0].cardDeck).toEqual(deckD100);
   });
 
+  it("PR95-R1-LIFECYCLE-01 저장 payload와 서버 재로드가 글자 내장 표식을 그대로 보존한다", async () => {
+    const img = {
+      url: "/api/images/deliver/one",
+      file: "/api/images/deliver/one",
+      imageUrls: ["/api/images/deliver/one"],
+      topicKey: "저장 주제",
+      textEmbedded: true,
+    };
+    H.rows = [{ id: "draft-text-card" }];
+    const { POST, GET } = await import("@/app/api/studio/drafts/route");
+    const saved = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "표식 저장", img, editKind: "card", editLines: ["한 장"] }),
+    }));
+    expect(saved.status).toBe(200);
+    expect((H.jsonValues[0] as { img: typeof img }).img.textEmbedded).toBe(true);
+
+    H.rows = [{
+      id: "draft-text-card",
+      idea: "표식 저장",
+      payload: { img, editKind: "card", editLines: ["한 장"] },
+      status: "draft",
+      updated_at: "2026-09-30T00:00:00Z",
+    }];
+    const reloaded = await (await GET(new Request("http://localhost/api/studio/drafts"))).json();
+    expect(reloaded.drafts[0].img.textEmbedded).toBe(true);
+  });
+
   it("cardDeck 이 없는 요청은 기존처럼 통과하고, 기존 덱을 지우지 않는다(2026-09-21 코드리뷰 MAJOR 4 회귀)", async () => {
     H.rows = [{ id: "draft-legacy-1" }];
     const { POST } = await import("@/app/api/studio/drafts/route");

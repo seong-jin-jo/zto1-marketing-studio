@@ -2238,7 +2238,7 @@ export function EditRoom({
                         </div>
                         {cardTextEmbedded ? (
                           <p className="mb-stack text-caption text-subtle" data-card-text-embedded-note>
-                            문구를 고치면 발행실로 이동할 때 카드 그림을 다시 그립니다.
+                            문구와 글자 위치를 바꾸면 카드 그림에 바로 반영됩니다.
                           </p>
                         ) : null}
                         <ol className="space-y-stack-tight">

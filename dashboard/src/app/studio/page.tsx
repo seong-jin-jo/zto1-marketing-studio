@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
@@ -27,7 +27,7 @@ import { RepoConnect } from "@/components/studio/RepoConnect";
 import { SchedulePanel } from "@/components/studio/SchedulePanel";
 import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
-import { browserCardUploader, cardRatioFrom, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
+import { browserCardUploader, cardRatioFrom, renderAndUploadCardDeck, renderPlainCardDeck } from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
@@ -73,6 +73,7 @@ import { attemptRequiredDraftPersistence } from "@/lib/studio/required-draft-per
 import { PLATFORM_FIELD_CONTRACT } from "@/lib/studio/platform-publish-fields";
 import { DEFAULT_COVER_SECONDS, coverUnsupportedReason, supportsCoverTimestamp } from "@/lib/video-cover";
 import { runWithConcurrency } from "@/lib/async-pool";
+import { embeddedTextCardImage, recoverEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
 
 const PUBLISH_CONCURRENCY = 3;
 const PUBLISH_REQUEST_TIMEOUT_MS = 45_000;
@@ -622,6 +623,31 @@ export default function StudioPage() {
   const cardAspectRatio = editFormat.kind === "card" ? editFormat.aspectRatio : "4:5";
   // 발행에 실을 카드 한 벌. 여러 장이면 여러 장 그대로, 없으면 대표 한 장.
   const publishDeck = img?.imageUrls?.length ? img.imageUrls : img?.url ? [img.url] : [];
+  // 편집실 본 화면과 대화창이 같은 대사를 본다. 대화창만 빈 배열을 받으면 일괄 편집이 죽은 단추가 된다.
+  const resolvedEditLines = useMemo(
+    () => editLines.length
+      ? editLines
+      : [text?.shorts?.hook || "", text?.shorts?.body || "", text?.shorts?.cta || ""].filter(Boolean),
+    [editLines, text],
+  );
+  // v70 544행 계약: 글자 내장 카드도 입력·위치 변경 즉시 같은 렌더러로 다시 그린다.
+  // 매 렌더마다 1080px 캔버스를 다시 만들지 않고 실제 입력·위치·비율·테마가 바뀔 때만
+  // data URL을 갱신한다. 서버 업로드는 발행실 이동 때 한 번만 한다.
+  const liveTextCardPreview = useMemo(() => {
+    if (editKind !== "card" || img?.textEmbedded !== true || cardDeck) return null;
+    try {
+      return renderPlainCardDeck({
+        lines: resolvedEditLines,
+        ratio: cardRatioFrom(cardAspectRatio),
+        theme: themeFromPalette(learningInfo.palette),
+        positions: cardTextPositions,
+      });
+    } catch {
+      // 캔버스가 없는 시험·서버 렌더에서는 저장된 그림을 유지한다. 실제 브라우저의 최종
+      // 업로드 경로는 recompositeCards가 별도로 실패를 알리고 발행실 이동을 막는다.
+      return null;
+    }
+  }, [cardAspectRatio, cardDeck, cardTextPositions, editKind, img?.textEmbedded, learningInfo.palette, resolvedEditLines]);
   const [editing, setEditing] = useState<PreviewPlatform | null>(null);
   const [showTx, setShowTx] = useState(false);
   const { data: tx } = useSWR<{ items?: Array<{ display_name?: string; credits?: number; action?: string; created_at?: string; output?: string | null; outputKind?: string | null }> }>(
@@ -844,13 +870,16 @@ export default function StudioPage() {
       if (raw) {
         const w = JSON.parse(raw);
         setIdea(w.idea || "");
-        setImg(w.img || null); setVid(w.vid || null);
+        // 오래된 브라우저 저장본은 cardDeck 자체를 저장하지 않아 plain 카드와 말풍선 덱을
+        // 안전하게 구분할 수 없다. 여기서 추론하지 않고 명시 표식만 복원하며, 구형 저장본
+        // 복구는 cardDeck까지 함께 가진 서버 초안(loadDraft)에서만 수행한다.
+        setImg((w.img as ImgResult) || null); setVid(w.vid || null);
         if (w.includes) setIncludes(normalizeIncludes(w.includes)); setDraftId(w.draftId || null);
         setPublishReconciliations(normalizePublishReconciliations(w.publishReconciliations ?? w.publishReconciliation));
         setTitles(w.titles || {}); setHashtags(w.hashtags || {}); setTopicTags(w.topicTags || {});
         setFirstComments(w.firstComments || {}); setCaptions(w.captions || {}); setSelectedAccounts(w.selectedAccounts || {});
         replaceBodySnapshot(w.editLines || [], w.text || null, { replaceDocument: true, serverRevision: Number.isSafeInteger(w.bodyRevision) ? w.bodyRevision : 0 });
-        setCardTextPositions(w.cardTextPositions || []); setReviewQueueId(w.reviewQueueId || null);
+        setCardTextPositions(w.cardTextPositions || []); setCardDeck((w.cardDeck as CardDeck) || null); setReviewQueueId(w.reviewQueueId || null);
         // B1(교차 리뷰 BLOCK, 재리뷰로 절반만 닫힘 지적): videoEdit이 이 복원 블록에
         // 없으면 편집기가 빈 videoEdit을 받았다. 이제 무조건 세팅한다(없으면 null —
         // 이전 워크스페이스 값이 남아 있으면 안 된다, 위 리셋과 짝). 다만 localStorage
@@ -903,13 +932,13 @@ export default function StudioPage() {
     const workspaceId = activeWorkspace?.id;
     if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
     try {
-      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat, videoEdit }));
+      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, reviewQueueId, editKind, editFormat, videoEdit }));
       setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
       setEditAutosaveError("");
     } catch {
       setEditAutosaveError("자동 저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.");
     }
-  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, bodyServerRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat, videoEdit]);
+  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, bodyServerRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, reviewQueueId, editKind, editFormat, videoEdit]);
 
   const upText = (patch: Partial<TextVariants>) => replaceText({ ...(textRef.current || {}), ...patch });
   const upIg = (patch: Partial<NonNullable<TextVariants["instagram"]>>) => replaceText({
@@ -1628,7 +1657,7 @@ export default function StudioPage() {
         theme: themeFromPalette(learningInfo.palette),
         positions: cardTextPositions,
       }, { upload: browserCardUploader(authHeaders()) });
-      const next: ImgResult = { url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea), textEmbedded: true };
+      const next: ImgResult = embeddedTextCardImage({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) });
       setImg(next);
       return next;
     } catch (error) {
@@ -2019,7 +2048,11 @@ export default function StudioPage() {
     if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setIdea((d.idea as string) || "");
-    setImg((d.img as ImgResult) || null); setVid((d.vid as VidResult) || null);
+    setImg(recoverEmbeddedTextCard((d.img as ImgResult) || null, {
+      editKind: d.editKind ?? (d.editFormat as { kind?: unknown } | null)?.kind,
+      editLines: d.editLines,
+      cardDeck: d.cardDeck,
+    })); setVid((d.vid as VidResult) || null);
     setIncludes(d.includes ? normalizeIncludes(d.includes as Record<string, boolean>) : includes); setDraftId(d.id as string);
     const savedReconciliations = normalizePublishReconciliations(d.publishReconciliations ?? d.publishReconciliation);
     setPublishReconciliations(savedReconciliations);
@@ -2314,7 +2347,12 @@ export default function StudioPage() {
         instagram: { caption: work.body, hashtags: work.hashtags.map((tag) => tag.replace(/^#/, "")) },
         shorts: { hook: work.body, body: "", cta: "" },
       };
-      setImg(work.imageUrl ? { url: work.imageUrl, file: work.imageUrl } : null);
+      setImg(work.imageUrl ? {
+        url: work.imageUrl,
+        file: work.imageUrl,
+        imageUrls: work.imageUrls.length ? work.imageUrls : undefined,
+        textEmbedded: work.textEmbedded,
+      } : null);
       setVid(work.videoUrl ? { url: work.videoUrl, file: work.videoUrl, model: "기존 작업물" } : null);
       setIncludes(work.includedPlatforms.length
         ? normalizeIncludes(Object.fromEntries(ALL.map((platform) => [platform, work.includedPlatforms.includes(platform)])))
@@ -2549,6 +2587,7 @@ export default function StudioPage() {
           hashtags: (hashtags.instagram || "").split(/[\s,]+/).map((value) => value.replace(/^#/, "")).filter(Boolean),
           imageUrl: img?.url || null,
           imageUrls: img?.imageUrls || null,
+          textEmbedded: img?.textEmbedded === true,
           videoUrl: vid?.url || null,
         });
         queueId = added?.post?.id || null;
@@ -2821,7 +2860,7 @@ export default function StudioPage() {
           if (!urls.length) return;
           // renderTextCard가 문구를 PNG 픽셀에 이미 그렸다. 이 표식을 저장·재개까지 보존해
           // 편집실이 같은 문구 textarea를 카드 면 위에 한 벌 더 얹지 않게 한다.
-          setImg({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea), textEmbedded: true });
+          setImg(embeddedTextCardImage({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) }));
           setEditKind("card");
           setEditFormat((current) => {
             const base = defaultContentEditFormat("card");
@@ -2847,9 +2886,6 @@ export default function StudioPage() {
       <ConfirmDialog request={confirmRequest} onConfirm={() => settleConfirm(true)} onCancel={() => settleConfirm(false)} />
     </div>
   );
-
-  // 편집실 본 화면과 대화창이 같은 대사를 본다. 대화창만 빈 배열을 받으면 일괄 편집이 죽은 단추가 된다.
-  const resolvedEditLines = editLines.length ? editLines : [text?.shorts?.hook || "", text?.shorts?.body || "", text?.shorts?.cta || ""].filter(Boolean);
 
   // 카드뉴스 v2 덱 연산 후 800ms 디바운스 자동저장(설계 §5 F4). 연산마다 즉시 서버에 쏘면
   // 타이핑·연속 클릭마다 요청이 나간다. hook(useRef·useEffect)은 위(다른 useRef 들 옆,
@@ -2967,8 +3003,8 @@ export default function StudioPage() {
         initialFormat={editFormat}
         onFormatChange={setEditFormat}
         previewReady={editKind === "video" ? Boolean(vid?.file) : editKind === "card" ? Boolean(img?.file) : false}
-        previewImageUrl={img?.file || img?.url || null}
-        previewImageUrls={img?.imageUrls ?? null}
+        previewImageUrl={liveTextCardPreview?.[0] || img?.file || img?.url || null}
+        previewImageUrls={liveTextCardPreview ?? img?.imageUrls ?? null}
         cardTextEmbedded={img?.textEmbedded === true}
         previewVideoUrl={vid?.file || vid?.url || null}
         cardTextPositions={cardTextPositions}

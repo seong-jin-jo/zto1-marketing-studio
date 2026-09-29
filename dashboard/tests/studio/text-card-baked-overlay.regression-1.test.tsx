@@ -6,6 +6,9 @@ import path from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { EditPreview } from "@/components/studio/EditPreview";
+import { renderAndUploadCardDeck, renderPlainCardDeck } from "@/lib/studio/card-deck";
+import type { TextCardInput } from "@/lib/studio/text-card-image";
+import { embeddedTextCardImage, isLegacyEmbeddedTextCard, recoverEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
 
 afterEach(() => cleanup());
 
@@ -14,7 +17,7 @@ describe("TEXTCARD-OVERLAY-01 무료 글자 카드 편집 무대", () => {
     const pageSource = readFileSync(path.join(process.cwd(), "src/app/studio/page.tsx"), "utf8");
 
     expect(pageSource).toContain("onTextCardsCreated={(urls, cardLines) => {");
-    expect(pageSource).toContain("imageUrls: urls, topicKey: mediaTopicKey(idea), textEmbedded: true");
+    expect(pageSource).toContain("embeddedTextCardImage({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) })");
     expect(pageSource).toContain("cardTextEmbedded={img?.textEmbedded === true}");
   });
 
@@ -52,5 +55,61 @@ describe("TEXTCARD-OVERLAY-01 무료 글자 카드 편집 무대", () => {
 
     expect(screen.getByRole("button", { name: "카드 글자 끌어 옮기기" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "카드 1 글자" })).toHaveValue("사진 위에 올릴 문구");
+  });
+
+  it("PR95-R1-LEGACY-01 정상: 구형 무료 글자 카드의 엄격한 저장 서명만 표식을 복구한다", () => {
+    const legacy = {
+      url: "/api/images/deliver/one",
+      file: "/api/images/deliver/one",
+      imageUrls: ["/api/images/deliver/one", "/api/images/deliver/two"],
+      topicKey: "카드 주제",
+    };
+    const input = { editKind: "card", editLines: ["첫 문장", "둘째 문장"], cardDeck: null };
+
+    expect(isLegacyEmbeddedTextCard({ img: legacy, ...input })).toBe(true);
+    expect(recoverEmbeddedTextCard(legacy, input)).toEqual({ ...legacy, textEmbedded: true });
+  });
+
+  it("PR95-R1-LEGACY-02 경계: 일반 다중 배경·외부 덱·장수 불일치는 글자 내장 카드로 추측하지 않는다", () => {
+    const multiBackground = {
+      url: "/api/images/deliver/one",
+      file: "/api/images/deliver/one",
+      imageUrls: ["/api/images/deliver/one", "/api/images/deliver/two"],
+    };
+    expect(isLegacyEmbeddedTextCard({ img: multiBackground, editKind: "card", editLines: ["A", "B"], cardDeck: null })).toBe(false);
+    expect(isLegacyEmbeddedTextCard({ img: { ...multiBackground, topicKey: "주제" }, editKind: "card", editLines: ["A", "B"], cardDeck: { template: "chat_bubble" } })).toBe(false);
+    expect(isLegacyEmbeddedTextCard({ img: { ...multiBackground, topicKey: "주제" }, editKind: "card", editLines: ["A"], cardDeck: null })).toBe(false);
+  });
+
+  it("PR95-R1-LIVE-01 정상: 문구와 위치가 바뀌면 저장 전 미리보기 data URL도 즉시 다시 그린다", () => {
+    const renderCard = (input: TextCardInput) => `data:image/png,${input.text}|${input.position}`;
+    const before = renderPlainCardDeck({ lines: ["바꾸기 전"], ratio: "4:5", positions: ["center"] }, renderCard);
+    const afterText = renderPlainCardDeck({ lines: ["바꾼 문구"], ratio: "4:5", positions: ["center"] }, renderCard);
+    const afterPosition = renderPlainCardDeck({ lines: ["바꾼 문구"], ratio: "4:5", positions: ["bottom-center"] }, renderCard);
+
+    expect(before).not.toEqual(afterText);
+    expect(afterText).not.toEqual(afterPosition);
+    expect(afterPosition[0]).toContain("바꾼 문구|bottom");
+  });
+
+  it("PR95-R1-MUTATION-01 표식 생성자를 제거하면 저장·재합성 생명주기 계약이 실패한다", () => {
+    expect(embeddedTextCardImage({ url: "one", file: "one", imageUrls: ["one"] })).toEqual({
+      url: "one",
+      file: "one",
+      imageUrls: ["one"],
+      textEmbedded: true,
+    });
+  });
+
+  it("PR95-R1-RECOMPOSE-01 정상: 발행 재합성이 만든 URL도 표식 생성자를 거쳐 한 계약으로 저장된다", async () => {
+    const urls = await renderAndUploadCardDeck(
+      { lines: ["다시 그린 문장"], ratio: "4:5", positions: ["top-center"] },
+      {
+        render: () => "data:image/png,recomposed",
+        upload: async (_dataUrl, index) => `/api/images/deliver/recomposed-${index}`,
+      },
+    );
+    const img = embeddedTextCardImage({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: "주제" });
+    expect(img).toEqual(expect.objectContaining({ imageUrls: urls, textEmbedded: true }));
   });
 });

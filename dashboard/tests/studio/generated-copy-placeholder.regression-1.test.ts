@@ -42,7 +42,12 @@ beforeEach(() => {
 describe("GENERATED-PLACEHOLDER-01 생성 문구 자리표시 차단", () => {
   it("GENERATED-PLACEHOLDER-01A 정상: 괄호 속 작성 지시는 자리표시로 판정하고 일반 보충설명은 허용한다", () => {
     expect(containsInstructionPlaceholder("(브랜드가 실제로 제공하는 서비스 한 문장으로 대체)")).toBe(true);
+    expect(containsInstructionPlaceholder("(서비스 이름을 직접 입력하세요)")).toBe(true);
+    expect(containsInstructionPlaceholder("(담당자가 문구를 작성해 주세요)")).toBe(true);
     expect(containsInstructionPlaceholder("오늘은 온라인으로 진행합니다(서울 외 지역 포함).")).toBe(false);
+    expect(containsInstructionPlaceholder("신청서(작성 기준은 홈페이지 참고)")).toBe(false);
+    expect(containsInstructionPlaceholder("제품(입력 전압 220V)")).toBe(false);
+    expect(containsInstructionPlaceholder("가격(부가세 포함)")).toBe(false);
   });
 
   it("GENERATED-PLACEHOLDER-01B 거절: 기존 텍스트 생성 응답에 자리표시가 남으면 카드·발행 상태로 승격하지 않는다", async () => {

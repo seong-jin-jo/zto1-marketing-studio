@@ -14,6 +14,7 @@ export async function POST(request: Request) {
         hashtags: data.hashtags,
         imageUrl: data.imageUrl,
         imageUrls: data.imageUrls,
+        textEmbedded: data.textEmbedded === true,
         cardBatchId: data.cardBatchId,
         videoFilename: data.videoFilename,
         videoUrl: data.videoUrl,

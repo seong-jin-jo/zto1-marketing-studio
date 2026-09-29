@@ -83,6 +83,25 @@ export type CardDeckUpload = {
 export class CardDeckError extends Error {}
 
 /**
+ * plain 글자 카드 한 벌을 저장하지 않고 브라우저 data URL로만 그린다.
+ * 편집실 즉시 미리보기와 최종 업로드가 같은 입력·렌더러를 공유하게 하는 정본이다.
+ */
+export function renderPlainCardDeck(
+  spec: CardDeckSpec,
+  render: (input: TextCardInput) => string | null = renderTextCard,
+): string[] {
+  const inputs = cardDeckRenderInputs(spec);
+  if (!inputs.length) return [];
+  const drawn: string[] = [];
+  for (const input of inputs) {
+    const dataUrl = render(input);
+    if (!dataUrl) throw new CardDeckError("이 브라우저에서는 카드를 그릴 수 없습니다.");
+    drawn.push(dataUrl);
+  }
+  return drawn;
+}
+
+/**
  * template="chat_bubble" 일 때 덱의 slides 순서대로 PNG data URL 목록을 그린다.
  * 표지·CTA 사진(J1)을 기다려야 해서 장마다 순서대로 await 한다(Promise.all 로 동시에
  * 돌리면 실패한 장의 순번을 특정하기 어렵고, 사진 여러 장을 한꺼번에 내려받게 된다).
@@ -112,15 +131,8 @@ export async function renderAndUploadCardDeck(spec: CardDeckSpec, deps: CardDeck
     const drawn = await renderChatBubbleDeck(spec.deck);
     return uploadDrawnCards(drawn, deps);
   }
-  const inputs = cardDeckRenderInputs(spec);
-  if (!inputs.length) throw new CardDeckError("카드로 만들 글자가 없습니다.");
-  const render = deps.render ?? renderTextCard;
-  const drawn: string[] = [];
-  for (const input of inputs) {
-    const dataUrl = render(input);
-    if (!dataUrl) throw new CardDeckError("이 브라우저에서는 카드를 그릴 수 없습니다.");
-    drawn.push(dataUrl);
-  }
+  const drawn = renderPlainCardDeck(spec, deps.render ?? renderTextCard);
+  if (!drawn.length) throw new CardDeckError("카드로 만들 글자가 없습니다.");
   return uploadDrawnCards(drawn, deps);
 }
 

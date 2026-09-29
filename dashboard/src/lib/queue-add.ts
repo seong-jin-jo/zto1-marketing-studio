@@ -30,6 +30,7 @@ export interface AddQueuePostInput {
   hashtags?: string[];
   imageUrl?: string | null;
   imageUrls?: string[] | null;
+  textEmbedded?: boolean;
   cardBatchId?: string | null;
   videoFilename?: string | null;
   videoUrl?: string | null;
@@ -56,6 +57,7 @@ export interface QueuePost {
   model: string;
   imageUrl: string | null;
   imageUrls: string[] | null;
+  textEmbedded: boolean;
   cardBatchId: string | null;
   videoFilename: string | null;
   videoUrl: string | null;
@@ -113,6 +115,7 @@ export async function addQueuePost(
             : "manual",
         imageUrl: input.imageUrl || imageUrls?.[0] || null,
         imageUrls,
+        textEmbedded: input.textEmbedded === true,
         cardBatchId: input.cardBatchId || null,
         videoFilename: input.videoFilename || null,
         videoUrl: input.videoUrl || null,

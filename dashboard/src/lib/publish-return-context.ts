@@ -4,6 +4,7 @@ export interface PublishReturnContext {
   sourceRoute: PublishReturnSource;
   queuePostId: string;
   draftId: string | null;
+  textEmbedded: boolean;
   returnUrl: string;
 }
 
@@ -11,6 +12,7 @@ export interface PublishReturnRequest {
   sourceRoute: PublishReturnSource;
   queuePostId: string;
   draftId: string | null;
+  textEmbedded?: boolean;
 }
 
 export interface PublishReturnWork {
@@ -20,6 +22,8 @@ export interface PublishReturnWork {
   body: string;
   hashtags: string[];
   imageUrl: string | null;
+  imageUrls: string[];
+  textEmbedded: boolean;
   videoUrl: string | null;
   includedPlatforms: string[];
 }
@@ -68,10 +72,13 @@ export function buildPublishReturnContext(
   const draftId = linkedDraftId(post);
   const params = new URLSearchParams({ room: "publish", queue_id: post.id, from: sourceRoute });
   if (draftId) params.set("draft_id", draftId);
+  const textEmbedded = post.textEmbedded === true;
+  if (textEmbedded) params.set("text_embedded", "1");
   return {
     sourceRoute,
     queuePostId: post.id,
     draftId,
+    textEmbedded,
     returnUrl: `/studio?${params.toString()}`,
   };
 }
@@ -85,6 +92,7 @@ export function readPublishReturnRequest(search: string): PublishReturnRequest |
     sourceRoute: source,
     queuePostId,
     draftId: nonEmptyText(params.get("draft_id")),
+    textEmbedded: params.get("text_embedded") === "1",
   };
 }
 
@@ -109,6 +117,12 @@ export function buildPublishReturnWork(post: Record<string, unknown>): PublishRe
       ? post.hashtags.map(nonEmptyText).filter((value): value is string => Boolean(value))
       : [],
     imageUrl: nonEmptyText(post.imageUrl),
+    imageUrls: Array.isArray(post.imageUrls)
+      ? post.imageUrls.map(nonEmptyText).filter((value): value is string => Boolean(value))
+      : [],
+    // 구형 큐는 일반 배경 이미지와 글자 내장 이미지를 구분할 출처가 없다. URL 수만으로
+    // 추측하면 일반 카드의 편집 기능을 없애므로, 명시 표식이 있는 신규 큐만 true다.
+    textEmbedded: post.textEmbedded === true,
     videoUrl: nonEmptyText(post.videoUrl) ?? nonEmptyText(post.videoFilename),
     includedPlatforms,
   };
