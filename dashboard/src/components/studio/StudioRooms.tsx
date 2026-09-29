@@ -2282,7 +2282,7 @@ export function EditRoom({
                               <div className="flex shrink-0 gap-micro">
                                 <Button size="sm" aria-label={`${index + 1}번째를 위로`} data-line-up={index} disabled={cardSourceLocked || index === 0} onClick={() => moveLine(index, -1)}>▲</Button>
                                 <Button size="sm" aria-label={`${index + 1}번째를 아래로`} data-line-down={index} disabled={cardSourceLocked || index === safeLines.length - 1} onClick={() => moveLine(index, 1)}>▼</Button>
-                                <Button size="sm" disabled={cardSourceLocked} onClick={() => toggleLine(index)}>{visibleLines[index] ? "빼기" : "되살리기"}</Button>
+                                <Button size="sm" data-line-toggle={index} disabled={cardSourceLocked} onClick={() => toggleLine(index)}>{visibleLines[index] ? "빼기" : "되살리기"}</Button>
                               </div>
                             </li>
                           ))}

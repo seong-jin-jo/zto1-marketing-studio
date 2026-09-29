@@ -102,6 +102,30 @@ function bakedTextWork() {
   };
 }
 
+function unrecoverableTextWork(cardCount) {
+  const originalImageUrls = images.slice(0, cardCount);
+  const originalLines = bakedTextLines.slice(0, cardCount);
+  const idea = `원본 정보 없는 ${cardCount}장 카드 잠금 검증`;
+  return {
+    ...work("card"),
+    idea,
+    img: {
+      url: originalImageUrls[0],
+      file: originalImageUrls[0],
+      imageUrls: originalImageUrls,
+      topicKey: idea,
+      aspectRatio: "4:5",
+      textEmbedded: true,
+      textSourceRecoverable: false,
+    },
+    editLines: originalLines,
+    text: {
+      ...work("card").text,
+      instagram: { caption: "원본 없는 글자 카드 캡션", hashtags: ["보존"], slides: originalLines },
+    },
+  };
+}
+
 function videoWork() {
   return {
     ...work("video"),
@@ -386,6 +410,8 @@ const page = await context.newPage();
 page.setDefaultTimeout(90_000);
 const consoleErrors = [];
 const observations = [];
+const draftSaves = [];
+let imageUploadCount = 0;
 let currentDraft = null;
 page.on("pageerror", (error) => consoleErrors.push(error.message));
 page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
@@ -401,12 +427,20 @@ await page.route("**/api/**", async (route) => {
   if (pathname === "/api/studio/brand-setup") return json(route, { guide: null });
   if (pathname === "/api/studio/engine-status") return json(route, { ready: true });
   if (pathname === "/api/elevenlabs-voices") return json(route, { voices: [] });
-  if (pathname === "/api/studio/drafts") return json(route, request.method() === "POST"
-    ? { ok: true, id: "screen-draft" }
-    : {
-        drafts: currentDraft ? [currentDraft] : [],
-        currentWork: currentDraft ? { draftId: currentDraft.id, stage: "edit", stageLabel: "편집실", idea: currentDraft.idea } : null,
-      });
+  if (pathname === "/api/studio/drafts") {
+    if (request.method() === "POST") {
+      draftSaves.push(request.postDataJSON());
+      return json(route, { ok: true, id: "screen-draft", bodyRevision: draftSaves.length });
+    }
+    return json(route, {
+      drafts: currentDraft ? [currentDraft] : [],
+      currentWork: currentDraft ? { draftId: currentDraft.id, stage: "edit", stageLabel: "편집실", idea: currentDraft.idea } : null,
+    });
+  }
+  if (pathname === "/api/images/upload") {
+    imageUploadCount += 1;
+    return json(route, { url: `/api/images/deliver/screen-upload-${imageUploadCount}` });
+  }
   if (pathname === "/api/publish/first-comment-capabilities") return json(route, { capabilities: [] });
   if (/^\/api\/channels\/[^/]+\/accounts$/.test(pathname)) {
     const provider = pathname.split("/")[3];
@@ -594,6 +628,84 @@ async function captureBakedTextCard(viewport) {
     overflow,
   });
   return { screenshot, stageScreenshot };
+}
+
+async function captureUnrecoverableTextCard(viewport, cardCount) {
+  const lockedWork = unrecoverableTextWork(cardCount);
+  const originalImageUrls = [...lockedWork.img.imageUrls];
+  const uploadCountBefore = imageUploadCount;
+  const draftSaveCountBefore = draftSaves.length;
+  await page.setViewportSize(viewport);
+  await setWork(lockedWork);
+  await page.goto(`${baseUrl}/studio?room=edit&kind=card`, { waitUntil: "networkidle", timeout: 60_000 });
+
+  const room = page.locator('[data-room="edit"][data-edit-kind="card"]');
+  await room.locator("[data-card-source-lock]").waitFor({ timeout: 10_000 });
+  await room.getByText("편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다.", { exact: true }).waitFor();
+  await room.getByText("기존 그림은 그대로 보존됩니다. 수정하려면 생성실에서 새 카드로 만들어 주세요.", { exact: true }).waitFor();
+  await room.getByRole("button", { name: "생성실에서 새 카드 만들기" }).waitFor();
+  if (await room.locator("[data-card-text-embedded-note]").count()) {
+    throw new Error(`${viewport.width} ${cardCount}장 잠금 상태에 바로 반영 안내가 노출됐습니다`);
+  }
+
+  const lineInputs = room.locator("[data-line-input]");
+  const thumbnailCount = await room.locator("[data-card-thumbnail]").count();
+  if (await lineInputs.count() !== cardCount || thumbnailCount !== cardCount) {
+    throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드의 입력·썸네일 장수가 보존되지 않았습니다`);
+  }
+  const lockedControls = [
+    lineInputs,
+    room.locator("[data-line-up], [data-line-down]"),
+    room.locator("[data-line-toggle]"),
+    room.locator("[data-line-add]"),
+    room.locator("[data-content-size-option]"),
+    room.getByRole("group", { name: "카드 글자 위치" }).getByRole("button"),
+  ];
+  for (const controls of lockedControls) {
+    const states = await controls.evaluateAll((nodes) => nodes.map((node) => node.disabled));
+    if (!states.length || states.some((disabled) => !disabled)) {
+      throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드에 활성 조작이 남았습니다: ${JSON.stringify(states)}`);
+    }
+  }
+
+  const previewSources = await room.locator('[data-edit-preview-media="image"]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute("src")));
+  if (!previewSources.length || !originalImageUrls.some((url) => previewSources.some((source) => source?.includes(url)))) {
+    throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드가 원본 그림을 미리보기에 유지하지 않았습니다`);
+  }
+  const overflow = await assertNoOverflow(page, '[data-room="edit"]', `원본 없는 ${cardCount}장 카드 ${viewport.width}`);
+  const screenshot = path.join(outputDir, `edit-text-card-locked-${cardCount}-${viewport.width}x${viewport.height}.png`);
+  await page.screenshot({ path: screenshot });
+
+  await room.getByRole("button", { name: "발행실로 이동" }).click();
+  await page.waitForFunction(() => new URL(location.href).searchParams.get("room") === "publish");
+  if (imageUploadCount !== uploadCountBefore) {
+    throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드가 ${imageUploadCount - uploadCountBefore}장을 다시 업로드했습니다`);
+  }
+  const newDraftSaves = draftSaves.slice(draftSaveCountBefore);
+  const savedDraft = newDraftSaves.at(-1);
+  if (JSON.stringify(savedDraft?.img?.imageUrls) !== JSON.stringify(originalImageUrls)
+    || savedDraft?.img?.textEmbedded !== true
+    || savedDraft?.img?.textSourceRecoverable !== false) {
+    throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드 저장이 원본 URL·장수·잠금 표식을 보존하지 않았습니다: ${JSON.stringify(savedDraft?.img)}`);
+  }
+  const storedWork = await page.evaluate((id) => JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}"), workspaceId);
+  if (JSON.stringify(storedWork?.img?.imageUrls) !== JSON.stringify(originalImageUrls)) {
+    throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드의 브라우저 작업물이 원본 URL·장수를 잃었습니다`);
+  }
+  observations.push({
+    screen: `edit-text-card-locked-${cardCount}`,
+    ...viewport,
+    cardCount,
+    thumbnailCount,
+    originalImageUrls,
+    savedImageUrls: savedDraft.img.imageUrls,
+    imageUploads: imageUploadCount - uploadCountBefore,
+    lockGuidanceVisible: true,
+    controlsDisabled: true,
+    overflow,
+    screenshot,
+  });
+  return screenshot;
 }
 
 async function captureVideoEmpty(viewport) {
@@ -807,6 +919,10 @@ try {
   for (const viewport of viewports.filter(({ width }) => requestedViewportWidths.has(width))) {
     const cardShots = await captureCard(viewport);
     await captureBakedTextCard(viewport);
+    if (viewport.width === 1440 || viewport.width === 390) {
+      await captureUnrecoverableTextCard(viewport, 1);
+      await captureUnrecoverableTextCard(viewport, 2);
+    }
     const bubbleShots = await captureBubbleDeck(viewport);
     await captureVideoEmpty(viewport);
     if (viewport.width === 390) await captureVideoActual(viewport);

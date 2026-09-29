@@ -12,9 +12,13 @@ const CARD_TEXT_POSITIONS = new Set([
   "bottom-left", "bottom-center", "bottom-right",
 ]);
 
-function validateCardEditFields(data: Record<string, unknown>) {
+function hasOwn(data: Record<string, unknown>, field: string) {
+  return Object.prototype.hasOwnProperty.call(data, field);
+}
+
+function validateCardEditFields(data: Record<string, unknown>, textEmbedded: boolean) {
   let editLines: string[] | undefined;
-  if (Object.prototype.hasOwnProperty.call(data, "editLines") && data.editLines !== null) {
+  if (hasOwn(data, "editLines") && data.editLines !== null) {
     if (!Array.isArray(data.editLines) || data.editLines.some((line) => typeof line !== "string")) {
       throw new QueueInputError("editLines는 문자열 배열이어야 합니다");
     }
@@ -28,8 +32,13 @@ function validateCardEditFields(data: Record<string, unknown>) {
     editLines = data.editLines as string[];
   }
 
+  const imageUrls = Array.isArray(data.imageUrls) ? data.imageUrls : undefined;
+  if (imageUrls && editLines && imageUrls.length !== editLines.length) {
+    throw new QueueInputError("imageUrls와 editLines 장수는 같아야 합니다");
+  }
+
   let cardTextPositions: string[] | undefined;
-  if (Object.prototype.hasOwnProperty.call(data, "cardTextPositions") && data.cardTextPositions !== null) {
+  if (hasOwn(data, "cardTextPositions") && data.cardTextPositions !== null) {
     if (!Array.isArray(data.cardTextPositions)
       || data.cardTextPositions.some((position) => typeof position !== "string" || !CARD_TEXT_POSITIONS.has(position))) {
       throw new QueueInputError("cardTextPositions에 허용되지 않은 글자 위치가 있습니다");
@@ -42,12 +51,27 @@ function validateCardEditFields(data: Record<string, unknown>) {
   }
 
   let editFormat: ContentEditFormat | null | undefined = data.editFormat === null ? null : undefined;
-  if (Object.prototype.hasOwnProperty.call(data, "editFormat") && data.editFormat !== null) {
+  if (hasOwn(data, "editFormat") && data.editFormat !== null) {
     const validation = validateContentEditFormat(data.editFormat);
     if (!validation.valid) {
       throw new QueueInputError(validation.issues.map((issue) => issue.message).join("; "));
     }
     editFormat = validation.value;
+  }
+
+  if (textEmbedded) {
+    if (!imageUrls?.length || imageUrls.some((url) => typeof url !== "string" || !url.trim())) {
+      throw new QueueInputError("textEmbedded 카드에는 비어 있지 않은 imageUrls가 필요합니다");
+    }
+    if (!editLines?.length || editLines.length !== imageUrls.length || editLines.some((line) => !line.trim())) {
+      throw new QueueInputError("textEmbedded 카드에는 이미지와 같은 장수의 editLines가 필요합니다");
+    }
+    if (!Array.isArray(cardTextPositions)) {
+      throw new QueueInputError("textEmbedded 카드에는 cardTextPositions 배열이 필요합니다");
+    }
+    if (editFormat?.kind !== "card") {
+      throw new QueueInputError("textEmbedded 카드에는 카드 editFormat이 필요합니다");
+    }
   }
   return { editLines, cardTextPositions, editFormat };
 }
@@ -57,7 +81,11 @@ export async function POST(request: Request) {
   const __t = await effectiveTenantId(request, data.tenant_id ?? null);
   return runWithTenant(__t, async () => {
     try {
-      const cardEdit = validateCardEditFields(data);
+      if (hasOwn(data, "textEmbedded") && typeof data.textEmbedded !== "boolean") {
+        throw new QueueInputError("textEmbedded는 boolean이어야 합니다");
+      }
+      const textEmbedded = data.textEmbedded === true;
+      const cardEdit = validateCardEditFields(data, textEmbedded);
       const result = await addQueuePost(__t, {
         text: typeof data.text === "string" ? data.text : "",
         draftId: typeof data.draftId === "string" ? data.draftId : null,
@@ -65,7 +93,7 @@ export async function POST(request: Request) {
         hashtags: data.hashtags,
         imageUrl: data.imageUrl,
         imageUrls: data.imageUrls,
-        textEmbedded: data.textEmbedded === true,
+        textEmbedded,
         editLines: cardEdit.editLines,
         cardTextPositions: cardEdit.cardTextPositions,
         editFormat: cardEdit.editFormat,

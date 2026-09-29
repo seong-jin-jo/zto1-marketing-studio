@@ -138,4 +138,147 @@ describe("PR95-R1-LIFECYCLE-02 글자 내장 표식의 발행 대기열 저장·
     }));
     expect(response.status).toBe(200);
   });
+
+  it.each([
+    [
+      "이미지와 대본 장수가 다름",
+      {
+        imageUrls: ["/api/images/deliver/one", "/api/images/deliver/two"],
+        textEmbedded: true,
+        editLines: ["첫 카드"],
+        cardTextPositions: [],
+        editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+      },
+    ],
+    [
+      "일반 카드도 이미지와 대본 장수가 다름",
+      {
+        imageUrls: ["/api/images/deliver/one", "/api/images/deliver/two"],
+        textEmbedded: false,
+        editLines: ["첫 카드"],
+      },
+    ],
+    [
+      "글자 내장 표식은 있지만 이미지 배열이 없음",
+      {
+        textEmbedded: true,
+        editLines: ["첫 카드"],
+        cardTextPositions: [],
+        editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+      },
+    ],
+    [
+      "글자 내장 표식은 있지만 대본이 없음",
+      {
+        imageUrls: ["/api/images/deliver/one"],
+        textEmbedded: true,
+        cardTextPositions: [],
+        editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+      },
+    ],
+    [
+      "글자 내장 표식은 있지만 위치 배열이 없음",
+      {
+        imageUrls: ["/api/images/deliver/one"],
+        textEmbedded: true,
+        editLines: ["첫 카드"],
+        editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+      },
+    ],
+    [
+      "글자 내장 표식은 있지만 카드 편집 형식이 없음",
+      {
+        imageUrls: ["/api/images/deliver/one"],
+        textEmbedded: true,
+        editLines: ["첫 카드"],
+        cardTextPositions: [],
+      },
+    ],
+    [
+      "글자 내장 카드가 영상 편집 형식을 사용함",
+      {
+        imageUrls: ["/api/images/deliver/one"],
+        textEmbedded: true,
+        editLines: ["첫 카드"],
+        cardTextPositions: [],
+        editFormat: { kind: "video", aspectRatio: "9:16", subtitleSize: "보통", playbackSpeed: 1, voice: "차분한 남성" },
+      },
+    ],
+    [
+      "textEmbedded가 문자열임",
+      {
+        imageUrls: ["/api/images/deliver/one"],
+        textEmbedded: "true",
+      },
+    ],
+    [
+      "textEmbedded가 숫자임",
+      {
+        imageUrls: ["/api/images/deliver/one"],
+        textEmbedded: 1,
+      },
+    ],
+    [
+      "textEmbedded가 null임",
+      {
+        imageUrls: ["/api/images/deliver/one"],
+        textEmbedded: null,
+      },
+    ],
+    [
+      "textEmbedded가 객체임",
+      {
+        imageUrls: ["/api/images/deliver/one"],
+        textEmbedded: {},
+      },
+    ],
+  ])("PR95-R4-QUEUE-01 거절: %s 요청은 기존 오류 형식의 400을 반환한다", async (_label, fields) => {
+    const { POST } = await import("@/app/api/queue/add/route");
+    const response = await POST(new Request("http://localhost/api/queue/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: H.tenantId,
+        text: "교차 계약을 검증할 카드",
+        ...fields,
+      }),
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: expect.any(String) });
+  });
+
+  it("PR95-R4-QUEUE-02 경계: textEmbedded를 생략한 구형 요청은 계속 저장한다", async () => {
+    const { POST } = await import("@/app/api/queue/add/route");
+    const response = await POST(new Request("http://localhost/api/queue/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: H.tenantId,
+        text: "표식 도입 전 구형 요청",
+        imageUrls: ["/api/images/deliver/legacy"],
+      }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.objectContaining({
+      post: expect.objectContaining({ textEmbedded: false }),
+    }));
+  });
+
+  it("PR95-R4-QUEUE-03 정상: 명시적인 textEmbedded false도 일반 카드로 계속 저장한다", async () => {
+    const { POST } = await import("@/app/api/queue/add/route");
+    const response = await POST(new Request("http://localhost/api/queue/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: H.tenantId,
+        text: "글자 비내장 일반 카드",
+        imageUrls: ["/api/images/deliver/plain"],
+        textEmbedded: false,
+      }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.objectContaining({
+      post: expect.objectContaining({ textEmbedded: false }),
+    }));
+  });
 });

@@ -188,7 +188,7 @@ export function EditPreview({
     <section aria-label="올릴 규격으로 미리보기" data-edit-preview={spec.key} className="min-w-0">
       <div className="mb-stack flex flex-wrap items-center gap-stack-tight" role="group" aria-label="콘텐츠 크기 고르기">
         {specs.map((one) => (
-          <Button key={one.key} size="sm" variant="secondary" disabled={kind === "card" && cardEditingLocked} className={one.key === spec.key ? "border-accent bg-accent-soft text-accent" : ""} aria-pressed={one.key === spec.key} onClick={() => {
+          <Button key={one.key} size="sm" variant="secondary" data-content-size-option={one.key} disabled={kind === "card" && cardEditingLocked} className={one.key === spec.key ? "border-accent bg-accent-soft text-accent" : ""} aria-pressed={one.key === spec.key} onClick={() => {
             setSpecKey(one.key);
             onAspectRatioChange?.(one.ratio.replaceAll(" ", "").replace("/", ":"));
           }}>

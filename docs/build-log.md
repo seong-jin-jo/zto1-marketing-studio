@@ -1,5 +1,19 @@
 # OSMU build log
 
+## 2026-09-30 06:59 KST · PR #95 4차 리뷰 대기열 교차 계약·잠금 화면 상시 검사
+
+STAMP: 2026-09-30 06:59 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: PR #95 4차 리뷰, 표적 Vitest·TypeScript·Chromium v70 화면 검사 | 고민: 독립 필드 검사를 통과한 조합이 실제로 복원 가능한 카드 원본인지 요청 경계에서 함께 판정했다.
+
+| 검증 | 결과 |
+|---|---|
+| 수정 전 실패 재현 | 대기열 경계 회귀 8건 실패. 장수 불일치·원본 메타데이터 누락·영상 편집 형식·비boolean 표식이 저장됨 |
+| 표적 Vitest | 3파일·79건 PASS, 실패 0 |
+| TypeScript | `npm run typecheck:ci` 종료 코드 0 |
+| Chromium 잠금 화면 | 1440·390 각각 한 장·두 장, 잠금 안내와 비활성 조작 확인. 원본 URL·장수 보존, 재업로드 0건, 가로 넘침 0, 콘솔 오류 0 |
+| 독립 재검토 | 최초 MAJOR 1건인 빼기·되살리기와 콘텐츠 크기 잠금 검사 누락을 보완한 뒤 재검토 PASS, MAJOR 0 |
+
+전체 Vitest는 사용자 지시대로 실행하지 않고 원격 CI가 최종 판정한다. 머지·배포는 하지 않았다.
+
 ## 2026-09-30 04:27 KST · PR #95 3차 리뷰 원본 없는 카드 잠금·대기열 검증
 
 STAMP: 2026-09-30 04:27 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: PR #95 3차 리뷰, v70 실패 상태 계약, 표적 Vitest·TypeScript | 고민: 원본 없는 카드는 편집 가능한 척하지 않고 기존 그림 보존과 새 생성 행동을 명확히 보여 줬다.
