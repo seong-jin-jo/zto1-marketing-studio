@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { EditPreview } from "@/components/studio/EditPreview";
@@ -8,6 +10,14 @@ import { EditPreview } from "@/components/studio/EditPreview";
 afterEach(() => cleanup());
 
 describe("TEXTCARD-OVERLAY-01 무료 글자 카드 편집 무대", () => {
+  it("TEXTCARD-OVERLAY-01W 배선: 생성실 글자 카드 표식이 편집실까지 같은 정본으로 전달된다", () => {
+    const pageSource = readFileSync(path.join(process.cwd(), "src/app/studio/page.tsx"), "utf8");
+
+    expect(pageSource).toContain("onTextCardsCreated={(urls, cardLines) => {");
+    expect(pageSource).toContain("imageUrls: urls, topicKey: mediaTopicKey(idea), textEmbedded: true");
+    expect(pageSource).toContain("cardTextEmbedded={img?.textEmbedded === true}");
+  });
+
   it("TEXTCARD-OVERLAY-01A 정상: 글자가 PNG에 포함된 카드는 같은 문구의 이동 막대와 textarea를 다시 겹치지 않는다", () => {
     const { container } = render(
       <EditPreview
@@ -24,6 +34,7 @@ describe("TEXTCARD-OVERLAY-01 무료 글자 카드 편집 무대", () => {
     expect(container.querySelector('[data-edit-preview-media="image"]')).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "카드 글자 끌어 옮기기" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "카드 1 글자" })).not.toBeInTheDocument();
+    expect(screen.queryByText("여기에 카드 화면이 놓입니다")).not.toBeInTheDocument();
   });
 
   it("TEXTCARD-OVERLAY-01B 경계: 글자 없는 일반 배경 이미지는 기존 편집 글자 레이어를 유지한다", () => {

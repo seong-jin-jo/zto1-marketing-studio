@@ -229,7 +229,7 @@ export function EditPreview({
             />
           ) : null}
 
-          {kind === "card" && !cardTextEmbedded ? (
+          {kind === "card" ? (cardTextEmbedded ? null : (
             <div
               className={`absolute z-10 w-4/5 rounded-control border border-border p-stack shadow-lg ${stageSize === "card-v70" ? styles.cardV70TextOverlay : styles.cardTextOverlay} ${CARD_POSITION_CLASS[cardPosition]}`}
               data-card-text-position={cardPosition}
@@ -257,7 +257,7 @@ export function EditPreview({
                 className={`min-h-control-touch w-full resize-none rounded-control border p-stack text-center text-body font-bold ${styles.cardTextInput}`}
               />
             </div>
-          ) : kind === "video" && mediaType === "video" && activeMediaUrl ? null : (
+          )) : kind === "video" && mediaType === "video" && activeMediaUrl ? null : (
             // 2026-09-21 회장 지적: 영상 탭에서 "재생도 안 된다". 원인은 이 자리표시 레이어가
             // 영상 유무와 상관없이 항상 그려져 DeliveredMedia 가 그리는 영상 재생 컨트롤 위를
             // absolute inset-0 로 덮고 있었던 것이다(포인터 이벤트가 이 div 로 먼저 잡혀

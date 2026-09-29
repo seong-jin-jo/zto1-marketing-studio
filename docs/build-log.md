@@ -1,5 +1,21 @@
 # OSMU build log
 
+## 2026-09-29 21:41 KST · 운영 글자 카드 중복·생성 자리표시 누출 수정
+
+STAMP: 2026-09-29 21:41 KST | model: gpt-codex/GPT-5.6 | agent: code-builder | skill: qa, review | 근거: 운영 재현, v70 §3, 로컬 Vitest·TypeScript·build·Chromium | 고민: 완성 PNG와 편집 레이어의 소유권을 명시해 글자를 한 벌만 보이게 했다.
+
+| 검증 | 결과 |
+|---|---|
+| 관련 Vitest | 5파일·45건 PASS, 실패 0 |
+| TypeScript·production build | `npm run typecheck:ci`, `npm run build` 종료 코드 0 |
+| UI 토큰 감사 | 위반 0 |
+| Chromium 1440 | 무대·이미지 520×650, 중복 컨트롤 0, 가로 오버플로 0 |
+| Chromium 390 | 무대·이미지 308×385, 중복 컨트롤 0, 가로 오버플로 0 |
+| 브라우저 콘솔 | 두 폭 합계 오류 0 |
+| 캡처 | `docs/qa/osmu-textcard-overlay-1440x900.png`, `docs/qa/osmu-textcard-overlay-390x844.png` |
+
+전체 Vitest 최초 실행은 423파일 중 415파일·2,860건 통과, 8파일 실패였다. 실패 원인은 CI의 `Seed proper-lockfile into the openclaw tree` 준비 단계를 로컬에서 빠뜨린 것이며, 동일 배치 후 실패했던 8파일 58건은 PASS다. 사용자 지시에 따라 전체 스위트는 다시 돌리지 않고 원격 CI가 최종 판정한다. 머지·배포는 하지 않았다.
+
 ## 2026-09-29 08:18 KST · PR #94 리뷰 r5 토큰·영상 회귀 수정
 
 STAMP: 2026-09-29 08:18 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa | 근거: `review94-r5.md`, GitHub Actions run `36495350609`, 로컬 표적 Vitest·UI 토큰 감사 | 고민: 180px 계약의 소유 요소와 내부 화면 축소 계약을 분리해 테스트가 구현 구조를 정확히 감시하게 했다.
