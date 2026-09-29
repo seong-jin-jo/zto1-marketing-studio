@@ -5,6 +5,62 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const H = vi.hoisted(() => ({ tenantId: "tenant-text-card" }));
 
+const QUEUE_CARD_KIND_CONTRACTS = [
+  {
+    kind: "글자 내장 카드 정상",
+    expectedStatus: 200,
+    fields: {
+      imageUrls: ["/api/images/deliver/text-one", "/api/images/deliver/text-two"],
+      textEmbedded: true,
+      editLines: ["첫 카드", "둘째 카드"],
+      cardTextPositions: ["center", "bottom-center"],
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+    },
+  },
+  {
+    kind: "글자 내장 카드 장수 불일치",
+    expectedStatus: 400,
+    fields: {
+      imageUrls: ["/api/images/deliver/text-one", "/api/images/deliver/text-two"],
+      textEmbedded: true,
+      editLines: ["첫 카드"],
+      cardTextPositions: [],
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+    },
+  },
+  {
+    kind: "일반 배경 카드",
+    expectedStatus: 200,
+    fields: {
+      imageUrls: ["/api/images/deliver/background"],
+      textEmbedded: false,
+      editLines: ["제목", "설명"],
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+    },
+  },
+  {
+    kind: "말풍선 카드 9장 15문구",
+    expectedStatus: 200,
+    fields: {
+      imageUrls: Array.from({ length: 9 }, (_, index) => `/api/images/deliver/bubble-${index + 1}`),
+      textEmbedded: false,
+      editLines: Array.from({ length: 15 }, (_, index) => `${index + 1}번째 말풍선`),
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+    },
+  },
+  {
+    kind: "영상",
+    expectedStatus: 200,
+    fields: {
+      textEmbedded: false,
+      editLines: ["첫 장면", "둘째 장면"],
+      editFormat: { kind: "video", aspectRatio: "9:16", subtitleSize: "보통", playbackSpeed: 1, voice: "차분한 남성" },
+      videoFilename: "queue-contract.mp4",
+      videoUrl: "/api/images/deliver/queue-contract.mp4",
+    },
+  },
+] as const;
+
 vi.mock("@/lib/tenant-auth", () => ({
   effectiveTenantId: vi.fn(async () => H.tenantId),
 }));
@@ -151,14 +207,6 @@ describe("PR95-R1-LIFECYCLE-02 글자 내장 표식의 발행 대기열 저장·
       },
     ],
     [
-      "일반 카드도 이미지와 대본 장수가 다름",
-      {
-        imageUrls: ["/api/images/deliver/one", "/api/images/deliver/two"],
-        textEmbedded: false,
-        editLines: ["첫 카드"],
-      },
-    ],
-    [
       "글자 내장 표식은 있지만 이미지 배열이 없음",
       {
         textEmbedded: true,
@@ -246,6 +294,29 @@ describe("PR95-R1-LIFECYCLE-02 글자 내장 표식의 발행 대기열 저장·
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: expect.any(String) });
   });
+
+  it.each(QUEUE_CARD_KIND_CONTRACTS)(
+    "PR95-R5-QUEUE-MATRIX-01 카드 종류별 계약: $kind 요청은 $expectedStatus",
+    async ({ fields, expectedStatus }) => {
+      const { POST } = await import("@/app/api/queue/add/route");
+      const response = await POST(new Request("http://localhost/api/queue/add", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          tenant_id: H.tenantId,
+          text: "카드 종류별 대기열 계약",
+          ...fields,
+        }),
+      }));
+      const responseBody = await response.json();
+      expect(response.status, JSON.stringify(responseBody)).toBe(expectedStatus);
+      if (expectedStatus === 400) {
+        expect(responseBody).toEqual({ error: expect.any(String) });
+      } else {
+        expect(responseBody).toEqual(expect.objectContaining({ success: true }));
+      }
+    },
+  );
 
   it("PR95-R4-QUEUE-02 경계: textEmbedded를 생략한 구형 요청은 계속 저장한다", async () => {
     const { POST } = await import("@/app/api/queue/add/route");

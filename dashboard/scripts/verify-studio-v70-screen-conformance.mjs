@@ -640,10 +640,14 @@ async function captureUnrecoverableTextCard(viewport, cardCount) {
   await page.goto(`${baseUrl}/studio?room=edit&kind=card`, { waitUntil: "networkidle", timeout: 60_000 });
 
   const room = page.locator('[data-room="edit"][data-edit-kind="card"]');
-  await room.locator("[data-card-source-lock]").waitFor({ timeout: 10_000 });
-  await room.getByText("편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다.", { exact: true }).waitFor();
-  await room.getByText("기존 그림은 그대로 보존됩니다. 수정하려면 생성실에서 새 카드로 만들어 주세요.", { exact: true }).waitFor();
-  await room.getByRole("button", { name: "생성실에서 새 카드 만들기" }).waitFor();
+  const lockPanel = room.locator("[data-card-source-lock]");
+  const lockReason = room.getByText("편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다.", { exact: true });
+  const preservationNotice = room.getByText("기존 그림은 그대로 보존됩니다. 수정하려면 생성실에서 새 카드로 만들어 주세요.", { exact: true });
+  const recoveryAction = room.getByRole("button", { name: "생성실에서 새 카드 만들기" });
+  await lockPanel.waitFor({ timeout: 10_000 });
+  await lockReason.waitFor();
+  await preservationNotice.waitFor();
+  await recoveryAction.waitFor();
   if (await room.locator("[data-card-text-embedded-note]").count()) {
     throw new Error(`${viewport.width} ${cardCount}장 잠금 상태에 바로 반영 안내가 노출됐습니다`);
   }
@@ -673,6 +677,18 @@ async function captureUnrecoverableTextCard(viewport, cardCount) {
     throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드가 원본 그림을 미리보기에 유지하지 않았습니다`);
   }
   const overflow = await assertNoOverflow(page, '[data-room="edit"]', `원본 없는 ${cardCount}장 카드 ${viewport.width}`);
+  await lockPanel.evaluate((node) => node.scrollIntoView({ block: "center", inline: "nearest" }));
+  await page.waitForTimeout(100);
+  for (const [label, locator] of [
+    ["잠금 원인", lockReason],
+    ["기존 그림 보존 안내", preservationNotice],
+    ["새 카드 생성 행동", recoveryAction],
+  ]) {
+    const box = await locator.boundingBox();
+    if (!box || box.y < 0 || box.y + box.height > viewport.height || box.x < 0 || box.x + box.width > viewport.width) {
+      throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드의 ${label}이 캡처 화면 안에 없습니다: ${JSON.stringify(box)}`);
+    }
+  }
   const screenshot = path.join(outputDir, `edit-text-card-locked-${cardCount}-${viewport.width}x${viewport.height}.png`);
   await page.screenshot({ path: screenshot });
 

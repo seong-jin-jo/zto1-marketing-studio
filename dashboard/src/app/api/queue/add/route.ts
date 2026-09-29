@@ -22,7 +22,7 @@ function validateCardEditFields(data: Record<string, unknown>, textEmbedded: boo
     if (!Array.isArray(data.editLines) || data.editLines.some((line) => typeof line !== "string")) {
       throw new QueueInputError("editLines는 문자열 배열이어야 합니다");
     }
-    if (data.editLines.length > PUBLISH_IMAGE_LIMIT) {
+    if (textEmbedded && data.editLines.length > PUBLISH_IMAGE_LIMIT) {
       throw new QueueInputError(`editLines는 최대 ${PUBLISH_IMAGE_LIMIT}장까지 저장할 수 있습니다`);
     }
     const longLineIndex = data.editLines.findIndex((line) => line.length > QUEUE_CARD_TEXT_MAX_CHARS);
@@ -33,7 +33,7 @@ function validateCardEditFields(data: Record<string, unknown>, textEmbedded: boo
   }
 
   const imageUrls = Array.isArray(data.imageUrls) ? data.imageUrls : undefined;
-  if (imageUrls && editLines && imageUrls.length !== editLines.length) {
+  if (textEmbedded && imageUrls && editLines && imageUrls.length !== editLines.length) {
     throw new QueueInputError("imageUrls와 editLines 장수는 같아야 합니다");
   }
 
