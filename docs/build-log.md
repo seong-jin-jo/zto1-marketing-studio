@@ -1,5 +1,19 @@
 # OSMU build log
 
+## 2026-09-30 04:27 KST · PR #95 3차 리뷰 원본 없는 카드 잠금·대기열 검증
+
+STAMP: 2026-09-30 04:27 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: PR #95 3차 리뷰, v70 실패 상태 계약, 표적 Vitest·TypeScript | 고민: 원본 없는 카드는 편집 가능한 척하지 않고 기존 그림 보존과 새 생성 행동을 명확히 보여 줬다.
+
+| 검증 | 결과 |
+|---|---|
+| 수정 전 실패 재현 | 2파일에서 신규 회귀 8건 실패. 편집 잠금 2건과 요청 검증 6건 |
+| 표적 Vitest | 4파일·75건 PASS, 실패 0 |
+| TypeScript | `npx tsc --noEmit` 종료 코드 0. CI와 같은 OpenClaw 의존성은 main 설치본을 일시 연결한 뒤 제거 |
+| UI 토큰 감사 | 종료 코드 0. 기존 인라인 style 1파일·토큰 밖 hex 6파일 경고 유지, 이번 변경에 신규 직접값·hex·인라인 style 없음 |
+| 산출물 검사 | 핀 실체·슬롯키·버전 정합 통과. 기존 상류 산출물 경고 28건 유지 |
+
+전체 Vitest는 사용자 지시대로 실행하지 않고 원격 CI가 최종 판정한다. 실제 브라우저 캡처는 이번 3차 수정에서 새로 만들지 않았으며, 한 장·두 장 복귀와 조작 잠금은 실제 `StudioPage` 통합 테스트로 검증했다. `git push origin fix/editroom-textcard-overlay`는 실행 환경의 외부 쓰기 승인 정책이 `never`라 프로세스 시작 전에 차단됐다. 머지·배포는 하지 않았다.
+
 ## 2026-09-29 21:41 KST · 운영 글자 카드 중복·생성 자리표시 누출 수정
 
 STAMP: 2026-09-29 21:41 KST | model: gpt-codex/GPT-5.6 | agent: code-builder | skill: qa, review | 근거: 운영 재현, v70 §3, 로컬 Vitest·TypeScript·build·Chromium | 고민: 완성 PNG와 편집 레이어의 소유권을 명시해 글자를 한 벌만 보이게 했다.

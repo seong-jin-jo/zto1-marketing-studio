@@ -104,6 +104,7 @@ export function EditPreview({
   mediaUrls,
   mediaType = "image",
   cardTextEmbedded = false,
+  cardEditingLocked = false,
   tenantId,
   onLinesChange,
   cardTextPositions = [],
@@ -147,6 +148,8 @@ export function EditPreview({
    * 일반 생성 이미지는 글자 없는 배경이므로 false를 유지해 기존 편집 레이어를 보존한다.
    */
   cardTextEmbedded?: boolean;
+  /** 원본 대본·위치가 없어 기존 PNG를 보존해야 하는 카드는 편집 조작을 막는다. */
+  cardEditingLocked?: boolean;
   /**
    * 만료된 배달 주소를 되살릴 때 어느 작업 공간으로 다시 서명할지.
    *
@@ -185,7 +188,7 @@ export function EditPreview({
     <section aria-label="올릴 규격으로 미리보기" data-edit-preview={spec.key} className="min-w-0">
       <div className="mb-stack flex flex-wrap items-center gap-stack-tight" role="group" aria-label="콘텐츠 크기 고르기">
         {specs.map((one) => (
-          <Button key={one.key} size="sm" variant="secondary" className={one.key === spec.key ? "border-accent bg-accent-soft text-accent" : ""} aria-pressed={one.key === spec.key} onClick={() => {
+          <Button key={one.key} size="sm" variant="secondary" disabled={kind === "card" && cardEditingLocked} className={one.key === spec.key ? "border-accent bg-accent-soft text-accent" : ""} aria-pressed={one.key === spec.key} onClick={() => {
             setSpecKey(one.key);
             onAspectRatioChange?.(one.ratio.replaceAll(" ", "").replace("/", ":"));
           }}>
@@ -306,6 +309,7 @@ export function EditPreview({
               variant="secondary"
               className={cardVerticalPosition === position ? "border-accent bg-accent-soft text-accent" : ""}
               aria-pressed={cardVerticalPosition === position}
+              disabled={cardEditingLocked}
               onClick={() => {
                 if (!onCardTextPositionsChange) return;
                 const next = lines.map((_, index) => cardTextPositions[index] ?? "center");

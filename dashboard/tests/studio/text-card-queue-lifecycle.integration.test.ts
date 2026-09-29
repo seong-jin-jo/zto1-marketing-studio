@@ -96,4 +96,46 @@ describe("PR95-R1-LIFECYCLE-02 글자 내장 표식의 발행 대기열 저장·
       editLines: [],
     }));
   });
+
+  it.each([
+    ["문자열 아닌 editLines", { editLines: ["정상", 7] }],
+    ["최대 장수 초과 editLines", { editLines: Array.from({ length: 11 }, (_, index) => `${index + 1}장`) }],
+    ["장당 길이 초과 editLines", { editLines: ["가".repeat(501)] }],
+    ["허용되지 않은 cardTextPositions", { editLines: ["한 장"], cardTextPositions: ["somewhere"] }],
+    ["장수와 다른 cardTextPositions", { editLines: ["첫 장", "둘째 장"], cardTextPositions: ["center"] }],
+    ["규격을 어긴 editFormat", { editLines: ["한 장"], cardTextPositions: ["center"], editFormat: { kind: "card", aspectRatio: "16:9", subtitleSize: "보통", background: "작업실 책상" } }],
+  ])("PR95-R3-QUEUE-01 거절: %s는 저장 전에 400으로 막는다", async (_label, invalidFields) => {
+    const { POST } = await import("@/app/api/queue/add/route");
+    const response = await POST(new Request("http://localhost/api/queue/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: H.tenantId,
+        text: "검증할 카드",
+        imageUrls: ["/api/images/deliver/one", "/api/images/deliver/two"],
+        textEmbedded: true,
+        ...invalidFields,
+      }),
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: expect.any(String) });
+  });
+
+  it("PR95-R3-QUEUE-02 경계: 위치를 생략한 카드는 기본 중앙값 복구를 위해 빈 배열을 허용한다", async () => {
+    const { POST } = await import("@/app/api/queue/add/route");
+    const response = await POST(new Request("http://localhost/api/queue/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: H.tenantId,
+        text: "기본 위치 카드",
+        imageUrls: ["/api/images/deliver/one", "/api/images/deliver/two"],
+        textEmbedded: true,
+        editLines: ["첫 카드", "둘째 카드"],
+        cardTextPositions: [],
+        editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+      }),
+    }));
+    expect(response.status).toBe(200);
+  });
 });

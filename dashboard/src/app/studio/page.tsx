@@ -1624,8 +1624,9 @@ export default function StudioPage() {
    */
   async function recompositeCards(lines: string[]): Promise<ImgResult | null> {
     if (editKind !== "card") return null;
-    if (img?.textEmbedded === true && img.textSourceRecoverable === false && (img.imageUrls?.length ?? 0) > 1) {
-      showToast(`이전 카드 ${img.imageUrls!.length}장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.`, "success");
+    if (img?.textEmbedded === true && img.textSourceRecoverable === false) {
+      const preservedCardCount = img.imageUrls?.length ?? (img.url || img.file ? 1 : 0);
+      showToast(`이전 카드 ${preservedCardCount}장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.`, "success");
       return img;
     }
     if (cardDeck && cardDeck.template === "chat_bubble") {
@@ -2365,9 +2366,7 @@ export default function StudioPage() {
         file: work.imageUrl,
         imageUrls: work.imageUrls.length ? work.imageUrls : undefined,
         textEmbedded: work.textEmbedded,
-        textSourceRecoverable: work.textEmbedded
-          ? work.cardSourceRestorable || work.imageUrls.length <= 1
-          : undefined,
+        textSourceRecoverable: work.textEmbedded ? work.cardSourceRestorable : undefined,
       } : null);
       setVid(work.videoUrl ? { url: work.videoUrl, file: work.videoUrl, model: "기존 작업물" } : null);
       setIncludes(work.includedPlatforms.length
@@ -3036,6 +3035,7 @@ export default function StudioPage() {
         previewImageUrl={liveTextCardPreview?.[0] || img?.file || img?.url || null}
         previewImageUrls={liveTextCardPreview ?? img?.imageUrls ?? null}
         cardTextEmbedded={img?.textEmbedded === true}
+        cardTextSourceRecoverable={img?.textSourceRecoverable !== false}
         previewVideoUrl={vid?.file || vid?.url || null}
         cardTextPositions={cardTextPositions}
         onCardTextPositionsChange={setCardTextPositions}

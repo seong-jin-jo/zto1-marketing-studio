@@ -289,9 +289,16 @@ describe("Studio publish result integrity", () => {
     window.history.replaceState(null, "", "/studio?room=edit&kind=card");
     page.rerender(<StudioPage />);
 
-    expect(await screen.findByText("문구와 글자 위치를 바꾸면 카드 그림에 바로 반영됩니다.")).toBeInTheDocument();
+    expect(await screen.findByText(/편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/기존 그림은 그대로 보존됩니다/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "생성실에서 새 카드 만들기" })).toBeInTheDocument();
+    expect(screen.queryByText("문구와 글자 위치를 바꾸면 카드 그림에 바로 반영됩니다.")).not.toBeInTheDocument();
     expect(document.querySelectorAll("[data-script-line]")).toHaveLength(2);
     expect(document.querySelectorAll("[data-plain-card-strip] button")).toHaveLength(2);
+    expect(screen.getByLabelText("문구 1")).toBeDisabled();
+    expect(screen.getByLabelText("1번째를 아래로")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "카드 추가" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "상단" })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
 
@@ -306,6 +313,48 @@ describe("Studio publish result integrity", () => {
         editFormat: expect.objectContaining({ kind: "card" }),
         img: expect.objectContaining({
           imageUrls: ["/api/images/deliver/original-1", "/api/images/deliver/original-2"],
+          textEmbedded: true,
+          textSourceRecoverable: false,
+        }),
+      }));
+    });
+  });
+
+  it("PR95-R3-STUDIO-01 원본 정보 없는 한 장 글자 카드도 편집을 잠그고 재합성하지 않는다", async () => {
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-one-card&text_embedded=1");
+    mocks.returnPosts = [{
+      id: "queue-one-card",
+      text: "과거 한 장 카드 본문",
+      topic: "한 장 복귀 작업물",
+      imageUrl: "/api/images/deliver/original-one",
+      imageUrls: ["/api/images/deliver/original-one"],
+      textEmbedded: true,
+      channels: { threads: { status: "pending" } },
+    }];
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "restored-one-card", bodyRevision: 1 };
+      return { ok: true };
+    });
+
+    const page = render(<StudioPage />);
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+    window.history.replaceState(null, "", "/studio?room=edit&kind=card");
+    page.rerender(<StudioPage />);
+
+    expect(await screen.findByText(/편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다/)).toBeInTheDocument();
+    expect(screen.getByLabelText("문구 1")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      "이전 카드 1장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.",
+      "success",
+    ));
+    expect(mocks.apiPost.mock.calls.some(([path]) => String(path).includes("recompose"))).toBe(false);
+    await waitFor(() => {
+      const saves = mocks.apiPost.mock.calls.filter(([path]) => path === "/api/studio/drafts");
+      expect(saves.at(-1)?.[1]).toEqual(expect.objectContaining({
+        img: expect.objectContaining({
+          imageUrls: ["/api/images/deliver/original-one"],
           textEmbedded: true,
           textSourceRecoverable: false,
         }),

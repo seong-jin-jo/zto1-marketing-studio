@@ -1557,6 +1557,8 @@ interface EditRoomProps {
   previewImageUrls?: string[] | null;
   /** 무료 글자 카드처럼 카드 문구가 이미지 픽셀에 이미 포함됐는지. */
   cardTextEmbedded?: boolean;
+  /** 글자 내장 카드의 장별 대본·위치·규격 원본을 복구할 수 있는지. */
+  cardTextSourceRecoverable?: boolean;
   previewVideoUrl?: string | null;
   commandPanel?: ReactNode;
   initialFormat?: ContentEditFormat;
@@ -1875,6 +1877,7 @@ export function EditRoom({
   previewImageUrl = null,
   previewImageUrls = null,
   cardTextEmbedded = false,
+  cardTextSourceRecoverable = true,
   previewVideoUrl = null,
   commandPanel,
   initialFormat,
@@ -1910,6 +1913,7 @@ export function EditRoom({
   // 막는다. `deckProj.refs` 는 askBulk 결과를 다시 덱에 역적용할 때 각 줄이 어느
   // 장/말풍선에서 왔는지 찾는 데 쓴다.
   const isChatDeck = kind === "card" && Boolean(cardDeck) && cardDeck!.template === "chat_bubble";
+  const cardSourceLocked = kind === "card" && cardTextEmbedded && !cardTextSourceRecoverable && !isChatDeck;
   const deckProj = useMemo(() => (isChatDeck ? deckProjection(cardDeck!) : null), [isChatDeck, cardDeck]);
   const safeLines = isChatDeck ? (deckProj!.lines.length ? deckProj!.lines : [""]) : (lines.length ? lines : [""]);
   const safeBody = safeLines.join("\n\n");
@@ -1977,12 +1981,16 @@ export function EditRoom({
   const hasEditableContent = safeLines.some((line) => line.trim().length > 0);
   const roomState = state === "default" && !hasEditableContent ? "empty" : state;
   const editorVisible = roomState === "default" || roomState === "overflow";
-  const updateLine = (value: string) => onLinesChange(safeLines.map((line, index) => index === activeLine ? value : line));
+  const updateLine = (value: string) => {
+    if (cardSourceLocked) return;
+    onLinesChange(safeLines.map((line, index) => index === activeLine ? value : line));
+  };
   // 순서 이동. 줄과 함께 그 줄의 보임 여부와 글자 위치도 같이 옮긴다.
   // 따로 놀면 엉뚱한 줄이 지워진 것처럼 보이고 엉뚱한 장에 남의 글자 위치가 붙는다.
   // 끌어서 놓기는 한 칸이 아니라 먼 자리로 건너뛰므로 뽑아서 끼우는 방식으로 옮긴다.
   // 붙어 있는 두 칸이면 이것은 자리 맞바꾸기와 같은 결과다.
   const moveLineTo = (from: number, to: number) => {
+    if (cardSourceLocked) return;
     if (from === to || from < 0 || to < 0 || from >= safeLines.length || to >= safeLines.length) return;
     const nextLines = [...safeLines];
     const [movedLine] = nextLines.splice(from, 1);
@@ -2005,12 +2013,14 @@ export function EditRoom({
   const moveLine = (index: number, delta: number) => moveLineTo(index, index + delta);
   // 목록 끝에 한 장 더. 더한 장으로 바로 옮겨 간다. 더해 놓고 어디 갔는지 찾게 하지 않는다.
   const addLine = () => {
+    if (cardSourceLocked) return;
     onLinesChange([...safeLines, ""]);
     setActiveLine(safeLines.length);
   };
   // 장 삭제. 줄만 지우면 보임 여부와 글자 위치가 한 칸씩 밀려 엉뚱한 장의 값이 붙는다.
   // 마지막 한 장은 지우지 않는다. 편집 대상이 0이 되면 방이 빈 상태로 튕긴다.
   const removeLine = (index: number) => {
+    if (cardSourceLocked) return;
     if (safeLines.length <= 1) return;
     const next = safeLines.filter((_, lineIndex) => lineIndex !== index);
     setVisibleLines((current) => current.filter((_, lineIndex) => lineIndex !== index));
@@ -2020,15 +2030,20 @@ export function EditRoom({
     setActiveLine((current) => Math.min(current, next.length - 1));
     onLinesChange(next);
   };
-  const toggleLine = (index: number) => setVisibleLines((current) => current.map((visible, lineIndex) => lineIndex === index ? !visible : visible));
+  const toggleLine = (index: number) => {
+    if (cardSourceLocked) return;
+    setVisibleLines((current) => current.map((visible, lineIndex) => lineIndex === index ? !visible : visible));
+  };
   const trimSilences = () => setVisibleLines((current) => current.map((visible, index) => silenceIndexes.includes(index) ? false : visible));
   const shortenAll = () => {
+    if (cardSourceLocked) return;
     const next = safeLines.map((line) => line.length > 24 ? `${line.slice(0, 23)}…` : line);
     const changed = next.filter((line, index) => line !== safeLines[index]).length;
     if (changed) onLinesChange(next);
     setBulkMessage(changed ? `긴 문장 ${changed}개를 줄였습니다.` : "줄일 긴 문장이 없습니다.");
   };
   const politeAll = () => {
+    if (cardSourceLocked) return;
     const next = safeLines.map((line) => line.replace(/(다|음|함)\.?$/u, "습니다").replace(/\s+$/u, ""));
     const changed = next.filter((line, index) => line !== safeLines[index]).length;
     if (changed) onLinesChange(next);
@@ -2036,6 +2051,7 @@ export function EditRoom({
   };
   // 말로 시키는 일괄 변경. 줄 수와 순서가 어긋나면 서버가 거절하므로 여기서는 결과만 받는다.
   const askBulk = async () => {
+    if (cardSourceLocked) return;
     const instruction = bulkAsk.trim();
     if (!instruction || !hasEditableContent || bulkBusy) return;
     setBulkBusy(true);
@@ -2068,6 +2084,7 @@ export function EditRoom({
     }
   };
   const dropEmpty = () => {
+    if (cardSourceLocked) return;
     const next = safeLines.filter((line) => line.trim());
     const removed = safeLines.length - next.length;
     if (removed) onLinesChange(next);
@@ -2218,10 +2235,11 @@ export function EditRoom({
                           mediaUrls={previewImageUrls ?? undefined}
                           mediaType="image"
                           cardTextEmbedded={cardTextEmbedded}
+                          cardEditingLocked={cardSourceLocked}
                           tenantId={workspaceId}
                           onLinesChange={onLinesChange}
                           cardTextPositions={cardTextPositions}
-                          onCardTextPositionsChange={onCardTextPositionsChange}
+                          onCardTextPositionsChange={cardSourceLocked ? undefined : onCardTextPositionsChange}
                           aspectRatio={toolValues.비율}
                           onAspectRatioChange={(aspectRatio) => {
                             if (toolOptions(formatKind, "비율").includes(aspectRatio)) {
@@ -2236,7 +2254,13 @@ export function EditRoom({
                           <b id="plain-card-script-title" className="text-body text-text">카드 문구</b>
                           <span className="text-caption text-subtle">{visibleCount}개 장</span>
                         </div>
-                        {cardTextEmbedded ? (
+                        {cardSourceLocked ? (
+                          <div className="mb-stack rounded-control border border-warning bg-warning-soft p-stack text-caption text-text" role="status" data-card-source-lock>
+                            <p>편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다.</p>
+                            <p className="mt-stack-tight">기존 그림은 그대로 보존됩니다. 수정하려면 생성실에서 새 카드로 만들어 주세요.</p>
+                            <Button size="sm" className="mt-stack" onClick={onOpenCreate}>생성실에서 새 카드 만들기</Button>
+                          </div>
+                        ) : cardTextEmbedded ? (
                           <p className="mb-stack text-caption text-subtle" data-card-text-embedded-note>
                             문구와 글자 위치를 바꾸면 카드 그림에 바로 반영됩니다.
                           </p>
@@ -2249,20 +2273,21 @@ export function EditRoom({
                                 aria-label={`문구 ${index + 1}`}
                                 data-line-input={index}
                                 value={line}
+                                disabled={cardSourceLocked}
                                 onChange={(event) => onLinesChange(safeLines.map((current, lineIndex) => lineIndex === index ? event.target.value : current))}
                                 onFocus={() => setActiveLine(index)}
                                 placeholder="빈 문구"
                                 className={`min-h-control-touch min-w-0 rounded-control border px-stack text-body-sm text-text ${activeLine === index ? "border-accent bg-accent-soft/30" : "border-transparent bg-surface hover:border-border"} ${visibleLines[index] ? "" : "line-through opacity-60"}`}
                               />
                               <div className="flex shrink-0 gap-micro">
-                                <Button size="sm" aria-label={`${index + 1}번째를 위로`} data-line-up={index} disabled={index === 0} onClick={() => moveLine(index, -1)}>▲</Button>
-                                <Button size="sm" aria-label={`${index + 1}번째를 아래로`} data-line-down={index} disabled={index === safeLines.length - 1} onClick={() => moveLine(index, 1)}>▼</Button>
-                                <Button size="sm" onClick={() => toggleLine(index)}>{visibleLines[index] ? "빼기" : "되살리기"}</Button>
+                                <Button size="sm" aria-label={`${index + 1}번째를 위로`} data-line-up={index} disabled={cardSourceLocked || index === 0} onClick={() => moveLine(index, -1)}>▲</Button>
+                                <Button size="sm" aria-label={`${index + 1}번째를 아래로`} data-line-down={index} disabled={cardSourceLocked || index === safeLines.length - 1} onClick={() => moveLine(index, 1)}>▼</Button>
+                                <Button size="sm" disabled={cardSourceLocked} onClick={() => toggleLine(index)}>{visibleLines[index] ? "빼기" : "되살리기"}</Button>
                               </div>
                             </li>
                           ))}
                         </ol>
-                        <Button size="sm" className="mt-stack" data-line-add onClick={addLine}>카드 추가</Button>
+                        <Button size="sm" className="mt-stack" data-line-add disabled={cardSourceLocked} onClick={addLine}>카드 추가</Button>
                       </section>
                     </div>
                   ) : (
@@ -2430,9 +2455,9 @@ export function EditRoom({
           <AssistantPanel title="편집 담당" className={styles.editHelper} compactOnNarrow={false}>
             <div className={styles.editHelperActions}>
               <div className={styles.editQuickActions} aria-label="빠른 작업">
-                <Button size="sm" variant="secondary" onClick={shortenAll} disabled={!hasEditableContent || bodyEditConflict}>전부 짧게</Button>
-                <Button size="sm" variant="secondary" onClick={politeAll} disabled={!hasEditableContent || bodyEditConflict}>높임말</Button>
-                <Button size="sm" variant="secondary" onClick={dropEmpty} disabled={!hasEditableContent || bodyEditConflict}>빈 줄 정리</Button>
+                <Button size="sm" variant="secondary" onClick={shortenAll} disabled={!hasEditableContent || bodyEditConflict || cardSourceLocked}>전부 짧게</Button>
+                <Button size="sm" variant="secondary" onClick={politeAll} disabled={!hasEditableContent || bodyEditConflict || cardSourceLocked}>높임말</Button>
+                <Button size="sm" variant="secondary" onClick={dropEmpty} disabled={!hasEditableContent || bodyEditConflict || cardSourceLocked}>빈 줄 정리</Button>
               </div>
               <div className={styles.editChatLog} role="log" aria-label="편집 담당 대화 기록" data-edit-chat-log>
                 <div className={styles.editChatBubble}>고칠 내용을 말해 주세요. 현재 초안 전체에 같은 규칙으로 적용할 수 있습니다.</div>
@@ -2454,14 +2479,14 @@ export function EditRoom({
                   value={bulkAsk}
                   onChange={(event) => setBulkAsk(event.target.value)}
                   placeholder="예: 자막 어투를 더 부드럽게 바꿔줘"
-                  disabled={!hasEditableContent || bulkBusy || bodyEditConflict}
+                  disabled={!hasEditableContent || bulkBusy || bodyEditConflict || cardSourceLocked}
                   className="min-h-control-touch min-w-0 flex-1 rounded-control border border-border bg-surface px-stack text-body-sm text-text"
                 />
                 {/*
                   이 방의 다음 단계는 "발행실로 이동" 하나다. 도구 단추가 같은 강조를 가지면
                   다음 단계가 묻힌다. 강조는 방마다 하나여야 한다.
                 */}
-                <Button type="submit" disabled={!hasEditableContent || bulkBusy || !bulkAsk.trim() || bodyEditConflict}>
+                <Button type="submit" disabled={!hasEditableContent || bulkBusy || !bulkAsk.trim() || bodyEditConflict || cardSourceLocked}>
                   {bulkBusy ? "고치는 중" : "시키기"}
                 </Button>
               </form>
