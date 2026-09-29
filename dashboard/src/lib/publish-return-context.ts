@@ -1,3 +1,8 @@
+import {
+  validateContentEditFormat,
+  type ContentEditFormat,
+} from "@/lib/studio/content-edit-format";
+
 export type PublishReturnSource = "inbox" | "calendar";
 
 export interface PublishReturnContext {
@@ -24,6 +29,10 @@ export interface PublishReturnWork {
   imageUrl: string | null;
   imageUrls: string[];
   textEmbedded: boolean;
+  editLines: string[];
+  cardTextPositions: string[];
+  editFormat: ContentEditFormat | null;
+  cardSourceRestorable: boolean;
   videoUrl: string | null;
   includedPlatforms: string[];
 }
@@ -108,6 +117,25 @@ export function buildPublishReturnWork(post: Record<string, unknown>): PublishRe
       return state !== "skipped";
     }).map(([platform]) => platform)
     : [];
+  const imageUrls = Array.isArray(post.imageUrls)
+    ? post.imageUrls.map(nonEmptyText).filter((value): value is string => Boolean(value))
+    : [];
+  const editLines = Array.isArray(post.editLines)
+    ? post.editLines.filter((value): value is string => typeof value === "string")
+    : [];
+  const cardTextPositions = Array.isArray(post.cardTextPositions)
+    ? post.cardTextPositions.filter((value): value is string => typeof value === "string")
+    : [];
+  const formatValidation = validateContentEditFormat(post.editFormat);
+  const editFormat = formatValidation.valid ? formatValidation.value : null;
+  const textEmbedded = post.textEmbedded === true;
+  const cardSourceRestorable = textEmbedded
+    && imageUrls.length > 0
+    && editLines.length === imageUrls.length
+    && editLines.every((line) => line.trim().length > 0)
+    && Array.isArray(post.cardTextPositions)
+    && (cardTextPositions.length === 0 || cardTextPositions.length === imageUrls.length)
+    && editFormat?.kind === "card";
   return {
     queuePostId,
     draftId: linkedDraftId(post),
@@ -117,12 +145,14 @@ export function buildPublishReturnWork(post: Record<string, unknown>): PublishRe
       ? post.hashtags.map(nonEmptyText).filter((value): value is string => Boolean(value))
       : [],
     imageUrl: nonEmptyText(post.imageUrl),
-    imageUrls: Array.isArray(post.imageUrls)
-      ? post.imageUrls.map(nonEmptyText).filter((value): value is string => Boolean(value))
-      : [],
+    imageUrls,
     // 구형 큐는 일반 배경 이미지와 글자 내장 이미지를 구분할 출처가 없다. URL 수만으로
     // 추측하면 일반 카드의 편집 기능을 없애므로, 명시 표식이 있는 신규 큐만 true다.
-    textEmbedded: post.textEmbedded === true,
+    textEmbedded,
+    editLines,
+    cardTextPositions,
+    editFormat,
+    cardSourceRestorable,
     videoUrl: nonEmptyText(post.videoUrl) ?? nonEmptyText(post.videoFilename),
     includedPlatforms,
   };

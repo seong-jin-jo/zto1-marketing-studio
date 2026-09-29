@@ -1,3 +1,11 @@
+## 2026-09-30 PR #95 독립 리뷰 r2 여러 장 대기열 복귀 수정·표적 검증 완료
+
+- handoff basis: 사용자가 지정한 PR #95 마지막 2차 BLOCK 코멘트와 worktree `.claude/worktrees/fix-editroom-textcard-overlay`를 기준으로 이어갔다. 전체 Vitest는 재실행하지 않고 원격 CI 판정에 맡겼다.
+- 수정: 신규 대기열은 장별 대본·위치·편집 형식을 저장·복원한다. 장별 원본 정보가 없는 과거 여러 장 글자 내장 항목은 재합성을 거절하고 기존 이미지 배열을 유지한다. `textEmbedded` 항목은 카드 형식으로 열리고 공용 방 헤더도 현재 편집 형식을 URL에 보존한다.
+- 검증: 실제 `StudioPage`에서 연결 초안 없는 두 장 대기열 복귀, 편집실 진입, 발행 저장을 호출해 원본 두 장 유지와 카드 형식 저장을 확인했다. 표적 3파일 58건과 TypeScript가 통과했다. `page.tsx` 소비 지점을 `textEmbedded:false`로 바꾸자 `PR95-R2-STUDIO-01`이 실패했고 원복 뒤 전체 표적 검사가 다시 통과했다.
+- 이웃 영향 확인: 일반 배경 이미지 편집, 한 장 글자 카드 복귀, 말풍선·영상 방 링크, 기존 큐 JSON 호환, 검토 요청 순서는 기존 표적 회귀 안에서 유지했다. 화면 수치·디자인 토큰·API·DB 스키마는 바꾸지 않았다.
+- 다음 실행: 현재 변경을 커밋해 `fix/editroom-textcard-overlay`에 push한다. PR #95 원격 CI 판정만 남으며 머지·배포는 하지 않는다.
+
 ## 2026-09-30 PR #95 독립 리뷰 r1 구현·화면 검증 완료, 최종 전체 회귀·push 대기
 
 - handoff basis: 사용자가 지정한 PR #95 마지막 BLOCK 코멘트와 worktree `.claude/worktrees/fix-editroom-textcard-overlay`를 primary로 삼았다. tmux `371:0.0`·`371:0.1`은 이전 OSMU 감사와 종료된 리뷰 로그라 이번 구현 판단에는 쓰지 않는다.

@@ -249,6 +249,8 @@ interface ImgResult {
   aspectRatio?: string;
   /** 카드 문구가 이미지 픽셀에 이미 합성돼 편집 레이어를 다시 얹으면 안 되는 산출물. */
   textEmbedded?: boolean;
+  /** 대기열 복귀 뒤에도 장별 대본·위치·형식이 있어 안전하게 다시 그릴 수 있는지. */
+  textSourceRecoverable?: boolean;
 }
 interface VidResult {
   url: string;
@@ -642,7 +644,7 @@ export default function StudioPage() {
   // 매 렌더마다 1080px 캔버스를 다시 만들지 않고 실제 입력·위치·비율·테마가 바뀔 때만
   // data URL을 갱신한다. 서버 업로드는 발행실 이동 때 한 번만 한다.
   const liveTextCardPreview = useMemo(() => {
-    if (editKind !== "card" || img?.textEmbedded !== true || cardDeck?.template === "chat_bubble") {
+    if (editKind !== "card" || img?.textEmbedded !== true || img.textSourceRecoverable === false || cardDeck?.template === "chat_bubble") {
       liveTextCardPreviewCacheRef.current = [];
       return null;
     }
@@ -660,7 +662,7 @@ export default function StudioPage() {
       // 업로드 경로는 recompositeCards가 별도로 실패를 알리고 발행실 이동을 막는다.
       return null;
     }
-  }, [cardAspectRatio, cardDeck, cardTextPositions, editKind, img?.textEmbedded, learningInfo.palette, resolvedEditLines]);
+  }, [cardAspectRatio, cardDeck, cardTextPositions, editKind, img?.textEmbedded, img?.textSourceRecoverable, learningInfo.palette, resolvedEditLines]);
   const [editing, setEditing] = useState<PreviewPlatform | null>(null);
   const [showTx, setShowTx] = useState(false);
   const { data: tx } = useSWR<{ items?: Array<{ display_name?: string; credits?: number; action?: string; created_at?: string; output?: string | null; outputKind?: string | null }> }>(
@@ -1622,6 +1624,10 @@ export default function StudioPage() {
    */
   async function recompositeCards(lines: string[]): Promise<ImgResult | null> {
     if (editKind !== "card") return null;
+    if (img?.textEmbedded === true && img.textSourceRecoverable === false && (img.imageUrls?.length ?? 0) > 1) {
+      showToast(`이전 카드 ${img.imageUrls!.length}장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.`, "success");
+      return img;
+    }
     if (cardDeck && cardDeck.template === "chat_bubble") {
       // F5(2026-09-22 코드리뷰 3차)·D(4차): 발행 경로도 자동저장·수동저장과 같은 검사를
       // 거친다. D 수정: 검사는 pruned로 하고 렌더는 원본으로 하면 검사를 통과한 뒤에도
@@ -2359,6 +2365,9 @@ export default function StudioPage() {
         file: work.imageUrl,
         imageUrls: work.imageUrls.length ? work.imageUrls : undefined,
         textEmbedded: work.textEmbedded,
+        textSourceRecoverable: work.textEmbedded
+          ? work.cardSourceRestorable || work.imageUrls.length <= 1
+          : undefined,
       } : null);
       setVid(work.videoUrl ? { url: work.videoUrl, file: work.videoUrl, model: "기존 작업물" } : null);
       setIncludes(work.includedPlatforms.length
@@ -2370,12 +2379,19 @@ export default function StudioPage() {
       setFirstComments((linkedDraft?.firstComments as Record<string, string>) || {});
       setCaptions((linkedDraft?.captions as Record<string, string>) || {});
       setSelectedAccounts((linkedDraft?.selectedAccounts as Record<string, string>) || {});
+      const returnedEditLines = (linkedDraft?.editLines as string[]) || (work.cardSourceRestorable
+        ? work.editLines
+        : work.textEmbedded && work.imageUrls.length > 1
+          // 장별 대본을 복원할 근거가 없는 과거 항목도 원본 이미지 장수는 보존한다.
+          // 둘째 장부터 빈 칸으로 두고 아래 textSourceRecoverable=false가 재합성을 막는다.
+          ? work.imageUrls.map((_, index) => index === 0 ? work.body : "")
+          : work.editLines);
       replaceBodySnapshot(
-        (linkedDraft?.editLines as string[]) || [],
+        returnedEditLines,
         returnedText,
         { replaceDocument: true, serverRevision: Number.isSafeInteger(linkedDraft?.bodyRevision) ? linkedDraft?.bodyRevision as number : 0 },
       );
-      setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
+      setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || work.cardTextPositions as CardTextPosition[]);
       setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
       setVideoEdit((linkedDraft?.videoEdit as VideoEdit) || null);
       // MINOR(7차 재리뷰): 이 분기도 videoEdit을 reconcile 밖에서 직접 세팅한다(워크스페이스
@@ -2383,10 +2399,13 @@ export default function StudioPage() {
       // null일 수 있는데, 그러면 진행 중이던 맞춤의 syncing 잠금이 안 풀릴 수 있었다. 다른 네 곳과
       // 같은 invalidateVideoEditReconcile()로 세대를 올리고 잠금을 확실히 푼다.
       invalidateVideoEditReconcile();
-      const linkedFormat = validateContentEditFormat(linkedDraft?.editFormat);
+      const linkedFormat = validateContentEditFormat(linkedDraft?.editFormat ?? work.editFormat);
       if (linkedFormat.valid) {
         setEditKind(linkedFormat.value.kind);
         setEditFormat(linkedFormat.value);
+      } else if (work.textEmbedded) {
+        setEditKind("card");
+        setEditFormat(defaultContentEditFormat("card"));
       }
       setDraftId(linkedDraftId);
       setPublishReconciliations(normalizePublishReconciliations(linkedDraft?.publishReconciliations ?? linkedDraft?.publishReconciliation));
@@ -2595,6 +2614,9 @@ export default function StudioPage() {
           imageUrl: img?.url || null,
           imageUrls: img?.imageUrls || null,
           textEmbedded: img?.textEmbedded === true,
+          editLines,
+          cardTextPositions,
+          editFormat,
           videoUrl: vid?.url || null,
         });
         queueId = added?.post?.id || null;
@@ -2655,6 +2677,7 @@ export default function StudioPage() {
       subtitle="콘텐츠 작업실"
       roomLabel={activeRoom === "create" ? "생성실" : activeRoom === "edit" ? "편집실" : "발행실"}
       currentRoom={activeRoom}
+      currentEditKind={editKind}
       leading={
         <>
           <Button onClick={() => { setShowUsageHistory(false); setShowWorks((value) => !value); }} aria-expanded={showWorks} aria-controls="studio-work-overview">

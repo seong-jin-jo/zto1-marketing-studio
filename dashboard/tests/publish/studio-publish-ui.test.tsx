@@ -266,6 +266,53 @@ describe("Studio publish result integrity", () => {
     expect(document.querySelector("[data-video-subtitle-text]"), "복귀한 영상 대본을 편집할 수 있어야 한다").toBeEnabled();
   });
 
+  it("PR95-R2-STUDIO-01 연결 초안 없는 2장 글자 카드는 편집실과 저장까지 2장을 유지한다", async () => {
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-two-card&text_embedded=1");
+    mocks.returnPosts = [{
+      id: "queue-two-card",
+      text: "과거 대기열의 합쳐진 본문",
+      topic: "두 장 복귀 작업물",
+      imageUrl: "/api/images/deliver/original-1",
+      imageUrls: ["/api/images/deliver/original-1", "/api/images/deliver/original-2"],
+      textEmbedded: true,
+      channels: { threads: { status: "pending" } },
+    }];
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "restored-two-card", bodyRevision: 1 };
+      return { ok: true };
+    });
+
+    const page = render(<StudioPage />);
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+    expect(screen.getByRole("link", { name: "02편집실" })).toHaveAttribute("href", "/studio?room=edit&kind=card");
+
+    window.history.replaceState(null, "", "/studio?room=edit&kind=card");
+    page.rerender(<StudioPage />);
+
+    expect(await screen.findByText("문구와 글자 위치를 바꾸면 카드 그림에 바로 반영됩니다.")).toBeInTheDocument();
+    expect(document.querySelectorAll("[data-script-line]")).toHaveLength(2);
+    expect(document.querySelectorAll("[data-plain-card-strip] button")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      "이전 카드 2장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.",
+      "success",
+    ));
+    await waitFor(() => {
+      const saves = mocks.apiPost.mock.calls.filter(([path]) => path === "/api/studio/drafts");
+      expect(saves.at(-1)?.[1]).toEqual(expect.objectContaining({
+        editKind: "card",
+        editFormat: expect.objectContaining({ kind: "card" }),
+        img: expect.objectContaining({
+          imageUrls: ["/api/images/deliver/original-1", "/api/images/deliver/original-2"],
+          textEmbedded: true,
+          textSourceRecoverable: false,
+        }),
+      }));
+    });
+  });
+
   it("FE-V63-RETURN-04 경계: 본문 없는 편집 인계 초안은 큐 본문과 초안 메타데이터를 함께 복원한다", async () => {
     window.history.replaceState(null, "", "/studio?room=publish&queue_id=queue-handoff&from=calendar&draft_id=draft-handoff");
     mocks.drafts = [{

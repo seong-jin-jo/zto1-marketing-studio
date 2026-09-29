@@ -39,6 +39,9 @@ describe("PR95-R1-LIFECYCLE-02 글자 내장 표식의 발행 대기열 저장·
         imageUrl: "/api/images/deliver/one",
         imageUrls: ["/api/images/deliver/one", "/api/images/deliver/two"],
         textEmbedded: true,
+        editLines: ["첫 카드", "둘째 카드"],
+        cardTextPositions: ["top-center", "bottom-center"],
+        editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
       }),
     }));
     const body = await response.json();
@@ -46,6 +49,9 @@ describe("PR95-R1-LIFECYCLE-02 글자 내장 표식의 발행 대기열 저장·
     expect(body.post).toEqual(expect.objectContaining({
       imageUrls: ["/api/images/deliver/one", "/api/images/deliver/two"],
       textEmbedded: true,
+      editLines: ["첫 카드", "둘째 카드"],
+      cardTextPositions: ["top-center", "bottom-center"],
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
     }));
 
     const { buildPublishReturnContext, buildPublishReturnWork, readPublishReturnRequest } = await import("@/lib/publish-return-context");
@@ -57,6 +63,10 @@ describe("PR95-R1-LIFECYCLE-02 글자 내장 표식의 발행 대기열 저장·
       imageUrl: "/api/images/deliver/one",
       imageUrls: ["/api/images/deliver/one", "/api/images/deliver/two"],
       textEmbedded: true,
+      editLines: ["첫 카드", "둘째 카드"],
+      cardTextPositions: ["top-center", "bottom-center"],
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+      cardSourceRestorable: true,
     }));
   });
 
@@ -69,5 +79,21 @@ describe("PR95-R1-LIFECYCLE-02 글자 내장 표식의 발행 대기열 저장·
       imageUrls: ["/api/images/deliver/one", "/api/images/deliver/two"],
     });
     expect(work).toEqual(expect.objectContaining({ textEmbedded: false }));
+  });
+
+  it("PR95-R2-QUEUE-DECK-01 경계: 원본 정보 없는 여러 장 글자 카드는 복원 가능으로 거짓 판정하지 않는다", async () => {
+    const { buildPublishReturnWork } = await import("@/lib/publish-return-context");
+    const work = buildPublishReturnWork({
+      id: "queue-unrestorable",
+      text: "합쳐진 발행 본문",
+      imageUrl: "/api/images/deliver/one",
+      imageUrls: ["/api/images/deliver/one", "/api/images/deliver/two"],
+      textEmbedded: true,
+    });
+    expect(work).toEqual(expect.objectContaining({
+      textEmbedded: true,
+      cardSourceRestorable: false,
+      editLines: [],
+    }));
   });
 });
