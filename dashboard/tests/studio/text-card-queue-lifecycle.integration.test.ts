@@ -49,6 +49,37 @@ const QUEUE_CARD_KIND_CONTRACTS = [
     },
   },
   {
+    kind: "글자 내장 카드에서 말풍선 카드로 바꾼 뒤 남은 위치 필드",
+    expectedStatus: 200,
+    fields: {
+      imageUrls: Array.from({ length: 9 }, (_, index) => `/api/images/deliver/residual-bubble-${index + 1}`),
+      textEmbedded: false,
+      editLines: Array.from({ length: 15 }, (_, index) => `${index + 1}번째 말풍선`),
+      cardTextPositions: ["center"],
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+    },
+  },
+  {
+    kind: "비내장 카드 최대 72문구",
+    expectedStatus: 200,
+    fields: {
+      imageUrls: Array.from({ length: 9 }, (_, index) => `/api/images/deliver/max-bubble-${index + 1}`),
+      textEmbedded: false,
+      editLines: Array.from({ length: 72 }, (_, index) => `${index + 1}번째 말풍선`),
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+    },
+  },
+  {
+    kind: "비내장 카드 최대치를 넘은 73문구",
+    expectedStatus: 400,
+    fields: {
+      imageUrls: Array.from({ length: 9 }, (_, index) => `/api/images/deliver/overflow-bubble-${index + 1}`),
+      textEmbedded: false,
+      editLines: Array.from({ length: 73 }, (_, index) => `${index + 1}번째 말풍선`),
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+    },
+  },
+  {
     kind: "영상",
     expectedStatus: 200,
     fields: {
@@ -57,6 +88,17 @@ const QUEUE_CARD_KIND_CONTRACTS = [
       editFormat: { kind: "video", aspectRatio: "9:16", subtitleSize: "보통", playbackSpeed: 1, voice: "차분한 남성" },
       videoFilename: "queue-contract.mp4",
       videoUrl: "/api/images/deliver/queue-contract.mp4",
+    },
+  },
+  {
+    kind: "카드에서 영상으로 바꾼 뒤 남은 위치 필드",
+    expectedStatus: 200,
+    fields: {
+      editLines: ["첫 장면", "둘째 장면"],
+      cardTextPositions: ["center"],
+      editFormat: { kind: "video", aspectRatio: "9:16", subtitleSize: "보통", playbackSpeed: 1, voice: "차분한 남성" },
+      videoFilename: "queue-residual-contract.mp4",
+      videoUrl: "/api/images/deliver/queue-residual-contract.mp4",
     },
   },
 ] as const;

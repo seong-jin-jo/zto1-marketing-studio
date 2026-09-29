@@ -899,6 +899,51 @@ describe("Studio publish result integrity", () => {
     expect(mocks.showToast).toHaveBeenCalledWith("검토 요청을 보냈습니다", "success");
   });
 
+  it("PR95-R6-REVIEW-01 카드에서 영상으로 바꾼 검토 요청은 현재 영상 형식의 필드만 보낸다", async () => {
+    window.history.replaceState(null, "", "/studio?room=edit&kind=card");
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "형식 전환 검토",
+      editKind: "card",
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+      editLines: ["카드에 있던 문구"],
+      cardTextPositions: ["bottom-center"],
+      img: {
+        url: "/api/images/deliver/text-card-one",
+        file: "/api/images/deliver/text-card-one",
+        imageUrls: ["/api/images/deliver/text-card-one"],
+        textEmbedded: true,
+        textSourceRecoverable: true,
+      },
+      includes: { threads: true },
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-kind-transition" };
+      if (path === "/api/queue/add") return { post: { id: "queue-kind-transition" } };
+      if (path === "/api/queue/queue-kind-transition/request-review") return { reused: false };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "영상" }));
+    fireEvent.click(await findEnabledButton("발행실로 이동"));
+    fireEvent.click(await screen.findByRole("button", { name: "검토 요청하기" }));
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
+      "/api/queue/queue-kind-transition/request-review",
+      expect.objectContaining({ tenant_id: "tenant-a" }),
+    ));
+    const queueBody = mocks.apiPost.mock.calls.find(([path]) => path === "/api/queue/add")?.[1] as Record<string, unknown>;
+    expect(queueBody).toEqual(expect.objectContaining({
+      draftId: "draft-kind-transition",
+      editLines: ["카드에 있던 문구"],
+      editFormat: expect.objectContaining({ kind: "video" }),
+    }));
+    expect(queueBody).not.toHaveProperty("imageUrl");
+    expect(queueBody).not.toHaveProperty("imageUrls");
+    expect(queueBody).not.toHaveProperty("textEmbedded");
+    expect(queueBody).not.toHaveProperty("cardTextPositions");
+  });
+
   it("FE3-REVIEW-02 거절: 초안 저장 실패 시 큐와 검토 API를 호출하지 않는다", async () => {
     restoreStudio(["threads"]);
     mocks.apiPost.mockImplementation(async (path: string) => {

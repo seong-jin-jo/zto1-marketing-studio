@@ -6,6 +6,7 @@ import type { ContentEditFormat } from "@/lib/studio/content-edit-format";
 import { PUBLISH_IMAGE_LIMIT } from "@/lib/studio/channel-image-capacity";
 
 const QUEUE_CARD_TEXT_MAX_CHARS = 500;
+const QUEUE_NON_EMBEDDED_TEXT_MAX_ITEMS = 9 * 8;
 const CARD_TEXT_POSITIONS = new Set([
   "top-left", "top-center", "top-right",
   "center-left", "center", "center-right",
@@ -25,6 +26,9 @@ function validateCardEditFields(data: Record<string, unknown>, textEmbedded: boo
     if (textEmbedded && data.editLines.length > PUBLISH_IMAGE_LIMIT) {
       throw new QueueInputError(`editLines는 최대 ${PUBLISH_IMAGE_LIMIT}장까지 저장할 수 있습니다`);
     }
+    if (!textEmbedded && data.editLines.length > QUEUE_NON_EMBEDDED_TEXT_MAX_ITEMS) {
+      throw new QueueInputError(`editLines는 최대 ${QUEUE_NON_EMBEDDED_TEXT_MAX_ITEMS}개까지 저장할 수 있습니다`);
+    }
     const longLineIndex = data.editLines.findIndex((line) => line.length > QUEUE_CARD_TEXT_MAX_CHARS);
     if (longLineIndex >= 0) {
       throw new QueueInputError(`editLines ${longLineIndex + 1}번째 문구는 최대 ${QUEUE_CARD_TEXT_MAX_CHARS}자입니다`);
@@ -38,7 +42,7 @@ function validateCardEditFields(data: Record<string, unknown>, textEmbedded: boo
   }
 
   let cardTextPositions: string[] | undefined;
-  if (hasOwn(data, "cardTextPositions") && data.cardTextPositions !== null) {
+  if (textEmbedded && hasOwn(data, "cardTextPositions") && data.cardTextPositions !== null) {
     if (!Array.isArray(data.cardTextPositions)
       || data.cardTextPositions.some((position) => typeof position !== "string" || !CARD_TEXT_POSITIONS.has(position))) {
       throw new QueueInputError("cardTextPositions에 허용되지 않은 글자 위치가 있습니다");
