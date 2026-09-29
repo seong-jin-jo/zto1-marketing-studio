@@ -232,7 +232,16 @@ interface BodyRevisionConflict {
 // 도장이 없으면 새 주제에 어제 영상이 그대로 붙는다. 2026-09-14 실측 사고.
 // aspectRatio = 이 그림이 어떤 비율로 만들어졌는지(work-media.ts isReusableVideoBaseImage).
 // 1:1 대표 이미지를 영상 바탕으로 잘못 재사용해 정사각 영상이 나오는 것을 막는다(2026-09-16).
-interface ImgResult { url: string; file: string; filename?: string; imageUrls?: string[]; topicKey?: string; aspectRatio?: string }
+interface ImgResult {
+  url: string;
+  file: string;
+  filename?: string;
+  imageUrls?: string[];
+  topicKey?: string;
+  aspectRatio?: string;
+  /** 카드 문구가 이미지 픽셀에 이미 합성돼 편집 레이어를 다시 얹으면 안 되는 산출물. */
+  textEmbedded?: boolean;
+}
 interface VidResult {
   url: string;
   file: string;
@@ -1619,7 +1628,7 @@ export default function StudioPage() {
         theme: themeFromPalette(learningInfo.palette),
         positions: cardTextPositions,
       }, { upload: browserCardUploader(authHeaders()) });
-      const next: ImgResult = { url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
+      const next: ImgResult = { url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea), textEmbedded: true };
       setImg(next);
       return next;
     } catch (error) {
@@ -2810,7 +2819,9 @@ export default function StudioPage() {
         }}
         onTextCardsCreated={(urls, cardLines) => {
           if (!urls.length) return;
-          setImg({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) });
+          // renderTextCard가 문구를 PNG 픽셀에 이미 그렸다. 이 표식을 저장·재개까지 보존해
+          // 편집실이 같은 문구 textarea를 카드 면 위에 한 벌 더 얹지 않게 한다.
+          setImg({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea), textEmbedded: true });
           setEditKind("card");
           setEditFormat((current) => {
             const base = defaultContentEditFormat("card");
@@ -2958,6 +2969,7 @@ export default function StudioPage() {
         previewReady={editKind === "video" ? Boolean(vid?.file) : editKind === "card" ? Boolean(img?.file) : false}
         previewImageUrl={img?.file || img?.url || null}
         previewImageUrls={img?.imageUrls ?? null}
+        cardTextEmbedded={img?.textEmbedded === true}
         previewVideoUrl={vid?.file || vid?.url || null}
         cardTextPositions={cardTextPositions}
         onCardTextPositionsChange={setCardTextPositions}

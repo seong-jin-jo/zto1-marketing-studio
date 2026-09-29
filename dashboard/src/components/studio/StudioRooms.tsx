@@ -1555,6 +1555,8 @@ interface EditRoomProps {
    * 장마다 그림이 다르므로 장 목록과 같은 길이의 목록으로 받는다.
    */
   previewImageUrls?: string[] | null;
+  /** 무료 글자 카드처럼 카드 문구가 이미지 픽셀에 이미 포함됐는지. */
+  cardTextEmbedded?: boolean;
   previewVideoUrl?: string | null;
   commandPanel?: ReactNode;
   initialFormat?: ContentEditFormat;
@@ -1872,6 +1874,7 @@ export function EditRoom({
   previewReady = false,
   previewImageUrl = null,
   previewImageUrls = null,
+  cardTextEmbedded = false,
   previewVideoUrl = null,
   commandPanel,
   initialFormat,
@@ -2214,6 +2217,7 @@ export function EditRoom({
                           mediaUrl={previewImageUrl || undefined}
                           mediaUrls={previewImageUrls ?? undefined}
                           mediaType="image"
+                          cardTextEmbedded={cardTextEmbedded}
                           tenantId={workspaceId}
                           onLinesChange={onLinesChange}
                           cardTextPositions={cardTextPositions}
@@ -2232,6 +2236,11 @@ export function EditRoom({
                           <b id="plain-card-script-title" className="text-body text-text">카드 문구</b>
                           <span className="text-caption text-subtle">{visibleCount}개 장</span>
                         </div>
+                        {cardTextEmbedded ? (
+                          <p className="mb-stack text-caption text-subtle" data-card-text-embedded-note>
+                            문구를 고치면 발행실로 이동할 때 카드 그림을 다시 그립니다.
+                          </p>
+                        ) : null}
                         <ol className="space-y-stack-tight">
                           {safeLines.map((line, index) => (
                             <li key={`plain-card-script-${index}`} className={`grid gap-stack-tight rounded-control border border-border bg-surface-2 p-stack md:grid-cols-[4rem_minmax(0,1fr)_auto] ${visibleLines[index] ? "" : "opacity-60"}`} data-script-line={index + 1}>

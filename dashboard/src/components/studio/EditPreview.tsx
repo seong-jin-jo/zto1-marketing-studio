@@ -103,6 +103,7 @@ export function EditPreview({
   mediaUrl,
   mediaUrls,
   mediaType = "image",
+  cardTextEmbedded = false,
   tenantId,
   onLinesChange,
   cardTextPositions = [],
@@ -138,6 +139,14 @@ export function EditPreview({
   /** mediaUrl 이 실제로 무엇인지. 영상 편집 중에도 바탕 이미지를 보여 줄 수 있으므로
    *  화면 종류가 아니라 파일 종류로 태그를 고른다. */
   mediaType?: "image" | "video";
+  /**
+   * true면 카드 문구가 PNG 픽셀에 이미 포함돼 있다.
+   *
+   * v70 §3의 카드 무대는 실제 발행 PNG와 같은 한 벌이어야 한다. 무료 글자 카드 위에
+   * textarea를 한 벌 더 얹으면 같은 문장이 두 번 보이고, 화면과 발행물도 달라진다.
+   * 일반 생성 이미지는 글자 없는 배경이므로 false를 유지해 기존 편집 레이어를 보존한다.
+   */
+  cardTextEmbedded?: boolean;
   /**
    * 만료된 배달 주소를 되살릴 때 어느 작업 공간으로 다시 서명할지.
    *
@@ -220,7 +229,7 @@ export function EditPreview({
             />
           ) : null}
 
-          {kind === "card" ? (
+          {kind === "card" && !cardTextEmbedded ? (
             <div
               className={`absolute z-10 w-4/5 rounded-control border border-border p-stack shadow-lg ${stageSize === "card-v70" ? styles.cardV70TextOverlay : styles.cardTextOverlay} ${CARD_POSITION_CLASS[cardPosition]}`}
               data-card-text-position={cardPosition}
