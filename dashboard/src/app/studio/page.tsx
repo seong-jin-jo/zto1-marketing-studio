@@ -27,7 +27,14 @@ import { RepoConnect } from "@/components/studio/RepoConnect";
 import { SchedulePanel } from "@/components/studio/SchedulePanel";
 import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
-import { browserCardUploader, cardRatioFrom, renderAndUploadCardDeck, renderPlainCardDeck } from "@/lib/studio/card-deck";
+import {
+  browserCardUploader,
+  cardRatioFrom,
+  renderAndUploadCardDeck,
+  renderAndUploadEmbeddedTextCard,
+  renderPlainCardDeckIncremental,
+  type PlainCardRenderCacheEntry,
+} from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
@@ -73,7 +80,7 @@ import { attemptRequiredDraftPersistence } from "@/lib/studio/required-draft-per
 import { PLATFORM_FIELD_CONTRACT } from "@/lib/studio/platform-publish-fields";
 import { DEFAULT_COVER_SECONDS, coverUnsupportedReason, supportsCoverTimestamp } from "@/lib/video-cover";
 import { runWithConcurrency } from "@/lib/async-pool";
-import { embeddedTextCardImage, recoverEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
+import { embeddedTextCardImage, recoverDraftEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
 
 const PUBLISH_CONCURRENCY = 3;
 const PUBLISH_REQUEST_TIMEOUT_MS = 45_000;
@@ -630,18 +637,24 @@ export default function StudioPage() {
       : [text?.shorts?.hook || "", text?.shorts?.body || "", text?.shorts?.cta || ""].filter(Boolean),
     [editLines, text],
   );
+  const liveTextCardPreviewCacheRef = useRef<PlainCardRenderCacheEntry[]>([]);
   // v70 544행 계약: 글자 내장 카드도 입력·위치 변경 즉시 같은 렌더러로 다시 그린다.
   // 매 렌더마다 1080px 캔버스를 다시 만들지 않고 실제 입력·위치·비율·테마가 바뀔 때만
   // data URL을 갱신한다. 서버 업로드는 발행실 이동 때 한 번만 한다.
   const liveTextCardPreview = useMemo(() => {
-    if (editKind !== "card" || img?.textEmbedded !== true || cardDeck) return null;
+    if (editKind !== "card" || img?.textEmbedded !== true || cardDeck?.template === "chat_bubble") {
+      liveTextCardPreviewCacheRef.current = [];
+      return null;
+    }
     try {
-      return renderPlainCardDeck({
+      const rendered = renderPlainCardDeckIncremental({
         lines: resolvedEditLines,
         ratio: cardRatioFrom(cardAspectRatio),
         theme: themeFromPalette(learningInfo.palette),
         positions: cardTextPositions,
-      });
+      }, liveTextCardPreviewCacheRef.current);
+      liveTextCardPreviewCacheRef.current = rendered.cache;
+      return rendered.urls;
     } catch {
       // 캔버스가 없는 시험·서버 렌더에서는 저장된 그림을 유지한다. 실제 브라우저의 최종
       // 업로드 경로는 recompositeCards가 별도로 실패를 알리고 발행실 이동을 막는다.
@@ -870,10 +883,9 @@ export default function StudioPage() {
       if (raw) {
         const w = JSON.parse(raw);
         setIdea(w.idea || "");
-        // 오래된 브라우저 저장본은 cardDeck 자체를 저장하지 않아 plain 카드와 말풍선 덱을
-        // 안전하게 구분할 수 없다. 여기서 추론하지 않고 명시 표식만 복원하며, 구형 저장본
-        // 복구는 cardDeck까지 함께 가진 서버 초안(loadDraft)에서만 수행한다.
-        setImg((w.img as ImgResult) || null); setVid(w.vid || null);
+        // 서버 초안과 같은 엄격한 서명으로만 구형 무료 글자 카드를 승격한다. 일반 생성
+        // 이미지는 aspectRatio 도장이 있고, 말풍선 덱은 template이 달라 여기서 제외된다.
+        setImg(recoverDraftEmbeddedTextCard<ImgResult>(w)); setVid(w.vid || null);
         if (w.includes) setIncludes(normalizeIncludes(w.includes)); setDraftId(w.draftId || null);
         setPublishReconciliations(normalizePublishReconciliations(w.publishReconciliations ?? w.publishReconciliation));
         setTitles(w.titles || {}); setHashtags(w.hashtags || {}); setTopicTags(w.topicTags || {});
@@ -1649,15 +1661,14 @@ export default function StudioPage() {
     }
     if (!lines.some((line) => line.trim())) return null;
     try {
-      const urls = await renderAndUploadCardDeck({
+      const next = await renderAndUploadEmbeddedTextCard({
         // 빈 줄을 여기서 먼저 걷어내면 글자 자리 목록과 장 번호가 한 칸씩 어긋난다.
         // 걷어내기는 카드 한 벌을 만드는 쪽이 원래 번호를 아는 채로 한다.
         lines,
         ratio: cardRatioFrom(cardAspectRatio),
         theme: themeFromPalette(learningInfo.palette),
         positions: cardTextPositions,
-      }, { upload: browserCardUploader(authHeaders()) });
-      const next: ImgResult = embeddedTextCardImage({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) });
+      }, { upload: browserCardUploader(authHeaders()) }, mediaTopicKey(idea));
       setImg(next);
       return next;
     } catch (error) {
@@ -2048,11 +2059,7 @@ export default function StudioPage() {
     if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setIdea((d.idea as string) || "");
-    setImg(recoverEmbeddedTextCard((d.img as ImgResult) || null, {
-      editKind: d.editKind ?? (d.editFormat as { kind?: unknown } | null)?.kind,
-      editLines: d.editLines,
-      cardDeck: d.cardDeck,
-    })); setVid((d.vid as VidResult) || null);
+    setImg(recoverDraftEmbeddedTextCard<ImgResult>(d)); setVid((d.vid as VidResult) || null);
     setIncludes(d.includes ? normalizeIncludes(d.includes as Record<string, boolean>) : includes); setDraftId(d.id as string);
     const savedReconciliations = normalizePublishReconciliations(d.publishReconciliations ?? d.publishReconciliation);
     setPublishReconciliations(savedReconciliations);

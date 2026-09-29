@@ -4,11 +4,20 @@ import React from "react";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditPreview } from "@/components/studio/EditPreview";
-import { renderAndUploadCardDeck, renderPlainCardDeck } from "@/lib/studio/card-deck";
+import {
+  renderAndUploadEmbeddedTextCard,
+  renderPlainCardDeck,
+  renderPlainCardDeckIncremental,
+} from "@/lib/studio/card-deck";
 import type { TextCardInput } from "@/lib/studio/text-card-image";
-import { embeddedTextCardImage, isLegacyEmbeddedTextCard, recoverEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
+import {
+  embeddedTextCardImage,
+  isLegacyEmbeddedTextCard,
+  recoverDraftEmbeddedTextCard,
+  recoverEmbeddedTextCard,
+} from "@/lib/studio/text-card-provenance";
 
 afterEach(() => cleanup());
 
@@ -18,6 +27,10 @@ describe("TEXTCARD-OVERLAY-01 무료 글자 카드 편집 무대", () => {
 
     expect(pageSource).toContain("onTextCardsCreated={(urls, cardLines) => {");
     expect(pageSource).toContain("embeddedTextCardImage({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) })");
+    expect(pageSource).toContain("renderAndUploadEmbeddedTextCard({");
+    expect(pageSource).toContain("recoverDraftEmbeddedTextCard<ImgResult>(d)");
+    expect(pageSource).toContain("recoverDraftEmbeddedTextCard<ImgResult>(w)");
+    expect(pageSource).toContain('cardDeck?.template === "chat_bubble"');
     expect(pageSource).toContain("cardTextEmbedded={img?.textEmbedded === true}");
   });
 
@@ -78,7 +91,25 @@ describe("TEXTCARD-OVERLAY-01 무료 글자 카드 편집 무대", () => {
     };
     expect(isLegacyEmbeddedTextCard({ img: multiBackground, editKind: "card", editLines: ["A", "B"], cardDeck: null })).toBe(false);
     expect(isLegacyEmbeddedTextCard({ img: { ...multiBackground, topicKey: "주제" }, editKind: "card", editLines: ["A", "B"], cardDeck: { template: "chat_bubble" } })).toBe(false);
+    expect(isLegacyEmbeddedTextCard({ img: { ...multiBackground, topicKey: "주제", aspectRatio: "4:5" }, editKind: "card", editLines: ["A", "B"], cardDeck: null })).toBe(false);
     expect(isLegacyEmbeddedTextCard({ img: { ...multiBackground, topicKey: "주제" }, editKind: "card", editLines: ["A"], cardDeck: null })).toBe(false);
+  });
+
+  it("PR95-R1-LEGACY-03 정상: 서버 초안·브라우저 저장본과 plain 덱도 같은 복구 진입점에서 표식을 얻는다", () => {
+    const legacyDraft = {
+      img: {
+        url: "/api/images/deliver/one",
+        file: "/api/images/deliver/one",
+        imageUrls: ["/api/images/deliver/one"],
+        topicKey: "구형 저장본",
+      },
+      editKind: "card",
+      editLines: ["이미 그림에 든 한 문장"],
+      cardDeck: { template: "plain" },
+    };
+    expect(recoverDraftEmbeddedTextCard(legacyDraft)).toEqual(expect.objectContaining({ textEmbedded: true }));
+    expect(recoverDraftEmbeddedTextCard({ ...legacyDraft, cardDeck: { template: "chat_bubble" } }))
+      .toEqual(expect.not.objectContaining({ textEmbedded: true }));
   });
 
   it("PR95-R1-LIVE-01 정상: 문구와 위치가 바뀌면 저장 전 미리보기 data URL도 즉시 다시 그린다", () => {
@@ -92,6 +123,24 @@ describe("TEXTCARD-OVERLAY-01 무료 글자 카드 편집 무대", () => {
     expect(afterPosition[0]).toContain("바꾼 문구|bottom");
   });
 
+  it("PR95-R1-LIVE-02 성능: 한 장만 바뀌면 그 장만 다시 그리고 캐시는 현재 덱 길이로 제한한다", () => {
+    const renderCard = vi.fn((input: TextCardInput) => `data:image/png,${input.text}|${input.position}`);
+    const first = renderPlainCardDeckIncremental({ lines: ["A", "B", "C"], ratio: "4:5" }, [], renderCard);
+    expect(renderCard).toHaveBeenCalledTimes(3);
+
+    const second = renderPlainCardDeckIncremental({ lines: ["A", "바뀐 B", "C"], ratio: "4:5" }, first.cache, renderCard);
+    expect(renderCard).toHaveBeenCalledTimes(4);
+    expect(second.urls[0]).toBe(first.urls[0]);
+    expect(second.urls[1]).not.toBe(first.urls[1]);
+    expect(second.cache).toHaveLength(3);
+
+    const unchanged = renderPlainCardDeckIncremental({ lines: ["A", "바뀐 B", "C"], ratio: "4:5" }, second.cache, renderCard);
+    expect(renderCard).toHaveBeenCalledTimes(4);
+    const shorter = renderPlainCardDeckIncremental({ lines: ["A", "바뀐 B"], ratio: "4:5" }, unchanged.cache, renderCard);
+    expect(renderCard).toHaveBeenCalledTimes(6);
+    expect(shorter.cache).toHaveLength(2);
+  });
+
   it("PR95-R1-MUTATION-01 표식 생성자를 제거하면 저장·재합성 생명주기 계약이 실패한다", () => {
     expect(embeddedTextCardImage({ url: "one", file: "one", imageUrls: ["one"] })).toEqual({
       url: "one",
@@ -101,15 +150,18 @@ describe("TEXTCARD-OVERLAY-01 무료 글자 카드 편집 무대", () => {
     });
   });
 
-  it("PR95-R1-RECOMPOSE-01 정상: 발행 재합성이 만든 URL도 표식 생성자를 거쳐 한 계약으로 저장된다", async () => {
-    const urls = await renderAndUploadCardDeck(
+  it("PR95-R1-RECOMPOSE-01 정상: 발행 재합성 호출 자체가 업로드 결과에 표식을 붙인다", async () => {
+    const img = await renderAndUploadEmbeddedTextCard(
       { lines: ["다시 그린 문장"], ratio: "4:5", positions: ["top-center"] },
       {
         render: () => "data:image/png,recomposed",
         upload: async (_dataUrl, index) => `/api/images/deliver/recomposed-${index}`,
       },
+      "주제",
     );
-    const img = embeddedTextCardImage({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: "주제" });
-    expect(img).toEqual(expect.objectContaining({ imageUrls: urls, textEmbedded: true }));
+    expect(img).toEqual(expect.objectContaining({
+      imageUrls: ["/api/images/deliver/recomposed-0"],
+      textEmbedded: true,
+    }));
   });
 });

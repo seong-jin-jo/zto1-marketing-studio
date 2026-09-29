@@ -112,15 +112,41 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     expect(saved.status).toBe(200);
     expect((H.jsonValues[0] as { img: typeof img }).img.textEmbedded).toBe(true);
 
+    const persistedPayload = H.jsonValues[0] as { img: typeof img; editKind: string; editLines: string[] };
     H.rows = [{
       id: "draft-text-card",
       idea: "표식 저장",
-      payload: { img, editKind: "card", editLines: ["한 장"] },
+      payload: persistedPayload,
       status: "draft",
       updated_at: "2026-09-30T00:00:00Z",
     }];
     const reloaded = await (await GET(new Request("http://localhost/api/studio/drafts"))).json();
     expect(reloaded.drafts[0].img.textEmbedded).toBe(true);
+    expect(reloaded.drafts[0].img).toEqual(persistedPayload.img);
+  });
+
+  it("PR95-R1-LIFECYCLE-01B 서버에서 읽은 구형 무료 글자 카드도 편집 상태로 올리기 전에 표식을 복구한다", async () => {
+    H.rows = [{
+      id: "draft-legacy-text-card",
+      idea: "구형 글자 카드",
+      payload: {
+        img: {
+          url: "/api/images/deliver/legacy",
+          file: "/api/images/deliver/legacy",
+          imageUrls: ["/api/images/deliver/legacy"],
+          topicKey: "구형 글자 카드",
+        },
+        editKind: "card",
+        editLines: ["이미 그림에 든 문장"],
+      },
+      status: "draft",
+      updated_at: "2026-09-30T00:00:00Z",
+    }];
+    const { GET } = await import("@/app/api/studio/drafts/route");
+    const reloaded = await (await GET(new Request("http://localhost/api/studio/drafts"))).json();
+    const { recoverDraftEmbeddedTextCard } = await import("@/lib/studio/text-card-provenance");
+
+    expect(recoverDraftEmbeddedTextCard(reloaded.drafts[0])).toEqual(expect.objectContaining({ textEmbedded: true }));
   });
 
   it("cardDeck 이 없는 요청은 기존처럼 통과하고, 기존 덱을 지우지 않는다(2026-09-21 코드리뷰 MAJOR 4 회귀)", async () => {

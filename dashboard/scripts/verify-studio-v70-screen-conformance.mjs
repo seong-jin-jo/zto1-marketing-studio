@@ -522,7 +522,29 @@ async function captureBakedTextCard(viewport) {
   await page.goto(`${baseUrl}/studio?room=edit&kind=card`, { waitUntil: "networkidle", timeout: 60_000 });
   const room = page.locator('[data-room="edit"][data-edit-kind="card"]');
   const stage = room.locator("[data-edit-preview-frame]");
-  await stage.locator('[data-edit-preview-media="image"]').waitFor({ timeout: 10_000 });
+  const stageImage = stage.locator('[data-edit-preview-media="image"]');
+  await stageImage.waitFor({ timeout: 10_000 });
+
+  // v70 544행 계약을 실제 브라우저에서 검증한다. 글자 내장 원본을 그대로 둔 채
+  // 별도 DOM 글자를 얹는 방식이면 src가 바뀌지 않으므로 이 두 변화가 모두 실패한다.
+  const initialPreviewSrc = await stageImage.getAttribute("src");
+  const editedLine = `즉시 반영 ${viewport.width}`;
+  const firstLineInput = room.locator('[data-line-input="0"]');
+  await firstLineInput.fill(editedLine);
+  await page.waitForFunction(
+    ({ selector, before }) => document.querySelector(selector)?.getAttribute("src") !== before,
+    { selector: '[data-room="edit"] [data-edit-preview-media="image"]', before: initialPreviewSrc },
+  );
+  const textEditedPreviewSrc = await stageImage.getAttribute("src");
+  await room.getByRole("group", { name: "카드 글자 위치" }).getByRole("button", { name: "하단" }).click();
+  await page.waitForFunction(
+    ({ selector, before }) => document.querySelector(selector)?.getAttribute("src") !== before,
+    { selector: '[data-room="edit"] [data-edit-preview-media="image"]', before: textEditedPreviewSrc },
+  );
+  const positionEditedPreviewSrc = await stageImage.getAttribute("src");
+  if (!positionEditedPreviewSrc?.startsWith("data:image/")) {
+    throw new Error(`${viewport.width} 글자 수정 뒤 미리보기가 브라우저 재합성 이미지가 아닙니다`);
+  }
 
   const duplicateControls = await room.locator('[aria-label="카드 글자 끌어 옮기기"], [data-card-face-copy]').count();
   const placeholderOverlays = await room.getByText("여기에 카드 화면이 놓입니다", { exact: true }).count();
@@ -534,8 +556,9 @@ async function captureBakedTextCard(viewport) {
   }
   await room.locator("[data-card-text-embedded-note]").waitFor();
   const inputValues = await room.locator("[data-line-input]").evaluateAll((nodes) => nodes.map((node) => node.value));
-  if (JSON.stringify(inputValues) !== JSON.stringify(bakedTextLines)) {
-    throw new Error(`${viewport.width} 카드 문구 편집 목록이 내장 글자 원문을 보존하지 않습니다: ${JSON.stringify(inputValues)}`);
+  const expectedEditedLines = [editedLine, ...bakedTextLines.slice(1)];
+  if (JSON.stringify(inputValues) !== JSON.stringify(expectedEditedLines)) {
+    throw new Error(`${viewport.width} 카드 문구 편집 목록이 수정 원문을 보존하지 않습니다: ${JSON.stringify(inputValues)}`);
   }
   const geometry = await stage.evaluate((frame) => {
     const stageRect = frame.getBoundingClientRect();
@@ -557,7 +580,19 @@ async function captureBakedTextCard(viewport) {
   await page.screenshot({ path: screenshot });
   const stageScreenshot = path.join(outputDir, `edit-text-card-stage-${viewport.width}x${viewport.height}.png`);
   await stage.screenshot({ path: stageScreenshot });
-  observations.push({ screen: "edit-text-card", ...viewport, duplicateControls, placeholderOverlays, inputCount: inputValues.length, geometry, overflow });
+  observations.push({
+    screen: "edit-text-card",
+    ...viewport,
+    duplicateControls,
+    placeholderOverlays,
+    inputCount: inputValues.length,
+    editedLine,
+    textPreviewChanged: initialPreviewSrc !== textEditedPreviewSrc,
+    positionPreviewChanged: textEditedPreviewSrc !== positionEditedPreviewSrc,
+    previewIsBrowserRenderedDataUrl: positionEditedPreviewSrc?.startsWith("data:image/") === true,
+    geometry,
+    overflow,
+  });
   return { screenshot, stageScreenshot };
 }
 
