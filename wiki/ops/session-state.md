@@ -1,3 +1,9 @@
+## 2026-09-29 22:00 KST 로컬 완료, 원격 push 정책 차단
+
+- 로컬 HEAD: `b583721f`까지 세 커밋 완료, 작업 트리 clean. 관련 Vitest 5파일 45건, TypeScript, UI 토큰 감사, Chromium 1440·390 화면 검증 PASS.
+- 원격 상태: `origin/fix/editroom-textcard-overlay` 없음, PR 없음. `git push -u origin fix/editroom-textcard-overlay`는 실행 환경이 승인 필요 작업으로 판정했으나 현재 승인 정책이 `never`라 명령 실행 전에 차단됐다. 제품 hook이나 Git 오류가 아니다.
+- 다음 실행: 원격 쓰기 권한이 허용된 세션에서 해당 branch를 일반 push한 뒤, 두 결함·v70 §3 판단·`docs/qa/osmu-textcard-overlay-{1440x900,390x844}.png`를 본문에 넣어 PR을 만든다. 머지·배포는 하지 않는다.
+
 ## 2026-09-29 21:41 KST 운영 글자 카드 중복·자리표시 누출 수정 완료, PR 준비
 
 - 수정: 글자 내장 PNG에 `textEmbedded`를 저장·복원해 카드 면의 이동 막대·textarea·중앙 자리표시를 제거했다. 일반 배경 이미지의 편집 글자 레이어는 유지한다. 생성 프롬프트와 결과 검증은 작성 지시형 괄호 자리표시를 차단한다.
