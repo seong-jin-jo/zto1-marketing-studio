@@ -361,3 +361,11 @@ STAMP: 2026-09-25 01:45 KST | model: gpt-codex/GPT-5 | agent: code-builder | ski
 | 강제 종료 | TERM 무시 fake docker, 제한 1초·유예 1초 | 5초 안에 비정상 종료 PASS |
 
 운영 GitHub Actions 실행과 운영 컨테이너의 실제 `account status` 응답은 배포하지 않았으므로 미검증이다.
+## 2026-09-30 PR #95 r7 검토 대기열 단일 본문·형식별 계약
+
+STAMP: 2026-09-30 09:13 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skills: qa, review | source: PR #95 7차 리뷰, `card-deck-contract.ts`, v70 글·영상 스크롤 계약
+
+- 실패 재현: `npx vitest run tests/studio/text-card-queue-lifecycle.integration.test.ts tests/publish/studio-publish-ui.test.tsx` → 2파일 87건 중 9건 실패. 형식별 상한, 기존 대기열 갱신, 말풍선 최신 투영 결함을 고정했다.
+- 표적 회귀: `npx vitest run tests/studio/text-card-queue-lifecycle.integration.test.ts tests/publish/studio-publish-ui.test.tsx tests/studio/card-deck-contract.test.ts tests/studio/card-deck-ops.test.ts tests/studio/text-card-baked-overlay.regression-1.test.tsx` → 5파일 162건 PASS.
+- 타입 검사: `npm run typecheck:ci` → PASS, 종료 코드 0.
+- 미실행: 전체 Vitest는 원격 CI 판정 지시에 따라 실행하지 않았다. UI 배치·스타일을 바꾸지 않아 개발 서버 화면 및 픽셀 비교는 이번 변경의 검증 대상이 아니다.
