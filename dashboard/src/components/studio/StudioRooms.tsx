@@ -98,6 +98,15 @@ interface PersistedCreateDraft {
   candidates: StudioGenerationCandidate[];
   selected: "A" | "B" | "C" | null;
   quickStructure: CreateStructureChoice | null;
+  /**
+   * 구조 초안(candidates)을 만들 때 실제로 썼던 주제. 2026-10-01 리뷰 BLOCK 재발견:
+   * 이 값을 저장해 두지 않고 복원 시점의 `topic` prop 을 대신 기억하면, 부모(page.tsx)의
+   * 주제 복원이 이 컴포넌트보다 늦게 끝나는 경로(서버 재동기화·발행 복귀 등)에서
+   * "topic" prop 이 아직 옛 값(또는 빈 문자열)인 채로 기억돼, 늦게 도착하는 진짜 주제와
+   * 비교돼 막 복원한 candidates 를 지워버렸다. 만들 때의 주제 원본을 같이 저장해
+   * 복원 시점의 불안정한 prop 값에 의존하지 않는다.
+   */
+  topic?: string;
 }
 
 function createDraftStorageKey(workspaceId: string): string {
@@ -121,6 +130,24 @@ function isStudioGenerationCandidate(value: unknown): value is StudioGenerationC
     && Boolean(candidate.format)
     && Array.isArray(candidate.format?.outline)
     && candidate.format.outline.every((line) => typeof line === "string");
+}
+
+/**
+ * 2026-10-01 리뷰 BLOCK 재발견: 서버 생성 시점(generation/llm.ts)의 자리표시 차단은
+ * 글자 카드로 넘어가기 전 구조 초안(A/B/C) 화면에서는 이미 잡고 있지만, 브라우저에
+ * 저장됐다 새로고침으로 되살아나는 candidates/quickStructure 는 그 검사를 거치지 않고
+ * 그대로 화면에 다시 그려졌다(누출원). 복원할 때도 같은 판정(filterInstructionPlaceholderLines)
+ * 을 걸어 A/B/C 화면에 자리표시 문장이 다시 보이지 않게 한다.
+ */
+function sanitizeRestoredCandidate(candidate: StudioGenerationCandidate): StudioGenerationCandidate {
+  return {
+    ...candidate,
+    format: { ...candidate.format, outline: filterInstructionPlaceholderLines(candidate.format.outline) },
+  };
+}
+function sanitizeRestoredStructure(structure: CreateStructureChoice | null): CreateStructureChoice | null {
+  if (!structure) return structure;
+  return { ...structure, outline: filterInstructionPlaceholderLines(structure.outline) };
 }
 
 function readCreateDraft(workspaceId: string): PersistedCreateDraft | null {
@@ -163,6 +190,7 @@ function readCreateDraft(workspaceId: string): PersistedCreateDraft | null {
       candidates: value.candidates as StudioGenerationCandidate[],
       selected: value.selected ?? null,
       quickStructure: quickStructure ?? null,
+      topic: typeof value.topic === "string" ? value.topic : undefined,
     };
   } catch {
     localStorage.removeItem(createDraftStorageKey(workspaceId));
@@ -570,14 +598,27 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
 
   // 주제를 바꾸면 옛 주제로 만든 구조 초안(A/B/C)과 그 중 고른 quickStructure 는 더 이상
   // 맞지 않는다. 남겨 두면 "초안 만들기" 가 새 주제를 무시하고 옛 구조 그대로 보낸다.
+  //
+  // 2026-10-01 리뷰 BLOCK 재발견: 이 판정은 복원이 끝나기 전에도 돌았다. 부모(page.tsx)의
+  // 주제 복원(`idea`)은 이 컴포넌트의 자체 새로고침 복원(구조 초안 candidates, 위
+  // hydratedCreateWorkspaceId 효과)과 완전히 다른 타이밍에 커밋될 수 있다 — 특히 서버
+  // 초안 재동기화·발행 복귀 경로(loadDraft 등)가 늦게 idea 를 고쳐 쓰면, 막 복원해 둔
+  // candidates 를 "주제가 바뀌었다"고 오판해 지워버린다. 이 컴포넌트가 자기 복원을 끝내기
+  // 전(`hydratedCreateWorkspaceId !== workspaceId`)에는 판정을 미룬다. 비교도 trim() 한
+  // 값으로 한다 — 저장 왕복에서 붙는 앞뒤 공백 차이만으로 정상 복원이 지워지면 안 된다.
   useEffect(() => {
+    if (hydratedCreateWorkspaceId !== workspaceId) return;
     if (candidatesTopicRef.current === null) return;
-    if (candidatesTopicRef.current === topic) return;
+    // 부모의 주제 복원이 아직 도착하지 않은 빈 문자열을 "주제를 지웠다" 로 오판하지
+    // 않는다 — 늦게 도착할 진짜 주제를 기다린다. 사용자가 실제로 주제를 지운
+    // 경우는 이 컴포넌트가 아니라 "새로 시작"(resetToken)이 후보를 지운다.
+    if (!topic.trim()) return;
+    if (candidatesTopicRef.current.trim() === topic.trim()) return;
     setCandidates([]);
     setSelected(null);
     setQuickStructure(null);
     candidatesTopicRef.current = null;
-  }, [topic]);
+  }, [topic, hydratedCreateWorkspaceId, workspaceId]);
 
   const facts = useMemo(() => guide.trim() ? [guide.trim()] : [], [guide]);
   /**
@@ -673,11 +714,16 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       setAudience(saved.audience || learned.audience || "");
       setRightsConfirmed(saved.rightsConfirmed || Boolean(learned.rights));
       setTopicOpen(saved.topicOpen);
-      setCandidates(saved.candidates);
+      setCandidates(saved.candidates.map(sanitizeRestoredCandidate));
       setSelected(saved.selected);
-      setQuickStructure(saved.quickStructure);
-      // 저장된 주제는 함께 남기지 않으므로, 복원 시점의 현재 주제를 기준으로 삼는다.
-      candidatesTopicRef.current = saved.candidates.length ? topic : null;
+      setQuickStructure(sanitizeRestoredStructure(saved.quickStructure));
+      // 2026-10-01 리뷰 BLOCK 재발견: 복원 시점의 `topic` prop 은 부모(page.tsx)가
+      // 아직 주제 복원을 끝내지 못했을 수 있어(늦은 주제 복원 경로) 신뢰할 수 없다.
+      // 저장해 둔 실제 주제(saved.topic)가 있으면 그걸 쓰고, 옛 저장본(주제를 같이
+      // 저장하기 전에 쓰인 값)만 현재 topic prop 으로 보완한다.
+      candidatesTopicRef.current = saved.candidates.length
+        ? (saved.topic && saved.topic.trim() ? saved.topic.trim() : topic.trim() || null)
+        : null;
       onPrimaryKindChange?.(saved.primaryKind);
       onAlsoKindsChange?.(saved.alsoKinds);
       if (saved.primaryKind) onContentBranchChange?.(kindToBranch(saved.primaryKind));
@@ -715,6 +761,9 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       candidates,
       selected,
       quickStructure,
+      // candidates 를 만들 때 실제로 썼던 주제. 복원 시점의 불안정한 topic prop 대신
+      // 이 값을 기준으로 삼는다(위 PersistedCreateDraft.topic 주석 참고).
+      topic: candidatesTopicRef.current ?? undefined,
     };
     try {
       localStorage.setItem(createDraftStorageKey(workspaceId), JSON.stringify(value));
@@ -797,7 +846,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       }, token);
       setCandidates(next);
       setSelected(null);
-      candidatesTopicRef.current = topic;
+      candidatesTopicRef.current = topic.trim();
     } catch (cause) {
       setError(generationErrorMessage(cause));
     } finally {

@@ -106,6 +106,7 @@ const VIDEO_PUBLISH_NAME: Record<string, string> = { shorts: "youtube", reels: "
 const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reels: "instagram", tiktok: "tiktok" };
 
 import { draftStatusLabel } from "@/lib/studio/draft-status-label";
+import { connectedOnlyTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
 
 const ROOM_LABEL: Record<StudioRoom, string> = { create: "생성실", edit: "편집실", publish: "발행실" };
 
@@ -2551,13 +2552,22 @@ export default function StudioPage() {
     (platform) => validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0],
   ).blocked;
   const bulkTargets = ALL.filter((platform) => PUBLISH_SUPPORTED.has(platform)) as BulkPlatform[];
-  // 2026-10-01 실측(회장 지적): 사이드바(channel-config → getChannelConnectionStates)와
-  // publishTargets 는 connectionState === "connected" 인 것만 연결됨으로 본다. 도우미
-  // 문구만 계정 행이 있으면(재연결 필요 포함) 연결됨으로 세다가 "연결됨" 표시와 "발행
-  // 불가" 가 동시에 뜨는 모순이 났다(PR#96 결함3). usableAccounts + publishGuard 로
-  // 통일한다(main 이 이미 이 기준을 쓰고 있었다 — 중복 재정의하지 않는다).
-  const connectedTargets = bulkTargets.filter((platform) =>
-    usableAccounts(platform).length > 0 && !publishGuard(platform).disabledReason);
+  // 2026-10-01 실측(회장 지적, PR#96 결함3 리뷰 BLOCK): 사이드바(channel-config →
+  // getChannelConnectionStates)와 publishTargets 는 connectionState === "connected" 인
+  // 것만 연결됨으로 본다. "연결됨"은 계정이 이어져 있는가 하나만 묻는 질문이다.
+  // 그런데 여기 connectedTargets 는 한때 publishGuard(영상 없음·본문 미검증 등 "지금
+  // 발행 가능한가")까지 섞어 판정했다. 그래서 X 계정을 연결해 놓고 영상만 아직 안
+  // 올렸을 뿐인데도 "아직 연결 안 된 곳: X" 로 뜨는 거짓말이 났다 — 연결과 "지금 당장
+  // 올릴 수 있는가"는 서로 다른 질문이라 하나로 합치면 안 된다. "지금 발행 불가"
+  // 사유는 이미 채널별 카드(PublishHeaderControls/publishGuard, 약 3270줄)가 따로
+  // 보여준다. 여기 connectedTargets 는 usableAccounts 단독으로만 판정한다.
+  const channelReadiness = new Map<BulkPlatform, ChannelReadiness>(
+    bulkTargets.map((platform) => [platform, {
+      connected: usableAccounts(platform).length > 0,
+      disabledReason: publishGuard(platform).disabledReason,
+    }]),
+  );
+  const connectedTargets = connectedOnlyTargets(channelReadiness);
   const previewTargets = ALL as BulkPlatform[];
 
   function selectAllChannels() {
