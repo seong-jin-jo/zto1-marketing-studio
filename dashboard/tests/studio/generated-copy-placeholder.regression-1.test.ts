@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { containsInstructionPlaceholder } from "@/lib/studio/generated-copy";
+import { containsInstructionPlaceholder, filterInstructionPlaceholderLines } from "@/lib/studio/generated-copy";
 import { parseCandidateOutput, StudioLlmExecutionError } from "@/lib/studio/generation/llm";
 
 const H = vi.hoisted(() => ({ prompt: "", output: "" }));
@@ -155,6 +155,28 @@ describe("GENERATED-PLACEHOLDER-01 생성 문구 자리표시 차단", () => {
     ["(상품명 입력)", true],
   ])("PR95-R12-NAMEFIELD-BLOCK-01 표: %s 차단 여부는 %s", (value, expected) => {
     expect(containsInstructionPlaceholder(value)).toBe(expected);
+  });
+
+  it.each([
+    // 2026-10-01 PR#96 반려 재현: 생성실 "주제로 바로 초안 만들기" 실측에서 나온 문장
+    // 그대로. 구조 초안→글자 카드 경로에서 이 문장이 필터를 통과해 카드 3장까지
+    // 들어갔다(PR#96 결함2). 같은 판정 함수 하나로 화면 전부를 걸러야 한다.
+    ["저희는 (브랜드가 실제로 제공하는 서비스 한 문장으로 대체)을 도와드리는 곳입니다.", true],
+    ["무료체험(7일)", false],
+  ])("PR96-R1-STRUCTUREDRAFT-01 표: %s 차단 여부는 %s", (value, expected) => {
+    expect(containsInstructionPlaceholder(value)).toBe(expected);
+  });
+
+  it("PR96-R1-STRUCTUREDRAFT-02 정상: 구조 초안 줄 필터는 자리표시가 섞인 줄만 제거하고 나머지는 남긴다", () => {
+    const lines = [
+      "저희는 (브랜드가 실제로 제공하는 서비스 한 문장으로 대체)을 도와드리는 곳입니다.",
+      "가격(부가세 포함) 안내를 확인하세요.",
+      "무료체험(7일) 신청은 지금 바로.",
+    ];
+    expect(filterInstructionPlaceholderLines(lines)).toEqual([
+      "가격(부가세 포함) 안내를 확인하세요.",
+      "무료체험(7일) 신청은 지금 바로.",
+    ]);
   });
 
   it("GENERATED-PLACEHOLDER-01A 정상: 괄호 속 작성 지시는 자리표시로 판정하고 일반 보충설명은 허용한다", () => {

@@ -29,6 +29,7 @@ import { IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
 import { themeFromPalette, type CardRatio } from "@/lib/studio/text-card-image";
 import { browserCardUploader, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
 import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
+import { filterInstructionPlaceholderLines } from "@/lib/studio/generated-copy";
 import {
   CARD_ASPECT_RATIOS,
   EDIT_BACKGROUNDS,
@@ -545,6 +546,11 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     }
     return undefined;
   }, [quickDraftLoading, quickDraft, quickDraftError]);
+  // 구조 초안(candidates/quickStructure)은 만들어질 때의 주제를 기억해 둔다. 새 주제를
+  // 입력했는데 이 값과 달라지면, 화면에 남은 A/B/C 는 옛 주제 그대로라 "초안 만들기" 를
+  // 눌러도 새 주제가 반영되지 않는다(2026-10-01 실측). 주제가 바뀌면 옛 구조를 버려
+  // 다시 고르게 한다.
+  const candidatesTopicRef = useRef<string | null>(null);
   // 부모가 "새로 시작" 을 확정하면 이 방도 처음으로 돌아간다. 부모 상태만 비우고 여기를
   // 두면 화면에는 지운 적 없는 후보가 남아 사용자는 무엇이 버려졌는지 알 수 없다.
   const firstReset = useRef(true);
@@ -559,8 +565,19 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     setPrimaryCardDeckQuote(null); setPrimaryCardDeckQuoteError(null); setPrimaryCardDeckBatch(null);
     primaryCardDeckIdemKeyRef.current = null;
     try { localStorage.removeItem(`${CREATE_DRAFT_STORAGE_PREFIX}:${workspaceId}`); } catch { /* 저장이 막혀 있어도 화면은 이미 비웠다 */ }
+    candidatesTopicRef.current = null;
   }, [resetToken, workspaceId]);
 
+  // 주제를 바꾸면 옛 주제로 만든 구조 초안(A/B/C)과 그 중 고른 quickStructure 는 더 이상
+  // 맞지 않는다. 남겨 두면 "초안 만들기" 가 새 주제를 무시하고 옛 구조 그대로 보낸다.
+  useEffect(() => {
+    if (candidatesTopicRef.current === null) return;
+    if (candidatesTopicRef.current === topic) return;
+    setCandidates([]);
+    setSelected(null);
+    setQuickStructure(null);
+    candidatesTopicRef.current = null;
+  }, [topic]);
 
   const facts = useMemo(() => guide.trim() ? [guide.trim()] : [], [guide]);
   /**
@@ -659,6 +676,8 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       setCandidates(saved.candidates);
       setSelected(saved.selected);
       setQuickStructure(saved.quickStructure);
+      // 저장된 주제는 함께 남기지 않으므로, 복원 시점의 현재 주제를 기준으로 삼는다.
+      candidatesTopicRef.current = saved.candidates.length ? topic : null;
       onPrimaryKindChange?.(saved.primaryKind);
       onAlsoKindsChange?.(saved.alsoKinds);
       if (saved.primaryKind) onContentBranchChange?.(kindToBranch(saved.primaryKind));
@@ -778,6 +797,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       }, token);
       setCandidates(next);
       setSelected(null);
+      candidatesTopicRef.current = topic;
     } catch (cause) {
       setError(generationErrorMessage(cause));
     } finally {
@@ -982,7 +1002,8 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       // 비율을 여기서 "4:5" 로 박아 두었더니 화면에서 무엇을 고르든 픽셀이 늘 1080×1350
       // 하나였다(2026-09-14 실측). 고른 값을 그대로 쓴다.
       const theme = themeFromPalette(learning.palette);
-      const lines = source.filter((line) => line.trim().length > 0);
+      const lines = filterInstructionPlaceholderLines(source.filter((line) => line.trim().length > 0));
+      if (!lines.length) { setTextCardError("구조 초안에 실제 내용이 없어 글자 카드를 만들지 못했습니다. 구조 초안을 다시 만들어 주세요."); return; }
       const persisted = await renderAndUploadCardDeck(
         { lines, ratio: cardRatio, theme },
         { upload: browserCardUploader(authHeaders()) },

@@ -110,3 +110,13 @@ export function findInstructionPlaceholder(value: unknown): string | null {
 export function containsInstructionPlaceholder(value: unknown): boolean {
   return findInstructionPlaceholder(value) !== null;
 }
+
+/**
+ * 구조 초안 줄 단위로 자리표시를 걸러낸다. 글자 카드·구조 초안 화면이 각자 다른 필터를
+ * 만들면 규칙이 두 곳으로 갈라진다(2026-10-01 PR#96 반려) — 이 파일의 판정 하나만 쓴다.
+ * 자리표시가 섞인 줄은 버리고, 남은 줄만 돌려준다(오탐 우려가 있는 줄 전체가 아니라
+ * 자리표시가 실제로 걸린 줄만 제거 — 정밀도 우선 원칙).
+ */
+export function filterInstructionPlaceholderLines(lines: readonly string[]): string[] {
+  return lines.filter((line) => !containsInstructionPlaceholder(line));
+}
