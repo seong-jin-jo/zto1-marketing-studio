@@ -24,11 +24,29 @@ export interface ChannelReadiness {
 /**
  * 연결된 채널만 고른다. disabledReason 은 연결 판정에 영향을 주지 않는다 — 그건 채널별
  * 카드가 따로 말한다.
+ *
+ * "아직 연결 안 된 곳" 문구에만 쓴다. "전부 고르기"·선택 카운트·비활성 비교에 이 함수를
+ * 쓰면 안 된다 — 2026-10-01 재리뷰 BLOCK: connectedOnlyTargets 를 "전부 고르기"에도
+ * 썼더니 연결은 됐지만 지금 발행 불가(영상 없음·본문 미검증)한 채널까지 고를 수 있다고
+ * 버튼이 우겼다("연결된 3곳을 모두 골랐습니다"라면서 실제 선택은 1곳). 그 자리는
+ * publishableTargets 를 써야 한다.
  */
 export function connectedOnlyTargets<T extends string>(
   readiness: ReadonlyMap<T, ChannelReadiness>,
 ): T[] {
   return [...readiness.entries()]
     .filter(([, entry]) => entry.connected)
+    .map(([platform]) => platform);
+}
+
+/**
+ * 연결됐고 disabledReason 도 없는, 지금 당장 실제로 고를 수 있는 채널만 고른다.
+ * "전부 고르기" 버튼·선택 카운트 알림·비활성 비교는 이 함수를 써야 한다.
+ */
+export function publishableTargets<T extends string>(
+  readiness: ReadonlyMap<T, ChannelReadiness>,
+): T[] {
+  return [...readiness.entries()]
+    .filter(([, entry]) => entry.connected && !entry.disabledReason)
     .map(([platform]) => platform);
 }

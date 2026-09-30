@@ -106,7 +106,7 @@ const VIDEO_PUBLISH_NAME: Record<string, string> = { shorts: "youtube", reels: "
 const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reels: "instagram", tiktok: "tiktok" };
 
 import { draftStatusLabel } from "@/lib/studio/draft-status-label";
-import { connectedOnlyTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
+import { connectedOnlyTargets, publishableTargets as computePublishableTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
 
 const ROOM_LABEL: Record<StudioRoom, string> = { create: "생성실", edit: "편집실", publish: "발행실" };
 
@@ -2568,12 +2568,19 @@ export default function StudioPage() {
     }]),
   );
   const connectedTargets = connectedOnlyTargets(channelReadiness);
+  // 2026-10-01 재리뷰 BLOCK: connectedTargets(순수 연결 여부)를 "전부 고르기"·선택
+  // 카운트·비활성 비교에도 그대로 썼더니, 연결은 됐지만 지금 발행 불가(영상 없음·본문
+  // 미검증)한 채널까지 "고를 수 있다"고 버튼이 우기는 새 거짓말이 났다("연결된 3곳을
+  // 모두 골랐습니다"라며 실제로는 1곳만 선택). "전부 고르기"가 실제로 고르는 대상은
+  // 언제나 publishableTargets(연결 + 지금 발행 가능) 여야 한다. connectedTargets는
+  // "아직 연결 안 된 곳" 문구(순수 연결 여부)에만 남긴다.
+  const publishableTargets = computePublishableTargets(channelReadiness);
   const previewTargets = ALL as BulkPlatform[];
 
   function selectAllChannels() {
-    if (!connectedTargets.length) { showToast("연결된 채널이 아직 없습니다. 먼저 계정을 연결해 주세요", "error"); return; }
-    setIncludes((current) => ({ ...current, ...Object.fromEntries(connectedTargets.map((platform) => [platform, true])) }));
-    showToast(`연결된 ${connectedTargets.length}곳을 모두 골랐습니다`, "success");
+    if (!publishableTargets.length) { showToast("지금 바로 발행할 수 있는 채널이 아직 없습니다. 연결 상태와 발행 조건을 확인해 주세요", "error"); return; }
+    setIncludes((current) => ({ ...current, ...Object.fromEntries(publishableTargets.map((platform) => [platform, true])) }));
+    showToast(`발행 가능한 ${publishableTargets.length}곳을 모두 골랐습니다`, "success");
   }
   function clearAllChannels() {
     setIncludes((current) => ({ ...current, ...Object.fromEntries(bulkTargets.map((platform) => [platform, false])) }));
@@ -3164,9 +3171,9 @@ export default function StudioPage() {
               size="sm"
               data-testid="publish-select-all"
               onClick={selectAllChannels}
-              disabled={!accountsLoaded || connectedTargets.length === 0 || publishTargets.length === connectedTargets.length}
+              disabled={!accountsLoaded || publishableTargets.length === 0 || publishTargets.length === publishableTargets.length}
             >
-              연결된 {connectedTargets.length}곳 전부 고르기
+              발행 가능한 {publishableTargets.length}곳 전부 고르기
             </Button>
             <Button
               size="sm"
@@ -3386,7 +3393,7 @@ export default function StudioPage() {
                 </div>
               ) : null}
               <Stack direction="horizontal" gap={8} wrap>
-                <Button size="sm" data-testid="publish-bulk-select-all" onClick={selectAllChannels} disabled={!accountsLoaded || connectedTargets.length === 0}>연결된 곳 전부 고르기</Button>
+                <Button size="sm" data-testid="publish-bulk-select-all" onClick={selectAllChannels} disabled={!accountsLoaded || publishableTargets.length === 0}>발행 가능한 곳 전부 고르기</Button>
                 <Button size="sm" data-testid="publish-bulk-clear" onClick={clearAllChannels} disabled={selectedTargets.length === 0}>전부 해제</Button>
               </Stack>
               <Stack direction="horizontal" gap={8} wrap>
