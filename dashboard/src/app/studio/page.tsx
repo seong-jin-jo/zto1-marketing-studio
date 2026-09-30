@@ -2121,6 +2121,15 @@ export default function StudioPage() {
       (d.text as TextVariants) || null,
       { replaceDocument: true, serverRevision: Number.isSafeInteger(d.bodyRevision) ? d.bodyRevision as number : 0 },
     );
+    // 2026-10-01 재리뷰 BLOCK: 이 불러오기가 quickDraftTopicRef 를 안 맞춰, 주제 A로
+    // 빠른 초안을 만든 뒤 주제 B의 저장 초안을 불러오면 아래 "주제 변경 시 무효화" 효과가
+    // 방금 불러온 본문을 주제가 바뀐 것으로 오판해 지웠다. 불러온 초안의 실제 주제로
+    // 기준값을 맞춘다(같은 헬퍼 재사용 — 재창조 금지).
+    quickDraftTopicRef.current = resolveRestoredQuickDraftTopic({
+      hasText: Boolean(d.text),
+      savedTopic: null,
+      restoredIdea: String(d.idea || ""),
+    });
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
     setCardDeck((d.cardDeck as CardDeck) || null);
     setVideoEdit((d.videoEdit as VideoEdit) || null);
@@ -2434,6 +2443,13 @@ export default function StudioPage() {
         returnedText,
         { replaceDocument: true, serverRevision: Number.isSafeInteger(linkedDraft?.bodyRevision) ? linkedDraft?.bodyRevision as number : 0 },
       );
+      // 2026-10-01 재리뷰 BLOCK: loadDraft 와 같은 이유. 이 경로도 quickDraftTopicRef 를
+      // 불러온 작업물의 실제 주제로 맞춘다.
+      quickDraftTopicRef.current = resolveRestoredQuickDraftTopic({
+        hasText: Boolean(returnedText),
+        savedTopic: null,
+        restoredIdea: String((linkedDraft?.idea as string) || work.idea || ""),
+      });
       setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
       setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
       setVideoEdit((linkedDraft?.videoEdit as VideoEdit) || null);

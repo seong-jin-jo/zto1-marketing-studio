@@ -1,4 +1,4 @@
-import { containsInstructionPlaceholder, filterInstructionPlaceholderLines } from "@/lib/studio/generated-copy";
+import { filterInstructionPlaceholderLines } from "@/lib/studio/generated-copy";
 
 /**
  * 생성실 "고른 형식의 생성 후보"(영상 대본 후보·글 후보) 패널의 주제 추적 + 자리표시 제거.
@@ -24,29 +24,38 @@ export interface TextVariantsLike {
   image_prompt?: string;
 }
 
-/** 자리표시가 든 낱값만 지운다(전체 객체를 버리지 않는다 — 정밀도 우선 원칙). */
+/**
+ * 자리표시가 든 줄만 지운다(필드 전체를 버리지 않는다 — 정밀도 우선 원칙, 2026-10-01
+ * 재리뷰 BLOCK: 영상 대본처럼 여러 줄인 필드에서 한 줄만 자리표시여도 전문이 사라졌다.
+ * 기존 filterInstructionPlaceholderLines 를 줄 단위로 적용해 나머지 줄은 보존한다.
+ */
+function cleanMultiline(value?: string): string | undefined {
+  if (!value) return value;
+  const kept = filterInstructionPlaceholderLines(value.split("\n")).join("\n");
+  return kept.trim().length > 0 ? kept : undefined;
+}
+
 export function sanitizeRestoredQuickDraftText<T extends TextVariantsLike | null | undefined>(text: T): T {
   if (!text) return text;
-  const clean = (value?: string): string | undefined => (value && containsInstructionPlaceholder(value) ? undefined : value);
   return {
     ...text,
-    threads: clean(text.threads),
-    facebook: clean(text.facebook),
-    x: clean(text.x),
-    image_prompt: clean(text.image_prompt),
+    threads: cleanMultiline(text.threads),
+    facebook: cleanMultiline(text.facebook),
+    x: cleanMultiline(text.x),
+    image_prompt: cleanMultiline(text.image_prompt),
     instagram: text.instagram
       ? {
           ...text.instagram,
-          caption: clean(text.instagram.caption),
+          caption: cleanMultiline(text.instagram.caption),
           slides: text.instagram.slides ? filterInstructionPlaceholderLines(text.instagram.slides) : text.instagram.slides,
         }
       : text.instagram,
     shorts: text.shorts
       ? {
           ...text.shorts,
-          hook: clean(text.shorts.hook),
-          body: clean(text.shorts.body),
-          cta: clean(text.shorts.cta),
+          hook: cleanMultiline(text.shorts.hook),
+          body: cleanMultiline(text.shorts.body),
+          cta: cleanMultiline(text.shorts.cta),
         }
       : text.shorts,
   } as T;

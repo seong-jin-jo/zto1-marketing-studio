@@ -41,6 +41,18 @@ describe("생성 후보 패널 자리표시 제거", () => {
     expect(cleaned?.instagram?.caption).toBe("정상 캡션");
   });
 
+  it("여러 줄 필드(영상 대본)에서 한 줄만 자리표시면 나머지 줄은 살아남는다(2026-10-01 재리뷰 BLOCK: 필드 전체를 지우면 안 된다)", () => {
+    const text = {
+      shorts: {
+        hook: "정상 훅",
+        body: "1. 도입부 정상 문장\n저희는 (브랜드가 실제로 제공하는 서비스 한 문장으로 대체)을 도와드리는 곳입니다.\n3. 마무리 정상 문장",
+        cta: "정상 CTA",
+      },
+    };
+    const cleaned = sanitizeRestoredQuickDraftText(text);
+    expect(cleaned?.shorts?.body).toBe("1. 도입부 정상 문장\n3. 마무리 정상 문장");
+  });
+
   it("null/undefined 는 그대로 통과한다", () => {
     expect(sanitizeRestoredQuickDraftText(null)).toBeNull();
     expect(sanitizeRestoredQuickDraftText(undefined)).toBeUndefined();
