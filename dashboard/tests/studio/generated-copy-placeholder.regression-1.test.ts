@@ -78,6 +78,58 @@ describe("GENERATED-PLACEHOLDER-01 생성 문구 자리표시 차단", () => {
     expect(containsInstructionPlaceholder(value)).toBe(expected);
   });
 
+  it.each([
+    // 11차 리뷰 MAJOR 재현: 문장 중간·줄바꿈 뒤 자리표시(이전 "뒤에 값이 이어지면 통과" 규칙이
+    // 전부 놓쳤던 사례). 리뷰 원문 표 10행 그대로, 기대값만 올바르게 교정.
+    ["(브랜드가 실제로 제공하는 서비스 한 문장으로 대체) 지금 바로 확인하세요", true],
+    ["(브랜드명)의 새 서비스를 소개합니다", true],
+    ["{{서비스명}}으로 시작하세요", true],
+    ["안녕하세요, [브랜드명]입니다.", true],
+    ["첫 줄 (서비스명 입력)\n둘째 줄 본문", true],
+    ["(서비스 이름을 직접 입력하세요) 를 통해", true],
+    ["(브랜드명을 넣으세요) 오늘 시작", true],
+    ["[INSERT brand description] today", true],
+    ["자세한 내용은 (링크) 참고", true],
+    ["(your brand description here)", true],
+  ])("PR95-R11-MIDSENTENCE-01 표: %s 차단 여부는 %s", (value, expected) => {
+    expect(containsInstructionPlaceholder(value)).toBe(expected);
+  });
+
+  it.each([
+    // 11차 리뷰: 필드명+동사가 명령형 어미 없이 맨 동사형으로만 쓰인 애매한 사례는 정밀도
+    // 우선 원칙에 따라 통과시킨다(필드 정체성 이름 "명"류가 아닌 일반 명사이므로).
+    ["이번 주 신청 마감(내용 추가)", false],
+    ["배송 안내(주소 입력)", false],
+    ["운영 시간(시간 추가)", false],
+    ["문의(연락처)", false],
+  ])("PR95-R11-MINOR-BARE-01 표: %s 차단 여부는 %s", (value, expected) => {
+    expect(containsInstructionPlaceholder(value)).toBe(expected);
+  });
+
+  it.each([
+    // 11차 리뷰: 줄 맨 앞 "[항목명] 값" 공지 항목 제목 — 유일한 허용 예외
+    ["[장소] 강남역 3번 출구", false],
+    ["[가격] 월 9,900원", false],
+    ["[날짜] 10월 3일", false],
+  ])("PR95-R11-LABEL-VALUE-01 표: %s 차단 여부는 %s", (value, expected) => {
+    expect(containsInstructionPlaceholder(value)).toBe(expected);
+  });
+
+  it.each([
+    // 11차 리뷰: 일반 마케팅 문구 표본 — 정상 통과 유지
+    ["오늘만 20% 할인(선착순 100명)", false],
+    ["[공지] 추석 연휴 휴무 안내", false],
+    ["무료 상담 신청(링크는 프로필에)", false],
+    ["아메리카노(샷 추가)", false],
+    ["[이벤트] 댓글 남기면 추첨", false],
+    ["가격: 29,000원(배송비 포함)", false],
+    ["신메뉴 출시(한정 수량)", false],
+    ["참여 방법(댓글 작성)", false],
+    ["(후기 작성)", false],
+  ])("PR95-R11-MARKETING-SAMPLE-01 표: %s 차단 여부는 %s", (value, expected) => {
+    expect(containsInstructionPlaceholder(value)).toBe(expected);
+  });
+
   it("GENERATED-PLACEHOLDER-01A 정상: 괄호 속 작성 지시는 자리표시로 판정하고 일반 보충설명은 허용한다", () => {
     expect(containsInstructionPlaceholder("(브랜드가 실제로 제공하는 서비스 한 문장으로 대체)")).toBe(true);
     expect(containsInstructionPlaceholder("(서비스 이름을 직접 입력하세요)")).toBe(true);

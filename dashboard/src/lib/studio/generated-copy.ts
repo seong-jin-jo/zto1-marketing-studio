@@ -6,19 +6,27 @@
  * 가릴 게 아니라 저장 상태로 승격하기 전에 차단해야 한다.
  */
 const BRACKETED_FRAGMENT = /\{\{[^{}\n]{1,200}\}\}|\([^()\n]{1,200}\)|\[[^\[\]\n]{1,200}\]/gu;
-// 명확한 명령형 어미(하세요/해주세요/할 것/해야 함 등)나 명사형 지시 어미(채우기/넣기/적기)로
-// 끝나는 것만 무조건 자리표시로 본다. "입력/작성/기입/추가"는 일반 명사로도 쓰이므로 여기서는
-// 접미사가 실제로 붙어 있을 때만 잡고, 접미사 없는 맨 동사형은 BARE_FILL_VERB_STEMS에서
-// 앞 단어를 보고 따로 판정한다(10차 리뷰: "자동 입력"·"옵션 추가" 같은 정상 문구 오탐 방지).
+// 오탐 한 건이 곧 생성 전체 실패이므로(route.ts:88-90, llm.ts) 정밀도를 최우선한다.
+// "확신 높은 패턴만 위치와 무관하게 차단"하고, 애매한 것은 통과시킨다(11차 리뷰 확정 원칙).
+// ① 명령형 어미(하세요/해주세요/할 것/해야 함 등)나 명사형 지시 어미(채우기/넣기/적기)가
+// 실제로 붙었을 때만 차단한다. "입력/작성/기입/추가"는 일반 명사로도 쓰이므로 접미사 없는
+// 맨 동사형은 여기서 잡지 않고 bareFillVerbBlocks()에서 앞 단어(필드 "명"류)를 보고 따로
+// 판정한다.
 const KOREAN_INSTRUCTION_ENDING = /(?:(?:으?로\s*)?대체|(?:직접\s*)?(?:입력|작성|기입|추가)(?:하세요|해\s*주세요|하라|할\s*것|해야\s*(?:함|합니다)|바랍니다|이\s*필요)|(?:채워|채우|넣어|넣으|적어|적으)(?:\s*주세요|세요|라|야\s*(?:함|합니다)|기\s*바랍니다)|(?:채우기|넣기|적기))\s*[.!?]?$/iu;
+// ③ 영어 지시어 괄호: [INSERT ...], [TODO], (your ... here) 류는 위치와 무관하게 차단.
 const ENGLISH_INSTRUCTION = /^\s*(?:todo|placeholder|fill\s+in|insert|replace)\b/iu;
-// 대체할 값이 채워지지 않은 필드명 그 자체(브랜드명·링크·주소 등)만 가리킨다. 괄호/대괄호/중괄호
-// 종류와 무관하게 동일 규칙 — 몸통 전체가 이 목록 중 하나와 정확히 같을 때만 자리표시로 본다.
-const FIELD_PLACEHOLDER_WORD = /^(?:브랜드|서비스|제품|회사|업체|상호|고객|대상|제목|본문|내용|문구|설명|링크|url|날짜|시간|장소|지역|주소|연락처|이메일|전화번호|가격|해시태그|키워드|이름)(?:명|명칭|이름)?$/iu;
-// 접미사 없는 "필드명 + 입력/작성/기입/추가" 맨 동사형만 자리표시로 본다. "직접"이 동사 바로
-// 앞에 오면("고객 직접 작성") 실제 작성 주체를 설명하는 일반 문구이지 생성 지시가 아니므로 허용.
+const ENGLISH_YOUR_HERE = /\byour\b[\s\S]{0,80}\bhere\b/iu;
+// ④ 괄호 몸통이 대체할 값 없는 필드명 그 자체(브랜드명·서비스명·링크·주소 등)일 때만 가리킨다.
+// 괄호 종류(()·[]·{{}}) 구분 없이 동일 규칙 — 몸통 전체가 이 목록 중 하나와 정확히 같을 때만
+// 자리표시로 본다. 연락처·시간·내용처럼 실제 공지문에도 흔히 홀로 쓰이는 일반 명사는 넣지
+// 않는다(11차 리뷰 MINOR: "문의(연락처)" 오탐 방지).
+const FIELD_PLACEHOLDER_WORD = /^(?:브랜드|서비스|제품|회사|업체|상호|링크|url|주소)(?:명|명칭|이름)?$/iu;
+// 필드 "명"류(브랜드명·서비스명·상품명 등, 접미사 명/명칭/이름으로 끝나는 말) 바로 뒤에 붙은
+// 맨 동사형(입력/작성/기입/추가, 어미 없음)만 자리표시로 본다. "자동 입력"·"옵션 추가"·
+// "고객 직접 작성"처럼 필드 정체성 이름이 아닌 말 뒤에 오는 맨 동사형은 실제 문구일 가능성이
+// 높아 통과시킨다.
 const BARE_FILL_VERBS = ["입력", "작성", "기입", "추가"] as const;
-const TRAILING_PARTICLE = /(을|를|이|가|은|는)$/u;
+const NAME_FIELD_SUFFIX = /(?:명|명칭|이름)$/u;
 
 function bracketBody(fragment: string): string {
   return fragment.startsWith("{{")
@@ -32,29 +40,39 @@ function bareFillVerbBlocks(body: string): boolean {
     if (!trimmed.endsWith(verb)) continue;
     const before = trimmed.slice(0, -verb.length).trim();
     if (before.length === 0) return false;
-    if (before.endsWith("직접")) return false;
     const precedingWord = before.split(/\s+/).pop() ?? "";
-    const bareWord = precedingWord.replace(TRAILING_PARTICLE, "");
-    return FIELD_PLACEHOLDER_WORD.test(bareWord);
+    return NAME_FIELD_SUFFIX.test(precedingWord);
   }
   return false;
+}
+
+// 허용 예외는 하나뿐: 줄 맨 앞(또는 줄바꿈 직후)의 "[항목명] 값" 공지 항목 제목
+// ("[장소] 강남역 3번 출구"). 그 외에는 괄호 뒤에 어떤 글자가 이어지든 판정을 건너뛰지 않는다
+// (11차 리뷰 MAJOR: 이전 "뒤에 값이 이어지면 통과" 규칙이 문장 중간 자리표시를 전부 놓쳤다).
+function isLineStartLabelValue(value: string, raw: string, index: number): boolean {
+  if (!raw.startsWith("[")) return false;
+  const lineStart = value.lastIndexOf("\n", Math.max(index - 1, 0)) + 1;
+  const linePrefix = value.slice(lineStart, index);
+  if (linePrefix.trim().length > 0) return false;
+  const tail = value.slice(index + raw.length);
+  return /^[ \t]+\S/u.test(tail);
 }
 
 export function findInstructionPlaceholder(value: unknown): string | null {
   if (typeof value === "string") {
     for (const match of value.matchAll(BRACKETED_FRAGMENT)) {
       const raw = match[0];
-      // 괄호 바로 뒤에 실제 값이 이어지면("[장소] 강남역 3번 출구") 항목 제목:값 표기이지
-      // 자리표시가 아니다.
-      const tail = value.slice((match.index ?? 0) + raw.length);
-      if (/^\s*\S/u.test(tail)) continue;
+      const index = match.index ?? 0;
       const body = bracketBody(raw);
       if (raw.startsWith("{{")) {
         if (body.length > 0) return raw;
         continue;
       }
+      if (KOREAN_INSTRUCTION_ENDING.test(body) || ENGLISH_INSTRUCTION.test(body) || ENGLISH_YOUR_HERE.test(body)) {
+        return raw;
+      }
+      if (isLineStartLabelValue(value, raw, index)) continue;
       if (FIELD_PLACEHOLDER_WORD.test(body)) return raw;
-      if (KOREAN_INSTRUCTION_ENDING.test(body) || ENGLISH_INSTRUCTION.test(body)) return raw;
       if (bareFillVerbBlocks(body)) return raw;
     }
     return null;
