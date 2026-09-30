@@ -81,6 +81,7 @@ import { PLATFORM_FIELD_CONTRACT } from "@/lib/studio/platform-publish-fields";
 import { DEFAULT_COVER_SECONDS, coverUnsupportedReason, supportsCoverTimestamp } from "@/lib/video-cover";
 import { runWithConcurrency } from "@/lib/async-pool";
 import { embeddedTextCardImage, recoverDraftEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
+import { buildReviewQueuePayload } from "@/lib/studio/review-queue-payload";
 
 const PUBLISH_CONCURRENCY = 3;
 const PUBLISH_REQUEST_TIMEOUT_MS = 45_000;
@@ -2602,34 +2603,27 @@ export default function StudioPage() {
       // 스냅샷 저장이 끝난 뒤에만 진행한다. draftId 단축 평가는 저장을 건너뛰므로 금지한다.
       const linkedDraftId = await save("draft", undefined, undefined, undefined, undefined, cardDeck, videoEdit);
       if (!linkedDraftId) throw new Error("검토 요청용 초안을 저장하지 못했습니다");
+      const queuePayload = buildReviewQueuePayload({
+        tenantId: activeWorkspace.id,
+        draftId: linkedDraftId,
+        text: publishText(publishTargets[0] || "threads"),
+        topic: idea || "Studio 작업물",
+        hashtags: (hashtags.instagram || "").split(/[\s,]+/).map((value) => value.replace(/^#/, "")).filter(Boolean),
+        editFormat,
+        editLines,
+        cardTextPositions,
+        cardDeck,
+        image: img,
+        video: vid,
+      });
       let queueId = reviewQueueId;
       if (!queueId) {
-        // 편집 형식을 바꿔도 이전 형식의 화면 상태는 되돌아갈 수 있도록 메모리에 남는다.
-        // 대기열 경계에서는 현재 형식이 소유한 필드만 보내, 카드 원본 표식·위치가 영상이나
-        // 글 요청에 섞여 서버 검증과 복원을 오염시키지 않게 한다.
-        const currentFormatQueueFields = editKind === "card"
-          ? {
-              imageUrl: img?.url || null,
-              imageUrls: img?.imageUrls || null,
-              textEmbedded: img?.textEmbedded === true,
-              editLines,
-              ...(img?.textEmbedded === true ? { cardTextPositions } : {}),
-            }
-          : editKind === "video"
-            ? { editLines, videoUrl: vid?.url || null }
-            : { editLines };
-        const added = await apiPost<{ post?: { id?: string } }>("/api/queue/add", {
-          tenant_id: activeWorkspace.id,
-          draftId: linkedDraftId,
-          text: publishText(publishTargets[0] || "threads"),
-          topic: idea || "Studio 작업물",
-          hashtags: (hashtags.instagram || "").split(/[\s,]+/).map((value) => value.replace(/^#/, "")).filter(Boolean),
-          ...currentFormatQueueFields,
-          editFormat,
-        });
+        const added = await apiPost<{ post?: { id?: string } }>("/api/queue/add", queuePayload);
         queueId = added?.post?.id || null;
         if (!queueId) throw new Error("검토 요청용 초안을 만들지 못했습니다");
         setReviewQueueId(queueId);
+      } else {
+        await apiPost(`/api/queue/${queueId}/update`, queuePayload);
       }
       const response = await apiPost<{ reused?: boolean }>(`/api/queue/${queueId}/request-review`, {
         tenant_id: activeWorkspace.id,

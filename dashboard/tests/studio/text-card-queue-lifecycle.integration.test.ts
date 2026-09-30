@@ -60,23 +60,41 @@ const QUEUE_CARD_KIND_CONTRACTS = [
     },
   },
   {
-    kind: "비내장 카드 최대 72문구",
+    kind: "말풍선 카드 10장 73문구",
     expectedStatus: 200,
     fields: {
-      imageUrls: Array.from({ length: 9 }, (_, index) => `/api/images/deliver/max-bubble-${index + 1}`),
+      imageUrls: Array.from({ length: 10 }, (_, index) => `/api/images/deliver/max-bubble-${index + 1}`),
       textEmbedded: false,
-      editLines: Array.from({ length: 72 }, (_, index) => `${index + 1}번째 말풍선`),
+      editLines: Array.from({ length: 73 }, (_, index) => `${index + 1}번째 투영 문구`),
       editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
     },
   },
   {
-    kind: "비내장 카드 최대치를 넘은 73문구",
+    kind: "말풍선 계약 최대 88문구",
+    expectedStatus: 200,
+    fields: {
+      imageUrls: Array.from({ length: 11 }, (_, index) => `/api/images/deliver/contract-max-bubble-${index + 1}`),
+      textEmbedded: false,
+      editLines: Array.from({ length: 88 }, (_, index) => `${index + 1}번째 투영 문구`),
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+    },
+  },
+  {
+    kind: "말풍선 계약 최대치를 넘은 89문구",
     expectedStatus: 400,
     fields: {
-      imageUrls: Array.from({ length: 9 }, (_, index) => `/api/images/deliver/overflow-bubble-${index + 1}`),
+      imageUrls: Array.from({ length: 11 }, (_, index) => `/api/images/deliver/overflow-bubble-${index + 1}`),
       textEmbedded: false,
-      editLines: Array.from({ length: 73 }, (_, index) => `${index + 1}번째 말풍선`),
+      editLines: Array.from({ length: 89 }, (_, index) => `${index + 1}번째 투영 문구`),
       editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+    },
+  },
+  {
+    kind: "글 73문단",
+    expectedStatus: 200,
+    fields: {
+      editLines: Array.from({ length: 73 }, (_, index) => `${index + 1}번째 문단`),
+      editFormat: { kind: "text" },
     },
   },
   {
@@ -88,6 +106,16 @@ const QUEUE_CARD_KIND_CONTRACTS = [
       editFormat: { kind: "video", aspectRatio: "9:16", subtitleSize: "보통", playbackSpeed: 1, voice: "차분한 남성" },
       videoFilename: "queue-contract.mp4",
       videoUrl: "/api/images/deliver/queue-contract.mp4",
+    },
+  },
+  {
+    kind: "영상 73자막",
+    expectedStatus: 200,
+    fields: {
+      editLines: Array.from({ length: 73 }, (_, index) => `${index + 1}번째 자막`),
+      editFormat: { kind: "video", aspectRatio: "9:16", subtitleSize: "보통", playbackSpeed: 1, voice: "차분한 남성" },
+      videoFilename: "queue-contract-73.mp4",
+      videoUrl: "/api/images/deliver/queue-contract-73.mp4",
     },
   },
   {
@@ -359,6 +387,87 @@ describe("PR95-R1-LIFECYCLE-02 글자 내장 표식의 발행 대기열 저장·
       }
     },
   );
+
+  it.each([
+    {
+      label: "글자 내장 카드에서 글",
+      fields: {
+        editLines: ["전환한 글 문단"],
+        editFormat: { kind: "text" },
+      },
+    },
+    {
+      label: "글자 내장 카드에서 영상",
+      fields: {
+        editLines: ["전환한 영상 자막"],
+        editFormat: { kind: "video", aspectRatio: "9:16", subtitleSize: "보통", playbackSpeed: 1, voice: "차분한 남성" },
+        videoUrl: "/api/images/deliver/transition-video.mp4",
+      },
+    },
+  ] as const)("PR95-R7-QUEUE-UPDATE-01 기존 대기열 형식 전환: $label 요청은 이전 카드 필드를 원자 제거한다", async ({ fields }) => {
+    const { POST: add } = await import("@/app/api/queue/add/route");
+    const addedResponse = await add(new Request("http://localhost/api/queue/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: H.tenantId,
+        draftId: "draft-before-transition",
+        text: "전환 전 카드",
+        imageUrl: "/api/images/deliver/card-before-transition",
+        imageUrls: ["/api/images/deliver/card-before-transition"],
+        textEmbedded: true,
+        editLines: ["전환 전 카드 문구"],
+        cardTextPositions: ["center"],
+        editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+      }),
+    }));
+    const added = await addedResponse.json() as { post: { id: string } };
+
+    const { POST: requestReview } = await import("@/app/api/queue/[postId]/request-review/route");
+    const routeParams = { params: Promise.resolve({ postId: added.post.id }) };
+    const firstReview = await requestReview(new Request("http://localhost/request-review", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tenant_id: H.tenantId }),
+    }), routeParams);
+    expect(firstReview.status).toBe(200);
+
+    const { POST: update } = await import("@/app/api/queue/[postId]/update/route");
+    const updatedResponse = await update(new Request("http://localhost/update", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: H.tenantId,
+        draftId: "draft-after-transition",
+        text: "",
+        topic: "형식 전환",
+        hashtags: ["전환"],
+        ...fields,
+      }),
+    }), routeParams);
+    const updated = await updatedResponse.json() as { post: Record<string, unknown> };
+
+    expect(updatedResponse.status).toBe(200);
+    expect(updated.post).toEqual(expect.objectContaining({
+      draftId: "draft-after-transition",
+      text: "",
+      editLines: fields.editLines,
+      editFormat: fields.editFormat,
+    }));
+    expect(updated.post.imageUrl).toBeNull();
+    expect(updated.post.imageUrls).toBeNull();
+    expect(updated.post.textEmbedded).toBe(false);
+    expect(updated.post.cardTextPositions).toBeNull();
+    expect(updated.post).not.toHaveProperty("reviewRequest");
+
+    const secondReview = await requestReview(new Request("http://localhost/request-review", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tenant_id: H.tenantId }),
+    }), routeParams);
+    expect(secondReview.status).toBe(200);
+    expect(await secondReview.json()).toEqual(expect.objectContaining({ reused: false }));
+  });
 
   it("PR95-R4-QUEUE-02 경계: textEmbedded를 생략한 구형 요청은 계속 저장한다", async () => {
     const { POST } = await import("@/app/api/queue/add/route");

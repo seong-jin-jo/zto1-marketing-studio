@@ -4,6 +4,8 @@ import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StudioPage from "@/app/studio/page";
+import { deckProjection } from "@/lib/studio/card-deck-contract";
+import { cardDeckFixture } from "../studio/generation-fixture";
 
 const mocks = vi.hoisted(() => ({
   apiPost: vi.fn(),
@@ -945,6 +947,106 @@ describe("Studio publish result integrity", () => {
     expect(queueBody).not.toHaveProperty("imageUrls");
     expect(queueBody).not.toHaveProperty("textEmbedded");
     expect(queueBody).not.toHaveProperty("cardTextPositions");
+  });
+
+  it.each([
+    ["영상", "video"],
+    ["글", "text"],
+  ] as const)("PR95-R7-REVIEW-01 기존 대기열을 카드에서 %s 형식으로 바꾸면 같은 본문으로 원자 갱신한 뒤 재검토한다", async (kindLabel, expectedKind) => {
+    window.history.replaceState(null, "", "/studio?room=edit&kind=card");
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "기존 대기열 형식 전환",
+      reviewQueueId: "queue-existing-transition",
+      editKind: "card",
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+      editLines: ["카드에 있던 문구"],
+      cardTextPositions: ["bottom-center"],
+      img: {
+        url: "/api/images/deliver/existing-text-card",
+        file: "/api/images/deliver/existing-text-card",
+        imageUrls: ["/api/images/deliver/existing-text-card"],
+        textEmbedded: true,
+        textSourceRecoverable: true,
+      },
+      includes: { threads: true },
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-existing-transition" };
+      if (path === "/api/queue/queue-existing-transition/update") return { post: { id: "queue-existing-transition" } };
+      if (path === "/api/queue/queue-existing-transition/request-review") return { reused: false };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    fireEvent.click(await screen.findByRole("button", { name: kindLabel }));
+    fireEvent.click(await findEnabledButton("발행실로 이동"));
+    fireEvent.click(await screen.findByRole("button", { name: "검토 요청하기" }));
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
+      "/api/queue/queue-existing-transition/request-review",
+      expect.objectContaining({ tenant_id: "tenant-a" }),
+    ));
+    expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/queue/add")).toBe(false);
+    const updateBody = mocks.apiPost.mock.calls.find(([path]) => path === "/api/queue/queue-existing-transition/update")?.[1] as Record<string, unknown>;
+    expect(updateBody).toEqual(expect.objectContaining({
+      draftId: "draft-existing-transition",
+      editLines: ["카드에 있던 문구"],
+      editFormat: expect.objectContaining({ kind: expectedKind }),
+    }));
+    expect(updateBody).not.toHaveProperty("imageUrl");
+    expect(updateBody).not.toHaveProperty("imageUrls");
+    expect(updateBody).not.toHaveProperty("textEmbedded");
+    expect(updateBody).not.toHaveProperty("cardTextPositions");
+    const calls = mocks.apiPost.mock.calls.map(([path]) => path);
+    expect(calls.indexOf("/api/studio/drafts")).toBeLessThan(calls.indexOf("/api/queue/queue-existing-transition/update"));
+    expect(calls.indexOf("/api/queue/queue-existing-transition/update")).toBeLessThan(calls.indexOf("/api/queue/queue-existing-transition/request-review"));
+  });
+
+  it("PR95-R7-REVIEW-02 말풍선을 고친 직후 검토하면 대기열 본문은 cardDeck 최신 투영을 쓴다", async () => {
+    const deck = cardDeckFixture();
+    const oldProjection = deckProjection(deck).lines;
+    window.history.replaceState(null, "", "/studio?room=edit&kind=card");
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "말풍선 즉시 검토",
+      editKind: "card",
+      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
+      editLines: oldProjection,
+      cardDeck: deck,
+      img: {
+        url: "/api/images/deliver/bubble-1",
+        file: "/api/images/deliver/bubble-1",
+        imageUrls: deck.slides.map((_, index) => `/api/images/deliver/bubble-${index + 1}`),
+        textEmbedded: false,
+      },
+      includes: { threads: true },
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-bubble-immediate-review" };
+      if (path === "/api/queue/add") return { post: { id: "queue-bubble-immediate-review" } };
+      if (path === "/api/queue/queue-bubble-immediate-review/request-review") return { reused: false };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    const page = render(<StudioPage />);
+    fireEvent.click(document.querySelector(`[data-slide-id="${deck.slides[1].id}"]`)!);
+    const bubble = document.querySelector<HTMLElement>(`[data-bubble-id="${deck.slides[1].bubbles![0].id}"]`)!;
+    const input = within(bubble).getByRole("textbox");
+    fireEvent.click(input);
+    input.textContent = "검토 직전 새 말풍선";
+    fireEvent.input(input);
+    // 말풍선 수정 직후의 React 상태를 그대로 둔 채 발행실 경로로 전환한다. 카드 재렌더링은
+    // 이 검사의 대상이 아니며, 검토 요청이 최신 cardDeck 투영을 쓰는지가 대상이다.
+    window.history.replaceState(null, "", "/studio?room=publish");
+    page.rerender(<StudioPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "검토 요청하기" }));
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
+      "/api/queue/queue-bubble-immediate-review/request-review",
+      expect.objectContaining({ tenant_id: "tenant-a" }),
+    ));
+    const queueBody = mocks.apiPost.mock.calls.find(([path]) => path === "/api/queue/add")?.[1] as { editLines: string[] };
+    expect(queueBody.editLines).toContain("검토 직전 새 말풍선");
+    expect(queueBody.editLines).not.toEqual(oldProjection);
   });
 
   it("FE3-REVIEW-02 거절: 초안 저장 실패 시 큐와 검토 API를 호출하지 않는다", async () => {

@@ -25,7 +25,13 @@
  * 이유를 데리고 나온다(실수.md 2026-09-09).
  */
 import type { Bubble, CardDeck, CardSlide, Segment, SlideRole } from "./card-deck-contract";
-import { newBubbleId, newSlideId, retextSegments } from "./card-deck-contract";
+import {
+  CARD_DECK_MAX_SLIDES,
+  CARD_DECK_MIN_SLIDES,
+  newBubbleId,
+  newSlideId,
+  retextSegments,
+} from "./card-deck-contract";
 
 export class CardDeckOpsError extends Error {
   constructor(readonly code: string, message: string) {
@@ -460,8 +466,8 @@ export function moveSlide(deck: CardDeck, from: number, to: number): CardDeck {
 
 /** 03c addSlide 464~476행: 새 chat 장 삽입(질문·답 견본). 11장 초과면 거부. */
 export function addSlide(deck: CardDeck, afterIndex: number): CardDeck {
-  if (deck.slides.length >= 11) {
-    throw new CardDeckOpsError("OPS_SLIDE_LIMIT", "cardDeck cannot exceed 11 slides");
+  if (deck.slides.length >= CARD_DECK_MAX_SLIDES) {
+    throw new CardDeckOpsError("OPS_SLIDE_LIMIT", `cardDeck cannot exceed ${CARD_DECK_MAX_SLIDES} slides`);
   }
   if (afterIndex < 0 || afterIndex >= deck.slides.length - 1) {
     throw new CardDeckOpsError("OPS_SLIDE_OUT_OF_RANGE", "cannot add a slide after the cta slide");
@@ -486,8 +492,8 @@ export function addSlide(deck: CardDeck, afterIndex: number): CardDeck {
 
 /** 선택한 대화 장을 바로 뒤에 복제한다. 표지·CTA는 고정이며 전체 11장 제한을 지킨다. */
 export function duplicateSlide(deck: CardDeck, slideIndex: number): CardDeck {
-  if (deck.slides.length >= 11) {
-    throw new CardDeckOpsError("OPS_SLIDE_LIMIT", "cardDeck cannot exceed 11 slides");
+  if (deck.slides.length >= CARD_DECK_MAX_SLIDES) {
+    throw new CardDeckOpsError("OPS_SLIDE_LIMIT", `cardDeck cannot exceed ${CARD_DECK_MAX_SLIDES} slides`);
   }
   const source = deck.slides[slideIndex];
   if (!source) throw new CardDeckOpsError("OPS_SLIDE_OUT_OF_RANGE", "slide index out of range");
@@ -515,7 +521,7 @@ export function duplicateSlide(deck: CardDeck, slideIndex: number): CardDeck {
 
 /** 넘친 chat 장의 말풍선 경계에서 다음 장을 만든다. 텍스트/굵기 세그먼트는 그대로 이동한다. */
 export function splitSlideAtBubble(deck: CardDeck, slideIndex: number, firstMovedBubbleIndex: number): CardDeck {
-  if (deck.slides.length >= 11) throw new CardDeckOpsError("OPS_SLIDE_LIMIT", "cardDeck cannot exceed 11 slides");
+  if (deck.slides.length >= CARD_DECK_MAX_SLIDES) throw new CardDeckOpsError("OPS_SLIDE_LIMIT", `cardDeck cannot exceed ${CARD_DECK_MAX_SLIDES} slides`);
   const slide = deck.slides[slideIndex];
   if (!slide || slide.role !== "chat") throw new CardDeckOpsError("OPS_SLIDE_LOCKED", "only chat slides can auto-split");
   const bubbles = slide.bubbles ?? [];
@@ -554,7 +560,7 @@ function splitSegmentsAtCharacter(segments: Segment[], offset: number): [Segment
 
 /** 첫 말풍선 하나가 카드보다 긴 경우, 세그먼트 경계를 보존해 문자 위치에서 다음 장으로 나눈다. */
 export function splitSlideAtBubbleOffset(deck: CardDeck, slideIndex: number, bubbleIndex: number, offset: number): CardDeck {
-  if (deck.slides.length >= 11) throw new CardDeckOpsError("OPS_SLIDE_LIMIT", "cardDeck cannot exceed 11 slides");
+  if (deck.slides.length >= CARD_DECK_MAX_SLIDES) throw new CardDeckOpsError("OPS_SLIDE_LIMIT", `cardDeck cannot exceed ${CARD_DECK_MAX_SLIDES} slides`);
   const slide = deck.slides[slideIndex];
   if (!slide || slide.role !== "chat") throw new CardDeckOpsError("OPS_SLIDE_LOCKED", "only chat slides can auto-split");
   const bubbles = slide.bubbles ?? [];
@@ -581,8 +587,8 @@ export function splitSlideAtBubbleOffset(deck: CardDeck, slideIndex: number, bub
 /** 03c deleteSlide 477~488행: 표지·마지막 제외 삭제. 7장 미만이 되면 거부. */
 export function deleteSlide(deck: CardDeck, index: number): CardDeck {
   assertNotEdgeLocked(deck, index, "delete");
-  if (deck.slides.length <= 7) {
-    throw new CardDeckOpsError("OPS_SLIDE_MIN", "cardDeck cannot go below 7 slides");
+  if (deck.slides.length <= CARD_DECK_MIN_SLIDES) {
+    throw new CardDeckOpsError("OPS_SLIDE_MIN", `cardDeck cannot go below ${CARD_DECK_MIN_SLIDES} slides`);
   }
   const remaining = deck.slides.filter((_, i) => i !== index);
   return withRevision(deck, remaining.map((s, order) => ({ ...s, order })));
