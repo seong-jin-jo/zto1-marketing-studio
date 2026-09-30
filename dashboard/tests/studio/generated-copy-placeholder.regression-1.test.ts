@@ -52,6 +52,32 @@ describe("GENERATED-PLACEHOLDER-01 생성 문구 자리표시 차단", () => {
     expect(containsInstructionPlaceholder(value)).toBe(expected);
   });
 
+  it.each([
+    // 10차 리뷰 오탐 제거 — 통과해야 함
+    ["(옵션 추가)", false],
+    ["(고객 직접 작성)", false],
+    ["(자동 입력)", false],
+    ["(카드 등록 없이 추가)", false],
+    ["[장소] 강남역 3번 출구", false],
+    ["[가격] 월 9,900원", false],
+    ["[날짜] 10월 3일", false],
+    ["가격(부가세 포함)", false],
+    ["신청서(작성 기준은 홈페이지 참고)", false],
+    ["제품(입력 전압 220V)", false],
+    // 10차 리뷰 누락 보강 — 막아야 함
+    ["(브랜드명)", true],
+    ["(서비스명)", true],
+    ["(링크)", true],
+    ["(주소)", true],
+    ["(브랜드명 입력)", true],
+    ["(여기에 내용을 채우기)", true],
+    ["[브랜드명]", true],
+    ["{{서비스명}}", true],
+    ["(브랜드가 실제로 제공하는 서비스 한 문장으로 대체)", true],
+  ])("PR95-R10-PLACEHOLDER-01 표: %s 차단 여부는 %s", (value, expected) => {
+    expect(containsInstructionPlaceholder(value)).toBe(expected);
+  });
+
   it("GENERATED-PLACEHOLDER-01A 정상: 괄호 속 작성 지시는 자리표시로 판정하고 일반 보충설명은 허용한다", () => {
     expect(containsInstructionPlaceholder("(브랜드가 실제로 제공하는 서비스 한 문장으로 대체)")).toBe(true);
     expect(containsInstructionPlaceholder("(서비스 이름을 직접 입력하세요)")).toBe(true);
