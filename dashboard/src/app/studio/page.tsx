@@ -2407,6 +2407,9 @@ export default function StudioPage() {
       if (linkedFormat.valid) {
         setEditKind(linkedFormat.value.kind);
         setEditFormat(linkedFormat.value);
+      } else if (!linkedDraft && work.videoUrl) {
+        setEditKind("video");
+        setEditFormat(defaultContentEditFormat("video"));
       } else if (isUnlinkedQueueCard) {
         setEditKind("card");
         setEditFormat(defaultContentEditFormat("card"));

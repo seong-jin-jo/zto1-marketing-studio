@@ -1,3 +1,11 @@
+## 2026-09-30 PR #95 독립 리뷰 r9 범위 안 경계 3건 ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR95-R9-MAJOR-01 | 괄호 종류와 명사형 지시 자리표시 차단, 정상 괄호 문구 허용 | PR95-R9-PLACEHOLDER-01 | ✅ PASS | `(브랜드명 입력)`, `(여기에 내용을 채우기)`, `[브랜드명]`, `{{서비스명}}` 차단 + `가격(부가세 포함)` 등 정상 괄호 문구 허용을 표 테스트로 고정. 수정 전 4건 실패(스택 저장, `git stash`로 재현) → `generated-copy.ts`에 `{{}}` 패턴·명사형 필드 플레이스홀더 판정 추가 후 전건 통과. |
+| PR95-R9-MAJOR-02 | 연결 초안 없는 영상 대기열 복귀 시 영상 편집 형식 보존 | PR95-SCOPE-CUT-VIDEO-01 | ✅ PASS | `work.videoUrl`이 있고 연결 초안이 없으면 `editKind`를 `video`로 복원하도록 `studio/page.tsx`:2410에 분기 추가. RoomHeader 링크가 `/studio?room=edit&kind=video`가 됨을 `studio-publish-ui.test.tsx`에서 검증(수정 전 실패 재현). 대기열 API는 origin/main과 diff 0 확인. |
+| PR95-R9-MAJOR-03 | 중간 빈 문구가 있어도 즉시 재합성 결과의 원본 인덱스 보존 | PR95-R9-RECOMPOSE-SLOT-01 | ✅ PASS | `renderPlainCardDeckIncremental`이 `cardDeckRenderInputs` 대신 `spec.lines`를 인덱스 그대로 매핑하도록 수정. `['A', '', 'C']` → 3칸 유지, 둘째 칸 빈 카드로 렌더됨을 검증(수정 전 실패 재현). |
+
 ## 2026-09-30 PR #95 범위 축소와 대기열 확장 제거 ✅ 로컬 PASS
 
 > 아래 r2~r7 대기열 확장 기록은 당시 검증 이력이며 현재 구현 상태가 아니다. 승인 설계가 없는 대기열과 초안의 편집 필드 동기화는 이번 PR에서 제거했고 별도 설계 과제로 분리했다.

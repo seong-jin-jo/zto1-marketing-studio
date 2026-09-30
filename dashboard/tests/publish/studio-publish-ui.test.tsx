@@ -267,6 +267,12 @@ describe("Studio publish result integrity", () => {
   });
 
   it("PR95-SCOPE-CUT-VIDEO-01 연결 초안 없는 영상의 대표 이미지는 카드 잠금으로 오인하지 않는다", async () => {
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "이전 카드 작업",
+      editKind: "card",
+      editLines: ["이전 카드 문구"],
+      img: { url: "/api/images/deliver/old-card", file: "/api/images/deliver/old-card" },
+    }));
     window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-video-cover");
     mocks.returnPosts = [{
       id: "queue-video-cover",
@@ -280,6 +286,7 @@ describe("Studio publish result integrity", () => {
 
     const page = render(<StudioPage />);
     await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+    expect(screen.getByRole("link", { name: "02편집실" })).toHaveAttribute("href", "/studio?room=edit&kind=video");
     window.history.replaceState(null, "", "/studio?room=edit&kind=video");
     page.rerender(<StudioPage />);
 

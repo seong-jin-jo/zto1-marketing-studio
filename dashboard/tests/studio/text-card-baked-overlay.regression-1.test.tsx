@@ -141,6 +141,20 @@ describe("TEXTCARD-OVERLAY-01 무료 글자 카드 편집 무대", () => {
     expect(shorter.cache).toHaveLength(2);
   });
 
+  it("PR95-R9-RECOMPOSE-SLOT-01 경계: 중간 빈 문구도 빈 카드로 그려 원본 인덱스 3칸을 보존한다", () => {
+    const renderCard = vi.fn((input: TextCardInput) => `img:${input.index}:${input.text || "빈 카드"}:${input.total}`);
+
+    const result = renderPlainCardDeckIncremental({ lines: ["A", "", "C"], ratio: "4:5" }, [], renderCard);
+
+    expect(result.urls).toEqual([
+      "img:0:A:3",
+      "img:1:빈 카드:3",
+      "img:2:C:3",
+    ]);
+    expect(result.cache).toHaveLength(3);
+    expect(renderCard).toHaveBeenCalledTimes(3);
+  });
+
   it("PR95-R1-MUTATION-01 표식 생성자를 제거하면 저장·재합성 생명주기 계약이 실패한다", () => {
     expect(embeddedTextCardImage({ url: "one", file: "one", imageUrls: ["one"] })).toEqual({
       url: "one",

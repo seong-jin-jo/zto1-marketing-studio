@@ -117,7 +117,15 @@ export function renderPlainCardDeckIncremental(
   previous: readonly PlainCardRenderCacheEntry[] = [],
   render: (input: TextCardInput) => string | null = renderTextCard,
 ): { urls: string[]; cache: PlainCardRenderCacheEntry[] } {
-  const inputs = cardDeckRenderInputs(spec);
+  const total = spec.lines.length;
+  const inputs = spec.lines.map((text, index): TextCardInput => ({
+    text,
+    ratio: spec.ratio,
+    theme: spec.theme ?? DEFAULT_CARD_THEME,
+    position: verticalFrom(spec.positions?.[index]),
+    index,
+    total,
+  }));
   const cache = inputs.map((input, index) => {
     const key = JSON.stringify(input);
     if (previous[index]?.key === key) return previous[index];
