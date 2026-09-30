@@ -13,20 +13,30 @@ const BRACKETED_FRAGMENT = /\{\{[^{}\n]{1,200}\}\}|\([^()\n]{1,200}\)|\[[^\[\]\n
 // 맨 동사형은 여기서 잡지 않고 bareFillVerbBlocks()에서 앞 단어(필드 "명"류)를 보고 따로
 // 판정한다.
 const KOREAN_INSTRUCTION_ENDING = /(?:(?:으?로\s*)?대체|(?:직접\s*)?(?:입력|작성|기입|추가)(?:하세요|해\s*주세요|하라|할\s*것|해야\s*(?:함|합니다)|바랍니다|이\s*필요)|(?:채워|채우|넣어|넣으|적어|적으)(?:\s*주세요|세요|라|야\s*(?:함|합니다)|기\s*바랍니다)|(?:채우기|넣기|적기))\s*[.!?]?$/iu;
-// ③ 영어 지시어 괄호: [INSERT ...], [TODO], (your ... here) 류는 위치와 무관하게 차단.
-const ENGLISH_INSTRUCTION = /^\s*(?:todo|placeholder|fill\s+in|insert|replace)\b/iu;
-const ENGLISH_YOUR_HERE = /\byour\b[\s\S]{0,80}\bhere\b/iu;
-// ④ 괄호 몸통이 대체할 값 없는 필드명 그 자체(브랜드명·서비스명·링크·주소 등)일 때만 가리킨다.
-// 괄호 종류(()·[]·{{}}) 구분 없이 동일 규칙 — 몸통 전체가 이 목록 중 하나와 정확히 같을 때만
-// 자리표시로 본다. 연락처·시간·내용처럼 실제 공지문에도 흔히 홀로 쓰이는 일반 명사는 넣지
-// 않는다(11차 리뷰 MINOR: "문의(연락처)" 오탐 방지).
-const FIELD_PLACEHOLDER_WORD = /^(?:브랜드|서비스|제품|회사|업체|상호|링크|url|주소)(?:명|명칭|이름)?$/iu;
-// 필드 "명"류(브랜드명·서비스명·상품명 등, 접미사 명/명칭/이름으로 끝나는 말) 바로 뒤에 붙은
-// 맨 동사형(입력/작성/기입/추가, 어미 없음)만 자리표시로 본다. "자동 입력"·"옵션 추가"·
-// "고객 직접 작성"처럼 필드 정체성 이름이 아닌 말 뒤에 오는 맨 동사형은 실제 문구일 가능성이
-// 높아 통과시킨다.
+// ③ 영어 지시어 괄호: [INSERT …], [TODO …], "Replace with …" 명시형, (your 명사구 here) 류만
+// 위치와 무관하게 차단한다. "Replace 쿠폰 2장 증정"처럼 대체 대상이 없는 일반 문구나
+// "Tag your friends here"처럼 "your"로 시작하지 않는 실제 CTA 문구는 통과시킨다
+// (12차 리뷰 MINOR: 지나치게 넓은 영어 패턴 오탐 방지).
+const ENGLISH_INSTRUCTION = /^\s*(?:todo|placeholder|fill\s+in|insert)\b/iu;
+const ENGLISH_REPLACE_WITH = /^\s*replace\s+with\b/iu;
+const ENGLISH_YOUR_HERE = /^your(?:\s+[a-z][a-z'-]*){1,3}\s+here\s*$/iu;
+// ④ 괄호 몸통이 대체할 값 없는 필드명 그 자체일 때만 가리킨다. 괄호 종류(()·[]·{{}}) 구분
+// 없이 동일 규칙. 허용 목록 방식(12차 리뷰 확정) — 두 갈래만 필드명으로 본다.
+//   (a) 정체성 이름 계열: (브랜드|서비스|상품|제품|행사|가게|상호|업체|회사|매장|이벤트|
+//       캠페인|프로그램) + (명|명칭|이름|공백+이름). "실명"·"서명"·"설명"처럼 이 낱말들과
+//       무관하게 우연히 "명"으로 끝나는 일반 명사는 여기 걸리지 않는다(12차 리뷰 MAJOR:
+//       NAME_FIELD_SUFFIX가 "명으로 끝나는 모든 낱말"을 잡던 오탐 수정).
+//   (b) 단독 필드어: 링크·URL·주소. 연락처·시간·내용처럼 실제 공지문에도 흔히 홀로 쓰이는
+//       일반 명사는 넣지 않는다(11차 리뷰 MINOR: "문의(연락처)" 오탐 방지).
+const NAME_FIELD_STEMS = "브랜드|서비스|상품|제품|행사|가게|상호|업체|회사|매장|이벤트|캠페인|프로그램";
+const NAME_FIELD_WHOLE = new RegExp(`^(?:${NAME_FIELD_STEMS})(?:명|명칭|이름|\\s*이름)$`, "iu");
+const NAME_FIELD_ENDING = new RegExp(`(?:${NAME_FIELD_STEMS})(?:명|명칭|이름|\\s*이름)$`, "iu");
+const STANDALONE_FIELD_WORD = /^(?:링크|url|주소)$/iu;
+// 정체성 이름 계열 바로 뒤에 붙은 맨 동사형(입력/작성/기입/추가, 어미 없음)만 자리표시로
+// 본다. "자동 입력"·"옵션 추가"·"고객 직접 작성"처럼 정체성 이름이 아닌 말 뒤에 오는 맨
+// 동사형은 실제 문구일 가능성이 높아 통과시킨다. "5명 추가"·"실명 입력"처럼 숫자나 목록
+// 밖의 일반 명사 뒤에 오는 "명"도 통과시킨다.
 const BARE_FILL_VERBS = ["입력", "작성", "기입", "추가"] as const;
-const NAME_FIELD_SUFFIX = /(?:명|명칭|이름)$/u;
 
 function bracketBody(fragment: string): string {
   return fragment.startsWith("{{")
@@ -40,8 +50,7 @@ function bareFillVerbBlocks(body: string): boolean {
     if (!trimmed.endsWith(verb)) continue;
     const before = trimmed.slice(0, -verb.length).trim();
     if (before.length === 0) return false;
-    const precedingWord = before.split(/\s+/).pop() ?? "";
-    return NAME_FIELD_SUFFIX.test(precedingWord);
+    return NAME_FIELD_ENDING.test(before);
   }
   return false;
 }
@@ -68,11 +77,16 @@ export function findInstructionPlaceholder(value: unknown): string | null {
         if (body.length > 0) return raw;
         continue;
       }
-      if (KOREAN_INSTRUCTION_ENDING.test(body) || ENGLISH_INSTRUCTION.test(body) || ENGLISH_YOUR_HERE.test(body)) {
+      if (
+        KOREAN_INSTRUCTION_ENDING.test(body)
+        || ENGLISH_INSTRUCTION.test(body)
+        || ENGLISH_REPLACE_WITH.test(body)
+        || ENGLISH_YOUR_HERE.test(body)
+      ) {
         return raw;
       }
       if (isLineStartLabelValue(value, raw, index)) continue;
-      if (FIELD_PLACEHOLDER_WORD.test(body)) return raw;
+      if (NAME_FIELD_WHOLE.test(body) || STANDALONE_FIELD_WORD.test(body)) return raw;
       if (bareFillVerbBlocks(body)) return raw;
     }
     return null;

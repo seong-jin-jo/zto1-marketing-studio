@@ -130,6 +130,33 @@ describe("GENERATED-PLACEHOLDER-01 생성 문구 자리표시 차단", () => {
     expect(containsInstructionPlaceholder(value)).toBe(expected);
   });
 
+  it.each([
+    // 12차 리뷰: NAME_FIELD_SUFFIX가 "명으로 끝나는 모든 낱말"을 잡던 오탐 수정.
+    // 허용 목록(브랜드/서비스/상품/제품/행사/가게/상호/업체/회사/매장/이벤트/캠페인/프로그램)
+    // 밖의 낱말 뒤에 오는 맨 동사형과 숫자+명은 통과시킨다.
+    ["모집 인원(5명 추가)", false],
+    ["당첨자 발표(20명 추가)", false],
+    ["업데이트 안내(상세 설명 추가)", false],
+    ["계약서(서명 추가)", false],
+    ["회원가입(실명 입력)", false],
+    ["(Tag your friends here)", false],
+    ["(Replace 쿠폰 2장 증정)", false],
+  ])("PR95-R12-NAMEFIELD-ALLOW-01 표: %s 차단 여부는 %s", (value, expected) => {
+    expect(containsInstructionPlaceholder(value)).toBe(expected);
+  });
+
+  it.each([
+    // 12차 리뷰: 기존 차단 기대 유지 — 허용 목록 안의 정체성 이름 계열은 계속 차단.
+    ["(URL)", true],
+    ["(상호명)", true],
+    ["[링크]", true],
+    ["(가게 이름 입력)", true],
+    ["(행사명 추가)", true],
+    ["(상품명 입력)", true],
+  ])("PR95-R12-NAMEFIELD-BLOCK-01 표: %s 차단 여부는 %s", (value, expected) => {
+    expect(containsInstructionPlaceholder(value)).toBe(expected);
+  });
+
   it("GENERATED-PLACEHOLDER-01A 정상: 괄호 속 작성 지시는 자리표시로 판정하고 일반 보충설명은 허용한다", () => {
     expect(containsInstructionPlaceholder("(브랜드가 실제로 제공하는 서비스 한 문장으로 대체)")).toBe(true);
     expect(containsInstructionPlaceholder("(서비스 이름을 직접 입력하세요)")).toBe(true);
