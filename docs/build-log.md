@@ -1,5 +1,92 @@
 # OSMU build log
 
+## 2026-09-30 10:00 KST · PR #95 범위 축소와 대기열 확장 제거
+
+STAMP: 2026-09-30 10:00 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa, review | 근거: 사용자 범위 축소 결정, main `a8a52ade`, v70 §3.5, 표적 Vitest·TypeScript·Chromium | 고민: 대기열 동기화의 개별 오류를 더 고치지 않고 승인 설계가 있는 초안 내부 기능만 남겼다.
+
+| 검증 | 결과 |
+|---|---|
+| 대기열 되돌림 | queue API·자료형·복귀 해석기가 main `a8a52ade`와 동일. 전용 검증기·본문 생성기·생명주기 검사 삭제 |
+| 남길 기능 | 글자 한 벌, 자리표시 차단, 구형 초안 복구, 즉시 재합성, 원본 없는 카드 잠금 검사 유지 |
+| 말풍선 계약 | 장당 제한 제거, 9개 말풍선 통과. 장수 7~11 유지 |
+| 표적 Vitest | 최종 8파일 120건 PASS. 최초 실행에서 새 시험 자료 오류 1건 수정 |
+| TypeScript | `npm run typecheck:ci` 종료 코드 0 |
+| 실제 화면 | `localhost:3470` 준비 707ms, `/studio` 200. 1440·390 한 장·두 장 잠금, 재업로드 0, 가로 넘침 0, 콘솔 오류 0 |
+
+전체 Vitest는 사용자 지시대로 실행하지 않았다. 원격 CI는 push 전이라 미검증이다. 머지·배포는 하지 않았다.
+
+## 2026-09-30 08:21 KST · PR #95 6차 리뷰 형식별 요청 정규화·입력 상한
+
+STAMP: 2026-09-30 08:21 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa, review | 근거: PR #95 6차 리뷰, 표적 Vitest·TypeScript | 고민: 전환 전 상태를 파괴하지 않으면서 API 요청만 현재 형식으로 정규화해 되돌리기와 경계 안전을 함께 보존했다.
+
+| 검증 | 결과 |
+|---|---|
+| 수정 전 실패 재현 | 표적 2파일 78건 중 4건 실패. 말풍선·영상의 잔여 위치 400, 비내장 73개 200, 영상 요청의 카드 필드 잔존 |
+| 실제 `StudioPage` 요청 | 글자 내장 카드에서 영상·글로 각각 전환한 뒤 검토 요청. 현재 형식·문구만 포함하고 카드 이미지·표식·위치 미포함 |
+| 대기열 종류별 계약 | 글자 내장 정상 200·불일치 400, 일반 배경 200, 말풍선 9장·15문구 200, 잔여 위치가 섞인 말풍선·영상 200, 비내장 72개 200·73개 400 |
+| 최종 표적 Vitest | 3파일·89건 PASS, 실패 0, 종료 코드 0 |
+| TypeScript | `npm run typecheck:ci` 종료 코드 0 |
+
+전체 Vitest는 사용자 지시대로 실행하지 않았고 원격 CI가 최종 판정한다. 화면 배치·스타일은 변경하지 않아 별도 시각 대조와 모바일 크기 재측정 대상이 아니다. `git push origin fix/editroom-textcard-overlay`는 실행 환경의 외부 쓰기 승인 정책이 `never`라 프로세스 시작 전에 차단됐다. 머지·배포는 하지 않았다.
+
+## 2026-09-30 07:45 KST · PR #95 5차 리뷰 카드 종류별 대기열 계약·잠금 안내 캡처
+
+STAMP: 2026-09-30 07:45 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa, review | 근거: PR #95 5차 리뷰, 표적 Vitest·TypeScript·Chromium v70 화면 검사 | 고민: 공통 요청 필드의 의미를 카드 종류별로 분리하고, 화면 검사가 저장할 바로 그 프레임의 안내 가시성을 검증하게 했다.
+
+| 검증 | 결과 |
+|---|---|
+| 수정 전 실패 재현 | 카드 종류별 계약표 5행 중 일반 배경 1장·2문구와 말풍선 9장·15문구 두 행이 400으로 실패 |
+| 표적 Vitest | 3파일·83건 PASS, 실패 0 |
+| TypeScript | `npm run typecheck:ci` 종료 코드 0 |
+| Chromium 잠금 화면 | 1440·390 각각 한 장·두 장 캡처를 직접 확인. 원인·보존 안내·새 카드 생성 행동 노출, 조작 비활성, 원본 URL·장수 유지, 재업로드 0, 가로 넘침 0, 콘솔 오류 0 |
+| 산출물 검사 | 핀 실체·슬롯키·버전 정합 통과. 기존 상류 산출물 경고 28건 유지 |
+
+전체 Vitest는 사용자 지시대로 실행하지 않고 원격 CI가 최종 판정한다. UI 제품 코드는 변경하지 않아 모바일 크기 재측정 대상이 아니다. 머지·배포는 하지 않았다.
+
+## 2026-09-30 06:59 KST · PR #95 4차 리뷰 대기열 교차 계약·잠금 화면 상시 검사
+
+STAMP: 2026-09-30 06:59 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: PR #95 4차 리뷰, 표적 Vitest·TypeScript·Chromium v70 화면 검사 | 고민: 독립 필드 검사를 통과한 조합이 실제로 복원 가능한 카드 원본인지 요청 경계에서 함께 판정했다.
+
+| 검증 | 결과 |
+|---|---|
+| 수정 전 실패 재현 | 대기열 경계 회귀 8건 실패. 장수 불일치·원본 메타데이터 누락·영상 편집 형식·비boolean 표식이 저장됨 |
+| 표적 Vitest | 3파일·79건 PASS, 실패 0 |
+| TypeScript | `npm run typecheck:ci` 종료 코드 0 |
+| Chromium 잠금 화면 | 1440·390 각각 한 장·두 장, 잠금 안내와 비활성 조작 확인. 원본 URL·장수 보존, 재업로드 0건, 가로 넘침 0, 콘솔 오류 0 |
+| 독립 재검토 | 최초 MAJOR 1건인 빼기·되살리기와 콘텐츠 크기 잠금 검사 누락을 보완한 뒤 재검토 PASS, MAJOR 0 |
+
+전체 Vitest는 사용자 지시대로 실행하지 않고 원격 CI가 최종 판정한다. 머지·배포는 하지 않았다.
+
+## 2026-09-30 04:27 KST · PR #95 3차 리뷰 원본 없는 카드 잠금·대기열 검증
+
+STAMP: 2026-09-30 04:27 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa, review | 근거: PR #95 3차 리뷰, v70 실패 상태 계약, 표적 Vitest·TypeScript | 고민: 원본 없는 카드는 편집 가능한 척하지 않고 기존 그림 보존과 새 생성 행동을 명확히 보여 줬다.
+
+| 검증 | 결과 |
+|---|---|
+| 수정 전 실패 재현 | 2파일에서 신규 회귀 8건 실패. 편집 잠금 2건과 요청 검증 6건 |
+| 표적 Vitest | 4파일·75건 PASS, 실패 0 |
+| TypeScript | `npx tsc --noEmit` 종료 코드 0. CI와 같은 OpenClaw 의존성은 main 설치본을 일시 연결한 뒤 제거 |
+| UI 토큰 감사 | 종료 코드 0. 기존 인라인 style 1파일·토큰 밖 hex 6파일 경고 유지, 이번 변경에 신규 직접값·hex·인라인 style 없음 |
+| 산출물 검사 | 핀 실체·슬롯키·버전 정합 통과. 기존 상류 산출물 경고 28건 유지 |
+
+전체 Vitest는 사용자 지시대로 실행하지 않고 원격 CI가 최종 판정한다. 실제 브라우저 캡처는 이번 3차 수정에서 새로 만들지 않았으며, 한 장·두 장 복귀와 조작 잠금은 실제 `StudioPage` 통합 테스트로 검증했다. `git push origin fix/editroom-textcard-overlay`는 실행 환경의 외부 쓰기 승인 정책이 `never`라 프로세스 시작 전에 차단됐다. 머지·배포는 하지 않았다.
+
+## 2026-09-29 21:41 KST · 운영 글자 카드 중복·생성 자리표시 누출 수정
+
+STAMP: 2026-09-29 21:41 KST | model: gpt-codex/GPT-5.6 | agent: code-builder | skill: qa, review | 근거: 운영 재현, v70 §3, 로컬 Vitest·TypeScript·build·Chromium | 고민: 완성 PNG와 편집 레이어의 소유권을 명시해 글자를 한 벌만 보이게 했다.
+
+| 검증 | 결과 |
+|---|---|
+| 관련 Vitest | 5파일·45건 PASS, 실패 0 |
+| TypeScript·production build | `npm run typecheck:ci`, `npm run build` 종료 코드 0 |
+| UI 토큰 감사 | 위반 0 |
+| Chromium 1440 | 무대·이미지 520×650, 중복 컨트롤 0, 가로 오버플로 0 |
+| Chromium 390 | 무대·이미지 308×385, 중복 컨트롤 0, 가로 오버플로 0 |
+| 브라우저 콘솔 | 두 폭 합계 오류 0 |
+| 캡처 | `docs/qa/osmu-textcard-overlay-1440x900.png`, `docs/qa/osmu-textcard-overlay-390x844.png` |
+
+전체 Vitest 최초 실행은 423파일 중 415파일·2,860건 통과, 8파일 실패였다. 실패 원인은 CI의 `Seed proper-lockfile into the openclaw tree` 준비 단계를 로컬에서 빠뜨린 것이며, 동일 배치 후 실패했던 8파일 58건은 PASS다. 사용자 지시에 따라 전체 스위트는 다시 돌리지 않고 원격 CI가 최종 판정한다. 머지·배포는 하지 않았다.
+
 ## 2026-09-29 08:18 KST · PR #94 리뷰 r5 토큰·영상 회귀 수정
 
 STAMP: 2026-09-29 08:18 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa | 근거: `review94-r5.md`, GitHub Actions run `36495350609`, 로컬 표적 Vitest·UI 토큰 감사 | 고민: 180px 계약의 소유 요소와 내부 화면 축소 계약을 분리해 테스트가 구현 구조를 정확히 감시하게 했다.
@@ -289,3 +376,11 @@ STAMP: 2026-09-25 01:45 KST | model: gpt-codex/GPT-5 | agent: code-builder | ski
 | 강제 종료 | TERM 무시 fake docker, 제한 1초·유예 1초 | 5초 안에 비정상 종료 PASS |
 
 운영 GitHub Actions 실행과 운영 컨테이너의 실제 `account status` 응답은 배포하지 않았으므로 미검증이다.
+## 2026-09-30 PR #95 r7 검토 대기열 단일 본문·형식별 계약
+
+STAMP: 2026-09-30 09:13 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skills: qa, review | source: PR #95 7차 리뷰, `card-deck-contract.ts`, v70 글·영상 스크롤 계약
+
+- 실패 재현: `npx vitest run tests/studio/text-card-queue-lifecycle.integration.test.ts tests/publish/studio-publish-ui.test.tsx` → 2파일 87건 중 9건 실패. 형식별 상한, 기존 대기열 갱신, 말풍선 최신 투영 결함을 고정했다.
+- 표적 회귀: `npx vitest run tests/studio/text-card-queue-lifecycle.integration.test.ts tests/publish/studio-publish-ui.test.tsx tests/studio/card-deck-contract.test.ts tests/studio/card-deck-ops.test.ts tests/studio/text-card-baked-overlay.regression-1.test.tsx` → 5파일 162건 PASS.
+- 타입 검사: `npm run typecheck:ci` → PASS, 종료 코드 0.
+- 미실행: 전체 Vitest는 원격 CI 판정 지시에 따라 실행하지 않았다. UI 배치·스타일을 바꾸지 않아 개발 서버 화면 및 픽셀 비교는 이번 변경의 검증 대상이 아니다.

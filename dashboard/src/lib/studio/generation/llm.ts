@@ -18,6 +18,7 @@ import {
   type Speaker,
 } from "@/lib/studio/card-deck-contract";
 import { DEFAULT_CARD_THEME } from "@/lib/studio/text-card-image-theme";
+import { findInstructionPlaceholder } from "@/lib/studio/generated-copy";
 import { checkCardDeckQuality, checkOutputQuality, extractKnownNumbers } from "@/lib/studio/output-quality";
 import type { GenerationRequest } from "./contracts";
 import type { DerivationKind, DerivationPayload } from "./derivation";
@@ -295,6 +296,7 @@ export function buildCandidatePrompt(request: GenerationRequest): string {
     "각 후보의 제목과 outline은 누구에게 보여 주는지와 무엇을 위해 만드는지를 분명히 반영하세요.",
     "각 후보의 문장은 지정한 말투를 유지하고, rationale에는 학습정보를 어떻게 적용했는지 설명하세요.",
     "학습정보에 없는 성과 수치, 고객 사례, 사실을 지어내지 마세요. 필요하면 조건과 확인 방법을 먼저 말하세요.",
+    "학습 정보가 비어 있으면 글감만으로 성립하는 완성된 일반 문장을 쓰세요. 괄호 안에 입력·작성·대체 지시를 남기지 마세요.",
     NO_DASH_RULE,
     "응답은 설명이나 코드 펜스 없이 JSON 객체 하나만 반환하세요.",
     '형식: {"candidates":[{"label":"A","angle":"problem_first","title":"...","rationale":"...","outline":["...","...","..."]},{"label":"B","angle":"proof_first","title":"...","rationale":"...","outline":["...","...","..."]},{"label":"C","angle":"process_first","title":"...","rationale":"...","outline":["...","...","..."]}]}',
@@ -324,6 +326,7 @@ function buildDerivationPrompt(
     `주 갈래: ${JSON.stringify({ title: candidate.title, rationale: candidate.rationale, outline: candidate.format.outline })}`,
     "학습 정보:",
     withoutDashes(describeLearningContext(request.learningContext)),
+    "학습 정보가 비어 있으면 글감만으로 성립하는 완성된 일반 문장을 쓰세요. 괄호 안에 입력·작성·대체 지시를 남기지 마세요.",
     NO_DASH_RULE,
     "응답은 설명이나 코드 펜스 없이 JSON 객체 하나만 반환하세요.",
   ];
@@ -411,7 +414,12 @@ function requiredTextList(value: unknown, minItems: number, maxItems: number, fi
 }
 
 export function parseCandidateOutput(text: string, forbiddenPhrases: readonly string[]): GeneratedCandidateContent[] {
-  const raw = jsonObject(text).candidates;
+  const value = jsonObject(text);
+  const placeholder = findInstructionPlaceholder(value);
+  if (placeholder) {
+    throw new StudioLlmExecutionError("invalid_output", true, `완성 문장 대신 자리표시가 남았습니다: ${placeholder}`);
+  }
+  const raw = value.candidates;
   if (!Array.isArray(raw) || raw.length !== 3) {
     const count = Array.isArray(raw) ? `${raw.length}개` : "후보 목록이 없음";
     throw new StudioLlmExecutionError("invalid_output", true, `후보가 3개여야 하는데 ${count}입니다`);
@@ -533,6 +541,10 @@ export function parseDerivationOutput(
   knownNumbers?: readonly string[],
 ): DerivationPayload {
   const value = jsonObject(text);
+  const placeholder = findInstructionPlaceholder(value);
+  if (placeholder) {
+    throw new StudioLlmExecutionError("invalid_output", true, `완성 문장 대신 자리표시가 남았습니다: ${placeholder}`);
+  }
   if (kind === "text") {
     const body = requiredText(value.body, 80, 20_000);
     // 글 파생이 checkOutputQuality 를 처음 런타임에서 탄다(설계 §5 F3 "공짜 이득").

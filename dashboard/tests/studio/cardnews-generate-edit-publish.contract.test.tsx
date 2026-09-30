@@ -31,7 +31,8 @@ describe("카드뉴스 이음매 계약", () => {
     expect(roomsSrc).toContain("onTextCardsCreated?.(persisted, lines)");
     expect(pageSrc).toContain("onTextCardsCreated={(urls, cardLines) => {");
     expect(pageSrc, "카드 글자가 편집실의 최신 본문 정본으로 안 넘어간다").toContain("if (cardLines.length) replaceEditLines(cardLines)");
-    expect(pageSrc, "카드 한 벌이 편집실로 안 넘어간다").toContain("previewImageUrls={img?.imageUrls ?? null}");
+    expect(pageSrc, "글자 내장 카드는 실시간 재합성본을 우선하고 저장 그림을 대체값으로 유지해야 한다")
+      .toContain("previewImageUrls={liveTextCardPreview ?? img?.imageUrls ?? null}");
   });
 
   it("CARD-LINK-02 편집실은 카드 3장을 3장으로 그리고 고른 장의 그림을 보여 준다", () => {

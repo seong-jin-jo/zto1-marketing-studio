@@ -25,6 +25,17 @@ const requestedViewportWidths = new Set(
 );
 const lines = ["첫 장에서 문제를 짚습니다", "두 번째 장에서 원인을 설명합니다", "마지막 장에서 다음 행동을 제안합니다"];
 const images = ["/qa/alignment-card-1.jpg", "/qa/alignment-card-2.jpg", "/qa/alignment-card-3.jpg"];
+const bakedTextLines = ["상위권 공부법을 그대로 따라 하고 있었어요", "내 공부 순서부터 다시 봤습니다", "오늘 한 단계만 바꿔 보세요"];
+const bakedTextCard = `data:image/svg+xml;base64,${Buffer.from(`
+  <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+    <rect width="1080" height="1350" fill="#171717"/>
+    <text x="108" y="560" fill="#ffffff" font-family="Arial, sans-serif" font-size="76" font-weight="700">
+      <tspan x="108" dy="0">상위권 공부법을 그대로</tspan>
+      <tspan x="108" dy="112">따라 하고 있었어요</tspan>
+    </text>
+    <text x="108" y="1240" fill="#d4d4d4" font-family="Arial, sans-serif" font-size="38">1 / 3</text>
+  </svg>
+`).toString("base64")}`;
 const bubbleDeck = JSON.parse(fs.readFileSync(path.join(repoRoot, "dashboard/tests/studio/fixtures/deck-d100.v2.json"), "utf8"));
 const referenceStageCrops = {
   1440: { left: 483, top: 168, width: 520, height: 650 },
@@ -68,6 +79,50 @@ function bubbleWork() {
     idea: "말풍선 덱 v70 화면 정합 검증",
     cardDeck: bubbleDeck,
     editLines: ["말풍선 덱은 9장 모두 같은 스트립 규격을 사용합니다."],
+  };
+}
+
+function bakedTextWork() {
+  return {
+    ...work("card"),
+    idea: "무료 글자 카드 중복 방지 검증",
+    img: {
+      url: bakedTextCard,
+      file: bakedTextCard,
+      imageUrls: [bakedTextCard, bakedTextCard, bakedTextCard],
+      topicKey: "v70-text-card-overlay",
+      aspectRatio: "4:5",
+      textEmbedded: true,
+    },
+    editLines: bakedTextLines,
+    text: {
+      ...work("card").text,
+      instagram: { caption: "무료 글자 카드 캡션", hashtags: ["공부법"], slides: bakedTextLines },
+    },
+  };
+}
+
+function unrecoverableTextWork(cardCount) {
+  const originalImageUrls = images.slice(0, cardCount);
+  const originalLines = bakedTextLines.slice(0, cardCount);
+  const idea = `원본 정보 없는 ${cardCount}장 카드 잠금 검증`;
+  return {
+    ...work("card"),
+    idea,
+    img: {
+      url: originalImageUrls[0],
+      file: originalImageUrls[0],
+      imageUrls: originalImageUrls,
+      topicKey: idea,
+      aspectRatio: "4:5",
+      textEmbedded: true,
+      textSourceRecoverable: false,
+    },
+    editLines: originalLines,
+    text: {
+      ...work("card").text,
+      instagram: { caption: "원본 없는 글자 카드 캡션", hashtags: ["보존"], slides: originalLines },
+    },
   };
 }
 
@@ -343,13 +398,20 @@ const context = await browser.newContext({ viewport: viewports[0] });
 await context.addInitScript(({ id, initial }) => {
   localStorage.setItem("dashboard_auth_token", "studio-v70-screen-token");
   localStorage.setItem("active_workspace", JSON.stringify({ id, slug: "studio-v70-screen", name: "화면 검증 작업 공간", tier: "team" }));
-  localStorage.setItem(`studio_work:${id}`, JSON.stringify(initial));
+  // addInitScript는 모든 탐색 전에 다시 돈다. 매번 기본 카드를 쓰면 setWork()가 넣은
+  // 글자 내장 카드 fixture까지 다음 /studio 탐색에서 일반 카드로 되돌아가므로, 최초
+  // 부트스트랩에만 기본값을 넣고 이후 화면별 fixture는 setWork()를 정본으로 둔다.
+  if (!localStorage.getItem(`studio_work:${id}`)) {
+    localStorage.setItem(`studio_work:${id}`, JSON.stringify(initial));
+  }
 }, { id: workspaceId, initial: work("card") });
 
 const page = await context.newPage();
 page.setDefaultTimeout(90_000);
 const consoleErrors = [];
 const observations = [];
+const draftSaves = [];
+let imageUploadCount = 0;
 let currentDraft = null;
 page.on("pageerror", (error) => consoleErrors.push(error.message));
 page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
@@ -365,12 +427,20 @@ await page.route("**/api/**", async (route) => {
   if (pathname === "/api/studio/brand-setup") return json(route, { guide: null });
   if (pathname === "/api/studio/engine-status") return json(route, { ready: true });
   if (pathname === "/api/elevenlabs-voices") return json(route, { voices: [] });
-  if (pathname === "/api/studio/drafts") return json(route, request.method() === "POST"
-    ? { ok: true, id: "screen-draft" }
-    : {
-        drafts: currentDraft ? [currentDraft] : [],
-        currentWork: currentDraft ? { draftId: currentDraft.id, stage: "edit", stageLabel: "편집실", idea: currentDraft.idea } : null,
-      });
+  if (pathname === "/api/studio/drafts") {
+    if (request.method() === "POST") {
+      draftSaves.push(request.postDataJSON());
+      return json(route, { ok: true, id: "screen-draft", bodyRevision: draftSaves.length });
+    }
+    return json(route, {
+      drafts: currentDraft ? [currentDraft] : [],
+      currentWork: currentDraft ? { draftId: currentDraft.id, stage: "edit", stageLabel: "편집실", idea: currentDraft.idea } : null,
+    });
+  }
+  if (pathname === "/api/images/upload") {
+    imageUploadCount += 1;
+    return json(route, { url: `/api/images/deliver/screen-upload-${imageUploadCount}` });
+  }
   if (pathname === "/api/publish/first-comment-capabilities") return json(route, { capabilities: [] });
   if (/^\/api\/channels\/[^/]+\/accounts$/.test(pathname)) {
     const provider = pathname.split("/")[3];
@@ -478,6 +548,180 @@ async function captureCard(viewport) {
   await room.locator("[data-edit-preview-frame]").screenshot({ path: stageScreenshot });
   observations.push({ screen: "edit-card", ...viewport, geometry, overflow, inputCount: inputValues.length });
   return { screenshot, stageScreenshot };
+}
+
+async function captureBakedTextCard(viewport) {
+  await page.setViewportSize(viewport);
+  await setWork(bakedTextWork());
+  await page.goto(`${baseUrl}/studio?room=edit&kind=card`, { waitUntil: "networkidle", timeout: 60_000 });
+  const room = page.locator('[data-room="edit"][data-edit-kind="card"]');
+  const stage = room.locator("[data-edit-preview-frame]");
+  const stageImage = stage.locator('[data-edit-preview-media="image"]');
+  await stageImage.waitFor({ timeout: 10_000 });
+
+  // v70 544행 계약을 실제 브라우저에서 검증한다. 글자 내장 원본을 그대로 둔 채
+  // 별도 DOM 글자를 얹는 방식이면 src가 바뀌지 않으므로 이 두 변화가 모두 실패한다.
+  const initialPreviewSrc = await stageImage.getAttribute("src");
+  const editedLine = `즉시 반영 ${viewport.width}`;
+  const firstLineInput = room.locator('[data-line-input="0"]');
+  await firstLineInput.fill(editedLine);
+  await page.waitForFunction(
+    ({ selector, before }) => document.querySelector(selector)?.getAttribute("src") !== before,
+    { selector: '[data-room="edit"] [data-edit-preview-media="image"]', before: initialPreviewSrc },
+  );
+  const textEditedPreviewSrc = await stageImage.getAttribute("src");
+  await room.getByRole("group", { name: "카드 글자 위치" }).getByRole("button", { name: "하단" }).click();
+  await page.waitForFunction(
+    ({ selector, before }) => document.querySelector(selector)?.getAttribute("src") !== before,
+    { selector: '[data-room="edit"] [data-edit-preview-media="image"]', before: textEditedPreviewSrc },
+  );
+  const positionEditedPreviewSrc = await stageImage.getAttribute("src");
+  if (!positionEditedPreviewSrc?.startsWith("data:image/")) {
+    throw new Error(`${viewport.width} 글자 수정 뒤 미리보기가 브라우저 재합성 이미지가 아닙니다`);
+  }
+
+  const duplicateControls = await room.locator('[aria-label="카드 글자 끌어 옮기기"], [data-card-face-copy]').count();
+  const placeholderOverlays = await room.getByText("여기에 카드 화면이 놓입니다", { exact: true }).count();
+  if (duplicateControls !== 0 || placeholderOverlays !== 0) {
+    const storedImg = await page.evaluate((id) => JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}").img ?? null, workspaceId);
+    const diagnostic = path.join(outputDir, `failed-edit-text-card-${viewport.width}x${viewport.height}.png`);
+    await page.screenshot({ path: diagnostic });
+    throw new Error(`${viewport.width} 글자 내장 카드 위에 편집 글자 레이어 ${duplicateControls}개·자리표시 레이어 ${placeholderOverlays}개가 다시 겹쳤습니다: ${JSON.stringify({ storedImg, diagnostic })}`);
+  }
+  await room.locator("[data-card-text-embedded-note]").waitFor();
+  const inputValues = await room.locator("[data-line-input]").evaluateAll((nodes) => nodes.map((node) => node.value));
+  const expectedEditedLines = [editedLine, ...bakedTextLines.slice(1)];
+  if (JSON.stringify(inputValues) !== JSON.stringify(expectedEditedLines)) {
+    throw new Error(`${viewport.width} 카드 문구 편집 목록이 수정 원문을 보존하지 않습니다: ${JSON.stringify(inputValues)}`);
+  }
+  const geometry = await stage.evaluate((frame) => {
+    const stageRect = frame.getBoundingClientRect();
+    const mediaRect = frame.querySelector('[data-edit-preview-media="image"]').getBoundingClientRect();
+    return {
+      stage: { left: stageRect.left, right: stageRect.right, top: stageRect.top, bottom: stageRect.bottom, width: stageRect.width, height: stageRect.height },
+      media: { left: mediaRect.left, right: mediaRect.right, top: mediaRect.top, bottom: mediaRect.bottom, width: mediaRect.width, height: mediaRect.height },
+    };
+  });
+  if (Math.abs(geometry.stage.width - geometry.media.width) > 1 || Math.abs(geometry.stage.height - geometry.media.height) > 1) {
+    throw new Error(`${viewport.width} 내장 글자 카드 이미지가 무대 전체를 채우지 않습니다: ${JSON.stringify(geometry)}`);
+  }
+  const overflow = await assertNoOverflow(page, '[data-room="edit"]', `글자 내장 카드 ${viewport.width}`);
+  await room.locator("[data-plain-card-shell]").evaluate((node) => {
+    node.scrollIntoView({ block: "start" });
+    window.scrollBy(0, -16);
+  });
+  const screenshot = path.join(outputDir, `edit-text-card-${viewport.width}x${viewport.height}.png`);
+  await page.screenshot({ path: screenshot });
+  const stageScreenshot = path.join(outputDir, `edit-text-card-stage-${viewport.width}x${viewport.height}.png`);
+  await stage.screenshot({ path: stageScreenshot });
+  observations.push({
+    screen: "edit-text-card",
+    ...viewport,
+    duplicateControls,
+    placeholderOverlays,
+    inputCount: inputValues.length,
+    editedLine,
+    textPreviewChanged: initialPreviewSrc !== textEditedPreviewSrc,
+    positionPreviewChanged: textEditedPreviewSrc !== positionEditedPreviewSrc,
+    previewIsBrowserRenderedDataUrl: positionEditedPreviewSrc?.startsWith("data:image/") === true,
+    geometry,
+    overflow,
+  });
+  return { screenshot, stageScreenshot };
+}
+
+async function captureUnrecoverableTextCard(viewport, cardCount) {
+  const lockedWork = unrecoverableTextWork(cardCount);
+  const originalImageUrls = [...lockedWork.img.imageUrls];
+  const uploadCountBefore = imageUploadCount;
+  const draftSaveCountBefore = draftSaves.length;
+  await page.setViewportSize(viewport);
+  await setWork(lockedWork);
+  await page.goto(`${baseUrl}/studio?room=edit&kind=card`, { waitUntil: "networkidle", timeout: 60_000 });
+
+  const room = page.locator('[data-room="edit"][data-edit-kind="card"]');
+  const lockPanel = room.locator("[data-card-source-lock]");
+  const lockReason = room.getByText("편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다.", { exact: true });
+  const preservationNotice = room.getByText("기존 그림은 그대로 보존됩니다. 수정하려면 생성실에서 새 카드로 만들어 주세요.", { exact: true });
+  const recoveryAction = room.getByRole("button", { name: "생성실에서 새 카드 만들기" });
+  await lockPanel.waitFor({ timeout: 10_000 });
+  await lockReason.waitFor();
+  await preservationNotice.waitFor();
+  await recoveryAction.waitFor();
+  if (await room.locator("[data-card-text-embedded-note]").count()) {
+    throw new Error(`${viewport.width} ${cardCount}장 잠금 상태에 바로 반영 안내가 노출됐습니다`);
+  }
+
+  const lineInputs = room.locator("[data-line-input]");
+  const thumbnailCount = await room.locator("[data-card-thumbnail]").count();
+  if (await lineInputs.count() !== cardCount || thumbnailCount !== cardCount) {
+    throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드의 입력·썸네일 장수가 보존되지 않았습니다`);
+  }
+  const lockedControls = [
+    lineInputs,
+    room.locator("[data-line-up], [data-line-down]"),
+    room.locator("[data-line-toggle]"),
+    room.locator("[data-line-add]"),
+    room.locator("[data-content-size-option]"),
+    room.getByRole("group", { name: "카드 글자 위치" }).getByRole("button"),
+  ];
+  for (const controls of lockedControls) {
+    const states = await controls.evaluateAll((nodes) => nodes.map((node) => node.disabled));
+    if (!states.length || states.some((disabled) => !disabled)) {
+      throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드에 활성 조작이 남았습니다: ${JSON.stringify(states)}`);
+    }
+  }
+
+  const previewSources = await room.locator('[data-edit-preview-media="image"]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute("src")));
+  if (!previewSources.length || !originalImageUrls.some((url) => previewSources.some((source) => source?.includes(url)))) {
+    throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드가 원본 그림을 미리보기에 유지하지 않았습니다`);
+  }
+  const overflow = await assertNoOverflow(page, '[data-room="edit"]', `원본 없는 ${cardCount}장 카드 ${viewport.width}`);
+  await lockPanel.evaluate((node) => node.scrollIntoView({ block: "center", inline: "nearest" }));
+  await page.waitForTimeout(100);
+  for (const [label, locator] of [
+    ["잠금 원인", lockReason],
+    ["기존 그림 보존 안내", preservationNotice],
+    ["새 카드 생성 행동", recoveryAction],
+  ]) {
+    const box = await locator.boundingBox();
+    if (!box || box.y < 0 || box.y + box.height > viewport.height || box.x < 0 || box.x + box.width > viewport.width) {
+      throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드의 ${label}이 캡처 화면 안에 없습니다: ${JSON.stringify(box)}`);
+    }
+  }
+  const screenshot = path.join(outputDir, `edit-text-card-locked-${cardCount}-${viewport.width}x${viewport.height}.png`);
+  await page.screenshot({ path: screenshot });
+
+  await room.getByRole("button", { name: "발행실로 이동" }).click();
+  await page.waitForFunction(() => new URL(location.href).searchParams.get("room") === "publish");
+  if (imageUploadCount !== uploadCountBefore) {
+    throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드가 ${imageUploadCount - uploadCountBefore}장을 다시 업로드했습니다`);
+  }
+  const newDraftSaves = draftSaves.slice(draftSaveCountBefore);
+  const savedDraft = newDraftSaves.at(-1);
+  if (JSON.stringify(savedDraft?.img?.imageUrls) !== JSON.stringify(originalImageUrls)
+    || savedDraft?.img?.textEmbedded !== true
+    || savedDraft?.img?.textSourceRecoverable !== false) {
+    throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드 저장이 원본 URL·장수·잠금 표식을 보존하지 않았습니다: ${JSON.stringify(savedDraft?.img)}`);
+  }
+  const storedWork = await page.evaluate((id) => JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}"), workspaceId);
+  if (JSON.stringify(storedWork?.img?.imageUrls) !== JSON.stringify(originalImageUrls)) {
+    throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드의 브라우저 작업물이 원본 URL·장수를 잃었습니다`);
+  }
+  observations.push({
+    screen: `edit-text-card-locked-${cardCount}`,
+    ...viewport,
+    cardCount,
+    thumbnailCount,
+    originalImageUrls,
+    savedImageUrls: savedDraft.img.imageUrls,
+    imageUploads: imageUploadCount - uploadCountBefore,
+    lockGuidanceVisible: true,
+    controlsDisabled: true,
+    overflow,
+    screenshot,
+  });
+  return screenshot;
 }
 
 async function captureVideoEmpty(viewport) {
@@ -690,6 +934,11 @@ async function capturePublish(viewport) {
 try {
   for (const viewport of viewports.filter(({ width }) => requestedViewportWidths.has(width))) {
     const cardShots = await captureCard(viewport);
+    await captureBakedTextCard(viewport);
+    if (viewport.width === 1440 || viewport.width === 390) {
+      await captureUnrecoverableTextCard(viewport, 1);
+      await captureUnrecoverableTextCard(viewport, 2);
+    }
     const bubbleShots = await captureBubbleDeck(viewport);
     await captureVideoEmpty(viewport);
     if (viewport.width === 390) await captureVideoActual(viewport);

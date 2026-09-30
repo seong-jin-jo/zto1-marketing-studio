@@ -24,6 +24,7 @@ import {
 } from "./text-card-image";
 import type { CardDeck, CardTemplate } from "./card-deck-contract";
 import { CARD_TEMPLATE_RENDERERS } from "./card-templates";
+import { embeddedTextCardImage } from "./text-card-provenance";
 
 /** 편집실이 쓰는 아홉 자리 표기를 카드 그리기가 쓰는 세 자리로 줄인다. */
 export function verticalFrom(position: string | undefined): CardTextVerticalPosition {
@@ -83,6 +84,59 @@ export type CardDeckUpload = {
 export class CardDeckError extends Error {}
 
 /**
+ * plain 글자 카드 한 벌을 저장하지 않고 브라우저 data URL로만 그린다.
+ * 편집실 즉시 미리보기와 최종 업로드가 같은 입력·렌더러를 공유하게 하는 정본이다.
+ */
+export function renderPlainCardDeck(
+  spec: CardDeckSpec,
+  render: (input: TextCardInput) => string | null = renderTextCard,
+): string[] {
+  const inputs = cardDeckRenderInputs(spec);
+  if (!inputs.length) return [];
+  const drawn: string[] = [];
+  for (const input of inputs) {
+    const dataUrl = render(input);
+    if (!dataUrl) throw new CardDeckError("이 브라우저에서는 카드를 그릴 수 없습니다.");
+    drawn.push(dataUrl);
+  }
+  return drawn;
+}
+
+export type PlainCardRenderCacheEntry = {
+  key: string;
+  dataUrl: string;
+};
+
+/**
+ * 편집 중에는 바뀐 장만 다시 그린다. 카드 수만큼만 캐시를 반환하므로 입력을 오래 바꿔도
+ * 과거 PNG data URL이 계속 쌓이지 않는다. 최종 발행은 아래 업로드 함수가 전 장을 다시
+ * 그려 정본을 만든다.
+ */
+export function renderPlainCardDeckIncremental(
+  spec: CardDeckSpec,
+  previous: readonly PlainCardRenderCacheEntry[] = [],
+  render: (input: TextCardInput) => string | null = renderTextCard,
+): { urls: string[]; cache: PlainCardRenderCacheEntry[] } {
+  const total = spec.lines.length;
+  const inputs = spec.lines.map((text, index): TextCardInput => ({
+    text,
+    ratio: spec.ratio,
+    theme: spec.theme ?? DEFAULT_CARD_THEME,
+    position: verticalFrom(spec.positions?.[index]),
+    index,
+    total,
+  }));
+  const cache = inputs.map((input, index) => {
+    const key = JSON.stringify(input);
+    if (previous[index]?.key === key) return previous[index];
+    const dataUrl = render(input);
+    if (!dataUrl) throw new CardDeckError("이 브라우저에서는 카드를 그릴 수 없습니다.");
+    return { key, dataUrl };
+  });
+  return { urls: cache.map((entry) => entry.dataUrl), cache };
+}
+
+/**
  * template="chat_bubble" 일 때 덱의 slides 순서대로 PNG data URL 목록을 그린다.
  * 표지·CTA 사진(J1)을 기다려야 해서 장마다 순서대로 await 한다(Promise.all 로 동시에
  * 돌리면 실패한 장의 순번을 특정하기 어렵고, 사진 여러 장을 한꺼번에 내려받게 된다).
@@ -112,16 +166,19 @@ export async function renderAndUploadCardDeck(spec: CardDeckSpec, deps: CardDeck
     const drawn = await renderChatBubbleDeck(spec.deck);
     return uploadDrawnCards(drawn, deps);
   }
-  const inputs = cardDeckRenderInputs(spec);
-  if (!inputs.length) throw new CardDeckError("카드로 만들 글자가 없습니다.");
-  const render = deps.render ?? renderTextCard;
-  const drawn: string[] = [];
-  for (const input of inputs) {
-    const dataUrl = render(input);
-    if (!dataUrl) throw new CardDeckError("이 브라우저에서는 카드를 그릴 수 없습니다.");
-    drawn.push(dataUrl);
-  }
+  const drawn = renderPlainCardDeck(spec, deps.render ?? renderTextCard);
+  if (!drawn.length) throw new CardDeckError("카드로 만들 글자가 없습니다.");
   return uploadDrawnCards(drawn, deps);
+}
+
+/** plain 카드 재합성과 글자 내장 표식을 하나의 호출로 묶어 표식 누락을 구조적으로 막는다. */
+export async function renderAndUploadEmbeddedTextCard(
+  spec: CardDeckSpec,
+  deps: CardDeckDeps,
+  topicKey: string,
+) {
+  const urls = await renderAndUploadCardDeck(spec, deps);
+  return embeddedTextCardImage({ url: urls[0], file: urls[0], imageUrls: urls, topicKey });
 }
 
 async function uploadDrawnCards(drawn: string[], deps: CardDeckDeps): Promise<string[]> {

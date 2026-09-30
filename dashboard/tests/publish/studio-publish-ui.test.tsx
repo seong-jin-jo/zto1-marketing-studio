@@ -266,6 +266,128 @@ describe("Studio publish result integrity", () => {
     expect(document.querySelector("[data-video-subtitle-text]"), "복귀한 영상 대본을 편집할 수 있어야 한다").toBeEnabled();
   });
 
+  it("PR95-SCOPE-CUT-VIDEO-01 연결 초안 없는 영상의 대표 이미지는 카드 잠금으로 오인하지 않는다", async () => {
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "이전 카드 작업",
+      editKind: "card",
+      editLines: ["이전 카드 문구"],
+      img: { url: "/api/images/deliver/old-card", file: "/api/images/deliver/old-card" },
+    }));
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-video-cover");
+    mocks.returnPosts = [{
+      id: "queue-video-cover",
+      text: "대표 이미지도 있는 영상",
+      topic: "영상 복귀 작업물",
+      imageUrl: "/api/images/deliver/video-cover",
+      imageUrls: ["/api/images/deliver/video-cover"],
+      videoUrl: "/api/media/returned-video",
+      channels: { threads: { status: "pending" } },
+    }];
+
+    const page = render(<StudioPage />);
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+    expect(screen.getByRole("link", { name: "02편집실" })).toHaveAttribute("href", "/studio?room=edit&kind=video");
+    window.history.replaceState(null, "", "/studio?room=edit&kind=video");
+    page.rerender(<StudioPage />);
+
+    expect(document.querySelector("[data-card-source-lock]")).toBeNull();
+    await waitFor(() => expect(document.querySelector("[data-video-subtitle-list]")).toBeTruthy());
+  });
+
+  it("PR95-R2-STUDIO-01 연결 초안 없는 2장 글자 카드는 편집실과 저장까지 2장을 유지한다", async () => {
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-two-card");
+    mocks.returnPosts = [{
+      id: "queue-two-card",
+      text: "과거 대기열의 합쳐진 본문",
+      topic: "두 장 복귀 작업물",
+      imageUrl: "/api/images/deliver/original-1",
+      imageUrls: ["/api/images/deliver/original-1", "/api/images/deliver/original-2"],
+      channels: { threads: { status: "pending" } },
+    }];
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "restored-two-card", bodyRevision: 1 };
+      return { ok: true };
+    });
+
+    const page = render(<StudioPage />);
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+    expect(screen.getByRole("link", { name: "02편집실" })).toHaveAttribute("href", "/studio?room=edit&kind=card");
+
+    window.history.replaceState(null, "", "/studio?room=edit&kind=card");
+    page.rerender(<StudioPage />);
+
+    expect(await screen.findByText(/편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/기존 그림은 그대로 보존됩니다/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "생성실에서 새 카드 만들기" })).toBeInTheDocument();
+    expect(screen.queryByText("문구와 글자 위치를 바꾸면 카드 그림에 바로 반영됩니다.")).not.toBeInTheDocument();
+    expect(document.querySelectorAll("[data-script-line]")).toHaveLength(2);
+    expect(document.querySelectorAll("[data-plain-card-strip] button")).toHaveLength(2);
+    expect(screen.getByLabelText("문구 1")).toBeDisabled();
+    expect(screen.getByLabelText("1번째를 아래로")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "카드 추가" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "상단" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      "이전 카드 2장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.",
+      "success",
+    ));
+    await waitFor(() => {
+      const saves = mocks.apiPost.mock.calls.filter(([path]) => path === "/api/studio/drafts");
+      expect(saves.at(-1)?.[1]).toEqual(expect.objectContaining({
+        editKind: "card",
+        editFormat: expect.objectContaining({ kind: "card" }),
+        img: expect.objectContaining({
+          imageUrls: ["/api/images/deliver/original-1", "/api/images/deliver/original-2"],
+          textEmbedded: true,
+          textSourceRecoverable: false,
+        }),
+      }));
+    });
+  });
+
+  it("PR95-R3-STUDIO-01 원본 정보 없는 한 장 글자 카드도 편집을 잠그고 재합성하지 않는다", async () => {
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-one-card");
+    mocks.returnPosts = [{
+      id: "queue-one-card",
+      text: "과거 한 장 카드 본문",
+      topic: "한 장 복귀 작업물",
+      imageUrl: "/api/images/deliver/original-one",
+      imageUrls: ["/api/images/deliver/original-one"],
+      channels: { threads: { status: "pending" } },
+    }];
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "restored-one-card", bodyRevision: 1 };
+      return { ok: true };
+    });
+
+    const page = render(<StudioPage />);
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+    window.history.replaceState(null, "", "/studio?room=edit&kind=card");
+    page.rerender(<StudioPage />);
+
+    expect(await screen.findByText(/편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다/)).toBeInTheDocument();
+    expect(screen.getByLabelText("문구 1")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      "이전 카드 1장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.",
+      "success",
+    ));
+    expect(mocks.apiPost.mock.calls.some(([path]) => String(path).includes("recompose"))).toBe(false);
+    await waitFor(() => {
+      const saves = mocks.apiPost.mock.calls.filter(([path]) => path === "/api/studio/drafts");
+      expect(saves.at(-1)?.[1]).toEqual(expect.objectContaining({
+        img: expect.objectContaining({
+          imageUrls: ["/api/images/deliver/original-one"],
+          textEmbedded: true,
+          textSourceRecoverable: false,
+        }),
+      }));
+    });
+  });
+
   it("FE-V63-RETURN-04 경계: 본문 없는 편집 인계 초안은 큐 본문과 초안 메타데이터를 함께 복원한다", async () => {
     window.history.replaceState(null, "", "/studio?room=publish&queue_id=queue-handoff&from=calendar&draft_id=draft-handoff");
     mocks.drafts = [{

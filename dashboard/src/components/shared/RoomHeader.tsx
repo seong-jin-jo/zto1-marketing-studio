@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { workspaceDisplayName } from "@/lib/workspace-display-name";
 
 export type ProductRoom = "create" | "edit" | "publish" | "performance";
+type RoomEditKind = "text" | "card" | "video" | "audio";
 
 const ROOM_FLOW: ReadonlyArray<{ key: ProductRoom; number: string; label: string; href: string }> = [
   { key: "create", number: "01", label: "생성실", href: "/studio?room=create" },
@@ -41,7 +42,7 @@ export function RoomBadge({ label }: { label: string }) {
   );
 }
 
-export function RoomFlowHeader({ currentRoom }: { currentRoom: ProductRoom }) {
+export function RoomFlowHeader({ currentRoom, currentEditKind }: { currentRoom: ProductRoom; currentEditKind?: RoomEditKind }) {
   const activeIndex = ROOM_FLOW.findIndex((room) => room.key === currentRoom);
 
   return (
@@ -49,10 +50,13 @@ export function RoomFlowHeader({ currentRoom }: { currentRoom: ProductRoom }) {
       {ROOM_FLOW.map((room, index) => {
         const active = room.key === currentRoom;
         const done = index < activeIndex;
+        const href = room.key === "edit" && currentEditKind && currentEditKind !== "audio"
+          ? `${room.href}&kind=${currentEditKind}`
+          : room.href;
         return (
           <Link
             key={room.key}
-            href={room.href}
+            href={href}
             aria-current={active ? "step" : undefined}
             data-room-step={room.key}
             className={`flex min-h-control-touch min-w-0 items-center justify-center gap-micro rounded-control border px-stack-tight text-caption font-semibold transition-colors ${
@@ -77,6 +81,7 @@ export function RoomHeader({
   subtitle,
   roomLabel,
   currentRoom,
+  currentEditKind,
   leading,
   trailing,
   children,
@@ -85,6 +90,7 @@ export function RoomHeader({
   subtitle: string;
   roomLabel: string;
   currentRoom?: ProductRoom;
+  currentEditKind?: RoomEditKind;
   leading?: ReactNode;
   trailing?: ReactNode;
   children?: ReactNode;
@@ -115,7 +121,7 @@ export function RoomHeader({
         </div>
       ) : null}
       {children}
-      {currentRoom ? <RoomFlowHeader currentRoom={currentRoom} /> : null}
+      {currentRoom ? <RoomFlowHeader currentRoom={currentRoom} currentEditKind={currentEditKind} /> : null}
     </header>
   );
 }
