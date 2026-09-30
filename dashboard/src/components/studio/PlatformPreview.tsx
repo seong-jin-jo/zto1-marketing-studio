@@ -386,13 +386,20 @@ function MediaCarousel({ cards, tenantId, testId, aspect = "aspect-square" }: {
   );
 }
 
+/**
+ * 발행 전 미리보기라 조회수·좋아요·댓글 수는 아직 존재하지 않는다. 종전에는 "12.4K",
+ * "318", "1.2K" 를 박아 두어 실제로 그만큼 반응이 있었던 것처럼 보였다(2026-10-01
+ * 회장 지적). 실제 반응 데이터를 이 미리보기가 받을 길이 없으니(발행 전 초안) 숫자는
+ * 아예 보여주지 않는다. 아이콘만 남겨 플랫폼 UI 구조를 보여 준다. 나중에 발행 후 실제
+ * 인사이트(threads_insights 류)를 이 자리에 연결할 때는 숫자를 채우고 이 주석을 지운다.
+ */
 function VideoRail({ kind }: { kind: "shorts" | "reels" | "tiktok" }) {
   return (
     <div className="absolute right-2 bottom-24 flex flex-col items-center gap-pad-inset text-text drop-shadow z-10">
       {kind === "tiktok" && <div className="relative mb-micro"><Av s={36} /><span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-4 rounded-pill bg-danger text-bg grid place-items-center text-caption">+</span></div>}
-      <div className="flex flex-col items-center">{P(I.heart, true)}<span className="text-caption mt-micro">12.4K</span></div>
-      <div className="flex flex-col items-center">{P(I.chat)}<span className="text-caption mt-micro">318</span></div>
-      {kind === "tiktok" ? <div className="flex flex-col items-center">{P(I.bookmark)}<span className="text-caption mt-micro">1.2K</span></div>
+      <div className="flex flex-col items-center">{P(I.heart, true)}</div>
+      <div className="flex flex-col items-center">{P(I.chat)}</div>
+      {kind === "tiktok" ? <div className="flex flex-col items-center">{P(I.bookmark)}</div>
         : <div className="flex flex-col items-center">{P(I.send)}<span className="text-caption mt-micro">공유</span></div>}
     </div>
   );

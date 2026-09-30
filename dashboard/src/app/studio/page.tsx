@@ -2551,6 +2551,11 @@ export default function StudioPage() {
     (platform) => validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0],
   ).blocked;
   const bulkTargets = ALL.filter((platform) => PUBLISH_SUPPORTED.has(platform)) as BulkPlatform[];
+  // 2026-10-01 실측(회장 지적): 사이드바(channel-config → getChannelConnectionStates)와
+  // publishTargets 는 connectionState === "connected" 인 것만 연결됨으로 본다. 도우미
+  // 문구만 계정 행이 있으면(재연결 필요 포함) 연결됨으로 세다가 "연결됨" 표시와 "발행
+  // 불가" 가 동시에 뜨는 모순이 났다(PR#96 결함3). usableAccounts + publishGuard 로
+  // 통일한다(main 이 이미 이 기준을 쓰고 있었다 — 중복 재정의하지 않는다).
   const connectedTargets = bulkTargets.filter((platform) =>
     usableAccounts(platform).length > 0 && !publishGuard(platform).disabledReason);
   const previewTargets = ALL as BulkPlatform[];
