@@ -107,6 +107,12 @@ const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reel
 
 import { draftStatusLabel } from "@/lib/studio/draft-status-label";
 import { connectedOnlyTargets, publishableTargets as computePublishableTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
+import {
+  resolveRestoredQuickDraftTopic,
+  sanitizeRestoredQuickDraftLines,
+  sanitizeRestoredQuickDraftText,
+  shouldInvalidateQuickDraft,
+} from "@/lib/studio/quick-draft-topic";
 
 const ROOM_LABEL: Record<StudioRoom, string> = { create: "생성실", edit: "편집실", publish: "발행실" };
 
@@ -473,6 +479,10 @@ export default function StudioPage() {
   const [text, setText] = useState<TextVariants | null>(null);
   const textRef = useRef<TextVariants | null>(null);
   textRef.current = text;
+  // 2026-10-01 운영 실측: 생성실 "고른 형식의 생성 후보" 패널(quickDraft = text)이 주제를
+  // 바꿔도 안 비워졌다. candidatesTopicRef(StudioRooms.tsx, PR#96)와 같은 패턴 —
+  // 후보를 만들 때의 주제를 기억해 두고, 실제 주제가 달라지면(trim 비교) 후보를 비운다.
+  const quickDraftTopicRef = useRef<string | null>(null);
 
   /**
    * 생성이 만든 채널별 메타를 발행실 칸에 채운다.
@@ -875,6 +885,7 @@ export default function StudioPage() {
     setIncludes(normalizeIncludes()); setPublishReconciliations({}); setEditorHandoff(null);
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
     replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
+    quickDraftTopicRef.current = null;
     videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setCreateBranch("video"); setCreatePrimaryKind(null); setEditKind("video"); setEditFormat(defaultContentEditFormat("video"));
@@ -893,7 +904,18 @@ export default function StudioPage() {
         setPublishReconciliations(normalizePublishReconciliations(w.publishReconciliations ?? w.publishReconciliation));
         setTitles(w.titles || {}); setHashtags(w.hashtags || {}); setTopicTags(w.topicTags || {});
         setFirstComments(w.firstComments || {}); setCaptions(w.captions || {}); setSelectedAccounts(w.selectedAccounts || {});
-        replaceBodySnapshot(w.editLines || [], w.text || null, { replaceDocument: true, serverRevision: Number.isSafeInteger(w.bodyRevision) ? w.bodyRevision : 0 });
+        // 2026-10-01 운영 실측: 구조 초안 복원부(StudioRooms.tsx)는 PR#96에서 이미
+        // filterInstructionPlaceholderLines 를 탔는데, 여기(생성 후보 패널의 복원 경로)는
+        // 안 걸려 있어 자리표시 문장이 그대로 화면에 복원됐다. 같은 판정 함수를 재사용한다
+        // (새 필터 금지 — 2026-10-01 PR#96 반려 "재창조 금지").
+        const restoredQuickDraftText = sanitizeRestoredQuickDraftText(w.text || null);
+        const restoredQuickDraftLines = sanitizeRestoredQuickDraftLines(w.editLines || []);
+        replaceBodySnapshot(restoredQuickDraftLines, restoredQuickDraftText, { replaceDocument: true, serverRevision: Number.isSafeInteger(w.bodyRevision) ? w.bodyRevision : 0 });
+        quickDraftTopicRef.current = resolveRestoredQuickDraftTopic({
+          hasText: Boolean(restoredQuickDraftText),
+          savedTopic: typeof w.quickDraftTopic === "string" ? w.quickDraftTopic : null,
+          restoredIdea: String(w.idea || ""),
+        });
         setCardTextPositions(w.cardTextPositions || []); setCardDeck((w.cardDeck as CardDeck) || null); setReviewQueueId(w.reviewQueueId || null);
         // B1(교차 리뷰 BLOCK, 재리뷰로 절반만 닫힘 지적): videoEdit이 이 복원 블록에
         // 없으면 편집기가 빈 videoEdit을 받았다. 이제 무조건 세팅한다(없으면 null —
@@ -925,6 +947,18 @@ export default function StudioPage() {
     } catch { /* noop */ }
     setHydratedWorkspaceId(workspaceId);
   }, [activeWorkspace?.id]);
+  // 2026-10-01 운영 실측: 생성실 "고른 형식의 생성 후보" 패널(quickDraft = text)이 주제를
+  // 바꿔도 이전 주제의 후보가 그대로 남았다. 구조 초안(StudioRooms.tsx, PR#96)과 같은
+  // 규칙 — 후보를 만든 실제 주제와 지금 주제가 달라지면(trim 비교) 후보를 비운다. 이 효과가
+  // 자기 복원(hydratedWorkspaceId)을 끝내기 전에는 판정을 미룬다(복원 직후 오삭제 금지 —
+  // 부모의 늦은 주제 복원을 "주제 변경"으로 오판하면 막 복원한 후보가 지워진다).
+  useEffect(() => {
+    const workspaceId = activeWorkspace?.id ?? null;
+    if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
+    if (!shouldInvalidateQuickDraft(quickDraftTopicRef.current, idea)) return;
+    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 });
+    quickDraftTopicRef.current = null;
+  }, [idea, hydratedWorkspaceId, activeWorkspace?.id]);
   // user-flow.md의 딥링크 계약. 로컬 초안 복원이 먼저 실행돼도 URL에 명시된 형식이
   // 마지막 선택권을 가진다. 종전에는 항상 저장된 카드 형식이 이 값을 덮어
   // /studio?room=edit&kind=video 에서도 카드 화면이 열렸다.
@@ -947,7 +981,7 @@ export default function StudioPage() {
     const workspaceId = activeWorkspace?.id;
     if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
     try {
-      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, reviewQueueId, editKind, editFormat, videoEdit }));
+      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, reviewQueueId, editKind, editFormat, videoEdit, quickDraftTopic: quickDraftTopicRef.current ?? undefined }));
       setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
       setEditAutosaveError("");
     } catch {
@@ -1050,6 +1084,9 @@ export default function StudioPage() {
         setEditKind(nextKind);
         setEditFormat(defaultContentEditFormat(nextKind));
         replaceBodySnapshot(nextLines, result, { replaceDocument: true, serverRevision: 0 });
+        // 이 후보를 만든 실제 주제를 기억해 둔다. 이후 주제가 바뀌면(trim 비교) 옛 주제로
+        // 만든 후보를 비운다 — 2026-10-01 운영 실측.
+        quickDraftTopicRef.current = idea.trim() || null;
         showToast(`${structure.label} 구조로 초안을 만들었습니다`, "success");
       }
     } finally {
@@ -1177,6 +1214,7 @@ export default function StudioPage() {
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setIdea(""); setImg(null); setVid(null); draftIdRef.current = null; setDraftId(null);
     replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setEditorHandoff(null); setCardDeck(null); setVideoEdit(null);
+    quickDraftTopicRef.current = null;
     videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setPublishReconciliations({});
@@ -2083,6 +2121,15 @@ export default function StudioPage() {
       (d.text as TextVariants) || null,
       { replaceDocument: true, serverRevision: Number.isSafeInteger(d.bodyRevision) ? d.bodyRevision as number : 0 },
     );
+    // 2026-10-01 재리뷰 BLOCK: 이 불러오기가 quickDraftTopicRef 를 안 맞춰, 주제 A로
+    // 빠른 초안을 만든 뒤 주제 B의 저장 초안을 불러오면 아래 "주제 변경 시 무효화" 효과가
+    // 방금 불러온 본문을 주제가 바뀐 것으로 오판해 지웠다. 불러온 초안의 실제 주제로
+    // 기준값을 맞춘다(같은 헬퍼 재사용 — 재창조 금지).
+    quickDraftTopicRef.current = resolveRestoredQuickDraftTopic({
+      hasText: Boolean(d.text),
+      savedTopic: null,
+      restoredIdea: String(d.idea || ""),
+    });
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
     setCardDeck((d.cardDeck as CardDeck) || null);
     setVideoEdit((d.videoEdit as VideoEdit) || null);
@@ -2396,6 +2443,13 @@ export default function StudioPage() {
         returnedText,
         { replaceDocument: true, serverRevision: Number.isSafeInteger(linkedDraft?.bodyRevision) ? linkedDraft?.bodyRevision as number : 0 },
       );
+      // 2026-10-01 재리뷰 BLOCK: loadDraft 와 같은 이유. 이 경로도 quickDraftTopicRef 를
+      // 불러온 작업물의 실제 주제로 맞춘다.
+      quickDraftTopicRef.current = resolveRestoredQuickDraftTopic({
+        hasText: Boolean(returnedText),
+        savedTopic: null,
+        restoredIdea: String((linkedDraft?.idea as string) || work.idea || ""),
+      });
       setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
       setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
       setVideoEdit((linkedDraft?.videoEdit as VideoEdit) || null);
