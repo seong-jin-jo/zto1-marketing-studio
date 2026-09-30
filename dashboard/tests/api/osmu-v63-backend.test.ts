@@ -162,7 +162,6 @@ describe("BE-V63-03 inbox와 calendar 발행실 복귀 컨텍스트", () => {
       sourceRoute: "calendar",
       queuePostId: "queue-1",
       draftId: "draft-1",
-      textEmbedded: false,
       returnUrl: "/studio?room=publish&queue_id=queue-1&from=calendar&draft_id=draft-1",
     });
     vi.doUnmock("@/lib/file-io");

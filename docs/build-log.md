@@ -1,5 +1,20 @@
 # OSMU build log
 
+## 2026-09-30 10:00 KST · PR #95 범위 축소와 대기열 확장 제거
+
+STAMP: 2026-09-30 10:00 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa, review | 근거: 사용자 범위 축소 결정, main `a8a52ade`, v70 §3.5, 표적 Vitest·TypeScript·Chromium | 고민: 대기열 동기화의 개별 오류를 더 고치지 않고 승인 설계가 있는 초안 내부 기능만 남겼다.
+
+| 검증 | 결과 |
+|---|---|
+| 대기열 되돌림 | queue API·자료형·복귀 해석기가 main `a8a52ade`와 동일. 전용 검증기·본문 생성기·생명주기 검사 삭제 |
+| 남길 기능 | 글자 한 벌, 자리표시 차단, 구형 초안 복구, 즉시 재합성, 원본 없는 카드 잠금 검사 유지 |
+| 말풍선 계약 | 장당 제한 제거, 9개 말풍선 통과. 장수 7~11 유지 |
+| 표적 Vitest | 최종 8파일 120건 PASS. 최초 실행에서 새 시험 자료 오류 1건 수정 |
+| TypeScript | `npm run typecheck:ci` 종료 코드 0 |
+| 실제 화면 | `localhost:3470` 준비 707ms, `/studio` 200. 1440·390 한 장·두 장 잠금, 재업로드 0, 가로 넘침 0, 콘솔 오류 0 |
+
+전체 Vitest는 사용자 지시대로 실행하지 않았다. 원격 CI는 push 전이라 미검증이다. 머지·배포는 하지 않았다.
+
 ## 2026-09-30 08:21 KST · PR #95 6차 리뷰 형식별 요청 정규화·입력 상한
 
 STAMP: 2026-09-30 08:21 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa, review | 근거: PR #95 6차 리뷰, 표적 Vitest·TypeScript | 고민: 전환 전 상태를 파괴하지 않으면서 API 요청만 현재 형식으로 정규화해 되돌리기와 경계 안전을 함께 보존했다.

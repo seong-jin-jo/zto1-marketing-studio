@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import { dataPath, mutateJson } from "@/lib/file-io";
 import { mirrorQueuePost } from "@/lib/queue-store";
-import type { ContentEditFormat } from "@/lib/studio/content-edit-format";
 
 export interface PerformanceSuggestionSourceContext {
   type: "performance_suggestion";
@@ -31,10 +30,6 @@ export interface AddQueuePostInput {
   hashtags?: string[];
   imageUrl?: string | null;
   imageUrls?: string[] | null;
-  textEmbedded?: boolean;
-  editLines?: string[] | null;
-  cardTextPositions?: string[] | null;
-  editFormat?: ContentEditFormat | null;
   cardBatchId?: string | null;
   videoFilename?: string | null;
   videoUrl?: string | null;
@@ -61,10 +56,6 @@ export interface QueuePost {
   model: string;
   imageUrl: string | null;
   imageUrls: string[] | null;
-  textEmbedded: boolean;
-  editLines: string[] | null;
-  cardTextPositions: string[] | null;
-  editFormat: ContentEditFormat | null;
   cardBatchId: string | null;
   videoFilename: string | null;
   videoUrl: string | null;
@@ -122,10 +113,6 @@ export async function addQueuePost(
             : "manual",
         imageUrl: input.imageUrl || imageUrls?.[0] || null,
         imageUrls,
-        textEmbedded: input.textEmbedded === true,
-        editLines: Array.isArray(input.editLines) ? input.editLines : null,
-        cardTextPositions: Array.isArray(input.cardTextPositions) ? input.cardTextPositions : null,
-        editFormat: input.editFormat ?? null,
         cardBatchId: input.cardBatchId || null,
         videoFilename: input.videoFilename || null,
         videoUrl: input.videoUrl || null,

@@ -33,6 +33,19 @@ describe("card-deck-contract validateCardDeck (TC-F1-01)", () => {
     expect(() => validateCardDeck(clone(validDeck))).not.toThrow();
   });
 
+  it("V70-3.5 정상: 한 장에 말풍선이 9개여도 장당 상한 없이 통과한다", () => {
+    const deck = clone(validDeck);
+    const source = deck.slides[1].bubbles![0];
+    deck.slides[1].bubbles = Array.from({ length: 9 }, (_, index) => ({
+      ...clone(source),
+      id: `unbounded-bubble-${index}`,
+      order: index,
+      speaker: index % 2 === 0 ? "reader" : "brand",
+      segments: [{ text: `말풍선 ${index + 1}`, bold: false }],
+    }));
+    expect(() => validateCardDeck(deck)).not.toThrow();
+  });
+
   it("6장(7장 미만) → slide_count 거부", () => {
     const deck = clone(validDeck);
     deck.slides = deck.slides.slice(0, 6).map((s: any, i: number) => ({ ...s, order: i }));

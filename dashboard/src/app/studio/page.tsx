@@ -81,7 +81,6 @@ import { PLATFORM_FIELD_CONTRACT } from "@/lib/studio/platform-publish-fields";
 import { DEFAULT_COVER_SECONDS, coverUnsupportedReason, supportsCoverTimestamp } from "@/lib/video-cover";
 import { runWithConcurrency } from "@/lib/async-pool";
 import { embeddedTextCardImage, recoverDraftEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
-import { buildReviewQueuePayload } from "@/lib/studio/review-queue-payload";
 
 const PUBLISH_CONCURRENCY = 3;
 const PUBLISH_REQUEST_TIMEOUT_MS = 45_000;
@@ -2362,12 +2361,21 @@ export default function StudioPage() {
         instagram: { caption: work.body, hashtags: work.hashtags.map((tag) => tag.replace(/^#/, "")) },
         shorts: { hook: work.body, body: "", cta: "" },
       };
-      setImg(work.imageUrl ? {
-        url: work.imageUrl,
-        file: work.imageUrl,
-        imageUrls: work.imageUrls.length ? work.imageUrls : undefined,
-        textEmbedded: work.textEmbedded,
-        textSourceRecoverable: work.textEmbedded ? work.cardSourceRestorable : undefined,
+      const queueImageUrls = Array.isArray(queuePost.imageUrls)
+        ? queuePost.imageUrls.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        : [];
+      const returnedImageUrls = queueImageUrls.length
+        ? queueImageUrls
+        : work.imageUrl
+          ? [work.imageUrl]
+          : [];
+      const isUnlinkedQueueCard = !linkedDraft && returnedImageUrls.length > 0 && !work.videoUrl;
+      const primaryImageUrl = returnedImageUrls[0] ?? work.imageUrl;
+      setImg(primaryImageUrl ? {
+        url: primaryImageUrl,
+        file: primaryImageUrl,
+        imageUrls: returnedImageUrls,
+        ...(isUnlinkedQueueCard ? { textEmbedded: true, textSourceRecoverable: false } : {}),
       } : null);
       setVid(work.videoUrl ? { url: work.videoUrl, file: work.videoUrl, model: "기존 작업물" } : null);
       setIncludes(work.includedPlatforms.length
@@ -2379,19 +2387,15 @@ export default function StudioPage() {
       setFirstComments((linkedDraft?.firstComments as Record<string, string>) || {});
       setCaptions((linkedDraft?.captions as Record<string, string>) || {});
       setSelectedAccounts((linkedDraft?.selectedAccounts as Record<string, string>) || {});
-      const returnedEditLines = (linkedDraft?.editLines as string[]) || (work.cardSourceRestorable
-        ? work.editLines
-        : work.textEmbedded && work.imageUrls.length > 1
-          // 장별 대본을 복원할 근거가 없는 과거 항목도 원본 이미지 장수는 보존한다.
-          // 둘째 장부터 빈 칸으로 두고 아래 textSourceRecoverable=false가 재합성을 막는다.
-          ? work.imageUrls.map((_, index) => index === 0 ? work.body : "")
-          : work.editLines);
+      const returnedEditLines = (linkedDraft?.editLines as string[]) || (isUnlinkedQueueCard
+        ? returnedImageUrls.map((_, index) => index === 0 ? work.body : "")
+        : []);
       replaceBodySnapshot(
         returnedEditLines,
         returnedText,
         { replaceDocument: true, serverRevision: Number.isSafeInteger(linkedDraft?.bodyRevision) ? linkedDraft?.bodyRevision as number : 0 },
       );
-      setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || work.cardTextPositions as CardTextPosition[]);
+      setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
       setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
       setVideoEdit((linkedDraft?.videoEdit as VideoEdit) || null);
       // MINOR(7차 재리뷰): 이 분기도 videoEdit을 reconcile 밖에서 직접 세팅한다(워크스페이스
@@ -2399,11 +2403,11 @@ export default function StudioPage() {
       // null일 수 있는데, 그러면 진행 중이던 맞춤의 syncing 잠금이 안 풀릴 수 있었다. 다른 네 곳과
       // 같은 invalidateVideoEditReconcile()로 세대를 올리고 잠금을 확실히 푼다.
       invalidateVideoEditReconcile();
-      const linkedFormat = validateContentEditFormat(linkedDraft?.editFormat ?? work.editFormat);
+      const linkedFormat = validateContentEditFormat(linkedDraft?.editFormat);
       if (linkedFormat.valid) {
         setEditKind(linkedFormat.value.kind);
         setEditFormat(linkedFormat.value);
-      } else if (work.textEmbedded) {
+      } else if (isUnlinkedQueueCard) {
         setEditKind("card");
         setEditFormat(defaultContentEditFormat("card"));
       }
@@ -2603,27 +2607,21 @@ export default function StudioPage() {
       // 스냅샷 저장이 끝난 뒤에만 진행한다. draftId 단축 평가는 저장을 건너뛰므로 금지한다.
       const linkedDraftId = await save("draft", undefined, undefined, undefined, undefined, cardDeck, videoEdit);
       if (!linkedDraftId) throw new Error("검토 요청용 초안을 저장하지 못했습니다");
-      const queuePayload = buildReviewQueuePayload({
-        tenantId: activeWorkspace.id,
-        draftId: linkedDraftId,
-        text: publishText(publishTargets[0] || "threads"),
-        topic: idea || "Studio 작업물",
-        hashtags: (hashtags.instagram || "").split(/[\s,]+/).map((value) => value.replace(/^#/, "")).filter(Boolean),
-        editFormat,
-        editLines,
-        cardTextPositions,
-        cardDeck,
-        image: img,
-        video: vid,
-      });
       let queueId = reviewQueueId;
       if (!queueId) {
-        const added = await apiPost<{ post?: { id?: string } }>("/api/queue/add", queuePayload);
+        const added = await apiPost<{ post?: { id?: string } }>("/api/queue/add", {
+          tenant_id: activeWorkspace.id,
+          draftId: linkedDraftId,
+          text: publishText(publishTargets[0] || "threads"),
+          topic: idea || "Studio 작업물",
+          hashtags: (hashtags.instagram || "").split(/[\s,]+/).map((value) => value.replace(/^#/, "")).filter(Boolean),
+          imageUrl: img?.url || null,
+          imageUrls: img?.imageUrls || null,
+          videoUrl: vid?.url || null,
+        });
         queueId = added?.post?.id || null;
         if (!queueId) throw new Error("검토 요청용 초안을 만들지 못했습니다");
         setReviewQueueId(queueId);
-      } else {
-        await apiPost(`/api/queue/${queueId}/update`, queuePayload);
       }
       const response = await apiPost<{ reused?: boolean }>(`/api/queue/${queueId}/request-review`, {
         tenant_id: activeWorkspace.id,

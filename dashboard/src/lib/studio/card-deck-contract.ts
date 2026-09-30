@@ -17,12 +17,6 @@
 import type { CardTheme } from "./text-card-image-theme";
 
 export const CARD_DECK_CONTRACT_VERSION = "2.0" as const;
-export const CARD_DECK_MIN_SLIDES = 7;
-export const CARD_DECK_MAX_SLIDES = 11;
-export const CARD_DECK_MAX_BUBBLES_PER_SLIDE = 8;
-// 대기열 요청 경계는 카드 계약의 장수 상한×장당 말풍선 상한으로만 계산한다.
-// 표지·마지막 장의 현재 투영 형태를 빼서 더 작은 숫자를 새로 만들면 두 계약이 다시 갈라진다.
-export const CARD_DECK_MAX_PROJECTED_LINES = CARD_DECK_MAX_SLIDES * CARD_DECK_MAX_BUBBLES_PER_SLIDE;
 
 /** 2단계에 "photo_cover" 를 추가할 자리(설계 §3.2 주석). 지금은 두 종류만 실제로 그린다. */
 export type CardTemplate = "plain" | "chat_bubble";
@@ -214,8 +208,8 @@ export function validateCardDeck(deck: unknown): asserts deck is CardDeck {
   const slides = d.slides as CardSlide[];
 
   // 규칙 3: 장수 7~11 (chat_bubble 전용, plain 은 승격 원본 길이를 그대로 받는다).
-  if (!isPlain && (slides.length < CARD_DECK_MIN_SLIDES || slides.length > CARD_DECK_MAX_SLIDES)) {
-    throw new CardDeckValidationError("slide_count", `cardDeck.slides must contain ${CARD_DECK_MIN_SLIDES} to ${CARD_DECK_MAX_SLIDES} slides (got ${slides.length})`);
+  if (!isPlain && (slides.length < 7 || slides.length > 11)) {
+    throw new CardDeckValidationError("slide_count", `cardDeck.slides must contain 7 to 11 slides (got ${slides.length})`);
   }
   if (slides.length < 2) {
     throw new CardDeckValidationError("slide_count", `cardDeck.slides must contain at least 2 slides (got ${slides.length})`);
@@ -320,9 +314,6 @@ export function validateCardDeck(deck: unknown): asserts deck is CardDeck {
       throw new CardDeckValidationError("bubbles", `cardDeck.slides[${index}].bubbles must be a non-empty array`);
     }
     const bubbles = slide.bubbles;
-    if (bubbles.length > CARD_DECK_MAX_BUBBLES_PER_SLIDE) {
-      throw new CardDeckValidationError("bubbles", `cardDeck.slides[${index}].bubbles must have at most ${CARD_DECK_MAX_BUBBLES_PER_SLIDE} bubbles (got ${bubbles.length})`);
-    }
     bubbles.forEach((bubble, bubbleIndex) => {
       assertNoUnknownKeys(bubble as unknown as Record<string, unknown>, BUBBLE_ALLOWED_KEYS, `cardDeck.slides[${index}].bubbles[${bubbleIndex}]`);
       const id = (bubble as { id?: unknown }).id;

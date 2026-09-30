@@ -90,6 +90,54 @@
       }
     },
     {
+      "screen": "edit-text-card-locked-1",
+      "width": 1440,
+      "height": 900,
+      "cardCount": 1,
+      "thumbnailCount": 1,
+      "originalImageUrls": [
+        "/qa/alignment-card-1.jpg"
+      ],
+      "savedImageUrls": [
+        "/qa/alignment-card-1.jpg"
+      ],
+      "imageUploads": 0,
+      "lockGuidanceVisible": true,
+      "controlsDisabled": true,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "screenshot": "../docs/qa/pr95-r1-textcard-20260930/edit-text-card-locked-1-1440x900.png"
+    },
+    {
+      "screen": "edit-text-card-locked-2",
+      "width": 1440,
+      "height": 900,
+      "cardCount": 2,
+      "thumbnailCount": 2,
+      "originalImageUrls": [
+        "/qa/alignment-card-1.jpg",
+        "/qa/alignment-card-2.jpg"
+      ],
+      "savedImageUrls": [
+        "/qa/alignment-card-1.jpg",
+        "/qa/alignment-card-2.jpg"
+      ],
+      "imageUploads": 0,
+      "lockGuidanceVisible": true,
+      "controlsDisabled": true,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "screenshot": "../docs/qa/pr95-r1-textcard-20260930/edit-text-card-locked-2-1440x900.png"
+    },
+    {
       "screen": "edit-bubble-deck",
       "width": 1440,
       "height": 900,
@@ -281,24 +329,7 @@
       "xChecked": false,
       "missingMediaDisabled": 3,
       "accountSelectCount": 0,
-      "missingMediaScreenshot": "/Users/sj/sj_code_master/zto1-marketing-studio/.claude/worktrees/fix-editroom-textcard-overlay/docs/qa/pr95-r1-textcard-20260930/publish-missing-media-1440x900.png"
-    },
-    {
-      "screen": "edit-card-stage-diff",
-      "width": 1440,
-      "height": 900,
-      "stageDiffScore": 0,
-      "stageDiffThreshold": 0.025,
-      "reference": "dashboard/public/qa/alignment-card-1.jpg"
-    },
-    {
-      "screen": "edit-bubble-stage-diff",
-      "width": 1440,
-      "height": 900,
-      "stageDiffScore": 0.04509548671539622,
-      "stageDiffThreshold": 0.025,
-      "gateMode": "report-only",
-      "reference": "docs/design/clean-frames/osmu-v70-편집실-카드뉴스-편집중@1440x900.png"
+      "missingMediaScreenshot": "../docs/qa/pr95-r1-textcard-20260930/publish-missing-media-1440x900.png"
     },
     {
       "screen": "edit-card",
@@ -388,6 +419,54 @@
         "scopeClient": 342,
         "scopeScroll": 342
       }
+    },
+    {
+      "screen": "edit-text-card-locked-1",
+      "width": 390,
+      "height": 844,
+      "cardCount": 1,
+      "thumbnailCount": 1,
+      "originalImageUrls": [
+        "/qa/alignment-card-1.jpg"
+      ],
+      "savedImageUrls": [
+        "/qa/alignment-card-1.jpg"
+      ],
+      "imageUploads": 0,
+      "lockGuidanceVisible": true,
+      "controlsDisabled": true,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "screenshot": "../docs/qa/pr95-r1-textcard-20260930/edit-text-card-locked-1-390x844.png"
+    },
+    {
+      "screen": "edit-text-card-locked-2",
+      "width": 390,
+      "height": 844,
+      "cardCount": 2,
+      "thumbnailCount": 2,
+      "originalImageUrls": [
+        "/qa/alignment-card-1.jpg",
+        "/qa/alignment-card-2.jpg"
+      ],
+      "savedImageUrls": [
+        "/qa/alignment-card-1.jpg",
+        "/qa/alignment-card-2.jpg"
+      ],
+      "imageUploads": 0,
+      "lockGuidanceVisible": true,
+      "controlsDisabled": true,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "screenshot": "../docs/qa/pr95-r1-textcard-20260930/edit-text-card-locked-2-390x844.png"
     },
     {
       "screen": "edit-bubble-deck",
@@ -614,29 +693,12 @@
       "xChecked": false,
       "missingMediaDisabled": 3,
       "accountSelectCount": 0,
-      "missingMediaScreenshot": "/Users/sj/sj_code_master/zto1-marketing-studio/.claude/worktrees/fix-editroom-textcard-overlay/docs/qa/pr95-r1-textcard-20260930/publish-missing-media-390x844.png"
-    },
-    {
-      "screen": "edit-card-stage-diff",
-      "width": 390,
-      "height": 844,
-      "stageDiffScore": 0,
-      "stageDiffThreshold": 0.025,
-      "reference": "dashboard/public/qa/alignment-card-1.jpg"
-    },
-    {
-      "screen": "edit-bubble-stage-diff",
-      "width": 390,
-      "height": 844,
-      "stageDiffScore": 0.17146406775728043,
-      "stageDiffThreshold": 0.025,
-      "gateMode": "report-only",
-      "reference": "docs/design/clean-frames/osmu-v70-편집실-카드뉴스-편집중@390x844.png"
+      "missingMediaScreenshot": "../docs/qa/pr95-r1-textcard-20260930/publish-missing-media-390x844.png"
     }
   ],
   "consoleErrorCount": 0,
-  "outputDir": "/Users/sj/sj_code_master/zto1-marketing-studio/.claude/worktrees/fix-editroom-textcard-overlay/docs/qa/pr95-r1-textcard-20260930",
-  "referenceComparison": true,
+  "outputDir": "../docs/qa/pr95-r1-textcard-20260930",
+  "referenceComparison": false,
   "visualDiffMutationCheck": {
     "sameScore": 0,
     "wrongImageScore": 0.06666666666666667,

@@ -4,8 +4,6 @@ import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StudioPage from "@/app/studio/page";
-import { deckProjection } from "@/lib/studio/card-deck-contract";
-import { cardDeckFixture } from "../studio/generation-fixture";
 
 const mocks = vi.hoisted(() => ({
   apiPost: vi.fn(),
@@ -268,15 +266,35 @@ describe("Studio publish result integrity", () => {
     expect(document.querySelector("[data-video-subtitle-text]"), "복귀한 영상 대본을 편집할 수 있어야 한다").toBeEnabled();
   });
 
+  it("PR95-SCOPE-CUT-VIDEO-01 연결 초안 없는 영상의 대표 이미지는 카드 잠금으로 오인하지 않는다", async () => {
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-video-cover");
+    mocks.returnPosts = [{
+      id: "queue-video-cover",
+      text: "대표 이미지도 있는 영상",
+      topic: "영상 복귀 작업물",
+      imageUrl: "/api/images/deliver/video-cover",
+      imageUrls: ["/api/images/deliver/video-cover"],
+      videoUrl: "/api/media/returned-video",
+      channels: { threads: { status: "pending" } },
+    }];
+
+    const page = render(<StudioPage />);
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+    window.history.replaceState(null, "", "/studio?room=edit&kind=video");
+    page.rerender(<StudioPage />);
+
+    expect(document.querySelector("[data-card-source-lock]")).toBeNull();
+    await waitFor(() => expect(document.querySelector("[data-video-subtitle-list]")).toBeTruthy());
+  });
+
   it("PR95-R2-STUDIO-01 연결 초안 없는 2장 글자 카드는 편집실과 저장까지 2장을 유지한다", async () => {
-    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-two-card&text_embedded=1");
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-two-card");
     mocks.returnPosts = [{
       id: "queue-two-card",
       text: "과거 대기열의 합쳐진 본문",
       topic: "두 장 복귀 작업물",
       imageUrl: "/api/images/deliver/original-1",
       imageUrls: ["/api/images/deliver/original-1", "/api/images/deliver/original-2"],
-      textEmbedded: true,
       channels: { threads: { status: "pending" } },
     }];
     mocks.apiPost.mockImplementation(async (path: string) => {
@@ -323,14 +341,13 @@ describe("Studio publish result integrity", () => {
   });
 
   it("PR95-R3-STUDIO-01 원본 정보 없는 한 장 글자 카드도 편집을 잠그고 재합성하지 않는다", async () => {
-    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-one-card&text_embedded=1");
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-one-card");
     mocks.returnPosts = [{
       id: "queue-one-card",
       text: "과거 한 장 카드 본문",
       topic: "한 장 복귀 작업물",
       imageUrl: "/api/images/deliver/original-one",
       imageUrls: ["/api/images/deliver/original-one"],
-      textEmbedded: true,
       channels: { threads: { status: "pending" } },
     }];
     mocks.apiPost.mockImplementation(async (path: string) => {
@@ -899,154 +916,6 @@ describe("Studio publish result integrity", () => {
       expect.objectContaining({ editLines: ["가장 최신 문단"] }),
     );
     expect(mocks.showToast).toHaveBeenCalledWith("검토 요청을 보냈습니다", "success");
-  });
-
-  it.each([
-    ["영상", "video"],
-    ["글", "text"],
-  ] as const)("PR95-R6-REVIEW-01 카드에서 %s 형식으로 바꾼 검토 요청은 현재 형식의 필드만 보낸다", async (kindLabel, expectedKind) => {
-    window.history.replaceState(null, "", "/studio?room=edit&kind=card");
-    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
-      idea: "형식 전환 검토",
-      editKind: "card",
-      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
-      editLines: ["카드에 있던 문구"],
-      cardTextPositions: ["bottom-center"],
-      img: {
-        url: "/api/images/deliver/text-card-one",
-        file: "/api/images/deliver/text-card-one",
-        imageUrls: ["/api/images/deliver/text-card-one"],
-        textEmbedded: true,
-        textSourceRecoverable: true,
-      },
-      includes: { threads: true },
-    }));
-    mocks.apiPost.mockImplementation(async (path: string) => {
-      if (path === "/api/studio/drafts") return { id: "draft-kind-transition" };
-      if (path === "/api/queue/add") return { post: { id: "queue-kind-transition" } };
-      if (path === "/api/queue/queue-kind-transition/request-review") return { reused: false };
-      throw new Error(`unexpected path: ${path}`);
-    });
-
-    render(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: kindLabel }));
-    fireEvent.click(await findEnabledButton("발행실로 이동"));
-    fireEvent.click(await screen.findByRole("button", { name: "검토 요청하기" }));
-
-    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
-      "/api/queue/queue-kind-transition/request-review",
-      expect.objectContaining({ tenant_id: "tenant-a" }),
-    ));
-    const queueBody = mocks.apiPost.mock.calls.find(([path]) => path === "/api/queue/add")?.[1] as Record<string, unknown>;
-    expect(queueBody).toEqual(expect.objectContaining({
-      draftId: "draft-kind-transition",
-      editLines: ["카드에 있던 문구"],
-      editFormat: expect.objectContaining({ kind: expectedKind }),
-    }));
-    expect(queueBody).not.toHaveProperty("imageUrl");
-    expect(queueBody).not.toHaveProperty("imageUrls");
-    expect(queueBody).not.toHaveProperty("textEmbedded");
-    expect(queueBody).not.toHaveProperty("cardTextPositions");
-  });
-
-  it.each([
-    ["영상", "video"],
-    ["글", "text"],
-  ] as const)("PR95-R7-REVIEW-01 기존 대기열을 카드에서 %s 형식으로 바꾸면 같은 본문으로 원자 갱신한 뒤 재검토한다", async (kindLabel, expectedKind) => {
-    window.history.replaceState(null, "", "/studio?room=edit&kind=card");
-    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
-      idea: "기존 대기열 형식 전환",
-      reviewQueueId: "queue-existing-transition",
-      editKind: "card",
-      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
-      editLines: ["카드에 있던 문구"],
-      cardTextPositions: ["bottom-center"],
-      img: {
-        url: "/api/images/deliver/existing-text-card",
-        file: "/api/images/deliver/existing-text-card",
-        imageUrls: ["/api/images/deliver/existing-text-card"],
-        textEmbedded: true,
-        textSourceRecoverable: true,
-      },
-      includes: { threads: true },
-    }));
-    mocks.apiPost.mockImplementation(async (path: string) => {
-      if (path === "/api/studio/drafts") return { id: "draft-existing-transition" };
-      if (path === "/api/queue/queue-existing-transition/update") return { post: { id: "queue-existing-transition" } };
-      if (path === "/api/queue/queue-existing-transition/request-review") return { reused: false };
-      throw new Error(`unexpected path: ${path}`);
-    });
-
-    render(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: kindLabel }));
-    fireEvent.click(await findEnabledButton("발행실로 이동"));
-    fireEvent.click(await screen.findByRole("button", { name: "검토 요청하기" }));
-
-    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
-      "/api/queue/queue-existing-transition/request-review",
-      expect.objectContaining({ tenant_id: "tenant-a" }),
-    ));
-    expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/queue/add")).toBe(false);
-    const updateBody = mocks.apiPost.mock.calls.find(([path]) => path === "/api/queue/queue-existing-transition/update")?.[1] as Record<string, unknown>;
-    expect(updateBody).toEqual(expect.objectContaining({
-      draftId: "draft-existing-transition",
-      editLines: ["카드에 있던 문구"],
-      editFormat: expect.objectContaining({ kind: expectedKind }),
-    }));
-    expect(updateBody).not.toHaveProperty("imageUrl");
-    expect(updateBody).not.toHaveProperty("imageUrls");
-    expect(updateBody).not.toHaveProperty("textEmbedded");
-    expect(updateBody).not.toHaveProperty("cardTextPositions");
-    const calls = mocks.apiPost.mock.calls.map(([path]) => path);
-    expect(calls.indexOf("/api/studio/drafts")).toBeLessThan(calls.indexOf("/api/queue/queue-existing-transition/update"));
-    expect(calls.indexOf("/api/queue/queue-existing-transition/update")).toBeLessThan(calls.indexOf("/api/queue/queue-existing-transition/request-review"));
-  });
-
-  it("PR95-R7-REVIEW-02 말풍선을 고친 직후 검토하면 대기열 본문은 cardDeck 최신 투영을 쓴다", async () => {
-    const deck = cardDeckFixture();
-    const oldProjection = deckProjection(deck).lines;
-    window.history.replaceState(null, "", "/studio?room=edit&kind=card");
-    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
-      idea: "말풍선 즉시 검토",
-      editKind: "card",
-      editFormat: { kind: "card", aspectRatio: "4:5", subtitleSize: "보통", background: "작업실 책상" },
-      editLines: oldProjection,
-      cardDeck: deck,
-      img: {
-        url: "/api/images/deliver/bubble-1",
-        file: "/api/images/deliver/bubble-1",
-        imageUrls: deck.slides.map((_, index) => `/api/images/deliver/bubble-${index + 1}`),
-        textEmbedded: false,
-      },
-      includes: { threads: true },
-    }));
-    mocks.apiPost.mockImplementation(async (path: string) => {
-      if (path === "/api/studio/drafts") return { id: "draft-bubble-immediate-review" };
-      if (path === "/api/queue/add") return { post: { id: "queue-bubble-immediate-review" } };
-      if (path === "/api/queue/queue-bubble-immediate-review/request-review") return { reused: false };
-      throw new Error(`unexpected path: ${path}`);
-    });
-
-    const page = render(<StudioPage />);
-    fireEvent.click(document.querySelector(`[data-slide-id="${deck.slides[1].id}"]`)!);
-    const bubble = document.querySelector<HTMLElement>(`[data-bubble-id="${deck.slides[1].bubbles![0].id}"]`)!;
-    const input = within(bubble).getByRole("textbox");
-    fireEvent.click(input);
-    input.textContent = "검토 직전 새 말풍선";
-    fireEvent.input(input);
-    // 말풍선 수정 직후의 React 상태를 그대로 둔 채 발행실 경로로 전환한다. 카드 재렌더링은
-    // 이 검사의 대상이 아니며, 검토 요청이 최신 cardDeck 투영을 쓰는지가 대상이다.
-    window.history.replaceState(null, "", "/studio?room=publish");
-    page.rerender(<StudioPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "검토 요청하기" }));
-
-    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
-      "/api/queue/queue-bubble-immediate-review/request-review",
-      expect.objectContaining({ tenant_id: "tenant-a" }),
-    ));
-    const queueBody = mocks.apiPost.mock.calls.find(([path]) => path === "/api/queue/add")?.[1] as { editLines: string[] };
-    expect(queueBody.editLines).toContain("검토 직전 새 말풍선");
-    expect(queueBody.editLines).not.toEqual(oldProjection);
   });
 
   it("FE3-REVIEW-02 거절: 초안 저장 실패 시 큐와 검토 API를 호출하지 않는다", async () => {
