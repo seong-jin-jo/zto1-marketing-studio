@@ -102,7 +102,10 @@ describe("VID-STALE 화면이 그 판정을 실제로 쓴다", () => {
   });
 
   it("VID-STALE-09 만든 매체에 주제 도장을 찍는다", () => {
-    expect(pageSrc).toContain("const stamped = { ...r, topicKey: mediaTopicKey(idea) };");
+    // 2026-10-02 리뷰 MAJOR 5c: 새로고침 복구가 저장된 주제(topicLabel)로 도장을 찍을 수
+    // 있게 `opts?.topicLabel ?? idea`로 바뀌었다 — 평소 흐름(opts 없음)에서는 그대로
+    // idea로 떨어진다(동작 불변).
+    expect(pageSrc).toContain("const stamped = { ...r, topicKey: mediaTopicKey(opts?.topicLabel ?? idea) };");
     expect(pageSrc).toContain("setImg(stamped)");
     expect(pageSrc).toContain("setVid(stamped)");
   });

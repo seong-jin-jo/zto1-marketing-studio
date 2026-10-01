@@ -58,14 +58,24 @@ describe("숏폼 영상 생성 조용한 실패 회귀 계약", () => {
     expect(body, "예외를 화면에 말하는 catch 가 없다").toMatch(/catch \(e\) \{[\s\S]*extractApiErrorMessage\(e,/);
   });
 
-  it("SILENT-03: genImage 는 성공 응답이라도 배달 주소가 없으면 실패로 취급한다", () => {
-    const body = sliceFunction("genImage");
+  // 2026-10-01 비동기 전환: genImage/genVideo는 이제 POST로 jobId만 받고, 완료 결과를
+  // 확정하는 자리(배달 주소 가드 포함)는 pollAndFinishImage/pollAndFinishVideo로 옮겼다.
+  // genImage는 pollAndFinishImage를 반드시 호출해 그 결과를 그대로 반환하므로, 가드는
+  // 여전히 genImage 호출 경로 안에 있다 — 검사 대상 함수만 옮긴다.
+  it("SILENT-03: genImage(→pollAndFinishImage)는 성공 응답이라도 배달 주소가 없으면 실패로 취급한다", () => {
+    const genImageBody = sliceFunction("genImage");
+    expect(genImageBody, "genImage가 pollAndFinishImage의 결과를 그대로 쓰지 않는다")
+      .toMatch(/pollAndFinishImage\(/);
+    const body = sliceFunction("pollAndFinishImage");
     expect(body, "빈 배달 주소 가드가 없다 — ok:true·주소 없음이 조용히 성공 처리된다")
       .toMatch(/if \(!r\.file && !r\.url\) \{[\s\S]*showToast\(msg, "error"\)/);
   });
 
-  it("SILENT-04: genVideo 는 성공 응답이라도 배달 주소가 없으면 실패로 취급한다", () => {
-    const body = sliceFunction("genVideo");
+  it("SILENT-04: genVideo(→pollAndFinishVideo)는 성공 응답이라도 배달 주소가 없으면 실패로 취급한다", () => {
+    const genVideoBody = sliceFunction("genVideo");
+    expect(genVideoBody, "genVideo가 pollAndFinishVideo의 결과를 그대로 쓰지 않는다")
+      .toMatch(/pollAndFinishVideo\(/);
+    const body = sliceFunction("pollAndFinishVideo");
     expect(body, "빈 배달 주소 가드가 없다 — ok:true·주소 없음이 조용히 성공 처리된다")
       .toMatch(/if \(!r\.file && !r\.url\) \{[\s\S]*showToast\(msg, "error"\)/);
   });

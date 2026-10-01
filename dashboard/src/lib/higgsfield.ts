@@ -42,10 +42,126 @@ export function extractJson(stdout: string): unknown {
   }
 }
 
+/**
+ * `generate get <id> --json` 결과에서 완성물 URL을 뽑는다.
+ *
+ * 2026-10-02 리뷰 MAJOR 1/2/3(실물 픽스처로 재현): 종전엔 응답 전체를 문자열로 뭉쳐
+ * 확장자 정규식으로 아무 URL이나 집었다. 실물 응답에는 결과가 아닌 URL이 여러 개 섞여
+ * 있다 — 이미지는 `params.style.url`(스타일 견본 webp, get-image-pending.json), 영상은
+ * `params.input_image.url`(바탕 그림 webp, get-video-pending.json 합성). 대기 중
+ * (`status: "in_progress"`)인데도 이 URL들이 있어서, 정규식 폴백이 "완료"로 오판하고
+ * 스타일 견본·바탕 그림을 산출물로 저장하는 사고가 났다. 진짜 결과는 최상위 `result_url`
+ * 필드 하나뿐이고(get-image-done.json/get-video-done.json), `min_result_url`은 썸네일이라
+ * 역시 결과가 아니다. 최상위 필드를 신뢰하고, 그 필드가 없는 낯선 shape에서만 정규식으로
+ * 보수적으로 폴백한다.
+ */
 export function findResultUrl(data: unknown, ext: RegExp): string | null {
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const obj = data as Record<string, unknown>;
+    // "result_url" 키가 실제로 있으면(값이 null이어도) 이것이 실물 shape다 — 대기 중
+    // 응답은 `"result_url": null`로 "아직 없다"는 사실 자체를 명시한다(get-image-
+    // pending.json 실측). 그 경우 정규식 폴백으로 넘어가면 params.style.url·
+    // params.input_image.url을 대신 집어버린다(실제로 그랬다, 리뷰 MAJOR 1/2). 키가
+    // 있는데 문자열이 아니면 "아직 결과 없음"으로 단정하고 폴백하지 않는다.
+    if ("result_url" in obj) {
+      const topLevel = obj.result_url;
+      return typeof topLevel === "string" && topLevel.trim() ? topLevel : null;
+    }
+  }
+  // 하위호환 폴백: result_url 키 자체가 없는 낯선 응답 shape일 때만 쓴다.
   const txt = JSON.stringify(data ?? "");
   const m = txt.match(new RegExp(`https?://[^"'\\\\ ]+\\.(?:${ext.source})`, "i"));
   return m ? m[0] : null;
+}
+
+/**
+ * `generate create ... --json`(--wait 없이) 응답에서 생성기가 매긴 작업 id를 뽑는다.
+ *
+ * 2026-10-01 비동기 전환: CLI 문서화된 키 이름을 확정할 수 없어(로그인·네트워크가 없는
+ * 환경에서 실제 호출 불가) 후보 키를 여러 개 방어적으로 훑는다. 어느 것도 없으면 null —
+ * 호출부가 "작업 id를 받지 못했다"로 사용자에게 사실대로 말한다(ADR-007).
+ */
+/**
+ * 2026-10-02 리뷰 MAJOR 6(실물 픽스처 create-image.json으로 재현): `generate create ...
+ * --json`(--wait 없음)의 실제 출력은 **객체가 아니라 작업 id 문자열 하나짜리 배열**이다
+ * (`["df664d17-429f-4ff7-aae2-1e266cff67ba"]`). 종전 구현은 최상위가 object일 때만 보고
+ * 배열은 즉시 null을 반환해, 비동기 생성이 "작업 번호를 받지 못했다"로 매번 거절됐다.
+ */
+export function extractJobId(data: unknown): string | null {
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      if (typeof item === "string" && item.trim()) return item.trim();
+      if (typeof item === "number" && Number.isFinite(item)) return String(item);
+    }
+    for (const item of data) {
+      const nested = extractJobId(item);
+      if (nested) return nested;
+    }
+    return null;
+  }
+  if (!data || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+  const candidates = ["id", "job_id", "jobId", "request_id", "requestId", "generation_id", "uuid"];
+  for (const key of candidates) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  // 일부 응답은 { data: { id: ... } } 또는 { result: { id: ... } } 로 한 단계 감쌀 수 있다.
+  for (const wrapKey of ["data", "result", "job"]) {
+    const wrapped = obj[wrapKey];
+    if (wrapped && typeof wrapped === "object") {
+      const nested = extractJobId(wrapped);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+/**
+ * 작업 상태를 알아내 세 상태(done/failed/pending)로 정규화한다.
+ *
+ * 2026-10-02 리뷰 MAJOR 1/2(실물 픽스처로 재현): 종전엔 응답 전체를 소문자 문자열로
+ * 뭉쳐 "complet|success|done|finish|ready" 패턴이나 아무 결과물 확장자 URL이 있으면
+ * 완료로 판정했다. 실물 "대기 중" 응답(get-image-pending.json)엔 `status: "in_progress"`
+ * 이면서도 `params.style.url`에 스타일 견본 webp가, 영상 쪽(get-video-pending.json 합성)엔
+ * `params.input_image.url`에 바탕 그림 webp가 있다 — URL 유무로 완료를 판정하면 아직
+ * 진행 중인 작업을 첫 폴링에서 완료/실패로 확정해 버린다. 최상위 `status` 필드 하나만
+ * 신뢰한다.
+ */
+export type HiggsfieldJobCliStatus = "done" | "failed" | "pending";
+
+const DONE_STATUSES = new Set(["completed", "succeeded", "success", "done", "finished", "ready"]);
+const FAILED_STATUSES = new Set([
+  "failed", "fail", "error", "errored", "rejected", "canceled", "cancelled",
+  "nsfw_detected", "nsfw", "content_moderated",
+]);
+
+export function normalizeJobStatus(data: unknown, rawStdout: string): HiggsfieldJobCliStatus {
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const raw = (data as Record<string, unknown>).status;
+    if (typeof raw === "string" && raw.trim()) {
+      const status = raw.trim().toLowerCase();
+      if (FAILED_STATUSES.has(status)) return "failed";
+      if (DONE_STATUSES.has(status)) return "done";
+      // "in_progress"·"queued"·"pending"·"processing" 등 — 모르는 값도 보수적으로 대기.
+      return "pending";
+    }
+  }
+  // status 필드를 못 찾은(또는 JSON 파싱이 실패한) 경우에만 원문에서 보수적으로 찾는다.
+  // 단 이 폴백도 status 필드의 값만 보고, URL 유무로는 완료를 판정하지 않는다 —
+  // params.*.url(스타일 견본·바탕 그림)과 진짜 result_url을 문자열만으로는 구분할 수 없다.
+  const txt = rawStdout.toLowerCase();
+  const statusMatch = txt.match(/"status"\s*:\s*"([^"]+)"/);
+  const status = statusMatch?.[1] || "";
+  if ([...FAILED_STATUSES].some((s) => status.includes(s))) return "failed";
+  if ([...DONE_STATUSES].some((s) => status.includes(s))) return "done";
+  return "pending";
+}
+
+/** `higgsfield generate get <id> --json` — 진행 상태·결과를 짧게 1회 조회. */
+export async function hfGetJob(providerJobId: string): Promise<{ stdout: string; stderr: string }> {
+  return hfRun(["generate", "get", providerJobId, "--json"], 20000);
 }
 
 /** 실행기 자체가 없을 때 던지는 오류. 라우트가 이것을 구분해 사용자에게 사실을 말한다. */
