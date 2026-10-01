@@ -1,52 +1,29 @@
 import path from "path";
 import fs from "fs";
 import { effectiveTenantId } from "@/lib/tenant-auth";
-import { signMediaToken } from "@/lib/media-token";
-import { runWithTenant } from "@/lib/tenant-context";
-import { hfRun, extractJson, findResultUrl, downloadTo, addNarration, logGen, recordMediaGenerationEvent, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError, assertHiggsfieldReady, studioDir, assetUrl } from "@/lib/higgsfield";
+import { hfRun, extractJson, extractJobId, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError, assertHiggsfieldReady } from "@/lib/higgsfield";
 import { resolveGeneratedFile } from "@/lib/storage";
 import { isSafeMediaFilename } from "@/lib/media-token";
+import { createHiggsfieldJob } from "@/lib/higgsfield-jobs";
 
-// 바탕 그림으로 받아들이는 확장자 화이트리스트. 생성실이 만드는 이미지 형식만 허용하고
-// (MINOR-4, 코드리뷰 2026-09-25) 그 밖의 파일(예: 다른 라우트가 만든 임의 확장자)이
-// --image 인자로 생성기 CLI에 흘러들어가지 않게 한다.
+// 바탕 그림으로 받아들이는 확장자 화이트리스트(기존 규약 유지, MINOR-4 2026-09-25).
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
-// POST /api/higgsfield/video — image→video. body: { filename, prompt, model?, narration? }
-// filename = /api/higgsfield/image 가 반환한 생성실 파일 이름. 이 라우트가 resolveGeneratedFile로
-// 직접 서버 경로를 풀기 때문에 클라이언트가 서버 절대경로를 알거나 지정할 필요가 없다.
-// 2026-09-25 코드리뷰 MAJOR-0b: 종전엔 body.localPath(서버 절대경로 문자열)를 그대로 받아
-// fs.existsSync만 확인했다 — 인증된 누구든 서버의 임의 파일 경로(예: /etc/hosts)를 그대로
-// 넘겨 생성기 CLI에 --image로 먹일 수 있었다(리뷰어 탐침 실측). 입력에서 경로를 완전히 없앤다.
-// model 기본 minimax_hailuo(6cr) — 무음. narration 주면 생성 후 TTS 음성 ffmpeg 합성(소리 추가).
-// img·video 태그는 인증 헤더를 못 붙인다. 그래서 헤더 인증만 있는 자산 경로로는 화면에
-// 아무것도 안 뜬다. 이미 있는 서명 배달 경로로 돌려준다. 서명이 없으면(비밀 미설정)
-// 종전 자산 경로로 떨어뜨려 최소한 운영자 화면에서는 보이게 한다.
-// 2026-09-08 실측: 생성기가 거절한 요청에 502 로 답했더니, 우리 앞의 리버스 프록시가
-// 우리 JSON 본문을 자기 HTML 오류 페이지로 갈아치웠다. 그래서 화면에는 "Request failed: 502"
-// 나 "Load failed" 만 뜨고 진짜 이유(막힌 주제·잔액 부족)는 한 번도 사용자에게 닿지 못했다.
-// 나조차 재생성 기능이 고장 난 줄 알고 한참을 팠다. 영상 발행 경로에서 같은 이유로 이미
-// 한 번 겪은 일이다.
+// POST /api/higgsfield/video — image→video 작업 "접수"만 한다(비동기 전환 2026-10-01, 이미지와
+// 동일한 이유: 프록시 100초 한도, 생성기 대기열 10분+ 실측). 반환: 202 { ok: true, jobId }.
+// 실제 생성·다운로드·내레이션 합성·결과는 GET /api/higgsfield/job/[id] 가 한다.
 //
-// 502 는 "게이트웨이가 상류에서 잘못된 응답을 받았다" 는 뜻이라 프록시가 개입할 여지를 준다.
-// 우리가 하려는 말은 "요청은 정상 처리했고 생성기가 거절했다" 이므로 그 뜻에 맞게 답한다.
+// filename = /api/higgsfield/image 가 반환한 생성실 파일 이름. 서버 절대경로는 이 라우트가
+// resolveGeneratedFile로 직접 풀어 작업 기록에 저장한다(클라이언트는 여전히 경로를 모른다,
+// MAJOR-0b 2026-09-25 경로 주입 방어 그대로 유지).
 const GENERATOR_REFUSED = 200;
-
-function deliverUrl(tenantId: string, filename: string): string {
-  const token = signMediaToken(tenantId, filename);
-  return token ? `/api/media/${encodeURIComponent(token)}` : assetUrl(tenantId, filename);
-}
 
 export async function POST(request: Request) {
   const body = await request.json();
   const { prompt, model = "minimax_hailuo", narration = "", label = "" } = body;
-  // 이미지와 같은 이유로 작업 공간을 남긴다(2026-09-06 고객 개방).
   const tenantId = await effectiveTenantId(request, body.tenant_id);
   if (!tenantId) return Response.json({ error: "테넌트를 식별할 수 없습니다." }, { status: 401 });
 
-  // 바탕 그림을 파일 이름으로만 받는다. 서버 절대경로는 이 라우트가 resolveGeneratedFile로
-  // 직접 푼다(같은 규칙을 발행·배달·재서명 라우트와 공유 — MAJOR-0a와 같은 정본 함수).
-  // 그래서 방금 만든 그림도, 승인함·달력에서 가져온 작업물(파일 이름만 앎)도 같은 방식으로 된다.
   const filename = typeof body.filename === "string" ? body.filename : "";
   const filenameValid = filename && isSafeMediaFilename(filename) && IMAGE_EXTS.has(path.extname(filename).toLowerCase());
   const localPath = filenameValid ? resolveGeneratedFile(tenantId, filename) : null;
@@ -57,64 +34,31 @@ export async function POST(request: Request) {
     }, { status: 400 });
   }
   const motion = prompt || "subtle idle motion, gentle sway and glow, fixed camera, smooth";
-  // Marketing Studio(UGC/제품광고)는 mode·aspect_ratio 파라미터 필요 → 모델별 분기
   const extra = model.startsWith("marketing_studio")
     ? ["--mode", "ugc", "--aspect_ratio", "9:16"]
     : [];
   try {
     await assertHiggsfieldReady();
+    // --wait/--wait-timeout 를 쓰지 않는다 — 접수만 받고 즉시 돌아온다. 접수 호출 자체의
+    // 타임아웃도 짧게 명시한다(이미지와 같은 이유, 2026-10-01 추가 실측 cb35f3fd).
     const { stdout } = await hfRun([
       "generate", "create", model,
       "--image", localPath, "--prompt", motion, ...extra,
-      "--wait", "--wait-timeout", "10m", "--json",
-    ]);
+      "--json",
+    ], 45000);
     const data = extractJson(stdout);
-    const status = JSON.stringify(data ?? "").match(/"status"\s*:\s*"([^"]+)"/)?.[1] || "";
-    if (/nsfw/i.test(status)) {
-      return Response.json({ ok: false, error: "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요.", nsfw: true }, { status: GENERATOR_REFUSED });
+    const providerJobId = extractJobId(data);
+    if (!providerJobId) {
+      return Response.json({
+        ok: false,
+        error: "생성기가 작업 번호를 돌려주지 않았습니다. 잠시 후 다시 시도해 주세요.",
+        raw: stdout.slice(-400),
+      }, { status: GENERATOR_REFUSED });
     }
-    const url = findResultUrl(data, /mp4|webm|mov/);
-    if (!url) return Response.json({ ok: false, error: "생성기가 영상을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.", status, raw: stdout.slice(-400) }, { status: GENERATOR_REFUSED });
-
-    const ts = Date.now();
-    const silentPath = path.join(studioDir(tenantId), `vidsilent_${ts}.mp4`);
-    await downloadTo(url, silentPath);
-
-    // 무음 클립에 내레이션 음성 합성 (성공 시 사운드 영상, 실패/비-mac이면 무음 유지)
-    let finalName = `vidsilent_${ts}.mp4`;
-    let hasAudio = false;
-    const narrationRequested = Boolean(narration && String(narration).trim());
-    let narrationReason: "server_tts_unavailable" | "audio_mix_failed" | undefined;
-    if (narration && String(narration).trim()) {
-      const soundName = `vid_${ts}.mp4`;
-      const narrationResult = await addNarration(silentPath, String(narration), path.join(studioDir(tenantId), soundName));
-      if (narrationResult.ok) {
-        finalName = soundName;
-        hasAudio = true;
-      } else if (narrationResult.reason !== "narration_empty") {
-        narrationReason = narrationResult.reason;
-      }
-    }
-    runWithTenant(tenantId, () => logGen("video", model, label));
-    await recordMediaGenerationEvent(tenantId, "video", model, label);
-    const narrationMessage = narrationReason === "server_tts_unavailable"
-      ? "내레이션 없이 생성됨 (서버에 TTS 실행기가 없음)"
-      : narrationReason === "audio_mix_failed"
-        ? "내레이션 없이 생성됨 (TTS 오디오 합성 실패)"
-        : undefined;
-    return Response.json({
-      ok: true,
-      url,
-      file: deliverUrl(tenantId, finalName),
-      model,
-      hasAudio,
-      narration: {
-        requested: narrationRequested,
-        included: hasAudio,
-        ...(narrationReason ? { reason: narrationReason } : {}),
-        ...(narrationMessage ? { message: narrationMessage } : {}),
-      },
+    const job = createHiggsfieldJob(tenantId, "video", providerJobId, {
+      localPath, filename, model, motion, narration: String(narration || ""), label,
     });
+    return Response.json({ ok: true, jobId: job.jobId }, { status: 202 });
   } catch (e) {
     if (e instanceof HiggsfieldUnauthenticatedError) {
       return Response.json({
