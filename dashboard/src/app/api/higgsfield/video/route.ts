@@ -62,13 +62,13 @@ export async function POST(request: Request) {
   } catch (e) {
     if (e instanceof HiggsfieldUnauthenticatedError) {
       return Response.json({
-        error: "영상 생성기에 로그인되어 있지 않습니다. 서버에서 생성기 로그인을 한 번 해 주시면 바로 쓰실 수 있습니다.",
+        error: "영상 생성 서비스 연결이 잠시 끊겼습니다. 계정 로그인 문제는 아니며 운영팀이 복구하고 있습니다. 글 카드는 지금도 만드실 수 있습니다.",
         code: "GENERATOR_UNAUTHENTICATED",
       }, { status: 503 });
     }
     if (e instanceof HiggsfieldUnavailableError) {
       return Response.json({
-        error: "영상 생성기가 아직 이 서버에 준비되지 않았습니다. 준비되면 바로 쓰실 수 있습니다.",
+        error: "영상 생성 서비스가 아직 준비되지 않았습니다. 계정 로그인 문제는 아니며 운영팀이 준비하고 있습니다. 글 카드는 지금도 만드실 수 있습니다.",
         code: "GENERATOR_UNAVAILABLE",
       }, { status: 503 });
     }
