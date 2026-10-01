@@ -9,6 +9,8 @@ import { useToast } from "@/components/layout/Toast";
 import { useUIStore } from "@/store/ui-store";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { confirmAction } from "@/components/shared/ConfirmHost";
+import { pollJobUntilDone } from "@/lib/job-poll";
+import { savePendingVideoPublishJob, clearPendingVideoPublishJob, listAllPendingVideoPublishJobs } from "@/lib/publish-job-store";
 
 interface Video {
   filename: string;
@@ -303,11 +305,35 @@ export default function VideosPage() {
     }
   };
 
+  // 2026-10-02 컨트롤러 감사 반려: video/publish가 예산(8초)을 넘기면 202 +
+  // {status:"processing", jobId}를 준다(TikTok 전용의 processing+publishId와는 다른,
+  // 공용 비동기 경로). 그 응답을 ok:true로만 읽고 바로 "완료"로 보여주면 아직 올라가지
+  // 않은 영상을 "완료"로 말하는 거짓-성공이 된다. jobId가 있으면 실제로 끝날 때까지
+  // 기다린 뒤 진짜 permalink로 안내한다. 15분을 넘기면 "실패"가 아니라 "결과 확인 중"으로
+  // 남겨 재발행(중복 게시)을 유도하지 않는다.
+  const awaitAsyncVideoPublish = async (
+    tenantId: string, videoFilename: string, publishPlatform: string, jobId: string,
+  ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> => {
+    savePendingVideoPublishJob(tenantId, videoFilename, publishPlatform, jobId);
+    const outcome = await pollJobUntilDone<{ ok?: boolean; url?: string; error?: string; status?: string }>(
+      `/api/video/publish/job/${encodeURIComponent(jobId)}?tenant_id=${encodeURIComponent(tenantId)}`,
+      { headers: authHeaders(), timeoutMs: 15 * 60 * 1000 },
+    );
+    if (outcome.timedOut) {
+      return { ok: false, unresolved: true, error: "결과 확인 중입니다. 영상 목록에서 다시 확인해 주세요." };
+    }
+    clearPendingVideoPublishJob(tenantId, videoFilename, publishPlatform);
+    if (outcome.notFound) return { ok: false, error: "발행 작업을 찾지 못했습니다." };
+    const data = outcome.data;
+    if (!data?.ok) return { ok: false, error: data?.error || "발행에 실패했습니다" };
+    return { ok: true, url: data.url };
+  };
+
   const handlePublish = async (filename: string, platform: "youtube" | "reels" | "tiktok" = "youtube") => {
     const label = platform === "reels" ? "Instagram Reels" : platform === "tiktok" ? "TikTok" : "YouTube";
     setPublishingPlatform(`${platform}:${filename}`);
     try {
-      const res = await apiPost<{ ok: boolean; processing?: boolean; publishId?: string; url?: string; error?: string }>("/api/video/publish", {
+      const res = await apiPost<{ ok: boolean; processing?: boolean; publishId?: string; status?: string; jobId?: string; url?: string; error?: string }>("/api/video/publish", {
         filename,
         title: publishTitle || filename,
         description: publishDesc,
@@ -324,8 +350,25 @@ export default function VideosPage() {
       if (res?.ok) {
         if (platform === "tiktok" && res.processing && res.publishId) {
           rememberTikTokPending(filename, res.publishId);
+          showToast(`${label}에서 영상을 처리 중입니다.`, "success");
+          setPublishingFile(null);
+          return;
         }
-        showToast(res.processing ? `${label}에서 영상을 처리 중입니다.` : `Published to ${label}: ${res.url || ""}`, "success");
+        if (res.jobId && res.status === "processing") {
+          const tenantId = activeWorkspace?.id ?? "";
+          showToast(`${label}에 올리는 중입니다. 시간이 걸릴 수 있어 결과를 이어서 확인합니다.`, "success");
+          const resolved = await awaitAsyncVideoPublish(tenantId, filename, platform, res.jobId);
+          if (resolved.unresolved) {
+            showToast(resolved.error || "결과 확인 중입니다. 영상 목록에서 다시 확인해 주세요.", "error");
+          } else if (resolved.ok) {
+            showToast(`Published to ${label}: ${resolved.url || ""}`, "success");
+            setPublishingFile(null);
+          } else {
+            showToast(resolved.error || `${label} 발행 실패`, "error");
+          }
+          return;
+        }
+        showToast(`Published to ${label}: ${res.url || ""}`, "success");
         setPublishingFile(null);
       } else {
         showToast(res?.error || `${label} 발행 실패`, "error");
@@ -336,6 +379,35 @@ export default function VideosPage() {
       setPublishingPlatform(null);
     }
   };
+
+  // 새로고침·탭 재방문 뒤에도 진행 중이던 영상 발행을 잃지 않는다(2026-10-02 컨트롤러
+  // 감사 반려). 어떤 영상·플랫폼이 보류 중인지 이 화면은 미리 모르므로 색인
+  // (listAllPendingVideoPublishJobs)으로 전부 찾아 이어서 확인한다.
+  useEffect(() => {
+    const workspaceId = activeWorkspace?.id;
+    if (!workspaceId) return;
+    let cancelled = false;
+    const pending = listAllPendingVideoPublishJobs(workspaceId);
+    if (!pending.length) return;
+    void (async () => {
+      for (const job of pending) {
+        if (cancelled) break;
+        const label = job.platform === "reels" ? "Instagram Reels" : job.platform === "tiktok" ? "TikTok" : "YouTube";
+        const resolved = await awaitAsyncVideoPublish(workspaceId, job.filename, job.platform, job.jobId);
+        if (cancelled) continue;
+        if (resolved.unresolved) {
+          showToast(resolved.error || "결과 확인 중입니다. 영상 목록에서 다시 확인해 주세요.", "error");
+        } else if (resolved.ok) {
+          showToast(`Published to ${label}: ${resolved.url || ""}`, "success");
+          mutate();
+        } else {
+          showToast(resolved.error || `${label} 발행 실패`, "error");
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id]);
 
   // 0차: Repurpose long video via external + OSMU refine
   const handleRepurpose = async () => {

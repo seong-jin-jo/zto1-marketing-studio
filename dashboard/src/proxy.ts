@@ -90,6 +90,11 @@ const TENANT_AWARE_PATHS = [
   "/api/provision",
   "/api/publish",
   "/api/publish/first-comment-capabilities",
+  // 외부에는 올라갔는데 내부 기록을 못 남긴 상태를 고객 화면(studio/page.tsx
+  // resolvePublishReconciliation)이 스스로 복구하는 경로. 이 줄이 없어 같은 사고 유형이
+  // 다섯 번째로 반복될 뻔했다(2026-10-02, customer-route-allowlist 전수 스캔 추가로 발견).
+  // 라우트가 effectiveTenantId로 테넌트를 확인하고 그 테넌트 기록만 건드린다.
+  "/api/publish/reconcile",
   "/api/queue/[postId]/add-image",
   "/api/queue/[postId]/approve",
   // 고객이 예약 글의 발행을 멈추는 경로. 화면(UnifiedPostCard)이 "발행을 멈춥니다"라고

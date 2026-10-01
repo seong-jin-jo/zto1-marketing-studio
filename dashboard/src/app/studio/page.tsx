@@ -28,6 +28,12 @@ import { SchedulePanel } from "@/components/studio/SchedulePanel";
 import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
 import { pollHiggsfieldJob, savePendingJob, readPendingJob, clearPendingJob } from "@/lib/higgsfield-poll";
+import { pollJobUntilDone, JOB_POLL_INTERVAL_MS } from "@/lib/job-poll";
+import { wakeableSleep } from "@/lib/wakeable-sleep";
+import {
+  savePendingVideoPublishJob, readPendingVideoPublishJob, clearPendingVideoPublishJob,
+  savePendingSocialPublishJob, readPendingSocialPublishJob, clearPendingSocialPublishJob,
+} from "@/lib/publish-job-store";
 import {
   browserCardUploader,
   cardRatioFrom,
@@ -84,9 +90,13 @@ import { runWithConcurrency } from "@/lib/async-pool";
 import { embeddedTextCardImage, recoverDraftEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
 
 const PUBLISH_CONCURRENCY = 3;
+// 2026-10-02 컨트롤러 감사: 이 타임아웃은 더 이상 "서버가 끝날 때까지" 기다리는 역할이
+// 아니다 — 서버가 예산(기본 8초, PUBLISH_FAST_PATH_BUDGET_MS/VIDEO_PUBLISH_FAST_PATH_
+// BUDGET_MS)을 넘기면 이제 202 + processing을 그 안에 돌려주고, 실제 완료는
+// awaitAsyncSocialPublish/awaitAsyncVideoPublish가 별도로(15분 상한) 기다린다. 이 상수들은
+// "접수 자체가 이 시간 안에도 안 끝나면 네트워크 이상"을 가르는 안전망일 뿐이라 8초
+// 예산+정상 네트워크 지연에 넉넉히 여유 있다.
 const PUBLISH_REQUEST_TIMEOUT_MS = 45_000;
-// 영상 API의 공급자 업로드 상한은 120초다. 클라이언트가 먼저 포기하면 서버의 실제 성공을
-// 실패로 보여 재시도를 유도하므로 영상만 서버 상한보다 길게 기다린다.
 const VIDEO_PUBLISH_REQUEST_TIMEOUT_MS = 130_000;
 
 // SNS-007: /api/publish가 실제로 계정별 발행을 받는 4개 플랫폼(threads/x/facebook/instagram)만
@@ -268,7 +278,10 @@ interface VidResult {
   hasAudio?: boolean;
   narration?: { requested: boolean; included: boolean; reason?: string; message?: string };
 }
-type PubStatus = "wait" | "doing" | "done" | "failed";
+// "unknown" = 비동기 발행이 상한(15분)을 넘겨 더 기다리지 않지만, "실패"로 단정하지도
+// 않는 상태(세션맥락: 524 오판으로 인한 재발행이 중복 게시를 부른다 — 재발행을 유도하지
+// 않기 위해 failed와 분리한다). 게시물 목록에서 실제 결과를 확인하라고 안내한다.
+type PubStatus = "wait" | "doing" | "done" | "failed" | "unknown";
 type PublishReconciliation = ExternalPublishPersistenceFailure["persistence"]["reconciliation"];
 type PublishReconciliationMap = Record<string, PublishReconciliation>;
 
@@ -2108,6 +2121,78 @@ export default function StudioPage() {
     }
   }
 
+  // 2026-10-02 컨트롤러 감사 반려: video/publish가 202 + jobId(status:"processing")를 줘도
+  // 화면은 그 응답을 몰라 ok:true로 읽고 바로 "완료"로 표시했다 — 거짓-성공이었다. 서버가
+  // 실제로 끝날 때까지 이 폴링이 기다린다. 15분 상한을 넘기면 "실패"가 아니라 "결과 확인
+  // 중"으로 남겨 재발행(중복 게시)을 유도하지 않는다.
+  async function awaitAsyncVideoPublish(
+    tenantId: string, filename: string, platform: string, jobId: string,
+  ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> {
+    savePendingVideoPublishJob(tenantId, filename, platform, jobId);
+    const outcome = await pollJobUntilDone<{ ok?: boolean; url?: string; error?: string; status?: string }>(
+      `/api/video/publish/job/${encodeURIComponent(jobId)}?tenant_id=${encodeURIComponent(tenantId)}`,
+      { headers: authHeaders(), timeoutMs: 15 * 60 * 1000 },
+    );
+    if (outcome.timedOut) {
+      // pending 기록을 지우지 않는다 — 다음 방문(탭 재표시/새로고침)에서 복구 효과가 이어서
+      // 확인한다. 상한을 넘겼다고 포기한 게 아니라 "이 폴링만" 멈춘 것이다.
+      return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+    }
+    clearPendingVideoPublishJob(tenantId, filename, platform);
+    if (outcome.notFound) return { ok: false, error: "발행 작업을 찾지 못했습니다." };
+    const data = outcome.data;
+    if (!data?.ok) return { ok: false, error: data?.error || "영상 발행에 실패했습니다" };
+    return { ok: true, url: data.url };
+  }
+
+  // 같은 감사 반려: /api/publish도 150초대 폴링(인스타 캐러셀·Threads 상태확인)이 예산(8초)을
+  // 넘으면 202 + {processing:true, draftId, platform}을 준다. 결과는 새 작업 저장소가 아니라
+  // 기존 GET /api/publish?draft_id=...&platforms=...(buildUnifiedPublishStatus)가 그대로
+  // 맡는다(draftId가 작업 id 역할). 그 응답의 종결 신호는 최상위 status가 아니라
+  // targets[0].status(queued/processing/published/failed)라서 job-poll의 "최상위 status"
+  // 계약과 안 맞는다 — pollJobUntilDone으로 억지로 끼워맞추지 않고, 같은 2.5초 간격·
+  // 백그라운드 깨우기(wakeableSleep, job-poll.ts와 같은 정본)로 직접 루프를 돈다.
+  async function awaitAsyncSocialPublish(
+    tenantId: string, draftId: string, platform: string,
+  ): Promise<{ ok: boolean; permalink?: string; publishedAt?: string; error?: string; unresolved?: boolean }> {
+    savePendingSocialPublishJob(tenantId, draftId, platform);
+    const start = Date.now();
+    const timeoutMs = 15 * 60 * 1000;
+    for (;;) {
+      if (Date.now() - start > timeoutMs) {
+        // pending 기록을 지우지 않는다 — 다음 방문에서 복구 효과가 이어서 확인한다.
+        return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+      }
+      let res: Response;
+      try {
+        res = await fetch(
+          `/api/publish?draft_id=${encodeURIComponent(draftId)}&platforms=${encodeURIComponent(platform)}&tenant_id=${encodeURIComponent(tenantId)}`,
+          { headers: authHeaders() },
+        );
+      } catch {
+        await wakeableSleep(JOB_POLL_INTERVAL_MS);
+        continue;
+      }
+      if (res.status === 404) {
+        clearPendingSocialPublishJob(tenantId, draftId, platform);
+        return { ok: false, error: "발행 작업을 찾지 못했습니다." };
+      }
+      const body = await res.json().catch(() => null) as {
+        targets?: Array<{ status: string; permalink: string | null; error: string | null; updatedAt: string | null }>;
+      } | null;
+      const target = body?.targets?.[0];
+      if (!target || target.status === "queued" || target.status === "processing") {
+        await wakeableSleep(JOB_POLL_INTERVAL_MS);
+        continue;
+      }
+      clearPendingSocialPublishJob(tenantId, draftId, platform);
+      if (target.status !== "published") {
+        return { ok: false, error: target.error || "발행에 실패했습니다" };
+      }
+      return { ok: true, permalink: target.permalink ?? undefined, publishedAt: target.updatedAt ?? undefined };
+    }
+  }
+
   async function publish() {
     // 2026-09-05 회장 계정 실측: 발행 단추를 눌렀는데 요청도 안 나가고 알림도 없었다.
     // 여기서 아무 말 없이 돌아섰기 때문이다. 조용한 반환은 고장으로 읽힌다. 이유를 말한다.
@@ -2155,9 +2240,18 @@ export default function StudioPage() {
     // 전체가 실패로 보였고, 발행 버튼이 그대로 남아 다시 누르면 이미 올라간 채널까지
     // 재발행 대상이 됐다. 이번 초안에서 이미 성공한 채널은 대상에서 뺀다.
     const alreadyPublished = publishTargets.filter((platform) => pub.status[platform] === "done");
-    const targets = publishTargets.filter((platform) => pub.status[platform] !== "done" && !blockedPlatforms.has(platform));
-    if (!targets.length && alreadyPublished.length && blockedEntries.length === 0) {
+    // "unknown"(15분 상한으로 결과를 못 받은 상태)은 "실패"가 아니므로 재발행 대상에서도
+    // 뺀다 — 서버 쪽 draft_id 예약이 중복 게시를 막아 주더라도, 사용자가 다시 누를 때마다
+    // 바로 409로 튕기는 것보다는 "게시물 목록에서 확인"으로 유도하는 편이 낫다.
+    const unresolved = publishTargets.filter((platform) => pub.status[platform] === "unknown");
+    const targets = publishTargets.filter((platform) =>
+      pub.status[platform] !== "done" && pub.status[platform] !== "unknown" && !blockedPlatforms.has(platform));
+    if (!targets.length && alreadyPublished.length && blockedEntries.length === 0 && unresolved.length === 0) {
       showToast(`${alreadyPublished.map((platform) => LABEL[platform]).join(", ")} 은 이미 발행됐습니다. 다시 올리지 않았습니다.`, "success");
+      return;
+    }
+    if (!targets.length && unresolved.length && blockedEntries.length === 0) {
+      showToast(`${unresolved.map((platform) => LABEL[platform]).join(", ")}은 결과 확인 중입니다. 게시물 목록에서 확인해 주세요.`, "error");
       return;
     }
     if (!targets.length && blockedEntries.length === 0) { showToast("연결된 발행 계정이 없습니다. 설정에서 채널을 먼저 연결하세요", "error"); return; }
@@ -2170,6 +2264,10 @@ export default function StudioPage() {
     alreadyPublished.forEach((platform) => {
       status[platform] = "done";
       if (pub.urls[platform]) urls[platform] = pub.urls[platform];
+    });
+    unresolved.forEach((platform) => {
+      status[platform] = "unknown";
+      if (pub.errors[platform]) errors[platform] = pub.errors[platform];
     });
     const errs: string[] = [...blockedFailure.messages];
     const pendingReconciliations: PublishReconciliationMap = {};
@@ -2190,9 +2288,14 @@ export default function StudioPage() {
             failureReason = "올릴 영상이 없습니다. 생성실에서 숏폼 영상을 먼저 만들어 주세요.";
             errs.push(`${LABEL[p]}: ${failureReason}`);
           } else {
-            const vr = await apiPost<{ ok?: boolean; partial?: boolean; processing?: boolean; url?: string; error?: string }>("/api/video/publish", {
+            const videoPlatform = VIDEO_PUBLISH_NAME[p] || p;
+            // 2026-10-02 반려 수정: 서버는 예산(8초)을 넘기면 202 + {status:"processing",
+            // jobId}를 준다. 이걸 그대로 ok:true로 읽으면 아직 올라가지도 않은 채널을
+            // "완료"로 보여주는 거짓-성공이 된다(세션맥락). jobId가 있으면 실제로 끝날
+            // 때까지 기다린다.
+            const vr = await apiPost<{ ok?: boolean; partial?: boolean; status?: string; jobId?: string; url?: string; error?: string }>("/api/video/publish", {
               filename,
-              platform: VIDEO_PUBLISH_NAME[p] || p,
+              platform: videoPlatform,
               title: titles[p] || idea || "",
               description: publishText(p),
               // 저장된 ID가 연결 해제·만료 상태로 바뀌어도 발행 요청에는 절대 싣지 않는다.
@@ -2201,7 +2304,21 @@ export default function StudioPage() {
               // 대문으로 쓸 시점. 지원하는 플랫폼만 실제로 쓴다(lib/video-cover.ts).
               cover_seconds: supportsCoverTimestamp(p) ? (coverSeconds[p] ?? DEFAULT_COVER_SECONDS) : undefined,
             }, { signal: AbortSignal.timeout(VIDEO_PUBLISH_REQUEST_TIMEOUT_MS) });
-            if (vr?.ok && !vr.partial) {
+            if (vr?.jobId && vr.status === "processing") {
+              // "doing"(발행 중) 그대로 유지하며 기다린다 — "완료"로 앞서가지 않는다.
+              setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
+              const resolved = await awaitAsyncVideoPublish(activeWorkspace.id, filename, videoPlatform, vr.jobId);
+              if (resolved.unresolved) {
+                status[p] = "unknown";
+                errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.";
+              } else if (resolved.ok) {
+                urls[p] = resolved.url || POST_URL[p] || "#";
+                trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+              } else {
+                failureReason = resolved.error || "영상 발행에 실패했습니다";
+                errs.push(`${LABEL[p]}: ${failureReason}`);
+              }
+            } else if (vr?.ok && !vr.partial) {
               urls[p] = vr.url || POST_URL[p] || "#";
               trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
             } else {
@@ -2209,7 +2326,7 @@ export default function StudioPage() {
               errs.push(`${LABEL[p]}: ${failureReason}`);
             }
           }
-          status[p] = failureReason ? "failed" : "done";
+          status[p] = failureReason ? "failed" : status[p] === "unknown" ? "unknown" : "done";
           if (failureReason) errors[p] = failureReason;
           setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
           return;
@@ -2229,9 +2346,29 @@ export default function StudioPage() {
           first_comment: capabilityFor(p).supported && firstComments[p]?.trim() ? firstComments[p].trim() : undefined,
           edit_format: editFormat,
         }, { signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS) });
+        // 2026-10-02 반려 수정: Instagram carousel/Threads 상태 폴링이 150초대라 서버
+        // 예산(8초)을 넘으면 202 + {processing:true, draftId, platform}을 준다. 이것도
+        // ok:true로 읽으면 아직 올라가지 않은 글을 "완료"로 보여주는 거짓-성공이 된다.
+        const processingDraftId = (r as { processing?: boolean; draftId?: string } | undefined)?.processing
+          ? (r as { draftId?: string }).draftId
+          : undefined;
+        if (processingDraftId) {
+          setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
+          const resolved = await awaitAsyncSocialPublish(activeWorkspace.id, processingDraftId, p);
+          if (resolved.unresolved) {
+            status[p] = "unknown";
+            errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.";
+          } else if (resolved.ok) {
+            urls[p] = resolved.permalink || POST_URL[p] || "#";
+            trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+          } else {
+            failureReason = resolved.error || "실패";
+            errs.push(`${LABEL[p]}: ${failureReason}`);
+          }
+        }
         // 2026-09-16 실측: 서버가 dedupe 로 옛 글을 돌려준 것을 방금 새로 올라간 것과
         // 구분한다. 이미 있던 것이면 "새로 올렸다" 이벤트를 다시 세지 않는다.
-        if (r?.ok && !r.partial) { urls[p] = r.permalink || POST_URL[p] || "#"; if (!r.alreadyPublished) trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } }); else already[p] = r.publishedAt || true; }
+        else if (r?.ok && !r.partial) { urls[p] = r.permalink || POST_URL[p] || "#"; if (!r.alreadyPublished) trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } }); else already[p] = r.publishedAt || true; }
         else {
           failureReason = r?.partial
             ? r.firstComment?.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다"
@@ -2250,7 +2387,7 @@ export default function StudioPage() {
           errs.push(`${LABEL[p]}: ${failureReason}`);
         }
       }
-      status[p] = failureReason ? "failed" : "done";
+      status[p] = failureReason ? "failed" : status[p] === "unknown" ? "unknown" : "done";
       if (failureReason) errors[p] = failureReason;
       setPub({
         running: true,
@@ -2297,6 +2434,58 @@ export default function StudioPage() {
       showToast(`${head}실패 ${errs.join(" / ")}`.slice(0, 180), "error");
     } else showToast("발행 완료", "success");
   }
+  // 새로고침·탭 재방문 뒤에도 진행 중이던 발행(비디오/소셜 비동기 경로)을 잃지 않는다
+  // (2026-10-02 컨트롤러 감사 반려 — publish-job-store.ts가 적어 둔 jobId/draftId가 이
+  // 작업공간+초안에 남아 있으면 자동으로 이어서 확인한다).
+  useEffect(() => {
+    if (!activeWorkspace || !draftId) return;
+    const workspaceId = activeWorkspace.id;
+    const currentDraftId = draftId;
+    const videoFilenameNow = videoFilename(vid?.file || vid?.url || "");
+    let cancelled = false;
+    void (async () => {
+      for (const p of publishTargets) {
+        if (cancelled) break;
+        if (VIDEO_ROOM_PLATFORMS.has(p)) {
+          if (!videoFilenameNow) continue;
+          const videoPlatform = VIDEO_PUBLISH_NAME[p] || p;
+          const pending = readPendingVideoPublishJob(workspaceId, videoFilenameNow, videoPlatform);
+          if (!pending) continue;
+          setPub((current) => ({ ...current, running: true, status: { ...current.status, [p]: "doing" } }));
+          const resolved = await awaitAsyncVideoPublish(workspaceId, videoFilenameNow, videoPlatform, pending.jobId);
+          if (cancelled || activeWorkspaceIdRef.current !== workspaceId) continue;
+          setPub((current) => {
+            const status = { ...current.status };
+            const urls = { ...current.urls };
+            const errors = { ...current.errors };
+            if (resolved.unresolved) { status[p] = "unknown"; errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요."; }
+            else if (resolved.ok) { status[p] = "done"; urls[p] = resolved.url || POST_URL[p] || "#"; }
+            else { status[p] = "failed"; errors[p] = resolved.error || "영상 발행에 실패했습니다"; }
+            return { ...current, running: false, status, urls, errors };
+          });
+        } else {
+          const pending = readPendingSocialPublishJob(workspaceId, currentDraftId, p);
+          if (!pending) continue;
+          setPub((current) => ({ ...current, running: true, status: { ...current.status, [p]: "doing" } }));
+          const resolved = await awaitAsyncSocialPublish(workspaceId, currentDraftId, p);
+          if (cancelled || activeWorkspaceIdRef.current !== workspaceId) continue;
+          setPub((current) => {
+            const status = { ...current.status };
+            const urls = { ...current.urls };
+            const errors = { ...current.errors };
+            if (resolved.unresolved) { status[p] = "unknown"; errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요."; }
+            else if (resolved.ok) { status[p] = "done"; urls[p] = resolved.permalink || POST_URL[p] || "#"; }
+            else { status[p] = "failed"; errors[p] = resolved.error || "실패"; }
+            return { ...current, running: false, status, urls, errors };
+          });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // publishTargets는 매 렌더 재계산되지만 effect 의존성에 넣으면 재구독으로 중복 폴링이
+    // 된다 — workspace·draftId가 바뀔 때만 다시 확인한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id, draftId]);
   function loadDraft(d: Record<string, unknown>): EditContentKind | null {
     // B1(교차 리뷰 BLOCK): 서버 초안을 불러오는 이 순간 이전에 예약돼 있던 자동 저장
     // 타이머가 있으면(예: 방금 전 영상 탭에서 시딩·조작으로 예약된 저장) 그 타이머가
@@ -3448,7 +3637,7 @@ export default function StudioPage() {
               <div className="min-w-0 flex-1">
                 <b className="text-body text-text">{pubResultLabel}</b>
                 <div className="mt-stack-tight flex flex-wrap gap-stack-tight">{Object.entries(pub.status).map(([key, status]) => {
-                  const cls = `rounded-pill border px-stack-tight py-micro text-caption ${status === "done" ? "border-success/30 bg-success/10 text-success" : status === "failed" ? "border-danger/30 bg-danger/10 text-danger" : status === "doing" ? "border-warning/30 bg-warning/10 text-warning" : "border-border bg-surface-2 text-subtle"}`;
+                  const cls = `rounded-pill border px-stack-tight py-micro text-caption ${status === "done" ? "border-success/30 bg-success/10 text-success" : status === "failed" ? "border-danger/30 bg-danger/10 text-danger" : status === "doing" ? "border-warning/30 bg-warning/10 text-warning" : status === "unknown" ? "border-border bg-surface-2 text-text" : "border-border bg-surface-2 text-subtle"}`;
                   // 2026-09-16 실측(j.the.great.investor): "지금 발행"을 다시 누르면 서버가
                   // dedupe 로 옛 글을 돌려주는데, "완료" + "새 창" 링크만 보여 새로 올라간
                   // 것처럼 읽혔다. 이미 있던 것이면 그 사실과(있으면) 발행 시각을 말한다.
@@ -3458,8 +3647,8 @@ export default function StudioPage() {
                     : "";
                   const value = already
                     ? `${LABEL[key]} · ${alreadyLabel}`
-                    : `${status === "done" ? "완료 " : status === "failed" ? "실패 " : status === "doing" ? "발행 중 " : ""}${LABEL[key]}`;
-                  return status === "done" && pub.urls[key] ? <a key={key} href={pub.urls[key]} target="_blank" rel="noopener noreferrer" className={cls} title={already ? alreadyLabel : "게시물 보기"}>{value}<span className="sr-only"> 새 창</span></a> : <span key={key} className={cls}>{value}{status === "failed" && pub.errors[key] ? <span className="ml-micro"><span>{pub.errors[key]}</span></span> : null}</span>;
+                    : `${status === "done" ? "완료 " : status === "failed" ? "실패 " : status === "doing" ? "발행 중 " : status === "unknown" ? "결과 확인 중 " : ""}${LABEL[key]}`;
+                  return status === "done" && pub.urls[key] ? <a key={key} href={pub.urls[key]} target="_blank" rel="noopener noreferrer" className={cls} title={already ? alreadyLabel : "게시물 보기"}>{value}<span className="sr-only"> 새 창</span></a> : <span key={key} className={cls}>{value}{(status === "failed" || status === "unknown") && pub.errors[key] ? <span className="ml-micro"><span>{pub.errors[key]}</span></span> : null}</span>;
                 })}</div>
               </div>
               {hasPublishedResult ? <Link href="/performance" className="shrink-0 rounded-control bg-accent px-stack py-stack-tight text-body-sm font-semibold text-accent-fg">성과실에서 결과 보기</Link> : null}
