@@ -16,6 +16,10 @@ import { describe, expect, it } from "vitest";
 const ROUTE_FILES = [
   "src/app/api/higgsfield/image/route.ts",
   "src/app/api/higgsfield/video/route.ts",
+  // 2026-10-01 비동기 전환 뒤 반려(컨트롤러 확인): GENERATOR_UNAUTHENTICATED/UNAVAILABLE
+  // 오류가 이제 이 라우트(완료 처리 조회)에서도 날 수 있다 — 빠뜨리면 같은 문구가
+  // 여기서만 조용히 되살아난다.
+  "src/app/api/higgsfield/job/[id]/route.ts",
 ];
 
 function readRoute(file: string): string {

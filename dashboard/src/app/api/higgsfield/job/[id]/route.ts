@@ -148,17 +148,40 @@ export async function GET(request: Request, context: RouteContext) {
     updateHiggsfieldJob(tenantId, jobId, { status: "completed", result });
     return Response.json(result);
   } catch (e) {
+    // 2026-10-01 PR #98(main dda88ef6) 재발 방지: 운영 측 자격증명 문제를 고객 계정
+    // 탓으로 오해하게 만드는 서버-작업-지시 투 문구는 금지다(회장 질책). image/video
+    // POST 라우트와 같은 고객 관점 문구로 맞춘다 — 매체(이미지/영상)별로 나누고, 계정
+    // 로그인 문제가 아니라는 취지와 지금도 할 수 있는 일(글 카드)을 안내한다.
+    // image/video POST 라우트(PR #98)와 정확히 같은 문자열을 매체별로 쓴다 — 정적 소스
+    // 그렙 테스트(higgsfield-customer-facing-copy.regression-1.test.ts)가 큰따옴표
+    // 리터럴을 전제하므로 템플릿 리터럴 보간을 쓰지 않고 if/else로 분기한다.
     if (e instanceof HiggsfieldUnauthenticatedError) {
+      if (job.kind === "image") {
+        const result = {
+          error: "이미지 생성 서비스 연결이 잠시 끊겼습니다. 계정 로그인 문제는 아니며 운영팀이 복구하고 있습니다. 글 카드는 지금도 만드실 수 있습니다.",
+          code: "GENERATOR_UNAUTHENTICATED",
+        };
+        updateHiggsfieldJob(tenantId, jobId, { status: "queued" }); // 일시적 상태 — 재시도 가능하게 락 해제
+        return Response.json(result, { status: 503 });
+      }
       const result = {
-        error: "생성기에 로그인되어 있지 않습니다. 서버에서 생성기 로그인을 한 번 해 주시면 바로 쓰실 수 있습니다.",
+        error: "영상 생성 서비스 연결이 잠시 끊겼습니다. 계정 로그인 문제는 아니며 운영팀이 복구하고 있습니다. 글 카드는 지금도 만드실 수 있습니다.",
         code: "GENERATOR_UNAUTHENTICATED",
       };
-      updateHiggsfieldJob(tenantId, jobId, { status: "queued" }); // 일시적 상태 — 재시도 가능하게 락 해제
+      updateHiggsfieldJob(tenantId, jobId, { status: "queued" });
       return Response.json(result, { status: 503 });
     }
     if (e instanceof HiggsfieldUnavailableError) {
+      if (job.kind === "image") {
+        const result = {
+          error: "이미지 생성 서비스가 아직 준비되지 않았습니다. 계정 로그인 문제는 아니며 운영팀이 준비하고 있습니다. 글 카드는 지금도 만드실 수 있습니다.",
+          code: "GENERATOR_UNAVAILABLE",
+        };
+        updateHiggsfieldJob(tenantId, jobId, { status: "queued" });
+        return Response.json(result, { status: 503 });
+      }
       const result = {
-        error: "생성기가 아직 이 서버에 준비되지 않았습니다. 준비되면 바로 쓰실 수 있습니다.",
+        error: "영상 생성 서비스가 아직 준비되지 않았습니다. 계정 로그인 문제는 아니며 운영팀이 준비하고 있습니다. 글 카드는 지금도 만드실 수 있습니다.",
         code: "GENERATOR_UNAVAILABLE",
       };
       updateHiggsfieldJob(tenantId, jobId, { status: "queued" });
