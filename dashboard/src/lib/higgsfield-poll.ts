@@ -103,12 +103,39 @@ export function pendingJobStorageKey(workspaceId: string, kind: "image" | "video
   return `${JOB_STORAGE_PREFIX}:${workspaceId}:${kind}`;
 }
 
-export function savePendingJob(workspaceId: string, kind: "image" | "video", jobId: string): void {
-  try { localStorage.setItem(pendingJobStorageKey(workspaceId, kind), jobId); } catch { /* 저장 실패는 복구 기능만 못 쓰게 할 뿐, 생성 자체는 진행한다 */ }
+/**
+ * 2026-10-02 리뷰 MAJOR 5a: 종전엔 jobId 문자열만 저장해, 새로고침 복구가 이미지 비율을
+ * "9:16"으로 못박았다 — 카드뉴스(1:1)를 만들던 중 새로고침하면 복구된 이미지가 영상
+ * 바탕 재사용 판정(work-media.ts isReusableVideoBaseImage)에서 세로 비율로 오판된다
+ * (2026-09-16 사고의 재발 형태). 접수 시점의 비율·주제도 함께 저장해 복구 시 그대로
+ * 되살린다.
+ */
+export interface PendingHiggsfieldJob {
+  jobId: string;
+  aspectRatio?: "1:1" | "9:16";
+  idea?: string;
 }
 
-export function readPendingJob(workspaceId: string, kind: "image" | "video"): string | null {
-  try { return localStorage.getItem(pendingJobStorageKey(workspaceId, kind)); } catch { return null; }
+export function savePendingJob(workspaceId: string, kind: "image" | "video", job: PendingHiggsfieldJob): void {
+  try { localStorage.setItem(pendingJobStorageKey(workspaceId, kind), JSON.stringify(job)); } catch { /* 저장 실패는 복구 기능만 못 쓰게 할 뿐, 생성 자체는 진행한다 */ }
+}
+
+export function readPendingJob(workspaceId: string, kind: "image" | "video"): PendingHiggsfieldJob | null {
+  try {
+    const raw = localStorage.getItem(pendingJobStorageKey(workspaceId, kind));
+    if (!raw) return null;
+    // 구버전 호환: 과거엔 jobId 문자열을 그대로 저장했다. JSON 파싱이 실패하거나
+    // 문자열이 그대로 나오면 jobId만 있는 레코드로 취급한다.
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object" && typeof (parsed as { jobId?: unknown }).jobId === "string") {
+        return parsed as PendingHiggsfieldJob;
+      }
+    } catch { /* fallthrough to legacy string */ }
+    return { jobId: raw };
+  } catch {
+    return null;
+  }
 }
 
 export function clearPendingJob(workspaceId: string, kind: "image" | "video"): void {

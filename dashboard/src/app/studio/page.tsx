@@ -1107,23 +1107,48 @@ export default function StudioPage() {
   // 서버는 즉시 돌아오고 화면이 GET /api/higgsfield/job/[id] 를 폴링한다. 폴링 중 jobId를
   // localStorage(작업 공간+화면 스코프)에 적어 두어 새로고침·탭 재방문 뒤에도 이어서 확인할 수
   // 있게 한다 — 안 그러면 완료된 결과(크레딧은 이미 씀)를 영영 못 받는다.
-  async function pollAndFinishImage(jobId: string, tenantId: string, aspectRatio: "1:1" | "9:16") {
+  async function pollAndFinishImage(
+    jobId: string, tenantId: string, aspectRatio: "1:1" | "9:16",
+    opts?: { signal?: AbortSignal; topicLabel?: string },
+  ) {
     const result = await pollHiggsfieldJob<ImgResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean; status?: string }>(
       jobId, tenantId,
       {
-        signal: generationAbort.current?.signal,
+        // 2026-10-02 리뷰 MAJOR 5b: 상호작용 중인 폴링은 generationAbort.current(전역
+        // "지금 작업물 버리기" 신호)를, 새로고침 복구 폴링은 그 effect 자신의
+        // AbortController를 쓴다 — 전역 신호에 섞이면 복구 폴링이 다른 생성 취소에
+        // 엉뚱하게 끊기거나, 반대로 언마운트돼도 안 끊긴다.
+        signal: opts?.signal ?? generationAbort.current?.signal,
         headers: authHeaders(),
         onStatus: (status) => {
           setBusy(status === "queued" ? "이미지 생성 대기열에서 기다리는 중" : "이미지 만드는 중");
         },
       },
     );
-    clearPendingJob(tenantId, "image");
+    // 2026-10-02 리뷰 MINOR: 취소·시간초과 때는 pending 기록을 지우지 않는다. 이미
+    // 202로 접수된 작업은 서버·생성기 쪽에서 계속 만들어지고 있을 수 있다(크레딧도 이미
+    // 썼을 수 있다) — 여기서 지우면 다음 방문에서 그 결과를 영영 회수할 수 없다. 정상
+    // 종결(성공/실패 확정) 때만 더 이상 회수할 게 없으므로 지운다.
     if (result.aborted) return null;
+    // 2026-10-02 리뷰 MAJOR 5b: 결과가 왔을 때 작업 공간이 이미 다른 곳으로 바뀌었으면
+    // 화면 상태(setImg/setLastError/showToast)를 건드리지 않는다 — 지금 보고 있는
+    // 작업공간에 남의 결과가 꽂히면 안 된다. pending 기록은 그 작업공간 것이므로 여기서
+    // 건드리지 않는다(그 작업공간으로 돌아오면 복구 effect가 다시 잡는다).
+    if (activeWorkspaceIdRef.current !== tenantId) return null;
     if (result.timedOut) {
-      const msg = result.error || "이미지 생성이 너무 오래 걸립니다. 잠시 후 다시 시도해 주세요.";
+      // "다시 시도" 유도 금지(MINOR) — 접수된 작업은 서버에서 계속 만들어지고 있다.
+      // pending 기록을 지우지 않아 다음 방문에서 복구 effect가 이어서 확인한다.
+      const msg = "이미지 생성이 평소보다 오래 걸리고 있습니다. 만들어지는 대로 보관함에 들어갑니다.";
       setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
     }
+    if (result.notFound) {
+      // 작업 자체가 없다(만료·삭제 등) — 더는 회수할 게 없으므로 기록을 지운다.
+      clearPendingJob(tenantId, "image");
+      const msg = result.error || "이미지 생성 작업을 찾지 못했습니다. 다시 만들어 주세요.";
+      setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
+    }
+    // 정상 종결(성공/실패 확정) — 더 회수할 게 없으니 지운다.
+    clearPendingJob(tenantId, "image");
     const r = result.data;
     if (!result.ok || !r?.ok) {
       const msg = r?.credits
@@ -1144,7 +1169,7 @@ export default function StudioPage() {
     // 만든 그림에 주제 도장과 비율 도장을 찍는다. 주제 도장은 재사용 여부를,
     // 비율 도장은 영상 바탕으로 써도 되는지를 가른다(work-media.ts isReusableVideoBaseImage,
     // 2026-09-16 실측: 1:1 대표 이미지를 영상 바탕으로 재사용해 정사각 영상이 나갔다).
-    const stamped = { ...r, topicKey: mediaTopicKey(idea), aspectRatio };
+    const stamped = { ...r, topicKey: mediaTopicKey(opts?.topicLabel ?? idea), aspectRatio };
     setImg(stamped); mutateAcct(); return stamped;
   }
   async function genImage(prompt: string, aspectRatio: "1:1" | "9:16" = "9:16") {
@@ -1160,7 +1185,7 @@ export default function StudioPage() {
             : (r?.error || "이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
         setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
       }
-      savePendingJob(activeWorkspace.id, "image", r.jobId);
+      savePendingJob(activeWorkspace.id, "image", { jobId: r.jobId, aspectRatio, idea });
       return await pollAndFinishImage(r.jobId, activeWorkspace.id, aspectRatio);
     } catch (e) {
       // 2026-09-08 실측: 생성기가 막은 주제였는데 화면에는 "Request failed: 502" 만 떴다.
@@ -1180,23 +1205,35 @@ export default function StudioPage() {
   // 바탕 그림은 파일 이름으로만 넘긴다(2026-09-25 코드리뷰 MAJOR-0b: 서버 절대경로를 클라이언트가
   // 들고 다니며 그대로 서버에 되돌려주는 통로를 없앴다). 방금 만든 그림도, 승인함이나 달력에서
   // 가져온 작업물(파일 이름만 앎)도 이 한 가지 방식으로 처리된다(코드 감사 F-05 취지 유지).
-  async function pollAndFinishVideo(jobId: string, tenantId: string) {
+  async function pollAndFinishVideo(
+    jobId: string, tenantId: string,
+    opts?: { signal?: AbortSignal; topicLabel?: string },
+  ) {
     const result = await pollHiggsfieldJob<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean; status?: string }>(
       jobId, tenantId,
       {
-        signal: generationAbort.current?.signal,
+        signal: opts?.signal ?? generationAbort.current?.signal,
         headers: authHeaders(),
         onStatus: (status) => {
           setBusy(status === "queued" ? "영상 생성 대기열에서 기다리는 중" : "영상 만드는 중");
         },
       },
     );
-    clearPendingJob(tenantId, "video");
+    // 2026-10-02 리뷰 MINOR: 취소·시간초과 때는 pending 기록을 지우지 않는다(이미지와
+    // 같은 이유 — 접수된 작업은 서버에서 계속 만들어지고 있을 수 있다).
     if (result.aborted) return null;
+    // 2026-10-02 리뷰 MAJOR 5b: 작업 공간이 바뀐 뒤 돌아온 결과는 화면에 꽂지 않는다.
+    if (activeWorkspaceIdRef.current !== tenantId) return null;
     if (result.timedOut) {
-      const msg = result.error || "영상 생성이 너무 오래 걸립니다. 잠시 후 다시 시도해 주세요.";
+      const msg = "영상 생성이 평소보다 오래 걸리고 있습니다. 만들어지는 대로 보관함에 들어갑니다.";
       setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
     }
+    if (result.notFound) {
+      clearPendingJob(tenantId, "video");
+      const msg = result.error || "영상 생성 작업을 찾지 못했습니다. 다시 만들어 주세요.";
+      setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
+    }
+    clearPendingJob(tenantId, "video");
     const r = result.data;
     if (!result.ok || !r?.ok) {
       const msg = r?.nsfw
@@ -1211,7 +1248,7 @@ export default function StudioPage() {
       const msg = "영상을 만들었지만 화면에 걸 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.";
       setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
     }
-    const stamped = { ...r, topicKey: mediaTopicKey(idea) };
+    const stamped = { ...r, topicKey: mediaTopicKey(opts?.topicLabel ?? idea) };
     setVid(stamped); mutateAcct(); return stamped;
   }
   async function genVideo(source: { filename?: string }) {
@@ -1235,7 +1272,7 @@ export default function StudioPage() {
             : (r?.error || "영상을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
         setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
       }
-      savePendingJob(activeWorkspace.id, "video", r.jobId);
+      savePendingJob(activeWorkspace.id, "video", { jobId: r.jobId, idea });
       return await pollAndFinishVideo(r.jobId, activeWorkspace.id);
     } catch (e) {
       const msg = extractApiErrorMessage(e, "영상 생성 실패");
@@ -1248,18 +1285,38 @@ export default function StudioPage() {
   // 전환 시점에 남아 있으면 자동으로 이어서 조회한다.
   useEffect(() => {
     if (!activeWorkspace) return;
-    const imgJobId = readPendingJob(activeWorkspace.id, "image");
-    const vidJobId = readPendingJob(activeWorkspace.id, "video");
-    if (!imgJobId && !vidJobId) return;
+    const workspaceId = activeWorkspace.id;
+    const pendingImg = readPendingJob(workspaceId, "image");
+    const pendingVid = readPendingJob(workspaceId, "video");
+    if (!pendingImg && !pendingVid) return;
+    // 2026-10-02 리뷰 MAJOR 5b: 이 effect 전용 AbortController를 쓴다 — 전역
+    // generationAbort(사용자가 누르는 "지금 작업물 버리기")와 분리해서, 이 복구가
+    // 언마운트/작업공간 재전환으로 취소될 때 다른 상호작용 폴링까지 끊기지 않게 한다.
+    const controller = new AbortController();
     showToast("이전에 시작한 생성을 이어서 확인하는 중", "success");
-    if (imgJobId) {
+    // 2026-10-02 리뷰 MAJOR 5c: 저장해 둔 주제(idea)를 복원해 생성실이 "무엇을 만들던
+    // 중이었는지" 비어 보이지 않게 한다. 이미지·영상 둘 다 있으면 이미지 쪽 주제를
+    // 우선한다(보통 같은 작업 흐름의 같은 주제).
+    const restoredIdea = pendingImg?.idea ?? pendingVid?.idea;
+    if (restoredIdea && !idea.trim()) setIdea(restoredIdea);
+    if (pendingImg) {
       setBusy("이미지 생성 대기열에서 기다리는 중");
-      pollAndFinishImage(imgJobId, activeWorkspace.id, "9:16").finally(() => setBusy(null));
+      pollAndFinishImage(pendingImg.jobId, workspaceId, pendingImg.aspectRatio ?? "9:16", {
+        signal: controller.signal,
+        topicLabel: pendingImg.idea,
+      }).finally(() => setBusy(null));
     }
-    if (vidJobId) {
+    if (pendingVid) {
       setBusy("영상 생성 대기열에서 기다리는 중");
-      pollAndFinishVideo(vidJobId, activeWorkspace.id).finally(() => setBusy(null));
+      pollAndFinishVideo(pendingVid.jobId, workspaceId, {
+        signal: controller.signal,
+        topicLabel: pendingVid.idea,
+      }).finally(() => setBusy(null));
     }
+    // 작업 공간이 바뀌거나(새 workspaceId로 effect 재실행) 컴포넌트가 언마운트되면
+    // 이 복구 폴링만 끊는다 — pollAndFinishImage/Video 내부의 activeWorkspaceIdRef
+    // 가드와 함께, 더 이상 보고 있지 않은 작업공간의 결과가 화면에 꽂히는 것을 막는다.
+    return () => controller.abort();
     // activeWorkspace.id가 바뀔 때(작업 공간 전환)만 재확인한다. pollAndFinish* 함수는
     // 매 렌더 재생성되지만 effect 의존성에 넣으면 생성 호출 때마다 재구독돼 중복 폴링이 된다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1293,9 +1350,6 @@ export default function StudioPage() {
     generationAbort.current?.abort();
     generationAbort.current = null;
     setBusy(null);
-    // 버리고 새로 시작하면 진행 중이던 생성을 복구 대상에서도 뺀다 — 안 그러면 다음
-    // 방문에서 이미 버린 작업물을 다시 이어서 화면에 올리려 든다.
-    if (activeWorkspace) { clearPendingJob(activeWorkspace.id, "image"); clearPendingJob(activeWorkspace.id, "video"); }
     // [보안](교차 리뷰 재리뷰 BLOCK 2): "버리고 새로"도 cardDeck만 비우고 videoEdit은
     // 그대로 뒀다.
     if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
@@ -1312,7 +1366,14 @@ export default function StudioPage() {
     // 말해 놓고 화면에는 앞서 만든 후보가 그대로 남는다(2026-09-09 실사용에서 확인).
     setCreatePrimaryKind(null); setAlsoKinds([]);
     setCreateResetToken((value) => value + 1);
+    // 버리기 전에 접수된 생성(202)이 있었는지 보고 지운다 — 다음 방문에서 다시 이어서
+    // 올라오지 않게. MINOR: 있었다면 "새로 시작합니다"가 무료 취소처럼 읽히면 안 된다.
+    const hadPendingGeneration = Boolean(activeWorkspace && (readPendingJob(activeWorkspace.id, "image") || readPendingJob(activeWorkspace.id, "video")));
+    if (activeWorkspace) { clearPendingJob(activeWorkspace.id, "image"); clearPendingJob(activeWorkspace.id, "video"); }
     showToast("새로 시작합니다", "success");
+    if (hadPendingGeneration) {
+      showToast("진행 중이던 이미지·영상 생성은 화면에서만 지워졌습니다. 이미 접수된 건이라면 비용이 났을 수 있습니다.", "error");
+    }
   }
   /**
    * 카드뉴스 이미지를 만든다. 만들기 전에 비용을 보여 주고 승인을 받는다.

@@ -1,0 +1,29 @@
+{
+  "created_at": "2026-09-25T08:04:21.10746Z",
+  "display_name": "Minimax Hailuo",
+  "id": "158336e9-347a-4834-880d-95842227c3bb",
+  "job_type": "minimax_hailuo",
+  "min_result_url": null,
+  "params": {
+    "application": null,
+    "draw_input_image": null,
+    "duration": 6,
+    "enhance_prompt": false,
+    "height": 1024,
+    "input_image": {
+      "id": "f5c82a2b-9f3a-4179-810b-53f244439caf",
+      "type": "media_input",
+      "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_3EqxC7Y2r6lyY2vR25cT5zA8Leh/f5c82a2b-9f3a-4179-810b-53f244439caf.webp"
+    },
+    "input_image_end": null,
+    "is_draw": false,
+    "model": "minimax-2.3",
+    "motion": null,
+    "motion_id": null,
+    "prompt": "subtle idle motion, fixed camera",
+    "resolution": "768",
+    "width": 1024
+  },
+  "result_url": "https://d8j0ntlcm91z4.cloudfront.net/user_3EqxC7Y2r6lyY2vR25cT5zA8Leh/hf_20260925_080421_158336e9-347a-4834-880d-95842227c3bb.mp4",
+  "status": "completed"
+}

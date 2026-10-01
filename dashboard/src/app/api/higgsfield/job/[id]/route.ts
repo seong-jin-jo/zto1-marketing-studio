@@ -49,8 +49,18 @@ export async function GET(request: Request, context: RouteContext) {
   // 동시 요청(두 탭, 짧은 폴링 간격)이 같은 작업을 동시에 "완료 처리"하지 않도록, 조회를
   // 시작하는 즉시 processing으로 찍어 락처럼 쓴다. 이미 processing이면 이번 호출은 CLI를
   // 다시 부르지 않고 "아직 진행 중"으로만 답한다 — 더블 다운로드·더블 usage_events 방지.
+  //
+  // 2026-10-02 리뷰 MAJOR 4: 이 락에 만료가 없었다 — processing을 찍은 요청이 서버
+  // 재시작·타임아웃·예외로 중간에 죽으면(갱신 없이) 그 작업은 영원히 "진행 중"에 갇혀
+  // 다시는 재조회되지 않는다. updatedAt 기준 5분이 지난 processing은 죽은 락으로 보고
+  // 회수해 다시 시도한다.
+  const PROCESSING_LOCK_TTL_MS = 5 * 60 * 1000;
   if (job.status === "processing") {
-    return Response.json({ ok: true, status: "processing", jobId: job.jobId });
+    const lockAgeMs = Date.now() - job.updatedAt;
+    if (lockAgeMs < PROCESSING_LOCK_TTL_MS) {
+      return Response.json({ ok: true, status: "processing", jobId: job.jobId });
+    }
+    // 락이 5분 넘게 안 풀렸다 — 그 요청이 죽었다고 보고 회수해 이번 호출이 다시 시도한다.
   }
   updateHiggsfieldJob(tenantId, jobId, { status: "processing" });
 
@@ -190,7 +200,12 @@ export async function GET(request: Request, context: RouteContext) {
     // 조회 자체가 일시 오류(네트워크 등)면 작업을 실패로 확정하지 않고 다음 폴링이
     // 재시도할 수 있게 queued로 되돌린다 — 조용히 영구 실패로 떨어뜨리지 않는다.
     updateHiggsfieldJob(tenantId, jobId, { status: "queued" });
+    // 2026-10-02 리뷰 MINOR: execFile 오류 메시지엔 실행한 명령 전체(프롬프트 포함)가
+    // 그대로 들어 있을 수 있다(hfRun 주석 참고). 서버 로그에는 원문을 남기되, 고객에게는
+    // 고객 관점 문구만 내보낸다 — 어차피 다음 폴링이 자동으로 재시도하므로 "경고"가
+    // 아니라 진행 상태로 전달한다.
     const msg = e instanceof Error ? e.message : String(e);
-    return Response.json({ ok: true, status: "queued", jobId, warning: msg.slice(0, 200) });
+    console.error(JSON.stringify({ kind: "hf_job_get_transient_error", jobId, tenantId, reason: msg.slice(0, 500) }));
+    return Response.json({ ok: true, status: "queued", jobId });
   }
 }
