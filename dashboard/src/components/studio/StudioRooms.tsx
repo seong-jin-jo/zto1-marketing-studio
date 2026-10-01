@@ -30,6 +30,7 @@ import { themeFromPalette, type CardRatio } from "@/lib/studio/text-card-image";
 import { browserCardUploader, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
 import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
 import { filterInstructionPlaceholderLines } from "@/lib/studio/generated-copy";
+import { resolveTextCardLines } from "@/lib/studio/text-card-source";
 import {
   CARD_ASPECT_RATIOS,
   EDIT_BACKGROUNDS,
@@ -1041,18 +1042,26 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
    * 자도 제품이 선다.
    */
   async function makeTextCards() {
-    const source = selectedCandidate?.format.outline?.length
-      ? selectedCandidate.format.outline
-      : (quickStructure?.outline ?? []);
-    if (!source.length) { setTextCardError("먼저 구조 초안을 하나 골라 주세요."); return; }
+    // 2026-10-02 실사용 결함: selectedCandidate.format.outline / quickStructure.outline 는
+    // "고객이 겪는 문제" 같은 구조 **라벨**(STRUCTURE_CANDIDATES, 이 파일 위쪽)이다. 실제로
+    // 생성된 본문(quickDraft — 카드뉴스는 instagram.slides+caption)이 있는데도 이 라벨을
+    // 그대로 카드 그림에 박아 고객이 발행하면 "고객이 겪는 문제"라는 글자만 찍힌 카드가
+    // 나갔다. resolveTextCardLines가 생성된 본문을 우선 쓰고, 없을 때만(초안을 아직 안
+    // 만들었을 때) 구조 라벨로 폴백한다 — 완전히 빈 카드보다는 라벨이라도 보여야 "글자
+    // 카드 만들기"가 구조 선택 직후에도 동작한다(2026-09-14 결정 유지).
+    const primarySection = quickDraftSections.find((section) => section.kind === primaryKind) ?? quickDraftSections[0];
+    const lines = resolveTextCardLines({
+      generatedLines: primarySection?.lines,
+      candidateOutline: selectedCandidate?.format.outline,
+      quickStructureOutline: quickStructure?.outline,
+    });
+    if (!lines.length) { setTextCardError("먼저 구조 초안을 하나 골라 주세요."); return; }
     setTextCardError(null);
     setTextCardBusy(true);
     try {
       // 비율을 여기서 "4:5" 로 박아 두었더니 화면에서 무엇을 고르든 픽셀이 늘 1080×1350
       // 하나였다(2026-09-14 실측). 고른 값을 그대로 쓴다.
       const theme = themeFromPalette(learning.palette);
-      const lines = filterInstructionPlaceholderLines(source.filter((line) => line.trim().length > 0));
-      if (!lines.length) { setTextCardError("구조 초안에 실제 내용이 없어 글자 카드를 만들지 못했습니다. 구조 초안을 다시 만들어 주세요."); return; }
       const persisted = await renderAndUploadCardDeck(
         { lines, ratio: cardRatio, theme },
         { upload: browserCardUploader(authHeaders()) },

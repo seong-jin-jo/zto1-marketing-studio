@@ -108,6 +108,7 @@ const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reel
 
 import { draftStatusLabel } from "@/lib/studio/draft-status-label";
 import { connectedOnlyTargets, publishableTargets as computePublishableTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
+import { channelNameList } from "@/lib/studio/channel-name-list";
 import {
   resolveRestoredQuickDraftTopic,
   sanitizeRestoredQuickDraftLines,
@@ -3392,7 +3393,7 @@ export default function StudioPage() {
             <b className="text-lead text-accent">{accountsLoaded ? publishTargets.length : selectedTargets.length}곳</b>
             <span data-testid="publish-availability" className="mr-auto text-caption text-subtle">
               {accountsLoaded
-                ? `선택 ${selectedTargets.length}곳 · 실제 발행 가능 ${publishTargets.length}곳 · 연결된 채널 ${connectedTargets.length}곳`
+                ? `선택 ${selectedTargets.length}곳${selectedTargets.length ? ` (${channelNameList(selectedTargets)})` : ""} · 실제 발행 가능 ${publishTargets.length}곳 · 연결된 채널 ${connectedTargets.length}곳`
                 : "발행 가능한 계정을 확인하는 중입니다"}
             </span>
             <Button
@@ -3467,6 +3468,20 @@ export default function StudioPage() {
                 끊긴 채널까지 세어 "2곳에 발행"이라 해 놓고 아무 데도 안 올라간다.
               */}
               <Button variant="primary" onClick={publish} disabled={pub.running || !accountsLoaded || publishTargets.length === 0}>선택한 {accountsLoaded ? publishTargets.length : selectedTargets.length}곳에 지금 발행{accountsLoaded && selectedTargets.length > publishTargets.length ? ` (올릴 수 없는 ${selectedTargets.length - publishTargets.length}곳 제외)` : ""}</Button>
+              {/*
+                2026-10-02 운영 사고(결함 D): 버튼 문구는 숫자만 말해서("선택한 1곳에 지금
+                발행"), 미리보기 탭(보기 필터)에서 방금 Instagram 을 봐 놓고 실제로는 이전
+                세션에 체크된 채 남은 Threads 1곳이 발행 대상이라는 사실이 전혀 안 드러났다.
+                "선택한 1곳에 지금 발행"이라는 버튼 접근성 이름 문자열은 수십 개 기존 테스트가
+                고정 계약으로 쓰고 있어(studio-publish-ui.test.tsx) 버튼 글자 자체는 바꾸지
+                않는다. 대신 버튼 바로 옆에 채널 이름을 보이는 배지로 덧붙인다 — 미리보기
+                탭과 실제 선택이 어긋나면 이 배지가 그 자리에서 드러낸다.
+              */}
+              {(accountsLoaded ? publishTargets : selectedTargets).length > 0 ? (
+                <span data-testid="publish-now-target-names" className="text-caption text-subtle">
+                  ({channelNameList(accountsLoaded ? publishTargets : selectedTargets)})
+                </span>
+              ) : null}
               {activeWorkspace ? <Button variant={showSchedule ? "primary" : "secondary"} onClick={() => setShowSchedule((value) => !value)}>예약 발행</Button> : null}
               </div>
               {/*
