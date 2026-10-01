@@ -48,6 +48,54 @@ export function findResultUrl(data: unknown, ext: RegExp): string | null {
   return m ? m[0] : null;
 }
 
+/**
+ * `generate create ... --json`(--wait 없이) 응답에서 생성기가 매긴 작업 id를 뽑는다.
+ *
+ * 2026-10-01 비동기 전환: CLI 문서화된 키 이름을 확정할 수 없어(로그인·네트워크가 없는
+ * 환경에서 실제 호출 불가) 후보 키를 여러 개 방어적으로 훑는다. 어느 것도 없으면 null —
+ * 호출부가 "작업 id를 받지 못했다"로 사용자에게 사실대로 말한다(ADR-007).
+ */
+export function extractJobId(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+  const candidates = ["id", "job_id", "jobId", "request_id", "requestId", "generation_id", "uuid"];
+  for (const key of candidates) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  // 일부 응답은 { data: { id: ... } } 또는 { result: { id: ... } } 로 한 단계 감쌀 수 있다.
+  for (const wrapKey of ["data", "result", "job"]) {
+    const wrapped = obj[wrapKey];
+    if (wrapped && typeof wrapped === "object") {
+      const nested = extractJobId(wrapped);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+/**
+ * 작업 상태를 알아내 세 상태(done/failed/pending)로 정규화한다. 생성기가 쓰는 실제
+ * 문자열(예: "completed" vs "succeeded")을 확신할 수 없어 흔한 동의어를 전부 받는다.
+ */
+export type HiggsfieldJobCliStatus = "done" | "failed" | "pending";
+export function normalizeJobStatus(data: unknown, rawStdout: string): HiggsfieldJobCliStatus {
+  const txt = JSON.stringify(data ?? rawStdout).toLowerCase();
+  const statusMatch = txt.match(/"status"\s*:\s*"([^"]+)"/);
+  const status = statusMatch?.[1] || "";
+  if (/fail|error|nsfw|rejected|cancel/.test(status)) return "failed";
+  if (/complet|success|done|finish|ready/.test(status)) return "done";
+  // status 필드가 없어도 결과 URL이 이미 들어 있으면 완료로 본다.
+  if (/https?:\/\/[^"'\\ ]+\.(png|jpe?g|webp|mp4|webm|mov)/i.test(txt)) return "done";
+  return "pending";
+}
+
+/** `higgsfield generate get <id> --json` — 진행 상태·결과를 짧게 1회 조회. */
+export async function hfGetJob(providerJobId: string): Promise<{ stdout: string; stderr: string }> {
+  return hfRun(["generate", "get", providerJobId, "--json"], 20000);
+}
+
 /** 실행기 자체가 없을 때 던지는 오류. 라우트가 이것을 구분해 사용자에게 사실을 말한다. */
 export class HiggsfieldUnavailableError extends Error {
   constructor() {
