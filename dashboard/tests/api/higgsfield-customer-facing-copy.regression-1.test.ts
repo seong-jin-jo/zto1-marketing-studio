@@ -22,6 +22,22 @@ function readRoute(file: string): string {
   return fs.readFileSync(path.join(__dirname, "../../", file), "utf8");
 }
 
+// 두 응답 코드(GENERATOR_UNAUTHENTICATED / GENERATOR_UNAVAILABLE) 각각의
+// `error: "..."` 리터럴만 정확히 뽑는다. split/pop 방식은 코드가 늘어나면
+// 엉뚱한 블록을 집을 수 있어, 코드 마커 앞쪽에서 가장 가까운 error: 리터럴을
+// 정규식으로 직접 매칭한다.
+function errorMessageFor(src: string, code: "GENERATOR_UNAUTHENTICATED" | "GENERATOR_UNAVAILABLE"): string {
+  const codeIdx = src.indexOf(`code: "${code}"`);
+  if (codeIdx === -1) throw new Error(`${code} 블록을 찾지 못함`);
+  const before = src.slice(0, codeIdx);
+  const match = before.match(/error:\s*"([^"]*)"\s*,\s*$/);
+  if (!match) throw new Error(`${code} 앞의 error 리터럴을 찾지 못함`);
+  return match[1];
+}
+
+const RESPONSE_CODES = ["GENERATOR_UNAUTHENTICATED", "GENERATOR_UNAVAILABLE"] as const;
+const ROUTE_X_CODE = ROUTE_FILES.flatMap((file) => RESPONSE_CODES.map((code) => [file, code] as const));
+
 describe("Higgsfield 생성기 미인증/미준비 문구 — 고객 관점 (2026-10-01)", () => {
   it.each(ROUTE_FILES)("%s: 고객에게 서버 작업을 시키는 표현이 없다", (file) => {
     const src = readRoute(file);
@@ -29,17 +45,21 @@ describe("Higgsfield 생성기 미인증/미준비 문구 — 고객 관점 (202
     expect(src).not.toMatch(/로그인을\s*한\s*번\s*해\s*주시면/);
   });
 
-  it.each(ROUTE_FILES)("%s: 고객 계정 로그인 문제가 아니라는 취지가 있다", (file) => {
-    const src = readRoute(file);
-    // GENERATOR_UNAUTHENTICATED 응답 문구 블록만 뽑아 확인한다.
-    const authBlock = src.split('code: "GENERATOR_UNAUTHENTICATED"')[0].split("error:").pop() ?? "";
-    expect(authBlock).toMatch(/로그인\s*문제는\s*아니/);
+  // 경계 케이스: UNAUTHENTICATED(인증 만료)뿐 아니라 UNAVAILABLE(미준비)도
+  // 같은 오해(계정 로그인 문제)를 살 수 있는 문구다. 두 코드 블록을 각각
+  // 독립적으로 검증해야 한쪽만 고치고 다른 쪽을 빠뜨리는 회귀를 잡는다.
+  it.each(ROUTE_X_CODE)("%s [%s]: 고객 계정 로그인 문제가 아니라는 취지가 있다", (file, code) => {
+    const msg = errorMessageFor(readRoute(file), code);
+    expect(msg).toMatch(/로그인\s*문제는\s*아니/);
   });
 
-  it.each(ROUTE_FILES)("%s: em dash를 쓰지 않는다", (file) => {
-    const authIdx = readRoute(file).indexOf("GENERATOR_UNAUTHENTICATED");
-    const unavailIdx = readRoute(file).indexOf("GENERATOR_UNAVAILABLE");
-    const slice = readRoute(file).slice(Math.min(authIdx, unavailIdx) - 200, Math.max(authIdx, unavailIdx) + 50);
-    expect(slice).not.toMatch(/—/);
+  it.each(ROUTE_X_CODE)("%s [%s]: em dash를 쓰지 않는다", (file, code) => {
+    const msg = errorMessageFor(readRoute(file), code);
+    expect(msg).not.toMatch(/—/);
+  });
+
+  it.each(ROUTE_X_CODE)("%s [%s]: 지금도 할 수 있는 일(글 카드)을 안내한다", (file, code) => {
+    const msg = errorMessageFor(readRoute(file), code);
+    expect(msg).toMatch(/글\s*카드는\s*지금도\s*만드실\s*수\s*있습니다/);
   });
 });
