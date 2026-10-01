@@ -1297,54 +1297,79 @@ export default function StudioPage() {
   // cb35f3fd — 15~20분 뒤 완료됐는데 서버 쪽 호출은 이미 끊겨 크레딧만 쓰고 결과를 못
   // 받았다). genImage/genVideo가 접수 직후 localStorage에 적어 둔 jobId가 작업 공간
   // 전환 시점에 남아 있으면 자동으로 이어서 조회한다.
-  useEffect(() => {
+  // resumePendingJobsRef: 작업공간 전환 effect와 탭-재표시 effect가 같은 복구 로직을
+  // 공유한다(2026-10-02 server-side finalize 보강 — 세션맥락 22분 소실 재발방지). 서버가
+  // 이제 백그라운드 루프로 작업을 스스로 끝내지만, 화면이 그 결과를 "받아서 보여주는" 것은
+  // 여전히 이 폴링이 한다 — 탭이 백그라운드에서 오래 있다가 포그라운드로 돌아왔을 때
+  // (같은 작업공간이라 effect가 재실행되지 않는 경우) 다시 확인하지 않으면 사용자는 이미
+  // 완료된 결과를 화면에서 영영 못 본다.
+  const resumePendingJobs = useCallback(() => {
     if (!activeWorkspace) return;
+    if (resumePollAbort.current) return; // 이미 복구 폴링이 돌고 있다 — 중복 시작 금지.
     const workspaceId = activeWorkspace.id;
     const pendingImg = readPendingJob(workspaceId, "image");
     const pendingVid = readPendingJob(workspaceId, "video");
     if (!pendingImg && !pendingVid) return;
-    // 2026-10-02 리뷰 MAJOR 5b: 이 effect 전용 AbortController를 쓴다 — 전역
-    // generationAbort(사용자가 누르는 "지금 작업물 버리기")와 분리해서, 이 복구가
-    // 언마운트/작업공간 재전환으로 취소될 때 다른 상호작용 폴링까지 끊기지 않게 한다.
     const controller = new AbortController();
     resumePollAbort.current = controller;
     showToast("이전에 시작한 생성을 이어서 확인하는 중", "success");
-    // 2026-10-02 리뷰 MAJOR 5c: 저장해 둔 주제(idea)를 복원해 생성실이 "무엇을 만들던
-    // 중이었는지" 비어 보이지 않게 한다. 이미지·영상 둘 다 있으면 이미지 쪽 주제를
-    // 우선한다(보통 같은 작업 흐름의 같은 주제).
-    // 2026-10-02 리뷰 MINOR: `idea`를 클로저로 읽어 비었는지 판단하면, 같은 시점에
-    // 돌아가는 작업공간 복원 effect(워크스페이스 데이터에서 idea를 되살리는 effect)가
-    // 나중에 적용한 값을 이 effect가 덮어쓸 수 있다. 함수형 setState로 "적용되는
-    // 순간"의 실제 현재값을 보고, 그때도 비어 있을 때만 채운다.
     const restoredIdea = pendingImg?.idea ?? pendingVid?.idea;
     if (restoredIdea) {
       setIdea((current) => (current.trim() ? current : restoredIdea));
     }
+    const tasks: Promise<unknown>[] = [];
     if (pendingImg) {
       setBusy("이미지 생성 대기열에서 기다리는 중");
-      pollAndFinishImage(pendingImg.jobId, workspaceId, pendingImg.aspectRatio ?? "9:16", {
+      tasks.push(pollAndFinishImage(pendingImg.jobId, workspaceId, pendingImg.aspectRatio ?? "9:16", {
         signal: controller.signal,
         topicLabel: pendingImg.idea,
-      }).finally(() => setBusy(null));
+      }));
     }
     if (pendingVid) {
       setBusy("영상 생성 대기열에서 기다리는 중");
-      pollAndFinishVideo(pendingVid.jobId, workspaceId, {
+      tasks.push(pollAndFinishVideo(pendingVid.jobId, workspaceId, {
         signal: controller.signal,
         topicLabel: pendingVid.idea,
-      }).finally(() => setBusy(null));
+      }));
     }
-    // 작업 공간이 바뀌거나(새 workspaceId로 effect 재실행) 컴포넌트가 언마운트되면
-    // 이 복구 폴링만 끊는다 — pollAndFinishImage/Video 내부의 activeWorkspaceIdRef
-    // 가드와 함께, 더 이상 보고 있지 않은 작업공간의 결과가 화면에 꽂히는 것을 막는다.
-    return () => {
-      controller.abort();
+    Promise.allSettled(tasks).finally(() => {
+      setBusy(null);
       if (resumePollAbort.current === controller) resumePollAbort.current = null;
-    };
-    // activeWorkspace.id가 바뀔 때(작업 공간 전환)만 재확인한다. pollAndFinish* 함수는
-    // 매 렌더 재생성되지만 effect 의존성에 넣으면 생성 호출 때마다 재구독돼 중복 폴링이 된다.
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspace?.id]);
+  // 새로고침·탭 재방문 뒤에도 진행 중이던 생성을 잃지 않는다(세션맥락 2026-10-01 추가 실측
+  // cb35f3fd — 15~20분 뒤 완료됐는데 서버 쪽 호출은 이미 끊겨 크레딧만 쓰고 결과를 못
+  // 받았다). genImage/genVideo가 접수 직후 localStorage에 적어 둔 jobId가 작업 공간
+  // 전환 시점에 남아 있으면 자동으로 이어서 조회한다.
+  useEffect(() => {
+    resumePendingJobs();
+    return () => {
+      resumePollAbort.current?.abort();
+      resumePollAbort.current = null;
+    };
+    // activeWorkspace.id가 바뀔 때(작업 공간 전환)만 재확인한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id]);
+  // 2026-10-02 server-side finalize 보강: 탭이 백그라운드에 있다가 다시 보일 때도 복구를
+  // 다시 확인한다. activeWorkspace.id가 바뀌지 않아 위 effect는 재실행되지 않지만, 그동안
+  // 서버가 백그라운드로 작업을 끝냈을 수 있고 화면 쪽 폴링은 (브라우저가 타이머를 묶어
+  // 두거나, 탭을 완전히 닫았다 다시 연 경우) 이어지지 않았을 수 있다.
+  useEffect(() => {
+    const onWake = () => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        resumePendingJobs();
+      }
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    window.addEventListener("pageshow", onWake);
+    return () => {
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("pageshow", onWake);
+    };
+  }, [resumePendingJobs]);
   // 지금 작업물을 버리고 처음부터 시작한다.
   //
   // 2026-09-06 회장 스모크: "생성실, 편집실, 발행실 리셋을 어떻게 해야하나 모르겠음

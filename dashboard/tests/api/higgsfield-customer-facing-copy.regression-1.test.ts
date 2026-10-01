@@ -19,7 +19,10 @@ const ROUTE_FILES = [
   // 2026-10-01 비동기 전환 뒤 반려(컨트롤러 확인): GENERATOR_UNAUTHENTICATED/UNAVAILABLE
   // 오류가 이제 이 라우트(완료 처리 조회)에서도 날 수 있다 — 빠뜨리면 같은 문구가
   // 여기서만 조용히 되살아난다.
-  "src/app/api/higgsfield/job/[id]/route.ts",
+  // 2026-10-02 서버측 백그라운드 완료 루프 추가로 완료 처리 로직(이 문구 포함)이
+  // job/[id]/route.ts에서 higgsfield-finalize.ts로 옮겨졌다(GET 라우트와 백그라운드
+  // 루프가 공유). 문구는 이제 그 파일에 있으므로 함께 스캔한다.
+  "src/lib/higgsfield-finalize.ts",
 ];
 
 function readRoute(file: string): string {

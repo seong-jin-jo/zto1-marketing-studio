@@ -148,3 +148,44 @@ describe("savePendingJob/readPendingJob — 비율·주제 보존", () => {
     expect(readPendingJob("ws-2", "image")?.aspectRatio).toBe("1:1");
   });
 });
+
+// 2026-10-02 운영 실측(세션맥락): 백그라운드 탭에서 브라우저가 setTimeout을 묶어 둬 다음
+// 폴링이 2.5초가 아니라 22분 뒤에 나갔다. 탭이 다시 보이거나 창이 포커스를 받으면 대기를
+// 즉시 끝내 바로 다음 조회가 나가야 한다. sleepImpl을 주입하지 않아 실제 defaultSleep
+// (내보내지 않으므로 pollHiggsfieldJob을 통해 간접 검증)이 쓰이게 한다.
+describe("pollHiggsfieldJob — 백그라운드 탭 깨우기", () => {
+  it("visibilitychange(visible)가 오면 긴 interval을 기다리지 않고 바로 다음 조회를 한다", async () => {
+    const fetchImpl = fetchSequence([
+      { body: { status: "queued" } },
+      { body: { ok: true, url: "https://cdn.example/img.webp" } },
+    ]);
+    const resultPromise = pollHiggsfieldJob("job-wake-1", "tenant-1", {
+      fetchImpl,
+      intervalMs: 20 * 60 * 1000, // 20분 — 깨우지 않으면 이 테스트는 절대 제시간에 안 끝난다.
+    });
+    // 첫 fetch(큐잉 응답)가 나갈 시간을 준다.
+    await new Promise((r) => setTimeout(r, 10));
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    const result = await resultPromise;
+    expect(result.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("focus 이벤트로도 깨어난다", async () => {
+    const fetchImpl = fetchSequence([
+      { body: { status: "processing" } },
+      { body: { ok: true, url: "https://cdn.example/img.webp" } },
+    ]);
+    const resultPromise = pollHiggsfieldJob("job-wake-2", "tenant-1", {
+      fetchImpl,
+      intervalMs: 20 * 60 * 1000,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    window.dispatchEvent(new Event("focus"));
+    const result = await resultPromise;
+    expect(result.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
