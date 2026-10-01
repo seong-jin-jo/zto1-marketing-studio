@@ -10,6 +10,7 @@ import { getChannelCred, publishInstagramReels } from "@/lib/publish";
 import { refreshYoutubeAccessToken } from "@/lib/youtube-token";
 import { withTenant } from "@/lib/db";
 import { publicationUsageOutbox, recordPublicationEvent } from "@/lib/usage-events";
+import { createVideoPublishJob, updateVideoPublishJob } from "@/lib/video-publish-jobs";
 import { signMediaToken } from "@/lib/media-token";
 import { canonicalPublicOrigin } from "@/lib/social-connect";
 import { MAX_VIDEO_BYTES, MAX_VIDEO_MIB } from "@/lib/video-limits";
@@ -199,7 +200,21 @@ export async function POST(request: Request) {
 
   const tenantId = await effectiveTenantId(request, null);
 
-  return runWithTenant(tenantId, async () => {
+  // 2026-10-02 운영 실측(세션맥락): Threads + Instagram Reels 동시 발행에서 이 호출이
+  // 125초 걸려 Cloudflare 터널 한도(100초)로 524(HTML)를 받았다. 화면은 "실패"로
+  // 표시했지만 서버는 끝까지 진행해 실제로 게시됐다 — 그 뒤 "실패한 곳만 다시 발행"을
+  // 누르면 중복 게시 위험이 있다(중복 자체는 draft_id/idempotency_key 예약이 막아 주지만,
+  // 화면이 "실패"로 오판하는 UX 자체가 문제다).
+  //
+  // 짧게 끝나는 대부분의 요청(검증 오류·빠른 발행)은 지금처럼 그 자리에서 바로 응답한다.
+  // FAST_PATH_BUDGET_MS를 넘기면(릴스 폴링·TikTok 청크 업로드처럼 분 단위로 걸릴 수 있는
+  // 경우) 접수(202)만 알리고 같은 실행을 백그라운드로 계속 이어간다 — 실제 처리 로직은
+  // 한 글자도 바꾸지 않는다. 화면은 GET /api/video/publish/job/[id]로 진짜 결과를 받는다.
+  // 테스트에서 fake timer 없이 느린 경로를 재현할 수 있도록 env로 덮어쓸 수 있게 둔다
+  // (운영 기본값 8초는 바뀌지 않는다 — env 미설정 시 그대로 8000).
+  const FAST_PATH_BUDGET_MS = Number(process.env.VIDEO_PUBLISH_FAST_PATH_BUDGET_MS) || 8000;
+  const jobId = crypto.randomUUID();
+  const workPromise = runWithTenant(tenantId, async () => {
     // tenantId를 `|| ""`로 뭉개지 않는다 — null(운영자)과 ""(형식 오류)는 다르게 처리돼야
     // 하고, 뭉개면 운영자의 발행이 통째로 "video not found"가 된다(MAJOR-1, 코드리뷰 2026-09-26).
     const videoPath = resolveGeneratedFile(tenantId, filename);
@@ -1136,4 +1151,44 @@ export async function POST(request: Request) {
 
     return Response.json({ error: `Unknown platform: ${platform}` }, { status: 400 });
   });
+
+  const FAST_PATH_TIMED_OUT = Symbol("fast_path_timed_out");
+  const raced = await Promise.race([
+    workPromise,
+    new Promise<typeof FAST_PATH_TIMED_OUT>((resolve) => setTimeout(() => resolve(FAST_PATH_TIMED_OUT), FAST_PATH_BUDGET_MS)),
+  ]);
+
+  if (raced !== FAST_PATH_TIMED_OUT) {
+    // 예산 안에 끝났다 — 기존과 똑같이 그 자리에서 바로 응답한다(동작 변경 없음).
+    return raced;
+  }
+
+  // 아직 안 끝났다 — 접수만 알리고 같은 실행을 백그라운드로 계속 잇는다. 클라이언트가
+  // 끊기거나(524) 타임아웃으로 포기해도 이 Promise는 그대로 끝까지 실행된다(Node 프로세스
+  // 안에서 계속 도는 작업이지, 응답 객체에 묶여 있지 않다 — 이미 실측된 동작).
+  await runWithTenant(tenantId, async () => {
+    createVideoPublishJob(jobId, { platform, filename });
+  });
+  workPromise.then(async (res) => {
+    const body = await res.json().catch(() => ({}));
+    await runWithTenant(tenantId, async () => {
+      updateVideoPublishJob(jobId, { status: "completed", httpStatus: res.status, result: body });
+    });
+  }).catch(async (e) => {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(JSON.stringify({ kind: "video_publish_bg_error", jobId, tenantId, platform, reason: msg.slice(0, 500) }));
+    await runWithTenant(tenantId, async () => {
+      updateVideoPublishJob(jobId, {
+        status: "failed", httpStatus: 500,
+        result: { ok: false, error: "발행 처리 중 오류가 발생했습니다. 잠시 후 결과를 다시 확인해 주세요." },
+      });
+    });
+  });
+
+  return Response.json({
+    ok: true,
+    jobId,
+    status: "processing",
+    message: "발행 요청을 접수했습니다. 시간이 걸릴 수 있어 결과를 이어서 확인합니다.",
+  }, { status: 202 });
 }
