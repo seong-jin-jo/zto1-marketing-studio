@@ -143,6 +143,10 @@ const TENANT_AWARE_PATHS = [
   // 만든 그림과 영상을 화면이 불러오는 경로. 여기 없으면 만들기는 되는데 화면에 안 뜬다
   // (회장 2026-09-07 실사용). 라우트 자체가 tenant_id 를 요구하고 그 테넌트 폴더에서만 읽는다.
   "/api/higgsfield/asset/[file]",
+  // 비동기 생성의 결과 조회. image/video 가 202 + jobId 만 주므로 여기 없으면 고객은 접수만 되고
+  // 결과를 영영 못 받는다(2026-10-02 운영 실측: 회원 계정 POST 202 뒤 조회 403). 라우트가
+  // effectiveTenantId 로 테넌트를 확인하고 그 테넌트 폴더의 작업만 읽는다.
+  "/api/higgsfield/job/[id]",
   "/api/suggestions",
   "/api/suggestions/enqueue",
   "/api/threads-username",
