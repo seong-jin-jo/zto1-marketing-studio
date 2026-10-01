@@ -470,9 +470,15 @@ export default function StudioPage() {
   // 2026-09-06 회장 스모크: 생성이 시작되면 끝날 때까지 취소할 방법이 없었고, 도는 동안
   // 화면에 아무 표시도 없었다. 진행 중임을 보여 주고 그만둘 수 있게 한다.
   const generationAbort = useRef<AbortController | null>(null);
+  // 2026-10-02 리뷰 MINOR: 새로고침 복구 폴링(아래 복구 effect)은 자기 전용
+  // AbortController를 쓴다(MAJOR 5b) — 그런데 사용자가 "생성 취소"나 "버리고 새로
+  // 시작"을 누르면 그 복구 폴링도 함께 끊겨야 한다. 끊지 않으면 취소했다고 말해 놓고
+  // 복구 폴링이 뒤에서 계속 돌며 지운 화면에 결과를 다시 꽂으려 든다.
+  const resumePollAbort = useRef<AbortController | null>(null);
   function cancelGeneration() {
     generationAbort.current?.abort();
     generationAbort.current = null;
+    resumePollAbort.current?.abort();
     setBusy(null);
     showToast("생성을 취소했습니다", "success");
   }
@@ -1121,7 +1127,11 @@ export default function StudioPage() {
         signal: opts?.signal ?? generationAbort.current?.signal,
         headers: authHeaders(),
         onStatus: (status) => {
-          setBusy(status === "queued" ? "이미지 생성 대기열에서 기다리는 중" : "이미지 만드는 중");
+          setBusy(
+            status === "queued" ? "이미지 생성 대기열에서 기다리는 중"
+              : status === "retrying" ? "이미지 생성기 연결을 복구하는 중입니다. 잠시만 기다려 주세요"
+                : "이미지 만드는 중",
+          );
         },
       },
     );
@@ -1138,7 +1148,7 @@ export default function StudioPage() {
     if (result.timedOut) {
       // "다시 시도" 유도 금지(MINOR) — 접수된 작업은 서버에서 계속 만들어지고 있다.
       // pending 기록을 지우지 않아 다음 방문에서 복구 effect가 이어서 확인한다.
-      const msg = "이미지 생성이 평소보다 오래 걸리고 있습니다. 만들어지는 대로 보관함에 들어갑니다.";
+      const msg = "이미지 생성이 평소보다 오래 걸리고 있습니다. 생성실을 다시 열면 이어서 받아옵니다.";
       setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
     }
     if (result.notFound) {
@@ -1215,7 +1225,11 @@ export default function StudioPage() {
         signal: opts?.signal ?? generationAbort.current?.signal,
         headers: authHeaders(),
         onStatus: (status) => {
-          setBusy(status === "queued" ? "영상 생성 대기열에서 기다리는 중" : "영상 만드는 중");
+          setBusy(
+            status === "queued" ? "영상 생성 대기열에서 기다리는 중"
+              : status === "retrying" ? "영상 생성기 연결을 복구하는 중입니다. 잠시만 기다려 주세요"
+                : "영상 만드는 중",
+          );
         },
       },
     );
@@ -1225,7 +1239,7 @@ export default function StudioPage() {
     // 2026-10-02 리뷰 MAJOR 5b: 작업 공간이 바뀐 뒤 돌아온 결과는 화면에 꽂지 않는다.
     if (activeWorkspaceIdRef.current !== tenantId) return null;
     if (result.timedOut) {
-      const msg = "영상 생성이 평소보다 오래 걸리고 있습니다. 만들어지는 대로 보관함에 들어갑니다.";
+      const msg = "영상 생성이 평소보다 오래 걸리고 있습니다. 생성실을 다시 열면 이어서 받아옵니다.";
       setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
     }
     if (result.notFound) {
@@ -1293,12 +1307,19 @@ export default function StudioPage() {
     // generationAbort(사용자가 누르는 "지금 작업물 버리기")와 분리해서, 이 복구가
     // 언마운트/작업공간 재전환으로 취소될 때 다른 상호작용 폴링까지 끊기지 않게 한다.
     const controller = new AbortController();
+    resumePollAbort.current = controller;
     showToast("이전에 시작한 생성을 이어서 확인하는 중", "success");
     // 2026-10-02 리뷰 MAJOR 5c: 저장해 둔 주제(idea)를 복원해 생성실이 "무엇을 만들던
     // 중이었는지" 비어 보이지 않게 한다. 이미지·영상 둘 다 있으면 이미지 쪽 주제를
     // 우선한다(보통 같은 작업 흐름의 같은 주제).
+    // 2026-10-02 리뷰 MINOR: `idea`를 클로저로 읽어 비었는지 판단하면, 같은 시점에
+    // 돌아가는 작업공간 복원 effect(워크스페이스 데이터에서 idea를 되살리는 effect)가
+    // 나중에 적용한 값을 이 effect가 덮어쓸 수 있다. 함수형 setState로 "적용되는
+    // 순간"의 실제 현재값을 보고, 그때도 비어 있을 때만 채운다.
     const restoredIdea = pendingImg?.idea ?? pendingVid?.idea;
-    if (restoredIdea && !idea.trim()) setIdea(restoredIdea);
+    if (restoredIdea) {
+      setIdea((current) => (current.trim() ? current : restoredIdea));
+    }
     if (pendingImg) {
       setBusy("이미지 생성 대기열에서 기다리는 중");
       pollAndFinishImage(pendingImg.jobId, workspaceId, pendingImg.aspectRatio ?? "9:16", {
@@ -1316,7 +1337,10 @@ export default function StudioPage() {
     // 작업 공간이 바뀌거나(새 workspaceId로 effect 재실행) 컴포넌트가 언마운트되면
     // 이 복구 폴링만 끊는다 — pollAndFinishImage/Video 내부의 activeWorkspaceIdRef
     // 가드와 함께, 더 이상 보고 있지 않은 작업공간의 결과가 화면에 꽂히는 것을 막는다.
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (resumePollAbort.current === controller) resumePollAbort.current = null;
+    };
     // activeWorkspace.id가 바뀔 때(작업 공간 전환)만 재확인한다. pollAndFinish* 함수는
     // 매 렌더 재생성되지만 effect 의존성에 넣으면 생성 호출 때마다 재구독돼 중복 폴링이 된다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1349,6 +1373,7 @@ export default function StudioPage() {
     if (!ok) return;
     generationAbort.current?.abort();
     generationAbort.current = null;
+    resumePollAbort.current?.abort(); // MINOR: 버리고 새로 시작하면 복구 폴링도 함께 끊는다.
     setBusy(null);
     // [보안](교차 리뷰 재리뷰 BLOCK 2): "버리고 새로"도 cardDeck만 비우고 videoEdit은
     // 그대로 뒀다.

@@ -8,7 +8,9 @@ export interface HiggsfieldPollOptions<T> {
   signal?: AbortSignal;
   intervalMs?: number;
   timeoutMs?: number;
-  onStatus?: (status: "queued" | "processing") => void;
+  // "retrying" = 생성기 연결이 일시적으로 끊김/미준비(아래 N1 참고) — 종결이 아니라
+  // 계속 폴링해야 함을 알린다.
+  onStatus?: (status: "queued" | "processing" | "retrying") => void;
   fetchImpl?: typeof fetch;
   headers?: Record<string, string>;
   /** 테스트에서 setTimeout 없이 즉시 진행시키기 위한 주입점. */
@@ -40,6 +42,7 @@ interface JobStatusPayload {
   ok?: boolean;
   jobId?: string;
   error?: string;
+  code?: string;
 }
 
 /**
@@ -79,6 +82,20 @@ export async function pollHiggsfieldJob<T extends JobStatusPayload = JobStatusPa
 
     const data = await res.json().catch(() => null) as T | null;
     if (!data) {
+      await sleep(interval, options.signal);
+      continue;
+    }
+    // 2026-10-02 리뷰 N1(BLOCK): job route는 생성기 로그인 끊김/미준비 때 작업을
+    // "queued"로 되돌려 저장하면서도, 그 순간의 응답 자체는 503 + { error, code:
+    // "GENERATOR_UNAUTHENTICATED"|"GENERATOR_UNAVAILABLE" }(status 필드 없음)로 준다
+    // (higgsfield/job/[id]/route.ts의 HiggsfieldUnauthenticatedError/UnavailableError
+    // catch 분기). 이 응답엔 `status`도 `ok`도 없어, 손대지 않으면 아래 종결 반환에
+    // 떨어져 `ok: false`인 "완료(실패)"로 오인된다 — 운영팀이 생성기 로그인을 다시
+    // 붙이는 몇 초~몇 분 사이에 폴링이 멈추고 pending 기록이 지워져 사용자가 끝내
+    // 결과를 못 받는다. 이런 응답은 종결이 아니라 "다시 시도해야 할 상태"로 본다.
+    const generatorTransient = res.status === 503 || (typeof data.code === "string" && data.code.startsWith("GENERATOR_"));
+    if (generatorTransient) {
+      options.onStatus?.("retrying");
       await sleep(interval, options.signal);
       continue;
     }
