@@ -19,7 +19,8 @@ describe("만든 그림이 화면에 뜨는 조건", () => {
   });
 
   it("이미지 저장은 생성기가 준 실제 확장자를 쓴다", () => {
-    const src = read("app/api/higgsfield/image/route.ts");
+    // 2026-10-01 비동기 전환: 다운로드·저장은 POST(접수)가 아니라 GET job(완료 처리)이 한다.
+    const src = read("app/api/higgsfield/job/[id]/route.ts");
     expect(src).not.toContain("`img_${Date.now()}.png`");
     expect(src).toContain("png|jpe?g|webp");
   });

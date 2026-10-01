@@ -32,8 +32,8 @@ vi.mock("@/lib/higgsfield", async () => {
   const actual = await vi.importActual<typeof import("@/lib/higgsfield")>("@/lib/higgsfield");
   return {
     ...actual,
-    hfRun: vi.fn(async () => ({ stdout: '{"status":"completed","url":"https://cdn.example/video.mp4"}' })),
-    extractJson: vi.fn(() => ({ status: "completed" })),
+    hfRun: vi.fn(async () => ({ stdout: '{"id":"job-1","status":"completed","url":"https://cdn.example/video.mp4"}' })),
+    extractJson: vi.fn(() => ({ id: "job-1", status: "completed" })),
     findResultUrl: vi.fn(() => "https://cdn.example/video.mp4"),
     downloadTo: vi.fn(async () => 1),
     addNarration: vi.fn(async () => ({ ok: false, reason: "narration_empty" })),
@@ -133,19 +133,31 @@ describe("MAJOR-0b — localPath 입력 제거(임의 경로 주입 차단)", ()
 
     const { hfRun, downloadTo } = await import("@/lib/higgsfield");
     const { POST } = await import("@/app/api/higgsfield/video/route");
+    // 2026-10-01 비동기 전환: POST는 접수(jobId)만 한다 — 다운로드는 GET job에서 일어난다.
     const res = await POST(new Request("http://internal.local/api/higgsfield/video", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ filename: "img_123.webp", prompt: "motion", tenant_id: TENANT_A }),
     }));
     const body = await res.json();
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
     expect(body.ok).toBe(true);
+    expect(typeof body.jobId).toBe("string");
     // 생성기 CLI에 실제로 넘어간 --image 값이 자기 작업 공간 안의 진짜 경로였는지 확인한다.
     const call = (hfRun as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][0] as string[];
     const imageArgIndex = call.indexOf("--image");
     expect(imageArgIndex).toBeGreaterThan(-1);
     expect(call[imageArgIndex + 1]).toBe(path.join(root, "studio", TENANT_A, "img_123.webp"));
+    expect(downloadTo).not.toHaveBeenCalled(); // 아직 GET job을 안 불렀다
+
+    const { GET } = await import("@/app/api/higgsfield/job/[id]/route");
+    const jobRes = await GET(
+      new Request(`http://internal.local/api/higgsfield/job/${body.jobId}?tenant_id=${TENANT_A}`),
+      { params: Promise.resolve({ id: body.jobId }) },
+    );
+    const jobBody = await jobRes.json();
+    expect(jobRes.status).toBe(200);
+    expect(jobBody.ok).toBe(true);
     expect(downloadTo).toHaveBeenCalled();
   });
 
@@ -168,8 +180,8 @@ describe("MAJOR-0b — localPath 입력 제거(임의 경로 주입 차단)", ()
       const actual = await vi.importActual<typeof import("@/lib/higgsfield")>("@/lib/higgsfield");
       return {
         ...actual,
-        hfRun: vi.fn(async () => ({ stdout: '{"status":"completed","url":"https://cdn.example/img.webp"}' })),
-        extractJson: vi.fn(() => ({ status: "completed" })),
+        hfRun: vi.fn(async () => ({ stdout: '{"id":"job-2","status":"completed","url":"https://cdn.example/img.webp"}' })),
+        extractJson: vi.fn(() => ({ id: "job-2", status: "completed" })),
         findResultUrl: vi.fn(() => "https://cdn.example/img.webp"),
         downloadTo: vi.fn(async () => 1),
         logGen: vi.fn(),
@@ -184,11 +196,20 @@ describe("MAJOR-0b — localPath 입력 제거(임의 경로 주입 차단)", ()
       body: JSON.stringify({ prompt: "a cat", tenant_id: TENANT_A }),
     }));
     const body = await res.json();
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
     expect(body.ok).toBe(true);
     expect(body).not.toHaveProperty("localPath");
-    expect(typeof body.filename).toBe("string");
-    expect(body.filename.length).toBeGreaterThan(0);
+
+    const { GET } = await import("@/app/api/higgsfield/job/[id]/route");
+    const jobRes = await GET(
+      new Request(`http://internal.local/api/higgsfield/job/${body.jobId}?tenant_id=${TENANT_A}`),
+      { params: Promise.resolve({ id: body.jobId }) },
+    );
+    const jobBody = await jobRes.json();
+    expect(jobRes.status).toBe(200);
+    expect(jobBody).not.toHaveProperty("localPath");
+    expect(typeof jobBody.filename).toBe("string");
+    expect(jobBody.filename.length).toBeGreaterThan(0);
   });
 });
 
