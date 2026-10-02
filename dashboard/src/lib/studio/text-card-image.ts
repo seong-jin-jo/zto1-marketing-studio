@@ -92,6 +92,28 @@ export function wrapLines(
 /** 글자를 카드 어디에 앉힐지. 편집실의 상단·중앙·하단과 같은 값이다. */
 export type CardTextVerticalPosition = "top" | "center" | "bottom";
 
+/** 편집실 미리보기의 아홉 칸. 화면에서 고른 칸이 내보내는 그림의 칸과 같아야 한다. */
+export type CardGridPosition =
+  | "top-left" | "top-center" | "top-right"
+  | "center-left" | "center" | "center-right"
+  | "bottom-left" | "bottom-center" | "bottom-right";
+
+export type CardTextPlacement = CardTextVerticalPosition | CardGridPosition;
+
+const PLACEMENT_AXES: Record<CardTextPlacement, { row: CardTextVerticalPosition; col: "left" | "center" | "right" }> = {
+  top: { row: "top", col: "center" },
+  center: { row: "center", col: "center" },
+  bottom: { row: "bottom", col: "center" },
+  "top-left": { row: "top", col: "left" },
+  "top-center": { row: "top", col: "center" },
+  "top-right": { row: "top", col: "right" },
+  "center-left": { row: "center", col: "left" },
+  "center-right": { row: "center", col: "right" },
+  "bottom-left": { row: "bottom", col: "left" },
+  "bottom-center": { row: "bottom", col: "center" },
+  "bottom-right": { row: "bottom", col: "right" },
+};
+
 export type TextCardInput = {
   text: string;
   ratio: CardRatio;
@@ -101,8 +123,10 @@ export type TextCardInput = {
    *
    * 2026-09-14 실측: 편집실에서 글자를 위로 올려도 내보내는 그림은 늘 한가운데였다.
    * 화면에서 옮긴 것이 결과에 없으면 옮기는 기능은 없는 것과 같다.
+   * 아홉 칸(왼쪽, 가운데, 오른쪽)도 같은 규칙이다. 미리보기만 옮기고 그림은
+   * 가로를 무시하면, 옮긴 기능은 없는 것과 같다.
    */
-  position?: CardTextVerticalPosition;
+  position?: CardTextPlacement;
   /** 몇 번째 장인지. 여러 장이면 사람은 순서를 먼저 찾는다. */
   index?: number;
   total?: number;
@@ -123,6 +147,50 @@ export function cardTextTop(
   // 글이 아주 길면 덩어리가 카드보다 커진다. 그때 가운데 값은 음수가 되어 첫 줄이 화면 위로
   // 잘려 나간다. 잘릴 바에는 위에서부터 보이는 편이 낫다.
   return Math.max(0, Math.round((height - blockHeight) / 2));
+}
+
+/** 편집실이 저장한 자리 문자열을 그리기 자리로 옮긴다. 모르는 값은 가운데다. */
+export function placementFrom(position: string | undefined): CardTextPlacement {
+  if (position && Object.prototype.hasOwnProperty.call(PLACEMENT_AXES, position)) {
+    return position as CardTextPlacement;
+  }
+  return "center";
+}
+
+/**
+ * 포인터가 카드의 어느 칸에 있는지. 세로는 물론 가로 세 칸도 구분한다.
+ * relX, relY 는 카드 안에서 0 이상 1 이하다.
+ */
+export function cardPositionFromPoint(relX: number, relY: number): CardGridPosition {
+  const x = Number.isFinite(relX) ? Math.min(1, Math.max(0, relX)) : 0.5;
+  const y = Number.isFinite(relY) ? Math.min(1, Math.max(0, relY)) : 0.5;
+  const col = x < 1 / 3 ? "left" : x > 2 / 3 ? "right" : "center";
+  const row = y < 1 / 3 ? "top" : y > 2 / 3 ? "bottom" : "center";
+  if (row === "center" && col === "center") return "center";
+  return `${row}-${col}` as CardGridPosition;
+}
+
+/**
+ * 글자 덩어리의 왼쪽 위. 세로만 바꾸면 왼쪽과 오른쪽을 고른 그림이 같다.
+ * 블록 너비는 가장 긴 줄이다. 짧은 줄은 그 블록 안에서 왼쪽부터 그린다.
+ */
+export function cardTextOrigin(
+  position: CardTextPlacement,
+  width: number,
+  height: number,
+  blockWidth: number,
+  blockHeight: number,
+  margin: number,
+): { x: number; y: number } {
+  const axes = PLACEMENT_AXES[position] ?? PLACEMENT_AXES.center;
+  const y = cardTextTop(axes.row, height, blockHeight, margin);
+  const maxX = Math.max(margin, width - margin - blockWidth);
+  const x = axes.col === "left"
+    ? margin
+    : axes.col === "right"
+      ? maxX
+      : Math.max(0, Math.round((width - blockWidth) / 2));
+  return { x: Math.round(x), y };
 }
 
 /**
@@ -163,9 +231,18 @@ export function renderTextCard(input: TextCardInput): string | null {
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   const lineHeight = fontSize * 1.45;
-  let y = cardTextTop(input.position ?? "center", height, lines.length * lineHeight, margin);
+  const blockWidth = lines.reduce((widest, line) => Math.max(widest, measure(line)), 0);
+  const origin = cardTextOrigin(
+    input.position ?? "center",
+    width,
+    height,
+    blockWidth,
+    lines.length * lineHeight,
+    margin,
+  );
+  let y = origin.y;
   for (const line of lines) {
-    ctx.fillText(line, margin, y);
+    ctx.fillText(line, origin.x, y);
     y += lineHeight;
   }
 

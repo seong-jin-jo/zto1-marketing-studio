@@ -188,9 +188,9 @@ describe("v70 §4: 영상 편집 워크벤치(플레이어+자막 대본+타임�
   });
 
   it("자막 줄에서 컷하면 취소선으로 남지만 lines(발행 원문)는 그대로다(M2/M4 갱신)", () => {
-    // 교차 리뷰 M2/M4: 컷이 lines를 줄이면 전부 컷했을 때 편집실이 "빈 작업물"로
-    // 튕겨 되돌리기 단추까지 함께 사라졌다. 컷은 이제 미리보기 표시 전용이다 —
-    // 자막 글자·영상·음성은 그대로 발행되고, lines는 컷과 무관하게 항상 그대로다.
+    // 컷이 lines를 줄이면 전부 컷했을 때 편집실이 빈 작업물로 튕긴다.
+    // lines는 발행 본문이라 컷과 무관하게 그대로 둔다.
+    // 영상 파일에서 그 구간을 빼는 일은 발행실로 이동할 때 videoEdit 굽기가 한다.
     stubVoicesUnconfigured();
     const onLinesChangeSpy = vi.fn();
     render(<VideoRoomHarness initialLines={["첫 장면 대사", "둘째 장면 대사"]} onLinesChangeSpy={onLinesChangeSpy} />);
