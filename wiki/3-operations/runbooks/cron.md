@@ -62,6 +62,36 @@ All background work is driven by cron definitions in `config/cron/jobs.json` (or
 > ⚠️ crontab 등록 자체는 배포 호스트/운영자 액션이다(Supabase 콘솔 설정처럼 레포 밖). 등록 전에는
 > 예약이 `scheduled`로 대기만 한다 — SchedulePanel이 이를 정직하게 표시한다.
 
+## Metrics Collection (성과 자동 수집)
+
+`POST /api/metrics`(action 없이, 본문 비움)는 성과 수집의 운영자 전체 스윕 엔트리포인트다.
+2026-10-02까지는 성과실 "성과 다시 수집하기" 버튼(테넌트 스코프 1회성 호출)에서만 수집이
+돌았다 — 자동 주기 호출이 없어 마지막 수집(2026-09-23) 뒤 올린 Shorts/Reels가 전부
+미수집이었다(회장 2026-10-02 지적: "성과실에 영상 성과가 안 보인다").
+
+`/api/schedule/publish-due`와 **같은 계약**을 그대로 따른다:
+
+- **① 테넌트 스코프** — 세션/토큰/`tenant_id`로 한 테넌트만 수집(성과실 버튼이 호출).
+- **② 운영자 전체 스윕** — `tenant_id` 없이 운영자 토큰(`Authorization: Bearer $DASHBOARD_AUTH_TOKEN`)
+  으로 호출하면 발행물이 있는 **모든 테넌트**(`SELECT DISTINCT tenant_id FROM published_posts
+  WHERE status='published'`, service-role)를 순회해 `collectMetrics(tenantId)`를 각각 돈다.
+  한 테넌트가 던진 예외는 그 테넌트만 `ok:false`로 기록하고 나머지 테넌트 수집은 계속된다.
+  응답에 `mode:"all-tenants"`, `tenantCount`, `collected`, `tenants[]` 포함.
+
+### 크론 연결 (운영 wiring)
+
+`dashboard/scripts/metrics-collect-cron.sh`(publish-due-cron.sh와 동일 패턴)를 배포 호스트
+crontab 또는 게이트웨이 스케줄러가 주기 호출해야 실제로 자동 수집된다.
+
+```cron
+0 */6 * * * DASHBOARD_AUTH_TOKEN=… BASE_URL=http://localhost:3456 \
+  /app/dashboard/scripts/metrics-collect-cron.sh >> /var/log/metrics-collect.log 2>&1
+```
+
+제안 주기는 6시간(`threads-collect-insights` 크론 주기와 동일 — Threads 집계 반영 지연
+유예(`METRICS_INGEST_GRACE_MINUTES=60`)보다 충분히 길다). crontab 등록 자체는 배포
+호스트/운영자 액션이다 — 등록 전에는 자동 수집이 돌지 않고 수동 버튼에만 의존한다.
+
 ## Configuration
 - Per-tenant automation toggles in dashboard Settings.
 - Global defaults in openclaw.json.

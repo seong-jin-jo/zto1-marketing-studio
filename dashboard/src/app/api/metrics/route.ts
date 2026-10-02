@@ -1,4 +1,4 @@
-import { withTenant } from "@/lib/db";
+import { db, withTenant } from "@/lib/db";
 import { collectMetrics, failureDetailsFor, reinstateMetricsTarget } from "@/lib/metrics-collector";
 import {
   buildPerformanceMetricsCoverage,
@@ -62,11 +62,54 @@ function isOperatorRequest(request: Request): boolean {
   return raw === operatorToken;
 }
 
+// 발행물이 하나라도 있는 테넌트 id 목록. RLS 우회 service-role(db())로 전 테넌트 스캔 —
+// 운영자 전체 스윕 전용(테넌트 스코프 쿼리가 아니므로 withTenant 미사용). publish-due의
+// dueTenantIds()와 같은 패턴.
+async function tenantIdsWithPublishedPosts(): Promise<string[]> {
+  const sql = db();
+  const rows = await sql<{ tenant_id: string }[]>`
+    SELECT DISTINCT tenant_id FROM published_posts WHERE status = 'published'`;
+  return rows.map((r) => r.tenant_id);
+}
+
 // POST /api/metrics - 외부 호출은 DB transaction 밖에서 수행하고 결과만 짧게 저장한다.
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({})) as { tenant_id?: string; action?: string; post_id?: string };
   const tenantId = await effectiveTenantId(request, body.tenant_id);
-  if (!tenantId) return Response.json({ error: "tenant_id required" }, { status: 400 });
+
+  // 테넌트 미해석 — 운영자 토큰이면 전체 테넌트 스윕(단일 크론 진입점), 아니면 400.
+  //
+  // 2026-10-02 결함: 성과 수집은 지금까지 "성과 다시 수집하기" 버튼(테넌트 스코프
+  // 1회성 호출)에서만 돌았다. 버튼을 안 누르면 영원히 안 수집되고, 실제로 2026-09-23
+  // 마지막 수집 뒤 올린 글이 전부 미수집이었다(회장 2026-10-02 지적). publish-due가
+  // 이미 쓰는 "운영자 토큰 + tenant_id 없음 = 전 테넌트 스윕" 계약을 그대로 따른다
+  // (같은 자물쇠, 같은 호출 모양 — VM 크론이 /api/schedule/publish-due와 동일하게
+  // 호출할 수 있다). 한 테넌트의 수집 실패가 다른 테넌트를 막지 않는다.
+  if (!tenantId) {
+    const raw = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "";
+    const operatorToken = process.env.DASHBOARD_AUTH_TOKEN || "";
+    if (!operatorToken || raw !== operatorToken) {
+      return Response.json({ error: "tenant_id required" }, { status: 400 });
+    }
+    const tenantIds = await tenantIdsWithPublishedPosts();
+    const tenants: Array<{ tenantId: string; ok: boolean; error?: string }> = [];
+    let collected = 0;
+    for (const tid of tenantIds) {
+      try {
+        const result = await collectMetrics(tid);
+        if (result) {
+          collected += 1;
+          tenants.push({ tenantId: tid, ok: result.ok });
+        } else {
+          tenants.push({ tenantId: tid, ok: false, error: "연결된 채널 없음" });
+        }
+      } catch (error) {
+        // 한 테넌트의 실패가 스윕 전체를 끊지 않는다 — 나머지 테넌트는 계속 돈다.
+        tenants.push({ tenantId: tid, ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return Response.json({ ok: true, mode: "all-tenants", tenantCount: tenantIds.length, collected, tenants });
+  }
 
   /**
    * 내려놓은 글을 손으로 되돌린다.

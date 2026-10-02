@@ -26,6 +26,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
 import { authHeaders } from "@/lib/auth";
+import { isDeliveryUrlExpired, resignDeliveryUrl } from "./DeliveredMedia";
 import {
   type SubtitleLine,
   type VideoComment,
@@ -74,6 +75,14 @@ export interface VideoEditorProps {
   /** MAJOR2(3차 재리뷰): 서버 값과 맞추는 동안 편집을 막는다 — 안 막으면 맞추는 도중의
    * 수정이 조용히 사라질 수 있다. */
   syncing?: boolean;
+  /**
+   * 2026-10-02 회장 지적(편집실 영상 재생 안 됨): previewVideoUrl은 서명 배달 주소라
+   * 12시간이면 만료된다. DeliveredMedia(카드·발행실 미리보기)는 만료·로드 실패 시
+   * /api/media/resign으로 재서명해 되살리는데, 이 플레이어는 videoRef를 직접 잡아
+   * 재생·탐색을 제어해야 해서 DeliveredMedia 컴포넌트를 그대로 못 쓴다. 같은 재서명
+   * 경로를 VideoPlayback 안에서 직접 쓰려면 작업 공간 id가 필요하다.
+   */
+  tenantId?: string;
 }
 
 function formatSec(sec: number): string {
@@ -96,7 +105,7 @@ function videoEditErrorMessage(rule: string): string {
   return "입력한 값을 확인해 주세요.";
 }
 
-export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false }: VideoEditorProps) {
+export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false, tenantId }: VideoEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [playhead, setPlayhead] = useState(0);
@@ -179,6 +188,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
         <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
             src={previewVideoUrl}
+            tenantId={tenantId}
             videoRef={videoRef}
             overlays={videoEdit.overlays}
             comments={videoEdit.comments}
@@ -230,9 +240,10 @@ function activeSubtitle(subtitles: SubtitleLine[], playhead: number): { text: st
 }
 
 function VideoPlayback({
-  src, videoRef, overlays, comments, activeSubtitle, playhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
+  src, tenantId, videoRef, overlays, comments, activeSubtitle, playhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
 }: {
   src: string;
+  tenantId?: string;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   overlays: VideoOverlay[];
   comments: VideoComment[];
@@ -247,28 +258,74 @@ function VideoPlayback({
   onSeek: (time: number) => void;
 }) {
   const [loadFailed, setLoadFailed] = useState(false);
+  /*
+    2026-10-02 회장 지적: 편집실 영상이 재생 안 됨. previewVideoUrl(서명 배달 주소)이
+    12시간 지나면 만료되는데 이 플레이어는 토큰을 문자열 그대로 <video src>에 꽂고
+    있었다 — DeliveredMedia(카드·발행실 미리보기)가 쓰는 재서명 경로가 없었다. 같은
+    판정·재서명 함수를 여기서 직접 불러 videoRef 제어를 유지한 채 되살린다.
+  */
+  const [resolvedSrc, setResolvedSrc] = useState(() => (isDeliveryUrlExpired(src) ? "" : src));
+  const [renewing, setRenewing] = useState(() => isDeliveryUrlExpired(src));
+  const resignAttempted = useRef("");
   const activeOverlays = overlays.filter((o) => playhead >= o.startSec && playhead <= o.endSec);
   const activeComment = comments.find((c) => playhead >= c.startSec && playhead <= c.endSec) ?? null;
   const hook = activeOverlays.find((o) => o.kind === "hook");
   const cta = activeOverlays.find((o) => o.kind === "cta");
+
+  useEffect(() => {
+    const attemptKey = `${tenantId || ""}|${src}`;
+    setLoadFailed(false);
+    if (!isDeliveryUrlExpired(src)) {
+      resignAttempted.current = "";
+      setResolvedSrc(src);
+      setRenewing(false);
+      return;
+    }
+    if (resignAttempted.current === attemptKey) return;
+    resignAttempted.current = attemptKey;
+    let canceled = false;
+    setResolvedSrc("");
+    setRenewing(true);
+    void resignDeliveryUrl(src, tenantId).then((next) => {
+      if (canceled) return;
+      setRenewing(false);
+      if (next) setResolvedSrc(next);
+      else setLoadFailed(true);
+    });
+    return () => { canceled = true; };
+  }, [src, tenantId]);
+
+  async function handleError() {
+    const attemptKey = `${tenantId || ""}|${src}`;
+    if (resignAttempted.current === attemptKey && !resolvedSrc) {
+      setLoadFailed(true);
+      return;
+    }
+    resignAttempted.current = attemptKey;
+    const next = await resignDeliveryUrl(src, tenantId);
+    if (next) setResolvedSrc(next);
+    else setLoadFailed(true);
+  }
 
   return (
     <div className="min-w-0 space-y-stack-tight max-[26rem]:grid max-[26rem]:h-[11.25rem] max-[26rem]:grid-rows-[minmax(0,1fr)_auto_auto] max-[26rem]:gap-stack-tight max-[26rem]:space-y-none" data-video-playback>
       <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:min-h-0 max-[26rem]:aspect-auto" data-video-screen>
         {loadFailed ? (
           <p className="p-pad-inset text-caption text-danger" data-video-load-failed>영상을 불러오지 못했습니다. 생성실에서 다시 만들어 주세요.</p>
+        ) : renewing ? (
+          <p className="p-pad-inset text-caption text-subtle" data-video-renewing>영상 주소를 다시 받는 중입니다</p>
         ) : (
           // 오버레이·자막·컷 구간은 재생 위치와 맞춰야 해서 video DOM ref와
           // onTimeUpdate/onLoadedMetadata를 직접 잡는다. controls는 규격 §4.2 커스텀
-          // 조작 줄로 대체한다(raw-media-ok: onError로 로드 실패를 이미 문구로 보여준다).
+          // 조작 줄로 대체한다. onError는 만료 재서명을 한 번 더 시도한 뒤에만 실패로 닫는다.
           <video
             ref={videoRef}
-            src={src}
+            src={resolvedSrc}
             preload="metadata"
             className="h-full w-full object-contain"
             onLoadedMetadata={(e) => onLoadedMetadata(e.currentTarget.duration)}
             onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
-            onError={() => setLoadFailed(true)}
+            onError={handleError}
             data-video-el
           />
         )}

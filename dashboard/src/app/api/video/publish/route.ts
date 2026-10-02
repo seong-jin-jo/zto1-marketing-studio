@@ -16,6 +16,7 @@ import { MAX_VIDEO_BYTES, MAX_VIDEO_MIB } from "@/lib/video-limits";
 import {
   queryTikTokCreatorInfo,
   startTikTokVideoPost,
+  tiktokRejectReasonMessage,
   TIKTOK_PRIVACY_LEVELS,
   type TikTokPrivacyLevel,
 } from "@/lib/tiktok";
@@ -850,12 +851,16 @@ export async function POST(request: Request) {
         coverTimestampMs: coverMs,
       });
       if (!started.ok) {
+        // 2026-10-02 결함(회장 지적): 거부 사유(reason 코드)가 로그·DB 어디에도 안 남고
+        // 화면에도 안 보여 "왜" 를 추적할 길이 없었다. reason은 토큰·본문 없이 코드만이라
+        // 로그·DB 노출이 안전하다. 화면은 알려진 코드만 고정 한국어로 번역(tiktok.ts).
+        console.error("TikTok 발행 거부", { tenantId, reservationId, reason: started.reason });
         try {
           await withTenant(tenantId, (sql) => sql`
-            UPDATE published_posts SET status = 'failed', error = ${"TikTok 발행 요청 실패"}
+            UPDATE published_posts SET status = 'failed', error = ${started.reason}
              WHERE id = ${reservationId}::uuid AND tenant_id = ${tenantId}::uuid`);
         } catch { /* 기록 실패가 provider 오류를 노출하지 않는다 */ }
-        return Response.json({ ok: false, error: "TikTok이 발행 요청을 거부했습니다. 앱 권한과 계정 상태를 확인해주세요." }, { status: PROVIDER_FAILED });
+        return Response.json({ ok: false, error: tiktokRejectReasonMessage(started.reason) }, { status: PROVIDER_FAILED });
       }
 
       try {

@@ -199,6 +199,39 @@ export async function startTikTokVideoPost(input: {
   }
 }
 
+/**
+ * TikTok Content Posting API의 거부 코드 → 한국어 안내.
+ *
+ * 2026-10-02 결함(회장 지적): TikTok 거부 사유(startTikTokVideoPost의 reason)를 route.ts가
+ * 버리고 "앱 권한과 계정 상태를 확인해주세요" 한 줄로만 답했다. 실측에서 공개
+ * (PUBLIC_TO_EVERYONE) 요청이 unaudited_client_can_only_post_to_private_accounts로
+ * 거부됐는데 — 심사 전 앱은 TikTok 문서상 비공개 계정에만 올릴 수 있다 — 화면은 그 사실을
+ * 한마디도 못 전했다. 원문(body.error.message)은 외부 API 응답 텍스트라 그대로 노출하지
+ * 않고, 알려진 코드만 고정 한국어로 번역한다(ADR-007 조용한 실패 금지 + 원문 비노출 원칙
+ * 둘 다 지킨다). 참고: https://developers.tiktok.com/doc/content-posting-api-reference-direct-post
+ */
+export function tiktokRejectReasonMessage(reason: string): string {
+  const known: Record<string, string> = {
+    unaudited_client_can_only_post_to_private_accounts:
+      "TikTok 앱 심사 전이라 공개 게시가 막혀 있습니다. 계정을 비공개로 바꾸고 나만 보기로 올리거나, 심사 통과 후 공개로 올릴 수 있습니다.",
+    spam_risk_too_many_posts:
+      "TikTok이 단시간에 너무 많은 게시로 판단해 막았습니다. 시간을 두고 다시 시도해 주세요.",
+    spam_risk_user_banned_from_posting:
+      "이 TikTok 계정은 게시가 제한된 상태입니다. TikTok 앱에서 계정 상태를 확인해 주세요.",
+    reached_active_user_cap:
+      "앱이 심사 전이라 TikTok이 허용하는 활성 사용자 수를 넘었습니다. 심사 통과 후 다시 시도해 주세요.",
+    url_ownership_unverified:
+      "영상 주소의 소유권이 TikTok에 확인되지 않았습니다. 잠시 후 다시 시도해 주세요.",
+    privacy_level_option_mismatch:
+      "선택한 공개 범위를 이 계정에서 쓸 수 없습니다. 공개 범위를 바꿔 다시 시도해 주세요.",
+    invalid_file_upload:
+      "영상 파일을 TikTok이 읽지 못했습니다. 다른 형식으로 다시 만들어 주세요.",
+    rate_limit_exceeded:
+      "TikTok 요청이 너무 잦아 잠시 막혔습니다. 몇 분 뒤 다시 시도해 주세요.",
+  };
+  return known[reason] ?? "TikTok이 발행 요청을 거부했습니다. 앱 권한과 계정 상태를 확인해주세요.";
+}
+
 export async function fetchTikTokPostStatus(
   accessToken: string,
   publishId: string,
