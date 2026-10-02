@@ -260,8 +260,8 @@ function VideoPlayback({
   const [loadFailed, setLoadFailed] = useState(false);
   /*
     2026-10-02 회장 지적: 편집실 영상이 재생 안 됨. previewVideoUrl(서명 배달 주소)이
-    12시간 지나면 만료되는데 이 플레이어는 토큰을 문자열 그대로 <video src>에 꽂고
-    있었다 — DeliveredMedia(카드·발행실 미리보기)가 쓰는 재서명 경로가 없었다. 같은
+    12시간 지나면 만료되는데 이 플레이어는 토큰을 문자열 그대로 video의 src 속성에
+    꽂고 있었다 — DeliveredMedia(카드·발행실 미리보기)가 쓰는 재서명 경로가 없었다. 같은
     판정·재서명 함수를 여기서 직접 불러 videoRef 제어를 유지한 채 되살린다.
   */
   const [resolvedSrc, setResolvedSrc] = useState(() => (isDeliveryUrlExpired(src) ? "" : src));
@@ -284,7 +284,7 @@ function VideoPlayback({
   const hook = activeOverlays.find((o) => o.kind === "hook");
   const cta = activeOverlays.find((o) => o.kind === "cta");
 
-  // 재서명으로 src가 바뀌면 <video> 엘리먼트가 다시 로드되며 브라우저가 재생 위치를
+  // 재서명으로 src가 바뀌면 video 엘리먼트가 다시 로드되며 브라우저가 재생 위치를
   // 0으로 되돌리고 멈춘다. 사용자가 보던 자리·재생 상태를 되살린다(독립 리뷰어 MINOR).
   const restoreOnLoad = useRef(false);
   const playheadRef = useRef(playhead);
@@ -350,9 +350,10 @@ function VideoPlayback({
         ) : renewing ? (
           <p className="p-pad-inset text-caption text-subtle" data-video-renewing>영상 주소를 다시 받는 중입니다</p>
         ) : (
-          // 오버레이·자막·컷 구간은 재생 위치와 맞춰야 해서 video DOM ref와
-          // onTimeUpdate/onLoadedMetadata를 직접 잡는다. controls는 규격 §4.2 커스텀
-          // 조작 줄로 대체한다. onError는 만료 재서명을 한 번 더 시도한 뒤에만 실패로 닫는다.
+          // controls는 규격 §4.2 커스텀 조작 줄로 대체한다(handleError는 재서명 1회
+          // 재시도 후 실패로 닫는다. 위 useEffect·handleLoadedMetadata 참고).
+          // raw-media-ok: DeliveredMedia는 ref를 안 내줘 재생·탐색을 직접 못 건다 —
+          // 대신 그 재서명 로직을 이 파일에 그대로 재사용했다(resolvedSrc가 그 결과).
           <video
             ref={videoRef}
             src={resolvedSrc}
