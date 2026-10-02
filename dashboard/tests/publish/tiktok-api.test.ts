@@ -71,6 +71,26 @@ describe("TikTok Content Posting API", () => {
     }, f as typeof fetch)).resolves.toEqual({ ok: false, reason: "url_ownership_unverified" });
   });
 
+  // 2026-10-02 Codex 교차검수(PR #104) MAJOR: 허용 목록 밖의 reason을 검증 없이 돌려주면
+  // 로그·DB에 임의 문자열(예: 비밀값 형태)이 그대로 남을 수 있다. 문서에 없는 코드나
+  // 손상된 응답은 전부 고정 코드로 접어야 한다.
+  it("collapses an undocumented reject code to a fixed code instead of passing it through raw", async () => {
+    const f = vi.fn(async () => response({
+      data: {},
+      error: { code: "access_token=provider-secret", message: "raw provider detail" },
+    }, 403));
+    await expect(startTikTokVideoPost({
+      accessToken: "token",
+      videoUrl: "https://media.example/video.mp4",
+      title: "caption",
+      privacyLevel: "SELF_ONLY",
+      disableComment: true,
+      disableDuet: true,
+      disableStitch: true,
+      isAiGenerated: false,
+    }, f as typeof fetch)).resolves.toEqual({ ok: false, reason: "provider_rejected" });
+  });
+
   it("reads TikTok's documented publicaly_available_post_id field", async () => {
     const f = vi.fn(async () => response({
       data: { status: "PUBLISH_COMPLETE", publicaly_available_post_id: [12345] },

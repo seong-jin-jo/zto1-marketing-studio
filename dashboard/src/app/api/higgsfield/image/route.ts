@@ -2,6 +2,7 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { toGeneratorRatio } from "@/lib/generator-aspect-ratio";
 import { hfRun, extractJson, extractJobId, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError, assertHiggsfieldReady } from "@/lib/higgsfield";
 import { createHiggsfieldJob } from "@/lib/higgsfield-jobs";
+import { scheduleHiggsfieldBackgroundPoll } from "@/lib/higgsfield-background-poll";
 
 // POST /api/higgsfield/image — Soul V2 text→image 작업 "접수"만 한다(비동기 전환 2026-10-01).
 // 반환: 202 { ok: true, jobId } — 실제 생성·다운로드·결과는 GET /api/higgsfield/job/[id] 가 한다.
@@ -55,6 +56,9 @@ export async function POST(request: Request) {
     const job = createHiggsfieldJob(tenantId, "image", providerJobId, {
       prompt, aspectRatio, quality, label,
     });
+    // 접수 직후 서버가 스스로 이 작업을 확인·완료 처리하는 백그라운드 루프를 돈다 —
+    // 화면이 한 번도 GET하지 않아도(탭이 백그라운드에 묶이거나 닫혀도) 결과가 확정된다.
+    scheduleHiggsfieldBackgroundPoll(tenantId, job.jobId);
     return Response.json({ ok: true, jobId: job.jobId }, { status: 202 });
   } catch (e) {
     const stderrTail = (e as { stderr?: string })?.stderr?.trim().slice(-300);

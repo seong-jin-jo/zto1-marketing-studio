@@ -5,6 +5,7 @@ import { Button } from "@/components/shared/Button";
 import type { EditContentKind } from "./StudioRooms";
 import styles from "./EditPreview.module.css";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
+import { cardPositionFromPoint } from "@/lib/studio/text-card-image";
 
 // 편집실 미리보기.
 //
@@ -54,12 +55,7 @@ const CARD_POSITION_CLASS: Record<CardTextPosition, string> = {
   "bottom-right": styles.cardBottomRight,
 };
 
-function cardPositionAt(clientY: number, bounds: DOMRect): CardTextPosition {
-  const row = clientY < bounds.top + bounds.height / 3
-    ? "top"
-    : clientY > bounds.top + (bounds.height * 2) / 3 ? "bottom" : "center";
-  return row === "top" ? "top-center" : row === "bottom" ? "bottom-center" : "center";
-}
+
 
 const SUBTITLE_CLASS: Record<string, string> = {
   작게: "text-caption",
@@ -207,7 +203,10 @@ export function EditPreview({
             if (kind !== "card" || !movingCardText.current || !onCardTextPositionsChange) return;
             movingCardText.current = false;
             const next = lines.map((_, index) => cardTextPositions[index] ?? "center");
-            next[activeLine] = cardPositionAt(event.clientY, event.currentTarget.getBoundingClientRect());
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const relX = bounds.width > 0 ? (event.clientX - bounds.left) / bounds.width : 0.5;
+            const relY = bounds.height > 0 ? (event.clientY - bounds.top) / bounds.height : 0.5;
+            next[activeLine] = cardPositionFromPoint(relX, relY);
             onCardTextPositionsChange(next);
           }}
         >

@@ -258,7 +258,12 @@ describe("편집실 미리보기 (회장: 컨텐츠가 미리볼 수 있는게 �
       x: 0, y: 0, left: 0, top: 0, right: 300, bottom: 400, width: 300, height: 400, toJSON: () => ({}),
     });
     fireEvent.pointerDown(screen.getByRole("button", { name: "카드 글자 끌어 옮기기" }), { pointerId: 1 });
+    // 가로 300 중 280은 오른쪽 칸, 세로 400 중 40은 위 칸이다.
     fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 280, clientY: 40 });
-    expect(onPositionsChange).toHaveBeenCalledWith(["top-center"]);
+    expect(onPositionsChange).toHaveBeenCalledWith(["top-right"]);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "카드 글자 끌어 옮기기" }), { pointerId: 1 });
+    fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 150, clientY: 40 });
+    expect(onPositionsChange).toHaveBeenLastCalledWith(["top-center"]);
   });
 });
