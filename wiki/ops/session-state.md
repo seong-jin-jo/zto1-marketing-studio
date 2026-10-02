@@ -3,7 +3,8 @@
 - handoff basis: 이 파일(9/30 이후 미갱신)과 git log·열린 PR 목록. 클라우드 컨테이너라 tmux pane 없음. 9/30 이후 main에 #96~#107 머지됨, PR #95 작업은 머지 완료로 종료.
 - 열린 PR 판단: #101(글자 카드 생성 본문 + 발행 선택 채널 이름 표시, 운영 오발행 결함)이 최우선. CI `verify` green이었으나 main 진척으로 `text-card-image.ts` 1곳 충돌. #106은 #101 위 스택(videos/page.tsx·text-card-image.ts·wiki/거버넌스/결정.md 충돌), #105(Remotion)는 5파일 충돌 + Docker 베이스 교체로 배포 위험 큼, #93은 운영 마이그레이션 미실행, #60·#61은 9/18 이후 정체.
 - 수정: 세션 브랜치 `claude/quirky-turing-sjpr00`를 #101 head(`c3d5f887`)에서 시작해 origin/main 병합(`51e9f7a7`). PR의 capLinesToFit·assertLinesFitWidth와 main의 cardTextOrigin(가로 위치)을 함께 유지.
-- 검증: tsc(ci) 0, 관련 Vitest 9파일 131건 통과. 전체 Vitest 결과는 아래 갱신.
+- 검증: tsc(ci) 0, 관련 Vitest 9파일 131건 통과. 전체 Vitest 1차에서 병합 의미 충돌 발견: main(#102)의 TikTok 202 회귀 2건이 #101의 '공개 범위 선택 전 TikTok 발행 차단' 규칙에 막혀 실패(병합 브랜치에서만 재현, main 통과). 제품 규칙 유지, 테스트가 creator-info 고정 후 공개 범위를 고르도록 수정 → 9/9 통과.
+- 전체 Vitest 최종: 3,110 통과 / 4 실패(9파일). 9파일 모두 환경 문제로 main에서도 동일 실패: proper-lockfile 7파일(CI는 openclaw/node_modules로 복사하는 단계가 있음), cancel-safety 자물쇠 3건·clip-ssrf 로컬 dispatcher 1건. 병합으로 새로 생긴 실패 0.
 - 보류: #101 브랜치 자체로 push하려면 사용자 허락 필요(세션 지정 브랜치 외 push 금지). 머지·배포 안 함.
 - 다음 실행: (1) 사용자 허락 시 `fix/studio-card-text-and-publish-selection-main`에 병합 커밋 push → CI 확인 (2) #101 머지 후 #106 base를 main으로 바꾸고 충돌 해소 (3) #105 충돌 해소·VM 디스크 확인은 회장 판단 대기.
 
