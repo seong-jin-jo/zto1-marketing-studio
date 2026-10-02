@@ -95,6 +95,23 @@ function seedThreadsStudioWork(draftId?: string) {
   }));
 }
 
+const TIKTOK_CREATOR = {
+  connected: true,
+  ready: true,
+  creator: {
+    username: "tiktoker",
+    privacyLevels: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS"],
+    commentDisabled: false,
+    duetDisabled: false,
+    stitchDisabled: false,
+  },
+};
+
+async function chooseTikTokPrivacy() {
+  const select = await screen.findByRole("combobox", { name: "TikTok 공개 범위" });
+  fireEvent.change(select, { target: { value: "PUBLIC_TO_EVERYONE" } });
+}
+
 async function findEnabledButton(name: string) {
   const button = await screen.findByRole("button", { name });
   await waitFor(() => expect(button).toBeEnabled());
@@ -120,6 +137,11 @@ describe("발행실 — video/publish 202(jobId) 응답을 거짓-성공으로 �
       }
       if (key === "/api/channel-config") return { data: {}, mutate: vi.fn() };
       if (key === "/api/onboarding") return { data: { checklist: {} }, mutate: vi.fn() };
+      // TikTok 발행은 공개 범위(privacy_level)를 사람이 골라야 열린다(PR #101). 공개 범위
+      // 목록을 주는 creator-info 응답을 고정한다.
+      if (typeof key === "string" && key.startsWith("/api/tiktok/creator-info")) {
+        return { data: TIKTOK_CREATOR, mutate: vi.fn() };
+      }
       return { data: undefined, mutate: vi.fn() };
     });
     // reels는 instagram 계정을 쓴다 — 연결돼 있다고 답해 publishTargets에 들어오게 한다.
@@ -297,6 +319,7 @@ describe("발행실 — video/publish 202(jobId) 응답을 거짓-성공으로 �
     vi.stubGlobal("fetch", fetchMock);
 
     render(<StudioPage />);
+    await chooseTikTokPrivacy();
     const button = await findEnabledButton("선택한 1곳에 지금 발행");
     fireEvent.click(button);
 
@@ -347,6 +370,7 @@ describe("발행실 — video/publish 202(jobId) 응답을 거짓-성공으로 �
     vi.stubGlobal("fetch", fetchMock);
 
     render(<StudioPage />);
+    await chooseTikTokPrivacy();
     const button = await findEnabledButton("선택한 1곳에 지금 발행");
     fireEvent.click(button);
 
