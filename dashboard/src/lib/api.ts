@@ -58,13 +58,37 @@ export interface ExternalPublishPersistenceFailure {
   };
 }
 
+// BLOCK-1(2026-10-02 독립 리뷰): 동기(즉시 응답) 경로는 이 신호를 ApiResponseError로
+// 던져 isExternalPublishPersistenceError가 잡는다. 비동기 느린 경로(202 접수 뒤 job
+// 폴링)는 같은 신호가 "던져진 에러"가 아니라 "폴링이 받아온 몸통(JSON)"으로 온다 —
+// videoPersistenceFailure({externalPublished:true, retryPublish:false}), TikTok 503
+// "식별자 저장 실패"(서버가 code: PUBLISH_STATE_UNCERTAIN을 얹도록 함께 고침),
+// /api/publish·video/publish reels 좀비회수의 409 PUBLISH_STATE_UNCERTAIN이 전부 이
+// 형태다. 폴링 쪽이 이 몸통을 `if (!data?.ok) 실패`로만 읽으면, 외부에는 이미 올라갔는데
+// (혹은 올라갔는지 모르는데) "실패"로 보여주고 재발행을 허용해 중복 게시로 이어진다.
+// 던져진 에러인지 받아온 몸통인지 상관없이 같은 기준으로 판정하도록 분리한다.
+export function isUnresolvedPublishPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  const p = payload as {
+    externalPublished?: unknown;
+    persistence?: { reconciliation?: { retryPublish?: unknown } };
+    code?: unknown;
+    reconciliation?: { retryPublish?: unknown };
+  };
+  // ① videoPersistenceFailure류: 외부 게시는 확인됐는데 우리 기록만 못 남겼다.
+  if (p.externalPublished === true && p.persistence?.reconciliation?.retryPublish === false) return true;
+  // ② uncertain 분기(409 PUBLISH_STATE_UNCERTAIN) — "외부 결과를 모른다".
+  if (p.code === "PUBLISH_STATE_UNCERTAIN") return true;
+  // ③ 그 외 reconciliation.retryPublish===false로 명시한 모든 응답(향후 확장 대비).
+  if (p.reconciliation?.retryPublish === false) return true;
+  return false;
+}
+
 export function isExternalPublishPersistenceError(
   error: unknown,
 ): error is ApiResponseError<ExternalPublishPersistenceFailure> {
   if (!(error instanceof ApiResponseError)) return false;
-  const payload = error.payload as Partial<ExternalPublishPersistenceFailure> | null;
-  return payload?.externalPublished === true
-    && payload?.persistence?.reconciliation?.retryPublish === false;
+  return isUnresolvedPublishPayload(error.payload);
 }
 
 export function isAuthRequiredError(error: unknown): boolean {

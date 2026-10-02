@@ -30,14 +30,18 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.routerPush, replace: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
 }));
 
-vi.mock("@/lib/api", () => ({
-  fetcher: mocks.fetcher,
-  apiPost: (...args: unknown[]) => mocks.apiPost(...args),
-  isExternalPublishPersistenceError: (error: unknown) => Boolean((error as { externalPersistence?: boolean })?.externalPersistence),
-  ApiResponseError: class ApiResponseError extends Error {
-    payload: unknown = null;
-  },
-}));
+vi.mock("@/lib/api", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/api")>();
+  return {
+    ...actual,
+    fetcher: mocks.fetcher,
+    apiPost: (...args: unknown[]) => mocks.apiPost(...args),
+    isExternalPublishPersistenceError: (error: unknown) => Boolean((error as { externalPersistence?: boolean })?.externalPersistence),
+    ApiResponseError: class ApiResponseError extends Error {
+      payload: unknown = null;
+    },
+  };
+});
 
 vi.mock("@/components/layout/Toast", () => ({
   useToast: () => ({ showToast: mocks.showToast }),

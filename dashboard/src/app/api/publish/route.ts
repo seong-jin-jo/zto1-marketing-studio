@@ -813,12 +813,17 @@ export async function POST(request: Request) {
 
   if (!canDeferPublishResponse) return publishWorkPromise;
 
+  // MINOR-b(2026-10-02 독립 리뷰): video/publish와 같은 이유로 race 승자가 workPromise여도
+  // 타이머를 지운다.
   const PUBLISH_FAST_PATH_TIMED_OUT = Symbol("publish_fast_path_timed_out");
+  let publishFastPathTimer!: ReturnType<typeof setTimeout>;
   const racedPublish = await Promise.race([
     publishWorkPromise,
-    new Promise<typeof PUBLISH_FAST_PATH_TIMED_OUT>((resolve) =>
-      setTimeout(() => resolve(PUBLISH_FAST_PATH_TIMED_OUT), PUBLISH_FAST_PATH_BUDGET_MS)),
+    new Promise<typeof PUBLISH_FAST_PATH_TIMED_OUT>((resolve) => {
+      publishFastPathTimer = setTimeout(() => resolve(PUBLISH_FAST_PATH_TIMED_OUT), PUBLISH_FAST_PATH_BUDGET_MS);
+    }),
   ]);
+  clearTimeout(publishFastPathTimer);
   if (racedPublish !== PUBLISH_FAST_PATH_TIMED_OUT) return racedPublish;
 
   // 예산 안에 못 끝났다 — 접수만 알리고 같은 실행을 백그라운드로 계속 잇는다. 결과는

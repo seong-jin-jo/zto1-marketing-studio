@@ -9,6 +9,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StudioPage from "@/app/studio/page";
+import { savePendingVideoPublishJob } from "@/lib/publish-job-store";
 
 const mocks = vi.hoisted(() => ({
   apiPost: vi.fn(),
@@ -24,12 +25,16 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(window.location.search),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
 }));
-vi.mock("@/lib/api", () => ({
-  fetcher: mocks.fetcher,
-  apiPost: (...args: unknown[]) => mocks.apiPost(...args),
-  isExternalPublishPersistenceError: () => false,
-  ApiResponseError: class ApiResponseError extends Error { payload: unknown = null; },
-}));
+vi.mock("@/lib/api", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/api")>();
+  return {
+    ...actual,
+    fetcher: mocks.fetcher,
+    apiPost: (...args: unknown[]) => mocks.apiPost(...args),
+    isExternalPublishPersistenceError: () => false,
+    ApiResponseError: class ApiResponseError extends Error { payload: unknown = null; },
+  };
+});
 vi.mock("@/components/layout/Toast", () => ({ useToast: () => ({ showToast: mocks.showToast }) }));
 vi.mock("@/store/ui-store", () => ({
   useUIStore: () => ({ activeWorkspace: mocks.workspace, studioRoom: "publish", setStudioRoom: vi.fn() }),
@@ -51,7 +56,7 @@ function b64url(obj: unknown): string {
   return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function seedReelsStudioWork() {
+function seedReelsStudioWork(draftId?: string) {
   localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
     idea: "비동기 발행 테스트",
     editLines: ["가장 최신 문단"],
@@ -60,6 +65,31 @@ function seedReelsStudioWork() {
     includes: Object.fromEntries(
       ["threads", "x", "facebook", "instagram", "shorts", "reels", "tiktok"].map((p) => [p, p === "reels"]),
     ),
+    ...(draftId ? { draftId } : {}),
+  }));
+}
+
+function seedTikTokStudioWork() {
+  localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+    idea: "비동기 발행 테스트",
+    editLines: ["가장 최신 문단"],
+    text: { threads: "Threads 본문" },
+    vid: { file: `/api/media/${b64url({ f: "clip.mp4" })}.sig`, url: "" },
+    includes: Object.fromEntries(
+      ["threads", "x", "facebook", "instagram", "shorts", "reels", "tiktok"].map((p) => [p, p === "tiktok"]),
+    ),
+  }));
+}
+
+function seedThreadsStudioWork(draftId?: string) {
+  localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+    idea: "비동기 소셜 발행 테스트",
+    editLines: ["가장 최신 문단"],
+    text: { threads: "Threads 본문" },
+    includes: Object.fromEntries(
+      ["threads", "x", "facebook", "instagram", "shorts", "reels", "tiktok"].map((p) => [p, p === "threads"]),
+    ),
+    ...(draftId ? { draftId } : {}),
   }));
 }
 
@@ -181,6 +211,199 @@ describe("발행실 — video/publish 202(jobId) 응답을 거짓-성공으로 �
     fireEvent.click(button);
 
     await waitFor(() => expect(screen.getByText(/이 주제는 생성기가 만들 수 없다고 했습니다/)).toBeInTheDocument(), { timeout: 8000 });
+    expect(screen.queryByRole("link", { name: /새 창/ })).not.toBeInTheDocument();
+  }, 15000);
+
+  // BLOCK-1(2026-10-02 독립 리뷰): 외부에는 이미 올라갔는데(또는 올라갔는지 모르는데)
+  // 우리 기록만 못 남긴 신호(videoPersistenceFailure류: externalPublished:true,
+  // retryPublish:false)를 평범한 "실패"로 보여주면, 사용자가 재발행 버튼을 다시 눌러
+  // 같은 영상을 두 번 올린다. 이 상태는 "실패"도 "완료"도 아닌 "결과 확인 중"(재발행 버튼
+  // 대상에서 제외)으로 떠야 한다.
+  it("외부 게시는 확인됐지만 기록 저장에 실패한 신호는 '실패'가 아니라 '결과 확인 중'으로 떠서 재발행을 막는다", async () => {
+    seedReelsStudioWork();
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-async-3" };
+      if (path === "/api/video/publish") return { ok: true, status: "processing", jobId: "job-persist-fail" };
+      throw new Error(`unexpected apiPost path: ${path}`);
+    });
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      const accountsPlatform = /\/api\/channels\/([^/]+)\/accounts/.exec(url)?.[1];
+      if (accountsPlatform) {
+        const connected = accountsPlatform === "instagram"
+          ? [{ id: "ig-account", display_name: "인스타 계정", username: "ig", is_default: true }]
+          : [];
+        return Response.json({ accounts: connected });
+      }
+      if (url.includes("/api/video/publish/job/job-persist-fail")) {
+        return Response.json({
+          ok: false,
+          externalPublished: true,
+          externalId: "media-already-up",
+          permalink: "https://www.instagram.com/reel/already-up/",
+          error: "외부 게시에는 성공했지만 발행 기록 저장에 실패했습니다. 같은 영상을 다시 게시하지 마세요.",
+          persistence: {
+            ok: false, stage: "publication_record", publicationRecorded: false, queueRecorded: true,
+            error: { code: "PUBLICATION_RECORD_FAILED", message: "저장 실패" },
+            reconciliation: { required: true, action: "repair_persistence_only", retryPublish: false, platform: "instagram_reels" },
+          },
+        }, { status: 500 });
+      }
+      throw new Error(`unmocked fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<StudioPage />);
+    const button = await findEnabledButton("선택한 1곳에 지금 발행");
+    fireEvent.click(button);
+
+    await waitFor(() => expect(screen.getByText(/결과 확인 중/)).toBeInTheDocument(), { timeout: 8000 });
+    // "실패"로 읽혔다면 재발행 버튼 라벨이 "실패한 곳만 다시 발행"으로 바뀐다 — 그러면
+    // 안 된다(재발행 유도 금지).
+    expect(screen.queryByRole("button", { name: "실패한 곳만 다시 발행" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/영상 발행에 실패했습니다/)).not.toBeInTheDocument();
+  }, 15000);
+
+  // MAJOR-3(2026-10-02 독립 리뷰): TikTok은 video/publish와 다른 자체 비동기 계약
+  // ({ok:true, processing:true, publishId}, jobId도 status:"processing"도 없음)을 쓴다.
+  // 이 모양을 못 잡으면 `vr?.ok && !vr.partial`로 떨어져 "완료"(링크 없는 성공)로 잘못
+  // 표시된다. 실제로 끝날 때까지 /api/tiktok/publish-status를 기다려야 한다.
+  it("TikTok의 202(processing+publishId)는 즉시 완료로 보여주지 않고, 상태 조회가 끝난 뒤 실제 permalink로 완료 표시한다", async () => {
+    seedTikTokStudioWork();
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-tiktok-1" };
+      if (path === "/api/video/publish") return { ok: true, processing: true, publishId: "tt-publish-1" };
+      throw new Error(`unexpected apiPost path: ${path}`);
+    });
+    let pollCount = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      const accountsPlatform = /\/api\/channels\/([^/]+)\/accounts/.exec(url)?.[1];
+      if (accountsPlatform) {
+        const connected = accountsPlatform === "tiktok"
+          ? [{ id: "tt-account", display_name: "TikTok 계정", username: "tt", is_default: true }]
+          : [];
+        return Response.json({ accounts: connected });
+      }
+      if (url.includes("/api/tiktok/publish-status")) {
+        pollCount += 1;
+        if (pollCount < 3) return Response.json({ ok: true, status: "processing", publishId: "tt-publish-1" }, { status: 202 });
+        return Response.json({ ok: true, status: "published", publishId: "tt-publish-1", url: "https://www.tiktok.com/@creator/video/real-one" });
+      }
+      throw new Error(`unmocked fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<StudioPage />);
+    const button = await findEnabledButton("선택한 1곳에 지금 발행");
+    fireEvent.click(button);
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/video/publish", expect.anything(), expect.anything()));
+    expect(screen.queryByRole("link", { name: /새 창/ })).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      const link = screen.getByRole("link", { name: /새 창/ });
+      expect(link).toHaveAttribute("href", "https://www.tiktok.com/@creator/video/real-one");
+    }, { timeout: 8000 });
+    expect(pollCount).toBeGreaterThanOrEqual(3);
+  }, 15000);
+
+  // MAJOR-6(2026-10-02 독립 리뷰): 복구 effect가 [activeWorkspace?.id, draftId]에만
+  // 의존해 publishTargets(렌더 시점의 usableAccounts 결과)를 캡처한다. 새로고침 직후
+  // 계정 목록이 아직 fetch 중이면 그 순간 publishTargets가 비어 있어 복구가 아무 일도
+  // 하지 않는다 — 계정이 늦게 로드돼도 재시도가 없으면 복구는 "조용히 실패"한다.
+  it("새로고침 직후 계정 목록이 늦게 로드돼도 보류 중인 작업을 복구한다", async () => {
+    seedReelsStudioWork("draft-resume-1");
+    // 새로고침 전에 이미 접수돼 있던 작업(202로 받은 jobId)을 미리 저장해 둔다 —
+    // 복구 effect가 이걸 찾아 이어서 확인해야 한다.
+    savePendingVideoPublishJob(mocks.workspace.id, "clip.mp4", "reels", "job-resume-1");
+
+    let resolveReelsAccounts!: (accounts: unknown[]) => void;
+    const reelsAccountsPromise = new Promise<unknown[]>((resolve) => { resolveReelsAccounts = resolve; });
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      const accountsPlatform = /\/api\/channels\/([^/]+)\/accounts/.exec(url)?.[1];
+      if (accountsPlatform === "instagram") {
+        // 계정 목록 로딩이 느린 상황을 흉내 — 이 프라미스가 풀리기 전엔 accountsLoaded가
+        // false다(즉 publishTargets가 비어 있다).
+        const accounts = await reelsAccountsPromise;
+        return Response.json({ accounts });
+      }
+      if (accountsPlatform) return Response.json({ accounts: [] });
+      if (url.includes("/api/video/publish/job/job-resume-1")) {
+        return Response.json({ ok: true, platform: "instagram_reels", url: "https://www.instagram.com/reel/resumed/" });
+      }
+      throw new Error(`unmocked fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<StudioPage />);
+
+    // 계정이 아직 로딩 중인 동안에는(publishTargets가 비어 있는 동안) job을 조회하지
+    // 않는다 — 이 자체는 버그가 아니다(아직 재시도 타이밍이 아닐 뿐).
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/api/video/publish/job/job-resume-1"))).toBe(false);
+
+    // 계정 목록이 이제 로드된다 — accountsLoaded가 true로 바뀌는 시점에 복구 effect가
+    // 다시 돌아 publishTargets(이제 reels 포함)로 job을 이어서 확인해야 한다.
+    resolveReelsAccounts([{ id: "ig-account", display_name: "인스타 계정", username: "ig", is_default: true }]);
+
+    await waitFor(() => {
+      const link = screen.getByRole("link", { name: /새 창/ });
+      expect(link).toHaveAttribute("href", "https://www.instagram.com/reel/resumed/");
+    }, { timeout: 8000 });
+  }, 15000);
+
+  // MAJOR-5(2026-10-02 독립 리뷰): /api/publish 느린 경로는 백그라운드 Response를
+  // 버리고 202만 준다. 본문 성공 + 첫 댓글 실패(partial:true)는 그 Response에만 있던
+  // 정보가 아니라 published_posts.first_comment_status에도 동기 경로와 똑같이 기록되므로
+  // (백그라운드도 같은 코드를 탄다) GET 상태 조회가 그걸 읽어 복원해야 한다. 못 읽으면
+  // 첫 댓글이 실패했는데 "완전 성공"으로 보여준다.
+  it("느린 소셜 발행에서 본문 성공 + 첫 댓글 실패는 완전 성공으로 보여주지 않는다", async () => {
+    seedThreadsStudioWork("draft-firstcomment-1");
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-firstcomment-1" };
+      if (path === "/api/publish") return { ok: true, processing: true, draftId: "draft-firstcomment-1", platform: "threads" };
+      throw new Error(`unexpected apiPost path: ${path}`);
+    });
+    let pollCount = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      const accountsPlatform = /\/api\/channels\/([^/]+)\/accounts/.exec(url)?.[1];
+      if (accountsPlatform) {
+        const connected = accountsPlatform === "threads"
+          ? [{ id: "threads-account", display_name: "Threads 계정", username: "th", is_default: true }]
+          : [];
+        return Response.json({ accounts: connected });
+      }
+      if (url.includes("/api/publish?draft_id=draft-firstcomment-1")) {
+        pollCount += 1;
+        if (pollCount < 2) {
+          return Response.json({
+            draftId: "draft-firstcomment-1", overall: "in_progress",
+            targets: [{ platform: "threads", status: "processing", permalink: null, error: null, updatedAt: null, firstComment: { status: null, error: null } }],
+          });
+        }
+        return Response.json({
+          draftId: "draft-firstcomment-1", overall: "published",
+          targets: [{
+            platform: "threads", status: "published",
+            permalink: "https://www.threads.net/@u/post/with-failed-comment",
+            error: null, updatedAt: new Date().toISOString(),
+            firstComment: { status: "failed", error: "첫 댓글 API 거절" },
+          }],
+        });
+      }
+      throw new Error(`unmocked fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<StudioPage />);
+    const button = await findEnabledButton("선택한 1곳에 지금 발행");
+    fireEvent.click(button);
+
+    await waitFor(() => expect(screen.getByText(/첫 댓글 발행에 실패했습니다|첫 댓글 API 거절/)).toBeInTheDocument(), { timeout: 8000 });
+    // 완전 성공으로 집계되면 안 된다 — "새 창"(완료) 링크가 떠서는 안 된다.
     expect(screen.queryByRole("link", { name: /새 창/ })).not.toBeInTheDocument();
   }, 15000);
 });

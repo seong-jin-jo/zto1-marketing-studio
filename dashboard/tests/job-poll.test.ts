@@ -61,4 +61,57 @@ describe("pollJobUntilDone", () => {
     expect(result.ok).toBe(true);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
+
+  // MAJOR-2(2026-10-02 독립 리뷰): 401/403/429는 최종 실패가 아니라 재시도 대상이다 —
+  // 토큰 만료·레이트리밋을 "실패"로 읽으면 사용자가 재발행을 눌러 중복 게시로 이어진다.
+  it.each([401, 403, 429])("HTTP %i는 최종이 아니라 재시도한다", async (status) => {
+    const fetchImpl = fetchSequence([
+      { status, body: { error: "unauthorized" } },
+      { body: { ok: true, url: "https://example.com/post/retry-ok" } },
+    ]);
+    const result = await pollJobUntilDone("/job/retry", { fetchImpl, sleepImpl: instantSleep });
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual({ ok: true, url: "https://example.com/post/retry-ok" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("몸통이 없는(JSON 파싱 실패) 5xx는 재시도한다 — 프록시가 바꿔치기한 HTML 오류 페이지를 흉내", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce({ status: 502, json: async () => { throw new Error("not json"); } } as unknown as Response)
+      .mockResolvedValueOnce({ status: 200, json: async () => ({ ok: true, url: "https://example.com/recovered" }) } as unknown as Response);
+    const result = await pollJobUntilDone("/job/html-error", { fetchImpl, sleepImpl: instantSleep });
+    expect(result.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("몸통이 있는 500(레거시 persistence-failure 경로)은 재시도하지 않고 그대로 종결한다", async () => {
+    const fetchImpl = fetchSequence([
+      { status: 500, body: { ok: false, externalPublished: true, retryPublish: false, error: "외부 게시는 됐지만 기록 저장 실패" } },
+    ]);
+    const result = await pollJobUntilDone("/job/persistence-fail", { fetchImpl, sleepImpl: instantSleep });
+    expect(result.ok).toBe(true); // 폴링 자체는 "응답을 받았다"는 뜻으로 성공
+    expect(result.httpStatus).toBe(500);
+    expect(result.data).toMatchObject({ externalPublished: true, retryPublish: false });
+    expect(fetchImpl).toHaveBeenCalledTimes(1); // 재시도 없음 — 즉시 종결
+  });
+
+  it("headers가 함수면 매 요청마다 새로 호출한다(고정 토큰이 15분 내내 굳지 않게)", async () => {
+    let callCount = 0;
+    const headersFactory = vi.fn(() => ({ Authorization: `Bearer token-${++callCount}` }));
+    const calls: Array<Record<string, string> | undefined> = [];
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      calls.push(init?.headers as Record<string, string> | undefined);
+      if (calls.length < 3) return { status: 200, json: async () => ({ status: "processing" }) } as unknown as Response;
+      return { status: 200, json: async () => ({ ok: true }) } as unknown as Response;
+    });
+    await pollJobUntilDone("/job/headers", { fetchImpl: fetchImpl as unknown as typeof fetch, sleepImpl: instantSleep, headers: headersFactory });
+    expect(headersFactory.mock.calls.length).toBe(3);
+    expect(calls.map((h) => h?.Authorization)).toEqual(["Bearer token-1", "Bearer token-2", "Bearer token-3"]);
+  });
+
+  it("headers가 고정 객체면 기존처럼 그대로 쓴다(하위호환)", async () => {
+    const fetchImpl = fetchSequence([{ body: { ok: true } }]);
+    await pollJobUntilDone("/job/headers-static", { fetchImpl, sleepImpl: instantSleep, headers: { Authorization: "Bearer fixed" } });
+    expect(fetchImpl).toHaveBeenCalledWith("/job/headers-static", expect.objectContaining({ headers: { Authorization: "Bearer fixed" } }));
+  });
 });

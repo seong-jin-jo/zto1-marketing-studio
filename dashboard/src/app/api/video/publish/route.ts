@@ -6,7 +6,7 @@ import { coverTimestampMs } from "@/lib/video-cover";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import crypto from "crypto";
-import { getChannelCred, publishInstagramReels } from "@/lib/publish";
+import { getChannelCred, publishInstagramReels, findRecentProviderPost } from "@/lib/publish";
 import { refreshYoutubeAccessToken } from "@/lib/youtube-token";
 import { withTenant } from "@/lib/db";
 import { publicationUsageOutbox, recordPublicationEvent } from "@/lib/usage-events";
@@ -881,7 +881,15 @@ export async function POST(request: Request) {
       } catch {
         // init 성공 후 publish_id를 잃으면 상태 회수가 불가능하고 재시도가 중복 게시할 수 있다.
         // 따라서 성공을 반환하지 않고 사용자에게 재시도 대신 상태 확인을 요구한다.
-        return Response.json({ error: "TikTok 발행 식별자를 저장하지 못했습니다. 중복 방지를 위해 잠시 후 상태를 확인해주세요." }, { status: 503 });
+        // BLOCK-1(2026-10-02 독립 리뷰): code: PUBLISH_STATE_UNCERTAIN을 실어 클라이언트
+        // (isUnresolvedPublishPayload)가 이 응답을 구조적으로 "모름, 재발행 금지"로 읽게
+        // 한다 — 문자열(에러 메시지)만으로 판정하면 문구가 바뀔 때마다 조용히 깨진다.
+        return Response.json({
+          ok: false,
+          code: "PUBLISH_STATE_UNCERTAIN",
+          error: "TikTok 발행 식별자를 저장하지 못했습니다. 중복 방지를 위해 잠시 후 상태를 확인해주세요.",
+          reconciliation: { required: true, action: "verify_with_provider", retryPublish: false, platform: "tiktok" },
+        }, { status: 503 });
       }
 
       // 완료 확인은 tenant-scoped 상태 API가 맡는다. 요청 경로에서 provider를 폴링하면 새로고침
@@ -1003,27 +1011,89 @@ export async function POST(request: Request) {
         // 409로 막힌다. 폴링 예산(60s × 5회 = 5분, Meta 공식 권고)의 3배인 15분이 지난 예약은
         // 완료될 가망이 없다고 보고 failed로 내려(인덱스 대상에서 빠짐) 예약을 한 번 재시도한다.
         // 15분은 "정상 진행 중인 요청을 절대 가로채지 않는" 여유값이다.
+        //
+        // MAJOR-4/BLOCK-1(2026-10-02 독립 리뷰): 종전엔 Meta에 묻지 않고 바로 failed로
+        // 내려 재시도를 허용했다 — 외부 게시가 실제로는 성공했는데 우리 기록만 못 남긴
+        // 경우(비동기 백그라운드 완료 처리 중 서버가 재시작된 경우 등)라면 재시도가 같은
+        // Reel을 두 번 올린다. /api/publish의 기존 패턴(findRecentProviderPost 선조회)을
+        // 그대로 따른다: found면 그 결과로 확정하고 재발행하지 않는다, unknown이면
+        // uncertain으로 못박고 재발행을 허용하지 않는다, absent로 확인됐을 때만 회수한다.
+        let staleRow: { id: string; published_at: string } | undefined;
         try {
-          const reclaimed = await withTenant(tenantId, (sql) => sql<{ id: string }[]>`
-            UPDATE published_posts
-               SET status = 'failed', error = '완료되지 않은 예약(stale) 자동 회수'
+          [staleRow] = await withTenant(tenantId, (sql) => sql<{ id: string; published_at: string }[]>`
+            SELECT id::text, published_at::text
+              FROM published_posts
              WHERE tenant_id = ${tenantId}::uuid
                AND draft_id = ${idKey}::uuid
                AND platform = ${REELS_PLATFORM}
                AND status = 'in_progress'
                AND account_id IS NOT DISTINCT FROM ${cred.accountId ?? null}::uuid
                AND published_at < now() - interval '15 minutes'
-            RETURNING id
           `);
-          if (reclaimed.length > 0) {
-            const [row] = await reserve();
-            reservationId = row?.id ?? null;
-          }
         } catch {
           return Response.json(
             { error: "발행 상태를 확인할 수 없어 중단했습니다(중복 발행 방지). 잠시 후 다시 시도해주세요." },
             { status: 503 },
           );
+        }
+
+        if (staleRow) {
+          const readback = await findRecentProviderPost("instagram", cred, caption, new Date(staleRow.published_at));
+          if (readback.state === "found") {
+            // Meta에 이미 올라가 있다 — 재시도하지 않고 그 결과로 확정한다.
+            try {
+              await withTenant(tenantId, (sql) => sql`
+                UPDATE published_posts
+                   SET status = 'published', external_id = ${readback.hit.externalId},
+                       permalink = ${readback.hit.permalink ?? null}, error = NULL
+                 WHERE tenant_id = ${tenantId}::uuid AND id = ${staleRow!.id}::uuid AND status = 'in_progress'
+              `);
+            } catch { /* 기록 실패는 아래 알려진 결과 반환을 막지 않는다 — 다음 조회가 복구한다. */ }
+            try {
+              await recordPublicationEvent(tenantId, staleRow.id, REELS_PLATFORM);
+            } catch {
+              return videoPersistenceFailure({
+                stage: "usage_record", platform: REELS_PLATFORM, publicationId: staleRow.id,
+                externalId: readback.hit.externalId, permalink: readback.hit.permalink ?? "",
+              });
+            }
+            return Response.json({
+              ok: true, platform: REELS_PLATFORM, videoId: readback.hit.externalId,
+              url: readback.hit.permalink ?? undefined, alreadyPublished: true, recoveredFrom: "provider_readback",
+            });
+          }
+          if (readback.state === "unknown") {
+            // 모르는 것을 없는 것으로 바꾸지 않는다 — uncertain으로 못박고 재발행을 막는다.
+            await withTenant(tenantId, (sql) => sql`
+              UPDATE published_posts
+                 SET status = 'uncertain',
+                     error = '발행 예약이 만료됐고 공급자 조회도 실패해 게시 여부를 확인하지 못했습니다.'
+               WHERE tenant_id = ${tenantId}::uuid AND id = ${staleRow!.id}::uuid AND status = 'in_progress'
+            `).catch(() => {});
+            return Response.json({
+              ok: false, code: "PUBLISH_STATE_UNCERTAIN",
+              error: "직전 발행의 외부 결과를 확인하지 못했습니다. 중복 게시를 막기 위해 다시 보내지 않았습니다. 채널에서 게시 여부를 확인한 뒤 처리해주세요.",
+              reconciliation: { required: true, action: "verify_with_provider", retryPublish: false, platform: REELS_PLATFORM },
+            }, { status: 409, headers: { "Cache-Control": "no-store" } });
+          }
+          // readback.state === "absent" — 공급자가 "그런 게시물 없다"고 확인했을 때만 회수한다.
+          try {
+            const reclaimed = await withTenant(tenantId, (sql) => sql<{ id: string }[]>`
+              UPDATE published_posts
+                 SET status = 'failed', error = '완료되지 않은 예약(stale) 자동 회수 — 공급자 확인(없음)'
+               WHERE tenant_id = ${tenantId}::uuid AND id = ${staleRow!.id}::uuid AND status = 'in_progress'
+              RETURNING id
+            `);
+            if (reclaimed.length > 0) {
+              const [row] = await reserve();
+              reservationId = row?.id ?? null;
+            }
+          } catch {
+            return Response.json(
+              { error: "발행 상태를 확인할 수 없어 중단했습니다(중복 발행 방지). 잠시 후 다시 시도해주세요." },
+              { status: 503 },
+            );
+          }
         }
       }
 
@@ -1152,11 +1222,18 @@ export async function POST(request: Request) {
     return Response.json({ error: `Unknown platform: ${platform}` }, { status: 400 });
   });
 
+  // MINOR-b(2026-10-02 독립 리뷰): race가 workPromise 쪽으로 끝나도 타이머를 안 지우면
+  // FAST_PATH_BUDGET_MS(8초) 동안 불필요한 유휴 타이머가 프로세스에 남는다. clearTimeout으로
+  // 즉시 정리한다.
   const FAST_PATH_TIMED_OUT = Symbol("fast_path_timed_out");
+  let fastPathTimer!: ReturnType<typeof setTimeout>;
   const raced = await Promise.race([
     workPromise,
-    new Promise<typeof FAST_PATH_TIMED_OUT>((resolve) => setTimeout(() => resolve(FAST_PATH_TIMED_OUT), FAST_PATH_BUDGET_MS)),
+    new Promise<typeof FAST_PATH_TIMED_OUT>((resolve) => {
+      fastPathTimer = setTimeout(() => resolve(FAST_PATH_TIMED_OUT), FAST_PATH_BUDGET_MS);
+    }),
   ]);
+  clearTimeout(fastPathTimer);
 
   if (raced !== FAST_PATH_TIMED_OUT) {
     // 예산 안에 끝났다 — 기존과 똑같이 그 자리에서 바로 응답한다(동작 변경 없음).
@@ -1169,6 +1246,9 @@ export async function POST(request: Request) {
   await runWithTenant(tenantId, async () => {
     createVideoPublishJob(jobId, { platform, filename });
   });
+  // MINOR-c(2026-10-02 독립 리뷰): 아래 체인의 .catch 콜백 자신이 던지면(예: FS 장애로
+  // updateVideoPublishJob이 실패) 그 예외가 아무 데도 안 걸려 unhandledRejection으로
+  // 새나간다. 체인 맨 끝에 한 번 더 guard를 둬 어떤 경우에도 프로세스가 죽지 않게 한다.
   workPromise.then(async (res) => {
     const body = await res.json().catch(() => ({}));
     await runWithTenant(tenantId, async () => {
@@ -1183,6 +1263,11 @@ export async function POST(request: Request) {
         result: { ok: false, error: "발행 처리 중 오류가 발생했습니다. 잠시 후 결과를 다시 확인해 주세요." },
       });
     });
+  }).catch((e) => {
+    console.error(JSON.stringify({
+      kind: "video_publish_bg_error_unhandled", jobId, tenantId, platform,
+      reason: e instanceof Error ? e.message : String(e),
+    }));
   });
 
   return Response.json({

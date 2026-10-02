@@ -31,6 +31,11 @@ const H = vi.hoisted(() => ({
   dbFail: false,
   staleReclaim: false,
   seq: 0,
+  // BLOCK-1(2026-10-02 독립 리뷰): 좀비 예약 회수 전에 Meta에 묻는다. 기본은 "없다"
+  // (absent) — 안전하게 회수·재시도할 수 있는 경우. 테스트가 found/unknown으로 바꿔
+  // "실제로는 이미 올라갔다/모른다" 시나리오를 재현한다.
+  providerReadback: "absent" as "found" | "unknown" | "absent",
+  providerReadbackHit: { externalId: "recovered-media-1", permalink: "https://www.instagram.com/reel/recovered/" },
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({ effectiveTenantId: vi.fn(async () => H.tenantId) }));
@@ -61,11 +66,35 @@ vi.mock("@/lib/db", () => ({
         const row = live(draft, platform, account);
         return Promise.resolve(row ? [row] : []);
       }
-      if (q.includes("stale") || q.includes("15 minutes")) {
-        // 좀비 예약 회수 UPDATE — H.staleReclaim이 켜져 있을 때만 회수된 것으로 취급한다.
+      // BLOCK-1: 좀비 예약 회수는 이제 (1)SELECT로 stale 행을 먼저 찾고 (2)Meta 조회
+      // (findRecentProviderPost mock) 결과로 분기한다. SELECT와 UPDATE를 구분해야 한다 —
+      // 둘 다 "15 minutes"를 포함한다.
+      if (q.includes("SELECT id::text, published_at::text") && q.includes("15 minutes")) {
         const [, draft, platform, account] = vals as [unknown, string, string, string | null];
         const row = live(draft, platform, account);
         if (H.staleReclaim && row && row.status === "in_progress") {
+          return Promise.resolve([{ id: row.id, published_at: new Date(Date.now() - 20 * 60_000).toISOString() }]);
+        }
+        return Promise.resolve([]);
+      }
+      if (q.includes("SET status = 'published'") && q.includes("external_id = ")) {
+        // readback "found" — 그 행을 published로 확정한다.
+        const id = vals.find((v) => H.rows.some((r) => r.id === v)) as string | undefined;
+        const row = H.rows.find((r) => r.id === id);
+        if (row) { row.status = "published"; row.external_id = vals[0] as string; row.permalink = vals[1] as string | null; }
+        return Promise.resolve([]);
+      }
+      if (q.includes("SET status = 'uncertain'")) {
+        const id = vals.find((v) => H.rows.some((r) => r.id === v)) as string | undefined;
+        const row = H.rows.find((r) => r.id === id);
+        if (row) row.status = "uncertain";
+        return Promise.resolve([]);
+      }
+      if (q.includes("자동 회수 — 공급자 확인") || q.includes("stale")) {
+        // readback "absent"로 확인된 뒤의 회수 UPDATE.
+        const id = vals.find((v) => H.rows.some((r) => r.id === v)) as string | undefined;
+        const row = H.rows.find((r) => r.id === id);
+        if (row && row.status === "in_progress") {
           row.status = "failed";
           return Promise.resolve([{ id: row.id }]);
         }
@@ -111,6 +140,11 @@ vi.mock("@/lib/publish", async (importActual) => {
       H.reelsCalls.push(args);
       return H.reelsResult;
     }),
+    findRecentProviderPost: vi.fn(async () => {
+      if (H.providerReadback === "found") return { state: "found", hit: H.providerReadbackHit };
+      if (H.providerReadback === "unknown") return { state: "unknown" };
+      return { state: "absent" };
+    }),
   };
 });
 
@@ -147,6 +181,7 @@ describe("/api/video/publish — Instagram Reels", () => {
     H.staleReclaim = false;
     H.seq = 0;
     H.reelsResult = { ok: true, externalId: "media-1", permalink: "https://www.instagram.com/reel/x/" };
+    H.providerReadback = "absent";
     vi.resetModules();
   });
 
@@ -314,7 +349,7 @@ describe("/api/video/publish — Instagram Reels", () => {
     expect(H.reelsCalls.length).toBe(2);
   });
 
-  it("15분 넘게 남은 좀비 예약은 회수해 재발행을 허용한다(영구 409 방지)", async () => {
+  it("15분 넘게 남은 좀비 예약은 Meta가 '없다'고 확인한 뒤에만 회수해 재발행을 허용한다(영구 409 방지)", async () => {
     const draftId = "88888888-8888-8888-8888-888888888888";
     // 프로세스가 발행 도중 죽어 in_progress가 남은 상태를 직접 만든다.
     H.rows.push({
@@ -328,11 +363,50 @@ describe("/api/video/publish — Instagram Reels", () => {
     expect((await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId })).status).toBe(409);
     expect(H.reelsCalls.length).toBe(0);
 
-    // 15분 경과 → 회수 후 재예약 성공 → 실제 발행.
+    // 15분 경과 + Meta가 "없다"고 확인(absent) → 회수 후 재예약 성공 → 실제 발행.
     H.staleReclaim = true;
+    H.providerReadback = "absent";
     const { status } = await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId });
     expect(status).toBe(200);
     expect(H.reelsCalls.length).toBe(1);
+  });
+
+  // BLOCK-1(2026-10-02 독립 리뷰): 15분 경과했지만 Meta에 실제로는 이미 올라가 있는
+  // 경우 — 재시도하면 같은 Reel이 두 번 게시된다. 회수 전 조회가 found면 그 결과로
+  // 확정하고 media_publish를 다시 호출하지 않아야 한다.
+  it("15분 넘은 좀비 예약이라도 Meta에 이미 있으면(found) 재발행하지 않고 그 결과로 확정한다", async () => {
+    const draftId = "aaaaaaaa-1111-1111-1111-111111111111";
+    H.rows.push({
+      id: "zombie-found", draft_id: draftId, platform: "instagram_reels",
+      account_id: "22222222-2222-2222-2222-222222222222",
+      status: "in_progress", external_id: null, permalink: null,
+    });
+    H.staleReclaim = true;
+    H.providerReadback = "found";
+
+    const { status, json } = await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId });
+    expect(status).toBe(200);
+    expect(json).toMatchObject({ ok: true, alreadyPublished: true, videoId: H.providerReadbackHit.externalId });
+    expect(H.reelsCalls.length).toBe(0); // 외부 media_publish가 다시 나가지 않았다 — 중복 게시 없음.
+  });
+
+  // BLOCK-1: 공급자 조회 자체가 실패해 "있는지 없는지 모른다"면, 없다고 단정하고
+  // 재발행을 허용해서도 안 된다 — uncertain으로 못박고 사람이 확인하게 한다.
+  it("15분 넘은 좀비 예약이고 Meta 조회도 실패하면(unknown) uncertain으로 409, 재발행하지 않는다", async () => {
+    const draftId = "bbbbbbbb-2222-2222-2222-222222222222";
+    H.rows.push({
+      id: "zombie-unknown", draft_id: draftId, platform: "instagram_reels",
+      account_id: "22222222-2222-2222-2222-222222222222",
+      status: "in_progress", external_id: null, permalink: null,
+    });
+    H.staleReclaim = true;
+    H.providerReadback = "unknown";
+
+    const { status, json } = await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId });
+    expect(status).toBe(409);
+    expect(json.code).toBe("PUBLISH_STATE_UNCERTAIN");
+    expect((json.reconciliation as { retryPublish?: boolean } | undefined)?.retryPublish).toBe(false);
+    expect(H.reelsCalls.length).toBe(0);
   });
 
   it("예약 INSERT가 DB 장애로 실패하면 외부 발행을 강행하지 않는다(fail closed)", async () => {
