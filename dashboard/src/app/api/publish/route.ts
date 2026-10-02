@@ -628,8 +628,9 @@ export async function POST(request: Request) {
       },
     });
   } else if (platform === "x") {
-    // X API v2 + OAuth1.0a 직접발행(P5). text only, 280자 자동 절단.
-    result = await publishX(cred, text || "");
+    // X API v2 + OAuth1.0a/OAuth2 직접발행(P5). 280자 자동 절단. 이미지가 있으면(최대 4장)
+    // 미디어 업로드를 먼저 끝내고 media_ids 를 실어 올린다(2026-10-02 실측 재발 방지).
+    result = await publishX(cred, text || "", publishImageUrls);
   } else if (platform === "facebook") {
     // Facebook 페이지 Graph API 직접발행(P5). image_url 있으면 /photos, 없으면 /feed.
     result = await publishFacebook(cred, text || "", publishImageUrl);

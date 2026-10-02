@@ -306,7 +306,7 @@ async function publishOne(
         if (!saved) throw new Error("예약 발행 진행 상태를 저장하지 못했습니다.");
       },
     });
-    else if (platform === "x") result = await publishX(cred, text);
+    else if (platform === "x") result = await publishX(cred, text, imageUrls);
     else if (platform === "facebook") result = await publishFacebook(cred, text, imageUrl);
     else if (platform === "bluesky") result = await publishBluesky(cred, text, imageUrl);
     else if (platform === "telegram") result = await publishTelegram(cred, text, imageUrl);

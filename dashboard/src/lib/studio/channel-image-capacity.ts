@@ -6,9 +6,11 @@
  *
  * 여기 적는 숫자는 **그 채널이 이론상 받을 수 있는 수가 아니라 우리가 실제로 보낼 수 있는
  * 수**다. Instagram 은 `lib/publish.ts` 의 `publishInstagram` 이 캐러셀 자식 묶음을 실제로
- * 만든다(최대 10장, 서버 계약 `api/publish/route.ts` 도 10장에서 막는다). 나머지 채널의
- * 발행 함수는 `imageUrl` 한 장만 받는다. 받을 수 있는 척하고 조용히 버리면 그건 거짓말이라,
- * 못 받는 채널은 화면에 그 사실을 밝히는 데 이 값을 쓴다.
+ * 만든다(최대 10장, 서버 계약 `api/publish/route.ts` 도 10장에서 막는다). X 는 `publishX` 가
+ * media upload(initialize/append/finalize)로 최대 4장을 실제로 올린다(X 공식 한도, 2026-10-02
+ * 회장 실측 — 3장 카드덱이 텍스트만 올라간 사고의 재발 방지). 나머지 채널의 발행 함수는
+ * `imageUrl` 한 장만 받는다. 받을 수 있는 척하고 조용히 버리면 그건 거짓말이라, 못 받는
+ * 채널은 화면에 그 사실을 밝히는 데 이 값을 쓴다.
  */
 
 /** 서버 계약(api/publish/route.ts)이 한 요청에서 허용하는 최대 장수. */
@@ -18,7 +20,7 @@ const CAPACITY: Record<string, number> = {
   instagram: PUBLISH_IMAGE_LIMIT,
   threads: 1,
   facebook: 1,
-  x: 1,
+  x: 4,
   bluesky: 1,
   telegram: 1,
   discord: 1,

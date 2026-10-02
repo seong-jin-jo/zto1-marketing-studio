@@ -1,5 +1,8 @@
 import crypto from "node:crypto";
+import path from "node:path";
 import { withTenant } from "@/lib/db";
+import { mediaStore } from "@/lib/media-store";
+import { verifyImageToken } from "@/lib/image-token";
 // 발행 직전에 만료된 토큰을 갱신 토큰으로 되살린다. 종전에는 만료된 계정이 조용히
 // 사라져 "연결된 계정이 없다"로 끝났고, 회장이 하루에 몇 번씩 손으로 다시 연결해야 했다
 // (2026-09-07 X 실측). 연결은 한 번 하고 유지는 우리가 한다.
@@ -15,6 +18,13 @@ const IG_API = "https://graph.facebook.com/v21.0";           // 레거시 env(IN
 const IG_LOGIN_API = "https://graph.instagram.com/v21.0";    // 테넌트 연결(Instagram Login API) 토큰
 const FB_API = "https://graph.facebook.com/v21.0";
 const X_API = "https://api.twitter.com/2";
+const X_EXT_CONTENT_TYPE: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
 const BLUESKY_API = "https://bsky.social/xrpc";               // AT Protocol PDS(개인 서버 호스팅 시 다를 수 있음 — bsky.social 기본값)
 const TELEGRAM_API = "https://api.telegram.org";
 
@@ -896,11 +906,179 @@ export async function fetchMetaPostMetrics(
   };
 }
 
-// X 발행 (text only, API v2). 4키 OAuth1.0a 서명. 공식 가중 문자가 280을 넘으면 차단한다.
-export async function publishX(cred: ChannelCred, text: string): Promise<PublishResult> {
+// X 미디어 업로드 — 2026 v2 3단 프로토콜(initialize → append → finalize, + 처리 중이면 STATUS 폴링).
+// 출처: https://docs.x.com/x-api/media/quickstart/media-upload-chunked (조사 2026-10-02).
+// 문서 예시는 OAuth 2.0 Bearer만 보여 주지만, 이 레포는 레거시 4키(OAuth1.0a) 계정과 화면으로
+// 연결한 OAuth2 계정을 둘 다 받는다(publishX의 hasLegacyKeys 분기와 동일 원칙) — 4키가 있으면
+// OAuth1.0a 서명을, 없으면 Bearer를 쓴다. OAuth1.0a 서명은 publishX의 /tweets 호출과 같은 이유로
+// JSON/멀티파트 본문을 서명 베이스에 포함하지 않는다(RFC5849 §3.4.1.3, x-www-form-urlencoded 본문만
+// 서명 대상). 미검증: 4키 계정에서 이 엔드포인트가 실제로 OAuth1.0a를 받아들이는지는 문서에 없음 —
+// 운영 실발행으로 확인 필요(회장 2026-10-02 지시대로 이 세션은 실발행을 하지 않음).
+const X_MEDIA_UPLOAD_API = "https://api.x.com/2/media/upload";
+const X_MAX_IMAGE_BYTES = 5 * 1024 * 1024; // tweet_image 공식 한도 5MB
+export const X_MAX_IMAGES_PER_POST = 4; // X 가 허용하는 포스트당 최대 이미지 수
+
+type XAuthFn = (method: string, url: string, query?: Record<string, string>) => string;
+
+function xAuthFor(keys: XKeys | null, bearerToken: string): XAuthFn {
+  return (method, url, query = {}) => (keys ? buildXOAuthHeader(method, url, keys, query) : `Bearer ${bearerToken}`);
+}
+
+async function pollXMediaStatus(mediaId: string, authFor: XAuthFn): Promise<{ ok: true } | { error: string }> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const query = { command: "STATUS", media_id: mediaId };
+    const url = `${X_MEDIA_UPLOAD_API}?command=STATUS&media_id=${encodeURIComponent(mediaId)}`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { Authorization: authFor("GET", X_MEDIA_UPLOAD_API, query) },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      return { error: "X 이미지 처리 상태 확인 중 네트워크 오류가 발생했습니다." };
+    }
+    if (!res.ok) return { error: `X 이미지 처리 상태 확인에 실패했습니다 (HTTP ${res.status}).` };
+    const body = (await res.json().catch(() => ({}))) as { data?: { processing_info?: { state?: string } } };
+    const state = body.data?.processing_info?.state;
+    if (!state || state === "succeeded") return { ok: true };
+    if (state === "failed") return { error: "X 가 이미지 처리에 실패했습니다. 이미지를 다시 선택해주세요." };
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return { error: "X 이미지 처리 시간이 초과됐습니다. 잠시 후 다시 시도해주세요." };
+}
+
+async function uploadXImageMedia(
+  keys: XKeys | null,
+  bearerToken: string,
+  bytes: Uint8Array,
+  contentType: string,
+): Promise<{ id: string } | { error: string }> {
+  const authFor = xAuthFor(keys, bearerToken);
+
+  const initUrl = `${X_MEDIA_UPLOAD_API}/initialize`;
+  let initRes: Response;
+  try {
+    initRes = await fetch(initUrl, {
+      method: "POST",
+      headers: { Authorization: authFor("POST", initUrl), "Content-Type": "application/json" },
+      body: JSON.stringify({ media_type: contentType, total_bytes: bytes.byteLength, media_category: "tweet_image" }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    return { error: "X 이미지 업로드 초기화 중 네트워크 오류가 발생했습니다." };
+  }
+  if (!initRes.ok) return { error: `X 이미지 업로드 초기화에 실패했습니다 (HTTP ${initRes.status}).` };
+  const initBody = (await initRes.json().catch(() => ({}))) as { data?: { id?: string }; id?: string };
+  const mediaId = initBody.data?.id ?? initBody.id;
+  if (!mediaId) return { error: "X 이미지 업로드 초기화 응답에 미디어 번호가 없습니다." };
+
+  const appendUrl = `${X_MEDIA_UPLOAD_API}/${mediaId}/append`;
+  const form = new FormData();
+  form.set("segment_index", "0");
+  form.set("media", new Blob([Uint8Array.from(bytes)], { type: contentType }));
+  let appendRes: Response;
+  try {
+    appendRes = await fetch(appendUrl, {
+      method: "POST",
+      headers: { Authorization: authFor("POST", appendUrl) },
+      body: form,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    return { error: "X 이미지 업로드 전송 중 네트워크 오류가 발생했습니다." };
+  }
+  if (!appendRes.ok && appendRes.status !== 204) {
+    return { error: `X 이미지 업로드 전송에 실패했습니다 (HTTP ${appendRes.status}).` };
+  }
+
+  const finalizeUrl = `${X_MEDIA_UPLOAD_API}/${mediaId}/finalize`;
+  let finalizeRes: Response;
+  try {
+    finalizeRes = await fetch(finalizeUrl, {
+      method: "POST",
+      headers: { Authorization: authFor("POST", finalizeUrl) },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    return { error: "X 이미지 업로드 마무리 중 네트워크 오류가 발생했습니다." };
+  }
+  if (!finalizeRes.ok) return { error: `X 이미지 업로드 마무리에 실패했습니다 (HTTP ${finalizeRes.status}).` };
+  const finalizeBody = (await finalizeRes.json().catch(() => ({}))) as {
+    data?: { processing_info?: { state?: string } };
+  };
+  const state = finalizeBody.data?.processing_info?.state;
+  if (state && state !== "succeeded") {
+    const polled = await pollXMediaStatus(mediaId, authFor);
+    if ("error" in polled) return { error: polled.error };
+  }
+  return { id: mediaId };
+}
+
+// 발행 요청의 image_url은 우리 서버가 발급한 서명 배달 주소(/api/images/deliver/<토큰>, SNS-016)
+// 아니면 외부 공개 URL이다. 서명 배달 주소는 Meta/Threads처럼 "플랫폼이 직접 가져가는" 용도가
+// 아니라 우리 서버 저장소(media-store, 로컬 또는 R2)를 가리키므로, 공개 터널을 다시 한 바퀴
+// HTTP로 왕복하지 않고 토큰을 검증해 저장소에서 바로 읽는다. 외부 URL은 Bluesky 경로와 같은
+// 2단 SSRF 가드(isSafePublicImageUrl + isAllowedServerFetchImageHost)를 통과해야만 fetch한다.
+async function resolveServerImageBytes(imageUrl: string): Promise<{ bytes: Uint8Array; contentType: string } | { error: string }> {
+  let parsed: URL;
+  try {
+    parsed = new URL(imageUrl);
+  } catch {
+    return { error: "이미지 주소를 해석할 수 없습니다." };
+  }
+
+  const prefix = "/api/images/deliver/";
+  if (parsed.pathname.startsWith(prefix)) {
+    const encoded = parsed.pathname.slice(prefix.length);
+    let token: string;
+    try {
+      token = decodeURIComponent(encoded);
+    } catch {
+      return { error: "이미지 주소를 해석할 수 없습니다." };
+    }
+    const claim = verifyImageToken(token);
+    if (!claim) return { error: "이미지 주소가 만료되었거나 유효하지 않습니다. 이미지를 다시 선택해주세요." };
+    try {
+      const stored = await mediaStore.get(claim.tenantId, claim.filename);
+      if (!stored) return { error: "이미지 파일을 찾을 수 없습니다. 이미지를 다시 선택해주세요." };
+      const bytes = await readBodyWithLimit(stored.body, X_MAX_IMAGE_BYTES);
+      if (!bytes) return { error: "이미지 파일이 X 업로드 용량(5MB)을 초과합니다." };
+      const contentType = stored.contentType || X_EXT_CONTENT_TYPE[path.extname(claim.filename).toLowerCase()] || "application/octet-stream";
+      return { bytes, contentType };
+    } catch {
+      return { error: "이미지 저장소에서 파일을 읽지 못했습니다. 잠시 후 다시 시도해주세요." };
+    }
+  }
+
+  if (!isSafePublicImageUrl(imageUrl) || !isAllowedServerFetchImageHost(imageUrl)) {
+    return { error: "이미지 주소가 허용된 호스트가 아니라 가져올 수 없습니다." };
+  }
+  try {
+    const resp = await fetch(imageUrl, { redirect: "manual", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    const contentType = resp.headers.get("content-type") || "";
+    if (!resp.ok || !contentType.startsWith("image/") || !resp.body) {
+      return { error: "이미지를 가져오지 못했습니다. 이미지를 다시 선택해주세요." };
+    }
+    const bytes = await readBodyWithLimit(resp.body, X_MAX_IMAGE_BYTES);
+    if (!bytes) return { error: "이미지 파일이 X 업로드 용량(5MB)을 초과합니다." };
+    return { bytes, contentType };
+  } catch {
+    return { error: "이미지를 가져오는 중 네트워크 오류가 발생했습니다." };
+  }
+}
+
+// X 발행 (API v2). 4키 OAuth1.0a 서명 또는 화면 연결 OAuth2 Bearer. 공식 가중 문자가 280을
+// 넘으면 차단한다. imageUrls가 있으면 미디어 업로드(최대 4장, X 공식 한도)를 먼저 끝내고
+// media_ids를 실어 올린다 — 업로드가 실패하면 텍스트만으로 조용히 올리지 않고 발행 자체를
+// 중단한다(2026-10-02 실측: 3장 카드덱이 텍스트만 올라간 사고의 재발 방지).
+export async function publishX(cred: ChannelCred, text: string, imageUrls?: string[]): Promise<PublishResult> {
   const validation = validatePlatformPublish("x", { body: text });
   if (validation.blocking.length > 0) {
     return { ok: false, error: validation.blocking[0].message };
+  }
+  const images = (imageUrls ?? []).filter((url) => typeof url === "string" && url.trim().length > 0);
+  if (images.length > X_MAX_IMAGES_PER_POST) {
+    return { ok: false, error: `X 는 한 번에 이미지 ${X_MAX_IMAGES_PER_POST}장까지만 올릴 수 있습니다.` };
   }
   const meta = (cred.meta ?? {}) as Record<string, unknown>;
   // apiSecret/accessSecret은 게이트웨이 표기(apiKeySecret/accessTokenSecret)도 허용
@@ -920,11 +1098,25 @@ export async function publishX(cred: ChannelCred, text: string): Promise<Publish
   if (!hasLegacyKeys && !cred.token) {
     return { ok: false, error: "X 연결이 없습니다. 발행실에서 X 를 다시 연결해 주세요." };
   }
+
+  const mediaIds: string[] = [];
+  for (const imageUrl of images) {
+    const resolved = await resolveServerImageBytes(imageUrl);
+    if ("error" in resolved) {
+      return { ok: false, error: `X 이미지 준비 실패: ${resolved.error}` };
+    }
+    const uploaded = await uploadXImageMedia(hasLegacyKeys ? keys : null, cred.token, resolved.bytes, resolved.contentType);
+    if ("error" in uploaded) {
+      return { ok: false, error: `X 이미지 업로드 실패: ${uploaded.error}` };
+    }
+    mediaIds.push(uploaded.id);
+  }
+
   const auth = hasLegacyKeys ? buildXOAuthHeader("POST", url, keys) : `Bearer ${cred.token}`;
   const resp = await fetch(url, {
     method: "POST",
     headers: { Authorization: auth, "Content-Type": "application/json" },
-    body: JSON.stringify({ text: body }),
+    body: JSON.stringify(mediaIds.length > 0 ? { text: body, media: { media_ids: mediaIds } } : { text: body }),
   });
   if (!resp.ok) {
     const raw = (await resp.text()).slice(0, 300);
