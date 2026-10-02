@@ -191,7 +191,13 @@ export async function startTikTokVideoPost(input: {
     });
     const body = await res.json() as TikTokEnvelope<{ publish_id?: string }>;
     if (!res.ok || body.error?.code !== "ok" || !body.data?.publish_id) {
-      return { ok: false, reason: body.error?.code || "provider_rejected" };
+      // 2026-10-02 Codex 교차검수(PR #104) MAJOR: body.error?.code는 TikTok이 보내는
+      // 외부 문자열이라 검증 없이 로그·DB에 넣으면 안 된다(이 파일의 회귀 테스트가
+      // "access_token=provider-secret" 로 그 위험을 흉내 낸다). 알려진 코드 허용 목록
+      // (tiktokRejectReasonMessage의 매핑 키)으로만 통과시키고, 그 밖은 전부 고정 코드
+      // "provider_rejected"로 접어서 반환한다 — 호출부가 로그에 찍는 reason은 이 시점에
+      // 이미 안전이 보장된 값이다.
+      return { ok: false, reason: normalizeTikTokReason(body.error?.code) };
     }
     return { ok: true, publishId: body.data.publish_id };
   } catch {
@@ -200,7 +206,9 @@ export async function startTikTokVideoPost(input: {
 }
 
 /**
- * TikTok Content Posting API의 거부 코드 → 한국어 안내.
+ * TikTok Content Posting API의 거부 코드 → 한국어 안내. normalizeTikTokReason과
+ * tiktokRejectReasonMessage가 같은 허용 목록을 공유한다(2026-10-02 Codex 교차검수 후
+ * 하나로 합침 — 목록이 둘로 갈라지면 한쪽만 갱신돼 새 코드가 조용히 새나간다).
  *
  * 2026-10-02 결함(회장 지적): TikTok 거부 사유(startTikTokVideoPost의 reason)를 route.ts가
  * 버리고 "앱 권한과 계정 상태를 확인해주세요" 한 줄로만 답했다. 실측에서 공개
@@ -210,26 +218,39 @@ export async function startTikTokVideoPost(input: {
  * 않고, 알려진 코드만 고정 한국어로 번역한다(ADR-007 조용한 실패 금지 + 원문 비노출 원칙
  * 둘 다 지킨다). 참고: https://developers.tiktok.com/doc/content-posting-api-reference-direct-post
  */
+const TIKTOK_KNOWN_REJECT_MESSAGES: Record<string, string> = {
+  unaudited_client_can_only_post_to_private_accounts:
+    "TikTok 앱 심사 전이라 공개 게시가 막혀 있습니다. 계정을 비공개로 바꾸고 나만 보기로 올리거나, 심사 통과 후 공개로 올릴 수 있습니다.",
+  spam_risk_too_many_posts:
+    "TikTok이 단시간에 너무 많은 게시로 판단해 막았습니다. 시간을 두고 다시 시도해 주세요.",
+  spam_risk_user_banned_from_posting:
+    "이 TikTok 계정은 게시가 제한된 상태입니다. TikTok 앱에서 계정 상태를 확인해 주세요.",
+  reached_active_user_cap:
+    "앱이 심사 전이라 TikTok이 허용하는 활성 사용자 수를 넘었습니다. 심사 통과 후 다시 시도해 주세요.",
+  url_ownership_unverified:
+    "영상 주소의 소유권이 TikTok에 확인되지 않았습니다. 잠시 후 다시 시도해 주세요.",
+  privacy_level_option_mismatch:
+    "선택한 공개 범위를 이 계정에서 쓸 수 없습니다. 공개 범위를 바꿔 다시 시도해 주세요.",
+  invalid_file_upload:
+    "영상 파일을 TikTok이 읽지 못했습니다. 다른 형식으로 다시 만들어 주세요.",
+  rate_limit_exceeded:
+    "TikTok 요청이 너무 잦아 잠시 막혔습니다. 몇 분 뒤 다시 시도해 주세요.",
+  provider_rejected: "TikTok이 발행 요청을 거부했습니다. 앱 권한과 계정 상태를 확인해주세요.",
+  provider_unavailable: "TikTok 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+};
+
+/**
+ * TikTok이 돌려준 거부 코드를 허용 목록으로 걸러낸다. 목록 밖의 값(TikTok이 문서에 없는
+ * 코드를 보내거나, 응답이 손상된 경우)은 전부 "provider_rejected"로 접는다 — 이 시점
+ * 이후로는 reason이 로그·DB 어디에 찍혀도 안전하다는 것을 함수 경계에서 보장한다.
+ */
+function normalizeTikTokReason(reason: string | undefined): string {
+  if (reason && Object.prototype.hasOwnProperty.call(TIKTOK_KNOWN_REJECT_MESSAGES, reason)) return reason;
+  return "provider_rejected";
+}
+
 export function tiktokRejectReasonMessage(reason: string): string {
-  const known: Record<string, string> = {
-    unaudited_client_can_only_post_to_private_accounts:
-      "TikTok 앱 심사 전이라 공개 게시가 막혀 있습니다. 계정을 비공개로 바꾸고 나만 보기로 올리거나, 심사 통과 후 공개로 올릴 수 있습니다.",
-    spam_risk_too_many_posts:
-      "TikTok이 단시간에 너무 많은 게시로 판단해 막았습니다. 시간을 두고 다시 시도해 주세요.",
-    spam_risk_user_banned_from_posting:
-      "이 TikTok 계정은 게시가 제한된 상태입니다. TikTok 앱에서 계정 상태를 확인해 주세요.",
-    reached_active_user_cap:
-      "앱이 심사 전이라 TikTok이 허용하는 활성 사용자 수를 넘었습니다. 심사 통과 후 다시 시도해 주세요.",
-    url_ownership_unverified:
-      "영상 주소의 소유권이 TikTok에 확인되지 않았습니다. 잠시 후 다시 시도해 주세요.",
-    privacy_level_option_mismatch:
-      "선택한 공개 범위를 이 계정에서 쓸 수 없습니다. 공개 범위를 바꿔 다시 시도해 주세요.",
-    invalid_file_upload:
-      "영상 파일을 TikTok이 읽지 못했습니다. 다른 형식으로 다시 만들어 주세요.",
-    rate_limit_exceeded:
-      "TikTok 요청이 너무 잦아 잠시 막혔습니다. 몇 분 뒤 다시 시도해 주세요.",
-  };
-  return known[reason] ?? "TikTok이 발행 요청을 거부했습니다. 앱 권한과 계정 상태를 확인해주세요.";
+  return TIKTOK_KNOWN_REJECT_MESSAGES[reason] ?? TIKTOK_KNOWN_REJECT_MESSAGES.provider_rejected;
 }
 
 export async function fetchTikTokPostStatus(

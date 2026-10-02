@@ -105,7 +105,13 @@ export async function POST(request: Request) {
         }
       } catch (error) {
         // 한 테넌트의 실패가 스윕 전체를 끊지 않는다 — 나머지 테넌트는 계속 돈다.
-        tenants.push({ tenantId: tid, ok: false, error: error instanceof Error ? error.message : String(error) });
+        //
+        // 2026-10-02 Codex 교차검수(PR #104) MAJOR: 임의 예외의 .message를 응답에 그대로
+        // 담으면 DB 연결 문자열·내부 URL·토큰이 포함된 예외가 그대로 나갈 수 있다(이
+        // 라우트는 운영자 토큰으로만 닿지만, 이 파일의 다른 실패 경로들은 전부 원문을
+        // 로그로만 보내고 응답은 고정 문구로 가린다 — 같은 경계를 지킨다).
+        console.error("성과 수집 전체 스윕 실패", { tenantId: tid, error });
+        tenants.push({ tenantId: tid, ok: false, error: "성과 수집에 실패했습니다. 서버 로그를 확인해 주세요." });
       }
     }
     return Response.json({ ok: true, mode: "all-tenants", tenantCount: tenantIds.length, collected, tenants });

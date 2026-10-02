@@ -11,6 +11,7 @@ const H = vi.hoisted(() => ({
     ["tenant-b", { ok: false }],
   ]),
   collectCalls: [] as string[],
+  collectThrowMessage: "boom",
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({ effectiveTenantId: vi.fn(async () => null) }));
@@ -25,7 +26,7 @@ vi.mock("@/lib/metrics-collector", () => ({
   collectMetrics: vi.fn(async (tenantId: string) => {
     H.collectCalls.push(tenantId);
     const result = H.collectResults.get(tenantId);
-    if (result === "throw") throw new Error("boom");
+    if (result === "throw") throw new Error(H.collectThrowMessage);
     return result ?? null;
   }),
   failureDetailsFor: vi.fn((details: unknown) => details),
@@ -63,8 +64,13 @@ describe("POST /api/metrics — 운영자 전체 테넌트 스윕", () => {
     ]);
   });
 
-  it("한 테넌트 수집이 예외를 던져도 나머지 테넌트는 계속 처리한다", async () => {
+  it("한 테넌트 수집이 예외를 던져도 나머지 테넌트는 계속 처리하고, 예외 원문은 응답에 안 담는다", async () => {
+    // 2026-10-02 Codex 교차검수(PR #104) MAJOR: 예외 메시지에 내부 URL·토큰 같은 민감
+    // 정보가 들어 있어도 운영자 응답에 원문이 그대로 나가면 안 된다(이 테스트는 "boom"이
+    // 아니라 비밀값 형태를 흉내 낸 메시지로 그 경계를 직접 확인한다).
     H.collectResults.set("tenant-a", "throw" as unknown as { ok: boolean });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    H.collectThrowMessage = "boom at postgres://user:secret-password@internal-host/db";
     const { POST } = await import("@/app/api/metrics/route");
     const request = new Request("http://localhost/api/metrics", {
       method: "POST",
@@ -77,9 +83,11 @@ describe("POST /api/metrics — 운영자 전체 테넌트 스윕", () => {
     expect(H.collectCalls.sort()).toEqual(["tenant-a", "tenant-b"]);
     const tenantA = body.tenants.find((t: { tenantId: string }) => t.tenantId === "tenant-a");
     expect(tenantA.ok).toBe(false);
-    expect(tenantA.error).toContain("boom");
+    expect(JSON.stringify(body)).not.toContain("secret-password");
+    expect(tenantA.error).toBe("성과 수집에 실패했습니다. 서버 로그를 확인해 주세요.");
     const tenantB = body.tenants.find((t: { tenantId: string }) => t.tenantId === "tenant-b");
     expect(tenantB.ok).toBe(false);
+    consoleErrorSpy.mockRestore();
   });
 
   it("운영자 토큰 없이 tenant_id 없이 호출하면 400을 돌려준다(권한 없는 전체 스윕 금지)", async () => {
