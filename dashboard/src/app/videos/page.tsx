@@ -9,6 +9,13 @@ import { useToast } from "@/components/layout/Toast";
 import { useUIStore } from "@/store/ui-store";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { confirmAction } from "@/components/shared/ConfirmHost";
+import {
+  allowedPrivacyLevels,
+  disclosureValidationError,
+  musicUsageConfirmationText,
+  resolvePrivacyAfterDisclosureChange,
+  type TikTokDisclosureState,
+} from "@/lib/studio/tiktok-disclosure";
 
 interface Video {
   filename: string;
@@ -118,6 +125,11 @@ export default function VideosPage() {
   const [tiktokDisableDuet, setTiktokDisableDuet] = useState(false);
   const [tiktokDisableStitch, setTiktokDisableStitch] = useState(false);
   const [tiktokAiGenerated, setTiktokAiGenerated] = useState(true);
+  // 2026-10-03 독립 리뷰 m3(TikTok Content Sharing Guidelines) — studio 발행실과
+  // 같은 계약. 상업 콘텐츠 공개는 기본 꺼짐, 사람이 직접 켠다.
+  const [tiktokDisclosureEnabled, setTiktokDisclosureEnabled] = useState(false);
+  const [tiktokBrandOrganic, setTiktokBrandOrganic] = useState(false);
+  const [tiktokBrandContent, setTiktokBrandContent] = useState(false);
   const [publishingPlatform, setPublishingPlatform] = useState<string | null>(null);
   // publish_id는 TikTok이 비동기 처리하는 동안 유일한 회수 키다. 탭 새로고침 뒤에도 현재
   // workspace에 한해서만 polling을 재개한다(다른 tenant의 이전 브라우저 상태는 섞지 않는다).
@@ -156,11 +168,24 @@ export default function VideosPage() {
     creator?: TikTokCreator;
   }>(tiktokCreatorUrl, fetcher);
   const tiktokCreator = tiktokCreatorData?.creator;
+  const tiktokDisclosureState: TikTokDisclosureState = {
+    disclosureEnabled: tiktokDisclosureEnabled,
+    brandOrganic: tiktokBrandOrganic,
+    brandContent: tiktokBrandContent,
+  };
+  const tiktokAllowedPrivacyLevels = tiktokCreator ? allowedPrivacyLevels(tiktokDisclosureState, tiktokCreator.privacyLevels) : [];
+  const tiktokDisclosureError = disclosureValidationError(tiktokDisclosureState);
+  useEffect(() => {
+    setTiktokPrivacy((current) => resolvePrivacyAfterDisclosureChange(current, tiktokDisclosureState, tiktokCreator?.privacyLevels ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiktokDisclosureEnabled, tiktokBrandContent, tiktokCreator?.privacyLevels]);
 
   useEffect(() => {
     setPublishAccountId("");
     setTiktokAccountId("");
     setTiktokPrivacy("");
+    // m3: 작업 공간을 바꾸면 상업 콘텐츠 공개도 같이 비운다.
+    setTiktokDisclosureEnabled(false); setTiktokBrandOrganic(false); setTiktokBrandContent(false);
     const workspaceId = activeWorkspace?.id;
     const storageKey = workspaceId ? `tiktok-pending:${workspaceId}` : "";
     if (!workspaceId) {
@@ -319,11 +344,22 @@ export default function VideosPage() {
           disable_duet: tiktokDisableDuet,
           disable_stitch: tiktokDisableStitch,
           is_ai_generated: tiktokAiGenerated,
+          // m3: studio 발행실과 같은 계약. route.ts는 아직 이 세 필드를 받지 않는다
+          // (서버 배선은 별도 작업) — 화면 계약을 studio와 맞추는 이번 범위에서는
+          // 값을 함께 보내되 소비되지 않는다는 사실을 숨기지 않는다.
+          disclosure_enabled: tiktokDisclosureEnabled,
+          brand_organic_toggle: tiktokBrandOrganic,
+          brand_content_toggle: tiktokBrandContent,
         } : {}),
       });
       if (res?.ok) {
         if (platform === "tiktok" && res.processing && res.publishId) {
           rememberTikTokPending(filename, res.publishId);
+        }
+        // m3: TikTok 발행 성공 후 공개 범위·상업 콘텐츠 공개를 비운다(다음 영상에
+        // 지난 선택이 조용히 넘어가지 않게).
+        if (platform === "tiktok") {
+          setTiktokPrivacy(""); setTiktokDisclosureEnabled(false); setTiktokBrandOrganic(false); setTiktokBrandContent(false);
         }
         showToast(res.processing ? `${label}에서 영상을 처리 중입니다.` : `Published to ${label}: ${res.url || ""}`, "success");
         setPublishingFile(null);
@@ -581,13 +617,40 @@ export default function VideosPage() {
                   className="mt-micro w-full rounded-chip border border-border bg-surface-2 p-stack-tight text-text"
                 >
                   <option value="">선택</option>
-                  {tiktokCreator.privacyLevels.map((privacy) => <option key={privacy} value={privacy}>{privacy}</option>)}
+                  {tiktokAllowedPrivacyLevels.map((privacy) => <option key={privacy} value={privacy}>{privacy}</option>)}
                 </select>
+                {tiktokDisclosureEnabled && tiktokBrandContent ? (
+                  <span className="mt-micro block text-caption text-subtle">
+                    유료 파트너십을 공개하면 비공개로는 올릴 수 없습니다(전체공개·친구공개만 가능).
+                  </span>
+                ) : null}
               </label>
               <label><input type="checkbox" checked={tiktokDisableComment} disabled={tiktokCreator.commentDisabled} onChange={(e) => setTiktokDisableComment(e.target.checked)} /> 댓글 끄기</label>
               <label><input type="checkbox" checked={tiktokDisableDuet} disabled={tiktokCreator.duetDisabled} onChange={(e) => setTiktokDisableDuet(e.target.checked)} /> 듀엣 끄기</label>
               <label><input type="checkbox" checked={tiktokDisableStitch} disabled={tiktokCreator.stitchDisabled} onChange={(e) => setTiktokDisableStitch(e.target.checked)} /> 스티치 끄기</label>
               <label><input type="checkbox" checked={tiktokAiGenerated} onChange={(e) => setTiktokAiGenerated(e.target.checked)} /> AI 생성 영상</label>
+              {/* m3: Content Disclosure Setting — "Your brand"(오가닉)/"Branded content"(유료 파트너십). */}
+              <label className="col-span-2 border-t border-border pt-stack-tight text-text">
+                <input
+                  type="checkbox"
+                  checked={tiktokDisclosureEnabled}
+                  onChange={(event) => {
+                    const next = event.target.checked;
+                    setTiktokDisclosureEnabled(next);
+                    if (!next) { setTiktokBrandOrganic(false); setTiktokBrandContent(false); }
+                  }}
+                /> 상업 콘텐츠 공개
+              </label>
+              {tiktokDisclosureEnabled ? (
+                <>
+                  <label><input type="checkbox" checked={tiktokBrandOrganic} onChange={(e) => setTiktokBrandOrganic(e.target.checked)} /> 내 브랜드 홍보</label>
+                  <label><input type="checkbox" checked={tiktokBrandContent} onChange={(e) => setTiktokBrandContent(e.target.checked)} /> 유료 파트너십</label>
+                  {tiktokDisclosureError ? <p className="col-span-2 text-danger">{tiktokDisclosureError}</p> : null}
+                </>
+              ) : null}
+              <p data-testid="tiktok-music-usage-confirmation" className="col-span-2 text-subtle">
+                {musicUsageConfirmationText(tiktokDisclosureState)}
+              </p>
             </div>
           )}
         </div>
@@ -789,7 +852,7 @@ export default function VideosPage() {
                         릴스
                       </button>
                     )}
-                    {tiktokCreatorData?.ready && tiktokPrivacy && (
+                    {tiktokCreatorData?.ready && tiktokPrivacy && !tiktokDisclosureError && (
                       <button
                         data-testid="tiktok-publish-button"
                         disabled={publishingPlatform === `tiktok:${v.filename}` || Boolean(tiktokPending[v.filename])}
