@@ -986,10 +986,15 @@ export async function POST(request: Request) {
       // ① 예약 시도. 이미 같은 키로 in_progress/published 행이 있으면 unique index가 막아 0행.
       //    (실패 이력 status='failed'는 인덱스 대상 밖이라 재시도를 방해하지 않는다.)
       //    이 INSERT가 실패(DB 장애)하면 예약 없이 외부 발행을 강행하지 않는다 — fail closed.
+      // M-B(2026-10-02 재재검토): text 컬럼에 description이 아니라 실제로 프로바이더에
+      // 보낸 최종 caption(제목+설명)을 저장한다 — 좀비 회수 때 "이 예약이 실제로 무엇을
+      // 보냈는지"를 되읽어야 하는데, description만 저장하면 그 사이 사용자가 캡션을
+      // 고쳐도(같은 draft_id를 그대로 재전송하면 예약 행은 안 바뀐다) 회수 시점에
+      // "지금" 캡션으로 조회해 그 옛 게시물을 못 찾고 "absent"로 오판한다.
       const reserve = () =>
         withTenant(tenantId, (sql) => sql<{ id: string }[]>`
           INSERT INTO published_posts (tenant_id, draft_id, platform, text, status, account_id)
-          VALUES (${tenantId}::uuid, ${idKey}::uuid, ${REELS_PLATFORM}, ${description ?? null},
+          VALUES (${tenantId}::uuid, ${idKey}::uuid, ${REELS_PLATFORM}, ${caption || null},
                   'in_progress', ${cred.accountId ?? null}::uuid)
           ON CONFLICT DO NOTHING
           RETURNING id
@@ -1018,10 +1023,13 @@ export async function POST(request: Request) {
         // Reel을 두 번 올린다. /api/publish의 기존 패턴(findRecentProviderPost 선조회)을
         // 그대로 따른다: found면 그 결과로 확정하고 재발행하지 않는다, unknown이면
         // uncertain으로 못박고 재발행을 허용하지 않는다, absent로 확인됐을 때만 회수한다.
-        let staleRow: { id: string; published_at: string } | undefined;
+        // M-B: text도 함께 읽는다 — 그 예약이 실제로 보낸 caption(지금 요청의 caption이
+        // 아니라)으로 조회해야 사용자가 그사이 캡션을 고쳤거나 재전송 payload가 달라져도
+        // 옛 게시물을 올바르게 찾는다.
+        let staleRow: { id: string; published_at: string; text: string | null } | undefined;
         try {
-          [staleRow] = await withTenant(tenantId, (sql) => sql<{ id: string; published_at: string }[]>`
-            SELECT id::text, published_at::text
+          [staleRow] = await withTenant(tenantId, (sql) => sql<{ id: string; published_at: string; text: string | null }[]>`
+            SELECT id::text, published_at::text, text
               FROM published_posts
              WHERE tenant_id = ${tenantId}::uuid
                AND draft_id = ${idKey}::uuid
@@ -1038,7 +1046,10 @@ export async function POST(request: Request) {
         }
 
         if (staleRow) {
-          const readback = await findRecentProviderPost("instagram", cred, caption, new Date(staleRow.published_at));
+          // 저장된 caption이 없는(과거 레거시 행) 경우에만 지금 caption으로 물러난다 —
+          // 있으면 반드시 그 예약이 실제로 보낸 caption을 쓴다.
+          const readbackCaption = staleRow.text ?? caption;
+          const readback = await findRecentProviderPost("instagram", cred, readbackCaption, new Date(staleRow.published_at));
           if (readback.state === "found") {
             // Meta에 이미 올라가 있다 — 재시도하지 않고 그 결과로 확정한다.
             try {
@@ -1112,7 +1123,7 @@ export async function POST(request: Request) {
              WHERE tenant_id = ${tenantId}::uuid
                AND draft_id = ${idKey}::uuid
                AND platform = ${REELS_PLATFORM}
-               AND status IN ('published', 'in_progress')
+               AND status IN ('published', 'in_progress', 'uncertain')
                AND account_id IS NOT DISTINCT FROM ${cred.accountId ?? null}::uuid
              ORDER BY published_at DESC
              LIMIT 1
@@ -1144,6 +1155,21 @@ export async function POST(request: Request) {
             alreadyPublished: true,
           });
         }
+        // MINOR(2026-10-02 재재검토): status IN 목록에 'uncertain'을 빼놓으면 이 SELECT가
+        // 그 행을 못 찾아 holder가 undefined가 되고, 아래 "in_progress" 문구로 떨어져
+        // "이미 진행 중"을 영원히 보여준다(그 상태는 다시는 in_progress로 안 바뀐다).
+        // uncertain은 "진행 중"이 아니라 "결과를 모른다"이므로 다른 문구·code로 가른다.
+        if (holder?.status === "uncertain") {
+          return Response.json(
+            {
+              ok: false,
+              error: "직전 발행의 외부 결과를 확인하지 못했습니다. 중복 게시를 막기 위해 다시 보내지 않았습니다. 채널에서 게시 여부를 확인한 뒤 처리해주세요.",
+              code: "PUBLISH_STATE_UNCERTAIN",
+              reconciliation: { required: true, action: "verify_with_provider", retryPublish: false, platform: REELS_PLATFORM },
+            },
+            { status: 409, headers: { "Cache-Control": "no-store" } },
+          );
+        }
         // in_progress(또는 조회 실패로 알 수 없음) — 성공을 흉내내지 않고 명시적 충돌로 되돌린다.
         return Response.json(
           {
@@ -1169,10 +1195,16 @@ export async function POST(request: Request) {
         return Response.json({ ok: false, error: "Reels 발행에 실패했습니다." }, { status: PROVIDER_FAILED });
       }
 
+      // M-C(2026-10-02 재재검토): media_publish가 타임아웃·네트워크 오류·5xx·id없음으로
+      // 끝나면 publishInstagramReels가 failureKind:"indeterminate"를 싣는다 — "외부에
+      // 실제로 올라갔는지 모른다"는 뜻이다. /api/publish가 이미 쓰는 계약과 같게
+      // recordStatus를 'uncertain'으로 닫아 재발행을 막는다. failed로 닫으면 재시도가
+      // 같은 Reel을 두 번 올릴 수 있다.
+      const recordStatus = result.ok ? "published" : result.failureKind === "indeterminate" ? "uncertain" : "failed";
       try {
         const [saved] = await withTenant(tenantId, (sql) => sql<{ id: string }[]>`
           UPDATE published_posts
-             SET status = ${result.ok ? "published" : "failed"},
+             SET status = ${recordStatus},
                  external_id = ${result.externalId ?? null},
                  permalink = ${result.permalink ?? null},
                  error = ${result.error ?? null},
@@ -1194,6 +1226,14 @@ export async function POST(request: Request) {
         }
       }
 
+      if (recordStatus === "uncertain") {
+        return Response.json({
+          ok: false,
+          code: "PUBLISH_STATE_UNCERTAIN",
+          error: result.error || "Reels 발행 결과를 확인하지 못했습니다. 중복 방지를 위해 다시 보내지 않았습니다.",
+          reconciliation: { required: true, action: "verify_with_provider", retryPublish: false, platform: REELS_PLATFORM },
+        }, { status: 409, headers: { "Cache-Control": "no-store" } });
+      }
       if (!result.ok) {
         // publishInstagramReels의 에러는 이미 프로바이더 원문을 담지 않는 고정 문구다.
         return Response.json({ ok: false, error: result.error || "Reels 발행에 실패했습니다." }, { status: PROVIDER_FAILED });

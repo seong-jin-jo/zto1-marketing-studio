@@ -212,13 +212,21 @@ export interface ProviderReadbackHit {
 // 이 예약의 결과로 받아들이고 다시 올리지 않는다.
 // 공급자가 조회를 거절하거나 응답하지 않으면 null 이 아니라 "unknown"을 돌려준다.
 // 모른다는 것을 없다는 것으로 바꾸면 안 된다.
+// M-B(2026-10-02 재재검토): 공급자가 공백·개행을 다듬거나(trim만으로는 안 잡히는 중간
+// 공백 정규화 등) 우리가 보낸 것과 1바이트도 안 틀리게 돌려준다는 보장이 없다. 정확
+// 일치만 보면 "실제로는 있는데 글자 하나가 달라 없다고 오판"할 수 있다. 공백을 한
+// 칸으로 접어 비교하면 그 부류는 더 잡는다.
+function normalizeForReadbackCompare(s: string): string {
+  return (s || "").replace(/\s+/g, " ").trim();
+}
+
 export async function findRecentProviderPost(
   platform: string,
   cred: ChannelCred,
   text: string,
   since: Date,
 ): Promise<{ state: "found"; hit: ProviderReadbackHit } | { state: "absent" } | { state: "unknown" }> {
-  const normalized = (text || "").trim();
+  const normalized = normalizeForReadbackCompare(text);
   if (!normalized) return { state: "unknown" };
   if (!cred.token) return { state: "unknown" };
 
@@ -235,12 +243,17 @@ export async function findRecentProviderPost(
         data?: { id?: string; text?: string; timestamp?: string; permalink?: string }[];
       };
       if (!Array.isArray(body.data)) return { state: "unknown" };
-      const hit = body.data.find((post) =>
+      const windowPosts = body.data.filter((post) =>
         typeof post.id === "string"
-        && (post.text ?? "").trim() === normalized
         && typeof post.timestamp === "string"
         && new Date(post.timestamp).getTime() >= since.getTime() - 60_000);
-      return hit?.id ? { state: "found", hit: { externalId: hit.id, permalink: hit.permalink } } : { state: "absent" };
+      const hit = windowPosts.find((post) => normalizeForReadbackCompare(post.text ?? "") === normalized);
+      if (hit?.id) return { state: "found", hit: { externalId: hit.id, permalink: hit.permalink } };
+      // M-B: 그 시간대에 뭔가 올라갔는데 정확히 일치하지 않는다 — 공급자가 다듬었을
+      // 수도, 전혀 다른 글일 수도 있다. "없다"고 단정하지 않고 모른다로 못박는다
+      // (absent로 잘못 단정하면 재시도가 진짜로 두 번째 게시물을 만든다).
+      if (windowPosts.length > 0) return { state: "unknown" };
+      return { state: "absent" };
     }
 
     if (platform === "instagram") {
@@ -254,12 +267,16 @@ export async function findRecentProviderPost(
         data?: { id?: string; caption?: string; timestamp?: string; permalink?: string }[];
       };
       if (!Array.isArray(body.data)) return { state: "unknown" };
-      const hit = body.data.find((media) =>
+      const windowMedia = body.data.filter((media) =>
         typeof media.id === "string"
-        && (media.caption ?? "").trim() === normalized
         && typeof media.timestamp === "string"
         && new Date(media.timestamp).getTime() >= since.getTime() - 60_000);
-      return hit?.id ? { state: "found", hit: { externalId: hit.id, permalink: hit.permalink } } : { state: "absent" };
+      const hit = windowMedia.find((media) => normalizeForReadbackCompare(media.caption ?? "") === normalized);
+      if (hit?.id) return { state: "found", hit: { externalId: hit.id, permalink: hit.permalink } };
+      // M-B: 같은 이유로 — 그 시간대에 미디어가 있는데 캡션이 정확히 안 맞으면 모른다로
+      // 못박는다(Meta가 캡션을 다듬었을 수 있다).
+      if (windowMedia.length > 0) return { state: "unknown" };
+      return { state: "absent" };
     }
   } catch {
     return { state: "unknown" };
@@ -569,6 +586,14 @@ export async function publishInstagramReels(
   }
   if (!finished) return { ok: false, error: "IG Reels 미디어 처리 시간 초과 — 잠시 후 다시 시도해주세요." };
 
+  // M-C(2026-10-02 재재검토): media_publish는 "이 호출 하나가 실제로 Reel을 공개로
+  // 올리는" 단계다. 이 호출이 타임아웃·네트워크 오류·5xx를 내거나 id 없는 응답을 주면,
+  // 우리는 그 요청이 Meta 쪽에서 실제로 처리됐는지 전혀 모른다 — 요청은 갔는데 응답만
+  // 못 받았을 수 있다. 이걸 평범한 {ok:false}로 닫으면 호출부가 예약을 failed로 확정해
+  // 재시도를 허용하고, 재시도가 이미 올라간 Reel 위에 두 번째 Reel을 또 올린다.
+  // failureKind:"indeterminate"를 실어 호출부(route.ts)가 uncertain으로 못박고 재발행을
+  // 막게 한다 — publishThreads·publishInstagram(일반 피드)가 이미 쓰는 같은 계약이다.
+  // 4xx(Meta가 명시적으로 거절)는 정말로 안 올라간 것이므로 definitive로 남긴다.
   let pub: Response;
   try {
     pub = await fetch(`${base}/${cred.userId}/media_publish`, {
@@ -578,11 +603,30 @@ export async function publishInstagramReels(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
-    return { ok: false, error: "IG Reels 발행 요청 실패 — 잠시 후 다시 시도해주세요." };
+    return {
+      ok: false,
+      error: "IG Reels 발행 요청 결과를 확인하지 못했습니다. 중복 방지를 위해 자동 재발행하지 않습니다.",
+      failureKind: "indeterminate",
+    };
   }
-  if (!pub.ok) return { ok: false, error: `IG Reels publish 실패(${pub.status})` };
+  if (!pub.ok) {
+    const indeterminate = pub.status >= 500;
+    return {
+      ok: false,
+      error: indeterminate
+        ? `IG Reels 발행 결과를 확인하지 못했습니다(오류 코드 ${pub.status}). 중복 방지를 위해 자동 재발행하지 않습니다.`
+        : `IG Reels publish 실패(${pub.status})`,
+      failureKind: indeterminate ? "indeterminate" : "definitive",
+    };
+  }
   const { id: mediaId } = (await pub.json().catch(() => ({}))) as { id?: string };
-  if (!mediaId) return { ok: false, error: "IG Reels publish 실패(응답에 media ID 없음)" };
+  if (!mediaId) {
+    return {
+      ok: false,
+      error: "IG Reels 발행 결과를 확인하지 못했습니다(응답에 media ID 없음). 중복 방지를 위해 자동 재발행하지 않습니다.",
+      failureKind: "indeterminate",
+    };
+  }
   // permalink 실패가 발행 성공을 뒤집지 않는다(SNS-014와 동일 계약).
   const permalink = await fetchInstagramPermalink(cred, mediaId);
   return { ok: true, externalId: mediaId, permalink };

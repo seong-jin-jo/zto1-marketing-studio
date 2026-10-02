@@ -66,17 +66,34 @@ export interface ExternalPublishPersistenceFailure {
 // /api/publish·video/publish reels 좀비회수의 409 PUBLISH_STATE_UNCERTAIN이 전부 이
 // 형태다. 폴링 쪽이 이 몸통을 `if (!data?.ok) 실패`로만 읽으면, 외부에는 이미 올라갔는데
 // (혹은 올라갔는지 모르는데) "실패"로 보여주고 재발행을 허용해 중복 게시로 이어진다.
-// 던져진 에러인지 받아온 몸통인지 상관없이 같은 기준으로 판정하도록 분리한다.
+//
+// M-A(2026-10-02 재재검토 — 회귀): 위 세 신호를 하나의 isUnresolvedPublishPayload로
+// 뭉쳐 isExternalPublishPersistenceError가 그대로 재사용했더니, persistence 필드가 없는
+// 평범한 409(code만 있는 PUBLISH_STATE_UNCERTAIN)도 "externalPublished류"로 잘못
+// 판정됐다. studio/page.tsx의 catch 블록은 isExternalPublishPersistenceError(e)가
+// true면 반드시 `e.payload.persistence.reconciliation`에 접근하는데, persistence가
+// 없으면 TypeError가 나 catch 안에서 다시 던져지고, 그 턴의 setPub이 영영 안 돌아
+// 화면이 "발행 중"에 멈춘다. 두 신호는 의미가 다르다 — ①은 "외부에는 분명히 올라갔다,
+// 기록만 복구하면 된다"(persistence.reconciliation 필드가 보장됨), ②·③은 "외부 결과
+// 자체를 모른다"(그런 보장이 없음) — 이제 서로 다른 함수로 가른다.
+
+/** ① "외부 게시가 확정됐는데 우리 기록만 못 남겼다" — persistence.reconciliation이 보장된다. */
+export function isExternalPublishConfirmedPayload(
+  payload: unknown,
+): payload is ExternalPublishPersistenceFailure {
+  if (!payload || typeof payload !== "object") return false;
+  const p = payload as { externalPublished?: unknown; persistence?: { reconciliation?: { retryPublish?: unknown } } };
+  return p.externalPublished === true && p.persistence?.reconciliation?.retryPublish === false;
+}
+
+/**
+ * ②·③ "외부 결과 자체를 모른다"(uncertain) — ①(확정된 외부 게시)은 여기서 제외한다.
+ * 호출부가 두 판정을 모두 검사하면서 중복으로 "모름" 처리하지 않게 하기 위함이다.
+ */
 export function isUnresolvedPublishPayload(payload: unknown): boolean {
   if (!payload || typeof payload !== "object") return false;
-  const p = payload as {
-    externalPublished?: unknown;
-    persistence?: { reconciliation?: { retryPublish?: unknown } };
-    code?: unknown;
-    reconciliation?: { retryPublish?: unknown };
-  };
-  // ① videoPersistenceFailure류: 외부 게시는 확인됐는데 우리 기록만 못 남겼다.
-  if (p.externalPublished === true && p.persistence?.reconciliation?.retryPublish === false) return true;
+  if (isExternalPublishConfirmedPayload(payload)) return false;
+  const p = payload as { code?: unknown; reconciliation?: { retryPublish?: unknown } };
   // ② uncertain 분기(409 PUBLISH_STATE_UNCERTAIN) — "외부 결과를 모른다".
   if (p.code === "PUBLISH_STATE_UNCERTAIN") return true;
   // ③ 그 외 reconciliation.retryPublish===false로 명시한 모든 응답(향후 확장 대비).
@@ -84,9 +101,16 @@ export function isUnresolvedPublishPayload(payload: unknown): boolean {
   return false;
 }
 
+/** ApiResponseError로 던져진 ①(확정된 외부 게시) — persistence.reconciliation 접근이 안전하다. */
 export function isExternalPublishPersistenceError(
   error: unknown,
 ): error is ApiResponseError<ExternalPublishPersistenceFailure> {
+  if (!(error instanceof ApiResponseError)) return false;
+  return isExternalPublishConfirmedPayload(error.payload);
+}
+
+/** ApiResponseError로 던져진 ②·③(결과 모름) — ①과는 반드시 분리해서 쓴다. */
+export function isUnresolvedPublishError(error: unknown): boolean {
   if (!(error instanceof ApiResponseError)) return false;
   return isUnresolvedPublishPayload(error.payload);
 }

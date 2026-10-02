@@ -26,8 +26,11 @@ const H = vi.hoisted(() => ({
     status: string;
     external_id: string | null;
     permalink: string | null;
+    text?: string | null;
   }>,
   inserts: [] as unknown[][],
+  // M-B: findRecentProviderPost에 실제로 어떤 caption이 넘어왔는지 테스트가 확인한다.
+  readbackCalls: [] as unknown[][],
   dbFail: false,
   staleReclaim: false,
   seq: 0,
@@ -45,25 +48,38 @@ vi.mock("@/lib/db", () => ({
     const sql = (strings: TemplateStringsArray, ...vals: unknown[]) => {
       if (H.dbFail) return Promise.reject(new Error("db down"));
       const q = strings.join(" ");
+      // MINOR(2026-10-02 재재검토): 실제 DB 부분 유니크 인덱스(uq_published_posts_idem,
+      // db/migrations/20260829_060_publish_intent_lease_uncertain.sql)는 WHERE절에
+      // 'uncertain'도 포함한다 — uncertain도 "재발행하면 안 되는 상태"이기 때문이다.
+      // 이 흉내가 그걸 빼먹으면 uncertain 행이 있어도 새 예약 INSERT가 충돌 없이
+      // 성공해(ON CONFLICT가 안 걸림) 홀더 조회 분기를 거치지도 않고 실제로 재발행이
+      // 나가버린다 — 테스트가 "막혔다"고 착각하게 된다.
       const live = (draft: unknown, platform: unknown, account: unknown) =>
         H.rows.find(
           (r) =>
             r.draft_id === draft &&
             r.platform === platform &&
             r.account_id === (account ?? null) &&
-            (r.status === "published" || r.status === "in_progress"),
+            (r.status === "published" || r.status === "in_progress" || r.status === "uncertain"),
         );
       if (q.includes("INSERT INTO published_posts")) {
         H.inserts.push(vals);
-        const [, draft, platform, , account] = vals as [unknown, string, string, unknown, string | null];
+        const [, draft, platform, text, account] = vals as [unknown, string, string, string | null, string | null];
         if (live(draft, platform, account)) return Promise.resolve([]); // ON CONFLICT DO NOTHING
         const id = `res-${++H.seq}`;
-        H.rows.push({ id, draft_id: draft, platform, account_id: account ?? null, status: "in_progress", external_id: null, permalink: null });
+        H.rows.push({ id, draft_id: draft, platform, account_id: account ?? null, status: "in_progress", external_id: null, permalink: null, text });
         return Promise.resolve([{ id }]);
       }
       if (q.includes("SELECT status, external_id, permalink") || q.includes("SELECT id::text, status, external_id, permalink")) {
         const [, draft, platform, account] = vals as [unknown, string, string, string | null];
         const row = live(draft, platform, account);
+        // MINOR(2026-10-02 재재검토): 이 SELECT의 실제 WHERE status IN (...) 절에
+        // 'uncertain'이 없으면(회귀 상태) uncertain 행을 안 돌려줘야 한다 — live()가
+        // 항상 uncertain을 포함하는 것과 별개로, 쿼리 텍스트 자체의 IN 목록을 존중해야
+        // 이 테스트가 그 회귀를 실제로 잡을 수 있다.
+        if (row?.status === "uncertain" && !q.includes("'in_progress', 'uncertain'")) {
+          return Promise.resolve([]);
+        }
         return Promise.resolve(row ? [row] : []);
       }
       // BLOCK-1: 좀비 예약 회수는 이제 (1)SELECT로 stale 행을 먼저 찾고 (2)Meta 조회
@@ -73,7 +89,9 @@ vi.mock("@/lib/db", () => ({
         const [, draft, platform, account] = vals as [unknown, string, string, string | null];
         const row = live(draft, platform, account);
         if (H.staleReclaim && row && row.status === "in_progress") {
-          return Promise.resolve([{ id: row.id, published_at: new Date(Date.now() - 20 * 60_000).toISOString() }]);
+          // M-B: 실제 route.ts는 이제 text도 함께 SELECT한다 — 예약 당시 저장된 caption을
+          // 그대로 돌려줘야 readback이 "지금" caption이 아니라 "그때" caption으로 간다.
+          return Promise.resolve([{ id: row.id, published_at: new Date(Date.now() - 20 * 60_000).toISOString(), text: row.text ?? null }]);
         }
         return Promise.resolve([]);
       }
@@ -140,7 +158,8 @@ vi.mock("@/lib/publish", async (importActual) => {
       H.reelsCalls.push(args);
       return H.reelsResult;
     }),
-    findRecentProviderPost: vi.fn(async () => {
+    findRecentProviderPost: vi.fn(async (...args: unknown[]) => {
+      H.readbackCalls.push(args);
       if (H.providerReadback === "found") return { state: "found", hit: H.providerReadbackHit };
       if (H.providerReadback === "unknown") return { state: "unknown" };
       return { state: "absent" };
@@ -182,6 +201,7 @@ describe("/api/video/publish — Instagram Reels", () => {
     H.seq = 0;
     H.reelsResult = { ok: true, externalId: "media-1", permalink: "https://www.instagram.com/reel/x/" };
     H.providerReadback = "absent";
+    H.readbackCalls = [];
     vi.resetModules();
   });
 
@@ -298,6 +318,39 @@ describe("/api/video/publish — Instagram Reels", () => {
     expect(JSON.stringify(json)).not.toContain("access_token");
   });
 
+  // M-C(2026-10-02 재재검토): publishInstagramReels가 failureKind:"indeterminate"를
+  // 돌려주면(media_publish 단계의 모호한 실패) 이 라우트는 그 예약을 'failed'가 아니라
+  // 'uncertain'으로 닫고, 200이 아니라 409 PUBLISH_STATE_UNCERTAIN으로 응답해야 한다 —
+  // 200+ok:false로 닫으면 화면이 평범한 실패로 읽어 재발행 버튼을 다시 띄운다.
+  it("media_publish 단계의 모호한 실패(indeterminate)는 uncertain으로 닫고 409를 돌려준다", async () => {
+    const draftId = "dddddddd-4444-4444-4444-444444444444";
+    H.reelsResult = { ok: false, error: "IG Reels 발행 결과를 확인하지 못했습니다(오류 코드 503). 중복 방지를 위해 자동 재발행하지 않습니다.", failureKind: "indeterminate" };
+    const { status, json } = await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId });
+    expect(status).toBe(409);
+    expect(json.code).toBe("PUBLISH_STATE_UNCERTAIN");
+    expect((json.reconciliation as { retryPublish?: boolean } | undefined)?.retryPublish).toBe(false);
+    expect(H.rows.find((r) => r.draft_id === draftId)?.status).toBe("uncertain");
+  });
+
+  // MINOR(2026-10-02 재재검토): uncertain으로 닫힌 뒤 같은 draft_id로 재시도하면, 홀더
+  // 조회가 'uncertain'을 status IN 목록에서 빼놓아 그 행을 못 찾고 "이미 진행 중"
+  // (publish_in_progress)을 영원히 보여줬다 — uncertain은 다시는 in_progress로 안
+  // 바뀌므로 사용자는 영원히 "진행 중"만 본다. 이제는 "결과 확인 중"(uncertain 전용
+  // code·문구)으로 정직하게 구분해야 한다.
+  it("uncertain으로 닫힌 뒤 재시도하면 '진행 중'이 아니라 '결과 확인 중'(uncertain)으로 답한다", async () => {
+    const draftId = "eeeeeeee-5555-5555-5555-555555555555";
+    H.rows.push({
+      id: "already-uncertain", draft_id: draftId, platform: "instagram_reels",
+      account_id: "22222222-2222-2222-2222-222222222222",
+      status: "uncertain", external_id: null, permalink: null,
+    });
+    const { status, json } = await callPublish({ filename: "clip.mp4", platform: "reels", draft_id: draftId });
+    expect(status).toBe(409);
+    expect(json.code).toBe("PUBLISH_STATE_UNCERTAIN");
+    expect(json.code).not.toBe("publish_in_progress");
+    expect(H.reelsCalls.length).toBe(0); // 재발행이 나가지 않았다.
+  });
+
   it("영상이 아닌 파일/경로 traversal은 외부 호출 전에 거부한다", async () => {
     expect((await callPublish({ filename: "notes.txt", platform: "reels" })).status).toBe(400);
     expect((await callPublish({ filename: "../../etc/passwd", platform: "reels" })).status).toBe(400);
@@ -407,6 +460,37 @@ describe("/api/video/publish — Instagram Reels", () => {
     expect(json.code).toBe("PUBLISH_STATE_UNCERTAIN");
     expect((json.reconciliation as { retryPublish?: boolean } | undefined)?.retryPublish).toBe(false);
     expect(H.reelsCalls.length).toBe(0);
+  });
+
+  // M-B(2026-10-02 재재검토): 좀비 회수 전에 Meta에 물을 때 "지금" 요청의 캡션이 아니라
+  // "그 예약이 실제로 보낸" 캡션으로 물어야 한다. draft_id가 같은 채로 사용자가 캡션을
+  // 고치고 재전송하면, 지금 캡션으로 물으면 Meta엔 옛 캡션으로 올라가 있어 "absent"로
+  // 오판하고 새 캡션으로 두 번째 Reel을 올린다.
+  it("예약 당시 캡션(지금 캡션이 아니라)으로 Meta에 묻는다 — 캡션을 고친 뒤 재전송해도 중복 게시 안 함", async () => {
+    const draftId = "cccccccc-3333-3333-3333-333333333333";
+    H.rows.push({
+      id: "zombie-caption-edited", draft_id: draftId, platform: "instagram_reels",
+      account_id: "22222222-2222-2222-2222-222222222222",
+      status: "in_progress", external_id: null, permalink: null,
+      text: "원래 캡션(그때 실제로 보냄)",
+    });
+    H.staleReclaim = true;
+    // Meta에는 "원래 캡션"으로 올라가 있다 — found는 readbackCalls에 그 캡션이 왔을 때만
+    // 성립하도록, 이 테스트는 H.providerReadback을 쓰지 않고 readbackCalls 자체를 검증한다.
+    H.providerReadback = "found";
+
+    const { status, json } = await callPublish({
+      filename: "clip.mp4", platform: "reels", draft_id: draftId,
+      description: "새로 고친 캡션(지금 입력창에 있는 것)",
+    });
+
+    expect(status).toBe(200);
+    expect(json).toMatchObject({ ok: true, alreadyPublished: true });
+    expect(H.reelsCalls.length).toBe(0); // 중복 게시 없음.
+    // 핵심 단언: findRecentProviderPost에 넘어간 caption이 "그때" 캡션이어야 한다.
+    const lastReadbackCall = H.readbackCalls[H.readbackCalls.length - 1];
+    expect(lastReadbackCall[2]).toBe("원래 캡션(그때 실제로 보냄)");
+    expect(lastReadbackCall[2]).not.toBe("새로 고친 캡션(지금 입력창에 있는 것)");
   });
 
   it("예약 INSERT가 DB 장애로 실패하면 외부 발행을 강행하지 않는다(fail closed)", async () => {

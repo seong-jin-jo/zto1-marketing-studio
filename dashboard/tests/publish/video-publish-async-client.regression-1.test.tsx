@@ -6,10 +6,11 @@
 // studio-publish-ui.test.tsx 패턴을 그대로 따름).
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StudioPage from "@/app/studio/page";
 import { savePendingVideoPublishJob } from "@/lib/publish-job-store";
+import { ApiResponseError } from "@/lib/api";
 
 const mocks = vi.hoisted(() => ({
   apiPost: vi.fn(),
@@ -28,11 +29,12 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", async (importActual) => {
   const actual = await importActual<typeof import("@/lib/api")>();
   return {
+    // M-A(2026-10-02 재재검토): isExternalPublishPersistenceError/isUnresolvedPublishError/
+    // ApiResponseError는 실제 구현을 그대로 쓴다(스텁으로 덮으면 이 파일이 검증하려는
+    // 바로 그 판정 로직을 테스트가 안 거치게 된다).
     ...actual,
     fetcher: mocks.fetcher,
     apiPost: (...args: unknown[]) => mocks.apiPost(...args),
-    isExternalPublishPersistenceError: () => false,
-    ApiResponseError: class ApiResponseError extends Error { payload: unknown = null; },
   };
 });
 vi.mock("@/components/layout/Toast", () => ({ useToast: () => ({ showToast: mocks.showToast }) }));
@@ -308,6 +310,55 @@ describe("발행실 — video/publish 202(jobId) 응답을 거짓-성공으로 �
     expect(pollCount).toBeGreaterThanOrEqual(3);
   }, 15000);
 
+  // MAJOR-3 구멍(2026-10-02 재재검토): TikTok init 자체가(드물지만) 서버의 바깥 예산
+  // (8초)을 넘기면, POST가 TikTok 전용 봉투({processing:true,publishId}) 대신 바깥
+  // job 경로({status:"processing", jobId})를 돌려준다. 그 job이 "완료"되면 그 결과는
+  // TikTok의 비동기 봉투 그대로다 — awaitAsyncVideoPublish가 이걸 ok:true로 읽어 url
+  // 없는 "완료"를 내버리면 TikTok이 실제로는 아직 처리 중인데 화면은 끝났다고 말한다.
+  it("TikTok init이 바깥 job 경로로 떨어져도(이중 비동기) 가짜 완료를 내지 않고 TikTok 상태 조회로 넘어간다", async () => {
+    seedTikTokStudioWork();
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-tiktok-2" };
+      // 바깥 예산을 넘긴 경우 — 서버가 TikTok 전용 봉투 대신 일반 job 봉투를 준다.
+      if (path === "/api/video/publish") return { ok: true, status: "processing", jobId: "job-tiktok-nested" };
+      throw new Error(`unexpected apiPost path: ${path}`);
+    });
+    let tiktokPollCount = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      const accountsPlatform = /\/api\/channels\/([^/]+)\/accounts/.exec(url)?.[1];
+      if (accountsPlatform) {
+        const connected = accountsPlatform === "tiktok"
+          ? [{ id: "tt-account", display_name: "TikTok 계정", username: "tt", is_default: true }]
+          : [];
+        return Response.json({ accounts: connected });
+      }
+      if (url.includes("/api/video/publish/job/job-tiktok-nested")) {
+        // 바깥 job이 완료됐다 — 그 "완료된 결과"가 TikTok 자체의 비동기 봉투다.
+        return Response.json({ ok: true, processing: true, publishId: "tt-publish-nested-1" });
+      }
+      if (url.includes("/api/tiktok/publish-status")) {
+        tiktokPollCount += 1;
+        if (tiktokPollCount < 2) return Response.json({ ok: true, status: "processing", publishId: "tt-publish-nested-1" }, { status: 202 });
+        return Response.json({ ok: true, status: "published", publishId: "tt-publish-nested-1", url: "https://www.tiktok.com/@creator/video/nested-real" });
+      }
+      throw new Error(`unmocked fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<StudioPage />);
+    const button = await findEnabledButton("선택한 1곳에 지금 발행");
+    fireEvent.click(button);
+
+    // 핵심 단언: job이 "완료"됐다고 즉시 url 없는 "완료"로 떨어지면 안 된다 — TikTok
+    // 상태 조회로 이어져 실제 permalink가 나올 때까지 기다려야 한다.
+    await waitFor(() => {
+      const link = screen.getByRole("link", { name: /새 창/ });
+      expect(link).toHaveAttribute("href", "https://www.tiktok.com/@creator/video/nested-real");
+    }, { timeout: 8000 });
+    expect(tiktokPollCount).toBeGreaterThanOrEqual(2);
+  }, 15000);
+
   // MAJOR-6(2026-10-02 독립 리뷰): 복구 effect가 [activeWorkspace?.id, draftId]에만
   // 의존해 publishTargets(렌더 시점의 usableAccounts 결과)를 캡처한다. 새로고침 직후
   // 계정 목록이 아직 fetch 중이면 그 순간 publishTargets가 비어 있어 복구가 아무 일도
@@ -405,5 +456,87 @@ describe("발행실 — video/publish 202(jobId) 응답을 거짓-성공으로 �
     await waitFor(() => expect(screen.getByText(/첫 댓글 발행에 실패했습니다|첫 댓글 API 거절/)).toBeInTheDocument(), { timeout: 8000 });
     // 완전 성공으로 집계되면 안 된다 — "새 창"(완료) 링크가 떠서는 안 된다.
     expect(screen.queryByRole("link", { name: /새 창/ })).not.toBeInTheDocument();
+  }, 15000);
+
+  // M-A(2026-10-02 재재검토 — 회귀): 동기(즉시 응답) /api/publish가 바로 409
+  // PUBLISH_STATE_UNCERTAIN을 던지는 경우(persistence 필드 없음, code만 있음). 종전엔
+  // isExternalPublishPersistenceError가 이 모양도 true로 판정해 catch 블록이
+  // `e.payload.persistence.reconciliation`에서 TypeError를 내고, 그 턴의 setPub이
+  // 영영 안 돌아 화면이 "발행 중"에 멈췄다.
+  it("동기 409 PUBLISH_STATE_UNCERTAIN(persistence 없음)을 받아도 멈추지 않고 '결과 확인 중'으로 닫는다", async () => {
+    seedThreadsStudioWork("draft-uncertain-sync-1");
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-uncertain-sync-1" };
+      if (path === "/api/publish") {
+        throw new ApiResponseError(
+          409,
+          {
+            ok: false,
+            code: "PUBLISH_STATE_UNCERTAIN",
+            error: "직전 발행의 외부 결과를 확인하지 못했습니다. 중복 게시를 막기 위해 다시 보내지 않았습니다.",
+            reconciliation: { required: true, action: "verify_with_provider", retryPublish: false, platform: "threads" },
+          },
+          "Request failed: 409",
+        );
+      }
+      throw new Error(`unexpected apiPost path: ${path}`);
+    });
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      const accountsPlatform = /\/api\/channels\/([^/]+)\/accounts/.exec(url)?.[1];
+      if (accountsPlatform) {
+        const connected = accountsPlatform === "threads"
+          ? [{ id: "threads-account", display_name: "Threads 계정", username: "th", is_default: true }]
+          : [];
+        return Response.json({ accounts: connected });
+      }
+      throw new Error(`unmocked fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<StudioPage />);
+    const button = await findEnabledButton("선택한 1곳에 지금 발행");
+    fireEvent.click(button);
+
+    // 핵심 단언: TypeError로 멈추지 않고 턴이 끝까지 돌아 "발행 중"이 풀린다. 재발행을
+    // 유도하는 "실패"가 아니라 "결과 확인 중"으로 닫혀야 한다.
+    await waitFor(() => expect(screen.getByText(/결과 확인 중|외부 게시 여부를 확인하지 못했습니다/)).toBeInTheDocument(), { timeout: 8000 });
+    expect(screen.queryByRole("button", { name: "실패한 곳만 다시 발행" })).not.toBeInTheDocument();
+  }, 15000);
+
+  // MINOR(2026-10-02 재재검토): effect cleanup(언마운트)이 cancelled 플래그만 세우고
+  // 폴링 자체(fetch 루프)는 못 멈추면, 사용자가 화면을 떠난 뒤에도 네트워크 요청이
+  // 백그라운드에서 계속 나간다. 언마운트 뒤 호출 수가 더는 늘지 않아야 한다.
+  it("복구 폴링 중 언마운트하면 그 폴링(fetch)이 즉시 멈춘다", async () => {
+    seedReelsStudioWork("draft-cleanup-1");
+    savePendingVideoPublishJob(mocks.workspace.id, "clip.mp4", "reels", "job-cleanup-1");
+    let pollCount = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      const accountsPlatform = /\/api\/channels\/([^/]+)\/accounts/.exec(url)?.[1];
+      if (accountsPlatform) {
+        const connected = accountsPlatform === "instagram"
+          ? [{ id: "ig-account", display_name: "인스타 계정", username: "ig", is_default: true }]
+          : [];
+        return Response.json({ accounts: connected });
+      }
+      if (url.includes("/api/video/publish/job/job-cleanup-1")) {
+        pollCount += 1;
+        // 영원히 처리 중 — abort되지 않으면 계속 폴링된다.
+        return Response.json({ ok: true, status: "processing", jobId: "job-cleanup-1" });
+      }
+      throw new Error(`unmocked fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { unmount } = render(<StudioPage />);
+    await waitFor(() => expect(pollCount).toBeGreaterThanOrEqual(1), { timeout: 8000 });
+
+    await act(async () => { unmount(); });
+    const countAtUnmount = pollCount;
+
+    // 기본 폴링 간격(2.5초)보다 넉넉히 기다린다 — abort가 안 됐다면 이 사이에 더 호출된다.
+    await new Promise((r) => setTimeout(r, 4000));
+    expect(pollCount).toBe(countAtUnmount);
   }, 15000);
 });

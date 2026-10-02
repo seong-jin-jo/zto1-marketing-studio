@@ -8,7 +8,9 @@ import {
   fetcher,
   apiPost,
   isExternalPublishPersistenceError,
+  isExternalPublishConfirmedPayload,
   isUnresolvedPublishPayload,
+  isUnresolvedPublishError,
   ApiResponseError,
   type ExternalPublishPersistenceFailure,
 } from "@/lib/api";
@@ -2127,29 +2129,54 @@ export default function StudioPage() {
   // 실제로 끝날 때까지 이 폴링이 기다린다. 15분 상한을 넘기면 "실패"가 아니라 "결과 확인
   // 중"으로 남겨 재발행(중복 게시)을 유도하지 않는다.
   async function awaitAsyncVideoPublish(
-    tenantId: string, filename: string, platform: string, jobId: string,
+    tenantId: string, filename: string, platform: string, jobId: string, signal?: AbortSignal,
   ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> {
     savePendingVideoPublishJob(tenantId, filename, platform, jobId);
-    const outcome = await pollJobUntilDone<{ ok?: boolean; url?: string; error?: string; status?: string }>(
+    const outcome = await pollJobUntilDone<{ ok?: boolean; url?: string; error?: string; status?: string; processing?: boolean; publishId?: string }>(
       `/api/video/publish/job/${encodeURIComponent(jobId)}?tenant_id=${encodeURIComponent(tenantId)}`,
       // MAJOR-2: 고정 헤더 대신 매 요청마다 새로 만든다 — 15분 폴링 중 토큰이 돌면
       // 고정 헤더는 그 뒤로 계속 401을 받는다.
-      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000 },
+      // MINOR(2026-10-02 재재검토): signal을 넘기면 effect cleanup(언마운트·작업공간
+      // 전환)이 cancelled=true만 찍는 게 아니라 이 폴링 자체를 즉시 멈춘다 — 안 그러면
+      // 사용자가 떠난 뒤에도 15분까지 네트워크 폴링이 백그라운드에 남는다.
+      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000, signal },
     );
     if (outcome.timedOut) {
       // pending 기록을 지우지 않는다 — 다음 방문(탭 재표시/새로고침)에서 복구 효과가 이어서
       // 확인한다. 상한을 넘겼다고 포기한 게 아니라 "이 폴링만" 멈춘 것이다.
       return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
     }
+    if (outcome.aborted) {
+      // MINOR: effect cleanup으로 멈춘 것 — pending 기록을 지우지 않는다(다음 방문에서
+      // 이어서 확인한다). 호출부가 보통 이 결과를 버리지만, 혹시 쓰더라도 "실패"로
+      // 잘못 읽히면 안 된다.
+      return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+    }
     clearPendingVideoPublishJob(tenantId, filename, platform);
-    if (outcome.notFound) return { ok: false, error: "발행 작업을 찾지 못했습니다." };
+    // MINOR(2026-10-02 재재검토): 작업을 못 찾은 것도 "실패로 확정됐다"가 아니라 "결과를
+    // 모른다"다 — 외부 게시가 실제로 일어났는데 기록만 사라졌을 가능성을 배제할 수 없다.
+    // failed로 두면 재발행 버튼이 뜬다.
+    if (outcome.notFound) return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
     const data = outcome.data;
+    // MAJOR-3 구멍(2026-10-02 재재검토): TikTok 접수(init) 자체가 8초를 넘기면, 바깥
+    // job(jobId) 경로가 먼저 타임아웃 승리해 그 작업의 "완료된 결과"가 TikTok 자체의
+    // 비동기 봉투({ok:true, processing:true, publishId})가 된다. 이 함수는 그걸 그냥
+    // `ok:true`로 읽어 url 없는 "완료"를 내버렸다 — 실제로는 TikTok이 아직도 처리
+    // 중이다. publishId가 보이면 TikTok 전용 폴러로 넘긴다.
+    if (data?.processing && data.publishId) {
+      return awaitAsyncTikTokPublish(data.publishId, signal);
+    }
     if (!data?.ok) {
       // BLOCK-1(2026-10-02 독립 리뷰): "외부에는 올라갔는데 우리 기록만 못 남겼다" 또는
       // "외부 결과를 확인하지 못했다"는 신호를 평범한 "실패"로 읽으면 안 된다 — 실패로
       // 보이면 재발행 버튼이 다시 눌려 같은 영상이 두 번 올라간다. unresolved로 돌려
       // 호출부가 "unknown"(결과 확인 중)으로 남기게 한다(재발행 대상에서 제외).
-      if (isUnresolvedPublishPayload(data)) {
+      // M-A 사이드이펙트(2026-10-02 재재검토 회귀): isUnresolvedPublishPayload가 이제
+      // ①(확정된 외부 게시)을 일부러 제외하므로, 이 data 경로(에러로 던져지지 않고 job
+      // 결과로 들어온 경우 — pendingReconciliations 배너가 없는 경로)에서는 ①도 여기서
+      // 같이 "unresolved"로 막아야 한다 — 안 그러면 ①이 평범한 failed로 떨어져 재발행
+      // 버튼이 뜬다(바로 이 BLOCK-1이 막으려던 것).
+      if (isUnresolvedPublishPayload(data) || isExternalPublishConfirmedPayload(data)) {
         return {
           ok: false, unresolved: true,
           error: data?.error || "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.",
@@ -2168,19 +2195,20 @@ export default function StudioPage() {
   // rememberTikTokPending과 같은 정본)를 그대로 쓴다 — 그 라우트도 진행 중이면
   // status:"processing"을 주므로 job-poll.ts와 계약이 맞는다.
   async function awaitAsyncTikTokPublish(
-    publishId: string,
+    publishId: string, signal?: AbortSignal,
   ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> {
     const outcome = await pollJobUntilDone<{ ok?: boolean; status?: string; url?: string; error?: string }>(
       `/api/tiktok/publish-status?publish_id=${encodeURIComponent(publishId)}`,
-      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000 },
+      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000, signal },
     );
     if (outcome.timedOut) {
       return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
     }
-    if (outcome.notFound) return { ok: false, error: "발행 작업을 찾지 못했습니다." };
+    if (outcome.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+    if (outcome.notFound) return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
     const data = outcome.data;
     if (data?.status === "failed" || data?.ok === false) {
-      if (isUnresolvedPublishPayload(data)) {
+      if (isUnresolvedPublishPayload(data) || isExternalPublishConfirmedPayload(data)) {
         return { ok: false, unresolved: true, error: data?.error || "외부 게시 여부를 확인하지 못했습니다." };
       }
       return { ok: false, error: data?.error || "TikTok 발행에 실패했습니다" };
@@ -2196,12 +2224,15 @@ export default function StudioPage() {
   // 계약과 안 맞는다 — pollJobUntilDone으로 억지로 끼워맞추지 않고, 같은 2.5초 간격·
   // 백그라운드 깨우기(wakeableSleep, job-poll.ts와 같은 정본)로 직접 루프를 돈다.
   async function awaitAsyncSocialPublish(
-    tenantId: string, draftId: string, platform: string,
+    tenantId: string, draftId: string, platform: string, signal?: AbortSignal,
   ): Promise<{ ok: boolean; permalink?: string; publishedAt?: string; error?: string; unresolved?: boolean; partial?: boolean }> {
     savePendingSocialPublishJob(tenantId, draftId, platform);
     const start = Date.now();
     const timeoutMs = 15 * 60 * 1000;
     for (;;) {
+      // MINOR(2026-10-02 재재검토): effect cleanup이 abort하면 이 루프를 즉시 멈춘다 —
+      // 안 그러면 사용자가 떠난 뒤에도 15분까지 백그라운드 폴링이 남는다.
+      if (signal?.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
       if (Date.now() - start > timeoutMs) {
         // pending 기록을 지우지 않는다 — 다음 방문에서 복구 효과가 이어서 확인한다.
         return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
@@ -2210,15 +2241,17 @@ export default function StudioPage() {
       try {
         res = await fetch(
           `/api/publish?draft_id=${encodeURIComponent(draftId)}&platforms=${encodeURIComponent(platform)}&tenant_id=${encodeURIComponent(tenantId)}`,
-          { headers: authHeaders() },
+          { headers: authHeaders(), signal },
         );
       } catch {
-        await wakeableSleep(JOB_POLL_INTERVAL_MS);
+        if (signal?.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+        await wakeableSleep(JOB_POLL_INTERVAL_MS, signal);
         continue;
       }
       if (res.status === 404) {
+        // MINOR(2026-10-02 재재검토): 못 찾은 것도 "실패 확정"이 아니라 "모른다"다.
         clearPendingSocialPublishJob(tenantId, draftId, platform);
-        return { ok: false, error: "발행 작업을 찾지 못했습니다." };
+        return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
       }
       const body = await res.json().catch(() => null) as {
         targets?: Array<{
@@ -2232,7 +2265,7 @@ export default function StudioPage() {
       // 돌거나 DB가 잠깐 끊긴 걸 "실패"로 단정하지 않는다(authHeaders()도 루프 매번 새로
       // 호출돼 최신 토큰을 쓴다).
       if (!target || target.status === "queued" || target.status === "processing") {
-        await wakeableSleep(JOB_POLL_INTERVAL_MS);
+        await wakeableSleep(JOB_POLL_INTERVAL_MS, signal);
         continue;
       }
       clearPendingSocialPublishJob(tenantId, draftId, platform);
@@ -2459,11 +2492,22 @@ export default function StudioPage() {
         }
       } catch (e) {
         if (isExternalPublishPersistenceError(e)) {
+          // ① 외부 게시는 확정됐다 — persistence.reconciliation이 보장된 모양이라
+          // 안전하게 접근한다(M-A 전에는 이 분기가 ②·③도 함께 잡아 TypeError가 났다).
           const reconciliation = e.payload.persistence.reconciliation;
           pendingReconciliations[p] = reconciliation;
           if (e.payload.permalink) urls[p] = e.payload.permalink;
           failureReason = "외부 게시 완료·내부 기록 복구 필요 (재발행 금지)";
           errs.push(`${LABEL[p]}: ${failureReason}`);
+        } else if (isUnresolvedPublishError(e)) {
+          // M-A(2026-10-02 독립 리뷰): ②·③(외부 결과를 모른다, 예: 409
+          // PUBLISH_STATE_UNCERTAIN) — "실패"로 단정해 재발행을 유도하지 않는다.
+          // errs에 넣지 않는다(다른 "unknown" 분기들과 같은 관례 — 끝 토스트가 "실패"로
+          // 뭉뚱그리지 않게).
+          status[p] = "unknown";
+          errors[p] = e instanceof ApiResponseError
+            ? ((e.payload as { error?: string } | null)?.error || "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.")
+            : "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.";
         } else {
           failureReason = e instanceof Error ? e.message : "오류";
           errs.push(`${LABEL[p]}: ${failureReason}`);
@@ -2525,6 +2569,11 @@ export default function StudioPage() {
     const currentDraftId = draftId;
     const videoFilenameNow = videoFilename(vid?.file || vid?.url || "");
     let cancelled = false;
+    // MINOR(2026-10-02 재재검토): cancelled 플래그만으로는 "이 effect의 setPub을 더는
+    // 안 쓴다"만 멈춘다 — 그 밑에서 돌던 네트워크 폴링(fetch 루프)은 그대로 계속 돈다.
+    // 실제 effect cleanup(언마운트·작업공간 전환·draftId 변경)이 일어나면 이 signal로
+    // 폴링 자체를 즉시 끊는다.
+    const controller = new AbortController();
     void (async () => {
       for (const p of publishTargets) {
         if (cancelled) break;
@@ -2534,7 +2583,7 @@ export default function StudioPage() {
           const pending = readPendingVideoPublishJob(workspaceId, videoFilenameNow, videoPlatform);
           if (!pending) continue;
           setPub((current) => ({ ...current, running: true, status: { ...current.status, [p]: "doing" } }));
-          const resolved = await awaitAsyncVideoPublish(workspaceId, videoFilenameNow, videoPlatform, pending.jobId);
+          const resolved = await awaitAsyncVideoPublish(workspaceId, videoFilenameNow, videoPlatform, pending.jobId, controller.signal);
           if (cancelled || activeWorkspaceIdRef.current !== workspaceId) continue;
           setPub((current) => {
             const status = { ...current.status };
@@ -2549,7 +2598,7 @@ export default function StudioPage() {
           const pending = readPendingSocialPublishJob(workspaceId, currentDraftId, p);
           if (!pending) continue;
           setPub((current) => ({ ...current, running: true, status: { ...current.status, [p]: "doing" } }));
-          const resolved = await awaitAsyncSocialPublish(workspaceId, currentDraftId, p);
+          const resolved = await awaitAsyncSocialPublish(workspaceId, currentDraftId, p, controller.signal);
           if (cancelled || activeWorkspaceIdRef.current !== workspaceId) continue;
           setPub((current) => {
             const status = { ...current.status };
@@ -2564,7 +2613,7 @@ export default function StudioPage() {
         }
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
     // publishTargets 자체는 매 렌더 재계산되지만 effect 의존성에 그대로 넣으면 재구독으로
     // 중복 폴링이 된다. 다만 MAJOR-6(2026-10-02 독립 리뷰): workspace·draftId만 의존성으로
     // 두면, 새로고침 직후 계정 목록이 아직 fetch 중일 때 이 effect가 먼저 실행돼

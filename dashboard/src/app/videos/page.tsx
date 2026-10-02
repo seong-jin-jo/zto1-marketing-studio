@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
-import { fetcher, apiPost, handleUnauthorizedResponse, isUnresolvedPublishPayload } from "@/lib/api";
+import { fetcher, apiPost, handleUnauthorizedResponse, isUnresolvedPublishPayload, isExternalPublishConfirmedPayload } from "@/lib/api";
 import { authHeaders, getAuthToken } from "@/lib/auth";
 import { useToast } from "@/components/layout/Toast";
 import { useUIStore } from "@/store/ui-store";
@@ -315,7 +315,7 @@ export default function VideosPage() {
     tenantId: string, videoFilename: string, publishPlatform: string, jobId: string,
   ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> => {
     savePendingVideoPublishJob(tenantId, videoFilename, publishPlatform, jobId);
-    const outcome = await pollJobUntilDone<{ ok?: boolean; url?: string; error?: string; status?: string }>(
+    const outcome = await pollJobUntilDone<{ ok?: boolean; url?: string; error?: string; status?: string; processing?: boolean; publishId?: string }>(
       `/api/video/publish/job/${encodeURIComponent(jobId)}?tenant_id=${encodeURIComponent(tenantId)}`,
       // MAJOR-2: 고정 헤더 대신 매 요청마다 새로 만든다(studio/page.tsx와 같은 이유).
       { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000 },
@@ -324,12 +324,23 @@ export default function VideosPage() {
       return { ok: false, unresolved: true, error: "결과 확인 중입니다. 영상 목록에서 다시 확인해 주세요." };
     }
     clearPendingVideoPublishJob(tenantId, videoFilename, publishPlatform);
-    if (outcome.notFound) return { ok: false, error: "발행 작업을 찾지 못했습니다." };
+    // MINOR(2026-10-02 재재검토): 못 찾은 것도 "실패 확정"이 아니라 "모른다"다.
+    if (outcome.notFound) return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 영상 목록에서 다시 확인해 주세요." };
     const data = outcome.data;
+    // MAJOR-3 구멍(2026-10-02 재재검토): TikTok 접수(init)가 8초를 넘기면 바깥 job 경로가
+    // 먼저 타임아웃 승리해, 그 작업의 "완료된 결과"가 TikTok 자체의 비동기 봉투
+    // ({ok:true, processing:true, publishId})가 된다. 이걸 ok:true로 읽으면 url 없는
+    // "완료"를 내버린다 — 기존 tiktokPending 폴링(rememberTikTokPending)에 넘긴다.
+    if (data?.processing && data.publishId) {
+      rememberTikTokPending(videoFilename, data.publishId);
+      return { ok: false, unresolved: true, error: "TikTok에서 영상을 처리 중입니다. 영상 목록에서 확인해 주세요." };
+    }
     if (!data?.ok) {
       // BLOCK-1: 외부에는 이미 올라갔거나(기록만 못 남김) 결과를 모르는 상태를 "실패"로
       // 읽지 않는다 — 재시도 버튼을 다시 눌러 같은 영상이 두 번 올라가는 걸 막는다.
-      if (isUnresolvedPublishPayload(data)) {
+      // M-A 사이드이펙트(2026-10-02 재재검토 회귀): studio/page.tsx와 같은 이유로 확정된
+      // 외부 게시(①)도 여기서 unresolved로 막는다.
+      if (isUnresolvedPublishPayload(data) || isExternalPublishConfirmedPayload(data)) {
         return {
           ok: false, unresolved: true,
           error: data?.error || "외부 게시 여부를 확인하지 못했습니다. 영상 목록에서 다시 확인해 주세요.",
