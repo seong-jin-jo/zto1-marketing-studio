@@ -25,12 +25,21 @@ ENV NEXT_PUBLIC_GA_MEASUREMENT_ID=$NEXT_PUBLIC_GA_MEASUREMENT_ID
 # next build의 중복 검사는 이웃 OpenClaw 테스트 의존성을 설치하지 않는 이미지에서 제외한다.
 # 대신 같은 builder stage와 같은 소스에서 CI 전용 타입 검사를 먼저 통과해야 빌드가 시작된다.
 RUN npm run typecheck:ci && npm run build
+# 독립 리뷰(Dockerfile, 배포 위험): node_modules 전체(COPY --from=builder .../node_modules)를
+# 런타임 이미지로 통째로 옮기므로(아래 주석 참고) devDependencies(vitest·playwright·
+# @types/* 등 — 런타임엔 안 쓰임)까지 그대로 끌려간다. 배포 러너 디스크가 49GB에 여유
+# 16GB뿐이고 이게 콜드 빌드(캐시 없음)라 용량을 더 줄여야 한다. typecheck:ci·build가
+# 이미 끝난 뒤라 devDependencies를 지워도 빌드 결과물(.next, node_modules의 런타임
+# 패키지)에는 영향이 없다. Remotion 실행 패키지(remotion/@remotion/bundler/
+# @remotion/renderer/@remotion/player)는 모두 package.json dependencies에 있다(devDependencies
+# 아님) — prune 뒤에도 남는다(package.json 실측 확인).
+RUN npm prune --omit=dev
 
 FROM node:20-bookworm-slim
 ARG BUILD_COMMIT="unknown"
 LABEL org.opencontainers.image.revision=$BUILD_COMMIT
 # ffmpeg = 영상 자막 굽기(api/video/subtitle)와 내레이션 합성(lib/higgsfield addNarration)의
-# 실행기. fonts-noto-cjk = 그 자막을 한글로 그릴 글꼴. docker.io = docker-cli 역할.
+# 실행기. fonts-noto-cjk = 그 자막을 한글로 그릴 글꼴.
 #
 # 2026-09-14 확인: 이 이미지에 둘 다 없었다. 그래서 발행 대기 중인 영상에 자막이 한 자도
 # 없었고(내려받아 프레임을 떠서 확인) 내레이션 합성도 조용히 실패하고 있었다. 편집실에는
@@ -41,10 +50,25 @@ LABEL org.opencontainers.image.revision=$BUILD_COMMIT
 # 명시한 목록(Puppeteer/Playwright가 Debian에서 Chrome을 띄울 때 쓰는 표준 의존 세트와
 # 동일 계열)이다.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    docker.io ffmpeg fonts-noto-cjk ca-certificates \
+    ffmpeg fonts-noto-cjk ca-certificates curl gnupg \
     libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
     libasound2 libpango-1.0-0 libcairo2 libgtk-3-0 fonts-liberation libu2f-udev \
+  && rm -rf /var/lib/apt/lists/*
+# 독립 리뷰(Dockerfile, 배포 위험): `docker.io`(Debian 자체 패키지)는 데몬·containerd·
+# runc까지 끌고 와(apt-cache show 실측: Installed-Size 147MB + 의존 패키지) 이 앱이
+# 실제로 쓰는 건 CLI 클라이언트 하나뿐이다(src/app/api/*/route.ts가 호스트 소켓
+# /var/run/docker.sock에 대고 `docker restart <container>`만 호출 — 데몬은 호스트가
+# 이미 띄우고 있다). bookworm 기본 저장소에는 CLI 단독 패키지가 없다(apt-cache search
+# '^docker' 실측 확인) — Docker 공식 저장소의 `docker-ce-cli`만 CLI 단독이라 그걸 쓴다
+# (docs.docker.com/engine/install/debian/ 절차).
+RUN install -m 0755 -d /etc/apt/keyrings \
+  && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+  && chmod a+r /etc/apt/keyrings/docker.asc \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+     > /etc/apt/sources.list.d/docker.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends docker-ce-cli \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production

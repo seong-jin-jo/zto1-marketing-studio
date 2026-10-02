@@ -54,13 +54,35 @@ export type VoiceSelection = { voiceId: string; voiceName: string } | null;
 /**
  * 인트로/아웃트로(Remotion) 합성 결과. 2026-10-02 신설 — 회장 반려(R-27-5 미연결)
  * 대응: 적용 결과를 이 계약에 저장해 다른 영상 편집과 똑같이 자동저장·새로고침 복원이
- * 되게 한다. `resultFilename` 이 발행·미리보기가 원본 대신 써야 하는 합성 파일명이다.
+ * 되게 한다. `resultFilename` 이 발행이 원본 대신 올려야 하는 합성 파일명이다.
+ *
+ * `deliverUrl`(2026-10-02 독립 리뷰 M-3): `/api/higgsfield/asset/<file>`는
+ * proxy.ts TENANT_AWARE_PATHS에 걸려 Bearer 토큰을 요구하는데 `<video src>`는
+ * Authorization 헤더를 못 보낸다 — 그래서 미리보기가 401로 깨졌다. job GET이 이미
+ * 서명해 돌려주는 `/api/media/<token>` 배달 URL(media-token.ts, Bearer 불필요,
+ * 자체 HMAC 검증)을 그대로 저장해 미리보기가 그 URL을 쓰게 한다.
+ *
+ * `sourceFilename`(M-4): 이 합성이 만들어질 때의 원본 영상 파일명. 그 뒤 생성실에서
+ * 영상을 다시 만들면(원본이 바뀌면) 이 합성은 더 이상 유효하지 않다 — 발행·미리보기
+ * 양쪽에서 `isIntroOutroStale`로 걸러낸다.
  */
 export type IntroOutroApplied = {
   introCompId: string | null;
   outroCompId: string | null;
   resultFilename: string;
+  deliverUrl: string;
+  sourceFilename: string;
 } | null;
+
+/**
+ * 적용된 인트로/아웃트로가 지금 원본과 더 이상 맞지 않는지(생성실에서 영상을 다시
+ * 만든 뒤) 판정한다. currentSourceFilename을 모르면(아직 로딩 전 등) 섣불리 무효화하지
+ * 않는다 — false 를 돌려준다.
+ */
+export function isIntroOutroStale(applied: IntroOutroApplied, currentSourceFilename: string | null | undefined): boolean {
+  if (!applied || !currentSourceFilename) return false;
+  return applied.sourceFilename !== currentSourceFilename;
+}
 
 export type VideoEdit = {
   contract_version: typeof VIDEO_EDIT_CONTRACT_VERSION;
@@ -177,6 +199,12 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
     const io = v.introOutro as Record<string, unknown>;
     if (typeof io.resultFilename !== "string" || !io.resultFilename) {
       throw new VideoEditValidationError("intro_outro_result_filename", "videoEdit.introOutro.resultFilename must be a non-empty string when set");
+    }
+    if (typeof io.deliverUrl !== "string" || !io.deliverUrl) {
+      throw new VideoEditValidationError("intro_outro_deliver_url", "videoEdit.introOutro.deliverUrl must be a non-empty string when set");
+    }
+    if (typeof io.sourceFilename !== "string" || !io.sourceFilename) {
+      throw new VideoEditValidationError("intro_outro_source_filename", "videoEdit.introOutro.sourceFilename must be a non-empty string when set");
     }
     if (io.introCompId !== null && typeof io.introCompId !== "string") {
       throw new VideoEditValidationError("intro_outro_intro_id", "videoEdit.introOutro.introCompId must be a string or null");

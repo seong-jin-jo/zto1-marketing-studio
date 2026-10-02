@@ -8,12 +8,32 @@ import { resolveVideoPublishFilename } from "@/lib/studio/video-publish-filename
 describe("resolveVideoPublishFilename", () => {
   it("인트로/아웃트로가 적용돼 있으면 합성 결과 파일명을 쓴다", () => {
     const original = "video-abc123.mp4";
-    const applied = { introCompId: "intro-logo-reveal" as const, outroCompId: null, resultFilename: "video-concat-xyz.mp4" };
+    const applied = {
+      introCompId: "intro-logo-reveal" as const,
+      outroCompId: null,
+      resultFilename: "video-concat-xyz.mp4",
+      deliverUrl: "/api/media/signed-token",
+      sourceFilename: original,
+    };
     expect(resolveVideoPublishFilename(original, applied)).toBe("video-concat-xyz.mp4");
     expect(resolveVideoPublishFilename(original, applied)).not.toBe(original);
   });
 
   it("적용된 것이 없으면 원본 파일명을 그대로 쓴다", () => {
     expect(resolveVideoPublishFilename("video-abc123.mp4", null)).toBe("video-abc123.mp4");
+  });
+
+  // 2026-10-02 독립 리뷰 M-4: 합성 당시의 원본과 지금 원본이 다르면(생성실에서 영상을
+  // 다시 만든 뒤) 낡은 합성을 발행에 쓰면 안 된다 — 전혀 다른 옛 영상이 올라간다.
+  it("원본이 합성 당시와 달라졌으면(생성실 재생성) 낡은 합성을 버리고 지금 원본을 쓴다", () => {
+    const stale = {
+      introCompId: "intro-logo-reveal" as const,
+      outroCompId: null,
+      resultFilename: "video-concat-old.mp4",
+      deliverUrl: "/api/media/signed-token-old",
+      sourceFilename: "video-OLD.mp4",
+    };
+    expect(resolveVideoPublishFilename("video-NEW.mp4", stale)).toBe("video-NEW.mp4");
+    expect(resolveVideoPublishFilename("video-NEW.mp4", stale)).not.toBe("video-concat-old.mp4");
   });
 });

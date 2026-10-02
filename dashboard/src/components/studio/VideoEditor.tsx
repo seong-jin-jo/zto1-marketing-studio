@@ -35,6 +35,7 @@ import {
   VideoEditValidationError,
   addComment,
   addOverlay,
+  isIntroOutroStale,
   newId,
   removeComment,
   removeOverlay,
@@ -176,8 +177,16 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
 
   // 인트로/아웃트로가 적용돼 있으면 편집실 미리보기도 합성 결과를 보여준다(2026-10-02
   // 회장 반려: 발행은 됐는데 미리보기가 원본을 계속 보여주면 "적용 안 된 것처럼" 보인다).
-  const effectivePreviewUrl = videoEdit.introOutro
-    ? `/api/higgsfield/asset/${encodeURIComponent(videoEdit.introOutro.resultFilename)}${tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : ""}`
+  //
+  // 독립 리뷰 M-3: `/api/higgsfield/asset/...`는 proxy.ts TENANT_AWARE_PATHS에 걸려
+  // Bearer 토큰을 요구하는데 <video src>는 Authorization 헤더를 못 보낸다(401). job GET이
+  // 이미 서명해 돌려준 `/api/media/<token>` 배달 URL(deliverUrl, Bearer 불필요)을 그대로
+  // 쓴다.
+  // 독립 리뷰 M-4: 합성 당시 원본과 지금 원본(sourceFilename)이 다르면(생성실 재생성)
+  // 낡은 합성이다 — 미리보기도 되돌리고 재적용을 안내한다.
+  const introOutroStale = isIntroOutroStale(videoEdit.introOutro, sourceFilename);
+  const effectivePreviewUrl = videoEdit.introOutro && !introOutroStale
+    ? videoEdit.introOutro.deliverUrl
     : previewVideoUrl;
 
   return (
@@ -217,6 +226,12 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             <OverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
             <CommentOverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
             <VoiceSelector edit={videoEdit} run={run} syncing={syncing} />
+            {introOutroStale ? (
+              <p role="alert" className="text-caption text-danger" data-intro-outro-stale-notice>
+                원본 영상이 바뀌어 적용했던 인트로/아웃트로가 더 이상 맞지 않습니다. 미리보기·발행 모두
+                원본으로 되돌렸습니다. 다시 적용해 주세요.
+              </p>
+            ) : null}
             <IntroOutroPanel
               sourceFilename={sourceFilename}
               tenantId={tenantId}

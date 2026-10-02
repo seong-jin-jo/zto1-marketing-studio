@@ -33,33 +33,71 @@ async function getBundleUrl(): Promise<string> {
   return cachedBundleUrl;
 }
 
+// 독립 리뷰 M-2(자원): Remotion 렌더는 Chrome 프로세스 하나를 통째로 띄운다. 운영 VM은
+// 이 컨테이너 혼자 쓰는 게 아니라 발행·생성·자막 굽기 ffmpeg까지 같이 돈다 — 동시에
+// 여러 Chrome이 뜨면 그 작업들까지 끌고 내려간다. 프로세스 전역으로 동시 렌더 1개만
+// 허용하고, 나머지는 큐에서 기다린다(멀티 인스턴스 배포라면 프로세스별로만 적용되는
+// 한계가 있다 — 지금은 단일 컨테이너 배포라 충분하다).
+const MAX_CONCURRENT_RENDERS = 1;
+let activeRenderCount = 0;
+const renderWaitQueue: Array<() => void> = [];
+
+async function acquireRenderSlot(): Promise<void> {
+  if (activeRenderCount < MAX_CONCURRENT_RENDERS) {
+    activeRenderCount++;
+    return;
+  }
+  await new Promise<void>((resolve) => renderWaitQueue.push(resolve));
+  activeRenderCount++;
+}
+
+function releaseRenderSlot(): void {
+  activeRenderCount--;
+  const next = renderWaitQueue.shift();
+  if (next) next();
+}
+
+/** 테스트 전용: 큐 상태를 들여다본다(시간 의존 없이 "대기로 밀렸다"를 단언하기 위해). */
+export function _renderSlotDebugState(): { active: number; waiting: number } {
+  return { active: activeRenderCount, waiting: renderWaitQueue.length };
+}
+
 export async function renderIntroOutroClip(
   compId: IntroOutroCompId,
   props: Partial<BrandProps>,
   outputPath: string,
 ): Promise<void> {
-  const bundleUrl = await getBundleUrl();
-  // 운영 이미지는 빌드 시점에 `npx remotion browser ensure`로 Chrome Headless Shell을
-  // 내려받아 이미지에 굳힌다(Dockerfile, Debian/bookworm-slim — Alpine은 BusyBox
-  // setpriv가 Remotion의 --pdeathsig를 몰라 브라우저 실행 자체가 안 됐다, 2026-10-02
-  // 컨테이너 안 실측). REMOTION_CHROME_PATH를 명시하면 그 경로를 우선 쓰고, 없으면
-  // Remotion이 자기가 내려받은 경로를 스스로 찾는다.
-  const browserExecutable = process.env.REMOTION_CHROME_PATH || undefined;
-  const composition = await selectComposition({
-    serveUrl: bundleUrl,
-    id: compId,
-    inputProps: props,
-    browserExecutable,
-  });
-  await renderMedia({
-    composition,
-    serveUrl: bundleUrl,
-    codec: "h264",
-    outputLocation: outputPath,
-    inputProps: props,
-    browserExecutable,
-    chromiumOptions: { gl: "swangle" },
-  });
+  await acquireRenderSlot();
+  try {
+    const bundleUrl = await getBundleUrl();
+    // 운영 이미지는 빌드 시점에 `npx remotion browser ensure`로 Chrome Headless Shell을
+    // 내려받아 이미지에 굳힌다(Dockerfile, Debian/bookworm-slim — Alpine은 BusyBox
+    // setpriv가 Remotion의 --pdeathsig를 몰라 브라우저 실행 자체가 안 됐다, 2026-10-02
+    // 컨테이너 안 실측). REMOTION_CHROME_PATH를 명시하면 그 경로를 우선 쓰고, 없으면
+    // Remotion이 자기가 내려받은 경로를 스스로 찾는다.
+    const browserExecutable = process.env.REMOTION_CHROME_PATH || undefined;
+    // 독립 리뷰 M-2(--disable-dev-shm-usage): ChromiumOptions 타입에는 임의 플래그를
+    // 얹는 자리가 없다 — 대신 Remotion의 openBrowser()가 모든 렌더에 이 플래그를
+    // 무조건 포함한다(node_modules/@remotion/renderer/dist/open-browser.js:115,
+    // 2026-10-02 확인: args 배열에 '--disable-dev-shm-usage' 하드코딩). 추가 설정 불필요.
+    const composition = await selectComposition({
+      serveUrl: bundleUrl,
+      id: compId,
+      inputProps: props,
+      browserExecutable,
+    });
+    await renderMedia({
+      composition,
+      serveUrl: bundleUrl,
+      codec: "h264",
+      outputLocation: outputPath,
+      inputProps: props,
+      browserExecutable,
+      chromiumOptions: { gl: "swangle" },
+    });
+  } finally {
+    releaseRenderSlot();
+  }
 }
 
 async function probe(filePath: string): Promise<{ width: number; height: number; durationSec: number; hasAudio: boolean }> {
@@ -97,7 +135,12 @@ async function normalizeSegment(input: string, output: string): Promise<void> {
     args.push("-c:a", "aac", "-ar", "44100");
   }
   args.push(output);
-  await execFileP(FFMPEG_BIN, args, { timeout: 60000 });
+  try {
+    await execFileP(FFMPEG_BIN, args, { timeout: 60000 });
+  } catch (err) {
+    fs.rmSync(output, { force: true });
+    throw err;
+  }
 }
 
 export interface ConcatResult {
@@ -120,6 +163,13 @@ export async function concatSegments(segments: string[], outputPath: string): Pr
       ["-y", "-f", "concat", "-safe", "0", "-i", listFile, "-c", "copy", outputPath],
       { timeout: 120000 },
     );
+  } catch (err) {
+    // 독립 리뷰(minor): ffmpeg가 중간에 죽어도 outputPath에 깨진 조각 파일이 남을 수
+    // 있다 — 테넌트 영구 미디어 폴더(studioDir)에 반쪽짜리 mp4가 쌓이면 나중에 그
+    // 파일명이 재사용될 때(mediaFilename이 uuid라 실무상 희박하지만) 조용히 깨진
+    // 영상을 돌려줄 수 있다. 실패 즉시 지운다.
+    fs.rmSync(outputPath, { force: true });
+    throw err;
   } finally {
     fs.rmSync(listFile, { force: true });
   }

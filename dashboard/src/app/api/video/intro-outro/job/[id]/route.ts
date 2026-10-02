@@ -1,14 +1,7 @@
 import { effectiveTenantId } from "@/lib/tenant-auth";
-import { signMediaToken } from "@/lib/media-token";
-import { assetUrl } from "@/lib/higgsfield";
-import { readIntroOutroJob } from "@/lib/intro-outro-jobs";
+import { deliverUrl, readIntroOutroJob } from "@/lib/intro-outro-jobs";
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-function deliverUrl(tenantId: string, filename: string): string {
-  const token = signMediaToken(tenantId, filename);
-  return token ? `/api/media/${encodeURIComponent(token)}` : assetUrl(tenantId, filename);
-}
 
 // GET /api/video/intro-outro/job/[id] — 인트로/아웃트로 합성 작업 상태 조회.
 // 다른 테넌트의 jobId로는 작업 존재 자체를 알리지 않고 404(higgsfield job route와 동일 계약).

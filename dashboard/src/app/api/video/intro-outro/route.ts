@@ -9,9 +9,9 @@
 import fs from "fs";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { resolveTenantGeneratedFile } from "@/lib/storage";
-import { assetUrl, mediaFilename } from "@/lib/higgsfield";
-import { signMediaToken } from "@/lib/media-token";
-import { createIntroOutroJob, updateIntroOutroJob } from "@/lib/intro-outro-jobs";
+import { mediaFilename } from "@/lib/higgsfield";
+import { isSafePublicImageUrl, isAllowedServerFetchImageHost } from "@/lib/publish";
+import { createIntroOutroJob, hasInProgressIntroOutroJob, updateIntroOutroJob } from "@/lib/intro-outro-jobs";
 import { composeIntroOutro } from "@/lib/intro-outro-render";
 import { INTRO_OUTRO_COMPS, type IntroOutroCompId } from "../../../../../remotion/IntroOutroComps";
 
@@ -19,9 +19,18 @@ function isValidCompId(id: unknown): id is IntroOutroCompId {
   return typeof id === "string" && id in INTRO_OUTRO_COMPS;
 }
 
-function deliverUrl(tenantId: string, filename: string): string {
-  const token = signMediaToken(tenantId, filename);
-  return token ? `/api/media/${encodeURIComponent(token)}` : assetUrl(tenantId, filename);
+/**
+ * 독립 리뷰 M-1(SSRF): logoUrl은 Remotion이 띄우는 헤드리스 Chrome 안에서 그대로
+ * fetch된다(remotion/IntroOutroComps.tsx의 <Img src={logoUrl}>). 검증 없이 받으면
+ * 서버가 사설망·클라우드 메타데이터 주소(169.254.169.254 등)를 대신 가져와 브라우저
+ * 렌더 결과(=영상 프레임)로 유출할 수 있다. Bluesky/X 업로드가 이미 쓰는 두 단계 가드를
+ * 그대로 재사용한다: ①isSafePublicImageUrl(사설/루프백/링크로컬/메타데이터 IP 리터럴을
+ * lexical 하게 차단) ②isAllowedServerFetchImageHost(운영자가 명시한 exact-host
+ * allowlist만 통과 — DNS rebinding 대비). 로고 없이 보내는 건 허용(기본 렌더로 대체).
+ */
+function isValidLogoUrl(raw: unknown): raw is string {
+  return typeof raw === "string" && raw.trim().length > 0
+    && isSafePublicImageUrl(raw) && isAllowedServerFetchImageHost(raw);
 }
 
 export async function POST(request: Request) {
@@ -42,9 +51,22 @@ export async function POST(request: Request) {
   if (!introCompId && !outroCompId) {
     return Response.json({ error: "인트로 또는 아웃트로 중 하나는 선택해야 합니다." }, { status: 400 });
   }
+  const logoUrlRaw = typeof body.logoUrl === "string" ? body.logoUrl.trim() : "";
+  if (logoUrlRaw && !isValidLogoUrl(logoUrlRaw)) {
+    return Response.json({ error: "로고 URL이 유효한 공개 HTTPS 주소가 아닙니다." }, { status: 400 });
+  }
+  const logoUrl = logoUrlRaw || undefined;
   const sourcePath = resolveTenantGeneratedFile(tenantId, body.sourceFilename);
   if (!sourcePath || !fs.existsSync(sourcePath)) {
     return Response.json({ error: "원본 영상을 찾을 수 없습니다." }, { status: 404 });
+  }
+  // 독립 리뷰 M-2(자원): 테넌트당 진행 중 작업 1개 — 여러 개를 연달아 접수하면 전역
+  // 렌더 슬롯(프로세스당 1개)을 한 테넌트가 독점해 다른 테넌트가 무기한 대기한다.
+  if (hasInProgressIntroOutroJob(tenantId)) {
+    return Response.json(
+      { error: "이미 진행 중인 인트로/아웃트로 작업이 있습니다. 완료 후 다시 시도해 주세요." },
+      { status: 409 },
+    );
   }
 
   const job = createIntroOutroJob(tenantId, {
@@ -52,7 +74,7 @@ export async function POST(request: Request) {
     introCompId,
     outroCompId,
     brandName: body.brandName || "OSMU",
-    logoUrl: body.logoUrl,
+    logoUrl,
     primaryColor: body.primaryColor,
     secondaryColor: body.secondaryColor,
     fontFamily: body.fontFamily,
@@ -113,11 +135,13 @@ async function runIntroOutroJob(
     });
     updateIntroOutroJob(tenantId, jobId, { status: "completed", resultFilename: outputFilename });
   } catch (err) {
+    // 독립 리뷰(minor): err.message를 그대로 고객에게 돌려주지 않는다 — 파일 경로·
+    // ffmpeg 인자·내부 스택 단서가 섞여 나갈 수 있다(에러 메시지 기반 정보 유출).
+    // 실제 원인은 서버 로그로만 보내고, 고객에게는 고정 문구만 준다.
+    console.error(`[intro-outro] job ${jobId} (tenant ${tenantId}) 실패:`, err);
     updateIntroOutroJob(tenantId, jobId, {
       status: "failed",
-      error: err instanceof Error ? err.message : "렌더에 실패했습니다.",
+      error: "렌더에 실패했습니다. 잠시 후 다시 시도해 주세요.",
     });
   }
 }
-
-export { deliverUrl };
