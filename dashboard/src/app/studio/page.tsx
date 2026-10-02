@@ -1966,7 +1966,12 @@ export default function StudioPage() {
     const filename = videoFilename(vid?.file || vid?.url || "");
     if (!filename) return { kind: "skipped" };
     const spoken = lines.filter((line) => line.trim());
-    if (!spoken.length) return { kind: "skipped" };
+    const editNeedsFile = Boolean(videoEdit && (
+      videoEdit.subtitles.some((line) => line.cut || line.text.trim().length > 0)
+      || videoEdit.overlays.some((item) => item.text.trim().length > 0)
+      || videoEdit.comments.some((item) => item.author.trim().length > 0 && item.text.trim().length > 0)
+    ));
+    if (!spoken.length && !editNeedsFile) return { kind: "skipped" };
     const subtitleSize = editFormat.kind === "video" ? editFormat.subtitleSize : "보통";
     try {
       const r = await apiPost<{ ok?: boolean; file?: string; filename?: string; error?: string }>("/api/video/subtitle", {
@@ -1974,6 +1979,7 @@ export default function StudioPage() {
         filename,
         lines: spoken,
         subtitleSize,
+        ...(videoEdit ? { videoEdit } : {}),
       });
       if (!r?.ok || !r.file) {
         showToast(r?.error || "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요.", "error");

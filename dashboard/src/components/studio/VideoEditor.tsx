@@ -14,14 +14,10 @@
  * 텍스트)에 걸려 있어 그대로 둔다. 다만 각 오버레이 행의 초 숫자 입력칸은 규격 위반이라
  * 없애고, 시간 조정은 타임라인 드래그로만 한다.
  *
- * 렌더 반영 범위(정직하게 명시, ADR-007): 자막 **문구** 편집은 `lines`(발행이 쓰는
- * 배열)에 그대로 반영되어 `/api/video/subtitle` 굽기에 실제로 실린다. **컷은 미리보기
- * 표시 전용이다** — lines를 건드리지 않으므로 자막 글자·영상·음성은 컷 여부와 무관하게
- * 그대로 발행된다(구간을 실제로 잘라내는 것은 다음 단계). 자막·오버레이·댓글의 시간
- * 배치(타임라인 드래그)도 편집실 미리보기 전용이다 — 굽기는 지금도 영상 길이를 줄
- * 수만큼 균등하게 나눈다(video-subtitle.ts subtitleCues). 오버레이·댓글·음성은 여전히
- * 편집 상태로만 저장되고 mp4에는 굽히지 않는다. 재리뷰 MAJOR: 이전 판은 "컷도 발행에
- * 반영된다"는 화면 문구와 이 주석이 서로 어긋났다 — 화면 문구를 이 사실 하나로 통일한다.
+ * 렌더 반영(ADR-007): 발행실로 이동할 때 videoEdit 을 /api/video/subtitle 에 보낸다.
+ * 컷으로 뺀 구간, 타임라인에서 고친 자막 시간, 후킹·CTA 문구, 댓글 문구는 그때
+ * 나가는 mp4 에 굽힌다. 목소리 교체, 표지, 인트로, 아웃트로, 움직이는 제목은
+ * 아직 파일에 들어가지 않는다. 화면 문구도 이 범위만 말한다.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
@@ -221,18 +217,16 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
         <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seek} run={run} syncing={syncing} />
       </div>
       <p className="text-caption text-subtle" data-render-status-note>
-        자막 문구 수정은 실제 발행 영상에 반영됩니다. 컷은 미리보기 표시 전용입니다. 자막 글자·영상·음성은 컷과 무관하게 그대로 발행됩니다.
-        타임라인에서 끌어서 바꾼 시간 배치와 후킹·CTA·댓글 오버레이·음성 선택도 지금은 편집실 미리보기에서만 보이고, 나가는 영상 파일에 굽는 것은 다음 단계입니다.
+        발행실로 이동할 때 자막 문구, 타임라인에서 고친 자막 시간, 컷으로 뺀 구간, 후킹·CTA·댓글 문구가 영상 파일에 굽힙니다. 목소리 교체와 표지, 인트로, 아웃트로, 움직이는 제목은 아직 파일에 들어가지 않습니다.
       </p>
     </div>
   );
 }
 
 /**
- * M4(교차 리뷰 재리뷰): 컷은 lines를 안 건드리므로 실제 발행 mp4에는 컷된 줄도 그대로
- * 굽힌다. 그런데 이전 판은 미리보기에서 컷한 줄을 아예 숨겼다 — 그러면 미리보기가
- * "안 나갈 것"처럼 보여 실제 출력과 어긋난다. 컷한 줄도 계속 보여주되, 컷 여부를
- * 함께 돌려줘 흐리게 표시한다(출력과 같은 모습, 편집 의도만 다르게 표시).
+ * 컷한 줄은 미리보기에서 숨기지 않는다. 흐리게 보여 줘야 되돌릴 수 있다.
+ * 파일에서는 그 구간과 그 자막이 빠진다. 미리보기와 파일이 같은 줄을 가리키되,
+ * 미리보기는 편집 중인 줄을 계속 보여 준다.
  */
 function activeSubtitle(subtitles: SubtitleLine[], playhead: number): { text: string; cut: boolean } | null {
   const line = subtitles.find((s) => playhead >= s.startSec && playhead < s.endSec);
@@ -603,9 +597,7 @@ function SubtitleScriptEditor({
           })}
         </ol>
       )}
-      {/* M4(교차 리뷰): 컷은 자막 글자를 미리보기에서만 표시로 뺀다. 영상·음성·실제 발행
-          자막은 그대로 나간다 — 발행에서 빼는 "구간 자르기"는 아직 없다(다음 단계). */}
-      {cutCount > 0 ? <p className="text-caption text-subtle" data-video-subtitle-cut-count>컷 표시 {cutCount}개. 미리보기 표시만 바뀌고, 자막 글자·영상·음성은 그대로 발행됩니다. 되돌리기로 표시를 되돌릴 수 있습니다.</p> : null}
+      {cutCount > 0 ? <p className="text-caption text-subtle" data-video-subtitle-cut-count>컷 표시 {cutCount}개. 발행실로 이동할 때 그 구간은 영상과 소리에서 빠지고, 그 줄의 자막도 파일에 들어가지 않습니다. 되돌리기로 표시를 되돌릴 수 있습니다.</p> : null}
     </section>
   );
 }

@@ -32,6 +32,13 @@ import {
   SUBTITLE_MAX_LINES,
   type SubtitleSize,
 } from "@/lib/studio/video-subtitle";
+import {
+  alignPlaybackScript,
+  planPlaybackBurn,
+  playbackFfmpegArgs,
+  playbackHasWork,
+  readPlaybackEdit,
+} from "@/lib/studio/playback-edit-plan";
 import { acquireSubtitleSlot } from "@/lib/studio/subtitle-work-limit";
 
 const execFileP = promisify(execFile);
@@ -69,6 +76,25 @@ async function probeVideo(filePath: string): Promise<{ width: number; height: nu
   };
 }
 
+/**
+ * 컷이 있으면 소리도 같은 구간만 남겨야 한다. 소리 유무를 모르면 원본 소리를
+ * 잘린 영상에 그대로 붙이지 않는다. 그때는 소리 없는 영상을 만든다.
+ */
+async function probeHasAudio(filePath: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileP(FFPROBE_BIN, [
+      "-v", "error",
+      "-select_streams", "a",
+      "-show_entries", "stream=codec_type",
+      "-of", "csv=p=0",
+      filePath,
+    ], { timeout: 20000 });
+    return stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function deliverUrl(tenantId: string, filename: string): string {
   const token = signMediaToken(tenantId, filename);
   return token ? `/api/media/${encodeURIComponent(token)}` : assetUrl(tenantId, filename);
@@ -92,15 +118,26 @@ export async function POST(request: Request) {
     return Response.json({ error: "영상 파일 이름이 올바르지 않습니다." }, { status: 400 });
   }
 
+  const playback = readPlaybackEdit(body.videoEdit);
+  if (!playback.ok) {
+    return Response.json({
+      ok: false,
+      code: "VIDEO_EDIT_INVALID",
+      error: "편집 내용을 영상 파일에 적용할 수 없습니다. 구간과 문구를 다시 확인해 주세요.",
+      rule: playback.rule,
+    }, { status: 422 });
+  }
+  const usePlayback = playback.edit !== null && playbackHasWork(playback.edit);
+
   const raw = Array.isArray(body.lines)
     ? body.lines.filter((line): line is string => typeof line === "string")
     : [];
-  if (!raw.some((line) => line.trim())) {
+  if (!usePlayback && !raw.some((line) => line.trim())) {
     return Response.json({ error: "자막으로 넣을 대사가 없습니다." }, { status: 400 });
   }
   // 상한이 없으면 줄 수와 줄 길이가 그대로 필터 크기와 인코딩 시간이 된다. 한 요청으로
   // 서버를 오래 붙잡아 둘 수 있다(교차 리뷰 지적, 2026-09-14). 자르지 않고 거절한다.
-  const limited = checkSubtitleLimits(raw);
+  const limited = usePlayback ? { ok: true as const, lines: [] as string[] } : checkSubtitleLimits(raw);
   if (!limited.ok) {
     return Response.json({
       error: limited.reason === "too_many_lines"
@@ -173,10 +210,46 @@ export async function POST(request: Request) {
   // 파일명 생성은 이미 무작위 UUID 로 하는 자리가 있다. 그것을 쓴다.
   const outName = mediaFilename((path.extname(filename) || ".mp4").slice(1));
   const outPath = path.join(studioDir(tenantId), outName);
-  const args = subtitleFfmpegArgs({
-    lines, size, width, height, durationSec, fontFile,
-    inputPath, outputPath: outPath,
-  });
+  let playbackSummary: {
+    outputDurationSec: number;
+    keptTexts: string[];
+    droppedTexts: string[];
+    voiceApplied: false;
+  } | null = null;
+  let args: string[] | null;
+  if (usePlayback && playback.edit) {
+    const plan = planPlaybackBurn({
+      edit: alignPlaybackScript(playback.edit, raw),
+      durationSec,
+      width,
+      height,
+      size,
+      fontFile,
+      hasAudio: await probeHasAudio(inputPath),
+    });
+    if (!plan.ok) {
+      const empty = plan.reason === "nothing_left";
+      return Response.json({
+        ok: false,
+        code: empty ? "PLAYBACK_EMPTY" : "PLAYBACK_TOO_MANY_LAYERS",
+        error: empty
+          ? "컷으로 뺀 뒤에 남는 영상이 없습니다. 컷을 줄여 주세요."
+          : "한 영상에 올릴 글자 층이 너무 많습니다. 자막과 오버레이를 줄여 주세요.",
+      }, { status: 422 });
+    }
+    playbackSummary = {
+      outputDurationSec: plan.outputDurationSec,
+      keptTexts: plan.keptTexts,
+      droppedTexts: plan.droppedTexts,
+      voiceApplied: false,
+    };
+    args = playbackFfmpegArgs(plan, { inputPath, outputPath: outPath });
+  } else {
+    args = subtitleFfmpegArgs({
+      lines, size, width, height, durationSec, fontFile,
+      inputPath, outputPath: outPath,
+    });
+  }
   if (!args) {
     return Response.json({ ok: false, error: "자막으로 넣을 대사가 없습니다." }, { status: 400 });
   }
@@ -213,6 +286,7 @@ export async function POST(request: Request) {
     filename: outName,
     file: deliverUrl(tenantId, outName),
     subtitle: { size, lines: lines.filter((line) => line.trim()).length, width, height, durationSec },
+    ...(playbackSummary ? { playback: playbackSummary } : {}),
   });
   } finally {
     releaseSlot();
