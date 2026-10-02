@@ -2276,6 +2276,7 @@ export function EditRoom({
                         onLinesChange={onLinesChange}
                         onOpenCreate={onOpenCreate}
                         syncing={videoEditReconciling}
+                        tenantId={workspaceId}
                       />
                     </>
                   ) : kind === "card" ? (
