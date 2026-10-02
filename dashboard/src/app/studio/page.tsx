@@ -107,6 +107,7 @@ const VIDEO_PUBLISH_NAME: Record<string, string> = { shorts: "youtube", reels: "
 const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reels: "instagram", tiktok: "tiktok" };
 
 import { draftStatusLabel } from "@/lib/studio/draft-status-label";
+import { resolveVideoPublishFilename } from "@/lib/studio/video-publish-filename";
 import { connectedOnlyTargets, publishableTargets as computePublishableTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
 import {
   resolveRestoredQuickDraftTopic,
@@ -2160,7 +2161,10 @@ export default function StudioPage() {
         trackEvent({ name: "publish_attempt", params: { channel: p as AnalyticsChannel } });
         if (VIDEO_ROOM_PLATFORMS.has(p)) {
           // 영상 채널은 서버가 파일을 직접 읽는다. 화면이 들고 있는 배달 주소에서 파일명을 꺼낸다.
-          const filename = videoFilename(vid?.file || vid?.url || "");
+          // 인트로/아웃트로가 적용돼 있으면(videoEdit.introOutro) 원본이 아니라 그 합성
+          // 결과 파일을 올린다 — 안 그러면 "적용됐다"는 화면과 실제 발행물이 어긋난다
+          // (2026-10-02 회장 반려).
+          const filename = resolveVideoPublishFilename(videoFilename(vid?.file || vid?.url || ""), videoEdit?.introOutro ?? null);
           if (!filename) {
             failureReason = "올릴 영상이 없습니다. 생성실에서 숏폼 영상을 먼저 만들어 주세요.";
             errs.push(`${LABEL[p]}: ${failureReason}`);
@@ -3291,6 +3295,7 @@ export default function StudioPage() {
         cardTextEmbedded={img?.textEmbedded === true}
         cardTextSourceRecoverable={img?.textSourceRecoverable !== false}
         previewVideoUrl={vid?.file || vid?.url || null}
+        videoSourceFilename={videoFilename(vid?.file || vid?.url || "") || null}
         cardTextPositions={cardTextPositions}
         onCardTextPositionsChange={setCardTextPositions}
         cardDeck={cardDeck}

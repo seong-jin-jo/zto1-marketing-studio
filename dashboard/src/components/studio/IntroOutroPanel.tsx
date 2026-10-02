@@ -22,6 +22,7 @@ import {
   type IntroOutroCompId,
   type BrandProps,
 } from "../../../remotion/IntroOutroComps";
+import type { IntroOutroApplied } from "@/lib/studio/video-edit-contract";
 
 export interface IntroOutroPanelProps {
   /** 편집실에 로드된, 아직 인트로/아웃트로를 입히지 않은 원본 영상 파일명. 없으면 패널 비활성. */
@@ -31,6 +32,12 @@ export interface IntroOutroPanelProps {
   logoUrl?: string;
   primaryColor?: string;
   secondaryColor?: string;
+  /**
+   * 적용된 결과(videoEdit.introOutro). 다른 영상 편집과 같은 자동저장 경로로 저장되므로
+   * 새로고침해도 유지된다(2026-10-02 회장 반려 R-27-5 대응). null이면 미적용.
+   */
+  applied?: IntroOutroApplied;
+  onApplied?: (applied: IntroOutroApplied) => void;
 }
 
 const JOB_STORAGE_KEY = "osmu-intro-outro-job";
@@ -57,7 +64,7 @@ function storeJobId(sourceFilename: string, jobId: string | null) {
   }
 }
 
-export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, primaryColor, secondaryColor }: IntroOutroPanelProps) {
+export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, primaryColor, secondaryColor, applied = null, onApplied }: IntroOutroPanelProps) {
   const [introId, setIntroId] = useState<IntroOutroCompId | null>(null);
   const [outroId, setOutroId] = useState<IntroOutroCompId | null>(null);
   const [titleText, setTitleText] = useState("");
@@ -105,6 +112,9 @@ export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, 
           setStatus("completed");
           setResultUrl(body.file);
           if (sourceFilename) storeJobId(sourceFilename, null);
+          // 결과를 videoEdit에 실어 다른 영상 편집과 같은 자동저장 경로로 보존한다
+          // (2026-10-02 회장 반려: 발행/미리보기가 원본을 계속 쓰던 결함).
+          onApplied?.({ introCompId: introId, outroCompId: outroId, resultFilename: body.filename });
         } else if (body.status === "failed") {
           setStatus("failed");
           setError(body.error || "렌더에 실패했습니다.");
@@ -169,6 +179,14 @@ export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, 
     <div className="space-y-stack rounded-control border border-border p-pad-inset" data-intro-outro-panel>
       <p className="text-caption-strong">인트로 · 아웃트로</p>
       {error ? <p role="alert" className="text-caption text-danger" data-intro-outro-error>{error}</p> : null}
+      {applied ? (
+        <p className="text-caption text-subtle" data-intro-outro-applied>
+          적용됨: {applied.resultFilename}{" "}
+          <button type="button" className="text-danger" onClick={() => onApplied?.(null)} data-intro-outro-remove-applied>
+            제거(원본으로 되돌리기)
+          </button>
+        </p>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-pad-inset">
         <PickerSlot label="인트로" selectedId={introId} onSelect={setIntroId} onRemove={() => removeSelection("intro")} prefix="intro-" brand={brand} />

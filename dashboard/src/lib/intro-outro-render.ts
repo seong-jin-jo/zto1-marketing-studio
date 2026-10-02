@@ -39,9 +39,11 @@ export async function renderIntroOutroClip(
   outputPath: string,
 ): Promise<void> {
   const bundleUrl = await getBundleUrl();
-  // 운영 컨테이너는 Chrome Headless Shell을 인터넷에서 내려받지 않고 Alpine chromium
-  // 패키지를 쓴다(Dockerfile REMOTION_CHROME_PATH). 로컬 개발은 미설정 시 Remotion 기본
-  // 다운로드 경로를 그대로 쓴다.
+  // 운영 이미지는 빌드 시점에 `npx remotion browser ensure`로 Chrome Headless Shell을
+  // 내려받아 이미지에 굳힌다(Dockerfile, Debian/bookworm-slim — Alpine은 BusyBox
+  // setpriv가 Remotion의 --pdeathsig를 몰라 브라우저 실행 자체가 안 됐다, 2026-10-02
+  // 컨테이너 안 실측). REMOTION_CHROME_PATH를 명시하면 그 경로를 우선 쓰고, 없으면
+  // Remotion이 자기가 내려받은 경로를 스스로 찾는다.
   const browserExecutable = process.env.REMOTION_CHROME_PATH || undefined;
   const composition = await selectComposition({
     serveUrl: bundleUrl,

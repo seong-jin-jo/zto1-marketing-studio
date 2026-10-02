@@ -38,6 +38,7 @@ import {
   newId,
   removeComment,
   removeOverlay,
+  setIntroOutroApplied,
   setSubtitles,
   setVoice,
   updateComment,
@@ -173,6 +174,12 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
     );
   }
 
+  // 인트로/아웃트로가 적용돼 있으면 편집실 미리보기도 합성 결과를 보여준다(2026-10-02
+  // 회장 반려: 발행은 됐는데 미리보기가 원본을 계속 보여주면 "적용 안 된 것처럼" 보인다).
+  const effectivePreviewUrl = videoEdit.introOutro
+    ? `/api/higgsfield/asset/${encodeURIComponent(videoEdit.introOutro.resultFilename)}${tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : ""}`
+    : previewVideoUrl;
+
   return (
     <div className="space-y-stack" data-video-editor>
       {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-video-editor-error>{error}</p> : null}
@@ -182,7 +189,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
       <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_10.5rem] max-[64rem]:[grid-template-rows:minmax(0,1fr)_9.375rem] max-[26rem]:[grid-template-rows:auto_6.75rem]">
         <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
-            src={previewVideoUrl}
+            src={effectivePreviewUrl}
             videoRef={videoRef}
             overlays={videoEdit.overlays}
             comments={videoEdit.comments}
@@ -210,7 +217,12 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             <OverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
             <CommentOverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
             <VoiceSelector edit={videoEdit} run={run} syncing={syncing} />
-            <IntroOutroPanel sourceFilename={sourceFilename} tenantId={tenantId} />
+            <IntroOutroPanel
+              sourceFilename={sourceFilename}
+              tenantId={tenantId}
+              applied={videoEdit.introOutro}
+              onApplied={(applied) => run((edit) => setIntroOutroApplied(edit, applied))}
+            />
           </div>
         </div>
         <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seek} run={run} syncing={syncing} />

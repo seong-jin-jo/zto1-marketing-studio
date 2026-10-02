@@ -51,12 +51,25 @@ export type SubtitleLine = {
 
 export type VoiceSelection = { voiceId: string; voiceName: string } | null;
 
+/**
+ * 인트로/아웃트로(Remotion) 합성 결과. 2026-10-02 신설 — 회장 반려(R-27-5 미연결)
+ * 대응: 적용 결과를 이 계약에 저장해 다른 영상 편집과 똑같이 자동저장·새로고침 복원이
+ * 되게 한다. `resultFilename` 이 발행·미리보기가 원본 대신 써야 하는 합성 파일명이다.
+ */
+export type IntroOutroApplied = {
+  introCompId: string | null;
+  outroCompId: string | null;
+  resultFilename: string;
+} | null;
+
 export type VideoEdit = {
   contract_version: typeof VIDEO_EDIT_CONTRACT_VERSION;
   overlays: VideoOverlay[];
   comments: VideoComment[];
   subtitles: SubtitleLine[];
   voice: VoiceSelection;
+  /** 인트로/아웃트로 적용 결과. 없으면(구데이터 포함) null과 동일하게 취급한다. */
+  introOutro: IntroOutroApplied;
   /** 편집 연산마다 +1(card-deck-ops.ts withRevision 관습과 동일). */
   revision: number;
 };
@@ -91,6 +104,7 @@ export function emptyVideoEdit(): VideoEdit {
     comments: [],
     subtitles: [],
     voice: null,
+    introOutro: null,
     revision: 0,
   };
 }
@@ -157,6 +171,19 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
     const voice = v.voice as Partial<NonNullable<VoiceSelection>>;
     if (typeof voice.voiceId !== "string" || !voice.voiceId) throw new VideoEditValidationError("voice_id", "videoEdit.voice.voiceId must be a non-empty string when set");
     if (typeof voice.voiceName !== "string" || !voice.voiceName) throw new VideoEditValidationError("voice_name", "videoEdit.voice.voiceName must be a non-empty string when set");
+  }
+  // introOutro는 신규 필드라 구데이터에는 없다(undefined) — 없으면 null과 동일하게 통과.
+  if (v.introOutro !== undefined && v.introOutro !== null) {
+    const io = v.introOutro as Record<string, unknown>;
+    if (typeof io.resultFilename !== "string" || !io.resultFilename) {
+      throw new VideoEditValidationError("intro_outro_result_filename", "videoEdit.introOutro.resultFilename must be a non-empty string when set");
+    }
+    if (io.introCompId !== null && typeof io.introCompId !== "string") {
+      throw new VideoEditValidationError("intro_outro_intro_id", "videoEdit.introOutro.introCompId must be a string or null");
+    }
+    if (io.outroCompId !== null && typeof io.outroCompId !== "string") {
+      throw new VideoEditValidationError("intro_outro_outro_id", "videoEdit.introOutro.outroCompId must be a string or null");
+    }
   }
   if (typeof v.revision !== "number" || !Number.isFinite(v.revision)) {
     throw new VideoEditValidationError("revision", "videoEdit.revision must be a finite number");
@@ -241,6 +268,11 @@ export function updateSubtitleTiming(edit: VideoEdit, id: string, patch: { start
 
 export function setVoice(edit: VideoEdit, voice: VoiceSelection): VideoEdit {
   return withRevision(edit, { voice });
+}
+
+/** 인트로/아웃트로 렌더 완료 시 결과를 계약에 싣는다. 제거 시 호출자가 null을 넘긴다. */
+export function setIntroOutroApplied(edit: VideoEdit, applied: IntroOutroApplied): VideoEdit {
+  return withRevision(edit, { introOutro: applied });
 }
 
 /** 컷 표시된 자막 구간 목록(렌더 미연결 — 편집 의도만 모아 보여줄 때 쓴다). */
