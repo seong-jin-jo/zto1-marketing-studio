@@ -29,6 +29,12 @@ LABEL org.opencontainers.image.revision=$BUILD_COMMIT
 # 자막 크기를 고르는 자리가 있는데 결과물에는 자막이 없는 상태였다. 글꼴이 없으면 ffmpeg 은
 # 한글을 네모로 그리므로 실행기만 넣는 것으로는 부족하다. 둘은 같이 들어와야 한 기능이 된다.
 RUN apk add --no-cache docker-cli ffmpeg font-noto-cjk
+# Remotion(인트로/아웃트로 렌더) 실행기. @remotion/renderer는 기본값으로 Chrome Headless
+# Shell을 런타임에 인터넷에서 내려받으려 하는데, 운영 컨테이너는 그 다운로드를 보장할 수
+# 없다(사설 네트워크/빌드 캐시 전제가 다름) — 그래서 Alpine 패키지 chromium을 미리 심고
+# REMOTION_CHROME_PATH로 그 경로를 지정한다. 2026-10-02 신설(인트로/아웃트로 도입, R-27-5).
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+ENV REMOTION_CHROME_PATH=/usr/bin/chromium-browser
 # claude CLI — generateText의 폴백 경로(테넌트 Anthropic 키 미등록 시 `claude -p`).
 # 내부 4앱은 이 폴백으로 운영(운영자 Max 구독). 인증(~/.claude OAuth)은 런타임 볼륨 마운트로 주입:
 #   compose에 `- ~/.claude:/root/.claude:ro` (호스트가 사전 인증 필요 — 운영자 액션).
@@ -43,4 +49,8 @@ ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+# remotion/entry.ts는 @remotion/bundler가 런타임에 경로 문자열로 읽는다(정적 import가
+# 아니라 Next의 standalone 파일 트레이싱이 못 따라간다) — 명시적으로 복사해야 한다.
+COPY --from=builder /app/remotion ./remotion
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 CMD ["sh", "-c", "PORT=${DASHBOARD_PORT:-34560} node server.js"]

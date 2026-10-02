@@ -26,6 +26,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
 import { authHeaders } from "@/lib/auth";
+import { IntroOutroPanel } from "./IntroOutroPanel";
 import {
   type SubtitleLine,
   type VideoComment,
@@ -74,6 +75,9 @@ export interface VideoEditorProps {
   /** MAJOR2(3차 재리뷰): 서버 값과 맞추는 동안 편집을 막는다 — 안 막으면 맞추는 도중의
    * 수정이 조용히 사라질 수 있다. */
   syncing?: boolean;
+  /** 인트로/아웃트로(Remotion) 삽입 대상 원본 영상 파일명. 2026-10-02 신설(R-27-5). */
+  sourceFilename?: string | null;
+  tenantId?: string;
 }
 
 function formatSec(sec: number): string {
@@ -96,7 +100,7 @@ function videoEditErrorMessage(rule: string): string {
   return "입력한 값을 확인해 주세요.";
 }
 
-export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false }: VideoEditorProps) {
+export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false, sourceFilename = null, tenantId }: VideoEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [playhead, setPlayhead] = useState(0);
@@ -206,6 +210,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             <OverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
             <CommentOverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
             <VoiceSelector edit={videoEdit} run={run} syncing={syncing} />
+            <IntroOutroPanel sourceFilename={sourceFilename} tenantId={tenantId} />
           </div>
         </div>
         <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seek} run={run} syncing={syncing} />
