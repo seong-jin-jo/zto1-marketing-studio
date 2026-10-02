@@ -167,7 +167,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
     // 별도로 저장한다(아래 tok.refreshToken 인자). meta는 평문 JSONB라 여기 넣으면 암호화 우회가 된다.
     const meta: Record<string, unknown> = { api: apiFlag, connectedAt: new Date().toISOString() };
     // provider가 승인한 실제 scope를 기록한다(비밀값 아님, 토큰 아님) — X는 이 값으로 media.write
-    // 승인 여부를 readiness/publishX에서 판정한다(2026-10-02 독립 리뷰 BLOCK M1).
+    // 승인 여부를 readiness 화면과 X 발행 코드(lib/publish.ts)에서 판정한다(2026-10-02 독립 리뷰 BLOCK M1).
     if (tok.grantedScope) meta.grantedScope = tok.grantedScope;
 
     // SNS-007: 저장 전 provider 토큰으로 authoritative 외부 식별자를 resolve한다.
