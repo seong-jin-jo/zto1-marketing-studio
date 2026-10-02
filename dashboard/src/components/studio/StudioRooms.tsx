@@ -1042,20 +1042,29 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
    * 자도 제품이 선다.
    */
   async function makeTextCards() {
-    // 2026-10-02 실사용 결함: selectedCandidate.format.outline / quickStructure.outline 는
-    // "고객이 겪는 문제" 같은 구조 **라벨**(STRUCTURE_CANDIDATES, 이 파일 위쪽)이다. 실제로
-    // 생성된 본문(quickDraft — 카드뉴스는 instagram.slides+caption)이 있는데도 이 라벨을
-    // 그대로 카드 그림에 박아 고객이 발행하면 "고객이 겪는 문제"라는 글자만 찍힌 카드가
-    // 나갔다. resolveTextCardLines가 생성된 본문을 우선 쓰고, 없을 때만(초안을 아직 안
-    // 만들었을 때) 구조 라벨로 폴백한다 — 완전히 빈 카드보다는 라벨이라도 보여야 "글자
-    // 카드 만들기"가 구조 선택 직후에도 동작한다(2026-09-14 결정 유지).
-    const primarySection = quickDraftSections.find((section) => section.kind === primaryKind) ?? quickDraftSections[0];
-    const lines = resolveTextCardLines({
-      generatedLines: primarySection?.lines,
+    // 2026-10-02 실사용 결함, 2026-10-03 독립 리뷰 MAJOR-8 재수정: primaryKind 섹션을
+    // 그대로 쓰면 ①primaryKind="text"일 땐 글 전체(한 문단)가 통째로 "한 장"이 되고
+    // ②primaryKind="card"여도 quickDraftSections의 card 섹션이 instagram.caption(해시태그
+    // 섞인 긴 문장)을 슬라이드 뒤에 붙여 마지막 장으로 내보냈다. 카드뉴스는 카드뉴스용으로
+    // 만들어진 슬라이드(instagram.slides)만 쓴다 — primaryKind가 무엇이든, 캡션은 절대
+    // 섞지 않는다.
+    const cardSlideLines = (quickDraft?.instagram?.slides ?? []).filter(
+      (line): line is string => typeof line === "string" && line.trim().length > 0,
+    );
+    const resolved = resolveTextCardLines({
+      generatedLines: cardSlideLines,
       candidateOutline: selectedCandidate?.format.outline,
       quickStructureOutline: quickStructure?.outline,
     });
-    if (!lines.length) { setTextCardError("먼저 구조 초안을 하나 골라 주세요."); return; }
+    if (!resolved.lines.length) { setTextCardError("먼저 구조 초안을 하나 골라 주세요."); return; }
+    // MINOR-f 재발 방지: 실제로 생성된 카드 본문이 없어 구조 라벨("고객이 겪는 문제" 등)로
+    // 폴백한 경우, 그 라벨이 그대로 카드에 찍혀 발행되는 사고(2026-10-02)를 다시 만들지
+    // 않으려면 카드 자체를 만들지 않는다 — 만들지 않으면 그 뒤 발행으로 이어질 것도 없다.
+    if (resolved.isPlaceholder) {
+      setTextCardError("구조 초안에 실제 내용이 없어 글자 카드를 만들지 못했습니다. 구조 초안을 다시 만들어 주세요.");
+      return;
+    }
+    const lines = resolved.lines;
     setTextCardError(null);
     setTextCardBusy(true);
     try {

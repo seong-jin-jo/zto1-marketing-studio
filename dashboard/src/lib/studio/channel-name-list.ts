@@ -9,9 +9,17 @@ import type { PreviewPlatform } from "@/components/studio/PlatformPreview";
  *
  * 숫자만으로는 "그 1곳이 무엇인지"를 말하지 않는다. 채널 이름을 그 자리에서 밝히면,
  * 방금 누른 미리보기 탭과 실제 선택이 다를 때 발행 버튼·상단 배너에서 바로 드러난다.
- * 채널이 많으면(4곳 초과) 이름 나열이 오히려 읽기 어려우므로 그때만 "N곳"으로 줄인다.
+ *
+ * 2026-10-03 독립 리뷰 MINOR-g 재수정: 채널이 4곳을 넘으면 "4곳"처럼 숫자로 줄이던
+ * 종전 로직은 **가장 헷갈리는 경우(여러 곳에 동시 발행)에서 바로 이름을 감춰** 사고를
+ * 막는 효과가 제일 필요한 자리에서 제일 약했다. 이름은 항상 전부 나열한다. 줄바꿈은
+ * 괜찮다(화면이 줄바꿈 처리).
+ *
+ * 이 맵은 page.tsx 안에도 똑같은 내용으로 중복 선언돼 있었다. 여기 하나만 남기고
+ * page.tsx는 이 export를 그대로 가져다 쓴다(두 곳이 갈라지면 한쪽만 고치고 다른 쪽을
+ * 잊는 드리프트가 생긴다).
  */
-const PLATFORM_LABEL: Record<PreviewPlatform, string> = {
+export const PLATFORM_LABEL: Record<PreviewPlatform, string> = {
   threads: "Threads",
   x: "X",
   facebook: "Facebook",
@@ -23,6 +31,5 @@ const PLATFORM_LABEL: Record<PreviewPlatform, string> = {
 
 export function channelNameList(platforms: readonly PreviewPlatform[]): string {
   if (platforms.length === 0) return "";
-  if (platforms.length > 3) return `${platforms.length}곳`;
   return platforms.map((platform) => PLATFORM_LABEL[platform]).join(", ");
 }

@@ -20,8 +20,14 @@ describe("channelNameList — 발행 대상 채널 이름을 그 자리에서 �
     expect(channelNameList(["threads", "instagram", "x"])).toBe("Threads, Instagram, X");
   });
 
-  it("4곳을 넘으면 나열 대신 개수로 줄인다(가독성)", () => {
-    expect(channelNameList(["threads", "instagram", "x", "facebook"])).toBe("4곳");
+  // 2026-10-03 독립 리뷰 MINOR-g: 종전에는 4곳을 넘으면 "4곳"처럼 숫자로 줄였는데,
+  // 여러 채널에 동시 발행하는 **가장 헷갈리는 경우**에서 바로 이름을 감춰 사고를 막는
+  // 효과가 가장 필요한 자리에서 가장 약했다. 이름은 항상 전부 나열한다(줄바꿈은 화면이
+  // 처리).
+  it("4곳을 넘어도 전부 나열한다 — 가장 헷갈리는 경우에서 이름을 감추지 않는다", () => {
+    expect(channelNameList(["threads", "instagram", "x", "facebook"])).toBe("Threads, Instagram, X, Facebook");
+    expect(channelNameList(["threads", "instagram", "x", "facebook", "shorts", "reels", "tiktok"]))
+      .toBe("Threads, Instagram, X, Facebook, Shorts, Reels, TikTok");
   });
 
   it("선택이 없으면 빈 문자열이다", () => {
