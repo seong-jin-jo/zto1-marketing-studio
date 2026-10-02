@@ -915,17 +915,42 @@ export async function fetchMetaPostMetrics(
 // 서명 대상). 미검증: 4키 계정에서 이 엔드포인트가 실제로 OAuth1.0a를 받아들이는지는 문서에 없음 —
 // 운영 실발행으로 확인 필요(회장 2026-10-02 지시대로 이 세션은 실발행을 하지 않음).
 const X_MEDIA_UPLOAD_API = "https://api.x.com/2/media/upload";
-const X_MAX_IMAGE_BYTES = 5 * 1024 * 1024; // tweet_image 공식 한도 5MB
+const X_MAX_IMAGE_BYTES = 5 * 1024 * 1024; // tweet_image/tweet_gif 공식 한도 5MB
 export const X_MAX_IMAGES_PER_POST = 4; // X 가 허용하는 포스트당 최대 이미지 수
+const X_MEDIA_PROCESSING_MAX_WAIT_MS = 60_000; // STATUS 폴링 총 대기 상한(check_after_secs를 신뢰하되 무한정 기다리지 않음)
 
 type XAuthFn = (method: string, url: string, query?: Record<string, string>) => string;
+type XUploadError = { error: string; insufficientScope?: boolean };
 
 function xAuthFor(keys: XKeys | null, bearerToken: string): XAuthFn {
   return (method, url, query = {}) => (keys ? buildXOAuthHeader(method, url, keys, query) : `Bearer ${bearerToken}`);
 }
 
-async function pollXMediaStatus(mediaId: string, authFor: XAuthFn): Promise<{ ok: true } | { error: string }> {
-  for (let attempt = 0; attempt < 10; attempt++) {
+// media_category: GIF는 tweet_image로 보내면 X가 정지 프레임으로 처리하거나 거절한다.
+// 출처: docs.x.com 미디어 카테고리 표(tweet_image/tweet_gif/tweet_video 등, 조사 2026-10-02).
+function xMediaCategoryFor(contentType: string): string {
+  return contentType === "image/gif" ? "tweet_gif" : "tweet_image";
+}
+
+// 401/403은 X 미디어 업로드에서 거의 항상 "이 토큰에 media.write 권한이 없다"는 뜻이다
+// (OAuth2 Bearer가 scope 부족일 때 보내는 응답 — WWW-Authenticate에 insufficient_scope를
+// 싣는 경우도 있지만 안 싣는 경우도 많다). 구분이 불확실하더라도 403에서 텍스트만으로
+// 조용히 넘어가지 않고 재연결을 권하는 것이 안전하다(2026-10-02 독립 리뷰 BLOCK M1).
+// raw는 로그용으로만 남기고(토큰은 안 들어있음) 사용자 메시지에는 노출하지 않는다.
+function xMediaScopeError(status: number, raw: string): XUploadError | null {
+  if (status !== 401 && status !== 403) return null;
+  void raw;
+  return {
+    error: "X 가 이 계정의 이미지 업로드 권한을 받아들이지 않았습니다(media.write). 발행실에서 X 를 다시 연결해 이미지 업로드 권한을 포함해 주세요.",
+    insufficientScope: true,
+  };
+}
+
+async function pollXMediaStatus(mediaId: string, authFor: XAuthFn, firstWaitMs: number): Promise<{ ok: true } | XUploadError> {
+  const deadline = Date.now() + X_MEDIA_PROCESSING_MAX_WAIT_MS;
+  let waitMs = firstWaitMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, Math.max(250, Math.min(waitMs, 10_000))));
     const query = { command: "STATUS", media_id: mediaId };
     const url = `${X_MEDIA_UPLOAD_API}?command=STATUS&media_id=${encodeURIComponent(mediaId)}`;
     let res: Response;
@@ -937,12 +962,19 @@ async function pollXMediaStatus(mediaId: string, authFor: XAuthFn): Promise<{ ok
     } catch {
       return { error: "X 이미지 처리 상태 확인 중 네트워크 오류가 발생했습니다." };
     }
-    if (!res.ok) return { error: `X 이미지 처리 상태 확인에 실패했습니다 (HTTP ${res.status}).` };
-    const body = (await res.json().catch(() => ({}))) as { data?: { processing_info?: { state?: string } } };
-    const state = body.data?.processing_info?.state;
-    if (!state || state === "succeeded") return { ok: true };
-    if (state === "failed") return { error: "X 가 이미지 처리에 실패했습니다. 이미지를 다시 선택해주세요." };
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (!res.ok) {
+      const raw = await res.text().catch(() => "");
+      return xMediaScopeError(res.status, raw) ?? { error: `X 이미지 처리 상태 확인에 실패했습니다 (HTTP ${res.status}).` };
+    }
+    const body = (await res.json().catch(() => ({}))) as {
+      data?: { processing_info?: { state?: string; check_after_secs?: number } };
+    };
+    const info = body.data?.processing_info;
+    if (!info?.state || info.state === "succeeded") return { ok: true };
+    if (info.state === "failed") return { error: "X 가 이미지 처리에 실패했습니다. 이미지를 다시 선택해주세요." };
+    // m1(독립 리뷰): check_after_secs를 무시하고 고정 1초로 폴링하면 X가 권장한 간격보다 자주
+    // 두드려 불필요한 요청을 쌓는다 — provider가 알려준 값을 그대로 다음 대기에 쓴다.
+    waitMs = (info.check_after_secs ?? 1) * 1000;
   }
   return { error: "X 이미지 처리 시간이 초과됐습니다. 잠시 후 다시 시도해주세요." };
 }
@@ -952,8 +984,9 @@ async function uploadXImageMedia(
   bearerToken: string,
   bytes: Uint8Array,
   contentType: string,
-): Promise<{ id: string } | { error: string }> {
+): Promise<{ id: string } | XUploadError> {
   const authFor = xAuthFor(keys, bearerToken);
+  const mediaCategory = xMediaCategoryFor(contentType);
 
   const initUrl = `${X_MEDIA_UPLOAD_API}/initialize`;
   let initRes: Response;
@@ -961,13 +994,16 @@ async function uploadXImageMedia(
     initRes = await fetch(initUrl, {
       method: "POST",
       headers: { Authorization: authFor("POST", initUrl), "Content-Type": "application/json" },
-      body: JSON.stringify({ media_type: contentType, total_bytes: bytes.byteLength, media_category: "tweet_image" }),
+      body: JSON.stringify({ media_type: contentType, total_bytes: bytes.byteLength, media_category: mediaCategory }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch {
     return { error: "X 이미지 업로드 초기화 중 네트워크 오류가 발생했습니다." };
   }
-  if (!initRes.ok) return { error: `X 이미지 업로드 초기화에 실패했습니다 (HTTP ${initRes.status}).` };
+  if (!initRes.ok) {
+    const raw = await initRes.text().catch(() => "");
+    return xMediaScopeError(initRes.status, raw) ?? { error: `X 이미지 업로드 초기화에 실패했습니다 (HTTP ${initRes.status}).` };
+  }
   const initBody = (await initRes.json().catch(() => ({}))) as { data?: { id?: string }; id?: string };
   const mediaId = initBody.data?.id ?? initBody.id;
   if (!mediaId) return { error: "X 이미지 업로드 초기화 응답에 미디어 번호가 없습니다." };
@@ -988,7 +1024,8 @@ async function uploadXImageMedia(
     return { error: "X 이미지 업로드 전송 중 네트워크 오류가 발생했습니다." };
   }
   if (!appendRes.ok && appendRes.status !== 204) {
-    return { error: `X 이미지 업로드 전송에 실패했습니다 (HTTP ${appendRes.status}).` };
+    const raw = await appendRes.text().catch(() => "");
+    return xMediaScopeError(appendRes.status, raw) ?? { error: `X 이미지 업로드 전송에 실패했습니다 (HTTP ${appendRes.status}).` };
   }
 
   const finalizeUrl = `${X_MEDIA_UPLOAD_API}/${mediaId}/finalize`;
@@ -1002,14 +1039,17 @@ async function uploadXImageMedia(
   } catch {
     return { error: "X 이미지 업로드 마무리 중 네트워크 오류가 발생했습니다." };
   }
-  if (!finalizeRes.ok) return { error: `X 이미지 업로드 마무리에 실패했습니다 (HTTP ${finalizeRes.status}).` };
+  if (!finalizeRes.ok) {
+    const raw = await finalizeRes.text().catch(() => "");
+    return xMediaScopeError(finalizeRes.status, raw) ?? { error: `X 이미지 업로드 마무리에 실패했습니다 (HTTP ${finalizeRes.status}).` };
+  }
   const finalizeBody = (await finalizeRes.json().catch(() => ({}))) as {
-    data?: { processing_info?: { state?: string } };
+    data?: { processing_info?: { state?: string; check_after_secs?: number } };
   };
-  const state = finalizeBody.data?.processing_info?.state;
-  if (state && state !== "succeeded") {
-    const polled = await pollXMediaStatus(mediaId, authFor);
-    if ("error" in polled) return { error: polled.error };
+  const info = finalizeBody.data?.processing_info;
+  if (info?.state && info.state !== "succeeded") {
+    const polled = await pollXMediaStatus(mediaId, authFor, (info.check_after_secs ?? 1) * 1000);
+    if ("error" in polled) return polled;
   }
   return { id: mediaId };
 }
@@ -1097,6 +1137,22 @@ export async function publishX(cred: ChannelCred, text: string, imageUrls?: stri
   const hasLegacyKeys = Boolean(keys.apiKey && keys.apiSecret && keys.accessToken && keys.accessSecret);
   if (!hasLegacyKeys && !cred.token) {
     return { ok: false, error: "X 연결이 없습니다. 발행실에서 X 를 다시 연결해 주세요." };
+  }
+
+  // BLOCK M1(2026-10-02 독립 리뷰): 화면으로 연결한 OAuth2 계정은 media.write 스코프 없이
+  // 토큰을 받았을 수 있다(2026-10-02 이전 연결, 또는 이 스코프 추가 이전 코드로 연결).
+  // 이미지가 있는데 scope가 명시적으로 빠진 걸 알면, 초기화 요청을 왕복시키지 않고 바로
+  // 막는다 — 네트워크를 타도 403으로 같은 곳에서 끝나므로 조기 차단이 더 명확하다.
+  // grantedScope가 없으면(이 캡처 이전 연결 등) "알 수 없음"이라 여기서 막지 않고 실제
+  // 업로드 요청의 403 분기(xMediaScopeError)가 최종 판정한다.
+  if (!hasLegacyKeys && images.length > 0) {
+    const grantedScope = typeof meta.grantedScope === "string" ? meta.grantedScope : "";
+    if (grantedScope && !grantedScope.split(/\s+/).includes("media.write")) {
+      return {
+        ok: false,
+        error: "X 연결에 이미지 업로드 권한(media.write)이 없습니다. 발행실에서 X 를 다시 연결해 주세요.",
+      };
+    }
   }
 
   const mediaIds: string[] = [];

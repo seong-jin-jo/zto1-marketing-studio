@@ -187,4 +187,115 @@ describe("publishX 이미지 첨부 (X 미디어 업로드 3단)", () => {
     expect(result.ok).toBe(true);
     expect(auths.every((a) => a.startsWith("Bearer "))).toBe(true);
   });
+
+  // ── 2026-10-02 독립 리뷰 BLOCK M1 — 화면으로 연결한 OAuth2 계정이 media.write 없이 토큰을
+  // 받으면 media upload initialize가 403을 돌려주고, 그 전까지는 이 사실이 테스트로 잡히지
+  // 않았다(위 "OAuth2 Bearer" 시험은 initialize가 항상 200을 돌려주는 happy path만 녹화).
+  it("OAuth2 Bearer 계정의 media upload initialize 가 403을 돌려주면 트윗을 올리지 않고 재연결을 안내한다", async () => {
+    registerLocalImage("tok-403", "tenant-c", "card-1.png", pngBytes(), "image/png");
+    const bearerCred = { token: "bearer-token-no-scope" }; // meta.grantedScope 모름(미검증) — 실제 요청으로 403을 받는 경로
+
+    let tweetCalled = false;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/2/media/upload/initialize")) {
+        return new Response(JSON.stringify({ title: "Forbidden", detail: "insufficient_scope" }), { status: 403 });
+      }
+      if (url === "https://api.twitter.com/2/tweets") {
+        tweetCalled = true;
+        return Response.json({ data: { id: "should-not-happen" } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+
+    const result = await publishX(bearerCred, "403이 나야 하는 트윗", ["https://osmu.example.com/api/images/deliver/tok-403"]);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("media.write");
+    expect(result.error).toMatch(/다시 연결/);
+    expect(tweetCalled).toBe(false);
+  });
+
+  it("연결 시 저장된 scope에 media.write 가 없는 걸 미리 알면, 업로드 요청조차 보내지 않고 즉시 재연결을 안내한다", async () => {
+    const bearerCred = { token: "bearer-token-old-scope", meta: { grantedScope: "tweet.read tweet.write users.read offline.access" } };
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const result = await publishX(bearerCred, "스코프 사전 차단", ["https://osmu.example.com/api/images/deliver/tok-whatever"]);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("media.write");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("연결 시 저장된 scope에 media.write 가 있으면 정상 업로드로 진행한다(회귀 방지)", async () => {
+    registerLocalImage("tok-scoped-ok", "tenant-d", "card-1.png", pngBytes(), "image/png");
+    const bearerCred = { token: "bearer-token-with-scope", meta: { grantedScope: "tweet.read tweet.write users.read offline.access media.write" } };
+
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/initialize")) return Response.json({ data: { id: "media-ok" } });
+      if (url.endsWith("/append")) return new Response(null, { status: 204 });
+      if (url.endsWith("/finalize")) return Response.json({ data: { id: "media-ok", processing_info: { state: "succeeded" } } });
+      if (url === "https://api.twitter.com/2/tweets") return Response.json({ data: { id: "tweet-ok" } });
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+
+    const result = await publishX(bearerCred, "스코프 있음", ["https://osmu.example.com/api/images/deliver/tok-scoped-ok"]);
+    expect(result.ok).toBe(true);
+  });
+
+  // m2(독립 리뷰): 애니메이션 GIF는 tweet_image가 아니라 tweet_gif로 올라가야 한다.
+  it("GIF 이미지는 media_category=tweet_gif 로 초기화한다", async () => {
+    registerLocalImage("tok-gif", "tenant-e", "anim.gif", pngBytes(), "image/gif");
+    let initBody: Record<string, unknown> = {};
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/initialize")) {
+        initBody = JSON.parse(String(init?.body ?? "{}"));
+        return Response.json({ data: { id: "media-gif" } });
+      }
+      if (url.endsWith("/append")) return new Response(null, { status: 204 });
+      if (url.endsWith("/finalize")) return Response.json({ data: { id: "media-gif", processing_info: { state: "succeeded" } } });
+      if (url === "https://api.twitter.com/2/tweets") return Response.json({ data: { id: "tweet-gif" } });
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+
+    const result = await publishX(LEGACY_CRED, "움직이는 카드", ["https://osmu.example.com/api/images/deliver/tok-gif"]);
+
+    expect(result.ok).toBe(true);
+    expect(initBody.media_category).toBe("tweet_gif");
+  });
+
+  // m1(독립 리뷰): STATUS 폴링은 provider가 알려준 check_after_secs 를 존중해야 한다(고정 1초
+  // 폴링은 과도한 요청을 쌓는다). fake timer로 "너무 빨리 두드리지 않는다"를 확인한다.
+  it("finalize 가 처리중이면 check_after_secs 가 지나기 전에는 STATUS 를 두드리지 않는다", async () => {
+    vi.useFakeTimers();
+    registerLocalImage("tok-poll", "tenant-f", "card-1.png", pngBytes(), "image/png");
+    let statusCalls = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/initialize")) return Response.json({ data: { id: "media-poll" } });
+      if (url.endsWith("/append")) return new Response(null, { status: 204 });
+      if (url.endsWith("/finalize")) {
+        return Response.json({ data: { id: "media-poll", processing_info: { state: "in_progress", check_after_secs: 5 } } });
+      }
+      if (url.includes("command=STATUS")) {
+        statusCalls += 1;
+        return Response.json({ data: { processing_info: { state: "succeeded" } } });
+      }
+      if (url === "https://api.twitter.com/2/tweets") return Response.json({ data: { id: "tweet-poll" } });
+      throw new Error(`unexpected fetch: ${url}`);
+    }));
+
+    const pending = publishX(LEGACY_CRED, "폴링 간격 시험", ["https://osmu.example.com/api/images/deliver/tok-poll"]);
+    // check_after_secs=5인데 2초만 흘려보내면 아직 STATUS를 두드리지 않아야 한다.
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(statusCalls).toBe(0);
+    await vi.advanceTimersByTimeAsync(3500);
+    const result = await pending;
+    expect(statusCalls).toBeGreaterThanOrEqual(1);
+    expect(result.ok).toBe(true);
+    vi.useRealTimers();
+  });
 });
