@@ -17,6 +17,11 @@ set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:3456}"
 TOKEN="${DASHBOARD_AUTH_TOKEN:-}"
+# 2026-10-02 독립 리뷰어 MINOR: 고정 /tmp 경로는 같은 호스트에서 이 스크립트가 겹쳐
+# 돌면(수동 재실행과 크론이 겹치는 경우 등) 서로의 응답 파일을 덮어쓴다. mktemp로
+# 호출마다 고유 경로를 받고 끝나면 치운다.
+RESP_FILE="$(mktemp "${TMPDIR:-/tmp}/metrics-collect-resp.XXXXXX.json")"
+trap 'rm -f "$RESP_FILE"' EXIT
 
 if [ -z "$TOKEN" ]; then
   echo "ERROR: DASHBOARD_AUTH_TOKEN 미설정 — 운영자 전체 스윕 불가." >&2
@@ -24,13 +29,16 @@ if [ -z "$TOKEN" ]; then
 fi
 
 echo "[metrics-collect] $(date -u +%FT%TZ) sweeping all tenants @ ${BASE_URL}"
-http_code=$(curl -sS -o /tmp/metrics-collect-resp.json -w "%{http_code}" \
+# --max-time: 전체 테넌트 스윕은 테넌트 수만큼 외부 채널 API 호출이 늘어난다. 상한이
+# 없으면 한 채널 장애(타임아웃 없는 요청)가 이 크론 실행 전체를 무한정 붙잡고, 다음
+# 주기 실행과 겹쳐 중복 수집·락 경합을 만든다. 300초(5분)는 6시간 주기 대비 충분히 짧다.
+http_code=$(curl -sS --max-time 300 -o "$RESP_FILE" -w "%{http_code}" \
   -X POST "${BASE_URL}/api/metrics" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{}')
 
-cat /tmp/metrics-collect-resp.json
+cat "$RESP_FILE"
 echo
 if [ "$http_code" != "200" ]; then
   echo "[metrics-collect] FAILED http=${http_code}" >&2

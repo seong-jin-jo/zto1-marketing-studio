@@ -218,34 +218,58 @@ export async function startTikTokVideoPost(input: {
  * 않고, 알려진 코드만 고정 한국어로 번역한다(ADR-007 조용한 실패 금지 + 원문 비노출 원칙
  * 둘 다 지킨다). 참고: https://developers.tiktok.com/doc/content-posting-api-reference-direct-post
  */
+// 2026-10-02 독립 리뷰어 MINOR: 매핑 문구를 TikTok 공식 Content Posting API init 오류
+// 표(https://developers.tiktok.com/doc/content-posting-api-reference-direct-post)와
+// 대조해 교정했다.
+// - spam_risk_too_many_posts: 문서상 "하루 게시 한도 초과" — "단시간에 너무 많이"가 아니다.
+// - reached_active_user_cap: 앱(계정 전체)의 하루 활성 게시 사용자 수 한도 — 내일 재시도를 안내.
+// - url_ownership_unverified: 소스 URL의 운영 설정(도메인 인증) 문제 — 재시도로는 안 풀린다.
+// - invalid_file_upload: init 오류 표에 없는 코드(업로드 단계 오류다, 우리는 init만 쓴다) —
+//   잘못된 매핑이라 제거한다. 허용 목록에서 빠지면 normalizeTikTokReason이 provider_rejected로
+//   접어 안전하게 처리한다.
+// - access_token_invalid·scope_not_authorized: 문서의 인증 오류 코드. 재연결을 안내한다.
 const TIKTOK_KNOWN_REJECT_MESSAGES: Record<string, string> = {
   unaudited_client_can_only_post_to_private_accounts:
     "TikTok 앱 심사 전이라 공개 게시가 막혀 있습니다. 계정을 비공개로 바꾸고 나만 보기로 올리거나, 심사 통과 후 공개로 올릴 수 있습니다.",
   spam_risk_too_many_posts:
-    "TikTok이 단시간에 너무 많은 게시로 판단해 막았습니다. 시간을 두고 다시 시도해 주세요.",
+    "오늘 TikTok에 올릴 수 있는 하루 게시 한도를 넘었습니다. 내일 다시 시도해 주세요.",
   spam_risk_user_banned_from_posting:
     "이 TikTok 계정은 게시가 제한된 상태입니다. TikTok 앱에서 계정 상태를 확인해 주세요.",
   reached_active_user_cap:
-    "앱이 심사 전이라 TikTok이 허용하는 활성 사용자 수를 넘었습니다. 심사 통과 후 다시 시도해 주세요.",
+    "앱이 심사 전이라 TikTok이 허용하는 하루 활성 게시 사용자 수를 넘었습니다. 내일 다시 시도해 주세요.",
   url_ownership_unverified:
-    "영상 주소의 소유권이 TikTok에 확인되지 않았습니다. 잠시 후 다시 시도해 주세요.",
+    "영상 주소의 운영 설정(도메인 인증)이 TikTok에 확인되지 않았습니다. 다시 시도해도 풀리지 않으니 연결 설정을 다시 확인해 주세요.",
   privacy_level_option_mismatch:
     "선택한 공개 범위를 이 계정에서 쓸 수 없습니다. 공개 범위를 바꿔 다시 시도해 주세요.",
-  invalid_file_upload:
-    "영상 파일을 TikTok이 읽지 못했습니다. 다른 형식으로 다시 만들어 주세요.",
   rate_limit_exceeded:
     "TikTok 요청이 너무 잦아 잠시 막혔습니다. 몇 분 뒤 다시 시도해 주세요.",
+  access_token_invalid:
+    "TikTok 연결이 끊어졌습니다. 설정에서 TikTok 계정을 다시 연결해 주세요.",
+  scope_not_authorized:
+    "이 작업에 필요한 TikTok 권한이 없습니다. 설정에서 TikTok 계정을 다시 연결해 권한을 다시 허용해 주세요.",
   provider_rejected: "TikTok이 발행 요청을 거부했습니다. 앱 권한과 계정 상태를 확인해주세요.",
   provider_unavailable: "TikTok 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.",
 };
 
+// 2026-10-02 독립 리뷰어 MINOR: 허용 목록 멤버십 검사만으로도 충분하지만, TikTok이
+// 코드 필드에 예상 밖 형태(공백·구두점·과도한 길이)를 보내는 경로까지 방어선을 하나 더
+// 둔다. 저장·로그에 쓰기 전 반드시 이 정규식을 통과한 값만 "코드"로 인정한다.
+const TIKTOK_REASON_CODE_PATTERN = /^[a-z0-9_]{1,64}$/;
+
 /**
- * TikTok이 돌려준 거부 코드를 허용 목록으로 걸러낸다. 목록 밖의 값(TikTok이 문서에 없는
- * 코드를 보내거나, 응답이 손상된 경우)은 전부 "provider_rejected"로 접는다 — 이 시점
- * 이후로는 reason이 로그·DB 어디에 찍혀도 안전하다는 것을 함수 경계에서 보장한다.
+ * TikTok이 돌려준 거부 코드를 허용 목록으로 걸러낸다. 형태가 코드 같지 않거나 목록
+ * 밖인 값(TikTok이 문서에 없는 코드를 보내거나, 응답이 손상된 경우)은 전부
+ * "provider_rejected"로 접는다 — 이 시점 이후로는 reason이 로그·DB·화면 어디에
+ * 찍혀도 안전하다는 것을 함수 경계에서 보장한다.
  */
 function normalizeTikTokReason(reason: string | undefined): string {
-  if (reason && Object.prototype.hasOwnProperty.call(TIKTOK_KNOWN_REJECT_MESSAGES, reason)) return reason;
+  if (
+    reason &&
+    TIKTOK_REASON_CODE_PATTERN.test(reason) &&
+    Object.prototype.hasOwnProperty.call(TIKTOK_KNOWN_REJECT_MESSAGES, reason)
+  ) {
+    return reason;
+  }
   return "provider_rejected";
 }
 

@@ -62,13 +62,20 @@ function isOperatorRequest(request: Request): boolean {
   return raw === operatorToken;
 }
 
-// 발행물이 하나라도 있는 테넌트 id 목록. RLS 우회 service-role(db())로 전 테넌트 스캔 —
-// 운영자 전체 스윕 전용(테넌트 스코프 쿼리가 아니므로 withTenant 미사용). publish-due의
-// dueTenantIds()와 같은 패턴.
+// 발행물이 하나라도 있는, 정지 안 된 테넌트 id 목록. RLS 우회 service-role(db())로 전
+// 테넌트 스캔 — 운영자 전체 스윕 전용(테넌트 스코프 쿼리가 아니므로 withTenant 미사용).
+// publish-due의 dueTenantIds()와 같은 패턴.
+//
+// 2026-10-02 독립 리뷰어 MINOR: tenants.status가 'paused'인 테넌트(schema.sql — 계정
+// 정지, operator/customers/route.ts가 다루는 그 상태)는 외부 채널 조회를 시도할 이유가
+// 없다 — 정지된 계정은 크론 때마다 매번 채널 오류를 겪고 실패 집계만 늘린다.
 async function tenantIdsWithPublishedPosts(): Promise<string[]> {
   const sql = db();
   const rows = await sql<{ tenant_id: string }[]>`
-    SELECT DISTINCT tenant_id FROM published_posts WHERE status = 'published'`;
+    SELECT DISTINCT p.tenant_id
+      FROM published_posts p
+      JOIN tenants t ON t.id = p.tenant_id
+     WHERE p.status = 'published' AND t.status = 'active'`;
   return rows.map((r) => r.tenant_id);
 }
 

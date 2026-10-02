@@ -267,10 +267,30 @@ function VideoPlayback({
   const [resolvedSrc, setResolvedSrc] = useState(() => (isDeliveryUrlExpired(src) ? "" : src));
   const [renewing, setRenewing] = useState(() => isDeliveryUrlExpired(src));
   const resignAttempted = useRef("");
+  /*
+    2026-10-02 독립 리뷰어 BLOCK-M-D: 이전 판은 handleError의 재시도 가드가
+    `resignAttempted.current === attemptKey && !resolvedSrc` 였다. 재서명이 한 번
+    성공하면 resolvedSrc가 채워지므로 이 조건은 다시는 true가 안 된다 — 코덱 깨짐·
+    Range 미지원처럼 "주소는 새로 받았는데 그 영상도 여전히 재생이 안 되는" 경우
+    onError→재서명→src 교체→onError가 무한히 돈다. DeliveredMedia.tsx:157과 같은
+    패턴으로 고친다: 같은 attemptKey(작업공간+원본 주소)당 **딱 한 번**만 재시도하고,
+    그 한 번이 성공했든 실패했든 다음 onError는 즉시 실패로 닫는다. 마운트 시 만료
+    판정으로 이미 한 번 썼으면(아래 effect) handleError는 두 번째 시도를 안 한다 —
+    DeliveredMedia도 "만료라서 미리 썼다"와 "멀쩡해 보였는데 걸어보니 터졌다"를
+    합쳐 총 1회로 센다.
+  */
   const activeOverlays = overlays.filter((o) => playhead >= o.startSec && playhead <= o.endSec);
   const activeComment = comments.find((c) => playhead >= c.startSec && playhead <= c.endSec) ?? null;
   const hook = activeOverlays.find((o) => o.kind === "hook");
   const cta = activeOverlays.find((o) => o.kind === "cta");
+
+  // 재서명으로 src가 바뀌면 <video> 엘리먼트가 다시 로드되며 브라우저가 재생 위치를
+  // 0으로 되돌리고 멈춘다. 사용자가 보던 자리·재생 상태를 되살린다(독립 리뷰어 MINOR).
+  const restoreOnLoad = useRef(false);
+  const playheadRef = useRef(playhead);
+  playheadRef.current = playhead;
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
 
   useEffect(() => {
     const attemptKey = `${tenantId || ""}|${src}`;
@@ -289,7 +309,7 @@ function VideoPlayback({
     void resignDeliveryUrl(src, tenantId).then((next) => {
       if (canceled) return;
       setRenewing(false);
-      if (next) setResolvedSrc(next);
+      if (next) { restoreOnLoad.current = true; setResolvedSrc(next); }
       else setLoadFailed(true);
     });
     return () => { canceled = true; };
@@ -297,14 +317,29 @@ function VideoPlayback({
 
   async function handleError() {
     const attemptKey = `${tenantId || ""}|${src}`;
-    if (resignAttempted.current === attemptKey && !resolvedSrc) {
+    if (resignAttempted.current === attemptKey) {
       setLoadFailed(true);
       return;
     }
     resignAttempted.current = attemptKey;
     const next = await resignDeliveryUrl(src, tenantId);
-    if (next) setResolvedSrc(next);
+    if (next) { restoreOnLoad.current = true; setResolvedSrc(next); }
     else setLoadFailed(true);
+  }
+
+  function handleLoadedMetadata(duration: number) {
+    onLoadedMetadata(duration);
+    if (restoreOnLoad.current) {
+      restoreOnLoad.current = false;
+      const el = videoRef.current;
+      if (el) {
+        el.currentTime = playheadRef.current;
+        if (playingRef.current) {
+          const p = el.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        }
+      }
+    }
   }
 
   return (
@@ -323,7 +358,7 @@ function VideoPlayback({
             src={resolvedSrc}
             preload="metadata"
             className="h-full w-full object-contain"
-            onLoadedMetadata={(e) => onLoadedMetadata(e.currentTarget.duration)}
+            onLoadedMetadata={(e) => handleLoadedMetadata(e.currentTarget.duration)}
             onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
             onError={handleError}
             data-video-el
