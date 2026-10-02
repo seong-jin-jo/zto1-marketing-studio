@@ -188,10 +188,24 @@ function partialPersistenceFailure(
 
 // POST /api/publish — 한 플랫폼 실발행 { tenant_id, platform, text, image_url?, draft_id? }
 // 발행 후 published_posts에 기록(성과 수집 대상). 토큰 없으면 명확한 에러(크래시 X).
+// 2026-10-02 운영 감사(세션맥락): Instagram carousel/Threads 상태 폴링이 약 150초 걸릴 수
+// 있는데 클라이언트는 PUBLISH_REQUEST_TIMEOUT_MS(45초)에 끊는다 — video/publish와 같은
+// 거짓-실패 계열. 이 예산 안에 못 끝나면 202로 접수만 알리고 같은 실행을 백그라운드로
+// 잇는다. 기존 draft_id 예약(ON CONFLICT DO NOTHING + in_progress 홀더 체크)은 그대로 —
+// 재시도는 여전히 409/alreadyPublished로 막힌다. 느린 경로의 결과 조회는 이미 있던
+// GET /api/publish?draft_id=...&platforms=...(buildUnifiedPublishStatus)가 그대로 맡는다 —
+// draft_id가 "작업 id" 역할을 하므로 별도 job 저장소를 새로 만들지 않는다.
+const PUBLISH_FAST_PATH_BUDGET_MS = Number(process.env.PUBLISH_FAST_PATH_BUDGET_MS) || 8000;
+
 export async function POST(request: Request) {
   const __b = await request.json();
   const { platform, image_url, image_urls, draft_id, account_id } = __b;
   const legacyText = typeof __b.text === "string" ? __b.text : "";
+  // draft_id가 UUID일 때만 느린 경로를 쓴다 — 느린 경로의 유일한 결과 조회 수단(GET
+  // ?draft_id=...)이 UUID draft_id를 요구하기 때문이다. idempotency_key만 쓰는 호출자
+  // (draft_id 없음)는 지금처럼 끝까지 기다린다(동작 변경 없음).
+  const canDeferPublishResponse = typeof draft_id === "string" && UUID_RE.test(draft_id);
+  const publishWorkPromise = (async (): Promise<Response> => {
   if (__b.edit_format !== undefined) {
     const formatValidation = validateContentEditFormat(__b.edit_format);
     if (!formatValidation.valid) {
@@ -796,4 +810,37 @@ export async function POST(request: Request) {
       partial: result.ok && !firstCommentResult.ok,
     } : {}),
   });
+  })();
+
+  if (!canDeferPublishResponse) return publishWorkPromise;
+
+  // MINOR-b(2026-10-02 독립 리뷰): video/publish와 같은 이유로 race 승자가 workPromise여도
+  // 타이머를 지운다.
+  const PUBLISH_FAST_PATH_TIMED_OUT = Symbol("publish_fast_path_timed_out");
+  let publishFastPathTimer!: ReturnType<typeof setTimeout>;
+  const racedPublish = await Promise.race([
+    publishWorkPromise,
+    new Promise<typeof PUBLISH_FAST_PATH_TIMED_OUT>((resolve) => {
+      publishFastPathTimer = setTimeout(() => resolve(PUBLISH_FAST_PATH_TIMED_OUT), PUBLISH_FAST_PATH_BUDGET_MS);
+    }),
+  ]);
+  clearTimeout(publishFastPathTimer);
+  if (racedPublish !== PUBLISH_FAST_PATH_TIMED_OUT) return racedPublish;
+
+  // 예산 안에 못 끝났다 — 접수만 알리고 같은 실행을 백그라운드로 계속 잇는다. 결과는
+  // published_posts에 그대로 기록되므로(워크 프로미스가 건드리지 않은 코드 그대로),
+  // 화면은 GET /api/publish?draft_id=...&platforms=...로 진짜 결과를 받는다.
+  publishWorkPromise.catch((e) => {
+    console.error(JSON.stringify({
+      kind: "publish_bg_error", draftId: draft_id, platform,
+      reason: e instanceof Error ? e.message : String(e),
+    }));
+  });
+  return Response.json({
+    ok: true,
+    processing: true,
+    draftId: draft_id,
+    platform,
+    message: "발행 요청을 접수했습니다. 시간이 걸릴 수 있어 결과를 이어서 확인합니다.",
+  }, { status: 202 });
 }
