@@ -832,9 +832,9 @@ export default function StudioPage() {
    * 각자 다른 뜻이라 그대로 두고, "이름이 무엇인가"만 단일 정본으로 합친다.
    *
    * 이미 이번 발행에서 성공한(pub.status === "done") 채널은 재선택 대상처럼 이름에
-   * 끼워 보여주지 않는다 — 다시 누르면 재발행처럼 보이는 혼동을 줄인다. PR #102가
-   * 도입하는 "이미 완료"·"상태 불명" 상태는 이 필터에 조건을 추가하는 자리다(지금은
-   * done만 존재하고 unknown류 상태가 아직 코드에 없어 추측해서 만들지 않았다).
+   * 끼워 보여주지 않는다 — 다시 누르면 재발행처럼 보이는 혼동을 줄인다. 뒤따르는 다른
+   * PR이 도입하는 "이미 완료"·"상태 불명" 상태는 이 필터에 조건을 추가하는 자리다
+   * (지금은 done만 존재하고 unknown류 상태가 아직 코드에 없어 추측해서 만들지 않았다).
    */
   const publishNameTargets = (accountsLoaded ? publishTargets : selectedTargets)
     .filter((platform) => pub.status[platform] !== "done");
