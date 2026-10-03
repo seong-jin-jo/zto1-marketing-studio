@@ -1,3 +1,15 @@
+## 2026-10-03 10:10 KST 열린 PR 정리 — #101·#106 머지, #105 충돌 해소(머지 보류)
+
+- handoff basis: 이 파일 + git log + 열린 PR 목록(클라우드 세션, tmux 없음). 사용자 지시 "푸시하고 머지하고 다해봐".
+- #101 머지(`a32820b4`): main 병합 시 text-card-image.ts 충돌(capLinesToFit + cardTextOrigin 함께 유지). 병합 후 의미 충돌 1건 — main(#102) TikTok 202 회귀 2건이 #101의 '공개 범위 선택 전 TikTok 발행 차단'에 막힘 → 테스트가 creator-info 고정 후 공개 범위를 고르게 수정. CI verify green.
+- #106 머지(`69cc56f3`): base를 main으로 변경. videos/page.tsx는 비동기 job 폴링 + m3 TikTok 선택 초기화(`resetTikTokPublishChoices`, 접수·job 완료·즉시 성공 3경로), 결정.md 두 항목 유지. squash 뒤 가짜 충돌은 main 트리 == #101 최종 head 트리 확인 후 `-s ours`로 이력만 이음. CI green.
+- #105(Remotion) 충돌 해소·push, **머지 보류**: VideoEditor/StudioRooms(intro-outro + 재서명 tenantId), video-edit-contract, tenant-isolation READ-61/62, 결정.md 번호 중복(#105 항목 → OD-2026-10-02-4/-5). main 계약 위반 2건 수정: delivered-media 주석 오탐 문구, 맨 button 래칫(텍스트 단추 3개 공용 Button, Player 카드 1개 사유 기재 후 기준선 240). 현재 main과 충돌 없음. 보류 사유: Docker Debian 교체 4.5GB, VM 디스크 확인 전제.
+- #60 닫음(main anthropic.ts에 동일 수정 존재).
+- 보류(사용자 판단): #105 머지, #93(운영 마이그레이션 스크립트 선행 필요), #61(draft, 19커밋·9파일 충돌, 9/18 정체).
+- 로컬 검증 한계: 전체 Vitest에서 환경 문제 9파일(proper-lockfile 모듈 7 — CI는 openclaw/node_modules 복사 단계 있음, cancel-safety 자물쇠 3건, clip-ssrf 로컬 dispatcher 1건)은 main에서도 동일 실패. #105 렌더 통합 테스트는 Remotion Chromium 다운로드가 프록시 403.
+- 배포: deploy-marketing.yml은 workflow_dispatch 전용. 머지만 했고 배포 안 함.
+- 다음 실행: #105 CI verify 결과 확인(01:02Z 시작). 사용자가 VM 디스크 확인 후 승인하면 #105 squash 머지.
+
 ## 2026-10-03 KST 열린 PR 정리: #101 main 충돌 해소 (클라우드 세션)
 
 - handoff basis: 이 파일(9/30 이후 미갱신)과 git log·열린 PR 목록. 클라우드 컨테이너라 tmux pane 없음. 9/30 이후 main에 #96~#107 머지됨, PR #95 작업은 머지 완료로 종료.
