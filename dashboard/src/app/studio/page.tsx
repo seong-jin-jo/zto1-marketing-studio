@@ -40,6 +40,7 @@ import {
 import {
   browserCardUploader,
   cardRatioFrom,
+  firstEmptyCardNumber,
   renderAndUploadCardDeck,
   renderAndUploadEmbeddedTextCard,
   renderPlainCardDeckIncremental,
@@ -47,6 +48,7 @@ import {
 } from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
+import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
 import { emptyBubbleSlideNumber, pruneEmptyBubbles } from "@/lib/studio/card-deck-ops";
 import { limitedChannelNotice, planChannelImages } from "@/lib/studio/channel-image-capacity";
@@ -120,7 +122,7 @@ const VIDEO_PUBLISH_NAME: Record<string, string> = { shorts: "youtube", reels: "
 const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reels: "instagram", tiktok: "tiktok" };
 
 import { draftStatusLabel } from "@/lib/studio/draft-status-label";
-import { resolveVideoPublishFilename } from "@/lib/studio/video-publish-filename";
+import { alignVideoEditToRenderSource, resolveVideoPublishFilename, resolveVideoRenderSourceFilename } from "@/lib/studio/video-publish-filename";
 import { connectedOnlyTargets, publishableTargets as computePublishableTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
 import { channelNameList, PLATFORM_LABEL } from "@/lib/studio/channel-name-list";
 import {
@@ -2070,6 +2072,11 @@ export default function StudioPage() {
         return null;
       }
     }
+    const emptyCardNumber = firstEmptyCardNumber(lines);
+    if (emptyCardNumber !== null) {
+      showToast(`${emptyCardNumber}번 카드가 비어 있어 발행실로 이동하지 않았습니다. 내용을 채운 뒤 다시 시도해 주세요.`, "error");
+      return null;
+    }
     if (!lines.some((line) => line.trim())) return null;
     try {
       const next = await renderAndUploadEmbeddedTextCard({
@@ -2108,13 +2115,19 @@ export default function StudioPage() {
    */
   type SubtitleBurnOutcome =
     | { kind: "skipped" }
-    | { kind: "done"; vid: VidResult }
+    | { kind: "done"; vid: VidResult; videoEdit: VideoEdit | null }
     | { kind: "failed" };
   async function burnVideoSubtitles(lines: string[]): Promise<SubtitleBurnOutcome> {
     if (editKind !== "video") return { kind: "skipped" };
     if (!activeWorkspace) return { kind: "skipped" };
-    const filename = videoFilename(vid?.file || vid?.url || "");
-    if (!filename) return { kind: "skipped" };
+    const currentSourceFilename = videoFilename(vid?.file || vid?.url || "");
+    if (!currentSourceFilename) return { kind: "skipped" };
+    // 인트로·아웃트로를 적용한 뒤 컷·자막·오버레이를 고치면 합성 결과를 입력으로 다시
+    // 굽는다. 원본을 따로 구운 뒤 발행에서 옛 합성본을 우선하면 두 편집 중 하나가 사라진다.
+    const filename = resolveVideoRenderSourceFilename(currentSourceFilename, videoEdit?.introOutro ?? null);
+    const renderVideoEdit = videoEdit
+      ? alignVideoEditToRenderSource(videoEdit, videoEdit.introOutro, currentSourceFilename)
+      : null;
     const spoken = lines.filter((line) => line.trim());
     const editNeedsFile = Boolean(videoEdit && (
       videoEdit.subtitles.some((line) => line.cut || line.text.trim().length > 0)
@@ -2129,15 +2142,28 @@ export default function StudioPage() {
         filename,
         lines: spoken,
         subtitleSize,
-        ...(videoEdit ? { videoEdit } : {}),
+        ...(renderVideoEdit ? { videoEdit: renderVideoEdit } : {}),
       });
       if (!r?.ok || !r.file) {
         showToast(r?.error || "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요.", "error");
         return { kind: "failed" };
       }
       const next: VidResult = { ...(vid as VidResult), url: r.file, file: r.file };
+      let nextVideoEdit = videoEdit;
+      const resultFilename = r.filename || videoFilename(r.file);
+      if (nextVideoEdit?.introOutro && resultFilename && !isIntroOutroStale(nextVideoEdit.introOutro, currentSourceFilename)) {
+        nextVideoEdit = setIntroOutroApplied(nextVideoEdit, {
+          ...nextVideoEdit.introOutro,
+          compositeFilename: nextVideoEdit.introOutro.compositeFilename || nextVideoEdit.introOutro.resultFilename,
+          resultFilename,
+          renderedCutRanges: cutRanges(nextVideoEdit),
+          deliverUrl: r.file,
+        });
+        setVideoEdit(nextVideoEdit);
+        videoEditRef.current = nextVideoEdit;
+      }
       setVid(next);
-      return { kind: "done", vid: next };
+      return { kind: "done", vid: next, videoEdit: nextVideoEdit };
     } catch (error) {
       showToast(extractApiErrorMessage(error, "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요."), "error");
       return { kind: "failed" };
@@ -2175,7 +2201,7 @@ export default function StudioPage() {
         cardDeck ? pruneEmptyBubbles(cardDeck) : null,
         // 발행실로 넘어가기 직전 전체 스냅샷 저장이다(도메인 한정 자동저장이 아니다) —
         // 현재 videoEdit state를 그대로 싣는다(이전 기본값 동작과 동일, 이번엔 명시).
-        videoEdit,
+        subtitled.kind === "done" ? subtitled.videoEdit : videoEdit,
       );
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
       changeRoom("publish");
@@ -3107,6 +3133,7 @@ export default function StudioPage() {
   // 똑같은 한(빈 배열→빈 배열) 이 커밋에서 다시 안 돈다 — draftId가 실제로 바뀐 다음
   // 커밋에서만, 그때는 이미 최신 draftId(null)로 정확히 판단한다.
   const histDraftsReady = Boolean(hist?.drafts);
+  const histFailed = Boolean(histError);
   useEffect(() => {
     if (!draftId) { videoEditReconciledRef.current = true; videoEditBaseRevisionRef.current = null; return; }
     if (reconciledDraftIdRef.current === draftId) return;
@@ -3114,9 +3141,9 @@ export default function StudioPage() {
     // 맞지만, 목록 자체가 에러로 끝났으면(histError) 영원히 안 온다 — 그 경우 목록을
     // 포기하고 단건 GET(force)으로 넘어간다. 그래야 "잠근 채 12초 뒤에도 안 풀림"이
     // 아니라 최소한 10초 타임아웃(reconcileVideoEditFromServer 내부)까지만 잠긴다.
-    if (!histDraftsReady && !histError) return; // SWR 로딩 중 — hist가 도착하면 이 효과가 다시 돈다.
-    void reconcileVideoEditFromServer(draftId, Boolean(histError));
-  }, [draftId, histDraftsReady, histError]);
+    if (!histDraftsReady && !histFailed) return; // SWR 로딩 중 — hist가 도착하면 이 효과가 다시 돈다.
+    void reconcileVideoEditFromServer(draftId, histFailed);
+  }, [draftId, histDraftsReady, histFailed]);
   useEffect(() => () => {
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
     if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
@@ -3883,12 +3910,23 @@ export default function StudioPage() {
     attempt(10);
   }
 
-  if (activeRoom === "edit") return (
+  if (activeRoom === "edit") {
+    // 초안 목록 조회는 편집 데이터의 유일한 소스가 아니다. localStorage 복원값이나 이미
+    // 생성된 미디어가 있으면 목록 재조회가 실패해도 편집기를 그대로 유지한다. 저장 실패는
+    // 아래 autosaveError 경로에서 별도로 보여 준다.
+    const hasEditableContent = resolvedEditLines.some((line) => line.trim().length > 0)
+      || Boolean(vid?.file || vid?.url || img?.file || img?.url || cardDeck || videoEdit);
+    const editRoomState = !hist && !hasEditableContent
+      ? (histError ? "error" : "loading")
+      : "default";
+    return (
     <div className="px-stack-section py-pad-inset">
       {showWizard && activeWorkspace ? <LearningCardWizard workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onSaved={(info, completed) => { setLearningInfo(info); if (completed) { setShowWizard(false); mutateBrand(); showToast("학습 정보를 배웠습니다"); } else { setLearningFlash((value) => value + 1); } }} onClose={() => setShowWizard(false)} /> : null}
       {roomHeader}
       <EditRoom
         workspaceId={activeWorkspace?.id}
+        state={activeWorkspace ? editRoomState : "default"}
+        onRetry={() => { void mutateHist(); }}
         lines={resolvedEditLines}
         onLinesChange={syncEditLines}
         kind={editKind}
@@ -3926,6 +3964,7 @@ export default function StudioPage() {
       />
     </div>
   );
+  }
 
   if (activeRoom === "publish") return (
     <div className="px-stack-section py-pad-inset">

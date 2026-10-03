@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-10-03 22:56 KST",
+  "scope": "편집실 v2 1차 P1-05",
+  "workerLimit": 2,
+  "inventory": {
+    "integrityFiles": 32,
+    "integrityManifestSha256": "31f9994bf72a8321646970b50268aeb3880ccadfd82dd11764f7aa1d80330e25",
+    "contractFiles": 84,
+    "contractManifestSha256": "91657e560a2f010504c59592d29db316ad8dc30d6bdd70b1e3b49e694de3dffa"
+  },
+  "results": {
+    "integrity": { "filesPassed": 32, "testsPassed": 102, "failed": 0, "durationSeconds": 11.28 },
+    "contract": { "filesPassed": 84, "testsPassed": 445, "failed": 0, "durationSeconds": 75.40 },
+    "typecheck": { "passed": true, "errors": 0 },
+    "uiTokenAudit": { "passed": true, "violations": 0 },
+    "cardParity": { "fixtures": 8, "mutationsRejected": 2 },
+    "videoParity": { "filesPassed": 1, "testsPassed": 2, "failed": 0 },
+    "screenSmoke": {
+      "viewports": [1440, 1024, 390],
+      "consoleErrors": 0,
+      "horizontalOverflow": 0,
+      "videoPlaybackIncreasedAtAllViewports": true
+    },
+    "mobileErgonomics": {
+      "widths": [360, 390, 412, 600, 700, 780, 820, 900, 1000],
+      "fontBelow13": 0,
+      "tapBelow44": 0,
+      "activeStateCoverage": 1,
+      "horizontalOverflow": 0
+    }
+  },
+  "review": {
+    "newApiOrDatabase": false,
+    "freePlacementOrExportQueue": false,
+    "changedLineHexOrInlineStyle": 0,
+    "fixedFinding": "P1-02 Canvas drawImage 계측 래퍼의 TypeScript 시그니처를 명시했다."
+  },
+  "delegatedToCi": {
+    "productionBuild": "미검증",
+    "generalFullTest": "미검증",
+    "reason": "컨트롤러가 무거운 전체 실행을 금지했고, 로컬 load average가 723.95였다."
+  },
+  "knownWarnings": [
+    "범용 design-lint는 기존 인라인 style 2파일과 hex 8파일을 경고했다. 이번 변경 추가분은 0이고 프로젝트 UI 토큰 감사 위반도 0이다.",
+    "pipeline-artifact-lint는 종료 코드 0이며 기존 design·qa 산출물 결손 경고 28건이 남아 있다.",
+    "로컬 ffmpeg에는 drawtext가 없어 P1-03 글자 픽셀 검증은 Debian CI에서 남아 있다."
+  ]
+}

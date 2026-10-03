@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveVideoPublishFilename } from "@/lib/studio/video-publish-filename";
+import { resolveVideoPublishFilename, resolveVideoRenderSourceFilename } from "@/lib/studio/video-publish-filename";
 
 // 2026-10-02 회장 반려: 인트로/아웃트로를 적용해도 발행 요청이 원본 파일명을 그대로
 // 보내고 있었다("화면은 적용됐다고 하는데 실제로 올라가는 파일은 원본"). 이 테스트는
@@ -17,6 +17,7 @@ describe("resolveVideoPublishFilename", () => {
     };
     expect(resolveVideoPublishFilename(original, applied)).toBe("video-concat-xyz.mp4");
     expect(resolveVideoPublishFilename(original, applied)).not.toBe(original);
+    expect(resolveVideoRenderSourceFilename(original, applied)).toBe("video-concat-xyz.mp4");
   });
 
   it("적용된 것이 없으면 원본 파일명을 그대로 쓴다", () => {
