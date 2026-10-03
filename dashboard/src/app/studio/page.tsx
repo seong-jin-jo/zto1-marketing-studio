@@ -3892,6 +3892,8 @@ export default function StudioPage() {
       {roomHeader}
       <EditRoom
         workspaceId={activeWorkspace?.id}
+        state={activeWorkspace ? (histError ? "error" : hist ? "default" : "loading") : "default"}
+        onRetry={() => { void mutateHist(); }}
         lines={resolvedEditLines}
         onLinesChange={syncEditLines}
         kind={editKind}

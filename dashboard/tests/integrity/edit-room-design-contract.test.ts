@@ -24,6 +24,8 @@ const button = read("src/components/shared/Button.tsx");
 const studioRoomsCss = read("src/components/studio/StudioRooms.module.css");
 const sidebar = read("src/components/layout/Sidebar.tsx");
 const themeToggle = read("src/components/layout/ThemeToggle.tsx");
+const videoEditor = read("src/components/studio/VideoEditor.tsx");
+const studioPage = read("src/app/studio/page.tsx");
 
 describe("편집실 조작 영역 하한 계약", () => {
   it("QA-EDIT-TOUCH-01 정상: `.ds-touch-target` 이 가로·세로 모두 `--control-touch` 를 건다", () => {
@@ -61,6 +63,27 @@ describe("편집실 조작 영역 하한 계약", () => {
     expect(sidebar).toMatch(/min-h-control-touch px-stack mb-micro w-full flex items-center justify-between/);
     expect(sidebar).toMatch(/min-h-control-touch w-full flex items-center gap-stack-tight[^"]*hover:text-danger/);
     expect(themeToggle).toMatch(/min-h-control-touch w-full flex items-center gap-stack-tight/);
+  });
+
+  it("QA-P1-04-TOUCH-01 정상: 영상 재생 단추와 탐색 입력의 누름 영역이 44px 이상이다", () => {
+    expect(videoEditor).toMatch(/data-video-play-toggle[\s\S]{0,120}?/);
+    expect(videoEditor).toMatch(/aria-label="재생 위치"[\s\S]{0,260}?className="min-h-control-touch min-w-0 flex-1"/);
+    const playButton = videoEditor.match(/<Button[\s\S]{0,400}?data-video-play-toggle[\s\S]{0,20}?>/)?.[0] ?? "";
+    expect(playButton).not.toMatch(/!min-h-0|\bh-7\b|\bw-7\b|\bmin-w-0\b/);
+    expect(videoEditor).toMatch(/data-video-subtitle-seek[\s\S]{0,80}/);
+    expect(videoEditor).not.toMatch(/!min-h-0 min-w-0 border-0 bg-transparent p-none/);
+    expect(videoEditor).toMatch(/data-video-subtitle-text[\s\S]{0,100}/);
+    expect(videoEditor).toContain("min-h-control-touch min-w-0 rounded-control border-0");
+  });
+
+  it("QA-P1-04-STATE-01 거절: 초안 목록이 안 왔거나 실패했는데 편집 완료 화면처럼 보이지 않는다", () => {
+    expect(studioPage).toContain('state={activeWorkspace ? (histError ? "error" : hist ? "default" : "loading") : "default"}');
+    expect(studioPage).toContain('onRetry={() => { void mutateHist(); }}');
+  });
+
+  it("QA-P1-04-MOBILE-01 정상: 1023px 이하 글자와 눌림 상태는 모바일 토큰을 쓴다", () => {
+    expect(globals).toMatch(/@media \(max-width: 1023px\)[\s\S]*?--font-caption-size:\s*16px/);
+    expect(globals).toMatch(/@media \(max-width: 1023px\)[\s\S]*?:where\([^}]*\):active/);
   });
 });
 

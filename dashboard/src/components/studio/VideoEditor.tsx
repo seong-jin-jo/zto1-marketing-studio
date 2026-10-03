@@ -200,8 +200,8 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
       {/* M8(교차 리뷰 MAJOR): 390px 폭에서는 타임라인 칸(108px)이 낮아 이 안내가 블록에
           가려졌다. 편집기 맨 위 머리줄로 올린다 — 타임라인 안에는 더 안 둔다. */}
       <p className="text-caption text-subtle" data-video-timeline-hint>← 옆으로 밀어 더 보기 · 블록을 끌어서 구간을 바꿉니다</p>
-      <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_10.5rem] max-[64rem]:[grid-template-rows:minmax(0,1fr)_9.375rem] max-[26rem]:[grid-template-rows:auto_6.75rem]">
-        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[26rem]:grid-cols-1">
+      <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_10.5rem] max-[64rem]:[grid-template-rows:minmax(0,1fr)_9.375rem] max-[26rem]:[grid-template-rows:auto_8.25rem]">
+        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[56rem]:grid-cols-1">
           <VideoPlayback
             src={effectivePreviewUrl}
             tenantId={tenantId}
@@ -453,7 +453,7 @@ function VideoPlayback({
           variant="primary"
           aria-label={playing ? "일시정지" : "재생"}
           onClick={onTogglePlay}
-          className="!min-h-0 h-7 w-7 min-w-0 shrink-0 rounded-pill p-none"
+          className="shrink-0 rounded-pill p-none"
           data-video-play-toggle
         >
           {playing ? "❚❚" : "▶"}
@@ -467,7 +467,7 @@ function VideoPlayback({
             step={0.1}
             value={playhead}
             onChange={(e) => onSeek(Number.parseFloat(e.target.value))}
-            className="h-1 min-w-0 flex-1"
+            className="min-h-control-touch min-w-0 flex-1"
             data-video-scrubber
           />
         ) : <span className="flex-1 text-caption text-subtle">길이 확인 중</span>}
@@ -628,7 +628,7 @@ function SubtitleScriptEditor({
                 <Button
                   size="sm"
                   variant="secondary"
-                  className="!min-h-0 min-w-0 border-0 bg-transparent p-none font-mono text-caption text-subtle"
+                  className="min-w-0 border-0 bg-transparent p-none font-mono text-caption text-subtle"
                   aria-label={`${formatClock(line.startSec)}로 이동`}
                   onClick={() => onSeek(line.startSec)}
                   data-video-subtitle-seek
@@ -649,7 +649,7 @@ function SubtitleScriptEditor({
                       commitCut(index);
                     }
                   }}
-                  className={`min-w-0 rounded-control border-0 bg-transparent px-micro text-body text-text outline-none [word-break:keep-all] ${line.cut ? "line-through text-subtle" : ""}`}
+                  className={`min-h-control-touch min-w-0 rounded-control border-0 bg-transparent px-micro text-body text-text outline-none [word-break:keep-all] ${line.cut ? "line-through text-subtle" : ""}`}
                   data-video-subtitle-text
                 />
                 <Button size="sm" variant="secondary" disabled={syncing} onClick={() => commitCut(index)} data-video-subtitle-cut-toggle>
@@ -947,7 +947,7 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
                 onClick={() => onSeek(s.startSec)}
                 data-video-timeline-block="subtitle"
                 data-video-timeline-block-id={s.id}
-                className={`!min-h-0 absolute top-0 h-7 min-w-0 justify-start rounded-control px-micro text-left text-caption ${s.cut ? "bg-danger/45 line-through text-subtle" : "bg-surface text-text"} border border-border`}
+                className={`absolute top-0 min-h-control-touch min-w-0 justify-start rounded-control px-micro text-left text-caption ${s.cut ? "bg-danger/45 line-through text-subtle" : "bg-surface text-text"} border border-border`}
                 style={{ left: `${s.startSec * PX_PER_SEC}px`, width: `${Math.max(4, (s.endSec - s.startSec) * PX_PER_SEC)}px` }}
               >
                 <span className="block truncate">{s.text || "(빈 자막)"}</span>
@@ -1012,9 +1012,9 @@ function TimelineLane({ label, labelWidth, children }: { label: string; labelWid
   // 간격을 두지 않는다 — 이 라벨 폭이 곧 위 눈금 오버레이의 오프셋 상수와 같아야
   // 블록이 눈금과 같은 원점에서 시작한다(M7).
   return (
-    <div className="relative flex h-9 items-center border-t border-border/40 pt-micro first:border-t-0" data-video-timeline-lane={label}>
+    <div className="relative flex min-h-control-touch items-center border-t border-border/40 pt-micro first:border-t-0" data-video-timeline-lane={label}>
       <span className="sticky left-0 z-[1] shrink-0 bg-surface-2 text-caption uppercase text-subtle" style={{ width: `${labelWidth}px` }} data-video-timeline-lane-label>{label}</span>
-      <div className="relative h-7 min-w-0 flex-1">{children}</div>
+      <div className="relative min-h-control-touch min-w-0 flex-1">{children}</div>
     </div>
   );
 }
