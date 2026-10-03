@@ -1,3 +1,11 @@
+## 2026-10-04 08:36 KST 편집실 v2 S1 카드 자유 배치 구현 착수
+
+- handoff basis: 회장이 이 세션에 직접 지정한 S1 과제와 버전핀 D-2026-10-04-1, `card-element-model.md`, `build-plan.md` S1·공통 완료 조건, `user-flow-mapping.md` S1 행, v71 prototype을 정본으로 삼는다. tmux `371:0.1`은 이 Codex worker 자신의 현재 pane으로 확인했고 별도 live handoff와 충돌하지 않는다.
+- 착수 실측: `CardDeckV3`, `CardCanvasEditor`, `CardSlideScene`, `cardDeckV3` 구현은 현재 0건이다. v2 plain 카드는 `EditPreview`의 문구·9칸 위치 편집만 제공해 v71의 요소 자유 배치가 아직 없다.
+- 현재 작업: S1의 v3 계약·순수 command·공용 scene·DOM editor·5종 요소 UI·draft 저장 왕복·기존 revision 충돌 복구 연결을 구현한다. 범위 밖 S2 이관·PNG render 전환과 S3 이후 queue는 만들지 않는다.
+- 다음 실행: 기존 `StudioRooms`와 `studio/page.tsx` 저장·충돌 흐름을 정밀 추적한 뒤 계약·command 테스트부터 작성하고 작은 단위로 커밋한다. 최종 종료 증거는 관련 테스트, integrity, 저장소 전체 contract, typecheck:ci, localhost 1440·1024·390 실제 조작, 9폭 모바일 실측이다.
+- 보존 대상: 기존 수정 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 건드리거나 커밋하지 않는다.
+
 ## 2026-10-04 07:12 KST 편집실 v2 본 구현 기술설계 완료, eng-design 검수 대기
 
 - handoff basis: 회장이 이 세션에 직접 지정한 tech-architect 과제와 D-2026-10-04-1·D-2026-10-03-2, 버전핀 PRD·v71 prototype·기존 3개 설계문서·현재 main을 정본으로 삼았다. tmux `371:0.1`은 같은 현재 Codex worker pane으로 확인했고 다른 live handoff와 충돌하지 않았다.

@@ -1,3 +1,9 @@
+## 2026-10-04 편집실 v2 S1 자유 배치 미구현 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-FREEFORM-01 | v71에서 승인한 카드 요소 자유 배치를 실제 편집실에 구현하고 저장·새로고침까지 보존 | S1-AC1~07 | ❌ NG | 착수 실측에서 `dashboard/src`에 `CardDeckV3`, `CardCanvasEditor`, `CardSlideScene`, `cardDeckV3`가 0건이며 plain 카드는 `EditPreview`의 제한된 문구 위치 편집만 제공한다. D-2026-10-04-1과 `build-plan.md` S1 승인 뒤 구현·실브라우저 검증을 시작한다. |
+
 ## 2026-10-04 편집실 v2 drawtext 프레임 비교 전수 감사 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
