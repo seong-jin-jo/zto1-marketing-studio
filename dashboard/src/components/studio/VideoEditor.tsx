@@ -16,8 +16,9 @@
  *
  * 렌더 반영(ADR-007): 발행실로 이동할 때 videoEdit 을 /api/video/subtitle 에 보낸다.
  * 컷으로 뺀 구간, 타임라인에서 고친 자막 시간, 후킹·CTA 문구, 댓글 문구는 그때
- * 나가는 mp4 에 굽힌다. 목소리 교체, 표지, 인트로, 아웃트로, 움직이는 제목은
- * 아직 파일에 들어가지 않는다. 화면 문구도 이 범위만 말한다.
+ * 나가는 mp4 에 굽힌다. 적용을 마친 인트로·아웃트로 합성 결과는 미리보기와 발행
+ * 파일 후보로 쓴다. 목소리는 선택만 저장하며, 표지와 움직이는 제목은 아직 파일에
+ * 들어가지 않는다. 화면 문구도 이 범위만 말한다.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
@@ -248,7 +249,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
         <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seek} run={run} syncing={syncing} />
       </div>
       <p className="text-caption text-subtle" data-render-status-note>
-        발행실로 이동할 때 자막 문구, 타임라인에서 고친 자막 시간, 컷으로 뺀 구간, 후킹·CTA·댓글 문구가 영상 파일에 굽힙니다. 목소리 교체와 표지, 인트로, 아웃트로, 움직이는 제목은 아직 파일에 들어가지 않습니다.
+        발행실로 이동할 때 자막 문구, 타임라인에서 고친 자막 시간, 컷으로 뺀 구간, 후킹·CTA·댓글 문구가 영상 파일에 굽힙니다. 적용을 마친 인트로·아웃트로 합성 결과는 미리보기와 발행 파일에 쓰입니다. 목소리는 선택만 저장되며, 표지와 움직이는 제목은 아직 파일에 들어가지 않습니다.
       </p>
     </div>
   );
@@ -292,6 +293,7 @@ function VideoPlayback({
   const [resolvedSrc, setResolvedSrc] = useState(() => (isDeliveryUrlExpired(src) ? "" : src));
   const [renewing, setRenewing] = useState(() => isDeliveryUrlExpired(src));
   const resignAttempted = useRef("");
+  const resignInFlight = useRef<{ key: string; promise: Promise<string> } | null>(null);
   /*
     2026-10-02 독립 리뷰어 BLOCK-M-D: 이전 판은 handleError의 재시도 가드가
     `resignAttempted.current === attemptKey && !resolvedSrc` 였다. 재서명이 한 번
@@ -326,13 +328,21 @@ function VideoPlayback({
       setRenewing(false);
       return;
     }
-    if (resignAttempted.current === attemptKey) return;
-    resignAttempted.current = attemptKey;
+    let promise: Promise<string>;
+    if (resignAttempted.current === attemptKey) {
+      if (resignInFlight.current?.key !== attemptKey) return;
+      promise = resignInFlight.current.promise;
+    } else {
+      resignAttempted.current = attemptKey;
+      promise = resignDeliveryUrl(src, tenantId);
+      resignInFlight.current = { key: attemptKey, promise };
+    }
     let canceled = false;
     setResolvedSrc("");
     setRenewing(true);
-    void resignDeliveryUrl(src, tenantId).then((next) => {
+    void promise.then((next) => {
       if (canceled) return;
+      if (resignInFlight.current?.promise === promise) resignInFlight.current = null;
       setRenewing(false);
       if (next) { restoreOnLoad.current = true; setResolvedSrc(next); }
       else setLoadFailed(true);
@@ -350,6 +360,25 @@ function VideoPlayback({
     const next = await resignDeliveryUrl(src, tenantId);
     if (next) { restoreOnLoad.current = true; setResolvedSrc(next); }
     else setLoadFailed(true);
+  }
+
+  async function retryResign() {
+    const attemptKey = `${tenantId || ""}|${src}`;
+    resignAttempted.current = attemptKey;
+    setLoadFailed(false);
+    setRenewing(true);
+    setResolvedSrc("");
+    const promise = resignDeliveryUrl(src, tenantId);
+    resignInFlight.current = { key: attemptKey, promise };
+    const next = await promise;
+    if (resignInFlight.current?.promise === promise) resignInFlight.current = null;
+    setRenewing(false);
+    if (next) {
+      restoreOnLoad.current = true;
+      setResolvedSrc(next);
+      return;
+    }
+    setLoadFailed(true);
   }
 
   function handleLoadedMetadata(duration: number) {
@@ -371,7 +400,10 @@ function VideoPlayback({
     <div className="min-w-0 space-y-stack-tight max-[26rem]:grid max-[26rem]:h-[11.25rem] max-[26rem]:grid-rows-[minmax(0,1fr)_auto_auto] max-[26rem]:gap-stack-tight max-[26rem]:space-y-none" data-video-playback>
       <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:min-h-0 max-[26rem]:aspect-auto" data-video-screen>
         {loadFailed ? (
-          <p className="p-pad-inset text-caption text-danger" data-video-load-failed>영상을 불러오지 못했습니다. 생성실에서 다시 만들어 주세요.</p>
+          <div className="space-y-stack-tight p-pad-inset" role="alert" data-video-load-failed>
+            <p className="text-caption text-danger">영상 주소가 만료됐거나 원본 파일을 찾지 못해 재생하지 못했습니다.</p>
+            <Button size="sm" onClick={() => void retryResign()}>영상 주소 다시 받기</Button>
+          </div>
         ) : renewing ? (
           <p className="p-pad-inset text-caption text-subtle" data-video-renewing>영상 주소를 다시 받는 중입니다</p>
         ) : (

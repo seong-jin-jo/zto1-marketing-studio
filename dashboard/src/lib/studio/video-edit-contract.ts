@@ -8,7 +8,8 @@
  *
  * 렌더 반영: 컷 구간, 자막 시간, 후킹·CTA 문구, 댓글 문구는 playback-edit-plan.ts 가
  * ffmpeg 명령으로 만들고, /api/video/subtitle 이 videoEdit 을 받으면 그 명령을 실행한다.
- * 목소리 교체, 표지, 인트로, 아웃트로, 움직이는 제목은 아직 파일에 굽지 않는다.
+ * 적용을 마친 인트로·아웃트로 합성 결과는 별도 렌더 경로에서 미리보기와 발행 파일
+ * 후보로 쓴다. 목소리는 선택만 저장하며, 표지와 움직이는 제목은 아직 파일에 굽지 않는다.
  */
 
 export const VIDEO_EDIT_CONTRACT_VERSION = "1.0" as const;
