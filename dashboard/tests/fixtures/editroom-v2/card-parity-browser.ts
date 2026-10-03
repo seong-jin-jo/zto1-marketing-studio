@@ -57,9 +57,12 @@ async function captureText(run: () => string | Promise<string>): Promise<RenderC
     if (maxWidth === undefined) return originalFillText.call(this, value, x, y);
     return originalFillText.call(this, value, x, y, maxWidth);
   };
-  prototype.drawImage = function patchedDrawImage(...args) {
+  prototype.drawImage = function patchedDrawImage(
+    this: CanvasRenderingContext2D,
+    ...args: Parameters<CanvasRenderingContext2D["drawImage"]>
+  ) {
     drawImageCount += 1;
-    return originalDrawImage.apply(this, args);
+    Reflect.apply(originalDrawImage, this, args);
   } as typeof prototype.drawImage;
   try {
     return { dataUrl: await run(), text, drawImageCount };

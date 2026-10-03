@@ -1,3 +1,15 @@
+## 2026-10-03 22:56 KST 편집실 v2 P1-05 로컬 게이트 완료, CI 검증 대기
+
+- 결과: integrity 32파일 102건, 저장소 전체 contract 84파일 445건이 최대 2개 fork에서 실패 0이다. TypeScript 오류와 프로젝트 UI 토큰 감사 위반도 0이다.
+- 발견·수정: TypeScript가 P1-02 카드 브라우저 픽스처의 `drawImage` 계측 래퍼 시그니처를 잡았다. 명시 타입으로 고친 뒤 카드 8 fixture와 3px 돌연변이 2건, 영상 결과 정합 2건을 다시 통과했다.
+- review: 새 API·DB·자유 배치·내보내기 대기열 추가 0, 변경 줄의 새 hex·인라인 style 0이다. 기존 기능 삭제도 발견하지 못했다.
+- 화면 증거: P1-04의 1440·1024·390 실제 화면 재생 증가·콘솔 오류 0과 모바일 9폭 수치가 최종 제품 코드 기준으로 남아 있다.
+- 미검증: 호스트 load average가 723.95이고 컨트롤러가 무거운 전체 실행을 금지해 production build와 일반 전체 테스트는 원격 CI에 맡긴다. 로컬 ffmpeg의 `drawtext` 부재로 P1-03 글자 픽셀도 Debian CI가 필요하다.
+- 도구 경고: 범용 `design-lint`는 기존 인라인 style 2파일·hex 8파일, `pipeline-artifact-lint`는 기존 design·qa 산출물 결손 28건을 경고했다. 둘 다 이번 변경으로 새로 생긴 위반은 아니며 종료 코드는 0이다.
+- 증거: `logs/diff/editroom-v2-phase1/p1-05-gate-summary.json`과 `/tmp/zto1-editroom-p1-05-*.log`.
+- 다음 실행: P1-05 커밋 뒤 컨트롤러가 push·PR과 원격 CI를 실행한다. CI 종료 증거는 production build, 일반 전체 테스트, Debian ffmpeg `glyphFramesVerified:true`다.
+- 보존 대상: 기존 사용자 변경 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 건드리거나 커밋하지 않는다.
+
 ## 2026-10-03 22:49 KST 편집실 v2 P1-04 완료, P1-05 게이트 착수
 
 - P1-04 결과: 1440·1024·390 실제 Chromium에서 네 편집 형식과 데이터 있음·로딩·빈 상태·저장 실패를 확인했다. 영상은 세 폭 모두 재생 시간이 증가했고 콘솔 오류·가로 넘침·44px 미만 재생 조작은 0건이다.
