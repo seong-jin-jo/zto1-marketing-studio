@@ -1,3 +1,10 @@
+## 2026-10-04 편집실 v2 CI 타입·인트로 경계 마무리 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-CI-TYPE-01 | Remotion 컴포지션 등록부를 임의 문자열로 인덱싱해 CI TypeScript가 실패 | TYPECHECK-CI | ✅ 로컬 PASS | `IntroOutroCompId` 타입 가드로 저장 문자열을 등록부 키로 좁혔다. 손상된 `.next/dev/types` 생성물은 별도 보관하고 `next typegen`으로 재생성한 뒤 `npm run typecheck:ci` 종료 코드 0을 확인했다. |
+| EDITROOM-V2-PREVIEW-BOUNDARY-01 | 인트로·아웃트로 재생 중 본문 첫·끝 자막과 오버레이가 잘못 노출 | PREVIEW-OUTSIDE-BODY | ❌ NG | 플레이어 시각을 본문 0·끝으로 고정하면서 현재 구간이 본문 밖이라는 정보가 사라졌다. 경계 신호를 별도로 계산해 덧그림을 숨기는 회귀 테스트가 필요하다. |
+
 ## 2026-10-04 편집실 v2 교차 재검토 2차 ❌ NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

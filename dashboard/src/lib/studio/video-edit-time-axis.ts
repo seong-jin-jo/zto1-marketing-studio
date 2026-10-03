@@ -1,4 +1,8 @@
-import { COMP_FPS, INTRO_OUTRO_COMPS } from "../../../remotion/IntroOutroComps";
+import {
+  COMP_FPS,
+  INTRO_OUTRO_COMPS,
+  type IntroOutroCompId,
+} from "../../../remotion/IntroOutroComps";
 import { mergedCutRanges, type PlaybackRange } from "./playback-edit-plan";
 import type { IntroOutroApplied } from "./video-edit-contract";
 
@@ -6,8 +10,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function isIntroOutroCompId(compId: string): compId is IntroOutroCompId {
+  return compId in INTRO_OUTRO_COMPS;
+}
+
 function compDurationSec(compId: string | null | undefined): number {
   if (!compId) return 0;
+  if (!isIntroOutroCompId(compId)) return 0;
   const comp = INTRO_OUTRO_COMPS[compId];
   return comp ? comp.durationInFrames / COMP_FPS : 0;
 }
