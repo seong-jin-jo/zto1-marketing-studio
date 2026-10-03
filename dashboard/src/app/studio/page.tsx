@@ -120,7 +120,7 @@ const VIDEO_PUBLISH_NAME: Record<string, string> = { shorts: "youtube", reels: "
 const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reels: "instagram", tiktok: "tiktok" };
 
 import { draftStatusLabel } from "@/lib/studio/draft-status-label";
-import { resolveVideoPublishFilename } from "@/lib/studio/video-publish-filename";
+import { resolveVideoPublishFilename, resolveVideoRenderSourceFilename } from "@/lib/studio/video-publish-filename";
 import { connectedOnlyTargets, publishableTargets as computePublishableTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
 import { channelNameList, PLATFORM_LABEL } from "@/lib/studio/channel-name-list";
 import {
@@ -2113,8 +2113,11 @@ export default function StudioPage() {
   async function burnVideoSubtitles(lines: string[]): Promise<SubtitleBurnOutcome> {
     if (editKind !== "video") return { kind: "skipped" };
     if (!activeWorkspace) return { kind: "skipped" };
-    const filename = videoFilename(vid?.file || vid?.url || "");
-    if (!filename) return { kind: "skipped" };
+    const currentSourceFilename = videoFilename(vid?.file || vid?.url || "");
+    if (!currentSourceFilename) return { kind: "skipped" };
+    // 인트로·아웃트로를 적용한 뒤 컷·자막·오버레이를 고치면 합성 결과를 입력으로 다시
+    // 굽는다. 원본을 따로 구운 뒤 발행에서 옛 합성본을 우선하면 두 편집 중 하나가 사라진다.
+    const filename = resolveVideoRenderSourceFilename(currentSourceFilename, videoEdit?.introOutro ?? null);
     const spoken = lines.filter((line) => line.trim());
     const editNeedsFile = Boolean(videoEdit && (
       videoEdit.subtitles.some((line) => line.cut || line.text.trim().length > 0)

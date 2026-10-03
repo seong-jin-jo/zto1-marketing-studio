@@ -9,7 +9,13 @@
 // 걸러 원본으로 되돌린다.
 import { isIntroOutroStale, type IntroOutroApplied } from "./video-edit-contract";
 
-export function resolveVideoPublishFilename(currentSourceFilename: string, introOutro: IntroOutroApplied): string {
+/** 본문 편집을 굽거나 발행할 때 쓸 현재 최종 영상 파일을 고른다. */
+export function resolveVideoRenderSourceFilename(currentSourceFilename: string, introOutro: IntroOutroApplied): string {
   if (isIntroOutroStale(introOutro, currentSourceFilename)) return currentSourceFilename;
   return introOutro?.resultFilename || currentSourceFilename;
+}
+
+/** 기존 발행 호출부의 이름을 유지한다. 선택 규칙의 정본은 위 함수 하나다. */
+export function resolveVideoPublishFilename(currentSourceFilename: string, introOutro: IntroOutroApplied): string {
+  return resolveVideoRenderSourceFilename(currentSourceFilename, introOutro);
 }

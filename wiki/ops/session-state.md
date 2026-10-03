@@ -1,3 +1,13 @@
+## 2026-10-03 22:15 KST 편집실 v2 P1-03 구현 완료, 글자 픽셀 CI 검증 대기
+
+- handoff basis: 회장이 현재 작업 트리의 P1-03 미커밋 변경을 기준으로 이어서 끝내라고 명시했다. 이 diff를 primary로 사용했다.
+- P1-03 결과: 인트로·아웃트로 합성본을 본문 컷·자막·오버레이 굽기의 입력으로 쓰고, 새 결과 파일 하나를 최종 발행 후보로 고정했다.
+- 검증: 표적 8파일 36건 PASS. 30초 오디오 fixture는 실제 production 컷·오디오 그래프에서 27초, 영상 1·오디오 1 스트림이다. 실제 Remotion 1초 아웃트로+2초 본문 합성도 통과했다.
+- 미검증: 로컬 Homebrew ffmpeg에 `drawtext`가 없어 글자 픽셀 프레임은 생성하지 못했다. 정확한 문구·시간 필터 계약은 PASS이고, Debian CI에서 같은 통합검사의 `glyphFramesVerified:true`가 필요하다.
+- 증거: `logs/diff/editroom-v2-phase1/video-parity/`의 컷 전후 대표 프레임 4장과 `video-result-observations.json`.
+- 다음 실행: P1-03을 즉시 커밋한 뒤 P1-04 세 폭 편집실 실제 화면 검증으로 이동한다.
+- 보존 대상: 기존 사용자 변경 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 건드리거나 커밋하지 않는다.
+
 ## 2026-10-03 22:00 KST 편집실 v2 P1-02 완료, P1-03 착수 대기
 
 - P1-02 결과: production 렌더러를 실제 Chromium에서 실행하는 plain 5종·카톡 3종 정합 fixture를 추가했다. 기준·실제·차이 PNG와 글 경계·줄바꿈 JSON을 생성한다.
