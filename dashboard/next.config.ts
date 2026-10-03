@@ -33,7 +33,12 @@ const nextConfig: NextConfig = {
   // 여기서 끄는 것은 그 두 검사와 겹치는 세 번째 실행뿐이다.
   typescript: { ignoreBuildErrors: true },
   output: "standalone",
-  serverExternalPackages: ["proper-lockfile"],
+  // Remotion은 서버에서 require()로 네이티브/선택적 패키지(플랫폼별 compositor,
+  // video-matting, whisper-webgpu 등)를 동적으로 찾는다. Next의 서버 번들러가 이걸
+  // 정적으로 분석하려다 "Module not found"로 빌드를 죽인다(2026-10-02 실측, 도커
+  // 빌드 실패) — bundle/renderer는 실제로 동작하는 코드이므로 외부화해 Node의
+  // require에 그대로 맡긴다.
+  serverExternalPackages: ["proper-lockfile", "remotion", "@remotion/bundler", "@remotion/renderer"],
   turbopack: {
     root: dashboardRoot,
   },

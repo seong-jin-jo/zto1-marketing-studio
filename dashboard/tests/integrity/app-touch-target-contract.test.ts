@@ -160,7 +160,12 @@ describe("맨 button 래칫", () => {
   // 2026-09-22 4라운드: PublishEditSidebar(오른쪽 사이드바 채팅형 편집)를 이 브랜치에서
   // 뺐다(세 라운드 연속 싱글턴이 깨져 별도 브랜치로 이관). EditTrigger·사이드바 자체
   // 버튼(닫기·취소·저장)이 전부 사라져 기준선이 240 에서 239 로 내려간다.
-  const BASELINE = 239;
+  //
+  // 2026-10-03 PR #105 병합 +1(240): IntroOutroPanel 의 인트로/아웃트로 선택 카드는 Remotion
+  // Player 미리보기를 품은 세로 카드(h-16 썸네일 + 이름, 좌측 정렬, 선택 시 테두리·배경
+  // 전환)라 공용 Button 의 가운데 정렬·variant 배경과 겹친다. 같은 패널의 텍스트 단추 3개는
+  // 공용 Button 으로 옮겼다. 카드 높이(64px)로 터치 하한은 넘는다.
+  const BASELINE = 240;
 
   it("QA-APP-TOUCH-08 경계: 맨 button 총수가 기준선을 넘지 않는다", () => {
     const count = tsxFiles(resolve(root, "src"))
