@@ -3,7 +3,7 @@ title: 편집실 v2 v71 유저플로우 기술 매핑
 line: editroom-v2
 version: 1.0.0
 status: proposed
-created_at: 2026-10-04 07:42 KST
+created_at: 2026-10-04 07:10 KST
 model: gpt-5-codex
 agent: tech-architect
 skills: docs
@@ -14,7 +14,7 @@ source_decisions:
 
 # 편집실 v2 v71 유저플로우 기술 매핑
 
-> STAMP: 2026-10-04 07:42 KST | model=gpt-5-codex | agent=tech-architect | skill=docs | 근거=docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html, docs/eng/editroom-v2/gap-matrix.md | 고민=v71 화면 기능과 PRD 추가 기능을 하나도 잃지 않고 구현·검증 단위에 1:1로 연결
+> STAMP: 2026-10-04 07:10 KST | model=gpt-5-codex | agent=tech-architect | skill=docs | 근거=docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html, docs/eng/editroom-v2/gap-matrix.md | 고민=v71 화면 기능과 PRD 추가 기능을 하나도 잃지 않고 구현·검증 단위에 1:1로 연결
 
 ## 바로가기
 

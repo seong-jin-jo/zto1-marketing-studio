@@ -3,7 +3,7 @@ title: 편집실 v2 영속 내보내기 대기열
 line: editroom-v2
 version: 1.0.0
 status: proposed
-created_at: 2026-10-04 07:12 KST
+created_at: 2026-10-04 07:06 KST
 model: gpt-5-codex
 agent: tech-architect
 skills: docs
@@ -14,7 +14,7 @@ source_decisions:
 
 # 편집실 v2 영속 내보내기 대기열
 
-> STAMP: 2026-10-04 07:12 KST | model=gpt-5-codex | agent=tech-architect | skill=docs | 근거=https://www.postgresql.org/docs/current/sql-select.html, https://www.postgresql.org/docs/current/ddl-rowsecurity.html | 고민=외부 큐 없이도 여러 컨테이너에서 중복 렌더와 테넌트 누출을 막는 최소 영속 설계
+> STAMP: 2026-10-04 07:06 KST | model=gpt-5-codex | agent=tech-architect | skill=docs | 근거=https://www.postgresql.org/docs/current/sql-select.html, https://www.postgresql.org/docs/current/ddl-rowsecurity.html | 고민=외부 큐 없이도 여러 컨테이너에서 중복 렌더와 테넌트 누출을 막는 최소 영속 설계
 
 ## 바로가기
 

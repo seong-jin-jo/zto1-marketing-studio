@@ -3,7 +3,7 @@ title: 편집실 v2 본 구현 수직 슬라이스 계획
 line: editroom-v2
 version: 1.0.0
 status: proposed
-created_at: 2026-10-04 07:26 KST
+created_at: 2026-10-04 07:08 KST
 model: gpt-5-codex
 agent: tech-architect
 skills: docs
@@ -14,7 +14,7 @@ source_decisions:
 
 # 편집실 v2 본 구현 수직 슬라이스 계획
 
-> STAMP: 2026-10-04 07:26 KST | model=gpt-5-codex | agent=tech-architect | skill=docs | 근거=https://www.postgresql.org/docs/current/sql-select.html, https://www.remotion.dev/docs/renderer/render-still | 고민=회장이 첫 슬라이스에서 v71 차이를 바로 체감하면서도 이후 데이터·렌더 구조를 다시 뜯지 않는 구현 순서
+> STAMP: 2026-10-04 07:08 KST | model=gpt-5-codex | agent=tech-architect | skill=docs | 근거=https://www.postgresql.org/docs/current/sql-select.html, https://www.remotion.dev/docs/renderer/render-still | 고민=회장이 첫 슬라이스에서 v71 차이를 바로 체감하면서도 이후 데이터·렌더 구조를 다시 뜯지 않는 구현 순서
 
 ## 바로가기
 
