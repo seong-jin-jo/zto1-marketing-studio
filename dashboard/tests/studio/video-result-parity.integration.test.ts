@@ -5,8 +5,9 @@ import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
+import { concatSegments } from "@/lib/intro-outro-render";
 import { planPlaybackBurn, playbackFfmpegArgs } from "@/lib/studio/playback-edit-plan";
-import { resolveVideoPublishFilename, resolveVideoRenderSourceFilename } from "@/lib/studio/video-publish-filename";
+import { alignVideoEditToRenderSource, resolveVideoPublishFilename, resolveVideoRenderSourceFilename } from "@/lib/studio/video-publish-filename";
 import { emptyVideoEdit, type VideoEdit } from "@/lib/studio/video-edit-contract";
 
 const execFileP = promisify(execFile);
@@ -183,19 +184,92 @@ describe("편집실 영상 플레이어와 결과 파일 정합", () => {
     }
   }, 180000);
 
-  it("P1-03-ORDER-01 합성본을 본문 편집 입력으로 쓰고, 본문 편집 결과 하나를 최종 발행 후보로 쓴다", () => {
-    const original = "video-original.mp4";
-    const composite = {
-      introCompId: "intro-logo-reveal" as const,
-      outroCompId: "outro-logo-reveal" as const,
-      sourceFilename: original,
-      resultFilename: "video-intro-outro.mp4",
-      deliverUrl: "/api/media/composite",
-    };
-    const burnInput = resolveVideoRenderSourceFilename(original, composite);
-    expect(burnInput).toBe("video-intro-outro.mp4");
+  it("P1-03-ORDER-01 실제 합성본에서 인트로를 보존하고, 원본 기준 컷·자막 시간을 이동해 최종 결과 하나를 만든다", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "editroom-video-order-"));
+    try {
+      const introPath = path.join(tmpDir, "intro.mp4");
+      const mainPath = path.join(tmpDir, "main.mp4");
+      const compositePath = path.join(tmpDir, "composite.mp4");
+      const outputPath = path.join(tmpDir, "edited.mp4");
+      const makeSegment = async (output: string, color: string, duration: number) => {
+        await execFileP(ffmpeg, [
+          "-y",
+          "-f", "lavfi", "-i", `color=c=${color}:s=320x180:r=30:d=${duration}`,
+          "-f", "lavfi", "-i", `anullsrc=channel_layout=stereo:sample_rate=44100:d=${duration}`,
+          "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", output,
+        ]);
+      };
+      await makeSegment(introPath, "red", 2);
+      await makeSegment(mainPath, "blue", 6);
+      await concatSegments([introPath, mainPath], compositePath);
 
-    const editedComposite = "video-edited-composite.mp4";
-    expect(resolveVideoPublishFilename(editedComposite, composite)).toBe(editedComposite);
-  });
+      const original = "video-original.mp4";
+      const applied = {
+        introCompId: "intro-logo-reveal" as const,
+        outroCompId: null,
+        sourceFilename: original,
+        compositeFilename: "video-intro-outro.mp4",
+        introDurationSec: 2,
+        resultFilename: "video-intro-outro.mp4",
+        deliverUrl: "/api/media/composite",
+      };
+      expect(resolveVideoRenderSourceFilename(original, applied)).toBe("video-intro-outro.mp4");
+
+      const sourceEdit: VideoEdit = {
+        ...emptyVideoEdit(),
+        introOutro: applied,
+        subtitles: [
+          { id: "subtitle-shift", order: 0, text: "인트로 뒤 자막", startSec: 0.5, endSec: 1.5, cut: false },
+          { id: "cut-main", order: 1, text: "", startSec: 2, endSec: 3, cut: true },
+        ],
+      };
+      const renderEdit = alignVideoEditToRenderSource(sourceEdit, applied, original);
+      expect(renderEdit.subtitles.map(({ startSec, endSec }) => [startSec, endSec])).toEqual([[2.5, 3.5], [4, 5]]);
+
+      const compositeProbe = await probe(compositePath);
+      const executableEdit = drawtextAvailable ? renderEdit : {
+        ...renderEdit,
+        subtitles: renderEdit.subtitles.map((line) => ({ ...line, text: "" })),
+      };
+      const plan = planPlaybackBurn({
+        edit: executableEdit,
+        durationSec: compositeProbe.durationSec,
+        width: 320,
+        height: 180,
+        size: "작게",
+        fontFile: drawtextAvailable && fs.existsSync(fontFile) ? fontFile : null,
+        hasAudio: true,
+      });
+      expect(plan.ok).toBe(true);
+      if (!plan.ok) return;
+      if (drawtextAvailable) expect(plan.filterComplex).toContain("between(t,2.5,3.5)");
+      await execFileP(ffmpeg, playbackFfmpegArgs(plan, { inputPath: compositePath, outputPath })!);
+
+      const resultProbe = await probe(outputPath);
+      expect(compositeProbe.durationSec).toBeCloseTo(8, 1);
+      expect(resultProbe.durationSec).toBeCloseTo(7, 1);
+      expect(resultProbe.videoStreams).toBe(1);
+      expect(resultProbe.audioStreams).toBe(1);
+
+      const introFrame = path.join(tmpDir, "intro-frame.png");
+      const resultIntroFrame = path.join(tmpDir, "result-intro-frame.png");
+      await frame(introPath, 1, introFrame);
+      await frame(outputPath, 1, resultIntroFrame);
+      expect(await changedPixelRatio(introFrame, resultIntroFrame, path.join(tmpDir, "intro-diff.png"))).toBeLessThan(0.002);
+
+      if (drawtextAvailable) {
+        const beforeSubtitle = path.join(tmpDir, "before-subtitle.png");
+        const afterSubtitle = path.join(tmpDir, "after-subtitle.png");
+        await frame(compositePath, 2.75, beforeSubtitle);
+        await frame(outputPath, 2.75, afterSubtitle);
+        expect(await changedPixelRatio(beforeSubtitle, afterSubtitle, path.join(tmpDir, "subtitle-diff.png"))).toBeGreaterThan(0.002);
+      }
+
+      const finalApplied = { ...applied, resultFilename: "video-edited-composite.mp4", deliverUrl: "/api/media/edited" };
+      expect(resolveVideoPublishFilename("video-edited-composite.mp4", finalApplied)).toBe("video-edited-composite.mp4");
+      expect(resolveVideoRenderSourceFilename("video-edited-composite.mp4", finalApplied)).toBe("video-intro-outro.mp4");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }, 180000);
 });

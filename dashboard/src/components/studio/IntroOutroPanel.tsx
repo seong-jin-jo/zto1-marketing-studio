@@ -121,6 +121,8 @@ export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, 
             onApplied?.({
               introCompId: introId,
               outroCompId: outroId,
+              compositeFilename: body.filename,
+              introDurationSec: introId ? INTRO_OUTRO_COMPS[introId].durationInFrames / COMP_FPS : 0,
               resultFilename: body.filename,
               deliverUrl: body.file,
               sourceFilename,

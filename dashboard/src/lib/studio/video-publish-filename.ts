@@ -7,15 +7,44 @@
 // 다시 만든 뒤) 그 합성은 더 이상 지금 영상의 인트로/아웃트로가 아니다 — 낡은 합성을
 // 그대로 발행하면 전혀 다른(또는 지워진) 옛 영상이 올라간다. isIntroOutroStale로
 // 걸러 원본으로 되돌린다.
-import { isIntroOutroStale, type IntroOutroApplied } from "./video-edit-contract";
+import { isIntroOutroStale, type IntroOutroApplied, type VideoEdit } from "./video-edit-contract";
+
+const INTRO_DURATION_SEC: Record<string, number> = {
+  "intro-logo-reveal": 2,
+  "intro-title-card": 2.5,
+};
 
 /** 본문 편집을 굽거나 발행할 때 쓸 현재 최종 영상 파일을 고른다. */
 export function resolveVideoRenderSourceFilename(currentSourceFilename: string, introOutro: IntroOutroApplied): string {
   if (isIntroOutroStale(introOutro, currentSourceFilename)) return currentSourceFilename;
+  return introOutro?.compositeFilename || introOutro?.resultFilename || currentSourceFilename;
+}
+
+/** 발행은 자막까지 반영된 최신 결과를 쓴다. */
+export function resolveVideoPublishFilename(currentSourceFilename: string, introOutro: IntroOutroApplied): string {
+  if (isIntroOutroStale(introOutro, currentSourceFilename)) return currentSourceFilename;
   return introOutro?.resultFilename || currentSourceFilename;
 }
 
-/** 기존 발행 호출부의 이름을 유지한다. 선택 규칙의 정본은 위 함수 하나다. */
-export function resolveVideoPublishFilename(currentSourceFilename: string, introOutro: IntroOutroApplied): string {
-  return resolveVideoRenderSourceFilename(currentSourceFilename, introOutro);
+/** 원본 시간축의 컷·자막·오버레이를 인트로가 앞에 붙은 합성본 시간축으로 옮긴다. */
+export function alignVideoEditToRenderSource(
+  edit: VideoEdit,
+  introOutro: IntroOutroApplied,
+  currentSourceFilename: string,
+): VideoEdit {
+  if (!introOutro || isIntroOutroStale(introOutro, currentSourceFilename)) return edit;
+  const offset = introOutro.introDurationSec
+    ?? (introOutro.introCompId ? INTRO_DURATION_SEC[introOutro.introCompId] ?? 0 : 0);
+  if (offset <= 0) return edit;
+  const shift = <T extends { startSec: number; endSec: number }>(item: T): T => ({
+    ...item,
+    startSec: item.startSec + offset,
+    endSec: item.endSec + offset,
+  });
+  return {
+    ...edit,
+    subtitles: edit.subtitles.map(shift),
+    overlays: edit.overlays.map(shift),
+    comments: edit.comments.map(shift),
+  };
 }

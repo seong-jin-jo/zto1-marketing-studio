@@ -69,6 +69,11 @@ export type VoiceSelection = { voiceId: string; voiceName: string } | null;
 export type IntroOutroApplied = {
   introCompId: string | null;
   outroCompId: string | null;
+  /** 인트로·아웃트로만 합친 기준 파일. 자막을 다시 구울 때 항상 이 파일에서 시작한다. */
+  compositeFilename?: string;
+  /** 인트로 길이. 원본 기준 자막·컷 시간을 합성본 시간축으로 옮길 때 쓴다. */
+  introDurationSec?: number;
+  /** 현재 발행할 최종 결과. 자막을 다시 구우면 이 값만 새 결과로 전진한다. */
   resultFilename: string;
   deliverUrl: string;
   sourceFilename: string;
@@ -81,7 +86,11 @@ export type IntroOutroApplied = {
  */
 export function isIntroOutroStale(applied: IntroOutroApplied, currentSourceFilename: string | null | undefined): boolean {
   if (!applied || !currentSourceFilename) return false;
-  return applied.sourceFilename !== currentSourceFilename;
+  return ![
+    applied.sourceFilename,
+    applied.compositeFilename,
+    applied.resultFilename,
+  ].filter(Boolean).includes(currentSourceFilename);
 }
 
 export type VideoEdit = {
@@ -205,6 +214,12 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
     }
     if (typeof io.sourceFilename !== "string" || !io.sourceFilename) {
       throw new VideoEditValidationError("intro_outro_source_filename", "videoEdit.introOutro.sourceFilename must be a non-empty string when set");
+    }
+    if (io.compositeFilename !== undefined && (typeof io.compositeFilename !== "string" || !io.compositeFilename)) {
+      throw new VideoEditValidationError("intro_outro_composite_filename", "videoEdit.introOutro.compositeFilename must be a non-empty string when set");
+    }
+    if (io.introDurationSec !== undefined && (!isFiniteNumber(io.introDurationSec) || io.introDurationSec < 0)) {
+      throw new VideoEditValidationError("intro_outro_intro_duration", "videoEdit.introOutro.introDurationSec must be a non-negative finite number when set");
     }
     if (io.introCompId !== null && typeof io.introCompId !== "string") {
       throw new VideoEditValidationError("intro_outro_intro_id", "videoEdit.introOutro.introCompId must be a string or null");

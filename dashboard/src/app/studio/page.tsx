@@ -46,7 +46,7 @@ import {
   type PlainCardRenderCacheEntry,
 } from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
-import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
+import { isIntroOutroStale, setIntroOutroApplied, videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
 import { emptyBubbleSlideNumber, pruneEmptyBubbles } from "@/lib/studio/card-deck-ops";
 import { limitedChannelNotice, planChannelImages } from "@/lib/studio/channel-image-capacity";
@@ -120,7 +120,7 @@ const VIDEO_PUBLISH_NAME: Record<string, string> = { shorts: "youtube", reels: "
 const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reels: "instagram", tiktok: "tiktok" };
 
 import { draftStatusLabel } from "@/lib/studio/draft-status-label";
-import { resolveVideoPublishFilename, resolveVideoRenderSourceFilename } from "@/lib/studio/video-publish-filename";
+import { alignVideoEditToRenderSource, resolveVideoPublishFilename, resolveVideoRenderSourceFilename } from "@/lib/studio/video-publish-filename";
 import { connectedOnlyTargets, publishableTargets as computePublishableTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
 import { channelNameList, PLATFORM_LABEL } from "@/lib/studio/channel-name-list";
 import {
@@ -2108,7 +2108,7 @@ export default function StudioPage() {
    */
   type SubtitleBurnOutcome =
     | { kind: "skipped" }
-    | { kind: "done"; vid: VidResult }
+    | { kind: "done"; vid: VidResult; videoEdit: VideoEdit | null }
     | { kind: "failed" };
   async function burnVideoSubtitles(lines: string[]): Promise<SubtitleBurnOutcome> {
     if (editKind !== "video") return { kind: "skipped" };
@@ -2118,6 +2118,9 @@ export default function StudioPage() {
     // 인트로·아웃트로를 적용한 뒤 컷·자막·오버레이를 고치면 합성 결과를 입력으로 다시
     // 굽는다. 원본을 따로 구운 뒤 발행에서 옛 합성본을 우선하면 두 편집 중 하나가 사라진다.
     const filename = resolveVideoRenderSourceFilename(currentSourceFilename, videoEdit?.introOutro ?? null);
+    const renderVideoEdit = videoEdit
+      ? alignVideoEditToRenderSource(videoEdit, videoEdit.introOutro, currentSourceFilename)
+      : null;
     const spoken = lines.filter((line) => line.trim());
     const editNeedsFile = Boolean(videoEdit && (
       videoEdit.subtitles.some((line) => line.cut || line.text.trim().length > 0)
@@ -2132,15 +2135,27 @@ export default function StudioPage() {
         filename,
         lines: spoken,
         subtitleSize,
-        ...(videoEdit ? { videoEdit } : {}),
+        ...(renderVideoEdit ? { videoEdit: renderVideoEdit } : {}),
       });
       if (!r?.ok || !r.file) {
         showToast(r?.error || "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요.", "error");
         return { kind: "failed" };
       }
       const next: VidResult = { ...(vid as VidResult), url: r.file, file: r.file };
+      let nextVideoEdit = videoEdit;
+      const resultFilename = r.filename || videoFilename(r.file);
+      if (nextVideoEdit?.introOutro && resultFilename && !isIntroOutroStale(nextVideoEdit.introOutro, currentSourceFilename)) {
+        nextVideoEdit = setIntroOutroApplied(nextVideoEdit, {
+          ...nextVideoEdit.introOutro,
+          compositeFilename: nextVideoEdit.introOutro.compositeFilename || nextVideoEdit.introOutro.resultFilename,
+          resultFilename,
+          deliverUrl: r.file,
+        });
+        setVideoEdit(nextVideoEdit);
+        videoEditRef.current = nextVideoEdit;
+      }
       setVid(next);
-      return { kind: "done", vid: next };
+      return { kind: "done", vid: next, videoEdit: nextVideoEdit };
     } catch (error) {
       showToast(extractApiErrorMessage(error, "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요."), "error");
       return { kind: "failed" };
@@ -2178,7 +2193,7 @@ export default function StudioPage() {
         cardDeck ? pruneEmptyBubbles(cardDeck) : null,
         // 발행실로 넘어가기 직전 전체 스냅샷 저장이다(도메인 한정 자동저장이 아니다) —
         // 현재 videoEdit state를 그대로 싣는다(이전 기본값 동작과 동일, 이번엔 명시).
-        videoEdit,
+        subtitled.kind === "done" ? subtitled.videoEdit : videoEdit,
       );
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
       changeRoom("publish");

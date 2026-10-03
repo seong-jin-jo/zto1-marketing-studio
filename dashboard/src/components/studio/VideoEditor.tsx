@@ -193,6 +193,9 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   const effectivePreviewUrl = videoEdit.introOutro && !introOutroStale
     ? videoEdit.introOutro.deliverUrl
     : previewVideoUrl;
+  const introOutroSourceFilename = videoEdit.introOutro && !introOutroStale
+    ? videoEdit.introOutro.sourceFilename
+    : sourceFilename;
 
   return (
     <div className="space-y-stack" data-video-editor>
@@ -239,7 +242,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
               </p>
             ) : null}
             <IntroOutroPanel
-              sourceFilename={sourceFilename}
+              sourceFilename={introOutroSourceFilename}
               tenantId={tenantId}
               applied={videoEdit.introOutro}
               onApplied={(applied) => run((edit) => setIntroOutroApplied(edit, applied))}
