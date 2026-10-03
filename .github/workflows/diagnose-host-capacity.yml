@@ -28,3 +28,22 @@ jobs:
           docker image ls --format '{{.Size}}\t{{.Repository}}:{{.Tag}}' | sort -hr | head -10
       - name: 실행 중 컨테이너 메모리
         run: docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}'
+      - name: 게이트웨이 마운트 원본 존재 여부
+        # PR #93 장애(삭제된 체크아웃 폴더를 붙잡은 bind mount → EACCES 반복 → CPU 100%) 확인용.
+        run: |
+          for c in $(docker ps --format '{{.Names}}' | grep -E '^openclaw-(gateway|dashboard)-tenant'); do
+            docker inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}{{"\n"}}{{end}}{{end}}' "$c" \
+              | grep -v docker.sock | while read -r src; do
+                [ -n "$src" ] || continue
+                if [ -d "$src" ]; then echo "$c  OK       $src"; else echo "$c  MISSING  $src"; fi
+              done
+          done
+      - name: 게이트웨이 최근 오류 (비밀값 가림)
+        run: |
+          for c in $(docker ps --format '{{.Names}}' | grep -E '^openclaw-gateway-tenant'); do
+            echo "::group::$c"
+            docker inspect -f 'started={{.State.StartedAt}} restarts={{.RestartCount}}' "$c"
+            docker logs --tail 3000 "$c" 2>&1 | grep -aiE 'EACCES|ENOENT|permission denied' \
+              | sed -E 's/(secret|token|password|key)[=:][^ ,;]+/\1=[가림]/Ig' | sort | uniq -c | sort -rn | head -10
+            echo "::endgroup::"
+          done
