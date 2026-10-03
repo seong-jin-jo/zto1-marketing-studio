@@ -3,7 +3,7 @@
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
 | EDITROOM-V2-CI-TYPE-01 | Remotion 컴포지션 등록부를 임의 문자열로 인덱싱해 CI TypeScript가 실패 | TYPECHECK-CI | ✅ 로컬 PASS | `IntroOutroCompId` 타입 가드로 저장 문자열을 등록부 키로 좁혔다. 손상된 `.next/dev/types` 생성물은 별도 보관하고 `next typegen`으로 재생성한 뒤 `npm run typecheck:ci` 종료 코드 0을 확인했다. |
-| EDITROOM-V2-PREVIEW-BOUNDARY-01 | 인트로·아웃트로 재생 중 본문 첫·끝 자막과 오버레이가 잘못 노출 | PREVIEW-OUTSIDE-BODY | ❌ NG | 플레이어 시각을 본문 0·끝으로 고정하면서 현재 구간이 본문 밖이라는 정보가 사라졌다. 경계 신호를 별도로 계산해 덧그림을 숨기는 회귀 테스트가 필요하다. |
+| EDITROOM-V2-PREVIEW-BOUNDARY-01 | 인트로·아웃트로 재생 중 본문 첫·끝 자막과 오버레이가 잘못 노출 | PREVIEW-OUTSIDE-BODY | ✅ 로컬 PASS | 실패 재현에서 인트로 0.5초에 본문 훅이 노출됐다. 표시 시각이 본문 범위 안인지 별도 판정해 인트로·아웃트로에서는 자막·훅·CTA·댓글을 모두 숨겼다. 본문 0.5초에서는 네 종류가 다시 보인다. 관련 3파일 7건과 TypeScript 통과. |
 
 ## 2026-10-04 편집실 v2 교차 재검토 2차 ❌ NG
 

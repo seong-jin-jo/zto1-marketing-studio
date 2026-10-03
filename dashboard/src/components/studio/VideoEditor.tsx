@@ -46,6 +46,7 @@ import {
 import {
   bodyDurationFromPlaybackDuration,
   bodyTimeFromPlaybackTime,
+  isPlaybackTimeWithinBody,
   playbackTimeFromBodyTime,
 } from "@/lib/studio/video-edit-time-axis";
 
@@ -116,6 +117,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [playhead, setPlayhead] = useState(0);
+  const [playbackTime, setPlaybackTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   // M3(교차 리뷰): 플레이어 미리보기 자막도 대본·타임라인과 같은 재구성 결과를 봐야
@@ -164,6 +166,23 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
     }
   }
 
+  // 인트로/아웃트로가 적용돼 있으면 편집실 미리보기도 합성 결과를 보여준다(2026-10-02
+  // 회장 반려: 발행은 됐는데 미리보기가 원본을 계속 보여주면 "적용 안 된 것처럼" 보인다).
+  const introOutroStale = isIntroOutroStale(videoEdit.introOutro, sourceFilename);
+  const effectivePreviewUrl = videoEdit.introOutro && !introOutroStale
+    ? videoEdit.introOutro.deliverUrl
+    : previewVideoUrl;
+  const introOutroSourceFilename = videoEdit.introOutro && !introOutroStale
+    ? videoEdit.introOutro.sourceFilename
+    : sourceFilename;
+  const playbackIntroOutro = introOutroStale ? null : videoEdit.introOutro;
+  const bodyLayersVisible = isPlaybackTimeWithinBody(playbackTime, duration, playbackIntroOutro);
+
+  useEffect(() => {
+    setPlaybackTime(0);
+    setPlayhead(0);
+  }, [effectivePreviewUrl]);
+
   if (!previewVideoUrl) {
     // M6(교차 리뷰 MAJOR, ADR-007): 영상이 없어도 대본은 편집할 수 있어야 하고, 빈
     // 상태에는 빠져나갈 길이 있어야 한다. 플레이어·타임라인만 없다고 알리고, 자막 대본
@@ -180,31 +199,20 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
     );
   }
 
-  // 인트로/아웃트로가 적용돼 있으면 편집실 미리보기도 합성 결과를 보여준다(2026-10-02
-  // 회장 반려: 발행은 됐는데 미리보기가 원본을 계속 보여주면 "적용 안 된 것처럼" 보인다).
-  //
   // 독립 리뷰 M-3: `/api/higgsfield/asset/...`는 proxy.ts TENANT_AWARE_PATHS에 걸려
   // Bearer 토큰을 요구하는데 video 태그의 src는 Authorization 헤더를 못 보낸다(401). job GET이
   // 이미 서명해 돌려준 `/api/media/<token>` 배달 URL(deliverUrl, Bearer 불필요)을 그대로
   // 쓴다.
   // 독립 리뷰 M-4: 합성 당시 원본과 지금 원본(sourceFilename)이 다르면(생성실 재생성)
   // 낡은 합성이다 — 미리보기도 되돌리고 재적용을 안내한다.
-  const introOutroStale = isIntroOutroStale(videoEdit.introOutro, sourceFilename);
-  const effectivePreviewUrl = videoEdit.introOutro && !introOutroStale
-    ? videoEdit.introOutro.deliverUrl
-    : previewVideoUrl;
-  const introOutroSourceFilename = videoEdit.introOutro && !introOutroStale
-    ? videoEdit.introOutro.sourceFilename
-    : sourceFilename;
-  const playbackIntroOutro = introOutroStale ? null : videoEdit.introOutro;
-  const playbackPlayhead = duration === null
-    ? 0
-    : playbackTimeFromBodyTime(playhead, duration, playbackIntroOutro);
+  const playbackPlayhead = playbackTime;
 
   function seekBodyTime(sec: number) {
+    const targetPlaybackTime = playbackTimeFromBodyTime(sec, duration ?? sec, playbackIntroOutro);
     if (videoRef.current) {
-      videoRef.current.currentTime = playbackTimeFromBodyTime(sec, duration ?? sec, playbackIntroOutro);
+      videoRef.current.currentTime = targetPlaybackTime;
     }
+    setPlaybackTime(targetPlaybackTime);
     setPlayhead(sec);
   }
 
@@ -216,7 +224,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
       <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_10.5rem] max-[64rem]:[grid-template-rows:minmax(0,1fr)_9.375rem] max-[26rem]:[grid-template-rows:auto_9.75rem]">
         <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
-            src={effectivePreviewUrl}
+            src={effectivePreviewUrl ?? previewVideoUrl}
             tenantId={tenantId}
             onOpenCreate={onOpenCreate}
             videoRef={videoRef}
@@ -225,12 +233,19 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             activeSubtitle={activeSubtitle(displaySubtitles, playhead)}
             playhead={playhead}
             playbackPlayhead={playbackPlayhead}
+            bodyLayersVisible={bodyLayersVisible}
             duration={duration}
             playing={playing}
             onTogglePlay={togglePlay}
             voiceName={videoEdit.voice?.voiceName ?? null}
-            onLoadedMetadata={(d) => setDuration(bodyDurationFromPlaybackDuration(d, playbackIntroOutro))}
-            onTimeUpdate={(t) => setPlayhead(bodyTimeFromPlaybackTime(t, duration ?? t, playbackIntroOutro))}
+            onLoadedMetadata={(d) => {
+              setDuration(bodyDurationFromPlaybackDuration(d, playbackIntroOutro));
+              setPlaybackTime(videoRef.current?.currentTime ?? 0);
+            }}
+            onTimeUpdate={(t) => {
+              setPlaybackTime(t);
+              setPlayhead(bodyTimeFromPlaybackTime(t, duration ?? t, playbackIntroOutro));
+            }}
             onSeek={seekBodyTime}
           />
           <div className="min-w-0 space-y-stack" data-video-script-column>
@@ -281,7 +296,7 @@ function activeSubtitle(subtitles: SubtitleLine[], playhead: number): { text: st
 }
 
 function VideoPlayback({
-  src, tenantId, onOpenCreate, videoRef, overlays, comments, activeSubtitle, playhead, playbackPlayhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
+  src, tenantId, onOpenCreate, videoRef, overlays, comments, activeSubtitle, playhead, playbackPlayhead, bodyLayersVisible, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
 }: {
   src: string;
   tenantId?: string;
@@ -292,6 +307,7 @@ function VideoPlayback({
   activeSubtitle: { text: string; cut: boolean } | null;
   playhead: number;
   playbackPlayhead: number;
+  bodyLayersVisible: boolean;
   duration: number | null;
   playing: boolean;
   onTogglePlay: () => void;
@@ -326,8 +342,12 @@ function VideoPlayback({
     DeliveredMedia도 "만료라서 미리 썼다"와 "멀쩡해 보였는데 걸어보니 터졌다"를
     합쳐 총 1회로 센다.
   */
-  const activeOverlays = overlays.filter((o) => playhead >= o.startSec && playhead <= o.endSec);
-  const activeComment = comments.find((c) => playhead >= c.startSec && playhead <= c.endSec) ?? null;
+  const activeOverlays = bodyLayersVisible
+    ? overlays.filter((o) => playhead >= o.startSec && playhead <= o.endSec)
+    : [];
+  const activeComment = bodyLayersVisible
+    ? comments.find((c) => playhead >= c.startSec && playhead <= c.endSec) ?? null
+    : null;
   const hook = activeOverlays.find((o) => o.kind === "hook");
   const cta = activeOverlays.find((o) => o.kind === "cta");
 
@@ -475,7 +495,7 @@ function VideoPlayback({
             <span className="truncate">{activeComment.author}: {activeComment.text}</span>
           </div>
         ) : null}
-        {activeSubtitle ? (
+        {bodyLayersVisible && activeSubtitle ? (
           <p
             data-video-subtitle-active
             data-video-subtitle-active-cut={activeSubtitle.cut}

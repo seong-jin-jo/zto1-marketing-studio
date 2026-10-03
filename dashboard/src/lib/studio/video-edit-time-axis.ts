@@ -90,6 +90,22 @@ export function bodyTimeFromPlaybackTime(
   return sourceTimeFromCompactTime(compactBodyTime, bodyDurationSec, cuts);
 }
 
+/** 현재 재생 위치가 인트로·아웃트로가 아닌 본문 화면인지 판정한다. */
+export function isPlaybackTimeWithinBody(
+  playbackTimeSec: number,
+  bodyDurationSec: number | null,
+  applied: IntroOutroApplied,
+): boolean {
+  const bodyStart = introDurationSec(applied);
+  if (playbackTimeSec < bodyStart) return false;
+  if (bodyDurationSec === null) return true;
+  const visibleBodyDuration = Math.max(
+    0,
+    bodyDurationSec - removedDuration(renderedCuts(applied, bodyDurationSec)),
+  );
+  return playbackTimeSec < bodyStart + visibleBodyDuration;
+}
+
 /** 본문 원본 시각을 현재 재생 파일의 표시 시각으로 바꿔 탐색한다. */
 export function playbackTimeFromBodyTime(
   bodyTimeSec: number,
