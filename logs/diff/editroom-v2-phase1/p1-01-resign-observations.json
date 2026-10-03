@@ -1,0 +1,11 @@
+{
+  "success": {
+    "src": "/qa/alignment-sample.mp4",
+    "readyState": 4,
+    "duration": 2
+  },
+  "failureText": "영상 주소가 만료됐거나 원본 파일을 찾지 못해 재생하지 못했습니다.\n\n영상 주소 다시 받기",
+  "retryVisible": true,
+  "recoveredSrc": "/qa/alignment-sample.mp4",
+  "consoleErrors": []
+}

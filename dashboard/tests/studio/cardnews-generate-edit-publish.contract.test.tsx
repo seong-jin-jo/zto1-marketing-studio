@@ -63,15 +63,16 @@ describe("카드뉴스 이음매 계약", () => {
       ratio: "1:1",
       positions: ["top-center", undefined, "bottom-center"],
     });
-    // 빈 장은 빠지고 장 번호가 다시 매겨진다.
-    expect(inputs).toHaveLength(2);
+    // 가운데 빈 장도 한 칸으로 남아 뒤 장의 위치와 순번을 보존한다.
+    expect(inputs).toHaveLength(3);
     expect(inputs[0].text).toBe("계약서 조건, 딱 세 가지만 보세요");
     expect(inputs[0].ratio).toBe("1:1");
     // 아홉 칸은 세 자리로 줄이지 않는다. top-center 를 top 으로 접으면 가로 가운데가 사라진다.
     expect(inputs[0].position).toBe("top-center");
-    expect(inputs[1].position).toBe("bottom-center");
-    expect(inputs.map((one) => one.index)).toEqual([0, 1]);
-    expect(inputs[1].total).toBe(2);
+    expect(inputs[1]).toEqual(expect.objectContaining({ text: "", position: "center", index: 1, total: 3 }));
+    expect(inputs[2].position).toBe("bottom-center");
+    expect(inputs.map((one) => one.index)).toEqual([0, 1, 2]);
+    expect(inputs[2].total).toBe(3);
   });
 
   it("CARD-LINK-04 글자 자리는 실제 픽셀 좌표를 바꾼다", () => {
@@ -127,7 +128,8 @@ describe("카드뉴스 이음매 계약", () => {
       ratio: "4:5",
       positions: ["top-center", "center", "bottom-center"],
     });
-    expect(inputs.map((one) => one.position)).toEqual(["top-center", "bottom-center"]);
+    expect(inputs.map((one) => one.position)).toEqual(["top-center", "center", "bottom-center"]);
+    expect(inputs.map((one) => one.index)).toEqual([0, 1, 2]);
     // 페이지도 빈 줄을 미리 걷어내지 않는다.
     const recomposite = pageSrc.slice(pageSrc.indexOf("async function recompositeCards("));
     expect(recomposite.slice(0, recomposite.indexOf("renderAndUploadCardDeck")))

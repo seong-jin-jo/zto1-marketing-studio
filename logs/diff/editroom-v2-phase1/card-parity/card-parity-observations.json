@@ -1,0 +1,213 @@
+{
+  "thresholdPx": 2,
+  "fixtures": [
+    {
+      "name": "plain-4x5-short-top",
+      "kind": "plain",
+      "text": {
+        "previewLineCount": 1,
+        "outputLineCount": 1,
+        "lineCountEqual": true,
+        "textEqual": true,
+        "maxBoundaryDelta": 0
+      },
+      "pixels": {
+        "width": 1080,
+        "height": 1350,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 0
+      },
+      "photoExpected": false,
+      "photoDrawn": false,
+      "editorDecorationCount": 0,
+      "previewPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-4x5-short-top-baseline.png",
+      "outputPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-4x5-short-top-actual.png",
+      "diffPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-4x5-short-top-diff.png"
+    },
+    {
+      "name": "plain-4x5-long-center",
+      "kind": "plain",
+      "text": {
+        "previewLineCount": 3,
+        "outputLineCount": 3,
+        "lineCountEqual": true,
+        "textEqual": true,
+        "maxBoundaryDelta": 0
+      },
+      "pixels": {
+        "width": 1080,
+        "height": 1350,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 0
+      },
+      "photoExpected": false,
+      "photoDrawn": false,
+      "editorDecorationCount": 0,
+      "previewPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-4x5-long-center-baseline.png",
+      "outputPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-4x5-long-center-actual.png",
+      "diffPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-4x5-long-center-diff.png"
+    },
+    {
+      "name": "plain-4x5-short-bottom",
+      "kind": "plain",
+      "text": {
+        "previewLineCount": 1,
+        "outputLineCount": 1,
+        "lineCountEqual": true,
+        "textEqual": true,
+        "maxBoundaryDelta": 0
+      },
+      "pixels": {
+        "width": 1080,
+        "height": 1350,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 0
+      },
+      "photoExpected": false,
+      "photoDrawn": false,
+      "editorDecorationCount": 0,
+      "previewPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-4x5-short-bottom-baseline.png",
+      "outputPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-4x5-short-bottom-actual.png",
+      "diffPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-4x5-short-bottom-diff.png"
+    },
+    {
+      "name": "plain-square-long",
+      "kind": "plain",
+      "text": {
+        "previewLineCount": 4,
+        "outputLineCount": 4,
+        "lineCountEqual": true,
+        "textEqual": true,
+        "maxBoundaryDelta": 0
+      },
+      "pixels": {
+        "width": 1080,
+        "height": 1080,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 0
+      },
+      "photoExpected": false,
+      "photoDrawn": false,
+      "editorDecorationCount": 0,
+      "previewPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-square-long-baseline.png",
+      "outputPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-square-long-actual.png",
+      "diffPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-square-long-diff.png"
+    },
+    {
+      "name": "plain-empty-slot",
+      "kind": "plain",
+      "text": {
+        "previewLineCount": 6,
+        "outputLineCount": 6,
+        "lineCountEqual": true,
+        "textEqual": true,
+        "maxBoundaryDelta": 0
+      },
+      "pixels": {
+        "width": 1080,
+        "height": 1350,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 0
+      },
+      "photoExpected": false,
+      "photoDrawn": false,
+      "editorDecorationCount": 0,
+      "previewPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-empty-slot-baseline.png",
+      "outputPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-empty-slot-actual.png",
+      "diffPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/plain-empty-slot-diff.png"
+    },
+    {
+      "name": "chat-cover-photo",
+      "kind": "chat_bubble",
+      "text": {
+        "previewLineCount": 6,
+        "outputLineCount": 6,
+        "lineCountEqual": true,
+        "textEqual": true,
+        "maxBoundaryDelta": 0
+      },
+      "pixels": {
+        "width": 1080,
+        "height": 1350,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 0
+      },
+      "photoExpected": true,
+      "photoDrawn": true,
+      "editorDecorationCount": 0,
+      "previewPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/chat-cover-photo-baseline.png",
+      "outputPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/chat-cover-photo-actual.png",
+      "diffPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/chat-cover-photo-diff.png"
+    },
+    {
+      "name": "chat-long-bold",
+      "kind": "chat_bubble",
+      "text": {
+        "previewLineCount": 15,
+        "outputLineCount": 15,
+        "lineCountEqual": true,
+        "textEqual": true,
+        "maxBoundaryDelta": 0
+      },
+      "pixels": {
+        "width": 1080,
+        "height": 1350,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 0
+      },
+      "photoExpected": false,
+      "photoDrawn": false,
+      "editorDecorationCount": 0,
+      "previewPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/chat-long-bold-baseline.png",
+      "outputPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/chat-long-bold-actual.png",
+      "diffPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/chat-long-bold-diff.png"
+    },
+    {
+      "name": "chat-cta-photo",
+      "kind": "chat_bubble",
+      "text": {
+        "previewLineCount": 9,
+        "outputLineCount": 9,
+        "lineCountEqual": true,
+        "textEqual": true,
+        "maxBoundaryDelta": 0
+      },
+      "pixels": {
+        "width": 1080,
+        "height": 1350,
+        "changedPixels": 0,
+        "changedPixelRatio": 0,
+        "maximumChannelDelta": 0
+      },
+      "photoExpected": true,
+      "photoDrawn": true,
+      "editorDecorationCount": 0,
+      "previewPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/chat-cta-photo-baseline.png",
+      "outputPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/chat-cta-photo-actual.png",
+      "diffPath": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/card-parity/chat-cta-photo-diff.png"
+    }
+  ],
+  "mutationChecks": [
+    {
+      "name": "plain-4x5-long-center",
+      "mutation": "첫 글 경계를 3px 이동",
+      "expected": "FAIL",
+      "result": "rejected",
+      "maxBoundaryDelta": 3
+    },
+    {
+      "name": "chat-long-bold",
+      "mutation": "첫 글 경계를 3px 이동",
+      "expected": "FAIL",
+      "result": "rejected",
+      "maxBoundaryDelta": 3
+    }
+  ]
+}
