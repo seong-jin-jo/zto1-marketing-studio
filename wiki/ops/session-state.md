@@ -1,3 +1,10 @@
+## 2026-10-03 11:35 KST #105 CI green, 머지만 보류
+
+- #105(feat/remotion-intro-outro) 최신 head CI verify 성공(run 37089145248). main과 충돌 없음.
+- 충돌 해소 뒤 CI 실패 3회를 차례로 수정: ① CI 컨테이너에 Chrome 시스템 라이브러리 없음(libnspr4, exit 127) → ci.yml에 운영 Dockerfile과 같은 apt 목록(ffmpeg + Chrome libs) 설치 단계 추가 ② 공용 self-hosted 러너에서 렌더 중 Chrome 탭 크래시(frame 42 target closed) + 60초 초과 → `renderMedia` concurrency 1, 통합 테스트 제한 180초(첫 실행 Chrome 다운로드 ~92MB 포함) ③ 내 주석의 'M-2'가 UI 토큰 감사에 여백 클래스로 오탐 → 문구 변경.
+- 운영 관점 신호: CI 러너 = 운영 VM과 같은 marketing_runner. 다른 작업과 겹칠 때 Chrome 렌더가 죽을 수 있었다 → #105 머지 전 VM 디스크(이미지 4.5GB)뿐 아니라 메모리·CPU 여유도 확인 필요.
+- 다음 실행: 사용자가 VM 자원 확인 후 승인하면 #105 squash 머지(배포는 별도 workflow_dispatch). #93·#61 보류 그대로.
+
 ## 2026-10-03 10:10 KST 열린 PR 정리 — #101·#106 머지, #105 충돌 해소(머지 보류)
 
 - handoff basis: 이 파일 + git log + 열린 PR 목록(클라우드 세션, tmux 없음). 사용자 지시 "푸시하고 머지하고 다해봐".
