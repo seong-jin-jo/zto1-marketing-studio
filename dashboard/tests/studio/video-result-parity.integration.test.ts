@@ -1,19 +1,35 @@
+// @vitest-environment jsdom
+import React from "react";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import sharp from "sharp";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { VideoEditor } from "@/components/studio/VideoEditor";
 import { concatSegments } from "@/lib/intro-outro-render";
 import { planPlaybackBurn, playbackFfmpegArgs } from "@/lib/studio/playback-edit-plan";
 import { alignVideoEditToRenderSource, resolveVideoPublishFilename, resolveVideoRenderSourceFilename } from "@/lib/studio/video-publish-filename";
 import { emptyVideoEdit, type VideoEdit } from "@/lib/studio/video-edit-contract";
+import {
+  bodyDurationFromPlaybackDuration,
+  bodyTimeFromPlaybackTime,
+  introDurationSec,
+  playbackTimeFromBodyTime,
+} from "@/lib/studio/video-edit-time-axis";
+
+// 이 테스트는 ffmpeg 합치기만 쓰며 Remotion 브라우저 번들러는 실행하지 않는다.
+// jsdom의 TextEncoder와 네이티브 esbuild 조합이 수집 단계에서 충돌하지 않게 경계를 격리한다.
+vi.mock("@remotion/bundler", () => ({ bundle: vi.fn() }));
+vi.mock("@remotion/renderer", () => ({ renderMedia: vi.fn(), selectComposition: vi.fn() }));
+vi.mock("@remotion/player", () => ({ Player: () => null }));
 
 const execFileP = promisify(execFile);
 const ffmpeg = process.env.FFMPEG_BIN || "ffmpeg";
 const ffprobe = process.env.FFPROBE_BIN || "ffprobe";
-const fontFile = "/System/Library/Fonts/AppleSDGothicNeo.ttc";
+const fontFile = process.env.FFMPEG_FONT_FILE || "/System/Library/Fonts/AppleSDGothicNeo.ttc";
 const drawtextAvailable = (() => {
   try {
     return execFileSync(ffmpeg, ["-hide_banner", "-filters"], { encoding: "utf8" }).includes(" drawtext ");
@@ -78,6 +94,24 @@ function editFixture(): VideoEdit {
 }
 
 describe("편집실 영상 플레이어와 결과 파일 정합", () => {
+  it("REVIEW2-N1-TIME-01 합성본과 구운 결과의 표시 시각을 본문 원본 시각으로 왕복한다", () => {
+    const applied = {
+      introCompId: "intro-logo-reveal",
+      outroCompId: null,
+      sourceFilename: "original.mp4",
+      compositeFilename: "composite.mp4",
+      resultFilename: "baked.mp4",
+      renderedCutRanges: [{ startSec: 2, endSec: 4 }],
+      deliverUrl: "/api/media/baked",
+    };
+    expect(introDurationSec(applied)).toBe(2);
+    expect(bodyDurationFromPlaybackDuration(6, applied)).toBe(6);
+    expect(bodyTimeFromPlaybackTime(1.5, 6, applied)).toBe(0);
+    expect(bodyTimeFromPlaybackTime(4.5, 6, applied)).toBe(4.5);
+    expect(playbackTimeFromBodyTime(4.5, 6, applied)).toBe(4.5);
+    expect(playbackTimeFromBodyTime(3, 6, applied)).toBe(4);
+  });
+
   it("P1-03-VIDEO-01~04 30초 오디오 영상에서 컷·오디오를 실제 결과로 검증하고 글자 구간 계약을 고정한다", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "editroom-video-parity-"));
     const evidenceDir = process.env.EDITROOM_VIDEO_EVIDENCE_DIR || tmpDir;
@@ -184,10 +218,13 @@ describe("편집실 영상 플레이어와 결과 파일 정합", () => {
     }
   }, 180000);
 
-  it("P1-03-ORDER-01 실제 합성본에서 인트로를 보존하고, 원본 기준 컷·자막 시간을 이동해 최종 결과 하나를 만든다", async () => {
+  it("P1-03-ORDER-01 UI가 합성본 재생 중 만든 자막·컷·훅을 본문 시간으로 저장하고 실제 결과에 한 번만 옮긴다", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "editroom-video-order-"));
     try {
       const introPath = path.join(tmpDir, "intro.mp4");
+      const mainBluePath = path.join(tmpDir, "main-blue.mp4");
+      const mainGreenPath = path.join(tmpDir, "main-green.mp4");
+      const mainYellowPath = path.join(tmpDir, "main-yellow.mp4");
       const mainPath = path.join(tmpDir, "main.mp4");
       const compositePath = path.join(tmpDir, "composite.mp4");
       const outputPath = path.join(tmpDir, "edited.mp4");
@@ -200,7 +237,10 @@ describe("편집실 영상 플레이어와 결과 파일 정합", () => {
         ]);
       };
       await makeSegment(introPath, "red", 2);
-      await makeSegment(mainPath, "blue", 6);
+      await makeSegment(mainBluePath, "blue", 2);
+      await makeSegment(mainGreenPath, "green", 2);
+      await makeSegment(mainYellowPath, "yellow", 2);
+      await concatSegments([mainBluePath, mainGreenPath, mainYellowPath], mainPath);
       await concatSegments([introPath, mainPath], compositePath);
 
       const original = "video-original.mp4";
@@ -211,43 +251,82 @@ describe("편집실 영상 플레이어와 결과 파일 정합", () => {
         compositeFilename: "video-intro-outro.mp4",
         introDurationSec: 2,
         resultFilename: "video-intro-outro.mp4",
+        renderedCutRanges: [],
         deliverUrl: "/api/media/composite",
       };
       expect(resolveVideoRenderSourceFilename(original, applied)).toBe("video-intro-outro.mp4");
 
-      const sourceEdit: VideoEdit = {
-        ...emptyVideoEdit(),
-        introOutro: applied,
-        subtitles: [
-          { id: "subtitle-shift", order: 0, text: "인트로 뒤 자막", startSec: 0.5, endSec: 1.5, cut: false },
-          { id: "cut-main", order: 1, text: "", startSec: 2, endSec: 3, cut: true },
-        ],
-      };
-      const renderEdit = alignVideoEditToRenderSource(sourceEdit, applied, original);
-      expect(renderEdit.subtitles.map(({ startSec, endSec }) => [startSec, endSec])).toEqual([[2.5, 3.5], [4, 5]]);
+      let uiEdit: VideoEdit = { ...emptyVideoEdit(), introOutro: applied };
+      function UiHarness() {
+        const [lines, setLines] = React.useState(["첫 자막", "자를 장면", "마지막 장면"]);
+        const [edit, setEdit] = React.useState(uiEdit);
+        return React.createElement(VideoEditor, {
+          videoEdit: edit,
+          onVideoEditChange: (next: VideoEdit) => { uiEdit = next; setEdit(next); },
+          previewVideoUrl: "/api/media/original",
+          sourceFilename: original,
+          lines,
+          onLinesChange: setLines,
+        });
+      }
+      vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+      render(React.createElement(UiHarness));
+      const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+      Object.defineProperty(video, "duration", { configurable: true, value: 8 });
+      fireEvent.loadedMetadata(video);
+      video.currentTime = 3;
+      fireEvent.timeUpdate(video);
+      fireEvent.change(screen.getAllByLabelText("자막 문구")[0], { target: { value: "UI에서 고친 자막" } });
+      fireEvent.click(document.querySelectorAll("[data-video-subtitle-cut-toggle]")[1]);
+      fireEvent.click(screen.getByRole("button", { name: "＋훅" }));
+
+      // 플레이어 3초는 2초 인트로 뒤 본문 1초다. UI가 만든 모든 시각이 본문 원본
+      // 시간축이어야 렌더 경계에서 인트로를 딱 한 번만 더할 수 있다.
+      expect(uiEdit.subtitles.map(({ startSec, endSec, cut }) => [startSec, endSec, cut])).toEqual([
+        [0, 2, false],
+        [2, 4, true],
+        [4, 6, false],
+      ]);
+      expect(uiEdit.subtitles[0].text).toBe("UI에서 고친 자막");
+      expect(uiEdit.overlays[0]).toMatchObject({ kind: "hook", startSec: 1, endSec: 4 });
+
+      const renderEdit = alignVideoEditToRenderSource(uiEdit, applied, original);
+      expect(renderEdit.subtitles.map(({ startSec, endSec }) => [startSec, endSec])).toEqual([[2, 4], [4, 6], [6, 8]]);
+      expect(renderEdit.overlays[0]).toMatchObject({ startSec: 3, endSec: 6 });
 
       const compositeProbe = await probe(compositePath);
-      const executableEdit = drawtextAvailable ? renderEdit : {
-        ...renderEdit,
-        subtitles: renderEdit.subtitles.map((line) => ({ ...line, text: "" })),
-      };
       const plan = planPlaybackBurn({
-        edit: executableEdit,
+        edit: renderEdit,
         durationSec: compositeProbe.durationSec,
         width: 320,
         height: 180,
         size: "작게",
-        fontFile: drawtextAvailable && fs.existsSync(fontFile) ? fontFile : null,
+        fontFile: fs.existsSync(fontFile) ? fontFile : null,
         hasAudio: true,
       });
       expect(plan.ok).toBe(true);
       if (!plan.ok) return;
-      if (drawtextAvailable) expect(plan.filterComplex).toContain("between(t,2.5,3.5)");
-      await execFileP(ffmpeg, playbackFfmpegArgs(plan, { inputPath: compositePath, outputPath })!);
+      expect(plan.filterComplex).toContain("between(t,2,4)");
+      const executablePlan = drawtextAvailable ? plan : planPlaybackBurn({
+        edit: {
+          ...renderEdit,
+          subtitles: renderEdit.subtitles.map((line) => ({ ...line, text: "" })),
+          overlays: [],
+          comments: [],
+        },
+        durationSec: compositeProbe.durationSec,
+        width: 320,
+        height: 180,
+        size: "작게",
+        fontFile: null,
+        hasAudio: true,
+      });
+      expect(executablePlan.ok).toBe(true);
+      await execFileP(ffmpeg, playbackFfmpegArgs(executablePlan, { inputPath: compositePath, outputPath })!);
 
       const resultProbe = await probe(outputPath);
       expect(compositeProbe.durationSec).toBeCloseTo(8, 1);
-      expect(resultProbe.durationSec).toBeCloseTo(7, 1);
+      expect(resultProbe.durationSec).toBeCloseTo(6, 1);
       expect(resultProbe.videoStreams).toBe(1);
       expect(resultProbe.audioStreams).toBe(1);
 
@@ -257,15 +336,60 @@ describe("편집실 영상 플레이어와 결과 파일 정합", () => {
       await frame(outputPath, 1, resultIntroFrame);
       expect(await changedPixelRatio(introFrame, resultIntroFrame, path.join(tmpDir, "intro-diff.png"))).toBeLessThan(0.002);
 
-      if (drawtextAvailable) {
-        const beforeSubtitle = path.join(tmpDir, "before-subtitle.png");
-        const afterSubtitle = path.join(tmpDir, "after-subtitle.png");
-        await frame(compositePath, 2.75, beforeSubtitle);
-        await frame(outputPath, 2.75, afterSubtitle);
-        expect(await changedPixelRatio(beforeSubtitle, afterSubtitle, path.join(tmpDir, "subtitle-diff.png"))).toBeGreaterThan(0.002);
+      // 본문 0초 자막은 합성본/결과의 2초에 시작한다. 경계 ±0.1초 프레임으로
+      // 실제 구운 자막 시각이 플레이어에서 본 시각과 0.2초 이내인지 고정한다.
+      const subtitleChecks = [
+        { outputSecond: 1.9, sourceSecond: 1.9, visible: false },
+        { outputSecond: 2.1, sourceSecond: 2.1, visible: true },
+        { outputSecond: 3.9, sourceSecond: 3.9, visible: true },
+        { outputSecond: 4.1, sourceSecond: 6.1, visible: false },
+      ];
+      for (const check of subtitleChecks) {
+        const baseline = path.join(tmpDir, `subtitle-baseline-${check.outputSecond}.png`);
+        const actual = path.join(tmpDir, `subtitle-result-${check.outputSecond}.png`);
+        await frame(compositePath, check.sourceSecond, baseline);
+        await frame(outputPath, check.outputSecond, actual);
+        const ratio = await changedPixelRatio(baseline, actual, path.join(tmpDir, `subtitle-diff-${check.outputSecond}.png`));
+        if (check.visible && drawtextAvailable) expect(ratio).toBeGreaterThan(0.002);
+        else expect(ratio).toBeLessThan(0.002);
       }
 
-      const finalApplied = { ...applied, resultFilename: "video-edited-composite.mp4", deliverUrl: "/api/media/edited" };
+      if (!drawtextAvailable) {
+        // Homebrew 기본 빌드는 drawtext가 없다. 이때도 UI에서 계산한 동일 경계(2~4초)를
+        // drawbox enable에 넣어 실제 mp4 프레임 앞/뒤를 확인한다. Debian CI에서는 위에서
+        // production drawtext 자체를 실행하므로 이 분기는 로컬 가시 타이밍 증거만 보강한다.
+        const markedOutputPath = path.join(tmpDir, "edited-with-timing-marker.mp4");
+        await execFileP(ffmpeg, [
+          "-y", "-i", outputPath,
+          "-vf", "drawbox=x=20:y=20:w=100:h=20:color=white:t=fill:enable='between(t,2,4)'",
+          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "copy",
+          markedOutputPath,
+        ]);
+        for (const check of subtitleChecks) {
+          const baseline = path.join(tmpDir, `marker-baseline-${check.outputSecond}.png`);
+          const actual = path.join(tmpDir, `marker-result-${check.outputSecond}.png`);
+          await frame(outputPath, check.outputSecond, baseline);
+          await frame(markedOutputPath, check.outputSecond, actual);
+          const ratio = await changedPixelRatio(baseline, actual, path.join(tmpDir, `marker-diff-${check.outputSecond}.png`));
+          if (check.visible) expect(ratio).toBeGreaterThan(0.002);
+          else expect(ratio).toBeLessThan(0.002);
+        }
+      }
+
+      // 초록 본문(2~4초)을 UI에서 컷했다. 결과 4.5초는 원본 본문 4.5초, 즉 합성본
+      // 6.5초의 노란 프레임이어야 한다. 이 비교가 실제 컷 위치의 ±0.2초 계약이다.
+      const expectedAfterCut = path.join(tmpDir, "expected-after-cut.png");
+      const actualAfterCut = path.join(tmpDir, "actual-after-cut.png");
+      await frame(compositePath, 6.5, expectedAfterCut);
+      await frame(outputPath, 4.5, actualAfterCut);
+      expect(await changedPixelRatio(expectedAfterCut, actualAfterCut, path.join(tmpDir, "cut-diff.png"))).toBeLessThan(0.002);
+
+      const finalApplied = {
+        ...applied,
+        resultFilename: "video-edited-composite.mp4",
+        renderedCutRanges: [{ startSec: 2, endSec: 4 }],
+        deliverUrl: "/api/media/edited",
+      };
       expect(resolveVideoPublishFilename("video-edited-composite.mp4", finalApplied)).toBe("video-edited-composite.mp4");
       expect(resolveVideoRenderSourceFilename("video-edited-composite.mp4", finalApplied)).toBe("video-intro-outro.mp4");
     } finally {

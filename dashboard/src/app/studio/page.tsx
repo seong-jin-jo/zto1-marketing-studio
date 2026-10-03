@@ -48,7 +48,7 @@ import {
 } from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
-import { isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
+import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
 import { emptyBubbleSlideNumber, pruneEmptyBubbles } from "@/lib/studio/card-deck-ops";
 import { limitedChannelNotice, planChannelImages } from "@/lib/studio/channel-image-capacity";
@@ -2156,6 +2156,7 @@ export default function StudioPage() {
           ...nextVideoEdit.introOutro,
           compositeFilename: nextVideoEdit.introOutro.compositeFilename || nextVideoEdit.introOutro.resultFilename,
           resultFilename,
+          renderedCutRanges: cutRanges(nextVideoEdit),
           deliverUrl: r.file,
         });
         setVideoEdit(nextVideoEdit);

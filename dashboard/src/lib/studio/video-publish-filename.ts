@@ -8,11 +8,7 @@
 // 그대로 발행하면 전혀 다른(또는 지워진) 옛 영상이 올라간다. isIntroOutroStale로
 // 걸러 원본으로 되돌린다.
 import { isIntroOutroStale, type IntroOutroApplied, type VideoEdit } from "./video-edit-contract";
-
-const INTRO_DURATION_SEC: Record<string, number> = {
-  "intro-logo-reveal": 2,
-  "intro-title-card": 2.5,
-};
+import { introDurationSec } from "./video-edit-time-axis";
 
 /** 본문 편집을 굽거나 발행할 때 쓸 현재 최종 영상 파일을 고른다. */
 export function resolveVideoRenderSourceFilename(currentSourceFilename: string, introOutro: IntroOutroApplied): string {
@@ -33,8 +29,7 @@ export function alignVideoEditToRenderSource(
   currentSourceFilename: string,
 ): VideoEdit {
   if (!introOutro || isIntroOutroStale(introOutro, currentSourceFilename)) return edit;
-  const offset = introOutro.introDurationSec
-    ?? (introOutro.introCompId ? INTRO_DURATION_SEC[introOutro.introCompId] ?? 0 : 0);
+  const offset = introDurationSec(introOutro);
   if (offset <= 0) return edit;
   const shift = <T extends { startSec: number; endSec: number }>(item: T): T => ({
     ...item,

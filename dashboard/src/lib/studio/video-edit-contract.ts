@@ -75,6 +75,8 @@ export type IntroOutroApplied = {
   introDurationSec?: number;
   /** 현재 발행할 최종 결과. 자막을 다시 구우면 이 값만 새 결과로 전진한다. */
   resultFilename: string;
+  /** 현재 결과 파일에 이미 반영된 컷. 값은 본문 원본 시간축이며 재생 위치 역변환에 쓴다. */
+  renderedCutRanges?: Array<{ startSec: number; endSec: number }>;
   deliverUrl: string;
   sourceFilename: string;
 } | null;
@@ -220,6 +222,16 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
     }
     if (io.introDurationSec !== undefined && (!isFiniteNumber(io.introDurationSec) || io.introDurationSec < 0)) {
       throw new VideoEditValidationError("intro_outro_intro_duration", "videoEdit.introOutro.introDurationSec must be a non-negative finite number when set");
+    }
+    if (io.renderedCutRanges !== undefined) {
+      if (!Array.isArray(io.renderedCutRanges)) {
+        throw new VideoEditValidationError("intro_outro_rendered_cuts", "videoEdit.introOutro.renderedCutRanges must be an array when set");
+      }
+      io.renderedCutRanges.forEach((range, index) => {
+        const value = range as Record<string, unknown>;
+        assertNoUnknownKeys(value, new Set(["startSec", "endSec"]), `introOutro.renderedCutRanges[${index}]`);
+        assertValidRange(value.startSec, value.endSec, `introOutro.renderedCutRanges[${index}]`);
+      });
     }
     if (io.introCompId !== null && typeof io.introCompId !== "string") {
       throw new VideoEditValidationError("intro_outro_intro_id", "videoEdit.introOutro.introCompId must be a string or null");

@@ -43,6 +43,11 @@ import {
   updateComment,
   updateOverlay,
 } from "@/lib/studio/video-edit-contract";
+import {
+  bodyDurationFromPlaybackDuration,
+  bodyTimeFromPlaybackTime,
+  playbackTimeFromBodyTime,
+} from "@/lib/studio/video-edit-time-axis";
 
 /** 1초를 몇 px로 그리는지. design-spec-editroom-v70.md §4.4 "1초 ≈ 12px". */
 const PX_PER_SEC = 12;
@@ -146,11 +151,6 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
     }
   }
 
-  function seek(sec: number) {
-    if (videoRef.current) videoRef.current.currentTime = sec;
-    setPlayhead(sec);
-  }
-
   function togglePlay() {
     const el = videoRef.current;
     if (!el) return;
@@ -196,6 +196,17 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   const introOutroSourceFilename = videoEdit.introOutro && !introOutroStale
     ? videoEdit.introOutro.sourceFilename
     : sourceFilename;
+  const playbackIntroOutro = introOutroStale ? null : videoEdit.introOutro;
+  const playbackPlayhead = duration === null
+    ? 0
+    : playbackTimeFromBodyTime(playhead, duration, playbackIntroOutro);
+
+  function seekBodyTime(sec: number) {
+    if (videoRef.current) {
+      videoRef.current.currentTime = playbackTimeFromBodyTime(sec, duration ?? sec, playbackIntroOutro);
+    }
+    setPlayhead(sec);
+  }
 
   return (
     <div className="space-y-stack" data-video-editor>
@@ -214,13 +225,14 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             comments={videoEdit.comments}
             activeSubtitle={activeSubtitle(displaySubtitles, playhead)}
             playhead={playhead}
+            playbackPlayhead={playbackPlayhead}
             duration={duration}
             playing={playing}
             onTogglePlay={togglePlay}
             voiceName={videoEdit.voice?.voiceName ?? null}
-            onLoadedMetadata={(d) => setDuration(d)}
-            onTimeUpdate={(t) => setPlayhead(t)}
-            onSeek={seek}
+            onLoadedMetadata={(d) => setDuration(bodyDurationFromPlaybackDuration(d, playbackIntroOutro))}
+            onTimeUpdate={(t) => setPlayhead(bodyTimeFromPlaybackTime(t, duration ?? t, playbackIntroOutro))}
+            onSeek={seekBodyTime}
           />
           <div className="min-w-0 space-y-stack" data-video-script-column>
             <SubtitleScriptEditor
@@ -229,7 +241,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
               edit={videoEdit}
               playhead={playhead}
               duration={duration}
-              onSeek={seek}
+              onSeek={seekBodyTime}
               run={run}
               syncing={syncing}
             />
@@ -250,7 +262,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             />
           </div>
         </div>
-        <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seek} run={run} syncing={syncing} />
+        <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seekBodyTime} run={run} syncing={syncing} />
       </div>
       <p className="text-caption text-subtle" data-render-status-note>
         발행실로 이동할 때 자막 문구, 타임라인에서 고친 자막 시간, 컷으로 뺀 구간, 후킹·CTA·댓글 문구가 영상 파일에 굽힙니다. 적용을 마친 인트로·아웃트로 합성 결과는 미리보기와 발행 파일에 쓰입니다. 목소리는 선택만 저장되며, 표지와 움직이는 제목은 아직 파일에 들어가지 않습니다.
@@ -270,7 +282,7 @@ function activeSubtitle(subtitles: SubtitleLine[], playhead: number): { text: st
 }
 
 function VideoPlayback({
-  src, tenantId, onOpenCreate, videoRef, overlays, comments, activeSubtitle, playhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
+  src, tenantId, onOpenCreate, videoRef, overlays, comments, activeSubtitle, playhead, playbackPlayhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
 }: {
   src: string;
   tenantId?: string;
@@ -280,6 +292,7 @@ function VideoPlayback({
   comments: VideoComment[];
   activeSubtitle: { text: string; cut: boolean } | null;
   playhead: number;
+  playbackPlayhead: number;
   duration: number | null;
   playing: boolean;
   onTogglePlay: () => void;
@@ -322,8 +335,8 @@ function VideoPlayback({
   // 재서명으로 src가 바뀌면 video 엘리먼트가 다시 로드되며 브라우저가 재생 위치를
   // 0으로 되돌리고 멈춘다. 사용자가 보던 자리·재생 상태를 되살린다(독립 리뷰어 MINOR).
   const restoreOnLoad = useRef(false);
-  const playheadRef = useRef(playhead);
-  playheadRef.current = playhead;
+  const playbackPlayheadRef = useRef(playbackPlayhead);
+  playbackPlayheadRef.current = playbackPlayhead;
   const playingRef = useRef(playing);
   playingRef.current = playing;
 
@@ -408,7 +421,7 @@ function VideoPlayback({
       restoreOnLoad.current = false;
       const el = videoRef.current;
       if (el) {
-        el.currentTime = playheadRef.current;
+        el.currentTime = playbackPlayheadRef.current;
         if (playingRef.current) {
           const p = el.play();
           if (p && typeof p.catch === "function") p.catch(() => {});
