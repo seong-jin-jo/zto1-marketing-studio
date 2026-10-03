@@ -1,0 +1,38 @@
+name: Rescue tenant gateway data (snapshot only)
+
+# 왜 (2026-10-03 진단 run 37103007414): tenant2·3·4 게이트웨이·대시보드의 bind mount 원본
+#   (CI 체크아웃 안의 config-tenantN·data-tenantN)이 호스트에서 지워졌다. 데이터는 지금 실행 중인
+#   컨테이너가 붙잡고 있는 "삭제된 폴더" 안에만 남아 있어, 재생성·재배포·autoheal 재시작이
+#   일어나면 사라진다. 컨테이너 안에서 읽어 호스트 새 폴더에 스냅숏으로 떠 둔다.
+#
+# 안전장치
+#   - 컨테이너를 멈추거나 재시작·재생성하지 않는다. docker exec 로 tar 읽기만 한다.
+#   - 기존 파일을 지우거나 덮어쓰지 않는다. 매번 새 타임스탬프 폴더(~/openclaw-rescue/<ts>)에만 쓴다.
+#   - 내용(비밀값)을 출력하지 않는다. 파일 수·크기만 출력한다.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  snapshot:
+    runs-on: [self-hosted, marketing_runner]
+    steps:
+      - name: 실행 중 컨테이너에서 설정·데이터 스냅숏
+        run: |
+          set -euo pipefail
+          DEST="$HOME/openclaw-rescue/$(date -u +%Y%m%dT%H%M%SZ)"
+          mkdir -p "$DEST"; chmod 0700 "$DEST"
+          for t in 2 3 4; do
+            c="openclaw-gateway-tenant$t"
+            docker inspect "$c" >/dev/null
+            mkdir -p "$DEST/config-tenant$t" "$DEST/data-tenant$t"
+            docker exec "$c" tar -C /home/node/.openclaw -cf - . | tar -xf - -C "$DEST/config-tenant$t"
+            docker exec "$c" tar -C /home/node/data -cf - . | tar -xf - -C "$DEST/data-tenant$t"
+            for kind in config data; do
+              in_c=$(docker exec "$c" sh -c "find $( [ $kind = config ] && echo /home/node/.openclaw || echo /home/node/data ) -type f | wc -l")
+              on_h=$(find "$DEST/$kind-tenant$t" -type f | wc -l)
+              echo "tenant$t $kind: container_files=$in_c snapshot_files=$on_h size=$(du -sh "$DEST/$kind-tenant$t" | cut -f1)"
+              [ "$in_c" = "$on_h" ] || { echo "파일 수 불일치: tenant$t $kind"; exit 1; }
+            done
+          done
+          echo "스냅숏 위치: $DEST"
