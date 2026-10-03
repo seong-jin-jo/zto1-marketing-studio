@@ -43,7 +43,7 @@ source_decisions:
 | 영역 | 현재 진실원 | 판단 |
 |---|---|---|
 | 카드 계약 | `dashboard/src/lib/studio/card-deck-contract.ts` | v2, `plain`과 `chat_bubble`, 최대 11장, 자유 요소 배열 없음 |
-| 저장 | `dashboard/src/app/api/studio/drafts/route.ts` | `drafts.payload.cardDeck`, 본문 크기 64 KiB, revision 기반 충돌 감지 |
+| 저장 | `dashboard/src/app/api/studio/drafts/route.ts` | v2 `drafts.payload.cardDeck`은 64 KiB, revision 기반 충돌 감지 |
 | 카톡 편집 | `dashboard/src/components/studio/BubbleEditor.tsx` | 구조화 말풍선 편집, 표지·마지막 장 이미지 지원 |
 | 일반 카드 편집 | `dashboard/src/components/studio/EditPreview.tsx` | 문장 단위 편집과 제한된 위치값, 자유 좌표 없음 |
 | 카드 PNG | `dashboard/src/lib/card-deck.ts` | Canvas 기반 별도 렌더러라 편집 DOM과 정의가 갈릴 수 있음 |
@@ -300,7 +300,7 @@ type CardBackground =
 
 | 범위 | 규칙 | 실패 코드 |
 |---|---|---|
-| 덱 | UTF-8 JSON 직렬화 최대 64 KiB | `CARD_DECK_TOO_LARGE` |
+| 덱 | v3 UTF-8 JSON 직렬화 최대 256 KiB. v2는 기존 64 KiB 유지 | `CARD_DECK_TOO_LARGE` |
 | 덱 | 장 수 `2..11`, `order`는 `0..n-1`, ID 중복 없음 | `INVALID_SLIDE_SET` |
 | 장 | 요소 최대 50개, `z_index` 연속·유일 | `INVALID_ELEMENT_ORDER` |
 | 기하 | 모든 수 유한, 소수 3자리, 폭·높이 최소 4px, 회전 뒤 경계가 장과 최소 1px 교차 | `INVALID_ELEMENT_GEOMETRY` |

@@ -160,11 +160,11 @@ erDiagram
 
 ```sql
 CREATE INDEX idx_studio_export_items_claim
-  ON studio_export_items(available_at, created_at, id)
+  ON studio_export_items(tenant_id, available_at, created_at, id)
   WHERE status = 'queued';
 
 CREATE INDEX idx_studio_export_items_expired_lease
-  ON studio_export_items(lease_expires_at, id)
+  ON studio_export_items(tenant_id, lease_expires_at, id)
   WHERE status = 'processing';
 
 CREATE INDEX idx_studio_export_items_job_status
@@ -178,7 +178,7 @@ CREATE INDEX idx_studio_export_jobs_active
   WHERE status IN ('queued', 'processing');
 ```
 
-claim 인덱스는 전역 작업자가 아니라 테넌트 트랜잭션 안에서 사용되므로 실제 조건에는 `tenant_id`가 RLS로 붙는다. 구현 전 `EXPLAIN (ANALYZE, BUFFERS)`로 tenant 조건을 포함한 index scan을 확인한다.
+claim과 회수 인덱스는 테넌트별 `withTenant()` 트랜잭션에서 사용하므로 `tenant_id`를 선두 열로 둔다. 구현 전 `EXPLAIN (ANALYZE, BUFFERS)`로 tenant 조건을 포함한 index scan을 확인한다.
 
 ## 마이그레이션 초안
 
@@ -269,9 +269,9 @@ CREATE TABLE studio_export_items (
 );
 
 CREATE INDEX idx_studio_export_items_claim
-  ON studio_export_items(available_at, created_at, id) WHERE status = 'queued';
+  ON studio_export_items(tenant_id, available_at, created_at, id) WHERE status = 'queued';
 CREATE INDEX idx_studio_export_items_expired_lease
-  ON studio_export_items(lease_expires_at, id) WHERE status = 'processing';
+  ON studio_export_items(tenant_id, lease_expires_at, id) WHERE status = 'processing';
 CREATE INDEX idx_studio_export_items_job_status
   ON studio_export_items(tenant_id, job_id, status, ordinal);
 CREATE INDEX idx_studio_export_jobs_draft_latest
@@ -552,7 +552,7 @@ Content-Type: application/json
 | 409 | `IDEMPOTENCY_KEY_REUSED` | 같은 key, 다른 본문 | 새 key로 의도 확인 후 재접수 |
 | 409 | `ITEM_NOT_RETRYABLE` | 실패 아닌 항목 재시도 | 상태 새로고침 |
 | 409 | `EXPORT_SOURCE_STALE` | 이전 판 item 재시도 | 새 전체 내보내기 |
-| 413 | `CARD_DECK_TOO_LARGE` | 64 KiB 초과 | 요소 정리 |
+| 413 | `CARD_DECK_TOO_LARGE` | v3 256 KiB 또는 v2 64 KiB 초과 | 요소 정리 |
 | 422 | `ASSET_NOT_AVAILABLE` | 자산 소유권·형식 실패 | 자산 교체 |
 | 429 | `EXPORT_ALREADY_ACTIVE` | 같은 draft·kind의 활성 job 존재 | 현재 job 대기 |
 | 500 | `EXPORT_ENQUEUE_FAILED` | DB 내부 실패 | 같은 idempotency key로 재요청 |
