@@ -23,6 +23,7 @@
     "e2e:studio-v70-screen": "node scripts/verify-studio-v70-screen-conformance.mjs",
     "qa:publish-room-alignment": "node scripts/measure-publish-room-alignment.mjs",
     "qa:publish-room-alignment:ci": "bash scripts/ci-publish-room-alignment.sh",
+    "qa:editroom-mobile-caption": "node scripts/verify-editroom-mobile-caption.mjs",
     "ops:recover-operator-token": "bash scripts/recover-operator-token.sh"
   },
   "dependencies": {

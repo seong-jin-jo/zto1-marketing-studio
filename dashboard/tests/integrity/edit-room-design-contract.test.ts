@@ -25,6 +25,7 @@ const studioRoomsCss = read("src/components/studio/StudioRooms.module.css");
 const sidebar = read("src/components/layout/Sidebar.tsx");
 const themeToggle = read("src/components/layout/ThemeToggle.tsx");
 const videoEditor = read("src/components/studio/VideoEditor.tsx");
+const studioRooms = read("src/components/studio/StudioRooms.tsx");
 const studioPage = read("src/app/studio/page.tsx");
 
 describe("편집실 조작 영역 하한 계약", () => {
@@ -86,7 +87,9 @@ describe("편집실 조작 영역 하한 계약", () => {
   });
 
   it("QA-P1-04-MOBILE-01 정상: 1023px 이하 글자와 눌림 상태는 모바일 토큰을 쓴다", () => {
+    expect(studioRooms).toContain('<section data-room="edit"');
     expect(globals).toMatch(/@media \(max-width: 1023px\)[\s\S]*?--font-caption-size:\s*16px/);
+    expect(globals).toMatch(/@media \(max-width: 1023px\)[\s\S]*?\[data-room="edit"\]\s*\{/);
     expect(globals).toMatch(/@media \(max-width: 1023px\)[\s\S]*?:where\([^}]*\):active/);
   });
 });
