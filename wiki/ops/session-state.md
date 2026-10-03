@@ -1,3 +1,16 @@
+## 2026-10-03 21:20 KST 편집실 v2 기술설계 3문서 작성·검증·커밋 완료
+
+- handoff basis: 회장이 지정한 tech-architect 과제와 버전핀 입력을 기준으로 착수했다. tmux `371:0.1`은 이 과제를 수행 중인 현재 Codex 워커로 확인했고, 다른 live handoff와 충돌하지 않았다.
+- 요청 범위: 코드 수정 없이 `docs/eng/editroom-v2/`에 v71 대비 차이표, 구현 설계, 1차 code-builder 작업 목록을 만들고 이 브랜치에 커밋한다. push는 하지 않는다.
+- 작성 완료: `gap-matrix.md`는 현재 코드 대비 88개 항목을 `있음 30`, `부분 15`, `없음 43`으로 분류했다. `design.md`는 기존 API 재사용 범위와 전체 v2 매핑 갭, 합의가 필요한 영속 내보내기 대기열·단일 렌더 기준 선택지를 분리했다. `phase1-tasks.md`는 새 API·DB 없이 가능한 준비 슬라이스 5개와 수용 기준·파일·필수 테스트를 적었다.
+- 핵심 판단: v71은 현재 main이 아니라 목표 시안이다. 현재 main은 v70 위에 영상 재서명, 영상 컷·오버레이 렌더, Remotion 인트로·아웃트로가 합쳐진 상태다. 카드 자유 배치, 통합 내보내기, 영상 5레인은 없다. v71 자체도 PRD v1.3의 템플릿 갤러리·영상 표지·글 후보보다 오래됐다.
+- 입력 결손: `docs/design/design-spec-editroom-v71.md`, current UI architecture, screen inventory, design user flow, v71 capture manifest가 없다. 전체 eng-design 6종과 user flow 전수 매핑도 이번 3문서 범위 밖이라 build 단계 전체 진입은 불가로 판정했다.
+- 검증: v71 HTML을 Chrome headless 1440×1000으로 실제 렌더했다. v71 시안과 저장소의 v70 개발 캡처를 view_image 한 호출에서 두 장 모두 열어 대조했고, 자유 배치 도구의 시각적 부재를 확인했다. 두 이미지는 같은 화면 변형과 같은 코드 판이 아니므로 디자인 QA 일치·통과는 선언하지 않는다. 세 Markdown을 CDN 기반 headless preview로 렌더해 표 8·7·1개와 Mermaid SVG 2개, 렌더 오류 0을 확인했다. 표 열 수 오류 0, em dash 0, 툴 태그 잔재 0이다. `pipeline-artifact-lint.sh`는 exit 0이고 핀 실체·슬롯·버전 정합은 통과했지만, 기존 design·qa 산출물 결손 경고 28건이 남았다.
+- 미검증: 운영 인증 화면에서 재서명 뒤 영상 실제 재생, 현재 main 편집실의 1440·1024·390 실화면, 제품 테스트. 설계 전용 과제와 무거운 테스트 금지 지시 때문에 제품 테스트는 실행하지 않았다.
+- 이웃 영향: 제품 코드·API·DB·pipeline-state는 변경하지 않았다. 기존 사용자 변경 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`도 건드리지 않았다.
+- 커밋: 세 문서와 이 기록을 한 커밋으로 묶었다. push는 하지 않는다.
+- 다음 실행: 메인 컨트롤러가 영속 대기열 정본과 단일 렌더 기준을 회장과 합의한 뒤 전체 eng-design 산출물로 확장한다.
+
 ## 2026-10-03 16:30 KST 운영 장애 확인(tenant2~4 게이트웨이) + PR 정리 완료분
 
 - 사용자 지시: "알아서 쭉 진행해봐". 운영 배포·운영 데이터 이전은 하지 않음(이전은 승인 요청 예정).
