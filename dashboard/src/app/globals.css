@@ -279,7 +279,7 @@ progress.progress-semantic::-moz-progress-bar { background: var(--success); }
    모바일 규격으로 올린다. caption은 화면에서 가장 많이 쓰이는 조작 라벨이라 16px로
    맞춰 실제 글자 중앙값도 본문 하한보다 작아지지 않게 한다. */
 @media (max-width: 1023px) {
-  :root {
+  [data-room="edit"] {
     --font-caption-size: 16px;
     --font-caption-leading: 24px;
     --font-body-sm-size: 16px;
@@ -288,8 +288,8 @@ progress.progress-semantic::-moz-progress-bar { background: var(--success); }
     --font-body-leading: 24px;
   }
 
-  :where(a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]):active {
-    filter: brightness(0.92);
+  [data-room="edit"] :where(a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]):active {
+    opacity: 0.92;
   }
 }
 

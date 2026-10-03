@@ -3110,6 +3110,7 @@ export default function StudioPage() {
   // 똑같은 한(빈 배열→빈 배열) 이 커밋에서 다시 안 돈다 — draftId가 실제로 바뀐 다음
   // 커밋에서만, 그때는 이미 최신 draftId(null)로 정확히 판단한다.
   const histDraftsReady = Boolean(hist?.drafts);
+  const histFailed = Boolean(histError);
   useEffect(() => {
     if (!draftId) { videoEditReconciledRef.current = true; videoEditBaseRevisionRef.current = null; return; }
     if (reconciledDraftIdRef.current === draftId) return;
@@ -3117,9 +3118,9 @@ export default function StudioPage() {
     // 맞지만, 목록 자체가 에러로 끝났으면(histError) 영원히 안 온다 — 그 경우 목록을
     // 포기하고 단건 GET(force)으로 넘어간다. 그래야 "잠근 채 12초 뒤에도 안 풀림"이
     // 아니라 최소한 10초 타임아웃(reconcileVideoEditFromServer 내부)까지만 잠긴다.
-    if (!histDraftsReady && !histError) return; // SWR 로딩 중 — hist가 도착하면 이 효과가 다시 돈다.
-    void reconcileVideoEditFromServer(draftId, Boolean(histError));
-  }, [draftId, histDraftsReady, histError]);
+    if (!histDraftsReady && !histFailed) return; // SWR 로딩 중 — hist가 도착하면 이 효과가 다시 돈다.
+    void reconcileVideoEditFromServer(draftId, histFailed);
+  }, [draftId, histDraftsReady, histFailed]);
   useEffect(() => () => {
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
     if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
@@ -3886,13 +3887,22 @@ export default function StudioPage() {
     attempt(10);
   }
 
-  if (activeRoom === "edit") return (
+  if (activeRoom === "edit") {
+    // 초안 목록 조회는 편집 데이터의 유일한 소스가 아니다. localStorage 복원값이나 이미
+    // 생성된 미디어가 있으면 목록 재조회가 실패해도 편집기를 그대로 유지한다. 저장 실패는
+    // 아래 autosaveError 경로에서 별도로 보여 준다.
+    const hasEditableContent = resolvedEditLines.some((line) => line.trim().length > 0)
+      || Boolean(vid?.file || vid?.url || img?.file || img?.url || cardDeck || videoEdit);
+    const editRoomState = !hist && !hasEditableContent
+      ? (histError ? "error" : "loading")
+      : "default";
+    return (
     <div className="px-stack-section py-pad-inset">
       {showWizard && activeWorkspace ? <LearningCardWizard workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onSaved={(info, completed) => { setLearningInfo(info); if (completed) { setShowWizard(false); mutateBrand(); showToast("학습 정보를 배웠습니다"); } else { setLearningFlash((value) => value + 1); } }} onClose={() => setShowWizard(false)} /> : null}
       {roomHeader}
       <EditRoom
         workspaceId={activeWorkspace?.id}
-        state={activeWorkspace ? (histError ? "error" : hist ? "default" : "loading") : "default"}
+        state={activeWorkspace ? editRoomState : "default"}
         onRetry={() => { void mutateHist(); }}
         lines={resolvedEditLines}
         onLinesChange={syncEditLines}
@@ -3931,6 +3941,7 @@ export default function StudioPage() {
       />
     </div>
   );
+  }
 
   if (activeRoom === "publish") return (
     <div className="px-stack-section py-pad-inset">
