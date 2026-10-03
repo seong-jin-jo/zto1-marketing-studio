@@ -206,6 +206,18 @@
 |---|---|---|---|---|
 | PR87-VIDEO-MINOR-1 | `draft_id` 없는 인박스 발행 복귀에서 이전 영상 맞춤 잠금 제거 | MINOR-1, P11(B-5) | ❌ NG → 🔧 수정, 로컬 PASS | 발행 복귀 else 분기가 `videoEdit`과 `draftId=null`을 직접 세팅하면서 진행 중 맞춤 세대를 무효화하지 않았다. 해당 분기에서 공용 `invalidateVideoEditReconcile()`을 호출했다. `draftId=null` 감시 효과에서 잠금을 푸는 초안은 복원 직후 B-5 잠금을 조기에 해제해 P11을 실패시켰으므로 제거했다. 실제 `StudioPage` 마운트 회귀 39/39와 `typecheck:ci`가 통과했다. 운영 배포는 미검증이다. |
 
+## 2026-09-28 13:21 KST · PR #93 정지형 영속 이전 단순화 ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR93-R3-B1 | 실패하던 전용 holder CI 제거, 기존 verify에 정지형 시뮬레이션 편입 | PR93-R3-B1 | ✅ PASS | 별도 job과 실Docker holder 스크립트를 제거하고 `verify` 안에서 임시 디렉터리 테스트를 실행한다. workflow YAML 해석 성공. |
+| PR93-R3-M1 | archive·holder 실패면 회수 경로가 사라지는 구조 제거 | PR93-R3-M1 | ✅ PASS | live holder·signal·archive 코드를 제거했다. 스크립트는 326줄에서 39줄로 감소했다. |
+| PR93-R3-M2 | journal 전 중단 시 pause만 남는 구조 제거 | PR93-R3-M2 | ✅ PASS | 임의 중단 재개 계약을 폐기하고 stop→전체 백업→복사→health 순서로 전환했다. data-tenant3 복사 exit 42에서 즉시 종료, up 호출 0회, 복구 방법 출력을 확인했다. |
+| PR93-R3-SUCCESS | 정지형 이전 정상 경로 | PR93-R3-SUCCESS | ✅ PASS | 여섯 checkout target이 persist에 복사되고 기존 persist는 timestamp backup에 보존되며 60초 health 대기 재기동이 호출됐다. |
+| PR93-R3-SCOPE | tenant1·OSMU와 다른 배포 동작 보존 | GATEWAY-PERSIST-01~05 | ✅ PASS | Compose config의 tenant2~4 bind 12개, legacy tenant1 상대 마운트, OSMU named volume을 확인했다. 관련 배포 Vitest 6파일 24건 통과. |
+
+운영 서버 접속·실제 이전·배포는 하지 않았다. 운영 EACCES 0건과 CPU 정상화는 QA/배포 단계에서 미검증이다.
+
 ## 2026-09-28 09:23 KST · PR 85 편집실 v70 9차 리뷰 ❌ NG → 🔧 수정, 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
@@ -7630,6 +7642,15 @@ migration은 수정하지 않고, 최신 코드와 localhost 회귀를 다시 �
 돌연변이 검증: 수정 3파일(`lib/storage.ts`, `api/video/list/route.ts`, `api/video/delete/route.ts`)을 되돌려 같은 19건 중 10건 FAIL 확인, 원복 후 19건 PASS 재확인. `npm run typecheck:ci` PASS. 전체 `npx vitest run` 종료 코드는 build-log.md 2026-09-25 12:40 항목에 기재.
 
 SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-isolation.test.ts`, `dashboard/tests/publish/video-path-resolution.contract.test.ts` 실행 로그
+## 2026-09-28 12:55 KST · PR #93 영속 마운트 2차 독립 리뷰 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PR93-R2-B1 | holder 아카이브 검증 전 mount namespace 해제·강제 삭제 금지 | PR93-R2-B1 | ✅ 로컬 PASS | 실제 Docker에서 0바이트 archive 검증 실패 뒤 holder 생존, 재archive 성공, 종료 직전 쓰기 보존을 관찰함. |
+| PR93-R2-M1 | 첫 파괴적 변경 전 원자적 journal 기록과 6개 target 중단·재실행 멱등성 | PR93-R2-M1 | ✅ 로컬 PASS | 여섯 target 각각의 첫 rename을 exit 74로 중단한 뒤 원본 writer 재시작 없이 일반 재실행해 ready 상태와 동일 내용으로 수렴함. |
+| PR93-R2-M2 | 운영 runbook을 실제 phase·holder 보존·재개 금지조건과 일치 | PR93-R2-M2 | ✅ 로컬 PASS | `holders-ready`부터 `pending-health`까지 보존 상태, 자동 재개, holder 보존, 원본 재시작 금지를 문서화함. |
+| PR93-R2-N1 | 실제 Docker holder 실패·재시도 검증을 제한시간 CI에 연결 | PR93-R2-N1 | ✅ 로컬 PASS | host runner 별도 job이 `timeout 180`으로 verifier를 실행하며 Docker CLI·daemon 부재는 exit 1로 실패함. 원격 CI는 미검증. |
+
 ## 2026-09-29 PR #94 독립 리뷰 r3 일반 카드·모바일 영상·발행 계정·시각 비교 ❌ NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

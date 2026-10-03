@@ -1,64 +1,84 @@
 #!/bin/bash
 # 멀티 테넌트 openclaw 인스턴스 초기 셋업 (브랜드/도메인은 fork-local data/tenants.json에서 설정)
 # - 각 서비스용 data-{slug}/, config-{slug}/ 디렉토리 생성
-# - templates/{slug}.prompt-guide.txt → data-{slug}/prompt-guide.txt 복사
+# - data/templates/general.* → 영속 data-{slug}/ 콘텐츠 가이드·검색어 복사
 # - .env.{slug} 자동 생성 (포트/토큰 placeholder)
+# - data/config 정본은 체크아웃 밖 ${OPENCLAW_PERSIST_ROOT:-$HOME/openclaw-persist}
 #
 # 사용: bash bootstrap-postagi-4tenants.sh
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
-declare -A PORTS=(
-  ["tenant2"]="34561:18790"
-  ["tenant3"]="34563:18792"
-  ["tenant4"]="34564:18793"
-)
+PERSIST_ROOT="${OPENCLAW_PERSIST_ROOT:-${HOME}/openclaw-persist}"
+RUNTIME_UID="1000"
+if [ "$(uname -s)" = "Linux" ] && [ "$(id -u)" != "$RUNTIME_UID" ]; then
+  echo "오류: Linux에서는 OpenClaw 런타임 UID 1000과 같은 사용자로 bootstrap을 실행해야 합니다." >&2
+  exit 1
+fi
+
+for slug in tenant2 tenant3 tenant4; do
+  if [ -d "config-${slug}" ] || [ -d "data-${slug}" ]; then
+    echo "오류: checkout 안에 ${slug}의 기존 config/data가 남아 있습니다." >&2
+    echo "짧은 정지 창을 잡고 migrate-postagi-persist-mounts.sh로 ${PERSIST_ROOT}에 이전하십시오." >&2
+    echo "bootstrap은 기존 운영 데이터를 자동 병합하지 않습니다." >&2
+    exit 1
+  fi
+done
 
 for slug in tenant2 tenant3 tenant4; do
   echo "===== ${slug} ====="
 
-  # 1. 디렉토리 생성
-  mkdir -p "data-${slug}" "config-${slug}"
-  chmod 755 "data-${slug}" "config-${slug}"
+  # 1. 체크아웃 밖 영속 디렉토리 생성. gateway(node, uid 1000)와 dashboard가 같은 소유자로 쓴다.
+  DATA_DIR="${PERSIST_ROOT}/data-${slug}"
+  CONFIG_DIR="${PERSIST_ROOT}/config-${slug}"
+  install -d -m 0750 "$DATA_DIR"
+  install -d -m 0700 "$CONFIG_DIR"
 
   # 2. templates → data 복사 (이미 있으면 skip)
-  if [ ! -f "data-${slug}/prompt-guide.txt" ]; then
-    cp "data/templates/${slug}.prompt-guide.txt" "data-${slug}/prompt-guide.txt"
+  if [ ! -f "$DATA_DIR/prompt-guide.txt" ]; then
+    cp "data/templates/general.prompt-guide.txt" "$DATA_DIR/prompt-guide.txt"
     echo "  ✓ prompt-guide.txt copied"
   else
     echo "  - prompt-guide.txt exists (skip)"
   fi
 
-  if [ ! -f "data-${slug}/search-keywords.txt" ]; then
-    cp "data/templates/${slug}.search-keywords.txt" "data-${slug}/search-keywords.txt"
+  if [ ! -f "$DATA_DIR/search-keywords.txt" ]; then
+    cp "data/templates/general.search-keywords.txt" "$DATA_DIR/search-keywords.txt"
     echo "  ✓ search-keywords.txt copied"
   else
     echo "  - search-keywords.txt exists (skip)"
   fi
 
   # 3. .env.{slug} placeholder (실 토큰은 사용자가 dashboard Settings에서 입력 권장)
-  PORTS_PAIR="${PORTS[$slug]}"
+  case "$slug" in
+    tenant2) PORTS_PAIR="34561:18790" ;;
+    tenant3) PORTS_PAIR="34563:18792" ;;
+    tenant4) PORTS_PAIR="34564:18793" ;;
+  esac
   DASHBOARD_PORT="${PORTS_PAIR%%:*}"
   GATEWAY_PORT="${PORTS_PAIR##*:}"
-  if [ ! -f ".env.${slug}" ]; then
-    cat > ".env.${slug}" <<EOF
+  ENV_FILE="${PERSIST_ROOT}/.env.${slug}"
+  if [ ! -f "$ENV_FILE" ]; then
+    cat > "$ENV_FILE" <<EOF
 # openclaw ${slug} tenant — 자동 생성 (편집 후 docker-compose up -d)
 DASHBOARD_PORT=${DASHBOARD_PORT}
 GATEWAY_PORT=${GATEWAY_PORT}
 OPENCLAW_GATEWAY_TOKEN=$(openssl rand -hex 32)
 DASHBOARD_AUTH_TOKEN=$(openssl rand -hex 32)
-# 채널 credential은 dashboard Settings에서 입력 (영구 저장 = config-${slug}/)
+# 채널 credential은 dashboard Settings에서 입력 (영구 저장 = ${CONFIG_DIR}/)
 # 또는 여기 박아도 됨:
 # INSTAGRAM_ACCESS_TOKEN=
 # X_API_KEY=
 # THREADS_ACCESS_TOKEN=
 TZ=Asia/Seoul
 EOF
-    echo "  ✓ .env.${slug} generated (token 자동 — 외부 노출 X)"
+    chmod 0600 "$ENV_FILE"
+    echo "  ✓ ${ENV_FILE} generated (token 자동 — 외부 노출 X)"
   else
-    echo "  - .env.${slug} exists (skip)"
+    echo "  - ${ENV_FILE} exists (skip)"
   fi
+  chmod 0600 "$ENV_FILE"
 done
 
 # 5. data/tenants.json — dashboard /services 페이지 로드용 (fork-local, gitignore)
@@ -82,7 +102,7 @@ echo "✅ 4 tenants 초기화 완료"
 echo "============================================================"
 echo ""
 echo "다음:"
-echo "  1. docker-compose -f docker-compose.postagi-4tenants.yml up -d"
+echo "  1. docker compose -f docker-compose.postagi-4tenants.yml up -d"
 echo "  2. Cloudflare Tunnel 라우트 추가 (예시 — 실제 도메인은 fork-local):"
 echo "     marketing-tenant2.example.com    → localhost:34561"
 echo "     marketing-tenant3.example.com    → localhost:34563"

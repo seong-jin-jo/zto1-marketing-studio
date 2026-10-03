@@ -255,6 +255,27 @@ CONFLICTS: main의 낡은 `editLines` 클로저 차단과 p2의 자막 저장 �
 
 SOURCES/MODEL: gpt-codex/GPT-5 | `origin/main` a211ca81, p2 b121ad6a, `.github/workflows/ci.yml`, `/tmp/pr87-merge-full-ci-test-r2.log`, `/tmp/pr87-merge-{alignment,bubble-e2e}.log`
 
+## 2026-09-28 13:21 KST · tenant2·3·4 정지형 영속 마운트 이전
+
+STAMP: 2026-09-28 13:21 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: review | 근거: `.pr93-review3.md`, Compose config, 임시 디렉터리 성공·중간 실패 시뮬레이션 | 고민: 무중단 live snapshot 상태기계를 더 보강하지 않고 2분 이내 정지·백업·복사·health 확인으로 축소했다.
+
+| 검증 | 결과 |
+|---|---|
+| Compose 해석 | tenant2·3·4 gateway/dashboard 12개 bind source가 영속 루트. dashboard UID 1000·Docker GID 987. legacy tenant1 상대 경로와 OSMU named volume 유지 |
+| 계약·배포 회귀 | Vitest 6파일 24건 PASS |
+| 마이그레이션 경계 | 성공: 여섯 대상과 timestamp 백업 후 health 재기동. 실패: data-tenant3 rsync exit 42 즉시 중단, 재기동 0회, 복구 방법 출력 |
+| 정적 검증 | 39줄 migration, 셸 문법, workflow YAML, 의도 파일 whitespace PASS |
+| 운영 | 서버 접속·마이그레이션·배포 미실행. EACCES 소멸과 CPU 정상화 미검증 |
+
+3차 리뷰까지 반복된 holder archive·journal·전용 CI 결함은 해당 구조를 전부 제거해 닫았다. compose 직접 마운트와 legacy tenant1·OSMU 격리는 유지했다.
+
+KNOWLEDGE_QUERY: BRAIN Docker 운영·영속 볼륨 기준, 레포 ADR·실수 원장, Docker Compose와 rsync 공식 문서를 조회했다.
+HITS_USED: 체크아웃 밖 host path와 운영 전 timestamp 백업 원칙을 채택했다.
+HITS_REJECTED: live namespace 보존과 상태 journal은 이번 방향 전환에서 복잡도 원인이라 폐기했다. named volume 전환은 승인 범위를 넘어 제외했다.
+CONFLICTS: 없음.
+
+SOURCES/MODEL: gpt-codex/GPT-5 | `.pr93-review3.md`, `docker-compose.postagi-4tenants.yml`, `migrate-postagi-persist-mounts.sh`, `/tmp/pr93-r4-*.log`, https://docs.docker.com/reference/cli/docker/compose/up/, https://rsync.samba.org/documentation.html
+
 ## 2026-09-28 09:23 KST · PR 85 편집실 v70 9차 CI 계약 교정
 
 STAMP: 2026-09-28 09:23 KST | model: gpt-codex/GPT-5 | agent: code-builder | skill: qa | 근거: `.pr85-review9.md`, GitHub Actions run 36360534701, 수정 전·후 표적 로그, CI Test 전체 로그 | 고민: 테스트 의도를 지우지 않고 textarea의 value 계약만 실제 contentEditable DOM·input 계약으로 옮겼다.

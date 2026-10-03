@@ -311,6 +311,15 @@
 - 로컬 커밋: `b121ad6a4e1685168f20a45fcddb17c8f75cead2`. 의도한 4파일만 포함했고 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 제외했다.
 - 원격 차단: `git push origin feat/editroom-v70-p2`가 `approval required by policy, but AskForApproval is set to Never`로 실행 전에 거절됐다. origin과 PR 87은 계속 `d6e7744b`다. 다음 실행은 push 권한이 있는 컨트롤러가 같은 브랜치를 push하고 PR 87 원격 CI를 종료까지 확인하는 것이다. PR 제목·본문·머지는 건드리지 않는다.
 
+## 2026-09-28 13:21 KST PR #93 정지형 영속 마운트 이전 단순화 완료
+
+- handoff basis: 사용자가 지정한 과제, 워크트리 `_wt-osmu-gateway-mounts`, 브랜치 `fix/gateway-persist-mounts`, 실제 시작 HEAD `a211ca81`을 primary로 사용했다. 같은 cwd의 tmux pane은 없었다.
+- 방향 전환: 3차 리뷰까지 결함이 반복된 무중단 holder·snapshot·journal·임의 재개 장치와 전용 CI job을 제거했다. 1회성 이전은 39줄의 stop→timestamp backup→checkout→persist rsync→60초 health 재기동으로 축소했다.
+- 보존: tenant2·3·4 직접 영속 bind, dashboard UID 1000·Docker GID, legacy tenant1 상대 마운트와 선택 복원, OSMU named volume을 유지했다.
+- 검증: 임시 디렉터리 성공·data-tenant3 중간 실패 테스트, 관련 배포 Vitest 6파일 24건, Compose config, 셸 문법, workflow YAML이 PASS했다. 실패 사례는 exit 42, 재기동 0회, 복구 방법 출력이다.
+- 커밋: 핵심 단순화 `3ec42e39`. push하지 않았다. 자동 기록 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr93-review*.md`는 보존하고 커밋하지 않는다.
+- 다음 실행: 문서·QA 기록 커밋 뒤 운영자가 2분 유지보수 창에서 runbook대로 1회 이전한다. 운영 EACCES 0건, six-service health, CPU 정상화는 아직 미검증이다.
+
 ## 2026-09-28 09:23 KST PR 85 편집실 v70 9차 리뷰 로컬 수정·검증 완료
 
 - handoff basis: 사용자가 지정한 `.pr85-review9.md`, 워크트리 `/private/tmp/wt-v70p1`, 시작 HEAD `ef73d2c2`를 primary로 사용했다. tmux `371:0.2`는 종료된 8차 리뷰 로그라 동시 수정이 없음을 확인했다.

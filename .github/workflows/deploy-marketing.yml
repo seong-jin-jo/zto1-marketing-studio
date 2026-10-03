@@ -191,15 +191,45 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
-      - name: 영속 config/data 복원 (~/openclaw-persist → 체크아웃)
+      - name: Docker socket GID 확인
+        run: |
+          docker_gid="$(stat -c '%g' /var/run/docker.sock)"
+          echo "DOCKER_GID=$docker_gid" >> "$GITHUB_ENV"
+          echo "Docker socket group 확인: GID $docker_gid"
+      - name: tenant2·3·4 영속 config/data 검증
+        if: ${{ github.event.inputs.services == '' || contains(github.event.inputs.services, 'tenant2') || contains(github.event.inputs.services, 'tenant3') || contains(github.event.inputs.services, 'tenant4') }}
         run: |
           shopt -s nullglob
-          for d in "$HOME"/openclaw-persist/config-* "$HOME"/openclaw-persist/data-*; do
-            cp -a "$d" ./ && echo "복원: $(basename "$d")"
+          persist_root="${OPENCLAW_PERSIST_ROOT:-$HOME/openclaw-persist}"
+          if [ "$(id -u)" != "1000" ]; then
+            echo "::error::배포 러너 UID가 1000이 아니다. gateway의 node 사용자와 bind mount 소유자가 달라 EACCES가 재발한다."
+            exit 1
+          fi
+          for tenant in 2 3 4; do
+            config_dir="$persist_root/config-tenant${tenant}"
+            data_dir="$persist_root/data-tenant${tenant}"
+            env_file="$persist_root/.env.tenant${tenant}"
+            for dir in "$config_dir" "$data_dir"; do
+              if [ ! -d "$dir" ] || [ "$(stat -c '%u' "$dir")" != "1000" ]; then
+                echo "::error::영속 경로가 없거나 UID 1000 소유가 아니다: $dir"
+                exit 1
+              fi
+            done
+            if [ ! -s "$env_file" ]; then
+              echo "::error::테넌트 환경파일이 영속 경로에 없거나 비었다: $env_file"
+              exit 1
+            fi
+            chmod 0700 "$config_dir"
+            chmod 0750 "$data_dir"
+            echo "영속 경로 확인: config-tenant${tenant}, data-tenant${tenant}"
           done
-          for f in "$HOME"/openclaw-persist/.env.*; do
-            [ -f "$f" ] && cp -a "$f" ./ && echo "복원: $(basename "$f")"
-          done
+      - name: legacy tenant1 체크아웃 데이터 복원
+        if: ${{ contains(github.event.inputs.services, 'tenant1') }}
+        run: |
+          persist_root="${OPENCLAW_PERSIST_ROOT:-$HOME/openclaw-persist}"
+          [ -f "$persist_root/.env.tenant1" ] && cp -a "$persist_root/.env.tenant1" ./ && echo "legacy tenant1 환경파일 복원"
+          [ -d "$persist_root/config-tenant1" ] && cp -a "$persist_root/config-tenant1" ./config-tenant1 && echo "legacy tenant1 config 복원"
+          [ -d "$persist_root/data-tenant1" ] && cp -a "$persist_root/data-tenant1" ./data-tenant1 && echo "legacy tenant1 data 복원"
       - name: OSMU SaaS .env 렌더 (GitHub Secrets → .env.osmu)
         run: |
           umask 077
@@ -389,7 +419,7 @@ jobs:
             docker rename openclaw-dashboard-osmu "$previous"
             docker stop "$previous"
           fi
-          if ! docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml up -d ${{ github.event.inputs.services }}; then
+          if ! docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml up -d --wait --wait-timeout 120 ${{ github.event.inputs.services }}; then
             if [ -n "$previous" ]; then
               docker rm -f openclaw-dashboard-osmu >/dev/null 2>&1 || true
               docker rename "$previous" openclaw-dashboard-osmu

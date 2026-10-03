@@ -23,14 +23,15 @@ openclaw v3.0 설계는 **1 인스턴스 = 1 서비스** (네이티브 멀티 �
 ```bash
 cd <repo-root>
 
-# 1. data/config 디렉토리 + templates 복사 + .env.{slug} 자동 생성
+# 1. ~/openclaw-persist 아래 data/config + templates + .env.{slug} 생성
 bash bootstrap-postagi-4tenants.sh
 
 # 2. 인스턴스 가동 (build 1회 + 컨테이너 시작, ~5분)
-docker-compose -f docker-compose.postagi-4tenants.yml up -d --build
+export DOCKER_GID="$(stat -c '%g' /var/run/docker.sock)"
+docker compose -f docker-compose.postagi-4tenants.yml up -d --build
 
 # 3. 컨테이너 상태 확인
-docker-compose -f docker-compose.postagi-4tenants.yml ps
+docker compose -f docker-compose.postagi-4tenants.yml ps
 ```
 
 ## Cloudflare Tunnel 라우트 추가
@@ -64,7 +65,7 @@ ingress:
 ## prompt-guide 활성화
 
 각 테넌트 dashboard → Settings → Content Guide:
-- `data-{slug}/prompt-guide.txt`에 박혀 있음 (bootstrap 스크립트가 자동 복사)
+- `${OPENCLAW_PERSIST_ROOT:-$HOME/openclaw-persist}/data-{slug}/prompt-guide.txt`에 박혀 있음 (bootstrap 스크립트가 자동 복사)
 - 채널별 오버라이드 필요하면 dashboard에서 직접 편집
 
 ## Cron 자동화 ON
@@ -92,5 +93,6 @@ WSL2 런너에서 충분 (16GB+ 권장).
 - **콘텐츠 생성 실패** — AI Engine 설정에서 Claude/GPT API 키 입력 확인
 - **발행 실패** — Settings → Channels의 access token 만료 여부 확인 (보통 60일)
 - **포트 충돌** — 기본 인스턴스(34560)와 겹치지 않게 34561~ 사용
-</content>
-</invoke>
+- **영속 경로 오류** — Linux에서는 gateway의 `node` 사용자와 같은 UID 1000 계정으로 bootstrap·배포를 실행하고, config는 0700·data는 0750을 유지. 대시보드는 UID 1000으로 실행하며 Docker 소켓 GID는 배포가 자동 주입한다.
+
+기존 checkout 상대 마운트에서 처음 전환할 때는 2분 이내 유지보수 창을 잡고 UID 1000 운영 계정으로 `bash migrate-postagi-persist-mounts.sh`를 실행한다. 무중단 live snapshot이나 임의 중단 재개는 지원하지 않는다. 정지, 타임스탬프 백업, checkout→persist 복사, 재기동과 health 확인, 실패 복구는 [tenant2·3·4 게이트웨이 영속 경로 이전](./osmu-gateway-persist-cutover-v1-gpt-codex.md)을 따른다.

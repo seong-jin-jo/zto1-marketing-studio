@@ -5,9 +5,9 @@ name: CI (dashboard)
 on:
   push:
     branches: [main]
-    paths: ['dashboard/**', '.github/workflows/ci.yml']
+    paths: ['dashboard/**', '.github/workflows/ci.yml', 'migrate-postagi-persist-mounts.sh', 'scripts/test-migrate-postagi-persist-mounts.sh']
   pull_request:
-    paths: ['dashboard/**', '.github/workflows/ci.yml']
+    paths: ['dashboard/**', '.github/workflows/ci.yml', 'migrate-postagi-persist-mounts.sh', 'scripts/test-migrate-postagi-persist-mounts.sh']
 
 # 같은 ref의 이전 CI는 취소. (deploy 워크플로는 건드리지 않음 — 단일 marketing_runner가 잡을 자연 직렬화)
 concurrency:
@@ -72,8 +72,14 @@ jobs:
       - name: Build
         run: npm run build   # NEXT_PUBLIC_SUPABASE_* 미설정도 빌드 OK(런타임만 영향)
 
-      - name: Install psql client
-        run: apt-get update && apt-get install -y --no-install-recommends postgresql-client
+      - name: Install psql client and rsync
+        run: apt-get update && apt-get install -y --no-install-recommends postgresql-client rsync
+
+      - name: 영속 마운트 정지형 이전 시뮬레이션
+        working-directory: ${{ github.workspace }}
+        # 이전 스크립트는 Linux에서 운영 계정(UID 1000)으로만 돈다. CI 컨테이너 기본 사용자는
+        # root라 가드에서 곧장 끝났다(2026-10-03 CI 실측). node:20-bookworm의 node 계정이 UID 1000이다.
+        run: setpriv --reuid=1000 --regid=1000 --init-groups bash scripts/test-migrate-postagi-persist-mounts.sh
 
       - name: Install Remotion render runtime (ffmpeg + headless Chrome libs)
         # tests/intro-outro-render.integration.test.ts 가 실제 Remotion 렌더 + ffmpeg concat 을
