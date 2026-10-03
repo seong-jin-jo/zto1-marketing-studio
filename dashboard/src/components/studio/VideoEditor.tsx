@@ -208,6 +208,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
           <VideoPlayback
             src={effectivePreviewUrl}
             tenantId={tenantId}
+            onOpenCreate={onOpenCreate}
             videoRef={videoRef}
             overlays={videoEdit.overlays}
             comments={videoEdit.comments}
@@ -269,10 +270,11 @@ function activeSubtitle(subtitles: SubtitleLine[], playhead: number): { text: st
 }
 
 function VideoPlayback({
-  src, tenantId, videoRef, overlays, comments, activeSubtitle, playhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
+  src, tenantId, onOpenCreate, videoRef, overlays, comments, activeSubtitle, playhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
 }: {
   src: string;
   tenantId?: string;
+  onOpenCreate?: () => void;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   overlays: VideoOverlay[];
   comments: VideoComment[];
@@ -297,6 +299,9 @@ function VideoPlayback({
   const [renewing, setRenewing] = useState(() => isDeliveryUrlExpired(src));
   const resignAttempted = useRef("");
   const resignInFlight = useRef<{ key: string; promise: Promise<string> } | null>(null);
+  const mountedRef = useRef(false);
+  const latestRequestKeyRef = useRef(`${tenantId || ""}|${src}`);
+  latestRequestKeyRef.current = `${tenantId || ""}|${src}`;
   /*
     2026-10-02 독립 리뷰어 BLOCK-M-D: 이전 판은 handleError의 재시도 가드가
     `resignAttempted.current === attemptKey && !resolvedSrc` 였다. 재서명이 한 번
@@ -323,6 +328,17 @@ function VideoPlayback({
   playingRef.current = playing;
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const canApplyResignResult = (attemptKey: string) => (
+    mountedRef.current && latestRequestKeyRef.current === attemptKey
+  );
+
+  useEffect(() => {
     const attemptKey = `${tenantId || ""}|${src}`;
     setLoadFailed(false);
     if (!isDeliveryUrlExpired(src)) {
@@ -344,7 +360,7 @@ function VideoPlayback({
     setResolvedSrc("");
     setRenewing(true);
     void promise.then((next) => {
-      if (canceled) return;
+      if (canceled || !canApplyResignResult(attemptKey)) return;
       if (resignInFlight.current?.promise === promise) resignInFlight.current = null;
       setRenewing(false);
       if (next) { restoreOnLoad.current = true; setResolvedSrc(next); }
@@ -361,6 +377,7 @@ function VideoPlayback({
     }
     resignAttempted.current = attemptKey;
     const next = await resignDeliveryUrl(src, tenantId);
+    if (!canApplyResignResult(attemptKey)) return;
     if (next) { restoreOnLoad.current = true; setResolvedSrc(next); }
     else setLoadFailed(true);
   }
@@ -374,6 +391,7 @@ function VideoPlayback({
     const promise = resignDeliveryUrl(src, tenantId);
     resignInFlight.current = { key: attemptKey, promise };
     const next = await promise;
+    if (!canApplyResignResult(attemptKey)) return;
     if (resignInFlight.current?.promise === promise) resignInFlight.current = null;
     setRenewing(false);
     if (next) {
@@ -405,7 +423,11 @@ function VideoPlayback({
         {loadFailed ? (
           <div className="space-y-stack-tight p-pad-inset" role="alert" data-video-load-failed>
             <p className="text-caption text-danger">영상 주소가 만료됐거나 원본 파일을 찾지 못해 재생하지 못했습니다.</p>
-            <Button size="sm" onClick={() => void retryResign()}>영상 주소 다시 받기</Button>
+            <p className="text-caption text-muted">편집한 대본과 설정은 그대로 남아 있습니다.</p>
+            <div className="flex flex-wrap gap-stack-tight">
+              <Button size="sm" onClick={() => void retryResign()}>영상 주소 다시 받기</Button>
+              {onOpenCreate ? <Button size="sm" variant="secondary" onClick={onOpenCreate}>생성실에서 영상 확인</Button> : null}
+            </div>
           </div>
         ) : renewing ? (
           <p className="p-pad-inset text-caption text-subtle" data-video-renewing>영상 주소를 다시 받는 중입니다</p>

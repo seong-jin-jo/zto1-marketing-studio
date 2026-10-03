@@ -81,6 +81,7 @@ describe("편집실 영상 플레이어 — 만료된 배달 주소 재서명", 
       return Promise.resolve(new Response(JSON.stringify({ voices: [] }), { status: 200 }));
     });
 
+    const onOpenCreate = vi.fn();
     render(
       <VideoEditor
         videoEdit={emptyVideoEdit()}
@@ -88,10 +89,14 @@ describe("편집실 영상 플레이어 — 만료된 배달 주소 재서명", 
         previewVideoUrl={expired}
         lines={[]}
         tenantId="tenant-a"
+        onOpenCreate={onOpenCreate}
       />,
     );
 
     await waitFor(() => expect(screen.getByText(/영상 주소가 만료됐거나 원본 파일을 찾지 못해/)).toBeInTheDocument());
+    expect(screen.getByText("편집한 대본과 설정은 그대로 남아 있습니다.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "생성실에서 영상 확인" }));
+    expect(onOpenCreate).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "영상 주소 다시 받기" }));
     await waitFor(() => {
       const video = document.querySelector("[data-video-el]") as HTMLVideoElement | null;
@@ -163,6 +168,78 @@ describe("편집실 영상 플레이어 — 만료된 배달 주소 재서명", 
 
     const resignCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/api/media/resign"));
     expect(resignCalls).toHaveLength(1);
+  });
+
+  it("P1-01-RESIGN-05 주소가 바뀐 뒤 도착한 옛 재서명 응답은 새 주소를 덮지 않는다", async () => {
+    const expired = deliveryUrl("old.mp4", "tenant-a", 1);
+    let releaseOld!: (value: Response) => void;
+    const oldResponse = new Promise<Response>((resolve) => { releaseOld = resolve; });
+    fetchMock.mockImplementation((url: unknown) => {
+      if (String(url).includes("/api/media/resign")) return oldResponse;
+      return Promise.resolve(new Response(JSON.stringify({ voices: [] }), { status: 200 }));
+    });
+    const rendered = render(
+      <VideoEditor videoEdit={emptyVideoEdit()} onVideoEditChange={() => {}} previewVideoUrl={expired} tenantId="tenant-a" />,
+    );
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/api/media/resign"))).toBe(true));
+    const fresh = deliveryUrl("new.mp4", "tenant-a", Date.now() + 60_000);
+    rendered.rerender(
+      <VideoEditor videoEdit={emptyVideoEdit()} onVideoEditChange={() => {}} previewVideoUrl={fresh} tenantId="tenant-a" />,
+    );
+    await waitFor(() => expect(document.querySelector("[data-video-el]")?.getAttribute("src")).toBe(fresh));
+    releaseOld(new Response(JSON.stringify({ ok: true, file: "/api/media/stale-old" }), { status: 200 }));
+    await Promise.resolve();
+    await waitFor(() => expect(document.querySelector("[data-video-el]")?.getAttribute("src")).toBe(fresh));
+  });
+
+  it("P1-01-RESIGN-06 작업 공간이 바뀐 뒤 옛 작업 공간의 재서명 응답을 버린다", async () => {
+    const expired = deliveryUrl("shared.mp4", "tenant-a", 1);
+    let releaseA!: (value: Response) => void;
+    const tenantAResponse = new Promise<Response>((resolve) => { releaseA = resolve; });
+    fetchMock.mockImplementation((url: unknown, init?: RequestInit) => {
+      if (String(url).includes("/api/media/resign")) {
+        const body = JSON.parse(String(init?.body || "{}"));
+        if (body.tenant_id === "tenant-a") return tenantAResponse;
+        return Promise.resolve(new Response(JSON.stringify({ ok: true, file: "/api/media/tenant-b" }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ voices: [] }), { status: 200 }));
+    });
+    const rendered = render(
+      <VideoEditor videoEdit={emptyVideoEdit()} onVideoEditChange={() => {}} previewVideoUrl={expired} tenantId="tenant-a" />,
+    );
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => String(init?.body).includes("tenant-a"))).toBe(true));
+    rendered.rerender(
+      <VideoEditor videoEdit={emptyVideoEdit()} onVideoEditChange={() => {}} previewVideoUrl={expired} tenantId="tenant-b" />,
+    );
+    await waitFor(() => expect(document.querySelector("[data-video-el]")?.getAttribute("src")).toBe("/api/media/tenant-b"));
+    releaseA(new Response(JSON.stringify({ ok: true, file: "/api/media/tenant-a-late" }), { status: 200 }));
+    await Promise.resolve();
+    await waitFor(() => expect(document.querySelector("[data-video-el]")?.getAttribute("src")).toBe("/api/media/tenant-b"));
+  });
+
+  it("P1-01-RESIGN-07 수동 재시도 중 화면을 닫아도 늦은 응답을 적용하지 않는다", async () => {
+    const expired = deliveryUrl("clip.mp4", "tenant-a", 1);
+    let releaseRetry!: (value: Response) => void;
+    const retryResponse = new Promise<Response>((resolve) => { releaseRetry = resolve; });
+    let resignCount = 0;
+    fetchMock.mockImplementation((url: unknown) => {
+      if (String(url).includes("/api/media/resign")) {
+        resignCount += 1;
+        return resignCount === 1
+          ? Promise.resolve(new Response(JSON.stringify({ ok: false }), { status: 404 }))
+          : retryResponse;
+      }
+      return Promise.resolve(new Response(JSON.stringify({ voices: [] }), { status: 200 }));
+    });
+    const rendered = render(
+      <VideoEditor videoEdit={emptyVideoEdit()} onVideoEditChange={() => {}} previewVideoUrl={expired} tenantId="tenant-a" />,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "영상 주소 다시 받기" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "영상 주소 다시 받기" }));
+    rendered.unmount();
+    releaseRetry(new Response(JSON.stringify({ ok: true, file: "/api/media/too-late" }), { status: 200 }));
+    await Promise.resolve();
+    expect(document.querySelector("[data-video-el]")).toBeNull();
   });
 
   it("P1-01-TRUTH-01 화면이 파일 반영 범위와 목소리 선택 한계를 사실대로 알린다", () => {
