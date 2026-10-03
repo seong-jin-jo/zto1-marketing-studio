@@ -1,4 +1,43 @@
+## 2026-10-04 03:00 KST 편집실 v2 1차 main 머지 (PR 114 문서, PR 115 구현 1a5d8547)
+
+- PR 115 CI verify 3,328건 통과(run 37141659761), Claude Opus 교차 리뷰 3회차 PASS. squash 머지 1a5d8547. 운영 미배포(배포 승인 대기).
+- 남은 백로그: (1) 인트로 적용 중 저장된 옛 훅·댓글 시각 보정(운영 초안 영향 미확인) (2) 인트로 없는 영상을 두 번 발행실로 보내면 자막·컷 이중 굽기(기존 결함) (3) 컷 겹침 시 본문 길이 복원 불일치(MINOR) (4) 편집실 v2 본 구현은 회장 결정 2건(내보내기 대기열, 카드 단일 렌더) 대기.
+- 9444 회원 OSMU 로그아웃 상태 → 회장 재로그인 후 편집실 재생·성과실·TikTok 사유 실측.
+
+## 2026-10-04 02:40 KST 편집실 v2 1차(PR 115) CI 마지막 1건 수정 중
+
+- PR 115(feat/editroom-v2-phase1, worktree /Users/sj/wt/zto1-editroom-p1): P1-01~05 + 교차 리뷰 2회 재작업 완료. Claude Opus 교차 리뷰 3차 PASS(MAJOR 0). Codex 세션 01a101bd 이어서 사용 중.
+- 실제 결함 수정: 만료 영상 재서명 진행 중 재렌더 시 무한 로딩, 인트로·아웃트로 합성본과 본문 편집 중 하나만 발행되던 것, 인트로 적용 후 자막·컷 시각 이중 지연, 목록 재조회 실패 시 편집 화면 소실, 390px 영상 화면 80px 축소, 빈 카드 발행 차단.
+- CI: 3,327건 중 1건 실패(video-result-parity ORDER-01, Debian drawtext 픽셀 비교). 원인은 테스트 기대값(컷 뒤 자막이 당겨진 프레임을 글자 없는 기준과 비교). 354행 고친 뒤 391행 같은 유형 재발 → 전수 점검 위임 중(로그 scratchpad/codex-p1j.log).
+- 컨트롤러 실수 2건 원장 기록: 테스트 범위 축소 지시, 잘린 grep으로 선택자 부재 오판.
+- 다음: CI green → PR 114 머지 → PR 115 머지 → 운영 배포(회장 승인 대기, open-decisions 2026-10-03 20:55).
+
+## 2026-10-03 21:40 KST 편집실 v2 설계 회수, 1차 구현 Codex 위임
+
+- Codex tech-architect 회수: PR 114(docs/editroom-v2-inputs, 59db9210). 격차 있음 30, 부분 15, 없음 43. verify-agent-quality는 "산출물 경로 미인식"으로 FAIL(보고 형식 문제, 파일 3개는 컨트롤러가 직접 읽고 코드 줄 근거를 표본 대조함).
+- 회장 결정 대기 등록: 내보내기 작업 저장 위치(PostgreSQL 추천), 카드 단일 렌더 기준(JSON 요소 모델과 공용 React 컴포넌트 추천). 결정 전에는 자유 배치·대기열 코드를 쓰지 않는다.
+- Codex code-builder 위임: P1-01~05(새 API·DB 없음), worktree /Users/sj/wt/zto1-editroom-p1, 브랜치 feat/editroom-v2-phase1, 로그 scratchpad/codex-p1.log. push·PR은 컨트롤러가 한다.
+- 격차표 렌더: /tmp/md-web-zto1-editroom-v2-gap-matrix.html, 9444에 열어 둠.
+- 다음: Codex 회수, verify, push, PR, CI green 확인.
+
+## 2026-10-03 20:58 KST - pane 1·2 인계 회수, 편집실 v2 기술설계 Codex 위임
+
+- handoff basis: 회장 지시 "pane 1,2 진행상황 파악하고 너가 나머지 이어서". pane 1(grok)은 9445 관리자 로그인 대기, pane 2(codex)는 PR #93 기준 낡은 계획. 실제 기준은 origin/main b77347c2 + wiki/ops/session-state.md(클라우드 세션 10-03 16:30 기록).
+- 운영 실측: build_commit 29325175(#107). #101·#106·#105·#61은 main에만 있고 운영 미반영. 배포 시도(osmu 대시보드만)는 분류기 [Production Deploy] 거절 → open-decisions 등록.
+- VM: 성과 수집 cron 6시간마다 정상(3테넌트 http 200). tenant2~4 게이트웨이 CPU 각 100% 헛돎 → open-decisions 등록(내리기 추천).
+- 9444 회원 크롬은 OSMU 로그아웃 상태(토큰 없음, /api/me 401). 편집실 재생·성과실·TikTok 사유 실측은 회장 재로그인 후.
+- v71 시안 파일이 작업 트리에서 사라져(미추적) 9444 열린 탭 DOM으로 복구. 기획서 v1.3.0과 함께 docs/editroom-v2-inputs(ee43db38, push됨, worktree /Users/sj/wt/zto1-editroom-v2).
+- Codex tech-architect 위임: docs/eng/editroom-v2/ gap-matrix·design·phase1-tasks. 로그 scratchpad/codex-editroom-design.log.
+- 다음: Codex 회수 → verify → 회장에게 격차표 공개 → code-builder(Codex) 1차 구현.
+
 ## 2026-09-25 07:48 KST - 편집실 v70 1단계 로컬 출고 완료, push 정책 차단
+
+## [2026-10-03 20:21 KST] compact 마크 (manual)
+- 세션 efa073a5 · 라인 osmu · 브랜치 claude/quirky-turing-sjpr00
+- 직전 커밋: 377a8b5c docs(ops): session-state에 #101 병합 검증 결과 기록
+- compact 직전 컨텍스트: 0 토큰
+- 마지막 회장 요청: /compact
+- ⚠ 이 줄 위로 서사를 세션이 직접 보강한다(훅은 기계가 아는 사실만 적는다).
 
 - 최종 로컬 HEAD: `7008af6e`. 제품·테스트 `cc103a37`, 검증 문서 `cfc5e880`, 리뷰 회귀 수정 `7008af6e`다. `origin/main` 최신 `57850570`을 조상으로 포함한다.
 - 최종 검증: 관련 Vitest 10파일 53건, `typecheck:ci`, production build, 토큰 감사 모두 종료 코드 0. 돌연변이 실패와 원복 PASS, dev HTTP 200과 앱 콘솔 오류 0을 확인했다. 랜딩 전 리뷰의 장 전환 선택 잔존 결함도 수정했다.
