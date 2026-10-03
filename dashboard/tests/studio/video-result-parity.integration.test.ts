@@ -76,6 +76,31 @@ async function changedPixelRatio(baselinePath: string, actualPath: string, diffP
   return changed / (baseline.info.width * baseline.info.height);
 }
 
+type DrawtextLayer = { text: string; startSec: number; endSec: number };
+
+/**
+ * 로컬 ffmpeg에 drawtext가 없어도 production 필터의 활성 글자 구간은 검증해야 한다.
+ * 필터 문자열을 직접 읽으므로 drawtextAvailable=false인 환경에서도 CI와 같은 시간 계약을
+ * 검사한다. 선언 수와 파싱 수가 다르면 조용히 일부 레이어를 놓치지 않고 즉시 실패한다.
+ */
+function drawtextLayersAt(filter: string | null, second: number): string[] {
+  if (!filter) return [];
+  const declaredCount = filter.match(/drawtext=/g)?.length ?? 0;
+  const layers = Array.from(filter.matchAll(
+    /drawtext=text='((?:\\\\.|[^'])*)'.*?enable='between\(t,(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)'/g,
+  )).map((match): DrawtextLayer => ({
+    text: match[1].replace(/\\:/g, ":").replace(/\\\\/g, "\\"),
+    startSec: Number(match[2]),
+    endSec: Number(match[3]),
+  }));
+  if (layers.length !== declaredCount) {
+    throw new Error(`drawtext filter parse mismatch declared=${declaredCount} parsed=${layers.length}`);
+  }
+  return layers
+    .filter((layer) => second >= layer.startSec && second <= layer.endSec)
+    .map((layer) => layer.text);
+}
+
 function editFixture(): VideoEdit {
   return {
     ...emptyVideoEdit(),
@@ -183,12 +208,19 @@ describe("편집실 영상 플레이어와 결과 파일 정합", () => {
       }
 
       const checks = [
-        { name: "subtitle", sourceSecond: 2, outputSecond: 2, expectedText: "자막 확인" },
-        { name: "hook", sourceSecond: 10, outputSecond: 7, expectedText: "후킹 확인" },
-        { name: "comment", sourceSecond: 15, outputSecond: 12, expectedText: "실제 사용자 댓글 확인" },
-        { name: "cta", sourceSecond: 21, outputSecond: 18, expectedText: "CTA 확인" },
+        { name: "subtitle", sourceSecond: 2, outputSecond: 2, expectedLayers: ["자막 확인"] },
+        { name: "hook", sourceSecond: 10, outputSecond: 7, expectedLayers: ["후킹 확인"] },
+        { name: "comment", sourceSecond: 15, outputSecond: 12, expectedLayers: ["실제 사용자 댓글 확인"] },
+        { name: "cta", sourceSecond: 21, outputSecond: 18, expectedLayers: ["CTA 확인"] },
       ];
       const frameObservations = [];
+      const productionFilter = plan.filterComplex ?? plan.videoFilter;
+      for (const check of checks) {
+        expect(
+          drawtextLayersAt(productionFilter, check.outputSecond),
+          `P1-03-VIDEO layer audit output=${check.outputSecond}s`,
+        ).toEqual(check.expectedLayers);
+      }
       if (drawtextAvailable) {
         for (const check of checks) {
           const baselinePath = path.join(evidenceDir, `${check.name}-player-frame.png`);
@@ -197,7 +229,10 @@ describe("편집실 영상 플레이어와 결과 파일 정합", () => {
           await frame(inputPath, check.sourceSecond, baselinePath);
           await frame(outputPath, check.outputSecond, actualPath);
           const ratio = await changedPixelRatio(baselinePath, actualPath, diffPath);
-          expect(ratio).toBeGreaterThan(0.002);
+          expect(
+            ratio,
+            `P1-03-VIDEO output=${check.outputSecond}s source=${check.sourceSecond}s layers=${check.expectedLayers.join("+")}`,
+          ).toBeGreaterThan(0.002);
           frameObservations.push({ ...check, changedPixelRatio: ratio, baselinePath, actualPath, diffPath });
         }
       }
@@ -309,7 +344,7 @@ describe("편집실 영상 플레이어와 결과 파일 정합", () => {
       expect(plan.filterComplex).toContain("between(t,2,4)");
       expect(plan.filterComplex).toContain("between(t,4,6)");
       expect(plan.filterComplex).toContain("마지막 장면");
-      const executablePlan = drawtextAvailable ? plan : planPlaybackBurn({
+      const cutOnlyPlan = planPlaybackBurn({
         edit: {
           ...renderEdit,
           subtitles: renderEdit.subtitles.map((line) => ({ ...line, text: "" })),
@@ -323,8 +358,18 @@ describe("편집실 영상 플레이어와 결과 파일 정합", () => {
         fontFile: null,
         hasAudio: true,
       });
+      expect(cutOnlyPlan.ok).toBe(true);
+      const executablePlan = drawtextAvailable ? plan : cutOnlyPlan;
       expect(executablePlan.ok).toBe(true);
       await execFileP(ffmpeg, playbackFfmpegArgs(executablePlan, { inputPath: compositePath, outputPath })!);
+
+      const cutOnlyOutputPath = drawtextAvailable ? path.join(tmpDir, "edited-cut-only.mp4") : outputPath;
+      if (drawtextAvailable) {
+        await execFileP(ffmpeg, playbackFfmpegArgs(cutOnlyPlan, {
+          inputPath: compositePath,
+          outputPath: cutOnlyOutputPath,
+        })!);
+      }
 
       const resultProbe = await probe(outputPath);
       expect(compositeProbe.durationSec).toBeCloseTo(8, 1);
@@ -336,26 +381,36 @@ describe("편집실 영상 플레이어와 결과 파일 정합", () => {
       const resultIntroFrame = path.join(tmpDir, "result-intro-frame.png");
       await frame(introPath, 1, introFrame);
       await frame(outputPath, 1, resultIntroFrame);
-      expect(await changedPixelRatio(introFrame, resultIntroFrame, path.join(tmpDir, "intro-diff.png"))).toBeLessThan(0.002);
+      const productionFilter = plan.filterComplex ?? plan.videoFilter;
+      expect(drawtextLayersAt(productionFilter, 1), "P1-03-ORDER-01 intro output=1s").toEqual([]);
+      expect(
+        await changedPixelRatio(introFrame, resultIntroFrame, path.join(tmpDir, "intro-diff.png")),
+        "P1-03-ORDER-01 intro output=1s source=intro@1s layers=none",
+      ).toBeLessThan(0.002);
 
       // 본문 0초 자막은 합성본/결과의 2초에 시작한다. 경계 ±0.1초 프레임으로
       // 실제 구운 자막 시각이 플레이어에서 본 시각과 0.2초 이내인지 고정한다.
       const subtitleChecks = [
-        { layer: "none-before-body-text", outputSecond: 1.9, sourceSecond: 1.9, drawtextVisible: false, firstWindowVisible: false },
-        { layer: "subtitle:first", outputSecond: 2.1, sourceSecond: 2.1, drawtextVisible: true, firstWindowVisible: true },
-        { layer: "subtitle:first+hook", outputSecond: 3.9, sourceSecond: 3.9, drawtextVisible: true, firstWindowVisible: true },
+        { layer: "none-before-body-text", outputSecond: 1.9, sourceSecond: 1.9, expectedLayers: [], firstWindowVisible: false },
+        { layer: "subtitle:first", outputSecond: 2.1, sourceSecond: 2.1, expectedLayers: ["UI에서 고친 자막"], firstWindowVisible: true },
+        { layer: "subtitle:first+hook", outputSecond: 3.9, sourceSecond: 3.9, expectedLayers: ["이거 순서가 틀렸다면?", "UI에서 고친 자막"], firstWindowVisible: true },
         // 초록 본문 4~6초를 자르면 원본 6~8초의 세 번째 자막은 출력 4~6초로
         // 당겨진다. 4.1초는 경계에서 3프레임 떨어진 정상 노출 구간이다.
-        { layer: "subtitle:last-after-cut", outputSecond: 4.1, sourceSecond: 6.1, drawtextVisible: true, firstWindowVisible: false },
+        { layer: "subtitle:last-after-cut", outputSecond: 4.1, sourceSecond: 6.1, expectedLayers: ["마지막 장면"], firstWindowVisible: false },
       ];
       for (const check of subtitleChecks) {
+        expect(
+          drawtextLayersAt(productionFilter, check.outputSecond),
+          `P1-03-ORDER-01 layer audit output=${check.outputSecond}s`,
+        ).toEqual(check.expectedLayers);
         const baseline = path.join(tmpDir, `subtitle-baseline-${check.outputSecond}.png`);
         const actual = path.join(tmpDir, `subtitle-result-${check.outputSecond}.png`);
         await frame(compositePath, check.sourceSecond, baseline);
         await frame(outputPath, check.outputSecond, actual);
         const ratio = await changedPixelRatio(baseline, actual, path.join(tmpDir, `subtitle-diff-${check.outputSecond}.png`));
-        const message = `P1-03-ORDER-01 layer=${check.layer} output=${check.outputSecond}s source=${check.sourceSecond}s expected=${check.drawtextVisible ? "visible" : "hidden"}`;
-        if (check.drawtextVisible && drawtextAvailable) expect(ratio, message).toBeGreaterThan(0.002);
+        const drawtextVisible = check.expectedLayers.length > 0;
+        const message = `P1-03-ORDER-01 layer=${check.layer} output=${check.outputSecond}s source=${check.sourceSecond}s drawtext=${check.expectedLayers.join("+") || "none"} expected=${drawtextVisible ? "visible" : "hidden"}`;
+        if (drawtextVisible && drawtextAvailable) expect(ratio, message).toBeGreaterThan(0.002);
         else expect(ratio, message).toBeLessThan(0.002);
       }
 
@@ -383,12 +438,17 @@ describe("편집실 영상 플레이어와 결과 파일 정합", () => {
       }
 
       // 초록 본문(2~4초)을 UI에서 컷했다. 결과 4.5초는 원본 본문 4.5초, 즉 합성본
-      // 6.5초의 노란 프레임이어야 한다. 이 비교가 실제 컷 위치의 ±0.2초 계약이다.
+      // 6.5초의 노란 프레임이어야 한다. production 결과에는 세 번째 자막도 정상 노출되므로,
+      // 컷 위치 자체는 동일한 컷을 적용하되 글자만 뺀 구조 출력과 비교한다.
       const expectedAfterCut = path.join(tmpDir, "expected-after-cut.png");
       const actualAfterCut = path.join(tmpDir, "actual-after-cut.png");
+      expect(drawtextLayersAt(productionFilter, 4.5), "P1-03-ORDER-01 cut audit output=4.5s").toEqual(["마지막 장면"]);
       await frame(compositePath, 6.5, expectedAfterCut);
-      await frame(outputPath, 4.5, actualAfterCut);
-      expect(await changedPixelRatio(expectedAfterCut, actualAfterCut, path.join(tmpDir, "cut-diff.png"))).toBeLessThan(0.002);
+      await frame(cutOnlyOutputPath, 4.5, actualAfterCut);
+      expect(
+        await changedPixelRatio(expectedAfterCut, actualAfterCut, path.join(tmpDir, "cut-diff.png")),
+        "P1-03-ORDER-01 cut output=4.5s source=6.5s layers=excluded(last-subtitle)",
+      ).toBeLessThan(0.002);
 
       const finalApplied = {
         ...applied,
