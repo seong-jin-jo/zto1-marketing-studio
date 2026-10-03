@@ -94,7 +94,7 @@ export async function renderIntroOutroClip(
       inputProps: props,
       browserExecutable,
       chromiumOptions: { gl: "swangle" },
-      // 위 M-2와 같은 이유: Remotion 기본값은 CPU 코어 절반만큼 Chrome 탭을 동시에 띄운다.
+      // 위 독립 리뷰 자원 항목과 같은 이유: Remotion 기본값은 CPU 코어 절반만큼 Chrome 탭을 동시에 띄운다.
       // 공용 VM(같은 self-hosted 러너)에서 전체 테스트와 겹치자 탭이 죽었다(2026-10-03 CI:
       // "browser crashed while rendering frame 42"). 1~2초 클립이라 탭 하나로 충분하다.
       concurrency: 1,
