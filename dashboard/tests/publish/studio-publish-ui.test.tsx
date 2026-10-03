@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
   // 쓴다. 기본은 "TikTok 미연결"(다른 테스트 전부가 가정하는 상태)과 같다.
   connectedPlatforms: ["threads", "x", "instagram"] as string[],
   tiktokCreator: undefined as Record<string, unknown> | undefined,
+  // 2026-10-03 독립 리뷰 m2: creator-info 404/502 재현용.
+  tiktokCreatorError: undefined as Error | undefined,
 }));
 
 vi.mock("swr", () => ({
@@ -178,6 +180,7 @@ describe("Studio publish result integrity", () => {
     mocks.setStudioRoom.mockReset();
     mocks.connectedPlatforms = ["threads", "x", "instagram"];
     mocks.tiktokCreator = undefined;
+    mocks.tiktokCreatorError = undefined;
     mocks.swr.mockImplementation((key: string | null) => {
       mocks.swrKeys.push(key);
       if (key === "/api/me") {
@@ -215,7 +218,7 @@ describe("Studio publish result integrity", () => {
         return { data: { checklist: {} }, mutate: vi.fn() };
       }
       if (typeof key === "string" && key.startsWith("/api/tiktok/creator-info")) {
-        return { data: mocks.tiktokCreator, mutate: vi.fn() };
+        return { data: mocks.tiktokCreator, error: mocks.tiktokCreatorError, mutate: vi.fn() };
       }
       return { data: undefined, mutate: vi.fn() };
     });
@@ -390,6 +393,60 @@ describe("Studio publish result integrity", () => {
 
     expect(screen.getByRole("button", { name: "선택한 0곳에 지금 발행" })).toBeDisabled();
     expect(mocks.apiPost).not.toHaveBeenCalledWith("/api/video/publish", expect.anything());
+  });
+
+  // 2026-10-03 독립 리뷰 m1: Threads+TikTok을 섞어 고르고 TikTok 공개 범위를 안 고르면
+  // 가드에 걸려 빠진 TikTok이 발행 버튼 옆에 이름+이유로 드러나야 한다.
+  it("m1 정상: Threads+TikTok을 섞어 고르면 가드에 걸려 빠진 TikTok이 이름+이유로 보인다", async () => {
+    mocks.connectedPlatforms = ["threads", "x", "instagram", "tiktok"];
+    mocks.tiktokCreator = {
+      connected: true,
+      ready: true,
+      creator: { username: "tiktoker", privacyLevels: ["PUBLIC_TO_EVERYONE"], commentDisabled: false, duetDisabled: false, stitchDisabled: false },
+    };
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-mixed-tiktok");
+    mocks.returnPosts = [{
+      id: "queue-mixed-tiktok",
+      text: "Threads+TikTok 혼합 본문",
+      topic: "혼합 발행",
+      videoUrl: fakeMediaUrl("returned-video.mp4"),
+      channels: { threads: { status: "pending" }, tiktok: { status: "pending" } },
+    }];
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Threads 발행" })).toBeChecked());
+    // TikTok은 체크는 됐지만(사용자 의도) 공개 범위 미선택으로 실제 발행 대상에서 빠진다.
+    expect(screen.getByRole("checkbox", { name: "TikTok 발행" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "선택한 1곳에 지금 발행" })).toBeInTheDocument();
+    expect(screen.getByTestId("publish-guard-excluded")).toHaveTextContent("TikTok: TikTok 공개 범위를 먼저 선택해주세요.");
+  });
+
+  // 2026-10-03 독립 리뷰 m2: creator-info가 404/502를 주면 고를 칸 없이 "선택해주세요"만
+  // 뜨는 막다른 길이 아니라, 오류 문구와 재연결 안내가 보여야 한다.
+  it("m2 거절: creator-info가 실패하면 오류 문구와 재연결 안내를 보여준다(막다른 길 금지)", async () => {
+    mocks.connectedPlatforms = ["threads", "x", "instagram", "tiktok"];
+    mocks.tiktokCreator = undefined; // creator-info 조회 실패 → data 없음
+    mocks.tiktokCreatorError = new Error("API error: 502");
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-tiktok-creator-fail");
+    mocks.returnPosts = [{
+      id: "queue-tiktok-creator-fail",
+      text: "TikTok용 영상 본문",
+      topic: "TikTok 영상 복귀",
+      videoUrl: fakeMediaUrl("returned-video.mp4"),
+      channels: { tiktok: { status: "pending" } },
+    }];
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByTestId("tiktok-creator-info-error")).toBeInTheDocument());
+    // 고를 칸(공개 범위 select)이 없다 — "선택해주세요"만 뜨는 막다른 길이 아니다.
+    expect(screen.queryByTestId("tiktok-privacy-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("tiktok-creator-info-error")).toHaveTextContent("계정을 다시 연결해주세요");
+    // 헤더(PublishHeaderControls)와 패널 둘 다 재연결 링크를 보여준다 — 중복이지만
+    // 패널 자리 자체가 빈 채로 "선택해주세요"만 뜨는 막다른 길은 아니라는 뜻이다.
+    expect(within(screen.getByTestId("tiktok-creator-info-error")).getByRole("link", { name: "TikTok 다시 연결하기" })).toHaveAttribute("href", "/channels/tiktok");
+    await within(screen.getByTestId("preview-tiktok")).findByText("TikTok 계정 정보를 확인하지 못했습니다. 계정을 다시 연결해주세요.");
   });
 
   it("MINOR-1 경계: draft_id 없는 인박스 발행 복귀는 진행 중인 영상 맞춤을 취소하고 편집 잠금을 푼다", async () => {

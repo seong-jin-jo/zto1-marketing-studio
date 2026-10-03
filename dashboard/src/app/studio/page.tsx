@@ -123,6 +123,13 @@ import { draftStatusLabel } from "@/lib/studio/draft-status-label";
 import { connectedOnlyTargets, publishableTargets as computePublishableTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
 import { channelNameList, PLATFORM_LABEL } from "@/lib/studio/channel-name-list";
 import {
+  allowedPrivacyLevels,
+  disclosureValidationError,
+  musicUsageConfirmationText,
+  resolvePrivacyAfterDisclosureChange,
+  type TikTokDisclosureState,
+} from "@/lib/studio/tiktok-disclosure";
+import {
   resolveRestoredQuickDraftTopic,
   sanitizeRestoredQuickDraftLines,
   sanitizeRestoredQuickDraftText,
@@ -577,6 +584,25 @@ export default function StudioPage() {
   const [tiktokDisableDuet, setTiktokDisableDuet] = useState(false);
   const [tiktokDisableStitch, setTiktokDisableStitch] = useState(false);
   const [tiktokAiGenerated, setTiktokAiGenerated] = useState(true);
+  /**
+   * 2026-10-03 독립 리뷰 m3(TikTok Content Sharing Guidelines): 상업 콘텐츠 공개
+   * ("Your brand"/"Branded content")도 사람이 직접 켜야 한다 — 기본은 전부 꺼짐.
+   */
+  const [tiktokDisclosureEnabled, setTiktokDisclosureEnabled] = useState(false);
+  const [tiktokBrandOrganic, setTiktokBrandOrganic] = useState(false);
+  const [tiktokBrandContent, setTiktokBrandContent] = useState(false);
+  /**
+   * m3: 공개 범위는 "이번 한 번만" 고르는 값이다 — 새 초안을 시작하거나, 작업 공간을
+   * 바꾸거나, 발행에 성공한 뒤에는 다음 영상에 지난 선택이 그대로 넘어가면 안 된다
+   * (사용자가 매번 다시 확인하지 않으면 엉뚱한 계정 공개 범위로 올라갈 수 있다).
+   * 상업 콘텐츠 공개도 같이 초기화한다.
+   */
+  const resetTiktokDisclosure = useCallback(() => {
+    setTiktokPrivacy("");
+    setTiktokDisclosureEnabled(false);
+    setTiktokBrandOrganic(false);
+    setTiktokBrandContent(false);
+  }, []);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [hashtags, setHashtags] = useState<Record<string, string>>({});
   const [topicTags, setTopicTags] = useState<Record<string, string>>({});
@@ -758,8 +784,6 @@ export default function StudioPage() {
   // 저장된 선택 의도는 보존하되, 화면의 체크 수와 발행 버튼에는 지금 올릴 수 있는
   // 채널만 포함한다. 초기 복원 중 잠깐 비어 있는 본문 때문에 includes 자체를 지우면
   // 정상 본문이 들어온 뒤에도 사용자가 고른 채널이 돌아오지 않는 경쟁이 생긴다.
-  const selectedTargets = selectedPublishTargets(includes)
-    .filter((platform) => !publishGuard(platform).disabledReason);
   const usableAccounts = (platform: PreviewPlatform) => (accountsByPlatform[platform] || []).filter((account) => account.connectionState === "connected");
   const defaultConnectedAccount = (platform: PreviewPlatform) => {
     const accounts = usableAccounts(platform);
@@ -768,6 +792,53 @@ export default function StudioPage() {
   // 계정 선택 UI가 없는 v70에서는 계정 관리에서 정한 현재 기본 계정이 화면과 요청의
   // 공통 정본이다. 저장된 과거 작업별 선택값을 보내면 사용자가 고칠 수 없는 숨은 상태가 된다.
   const selectedConnectedAccountId = (platform: PreviewPlatform) => defaultConnectedAccount(platform)?.id;
+
+  // TikTok 패널(결함: 공개 범위 미선택 400) — app/videos/page.tsx와 같은 계약.
+  // 연결된 TikTok 계정이 있을 때만 creator-info를 조회한다(없는데 부르면 404 토스트만
+  // 쌓인다). 계정은 v70 규칙대로 기본 연결 계정 하나를 쓴다(계정 선택 UI 없음).
+  // 2026-10-03 독립 리뷰 CI 수정: publishGuard가 아래 tiktokCreatorFailed/tiktokPrivacy를
+  // 읽으므로, publishGuard를 처음 부르는 selectedTargets 계산보다 반드시 앞에 있어야
+  // 한다(TDZ — "Cannot access before initialization"로 전체 화면이 죽은 실측).
+  const tiktokAccountIdForCreator = selectedConnectedAccountId("tiktok");
+  const tiktokCreatorUrl = usableAccounts("tiktok").length > 0
+    ? `/api/tiktok/creator-info${tiktokAccountIdForCreator ? `?account_id=${encodeURIComponent(tiktokAccountIdForCreator)}` : ""}`
+    : null;
+  const { data: tiktokCreatorData, error: tiktokCreatorError } = useSWR<{
+    connected?: boolean;
+    ready?: boolean;
+    creator?: { username: string; privacyLevels: string[]; commentDisabled: boolean; duetDisabled: boolean; stitchDisabled: boolean };
+  }>(tiktokCreatorUrl, fetcher);
+  const tiktokCreator = tiktokCreatorData?.creator;
+  /**
+   * 2026-10-03 독립 리뷰 m2: /api/tiktok/creator-info가 404(미연결)·502(계정 확인
+   * 실패, route.ts)를 주면 fetcher가 던지고 tiktokCreator는 그냥 undefined가 된다.
+   * 그러면 패널이 통째로 안 뜨고 publishGuard의 "공개 범위를 먼저 선택해주세요."만
+   * 남아 — 고를 칸 자체가 없는데 "선택해주세요"만 뜨는 막다른 길이 된다. 계정은
+   * 연결(usableAccounts>0)돼 있는데 creator-info 조회 자체가 실패했음을 구분해
+   * 다른 안내와 재연결 링크를 보여준다.
+   */
+  const tiktokCreatorFailed = Boolean(tiktokCreatorUrl) && !tiktokCreator && Boolean(tiktokCreatorError);
+  /**
+   * 2026-10-03 독립 리뷰 m3(TikTok Content Sharing Guidelines): 유료 파트너십(브랜드
+   * 콘텐츠)을 공개하면 비공개로는 못 올린다. 창작자가 쓸 수 있는 공개 범위 목록을
+   * 이 상태로 좁힌다(순수 로직은 tiktok-disclosure.ts).
+   */
+  const tiktokDisclosureState: TikTokDisclosureState = {
+    disclosureEnabled: tiktokDisclosureEnabled,
+    brandOrganic: tiktokBrandOrganic,
+    brandContent: tiktokBrandContent,
+  };
+  const tiktokAllowedPrivacyLevels = tiktokCreator ? allowedPrivacyLevels(tiktokDisclosureState, tiktokCreator.privacyLevels) : [];
+  const tiktokDisclosureError = disclosureValidationError(tiktokDisclosureState);
+  useEffect(() => {
+    // 유료 파트너십을 켜서 비공개가 허용 목록 밖으로 나가면 그 값을 지운다(다른 값으로
+    // 대신 고르지 않는다 — "사용자가 직접 고른다" 원칙, tiktok-disclosure.ts).
+    setTiktokPrivacy((current) => resolvePrivacyAfterDisclosureChange(current, tiktokDisclosureState, tiktokCreator?.privacyLevels ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiktokDisclosureEnabled, tiktokBrandContent, tiktokCreator?.privacyLevels]);
+
+  const selectedTargets = selectedPublishTargets(includes)
+    .filter((platform) => !publishGuard(platform).disabledReason);
   const publishTargets = selectedTargets.filter((platform) => usableAccounts(platform).length > 0);
   /**
    * 2026-10-03 독립 리뷰 MINOR-h: 상단 배너는 selectedTargets(사용자가 고른 전체)로 채널
@@ -791,19 +862,6 @@ export default function StudioPage() {
   const publishRetryOnly = publishTargets.some((platform) => pub.status[platform] === "done")
     && publishTargets.some((platform) => pub.status[platform] === "failed");
 
-  // TikTok 패널(결함: 공개 범위 미선택 400) — app/videos/page.tsx와 같은 계약.
-  // 연결된 TikTok 계정이 있을 때만 creator-info를 조회한다(없는데 부르면 404 토스트만
-  // 쌓인다). 계정은 v70 규칙대로 기본 연결 계정 하나를 쓴다(계정 선택 UI 없음).
-  const tiktokAccountIdForCreator = selectedConnectedAccountId("tiktok");
-  const tiktokCreatorUrl = usableAccounts("tiktok").length > 0
-    ? `/api/tiktok/creator-info${tiktokAccountIdForCreator ? `?account_id=${encodeURIComponent(tiktokAccountIdForCreator)}` : ""}`
-    : null;
-  const { data: tiktokCreatorData } = useSWR<{
-    connected?: boolean;
-    ready?: boolean;
-    creator?: { username: string; privacyLevels: string[]; commentDisabled: boolean; duetDisabled: boolean; stitchDisabled: boolean };
-  }>(tiktokCreatorUrl, fetcher);
-  const tiktokCreator = tiktokCreatorData?.creator;
   useEffect(() => {
     // videos/page.tsx와 같은 동기화: 창작자 계정이 이미 막아둔 상호작용은 토글도
     // 그 상태로 맞춰 둔다(사용자가 끌 필요가 없는 걸 또 묻지 않는다).
@@ -972,6 +1030,9 @@ export default function StudioPage() {
     setHydratedWorkspaceId(null);
     setIdea(""); setImg(null); setVid(null); setDraftId(null);
     setIncludes(normalizeIncludes()); setRestoredSelectionNotice(false); setPublishReconciliations({}); setEditorHandoff(null);
+    // m3: 작업 공간을 바꾸면 TikTok 공개 범위·상업 콘텐츠 공개를 초기화한다(다른
+    // 공간의 영상에 지난 선택이 그대로 넘어가면 안 된다).
+    resetTiktokDisclosure();
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
     replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
     quickDraftTopicRef.current = null;
@@ -1497,6 +1558,8 @@ export default function StudioPage() {
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setPublishReconciliations({});
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
+    // m3: 새 초안을 시작하면 TikTok 공개 범위·상업 콘텐츠 공개도 같이 비운다.
+    resetTiktokDisclosure();
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
     // 생성실이 들고 있는 구조 초안과 답한 질문까지 비운다. 여기를 빼먹으면 "버렸다" 고
     // 말해 놓고 화면에는 앞서 만든 후보가 그대로 남는다(2026-09-09 실사용에서 확인).
@@ -2150,12 +2213,27 @@ export default function StudioPage() {
         createActionLabel: "생성실에서 카드 만들기",
       };
     }
+    // 2026-10-03 독립 리뷰 m2: creator-info 조회 자체가 404/502로 실패하면 고를 칸이
+    // 없다. 그런데도 "공개 범위를 먼저 선택해주세요"만 뜨면 막다른 길이다 — 재연결
+    // 안내로 먼저 갈라야 한다.
+    if (platform === "tiktok" && tiktokCreatorFailed) {
+      return {
+        disabledReason: "TikTok 계정 정보를 확인하지 못했습니다. 계정을 다시 연결해주세요.",
+        createHref: channelHref("tiktok"),
+        createActionLabel: "TikTok 다시 연결하기",
+      };
+    }
     // 2026-10-03 운영 사고: TikTok은 공개 범위(privacy_level)를 사람이 직접 고르지
     // 않으면 서버가 400으로 거부한다(route.ts:727-729). 화면에 그 값을 고르는 자리가
     // 없었으니 매번 실패했다. 아래 TikTok 패널에서 값을 고르기 전까지는 "지금 발행"을
     // 막고, 왜 막혔는지를 이 disabledReason으로 그 자리에서 말한다.
     if (platform === "tiktok" && !tiktokPrivacy) {
       return { disabledReason: "TikTok 공개 범위를 먼저 선택해주세요." };
+    }
+    // 2026-10-03 독립 리뷰 m3: 상업 콘텐츠 공개를 켰는데 어느 쪽도 안 고르면 TikTok이
+    // 요구하는 공개 내용이 비어버린다(tiktok-disclosure.ts).
+    if (platform === "tiktok" && tiktokDisclosureError) {
+      return { disabledReason: tiktokDisclosureError };
     }
     const blocking = validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0];
     if (blocking) return { disabledReason: blocking.message };
@@ -2491,6 +2569,15 @@ export default function StudioPage() {
                 disable_duet: tiktokDisableDuet,
                 disable_stitch: tiktokDisableStitch,
                 is_ai_generated: tiktokAiGenerated,
+                // 2026-10-03 독립 리뷰 m3: TikTok Content Sharing Guidelines의 상업
+                // 콘텐츠 공개("Your brand"/"Branded content"). ⚠️ /api/video/publish
+                // route.ts는 아직 이 세 필드를 받지 않는다(서버가 실제로 TikTok
+                // Content Posting API에 실어 보내는 배선은 별도 작업) — 화면 계약을
+                // videos 페이지와 맞추는 이번 범위에서는 값을 함께 보내 두되, 서버가
+                // 소비하지 않는다는 사실을 숨기지 않는다.
+                disclosure_enabled: tiktokDisclosureEnabled,
+                brand_organic_toggle: tiktokBrandOrganic,
+                brand_content_toggle: tiktokBrandContent,
               } : {}),
             }, { signal: AbortSignal.timeout(VIDEO_PUBLISH_REQUEST_TIMEOUT_MS) });
             if (vr?.jobId && vr.status === "processing") {
@@ -2525,6 +2612,10 @@ export default function StudioPage() {
             } else if (vr?.ok && !vr.partial) {
               urls[p] = vr.url || POST_URL[p] || "#";
               trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+              // m3: TikTok 발행이 성공하면 공개 범위·상업 콘텐츠 공개를 비운다. 다음
+              // 영상에 지난 선택이 조용히 그대로 넘어가 엉뚱한 공개 범위로 올라가는
+              // 사고를 막는다 — 매번 다시 확인해 고른다.
+              if (p === "tiktok") resetTiktokDisclosure();
             } else {
               failureReason = vr?.error || "영상 발행에 실패했습니다";
               errs.push(`${LABEL[p]}: ${failureReason}`);
@@ -3237,6 +3328,19 @@ export default function StudioPage() {
     ALL.filter((platform) => usableAccounts(platform).length > 0),
     (platform) => validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0],
   ).blocked;
+  /**
+   * 2026-10-03 독립 리뷰 m1: Threads+TikTok처럼 섞어 고르고 TikTok 공개 범위를 안
+   * 고른 경우, TikTok 체크박스 칸(각 미리보기 카드 머리)에는 이유가 보이지만 발행
+   * 버튼 쪽에는 "선택 2곳 (Threads)"처럼 TikTok이 조용히 빠진 걸로만 보였다 — 왜
+   * 2에서 1로 줄었는지 그 자리에서 안 보였다. publishGuard(영상/카드뉴스 없음,
+   * TikTok 공개 범위 등)에 걸려 빠진, 그런데 사용자가 체크는 한 채널을 이름+이유로
+   * 발행 버튼 옆에 보여준다. publishBlockedEntries(글자수·해시태그 한도)와는 다른
+   * 축이라 따로 둔다 — 한쪽은 "본문이 한도를 넘음", 한쪽은 "그 채널 자체가 아직
+   * 준비되지 않음"이다.
+   */
+  const guardExcludedSelections = ALL.filter((platform) => Boolean(includes[platform]))
+    .map((platform) => ({ platform, reason: publishGuard(platform).disabledReason }))
+    .filter((entry): entry is { platform: PreviewPlatform; reason: string } => Boolean(entry.reason));
   const bulkTargets = ALL.filter((platform) => PUBLISH_SUPPORTED.has(platform)) as BulkPlatform[];
   // 2026-10-01 실측(회장 지적, PR#96 결함3 리뷰 BLOCK): 사이드바(channel-config →
   // getChannelConnectionStates)와 publishTargets 는 connectionState === "connected" 인
@@ -3854,10 +3958,16 @@ export default function StudioPage() {
             </div>
           ) : null}
           <section data-room-top="publish" aria-label="이 방에서 지금 알아야 할 것" className="flex min-h-control-touch flex-wrap items-center gap-stack rounded-surface border border-border bg-surface px-pad-inset py-stack">
-            <b className="text-lead text-accent">{accountsLoaded ? publishTargets.length : selectedTargets.length}곳</b>
+            {/*
+              2026-10-03 독립 리뷰 m4: 큰 숫자(이 <b>)는 publishTargets.length를 썼는데
+              바로 아래 괄호 이름 목록은 publishNameTargets(이미 완료한 곳 제외)를 썼다 —
+              숫자와 이름이 서로 다른 집합을 가리켜 어긋날 수 있었다. 숫자와 이름이 항상
+              같은 출처(publishNameTargets)를 쓰게 한다.
+            */}
+            <b className="text-lead text-accent">{accountsLoaded ? publishNameTargets.length : selectedTargets.length}곳</b>
             <span data-testid="publish-availability" className="mr-auto text-caption text-subtle">
               {accountsLoaded
-                ? `선택 ${selectedTargets.length}곳${publishNameTargets.length ? ` (${channelNameList(publishNameTargets)})` : ""} · 실제 발행 가능 ${publishTargets.length}곳 · 연결된 채널 ${connectedTargets.length}곳`
+                ? `선택 ${selectedTargets.length}곳 · 실제 발행 가능 ${publishNameTargets.length}곳${publishNameTargets.length ? ` (${channelNameList(publishNameTargets)})` : ""} · 연결된 채널 ${connectedTargets.length}곳`
                 : "발행 가능한 계정을 확인하는 중입니다"}
             </span>
             <Button
@@ -3962,6 +4072,18 @@ export default function StudioPage() {
               {activeWorkspace ? <Button variant={showSchedule ? "primary" : "secondary"} onClick={() => setShowSchedule((value) => !value)}>예약 발행</Button> : null}
               </div>
               {/*
+                2026-10-03 독립 리뷰 m1: 체크는 했는데 publishGuard에 걸려 지금 발행
+                대상에서 빠진 채널을 이름+이유로 보여준다. Threads+TikTok을 섞어
+                고르고 TikTok 공개 범위를 안 고르면 "TikTok: TikTok 공개 범위를 먼저
+                선택해주세요."가 바로 이 자리에 뜬다.
+              */}
+              {guardExcludedSelections.length ? (
+                <p data-testid="publish-guard-excluded" role="status" className="break-keep rounded-control border border-warning/30 bg-warning/10 p-stack text-caption text-warning">
+                  {guardExcludedSelections.map((entry) => `${LABEL[entry.platform]}: ${entry.reason}`).join(" · ")}
+                  {" (지금 발행 대상에서 빠집니다.)"}
+                </p>
+              ) : null}
+              {/*
                 2026-09-16 실측(j.the.great.investor): X 본문이 280 가중 문자를 넘으면
                 토스트만 뜨고 사라져 사용자는 발행 단추가 안 눌리는 줄 알았다. 발행 단추
                 옆에 계속 남는 자리에 어느 채널이 왜 막혔는지와 바로 고치는 단추를 둔다.
@@ -4055,8 +4177,33 @@ export default function StudioPage() {
                       기본값을 미리 골라주지 않는다 — "선택" 옵션만 있고 고르지 않으면
                       위 publishGuard가 발행을 막는다.
                     */}
+                    {/*
+                      2026-10-03 독립 리뷰 m2: creator-info 조회가 실패(404/502)하면
+                      패널이 아예 안 뜨고 위 publishGuard의 "공개 범위를 먼저
+                      선택해주세요."만 남아 — 고를 칸이 없는 막다른 길이었다. 계정은
+                      연결됐는데 조회가 실패했음을 여기서도 직접 말하고 재연결 링크를
+                      준다(헤더의 disabledReason과 중복이지만, 패널 자리 자체가 비어
+                      보이지 않게 한다).
+                    */}
+                    {platform === "tiktok" && tiktokCreatorFailed ? (
+                      <div data-testid="tiktok-creator-info-error" role="alert" className="mt-stack-tight rounded-control border border-danger/30 bg-danger-soft p-stack text-caption text-danger">
+                        TikTok 계정 정보를 확인하지 못했습니다. 계정을 다시 연결해주세요.
+                        <Link
+                          href={channelHref("tiktok")}
+                          className="mt-stack-tight inline-flex min-h-control-touch items-center rounded-control border border-danger bg-surface px-stack-tight text-caption font-semibold text-danger hover:bg-surface-2"
+                        >
+                          TikTok 다시 연결하기
+                        </Link>
+                      </div>
+                    ) : null}
                     {platform === "tiktok" && tiktokCreator ? (
                       <div data-testid="tiktok-privacy-panel" className="mt-stack-tight grid grid-cols-2 gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption">
+                        {/*
+                          m3(TikTok Content Sharing Guidelines §4): "The upload page
+                          must display the creator's nickname, so users are aware of
+                          which TikTok account the content will be uploaded to."
+                        */}
+                        <p className="col-span-2 text-text">업로드 대상 계정: <b>@{tiktokCreator.username}</b></p>
                         <label className="col-span-2 text-subtle">
                           공개 범위
                           <select
@@ -4067,8 +4214,13 @@ export default function StudioPage() {
                             className="mt-micro w-full rounded-chip border border-border bg-surface p-stack-tight text-text"
                           >
                             <option value="">선택</option>
-                            {tiktokCreator.privacyLevels.map((privacy) => <option key={privacy} value={privacy}>{privacy}</option>)}
+                            {tiktokAllowedPrivacyLevels.map((privacy) => <option key={privacy} value={privacy}>{privacy}</option>)}
                           </select>
+                          {tiktokDisclosureEnabled && tiktokBrandContent ? (
+                            <span className="mt-micro block text-caption text-subtle">
+                              유료 파트너십을 공개하면 비공개로는 올릴 수 없습니다(전체공개·친구공개만 가능).
+                            </span>
+                          ) : null}
                         </label>
                         <label>
                           <input
@@ -4105,6 +4257,53 @@ export default function StudioPage() {
                             onChange={(event) => setTiktokAiGenerated(event.target.checked)}
                           /> AI 생성 영상
                         </label>
+                        {/*
+                          m3: "Content Disclosure Setting" — "Your brand"(오가닉)과
+                          "Branded content"(유료 파트너십) 두 체크박스. 공개를 켠
+                          뒤에야 둘을 고를 수 있다(둘 다 사람이 직접 켜는 선택이다).
+                        */}
+                        <label className="col-span-2 border-t border-border pt-stack-tight text-text">
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok 상업 콘텐츠 공개"
+                            checked={tiktokDisclosureEnabled}
+                            onChange={(event) => {
+                              const next = event.target.checked;
+                              setTiktokDisclosureEnabled(next);
+                              if (!next) { setTiktokBrandOrganic(false); setTiktokBrandContent(false); }
+                            }}
+                          /> 상업 콘텐츠 공개
+                        </label>
+                        {tiktokDisclosureEnabled ? (
+                          <>
+                            <label>
+                              <input
+                                type="checkbox"
+                                aria-label="TikTok 내 브랜드 홍보"
+                                checked={tiktokBrandOrganic}
+                                onChange={(event) => setTiktokBrandOrganic(event.target.checked)}
+                              /> 내 브랜드 홍보
+                            </label>
+                            <label>
+                              <input
+                                type="checkbox"
+                                aria-label="TikTok 유료 파트너십"
+                                checked={tiktokBrandContent}
+                                onChange={(event) => setTiktokBrandContent(event.target.checked)}
+                              /> 유료 파트너십
+                            </label>
+                            {tiktokDisclosureError ? (
+                              <p role="alert" className="col-span-2 text-danger">{tiktokDisclosureError}</p>
+                            ) : null}
+                          </>
+                        ) : null}
+                        {/*
+                          m3: 음악 이용 확인 — TikTok이 요구하는 영문 원문을 조합별로
+                          그대로 보존한다(tiktok-disclosure.ts musicUsageConfirmationText).
+                        */}
+                        <p data-testid="tiktok-music-usage-confirmation" className="col-span-2 text-subtle">
+                          {musicUsageConfirmationText(tiktokDisclosureState)}
+                        </p>
                       </div>
                     ) : null}
                     </>
