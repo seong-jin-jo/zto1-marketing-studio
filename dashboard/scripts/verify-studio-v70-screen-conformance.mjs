@@ -868,7 +868,9 @@ async function captureText(viewport) {
 
 async function captureLoading(viewport) {
   await page.setViewportSize(viewport);
-  await setWork(work("card"));
+  // 목록이 늦더라도 이미 복원할 편집 내용이 있으면 작업대를 유지하는 것이 M2 계약이다.
+  // 로딩 화면은 로컬 작업과 서버 목록이 모두 아직 없는 첫 진입에서만 검증한다.
+  await setWork({});
   draftListDelayMs = 15_000;
   try {
     await page.goto(`${baseUrl}/studio?room=edit&kind=card`, { waitUntil: "domcontentloaded", timeout: 60_000 });

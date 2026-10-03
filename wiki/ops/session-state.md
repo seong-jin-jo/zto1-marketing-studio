@@ -1,3 +1,13 @@
+## 2026-10-04 00:31 KST 편집실 v70 첫 진입 로딩 CI 재작업 완료
+
+- handoff basis: 회장이 CI run 37131748006의 마지막 실패 한 건과 원인 범위를 직접 지정했다. tmux `371:0.1`은 이전 code-builder 실행이 제한시간 종료된 기록으로 확인했고, 현재 사용자 요청과 작업 트리를 기준으로 이어받았다.
+- 발견: 화면 정합 회귀 스크립트의 1024px 로딩 시나리오가 `work("card")`로 편집 가능한 카드 문구·이미지를 먼저 복원한 뒤 목록만 지연했다. M2 제품 계약은 이 상태에서 작업대를 유지하므로 로딩 화면을 기다리는 테스트가 잘못됐다.
+- 변경: 제품 코드는 유지하고 로딩 시나리오의 로컬 작업을 빈 첫 진입 상태로 바꿨다.
+- 검증: 제한시간이 있는 dev 서버를 `localhost:3470`에서 기동해 1024×820 전체 화면 정합 시나리오 8개를 실제 Chromium으로 끝까지 실행했다. 종료 코드 0, 로딩 `aria-busy=true`, 문서·편집실 가로 넘침 0, 콘솔 오류 0이다. 첫 시도는 127.0.0.1 HMR 교차 출처 차단으로 앱 본문이 비어 중단됐고, 제품 실패와 분리해 `localhost`로 재실행했다.
+- 증거: `/tmp/zto1-editroom-ci-loading-screen-2.log`, `/tmp/zto1-editroom-ci-loading-dev-2.log`, `/tmp/zto1-editroom-ci-loading-screen-2/observations.json`, `edit-loading-1024x820.png`.
+- 상태: 회귀 스크립트와 QA·구현현황·세션 상태 문서를 한 커밋으로 남겼다. push는 하지 않았다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 건드리거나 커밋하지 않는다.
+
 ## 2026-10-04 00:13 KST 편집실 v2 교차 리뷰 재작업 완료, push 대기
 
 - handoff basis: 회장이 현재 작업 트리의 교차 리뷰 BLOCK 마무리 세 항목을 직접 지정했다. 별도 tmux 상태보다 이 명시 요청과 git 상태를 기준으로 이어받았다.
