@@ -104,10 +104,10 @@ describe("편집실 v65 화면 계약", () => {
     expect(onLinesChange).toHaveBeenCalledWith(["카드 안에서 고침"]);
     fireEvent.click(screen.getByRole("button", { name: "상단" }));
     expect(onCardTextPositionsChange).toHaveBeenCalledWith(["top-center"]);
-    expect(screen.getByRole("button", { name: "카드 비율 도구" })).toHaveTextContent("4:5 · 1080 × 1350픽셀");
-    expect(screen.getByText("4:5 · 1080 × 1350픽셀")).toBeInTheDocument();
-    expect(screen.getByText(/카드 글자 크기: 기본 28픽셀/)).toBeInTheDocument();
-    expect(screen.getByText(/배경 이미지: 책상 위 제품 사진/)).toBeInTheDocument();
+    // v70에서는 중복 도구줄을 없애고 미리보기의 비율 선택기 한 벌만 남긴다.
+    expect(screen.getAllByRole("group", { name: "콘텐츠 크기 고르기" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "세로 카드 4:5" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("1080 × 1350픽셀")).toBeInTheDocument();
   });
 
   it("V65-EDIT-04 정상: 전체 적용은 고정 동작 셋에 말로 시키기 하나를 더해 제공한다", () => {
@@ -120,7 +120,7 @@ describe("편집실 v65 화면 계약", () => {
     // 고정 셋 + 시키기 + 발행실 이동 = 다섯.
     expect(helper.querySelectorAll("button")).toHaveLength(5);
     expect(helper.querySelector("[data-bulk-ask]")).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "빈 줄 걷어내기" }));
+    fireEvent.click(screen.getByRole("button", { name: "빈 줄 정리" }));
     expect(onLinesChange).toHaveBeenCalledWith(["아주 긴 문장을 스물네 글자보다 길게 작성해서 줄이는 동작을 확인한다"]);
   });
 

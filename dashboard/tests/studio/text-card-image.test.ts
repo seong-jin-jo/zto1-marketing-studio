@@ -7,6 +7,8 @@ import {
   themeFromPalette,
   wrapLines,
   renderTextCard,
+  capLinesToFit,
+  assertLinesFitWidth,
 } from "@/lib/studio/text-card-image";
 
 // 2026-09-10 회장 지적: "왜 영상 이미지 등은 하나도 없냐."
@@ -60,6 +62,49 @@ describe("글자만으로 카드 그림 만들기", () => {
   });
 });
 
+// 2026-10-03 독립 리뷰 MAJOR-8: 최소 글자 크기(width*3.2%)에서도 줄 수가 칸 높이를
+// 넘으면 종전에는 그대로 흘려보내 아래쪽 줄이 캔버스 밖으로 잘려 나갔다(실측: 캡션급
+// 긴 문장을 가진 실물 초안 "글 하나를 인스타·스레드·X에 맞게 바꾸는 3단계"). 이
+// 캔버스 없이도(jsdom엔 canvas 패키지가 없어 getContext가 null이라 renderTextCard
+// 자체는 끝까지 못 돈다) 단위 테스트할 수 있게 떼어 둔 두 순수 함수를 검증한다.
+describe("카드 높이를 넘는 줄은 잘리지 않고 말줄임표로 줄어든다", () => {
+  const measure = (text: string) => text.length; // 1글자 = 1px로 가정한 가짜 측정기
+
+  it("줄 수가 칸에 다 들어가면 그대로 둔다", () => {
+    const lines = ["한 줄", "두 줄", "세 줄"];
+    expect(capLinesToFit(lines, measure, 100, 5)).toEqual(lines);
+  });
+
+  it("줄 수가 넘치면 들어갈 만큼만 남기고 마지막 줄에 말줄임표를 단다", () => {
+    const lines = ["문제", "이유", "방법", "다섯째장", "여섯째장"];
+    const result = capLinesToFit(lines, measure, 100, 3);
+    expect(result).toHaveLength(3);
+    expect(result[0]).toBe("문제");
+    expect(result[1]).toBe("이유");
+    expect(result[2].endsWith("…")).toBe(true);
+    // 잘린 줄이 통째로 사라지는 게 아니라 "더 있다"는 신호가 남는다 — 조용한 잘림 금지.
+    expect(result[2]).not.toBe("방법");
+  });
+
+  it("말줄임표를 붙여도 폭을 넘지 않게 글자 단위로 더 줄인다", () => {
+    // 줄 수가 넘쳐 잘린 마지막 줄("가나다라마바사", 7글자)에 "…"를 더하면
+    // maxWidth(5)를 넘는다. 자기 글자까지 줄여서 맞춘다.
+    const lines = ["가나다라마바사", "둘째 줄"];
+    const result = capLinesToFit(lines, measure, 5, 1);
+    expect(result).toHaveLength(1);
+    expect(measure(result[0])).toBeLessThanOrEqual(5);
+    expect(result[0].endsWith("…")).toBe(true);
+  });
+
+  it("렌더 레벨 방어: 어떤 줄이 칸 너비를 넘으면 조용히 내보내지 않고 던진다", () => {
+    expect(() => assertLinesFitWidth(["이 줄은 너무 길다"], measure, 5)).toThrow(/카드 너비/);
+  });
+
+  it("전부 너비 안이면 조용히 통과한다", () => {
+    expect(() => assertLinesFitWidth(["짧음"], measure, 100)).not.toThrow();
+  });
+});
+
 // 화면에 실제로 붙어 있어야 사용자가 쓴다. 라이브러리만 만들고 안 걸면 아무 일도 안 일어난다.
 describe("글자 카드가 화면에 붙어 있다", () => {
   const src = readFileSync(
@@ -90,5 +135,26 @@ describe("글자 카드가 화면에 붙어 있다", () => {
     // 조용히 아무 일도 안 일어나면 사용자는 고장으로 읽는다.
     expect(src).toContain("먼저 구조 초안을 하나 골라 주세요");
     expect(src).toContain("data-text-card-error");
+  });
+
+  // 2026-10-03 독립 리뷰 MINOR-f: 생성 본문이 없어 구조 라벨로 폴백한 경우(모든 줄이
+  // 라벨/placeholder) "구조 초안에 실제 내용이 없어…" 안내가 복구돼야 한다 — 이 안내가
+  // 없으면 라벨이 그대로 카드에 찍혀 나가는 사고(2026-10-02)가 되돌아온다.
+  it("생성 본문이 없어 라벨로 폴백했을 땐 '실제 내용이 없다' 안내로 막는다", () => {
+    expect(src).toContain("구조 초안에 실제 내용이 없어 글자 카드를 만들지 못했습니다");
+    expect(src).toContain("isPlaceholder");
+  });
+
+  // 2026-10-03 독립 리뷰 MAJOR-8: makeTextCards()는 instagram.slides만 쓰고, 캡션도
+  // primaryKind별 글 전체(threads/facebook/x 단일 문단)도 절대 쓰지 않아야 한다.
+  it("makeTextCards는 instagram.slides만 쓰고 캡션·본문 전체는 쓰지 않는다", () => {
+    const start = src.indexOf("async function makeTextCards()");
+    const end = src.indexOf("\n  }\n", start);
+    const body = src.slice(start, end);
+    expect(body).toContain("quickDraft?.instagram?.slides");
+    expect(body).not.toContain("instagram?.caption");
+    expect(body).not.toContain("quickDraft?.threads");
+    expect(body).not.toContain("quickDraft?.facebook");
+    expect(body).not.toContain("quickDraft?.x");
   });
 });

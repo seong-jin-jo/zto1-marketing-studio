@@ -3,12 +3,21 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
-import { fetcher, apiPost, handleUnauthorizedResponse } from "@/lib/api";
+import { fetcher, apiPost, handleUnauthorizedResponse, isUnresolvedPublishPayload, isExternalPublishConfirmedPayload } from "@/lib/api";
 import { authHeaders, getAuthToken } from "@/lib/auth";
 import { useToast } from "@/components/layout/Toast";
 import { useUIStore } from "@/store/ui-store";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { confirmAction } from "@/components/shared/ConfirmHost";
+import {
+  allowedPrivacyLevels,
+  disclosureValidationError,
+  musicUsageConfirmationText,
+  resolvePrivacyAfterDisclosureChange,
+  type TikTokDisclosureState,
+} from "@/lib/studio/tiktok-disclosure";
+import { pollJobUntilDone } from "@/lib/job-poll";
+import { savePendingVideoPublishJob, clearPendingVideoPublishJob, listAllPendingVideoPublishJobs } from "@/lib/publish-job-store";
 
 interface Video {
   filename: string;
@@ -118,6 +127,16 @@ export default function VideosPage() {
   const [tiktokDisableDuet, setTiktokDisableDuet] = useState(false);
   const [tiktokDisableStitch, setTiktokDisableStitch] = useState(false);
   const [tiktokAiGenerated, setTiktokAiGenerated] = useState(true);
+  // 2026-10-03 독립 리뷰 m3(TikTok Content Sharing Guidelines) — studio 발행실과
+  // 같은 계약. 상업 콘텐츠 공개는 기본 꺼짐, 사람이 직접 켠다.
+  const [tiktokDisclosureEnabled, setTiktokDisclosureEnabled] = useState(false);
+  const [tiktokBrandOrganic, setTiktokBrandOrganic] = useState(false);
+  const [tiktokBrandContent, setTiktokBrandContent] = useState(false);
+  // m3: TikTok 발행이 접수·성공하면 공개 범위·상업 콘텐츠 공개를 비운다(다음 영상에
+  // 지난 선택이 조용히 넘어가지 않게).
+  const resetTikTokPublishChoices = () => {
+    setTiktokPrivacy(""); setTiktokDisclosureEnabled(false); setTiktokBrandOrganic(false); setTiktokBrandContent(false);
+  };
   const [publishingPlatform, setPublishingPlatform] = useState<string | null>(null);
   // publish_id는 TikTok이 비동기 처리하는 동안 유일한 회수 키다. 탭 새로고침 뒤에도 현재
   // workspace에 한해서만 polling을 재개한다(다른 tenant의 이전 브라우저 상태는 섞지 않는다).
@@ -156,11 +175,24 @@ export default function VideosPage() {
     creator?: TikTokCreator;
   }>(tiktokCreatorUrl, fetcher);
   const tiktokCreator = tiktokCreatorData?.creator;
+  const tiktokDisclosureState: TikTokDisclosureState = {
+    disclosureEnabled: tiktokDisclosureEnabled,
+    brandOrganic: tiktokBrandOrganic,
+    brandContent: tiktokBrandContent,
+  };
+  const tiktokAllowedPrivacyLevels = tiktokCreator ? allowedPrivacyLevels(tiktokDisclosureState, tiktokCreator.privacyLevels) : [];
+  const tiktokDisclosureError = disclosureValidationError(tiktokDisclosureState);
+  useEffect(() => {
+    setTiktokPrivacy((current) => resolvePrivacyAfterDisclosureChange(current, tiktokDisclosureState, tiktokCreator?.privacyLevels ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiktokDisclosureEnabled, tiktokBrandContent, tiktokCreator?.privacyLevels]);
 
   useEffect(() => {
     setPublishAccountId("");
     setTiktokAccountId("");
     setTiktokPrivacy("");
+    // m3: 작업 공간을 바꾸면 상업 콘텐츠 공개도 같이 비운다.
+    setTiktokDisclosureEnabled(false); setTiktokBrandOrganic(false); setTiktokBrandContent(false);
     const workspaceId = activeWorkspace?.id;
     const storageKey = workspaceId ? `tiktok-pending:${workspaceId}` : "";
     if (!workspaceId) {
@@ -303,11 +335,57 @@ export default function VideosPage() {
     }
   };
 
+  // 2026-10-02 컨트롤러 감사 반려: video/publish가 예산(8초)을 넘기면 202 +
+  // {status:"processing", jobId}를 준다(TikTok 전용의 processing+publishId와는 다른,
+  // 공용 비동기 경로). 그 응답을 ok:true로만 읽고 바로 "완료"로 보여주면 아직 올라가지
+  // 않은 영상을 "완료"로 말하는 거짓-성공이 된다. jobId가 있으면 실제로 끝날 때까지
+  // 기다린 뒤 진짜 permalink로 안내한다. 15분을 넘기면 "실패"가 아니라 "결과 확인 중"으로
+  // 남겨 재발행(중복 게시)을 유도하지 않는다.
+  const awaitAsyncVideoPublish = async (
+    tenantId: string, videoFilename: string, publishPlatform: string, jobId: string,
+  ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> => {
+    savePendingVideoPublishJob(tenantId, videoFilename, publishPlatform, jobId);
+    const outcome = await pollJobUntilDone<{ ok?: boolean; url?: string; error?: string; status?: string; processing?: boolean; publishId?: string }>(
+      `/api/video/publish/job/${encodeURIComponent(jobId)}?tenant_id=${encodeURIComponent(tenantId)}`,
+      // MAJOR-2: 고정 헤더 대신 매 요청마다 새로 만든다(studio/page.tsx와 같은 이유).
+      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000 },
+    );
+    if (outcome.timedOut) {
+      return { ok: false, unresolved: true, error: "결과 확인 중입니다. 영상 목록에서 다시 확인해 주세요." };
+    }
+    clearPendingVideoPublishJob(tenantId, videoFilename, publishPlatform);
+    // MINOR(2026-10-02 재재검토): 못 찾은 것도 "실패 확정"이 아니라 "모른다"다.
+    if (outcome.notFound) return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 영상 목록에서 다시 확인해 주세요." };
+    const data = outcome.data;
+    // MAJOR-3 구멍(2026-10-02 재재검토): TikTok 접수(init)가 8초를 넘기면 바깥 job 경로가
+    // 먼저 타임아웃 승리해, 그 작업의 "완료된 결과"가 TikTok 자체의 비동기 봉투
+    // ({ok:true, processing:true, publishId})가 된다. 이걸 ok:true로 읽으면 url 없는
+    // "완료"를 내버린다 — 기존 tiktokPending 폴링(rememberTikTokPending)에 넘긴다.
+    if (data?.processing && data.publishId) {
+      rememberTikTokPending(videoFilename, data.publishId);
+      return { ok: false, unresolved: true, error: "TikTok에서 영상을 처리 중입니다. 영상 목록에서 확인해 주세요." };
+    }
+    if (!data?.ok) {
+      // BLOCK-1: 외부에는 이미 올라갔거나(기록만 못 남김) 결과를 모르는 상태를 "실패"로
+      // 읽지 않는다 — 재시도 버튼을 다시 눌러 같은 영상이 두 번 올라가는 걸 막는다.
+      // M-A 사이드이펙트(2026-10-02 재재검토 회귀): studio/page.tsx와 같은 이유로 확정된
+      // 외부 게시(①)도 여기서 unresolved로 막는다.
+      if (isUnresolvedPublishPayload(data) || isExternalPublishConfirmedPayload(data)) {
+        return {
+          ok: false, unresolved: true,
+          error: data?.error || "외부 게시 여부를 확인하지 못했습니다. 영상 목록에서 다시 확인해 주세요.",
+        };
+      }
+      return { ok: false, error: data?.error || "발행에 실패했습니다" };
+    }
+    return { ok: true, url: data.url };
+  };
+
   const handlePublish = async (filename: string, platform: "youtube" | "reels" | "tiktok" = "youtube") => {
     const label = platform === "reels" ? "Instagram Reels" : platform === "tiktok" ? "TikTok" : "YouTube";
     setPublishingPlatform(`${platform}:${filename}`);
     try {
-      const res = await apiPost<{ ok: boolean; processing?: boolean; publishId?: string; url?: string; error?: string }>("/api/video/publish", {
+      const res = await apiPost<{ ok: boolean; processing?: boolean; publishId?: string; status?: string; jobId?: string; url?: string; error?: string }>("/api/video/publish", {
         filename,
         title: publishTitle || filename,
         description: publishDesc,
@@ -319,13 +397,39 @@ export default function VideosPage() {
           disable_duet: tiktokDisableDuet,
           disable_stitch: tiktokDisableStitch,
           is_ai_generated: tiktokAiGenerated,
+          // m3: studio 발행실과 같은 계약. route.ts는 아직 이 세 필드를 받지 않는다
+          // (서버 배선은 별도 작업) — 화면 계약을 studio와 맞추는 이번 범위에서는
+          // 값을 함께 보내되 소비되지 않는다는 사실을 숨기지 않는다.
+          disclosure_enabled: tiktokDisclosureEnabled,
+          brand_organic_toggle: tiktokBrandOrganic,
+          brand_content_toggle: tiktokBrandContent,
         } : {}),
       });
       if (res?.ok) {
         if (platform === "tiktok" && res.processing && res.publishId) {
           rememberTikTokPending(filename, res.publishId);
+          resetTikTokPublishChoices();
+          showToast(`${label}에서 영상을 처리 중입니다.`, "success");
+          setPublishingFile(null);
+          return;
         }
-        showToast(res.processing ? `${label}에서 영상을 처리 중입니다.` : `Published to ${label}: ${res.url || ""}`, "success");
+        if (res.jobId && res.status === "processing") {
+          const tenantId = activeWorkspace?.id ?? "";
+          showToast(`${label}에 올리는 중입니다. 시간이 걸릴 수 있어 결과를 이어서 확인합니다.`, "success");
+          const resolved = await awaitAsyncVideoPublish(tenantId, filename, platform, res.jobId);
+          if (resolved.unresolved) {
+            showToast(resolved.error || "결과 확인 중입니다. 영상 목록에서 다시 확인해 주세요.", "error");
+          } else if (resolved.ok) {
+            if (platform === "tiktok") resetTikTokPublishChoices();
+            showToast(`Published to ${label}: ${resolved.url || ""}`, "success");
+            setPublishingFile(null);
+          } else {
+            showToast(resolved.error || `${label} 발행 실패`, "error");
+          }
+          return;
+        }
+        if (platform === "tiktok") resetTikTokPublishChoices();
+        showToast(`Published to ${label}: ${res.url || ""}`, "success");
         setPublishingFile(null);
       } else {
         showToast(res?.error || `${label} 발행 실패`, "error");
@@ -336,6 +440,35 @@ export default function VideosPage() {
       setPublishingPlatform(null);
     }
   };
+
+  // 새로고침·탭 재방문 뒤에도 진행 중이던 영상 발행을 잃지 않는다(2026-10-02 컨트롤러
+  // 감사 반려). 어떤 영상·플랫폼이 보류 중인지 이 화면은 미리 모르므로 색인
+  // (listAllPendingVideoPublishJobs)으로 전부 찾아 이어서 확인한다.
+  useEffect(() => {
+    const workspaceId = activeWorkspace?.id;
+    if (!workspaceId) return;
+    let cancelled = false;
+    const pending = listAllPendingVideoPublishJobs(workspaceId);
+    if (!pending.length) return;
+    void (async () => {
+      for (const job of pending) {
+        if (cancelled) break;
+        const label = job.platform === "reels" ? "Instagram Reels" : job.platform === "tiktok" ? "TikTok" : "YouTube";
+        const resolved = await awaitAsyncVideoPublish(workspaceId, job.filename, job.platform, job.jobId);
+        if (cancelled) continue;
+        if (resolved.unresolved) {
+          showToast(resolved.error || "결과 확인 중입니다. 영상 목록에서 다시 확인해 주세요.", "error");
+        } else if (resolved.ok) {
+          showToast(`Published to ${label}: ${resolved.url || ""}`, "success");
+          mutate();
+        } else {
+          showToast(resolved.error || `${label} 발행 실패`, "error");
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id]);
 
   // 0차: Repurpose long video via external + OSMU refine
   const handleRepurpose = async () => {
@@ -581,13 +714,40 @@ export default function VideosPage() {
                   className="mt-micro w-full rounded-chip border border-border bg-surface-2 p-stack-tight text-text"
                 >
                   <option value="">선택</option>
-                  {tiktokCreator.privacyLevels.map((privacy) => <option key={privacy} value={privacy}>{privacy}</option>)}
+                  {tiktokAllowedPrivacyLevels.map((privacy) => <option key={privacy} value={privacy}>{privacy}</option>)}
                 </select>
+                {tiktokDisclosureEnabled && tiktokBrandContent ? (
+                  <span className="mt-micro block text-caption text-subtle">
+                    유료 파트너십을 공개하면 비공개로는 올릴 수 없습니다(전체공개·친구공개만 가능).
+                  </span>
+                ) : null}
               </label>
               <label><input type="checkbox" checked={tiktokDisableComment} disabled={tiktokCreator.commentDisabled} onChange={(e) => setTiktokDisableComment(e.target.checked)} /> 댓글 끄기</label>
               <label><input type="checkbox" checked={tiktokDisableDuet} disabled={tiktokCreator.duetDisabled} onChange={(e) => setTiktokDisableDuet(e.target.checked)} /> 듀엣 끄기</label>
               <label><input type="checkbox" checked={tiktokDisableStitch} disabled={tiktokCreator.stitchDisabled} onChange={(e) => setTiktokDisableStitch(e.target.checked)} /> 스티치 끄기</label>
               <label><input type="checkbox" checked={tiktokAiGenerated} onChange={(e) => setTiktokAiGenerated(e.target.checked)} /> AI 생성 영상</label>
+              {/* m3: Content Disclosure Setting — "Your brand"(오가닉)/"Branded content"(유료 파트너십). */}
+              <label className="col-span-2 border-t border-border pt-stack-tight text-text">
+                <input
+                  type="checkbox"
+                  checked={tiktokDisclosureEnabled}
+                  onChange={(event) => {
+                    const next = event.target.checked;
+                    setTiktokDisclosureEnabled(next);
+                    if (!next) { setTiktokBrandOrganic(false); setTiktokBrandContent(false); }
+                  }}
+                /> 상업 콘텐츠 공개
+              </label>
+              {tiktokDisclosureEnabled ? (
+                <>
+                  <label><input type="checkbox" checked={tiktokBrandOrganic} onChange={(e) => setTiktokBrandOrganic(e.target.checked)} /> 내 브랜드 홍보</label>
+                  <label><input type="checkbox" checked={tiktokBrandContent} onChange={(e) => setTiktokBrandContent(e.target.checked)} /> 유료 파트너십</label>
+                  {tiktokDisclosureError ? <p className="col-span-2 text-danger">{tiktokDisclosureError}</p> : null}
+                </>
+              ) : null}
+              <p data-testid="tiktok-music-usage-confirmation" className="col-span-2 text-subtle">
+                {musicUsageConfirmationText(tiktokDisclosureState)}
+              </p>
             </div>
           )}
         </div>
@@ -789,7 +949,7 @@ export default function VideosPage() {
                         릴스
                       </button>
                     )}
-                    {tiktokCreatorData?.ready && tiktokPrivacy && (
+                    {tiktokCreatorData?.ready && tiktokPrivacy && !tiktokDisclosureError && (
                       <button
                         data-testid="tiktok-publish-button"
                         disabled={publishingPlatform === `tiktok:${v.filename}` || Boolean(tiktokPending[v.filename])}

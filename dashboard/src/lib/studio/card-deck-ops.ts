@@ -484,6 +484,35 @@ export function addSlide(deck: CardDeck, afterIndex: number): CardDeck {
   return withRevision(deck, inserted.map((s, order) => ({ ...s, order })));
 }
 
+/** 선택한 대화 장을 바로 뒤에 복제한다. 표지·CTA는 고정이며 전체 11장 제한을 지킨다. */
+export function duplicateSlide(deck: CardDeck, slideIndex: number): CardDeck {
+  if (deck.slides.length >= 11) {
+    throw new CardDeckOpsError("OPS_SLIDE_LIMIT", "cardDeck cannot exceed 11 slides");
+  }
+  const source = deck.slides[slideIndex];
+  if (!source) throw new CardDeckOpsError("OPS_SLIDE_OUT_OF_RANGE", "slide index out of range");
+  if (source.role !== "chat") {
+    throw new CardDeckOpsError("OPS_SLIDE_LOCKED", "only chat slides can be duplicated");
+  }
+  const duplicate: CardSlide = {
+    ...source,
+    id: newSlideId(),
+    order: 0,
+    bubbles: (source.bubbles ?? []).map((bubble, order) => ({
+      ...bubble,
+      id: newBubbleId(),
+      order,
+      segments: bubble.segments.map((segment) => ({ ...segment })),
+    })),
+  };
+  const slides = [
+    ...deck.slides.slice(0, slideIndex + 1),
+    duplicate,
+    ...deck.slides.slice(slideIndex + 1),
+  ].map((slide, order) => ({ ...slide, order }));
+  return withRevision(deck, slides);
+}
+
 /** 넘친 chat 장의 말풍선 경계에서 다음 장을 만든다. 텍스트/굵기 세그먼트는 그대로 이동한다. */
 export function splitSlideAtBubble(deck: CardDeck, slideIndex: number, firstMovedBubbleIndex: number): CardDeck {
   if (deck.slides.length >= 11) throw new CardDeckOpsError("OPS_SLIDE_LIMIT", "cardDeck cannot exceed 11 slides");

@@ -90,6 +90,11 @@ const TENANT_AWARE_PATHS = [
   "/api/provision",
   "/api/publish",
   "/api/publish/first-comment-capabilities",
+  // 외부에는 올라갔는데 내부 기록을 못 남긴 상태를 고객 화면(studio/page.tsx
+  // resolvePublishReconciliation)이 스스로 복구하는 경로. 이 줄이 없어 같은 사고 유형이
+  // 다섯 번째로 반복될 뻔했다(2026-10-02, customer-route-allowlist 전수 스캔 추가로 발견).
+  // 라우트가 effectiveTenantId로 테넌트를 확인하고 그 테넌트 기록만 건드린다.
+  "/api/publish/reconcile",
   "/api/queue/[postId]/add-image",
   "/api/queue/[postId]/approve",
   // 고객이 예약 글의 발행을 멈추는 경로. 화면(UnifiedPostCard)이 "발행을 멈춥니다"라고
@@ -143,6 +148,10 @@ const TENANT_AWARE_PATHS = [
   // 만든 그림과 영상을 화면이 불러오는 경로. 여기 없으면 만들기는 되는데 화면에 안 뜬다
   // (회장 2026-09-07 실사용). 라우트 자체가 tenant_id 를 요구하고 그 테넌트 폴더에서만 읽는다.
   "/api/higgsfield/asset/[file]",
+  // 비동기 생성의 결과 조회. image/video 가 202 + jobId 만 주므로 여기 없으면 고객은 접수만 되고
+  // 결과를 영영 못 받는다(2026-10-02 운영 실측: 회원 계정 POST 202 뒤 조회 403). 라우트가
+  // effectiveTenantId 로 테넌트를 확인하고 그 테넌트 폴더의 작업만 읽는다.
+  "/api/higgsfield/job/[id]",
   "/api/suggestions",
   "/api/suggestions/enqueue",
   "/api/threads-username",
@@ -168,6 +177,12 @@ const TENANT_AWARE_PATHS = [
   // UI(/videos)도 운영자에게만 생성 탭을 그려 403 나는 버튼을 고객에게 제안하지 않는다.
   "/api/video/list",
   "/api/video/publish",
+  // 비동기 영상 발행의 결과 조회(2026-10-02). POST /api/video/publish가 예산(8초) 안에
+  // 못 끝내면 202 + jobId만 주므로, 여기 없으면 고객은 접수만 되고 실제 결과(게시됨+링크 /
+  // 실패 사유)를 영영 못 받는다(higgsfield/job/[id]와 같은 사고 재발방지 — 이 레포에서
+  // 비동기 전환 때마다 네 번째로 반복된 실수: 새 조회 라우트를 허용 목록에 못 넣음).
+  // 라우트가 effectiveTenantId로 테넌트를 확인하고 그 테넌트 폴더의 작업만 읽는다.
+  "/api/video/publish/job/[id]",
   "/api/video/refine-clip",
   // 편집실을 떠날 때 자막을 영상에 굽는 경로. 이 줄이 없어 고객 토큰이 403 을 받았고,
   // 발행실로 넘어가는 길이 말없이 막혔다(2026-09-14 실측). 화면에는 아무 안내도 안 떴다.

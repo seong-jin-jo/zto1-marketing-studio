@@ -28,6 +28,12 @@ describe("V68 네 방 상단 단계 계약", () => {
     expect(screen.getByRole("link", { name: "04성과실" })).toHaveAttribute("href", "/performance");
     expect(document.querySelector('[data-room-step="performance"][href="/"]')).toBeNull();
   });
+
+  it("PR95-R2-ROOM-KIND-01 정상: 카드 작업 중 공용 편집실 링크가 현재 카드 형식을 보존한다", () => {
+    render(<RoomFlowHeader currentRoom="publish" currentEditKind="card" />);
+
+    expect(screen.getByRole("link", { name: "02편집실" })).toHaveAttribute("href", "/studio?room=edit&kind=card");
+  });
 });
 
 describe("V69-COPY-01 작업 공간 이름 개인정보 계약", () => {

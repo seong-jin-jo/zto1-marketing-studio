@@ -19,7 +19,11 @@ describe("만든 그림이 화면에 뜨는 조건", () => {
   });
 
   it("이미지 저장은 생성기가 준 실제 확장자를 쓴다", () => {
-    const src = read("app/api/higgsfield/image/route.ts");
+    // 2026-10-01 비동기 전환: 다운로드·저장은 POST(접수)가 아니라 완료 처리 로직이 한다.
+    // 2026-10-02 서버측 백그라운드 완료 루프 추가로 그 완료 처리 로직(다운로드·확장자
+    // 판정 포함)이 job/[id]/route.ts에서 higgsfield-finalize.ts로 옮겨갔다(GET 라우트와
+    // 백그라운드 루프가 공유하기 위함).
+    const src = read("lib/higgsfield-finalize.ts");
     expect(src).not.toContain("`img_${Date.now()}.png`");
     expect(src).toContain("png|jpe?g|webp");
   });

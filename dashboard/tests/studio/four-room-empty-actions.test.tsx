@@ -196,6 +196,40 @@ describe("V77-CREATE-NETWORK 생성 담당 구조 선택 계약", () => {
     });
   }, 10_000);
 
+  it("V70-CREATE-HASHTAG-01 거절: 새 구조 초안을 고르면 이전 작업물 해시태그를 승계하지 않는다", async () => {
+    mocks.room = "create";
+    window.history.replaceState(null, "", "/studio?room=create");
+    localStorage.setItem("studio_work:tenant-empty", JSON.stringify({
+      idea: "이전 작업물",
+      hashtags: {
+        x: "#피카츄 #캐릭터인테리어",
+        instagram: "#피카츄 #캐릭터인테리어",
+      },
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/text") {
+        return {
+          ok: true,
+          threads: "새 작업물 본문",
+          x: "새 작업물 본문",
+          instagram: { caption: "새 작업물 본문", hashtags: [], slides: [] },
+          shorts: { hook: "새 작업물", body: "본문", cta: "마무리" },
+        };
+      }
+      return { ok: true };
+    });
+
+    render(<StudioPage />);
+    await answerStudioQuestionnaire("완전히 다른 새 주제");
+    fireEvent.click(screen.getByRole("button", { name: "구조 초안 3개 보기" }));
+    fireEvent.click(await screen.findByRole("button", { name: "A 구조 초안 선택" }));
+
+    await waitFor(() => {
+      const saved = JSON.parse(localStorage.getItem("studio_work:tenant-empty") || "{}");
+      expect(saved.hashtags).toEqual({});
+    });
+  }, 10_000);
+
   it("V77-CREATE-NETWORK-02 거절: 주제가 비어 있으면 구조 선택과 text API 호출로 진행하지 않는다", async () => {
     mocks.room = "create";
     window.history.replaceState(null, "", "/studio?room=create");

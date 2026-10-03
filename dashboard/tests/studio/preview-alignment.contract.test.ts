@@ -50,28 +50,29 @@ describe("미리보기 카드가 한 줄에서 시작한다(회귀 가드. 실�
     expect(preview).toMatch(/min-h-control-touch px-micro" data-preview-header-controls=\{p\}/);
   });
 
-  it("headerRight 는 공용 PublishHeaderControls 하나로만 정의된다 — 고정 2행 구조(5라운드 + 6라운드 복제본 제거)", () => {
+  it("headerRight 는 공용 PublishHeaderControls 하나로만 정의되고 계정은 한 줄에 한 번 나온다", () => {
     // 2026-09-23 count:9: page.tsx 와 qa-alignment-harness 가 이 마크업을 손으로 두 벌
     // 유지해 측정이 실제 화면과 무관해졌다. 이제 양쪽이 같은 컴포넌트를 렌더한다.
     const shared = src("components/studio/PublishHeaderControls.tsx");
     const page = src("app/studio/page.tsx");
     const harness = src("app/qa-alignment-harness/AlignmentHarnessGrid.tsx");
-    // 1행(발행/대문)과 2행(계정) 컨테이너가 항상 렌더된다. 조건부로 통째로 없어지지 않는다.
-    expect(shared).toMatch(/flex flex-col items-end gap-micro/);
-    // 대문 슬롯이 없는 채널도 투명 spacer 로 자리를 유지한다.
-    expect(shared).toMatch(/text-caption text-transparent select-none">\s*대문 자동\s*<\/span>/);
-    // 계정 select 는 폭을 고정하고 truncate 한다(무제한으로 늘어나 줄바꿈을 만들지 않는다).
-    expect(shared).toMatch(/min-h-control-touch w-28 truncate rounded-control/);
+    expect(shared).toContain('data-publish-header-row="primary"');
+    expect(shared).toContain('data-testid={`publish-account-label-');
+    expect(shared).not.toContain("<select");
+    expect(shared).toContain("grid-cols-[auto_minmax(0,1fr)_auto]");
+    expect(shared).toMatch(/data-testid=\{`publish-account-label-[\s\S]*truncate/);
+    expect(shared).not.toMatch(/data-publish-header-row="primary"[\s\S]{0,180}flex-wrap/);
     // 화면과 측정 하네스는 그 컴포넌트를 부르기만 한다(복제본 부활 차단).
     for (const [name, body] of [["page.tsx", page], ["AlignmentHarnessGrid.tsx", harness]] as const) {
       expect(body, `${name} 가 PublishHeaderControls 를 안 쓴다`).toContain("<PublishHeaderControls");
-      expect(body, `${name} 에 헤더 마크업 복제본이 남아 있다`).not.toMatch(/min-h-control-touch w-28 truncate rounded-control/);
+      expect(body, `${name} 에 헤더 마크업 복제본이 남아 있다`).not.toContain('data-testid={`publish-account-label-');
     }
   });
 
-  it("헤더 계정 배지는 고정 높이 별도 줄이라 헤더 줄 수가 채널마다 갈리지 않는다(M1)", () => {
+  it("미리보기는 계정 배지를 다시 그리지 않는다", () => {
     const preview = src("components/studio/PlatformPreview.tsx");
-    expect(preview).toMatch(/account \? \(\s*<div className="mb-stack-tight min-h-control-touch px-micro">/);
+    expect(preview).not.toContain("AccountBadge");
+    expect(preview).not.toContain("preview-account-");
   });
 
   it("텍스트 채널 본문 편집 요소는 line-clamp 로 내용을 숨기지 않고 스크롤 가능한 최대 높이로 캡핑한다(N1)", () => {

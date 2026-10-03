@@ -10,6 +10,30 @@ const CARD_DECK_MAX_BYTES = 64 * 1024;
 /** videoEdit 도 같은 상한을 쓴다(오버레이·댓글·자막 목록 크기가 카드덱과 비슷한 자릿수). */
 const VIDEO_EDIT_MAX_BYTES = 64 * 1024;
 
+/** 교차 리뷰 BLOCKER 1: 뒤처진 revision의 videoEdit 저장을 막는 신호. */
+class StaleVideoEditRevisionError extends Error {
+  constructor(readonly serverRevision: number | null, readonly clientRevision: number | null) {
+    super(`videoEdit revision stale: server=${serverRevision} client=${clientRevision}`);
+  }
+}
+
+interface LatestBodySnapshot {
+  text: unknown | null;
+  editLines: unknown | null;
+  bodyRevision: number;
+}
+
+/** PR87 r4: 마지막으로 읽은 서버 판과 현재 서버 판이 다른 본문 저장을 막는 신호. */
+class StaleBodyRevisionError extends Error {
+  constructor(
+    readonly serverRevision: number,
+    readonly clientBaseRevision: number,
+    readonly latestBody: LatestBodySnapshot,
+  ) {
+    super(`body revision stale: server=${serverRevision} clientBase=${clientBaseRevision}`);
+  }
+}
+
 // Studio 초안/발행 이력 — Supabase drafts 테이블(테넌트별). payload jsonb에 본문 보관.
 interface DraftRow {
   id: string;
@@ -26,6 +50,7 @@ interface DraftRow {
     editFormat?: unknown;
     editKind?: unknown;
     editLines?: unknown;
+    bodyRevision?: unknown;
     cardTextPositions?: unknown;
     cardDeck?: unknown;
     videoEdit?: unknown;
@@ -55,41 +80,61 @@ function extractVariants(payload: Record<string, unknown> | null | undefined): u
 }
 
 // GET /api/studio/drafts?tenant_id=... — 워크스페이스 초안 목록(최근 50)
+function flattenDraft(r: DraftRow) {
+  return {
+    id: r.id,
+    idea: r.idea,
+    text: r.payload?.text ?? extractVariants(r.payload as Record<string, unknown>),
+    img: r.payload?.img ?? null,
+    vid: r.payload?.vid ?? null,
+    includes: r.payload?.includes ?? {},
+    publishReconciliations: r.payload?.publishReconciliations ?? null,
+    publishReconciliation: r.payload?.publishReconciliation ?? null,
+    editorHandoff: r.payload?.editor_handoff ?? null,
+    editFormat: r.payload?.editFormat ?? null,
+    editKind: r.payload?.editKind ?? null,
+    editLines: r.payload?.editLines ?? null,
+    bodyRevision: Number.isSafeInteger(r.payload?.bodyRevision) ? r.payload.bodyRevision : 0,
+    cardTextPositions: r.payload?.cardTextPositions ?? null,
+    cardDeck: r.payload?.cardDeck ?? null,
+    videoEdit: r.payload?.videoEdit ?? null,
+    titles: r.payload?.titles ?? {},
+    captions: r.payload?.captions ?? {},
+    hashtags: r.payload?.hashtags ?? {},
+    topicTags: r.payload?.topicTags ?? {},
+    firstComments: r.payload?.firstComments ?? {},
+    selectedAccounts: r.payload?.selectedAccounts ?? {},
+    reviewQueueId: r.payload?.reviewQueueId ?? null,
+    status: r.status,
+    savedAt: r.updated_at,
+  };
+}
+
 export async function GET(request: Request) {
   const tenantId = await effectiveTenantId(request, new URL(request.url).searchParams.get("tenant_id"));
   if (!tenantId) return Response.json({ drafts: [], currentWork: null });
+  const singleId = new URL(request.url).searchParams.get("id");
+  // 3차 재리뷰 BLOCKER(b): 목록(LIMIT 50) 밖에 있는 초안은 목록 응답에 없다는 이유만으로
+  // "서버에 없다"고 오해하면 안 된다. draftId를 알면 이 단건 조회로 서버 값을 직접
+  // 맞춘다(studio/page.tsx 재동기화 효과가 draft가 hist.drafts에 없을 때 이걸 부른다).
+  if (singleId) {
+    try {
+      const rows = await withTenant(tenantId, (sql) => sql<DraftRow[]>`
+        SELECT id, tenant_id, idea, payload, status, created_at, updated_at
+        FROM drafts WHERE tenant_id = ${tenantId} AND id = ${singleId}`);
+      if (!rows[0]) return Response.json({ draft: null }, { status: 404 });
+      return Response.json({ draft: flattenDraft(rows[0]) });
+    } catch (e) {
+      return Response.json({ draft: null, error: String(e) }, { status: 500 });
+    }
+  }
   try {
     const rows = await withTenant(tenantId, (sql) => sql<DraftRow[]>`
       SELECT id, tenant_id, idea, payload, status, created_at, updated_at
       FROM drafts WHERE tenant_id = ${tenantId}
       ORDER BY updated_at DESC LIMIT 50`);
     // 기존 Studio 형식과 호환되게 평탄화
-    const drafts = rows.map((r) => ({
-      id: r.id,
-      idea: r.idea,
-      text: r.payload?.text ?? extractVariants(r.payload as Record<string, unknown>),
-      img: r.payload?.img ?? null,
-      vid: r.payload?.vid ?? null,
-      includes: r.payload?.includes ?? {},
-      publishReconciliations: r.payload?.publishReconciliations ?? null,
-      publishReconciliation: r.payload?.publishReconciliation ?? null,
-      editorHandoff: r.payload?.editor_handoff ?? null,
-      editFormat: r.payload?.editFormat ?? null,
-      editKind: r.payload?.editKind ?? null,
-      editLines: r.payload?.editLines ?? null,
-      cardTextPositions: r.payload?.cardTextPositions ?? null,
-      cardDeck: r.payload?.cardDeck ?? null,
-      videoEdit: r.payload?.videoEdit ?? null,
-      titles: r.payload?.titles ?? {},
-      captions: r.payload?.captions ?? {},
-      hashtags: r.payload?.hashtags ?? {},
-      topicTags: r.payload?.topicTags ?? {},
-      firstComments: r.payload?.firstComments ?? {},
-      selectedAccounts: r.payload?.selectedAccounts ?? {},
-      reviewQueueId: r.payload?.reviewQueueId ?? null,
-      status: r.status,
-      savedAt: r.updated_at,
-    }));
+    const drafts = rows.map(flattenDraft);
     return Response.json({ drafts, currentWork: resolveCurrentWork(drafts) });
   } catch (e) {
     return Response.json({ drafts: [], currentWork: null, error: String(e) }, { status: 500 });
@@ -166,6 +211,16 @@ export async function POST(request: Request) {
   }
   const tenantId = await effectiveTenantId(request, body.tenant_id);
   if (!tenantId) return Response.json({ error: "tenant_id required" }, { status: 400 });
+  if (body.id && (!Number.isSafeInteger(body.bodyBaseRevision) || body.bodyBaseRevision < 0)) {
+    return Response.json({
+      ok: false,
+      code: "BODY_BASE_REVISION_REQUIRED",
+      error: "마지막으로 받은 본문 판 번호를 확인해 주세요",
+    }, { status: 422, headers: { "Cache-Control": "no-store" } });
+  }
+  const bodyBaseRevision = Number.isSafeInteger(body.bodyBaseRevision) && body.bodyBaseRevision >= 0
+    ? body.bodyBaseRevision as number
+    : 0;
   // cardDeck: 요청에 키가 아예 없으면 payload 에도 빼서 JSONB `||` 병합 대상에서
   // 제외한다(undefined 유지 → 기존 덱 보존). 지우려면 명시 플래그 `clearCardDeck:true`
   // 를 보낸다(2026-09-21 코드리뷰 MAJOR 4. 이전에는 `body.cardDeck ?? null` 이 병합에
@@ -203,8 +258,13 @@ export async function POST(request: Request) {
   } else if (Object.prototype.hasOwnProperty.call(body, "editLines")) {
     editLinesPatch.editLines = body.editLines ?? null;
   }
+  const bodyText = body.text ?? null;
+  const bodyLines = editLinesPatch.editLines ?? null;
   const payload = {
-    text: body.text ?? null, img: body.img ?? null, vid: body.vid ?? null,
+    text: bodyText,
+    // 새 초안의 첫 서버 판은 0이다. 기존 초안은 아래 UPDATE가 현재 서버 판을 +1한다.
+    bodyRevision: 0,
+    img: body.img ?? null, vid: body.vid ?? null,
     includes: body.includes ?? {},
     publishReconciliations: body.publishReconciliations ?? {},
     publishReconciliation: body.publishReconciliation ?? null,
@@ -225,20 +285,106 @@ export async function POST(request: Request) {
   const status = body.status || "draft";
   const idea = body.idea || "";
   try {
-    const id = await withTenant(tenantId, async (sql) => {
+    const result = await withTenant(tenantId, async (sql) => {
       if (body.id) {
-        const [row] = await sql<{ id: string }[]>`
-          UPDATE drafts SET idea = ${idea}, payload = COALESCE(payload, '{}'::jsonb) || ${sql.json(payload)}::jsonb, status = ${status}, updated_at = now()
-          WHERE id = ${body.id} AND tenant_id = ${tenantId} RETURNING id`;
-        if (row) return row.id;
+        // PR87 r4: bodyBaseRevision은 클라이언트 조작 횟수가 아니라 마지막으로 읽은 서버
+        // 판 번호다. 현재 서버 판과 정확히 같을 때만 본문을 저장하고 서버가 +1한다.
+        // 조건은 행 컬럼을 직접 참조하므로 잠금 대기 뒤 PostgreSQL이 최신 행으로 다시
+        // 평가한다. 오래된 탭이 로컬에서 100번 편집했어도 기준판이 낡았으면 통과 못 한다.
+        const nonBodyPayload = { ...payload };
+        delete (nonBodyPayload as { text?: unknown }).text;
+        delete (nonBodyPayload as { editLines?: unknown }).editLines;
+        delete (nonBodyPayload as { bodyRevision?: unknown }).bodyRevision;
+        if (videoEditPatch.videoEdit) {
+          const baseRevision = typeof body.videoEditBaseRevision === "number" ? body.videoEditBaseRevision : null;
+          const videoEditClientPayload = videoEditPatch.videoEdit;
+          delete (nonBodyPayload as { videoEdit?: unknown }).videoEdit;
+          const [row] = await sql<{ id: string; body_revision: number; server_revision: number }[]>`
+            UPDATE drafts SET
+              idea = ${idea},
+              payload = (COALESCE(drafts.payload, '{}'::jsonb) || ${sql.json(nonBodyPayload)}::jsonb)
+                || jsonb_build_object('videoEdit', ${sql.json(videoEditClientPayload)}::jsonb
+                  || jsonb_build_object('revision', COALESCE((drafts.payload->'videoEdit'->>'revision')::int, -1) + 1))
+                || jsonb_build_object(
+                  'text', ${sql.json(bodyText)}::jsonb,
+                  'editLines', ${sql.json(bodyLines)}::jsonb,
+                  'bodyRevision', COALESCE((drafts.payload->>'bodyRevision')::int, 0) + 1
+                ),
+              status = ${status}, updated_at = now()
+            WHERE drafts.id = ${body.id} AND drafts.tenant_id = ${tenantId}
+              AND (drafts.payload->'videoEdit'->>'revision')::int IS NOT DISTINCT FROM ${baseRevision}::int
+              AND COALESCE((drafts.payload->>'bodyRevision')::int, 0) = ${bodyBaseRevision}
+            RETURNING drafts.id, (drafts.payload->>'bodyRevision')::int AS body_revision,
+              (drafts.payload->'videoEdit'->>'revision')::int AS server_revision`;
+          if (row) return { id: row.id, bodyRevision: row.body_revision, videoEditServerRevision: row.server_revision };
+        } else {
+          const [row] = await sql<{ id: string; body_revision: number }[]>`
+            UPDATE drafts SET idea = ${idea},
+              payload = (COALESCE(drafts.payload, '{}'::jsonb) || ${sql.json(nonBodyPayload)}::jsonb)
+                || jsonb_build_object(
+                  'text', ${sql.json(bodyText)}::jsonb,
+                  'editLines', ${sql.json(bodyLines)}::jsonb,
+                  'bodyRevision', COALESCE((drafts.payload->>'bodyRevision')::int, 0) + 1
+                ),
+              status = ${status}, updated_at = now()
+            WHERE id = ${body.id} AND tenant_id = ${tenantId}
+              AND COALESCE((drafts.payload->>'bodyRevision')::int, 0) = ${bodyBaseRevision}
+            RETURNING id, (payload->>'bodyRevision')::int AS body_revision`;
+          if (row) return { id: row.id, bodyRevision: row.body_revision, videoEditServerRevision: null };
+        }
+        const [existsRow] = await sql<{
+          id: string;
+          body_revision: number | null;
+          text: unknown | null;
+          edit_lines: unknown | null;
+          revision: number | null;
+        }[]>`
+          SELECT id, COALESCE((payload->>'bodyRevision')::int, 0) AS body_revision,
+            payload->'text' AS text,
+            payload->'editLines' AS edit_lines,
+            (payload->'videoEdit'->>'revision')::int AS revision
+          FROM drafts WHERE id = ${body.id} AND tenant_id = ${tenantId}`;
+        if (existsRow) {
+          const serverBodyRevision = existsRow.body_revision ?? 0;
+          if (bodyBaseRevision !== serverBodyRevision) {
+            throw new StaleBodyRevisionError(serverBodyRevision, bodyBaseRevision, {
+              text: existsRow.text,
+              editLines: existsRow.edit_lines,
+              bodyRevision: serverBodyRevision,
+            });
+          }
+          if (videoEditPatch.videoEdit) {
+            const baseRevision = typeof body.videoEditBaseRevision === "number" ? body.videoEditBaseRevision : null;
+            throw new StaleVideoEditRevisionError(existsRow.revision, baseRevision);
+          }
+        }
       }
       const [row] = await sql<{ id: string }[]>`
         INSERT INTO drafts (tenant_id, idea, payload, status)
         VALUES (${tenantId}, ${idea}, ${sql.json(payload)}, ${status}) RETURNING id`;
-      return row.id;
+      return { id: row.id, bodyRevision: 0, videoEditServerRevision: videoEditPatch.videoEdit ? (videoEditPatch.videoEdit.revision ?? 0) : null };
     });
-    return Response.json({ ok: true, id });
+    return Response.json({ ok: true, id: result.id, bodyRevision: result.bodyRevision, videoEditServerRevision: result.videoEditServerRevision });
   } catch (e) {
+    if (e instanceof StaleBodyRevisionError) {
+      return Response.json({
+        ok: false,
+        code: "BODY_STALE_REVISION",
+        error: "다른 곳에서 더 최신으로 저장된 본문이 있습니다. 최신 값을 다시 불러온 뒤 다시 시도해 주세요.",
+        serverRevision: e.serverRevision,
+        clientBaseRevision: e.clientBaseRevision,
+        latestBody: e.latestBody,
+      }, { status: 409, headers: { "Cache-Control": "no-store" } });
+    }
+    if (e instanceof StaleVideoEditRevisionError) {
+      return Response.json({
+        ok: false,
+        code: "VIDEO_EDIT_STALE_REVISION",
+        error: "다른 곳에서 더 최신으로 저장된 영상 편집이 있습니다. 최신 값을 다시 불러온 뒤 다시 시도해 주세요.",
+        serverRevision: e.serverRevision,
+        clientRevision: e.clientRevision,
+      }, { status: 409, headers: { "Cache-Control": "no-store" } });
+    }
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }

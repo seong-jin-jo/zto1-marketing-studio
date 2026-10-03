@@ -102,4 +102,60 @@ describe("publishInstagramReels", () => {
     expect((await publishInstagramReels(CRED, "c", "http://public.example.com/v.mp4", FAST)).ok).toBe(false);
     expect(calls.length).toBe(0);
   });
+
+  // M-C(2026-10-02 재재검토): media_publish는 "실제로 공개로 올리는" 단 한 번의 호출이다.
+  // 이 호출이 타임아웃·네트워크 오류·5xx·id없음으로 끝나면, Meta 쪽에서 실제로 처리됐는지
+  // 모른다 — 평범한 {ok:false}로 닫으면 호출부가 failed로 확정해 재시도를 허용하고,
+  // 재시도가 이미 올라간 Reel 위에 두 번째 Reel을 또 올릴 수 있다. failureKind:
+  // "indeterminate"를 실어 호출부가 uncertain으로 못박게 한다.
+  describe("M-C — media_publish 단계의 모호한 실패는 indeterminate로 닫는다", () => {
+    it("media_publish가 5xx면 indeterminate(재시도 금지 신호)", async () => {
+      installFetch([
+        { match: /\/media$/, json: { id: "creation-1" } },
+        { match: "fields=status_code", json: { status_code: "FINISHED" } },
+        { match: "media_publish", status: 503, json: { error: "upstream timeout" } },
+      ]);
+      const r = await publishInstagramReels(CRED, "캡션", VIDEO, FAST);
+      expect(r.ok).toBe(false);
+      expect(r.failureKind).toBe("indeterminate");
+    });
+
+    it("media_publish 호출이 네트워크 오류(타임아웃 포함)로 던지면 indeterminate", async () => {
+      installFetch([
+        { match: /\/media$/, json: { id: "creation-1" } },
+        { match: "fields=status_code", json: { status_code: "FINISHED" } },
+      ]);
+      const realFetch = globalThis.fetch;
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url.includes("media_publish")) throw new Error("network down");
+        return realFetch(input, init);
+      });
+      const r = await publishInstagramReels(CRED, "캡션", VIDEO, FAST);
+      expect(r.ok).toBe(false);
+      expect(r.failureKind).toBe("indeterminate");
+    });
+
+    it("media_publish가 200인데 응답에 media id가 없으면 indeterminate", async () => {
+      installFetch([
+        { match: /\/media$/, json: { id: "creation-1" } },
+        { match: "fields=status_code", json: { status_code: "FINISHED" } },
+        { match: "media_publish", json: {} },
+      ]);
+      const r = await publishInstagramReels(CRED, "캡션", VIDEO, FAST);
+      expect(r.ok).toBe(false);
+      expect(r.failureKind).toBe("indeterminate");
+    });
+
+    it("media_publish가 4xx(명시적 거절)면 definitive — 모호하지 않다", async () => {
+      installFetch([
+        { match: /\/media$/, json: { id: "creation-1" } },
+        { match: "fields=status_code", json: { status_code: "FINISHED" } },
+        { match: "media_publish", status: 400, json: { error: "invalid creation_id" } },
+      ]);
+      const r = await publishInstagramReels(CRED, "캡션", VIDEO, FAST);
+      expect(r.ok).toBe(false);
+      expect(r.failureKind).toBe("definitive");
+    });
+  });
 });

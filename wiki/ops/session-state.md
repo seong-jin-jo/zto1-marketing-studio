@@ -1,3 +1,316 @@
+## 2026-10-03 11:35 KST #105 CI green, 머지만 보류
+
+- #105(feat/remotion-intro-outro) 최신 head CI verify 성공(run 37089145248). main과 충돌 없음.
+- 충돌 해소 뒤 CI 실패 3회를 차례로 수정: ① CI 컨테이너에 Chrome 시스템 라이브러리 없음(libnspr4, exit 127) → ci.yml에 운영 Dockerfile과 같은 apt 목록(ffmpeg + Chrome libs) 설치 단계 추가 ② 공용 self-hosted 러너에서 렌더 중 Chrome 탭 크래시(frame 42 target closed) + 60초 초과 → `renderMedia` concurrency 1, 통합 테스트 제한 180초(첫 실행 Chrome 다운로드 ~92MB 포함) ③ 내 주석의 'M-2'가 UI 토큰 감사에 여백 클래스로 오탐 → 문구 변경.
+- 운영 관점 신호: CI 러너 = 운영 VM과 같은 marketing_runner. 다른 작업과 겹칠 때 Chrome 렌더가 죽을 수 있었다 → #105 머지 전 VM 디스크(이미지 4.5GB)뿐 아니라 메모리·CPU 여유도 확인 필요.
+- 다음 실행: 사용자가 VM 자원 확인 후 승인하면 #105 squash 머지(배포는 별도 workflow_dispatch). #93·#61 보류 그대로.
+
+## 2026-10-03 10:10 KST 열린 PR 정리 — #101·#106 머지, #105 충돌 해소(머지 보류)
+
+- handoff basis: 이 파일 + git log + 열린 PR 목록(클라우드 세션, tmux 없음). 사용자 지시 "푸시하고 머지하고 다해봐".
+- #101 머지(`a32820b4`): main 병합 시 text-card-image.ts 충돌(capLinesToFit + cardTextOrigin 함께 유지). 병합 후 의미 충돌 1건 — main(#102) TikTok 202 회귀 2건이 #101의 '공개 범위 선택 전 TikTok 발행 차단'에 막힘 → 테스트가 creator-info 고정 후 공개 범위를 고르게 수정. CI verify green.
+- #106 머지(`69cc56f3`): base를 main으로 변경. videos/page.tsx는 비동기 job 폴링 + m3 TikTok 선택 초기화(`resetTikTokPublishChoices`, 접수·job 완료·즉시 성공 3경로), 결정.md 두 항목 유지. squash 뒤 가짜 충돌은 main 트리 == #101 최종 head 트리 확인 후 `-s ours`로 이력만 이음. CI green.
+- #105(Remotion) 충돌 해소·push, **머지 보류**: VideoEditor/StudioRooms(intro-outro + 재서명 tenantId), video-edit-contract, tenant-isolation READ-61/62, 결정.md 번호 중복(#105 항목 → OD-2026-10-02-4/-5). main 계약 위반 2건 수정: delivered-media 주석 오탐 문구, 맨 button 래칫(텍스트 단추 3개 공용 Button, Player 카드 1개 사유 기재 후 기준선 240). 현재 main과 충돌 없음. 보류 사유: Docker Debian 교체 4.5GB, VM 디스크 확인 전제.
+- #60 닫음(main anthropic.ts에 동일 수정 존재).
+- 보류(사용자 판단): #105 머지, #93(운영 마이그레이션 스크립트 선행 필요), #61(draft, 19커밋·9파일 충돌, 9/18 정체).
+- 로컬 검증 한계: 전체 Vitest에서 환경 문제 9파일(proper-lockfile 모듈 7 — CI는 openclaw/node_modules 복사 단계 있음, cancel-safety 자물쇠 3건, clip-ssrf 로컬 dispatcher 1건)은 main에서도 동일 실패. #105 렌더 통합 테스트는 Remotion Chromium 다운로드가 프록시 403.
+- 배포: deploy-marketing.yml은 workflow_dispatch 전용. 머지만 했고 배포 안 함.
+- 다음 실행: #105 CI verify 결과 확인(01:02Z 시작). 사용자가 VM 디스크 확인 후 승인하면 #105 squash 머지.
+
+## 2026-10-03 KST 열린 PR 정리: #101 main 충돌 해소 (클라우드 세션)
+
+- handoff basis: 이 파일(9/30 이후 미갱신)과 git log·열린 PR 목록. 클라우드 컨테이너라 tmux pane 없음. 9/30 이후 main에 #96~#107 머지됨, PR #95 작업은 머지 완료로 종료.
+- 열린 PR 판단: #101(글자 카드 생성 본문 + 발행 선택 채널 이름 표시, 운영 오발행 결함)이 최우선. CI `verify` green이었으나 main 진척으로 `text-card-image.ts` 1곳 충돌. #106은 #101 위 스택(videos/page.tsx·text-card-image.ts·wiki/거버넌스/결정.md 충돌), #105(Remotion)는 5파일 충돌 + Docker 베이스 교체로 배포 위험 큼, #93은 운영 마이그레이션 미실행, #60·#61은 9/18 이후 정체.
+- 수정: 세션 브랜치 `claude/quirky-turing-sjpr00`를 #101 head(`c3d5f887`)에서 시작해 origin/main 병합(`51e9f7a7`). PR의 capLinesToFit·assertLinesFitWidth와 main의 cardTextOrigin(가로 위치)을 함께 유지.
+- 검증: tsc(ci) 0, 관련 Vitest 9파일 131건 통과. 전체 Vitest 1차에서 병합 의미 충돌 발견: main(#102)의 TikTok 202 회귀 2건이 #101의 '공개 범위 선택 전 TikTok 발행 차단' 규칙에 막혀 실패(병합 브랜치에서만 재현, main 통과). 제품 규칙 유지, 테스트가 creator-info 고정 후 공개 범위를 고르도록 수정 → 9/9 통과.
+- 전체 Vitest 최종: 3,110 통과 / 4 실패(9파일). 9파일 모두 환경 문제로 main에서도 동일 실패: proper-lockfile 7파일(CI는 openclaw/node_modules로 복사하는 단계가 있음), cancel-safety 자물쇠 3건·clip-ssrf 로컬 dispatcher 1건. 병합으로 새로 생긴 실패 0.
+- 보류: #101 브랜치 자체로 push하려면 사용자 허락 필요(세션 지정 브랜치 외 push 금지). 머지·배포 안 함.
+- 다음 실행: (1) 사용자 허락 시 `fix/studio-card-text-and-publish-selection-main`에 병합 커밋 push → CI 확인 (2) #101 머지 후 #106 base를 main으로 바꾸고 충돌 해소 (3) #105 충돌 해소·VM 디스크 확인은 회장 판단 대기.
+
+## 2026-09-30 10:00 KST PR #95 범위 축소 구현·로컬 검증 완료
+
+- handoff basis: 사용자가 지정한 범위 축소 지시와 worktree `.claude/worktrees/fix-editroom-textcard-overlay`를 따른다. 이번 지시가 이전 r2~r7 구현보다 우선한다.
+- 근본원인: 1차 수정이 승인 설계가 없는 대기열과 초안의 편집 필드 동기화로 넓어지면서, 대기열 필드 저장·복원·형식 전환 검증이 서로 다른 카드 종류를 연달아 막았다. v70 §3.5에 없는 장당 말풍선 제한도 이 과정에서 생겼다.
+- 수정: 네 편집 필드의 대기열 저장·검증·복원과 전용 테스트를 제거하고 queue API를 main `a8a52ade` 동작으로 돌렸다. 연결 초안 없는 카드는 기존 이미지 주소와 장수만 읽어 편집실 내부에서 잠그며, 대기열에 새 필드를 요구하지 않는다. 장당 말풍선 제한도 제거했다.
+- 검증: 최종 표적 Vitest 8파일 120건과 TypeScript 통과. 최초 실행에서 새 9개 말풍선 시험 자료의 화자명·순번 오류 1건을 바로잡았다. 개발 서버 `localhost:3470`에서 `/studio` 200, 1440·390 한 장·두 장 잠금 사례 통과, 콘솔 오류 0. 전체 Vitest는 지시대로 실행하지 않았다.
+- 화면 확인: 네 캡처를 직접 열어 잠금 원인, 기존 그림 보존, 생성실에서 새 카드 만들기 행동이 보이고 조작이 흐리게 비활성인 것을 확인했다. 시안과 픽셀 일치 판정은 이번 범위가 아니므로 하지 않았다.
+- 원격 상태: 범위 축소 코드와 잠금 화면 네 캡처를 같은 브랜치에 push했고, PR 설명도 남길 다섯 기능과 별도 설계 과제로 갱신했다. 원격 CI `verify`는 최종 확인 시 진행 중이다.
+- 다음 실행: 원격 CI `verify` 결론을 확인하고 독립 재리뷰를 받는다. 종료 증거는 최종 HEAD의 `verify` 성공과 리뷰 차단 항목 0건이다. 머지·배포는 하지 않는다.
+
+## 2026-09-30 08:21 KST PR #95 독립 리뷰 r6 형식별 검토 요청·입력 상한 로컬 완료
+
+- handoff basis: 사용자가 지정한 PR #95 6차 BLOCK 코멘트와 worktree `.claude/worktrees/fix-editroom-textcard-overlay`를 기준으로 이어간다. tmux `371:0.0`은 같은 PR의 다음 수정 완료를 기다리는 컨트롤러로 확인했다.
+- 근본원인: 편집 형식 선택 상태와 카드 원본 상태의 수명주기가 다른데도 검토 요청이 둘을 구분하지 않고 모든 필드를 전송했다. 서버도 `cardTextPositions`를 모든 종류의 공통 필드로 검증했고, 5차 수정은 비내장 문구 배열의 전체 개수 제한을 제거했다.
+- 수정: 검토 요청은 현재 편집 형식이 소유한 필드만 전송한다. 글자 위치는 글자 내장 카드에서만 검증하고, 비내장 문구는 말풍선 9장×8개를 허용하는 72개 상한과 73개 거절을 둔다.
+- 실패 재현: 수정 전 표적 2파일 78건 중 잔여 위치 필드 2건, 비내장 73개 상한 1건, 실제 `StudioPage` 영상 전환 요청 1건이 실패했다.
+- 최종 검증: 오류 문구 호환 정리와 카드→글 실제 요청 사례 추가 뒤 표적 Vitest 3파일 89건과 TypeScript를 다시 실행해 각각 종료 코드 0을 확인했다. 전체 Vitest는 사용자 지시대로 실행하지 않았다.
+- 원격 상태: 제품·테스트 `20f41203`, 최초 기록 `a3b07428`, 카드→글 회귀 보강과 최종 기록 커밋까지 완료했다. `git push origin fix/editroom-textcard-overlay`는 Git 오류가 아니라 실행 환경의 외부 쓰기 승인 정책이 `never`라 프로세스 시작 전에 차단됐다. 원격 브랜치는 계속 `1a57f81b`다.
+- 다음 실행: 외부 쓰기가 허용된 부모 컨트롤러가 로컬 최종 HEAD를 같은 브랜치에 push하고 원격 CI를 확인한다. 머지·배포는 하지 않는다.
+
+## 2026-09-30 07:45 KST PR #95 독립 리뷰 r5 카드 종류별 대기열 계약·잠금 캡처 완료
+
+- handoff basis: 사용자가 지정한 PR #95 5차 BLOCK 코멘트와 worktree `.claude/worktrees/fix-editroom-textcard-overlay`를 기준으로 이어갔다. tmux `371:0.0`은 같은 PR의 수정 완료를 기다리는 컨트롤러로 확인했다.
+- 근본원인: 4차 수정이 `editLines`를 모든 카드에서 장별 대본으로 간주해 공통 장수 검증을 적용했고, 일반 카드 400 기대 테스트가 그 오판을 승인했다. 화면 검사는 DOM 존재만 확인해 실제 저장 프레임의 가시성을 보장하지 않았다.
+- 수정: 장수 상한과 이미지·문구 장수 일치를 `textEmbedded:true` 카드에만 적용한다. 테스트 안의 카드 종류별 표에 글자 내장·일반 배경·말풍선·영상의 200/400 계약을 고정했다. 잠금 패널을 화면 중앙으로 이동한 뒤 안내 세 요소의 화면 포함 좌표를 단언한다.
+- 검증: 수정 전 일반 배경과 말풍선 두 행 실패, 수정 뒤 표적 Vitest 3파일 83건과 TypeScript 통과. Chromium 1440·390의 한 장·두 장 네 캡처를 직접 열어 원인·보존 안내·새 카드 생성 행동, 비활성 조작, 원본 URL·장수 유지, 재업로드 0, 가로 넘침 0, 콘솔 오류 0을 확인했다. 산출물 검사는 종료 코드 0이며 기존 경고 28건은 이번 변경 밖이다.
+- 이웃 영향 확인: 글자 내장 정상 200·장수 불일치 400, 일반 배경 1장·2문구 200, 말풍선 9장·15문구 200, 영상 200을 같은 요청 경계에서 확인했다. UI 제품 코드·API 응답 형식·DB 스키마는 변경하지 않았다.
+- 커밋·원격 상태: 제품·테스트·기록 변경을 `c5b7ac7c`로 커밋했고 같은 브랜치에 push했다. 전체 Vitest와 원격 CI 최종 판정은 아직 미검증이며 머지·배포는 하지 않았다.
+- 다음 실행: PR #95 원격 CI가 새 HEAD에서 green인지 확인하고 독립 재리뷰를 받는다. 머지·배포는 별도 승인 전까지 금지한다.
+
+## 2026-09-30 06:59 KST PR #95 독립 리뷰 r4 대기열 계약·잠금 화면 상시 검사 완료
+
+- handoff basis: 사용자가 지정한 PR #95 4차 BLOCK 코멘트와 worktree `.claude/worktrees/fix-editroom-textcard-overlay`를 기준으로 완료했다. tmux `371:0.0`은 같은 PR의 완료를 기다리는 컨트롤러다.
+- 수정: 대기열 추가 요청에서 이미지·대본 장수, 글자 내장 카드의 원본 대본·위치·카드 편집 형식, `textEmbedded` boolean 형식을 교차 검증한다. 표식 생략은 구형 호환으로 허용한다. v70 화면 검사에는 원본 없는 한 장·두 장 잠금 상태를 1440·390에 영구 추가했다.
+- 검증: 표적 Vitest 3파일 79건과 TypeScript 통과. Chromium 네 잠금 사례에서 안내 노출, 조작 비활성, 원본 URL·장수 보존, 재업로드 0건, 가로 넘침 0, 콘솔 오류 0을 직접 확인했다. 전체 Vitest는 사용자 지시대로 실행하지 않았다.
+- 이웃 영향 확인: 표식 없는 구형 요청 200, 복원 가능한 글자 카드, 일반 카드 장수 계약, 기존 일반·말풍선·영상 v70 화면을 같은 실행에서 확인했다. API 응답 형식·DB 스키마는 변경하지 않았다.
+- 독립 재검토: 최초 검토에서 빼기·되살리기와 콘텐츠 크기 단추의 잠금 검사가 빠진 MAJOR 1건을 발견했다. 두 조작을 상시 검사에 추가하고 브라우저·표적 테스트를 다시 통과한 뒤 재검토 MAJOR 0을 확인했다.
+- 커밋·원격 상태: 제품·테스트·기록 변경을 `d59df0b5`로 커밋했다. `git push origin fix/editroom-textcard-overlay`는 Git 오류가 아니라 실행 환경의 외부 쓰기 승인 정책이 `never`라 프로세스 시작 전에 차단됐다. 원격 PR에는 아직 반영되지 않았다.
+- 다음 실행: 외부 쓰기가 허용된 부모 컨트롤러가 이 기록 커밋까지 포함한 최종 HEAD를 같은 브랜치에 push한다. 원격 CI가 전체 판정을 맡으며 머지·배포는 하지 않는다.
+
+## 2026-09-30 06:41 KST PR #95 독립 리뷰 r4 대기열 계약·잠금 화면 상시 검사 착수
+
+- handoff basis: 사용자가 지정한 PR #95 4차 BLOCK 코멘트와 worktree `.claude/worktrees/fix-editroom-textcard-overlay`를 기준으로 이어간다. tmux `371:0.0`은 같은 PR의 이번 수정을 기다리는 컨트롤러이며, 구현 판단은 사용자가 지목한 마지막 GitHub 코멘트를 따른다.
+- 현재 상태: 브랜치 `fix/editroom-textcard-overlay`, HEAD `83b699ac`. 작업 트리는 착수 시 clean이며 원격 브랜치와 일치한다.
+- 확인한 결함: 대기열 추가 API가 개별 필드 모양만 검사해 이미지·대본 장수 불일치, 원본 메타데이터 없는 글자 내장 표식, 카드에 영상 편집 형식, boolean이 아닌 표식을 200으로 저장한다. 상시 화면 검사는 원본 없는 한 장·두 장 잠금 상태를 다루지 않는다.
+- 이웃 영향 후보: 표식 없는 구형 대기열 요청의 200 호환, 복원 가능한 글자 카드의 빈 위치 배열 기본값, 일반 배경 카드, 기존 1440·1024·390 화면 검사, 원본 이미지 URL과 장수 보존을 함께 확인한다.
+- 다음 실행: 요청 경계 실패 회귀를 먼저 고정하고 최소 검증을 구현한다. 이어 1440·390 잠금 화면 검사를 추가해 직접 실행한 뒤 표적 Vitest와 TypeScript만 수행한다. 전체 Vitest, 머지, 배포는 하지 않는다.
+
+## 2026-09-30 PR #95 독립 리뷰 r3 원본 없는 카드 잠금·요청 검증 완료
+
+- handoff basis: 사용자가 지정한 PR #95 마지막 3차 BLOCK 코멘트와 worktree `.claude/worktrees/fix-editroom-textcard-overlay`를 기준으로 이어갔다. tmux `371:0.0`은 같은 PR 빌더 완료를 기다리는 컨트롤러임을 확인했으며 구현 판단의 기준은 사용자 지정 코멘트다.
+- 수정: 원본 정보가 없는 글자 내장 카드는 장수와 무관하게 문구·위치·순서·추가·일괄 편집을 잠그고 기존 그림 보존과 생성실 복구 행동을 알린다. 한 장 장수 예외를 제거해 재합성하지 않는다. 대기열 추가 API는 대본·글자 위치·편집 형식을 저장 전에 검사해 기존 `{error}` 400 형식으로 거절한다.
+- 검증: 수정 전 표적 2파일에서 새 회귀 8건 실패를 확인했다. 수정 뒤 같은 2파일 56건과 TypeScript가 통과했다. 전체 Vitest는 사용자 지시대로 실행하지 않았고 원격 CI 판정에 맡긴다.
+- 이웃 영향 확인: 복원 가능한 글자 카드의 즉시 반영, 일반 배경 카드 편집, 말풍선 덱, 빈 위치 배열의 기본 중앙 복구, 방 이동 형식과 기존 이미지 장수 보존을 유지했다. API·DB 스키마는 변경하지 않았다.
+- 로컬 커밋: 제품·테스트·기록 10파일을 하나의 커밋으로 묶었다. 정확한 최종 HEAD는 종료 보고에 남긴다.
+- 원격 상태: `git push origin fix/editroom-textcard-overlay`는 Git 오류가 아니라 실행 환경의 외부 쓰기 승인 정책이 `never`라 프로세스 시작 전에 차단됐다. 원격 브랜치와 PR #95에는 아직 이 수정이 반영되지 않았다.
+- 다음 실행: 원격 쓰기가 허용된 부모 컨트롤러가 최종 HEAD를 같은 브랜치에 push한다. 머지·배포는 하지 않는다.
+
+## 2026-09-30 PR #95 독립 리뷰 r2 여러 장 대기열 복귀 수정·표적 검증 완료
+
+- handoff basis: 사용자가 지정한 PR #95 마지막 2차 BLOCK 코멘트와 worktree `.claude/worktrees/fix-editroom-textcard-overlay`를 기준으로 이어갔다. 전체 Vitest는 재실행하지 않고 원격 CI 판정에 맡겼다.
+- 수정: 신규 대기열은 장별 대본·위치·편집 형식을 저장·복원한다. 장별 원본 정보가 없는 과거 여러 장 글자 내장 항목은 재합성을 거절하고 기존 이미지 배열을 유지한다. `textEmbedded` 항목은 카드 형식으로 열리고 공용 방 헤더도 현재 편집 형식을 URL에 보존한다.
+- 검증: 실제 `StudioPage`에서 연결 초안 없는 두 장 대기열 복귀, 편집실 진입, 발행 저장을 호출해 원본 두 장 유지와 카드 형식 저장을 확인했다. 표적 3파일 58건과 TypeScript가 통과했다. `page.tsx` 소비 지점을 `textEmbedded:false`로 바꾸자 `PR95-R2-STUDIO-01`이 실패했고 원복 뒤 전체 표적 검사가 다시 통과했다.
+- 이웃 영향 확인: 일반 배경 이미지 편집, 한 장 글자 카드 복귀, 말풍선·영상 방 링크, 기존 큐 JSON 호환, 검토 요청 순서는 기존 표적 회귀 안에서 유지했다. 화면 수치·디자인 토큰·API·DB 스키마는 바꾸지 않았다.
+- 커밋: 제품·테스트·기록 11파일을 `94ebac10`으로 커밋했다. `git push origin fix/editroom-textcard-overlay`는 Git 오류가 아니라 실행 환경의 외부 쓰기 승인 정책이 `never`라 프로세스 시작 전에 차단됐다.
+- 다음 실행: 원격 쓰기가 허용된 세션이 로컬 브랜치의 최신 HEAD를 push한다. 그 뒤 PR #95 원격 CI 판정만 확인하며 머지·배포는 하지 않는다.
+
+## 2026-09-30 PR #95 독립 리뷰 r1 구현·화면 검증 완료, 최종 전체 회귀·push 대기
+
+- handoff basis: 사용자가 지정한 PR #95 마지막 BLOCK 코멘트와 worktree `.claude/worktrees/fix-editroom-textcard-overlay`를 primary로 삼았다. tmux `371:0.0`·`371:0.1`은 이전 OSMU 감사와 종료된 리뷰 로그라 이번 구현 판단에는 쓰지 않는다.
+- 현재 상태: branch `fix/editroom-textcard-overlay`, 중간 HEAD `74330fa4`. 지시형 어미만 차단하는 자리표시 검사, 서버·브라우저 공통 구형 복구, 대기열·반환 표식 전달, 문구·위치 즉시 재합성을 구현했다. 독립 리뷰에서 나온 전 덱 동기 렌더 비용은 바뀐 장만 그리는 길이 제한 캐시로 고쳤다.
+- 검증: 관련 Vitest 5파일 34건과 TypeScript 통과. 발행 재합성 함수에서 표식 생성을 임시 제거하자 2파일 12건 중 `PR95-R1-RECOMPOSE-01`이 실패했고 원복 뒤 통과했다. Chromium 1440·390에서 문구·위치 변경마다 미리보기 data URL 변경, 중복 컨트롤·자리표시 레이어·가로 넘침·콘솔 오류 0을 확인했다. 승인 clean-frame 2장과 실제 화면 2장도 직접 열었다.
+- 복구 판단: 구형 자동 승격은 `card + cardDeck 없음 또는 plain + 주제 도장 + aspectRatio 없음 + 대표 URL 일치 + 이미지 장수와 비어 있지 않은 문구 수 일치`를 모두 만족할 때만 한다. 표식 없는 구형 대기열은 일반 배경 카드와 구분 근거가 없어 추측하지 않는다.
+- 이웃 영향 후보: 일반 배경 카드의 편집 레이어, 현재 저장 payload와 서버 초안 스키마, 발행 재합성, 대기열 복구, 1440·390 카드 무대, 모바일 글자·누름 크기, placeholder 신뢰 경계다.
+- 남은 검증: 전체 Vitest 최종 1회, TypeScript·UI 토큰 감사를 다시 실행한다. 모바일 전역 측정기는 `/qa-alignment-harness`의 기존 13px 미만 54개·44px 미만 누름 7개·눌림 상태 0%를 9폭 모두 실패로 보고했으며, 이번 390 글자 카드 화면의 중복 제거·즉시 반영 검증과는 별도다.
+- 다음 실행: 현재 변경과 증거를 커밋하고 전체 회귀를 마친 뒤 push한다. PR #95에 구현 판단과 증거 경로를 남긴다. 머지·배포는 하지 않는다.
+
+## 2026-09-29 22:00 KST 로컬 완료, 원격 push 정책 차단
+
+- 로컬 HEAD: `b583721f`까지 세 커밋 완료, 작업 트리 clean. 관련 Vitest 5파일 45건, TypeScript, UI 토큰 감사, Chromium 1440·390 화면 검증 PASS.
+- 원격 상태: `origin/fix/editroom-textcard-overlay` 없음, PR 없음. `git push -u origin fix/editroom-textcard-overlay`는 실행 환경이 승인 필요 작업으로 판정했으나 현재 승인 정책이 `never`라 명령 실행 전에 차단됐다. 제품 hook이나 Git 오류가 아니다.
+- 다음 실행: 원격 쓰기 권한이 허용된 세션에서 해당 branch를 일반 push한 뒤, 두 결함·v70 §3 판단·`docs/qa/osmu-textcard-overlay-{1440x900,390x844}.png`를 본문에 넣어 PR을 만든다. 머지·배포는 하지 않는다.
+
+## 2026-09-29 21:41 KST 운영 글자 카드 중복·자리표시 누출 수정 완료, PR 준비
+
+- 수정: 글자 내장 PNG에 `textEmbedded`를 저장·복원해 카드 면의 이동 막대·textarea·중앙 자리표시를 제거했다. 일반 배경 이미지의 편집 글자 레이어는 유지한다. 생성 프롬프트와 결과 검증은 작성 지시형 괄호 자리표시를 차단한다.
+- 직접 관찰: 승인 clean-frame 1440·390과 로컬 캡처 `docs/qa/osmu-textcard-overlay-{1440x900,390x844}.png`를 각각 열었다. 1440은 무대·이미지 520×650, 390은 308×385이며 중복 컨트롤·가로 오버플로·콘솔 오류는 모두 0이다. clean-frame은 수정하지 않았다.
+- 검증: 관련 Vitest 5파일 45건, TypeScript, production build, UI 토큰 감사 PASS. 전체 로컬 Vitest는 CI 의존성 배치 누락으로 8파일만 실패했고 같은 배치 후 해당 8파일 58건 PASS. 전체 최종 판정은 원격 CI다.
+- 판단: 다중 이미지 수만 보고 옛 글자 카드로 추론하는 안은 일반 카드 fixture를 오판해 폐기했다. 생성 시점에 붙인 명시적 `textEmbedded`만 신뢰해 일반 배경 이미지의 편집 레이어를 보존한다.
+- 커밋: `ed4f158b`, `f50fd4c7` 완료. 남은 화면 조건식·E2E·증거·문서는 후속 커밋 후 push하고 PR을 만든다. 머지·배포 금지.
+
+## 2026-09-29 21:02 KST 운영 글자 카드 중복·자리표시 누출 수정 착수
+
+- handoff basis: 회장이 지정한 `main a8a52ade`, 새 브랜치 `fix/editroom-textcard-overlay`, 운영 캡처 `scratchpad/live/e2e/e1.png`를 primary로 삼았다. tmux `371:0.0`은 같은 운영 결함의 수정 완료를 기다리는 컨트롤러 상태로만 확인했다.
+- 직접 관찰: 운영 캡처에는 구워진 흰 글자 위에 `글자 위치 옮기기`와 같은 문장의 편집 textarea가 겹친다. 카드 목록에는 `(브랜드가 실제로 제공하는 서비스 한 문장으로 대체)`가 그대로 보인다.
+- 근본원인: 무료 글자 카드가 일반 이미지와 같은 `ImgResult`로 저장돼 글자 내장 여부를 잃는다. `/api/studio/text`는 학습 정보가 비었을 때의 완성 문장 규칙과 지시형 자리표시 거절 검사가 없어 모델 응답을 그대로 발행 데이터로 승격한다.
+- 이웃 영향 후보: 일반 생성 이미지 위 편집 글자 유지, 글자 카드 문구 수정 뒤 발행 전 재합성, 초안 저장·재개 시 글자 내장 표식 보존, 새 생성 API와 기존 `/api/studio/text` 양쪽의 자리표시 차단, 1440·390 카드 무대·스크립트·발행 미리보기다.
+- 다음 실행: 두 실패 회귀를 먼저 고정하고 결함별로 최소 수정·커밋한다. 이후 전체 Vitest·TypeScript·build와 1440·390 실제 화면을 검증하고 PR만 생성한다. 머지·배포는 하지 않는다.
+
+## 2026-09-29 08:17 KST PR #94 리뷰 r5 로컬 수정·검증 완료
+
+- handoff basis: 사용자가 지정한 `review94-r5.md`, 원격 CI run `36495350609`, 현재 HEAD `2e80750e`를 primary로 삼았다. tmux `371:0.0`은 컨트롤러가 같은 두 결함을 지목하고 빌더 수정을 기다리는 상태임을 확인했다.
+- 수정 전 재현: 원격과 로컬 모두 `ui-token-audit.contract.test.ts`의 직접값 1건과 `editroom-video-single-workbench.regression.test.tsx`의 잘못된 화면 높이 단언 1건만 실패했다. 로컬 표적 결과는 2파일, 14건 중 2건 실패다.
+- 수정: 모바일 재생기 간격을 DESIGN `none` 토큰으로 바꾸고, 회귀 테스트가 전체 재생기 180px와 내부 화면 축소 계약을 각각 검사하게 고쳤다.
+- 검증: 표적 Vitest 2파일 14건과 UI 토큰 감사 직접값 0건이 통과했다. 전체 스위트와 시안 스크립트는 사용자 지시대로 실행하지 않았다.
+- 커밋: 핵심 수정 `889ed15a`와 이 기록을 포함한 후속 구현현황·빌드 증거 커밋까지 완료했다. push와 원격 CI 재실행은 컨트롤러 소유이며 현재 미검증이다.
+
+## 2026-09-29 07:52 KST PR #94 리뷰 r4 로컬 수정·검증 완료
+
+- handoff basis: 사용자가 지정한 HEAD `b2a0b620`, `review94-r4.md`, 원격 CI green을 primary로 삼았다. 이전 r1·r2 pane은 이번 판단 근거로 쓰지 않았다.
+- 수정: 390 영상 재생기 전체를 180px로 고정했다. 발행 헤더와 POST가 연결 계정 하나를 같은 식별자로 사용한다. 초안 로드가 확정한 카드 형식을 방 URL 기록에 직접 전달한다. 일반 카드 시각 게이트는 편집 UI 없는 내부 영역과 0.025 임계값을 쓰고 잘못된 이미지·검정 화면 돌연변이를 자체 거절한다.
+- 직접 관찰: 1440·1024·390 일반 카드 합성 대조와 390 영상 화면을 열었다. 생성 이미지는 세 폭 모두 보이고, 390 재생기 전체 180px·대본 top 212px·타임라인 108px이다. 콘솔 오류와 가로 넘침은 0이다.
+- 검증: 관련 Vitest 2파일 52건, TypeScript 0, Chromium 3폭 시안 스크립트 PASS. 이미지 점수는 정상 0, 잘못된 이미지 0.0667, 검정 화면 0.2654, 임계값 0.025다. 전체 스위트는 사용자 지시와 원격 green 판정에 따라 다시 돌리지 않았다.
+- 커밋: 핵심 수정 `34164d7c`. 이 기록과 진단 스코프 수정은 후속 커밋으로 묶는다. push·운영 반영은 컨트롤러 소유이며 미검증이다.
+- 다음 실행: 컨트롤러가 후속 커밋까지 push하고 PR 원격 CI green을 확인한다. 머지는 리뷰 PASS 뒤에만 한다.
+
+## 2026-09-29 07:29 KST PR #94 리뷰 r4 수정 착수
+
+- handoff basis: 사용자가 지정한 HEAD `b2a0b620`, `review94-r4.md`, 원격 CI green을 primary로 삼았다. tmux에는 이전 r1·r2 종료 pane이 남아 있으나 이번 과제 기준으로 채택하지 않았다.
+- 현재 결함: 390 재생기 전체 높이 258px, 화면 표시 계정과 POST 계정 불일치, 카드 이어 편집의 이전 영상 kind URL 오염, 검정 화면도 통과하는 시각 차이 임계값이다.
+- 이웃 영향 후보: 영상 타임라인·대본 첫 화면, 채널 체크·재연결 행동·발행 본문, draft 복원·URL 우선 효과·새로고침, 일반 카드 3폭 이미지 비교와 말풍선 report-only 비교다.
+- 다음 실행: 네 결함의 실패 회귀를 고정하고 제품·검증기를 수정한 뒤 관련 테스트, Chromium 3폭 시안 검증, TypeScript를 실행한다. 전체 Vitest는 사용자 지시대로 실행하지 않는다.
+
+## 2026-09-29 03:45 KST PR #94 r2 말풍선 툴바 육안 반려 로컬 완료
+
+- handoff basis: 사용자가 지정한 동일 worktree, 시작 HEAD `54f2b04a`, 컨트롤러가 직접 연 1440 좌우 대조를 primary로 삼았다.
+- 원인과 수정: 데스크톱 툴바가 선택 말풍선 안쪽과 겹치는 음수 bottom 좌표에서 줄바꿈까지 허용했다. 말풍선 바로 아래 토큰 간격과 단일 행으로 고정하고, 390은 기존 정적 내부·두 줄 배치를 명시적으로 유지했다.
+- 직접 관찰: 1440·1024에서 선택 말풍선 본문이 모두 보이고 툴바는 바로 아래 한 줄이다. 390은 말풍선 안쪽 두 줄 툴바를 유지한다. Chromium 수치는 수정 전 1440 교차 8,489.7px²·행 편차 28px, 수정 뒤 데스크톱 두 폭 교차 0·행 편차 0px이다.
+- 검증: TypeScript 0, 관련 Vitest 38건, production build, Chromium 3폭 E2E, UI 토큰 감사 PASS. dev `localhost:3473` Ready 338ms, 콘솔 오류·가로 넘침 0이다.
+- 다음 실행: 로컬 커밋 뒤 컨트롤러가 push·원격 CI·운영 반영을 검증한다. 이 세 항목은 현재 미검증이다.
+
+## 2026-09-29 PR #94 r2 말풍선 툴바 육안 반려 수정 착수
+
+- handoff basis: 사용자가 지정한 동일 worktree, 현재 HEAD `54f2b04a`, 컨트롤러가 직접 연 `compare-edit-bubble-stage-1440.png`를 primary로 삼았다.
+- 원인 후보: 데스크톱 툴바가 선택 말풍선 내부의 절대 배치이고 `flex-wrap: wrap`을 허용한다. 말풍선 폭이 짧으면 툴바가 본문 위로 커지고 둘째 줄까지 접히지만 기존 E2E는 말풍선 본문과 툴바 교차·단일 행을 검사하지 않았다.
+- 다음 실행: 수정 전 Chromium 실패를 고정한 뒤 1440·1024만 말풍선 바깥 한 줄 배치로 바꾸고, 390 정적 내부 배치는 보존해 세 폭을 재캡처한다.
+
+## 2026-09-29 03:36 KST PR #94 리뷰 r2 편집실 v70 완전 정합 로컬 완료
+
+- handoff basis: 사용자가 지정한 동일 worktree, `review94-r2.md`, v70 수치 규격과 clean-frame 3폭을 기준으로 작업했다. tmux 종료 로그는 r1 보조 증거로만 사용했다.
+- 원인과 수정: 일반 카드의 자유 비율·accent 캔버스·본문 썸네일을 4:5 흰 카드와 공용 막대 스트립으로 교체했다. 말풍선 덱 상단 툴바는 하단 세 행동으로 옮기고 drag·Alt+↑↓를 유지했다. 편집실 우측은 공용 304px 담당 대화로 교체했으며 1024에서도 520px 카드와 함께 보이도록 셸 예산을 조정했다.
+- 직접 관찰: 1440은 112px 스트립·520px 카드·304px 대화, 1024는 100px 스트립·520px 카드·304px 대화, 390은 56px 가로 스트립·308px 카드와 아래쪽 대화를 확인했다. 세 폭 모두 흰 4:5 카드, 하단 세 행동, 가로 넘침·보이는 조작 요소 겹침·콘솔 오류 0이다. 화면별 clean-frame과 좌우 대조 PNG도 각각 열었다.
+- 검증: Vitest 41건, TypeScript, production build, Chromium 3폭 E2E, UI 토큰 감사와 pipeline-artifact-lint 종료 0. 전체 디자인 린트의 기존 인라인 style·토큰 밖 hex 경고 2종은 이번 diff에 새로 추가되지 않았다. 편집 영역 이미지 차이 점수는 0.0611·0.0646·0.1715로 임계값 0.36 이하다.
+- 다음 실행: 이 변경을 로컬 커밋한다. push·원격 CI·운영 배포는 컨트롤러 소유이며 현재 미검증이다.
+
+## 2026-09-29 03:01 KST PR #94 리뷰 r2 편집실 v70 완전 정합 착수
+
+- handoff basis: 사용자가 지정한 동일 worktree와 `review94-r2.md`를 primary로 삼았다. tmux `371:0.2`의 종료된 r1 위임 로그는 직전 커밋 `7907e7b8`의 보조 증거로만 확인했고, 새 작업 기준으로 채택하지 않았다.
+- 현재 상태: 작업 트리는 깨끗하고 HEAD는 `7907e7b8`. r1의 스트립 폭·해제 계정·fixture CI 연결은 보존한다.
+- 다음 실행: 일반 카드 4:5·흰 캔버스·막대 스트립, 말풍선 덱 drag reorder·하단 행동, 우측 304px 공용 대화, 1024 포함 520px 스테이지, 저장소 상대 baseline 기반 CI pixel diff를 순서대로 수정한다.
+- 이웃 영향 후보: 카드 자동저장·말풍선 키보드 접근성·생성실/발행실 방 이동·1024 셸 overflow·기존 발행 계정 회귀를 함께 재검증한다.
+
+## 2026-09-28 23:13 KST PR #94 리뷰 r1 수정·실브라우저 검증 진행
+
+- handoff basis: 사용자가 지정한 동일 worktree와 `review94-r1.md`를 primary로 삼았다. 직전 SIGTERM 뒤 남은 변경은 QA tracker NG 등록뿐이어서 중복 없이 이어갔다.
+- 원인과 수정: 말풍선 각 장의 상시 조작줄을 선택 장용 외부 툴바 한 벌로 옮겼고 스트립 폭을 112·100·56px로 분기했다. 만료·해제 계정은 로딩 완료 뒤 선택·체크에서 제거하고, 발행 요청 직전에도 연결 상태를 재검증하며 재연결 링크를 유지한다.
+- 자동화: 실제 9장 말풍선 fixture를 v70 시안 스크립트에 추가하고 3폭 썸네일 수치·스트립 방향·높이·겹침·넘침을 단언한다. CI verify는 독립 4분 상한과 서버/E2E timeout·종료 trap으로 이 스크립트를 실행한다.
+- 검증: Vitest 2파일 49건, Chromium 말풍선 E2E 17시나리오, TypeScript, production build PASS. CI와 같은 `STUDIO_V70_COMPARE=0` 경로도 유한 시간 안에 PASS했다. 1440·1024·390 v70 실화면은 썸네일 112·100·56px, 9장, 단일 툴바, 좌우 넘침·패널 조작 겹침·콘솔 오류 0이다. 세 폭 좌우 합성 PNG를 직접 열어 확인했다.
+- 최종 리뷰: SQL·스키마·API 계약 변경은 없고, 발행 직전 연결 상태 재검증과 선택 상태 정리, 실제 fixture 기반 CI 회귀를 확인했다. 이번 수정 범위에서 추가 BLOCK·MAJOR는 발견하지 않았다.
+- 다음 실행: 로컬 변경은 이 기록과 함께 `git HEAD`에 커밋한다. push·원격 CI·운영 배포는 컨트롤러 소유이며 현재 미검증이다.
+
+## 2026-09-28 22:10 KST 발행실 7채널 계정·표지 행 정합 완료
+
+- handoff basis: 사용자가 지정한 동일 worktree와 직전 캡처 반려를 primary로 삼았다. tmux 인계는 종료된 pane뿐이라 별도 작업 기준으로 채택하지 않았다.
+- 원인과 수정: wrapping flex가 계정 문자열 길이와 표지 제어에 따라 채널별 머리 높이를 달리 만들었다. 공용 헤더를 3열 grid로 고정하고 공개 `@핸들`만 가변·말줄임 처리했으며 영상 3종은 공용 둘째 표지 행을 쓴다. 재연결 계정은 표시하되 발행 체크·전체 선택·미리보기 계정에서는 연결로 세지 않는다.
+- 직접 관찰: 1440에서 Threads·X·Facebook, 미디어 누락 캡처에서 Shorts·Reels·TikTok의 계정 첫 행과 표지 둘째 행을 열어 확인했다. 390에서도 X와 Shorts 행이 한 줄을 유지하고 관리 링크가 잘리지 않는다.
+- 검증: 수정 전 E2E는 긴 핸들 title 불일치로 실패했다. 수정 뒤 1440·1024·390의 7개 계정 행 상대 top은 모두 33px, 편차 0px이다. 영상 표지 행은 top 편차 0px, 높이 편차 ≤2px, 계정 행과 간격 편차 0px이다. 관련 Vitest 3파일 58건, TypeScript, production build, Chromium 3폭 E2E, 콘솔 오류 0을 확인했다.
+- 보존과 다음 실행: 기존 편집실·생성실·발행 제한·계정 id 발행 계약은 유지했다. 이 워커는 push·배포하지 않는다. 컨트롤러가 push 후 원격 CI green과 운영 화면을 확인해야 하며 현재 둘은 미검증이다.
+
+## 2026-09-28 21:42 KST 편집실 v70·발행실 화면 정합 2차 반려 봉합
+
+- handoff basis: 회장이 지정한 동일 worktree와 컨트롤러가 직접 연 기존 캡처를 primary로 삼았다. 기존 `겹침 0·붕괴 해소` 판정은 취소한다.
+- 근본원인과 수정 전 증거: 공용 Button의 `.ds-label`이 `min-width:max-content`를 강제해 112px 그리드 안 썸네일을 174px로 팽창시켰다. 강화한 전 요소 교차 검사에서 첫 썸네일과 `세로 카드 4:5` 단추가 2,009px² 겹쳐 실패했다. 기존 검사는 컨테이너 두 개만 비교해 자식의 넘침을 놓쳤다.
+- 수정: 썸네일에 축소 가능한 라벨 계약을 적용하고 1440·1024·390 실제 폭을 112·100·56px로 고정했다. 카드 문구를 카드 면 내부 고대비 편집 레이어로 표시한다. 캡처는 편집 셸, 영상 빈 상태, X 카드, 미디어 없는 Shorts 카드로 각각 스크롤해 수정 대상을 화면 안에 넣는다.
+- 직접 관찰: 새 카드 캡처 3장과 side-by-side 비교 3장, 영상 빈 상태 3장, X 카드 3장, 미디어 누락 카드 3장을 직접 열었다. 세 폭 모두 썸네일·비율 단추 분리, 카드 면 문구 표시, X 체크 해제·573/280 경고·계정 행, Shorts 체크 해제·생성실 행동이 보인다. 가로 넘침·보이는 조작 요소 겹침·콘솔 오류는 0이다.
+- 독립 리뷰 보강: 정본 토큰 `--accent-ink`, 모바일 한국어 단어 단위 줄바꿈, 화면 밖 카드 썸네일 지연 로딩, 계정 조회 실패 전용 복구 행동을 추가했다.
+- 검증: 표적 Vitest 5파일 52건, TypeScript, production build, UI 토큰 감사, Chromium 3폭 E2E가 종료 코드 0이다. 최신 12개 캡처를 다시 직접 열어 확인했다. 원격 CI와 운영 배포는 미검증이다.
+- 다음 실행: 로컬 커밋 뒤 컨트롤러가 push하고 원격 CI green과 운영 반영을 확인한다. 이 워커는 push·배포하지 않는다.
+
+## 2026-09-28 21:00 KST 편집실 v70·발행실 운영 화면 정합 구현·3폭 실측
+
+- handoff basis: 회장이 지정한 동일 worktree와 `origin/main@af458794`, 운영 캡처 5장, v70 design-spec·clean-frame을 기준으로 이어갔다. 직전 1440 캡처를 버리지 않고 1024·390을 완성했다.
+- 수정: 일반 카드 v70 셸, URL kind 딥링크, 영상 빈 상태, 발행 계정 단일 행, X 한도·미디어 누락 체크 차단과 복구 행동을 연결했다. 새 구조 초안 선택 시 이전 작업물 해시태그를 초기화한다. 죽은 계정 선택 콜백을 제거하고 카드 썸네일 포커스 표시를 추가했다.
+- 직접 관찰: Chromium 1440·1024·390에서 카드·영상 빈 상태·발행실 총 9화면을 캡처했다. 좌우 넘침 0, 지정 요소 겹침 0, 콘솔 오류 0이며 비교 PNG는 `docs/qa/studio-v70-screen-conformance-20260928/`에 있다. v70 영상 빈 상태 원본은 1440만 있어 좁은 폭도 그 원본을 썼고, v70 발행 원본은 없어 최신 v67을 사용했다.
+- 테스트: 정책 충돌 회귀 6파일 51건과 해시태그 회귀가 통과했다. 최종 코드에서 PostgreSQL schema→seed→RLS·migration matrix 뒤 전체 421파일·2,866건 PASS, 1건 SKIP, 실패 0이다. TypeScript·production build·UI 토큰 감사도 종료 0이다.
+- 다음 실행: 최종 diff와 커밋 대상만 확인해 로컬 커밋한다. push·배포는 하지 않는다. 이후 컨트롤러가 push와 원격 CI green을 확인한다.
+
+## 2026-09-28 19:5x KST 편집실 v70·발행실 운영 화면 정합 수정 착수
+
+- handoff basis: 회장이 지정한 `origin/main@af458794`, 운영 캡처 5장, 편집실 v70 수치 규격과 clean-frame을 기준으로 고정했다. tmux `371:0.0`은 같은 운영 결함을 관찰한 컨트롤러 기록으로 확인했으며 과제 기준은 사용자 요청을 따른다.
+- 격리 작업: 공유 루트 작업 트리의 대규모 기존 변경을 보존하기 위해 `/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance`에 `fix/studio-screen-v70-conformance` 브랜치를 만들었다. 기준 커밋은 `af4587940d6cd9f080787f7ce516f27de25d2300`이다.
+- 확인한 입력: `CLAUDE.md`, dashboard 하위 지침, `pipeline-state.osmu.md`, 편집실·발행실 ADR, 실수 원장의 `[화면-검수-누락]`, v70 design-spec, 디자인 README와 기존 구현·QA 기록이다. 운영 캡처와 clean-frame은 다음 단계에서 픽셀·구조 대조한다.
+- 이웃 영향 후보: 편집실 text/card/video 탭·자동저장, 일반 카드와 말풍선 덱 공용 셸, 발행 계정 선택·체크 상태, X 글자수 제한, 미디어 준비 상태, 모바일·태블릿·데스크톱 반응형이다.
+- 현재 판정: 운영에서 관찰된 화면 불일치를 `docs/qa/qa-tracker.md` 최상단에 ❌ NG로 등록했다. 제품 코드는 아직 수정하지 않았다.
+- 다음 행동: clean-frame·운영 캡처 7장을 직접 열어 대조한 뒤 현재 구현·테스트 배선을 추적한다. 수정 후 1440·1024·390 실브라우저 캡처와 가로 넘침·요소 겹침 단언 E2E로 닫는다.
+
+## 2026-09-28 16:37 KST PR 87 재리뷰 r6 연속 409 보관본 로컬 완료
+
+- handoff basis: 회장이 지정한 `.pr87-review-r6.md`와 시작 HEAD `6abafccc`를 primary로 삼았다. tmux `371:0.1`은 비활성 zsh pane이라 별도 인계원으로 쓰지 않았다.
+- 수정: 첫 409에서만 로컬 본문을 불변 보관하고 후속 409는 최신 서버 본문·revision만 갱신한다. 재적용은 최초 보관본을 그 시점의 최신 revision 위에 저장한다. CI 본문 충돌 E2E에 step 3분과 준비 60초·E2E 90초 kill-after 제한, 서버 kill+wait를 적용했다.
+- 검증: fake timer 회귀 3건, 실제 Chromium 두 탭 revision 5→6→7→8·base 7 재적용·콘솔 오류 0, PostgreSQL 16 전체 421파일·2,867건 PASS·1건 SKIP·실패 0. TypeScript·build·migration matrix·발행실 정렬·Chromium 말풍선 E2E PASS.
+- 마이그레이션: 없음. 기존 React 충돌 상태와 서버 발급 `bodyRevision`을 재사용했다. 원격 CI와 운영 배포는 push 전이라 미검증이다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 merge도 하지 않는다.
+- 다음 실행: 로컬 수정 커밋은 완료했다. 부모 컨트롤러가 원격 push 뒤 PR verify green을 확인한다.
+
+## 2026-09-28 PR 87 재리뷰 r6 연속 409 보관본 수정 착수
+
+- handoff basis: 회장이 지정한 `.pr87-review-r6.md`와 현재 HEAD `6abafccc`를 primary로 삼았다. tmux `371:0.1`은 이 워크트리의 비활성 zsh pane으로 확인했으며, 사용자가 이번 과제를 명시했으므로 별도 인계원으로 채택하지 않았다.
+- 원인 확인: 본문 409 처리부가 충돌 상태 존재 여부와 무관하게 현재 `bodySnapshotRef`를 `local`에 다시 캡처한다. 사용자가 최신본을 확인한 뒤 연속 409가 오면 서버 본문이 최초 로컬 입력을 덮는다. CI는 준비 루프만 제한하고 E2E 실행 본체는 무제한이다.
+- 구현 계약: 최초 409에서만 로컬 보관 슬롯을 채우고 해결 전 후속 409는 최신 서버 본문·revision만 갱신한다. 재적용은 최초 보관본을 그 시점의 최신 revision 위에 저장한다. CI step과 shell 명령 양쪽에 제한시간을 둔다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 merge도 하지 않는다.
+- 다음 실행: 연속 409 회귀를 먼저 추가해 결함을 고정하고 제품 코드·CI를 수정한 뒤 전체 CI 동일 스위트와 실제 두 탭 E2E를 검증한다.
+
+## 2026-09-28 15:40 KST PR 87 재리뷰 r5 본문 충돌 복구 로컬 완료
+
+- handoff basis: 회장이 지정한 시작 커밋 `c74eb1fe`와 `.pr87-review-r5.md`를 primary로 삼았다. tmux `371:0.1`은 종료된 리뷰 pane이며 동시 수정은 없었다.
+- 수정: 공통 저장 경계가 `BODY_STALE_REVISION.latestBody`와 실패 직전 로컬 본문을 함께 보관한다. 충돌 중과 재저장 중 편집을 잠그고 정확한 안내와 `최신본 불러오기`, `내 변경 다시 적용`을 제공한다. 연속 409의 저장 의도를 큐로 보존하며 본문·영상 이중 충돌과 발행실 충돌에도 복구 경로를 연결했다.
+- 검증: Node 20.20.2·PostgreSQL 16 전체 Vitest 421파일·2,867건 PASS, 1건 SKIP, 실패 0. 표적 회귀 3건, TypeScript·build·migration matrix·발행실 정렬·Chromium 편집 E2E PASS. 실제 Next `localhost:3471` 두 탭에서 revision 5→6→7, retry base 6, 재저장 중 잠금, 로컬 입력 보존, 콘솔 오류 0을 관찰했다.
+- 마이그레이션: 없음. 기존 JSONB `bodyRevision`과 `latestBody` 응답 계약을 재사용했다. 원격 CI와 운영 배포는 push 전이라 미검증이다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 로컬 커밋은 완료했다. 부모 컨트롤러가 push한 뒤 원격 verify green을 확인한다.
+
+## 2026-09-28 15:00 KST PR 87 재리뷰 r5 본문 충돌 복구 흐름 수정 착수
+
+- handoff basis: 회장이 지정한 시작 커밋 `c74eb1fe`와 `.pr87-review-r5.md`를 primary로 삼았다. tmux `371:0.1`은 종료된 5차 리뷰 pane이며 동시 수정은 없다.
+- 원인 확인: 서버는 `BODY_STALE_REVISION` 409에 `latestBody`를 반환하지만 공통 `save()`는 오류를 그대로 던진다. 영상 자동저장 catch도 영상 전용 충돌만 상태로 전환해 본문 충돌은 반복 실패한다.
+- 구현 계약: 충돌 시 편집을 멈추고 로컬 입력을 별도 보존한다. 화면에는 `다른 곳에서 먼저 수정됐어요`, `최신본 불러오기`, `내 변경 다시 적용`을 표시한다. 최신본은 서버 판으로 전환하고, 내 변경 재적용은 보존한 로컬 본문을 그 판 위에 얹어 다음 저장이 통과하게 한다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 수정·커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 기존 영상 충돌 UI를 상속해 본문 충돌 상태·두 행동을 연결하고, 실제 `StudioPage` 두 탭 회귀와 실브라우저 흐름, CI 동일 전체 테스트를 통과시킨다.
+
+## 2026-09-28 14:37 KST PR 87 재리뷰 r4 서버 발급 본문 CAS 로컬 수정·검증 완료
+
+- handoff basis: 회장이 지정한 과제, 워크트리 `/private/tmp/wt-v70p2`, 시작 HEAD `b26314cf`, `.pr87-review-r4.md`를 primary로 삼았다. tmux `371:0.1`은 같은 결함을 남긴 종료된 리뷰 pane이며 동시 수정은 없었다.
+- 원인과 수정: 탭별 로컬 편집 횟수였던 `bodyRevision`을 최신성 근거로 쓰지 않는다. 클라이언트는 마지막 서버 revision을 `bodyBaseRevision`으로 보내고, 서버는 정확 일치 UPDATE에서만 저장하며 revision을 1 올린다. 불일치는 409와 최신 본문 전체를 반환한다. 기존 영상 CAS 방식을 재사용했고 DB 마이그레이션은 없다.
+- 결정적 재현: 실제 PostgreSQL에서 fake timer로 현재 탭 100ms, 오래된 탭 800ms를 고정했다. 현재 탭은 200·revision 1, 로컬 revision 100인 오래된 탭은 409이며 DB에는 현재 탭 본문이 남는다.
+- 검증: 관련 8파일 48건 PASS. 전체 Vitest 420파일·2,864건 PASS·1건 SKIP·실패 0. TypeScript·production build·migration matrix·발행실 정렬·Chromium 편집 E2E PASS. dev `localhost:3465/studio?room=edit` HTTP 200·콘솔 오류 0.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 의도한 코드·테스트·증거 문서만 커밋한다. 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
+## 2026-09-28 PR 87 재리뷰 r3 본문 revision 경합 로컬 수정·검증 완료
+
+- handoff basis: 회장이 지정한 커밋 `0a69057c`와 `.pr87-review-r3.md`를 primary로 삼았다. tmux `371:0.1`은 이전 워커 종료 로그만 남아 있어 동시 수정이 없음을 확인했다.
+- 수정: 글 본문 `text`·`editLines`·revision을 한 `bodySnapshotRef`로 묶고 모든 저장을 같은 직렬 큐로 보낸다. 서버는 기존 초안 저장에 body revision을 요구하며 PostgreSQL 단일 UPDATE에서 더 오래된 판과 같은 판의 다른 본문을 거절한다. 새 초안은 id ref와 문서 세대를 같은 tick에 끊는다.
+- 테스트 결정성: `PR87-R2-CTX`는 실제 sleep을 제거하고 `draft-A` 시딩, 입력 잠금 해제, fake timer, 저장 시작·해제 Promise로 순서를 명시했다.
+- 검증: 관련 9파일 53건 PASS. 실제 PostgreSQL 동시 경합에서 200 1건·409 1건과 승자 본문 보존 확인. `CI=true npx vitest run` 전체 3회 모두 420파일·2,863건 PASS·1건 SKIP·실패 0. TypeScript·build 종료 0. dev `localhost:3458/studio?room=edit` HTTP 200·콘솔 오류 0.
+- 제외: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 의도한 코드·테스트·증거 문서만 커밋한다. 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
+## 2026-09-28 PR 87 재리뷰 r2 MAJOR 2건 로컬 수정·검증 완료
+
+- handoff basis: 회장이 지정한 커밋 `05f5d1b4`와 `.pr87-review-r2.md`를 primary로 삼았다. tmux `371:0.1`은 이전 워커 종료 로그만 남아 있고 동시 수정은 없다.
+- 수정 전 재현: 영상 자막 A→A′ 뒤 글 B를 입력한 순서와 기존 `draftId` 검토 요청이 실제 `StudioPage`에서 2건 실패·44건 통과였다.
+- 수정: 본문 변경을 세대가 붙은 단일 ref로 모으고 모든 초안 저장을 한 promise 큐에서 직렬화했다. 응답 중 세대가 바뀌면 최신 본문을 후속 저장한다. 문서 세대·tenant가 달라진 응답은 현재 작업 공간에 재적용하지 않는다. 검토 요청은 신규·기존 초안 모두 저장 완료 뒤 진행한다.
+- 검증: 관련 9파일 72건, 정적 계약 3파일 26건, 전체 Vitest 418파일·2,855건 PASS·1건 SKIP·실패 0. TypeScript·build·migration matrix·발행실 정렬·Chromium E2E PASS. dev `localhost:3770/studio?room=edit` HTTP 200·콘솔 오류 0.
+- 제외: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-*.md`, `.vite/`는 사용자·하네스 파일이라 수정·커밋하지 않는다.
+- 다음 실행: 의도한 코드·테스트·증거 문서만 커밋한다. 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
+## 2026-09-28 PR 87 병합 리뷰 MAJOR 2건 로컬 수정·검증 완료
+
+- handoff basis: 회장이 지정한 merge commit `4d6600cb`와 `.pr87-mergereview.md`를 primary로 삼았다. tmux `371:0.1`은 직전 병합 워커가 종료된 로그만 남아 동시 수정이 없음을 확인했다.
+- 수정 전 재현: 실제 `StudioPage`에서 글 A→B 편집 뒤 영상 훅만 바꾸면 A를 `editLines`로 다시 전송했다. 임시 저장과 검토 요청은 B를 보내지 않았다. 표적 3건 실패·39건 통과였다.
+- 수정: 영상 자동저장은 자막 순서·문구를 실제로 바꾼 경우의 dirty 배열만 성공 시점까지 보관해 전송한다. 훅·CTA 등 비자막 변경은 `editLines`를 생략한다. 임시 저장과 검토 요청은 최신 `editLinesRef.current`를 명시한다.
+- 검증: 관련 3파일 51건 PASS. CI 동일 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 전체 Vitest 418파일·2,850건 PASS·1건 SKIP·실패 0. CI TypeScript와 production build 종료 0. Chromium 편집 탐침과 발행실 정렬 PASS. dev `localhost:3462/qa-alignment-harness?room=publish` HTTP 200·카드 28개·콘솔 오류 0.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, `.pr87-mergereview.md`, `.vite/vitest/results.json`은 커밋하지 않는다. push와 PR merge도 하지 않는다.
+- 다음 실행: 의도한 코드·테스트·증거 문서만 커밋한다. 부모 컨트롤러가 push한 뒤 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
+## 2026-09-28 PR 87 main 병합 충돌 해결 로컬 완료
+
+- handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p2`, 브랜치 `feat/editroom-v70-p2`, HEAD `b121ad6a`, `origin/main` `a211ca81`을 primary로 삼았다. tmux `371:0.1`은 같은 워크트리의 이전 p2 작업 종료 로그로 확인했다.
+- 병합 원칙: p1 영역인 말풍선·글 편집·카드덱은 main의 squash 최종본을 따른다. p2 전용 영상 편집 CAS, 발행 복귀 잠금 해제, 관련 테스트는 p2 diff에서 보존한다. rebase·push·PR merge는 하지 않는다.
+- 해결: 12개 충돌 가운데 p1 전용 파일은 main을 채택했다. 혼합 파일은 main의 구조화 글 편집과 p2 영상 전용 편집기·CAS를 함께 보존했다. 영상 자동저장은 낡은 `editLines` 클로저를 보내지 않고 동일 `videoEdit.subtitles` 스냅샷에서 저장용 대사를 파생한다.
+- 검증: 표적 교차 회귀 2파일 12건 PASS. CI 동일 임시 PostgreSQL schema→seed→RLS와 migration matrix 뒤 전체 Vitest 418파일·2,849건 PASS·1건 SKIP·실패 0. TypeScript와 production build 종료 0. 발행실 정렬 최대 delta 0px, Chromium·WebKit·Firefox 말풍선 편집 51개 시나리오 전부 PASS. dev `localhost:3764/studio?room=edit` HTTP 200·본문 표시·콘솔 오류 0. 임시 DB 삭제 확인.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 커밋에서 제외한다. push와 PR merge는 하지 않는다.
+- 출고: 두 부모가 p2 `b121ad6a`와 main `a211ca81`인 merge commit을 만들었다. rebase, push, PR merge는 수행하지 않았다.
+- 다음 실행: 부모 컨트롤러가 현재 HEAD를 push하고 원격 `verify` green을 확인한다. 원격 CI와 운영 배포는 현재 미검증이다.
+
+## 2026-09-28 07:12 KST PR 87 MINOR-1 로컬 완료, push 정책 차단
+
+- handoff basis: 회장이 지정한 워크트리 `/private/tmp/wt-v70p2`, HEAD `d6e7744b`, PR 87 7차 리뷰 코멘트 `5839629237`, 기존 미커밋 `page.tsx` diff를 primary로 삼았다. tmux `371:0.1`은 같은 워크트리의 과거 로그 확인에만 썼다.
+- 수정: `draft_id` 없는 인박스 발행 복귀 else 분기를 공용 `invalidateVideoEditReconcile()`에 연결했다. 이전 빌더의 전역 `draftId=null` 잠금 해제는 초기 복원 B-5 잠금을 조기에 푸는 회귀를 실제 P11 실패로 확인해 제거했다. 실제 `StudioPage` 마운트 MINOR-1 회귀를 추가했다.
+- 검증: 발행실·B-5 통합 회귀 2파일 39건 PASS, 기존 P4·P6 6건 PASS, `npm run typecheck:ci` 종료 0. artifact lint는 실체·슬롯·버전 정합 PASS와 기존 핀 경고 28건, design lint는 기존 인라인 style 1파일·hex 6파일 경고이며 이번 변경은 스타일 0건이다.
+- 로컬 커밋: `b121ad6a4e1685168f20a45fcddb17c8f75cead2`. 의도한 4파일만 포함했고 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 제외했다.
+- 원격 차단: `git push origin feat/editroom-v70-p2`가 `approval required by policy, but AskForApproval is set to Never`로 실행 전에 거절됐다. origin과 PR 87은 계속 `d6e7744b`다. 다음 실행은 push 권한이 있는 컨트롤러가 같은 브랜치를 push하고 PR 87 원격 CI를 종료까지 확인하는 것이다. PR 제목·본문·머지는 건드리지 않는다.
+
 ## 2026-09-28 13:21 KST PR #93 정지형 영속 마운트 이전 단순화 완료
 
 - handoff basis: 사용자가 지정한 과제, 워크트리 `_wt-osmu-gateway-mounts`, 브랜치 `fix/gateway-persist-mounts`, 실제 시작 HEAD `a211ca81`을 primary로 사용했다. 같은 cwd의 tmux pane은 없었다.
@@ -1719,3 +2032,19 @@ stage하지 않는다. 다음 액션은 편집실 계약 테스트를 먼저 추
 - 커밋: `a5ad5c14`, `ba4cc37c`, `2cd5a9bb`, `aabbb835`. 이 기록과 구현현황은 다음 문서 커밋으로 묶는다.
 - 문서 커밋: `8c750cdf`. 이후 `git push -u origin work/v71auth`를 실행했으나 실행 정책이 승인 요청을 요구했고 현재 세션은 승인 요청 불가라 명령 시작 전에 차단됐다. `git ls-remote --heads origin work/v71auth` 결과 원격 브랜치는 없다.
 - 배포: 머지와 배포는 실행하지 않았다. 다음 액션 소유자는 push 권한이 열려 있는 부모 컨트롤러다. 종료 증거는 `origin/work/v71auth` SHA와 이 워크트리 최종 HEAD의 일치다.
+## 2026-09-29 04:16 KST PR #94 리뷰 r3 수정 착수
+
+- handoff basis: 사용자가 지정한 동일 worktree와 `review94-r3.md`, 현재 HEAD `9b3f5bb6`을 primary로 삼았다. r2 화면 수치 계약은 해소 판정이므로 보존한다.
+- 현재 결함: 일반 카드 이미지와 이미지 썸네일 소실, 390 영상 플레이어 547.5px, 저장된 비기본 계정 우선, 일반 카드와 말풍선 시각 비교 오배선, 원격 CI 5개 파일 실패다.
+- 다음 실행: 유효한 기존 계약을 먼저 고정해 수정 전 실패를 확인하고, 카드 이미지·모바일 영상·기본 계정 정본·화면별 시각 기준을 수정한 뒤 CI와 같은 전체 스위트와 세 폭 실화면을 검증한다.
+- 이웃 영향 후보: 카드 목록 이동과 자동저장, 말풍선 전용 막대 썸네일, 해제 계정 재연결, 영상 데스크톱 비율, CI 시각 기준 경로를 함께 재검증한다.
+## 2026-09-30 09:13 KST PR #95 독립 리뷰 r7 단일 검토 본문·형식별 계약 로컬 완료
+
+- handoff basis: 사용자가 지정한 PR #95 7차 BLOCK 코멘트와 worktree `.claude/worktrees/fix-editroom-textcard-overlay`를 기준으로 이어갔다. tmux `371:0.0`은 같은 PR 수정 완료를 기다리는 컨트롤러로 확인했다.
+- 근본원인: 새 대기열에만 현재 형식 필드를 골라 보내고 기존 대기열은 갱신을 생략했다. 말풍선 편집 원본 `cardDeck`과 요청용 `editLines`가 이중 관리됐고, 서버는 편집 형식과 무관한 전역 상한을 사용했다.
+- 수정: 새·기존 대기열이 단일 본문 생성 함수만 사용한다. 기존 대기열은 현재 형식 필드로 원자 교체 후 이전 검토 문맥을 제거하고 재검토한다. 말풍선 문구는 최신 덱에서 투영한다. 서버 상한은 카드 계약의 최대 장수×장당 말풍선 수로 파생하고 글·영상에는 항목 수 상한을 새로 두지 않는다.
+- 검증: 수정 전 2파일 87건 중 9건 실패를 확인했다. 수정 뒤 표적 Vitest 5파일 162건과 CI용 TypeScript가 종료 코드 0이다. 전체 Vitest는 실행하지 않았고 화면 구조 변경이 없어 픽셀 비교는 적용하지 않았다.
+- 이웃 영향 확인: 글자 내장 카드 장수 일치와 위치 검증, 일반 카드, 말풍선 73·88개 허용과 89개 거절, 글 73문단, 영상 73자막, 카드→글·영상 기존 대기열 전환, 기존 글자 카드 회귀를 함께 확인했다.
+- 자기검토: 형식 교체 본문이 빈 문자열이면 이전 대기열 본문이 남는 인접 결함 1건을 발견해 함께 수정했다. 검증된 형식 교체는 빈 본문도 현재 스냅샷으로 저장하며, 같은 표적 87건과 TypeScript를 다시 통과했다.
+- 커밋·원격 상태: 제품·테스트 `d2f1f0b8`, 기록 `b32678c4`를 같은 원격 브랜치에 push했다. 이 종료 기록 커밋까지 push한 뒤 로컬 HEAD와 원격 HEAD를 다시 대조한다. 머지·배포는 하지 않았다.
+- 다음 실행: 원격 CI가 최종 HEAD에서 green인지 확인하고 PR #95 독립 재리뷰를 받는다. 원격 CI 최종 판정은 현재 미검증이다.

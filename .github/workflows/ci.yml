@@ -113,3 +113,27 @@ jobs:
         run: |
           npx playwright-core install --with-deps chromium
           npm run e2e:bubble-editor:chromium
+
+      - name: 편집실 v70 화면 정합 회귀 게이트 (일반 카드·말풍선 덱·발행실)
+        timeout-minutes: 4
+        env:
+          STUDIO_V70_BASE_URL: http://127.0.0.1:3472
+          STUDIO_V70_OUTPUT_DIR: /tmp/studio-v70-screen-conformance
+          # 화면별 v70 clean-frame을 저장소 상대경로로 읽고 카드 면만 잘라 이미지 차이를
+          # 판정한다. 바깥 제품 셸 차이는 비교 대상이 아니다.
+          STUDIO_V70_COMPARE: "1"
+        run: |
+          npm run start -- -p 3472 > /tmp/studio-v70-dev.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+          timeout --kill-after=5s 60s bash -c 'until curl -fsS http://127.0.0.1:3472/studio >/dev/null; do sleep 1; done'
+          timeout --kill-after=10s 150s npm run e2e:studio-v70-screen
+
+      - name: 편집실 본문 충돌 복구 두 탭 회귀 게이트 (chromium)
+        timeout-minutes: 3
+        run: |
+          npm run start -- -p 3471 > /tmp/body-conflict-dev.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+          timeout --kill-after=5s 60s bash -c 'until curl -fsS http://127.0.0.1:3471/studio >/dev/null; do sleep 1; done'
+          timeout --kill-after=10s 90s npm run e2e:body-conflict

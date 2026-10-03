@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
@@ -8,6 +8,9 @@ import {
   fetcher,
   apiPost,
   isExternalPublishPersistenceError,
+  isExternalPublishConfirmedPayload,
+  isUnresolvedPublishPayload,
+  isUnresolvedPublishError,
   ApiResponseError,
   type ExternalPublishPersistenceFailure,
 } from "@/lib/api";
@@ -27,7 +30,21 @@ import { RepoConnect } from "@/components/studio/RepoConnect";
 import { SchedulePanel } from "@/components/studio/SchedulePanel";
 import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
-import { browserCardUploader, cardRatioFrom, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
+import { pollHiggsfieldJob, savePendingJob, readPendingJob, clearPendingJob } from "@/lib/higgsfield-poll";
+import { pollJobUntilDone, JOB_POLL_INTERVAL_MS } from "@/lib/job-poll";
+import { wakeableSleep } from "@/lib/wakeable-sleep";
+import {
+  savePendingVideoPublishJob, readPendingVideoPublishJob, clearPendingVideoPublishJob,
+  savePendingSocialPublishJob, readPendingSocialPublishJob, clearPendingSocialPublishJob,
+} from "@/lib/publish-job-store";
+import {
+  browserCardUploader,
+  cardRatioFrom,
+  renderAndUploadCardDeck,
+  renderAndUploadEmbeddedTextCard,
+  renderPlainCardDeckIncremental,
+  type PlainCardRenderCacheEntry,
+} from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
@@ -73,11 +90,16 @@ import { attemptRequiredDraftPersistence } from "@/lib/studio/required-draft-per
 import { PLATFORM_FIELD_CONTRACT } from "@/lib/studio/platform-publish-fields";
 import { DEFAULT_COVER_SECONDS, coverUnsupportedReason, supportsCoverTimestamp } from "@/lib/video-cover";
 import { runWithConcurrency } from "@/lib/async-pool";
+import { embeddedTextCardImage, recoverDraftEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
 
 const PUBLISH_CONCURRENCY = 3;
+// 2026-10-02 컨트롤러 감사: 이 타임아웃은 더 이상 "서버가 끝날 때까지" 기다리는 역할이
+// 아니다 — 서버가 예산(기본 8초, PUBLISH_FAST_PATH_BUDGET_MS/VIDEO_PUBLISH_FAST_PATH_
+// BUDGET_MS)을 넘기면 이제 202 + processing을 그 안에 돌려주고, 실제 완료는
+// awaitAsyncSocialPublish/awaitAsyncVideoPublish가 별도로(15분 상한) 기다린다. 이 상수들은
+// "접수 자체가 이 시간 안에도 안 끝나면 네트워크 이상"을 가르는 안전망일 뿐이라 8초
+// 예산+정상 네트워크 지연에 넉넉히 여유 있다.
 const PUBLISH_REQUEST_TIMEOUT_MS = 45_000;
-// 영상 API의 공급자 업로드 상한은 120초다. 클라이언트가 먼저 포기하면 서버의 실제 성공을
-// 실패로 보여 재시도를 유도하므로 영상만 서버 상한보다 길게 기다린다.
 const VIDEO_PUBLISH_REQUEST_TIMEOUT_MS = 130_000;
 
 // SNS-007: /api/publish가 실제로 계정별 발행을 받는 4개 플랫폼(threads/x/facebook/instagram)만
@@ -98,6 +120,21 @@ const VIDEO_PUBLISH_NAME: Record<string, string> = { shorts: "youtube", reels: "
 const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reels: "instagram", tiktok: "tiktok" };
 
 import { draftStatusLabel } from "@/lib/studio/draft-status-label";
+import { connectedOnlyTargets, publishableTargets as computePublishableTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
+import { channelNameList, PLATFORM_LABEL } from "@/lib/studio/channel-name-list";
+import {
+  allowedPrivacyLevels,
+  disclosureValidationError,
+  musicUsageConfirmationText,
+  resolvePrivacyAfterDisclosureChange,
+  type TikTokDisclosureState,
+} from "@/lib/studio/tiktok-disclosure";
+import {
+  resolveRestoredQuickDraftTopic,
+  sanitizeRestoredQuickDraftLines,
+  sanitizeRestoredQuickDraftText,
+  shouldInvalidateQuickDraft,
+} from "@/lib/studio/quick-draft-topic";
 
 const ROOM_LABEL: Record<StudioRoom, string> = { create: "생성실", edit: "편집실", publish: "발행실" };
 
@@ -223,11 +260,27 @@ interface TextVariants {
   shorts?: { hook?: string; body?: string; cta?: string };
   image_prompt?: string;
 }
+interface BodyRevisionConflict {
+  latest: { lines: string[]; text: TextVariants | null; serverRevision: number };
+  local: { lines: string[]; text: TextVariants | null };
+  viewingLatest: boolean;
+}
 // topicKey = 이 매체가 **어느 주제로** 만들어졌는지 찍는 도장(lib/studio/work-media.ts).
 // 도장이 없으면 새 주제에 어제 영상이 그대로 붙는다. 2026-09-14 실측 사고.
 // aspectRatio = 이 그림이 어떤 비율로 만들어졌는지(work-media.ts isReusableVideoBaseImage).
 // 1:1 대표 이미지를 영상 바탕으로 잘못 재사용해 정사각 영상이 나오는 것을 막는다(2026-09-16).
-interface ImgResult { url: string; file: string; filename?: string; imageUrls?: string[]; topicKey?: string; aspectRatio?: string }
+interface ImgResult {
+  url: string;
+  file: string;
+  filename?: string;
+  imageUrls?: string[];
+  topicKey?: string;
+  aspectRatio?: string;
+  /** 카드 문구가 이미지 픽셀에 이미 합성돼 편집 레이어를 다시 얹으면 안 되는 산출물. */
+  textEmbedded?: boolean;
+  /** 대기열 복귀 뒤에도 장별 대본·위치·형식이 있어 안전하게 다시 그릴 수 있는지. */
+  textSourceRecoverable?: boolean;
+}
 interface VidResult {
   url: string;
   file: string;
@@ -236,7 +289,10 @@ interface VidResult {
   hasAudio?: boolean;
   narration?: { requested: boolean; included: boolean; reason?: string; message?: string };
 }
-type PubStatus = "wait" | "doing" | "done" | "failed";
+// "unknown" = 비동기 발행이 상한(15분)을 넘겨 더 기다리지 않지만, "실패"로 단정하지도
+// 않는 상태(세션맥락: 524 오판으로 인한 재발행이 중복 게시를 부른다 — 재발행을 유도하지
+// 않기 위해 failed와 분리한다). 게시물 목록에서 실제 결과를 확인하라고 안내한다.
+type PubStatus = "wait" | "doing" | "done" | "failed" | "unknown";
 type PublishReconciliation = ExternalPublishPersistenceFailure["persistence"]["reconciliation"];
 type PublishReconciliationMap = Record<string, PublishReconciliation>;
 
@@ -345,7 +401,10 @@ export default function StudioPage() {
     activeWorkspace ? `/api/studio/engine-status?tenant_id=${activeWorkspace.id}` : "/api/studio/engine-status",
     fetcher,
   );
-  const { data: hist, mutate: mutateHist } = useSWR<{ drafts: Array<Record<string, unknown>>; currentWork?: CurrentWork | null }>(activeWorkspace ? `/api/studio/drafts?tenant_id=${activeWorkspace.id}` : null, fetcher);
+  // B-6(6차 재리뷰 BLOCKER): 목록 조회가 실패하면 아래 reconcile 감시 효과가
+  // `!hist?.drafts`에 영원히 걸려 편집이 잠긴 채로 안 풀렸다 — error를 받아 그 경우
+  // 단건 GET으로 대체 경로를 연다.
+  const { data: hist, error: histError, mutate: mutateHist } = useSWR<{ drafts: Array<Record<string, unknown>>; currentWork?: CurrentWork | null }>(activeWorkspace ? `/api/studio/drafts?tenant_id=${activeWorkspace.id}` : null, fetcher);
   const { data: publishReturnQueue } = useSWR<{ posts: Array<Record<string, unknown>> }>(
     activeWorkspace && publishReturnRequest
       ? `/api/queue?status=all&returnTo=${publishReturnRequest.sourceRoute}&tenant_id=${activeWorkspace.id}`
@@ -435,14 +494,26 @@ export default function StudioPage() {
   // 2026-09-06 회장 스모크: 생성이 시작되면 끝날 때까지 취소할 방법이 없었고, 도는 동안
   // 화면에 아무 표시도 없었다. 진행 중임을 보여 주고 그만둘 수 있게 한다.
   const generationAbort = useRef<AbortController | null>(null);
+  // 2026-10-02 리뷰 MINOR: 새로고침 복구 폴링(아래 복구 effect)은 자기 전용
+  // AbortController를 쓴다(MAJOR 5b) — 그런데 사용자가 "생성 취소"나 "버리고 새로
+  // 시작"을 누르면 그 복구 폴링도 함께 끊겨야 한다. 끊지 않으면 취소했다고 말해 놓고
+  // 복구 폴링이 뒤에서 계속 돌며 지운 화면에 결과를 다시 꽂으려 든다.
+  const resumePollAbort = useRef<AbortController | null>(null);
   function cancelGeneration() {
     generationAbort.current?.abort();
     generationAbort.current = null;
+    resumePollAbort.current?.abort();
     setBusy(null);
     showToast("생성을 취소했습니다", "success");
   }
   const [lastError, setLastError] = useState<string | null>(null);
   const [text, setText] = useState<TextVariants | null>(null);
+  const textRef = useRef<TextVariants | null>(null);
+  textRef.current = text;
+  // 2026-10-01 운영 실측: 생성실 "고른 형식의 생성 후보" 패널(quickDraft = text)이 주제를
+  // 바꿔도 안 비워졌다. candidatesTopicRef(StudioRooms.tsx, PR#96)와 같은 패턴 —
+  // 후보를 만들 때의 주제를 기억해 두고, 실제 주제가 달라지면(trim 비교) 후보를 비운다.
+  const quickDraftTopicRef = useRef<string | null>(null);
 
   /**
    * 생성이 만든 채널별 메타를 발행실 칸에 채운다.
@@ -484,6 +555,54 @@ export default function StudioPage() {
   const [publishReconciliations, setPublishReconciliations] = useState<PublishReconciliationMap>({});
   const [editorHandoff, setEditorHandoff] = useState<EditorHandoff | null>(null);
   const [includes, setIncludes] = useState<Record<string, boolean>>(() => normalizeIncludes());
+  /**
+   * 2026-10-03 독립 리뷰 MINOR-g 근본원인 수정: 발행 선택 사고의 실제 뿌리는 미리보기
+   * 탭을 선택으로 착각한 것보다, **이전 세션의 선택이 아무 표시 없이 조용히 되살아난
+   * 것**이다(이 세션 자체가 그 패턴으로 Threads에 실제 발행했다). 두 안을 저울질했다:
+   * ①발행 전 채널 이름을 보여주는 확인 단계(모달/추가 클릭) ②되살아난 선택임을 그
+   * 자리에서 표시만("지난번 선택 유지: Threads"). ①은 publish() 흐름 자체를 바꿔야
+   * 하고 "선택한 N곳에 지금 발행" 버튼 클릭 한 번으로 바로 발행되던 기존 테스트 수십
+   * 개(studio-publish-ui.test.tsx)의 흐름을 전부 다시 짜야 한다. ②는 상태 하나와 배지
+   * 하나만 더하면 되고, 사용자의 기존 동작(바로 발행)을 막지 않으면서 "이거 내가 지금
+   * 고른 게 아니라 전에 고른 거다"를 알린다. 더 작은 ②를 택한다.
+   */
+  const [restoredSelectionNotice, setRestoredSelectionNotice] = useState(false);
+  /**
+   * 운영 사고(9444 회원 계정, 2026-10-03): TikTok 발행이 /api/video/publish의
+   * privacy_level 필수 검사(route.ts:727-729)에 걸려 "TikTok 공개 범위를 직접
+   * 선택해주세요" 400으로 항상 실패했다. 발행실에는 그 값을 고르는 자리 자체가 없었고
+   * /api/video/publish 요청에도 안 실었다. /app/videos/page.tsx에만 그 선택기가 있었다
+   * (tiktokCreator.privacyLevels, creator-info 조회). 여기서도 같은 계약을 그대로
+   * 따른다 — TikTok의 Content Posting 정책은 공개 범위를 사람이 직접 고르게 강제하므로
+   * 기본값을 미리 고르지 않는다(빈 문자열 시작). 상호작용 토글(댓글/듀엣/스티치)과 AI
+   * 생성 공개는 videos 페이지가 이미 쓰는 기본값 정책을 그대로 따른다(토글 셋은
+   * creator의 disabled 플래그로 동기화, AI 생성은 기본 true — 창작자가 아니오로
+   * 끄는 쪽이 "거짓으로 아니라고 답하기"보다 안전하다는 videos 페이지의 기존 판단).
+   */
+  const [tiktokPrivacy, setTiktokPrivacy] = useState(""); // 절대 기본값을 미리 고르지 않는다
+  const [tiktokDisableComment, setTiktokDisableComment] = useState(false);
+  const [tiktokDisableDuet, setTiktokDisableDuet] = useState(false);
+  const [tiktokDisableStitch, setTiktokDisableStitch] = useState(false);
+  const [tiktokAiGenerated, setTiktokAiGenerated] = useState(true);
+  /**
+   * 2026-10-03 독립 리뷰 m3(TikTok Content Sharing Guidelines): 상업 콘텐츠 공개
+   * ("Your brand"/"Branded content")도 사람이 직접 켜야 한다 — 기본은 전부 꺼짐.
+   */
+  const [tiktokDisclosureEnabled, setTiktokDisclosureEnabled] = useState(false);
+  const [tiktokBrandOrganic, setTiktokBrandOrganic] = useState(false);
+  const [tiktokBrandContent, setTiktokBrandContent] = useState(false);
+  /**
+   * m3: 공개 범위는 "이번 한 번만" 고르는 값이다 — 새 초안을 시작하거나, 작업 공간을
+   * 바꾸거나, 발행에 성공한 뒤에는 다음 영상에 지난 선택이 그대로 넘어가면 안 된다
+   * (사용자가 매번 다시 확인하지 않으면 엉뚱한 계정 공개 범위로 올라갈 수 있다).
+   * 상업 콘텐츠 공개도 같이 초기화한다.
+   */
+  const resetTiktokDisclosure = useCallback(() => {
+    setTiktokPrivacy("");
+    setTiktokDisclosureEnabled(false);
+    setTiktokBrandOrganic(false);
+    setTiktokBrandContent(false);
+  }, []);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [hashtags, setHashtags] = useState<Record<string, string>>({});
   const [topicTags, setTopicTags] = useState<Record<string, string>>({});
@@ -495,6 +614,64 @@ export default function StudioPage() {
   const [reviewBusy, setReviewBusy] = useState(false);
   const [publishChatDraft, setPublishChatDraft] = useState("");
   const [editLines, setEditLines] = useState<string[]>([]);
+  /**
+   * PR87 재리뷰 r3: 글 본문의 유일한 최신값 출처.
+   *
+   * React state는 렌더 뒤에 갱신되므로 디바운스 타이머와 비동기 저장이 닫힌 값을 잡으면
+   * 더 최신인 사용자 입력을 이전 값으로 되돌릴 수 있다. 모든 본문 교체는 이 함수로만
+   * 들어오며, ref의 세대와 값은 같은 tick에 먼저 바뀐다. 저장은 아래 직렬 큐에서 이
+   * 스냅샷만 읽고, 응답을 기다리는 동안 세대가 바뀌면 최신 세대를 다시 저장한다.
+   * `text`와 `editLines`는 같은 서버 기준판 안에서만 저장한다. 로컬 변경 순서는
+   * generation이 맡고, serverRevision은 마지막 저장 성공 때 서버가 돌려준 값만 가진다.
+   * 오래된 탭·타이머·응답이 로컬 편집 횟수로 최신 본문을 덮을 수 없어야 한다.
+  */
+  const bodySnapshotRef = useRef<{
+    generation: number;
+    serverRevision: number;
+    lines: string[];
+    text: TextVariants | null;
+  }>({ generation: 0, serverRevision: 0, lines: [], text: null });
+  // 서버 판이 바뀌면 localStorage 효과도 다시 실행돼 재접속 기준판이 낡지 않게 한다.
+  const [bodyServerRevision, setBodyServerRevision] = useState(0);
+  const [bodyRevisionConflict, setBodyRevisionConflict] = useState<BodyRevisionConflict | null>(null);
+  const [bodyConflictResolving, setBodyConflictResolving] = useState(false);
+  const bodyConflictRetryRef = useRef<Array<{
+    retry: () => Promise<string | undefined>;
+    retryWithoutVideo: () => Promise<string | undefined>;
+  }>>([]);
+  const editDocumentGenerationRef = useRef(0);
+  const draftSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  function replaceBodySnapshot(
+    nextLines: string[],
+    nextText: TextVariants | null,
+    options: { replaceDocument?: boolean; serverRevision?: number } = {},
+  ) {
+    const lines = [...nextLines];
+    if (options.replaceDocument) {
+      editDocumentGenerationRef.current += 1;
+      setBodyRevisionConflict(null);
+      setBodyConflictResolving(false);
+      bodyConflictRetryRef.current = [];
+    }
+    const serverRevision = options.serverRevision
+      ?? (options.replaceDocument ? 0 : bodySnapshotRef.current.serverRevision);
+    bodySnapshotRef.current = {
+      generation: bodySnapshotRef.current.generation + 1,
+      serverRevision,
+      lines,
+      text: nextText,
+    };
+    setBodyServerRevision(serverRevision);
+    textRef.current = nextText;
+    setText(nextText);
+    setEditLines(lines);
+  }
+  function replaceEditLines(nextLines: string[], replaceDocument = false) {
+    replaceBodySnapshot(nextLines, textRef.current, { replaceDocument });
+  }
+  function replaceText(nextText: TextVariants | null) {
+    replaceBodySnapshot(bodySnapshotRef.current.lines, nextText);
+  }
   // 2026-09-23 사고: 카드덱 경로(생성실→편집실)는 말풍선 13개를 `editLines`에 담아
   // 저장하지만, 발행실 본문(`text`)은 이 경로에서 한 번도 채워진 적이 없다(별도
   // 파생 API로만 채워짐). 그래서 편집실엔 내용이 있는데 발행실은 "본문이 없다"고
@@ -545,6 +722,37 @@ export default function StudioPage() {
   const cardAspectRatio = editFormat.kind === "card" ? editFormat.aspectRatio : "4:5";
   // 발행에 실을 카드 한 벌. 여러 장이면 여러 장 그대로, 없으면 대표 한 장.
   const publishDeck = img?.imageUrls?.length ? img.imageUrls : img?.url ? [img.url] : [];
+  // 편집실 본 화면과 대화창이 같은 대사를 본다. 대화창만 빈 배열을 받으면 일괄 편집이 죽은 단추가 된다.
+  const resolvedEditLines = useMemo(
+    () => editLines.length
+      ? editLines
+      : [text?.shorts?.hook || "", text?.shorts?.body || "", text?.shorts?.cta || ""].filter(Boolean),
+    [editLines, text],
+  );
+  const liveTextCardPreviewCacheRef = useRef<PlainCardRenderCacheEntry[]>([]);
+  // v70 544행 계약: 글자 내장 카드도 입력·위치 변경 즉시 같은 렌더러로 다시 그린다.
+  // 매 렌더마다 1080px 캔버스를 다시 만들지 않고 실제 입력·위치·비율·테마가 바뀔 때만
+  // data URL을 갱신한다. 서버 업로드는 발행실 이동 때 한 번만 한다.
+  const liveTextCardPreview = useMemo(() => {
+    if (editKind !== "card" || img?.textEmbedded !== true || img.textSourceRecoverable === false || cardDeck?.template === "chat_bubble") {
+      liveTextCardPreviewCacheRef.current = [];
+      return null;
+    }
+    try {
+      const rendered = renderPlainCardDeckIncremental({
+        lines: resolvedEditLines,
+        ratio: cardRatioFrom(cardAspectRatio),
+        theme: themeFromPalette(learningInfo.palette),
+        positions: cardTextPositions,
+      }, liveTextCardPreviewCacheRef.current);
+      liveTextCardPreviewCacheRef.current = rendered.cache;
+      return rendered.urls;
+    } catch {
+      // 캔버스가 없는 시험·서버 렌더에서는 저장된 그림을 유지한다. 실제 브라우저의 최종
+      // 업로드 경로는 recompositeCards가 별도로 실패를 알리고 발행실 이동을 막는다.
+      return null;
+    }
+  }, [cardAspectRatio, cardDeck, cardTextPositions, editKind, img?.textEmbedded, img?.textSourceRecoverable, learningInfo.palette, resolvedEditLines]);
   const [editing, setEditing] = useState<PreviewPlatform | null>(null);
   const [showTx, setShowTx] = useState(false);
   const { data: tx } = useSWR<{ items?: Array<{ display_name?: string; credits?: number; action?: string; created_at?: string; output?: string | null; outputKind?: string | null }> }>(
@@ -573,24 +781,126 @@ export default function StudioPage() {
   const [accountsLoaded, setAccountsLoaded] = useState(false);
   // 복원한 작업물의 선택 상태는 계정 조회와 별개다. 계정 조회가 느려도 본문과 선택 채널은
   // 먼저 복원해 보여 주고, 실제 발행 가능 대상만 조회 완료 뒤 따로 좁힌다.
-  const selectedTargets = selectedPublishTargets(includes);
+  // 저장된 선택 의도는 보존하되, 화면의 체크 수와 발행 버튼에는 지금 올릴 수 있는
+  // 채널만 포함한다. 초기 복원 중 잠깐 비어 있는 본문 때문에 includes 자체를 지우면
+  // 정상 본문이 들어온 뒤에도 사용자가 고른 채널이 돌아오지 않는 경쟁이 생긴다.
   const usableAccounts = (platform: PreviewPlatform) => (accountsByPlatform[platform] || []).filter((account) => account.connectionState === "connected");
+  const defaultConnectedAccount = (platform: PreviewPlatform) => {
+    const accounts = usableAccounts(platform);
+    return accounts.find((account) => account.is_default) || accounts[0];
+  };
+  // 계정 선택 UI가 없는 v70에서는 계정 관리에서 정한 현재 기본 계정이 화면과 요청의
+  // 공통 정본이다. 저장된 과거 작업별 선택값을 보내면 사용자가 고칠 수 없는 숨은 상태가 된다.
+  const selectedConnectedAccountId = (platform: PreviewPlatform) => defaultConnectedAccount(platform)?.id;
+
+  // TikTok 패널(결함: 공개 범위 미선택 400) — app/videos/page.tsx와 같은 계약.
+  // 연결된 TikTok 계정이 있을 때만 creator-info를 조회한다(없는데 부르면 404 토스트만
+  // 쌓인다). 계정은 v70 규칙대로 기본 연결 계정 하나를 쓴다(계정 선택 UI 없음).
+  // 2026-10-03 독립 리뷰 CI 수정: publishGuard가 아래 tiktokCreatorFailed/tiktokPrivacy를
+  // 읽으므로, publishGuard를 처음 부르는 selectedTargets 계산보다 반드시 앞에 있어야
+  // 한다(TDZ — "Cannot access before initialization"로 전체 화면이 죽은 실측).
+  const tiktokAccountIdForCreator = selectedConnectedAccountId("tiktok");
+  const tiktokCreatorUrl = usableAccounts("tiktok").length > 0
+    ? `/api/tiktok/creator-info${tiktokAccountIdForCreator ? `?account_id=${encodeURIComponent(tiktokAccountIdForCreator)}` : ""}`
+    : null;
+  const { data: tiktokCreatorData, error: tiktokCreatorError } = useSWR<{
+    connected?: boolean;
+    ready?: boolean;
+    creator?: { username: string; privacyLevels: string[]; commentDisabled: boolean; duetDisabled: boolean; stitchDisabled: boolean };
+  }>(tiktokCreatorUrl, fetcher);
+  const tiktokCreator = tiktokCreatorData?.creator;
+  /**
+   * 2026-10-03 독립 리뷰 m2: /api/tiktok/creator-info가 404(미연결)·502(계정 확인
+   * 실패, route.ts)를 주면 fetcher가 던지고 tiktokCreator는 그냥 undefined가 된다.
+   * 그러면 패널이 통째로 안 뜨고 publishGuard의 "공개 범위를 먼저 선택해주세요."만
+   * 남아 — 고를 칸 자체가 없는데 "선택해주세요"만 뜨는 막다른 길이 된다. 계정은
+   * 연결(usableAccounts>0)돼 있는데 creator-info 조회 자체가 실패했음을 구분해
+   * 다른 안내와 재연결 링크를 보여준다.
+   */
+  const tiktokCreatorFailed = Boolean(tiktokCreatorUrl) && !tiktokCreator && Boolean(tiktokCreatorError);
+  /**
+   * 2026-10-03 독립 리뷰 m3(TikTok Content Sharing Guidelines): 유료 파트너십(브랜드
+   * 콘텐츠)을 공개하면 비공개로는 못 올린다. 창작자가 쓸 수 있는 공개 범위 목록을
+   * 이 상태로 좁힌다(순수 로직은 tiktok-disclosure.ts).
+   */
+  const tiktokDisclosureState: TikTokDisclosureState = {
+    disclosureEnabled: tiktokDisclosureEnabled,
+    brandOrganic: tiktokBrandOrganic,
+    brandContent: tiktokBrandContent,
+  };
+  const tiktokAllowedPrivacyLevels = tiktokCreator ? allowedPrivacyLevels(tiktokDisclosureState, tiktokCreator.privacyLevels) : [];
+  const tiktokDisclosureError = disclosureValidationError(tiktokDisclosureState);
+  useEffect(() => {
+    // 유료 파트너십을 켜서 비공개가 허용 목록 밖으로 나가면 그 값을 지운다(다른 값으로
+    // 대신 고르지 않는다 — "사용자가 직접 고른다" 원칙, tiktok-disclosure.ts).
+    setTiktokPrivacy((current) => resolvePrivacyAfterDisclosureChange(current, tiktokDisclosureState, tiktokCreator?.privacyLevels ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiktokDisclosureEnabled, tiktokBrandContent, tiktokCreator?.privacyLevels]);
+
+  const selectedTargets = selectedPublishTargets(includes)
+    .filter((platform) => !publishGuard(platform).disabledReason);
   const publishTargets = selectedTargets.filter((platform) => usableAccounts(platform).length > 0);
-  // 다시 연결해야 올릴 수 있는 채널. Buffer 도 끊긴 채널을 목록 위로 올려 재연결을 먼저 시킨다.
-  const reconnectTargets = selectedTargets.filter((platform) =>
-    (accountsByPlatform[platform] || []).length > 0 && usableAccounts(platform).length === 0);
+  /**
+   * 2026-10-03 독립 리뷰 MINOR-h: 상단 배너는 selectedTargets(사용자가 고른 전체)로 채널
+   * 이름을 보여주고, "지금 발행" 버튼 옆 배지는 publishTargets(지금 실제로 올릴 수 있는
+   * 것)로 보여줘서 두 이름 목록이 서로 달라질 수 있었다(예: 선택은 했는데 계정이 끊긴
+   * 채널). 이름 목록은 이 값 하나로만 만든다 — 숫자 표시(선택 N곳 / 발행가능 M곳)는
+   * 각자 다른 뜻이라 그대로 두고, "이름이 무엇인가"만 단일 정본으로 합친다.
+   *
+   * 이미 이번 발행에서 성공한(pub.status === "done") 채널은 재선택 대상처럼 이름에
+   * 끼워 보여주지 않는다 — 다시 누르면 재발행처럼 보이는 혼동을 줄인다. 뒤따르는 다른
+   * PR이 도입하는 "이미 완료"·"상태 불명" 상태는 이 필터에 조건을 추가하는 자리다
+   * (지금은 done만 존재하고 unknown류 상태가 아직 코드에 없어 추측해서 만들지 않았다).
+   */
+  const publishNameTargets = (accountsLoaded ? publishTargets : selectedTargets)
+    .filter((platform) => pub.status[platform] !== "done");
+  // 선택이 자동으로 꺼진 뒤에도 재연결 행동이 사라지면 사용자는 복구할 길이 없다.
+  // 현재 발행 체크와 무관하게 만료·해제 계정이 하나라도 있는 채널을 안내한다.
+  const reconnectTargets = ALL.filter((platform) =>
+    (accountsByPlatform[platform] || []).some((account) => account.connectionState === "reconnect"));
   // 일부만 성공한 뒤에는 버튼이 '다시 발행'이 아니라 '실패한 곳만'이어야 한다.
   const publishRetryOnly = publishTargets.some((platform) => pub.status[platform] === "done")
     && publishTargets.some((platform) => pub.status[platform] === "failed");
+
+  useEffect(() => {
+    // videos/page.tsx와 같은 동기화: 창작자 계정이 이미 막아둔 상호작용은 토글도
+    // 그 상태로 맞춰 둔다(사용자가 끌 필요가 없는 걸 또 묻지 않는다).
+    setTiktokDisableComment(tiktokCreator?.commentDisabled ?? false);
+    setTiktokDisableDuet(tiktokCreator?.duetDisabled ?? false);
+    setTiktokDisableStitch(tiktokCreator?.stitchDisabled ?? false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiktokAccountIdForCreator, tiktokCreator?.username, tiktokCreator?.commentDisabled, tiktokCreator?.duetDisabled, tiktokCreator?.stitchDisabled]);
 
   useEffect(() => {
     const requested = resolveStudioRoom(`?${search}`, storedRoom).room;
     if (requested !== storedRoom) setActiveRoom(requested);
   }, [search, setActiveRoom, storedRoom]);
 
-  const changeRoom = (room: StudioRoom) => {
+  const requestedEditKind = (() => {
+    const value = searchParams?.get("kind");
+    return value === "text" || value === "card" || value === "video" ? value : null;
+  })();
+
+  const changeRoom = (room: StudioRoom, resolvedEditKind: EditContentKind = editKind) => {
     setActiveRoom(room);
-    window.history.replaceState(null, "", `/studio?room=${room}`);
+    const kindQuery = room === "edit" && resolvedEditKind !== "audio" ? `&kind=${resolvedEditKind}` : "";
+    window.history.replaceState(null, "", `/studio?room=${room}${kindQuery}`);
+    setShowWorks(false);
+  };
+
+  const changeEditKind = (nextKind: EditContentKind) => {
+    setEditKind(nextKind);
+    setEditFormat(defaultContentEditFormat(nextKind));
+    const kindQuery = nextKind === "audio" ? "" : `&kind=${nextKind}`;
+    window.history.replaceState(null, "", `/studio?room=edit${kindQuery}`);
+  };
+
+  const openCreateForEditKind = () => {
+    const nextKind: CreateKind = editKind === "audio" ? "text" : editKind;
+    setCreateBranch(nextKind === "video" ? "video" : "text_image");
+    setCreatePrimaryKind(nextKind);
+    setActiveRoom("create");
+    window.history.replaceState(null, "", `/studio?room=create&kind=${nextKind}`);
     setShowWorks(false);
   };
 
@@ -642,7 +952,11 @@ export default function StudioPage() {
             if (ok) {
               opts = (d.accounts ?? []).map((a: { id: string; display_name: string | null; username: string | null; is_default: boolean; connection_state?: string }) => ({
                 id: a.id,
-                label: a.display_name || (a.username ? `@${a.username}` : a.id.slice(0, 8)),
+                // 내부 UUID는 사용자에게 계정 이름이 아니다. 표시 이름·핸들이 모두
+                // 비어도 제공자 이름으로 설명하고, id는 요청에만 쓴다.
+                // 발행실 계정 행은 사람 이름보다 실제 공개 핸들을 우선한다. 핸들이
+                // 없을 때만 표시 이름으로 물러나며 내부 id나 "@연결 계정"은 만들지 않는다.
+                label: a.username ? `@${a.username.replace(/^@/, "")}` : (a.display_name || `${LABEL[p]} 계정`),
                 displayName: a.display_name || undefined,
                 username: a.username || undefined,
                 is_default: a.is_default,
@@ -660,18 +974,33 @@ export default function StudioPage() {
         }),
       );
       if (cancelled) return;
-      setSelectedAccounts((current) => Object.fromEntries(Object.entries(current).filter(([platform, accountId]) => (
-        (resolvedAccounts[platform] || []).some((account) => account.id === accountId)
-      ))));
       setIncludes((current) => Object.fromEntries(ALL.map((platform) => [
         platform,
-        Boolean(current[platform]) && (resolvedAccounts[platform]?.length ?? 0) > 0,
+        Boolean(current[platform])
+          && (resolvedAccounts[platform] || []).some((account) => account.connectionState === "connected"),
       ])));
       setAccountLoadPending({});
       setAccountsLoaded(true);
     })();
     return () => { cancelled = true; };
   }, [activeRoom, activeWorkspace]);
+
+  useEffect(() => {
+    if (!accountsLoaded) return;
+    const invalidPlatforms = Object.entries(selectedAccounts)
+      .filter(([platform, accountId]) => !(accountsByPlatform[platform] || [])
+        .some((account) => account.id === accountId && account.connectionState === "connected"))
+      .map(([platform]) => platform);
+    if (!invalidPlatforms.length) return;
+    const invalid = new Set(invalidPlatforms);
+    setSelectedAccounts((current) => Object.fromEntries(
+      Object.entries(current).filter(([platform]) => !invalid.has(platform)),
+    ));
+    setIncludes((current) => ({
+      ...current,
+      ...Object.fromEntries(invalidPlatforms.map((platform) => [platform, false])),
+    }));
+  }, [accountsByPlatform, accountsLoaded, selectedAccounts]);
   const cancelRef = useRef(false);
   const drawerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
@@ -690,11 +1019,25 @@ export default function StudioPage() {
   useEffect(() => {
     setSelectedAccounts({});
     const workspaceId = activeWorkspace?.id ?? null;
+    // [보안](교차 리뷰 BLOCK): 워크스페이스를 바꾸는 이 효과가 cardDeck은 비우면서
+    // videoEdit은 비우지 않았다 — 옛 워크스페이스의 오버레이·댓글이 새 워크스페이스로
+    // 그대로 넘어가 있다가, 새 워크스페이스의 draft가 videoEdit을 안 갖고 있으면(또는
+    // localStorage에 그 키가 없으면) 그 남의 값이 그대로 저장됐다. 대기 중인 자동저장
+    // 타이머도 반드시 같이 끈다 — 안 그러면 이미 예약된 저장이 새 워크스페이스로 넘어간
+    // 뒤에 옛 워크스페이스의 videoEdit을 그 위에 그대로 쏜다.
+    if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+    if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setHydratedWorkspaceId(null);
-    setIdea(""); setText(null); setImg(null); setVid(null); setDraftId(null);
-    setIncludes(normalizeIncludes()); setPublishReconciliations({}); setEditorHandoff(null);
+    setIdea(""); setImg(null); setVid(null); setDraftId(null);
+    setIncludes(normalizeIncludes()); setRestoredSelectionNotice(false); setPublishReconciliations({}); setEditorHandoff(null);
+    // m3: 작업 공간을 바꾸면 TikTok 공개 범위·상업 콘텐츠 공개를 초기화한다(다른
+    // 공간의 영상에 지난 선택이 그대로 넘어가면 안 된다).
+    resetTiktokDisclosure();
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
-    setEditLines([]); setCardTextPositions([]); setCardDeck(null); setReviewQueueId(null); setSelectedCandidate(null);
+    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
+    quickDraftTopicRef.current = null;
+    videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
+    invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setCreateBranch("video"); setCreatePrimaryKind(null); setEditKind("video"); setEditFormat(defaultContentEditFormat("video"));
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     if (!workspaceId) return;
@@ -704,11 +1047,48 @@ export default function StudioPage() {
       if (raw) {
         const w = JSON.parse(raw);
         setIdea(w.idea || "");
-        setText(w.text || null); setImg(w.img || null); setVid(w.vid || null);
-        if (w.includes) setIncludes(normalizeIncludes(w.includes)); setDraftId(w.draftId || null);
+        // 서버 초안과 같은 엄격한 서명으로만 구형 무료 글자 카드를 승격한다. 일반 생성
+        // 이미지는 aspectRatio 도장이 있고, 말풍선 덱은 template이 달라 여기서 제외된다.
+        setImg(recoverDraftEmbeddedTextCard<ImgResult>(w)); setVid(w.vid || null);
+        if (w.includes) {
+          setIncludes(normalizeIncludes(w.includes));
+          setRestoredSelectionNotice(Object.values(w.includes as Record<string, boolean>).some(Boolean));
+        }
+        setDraftId(w.draftId || null);
         setPublishReconciliations(normalizePublishReconciliations(w.publishReconciliations ?? w.publishReconciliation));
         setTitles(w.titles || {}); setHashtags(w.hashtags || {}); setTopicTags(w.topicTags || {});
-        setFirstComments(w.firstComments || {}); setCaptions(w.captions || {}); setSelectedAccounts(w.selectedAccounts || {}); setEditLines(w.editLines || []); setCardTextPositions(w.cardTextPositions || []); setReviewQueueId(w.reviewQueueId || null);
+        setFirstComments(w.firstComments || {}); setCaptions(w.captions || {}); setSelectedAccounts(w.selectedAccounts || {});
+        // 2026-10-01 운영 실측: 구조 초안 복원부(StudioRooms.tsx)는 PR#96에서 이미
+        // filterInstructionPlaceholderLines 를 탔는데, 여기(생성 후보 패널의 복원 경로)는
+        // 안 걸려 있어 자리표시 문장이 그대로 화면에 복원됐다. 같은 판정 함수를 재사용한다
+        // (새 필터 금지 — 2026-10-01 PR#96 반려 "재창조 금지").
+        const restoredQuickDraftText = sanitizeRestoredQuickDraftText(w.text || null);
+        const restoredQuickDraftLines = sanitizeRestoredQuickDraftLines(w.editLines || []);
+        replaceBodySnapshot(restoredQuickDraftLines, restoredQuickDraftText, { replaceDocument: true, serverRevision: Number.isSafeInteger(w.bodyRevision) ? w.bodyRevision : 0 });
+        quickDraftTopicRef.current = resolveRestoredQuickDraftTopic({
+          hasText: Boolean(restoredQuickDraftText),
+          savedTopic: typeof w.quickDraftTopic === "string" ? w.quickDraftTopic : null,
+          restoredIdea: String(w.idea || ""),
+        });
+        setCardTextPositions(w.cardTextPositions || []); setCardDeck((w.cardDeck as CardDeck) || null); setReviewQueueId(w.reviewQueueId || null);
+        // B1(교차 리뷰 BLOCK, 재리뷰로 절반만 닫힘 지적): videoEdit이 이 복원 블록에
+        // 없으면 편집기가 빈 videoEdit을 받았다. 이제 무조건 세팅한다(없으면 null —
+        // 이전 워크스페이스 값이 남아 있으면 안 된다, 위 리셋과 짝). 다만 localStorage
+        // 값은 오래됐을 수 있다(다른 탭·기기가 서버에 더 최신을 저장했을 수 있다) — 그래서
+        // draftId가 있으면 이 값을 잠정치로만 쓰고, 아래 서버 재동기화 효과가 draft 목록이
+        // 오면 서버 값으로 다시 덮는다. 그 전까지는 videoEdit 자동저장을 보류한다
+        // (videoEditReconciledRef).
+        setVideoEdit((w.videoEdit as VideoEdit) ?? null);
+        // B-5(5차 재리뷰 BLOCKER): 목록이 도착하기 전 창에서 이 ref만 false였고 화면이
+        // 보는 syncing(videoEditReconciling state)은 그대로 false라, +훅 등 컨트롤이
+        // 계속 열려 있었다 — 그 창에서 만든 편집이 목록 도착 후 재동기화에 조용히
+        // 덮여 사라졌다. "재조정이 끝나기 전에는 편집 불가"를 하나의 신호(state)로
+        // 묶는다: 복원된 draftId가 있으면 이 시점부터 syncing을 true로 켜서 run()·
+        // startDrag 게이트가 즉시 잠그게 한다. 재동기화 효과(reconcileVideoEditFromServer)
+        // 가 끝나야 false로 풀린다.
+        videoEditReconciledRef.current = !w.draftId;
+        if (w.draftId) setVideoEditReconciling(true);
+        reconciledDraftIdRef.current = null;
         if (w.editKind === "video" || w.editKind === "card" || w.editKind === "audio" || w.editKind === "text") {
           setEditKind(w.editKind);
           const formatKind = w.editKind;
@@ -721,27 +1101,60 @@ export default function StudioPage() {
     } catch { /* noop */ }
     setHydratedWorkspaceId(workspaceId);
   }, [activeWorkspace?.id]);
+  // 2026-10-01 운영 실측: 생성실 "고른 형식의 생성 후보" 패널(quickDraft = text)이 주제를
+  // 바꿔도 이전 주제의 후보가 그대로 남았다. 구조 초안(StudioRooms.tsx, PR#96)과 같은
+  // 규칙 — 후보를 만든 실제 주제와 지금 주제가 달라지면(trim 비교) 후보를 비운다. 이 효과가
+  // 자기 복원(hydratedWorkspaceId)을 끝내기 전에는 판정을 미룬다(복원 직후 오삭제 금지 —
+  // 부모의 늦은 주제 복원을 "주제 변경"으로 오판하면 막 복원한 후보가 지워진다).
+  useEffect(() => {
+    const workspaceId = activeWorkspace?.id ?? null;
+    if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
+    if (!shouldInvalidateQuickDraft(quickDraftTopicRef.current, idea)) return;
+    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 });
+    quickDraftTopicRef.current = null;
+  }, [idea, hydratedWorkspaceId, activeWorkspace?.id]);
+  // user-flow.md의 딥링크 계약. 로컬 초안 복원이 먼저 실행돼도 URL에 명시된 형식이
+  // 마지막 선택권을 가진다. 종전에는 항상 저장된 카드 형식이 이 값을 덮어
+  // /studio?room=edit&kind=video 에서도 카드 화면이 열렸다.
+  useEffect(() => {
+    if (activeRoom !== "edit" || !requestedEditKind) return;
+    if (editKind !== requestedEditKind) {
+      setEditKind(requestedEditKind);
+      setEditFormat(defaultContentEditFormat(requestedEditKind));
+    }
+  }, [activeRoom, editKind, hydratedWorkspaceId, requestedEditKind]);
+  // 발행실의 미디어 누락 복구 행동은 "영상 만들기"·"카드 만들기"라고 약속한다.
+  // URL만 create로 바꾸고 kind를 소비하지 않으면 직전 생성 종류가 남아 그 약속과 다른
+  // 생성기가 열린다. 생성실 딥링크도 편집실과 같은 kind를 실제 선택 상태로 반영한다.
+  useEffect(() => {
+    if (activeRoom !== "create" || !requestedEditKind) return;
+    setCreateBranch(requestedEditKind === "video" ? "video" : "text_image");
+    setCreatePrimaryKind(requestedEditKind);
+  }, [activeRoom, requestedEditKind]);
   useEffect(() => {
     const workspaceId = activeWorkspace?.id;
     if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
     try {
-      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat }));
+      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, reviewQueueId, editKind, editFormat, videoEdit, quickDraftTopic: quickDraftTopicRef.current ?? undefined }));
       setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
       setEditAutosaveError("");
     } catch {
       setEditAutosaveError("자동 저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.");
     }
-  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, reviewQueueId, editKind, editFormat]);
+  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, bodyServerRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, reviewQueueId, editKind, editFormat, videoEdit]);
 
-  const upText = (patch: Partial<TextVariants>) => setText((p) => ({ ...(p || {}), ...patch }));
-  const upIg = (patch: Partial<NonNullable<TextVariants["instagram"]>>) => setText((p) => ({ ...(p || {}), instagram: { ...(p?.instagram || {}), ...patch } }));
+  const upText = (patch: Partial<TextVariants>) => replaceText({ ...(textRef.current || {}), ...patch });
+  const upIg = (patch: Partial<NonNullable<TextVariants["instagram"]>>) => replaceText({
+    ...(textRef.current || {}),
+    instagram: { ...(textRef.current?.instagram || {}), ...patch },
+  });
   const syncEditLines = (nextLines: string[]) => {
-    setEditLines(nextLines);
-    setText((current) => {
-      if (!current) return current;
+    const current = textRef.current;
+    let nextText = current;
+    if (current) {
       const body = nextLines.join("\n\n");
       if (editKind === "text") {
-        return {
+        nextText = {
           ...current,
           threads: body,
           x: body,
@@ -750,16 +1163,16 @@ export default function StudioPage() {
         };
       }
       if (editKind === "card") {
-        return { ...current, instagram: { ...(current.instagram || {}), slides: nextLines } };
+        nextText = { ...current, instagram: { ...(current.instagram || {}), slides: nextLines } };
       }
       if (editKind === "video") {
         const [hook = "", ...rest] = nextLines;
         const cta = rest.length > 0 ? rest[rest.length - 1] : "";
         const middle = rest.length > 1 ? rest.slice(0, -1) : [];
-        return { ...current, shorts: { ...(current.shorts || {}), hook, body: middle.join("\n"), cta } };
+        nextText = { ...current, shorts: { ...(current.shorts || {}), hook, body: middle.join("\n"), cta } };
       }
-      return current;
-    });
+    }
+    replaceBodySnapshot(nextLines, nextText);
   };
 
   async function genText(structure?: CreateStructureChoice) {
@@ -774,7 +1187,6 @@ export default function StudioPage() {
       if (!r?.ok) { const msg = r?.error || "텍스트 생성 실패"; setLastError(`텍스트: ${msg}`); showToast(msg, "error"); return null; }
       // API가 성공을 확인한 뒤에만 발행한다. 클릭 시점 아님.
       trackEvent({ name: "content_generate", params: { kind: "text" } });
-      setText(r);
       return r;
     } catch (e) {
       const msg = extractApiErrorMessage(e, "텍스트 생성 실패");
@@ -792,6 +1204,7 @@ export default function StudioPage() {
         // 그 번호가 이미 발행된 것이면 발행이 매번 "이미 올라갔습니다"로 닫혔다. 스튜디오에서
         // 두 번째 글을 영영 못 올리는 상태였다. 새로 만든 것은 새 작업물이므로 이전 번호와
         // 발행 흔적을 끊는다. 끊지 않으면 새 글이 옛 글의 발행 기록에 덮어써진다.
+        draftIdRef.current = null;
         setDraftId(null);
         setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
         setPublishReconciliations({});
@@ -800,7 +1213,13 @@ export default function StudioPage() {
         // 화면이 멀쩡해 보여 그대로 발행된다. 새 작업물에는 새 매체만 붙는다.
         // 남기고 경고만 띄우는 안은 버렸다(근거: lib/studio/work-media.ts droppedMediaNotice).
         const dropped = droppedMediaNotice({ img: Boolean(img), vid: Boolean(vid) });
-        setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null);
+        // [보안](교차 리뷰 재리뷰 BLOCK 2): 새 초안을 만드는 이 경로도 cardDeck만 비우고
+        // videoEdit은 그대로 뒀다 — 옛 주제의 오버레이·댓글이 새 초안에 그대로 남았다.
+        if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+        if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
+        setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null);
+        videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
+        invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
         if (dropped) showToast(dropped, "success");
         const nextKind = createPrimaryKind ?? "text";
         const nextLines = nextKind === "video"
@@ -818,7 +1237,10 @@ export default function StudioPage() {
               .filter(Boolean);
         setEditKind(nextKind);
         setEditFormat(defaultContentEditFormat(nextKind));
-        setEditLines(nextLines);
+        replaceBodySnapshot(nextLines, result, { replaceDocument: true, serverRevision: 0 });
+        // 이 후보를 만든 실제 주제를 기억해 둔다. 이후 주제가 바뀌면(trim 비교) 옛 주제로
+        // 만든 후보를 비운다 — 2026-10-01 운영 실측.
+        quickDraftTopicRef.current = idea.trim() || null;
         showToast(`${structure.label} 구조로 초안을 만들었습니다`, "success");
       }
     } finally {
@@ -833,13 +1255,86 @@ export default function StudioPage() {
   // 비율을 9:16 으로 못 박아 두면 카드뉴스가 세로 영상 비율로 나온다. 카드뉴스는 정사각이고
   // 숏폼 히어로 이미지는 세로다. 쓰는 쪽이 정하게 한다(사업계획 v0.4 10절 첫 매체 = 카드뉴스).
   // 생성기가 받는 값은 정해져 있다: 1:1, 16:9, 9:16, 4:3 등. 4:5 는 거절된다(2026-09-06 실측).
+  // 2026-10-01 비동기 전환: POST는 jobId만 접수해 돌려준다(202). 실제 생성은 생성기 대기열에서
+  // 몇 분~20분대로 걸릴 수 있어(세션맥락 실측 cb35f3fd), 프록시 100초 한도에 안 끊기도록
+  // 서버는 즉시 돌아오고 화면이 GET /api/higgsfield/job/[id] 를 폴링한다. 폴링 중 jobId를
+  // localStorage(작업 공간+화면 스코프)에 적어 두어 새로고침·탭 재방문 뒤에도 이어서 확인할 수
+  // 있게 한다 — 안 그러면 완료된 결과(크레딧은 이미 씀)를 영영 못 받는다.
+  async function pollAndFinishImage(
+    jobId: string, tenantId: string, aspectRatio: "1:1" | "9:16",
+    opts?: { signal?: AbortSignal; topicLabel?: string },
+  ) {
+    const result = await pollHiggsfieldJob<ImgResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean; status?: string }>(
+      jobId, tenantId,
+      {
+        // 2026-10-02 리뷰 MAJOR 5b: 상호작용 중인 폴링은 generationAbort.current(전역
+        // "지금 작업물 버리기" 신호)를, 새로고침 복구 폴링은 그 effect 자신의
+        // AbortController를 쓴다 — 전역 신호에 섞이면 복구 폴링이 다른 생성 취소에
+        // 엉뚱하게 끊기거나, 반대로 언마운트돼도 안 끊긴다.
+        signal: opts?.signal ?? generationAbort.current?.signal,
+        headers: authHeaders(),
+        onStatus: (status) => {
+          setBusy(
+            status === "queued" ? "이미지 생성 대기열에서 기다리는 중"
+              : status === "retrying" ? "이미지 생성기 연결을 복구하는 중입니다. 잠시만 기다려 주세요"
+                : "이미지 만드는 중",
+          );
+        },
+      },
+    );
+    // 2026-10-02 리뷰 MINOR: 취소·시간초과 때는 pending 기록을 지우지 않는다. 이미
+    // 202로 접수된 작업은 서버·생성기 쪽에서 계속 만들어지고 있을 수 있다(크레딧도 이미
+    // 썼을 수 있다) — 여기서 지우면 다음 방문에서 그 결과를 영영 회수할 수 없다. 정상
+    // 종결(성공/실패 확정) 때만 더 이상 회수할 게 없으므로 지운다.
+    if (result.aborted) return null;
+    // 2026-10-02 리뷰 MAJOR 5b: 결과가 왔을 때 작업 공간이 이미 다른 곳으로 바뀌었으면
+    // 화면 상태(setImg/setLastError/showToast)를 건드리지 않는다 — 지금 보고 있는
+    // 작업공간에 남의 결과가 꽂히면 안 된다. pending 기록은 그 작업공간 것이므로 여기서
+    // 건드리지 않는다(그 작업공간으로 돌아오면 복구 effect가 다시 잡는다).
+    if (activeWorkspaceIdRef.current !== tenantId) return null;
+    if (result.timedOut) {
+      // "다시 시도" 유도 금지(MINOR) — 접수된 작업은 서버에서 계속 만들어지고 있다.
+      // pending 기록을 지우지 않아 다음 방문에서 복구 effect가 이어서 확인한다.
+      const msg = "이미지 생성이 평소보다 오래 걸리고 있습니다. 생성실을 다시 열면 이어서 받아옵니다.";
+      setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
+    }
+    if (result.notFound) {
+      // 작업 자체가 없다(만료·삭제 등) — 더는 회수할 게 없으므로 기록을 지운다.
+      clearPendingJob(tenantId, "image");
+      const msg = result.error || "이미지 생성 작업을 찾지 못했습니다. 다시 만들어 주세요.";
+      setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
+    }
+    // 정상 종결(성공/실패 확정) — 더 회수할 게 없으니 지운다.
+    clearPendingJob(tenantId, "image");
+    const r = result.data;
+    if (!result.ok || !r?.ok) {
+      const msg = r?.credits
+        ? "이미지 생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다."
+        : r?.nsfw
+          ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요."
+          : (r?.error || result.error || "이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
+    }
+    // ADR-007: `ok: true` 인데 배달 주소가 비어 있으면 setImg 가 빈 값을 들고 조용히
+    // 성립한다 — "방금 만든 것" 칸을 그리는 조건(madeImageUrl = img.file || img.url)이
+    // 거짓이 되어 화면엔 아무것도 안 뜨고, 그렇다고 오류 토스트도 안 뜬다. 성공인데
+    // 아무 표시가 없는 것은 실패보다 나쁘다 — 사용자는 다시 눌러야 할지도 모른다.
+    if (!r.file && !r.url) {
+      const msg = "이미지를 만들었지만 화면에 걸 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.";
+      setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
+    }
+    // 만든 그림에 주제 도장과 비율 도장을 찍는다. 주제 도장은 재사용 여부를,
+    // 비율 도장은 영상 바탕으로 써도 되는지를 가른다(work-media.ts isReusableVideoBaseImage,
+    // 2026-09-16 실측: 1:1 대표 이미지를 영상 바탕으로 재사용해 정사각 영상이 나갔다).
+    const stamped = { ...r, topicKey: mediaTopicKey(opts?.topicLabel ?? idea), aspectRatio };
+    setImg(stamped); mutateAcct(); return stamped;
+  }
   async function genImage(prompt: string, aspectRatio: "1:1" | "9:16" = "9:16") {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return null; }
     setLastError(null);
     try {
-      const r = await apiPost<ImgResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/image", { prompt, aspectRatio, label: idea, tenant_id: activeWorkspace.id });
-      if (!r?.ok) {
-        // 문구는 회장이 읽는 말로 쓴다. 생성기 이름과 영어 용어는 화면에 내지 않는다.
+      const r = await apiPost<{ ok?: boolean; jobId?: string; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/image", { prompt, aspectRatio, label: idea, tenant_id: activeWorkspace.id });
+      if (!r?.ok || !r.jobId) {
         const msg = r?.credits
           ? "이미지 생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다."
           : r?.nsfw
@@ -847,19 +1342,8 @@ export default function StudioPage() {
             : (r?.error || "이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
         setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
       }
-      // ADR-007: `ok: true` 인데 배달 주소가 비어 있으면 setImg 가 빈 값을 들고 조용히
-      // 성립한다 — "방금 만든 것" 칸을 그리는 조건(madeImageUrl = img.file || img.url)이
-      // 거짓이 되어 화면엔 아무것도 안 뜨고, 그렇다고 오류 토스트도 안 뜬다. 성공인데
-      // 아무 표시가 없는 것은 실패보다 나쁘다 — 사용자는 다시 눌러야 할지도 모른다.
-      if (!r.file && !r.url) {
-        const msg = "이미지를 만들었지만 화면에 걸 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.";
-        setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
-      }
-      // 만든 그림에 주제 도장과 비율 도장을 찍는다. 주제 도장은 재사용 여부를,
-      // 비율 도장은 영상 바탕으로 써도 되는지를 가른다(work-media.ts isReusableVideoBaseImage,
-      // 2026-09-16 실측: 1:1 대표 이미지를 영상 바탕으로 재사용해 정사각 영상이 나갔다).
-      const stamped = { ...r, topicKey: mediaTopicKey(idea), aspectRatio };
-      setImg(stamped); mutateAcct(); return stamped;
+      savePendingJob(activeWorkspace.id, "image", { jobId: r.jobId, aspectRatio, idea });
+      return await pollAndFinishImage(r.jobId, activeWorkspace.id, aspectRatio);
     } catch (e) {
       // 2026-09-08 실측: 생성기가 막은 주제였는데 화면에는 "Request failed: 502" 만 떴다.
       // 서버는 이유(nsfw·크레딧 부족)를 응답 본문에 담아 보내는데, 응답이 2xx 가 아니면
@@ -878,6 +1362,56 @@ export default function StudioPage() {
   // 바탕 그림은 파일 이름으로만 넘긴다(2026-09-25 코드리뷰 MAJOR-0b: 서버 절대경로를 클라이언트가
   // 들고 다니며 그대로 서버에 되돌려주는 통로를 없앴다). 방금 만든 그림도, 승인함이나 달력에서
   // 가져온 작업물(파일 이름만 앎)도 이 한 가지 방식으로 처리된다(코드 감사 F-05 취지 유지).
+  async function pollAndFinishVideo(
+    jobId: string, tenantId: string,
+    opts?: { signal?: AbortSignal; topicLabel?: string },
+  ) {
+    const result = await pollHiggsfieldJob<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean; status?: string }>(
+      jobId, tenantId,
+      {
+        signal: opts?.signal ?? generationAbort.current?.signal,
+        headers: authHeaders(),
+        onStatus: (status) => {
+          setBusy(
+            status === "queued" ? "영상 생성 대기열에서 기다리는 중"
+              : status === "retrying" ? "영상 생성기 연결을 복구하는 중입니다. 잠시만 기다려 주세요"
+                : "영상 만드는 중",
+          );
+        },
+      },
+    );
+    // 2026-10-02 리뷰 MINOR: 취소·시간초과 때는 pending 기록을 지우지 않는다(이미지와
+    // 같은 이유 — 접수된 작업은 서버에서 계속 만들어지고 있을 수 있다).
+    if (result.aborted) return null;
+    // 2026-10-02 리뷰 MAJOR 5b: 작업 공간이 바뀐 뒤 돌아온 결과는 화면에 꽂지 않는다.
+    if (activeWorkspaceIdRef.current !== tenantId) return null;
+    if (result.timedOut) {
+      const msg = "영상 생성이 평소보다 오래 걸리고 있습니다. 생성실을 다시 열면 이어서 받아옵니다.";
+      setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
+    }
+    if (result.notFound) {
+      clearPendingJob(tenantId, "video");
+      const msg = result.error || "영상 생성 작업을 찾지 못했습니다. 다시 만들어 주세요.";
+      setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
+    }
+    clearPendingJob(tenantId, "video");
+    const r = result.data;
+    if (!result.ok || !r?.ok) {
+      const msg = r?.nsfw
+        ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요."
+        : r?.credits
+          ? "영상 생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다."
+          : (r?.error || result.error || "영상을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
+    }
+    // ADR-007: 이미지와 같은 이유로 배달 주소 없는 "성공"을 성공으로 두지 않는다.
+    if (!r.file && !r.url) {
+      const msg = "영상을 만들었지만 화면에 걸 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.";
+      setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
+    }
+    const stamped = { ...r, topicKey: mediaTopicKey(opts?.topicLabel ?? idea) };
+    setVid(stamped); mutateAcct(); return stamped;
+  }
   async function genVideo(source: { filename?: string }) {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return null; }
     setLastError(null);
@@ -890,8 +1424,8 @@ export default function StudioPage() {
         pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea, industry: learningInfo.industry }),
         learningInfo,
       );
-      const r = await apiPost<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { filename: source.filename, prompt: motion, model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
-      if (!r?.ok) {
+      const r = await apiPost<{ ok?: boolean; jobId?: string; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { filename: source.filename, prompt: motion, model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
+      if (!r?.ok || !r.jobId) {
         const msg = r?.nsfw
           ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요."
           : r?.credits
@@ -899,18 +1433,90 @@ export default function StudioPage() {
             : (r?.error || "영상을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
         setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
       }
-      // ADR-007: 이미지와 같은 이유로 배달 주소 없는 "성공"을 성공으로 두지 않는다.
-      if (!r.file && !r.url) {
-        const msg = "영상을 만들었지만 화면에 걸 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.";
-        setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
-      }
-      const stamped = { ...r, topicKey: mediaTopicKey(idea) };
-      setVid(stamped); mutateAcct(); return stamped;
+      savePendingJob(activeWorkspace.id, "video", { jobId: r.jobId, idea });
+      return await pollAndFinishVideo(r.jobId, activeWorkspace.id);
     } catch (e) {
       const msg = extractApiErrorMessage(e, "영상 생성 실패");
       setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
     }
   }
+  // 새로고침·탭 재방문 뒤에도 진행 중이던 생성을 잃지 않는다(세션맥락 2026-10-01 추가 실측
+  // cb35f3fd — 15~20분 뒤 완료됐는데 서버 쪽 호출은 이미 끊겨 크레딧만 쓰고 결과를 못
+  // 받았다). genImage/genVideo가 접수 직후 localStorage에 적어 둔 jobId가 작업 공간
+  // 전환 시점에 남아 있으면 자동으로 이어서 조회한다.
+  // resumePendingJobsRef: 작업공간 전환 effect와 탭-재표시 effect가 같은 복구 로직을
+  // 공유한다(2026-10-02 server-side finalize 보강 — 세션맥락 22분 소실 재발방지). 서버가
+  // 이제 백그라운드 루프로 작업을 스스로 끝내지만, 화면이 그 결과를 "받아서 보여주는" 것은
+  // 여전히 이 폴링이 한다 — 탭이 백그라운드에서 오래 있다가 포그라운드로 돌아왔을 때
+  // (같은 작업공간이라 effect가 재실행되지 않는 경우) 다시 확인하지 않으면 사용자는 이미
+  // 완료된 결과를 화면에서 영영 못 본다.
+  const resumePendingJobs = useCallback(() => {
+    if (!activeWorkspace) return;
+    if (resumePollAbort.current) return; // 이미 복구 폴링이 돌고 있다 — 중복 시작 금지.
+    const workspaceId = activeWorkspace.id;
+    const pendingImg = readPendingJob(workspaceId, "image");
+    const pendingVid = readPendingJob(workspaceId, "video");
+    if (!pendingImg && !pendingVid) return;
+    const controller = new AbortController();
+    resumePollAbort.current = controller;
+    showToast("이전에 시작한 생성을 이어서 확인하는 중", "success");
+    const restoredIdea = pendingImg?.idea ?? pendingVid?.idea;
+    if (restoredIdea) {
+      setIdea((current) => (current.trim() ? current : restoredIdea));
+    }
+    const tasks: Promise<unknown>[] = [];
+    if (pendingImg) {
+      setBusy("이미지 생성 대기열에서 기다리는 중");
+      tasks.push(pollAndFinishImage(pendingImg.jobId, workspaceId, pendingImg.aspectRatio ?? "9:16", {
+        signal: controller.signal,
+        topicLabel: pendingImg.idea,
+      }));
+    }
+    if (pendingVid) {
+      setBusy("영상 생성 대기열에서 기다리는 중");
+      tasks.push(pollAndFinishVideo(pendingVid.jobId, workspaceId, {
+        signal: controller.signal,
+        topicLabel: pendingVid.idea,
+      }));
+    }
+    Promise.allSettled(tasks).finally(() => {
+      setBusy(null);
+      if (resumePollAbort.current === controller) resumePollAbort.current = null;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id]);
+  // 새로고침·탭 재방문 뒤에도 진행 중이던 생성을 잃지 않는다(세션맥락 2026-10-01 추가 실측
+  // cb35f3fd — 15~20분 뒤 완료됐는데 서버 쪽 호출은 이미 끊겨 크레딧만 쓰고 결과를 못
+  // 받았다). genImage/genVideo가 접수 직후 localStorage에 적어 둔 jobId가 작업 공간
+  // 전환 시점에 남아 있으면 자동으로 이어서 조회한다.
+  useEffect(() => {
+    resumePendingJobs();
+    return () => {
+      resumePollAbort.current?.abort();
+      resumePollAbort.current = null;
+    };
+    // activeWorkspace.id가 바뀔 때(작업 공간 전환)만 재확인한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id]);
+  // 2026-10-02 server-side finalize 보강: 탭이 백그라운드에 있다가 다시 보일 때도 복구를
+  // 다시 확인한다. activeWorkspace.id가 바뀌지 않아 위 effect는 재실행되지 않지만, 그동안
+  // 서버가 백그라운드로 작업을 끝냈을 수 있고 화면 쪽 폴링은 (브라우저가 타이머를 묶어
+  // 두거나, 탭을 완전히 닫았다 다시 연 경우) 이어지지 않았을 수 있다.
+  useEffect(() => {
+    const onWake = () => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        resumePendingJobs();
+      }
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    window.addEventListener("pageshow", onWake);
+    return () => {
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("pageshow", onWake);
+    };
+  }, [resumePendingJobs]);
   // 지금 작업물을 버리고 처음부터 시작한다.
   //
   // 2026-09-06 회장 스모크: "생성실, 편집실, 발행실 리셋을 어떻게 해야하나 모르겠음
@@ -939,17 +1545,34 @@ export default function StudioPage() {
     if (!ok) return;
     generationAbort.current?.abort();
     generationAbort.current = null;
+    resumePollAbort.current?.abort(); // MINOR: 버리고 새로 시작하면 복구 폴링도 함께 끊는다.
     setBusy(null);
-    setIdea(""); setText(null); setImg(null); setVid(null); setDraftId(null);
-    setEditLines([]); setEditorHandoff(null); setCardDeck(null);
+    // [보안](교차 리뷰 재리뷰 BLOCK 2): "버리고 새로"도 cardDeck만 비우고 videoEdit은
+    // 그대로 뒀다.
+    if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+    if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
+    setIdea(""); setImg(null); setVid(null); draftIdRef.current = null; setDraftId(null);
+    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setEditorHandoff(null); setCardDeck(null); setVideoEdit(null);
+    quickDraftTopicRef.current = null;
+    videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
+    invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setPublishReconciliations({});
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
+    // m3: 새 초안을 시작하면 TikTok 공개 범위·상업 콘텐츠 공개도 같이 비운다.
+    resetTiktokDisclosure();
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
     // 생성실이 들고 있는 구조 초안과 답한 질문까지 비운다. 여기를 빼먹으면 "버렸다" 고
     // 말해 놓고 화면에는 앞서 만든 후보가 그대로 남는다(2026-09-09 실사용에서 확인).
     setCreatePrimaryKind(null); setAlsoKinds([]);
     setCreateResetToken((value) => value + 1);
+    // 버리기 전에 접수된 생성(202)이 있었는지 보고 지운다 — 다음 방문에서 다시 이어서
+    // 올라오지 않게. MINOR: 있었다면 "새로 시작합니다"가 무료 취소처럼 읽히면 안 된다.
+    const hadPendingGeneration = Boolean(activeWorkspace && (readPendingJob(activeWorkspace.id, "image") || readPendingJob(activeWorkspace.id, "video")));
+    if (activeWorkspace) { clearPendingJob(activeWorkspace.id, "image"); clearPendingJob(activeWorkspace.id, "video"); }
     showToast("새로 시작합니다", "success");
+    if (hadPendingGeneration) {
+      showToast("진행 중이던 이미지·영상 생성은 화면에서만 지워졌습니다. 이미 접수된 건이라면 비용이 났을 수 있습니다.", "error");
+    }
   }
   /**
    * 카드뉴스 이미지를 만든다. 만들기 전에 비용을 보여 주고 승인을 받는다.
@@ -1106,7 +1729,6 @@ export default function StudioPage() {
     status: "draft" | "published" | "partial" | "stopped" = "draft",
     reconciliations: PublishReconciliationMap = publishReconciliations,
     persistedDraftId: string | null = draftId,
-    persistedEditLines: string[] | undefined,
     // 방금 다시 그린 카드는 아직 상태에 반영되기 전이다. 상태를 기다리면 옛 그림이 저장된다.
     persistedImg: ImgResult | null = img,
     // 방금 자막을 구운 영상도 같은 이유로 인자로 받는다. 상태를 기다리면 자막 없는 옛
@@ -1119,36 +1741,220 @@ export default function StudioPage() {
     // 호출부를 짚어 강제로 명시하게 한다 — 다음에 같은 결함이 또 나는 것을 막는다.
     persistedCardDeck: CardDeck | null,
     persistedVideoEdit: VideoEdit | null,
+    bodyConflictRetryPlacement: "tail" | "head" = "tail",
   ) {
-    const r = await apiPost<{ id?: string }>("/api/studio/drafts", {
-      tenant_id: activeWorkspace?.id,
-      id: persistedDraftId,
-      idea,
-      text,
-      img: persistedImg,
-      vid: persistedVid,
-      includes,
-      status,
-      publishReconciliations: reconciliations,
-      titles,
-      hashtags,
-      topicTags,
-      firstComments,
-      captions,
-      selectedAccounts,
-      ...(persistedEditLines === undefined ? {} : { editLines: persistedEditLines }),
-      cardTextPositions,
-      // 자기 도메인만 저장하는 호출도 반대 도메인을 명시적으로 null로 보낸다. route.ts는
-      // clear 플래그가 없는 null을 "기존 값 보존"으로 다룬다. 키 생략과 위치 인자 기본값이
-      // 섞여 상대 도메인 state를 덮어쓴 과거 회귀를 payload 계약으로 드러낸다.
-      cardDeck: persistedCardDeck,
-      videoEdit: persistedVideoEdit,
-      editKind,
-      editFormat,
-      reviewQueueId,
-      publishedAt: status === "published" ? new Date().toISOString() : undefined,
+    const saveTenantId = activeWorkspace?.id ?? null;
+    const saveDocumentGeneration = editDocumentGenerationRef.current;
+    const invocationBodySnapshot = bodySnapshotRef.current;
+    // PR87 재리뷰 r2 MAJOR 1: 모든 저장을 한 큐에서 직렬 실행한다. 네트워크 응답 순서가
+    // 뒤집혀도 먼저 시작한 요청이 나중 요청 뒤에 서버를 덮을 수 없다. 각 실행은 호출
+    // 시점의 인자에서 글 본문만 예외로 두고, 반드시 유일한 최신값 출처를 읽는다.
+    const queuedSave = draftSaveQueueRef.current.catch(() => undefined).then(async () => {
+      const sameDocumentAtStart = editDocumentGenerationRef.current === saveDocumentGeneration
+        && activeWorkspaceIdRef.current === saveTenantId;
+      let currentDraftId = persistedDraftId ?? (sameDocumentAtStart ? draftIdRef.current : null);
+      let savedDraftId: string | undefined;
+
+      for (;;) {
+        const sameDocument = editDocumentGenerationRef.current === saveDocumentGeneration
+          && activeWorkspaceIdRef.current === saveTenantId;
+        // 작업 공간·초안을 바꾼 뒤에는 새 문서의 최신값을 옛 저장에 섞지 않는다. 전환 전
+        // 호출이 소유한 스냅샷을 한 번만 저장하고 현재 화면 state도 건드리지 않는다.
+        const bodySnapshot = sameDocument
+          ? bodySnapshotRef.current
+          : invocationBodySnapshot;
+        // B-7 두 번째 방어선(6차 재리뷰 BLOCKER, 보안): 자동저장 타이머가 들고 온 영상이
+        // 현재 작업 공간 소유가 아니면 이 저장에서 영상 편집만 제외한다.
+        const videoEditTenantMismatch = persistedVideoEdit !== null
+          && videoEditTenantRef.current !== null
+          && videoEditTenantRef.current !== saveTenantId;
+        const safeVideoEdit = videoEditTenantMismatch ? null : persistedVideoEdit;
+        let r: { id?: string; bodyRevision?: number; videoEditServerRevision?: number | null } | null;
+        try {
+          r = await apiPost<{ id?: string; bodyRevision?: number; videoEditServerRevision?: number | null }>("/api/studio/drafts", {
+            tenant_id: saveTenantId,
+            id: currentDraftId,
+            idea,
+            text: bodySnapshot.text,
+            bodyBaseRevision: currentDraftId ? bodySnapshot.serverRevision : undefined,
+            img: persistedImg,
+            vid: persistedVid,
+            includes,
+            status,
+            publishReconciliations: reconciliations,
+            titles,
+            hashtags,
+            topicTags,
+            firstComments,
+            captions,
+            selectedAccounts,
+            editLines: bodySnapshot.lines,
+            cardTextPositions,
+            // 자기 도메인만 저장하는 호출도 반대 도메인을 명시적으로 null로 보낸다. route.ts는
+            // clear 플래그가 없는 null을 "기존 값 보존"으로 다룬다.
+            cardDeck: persistedCardDeck,
+            videoEdit: safeVideoEdit,
+            videoEditBaseRevision: safeVideoEdit ? videoEditBaseRevisionRef.current : undefined,
+            editKind,
+            editFormat,
+            reviewQueueId,
+            publishedAt: status === "published" ? new Date().toISOString() : undefined,
+          });
+        } catch (error) {
+          const payload = error instanceof ApiResponseError
+            ? error.payload as { code?: string; latestBody?: { text?: TextVariants | null; editLines?: string[]; bodyRevision?: number } }
+            : undefined;
+          const latest = payload?.latestBody;
+          const stillSameDocument = editDocumentGenerationRef.current === saveDocumentGeneration
+            && activeWorkspaceIdRef.current === saveTenantId
+            && draftIdRef.current === currentDraftId;
+          if (payload?.code === "BODY_STALE_REVISION"
+            && stillSameDocument
+            && latest
+            && Array.isArray(latest.editLines)
+            && Number.isSafeInteger(latest.bodyRevision)) {
+            const local = bodySnapshotRef.current;
+            const latestLines = [...latest.editLines];
+            const latestText = latest.text ?? null;
+            const latestServerRevision = latest.bodyRevision as number;
+            setBodyRevisionConflict((current) => ({
+              latest: {
+                lines: latestLines,
+                text: latestText,
+                serverRevision: latestServerRevision,
+              },
+              // 최초 409에서 실패 직전 사용자 입력을 한 번만 보관한다. 사용자가 최신본을
+              // 확인한 뒤 대기 중이던 저장이 다시 409를 받아도 현재 편집기(서버 본문)를
+              // local로 재캡처하면 복구할 원문이 사라진다. 해결할 때까지 이 슬롯은 불변이다.
+              local: current?.local ?? { lines: [...local.lines], text: local.text },
+              // 후속 409가 더 새 서버판을 알렸으므로, 직전에 최신본을 보고 있었더라도
+              // 이제 화면의 본문은 최신이 아니다. 사용자가 새 최신본을 다시 불러오게 한다.
+              viewingLatest: false,
+            }));
+            // 저장 큐에 카드·영상 의도가 연달아 들어와 둘 다 같은 본문 충돌을 만나도
+            // 마지막 한 건으로 덮지 않는다. 최신 기준판을 받은 뒤 원래 순서대로 모두
+            // 재시도해야 각 도메인의 자동저장 변경이 남는다.
+            const retryIntent = {
+              retry: () => save(
+                status,
+                reconciliations,
+                currentDraftId,
+                persistedImg,
+                persistedVid,
+                persistedCardDeck,
+                safeVideoEdit,
+                "head",
+              ),
+              retryWithoutVideo: () => save(
+                status,
+                reconciliations,
+                currentDraftId,
+                persistedImg,
+                persistedVid,
+                persistedCardDeck,
+                null,
+                "head",
+              ),
+            };
+            // 원본 저장 충돌은 직렬 큐 도착 순서대로 tail에 쌓는다. 재적용 중 같은
+            // intent가 또 충돌하면 원래 자리인 head로 돌아가야 한다. tail로 보내면
+            // [옛 A, 최신 B]가 [B, A]로 역전돼 A가 마지막에 덮을 수 있다.
+            if (bodyConflictRetryPlacement === "head") bodyConflictRetryRef.current.unshift(retryIntent);
+            else bodyConflictRetryRef.current.push(retryIntent);
+            // 공통 save는 발행실에서도 호출된다. 복구 UI가 있는 편집실로 데려가지 않으면
+            // 사용자는 일반 저장 실패만 보고 최신본/재적용 행동을 찾을 수 없다.
+            if (activeRoom !== "edit") changeRoom("edit");
+          }
+          throw error;
+        }
+        savedDraftId = r?.id ?? savedDraftId;
+        currentDraftId = r?.id ?? currentDraftId;
+
+        // B-2(4차 재리뷰 BLOCKER): 첫 저장으로 받은 id는 state보다 ref에 먼저 반영해
+        // 같은 직렬 큐의 다음 저장이 중복 초안을 만들지 않게 한다.
+        const stillSameDocument = editDocumentGenerationRef.current === saveDocumentGeneration
+          && activeWorkspaceIdRef.current === saveTenantId;
+        if (r?.id && stillSameDocument) {
+          if (safeVideoEdit) {
+            reconciledDraftIdRef.current = r.id;
+            videoEditReconciledRef.current = true;
+          }
+          draftIdRef.current = r.id;
+          setDraftId(r.id);
+        }
+        if (stillSameDocument && Number.isSafeInteger(r?.bodyRevision)) {
+          const serverRevision = r!.bodyRevision as number;
+          bodySnapshotRef.current = { ...bodySnapshotRef.current, serverRevision };
+          setBodyServerRevision(serverRevision);
+        }
+        if (safeVideoEdit && stillSameDocument && r && Object.prototype.hasOwnProperty.call(r, "videoEditServerRevision")) {
+          videoEditBaseRevisionRef.current = r.videoEditServerRevision ?? null;
+        }
+        if (!stillSameDocument) break;
+        // 요청을 기다리는 동안 글이 바뀌었으면 같은 저장 계약으로 최신 세대를 한 번 더
+        // 보낸다. 따라서 오래된 응답은 잠깐 도착할 수 있어도 최종 서버값이 될 수 없다.
+        if (bodySnapshot.generation === bodySnapshotRef.current.generation) break;
+      }
+
+      mutateHist();
+      return savedDraftId;
     });
-    if (r?.id) setDraftId(r.id); mutateHist(); return r?.id;
+    draftSaveQueueRef.current = queuedSave.then(() => undefined, () => undefined);
+    return queuedSave;
+  }
+  function loadLatestBodyAfterConflict() {
+    if (!bodyRevisionConflict) return;
+    const { latest } = bodyRevisionConflict;
+    replaceBodySnapshot(latest.lines, latest.text, { serverRevision: latest.serverRevision });
+    setBodyRevisionConflict((current) => current ? { ...current, viewingLatest: true } : current);
+  }
+  async function reapplyLocalBodyAfterConflict() {
+    if (!bodyRevisionConflict || bodyConflictResolving) return;
+    const { local, latest } = bodyRevisionConflict;
+    replaceBodySnapshot(local.lines, local.text, { serverRevision: latest.serverRevision });
+    // 재저장이 끝나기 전에는 충돌 상태와 보관본을 유지한다. 여기서 먼저 지우면 느린
+    // 네트워크 동안 workbench의 inert가 풀려, 사용자가 보관본 위에 제3의 편집을 섞거나
+    // 실패 뒤 복구 단추 자체를 잃을 수 있다.
+    setBodyRevisionConflict((current) => current ? { ...current, viewingLatest: false } : current);
+    setBodyConflictResolving(true);
+    try {
+      // 스냅샷으로 한 번만 복사하지 않는다. 첫 충돌 UI가 열린 뒤에도 앞서 직렬 큐에
+      // 들어간 다른 저장이 늦게 409를 받아 새 의도를 추가할 수 있다. shift→await를
+      // 반복하면 현재 재시도보다 앞에 있던 원본 저장이 모두 끝난 뒤, 그 과정에서 새로
+      // 들어온 의도까지 같은 잠금 안에서 끝까지 drain한다.
+      for (;;) {
+        const pending = bodyConflictRetryRef.current.shift();
+        if (!pending) break;
+        try {
+          await pending.retry();
+        } catch (error) {
+          const code = error instanceof ApiResponseError
+            ? (error.payload as { code?: string } | undefined)?.code
+            : undefined;
+          if (code === "BODY_STALE_REVISION") {
+            // save()가 새 latestBody와 현재 의도를 큐 머리에 다시 넣었다. 기존 대기 의도도
+            // ref에 그대로 있으므로 충돌 UI를 유지한 채 사용자의 다음 선택을 기다린다.
+            return;
+          }
+          if (code === "VIDEO_EDIT_STALE_REVISION") {
+            // 서버는 본문 CAS를 먼저 검사한다. 둘 다 stale이면 본문 재적용에서 뒤늦게
+            // 영상 충돌이 드러나므로, 원래 영상 자동저장 catch와 같은 복구 UI를 연다.
+            // 본문 재시도에서는 영상을 빼 이 충돌이 본문 복구까지 영구히 막지 않게 한다.
+            bodyConflictRetryRef.current.unshift({ retry: pending.retryWithoutVideo, retryWithoutVideo: pending.retryWithoutVideo });
+            setVideoEditConflict(true);
+            setVideoEditAutosaveError("다른 곳에서 더 최신으로 저장된 영상 편집이 있습니다. 최신 값을 다시 불러온 뒤 다시 시도해 주세요.");
+            return;
+          }
+          bodyConflictRetryRef.current.unshift(pending);
+          showToast(extractApiErrorMessage(error, "내 변경을 다시 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."), "error");
+          return;
+        }
+      }
+      setBodyRevisionConflict(null);
+      bodyConflictRetryRef.current = [];
+    } finally {
+      setBodyConflictResolving(false);
+    }
   }
   async function saveDraftWithNotice() {
     // F5(2026-09-22 코드리뷰 3차): 자동저장 경로(onCardDeckChange)만 pruneEmptyBubbles·
@@ -1176,7 +1982,7 @@ export default function StudioPage() {
       // 수동 "임시 저장"은 카드덱·영상 자동저장과 달리 도메인 한정 저장이 아니라 전체
       // 스냅샷 저장이다 — 카드덱만 pruned로 검사·교체하고(위에서 이미 함) videoEdit는
       // 현재 state를 그대로 싣는다(이전 기본값 동작과 동일, 이번엔 명시적으로만 적었다).
-      const savedDraftId = await save("draft", undefined, undefined, undefined, undefined, undefined, prunedCardDeck, videoEdit);
+      const savedDraftId = await save("draft", undefined, undefined, undefined, undefined, prunedCardDeck, videoEdit);
       if (!savedDraftId) {
         showToast("초안을 저장하지 못했습니다", "error");
         return;
@@ -1205,6 +2011,11 @@ export default function StudioPage() {
    */
   async function recompositeCards(lines: string[]): Promise<ImgResult | null> {
     if (editKind !== "card") return null;
+    if (img?.textEmbedded === true && img.textSourceRecoverable === false) {
+      const preservedCardCount = img.imageUrls?.length ?? (img.url || img.file ? 1 : 0);
+      showToast(`이전 카드 ${preservedCardCount}장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.`, "success");
+      return img;
+    }
     if (cardDeck && cardDeck.template === "chat_bubble") {
       // F5(2026-09-22 코드리뷰 3차)·D(4차): 발행 경로도 자동저장·수동저장과 같은 검사를
       // 거친다. D 수정: 검사는 pruned로 하고 렌더는 원본으로 하면 검사를 통과한 뒤에도
@@ -1244,15 +2055,14 @@ export default function StudioPage() {
     }
     if (!lines.some((line) => line.trim())) return null;
     try {
-      const urls = await renderAndUploadCardDeck({
+      const next = await renderAndUploadEmbeddedTextCard({
         // 빈 줄을 여기서 먼저 걷어내면 글자 자리 목록과 장 번호가 한 칸씩 어긋난다.
         // 걷어내기는 카드 한 벌을 만드는 쪽이 원래 번호를 아는 채로 한다.
         lines,
         ratio: cardRatioFrom(cardAspectRatio),
         theme: themeFromPalette(learningInfo.palette),
         positions: cardTextPositions,
-      }, { upload: browserCardUploader(authHeaders()) });
-      const next: ImgResult = { url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) };
+      }, { upload: browserCardUploader(authHeaders()) }, mediaTopicKey(idea));
       setImg(next);
       return next;
     } catch (error) {
@@ -1289,7 +2099,12 @@ export default function StudioPage() {
     const filename = videoFilename(vid?.file || vid?.url || "");
     if (!filename) return { kind: "skipped" };
     const spoken = lines.filter((line) => line.trim());
-    if (!spoken.length) return { kind: "skipped" };
+    const editNeedsFile = Boolean(videoEdit && (
+      videoEdit.subtitles.some((line) => line.cut || line.text.trim().length > 0)
+      || videoEdit.overlays.some((item) => item.text.trim().length > 0)
+      || videoEdit.comments.some((item) => item.author.trim().length > 0 && item.text.trim().length > 0)
+    ));
+    if (!spoken.length && !editNeedsFile) return { kind: "skipped" };
     const subtitleSize = editFormat.kind === "video" ? editFormat.subtitleSize : "보통";
     try {
       const r = await apiPost<{ ok?: boolean; file?: string; filename?: string; error?: string }>("/api/video/subtitle", {
@@ -1297,6 +2112,7 @@ export default function StudioPage() {
         filename,
         lines: spoken,
         subtitleSize,
+        ...(videoEdit ? { videoEdit } : {}),
       });
       if (!r?.ok || !r.file) {
         showToast(r?.error || "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요.", "error");
@@ -1327,12 +2143,16 @@ export default function StudioPage() {
       const subtitled = await burnVideoSubtitles(linesToPersist);
       // 자막을 못 구웠으면 넘어가지 않는다. 넘어가면 무자막 파일이 그대로 발행된다.
       if (subtitled.kind === "failed") return;
+      // 생성 결과에서 곧장 발행실로 이동해 editLines가 아직 비어 있어도, 저장보다 먼저
+      // 파생 본문을 유일한 최신값 경로에 올린다. save에 별도 본문 인자를 다시 만들면
+      // 자동저장과 같은 경합이 재발하므로 정본 자체를 승격시킨 뒤 같은 경로를 쓴다.
+      if (!bodySnapshotRef.current.lines.length) replaceEditLines(linesToPersist);
       // D(2026-09-22 코드리뷰 4차): recompositeCards가 내부에서 pruned 덱으로 렌더·
       // setCardDeck 했지만, 그 setState는 비동기라 여기 클로저의 `cardDeck`은 아직 옛
       // 값일 수 있다(리액트 배치). 발행 직전 저장은 그 클로저 값에 기대지 않고 여기서
       // 다시 한번 명시적으로 prune해 렌더된 것과 저장되는 것을 같게 만든다.
       const savedDraftId = await save(
-        "draft", publishReconciliations, draftId, linesToPersist,
+        "draft", publishReconciliations, draftId,
         redrawn ?? img,
         subtitled.kind === "done" ? subtitled.vid : vid,
         cardDeck ? pruneEmptyBubbles(cardDeck) : null,
@@ -1341,7 +2161,6 @@ export default function StudioPage() {
         videoEdit,
       );
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
-      if (!editLines.length) setEditLines(linesToPersist);
       changeRoom("publish");
       showToast("편집 내용을 저장하고 발행실로 이동했습니다", "success");
     } catch (error) {
@@ -1375,6 +2194,52 @@ export default function StudioPage() {
     };
   }
 
+  function publishGuard(platform: PreviewPlatform): {
+    disabledReason?: string;
+    createHref?: string;
+    createActionLabel?: string;
+  } {
+    if (isVideo(platform) && !(vid?.file || vid?.url)) {
+      return {
+        disabledReason: "발행할 영상이 아직 없습니다.",
+        createHref: "/studio?room=create&kind=video",
+        createActionLabel: "생성실에서 영상 만들기",
+      };
+    }
+    if (platform === "instagram" && publishDeck.length === 0) {
+      return {
+        disabledReason: "발행할 카드뉴스가 아직 없습니다.",
+        createHref: "/studio?room=create&kind=card",
+        createActionLabel: "생성실에서 카드 만들기",
+      };
+    }
+    // 2026-10-03 독립 리뷰 m2: creator-info 조회 자체가 404/502로 실패하면 고를 칸이
+    // 없다. 그런데도 "공개 범위를 먼저 선택해주세요"만 뜨면 막다른 길이다 — 재연결
+    // 안내로 먼저 갈라야 한다.
+    if (platform === "tiktok" && tiktokCreatorFailed) {
+      return {
+        disabledReason: "TikTok 계정 정보를 확인하지 못했습니다. 계정을 다시 연결해주세요.",
+        createHref: channelHref("tiktok"),
+        createActionLabel: "TikTok 다시 연결하기",
+      };
+    }
+    // 2026-10-03 운영 사고: TikTok은 공개 범위(privacy_level)를 사람이 직접 고르지
+    // 않으면 서버가 400으로 거부한다(route.ts:727-729). 화면에 그 값을 고르는 자리가
+    // 없었으니 매번 실패했다. 아래 TikTok 패널에서 값을 고르기 전까지는 "지금 발행"을
+    // 막고, 왜 막혔는지를 이 disabledReason으로 그 자리에서 말한다.
+    if (platform === "tiktok" && !tiktokPrivacy) {
+      return { disabledReason: "TikTok 공개 범위를 먼저 선택해주세요." };
+    }
+    // 2026-10-03 독립 리뷰 m3: 상업 콘텐츠 공개를 켰는데 어느 쪽도 안 고르면 TikTok이
+    // 요구하는 공개 내용이 비어버린다(tiktok-disclosure.ts).
+    if (platform === "tiktok" && tiktokDisclosureError) {
+      return { disabledReason: tiktokDisclosureError };
+    }
+    const blocking = validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0];
+    if (blocking) return { disabledReason: blocking.message };
+    return {};
+  }
+
   function publishText(p: PreviewPlatform): string {
     return buildPlatformPublishText(p, platformPublishInput(p));
   }
@@ -1406,7 +2271,7 @@ export default function StudioPage() {
       if (repairedPlatforms.size === 0) throw new Error("발행 원장 복구 실패");
       // 발행 원장 기록만 남기는 호출이다 — 카드덱·영상 내용은 이 호출의 관심사가
       // 아니므로 null,null로 키 자체를 빼서 서버에 이미 저장된 값을 건드리지 않는다.
-      const savedDraftId = await save(Object.keys(remaining).length ? "partial" : "published", remaining, draftId, undefined, undefined, undefined, null, null);
+      const savedDraftId = await save(Object.keys(remaining).length ? "partial" : "published", remaining, draftId, undefined, undefined, null, null);
       if (!savedDraftId) throw new Error("기록 저장 실패");
       setPublishReconciliations(remaining);
       const repairedLabels = [...repairedPlatforms].map((platform) => LABEL[platform as keyof typeof LABEL]).join(", ");
@@ -1417,6 +2282,170 @@ export default function StudioPage() {
       }
     } catch {
       showToast("기록을 정리하지 못했습니다. 잠시 뒤 다시 눌러 주세요.", "error");
+    }
+  }
+
+  // 2026-10-02 컨트롤러 감사 반려: video/publish가 202 + jobId(status:"processing")를 줘도
+  // 화면은 그 응답을 몰라 ok:true로 읽고 바로 "완료"로 표시했다 — 거짓-성공이었다. 서버가
+  // 실제로 끝날 때까지 이 폴링이 기다린다. 15분 상한을 넘기면 "실패"가 아니라 "결과 확인
+  // 중"으로 남겨 재발행(중복 게시)을 유도하지 않는다.
+  async function awaitAsyncVideoPublish(
+    tenantId: string, filename: string, platform: string, jobId: string, signal?: AbortSignal,
+  ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> {
+    savePendingVideoPublishJob(tenantId, filename, platform, jobId);
+    const outcome = await pollJobUntilDone<{ ok?: boolean; url?: string; error?: string; status?: string; processing?: boolean; publishId?: string }>(
+      `/api/video/publish/job/${encodeURIComponent(jobId)}?tenant_id=${encodeURIComponent(tenantId)}`,
+      // MAJOR-2: 고정 헤더 대신 매 요청마다 새로 만든다 — 15분 폴링 중 토큰이 돌면
+      // 고정 헤더는 그 뒤로 계속 401을 받는다.
+      // MINOR(2026-10-02 재재검토): signal을 넘기면 effect cleanup(언마운트·작업공간
+      // 전환)이 cancelled=true만 찍는 게 아니라 이 폴링 자체를 즉시 멈춘다 — 안 그러면
+      // 사용자가 떠난 뒤에도 15분까지 네트워크 폴링이 백그라운드에 남는다.
+      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000, signal },
+    );
+    if (outcome.timedOut) {
+      // pending 기록을 지우지 않는다 — 다음 방문(탭 재표시/새로고침)에서 복구 효과가 이어서
+      // 확인한다. 상한을 넘겼다고 포기한 게 아니라 "이 폴링만" 멈춘 것이다.
+      return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+    }
+    if (outcome.aborted) {
+      // MINOR: effect cleanup으로 멈춘 것 — pending 기록을 지우지 않는다(다음 방문에서
+      // 이어서 확인한다). 호출부가 보통 이 결과를 버리지만, 혹시 쓰더라도 "실패"로
+      // 잘못 읽히면 안 된다.
+      return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+    }
+    clearPendingVideoPublishJob(tenantId, filename, platform);
+    // MINOR(2026-10-02 재재검토): 작업을 못 찾은 것도 "실패로 확정됐다"가 아니라 "결과를
+    // 모른다"다 — 외부 게시가 실제로 일어났는데 기록만 사라졌을 가능성을 배제할 수 없다.
+    // failed로 두면 재발행 버튼이 뜬다.
+    if (outcome.notFound) return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
+    const data = outcome.data;
+    // MAJOR-3 구멍(2026-10-02 재재검토): TikTok 접수(init) 자체가 8초를 넘기면, 바깥
+    // job(jobId) 경로가 먼저 타임아웃 승리해 그 작업의 "완료된 결과"가 TikTok 자체의
+    // 비동기 봉투({ok:true, processing:true, publishId})가 된다. 이 함수는 그걸 그냥
+    // `ok:true`로 읽어 url 없는 "완료"를 내버렸다 — 실제로는 TikTok이 아직도 처리
+    // 중이다. publishId가 보이면 TikTok 전용 폴러로 넘긴다.
+    if (data?.processing && data.publishId) {
+      return awaitAsyncTikTokPublish(data.publishId, signal);
+    }
+    if (!data?.ok) {
+      // BLOCK-1(2026-10-02 독립 리뷰): "외부에는 올라갔는데 우리 기록만 못 남겼다" 또는
+      // "외부 결과를 확인하지 못했다"는 신호를 평범한 "실패"로 읽으면 안 된다 — 실패로
+      // 보이면 재발행 버튼이 다시 눌려 같은 영상이 두 번 올라간다. unresolved로 돌려
+      // 호출부가 "unknown"(결과 확인 중)으로 남기게 한다(재발행 대상에서 제외).
+      // M-A 사이드이펙트(2026-10-02 재재검토 회귀): isUnresolvedPublishPayload가 이제
+      // ①(확정된 외부 게시)을 일부러 제외하므로, 이 data 경로(에러로 던져지지 않고 job
+      // 결과로 들어온 경우 — pendingReconciliations 배너가 없는 경로)에서는 ①도 여기서
+      // 같이 "unresolved"로 막아야 한다 — 안 그러면 ①이 평범한 failed로 떨어져 재발행
+      // 버튼이 뜬다(바로 이 BLOCK-1이 막으려던 것).
+      if (isUnresolvedPublishPayload(data) || isExternalPublishConfirmedPayload(data)) {
+        return {
+          ok: false, unresolved: true,
+          error: data?.error || "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.",
+        };
+      }
+      return { ok: false, error: data?.error || "영상 발행에 실패했습니다" };
+    }
+    return { ok: true, url: data.url };
+  }
+
+  // MAJOR-3(2026-10-02 독립 리뷰): TikTok은 video/publish와 다른, 자체 비동기 계약을 쓴다
+  // — 202 + {ok:true, processing:true, publishId}(jobId도 status:"processing"도 없음).
+  // 위 awaitAsyncVideoPublish의 `vr?.jobId && vr.status==="processing"` 분기가 이 모양을
+  // 못 잡아 `vr?.ok && !vr.partial`로 떨어져 "완료"(링크 없는 성공)로 잘못 표시됐다.
+  // 기존에 이미 있던 조회 엔드포인트(/api/tiktok/publish-status, videos/page.tsx의
+  // rememberTikTokPending과 같은 정본)를 그대로 쓴다 — 그 라우트도 진행 중이면
+  // status:"processing"을 주므로 job-poll.ts와 계약이 맞는다.
+  async function awaitAsyncTikTokPublish(
+    publishId: string, signal?: AbortSignal,
+  ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> {
+    const outcome = await pollJobUntilDone<{ ok?: boolean; status?: string; url?: string; error?: string }>(
+      `/api/tiktok/publish-status?publish_id=${encodeURIComponent(publishId)}`,
+      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000, signal },
+    );
+    if (outcome.timedOut) {
+      return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+    }
+    if (outcome.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+    if (outcome.notFound) return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
+    const data = outcome.data;
+    if (data?.status === "failed" || data?.ok === false) {
+      if (isUnresolvedPublishPayload(data) || isExternalPublishConfirmedPayload(data)) {
+        return { ok: false, unresolved: true, error: data?.error || "외부 게시 여부를 확인하지 못했습니다." };
+      }
+      return { ok: false, error: data?.error || "TikTok 발행에 실패했습니다" };
+    }
+    return { ok: true, url: data?.url };
+  }
+
+  // 같은 감사 반려: /api/publish도 150초대 폴링(인스타 캐러셀·Threads 상태확인)이 예산(8초)을
+  // 넘으면 202 + {processing:true, draftId, platform}을 준다. 결과는 새 작업 저장소가 아니라
+  // 기존 GET /api/publish?draft_id=...&platforms=...(buildUnifiedPublishStatus)가 그대로
+  // 맡는다(draftId가 작업 id 역할). 그 응답의 종결 신호는 최상위 status가 아니라
+  // targets[0].status(queued/processing/published/failed)라서 job-poll의 "최상위 status"
+  // 계약과 안 맞는다 — pollJobUntilDone으로 억지로 끼워맞추지 않고, 같은 2.5초 간격·
+  // 백그라운드 깨우기(wakeableSleep, job-poll.ts와 같은 정본)로 직접 루프를 돈다.
+  async function awaitAsyncSocialPublish(
+    tenantId: string, draftId: string, platform: string, signal?: AbortSignal,
+  ): Promise<{ ok: boolean; permalink?: string; publishedAt?: string; error?: string; unresolved?: boolean; partial?: boolean }> {
+    savePendingSocialPublishJob(tenantId, draftId, platform);
+    const start = Date.now();
+    const timeoutMs = 15 * 60 * 1000;
+    for (;;) {
+      // MINOR(2026-10-02 재재검토): effect cleanup이 abort하면 이 루프를 즉시 멈춘다 —
+      // 안 그러면 사용자가 떠난 뒤에도 15분까지 백그라운드 폴링이 남는다.
+      if (signal?.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+      if (Date.now() - start > timeoutMs) {
+        // pending 기록을 지우지 않는다 — 다음 방문에서 복구 효과가 이어서 확인한다.
+        return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+      }
+      let res: Response;
+      try {
+        res = await fetch(
+          `/api/publish?draft_id=${encodeURIComponent(draftId)}&platforms=${encodeURIComponent(platform)}&tenant_id=${encodeURIComponent(tenantId)}`,
+          { headers: authHeaders(), signal },
+        );
+      } catch {
+        if (signal?.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+        await wakeableSleep(JOB_POLL_INTERVAL_MS, signal);
+        continue;
+      }
+      if (res.status === 404) {
+        // MINOR(2026-10-02 재재검토): 못 찾은 것도 "실패 확정"이 아니라 "모른다"다.
+        clearPendingSocialPublishJob(tenantId, draftId, platform);
+        return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
+      }
+      const body = await res.json().catch(() => null) as {
+        targets?: Array<{
+          status: string; permalink: string | null; error: string | null; updatedAt: string | null;
+          firstComment?: { status: string | null; error: string | null };
+        }>;
+      } | null;
+      const target = body?.targets?.[0];
+      // MAJOR-2: 401(토큰 만료)·503(DB 장애, route.ts GET catch)·그 밖의 비정상 응답은
+      // targets 배열이 없으므로 target이 undefined가 되어 이미 여기서 재시도된다 — 토큰이
+      // 돌거나 DB가 잠깐 끊긴 걸 "실패"로 단정하지 않는다(authHeaders()도 루프 매번 새로
+      // 호출돼 최신 토큰을 쓴다).
+      if (!target || target.status === "queued" || target.status === "processing") {
+        await wakeableSleep(JOB_POLL_INTERVAL_MS, signal);
+        continue;
+      }
+      clearPendingSocialPublishJob(tenantId, draftId, platform);
+      if (target.status !== "published") {
+        return { ok: false, error: target.error || "발행에 실패했습니다" };
+      }
+      // MAJOR-5(2026-10-02 독립 리뷰): 동기 경로는 본문 성공 + 첫 댓글 실패를 partial:true로
+      // 구분해 "완전 성공"으로 보여주지 않는다(위 동기 분기의 r.partial 처리와 같다). 느린
+      // 경로는 그 결과가 백그라운드 Response에만 있었고 폴링 쪽은 target.status만 봐서
+      // 첫 댓글 실패를 삼켰다 — published_posts.first_comment_status는 동기 경로와 똑같이
+      // 이미 기록돼 있으므로(백그라운드도 같은 코드를 탄다) 그걸 읽어 복원한다.
+      const firstCommentFailed = target.firstComment?.status === "failed" || target.firstComment?.status === "uncertain";
+      if (firstCommentFailed) {
+        return {
+          ok: true, partial: true, permalink: target.permalink ?? undefined, publishedAt: target.updatedAt ?? undefined,
+          error: target.firstComment?.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다",
+        };
+      }
+      return { ok: true, permalink: target.permalink ?? undefined, publishedAt: target.updatedAt ?? undefined };
     }
   }
 
@@ -1457,7 +2486,7 @@ export default function StudioPage() {
     }
     // 발행 직전 초안 존재를 확인하는 저장이다 — 카드덱·영상은 moveToPublish가 이미
     // 커밋했으므로 여기서는 건드리지 않는다(null,null로 키를 빼 서버 값을 보존한다).
-    const draftPersistence = await attemptRequiredDraftPersistence(() => save("draft", undefined, undefined, undefined, undefined, undefined, null, null));
+    const draftPersistence = await attemptRequiredDraftPersistence(() => save("draft", undefined, undefined, undefined, undefined, null, null));
     if (!draftPersistence.ok) {
       showToast("발행할 초안을 저장하지 못했습니다", "error");
       return;
@@ -1467,9 +2496,18 @@ export default function StudioPage() {
     // 전체가 실패로 보였고, 발행 버튼이 그대로 남아 다시 누르면 이미 올라간 채널까지
     // 재발행 대상이 됐다. 이번 초안에서 이미 성공한 채널은 대상에서 뺀다.
     const alreadyPublished = publishTargets.filter((platform) => pub.status[platform] === "done");
-    const targets = publishTargets.filter((platform) => pub.status[platform] !== "done" && !blockedPlatforms.has(platform));
-    if (!targets.length && alreadyPublished.length && blockedEntries.length === 0) {
+    // "unknown"(15분 상한으로 결과를 못 받은 상태)은 "실패"가 아니므로 재발행 대상에서도
+    // 뺀다 — 서버 쪽 draft_id 예약이 중복 게시를 막아 주더라도, 사용자가 다시 누를 때마다
+    // 바로 409로 튕기는 것보다는 "게시물 목록에서 확인"으로 유도하는 편이 낫다.
+    const unresolved = publishTargets.filter((platform) => pub.status[platform] === "unknown");
+    const targets = publishTargets.filter((platform) =>
+      pub.status[platform] !== "done" && pub.status[platform] !== "unknown" && !blockedPlatforms.has(platform));
+    if (!targets.length && alreadyPublished.length && blockedEntries.length === 0 && unresolved.length === 0) {
       showToast(`${alreadyPublished.map((platform) => LABEL[platform]).join(", ")} 은 이미 발행됐습니다. 다시 올리지 않았습니다.`, "success");
+      return;
+    }
+    if (!targets.length && unresolved.length && blockedEntries.length === 0) {
+      showToast(`${unresolved.map((platform) => LABEL[platform]).join(", ")}은 결과 확인 중입니다. 게시물 목록에서 확인해 주세요.`, "error");
       return;
     }
     if (!targets.length && blockedEntries.length === 0) { showToast("연결된 발행 계정이 없습니다. 설정에서 채널을 먼저 연결하세요", "error"); return; }
@@ -1482,6 +2520,10 @@ export default function StudioPage() {
     alreadyPublished.forEach((platform) => {
       status[platform] = "done";
       if (pub.urls[platform]) urls[platform] = pub.urls[platform];
+    });
+    unresolved.forEach((platform) => {
+      status[platform] = "unknown";
+      if (pub.errors[platform]) errors[platform] = pub.errors[platform];
     });
     const errs: string[] = [...blockedFailure.messages];
     const pendingReconciliations: PublishReconciliationMap = {};
@@ -1502,25 +2544,84 @@ export default function StudioPage() {
             failureReason = "올릴 영상이 없습니다. 생성실에서 숏폼 영상을 먼저 만들어 주세요.";
             errs.push(`${LABEL[p]}: ${failureReason}`);
           } else {
-            const vr = await apiPost<{ ok?: boolean; partial?: boolean; processing?: boolean; url?: string; error?: string }>("/api/video/publish", {
+            const videoPlatform = VIDEO_PUBLISH_NAME[p] || p;
+            // 2026-10-02 반려 수정: 서버는 예산(8초)을 넘기면 202 + {status:"processing",
+            // jobId}를 준다. 이걸 그대로 ok:true로 읽으면 아직 올라가지도 않은 채널을
+            // "완료"로 보여주는 거짓-성공이 된다(세션맥락). jobId가 있으면 실제로 끝날
+            // 때까지 기다린다.
+            const vr = await apiPost<{ ok?: boolean; partial?: boolean; status?: string; jobId?: string; processing?: boolean; publishId?: string; url?: string; error?: string }>("/api/video/publish", {
               filename,
-              platform: VIDEO_PUBLISH_NAME[p] || p,
+              platform: videoPlatform,
               title: titles[p] || idea || "",
               description: publishText(p),
-              account_id: selectedAccounts[p] || undefined,
+              // 저장된 ID가 연결 해제·만료 상태로 바뀌어도 발행 요청에는 절대 싣지 않는다.
+              account_id: selectedConnectedAccountId(p),
               draft_id: did,
               // 대문으로 쓸 시점. 지원하는 플랫폼만 실제로 쓴다(lib/video-cover.ts).
               cover_seconds: supportsCoverTimestamp(p) ? (coverSeconds[p] ?? DEFAULT_COVER_SECONDS) : undefined,
+              // 2026-10-03 운영 사고: TikTok은 이 네 필드가 없으면 서버가 400으로 거부한다
+              // (route.ts:727-736). publishGuard가 privacy_level 미선택이면 이미 이 채널을
+              // 발행 대상에서 뺐으니, 여기 도달했다는 것은 tiktokPrivacy가 채워져 있다는
+              // 뜻이다. videos/page.tsx와 같은 필드·같은 기본값 정책을 그대로 싣는다.
+              ...(p === "tiktok" ? {
+                privacy_level: tiktokPrivacy,
+                disable_comment: tiktokDisableComment,
+                disable_duet: tiktokDisableDuet,
+                disable_stitch: tiktokDisableStitch,
+                is_ai_generated: tiktokAiGenerated,
+                // 2026-10-03 독립 리뷰 m3: TikTok Content Sharing Guidelines의 상업
+                // 콘텐츠 공개("Your brand"/"Branded content"). ⚠️ /api/video/publish
+                // route.ts는 아직 이 세 필드를 받지 않는다(서버가 실제로 TikTok
+                // Content Posting API에 실어 보내는 배선은 별도 작업) — 화면 계약을
+                // videos 페이지와 맞추는 이번 범위에서는 값을 함께 보내 두되, 서버가
+                // 소비하지 않는다는 사실을 숨기지 않는다.
+                disclosure_enabled: tiktokDisclosureEnabled,
+                brand_organic_toggle: tiktokBrandOrganic,
+                brand_content_toggle: tiktokBrandContent,
+              } : {}),
             }, { signal: AbortSignal.timeout(VIDEO_PUBLISH_REQUEST_TIMEOUT_MS) });
-            if (vr?.ok && !vr.partial) {
+            if (vr?.jobId && vr.status === "processing") {
+              // "doing"(발행 중) 그대로 유지하며 기다린다 — "완료"로 앞서가지 않는다.
+              setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
+              const resolved = await awaitAsyncVideoPublish(activeWorkspace.id, filename, videoPlatform, vr.jobId);
+              if (resolved.unresolved) {
+                status[p] = "unknown";
+                errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.";
+              } else if (resolved.ok) {
+                urls[p] = resolved.url || POST_URL[p] || "#";
+                trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+              } else {
+                failureReason = resolved.error || "영상 발행에 실패했습니다";
+                errs.push(`${LABEL[p]}: ${failureReason}`);
+              }
+            } else if (vr?.processing && vr.publishId) {
+              // MAJOR-3: TikTok의 자체 비동기 계약(ok:true, processing:true, publishId) —
+              // jobId 패턴과 다르다. 이걸 놓치면 "완료"(링크 없는 성공)로 잘못 표시된다.
+              setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
+              const resolved = await awaitAsyncTikTokPublish(vr.publishId);
+              if (resolved.unresolved) {
+                status[p] = "unknown";
+                errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.";
+              } else if (resolved.ok) {
+                urls[p] = resolved.url || POST_URL[p] || "#";
+                trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+              } else {
+                failureReason = resolved.error || "TikTok 발행에 실패했습니다";
+                errs.push(`${LABEL[p]}: ${failureReason}`);
+              }
+            } else if (vr?.ok && !vr.partial) {
               urls[p] = vr.url || POST_URL[p] || "#";
               trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+              // m3: TikTok 발행이 성공하면 공개 범위·상업 콘텐츠 공개를 비운다. 다음
+              // 영상에 지난 선택이 조용히 그대로 넘어가 엉뚱한 공개 범위로 올라가는
+              // 사고를 막는다 — 매번 다시 확인해 고른다.
+              if (p === "tiktok") resetTiktokDisclosure();
             } else {
               failureReason = vr?.error || "영상 발행에 실패했습니다";
               errs.push(`${LABEL[p]}: ${failureReason}`);
             }
           }
-          status[p] = failureReason ? "failed" : "done";
+          status[p] = failureReason ? "failed" : status[p] === "unknown" ? "unknown" : "done";
           if (failureReason) errors[p] = failureReason;
           setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
           return;
@@ -1536,13 +2637,38 @@ export default function StudioPage() {
             : undefined,
           draft_id: did,
           publish_fields: platformPublishInput(p),
-          account_id: selectedAccounts[p] || undefined,
+          account_id: selectedConnectedAccountId(p),
           first_comment: capabilityFor(p).supported && firstComments[p]?.trim() ? firstComments[p].trim() : undefined,
           edit_format: editFormat,
         }, { signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS) });
+        // 2026-10-02 반려 수정: Instagram carousel/Threads 상태 폴링이 150초대라 서버
+        // 예산(8초)을 넘으면 202 + {processing:true, draftId, platform}을 준다. 이것도
+        // ok:true로 읽으면 아직 올라가지 않은 글을 "완료"로 보여주는 거짓-성공이 된다.
+        const processingDraftId = (r as { processing?: boolean; draftId?: string } | undefined)?.processing
+          ? (r as { draftId?: string }).draftId
+          : undefined;
+        if (processingDraftId) {
+          setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
+          const resolved = await awaitAsyncSocialPublish(activeWorkspace.id, processingDraftId, p);
+          if (resolved.unresolved) {
+            status[p] = "unknown";
+            errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.";
+          } else if (resolved.ok && resolved.partial) {
+            // MAJOR-5: 본문은 올라갔지만 첫 댓글은 실패 — 동기 분기(r.partial)와 같은
+            // 취급으로 완전 성공 집계·표시를 하지 않는다.
+            failureReason = resolved.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다";
+            errs.push(`${LABEL[p]}: ${failureReason}`);
+          } else if (resolved.ok) {
+            urls[p] = resolved.permalink || POST_URL[p] || "#";
+            trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+          } else {
+            failureReason = resolved.error || "실패";
+            errs.push(`${LABEL[p]}: ${failureReason}`);
+          }
+        }
         // 2026-09-16 실측: 서버가 dedupe 로 옛 글을 돌려준 것을 방금 새로 올라간 것과
         // 구분한다. 이미 있던 것이면 "새로 올렸다" 이벤트를 다시 세지 않는다.
-        if (r?.ok && !r.partial) { urls[p] = r.permalink || POST_URL[p] || "#"; if (!r.alreadyPublished) trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } }); else already[p] = r.publishedAt || true; }
+        else if (r?.ok && !r.partial) { urls[p] = r.permalink || POST_URL[p] || "#"; if (!r.alreadyPublished) trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } }); else already[p] = r.publishedAt || true; }
         else {
           failureReason = r?.partial
             ? r.firstComment?.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다"
@@ -1551,17 +2677,28 @@ export default function StudioPage() {
         }
       } catch (e) {
         if (isExternalPublishPersistenceError(e)) {
+          // ① 외부 게시는 확정됐다 — persistence.reconciliation이 보장된 모양이라
+          // 안전하게 접근한다(M-A 전에는 이 분기가 ②·③도 함께 잡아 TypeError가 났다).
           const reconciliation = e.payload.persistence.reconciliation;
           pendingReconciliations[p] = reconciliation;
           if (e.payload.permalink) urls[p] = e.payload.permalink;
           failureReason = "외부 게시 완료·내부 기록 복구 필요 (재발행 금지)";
           errs.push(`${LABEL[p]}: ${failureReason}`);
+        } else if (isUnresolvedPublishError(e)) {
+          // M-A(2026-10-02 독립 리뷰): ②·③(외부 결과를 모른다, 예: 409
+          // PUBLISH_STATE_UNCERTAIN) — "실패"로 단정해 재발행을 유도하지 않는다.
+          // errs에 넣지 않는다(다른 "unknown" 분기들과 같은 관례 — 끝 토스트가 "실패"로
+          // 뭉뚱그리지 않게).
+          status[p] = "unknown";
+          errors[p] = e instanceof ApiResponseError
+            ? ((e.payload as { error?: string } | null)?.error || "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.")
+            : "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.";
         } else {
           failureReason = e instanceof Error ? e.message : "오류";
           errs.push(`${LABEL[p]}: ${failureReason}`);
         }
       }
-      status[p] = failureReason ? "failed" : "done";
+      status[p] = failureReason ? "failed" : status[p] === "unknown" ? "unknown" : "done";
       if (failureReason) errors[p] = failureReason;
       setPub({
         running: true,
@@ -1584,7 +2721,7 @@ export default function StudioPage() {
       setPublishReconciliations(pendingReconciliations);
       try {
         // 발행 결과 기록만 남긴다 — 카드덱·영상은 이 호출의 관심사가 아니다.
-        await save("partial", pendingReconciliations, did, undefined, undefined, undefined, null, null);
+        await save("partial", pendingReconciliations, did, undefined, undefined, null, null);
       } catch {
         // The same storage incident can prevent the draft write too. The state was
         // already copied to localStorage-bound React state, so keep the no-republish
@@ -1594,7 +2731,7 @@ export default function StudioPage() {
     } else {
       try {
         // 발행 결과 기록만 남긴다 — 카드덱·영상은 이 호출의 관심사가 아니다.
-        const savedDraftId = await save(errs.length ? "partial" : "published", {}, did, undefined, undefined, undefined, null, null);
+        const savedDraftId = await save(errs.length ? "partial" : "published", {}, did, undefined, undefined, null, null);
         if (!savedDraftId) errs.push("발행 결과를 저장하지 못했습니다");
       } catch {
         errs.push("발행 결과를 저장하지 못했습니다");
@@ -1608,10 +2745,83 @@ export default function StudioPage() {
       showToast(`${head}실패 ${errs.join(" / ")}`.slice(0, 180), "error");
     } else showToast("발행 완료", "success");
   }
-  function loadDraft(d: Record<string, unknown>) {
-    setIdea((d.idea as string) || ""); setText((d.text as TextVariants) || null);
-    setImg((d.img as ImgResult) || null); setVid((d.vid as VidResult) || null);
-    setIncludes(d.includes ? normalizeIncludes(d.includes as Record<string, boolean>) : includes); setDraftId(d.id as string);
+  // 새로고침·탭 재방문 뒤에도 진행 중이던 발행(비디오/소셜 비동기 경로)을 잃지 않는다
+  // (2026-10-02 컨트롤러 감사 반려 — publish-job-store.ts가 적어 둔 jobId/draftId가 이
+  // 작업공간+초안에 남아 있으면 자동으로 이어서 확인한다).
+  useEffect(() => {
+    if (!activeWorkspace || !draftId) return;
+    const workspaceId = activeWorkspace.id;
+    const currentDraftId = draftId;
+    const videoFilenameNow = videoFilename(vid?.file || vid?.url || "");
+    let cancelled = false;
+    // MINOR(2026-10-02 재재검토): cancelled 플래그만으로는 "이 effect의 setPub을 더는
+    // 안 쓴다"만 멈춘다 — 그 밑에서 돌던 네트워크 폴링(fetch 루프)은 그대로 계속 돈다.
+    // 실제 effect cleanup(언마운트·작업공간 전환·draftId 변경)이 일어나면 이 signal로
+    // 폴링 자체를 즉시 끊는다.
+    const controller = new AbortController();
+    void (async () => {
+      for (const p of publishTargets) {
+        if (cancelled) break;
+        if (VIDEO_ROOM_PLATFORMS.has(p)) {
+          if (!videoFilenameNow) continue;
+          const videoPlatform = VIDEO_PUBLISH_NAME[p] || p;
+          const pending = readPendingVideoPublishJob(workspaceId, videoFilenameNow, videoPlatform);
+          if (!pending) continue;
+          setPub((current) => ({ ...current, running: true, status: { ...current.status, [p]: "doing" } }));
+          const resolved = await awaitAsyncVideoPublish(workspaceId, videoFilenameNow, videoPlatform, pending.jobId, controller.signal);
+          if (cancelled || activeWorkspaceIdRef.current !== workspaceId) continue;
+          setPub((current) => {
+            const status = { ...current.status };
+            const urls = { ...current.urls };
+            const errors = { ...current.errors };
+            if (resolved.unresolved) { status[p] = "unknown"; errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요."; }
+            else if (resolved.ok) { status[p] = "done"; urls[p] = resolved.url || POST_URL[p] || "#"; }
+            else { status[p] = "failed"; errors[p] = resolved.error || "영상 발행에 실패했습니다"; }
+            return { ...current, running: false, status, urls, errors };
+          });
+        } else {
+          const pending = readPendingSocialPublishJob(workspaceId, currentDraftId, p);
+          if (!pending) continue;
+          setPub((current) => ({ ...current, running: true, status: { ...current.status, [p]: "doing" } }));
+          const resolved = await awaitAsyncSocialPublish(workspaceId, currentDraftId, p, controller.signal);
+          if (cancelled || activeWorkspaceIdRef.current !== workspaceId) continue;
+          setPub((current) => {
+            const status = { ...current.status };
+            const urls = { ...current.urls };
+            const errors = { ...current.errors };
+            if (resolved.unresolved) { status[p] = "unknown"; errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요."; }
+            else if (resolved.ok && resolved.partial) { status[p] = "failed"; errors[p] = resolved.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다"; }
+            else if (resolved.ok) { status[p] = "done"; urls[p] = resolved.permalink || POST_URL[p] || "#"; }
+            else { status[p] = "failed"; errors[p] = resolved.error || "실패"; }
+            return { ...current, running: false, status, urls, errors };
+          });
+        }
+      }
+    })();
+    return () => { cancelled = true; controller.abort(); };
+    // publishTargets 자체는 매 렌더 재계산되지만 effect 의존성에 그대로 넣으면 재구독으로
+    // 중복 폴링이 된다. 다만 MAJOR-6(2026-10-02 독립 리뷰): workspace·draftId만 의존성으로
+    // 두면, 새로고침 직후 계정 목록이 아직 fetch 중일 때 이 effect가 먼저 실행돼
+    // publishTargets가 빈 배열이고(usableAccounts가 아직 0개), 그 뒤 계정이 로드돼
+    // publishTargets가 채워져도 이 effect는 다시 돌지 않아 복구가 영원히 일어나지 않는다.
+    // accountsLoaded가 false→true로 바뀌는 시점(계정 로딩 완료, 작업공간당 한 번)에 한 번
+    // 더 돌게 해 그 때는 실제 publishTargets로 복구를 시도한다. videoFilenameNow(vid)도
+    // 새로고침 뒤 vid가 비동기로 복원되는 경우를 대비해 넣는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id, draftId, accountsLoaded, vid?.file, vid?.url]);
+  function loadDraft(d: Record<string, unknown>): EditContentKind | null {
+    // B1(교차 리뷰 BLOCK): 서버 초안을 불러오는 이 순간 이전에 예약돼 있던 자동 저장
+    // 타이머가 있으면(예: 방금 전 영상 탭에서 시딩·조작으로 예약된 저장) 그 타이머가
+    // 지금 불러오는 이 초안 위에 낡은 값을 덮어쓴다. 불러오기 전에 반드시 끈다.
+    if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+    if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
+    setIdea((d.idea as string) || "");
+    setImg(recoverDraftEmbeddedTextCard<ImgResult>(d)); setVid((d.vid as VidResult) || null);
+    setIncludes(d.includes ? normalizeIncludes(d.includes as Record<string, boolean>) : includes);
+    // MINOR-g 근본원인: 초안을 불러오면 그 초안이 저장했던 체크 상태가 아무 표시 없이
+    // 되살아난다. "지금 내가 고른 것"처럼 보이면 안 되므로 복원임을 배지로 남긴다.
+    setRestoredSelectionNotice(Boolean(d.includes) && Object.values(d.includes as Record<string, boolean>).some(Boolean));
+    setDraftId(d.id as string);
     const savedReconciliations = normalizePublishReconciliations(d.publishReconciliations ?? d.publishReconciliation);
     setPublishReconciliations(savedReconciliations);
     setEditorHandoff((d.editorHandoff as EditorHandoff) || null);
@@ -1621,16 +2831,32 @@ export default function StudioPage() {
     setFirstComments((d.firstComments as Record<string, string>) || {});
     setCaptions((d.captions as Record<string, string>) || {});
     setSelectedAccounts((d.selectedAccounts as Record<string, string>) || {});
-    setEditLines((d.editLines as string[]) || []);
+    replaceBodySnapshot(
+      (d.editLines as string[]) || [],
+      (d.text as TextVariants) || null,
+      { replaceDocument: true, serverRevision: Number.isSafeInteger(d.bodyRevision) ? d.bodyRevision as number : 0 },
+    );
+    // 2026-10-01 재리뷰 BLOCK: 이 불러오기가 quickDraftTopicRef 를 안 맞춰, 주제 A로
+    // 빠른 초안을 만든 뒤 주제 B의 저장 초안을 불러오면 아래 "주제 변경 시 무효화" 효과가
+    // 방금 불러온 본문을 주제가 바뀐 것으로 오판해 지웠다. 불러온 초안의 실제 주제로
+    // 기준값을 맞춘다(같은 헬퍼 재사용 — 재창조 금지).
+    quickDraftTopicRef.current = resolveRestoredQuickDraftTopic({
+      hasText: Boolean(d.text),
+      savedTopic: null,
+      restoredIdea: String(d.idea || ""),
+    });
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
     setCardDeck((d.cardDeck as CardDeck) || null);
     setVideoEdit((d.videoEdit as VideoEdit) || null);
     setReviewQueueId((d.reviewQueueId as string) || null);
     const savedFormat = validateContentEditFormat(d.editFormat);
+    let loadedEditKind: EditContentKind | null = null;
     if (savedFormat.valid) {
+      loadedEditKind = savedFormat.value.kind;
       setEditKind(savedFormat.value.kind);
       setEditFormat(savedFormat.value);
     } else if (d.editKind === "video" || d.editKind === "card" || d.editKind === "audio" || d.editKind === "text") {
+      loadedEditKind = d.editKind;
       setEditKind(d.editKind);
       setEditFormat(defaultContentEditFormat(d.editKind));
     }
@@ -1640,18 +2866,19 @@ export default function StudioPage() {
         : "불러옴. 수정 후 재발행 가능",
       Object.keys(savedReconciliations).length > 0 ? "error" : "success",
     );
+    return loadedEditKind;
   }
   function resumeCurrentWork() {
     const current = hist?.currentWork;
     if (!current) return;
     const draft = hist.drafts.find((item) => item.id === current.draftId);
     if (!draft) return;
-    loadDraft(draft);
+    const loadedEditKind = loadDraft(draft);
     if (current.stage === "performance") {
       window.location.assign("/performance");
       return;
     }
-    changeRoom(current.stage);
+    changeRoom(current.stage, loadedEditKind ?? editKind);
   }
   const commentHandoffLoaded = useRef<string | null>(null);
   useEffect(() => {
@@ -1689,6 +2916,166 @@ export default function StudioPage() {
   // 발행실 이동이 타이머보다 먼저 끝나면 뒤늦은 콜백이 draftId=null 로 중복 초안을 만든다).
   const draftIdRef = useRef<string | null>(null);
   draftIdRef.current = draftId;
+  // B-7(6차 재리뷰 BLOCKER, 보안): reconcile은 비동기라 await 중에 워크스페이스·초안이
+  // 바뀔 수 있다. tenant도 draftIdRef와 같은 패턴으로 매 렌더 최신값을 ref에 담아,
+  // await가 끝난 시점에 "그 결과가 지금도 유효한 요청인지" 판정할 수 있게 한다.
+  const activeWorkspaceIdRef = useRef<string | null>(null);
+  activeWorkspaceIdRef.current = activeWorkspace?.id ?? null;
+  // 영상 편집 state의 최신값은 닫힌 클로저 대신 ref로 비교한다. 글 본문은 위의
+  // bodySnapshotRef 하나만 소유하므로 영상 전용 pending 복사본을 두지 않는다.
+  const videoEditRef = useRef<VideoEdit | null>(null);
+  videoEditRef.current = videoEdit;
+  /**
+   * [보안·데이터 유실](교차 리뷰 재리뷰 BLOCK 1) localStorage의 videoEdit은 잠정치다 —
+   * 다른 탭·기기가 서버에 더 최신을 저장했을 수 있다. draftId가 있는 동안은 이 값이
+   * false다가, 아래 서버 재동기화 효과가 hist.drafts에서 그 draft를 찾아 서버 값으로
+   * 덮은 뒤에야 true가 된다. onVideoEditChange의 자동저장은 이 값이 true일 때만 실제로
+   * 나간다 — 그 전에 나가면 서버의 최신 오버레이·댓글·목소리를 잠정치로 덮어쓴다.
+   */
+  const videoEditReconciledRef = useRef(true);
+  const reconciledDraftIdRef = useRef<string | null>(null);
+  /**
+   * B-7(6차 재리뷰 BLOCKER, 보안): "비동기 맞춤 결과는 발급 세대가 현재 세대와 같을
+   * 때만 반영한다"는 단일 원칙. 맞추기 시작마다(reconcileVideoEditFromServer 호출)
+   * +1 해서 자기 세대 번호를 갖고, 워크스페이스 전환·새 작업·후보 선택·버리고 새로
+   * 시작 네 곳도 이 카운터를 올려 "지금 진행 중인 맞춤은 전부 낡았다"고 선언한다.
+   * await 뒤에 이 값이 자기 세대와 다르면(다른 곳이 먼저 올렸으면) 결과를 버린다 —
+   * 증상(워크스페이스 하나, 탭 하나)마다 따로 막지 않고 이 카운터 하나로 전부 막는다.
+   */
+  const videoEditReconcileGenerationRef = useRef(0);
+  const videoEditReconcileAbortRef = useRef<AbortController | null>(null);
+  /**
+   * B-7 두 번째 방어선: 지금 `videoEdit` state가 "어느 테넌트 것인지" 기록한다.
+   * reconcile 가드가 대부분 막지만, 자동저장 타이머의 클로저가 전환 직전 순간의
+   * persistedVideoEdit을 들고 있다가 전환 뒤에 실행되는 경로까지 막으려면 save() 쪽에도
+   * 독립된 출처 확인이 필요하다(단일 원칙을 한 곳만 믿지 않고 저장 직전에도 다시 잰다).
+   */
+  const videoEditTenantRef = useRef<string | null>(null);
+  /** 3차 재리뷰 BLOCKER(a): 서버가 소유한 videoEdit 판 번호. 저장 요청에 실어 보내
+   * compare-and-set 기준으로 쓴다(save() 참조). */
+  const videoEditBaseRevisionRef = useRef<number | null>(null);
+  const [videoEditReconciling, setVideoEditReconciling] = useState(false);
+  const [videoEditConflict, setVideoEditConflict] = useState(false);
+  /**
+   * 서버 값으로 videoEdit을 다시 맞춘다. draftId가 목록(LIMIT 50) 안에 있으면 그 값을
+   * 쓰고, 없으면(BLOCKER b) 단건 조회(GET ?id=)로 직접 읽는다. MAJOR2: 맞추는 동안
+   * 대기 중이던 자동저장 타이머를 반드시 먼저 끈다 — 안 그러면 재동기화 도중 그 타이머가
+   * 잠정값을 서버로 내보내 방금 서버에서 읽어온 최신 값을 덮어쓴다. 맞추는 동안은
+   * videoEditReconciling으로 편집을 막는다(사용자 수정이 조용히 사라지는 것을 막는
+   * 더 단순하고 안전한 쪽 — 코드리뷰가 준 두 선택지 중 "막는다"를 택했다).
+   */
+  /**
+   * B-7(6차 재리뷰 BLOCKER, 보안): 워크스페이스 전환·새 작업·후보 선택·버리고 새로
+   * 시작 네 곳이 전부 이 함수를 부른다. 세대를 올려 진행 중이던 reconcile의 결과가
+   * 반영되지 않게 하고, 기다리는 단건 GET이 있으면 그 자리에서 끊고, 잠금(syncing)도
+   * 같이 풀어 다음 화면이 "맞추는 중" 상태로 시작하지 않게 한다.
+   */
+  function invalidateVideoEditReconcile() {
+    videoEditReconcileGenerationRef.current += 1;
+    videoEditReconcileAbortRef.current?.abort();
+    videoEditReconcileAbortRef.current = null;
+    setVideoEditReconciling(false);
+    // 호출부가 전부 곧이어 setVideoEdit(null)도 함께 하므로, "지금 videoEdit이 어느
+    // 테넌트 것인지" 표식도 같이 비운다 — null 상태에 남의 테넌트 표식이 붙어 있으면
+    // 안 된다.
+    videoEditTenantRef.current = null;
+  }
+  async function reconcileVideoEditFromServer(id: string, force = false) {
+    // B-7(6차 재리뷰 BLOCKER, 보안): 이 호출의 세대 번호와 시작 시점의 테넌트를 찍어
+    // 둔다. await 뒤에 세대가 바뀌었거나(다른 reconcile·리셋이 먼저 올렸다) 그 사이
+    // draftId·워크스페이스가 바뀌었으면, 이 결과는 "이미 낡은 요청"이라 절대 반영하지
+    // 않는다 — A 테넌트에서 시작한 조회가 B 테넌트로 전환된 화면에 A의 값을 칠하는
+    // 것을 이 한 판정으로 막는다.
+    const myGeneration = ++videoEditReconcileGenerationRef.current;
+    const myTenantId = activeWorkspaceIdRef.current;
+    if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
+    videoEditReconciledRef.current = false;
+    setVideoEditReconciling(true);
+    // M-1(4차 재리뷰 MAJOR): "다시 불러오기" 버튼은 force=true로 부른다. hist 목록
+    // 캐시(LIMIT 50)를 먼저 보면, 방금 충돌난 초안이 그 목록에 없을 때 다시 불러오기가
+    // 아무것도 못 읽고 409가 무한 반복된다 — force면 목록 지름길을 건너뛰고 항상 단건
+    // GET으로 읽는다.
+    let serverDraft = force ? undefined : hist?.drafts?.find((d) => d.id === id) as Record<string, unknown> | undefined;
+    let fetchFailed = false;
+    if (!serverDraft) {
+      const controller = new AbortController();
+      videoEditReconcileAbortRef.current = controller;
+      // MINOR(4차 재리뷰): 단건 조회가 걸려 있으면 reconciling이 영원히 안 풀린다 —
+      // 타임아웃을 걸어 실패로 확정짓는다.
+      const timeoutId = setTimeout(() => controller.abort(), 10_000);
+      try {
+        const res = await fetch(`/api/studio/drafts?tenant_id=${encodeURIComponent(myTenantId ?? "")}&id=${encodeURIComponent(id)}`, { headers: authHeaders(), signal: controller.signal });
+        if (res.ok) {
+          const data = await res.json().catch(() => null) as { draft?: Record<string, unknown> } | null;
+          serverDraft = data?.draft ?? undefined;
+        } else if (res.status !== 404) {
+          // MINOR(4차 재리뷰): 500·403 등은 "서버에 없음"이 아니라 오류다. 없음으로
+          // 오인하면 videoEdit을 null로 덮어써 있던 값을 지운다.
+          fetchFailed = true;
+        }
+      } catch {
+        // 네트워크 실패·타임아웃(또는 B-7 리셋이 abort() 한 경우)도 "없음"이 아니라
+        // 오류다 — 아래에서 별도 처리한다. 리셋으로 abort된 경우는 아래 세대 판정이
+        // fetchFailed 분기보다 먼저 걸려 조용히 버려진다.
+        fetchFailed = true;
+      } finally {
+        clearTimeout(timeoutId);
+        if (videoEditReconcileAbortRef.current === controller) videoEditReconcileAbortRef.current = null;
+      }
+    }
+    // B-7 핵심 판정: 이 시점에도 여전히 "지금 세대"이고, draftId·워크스페이스가 그
+    // 사이 안 바뀌었을 때만 아래에서 결과를 반영한다. 넷 중 하나라도 어긋나면 이
+    // 함수는 화면 상태를 전혀 건드리지 않고 조용히 끝난다(리셋 쪽이 이미
+    // videoEditReconciling=false 등 정리를 마쳤다).
+    const stillCurrent = videoEditReconcileGenerationRef.current === myGeneration
+      && draftIdRef.current === id
+      && activeWorkspaceIdRef.current === myTenantId;
+    if (!stillCurrent) return;
+    if (fetchFailed) {
+      // 오류면 지금 화면 값(옛 상태)을 그대로 두고 맞추는 시도만 접는다 — 사용자가
+      // 다시 시도할 수 있게 reconciling만 풀고, videoEdit을 지우거나 "맞춰짐" 처리하지
+      // 않는다(맞춰짐 처리하면 그 다음 자동저장이 안 맞춘 값을 서버로 내보낼 수 있다).
+      setVideoEditReconciling(false);
+      // MINOR(5차 재리뷰): 안내만 뜨고 재시도 길이 없었다 — 토스트 자체에 "다시 시도"를
+      // 달아 force 재조회로 바로 이어지게 한다.
+      showToast("서버 값을 다시 불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.", "error", {
+        label: "다시 시도",
+        onClick: () => { void reconcileVideoEditFromServer(id, true); },
+      });
+      return;
+    }
+    const serverVideoEdit = (serverDraft?.videoEdit as VideoEdit | undefined) ?? null;
+    setVideoEdit(serverVideoEdit);
+    videoEditBaseRevisionRef.current = serverVideoEdit?.revision ?? null;
+    reconciledDraftIdRef.current = id;
+    videoEditTenantRef.current = myTenantId; // B-7: 이 값은 myTenantId 테넌트 것이라고 기록
+    videoEditReconciledRef.current = true;
+    setVideoEditReconciling(false);
+    setVideoEditConflict(false);
+    if (force) mutateHist();
+  }
+  // B-7(6차 재리뷰 BLOCKER, 보안 — 자체 실측으로 추가 발견): 워크스페이스를 바꾸면
+  // hist(SWR) 데이터의 "객체 참조"도 바뀐다(다른 테넌트의 새 목록이므로) — 내용이
+  // 똑같이 빈 배열이어도 참조가 다르면 React가 "바뀌었다"고 보고 이 효과를 그 커밋
+  // 안에서 즉시 다시 돌린다. 그런데 그 커밋에서는 아직 옛 draftId(예: A의 XA)가
+  // state에 남아 있다(setDraftId(null)이 워크스페이스 리셋 효과 안에서 예약됐을 뿐
+  // 아직 반영 전) — 그래서 "지금 워크스페이스는 B인데 A의 draftId로" 재조회를 새로
+  // 시작해버리는 유령 호출이 생겼다(reconcile 내부의 stillCurrent 판정이 결과 반영은
+  // 막지만, 그 유령 호출이 올린 syncing=true를 아무도 꺼주지 않아 B가 잠긴 채 남았다).
+  // hist?.drafts의 "내용 유무"(불리언)만 의존값으로 삼으면 참조가 바뀌어도 유무가
+  // 똑같은 한(빈 배열→빈 배열) 이 커밋에서 다시 안 돈다 — draftId가 실제로 바뀐 다음
+  // 커밋에서만, 그때는 이미 최신 draftId(null)로 정확히 판단한다.
+  const histDraftsReady = Boolean(hist?.drafts);
+  useEffect(() => {
+    if (!draftId) { videoEditReconciledRef.current = true; videoEditBaseRevisionRef.current = null; return; }
+    if (reconciledDraftIdRef.current === draftId) return;
+    // B-6(6차 재리뷰 BLOCKER): 목록(SWR)이 계속 로딩 중이면 다음 도착을 기다리는 게
+    // 맞지만, 목록 자체가 에러로 끝났으면(histError) 영원히 안 온다 — 그 경우 목록을
+    // 포기하고 단건 GET(force)으로 넘어간다. 그래야 "잠근 채 12초 뒤에도 안 풀림"이
+    // 아니라 최소한 10초 타임아웃(reconcileVideoEditFromServer 내부)까지만 잠긴다.
+    if (!histDraftsReady && !histError) return; // SWR 로딩 중 — hist가 도착하면 이 효과가 다시 돈다.
+    void reconcileVideoEditFromServer(draftId, Boolean(histError));
+  }, [draftId, histDraftsReady, histError]);
   useEffect(() => () => {
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
     if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
@@ -1726,33 +3113,79 @@ export default function StudioPage() {
         return;
       }
       const tagText = work.hashtags.map((tag) => tag.replace(/^#/, "")).join(" ");
+      // B1(교차 리뷰 BLOCK): loadDraft와 같은 이유. 이 경로도 videoEdit을 직접 세팅한다.
+      if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+      if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
       setIdea((linkedDraft?.idea as string) || work.idea);
-      setText({
+      const returnedText: TextVariants = {
         threads: work.body,
         x: work.body,
         facebook: work.body,
         instagram: { caption: work.body, hashtags: work.hashtags.map((tag) => tag.replace(/^#/, "")) },
         shorts: { hook: work.body, body: "", cta: "" },
-      });
-      setImg(work.imageUrl ? { url: work.imageUrl, file: work.imageUrl } : null);
+      };
+      const queueImageUrls = Array.isArray(queuePost.imageUrls)
+        ? queuePost.imageUrls.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        : [];
+      const returnedImageUrls = queueImageUrls.length
+        ? queueImageUrls
+        : work.imageUrl
+          ? [work.imageUrl]
+          : [];
+      const isUnlinkedQueueCard = !linkedDraft && returnedImageUrls.length > 0 && !work.videoUrl;
+      const primaryImageUrl = returnedImageUrls[0] ?? work.imageUrl;
+      setImg(primaryImageUrl ? {
+        url: primaryImageUrl,
+        file: primaryImageUrl,
+        imageUrls: returnedImageUrls,
+        ...(isUnlinkedQueueCard ? { textEmbedded: true, textSourceRecoverable: false } : {}),
+      } : null);
       setVid(work.videoUrl ? { url: work.videoUrl, file: work.videoUrl, model: "기존 작업물" } : null);
       setIncludes(work.includedPlatforms.length
         ? normalizeIncludes(Object.fromEntries(ALL.map((platform) => [platform, work.includedPlatforms.includes(platform)])))
         : normalizeIncludes());
+      // MINOR-g 근본원인: 인박스/큐 작업물을 발행실 상태로 복원할 때도 그 작업물이 저장한
+      // 체크 상태가 표시 없이 되살아난다. 같은 배지로 복원임을 남긴다.
+      setRestoredSelectionNotice(work.includedPlatforms.length > 0);
       setTitles((linkedDraft?.titles as Record<string, string>) || {});
       setHashtags((linkedDraft?.hashtags as Record<string, string>) || (tagText ? { instagram: tagText } : {}));
       setTopicTags((linkedDraft?.topicTags as Record<string, string>) || {});
       setFirstComments((linkedDraft?.firstComments as Record<string, string>) || {});
       setCaptions((linkedDraft?.captions as Record<string, string>) || {});
       setSelectedAccounts((linkedDraft?.selectedAccounts as Record<string, string>) || {});
-      setEditLines((linkedDraft?.editLines as string[]) || []);
+      const returnedEditLines = (linkedDraft?.editLines as string[]) || (isUnlinkedQueueCard
+        ? returnedImageUrls.map((_, index) => index === 0 ? work.body : "")
+        : []);
+      replaceBodySnapshot(
+        returnedEditLines,
+        returnedText,
+        { replaceDocument: true, serverRevision: Number.isSafeInteger(linkedDraft?.bodyRevision) ? linkedDraft?.bodyRevision as number : 0 },
+      );
+      // 2026-10-01 재리뷰 BLOCK: loadDraft 와 같은 이유. 이 경로도 quickDraftTopicRef 를
+      // 불러온 작업물의 실제 주제로 맞춘다.
+      quickDraftTopicRef.current = resolveRestoredQuickDraftTopic({
+        hasText: Boolean(returnedText),
+        savedTopic: null,
+        restoredIdea: String((linkedDraft?.idea as string) || work.idea || ""),
+      });
       setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
       setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
       setVideoEdit((linkedDraft?.videoEdit as VideoEdit) || null);
+      // MINOR(7차 재리뷰): 이 분기도 videoEdit을 reconcile 밖에서 직접 세팅한다(워크스페이스
+      // 전환·새 작업·후보 선택·버리고 새로 시작과 같은 계열) — 그 아래 setDraftId(linkedDraftId)가
+      // null일 수 있는데, 그러면 진행 중이던 맞춤의 syncing 잠금이 안 풀릴 수 있었다. 다른 네 곳과
+      // 같은 invalidateVideoEditReconcile()로 세대를 올리고 잠금을 확실히 푼다.
+      invalidateVideoEditReconcile();
       const linkedFormat = validateContentEditFormat(linkedDraft?.editFormat);
       if (linkedFormat.valid) {
         setEditKind(linkedFormat.value.kind);
         setEditFormat(linkedFormat.value);
+      } else if (!linkedDraft && work.videoUrl) {
+        setEditKind("video");
+        setEditFormat(defaultContentEditFormat("video"));
+      } else if (isUnlinkedQueueCard) {
+        setEditKind("card");
+        setEditFormat(defaultContentEditFormat("card"));
       }
       setDraftId(linkedDraftId);
       setPublishReconciliations(normalizePublishReconciliations(linkedDraft?.publishReconciliations ?? linkedDraft?.publishReconciliation));
@@ -1775,9 +3208,31 @@ export default function StudioPage() {
         : pubFailed > 0
           ? "발행 실패"
           : "발행 완료";
-  const LABEL: Record<string, string> = { threads: "Threads", x: "X", facebook: "Facebook", instagram: "Instagram", shorts: "Shorts", reels: "Reels", tiktok: "TikTok" };
+  // 2026-10-03 독립 리뷰 MINOR-g: 이 맵이 channel-name-list.ts(PLATFORM_LABEL)와 내용이
+  // 똑같이 중복 선언돼 있었다. 한쪽만 고치면 다른 쪽이 조용히 낡는다. 하나로 합친다.
+  // (타입은 기존처럼 Record<string,string>으로 느슨하게 — 이 아래에서 BulkPlatform 등
+  // 더 넓은 string 키로 인덱싱하는 자리가 여럿이라 PreviewPlatform 리터럴로 좁히면
+  // 그 자리들이 전부 타입 에러가 난다.)
+  const LABEL: Record<string, string> = PLATFORM_LABEL;
   function chooseCandidate(candidate: StudioGenerationCandidate) {
+    // [보안](교차 리뷰 재리뷰 BLOCK 2): 후보를 고르는 이 경로는 cardDeck·videoEdit
+    // 둘 다 비우지 않아 이전 후보(또는 이전 세션)의 오버레이·댓글이 새 후보로 그대로
+    // 넘어갔다.
+    if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
+    if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
+    setCardDeck(null); setVideoEdit(null);
+    // MINOR(3차 재리뷰): draftId도 끊는다 — 남겨 두면 다음 저장이 이 후보와 무관한
+    // 옛 초안 id 위에 그대로 얹혀 저장된다.
+    draftIdRef.current = null;
+    setDraftId(null);
+    videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
+    invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setSelectedCandidate(candidate);
+    // 새 구조 초안은 새 작업물이다. 본문만 교체하고 이전 작업물의 해시태그를 남기면
+    // 모든 채널에 무관한 태그가 따라가고, X 글자수 한도까지 그 태그 때문에 부풀어 오른다.
+    // 후보를 고르는 순간 기존 발행 메타에서 해시태그만 명시적으로 끊는다. 새 본문이
+    // 실제 태그를 제공하면 아래 text 동기화 효과가 새 값으로 다시 채운다.
+    setHashtags({});
     /*
       ★rationale 은 **고객에게 보여 줄 글이 아니다.** "이 구조를 왜 골랐는가" 를 우리가
       우리에게 설명하는 내부 메모다. 예: "결과(사례)를 먼저 보여줘서 신뢰를 쌓고, 그 사례가
@@ -1792,7 +3247,7 @@ export default function StudioPage() {
       설명하는 자리에만 쓴다.
     */
     const body = [candidate.title, ...candidate.format.outline].join("\n");
-    setText({
+    const candidateText: TextVariants = {
       threads: body,
       x: trimToChannelLimit(body, "x"),
       facebook: body,
@@ -1804,8 +3259,8 @@ export default function StudioPage() {
         body: candidate.format.outline.join("\n"),
         cta: candidate.format.outline[candidate.format.outline.length - 1] ?? candidate.title,
       },
-    });
-    setEditLines([candidate.title, ...candidate.format.outline]);
+    };
+    replaceBodySnapshot([candidate.title, ...candidate.format.outline], candidateText, { replaceDocument: true, serverRevision: 0 });
     /*
       2026-09-09 실사용에서 찾았다. 생성실에서 "글" 을 골라 구조를 고르고 편집실로 갔더니
       종류가 카드뉴스로 잡혔다. content_branch 는 text_image 와 video 둘뿐이라 글과
@@ -1835,12 +3290,10 @@ export default function StudioPage() {
     if (!PUBLISH_SUPPORTED.has(platform)) return { status: "unsupported" };
     if (accountLoadPending[platform]) return { status: "loading" };
     if (accountLoadErrors[platform]) return { status: "error" };
-    const accounts = accountsByPlatform[platform] || [];
+    const accounts = usableAccounts(platform);
     if (!accounts.length) return { status: "missing" };
-    const selected = accounts.find((account) => account.id === selectedAccounts[platform])
-      || accounts.find((account) => account.is_default)
-      || accounts[0];
-    return { status: "connected", displayName: selected.displayName, username: selected.username };
+    const selected = defaultConnectedAccount(platform);
+    return { status: "connected", displayName: selected?.displayName, username: selected?.username };
   }
 
   function previewEditor(platform: PreviewPlatform): PreviewInlineEditor {
@@ -1872,29 +3325,73 @@ export default function StudioPage() {
   // 눌리지" 상태로 남았다. 발행 단추 옆에 계속 보이는 자리를 둬 어느 채널이 왜 막혔는지와
   // 바로 고치는 단추를 붙인다.
   const publishBlockedEntries = partitionBlockedPublishTargets(
-    publishTargets,
+    ALL.filter((platform) => usableAccounts(platform).length > 0),
     (platform) => validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0],
   ).blocked;
+  /**
+   * 2026-10-03 독립 리뷰 m1: Threads+TikTok처럼 섞어 고르고 TikTok 공개 범위를 안
+   * 고른 경우, TikTok 체크박스 칸(각 미리보기 카드 머리)에는 이유가 보이지만 발행
+   * 버튼 쪽에는 "선택 2곳 (Threads)"처럼 TikTok이 조용히 빠진 걸로만 보였다 — 왜
+   * 2에서 1로 줄었는지 그 자리에서 안 보였다. publishGuard(영상/카드뉴스 없음,
+   * TikTok 공개 범위 등)에 걸려 빠진, 그런데 사용자가 체크는 한 채널을 이름+이유로
+   * 발행 버튼 옆에 보여준다. publishBlockedEntries(글자수·해시태그 한도)와는 다른
+   * 축이라 따로 둔다 — 한쪽은 "본문이 한도를 넘음", 한쪽은 "그 채널 자체가 아직
+   * 준비되지 않음"이다.
+   */
+  const guardExcludedSelections = ALL.filter((platform) => Boolean(includes[platform]))
+    .map((platform) => ({ platform, reason: publishGuard(platform).disabledReason }))
+    .filter((entry): entry is { platform: PreviewPlatform; reason: string } => Boolean(entry.reason));
   const bulkTargets = ALL.filter((platform) => PUBLISH_SUPPORTED.has(platform)) as BulkPlatform[];
-  const connectedTargets = bulkTargets.filter((platform) => (accountsByPlatform[platform] || []).length > 0);
+  // 2026-10-01 실측(회장 지적, PR#96 결함3 리뷰 BLOCK): 사이드바(channel-config →
+  // getChannelConnectionStates)와 publishTargets 는 connectionState === "connected" 인
+  // 것만 연결됨으로 본다. "연결됨"은 계정이 이어져 있는가 하나만 묻는 질문이다.
+  // 그런데 여기 connectedTargets 는 한때 publishGuard(영상 없음·본문 미검증 등 "지금
+  // 발행 가능한가")까지 섞어 판정했다. 그래서 X 계정을 연결해 놓고 영상만 아직 안
+  // 올렸을 뿐인데도 "아직 연결 안 된 곳: X" 로 뜨는 거짓말이 났다 — 연결과 "지금 당장
+  // 올릴 수 있는가"는 서로 다른 질문이라 하나로 합치면 안 된다. "지금 발행 불가"
+  // 사유는 이미 채널별 카드(PublishHeaderControls/publishGuard, 약 3270줄)가 따로
+  // 보여준다. 여기 connectedTargets 는 usableAccounts 단독으로만 판정한다.
+  const channelReadiness = new Map<BulkPlatform, ChannelReadiness>(
+    bulkTargets.map((platform) => [platform, {
+      connected: usableAccounts(platform).length > 0,
+      disabledReason: publishGuard(platform).disabledReason,
+    }]),
+  );
+  const connectedTargets = connectedOnlyTargets(channelReadiness);
+  // 2026-10-01 재리뷰 BLOCK: connectedTargets(순수 연결 여부)를 "전부 고르기"·선택
+  // 카운트·비활성 비교에도 그대로 썼더니, 연결은 됐지만 지금 발행 불가(영상 없음·본문
+  // 미검증)한 채널까지 "고를 수 있다"고 버튼이 우기는 새 거짓말이 났다("연결된 3곳을
+  // 모두 골랐습니다"라며 실제로는 1곳만 선택). "전부 고르기"가 실제로 고르는 대상은
+  // 언제나 publishableTargets(연결 + 지금 발행 가능) 여야 한다. connectedTargets는
+  // "아직 연결 안 된 곳" 문구(순수 연결 여부)에만 남긴다.
+  const publishableTargets = computePublishableTargets(channelReadiness);
   const previewTargets = ALL as BulkPlatform[];
 
+  // 아래 네 함수 + 체크박스 onCheckedChange는 전부 사용자가 **지금** 직접 고른 행동이다.
+  // 그 순간부터는 "지난번 선택 유지" 배지가 더 이상 맞지 않는다(복원이 아니라 지금의
+  // 의도된 선택이므로) — 눌렀으면 끈다(MINOR-g 근본원인 수정).
   function selectAllChannels() {
-    if (!connectedTargets.length) { showToast("연결된 채널이 아직 없습니다. 먼저 계정을 연결해 주세요", "error"); return; }
-    setIncludes((current) => ({ ...current, ...Object.fromEntries(connectedTargets.map((platform) => [platform, true])) }));
-    showToast(`연결된 ${connectedTargets.length}곳을 모두 골랐습니다`, "success");
+    if (!publishableTargets.length) { showToast("지금 바로 발행할 수 있는 채널이 아직 없습니다. 연결 상태와 발행 조건을 확인해 주세요", "error"); return; }
+    setIncludes((current) => ({ ...current, ...Object.fromEntries(publishableTargets.map((platform) => [platform, true])) }));
+    setRestoredSelectionNotice(false);
+    showToast(`발행 가능한 ${publishableTargets.length}곳을 모두 골랐습니다`, "success");
   }
   function clearAllChannels() {
     setIncludes((current) => ({ ...current, ...Object.fromEntries(bulkTargets.map((platform) => [platform, false])) }));
+    setRestoredSelectionNotice(false);
     showToast("고른 곳을 모두 해제했습니다", "success");
   }
   function excludeChannel(platform: BulkPlatform) {
     setIncludes((current) => ({ ...current, [platform]: false }));
+    setRestoredSelectionNotice(false);
     showToast(`${LABEL[platform]}만 빼고 두었습니다`, "success");
   }
   function keepOnlyChannel(platform: BulkPlatform) {
-    if (!(accountsByPlatform[platform] || []).length) { showToast(`${LABEL[platform]} 계정이 아직 연결되지 않았습니다`, "error"); return; }
+    if (!usableAccounts(platform).length) { showToast(`${LABEL[platform]} 계정을 다시 연결해야 합니다`, "error"); return; }
+    const guard = publishGuard(platform as PreviewPlatform);
+    if (guard.disabledReason) { showToast(guard.disabledReason, "error"); return; }
     setIncludes((current) => ({ ...current, ...Object.fromEntries(bulkTargets.map((p) => [p, p === platform])) }));
+    setRestoredSelectionNotice(false);
     showToast(`${LABEL[platform]} 한 곳만 남겼습니다`, "success");
   }
   function unifyHashtagsAcrossChannels() {
@@ -1928,11 +3425,12 @@ export default function StudioPage() {
     }
     setReviewBusy(true);
     try {
+      // 신규·기존 초안과 기존 검토 큐를 가리지 않고, 검토 요청은 반드시 최신 본문
+      // 스냅샷 저장이 끝난 뒤에만 진행한다. draftId 단축 평가는 저장을 건너뛰므로 금지한다.
+      const linkedDraftId = await save("draft", undefined, undefined, undefined, undefined, cardDeck, videoEdit);
+      if (!linkedDraftId) throw new Error("검토 요청용 초안을 저장하지 못했습니다");
       let queueId = reviewQueueId;
       if (!queueId) {
-        // 검토 큐에 걸 초안이 아직 없으면 지금 전체 스냅샷으로 만든다(이전 기본값과 동일).
-        const linkedDraftId = draftId || await save("draft", undefined, undefined, undefined, undefined, undefined, cardDeck, videoEdit);
-        if (!linkedDraftId) throw new Error("검토 요청용 초안을 저장하지 못했습니다");
         const added = await apiPost<{ post?: { id?: string } }>("/api/queue/add", {
           tenant_id: activeWorkspace.id,
           draftId: linkedDraftId,
@@ -2001,6 +3499,7 @@ export default function StudioPage() {
       subtitle="콘텐츠 작업실"
       roomLabel={activeRoom === "create" ? "생성실" : activeRoom === "edit" ? "편집실" : "발행실"}
       currentRoom={activeRoom}
+      currentEditKind={editKind}
       leading={
         <>
           <Button onClick={() => { setShowUsageHistory(false); setShowWorks((value) => !value); }} aria-expanded={showWorks} aria-controls="studio-work-overview">
@@ -2173,6 +3672,7 @@ export default function StudioPage() {
         topic={idea}
         contentBranch={createBranch}
         onContentBranchChange={setCreateBranch}
+        requestedPrimaryKind={requestedEditKind}
         onPrimaryKindChange={setCreatePrimaryKind}
         onTopicChange={setIdea}
         onOpenLearning={() => setShowWizard(true)}
@@ -2181,11 +3681,12 @@ export default function StudioPage() {
           // 설계 §6.1 "201 batch → 편집실 진입(draft 로드)" 계약. draftId 가 있으면(방금
           // 카톡 말풍선 카드뉴스 9장을 확정) 그 초안을 실어 넣고 연다 — 안 그러면
           // 회원이 돈을 내고 만든 덱이 편집실에서 안 보인다(코드리뷰 2026-09-22 M4).
+          let loadedEditKind: EditContentKind | null = null;
           if (draftId) {
             const draft = hist?.drafts.find((d) => d.id === draftId);
-            if (draft) loadDraft(draft);
+            if (draft) loadedEditKind = loadDraft(draft);
           }
-          changeRoom("edit");
+          changeRoom("edit", loadedEditKind ?? editKind);
         }}
         onDerivationSucceeded={async () => {
           // 확정 성공 직후 초안 목록을 재검증해야 cardDeckByDraftId 가 방금 만든 덱을
@@ -2209,7 +3710,9 @@ export default function StudioPage() {
         }}
         onTextCardsCreated={(urls, cardLines) => {
           if (!urls.length) return;
-          setImg({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) });
+          // renderTextCard가 문구를 PNG 픽셀에 이미 그렸다. 이 표식을 저장·재개까지 보존해
+          // 편집실이 같은 문구 textarea를 카드 면 위에 한 벌 더 얹지 않게 한다.
+          setImg(embeddedTextCardImage({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) }));
           setEditKind("card");
           setEditFormat((current) => {
             const base = defaultContentEditFormat("card");
@@ -2218,7 +3721,7 @@ export default function StudioPage() {
           });
           // 그림만 넘기면 편집실은 카드가 몇 장인지 모른다. 실제로 그래서 3장을 만들어도
           // 편집실이 `1 / 1` 을 그렸다(2026-09-14 실측). 장에 적힌 글자를 같이 넘긴다.
-          if (cardLines.length) setEditLines(cardLines);
+          if (cardLines.length) replaceEditLines(cardLines);
         }}
         cardRatio={cardAspectRatio}
         onGenerateVideo={generateShortVideo}
@@ -2235,9 +3738,6 @@ export default function StudioPage() {
       <ConfirmDialog request={confirmRequest} onConfirm={() => settleConfirm(true)} onCancel={() => settleConfirm(false)} />
     </div>
   );
-
-  // 편집실 본 화면과 대화창이 같은 대사를 본다. 대화창만 빈 배열을 받으면 일괄 편집이 죽은 단추가 된다.
-  const resolvedEditLines = editLines.length ? editLines : [text?.shorts?.hook || "", text?.shorts?.body || "", text?.shorts?.cta || ""].filter(Boolean);
 
   // 카드뉴스 v2 덱 연산 후 800ms 디바운스 자동저장(설계 §5 F4). 연산마다 즉시 서버에 쏘면
   // 타이핑·연속 클릭마다 요청이 나간다. hook(useRef·useEffect)은 위(다른 useRef 들 옆,
@@ -2260,15 +3760,18 @@ export default function StudioPage() {
         setCardDeckAutosaveError(`${emptySlide}번 장에 말풍선이 비어 있어 자동 저장을 보류했습니다. 내용을 채우면 저장됩니다.`);
         return;
       }
-      // A(2026-09-22 코드리뷰 4차): save()의 8번째 인자(videoEdit)를 생략하면 기본값이
+      // A(2026-09-22 코드리뷰 4차): save()의 마지막 인자(videoEdit)를 생략하면 기본값이
       // 현재 videoEdit state를 통째로 실어 보낸다. 이 타이머는 카드덱 도메인만 책임진다 —
       // 사용자가 영상 오버레이 문구를 지우고 다시 타이핑하는 중(정상 편집 중, 보류
       // 대상)이면 그 state가 여기 실려가 서버 validateVideoEdit 400을 내고, 카드덱
       // 저장까지 함께 실패한다. null을 명시해 videoEdit 키 자체를 payload에서 뺀다
       // (drafts/route.ts는 키가 없으면 기존 값을 보존한다).
-      save("draft", publishReconciliations, draftIdRef.current, editLines, img, vid, pruned, null)
+      save("draft", publishReconciliations, draftIdRef.current, img, vid, pruned, null)
         .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setCardDeckAutosaveError(""); })
-        .catch((error) => setCardDeckAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
+        .catch((error) => {
+          if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "BODY_STALE_REVISION") return;
+          setCardDeckAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+        });
     }, 800);
   }
 
@@ -2280,24 +3783,63 @@ export default function StudioPage() {
    * (cardDeck의 pruneEmptyBubbles/emptyBubbleSlideNumber와 같은 패턴).
    */
   function onVideoEditChange(nextEdit: VideoEdit) {
+    const previousSubtitleLines = [...(videoEditRef.current?.subtitles ?? [])]
+      .sort((left, right) => left.order - right.order)
+      .map((subtitle) => subtitle.text);
+    const nextSubtitleLines = [...nextEdit.subtitles]
+      .sort((left, right) => left.order - right.order)
+      .map((subtitle) => subtitle.text);
+    if (previousSubtitleLines.length !== nextSubtitleLines.length
+      || previousSubtitleLines.some((line, index) => line !== nextSubtitleLines[index])) {
+      // 자막 변경도 다른 글 편집과 같은 최신값 경로를 즉시 통과한다. 이후 글 화면에서
+      // 더 새 값을 쓰면 그 세대가 이 값을 자연스럽게 대체한다.
+      syncEditLines(nextSubtitleLines);
+    }
     setVideoEdit(nextEdit);
+    videoEditRef.current = nextEdit;
     if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
-    videoEditAutosaveTimer.current = setTimeout(() => {
-      const blockedReason = videoEditIncompleteEntryReason(nextEdit);
-      if (blockedReason) {
-        setVideoEditAutosaveError(blockedReason);
-        return;
-      }
-      // B(2026-09-22 코드리뷰 4차): 반대 방향의 같은 결함. 이 타이머는 영상 도메인만
-      // 책임진다 — cardDeck을 그대로 실으면(pruning 없이) 빈 말풍선이 서버에 그대로
-      // 박히거나, 저장 자체가 카드덱 검증 실패로 통째로 막힌다. null을 명시해 cardDeck
-      // 키 자체를 payload에서 뺀다(기존 서버 값 보존).
-      // 영상만 바꾸는 저장은 editLines 키를 아예 보내지 않는다. 타이머가 잡은 낡은
-      // 클로저 값을 보내면 서버의 최신 글/카드 투영을 되돌릴 수 있다.
-      save("draft", publishReconciliations, draftIdRef.current, undefined, img, vid, null, nextEdit)
-        .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setVideoEditAutosaveError(""); })
-        .catch((error) => setVideoEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.")));
-    }, 800);
+    const attempt = (retriesLeft: number) => {
+      videoEditAutosaveTimer.current = setTimeout(() => {
+        // [보안·데이터 유실](교차 리뷰 재리뷰 BLOCK 1): 서버 값을 아직 못 읽었으면(같은
+        // draft를 다른 탭·기기가 먼저 저장했을 수 있는 창) 저장을 미룬다. 짧게 재시도하고,
+        // 그래도 안 되면(오프라인 등) 포기하지 않고 그냥 보낸다 — 서버가 revision으로
+        // 한 번 더 막는다(드래프트 route.ts StaleVideoEditRevisionError, 409).
+        if (!videoEditReconciledRef.current && retriesLeft > 0) {
+          attempt(retriesLeft - 1);
+          return;
+        }
+        const blockedReason = videoEditIncompleteEntryReason(nextEdit);
+        if (blockedReason) {
+          setVideoEditAutosaveError(blockedReason);
+          return;
+        }
+        // B(2026-09-22 코드리뷰 4차): 반대 방향의 같은 결함. 이 타이머는 영상 도메인만
+        // 책임진다 — cardDeck을 그대로 실으면(pruning 없이) 빈 말풍선이 서버에 그대로
+        // 박히거나, 저장 자체가 카드덱 검증 실패로 통째로 막힌다. null을 명시해 cardDeck
+        // 키 자체를 payload에서 뺀다(기존 서버 값 보존).
+        // 영상 저장도 수동 저장·카드 자동저장·검토 요청과 같은 save 경로를 쓴다. save가
+        // 실행 시점의 본문 세대를 읽으므로 예약 당시 자막 복사본은 존재하지 않는다.
+        save("draft", publishReconciliations, draftIdRef.current, img, vid, null, nextEdit)
+          .then(() => {
+            setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
+            setVideoEditAutosaveError("");
+          })
+          .catch((error) => {
+            // 본문 충돌은 save()가 로컬 입력과 latestBody를 함께 보관하고 전용 복구 UI를
+            // 연다. 영상 오류로도 중복 표시하면 복구 성공 뒤 영상 오류가 남아 발행을
+            // 계속 막으므로 이 경로에서는 별도 오류를 만들지 않는다.
+            if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "BODY_STALE_REVISION") return;
+            // MAJOR1(3차 재리뷰): 409가 나면 빠져나갈 길("서버 값 다시 불러오기")을 준다.
+            if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "VIDEO_EDIT_STALE_REVISION") {
+              setVideoEditConflict(true);
+              setVideoEditAutosaveError("다른 곳에서 더 최신으로 저장된 영상 편집이 있습니다. 최신 값을 다시 불러온 뒤 다시 시도해 주세요.");
+              return;
+            }
+            setVideoEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+          });
+      }, 800);
+    };
+    attempt(10);
   }
 
   if (activeRoom === "edit") return (
@@ -2309,15 +3851,14 @@ export default function StudioPage() {
         lines={resolvedEditLines}
         onLinesChange={syncEditLines}
         kind={editKind}
-        onKindChange={(nextKind) => {
-          setEditKind(nextKind);
-          setEditFormat(defaultContentEditFormat(nextKind));
-        }}
+        onKindChange={changeEditKind}
         initialFormat={editFormat}
         onFormatChange={setEditFormat}
         previewReady={editKind === "video" ? Boolean(vid?.file) : editKind === "card" ? Boolean(img?.file) : false}
-        previewImageUrl={img?.file || img?.url || null}
-        previewImageUrls={img?.imageUrls ?? null}
+        previewImageUrl={liveTextCardPreview?.[0] || img?.file || img?.url || null}
+        previewImageUrls={liveTextCardPreview ?? img?.imageUrls ?? null}
+        cardTextEmbedded={img?.textEmbedded === true}
+        cardTextSourceRecoverable={img?.textSourceRecoverable !== false}
         previewVideoUrl={vid?.file || vid?.url || null}
         cardTextPositions={cardTextPositions}
         onCardTextPositionsChange={setCardTextPositions}
@@ -2325,13 +3866,21 @@ export default function StudioPage() {
         onCardDeckChange={onCardDeckChange}
         videoEdit={videoEdit}
         onVideoEditChange={onVideoEditChange}
-        onOpenCreate={() => changeRoom("create")}
+        onOpenCreate={openCreateForEditKind}
         onOpenPublish={moveToPublish}
         lastSavedAt={editSavedAt}
         moveBusy={moveToPublishBusy}
         autosaveError={[editAutosaveError, cardDeckAutosaveError, videoEditAutosaveError].filter(Boolean).join(" ")}
         cardDeckAutosaveError={cardDeckAutosaveError}
         videoEditAutosaveError={videoEditAutosaveError}
+        videoEditConflict={videoEditConflict}
+        onVideoEditReload={() => { if (draftIdRef.current) void reconcileVideoEditFromServer(draftIdRef.current, true); }}
+        videoEditReconciling={videoEditReconciling}
+        bodyEditConflict={Boolean(bodyRevisionConflict)}
+        bodyConflictViewingLatest={Boolean(bodyRevisionConflict?.viewingLatest)}
+        bodyConflictResolving={bodyConflictResolving}
+        onBodyConflictLoadLatest={loadLatestBodyAfterConflict}
+        onBodyConflictReapply={() => { void reapplyLocalBodyAfterConflict(); }}
       />
     </div>
   );
@@ -2409,19 +3958,25 @@ export default function StudioPage() {
             </div>
           ) : null}
           <section data-room-top="publish" aria-label="이 방에서 지금 알아야 할 것" className="flex min-h-control-touch flex-wrap items-center gap-stack rounded-surface border border-border bg-surface px-pad-inset py-stack">
-            <b className="text-lead text-accent">{accountsLoaded ? publishTargets.length : selectedTargets.length}곳</b>
+            {/*
+              2026-10-03 독립 리뷰 m4: 큰 숫자(이 <b>)는 publishTargets.length를 썼는데
+              바로 아래 괄호 이름 목록은 publishNameTargets(이미 완료한 곳 제외)를 썼다 —
+              숫자와 이름이 서로 다른 집합을 가리켜 어긋날 수 있었다. 숫자와 이름이 항상
+              같은 출처(publishNameTargets)를 쓰게 한다.
+            */}
+            <b className="text-lead text-accent">{accountsLoaded ? publishNameTargets.length : selectedTargets.length}곳</b>
             <span data-testid="publish-availability" className="mr-auto text-caption text-subtle">
               {accountsLoaded
-                ? `선택 ${selectedTargets.length}곳 · 실제 발행 가능 ${publishTargets.length}곳 · 연결된 채널 ${connectedTargets.length}곳`
+                ? `선택 ${selectedTargets.length}곳 · 실제 발행 가능 ${publishNameTargets.length}곳${publishNameTargets.length ? ` (${channelNameList(publishNameTargets)})` : ""} · 연결된 채널 ${connectedTargets.length}곳`
                 : "발행 가능한 계정을 확인하는 중입니다"}
             </span>
             <Button
               size="sm"
               data-testid="publish-select-all"
               onClick={selectAllChannels}
-              disabled={!accountsLoaded || connectedTargets.length === 0 || publishTargets.length === connectedTargets.length}
+              disabled={!accountsLoaded || publishableTargets.length === 0 || publishTargets.length === publishableTargets.length}
             >
-              연결된 {connectedTargets.length}곳 전부 고르기
+              발행 가능한 {publishableTargets.length}곳 전부 고르기
             </Button>
             <Button
               size="sm"
@@ -2432,6 +3987,18 @@ export default function StudioPage() {
               전부 해제
             </Button>
           </section>
+          {/*
+            2026-10-03 독립 리뷰 MINOR-g 근본원인: 운영 사고의 실제 뿌리는 "이전 세션의
+            선택이 표시 없이 되살아난 것"이다. 되살아난 직후(사용자가 아직 체크박스를
+            직접 건드리기 전)에는 이 배지로 "이건 네가 지금 고른 게 아니라 전에 고른
+            거다"를 알린다. 사용자가 체크박스를 한 번이라도 누르면(onCheckedChange 등)
+            restoredSelectionNotice가 꺼지고 이 배지도 사라진다.
+          */}
+          {restoredSelectionNotice && publishNameTargets.length > 0 ? (
+            <p data-testid="publish-restored-selection-notice" role="status" className="rounded-control border border-warning/30 bg-warning/10 p-stack text-caption text-warning">
+              지난번 선택 유지: {channelNameList(publishNameTargets)}
+            </p>
+          ) : null}
           <PlatformFocusFilter>
             {(focus) => (
               <>
@@ -2443,7 +4010,7 @@ export default function StudioPage() {
               <div className="min-w-0 flex-1">
                 <b className="text-body text-text">{pubResultLabel}</b>
                 <div className="mt-stack-tight flex flex-wrap gap-stack-tight">{Object.entries(pub.status).map(([key, status]) => {
-                  const cls = `rounded-pill border px-stack-tight py-micro text-caption ${status === "done" ? "border-success/30 bg-success/10 text-success" : status === "failed" ? "border-danger/30 bg-danger/10 text-danger" : status === "doing" ? "border-warning/30 bg-warning/10 text-warning" : "border-border bg-surface-2 text-subtle"}`;
+                  const cls = `rounded-pill border px-stack-tight py-micro text-caption ${status === "done" ? "border-success/30 bg-success/10 text-success" : status === "failed" ? "border-danger/30 bg-danger/10 text-danger" : status === "doing" ? "border-warning/30 bg-warning/10 text-warning" : status === "unknown" ? "border-border bg-surface-2 text-text" : "border-border bg-surface-2 text-subtle"}`;
                   // 2026-09-16 실측(j.the.great.investor): "지금 발행"을 다시 누르면 서버가
                   // dedupe 로 옛 글을 돌려주는데, "완료" + "새 창" 링크만 보여 새로 올라간
                   // 것처럼 읽혔다. 이미 있던 것이면 그 사실과(있으면) 발행 시각을 말한다.
@@ -2453,8 +4020,8 @@ export default function StudioPage() {
                     : "";
                   const value = already
                     ? `${LABEL[key]} · ${alreadyLabel}`
-                    : `${status === "done" ? "완료 " : status === "failed" ? "실패 " : status === "doing" ? "발행 중 " : ""}${LABEL[key]}`;
-                  return status === "done" && pub.urls[key] ? <a key={key} href={pub.urls[key]} target="_blank" rel="noopener noreferrer" className={cls} title={already ? alreadyLabel : "게시물 보기"}>{value}<span className="sr-only"> 새 창</span></a> : <span key={key} className={cls}>{value}{status === "failed" && pub.errors[key] ? <span className="ml-micro"><span>{pub.errors[key]}</span></span> : null}</span>;
+                    : `${status === "done" ? "완료 " : status === "failed" ? "실패 " : status === "doing" ? "발행 중 " : status === "unknown" ? "결과 확인 중 " : ""}${LABEL[key]}`;
+                  return status === "done" && pub.urls[key] ? <a key={key} href={pub.urls[key]} target="_blank" rel="noopener noreferrer" className={cls} title={already ? alreadyLabel : "게시물 보기"}>{value}<span className="sr-only"> 새 창</span></a> : <span key={key} className={cls}>{value}{(status === "failed" || status === "unknown") && pub.errors[key] ? <span className="ml-micro"><span>{pub.errors[key]}</span></span> : null}</span>;
                 })}</div>
               </div>
               {hasPublishedResult ? <Link href="/performance" className="shrink-0 rounded-control bg-accent px-stack py-stack-tight text-body-sm font-semibold text-accent-fg">성과실에서 결과 보기</Link> : null}
@@ -2487,8 +4054,35 @@ export default function StudioPage() {
                 끊긴 채널까지 세어 "2곳에 발행"이라 해 놓고 아무 데도 안 올라간다.
               */}
               <Button variant="primary" onClick={publish} disabled={pub.running || !accountsLoaded || publishTargets.length === 0}>선택한 {accountsLoaded ? publishTargets.length : selectedTargets.length}곳에 지금 발행{accountsLoaded && selectedTargets.length > publishTargets.length ? ` (올릴 수 없는 ${selectedTargets.length - publishTargets.length}곳 제외)` : ""}</Button>
+              {/*
+                2026-10-02 운영 사고(결함 D): 버튼 문구는 숫자만 말해서("선택한 1곳에 지금
+                발행"), 미리보기 탭(보기 필터)에서 방금 Instagram 을 봐 놓고 실제로는 이전
+                세션에 체크된 채 남은 Threads 1곳이 발행 대상이라는 사실이 전혀 안 드러났다.
+                "선택한 1곳에 지금 발행"이라는 버튼 접근성 이름 문자열은 수십 개 기존 테스트가
+                고정 계약으로 쓰고 있어(studio-publish-ui.test.tsx) 버튼 글자 자체는 바꾸지
+                않는다. 대신 버튼 바로 옆에 채널 이름을 보이는 배지로 덧붙인다 — 미리보기
+                탭과 실제 선택이 어긋나면 이 배지가 그 자리에서 드러낸다. 이름은 위 배너와
+                같은 publishNameTargets(단일 정본, MINOR-h)에서 가져온다.
+              */}
+              {publishNameTargets.length > 0 ? (
+                <span data-testid="publish-now-target-names" className="text-caption text-subtle">
+                  ({channelNameList(publishNameTargets)})
+                </span>
+              ) : null}
               {activeWorkspace ? <Button variant={showSchedule ? "primary" : "secondary"} onClick={() => setShowSchedule((value) => !value)}>예약 발행</Button> : null}
               </div>
+              {/*
+                2026-10-03 독립 리뷰 m1: 체크는 했는데 publishGuard에 걸려 지금 발행
+                대상에서 빠진 채널을 이름+이유로 보여준다. Threads+TikTok을 섞어
+                고르고 TikTok 공개 범위를 안 고르면 "TikTok: TikTok 공개 범위를 먼저
+                선택해주세요."가 바로 이 자리에 뜬다.
+              */}
+              {guardExcludedSelections.length ? (
+                <p data-testid="publish-guard-excluded" role="status" className="break-keep rounded-control border border-warning/30 bg-warning/10 p-stack text-caption text-warning">
+                  {guardExcludedSelections.map((entry) => `${LABEL[entry.platform]}: ${entry.reason}`).join(" · ")}
+                  {" (지금 발행 대상에서 빠집니다.)"}
+                </p>
+              ) : null}
               {/*
                 2026-09-16 실측(j.the.great.investor): X 본문이 280 가중 문자를 넘으면
                 토스트만 뜨고 사라져 사용자는 발행 단추가 안 눌리는 줄 알았다. 발행 단추
@@ -2531,6 +4125,11 @@ export default function StudioPage() {
                   <div className="grid gap-stack-section md:grid-cols-2 xl:grid-cols-3">
                     {visiblePlatforms.map((platform) => (
                   <div key={platform} data-room-preview={platform} className="flex min-w-0 flex-col rounded-surface border border-border bg-surface p-stack">
+                    {(() => {
+                      const guard = publishGuard(platform);
+                      const accountUnavailable = Boolean(accountLoadPending[platform]) || usableAccounts(platform).length === 0;
+                      return (
+                    <>
                     <PlatformPreview
                       platform={platform}
                       text={text || {}}
@@ -2546,27 +4145,170 @@ export default function StudioPage() {
                           2026-09-23 실수 원장 count:9 봉합: 이 마크업은 측정 하네스
                           (qa-alignment-harness)와 손으로 두 번 베껴 유지되다 드리프트로
                           "delta 0px 수렴" 거짓 보고를 다섯 라운드 냈다. 이제 화면과 하네스가
-                          같은 PublishHeaderControls 를 렌더한다. 고정 2행 구조(1행 발행/대문 ·
-                          2행 계정)와 슬롯 고정은 그 컴포넌트가 단독으로 책임진다.
+                          같은 PublishHeaderControls 를 렌더한다. 첫 행(발행 · 계정 · 계정 관리)과
+                          영상 공용 둘째 행(표지 시점)은 그 컴포넌트가 단독으로 책임진다.
                         */
                         <PublishHeaderControls
                           platform={platform}
                           label={LABEL[platform]}
                           publishSupported={PUBLISH_SUPPORTED.has(platform)}
                           accountSelectable={ACCOUNT_SELECTABLE.has(platform)}
-                          checked={Boolean(includes[platform])}
-                          checkboxDisabled={Boolean(accountLoadPending[platform]) || (accountsByPlatform[platform] || []).length === 0}
-                          onCheckedChange={(next) => setIncludes((current) => ({ ...current, [platform]: next }))}
+                          checked={Boolean(includes[platform]) && !guard.disabledReason && !accountUnavailable}
+                          checkboxDisabled={accountUnavailable || Boolean(guard.disabledReason)}
+                          onCheckedChange={(next) => { setIncludes((current) => ({ ...current, [platform]: next })); setRestoredSelectionNotice(false); }}
                           coverSeconds={coverSeconds[platform] ?? DEFAULT_COVER_SECONDS}
                           onCoverSecondsChange={(next) => setCoverSeconds((current) => ({ ...current, [platform]: next }))}
                           accountsLoading={Boolean(accountLoadPending[platform])}
+                          accountLoadError={Boolean(accountLoadErrors[platform])}
                           accounts={(accountsByPlatform[platform] || []).map((account) => ({ id: account.id, label: account.label, isDefault: Boolean(account.is_default) }))}
-                          selectedAccountId={selectedAccounts[platform] ?? ""}
-                          onSelectedAccountChange={(next) => setSelectedAccounts((current) => ({ ...current, [platform]: next }))}
+                          selectedAccountId={defaultConnectedAccount(platform)?.id ?? ""}
                           channelHref={channelHref(platform)}
+                          disabledReason={guard.disabledReason}
+                          createHref={guard.createHref}
+                          createActionLabel={guard.createActionLabel}
                         />
                       }
                     />
+                    {/*
+                      2026-10-03 운영 사고(9444 회원 계정): TikTok 발행이 공개 범위
+                      (privacy_level) 미선택으로 항상 400 실패했다. app/videos/page.tsx의
+                      TikTok 패널과 같은 계약(creator-info의 privacyLevels, 상호작용
+                      토글, AI 생성 공개)을 여기에도 둔다. TikTok 정책상 공개 범위는
+                      기본값을 미리 골라주지 않는다 — "선택" 옵션만 있고 고르지 않으면
+                      위 publishGuard가 발행을 막는다.
+                    */}
+                    {/*
+                      2026-10-03 독립 리뷰 m2: creator-info 조회가 실패(404/502)하면
+                      패널이 아예 안 뜨고 위 publishGuard의 "공개 범위를 먼저
+                      선택해주세요."만 남아 — 고를 칸이 없는 막다른 길이었다. 계정은
+                      연결됐는데 조회가 실패했음을 여기서도 직접 말하고 재연결 링크를
+                      준다(헤더의 disabledReason과 중복이지만, 패널 자리 자체가 비어
+                      보이지 않게 한다).
+                    */}
+                    {platform === "tiktok" && tiktokCreatorFailed ? (
+                      <div data-testid="tiktok-creator-info-error" role="alert" className="mt-stack-tight rounded-control border border-danger/30 bg-danger-soft p-stack text-caption text-danger">
+                        TikTok 계정 정보를 확인하지 못했습니다. 계정을 다시 연결해주세요.
+                        <Link
+                          href={channelHref("tiktok")}
+                          className="mt-stack-tight inline-flex min-h-control-touch items-center rounded-control border border-danger bg-surface px-stack-tight text-caption font-semibold text-danger hover:bg-surface-2"
+                        >
+                          TikTok 다시 연결하기
+                        </Link>
+                      </div>
+                    ) : null}
+                    {platform === "tiktok" && tiktokCreator ? (
+                      <div data-testid="tiktok-privacy-panel" className="mt-stack-tight grid grid-cols-2 gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption">
+                        {/*
+                          m3(TikTok Content Sharing Guidelines §4): "The upload page
+                          must display the creator's nickname, so users are aware of
+                          which TikTok account the content will be uploaded to."
+                        */}
+                        <p className="col-span-2 text-text">업로드 대상 계정: <b>@{tiktokCreator.username}</b></p>
+                        <label className="col-span-2 text-subtle">
+                          공개 범위
+                          <select
+                            data-testid="tiktok-publish-privacy-select"
+                            aria-label="TikTok 공개 범위"
+                            value={tiktokPrivacy}
+                            onChange={(event) => setTiktokPrivacy(event.target.value)}
+                            className="mt-micro w-full rounded-chip border border-border bg-surface p-stack-tight text-text"
+                          >
+                            <option value="">선택</option>
+                            {tiktokAllowedPrivacyLevels.map((privacy) => <option key={privacy} value={privacy}>{privacy}</option>)}
+                          </select>
+                          {tiktokDisclosureEnabled && tiktokBrandContent ? (
+                            <span className="mt-micro block text-caption text-subtle">
+                              유료 파트너십을 공개하면 비공개로는 올릴 수 없습니다(전체공개·친구공개만 가능).
+                            </span>
+                          ) : null}
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok 댓글 끄기"
+                            checked={tiktokDisableComment}
+                            disabled={tiktokCreator.commentDisabled}
+                            onChange={(event) => setTiktokDisableComment(event.target.checked)}
+                          /> 댓글 끄기
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok 듀엣 끄기"
+                            checked={tiktokDisableDuet}
+                            disabled={tiktokCreator.duetDisabled}
+                            onChange={(event) => setTiktokDisableDuet(event.target.checked)}
+                          /> 듀엣 끄기
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok 스티치 끄기"
+                            checked={tiktokDisableStitch}
+                            disabled={tiktokCreator.stitchDisabled}
+                            onChange={(event) => setTiktokDisableStitch(event.target.checked)}
+                          /> 스티치 끄기
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok AI 생성 영상"
+                            checked={tiktokAiGenerated}
+                            onChange={(event) => setTiktokAiGenerated(event.target.checked)}
+                          /> AI 생성 영상
+                        </label>
+                        {/*
+                          m3: "Content Disclosure Setting" — "Your brand"(오가닉)과
+                          "Branded content"(유료 파트너십) 두 체크박스. 공개를 켠
+                          뒤에야 둘을 고를 수 있다(둘 다 사람이 직접 켜는 선택이다).
+                        */}
+                        <label className="col-span-2 border-t border-border pt-stack-tight text-text">
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok 상업 콘텐츠 공개"
+                            checked={tiktokDisclosureEnabled}
+                            onChange={(event) => {
+                              const next = event.target.checked;
+                              setTiktokDisclosureEnabled(next);
+                              if (!next) { setTiktokBrandOrganic(false); setTiktokBrandContent(false); }
+                            }}
+                          /> 상업 콘텐츠 공개
+                        </label>
+                        {tiktokDisclosureEnabled ? (
+                          <>
+                            <label>
+                              <input
+                                type="checkbox"
+                                aria-label="TikTok 내 브랜드 홍보"
+                                checked={tiktokBrandOrganic}
+                                onChange={(event) => setTiktokBrandOrganic(event.target.checked)}
+                              /> 내 브랜드 홍보
+                            </label>
+                            <label>
+                              <input
+                                type="checkbox"
+                                aria-label="TikTok 유료 파트너십"
+                                checked={tiktokBrandContent}
+                                onChange={(event) => setTiktokBrandContent(event.target.checked)}
+                              /> 유료 파트너십
+                            </label>
+                            {tiktokDisclosureError ? (
+                              <p role="alert" className="col-span-2 text-danger">{tiktokDisclosureError}</p>
+                            ) : null}
+                          </>
+                        ) : null}
+                        {/*
+                          m3: 음악 이용 확인 — TikTok이 요구하는 영문 원문을 조합별로
+                          그대로 보존한다(tiktok-disclosure.ts musicUsageConfirmationText).
+                        */}
+                        <p data-testid="tiktok-music-usage-confirmation" className="col-span-2 text-subtle">
+                          {musicUsageConfirmationText(tiktokDisclosureState)}
+                        </p>
+                      </div>
+                    ) : null}
+                    </>
+                      );
+                    })()}
                   </div>
                     ))}
                   </div>
@@ -2632,7 +4374,7 @@ export default function StudioPage() {
                 </div>
               ) : null}
               <Stack direction="horizontal" gap={8} wrap>
-                <Button size="sm" data-testid="publish-bulk-select-all" onClick={selectAllChannels} disabled={!accountsLoaded || connectedTargets.length === 0}>연결된 곳 전부 고르기</Button>
+                <Button size="sm" data-testid="publish-bulk-select-all" onClick={selectAllChannels} disabled={!accountsLoaded || publishableTargets.length === 0}>발행 가능한 곳 전부 고르기</Button>
                 <Button size="sm" data-testid="publish-bulk-clear" onClick={clearAllChannels} disabled={selectedTargets.length === 0}>전부 해제</Button>
               </Stack>
               <Stack direction="horizontal" gap={8} wrap>

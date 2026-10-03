@@ -32,11 +32,10 @@ function editor(overrides: Partial<PreviewInlineEditor> = {}): PreviewInlineEdit
   };
 }
 
-describe("R-23-4 계정 정보는 카드 하단 별도 블록이 아니라 머리줄 배지 하나", () => {
-  it("카드 하단에 테두리 있는 별도 계정 카드가 없다", () => {
+describe("R-23-4 계정 정보는 미리보기에서 중복하지 않는다", () => {
+  it("카드 안에 계정 배지와 읽기 전용 문구가 없다", () => {
     render(<PlatformPreview platform="threads" text={{ threads: "본문" }} media={{}} editor={editor()} />);
-    // 배지 하나만 있고 "읽기 전용" 이라는 불필요한 중복 문구는 없다.
-    expect(screen.getByTestId("preview-account-threads")).toBeInTheDocument();
+    expect(screen.queryByTestId("preview-account-threads")).not.toBeInTheDocument();
     expect(screen.queryByText("읽기 전용")).not.toBeInTheDocument();
   });
 });

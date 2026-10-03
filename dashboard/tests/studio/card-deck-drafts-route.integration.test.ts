@@ -39,7 +39,8 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     }));
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, id: "draft-deck-1" });
+    // videoEdit이 없는 저장은 서버 판 번호가 없다(3차 재리뷰 BLOCKER a).
+    expect(await response.json()).toEqual({ ok: true, id: "draft-deck-1", bodyRevision: 0, videoEditServerRevision: null });
     const savedPayload = H.jsonValues[0] as { cardDeck: unknown; editLines: string[] };
     expect(savedPayload.cardDeck).toEqual(deckD100);
     expect(Array.isArray(savedPayload.editLines)).toBe(true);
@@ -92,6 +93,60 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     const { GET } = await import("@/app/api/studio/drafts/route");
     const body = await (await GET(new Request("http://localhost/api/studio/drafts"))).json();
     expect(body.drafts[0].cardDeck).toEqual(deckD100);
+  });
+
+  it("PR95-R1-LIFECYCLE-01 저장 payload와 서버 재로드가 글자 내장 표식을 그대로 보존한다", async () => {
+    const img = {
+      url: "/api/images/deliver/one",
+      file: "/api/images/deliver/one",
+      imageUrls: ["/api/images/deliver/one"],
+      topicKey: "저장 주제",
+      textEmbedded: true,
+    };
+    H.rows = [{ id: "draft-text-card" }];
+    const { POST, GET } = await import("@/app/api/studio/drafts/route");
+    const saved = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "표식 저장", img, editKind: "card", editLines: ["한 장"] }),
+    }));
+    expect(saved.status).toBe(200);
+    expect((H.jsonValues[0] as { img: typeof img }).img.textEmbedded).toBe(true);
+
+    const persistedPayload = H.jsonValues[0] as { img: typeof img; editKind: string; editLines: string[] };
+    H.rows = [{
+      id: "draft-text-card",
+      idea: "표식 저장",
+      payload: persistedPayload,
+      status: "draft",
+      updated_at: "2026-09-30T00:00:00Z",
+    }];
+    const reloaded = await (await GET(new Request("http://localhost/api/studio/drafts"))).json();
+    expect(reloaded.drafts[0].img.textEmbedded).toBe(true);
+    expect(reloaded.drafts[0].img).toEqual(persistedPayload.img);
+  });
+
+  it("PR95-R1-LIFECYCLE-01B 서버에서 읽은 구형 무료 글자 카드도 편집 상태로 올리기 전에 표식을 복구한다", async () => {
+    H.rows = [{
+      id: "draft-legacy-text-card",
+      idea: "구형 글자 카드",
+      payload: {
+        img: {
+          url: "/api/images/deliver/legacy",
+          file: "/api/images/deliver/legacy",
+          imageUrls: ["/api/images/deliver/legacy"],
+          topicKey: "구형 글자 카드",
+        },
+        editKind: "card",
+        editLines: ["이미 그림에 든 문장"],
+      },
+      status: "draft",
+      updated_at: "2026-09-30T00:00:00Z",
+    }];
+    const { GET } = await import("@/app/api/studio/drafts/route");
+    const reloaded = await (await GET(new Request("http://localhost/api/studio/drafts"))).json();
+    const { recoverDraftEmbeddedTextCard } = await import("@/lib/studio/text-card-provenance");
+
+    expect(recoverDraftEmbeddedTextCard(reloaded.drafts[0])).toEqual(expect.objectContaining({ textEmbedded: true }));
   });
 
   it("cardDeck 이 없는 요청은 기존처럼 통과하고, 기존 덱을 지우지 않는다(2026-09-21 코드리뷰 MAJOR 4 회귀)", async () => {

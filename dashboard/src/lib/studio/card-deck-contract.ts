@@ -314,9 +314,6 @@ export function validateCardDeck(deck: unknown): asserts deck is CardDeck {
       throw new CardDeckValidationError("bubbles", `cardDeck.slides[${index}].bubbles must be a non-empty array`);
     }
     const bubbles = slide.bubbles;
-    if (bubbles.length > 8) {
-      throw new CardDeckValidationError("bubbles", `cardDeck.slides[${index}].bubbles must have at most 8 bubbles (got ${bubbles.length})`);
-    }
     bubbles.forEach((bubble, bubbleIndex) => {
       assertNoUnknownKeys(bubble as unknown as Record<string, unknown>, BUBBLE_ALLOWED_KEYS, `cardDeck.slides[${index}].bubbles[${bubbleIndex}]`);
       const id = (bubble as { id?: unknown }).id;
