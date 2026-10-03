@@ -202,6 +202,11 @@ const readCases = ({ tenantB, draftB, postB }) => [
   // 202 + jobId 로 접수하고 이 라우트가 결과(게시됨+링크/실패 사유)를 돌려준다. 다른
   // 테넌트의 jobId로 남의 발행 결과(permalink·에러 원문)를 받아 갈 수 있으면 안 된다.
   ["READ-61", "/api/video/publish/job/probe-job-id"],
+  // 인트로/아웃트로(Remotion) 합성 작업 조회도 같은 비동기 job 계약 — 남의 jobId 로 완성
+  // 영상 배달 주소를 받아 갈 수 있으면 안 된다. 404(존재 비공개)로 막아야 한다.
+  // (독립 리뷰 2026-10-02: READ-61은 PR #102(fix/higgsfield-server-side-finalize)가
+  // /api/video/publish/job/probe-job-id로 먼저 썼다 — 충돌 방지로 READ-62로 바꿨다.)
+  ["READ-62", "/api/video/intro-outro/job/probe-job-id"],
 ].map(([name, routePath]) => {
   const url = new URL(`${BASE_URL}${routePath}`);
   url.searchParams.set("tenant_id", tenantB);

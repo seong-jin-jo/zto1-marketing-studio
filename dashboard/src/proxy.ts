@@ -152,6 +152,10 @@ const TENANT_AWARE_PATHS = [
   // 결과를 영영 못 받는다(2026-10-02 운영 실측: 회원 계정 POST 202 뒤 조회 403). 라우트가
   // effectiveTenantId 로 테넌트를 확인하고 그 테넌트 폴더의 작업만 읽는다.
   "/api/higgsfield/job/[id]",
+  // 인트로/아웃트로(Remotion) 합성도 같은 비동기 202+jobId 계약 — 결과 조회를 빼면 고객은
+  // 접수만 되고 완성 파일을 영영 못 받는다(위와 동일한 사고 유형, 재발 방지).
+  "/api/video/intro-outro",
+  "/api/video/intro-outro/job/[id]",
   "/api/suggestions",
   "/api/suggestions/enqueue",
   "/api/threads-username",

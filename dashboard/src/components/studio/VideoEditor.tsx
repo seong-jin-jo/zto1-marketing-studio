@@ -22,6 +22,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
 import { authHeaders } from "@/lib/auth";
+import { IntroOutroPanel } from "./IntroOutroPanel";
 import { isDeliveryUrlExpired, resignDeliveryUrl } from "./DeliveredMedia";
 import {
   type SubtitleLine,
@@ -31,9 +32,11 @@ import {
   VideoEditValidationError,
   addComment,
   addOverlay,
+  isIntroOutroStale,
   newId,
   removeComment,
   removeOverlay,
+  setIntroOutroApplied,
   setSubtitles,
   setVoice,
   updateComment,
@@ -78,6 +81,8 @@ export interface VideoEditorProps {
    * 재생·탐색을 제어해야 해서 DeliveredMedia 컴포넌트를 그대로 못 쓴다. 같은 재서명
    * 경로를 VideoPlayback 안에서 직접 쓰려면 작업 공간 id가 필요하다.
    */
+  /** 인트로/아웃트로(Remotion) 삽입 대상 원본 영상 파일명. 2026-10-02 신설(R-27-5). */
+  sourceFilename?: string | null;
   tenantId?: string;
 }
 
@@ -101,7 +106,7 @@ function videoEditErrorMessage(rule: string): string {
   return "입력한 값을 확인해 주세요.";
 }
 
-export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false, tenantId }: VideoEditorProps) {
+export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false, sourceFilename = null, tenantId }: VideoEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [playhead, setPlayhead] = useState(0);
@@ -174,6 +179,20 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
     );
   }
 
+  // 인트로/아웃트로가 적용돼 있으면 편집실 미리보기도 합성 결과를 보여준다(2026-10-02
+  // 회장 반려: 발행은 됐는데 미리보기가 원본을 계속 보여주면 "적용 안 된 것처럼" 보인다).
+  //
+  // 독립 리뷰 M-3: `/api/higgsfield/asset/...`는 proxy.ts TENANT_AWARE_PATHS에 걸려
+  // Bearer 토큰을 요구하는데 video 태그의 src는 Authorization 헤더를 못 보낸다(401). job GET이
+  // 이미 서명해 돌려준 `/api/media/<token>` 배달 URL(deliverUrl, Bearer 불필요)을 그대로
+  // 쓴다.
+  // 독립 리뷰 M-4: 합성 당시 원본과 지금 원본(sourceFilename)이 다르면(생성실 재생성)
+  // 낡은 합성이다 — 미리보기도 되돌리고 재적용을 안내한다.
+  const introOutroStale = isIntroOutroStale(videoEdit.introOutro, sourceFilename);
+  const effectivePreviewUrl = videoEdit.introOutro && !introOutroStale
+    ? videoEdit.introOutro.deliverUrl
+    : previewVideoUrl;
+
   return (
     <div className="space-y-stack" data-video-editor>
       {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-video-editor-error>{error}</p> : null}
@@ -183,7 +202,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
       <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_10.5rem] max-[64rem]:[grid-template-rows:minmax(0,1fr)_9.375rem] max-[26rem]:[grid-template-rows:auto_6.75rem]">
         <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
-            src={previewVideoUrl}
+            src={effectivePreviewUrl}
             tenantId={tenantId}
             videoRef={videoRef}
             overlays={videoEdit.overlays}
@@ -212,6 +231,18 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             <OverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
             <CommentOverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
             <VoiceSelector edit={videoEdit} run={run} syncing={syncing} />
+            {introOutroStale ? (
+              <p role="alert" className="text-caption text-danger" data-intro-outro-stale-notice>
+                원본 영상이 바뀌어 적용했던 인트로/아웃트로가 더 이상 맞지 않습니다. 미리보기·발행 모두
+                원본으로 되돌렸습니다. 다시 적용해 주세요.
+              </p>
+            ) : null}
+            <IntroOutroPanel
+              sourceFilename={sourceFilename}
+              tenantId={tenantId}
+              applied={videoEdit.introOutro}
+              onApplied={(applied) => run((edit) => setIntroOutroApplied(edit, applied))}
+            />
           </div>
         </div>
         <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seek} run={run} syncing={syncing} />

@@ -1648,6 +1648,12 @@ interface EditRoomProps {
   /** 글자 내장 카드의 장별 대본·위치·규격 원본을 복구할 수 있는지. */
   cardTextSourceRecoverable?: boolean;
   previewVideoUrl?: string | null;
+  /**
+   * 발행이 쓰는 것과 같은 파일명(`videoFilename(vid?.file || vid?.url)`, page.tsx).
+   * 인트로/아웃트로 패널이 서버에 보낼 원본 파일을 특정하는 데 쓴다(2026-10-02,
+   * 회장 반려 R-27-5: 연결 안 돼 있었음).
+   */
+  videoSourceFilename?: string | null;
   commandPanel?: ReactNode;
   initialFormat?: ContentEditFormat;
   onFormatChange?: (format: ContentEditFormat) => void;
@@ -1967,6 +1973,7 @@ export function EditRoom({
   cardTextEmbedded = false,
   cardTextSourceRecoverable = true,
   previewVideoUrl = null,
+  videoSourceFilename = null,
   commandPanel,
   initialFormat,
   onFormatChange,
@@ -2294,6 +2301,7 @@ export function EditRoom({
                         onLinesChange={onLinesChange}
                         onOpenCreate={onOpenCreate}
                         syncing={videoEditReconciling}
+                        sourceFilename={videoSourceFilename}
                         tenantId={workspaceId}
                       />
                     </>
