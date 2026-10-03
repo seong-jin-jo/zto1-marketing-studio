@@ -1,3 +1,12 @@
+## 2026-10-03 16:30 KST 운영 장애 확인(tenant2~4 게이트웨이) + PR 정리 완료분
+
+- 사용자 지시: "알아서 쭉 진행해봐". 운영 배포·운영 데이터 이전은 하지 않음(이전은 승인 요청 예정).
+- 머지 완료: #105(Remotion, VM 디스크 82GB·메모리 9.5GB 여유 확인 후), #61(발행 복구·메시징 기본계정·LinkedIn 예약·Slack 테스트; 9파일 충돌 해소, 결과불명 code 대문자 통일, #102 slow-path 가짜 DB에 시도표식 쿼리 대응), #110·#111(읽기 전용 VM 진단), #112(게이트웨이 데이터 스냅숏 워크플로).
+- #93: main 병합·CI green. 이전 스크립트 결함 수정(rsync 크기·시각 같으면 건너뜀 → --checksum), 테스트 거짓 PASS 수정, CI를 UID 1000으로 실행. **머지 보류**.
+- **운영 장애(진단 run 37103007414)**: tenant2·3·4 게이트웨이·대시보드 bind mount 원본 12개 MISSING(체크아웃 안 config/data-tenantN 삭제). 10-03 00:29 KST부터 EACCES mkdir '/home/node/.openclaw/state' 반복, `[cron] failed to start`, 게이트웨이 3개 각 CPU ~100%(4코어 load 6.2). 데이터는 실행 중 컨테이너의 삭제된 폴더에만 존재 → **tenant2~4 재시작·재배포 금지**(autoheal 재생성 시 유실).
+- #112 스냅숏(run 37106132560) 결과: tenant2·3·4 config/data 모두 **컨테이너 안에서도 파일 0개**(~/openclaw-rescue/20261003T073649Z). 지킬 데이터 없음 → 재시작해도 추가 유실 없음. 폴더는 git 미추적(bootstrap이 체크아웃 안에 생성) → 체크아웃 정리로 이미 소실. tenants.json도 자리표시(Tenant Two, example.com) → 실사용 여부 불명.
+- 다음(사용자 결정 대기): (A) tenant2~4가 안 쓰는 인스턴스면 세 게이트웨이·대시보드를 내려 CPU 3코어 회수, (B) 쓸 거면 #93 머지 → 호스트에서 UID 1000으로 bootstrap(영속 경로 생성) → tenant2~4 재생성. 어느 쪽이든 .env.tenantN 실토큰 위치 확인 필요(체크아웃 안이었다면 함께 소실 가능).
+
 ## 2026-10-03 11:35 KST #105 CI green, 머지만 보류
 
 - #105(feat/remotion-intro-outro) 최신 head CI verify 성공(run 37089145248). main과 충돌 없음.
