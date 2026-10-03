@@ -24,7 +24,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
-import type { VideoEdit } from "@/lib/studio/video-edit-contract";
+import { emptyVideoEdit, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import deckD100 from "./fixtures/deck-d100.v2.json";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -40,6 +40,23 @@ function chatBubbleDeck(): CardDeck {
 }
 
 describe("과업 A: 영상 탭 편집 작업대는 한 벌만 뜬다", () => {
+  it("목록 본문이 비어도 복원된 영상이 있으면 빈 화면으로 바꾸지 않는다", () => {
+    stubVoicesUnconfigured();
+    render(
+      <EditRoom
+        lines={[]}
+        onLinesChange={vi.fn()}
+        kind="video"
+        videoEdit={emptyVideoEdit()}
+        onVideoEditChange={vi.fn()}
+        previewReady
+        previewVideoUrl="/api/media/restored-video"
+      />,
+    );
+    expect(document.querySelector("[data-video-editor]")).toBeInTheDocument();
+    expect(document.querySelector('[data-edit-state="empty"]')).not.toBeInTheDocument();
+  });
+
   it("kind=video + onVideoEditChange 여도 편집 작업대 카드(data-edit-workspace)는 하나뿐이다", () => {
     render(
       <EditRoom
