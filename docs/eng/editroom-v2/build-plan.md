@@ -90,12 +90,24 @@ npx vitest run tests/integrity
 ### 3. 모든 contract 테스트
 
 ```bash
-cd dashboard
-find . -type f -name '*.contract.test.*' -not -path './node_modules/*' -print0 \
-  | xargs -0 npx vitest run
+# 저장소 루트 기준으로 dashboard 84개와 openclaw 127개를 모두 센다.
+find . -type f -name '*.contract.test.*' \
+  -not -path './.git/*' -not -path '*/node_modules/*' | wc -l
+
+(
+  cd dashboard
+  find . -type f -name '*.contract.test.*' -not -path './node_modules/*' -print0 \
+    | xargs -0 npx vitest run
+)
+
+(
+  cd openclaw
+  find . -type f -name '*.contract.test.*' -not -path './node_modules/*' -print0 \
+    | xargs -0 node scripts/test-projects.mjs
+)
 ```
 
-현재 기준 84개 파일이다. 특정 폴더로 범위를 줄이지 않는다.
+현재 저장소 기준 211개 파일이다. `dashboard` 84개뿐 아니라 `openclaw` 127개도 전부 실행한다. 수량이 달라지면 현재 파일 목록을 진실원으로 삼는다. 특정 폴더나 최근 실패 파일로 범위를 줄이지 않는다.
 
 ### 4. CI 타입 검사
 
@@ -536,7 +548,7 @@ v71의 모든 기능을 실제 경로에서 확인하고, 화면·내보내기·
 |---|---|
 | 기반 | 읽은 approved artifact 경로와 commit |
 | 변경 | 유지한 기존 기능 / 추가·변경한 기능 분리 |
-| 테스트 | related, integrity, all contracts, typecheck 각각 command·exit·파일 수 |
+| 테스트 | related, integrity, 저장소 전체 contracts, typecheck 각각 command·exit·파일 수. 현재 contract 기준은 dashboard 84 + openclaw 127 = 211 |
 | 구동 | 실제 사용자 flow, viewport, console·network 오류 수 |
 | 서버 산출 | 실제 PNG·MP4 경로와 육안 결과 |
 | 데이터 | migration·RLS·rollback rehearsal 결과 |
