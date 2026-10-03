@@ -1,9 +1,10 @@
-## 2026-10-04 편집실 v2 CI 타입·인트로 경계 마무리 ❌ NG
+## 2026-10-04 편집실 v2 CI 타입·인트로 경계 마무리 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
 | EDITROOM-V2-CI-TYPE-01 | Remotion 컴포지션 등록부를 임의 문자열로 인덱싱해 CI TypeScript가 실패 | TYPECHECK-CI | ✅ 로컬 PASS | `IntroOutroCompId` 타입 가드로 저장 문자열을 등록부 키로 좁혔다. 손상된 `.next/dev/types` 생성물은 별도 보관하고 `next typegen`으로 재생성한 뒤 `npm run typecheck:ci` 종료 코드 0을 확인했다. |
 | EDITROOM-V2-PREVIEW-BOUNDARY-01 | 인트로·아웃트로 재생 중 본문 첫·끝 자막과 오버레이가 잘못 노출 | PREVIEW-OUTSIDE-BODY | ✅ 로컬 PASS | 실패 재현에서 인트로 0.5초에 본문 훅이 노출됐다. 표시 시각이 본문 범위 안인지 별도 판정해 인트로·아웃트로에서는 자막·훅·CTA·댓글을 모두 숨겼다. 본문 0.5초에서는 네 종류가 다시 보인다. 관련 3파일 7건과 TypeScript 통과. |
+| EDITROOM-V2-FINAL-GATE-01 | 변경 연관 테스트·무결성·전체 계약·TypeScript 재검증 | REVIEW2-FINAL | ✅ 로컬 PASS | 워커 2개로 표적 161파일 1175건 통과·17건 제외, integrity 32파일 102건 통과, contract 84파일 445건 통과, `typecheck:ci` 종료 코드 0. 디자인 lint의 기존 인라인 style 2파일·hex 8파일과 파이프라인 산출물 경고 28건은 이번 변경 밖의 기존 부채로 분리했다. |
 
 ## 2026-10-04 편집실 v2 교차 재검토 2차 ❌ NG
 
