@@ -60,6 +60,12 @@ export function cardDeckRenderInputs(spec: CardDeckSpec): TextCardInput[] {
   }));
 }
 
+/** 발행 직전 사용자에게 채우도록 안내할 첫 빈 카드 번호. 렌더러의 자리 보존과는 별개다. */
+export function firstEmptyCardNumber(lines: string[]): number | null {
+  const index = lines.findIndex((text) => !text.trim());
+  return index >= 0 ? index + 1 : null;
+}
+
 export type CardDeckDeps = {
   /** 카드 한 장을 PNG data URL 로 그린다. 못 그리면 null. */
   render?: (input: TextCardInput) => string | null;

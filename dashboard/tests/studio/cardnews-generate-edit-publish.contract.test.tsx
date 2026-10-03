@@ -6,7 +6,7 @@ import path from "path";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
-import { cardDeckRenderInputs, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
+import { cardDeckRenderInputs, firstEmptyCardNumber, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
 import { channelImageCapacity, limitedChannelNotice, planChannelImages } from "@/lib/studio/channel-image-capacity";
 import { cardTextTop } from "@/lib/studio/text-card-image";
 
@@ -134,6 +134,10 @@ describe("카드뉴스 이음매 계약", () => {
     const recomposite = pageSrc.slice(pageSrc.indexOf("async function recompositeCards("));
     expect(recomposite.slice(0, recomposite.indexOf("renderAndUploadCardDeck")))
       .not.toContain("lines.filter((line) => line.trim())");
+    expect(firstEmptyCardNumber(["A", "", "C"])).toBe(2);
+    expect(firstEmptyCardNumber(["A", "B", "C"])).toBeNull();
+    expect(recomposite).toContain("firstEmptyCardNumber(lines)");
+    expect(recomposite).toContain("번 카드가 비어 있어 발행실로 이동하지 않았습니다");
   });
 
   it("CARD-LINK-10 아주 긴 글도 카드 위로 잘려 나가지 않는다", () => {

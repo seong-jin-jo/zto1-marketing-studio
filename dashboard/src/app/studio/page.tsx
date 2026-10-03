@@ -40,6 +40,7 @@ import {
 import {
   browserCardUploader,
   cardRatioFrom,
+  firstEmptyCardNumber,
   renderAndUploadCardDeck,
   renderAndUploadEmbeddedTextCard,
   renderPlainCardDeckIncremental,
@@ -2069,6 +2070,11 @@ export default function StudioPage() {
         );
         return null;
       }
+    }
+    const emptyCardNumber = firstEmptyCardNumber(lines);
+    if (emptyCardNumber !== null) {
+      showToast(`${emptyCardNumber}번 카드가 비어 있어 발행실로 이동하지 않았습니다. 내용을 채운 뒤 다시 시도해 주세요.`, "error");
+      return null;
     }
     if (!lines.some((line) => line.trim())) return null;
     try {
