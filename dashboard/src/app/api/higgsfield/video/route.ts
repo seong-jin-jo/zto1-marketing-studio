@@ -5,6 +5,7 @@ import { hfRun, extractJson, extractJobId, HiggsfieldUnavailableError, Higgsfiel
 import { resolveGeneratedFile } from "@/lib/storage";
 import { isSafeMediaFilename } from "@/lib/media-token";
 import { createHiggsfieldJob } from "@/lib/higgsfield-jobs";
+import { scheduleHiggsfieldBackgroundPoll } from "@/lib/higgsfield-background-poll";
 
 // 바탕 그림으로 받아들이는 확장자 화이트리스트(기존 규약 유지, MINOR-4 2026-09-25).
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
     const job = createHiggsfieldJob(tenantId, "video", providerJobId, {
       localPath, filename, model, motion, narration: String(narration || ""), label,
     });
+    scheduleHiggsfieldBackgroundPoll(tenantId, job.jobId);
     return Response.json({ ok: true, jobId: job.jobId }, { status: 202 });
   } catch (e) {
     if (e instanceof HiggsfieldUnauthenticatedError) {

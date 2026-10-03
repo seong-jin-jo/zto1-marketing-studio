@@ -198,6 +198,10 @@ const readCases = ({ tenantB, draftB, postB }) => [
   // 2026-10-01 비동기 생성 전환: 작업 기록 조회. 다른 테넌트의 jobId로 남의 생성 결과(그림·
   // 영상 배달 주소·프롬프트)를 받아 갈 수 있으면 안 된다. 404(존재 비공개)로 막아야 한다.
   ["READ-60", "/api/higgsfield/job/probe-job-id"],
+  // 2026-10-02 영상 발행 비동기 전환(컨트롤러 감사 반려 대응): 느린 발행(예산 초과)은
+  // 202 + jobId 로 접수하고 이 라우트가 결과(게시됨+링크/실패 사유)를 돌려준다. 다른
+  // 테넌트의 jobId로 남의 발행 결과(permalink·에러 원문)를 받아 갈 수 있으면 안 된다.
+  ["READ-61", "/api/video/publish/job/probe-job-id"],
   // 인트로/아웃트로(Remotion) 합성 작업 조회도 같은 비동기 job 계약 — 남의 jobId 로 완성
   // 영상 배달 주소를 받아 갈 수 있으면 안 된다. 404(존재 비공개)로 막아야 한다.
   // (독립 리뷰 2026-10-02: READ-61은 PR #102(fix/higgsfield-server-side-finalize)가

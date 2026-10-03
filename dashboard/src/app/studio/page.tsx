@@ -8,6 +8,9 @@ import {
   fetcher,
   apiPost,
   isExternalPublishPersistenceError,
+  isExternalPublishConfirmedPayload,
+  isUnresolvedPublishPayload,
+  isUnresolvedPublishError,
   ApiResponseError,
   type ExternalPublishPersistenceFailure,
 } from "@/lib/api";
@@ -28,6 +31,12 @@ import { SchedulePanel } from "@/components/studio/SchedulePanel";
 import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
 import { pollHiggsfieldJob, savePendingJob, readPendingJob, clearPendingJob } from "@/lib/higgsfield-poll";
+import { pollJobUntilDone, JOB_POLL_INTERVAL_MS } from "@/lib/job-poll";
+import { wakeableSleep } from "@/lib/wakeable-sleep";
+import {
+  savePendingVideoPublishJob, readPendingVideoPublishJob, clearPendingVideoPublishJob,
+  savePendingSocialPublishJob, readPendingSocialPublishJob, clearPendingSocialPublishJob,
+} from "@/lib/publish-job-store";
 import {
   browserCardUploader,
   cardRatioFrom,
@@ -84,9 +93,13 @@ import { runWithConcurrency } from "@/lib/async-pool";
 import { embeddedTextCardImage, recoverDraftEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
 
 const PUBLISH_CONCURRENCY = 3;
+// 2026-10-02 컨트롤러 감사: 이 타임아웃은 더 이상 "서버가 끝날 때까지" 기다리는 역할이
+// 아니다 — 서버가 예산(기본 8초, PUBLISH_FAST_PATH_BUDGET_MS/VIDEO_PUBLISH_FAST_PATH_
+// BUDGET_MS)을 넘기면 이제 202 + processing을 그 안에 돌려주고, 실제 완료는
+// awaitAsyncSocialPublish/awaitAsyncVideoPublish가 별도로(15분 상한) 기다린다. 이 상수들은
+// "접수 자체가 이 시간 안에도 안 끝나면 네트워크 이상"을 가르는 안전망일 뿐이라 8초
+// 예산+정상 네트워크 지연에 넉넉히 여유 있다.
 const PUBLISH_REQUEST_TIMEOUT_MS = 45_000;
-// 영상 API의 공급자 업로드 상한은 120초다. 클라이언트가 먼저 포기하면 서버의 실제 성공을
-// 실패로 보여 재시도를 유도하므로 영상만 서버 상한보다 길게 기다린다.
 const VIDEO_PUBLISH_REQUEST_TIMEOUT_MS = 130_000;
 
 // SNS-007: /api/publish가 실제로 계정별 발행을 받는 4개 플랫폼(threads/x/facebook/instagram)만
@@ -109,6 +122,14 @@ const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reel
 import { draftStatusLabel } from "@/lib/studio/draft-status-label";
 import { resolveVideoPublishFilename } from "@/lib/studio/video-publish-filename";
 import { connectedOnlyTargets, publishableTargets as computePublishableTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
+import { channelNameList, PLATFORM_LABEL } from "@/lib/studio/channel-name-list";
+import {
+  allowedPrivacyLevels,
+  disclosureValidationError,
+  musicUsageConfirmationText,
+  resolvePrivacyAfterDisclosureChange,
+  type TikTokDisclosureState,
+} from "@/lib/studio/tiktok-disclosure";
 import {
   resolveRestoredQuickDraftTopic,
   sanitizeRestoredQuickDraftLines,
@@ -269,7 +290,10 @@ interface VidResult {
   hasAudio?: boolean;
   narration?: { requested: boolean; included: boolean; reason?: string; message?: string };
 }
-type PubStatus = "wait" | "doing" | "done" | "failed";
+// "unknown" = 비동기 발행이 상한(15분)을 넘겨 더 기다리지 않지만, "실패"로 단정하지도
+// 않는 상태(세션맥락: 524 오판으로 인한 재발행이 중복 게시를 부른다 — 재발행을 유도하지
+// 않기 위해 failed와 분리한다). 게시물 목록에서 실제 결과를 확인하라고 안내한다.
+type PubStatus = "wait" | "doing" | "done" | "failed" | "unknown";
 type PublishReconciliation = ExternalPublishPersistenceFailure["persistence"]["reconciliation"];
 type PublishReconciliationMap = Record<string, PublishReconciliation>;
 
@@ -532,6 +556,54 @@ export default function StudioPage() {
   const [publishReconciliations, setPublishReconciliations] = useState<PublishReconciliationMap>({});
   const [editorHandoff, setEditorHandoff] = useState<EditorHandoff | null>(null);
   const [includes, setIncludes] = useState<Record<string, boolean>>(() => normalizeIncludes());
+  /**
+   * 2026-10-03 독립 리뷰 MINOR-g 근본원인 수정: 발행 선택 사고의 실제 뿌리는 미리보기
+   * 탭을 선택으로 착각한 것보다, **이전 세션의 선택이 아무 표시 없이 조용히 되살아난
+   * 것**이다(이 세션 자체가 그 패턴으로 Threads에 실제 발행했다). 두 안을 저울질했다:
+   * ①발행 전 채널 이름을 보여주는 확인 단계(모달/추가 클릭) ②되살아난 선택임을 그
+   * 자리에서 표시만("지난번 선택 유지: Threads"). ①은 publish() 흐름 자체를 바꿔야
+   * 하고 "선택한 N곳에 지금 발행" 버튼 클릭 한 번으로 바로 발행되던 기존 테스트 수십
+   * 개(studio-publish-ui.test.tsx)의 흐름을 전부 다시 짜야 한다. ②는 상태 하나와 배지
+   * 하나만 더하면 되고, 사용자의 기존 동작(바로 발행)을 막지 않으면서 "이거 내가 지금
+   * 고른 게 아니라 전에 고른 거다"를 알린다. 더 작은 ②를 택한다.
+   */
+  const [restoredSelectionNotice, setRestoredSelectionNotice] = useState(false);
+  /**
+   * 운영 사고(9444 회원 계정, 2026-10-03): TikTok 발행이 /api/video/publish의
+   * privacy_level 필수 검사(route.ts:727-729)에 걸려 "TikTok 공개 범위를 직접
+   * 선택해주세요" 400으로 항상 실패했다. 발행실에는 그 값을 고르는 자리 자체가 없었고
+   * /api/video/publish 요청에도 안 실었다. /app/videos/page.tsx에만 그 선택기가 있었다
+   * (tiktokCreator.privacyLevels, creator-info 조회). 여기서도 같은 계약을 그대로
+   * 따른다 — TikTok의 Content Posting 정책은 공개 범위를 사람이 직접 고르게 강제하므로
+   * 기본값을 미리 고르지 않는다(빈 문자열 시작). 상호작용 토글(댓글/듀엣/스티치)과 AI
+   * 생성 공개는 videos 페이지가 이미 쓰는 기본값 정책을 그대로 따른다(토글 셋은
+   * creator의 disabled 플래그로 동기화, AI 생성은 기본 true — 창작자가 아니오로
+   * 끄는 쪽이 "거짓으로 아니라고 답하기"보다 안전하다는 videos 페이지의 기존 판단).
+   */
+  const [tiktokPrivacy, setTiktokPrivacy] = useState(""); // 절대 기본값을 미리 고르지 않는다
+  const [tiktokDisableComment, setTiktokDisableComment] = useState(false);
+  const [tiktokDisableDuet, setTiktokDisableDuet] = useState(false);
+  const [tiktokDisableStitch, setTiktokDisableStitch] = useState(false);
+  const [tiktokAiGenerated, setTiktokAiGenerated] = useState(true);
+  /**
+   * 2026-10-03 독립 리뷰 m3(TikTok Content Sharing Guidelines): 상업 콘텐츠 공개
+   * ("Your brand"/"Branded content")도 사람이 직접 켜야 한다 — 기본은 전부 꺼짐.
+   */
+  const [tiktokDisclosureEnabled, setTiktokDisclosureEnabled] = useState(false);
+  const [tiktokBrandOrganic, setTiktokBrandOrganic] = useState(false);
+  const [tiktokBrandContent, setTiktokBrandContent] = useState(false);
+  /**
+   * m3: 공개 범위는 "이번 한 번만" 고르는 값이다 — 새 초안을 시작하거나, 작업 공간을
+   * 바꾸거나, 발행에 성공한 뒤에는 다음 영상에 지난 선택이 그대로 넘어가면 안 된다
+   * (사용자가 매번 다시 확인하지 않으면 엉뚱한 계정 공개 범위로 올라갈 수 있다).
+   * 상업 콘텐츠 공개도 같이 초기화한다.
+   */
+  const resetTiktokDisclosure = useCallback(() => {
+    setTiktokPrivacy("");
+    setTiktokDisclosureEnabled(false);
+    setTiktokBrandOrganic(false);
+    setTiktokBrandContent(false);
+  }, []);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [hashtags, setHashtags] = useState<Record<string, string>>({});
   const [topicTags, setTopicTags] = useState<Record<string, string>>({});
@@ -713,8 +785,6 @@ export default function StudioPage() {
   // 저장된 선택 의도는 보존하되, 화면의 체크 수와 발행 버튼에는 지금 올릴 수 있는
   // 채널만 포함한다. 초기 복원 중 잠깐 비어 있는 본문 때문에 includes 자체를 지우면
   // 정상 본문이 들어온 뒤에도 사용자가 고른 채널이 돌아오지 않는 경쟁이 생긴다.
-  const selectedTargets = selectedPublishTargets(includes)
-    .filter((platform) => !publishGuard(platform).disabledReason);
   const usableAccounts = (platform: PreviewPlatform) => (accountsByPlatform[platform] || []).filter((account) => account.connectionState === "connected");
   const defaultConnectedAccount = (platform: PreviewPlatform) => {
     const accounts = usableAccounts(platform);
@@ -723,7 +793,68 @@ export default function StudioPage() {
   // 계정 선택 UI가 없는 v70에서는 계정 관리에서 정한 현재 기본 계정이 화면과 요청의
   // 공통 정본이다. 저장된 과거 작업별 선택값을 보내면 사용자가 고칠 수 없는 숨은 상태가 된다.
   const selectedConnectedAccountId = (platform: PreviewPlatform) => defaultConnectedAccount(platform)?.id;
+
+  // TikTok 패널(결함: 공개 범위 미선택 400) — app/videos/page.tsx와 같은 계약.
+  // 연결된 TikTok 계정이 있을 때만 creator-info를 조회한다(없는데 부르면 404 토스트만
+  // 쌓인다). 계정은 v70 규칙대로 기본 연결 계정 하나를 쓴다(계정 선택 UI 없음).
+  // 2026-10-03 독립 리뷰 CI 수정: publishGuard가 아래 tiktokCreatorFailed/tiktokPrivacy를
+  // 읽으므로, publishGuard를 처음 부르는 selectedTargets 계산보다 반드시 앞에 있어야
+  // 한다(TDZ — "Cannot access before initialization"로 전체 화면이 죽은 실측).
+  const tiktokAccountIdForCreator = selectedConnectedAccountId("tiktok");
+  const tiktokCreatorUrl = usableAccounts("tiktok").length > 0
+    ? `/api/tiktok/creator-info${tiktokAccountIdForCreator ? `?account_id=${encodeURIComponent(tiktokAccountIdForCreator)}` : ""}`
+    : null;
+  const { data: tiktokCreatorData, error: tiktokCreatorError } = useSWR<{
+    connected?: boolean;
+    ready?: boolean;
+    creator?: { username: string; privacyLevels: string[]; commentDisabled: boolean; duetDisabled: boolean; stitchDisabled: boolean };
+  }>(tiktokCreatorUrl, fetcher);
+  const tiktokCreator = tiktokCreatorData?.creator;
+  /**
+   * 2026-10-03 독립 리뷰 m2: /api/tiktok/creator-info가 404(미연결)·502(계정 확인
+   * 실패, route.ts)를 주면 fetcher가 던지고 tiktokCreator는 그냥 undefined가 된다.
+   * 그러면 패널이 통째로 안 뜨고 publishGuard의 "공개 범위를 먼저 선택해주세요."만
+   * 남아 — 고를 칸 자체가 없는데 "선택해주세요"만 뜨는 막다른 길이 된다. 계정은
+   * 연결(usableAccounts>0)돼 있는데 creator-info 조회 자체가 실패했음을 구분해
+   * 다른 안내와 재연결 링크를 보여준다.
+   */
+  const tiktokCreatorFailed = Boolean(tiktokCreatorUrl) && !tiktokCreator && Boolean(tiktokCreatorError);
+  /**
+   * 2026-10-03 독립 리뷰 m3(TikTok Content Sharing Guidelines): 유료 파트너십(브랜드
+   * 콘텐츠)을 공개하면 비공개로는 못 올린다. 창작자가 쓸 수 있는 공개 범위 목록을
+   * 이 상태로 좁힌다(순수 로직은 tiktok-disclosure.ts).
+   */
+  const tiktokDisclosureState: TikTokDisclosureState = {
+    disclosureEnabled: tiktokDisclosureEnabled,
+    brandOrganic: tiktokBrandOrganic,
+    brandContent: tiktokBrandContent,
+  };
+  const tiktokAllowedPrivacyLevels = tiktokCreator ? allowedPrivacyLevels(tiktokDisclosureState, tiktokCreator.privacyLevels) : [];
+  const tiktokDisclosureError = disclosureValidationError(tiktokDisclosureState);
+  useEffect(() => {
+    // 유료 파트너십을 켜서 비공개가 허용 목록 밖으로 나가면 그 값을 지운다(다른 값으로
+    // 대신 고르지 않는다 — "사용자가 직접 고른다" 원칙, tiktok-disclosure.ts).
+    setTiktokPrivacy((current) => resolvePrivacyAfterDisclosureChange(current, tiktokDisclosureState, tiktokCreator?.privacyLevels ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiktokDisclosureEnabled, tiktokBrandContent, tiktokCreator?.privacyLevels]);
+
+  const selectedTargets = selectedPublishTargets(includes)
+    .filter((platform) => !publishGuard(platform).disabledReason);
   const publishTargets = selectedTargets.filter((platform) => usableAccounts(platform).length > 0);
+  /**
+   * 2026-10-03 독립 리뷰 MINOR-h: 상단 배너는 selectedTargets(사용자가 고른 전체)로 채널
+   * 이름을 보여주고, "지금 발행" 버튼 옆 배지는 publishTargets(지금 실제로 올릴 수 있는
+   * 것)로 보여줘서 두 이름 목록이 서로 달라질 수 있었다(예: 선택은 했는데 계정이 끊긴
+   * 채널). 이름 목록은 이 값 하나로만 만든다 — 숫자 표시(선택 N곳 / 발행가능 M곳)는
+   * 각자 다른 뜻이라 그대로 두고, "이름이 무엇인가"만 단일 정본으로 합친다.
+   *
+   * 이미 이번 발행에서 성공한(pub.status === "done") 채널은 재선택 대상처럼 이름에
+   * 끼워 보여주지 않는다 — 다시 누르면 재발행처럼 보이는 혼동을 줄인다. 뒤따르는 다른
+   * PR이 도입하는 "이미 완료"·"상태 불명" 상태는 이 필터에 조건을 추가하는 자리다
+   * (지금은 done만 존재하고 unknown류 상태가 아직 코드에 없어 추측해서 만들지 않았다).
+   */
+  const publishNameTargets = (accountsLoaded ? publishTargets : selectedTargets)
+    .filter((platform) => pub.status[platform] !== "done");
   // 선택이 자동으로 꺼진 뒤에도 재연결 행동이 사라지면 사용자는 복구할 길이 없다.
   // 현재 발행 체크와 무관하게 만료·해제 계정이 하나라도 있는 채널을 안내한다.
   const reconnectTargets = ALL.filter((platform) =>
@@ -731,6 +862,15 @@ export default function StudioPage() {
   // 일부만 성공한 뒤에는 버튼이 '다시 발행'이 아니라 '실패한 곳만'이어야 한다.
   const publishRetryOnly = publishTargets.some((platform) => pub.status[platform] === "done")
     && publishTargets.some((platform) => pub.status[platform] === "failed");
+
+  useEffect(() => {
+    // videos/page.tsx와 같은 동기화: 창작자 계정이 이미 막아둔 상호작용은 토글도
+    // 그 상태로 맞춰 둔다(사용자가 끌 필요가 없는 걸 또 묻지 않는다).
+    setTiktokDisableComment(tiktokCreator?.commentDisabled ?? false);
+    setTiktokDisableDuet(tiktokCreator?.duetDisabled ?? false);
+    setTiktokDisableStitch(tiktokCreator?.stitchDisabled ?? false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiktokAccountIdForCreator, tiktokCreator?.username, tiktokCreator?.commentDisabled, tiktokCreator?.duetDisabled, tiktokCreator?.stitchDisabled]);
 
   useEffect(() => {
     const requested = resolveStudioRoom(`?${search}`, storedRoom).room;
@@ -890,7 +1030,10 @@ export default function StudioPage() {
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setHydratedWorkspaceId(null);
     setIdea(""); setImg(null); setVid(null); setDraftId(null);
-    setIncludes(normalizeIncludes()); setPublishReconciliations({}); setEditorHandoff(null);
+    setIncludes(normalizeIncludes()); setRestoredSelectionNotice(false); setPublishReconciliations({}); setEditorHandoff(null);
+    // m3: 작업 공간을 바꾸면 TikTok 공개 범위·상업 콘텐츠 공개를 초기화한다(다른
+    // 공간의 영상에 지난 선택이 그대로 넘어가면 안 된다).
+    resetTiktokDisclosure();
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
     replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
     quickDraftTopicRef.current = null;
@@ -908,7 +1051,11 @@ export default function StudioPage() {
         // 서버 초안과 같은 엄격한 서명으로만 구형 무료 글자 카드를 승격한다. 일반 생성
         // 이미지는 aspectRatio 도장이 있고, 말풍선 덱은 template이 달라 여기서 제외된다.
         setImg(recoverDraftEmbeddedTextCard<ImgResult>(w)); setVid(w.vid || null);
-        if (w.includes) setIncludes(normalizeIncludes(w.includes)); setDraftId(w.draftId || null);
+        if (w.includes) {
+          setIncludes(normalizeIncludes(w.includes));
+          setRestoredSelectionNotice(Object.values(w.includes as Record<string, boolean>).some(Boolean));
+        }
+        setDraftId(w.draftId || null);
         setPublishReconciliations(normalizePublishReconciliations(w.publishReconciliations ?? w.publishReconciliation));
         setTitles(w.titles || {}); setHashtags(w.hashtags || {}); setTopicTags(w.topicTags || {});
         setFirstComments(w.firstComments || {}); setCaptions(w.captions || {}); setSelectedAccounts(w.selectedAccounts || {});
@@ -1298,54 +1445,79 @@ export default function StudioPage() {
   // cb35f3fd — 15~20분 뒤 완료됐는데 서버 쪽 호출은 이미 끊겨 크레딧만 쓰고 결과를 못
   // 받았다). genImage/genVideo가 접수 직후 localStorage에 적어 둔 jobId가 작업 공간
   // 전환 시점에 남아 있으면 자동으로 이어서 조회한다.
-  useEffect(() => {
+  // resumePendingJobsRef: 작업공간 전환 effect와 탭-재표시 effect가 같은 복구 로직을
+  // 공유한다(2026-10-02 server-side finalize 보강 — 세션맥락 22분 소실 재발방지). 서버가
+  // 이제 백그라운드 루프로 작업을 스스로 끝내지만, 화면이 그 결과를 "받아서 보여주는" 것은
+  // 여전히 이 폴링이 한다 — 탭이 백그라운드에서 오래 있다가 포그라운드로 돌아왔을 때
+  // (같은 작업공간이라 effect가 재실행되지 않는 경우) 다시 확인하지 않으면 사용자는 이미
+  // 완료된 결과를 화면에서 영영 못 본다.
+  const resumePendingJobs = useCallback(() => {
     if (!activeWorkspace) return;
+    if (resumePollAbort.current) return; // 이미 복구 폴링이 돌고 있다 — 중복 시작 금지.
     const workspaceId = activeWorkspace.id;
     const pendingImg = readPendingJob(workspaceId, "image");
     const pendingVid = readPendingJob(workspaceId, "video");
     if (!pendingImg && !pendingVid) return;
-    // 2026-10-02 리뷰 MAJOR 5b: 이 effect 전용 AbortController를 쓴다 — 전역
-    // generationAbort(사용자가 누르는 "지금 작업물 버리기")와 분리해서, 이 복구가
-    // 언마운트/작업공간 재전환으로 취소될 때 다른 상호작용 폴링까지 끊기지 않게 한다.
     const controller = new AbortController();
     resumePollAbort.current = controller;
     showToast("이전에 시작한 생성을 이어서 확인하는 중", "success");
-    // 2026-10-02 리뷰 MAJOR 5c: 저장해 둔 주제(idea)를 복원해 생성실이 "무엇을 만들던
-    // 중이었는지" 비어 보이지 않게 한다. 이미지·영상 둘 다 있으면 이미지 쪽 주제를
-    // 우선한다(보통 같은 작업 흐름의 같은 주제).
-    // 2026-10-02 리뷰 MINOR: `idea`를 클로저로 읽어 비었는지 판단하면, 같은 시점에
-    // 돌아가는 작업공간 복원 effect(워크스페이스 데이터에서 idea를 되살리는 effect)가
-    // 나중에 적용한 값을 이 effect가 덮어쓸 수 있다. 함수형 setState로 "적용되는
-    // 순간"의 실제 현재값을 보고, 그때도 비어 있을 때만 채운다.
     const restoredIdea = pendingImg?.idea ?? pendingVid?.idea;
     if (restoredIdea) {
       setIdea((current) => (current.trim() ? current : restoredIdea));
     }
+    const tasks: Promise<unknown>[] = [];
     if (pendingImg) {
       setBusy("이미지 생성 대기열에서 기다리는 중");
-      pollAndFinishImage(pendingImg.jobId, workspaceId, pendingImg.aspectRatio ?? "9:16", {
+      tasks.push(pollAndFinishImage(pendingImg.jobId, workspaceId, pendingImg.aspectRatio ?? "9:16", {
         signal: controller.signal,
         topicLabel: pendingImg.idea,
-      }).finally(() => setBusy(null));
+      }));
     }
     if (pendingVid) {
       setBusy("영상 생성 대기열에서 기다리는 중");
-      pollAndFinishVideo(pendingVid.jobId, workspaceId, {
+      tasks.push(pollAndFinishVideo(pendingVid.jobId, workspaceId, {
         signal: controller.signal,
         topicLabel: pendingVid.idea,
-      }).finally(() => setBusy(null));
+      }));
     }
-    // 작업 공간이 바뀌거나(새 workspaceId로 effect 재실행) 컴포넌트가 언마운트되면
-    // 이 복구 폴링만 끊는다 — pollAndFinishImage/Video 내부의 activeWorkspaceIdRef
-    // 가드와 함께, 더 이상 보고 있지 않은 작업공간의 결과가 화면에 꽂히는 것을 막는다.
-    return () => {
-      controller.abort();
+    Promise.allSettled(tasks).finally(() => {
+      setBusy(null);
       if (resumePollAbort.current === controller) resumePollAbort.current = null;
-    };
-    // activeWorkspace.id가 바뀔 때(작업 공간 전환)만 재확인한다. pollAndFinish* 함수는
-    // 매 렌더 재생성되지만 effect 의존성에 넣으면 생성 호출 때마다 재구독돼 중복 폴링이 된다.
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspace?.id]);
+  // 새로고침·탭 재방문 뒤에도 진행 중이던 생성을 잃지 않는다(세션맥락 2026-10-01 추가 실측
+  // cb35f3fd — 15~20분 뒤 완료됐는데 서버 쪽 호출은 이미 끊겨 크레딧만 쓰고 결과를 못
+  // 받았다). genImage/genVideo가 접수 직후 localStorage에 적어 둔 jobId가 작업 공간
+  // 전환 시점에 남아 있으면 자동으로 이어서 조회한다.
+  useEffect(() => {
+    resumePendingJobs();
+    return () => {
+      resumePollAbort.current?.abort();
+      resumePollAbort.current = null;
+    };
+    // activeWorkspace.id가 바뀔 때(작업 공간 전환)만 재확인한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id]);
+  // 2026-10-02 server-side finalize 보강: 탭이 백그라운드에 있다가 다시 보일 때도 복구를
+  // 다시 확인한다. activeWorkspace.id가 바뀌지 않아 위 effect는 재실행되지 않지만, 그동안
+  // 서버가 백그라운드로 작업을 끝냈을 수 있고 화면 쪽 폴링은 (브라우저가 타이머를 묶어
+  // 두거나, 탭을 완전히 닫았다 다시 연 경우) 이어지지 않았을 수 있다.
+  useEffect(() => {
+    const onWake = () => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        resumePendingJobs();
+      }
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    window.addEventListener("pageshow", onWake);
+    return () => {
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("pageshow", onWake);
+    };
+  }, [resumePendingJobs]);
   // 지금 작업물을 버리고 처음부터 시작한다.
   //
   // 2026-09-06 회장 스모크: "생성실, 편집실, 발행실 리셋을 어떻게 해야하나 모르겠음
@@ -1387,6 +1559,8 @@ export default function StudioPage() {
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
     setPublishReconciliations({});
     setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
+    // m3: 새 초안을 시작하면 TikTok 공개 범위·상업 콘텐츠 공개도 같이 비운다.
+    resetTiktokDisclosure();
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
     // 생성실이 들고 있는 구조 초안과 답한 질문까지 비운다. 여기를 빼먹으면 "버렸다" 고
     // 말해 놓고 화면에는 앞서 만든 후보가 그대로 남는다(2026-09-09 실사용에서 확인).
@@ -1926,7 +2100,12 @@ export default function StudioPage() {
     const filename = videoFilename(vid?.file || vid?.url || "");
     if (!filename) return { kind: "skipped" };
     const spoken = lines.filter((line) => line.trim());
-    if (!spoken.length) return { kind: "skipped" };
+    const editNeedsFile = Boolean(videoEdit && (
+      videoEdit.subtitles.some((line) => line.cut || line.text.trim().length > 0)
+      || videoEdit.overlays.some((item) => item.text.trim().length > 0)
+      || videoEdit.comments.some((item) => item.author.trim().length > 0 && item.text.trim().length > 0)
+    ));
+    if (!spoken.length && !editNeedsFile) return { kind: "skipped" };
     const subtitleSize = editFormat.kind === "video" ? editFormat.subtitleSize : "보통";
     try {
       const r = await apiPost<{ ok?: boolean; file?: string; filename?: string; error?: string }>("/api/video/subtitle", {
@@ -1934,6 +2113,7 @@ export default function StudioPage() {
         filename,
         lines: spoken,
         subtitleSize,
+        ...(videoEdit ? { videoEdit } : {}),
       });
       if (!r?.ok || !r.file) {
         showToast(r?.error || "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요.", "error");
@@ -2034,6 +2214,28 @@ export default function StudioPage() {
         createActionLabel: "생성실에서 카드 만들기",
       };
     }
+    // 2026-10-03 독립 리뷰 m2: creator-info 조회 자체가 404/502로 실패하면 고를 칸이
+    // 없다. 그런데도 "공개 범위를 먼저 선택해주세요"만 뜨면 막다른 길이다 — 재연결
+    // 안내로 먼저 갈라야 한다.
+    if (platform === "tiktok" && tiktokCreatorFailed) {
+      return {
+        disabledReason: "TikTok 계정 정보를 확인하지 못했습니다. 계정을 다시 연결해주세요.",
+        createHref: channelHref("tiktok"),
+        createActionLabel: "TikTok 다시 연결하기",
+      };
+    }
+    // 2026-10-03 운영 사고: TikTok은 공개 범위(privacy_level)를 사람이 직접 고르지
+    // 않으면 서버가 400으로 거부한다(route.ts:727-729). 화면에 그 값을 고르는 자리가
+    // 없었으니 매번 실패했다. 아래 TikTok 패널에서 값을 고르기 전까지는 "지금 발행"을
+    // 막고, 왜 막혔는지를 이 disabledReason으로 그 자리에서 말한다.
+    if (platform === "tiktok" && !tiktokPrivacy) {
+      return { disabledReason: "TikTok 공개 범위를 먼저 선택해주세요." };
+    }
+    // 2026-10-03 독립 리뷰 m3: 상업 콘텐츠 공개를 켰는데 어느 쪽도 안 고르면 TikTok이
+    // 요구하는 공개 내용이 비어버린다(tiktok-disclosure.ts).
+    if (platform === "tiktok" && tiktokDisclosureError) {
+      return { disabledReason: tiktokDisclosureError };
+    }
     const blocking = validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0];
     if (blocking) return { disabledReason: blocking.message };
     return {};
@@ -2084,6 +2286,170 @@ export default function StudioPage() {
     }
   }
 
+  // 2026-10-02 컨트롤러 감사 반려: video/publish가 202 + jobId(status:"processing")를 줘도
+  // 화면은 그 응답을 몰라 ok:true로 읽고 바로 "완료"로 표시했다 — 거짓-성공이었다. 서버가
+  // 실제로 끝날 때까지 이 폴링이 기다린다. 15분 상한을 넘기면 "실패"가 아니라 "결과 확인
+  // 중"으로 남겨 재발행(중복 게시)을 유도하지 않는다.
+  async function awaitAsyncVideoPublish(
+    tenantId: string, filename: string, platform: string, jobId: string, signal?: AbortSignal,
+  ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> {
+    savePendingVideoPublishJob(tenantId, filename, platform, jobId);
+    const outcome = await pollJobUntilDone<{ ok?: boolean; url?: string; error?: string; status?: string; processing?: boolean; publishId?: string }>(
+      `/api/video/publish/job/${encodeURIComponent(jobId)}?tenant_id=${encodeURIComponent(tenantId)}`,
+      // MAJOR-2: 고정 헤더 대신 매 요청마다 새로 만든다 — 15분 폴링 중 토큰이 돌면
+      // 고정 헤더는 그 뒤로 계속 401을 받는다.
+      // MINOR(2026-10-02 재재검토): signal을 넘기면 effect cleanup(언마운트·작업공간
+      // 전환)이 cancelled=true만 찍는 게 아니라 이 폴링 자체를 즉시 멈춘다 — 안 그러면
+      // 사용자가 떠난 뒤에도 15분까지 네트워크 폴링이 백그라운드에 남는다.
+      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000, signal },
+    );
+    if (outcome.timedOut) {
+      // pending 기록을 지우지 않는다 — 다음 방문(탭 재표시/새로고침)에서 복구 효과가 이어서
+      // 확인한다. 상한을 넘겼다고 포기한 게 아니라 "이 폴링만" 멈춘 것이다.
+      return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+    }
+    if (outcome.aborted) {
+      // MINOR: effect cleanup으로 멈춘 것 — pending 기록을 지우지 않는다(다음 방문에서
+      // 이어서 확인한다). 호출부가 보통 이 결과를 버리지만, 혹시 쓰더라도 "실패"로
+      // 잘못 읽히면 안 된다.
+      return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+    }
+    clearPendingVideoPublishJob(tenantId, filename, platform);
+    // MINOR(2026-10-02 재재검토): 작업을 못 찾은 것도 "실패로 확정됐다"가 아니라 "결과를
+    // 모른다"다 — 외부 게시가 실제로 일어났는데 기록만 사라졌을 가능성을 배제할 수 없다.
+    // failed로 두면 재발행 버튼이 뜬다.
+    if (outcome.notFound) return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
+    const data = outcome.data;
+    // MAJOR-3 구멍(2026-10-02 재재검토): TikTok 접수(init) 자체가 8초를 넘기면, 바깥
+    // job(jobId) 경로가 먼저 타임아웃 승리해 그 작업의 "완료된 결과"가 TikTok 자체의
+    // 비동기 봉투({ok:true, processing:true, publishId})가 된다. 이 함수는 그걸 그냥
+    // `ok:true`로 읽어 url 없는 "완료"를 내버렸다 — 실제로는 TikTok이 아직도 처리
+    // 중이다. publishId가 보이면 TikTok 전용 폴러로 넘긴다.
+    if (data?.processing && data.publishId) {
+      return awaitAsyncTikTokPublish(data.publishId, signal);
+    }
+    if (!data?.ok) {
+      // BLOCK-1(2026-10-02 독립 리뷰): "외부에는 올라갔는데 우리 기록만 못 남겼다" 또는
+      // "외부 결과를 확인하지 못했다"는 신호를 평범한 "실패"로 읽으면 안 된다 — 실패로
+      // 보이면 재발행 버튼이 다시 눌려 같은 영상이 두 번 올라간다. unresolved로 돌려
+      // 호출부가 "unknown"(결과 확인 중)으로 남기게 한다(재발행 대상에서 제외).
+      // M-A 사이드이펙트(2026-10-02 재재검토 회귀): isUnresolvedPublishPayload가 이제
+      // ①(확정된 외부 게시)을 일부러 제외하므로, 이 data 경로(에러로 던져지지 않고 job
+      // 결과로 들어온 경우 — pendingReconciliations 배너가 없는 경로)에서는 ①도 여기서
+      // 같이 "unresolved"로 막아야 한다 — 안 그러면 ①이 평범한 failed로 떨어져 재발행
+      // 버튼이 뜬다(바로 이 BLOCK-1이 막으려던 것).
+      if (isUnresolvedPublishPayload(data) || isExternalPublishConfirmedPayload(data)) {
+        return {
+          ok: false, unresolved: true,
+          error: data?.error || "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.",
+        };
+      }
+      return { ok: false, error: data?.error || "영상 발행에 실패했습니다" };
+    }
+    return { ok: true, url: data.url };
+  }
+
+  // MAJOR-3(2026-10-02 독립 리뷰): TikTok은 video/publish와 다른, 자체 비동기 계약을 쓴다
+  // — 202 + {ok:true, processing:true, publishId}(jobId도 status:"processing"도 없음).
+  // 위 awaitAsyncVideoPublish의 `vr?.jobId && vr.status==="processing"` 분기가 이 모양을
+  // 못 잡아 `vr?.ok && !vr.partial`로 떨어져 "완료"(링크 없는 성공)로 잘못 표시됐다.
+  // 기존에 이미 있던 조회 엔드포인트(/api/tiktok/publish-status, videos/page.tsx의
+  // rememberTikTokPending과 같은 정본)를 그대로 쓴다 — 그 라우트도 진행 중이면
+  // status:"processing"을 주므로 job-poll.ts와 계약이 맞는다.
+  async function awaitAsyncTikTokPublish(
+    publishId: string, signal?: AbortSignal,
+  ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> {
+    const outcome = await pollJobUntilDone<{ ok?: boolean; status?: string; url?: string; error?: string }>(
+      `/api/tiktok/publish-status?publish_id=${encodeURIComponent(publishId)}`,
+      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000, signal },
+    );
+    if (outcome.timedOut) {
+      return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+    }
+    if (outcome.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+    if (outcome.notFound) return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
+    const data = outcome.data;
+    if (data?.status === "failed" || data?.ok === false) {
+      if (isUnresolvedPublishPayload(data) || isExternalPublishConfirmedPayload(data)) {
+        return { ok: false, unresolved: true, error: data?.error || "외부 게시 여부를 확인하지 못했습니다." };
+      }
+      return { ok: false, error: data?.error || "TikTok 발행에 실패했습니다" };
+    }
+    return { ok: true, url: data?.url };
+  }
+
+  // 같은 감사 반려: /api/publish도 150초대 폴링(인스타 캐러셀·Threads 상태확인)이 예산(8초)을
+  // 넘으면 202 + {processing:true, draftId, platform}을 준다. 결과는 새 작업 저장소가 아니라
+  // 기존 GET /api/publish?draft_id=...&platforms=...(buildUnifiedPublishStatus)가 그대로
+  // 맡는다(draftId가 작업 id 역할). 그 응답의 종결 신호는 최상위 status가 아니라
+  // targets[0].status(queued/processing/published/failed)라서 job-poll의 "최상위 status"
+  // 계약과 안 맞는다 — pollJobUntilDone으로 억지로 끼워맞추지 않고, 같은 2.5초 간격·
+  // 백그라운드 깨우기(wakeableSleep, job-poll.ts와 같은 정본)로 직접 루프를 돈다.
+  async function awaitAsyncSocialPublish(
+    tenantId: string, draftId: string, platform: string, signal?: AbortSignal,
+  ): Promise<{ ok: boolean; permalink?: string; publishedAt?: string; error?: string; unresolved?: boolean; partial?: boolean }> {
+    savePendingSocialPublishJob(tenantId, draftId, platform);
+    const start = Date.now();
+    const timeoutMs = 15 * 60 * 1000;
+    for (;;) {
+      // MINOR(2026-10-02 재재검토): effect cleanup이 abort하면 이 루프를 즉시 멈춘다 —
+      // 안 그러면 사용자가 떠난 뒤에도 15분까지 백그라운드 폴링이 남는다.
+      if (signal?.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+      if (Date.now() - start > timeoutMs) {
+        // pending 기록을 지우지 않는다 — 다음 방문에서 복구 효과가 이어서 확인한다.
+        return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+      }
+      let res: Response;
+      try {
+        res = await fetch(
+          `/api/publish?draft_id=${encodeURIComponent(draftId)}&platforms=${encodeURIComponent(platform)}&tenant_id=${encodeURIComponent(tenantId)}`,
+          { headers: authHeaders(), signal },
+        );
+      } catch {
+        if (signal?.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+        await wakeableSleep(JOB_POLL_INTERVAL_MS, signal);
+        continue;
+      }
+      if (res.status === 404) {
+        // MINOR(2026-10-02 재재검토): 못 찾은 것도 "실패 확정"이 아니라 "모른다"다.
+        clearPendingSocialPublishJob(tenantId, draftId, platform);
+        return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
+      }
+      const body = await res.json().catch(() => null) as {
+        targets?: Array<{
+          status: string; permalink: string | null; error: string | null; updatedAt: string | null;
+          firstComment?: { status: string | null; error: string | null };
+        }>;
+      } | null;
+      const target = body?.targets?.[0];
+      // MAJOR-2: 401(토큰 만료)·503(DB 장애, route.ts GET catch)·그 밖의 비정상 응답은
+      // targets 배열이 없으므로 target이 undefined가 되어 이미 여기서 재시도된다 — 토큰이
+      // 돌거나 DB가 잠깐 끊긴 걸 "실패"로 단정하지 않는다(authHeaders()도 루프 매번 새로
+      // 호출돼 최신 토큰을 쓴다).
+      if (!target || target.status === "queued" || target.status === "processing") {
+        await wakeableSleep(JOB_POLL_INTERVAL_MS, signal);
+        continue;
+      }
+      clearPendingSocialPublishJob(tenantId, draftId, platform);
+      if (target.status !== "published") {
+        return { ok: false, error: target.error || "발행에 실패했습니다" };
+      }
+      // MAJOR-5(2026-10-02 독립 리뷰): 동기 경로는 본문 성공 + 첫 댓글 실패를 partial:true로
+      // 구분해 "완전 성공"으로 보여주지 않는다(위 동기 분기의 r.partial 처리와 같다). 느린
+      // 경로는 그 결과가 백그라운드 Response에만 있었고 폴링 쪽은 target.status만 봐서
+      // 첫 댓글 실패를 삼켰다 — published_posts.first_comment_status는 동기 경로와 똑같이
+      // 이미 기록돼 있으므로(백그라운드도 같은 코드를 탄다) 그걸 읽어 복원한다.
+      const firstCommentFailed = target.firstComment?.status === "failed" || target.firstComment?.status === "uncertain";
+      if (firstCommentFailed) {
+        return {
+          ok: true, partial: true, permalink: target.permalink ?? undefined, publishedAt: target.updatedAt ?? undefined,
+          error: target.firstComment?.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다",
+        };
+      }
+      return { ok: true, permalink: target.permalink ?? undefined, publishedAt: target.updatedAt ?? undefined };
+    }
+  }
+
   async function publish() {
     // 2026-09-05 회장 계정 실측: 발행 단추를 눌렀는데 요청도 안 나가고 알림도 없었다.
     // 여기서 아무 말 없이 돌아섰기 때문이다. 조용한 반환은 고장으로 읽힌다. 이유를 말한다.
@@ -2131,9 +2497,18 @@ export default function StudioPage() {
     // 전체가 실패로 보였고, 발행 버튼이 그대로 남아 다시 누르면 이미 올라간 채널까지
     // 재발행 대상이 됐다. 이번 초안에서 이미 성공한 채널은 대상에서 뺀다.
     const alreadyPublished = publishTargets.filter((platform) => pub.status[platform] === "done");
-    const targets = publishTargets.filter((platform) => pub.status[platform] !== "done" && !blockedPlatforms.has(platform));
-    if (!targets.length && alreadyPublished.length && blockedEntries.length === 0) {
+    // "unknown"(15분 상한으로 결과를 못 받은 상태)은 "실패"가 아니므로 재발행 대상에서도
+    // 뺀다 — 서버 쪽 draft_id 예약이 중복 게시를 막아 주더라도, 사용자가 다시 누를 때마다
+    // 바로 409로 튕기는 것보다는 "게시물 목록에서 확인"으로 유도하는 편이 낫다.
+    const unresolved = publishTargets.filter((platform) => pub.status[platform] === "unknown");
+    const targets = publishTargets.filter((platform) =>
+      pub.status[platform] !== "done" && pub.status[platform] !== "unknown" && !blockedPlatforms.has(platform));
+    if (!targets.length && alreadyPublished.length && blockedEntries.length === 0 && unresolved.length === 0) {
       showToast(`${alreadyPublished.map((platform) => LABEL[platform]).join(", ")} 은 이미 발행됐습니다. 다시 올리지 않았습니다.`, "success");
+      return;
+    }
+    if (!targets.length && unresolved.length && blockedEntries.length === 0) {
+      showToast(`${unresolved.map((platform) => LABEL[platform]).join(", ")}은 결과 확인 중입니다. 게시물 목록에서 확인해 주세요.`, "error");
       return;
     }
     if (!targets.length && blockedEntries.length === 0) { showToast("연결된 발행 계정이 없습니다. 설정에서 채널을 먼저 연결하세요", "error"); return; }
@@ -2146,6 +2521,10 @@ export default function StudioPage() {
     alreadyPublished.forEach((platform) => {
       status[platform] = "done";
       if (pub.urls[platform]) urls[platform] = pub.urls[platform];
+    });
+    unresolved.forEach((platform) => {
+      status[platform] = "unknown";
+      if (pub.errors[platform]) errors[platform] = pub.errors[platform];
     });
     const errs: string[] = [...blockedFailure.messages];
     const pendingReconciliations: PublishReconciliationMap = {};
@@ -2169,9 +2548,14 @@ export default function StudioPage() {
             failureReason = "올릴 영상이 없습니다. 생성실에서 숏폼 영상을 먼저 만들어 주세요.";
             errs.push(`${LABEL[p]}: ${failureReason}`);
           } else {
-            const vr = await apiPost<{ ok?: boolean; partial?: boolean; processing?: boolean; url?: string; error?: string }>("/api/video/publish", {
+            const videoPlatform = VIDEO_PUBLISH_NAME[p] || p;
+            // 2026-10-02 반려 수정: 서버는 예산(8초)을 넘기면 202 + {status:"processing",
+            // jobId}를 준다. 이걸 그대로 ok:true로 읽으면 아직 올라가지도 않은 채널을
+            // "완료"로 보여주는 거짓-성공이 된다(세션맥락). jobId가 있으면 실제로 끝날
+            // 때까지 기다린다.
+            const vr = await apiPost<{ ok?: boolean; partial?: boolean; status?: string; jobId?: string; processing?: boolean; publishId?: string; url?: string; error?: string }>("/api/video/publish", {
               filename,
-              platform: VIDEO_PUBLISH_NAME[p] || p,
+              platform: videoPlatform,
               title: titles[p] || idea || "",
               description: publishText(p),
               // 저장된 ID가 연결 해제·만료 상태로 바뀌어도 발행 요청에는 절대 싣지 않는다.
@@ -2179,16 +2563,69 @@ export default function StudioPage() {
               draft_id: did,
               // 대문으로 쓸 시점. 지원하는 플랫폼만 실제로 쓴다(lib/video-cover.ts).
               cover_seconds: supportsCoverTimestamp(p) ? (coverSeconds[p] ?? DEFAULT_COVER_SECONDS) : undefined,
+              // 2026-10-03 운영 사고: TikTok은 이 네 필드가 없으면 서버가 400으로 거부한다
+              // (route.ts:727-736). publishGuard가 privacy_level 미선택이면 이미 이 채널을
+              // 발행 대상에서 뺐으니, 여기 도달했다는 것은 tiktokPrivacy가 채워져 있다는
+              // 뜻이다. videos/page.tsx와 같은 필드·같은 기본값 정책을 그대로 싣는다.
+              ...(p === "tiktok" ? {
+                privacy_level: tiktokPrivacy,
+                disable_comment: tiktokDisableComment,
+                disable_duet: tiktokDisableDuet,
+                disable_stitch: tiktokDisableStitch,
+                is_ai_generated: tiktokAiGenerated,
+                // 2026-10-03 독립 리뷰 m3: TikTok Content Sharing Guidelines의 상업
+                // 콘텐츠 공개("Your brand"/"Branded content"). ⚠️ /api/video/publish
+                // route.ts는 아직 이 세 필드를 받지 않는다(서버가 실제로 TikTok
+                // Content Posting API에 실어 보내는 배선은 별도 작업) — 화면 계약을
+                // videos 페이지와 맞추는 이번 범위에서는 값을 함께 보내 두되, 서버가
+                // 소비하지 않는다는 사실을 숨기지 않는다.
+                disclosure_enabled: tiktokDisclosureEnabled,
+                brand_organic_toggle: tiktokBrandOrganic,
+                brand_content_toggle: tiktokBrandContent,
+              } : {}),
             }, { signal: AbortSignal.timeout(VIDEO_PUBLISH_REQUEST_TIMEOUT_MS) });
-            if (vr?.ok && !vr.partial) {
+            if (vr?.jobId && vr.status === "processing") {
+              // "doing"(발행 중) 그대로 유지하며 기다린다 — "완료"로 앞서가지 않는다.
+              setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
+              const resolved = await awaitAsyncVideoPublish(activeWorkspace.id, filename, videoPlatform, vr.jobId);
+              if (resolved.unresolved) {
+                status[p] = "unknown";
+                errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.";
+              } else if (resolved.ok) {
+                urls[p] = resolved.url || POST_URL[p] || "#";
+                trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+              } else {
+                failureReason = resolved.error || "영상 발행에 실패했습니다";
+                errs.push(`${LABEL[p]}: ${failureReason}`);
+              }
+            } else if (vr?.processing && vr.publishId) {
+              // MAJOR-3: TikTok의 자체 비동기 계약(ok:true, processing:true, publishId) —
+              // jobId 패턴과 다르다. 이걸 놓치면 "완료"(링크 없는 성공)로 잘못 표시된다.
+              setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
+              const resolved = await awaitAsyncTikTokPublish(vr.publishId);
+              if (resolved.unresolved) {
+                status[p] = "unknown";
+                errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.";
+              } else if (resolved.ok) {
+                urls[p] = resolved.url || POST_URL[p] || "#";
+                trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+              } else {
+                failureReason = resolved.error || "TikTok 발행에 실패했습니다";
+                errs.push(`${LABEL[p]}: ${failureReason}`);
+              }
+            } else if (vr?.ok && !vr.partial) {
               urls[p] = vr.url || POST_URL[p] || "#";
               trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+              // m3: TikTok 발행이 성공하면 공개 범위·상업 콘텐츠 공개를 비운다. 다음
+              // 영상에 지난 선택이 조용히 그대로 넘어가 엉뚱한 공개 범위로 올라가는
+              // 사고를 막는다 — 매번 다시 확인해 고른다.
+              if (p === "tiktok") resetTiktokDisclosure();
             } else {
               failureReason = vr?.error || "영상 발행에 실패했습니다";
               errs.push(`${LABEL[p]}: ${failureReason}`);
             }
           }
-          status[p] = failureReason ? "failed" : "done";
+          status[p] = failureReason ? "failed" : status[p] === "unknown" ? "unknown" : "done";
           if (failureReason) errors[p] = failureReason;
           setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
           return;
@@ -2208,9 +2645,34 @@ export default function StudioPage() {
           first_comment: capabilityFor(p).supported && firstComments[p]?.trim() ? firstComments[p].trim() : undefined,
           edit_format: editFormat,
         }, { signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS) });
+        // 2026-10-02 반려 수정: Instagram carousel/Threads 상태 폴링이 150초대라 서버
+        // 예산(8초)을 넘으면 202 + {processing:true, draftId, platform}을 준다. 이것도
+        // ok:true로 읽으면 아직 올라가지 않은 글을 "완료"로 보여주는 거짓-성공이 된다.
+        const processingDraftId = (r as { processing?: boolean; draftId?: string } | undefined)?.processing
+          ? (r as { draftId?: string }).draftId
+          : undefined;
+        if (processingDraftId) {
+          setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
+          const resolved = await awaitAsyncSocialPublish(activeWorkspace.id, processingDraftId, p);
+          if (resolved.unresolved) {
+            status[p] = "unknown";
+            errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.";
+          } else if (resolved.ok && resolved.partial) {
+            // MAJOR-5: 본문은 올라갔지만 첫 댓글은 실패 — 동기 분기(r.partial)와 같은
+            // 취급으로 완전 성공 집계·표시를 하지 않는다.
+            failureReason = resolved.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다";
+            errs.push(`${LABEL[p]}: ${failureReason}`);
+          } else if (resolved.ok) {
+            urls[p] = resolved.permalink || POST_URL[p] || "#";
+            trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+          } else {
+            failureReason = resolved.error || "실패";
+            errs.push(`${LABEL[p]}: ${failureReason}`);
+          }
+        }
         // 2026-09-16 실측: 서버가 dedupe 로 옛 글을 돌려준 것을 방금 새로 올라간 것과
         // 구분한다. 이미 있던 것이면 "새로 올렸다" 이벤트를 다시 세지 않는다.
-        if (r?.ok && !r.partial) { urls[p] = r.permalink || POST_URL[p] || "#"; if (!r.alreadyPublished) trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } }); else already[p] = r.publishedAt || true; }
+        else if (r?.ok && !r.partial) { urls[p] = r.permalink || POST_URL[p] || "#"; if (!r.alreadyPublished) trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } }); else already[p] = r.publishedAt || true; }
         else {
           failureReason = r?.partial
             ? r.firstComment?.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다"
@@ -2219,17 +2681,28 @@ export default function StudioPage() {
         }
       } catch (e) {
         if (isExternalPublishPersistenceError(e)) {
+          // ① 외부 게시는 확정됐다 — persistence.reconciliation이 보장된 모양이라
+          // 안전하게 접근한다(M-A 전에는 이 분기가 ②·③도 함께 잡아 TypeError가 났다).
           const reconciliation = e.payload.persistence.reconciliation;
           pendingReconciliations[p] = reconciliation;
           if (e.payload.permalink) urls[p] = e.payload.permalink;
           failureReason = "외부 게시 완료·내부 기록 복구 필요 (재발행 금지)";
           errs.push(`${LABEL[p]}: ${failureReason}`);
+        } else if (isUnresolvedPublishError(e)) {
+          // M-A(2026-10-02 독립 리뷰): ②·③(외부 결과를 모른다, 예: 409
+          // PUBLISH_STATE_UNCERTAIN) — "실패"로 단정해 재발행을 유도하지 않는다.
+          // errs에 넣지 않는다(다른 "unknown" 분기들과 같은 관례 — 끝 토스트가 "실패"로
+          // 뭉뚱그리지 않게).
+          status[p] = "unknown";
+          errors[p] = e instanceof ApiResponseError
+            ? ((e.payload as { error?: string } | null)?.error || "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.")
+            : "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.";
         } else {
           failureReason = e instanceof Error ? e.message : "오류";
           errs.push(`${LABEL[p]}: ${failureReason}`);
         }
       }
-      status[p] = failureReason ? "failed" : "done";
+      status[p] = failureReason ? "failed" : status[p] === "unknown" ? "unknown" : "done";
       if (failureReason) errors[p] = failureReason;
       setPub({
         running: true,
@@ -2276,6 +2749,70 @@ export default function StudioPage() {
       showToast(`${head}실패 ${errs.join(" / ")}`.slice(0, 180), "error");
     } else showToast("발행 완료", "success");
   }
+  // 새로고침·탭 재방문 뒤에도 진행 중이던 발행(비디오/소셜 비동기 경로)을 잃지 않는다
+  // (2026-10-02 컨트롤러 감사 반려 — publish-job-store.ts가 적어 둔 jobId/draftId가 이
+  // 작업공간+초안에 남아 있으면 자동으로 이어서 확인한다).
+  useEffect(() => {
+    if (!activeWorkspace || !draftId) return;
+    const workspaceId = activeWorkspace.id;
+    const currentDraftId = draftId;
+    const videoFilenameNow = videoFilename(vid?.file || vid?.url || "");
+    let cancelled = false;
+    // MINOR(2026-10-02 재재검토): cancelled 플래그만으로는 "이 effect의 setPub을 더는
+    // 안 쓴다"만 멈춘다 — 그 밑에서 돌던 네트워크 폴링(fetch 루프)은 그대로 계속 돈다.
+    // 실제 effect cleanup(언마운트·작업공간 전환·draftId 변경)이 일어나면 이 signal로
+    // 폴링 자체를 즉시 끊는다.
+    const controller = new AbortController();
+    void (async () => {
+      for (const p of publishTargets) {
+        if (cancelled) break;
+        if (VIDEO_ROOM_PLATFORMS.has(p)) {
+          if (!videoFilenameNow) continue;
+          const videoPlatform = VIDEO_PUBLISH_NAME[p] || p;
+          const pending = readPendingVideoPublishJob(workspaceId, videoFilenameNow, videoPlatform);
+          if (!pending) continue;
+          setPub((current) => ({ ...current, running: true, status: { ...current.status, [p]: "doing" } }));
+          const resolved = await awaitAsyncVideoPublish(workspaceId, videoFilenameNow, videoPlatform, pending.jobId, controller.signal);
+          if (cancelled || activeWorkspaceIdRef.current !== workspaceId) continue;
+          setPub((current) => {
+            const status = { ...current.status };
+            const urls = { ...current.urls };
+            const errors = { ...current.errors };
+            if (resolved.unresolved) { status[p] = "unknown"; errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요."; }
+            else if (resolved.ok) { status[p] = "done"; urls[p] = resolved.url || POST_URL[p] || "#"; }
+            else { status[p] = "failed"; errors[p] = resolved.error || "영상 발행에 실패했습니다"; }
+            return { ...current, running: false, status, urls, errors };
+          });
+        } else {
+          const pending = readPendingSocialPublishJob(workspaceId, currentDraftId, p);
+          if (!pending) continue;
+          setPub((current) => ({ ...current, running: true, status: { ...current.status, [p]: "doing" } }));
+          const resolved = await awaitAsyncSocialPublish(workspaceId, currentDraftId, p, controller.signal);
+          if (cancelled || activeWorkspaceIdRef.current !== workspaceId) continue;
+          setPub((current) => {
+            const status = { ...current.status };
+            const urls = { ...current.urls };
+            const errors = { ...current.errors };
+            if (resolved.unresolved) { status[p] = "unknown"; errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요."; }
+            else if (resolved.ok && resolved.partial) { status[p] = "failed"; errors[p] = resolved.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다"; }
+            else if (resolved.ok) { status[p] = "done"; urls[p] = resolved.permalink || POST_URL[p] || "#"; }
+            else { status[p] = "failed"; errors[p] = resolved.error || "실패"; }
+            return { ...current, running: false, status, urls, errors };
+          });
+        }
+      }
+    })();
+    return () => { cancelled = true; controller.abort(); };
+    // publishTargets 자체는 매 렌더 재계산되지만 effect 의존성에 그대로 넣으면 재구독으로
+    // 중복 폴링이 된다. 다만 MAJOR-6(2026-10-02 독립 리뷰): workspace·draftId만 의존성으로
+    // 두면, 새로고침 직후 계정 목록이 아직 fetch 중일 때 이 effect가 먼저 실행돼
+    // publishTargets가 빈 배열이고(usableAccounts가 아직 0개), 그 뒤 계정이 로드돼
+    // publishTargets가 채워져도 이 effect는 다시 돌지 않아 복구가 영원히 일어나지 않는다.
+    // accountsLoaded가 false→true로 바뀌는 시점(계정 로딩 완료, 작업공간당 한 번)에 한 번
+    // 더 돌게 해 그 때는 실제 publishTargets로 복구를 시도한다. videoFilenameNow(vid)도
+    // 새로고침 뒤 vid가 비동기로 복원되는 경우를 대비해 넣는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id, draftId, accountsLoaded, vid?.file, vid?.url]);
   function loadDraft(d: Record<string, unknown>): EditContentKind | null {
     // B1(교차 리뷰 BLOCK): 서버 초안을 불러오는 이 순간 이전에 예약돼 있던 자동 저장
     // 타이머가 있으면(예: 방금 전 영상 탭에서 시딩·조작으로 예약된 저장) 그 타이머가
@@ -2284,7 +2821,11 @@ export default function StudioPage() {
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setIdea((d.idea as string) || "");
     setImg(recoverDraftEmbeddedTextCard<ImgResult>(d)); setVid((d.vid as VidResult) || null);
-    setIncludes(d.includes ? normalizeIncludes(d.includes as Record<string, boolean>) : includes); setDraftId(d.id as string);
+    setIncludes(d.includes ? normalizeIncludes(d.includes as Record<string, boolean>) : includes);
+    // MINOR-g 근본원인: 초안을 불러오면 그 초안이 저장했던 체크 상태가 아무 표시 없이
+    // 되살아난다. "지금 내가 고른 것"처럼 보이면 안 되므로 복원임을 배지로 남긴다.
+    setRestoredSelectionNotice(Boolean(d.includes) && Object.values(d.includes as Record<string, boolean>).some(Boolean));
+    setDraftId(d.id as string);
     const savedReconciliations = normalizePublishReconciliations(d.publishReconciliations ?? d.publishReconciliation);
     setPublishReconciliations(savedReconciliations);
     setEditorHandoff((d.editorHandoff as EditorHandoff) || null);
@@ -2607,6 +3148,9 @@ export default function StudioPage() {
       setIncludes(work.includedPlatforms.length
         ? normalizeIncludes(Object.fromEntries(ALL.map((platform) => [platform, work.includedPlatforms.includes(platform)])))
         : normalizeIncludes());
+      // MINOR-g 근본원인: 인박스/큐 작업물을 발행실 상태로 복원할 때도 그 작업물이 저장한
+      // 체크 상태가 표시 없이 되살아난다. 같은 배지로 복원임을 남긴다.
+      setRestoredSelectionNotice(work.includedPlatforms.length > 0);
       setTitles((linkedDraft?.titles as Record<string, string>) || {});
       setHashtags((linkedDraft?.hashtags as Record<string, string>) || (tagText ? { instagram: tagText } : {}));
       setTopicTags((linkedDraft?.topicTags as Record<string, string>) || {});
@@ -2668,7 +3212,12 @@ export default function StudioPage() {
         : pubFailed > 0
           ? "발행 실패"
           : "발행 완료";
-  const LABEL: Record<string, string> = { threads: "Threads", x: "X", facebook: "Facebook", instagram: "Instagram", shorts: "Shorts", reels: "Reels", tiktok: "TikTok" };
+  // 2026-10-03 독립 리뷰 MINOR-g: 이 맵이 channel-name-list.ts(PLATFORM_LABEL)와 내용이
+  // 똑같이 중복 선언돼 있었다. 한쪽만 고치면 다른 쪽이 조용히 낡는다. 하나로 합친다.
+  // (타입은 기존처럼 Record<string,string>으로 느슨하게 — 이 아래에서 BulkPlatform 등
+  // 더 넓은 string 키로 인덱싱하는 자리가 여럿이라 PreviewPlatform 리터럴로 좁히면
+  // 그 자리들이 전부 타입 에러가 난다.)
+  const LABEL: Record<string, string> = PLATFORM_LABEL;
   function chooseCandidate(candidate: StudioGenerationCandidate) {
     // [보안](교차 리뷰 재리뷰 BLOCK 2): 후보를 고르는 이 경로는 cardDeck·videoEdit
     // 둘 다 비우지 않아 이전 후보(또는 이전 세션)의 오버레이·댓글이 새 후보로 그대로
@@ -2783,6 +3332,19 @@ export default function StudioPage() {
     ALL.filter((platform) => usableAccounts(platform).length > 0),
     (platform) => validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0],
   ).blocked;
+  /**
+   * 2026-10-03 독립 리뷰 m1: Threads+TikTok처럼 섞어 고르고 TikTok 공개 범위를 안
+   * 고른 경우, TikTok 체크박스 칸(각 미리보기 카드 머리)에는 이유가 보이지만 발행
+   * 버튼 쪽에는 "선택 2곳 (Threads)"처럼 TikTok이 조용히 빠진 걸로만 보였다 — 왜
+   * 2에서 1로 줄었는지 그 자리에서 안 보였다. publishGuard(영상/카드뉴스 없음,
+   * TikTok 공개 범위 등)에 걸려 빠진, 그런데 사용자가 체크는 한 채널을 이름+이유로
+   * 발행 버튼 옆에 보여준다. publishBlockedEntries(글자수·해시태그 한도)와는 다른
+   * 축이라 따로 둔다 — 한쪽은 "본문이 한도를 넘음", 한쪽은 "그 채널 자체가 아직
+   * 준비되지 않음"이다.
+   */
+  const guardExcludedSelections = ALL.filter((platform) => Boolean(includes[platform]))
+    .map((platform) => ({ platform, reason: publishGuard(platform).disabledReason }))
+    .filter((entry): entry is { platform: PreviewPlatform; reason: string } => Boolean(entry.reason));
   const bulkTargets = ALL.filter((platform) => PUBLISH_SUPPORTED.has(platform)) as BulkPlatform[];
   // 2026-10-01 실측(회장 지적, PR#96 결함3 리뷰 BLOCK): 사이드바(channel-config →
   // getChannelConnectionStates)와 publishTargets 는 connectionState === "connected" 인
@@ -2809,17 +3371,23 @@ export default function StudioPage() {
   const publishableTargets = computePublishableTargets(channelReadiness);
   const previewTargets = ALL as BulkPlatform[];
 
+  // 아래 네 함수 + 체크박스 onCheckedChange는 전부 사용자가 **지금** 직접 고른 행동이다.
+  // 그 순간부터는 "지난번 선택 유지" 배지가 더 이상 맞지 않는다(복원이 아니라 지금의
+  // 의도된 선택이므로) — 눌렀으면 끈다(MINOR-g 근본원인 수정).
   function selectAllChannels() {
     if (!publishableTargets.length) { showToast("지금 바로 발행할 수 있는 채널이 아직 없습니다. 연결 상태와 발행 조건을 확인해 주세요", "error"); return; }
     setIncludes((current) => ({ ...current, ...Object.fromEntries(publishableTargets.map((platform) => [platform, true])) }));
+    setRestoredSelectionNotice(false);
     showToast(`발행 가능한 ${publishableTargets.length}곳을 모두 골랐습니다`, "success");
   }
   function clearAllChannels() {
     setIncludes((current) => ({ ...current, ...Object.fromEntries(bulkTargets.map((platform) => [platform, false])) }));
+    setRestoredSelectionNotice(false);
     showToast("고른 곳을 모두 해제했습니다", "success");
   }
   function excludeChannel(platform: BulkPlatform) {
     setIncludes((current) => ({ ...current, [platform]: false }));
+    setRestoredSelectionNotice(false);
     showToast(`${LABEL[platform]}만 빼고 두었습니다`, "success");
   }
   function keepOnlyChannel(platform: BulkPlatform) {
@@ -2827,6 +3395,7 @@ export default function StudioPage() {
     const guard = publishGuard(platform as PreviewPlatform);
     if (guard.disabledReason) { showToast(guard.disabledReason, "error"); return; }
     setIncludes((current) => ({ ...current, ...Object.fromEntries(bulkTargets.map((p) => [p, p === platform])) }));
+    setRestoredSelectionNotice(false);
     showToast(`${LABEL[platform]} 한 곳만 남겼습니다`, "success");
   }
   function unifyHashtagsAcrossChannels() {
@@ -3394,10 +3963,16 @@ export default function StudioPage() {
             </div>
           ) : null}
           <section data-room-top="publish" aria-label="이 방에서 지금 알아야 할 것" className="flex min-h-control-touch flex-wrap items-center gap-stack rounded-surface border border-border bg-surface px-pad-inset py-stack">
-            <b className="text-lead text-accent">{accountsLoaded ? publishTargets.length : selectedTargets.length}곳</b>
+            {/*
+              2026-10-03 독립 리뷰 m4: 큰 숫자(이 <b>)는 publishTargets.length를 썼는데
+              바로 아래 괄호 이름 목록은 publishNameTargets(이미 완료한 곳 제외)를 썼다 —
+              숫자와 이름이 서로 다른 집합을 가리켜 어긋날 수 있었다. 숫자와 이름이 항상
+              같은 출처(publishNameTargets)를 쓰게 한다.
+            */}
+            <b className="text-lead text-accent">{accountsLoaded ? publishNameTargets.length : selectedTargets.length}곳</b>
             <span data-testid="publish-availability" className="mr-auto text-caption text-subtle">
               {accountsLoaded
-                ? `선택 ${selectedTargets.length}곳 · 실제 발행 가능 ${publishTargets.length}곳 · 연결된 채널 ${connectedTargets.length}곳`
+                ? `선택 ${selectedTargets.length}곳 · 실제 발행 가능 ${publishNameTargets.length}곳${publishNameTargets.length ? ` (${channelNameList(publishNameTargets)})` : ""} · 연결된 채널 ${connectedTargets.length}곳`
                 : "발행 가능한 계정을 확인하는 중입니다"}
             </span>
             <Button
@@ -3417,6 +3992,18 @@ export default function StudioPage() {
               전부 해제
             </Button>
           </section>
+          {/*
+            2026-10-03 독립 리뷰 MINOR-g 근본원인: 운영 사고의 실제 뿌리는 "이전 세션의
+            선택이 표시 없이 되살아난 것"이다. 되살아난 직후(사용자가 아직 체크박스를
+            직접 건드리기 전)에는 이 배지로 "이건 네가 지금 고른 게 아니라 전에 고른
+            거다"를 알린다. 사용자가 체크박스를 한 번이라도 누르면(onCheckedChange 등)
+            restoredSelectionNotice가 꺼지고 이 배지도 사라진다.
+          */}
+          {restoredSelectionNotice && publishNameTargets.length > 0 ? (
+            <p data-testid="publish-restored-selection-notice" role="status" className="rounded-control border border-warning/30 bg-warning/10 p-stack text-caption text-warning">
+              지난번 선택 유지: {channelNameList(publishNameTargets)}
+            </p>
+          ) : null}
           <PlatformFocusFilter>
             {(focus) => (
               <>
@@ -3428,7 +4015,7 @@ export default function StudioPage() {
               <div className="min-w-0 flex-1">
                 <b className="text-body text-text">{pubResultLabel}</b>
                 <div className="mt-stack-tight flex flex-wrap gap-stack-tight">{Object.entries(pub.status).map(([key, status]) => {
-                  const cls = `rounded-pill border px-stack-tight py-micro text-caption ${status === "done" ? "border-success/30 bg-success/10 text-success" : status === "failed" ? "border-danger/30 bg-danger/10 text-danger" : status === "doing" ? "border-warning/30 bg-warning/10 text-warning" : "border-border bg-surface-2 text-subtle"}`;
+                  const cls = `rounded-pill border px-stack-tight py-micro text-caption ${status === "done" ? "border-success/30 bg-success/10 text-success" : status === "failed" ? "border-danger/30 bg-danger/10 text-danger" : status === "doing" ? "border-warning/30 bg-warning/10 text-warning" : status === "unknown" ? "border-border bg-surface-2 text-text" : "border-border bg-surface-2 text-subtle"}`;
                   // 2026-09-16 실측(j.the.great.investor): "지금 발행"을 다시 누르면 서버가
                   // dedupe 로 옛 글을 돌려주는데, "완료" + "새 창" 링크만 보여 새로 올라간
                   // 것처럼 읽혔다. 이미 있던 것이면 그 사실과(있으면) 발행 시각을 말한다.
@@ -3438,8 +4025,8 @@ export default function StudioPage() {
                     : "";
                   const value = already
                     ? `${LABEL[key]} · ${alreadyLabel}`
-                    : `${status === "done" ? "완료 " : status === "failed" ? "실패 " : status === "doing" ? "발행 중 " : ""}${LABEL[key]}`;
-                  return status === "done" && pub.urls[key] ? <a key={key} href={pub.urls[key]} target="_blank" rel="noopener noreferrer" className={cls} title={already ? alreadyLabel : "게시물 보기"}>{value}<span className="sr-only"> 새 창</span></a> : <span key={key} className={cls}>{value}{status === "failed" && pub.errors[key] ? <span className="ml-micro"><span>{pub.errors[key]}</span></span> : null}</span>;
+                    : `${status === "done" ? "완료 " : status === "failed" ? "실패 " : status === "doing" ? "발행 중 " : status === "unknown" ? "결과 확인 중 " : ""}${LABEL[key]}`;
+                  return status === "done" && pub.urls[key] ? <a key={key} href={pub.urls[key]} target="_blank" rel="noopener noreferrer" className={cls} title={already ? alreadyLabel : "게시물 보기"}>{value}<span className="sr-only"> 새 창</span></a> : <span key={key} className={cls}>{value}{(status === "failed" || status === "unknown") && pub.errors[key] ? <span className="ml-micro"><span>{pub.errors[key]}</span></span> : null}</span>;
                 })}</div>
               </div>
               {hasPublishedResult ? <Link href="/performance" className="shrink-0 rounded-control bg-accent px-stack py-stack-tight text-body-sm font-semibold text-accent-fg">성과실에서 결과 보기</Link> : null}
@@ -3472,8 +4059,35 @@ export default function StudioPage() {
                 끊긴 채널까지 세어 "2곳에 발행"이라 해 놓고 아무 데도 안 올라간다.
               */}
               <Button variant="primary" onClick={publish} disabled={pub.running || !accountsLoaded || publishTargets.length === 0}>선택한 {accountsLoaded ? publishTargets.length : selectedTargets.length}곳에 지금 발행{accountsLoaded && selectedTargets.length > publishTargets.length ? ` (올릴 수 없는 ${selectedTargets.length - publishTargets.length}곳 제외)` : ""}</Button>
+              {/*
+                2026-10-02 운영 사고(결함 D): 버튼 문구는 숫자만 말해서("선택한 1곳에 지금
+                발행"), 미리보기 탭(보기 필터)에서 방금 Instagram 을 봐 놓고 실제로는 이전
+                세션에 체크된 채 남은 Threads 1곳이 발행 대상이라는 사실이 전혀 안 드러났다.
+                "선택한 1곳에 지금 발행"이라는 버튼 접근성 이름 문자열은 수십 개 기존 테스트가
+                고정 계약으로 쓰고 있어(studio-publish-ui.test.tsx) 버튼 글자 자체는 바꾸지
+                않는다. 대신 버튼 바로 옆에 채널 이름을 보이는 배지로 덧붙인다 — 미리보기
+                탭과 실제 선택이 어긋나면 이 배지가 그 자리에서 드러낸다. 이름은 위 배너와
+                같은 publishNameTargets(단일 정본, MINOR-h)에서 가져온다.
+              */}
+              {publishNameTargets.length > 0 ? (
+                <span data-testid="publish-now-target-names" className="text-caption text-subtle">
+                  ({channelNameList(publishNameTargets)})
+                </span>
+              ) : null}
               {activeWorkspace ? <Button variant={showSchedule ? "primary" : "secondary"} onClick={() => setShowSchedule((value) => !value)}>예약 발행</Button> : null}
               </div>
+              {/*
+                2026-10-03 독립 리뷰 m1: 체크는 했는데 publishGuard에 걸려 지금 발행
+                대상에서 빠진 채널을 이름+이유로 보여준다. Threads+TikTok을 섞어
+                고르고 TikTok 공개 범위를 안 고르면 "TikTok: TikTok 공개 범위를 먼저
+                선택해주세요."가 바로 이 자리에 뜬다.
+              */}
+              {guardExcludedSelections.length ? (
+                <p data-testid="publish-guard-excluded" role="status" className="break-keep rounded-control border border-warning/30 bg-warning/10 p-stack text-caption text-warning">
+                  {guardExcludedSelections.map((entry) => `${LABEL[entry.platform]}: ${entry.reason}`).join(" · ")}
+                  {" (지금 발행 대상에서 빠집니다.)"}
+                </p>
+              ) : null}
               {/*
                 2026-09-16 실측(j.the.great.investor): X 본문이 280 가중 문자를 넘으면
                 토스트만 뜨고 사라져 사용자는 발행 단추가 안 눌리는 줄 알았다. 발행 단추
@@ -3520,6 +4134,7 @@ export default function StudioPage() {
                       const guard = publishGuard(platform);
                       const accountUnavailable = Boolean(accountLoadPending[platform]) || usableAccounts(platform).length === 0;
                       return (
+                    <>
                     <PlatformPreview
                       platform={platform}
                       text={text || {}}
@@ -3545,7 +4160,7 @@ export default function StudioPage() {
                           accountSelectable={ACCOUNT_SELECTABLE.has(platform)}
                           checked={Boolean(includes[platform]) && !guard.disabledReason && !accountUnavailable}
                           checkboxDisabled={accountUnavailable || Boolean(guard.disabledReason)}
-                          onCheckedChange={(next) => setIncludes((current) => ({ ...current, [platform]: next }))}
+                          onCheckedChange={(next) => { setIncludes((current) => ({ ...current, [platform]: next })); setRestoredSelectionNotice(false); }}
                           coverSeconds={coverSeconds[platform] ?? DEFAULT_COVER_SECONDS}
                           onCoverSecondsChange={(next) => setCoverSeconds((current) => ({ ...current, [platform]: next }))}
                           accountsLoading={Boolean(accountLoadPending[platform])}
@@ -3559,6 +4174,144 @@ export default function StudioPage() {
                         />
                       }
                     />
+                    {/*
+                      2026-10-03 운영 사고(9444 회원 계정): TikTok 발행이 공개 범위
+                      (privacy_level) 미선택으로 항상 400 실패했다. app/videos/page.tsx의
+                      TikTok 패널과 같은 계약(creator-info의 privacyLevels, 상호작용
+                      토글, AI 생성 공개)을 여기에도 둔다. TikTok 정책상 공개 범위는
+                      기본값을 미리 골라주지 않는다 — "선택" 옵션만 있고 고르지 않으면
+                      위 publishGuard가 발행을 막는다.
+                    */}
+                    {/*
+                      2026-10-03 독립 리뷰 m2: creator-info 조회가 실패(404/502)하면
+                      패널이 아예 안 뜨고 위 publishGuard의 "공개 범위를 먼저
+                      선택해주세요."만 남아 — 고를 칸이 없는 막다른 길이었다. 계정은
+                      연결됐는데 조회가 실패했음을 여기서도 직접 말하고 재연결 링크를
+                      준다(헤더의 disabledReason과 중복이지만, 패널 자리 자체가 비어
+                      보이지 않게 한다).
+                    */}
+                    {platform === "tiktok" && tiktokCreatorFailed ? (
+                      <div data-testid="tiktok-creator-info-error" role="alert" className="mt-stack-tight rounded-control border border-danger/30 bg-danger-soft p-stack text-caption text-danger">
+                        TikTok 계정 정보를 확인하지 못했습니다. 계정을 다시 연결해주세요.
+                        <Link
+                          href={channelHref("tiktok")}
+                          className="mt-stack-tight inline-flex min-h-control-touch items-center rounded-control border border-danger bg-surface px-stack-tight text-caption font-semibold text-danger hover:bg-surface-2"
+                        >
+                          TikTok 다시 연결하기
+                        </Link>
+                      </div>
+                    ) : null}
+                    {platform === "tiktok" && tiktokCreator ? (
+                      <div data-testid="tiktok-privacy-panel" className="mt-stack-tight grid grid-cols-2 gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption">
+                        {/*
+                          m3(TikTok Content Sharing Guidelines §4): "The upload page
+                          must display the creator's nickname, so users are aware of
+                          which TikTok account the content will be uploaded to."
+                        */}
+                        <p className="col-span-2 text-text">업로드 대상 계정: <b>@{tiktokCreator.username}</b></p>
+                        <label className="col-span-2 text-subtle">
+                          공개 범위
+                          <select
+                            data-testid="tiktok-publish-privacy-select"
+                            aria-label="TikTok 공개 범위"
+                            value={tiktokPrivacy}
+                            onChange={(event) => setTiktokPrivacy(event.target.value)}
+                            className="mt-micro w-full rounded-chip border border-border bg-surface p-stack-tight text-text"
+                          >
+                            <option value="">선택</option>
+                            {tiktokAllowedPrivacyLevels.map((privacy) => <option key={privacy} value={privacy}>{privacy}</option>)}
+                          </select>
+                          {tiktokDisclosureEnabled && tiktokBrandContent ? (
+                            <span className="mt-micro block text-caption text-subtle">
+                              유료 파트너십을 공개하면 비공개로는 올릴 수 없습니다(전체공개·친구공개만 가능).
+                            </span>
+                          ) : null}
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok 댓글 끄기"
+                            checked={tiktokDisableComment}
+                            disabled={tiktokCreator.commentDisabled}
+                            onChange={(event) => setTiktokDisableComment(event.target.checked)}
+                          /> 댓글 끄기
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok 듀엣 끄기"
+                            checked={tiktokDisableDuet}
+                            disabled={tiktokCreator.duetDisabled}
+                            onChange={(event) => setTiktokDisableDuet(event.target.checked)}
+                          /> 듀엣 끄기
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok 스티치 끄기"
+                            checked={tiktokDisableStitch}
+                            disabled={tiktokCreator.stitchDisabled}
+                            onChange={(event) => setTiktokDisableStitch(event.target.checked)}
+                          /> 스티치 끄기
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok AI 생성 영상"
+                            checked={tiktokAiGenerated}
+                            onChange={(event) => setTiktokAiGenerated(event.target.checked)}
+                          /> AI 생성 영상
+                        </label>
+                        {/*
+                          m3: "Content Disclosure Setting" — "Your brand"(오가닉)과
+                          "Branded content"(유료 파트너십) 두 체크박스. 공개를 켠
+                          뒤에야 둘을 고를 수 있다(둘 다 사람이 직접 켜는 선택이다).
+                        */}
+                        <label className="col-span-2 border-t border-border pt-stack-tight text-text">
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok 상업 콘텐츠 공개"
+                            checked={tiktokDisclosureEnabled}
+                            onChange={(event) => {
+                              const next = event.target.checked;
+                              setTiktokDisclosureEnabled(next);
+                              if (!next) { setTiktokBrandOrganic(false); setTiktokBrandContent(false); }
+                            }}
+                          /> 상업 콘텐츠 공개
+                        </label>
+                        {tiktokDisclosureEnabled ? (
+                          <>
+                            <label>
+                              <input
+                                type="checkbox"
+                                aria-label="TikTok 내 브랜드 홍보"
+                                checked={tiktokBrandOrganic}
+                                onChange={(event) => setTiktokBrandOrganic(event.target.checked)}
+                              /> 내 브랜드 홍보
+                            </label>
+                            <label>
+                              <input
+                                type="checkbox"
+                                aria-label="TikTok 유료 파트너십"
+                                checked={tiktokBrandContent}
+                                onChange={(event) => setTiktokBrandContent(event.target.checked)}
+                              /> 유료 파트너십
+                            </label>
+                            {tiktokDisclosureError ? (
+                              <p role="alert" className="col-span-2 text-danger">{tiktokDisclosureError}</p>
+                            ) : null}
+                          </>
+                        ) : null}
+                        {/*
+                          m3: 음악 이용 확인 — TikTok이 요구하는 영문 원문을 조합별로
+                          그대로 보존한다(tiktok-disclosure.ts musicUsageConfirmationText).
+                        */}
+                        <p data-testid="tiktok-music-usage-confirmation" className="col-span-2 text-subtle">
+                          {musicUsageConfirmationText(tiktokDisclosureState)}
+                        </p>
+                      </div>
+                    ) : null}
+                    </>
                       );
                     })()}
                   </div>

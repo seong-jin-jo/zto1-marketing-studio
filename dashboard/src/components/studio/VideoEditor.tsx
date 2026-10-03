@@ -14,19 +14,16 @@
  * 텍스트)에 걸려 있어 그대로 둔다. 다만 각 오버레이 행의 초 숫자 입력칸은 규격 위반이라
  * 없애고, 시간 조정은 타임라인 드래그로만 한다.
  *
- * 렌더 반영 범위(정직하게 명시, ADR-007): 자막 **문구** 편집은 `lines`(발행이 쓰는
- * 배열)에 그대로 반영되어 `/api/video/subtitle` 굽기에 실제로 실린다. **컷은 미리보기
- * 표시 전용이다** — lines를 건드리지 않으므로 자막 글자·영상·음성은 컷 여부와 무관하게
- * 그대로 발행된다(구간을 실제로 잘라내는 것은 다음 단계). 자막·오버레이·댓글의 시간
- * 배치(타임라인 드래그)도 편집실 미리보기 전용이다 — 굽기는 지금도 영상 길이를 줄
- * 수만큼 균등하게 나눈다(video-subtitle.ts subtitleCues). 오버레이·댓글·음성은 여전히
- * 편집 상태로만 저장되고 mp4에는 굽히지 않는다. 재리뷰 MAJOR: 이전 판은 "컷도 발행에
- * 반영된다"는 화면 문구와 이 주석이 서로 어긋났다 — 화면 문구를 이 사실 하나로 통일한다.
+ * 렌더 반영(ADR-007): 발행실로 이동할 때 videoEdit 을 /api/video/subtitle 에 보낸다.
+ * 컷으로 뺀 구간, 타임라인에서 고친 자막 시간, 후킹·CTA 문구, 댓글 문구는 그때
+ * 나가는 mp4 에 굽힌다. 목소리 교체, 표지, 인트로, 아웃트로, 움직이는 제목은
+ * 아직 파일에 들어가지 않는다. 화면 문구도 이 범위만 말한다.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
 import { authHeaders } from "@/lib/auth";
 import { IntroOutroPanel } from "./IntroOutroPanel";
+import { isDeliveryUrlExpired, resignDeliveryUrl } from "./DeliveredMedia";
 import {
   type SubtitleLine,
   type VideoComment,
@@ -77,6 +74,13 @@ export interface VideoEditorProps {
   /** MAJOR2(3차 재리뷰): 서버 값과 맞추는 동안 편집을 막는다 — 안 막으면 맞추는 도중의
    * 수정이 조용히 사라질 수 있다. */
   syncing?: boolean;
+  /**
+   * 2026-10-02 회장 지적(편집실 영상 재생 안 됨): previewVideoUrl은 서명 배달 주소라
+   * 12시간이면 만료된다. DeliveredMedia(카드·발행실 미리보기)는 만료·로드 실패 시
+   * /api/media/resign으로 재서명해 되살리는데, 이 플레이어는 videoRef를 직접 잡아
+   * 재생·탐색을 제어해야 해서 DeliveredMedia 컴포넌트를 그대로 못 쓴다. 같은 재서명
+   * 경로를 VideoPlayback 안에서 직접 쓰려면 작업 공간 id가 필요하다.
+   */
   /** 인트로/아웃트로(Remotion) 삽입 대상 원본 영상 파일명. 2026-10-02 신설(R-27-5). */
   sourceFilename?: string | null;
   tenantId?: string;
@@ -179,7 +183,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   // 회장 반려: 발행은 됐는데 미리보기가 원본을 계속 보여주면 "적용 안 된 것처럼" 보인다).
   //
   // 독립 리뷰 M-3: `/api/higgsfield/asset/...`는 proxy.ts TENANT_AWARE_PATHS에 걸려
-  // Bearer 토큰을 요구하는데 <video src>는 Authorization 헤더를 못 보낸다(401). job GET이
+  // Bearer 토큰을 요구하는데 video 태그의 src는 Authorization 헤더를 못 보낸다(401). job GET이
   // 이미 서명해 돌려준 `/api/media/<token>` 배달 URL(deliverUrl, Bearer 불필요)을 그대로
   // 쓴다.
   // 독립 리뷰 M-4: 합성 당시 원본과 지금 원본(sourceFilename)이 다르면(생성실 재생성)
@@ -199,6 +203,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
         <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
             src={effectivePreviewUrl}
+            tenantId={tenantId}
             videoRef={videoRef}
             overlays={videoEdit.overlays}
             comments={videoEdit.comments}
@@ -243,18 +248,16 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
         <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seek} run={run} syncing={syncing} />
       </div>
       <p className="text-caption text-subtle" data-render-status-note>
-        자막 문구 수정은 실제 발행 영상에 반영됩니다. 컷은 미리보기 표시 전용입니다. 자막 글자·영상·음성은 컷과 무관하게 그대로 발행됩니다.
-        타임라인에서 끌어서 바꾼 시간 배치와 후킹·CTA·댓글 오버레이·음성 선택도 지금은 편집실 미리보기에서만 보이고, 나가는 영상 파일에 굽는 것은 다음 단계입니다.
+        발행실로 이동할 때 자막 문구, 타임라인에서 고친 자막 시간, 컷으로 뺀 구간, 후킹·CTA·댓글 문구가 영상 파일에 굽힙니다. 목소리 교체와 표지, 인트로, 아웃트로, 움직이는 제목은 아직 파일에 들어가지 않습니다.
       </p>
     </div>
   );
 }
 
 /**
- * M4(교차 리뷰 재리뷰): 컷은 lines를 안 건드리므로 실제 발행 mp4에는 컷된 줄도 그대로
- * 굽힌다. 그런데 이전 판은 미리보기에서 컷한 줄을 아예 숨겼다 — 그러면 미리보기가
- * "안 나갈 것"처럼 보여 실제 출력과 어긋난다. 컷한 줄도 계속 보여주되, 컷 여부를
- * 함께 돌려줘 흐리게 표시한다(출력과 같은 모습, 편집 의도만 다르게 표시).
+ * 컷한 줄은 미리보기에서 숨기지 않는다. 흐리게 보여 줘야 되돌릴 수 있다.
+ * 파일에서는 그 구간과 그 자막이 빠진다. 미리보기와 파일이 같은 줄을 가리키되,
+ * 미리보기는 편집 중인 줄을 계속 보여 준다.
  */
 function activeSubtitle(subtitles: SubtitleLine[], playhead: number): { text: string; cut: boolean } | null {
   const line = subtitles.find((s) => playhead >= s.startSec && playhead < s.endSec);
@@ -262,9 +265,10 @@ function activeSubtitle(subtitles: SubtitleLine[], playhead: number): { text: st
 }
 
 function VideoPlayback({
-  src, videoRef, overlays, comments, activeSubtitle, playhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
+  src, tenantId, videoRef, overlays, comments, activeSubtitle, playhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
 }: {
   src: string;
+  tenantId?: string;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   overlays: VideoOverlay[];
   comments: VideoComment[];
@@ -279,28 +283,110 @@ function VideoPlayback({
   onSeek: (time: number) => void;
 }) {
   const [loadFailed, setLoadFailed] = useState(false);
+  /*
+    2026-10-02 회장 지적: 편집실 영상이 재생 안 됨. previewVideoUrl(서명 배달 주소)이
+    12시간 지나면 만료되는데 이 플레이어는 토큰을 문자열 그대로 video의 src 속성에
+    꽂고 있었다 — DeliveredMedia(카드·발행실 미리보기)가 쓰는 재서명 경로가 없었다. 같은
+    판정·재서명 함수를 여기서 직접 불러 videoRef 제어를 유지한 채 되살린다.
+  */
+  const [resolvedSrc, setResolvedSrc] = useState(() => (isDeliveryUrlExpired(src) ? "" : src));
+  const [renewing, setRenewing] = useState(() => isDeliveryUrlExpired(src));
+  const resignAttempted = useRef("");
+  /*
+    2026-10-02 독립 리뷰어 BLOCK-M-D: 이전 판은 handleError의 재시도 가드가
+    `resignAttempted.current === attemptKey && !resolvedSrc` 였다. 재서명이 한 번
+    성공하면 resolvedSrc가 채워지므로 이 조건은 다시는 true가 안 된다 — 코덱 깨짐·
+    Range 미지원처럼 "주소는 새로 받았는데 그 영상도 여전히 재생이 안 되는" 경우
+    onError→재서명→src 교체→onError가 무한히 돈다. DeliveredMedia.tsx:157과 같은
+    패턴으로 고친다: 같은 attemptKey(작업공간+원본 주소)당 **딱 한 번**만 재시도하고,
+    그 한 번이 성공했든 실패했든 다음 onError는 즉시 실패로 닫는다. 마운트 시 만료
+    판정으로 이미 한 번 썼으면(아래 effect) handleError는 두 번째 시도를 안 한다 —
+    DeliveredMedia도 "만료라서 미리 썼다"와 "멀쩡해 보였는데 걸어보니 터졌다"를
+    합쳐 총 1회로 센다.
+  */
   const activeOverlays = overlays.filter((o) => playhead >= o.startSec && playhead <= o.endSec);
   const activeComment = comments.find((c) => playhead >= c.startSec && playhead <= c.endSec) ?? null;
   const hook = activeOverlays.find((o) => o.kind === "hook");
   const cta = activeOverlays.find((o) => o.kind === "cta");
+
+  // 재서명으로 src가 바뀌면 video 엘리먼트가 다시 로드되며 브라우저가 재생 위치를
+  // 0으로 되돌리고 멈춘다. 사용자가 보던 자리·재생 상태를 되살린다(독립 리뷰어 MINOR).
+  const restoreOnLoad = useRef(false);
+  const playheadRef = useRef(playhead);
+  playheadRef.current = playhead;
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
+
+  useEffect(() => {
+    const attemptKey = `${tenantId || ""}|${src}`;
+    setLoadFailed(false);
+    if (!isDeliveryUrlExpired(src)) {
+      resignAttempted.current = "";
+      setResolvedSrc(src);
+      setRenewing(false);
+      return;
+    }
+    if (resignAttempted.current === attemptKey) return;
+    resignAttempted.current = attemptKey;
+    let canceled = false;
+    setResolvedSrc("");
+    setRenewing(true);
+    void resignDeliveryUrl(src, tenantId).then((next) => {
+      if (canceled) return;
+      setRenewing(false);
+      if (next) { restoreOnLoad.current = true; setResolvedSrc(next); }
+      else setLoadFailed(true);
+    });
+    return () => { canceled = true; };
+  }, [src, tenantId]);
+
+  async function handleError() {
+    const attemptKey = `${tenantId || ""}|${src}`;
+    if (resignAttempted.current === attemptKey) {
+      setLoadFailed(true);
+      return;
+    }
+    resignAttempted.current = attemptKey;
+    const next = await resignDeliveryUrl(src, tenantId);
+    if (next) { restoreOnLoad.current = true; setResolvedSrc(next); }
+    else setLoadFailed(true);
+  }
+
+  function handleLoadedMetadata(duration: number) {
+    onLoadedMetadata(duration);
+    if (restoreOnLoad.current) {
+      restoreOnLoad.current = false;
+      const el = videoRef.current;
+      if (el) {
+        el.currentTime = playheadRef.current;
+        if (playingRef.current) {
+          const p = el.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        }
+      }
+    }
+  }
 
   return (
     <div className="min-w-0 space-y-stack-tight max-[26rem]:grid max-[26rem]:h-[11.25rem] max-[26rem]:grid-rows-[minmax(0,1fr)_auto_auto] max-[26rem]:gap-stack-tight max-[26rem]:space-y-none" data-video-playback>
       <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:min-h-0 max-[26rem]:aspect-auto" data-video-screen>
         {loadFailed ? (
           <p className="p-pad-inset text-caption text-danger" data-video-load-failed>영상을 불러오지 못했습니다. 생성실에서 다시 만들어 주세요.</p>
+        ) : renewing ? (
+          <p className="p-pad-inset text-caption text-subtle" data-video-renewing>영상 주소를 다시 받는 중입니다</p>
         ) : (
-          // 오버레이·자막·컷 구간은 재생 위치와 맞춰야 해서 video DOM ref와
-          // onTimeUpdate/onLoadedMetadata를 직접 잡는다. controls는 규격 §4.2 커스텀
-          // 조작 줄로 대체한다(raw-media-ok: onError로 로드 실패를 이미 문구로 보여준다).
+          // controls는 규격 §4.2 커스텀 조작 줄로 대체한다(handleError는 재서명 1회
+          // 재시도 후 실패로 닫는다. 위 useEffect·handleLoadedMetadata 참고).
+          // raw-media-ok: DeliveredMedia는 ref를 안 내줘 재생·탐색을 직접 못 건다 —
+          // 대신 그 재서명 로직을 이 파일에 그대로 재사용했다(resolvedSrc가 그 결과).
           <video
             ref={videoRef}
-            src={src}
+            src={resolvedSrc}
             preload="metadata"
             className="h-full w-full object-contain"
-            onLoadedMetadata={(e) => onLoadedMetadata(e.currentTarget.duration)}
+            onLoadedMetadata={(e) => handleLoadedMetadata(e.currentTarget.duration)}
             onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
-            onError={() => setLoadFailed(true)}
+            onError={handleError}
             data-video-el
           />
         )}
@@ -542,9 +628,7 @@ function SubtitleScriptEditor({
           })}
         </ol>
       )}
-      {/* M4(교차 리뷰): 컷은 자막 글자를 미리보기에서만 표시로 뺀다. 영상·음성·실제 발행
-          자막은 그대로 나간다 — 발행에서 빼는 "구간 자르기"는 아직 없다(다음 단계). */}
-      {cutCount > 0 ? <p className="text-caption text-subtle" data-video-subtitle-cut-count>컷 표시 {cutCount}개. 미리보기 표시만 바뀌고, 자막 글자·영상·음성은 그대로 발행됩니다. 되돌리기로 표시를 되돌릴 수 있습니다.</p> : null}
+      {cutCount > 0 ? <p className="text-caption text-subtle" data-video-subtitle-cut-count>컷 표시 {cutCount}개. 발행실로 이동할 때 그 구간은 영상과 소리에서 빠지고, 그 줄의 자막도 파일에 들어가지 않습니다. 되돌리기로 표시를 되돌릴 수 있습니다.</p> : null}
     </section>
   );
 }

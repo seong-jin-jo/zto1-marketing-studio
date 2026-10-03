@@ -3,6 +3,7 @@ import { PROVIDERS, FACEBOOK } from "@/lib/social-connect";
 import { resolveOAuthCredentialSets } from "@/lib/oauth-app-credentials";
 import { auditConnectTenantQueryMismatch } from "@/lib/connect-tenant-audit";
 import { getChannelConnectionStates } from "@/lib/channel-connection";
+import { getXScopeStatus } from "@/lib/channel-accounts";
 import { CH_LABELS } from "@/lib/constants";
 import {
   getMetaPreReviewGuidance,
@@ -128,6 +129,11 @@ export async function GET(request: Request) {
       ? externalReviewReason(name, CH_LABELS[name] || cfg.label, connectionState)
       : connectionState === "reconnect"
       ? `${CH_LABELS[name] || cfg.label} 계정을 다시 연결해주세요.`
+      // X 2026-10-02 독립 리뷰 BLOCK M1: 화면으로 연결한 OAuth2 계정이 media.write 권한 없이
+      // 토큰을 받으면 이미지가 섞인 글이 전부 X 미디어 업로드 403으로 막힌다. 발행 실패 전에
+      // 여기서 미리 알린다("unknown"이면 알 수 없는 상태라 조용히 둔다 — 거짓 확신 금지).
+      : name === "x" && connectionState === "connected" && (await getXScopeStatus(tenantId)) === "missing_media_write"
+      ? "X 연결에 이미지 업로드 권한(media.write)이 없습니다. 발행실에서 X 를 다시 연결하면 이미지가 포함된 글도 올릴 수 있습니다."
       : undefined;
     const readiness = resolveConnectReadiness({
       credentialsComplete: Boolean(credentials?.complete),

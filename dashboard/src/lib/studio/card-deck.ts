@@ -16,22 +16,15 @@
 import {
   CARD_PIXELS,
   DEFAULT_CARD_THEME,
+  placementFrom,
   renderTextCard,
   type CardRatio,
-  type CardTextVerticalPosition,
   type CardTheme,
   type TextCardInput,
 } from "./text-card-image";
 import type { CardDeck, CardTemplate } from "./card-deck-contract";
 import { CARD_TEMPLATE_RENDERERS } from "./card-templates";
 import { embeddedTextCardImage } from "./text-card-provenance";
-
-/** 편집실이 쓰는 아홉 자리 표기를 카드 그리기가 쓰는 세 자리로 줄인다. */
-export function verticalFrom(position: string | undefined): CardTextVerticalPosition {
-  if (typeof position === "string" && position.startsWith("top")) return "top";
-  if (typeof position === "string" && position.startsWith("bottom")) return "bottom";
-  return "center";
-}
 
 /** "4:5" 같은 화면 표기를 실제 픽셀이 정의된 비율로 바꾼다. 모르는 값은 4:5 로 둔다. */
 export function cardRatioFrom(value: string | null | undefined): CardRatio {
@@ -62,7 +55,7 @@ export function cardDeckRenderInputs(spec: CardDeckSpec): TextCardInput[] {
     text: entry.text,
     ratio: spec.ratio,
     theme: spec.theme ?? DEFAULT_CARD_THEME,
-    position: verticalFrom(spec.positions?.[entry.index]),
+    position: placementFrom(spec.positions?.[entry.index]),
     index: order,
     total: kept.length,
   }));
@@ -122,7 +115,7 @@ export function renderPlainCardDeckIncremental(
     text,
     ratio: spec.ratio,
     theme: spec.theme ?? DEFAULT_CARD_THEME,
-    position: verticalFrom(spec.positions?.[index]),
+    position: placementFrom(spec.positions?.[index]),
     index,
     total,
   }));

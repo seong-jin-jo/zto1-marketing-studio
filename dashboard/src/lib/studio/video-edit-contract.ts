@@ -6,10 +6,9 @@
  * CTA 오버레이 · 댓글 오버레이=사회적 증거 · 자막 기반 편집 · 음성 변경)을 각각 한 필드로
  * 둔다.
  *
- * 렌더 반영 범위: 오버레이·컷·음성 선택은 이 계약에 저장되지만, 실제로 나가는 mp4 에
- * 굽는 것은 자막(`/api/video/subtitle`)만 기존에 연결돼 있다. 오버레이·컷·음성은 이번
- * PR에서는 편집 상태로만 저장하고(조용히 적용된 척하지 않는다 — ADR-007), 화면에
- * "렌더 반영은 다음 단계입니다"를 명시한다. 근거는 VideoEditor.tsx 상단 주석.
+ * 렌더 반영: 컷 구간, 자막 시간, 후킹·CTA 문구, 댓글 문구는 playback-edit-plan.ts 가
+ * ffmpeg 명령으로 만들고, /api/video/subtitle 이 videoEdit 을 받으면 그 명령을 실행한다.
+ * 목소리 교체, 표지, 인트로, 아웃트로, 움직이는 제목은 아직 파일에 굽지 않는다.
  */
 
 export const VIDEO_EDIT_CONTRACT_VERSION = "1.0" as const;
@@ -39,7 +38,7 @@ export type VideoComment = {
   endSec: number;
 };
 
-/** 자막 한 줄. 삭제하면 `cuts` 에 그 구간이 컷 후보로 들어간다(렌더 미연결, 편집 의도만 기록). */
+/** 자막 한 줄. cut 이면 playback-edit-plan 이 그 구간을 내보내는 파일에서 뺀다. */
 export type SubtitleLine = {
   id: string;
   order: number;
@@ -303,7 +302,7 @@ export function setIntroOutroApplied(edit: VideoEdit, applied: IntroOutroApplied
   return withRevision(edit, { introOutro: applied });
 }
 
-/** 컷 표시된 자막 구간 목록(렌더 미연결 — 편집 의도만 모아 보여줄 때 쓴다). */
+/** 컷으로 표시된 자막 구간. playback-edit-plan 이 이 구간을 나가는 영상에서 뺀다. */
 export function cutRanges(edit: VideoEdit): Array<{ startSec: number; endSec: number }> {
   return edit.subtitles.filter((s) => s.cut).map((s) => ({ startSec: s.startSec, endSec: s.endSec }));
 }

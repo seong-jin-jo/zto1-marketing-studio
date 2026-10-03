@@ -3,6 +3,7 @@
 //
 // 2026-10-01 추가 실측(cb35f3fd, 세션맥락): 이미지 생성이 실제로 15~20분 걸려 완료됐다.
 // 상한을 두 매체 모두 30분으로 맞춘다("이미지는 3분"류의 짧은 상한은 이 실측과 안 맞는다).
+import { wakeableSleep } from "@/lib/wakeable-sleep";
 
 export interface HiggsfieldPollOptions<T> {
   signal?: AbortSignal;
@@ -30,12 +31,9 @@ export const HIGGSFIELD_POLL_INTERVAL_MS = 2500;
 // 이미지·영상 모두 30분 — 생성기 대기열 실측(최대 20분)에 여유를 둔 상한.
 export const HIGGSFIELD_POLL_TIMEOUT_MS = 30 * 60 * 1000;
 
-function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true });
-  });
-}
+// defaultSleep = wakeableSleep(공유 정본, src/lib/wakeable-sleep.ts). 이름을 유지해
+// 기존 호출부·테스트 기대치를 바꾸지 않는다.
+const defaultSleep = wakeableSleep;
 
 interface JobStatusPayload {
   status?: string;

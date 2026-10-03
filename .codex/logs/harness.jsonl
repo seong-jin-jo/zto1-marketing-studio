@@ -3556,3 +3556,11 @@
 {"ts":"2026-09-03T13:04:01Z","hook":"pipeline-pin-gate","status":"block","detail":"approved artifact pin mismatch"}
 {"ts":"2026-09-03T13:06:30Z","hook":"pipeline-doctrine","status":"inject","detail":"SessionStart 헌법 주입"}
 {"ts":"2026-09-03T13:08:17Z","hook":"pipeline-pin-gate","status":"block","detail":"approved artifact pin mismatch"}
+{"ts":"2026-10-02T13:15:39Z","hook":"pipeline-doctrine","status":"inject","detail":"SessionStart 헌법 주입"}
+{"ts":"2026-10-02T13:16:06Z","hook":"pipeline-doctrine","status":"inject","detail":"SessionStart 헌법 주입"}
+{"ts":"2026-10-02T13:16:07Z","hook":"prompt-keyword-router","status":"trigger","detail":"issue keyword detected","prompt_first_60":"[역할 정의 정본: ~/.claude/agents/code-reviewer.md —"}
+{"ts":"2026-10-02T13:16:07Z","hook":"handoff-prompt-router","status":"trigger","detail":"handoff keyword detected","prompt_first_60":"[역할 정의 정본: ~/.claude/agents/code-reviewer.md —"}
+{"ts":"2026-10-02T13:16:07Z","hook":"goal-pane-ensure","status":"pass","detail":"Codex goal 없음"}
+{"ts":"2026-10-02T13:16:07Z","hook":"chairman-request-capture","status":"captured","detail":"verbatim request preserved","file":"/Users/sj/wt/zto1-metrics-resign/wiki/거버넌스/요청.md","bytes":33316}
+{"ts":"2026-10-02T13:24:24Z","hook":"pipeline-doctrine","status":"inject","detail":"SessionStart 헌법 주입"}
+{"ts":"2026-10-02T13:25:31Z","hook":"design-qa-pixel-gate","status":"block","detail":"pixel QA gate blocked"}

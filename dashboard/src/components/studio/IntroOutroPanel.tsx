@@ -116,7 +116,7 @@ export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, 
             // 결과를 videoEdit에 실어 다른 영상 편집과 같은 자동저장 경로로 보존한다
             // (2026-10-02 회장 반려: 발행/미리보기가 원본을 계속 쓰던 결함). deliverUrl은
             // job GET이 이미 서명해 돌려주는 /api/media/<token>(M-3, Bearer 불필요 —
-            // <video src>가 못 보내는 헤더에 의존하지 않는다). sourceFilename은 이 합성이
+            // video 태그 src가 못 보내는 헤더에 의존하지 않는다). sourceFilename은 이 합성이
             // 유효한 원본을 기록해 나중에 원본이 바뀌면(M-4) 낡음을 판정할 수 있게 한다.
             onApplied?.({
               introCompId: introId,
@@ -194,16 +194,16 @@ export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, 
         <p role="alert" className="text-caption text-danger" data-intro-outro-stale>
           원본 영상이 바뀌어 적용했던 인트로/아웃트로({applied.resultFilename})가 더 이상 맞지 않습니다.
           발행·미리보기 모두 원본으로 되돌렸습니다. 다시 적용해 주세요.{" "}
-          <button type="button" className="text-danger underline" onClick={() => onApplied?.(null)} data-intro-outro-remove-applied>
+          <Button type="button" variant="secondary" size="sm" className="text-danger" onClick={() => onApplied?.(null)} data-intro-outro-remove-applied>
             낡은 적용 지우기
-          </button>
+          </Button>
         </p>
       ) : applied ? (
         <p className="text-caption text-subtle" data-intro-outro-applied>
           적용됨: {applied.resultFilename}{" "}
-          <button type="button" className="text-danger" onClick={() => onApplied?.(null)} data-intro-outro-remove-applied>
+          <Button type="button" variant="secondary" size="sm" className="text-danger" onClick={() => onApplied?.(null)} data-intro-outro-remove-applied>
             제거(원본으로 되돌리기)
-          </button>
+          </Button>
         </p>
       ) : null}
 
@@ -286,9 +286,9 @@ function PickerSlot({
         })}
       </div>
       {selectedId ? (
-        <button type="button" onClick={onRemove} className="text-caption text-danger" data-intro-outro-remove={label}>
+        <Button type="button" variant="secondary" size="sm" onClick={onRemove} className="text-danger" data-intro-outro-remove={label}>
           제거
-        </button>
+        </Button>
       ) : null}
     </div>
   );
