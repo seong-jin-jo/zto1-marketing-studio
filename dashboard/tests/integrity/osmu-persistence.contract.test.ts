@@ -38,7 +38,7 @@ describe("tenant persistence deployment contract", () => {
     expect(migration.trimEnd().split("\n").length).toBeLessThanOrEqual(50);
     expect(migration).toContain('stop -t 30 "${SERVICES[@]}"');
     expect(migration).toContain("backup-pre-cutover-");
-    expect(migration).toContain('rsync -a --delete "$SOURCE_ROOT/$name/"');
+    expect(migration).toContain('rsync -a --checksum --delete "$SOURCE_ROOT/$name/"');
     expect(migration).toContain("--wait --wait-timeout 60");
     for (const removed of ["mount holder", "mount-namespace", "snapshot", "resume-pending", ".mount-v2-"]) {
       expect(migration).not.toContain(removed);
