@@ -77,7 +77,9 @@ jobs:
 
       - name: 영속 마운트 정지형 이전 시뮬레이션
         working-directory: ${{ github.workspace }}
-        run: bash scripts/test-migrate-postagi-persist-mounts.sh
+        # 이전 스크립트는 Linux에서 운영 계정(UID 1000)으로만 돈다. CI 컨테이너 기본 사용자는
+        # root라 가드에서 곧장 끝났다(2026-10-03 CI 실측). node:20-bookworm의 node 계정이 UID 1000이다.
+        run: setpriv --reuid=1000 --regid=1000 --init-groups bash scripts/test-migrate-postagi-persist-mounts.sh
 
       - name: "Apply schema → seed → rls (순서 중요 — seed가 FORCE RLS 전)"
         run: |

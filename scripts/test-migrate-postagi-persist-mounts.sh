@@ -25,12 +25,15 @@ run_case() {
   if [ "$mode" = failure ]; then export FAIL_RSYNC_SOURCE="$checkout/data-tenant3/"; else export FAIL_RSYNC_SOURCE=/never; fi
   (cd "$checkout" && PATH="$bin:$PATH" OPENCLAW_CHECKOUT_ROOT="$checkout" OPENCLAW_PERSIST_ROOT="$persist" FAKE_DOCKER_LOG="$tmp/docker.log" bash ./migrate-postagi-persist-mounts.sh) >"$tmp/out" 2>"$tmp/err" || rc=$?
   if [ "$mode" = success ]; then
-    [ "$rc" -eq 0 ] && grep -qx 'new-config-2' "$persist/config-tenant2/state" && grep -Rqx 'old-config-2' "$persist"/backup-pre-cutover-*'/config-tenant2/state'
-    grep -q 'stop -t 30' "$tmp/docker.log" && grep -q 'up -d --no-build --force-recreate --wait --wait-timeout 60' "$tmp/docker.log"
+    { [ "$rc" -eq 0 ] && grep -qx 'new-config-2' "$persist/config-tenant2/state" && grep -Rqx 'old-config-2' "$persist"/backup-pre-cutover-*'/config-tenant2/state' \
+      && grep -q 'stop -t 30' "$tmp/docker.log" && grep -q 'up -d --no-build --force-recreate --wait --wait-timeout 60' "$tmp/docker.log"; } \
+      || { echo "FAIL: success case (rc=$rc)"; cat "$tmp/err" >&2; exit 1; }
     echo "PASS: success copies six targets, preserves timestamp backup, and restarts healthy services"
   else
-    [ "$rc" -eq 42 ] && ! grep -q 'up -d' "$tmp/docker.log" && grep -q '복구 방법' "$tmp/err" && grep -q 'stop -t 30' "$tmp/err" && grep -q 'rsync -a --delete' "$tmp/err"
-    for tenant in 2 3 4; do for kind in config data; do grep -qx "old-$kind-$tenant" "$persist"/backup-pre-cutover-*"/$kind-tenant$tenant/state"; done; done
+    { [ "$rc" -eq 42 ] && ! grep -q 'up -d' "$tmp/docker.log" && grep -q '복구 방법' "$tmp/err" && grep -q 'stop -t 30' "$tmp/err" && grep -q 'rsync -a --checksum --delete' "$tmp/err"; } \
+      || { echo "FAIL: failure case (rc=$rc)"; cat "$tmp/err" >&2; exit 1; }
+    for tenant in 2 3 4; do for kind in config data; do grep -qx "old-$kind-$tenant" "$persist"/backup-pre-cutover-*"/$kind-tenant$tenant/state" \
+      || { echo "FAIL: backup missing $kind-tenant$tenant"; exit 1; }; done; done
     echo "PASS: injected mid-copy failure exits immediately and prints recovery without restart"
   fi
   rm -rf "$tmp"
