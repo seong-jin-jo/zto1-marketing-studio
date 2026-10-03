@@ -19,6 +19,10 @@ const mocks = vi.hoisted(() => ({
   currentWork: null as Record<string, unknown> | null,
   returnPosts: [] as Array<Record<string, unknown>>,
   setStudioRoom: vi.fn(),
+  // 2026-10-03 운영 사고(9444 회원 계정) 재현용: TikTok 발행 패널(creator-info) 테스트가
+  // 쓴다. 기본은 "TikTok 미연결"(다른 테스트 전부가 가정하는 상태)과 같다.
+  connectedPlatforms: ["threads", "x", "instagram"] as string[],
+  tiktokCreator: undefined as Record<string, unknown> | undefined,
 }));
 
 vi.mock("swr", () => ({
@@ -114,6 +118,19 @@ vi.mock("@/lib/auth", () => ({
   authHeaders: () => ({}),
 }));
 
+/**
+ * page.tsx의 videoFilename()은 `/api/media/<base64url(JSON).시그니처>`에서 JSON의 `.f`
+ * (파일명)만 **서버 서명 검증 없이** 읽는다(클라이언트는 표시용으로 꺼낼 뿐, 실제 서명
+ * 검증은 서버가 한다). 그래서 "returned-video.mp4" 같은 맨 문자열을 videoUrl로 주면
+ * videoFilename()이 빈 문자열을 돌려줘 "올릴 영상이 없습니다"로 막혀 /api/video/publish
+ * 자체가 안 불린다 — TikTok 요청 바디를 검증하려는 테스트에서는 이 모양을 맞춰야 한다.
+ */
+function fakeMediaUrl(filename: string): string {
+  const payload = JSON.stringify({ v: 1, t: "tenant-a", f: filename, e: Date.now() + 999_999 });
+  const body = Buffer.from(payload, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `/api/media/${body}.fakesig`;
+}
+
 function restoreStudio(platforms: string[]) {
   localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
     idea: "부분 성공 테스트",
@@ -159,6 +176,8 @@ describe("Studio publish result integrity", () => {
     mocks.currentWork = null;
     mocks.returnPosts = [];
     mocks.setStudioRoom.mockReset();
+    mocks.connectedPlatforms = ["threads", "x", "instagram"];
+    mocks.tiktokCreator = undefined;
     mocks.swr.mockImplementation((key: string | null) => {
       mocks.swrKeys.push(key);
       if (key === "/api/me") {
@@ -195,11 +214,14 @@ describe("Studio publish result integrity", () => {
       if (key === "/api/onboarding") {
         return { data: { checklist: {} }, mutate: vi.fn() };
       }
+      if (typeof key === "string" && key.startsWith("/api/tiktok/creator-info")) {
+        return { data: mocks.tiktokCreator, mutate: vi.fn() };
+      }
       return { data: undefined, mutate: vi.fn() };
     });
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
       const platform = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
-      const connected = platform && ["threads", "x", "instagram"].includes(platform)
+      const connected = platform && mocks.connectedPlatforms.includes(platform)
         ? [{ id: `${platform}-account`, display_name: `${platform} 계정`, username: platform, is_default: true }]
         : [];
       return Response.json({ accounts: connected });
@@ -230,6 +252,144 @@ describe("Studio publish result integrity", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "선택한 1곳에 지금 발행" })).toBeInTheDocument());
     expect(screen.getByRole("checkbox", { name: "Threads 발행" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "X 발행" })).not.toBeChecked();
+  });
+
+  // 2026-10-03 독립 리뷰 MINOR-g 근본원인 수정: 복원된 선택이 아무 표시 없이 되살아난
+  // 것이 운영 사고의 뿌리였다. 복원 직후에는 "지난번 선택 유지" 배지가 보여야 하고,
+  // 사용자가 체크박스를 한 번이라도 직접 누르면 그 배지는 사라져야 한다(그 다음부터는
+  // "방금 내가 고른 것"이기 때문).
+  it("MINOR-g 정상: 인박스 복귀로 되살아난 선택은 '지난번 선택 유지' 배지로 드러나고, 직접 체크하면 사라진다", async () => {
+    window.history.replaceState(null, "", "/studio?room=publish&queue_id=queue-restore-notice&from=inbox");
+    mocks.returnPosts = [{
+      id: "queue-restore-notice",
+      text: "인박스에서 되돌린 본문",
+      topic: "복귀 작업물",
+      hashtags: ["복귀"],
+      channels: { threads: { status: "pending" } },
+      publishContext: { sourceRoute: "inbox", queuePostId: "queue-restore-notice", draftId: null },
+    }];
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Threads 발행" })).toBeChecked());
+    expect(screen.getByTestId("publish-restored-selection-notice")).toHaveTextContent("지난번 선택 유지: Threads");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Threads 발행" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Threads 발행" }));
+
+    expect(screen.queryByTestId("publish-restored-selection-notice")).not.toBeInTheDocument();
+  });
+
+  // 2026-10-03 독립 리뷰 MINOR-h: 상단 배너와 "지금 발행" 버튼 옆 배지가 서로 다른
+  // 출처(selectedTargets vs publishTargets)에서 채널 이름을 가져와 서로 다른 이름을
+  // 보여줄 수 있었다. 둘은 항상 같은 이름을 보여줘야 한다.
+  it("MINOR-h 정상: 상단 배너와 발행 버튼 옆 배지가 같은 채널 이름을 보여준다", async () => {
+    window.history.replaceState(null, "", "/studio?room=publish&queue_id=queue-single-source&from=inbox");
+    mocks.returnPosts = [{
+      id: "queue-single-source",
+      text: "인박스에서 되돌린 본문",
+      topic: "단일 정본 작업물",
+      hashtags: ["복귀"],
+      channels: { threads: { status: "pending" } },
+      publishContext: { sourceRoute: "inbox", queuePostId: "queue-single-source", draftId: null },
+    }];
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Threads 발행" })).toBeChecked());
+    await waitFor(() => expect(screen.getByTestId("publish-now-target-names")).toBeInTheDocument());
+
+    expect(screen.getByTestId("publish-availability")).toHaveTextContent("Threads");
+    expect(screen.getByTestId("publish-now-target-names")).toHaveTextContent("Threads");
+  });
+
+  // 2026-10-03 운영 사고(9444 회원 계정): TikTok 발행이 공개 범위(privacy_level) 없이도
+  // /api/video/publish를 불러 매번 400 "TikTok 공개 범위를 직접 선택해주세요"로 실패했다
+  // (route.ts:727-729). 발행실에는 그 값을 고르는 자리 자체가 없었다.
+  it("TikTok-01 정상: 공개 범위를 고르면 /api/video/publish 요청에 privacy_level이 실린다", async () => {
+    mocks.connectedPlatforms = ["threads", "x", "instagram", "tiktok"];
+    mocks.tiktokCreator = {
+      connected: true,
+      ready: true,
+      creator: {
+        username: "tiktoker",
+        privacyLevels: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS"],
+        commentDisabled: false,
+        duetDisabled: false,
+        stitchDisabled: false,
+      },
+    };
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-tiktok-privacy");
+    mocks.returnPosts = [{
+      id: "queue-tiktok-privacy",
+      text: "TikTok용 영상 본문",
+      topic: "TikTok 영상 복귀",
+      videoUrl: fakeMediaUrl("returned-video.mp4"),
+      channels: { tiktok: { status: "pending" } },
+    }];
+    const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+    mocks.apiPost.mockImplementation(async (path: string, body: Record<string, unknown>) => {
+      calls.push({ path, body });
+      if (path === "/api/studio/drafts") return { id: "draft-tiktok-1" };
+      if (path === "/api/video/publish") return { ok: true, url: "https://www.tiktok.com/@tiktoker/video/1" };
+      return {};
+    });
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByTestId("tiktok-privacy-panel")).toBeInTheDocument());
+    // 절대 기본값을 미리 고르지 않는다 — 고르기 전에는 "선택"뿐이다.
+    expect(screen.getByRole("combobox", { name: "TikTok 공개 범위" })).toHaveValue("");
+    fireEvent.change(screen.getByRole("combobox", { name: "TikTok 공개 범위" }), { target: { value: "PUBLIC_TO_EVERYONE" } });
+
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+
+    await waitFor(() => expect(calls.some((call) => call.path === "/api/video/publish")).toBe(true));
+    const videoCall = calls.find((call) => call.path === "/api/video/publish");
+    expect(videoCall?.body.platform).toBe("tiktok");
+    expect(videoCall?.body.privacy_level).toBe("PUBLIC_TO_EVERYONE");
+    expect(videoCall?.body.is_ai_generated).toBe(true);
+    expect(typeof videoCall?.body.disable_comment).toBe("boolean");
+    expect(typeof videoCall?.body.disable_duet).toBe("boolean");
+    expect(typeof videoCall?.body.disable_stitch).toBe("boolean");
+  });
+
+  it("TikTok-02 거절: 공개 범위를 고르지 않으면 '지금 발행'이 TikTok을 막고 그 이유를 말한다", async () => {
+    mocks.connectedPlatforms = ["threads", "x", "instagram", "tiktok"];
+    mocks.tiktokCreator = {
+      connected: true,
+      ready: true,
+      creator: {
+        username: "tiktoker",
+        privacyLevels: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS"],
+        commentDisabled: false,
+        duetDisabled: false,
+        stitchDisabled: false,
+      },
+    };
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-tiktok-blocked");
+    mocks.returnPosts = [{
+      id: "queue-tiktok-blocked",
+      text: "TikTok용 영상 본문",
+      topic: "TikTok 영상 복귀",
+      videoUrl: fakeMediaUrl("returned-video.mp4"),
+      channels: { tiktok: { status: "pending" } },
+    }];
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      // 공개 범위 없이 이 경로가 불리면 그 자체가 결함이다(운영 사고 재현).
+      if (path === "/api/video/publish") throw new Error("공개 범위 없이 발행 요청이 나가면 안 된다");
+      return {};
+    });
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByTestId("tiktok-privacy-panel")).toBeInTheDocument());
+    expect(screen.getByRole("checkbox", { name: "TikTok 발행" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "TikTok 발행" })).toBeDisabled();
+    await within(screen.getByTestId("preview-tiktok")).findByText("TikTok 공개 범위를 먼저 선택해주세요.");
+
+    expect(screen.getByRole("button", { name: "선택한 0곳에 지금 발행" })).toBeDisabled();
+    expect(mocks.apiPost).not.toHaveBeenCalledWith("/api/video/publish", expect.anything());
   });
 
   it("MINOR-1 경계: draft_id 없는 인박스 발행 복귀는 진행 중인 영상 맞춤을 취소하고 편집 잠금을 푼다", async () => {

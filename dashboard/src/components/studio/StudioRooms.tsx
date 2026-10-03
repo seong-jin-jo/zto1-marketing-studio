@@ -30,6 +30,7 @@ import { themeFromPalette, type CardRatio } from "@/lib/studio/text-card-image";
 import { browserCardUploader, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
 import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
 import { filterInstructionPlaceholderLines } from "@/lib/studio/generated-copy";
+import { resolveTextCardLines } from "@/lib/studio/text-card-source";
 import {
   CARD_ASPECT_RATIOS,
   EDIT_BACKGROUNDS,
@@ -1041,18 +1042,35 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
    * 자도 제품이 선다.
    */
   async function makeTextCards() {
-    const source = selectedCandidate?.format.outline?.length
-      ? selectedCandidate.format.outline
-      : (quickStructure?.outline ?? []);
-    if (!source.length) { setTextCardError("먼저 구조 초안을 하나 골라 주세요."); return; }
+    // 2026-10-02 실사용 결함, 2026-10-03 독립 리뷰 MAJOR-8 재수정: primaryKind 섹션을
+    // 그대로 쓰면 ①primaryKind="text"일 땐 글 전체(한 문단)가 통째로 "한 장"이 되고
+    // ②primaryKind="card"여도 quickDraftSections의 card 섹션이 instagram.caption(해시태그
+    // 섞인 긴 문장)을 슬라이드 뒤에 붙여 마지막 장으로 내보냈다. 카드뉴스는 카드뉴스용으로
+    // 만들어진 슬라이드(instagram.slides)만 쓴다 — primaryKind가 무엇이든, 캡션은 절대
+    // 섞지 않는다.
+    const cardSlideLines = (quickDraft?.instagram?.slides ?? []).filter(
+      (line): line is string => typeof line === "string" && line.trim().length > 0,
+    );
+    const resolved = resolveTextCardLines({
+      generatedLines: cardSlideLines,
+      candidateOutline: selectedCandidate?.format.outline,
+      quickStructureOutline: quickStructure?.outline,
+    });
+    if (!resolved.lines.length) { setTextCardError("먼저 구조 초안을 하나 골라 주세요."); return; }
+    // MINOR-f 재발 방지: 실제로 생성된 카드 본문이 없어 구조 라벨("고객이 겪는 문제" 등)로
+    // 폴백한 경우, 그 라벨이 그대로 카드에 찍혀 발행되는 사고(2026-10-02)를 다시 만들지
+    // 않으려면 카드 자체를 만들지 않는다 — 만들지 않으면 그 뒤 발행으로 이어질 것도 없다.
+    if (resolved.isPlaceholder) {
+      setTextCardError("구조 초안에 실제 내용이 없어 글자 카드를 만들지 못했습니다. 구조 초안을 다시 만들어 주세요.");
+      return;
+    }
+    const lines = resolved.lines;
     setTextCardError(null);
     setTextCardBusy(true);
     try {
       // 비율을 여기서 "4:5" 로 박아 두었더니 화면에서 무엇을 고르든 픽셀이 늘 1080×1350
       // 하나였다(2026-09-14 실측). 고른 값을 그대로 쓴다.
       const theme = themeFromPalette(learning.palette);
-      const lines = filterInstructionPlaceholderLines(source.filter((line) => line.trim().length > 0));
-      if (!lines.length) { setTextCardError("구조 초안에 실제 내용이 없어 글자 카드를 만들지 못했습니다. 구조 초안을 다시 만들어 주세요."); return; }
       const persisted = await renderAndUploadCardDeck(
         { lines, ratio: cardRatio, theme },
         { upload: browserCardUploader(authHeaders()) },

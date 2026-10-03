@@ -121,6 +121,7 @@ const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reel
 
 import { draftStatusLabel } from "@/lib/studio/draft-status-label";
 import { connectedOnlyTargets, publishableTargets as computePublishableTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
+import { channelNameList, PLATFORM_LABEL } from "@/lib/studio/channel-name-list";
 import {
   resolveRestoredQuickDraftTopic,
   sanitizeRestoredQuickDraftLines,
@@ -547,6 +548,35 @@ export default function StudioPage() {
   const [publishReconciliations, setPublishReconciliations] = useState<PublishReconciliationMap>({});
   const [editorHandoff, setEditorHandoff] = useState<EditorHandoff | null>(null);
   const [includes, setIncludes] = useState<Record<string, boolean>>(() => normalizeIncludes());
+  /**
+   * 2026-10-03 독립 리뷰 MINOR-g 근본원인 수정: 발행 선택 사고의 실제 뿌리는 미리보기
+   * 탭을 선택으로 착각한 것보다, **이전 세션의 선택이 아무 표시 없이 조용히 되살아난
+   * 것**이다(이 세션 자체가 그 패턴으로 Threads에 실제 발행했다). 두 안을 저울질했다:
+   * ①발행 전 채널 이름을 보여주는 확인 단계(모달/추가 클릭) ②되살아난 선택임을 그
+   * 자리에서 표시만("지난번 선택 유지: Threads"). ①은 publish() 흐름 자체를 바꿔야
+   * 하고 "선택한 N곳에 지금 발행" 버튼 클릭 한 번으로 바로 발행되던 기존 테스트 수십
+   * 개(studio-publish-ui.test.tsx)의 흐름을 전부 다시 짜야 한다. ②는 상태 하나와 배지
+   * 하나만 더하면 되고, 사용자의 기존 동작(바로 발행)을 막지 않으면서 "이거 내가 지금
+   * 고른 게 아니라 전에 고른 거다"를 알린다. 더 작은 ②를 택한다.
+   */
+  const [restoredSelectionNotice, setRestoredSelectionNotice] = useState(false);
+  /**
+   * 운영 사고(9444 회원 계정, 2026-10-03): TikTok 발행이 /api/video/publish의
+   * privacy_level 필수 검사(route.ts:727-729)에 걸려 "TikTok 공개 범위를 직접
+   * 선택해주세요" 400으로 항상 실패했다. 발행실에는 그 값을 고르는 자리 자체가 없었고
+   * /api/video/publish 요청에도 안 실었다. /app/videos/page.tsx에만 그 선택기가 있었다
+   * (tiktokCreator.privacyLevels, creator-info 조회). 여기서도 같은 계약을 그대로
+   * 따른다 — TikTok의 Content Posting 정책은 공개 범위를 사람이 직접 고르게 강제하므로
+   * 기본값을 미리 고르지 않는다(빈 문자열 시작). 상호작용 토글(댓글/듀엣/스티치)과 AI
+   * 생성 공개는 videos 페이지가 이미 쓰는 기본값 정책을 그대로 따른다(토글 셋은
+   * creator의 disabled 플래그로 동기화, AI 생성은 기본 true — 창작자가 아니오로
+   * 끄는 쪽이 "거짓으로 아니라고 답하기"보다 안전하다는 videos 페이지의 기존 판단).
+   */
+  const [tiktokPrivacy, setTiktokPrivacy] = useState(""); // 절대 기본값을 미리 고르지 않는다
+  const [tiktokDisableComment, setTiktokDisableComment] = useState(false);
+  const [tiktokDisableDuet, setTiktokDisableDuet] = useState(false);
+  const [tiktokDisableStitch, setTiktokDisableStitch] = useState(false);
+  const [tiktokAiGenerated, setTiktokAiGenerated] = useState(true);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [hashtags, setHashtags] = useState<Record<string, string>>({});
   const [topicTags, setTopicTags] = useState<Record<string, string>>({});
@@ -739,6 +769,20 @@ export default function StudioPage() {
   // 공통 정본이다. 저장된 과거 작업별 선택값을 보내면 사용자가 고칠 수 없는 숨은 상태가 된다.
   const selectedConnectedAccountId = (platform: PreviewPlatform) => defaultConnectedAccount(platform)?.id;
   const publishTargets = selectedTargets.filter((platform) => usableAccounts(platform).length > 0);
+  /**
+   * 2026-10-03 독립 리뷰 MINOR-h: 상단 배너는 selectedTargets(사용자가 고른 전체)로 채널
+   * 이름을 보여주고, "지금 발행" 버튼 옆 배지는 publishTargets(지금 실제로 올릴 수 있는
+   * 것)로 보여줘서 두 이름 목록이 서로 달라질 수 있었다(예: 선택은 했는데 계정이 끊긴
+   * 채널). 이름 목록은 이 값 하나로만 만든다 — 숫자 표시(선택 N곳 / 발행가능 M곳)는
+   * 각자 다른 뜻이라 그대로 두고, "이름이 무엇인가"만 단일 정본으로 합친다.
+   *
+   * 이미 이번 발행에서 성공한(pub.status === "done") 채널은 재선택 대상처럼 이름에
+   * 끼워 보여주지 않는다 — 다시 누르면 재발행처럼 보이는 혼동을 줄인다. 뒤따르는 다른
+   * PR이 도입하는 "이미 완료"·"상태 불명" 상태는 이 필터에 조건을 추가하는 자리다
+   * (지금은 done만 존재하고 unknown류 상태가 아직 코드에 없어 추측해서 만들지 않았다).
+   */
+  const publishNameTargets = (accountsLoaded ? publishTargets : selectedTargets)
+    .filter((platform) => pub.status[platform] !== "done");
   // 선택이 자동으로 꺼진 뒤에도 재연결 행동이 사라지면 사용자는 복구할 길이 없다.
   // 현재 발행 체크와 무관하게 만료·해제 계정이 하나라도 있는 채널을 안내한다.
   const reconnectTargets = ALL.filter((platform) =>
@@ -746,6 +790,28 @@ export default function StudioPage() {
   // 일부만 성공한 뒤에는 버튼이 '다시 발행'이 아니라 '실패한 곳만'이어야 한다.
   const publishRetryOnly = publishTargets.some((platform) => pub.status[platform] === "done")
     && publishTargets.some((platform) => pub.status[platform] === "failed");
+
+  // TikTok 패널(결함: 공개 범위 미선택 400) — app/videos/page.tsx와 같은 계약.
+  // 연결된 TikTok 계정이 있을 때만 creator-info를 조회한다(없는데 부르면 404 토스트만
+  // 쌓인다). 계정은 v70 규칙대로 기본 연결 계정 하나를 쓴다(계정 선택 UI 없음).
+  const tiktokAccountIdForCreator = selectedConnectedAccountId("tiktok");
+  const tiktokCreatorUrl = usableAccounts("tiktok").length > 0
+    ? `/api/tiktok/creator-info${tiktokAccountIdForCreator ? `?account_id=${encodeURIComponent(tiktokAccountIdForCreator)}` : ""}`
+    : null;
+  const { data: tiktokCreatorData } = useSWR<{
+    connected?: boolean;
+    ready?: boolean;
+    creator?: { username: string; privacyLevels: string[]; commentDisabled: boolean; duetDisabled: boolean; stitchDisabled: boolean };
+  }>(tiktokCreatorUrl, fetcher);
+  const tiktokCreator = tiktokCreatorData?.creator;
+  useEffect(() => {
+    // videos/page.tsx와 같은 동기화: 창작자 계정이 이미 막아둔 상호작용은 토글도
+    // 그 상태로 맞춰 둔다(사용자가 끌 필요가 없는 걸 또 묻지 않는다).
+    setTiktokDisableComment(tiktokCreator?.commentDisabled ?? false);
+    setTiktokDisableDuet(tiktokCreator?.duetDisabled ?? false);
+    setTiktokDisableStitch(tiktokCreator?.stitchDisabled ?? false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiktokAccountIdForCreator, tiktokCreator?.username, tiktokCreator?.commentDisabled, tiktokCreator?.duetDisabled, tiktokCreator?.stitchDisabled]);
 
   useEffect(() => {
     const requested = resolveStudioRoom(`?${search}`, storedRoom).room;
@@ -905,7 +971,7 @@ export default function StudioPage() {
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setHydratedWorkspaceId(null);
     setIdea(""); setImg(null); setVid(null); setDraftId(null);
-    setIncludes(normalizeIncludes()); setPublishReconciliations({}); setEditorHandoff(null);
+    setIncludes(normalizeIncludes()); setRestoredSelectionNotice(false); setPublishReconciliations({}); setEditorHandoff(null);
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
     replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
     quickDraftTopicRef.current = null;
@@ -923,7 +989,11 @@ export default function StudioPage() {
         // 서버 초안과 같은 엄격한 서명으로만 구형 무료 글자 카드를 승격한다. 일반 생성
         // 이미지는 aspectRatio 도장이 있고, 말풍선 덱은 template이 달라 여기서 제외된다.
         setImg(recoverDraftEmbeddedTextCard<ImgResult>(w)); setVid(w.vid || null);
-        if (w.includes) setIncludes(normalizeIncludes(w.includes)); setDraftId(w.draftId || null);
+        if (w.includes) {
+          setIncludes(normalizeIncludes(w.includes));
+          setRestoredSelectionNotice(Object.values(w.includes as Record<string, boolean>).some(Boolean));
+        }
+        setDraftId(w.draftId || null);
         setPublishReconciliations(normalizePublishReconciliations(w.publishReconciliations ?? w.publishReconciliation));
         setTitles(w.titles || {}); setHashtags(w.hashtags || {}); setTopicTags(w.topicTags || {});
         setFirstComments(w.firstComments || {}); setCaptions(w.captions || {}); setSelectedAccounts(w.selectedAccounts || {});
@@ -2080,6 +2150,13 @@ export default function StudioPage() {
         createActionLabel: "생성실에서 카드 만들기",
       };
     }
+    // 2026-10-03 운영 사고: TikTok은 공개 범위(privacy_level)를 사람이 직접 고르지
+    // 않으면 서버가 400으로 거부한다(route.ts:727-729). 화면에 그 값을 고르는 자리가
+    // 없었으니 매번 실패했다. 아래 TikTok 패널에서 값을 고르기 전까지는 "지금 발행"을
+    // 막고, 왜 막혔는지를 이 disabledReason으로 그 자리에서 말한다.
+    if (platform === "tiktok" && !tiktokPrivacy) {
+      return { disabledReason: "TikTok 공개 범위를 먼저 선택해주세요." };
+    }
     const blocking = validatePlatformPublish(platform, platformPublishInput(platform)).blocking[0];
     if (blocking) return { disabledReason: blocking.message };
     return {};
@@ -2404,6 +2481,17 @@ export default function StudioPage() {
               draft_id: did,
               // 대문으로 쓸 시점. 지원하는 플랫폼만 실제로 쓴다(lib/video-cover.ts).
               cover_seconds: supportsCoverTimestamp(p) ? (coverSeconds[p] ?? DEFAULT_COVER_SECONDS) : undefined,
+              // 2026-10-03 운영 사고: TikTok은 이 네 필드가 없으면 서버가 400으로 거부한다
+              // (route.ts:727-736). publishGuard가 privacy_level 미선택이면 이미 이 채널을
+              // 발행 대상에서 뺐으니, 여기 도달했다는 것은 tiktokPrivacy가 채워져 있다는
+              // 뜻이다. videos/page.tsx와 같은 필드·같은 기본값 정책을 그대로 싣는다.
+              ...(p === "tiktok" ? {
+                privacy_level: tiktokPrivacy,
+                disable_comment: tiktokDisableComment,
+                disable_duet: tiktokDisableDuet,
+                disable_stitch: tiktokDisableStitch,
+                is_ai_generated: tiktokAiGenerated,
+              } : {}),
             }, { signal: AbortSignal.timeout(VIDEO_PUBLISH_REQUEST_TIMEOUT_MS) });
             if (vr?.jobId && vr.status === "processing") {
               // "doing"(발행 중) 그대로 유지하며 기다린다 — "완료"로 앞서가지 않는다.
@@ -2638,7 +2726,11 @@ export default function StudioPage() {
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setIdea((d.idea as string) || "");
     setImg(recoverDraftEmbeddedTextCard<ImgResult>(d)); setVid((d.vid as VidResult) || null);
-    setIncludes(d.includes ? normalizeIncludes(d.includes as Record<string, boolean>) : includes); setDraftId(d.id as string);
+    setIncludes(d.includes ? normalizeIncludes(d.includes as Record<string, boolean>) : includes);
+    // MINOR-g 근본원인: 초안을 불러오면 그 초안이 저장했던 체크 상태가 아무 표시 없이
+    // 되살아난다. "지금 내가 고른 것"처럼 보이면 안 되므로 복원임을 배지로 남긴다.
+    setRestoredSelectionNotice(Boolean(d.includes) && Object.values(d.includes as Record<string, boolean>).some(Boolean));
+    setDraftId(d.id as string);
     const savedReconciliations = normalizePublishReconciliations(d.publishReconciliations ?? d.publishReconciliation);
     setPublishReconciliations(savedReconciliations);
     setEditorHandoff((d.editorHandoff as EditorHandoff) || null);
@@ -2961,6 +3053,9 @@ export default function StudioPage() {
       setIncludes(work.includedPlatforms.length
         ? normalizeIncludes(Object.fromEntries(ALL.map((platform) => [platform, work.includedPlatforms.includes(platform)])))
         : normalizeIncludes());
+      // MINOR-g 근본원인: 인박스/큐 작업물을 발행실 상태로 복원할 때도 그 작업물이 저장한
+      // 체크 상태가 표시 없이 되살아난다. 같은 배지로 복원임을 남긴다.
+      setRestoredSelectionNotice(work.includedPlatforms.length > 0);
       setTitles((linkedDraft?.titles as Record<string, string>) || {});
       setHashtags((linkedDraft?.hashtags as Record<string, string>) || (tagText ? { instagram: tagText } : {}));
       setTopicTags((linkedDraft?.topicTags as Record<string, string>) || {});
@@ -3022,7 +3117,12 @@ export default function StudioPage() {
         : pubFailed > 0
           ? "발행 실패"
           : "발행 완료";
-  const LABEL: Record<string, string> = { threads: "Threads", x: "X", facebook: "Facebook", instagram: "Instagram", shorts: "Shorts", reels: "Reels", tiktok: "TikTok" };
+  // 2026-10-03 독립 리뷰 MINOR-g: 이 맵이 channel-name-list.ts(PLATFORM_LABEL)와 내용이
+  // 똑같이 중복 선언돼 있었다. 한쪽만 고치면 다른 쪽이 조용히 낡는다. 하나로 합친다.
+  // (타입은 기존처럼 Record<string,string>으로 느슨하게 — 이 아래에서 BulkPlatform 등
+  // 더 넓은 string 키로 인덱싱하는 자리가 여럿이라 PreviewPlatform 리터럴로 좁히면
+  // 그 자리들이 전부 타입 에러가 난다.)
+  const LABEL: Record<string, string> = PLATFORM_LABEL;
   function chooseCandidate(candidate: StudioGenerationCandidate) {
     // [보안](교차 리뷰 재리뷰 BLOCK 2): 후보를 고르는 이 경로는 cardDeck·videoEdit
     // 둘 다 비우지 않아 이전 후보(또는 이전 세션)의 오버레이·댓글이 새 후보로 그대로
@@ -3163,17 +3263,23 @@ export default function StudioPage() {
   const publishableTargets = computePublishableTargets(channelReadiness);
   const previewTargets = ALL as BulkPlatform[];
 
+  // 아래 네 함수 + 체크박스 onCheckedChange는 전부 사용자가 **지금** 직접 고른 행동이다.
+  // 그 순간부터는 "지난번 선택 유지" 배지가 더 이상 맞지 않는다(복원이 아니라 지금의
+  // 의도된 선택이므로) — 눌렀으면 끈다(MINOR-g 근본원인 수정).
   function selectAllChannels() {
     if (!publishableTargets.length) { showToast("지금 바로 발행할 수 있는 채널이 아직 없습니다. 연결 상태와 발행 조건을 확인해 주세요", "error"); return; }
     setIncludes((current) => ({ ...current, ...Object.fromEntries(publishableTargets.map((platform) => [platform, true])) }));
+    setRestoredSelectionNotice(false);
     showToast(`발행 가능한 ${publishableTargets.length}곳을 모두 골랐습니다`, "success");
   }
   function clearAllChannels() {
     setIncludes((current) => ({ ...current, ...Object.fromEntries(bulkTargets.map((platform) => [platform, false])) }));
+    setRestoredSelectionNotice(false);
     showToast("고른 곳을 모두 해제했습니다", "success");
   }
   function excludeChannel(platform: BulkPlatform) {
     setIncludes((current) => ({ ...current, [platform]: false }));
+    setRestoredSelectionNotice(false);
     showToast(`${LABEL[platform]}만 빼고 두었습니다`, "success");
   }
   function keepOnlyChannel(platform: BulkPlatform) {
@@ -3181,6 +3287,7 @@ export default function StudioPage() {
     const guard = publishGuard(platform as PreviewPlatform);
     if (guard.disabledReason) { showToast(guard.disabledReason, "error"); return; }
     setIncludes((current) => ({ ...current, ...Object.fromEntries(bulkTargets.map((p) => [p, p === platform])) }));
+    setRestoredSelectionNotice(false);
     showToast(`${LABEL[platform]} 한 곳만 남겼습니다`, "success");
   }
   function unifyHashtagsAcrossChannels() {
@@ -3750,7 +3857,7 @@ export default function StudioPage() {
             <b className="text-lead text-accent">{accountsLoaded ? publishTargets.length : selectedTargets.length}곳</b>
             <span data-testid="publish-availability" className="mr-auto text-caption text-subtle">
               {accountsLoaded
-                ? `선택 ${selectedTargets.length}곳 · 실제 발행 가능 ${publishTargets.length}곳 · 연결된 채널 ${connectedTargets.length}곳`
+                ? `선택 ${selectedTargets.length}곳${publishNameTargets.length ? ` (${channelNameList(publishNameTargets)})` : ""} · 실제 발행 가능 ${publishTargets.length}곳 · 연결된 채널 ${connectedTargets.length}곳`
                 : "발행 가능한 계정을 확인하는 중입니다"}
             </span>
             <Button
@@ -3770,6 +3877,18 @@ export default function StudioPage() {
               전부 해제
             </Button>
           </section>
+          {/*
+            2026-10-03 독립 리뷰 MINOR-g 근본원인: 운영 사고의 실제 뿌리는 "이전 세션의
+            선택이 표시 없이 되살아난 것"이다. 되살아난 직후(사용자가 아직 체크박스를
+            직접 건드리기 전)에는 이 배지로 "이건 네가 지금 고른 게 아니라 전에 고른
+            거다"를 알린다. 사용자가 체크박스를 한 번이라도 누르면(onCheckedChange 등)
+            restoredSelectionNotice가 꺼지고 이 배지도 사라진다.
+          */}
+          {restoredSelectionNotice && publishNameTargets.length > 0 ? (
+            <p data-testid="publish-restored-selection-notice" role="status" className="rounded-control border border-warning/30 bg-warning/10 p-stack text-caption text-warning">
+              지난번 선택 유지: {channelNameList(publishNameTargets)}
+            </p>
+          ) : null}
           <PlatformFocusFilter>
             {(focus) => (
               <>
@@ -3825,6 +3944,21 @@ export default function StudioPage() {
                 끊긴 채널까지 세어 "2곳에 발행"이라 해 놓고 아무 데도 안 올라간다.
               */}
               <Button variant="primary" onClick={publish} disabled={pub.running || !accountsLoaded || publishTargets.length === 0}>선택한 {accountsLoaded ? publishTargets.length : selectedTargets.length}곳에 지금 발행{accountsLoaded && selectedTargets.length > publishTargets.length ? ` (올릴 수 없는 ${selectedTargets.length - publishTargets.length}곳 제외)` : ""}</Button>
+              {/*
+                2026-10-02 운영 사고(결함 D): 버튼 문구는 숫자만 말해서("선택한 1곳에 지금
+                발행"), 미리보기 탭(보기 필터)에서 방금 Instagram 을 봐 놓고 실제로는 이전
+                세션에 체크된 채 남은 Threads 1곳이 발행 대상이라는 사실이 전혀 안 드러났다.
+                "선택한 1곳에 지금 발행"이라는 버튼 접근성 이름 문자열은 수십 개 기존 테스트가
+                고정 계약으로 쓰고 있어(studio-publish-ui.test.tsx) 버튼 글자 자체는 바꾸지
+                않는다. 대신 버튼 바로 옆에 채널 이름을 보이는 배지로 덧붙인다 — 미리보기
+                탭과 실제 선택이 어긋나면 이 배지가 그 자리에서 드러낸다. 이름은 위 배너와
+                같은 publishNameTargets(단일 정본, MINOR-h)에서 가져온다.
+              */}
+              {publishNameTargets.length > 0 ? (
+                <span data-testid="publish-now-target-names" className="text-caption text-subtle">
+                  ({channelNameList(publishNameTargets)})
+                </span>
+              ) : null}
               {activeWorkspace ? <Button variant={showSchedule ? "primary" : "secondary"} onClick={() => setShowSchedule((value) => !value)}>예약 발행</Button> : null}
               </div>
               {/*
@@ -3873,6 +4007,7 @@ export default function StudioPage() {
                       const guard = publishGuard(platform);
                       const accountUnavailable = Boolean(accountLoadPending[platform]) || usableAccounts(platform).length === 0;
                       return (
+                    <>
                     <PlatformPreview
                       platform={platform}
                       text={text || {}}
@@ -3898,7 +4033,7 @@ export default function StudioPage() {
                           accountSelectable={ACCOUNT_SELECTABLE.has(platform)}
                           checked={Boolean(includes[platform]) && !guard.disabledReason && !accountUnavailable}
                           checkboxDisabled={accountUnavailable || Boolean(guard.disabledReason)}
-                          onCheckedChange={(next) => setIncludes((current) => ({ ...current, [platform]: next }))}
+                          onCheckedChange={(next) => { setIncludes((current) => ({ ...current, [platform]: next })); setRestoredSelectionNotice(false); }}
                           coverSeconds={coverSeconds[platform] ?? DEFAULT_COVER_SECONDS}
                           onCoverSecondsChange={(next) => setCoverSeconds((current) => ({ ...current, [platform]: next }))}
                           accountsLoading={Boolean(accountLoadPending[platform])}
@@ -3912,6 +4047,67 @@ export default function StudioPage() {
                         />
                       }
                     />
+                    {/*
+                      2026-10-03 운영 사고(9444 회원 계정): TikTok 발행이 공개 범위
+                      (privacy_level) 미선택으로 항상 400 실패했다. app/videos/page.tsx의
+                      TikTok 패널과 같은 계약(creator-info의 privacyLevels, 상호작용
+                      토글, AI 생성 공개)을 여기에도 둔다. TikTok 정책상 공개 범위는
+                      기본값을 미리 골라주지 않는다 — "선택" 옵션만 있고 고르지 않으면
+                      위 publishGuard가 발행을 막는다.
+                    */}
+                    {platform === "tiktok" && tiktokCreator ? (
+                      <div data-testid="tiktok-privacy-panel" className="mt-stack-tight grid grid-cols-2 gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption">
+                        <label className="col-span-2 text-subtle">
+                          공개 범위
+                          <select
+                            data-testid="tiktok-publish-privacy-select"
+                            aria-label="TikTok 공개 범위"
+                            value={tiktokPrivacy}
+                            onChange={(event) => setTiktokPrivacy(event.target.value)}
+                            className="mt-micro w-full rounded-chip border border-border bg-surface p-stack-tight text-text"
+                          >
+                            <option value="">선택</option>
+                            {tiktokCreator.privacyLevels.map((privacy) => <option key={privacy} value={privacy}>{privacy}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok 댓글 끄기"
+                            checked={tiktokDisableComment}
+                            disabled={tiktokCreator.commentDisabled}
+                            onChange={(event) => setTiktokDisableComment(event.target.checked)}
+                          /> 댓글 끄기
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok 듀엣 끄기"
+                            checked={tiktokDisableDuet}
+                            disabled={tiktokCreator.duetDisabled}
+                            onChange={(event) => setTiktokDisableDuet(event.target.checked)}
+                          /> 듀엣 끄기
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok 스티치 끄기"
+                            checked={tiktokDisableStitch}
+                            disabled={tiktokCreator.stitchDisabled}
+                            onChange={(event) => setTiktokDisableStitch(event.target.checked)}
+                          /> 스티치 끄기
+                        </label>
+                        <label>
+                          <input
+                            type="checkbox"
+                            aria-label="TikTok AI 생성 영상"
+                            checked={tiktokAiGenerated}
+                            onChange={(event) => setTiktokAiGenerated(event.target.checked)}
+                          /> AI 생성 영상
+                        </label>
+                      </div>
+                    ) : null}
+                    </>
                       );
                     })()}
                   </div>

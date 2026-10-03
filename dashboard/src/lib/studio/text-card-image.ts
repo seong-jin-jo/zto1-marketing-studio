@@ -62,6 +62,40 @@ export function themeFromPalette(palette: string | null | undefined): CardTheme 
   };
 }
 
+/**
+ * 2026-10-03 독립 리뷰 MAJOR-8: 최소 글자 크기에서도 줄 수가 칸 높이를 넘으면 종전에는
+ * 그대로 흘려보내 아래쪽 줄이 캔버스 밖으로 잘려 나갔다(실측: 캡션급 긴 문장). 캔버스
+ * 없이도(측정 함수만 주고) 단위 테스트할 수 있게 떼어 뒀다. 들어갈 줄 수만큼만 보여주고
+ * 마지막 줄에 "…"로 더 있음을 알린다 — 그 "…"를 붙여도 폭을 넘지 않게 글자 단위로 줄인다.
+ */
+export function capLinesToFit(
+  lines: readonly string[],
+  measure: (text: string) => number,
+  maxWidth: number,
+  maxLines: number,
+): string[] {
+  if (lines.length <= maxLines) return [...lines];
+  const visible = lines.slice(0, Math.max(1, maxLines));
+  let last = visible[visible.length - 1];
+  while (last.length > 0 && measure(`${last}…`) > maxWidth) last = last.slice(0, -1);
+  visible[visible.length - 1] = `${last}…`;
+  return visible;
+}
+
+/**
+ * 렌더 레벨 마지막 방어선. 위 줄바꿈·자르기가 올바르게 동작했다면 어떤 줄도 최소 글자
+ * 크기에서 칸 너비를 넘을 수 없다. 그래도 넘는 줄이 있으면(측정 불일치·회귀) 조용히
+ * 내보내지 않고 바로 알린다 — "글자가 카드 밖으로 잘려 나간다"는 사고를 다시 반복하지
+ * 않기 위함이다.
+ */
+export function assertLinesFitWidth(lines: readonly string[], measure: (text: string) => number, maxWidth: number): void {
+  for (const line of lines) {
+    if (measure(line) > maxWidth) {
+      throw new Error(`글자 카드 렌더 결함: 줄 "${line.slice(0, 20)}…"이 최소 글자 크기에서도 카드 너비(${maxWidth}px)를 넘습니다.`);
+    }
+  }
+}
+
 /** 글자를 칸 너비에 맞춰 줄로 나눈다. 넘치면 잘리는 게 아니라 다음 줄로 간다. */
 export function wrapLines(
   measure: (text: string) => number,
@@ -215,6 +249,7 @@ export function renderTextCard(input: TextCardInput): string | null {
   const maxWidth = width - margin * 2;
 
   let fontSize = Math.round(width * 0.075);
+  const minFontSize = Math.round(width * 0.032);
   const family = '"Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif';
   const measure = (text: string) => ctx.measureText(text).width;
   let lines: string[] = [];
@@ -223,14 +258,24 @@ export function renderTextCard(input: TextCardInput): string | null {
     ctx.font = `700 ${fontSize}px ${family}`;
     lines = wrapLines(measure, input.text.trim(), maxWidth);
     const blockHeight = lines.length * fontSize * 1.45;
-    if (blockHeight <= height - margin * 2.4 || fontSize <= Math.round(width * 0.032)) break;
+    if (blockHeight <= height - margin * 2.4 || fontSize <= minFontSize) break;
     fontSize -= 4;
   }
+
+  // 최소 글자 크기에서도 줄 수가 칸 높이를 넘으면 들어갈 만큼만 보여준다(위 capLinesToFit).
+  ctx.font = `700 ${fontSize}px ${family}`;
+  const lineHeight = fontSize * 1.45;
+  const availableHeight = height - margin * 2.4;
+  const maxLines = Math.max(1, Math.floor(availableHeight / lineHeight));
+  lines = capLinesToFit(lines, measure, maxWidth, maxLines);
+
+  // 렌더 레벨 마지막 방어선(assertLinesFitWidth) — 넘는 줄이 있으면 조용히 내보내지 않고
+  // 바로 던진다.
+  assertLinesFitWidth(lines, measure, maxWidth);
 
   ctx.fillStyle = theme.foreground;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  const lineHeight = fontSize * 1.45;
   const blockWidth = lines.reduce((widest, line) => Math.max(widest, measure(line)), 0);
   const origin = cardTextOrigin(
     input.position ?? "center",
