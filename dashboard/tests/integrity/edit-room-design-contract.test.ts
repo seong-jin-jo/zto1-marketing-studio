@@ -76,8 +76,12 @@ describe("편집실 조작 영역 하한 계약", () => {
     expect(videoEditor).toContain("min-h-control-touch min-w-0 rounded-control border-0");
   });
 
-  it("QA-P1-04-STATE-01 거절: 초안 목록이 안 왔거나 실패했는데 편집 완료 화면처럼 보이지 않는다", () => {
-    expect(studioPage).toContain('state={activeWorkspace ? (histError ? "error" : hist ? "default" : "loading") : "default"}');
+  it("QA-P1-04-STATE-01 정상: 목록이 없어도 복원된 편집 데이터는 유지하고, 편집 데이터까지 없을 때만 로딩·오류를 보인다", () => {
+    expect(studioPage).toContain("const hasEditableContent = resolvedEditLines.some");
+    expect(studioPage).toContain("Boolean(vid?.file || vid?.url || img?.file || img?.url || cardDeck || videoEdit)");
+    expect(studioPage).toContain("const editRoomState = !hist && !hasEditableContent");
+    expect(studioPage).toContain('? (histError ? "error" : "loading")');
+    expect(studioPage).toContain('state={activeWorkspace ? editRoomState : "default"}');
     expect(studioPage).toContain('onRetry={() => { void mutateHist(); }}');
   });
 
