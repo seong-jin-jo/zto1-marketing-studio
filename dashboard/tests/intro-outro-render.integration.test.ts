@@ -88,5 +88,7 @@ describe.skipIf(!chromiumAvailable)("intro-outro 실제 렌더 + concat", () => 
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
-  }, 60000);
+  // Chrome Headless Shell 첫 다운로드(약 92MB)와 번들링이 이 시간 안에 들어간다(CI 실측: 다운로드만
+  // 약 10초). 렌더 자체는 로컬 10~25초.
+  }, 180000);
 });
