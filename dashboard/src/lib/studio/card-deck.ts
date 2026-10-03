@@ -45,20 +45,25 @@ export type CardDeckSpec = {
 
 /**
  * 한 벌을 그리기 위한 장별 입력을 만든다. 순수 함수라 그대로 시험할 수 있다.
- * 빈 줄은 뺀다. 빈 카드는 올릴 수 없는 그림이고, 그것이 섞이면 장 번호가 어긋난다.
+ * 전부 빈 경우만 0장을 반환한다. 중간 빈 장은 그대로 그려야 뒤 장의 위치·순번이
+ * 미리보기와 출력 사이에서 당겨지지 않는다.
  */
 export function cardDeckRenderInputs(spec: CardDeckSpec): TextCardInput[] {
-  const kept = spec.lines
-    .map((text, index) => ({ text, index }))
-    .filter((entry) => entry.text.trim().length > 0);
-  return kept.map((entry, order) => ({
-    text: entry.text,
+  if (!spec.lines.some((text) => text.trim().length > 0)) return [];
+  return spec.lines.map((text, index) => ({
+    text,
     ratio: spec.ratio,
     theme: spec.theme ?? DEFAULT_CARD_THEME,
-    position: placementFrom(spec.positions?.[entry.index]),
-    index: order,
-    total: kept.length,
+    position: placementFrom(spec.positions?.[index]),
+    index,
+    total: spec.lines.length,
   }));
+}
+
+/** 발행 직전 사용자에게 채우도록 안내할 첫 빈 카드 번호. 렌더러의 자리 보존과는 별개다. */
+export function firstEmptyCardNumber(lines: string[]): number | null {
+  const index = lines.findIndex((text) => !text.trim());
+  return index >= 0 ? index + 1 : null;
 }
 
 export type CardDeckDeps = {

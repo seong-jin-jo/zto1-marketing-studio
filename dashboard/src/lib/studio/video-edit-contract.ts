@@ -8,7 +8,8 @@
  *
  * 렌더 반영: 컷 구간, 자막 시간, 후킹·CTA 문구, 댓글 문구는 playback-edit-plan.ts 가
  * ffmpeg 명령으로 만들고, /api/video/subtitle 이 videoEdit 을 받으면 그 명령을 실행한다.
- * 목소리 교체, 표지, 인트로, 아웃트로, 움직이는 제목은 아직 파일에 굽지 않는다.
+ * 적용을 마친 인트로·아웃트로 합성 결과는 별도 렌더 경로에서 미리보기와 발행 파일
+ * 후보로 쓴다. 목소리는 선택만 저장하며, 표지와 움직이는 제목은 아직 파일에 굽지 않는다.
  */
 
 export const VIDEO_EDIT_CONTRACT_VERSION = "1.0" as const;
@@ -68,7 +69,14 @@ export type VoiceSelection = { voiceId: string; voiceName: string } | null;
 export type IntroOutroApplied = {
   introCompId: string | null;
   outroCompId: string | null;
+  /** 인트로·아웃트로만 합친 기준 파일. 자막을 다시 구울 때 항상 이 파일에서 시작한다. */
+  compositeFilename?: string;
+  /** 인트로 길이. 원본 기준 자막·컷 시간을 합성본 시간축으로 옮길 때 쓴다. */
+  introDurationSec?: number;
+  /** 현재 발행할 최종 결과. 자막을 다시 구우면 이 값만 새 결과로 전진한다. */
   resultFilename: string;
+  /** 현재 결과 파일에 이미 반영된 컷. 값은 본문 원본 시간축이며 재생 위치 역변환에 쓴다. */
+  renderedCutRanges?: Array<{ startSec: number; endSec: number }>;
   deliverUrl: string;
   sourceFilename: string;
 } | null;
@@ -80,7 +88,11 @@ export type IntroOutroApplied = {
  */
 export function isIntroOutroStale(applied: IntroOutroApplied, currentSourceFilename: string | null | undefined): boolean {
   if (!applied || !currentSourceFilename) return false;
-  return applied.sourceFilename !== currentSourceFilename;
+  return ![
+    applied.sourceFilename,
+    applied.compositeFilename,
+    applied.resultFilename,
+  ].filter(Boolean).includes(currentSourceFilename);
 }
 
 export type VideoEdit = {
@@ -204,6 +216,22 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
     }
     if (typeof io.sourceFilename !== "string" || !io.sourceFilename) {
       throw new VideoEditValidationError("intro_outro_source_filename", "videoEdit.introOutro.sourceFilename must be a non-empty string when set");
+    }
+    if (io.compositeFilename !== undefined && (typeof io.compositeFilename !== "string" || !io.compositeFilename)) {
+      throw new VideoEditValidationError("intro_outro_composite_filename", "videoEdit.introOutro.compositeFilename must be a non-empty string when set");
+    }
+    if (io.introDurationSec !== undefined && (!isFiniteNumber(io.introDurationSec) || io.introDurationSec < 0)) {
+      throw new VideoEditValidationError("intro_outro_intro_duration", "videoEdit.introOutro.introDurationSec must be a non-negative finite number when set");
+    }
+    if (io.renderedCutRanges !== undefined) {
+      if (!Array.isArray(io.renderedCutRanges)) {
+        throw new VideoEditValidationError("intro_outro_rendered_cuts", "videoEdit.introOutro.renderedCutRanges must be an array when set");
+      }
+      io.renderedCutRanges.forEach((range, index) => {
+        const value = range as Record<string, unknown>;
+        assertNoUnknownKeys(value, new Set(["startSec", "endSec"]), `introOutro.renderedCutRanges[${index}]`);
+        assertValidRange(value.startSec, value.endSec, `introOutro.renderedCutRanges[${index}]`);
+      });
     }
     if (io.introCompId !== null && typeof io.introCompId !== "string") {
       throw new VideoEditValidationError("intro_outro_intro_id", "videoEdit.introOutro.introCompId must be a string or null");

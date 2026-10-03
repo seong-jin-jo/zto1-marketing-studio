@@ -1,0 +1,37 @@
+{
+  "drawtextAvailable": false,
+  "glyphFramesVerified": false,
+  "sourceProbe": {
+    "durationSec": 30,
+    "videoStreams": 1,
+    "audioStreams": 1
+  },
+  "resultProbe": {
+    "durationSec": 27,
+    "videoStreams": 1,
+    "audioStreams": 1
+  },
+  "outputDurationSec": 27,
+  "keptTexts": [
+    "자막 확인",
+    "후킹 확인",
+    "CTA 확인",
+    "실제 사용자 댓글 확인"
+  ],
+  "droppedTexts": [
+    "삭제 구간"
+  ],
+  "cutFrames": [
+    {
+      "name": "before-cut",
+      "sourceSecond": 4.5,
+      "outputSecond": 4.5
+    },
+    {
+      "name": "after-cut",
+      "sourceSecond": 8.5,
+      "outputSecond": 5.5
+    }
+  ],
+  "frameObservations": []
+}

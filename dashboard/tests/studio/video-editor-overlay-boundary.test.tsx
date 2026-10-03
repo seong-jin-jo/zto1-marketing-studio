@@ -43,4 +43,58 @@ describe("VideoEditor 오버레이 경계", () => {
     rerender(<VideoEditor videoEdit={edit} onVideoEditChange={handleChange} previewVideoUrl="/api/media/test-video-token" />);
     expect(document.querySelector("[data-video-editor-error]")).toBeNull();
   });
+
+  it("PREVIEW-OUTSIDE-BODY 정상: 인트로·아웃트로를 재생할 때 본문 자막·훅·CTA·댓글을 숨긴다", () => {
+    const edit: VideoEdit = {
+      ...emptyVideoEdit(),
+      overlays: [
+        { id: "hook-1", order: 0, kind: "hook", text: "본문 훅", startSec: 0, endSec: 3 },
+        { id: "cta-1", order: 1, kind: "cta", text: "본문 CTA", startSec: 0, endSec: 3 },
+      ],
+      comments: [
+        { id: "comment-1", order: 0, author: "실사용자", text: "본문 댓글", source: "collected", startSec: 0, endSec: 3 },
+      ],
+      subtitles: [
+        { id: "subtitle-1", order: 0, text: "본문 첫 자막", startSec: 0, endSec: 3, cut: false },
+      ],
+      introOutro: {
+        introCompId: "intro-logo-reveal",
+        outroCompId: "outro-logo-reveal",
+        resultFilename: "video-concat-boundary.mp4",
+        deliverUrl: "/api/media/signed-boundary",
+        sourceFilename: "body.mp4",
+      },
+    };
+    render(
+      <VideoEditor
+        videoEdit={edit}
+        onVideoEditChange={() => {}}
+        previewVideoUrl="/api/media/body"
+        sourceFilename="body.mp4"
+        lines={["본문 첫 자막"]}
+      />,
+    );
+
+    const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 6.5, configurable: true });
+    fireEvent.loadedMetadata(video);
+
+    Object.defineProperty(video, "currentTime", { value: 0.5, configurable: true, writable: true });
+    fireEvent.timeUpdate(video);
+    expect(document.querySelector("[data-video-overlay-active]")).toBeNull();
+    expect(document.querySelector("[data-video-comment-active]")).toBeNull();
+    expect(document.querySelector("[data-video-subtitle-active]")).toBeNull();
+
+    video.currentTime = 2.5;
+    fireEvent.timeUpdate(video);
+    expect(document.querySelectorAll("[data-video-overlay-active]")).toHaveLength(2);
+    expect(document.querySelector("[data-video-comment-active]")).not.toBeNull();
+    expect(document.querySelector("[data-video-subtitle-active]")).not.toBeNull();
+
+    video.currentTime = 5.5;
+    fireEvent.timeUpdate(video);
+    expect(document.querySelector("[data-video-overlay-active]")).toBeNull();
+    expect(document.querySelector("[data-video-comment-active]")).toBeNull();
+    expect(document.querySelector("[data-video-subtitle-active]")).toBeNull();
+  });
 });

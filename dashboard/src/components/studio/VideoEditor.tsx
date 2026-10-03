@@ -16,8 +16,9 @@
  *
  * 렌더 반영(ADR-007): 발행실로 이동할 때 videoEdit 을 /api/video/subtitle 에 보낸다.
  * 컷으로 뺀 구간, 타임라인에서 고친 자막 시간, 후킹·CTA 문구, 댓글 문구는 그때
- * 나가는 mp4 에 굽힌다. 목소리 교체, 표지, 인트로, 아웃트로, 움직이는 제목은
- * 아직 파일에 들어가지 않는다. 화면 문구도 이 범위만 말한다.
+ * 나가는 mp4 에 굽힌다. 적용을 마친 인트로·아웃트로 합성 결과는 미리보기와 발행
+ * 파일 후보로 쓴다. 목소리는 선택만 저장하며, 표지와 움직이는 제목은 아직 파일에
+ * 들어가지 않는다. 화면 문구도 이 범위만 말한다.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
@@ -42,6 +43,12 @@ import {
   updateComment,
   updateOverlay,
 } from "@/lib/studio/video-edit-contract";
+import {
+  bodyDurationFromPlaybackDuration,
+  bodyTimeFromPlaybackTime,
+  isPlaybackTimeWithinBody,
+  playbackTimeFromBodyTime,
+} from "@/lib/studio/video-edit-time-axis";
 
 /** 1초를 몇 px로 그리는지. design-spec-editroom-v70.md §4.4 "1초 ≈ 12px". */
 const PX_PER_SEC = 12;
@@ -110,6 +117,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [playhead, setPlayhead] = useState(0);
+  const [playbackTime, setPlaybackTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   // M3(교차 리뷰): 플레이어 미리보기 자막도 대본·타임라인과 같은 재구성 결과를 봐야
@@ -145,11 +153,6 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
     }
   }
 
-  function seek(sec: number) {
-    if (videoRef.current) videoRef.current.currentTime = sec;
-    setPlayhead(sec);
-  }
-
   function togglePlay() {
     const el = videoRef.current;
     if (!el) return;
@@ -162,6 +165,23 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
       setPlaying(false);
     }
   }
+
+  // 인트로/아웃트로가 적용돼 있으면 편집실 미리보기도 합성 결과를 보여준다(2026-10-02
+  // 회장 반려: 발행은 됐는데 미리보기가 원본을 계속 보여주면 "적용 안 된 것처럼" 보인다).
+  const introOutroStale = isIntroOutroStale(videoEdit.introOutro, sourceFilename);
+  const effectivePreviewUrl = videoEdit.introOutro && !introOutroStale
+    ? videoEdit.introOutro.deliverUrl
+    : previewVideoUrl;
+  const introOutroSourceFilename = videoEdit.introOutro && !introOutroStale
+    ? videoEdit.introOutro.sourceFilename
+    : sourceFilename;
+  const playbackIntroOutro = introOutroStale ? null : videoEdit.introOutro;
+  const bodyLayersVisible = isPlaybackTimeWithinBody(playbackTime, duration, playbackIntroOutro);
+
+  useEffect(() => {
+    setPlaybackTime(0);
+    setPlayhead(0);
+  }, [effectivePreviewUrl]);
 
   if (!previewVideoUrl) {
     // M6(교차 리뷰 MAJOR, ADR-007): 영상이 없어도 대본은 편집할 수 있어야 하고, 빈
@@ -179,43 +199,54 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
     );
   }
 
-  // 인트로/아웃트로가 적용돼 있으면 편집실 미리보기도 합성 결과를 보여준다(2026-10-02
-  // 회장 반려: 발행은 됐는데 미리보기가 원본을 계속 보여주면 "적용 안 된 것처럼" 보인다).
-  //
   // 독립 리뷰 M-3: `/api/higgsfield/asset/...`는 proxy.ts TENANT_AWARE_PATHS에 걸려
   // Bearer 토큰을 요구하는데 video 태그의 src는 Authorization 헤더를 못 보낸다(401). job GET이
   // 이미 서명해 돌려준 `/api/media/<token>` 배달 URL(deliverUrl, Bearer 불필요)을 그대로
   // 쓴다.
   // 독립 리뷰 M-4: 합성 당시 원본과 지금 원본(sourceFilename)이 다르면(생성실 재생성)
   // 낡은 합성이다 — 미리보기도 되돌리고 재적용을 안내한다.
-  const introOutroStale = isIntroOutroStale(videoEdit.introOutro, sourceFilename);
-  const effectivePreviewUrl = videoEdit.introOutro && !introOutroStale
-    ? videoEdit.introOutro.deliverUrl
-    : previewVideoUrl;
+  const playbackPlayhead = playbackTime;
+
+  function seekBodyTime(sec: number) {
+    const targetPlaybackTime = playbackTimeFromBodyTime(sec, duration ?? sec, playbackIntroOutro);
+    if (videoRef.current) {
+      videoRef.current.currentTime = targetPlaybackTime;
+    }
+    setPlaybackTime(targetPlaybackTime);
+    setPlayhead(sec);
+  }
 
   return (
     <div className="space-y-stack" data-video-editor>
       {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-video-editor-error>{error}</p> : null}
-      {/* M8(교차 리뷰 MAJOR): 390px 폭에서는 타임라인 칸(108px)이 낮아 이 안내가 블록에
-          가려졌다. 편집기 맨 위 머리줄로 올린다 — 타임라인 안에는 더 안 둔다. */}
+      {/* M8(교차 리뷰 MAJOR): 타임라인 안내는 편집기 맨 위 머리줄에 한 번만 둔다. */}
       <p className="text-caption text-subtle" data-video-timeline-hint>← 옆으로 밀어 더 보기 · 블록을 끌어서 구간을 바꿉니다</p>
-      <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_10.5rem] max-[64rem]:[grid-template-rows:minmax(0,1fr)_9.375rem] max-[26rem]:[grid-template-rows:auto_6.75rem]">
+      <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_10.5rem] max-[64rem]:[grid-template-rows:minmax(0,1fr)_9.375rem] max-[26rem]:[grid-template-rows:auto_9.75rem]">
         <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
-            src={effectivePreviewUrl}
+            src={effectivePreviewUrl ?? previewVideoUrl}
             tenantId={tenantId}
+            onOpenCreate={onOpenCreate}
             videoRef={videoRef}
             overlays={videoEdit.overlays}
             comments={videoEdit.comments}
             activeSubtitle={activeSubtitle(displaySubtitles, playhead)}
             playhead={playhead}
+            playbackPlayhead={playbackPlayhead}
+            bodyLayersVisible={bodyLayersVisible}
             duration={duration}
             playing={playing}
             onTogglePlay={togglePlay}
             voiceName={videoEdit.voice?.voiceName ?? null}
-            onLoadedMetadata={(d) => setDuration(d)}
-            onTimeUpdate={(t) => setPlayhead(t)}
-            onSeek={seek}
+            onLoadedMetadata={(d) => {
+              setDuration(bodyDurationFromPlaybackDuration(d, playbackIntroOutro));
+              setPlaybackTime(videoRef.current?.currentTime ?? 0);
+            }}
+            onTimeUpdate={(t) => {
+              setPlaybackTime(t);
+              setPlayhead(bodyTimeFromPlaybackTime(t, duration ?? t, playbackIntroOutro));
+            }}
+            onSeek={seekBodyTime}
           />
           <div className="min-w-0 space-y-stack" data-video-script-column>
             <SubtitleScriptEditor
@@ -224,7 +255,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
               edit={videoEdit}
               playhead={playhead}
               duration={duration}
-              onSeek={seek}
+              onSeek={seekBodyTime}
               run={run}
               syncing={syncing}
             />
@@ -238,17 +269,17 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
               </p>
             ) : null}
             <IntroOutroPanel
-              sourceFilename={sourceFilename}
+              sourceFilename={introOutroSourceFilename}
               tenantId={tenantId}
               applied={videoEdit.introOutro}
               onApplied={(applied) => run((edit) => setIntroOutroApplied(edit, applied))}
             />
           </div>
         </div>
-        <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seek} run={run} syncing={syncing} />
+        <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seekBodyTime} run={run} syncing={syncing} />
       </div>
       <p className="text-caption text-subtle" data-render-status-note>
-        발행실로 이동할 때 자막 문구, 타임라인에서 고친 자막 시간, 컷으로 뺀 구간, 후킹·CTA·댓글 문구가 영상 파일에 굽힙니다. 목소리 교체와 표지, 인트로, 아웃트로, 움직이는 제목은 아직 파일에 들어가지 않습니다.
+        발행실로 이동할 때 자막 문구, 타임라인에서 고친 자막 시간, 컷으로 뺀 구간, 후킹·CTA·댓글 문구가 영상 파일에 굽힙니다. 적용을 마친 인트로·아웃트로 합성 결과는 미리보기와 발행 파일에 쓰입니다. 목소리는 선택만 저장되며, 표지와 움직이는 제목은 아직 파일에 들어가지 않습니다.
       </p>
     </div>
   );
@@ -265,15 +296,18 @@ function activeSubtitle(subtitles: SubtitleLine[], playhead: number): { text: st
 }
 
 function VideoPlayback({
-  src, tenantId, videoRef, overlays, comments, activeSubtitle, playhead, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
+  src, tenantId, onOpenCreate, videoRef, overlays, comments, activeSubtitle, playhead, playbackPlayhead, bodyLayersVisible, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
 }: {
   src: string;
   tenantId?: string;
+  onOpenCreate?: () => void;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   overlays: VideoOverlay[];
   comments: VideoComment[];
   activeSubtitle: { text: string; cut: boolean } | null;
   playhead: number;
+  playbackPlayhead: number;
+  bodyLayersVisible: boolean;
   duration: number | null;
   playing: boolean;
   onTogglePlay: () => void;
@@ -292,6 +326,10 @@ function VideoPlayback({
   const [resolvedSrc, setResolvedSrc] = useState(() => (isDeliveryUrlExpired(src) ? "" : src));
   const [renewing, setRenewing] = useState(() => isDeliveryUrlExpired(src));
   const resignAttempted = useRef("");
+  const resignInFlight = useRef<{ key: string; promise: Promise<string> } | null>(null);
+  const mountedRef = useRef(false);
+  const latestRequestKeyRef = useRef(`${tenantId || ""}|${src}`);
+  latestRequestKeyRef.current = `${tenantId || ""}|${src}`;
   /*
     2026-10-02 독립 리뷰어 BLOCK-M-D: 이전 판은 handleError의 재시도 가드가
     `resignAttempted.current === attemptKey && !resolvedSrc` 였다. 재서명이 한 번
@@ -304,18 +342,33 @@ function VideoPlayback({
     DeliveredMedia도 "만료라서 미리 썼다"와 "멀쩡해 보였는데 걸어보니 터졌다"를
     합쳐 총 1회로 센다.
   */
-  const activeOverlays = overlays.filter((o) => playhead >= o.startSec && playhead <= o.endSec);
-  const activeComment = comments.find((c) => playhead >= c.startSec && playhead <= c.endSec) ?? null;
+  const activeOverlays = bodyLayersVisible
+    ? overlays.filter((o) => playhead >= o.startSec && playhead <= o.endSec)
+    : [];
+  const activeComment = bodyLayersVisible
+    ? comments.find((c) => playhead >= c.startSec && playhead <= c.endSec) ?? null
+    : null;
   const hook = activeOverlays.find((o) => o.kind === "hook");
   const cta = activeOverlays.find((o) => o.kind === "cta");
 
   // 재서명으로 src가 바뀌면 video 엘리먼트가 다시 로드되며 브라우저가 재생 위치를
   // 0으로 되돌리고 멈춘다. 사용자가 보던 자리·재생 상태를 되살린다(독립 리뷰어 MINOR).
   const restoreOnLoad = useRef(false);
-  const playheadRef = useRef(playhead);
-  playheadRef.current = playhead;
+  const playbackPlayheadRef = useRef(playbackPlayhead);
+  playbackPlayheadRef.current = playbackPlayhead;
   const playingRef = useRef(playing);
   playingRef.current = playing;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const canApplyResignResult = (attemptKey: string) => (
+    mountedRef.current && latestRequestKeyRef.current === attemptKey
+  );
 
   useEffect(() => {
     const attemptKey = `${tenantId || ""}|${src}`;
@@ -326,13 +379,21 @@ function VideoPlayback({
       setRenewing(false);
       return;
     }
-    if (resignAttempted.current === attemptKey) return;
-    resignAttempted.current = attemptKey;
+    let promise: Promise<string>;
+    if (resignAttempted.current === attemptKey) {
+      if (resignInFlight.current?.key !== attemptKey) return;
+      promise = resignInFlight.current.promise;
+    } else {
+      resignAttempted.current = attemptKey;
+      promise = resignDeliveryUrl(src, tenantId);
+      resignInFlight.current = { key: attemptKey, promise };
+    }
     let canceled = false;
     setResolvedSrc("");
     setRenewing(true);
-    void resignDeliveryUrl(src, tenantId).then((next) => {
-      if (canceled) return;
+    void promise.then((next) => {
+      if (canceled || !canApplyResignResult(attemptKey)) return;
+      if (resignInFlight.current?.promise === promise) resignInFlight.current = null;
       setRenewing(false);
       if (next) { restoreOnLoad.current = true; setResolvedSrc(next); }
       else setLoadFailed(true);
@@ -348,8 +409,29 @@ function VideoPlayback({
     }
     resignAttempted.current = attemptKey;
     const next = await resignDeliveryUrl(src, tenantId);
+    if (!canApplyResignResult(attemptKey)) return;
     if (next) { restoreOnLoad.current = true; setResolvedSrc(next); }
     else setLoadFailed(true);
+  }
+
+  async function retryResign() {
+    const attemptKey = `${tenantId || ""}|${src}`;
+    resignAttempted.current = attemptKey;
+    setLoadFailed(false);
+    setRenewing(true);
+    setResolvedSrc("");
+    const promise = resignDeliveryUrl(src, tenantId);
+    resignInFlight.current = { key: attemptKey, promise };
+    const next = await promise;
+    if (!canApplyResignResult(attemptKey)) return;
+    if (resignInFlight.current?.promise === promise) resignInFlight.current = null;
+    setRenewing(false);
+    if (next) {
+      restoreOnLoad.current = true;
+      setResolvedSrc(next);
+      return;
+    }
+    setLoadFailed(true);
   }
 
   function handleLoadedMetadata(duration: number) {
@@ -358,7 +440,7 @@ function VideoPlayback({
       restoreOnLoad.current = false;
       const el = videoRef.current;
       if (el) {
-        el.currentTime = playheadRef.current;
+        el.currentTime = playbackPlayheadRef.current;
         if (playingRef.current) {
           const p = el.play();
           if (p && typeof p.catch === "function") p.catch(() => {});
@@ -368,10 +450,17 @@ function VideoPlayback({
   }
 
   return (
-    <div className="min-w-0 space-y-stack-tight max-[26rem]:grid max-[26rem]:h-[11.25rem] max-[26rem]:grid-rows-[minmax(0,1fr)_auto_auto] max-[26rem]:gap-stack-tight max-[26rem]:space-y-none" data-video-playback>
-      <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:min-h-0 max-[26rem]:aspect-auto" data-video-screen>
+    <div className="min-w-0 space-y-stack-tight max-[26rem]:grid max-[26rem]:grid-rows-[auto_auto_auto] max-[26rem]:gap-stack-tight max-[26rem]:space-y-none" data-video-playback>
+      <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:h-40 max-[26rem]:min-h-40 max-[26rem]:aspect-auto" data-video-screen>
         {loadFailed ? (
-          <p className="p-pad-inset text-caption text-danger" data-video-load-failed>영상을 불러오지 못했습니다. 생성실에서 다시 만들어 주세요.</p>
+          <div className="space-y-stack-tight p-pad-inset" role="alert" data-video-load-failed>
+            <p className="text-caption text-danger">영상 주소가 만료됐거나 원본 파일을 찾지 못해 재생하지 못했습니다.</p>
+            <p className="text-caption text-muted">편집한 대본과 설정은 그대로 남아 있습니다.</p>
+            <div className="flex flex-wrap gap-stack-tight">
+              <Button size="sm" onClick={() => void retryResign()}>영상 주소 다시 받기</Button>
+              {onOpenCreate ? <Button size="sm" variant="secondary" onClick={onOpenCreate}>생성실에서 영상 확인</Button> : null}
+            </div>
+          </div>
         ) : renewing ? (
           <p className="p-pad-inset text-caption text-subtle" data-video-renewing>영상 주소를 다시 받는 중입니다</p>
         ) : (
@@ -406,7 +495,7 @@ function VideoPlayback({
             <span className="truncate">{activeComment.author}: {activeComment.text}</span>
           </div>
         ) : null}
-        {activeSubtitle ? (
+        {bodyLayersVisible && activeSubtitle ? (
           <p
             data-video-subtitle-active
             data-video-subtitle-active-cut={activeSubtitle.cut}
@@ -421,7 +510,7 @@ function VideoPlayback({
           variant="primary"
           aria-label={playing ? "일시정지" : "재생"}
           onClick={onTogglePlay}
-          className="!min-h-0 h-7 w-7 min-w-0 shrink-0 rounded-pill p-none"
+          className="shrink-0 rounded-pill p-none"
           data-video-play-toggle
         >
           {playing ? "❚❚" : "▶"}
@@ -435,7 +524,7 @@ function VideoPlayback({
             step={0.1}
             value={playhead}
             onChange={(e) => onSeek(Number.parseFloat(e.target.value))}
-            className="h-1 min-w-0 flex-1"
+            className="min-h-control-touch min-w-0 flex-1"
             data-video-scrubber
           />
         ) : <span className="flex-1 text-caption text-subtle">길이 확인 중</span>}
@@ -596,7 +685,7 @@ function SubtitleScriptEditor({
                 <Button
                   size="sm"
                   variant="secondary"
-                  className="!min-h-0 min-w-0 border-0 bg-transparent p-none font-mono text-caption text-subtle"
+                  className="min-w-0 border-0 bg-transparent p-none font-mono text-caption text-subtle"
                   aria-label={`${formatClock(line.startSec)}로 이동`}
                   onClick={() => onSeek(line.startSec)}
                   data-video-subtitle-seek
@@ -617,7 +706,7 @@ function SubtitleScriptEditor({
                       commitCut(index);
                     }
                   }}
-                  className={`min-w-0 rounded-control border-0 bg-transparent px-micro text-body text-text outline-none [word-break:keep-all] ${line.cut ? "line-through text-subtle" : ""}`}
+                  className={`min-h-control-touch min-w-0 rounded-control border-0 bg-transparent px-micro text-body text-text outline-none [word-break:keep-all] ${line.cut ? "line-through text-subtle" : ""}`}
                   data-video-subtitle-text
                 />
                 <Button size="sm" variant="secondary" disabled={syncing} onClick={() => commitCut(index)} data-video-subtitle-cut-toggle>
@@ -915,7 +1004,7 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
                 onClick={() => onSeek(s.startSec)}
                 data-video-timeline-block="subtitle"
                 data-video-timeline-block-id={s.id}
-                className={`!min-h-0 absolute top-0 h-7 min-w-0 justify-start rounded-control px-micro text-left text-caption ${s.cut ? "bg-danger/45 line-through text-subtle" : "bg-surface text-text"} border border-border`}
+                className={`absolute top-0 min-h-control-touch min-w-0 justify-start rounded-control px-micro text-left text-caption ${s.cut ? "bg-danger/45 line-through text-subtle" : "bg-surface text-text"} border border-border`}
                 style={{ left: `${s.startSec * PX_PER_SEC}px`, width: `${Math.max(4, (s.endSec - s.startSec) * PX_PER_SEC)}px` }}
               >
                 <span className="block truncate">{s.text || "(빈 자막)"}</span>
@@ -980,9 +1069,9 @@ function TimelineLane({ label, labelWidth, children }: { label: string; labelWid
   // 간격을 두지 않는다 — 이 라벨 폭이 곧 위 눈금 오버레이의 오프셋 상수와 같아야
   // 블록이 눈금과 같은 원점에서 시작한다(M7).
   return (
-    <div className="relative flex h-9 items-center border-t border-border/40 pt-micro first:border-t-0" data-video-timeline-lane={label}>
+    <div className="relative flex min-h-control-touch items-center border-t border-border/40 pt-micro first:border-t-0" data-video-timeline-lane={label}>
       <span className="sticky left-0 z-[1] shrink-0 bg-surface-2 text-caption uppercase text-subtle" style={{ width: `${labelWidth}px` }} data-video-timeline-lane-label>{label}</span>
-      <div className="relative h-7 min-w-0 flex-1">{children}</div>
+      <div className="relative min-h-control-touch min-w-0 flex-1">{children}</div>
     </div>
   );
 }

@@ -133,6 +133,16 @@ function videoWork() {
   };
 }
 
+function textWork() {
+  return {
+    ...work("text"),
+    img: null,
+    vid: null,
+    editKind: "text",
+    editFormat: { kind: "text" },
+  };
+}
+
 function overlaps(a, b) {
   return Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5
     && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5;
@@ -149,6 +159,23 @@ async function assertNoOverflow(page, scopeSelector, label) {
     throw new Error(`${label} 좌우 넘침: ${JSON.stringify(result)}`);
   }
   return result;
+}
+
+async function assertMinimumTouchTargets(locator, label) {
+  const tooSmall = await locator.locator('button, input, textarea, select, a[href], [role="button"]').evaluateAll((nodes) => nodes.flatMap((node) => {
+    const style = getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    if (style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0) return [];
+    if (rect.width >= 43.5 && rect.height >= 43.5) return [];
+    return [{
+      tag: node.tagName.toLowerCase(),
+      label: node.getAttribute("aria-label") || node.textContent?.trim().replace(/\s+/g, " ").slice(0, 50) || "",
+      width: Math.round(rect.width * 10) / 10,
+      height: Math.round(rect.height * 10) / 10,
+    }];
+  }));
+  if (tooSmall.length) throw new Error(`${label} 44px 미만 누름 영역: ${JSON.stringify(tooSmall.slice(0, 12))}`);
+  return { measured: await locator.locator('button, input, textarea, select, a[href], [role="button"]').count(), below44: 0 };
 }
 
 async function assertDirectChildrenDoNotOverlap(locator, label) {
@@ -413,6 +440,8 @@ const observations = [];
 const draftSaves = [];
 let imageUploadCount = 0;
 let currentDraft = null;
+let draftListDelayMs = 0;
+let failNextDraftSave = false;
 page.on("pageerror", (error) => consoleErrors.push(error.message));
 page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
 
@@ -429,9 +458,14 @@ await page.route("**/api/**", async (route) => {
   if (pathname === "/api/elevenlabs-voices") return json(route, { voices: [] });
   if (pathname === "/api/studio/drafts") {
     if (request.method() === "POST") {
+      if (failNextDraftSave) {
+        failNextDraftSave = false;
+        return json(route, { error: "자동 저장 서버가 응답하지 않았습니다." }, 503);
+      }
       draftSaves.push(request.postDataJSON());
       return json(route, { ok: true, id: "screen-draft", bodyRevision: draftSaves.length });
     }
+    if (draftListDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, draftListDelayMs));
     return json(route, {
       drafts: currentDraft ? [currentDraft] : [],
       currentWork: currentDraft ? { draftId: currentDraft.id, stage: "edit", stageLabel: "편집실", idea: currentDraft.idea } : null,
@@ -778,23 +812,119 @@ async function captureVideoActual(viewport) {
     const screen = root.querySelector("[data-video-screen]").getBoundingClientRect();
     const script = root.querySelector("[data-video-script-column]").getBoundingClientRect();
     const timeline = root.querySelector("[data-video-timeline]").getBoundingClientRect();
+    const controls = root.querySelector("[data-video-controls]").getBoundingClientRect();
+    const workbench = root.querySelector("[data-video-workbench]").getBoundingClientRect();
+    const nextContent = root.querySelector("[data-video-workbench]").nextElementSibling?.getBoundingClientRect();
+    const laneBottoms = [...root.querySelectorAll("[data-video-timeline-lane]")]
+      .map((lane) => lane.getBoundingClientRect().bottom);
     return {
       playback: { top: playback.top, bottom: playback.bottom, height: playback.height },
       screen: { top: screen.top, bottom: screen.bottom, height: screen.height },
+      controls: { top: controls.top, bottom: controls.bottom, height: controls.height },
       script: { top: script.top, bottom: script.bottom, height: script.height },
       timeline: { top: timeline.top, bottom: timeline.bottom, height: timeline.height },
+      workbench: { top: workbench.top, bottom: workbench.bottom, height: workbench.height },
+      nextContentTop: nextContent?.top ?? null,
+      lastLaneBottom: laneBottoms.length ? Math.max(...laneBottoms) : null,
     };
   });
   if (viewport.width === 390) {
-    if (Math.abs(geometry.playback.height - 180) > 1) throw new Error(`390 영상 플레이어 전체가 180px이 아닙니다: ${JSON.stringify(geometry)}`);
+    if (geometry.screen.height < 159) throw new Error(`390 영상 화면이 160px보다 작습니다: ${JSON.stringify(geometry)}`);
+    if (geometry.controls.height < 44) throw new Error(`390 재생 조작 줄이 44px보다 작습니다: ${JSON.stringify(geometry)}`);
     if (geometry.script.top >= viewport.height) throw new Error(`390 첫 화면에 대본이 보이지 않습니다: ${JSON.stringify(geometry)}`);
-    if (Math.abs(geometry.timeline.height - 108) > 1) throw new Error(`390 영상 타임라인이 108px이 아닙니다: ${JSON.stringify(geometry)}`);
+    if (geometry.timeline.height < 155) throw new Error(`390 영상 타임라인 칸이 156px보다 작습니다: ${JSON.stringify(geometry)}`);
+    if (geometry.lastLaneBottom !== null && geometry.lastLaneBottom > geometry.timeline.bottom + 1) {
+      throw new Error(`390 타임라인 레인이 칸 아래로 넘습니다: ${JSON.stringify(geometry)}`);
+    }
+    if (geometry.nextContentTop !== null && geometry.timeline.bottom > geometry.nextContentTop + 1) {
+      throw new Error(`390 타임라인이 다음 콘텐츠를 침범합니다: ${JSON.stringify(geometry)}`);
+    }
   }
+  const video = room.locator("[data-video-el]");
+  await video.waitFor();
+  await page.waitForFunction(() => {
+    const element = document.querySelector("[data-video-el]");
+    return element instanceof HTMLVideoElement && element.readyState >= 1 && Number.isFinite(element.duration);
+  });
+  const beforePlay = await video.evaluate((element) => element.currentTime);
+  await room.locator("[data-video-play-toggle]").click();
+  await page.waitForFunction((before) => {
+    const element = document.querySelector("[data-video-el]");
+    return element instanceof HTMLVideoElement && element.currentTime > before + 0.15;
+  }, beforePlay);
+  const afterPlay = await video.evaluate((element) => element.currentTime);
+  await room.locator("[data-video-play-toggle]").click();
+  const touchTargets = await assertMinimumTouchTargets(room.locator("[data-video-playback]"), `영상 플레이어 ${viewport.width}`);
   const overflow = await assertNoOverflow(page, '[data-room="edit"]', `실제 영상 ${viewport.width}`);
   const screenshot = path.join(outputDir, `edit-video-actual-${viewport.width}x${viewport.height}.png`);
   await page.screenshot({ path: screenshot });
-  observations.push({ screen: "edit-video-actual", ...viewport, geometry, overflow });
+  if (viewport.width === 390) {
+    const mobileSnapshot = (await page.content())
+      .replace("<head>", '<head><base href="/">')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+    fs.writeFileSync(path.join(outputDir, "mobile-editroom-snapshot.html"), mobileSnapshot);
+  }
+  observations.push({ screen: "edit-video-actual", ...viewport, geometry, overflow, playback: { before: beforePlay, after: afterPlay, delta: afterPlay - beforePlay }, touchTargets });
   return screenshot;
+}
+
+async function captureText(viewport) {
+  await page.setViewportSize(viewport);
+  await setWork(textWork());
+  await page.goto(`${baseUrl}/studio?room=edit&kind=text`, { waitUntil: "networkidle", timeout: 60_000 });
+  const room = page.locator('[data-room="edit"][data-edit-kind="text"]');
+  const editor = room.locator('[data-text-document-editor="true"]');
+  await editor.waitFor();
+  await room.locator('[data-text-document-sheet]').waitFor();
+  const overflow = await assertNoOverflow(page, '[data-room="edit"]', `글 편집 ${viewport.width}`);
+  const screenshot = path.join(outputDir, `edit-text-${viewport.width}x${viewport.height}.png`);
+  await page.screenshot({ path: screenshot });
+  observations.push({ screen: "edit-text", ...viewport, overflow, editorVisible: true, screenshot });
+}
+
+async function captureLoading(viewport) {
+  await page.setViewportSize(viewport);
+  // 목록이 늦더라도 이미 복원할 편집 내용이 있으면 작업대를 유지하는 것이 M2 계약이다.
+  // 로딩 화면은 로컬 작업과 서버 목록이 모두 아직 없는 첫 진입에서만 검증한다.
+  await setWork({});
+  draftListDelayMs = 15_000;
+  try {
+    await page.goto(`${baseUrl}/studio?room=edit&kind=card`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    const loading = page.locator('[aria-label="편집 내용 불러오는 중"]');
+    await loading.waitFor({ timeout: 8_000 });
+    const overflow = await assertNoOverflow(page, '[data-room="edit"]', `편집 로딩 ${viewport.width}`);
+    const screenshot = path.join(outputDir, `edit-loading-${viewport.width}x${viewport.height}.png`);
+    await page.screenshot({ path: screenshot });
+    observations.push({ screen: "edit-loading", ...viewport, overflow, ariaBusy: await loading.getAttribute("aria-busy"), screenshot });
+  } finally {
+    draftListDelayMs = 0;
+  }
+}
+
+async function captureSaveError(viewport) {
+  await page.setViewportSize(viewport);
+  await setWork(videoWork());
+  await page.goto(`${baseUrl}/studio?room=edit&kind=video&draft_id=screen-video-draft`, { waitUntil: "networkidle", timeout: 60_000 });
+  const room = page.locator('[data-room="edit"][data-edit-kind="video"]');
+  const subtitle = room.locator('[data-video-subtitle-text]').first();
+  await subtitle.waitFor();
+  const consoleErrorCountBefore = consoleErrors.length;
+  failNextDraftSave = true;
+  await subtitle.fill("저장 오류 화면을 검증하는 자막입니다");
+  const alert = room.locator('[data-blocked-domain="video"]');
+  await alert.waitFor({ timeout: 5_000 });
+  const alertText = (await alert.innerText()).trim();
+  if (!alertText.includes("자동 저장 서버가 응답하지 않았습니다")) {
+    throw new Error(`저장 오류가 사람 말로 보이지 않습니다: ${alertText}`);
+  }
+  const overflow = await assertNoOverflow(page, '[data-room="edit"]', `영상 저장 오류 ${viewport.width}`);
+  const screenshot = path.join(outputDir, `edit-save-error-${viewport.width}x${viewport.height}.png`);
+  await page.screenshot({ path: screenshot });
+  const expectedNetworkErrors = consoleErrors.splice(consoleErrorCountBefore);
+  if (expectedNetworkErrors.length !== 1 || !expectedNetworkErrors[0].includes("503")) {
+    throw new Error(`저장 오류 화면의 예상 네트워크 오류 외 콘솔 오류가 있습니다: ${JSON.stringify(expectedNetworkErrors)}`);
+  }
+  observations.push({ screen: "edit-save-error", ...viewport, overflow, alertText, expectedNetworkErrors, screenshot });
 }
 
 async function captureBubbleDeck(viewport) {
@@ -940,8 +1070,11 @@ try {
       await captureUnrecoverableTextCard(viewport, 2);
     }
     const bubbleShots = await captureBubbleDeck(viewport);
+    await captureText(viewport);
     await captureVideoEmpty(viewport);
-    if (viewport.width === 390) await captureVideoActual(viewport);
+    await captureVideoActual(viewport);
+    if (viewport.width === 1440) await captureSaveError(viewport);
+    if (viewport.width === 1024) await captureLoading(viewport);
     await capturePublish(viewport);
     // 일반 카드의 승인 기준은 화면 crop이 아니라 브라우저 fixture에 주입한 생성 이미지다.
     // 화면 clean-frame은 말풍선 덱을 담고 있으므로 일반 카드와 비교하면 오배선 회귀를 다시 허용한다.

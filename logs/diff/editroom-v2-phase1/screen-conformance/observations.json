@@ -1,0 +1,1159 @@
+{
+  "observations": [
+    {
+      "screen": "edit-card",
+      "width": 1440,
+      "height": 900,
+      "geometry": {
+        "strip": {
+          "left": 281,
+          "right": 393,
+          "top": 454,
+          "bottom": 1298,
+          "width": 112
+        },
+        "thumbnail": {
+          "left": 281,
+          "right": 393,
+          "top": 454,
+          "bottom": 594,
+          "width": 112
+        },
+        "stage": {
+          "left": 472,
+          "right": 992,
+          "top": 523,
+          "bottom": 1173,
+          "width": 520,
+          "height": 650,
+          "ratio": "4 / 5",
+          "background": "rgb(255, 255, 255)"
+        },
+        "faceCopy": {
+          "left": 537,
+          "right": 927,
+          "top": 821.5,
+          "bottom": 919.5,
+          "width": 390
+        },
+        "assistant": {
+          "width": 304,
+          "height": 577
+        },
+        "chatLog": {
+          "width": 278,
+          "height": 288
+        }
+      },
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "inputCount": 3
+    },
+    {
+      "screen": "edit-text-card",
+      "width": 1440,
+      "height": 900,
+      "duplicateControls": 0,
+      "placeholderOverlays": 0,
+      "inputCount": 3,
+      "editedLine": "즉시 반영 1440",
+      "textPreviewChanged": true,
+      "positionPreviewChanged": true,
+      "previewIsBrowserRenderedDataUrl": true,
+      "geometry": {
+        "stage": {
+          "left": 472,
+          "right": 992,
+          "top": -16,
+          "bottom": 634,
+          "width": 520,
+          "height": 650
+        },
+        "media": {
+          "left": 472,
+          "right": 992,
+          "top": -16,
+          "bottom": 634,
+          "width": 520,
+          "height": 650
+        }
+      },
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      }
+    },
+    {
+      "screen": "edit-text-card-locked-1",
+      "width": 1440,
+      "height": 900,
+      "cardCount": 1,
+      "thumbnailCount": 1,
+      "originalImageUrls": [
+        "/qa/alignment-card-1.jpg"
+      ],
+      "savedImageUrls": [
+        "/qa/alignment-card-1.jpg"
+      ],
+      "imageUploads": 0,
+      "lockGuidanceVisible": true,
+      "controlsDisabled": true,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance/edit-text-card-locked-1-1440x900.png"
+    },
+    {
+      "screen": "edit-text-card-locked-2",
+      "width": 1440,
+      "height": 900,
+      "cardCount": 2,
+      "thumbnailCount": 2,
+      "originalImageUrls": [
+        "/qa/alignment-card-1.jpg",
+        "/qa/alignment-card-2.jpg"
+      ],
+      "savedImageUrls": [
+        "/qa/alignment-card-1.jpg",
+        "/qa/alignment-card-2.jpg"
+      ],
+      "imageUploads": 0,
+      "lockGuidanceVisible": true,
+      "controlsDisabled": true,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance/edit-text-card-locked-2-1440x900.png"
+    },
+    {
+      "screen": "edit-bubble-deck",
+      "width": 1440,
+      "height": 900,
+      "geometry": {
+        "strip": {
+          "left": 265,
+          "right": 377,
+          "top": 464,
+          "bottom": 1114,
+          "width": 112,
+          "height": 650
+        },
+        "thumbnail": {
+          "left": 265,
+          "right": 377,
+          "top": 464,
+          "bottom": 604,
+          "width": 112
+        },
+        "stage": {
+          "left": 472,
+          "right": 992,
+          "top": 464,
+          "bottom": 1114,
+          "width": 520,
+          "height": 650
+        },
+        "stripDirection": "column",
+        "bubbleToolbar": {
+          "position": "absolute",
+          "intersectionArea": 0,
+          "buttonTopDelta": 0,
+          "top": 605,
+          "bottom": 637
+        }
+      },
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "thumbnailCount": 9,
+      "toolbarCount": 0
+    },
+    {
+      "screen": "edit-text",
+      "width": 1440,
+      "height": 900,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "editorVisible": true,
+      "screenshot": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance/edit-text-1440x900.png"
+    },
+    {
+      "screen": "edit-video-empty",
+      "width": 1440,
+      "height": 900,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "deepLinkKind": "video"
+    },
+    {
+      "screen": "edit-video-actual",
+      "width": 1440,
+      "height": 900,
+      "geometry": {
+        "playback": {
+          "top": 16,
+          "bottom": 950,
+          "height": 934
+        },
+        "screen": {
+          "top": 16,
+          "bottom": 528,
+          "height": 512
+        },
+        "script": {
+          "top": 16,
+          "bottom": 950,
+          "height": 934
+        },
+        "timeline": {
+          "top": 966,
+          "bottom": 1134,
+          "height": 168
+        }
+      },
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "playback": {
+        "before": 0,
+        "after": 0.167741,
+        "delta": 0.167741
+      },
+      "touchTargets": {
+        "measured": 2,
+        "below44": 0
+      }
+    },
+    {
+      "screen": "edit-save-error",
+      "width": 1440,
+      "height": 900,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "alertText": "자동 저장 서버가 응답하지 않았습니다.",
+      "expectedNetworkErrors": [
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+      ],
+      "screenshot": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance/edit-save-error-1440x900.png"
+    },
+    {
+      "screen": "publish-cards",
+      "width": 1440,
+      "height": 900,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "accountRows": {
+        "delta": 0,
+        "rows": [
+          {
+            "platform": "threads",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 148,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@threads.official.full.handle",
+              "text": "@threads.official.full.handle"
+            }
+          },
+          {
+            "platform": "x",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 113,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@x.official.full.handle",
+              "text": "@x.official.full.handle"
+            }
+          },
+          {
+            "platform": "instagram",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 161,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@instagram.official.full.handle",
+              "text": "@instagram.official.full.handle"
+            }
+          },
+          {
+            "platform": "facebook",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 157,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@facebook.official.full.handle",
+              "text": "@facebook.official.full.handle"
+            }
+          },
+          {
+            "platform": "shorts",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 151,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@youtube.official.full.handle",
+              "text": "@youtube.official.full.handle"
+            }
+          },
+          {
+            "platform": "reels",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 161,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@instagram.official.full.handle",
+              "text": "@instagram.official.full.handle"
+            }
+          },
+          {
+            "platform": "tiktok",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 102,
+              "scrollWidth": 137,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@tiktok.official.full.handle",
+              "text": "@tiktok.official.full.handle"
+            }
+          }
+        ]
+      },
+      "coverRows": {
+        "topDelta": 0,
+        "heightDelta": 2,
+        "gapDelta": 0,
+        "rows": [
+          {
+            "platform": "shorts",
+            "relativeTop": 81,
+            "height": 44,
+            "gap": 4
+          },
+          {
+            "platform": "reels",
+            "relativeTop": 81,
+            "height": 46,
+            "gap": 4
+          },
+          {
+            "platform": "tiktok",
+            "relativeTop": 81,
+            "height": 46,
+            "gap": 4
+          }
+        ]
+      },
+      "xChecked": false,
+      "missingMediaDisabled": 3,
+      "accountSelectCount": 0,
+      "missingMediaScreenshot": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance/publish-missing-media-1440x900.png"
+    },
+    {
+      "screen": "edit-card",
+      "width": 1024,
+      "height": 820,
+      "geometry": {
+        "strip": {
+          "left": 105,
+          "right": 205,
+          "top": 446,
+          "bottom": 1290,
+          "width": 100
+        },
+        "thumbnail": {
+          "left": 105,
+          "right": 205,
+          "top": 446,
+          "bottom": 571,
+          "width": 100
+        },
+        "stage": {
+          "left": 226,
+          "right": 746,
+          "top": 515,
+          "bottom": 1165,
+          "width": 520,
+          "height": 650,
+          "ratio": "4 / 5",
+          "background": "rgb(255, 255, 255)"
+        },
+        "faceCopy": {
+          "left": 291,
+          "right": 681,
+          "top": 813.5,
+          "bottom": 911.5,
+          "width": 390
+        },
+        "assistant": {
+          "width": 304,
+          "height": 577
+        },
+        "chatLog": {
+          "width": 278,
+          "height": 288
+        }
+      },
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "inputCount": 3
+    },
+    {
+      "screen": "edit-text-card",
+      "width": 1024,
+      "height": 820,
+      "duplicateControls": 0,
+      "placeholderOverlays": 0,
+      "inputCount": 3,
+      "editedLine": "즉시 반영 1024",
+      "textPreviewChanged": true,
+      "positionPreviewChanged": true,
+      "previewIsBrowserRenderedDataUrl": true,
+      "geometry": {
+        "stage": {
+          "left": 226,
+          "right": 746,
+          "top": -88,
+          "bottom": 562,
+          "width": 520,
+          "height": 650
+        },
+        "media": {
+          "left": 226,
+          "right": 746,
+          "top": -88,
+          "bottom": 562,
+          "width": 520,
+          "height": 650
+        }
+      },
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      }
+    },
+    {
+      "screen": "edit-bubble-deck",
+      "width": 1024,
+      "height": 820,
+      "geometry": {
+        "strip": {
+          "left": 97,
+          "right": 197,
+          "top": 429,
+          "bottom": 1079,
+          "width": 100,
+          "height": 650
+        },
+        "thumbnail": {
+          "left": 97,
+          "right": 197,
+          "top": 429,
+          "bottom": 554,
+          "width": 100
+        },
+        "stage": {
+          "left": 213,
+          "right": 733,
+          "top": 429,
+          "bottom": 1079,
+          "width": 520,
+          "height": 650
+        },
+        "stripDirection": "column",
+        "bubbleToolbar": {
+          "position": "absolute",
+          "intersectionArea": 0,
+          "buttonTopDelta": 0,
+          "top": 570,
+          "bottom": 602
+        }
+      },
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "thumbnailCount": 9,
+      "toolbarCount": 0
+    },
+    {
+      "screen": "edit-text",
+      "width": 1024,
+      "height": 820,
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "editorVisible": true,
+      "screenshot": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance/edit-text-1024x820.png"
+    },
+    {
+      "screen": "edit-video-empty",
+      "width": 1024,
+      "height": 820,
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "deepLinkKind": "video"
+    },
+    {
+      "screen": "edit-video-actual",
+      "width": 1024,
+      "height": 820,
+      "geometry": {
+        "playback": {
+          "top": 16,
+          "bottom": 1184,
+          "height": 1168
+        },
+        "screen": {
+          "top": 16,
+          "bottom": 528,
+          "height": 512
+        },
+        "script": {
+          "top": 16,
+          "bottom": 1184,
+          "height": 1168
+        },
+        "timeline": {
+          "top": 1200,
+          "bottom": 1368,
+          "height": 168
+        }
+      },
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "playback": {
+        "before": 0,
+        "after": 0.167517,
+        "delta": 0.167517
+      },
+      "touchTargets": {
+        "measured": 2,
+        "below44": 0
+      }
+    },
+    {
+      "screen": "edit-loading",
+      "width": 1024,
+      "height": 820,
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "ariaBusy": "true",
+      "screenshot": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance/edit-loading-1024x820.png"
+    },
+    {
+      "screen": "publish-cards",
+      "width": 1024,
+      "height": 820,
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "accountRows": {
+        "delta": 0,
+        "rows": [
+          {
+            "platform": "threads",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 148,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@threads.official.full.handle",
+              "text": "@threads.official.full.handle"
+            }
+          },
+          {
+            "platform": "x",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 119,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@x.official.full.handle",
+              "text": "@x.official.full.handle"
+            }
+          },
+          {
+            "platform": "instagram",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 161,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@instagram.official.full.handle",
+              "text": "@instagram.official.full.handle"
+            }
+          },
+          {
+            "platform": "facebook",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 157,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@facebook.official.full.handle",
+              "text": "@facebook.official.full.handle"
+            }
+          },
+          {
+            "platform": "shorts",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 151,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@youtube.official.full.handle",
+              "text": "@youtube.official.full.handle"
+            }
+          },
+          {
+            "platform": "reels",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 161,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@instagram.official.full.handle",
+              "text": "@instagram.official.full.handle"
+            }
+          },
+          {
+            "platform": "tiktok",
+            "relativeTop": 33,
+            "chipGeometry": {
+              "clientWidth": 119,
+              "scrollWidth": 137,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@tiktok.official.full.handle",
+              "text": "@tiktok.official.full.handle"
+            }
+          }
+        ]
+      },
+      "coverRows": {
+        "topDelta": 0,
+        "heightDelta": 2,
+        "gapDelta": 0,
+        "rows": [
+          {
+            "platform": "shorts",
+            "relativeTop": 81,
+            "height": 44,
+            "gap": 4
+          },
+          {
+            "platform": "reels",
+            "relativeTop": 81,
+            "height": 46,
+            "gap": 4
+          },
+          {
+            "platform": "tiktok",
+            "relativeTop": 81,
+            "height": 46,
+            "gap": 4
+          }
+        ]
+      },
+      "xChecked": false,
+      "missingMediaDisabled": 3,
+      "accountSelectCount": 0,
+      "missingMediaScreenshot": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance/publish-missing-media-1024x820.png"
+    },
+    {
+      "screen": "edit-card",
+      "width": 390,
+      "height": 844,
+      "geometry": {
+        "strip": {
+          "left": 41,
+          "right": 349,
+          "top": 669,
+          "bottom": 747,
+          "width": 308
+        },
+        "thumbnail": {
+          "left": 41,
+          "right": 97,
+          "top": 669,
+          "bottom": 739,
+          "width": 56
+        },
+        "stage": {
+          "left": 41,
+          "right": 349,
+          "top": 819,
+          "bottom": 1204,
+          "width": 308,
+          "height": 385,
+          "ratio": "4 / 5",
+          "background": "rgb(255, 255, 255)"
+        },
+        "faceCopy": {
+          "left": 84.8046875,
+          "right": 305.1953125,
+          "top": 985,
+          "bottom": 1083,
+          "width": 220.390625
+        },
+        "assistant": {
+          "width": 342,
+          "height": 583
+        },
+        "chatLog": {
+          "width": 317,
+          "height": 288
+        }
+      },
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "inputCount": 3
+    },
+    {
+      "screen": "edit-text-card",
+      "width": 390,
+      "height": 844,
+      "duplicateControls": 0,
+      "placeholderOverlays": 0,
+      "inputCount": 3,
+      "editedLine": "즉시 반영 390",
+      "textPreviewChanged": true,
+      "positionPreviewChanged": true,
+      "previewIsBrowserRenderedDataUrl": true,
+      "geometry": {
+        "stage": {
+          "left": 41,
+          "right": 349,
+          "top": 142,
+          "bottom": 527,
+          "width": 308,
+          "height": 385
+        },
+        "media": {
+          "left": 41,
+          "right": 349,
+          "top": 142,
+          "bottom": 527,
+          "width": 308,
+          "height": 385
+        }
+      },
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      }
+    },
+    {
+      "screen": "edit-text-card-locked-1",
+      "width": 390,
+      "height": 844,
+      "cardCount": 1,
+      "thumbnailCount": 1,
+      "originalImageUrls": [
+        "/qa/alignment-card-1.jpg"
+      ],
+      "savedImageUrls": [
+        "/qa/alignment-card-1.jpg"
+      ],
+      "imageUploads": 0,
+      "lockGuidanceVisible": true,
+      "controlsDisabled": true,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance/edit-text-card-locked-1-390x844.png"
+    },
+    {
+      "screen": "edit-text-card-locked-2",
+      "width": 390,
+      "height": 844,
+      "cardCount": 2,
+      "thumbnailCount": 2,
+      "originalImageUrls": [
+        "/qa/alignment-card-1.jpg",
+        "/qa/alignment-card-2.jpg"
+      ],
+      "savedImageUrls": [
+        "/qa/alignment-card-1.jpg",
+        "/qa/alignment-card-2.jpg"
+      ],
+      "imageUploads": 0,
+      "lockGuidanceVisible": true,
+      "controlsDisabled": true,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance/edit-text-card-locked-2-390x844.png"
+    },
+    {
+      "screen": "edit-bubble-deck",
+      "width": 390,
+      "height": 844,
+      "geometry": {
+        "strip": {
+          "left": 41,
+          "right": 349,
+          "top": 193,
+          "bottom": 271,
+          "width": 308,
+          "height": 78
+        },
+        "thumbnail": {
+          "left": 41,
+          "right": 97,
+          "top": 193,
+          "bottom": 263,
+          "width": 56
+        },
+        "stage": {
+          "left": 41,
+          "right": 349,
+          "top": 287,
+          "bottom": 672,
+          "width": 308,
+          "height": 385
+        },
+        "stripDirection": "row",
+        "bubbleToolbar": {
+          "position": "static",
+          "intersectionArea": 18223.4375,
+          "buttonTopDelta": 48,
+          "top": 449,
+          "bottom": 549
+        }
+      },
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "thumbnailCount": 9,
+      "toolbarCount": 0
+    },
+    {
+      "screen": "edit-text",
+      "width": 390,
+      "height": 844,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "editorVisible": true,
+      "screenshot": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance/edit-text-390x844.png"
+    },
+    {
+      "screen": "edit-video-empty",
+      "width": 390,
+      "height": 844,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "deepLinkKind": "video"
+    },
+    {
+      "screen": "edit-video-actual",
+      "width": 390,
+      "height": 844,
+      "geometry": {
+        "playback": {
+          "top": 16,
+          "bottom": 196,
+          "height": 180
+        },
+        "screen": {
+          "top": 16,
+          "bottom": 96,
+          "height": 80
+        },
+        "script": {
+          "top": 212,
+          "bottom": 1458,
+          "height": 1246
+        },
+        "timeline": {
+          "top": 1474,
+          "bottom": 1606,
+          "height": 132
+        }
+      },
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "playback": {
+        "before": 0,
+        "after": 0.16915,
+        "delta": 0.16915
+      },
+      "touchTargets": {
+        "measured": 2,
+        "below44": 0
+      }
+    },
+    {
+      "screen": "publish-cards",
+      "width": 390,
+      "height": 844,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "accountRows": {
+        "delta": 0,
+        "rows": [
+          {
+            "platform": "threads",
+            "relativeTop": 37,
+            "chipGeometry": {
+              "clientWidth": 163,
+              "scrollWidth": 198,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@threads.official.full.handle",
+              "text": "@threads.official.full.handle"
+            }
+          },
+          {
+            "platform": "x",
+            "relativeTop": 37,
+            "chipGeometry": {
+              "clientWidth": 163,
+              "scrollWidth": 163,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@x.official.full.handle",
+              "text": "@x.official.full.handle"
+            }
+          },
+          {
+            "platform": "instagram",
+            "relativeTop": 37,
+            "chipGeometry": {
+              "clientWidth": 163,
+              "scrollWidth": 214,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@instagram.official.full.handle",
+              "text": "@instagram.official.full.handle"
+            }
+          },
+          {
+            "platform": "facebook",
+            "relativeTop": 37,
+            "chipGeometry": {
+              "clientWidth": 163,
+              "scrollWidth": 210,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@facebook.official.full.handle",
+              "text": "@facebook.official.full.handle"
+            }
+          },
+          {
+            "platform": "shorts",
+            "relativeTop": 37,
+            "chipGeometry": {
+              "clientWidth": 163,
+              "scrollWidth": 202,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@youtube.official.full.handle",
+              "text": "@youtube.official.full.handle"
+            }
+          },
+          {
+            "platform": "reels",
+            "relativeTop": 37,
+            "chipGeometry": {
+              "clientWidth": 163,
+              "scrollWidth": 214,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@instagram.official.full.handle",
+              "text": "@instagram.official.full.handle"
+            }
+          },
+          {
+            "platform": "tiktok",
+            "relativeTop": 37,
+            "chipGeometry": {
+              "clientWidth": 163,
+              "scrollWidth": 183,
+              "overflowX": "hidden",
+              "textOverflow": "ellipsis",
+              "whiteSpace": "nowrap",
+              "title": "@tiktok.official.full.handle",
+              "text": "@tiktok.official.full.handle"
+            }
+          }
+        ]
+      },
+      "coverRows": {
+        "topDelta": 0,
+        "heightDelta": 2,
+        "gapDelta": 0,
+        "rows": [
+          {
+            "platform": "shorts",
+            "relativeTop": 85,
+            "height": 44,
+            "gap": 4
+          },
+          {
+            "platform": "reels",
+            "relativeTop": 85,
+            "height": 46,
+            "gap": 4
+          },
+          {
+            "platform": "tiktok",
+            "relativeTop": 85,
+            "height": 46,
+            "gap": 4
+          }
+        ]
+      },
+      "xChecked": false,
+      "missingMediaDisabled": 3,
+      "accountSelectCount": 0,
+      "missingMediaScreenshot": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance/publish-missing-media-390x844.png"
+    }
+  ],
+  "consoleErrorCount": 0,
+  "outputDir": "/Users/sj/wt/zto1-editroom-p1/logs/diff/editroom-v2-phase1/screen-conformance",
+  "referenceComparison": false,
+  "visualDiffMutationCheck": {
+    "sameScore": 0,
+    "wrongImageScore": 0.06666666666666667,
+    "blackFrameScore": 0.265359477124183,
+    "stageDiffThreshold": 0.025,
+    "directStageDiffRegion": {
+      "left": 26,
+      "top": 26,
+      "width": 208,
+      "height": 39
+    }
+  },
+  "imageDiffNote": "일반 카드는 생성 이미지 fixture와 실제 무대를 비교해 CI 판정한다. 말풍선 덱은 승인 clean-frame의 카드 영역과 대조 리포트만 만들며, CI는 폭·비율·겹침·툴바 위치 수치 계약으로 판정한다."
+}

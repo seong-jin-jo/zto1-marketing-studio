@@ -2073,7 +2073,8 @@ export function EditRoom({
   const tools = kind === "card" || kind === "text" ? CARD_TOOLS : kind === "audio" ? NARRATION_TOOLS : VIDEO_TOOLS;
   const outlineTitle = kind === "text" ? "글 문단" : kind === "card" ? "카드 목록" : kind === "audio" ? "대사 목록" : "영상 장면";
   const unit = kind === "card" ? "장" : kind === "text" ? "문단" : "장면";
-  const hasEditableContent = safeLines.some((line) => line.trim().length > 0);
+  const hasEditableContent = safeLines.some((line) => line.trim().length > 0)
+    || Boolean(previewReady || previewImageUrl || previewImageUrls?.length || previewVideoUrl || cardDeck || videoEdit);
   const roomState = state === "default" && !hasEditableContent ? "empty" : state;
   const editorVisible = roomState === "default" || roomState === "overflow";
   const updateLine = (value: string) => {

@@ -275,6 +275,24 @@ progress.progress-semantic::-webkit-progress-bar { background: var(--surface-2);
 progress.progress-semantic::-webkit-progress-value { background: var(--success); }
 progress.progress-semantic::-moz-progress-bar { background: var(--success); }
 
+/* standard-design.md §17.5: 1023px 이하에서는 배치만 줄이지 않고 읽기·누르기 토큰도
+   모바일 규격으로 올린다. caption은 화면에서 가장 많이 쓰이는 조작 라벨이라 16px로
+   맞춰 실제 글자 중앙값도 본문 하한보다 작아지지 않게 한다. */
+@media (max-width: 1023px) {
+  [data-room="edit"] {
+    --font-caption-size: 16px;
+    --font-caption-leading: 24px;
+    --font-body-sm-size: 16px;
+    --font-body-sm-leading: 24px;
+    --font-body-size: 16px;
+    --font-body-leading: 24px;
+  }
+
+  [data-room="edit"] :where(a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]):active {
+    opacity: 0.92;
+  }
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   aside { width: 100% !important; height: auto !important; position: relative !important; border-right: none !important; border-bottom: 1px solid var(--border); }
