@@ -218,7 +218,11 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
   x: {
     label: "x",
     authorizeUrl: "https://twitter.com/i/oauth2/authorize",
-    scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
+    // media.write: 2026-10-02 독립 리뷰 지적(BLOCK M1) — 이게 없으면 화면으로 연결한 OAuth2
+    // 계정은 /2/media/upload/* 가 403을 돌려 이미지 발행이 전부 실패한다. 기존 연결 계정은
+    // 이 스코프 없이 토큰을 받았으므로 재연결 전까지는 publishX가 403을 명확히 보고한다
+    // (lib/publish.ts의 미디어 업로드 403 분기).
+    scopes: ["tweet.read", "tweet.write", "users.read", "offline.access", "media.write"],
     appIdEnv: "X_CLIENT_ID",
     appSecretEnv: "X_CLIENT_SECRET",
     tokenUrl: "https://api.twitter.com/2/oauth2/token",
@@ -434,6 +438,10 @@ export interface ExchangedToken {
   userId?: string;
   refreshToken?: string; // channel_accounts.refresh_enc에 암호화 저장
   expiresInSeconds?: number; // provider expires_in. callback이 절대시각으로 변환해 DB에 저장
+  // provider가 토큰 교환 응답에 실제로 승인한 scope를 돌려주면 그 값(공백 구분 원문)을 담는다.
+  // X readiness/publishX가 media.write 승인 여부를 판정하는 근거(2026-10-02 독립 리뷰 BLOCK M1).
+  // 응답에 scope가 없으면(일부 provider는 생략) undefined — "알 수 없음"으로 다룬다.
+  grantedScope?: string;
   error?: string;
 }
 
@@ -526,6 +534,7 @@ export async function exchangeCode(
       userId: data.user_id ? String(data.user_id) : (data.open_id ? String(data.open_id) : undefined),
       refreshToken: (data.refresh_token as string) || undefined, // YouTube offline
       expiresInSeconds: positiveExpiresIn(data.expires_in),
+      grantedScope: typeof data.scope === "string" ? data.scope : undefined,
     };
   }
 

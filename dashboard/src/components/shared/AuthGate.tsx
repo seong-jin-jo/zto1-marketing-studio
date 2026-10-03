@@ -382,7 +382,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const pollGeneration = useRef(0);
   const pollAbortController = useRef<AbortController | null>(null);
   const setActiveWorkspace = useUIStore((state) => state.setActiveWorkspace);
-  const isPublicPath = ["/login", "/signup", "/operator", "/privacy", "/terms", "/data-deletion"].includes(pathname);
+  // qa-alignment-harness: 발행실 카드 정렬 실측 전용 개발 도구(app/qa-alignment-harness/
+  // page.tsx). 그 페이지 자체가 NODE_ENV==="production" 이면 notFound() 라 운영에서는
+  // 이 줄과 무관하게 열리지 않는다. 로그인 없이 실제 컴포넌트·CSS 로 좌표를 재기 위해
+  // 이 게이트만 통과시킨다(2026-09-22 교차 코드리뷰 PR #77 C3 증거 수집).
+  const isPublicPath = ["/login", "/signup", "/operator", "/privacy", "/terms", "/data-deletion", "/qa-alignment-harness"].includes(pathname);
   const isCustomerProtectedPath = !isPublicPath && pathname !== "/" && !pathname.startsWith("/operator");
 
   useEffect(() => {

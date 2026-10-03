@@ -1,0 +1,28 @@
+{
+  "created_at": "2026-10-01T15:57:18.406914Z",
+  "display_name": "Higgsfield Soul 2.0",
+  "id": "df664d17-429f-4ff7-aae2-1e266cff67ba",
+  "job_type": "text2image_soul_v2",
+  "min_result_url": null,
+  "params": {
+    "batch_size": 1,
+    "enhance_prompt": false,
+    "height": 1536,
+    "prompt": "minimal desk flatlay, notebook and coffee, soft light",
+    "quality": "720p",
+    "seed": 223256,
+    "style": {
+      "id": "3db34ab5-3439-4317-9e03-08dc30852e69",
+      "name": "General",
+      "strength": null,
+      "url": "https://cdn.higgsfield.ai/soul-v2-style/f33d85f2-6521-4fa8-8e8f-894cfbdee578.webp"
+    },
+    "style_id": "3db34ab5-3439-4317-9e03-08dc30852e69",
+    "style_strength": null,
+    "use_relax": false,
+    "use_sage_attention": false,
+    "width": 1152
+  },
+  "result_url": null,
+  "status": "in_progress"
+}

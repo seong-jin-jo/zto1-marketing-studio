@@ -85,6 +85,155 @@ export function checkOutputQuality(text: string, expect: LearningExpectation = {
   return { passed: issues.length === 0, issues, chars: body.length };
 }
 
+// ---------------------------------------------------------------------------
+// 카드 덱 계약 v2 전용 품질 반려(설계 §5 F3 규칙 6개). validateCardDeck() 은 계약의 "모양"
+// (장수·역할·타입)만 지킨다. 여기는 "내용"이 계약이 약속한 의미를 실제로 지켰는지 잰다.
+// 근거: docs/eng-design/osmu-quality-stage1-v1-claude-opus.md §5 F3 output-quality 표.
+// ---------------------------------------------------------------------------
+import type { CardDeck, HookType } from "./card-deck-contract";
+import { COVER_HEADLINE_MAX_CHARS_PER_LINE } from "./card-deck-contract";
+
+export type CardDeckQualityRule =
+  | "cta_keyword"
+  | "cta_link"
+  | "cta_save_reason"
+  | "hook_type"
+  | "cover_lines"
+  | "deck_shape"
+  | "forbidden_phrase";
+
+export type CardDeckQualityIssue = { rule: CardDeckQualityRule; detail: string };
+
+export type CardDeckExpectation = {
+  /** hook_type 를 사용자가 고정한 경우에만 채운다. auto 면 비운다(모델이 고른 값을 그대로 받는다). */
+  fixedHookType?: HookType;
+  forbiddenPhrases?: readonly string[];
+  /**
+   * hook_type이 "number"일 때 표지에 쓸 수 있는 숫자 전체 집합. 학습 정보 본문에서
+   * `\d[\d,.%]*` 로 뽑은 값이다. 표지 숫자가 이 집합의 부분집합이 아니면 지어낸 숫자다
+   * (설계 F3 "숫자형은 학습 정보의 실적만"). `undefined`(호출측이 학습 정보 자체를 안
+   * 넘긴 경우)면만 검사를 건너뛴다. 빈 배열(학습 정보는 넘겼는데 숫자가 없음)은 검사
+   * 대상이다 — 그때 표지에 숫자가 있으면 전부 지어낸 것이므로 반려한다(ADR-007).
+   */
+  knownNumbers?: readonly string[];
+};
+
+/** 학습 정보 직렬화 문자열에서 숫자 토큰만 뽑는다. number 훅이 지어낸 숫자인지 대조할 기준값. */
+export function extractKnownNumbers(text: string): string[] {
+  const matches = String(text ?? "").match(/\d[\d,.%]*/g) ?? [];
+  return Array.from(new Set(matches.map((value) => value.trim()).filter(Boolean)));
+}
+
+function slideBubbleTexts(deck: CardDeck): string[] {
+  const texts: string[] = [];
+  for (const slide of deck.slides) {
+    if (slide.role === "cover") {
+      if (slide.cover?.headline) texts.push(slide.cover.headline);
+      if (slide.cover?.sub) texts.push(slide.cover.sub);
+      continue;
+    }
+    for (const bubble of slide.bubbles ?? []) {
+      texts.push(bubble.segments.map((segment) => segment.text).join(""));
+    }
+  }
+  return texts;
+}
+
+const HOOK_TYPE_MARKERS: Record<HookType, RegExp> = {
+  question: /\?/,
+  number: /\d/,
+  pain: /아닙니다|아니라|때문입니다|못\s|하지\s마세요/,
+};
+
+/**
+ * 카드 덱을 자로 잰다. `validateCardDeck()` 을 이미 통과한 덱만 여기 들어온다(모양은
+ * 보증됨). 하나라도 걸리면 `issues` 에 쌓고 계속 검사한다 — 첫 위반에서 멈추면 재시도
+ * 프롬프트가 한 번에 한 규칙만 고치게 되어 왕복이 늘어난다(실수.md 2026-09-09 "이유를
+ * 하나만 주면 한 번에 하나씩만 고친다"와 같은 결).
+ */
+export function checkCardDeckQuality(deck: CardDeck, expect: CardDeckExpectation = {}): { passed: boolean; issues: CardDeckQualityIssue[] } {
+  const issues: CardDeckQualityIssue[] = [];
+  const ctaSlide = deck.slides[deck.slides.length - 1];
+  const ctaText = (ctaSlide.bubbles ?? []).map((bubble) => bubble.segments.map((segment) => segment.text).join("")).join("\n");
+
+  // rule: cta_keyword — CTA 장 본문에 "댓글" 과 "'키워드'" 둘 다 있어야 한다.
+  if (!ctaText.includes("댓글") || !ctaText.includes(`'${deck.cta.keyword}'`)) {
+    issues.push({ rule: "cta_keyword", detail: `CTA 장에 댓글 키워드 유도가 없습니다: '${deck.cta.keyword}'` });
+  }
+
+  // rule: cta_link — CTA·표지에 표면 링크 표현.
+  const coverHeadline = deck.slides[0]?.cover?.headline ?? "";
+  const linkHit = [ctaText, coverHeadline].join("\n").match(/https?:\/\/|www\.|\.com\b|링크|프로필/);
+  if (linkHit) {
+    issues.push({ rule: "cta_link", detail: `CTA 에 표면 링크 표현이 있습니다: ${linkHit[0]}` });
+  }
+
+  // rule: cta_save_reason — 저장 명분 6자 미만.
+  if (!deck.cta.save_reason || deck.cta.save_reason.trim().length < 6) {
+    issues.push({ rule: "cta_save_reason", detail: "저장 명분이 비었습니다" });
+  }
+
+  // rule: hook_type — 값이 허용 범위 밖이거나 고정값과 다르거나, 선언한 공식의 표식이
+  // 헤드라인에 없다.
+  if (!["question", "number", "pain"].includes(deck.hook_type)) {
+    issues.push({ rule: "hook_type", detail: `훅 공식이 비어 있거나 허용 밖입니다: ${String(deck.hook_type)}` });
+  } else if (expect.fixedHookType && deck.hook_type !== expect.fixedHookType) {
+    issues.push({ rule: "hook_type", detail: `훅 공식이 ${expect.fixedHookType} 이어야 하는데 ${deck.hook_type} 입니다` });
+  } else if (!HOOK_TYPE_MARKERS[deck.hook_type].test(coverHeadline)) {
+    issues.push({ rule: "hook_type", detail: `표지가 선언한 훅 공식(${deck.hook_type})의 표식을 담고 있지 않습니다: "${coverHeadline}"` });
+  } else if (deck.hook_type === "number" && expect.knownNumbers !== undefined) {
+    // number 훅은 "학습 정보에 있는 실적만" 쓰기로 돼 있다(설계 F3). 표지 숫자 하나라도
+    // 학습 정보 어디에도 없으면 모델이 지어낸 것이다. knownNumbers 가 빈 배열(학습 정보에
+    // 숫자가 아예 없음)이라도 검사는 돌린다 — 건너뛰면 아무 숫자나 지어내도 통과한다
+    // (ADR-007 조용한 실패 금지: 검사를 조용히 스킵하는 것도 같은 결의 구멍이다).
+    // 호출측이 knownNumbers 자체를 안 넘긴 경우(undefined)에만 건너뛴다.
+    const known = new Set(expect.knownNumbers);
+    const coverNumbers = coverHeadline.match(/\d[\d,.%]*/g) ?? [];
+    const madeUp = coverNumbers.filter((value) => !known.has(value.trim()));
+    if (madeUp.length > 0) {
+      const detail = expect.knownNumbers.length === 0
+        ? `학습 정보에 숫자가 없는데 표지에 숫자가 있습니다: ${madeUp.join(", ")}`
+        : `표지 숫자가 학습 정보에 없습니다: ${madeUp.join(", ")}`;
+      issues.push({ rule: "hook_type", detail });
+    }
+  }
+
+  // rule: cover_lines — 줄 수·줄당 글자수 상한(계약과 같은 상수를 재사용).
+  const lines = coverHeadline.split("\n");
+  if (lines.length > 3) {
+    issues.push({ rule: "cover_lines", detail: `표지 줄 수가 ${lines.length}줄입니다(상한 3)` });
+  }
+  lines.forEach((line, index) => {
+    if (line.length > COVER_HEADLINE_MAX_CHARS_PER_LINE) {
+      issues.push({ rule: "cover_lines", detail: `표지 ${index + 1}번째 줄이 ${line.length}자입니다(상한 ${COVER_HEADLINE_MAX_CHARS_PER_LINE})` });
+    }
+  });
+
+  // rule: deck_shape — 장수·역할 배치·화자 2종 미달(validateCardDeck 의 구조 규칙 재확인.
+  // 여기서는 "어느 장이" 문제인지까지 짚는다).
+  deck.slides.forEach((slide, index) => {
+    if (slide.role !== "chat") return;
+    const speakers = new Set((slide.bubbles ?? []).map((bubble) => bubble.speaker));
+    if (!speakers.has("reader")) issues.push({ rule: "deck_shape", detail: `${index + 1}번 장에 reader 말풍선이 없습니다` });
+    if (!speakers.has("brand")) issues.push({ rule: "deck_shape", detail: `${index + 1}번 장에 brand 말풍선이 없습니다` });
+  });
+
+  // 기존 4규칙(금지어·누출·줄표·빈 값)을 각 말풍선·표지 텍스트에도 돌린다(설계 §5 F3
+  // "checkCardDeckQuality 가 기존 checkOutputQuality 도 돌린다").
+  const forbidden = expect.forbiddenPhrases ?? [];
+  for (const text of slideBubbleTexts(deck)) {
+    const report = checkOutputQuality(text, { forbiddenPhrases: forbidden });
+    for (const issue of report.issues) {
+      // validateCardDeck() 이 이미 통과시킨 덱만 여기 온다(dash·empty 는 계약이 먼저 막는다).
+      // 그래도 여기서 한 번 더 재는 것은 계약과 품질 검사가 서로 다른 텍스트 조각(세그먼트
+      // 이어붙인 값)을 볼 수 있어서다 — 검사가 하나 놓치면 다른 하나가 잡는다.
+      issues.push({ rule: "forbidden_phrase", detail: issue.detail });
+    }
+  }
+
+  return { passed: issues.length === 0, issues };
+}
+
 /** 여러 편을 한 번에 재고 통과율을 낸다. 한 편만 보면 우연히 통과한 것을 실력으로 오해한다. */
 export function summarizeQuality(
   texts: readonly string[],

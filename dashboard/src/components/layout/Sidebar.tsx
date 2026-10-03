@@ -15,6 +15,7 @@ import { useUIStore, type StudioRoom, type Workspace } from "@/store/ui-store";
 import { fetcher } from "@/lib/api";
 import { clearAuthToken, getAuthToken } from "@/lib/auth";
 import { ThemeToggle } from "./ThemeToggle";
+import { InstallPrompt } from "./InstallPrompt";
 
 interface MeResponse {
   isOperator?: boolean;
@@ -256,6 +257,9 @@ function SidebarFooter({ isOperator, compactOnNarrow = false }: { isOperator: bo
       >
         <span aria-hidden>⎋</span><span className={compactOnNarrow ? "md:sr-only" : ""}>로그아웃</span>
       </button>
+      {/* beforeinstallprompt 는 로드 후 수 초 뒤 늦게 도착한다(PR #73 MINOR). 맨 아래 배치해
+          늦게 나타나도 위 nav 항목이 밀리지 않고 푸터 안에서만 자리가 늘어나게 한다. */}
+      <InstallPrompt compactOnNarrow={compactOnNarrow} />
     </div>
   );
 }

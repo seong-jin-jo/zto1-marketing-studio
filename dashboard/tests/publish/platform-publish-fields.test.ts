@@ -9,7 +9,11 @@ describe("PUB-FIELD-01 플랫폼별 실제 입력 필드", () => {
   it("정상: Threads 주제 태그와 Shorts 제목만 해당 플랫폼에 노출한다", () => {
     expect(PLATFORM_FIELD_CONTRACT.threads).toMatchObject({ topicTag: true, hashtags: false, title: false });
     expect(PLATFORM_FIELD_CONTRACT.shorts).toMatchObject({ topicTag: false, hashtags: true, title: true });
-    expect(PLATFORM_FIELD_CONTRACT.facebook.unknownLimitLabel).toBe("본문 상한은 규격 확인 필요");
+    // 2026-09-22 R-23-3("x같은경우엔 글자수 제한이 다르다면 그거에 맞게 맞춰야하는거아니냐"):
+    // Facebook 상태 업데이트 상한(63,206자, 2011 Adweek 발표 + 다수 3자 자료 corroborate,
+    // 상세 출처는 platform-publish-fields.ts 주석 참고 — Graph API 공식 문서엔 숫자로
+    // 없다는 점도 그 주석에 남겼다)을 반영해 "규격 확인 필요" 방치를 없앴다.
+    expect("unknownLimitLabel" in PLATFORM_FIELD_CONTRACT.facebook).toBe(false);
   });
 
   it("거절: Threads 주제 태그의 금지 문자와 길이를 차단한다", () => {
@@ -37,10 +41,13 @@ describe("PUB-LIMIT-01 플랫폼별 하드 한도", () => {
     expect(result.blocking.map((issue) => issue.field)).toEqual(["body", "hashtags"]);
   });
 
-  it("정상: Facebook은 확인되지 않은 숫자 상한을 만들지 않는다", () => {
-    const result = validatePlatformPublish("facebook", { body: "가".repeat(70_000), hashtags: "#소식" });
-    expect(result.blocking).toEqual([]);
-    expect(result.counters).toEqual({});
+  it("정상: Facebook은 상한(63,206자) 안이면 통과하고 초과하면 차단한다", () => {
+    const under = validatePlatformPublish("facebook", { body: "가".repeat(60_000), hashtags: "#소식" });
+    expect(under.blocking).toEqual([]);
+    expect(under.counters.body).toMatchObject({ limit: 63_206, unit: "자" });
+
+    const over = validatePlatformPublish("facebook", { body: "가".repeat(70_000), hashtags: "#소식" });
+    expect(over.blocking.map((issue) => issue.field)).toEqual(["body"]);
   });
 
   it("거절: Shorts 설명은 UTF-8 바이트, TikTok 캡션은 UTF-16 단위로 검사한다", () => {

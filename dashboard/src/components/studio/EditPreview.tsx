@@ -5,6 +5,7 @@ import { Button } from "@/components/shared/Button";
 import type { EditContentKind } from "./StudioRooms";
 import styles from "./EditPreview.module.css";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
+import { cardPositionFromPoint } from "@/lib/studio/text-card-image";
 
 // 편집실 미리보기.
 //
@@ -54,12 +55,7 @@ const CARD_POSITION_CLASS: Record<CardTextPosition, string> = {
   "bottom-right": styles.cardBottomRight,
 };
 
-function cardPositionAt(clientY: number, bounds: DOMRect): CardTextPosition {
-  const row = clientY < bounds.top + bounds.height / 3
-    ? "top"
-    : clientY > bounds.top + (bounds.height * 2) / 3 ? "bottom" : "center";
-  return row === "top" ? "top-center" : row === "bottom" ? "bottom-center" : "center";
-}
+
 
 const SUBTITLE_CLASS: Record<string, string> = {
   작게: "text-caption",
@@ -103,12 +99,15 @@ export function EditPreview({
   mediaUrl,
   mediaUrls,
   mediaType = "image",
+  cardTextEmbedded = false,
+  cardEditingLocked = false,
   tenantId,
   onLinesChange,
   cardTextPositions = [],
   onCardTextPositionsChange,
   aspectRatio,
   onAspectRatioChange,
+  stageSize = "default",
 }: {
   kind: EditContentKind;
   /** 화면에 남아 있는 대사만 넘긴다 */
@@ -138,6 +137,16 @@ export function EditPreview({
    *  화면 종류가 아니라 파일 종류로 태그를 고른다. */
   mediaType?: "image" | "video";
   /**
+   * true면 카드 문구가 PNG 픽셀에 이미 포함돼 있다.
+   *
+   * v70 §3의 카드 무대는 실제 발행 PNG와 같은 한 벌이어야 한다. 무료 글자 카드 위에
+   * textarea를 한 벌 더 얹으면 같은 문장이 두 번 보이고, 화면과 발행물도 달라진다.
+   * 일반 생성 이미지는 글자 없는 배경이므로 false를 유지해 기존 편집 레이어를 보존한다.
+   */
+  cardTextEmbedded?: boolean;
+  /** 원본 대본·위치가 없어 기존 PNG를 보존해야 하는 카드는 편집 조작을 막는다. */
+  cardEditingLocked?: boolean;
+  /**
    * 만료된 배달 주소를 되살릴 때 어느 작업 공간으로 다시 서명할지.
    *
    * 2026-09-13. 여기는 `DeliveredMedia` 를 쓰면서도 이것만 안 넘기고 있었다. 운영자 토큰으로
@@ -150,8 +159,12 @@ export function EditPreview({
   onCardTextPositionsChange?: (positions: CardTextPosition[]) => void;
   aspectRatio?: string;
   onAspectRatioChange?: (aspectRatio: string) => void;
+  /** v70 카드 편집실은 520px 무대를 쓴다. 다른 레거시 미리보기 폭은 그대로 둔다. */
+  stageSize?: "default" | "card-v70";
 }) {
-  const specs = useMemo(() => PREVIEW_SPECS.filter((spec) => spec.kinds.includes(kind)), [kind]);
+  const specs = useMemo(() => PREVIEW_SPECS.filter((spec) => (
+    spec.kinds.includes(kind) && (stageSize !== "card-v70" || spec.key === "card-portrait")
+  )), [kind, stageSize]);
   const matchingSpec = specs.find((one) => one.ratio.replaceAll(" ", "").replace("/", ":") === aspectRatio);
   const [specKey, setSpecKey] = useState(matchingSpec?.key ?? specs[0]?.key ?? "shorts");
   useEffect(() => {
@@ -171,7 +184,7 @@ export function EditPreview({
     <section aria-label="올릴 규격으로 미리보기" data-edit-preview={spec.key} className="min-w-0">
       <div className="mb-stack flex flex-wrap items-center gap-stack-tight" role="group" aria-label="콘텐츠 크기 고르기">
         {specs.map((one) => (
-          <Button key={one.key} size="sm" variant="secondary" className={one.key === spec.key ? "border-accent bg-accent-soft text-accent" : ""} aria-pressed={one.key === spec.key} onClick={() => {
+          <Button key={one.key} size="sm" variant="secondary" data-content-size-option={one.key} disabled={kind === "card" && cardEditingLocked} className={one.key === spec.key ? "border-accent bg-accent-soft text-accent" : ""} aria-pressed={one.key === spec.key} onClick={() => {
             setSpecKey(one.key);
             onAspectRatioChange?.(one.ratio.replaceAll(" ", "").replace("/", ":"));
           }}>
@@ -181,16 +194,19 @@ export function EditPreview({
         <span className="ml-auto text-caption text-subtle" data-edit-preview-size>{spec.size}픽셀</span>
       </div>
 
-      <div className="grid place-items-center rounded-surface border border-border bg-surface-2 p-stack">
+      <div className={`grid place-items-center rounded-surface border border-border bg-surface-2 p-stack ${stageSize === "card-v70" ? styles.cardV70StageShell : ""}`} data-edit-preview-stage-shell>
         <div
-          className={`relative w-full max-w-sm overflow-hidden rounded-control bg-accent-soft ${RATIO_CLASS[spec.ratio]}`}
+          className={`relative overflow-hidden rounded-control ${stageSize === "card-v70" ? `${styles.cardStageFrame} ${styles.cardV70Canvas}` : "w-full max-w-sm bg-accent-soft"} ${RATIO_CLASS[spec.ratio]}`}
           data-edit-preview-frame={spec.ratio}
           data-card-canvas={kind === "card" ? "true" : undefined}
           onPointerUp={(event) => {
             if (kind !== "card" || !movingCardText.current || !onCardTextPositionsChange) return;
             movingCardText.current = false;
             const next = lines.map((_, index) => cardTextPositions[index] ?? "center");
-            next[activeLine] = cardPositionAt(event.clientY, event.currentTarget.getBoundingClientRect());
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const relX = bounds.width > 0 ? (event.clientX - bounds.left) / bounds.width : 0.5;
+            const relY = bounds.height > 0 ? (event.clientY - bounds.top) / bounds.height : 0.5;
+            next[activeLine] = cardPositionFromPoint(relX, relY);
             onCardTextPositionsChange(next);
           }}
         >
@@ -215,15 +231,15 @@ export function EditPreview({
             />
           ) : null}
 
-          {kind === "card" ? (
+          {kind === "card" ? (cardTextEmbedded ? null : (
             <div
-              className={`absolute z-10 w-4/5 rounded-control border border-border bg-surface/90 p-stack shadow-lg ${CARD_POSITION_CLASS[cardPosition]}`}
+              className={`absolute z-10 w-4/5 rounded-control border border-border p-stack shadow-lg ${stageSize === "card-v70" ? styles.cardV70TextOverlay : styles.cardTextOverlay} ${CARD_POSITION_CLASS[cardPosition]}`}
               data-card-text-position={cardPosition}
             >
               <button
                 type="button"
                 aria-label="카드 글자 끌어 옮기기"
-                className="mb-stack-tight min-h-control-touch w-full cursor-move rounded-control border border-border bg-surface-2 px-stack text-caption font-semibold text-muted"
+                className={`mb-stack-tight min-h-control-touch w-full cursor-move rounded-control border border-border px-stack text-caption font-semibold ${styles.cardTextHandle}`}
                 onPointerDown={(event) => {
                   movingCardText.current = true;
                   event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -233,31 +249,48 @@ export function EditPreview({
               </button>
               <textarea
                 aria-label={`카드 ${activeLine + 1} 글자`}
+                data-card-face-copy
                 value={line}
                 rows={3}
                 onChange={(event) => {
                   const next = lines.map((value, index) => index === activeLine ? event.target.value : value);
                   onLinesChange?.(next);
                 }}
-                className="min-h-control-touch w-full resize-none rounded-control border border-border bg-surface p-stack text-center text-body font-bold text-text"
+                className={`min-h-control-touch w-full resize-none rounded-control border p-stack text-center text-body font-bold ${styles.cardTextInput}`}
               />
             </div>
-          ) : <div className="absolute inset-0 grid place-items-center p-pad-inset text-center">
-            <div className="min-w-0">
-              <span className="text-caption font-semibold text-accent">
-                {renderReady ? "미리보기" : `${unit} ${activeLine + 1}`}
-              </span>
-              {/* 영상과 카드뉴스는 같은 문장을 아래 자막이 이미 들고 있다. 가운데는 화면에 무엇이 놓이는지만 말한다. */}
-              <p className="mt-stack break-keep text-body font-bold text-text">
-                {line ? `여기에 ${unit} 화면이 놓입니다` : `이 ${unit}은 비어 있습니다`}
-              </p>
+          )) : kind === "video" && mediaType === "video" && activeMediaUrl ? null : (
+            // 2026-09-21 회장 지적: 영상 탭에서 "재생도 안 된다". 원인은 이 자리표시 레이어가
+            // 영상 유무와 상관없이 항상 그려져 DeliveredMedia 가 그리는 영상 재생 컨트롤 위를
+            // absolute inset-0 로 덮고 있었던 것이다(포인터 이벤트가 이 div 로 먼저 잡혀
+            // 재생·탐색 버튼을 못 눌렀다). 실제로 영상 태그가 그려질 때(mediaType==="video")만
+            // 이 레이어를 렌더하지 않아 재생 화면이 최상위에서 클릭을 받게 한다. 영상 편집 중
+            // 바탕 이미지만 있을 때(mediaType==="image")는 영상 태그가 없으므로 이 레이어가
+            // 계속 "아직 영상이 없습니다" 안내를 보여준다(교차 리뷰 PR #66 minor 5).
+            <div className="absolute inset-0 grid place-items-center p-pad-inset text-center">
+              <div className="min-w-0">
+                <span className="text-caption font-semibold text-accent">
+                  {renderReady ? "미리보기" : `${unit} ${activeLine + 1}`}
+                </span>
+                {/* 영상과 카드뉴스는 같은 문장을 아래 자막이 이미 들고 있다. 가운데는 화면에 무엇이 놓이는지만 말한다. */}
+                <p className="mt-stack break-keep text-body font-bold text-text">
+                  {kind === "video"
+                    ? `아직 영상이 없습니다. 생성실에서 "숏폼 영상 만들기"를 누르면 여기서 재생됩니다.`
+                    : line
+                      ? `여기에 ${unit} 화면이 놓입니다`
+                      : `이 ${unit}은 비어 있습니다`}
+                </p>
+              </div>
             </div>
-          </div>}
+          )}
 
           {kind === "video" ? (
+            // pointer-events-none: 표시 전용 오버레이다. 1:1·16:9 처럼 아래 여백이 없는 규격에서는
+            // 이 p가 실제 영상 재생 컨트롤 바(크롬 기준 약 48px) 위에 겹치는데, 이벤트를 흡수하면
+            // 재생·탐색 버튼을 못 누른다(교차 리뷰 PR #66 MAJOR 3).
             <p
               data-edit-preview-subtitle={subtitleHidden ? "가림" : "보임"}
-              className={`absolute inset-x-0 px-stack text-center font-semibold text-text ${SUBTITLE_CLASS[subtitleSize] || "text-body-sm"} ${SUBTITLE_BOTTOM_CLASS[Math.max(spec.safeBottom, 6) + 2]}`}
+              className={`pointer-events-none absolute inset-x-0 px-stack text-center font-semibold text-text ${SUBTITLE_CLASS[subtitleSize] || "text-body-sm"} ${SUBTITLE_BOTTOM_CLASS[Math.max(spec.safeBottom, 6) + 2]}`}
             >
               {line}
             </p>
@@ -275,6 +308,7 @@ export function EditPreview({
               variant="secondary"
               className={cardVerticalPosition === position ? "border-accent bg-accent-soft text-accent" : ""}
               aria-pressed={cardVerticalPosition === position}
+              disabled={cardEditingLocked}
               onClick={() => {
                 if (!onCardTextPositionsChange) return;
                 const next = lines.map((_, index) => cardTextPositions[index] ?? "center");

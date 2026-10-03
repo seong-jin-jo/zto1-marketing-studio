@@ -108,7 +108,10 @@ describe("편집실 밖 조작 영역 하한 계약", () => {
   it("QA-APP-TOUCH-05 경계: 발행실 체크는 표식 20px · 조작면 44px 로 분리한다", () => {
     // DESIGN.md 발행실 절의 문장 그대로다. 체크 입력 자체를 44px 로 키우면 표식이 커져
     // 계약을 반대로 어긴다. 표식은 20px(h-5 w-5)로 두고 감싼 label 이 조작면이 된다.
-    const studio = read("src/app/studio/page.tsx");
+    // 2026-09-23: 이 마크업은 발행실 화면과 QA 정렬 하네스가 손으로 두 벌 유지하다
+    // 드리프트를 냈다(실수 원장 count:9). 공용 PublishHeaderControls 하나로 합쳤으므로
+    // 계약도 그 파일을 본다.
+    const studio = read("src/components/studio/PublishHeaderControls.tsx");
     const labels = studio.match(/<label className="ds-touch-target flex min-h-control-touch[^"]*"[\s\S]{0,400}?type="checkbox"[^>]*>/g) ?? [];
     expect(labels.length, "발행 · 미지원 두 자리 모두 조작면이 있어야 한다").toBe(2);
     for (const label of labels) expect(label).toMatch(/className="h-5 w-5 shrink-0"/);
@@ -148,7 +151,16 @@ function tsxFiles(dir: string, acc: string[] = []): string[] {
 describe("맨 button 래칫", () => {
   // 2026-09-14 실측 기준선. 공용 `Button` 을 안 쓰는 맨 `<button>` 의 전체 수다. 이 수는
   // 줄기만 해야 한다. 늘리려는 변경은 공용 `Button` 을 쓸 수 없는 이유를 먼저 대야 한다.
-  const BASELINE = 238;
+  //
+  // 2026-09-22 교차 코드리뷰 MINOR 대응 +1(239): PlatformPreview.tsx MediaCarousel 의
+  // 점 인디케이터를 비의미 <span> 에서 role="group" 안 <button> 으로 바꿨다(키보드로
+  // 카드를 직접 고를 수 있게, 접근성 개선). 소스에는 map 안 button 하나뿐이라(런타임에
+  // 카드 수만큼 찍혀도 소스 리터럴은 하나) 순증은 +1.
+  //
+  // 2026-09-22 4라운드: PublishEditSidebar(오른쪽 사이드바 채팅형 편집)를 이 브랜치에서
+  // 뺐다(세 라운드 연속 싱글턴이 깨져 별도 브랜치로 이관). EditTrigger·사이드바 자체
+  // 버튼(닫기·취소·저장)이 전부 사라져 기준선이 240 에서 239 로 내려간다.
+  const BASELINE = 239;
 
   it("QA-APP-TOUCH-08 경계: 맨 button 총수가 기준선을 넘지 않는다", () => {
     const count = tsxFiles(resolve(root, "src"))

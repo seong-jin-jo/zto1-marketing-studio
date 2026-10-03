@@ -43,8 +43,9 @@ describe("만든 파일 찾기는 한 곳이다", () => {
     expect(text).toContain("영상의 바탕이 될 그림을 찾지 못했습니다");
   });
 
-  it("화면도 내부 경로가 없으면 파일 이름을 넘긴다", () => {
+  it("화면은 파일 이름만 넘긴다(서버 절대경로를 들고 다니지 않는다)", () => {
     const text = src("app/studio/page.tsx");
-    expect(text).toMatch(/genVideo\(\{ localPath: source\?\.localPath, filename: baseFilename \}\)/);
+    expect(text).toMatch(/genVideo\(\{ filename: baseFilename \}\)/);
+    expect(text).not.toContain("source?.localPath");
   });
 });

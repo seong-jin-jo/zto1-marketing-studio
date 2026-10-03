@@ -80,7 +80,9 @@ describe("channel_accounts first-account concurrency (live Postgres)", () => {
         where tenant_id = ${tenant.id} and provider = ${provider}`;
       await sql.end({ timeout: 5 });
     }
-  });
+  // 실제 PostgreSQL advisory lock 경합을 검증하므로 전체 스위트의 병렬 부하에서도
+  // 기본 5초 제한에 결과가 좌우되지 않게 CI 연결 제한(8초)보다 긴 예산을 둔다.
+  }, 20_000);
 
   it("채널-재연결-01 정상: 같은 외부 계정을 두 번 저장하면 한 행을 갱신하고 기본 계정을 유지한다", async (ctx) => {
     const sql = await tryConnect();

@@ -195,6 +195,13 @@ const readCases = ({ tenantB, draftB, postB }) => [
   ["READ-58", "/api/higgsfield/asset/probe.png"],
   // 학습 정보 서버 보관소. 남의 작업 공간 브랜드 지식이 새면 그 자체가 영업기밀 유출이다.
   ["READ-59", "/api/studio/learning"],
+  // 2026-10-01 비동기 생성 전환: 작업 기록 조회. 다른 테넌트의 jobId로 남의 생성 결과(그림·
+  // 영상 배달 주소·프롬프트)를 받아 갈 수 있으면 안 된다. 404(존재 비공개)로 막아야 한다.
+  ["READ-60", "/api/higgsfield/job/probe-job-id"],
+  // 2026-10-02 영상 발행 비동기 전환(컨트롤러 감사 반려 대응): 느린 발행(예산 초과)은
+  // 202 + jobId 로 접수하고 이 라우트가 결과(게시됨+링크/실패 사유)를 돌려준다. 다른
+  // 테넌트의 jobId로 남의 발행 결과(permalink·에러 원문)를 받아 갈 수 있으면 안 된다.
+  ["READ-61", "/api/video/publish/job/probe-job-id"],
 ].map(([name, routePath]) => {
   const url = new URL(`${BASE_URL}${routePath}`);
   url.searchParams.set("tenant_id", tenantB);

@@ -22,10 +22,11 @@ describe("미리보기 안에서 본문을 고친다", () => {
     expect(src).toContain("editor?.onCaptionChange");
   });
 
-  it("아래에 같은 본문 칸을 또 두지 않는다", () => {
+  it("아래에 같은 본문 입력 칸을 또 두지 않는다", () => {
+    // 2026-09-22 교차 코드리뷰 4라운드: 오른쪽 사이드바(클릭→사이드바로 여는 트리거)를
+    // 이 브랜치에서 뺐다(세 라운드 연속 싱글턴이 깨져 별도 브랜치로 이관). 미리보기 본문
+    // 편집이 아직 없는 형식(세로 영상)은 다시 카드 하단의 textarea 가 유일한 입구다.
     expect(src).toContain("BODY_EDITABLE_IN_PREVIEW");
-    expect(src).toMatch(/BODY_EDITABLE_IN_PREVIEW\.has\(platform\) \? null :/);
-    // 미리보기 본문 편집이 없는 형식은 그 칸이 유일한 입구라 남아야 한다.
     expect(src).toMatch(/data-pv-inline-edit=\{`\$\{platform\}:caption`\}/);
   });
 

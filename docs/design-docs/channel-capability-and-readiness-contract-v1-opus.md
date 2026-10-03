@@ -52,7 +52,7 @@ STAMP | channel-capability-and-readiness-contract | 생성 2026-08-13 | model: c
 | `connected` | 고객이 연결 완료 | 초록 "연결됨" | 관리/해제 |
 | `not_connected` | 우리 앱은 준비됐고 고객이 아직 연결 안 함 | 기본 "미연결" | **연결 버튼(활성)** |
 | `opening_soon` | 운영자가 아직 그 채널 앱/심사 미완(고객이 연결하고 싶어도 불가) | 회색 "오픈 준비중" | 없음(대기), "준비되면 알림" 선택 |
-| `publish_pending` | 연결은 됐으나 외부 심사 미완으로 실제 발행 제한(예: 미심사 앱 private) | 노랑 "발행 준비중" | 상태 안내 |
+| `publish_pending` | 연결은 됐으나 외부 심사 미완. **발행 자체를 막지는 않는다** — provider별로 결과가 제한된다: YouTube는 videos.insert가 강제로 비공개(private)로 게시되고, TikTok은 본인만 보기(SELF_ONLY)로 게시된다. 그 외 provider는 확인된 제약이 없어 "발행 범위가 제한될 수 있다"고만 안내한다(2026-09-21 PR #66 교차 리뷰 정정 — 이전에는 "발행 준비중"이 발행이 막힌 것처럼 읽혔다) | 노랑 "연결됨 · 심사 전" | 상태 안내 |
 | `error` | credential 저장소 장애 등 | 빨강 "확인 필요" | 재시도 |
 
 **핵심**: `not_connected`(고객 액션 필요)와 `opening_soon`(운영자/심사 대기)을 반드시 분리. 지금은 이 둘이 "관리자 문의"로 뭉뚱그려짐.

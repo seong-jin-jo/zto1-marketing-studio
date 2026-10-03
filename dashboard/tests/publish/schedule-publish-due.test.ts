@@ -241,7 +241,8 @@ describe("POST /api/schedule/publish-due — 예약 실발행 루프", () => {
     expect(body.schedules[0].status).toBe("published");
     expect(getChannelCred).toHaveBeenCalledTimes(2);
     expect(publishThreads).toHaveBeenCalledWith({ token: "tok", userId: "u-1" }, "threads body", "https://cdn/image.png");
-    expect(publishX).toHaveBeenCalledWith({ token: "tok", userId: "u-1" }, "x body");
+    // 예약 발행도 이미지를 X로 실어 보낸다(2026-10-02 실측: 카드덱이 텍스트만 올라간 사고 재발 방지).
+    expect(publishX).toHaveBeenCalledWith({ token: "tok", userId: "u-1" }, "x body", ["https://cdn/image.png"]);
     expect(H.inserts).toHaveLength(2);
     expect(H.updates).toHaveLength(1);
     expect(H.updates[0]).toContain("published");

@@ -16,19 +16,15 @@
 import {
   CARD_PIXELS,
   DEFAULT_CARD_THEME,
+  placementFrom,
   renderTextCard,
   type CardRatio,
-  type CardTextVerticalPosition,
   type CardTheme,
   type TextCardInput,
 } from "./text-card-image";
-
-/** 편집실이 쓰는 아홉 자리 표기를 카드 그리기가 쓰는 세 자리로 줄인다. */
-export function verticalFrom(position: string | undefined): CardTextVerticalPosition {
-  if (typeof position === "string" && position.startsWith("top")) return "top";
-  if (typeof position === "string" && position.startsWith("bottom")) return "bottom";
-  return "center";
-}
+import type { CardDeck, CardTemplate } from "./card-deck-contract";
+import { CARD_TEMPLATE_RENDERERS } from "./card-templates";
+import { embeddedTextCardImage } from "./text-card-provenance";
 
 /** "4:5" 같은 화면 표기를 실제 픽셀이 정의된 비율로 바꾼다. 모르는 값은 4:5 로 둔다. */
 export function cardRatioFrom(value: string | null | undefined): CardRatio {
@@ -41,6 +37,10 @@ export type CardDeckSpec = {
   theme?: CardTheme;
   /** 장마다의 글자 자리. 편집실 표기(top-center 등)를 그대로 받는다. */
   positions?: (string | undefined)[];
+  /** "plain"(기존 글자 카드) | "chat_bubble"(신규). 없으면 plain 으로 본다(회귀 0). */
+  template?: CardTemplate;
+  /** template="chat_bubble" 일 때만 쓴다. 렌더 입력은 이 덱의 slides 에서 직접 만든다. */
+  deck?: CardDeck;
 };
 
 /**
@@ -55,7 +55,7 @@ export function cardDeckRenderInputs(spec: CardDeckSpec): TextCardInput[] {
     text: entry.text,
     ratio: spec.ratio,
     theme: spec.theme ?? DEFAULT_CARD_THEME,
-    position: verticalFrom(spec.positions?.[entry.index]),
+    position: placementFrom(spec.positions?.[entry.index]),
     index: order,
     total: kept.length,
   }));
@@ -77,19 +77,104 @@ export type CardDeckUpload = {
 export class CardDeckError extends Error {}
 
 /**
- * 한 벌을 그려 전부 저장하고 배달 주소 목록을 돌려준다.
- * 한 장이라도 저장에 실패하면 전체를 실패로 본다. 반쪽 카드뉴스는 올리면 안 된다.
+ * plain 글자 카드 한 벌을 저장하지 않고 브라우저 data URL로만 그린다.
+ * 편집실 즉시 미리보기와 최종 업로드가 같은 입력·렌더러를 공유하게 하는 정본이다.
  */
-export async function renderAndUploadCardDeck(spec: CardDeckSpec, deps: CardDeckDeps): Promise<string[]> {
+export function renderPlainCardDeck(
+  spec: CardDeckSpec,
+  render: (input: TextCardInput) => string | null = renderTextCard,
+): string[] {
   const inputs = cardDeckRenderInputs(spec);
-  if (!inputs.length) throw new CardDeckError("카드로 만들 글자가 없습니다.");
-  const render = deps.render ?? renderTextCard;
+  if (!inputs.length) return [];
   const drawn: string[] = [];
   for (const input of inputs) {
     const dataUrl = render(input);
     if (!dataUrl) throw new CardDeckError("이 브라우저에서는 카드를 그릴 수 없습니다.");
     drawn.push(dataUrl);
   }
+  return drawn;
+}
+
+export type PlainCardRenderCacheEntry = {
+  key: string;
+  dataUrl: string;
+};
+
+/**
+ * 편집 중에는 바뀐 장만 다시 그린다. 카드 수만큼만 캐시를 반환하므로 입력을 오래 바꿔도
+ * 과거 PNG data URL이 계속 쌓이지 않는다. 최종 발행은 아래 업로드 함수가 전 장을 다시
+ * 그려 정본을 만든다.
+ */
+export function renderPlainCardDeckIncremental(
+  spec: CardDeckSpec,
+  previous: readonly PlainCardRenderCacheEntry[] = [],
+  render: (input: TextCardInput) => string | null = renderTextCard,
+): { urls: string[]; cache: PlainCardRenderCacheEntry[] } {
+  const total = spec.lines.length;
+  const inputs = spec.lines.map((text, index): TextCardInput => ({
+    text,
+    ratio: spec.ratio,
+    theme: spec.theme ?? DEFAULT_CARD_THEME,
+    position: placementFrom(spec.positions?.[index]),
+    index,
+    total,
+  }));
+  const cache = inputs.map((input, index) => {
+    const key = JSON.stringify(input);
+    if (previous[index]?.key === key) return previous[index];
+    const dataUrl = render(input);
+    if (!dataUrl) throw new CardDeckError("이 브라우저에서는 카드를 그릴 수 없습니다.");
+    return { key, dataUrl };
+  });
+  return { urls: cache.map((entry) => entry.dataUrl), cache };
+}
+
+/**
+ * template="chat_bubble" 일 때 덱의 slides 순서대로 PNG data URL 목록을 그린다.
+ * 표지·CTA 사진(J1)을 기다려야 해서 장마다 순서대로 await 한다(Promise.all 로 동시에
+ * 돌리면 실패한 장의 순번을 특정하기 어렵고, 사진 여러 장을 한꺼번에 내려받게 된다).
+ */
+async function renderChatBubbleDeck(deck: CardDeck): Promise<string[]> {
+  const renderer = CARD_TEMPLATE_RENDERERS.chat_bubble;
+  const total = deck.slides.length;
+  const out: string[] = [];
+  for (let index = 0; index < deck.slides.length; index += 1) {
+    const dataUrl = await renderer({ deck, slide: deck.slides[index], index, total });
+    if (!dataUrl) throw new CardDeckError("이 브라우저에서는 카드를 그릴 수 없습니다.");
+    out.push(dataUrl);
+  }
+  return out;
+}
+
+/**
+ * 한 벌을 그려 전부 저장하고 배달 주소 목록을 돌려준다.
+ * 한 장이라도 저장에 실패하면 전체를 실패로 본다. 반쪽 카드뉴스는 올리면 안 된다.
+ *
+ * template 이 "chat_bubble" 이면 spec.deck 의 slides 로 그린다(글자 위치 9칸 경로 대신).
+ * template 이 없거나 "plain" 이면 기존 lines 기반 경로 그대로(회귀 0).
+ */
+export async function renderAndUploadCardDeck(spec: CardDeckSpec, deps: CardDeckDeps): Promise<string[]> {
+  if (spec.template === "chat_bubble") {
+    if (!spec.deck) throw new CardDeckError("chat_bubble 템플릿에는 deck 이 필요합니다.");
+    const drawn = await renderChatBubbleDeck(spec.deck);
+    return uploadDrawnCards(drawn, deps);
+  }
+  const drawn = renderPlainCardDeck(spec, deps.render ?? renderTextCard);
+  if (!drawn.length) throw new CardDeckError("카드로 만들 글자가 없습니다.");
+  return uploadDrawnCards(drawn, deps);
+}
+
+/** plain 카드 재합성과 글자 내장 표식을 하나의 호출로 묶어 표식 누락을 구조적으로 막는다. */
+export async function renderAndUploadEmbeddedTextCard(
+  spec: CardDeckSpec,
+  deps: CardDeckDeps,
+  topicKey: string,
+) {
+  const urls = await renderAndUploadCardDeck(spec, deps);
+  return embeddedTextCardImage({ url: urls[0], file: urls[0], imageUrls: urls, topicKey });
+}
+
+async function uploadDrawnCards(drawn: string[], deps: CardDeckDeps): Promise<string[]> {
   const urls: string[] = [];
   const rollbacks: Array<() => Promise<void>> = [];
   try {

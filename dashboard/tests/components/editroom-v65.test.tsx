@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
+import type { ContentEditFormat } from "@/lib/studio/content-edit-format";
 
 afterEach(() => cleanup());
 
@@ -14,9 +15,10 @@ describe("편집실 v65 화면 계약", () => {
 
     expect(screen.getByRole("heading", { name: "내용과 화면을 직접 다듬습니다" })).toBeInTheDocument();
     const formatGroup = screen.getByRole("group", { name: "만들 콘텐츠 형식" });
-    for (const label of ["글", "카드뉴스", "영상", "음악"]) {
+    for (const label of ["글", "카드뉴스", "영상"]) {
       expect(formatGroup.querySelector(`button[aria-label="${label}"]`)).not.toBeNull();
     }
+    expect(formatGroup.querySelector('button[aria-label="음악"]')).toBeNull();
     expect(screen.getByText("형식과 채널은 다릅니다.")).toBeInTheDocument();
     expect(screen.queryByText("여기서만 한 번에 되는 일")).not.toBeInTheDocument();
     expect(document.querySelectorAll("button.bg-accent")).toHaveLength(1);
@@ -30,10 +32,59 @@ describe("편집실 v65 화면 계약", () => {
     render(<EditRoom lines={["첫 문단", "둘째 문단"]} onLinesChange={onLinesChange} kind="text" />);
 
     const editor = screen.getByRole("textbox", { name: "글 전체" });
-    expect(editor).toHaveValue("첫 문단\n\n둘째 문단");
-    fireEvent.change(editor, { target: { value: "고친 첫 문단\n\n고친 둘째 문단" } });
+    expect(editor.innerHTML).toBe("첫 문단<br><br>둘째 문단");
+    editor.innerHTML = "고친 첫 문단<br><br>고친 둘째 문단";
+    fireEvent.input(editor);
     expect(onLinesChange).toHaveBeenLastCalledWith(["고친 첫 문단", "고친 둘째 문단"]);
     expect(screen.queryByRole("textbox", { name: "문단 1" })).not.toBeInTheDocument();
+  });
+
+  it("PR85-R7-M4 글을 선택할 때만 플로팅 도구막대가 뜨고 굵기 세그먼트를 저장한다", () => {
+    const onFormatChange = vi.fn();
+    render(<EditRoom lines={["강조할 본문"]} onLinesChange={vi.fn()} kind="text" onFormatChange={onFormatChange} />);
+    const editor = screen.getByRole("textbox", { name: "글 전체" });
+    expect(screen.queryByLabelText("선택한 글 도구")).not.toBeInTheDocument();
+    const range = document.createRange();
+    range.setStart(editor.firstChild!, 0);
+    range.setEnd(editor.firstChild!, 3);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+    fireEvent.click(screen.getByRole("button", { name: "굵게" }));
+    expect(editor.querySelector("strong")).toHaveTextContent("강조할");
+    expect(onFormatChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      kind: "text",
+      segments: expect.arrayContaining([expect.objectContaining({ text: "강조할", bold: true })]),
+    }));
+  });
+
+  it("PR85-R7-M4 정상: 인공지능 일괄 편집 결과가 오면 기존 굵기 모델 대신 새 본문을 표시한다", async () => {
+    const initialFormat: ContentEditFormat = {
+      kind: "text",
+      segments: [{ text: "원문", bold: true }],
+    };
+    const view = render(
+      <EditRoom
+        lines={["원문"]}
+        onLinesChange={vi.fn()}
+        kind="text"
+        initialFormat={initialFormat}
+      />,
+    );
+
+    view.rerender(
+      <EditRoom
+        lines={["인공지능이 고친 본문"]}
+        onLinesChange={vi.fn()}
+        kind="text"
+        initialFormat={initialFormat}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "글 전체" })).toHaveTextContent("인공지능이 고친 본문");
+    });
   });
 
   it("V65-EDIT-03 정상: 카드 글자를 이미지 안에서 고치고 상단·중앙·하단으로 옮긴다", () => {
@@ -53,10 +104,10 @@ describe("편집실 v65 화면 계약", () => {
     expect(onLinesChange).toHaveBeenCalledWith(["카드 안에서 고침"]);
     fireEvent.click(screen.getByRole("button", { name: "상단" }));
     expect(onCardTextPositionsChange).toHaveBeenCalledWith(["top-center"]);
-    expect(screen.getByRole("button", { name: "카드 비율 도구" })).toHaveTextContent("4:5 · 1080 × 1350픽셀");
-    expect(screen.getByText("4:5 · 1080 × 1350픽셀")).toBeInTheDocument();
-    expect(screen.getByText(/카드 글자 크기: 기본 28픽셀/)).toBeInTheDocument();
-    expect(screen.getByText(/배경 이미지: 책상 위 제품 사진/)).toBeInTheDocument();
+    // v70에서는 중복 도구줄을 없애고 미리보기의 비율 선택기 한 벌만 남긴다.
+    expect(screen.getAllByRole("group", { name: "콘텐츠 크기 고르기" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "세로 카드 4:5" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("1080 × 1350픽셀")).toBeInTheDocument();
   });
 
   it("V65-EDIT-04 정상: 전체 적용은 고정 동작 셋에 말로 시키기 하나를 더해 제공한다", () => {
@@ -69,7 +120,7 @@ describe("편집실 v65 화면 계약", () => {
     // 고정 셋 + 시키기 + 발행실 이동 = 다섯.
     expect(helper.querySelectorAll("button")).toHaveLength(5);
     expect(helper.querySelector("[data-bulk-ask]")).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "빈 줄 걷어내기" }));
+    fireEvent.click(screen.getByRole("button", { name: "빈 줄 정리" }));
     expect(onLinesChange).toHaveBeenCalledWith(["아주 긴 문장을 스물네 글자보다 길게 작성해서 줄이는 동작을 확인한다"]);
   });
 
@@ -87,10 +138,43 @@ describe("편집실 v65 화면 계약", () => {
     expect(screen.getByRole("button", { name: "발행실로 이동" })).toBeDisabled();
   });
 
-  it("V65-EDIT-06 거절: 음악 파일을 만들 수 없으면 제공하지 않는다고 정확히 표시한다", () => {
-    render(<EditRoom lines={["나레이션 대사"]} onLinesChange={vi.fn()} kind="audio" />);
+  it("V65-EDIT-06 정상: 기존 나레이션 초안은 대사와 목소리만 편집한다", () => {
+    const onLinesChange = vi.fn();
+    render(<EditRoom lines={["나레이션 대사"]} onLinesChange={onLinesChange} kind="audio" />);
 
-    expect(screen.getByText("음악 파일 생성은 아직 제공하지 않습니다. 지금은 나레이션 대사만 편집할 수 있습니다.")).toBeInTheDocument();
-    expect(screen.queryByText(/음악 파일 생성 완료/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "대사 1" }), { target: { value: "고친 나레이션 대사" } });
+    expect(onLinesChange).toHaveBeenCalledWith(["고친 나레이션 대사"]);
+    expect(screen.getByRole("region", { name: "나레이션 편집 도구" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "목소리 도구" })).toBeInTheDocument();
+    expect(screen.queryByText(/배경음악 음량/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/음악 파일 생성은 아직 제공하지 않습니다/)).not.toBeInTheDocument();
+  });
+
+  it("V65-EDIT-07 거절: 보존할 음악 값이 같으면 제어형 포맷 갱신을 반복하지 않는다", () => {
+    let renderCount = 0;
+    function ControlledAudioEditRoom() {
+      renderCount += 1;
+      if (renderCount > 12) throw new Error("같은 나레이션 포맷을 반복 갱신했습니다");
+      const [format, setFormat] = React.useState<ContentEditFormat>({
+        kind: "audio",
+        voice: "차분한 남성",
+        musicTrack: "잔잔한 로파이",
+        musicVolume: 35,
+      });
+      return (
+        <EditRoom
+          lines={["나레이션 대사"]}
+          onLinesChange={vi.fn()}
+          kind="audio"
+          initialFormat={format}
+          onFormatChange={setFormat}
+        />
+      );
+    }
+
+    render(<ControlledAudioEditRoom />);
+
+    expect(screen.getByRole("button", { name: "목소리 도구" })).toBeInTheDocument();
+    expect(renderCount).toBeLessThanOrEqual(3);
   });
 });

@@ -86,3 +86,50 @@ jobs:
 
       - name: Test (격리 테스트가 DB 연결로 실제 assert)
         run: npx vitest run
+
+      - name: 발행실 카드 정렬 실측 게이트 (헤드리스 브라우저)
+        # 2026-09-23 실수 원장 count:9 봉합. 이 측정 스크립트는 그전까지 package.json 에
+        # 등록만 돼 있고 어디서도 호출되지 않는 죽은 코드였다 — 그래서 정렬 회귀를
+        # 다섯 라운드 동안 아무도 못 잡았다. 이제 CI 의 실제 스텝이다.
+        # 브라우저를 못 구하면 조용히 건너뛰지 않고 실패한다(스크립트 안에 명시).
+        run: bash scripts/ci-publish-room-alignment.sh
+
+      - name: 말풍선 에디터 WYSIWYG 회귀 게이트 (chromium)
+        # PR #85 4차 재검증 MINOR(4). webkit·firefox 는 CI(self-hosted 러너 반복 실행)에
+        # 매번 설치하기엔 브라우저 바이너리 값이 커서, chromium만 CI 게이트로 걸고 나머지
+        # 두 엔진은 로컬에서 수동으로 3엔진 전체(`npm run e2e:bubble-editor`)를 돌려
+        # 확인한다(이번 라운드 확인 로그: 27/27 통과, chromium/webkit/firefox 전부).
+        # 이 스텝은 MAJOR(끝 개행 WYSIWYG 불일치)·MINOR(선행 Enter, 키보드 전용 굵게)
+        # 회귀를 실측 브라우저로 잡는다 — mock/jsdom으로는 못 잡는 축이다.
+        # MINOR(3, 5차 재검증): `npx playwright install`은 package.json에 없는
+        # `playwright`(풀 패키지)를 매번 최신판(예: 1.63)으로 새로 받아 브라우저 버전이
+        # 고정 안 된다 — 이 레포는 `playwright-core`만 devDependency로 쓴다(스크립트가
+        # 실제 임포트하는 것도 그것). `npx playwright-core install`로 바꿔 이미 npm ci로
+        # 설치된, package-lock.json이 고정한 그 버전의 브라우저를 받는다.
+        run: |
+          npx playwright-core install --with-deps chromium
+          npm run e2e:bubble-editor:chromium
+
+      - name: 편집실 v70 화면 정합 회귀 게이트 (일반 카드·말풍선 덱·발행실)
+        timeout-minutes: 4
+        env:
+          STUDIO_V70_BASE_URL: http://127.0.0.1:3472
+          STUDIO_V70_OUTPUT_DIR: /tmp/studio-v70-screen-conformance
+          # 화면별 v70 clean-frame을 저장소 상대경로로 읽고 카드 면만 잘라 이미지 차이를
+          # 판정한다. 바깥 제품 셸 차이는 비교 대상이 아니다.
+          STUDIO_V70_COMPARE: "1"
+        run: |
+          npm run start -- -p 3472 > /tmp/studio-v70-dev.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+          timeout --kill-after=5s 60s bash -c 'until curl -fsS http://127.0.0.1:3472/studio >/dev/null; do sleep 1; done'
+          timeout --kill-after=10s 150s npm run e2e:studio-v70-screen
+
+      - name: 편집실 본문 충돌 복구 두 탭 회귀 게이트 (chromium)
+        timeout-minutes: 3
+        run: |
+          npm run start -- -p 3471 > /tmp/body-conflict-dev.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+          timeout --kill-after=5s 60s bash -c 'until curl -fsS http://127.0.0.1:3471/studio >/dev/null; do sleep 1; done'
+          timeout --kill-after=10s 90s npm run e2e:body-conflict

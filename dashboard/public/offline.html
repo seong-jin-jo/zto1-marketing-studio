@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>오프라인 | OSMU</title>
+<!--
+  정적 파일 — Next 라우트가 아니다(PR #73 MAJOR 수정). 이유: sw.js install 이 문서 HTML만
+  precache하고 그 문서가 참조하는 JS 청크는 캐시하지 않는다. React 라우트였을 때는 오프라인
+  상태에서 HTML은 뜨지만 하이드레이션이 실패해 "다시 시도" onClick이 안 붙었다. 이 파일은
+  React/번들 없이 inline onclick만으로 동작해 오프라인에서도 100% 눌린다.
+  DESIGN.md v37 토큰 값을 그대로 하드코딩했다(빌드 파이프라인 밖이라 ui-token-audit 대상 아님,
+  Tailwind 클래스를 못 쓰는 정적 파일이라 값을 직접 옮겼다 — 토큰이 바뀌면 이 파일도 손으로 맞춘다).
+-->
+<style>
+  :root {
+    --bg: #fbfbfc; --surface: #ffffff; --border: #e4e4e7;
+    --text: #18181b; --subtle: #66666e;
+    --accent: #2563eb; --accent-fg: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0a0b; --surface: #151518; --border: #27272a;
+      --text: #fafafa; --subtle: #a1a1aa;
+      --accent: #60a5fa; --accent-fg: #0b1220;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--bg); color: var(--text); padding: 24px;
+    font-family: Pretendard, -apple-system, "Apple SD Gothic Neo", sans-serif;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 32px; max-width: 360px; width: 100%; text-align: center;
+  }
+  h1 { font-size: 17px; font-weight: 700; margin: 0 0 8px; }
+  p { font-size: 13px; color: var(--subtle); margin: 0 0 24px; }
+  button {
+    width: 100%; min-height: 44px; border: none; border-radius: 8px;
+    background: var(--accent); color: var(--accent-fg);
+    font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>연결이 끊겼습니다</h1>
+    <p>인터넷 연결을 확인한 뒤 다시 시도해 주세요.</p>
+    <button type="button" onclick="location.reload()">다시 시도</button>
+  </div>
+</body>
+</html>

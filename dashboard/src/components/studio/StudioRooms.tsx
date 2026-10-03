@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/shared/Button";
 import { StateNotice } from "@/components/shared/StateNotice";
 import { EditPreview, type CardTextPosition } from "./EditPreview";
 import { EditOutline } from "./EditOutline";
+import { CardDeckPanel, CardStripThumbnail, elementToSegments, getEditableSelectionOffsets, restoreSelectionRange, segmentsToHtml } from "./BubbleEditor";
+import type { CardDeck, Segment } from "@/lib/studio/card-deck-contract";
+import { toggleSegmentsBold } from "@/lib/studio/card-deck-ops";
+import { deckProjection, applyProjection } from "@/lib/studio/card-deck-contract";
+import { VideoEditor } from "./VideoEditor";
+import { emptyVideoEdit, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
 import {
@@ -22,11 +28,12 @@ import { workspaceDisplayName } from "@/lib/workspace-display-name";
 import { IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
 import { themeFromPalette, type CardRatio } from "@/lib/studio/text-card-image";
 import { browserCardUploader, renderAndUploadCardDeck } from "@/lib/studio/card-deck";
+import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
+import { filterInstructionPlaceholderLines } from "@/lib/studio/generated-copy";
+import { resolveTextCardLines } from "@/lib/studio/text-card-source";
 import {
   CARD_ASPECT_RATIOS,
   EDIT_BACKGROUNDS,
-  EDIT_MUSIC_TRACKS,
-  EDIT_MUSIC_VOLUMES,
   EDIT_VOICES,
   PLAYBACK_SPEEDS,
   SUBTITLE_SIZES,
@@ -49,6 +56,10 @@ import {
 import styles from "./StudioRooms.module.css";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
+
+// M5(2026-09-22 코드리뷰): 매 렌더 새 객체를 만들지 않게 모듈 스코프에서 한 번만 만든다.
+// videoEdit는 순수함수(video-edit-contract.ts)로만 바뀌므로 이 상수를 직접 변형하지 않는다.
+const EMPTY_VIDEO_EDIT: VideoEdit = emptyVideoEdit();
 
 export type CreateContentBranch = "text_image" | "video";
 export type EditContentKind = "video" | "card" | "audio" | "text";
@@ -88,6 +99,15 @@ interface PersistedCreateDraft {
   candidates: StudioGenerationCandidate[];
   selected: "A" | "B" | "C" | null;
   quickStructure: CreateStructureChoice | null;
+  /**
+   * 구조 초안(candidates)을 만들 때 실제로 썼던 주제. 2026-10-01 리뷰 BLOCK 재발견:
+   * 이 값을 저장해 두지 않고 복원 시점의 `topic` prop 을 대신 기억하면, 부모(page.tsx)의
+   * 주제 복원이 이 컴포넌트보다 늦게 끝나는 경로(서버 재동기화·발행 복귀 등)에서
+   * "topic" prop 이 아직 옛 값(또는 빈 문자열)인 채로 기억돼, 늦게 도착하는 진짜 주제와
+   * 비교돼 막 복원한 candidates 를 지워버렸다. 만들 때의 주제 원본을 같이 저장해
+   * 복원 시점의 불안정한 prop 값에 의존하지 않는다.
+   */
+  topic?: string;
 }
 
 function createDraftStorageKey(workspaceId: string): string {
@@ -111,6 +131,24 @@ function isStudioGenerationCandidate(value: unknown): value is StudioGenerationC
     && Boolean(candidate.format)
     && Array.isArray(candidate.format?.outline)
     && candidate.format.outline.every((line) => typeof line === "string");
+}
+
+/**
+ * 2026-10-01 리뷰 BLOCK 재발견: 서버 생성 시점(generation/llm.ts)의 자리표시 차단은
+ * 글자 카드로 넘어가기 전 구조 초안(A/B/C) 화면에서는 이미 잡고 있지만, 브라우저에
+ * 저장됐다 새로고침으로 되살아나는 candidates/quickStructure 는 그 검사를 거치지 않고
+ * 그대로 화면에 다시 그려졌다(누출원). 복원할 때도 같은 판정(filterInstructionPlaceholderLines)
+ * 을 걸어 A/B/C 화면에 자리표시 문장이 다시 보이지 않게 한다.
+ */
+function sanitizeRestoredCandidate(candidate: StudioGenerationCandidate): StudioGenerationCandidate {
+  return {
+    ...candidate,
+    format: { ...candidate.format, outline: filterInstructionPlaceholderLines(candidate.format.outline) },
+  };
+}
+function sanitizeRestoredStructure(structure: CreateStructureChoice | null): CreateStructureChoice | null {
+  if (!structure) return structure;
+  return { ...structure, outline: filterInstructionPlaceholderLines(structure.outline) };
 }
 
 function readCreateDraft(workspaceId: string): PersistedCreateDraft | null {
@@ -153,6 +191,7 @@ function readCreateDraft(workspaceId: string): PersistedCreateDraft | null {
       candidates: value.candidates as StudioGenerationCandidate[],
       selected: value.selected ?? null,
       quickStructure: quickStructure ?? null,
+      topic: typeof value.topic === "string" ? value.topic : undefined,
     };
   } catch {
     localStorage.removeItem(createDraftStorageKey(workspaceId));
@@ -160,14 +199,14 @@ function readCreateDraft(workspaceId: string): PersistedCreateDraft | null {
   }
 }
 
-function AssistantPanel({ title, children }: { title: string; children: ReactNode }) {
+function AssistantPanel({ title, children, className = "", compactOnNarrow = true }: { title: string; children: ReactNode; className?: string; compactOnNarrow?: boolean }) {
   return (
-    <aside className="card h-fit min-w-0 overflow-y-auto max-lg:sticky max-lg:bottom-0 max-lg:z-30 max-lg:max-h-44 max-lg:rounded-b-none lg:sticky lg:top-pad-inset" aria-label={`${title} 대화창`} data-chat-dock="persistent" data-chat-always="true">
+    <aside className={`card h-fit min-w-0 overflow-y-auto lg:sticky lg:top-pad-inset ${compactOnNarrow ? "max-lg:sticky max-lg:bottom-0 max-lg:z-30 max-lg:max-h-44 max-lg:rounded-b-none" : ""} ${className}`} aria-label={`${title} 대화창`} data-chat-dock="persistent" data-chat-always="true" data-edit-helper={title === "편집 담당" ? "true" : undefined}>
       <div className="flex items-center gap-stack-tight border-b border-border p-stack">
         <div className="grid h-10 w-10 place-items-center rounded-pill bg-accent text-body font-bold text-accent-fg" aria-hidden="true">O</div>
         <div><b className="block text-body text-text">{title}</b><span className="text-caption text-success">지금 대기 중</span></div>
       </div>
-      <div className="bg-surface-2 p-stack">{children}</div>
+      <div className="flex min-h-0 flex-col gap-pad-inset bg-surface-2 p-stack">{children}</div>
     </aside>
   );
 }
@@ -179,10 +218,19 @@ interface CreateRoomProps {
   topic: string;
   contentBranch?: CreateContentBranch;
   onContentBranchChange?: (branch: CreateContentBranch) => void;
+  /** `?room=create&kind=...`처럼 사용자가 명시해 들어온 생성 형식. 저장본 복원보다 우선한다. */
+  requestedPrimaryKind?: CreateKind | null;
   onTopicChange: (value: string) => void;
   onOpenLearning: () => void;
   onCandidateSelect: (candidate: StudioGenerationCandidate) => void;
-  onOpenEditor?: () => void;
+  /** draftId 를 주면(카톡 말풍선 카드뉴스 9장을 방금 만들었을 때) 그 초안을 실어 편집실로 연다. */
+  onOpenEditor?: (draftId?: string) => void;
+  /**
+   * 파생(derivations) 확정이 성공하면 draft_id 를 준다. 부모가 초안 목록을 재검증
+   * (SWR mutate)해야 `cardDeckByDraftId` 가 방금 만든 덱을 실제로 찾는다 — 안 하면
+   * 탭 포커스가 바뀔 때까지 썸네일이 안 뜬다(코드리뷰 2026-09-22 M3).
+   */
+  onDerivationSucceeded?: (draftId: string) => Promise<void> | void;
   /** 생성실에서 첫 형식을 고르기 전 헤더가 특정 형식을 추측하지 않게 현재 선택을 전달한다. */
   onPrimaryKindChange?: (kind: CreateKind | null) => void;
   /** 같이 만들 갈래가 바뀌면 헤더 상태판이 따라 바뀐다 */
@@ -230,6 +278,90 @@ interface CreateRoomProps {
   madeVideoUrl?: string | null;
   cardImageBusy?: boolean;
   onQuickDraftGenerate?: (structure: CreateStructureChoice) => Promise<void> | void;
+  /**
+   * "다른 형식도 같이" 로 만든 카톡 말풍선 카드뉴스의 실제 덱을 draft_id 로 찾는다.
+   *
+   * 2026-09-22 PR4: `deck_summary`(장수·훅·CTA 키워드) 텍스트만으로는 "방금 만든 것"을
+   * 눈으로 확인할 수 없다. 목록(`GET /api/studio/drafts`)에 이미 `cardDeck` 이 실려
+   * 오므로(§7.3) 그것을 찾아 캔버스로 실제 9장을 그린다. 못 찾으면(아직 목록에 안 온
+   * 낙관적 응답 구간 등) 조용히 비우지 않고 기존 텍스트 요약으로 물러선다.
+   */
+  cardDeckByDraftId?: (draftId: string) => CardDeck | null;
+}
+
+/**
+ * 카드 덱 한 벌을 작은 썸네일 9장으로 캔버스에 그린다("방금 만든 것" 실물 확인).
+ *
+ * 2026-09-22 실측: PR3 까지는 카드뉴스 생성 직후 화면에 "9장을 만들었습니다(훅: pain,
+ * 댓글 키워드: '순서')" 라는 글줄만 떴다. 글자로는 훅 표지가 무엇을 만들었는지, 말풍선이
+ * 잘 나뉘었는지 확인할 길이 없다. 편집실에서 쓰는 같은 렌더러(`chat-bubble.ts`)를 그대로
+ * 재사용해 생성실에도 실제 그림을 보여 준다(설계 §5 F2, "미리보기와 결과가 같은 코드").
+ */
+/**
+ * 2026-09-22 코드리뷰 MAJOR 4: 렌더러(`renderChatBubbleSlideToCanvas`)는 말풍선이
+ * 세이프존을 넘으면 던진다(설계 F2 "넘침 = 렌더 실패로 이유 반환"). 회원 브라우저 폰트로
+ * 한 장이라도 넘치면 이 useEffect 가 잡지 않은 예외는 React 가 가장 가까운 error
+ * boundary 까지 언마운트하고, 그러면 돈 내고 만든 결과 화면이 통째로 사라진다. 장별로
+ * try/catch 해서 실패한 장은 이유 칩으로만 대체한다(`CardDeckPanel` 의 미리보기와 같은
+ * 패턴, BubbleEditor.tsx:224-241).
+ */
+export function CardDeckThumbnailStrip({ deck }: { deck: CardDeck }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    // J1(2026-09-22 코드리뷰): 렌더러가 표지·CTA 사진 로딩을 기다리는 비동기 함수로
+    // 바뀌었다. `cancelled`로 deck이 또 바뀌기 전에 그린 결과만 host에 붙인다.
+    let cancelled = false;
+    host.innerHTML = "";
+    const total = deck.slides.length;
+    void (async () => {
+      for (let index = 0; index < deck.slides.length; index += 1) {
+        if (cancelled) return;
+        const slide = deck.slides[index];
+        try {
+          const canvas = await renderChatBubbleSlideToCanvas({ deck, slide, index, total });
+          if (cancelled) return;
+          if (!canvas) continue;
+          canvas.className = "h-auto w-[4.5rem] rounded-control border border-border";
+          host.appendChild(canvas);
+        } catch (cause) {
+          if (cancelled) return;
+          const chip = document.createElement("p");
+          chip.className = "rounded-chip border border-dashed border-danger bg-danger-soft px-micro text-caption text-danger";
+          chip.textContent = `${index + 1}번 장: ${cause instanceof Error ? cause.message : "미리보기를 그리지 못했습니다."}`;
+          host.appendChild(chip);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [deck]);
+  return <div ref={hostRef} data-card-deck-thumbnail-strip className="flex flex-wrap gap-stack-tight" aria-label={`카톡 말풍선 카드뉴스 ${deck.slides.length}장 미리보기`} />;
+}
+
+type CardHookType = "auto" | "question" | "number" | "pain";
+const CARD_HOOK_TYPE_OPTIONS: ReadonlyArray<readonly [CardHookType, string]> = [
+  ["auto", "자동(모델이 고름)"],
+  ["question", "질문형"],
+  ["number", "숫자형"],
+  ["pain", "고통 인식형"],
+];
+
+/**
+ * 표지 훅 공식 4칩. also(다른 형식도 같이)와 주 형식=card 확정 블록 둘 다 같은 선택지를
+ * 쓴다(코드리뷰 2026-09-22 m4 — 복붙 두 벌이었다).
+ */
+function CardHookTypePicker({ value, onChange, label = "표지 헤드라인 공식" }: { value: CardHookType; onChange: (next: CardHookType) => void; label?: string }) {
+  return (
+    <div role="group" aria-label="표지 훅 공식" className="space-y-stack-tight" data-card-hook-type-picker>
+      <span className="text-caption text-subtle">{label}</span>
+      <div className="flex flex-wrap gap-stack-tight">
+        {CARD_HOOK_TYPE_OPTIONS.map(([optionValue, optionLabel]) => (
+          <Button key={optionValue} size="sm" variant={value === optionValue ? "primary" : "secondary"} aria-pressed={value === optionValue} onClick={() => onChange(optionValue)}>{optionLabel}</Button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 const CREATE_EXAMPLES = [
@@ -369,7 +501,7 @@ function useLearnedRules(workspaceId: string): string {
   return text;
 }
 
-export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, onTopicChange, onCandidateSelect, onOpenEditor, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardRatio = "4:5", cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null }: CreateRoomProps) {
+export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBranch = "text_image", onContentBranchChange, requestedPrimaryKind = null, onTopicChange, onCandidateSelect, onOpenEditor, onDerivationSucceeded, onPrimaryKindChange, onAlsoKindsChange, learningVersion = 0, onLearningInfoChange, resumeCount = 0, onResume, quickDraft, quickDraftLoading = false, quickDraftError, onQuickDraftGenerate, onGenerateCardImages, onTextCardsCreated, cardRatio = "4:5", cardImageBusy = false, onGenerateVideo, videoBusy = false, imageStyleId = "photo", imageStyleCustom = "", onImageStyleChange, resetToken = 0, madeImageUrl = null, madeVideoUrl = null, cardDeckByDraftId }: CreateRoomProps) {
   const topicInputRef = useRef<HTMLInputElement>(null);
   const [hydratedCreateWorkspaceId, setHydratedCreateWorkspaceId] = useState<string | null>(null);
   const [primaryKind, setPrimaryKind] = useState<CreateKind | null>(null);
@@ -396,10 +528,58 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const [alsoQuote, setAlsoQuote] = useState<StudioDerivationQuote | null>(null);
   const [alsoBatch, setAlsoBatch] = useState<StudioDerivationBatch | null>(null);
   const [alsoBusy, setAlsoBusy] = useState(false);
+  /**
+   * 주 형식이 카드뉴스일 때의 카톡 말풍선 카드뉴스 9장(chat_bubble 덱) 생성 상태.
+   *
+   * 2026-09-22 실측: 회원이 기본값인 카드뉴스를 주 형식으로 고르면 "다른 형식도 같이"
+   * (alsoKinds)에만 걸린 이 버튼을 영원히 못 만났다. 주 형식이 card 면 also 선택과
+   * 무관하게 항상 이 버튼을 보여 별도 흐름으로 견적·확정한다(alsoKinds 흐름은 그대로 둔다).
+   */
+  const [primaryCardDeckQuote, setPrimaryCardDeckQuote] = useState<StudioDerivationQuote | null>(null);
+  const [primaryCardDeckQuoteError, setPrimaryCardDeckQuoteError] = useState<string | null>(null);
+  const [primaryCardDeckBatch, setPrimaryCardDeckBatch] = useState<StudioDerivationBatch | null>(null);
+  const [primaryCardDeckBusy, setPrimaryCardDeckBusy] = useState(false);
+  /**
+   * 재시도 간 같은 Idempotency-Key 를 재사용한다(Stripe 관행, 코드리뷰 2026-09-22 m1).
+   * 후보가 바뀌면(새 확정 대상) 비운다. 실패 재시도는 같은 값을 그대로 쓴다.
+   */
+  const primaryCardDeckIdemKeyRef = useRef<string | null>(null);
+  const primaryCardDeckInFlight = useRef(false);
+  // 카톡 말풍선 카드뉴스 9장의 표지 훅 공식. 기본은 모델이 고르는 auto(설계 §8 OD-D 추천안).
+  const [cardHookType, setCardHookType] = useState<"auto" | "question" | "number" | "pain">("auto");
   // 초안을 못 만드는 이유를 단추 옆에서 말한다(조용한 비활성 금지).
   const [quickBlockReason, setQuickBlockReason] = useState<string | null>(null);
   const generationInFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * 2026-09-22 실측(j.the.great.creator): "초안 만들기" 를 눌러 약 40초 뒤
+   * `/api/studio/text` 가 200 으로 후보를 만들었는데, 화면 상단 "구조 초안" 카운터는
+   * 그대로 0 이고 결과는 아래 "고른 형식의 생성 후보" 섹션에만 붙어 회장이 "안 되는 것
+   * 같다" 고 판단했다. 그 카운터는 A/B/C 구조 선택지(`candidates`) 를 세는 것이지 이
+   * 빠른 길의 결과(`quickDraftSections`) 를 세지 않는다 — 서로 다른 값이다. 결과가
+   * 생겼음을 화면이 스스로 알리지 않으면 사용자는 완료를 알 길이 없다.
+   */
+  const quickDraftResultRef = useRef<HTMLDivElement>(null);
+  const [justCompletedDraft, setJustCompletedDraft] = useState(false);
+  const prevQuickDraftLoading = useRef(quickDraftLoading);
+  useEffect(() => {
+    const wasLoading = prevQuickDraftLoading.current;
+    prevQuickDraftLoading.current = quickDraftLoading;
+    if (wasLoading && !quickDraftLoading && quickDraft && !quickDraftError) {
+      // jsdom(이 프로젝트의 다른 시험 다수)은 scrollIntoView 를 안 채워 둔다. 없는
+      // 환경에서 부르면 그 테스트가 죽으므로 있을 때만 부른다.
+      quickDraftResultRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      setJustCompletedDraft(true);
+      const timer = setTimeout(() => setJustCompletedDraft(false), 2600);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [quickDraftLoading, quickDraft, quickDraftError]);
+  // 구조 초안(candidates/quickStructure)은 만들어질 때의 주제를 기억해 둔다. 새 주제를
+  // 입력했는데 이 값과 달라지면, 화면에 남은 A/B/C 는 옛 주제 그대로라 "초안 만들기" 를
+  // 눌러도 새 주제가 반영되지 않는다(2026-10-01 실측). 주제가 바뀌면 옛 구조를 버려
+  // 다시 고르게 한다.
+  const candidatesTopicRef = useRef<string | null>(null);
   // 부모가 "새로 시작" 을 확정하면 이 방도 처음으로 돌아간다. 부모 상태만 비우고 여기를
   // 두면 화면에는 지운 적 없는 후보가 남아 사용자는 무엇이 버려졌는지 알 수 없다.
   const firstReset = useRef(true);
@@ -411,8 +591,35 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     setPrimaryKind(null); setAlsoKinds([]);
     setCandidates([]); setSelected(null); setQuickStructure(null);
     setAlsoQuote(null); setAlsoBatch(null); setQuickBlockReason(null); setError(null);
+    setPrimaryCardDeckQuote(null); setPrimaryCardDeckQuoteError(null); setPrimaryCardDeckBatch(null);
+    primaryCardDeckIdemKeyRef.current = null;
     try { localStorage.removeItem(`${CREATE_DRAFT_STORAGE_PREFIX}:${workspaceId}`); } catch { /* 저장이 막혀 있어도 화면은 이미 비웠다 */ }
+    candidatesTopicRef.current = null;
   }, [resetToken, workspaceId]);
+
+  // 주제를 바꾸면 옛 주제로 만든 구조 초안(A/B/C)과 그 중 고른 quickStructure 는 더 이상
+  // 맞지 않는다. 남겨 두면 "초안 만들기" 가 새 주제를 무시하고 옛 구조 그대로 보낸다.
+  //
+  // 2026-10-01 리뷰 BLOCK 재발견: 이 판정은 복원이 끝나기 전에도 돌았다. 부모(page.tsx)의
+  // 주제 복원(`idea`)은 이 컴포넌트의 자체 새로고침 복원(구조 초안 candidates, 위
+  // hydratedCreateWorkspaceId 효과)과 완전히 다른 타이밍에 커밋될 수 있다 — 특히 서버
+  // 초안 재동기화·발행 복귀 경로(loadDraft 등)가 늦게 idea 를 고쳐 쓰면, 막 복원해 둔
+  // candidates 를 "주제가 바뀌었다"고 오판해 지워버린다. 이 컴포넌트가 자기 복원을 끝내기
+  // 전(`hydratedCreateWorkspaceId !== workspaceId`)에는 판정을 미룬다. 비교도 trim() 한
+  // 값으로 한다 — 저장 왕복에서 붙는 앞뒤 공백 차이만으로 정상 복원이 지워지면 안 된다.
+  useEffect(() => {
+    if (hydratedCreateWorkspaceId !== workspaceId) return;
+    if (candidatesTopicRef.current === null) return;
+    // 부모의 주제 복원이 아직 도착하지 않은 빈 문자열을 "주제를 지웠다" 로 오판하지
+    // 않는다 — 늦게 도착할 진짜 주제를 기다린다. 사용자가 실제로 주제를 지운
+    // 경우는 이 컴포넌트가 아니라 "새로 시작"(resetToken)이 후보를 지운다.
+    if (!topic.trim()) return;
+    if (candidatesTopicRef.current.trim() === topic.trim()) return;
+    setCandidates([]);
+    setSelected(null);
+    setQuickStructure(null);
+    candidatesTopicRef.current = null;
+  }, [topic, hydratedCreateWorkspaceId, workspaceId]);
 
   const facts = useMemo(() => guide.trim() ? [guide.trim()] : [], [guide]);
   /**
@@ -431,6 +638,20 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   const learnedCount = countFilledLearningSlots(learning, { guide });
   const missing = [!primaryKind && "만들 형식", !topic.trim() && "주제", !purpose.trim() && "목표", !audience.trim() && "고객", !rightsConfirmed && "사용 권리 확인"].filter(Boolean) as string[];
   const selectedCandidate = candidates.find((candidate) => candidate.label === selected) ?? null;
+  /*
+   * M1(코드리뷰 2026-09-22): 워크스페이스 전환·regenerateAll·"구조 초안 다시 고르기"
+   * 는 모두 고른 후보(candidate_id)를 바꾸거나 비운다. 그 값이 바뀔 때마다 이전
+   * 후보에 딸린 카드 덱 견적·배치·멱등키를 비워, 새 후보 밑에 옛 결과가 붙거나 새
+   * 후보로는 버튼이 영영 안 뜨는 것을 막는다(resetToken 리셋 하나로는 이 경로들을 못
+   * 덮었다 — PR #71 "리셋 경로 누락" 재발 유형). `selected` 라벨(A/B/C)만 보면 다른
+   * 워크스페이스의 같은 라벨과 헷갈리므로 candidate_id 로 가른다.
+   */
+  const selectedCandidateId = selectedCandidate?.candidate_id ?? null;
+  useEffect(() => {
+    setPrimaryCardDeckQuote(null); setPrimaryCardDeckQuoteError(null); setPrimaryCardDeckBatch(null);
+    primaryCardDeckIdemKeyRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCandidateId]);
   const displayCandidates = candidates.length ? candidates : CREATE_EXAMPLES;
   const question = CREATE_QUESTIONS[questionIndex];
   const stage = selected ? { count: "3 / 3", label: "선택한 구조 확인" } : candidates.length ? { count: "2 / 3", label: "구조 초안 고르기" } : { count: "1 / 3", label: `만들 조건 확인 ${Math.min(questionIndex + 1, 6)} / 6` };
@@ -494,9 +715,16 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       setAudience(saved.audience || learned.audience || "");
       setRightsConfirmed(saved.rightsConfirmed || Boolean(learned.rights));
       setTopicOpen(saved.topicOpen);
-      setCandidates(saved.candidates);
+      setCandidates(saved.candidates.map(sanitizeRestoredCandidate));
       setSelected(saved.selected);
-      setQuickStructure(saved.quickStructure);
+      setQuickStructure(sanitizeRestoredStructure(saved.quickStructure));
+      // 2026-10-01 리뷰 BLOCK 재발견: 복원 시점의 `topic` prop 은 부모(page.tsx)가
+      // 아직 주제 복원을 끝내지 못했을 수 있어(늦은 주제 복원 경로) 신뢰할 수 없다.
+      // 저장해 둔 실제 주제(saved.topic)가 있으면 그걸 쓰고, 옛 저장본(주제를 같이
+      // 저장하기 전에 쓰인 값)만 현재 topic prop 으로 보완한다.
+      candidatesTopicRef.current = saved.candidates.length
+        ? (saved.topic && saved.topic.trim() ? saved.topic.trim() : topic.trim() || null)
+        : null;
       onPrimaryKindChange?.(saved.primaryKind);
       onAlsoKindsChange?.(saved.alsoKinds);
       if (saved.primaryKind) onContentBranchChange?.(kindToBranch(saved.primaryKind));
@@ -509,6 +737,17 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     }
     setHydratedCreateWorkspaceId(workspaceId);
   }, [onLearningInfoChange, workspaceId]);
+
+  // 저장된 생성실 상태를 먼저 복원한 뒤 URL의 명시 형식을 마지막에 적용한다. 이 순서가
+  // 아니면 발행실의 "영상 만들기"로 들어와도 이전 카드 선택이 다시 화면을 덮는다.
+  useEffect(() => {
+    if (!requestedPrimaryKind || !workspaceId || hydratedCreateWorkspaceId !== workspaceId) return;
+    pickedByHand.current = true;
+    setPrimaryKind(requestedPrimaryKind);
+    setAlsoKinds((current) => current.filter((kind) => kind !== requestedPrimaryKind));
+    onPrimaryKindChange?.(requestedPrimaryKind);
+    onContentBranchChange?.(kindToBranch(requestedPrimaryKind));
+  }, [hydratedCreateWorkspaceId, onContentBranchChange, onPrimaryKindChange, requestedPrimaryKind, workspaceId]);
 
   useEffect(() => {
     if (!workspaceId || hydratedCreateWorkspaceId !== workspaceId) return;
@@ -523,6 +762,9 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       candidates,
       selected,
       quickStructure,
+      // candidates 를 만들 때 실제로 썼던 주제. 복원 시점의 불안정한 topic prop 대신
+      // 이 값을 기준으로 삼는다(위 PersistedCreateDraft.topic 주석 참고).
+      topic: candidatesTopicRef.current ?? undefined,
     };
     try {
       localStorage.setItem(createDraftStorageKey(workspaceId), JSON.stringify(value));
@@ -605,6 +847,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       }, token);
       setCandidates(next);
       setSelected(null);
+      candidatesTopicRef.current = topic.trim();
     } catch (cause) {
       setError(generationErrorMessage(cause));
     } finally {
@@ -671,11 +914,86 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
         kinds: alsoKinds,
         acknowledgedCost: { currency: alsoQuote.currency, totalMinor: alsoQuote.total_minor },
         token: getAuthToken(),
+        cardHookType,
       }));
     } catch (cause) {
       setError(generationErrorMessage(cause));
     } finally {
       setAlsoBusy(false);
+    }
+  }
+
+  // 주 형식이 카드뉴스면 alsoKinds 선택과 무관하게 카톡 말풍선 카드뉴스 9장 견적을 미리
+  // 받아 둔다(위 alsoQuote 효과와 같은 이유 — 값을 못 본 채로는 확정 단추를 안 보인다).
+  // 재시도 단추가 같은 함수를 다시 부를 수 있게 effect 밖 함수로 뺐다(코드리뷰 2026-09-22 M6).
+  const fetchPrimaryCardDeckQuote = useCallback(() => {
+    const jobId = candidates[0]?.generation_id;
+    if (primaryKind !== "card" || !selectedCandidate || !jobId) { setPrimaryCardDeckQuote(null); setPrimaryCardDeckQuoteError(null); return () => {}; }
+    let live = true;
+    setPrimaryCardDeckQuoteError(null);
+    quoteStudioDerivations(jobId, ["card"], getAuthToken())
+      .then((quote) => { if (live) { setPrimaryCardDeckQuote(quote); setPrimaryCardDeckQuoteError(null); } })
+      .catch((cause) => { if (live) { setPrimaryCardDeckQuote(null); setPrimaryCardDeckQuoteError(generationErrorMessage(cause)); } });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [primaryKind, selectedCandidate, candidates]);
+  useEffect(() => fetchPrimaryCardDeckQuote(), [fetchPrimaryCardDeckQuote]);
+
+  async function makePrimaryCardDeck() {
+    // 더블클릭 방어(코드리뷰 2026-09-22 m1). generate()의 generationInFlight ref 관습과 같다.
+    if (primaryCardDeckInFlight.current) return;
+    const jobId = candidates[0]?.generation_id;
+    if (!jobId || !selectedCandidate || !primaryCardDeckQuote) return;
+    primaryCardDeckInFlight.current = true;
+    setPrimaryCardDeckBusy(true);
+    setError(null);
+    if (!primaryCardDeckIdemKeyRef.current) primaryCardDeckIdemKeyRef.current = crypto.randomUUID();
+    try {
+      const batch = await requestStudioDerivations({
+        jobId,
+        candidateId: selectedCandidate.candidate_id,
+        kinds: ["card"],
+        acknowledgedCost: { currency: primaryCardDeckQuote.currency, totalMinor: primaryCardDeckQuote.total_minor },
+        token: getAuthToken(),
+        cardHookType,
+        idempotencyKey: primaryCardDeckIdemKeyRef.current,
+      });
+      setPrimaryCardDeckBatch(batch);
+      // M3(코드리뷰 2026-09-22): 성공하면 부모가 초안 목록(SWR)을 재검증해야
+      // cardDeckByDraftId 가 방금 만든 덱을 실제로 찾는다. 목 주입 없이 이 콜백이
+      // 진짜로 안 불리면 화면은 탭 포커스가 바뀔 때까지 썸네일을 못 그린다.
+      const succeededCard = batch.items.find((item) => item.kind === "card" && item.status === "succeeded");
+      if (succeededCard?.draft_id) {
+        await onDerivationSucceeded?.(succeededCard.draft_id);
+      } else {
+        // M7(재리뷰 2026-09-22): 서버(GenerationService.derive)는 실패 배치도 그대로
+        // persist 하고, 같은 Idempotency-Key 가 오면 status 와 무관하게 그 배치를
+        // 돌려준다(service.ts). m1 에서 재시도 간 키를 재사용하게 고쳤더니 "다시
+        // 만들기" 가 서버에서 LLM 을 다시 안 부르고 같은 실패를 되돌려주는 부작용이
+        // 생겼다. 실패하면 키를 비워 다음 클릭이 새 배치를 만들게 한다(실패는 청구
+        // 0 이라 중복 청구 위험이 없다).
+        primaryCardDeckIdemKeyRef.current = null;
+      }
+    } catch (cause) {
+      setError(generationErrorMessage(cause));
+    } finally {
+      setPrimaryCardDeckBusy(false);
+      primaryCardDeckInFlight.current = false;
+    }
+  }
+
+  async function discardPrimaryCardDeck() {
+    if (!primaryCardDeckBatch) return;
+    setPrimaryCardDeckBusy(true);
+    setError(null);
+    try {
+      setPrimaryCardDeckBatch(await discardStudioDerivations(primaryCardDeckBatch.batch_id, getAuthToken()));
+      // 버렸으면 다음은 새 시도다 — 같은 키를 재사용하면 서버가 버린 결과를 그대로 돌려줄 수 있다.
+      primaryCardDeckIdemKeyRef.current = null;
+    } catch (cause) {
+      setError(generationErrorMessage(cause));
+    } finally {
+      setPrimaryCardDeckBusy(false);
     }
   }
 
@@ -724,17 +1042,35 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
    * 자도 제품이 선다.
    */
   async function makeTextCards() {
-    const source = selectedCandidate?.format.outline?.length
-      ? selectedCandidate.format.outline
-      : (quickStructure?.outline ?? []);
-    if (!source.length) { setTextCardError("먼저 구조 초안을 하나 골라 주세요."); return; }
+    // 2026-10-02 실사용 결함, 2026-10-03 독립 리뷰 MAJOR-8 재수정: primaryKind 섹션을
+    // 그대로 쓰면 ①primaryKind="text"일 땐 글 전체(한 문단)가 통째로 "한 장"이 되고
+    // ②primaryKind="card"여도 quickDraftSections의 card 섹션이 instagram.caption(해시태그
+    // 섞인 긴 문장)을 슬라이드 뒤에 붙여 마지막 장으로 내보냈다. 카드뉴스는 카드뉴스용으로
+    // 만들어진 슬라이드(instagram.slides)만 쓴다 — primaryKind가 무엇이든, 캡션은 절대
+    // 섞지 않는다.
+    const cardSlideLines = (quickDraft?.instagram?.slides ?? []).filter(
+      (line): line is string => typeof line === "string" && line.trim().length > 0,
+    );
+    const resolved = resolveTextCardLines({
+      generatedLines: cardSlideLines,
+      candidateOutline: selectedCandidate?.format.outline,
+      quickStructureOutline: quickStructure?.outline,
+    });
+    if (!resolved.lines.length) { setTextCardError("먼저 구조 초안을 하나 골라 주세요."); return; }
+    // MINOR-f 재발 방지: 실제로 생성된 카드 본문이 없어 구조 라벨("고객이 겪는 문제" 등)로
+    // 폴백한 경우, 그 라벨이 그대로 카드에 찍혀 발행되는 사고(2026-10-02)를 다시 만들지
+    // 않으려면 카드 자체를 만들지 않는다 — 만들지 않으면 그 뒤 발행으로 이어질 것도 없다.
+    if (resolved.isPlaceholder) {
+      setTextCardError("구조 초안에 실제 내용이 없어 글자 카드를 만들지 못했습니다. 구조 초안을 다시 만들어 주세요.");
+      return;
+    }
+    const lines = resolved.lines;
     setTextCardError(null);
     setTextCardBusy(true);
     try {
       // 비율을 여기서 "4:5" 로 박아 두었더니 화면에서 무엇을 고르든 픽셀이 늘 1080×1350
       // 하나였다(2026-09-14 실측). 고른 값을 그대로 쓴다.
       const theme = themeFromPalette(learning.palette);
-      const lines = source.filter((line) => line.trim().length > 0);
       const persisted = await renderAndUploadCardDeck(
         { lines, ratio: cardRatio, theme },
         { upload: browserCardUploader(authHeaders()) },
@@ -835,10 +1171,19 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
             {quickBlockReason ? <p role="alert" className="text-caption text-danger">{quickBlockReason}</p> : null}
             {quickDraftError ? <p role="alert" className="text-caption text-danger">{quickDraftError}</p> : null}
           </section>
-          <section className="grid gap-stack sm:grid-cols-3" aria-label="생성실 요약">
+          <section className="grid gap-stack sm:grid-cols-4" aria-label="생성실 요약">
             <article className="card p-pad-inset"><span className="text-caption text-subtle">선택한 형식</span><b className="mt-micro block text-body text-text">{primaryKind ? CREATE_KIND_LABELS[primaryKind] : "선택 전"}</b></article>
             <article className="card p-pad-inset"><span className="text-caption text-subtle">반영한 학습 정보</span><b className="mt-micro block text-body text-text">{learnedCount}개</b></article>
-            <article className="card p-pad-inset"><span className="text-caption text-subtle">구조 초안</span><b className="mt-micro block text-body text-text">{candidates.length}개</b></article>
+            {/*
+              2026-09-22 실측(j.the.great.creator): "초안 만들기" 결과(`quickDraftSections`)와
+              이 "구조 초안"(A, B, C 구조 예시, `candidates`) 은 서로 다른 값인데 이름이 같아,
+              결과가 생겼는데도 이 칸이 0 으로 보여 "안 된다"로 오해했다. 승인된 V68 계약
+              (tests/components/create-room-v68.test.tsx)이 라벨에 "구조 초안" 문구를
+              고정해 두었으므로 그 문구는 유지하고, A/B/C 축임을 괄호로 덧붙이고 별도로
+              "생성한 후보" 칸을 새로 둬서 구분한다.
+            */}
+            <article className="card p-pad-inset"><span className="text-caption text-subtle">구조 초안(A/B/C)</span><b className="mt-micro block text-body text-text">{candidates.length}개</b></article>
+            <article className="card p-pad-inset" data-quick-draft-count={quickDraftSections.length}><span className="text-caption text-subtle">생성한 후보</span><b className="mt-micro block text-body text-text">{quickDraftLoading ? "만드는 중" : `${quickDraftSections.length}개`}</b></article>
           </section>
           <section className="min-w-0" aria-labelledby="create-display-title">
             <div className="mb-stack flex items-center justify-between border-b border-border pb-stack">
@@ -882,8 +1227,30 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
             </div>
           </section>
           {quickDraftSections.length ? (
-            <section className="rounded-surface border border-success/30 bg-success/10 p-pad-inset" aria-labelledby="quick-draft-result-title" data-quick-draft-result>
+            <section
+              ref={quickDraftResultRef}
+              className={`rounded-surface border p-pad-inset transition-colors duration-500 ${justCompletedDraft ? "border-accent bg-accent-soft" : "border-success/30 bg-success/10"} ${quickDraftLoading ? "opacity-50" : ""}`}
+              aria-labelledby="quick-draft-result-title"
+              data-quick-draft-result
+              data-quick-draft-just-completed={justCompletedDraft || undefined}
+              data-quick-draft-stale={quickDraftLoading || undefined}
+            >
               <h3 id="quick-draft-result-title" className="text-body font-bold text-text">고른 형식의 생성 후보</h3>
+              {justCompletedDraft ? (
+                <p role="status" className="mt-stack-tight text-caption font-semibold text-accent" data-quick-draft-toast>
+                  후보 {quickDraftSections.length}개가 만들어졌습니다. 아래에서 확인하세요.
+                </p>
+              ) : null}
+              {/*
+                2026-09-22 교차 리뷰 MINOR: 다시 만드는 중에는 이 섹션에 여전히 "이전"
+                후보가 떠 있다. 무엇이 새 결과인지 헷갈리지 않게, 만드는 동안은 옅게
+                흐리고 "이전 결과" 라고 알린다(위 카운터는 이미 "만드는 중" 이라고 말한다).
+              */}
+              {quickDraftLoading ? (
+                <p className="mt-stack-tight text-caption text-subtle" data-quick-draft-stale-notice>
+                  다시 만드는 중입니다. 아래는 이전 결과입니다.
+                </p>
+              ) : null}
               <div className="mt-stack grid gap-stack md:grid-cols-2">
                 {quickDraftSections.map((section) => (
                   <article key={section.kind} className="rounded-control border border-success/30 bg-surface p-stack" data-quick-draft-format={section.kind}>
@@ -933,8 +1300,6 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
               <span className="block">일곱 칸 학습 정보를 반영한 구성 초안 3개</span>
               <span className="block">카드뉴스 대표 이미지(만들기 전 비용을 보여 드립니다)</span>
               <span className="block">숏폼 영상(대표 이미지를 움직이는 영상으로)</span>
-              <b className="mt-stack-tight block text-text">준비 중</b>
-              <span className="block">배경 음악</span>
             </div>
             {/*
               사업계획 v0.4 10절이 첫 매체를 카드뉴스로 정했고 7절이 만들기 전 비용 승인
@@ -1142,25 +1507,117 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                   <span>구성 초안 생성 비용</span>
                   <span>{alsoQuote.total_minor.toLocaleString("ko-KR")}원</span>
                 </p>
+                {alsoKinds.includes("card") ? (
+                  <CardHookTypePicker value={cardHookType} onChange={setCardHookType} label="표지 헤드라인 공식(카톡 말풍선 카드뉴스 9장)" />
+                ) : null}
                 <p className="break-keep text-caption text-subtle">완성 미디어가 아니라 선택한 구조를 다른 형식에 맞춘 구성 초안입니다. 실패한 형식은 청구하지 않습니다.</p>
-                <Button variant="primary" onClick={confirmAlsoKinds} disabled={alsoBusy}>{alsoBusy ? "구성 초안 만드는 중" : "선택한 형식의 구성 초안 만들기"}</Button>
+                <Button variant="primary" onClick={confirmAlsoKinds} disabled={alsoBusy}>{alsoBusy ? "구성 초안 만드는 중" : alsoKinds.includes("card") && alsoKinds.length === 1 ? "카톡 말풍선 카드뉴스 9장 만들기" : "선택한 형식의 구성 초안 만들기"}</Button>
               </div>
             ) : null}
             {alsoBatch ? (
               <div className="space-y-stack rounded-surface border border-border bg-surface p-stack" data-create-also-result={alsoBatch.status}>
                 <b className="block text-caption font-semibold text-text">{alsoBatch.discarded_at ? "추가 구성 초안을 버렸습니다" : "추가 형식의 구성 초안"}</b>
                 <ul className="space-y-stack-tight">
-                  {alsoBatch.items.map((item) => (
-                    <li key={item.kind} className="break-keep text-caption text-muted" data-also-item={item.kind} data-also-item-status={item.status}>
-                      {item.label}: {item.status === "succeeded" ? (item.kind === "video" ? "대본과 장면 구성을 준비했습니다. 영상 렌더링은 아직 제공하지 않습니다" : "구성 초안을 준비했습니다") : `구성 초안을 만들지 못했습니다. ${item.failure_reason ?? ""}`}
-                    </li>
-                  ))}
+                  {alsoBatch.items.map((item) => {
+                    const deck = item.kind === "card" && item.deck_summary && item.draft_id
+                      ? cardDeckByDraftId?.(item.draft_id) ?? null
+                      : null;
+                    return (
+                      <li key={item.kind} className="break-keep text-caption text-muted" data-also-item={item.kind} data-also-item-status={item.status}>
+                        {item.label}: {item.status === "succeeded"
+                          ? (item.kind === "video"
+                            ? "대본과 장면 구성을 준비했습니다. 영상 렌더링은 아직 제공하지 않습니다"
+                            : item.kind === "card" && item.deck_summary
+                              ? `카톡 말풍선 카드뉴스 ${item.deck_summary.slides}장을 만들었습니다(훅: ${item.deck_summary.hook_type}, 댓글 키워드: '${item.deck_summary.cta_keyword}')`
+                              : "구성 초안을 준비했습니다")
+                          : `구성 초안을 만들지 못했습니다. ${item.failure_reason ?? ""}`}
+                        {deck ? <div className="mt-stack-tight"><CardDeckThumbnailStrip deck={deck} /></div> : null}
+                      </li>
+                    );
+                  })}
                 </ul>
                 <p className="text-caption text-subtle">나간 값 {alsoBatch.cost.charged_minor.toLocaleString("ko-KR")}원</p>
                 {alsoBatch.discarded_at ? null : <Button onClick={discardAlso} disabled={alsoBusy}>추가 구성 초안 버리기</Button>}
               </div>
             ) : null}
-            {selectedCandidate && (alsoKinds.length === 0 || Boolean(alsoBatch)) ? <Stack gap={8}><Button variant="primary" onClick={onOpenEditor}>편집실에서 다듬기</Button><Button onClick={() => setSelected(null)}>구조 초안 다시 고르기</Button></Stack> : null}
+            {/*
+              주 형식이 카드뉴스면 이 버튼은 alsoKinds 선택과 무관하게 항상 보인다.
+              (2026-09-22 실측: 카드뉴스를 주 형식으로 고른 회원은 이전까지 "다른 형식도
+              같이" 를 함께 골라야만 이 버튼을 만났다 — 기본 경로에서 말풍선 덱을 영원히
+              못 만드는 결함이었다.)
+              확정 블록은 아직 시도한 적이 없거나(!primaryCardDeckBatch), 실패했거나
+              (status !== "succeeded"), 성공했지만 버렸을 때(discarded_at) 다시 뜬다
+              (코드리뷰 2026-09-22 M2 — 실패해도 "새로 시작" 으로 후보까지 버리지 않고
+              바로 다시 만들 수 있어야 한다).
+            */}
+            {selectedCandidate && primaryKind === "card" && (!primaryCardDeckBatch || primaryCardDeckBatch.status !== "succeeded" || Boolean(primaryCardDeckBatch.discarded_at)) ? (
+              <div className="space-y-stack rounded-surface border border-border bg-surface p-stack" data-create-primary-card-deck-confirm>
+                <b className="block text-caption font-semibold text-text">카톡 말풍선 카드뉴스 9장</b>
+                <p className="break-keep text-caption text-subtle">고른 구조를 재료로 대화형 말풍선 카드뉴스 9장을 만듭니다.</p>
+                <CardHookTypePicker value={cardHookType} onChange={setCardHookType} />
+                {primaryCardDeckQuote ? (
+                  <p className="flex justify-between border-t border-border pt-stack-tight text-caption font-semibold text-text" data-primary-card-deck-total-minor={primaryCardDeckQuote.total_minor}>
+                    <span>생성 비용</span>
+                    <span>{primaryCardDeckQuote.total_minor.toLocaleString("ko-KR")}원</span>
+                  </p>
+                ) : primaryCardDeckQuoteError ? (
+                  // 조용한 비활성 금지(464행 관습, 설계 §7.4). 이유 없이 단추만 죽어 있으면
+                  // 못 쓰는 화면으로 읽힌다.
+                  <div className="space-y-stack-tight rounded-control border border-warning/30 bg-warning/10 p-stack-tight" data-primary-card-deck-quote-error>
+                    <p className="break-keep text-caption text-warning">비용을 불러오지 못했습니다. {primaryCardDeckQuoteError}</p>
+                    <Button size="sm" onClick={fetchPrimaryCardDeckQuote}>다시 시도</Button>
+                  </div>
+                ) : null}
+                <Button variant="primary" onClick={makePrimaryCardDeck} disabled={primaryCardDeckBusy || !primaryCardDeckQuote}>
+                  {primaryCardDeckBusy ? "만드는 중" : primaryCardDeckBatch ? "다시 만들기" : "카톡 말풍선 카드뉴스 9장 만들기"}
+                </Button>
+              </div>
+            ) : null}
+            {primaryCardDeckBatch ? (() => {
+              const item = primaryCardDeckBatch.items.find((one) => one.kind === "card");
+              const deck = item?.draft_id ? cardDeckByDraftId?.(item.draft_id) ?? null : null;
+              const succeeded = item?.status === "succeeded" && !primaryCardDeckBatch.discarded_at;
+              return (
+                <div aria-live="polite" className="space-y-stack rounded-surface border border-border bg-surface p-stack" data-create-primary-card-deck-result={primaryCardDeckBatch.status}>
+                  <b className="block text-caption font-semibold text-text">카톡 말풍선 카드뉴스</b>
+                  <p className="break-keep text-caption text-muted">
+                    {primaryCardDeckBatch.discarded_at
+                      ? "카톡 말풍선 카드뉴스를 버렸습니다"
+                      : item?.status === "succeeded" && item.deck_summary
+                        ? `${item.deck_summary.slides}장을 만들었습니다(훅: ${item.deck_summary.hook_type}, 댓글 키워드: '${item.deck_summary.cta_keyword}')`
+                        : `만들지 못했습니다. ${item?.failure_reason ?? ""}`}
+                  </p>
+                  {succeeded && deck ? <div className="mt-stack-tight"><CardDeckThumbnailStrip deck={deck} /></div> : null}
+                  <p className="text-caption text-subtle">나간 값 {primaryCardDeckBatch.cost.charged_minor.toLocaleString("ko-KR")}원</p>
+                  {succeeded ? (
+                    <Stack gap={8}>
+                      {/*
+                        m7(재리뷰 2026-09-22): makePrimaryCardDeck 은 setPrimaryCardDeckBatch(batch)
+                        직후에도 onDerivationSucceeded(hist 재검증)가 끝날 때까지
+                        primaryCardDeckBusy 를 true 로 둔다. 그 창에서 이 단추를 누르면
+                        page.tsx 의 hist.drafts.find 가 아직 갱신 전 목록이라 못 찾고
+                        덱 없이 편집실이 열린다. busy 동안은 눌러도 소용없게 막는다.
+                      */}
+                      <Button variant="primary" onClick={() => onOpenEditor?.(item?.draft_id ?? undefined)} disabled={primaryCardDeckBusy}>편집실에서 다듬기</Button>
+                      <Button onClick={discardPrimaryCardDeck} disabled={primaryCardDeckBusy}>버리고 다시 만들기</Button>
+                    </Stack>
+                  ) : null}
+                </div>
+              );
+            })() : null}
+            {(() => {
+              // 성공한 primary 카드 덱 결과 블록이 이미 "편집실에서 다듬기" 를 draft_id 와
+              // 함께 보여준다(M4). 여기서 또 보이면 어느 쪽을 눌러야 덱이 실리는지
+              // 헷갈리므로 중복 없이 하나만 둔다 — "구조 초안 다시 고르기" 는 항상 남긴다.
+              const primaryDeckAlreadyOffersEditor = primaryKind === "card" && primaryCardDeckBatch?.status === "succeeded" && !primaryCardDeckBatch.discarded_at;
+              if (!selectedCandidate || !(alsoKinds.length === 0 || Boolean(alsoBatch))) return null;
+              return (
+                <Stack gap={8}>
+                  {primaryDeckAlreadyOffersEditor ? null : <Button variant="primary" onClick={() => onOpenEditor?.()} disabled={primaryKind === "card" && primaryCardDeckBusy}>편집실에서 다듬기</Button>}
+                  <Button onClick={() => setSelected(null)}>구조 초안 다시 고르기</Button>
+                </Stack>
+              );
+            })()}
             {quickDraftError ? <p role="alert" className="text-caption text-danger">{quickDraftError}</p> : null}
             {error ? <p role="alert" className="text-caption text-danger">{error}</p> : null}
           </Stack>
@@ -1186,6 +1643,10 @@ interface EditRoomProps {
    * 장마다 그림이 다르므로 장 목록과 같은 길이의 목록으로 받는다.
    */
   previewImageUrls?: string[] | null;
+  /** 무료 글자 카드처럼 카드 문구가 이미지 픽셀에 이미 포함됐는지. */
+  cardTextEmbedded?: boolean;
+  /** 글자 내장 카드의 장별 대본·위치·규격 원본을 복구할 수 있는지. */
+  cardTextSourceRecoverable?: boolean;
   previewVideoUrl?: string | null;
   commandPanel?: ReactNode;
   initialFormat?: ContentEditFormat;
@@ -1199,21 +1660,54 @@ interface EditRoomProps {
   lastSavedAt?: string;
   moveBusy?: boolean;
   autosaveError?: string;
+  /**
+   * 항목2(2026-09-22 코드리뷰 5차): autosaveError가 하나로 합쳐지면 어느 도메인이
+   * 막고 있는지, 어디로 가야 풀리는지 화면이 말을 못 한다 — 영구 잠금(ADR-007 위반).
+   * 도메인별로 따로 받아 그 도메인 편집으로 바로 갈 수 있는 단추를 붙인다.
+   */
+  cardDeckAutosaveError?: string;
+  videoEditAutosaveError?: string;
+  /** MAJOR1(3차 재리뷰): 409(다른 탭·기기가 먼저 저장함)가 나면 빠져나갈 길을 준다. */
+  videoEditConflict?: boolean;
+  onVideoEditReload?: () => void;
+  /** MAJOR2(3차 재리뷰): 서버 값과 맞추는 동안 편집을 막는다 — 안 막으면 맞추는 도중의
+   * 수정이 조용히 사라질 수 있다. */
+  videoEditReconciling?: boolean;
+  /** 본문 기준판 충돌. 해소 전에는 편집기를 잠그고 로컬 입력을 버리지 않는 두 복구 행동을 제공한다. */
+  bodyEditConflict?: boolean;
+  bodyConflictViewingLatest?: boolean;
+  bodyConflictResolving?: boolean;
+  onBodyConflictLoadLatest?: () => void;
+  onBodyConflictReapply?: () => void;
+  /**
+   * 카드뉴스 v2 덱(PR4). 있으면 `template==="chat_bubble"` 편집을 `CardDeckPanel` 이
+   * 대신하고, 없으면 기존 `lines` 편집 그대로다(회귀 0 — 세션맥락).
+   */
+  cardDeck?: CardDeck | null;
+  onCardDeckChange?: (deck: CardDeck) => void;
+  /**
+   * 영상 편집 v1(세션맥락 과업 B). 있으면 `kind==="video"` 편집 워크벤치 위에
+   * `VideoEditor`(후킹 CTA·댓글 오버레이·자막 기반 편집·음성 변경)를 얹는다. 기존
+   * VIDEO_TOOLS(비율·목소리·속도·자막 셀렉트)는 그대로 두고 회귀시키지 않는다.
+   */
+  videoEdit?: VideoEdit | null;
+  onVideoEditChange?: (edit: VideoEdit) => void;
 }
-type ToolName = "비율" | "배경" | "목소리" | "속도" | "자막" | "음악" | "음량";
+type ToolName = "비율" | "배경" | "목소리" | "속도" | "자막";
 const VIDEO_TOOLS: ToolName[] = ["비율", "목소리", "속도", "자막"];
 const CARD_TOOLS: ToolName[] = ["비율", "배경", "자막"];
-const AUDIO_TOOLS: ToolName[] = ["목소리", "음악", "음량"];
+const NARRATION_TOOLS: ToolName[] = ["목소리"];
 
 type ToolValues = Record<ToolName, string>;
+type AudioFormat = Extract<ContentEditFormat, { kind: "audio" }>;
+type PreservedAudioSettings = Pick<AudioFormat, "musicTrack" | "musicVolume">;
 
-const EDIT_KIND_LABELS: Record<EditContentKind, string> = {
+const EDIT_KIND_LABELS: Record<Exclude<EditContentKind, "audio">, string> = {
   text: "글",
   card: "카드뉴스",
   video: "영상",
-  audio: "음악",
 };
-const EDIT_KIND_ORDER: EditContentKind[] = ["text", "card", "video", "audio"];
+const EDIT_KIND_ORDER = ["text", "card", "video"] as const;
 const SUBTITLE_SIZE_LABELS: Record<string, string> = {
   작게: "작은 글자",
   보통: "기본 글자",
@@ -1230,7 +1724,6 @@ function visibleToolName(kind: EditContentKind, tool: ToolName): string {
   if (tool === "배경") return "배경 이미지";
   if (tool === "자막") return kind === "card" ? "카드 글자 크기" : "자막 크기";
   if (tool === "속도") return "영상 재생 속도";
-  if (tool === "음량") return "배경음악 음량";
   return tool;
 }
 
@@ -1248,9 +1741,7 @@ function toolOptions(kind: EditContentKind, tool: ToolName): string[] {
   if (tool === "배경") return [...EDIT_BACKGROUNDS];
   if (tool === "목소리") return [...EDIT_VOICES];
   if (tool === "속도") return PLAYBACK_SPEEDS.map((value) => `${value}배`);
-  if (tool === "자막") return [...SUBTITLE_SIZES];
-  if (tool === "음악") return [...EDIT_MUSIC_TRACKS];
-  return EDIT_MUSIC_VOLUMES.map((value) => `${value}%`);
+  return [...SUBTITLE_SIZES];
 }
 
 function toolValuesFromFormat(format: ContentEditFormat): ToolValues {
@@ -1260,8 +1751,6 @@ function toolValuesFromFormat(format: ContentEditFormat): ToolValues {
     목소리: "차분한 남성",
     속도: "1배",
     자막: "보통",
-    음악: "없음",
-    음량: "20%",
   };
   if (format.kind === "video") {
     return { ...defaults, 비율: format.aspectRatio, 목소리: format.voice, 속도: `${format.playbackSpeed}배`, 자막: format.subtitleSize };
@@ -1270,17 +1759,27 @@ function toolValuesFromFormat(format: ContentEditFormat): ToolValues {
     return { ...defaults, 비율: format.aspectRatio, 배경: format.background, 자막: format.subtitleSize };
   }
   if (format.kind === "text") return defaults;
-  return { ...defaults, 목소리: format.voice, 음악: format.musicTrack, 음량: `${format.musicVolume}%` };
+  return { ...defaults, 목소리: format.voice };
 }
 
-function formatFromToolValues(kind: ContentEditFormat["kind"], values: ToolValues): ContentEditFormat {
+function audioSettingsFromFormat(format: ContentEditFormat | undefined): PreservedAudioSettings {
+  const audio = format?.kind === "audio" ? format : defaultContentEditFormat("audio") as AudioFormat;
+  return { musicTrack: audio.musicTrack, musicVolume: audio.musicVolume };
+}
+
+function formatFromToolValues(
+  kind: ContentEditFormat["kind"],
+  values: ToolValues,
+  preservedAudio: PreservedAudioSettings,
+  textSegments: Segment[] = [],
+): ContentEditFormat {
   const candidate = kind === "text"
-    ? { kind }
+    ? { kind, segments: textSegments }
     : kind === "video"
     ? { kind, aspectRatio: values.비율, subtitleSize: values.자막, playbackSpeed: Number.parseFloat(values.속도), voice: values.목소리 }
     : kind === "card"
       ? { kind, aspectRatio: values.비율, subtitleSize: values.자막, background: values.배경 }
-      : { kind, voice: values.목소리, musicTrack: values.음악, musicVolume: Number.parseInt(values.음량, 10) };
+      : { kind, voice: values.목소리, ...preservedAudio };
   const validation = validateContentEditFormat(candidate);
   return validation.valid ? validation.value : defaultContentEditFormat(kind);
 }
@@ -1292,10 +1791,168 @@ function ToolIcon({ tool }: { tool: ToolName }) {
     목소리: <><path d="M5 10v4h3l4 3V7L8 10H5Z" /><path d="M16 9c1 1 1 5 0 6" /></>,
     속도: <><circle cx="12" cy="12" r="8" /><path d="m12 12 4-3" /></>,
     자막: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 10h10M7 14h7" /></>,
-    음악: <><path d="M9 18V6l10-2v12" /><circle cx="6" cy="18" r="3" /><circle cx="16" cy="16" r="3" /></>,
-    음량: <><path d="M5 10v4h3l4 3V7L8 10H5Z" /><path d="M16 9c1 1 1 5 0 6" /></>,
   };
   return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[tool]}</svg>;
+}
+
+const CHANNEL_TEXT_LIMITS = [
+  { key: "x", label: "X", limit: 280, weighted: true },
+  { key: "threads", label: "Threads", limit: 500, weighted: false },
+  { key: "instagram", label: "Instagram", limit: 2200, weighted: false },
+] as const;
+
+/** v70 §2: X의 한글은 2칸, 나머지 문자는 1칸으로 센다. */
+export function countXWeightedCharacters(value: string): number {
+  return Array.from(value).reduce((total, character) => (
+    /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/u.test(character) ? total + 2 : total + 1
+  ), 0);
+}
+
+function ChannelLimitMeter({ label, count, limit, channel }: { label: string; count: number; limit: number; channel: string }) {
+  const ratio = count / limit;
+  const tone = ratio > 1 ? "danger" : ratio >= 0.8 ? "warning" : "normal";
+  return (
+    <div className={styles.channelMeter} data-channel-limit={channel} data-channel-limit-tone={tone}>
+      <span>{label}</span>
+      <meter min={0} max={limit} low={limit * 0.8} high={limit} optimum={0} value={Math.min(count, limit)} aria-label={`${label} 글자 수 ${count}/${limit}`} />
+      <b>{count.toLocaleString("ko-KR")}/{limit.toLocaleString("ko-KR")}</b>
+    </div>
+  );
+}
+
+function TextDocumentEditor({ lines, segments, onLinesChange, onSegmentsChange }: {
+  lines: string[];
+  segments: Segment[];
+  onLinesChange: (lines: string[]) => void;
+  onSegmentsChange: (segments: Segment[]) => void;
+}) {
+  const body = segments.map((segment) => segment.text).join("");
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const [selection, setSelection] = useState<{ from: number; to: number; left: number; top: number } | null>(null);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || document.activeElement === editor) return;
+    const html = segmentsToHtml(segments);
+    if (editor.innerHTML !== html) editor.innerHTML = html;
+  }, [segments]);
+
+  useEffect(() => {
+    const updateSelection = () => {
+      const editor = editorRef.current;
+      const browserSelection = window.getSelection();
+      if (!editor || !browserSelection || browserSelection.rangeCount === 0) return setSelection(null);
+      const offsets = getEditableSelectionOffsets(editor);
+      if (!offsets || offsets.start === offsets.end) return setSelection(null);
+      const selectedRange = browserSelection.getRangeAt(0);
+      const rect = typeof selectedRange.getBoundingClientRect === "function"
+        ? selectedRange.getBoundingClientRect()
+        : editor.getBoundingClientRect();
+      const host = editor.parentElement?.getBoundingClientRect();
+      setSelection({
+        from: offsets.start,
+        to: offsets.end,
+        left: Math.max(0, rect.left - (host?.left ?? 0)),
+        top: Math.max(0, rect.top - (host?.top ?? 0) - 40),
+      });
+    };
+    document.addEventListener("selectionchange", updateSelection);
+    return () => document.removeEventListener("selectionchange", updateSelection);
+  }, []);
+
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar || !selection) return;
+    toolbar.style.left = `${selection.left}px`;
+    toolbar.style.top = `${selection.top}px`;
+  }, [selection]);
+
+  const commitDom = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const next = elementToSegments(editor);
+    onSegmentsChange(next);
+    onLinesChange(next.map((segment) => segment.text).join("").split(/\n\s*\n/));
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const editor = editorRef.current;
+    const browserSelection = window.getSelection();
+    if (!editor || !browserSelection || browserSelection.rangeCount === 0) return;
+    const text = event.clipboardData.getData("text/plain").replace(/\r\n/g, "\n");
+    let inserted = false;
+    if (typeof document.execCommand === "function") {
+      try {
+        inserted = document.execCommand("insertText", false, text);
+      } catch {
+        inserted = false;
+      }
+    }
+    if (!inserted) {
+      const range = browserSelection.getRangeAt(0);
+      range.deleteContents();
+      const node = document.createTextNode(text);
+      range.insertNode(node);
+      range.setStart(node, node.textContent!.length);
+      range.setEnd(node, node.textContent!.length);
+      browserSelection.removeAllRanges();
+      browserSelection.addRange(range);
+    }
+    commitDom();
+  };
+
+  const toggleSelectedBold = () => {
+    const editor = editorRef.current;
+    if (!editor || !selection) return;
+    const next = toggleSegmentsBold(segments, { from: selection.from, to: selection.to });
+    editor.innerHTML = segmentsToHtml(next);
+    onSegmentsChange(next);
+    restoreSelectionRange(editor, selection.from, selection.to);
+  };
+  return (
+    <section className={styles.textDocumentCanvas} aria-labelledby="whole-text-title" data-edit-stage>
+      <article className={styles.textDocumentSheet} data-text-document-sheet>
+        <header className={styles.textDocumentHeader}>
+          <h3 id="whole-text-title">글 전체 편집</h3>
+          <p>공백 포함 {Array.from(body).length.toLocaleString("ko-KR")}자</p>
+        </header>
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-multiline="true"
+          aria-label="글 전체"
+          onPaste={handlePaste}
+          onInput={commitDom}
+          className={styles.textDocumentBody}
+        />
+        {selection ? (
+          <div
+            ref={toolbarRef}
+            className={styles.textSelectionToolbar}
+            data-text-selection-toolbar
+            aria-label="선택한 글 도구"
+          >
+            <Button size="sm" onMouseDown={(event) => event.preventDefault()} onClick={toggleSelectedBold}>굵게</Button>
+          </div>
+        ) : null}
+        <footer className={styles.channelMeters} aria-label="채널별 글자 수 상한">
+          {CHANNEL_TEXT_LIMITS.map((channel) => (
+            <ChannelLimitMeter
+              key={channel.key}
+              channel={channel.key}
+              label={channel.label}
+              limit={channel.limit}
+              count={channel.weighted ? countXWeightedCharacters(body) : Array.from(body).length}
+            />
+          ))}
+        </footer>
+      </article>
+    </section>
+  );
 }
 
 export function EditRoom({
@@ -1307,6 +1964,8 @@ export function EditRoom({
   previewReady = false,
   previewImageUrl = null,
   previewImageUrls = null,
+  cardTextEmbedded = false,
+  cardTextSourceRecoverable = true,
   previewVideoUrl = null,
   commandPanel,
   initialFormat,
@@ -1320,28 +1979,77 @@ export function EditRoom({
   lastSavedAt,
   moveBusy = false,
   autosaveError,
+  cardDeckAutosaveError,
+  videoEditAutosaveError,
+  videoEditConflict = false,
+  onVideoEditReload,
+  videoEditReconciling = false,
+  bodyEditConflict = false,
+  bodyConflictViewingLatest = false,
+  bodyConflictResolving = false,
+  onBodyConflictLoadLatest,
+  onBodyConflictReapply,
+  cardDeck = null,
+  onCardDeckChange,
+  videoEdit = null,
+  onVideoEditChange,
 }: EditRoomProps) {
   const formatKind = kind;
-  const safeLines = lines.length ? lines : [""];
+  // 2026-09-22 코드리뷰 MAJOR 3: chat_bubble 이면 `lines`(옛 `editLines` 상태)가 아니라
+  // 덱 자체를 문장 단위로 투영한다. 말풍선을 직접 고친 직후 담당 대화창(`askBulk`)이 고친
+  // 전 문장을 보고 일괄 편집하던 것(D-2026-09-09-1 "두 길이 다 열려 있어야 한다" 위반)을
+  // 막는다. `deckProj.refs` 는 askBulk 결과를 다시 덱에 역적용할 때 각 줄이 어느
+  // 장/말풍선에서 왔는지 찾는 데 쓴다.
+  const isChatDeck = kind === "card" && Boolean(cardDeck) && cardDeck!.template === "chat_bubble";
+  const cardSourceLocked = kind === "card" && cardTextEmbedded && !cardTextSourceRecoverable && !isChatDeck;
+  const deckProj = useMemo(() => (isChatDeck ? deckProjection(cardDeck!) : null), [isChatDeck, cardDeck]);
+  const safeLines = isChatDeck ? (deckProj!.lines.length ? deckProj!.lines : [""]) : (lines.length ? lines : [""]);
+  const safeBody = safeLines.join("\n\n");
   const [activeLine, setActiveLine] = useState(0);
-  const [activeTool, setActiveTool] = useState<ToolName>("비율");
+  const [activeTool, setActiveTool] = useState<ToolName>(() => kind === "audio" ? "목소리" : "비율");
   const [toolValues, setToolValues] = useState<ToolValues>(() => toolValuesFromFormat(
     initialFormat?.kind === formatKind ? initialFormat : defaultContentEditFormat(formatKind),
   ));
+  const [textSegments, setTextSegments] = useState<Segment[]>(() => {
+    if (initialFormat?.kind === "text" && initialFormat.segments?.length) return initialFormat.segments;
+    return [{ text: lines.join("\n\n"), bold: false }];
+  });
   const [visibleLines, setVisibleLines] = useState<boolean[]>(() => safeLines.map(() => true));
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkAsk, setBulkAsk] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
-  const selectedFormat = useMemo(() => formatFromToolValues(formatKind, toolValues), [formatKind, toolValues]);
+  const initialAudioSettings = audioSettingsFromFormat(initialFormat);
+  const preservedAudio = useMemo<PreservedAudioSettings>(() => ({
+    musicTrack: initialAudioSettings.musicTrack,
+    musicVolume: initialAudioSettings.musicVolume,
+  }), [initialAudioSettings.musicTrack, initialAudioSettings.musicVolume]);
+  const selectedFormat = useMemo(
+    () => formatFromToolValues(formatKind, toolValues, preservedAudio, textSegments),
+    [formatKind, preservedAudio, textSegments, toolValues],
+  );
   const lastEmittedFormat = useRef("");
   useEffect(() => { setVisibleLines((current) => safeLines.map((_, index) => current[index] ?? true)); setActiveLine((current) => Math.min(current, safeLines.length - 1)); }, [safeLines.length]);
   useEffect(() => {
     const nextFormat = initialFormat?.kind === formatKind ? initialFormat : defaultContentEditFormat(formatKind);
     if (JSON.stringify(nextFormat) !== lastEmittedFormat.current) {
       setToolValues(toolValuesFromFormat(nextFormat));
+      if (nextFormat.kind === "text") {
+        setTextSegments(nextFormat.segments?.length ? nextFormat.segments : [{ text: lines.join("\n\n"), bold: false }]);
+      }
     }
     setActiveTool(kind === "audio" ? "목소리" : "비율");
   }, [formatKind, initialFormat, kind]);
+  useEffect(() => {
+    if (formatKind !== "text") return;
+    setTextSegments((current) => {
+      if (current.map((segment) => segment.text).join("") === safeBody) return current;
+      const persisted = initialFormat?.kind === "text" ? initialFormat.segments : undefined;
+      if (persisted?.map((segment) => segment.text).join("") === safeBody) return persisted;
+      // AI 일괄 변경처럼 editLines만 외부에서 교체된 경우 새 평문을 새 원본으로 받는다.
+      // 로컬 직접 편집은 위 비교에서 이미 같은 구조화 세그먼트를 보존한다.
+      return [{ text: safeBody, bold: false }];
+    });
+  }, [formatKind, initialFormat, safeBody]);
   useEffect(() => {
     lastEmittedFormat.current = JSON.stringify(selectedFormat);
     onFormatChange?.(selectedFormat);
@@ -1351,20 +2059,26 @@ export function EditRoom({
   const duration = visibleCount * secondsPerLine;
   const durationLabel = Number.isInteger(duration) ? String(duration) : duration.toFixed(1);
   const selectedLine = safeLines[activeLine] ?? "";
+  // v70 §4.3: 실제 서비스는 이 값을 읽지 않는다(위 참조). onVideoEditChange 없는 legacy
+  // 경로(레거시 테스트)에서만 옛 "무음 구간 줄이기" 단추가 이 값을 쓴다 — 회귀 0 유지.
   const silenceIndexes = safeLines.map((line, index) => (/…|\.{3}|^\s*$/.test(line) ? index : -1)).filter((index) => index >= 0);
   const visibleSilences = silenceIndexes.filter((index) => visibleLines[index]).length;
-  const tools = kind === "card" || kind === "text" ? CARD_TOOLS : kind === "audio" ? AUDIO_TOOLS : VIDEO_TOOLS;
+  const tools = kind === "card" || kind === "text" ? CARD_TOOLS : kind === "audio" ? NARRATION_TOOLS : VIDEO_TOOLS;
   const outlineTitle = kind === "text" ? "글 문단" : kind === "card" ? "카드 목록" : kind === "audio" ? "대사 목록" : "영상 장면";
   const unit = kind === "card" ? "장" : kind === "text" ? "문단" : "장면";
   const hasEditableContent = safeLines.some((line) => line.trim().length > 0);
   const roomState = state === "default" && !hasEditableContent ? "empty" : state;
   const editorVisible = roomState === "default" || roomState === "overflow";
-  const updateLine = (value: string) => onLinesChange(safeLines.map((line, index) => index === activeLine ? value : line));
+  const updateLine = (value: string) => {
+    if (cardSourceLocked) return;
+    onLinesChange(safeLines.map((line, index) => index === activeLine ? value : line));
+  };
   // 순서 이동. 줄과 함께 그 줄의 보임 여부와 글자 위치도 같이 옮긴다.
   // 따로 놀면 엉뚱한 줄이 지워진 것처럼 보이고 엉뚱한 장에 남의 글자 위치가 붙는다.
   // 끌어서 놓기는 한 칸이 아니라 먼 자리로 건너뛰므로 뽑아서 끼우는 방식으로 옮긴다.
   // 붙어 있는 두 칸이면 이것은 자리 맞바꾸기와 같은 결과다.
   const moveLineTo = (from: number, to: number) => {
+    if (cardSourceLocked) return;
     if (from === to || from < 0 || to < 0 || from >= safeLines.length || to >= safeLines.length) return;
     const nextLines = [...safeLines];
     const [movedLine] = nextLines.splice(from, 1);
@@ -1387,12 +2101,14 @@ export function EditRoom({
   const moveLine = (index: number, delta: number) => moveLineTo(index, index + delta);
   // 목록 끝에 한 장 더. 더한 장으로 바로 옮겨 간다. 더해 놓고 어디 갔는지 찾게 하지 않는다.
   const addLine = () => {
+    if (cardSourceLocked) return;
     onLinesChange([...safeLines, ""]);
     setActiveLine(safeLines.length);
   };
   // 장 삭제. 줄만 지우면 보임 여부와 글자 위치가 한 칸씩 밀려 엉뚱한 장의 값이 붙는다.
   // 마지막 한 장은 지우지 않는다. 편집 대상이 0이 되면 방이 빈 상태로 튕긴다.
   const removeLine = (index: number) => {
+    if (cardSourceLocked) return;
     if (safeLines.length <= 1) return;
     const next = safeLines.filter((_, lineIndex) => lineIndex !== index);
     setVisibleLines((current) => current.filter((_, lineIndex) => lineIndex !== index));
@@ -1402,15 +2118,20 @@ export function EditRoom({
     setActiveLine((current) => Math.min(current, next.length - 1));
     onLinesChange(next);
   };
-  const toggleLine = (index: number) => setVisibleLines((current) => current.map((visible, lineIndex) => lineIndex === index ? !visible : visible));
+  const toggleLine = (index: number) => {
+    if (cardSourceLocked) return;
+    setVisibleLines((current) => current.map((visible, lineIndex) => lineIndex === index ? !visible : visible));
+  };
   const trimSilences = () => setVisibleLines((current) => current.map((visible, index) => silenceIndexes.includes(index) ? false : visible));
   const shortenAll = () => {
+    if (cardSourceLocked) return;
     const next = safeLines.map((line) => line.length > 24 ? `${line.slice(0, 23)}…` : line);
     const changed = next.filter((line, index) => line !== safeLines[index]).length;
     if (changed) onLinesChange(next);
     setBulkMessage(changed ? `긴 문장 ${changed}개를 줄였습니다.` : "줄일 긴 문장이 없습니다.");
   };
   const politeAll = () => {
+    if (cardSourceLocked) return;
     const next = safeLines.map((line) => line.replace(/(다|음|함)\.?$/u, "습니다").replace(/\s+$/u, ""));
     const changed = next.filter((line, index) => line !== safeLines[index]).length;
     if (changed) onLinesChange(next);
@@ -1418,6 +2139,7 @@ export function EditRoom({
   };
   // 말로 시키는 일괄 변경. 줄 수와 순서가 어긋나면 서버가 거절하므로 여기서는 결과만 받는다.
   const askBulk = async () => {
+    if (cardSourceLocked) return;
     const instruction = bulkAsk.trim();
     if (!instruction || !hasEditableContent || bulkBusy) return;
     setBulkBusy(true);
@@ -1433,7 +2155,14 @@ export function EditRoom({
         setBulkMessage(data.error || "고치지 못했습니다. 잠시 후 다시 시도해 주세요.");
         return;
       }
-      onLinesChange(data.lines);
+      // chat_bubble 이면 결과 줄을 덱에 역적용한다(applyProjection). 그냥 onLinesChange 로
+      // 보내면 editLines 로만 저장되는데, 저장 시 서버가 항상 cardDeck 투영으로 그
+      // editLines 를 덮어써서(§3.3 "cardDeck 이 이긴다") AI 편집 결과가 조용히 사라진다.
+      if (isChatDeck && cardDeck && deckProj && onCardDeckChange) {
+        onCardDeckChange(applyProjection(cardDeck, data.lines, deckProj.refs));
+      } else {
+        onLinesChange(data.lines);
+      }
       setBulkAsk("");
       setBulkMessage(data.changed ? `${data.changed}개 줄을 고쳤습니다.` : "바꿀 것이 없었습니다.");
     } catch {
@@ -1443,6 +2172,7 @@ export function EditRoom({
     }
   };
   const dropEmpty = () => {
+    if (cardSourceLocked) return;
     const next = safeLines.filter((line) => line.trim());
     const removed = safeLines.length - next.length;
     if (removed) onLinesChange(next);
@@ -1467,6 +2197,7 @@ export function EditRoom({
                     aria-pressed={kind === editKind}
                     variant="secondary"
                     className={kind === editKind ? "border-accent bg-accent-soft text-accent" : ""}
+                    disabled={bodyEditConflict}
                     onClick={() => onKindChange?.(editKind)}
                   >
                     {EDIT_KIND_LABELS[editKind]}
@@ -1476,14 +2207,29 @@ export function EditRoom({
               <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
-              <div className={`card overflow-hidden ${styles.editWorkbench}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined}>
+              {kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
+                <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
+                  <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-card-deck-editor-note>
+                    말풍선 카드뉴스는 직접 편집이 기본입니다. 여기서 고친 내용은 자동 저장됩니다.
+                  </p>
+                  <CardDeckPanel deck={cardDeck} onDeckChange={onCardDeckChange} />
+                </div>
+              ) : (
+              <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""} ${kind === "video" && onVideoEditChange ? styles.videoDocumentWorkbench : ""} ${kind === "card" ? styles.plainCardWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined} inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                 {/*
                   2026-09-14. 여기는 `1. 첫 장` 같은 글자 목록이었고, 장을 옮기려면 미리보기
                   아래 `앞 장`·`다음 장` 화살표를 여러 번 눌러야 했다. 카드뉴스는 장과 장의
                   흐름이 곧 상품인데 그 흐름이 화면에 없었다. DESIGN.md §4 가 이 칸을 이미
                   계약해 뒀으므로 새 칸을 만들지 않고 있는 집을 채운다.
                 */}
-                <nav className={`min-w-0 p-pad-inset ${styles.editOutline}`} aria-label={outlineTitle} data-edit-outline>
+                {/*
+                  v70 §4: 영상이 새 VideoEditor(플레이어+자막 대본+타임라인)로 그려질
+                  때는 목차 나브를 같이 두지 않는다 — 같은 장면 목록이 두 곳에서 따로 놀아
+                  어느 쪽이 진짜인지 알 수 없다. onVideoEditChange가 없는 legacy 경로(옛
+                  4단 도구줄, 레거시 테스트 전용 — 실제 서비스는 항상 onVideoEditChange를
+                  준다)는 예전처럼 목차를 그대로 둔다(회귀 0).
+                */}
+                {kind !== "text" && kind !== "card" && !(kind === "video" && onVideoEditChange) ? <nav className={`min-w-0 p-pad-inset ${styles.editOutline}`} aria-label={outlineTitle} data-edit-outline>
                   <EditOutline
                     title={outlineTitle}
                     unit={unit}
@@ -1492,41 +2238,166 @@ export function EditRoom({
                     onSelect={setActiveLine}
                     visibleLines={visibleLines}
                     // 카드뉴스만 장마다 그림이 다르다. 나머지 형식은 순번 자리표시자를 쓴다.
-                    thumbnails={kind === "card" ? (previewImageUrls ?? undefined) : undefined}
+                    thumbnails={undefined}
                     tenantId={workspaceId}
-                    showRoles={kind === "card"}
-                    note={kind === "card" ? "순서는 끌어서 놓거나 ▲▼로 바꿉니다. 자유 배치는 아직 제공하지 않습니다. 글자는 상단·중앙·하단 중에서 고릅니다." : undefined}
-                    onMove={kind === "text" ? undefined : moveLine}
-                    onMoveTo={kind === "text" ? undefined : moveLineTo}
-                    onAdd={kind === "text" ? undefined : addLine}
-                    onRemove={kind === "text" ? undefined : removeLine}
+                    showRoles={false}
+                    note={undefined}
+                    onMove={moveLine}
+                    onMoveTo={moveLineTo}
+                    onAdd={addLine}
+                    onRemove={removeLine}
                   />
-                </nav>
-                <div className="min-w-0 p-pad-inset">
+                </nav> : null}
+                <div className={kind === "text" ? "min-w-0" : "min-w-0 p-pad-inset"}>
                   {kind === "text" ? (
-                    <section aria-labelledby="whole-text-title" data-edit-stage>
-                      <div className="mb-stack flex flex-wrap items-start justify-between gap-stack-tight">
-                        <div><b id="whole-text-title" className="text-body text-text">글 전체 편집</b><p className="text-caption text-subtle">공백 포함 {safeLines.join("\n\n").length}자 · 문단 {safeLines.length}개</p></div>
+                    <TextDocumentEditor
+                      lines={safeLines}
+                      segments={textSegments}
+                      onLinesChange={onLinesChange}
+                      onSegmentsChange={setTextSegments}
+                    />
+                  ) : kind === "video" && onVideoEditChange ? (
+                    // v70 §4: 영상은 전용 편집기 한 벌(플레이어+자막 대본+타임라인)이 본체다.
+                    // 옛 표준 편집 작업대(장면 순서·비율·자막 크기 도구줄)와 VideoEditor를
+                    // 겹쳐 띄우던 것이 회장이 지적한 "씹창"이었다 — 이번엔 형식마다 전용
+                    // 편집기로 가르되, 비율·자막 크기(굽기 값)·재생 속도 도구줄은 사유
+                    // 없이 지운 게 아니라 이 얇은 줄로 남긴다(교차 리뷰 M5). 목소리는 여기서
+                    // 뺐다 — VideoEditor 안의 VoiceSelector가 이미 그 조작을 갖고 있어
+                    // 둘을 두면 같은 것을 두 군데서 고르게 된다(교차 리뷰 재리뷰 MAJOR).
+                    <>
+                      <section className="mb-pad-inset flex flex-wrap gap-stack-tight border-b border-border pb-pad-inset" aria-label="형식 도구" data-edit-tools>
+                        {tools.filter((tool) => tool !== "목소리").map((tool) => (
+                          <Button key={tool} size="sm" variant="secondary" className={activeTool === tool ? "border-accent bg-accent-soft text-accent" : ""} onClick={() => setActiveTool(tool)} aria-pressed={activeTool === tool} aria-label={`${visibleToolName(kind, tool)} 도구`}>
+                            <ToolIcon tool={tool} /><span>{visibleToolName(kind, tool)}: {visibleToolValue(tool, toolValues[tool], kind)}</span>
+                          </Button>
+                        ))}
+                      </section>
+                      <div className="mb-stack-tight flex flex-wrap gap-stack-tight" aria-label={`${visibleToolName(kind, activeTool)} 선택지`}>
+                        {toolOptions(formatKind, activeTool).map((option) => (
+                          <Button key={option} size="sm" variant="secondary" className={toolValues[activeTool] === option ? "border-accent bg-accent-soft text-accent" : ""} aria-pressed={toolValues[activeTool] === option} onClick={() => setToolValues((current) => ({ ...current, [activeTool]: option }))}>
+                            {visibleToolValue(activeTool, option, kind)}
+                          </Button>
+                        ))}
                       </div>
-                      <textarea
-                        aria-label="글 전체"
-                        value={safeLines.join("\n\n")}
-                        rows={14}
-                        onChange={(event) => onLinesChange(event.target.value.split(/\n\s*\n/))}
-                        className="min-h-80 w-full resize-y overflow-y-auto rounded-control border border-border bg-surface p-pad-inset text-body leading-relaxed text-text"
+                      {/* 재리뷰 MAJOR: 이 줄의 값이 실제로 반영되는지 사실대로 말한다 —
+                          자막 크기만 굽기에 실제 쓰이고(video-subtitle.ts
+                          subtitleFontSize), 비율·재생 속도는 아직 발행 파일에 반영되지
+                          않는다. */}
+                      <p className="mb-pad-inset text-caption text-subtle" data-video-tools-status-note>
+                        자막 크기만 발행 영상에 실제로 반영됩니다. 비율·재생 속도는 아직 반영되지 않습니다.
+                      </p>
+                      <VideoEditor
+                        videoEdit={videoEdit ?? EMPTY_VIDEO_EDIT}
+                        onVideoEditChange={onVideoEditChange}
+                        previewVideoUrl={previewVideoUrl}
+                        lines={safeLines}
+                        onLinesChange={onLinesChange}
+                        onOpenCreate={onOpenCreate}
+                        syncing={videoEditReconciling}
+                        tenantId={workspaceId}
                       />
-                      <p className="mt-stack-tight text-caption text-subtle">문단을 나누거나 합쳐도 자동 저장됩니다.</p>
-                    </section>
+                    </>
+                  ) : kind === "card" ? (
+                    <div className={styles.plainCardShell} data-plain-card-shell>
+                      <nav className={styles.plainCardStrip} aria-label="카드 목록" data-plain-card-strip>
+                        {safeLines.map((_, index) => (
+                          <div key={`plain-card-thumb-${index}`} className={styles.plainCardThumb} data-active={activeLine === index}>
+                            <CardStripThumbnail
+                              index={index}
+                              selected={activeLine === index}
+                              imageUrl={previewImageUrls?.[index] ?? (index === 0 ? previewImageUrl ?? undefined : undefined)}
+                              tenantId={workspaceId}
+                              onClick={() => setActiveLine(index)}
+                            />
+                          </div>
+                        ))}
+                      </nav>
+                      <div className={styles.plainCardStage}>
+                        <EditPreview
+                          kind="card"
+                          lines={safeLines.map((line, index) => (visibleLines[index] ? line : ""))}
+                          activeLine={activeLine}
+                          onActiveLine={setActiveLine}
+                          subtitleSize={toolValues.자막}
+                          renderReady={previewReady}
+                          mediaUrl={previewImageUrl || undefined}
+                          mediaUrls={previewImageUrls ?? undefined}
+                          mediaType="image"
+                          cardTextEmbedded={cardTextEmbedded}
+                          cardEditingLocked={cardSourceLocked}
+                          tenantId={workspaceId}
+                          onLinesChange={onLinesChange}
+                          cardTextPositions={cardTextPositions}
+                          onCardTextPositionsChange={cardSourceLocked ? undefined : onCardTextPositionsChange}
+                          aspectRatio={toolValues.비율}
+                          onAspectRatioChange={(aspectRatio) => {
+                            if (toolOptions(formatKind, "비율").includes(aspectRatio)) {
+                              setToolValues((current) => ({ ...current, 비율: aspectRatio }));
+                            }
+                          }}
+                          stageSize="card-v70"
+                        />
+                      </div>
+                      <section className={styles.plainCardScript} aria-labelledby="plain-card-script-title" data-edit-script>
+                        <div className="mb-stack flex flex-wrap items-center justify-between gap-stack-tight">
+                          <b id="plain-card-script-title" className="text-body text-text">카드 문구</b>
+                          <span className="text-caption text-subtle">{visibleCount}개 장</span>
+                        </div>
+                        {cardSourceLocked ? (
+                          <div className="mb-stack rounded-control border border-warning bg-warning-soft p-stack text-caption text-text" role="status" data-card-source-lock>
+                            <p>편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다.</p>
+                            <p className="mt-stack-tight">기존 그림은 그대로 보존됩니다. 수정하려면 생성실에서 새 카드로 만들어 주세요.</p>
+                            <Button size="sm" className="mt-stack" onClick={onOpenCreate}>생성실에서 새 카드 만들기</Button>
+                          </div>
+                        ) : cardTextEmbedded ? (
+                          <p className="mb-stack text-caption text-subtle" data-card-text-embedded-note>
+                            문구와 글자 위치를 바꾸면 카드 그림에 바로 반영됩니다.
+                          </p>
+                        ) : null}
+                        <ol className="space-y-stack-tight">
+                          {safeLines.map((line, index) => (
+                            <li key={`plain-card-script-${index}`} className={`grid gap-stack-tight rounded-control border border-border bg-surface-2 p-stack md:grid-cols-[4rem_minmax(0,1fr)_auto] ${visibleLines[index] ? "" : "opacity-60"}`} data-script-line={index + 1}>
+                              <span className="text-caption text-subtle">{index + 1}장</span>
+                              <input
+                                aria-label={`문구 ${index + 1}`}
+                                data-line-input={index}
+                                value={line}
+                                disabled={cardSourceLocked}
+                                onChange={(event) => onLinesChange(safeLines.map((current, lineIndex) => lineIndex === index ? event.target.value : current))}
+                                onFocus={() => setActiveLine(index)}
+                                placeholder="빈 문구"
+                                className={`min-h-control-touch min-w-0 rounded-control border px-stack text-body-sm text-text ${activeLine === index ? "border-accent bg-accent-soft/30" : "border-transparent bg-surface hover:border-border"} ${visibleLines[index] ? "" : "line-through opacity-60"}`}
+                              />
+                              <div className="flex shrink-0 gap-micro">
+                                <Button size="sm" aria-label={`${index + 1}번째를 위로`} data-line-up={index} disabled={cardSourceLocked || index === 0} onClick={() => moveLine(index, -1)}>▲</Button>
+                                <Button size="sm" aria-label={`${index + 1}번째를 아래로`} data-line-down={index} disabled={cardSourceLocked || index === safeLines.length - 1} onClick={() => moveLine(index, 1)}>▼</Button>
+                                <Button size="sm" data-line-toggle={index} disabled={cardSourceLocked} onClick={() => toggleLine(index)}>{visibleLines[index] ? "빼기" : "되살리기"}</Button>
+                              </div>
+                            </li>
+                          ))}
+                        </ol>
+                        <Button size="sm" className="mt-stack" data-line-add disabled={cardSourceLocked} onClick={addLine}>카드 추가</Button>
+                      </section>
+                    </div>
                   ) : (
                     <>
                       {kind === "audio" ? (
-                        <section className="space-y-pad-inset" data-edit-readiness>
-                          <div className="grid min-h-80 place-items-center rounded-surface bg-surface-2 p-region text-center"><b className="text-subheading text-text">나레이션 대사 편집</b></div>
-                          <p className="rounded-control border border-warning bg-warning-soft p-pad-inset text-body-sm text-warning">음악 파일 생성은 아직 제공하지 않습니다. 지금은 나레이션 대사만 편집할 수 있습니다.</p>
-                        </section>
+                        <>
+                          <section className="grid min-h-80 place-items-center rounded-surface bg-surface-2 p-region text-center" data-edit-stage>
+                            <b className="text-subheading text-text">나레이션 대사 편집</b>
+                          </section>
+                          <section className="mt-pad-inset border-b border-border pb-pad-inset" aria-label="나레이션 편집 도구" data-edit-tools>
+                            <div className="flex flex-wrap gap-stack-tight">
+                              {tools.map((tool) => <Button key={tool} size="sm" variant="secondary" className={activeTool === tool ? "border-accent bg-accent-soft text-accent" : ""} onClick={() => setActiveTool(tool)} aria-pressed={activeTool === tool} aria-label={`${visibleToolName(kind, tool)} 도구`}><ToolIcon tool={tool} /><span>{visibleToolName(kind, tool)}: {visibleToolValue(tool, toolValues[tool], kind)}</span></Button>)}
+                            </div>
+                            <div className="mt-pad-inset flex flex-wrap gap-stack-tight" aria-label={`${visibleToolName(kind, activeTool)} 선택지`}>
+                              {toolOptions(formatKind, activeTool).map((option) => <Button key={option} size="sm" variant="secondary" className={toolValues[activeTool] === option ? "border-accent bg-accent-soft text-accent" : ""} aria-pressed={toolValues[activeTool] === option} onClick={() => setToolValues((current) => ({ ...current, [activeTool]: option }))}>{visibleToolValue(activeTool, option, kind)}</Button>)}
+                            </div>
+                          </section>
+                        </>
                       ) : (
                         <>
-                          <section aria-label={kind === "card" ? "카드뉴스 미리보기" : "영상 미리보기"} data-edit-stage>
+                          <section aria-label="영상 미리보기" data-edit-stage>
                             <EditPreview
                               kind={kind}
                               lines={safeLines.map((line, index) => (visibleLines[index] ? line : ""))}
@@ -1536,10 +2407,10 @@ export function EditRoom({
                               renderReady={previewReady}
                               // 영상은 대표 이미지를 움직여 만든다. 영상이 아직 없으면 그 바탕이 된
                               // 이미지를 보여 주는 편이 자리표시자보다 결과에 가깝다.
-                              mediaUrl={(kind === "video" ? (previewVideoUrl || previewImageUrl) : previewImageUrl) || undefined}
+                              mediaUrl={(previewVideoUrl || previewImageUrl) || undefined}
                               // 카드뉴스는 장마다 그림이 다르다. 한 벌을 통째로 넘겨 고른 장의
                               // 그림을 그린다(2026-09-14 실측: 늘 대표 한 장만 보였다).
-                              mediaUrls={kind === "card" ? (previewImageUrls ?? undefined) : undefined}
+                              mediaUrls={undefined}
                               mediaType={kind === "video" && previewVideoUrl ? "video" : "image"}
                               // 만료된 배달 주소를 되살릴 때 어느 작업 공간인지 함께 보낸다.
                               // 없으면 운영자 경로에서 401 로 닫힌다(2026-09-13).
@@ -1589,6 +2460,15 @@ export function EditRoom({
                             ) : null}
                           </section>
                           <section className="mt-pad-inset border-b border-border pb-pad-inset" aria-label="간편 편집 도구" data-edit-tools>
+                            {/*
+                              v70 §4.3: 실제 서비스(onVideoEditChange 있음)는 이 분기에
+                              닿지 않는다 — 위에서 VideoEditor(플레이어+자막 대본+타임라인)로
+                              완전히 갈랐고, 새 자막 대본에는 "무음·군말 한번에 컷" 단추를
+                              넣지 않았다(실제 무음 검출 데이터가 없다 — 옛 trimSilences는
+                              정규식(말줄임표·빈 줄)으로 흉내 낸 것이었다, ADR-007). 이 아래
+                              단추는 onVideoEditChange가 없는 legacy 경로(레거시 테스트 전용)
+                              에서만 보이는 옛 동작이라 회귀 0을 위해 그대로 남긴다.
+                            */}
                             <div className="flex flex-wrap gap-stack-tight">{tools.map((tool) => <Button key={tool} size="sm" variant="secondary" className={activeTool === tool ? "border-accent bg-accent-soft text-accent" : ""} onClick={() => setActiveTool(tool)} aria-pressed={activeTool === tool} aria-label={`${visibleToolName(kind, tool)} 도구`}><ToolIcon tool={tool} /><span>{visibleToolName(kind, tool)}: {visibleToolValue(tool, toolValues[tool], kind)}</span></Button>)}
                               {kind === "video" ? <Button size="sm" onClick={trimSilences} disabled={visibleSilences === 0}>무음 구간 {visibleSilences}개 줄이기</Button> : null}
                             </div>
@@ -1597,9 +2477,9 @@ export function EditRoom({
                         </>
                       )}
                       <section className="mt-pad-inset" aria-labelledby="edit-script-title" data-edit-script>
-                        <div className="mb-stack flex flex-wrap items-center justify-between gap-stack-tight"><b id="edit-script-title" className="text-body text-text">{kind === "card" ? "카드 문구" : kind === "audio" ? "나레이션 대사" : "장면 대사"}</b><span className="text-caption text-subtle" data-edit-duration={kind === "video" ? durationLabel : undefined}>{visibleCount}개 {unit}{kind === "video" ? ` · ${durationLabel}초` : ""}</span></div>
+                        <div className="mb-stack flex flex-wrap items-center justify-between gap-stack-tight"><b id="edit-script-title" className="text-body text-text">{kind === "audio" ? "나레이션 대사" : "장면 대사"}</b><span className="text-caption text-subtle" data-edit-duration={kind === "video" ? durationLabel : undefined}>{visibleCount}개 {unit}{kind === "video" ? ` · ${durationLabel}초` : ""}</span></div>
                         <ol className="space-y-stack-tight">{safeLines.map((line, index) => <li key={`script-${index}`} className={`grid gap-stack-tight rounded-control border border-border bg-surface-2 p-stack md:grid-cols-[4rem_minmax(0,1fr)_auto] ${visibleLines[index] ? "" : "opacity-60"}`} data-script-line={index + 1}>
-                          <span className="text-caption text-subtle">{kind === "card" ? `${index + 1}장` : kind === "audio" ? `${index + 1}번째` : `${index * secondsPerLine}초부터`}</span>
+                          <span className="text-caption text-subtle">{kind === "audio" ? `${index + 1}번째` : `${index * secondsPerLine}초부터`}</span>
                           {/*
                             2026-09-09 회장 지적("목차의 의미 몰라? vrew 처럼 장면 대사보고
                             자막이나 음성 바로 편집가능하게하는건데")과 경쟁사 조사 반영.
@@ -1611,12 +2491,12 @@ export function EditRoom({
                             언제나 입력칸이다. 고르는 단계를 없앤다.
                           */}
                           <input
-                            aria-label={`${kind === "card" ? "문구" : "대사"} ${index + 1}`}
+                            aria-label={`대사 ${index + 1}`}
                             data-line-input={index}
                             value={line}
                             onChange={(event) => onLinesChange(safeLines.map((current, lineIndex) => lineIndex === index ? event.target.value : current))}
                             onFocus={() => setActiveLine(index)}
-                            placeholder={kind === "card" ? "빈 문구" : "빈 대사"}
+                            placeholder="빈 대사"
                             className={`min-h-control-touch min-w-0 rounded-control border px-stack text-body-sm text-text ${activeLine === index ? "border-accent bg-accent-soft/30" : "border-transparent bg-transparent hover:border-border hover:bg-surface"} ${visibleLines[index] ? "" : "line-through opacity-60"}`}
                           />
                           {/*
@@ -1634,7 +2514,7 @@ export function EditRoom({
                         </li>)}</ol>
                         <div className="mt-stack flex flex-wrap gap-stack-tight">
                           <Button size="sm" data-line-add onClick={() => onLinesChange([...safeLines, ""])}>
-                            {kind === "card" ? "카드 추가" : kind === "audio" ? "대사 추가" : "장면 추가"}
+                            {kind === "audio" ? "대사 추가" : "장면 추가"}
                           </Button>
                         </div>
                       </section>
@@ -1642,6 +2522,7 @@ export function EditRoom({
                   )}
                 </div>
               </div>
+              )}
             </>
           ) : roomState === "empty" ? (
             <StateNotice tone="empty" title="아직 편집할 작업물이 없습니다" description="생성실에서 초안을 고르면 글, 카드뉴스, 영상 형식에 맞는 편집 도구가 열립니다." actionLabel="생성실에서 작업물 고르기" onAction={onOpenCreate} className="min-h-80 justify-center" />
@@ -1660,21 +2541,24 @@ export function EditRoom({
             편집실만 이 자리가 버튼판이었다. 같은 역할이면 같은 모양이어야 한다.
             대화창 안에 넣되, 편집실이 하는 일(전체 일괄 변경과 발행실 이동)은 그대로 둔다.
           */
-          <aside className={`card p-pad-inset ${styles.editHelper}`} aria-label="편집 담당 대화창" data-edit-helper>
+          <AssistantPanel title="편집 담당" className={styles.editHelper} compactOnNarrow={false}>
             <div className={styles.editHelperActions}>
-              <div className="flex items-center gap-stack-tight border-b border-border pb-stack">
-                <div className="grid h-10 w-10 place-items-center rounded-pill bg-accent text-body font-bold text-accent-fg" aria-hidden="true">O</div>
-                <div><b className="block text-body text-text">편집 담당</b><span className="text-caption text-success">지금 대기 중</span></div>
+              <div className={styles.editQuickActions} aria-label="빠른 작업">
+                <Button size="sm" variant="secondary" onClick={shortenAll} disabled={!hasEditableContent || bodyEditConflict || cardSourceLocked}>전부 짧게</Button>
+                <Button size="sm" variant="secondary" onClick={politeAll} disabled={!hasEditableContent || bodyEditConflict || cardSourceLocked}>높임말</Button>
+                <Button size="sm" variant="secondary" onClick={dropEmpty} disabled={!hasEditableContent || bodyEditConflict || cardSourceLocked}>빈 줄 정리</Button>
               </div>
-              <h2 className="mt-stack text-body font-bold text-text">전체에 한 번에 적용</h2>
-              <p className="mt-stack-tight break-keep text-caption text-muted">한 곳을 정확히 고치는 것은 손이 빠릅니다. 여러 곳을 같은 규칙으로 바꾸는 것은 말이 빠릅니다.</p>
+              <div className={styles.editChatLog} role="log" aria-label="편집 담당 대화 기록" data-edit-chat-log>
+                <div className={styles.editChatBubble}>고칠 내용을 말해 주세요. 현재 초안 전체에 같은 규칙으로 적용할 수 있습니다.</div>
+                {bulkMessage ? <div className={`${styles.editChatBubble} ${styles.editChatBubbleUser}`} aria-live="polite">{bulkMessage}</div> : null}
+              </div>
               {/*
                 2026-09-09 회장 지시: "AI 챗봇에서는 '자막에서 어투 이렇게 바꿔줘' 이렇게
                 요청할수도있는거고." 고정 단추 셋으로는 그 말을 받을 수 없었다. 자유롭게
                 시킬 자리를 연다. 줄 수와 순서는 서버가 지킨다(app/api/studio/edit-bulk).
               */}
               <form
-                className="mt-pad-inset flex gap-stack-tight"
+                className="flex gap-stack-tight"
                 data-bulk-ask-form
                 onSubmit={(event) => { event.preventDefault(); void askBulk(); }}
               >
@@ -1684,29 +2568,54 @@ export function EditRoom({
                   value={bulkAsk}
                   onChange={(event) => setBulkAsk(event.target.value)}
                   placeholder="예: 자막 어투를 더 부드럽게 바꿔줘"
-                  disabled={!hasEditableContent || bulkBusy}
+                  disabled={!hasEditableContent || bulkBusy || bodyEditConflict || cardSourceLocked}
                   className="min-h-control-touch min-w-0 flex-1 rounded-control border border-border bg-surface px-stack text-body-sm text-text"
                 />
                 {/*
                   이 방의 다음 단계는 "발행실로 이동" 하나다. 도구 단추가 같은 강조를 가지면
                   다음 단계가 묻힌다. 강조는 방마다 하나여야 한다.
                 */}
-                <Button type="submit" disabled={!hasEditableContent || bulkBusy || !bulkAsk.trim()}>
+                <Button type="submit" disabled={!hasEditableContent || bulkBusy || !bulkAsk.trim() || bodyEditConflict || cardSourceLocked}>
                   {bulkBusy ? "고치는 중" : "시키기"}
                 </Button>
               </form>
-              <div className="mt-pad-inset grid gap-stack-tight">
-                <Button className="w-full min-w-0 justify-start" onClick={shortenAll} disabled={!hasEditableContent}>전부 짧게 줄이기</Button>
-                <Button className="w-full min-w-0 justify-start" onClick={politeAll} disabled={!hasEditableContent}>말끝을 높임말로 맞추기</Button>
-                <Button className="w-full min-w-0 justify-start" onClick={dropEmpty} disabled={!hasEditableContent}>빈 줄 걷어내기</Button>
-              </div>
-              {bulkMessage ? <p className="mt-stack text-caption text-success" aria-live="polite">{bulkMessage}</p> : null}
             </div>
+            {/*
+              항목2(2026-09-22 코드리뷰 5차): 영상 편집기의 미완성 오버레이 하나가
+              카드덱만 손보고 있는 사용자에게 "발행실로 이동"을 영구히 막았는데, 문구는
+              영상 얘기만 했고 그 방으로 가는 길이 없었다(ADR-007 §1·§3 위반). 어느
+              도메인이 막고 있는지와 그 도메인 편집으로 바로 가는 단추를 붙인다.
+            */}
+            {cardDeckAutosaveError ? (
+              <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-blocked-domain="card">
+                {cardDeckAutosaveError}{" "}
+                {kind !== "card" ? <Button size="sm" variant="secondary" onClick={() => onKindChange?.("card")}>카드덱 편집으로 가기</Button> : null}
+              </p>
+            ) : null}
+            {videoEditAutosaveError ? (
+              <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-blocked-domain="video">
+                {videoEditAutosaveError}{" "}
+                {kind !== "video" ? <Button size="sm" variant="secondary" onClick={() => onKindChange?.("video")}>영상 편집으로 가기</Button> : null}
+                {videoEditConflict && onVideoEditReload ? <Button size="sm" onClick={onVideoEditReload} data-video-edit-reload>서버 값 다시 불러오기</Button> : null}
+              </p>
+            ) : null}
+            {bodyEditConflict ? (
+              <div role="alert" className="space-y-stack-tight rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-body-edit-conflict>
+                <strong className="block">다른 곳에서 먼저 수정됐어요</strong>
+                <p>{bodyConflictViewingLatest
+                  ? "최신본을 불러왔습니다. 작성 중이던 내 변경은 보관되어 있으며 다시 적용할 수 있습니다."
+                  : "작성 중이던 내 변경은 보관했습니다. 최신본을 확인하거나, 최신 기준판 위에 내 변경을 다시 적용할 수 있습니다."}</p>
+                <div className="flex flex-wrap gap-stack-tight">
+                  <Button size="sm" variant="secondary" onClick={onBodyConflictLoadLatest} disabled={bodyConflictResolving || bodyConflictViewingLatest} data-body-conflict-load-latest>최신본 불러오기</Button>
+                  <Button size="sm" onClick={onBodyConflictReapply} disabled={bodyConflictResolving} data-body-conflict-reapply>{bodyConflictResolving ? "다시 적용 중" : "내 변경 다시 적용"}</Button>
+                </div>
+              </div>
+            ) : null}
             <div className={styles.editHelperFooter}>
               <small className={autosaveError ? "text-caption text-danger" : "text-caption text-success"}>{autosaveError || (lastSavedAt ? `마지막 자동 저장 ${lastSavedAt}` : "고치는 대로 자동 저장됨")}</small>
-              <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>
+              <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || bodyEditConflict || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>
             </div>
-          </aside>
+          </AssistantPanel>
         )}
       </div>
     </section>

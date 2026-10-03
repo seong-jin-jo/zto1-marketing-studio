@@ -86,6 +86,42 @@ describe("고객이 부르는 studio 라우트는 허용 목록에 있다", () =
     expect(missing, `허용 목록에 없는 video 라우트: ${missing.join(", ")}`).toEqual([]);
   });
 
+  // 2026-10-02 네 번째. 생성을 비동기로 바꾸며 결과 조회 라우트(/api/higgsfield/job/[id])를
+  // 새로 만들고 허용 목록에 안 넣었다. 운영자 화면과 단위 테스트는 통과했고, 운영 회원 계정에서
+  // 접수 202 뒤 조회가 403 이 나 그림이 영영 도착하지 않았다.
+  it("higgsfield 아래 라우트가 빠짐없이 등록돼 있다", () => {
+    const routes = studioRoutes(resolve(root, "app/api/higgsfield"), "/api/higgsfield");
+    const allowed = (route: string) => {
+      if (proxy.includes(`"${route}"`)) return true;
+      const asMatcher = route.replace(/\//g, "\\/").replace(/\[[^\]]+\]/g, "[^/]+");
+      return proxy.includes(asMatcher);
+    };
+    // 운영자 전용으로 의도한 것만 여기 적는다. 이유 없이 적으면 그게 다음 사고다.
+    const operatorOnly = new Set<string>([
+      "/api/higgsfield/status",       // 공유 계정 이메일·요금제·전체 크레딧. proxy.ts 허용 목록 주석(CODE-REVIEW-20260915-03).
+      "/api/higgsfield/transactions", // 공유 계정 전체 결제·사용 내역. 고객은 /api/usage 로 자기 사용량만 본다.
+    ]);
+    const missing = routes.filter((route) => !operatorOnly.has(route) && !allowed(route));
+    expect(missing, `허용 목록에 없는 higgsfield 라우트: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  // 2026-10-02 다섯 번째(발견). 영상/Higgsfield 비동기 전환을 감사하다가 /api/publish 도
+  // 같은 거짓-실패 계열(클라이언트 45초 타임아웃 vs 실제 150초대 폴링)이라는 게 드러났다.
+  // 그 참에 publish 디렉터리를 studio/queue/video/higgsfield와 같은 방식으로 전수 스캔해
+  // 보니 /api/publish/reconcile(고객 화면이 실제로 부르는 복구 경로)이 허용 목록에
+  // 빠져 있었다 — 아직 아무도 그 경로를 타지 않아 보고되지 않았을 뿐인 잠복 사고.
+  it("publish 아래 라우트가 빠짐없이 등록돼 있다", () => {
+    const routes = studioRoutes(resolve(root, "app/api/publish"), "/api/publish");
+    const allowed = (route: string) => {
+      if (proxy.includes(`"${route}"`)) return true;
+      const asMatcher = route.replace(/\//g, "\\/").replace(/\[[^\]]+\]/g, "[^/]+");
+      return proxy.includes(asMatcher);
+    };
+    const operatorOnly = new Set<string>([]);
+    const missing = routes.filter((route) => !operatorOnly.has(route) && !allowed(route));
+    expect(missing, `허용 목록에 없는 publish 라우트: ${missing.join(", ")}`).toEqual([]);
+  });
+
   it("이 목록이 허용 목록이라는 사실이 코드에 적혀 있다", () => {
     // 차단 목록으로 착각하면 새 라우트를 안 넣고 지나간다.
     expect(proxy).toContain("허용 목록");

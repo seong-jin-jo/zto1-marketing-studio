@@ -175,7 +175,7 @@ describe("SocialConnectButton — OAuth popup activation", () => {
 
     render(<SocialConnectButton provider="threads" label="Threads" />);
 
-    expect(await screen.findByTestId("readiness-status-threads")).toHaveTextContent("발행 준비중");
+    expect(await screen.findByTestId("readiness-status-threads")).toHaveTextContent("연결됨 · 심사 전");
     expect(screen.getByTestId("connect-threads")).toBeDisabled();
   });
 

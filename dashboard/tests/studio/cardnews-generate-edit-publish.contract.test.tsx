@@ -30,8 +30,9 @@ describe("카드뉴스 이음매 계약", () => {
     // 컴포넌트에 자리가 있어도 페이지가 안 이으면 고객은 못 본다. 배선까지 계약이다.
     expect(roomsSrc).toContain("onTextCardsCreated?.(persisted, lines)");
     expect(pageSrc).toContain("onTextCardsCreated={(urls, cardLines) => {");
-    expect(pageSrc, "카드 글자가 편집실 목록으로 안 넘어간다").toContain("if (cardLines.length) setEditLines(cardLines)");
-    expect(pageSrc, "카드 한 벌이 편집실로 안 넘어간다").toContain("previewImageUrls={img?.imageUrls ?? null}");
+    expect(pageSrc, "카드 글자가 편집실의 최신 본문 정본으로 안 넘어간다").toContain("if (cardLines.length) replaceEditLines(cardLines)");
+    expect(pageSrc, "글자 내장 카드는 실시간 재합성본을 우선하고 저장 그림을 대체값으로 유지해야 한다")
+      .toContain("previewImageUrls={liveTextCardPreview ?? img?.imageUrls ?? null}");
   });
 
   it("CARD-LINK-02 편집실은 카드 3장을 3장으로 그리고 고른 장의 그림을 보여 준다", () => {
@@ -47,12 +48,12 @@ describe("카드뉴스 이음매 계약", () => {
       />,
     );
     // 장 목록이 3개다. 한 장으로 접히지 않는다.
-    expect(container.querySelectorAll("[data-card-strip-item]")).toHaveLength(3);
-    expect(screen.getByLabelText("장 전체 3개")).toBeInTheDocument();
+    expect(container.querySelectorAll("[data-card-thumbnail]")).toHaveLength(3);
+    expect(screen.getByLabelText("카드 목록")).toBeInTheDocument();
     // 첫 장을 보고 있으면 첫 장의 그림이 걸린다.
     expect(container.querySelector('[data-edit-preview-media="image"]')?.getAttribute("src")).toBe(deck[0]);
     // 둘째 장을 누르면 둘째 장의 그림으로 바뀐다. 종전에는 어느 장을 눌러도 대표 한 장이었다.
-    fireEvent.click(container.querySelector('[data-card-strip-item="1"]') as HTMLElement);
+    fireEvent.click(container.querySelector('[data-card-thumbnail="1"]') as HTMLElement);
     expect(container.querySelector('[data-edit-preview-media="image"]')?.getAttribute("src")).toBe(deck[1]);
   });
 
@@ -66,8 +67,9 @@ describe("카드뉴스 이음매 계약", () => {
     expect(inputs).toHaveLength(2);
     expect(inputs[0].text).toBe("계약서 조건, 딱 세 가지만 보세요");
     expect(inputs[0].ratio).toBe("1:1");
-    expect(inputs[0].position).toBe("top");
-    expect(inputs[1].position).toBe("bottom");
+    // 아홉 칸은 세 자리로 줄이지 않는다. top-center 를 top 으로 접으면 가로 가운데가 사라진다.
+    expect(inputs[0].position).toBe("top-center");
+    expect(inputs[1].position).toBe("bottom-center");
     expect(inputs.map((one) => one.index)).toEqual([0, 1]);
     expect(inputs[1].total).toBe(2);
   });
@@ -88,7 +90,7 @@ describe("카드뉴스 이음매 계약", () => {
         upload: async (_dataUrl, index) => `/api/media/redrawn-${index + 1}`,
       },
     );
-    expect(drawn).toEqual(["고친 문장|1:1|top"]);
+    expect(drawn).toEqual(["고친 문장|1:1|top-center"]);
     expect(urls).toEqual(["/api/media/redrawn-1"]);
     // 페이지가 실제로 그 다시 그리기를 발행실로 가는 길에 건다.
     const move = pageSrc.slice(pageSrc.indexOf("async function moveToPublish()"));
@@ -125,7 +127,7 @@ describe("카드뉴스 이음매 계약", () => {
       ratio: "4:5",
       positions: ["top-center", "center", "bottom-center"],
     });
-    expect(inputs.map((one) => one.position)).toEqual(["top", "bottom"]);
+    expect(inputs.map((one) => one.position)).toEqual(["top-center", "bottom-center"]);
     // 페이지도 빈 줄을 미리 걷어내지 않는다.
     const recomposite = pageSrc.slice(pageSrc.indexOf("async function recompositeCards("));
     expect(recomposite.slice(0, recomposite.indexOf("renderAndUploadCardDeck")))

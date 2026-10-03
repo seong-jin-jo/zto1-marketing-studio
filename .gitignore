@@ -2,6 +2,10 @@
 .env
 openclaw/.env
 
+# 테스트가 매 실행 만드는 렌더 캡처(레포 오염 금지, 2026-09-21 코드리뷰 MINOR).
+# 육안 확인이 필요하면 TEST_CAPTURE_DIR 로 다른 경로를 지정한다.
+docs/design/captures/quality-s1-pr1/
+
 # 테넌트별 시크릿/런타임 (로컬 관리 — .env.{slug} 토큰·API키, config-{slug}/ 게이트웨이 토큰, data-{slug}/ 런타임 복사본)
 .env.*
 !.env.example

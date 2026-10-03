@@ -269,7 +269,7 @@ jobs:
           # "러너에서는 되는데 앱에서는 안 되는" 상태를 못 잡는다. 앱 컨테이너가 읽는 그
           # 파일을, 앱 컨테이너 안에서 물어본다.
           probe_generator() {
-            docker exec openclaw-dashboard-osmu higgsfield auth token >/dev/null 2>&1
+            bash scripts/probe-generator-session.sh openclaw-dashboard-osmu
           }
           container_up() {
             [ "$(docker inspect -f '{{.State.Running}}' openclaw-dashboard-osmu 2>/dev/null)" = "true" ]
@@ -329,33 +329,19 @@ jobs:
           # 말하면 그 거짓말이 몇 주를 간다. 이번에 정확히 그랬다.
           if ! container_up; then
             echo "::warning::앱 컨테이너가 아직 안 떠 있어 로그인 확인을 건너뛴다. 배포 뒤 확인 단계가 다시 본다."
+          elif [ "$CRED_ALIVE" = "yes" ] && [ "${{ github.event.inputs.force_generator_credentials }}" != "true" ]; then
+            echo "기존 생성기 세션은 account status API로 확인됨. 배포 뒤 새 컨테이너에서 다시 확인한다."
           elif probe_generator; then
-            echo "생성기 로그인 확인됨 (auth token 응답)"
+            echo "생성기 계정 API가 새 자격증명 세션을 수락함"
           elif [ "${{ github.event.inputs.force_generator_credentials }}" = "true" ]; then
             # 자격증명을 고치겠다고 명시하고 들어왔는데 안 고쳐졌다. 그때는 크게 실패한다.
             echo "::error::생성기 자격증명을 배치했지만 로그인이 통하지 않는다. HIGGSFIELD_CREDENTIALS_JSON 시크릿이 만료됐다. 로컬에서 'gh secret set HIGGSFIELD_CREDENTIALS_JSON < ~/.config/higgsfield/credentials.json' 로 갱신해야 한다."
             exit 1
           else
             # 평소 배포까지 이 이유로 막지는 않는다. 그림 생성기가 죽었다고 앱 배포를 막으면
-            # 급한 수정이 못 나간다. 대신 경고를 남겨 조용히 묻히지 않게 한다.
-            echo "::warning::생성기 로그인이 통하지 않는다. 사진 카드와 숏폼 영상이 안 만들어진다(글자 카드는 영향 없음). HIGGSFIELD_CREDENTIALS_JSON 시크릿 갱신이 필요하다."
-          fi
-
-      - name: 생성기 로그인 최종 확인 (배포 뒤)
-        # 배포가 끝난 뒤 한 번 더 본다. 자격증명 배치 단계에서는 컨테이너가 아직 옛 것이거나
-        # 안 떠 있을 수 있어 그때 통과해도 새 컨테이너에서 죽을 수 있다.
-        # **여기서 조용히 넘어가면 화면에 그림이 한 장도 없는 상태가 몇 주를 간다.**
-        # 실제로 그랬다(2026-09-10 회장 지적으로 발견). 그래서 실패를 눈에 띄게 남긴다.
-        if: ${{ always() && (github.event.inputs.services == '' || contains(github.event.inputs.services, 'osmu')) }}
-        run: |
-          if [ "$(docker inspect -f '{{.State.Running}}' openclaw-dashboard-osmu 2>/dev/null)" != "true" ]; then
-            echo "::warning::앱 컨테이너가 떠 있지 않아 생성기 확인을 못 했다"
-            exit 0
-          fi
-          if docker exec openclaw-dashboard-osmu higgsfield auth token >/dev/null 2>&1; then
-            echo "생성기 로그인 살아 있음 — 카드뉴스 이미지·숏폼 영상 생성 가능"
-          else
-            echo "::warning::생성기 로그인이 죽어 있다. 카드뉴스 사진 이미지와 숏폼 영상이 만들어지지 않는다. 글자 카드는 영향 없다. HIGGSFIELD_CREDENTIALS_JSON 시크릿 갱신이 필요하다."
+            # 급한 수정이 못 나간다. 대신 오류 주석을 남기고 배포 뒤 탐침 단계를 실패 상태로
+            # 표시해 조용히 묻히지 않게 한다.
+            echo "::error::생성기 API 로그인이 통하지 않는다. 사진 카드와 숏폼 영상이 안 만들어진다(글자 카드는 영향 없음). HIGGSFIELD_CREDENTIALS_JSON 시크릿 갱신이 필요하다."
           fi
 
       - name: OSMU DB 스키마 read-only preflight
@@ -413,6 +399,53 @@ jobs:
           fi
       - name: 상태
         run: docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml ps
+      - name: 생성기 API 생존 최종 확인 (배포 뒤)
+        id: generator_liveness
+        # 새 컨테이너가 뜬 뒤 계정 API를 실제로 호출한다. 생성 호출은 비용이 드니 사용하지 않는다.
+        # 생성기만 죽었을 때 앱 전체를 되돌리면 글자 카드와 긴급 수정까지 막힌다. 그래서 이
+        # 단계는 명확히 실패시키되 continue-on-error로 배포를 degraded 상태로 계속한다.
+        if: ${{ success() && (github.event.inputs.services == '' || contains(github.event.inputs.services, 'osmu')) }}
+        continue-on-error: true
+        run: |
+          if [ "$(docker inspect -f '{{.State.Running}}' openclaw-dashboard-osmu 2>/dev/null)" != "true" ]; then
+            echo "::error::앱 컨테이너가 떠 있지 않아 생성기 API 생존을 확인하지 못했다"
+            exit 1
+          fi
+          generator_probe_ok=no
+          for attempt in 1 2 3; do
+            if bash scripts/probe-generator-session.sh openclaw-dashboard-osmu; then
+              generator_probe_ok=yes
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::생성기 계정 API 확인 ${attempt}/3 실패. 3초 뒤 다시 확인한다."
+              sleep 3
+            fi
+          done
+          if [ "$generator_probe_ok" = "yes" ]; then
+            echo "생성기 계정 API가 세션을 수락함. 비용이 드는 실제 생성 기능은 이 단계에서 검증하지 않음."
+          else
+            echo "::error::생성기 API 로그인이 죽어 있다. 카드뉴스 사진 이미지와 숏폼 영상이 만들어지지 않는다. 글자 카드는 영향 없음. HIGGSFIELD_CREDENTIALS_JSON 시크릿 갱신이 필요하다."
+            exit 1
+          fi
+      - name: 생성기 상태를 배포 요약에 기록
+        if: ${{ always() && (github.event.inputs.services == '' || contains(github.event.inputs.services, 'osmu')) }}
+        run: |
+          if [ "${{ steps.generator_liveness.outcome }}" = "failure" ]; then
+            {
+              echo "## 🔴 생성기 기능: DEGRADED"
+              echo "계정 API가 세션을 거부했습니다. 사진 카드와 숏폼 영상은 중단되며 글자 카드는 계속 동작합니다."
+              echo "HIGGSFIELD_CREDENTIALS_JSON 갱신이 필요합니다."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=생성기 기능 DEGRADED::계정 API 세션 확인 실패. 사진 카드와 숏폼 영상이 중단됨."
+          elif [ "${{ steps.generator_liveness.outcome }}" = "success" ]; then
+            {
+              echo "## 🟢 생성기 계정 API: 세션 유효"
+              echo "비용이 드는 실제 이미지·영상 생성은 이 배포에서 실행하지 않았습니다."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## ⚪ 생성기 계정 API: 확인 건너뜀" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: OSMU 스모크 게이트 (로그인 흐름 자동검증 — 깨지면 배포 FAIL)
         # 이 3개 버그(로그인死/인증게이트異常/supabase 빌드미주입)가 격노 유발 → 자동 차단.
         # services=empty(전체)도 OSMU가 포함 → 항상 검증. 특정 서비스만 배포 시 OSMU 제외하면 skip.

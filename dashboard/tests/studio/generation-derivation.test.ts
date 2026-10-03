@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { parseGenerationRequest } from "@/lib/studio/generation/contracts";
 import { GenerationService } from "@/lib/studio/generation/service";
 import { isStudioApiError } from "@/lib/studio/generation/errors";
+import { parseDerivationOptions } from "@/app/api/studio/v1/generations/[jobId]/derivations/route";
 import {
   buildDerivationPayload,
   derivationQuote,
@@ -59,6 +60,34 @@ describe("파생 생성 도메인 계약", () => {
     expect(sink.drafts.size).toBe(2);
   });
 
+  // 2026-09-23 사고 회귀: POST /derivations 가 201·status:"succeeded" 를 돌려주는데
+  // 화면(StudioRooms.tsx)이 `item.deck_summary` 없이는 "만들지 못했습니다"로 읽어
+  // 성공을 실패로 보였다(ADR-007 조용한 실패 금지 위반의 거울상). publicBatch가
+  // card 성공 항목에 deck_summary 를 채우지 않으면 이 테스트가 실패한다.
+  it("DRV-10 카드 파생 성공 항목은 publicBatch 응답에 deck_summary 를 싣는다(성공을 실패로 표시 금지)", async () => {
+    const { service } = setup();
+    const job = await primaryJob(service);
+
+    const batch = await service.derive(
+      MEMBER,
+      job.jobId,
+      job.candidates[0].candidateId,
+      ["card"],
+      acknowledged(["card"]),
+      "derive-deck-summary-1",
+      WORKSPACES,
+    );
+
+    expect(batch.status).toBe("succeeded");
+    const publicItem = publicBatch(batch).items.find((item) => item.kind === "card")!;
+    expect(publicItem.status).toBe("succeeded");
+    expect(publicItem.deck_summary).not.toBeNull();
+    expect(publicItem.deck_summary?.slides).toBeGreaterThan(0);
+    expect(typeof publicItem.deck_summary?.hook_type).toBe("string");
+    expect(typeof publicItem.deck_summary?.cta_keyword).toBe("string");
+    expect(typeof publicItem.deck_summary?.template).toBe("string");
+  });
+
   it("DRV-02 파생물은 주 갈래 결과를 재료로 삼되 갈래마다 결과 모양이 다르다", async () => {
     const { service } = setup();
     const job = await primaryJob(service);
@@ -69,7 +98,8 @@ describe("파생 생성 도메인 계약", () => {
     const video = buildDerivationPayload(candidate, "video");
 
     expect(text.kind === "text" && text.body).toContain(candidate.title);
-    expect(card.kind === "card" && card.slides.length).toBe(candidate.format.outline.length + 2);
+    expect(card.kind === "card" && card.deck.slides.length).toBe(candidate.format.outline.length + 2);
+    expect(card.kind === "card" && card.deck.template).toBe("plain");
     expect(video.kind === "video" && video.scenes.length).toBe(candidate.format.outline.length);
     expect(video.kind === "video" && video.scenes[0].lines.length).toBe(2);
     // 아직 렌더한 파일이 없으므로 없는 주소를 지어내지 않는다.
@@ -217,5 +247,18 @@ describe("파생 생성 도메인 계약", () => {
     expect(derivationQuote(["card", "video"]).totalMinor).toBe(1500);
     process.env.STUDIO_DERIVATION_COST_CARD_MINOR = "500";
     expect(derivationQuote(["card"]).totalMinor).toBe(500);
+  });
+
+  it("DRV-13 허용 외 hook_type 은 422 DERIVATION_OPTION_INVALID 로 반려한다", () => {
+    try {
+      parseDerivationOptions({ options: { card: { hook_type: "억지" } } });
+      throw new Error("반려됐어야 합니다");
+    } catch (error) {
+      expect(isStudioApiError(error)).toBe(true);
+      if (isStudioApiError(error)) {
+        expect(error.status).toBe(422);
+        expect(error.code).toBe("DERIVATION_OPTION_INVALID");
+      }
+    }
   });
 });

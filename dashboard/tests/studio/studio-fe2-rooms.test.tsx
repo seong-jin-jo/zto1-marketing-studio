@@ -312,20 +312,21 @@ describe("화면 2차 편집실 계약", () => {
     })));
   });
 
-  it("FE6-EDIT-05 거절: 음악 백엔드가 없을 때 파일이나 파형을 완성된 것처럼 표시하지 않는다", () => {
+  it("FE6-EDIT-05 정상: 기존 나레이션은 배경 음악 조작 없이 목소리만 편집한다", () => {
     render(<EditRoom lines={["나레이션"]} onLinesChange={vi.fn()} kind="audio" />);
-    expect(screen.getByText("음악 파일 생성은 아직 제공하지 않습니다. 지금은 나레이션 대사만 편집할 수 있습니다.")).toBeInTheDocument();
-    expect(document.querySelector("[data-edit-stage]")).not.toBeInTheDocument();
-    expect(document.querySelector("[data-edit-tools]")).not.toBeInTheDocument();
+    expect(screen.getByText("나레이션 대사 편집")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "목소리 도구" })).toBeInTheDocument();
+    expect(screen.queryByText(/음악 파일 생성은 아직 제공하지 않습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/배경음악 음량/)).not.toBeInTheDocument();
   });
 
-  it("QA-EDIT-06 정상: 글 형식은 카드뉴스가 아니라 글 문단과 연속 문서 편집기로 전환된다", () => {
+  it("QA-EDIT-06 정상: 글 형식은 목차 없이 연속 문서 편집기로 전환된다", () => {
     render(<EditRoom lines={["첫 문단", "둘째 문단"]} onLinesChange={vi.fn()} kind="text" />);
 
     expect(document.querySelector('[data-edit-kind="text"]')).toBeInTheDocument();
-    expect(document.querySelector("[data-edit-outline]")).toHaveAttribute("aria-label", "글 문단");
-    expect(screen.getByRole("textbox", { name: "글 전체" })).toHaveValue("첫 문단\n\n둘째 문단");
+    expect(document.querySelector("[data-edit-outline]")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "글 전체" }).innerHTML).toBe("첫 문단<br><br>둘째 문단");
     expect(screen.queryByRole("textbox", { name: "문단 1" })).not.toBeInTheDocument();
-    expect(screen.getByText("공백 포함 11자 · 문단 2개")).toBeInTheDocument();
+    expect(screen.getByText("공백 포함 11자")).toBeInTheDocument();
   });
 });

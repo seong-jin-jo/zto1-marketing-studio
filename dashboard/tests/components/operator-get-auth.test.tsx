@@ -15,6 +15,11 @@ vi.mock("swr", () => ({
   default: (...args: unknown[]) => mocks.swr(...args),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 describe("operator GET authentication handling", () => {
   beforeEach(() => {
     localStorage.clear();

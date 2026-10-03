@@ -181,7 +181,27 @@ describe("V68 생성실 계약", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { container } = render(<CreateRoom {...props} topic="고객 질문" onTextCardsCreated={onTextCardsCreated} />);
+    // 2026-10-03 CI 회귀 조사(PR #101, 리뷰 MAJOR-8/MINOR-f 반영): "A 구조 사용"은
+    // CREATE_EXAMPLES의 고정 라벨("고객이 겪는 문제" 등)만 고른다 — 실제 생성된 본문이
+    // 전혀 없다. 이 테스트는 원래 그 라벨을 "아무 글자나 있으면 되는 더미 콘텐츠"로
+    // 빌려 썼는데, 바로 그 모양(라벨만 있고 생성 본문 없음)이 2026-10-02 운영 사고의
+    // 재현 조건 그 자체다. 이제 resolveTextCardLines()는 그 경우를 isPlaceholder로
+    // 막아 카드를 만들지 않는다(맞는 동작 — 라벨이 그대로 카드에 찍혀 나가던 사고를
+    // 막는 것이 이번 라운드의 목적이었다). 이 테스트의 실제 검증 대상은 라벨 내용이
+    // 아니라 "만들어진 카드가 자산 저장소에 올라가고 그 결과가 onTextCardsCreated로
+    // 전달되는가"(업로드 배선)이므로, 실제 생성 본문 모양(quickDraft.instagram.slides)을
+    // 줘서 그 배선을 계속 검증한다. 낡은 가정(라벨=콘텐츠)을 고치는 것이지 업로드
+    // 배선 검증 자체를 약화하는 것이 아니다.
+    const { container } = render(<CreateRoom
+      {...props}
+      topic="고객 질문"
+      onTextCardsCreated={onTextCardsCreated}
+      quickDraft={{
+        instagram: {
+          slides: ["초반 3초에 매출이 멈춘 이유", "재고 회전율 공식을 한 줄로", "오늘 바로 적용하는 체크리스트"],
+        },
+      }}
+    />);
     fireEvent.click(within(container.querySelector("[data-create-workspace]") as HTMLElement).getByRole("button", { name: "A 구조 사용" }));
     fireEvent.click(screen.getByTestId("create-text-card"));
 

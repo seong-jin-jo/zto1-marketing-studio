@@ -13,7 +13,16 @@ import { fileURLToPath } from "node:url";
 // next.config.ts 파일 자신의 디렉터리(= dashboard/ 절대경로)를 고정한다.
 const dashboardRoot = fileURLToPath(new URL(".", import.meta.url));
 
+// PWA service worker 캐시 무효화용 빌드 식별자. 배포 파이프라인이 값을 안 주면(로컬 빌드 등)
+// 이 설정 파일이 평가되는 시각(Date.now())으로 대체한다 — 어느 쪽이든 배포마다 값이 달라져야
+// ServiceWorkerRegister.tsx가 등록 URL에 섞어 sw.js를 강제로 갱신시킨다(PR #73 코드리뷰
+// MAJOR: 상수 캐시명은 배포해도 절대 안 바뀌어 activate의 구버전 정리가 한 번도 안 돌았다).
+const buildId = process.env.NEXT_PUBLIC_BUILD_ID || String(Date.now());
+
 const nextConfig: NextConfig = {
+  env: {
+    NEXT_PUBLIC_BUILD_ID: buildId,
+  },
   // Next 빌드가 자체 타입 검사를 한 번 더 돌린다. 그 검사는 tsconfig.json 을 그대로 읽어
   // 테스트까지 프로그램에 넣고, 그중 아홉 개가 이웃 워크스페이스(openclaw)의 확장을 직접
   // 부른다. 그 트리는 자기 의존성을 따로 들고 있어 CI 처럼 대시보드만 설치한 곳에서는

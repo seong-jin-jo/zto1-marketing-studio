@@ -1,0 +1,97 @@
+{
+  "contract_version": "2.0",
+  "template": "chat_bubble",
+  "ratio": "4:5",
+  "theme": { "background": "#12100E", "foreground": "#F7F3EE", "accent": "#E8843C" },
+  "brand": { "display_name": "이상한수학", "handle": "@isanghan.math" },
+  "hook_type": "pain",
+  "cta": { "keyword": "순서", "comment_example": "순서", "save_reason": "저장해 두고 다음 주에 다시 펴 보세요" },
+  "revision": 0,
+  "slides": [
+    {
+      "id": "slide-0",
+      "order": 0,
+      "role": "cover",
+      "cover": { "headline": "안 오르는 건\n머리가 아니라\n순서입니다", "sub": "수능 D-100" },
+      "image_url": null
+    },
+    {
+      "id": "slide-1",
+      "order": 1,
+      "role": "chat",
+      "image_url": null,
+      "bubbles": [
+        { "id": "b-1-0", "order": 0, "speaker": "reader", "segments": [{ "text": "왜 저만 안 오르죠?", "bold": false }], "reaction": null },
+        { "id": "b-1-1", "order": 1, "speaker": "brand", "segments": [{ "text": "12년간 300명을 상담하면서 ", "bold": false }, { "text": "공통점 하나를 찾았어요", "bold": true }], "reaction": null }
+      ]
+    },
+    {
+      "id": "slide-2",
+      "order": 2,
+      "role": "chat",
+      "image_url": null,
+      "bubbles": [
+        { "id": "b-2-0", "order": 0, "speaker": "reader", "segments": [{ "text": "그게 뭔데요?", "bold": false }], "reaction": null },
+        { "id": "b-2-1", "order": 1, "speaker": "brand", "segments": [{ "text": "상위권 공부법을 그대로 따라 하고 있었어요", "bold": false }], "reaction": null }
+      ]
+    },
+    {
+      "id": "slide-3",
+      "order": 3,
+      "role": "chat",
+      "image_url": null,
+      "bubbles": [
+        { "id": "b-3-0", "order": 0, "speaker": "reader", "segments": [{ "text": "저도 그런데요", "bold": false }], "reaction": null },
+        { "id": "b-3-1", "order": 1, "speaker": "brand", "segments": [{ "text": "등급마다 오늘 할 일이 완전히 달라요", "bold": false }], "reaction": null }
+      ]
+    },
+    {
+      "id": "slide-4",
+      "order": 4,
+      "role": "chat",
+      "image_url": null,
+      "bubbles": [
+        { "id": "b-4-0", "order": 0, "speaker": "reader", "segments": [{ "text": "1등급은요?", "bold": false }], "reaction": null },
+        { "id": "b-4-1", "order": 1, "speaker": "brand", "segments": [{ "text": "새 교재가 아니라 시험 운영이 먼저예요", "bold": false }], "reaction": null }
+      ]
+    },
+    {
+      "id": "slide-5",
+      "order": 5,
+      "role": "chat",
+      "image_url": null,
+      "bubbles": [
+        { "id": "b-5-0", "order": 0, "speaker": "reader", "segments": [{ "text": "3, 4등급은요?", "bold": false }], "reaction": null },
+        { "id": "b-5-1", "order": 1, "speaker": "brand", "segments": [{ "text": "기출과 어삼쉬사부터 잡아야 해요", "bold": false }], "reaction": null }
+      ]
+    },
+    {
+      "id": "slide-6",
+      "order": 6,
+      "role": "chat",
+      "image_url": null,
+      "bubbles": [
+        { "id": "b-6-0", "order": 0, "speaker": "reader", "segments": [{ "text": "지금 새 문제집 사면요?", "bold": false }], "reaction": null },
+        { "id": "b-6-1", "order": 1, "speaker": "brand", "segments": [{ "text": "점수가 오히려 내려갑니다", "bold": false }], "reaction": null }
+      ]
+    },
+    {
+      "id": "slide-7",
+      "order": 7,
+      "role": "comment_prompt",
+      "image_url": null,
+      "bubbles": [
+        { "id": "b-7-0", "order": 0, "speaker": "brand", "segments": [{ "text": "내 순서가 궁금하면 댓글에 '순서'라고 남겨주세요", "bold": false }], "reaction": null }
+      ]
+    },
+    {
+      "id": "slide-8",
+      "order": 8,
+      "role": "cta",
+      "image_url": null,
+      "bubbles": [
+        { "id": "b-8-0", "order": 0, "speaker": "brand", "segments": [{ "text": "댓글에 '순서' 남겨 주세요. 저장해 두고 다음 주에 다시 펴 보세요", "bold": false }], "reaction": null }
+      ]
+    }
+  ]
+}

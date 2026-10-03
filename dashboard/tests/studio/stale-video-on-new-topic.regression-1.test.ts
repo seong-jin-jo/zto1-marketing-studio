@@ -102,7 +102,10 @@ describe("VID-STALE 화면이 그 판정을 실제로 쓴다", () => {
   });
 
   it("VID-STALE-09 만든 매체에 주제 도장을 찍는다", () => {
-    expect(pageSrc).toContain("const stamped = { ...r, topicKey: mediaTopicKey(idea) };");
+    // 2026-10-02 리뷰 MAJOR 5c: 새로고침 복구가 저장된 주제(topicLabel)로 도장을 찍을 수
+    // 있게 `opts?.topicLabel ?? idea`로 바뀌었다 — 평소 흐름(opts 없음)에서는 그대로
+    // idea로 떨어진다(동작 불변).
+    expect(pageSrc).toContain("const stamped = { ...r, topicKey: mediaTopicKey(opts?.topicLabel ?? idea) };");
     expect(pageSrc).toContain("setImg(stamped)");
     expect(pageSrc).toContain("setVid(stamped)");
   });
@@ -141,7 +144,12 @@ describe("VID-STALE 화면이 그 판정을 실제로 쓴다", () => {
 
   it("VID-STALE-13 브라우저가 그린 카드에도 주제 도장을 찍는다", () => {
     // 도장이 없으면 그 그림은 재사용 불가로 판정돼 영상 만들 때 바탕을 또 만든다. 돈이 샌다.
-    const stamped = pageSrc.match(/localPath: urls\[0\], imageUrls: urls, topicKey: mediaTopicKey\(idea\)/g) ?? [];
-    expect(stamped.length, "카드 그림 중 도장을 안 찍는 자리가 있다").toBe(2);
+    // 생성실과 말풍선은 이 파일에서 직접 도장을 찍고, plain 재합성은 표식 누락까지 함께
+    // 막는 renderAndUploadEmbeddedTextCard가 topicKey를 받아 찍는다.
+    const stamped = pageSrc.match(/file: urls\[0\], imageUrls: urls, topicKey: mediaTopicKey\(idea\)/g) ?? [];
+    expect(stamped.length, "직접 생성 카드 중 도장을 안 찍는 자리가 있다").toBe(2);
+    const recomposite = pageSrc.slice(pageSrc.indexOf("const next = await renderAndUploadEmbeddedTextCard("));
+    expect(recomposite.slice(0, 700), "plain 재합성 카드의 주제 도장이 공용 함수에 전달되지 않는다")
+      .toContain("}, mediaTopicKey(idea));");
   });
 });

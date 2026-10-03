@@ -19,6 +19,12 @@ const mocks = vi.hoisted(() => ({
   currentWork: null as Record<string, unknown> | null,
   returnPosts: [] as Array<Record<string, unknown>>,
   setStudioRoom: vi.fn(),
+  // 2026-10-03 운영 사고(9444 회원 계정) 재현용: TikTok 발행 패널(creator-info) 테스트가
+  // 쓴다. 기본은 "TikTok 미연결"(다른 테스트 전부가 가정하는 상태)과 같다.
+  connectedPlatforms: ["threads", "x", "instagram"] as string[],
+  tiktokCreator: undefined as Record<string, unknown> | undefined,
+  // 2026-10-03 독립 리뷰 m2: creator-info 404/502 재현용.
+  tiktokCreatorError: undefined as Error | undefined,
 }));
 
 vi.mock("swr", () => ({
@@ -30,14 +36,18 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.routerPush, replace: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
 }));
 
-vi.mock("@/lib/api", () => ({
-  fetcher: mocks.fetcher,
-  apiPost: (...args: unknown[]) => mocks.apiPost(...args),
-  isExternalPublishPersistenceError: (error: unknown) => Boolean((error as { externalPersistence?: boolean })?.externalPersistence),
-  ApiResponseError: class ApiResponseError extends Error {
-    payload: unknown = null;
-  },
-}));
+vi.mock("@/lib/api", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/api")>();
+  return {
+    ...actual,
+    fetcher: mocks.fetcher,
+    apiPost: (...args: unknown[]) => mocks.apiPost(...args),
+    isExternalPublishPersistenceError: (error: unknown) => Boolean((error as { externalPersistence?: boolean })?.externalPersistence),
+    ApiResponseError: class ApiResponseError extends Error {
+      payload: unknown = null;
+    },
+  };
+});
 
 vi.mock("@/components/layout/Toast", () => ({
   useToast: () => ({ showToast: mocks.showToast }),
@@ -110,9 +120,23 @@ vi.mock("@/lib/auth", () => ({
   authHeaders: () => ({}),
 }));
 
+/**
+ * page.tsx의 videoFilename()은 `/api/media/<base64url(JSON).시그니처>`에서 JSON의 `.f`
+ * (파일명)만 **서버 서명 검증 없이** 읽는다(클라이언트는 표시용으로 꺼낼 뿐, 실제 서명
+ * 검증은 서버가 한다). 그래서 "returned-video.mp4" 같은 맨 문자열을 videoUrl로 주면
+ * videoFilename()이 빈 문자열을 돌려줘 "올릴 영상이 없습니다"로 막혀 /api/video/publish
+ * 자체가 안 불린다 — TikTok 요청 바디를 검증하려는 테스트에서는 이 모양을 맞춰야 한다.
+ */
+function fakeMediaUrl(filename: string): string {
+  const payload = JSON.stringify({ v: 1, t: "tenant-a", f: filename, e: Date.now() + 999_999 });
+  const body = Buffer.from(payload, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `/api/media/${body}.fakesig`;
+}
+
 function restoreStudio(platforms: string[]) {
   localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
     idea: "부분 성공 테스트",
+    editLines: ["가장 최신 문단"],
     text: {
       threads: "Threads 본문",
       x: "X 본문",
@@ -154,6 +178,9 @@ describe("Studio publish result integrity", () => {
     mocks.currentWork = null;
     mocks.returnPosts = [];
     mocks.setStudioRoom.mockReset();
+    mocks.connectedPlatforms = ["threads", "x", "instagram"];
+    mocks.tiktokCreator = undefined;
+    mocks.tiktokCreatorError = undefined;
     mocks.swr.mockImplementation((key: string | null) => {
       mocks.swrKeys.push(key);
       if (key === "/api/me") {
@@ -190,11 +217,14 @@ describe("Studio publish result integrity", () => {
       if (key === "/api/onboarding") {
         return { data: { checklist: {} }, mutate: vi.fn() };
       }
+      if (typeof key === "string" && key.startsWith("/api/tiktok/creator-info")) {
+        return { data: mocks.tiktokCreator, error: mocks.tiktokCreatorError, mutate: vi.fn() };
+      }
       return { data: undefined, mutate: vi.fn() };
     });
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
       const platform = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
-      const connected = platform && ["threads", "x", "instagram"].includes(platform)
+      const connected = platform && mocks.connectedPlatforms.includes(platform)
         ? [{ id: `${platform}-account`, display_name: `${platform} 계정`, username: platform, is_default: true }]
         : [];
       return Response.json({ accounts: connected });
@@ -227,6 +257,358 @@ describe("Studio publish result integrity", () => {
     expect(screen.getByRole("checkbox", { name: "X 발행" })).not.toBeChecked();
   });
 
+  // 2026-10-03 독립 리뷰 MINOR-g 근본원인 수정: 복원된 선택이 아무 표시 없이 되살아난
+  // 것이 운영 사고의 뿌리였다. 복원 직후에는 "지난번 선택 유지" 배지가 보여야 하고,
+  // 사용자가 체크박스를 한 번이라도 직접 누르면 그 배지는 사라져야 한다(그 다음부터는
+  // "방금 내가 고른 것"이기 때문).
+  it("MINOR-g 정상: 인박스 복귀로 되살아난 선택은 '지난번 선택 유지' 배지로 드러나고, 직접 체크하면 사라진다", async () => {
+    window.history.replaceState(null, "", "/studio?room=publish&queue_id=queue-restore-notice&from=inbox");
+    mocks.returnPosts = [{
+      id: "queue-restore-notice",
+      text: "인박스에서 되돌린 본문",
+      topic: "복귀 작업물",
+      hashtags: ["복귀"],
+      channels: { threads: { status: "pending" } },
+      publishContext: { sourceRoute: "inbox", queuePostId: "queue-restore-notice", draftId: null },
+    }];
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Threads 발행" })).toBeChecked());
+    expect(screen.getByTestId("publish-restored-selection-notice")).toHaveTextContent("지난번 선택 유지: Threads");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Threads 발행" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Threads 발행" }));
+
+    expect(screen.queryByTestId("publish-restored-selection-notice")).not.toBeInTheDocument();
+  });
+
+  // 2026-10-03 독립 리뷰 MINOR-h: 상단 배너와 "지금 발행" 버튼 옆 배지가 서로 다른
+  // 출처(selectedTargets vs publishTargets)에서 채널 이름을 가져와 서로 다른 이름을
+  // 보여줄 수 있었다. 둘은 항상 같은 이름을 보여줘야 한다.
+  it("MINOR-h 정상: 상단 배너와 발행 버튼 옆 배지가 같은 채널 이름을 보여준다", async () => {
+    window.history.replaceState(null, "", "/studio?room=publish&queue_id=queue-single-source&from=inbox");
+    mocks.returnPosts = [{
+      id: "queue-single-source",
+      text: "인박스에서 되돌린 본문",
+      topic: "단일 정본 작업물",
+      hashtags: ["복귀"],
+      channels: { threads: { status: "pending" } },
+      publishContext: { sourceRoute: "inbox", queuePostId: "queue-single-source", draftId: null },
+    }];
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Threads 발행" })).toBeChecked());
+    await waitFor(() => expect(screen.getByTestId("publish-now-target-names")).toBeInTheDocument());
+
+    expect(screen.getByTestId("publish-availability")).toHaveTextContent("Threads");
+    expect(screen.getByTestId("publish-now-target-names")).toHaveTextContent("Threads");
+  });
+
+  // 2026-10-03 운영 사고(9444 회원 계정): TikTok 발행이 공개 범위(privacy_level) 없이도
+  // /api/video/publish를 불러 매번 400 "TikTok 공개 범위를 직접 선택해주세요"로 실패했다
+  // (route.ts:727-729). 발행실에는 그 값을 고르는 자리 자체가 없었다.
+  it("TikTok-01 정상: 공개 범위를 고르면 /api/video/publish 요청에 privacy_level이 실린다", async () => {
+    mocks.connectedPlatforms = ["threads", "x", "instagram", "tiktok"];
+    mocks.tiktokCreator = {
+      connected: true,
+      ready: true,
+      creator: {
+        username: "tiktoker",
+        privacyLevels: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS"],
+        commentDisabled: false,
+        duetDisabled: false,
+        stitchDisabled: false,
+      },
+    };
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-tiktok-privacy");
+    mocks.returnPosts = [{
+      id: "queue-tiktok-privacy",
+      text: "TikTok용 영상 본문",
+      topic: "TikTok 영상 복귀",
+      videoUrl: fakeMediaUrl("returned-video.mp4"),
+      channels: { tiktok: { status: "pending" } },
+    }];
+    const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+    mocks.apiPost.mockImplementation(async (path: string, body: Record<string, unknown>) => {
+      calls.push({ path, body });
+      if (path === "/api/studio/drafts") return { id: "draft-tiktok-1" };
+      if (path === "/api/video/publish") return { ok: true, url: "https://www.tiktok.com/@tiktoker/video/1" };
+      return {};
+    });
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByTestId("tiktok-privacy-panel")).toBeInTheDocument());
+    // 절대 기본값을 미리 고르지 않는다 — 고르기 전에는 "선택"뿐이다.
+    expect(screen.getByRole("combobox", { name: "TikTok 공개 범위" })).toHaveValue("");
+    fireEvent.change(screen.getByRole("combobox", { name: "TikTok 공개 범위" }), { target: { value: "PUBLIC_TO_EVERYONE" } });
+
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+
+    await waitFor(() => expect(calls.some((call) => call.path === "/api/video/publish")).toBe(true));
+    const videoCall = calls.find((call) => call.path === "/api/video/publish");
+    expect(videoCall?.body.platform).toBe("tiktok");
+    expect(videoCall?.body.privacy_level).toBe("PUBLIC_TO_EVERYONE");
+    expect(videoCall?.body.is_ai_generated).toBe(true);
+    expect(typeof videoCall?.body.disable_comment).toBe("boolean");
+    expect(typeof videoCall?.body.disable_duet).toBe("boolean");
+    expect(typeof videoCall?.body.disable_stitch).toBe("boolean");
+  });
+
+  it("TikTok-02 거절: 공개 범위를 고르지 않으면 '지금 발행'이 TikTok을 막고 그 이유를 말한다", async () => {
+    mocks.connectedPlatforms = ["threads", "x", "instagram", "tiktok"];
+    mocks.tiktokCreator = {
+      connected: true,
+      ready: true,
+      creator: {
+        username: "tiktoker",
+        privacyLevels: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS"],
+        commentDisabled: false,
+        duetDisabled: false,
+        stitchDisabled: false,
+      },
+    };
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-tiktok-blocked");
+    mocks.returnPosts = [{
+      id: "queue-tiktok-blocked",
+      text: "TikTok용 영상 본문",
+      topic: "TikTok 영상 복귀",
+      videoUrl: fakeMediaUrl("returned-video.mp4"),
+      channels: { tiktok: { status: "pending" } },
+    }];
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      // 공개 범위 없이 이 경로가 불리면 그 자체가 결함이다(운영 사고 재현).
+      if (path === "/api/video/publish") throw new Error("공개 범위 없이 발행 요청이 나가면 안 된다");
+      return {};
+    });
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByTestId("tiktok-privacy-panel")).toBeInTheDocument());
+    expect(screen.getByRole("checkbox", { name: "TikTok 발행" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "TikTok 발행" })).toBeDisabled();
+    await within(screen.getByTestId("preview-tiktok")).findByText("TikTok 공개 범위를 먼저 선택해주세요.");
+
+    expect(screen.getByRole("button", { name: "선택한 0곳에 지금 발행" })).toBeDisabled();
+    expect(mocks.apiPost).not.toHaveBeenCalledWith("/api/video/publish", expect.anything());
+  });
+
+  // 2026-10-03 독립 리뷰 m1: Threads+TikTok을 섞어 고르고 TikTok 공개 범위를 안 고르면
+  // 가드에 걸려 빠진 TikTok이 발행 버튼 옆에 이름+이유로 드러나야 한다.
+  it("m1 정상: Threads+TikTok을 섞어 고르면 가드에 걸려 빠진 TikTok이 이름+이유로 보인다", async () => {
+    mocks.connectedPlatforms = ["threads", "x", "instagram", "tiktok"];
+    mocks.tiktokCreator = {
+      connected: true,
+      ready: true,
+      creator: { username: "tiktoker", privacyLevels: ["PUBLIC_TO_EVERYONE"], commentDisabled: false, duetDisabled: false, stitchDisabled: false },
+    };
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-mixed-tiktok");
+    mocks.returnPosts = [{
+      id: "queue-mixed-tiktok",
+      text: "Threads+TikTok 혼합 본문",
+      topic: "혼합 발행",
+      videoUrl: fakeMediaUrl("returned-video.mp4"),
+      channels: { threads: { status: "pending" }, tiktok: { status: "pending" } },
+    }];
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Threads 발행" })).toBeChecked());
+    // TikTok은 체크는 됐지만(사용자 의도) 공개 범위 미선택으로 실제 발행 대상에서 빠진다.
+    expect(screen.getByRole("checkbox", { name: "TikTok 발행" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "선택한 1곳에 지금 발행" })).toBeInTheDocument();
+    expect(screen.getByTestId("publish-guard-excluded")).toHaveTextContent("TikTok: TikTok 공개 범위를 먼저 선택해주세요.");
+  });
+
+  // 2026-10-03 독립 리뷰 m2: creator-info가 404/502를 주면 고를 칸 없이 "선택해주세요"만
+  // 뜨는 막다른 길이 아니라, 오류 문구와 재연결 안내가 보여야 한다.
+  it("m2 거절: creator-info가 실패하면 오류 문구와 재연결 안내를 보여준다(막다른 길 금지)", async () => {
+    mocks.connectedPlatforms = ["threads", "x", "instagram", "tiktok"];
+    mocks.tiktokCreator = undefined; // creator-info 조회 실패 → data 없음
+    mocks.tiktokCreatorError = new Error("API error: 502");
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-tiktok-creator-fail");
+    mocks.returnPosts = [{
+      id: "queue-tiktok-creator-fail",
+      text: "TikTok용 영상 본문",
+      topic: "TikTok 영상 복귀",
+      videoUrl: fakeMediaUrl("returned-video.mp4"),
+      channels: { tiktok: { status: "pending" } },
+    }];
+
+    render(<StudioPage />);
+
+    await waitFor(() => expect(screen.getByTestId("tiktok-creator-info-error")).toBeInTheDocument());
+    // 고를 칸(공개 범위 select)이 없다 — "선택해주세요"만 뜨는 막다른 길이 아니다.
+    expect(screen.queryByTestId("tiktok-privacy-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("tiktok-creator-info-error")).toHaveTextContent("계정을 다시 연결해주세요");
+    // 헤더(PublishHeaderControls)와 패널 둘 다 재연결 링크를 보여준다 — 중복이지만
+    // 패널 자리 자체가 빈 채로 "선택해주세요"만 뜨는 막다른 길은 아니라는 뜻이다.
+    expect(within(screen.getByTestId("tiktok-creator-info-error")).getByRole("link", { name: "TikTok 다시 연결하기" })).toHaveAttribute("href", "/channels/tiktok");
+    await within(screen.getByTestId("preview-tiktok")).findByText("TikTok 계정 정보를 확인하지 못했습니다. 계정을 다시 연결해주세요.");
+  });
+
+  it("MINOR-1 경계: draft_id 없는 인박스 발행 복귀는 진행 중인 영상 맞춤을 취소하고 편집 잠금을 푼다", async () => {
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "이전 영상 초안",
+      draftId: "old-video-draft",
+      editKind: "video",
+      editLines: ["이전 영상 대사"],
+      vid: { url: "/api/media/old-video", file: "/api/media/old-video", model: "test" },
+      videoEdit: {
+        contract_version: "1.0",
+        overlays: [],
+        comments: [],
+        subtitles: [],
+        voice: null,
+        revision: 1,
+      },
+    }));
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=Q1");
+    mocks.returnPosts = [{
+      id: "Q1",
+      text: "인박스에서 되돌린 영상 본문",
+      topic: "영상 복귀 작업물",
+      videoUrl: "/api/media/returned-video",
+      channels: { threads: { status: "pending" } },
+      publishContext: { sourceRoute: "inbox", queuePostId: "Q1", draftId: null },
+    }];
+
+    const page = render(<StudioPage />);
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+
+    window.history.replaceState(null, "", "/studio?room=edit");
+    page.rerender(<StudioPage />);
+
+    await waitFor(() => expect(document.querySelector("[data-video-subtitle-list]")).toBeTruthy());
+    expect(document.querySelector("[data-video-syncing-note]"), "draftId가 없어진 뒤 영상 편집 잠금이 남으면 안 된다").toBeNull();
+    expect(document.querySelector("[data-video-subtitle-text]"), "복귀한 영상 대본을 편집할 수 있어야 한다").toBeEnabled();
+  });
+
+  it("PR95-SCOPE-CUT-VIDEO-01 연결 초안 없는 영상의 대표 이미지는 카드 잠금으로 오인하지 않는다", async () => {
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "이전 카드 작업",
+      editKind: "card",
+      editLines: ["이전 카드 문구"],
+      img: { url: "/api/images/deliver/old-card", file: "/api/images/deliver/old-card" },
+    }));
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-video-cover");
+    mocks.returnPosts = [{
+      id: "queue-video-cover",
+      text: "대표 이미지도 있는 영상",
+      topic: "영상 복귀 작업물",
+      imageUrl: "/api/images/deliver/video-cover",
+      imageUrls: ["/api/images/deliver/video-cover"],
+      videoUrl: "/api/media/returned-video",
+      channels: { threads: { status: "pending" } },
+    }];
+
+    const page = render(<StudioPage />);
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+    expect(screen.getByRole("link", { name: "02편집실" })).toHaveAttribute("href", "/studio?room=edit&kind=video");
+    window.history.replaceState(null, "", "/studio?room=edit&kind=video");
+    page.rerender(<StudioPage />);
+
+    expect(document.querySelector("[data-card-source-lock]")).toBeNull();
+    await waitFor(() => expect(document.querySelector("[data-video-subtitle-list]")).toBeTruthy());
+  });
+
+  it("PR95-R2-STUDIO-01 연결 초안 없는 2장 글자 카드는 편집실과 저장까지 2장을 유지한다", async () => {
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-two-card");
+    mocks.returnPosts = [{
+      id: "queue-two-card",
+      text: "과거 대기열의 합쳐진 본문",
+      topic: "두 장 복귀 작업물",
+      imageUrl: "/api/images/deliver/original-1",
+      imageUrls: ["/api/images/deliver/original-1", "/api/images/deliver/original-2"],
+      channels: { threads: { status: "pending" } },
+    }];
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "restored-two-card", bodyRevision: 1 };
+      return { ok: true };
+    });
+
+    const page = render(<StudioPage />);
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+    expect(screen.getByRole("link", { name: "02편집실" })).toHaveAttribute("href", "/studio?room=edit&kind=card");
+
+    window.history.replaceState(null, "", "/studio?room=edit&kind=card");
+    page.rerender(<StudioPage />);
+
+    expect(await screen.findByText(/편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/기존 그림은 그대로 보존됩니다/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "생성실에서 새 카드 만들기" })).toBeInTheDocument();
+    expect(screen.queryByText("문구와 글자 위치를 바꾸면 카드 그림에 바로 반영됩니다.")).not.toBeInTheDocument();
+    expect(document.querySelectorAll("[data-script-line]")).toHaveLength(2);
+    expect(document.querySelectorAll("[data-plain-card-strip] button")).toHaveLength(2);
+    expect(screen.getByLabelText("문구 1")).toBeDisabled();
+    expect(screen.getByLabelText("1번째를 아래로")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "카드 추가" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "상단" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      "이전 카드 2장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.",
+      "success",
+    ));
+    await waitFor(() => {
+      const saves = mocks.apiPost.mock.calls.filter(([path]) => path === "/api/studio/drafts");
+      expect(saves.at(-1)?.[1]).toEqual(expect.objectContaining({
+        editKind: "card",
+        editFormat: expect.objectContaining({ kind: "card" }),
+        img: expect.objectContaining({
+          imageUrls: ["/api/images/deliver/original-1", "/api/images/deliver/original-2"],
+          textEmbedded: true,
+          textSourceRecoverable: false,
+        }),
+      }));
+    });
+  });
+
+  it("PR95-R3-STUDIO-01 원본 정보 없는 한 장 글자 카드도 편집을 잠그고 재합성하지 않는다", async () => {
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=queue-one-card");
+    mocks.returnPosts = [{
+      id: "queue-one-card",
+      text: "과거 한 장 카드 본문",
+      topic: "한 장 복귀 작업물",
+      imageUrl: "/api/images/deliver/original-one",
+      imageUrls: ["/api/images/deliver/original-one"],
+      channels: { threads: { status: "pending" } },
+    }];
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "restored-one-card", bodyRevision: 1 };
+      return { ok: true };
+    });
+
+    const page = render(<StudioPage />);
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+    window.history.replaceState(null, "", "/studio?room=edit&kind=card");
+    page.rerender(<StudioPage />);
+
+    expect(await screen.findByText(/편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다/)).toBeInTheDocument();
+    expect(screen.getByLabelText("문구 1")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      "이전 카드 1장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.",
+      "success",
+    ));
+    expect(mocks.apiPost.mock.calls.some(([path]) => String(path).includes("recompose"))).toBe(false);
+    await waitFor(() => {
+      const saves = mocks.apiPost.mock.calls.filter(([path]) => path === "/api/studio/drafts");
+      expect(saves.at(-1)?.[1]).toEqual(expect.objectContaining({
+        img: expect.objectContaining({
+          imageUrls: ["/api/images/deliver/original-one"],
+          textEmbedded: true,
+          textSourceRecoverable: false,
+        }),
+      }));
+    });
+  });
+
   it("FE-V63-RETURN-04 경계: 본문 없는 편집 인계 초안은 큐 본문과 초안 메타데이터를 함께 복원한다", async () => {
     window.history.replaceState(null, "", "/studio?room=publish&queue_id=queue-handoff&from=calendar&draft_id=draft-handoff");
     mocks.drafts = [{
@@ -250,9 +632,13 @@ describe("Studio publish result integrity", () => {
     await waitFor(() => {
       expect(screen.getByRole("checkbox", { name: "Threads 발행" })).toBeEnabled();
       expect(screen.getByRole("checkbox", { name: "X 발행" })).toBeEnabled();
-      expect(screen.getByRole("checkbox", { name: "Instagram 발행" })).toBeEnabled();
+      expect(screen.getByRole("checkbox", { name: "Instagram 발행" })).toBeDisabled();
     });
-    expect(screen.getByRole("button", { name: "선택한 3곳에 지금 발행" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "생성실에서 카드 만들기" })).toHaveAttribute(
+      "href",
+      "/studio?room=create&kind=card",
+    );
+    expect(screen.getByRole("button", { name: "선택한 2곳에 지금 발행" })).toBeInTheDocument();
   });
 
   it("FE-V63-RETURN-02 거절: URL의 큐 작업물이 없으면 빈 작업물을 발행 가능 상태로 만들지 않는다", async () => {
@@ -367,7 +753,7 @@ describe("Studio publish result integrity", () => {
     });
 
     render(<StudioPage />);
-    const publishButton = await findEnabledButton("선택한 3곳에 지금 발행");
+    const publishButton = await findEnabledButton("선택한 2곳에 지금 발행");
     // 2026-09-08 개정: 영상 채널(쇼츠·릴스·틱톡)은 발행 기능이 이미 있었는데 발행실이
     // 영상 발행 경로를 부르지 않아 "미지원" 으로 닫혀 있었다(회장 "왜 영상쪽은 다 미지원
     // 이라고 뜸"). 이제 발행실이 그 경로를 부르므로 잠기지 않는다.
@@ -380,12 +766,12 @@ describe("Studio publish result integrity", () => {
 
     fireEvent.click(publishButton);
     await waitFor(() => {
-      expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(3);
+      expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(2);
     });
     expect(mocks.apiPost.mock.calls
       .filter(([path]) => path === "/api/publish")
       .map(([, body]) => (body as { platform: string }).platform))
-      .toEqual(["threads", "x", "instagram"]);
+      .toEqual(["threads", "x"]);
     expect(mocks.apiPost.mock.calls
       .filter(([path]) => path === "/api/publish")
       .every(([, body]) => JSON.stringify((body as { edit_format?: unknown }).edit_format) === JSON.stringify({
@@ -424,6 +810,130 @@ describe("Studio publish result integrity", () => {
     expect(mocks.apiPost).not.toHaveBeenCalledWith("/api/publish", expect.anything());
   });
 
+  it("STUDIO-V70-PUBLISH-ACCOUNT-04 거절: 재연결 계정만 있으면 체크와 전체 선택을 잠근다", async () => {
+    restoreStudio(["threads"]);
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const provider = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
+      const accounts = provider === "threads"
+        ? [{ id: "threads-reconnect", display_name: "Threads 운영 계정", username: "threads.paused", is_default: true, connection_state: "reconnect" }]
+        : [];
+      return Response.json({ accounts });
+    }));
+
+    render(<StudioPage />);
+
+    const checkbox = await screen.findByRole("checkbox", { name: "Threads 발행" });
+    await waitFor(() => expect(screen.getByTestId("account-state-threads")).toHaveTextContent("missing"));
+    expect(checkbox).toBeDisabled();
+    expect(checkbox).not.toBeChecked();
+    expect(screen.queryByTestId("publish-account-label-threads")).not.toBeInTheDocument();
+    expect(screen.getByTestId("publish-reconnect-link-threads")).toHaveAttribute("href", "/channels/threads");
+    expect(screen.getByTestId("publish-select-all")).toBeDisabled();
+    expect(screen.getByTestId("publish-bulk-select-all")).toBeDisabled();
+    expect(screen.getByText("아직 연결된 채널이 없어 발행할 수 없습니다.", { exact: false })).toBeInTheDocument();
+  });
+
+  it("PR94-R1-MAJOR-02 거절: 저장된 해제 계정은 선택과 발행 요청에서 제거하고 다시 연결을 안내한다", async () => {
+    restoreStudio(["threads"]);
+    const storageKey = `studio_work:${mocks.workspace.id}`;
+    const stored = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    localStorage.setItem(storageKey, JSON.stringify({
+      ...stored,
+      selectedAccounts: { threads: "threads-reconnect" },
+    }));
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const provider = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
+      const accounts = provider === "threads"
+        ? [
+            { id: "threads-reconnect", display_name: "예전 계정", username: "threads.expired", is_default: false, connection_state: "reconnect" },
+            { id: "threads-connected", display_name: "운영 계정", username: "threads.live", is_default: true, connection_state: "connected" },
+          ]
+        : [];
+      return Response.json({ accounts });
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-account-reconnect" };
+      if (path === "/api/publish") return { ok: false, error: "테스트 발행 거절" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+
+    const checkbox = await screen.findByRole("checkbox", { name: "Threads 발행" });
+    await waitFor(() => expect(checkbox).not.toBeChecked());
+    expect(screen.getByTestId("publish-reconnect-link-threads")).toHaveAttribute("href", "/channels/threads");
+
+    fireEvent.click(checkbox);
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+    await waitFor(() => expect(mocks.apiPost.mock.calls.filter(([path]) => path === "/api/publish")).toHaveLength(1));
+    const publishBody = mocks.apiPost.mock.calls.find(([path]) => path === "/api/publish")?.[1] as { account_id?: string };
+    expect(publishBody.account_id).not.toBe("threads-reconnect");
+  });
+
+  it("PR94-R3-MAJOR-03 정상: 보이는 기본 계정과 실제 발행 요청 계정이 같다", async () => {
+    restoreStudio(["threads"]);
+    const storageKey = `studio_work:${mocks.workspace.id}`;
+    const stored = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    localStorage.setItem(storageKey, JSON.stringify({
+      ...stored,
+      selectedAccounts: { threads: "threads-old-saved" },
+    }));
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const provider = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
+      const accounts = provider === "threads"
+        ? [
+            { id: "threads-old-saved", display_name: "예전 계정", username: "old.saved", is_default: false, connection_state: "connected" },
+            { id: "threads-current-default", display_name: "현재 기본 계정", username: "current.default", is_default: true, connection_state: "connected" },
+          ]
+        : [];
+      return Response.json({ accounts });
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-current-default" };
+      if (path === "/api/publish") return { ok: false, error: "테스트 발행 거절" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+
+    const visibleHandle = await screen.findByTestId("publish-account-label-threads");
+    expect(visibleHandle).toHaveTextContent("@current.default");
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+    await waitFor(() => expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/publish")).toBe(true));
+    const publishBody = mocks.apiPost.mock.calls.find(([path]) => path === "/api/publish")?.[1] as { account_id?: string };
+    expect(publishBody.account_id).toBe("threads-current-default");
+  });
+
+  it("PR94-R4-MAJOR-02 정상: 재연결 기본 계정을 숨기고 보이는 연결 계정과 실제 POST 계정을 일치시킨다", async () => {
+    restoreStudio(["threads"]);
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const provider = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
+      const accounts = provider === "threads"
+        ? [
+            { id: "threads-default-reconnect", display_name: "끊긴 기본", username: "default.reconnect", is_default: true, connection_state: "reconnect" },
+            { id: "threads-live-nondefault", display_name: "연결된 비기본", username: "live.nondefault", is_default: false, connection_state: "connected" },
+          ]
+        : [];
+      return Response.json({ accounts });
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-r4-account" };
+      if (path === "/api/publish") return { ok: false, error: "테스트 발행 거절" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+
+    const visibleHandle = await screen.findByTestId("publish-account-label-threads");
+    expect(visibleHandle).toHaveTextContent("@live.nondefault");
+    expect(visibleHandle).not.toHaveTextContent("@default.reconnect");
+    expect(screen.getByTestId("publish-reconnect-link-threads")).toHaveAttribute("href", "/channels/threads");
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+    await waitFor(() => expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/publish")).toBe(true));
+    const publishBody = mocks.apiPost.mock.calls.find(([path]) => path === "/api/publish")?.[1] as { account_id?: string };
+    expect(publishBody.account_id).toBe("threads-live-nondefault");
+  });
+
   it("FE3-PUBLISH-03 거절: 발행 이력은 발행실에 다시 노출하지 않는다", async () => {
     mocks.drafts = [{
       id: "draft-history",
@@ -445,6 +955,8 @@ describe("Studio publish result integrity", () => {
       idea: "고객 사례 카드뉴스",
       text: { threads: "서버에 저장된 현재 본문" },
       includes: { threads: true },
+      editKind: "card",
+      editFormat: { kind: "card", aspectRatio: "4:5", background: "화이트", subtitleSize: "보통" },
       status: "draft",
       savedAt: "2026-08-29T08:10:00.000Z",
     }];
@@ -457,6 +969,7 @@ describe("Studio publish result integrity", () => {
       savedAt: "2026-08-29T08:10:00.000Z",
     };
 
+    window.history.replaceState(null, "", "/studio?room=publish&kind=video");
     render(<StudioPage />);
     fireEvent.click(screen.getByRole("button", { name: /작업물 전체/ }));
 
@@ -467,6 +980,7 @@ describe("Studio publish result integrity", () => {
     fireEvent.click(screen.getByRole("button", { name: "이어 편집하기" }));
 
     expect(mocks.setStudioRoom).toHaveBeenCalledWith("edit");
+    expect(window.location.pathname + window.location.search).toBe("/studio?room=edit&kind=card");
     expect(mocks.showToast).toHaveBeenCalledWith("불러옴. 수정 후 재발행 가능", "success");
   });
 
@@ -559,7 +1073,7 @@ describe("Studio publish result integrity", () => {
     expect(screen.getByRole("complementary", { name: "발행 담당 대화창" })).toBeInTheDocument();
   });
 
-  it("PUB-DRAFT-UI-01 정상: 플랫폼 필드와 선택 계정을 임시 저장하고 같은 초안에서 복원한다", async () => {
+  it("PUB-DRAFT-UI-01 정상: 플랫폼 필드를 임시 저장하고 계정은 한 줄 표시·관리 링크로만 다룬다", async () => {
     restoreStudio(["threads", "instagram"]);
     mocks.apiPost.mockResolvedValue({ id: "draft-v67" });
 
@@ -568,15 +1082,18 @@ describe("Studio publish result integrity", () => {
     fireEvent.change(screen.getByLabelText("instagram 캡션"), { target: { value: "채널별 캡션" } });
     fireEvent.change(screen.getByLabelText("instagram 해시태그"), { target: { value: "#하나 #둘" } });
     fireEvent.change(screen.getByLabelText("threads 주제 태그"), { target: { value: "운영팁" } });
-    fireEvent.change(screen.getByTestId("publish-account-select-instagram"), { target: { value: "instagram-account" } });
+    expect(screen.queryByTestId("publish-account-select-instagram")).not.toBeInTheDocument();
+    expect(screen.getByTestId("publish-account-label-instagram")).toHaveAttribute("title", expect.stringMatching(/instagram/i));
+    expect(screen.getByTestId("publish-account-manage-instagram")).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button", { name: "임시 저장하기" })[0]);
 
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
+      editLines: ["가장 최신 문단"],
       titles: expect.objectContaining({ shorts: "쇼츠 제목" }),
       captions: expect.objectContaining({ instagram: "채널별 캡션" }),
       hashtags: expect.objectContaining({ instagram: "#하나 #둘" }),
       topicTags: expect.objectContaining({ threads: "운영팁" }),
-      selectedAccounts: expect.objectContaining({ instagram: "instagram-account" }),
+      selectedAccounts: {},
     })));
   });
 
@@ -622,6 +1139,10 @@ describe("Studio publish result integrity", () => {
       "/api/queue/add",
       expect.objectContaining({ draftId: "draft-review" }),
     );
+    expect(mocks.apiPost).toHaveBeenCalledWith(
+      "/api/studio/drafts",
+      expect.objectContaining({ editLines: ["가장 최신 문단"] }),
+    );
     expect(mocks.showToast).toHaveBeenCalledWith("검토 요청을 보냈습니다", "success");
   });
 
@@ -638,6 +1159,38 @@ describe("Studio publish result integrity", () => {
     await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("초안 저장 실패", "error"));
     expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/queue/add")).toBe(false);
     expect(mocks.apiPost.mock.calls.some(([path]) => String(path).includes("request-review"))).toBe(false);
+  });
+
+  it("PR87-R2-M2 정상: 기존 초안도 검토 큐를 만들기 전에 최신 본문을 먼저 저장한다", async () => {
+    // Regression: PR87-R2-M2 — 기존 draftId의 단축 평가가 최신 편집 저장을 건너뛰었다.
+    // Found by reviewer on 2026-09-28.
+    // Report: .pr87-review-r2.md
+    restoreStudio(["threads"]);
+    const key = `studio_work:${mocks.workspace.id}`;
+    const restored = JSON.parse(localStorage.getItem(key) || "{}");
+    localStorage.setItem(key, JSON.stringify({ ...restored, draftId: "draft-existing-review" }));
+    mocks.drafts = [{ id: "draft-existing-review", editLines: ["서버의 이전 문단"], status: "draft" }];
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-existing-review" };
+      if (path === "/api/queue/add") return { post: { id: "queue-existing-review" } };
+      if (path === "/api/queue/queue-existing-review/request-review") return { reused: false };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "검토 요청하기" }));
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith(
+      "/api/queue/queue-existing-review/request-review",
+      expect.objectContaining({ tenant_id: "tenant-a" }),
+    ));
+    const calls = mocks.apiPost.mock.calls.map(([path]) => path);
+    expect(calls.indexOf("/api/studio/drafts")).toBeGreaterThanOrEqual(0);
+    expect(calls.indexOf("/api/studio/drafts")).toBeLessThan(calls.indexOf("/api/queue/add"));
+    expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
+      id: "draft-existing-review",
+      editLines: ["가장 최신 문단"],
+    }));
   });
 
   it("M3-STUDIO-01 정상: 작업 공간을 바꾸면 각 공간의 저장 상태만 복원한다", async () => {
@@ -998,13 +1551,17 @@ describe("Studio publish result integrity", () => {
 
     render(<StudioPage />);
     const editor = await screen.findByRole("textbox", { name: "글 전체" });
-    fireEvent.change(editor, { target: { value: "발행실로 넘길 본문" } });
+    editor.textContent = "발행실로 넘길 본문";
+    fireEvent.input(editor);
     fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
 
     await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
       id: null,
       editKind: "text",
-      editFormat: { kind: "text" },
+      editFormat: expect.objectContaining({
+        kind: "text",
+        segments: [{ text: "발행실로 넘길 본문", bold: false }],
+      }),
       editLines: ["발행실로 넘길 본문"],
       text: expect.objectContaining({
         threads: "발행실로 넘길 본문",
@@ -1014,6 +1571,35 @@ describe("Studio publish result integrity", () => {
     })));
     expect(mocks.setStudioRoom).toHaveBeenCalledWith("publish");
     expect(window.location.pathname + window.location.search).toBe("/studio?room=publish");
+  });
+
+  it("PR87-R2-M1 정상: 편집줄이 비어도 생성 본문을 최신값 정본으로 승격한 뒤 저장한다", async () => {
+    window.history.replaceState(null, "", "/studio?room=edit");
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "생성 본문 직행 테스트",
+      text: {
+        threads: "생성된 스레드 본문",
+        x: "생성된 X 본문",
+        facebook: "생성된 페이스북 본문",
+        instagram: { caption: "생성된 인스타 본문", slides: ["생성된 인스타 본문"] },
+        shorts: { hook: "첫 문단", body: "둘째 문단", cta: "셋째 문단" },
+      },
+      editLines: [],
+      editKind: "text",
+      editFormat: { kind: "text" },
+    }));
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-derived-lines" };
+      throw new Error(`unexpected path: ${path}`);
+    });
+
+    render(<StudioPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "발행실로 이동" }));
+
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledWith("/api/studio/drafts", expect.objectContaining({
+      editLines: ["첫 문단", "둘째 문단", "셋째 문단"],
+    })));
+    expect(mocks.setStudioRoom).toHaveBeenCalledWith("publish");
   });
 });
 

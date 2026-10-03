@@ -8,10 +8,24 @@ import { AuthGate } from "@/components/shared/AuthGate";
 import { ImagePickerModal } from "@/components/queue/ImagePickerModal";
 import { ConsentBanner, PrivacySettingsLink } from "@/components/shared/ConsentBanner";
 import { RouteTracker } from "@/components/shared/RouteTracker";
+import { ServiceWorkerRegister } from "@/components/layout/ServiceWorkerRegister";
 
 export const metadata: Metadata = {
   title: "Marketing Hub",
   description: "Multi-channel marketing automation dashboard",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "OSMU",
+  },
+  icons: {
+    apple: "/icons/apple-touch-icon.png",
+  },
+};
+
+export const viewport = {
+  themeColor: "#2563eb",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -43,10 +57,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <LoginModal />
           <ConfirmHost />
           <ImagePickerModal />
-          {/* GA4 consent-gated 트래킹(dashboard/src/lib/analytics/) — 동의 전엔 완전 no-op */}
+          {/* GA4 consent-gated 트래킹(dashboard/src/lib/analytics/). 동의 전엔 완전 no-op */}
           <RouteTracker />
           <ConsentBanner />
           <PrivacySettingsLink />
+          <ServiceWorkerRegister />
         </Providers>
       </body>
     </html>

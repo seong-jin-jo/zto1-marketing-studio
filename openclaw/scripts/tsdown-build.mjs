@@ -40,9 +40,26 @@ const MIN_TSDOWN_MAX_OLD_SPACE_MB = 2048;
 // Dockerfile 에서 NODE_OPTIONS 를 낮춰도 소용없다. 아래 normalizeMaxOldSpaceSizeMb 가
 // 이 값보다 작은 설정을 다시 올리기 때문이다. 그래서 여기가 진짜 손잡이다.
 //
-// 3,584MB 를 남기면 위 머신에서 힙 상한이 약 4,357MB 가 되고 운영체제와 컨테이너 몫이
-// 남는다. 메모리가 큰 기계는 영향이 없다. 상한이 min(12288, 총량 - 여유) 라서 총량이
-// 15.8GB 를 넘으면 12,288MB 로 그대로 걸린다.
+// 3,584MB 를 남기면 위 머신에서 힙 상한이 약 4,329MB 가 되고 운영체제와 컨테이너 몫이
+// 남는다(2026-09-26 SSH 재실측: cgroup memory.max=max → /proc/meminfo MemTotal=8,103,680kB
+// ≈7,913MB, cgroupCap=max(2048, 7913-3584)=4,329MB). 메모리가 큰 기계는 영향이 없다.
+// 상한이 min(12288, 총량 - 여유) 라서 총량이 15.8GB 를 넘으면 12,288MB 로 그대로 걸린다.
+//
+// 2026-09-26: run 36177984718 이 이 값(4,329MB)에서 attempt 1·2 모두 heap out of memory 로
+// 죽었다. 원인은 코드 회귀가 아니다 — 그 커밋(3a3a15db)은 dashboard/ 만 건드렸고 게이트웨이
+// build context(`./openclaw`, docker-compose.postagi-4tenants.yml)는 안 건드린다(git diff --stat
+// 로 배제 확인). 4,329MB 는 Dockerfile:133 이 명시하는 이 빌드의 힙 하한(4,608MB, 8-플러그인
+// 구성 실측치)에 못 미치는 값이었다 — 헤드룸이 아니라 애초에 마진이 없었던 것이다.
+//
+// 헤드룸을 낮춰 힙을 올리는 안(3,200MB, 힙 ≈4,713MB)은 리뷰에서 반려됐다: 이 빌드는 운영과
+// 같은 VM 에서 돌고 BuildKit 이 빌드에 메모리 상한을 안 건다. 힙을 올리면 VM 전체가 멈출
+// 여유가 200~400MB 로 줄어든다(추정) — Dockerfile:134 가 전제한 "VM 12GB" 를 헤드룸만 깎아
+// 우회하는 셈이라 받아들일 수 없다는 판단이다. 그래서 힙 상한(V8 안)은 3,584MB 헤드룸 그대로
+// 두고, 힙 밖에서 rolldown(Rust)이 rayon 스레드마다 잡는 메모리를 RAYON_NUM_THREADS=1 로
+// 줄인다(이 빌드에서만 — Dockerfile 의 pnpm build:docker RUN 에서 export). 코어 수만큼(이
+// 머신은 4) 뜨던 스레드를 1개로 묶어 힙 밖 사용량 자체를 줄이는 접근이라, VM 여유 자체를
+// 깎지 않는다. 실제 통과 여부는 이 값을 실은 다음 배포 run 의 [tsdown-build] 로그로 확인한다
+// (운영 VM 위험 때문에 이 PR 에서 게이트웨이 빌드를 직접 재현·검증하지는 않았다).
 const TSDOWN_CGROUP_MEMORY_HEADROOM_MB = 3584;
 const CGROUP_MEMORY_LIMIT_PATHS = [
   "/sys/fs/cgroup/memory.max",
@@ -588,8 +605,23 @@ export function createTsdownOutputScanner(params = {}) {
   };
 }
 
+// 힙(V8 max-old-space-size)과 rayon 스레드 수를 실행 직전에 한 줄로 남긴다. 계산이 맞는지
+// 배포 로그만 보고 확인할 수 있어야, 다음 실패가 났을 때 SSH로 재현할 필요가 없다
+// (2026-09-26 리뷰 지적 — 이 값들은 지금까지 로그에 안 남아 SSH로만 재구성했었다).
+function logTsdownMemoryPlan(params, env) {
+  const logFn = params.logMemoryPlan ?? console.log;
+  const limitBytes = readCgroupMemoryLimitBytes(params) ?? readProcMemTotalBytes(params);
+  const memTotalMb = limitBytes === null ? "unknown" : Math.floor(limitBytes / 1024 / 1024);
+  const heapMatch = env.NODE_OPTIONS?.match(/--max-old-space-size=(\d+)/u);
+  const heapCapMb = heapMatch ? heapMatch[1] : "unknown";
+  logFn(
+    `[tsdown-build] memTotal=${memTotalMb}MB heapCap=${heapCapMb}MB rayon=${env.RAYON_NUM_THREADS ?? "unset"}`,
+  );
+}
+
 export function resolveTsdownBuildInvocation(params = {}) {
   const env = resolveTsdownEnv(params.env ?? process.env, params);
+  logTsdownMemoryPlan(params, env);
   const forwardedArgs = params.args ?? [];
   const tsdownArgs = [
     "--config-loader",

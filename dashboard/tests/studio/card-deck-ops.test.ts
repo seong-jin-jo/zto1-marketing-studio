@@ -1,0 +1,471 @@
+import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import { resolve } from "node:path";
+import {
+  addBubble,
+  splitBubble,
+  mergeBubble,
+  deleteBubble,
+  toggleSpeaker,
+  moveBubble,
+  toggleBold,
+  moveSlide,
+  addSlide,
+  deleteSlide,
+  duplicateSlide,
+  groupTurns,
+  pruneEmptyBubbles,
+  emptyBubbleSlideNumber,
+  setBubbleText,
+  setBubbleSegments,
+  splitSlideAtBubble,
+  splitSlideAtBubbleOffset,
+  caretToSegment,
+  trimBubbleTrailingNewline,
+  CardDeckOpsError,
+} from "@/lib/studio/card-deck-ops";
+import { validateCardDeck, type CardDeck } from "@/lib/studio/card-deck-contract";
+import deckD100 from "./fixtures/deck-d100.v2.json";
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function deck(): CardDeck {
+  return clone(deckD100) as unknown as CardDeck;
+}
+
+function expectOpsCode(fn: () => unknown, code: string): void {
+  try {
+    fn();
+    throw new Error(`expected to throw CardDeckOpsError code "${code}" but it did not throw`);
+  } catch (e) {
+    expect(e).toBeInstanceOf(CardDeckOpsError);
+    expect((e as CardDeckOpsError).code).toBe(code);
+  }
+}
+
+describe("card-deck-ops 말풍선 연산 (TC-F1-02~04, 07~09)", () => {
+  it("addBubble: 뒤에 같은 화자 빈 말풍선을 추가하고 revision+1", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const result = addBubble(d, slide.id, slide.bubbles![0].id);
+    const bubbles = result.slides[1].bubbles!;
+    expect(bubbles).toHaveLength(3);
+    expect(bubbles[1].speaker).toBe(slide.bubbles![0].speaker);
+    expect(bubbles[1].segments[0].text).toBe("");
+    expect(result.revision).toBe(d.revision + 1);
+  });
+
+  it("splitBubble: 캐럿 중간에서 둘로 쪼갠다", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const bubble = slide.bubbles![1]; // "12년간 300명을 상담하면서 " + bold "공통점 하나를 찾았어요"
+    const original = bubble.segments[0].text;
+    const result = splitBubble(d, slide.id, bubble.id, { segmentIndex: 0, offset: 5 });
+    const bubbles = result.slides[1].bubbles!;
+    expect(bubbles).toHaveLength(3);
+    expect(bubbles[1].segments[0].text).toBe(original.slice(0, 5));
+    expect(bubbles[2].segments[0].text).toBe(original.slice(5));
+  });
+
+  it("splitBubble: 세그먼트 경계에서 쪼개도 양쪽에 내용이 남는다", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const bubble = slide.bubbles![1];
+    const result = splitBubble(d, slide.id, bubble.id, { segmentIndex: 1, offset: 0 });
+    const bubbles = result.slides[1].bubbles!;
+    expect(bubbles[1].segments.every((s) => s.text.length > 0)).toBe(true);
+    expect(bubbles[2].segments[0].bold).toBe(true);
+  });
+
+  it("splitBubble: 빈 쪽이 생기면 OPS_SPLIT_EMPTY", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const bubble = slide.bubbles![1];
+    expect(() => splitBubble(d, slide.id, bubble.id, { segmentIndex: 0, offset: 0 })).toThrowError(CardDeckOpsError);
+  });
+
+  it("mergeBubble: 같은 화자를 합친다", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    // 두 bubble 을 같은 화자로 맞춘 뒤 합침
+    const toggled = toggleSpeaker(d, slide.id, slide.bubbles![0].id);
+    const afterToggle = toggled.slides[1];
+    const result = mergeBubble(toggled, afterToggle.id, afterToggle.bubbles![0].id);
+    expect(result.slides[1].bubbles).toHaveLength(1);
+  });
+
+  it("mergeBubble: 화자가 다르면 OPS_SPEAKER_MISMATCH 로 거부", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    expectOpsCode(() => mergeBubble(d, slide.id, slide.bubbles![0].id), "OPS_SPEAKER_MISMATCH");
+  });
+
+  it("deleteBubble: 말풍선이 1개면 거부(장이 비면 안 됨)", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const afterDelete = deleteBubble(d, slide.id, slide.bubbles![0].id);
+    const remaining = afterDelete.slides[1].bubbles![0];
+    expectOpsCode(() => deleteBubble(afterDelete, slide.id, remaining.id), "OPS_DELETE_LAST_BUBBLE");
+  });
+
+  it("toggleSpeaker: reader ↔ brand 전환", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const original = slide.bubbles![0].speaker;
+    const result = toggleSpeaker(d, slide.id, slide.bubbles![0].id);
+    const toggled = result.slides[1].bubbles![0].speaker;
+    expect(toggled).not.toBe(original);
+    expect(["reader", "brand"]).toContain(toggled);
+  });
+
+  it("moveBubble: 맨 위 말풍선을 위로 이동하면 OPS_MOVE_OUT_OF_RANGE", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    expectOpsCode(() => moveBubble(d, slide.id, slide.bubbles![0].id, -1), "OPS_MOVE_OUT_OF_RANGE");
+  });
+
+  it("moveBubble: 정상 범위에서는 자리를 맞바꾼다", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const firstId = slide.bubbles![0].id;
+    const result = moveBubble(d, slide.id, firstId, 1);
+    expect(result.slides[1].bubbles![1].id).toBe(firstId);
+  });
+});
+
+describe("toggleBold (TC-F1-05·06)", () => {
+  // slide[2]는 fixture 상 볼드가 없는 장이다(slide[1]은 이미 b-1-1에 볼드 한 덩이가 있어
+  // 다른 말풍선을 또 굵게 하면 OPS_BOLD_LIMIT이 정상 발동한다 — 세 번째 테스트가 그것을 쓴다).
+  it("선택 범위만 bold:true 세그먼트로 분리한다", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubble = slide.bubbles![0]; // "그게 뭔데요?"
+    const result = toggleBold(d, slide.id, bubble.id, { from: 0, to: 2 });
+    const segments = result.slides[2].bubbles![0].segments;
+    expect(segments[0].bold).toBe(true);
+    expect(segments[0].text).toBe("그게");
+  });
+
+  it("인접한 같은 bold 세그먼트는 병합된다", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubble = slide.bubbles![0];
+    const once = toggleBold(d, slide.id, bubble.id, { from: 0, to: 2 });
+    const again = toggleBold(once, slide.id, bubble.id, { from: 2, to: 4 });
+    const segments = again.slides[2].bubbles![0].segments;
+    // 인접 볼드 두 조각이 하나로 병합됐는지
+    expect(segments.filter((s) => s.bold).length).toBe(1);
+  });
+
+  it("장에 이미 볼드 덩이가 있는데 다른 말풍선에 두 번째 덩이를 만들면 OPS_BOLD_LIMIT", () => {
+    const d = deck();
+    const slide = d.slides[1]; // b-1-1에 이미 볼드 한 덩이가 있다
+    expectOpsCode(() => toggleBold(d, slide.id, slide.bubbles![0].id, { from: 0, to: 2 }), "OPS_BOLD_LIMIT");
+  });
+
+  it("PR85-R7-M2 굵은 구간 가운데를 해제해 두 덩이가 되면 OPS_BOLD_LIMIT", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubble = slide.bubbles![0];
+    const bold = toggleBold(d, slide.id, bubble.id, { from: 0, to: 5 });
+    expectOpsCode(() => toggleBold(bold, slide.id, bubble.id, { from: 1, to: 4 }), "OPS_BOLD_LIMIT");
+  });
+});
+
+describe("슬라이드 연산 moveSlide/addSlide/deleteSlide (TC-F1-10·11)", () => {
+  it("표지(0번) 이동은 OPS_SLIDE_LOCKED", () => {
+    const d = deck();
+    expectOpsCode(() => moveSlide(d, 0, 1), "OPS_SLIDE_LOCKED");
+  });
+
+  it("CTA(마지막) 삭제는 OPS_SLIDE_LOCKED", () => {
+    const d = deck();
+    expectOpsCode(() => deleteSlide(d, d.slides.length - 1), "OPS_SLIDE_LOCKED");
+  });
+
+  it("addSlide: 11장 초과면 OPS_SLIDE_LIMIT", () => {
+    let d = deck();
+    // 9 -> 10 -> 11 은 통과, 12번째에서 거부
+    d = addSlide(d, 1);
+    d = addSlide(d, 1);
+    expect(d.slides).toHaveLength(11);
+    expectOpsCode(() => addSlide(d, 1), "OPS_SLIDE_LIMIT");
+  });
+
+  it("deleteSlide: 7장 미만이 되면 OPS_SLIDE_MIN", () => {
+    let d = deck(); // 9장
+    d = deleteSlide(d, 1);
+    expect(d.slides).toHaveLength(8);
+    d = deleteSlide(d, 1);
+    expect(d.slides).toHaveLength(7);
+    expectOpsCode(() => deleteSlide(d, 1), "OPS_SLIDE_MIN");
+  });
+
+  it("addSlide 로 만든 장은 견본 질문/답변 말풍선을 갖고 저장 검증을 통과한다", () => {
+    let d = deck();
+    d = addSlide(d, 1);
+    expect(() => validateCardDeck(d)).not.toThrow();
+  });
+
+  it("moveSlide 로 순서를 바꾸면 order 가 다시 매겨진다", () => {
+    const d = deck();
+    const result = moveSlide(d, 1, 2);
+    expect(result.slides[1].id).toBe(d.slides[2].id);
+    expect(result.slides.map((s) => s.order)).toEqual(result.slides.map((_, i) => i));
+  });
+
+  it("PR94-R2-03 선택한 대화 장 복제는 새 장·말풍선 ID로 바로 뒤에 삽입한다", () => {
+    const d = deck();
+    const result = duplicateSlide(d, 1);
+    expect(result.slides).toHaveLength(d.slides.length + 1);
+    expect(result.slides[2].role).toBe("chat");
+    expect(result.slides[2].id).not.toBe(d.slides[1].id);
+    expect(result.slides[2].bubbles?.map((bubble) => bubble.id)).not.toEqual(d.slides[1].bubbles?.map((bubble) => bubble.id));
+    expect(result.slides.map((slide) => slide.order)).toEqual(result.slides.map((_, index) => index));
+  });
+
+  it("PR94-R2-03 표지·CTA 복제는 거절한다", () => {
+    const d = deck();
+    expectOpsCode(() => duplicateSlide(d, 0), "OPS_SLIDE_LOCKED");
+    expectOpsCode(() => duplicateSlide(d, d.slides.length - 1), "OPS_SLIDE_LOCKED");
+  });
+});
+
+describe("groupTurns / pruneEmptyBubbles", () => {
+  it("같은 화자 연속 말풍선을 한 turn 으로 묶는다", () => {
+    const d = deck();
+    const bubbles = d.slides[1].bubbles!;
+    const turns = groupTurns(bubbles);
+    expect(turns).toHaveLength(2);
+    expect(turns[0].speaker).toBe("reader");
+    expect(turns[1].speaker).toBe("brand");
+  });
+
+  it("빈 말풍선을 저장 전에 제거한다", () => {
+    const d = deck();
+    const withEmpty = addBubble(d, d.slides[1].id, d.slides[1].bubbles![0].id);
+    const pruned = pruneEmptyBubbles(withEmpty);
+    expect(pruned.slides[1].bubbles).toHaveLength(2);
+  });
+
+  it("emptyBubbleSlideNumber: 정리 뒤에도 빈 말풍선이 남는 장이 없으면 null(2026-09-22 코드리뷰 MAJOR 2)", () => {
+    const d = deck();
+    expect(emptyBubbleSlideNumber(d)).toBeNull();
+  });
+
+  it("emptyBubbleSlideNumber: 말풍선이 하나도 안 남는 장의 1-based 번호를 돌려준다", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const onlyBubble = slide.bubbles![0];
+    const emptied = {
+      ...d,
+      slides: d.slides.map((s) => (s.id === slide.id ? { ...s, bubbles: [] } : s)),
+    };
+    void onlyBubble;
+    expect(emptyBubbleSlideNumber(emptied)).toBe(2);
+  });
+});
+
+describe("setBubbleText / caretToSegment (2026-09-22 코드리뷰 MAJOR 5)", () => {
+  it("PR85-R7-M1 DOM에서 읽은 중간 편집 세그먼트를 비율 재분배 없이 그대로 저장한다", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubbleId = slide.bubbles![0].id;
+    const segments = [{ text: "앞중간삽입", bold: false }, { text: "공통점 하나를 찾았어요\n다음", bold: true }];
+    const next = setBubbleSegments(d, slide.id, bubbleId, segments);
+    expect(next.slides[2].bubbles![0].segments).toEqual(segments);
+  });
+  it("setBubbleText: 부분 볼드가 있는 말풍선에서 글자를 고쳐도 볼드 비율이 보존된다(전체 교체 금지)", () => {
+    const d = deck();
+    // slides[1] 은 b-1-1 에 이미 볼드 덩이가 있다(장당 볼드 덩이 ≤1). slides[2] 는 없다.
+    const slide = d.slides[2];
+    const bubbleId = slide.bubbles![0].id;
+    const withBold = toggleBold(d, slide.id, bubbleId, { from: 0, to: 2 });
+    const boldedBubble = withBold.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    expect(boldedBubble.segments.some((s) => s.bold)).toBe(true);
+    const originalText = boldedBubble.segments.map((s) => s.text).join("");
+    const next = setBubbleText(withBold, slide.id, bubbleId, `${originalText}!`);
+    const nextBubble = next.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    // 전체가 한 덩이(단일 세그먼트, bold=첫 조각값)로 갈아엎어졌다면 이 검증이 실패한다.
+    expect(nextBubble.segments.some((s) => s.bold)).toBe(true);
+    expect(nextBubble.segments.some((s) => !s.bold)).toBe(true);
+  });
+
+  it("setBubbleText: 볼드 없는 말풍선은 전체가 non-bold 단일 세그먼트로 재구성된다", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const bubbleId = slide.bubbles![0].id;
+    const next = setBubbleText(d, slide.id, bubbleId, "새 문장");
+    const nextBubble = next.slides[1].bubbles!.find((b) => b.id === bubbleId)!;
+    expect(nextBubble.segments.map((s) => s.text).join("")).toBe("새 문장");
+    expect(nextBubble.segments.every((s) => !s.bold)).toBe(true);
+  });
+
+  it("caretToSegment: 단일 세그먼트면 segmentIndex 0 과 caret 그대로", () => {
+    expect(caretToSegment([{ text: "안녕하세요", bold: false }], 2)).toEqual({ segmentIndex: 0, offset: 2 });
+  });
+
+  it("caretToSegment: caret 이 둘째 세그먼트 안이면 그 세그먼트의 상대 offset 을 돌려준다", () => {
+    const segments = [{ text: "안녕", bold: false }, { text: "하세요", bold: true }];
+    // "안녕하세요" 전체 기준 caret=4 는 "하세요"(둘째 세그먼트) 의 두 번째 글자 앞.
+    expect(caretToSegment(segments, 4)).toEqual({ segmentIndex: 1, offset: 2 });
+  });
+
+  it("caretToSegment: caret 이 세그먼트 경계(2)면 앞 세그먼트의 끝으로 본다", () => {
+    const segments = [{ text: "안녕", bold: false }, { text: "하세요", bold: true }];
+    expect(caretToSegment(segments, 2)).toEqual({ segmentIndex: 0, offset: 2 });
+  });
+
+  it("splitBubble + caretToSegment: 둘째 세그먼트 안에서 쪼개도 거부되지 않는다(구 코드는 segmentIndex 0 을 고정해 거부됐다)", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubbleId = slide.bubbles![0].id;
+    const withBold = toggleBold(d, slide.id, bubbleId, { from: 0, to: 2 });
+    const boldedBubble = withBold.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    const fullText = boldedBubble.segments.map((s) => s.text).join("");
+    // 텍스트 끝 쪽(둘째 세그먼트 안)에서 쪼갠다.
+    const caret = fullText.length - 1;
+    const at = caretToSegment(boldedBubble.segments, caret);
+    expect(() => splitBubble(withBold, slide.id, bubbleId, at)).not.toThrow();
+  });
+});
+
+describe("splitSlideAtBubble (PR85-R7-M5)", () => {
+  it("넘친 경계 뒤 말풍선을 다음 chat 장으로 옮기고 표지·CTA 순서를 보존한다", () => {
+    const d = deck();
+    const original = d.slides[1].bubbles!;
+    const next = splitSlideAtBubble(d, 1, 1);
+    expect(next.slides).toHaveLength(d.slides.length + 1);
+    expect(next.slides[1].bubbles).toEqual([{ ...original[0], order: 0 }]);
+    expect(next.slides[2].bubbles).toEqual([{ ...original[1], order: 0 }]);
+    expect(next.slides[0].role).toBe("cover");
+    expect(next.slides.at(-1)?.role).toBe("cta");
+  });
+
+  it("말풍선 하나가 넘치면 굵기 경계를 보존한 채 문자 위치에서 다음 장으로 나눈다", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubble = slide.bubbles![0];
+    const bold = toggleBold(d, slide.id, bubble.id, { from: 0, to: 2 });
+    const next = splitSlideAtBubbleOffset(bold, 2, 0, 3);
+    const first = next.slides[2].bubbles![0];
+    const second = next.slides[3].bubbles![0];
+    expect(first.segments.map((segment) => segment.text).join("")).toBe(bubble.segments.map((segment) => segment.text).join("").slice(0, 3));
+    expect(second.segments.map((segment) => segment.text).join("")).toBe(bubble.segments.map((segment) => segment.text).join("").slice(3));
+    expect(first.segments[0].bold).toBe(true);
+  });
+});
+
+describe("trimBubbleTrailingNewline (PR #85 5차 재검증 MAJOR, T1)", () => {
+  it("마지막 세그먼트의 끝 개행만 지우고, 굵은 구간 경계는 전혀 안 옮긴다", () => {
+    const d = deck();
+    const slide = d.slides[2]; // slides[2]는 이 파일 다른 테스트가 확인했듯 볼드가 없어 자유롭게 쓸 수 있다.
+    const bubbleId = slide.bubbles![0].id;
+    const withBold = toggleBold(d, slide.id, bubbleId, { from: 0, to: 2 });
+    const boldedBubble = withBold.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    expect(boldedBubble.segments).toEqual([
+      { text: boldedBubble.segments[0].text, bold: true },
+      { text: boldedBubble.segments[1].text, bold: false },
+    ]);
+    // 편집 중 Enter로 끝에 개행이 붙었다고 가정한다(실제로는 handleInput이 매 키입력마다
+    // setBubbleText를 태우지만, 이 테스트는 blur 시점 트림 연산 자체를 단위로 검증한다).
+    const withTrailingNewline = {
+      ...withBold,
+      slides: withBold.slides.map((s, i) => (i === 2 ? {
+        ...s,
+        bubbles: s.bubbles!.map((b) => (b.id === bubbleId
+          ? { ...b, segments: b.segments.map((seg, idx) => (idx === b.segments.length - 1 ? { ...seg, text: `${seg.text}\n\n` } : seg)) }
+          : b)),
+      } : s)),
+    };
+    const trimmed = trimBubbleTrailingNewline(withTrailingNewline, slide.id, bubbleId);
+    const trimmedBubble = trimmed.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    // 첫 세그먼트(굵게 경계)는 글자 하나도 안 움직였다 — retextSegments 비율 재분배였다면
+    // 개행 두 글자가 빠지는 길이 변화만으로도 이 경계가 흔들릴 수 있었다(T1 재현).
+    expect(trimmedBubble.segments[0]).toEqual(boldedBubble.segments[0]);
+    expect(trimmedBubble.segments[1].text).toBe(boldedBubble.segments[1].text);
+    expect(trimmedBubble.segments[1].bold).toBe(false);
+    expect(trimmedBubble.segments.map((s) => s.text).join("")).not.toMatch(/\n$/);
+  });
+
+  it("지울 끝 개행이 없으면 무동작이다(불필요한 revision 증가 없음)", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const bubbleId = slide.bubbles![0].id;
+    const before = d;
+    const after = trimBubbleTrailingNewline(before, slide.id, bubbleId);
+    expect(after).toBe(before); // 참조 동일성까지 — 정말 아무 것도 안 했다는 뜻이다.
+  });
+
+  it("말풍선 전체가 개행뿐이던 마지막 세그먼트를 트림하면 그 세그먼트를 통째로 뺀다(다른 세그먼트에 내용이 남아있을 때)", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubbleId = slide.bubbles![0].id;
+    const withExtraEmptySegment = {
+      ...d,
+      slides: d.slides.map((s, i) => (i === 2 ? {
+        ...s,
+        bubbles: s.bubbles!.map((b) => (b.id === bubbleId
+          ? { ...b, segments: [...b.segments, { text: "\n\n", bold: false }] }
+          : b)),
+      } : s)),
+    };
+    const trimmed = trimBubbleTrailingNewline(withExtraEmptySegment, slide.id, bubbleId);
+    const trimmedBubble = trimmed.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    expect(trimmedBubble.segments).toHaveLength(1);
+    expect(trimmedBubble.segments[0].text).not.toMatch(/\n$/);
+  });
+
+  it("6차 재검증 MAJOR 1 재현: 끝 개행이 세그먼트 경계에 걸쳐 있어도([{'a\\n'},{'\\n',bold}]) 전부 걷힌다", () => {
+    // 재현: 마지막 글자를 굵게 만들고 끝에서 Enter 두 번 + blur하면 재분배 결과가
+    // [{"…요\n", bold:false}, {"\n", bold:true}]가 됐다. 이전 구현은 마지막 세그먼트
+    // 하나만 한 번 잘라 그 세그먼트가 통째로 비어 빠지는 것까지만 하고 멈췄다 — 앞
+    // 세그먼트("…요\n")에 남은 개행은 그대로 저장돼, 화면은 1줄인데 PNG는 2줄이 되고
+    // 그 개행을 담았던 볼드 세그먼트가 사라져 굵게 표시도 없어졌다(재현 그대로).
+    const d = deck();
+    const slide = d.slides[2];
+    const bubbleId = slide.bubbles![0].id;
+    const withSplitTrailingNewline = {
+      ...d,
+      slides: d.slides.map((s, i) => (i === 2 ? {
+        ...s,
+        bubbles: s.bubbles!.map((b) => (b.id === bubbleId
+          ? { ...b, segments: [{ text: "a\n", bold: false }, { text: "\n", bold: true }] }
+          : b)),
+      } : s)),
+    };
+    const trimmed = trimBubbleTrailingNewline(withSplitTrailingNewline, slide.id, bubbleId);
+    const trimmedBubble = trimmed.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    // 개행이 두 세그먼트에 걸쳐 있었으니 한 번만 자르면 끝나지 않는다 — 반복해서 전부
+    // 걷어야 화면·저장본·PNG 줄 수가 같아진다(핵심 계약: "화면 = 저장본 = PNG").
+    expect(trimmedBubble.segments.map((s) => s.text).join("")).toBe("a");
+    expect(trimmedBubble.segments.map((s) => s.text).join("")).not.toMatch(/\n$/);
+    // 두 번째(굵은) 세그먼트가 개행만 담고 있었으므로 통째로 빠지고 첫 세그먼트만 남는다.
+    expect(trimmedBubble.segments).toEqual([{ text: "a", bold: false }]);
+  });
+
+  it("6차 재검증: 개행이 세 세그먼트에 걸쳐 있어도(끝까지 반복) 전부 걷힌다", () => {
+    const d = deck();
+    const slide = d.slides[2];
+    const bubbleId = slide.bubbles![0].id;
+    const withTripleSplit = {
+      ...d,
+      slides: d.slides.map((s, i) => (i === 2 ? {
+        ...s,
+        bubbles: s.bubbles!.map((b) => (b.id === bubbleId
+          ? { ...b, segments: [{ text: "본문", bold: false }, { text: "\n", bold: true }, { text: "\n", bold: false }] }
+          : b)),
+      } : s)),
+    };
+    const trimmed = trimBubbleTrailingNewline(withTripleSplit, slide.id, bubbleId);
+    const trimmedBubble = trimmed.slides[2].bubbles!.find((b) => b.id === bubbleId)!;
+    expect(trimmedBubble.segments).toEqual([{ text: "본문", bold: false }]);
+  });
+
+  it("코드 대조: 반복(while) 루프로 세그먼트 경계를 넘어 트림한다", () => {
+    expect(fs.readFileSync(resolve(__dirname, "../../src/lib/studio/card-deck-ops.ts"), "utf8"))
+      .toMatch(/while \(result\.length > 0\) \{/);
+  });
+});

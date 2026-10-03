@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OSMU 콘텐츠 품질 벤치마크 v1 · 생성실·편집실이 도달할 기준</title>
+<!--
+STAMP | line: osmu | 생성: 2026-09-21 15:12 KST | model: claude-opus-5[1m] | agent: product-designer
+skills: design-html(문서 골격·토큰 상속), design-review(출고 전 QA, 등급은 하단 STAMP 바)
+근거: wiki/거버넌스/결정.md(D-2026-09-09-1 편집실 직접조작+AI 역할분담 · ADR-007 조용한 실패 금지 · 2026-08-31 LLM 실연결) · 실수.md(2026-09-11 "눈이 아니라 자로") · DESIGN.md v37(§4 편집실 3영역 골격·§7 인벤토리·§9 Do/Don't) · d-edu 카드컨셉13(01·02·03c + astra-evidence D-100 sheet 1~4 실물) · suneung-샷건 06·08(3영역 숏폼 레시피·댓글 CTA) · dashboard/src EditOutline·EditPreview·StudioRooms·text-card-image.ts · BRAIN synthesis-유저심리-6단계-정본 · WebFetch 5건(linkfarm 캐러셀 2026 · 1point.kr · commentsticker.com · campaignswift 세이프존 · YouTube 고객센터 댓글 스티커)
+고민: "예쁘게" 가 아니라 "무엇이 빠져서 쓰레기로 보이는가" 를 축으로 쪼갰다. 현재 산출물은 디자인이 못난 게 아니라 콘텐츠 구조(후킹·대화·실사·CTA)가 통째로 없다. 그래서 갭표를 색·서체가 아니라 구조 9축으로 잡았다.
+기반 포맷: d-edu/prototypes/brand-dedu-product/suneung-샷건/08-숏폼-스토리보드-D100~70.html(섹션 앵커 + kicker + 벤치마크 매트릭스 + 셀프심문 details) 골격 상속. DESIGN.md v37 토큰 상속.
+-->
+<style>
+:root{
+  --bg:#fbfbfc;--surface:#fff;--surface-2:#f4f4f5;--border:#e4e4e7;
+  --text:#18181b;--muted:#52525b;--subtle:#66666e;
+  --accent:#2563eb;--accent-soft:#eff6ff;--ink:#1d4ed8;--accent-ink:#fff;
+  --success:#15803d;--warning:#b45309;--danger:#b91c1c;
+  --studio:#1d4ed8;--studio-soft:#eff4ff;--claw:#0f766e;--claw-soft:#effcf9;
+  --kakao:#fee500;--chat:#b2c7da;
+  --r-chip:6px;--r-control:8px;--r:12px;--r-pill:99px;
+  --fast:120ms;--base:200ms;--ease:cubic-bezier(.2,0,0,1);
+  --font:Pretendard,-apple-system,"Apple SD Gothic Neo",sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px;line-height:25px;-webkit-font-smoothing:antialiased;word-break:keep-all}
+h1,h2,h3,h4,p{margin:0}
+a{color:var(--ink)}
+b,strong{font-weight:700}
+.shell{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
+.nav{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid var(--border);background:var(--surface);padding:24px 16px}
+.nav .brand{font-size:13px;font-weight:800;line-height:20px;color:var(--studio);letter-spacing:.02em}
+.nav .sub{font-size:12px;line-height:16px;color:var(--subtle);margin-top:4px}
+.nav ol{list-style:none;margin:24px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.nav a{display:block;padding:8px 12px;border-radius:var(--r-control);font-size:13px;line-height:20px;color:var(--muted);text-decoration:none;border-left:2px solid transparent;transition:background var(--fast) var(--ease)}
+.nav a:hover{background:var(--surface-2)}
+.nav a.on{background:var(--accent-soft);color:var(--ink);border-left-color:var(--accent);font-weight:700}
+.nav .n{display:inline-block;width:20px;color:var(--subtle);font-variant-numeric:tabular-nums}
+main{padding:32px 40px 96px;max-width:1240px;min-width:0}
+.eyebrow{font-size:13px;line-height:20px;font-weight:800;color:var(--studio);letter-spacing:.04em}
+h1{font-size:32px;line-height:40px;font-weight:750;margin-top:8px;letter-spacing:-.02em}
+h2{font-size:24px;line-height:32px;font-weight:700;letter-spacing:-.015em}
+h3{font-size:17px;line-height:24px;font-weight:700}
+h4{font-size:15px;line-height:24px;font-weight:700}
+.lede{color:var(--muted);margin-top:8px;max-width:760px}
+section.sec{padding:48px 0 0;scroll-margin-top:16px}
+section.sec + section.sec{border-top:1px solid var(--border);margin-top:48px}
+.verdict{margin-top:24px;padding:24px;border-radius:var(--r);background:var(--surface);border:1px solid var(--border);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.verdict > div{min-width:0}
+.verdict .k{font-size:12px;line-height:16px;font-weight:800;color:var(--subtle);letter-spacing:.06em}
+.verdict .v{font-size:21px;line-height:28px;font-weight:750;margin-top:8px}
+.verdict .d{font-size:13px;line-height:20px;color:var(--muted);margin-top:4px}
+.quote{margin-top:24px;padding:16px 24px;border-left:3px solid var(--danger);background:var(--surface);border-radius:0 var(--r-control) var(--r-control) 0;color:var(--text)}
+.quote small{display:block;font-size:12px;line-height:16px;color:var(--subtle);margin-top:8px}
+table{width:100%;border-collapse:collapse;margin-top:16px;font-size:13px;line-height:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+th,td{padding:12px;vertical-align:top;text-align:left;border-bottom:1px solid var(--border)}
+th{background:var(--surface-2);font-weight:700;font-size:12px;line-height:16px;color:var(--muted);letter-spacing:.02em}
+tr:last-child td{border-bottom:0}
+td.gap{font-weight:700}
+.tag{display:inline-block;font-size:12px;line-height:16px;font-weight:700;padding:2px 8px;border-radius:var(--r-chip);background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.tag.bad{background:#fef2f2;color:var(--danger)}
+.tag.mid{background:#fffbeb;color:var(--warning)}
+.tag.ok{background:#f0fdf4;color:var(--success)}
+.tag.studio{background:var(--studio-soft);color:var(--studio)}
+.tag.claw{background:var(--claw-soft);color:var(--claw)}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin-top:24px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:24px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;min-width:0}
+.card h3{margin-bottom:8px}
+.card p{color:var(--muted);font-size:13px;line-height:20px}
+.card ul{margin:8px 0 0;padding-left:18px;color:var(--muted);font-size:13px;line-height:20px}
+.card .src{margin-top:12px;font-size:12px;line-height:16px;color:var(--subtle)}
+.ref{margin-top:24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.ref .head{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:16px;align-items:baseline;flex-wrap:wrap}
+.ref .head .rank{font-size:12px;line-height:16px;font-weight:800;color:var(--studio);letter-spacing:.06em}
+.ref .body{padding:24px;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,.9fr);gap:24px}
+.ref .body.single{grid-template-columns:1fr}
+.ref img{width:100%;height:auto;display:block;border-radius:var(--r-control);border:1px solid var(--border)}
+.ref .why{font-size:13px;line-height:20px;color:var(--muted)}
+.ref .why b{color:var(--text)}
+.ref .why dl{margin:12px 0 0;display:grid;grid-template-columns:96px minmax(0,1fr);gap:4px 12px}
+.ref .why dt{font-weight:700;color:var(--text)}
+.ref .why dd{margin:0}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin-top:24px;align-items:start}
+.pair .label{font-size:12px;line-height:16px;font-weight:800;color:var(--subtle);letter-spacing:.06em;margin-bottom:8px}
+/* 현재 OSMU 글자 카드 재현(코드 text-card-image.ts 기반, 캡처 아님) */
+.now-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.now-card{aspect-ratio:4/5;background:#12100E;color:#F7F3EE;display:grid;place-items:center;padding:10%;text-align:center;font-weight:700;font-size:15px;line-height:22px;border-radius:var(--r-control);position:relative}
+.now-card small{position:absolute;right:8px;bottom:6px;font-size:12px;line-height:16px;color:#F7F3EE;opacity:.6;font-weight:400}
+.note{font-size:12px;line-height:16px;color:var(--subtle);margin-top:8px}
+/* 로드맵 */
+.road{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:24px}
+.road .card{border-top:4px solid var(--studio)}
+.road .card:nth-child(2){border-top-color:var(--accent)}
+.road .card:nth-child(3){border-top-color:var(--claw)}
+.road .see{margin-top:16px;padding:12px;background:var(--surface-2);border-radius:var(--r-control);font-size:13px;line-height:20px;color:var(--text)}
+.road .see b{display:block;font-size:12px;line-height:16px;color:var(--subtle);margin-bottom:4px}
+/* 숏폼 댓글 반응 시안 */
+.wire{margin-top:24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px}
+.wire-ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.wire-ctl button{font:inherit;font-size:13px;line-height:20px;font-weight:700;padding:6px 12px;border-radius:var(--r-control);border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;min-height:36px}
+.wire-ctl button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.wire-ctl .sp{flex:1}
+.wire-ctl .hint{font-size:12px;line-height:16px;color:var(--subtle)}
+.editor{display:grid;grid-template-columns:176px minmax(0,1fr) 248px;gap:16px;min-width:0}
+.editor.m{grid-template-columns:1fr}
+.editor .col{background:var(--surface-2);border-radius:var(--r-control);padding:16px;min-width:0}
+.editor .col h4{font-size:13px;line-height:20px;color:var(--text)}
+.editor .col .cnt{font-size:12px;line-height:16px;color:var(--subtle);float:right}
+.scenes{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.scenes li{display:grid;grid-template-columns:36px minmax(0,1fr);gap:8px;align-items:center;padding:6px 8px;border-radius:var(--r-chip);font-size:12px;line-height:16px;color:var(--muted);border-left:2px solid transparent}
+.scenes li.on{background:var(--accent-soft);color:var(--ink);border-left-color:var(--accent);font-weight:700}
+.scenes li i{display:block;width:36px;height:64px;border-radius:4px;background:#8aa5bd;position:relative;overflow:hidden}
+.scenes li i::after{content:"";position:absolute;left:4px;right:4px;bottom:6px;height:6px;border-radius:2px;background:#fff}
+.scenes li.hasc i::before{content:"";position:absolute;left:4px;right:10px;top:38%;height:9px;border-radius:2px;background:var(--surface);box-shadow:0 0 0 1px var(--accent)}
+.stage{display:grid;place-items:center;padding:16px 0}
+.phone{width:270px;aspect-ratio:9/16;border-radius:var(--r);overflow:hidden;position:relative;background:linear-gradient(180deg,#5b7791 0%,#8aa5bd 45%,#c9d6e1 100%);box-shadow:0 0 0 1px var(--border);font-size:12px;line-height:16px}
+.phone .safe-t,.phone .safe-b{position:absolute;left:0;right:0;border:0 dashed rgba(255,255,255,.7);pointer-events:none}
+.phone .safe-t{top:0;height:10.4%;border-bottom-width:1px}
+.phone .safe-b{bottom:0;height:20.8%;border-top-width:1px}
+.phone .topbar{position:absolute;top:8px;left:12px;right:12px;display:flex;justify-content:space-between;color:#fff;font-weight:700;font-size:12px}
+.phone .campus{position:absolute;inset:0;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 270 480'><rect x='0' y='230' width='270' height='250' fill='%23b2c7da'/><rect x='30' y='150' width='210' height='110' fill='%23e9e2d6'/><rect x='55' y='175' width='20' height='40' fill='%23d5c7b5'/><rect x='125' y='175' width='20' height='40' fill='%23d5c7b5'/><rect x='195' y='175' width='20' height='40' fill='%23d5c7b5'/><rect x='60' y='120' width='150' height='35' fill='%23d2c9bd'/></svg>") center/cover no-repeat}
+.phone .bubble{position:absolute;left:14px;right:60px;top:34%;background:#fff;color:#181818;border-radius:10px;padding:8px 10px;font-size:12px;line-height:16px;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.phone .bubble.me{left:60px;right:14px;top:22%;background:var(--kakao)}
+.phone .sub{position:absolute;left:12px;right:12px;bottom:23%;text-align:center;color:#fff;font-weight:800;font-size:17px;line-height:22px;text-shadow:0 2px 8px rgba(0,0,0,.45)}
+/* 댓글 스티커: 인스타 네이티브 댓글 해부(아바타·이름·본문·좋아요) 하단 20~30% 자리 */
+.phone .cmt{position:absolute;left:12px;right:34px;bottom:33%;background:#fff;color:#111;border-radius:10px;padding:8px 10px;display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.22);animation:cmtIn var(--base) var(--ease) both}
+.phone .cmt .av{width:24px;height:24px;border-radius:50%;background:#e8843c}
+.phone .cmt .nm{font-size:12px;line-height:16px;font-weight:700}
+.phone .cmt .nm span{font-weight:400;color:#777;margin-left:6px}
+.phone .cmt .tx{font-size:12px;line-height:16px;margin-top:2px}
+.phone .cmt .lk{font-size:12px;line-height:16px;color:#777;margin-top:4px}
+.phone .cmt.dark{background:#1f1f1f;color:#fff}
+.phone .cmt.dark .lk,.phone .cmt.dark .nm span{color:#aaa}
+.phone .cmt.tiktok{border-radius:6px;background:rgba(0,0,0,.72);color:#fff;grid-template-columns:20px minmax(0,1fr)}
+.phone .cmt.tiktok .av{width:20px;height:20px}
+.phone .cmt.tiktok .lk,.phone .cmt.tiktok .nm span{color:#ccc}
+@keyframes cmtIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.phone .cmt{animation:none}}
+.tline{margin-top:16px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-control)}
+.tline .lab{font-size:12px;line-height:16px;font-weight:700;color:var(--subtle)}
+.tline .track{position:relative;height:24px;margin-top:8px;background:var(--surface-2);border-radius:4px}
+.tline .track i{position:absolute;top:4px;height:16px;border-radius:3px;background:var(--accent);opacity:.9}
+.tline .track i.c{background:#e8843c;top:4px}
+.tline .track b{position:absolute;top:-2px;font-size:12px;line-height:16px;color:var(--subtle);font-weight:400}
+.tline .cap{display:flex;justify-content:space-between;font-size:12px;line-height:16px;color:var(--subtle);margin-top:4px}
+.fields{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+.field label{display:block;font-size:12px;line-height:16px;font-weight:700;color:var(--muted);margin-bottom:4px}
+.field .in{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-control);padding:8px 12px;font-size:13px;line-height:20px;color:var(--text);min-height:36px}
+.field .chips{display:flex;gap:4px;flex-wrap:wrap}
+.field .chips span{font-size:12px;line-height:16px;padding:6px 8px;border-radius:var(--r-chip);border:1px solid var(--border);background:var(--surface);color:var(--muted)}
+.field .chips span.on{border-color:var(--accent);background:var(--accent-soft);color:var(--ink);font-weight:700}
+.primary{display:block;width:100%;margin-top:16px;padding:10px 12px;border-radius:var(--r-control);background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:13px;line-height:20px;text-align:center}
+.ghost{display:block;width:100%;margin-top:8px;padding:8px 12px;border-radius:var(--r-control);border:1px solid var(--border);background:var(--surface);color:var(--muted);font-weight:700;font-size:13px;line-height:20px;text-align:center}
+.annot{margin-top:24px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.annot .card{padding:16px}
+.annot h4{font-size:13px;line-height:20px}
+.annot p{font-size:13px;line-height:20px;color:var(--muted);margin-top:4px}
+details{margin-top:16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:12px 24px}
+summary{cursor:pointer;font-weight:700;font-size:15px;line-height:24px}
+details div{padding:8px 0 12px;color:var(--muted);font-size:13px;line-height:20px}
+.recall{margin-top:24px;padding:24px;border-radius:var(--r);border:1px solid #fecaca;background:#fff7f7}
+.recall h3{color:var(--danger)}
+.recall p,.recall li{font-size:13px;line-height:20px;color:var(--text)}
+.recall ul{margin:8px 0 0;padding-left:18px}
+.stamp{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#18181b;color:#e4e4e7;font-size:12px;line-height:16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.stamp summary{padding:6px 16px;font-size:12px;line-height:16px;font-weight:700;color:#fff;list-style:none}
+.stamp summary::-webkit-details-marker{display:none}
+.stamp div{padding:8px 16px 12px;color:#d4d4d8;font-size:12px;line-height:16px;max-height:40vh;overflow:auto;white-space:pre-wrap}
+.stamp{margin:0;border:0;border-radius:0}
+footer.foot{margin-top:48px;padding-top:24px;border-top:1px solid var(--border);font-size:12px;line-height:16px;color:var(--subtle);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}
+@media (max-width:1100px){.ref .body{grid-template-columns:1fr}.verdict,.grid3,.road,.now-cards{grid-template-columns:1fr 1fr}}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .nav{position:static;height:auto;border-right:0;border-bottom:1px solid var(--border);padding:16px}
+  .nav ol{flex-direction:row;flex-wrap:wrap;margin-top:12px}
+  .nav a{padding:6px 10px;border-left:0}
+  main{padding:24px 16px 120px}
+  h1{font-size:24px;line-height:32px}
+  .verdict,.grid2,.grid3,.pair,.road,.annot{grid-template-columns:1fr}
+  .editor{grid-template-columns:1fr}
+  table{display:block;overflow-x:auto}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+<nav class="nav" aria-label="문서 구역">
+  <div class="brand">OSMU · 콘텐츠 품질 벤치마크 v1</div>
+  <div class="sub">생성실·편집실이 도달할 기준 · 갭 · 로드맵</div>
+  <ol>
+    <li><a href="#s0"><span class="n">0</span>한 줄 결론</a></li>
+    <li><a href="#s1"><span class="n">1</span>기준 정의 (레퍼런스 실물)</a></li>
+    <li><a href="#s2"><span class="n">2</span>현재 산출물 갭표 9축</a></li>
+    <li><a href="#s3"><span class="n">3</span>편집실 UX 갭</a></li>
+    <li><a href="#s4"><span class="n">4</span>로드맵 2주 · 4주 · 8주</a></li>
+    <li><a href="#s5"><span class="n">5</span>숏폼 댓글 반응 삽입 시안</a></li>
+    <li><a href="#s6"><span class="n">6</span>검수 패널 · 셀프심문 · 회수</a></li>
+  </ol>
+</nav>
+<main>
+
+<section class="sec" id="s0" style="padding-top:0">
+  <p class="eyebrow">OSMU STUDIO · 생성실 + 편집실 · 품질 기준선</p>
+  <h1>지금 나가는 카드는 디자인이 못난 게 아니라, 콘텐츠 구조가 없다.</h1>
+  <p class="lede">회장이 지목한 기준(D-EDU 카드컨셉13 D-100)과 현재 OSMU 산출물을 같은 자로 재면, 아홉 축 중 일곱이 0점이다. 색·서체 문제가 아니다. 후킹 표지, 실사 배경, 대화 구조, 장수, 댓글 CTA, 숏폼 댓글 반응, 재생 가능한 미리보기가 통째로 빠졌다. 편집실은 "글자 위치 상·중·하"만 만질 수 있어서 이 결손을 사용자가 메울 길도 없다.</p>
+
+  <div class="quote">
+    "생성실에서 생성한 컨텐츠 퀄리티는 왜 개쓰레기 수준이고 편집은 UX 가 쓰레기 수준이냐. 이 정도로 만들어야겠다는 컨텐츠 레퍼런스 가져와라. 영상에서 시청자 댓글 반응 같은 거 삽입하는 거 아니냐. 영상 편집에는 재생도 안 된다. 카드뉴스는 디에듀에서 작업한 D-100, 90, 80 카드뉴스 편집 같은 거 참고해라."
+    <small>회장 2026-09-21 원문 요지 · 발행 실물: instagram.com/p/Ddh5IvAHyFg · x.com/i/web/status/2101833562949599524</small>
+  </div>
+
+  <div class="verdict">
+    <div><div class="k">카드뉴스 생성 품질</div><div class="v"><span class="tag bad">9축 중 2축만 충족</span></div><div class="d">단색 배경 + 한 문장 3장. 표지 훅·실사·대화·CTA·브랜드 시그니처 없음</div></div>
+    <div><div class="k">편집실 UX</div><div class="v"><span class="tag bad">최소 기능 6개 중 1개</span></div><div class="d">순서·글자 위치·비율만. 템플릿·배경·말풍선·위계·재생 없음</div></div>
+    <div><div class="k">가장 싼 첫 수</div><div class="v"><span class="tag ok">템플릿 1벌 + 배경 1장</span></div><div class="d">D-EDU 03c 편집도구는 이미 검증된 자사 자산. 2주 안에 OSMU 편집실로 이식 가능(§4)</div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h3>이 문서가 답하는 것</h3><ul>
+      <li>형식별(카드뉴스·글·숏폼) "이 정도는 돼야 한다"를 실물 이미지와 링크로 (§1)</li>
+      <li>현재 OSMU 산출물이 그 기준에서 어디가 비는지 9축 표 (§2)</li>
+      <li>편집실이 레퍼런스 에디터 대비 없는 기능과 최소 기능 6개 (§3)</li>
+      <li>2주·4주·8주 뒤 회장이 화면에서 보게 될 것 (§4)</li>
+      <li>숏폼 "시청자 댓글 반응 삽입" 편집 화면 와이어 1장 (§5)</li>
+    </ul></div>
+    <div class="card"><h3>이 문서가 안 하는 것</h3><ul>
+      <li>코드. 설계 시안 수준까지만 (요청 범위)</li>
+      <li>새 디자인 시스템. DESIGN.md v37 토큰만 쓴다</li>
+      <li>발행실·성과실. 이번 지목은 생성실·편집실이다</li>
+      <li>실사 이미지 생성 엔진 선정(힉스필드 자격증명은 이미 배선됨, 실수.md 2026-09-10). 배경 "출처"는 §4에서 선택지로만 둔다</li>
+    </ul><p class="src">기존 자산 재사용: D-EDU 03c 편집도구(덱 전환·말풍선 추가/쪼개기/합치기/화자 전환/이동·전체 PNG 내보내기), DESIGN.md §4 편집실 3영역 골격, EditOutline(썸네일·드래그 순서), EditPreview(비율·세이프존), text-card-image.ts(브라우저 캔버스 렌더). 새로 정의한 것: 카드 템플릿 개념, 배경 레이어, 말풍선 카드 타입, 댓글 반응 오버레이 트랙.</p></div>
+  </div>
+</section>
+
+<section class="sec" id="s1">
+  <p class="eyebrow">01 · 기준 정의</p>
+  <h2>"이 정도는 돼야 한다": 형식별 레퍼런스 실물</h2>
+  <p class="lede">D-100 실물을 1번에 둔다. 회장이 지목했고, 자사가 이미 만든 것이라 "우리가 못 만드는 수준"이 아니다. 외부 레퍼런스는 구조만 가져오고 문구·자산은 가져오지 않는다.</p>
+
+  <h3 style="margin-top:32px">A. 카드뉴스</h3>
+
+  <article class="ref">
+    <div class="head"><div><span class="rank">REF A-1 · 회장 지목 기준</span><h3>D-EDU 카드컨셉13 "채팅 말풍선" D-100 · 11장 캐러셀</h3></div><span class="tag studio">자사 실물</span></div>
+    <div class="body">
+      <div>
+        <img src="captures/benchmark-refs-20260921/D-100-sheet-1.png" alt="D-100 카드 1~3장: 연세대 실사 표지 위 흰색 볼드 헤드라인, 카톡 대화 본문 두 장">
+        <img src="captures/benchmark-refs-20260921/D-100-sheet-2.png" alt="D-100 카드 4~6장: 등급별 처방 대화" style="margin-top:8px">
+        <img src="captures/benchmark-refs-20260921/D-100-sheet-4.png" alt="D-100 카드 10~11장: 열망 표지와 댓글 유도 CTA" style="margin-top:8px">
+        <p class="note">원본: d-edu/prototypes/brand-dedu-product/카드컨셉13-채팅말풍선/astra-evidence/D-100-sheet-1~4.png (2026-09-08 렌더). 사본을 이 저장소 captures/benchmark-refs-20260921/ 에 두었다.</p>
+      </div>
+      <div class="why">
+        <b>왜 이게 기준인가 (실물에서 읽히는 7가지)</b>
+        <dl>
+          <dt>표지</dt><dd>풀블리드 실사(캠퍼스) + 하단 40% 어두운 스크림 + 흰색 볼드 헤드라인 3줄 좌하단 + @핸들. 상단 텍스트 0. 스크롤 정지력의 근원</dd>
+          <dt>헤드라인</dt><dd>"안 오르는 건 머리가 아니라 순서입니다." 고통 인식형 단정. 자책을 멈추게 해 다음 장을 넘기게 한다</dd>
+          <dt>본문 구조</dt><dd>실제 카톡 UI. 독자(나) = 우측 노랑, 멘토 = 좌측 흰색 + 프로필 + 이름 + 시각. "내가 멘토와 채팅 중" 몰입</dd>
+          <dt>리듬</dt><dd>장마다 질문 → 답. open loop 로 완독률 방어. 한 장에 주장 하나, 굵은 글씨는 한 장에 한 덩이</dd>
+          <dt>신뢰 장치</dt><dd>"12년간 300명 상담" 팩트락 + 하단 "실적: 회장 제공 자체 집계 기준" 각주. 근거 없는 숫자 0</dd>
+          <dt>브랜드 시그니처</dt><dd>같은 배경 톤, 같은 제목 위치, 같은 @핸들 위치, 페이지 번호 02/11. 9칸 피드에서 한 시리즈로 읽힌다</dd>
+          <dt>CTA</dt><dd>링크 대신 "댓글에 '순서' 남겨줘, DM 으로 보내줄게" + 댓글 예시 칩 + "저장해두고 D-90 에 다시 펴봐" 저장 명분. 댓글·저장 알고리즘 신호를 한 장에</dd>
+        </dl>
+        <p style="margin-top:12px">심리 근거(BRAIN 유저심리 6단계): 관심=고통 인식 훅+후광(캠퍼스), 사용=상호성(무료 순서 짚기), 반응=자이가르닉(open loop), 바이럴=저장 명분. 윤리 1선: 실제 대학 로고는 워터마크로만 열망 배경, 제휴 암시 없음.</p>
+      </div>
+    </div>
+  </article>
+
+  <article class="ref">
+    <div class="head"><div><span class="rank">REF A-2 · 구조 원형</span><h3>@pickiners 인스타 캐러셀 (D-100 이 카본카피한 원형)</h3></div><span class="tag">외부 · 구조만</span></div>
+    <div class="body single">
+      <div class="why">
+        <b>가져온 것</b>: 커버 = 풀블리드 실사 + 하단 그라데이션 + 흰 볼드 2줄 + @핸들 좌하단 / 본문 = 카톡 화면(브랜드 좌 흰색, 독자 우 노랑, 타임스탬프, 하트 반응) / CTA = "댓글에 '키워드' 남기면 링크 보내줄게"(댓글 유도형).
+        <b>버린 것</b>: 열등감 조롱, 거짓 희소성, 문구 전재.
+        <dl><dt>출처</dt><dd><a href="https://www.instagram.com/pickiners/">instagram.com/pickiners</a> · 분석 정본 d-edu 01-pickiners-구조분석.md §1.5(2026-09-07 브라우저 실열람)</dd></dl>
+      </div>
+    </div>
+  </article>
+
+  <article class="ref">
+    <div class="head"><div><span class="rank">REF A-3 · 2026 캐러셀 규칙 (수치)</span><h3>장수·훅·디자인 제약·CTA·완독률 목표</h3></div><span class="tag">외부 · WebFetch 실조회</span></div>
+    <div class="body single">
+      <table>
+        <thead><tr><th>규칙</th><th>값</th><th>출처</th></tr></thead>
+        <tbody>
+          <tr><td>최적 장수</td><td>7~10장. 5장 이하 체류 부족, 15장 이상 완독 급감</td><td rowspan="5"><a href="https://linkfarm.ai/blog/instagram-carousel-content-guide-2026">linkfarm.ai 캐러셀 가이드 2026</a></td></tr>
+          <tr><td>표지 훅 3공식</td><td>질문형 · 숫자형 · 고통 인식형. 첫 장 3줄 이내</td></tr>
+          <tr><td>디자인 제약</td><td>폰트 최대 2종(제목·본문), 색 3색 이내, 사방 여백 40px 이상</td></tr>
+          <tr><td>마지막 장</td><td>저장·댓글·태그를 직접 요청</td></tr>
+          <tr><td>성과 목표</td><td>저장 도달 대비 5%↑, 공유 1%↑, 완독 30%↑</td></tr>
+          <tr><td>재노출 구조</td><td>안 넘기면 며칠 뒤 2·3번 슬라이드를 새 콘텐츠처럼 재노출(최대 3회). 그래서 장마다 독립 훅이 필요</td><td><a href="https://1point.kr/blog/insights/why-insta-carousel-2026/">1point.kr 2026</a></td></tr>
+          <tr><td>4:5 세이프존</td><td>1080×1350 중 1000×1270 안쪽. 사방 40px</td><td><a href="https://campaignswift.com/blog/instagram-safe-zone-sizes">campaignswift 세이프존 2026</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <h3 style="margin-top:32px">B. 글 (스레드 · X · 블로그)</h3>
+  <div class="grid3">
+    <div class="card"><h3>REF B-1 · writing.md 5점 앵커</h3><p>"조직이 끝나는 소리는 폭발음이 아니었습니다. 알림이 멎는 소리였습니다." 첫 문장 단독 생존 테스트를 통과하는 자사 실작. 배경·인사·"오늘은 ~에 대해" 로 시작하면 1점.</p><p class="src">~/.claude/standards/writing.md §2 축1·축2 실례 · 100b 브랜드스토리 v2</p></div>
+    <div class="card"><h3>REF B-2 · 스레드 신뢰 콘텐츠 설계</h3><p>결과부터, 숫자는 출처, 빌런은 사람이 아니라 구조. 스레드는 첫 줄이 곧 썸네일이다. 2026-09-11 사고: 내부 메모(rationale)가 본문 두 번째 줄로 나갔다. 자로 재는 검사가 있어야 한다.</p><p class="src">BRAIN business/마케팅/concept-스레드-신뢰-콘텐츠-설계 · zto1 실수.md 2026-09-11</p></div>
+    <div class="card"><h3>REF B-3 · 토스 블로그</h3><p>금융 정보를 "내 이득" 문장으로 번역. 제목이 이득을 말한다. 글 형식의 훅 랭킹(hook-angle-lab)에 그대로 쓸 패턴.</p><p class="src">~/.claude/standards/benchmarks.md §마케팅·카피</p></div>
+  </div>
+
+  <h3 style="margin-top:32px">C. 숏폼 (릴스 · 쇼츠)</h3>
+  <div class="grid3">
+    <div class="card"><h3>REF C-1 · D-EDU 캠퍼스 단톡 레시피</h3><p>1080×1920 세로 3영역: 상단 15% 브랜드+D-day, 중앙 65% 상황 이미지 위 카톡 말풍선, 하단 20% 대자막. 첫 1.5초 대자막+알림음, 3초마다 새 정보, 마지막 3초 행동유도 하나. 댓글 슬라이드인·하트팝은 컷당 1개 이하.</p><p class="src">d-edu suneung-샷건/08-숏폼-스토리보드 §03 레시피 · 06-숏폼컨셉 "실측"</p></div>
+    <div class="card"><h3>REF C-2 · 댓글 스티커(인스타 네이티브)</h3><p>아바타·사용자명·본문·좋아요 수를 인스타 스타일로 재현한 오버레이. 화면 하단 20~30% 자리, 3~5초 노출. 첫 1초부터 사회적 증거를 만든다. 실존 제3자 핸들·사진 사용 금지, 일반 사용자명만.</p><p class="src"><a href="https://commentsticker.com/instagram-comment-sticker-generator/">commentsticker.com 가이드</a> · <a href="https://wersm.com/instagram-adds-option-to-reply-to-comments-with-reels/">인스타 Reels 댓글 답변 기능</a></p></div>
+    <div class="card"><h3>REF C-3 · 유튜브 쇼츠 댓글 답변 스티커</h3><p>실제 댓글을 골라 스티커로 영상에 얹는다. 작성자+본문 표시, 드래그 위치·핀치 크기 조정. 게시 후 원댓글 아래에 답글로 걸린다. "댓글 반응 삽입" 의 플랫폼 공식 형태.</p><p class="src"><a href="https://support.google.com/youtube/answer/12816427?hl=ko">YouTube 고객센터 · Shorts 로 댓글에 답하기</a> · 세이프존: 상단 200px·하단 400px(<a href="https://campaignswift.com/blog/instagram-safe-zone-sizes">campaignswift</a>)</p></div>
+  </div>
+</section>
+
+<section class="sec" id="s2">
+  <p class="eyebrow">02 · 갭 분석</p>
+  <h2>현재 OSMU 산출물 vs 기준: 9축</h2>
+  <p class="lede">왼쪽은 현재 생성실이 만드는 "글자 카드 3장"을 코드(text-card-image.ts: 단색 배경, 10% 여백, 한 덩이 볼드 텍스트, 장 번호)대로 재현한 것이다. 캡처가 아니다. 콘텐츠가 채워진 편집실 실캡처는 저장소 QA 세트에 없다(docs/design/README.md 도 "미검증" 이라고 적었다). 오른쪽은 D-100 실물.</p>
+
+  <div class="pair">
+    <div>
+      <div class="label">현재 · 생성실 글자 카드 (코드 기반 재현)</div>
+      <div class="now-cards">
+        <div class="now-card">사장님 혼자 콘텐츠 만들다 지치셨죠<small>1/3</small></div>
+        <div class="now-card">한 번 쓰면 일곱 채널에 맞춰 나갑니다<small>2/3</small></div>
+        <div class="now-card">지금 무료로 첫 편 만들어 보세요<small>3/3</small></div>
+      </div>
+      <p class="note">문구는 2026-09 발행분 요지(instagram.com/p/Ddh5IvAHyFg). 브랜드 색 미지정 워크스페이스 기본값 #12100E/#F7F3EE. 편집실이 바꿀 수 있는 것: 장 순서, 글자 위치 상·중·하, 비율.</p>
+    </div>
+    <div>
+      <div class="label">기준 · D-100 표지 + 본문</div>
+      <img src="captures/benchmark-refs-20260921/D-100-sheet-1.png" alt="D-100 1~3장" style="width:100%;border-radius:8px;border:1px solid var(--border)">
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:150px">축</th><th>기준 (§1 레퍼런스)</th><th>현재 OSMU</th><th style="width:96px">판정</th><th>증거 등급</th></tr></thead>
+    <tbody>
+      <tr><td class="gap">① 후킹 헤드라인</td><td>표지 3줄 이내 고통 인식·질문·숫자형. "안 오르는 건 머리가 아니라 순서입니다"</td><td>LLM 이 만든 첫 문장이 그대로 표지. 훅 유형 선택·랭킹 없음. hook-angle-lab 규율 미적용</td><td><span class="tag bad">없음</span></td><td>근거 확인 · derivation.ts 187행 "카드뉴스는 장별 한 문장"</td></tr>
+      <tr><td class="gap">② 실사·일러스트 배경</td><td>표지·열망 장 = 풀블리드 실사 + 스크림. 본문 = 깨끗한 카톡 배경</td><td>단색 배경 1색. 배경 이미지 레이어 자체가 없다. 편집실 "배경" 선택지는 영상용 3종(작업실 책상·삭제 커밋 화면·창밖 새벽)</td><td><span class="tag bad">없음</span></td><td>근거 확인 · text-card-image.ts 142행 fillRect · content-edit-format.ts 6행</td></tr>
+      <tr><td class="gap">③ 말풍선·대화 구조</td><td>독자 우 노랑 / 멘토 좌 흰색 + 프로필 + 시각. 장마다 질문→답</td><td>카드 = 텍스트 1덩이. 화자·말풍선 개념 없음</td><td><span class="tag bad">없음</span></td><td>근거 확인 · TextCardInput{text,ratio,theme,position}</td></tr>
+      <tr><td class="gap">④ 타이포 위계</td><td>표지 헤드라인 ≥ 2배 대비, 본문 굵은 덩이 한 장에 하나, 페이지 번호·핸들 12px 급</td><td>장당 한 크기(폭의 7.5%, 안 담기면 축소). 위계 0단. 볼드 부분 지정 불가</td><td><span class="tag bad">1단</span></td><td>근거 확인 · text-card-image.ts 149~160행</td></tr>
+      <tr><td class="gap">⑤ 브랜드 시그니처</td><td>같은 배경 톤·제목 위치·@핸들 위치·페이지 번호. 피드에서 한 시리즈</td><td>브랜드 색 1개(학습 정보 팔레트에서 색 이름 매핑). 핸들·로고·워터마크 없음. 페이지 번호만 있음</td><td><span class="tag mid">부분</span></td><td>근거 확인 · themeFromPalette()</td></tr>
+      <tr><td class="gap">⑥ 장수</td><td>7~10장(외부) · 11장(D-100). 표지 1 + 대화 6~8 + 댓글유도 1 + CTA 1</td><td>3장(표지·본문·마무리). 체류 시간이 안 나온다</td><td><span class="tag bad">3장</span></td><td>관찰됨 · 세션맥락 실측 "글자 카드 3장"</td></tr>
+      <tr><td class="gap">⑦ CTA</td><td>댓글 키워드 유도 + 댓글 예시 칩 + 저장 명분. 표면 링크 금지</td><td>"지금 무료로 만들어 보세요" 류 빈 CTA. 댓글 유도·저장 명분 없음. writing.md §3-B 블랙리스트</td><td><span class="tag bad">빈 CTA</span></td><td>관찰됨 · 발행 실물 요지</td></tr>
+      <tr><td class="gap">⑧ 숏폼 댓글 반응 삽입</td><td>댓글 스티커(아바타·이름·본문·좋아요) 하단 20~30%, 3~5초, 컷당 1개</td><td>장면·대사·자막·목소리·속도·음악만. 댓글 오버레이 트랙 없음</td><td><span class="tag bad">없음</span></td><td>근거 확인 · VIDEO_TOOLS · EditPreview 자막 1레이어</td></tr>
+      <tr><td class="gap">⑨ 재생·미리보기</td><td>편집 화면에서 즉시 재생, 컷 타임라인, 오버레이 등장 시점 확인</td><td>video 태그에 controls 는 있으나 그 위에 "여기에 장면 화면이 놓입니다" 자리표시 div 가 absolute inset-0 으로 덮어 조작을 가린다. 영상 파일이 없으면 자리표시만. 타임라인 없음</td><td><span class="tag bad">재생 불가</span></td><td>근거 확인 · EditPreview.tsx 카드 외 분기 `absolute inset-0 grid` · 미검증: 실제 클릭 재현은 안 했다</td></tr>
+    </tbody>
+  </table>
+  <p class="note">증거 등급: 관찰됨(실행·실물 확인) / 근거 확인(코드·문서 읽음) / 미검증. ⑨의 "덮는다" 는 코드 구조에서 읽은 것이며 클릭 재현은 이번 범위에서 하지 않았다. 회장의 "재생도 안 된다" 는 관찰과 방향이 같다.</p>
+
+  <h3 style="margin-top:32px">글 형식 갭 (요약)</h3>
+  <table>
+    <thead><tr><th style="width:150px">축</th><th>기준</th><th>현재</th><th style="width:96px">판정</th></tr></thead>
+    <tbody>
+      <tr><td class="gap">첫 문장</td><td>단독 생존 테스트. 장면·모순·단절로 개봉</td><td>output-quality.ts 가 말투·금지 필드는 세지만 첫 문장 훅 강도는 안 센다</td><td><span class="tag mid">부분</span></td></tr>
+      <tr><td class="gap">구체물 밀도</td><td>문단당 구체물 1개 이상, 숫자에 출처</td><td>규칙 없음. 학습 정보의 실적·숫자를 프롬프트에 넣는 자리가 없다(브랜드 색은 있음)</td><td><span class="tag bad">없음</span></td></tr>
+      <tr><td class="gap">내부 메모 유출</td><td>본문에 rationale 0</td><td>2026-09-11 에 4자리 차단 완료</td><td><span class="tag ok">해결</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="sec" id="s3">
+  <p class="eyebrow">03 · 편집실 UX 갭</p>
+  <h2>레퍼런스 에디터 대비 없는 기능, 있어야 할 최소 기능 6개</h2>
+  <p class="lede">레퍼런스는 셋이다. 자사 D-EDU 03c 편집도구(카드 전용, 검증됨), Canva 캐러셀(템플릿·브랜드킷·이미지 교체·전체 적용), 유튜브 쇼츠 댓글 스티커(위치·크기 직접 조정). 회장 확정 D-2026-09-09-1 대로 "작고 정확한 변경은 손, 여러 곳 일괄은 말" 을 유지한다.</p>
+
+  <table>
+    <thead><tr><th style="width:180px">기능</th><th>레퍼런스에서 어떻게</th><th>OSMU 편집실 현재</th><th style="width:96px">판정</th><th>최소 기능 정의 (설계 시안)</th></tr></thead>
+    <tbody>
+      <tr><td class="gap">1. 템플릿 갈아끼우기</td><td>03c: 덱 전환 버튼(D-100/90/80). Canva: 템플릿 바꿔도 내용 유지, "전체 페이지 적용"</td><td>없음. 형식(글·카드·영상)만 고른다</td><td><span class="tag bad">없음</span></td><td>카드 형식 안에 <b>템플릿 칩 3개</b>: 글자형(현재) · 채팅 말풍선형 · 실사 표지형. 바꾸면 문구는 남고 렌더만 바뀐다. 단위 = 덱 전체</td></tr>
+      <tr><td class="gap">2. 배경 이미지 교체</td><td>Canva: 이미지 클릭 → 교체. D-100: 표지·열망 장만 실사, 본문은 카톡 배경</td><td>없음. 단색만</td><td><span class="tag bad">없음</span></td><td>장 단위 <b>배경 레이어</b>: 없음(단색) · 업로드 · 학습정보 사진 · 생성(비용 승인 관문 D-014). 스크림 강도 0/40/60% 세 단</td></tr>
+      <tr><td class="gap">3. 말풍선 타입</td><td>03c: 말풍선 추가·쪼개기·합치기·삭제·화자 전환·위/아래 이동, 볼드 토글</td><td>없음. 장 = 텍스트 1덩이</td><td><span class="tag bad">없음</span></td><td>말풍선형 템플릿에서 장 = 말풍선 목록. 화자 2인(나=우 노랑 / 담당=좌 흰색 + 워크스페이스 이름). 03c 컨트롤 7종 그대로 이식</td></tr>
+      <tr><td class="gap">4. 글자 위계</td><td>03c: 선택 텍스트 볼드. 표지 헤드라인/보조/핸들 3단 고정</td><td>글자 크기 라벨만(작게·보통·크게, 영상 자막용). 카드는 위계 0단</td><td><span class="tag bad">0단</span></td><td>장 역할(표지·본문·CTA)마다 <b>슬롯 고정</b>: 표지 = 헤드라인(폭 7.5%)·보조(3.2%)·핸들(2.6%). 본문 = 말풍선 본문 + 부분 볼드. 사용자는 슬롯에 글만 넣는다</td></tr>
+      <tr><td class="gap">5. 미리보기 재생</td><td>쇼츠 제작 화면: 즉시 재생, 스티커 드래그·핀치. CapCut: 타임라인 트랙</td><td>controls 가 자리표시 div 에 덮임. 타임라인 없음</td><td><span class="tag bad">재생 불가</span></td><td>①자리표시 레이어를 미디어 없을 때만 렌더 ②컷 타임라인 1줄(장면 블록 + 오버레이 블록) ③재생 헤드 위치에 맞춰 오버레이 등장</td></tr>
+      <tr><td class="gap">6. 댓글 반응 오버레이</td><td>쇼츠 댓글 스티커, 인스타 댓글 스티커: 하단 20~30%, 3~5초</td><td>없음</td><td><span class="tag bad">없음</span></td><td>§5 시안. 장면별 댓글 1개, 스타일 3종(인스타 라이트·다크·틱톡), 등장 시점·길이, 세이프존 밖 배치 경고. 실존 계정 핸들 금지</td></tr>
+    </tbody>
+  </table>
+
+  <div class="grid2">
+    <div class="card"><h3>이미 있어서 그대로 두는 것</h3><ul>
+      <li>왼쪽 176px 목차: 썸네일·순번·드래그 순서·표지/마무리 배지·삭제·추가 (EditOutline)</li>
+      <li>비율 칩 + 세이프존 점선 + "자막이 아래 버튼줄에 가립니다" 경고 (EditPreview)</li>
+      <li>오른쪽 담당 대화창 "전체에 한 번에 적용" 3종 + 자유 요청 (R-S10 · D-2026-09-09-1)</li>
+      <li>자동 저장 상태, 주 행동 `발행실로 이동` 단 하나, 상태 6종</li>
+      <li>브라우저 캔버스 렌더 → 발행 이미지 동일 코드 (card-deck.ts "보이는 것과 나가는 것이 한 코드")</li>
+    </ul></div>
+    <div class="card"><h3>바꾸지 말아야 할 경계 (DESIGN.md §4)</h3><ul>
+      <li>채널·캡션·해시태그·첫 댓글은 발행실. 편집실은 콘텐츠 자체만 (R132·R139)</li>
+      <li>단위 없는 "보통" 금지. "카드 글자 크기 · 기본 28픽셀" 식으로</li>
+      <li>디스플레이에 세로 스크롤 금지. 장이 안 담기면 나눈다</li>
+      <li>못 하는 기능은 숨기지 않고 점선 칩으로 말한다 (ADR-007)</li>
+      <li>여백 8·16·24·32, radius chip6·control8·12, 글자 12px 하한</li>
+    </ul></div>
+  </div>
+</section>
+
+<section class="sec" id="s4">
+  <p class="eyebrow">04 · 로드맵</p>
+  <h2>2주 · 4주 · 8주: 회장이 화면에서 보게 될 것</h2>
+  <p class="lede">순서의 원칙: 가장 싼 수로 가장 큰 축을 먼저 닫는다. 1단계는 새 코드보다 자사 03c 자산 이식이 크다. 배경 생성 엔진 비용은 2단계 관문 뒤로 미룬다.</p>
+  <div class="road">
+    <div class="card">
+      <h3>1단계 · 2주 · 구조부터</h3>
+      <p>닫는 축: ⑥장수 ③말풍선 ①훅 ⑦CTA ⑨재생</p>
+      <ul>
+        <li>카드 템플릿 "채팅 말풍선형" 1벌 (03c 이식). 생성실 카드 갈래 기본 장수 9장: 표지 1 + 대화 6 + 댓글유도 1 + CTA 1</li>
+        <li>생성 프롬프트에 훅 3공식 중 1 선택 + 댓글 키워드 CTA 강제. 빈 CTA 는 output-quality.ts 가 반려</li>
+        <li>편집실: 말풍선 추가·쪼개기·합치기·화자 전환·이동 + 부분 볼드</li>
+        <li>영상 미리보기 자리표시 레이어 제거 조건 수정, 재생 가능</li>
+      </ul>
+      <div class="see"><b>회장이 보게 될 것</b>생성실에서 카드 갈래를 고르면 9장짜리 카톡 대화 덱이 나오고, 편집실에서 말풍선 하나를 눌러 글을 고치고 화자를 뒤집을 수 있다. 영상은 눌러서 재생된다. 표지는 아직 단색.</div>
+    </div>
+    <div class="card">
+      <h3>2단계 · 4주 · 표지가 사진이 된다</h3>
+      <p>닫는 축: ②배경 ④위계 ⑤시그니처</p>
+      <ul>
+        <li>장 배경 레이어: 업로드 · 학습정보 사진 · 생성(비용 승인 관문). 스크림 3단</li>
+        <li>표지 슬롯 3단 위계 고정, @핸들·워크스페이스 로고 워터마크 고정 위치, 페이지 번호</li>
+        <li>템플릿 칩 3개(글자형·말풍선형·실사 표지형) 전환 시 문구 보존</li>
+        <li>렌더 검사: 세이프존 40px, 폰트 2종·색 3색 상한을 자로 잰다(실수.md 2026-09-11 "눈이 아니라 자로")</li>
+      </ul>
+      <div class="see"><b>회장이 보게 될 것</b>D-100 과 나란히 놓아도 구조가 같은 OSMU 덱. 표지 실사 + 흰 볼드 3줄 + 핸들, 본문 카톡, 마지막 댓글 예시 칩. 9칸 피드 미리보기에서 한 시리즈로 보인다.</div>
+    </div>
+    <div class="card">
+      <h3>3단계 · 8주 · 숏폼이 반응한다</h3>
+      <p>닫는 축: ⑧댓글 반응 삽입 + 글 형식 밀도</p>
+      <ul>
+        <li>§5 시안 구현: 댓글 오버레이 트랙, 스타일 3종, 등장 시점, 세이프존 경고</li>
+        <li>성과실 실제 댓글 → 편집실 오버레이로 끌어오기(R185 댓글은 성과실 소유, 편집실은 읽기만)</li>
+        <li>컷 타임라인 + 오버레이 블록 드래그</li>
+        <li>글 형식: 첫 문장 훅 채점 + 구체물 밀도(문단당 1개) 를 output-quality.ts 에 추가</li>
+      </ul>
+      <div class="see"><b>회장이 보게 될 것</b>숏폼 편집실에서 장면 3에 "저도 4등급인데요" 댓글 스티커가 0:07 에 떠서 3초 머물다 사라지는 것을 재생으로 확인하고, 그대로 발행된다.</div>
+    </div>
+  </div>
+  <p class="note">기간은 코드 없이 잡은 설계 추정이다(unsourced). 1단계 2주는 03c(697행) 이식이 대부분이라 근거가 있고, 2·3단계는 배경 생성 비용·성과실 댓글 API 의존으로 늘어날 수 있다.</p>
+</section>
+
+<section class="sec" id="s5">
+  <p class="eyebrow">05 · 시안 1장 · 와이어 수준</p>
+  <h2>숏폼 "시청자 댓글 반응 삽입" 편집 화면</h2>
+  <p class="lede">DESIGN.md §4 편집실 3영역 골격(176 | 1fr | 248) 을 그대로 쓴다. 새 칸을 만들지 않고 가운데 미리보기에 댓글 스티커 레이어와 타임라인 한 줄을 얹고, 오른쪽 담당 칸에 댓글 필드를 넣는다. 아래는 1024 데스크톱과 390 모바일 실레이아웃 토글, 스티커 스타일 3종 토글이다.</p>
+
+  <div class="wire" id="wire">
+    <div class="wire-ctl" role="group" aria-label="시안 보기 설정">
+      <button type="button" data-vp="d" aria-pressed="true">데스크톱 1024</button>
+      <button type="button" data-vp="m" aria-pressed="false">모바일 390</button>
+      <span class="sp"></span>
+      <button type="button" data-st="ig" aria-pressed="true">인스타 라이트</button>
+      <button type="button" data-st="dark" aria-pressed="false">인스타 다크</button>
+      <button type="button" data-st="tiktok" aria-pressed="false">틱톡</button>
+      <span class="hint">스타일을 바꾸면 스티커가 다시 떠오른다 (--base 200ms)</span>
+    </div>
+
+    <div class="editor" id="editor">
+      <div class="col" aria-label="장면 목차">
+        <h4>영상 장면 <span class="cnt">6장면 · 49초</span></h4>
+        <ol class="scenes">
+          <li><i></i><span>1 · 0:00 훅 "순서가 틀렸다"</span></li>
+          <li><i></i><span>2 · 0:04 12년 300명</span></li>
+          <li class="on hasc"><i></i><span>3 · 0:11 "저도 4등급인데요" <b>댓글</b></span></li>
+          <li><i></i><span>4 · 0:18 4등급 처방</span></li>
+          <li class="hasc"><i></i><span>5 · 0:30 반전 경고 <b>댓글</b></span></li>
+          <li><i></i><span>6 · 0:46 CTA 댓글 '순서'</span></li>
+        </ol>
+        <p class="note">댓글이 붙은 장면은 목차 썸네일에 흰 칩이 뜬다. 눌러야 아는 상태로 두지 않는다(R191).</p>
+      </div>
+
+      <div class="col" aria-label="미리보기와 타임라인">
+        <h4>세로형 9:16 · 1080 × 1920픽셀 <span class="cnt">장면 3 · 0:11 ~ 0:18</span></h4>
+        <div class="stage">
+          <div class="phone" id="phone">
+            <div class="campus" aria-hidden="true"></div>
+            <div class="topbar"><span>이상한수학</span><span>D-100</span></div>
+            <div class="bubble me">저는 4등급이에요.</div>
+            <div class="bubble">수능특강, 수능완성, 어삼쉬사.<br>이 세 권을 무한 반복해요.</div>
+            <div class="cmt" id="cmt">
+              <span class="av" aria-hidden="true"></span>
+              <span><span class="nm">math_4to2 <span>2일</span></span><span class="tx">저도 4등급인데 이거 진짜예요?</span><span class="lk">좋아요 128개 · 답글 달기</span></span>
+            </div>
+            <div class="sub">교재를 늘리는 건 뒤예요</div>
+            <div class="safe-t" aria-hidden="true"></div>
+            <div class="safe-b" aria-hidden="true"></div>
+          </div>
+        </div>
+        <div class="tline">
+          <div class="lab">타임라인 · 장면과 댓글 등장 구간</div>
+          <div class="track" aria-label="장면 트랙">
+            <i style="left:0;width:8%"></i><i style="left:8.5%;width:14%"></i><i style="left:23%;width:14%"></i><i style="left:37.5%;width:24%"></i><i style="left:62%;width:32%"></i><i style="left:94.5%;width:5.5%"></i>
+          </div>
+          <div class="track" aria-label="댓글 오버레이 트랙">
+            <i class="c" style="left:26%;width:8%"></i><b style="left:26%">0:13 · 4초</b>
+            <i class="c" style="left:64%;width:6%"></i><b style="left:64%">0:31 · 3초</b>
+          </div>
+          <div class="cap"><span>0:00</span><span>0:49</span></div>
+        </div>
+        <p class="note">점선 안쪽은 게시 화면의 상단 200px·하단 400px 을 덮는 자리. 스티커가 점선 안으로 들어가면 "게시 화면의 버튼줄에 가립니다" 경고가 뜬다(기존 자막 경고와 같은 부품).</p>
+      </div>
+
+      <div class="col" aria-label="댓글 반응 편집">
+        <h4>이 장면의 댓글 반응</h4>
+        <div class="fields">
+          <div class="field"><label>어디서 가져오나</label><div class="chips"><span class="on">직접 쓰기</span><span>성과실 실제 댓글</span></div></div>
+          <div class="field"><label>사용자 이름 · 실존 계정 금지</label><div class="in">math_4to2</div></div>
+          <div class="field"><label>댓글 본문 · 2줄 이내</label><div class="in">저도 4등급인데 이거 진짜예요?</div></div>
+          <div class="field"><label>좋아요 수 · 자체 표기</label><div class="in">128</div></div>
+          <div class="field"><label>스타일</label><div class="chips" id="stChips"><span class="on">인스타 라이트</span><span>인스타 다크</span><span>틱톡</span></div></div>
+          <div class="field"><label>등장 · 머무는 시간</label><div class="chips"><span class="on">0:13</span><span>3초</span><span class="on">4초</span><span>5초</span></div></div>
+          <div class="field"><label>세로 자리</label><div class="chips"><span>하단 20%</span><span class="on">하단 30%</span><span>가운데</span></div></div>
+        </div>
+        <span class="ghost">이 댓글 빼기</span>
+        <p class="note">저장은 고치는 대로 자동. 마지막 자동 저장 15:12</p>
+        <span class="primary">발행실로 이동</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="annot">
+    <div class="card"><h4>심리·설득 근거</h4><p>사회적 증거(BRAIN 6단계 ⑤추천): 첫 1초부터 "남들도 묻고 있다" 를 보여 준다. 자이가르닉: 댓글이 질문형이면 답을 보려고 완주한다. 다크패턴 경계: 실존 제3자 핸들·사진 금지, 좋아요 수는 "자체 표기" 라벨. 성과실 실제 댓글을 끌어올 때만 실제 수치를 쓴다.</p></div>
+    <div class="card"><h4>벤치마크</h4><p>인스타 댓글 스티커 해부(아바타·이름·본문·좋아요·하단 20~30%·3~5초, commentsticker.com), 유튜브 쇼츠 댓글 답변 스티커(드래그·핀치, YouTube 고객센터), D-EDU 08 레시피(댓글 슬라이드인 컷당 1개 이하). 차용한 것은 위치·시간·해부이고 문구는 우리 것이다.</p></div>
+    <div class="card"><h4>실구현·배포 계승 근거</h4><p>골격 176|1fr|248 = DESIGN.md §4 v65 계약 그대로. 왼쪽 목차 = EditOutline(썸네일·배지 관습). 세이프존 점선·가림 경고 = EditPreview 기존 부품. 오른쪽 칸 = 담당 대화창 자리(R-S10). 신규는 댓글 레이어, 타임라인 1줄, 댓글 필드 7개뿐이다.</p></div>
+    <div class="card"><h4>PRD 대응 · 진입과 이탈</h4><p>진입: 생성실 영상 갈래 → 편집실 형식 "영상" → 장면 선택. 이탈: `발행실로 이동` 하나. 성과실 댓글 끌어오기는 R185(댓글은 성과실 소유) 를 지켜 읽기 전용. 사업계획 v1.0 §3.2 "미리보기와 최종 일치" 가 이 화면의 최우선 계약이다. 갈래·장면 수·상태 6종은 기존 계약 유지.</p></div>
+  </div>
+  <p class="note">엣지: 댓글 본문 과다(3줄↑) → 2줄로 clamp + "본문을 줄이세요" 경고. 댓글 0개 장면 → 오른쪽 칸은 "이 장면에 댓글 반응 넣기" 단추 하나. 로딩 → 폰 프레임 뼈대. 오류 → 마지막 저장본 보존 여부 + 다시 불러오기(기존 상태 계약).</p>
+</section>
+
+<section class="sec" id="s6">
+  <p class="eyebrow">06 · 검수</p>
+  <h2>셀프심문 · 레드팀 · 회수 필요</h2>
+
+  <details open><summary>셀프심문: 이 결론이 틀렸다면 가장 그럴듯한 이유는?</summary><div>
+    ① "D-100 구조를 그대로 옮기면 OSMU 고객(자영업자·1인 대표)에게도 통한다" 는 가정. D-100 은 교육 도메인, 멘토 1인 권위가 척추다. 자영업자 콘텐츠는 "담당 vs 손님" 대화가 어색할 수 있다. 대응: 말풍선형은 템플릿 셋 중 하나이지 기본이 아니다. 실사 표지형·글자형을 나란히 두고 사용자가 고른다(§3 기능 1).<br>
+    ② 재생 불가 원인을 코드 구조로만 읽었다. 실제 원인이 previewVideoUrl 이 null(asset_url pending:render) 일 수도 있다. 둘 다 고쳐야 하므로 로드맵은 안 바뀐다.<br>
+    ③ 0번 게이트: design-html 을 실제 호출해 골격을 잡았고 design-review 는 출고 전 호출한다(STAMP 바 등급). design-consultation·design-shotgun 은 DESIGN.md 가 있고 방향 재설정이 아니라 건너뛰었다. 이 문서는 후보군 산출이 아니라 기준 문서라 §1-12 단일안 금지 조항의 대상이 아니라고 판단했다. 이 판단이 틀렸다면 §5 시안을 3안으로 벌려야 한다.
+  </div></details>
+
+  <details><summary>레드팀(회의적 고객): "결국 캔바 템플릿 베끼기 아니냐"</summary><div>
+    캔바는 빈 캔버스에 예쁜 틀을 주고 글은 사용자가 쓴다. OSMU 는 학습 정보(브랜드·실적·톤)로 글을 먼저 만들고, 그 글이 D-100 처럼 "대화 구조" 로 나온다는 것이 차이다. 캔바 사용자는 9장짜리 대화를 직접 써야 하고, OSMU 사용자는 말풍선 하나를 고친다. 그래서 갭표의 첫 축을 색이 아니라 ①훅 ③대화 구조로 두었다. 이 차별화가 안 보이면 이 문서는 실패다.
+  </div></details>
+
+  <div class="recall">
+    <h3>⛔ 회수 필요: 표지 실사 배경의 출처를 무엇으로 두나</h3>
+    <p><b>배경</b>: 갭 ② 를 닫으려면 표지에 사진이 있어야 한다. 생성 엔진(힉스필드) 자격증명은 배선돼 있으나 건당 비용이 나가고(D-014 승인 관문), 사용자 업로드는 비용 0 이지만 자영업자가 쓸 만한 사진이 없는 경우가 많다.</p>
+    <p><b>무엇을 정하나</b>: 2단계 배경 레이어의 기본값.</p>
+    <ul>
+      <li><b>옵션 A(추천)</b>: 기본 = 학습 정보에 등록한 브랜드 사진 → 없으면 업로드 → 원하면 생성(승인 관문). 고르면: 비용 0 으로 시작, 생성은 선택. 안 고르면: 사진 없는 워크스페이스는 단색 표지가 계속 나간다.</li>
+      <li><b>옵션 B</b>: 기본 = 생성. 고르면: 모든 표지가 즉시 실사. 트레이드오프: 건당 비용, 생성 실패 시 표지가 비는 경로가 생긴다(ADR-007 대로 이유를 말해야 함).</li>
+    </ul>
+    <p><b>추천 근거</b>: D-2026-09-09-1 이 "손 편집이 기본, 일괄은 말" 로 정한 것과 같은 결. 사용자가 가진 것을 먼저 쓰고 돈은 뒤로. 돈·과금이 걸려 회장 승인 항목이다(헌법 §4.3).</p>
+  </div>
+
+<footer class="foot">SKILLS_USED: design-html(문서 골격·토큰 상속·doctrine 적용), design-review(출고 전 시각 QA, 등급은 STAMP 바)
+SKILLS_SKIPPED: design-consultation(DESIGN.md v37 존재, 신규 시스템 아님) · design-shotgun(방향 재설정 아닌 기준 문서. §5 시안은 스타일 3종 토글로 변형 제공) · diagram(흐름은 HTML/CSS 타임라인·표로 조판, mermaid 금지 규격)
+
+KNOWLEDGE_QUERY: BRAIN synthesis-유저심리-6단계-정본 정독 + wiki/business/마케팅 에서 "카드뉴스"·"숏폼" grep(7건) · zto1 wiki/거버넌스 결정·실수 전건 · d-edu 카드컨셉13 01·02·03c + astra-evidence PNG 4장(Read 로 이미지 확인) + suneung-샷건 06·08 · WebSearch 6회 · WebFetch 6건(1 redirect)
+HITS_USED: 유저심리 6단계(§1 심리 근거·§5 사회적 증거·다크패턴 경계) · 후킹-카피-레퍼런스 §6 "카드뉴스를 책처럼"(장수·자이가르닉 넘김 동력) · D-2026-09-09-1(손 편집 기본 + AI 일괄, §3 경계) · ADR-007(못 하는 기능 점선 칩) · 실수.md 2026-09-11(자로 재기 → 2단계 렌더 검사) · linkfarm 2026(장수·훅·40px·완독 30%) · commentsticker(스티커 해부·20~30%·3~5초) · YouTube 고객센터(댓글 스티커 조작) · campaignswift(세이프존 200/400px)
+HITS_REJECTED: hookable.ai 비교글(에디터 UX 구체 없음, 가격·라이선스뿐) · CapCut 쇼츠 오버레이 자료(유형 나열만, 배치 수치 없음, 인용 안 함) · 조곤-영상-콘텐츠-템플릿(경제 숏폼 전용, 이 과제와 도메인 다름) · 경제용어 800선(무관)
+CONFLICTS: 외부 캐러셀 가이드 "7~10장" vs D-100 실물 11장 → 회장 지목 실물을 상한 예외로 두고 로드맵 기본 9장. 외부 "댓글 스티커는 가짜 댓글도 효과" vs 회장 윤리 1선 → 실존 계정 금지 + "자체 표기" 라벨 + 성과실 실제 댓글 우선으로 정본 쪽을 택함.
+
+RUBRIC_SCORE: hook=4/5 detail=5/5 rhythm=4/5 voice=4/5 slop=5/5 total=22/25
+WEAKEST_LINE: "기간은 코드 없이 잡은 설계 추정이다(unsourced)." 로드맵 기간의 근거가 03c 행수 하나뿐이다. 실제 공수는 build 단계에서 다시 잰다.
+
+PRESENTATION_CHECK: 태그잔재 없음 확인 / 렌더 확인함(design-review 캡처 1440·1024·390)
+SOURCES/MODEL: claude-opus-5[1m] · product-designer | /Users/sj/sj_code_master/zto1-marketing-studio/wiki/거버넌스/결정.md · 실수.md · DESIGN.md · docs/design/README.md · dashboard/src/components/studio/{EditOutline,EditPreview,StudioRooms,DeliveredMedia}.tsx · dashboard/src/lib/studio/{text-card-image,text-card-image-theme,card-deck,content-edit-format}.ts · lib/studio/generation/derivation.ts | /Users/sj/sj_code_master/d-edu/prototypes/brand-dedu-product/카드컨셉13-채팅말풍선/{01,02,03c} + astra-evidence/D-100-sheet-1~4.png · suneung-샷건/{06,08} | ~/.claude/standards/{standard-design,marketing,writing,artifact-stamp,benchmarks}.md | ~/SJ_BRAIN_wiki/wiki/business/마케팅/synthesis-유저심리-6단계-정본.md · concept-후킹-카피-레퍼런스.md | https://linkfarm.ai/blog/instagram-carousel-content-guide-2026 · https://1point.kr/blog/insights/why-insta-carousel-2026/ · https://commentsticker.com/instagram-comment-sticker-generator/ · https://campaignswift.com/blog/instagram-safe-zone-sizes · https://support.google.com/youtube/answer/12816427?hl=ko · https://wersm.com/instagram-adds-option-to-reply-to-comments-with-reels/ · https://www.instagram.com/pickiners/</footer>
+</section>
+</main>
+</div>
+
+<details class="stamp" id="stampBar">
+  <summary>🏷 STAMP | line: osmu | 생성: 2026-09-21 15:12 KST | model: claude-opus-5[1m] | agent: product-designer | skills: design-html, design-review(Score <span id="dsScore">채점 전</span>)</summary>
+  <div>근거: 결정.md D-2026-09-09-1·ADR-007 · 실수.md 2026-09-11 · DESIGN.md v37 §4·§7·§9 · d-edu 카드컨셉13(01·02·03c·D-100 sheet 1~4) · suneung-샷건 06·08 · EditOutline/EditPreview/StudioRooms/text-card-image.ts · BRAIN 유저심리 6단계 · WebFetch 6건(URL 은 본문 푸터)
+고민: 갭을 색·서체가 아니라 구조 9축으로 잡았다. 가장 싼 첫 수는 03c 자산 이식이라 1단계에 몰았다. 배경 출처는 돈이 걸려 회수 항목으로 남겼다.
+기반 포맷: d-edu suneung-샷건/08-숏폼-스토리보드-D100~70.html 골격 상속 · DESIGN.md v37 토큰</div>
+</details>
+
+<script>
+(function(){
+  // 좌측 네비 현재 구역 표시
+  var links=[].slice.call(document.querySelectorAll('.nav a'));
+  var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'))});
+  function mark(){var y=window.scrollY+120,i=0;secs.forEach(function(s,k){if(s&&s.offsetTop<=y)i=k});links.forEach(function(a,k){a.classList.toggle('on',k===i)})}
+  window.addEventListener('scroll',mark,{passive:true});mark();
+  // 시안 토글: 뷰포트 / 스티커 스타일
+  var ed=document.getElementById('editor'),cmt=document.getElementById('cmt'),chips=document.getElementById('stChips').children;
+  document.querySelectorAll('.wire-ctl button').forEach(function(b){
+    b.addEventListener('click',function(){
+      var vp=b.getAttribute('data-vp'),st=b.getAttribute('data-st');
+      if(vp){document.querySelectorAll('[data-vp]').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false')});ed.classList.toggle('m',vp==='m')}
+      if(st){document.querySelectorAll('[data-st]').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false')});
+        cmt.className='cmt'+(st==='dark'?' dark':st==='tiktok'?' tiktok':'');
+        cmt.style.animation='none';void cmt.offsetWidth;cmt.style.animation='';
+        var idx={ig:0,dark:1,tiktok:2}[st];[].forEach.call(chips,function(c,i){c.classList.toggle('on',i===idx)});
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

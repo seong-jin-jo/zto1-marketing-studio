@@ -103,7 +103,9 @@ describe("숏폼 공장 Postgres 격리와 경합 계약", () => {
         (SELECT count(*)::int FROM shorts_factory_concept_runs WHERE tenant_id = ${firstTenantId}) AS concepts,
         (SELECT count(*)::int FROM studio_generation_jobs WHERE tenant_id = ${firstTenantId} AND member_id = ${memberId}) AS jobs`;
     expect(counts).toEqual({ concepts: 8, jobs: 7 });
-  });
+  // 실제 PostgreSQL에 8개 컨셉과 7개 생성 작업을 기록하므로 전체 스위트 병렬 부하에서도
+  // 기본 5초 제한이 다음 테스트의 활성 실행 정리까지 끊지 않도록 DB 예산을 둔다.
+  }, 30_000);
 
   it("FACTORY-DB-02 한국어 설명: 같은 작업 공간의 실행 중 공장 둘째는 거절하고 다른 작업 공간은 독립 실행한다", async (ctx) => {
     if (!await liveDatabase(ctx)) return;

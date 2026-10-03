@@ -34,6 +34,6 @@ describe("영상 발행 경로의 실패 응답", () => {
       expect(window).toMatch(/\berror:\s*/);
     });
     expect(src).toContain('status: result.failureKind === "indeterminate" ? 409 : PROVIDER_FAILED');
-    expect(src).toContain('code: "publish_state_uncertain"');
+    expect(src).toContain('code: "PUBLISH_STATE_UNCERTAIN"');
   });
 });

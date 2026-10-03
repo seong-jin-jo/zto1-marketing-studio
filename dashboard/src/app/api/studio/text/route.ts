@@ -6,6 +6,7 @@ import { fetchRepoFile } from "@/lib/github";
 import { CHANNEL_TEXT_LIMITS } from "@/lib/channel-text-limits";
 import { getLearnedRulesContext } from "@/lib/studio/learned-rules-context";
 import { NO_DASH_RULE, withoutDashes } from "@/lib/studio/generation/llm";
+import { findInstructionPlaceholder } from "@/lib/studio/generated-copy";
 
 // POST /api/studio/text — 글감 1개 → 플랫폼별 텍스트 변형(OSMU).
 // body: { idea, guide?, tenant_id?, context_sources? } 
@@ -66,6 +67,7 @@ ${guide ? `브랜드 톤 가이드:\n${withoutDashes(guide)}\n` : ""}${learnedRu
 ${structureGuide}
 
 규칙: 100% 한국어, AI가 쓴 티 금지, 후킹 첫 문장, 과한 이모지 금지.
+학습 정보가 비어 있으면 글감만으로 성립하는 완성된 일반 문장을 쓴다. 괄호 안에 "입력", "작성", "채우기", "한 문장으로 대체" 같은 다음 작성자용 지시를 절대 남기지 않는다.
 ${NO_DASH_RULE}
 출력은 JSON만(다른 텍스트 없이):
 {
@@ -74,14 +76,19 @@ ${NO_DASH_RULE}
  "x": "X용 (${CHANNEL_TEXT_LIMITS.x}자 이내, 압축)",
  "instagram": {"caption": "IG 캡션", "hashtags": ["태그", ...], "slides": ["카드1(표지 훅)", "카드2", "카드3", "카드4(CTA)"]},
  "shorts": {"hook": "0~3초 훅", "body": "3~20초 3포인트", "cta": "20~30초 CTA"},
- "image_prompt": "히어로 이미지 생성용 영문 프롬프트(텍스트 없이, 플랫 일러스트)"
+ "image_prompt": "히어로 이미지 생성용 영문 프롬프트. 영어 1~2문장. 사람의 손·물건·공간 같은 실물 피사체 하나와 구도·빛·재질만 묘사한다. 한국어·브랜드명·제품명 금지. 화면·모니터·문서·간판·아이콘·차트·말풍선처럼 글자가 놓일 물체는 절대 등장시키지 않는다(부정어로 적지 말고 그냥 다른 피사체를 골라라). 예: 'A hand pouring coffee into a ceramic cup on a wooden table, soft morning light.' / 'Two people shaking hands in a bright office, warm natural light.' / 'A pair of running shoes resting on a park bench, dappled shade.'"
 }`;
   try {
     // 고객이 자기 Anthropic 키 등록 시 그 키로(고객 과금), 없으면 공유 claude -p
     const stdout = await generateText(prompt, tenantId);
     const m = stdout.match(/\{[\s\S]*\}/);
     if (!m) return Response.json({ ok: false, error: "생성기가 알아볼 수 없는 형식으로 답했습니다. 잠시 후 다시 시도해 주세요.", raw: stdout.slice(-400) }, { status: UPSTREAM_FAILED });
-    return Response.json({ ok: true, ...JSON.parse(m[0]) });
+    const generated = JSON.parse(m[0]) as Record<string, unknown>;
+    const placeholder = findInstructionPlaceholder(generated);
+    if (placeholder) {
+      return Response.json({ ok: false, error: "완성 문장 대신 자리표시가 남아 초안을 저장하지 않았습니다. 다시 만들어 주세요." }, { status: UPSTREAM_FAILED });
+    }
+    return Response.json({ ok: true, ...generated });
   } catch (e) {
     const approvalResponse = sharedAiApprovalErrorResponse(e);
     if (approvalResponse) return approvalResponse;

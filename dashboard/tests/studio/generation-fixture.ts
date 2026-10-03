@@ -1,8 +1,15 @@
 import crypto from "node:crypto";
 import generationRequest from "./generation-request.fixture.json";
+import deckD100Fixture from "./fixtures/deck-d100.v2.json";
 import type { StudioContentGenerator } from "@/lib/studio/generation/llm";
+import type { CardDeck } from "@/lib/studio/card-deck-contract";
 
 export const STUDIO_TEST_WORKSPACE_ID = generationRequest.workspace_id;
+
+/** 벤치마크가 지목한 실물(D-100)을 옮긴 정본 fixture. 매 호출 새 객체를 준다(공유 뮤테이션 방지). */
+export function cardDeckFixture(): CardDeck {
+  return structuredClone(deckD100Fixture) as CardDeck;
+}
 
 export const FIXTURE_STUDIO_CONTENT_GENERATOR: StudioContentGenerator = {
   async generateCandidates({ request }) {
@@ -15,7 +22,7 @@ export const FIXTURE_STUDIO_CONTENT_GENERATOR: StudioContentGenerator = {
   },
   async generateDerivation({ candidate, kind }) {
     if (kind === "text") return { kind, body: `${candidate.title}\n\n${candidate.rationale}\n\n${candidate.format.outline.join("\n\n")}\n\n마지막으로 같은 조건에서 다시 실행해 결과를 기록합니다.` };
-    if (kind === "card") return { kind, slides: [candidate.title, ...candidate.format.outline].map((text, order) => ({ id: crypto.randomUUID(), order, text, image_url: null })) };
+    if (kind === "card") return { kind, deck: cardDeckFixture() };
     return { kind, asset_url: "pending:render", scenes: candidate.format.outline.map((text, order) => ({ id: crypto.randomUUID(), order, title: `${order + 1}번 장면`, lines: [{ id: crypto.randomUUID(), order: 0, text, visible: true, deleted_at: null }] })) };
   },
 };
