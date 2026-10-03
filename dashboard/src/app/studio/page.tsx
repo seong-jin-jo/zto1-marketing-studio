@@ -8,6 +8,9 @@ import {
   fetcher,
   apiPost,
   isExternalPublishPersistenceError,
+  isExternalPublishConfirmedPayload,
+  isUnresolvedPublishPayload,
+  isUnresolvedPublishError,
   ApiResponseError,
   type ExternalPublishPersistenceFailure,
 } from "@/lib/api";
@@ -28,6 +31,12 @@ import { SchedulePanel } from "@/components/studio/SchedulePanel";
 import { trackEvent, type AnalyticsChannel } from "@/lib/analytics/events";
 import { authHeaders } from "@/lib/auth";
 import { pollHiggsfieldJob, savePendingJob, readPendingJob, clearPendingJob } from "@/lib/higgsfield-poll";
+import { pollJobUntilDone, JOB_POLL_INTERVAL_MS } from "@/lib/job-poll";
+import { wakeableSleep } from "@/lib/wakeable-sleep";
+import {
+  savePendingVideoPublishJob, readPendingVideoPublishJob, clearPendingVideoPublishJob,
+  savePendingSocialPublishJob, readPendingSocialPublishJob, clearPendingSocialPublishJob,
+} from "@/lib/publish-job-store";
 import {
   browserCardUploader,
   cardRatioFrom,
@@ -84,9 +93,13 @@ import { runWithConcurrency } from "@/lib/async-pool";
 import { embeddedTextCardImage, recoverDraftEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
 
 const PUBLISH_CONCURRENCY = 3;
+// 2026-10-02 컨트롤러 감사: 이 타임아웃은 더 이상 "서버가 끝날 때까지" 기다리는 역할이
+// 아니다 — 서버가 예산(기본 8초, PUBLISH_FAST_PATH_BUDGET_MS/VIDEO_PUBLISH_FAST_PATH_
+// BUDGET_MS)을 넘기면 이제 202 + processing을 그 안에 돌려주고, 실제 완료는
+// awaitAsyncSocialPublish/awaitAsyncVideoPublish가 별도로(15분 상한) 기다린다. 이 상수들은
+// "접수 자체가 이 시간 안에도 안 끝나면 네트워크 이상"을 가르는 안전망일 뿐이라 8초
+// 예산+정상 네트워크 지연에 넉넉히 여유 있다.
 const PUBLISH_REQUEST_TIMEOUT_MS = 45_000;
-// 영상 API의 공급자 업로드 상한은 120초다. 클라이언트가 먼저 포기하면 서버의 실제 성공을
-// 실패로 보여 재시도를 유도하므로 영상만 서버 상한보다 길게 기다린다.
 const VIDEO_PUBLISH_REQUEST_TIMEOUT_MS = 130_000;
 
 // SNS-007: /api/publish가 실제로 계정별 발행을 받는 4개 플랫폼(threads/x/facebook/instagram)만
@@ -276,7 +289,10 @@ interface VidResult {
   hasAudio?: boolean;
   narration?: { requested: boolean; included: boolean; reason?: string; message?: string };
 }
-type PubStatus = "wait" | "doing" | "done" | "failed";
+// "unknown" = 비동기 발행이 상한(15분)을 넘겨 더 기다리지 않지만, "실패"로 단정하지도
+// 않는 상태(세션맥락: 524 오판으로 인한 재발행이 중복 게시를 부른다 — 재발행을 유도하지
+// 않기 위해 failed와 분리한다). 게시물 목록에서 실제 결과를 확인하라고 안내한다.
+type PubStatus = "wait" | "doing" | "done" | "failed" | "unknown";
 type PublishReconciliation = ExternalPublishPersistenceFailure["persistence"]["reconciliation"];
 type PublishReconciliationMap = Record<string, PublishReconciliation>;
 
@@ -1428,54 +1444,79 @@ export default function StudioPage() {
   // cb35f3fd — 15~20분 뒤 완료됐는데 서버 쪽 호출은 이미 끊겨 크레딧만 쓰고 결과를 못
   // 받았다). genImage/genVideo가 접수 직후 localStorage에 적어 둔 jobId가 작업 공간
   // 전환 시점에 남아 있으면 자동으로 이어서 조회한다.
-  useEffect(() => {
+  // resumePendingJobsRef: 작업공간 전환 effect와 탭-재표시 effect가 같은 복구 로직을
+  // 공유한다(2026-10-02 server-side finalize 보강 — 세션맥락 22분 소실 재발방지). 서버가
+  // 이제 백그라운드 루프로 작업을 스스로 끝내지만, 화면이 그 결과를 "받아서 보여주는" 것은
+  // 여전히 이 폴링이 한다 — 탭이 백그라운드에서 오래 있다가 포그라운드로 돌아왔을 때
+  // (같은 작업공간이라 effect가 재실행되지 않는 경우) 다시 확인하지 않으면 사용자는 이미
+  // 완료된 결과를 화면에서 영영 못 본다.
+  const resumePendingJobs = useCallback(() => {
     if (!activeWorkspace) return;
+    if (resumePollAbort.current) return; // 이미 복구 폴링이 돌고 있다 — 중복 시작 금지.
     const workspaceId = activeWorkspace.id;
     const pendingImg = readPendingJob(workspaceId, "image");
     const pendingVid = readPendingJob(workspaceId, "video");
     if (!pendingImg && !pendingVid) return;
-    // 2026-10-02 리뷰 MAJOR 5b: 이 effect 전용 AbortController를 쓴다 — 전역
-    // generationAbort(사용자가 누르는 "지금 작업물 버리기")와 분리해서, 이 복구가
-    // 언마운트/작업공간 재전환으로 취소될 때 다른 상호작용 폴링까지 끊기지 않게 한다.
     const controller = new AbortController();
     resumePollAbort.current = controller;
     showToast("이전에 시작한 생성을 이어서 확인하는 중", "success");
-    // 2026-10-02 리뷰 MAJOR 5c: 저장해 둔 주제(idea)를 복원해 생성실이 "무엇을 만들던
-    // 중이었는지" 비어 보이지 않게 한다. 이미지·영상 둘 다 있으면 이미지 쪽 주제를
-    // 우선한다(보통 같은 작업 흐름의 같은 주제).
-    // 2026-10-02 리뷰 MINOR: `idea`를 클로저로 읽어 비었는지 판단하면, 같은 시점에
-    // 돌아가는 작업공간 복원 effect(워크스페이스 데이터에서 idea를 되살리는 effect)가
-    // 나중에 적용한 값을 이 effect가 덮어쓸 수 있다. 함수형 setState로 "적용되는
-    // 순간"의 실제 현재값을 보고, 그때도 비어 있을 때만 채운다.
     const restoredIdea = pendingImg?.idea ?? pendingVid?.idea;
     if (restoredIdea) {
       setIdea((current) => (current.trim() ? current : restoredIdea));
     }
+    const tasks: Promise<unknown>[] = [];
     if (pendingImg) {
       setBusy("이미지 생성 대기열에서 기다리는 중");
-      pollAndFinishImage(pendingImg.jobId, workspaceId, pendingImg.aspectRatio ?? "9:16", {
+      tasks.push(pollAndFinishImage(pendingImg.jobId, workspaceId, pendingImg.aspectRatio ?? "9:16", {
         signal: controller.signal,
         topicLabel: pendingImg.idea,
-      }).finally(() => setBusy(null));
+      }));
     }
     if (pendingVid) {
       setBusy("영상 생성 대기열에서 기다리는 중");
-      pollAndFinishVideo(pendingVid.jobId, workspaceId, {
+      tasks.push(pollAndFinishVideo(pendingVid.jobId, workspaceId, {
         signal: controller.signal,
         topicLabel: pendingVid.idea,
-      }).finally(() => setBusy(null));
+      }));
     }
-    // 작업 공간이 바뀌거나(새 workspaceId로 effect 재실행) 컴포넌트가 언마운트되면
-    // 이 복구 폴링만 끊는다 — pollAndFinishImage/Video 내부의 activeWorkspaceIdRef
-    // 가드와 함께, 더 이상 보고 있지 않은 작업공간의 결과가 화면에 꽂히는 것을 막는다.
-    return () => {
-      controller.abort();
+    Promise.allSettled(tasks).finally(() => {
+      setBusy(null);
       if (resumePollAbort.current === controller) resumePollAbort.current = null;
-    };
-    // activeWorkspace.id가 바뀔 때(작업 공간 전환)만 재확인한다. pollAndFinish* 함수는
-    // 매 렌더 재생성되지만 effect 의존성에 넣으면 생성 호출 때마다 재구독돼 중복 폴링이 된다.
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspace?.id]);
+  // 새로고침·탭 재방문 뒤에도 진행 중이던 생성을 잃지 않는다(세션맥락 2026-10-01 추가 실측
+  // cb35f3fd — 15~20분 뒤 완료됐는데 서버 쪽 호출은 이미 끊겨 크레딧만 쓰고 결과를 못
+  // 받았다). genImage/genVideo가 접수 직후 localStorage에 적어 둔 jobId가 작업 공간
+  // 전환 시점에 남아 있으면 자동으로 이어서 조회한다.
+  useEffect(() => {
+    resumePendingJobs();
+    return () => {
+      resumePollAbort.current?.abort();
+      resumePollAbort.current = null;
+    };
+    // activeWorkspace.id가 바뀔 때(작업 공간 전환)만 재확인한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id]);
+  // 2026-10-02 server-side finalize 보강: 탭이 백그라운드에 있다가 다시 보일 때도 복구를
+  // 다시 확인한다. activeWorkspace.id가 바뀌지 않아 위 effect는 재실행되지 않지만, 그동안
+  // 서버가 백그라운드로 작업을 끝냈을 수 있고 화면 쪽 폴링은 (브라우저가 타이머를 묶어
+  // 두거나, 탭을 완전히 닫았다 다시 연 경우) 이어지지 않았을 수 있다.
+  useEffect(() => {
+    const onWake = () => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        resumePendingJobs();
+      }
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    window.addEventListener("pageshow", onWake);
+    return () => {
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("pageshow", onWake);
+    };
+  }, [resumePendingJobs]);
   // 지금 작업물을 버리고 처음부터 시작한다.
   //
   // 2026-09-06 회장 스모크: "생성실, 편집실, 발행실 리셋을 어떻게 해야하나 모르겠음
@@ -2058,7 +2099,12 @@ export default function StudioPage() {
     const filename = videoFilename(vid?.file || vid?.url || "");
     if (!filename) return { kind: "skipped" };
     const spoken = lines.filter((line) => line.trim());
-    if (!spoken.length) return { kind: "skipped" };
+    const editNeedsFile = Boolean(videoEdit && (
+      videoEdit.subtitles.some((line) => line.cut || line.text.trim().length > 0)
+      || videoEdit.overlays.some((item) => item.text.trim().length > 0)
+      || videoEdit.comments.some((item) => item.author.trim().length > 0 && item.text.trim().length > 0)
+    ));
+    if (!spoken.length && !editNeedsFile) return { kind: "skipped" };
     const subtitleSize = editFormat.kind === "video" ? editFormat.subtitleSize : "보통";
     try {
       const r = await apiPost<{ ok?: boolean; file?: string; filename?: string; error?: string }>("/api/video/subtitle", {
@@ -2066,6 +2112,7 @@ export default function StudioPage() {
         filename,
         lines: spoken,
         subtitleSize,
+        ...(videoEdit ? { videoEdit } : {}),
       });
       if (!r?.ok || !r.file) {
         showToast(r?.error || "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요.", "error");
@@ -2238,6 +2285,170 @@ export default function StudioPage() {
     }
   }
 
+  // 2026-10-02 컨트롤러 감사 반려: video/publish가 202 + jobId(status:"processing")를 줘도
+  // 화면은 그 응답을 몰라 ok:true로 읽고 바로 "완료"로 표시했다 — 거짓-성공이었다. 서버가
+  // 실제로 끝날 때까지 이 폴링이 기다린다. 15분 상한을 넘기면 "실패"가 아니라 "결과 확인
+  // 중"으로 남겨 재발행(중복 게시)을 유도하지 않는다.
+  async function awaitAsyncVideoPublish(
+    tenantId: string, filename: string, platform: string, jobId: string, signal?: AbortSignal,
+  ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> {
+    savePendingVideoPublishJob(tenantId, filename, platform, jobId);
+    const outcome = await pollJobUntilDone<{ ok?: boolean; url?: string; error?: string; status?: string; processing?: boolean; publishId?: string }>(
+      `/api/video/publish/job/${encodeURIComponent(jobId)}?tenant_id=${encodeURIComponent(tenantId)}`,
+      // MAJOR-2: 고정 헤더 대신 매 요청마다 새로 만든다 — 15분 폴링 중 토큰이 돌면
+      // 고정 헤더는 그 뒤로 계속 401을 받는다.
+      // MINOR(2026-10-02 재재검토): signal을 넘기면 effect cleanup(언마운트·작업공간
+      // 전환)이 cancelled=true만 찍는 게 아니라 이 폴링 자체를 즉시 멈춘다 — 안 그러면
+      // 사용자가 떠난 뒤에도 15분까지 네트워크 폴링이 백그라운드에 남는다.
+      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000, signal },
+    );
+    if (outcome.timedOut) {
+      // pending 기록을 지우지 않는다 — 다음 방문(탭 재표시/새로고침)에서 복구 효과가 이어서
+      // 확인한다. 상한을 넘겼다고 포기한 게 아니라 "이 폴링만" 멈춘 것이다.
+      return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+    }
+    if (outcome.aborted) {
+      // MINOR: effect cleanup으로 멈춘 것 — pending 기록을 지우지 않는다(다음 방문에서
+      // 이어서 확인한다). 호출부가 보통 이 결과를 버리지만, 혹시 쓰더라도 "실패"로
+      // 잘못 읽히면 안 된다.
+      return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+    }
+    clearPendingVideoPublishJob(tenantId, filename, platform);
+    // MINOR(2026-10-02 재재검토): 작업을 못 찾은 것도 "실패로 확정됐다"가 아니라 "결과를
+    // 모른다"다 — 외부 게시가 실제로 일어났는데 기록만 사라졌을 가능성을 배제할 수 없다.
+    // failed로 두면 재발행 버튼이 뜬다.
+    if (outcome.notFound) return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
+    const data = outcome.data;
+    // MAJOR-3 구멍(2026-10-02 재재검토): TikTok 접수(init) 자체가 8초를 넘기면, 바깥
+    // job(jobId) 경로가 먼저 타임아웃 승리해 그 작업의 "완료된 결과"가 TikTok 자체의
+    // 비동기 봉투({ok:true, processing:true, publishId})가 된다. 이 함수는 그걸 그냥
+    // `ok:true`로 읽어 url 없는 "완료"를 내버렸다 — 실제로는 TikTok이 아직도 처리
+    // 중이다. publishId가 보이면 TikTok 전용 폴러로 넘긴다.
+    if (data?.processing && data.publishId) {
+      return awaitAsyncTikTokPublish(data.publishId, signal);
+    }
+    if (!data?.ok) {
+      // BLOCK-1(2026-10-02 독립 리뷰): "외부에는 올라갔는데 우리 기록만 못 남겼다" 또는
+      // "외부 결과를 확인하지 못했다"는 신호를 평범한 "실패"로 읽으면 안 된다 — 실패로
+      // 보이면 재발행 버튼이 다시 눌려 같은 영상이 두 번 올라간다. unresolved로 돌려
+      // 호출부가 "unknown"(결과 확인 중)으로 남기게 한다(재발행 대상에서 제외).
+      // M-A 사이드이펙트(2026-10-02 재재검토 회귀): isUnresolvedPublishPayload가 이제
+      // ①(확정된 외부 게시)을 일부러 제외하므로, 이 data 경로(에러로 던져지지 않고 job
+      // 결과로 들어온 경우 — pendingReconciliations 배너가 없는 경로)에서는 ①도 여기서
+      // 같이 "unresolved"로 막아야 한다 — 안 그러면 ①이 평범한 failed로 떨어져 재발행
+      // 버튼이 뜬다(바로 이 BLOCK-1이 막으려던 것).
+      if (isUnresolvedPublishPayload(data) || isExternalPublishConfirmedPayload(data)) {
+        return {
+          ok: false, unresolved: true,
+          error: data?.error || "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.",
+        };
+      }
+      return { ok: false, error: data?.error || "영상 발행에 실패했습니다" };
+    }
+    return { ok: true, url: data.url };
+  }
+
+  // MAJOR-3(2026-10-02 독립 리뷰): TikTok은 video/publish와 다른, 자체 비동기 계약을 쓴다
+  // — 202 + {ok:true, processing:true, publishId}(jobId도 status:"processing"도 없음).
+  // 위 awaitAsyncVideoPublish의 `vr?.jobId && vr.status==="processing"` 분기가 이 모양을
+  // 못 잡아 `vr?.ok && !vr.partial`로 떨어져 "완료"(링크 없는 성공)로 잘못 표시됐다.
+  // 기존에 이미 있던 조회 엔드포인트(/api/tiktok/publish-status, videos/page.tsx의
+  // rememberTikTokPending과 같은 정본)를 그대로 쓴다 — 그 라우트도 진행 중이면
+  // status:"processing"을 주므로 job-poll.ts와 계약이 맞는다.
+  async function awaitAsyncTikTokPublish(
+    publishId: string, signal?: AbortSignal,
+  ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> {
+    const outcome = await pollJobUntilDone<{ ok?: boolean; status?: string; url?: string; error?: string }>(
+      `/api/tiktok/publish-status?publish_id=${encodeURIComponent(publishId)}`,
+      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000, signal },
+    );
+    if (outcome.timedOut) {
+      return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+    }
+    if (outcome.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+    if (outcome.notFound) return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
+    const data = outcome.data;
+    if (data?.status === "failed" || data?.ok === false) {
+      if (isUnresolvedPublishPayload(data) || isExternalPublishConfirmedPayload(data)) {
+        return { ok: false, unresolved: true, error: data?.error || "외부 게시 여부를 확인하지 못했습니다." };
+      }
+      return { ok: false, error: data?.error || "TikTok 발행에 실패했습니다" };
+    }
+    return { ok: true, url: data?.url };
+  }
+
+  // 같은 감사 반려: /api/publish도 150초대 폴링(인스타 캐러셀·Threads 상태확인)이 예산(8초)을
+  // 넘으면 202 + {processing:true, draftId, platform}을 준다. 결과는 새 작업 저장소가 아니라
+  // 기존 GET /api/publish?draft_id=...&platforms=...(buildUnifiedPublishStatus)가 그대로
+  // 맡는다(draftId가 작업 id 역할). 그 응답의 종결 신호는 최상위 status가 아니라
+  // targets[0].status(queued/processing/published/failed)라서 job-poll의 "최상위 status"
+  // 계약과 안 맞는다 — pollJobUntilDone으로 억지로 끼워맞추지 않고, 같은 2.5초 간격·
+  // 백그라운드 깨우기(wakeableSleep, job-poll.ts와 같은 정본)로 직접 루프를 돈다.
+  async function awaitAsyncSocialPublish(
+    tenantId: string, draftId: string, platform: string, signal?: AbortSignal,
+  ): Promise<{ ok: boolean; permalink?: string; publishedAt?: string; error?: string; unresolved?: boolean; partial?: boolean }> {
+    savePendingSocialPublishJob(tenantId, draftId, platform);
+    const start = Date.now();
+    const timeoutMs = 15 * 60 * 1000;
+    for (;;) {
+      // MINOR(2026-10-02 재재검토): effect cleanup이 abort하면 이 루프를 즉시 멈춘다 —
+      // 안 그러면 사용자가 떠난 뒤에도 15분까지 백그라운드 폴링이 남는다.
+      if (signal?.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+      if (Date.now() - start > timeoutMs) {
+        // pending 기록을 지우지 않는다 — 다음 방문에서 복구 효과가 이어서 확인한다.
+        return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+      }
+      let res: Response;
+      try {
+        res = await fetch(
+          `/api/publish?draft_id=${encodeURIComponent(draftId)}&platforms=${encodeURIComponent(platform)}&tenant_id=${encodeURIComponent(tenantId)}`,
+          { headers: authHeaders(), signal },
+        );
+      } catch {
+        if (signal?.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
+        await wakeableSleep(JOB_POLL_INTERVAL_MS, signal);
+        continue;
+      }
+      if (res.status === 404) {
+        // MINOR(2026-10-02 재재검토): 못 찾은 것도 "실패 확정"이 아니라 "모른다"다.
+        clearPendingSocialPublishJob(tenantId, draftId, platform);
+        return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
+      }
+      const body = await res.json().catch(() => null) as {
+        targets?: Array<{
+          status: string; permalink: string | null; error: string | null; updatedAt: string | null;
+          firstComment?: { status: string | null; error: string | null };
+        }>;
+      } | null;
+      const target = body?.targets?.[0];
+      // MAJOR-2: 401(토큰 만료)·503(DB 장애, route.ts GET catch)·그 밖의 비정상 응답은
+      // targets 배열이 없으므로 target이 undefined가 되어 이미 여기서 재시도된다 — 토큰이
+      // 돌거나 DB가 잠깐 끊긴 걸 "실패"로 단정하지 않는다(authHeaders()도 루프 매번 새로
+      // 호출돼 최신 토큰을 쓴다).
+      if (!target || target.status === "queued" || target.status === "processing") {
+        await wakeableSleep(JOB_POLL_INTERVAL_MS, signal);
+        continue;
+      }
+      clearPendingSocialPublishJob(tenantId, draftId, platform);
+      if (target.status !== "published") {
+        return { ok: false, error: target.error || "발행에 실패했습니다" };
+      }
+      // MAJOR-5(2026-10-02 독립 리뷰): 동기 경로는 본문 성공 + 첫 댓글 실패를 partial:true로
+      // 구분해 "완전 성공"으로 보여주지 않는다(위 동기 분기의 r.partial 처리와 같다). 느린
+      // 경로는 그 결과가 백그라운드 Response에만 있었고 폴링 쪽은 target.status만 봐서
+      // 첫 댓글 실패를 삼켰다 — published_posts.first_comment_status는 동기 경로와 똑같이
+      // 이미 기록돼 있으므로(백그라운드도 같은 코드를 탄다) 그걸 읽어 복원한다.
+      const firstCommentFailed = target.firstComment?.status === "failed" || target.firstComment?.status === "uncertain";
+      if (firstCommentFailed) {
+        return {
+          ok: true, partial: true, permalink: target.permalink ?? undefined, publishedAt: target.updatedAt ?? undefined,
+          error: target.firstComment?.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다",
+        };
+      }
+      return { ok: true, permalink: target.permalink ?? undefined, publishedAt: target.updatedAt ?? undefined };
+    }
+  }
+
   async function publish() {
     // 2026-09-05 회장 계정 실측: 발행 단추를 눌렀는데 요청도 안 나가고 알림도 없었다.
     // 여기서 아무 말 없이 돌아섰기 때문이다. 조용한 반환은 고장으로 읽힌다. 이유를 말한다.
@@ -2285,9 +2496,18 @@ export default function StudioPage() {
     // 전체가 실패로 보였고, 발행 버튼이 그대로 남아 다시 누르면 이미 올라간 채널까지
     // 재발행 대상이 됐다. 이번 초안에서 이미 성공한 채널은 대상에서 뺀다.
     const alreadyPublished = publishTargets.filter((platform) => pub.status[platform] === "done");
-    const targets = publishTargets.filter((platform) => pub.status[platform] !== "done" && !blockedPlatforms.has(platform));
-    if (!targets.length && alreadyPublished.length && blockedEntries.length === 0) {
+    // "unknown"(15분 상한으로 결과를 못 받은 상태)은 "실패"가 아니므로 재발행 대상에서도
+    // 뺀다 — 서버 쪽 draft_id 예약이 중복 게시를 막아 주더라도, 사용자가 다시 누를 때마다
+    // 바로 409로 튕기는 것보다는 "게시물 목록에서 확인"으로 유도하는 편이 낫다.
+    const unresolved = publishTargets.filter((platform) => pub.status[platform] === "unknown");
+    const targets = publishTargets.filter((platform) =>
+      pub.status[platform] !== "done" && pub.status[platform] !== "unknown" && !blockedPlatforms.has(platform));
+    if (!targets.length && alreadyPublished.length && blockedEntries.length === 0 && unresolved.length === 0) {
       showToast(`${alreadyPublished.map((platform) => LABEL[platform]).join(", ")} 은 이미 발행됐습니다. 다시 올리지 않았습니다.`, "success");
+      return;
+    }
+    if (!targets.length && unresolved.length && blockedEntries.length === 0) {
+      showToast(`${unresolved.map((platform) => LABEL[platform]).join(", ")}은 결과 확인 중입니다. 게시물 목록에서 확인해 주세요.`, "error");
       return;
     }
     if (!targets.length && blockedEntries.length === 0) { showToast("연결된 발행 계정이 없습니다. 설정에서 채널을 먼저 연결하세요", "error"); return; }
@@ -2300,6 +2520,10 @@ export default function StudioPage() {
     alreadyPublished.forEach((platform) => {
       status[platform] = "done";
       if (pub.urls[platform]) urls[platform] = pub.urls[platform];
+    });
+    unresolved.forEach((platform) => {
+      status[platform] = "unknown";
+      if (pub.errors[platform]) errors[platform] = pub.errors[platform];
     });
     const errs: string[] = [...blockedFailure.messages];
     const pendingReconciliations: PublishReconciliationMap = {};
@@ -2320,9 +2544,14 @@ export default function StudioPage() {
             failureReason = "올릴 영상이 없습니다. 생성실에서 숏폼 영상을 먼저 만들어 주세요.";
             errs.push(`${LABEL[p]}: ${failureReason}`);
           } else {
-            const vr = await apiPost<{ ok?: boolean; partial?: boolean; processing?: boolean; url?: string; error?: string }>("/api/video/publish", {
+            const videoPlatform = VIDEO_PUBLISH_NAME[p] || p;
+            // 2026-10-02 반려 수정: 서버는 예산(8초)을 넘기면 202 + {status:"processing",
+            // jobId}를 준다. 이걸 그대로 ok:true로 읽으면 아직 올라가지도 않은 채널을
+            // "완료"로 보여주는 거짓-성공이 된다(세션맥락). jobId가 있으면 실제로 끝날
+            // 때까지 기다린다.
+            const vr = await apiPost<{ ok?: boolean; partial?: boolean; status?: string; jobId?: string; processing?: boolean; publishId?: string; url?: string; error?: string }>("/api/video/publish", {
               filename,
-              platform: VIDEO_PUBLISH_NAME[p] || p,
+              platform: videoPlatform,
               title: titles[p] || idea || "",
               description: publishText(p),
               // 저장된 ID가 연결 해제·만료 상태로 바뀌어도 발행 요청에는 절대 싣지 않는다.
@@ -2351,7 +2580,36 @@ export default function StudioPage() {
                 brand_content_toggle: tiktokBrandContent,
               } : {}),
             }, { signal: AbortSignal.timeout(VIDEO_PUBLISH_REQUEST_TIMEOUT_MS) });
-            if (vr?.ok && !vr.partial) {
+            if (vr?.jobId && vr.status === "processing") {
+              // "doing"(발행 중) 그대로 유지하며 기다린다 — "완료"로 앞서가지 않는다.
+              setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
+              const resolved = await awaitAsyncVideoPublish(activeWorkspace.id, filename, videoPlatform, vr.jobId);
+              if (resolved.unresolved) {
+                status[p] = "unknown";
+                errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.";
+              } else if (resolved.ok) {
+                urls[p] = resolved.url || POST_URL[p] || "#";
+                trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+              } else {
+                failureReason = resolved.error || "영상 발행에 실패했습니다";
+                errs.push(`${LABEL[p]}: ${failureReason}`);
+              }
+            } else if (vr?.processing && vr.publishId) {
+              // MAJOR-3: TikTok의 자체 비동기 계약(ok:true, processing:true, publishId) —
+              // jobId 패턴과 다르다. 이걸 놓치면 "완료"(링크 없는 성공)로 잘못 표시된다.
+              setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
+              const resolved = await awaitAsyncTikTokPublish(vr.publishId);
+              if (resolved.unresolved) {
+                status[p] = "unknown";
+                errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.";
+              } else if (resolved.ok) {
+                urls[p] = resolved.url || POST_URL[p] || "#";
+                trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+              } else {
+                failureReason = resolved.error || "TikTok 발행에 실패했습니다";
+                errs.push(`${LABEL[p]}: ${failureReason}`);
+              }
+            } else if (vr?.ok && !vr.partial) {
               urls[p] = vr.url || POST_URL[p] || "#";
               trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
               // m3: TikTok 발행이 성공하면 공개 범위·상업 콘텐츠 공개를 비운다. 다음
@@ -2363,7 +2621,7 @@ export default function StudioPage() {
               errs.push(`${LABEL[p]}: ${failureReason}`);
             }
           }
-          status[p] = failureReason ? "failed" : "done";
+          status[p] = failureReason ? "failed" : status[p] === "unknown" ? "unknown" : "done";
           if (failureReason) errors[p] = failureReason;
           setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
           return;
@@ -2383,9 +2641,34 @@ export default function StudioPage() {
           first_comment: capabilityFor(p).supported && firstComments[p]?.trim() ? firstComments[p].trim() : undefined,
           edit_format: editFormat,
         }, { signal: AbortSignal.timeout(PUBLISH_REQUEST_TIMEOUT_MS) });
+        // 2026-10-02 반려 수정: Instagram carousel/Threads 상태 폴링이 150초대라 서버
+        // 예산(8초)을 넘으면 202 + {processing:true, draftId, platform}을 준다. 이것도
+        // ok:true로 읽으면 아직 올라가지 않은 글을 "완료"로 보여주는 거짓-성공이 된다.
+        const processingDraftId = (r as { processing?: boolean; draftId?: string } | undefined)?.processing
+          ? (r as { draftId?: string }).draftId
+          : undefined;
+        if (processingDraftId) {
+          setPub({ running: true, stopped: false, status: { ...status }, urls: { ...urls }, errors: { ...errors }, already: { ...already } });
+          const resolved = await awaitAsyncSocialPublish(activeWorkspace.id, processingDraftId, p);
+          if (resolved.unresolved) {
+            status[p] = "unknown";
+            errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.";
+          } else if (resolved.ok && resolved.partial) {
+            // MAJOR-5: 본문은 올라갔지만 첫 댓글은 실패 — 동기 분기(r.partial)와 같은
+            // 취급으로 완전 성공 집계·표시를 하지 않는다.
+            failureReason = resolved.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다";
+            errs.push(`${LABEL[p]}: ${failureReason}`);
+          } else if (resolved.ok) {
+            urls[p] = resolved.permalink || POST_URL[p] || "#";
+            trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } });
+          } else {
+            failureReason = resolved.error || "실패";
+            errs.push(`${LABEL[p]}: ${failureReason}`);
+          }
+        }
         // 2026-09-16 실측: 서버가 dedupe 로 옛 글을 돌려준 것을 방금 새로 올라간 것과
         // 구분한다. 이미 있던 것이면 "새로 올렸다" 이벤트를 다시 세지 않는다.
-        if (r?.ok && !r.partial) { urls[p] = r.permalink || POST_URL[p] || "#"; if (!r.alreadyPublished) trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } }); else already[p] = r.publishedAt || true; }
+        else if (r?.ok && !r.partial) { urls[p] = r.permalink || POST_URL[p] || "#"; if (!r.alreadyPublished) trackEvent({ name: "publish_success", params: { channel: p as AnalyticsChannel } }); else already[p] = r.publishedAt || true; }
         else {
           failureReason = r?.partial
             ? r.firstComment?.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다"
@@ -2394,17 +2677,28 @@ export default function StudioPage() {
         }
       } catch (e) {
         if (isExternalPublishPersistenceError(e)) {
+          // ① 외부 게시는 확정됐다 — persistence.reconciliation이 보장된 모양이라
+          // 안전하게 접근한다(M-A 전에는 이 분기가 ②·③도 함께 잡아 TypeError가 났다).
           const reconciliation = e.payload.persistence.reconciliation;
           pendingReconciliations[p] = reconciliation;
           if (e.payload.permalink) urls[p] = e.payload.permalink;
           failureReason = "외부 게시 완료·내부 기록 복구 필요 (재발행 금지)";
           errs.push(`${LABEL[p]}: ${failureReason}`);
+        } else if (isUnresolvedPublishError(e)) {
+          // M-A(2026-10-02 독립 리뷰): ②·③(외부 결과를 모른다, 예: 409
+          // PUBLISH_STATE_UNCERTAIN) — "실패"로 단정해 재발행을 유도하지 않는다.
+          // errs에 넣지 않는다(다른 "unknown" 분기들과 같은 관례 — 끝 토스트가 "실패"로
+          // 뭉뚱그리지 않게).
+          status[p] = "unknown";
+          errors[p] = e instanceof ApiResponseError
+            ? ((e.payload as { error?: string } | null)?.error || "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.")
+            : "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.";
         } else {
           failureReason = e instanceof Error ? e.message : "오류";
           errs.push(`${LABEL[p]}: ${failureReason}`);
         }
       }
-      status[p] = failureReason ? "failed" : "done";
+      status[p] = failureReason ? "failed" : status[p] === "unknown" ? "unknown" : "done";
       if (failureReason) errors[p] = failureReason;
       setPub({
         running: true,
@@ -2451,6 +2745,70 @@ export default function StudioPage() {
       showToast(`${head}실패 ${errs.join(" / ")}`.slice(0, 180), "error");
     } else showToast("발행 완료", "success");
   }
+  // 새로고침·탭 재방문 뒤에도 진행 중이던 발행(비디오/소셜 비동기 경로)을 잃지 않는다
+  // (2026-10-02 컨트롤러 감사 반려 — publish-job-store.ts가 적어 둔 jobId/draftId가 이
+  // 작업공간+초안에 남아 있으면 자동으로 이어서 확인한다).
+  useEffect(() => {
+    if (!activeWorkspace || !draftId) return;
+    const workspaceId = activeWorkspace.id;
+    const currentDraftId = draftId;
+    const videoFilenameNow = videoFilename(vid?.file || vid?.url || "");
+    let cancelled = false;
+    // MINOR(2026-10-02 재재검토): cancelled 플래그만으로는 "이 effect의 setPub을 더는
+    // 안 쓴다"만 멈춘다 — 그 밑에서 돌던 네트워크 폴링(fetch 루프)은 그대로 계속 돈다.
+    // 실제 effect cleanup(언마운트·작업공간 전환·draftId 변경)이 일어나면 이 signal로
+    // 폴링 자체를 즉시 끊는다.
+    const controller = new AbortController();
+    void (async () => {
+      for (const p of publishTargets) {
+        if (cancelled) break;
+        if (VIDEO_ROOM_PLATFORMS.has(p)) {
+          if (!videoFilenameNow) continue;
+          const videoPlatform = VIDEO_PUBLISH_NAME[p] || p;
+          const pending = readPendingVideoPublishJob(workspaceId, videoFilenameNow, videoPlatform);
+          if (!pending) continue;
+          setPub((current) => ({ ...current, running: true, status: { ...current.status, [p]: "doing" } }));
+          const resolved = await awaitAsyncVideoPublish(workspaceId, videoFilenameNow, videoPlatform, pending.jobId, controller.signal);
+          if (cancelled || activeWorkspaceIdRef.current !== workspaceId) continue;
+          setPub((current) => {
+            const status = { ...current.status };
+            const urls = { ...current.urls };
+            const errors = { ...current.errors };
+            if (resolved.unresolved) { status[p] = "unknown"; errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요."; }
+            else if (resolved.ok) { status[p] = "done"; urls[p] = resolved.url || POST_URL[p] || "#"; }
+            else { status[p] = "failed"; errors[p] = resolved.error || "영상 발행에 실패했습니다"; }
+            return { ...current, running: false, status, urls, errors };
+          });
+        } else {
+          const pending = readPendingSocialPublishJob(workspaceId, currentDraftId, p);
+          if (!pending) continue;
+          setPub((current) => ({ ...current, running: true, status: { ...current.status, [p]: "doing" } }));
+          const resolved = await awaitAsyncSocialPublish(workspaceId, currentDraftId, p, controller.signal);
+          if (cancelled || activeWorkspaceIdRef.current !== workspaceId) continue;
+          setPub((current) => {
+            const status = { ...current.status };
+            const urls = { ...current.urls };
+            const errors = { ...current.errors };
+            if (resolved.unresolved) { status[p] = "unknown"; errors[p] = resolved.error || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요."; }
+            else if (resolved.ok && resolved.partial) { status[p] = "failed"; errors[p] = resolved.error || "본문은 올라갔지만 첫 댓글 발행에 실패했습니다"; }
+            else if (resolved.ok) { status[p] = "done"; urls[p] = resolved.permalink || POST_URL[p] || "#"; }
+            else { status[p] = "failed"; errors[p] = resolved.error || "실패"; }
+            return { ...current, running: false, status, urls, errors };
+          });
+        }
+      }
+    })();
+    return () => { cancelled = true; controller.abort(); };
+    // publishTargets 자체는 매 렌더 재계산되지만 effect 의존성에 그대로 넣으면 재구독으로
+    // 중복 폴링이 된다. 다만 MAJOR-6(2026-10-02 독립 리뷰): workspace·draftId만 의존성으로
+    // 두면, 새로고침 직후 계정 목록이 아직 fetch 중일 때 이 effect가 먼저 실행돼
+    // publishTargets가 빈 배열이고(usableAccounts가 아직 0개), 그 뒤 계정이 로드돼
+    // publishTargets가 채워져도 이 effect는 다시 돌지 않아 복구가 영원히 일어나지 않는다.
+    // accountsLoaded가 false→true로 바뀌는 시점(계정 로딩 완료, 작업공간당 한 번)에 한 번
+    // 더 돌게 해 그 때는 실제 publishTargets로 복구를 시도한다. videoFilenameNow(vid)도
+    // 새로고침 뒤 vid가 비동기로 복원되는 경우를 대비해 넣는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id, draftId, accountsLoaded, vid?.file, vid?.url]);
   function loadDraft(d: Record<string, unknown>): EditContentKind | null {
     // B1(교차 리뷰 BLOCK): 서버 초안을 불러오는 이 순간 이전에 예약돼 있던 자동 저장
     // 타이머가 있으면(예: 방금 전 영상 탭에서 시딩·조작으로 예약된 저장) 그 타이머가
@@ -3652,7 +4010,7 @@ export default function StudioPage() {
               <div className="min-w-0 flex-1">
                 <b className="text-body text-text">{pubResultLabel}</b>
                 <div className="mt-stack-tight flex flex-wrap gap-stack-tight">{Object.entries(pub.status).map(([key, status]) => {
-                  const cls = `rounded-pill border px-stack-tight py-micro text-caption ${status === "done" ? "border-success/30 bg-success/10 text-success" : status === "failed" ? "border-danger/30 bg-danger/10 text-danger" : status === "doing" ? "border-warning/30 bg-warning/10 text-warning" : "border-border bg-surface-2 text-subtle"}`;
+                  const cls = `rounded-pill border px-stack-tight py-micro text-caption ${status === "done" ? "border-success/30 bg-success/10 text-success" : status === "failed" ? "border-danger/30 bg-danger/10 text-danger" : status === "doing" ? "border-warning/30 bg-warning/10 text-warning" : status === "unknown" ? "border-border bg-surface-2 text-text" : "border-border bg-surface-2 text-subtle"}`;
                   // 2026-09-16 실측(j.the.great.investor): "지금 발행"을 다시 누르면 서버가
                   // dedupe 로 옛 글을 돌려주는데, "완료" + "새 창" 링크만 보여 새로 올라간
                   // 것처럼 읽혔다. 이미 있던 것이면 그 사실과(있으면) 발행 시각을 말한다.
@@ -3662,8 +4020,8 @@ export default function StudioPage() {
                     : "";
                   const value = already
                     ? `${LABEL[key]} · ${alreadyLabel}`
-                    : `${status === "done" ? "완료 " : status === "failed" ? "실패 " : status === "doing" ? "발행 중 " : ""}${LABEL[key]}`;
-                  return status === "done" && pub.urls[key] ? <a key={key} href={pub.urls[key]} target="_blank" rel="noopener noreferrer" className={cls} title={already ? alreadyLabel : "게시물 보기"}>{value}<span className="sr-only"> 새 창</span></a> : <span key={key} className={cls}>{value}{status === "failed" && pub.errors[key] ? <span className="ml-micro"><span>{pub.errors[key]}</span></span> : null}</span>;
+                    : `${status === "done" ? "완료 " : status === "failed" ? "실패 " : status === "doing" ? "발행 중 " : status === "unknown" ? "결과 확인 중 " : ""}${LABEL[key]}`;
+                  return status === "done" && pub.urls[key] ? <a key={key} href={pub.urls[key]} target="_blank" rel="noopener noreferrer" className={cls} title={already ? alreadyLabel : "게시물 보기"}>{value}<span className="sr-only"> 새 창</span></a> : <span key={key} className={cls}>{value}{(status === "failed" || status === "unknown") && pub.errors[key] ? <span className="ml-micro"><span>{pub.errors[key]}</span></span> : null}</span>;
                 })}</div>
               </div>
               {hasPublishedResult ? <Link href="/performance" className="shrink-0 rounded-control bg-accent px-stack py-stack-tight text-body-sm font-semibold text-accent-fg">성과실에서 결과 보기</Link> : null}

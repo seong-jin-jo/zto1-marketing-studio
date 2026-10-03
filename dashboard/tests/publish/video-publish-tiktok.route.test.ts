@@ -151,4 +151,15 @@ describe("/api/video/publish — TikTok reservation", () => {
     expect(JSON.stringify(body)).not.toContain("provider-secret");
     expect(H.rows[0]?.status).toBe("failed");
   });
+
+  // 2026-10-02 결함(회장 지적): 거부 사유가 버려지고 화면은 "앱 권한과 계정 상태를
+  // 확인해주세요" 한 줄뿐이었다. 심사 전 앱은 공개 게시가 막혀 있다는 실제 원인을
+  // 알려진 코드로 매핑해 전해야 한다.
+  it("translates a known TikTok rejection code into an actionable Korean message", async () => {
+    H.started = { ok: false, reason: "unaudited_client_can_only_post_to_private_accounts" };
+    const { response, body } = await publish(request());
+    expect(response.status).toBe(200);
+    expect(body.error).toContain("심사 전이라 공개 게시가 막혀");
+    expect(H.rows[0]?.status).toBe("failed");
+  });
 });

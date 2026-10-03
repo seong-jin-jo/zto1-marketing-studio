@@ -537,3 +537,33 @@ export async function getSelectedChannelAccountCredFresh(
 
   return { token: row.token, refreshToken: row.refresh_token ?? undefined, userId, meta, accountId: row.id };
 }
+
+export type XScopeStatus = "ok" | "missing_media_write" | "unknown";
+
+/**
+ * X 기본 계정이 이미지 업로드 권한(media.write)을 실제로 받았는지 판정한다.
+ * 2026-10-02 독립 리뷰 BLOCK M1: 화면으로 연결한 OAuth2 계정이 media.write 없이 토큰을 받으면
+ * X 미디어 업로드가 전부 403으로 막힌다 — 발행 실패 전에 readiness 화면에서 미리 알려야 한다.
+ *
+ * - 레거시 4키(OAuth1.0a) 계정은 scope 개념이 아니라 X 개발자 포털의 앱 권한(Read and Write)으로
+ *   통제되므로 "ok"로 본다(scope 질문 자체가 적용되지 않음).
+ * - OAuth2 계정인데 grantedScope가 없으면(이 캡처 이전에 연결됐거나 provider가 생략) "unknown" —
+ *   화면에 거짓 확신을 주지 않는다.
+ * - DB 조회가 실패하면(연결 없음 등) "unknown"으로 닫는다 — readiness 전체를 막지 않는다.
+ */
+export async function getXScopeStatus(tenantId: string): Promise<XScopeStatus> {
+  try {
+    const [row] = await withTenant(tenantId, (sql) => sql<{ meta: Record<string, unknown> | null }[]>`
+      SELECT meta FROM channel_accounts
+      WHERE tenant_id = ${tenantId} AND provider = 'x' AND is_default = true AND status = 'active'`);
+    if (!row) return "unknown";
+    const meta = row.meta ?? {};
+    const hasLegacyKeys = Boolean(meta.apiKey && meta.apiSecret && meta.accessToken && meta.accessSecret);
+    if (hasLegacyKeys) return "ok";
+    const scope = typeof meta.grantedScope === "string" ? meta.grantedScope : "";
+    if (!scope) return "unknown";
+    return scope.split(/\s+/).includes("media.write") ? "ok" : "missing_media_write";
+  } catch {
+    return "unknown";
+  }
+}

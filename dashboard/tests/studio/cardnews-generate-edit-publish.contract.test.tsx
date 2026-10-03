@@ -67,8 +67,9 @@ describe("카드뉴스 이음매 계약", () => {
     expect(inputs).toHaveLength(2);
     expect(inputs[0].text).toBe("계약서 조건, 딱 세 가지만 보세요");
     expect(inputs[0].ratio).toBe("1:1");
-    expect(inputs[0].position).toBe("top");
-    expect(inputs[1].position).toBe("bottom");
+    // 아홉 칸은 세 자리로 줄이지 않는다. top-center 를 top 으로 접으면 가로 가운데가 사라진다.
+    expect(inputs[0].position).toBe("top-center");
+    expect(inputs[1].position).toBe("bottom-center");
     expect(inputs.map((one) => one.index)).toEqual([0, 1]);
     expect(inputs[1].total).toBe(2);
   });
@@ -89,7 +90,7 @@ describe("카드뉴스 이음매 계약", () => {
         upload: async (_dataUrl, index) => `/api/media/redrawn-${index + 1}`,
       },
     );
-    expect(drawn).toEqual(["고친 문장|1:1|top"]);
+    expect(drawn).toEqual(["고친 문장|1:1|top-center"]);
     expect(urls).toEqual(["/api/media/redrawn-1"]);
     // 페이지가 실제로 그 다시 그리기를 발행실로 가는 길에 건다.
     const move = pageSrc.slice(pageSrc.indexOf("async function moveToPublish()"));
@@ -126,7 +127,7 @@ describe("카드뉴스 이음매 계약", () => {
       ratio: "4:5",
       positions: ["top-center", "center", "bottom-center"],
     });
-    expect(inputs.map((one) => one.position)).toEqual(["top", "bottom"]);
+    expect(inputs.map((one) => one.position)).toEqual(["top-center", "bottom-center"]);
     // 페이지도 빈 줄을 미리 걷어내지 않는다.
     const recomposite = pageSrc.slice(pageSrc.indexOf("async function recompositeCards("));
     expect(recomposite.slice(0, recomposite.indexOf("renderAndUploadCardDeck")))

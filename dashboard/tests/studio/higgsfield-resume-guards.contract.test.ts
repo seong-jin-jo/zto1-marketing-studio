@@ -12,15 +12,20 @@ const pageSrc = fs.readFileSync(path.resolve(__dirname, "../../src/app/studio/pa
 function sliceResumeEffect(): string {
   const start = pageSrc.indexOf("const pendingImg = readPendingJob(workspaceId");
   expect(start, "복구 effect를 찾지 못했다").toBeGreaterThanOrEqual(0);
-  // 다음 useEffect 선언 전까지(이 effect의 끝 근방)만 본다.
-  const next = pageSrc.indexOf("useEffect(() => {", start + 1);
-  return pageSrc.slice(Math.max(0, start - 600), next > start ? next : start + 2200);
+  // 2026-10-02 server-side finalize 보강: 복구 로직이 resumePendingJobs 콜백으로 옮겨가고
+  // 그 abort는 바로 뒤 useEffect의 cleanup이 맡는다 — 그 cleanup까지 포함되도록 범위를
+  // 두 번째 useEffect 선언 전까지 넓힌다(첫 번째는 resumePendingJobs 정의 안의
+  // Promise.allSettled일 수 있으므로).
+  const firstUseEffect = pageSrc.indexOf("useEffect(() => {", start + 1);
+  const secondUseEffect = pageSrc.indexOf("useEffect(() => {", firstUseEffect + 1);
+  const end = secondUseEffect > firstUseEffect ? secondUseEffect : start + 2600;
+  return pageSrc.slice(Math.max(0, start - 600), end);
 }
 
 describe("복구 폴링 가드 1 — 언마운트/재전환 시 abort", () => {
-  it("복구 effect의 cleanup이 그 effect 전용 controller를 abort한다", () => {
+  it("복구 effect의 cleanup이 복구 전용 AbortController를 abort한다", () => {
     const body = sliceResumeEffect();
-    expect(body).toMatch(/return \(\) => \{\s*controller\.abort\(\);/);
+    expect(body).toMatch(/return \(\) => \{\s*resumePollAbort\.current\?\.abort\(\);/);
   });
 });
 
