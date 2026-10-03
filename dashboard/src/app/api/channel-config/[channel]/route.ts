@@ -4,6 +4,7 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { withTenant } from "@/lib/db";
 import { isMaskedSecret } from "@/lib/secret-mask";
+import { setDefaultAccount, syncLegacyIntegration, upsertChannelAccount } from "@/lib/channel-accounts";
 
 interface OpenClawConfig {
   plugins?: {
@@ -133,6 +134,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ cha
   if (!pluginName) {
     return Response.json({ error: `Unknown channel: ${channel}` }, { status: 400 });
   }
+  // 테스트 메시지는 되돌릴 수 없다. DB만 새 URL이고 gateway 파일은 옛 URL인 부분 저장 상태에서
+  // 마스킹 입력을 기존 파일 값으로 복원해 보내면 다른 채널에 게시될 수 있다.
+  if (channel === "slack" && !shouldPersistSecretInput(data.webhookUrl)) {
+    return Response.json({
+      ok: false, verified: false,
+      error: "테스트 메시지를 보낼 Incoming Webhook URL 원문을 다시 입력해 주세요.",
+    }, { status: 400 });
+  }
 
   const plugins = (config.plugins ??= {}).entries ??= {};
   const p = (plugins[pluginName] ??= { enabled: false, config: {} });
@@ -145,10 +154,50 @@ export async function POST(request: Request, { params }: { params: Promise<{ cha
   }
 
   const result = await verifyChannel(channel, p.config || {});
+  // 메시징 수동 연결은 검증되지 않은 새 값을 파일에만 쓰면 기존 DB 기본 계정과
+  // gateway 자격정보가 달라진다. 거절·확인 불가 모두 기존 연결을 보존한다.
+  if (["slack", "telegram", "discord"].includes(channel) && !result.verified) {
+    return Response.json({ ok: false, ...result });
+  }
+  // 이 세 채널의 수동 연결은 발행 계정(channel_accounts)의 기본 계정이어야 한다.
+  // integrations만 갱신하면 연결 화면은 미연결이고 예약 발행도 대상 계정을 찾지 못한다.
+  if (result.verified && ["slack", "telegram", "discord"].includes(channel)) {
+    const credential = toIntegration(channel, p.config || {});
+    if (!__t || !credential?.secret) {
+      return Response.json({ verified: false, error: "연결 정보를 저장할 수 없습니다. 로그인 상태를 확인하고 다시 시도해 주세요." }, { status: 503 });
+    }
+    try {
+      const account = await upsertChannelAccount({
+        tenantId: __t,
+        provider: channel,
+        externalId: "manual",
+        displayName: result.account || `${channel} webhook`,
+        accessToken: credential.secret,
+        meta: credential.meta,
+      });
+      if (account.isDefault) await syncLegacyIntegration(__t, channel, account.id);
+      else {
+        // 예전 Slack OAuth 토큰이 기본이면 webhook으로 교체해야 실제 발행이 가능하다.
+        const selected = await setDefaultAccount(__t, channel, account.id);
+        if (!selected.ok) throw new Error("default account selection failed");
+      }
+    } catch {
+      // 계정 upsert가 끝난 뒤 legacy 미러가 실패했을 수 있다. 연결 실패로 단정하지 않고
+      // 재조회·동일 값 재시도를 안내한다. 같은 manual externalId upsert는 멱등이다.
+      return Response.json({ verified: false, error: "연결 저장이 완료되지 않았습니다. 새로고침해 연결 상태를 확인한 뒤 다시 저장해 주세요." }, { status: 503 });
+    }
+  }
   p.enabled = result.verified;
-  writeJson(cfgPath, config);
+  try {
+    writeJson(cfgPath, config);
+  } catch {
+    // DB 기본 계정과 미러가 저장된 뒤 gateway 파일만 실패한 경우도 성공으로 답하지 않는다.
+    return Response.json({ verified: false, error: "연결 저장이 완료되지 않았습니다. 새로고침해 연결 상태를 확인한 뒤 다시 저장해 주세요." }, { status: 503 });
+  }
   // facebook/instagram은 직접발행 대상 → integrations 브리지(toIntegration이 그 외 채널은 null로 무시).
-  await bridgeToIntegrations(__t, channel, p.config || {}, result.verified || !!result.unverified);
+  if (!["slack", "telegram", "discord"].includes(channel)) {
+    await bridgeToIntegrations(__t, channel, p.config || {}, result.verified || !!result.unverified);
+  }
   return Response.json({ ok: true, enabled: p.enabled, ...result });
   });
 }

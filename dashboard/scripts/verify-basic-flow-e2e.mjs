@@ -70,7 +70,11 @@ const sd=await sg.json();
 say("성과가 없어도 방향을 제안한다", sg.status===200 && (sd.ideas?.length??0)>=3, `제안 ${sd.ideas?.length??0}건`);
 const en=await fetch(`${B}/api/suggestions/enqueue`,{method:"POST",headers:H(),body:JSON.stringify({tenant_id:W,suggestion:sd.suggestions[0]})});
 const ed=await en.json();
-say("제안을 다시 생성 큐로 넘긴다", en.status===200, `출처 보존 ${ed.post?.sourceContext?.suggestionId?"됨":"안 됨"}`);
+const provenancePreserved=Boolean(ed.post?.sourceContext?.suggestionId)
+  && ed.post.sourceContext.suggestionId===sd.suggestions[0].id;
+say("제안을 다시 생성 큐로 넘긴다",
+  (en.status===200||en.status===201) && provenancePreserved,
+  `출처 보존 ${provenancePreserved?"됨":"안 됨"}`);
 const met=await fetch(`${B}/api/metrics?tenant_id=${W}`,{headers:H()});
 say("성과 지표를 읽는다", met.status===200);
 

@@ -1,9 +1,10 @@
-import { withTenant } from "@/lib/db";
+import { db, withTenant } from "@/lib/db";
 
 type PublicationUsageOutbox = {
   usageEvent: {
     status: "pending";
     platform: string;
+    occurredAt: string;
   };
 };
 
@@ -12,8 +13,8 @@ export type PublicationUsageRelayResult = {
   alreadyRecorded: boolean;
 };
 
-export function publicationUsageOutbox(platform: string): PublicationUsageOutbox {
-  return { usageEvent: { status: "pending", platform } };
+export function publicationUsageOutbox(platform: string, occurredAt = new Date().toISOString()): PublicationUsageOutbox {
+  return { usageEvent: { status: "pending", platform, occurredAt } };
 }
 
 // published_posts 확정과 함께 provider_meta에 pending outbox를 넣은 뒤 이 relay가 usage_events를
@@ -25,8 +26,10 @@ export async function recordPublicationEvent(
   platform: string,
 ): Promise<PublicationUsageRelayResult> {
   return withTenant(tenantId, async (sql) => {
-    const [publication] = await sql<{ usage_status: string | null }[]>`
-      SELECT provider_meta #>> '{usageEvent,status}' AS usage_status
+    const [publication] = await sql<{ usage_status: string | null; occurred_at: string | null; published_at: string }[]>`
+      SELECT provider_meta #>> '{usageEvent,status}' AS usage_status,
+             provider_meta #>> '{usageEvent,occurredAt}' AS occurred_at,
+             published_at::text
         FROM published_posts
        WHERE tenant_id = ${tenantId}::uuid AND id = ${publicationId}::uuid
        FOR UPDATE`;
@@ -40,17 +43,24 @@ export async function recordPublicationEvent(
     if (publication.usage_status !== "pending") {
       return { recorded: false, alreadyRecorded: false };
     }
+    // Old outbox entries have no occurredAt. Their persisted publication time is the
+    // only durable evidence of the original billing period. A later relay cannot move it.
+    const occurredAt = publication.occurred_at && Number.isFinite(Date.parse(publication.occurred_at))
+      ? publication.occurred_at : publication.published_at;
+    if (!occurredAt || !Number.isFinite(Date.parse(occurredAt))) {
+      throw new Error("발행 사용량 발생 시각을 확인할 수 없습니다.");
+    }
 
     await sql`
-      INSERT INTO usage_events (tenant_id, event_type, quantity, meta)
+      INSERT INTO usage_events (tenant_id, event_type, quantity, meta, created_at)
       VALUES (${tenantId}::uuid, ${"publication"}, ${1},
-              ${sql.json({ platform, publicationId } as never)})`;
+              ${sql.json({ platform, publicationId } as never)}, ${occurredAt}::timestamptz)`;
     await sql`
       UPDATE published_posts
          SET provider_meta = jsonb_set(
            COALESCE(provider_meta, '{}'::jsonb),
            '{usageEvent}',
-           ${sql.json({ status: "recorded", platform } as never)}::jsonb,
+           ${sql.json({ status: "recorded", platform, occurredAt } as never)}::jsonb,
            true
          )
        WHERE tenant_id = ${tenantId}::uuid AND id = ${publicationId}::uuid`;
@@ -62,7 +72,7 @@ export async function recordPublicationEvent(
 export async function reconcilePendingPublicationEvents(
   tenantId: string,
   limit = 50,
-): Promise<{ processed: number; failed: number }> {
+): Promise<{ processed: number; failed: number; remaining: number }> {
   const safeLimit = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 200) : 50;
   const rows = await withTenant(tenantId, (sql) => sql<{ id: string; platform: string }[]>`
     SELECT id::text, platform
@@ -83,5 +93,37 @@ export async function reconcilePendingPublicationEvents(
       failed += 1;
     }
   }
-  return { processed, failed };
+  const [{ remaining }] = await withTenant(tenantId, (sql) => sql<{ remaining: number | string }[]>`
+    SELECT COUNT(*)::int AS remaining
+      FROM published_posts
+     WHERE tenant_id = ${tenantId}::uuid
+       AND status = 'published'
+       AND provider_meta #>> '{usageEvent,status}' = 'pending'`);
+  return { processed, failed, remaining: Number(remaining) };
+}
+
+// The existing publish-due cron calls this worker independently of customer
+// usage reads. A bounded sweep cannot monopolize the cron on a large backlog.
+export async function drainPendingPublicationEvents(tenantId: string, maxBatches = 20) {
+  let processed = 0;
+  let failed = 0;
+  let remaining = 0;
+  for (let batch = 0; batch < maxBatches; batch += 1) {
+    const result = await reconcilePendingPublicationEvents(tenantId, 50);
+    processed += result.processed;
+    failed += result.failed;
+    remaining = result.remaining;
+    if (remaining === 0 || result.failed > 0 || result.processed === 0) break;
+  }
+  return { processed, failed, remaining };
+}
+
+export async function pendingPublicationUsageTenantIds(): Promise<string[]> {
+  const sql = db();
+  const rows = await sql<{ tenant_id: string }[]>`
+    SELECT DISTINCT tenant_id::text
+      FROM published_posts
+     WHERE status = 'published'
+       AND provider_meta #>> '{usageEvent,status}' = 'pending'`;
+  return rows.map((row) => row.tenant_id);
 }

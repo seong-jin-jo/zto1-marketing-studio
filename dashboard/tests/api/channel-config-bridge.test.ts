@@ -10,6 +10,27 @@ import { createTempDir, setupTestEnv, cleanupTestEnv } from "../helpers";
 const H = vi.hoisted(() => ({
   inserts: [] as unknown[][],
   verify: { verified: true, account: "@ok" } as { verified: boolean; unverified?: boolean; account?: string; error?: string },
+  accounts: [] as unknown[],
+  selected: [] as unknown[],
+  failAccount: false,
+  accountIsDefault: true,
+  failMirror: false,
+}));
+
+vi.mock("@/lib/channel-accounts", () => ({
+  upsertChannelAccount: vi.fn(async (input: unknown) => {
+    H.accounts.push(input);
+    if (H.failAccount) throw new Error("db unavailable");
+    return { id: "account-1", isDefault: H.accountIsDefault, reconnected: false };
+  }),
+  syncLegacyIntegration: vi.fn(async (...args: unknown[]) => {
+    if (H.failMirror) throw new Error("fixture mirror unavailable");
+    H.selected.push(["sync", ...args]);
+  }),
+  setDefaultAccount: vi.fn(async (...args: unknown[]) => {
+    H.selected.push(["default", ...args]);
+    return { ok: true };
+  }),
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({
@@ -19,11 +40,27 @@ vi.mock("@/lib/tenant-auth", () => ({
 vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async (_t: string, cb: (sql: unknown) => unknown) => {
     const sql = Object.assign(
-      (_s: TemplateStringsArray, ...vals: unknown[]) => { H.inserts.push(vals); return Promise.resolve([]); },
+      (strings: TemplateStringsArray, ...vals: unknown[]) => {
+        const query = Array.from(strings).join(" ");
+        if (query.includes("SELECT provider AS label")) {
+          return Promise.resolve(H.accounts.map((account) => {
+            const a = account as { provider: string; accessToken: string; meta: Record<string, unknown> };
+            return { label: a.provider, token: a.accessToken, meta: a.meta, status: "active", token_expires_at: null, has_refresh: false };
+          }));
+        }
+        H.inserts.push(vals);
+        return Promise.resolve([]);
+      },
       { json: (v: unknown) => v },
     );
     return cb(sql);
   }),
+}));
+
+vi.mock("@/lib/channel-connection", () => ({
+  getChannelConnectionStates: vi.fn(async () => Object.fromEntries(
+    H.accounts.map((account) => [(account as { provider: string }).provider, "connected"]),
+  )),
 }));
 
 vi.mock("@/lib/verify-channel", () => ({
@@ -52,6 +89,11 @@ beforeEach(() => {
   fs.mkdirSync(dir, { recursive: true });
   fs.copyFileSync(src, path.join(dir, "openclaw.json"));
   H.inserts = [];
+  H.accounts = [];
+  H.selected = [];
+  H.failAccount = false;
+  H.accountIsDefault = true;
+  H.failMirror = false;
   H.verify = { verified: true, account: "@ok" };
   process.env.OSMU_SECRET_KEY = "enc-key";
 });
@@ -107,34 +149,159 @@ describe("POST /api/channel-config/[channel] — integrations 브리지", () => 
     expect(s).toContain("bluesky_app_password");
   });
 
-  it("telegram 수동 키 → integrations(secret=botToken, meta.chatId) — 2026-07 직접발행 편입", async () => {
+  it("CHANNEL-01 텔레그램 검증된 수동 키를 테넌트 기본 발행 계정에 저장한다", async () => {
     const { POST } = await import("@/app/api/channel-config/[channel]/route");
     const res = await POST(post("telegram", { botToken: "BOT", chatId: "1" }), params("telegram"));
     expect(res.status).toBe(200);
-    expect(H.inserts).toHaveLength(1);
-    const s = JSON.stringify(H.inserts[0]);
+    expect(H.accounts).toHaveLength(1);
+    const s = JSON.stringify(H.accounts[0]);
     expect(s).toContain("BOT");
     expect(s).toContain("telegram_bot");
+    expect(s).toContain("tenant-1");
+    expect(H.selected).toEqual([["sync", "tenant-1", "telegram", "account-1"]]);
   });
 
-  it("discord 수동 키(webhookUrl) → integrations(secret=webhookUrl)", async () => {
+  it("CHANNEL-02 디스코드 Webhook을 기본 발행 계정에 저장한다", async () => {
     const { POST } = await import("@/app/api/channel-config/[channel]/route");
     const res = await POST(post("discord", { webhookUrl: "https://discord.com/api/webhooks/1/abc" }), params("discord"));
     expect(res.status).toBe(200);
-    expect(H.inserts).toHaveLength(1);
-    const s = JSON.stringify(H.inserts[0]);
+    expect(H.accounts).toHaveLength(1);
+    const s = JSON.stringify(H.accounts[0]);
     expect(s).toContain("discord.com/api/webhooks");
     expect(s).toContain("discord_webhook");
   });
 
-  it("slack 수동 키(webhookUrl) → integrations(secret=webhookUrl)", async () => {
+  it("CHANNEL-03 슬랙 Webhook을 기존 OAuth 기본 계정 대신 발행 기본 계정으로 지정한다", async () => {
+    H.accountIsDefault = false;
     const { POST } = await import("@/app/api/channel-config/[channel]/route");
-    const res = await POST(post("slack", { webhookUrl: "https://hooks.slack.com/services/T1/B1/xyz" }), params("slack"));
+    const res = await POST(post("slack", { webhookUrl: "https://hooks.slack.com/services/T1/B1/xyz", tenant_id: "other-tenant" }), params("slack"));
     expect(res.status).toBe(200);
-    expect(H.inserts).toHaveLength(1);
-    const s = JSON.stringify(H.inserts[0]);
+    expect(H.accounts).toHaveLength(1);
+    const s = JSON.stringify(H.accounts[0]);
     expect(s).toContain("hooks.slack.com");
     expect(s).toContain("slack_webhook");
+    expect((H.accounts[0] as { tenantId: string }).tenantId).toBe("tenant-1");
+    expect(H.selected).toEqual([["default", "tenant-1", "slack", "account-1"]]);
+    expect(JSON.stringify(await res.json())).not.toContain("hooks.slack.com");
+  });
+
+  it("CHANNEL-04 계정 DB 저장 실패는 연결 성공으로 응답하지 않는다", async () => {
+    H.failAccount = true;
+    const { POST } = await import("@/app/api/channel-config/[channel]/route");
+    const res = await POST(post("slack", { webhookUrl: "https://hooks.slack.com/services/T1/B1/xyz" }), params("slack"));
+    expect(res.status).toBe(503);
+    expect((await res.json()).verified).toBe(false);
+    expect(H.selected).toHaveLength(0);
+  });
+
+  it("CHANNEL-32 미러 실패는 503을 반환하고 재조회 상태를 드러내며 동일 값 재시도로 복구한다", async () => {
+    H.failMirror = true;
+    const { POST } = await import("@/app/api/channel-config/[channel]/route");
+    const request = () => post("slack", { webhookUrl: "https://hooks.slack.com/services/T1/B1/fixture" });
+    const failed = await POST(request(), params("slack"));
+    expect(failed.status).toBe(503);
+    expect((await failed.json()).verified).toBe(false);
+    expect(H.accounts).toHaveLength(1);
+    const { GET } = await import("@/app/api/channel-config/route");
+    const loaded = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(loaded.slack.connected).toBe(true);
+    H.failMirror = false;
+    const retried = await POST(request(), params("slack"));
+    expect(retried.status).toBe(200);
+    expect((await retried.json()).verified).toBe(true);
+    expect(H.selected).toEqual([["sync", "tenant-1", "slack", "account-1"]]);
+  });
+
+  it("CHANNEL-33 파일 저장 실패도 성공 응답을 막고 동일 값 재시도로 복구한다", async () => {
+    const { POST } = await import("@/app/api/channel-config/[channel]/route");
+    const rename = vi.spyOn(fs, "renameSync").mockImplementationOnce(() => { throw new Error("fixture file unavailable"); });
+    const request = () => post("slack", { webhookUrl: "https://hooks.slack.com/services/T1/B1/fixture" });
+    const failed = await POST(request(), params("slack"));
+    expect(failed.status).toBe(503);
+    expect((await failed.json()).verified).toBe(false);
+    expect(H.accounts).toHaveLength(1);
+    const { GET } = await import("@/app/api/channel-config/route");
+    const loaded = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(loaded.slack.connected).toBe(true);
+    rename.mockRestore();
+    const retried = await POST(request(), params("slack"));
+    expect(retried.status).toBe(200);
+    expect((await retried.json()).verified).toBe(true);
+  });
+
+  it("CHANNEL-05 인증 검증 실패 시 테넌트 계정 생성과 기본 계정 교체를 거부한다", async () => {
+    H.verify = { verified: false, error: "bad" };
+    const { POST } = await import("@/app/api/channel-config/[channel]/route");
+    const res = await POST(post("slack", { webhookUrl: "invalid" }), params("slack"));
+    expect((await res.json()).verified).toBe(false);
+    expect(H.accounts).toHaveLength(0);
+    expect(H.selected).toHaveLength(0);
+  });
+
+  it("CHANNEL-47 Slack 부분 저장 뒤 마스크·빈 입력은 옛 파일 Webhook 시험 전송 없이 거절하고 새 원문만 저장한다", async () => {
+    const filePath = path.join(tmpDir, "tenants", "tenant-1", "openclaw.json");
+    const config = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    config.plugins ??= {};
+    config.plugins.entries ??= {};
+    config.plugins.entries["slack-publish"] = {
+      enabled: true, config: { webhookUrl: "https://hooks.slack.com/services/OLD/FILE/fixture" },
+    };
+    fs.writeFileSync(filePath, JSON.stringify(config));
+    const before = fs.readFileSync(filePath, "utf-8");
+    H.accounts = [{
+      provider: "slack", accessToken: "https://hooks.slack.com/services/NEW/DB/fixture",
+      meta: { api: "slack_webhook" },
+    }];
+    const { POST } = await import("@/app/api/channel-config/[channel]/route");
+    const { verifyChannel } = await import("@/lib/verify-channel");
+    const verifier = vi.mocked(verifyChannel);
+    verifier.mockClear();
+    for (const webhookUrl of ["********", ""]) {
+      const refused = await POST(post("slack", { webhookUrl }), params("slack"));
+      expect(refused.status).toBe(400);
+      expect((await refused.json()).verified).toBe(false);
+    }
+    expect(verifier).not.toHaveBeenCalled();
+    expect(fs.readFileSync(filePath, "utf-8")).toBe(before);
+    expect(H.accounts).toHaveLength(1);
+
+    const newUrl = "https://hooks.slack.com/services/NEW/DB/fixture";
+    const accepted = await POST(post("slack", { webhookUrl: newUrl }), params("slack"));
+    expect(accepted.status).toBe(200);
+    expect(verifier).toHaveBeenCalledOnce();
+    expect(verifier).toHaveBeenCalledWith("slack", expect.objectContaining({ webhookUrl: newUrl }));
+    expect(H.accounts).toHaveLength(2);
+    expect((H.accounts[1] as { accessToken: string }).accessToken).toBe(newUrl);
+  });
+
+  it.each([
+    ["CHANNEL-36", { verified: false, error: "bad" }],
+    ["CHANNEL-37", { verified: false, unverified: true }],
+  ])("%s 메시징 신규 연결 실패·확인 불가면 기존 파일과 기본 계정을 보존한다", async (_id, verification) => {
+    const filePath = path.join(tmpDir, "tenants", "tenant-1", "openclaw.json");
+    const before = fs.readFileSync(filePath, "utf-8");
+    H.accounts = [{ provider: "slack", accessToken: "https://hooks.slack.com/services/OLD/DEFAULT/fixture", meta: { api: "slack_webhook" } }];
+    H.verify = verification;
+    const { POST } = await import("@/app/api/channel-config/[channel]/route");
+    const response = await POST(post("slack", { webhookUrl: "https://hooks.slack.com/services/NEW/INVALID/fixture" }), params("slack"));
+    expect((await response.json()).verified).toBe(false);
+    expect(fs.readFileSync(filePath, "utf-8")).toBe(before);
+    expect(H.accounts).toHaveLength(1);
+    expect(H.selected).toHaveLength(0);
+    const { GET } = await import("@/app/api/channel-config/route");
+    const loaded = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(loaded.slack.connected).toBe(true);
+  });
+
+  it("CHANNEL-15 슬랙 Webhook 저장 뒤 동일 테넌트 설정 재조회에서 연결됨을 반환한다", async () => {
+    const { POST } = await import("@/app/api/channel-config/[channel]/route");
+    const saved = await POST(post("slack", { webhookUrl: "https://hooks.slack.com/services/T1/B1/fixture" }), params("slack"));
+    expect((await saved.json()).verified).toBe(true);
+    const { GET } = await import("@/app/api/channel-config/route");
+    const loaded = await GET(new Request("http://localhost/api/channel-config"));
+    const data = await loaded.json();
+    expect(data.slack.connected).toBe(true);
+    expect(JSON.stringify(data)).not.toContain("fixture");
   });
 
   it("직접발행 없는 채널(pinterest)은 integrations 브리지 안 함(게이트웨이 전용)", async () => {

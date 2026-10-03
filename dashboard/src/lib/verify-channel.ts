@@ -9,6 +9,16 @@ interface VerifyResult {
   error?: string;
 }
 
+function isWebhookUrl(value: string, hostname: string, pathPrefix: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.toLowerCase() === hostname
+      && !url.username && !url.password && url.pathname.startsWith(pathPrefix);
+  } catch {
+    return false;
+  }
+}
+
 // raw JSON/영문 API 오류를 화면에 그대로 노출하지 않고(SNS-005/finding 7) 조치 가능한
 // 한국어 문구로만 정규화한다. provider raw response body(원문 메시지/스택트레이스/토큰 조각)는
 // 절대 포함하지 않는다 — 상태 코드로만 분류(status code는 secret이 아니므로 안전).
@@ -64,11 +74,42 @@ export async function verifyChannel(channel: string, cfg: Record<string, string>
 
     if (channel === "telegram") {
       const token = cfg.botToken || "";
-      if (!token) return { verified: false, error: "Bot Token is empty" };
+      if (!token || !cfg.chatId?.trim()) return { verified: false, error: "발행하려면 Bot Token과 대상 Chat ID를 모두 입력해 주세요." };
       const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: AbortSignal.timeout(5000) });
       const data = await res.json();
-      if (data.ok) return { verified: true, account: `@${data.result?.username || ""}` };
-      return { verified: false, error: "Invalid bot token" };
+      if (!res.ok || !data.ok) return { verified: false, error: "Bot Token을 확인해 주세요." };
+      const chat = await fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(cfg.chatId)}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      const chatData = await chat.json();
+      if (!chat.ok || !chatData.ok) return { verified: false, error: "Chat ID를 확인하고 봇을 대상 채팅에 추가해 주세요." };
+      const chatType = chatData.result?.type;
+      if (!["private", "group", "supergroup", "channel"].includes(chatType)) {
+        return { verified: false, error: "대상 채팅 유형을 확인할 수 없습니다. Chat ID를 다시 확인해 주세요." };
+      }
+      if (chatType !== "private") {
+        const botId = data.result?.id;
+        if (!botId) return { verified: false, error: "봇 계정 ID를 확인할 수 없어 게시 권한을 검증하지 못했습니다." };
+        const member = await fetch(`https://api.telegram.org/bot${token}/getChatMember?chat_id=${encodeURIComponent(cfg.chatId)}&user_id=${encodeURIComponent(String(botId))}`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        const memberData = await member.json();
+        if (!member.ok || !memberData.ok) return { verified: false, error: "대상 채팅의 봇 게시 권한을 확인할 수 없습니다. 봇 권한을 확인해 주세요." };
+        const membership = memberData.result;
+        if (chatType === "channel" && (membership?.status !== "administrator" || membership?.can_post_messages !== true)) {
+          return { verified: false, error: "Telegram 채널에 봇을 게시 권한이 있는 관리자로 추가해 주세요." };
+        }
+        const groupAllowsMemberMessages = chatData.result?.permissions?.can_send_messages === true;
+        if (chatType !== "channel" && !(
+          membership?.status === "creator" || membership?.status === "administrator"
+          || (membership?.status === "member" && groupAllowsMemberMessages)
+          || (membership?.status === "restricted" && membership?.is_member === true
+            && membership?.can_send_messages === true && groupAllowsMemberMessages)
+        )) {
+          return { verified: false, error: "Telegram 그룹에서 봇의 메시지 전송 권한을 확인해 주세요." };
+        }
+      }
+      return { verified: true, account: `@${data.result?.username || ""}` };
     }
 
     if (channel === "x") {
@@ -109,38 +150,47 @@ export async function verifyChannel(channel: string, cfg: Record<string, string>
 
     if (channel === "discord") {
       const webhookUrl = cfg.webhookUrl || "";
-      if (!webhookUrl || !webhookUrl.startsWith("https://discord.com/api/webhooks/")) {
+      if (!isWebhookUrl(webhookUrl, "discord.com", "/api/webhooks/")) {
         return { verified: false, error: "Invalid Discord Webhook URL" };
       }
       // 실제 webhook 검증 — GET으로 webhook 정보 확인
       try {
         const res = await fetch(webhookUrl, { signal: AbortSignal.timeout(5000) });
         const data = await res.json();
-        if (res.ok && data.name) return { verified: true, account: data.name };
+        if (res.ok && data.type === 1 && data.channel_id && data.name) {
+          return { verified: true, account: data.name };
+        }
         return { verified: false, error: `Webhook invalid (${res.status})` };
       } catch {
-        return { verified: false, unverified: true, reason: "네트워크 확인 실패 — Webhook URL은 저장됨" };
+        return { verified: false, unverified: true, reason: "네트워크 확인 실패. Webhook URL은 저장되지 않았습니다." };
       }
     }
 
     if (channel === "slack") {
       const webhookUrl = cfg.webhookUrl || "";
-      if (!webhookUrl || !webhookUrl.startsWith("https://hooks.slack.com/")) {
+      if (!isWebhookUrl(webhookUrl, "hooks.slack.com", "/")) {
         return { verified: false, error: "Invalid Slack Webhook URL" };
       }
-      // 실제 webhook 검증 — 빈 POST로 응답 확인
+      // 사용자가 화면의 명시적 테스트 메시지 전송 버튼을 누른 경우에만 호출된다.
+      // Slack Incoming Webhook의 HTTP 200 + plain 'ok'만 실제 게시 성공 증거다.
+      // timeout/5xx는 게시됐을 수도 있어 자동 재전송하거나 연결 완료로 단정하지 않는다.
       try {
         const res = await fetch(webhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: "" }),
+          body: JSON.stringify({ text: "OSMU Studio 연결 확인 메시지입니다. 사용자가 연결 버튼을 눌러 보냈습니다." }),
           signal: AbortSignal.timeout(5000),
         });
-        // Slack은 빈 text면 400 반환하지만 webhook은 유효
-        if (res.status === 400 || res.ok) return { verified: true, account: "(Webhook verified)" };
+        const responseCode = (await res.text()).trim();
+        if (res.status === 200 && responseCode === "ok") {
+          return { verified: true, account: "(Webhook verified)" };
+        }
+        if (res.status === 429 || res.status >= 500) {
+          return { verified: false, unverified: true, reason: "테스트 메시지 전송 결과를 확인하지 못했습니다. Slack 채널을 확인한 뒤 다시 시도해 주세요. 연결 정보는 저장되지 않았습니다." };
+        }
         return { verified: false, error: `Webhook invalid (${res.status})` };
       } catch {
-        return { verified: false, unverified: true, reason: "네트워크 확인 실패 — Webhook URL은 저장됨" };
+        return { verified: false, unverified: true, reason: "테스트 메시지 전송 결과를 확인하지 못했습니다. Slack 채널을 확인한 뒤 다시 시도해 주세요. 연결 정보는 저장되지 않았습니다." };
       }
     }
 
@@ -169,7 +219,9 @@ export async function verifyChannel(channel: string, cfg: Record<string, string>
     // DNS/network errors — 확인 "불가"(키는 저장되되 verified=false, 비활성 유지가 안전). UI는 앰버 표시.
     // (finding 7) 원문 에러 메시지는 URL/토큰 조각을 포함할 수 있어 사용자 노출 필드에는 넣지 않는다.
     if (msg.includes("fetch failed") || msg.includes("ENOTFOUND") || msg.includes("name resolution")) {
-      return { verified: false, unverified: true, reason: "네트워크 확인 실패 — 저장됨(검증 미완)" };
+      return { verified: false, unverified: true, reason: ["slack", "telegram", "discord"].includes(channel)
+        ? "네트워크 확인 실패. 연결 정보는 저장되지 않았습니다."
+        : "네트워크 확인 실패 — 저장됨(검증 미완)" };
     }
     return { verified: false, error: "연결 확인 중 오류가 발생했습니다. 입력값을 다시 확인해주세요." };
   }

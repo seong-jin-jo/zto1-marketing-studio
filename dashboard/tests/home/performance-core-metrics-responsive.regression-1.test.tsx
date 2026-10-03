@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PerformanceRoom } from "@/components/home/PerformanceRoom";
 
@@ -46,5 +46,28 @@ describe("FLOW-UI-METRICS-V14 성과실 지표 반응형 회귀", () => {
 
     expect(metrics).toHaveClass("grid-cols-2", "lg:grid-cols-4");
     expect(metrics).not.toHaveClass("xl:grid-cols-4");
+  });
+});
+
+describe("REVIEW-20260918-09 성과실 사용량 오류 계약", () => {
+  afterEach(() => cleanup());
+
+  it("정상: 마지막 성공 사용량을 보존하고 일반 서버 오류와 다시 불러오기를 표시한다", () => {
+    const retry = vi.fn();
+    const view = render(<PerformanceRoom {...props}
+      usage={{ today: { aiGenerations: 2, publications: 3 }, thisWeek: { aiGenerations: 2, publications: 3 } }}
+      usageError="사용량을 불러오지 못했습니다 (503)."
+      onRetryUsage={retry} />);
+    expect(view.container.querySelector('[data-usage-error="true"]')).toBeInTheDocument();
+    expect(screen.getByText(/오늘 생성 2 · 발행 3/)).toBeInTheDocument();
+    expect(screen.queryByText(/발행 사용량 반영이 지연/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "다시 불러오기" }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it("거절: 구조화된 사용량 지연만 지연 상태로 표시한다", () => {
+    const view = render(<PerformanceRoom {...props} usageDelayed />);
+    expect(view.container.querySelector("[data-usage-delayed]")).toBeInTheDocument();
+    expect(view.container.querySelector("[data-usage-error]")).not.toBeInTheDocument();
   });
 });

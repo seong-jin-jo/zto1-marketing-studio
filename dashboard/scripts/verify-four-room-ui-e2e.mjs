@@ -5,6 +5,7 @@ import path from "node:path";
 import playwright from "/Users/sj/kimstudy-auto/node_modules/playwright-core/index.js";
 import lockfile from "proper-lockfile";
 import { runCleanupSteps } from "./lib/cleanup-steps.mjs";
+import { requestWithDeadline } from "./request-with-deadline.mjs";
 
 const { chromium } = playwright;
 const baseUrl = process.env.FOUR_ROOM_BASE_URL || "http://localhost:3456";
@@ -47,15 +48,16 @@ const roomContracts = [
   { key: "performance", label: "성과실", href: "/performance", selector: '[data-room="performance"]' },
 ];
 
-const request = async (pathname, options = {}) => fetch(`${baseUrl}${pathname}`, {
+const request = async (pathname, options = {}) => requestWithDeadline(`${baseUrl}${pathname}`, {
   ...options,
   headers: {
     authorization: `Bearer ${operatorToken}`,
     ...(options.body ? { "content-type": "application/json" } : {}),
     ...(options.headers || {}),
   },
-  signal: AbortSignal.timeout(Math.max(1, Math.min(15_000, deadlineAt - Date.now()))),
-});
+  // 최초 고객 토큰 발급도 공유 Next 개발 서버의 냉간 컴파일 대상이다.
+  // 방 렌더와 같은 단계별 상한을 써서 15초 조기 중단이 정상 흐름을 NG로 바꾸지 않게 한다.
+}, readyTimeoutMs, deadlineAt);
 const cleanupRequest = async (pathname, options = {}) => fetch(`${baseUrl}${pathname}`, {
   ...options,
   headers: {

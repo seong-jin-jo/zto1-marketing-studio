@@ -40,6 +40,16 @@ const OTHER_CHANNELS: Record<string, { plugin: string; keyField: string }> = {
   naver_blog: { plugin: "naver-blog-publish", keyField: "blogId" },
 };
 
+function isWebhookUrl(value: string | null, hostname: string, pathPrefix: string): boolean {
+  try {
+    const url = new URL(value || "");
+    return url.protocol === "https:" && url.hostname.toLowerCase() === hostname
+      && !url.username && !url.password && url.pathname.startsWith(pathPrefix);
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(request: Request) {
   // 테넌트 컨텍스트로 감싸 파일 I/O를 테넌트별로 격리.
   // tenant_id 쿼리 파라미터는 fallback으로만 존중된다 — 로그인 세션/토큰/Host로 테넌트가
@@ -232,12 +242,42 @@ export async function GET(request: Request) {
           });
           continue;
         }
-        if (connectionStates[label] === "connected") {
-          void reportRecovery({ workspaceId: __t, category: "token_expired", source });
-        }
         if (status !== "active") continue;
         const m = (meta ?? {}) as Record<string, unknown>;
         const userId = typeof m.userId === "string" ? m.userId : "";
+
+        if (["slack", "telegram", "discord"].includes(label) && (!key || !token)) {
+          ch.connected = false;
+          ch.connectionStatus = "unverified";
+          ch.connectionError = key ? "no_token" : "server_key_missing";
+          ch.status = "available";
+          continue;
+        }
+        // OAuth로 저장된 Slack bot token은 현재 발행기가 요구하는 Incoming Webhook이 아니다.
+        // Telegram도 대상 chatId 없이는 sendMessage가 불가능하다. 계정 행만으로 연결됨이라 하지 않는다.
+        if ((label === "slack" && (m.api !== "slack_webhook" || !isWebhookUrl(token, "hooks.slack.com", "/"))) ||
+            (label === "discord" && (m.api !== "discord_webhook" || !isWebhookUrl(token, "discord.com", "/api/webhooks/"))) ||
+            (label === "telegram" && !m.chatId)) {
+          ch.connected = false;
+          ch.connectionStatus = "reconnect";
+          ch.reconnectRequired = true;
+          ch.connectionError = label === "slack" ? "slack_webhook_required"
+            : label === "discord" ? "discord_webhook_required" : "telegram_chat_required";
+          ch.status = "available";
+          continue;
+        }
+        if (label === "telegram") {
+          // 실제 direct publish는 기본 channel_accounts.meta.chatId를 읽는다. 파일 쓰기 실패 뒤
+          // gateway 캐시의 옛 대상 Chat ID를 화면에 보여주면 다른 방에 보내는 사고가 난다.
+          ch.keys = {
+            ...(ch.keys as Record<string, string>),
+            botToken: "********",
+            chatId: String(m.chatId),
+          };
+        }
+        if (connectionStates[label] === "connected") {
+          void reportRecovery({ workspaceId: __t, category: "token_expired", source });
+        }
 
         if (liveCheckable.has(label)) {
           if (!key || !token) {

@@ -46,6 +46,7 @@ interface DraftRow {
     includes?: Record<string, boolean>;
     publishReconciliations?: unknown;
     publishReconciliation?: unknown;
+    publishProgress?: unknown;
     editor_handoff?: unknown;
     editFormat?: unknown;
     editKind?: unknown;
@@ -90,6 +91,7 @@ function flattenDraft(r: DraftRow) {
     includes: r.payload?.includes ?? {},
     publishReconciliations: r.payload?.publishReconciliations ?? null,
     publishReconciliation: r.payload?.publishReconciliation ?? null,
+    publishProgress: r.payload?.publishProgress ?? null,
     editorHandoff: r.payload?.editor_handoff ?? null,
     editFormat: r.payload?.editFormat ?? null,
     editKind: r.payload?.editKind ?? null,
@@ -268,6 +270,7 @@ export async function POST(request: Request) {
     includes: body.includes ?? {},
     publishReconciliations: body.publishReconciliations ?? {},
     publishReconciliation: body.publishReconciliation ?? null,
+    publishProgress: body.publishProgress ?? null,
     editFormat: body.editFormat ?? null,
     editKind: body.editKind ?? null,
     cardTextPositions: body.cardTextPositions ?? null,

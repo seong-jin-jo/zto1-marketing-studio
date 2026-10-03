@@ -6,6 +6,7 @@ const H = vi.hoisted(() => ({
   tenantId: "tenant-usage" as string | null,
   queries: [] as string[],
   relayFailed: 0,
+  relayRemaining: 0,
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({
@@ -16,7 +17,7 @@ vi.mock("@/lib/tenant-context", () => ({
   runWithTenant: vi.fn(async (_tenantId: string | null, cb: () => unknown) => cb()),
 }));
 vi.mock("@/lib/usage-events", () => ({
-  reconcilePendingPublicationEvents: vi.fn(async () => ({ processed: 0, failed: H.relayFailed })),
+  reconcilePendingPublicationEvents: vi.fn(async () => ({ processed: 0, failed: H.relayFailed, remaining: H.relayRemaining })),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -52,6 +53,7 @@ beforeEach(() => {
   H.tenantId = "tenant-usage";
   H.queries = [];
   H.relayFailed = 0;
+  H.relayRemaining = 0;
 });
 
 afterEach(() => {
@@ -66,6 +68,7 @@ describe("GET /api/usage — usage_events DB 정본", () => {
 
     expect(response.status).toBe(200);
     expect(body.source).toBe("usage_events");
+    expect(body.tenantId).toBe("tenant-usage");
     expect(body.today).toEqual({ aiGenerations: 2, publications: 3, cronRuns: 0, apiCalls: 0 });
     expect(body.thisWeek).toEqual({ aiGenerations: 2, publications: 3, cronRuns: 4, apiCalls: 0 });
     expect(body.thisMonth).toEqual({ aiGenerations: 2, publications: 3, cronRuns: 4, apiCalls: 5 });
@@ -107,6 +110,16 @@ describe("GET /api/usage — usage_events DB 정본", () => {
 
     expect(response.status).toBe(503);
     expect(body).toMatchObject({ status: "delayed", publicationRelay: { failed: 1 } });
+    expect(body.today).toBeUndefined();
+  });
+
+  it("REVIEW-20260918-08 거절: 51건 중 50건만 반영하면 확정 합계를 반환하지 않는다", async () => {
+    H.relayRemaining = 1;
+    const { GET } = await import("@/app/api/usage/route");
+    const response = await GET(new Request("http://localhost/api/usage?tenant_id=tenant-usage"));
+    const body = await response.json();
+    expect(response.status).toBe(503);
+    expect(body).toMatchObject({ status: "delayed", publicationRelay: { remaining: 1 } });
     expect(body.today).toBeUndefined();
   });
 });

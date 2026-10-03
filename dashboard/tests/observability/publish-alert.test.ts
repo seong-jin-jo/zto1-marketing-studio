@@ -37,6 +37,12 @@ vi.mock("@/lib/db", () => ({
       if (query.includes("INSERT INTO published_posts") && query.includes("'in_progress'")) {
         return Promise.resolve([{ id: "55555555-5555-4555-8555-555555555555" }]);
       }
+      // A durable provider-attempt marker must be saved before an external
+      // POST. The observability fixture owns a valid reservation, so this
+      // update succeeds and the test can reach the provider result.
+      if (query.includes("SET provider_meta = COALESCE") && query.includes("RETURNING id::text")) {
+        return Promise.resolve([{ id: "55555555-5555-4555-8555-555555555555" }]);
+      }
       return Promise.resolve([]);
     };
     sql.json = (value: unknown) => value;

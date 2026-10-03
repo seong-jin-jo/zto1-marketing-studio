@@ -48,6 +48,17 @@ describe("publishInstagramReels", () => {
     expect(calls.some((c) => c.url.includes("media_publish"))).toBe(false);
   });
 
+  it("REVIEW-20260918-18 거절: media_publish 응답 ID 누락은 외부 성공 가능성을 보존한다", async () => {
+    installFetch([
+      { match: /\/media$/, json: { id: "creation-1" } },
+      { match: "creation-1?fields=status_code", json: { status_code: "FINISHED" } },
+      { match: "media_publish", json: {} },
+    ]);
+    const result = await publishInstagramReels(CRED, "캡션", VIDEO, FAST);
+    expect(result).toMatchObject({ ok: false, failureKind: "indeterminate" });
+    expect(result.error).toContain("자동 재발행하지 않습니다");
+  });
+
   it("status EXPIRED면 fail-closed — media_publish를 호출하지 않는다(24h 미발행 만료, 공식 문서)", async () => {
     const { calls } = installFetch([
       { match: /\/media$/, json: { id: "creation-1" } },

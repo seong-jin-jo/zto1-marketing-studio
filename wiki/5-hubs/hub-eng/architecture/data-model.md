@@ -2,6 +2,23 @@
 
 This is the reference for all persistent state. Most data is tenant-scoped for SaaS isolation.
 
+## 2026-09-18 발행 복구와 사용량 원장 증분
+
+외부 게시 성공 뒤 내부 기록이 실패하면 서버는 기존 `OSMU_SECRET_KEY` 또는 `DASHBOARD_AUTH_TOKEN`에서
+용도를 분리해 파생한 키로 24시간 복구 증표를 서명한다. 증표는 작업 공간, 발행 행, 초안,
+계정, 플랫폼, 외부 게시 결과, 실패 단계와 발생 시각에 결속된다. 복구 API는 이 증표와 잠근
+`published_posts` 행을 대조하고 `failed` 행은 완료 처리하지 않는다. `publication_record`만
+발행 행을 갱신하고, `queue_record`와 `usage_record`는 이미 저장된 `published_at`을 보존한다.
+복구 증표가 없는 과거 응답은 외부 게시를 확인할 운영자 조치가 필요하며 자동 성공 처리하지 않는다.
+
+발행 확정 시 `provider_meta.usageEvent.occurredAt`에 발생 시각을 저장한다. Relay는 이 시각을
+`usage_events.created_at`에 명시해 월경계 뒤 재시도해도 원래 기간에 귀속한다. 예전 pending
+outbox에는 발행 행의 `published_at`을 쓴다. `/api/usage`는 한 번에 최대 50건을 relay한 뒤
+남은 pending 수를 세며, 1건이라도 남으면 확정 합계 대신 `status: delayed` 503을 반환한다.
+기존 예약 발행 크론 `/api/schedule/publish-due`는 예약이 없어도 pending 사용량이 있는
+작업 공간을 찾아 최대 20묶음씩 별도로 비운다. 실패 또는 진전 없음이면 멈추고 다음 크론에서
+재시도한다.
+
 ## Core Tables / Files (DB in production path, files for simple runs)
 
 ### Tenant & Workspace

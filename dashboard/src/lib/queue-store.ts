@@ -150,19 +150,23 @@ export type QueuePublishOutcome = "updated" | "absent";
 export async function markQueuePublished(
   tenantId: string,
   postId: string,
-  result: { platform: string; externalId?: string; permalink?: string },
+  result: { platform: string; externalId?: string; permalink?: string; publishedAt?: string },
 ): Promise<QueuePublishOutcome> {
   if (!isUuid(tenantId) || !isUuid(postId)) return "absent";
 
   let found: QueueMirrorPost | null = null;
-  const publishedAt = new Date().toISOString();
+  const publishedAt = result.publishedAt ?? new Date().toISOString();
+  let effectivePublishedAt = publishedAt;
   await runWithTenant(tenantId, () => mutateJson<{ version?: number; posts: QueueMirrorPost[] }>(
     dataPath("queue.json"),
     (queue) => {
       for (const post of queue.posts || []) {
         if (post.id !== postId) continue;
+        const originalPublishedAt = post.status === "published" && typeof post.publishedAt === "string"
+          ? post.publishedAt : publishedAt;
+        effectivePublishedAt = originalPublishedAt;
         post.status = "published";
-        post.publishedAt = publishedAt;
+        post.publishedAt = originalPublishedAt;
         post.publishedPlatform = result.platform;
         post.externalId = result.externalId ?? null;
         post.permalink = result.permalink ?? null;
@@ -175,10 +179,10 @@ export async function markQueuePublished(
 
   await withTenant(tenantId, (sql) => sql`
     UPDATE queue_posts
-       SET status = 'published', published_at = ${publishedAt},
+       SET status = 'published', published_at = COALESCE(published_at, ${effectivePublishedAt}::timestamptz),
            payload = COALESCE(payload, '{}'::jsonb) || ${sql.json({
              status: "published",
-             publishedAt,
+             publishedAt: effectivePublishedAt,
              publishedPlatform: result.platform,
              externalId: result.externalId ?? null,
              permalink: result.permalink ?? null,

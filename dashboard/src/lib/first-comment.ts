@@ -1,6 +1,7 @@
 import {
   publishThreads,
   publishXReply,
+  isAmbiguousProviderHttpStatus,
   type ChannelCred,
   type PublishResult,
 } from "@/lib/publish";
@@ -65,9 +66,10 @@ async function publishGraphComment(
     body: new URLSearchParams({ message: text, access_token: cred.token }),
     signal: AbortSignal.timeout(15_000),
   });
-  if (!response.ok) return { ok: false, error: `first comment 실패(${response.status})` };
+  if (!response.ok) return { ok: false, error: `first comment 실패(${response.status})`,
+    failureKind: isAmbiguousProviderHttpStatus(response.status) ? "indeterminate" : "definitive" };
   const body = (await response.json().catch(() => ({}))) as { id?: string };
-  if (!body.id) return { ok: false, error: "first comment 응답에 id가 없습니다." };
+  if (!body.id) return { ok: false, error: "first comment 응답에 id가 없습니다.", failureKind: "indeterminate" };
   return { ok: true, externalId: body.id };
 }
 

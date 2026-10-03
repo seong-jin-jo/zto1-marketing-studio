@@ -42,6 +42,11 @@ vi.mock("@/lib/db", () => ({
       (strings: TemplateStringsArray) => {
         const text = strings.join("?");
         if (/WITH\s+due\s+AS/i.test(text)) return Promise.resolve(H.rows);
+        // The cron now drains pending publication usage before replying.
+        // This alert-boundary fixture has no pending outbox rows.
+        if (/SELECT\s+COUNT\(\*\)::int\s+AS\s+remaining/i.test(text)) {
+          return Promise.resolve([{ remaining: 0 }]);
+        }
         if (/UPDATE\s+schedules/i.test(text) && /RETURNING\s+id/i.test(text)) {
           return Promise.resolve([{ id: "lease-owned" }]);
         }

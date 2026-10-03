@@ -49,6 +49,11 @@ vi.mock("@/lib/db", () => ({
         const row = live(draft, platform, account);
         return Promise.resolve(row ? [row] : []);
       }
+      // 게시 직전 시도 표식(reelsPublishAttemptStarted)은 상태를 바꾸지 않는다.
+      if (q.includes("UPDATE published_posts") && q.includes("SET provider_meta")) {
+        const row = H.rows.find((r) => vals.includes(r.id) && r.status === "in_progress");
+        return Promise.resolve(row ? [{ id: row.id }] : []);
+      }
       if (q.includes("UPDATE published_posts")) {
         const id = vals.find((value) => H.rows.some((candidate) => candidate.id === value)) as string;
         const row = H.rows.find((r) => r.id === id);

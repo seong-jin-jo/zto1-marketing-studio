@@ -69,6 +69,64 @@ afterEach(() => {
 });
 
 describe("GET /api/channel-config — Instagram/Threads 라이브 OAuth 검증", () => {
+  it("CHANNEL-06 슬랙 OAuth 봇 토큰은 발행용 Webhook 연결로 표시하지 않는다", async () => {
+    H.rows = [{ label: "slack", token: "xoxb-fixture", meta: { api: "slack_oauth" } }];
+    const { GET } = await import("@/app/api/channel-config/route");
+    const data = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(data.slack).toEqual(expect.objectContaining({ connected: false, reconnectRequired: true, connectionError: "slack_webhook_required" }));
+    expect(JSON.stringify(data)).not.toContain("xoxb-fixture");
+  });
+
+  it("CHANNEL-07 슬랙 Webhook 기본 계정은 연결됨으로 표시한다", async () => {
+    H.rows = [{ label: "slack", token: "https://hooks.slack.com/services/T/B/fixture", meta: { api: "slack_webhook" } }];
+    const { GET } = await import("@/app/api/channel-config/route");
+    const data = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(data.slack.connected).toBe(true);
+    expect(JSON.stringify(data)).not.toContain("fixture");
+  });
+
+  it("CHANNEL-08 텔레그램 Chat ID 없는 계정은 발행 연결됨으로 표시하지 않는다", async () => {
+    H.rows = [{ label: "telegram", token: "bot-fixture", meta: { api: "telegram_bot" } }];
+    const { GET } = await import("@/app/api/channel-config/route");
+    const data = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(data.telegram).toEqual(expect.objectContaining({ connected: false, connectionError: "telegram_chat_required" }));
+  });
+
+  it("CHANNEL-41 Telegram 연결 화면의 Chat ID는 파일 캐시 대신 발행 기본 계정 meta를 표시한다", async () => {
+    H.rows = [{ label: "telegram", token: "bot-fixture", meta: { api: "telegram_bot", chatId: "-100NEW" } }];
+    const { GET } = await import("@/app/api/channel-config/route");
+    const data = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(data.telegram.connected).toBe(true);
+    expect(data.telegram.keys.chatId).toBe("-100NEW");
+    expect(data.telegram.keys.botToken).toBe("********");
+    expect(JSON.stringify(data)).not.toContain("bot-fixture");
+  });
+
+  it("CHANNEL-23 Discord OAuth/임의 토큰과 유사 도메인은 연결로 표시하지 않는다", async () => {
+    H.rows = [{ label: "discord", token: "oauth-fixture", meta: { api: "discord_oauth" } }];
+    const { GET } = await import("@/app/api/channel-config/route");
+    let data = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(data.discord).toEqual(expect.objectContaining({ connected: false, connectionError: "discord_webhook_required" }));
+    H.rows = [{ label: "discord", token: "https://discord.com.evil.example/api/webhooks/fixture", meta: { api: "discord_webhook" } }];
+    data = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(data.discord.connected).toBe(false);
+  });
+
+  it("CHANNEL-24 Discord 실제 Webhook 기본 계정만 연결로 표시한다", async () => {
+    H.rows = [{ label: "discord", token: "https://discord.com/api/webhooks/123/fixture", meta: { api: "discord_webhook" } }];
+    const { GET } = await import("@/app/api/channel-config/route");
+    const data = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(data.discord.connected).toBe(true);
+    expect(JSON.stringify(data)).not.toContain("fixture");
+  });
+
+  it("CHANNEL-16 암호화 키가 없어 메시징 자격증명을 읽지 못하면 연결됨으로 표시하지 않는다", async () => {
+    H.rows = [{ label: "slack", token: null, meta: { api: "slack_webhook" } }];
+    delete process.env.OSMU_SECRET_KEY;
+    const { GET } = await import("@/app/api/channel-config/route");
+    const data = await (await GET(new Request("http://localhost/api/channel-config"))).json();
+    expect(data.slack).toEqual(expect.objectContaining({ connected: false, connectionStatus: "unverified", connectionError: "server_key_missing" }));
+  });
   it("유효한 토큰(200 OK)이면 connected=true, connectionStatus=valid", async () => {
     H.rows = [
       { label: "instagram", token: "IG_TOKEN", meta: { userId: "1784" } },

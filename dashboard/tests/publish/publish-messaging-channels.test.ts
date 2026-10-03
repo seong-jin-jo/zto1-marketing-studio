@@ -561,3 +561,26 @@ describe("publishSlack — Incoming Webhook", () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe("외부 게시 응답 불명확성 공통 계약", () => {
+  const cases = [
+    { name: "Telegram", call: () => publishTelegram({ token: "bot-token", meta: { chatId: "1" } }, "body"), match: "api.telegram.org" },
+    { name: "Discord", call: () => publishDiscord({ token: "https://discord.com/api/webhooks/1/abc" }, "body"), match: "discord.com" },
+    { name: "Slack", call: () => publishSlack(slackWebhookCred("https://hooks.slack.com/services/T1/B1/abc"), "body"), match: "hooks.slack.com" },
+  ];
+  for (const item of cases) {
+    it(`REVIEW-20260918-28 보류: ${item.name} 외부 POST 503은 자동 재시도할 실패가 아니다`, async () => {
+      installFetch([{ match: item.match, status: 503, text: "server error" }]);
+      expect(await item.call()).toMatchObject({ ok: false, failureKind: "indeterminate" });
+    });
+    it(`REVIEW-20260918-28 보류: ${item.name} 외부 POST 응답 유실도 자동 재시도하지 않는다`, async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("response lost"); }));
+      expect(await item.call()).toMatchObject({ ok: false, failureKind: "indeterminate" });
+    });
+  }
+  it("REVIEW-20260918-28 보류: Slack 2xx인데 공식 ok 본문이 없으면 성공으로 기록하지 않는다", async () => {
+    installFetch([{ match: "hooks.slack.com", status: 200, text: "" }]);
+    expect(await publishSlack(slackWebhookCred("https://hooks.slack.com/services/T1/B1/abc"), "body"))
+      .toMatchObject({ ok: false, failureKind: "indeterminate" });
+  });
+});

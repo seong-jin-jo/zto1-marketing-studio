@@ -148,6 +148,8 @@ interface PerformanceRoomProps {
   viralCount: number;
   usage?: UsageSummary;
   usageDelayed?: boolean;
+  usageError?: string;
+  onRetryUsage?: () => void;
   collecting: boolean;
   onCollectMetrics: () => Promise<void>;
   failureDetails?: MetricsFailureDetailView[];
@@ -225,6 +227,8 @@ export function PerformanceRoom({
   viralCount,
   usage,
   usageDelayed = false,
+  usageError,
+  onRetryUsage,
   collecting,
   onCollectMetrics,
   failureDetails = [],
@@ -557,15 +561,17 @@ export function PerformanceRoom({
             </div>
           ) : null}
 
-          {usageDelayed ? (
-            <div className="rounded-control border border-warning bg-warning-soft px-stack py-stack-tight text-caption text-warning" role="status" data-usage-delayed>
-              발행 사용량 반영이 지연되고 있습니다. 잠시 후 다시 확인해주세요.
-            </div>
-          ) : usage ? (
+          {usage ? (
             <div className="flex flex-wrap items-center gap-x-stack-section gap-y-micro border-t border-border pt-stack text-caption text-muted">
               {usage.tier && <span className="rounded-pill bg-accent-soft px-stack-tight py-micro font-semibold text-accent">{usage.tier} 요금제</span>}
               <span>오늘 생성 {usage.today?.aiGenerations || 0} · 발행 {usage.today?.publications || 0} · 크론 {usage.today?.cronRuns || 0}</span>
               <span>이번 주 생성 {usage.thisWeek?.aiGenerations || 0} · 발행 {usage.thisWeek?.publications || 0} · 크론 {usage.thisWeek?.cronRuns || 0}</span>
+            </div>
+          ) : null}
+          {usageDelayed || usageError ? (
+            <div className="flex flex-wrap items-center justify-between gap-stack rounded-control border border-warning bg-warning-soft px-stack py-stack-tight text-caption text-warning" role="status" data-usage-delayed={usageDelayed || undefined} data-usage-error={usageError ? true : undefined}>
+              <span>{usageDelayed ? "발행 사용량 반영이 지연되고 있습니다. 마지막 확인 시점의 사용량을 유지했습니다." : `${usageError} 마지막 확인 시점의 사용량을 유지했습니다.`}</span>
+              {onRetryUsage ? <Button size="sm" onClick={onRetryUsage}>다시 불러오기</Button> : null}
             </div>
           ) : null}
         </Stack>

@@ -8,7 +8,7 @@ import { SCHEDULABLE_PLATFORMS } from "@/lib/constants";
 import { channelImageCapacity } from "@/lib/studio/channel-image-capacity";
 import { runWithTenant } from "@/lib/tenant-context";
 import { drainQueueMirrorOutbox, listQueueMirrorOutboxTenantIds } from "@/lib/queue-mirror-outbox";
-import { publicationUsageOutbox, recordPublicationEvent } from "@/lib/usage-events";
+import { publicationUsageOutbox, recordPublicationEvent, drainPendingPublicationEvents, pendingPublicationUsageTenantIds } from "@/lib/usage-events";
 import {
   getChannelCred,
   publishFacebook,
@@ -19,6 +19,7 @@ import {
   publishTelegram,
   publishDiscord,
   publishSlack,
+  publishLinkedIn,
   type PublishResult,
 } from "@/lib/publish";
 
@@ -64,23 +65,31 @@ export async function POST(request: Request) {
   if (tenantId) {
     const outbox = await runWithTenant(tenantId, () => drainQueueMirrorOutbox());
     const schedules = await processTenant(tenantId, limit);
-    return Response.json({ ok: true, processed: schedules.length, schedules, outbox });
+    const usageRelay = await drainPendingPublicationEvents(tenantId);
+    return Response.json({ ok: usageRelay.remaining === 0 && usageRelay.failed === 0,
+      processed: schedules.length, schedules, outbox, usageRelay },
+      { status: usageRelay.remaining || usageRelay.failed ? 503 : 200 });
   }
 
   // 테넌트 미해석 — 운영자 토큰이면 전체 테넌트 스윕(단일 크론 진입점), 아니면 400.
   const raw = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || "";
   const operatorToken = process.env.DASHBOARD_AUTH_TOKEN || "";
   if (operatorToken && raw === operatorToken) {
-    const tenantIds = [...new Set([...(await dueTenantIds()), ...listQueueMirrorOutboxTenantIds()])];
+    const tenantIds = [...new Set([...(await dueTenantIds()), ...listQueueMirrorOutboxTenantIds(),
+      ...(await pendingPublicationUsageTenantIds())])];
     const tenants = [];
     let processed = 0;
+    let pendingUsage = 0;
     for (const tid of tenantIds) {
       const outbox = await runWithTenant(tid, () => drainQueueMirrorOutbox());
       const schedules = await processTenant(tid, limit);
+      const usageRelay = await drainPendingPublicationEvents(tid);
       processed += schedules.length;
-      tenants.push({ tenantId: tid, processed: schedules.length, schedules, outbox });
+      pendingUsage += usageRelay.remaining;
+      tenants.push({ tenantId: tid, processed: schedules.length, schedules, outbox, usageRelay });
     }
-    return Response.json({ ok: true, mode: "all-tenants", tenantCount: tenants.length, processed, tenants });
+    return Response.json({ ok: pendingUsage === 0, mode: "all-tenants", tenantCount: tenants.length,
+      processed, pendingUsage, tenants }, { status: pendingUsage ? 503 : 200 });
   }
 
   return Response.json({ error: "tenant_id required" }, { status: 400 });
@@ -267,6 +276,13 @@ async function publishOne(
 
   const text = textForPlatform(platform, row.payload, row.draft_payload);
   const storedImageUrls = imageUrlsFromPayload(row.payload, row.draft_payload);
+  if (platform === "linkedin" && storedImageUrls.length > 0) {
+    return {
+      ok: false,
+      error: "LinkedIn은 현재 글만 발행할 수 있습니다. 예약에 담긴 이미지를 버리지 않도록 발행을 시작하지 않았습니다.",
+      resolvedAccountId: cred.accountId,
+    };
+  }
   if (storedImageUrls.length > channelImageCapacity(platform)) {
     return {
       ok: false,
@@ -312,6 +328,7 @@ async function publishOne(
     else if (platform === "telegram") result = await publishTelegram(cred, text, imageUrl);
     else if (platform === "discord") result = await publishDiscord(cred, text, imageUrl);
     else if (platform === "slack") result = await publishSlack(cred, text, imageUrl);
+    else if (platform === "linkedin") result = await publishLinkedIn(cred, text);
     else return { ok: false, error: `${platform} 미지원` };
     return { ...result, resolvedAccountId: cred.accountId };
   } catch (e) {

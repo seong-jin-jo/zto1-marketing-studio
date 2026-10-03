@@ -60,6 +60,11 @@ vi.mock("@/lib/db", () => ({
           first_comment_status: null, first_comment_error: null,
         })));
       }
+      // 외부 게시 직전 시도 표식(publishAttemptStarted) 기록 — 예약이 살아 있으면 성공한다.
+      if (q.includes("UPDATE published_posts") && q.includes("provider_meta = COALESCE") && !q.includes("SET external_id") && q.includes("RETURNING id")) {
+        const row = H.rows.find((r) => vals.includes(r.id) && r.status === "in_progress");
+        return Promise.resolve(row ? [{ id: row.id }] : []);
+      }
       if (q.includes("UPDATE published_posts") && q.includes("SET external_id")) {
         const reservation = H.rows.find((r) => r.status === "in_progress");
         if (reservation) {

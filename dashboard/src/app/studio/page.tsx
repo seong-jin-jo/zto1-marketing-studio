@@ -294,6 +294,10 @@ interface VidResult {
 // 않는 상태(세션맥락: 524 오판으로 인한 재발행이 중복 게시를 부른다 — 재발행을 유도하지
 // 않기 위해 failed와 분리한다). 게시물 목록에서 실제 결과를 확인하라고 안내한다.
 type PubStatus = "wait" | "doing" | "done" | "failed" | "unknown";
+type PublishProgress = {
+  running: boolean; stopped: boolean; status: Record<string, PubStatus>;
+  urls: Record<string, string>; errors: Record<string, string>; already: Record<string, string | true>;
+};
 type PublishReconciliation = ExternalPublishPersistenceFailure["persistence"]["reconciliation"];
 type PublishReconciliationMap = Record<string, PublishReconciliation>;
 
@@ -307,6 +311,18 @@ function normalizePublishReconciliations(value: unknown): PublishReconciliationM
     const reconciliation = entry[1] as Partial<PublishReconciliation> | null;
     return Boolean(reconciliation && reconciliation.retryPublish === false && reconciliation.platform === entry[0]);
   }));
+}
+
+function normalizePublishProgress(value: unknown): PublishProgress | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Partial<PublishProgress>;
+  if (!candidate.status || typeof candidate.status !== "object" || Array.isArray(candidate.status)) return null;
+  const status = Object.fromEntries(Object.entries(candidate.status).filter((entry): entry is [string, PubStatus] =>
+    ["wait", "doing", "done", "failed", "unknown"].includes(entry[1])));
+  return { running: false, stopped: false, status,
+    urls: candidate.urls && typeof candidate.urls === "object" ? candidate.urls : {},
+    errors: candidate.errors && typeof candidate.errors === "object" ? candidate.errors : {},
+    already: candidate.already && typeof candidate.already === "object" ? candidate.already : {} };
 }
 
 function studioWorkStorageKey(workspaceId: string): string {
@@ -554,6 +570,7 @@ export default function StudioPage() {
   const [vid, setVid] = useState<VidResult | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [publishReconciliations, setPublishReconciliations] = useState<PublishReconciliationMap>({});
+  const [reconciliationError, setReconciliationError] = useState<string | null>(null);
   const [editorHandoff, setEditorHandoff] = useState<EditorHandoff | null>(null);
   const [includes, setIncludes] = useState<Record<string, boolean>>(() => normalizeIncludes());
   /**
@@ -761,18 +778,10 @@ export default function StudioPage() {
     fetcher,
   );
 
-  const [pub, setPub] = useState<{
-    running: boolean;
-    stopped: boolean;
-    status: Record<string, PubStatus>;
-    urls: Record<string, string>;
-    errors: Record<string, string>;
-    // 2026-09-16 실측(j.the.great.investor): 이미 올라간 글을 "지금 발행"으로 다시 누르면
-    // 서버가 dedupe 로 옛 글을 돌려주는데(`[publish] queue_record_absent(dedupe)`), 화면은
-    // "완료" + "새 창" 링크만 보여줘 방금 새로 올라간 것처럼 보였다. 그 발행 시각(있으면)을
-    // 따로 들고 있다가 "이미 올라간 글입니다" 로 구분해 말한다.
-    already: Record<string, string | true>;
-  }>({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
+  // 이미 올라간 글의 발행 시각은 already에 따로 둬 재발행 성공처럼 보이지 않게 한다.
+  const [pub, setPub] = useState<PublishProgress>({
+    running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {},
+  });
   // SNS-007: 플랫폼별 다중계정 중 이번 발행에 쓸 계정. 미선택(undefined)이면 getChannelCred가
   // 기본계정으로 resolve(/api/publish 계약과 동일). 계정이 1개뿐이면 셀렉터 자체를 숨긴다.
   const [accountsByPlatform, setAccountsByPlatform] = useState<Record<string, AccountOption[]>>({});
@@ -1057,6 +1066,7 @@ export default function StudioPage() {
         }
         setDraftId(w.draftId || null);
         setPublishReconciliations(normalizePublishReconciliations(w.publishReconciliations ?? w.publishReconciliation));
+        setPub(normalizePublishProgress(w.publishProgress) ?? { running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
         setTitles(w.titles || {}); setHashtags(w.hashtags || {}); setTopicTags(w.topicTags || {});
         setFirstComments(w.firstComments || {}); setCaptions(w.captions || {}); setSelectedAccounts(w.selectedAccounts || {});
         // 2026-10-01 운영 실측: 구조 초안 복원부(StudioRooms.tsx)는 PR#96에서 이미
@@ -1136,13 +1146,13 @@ export default function StudioPage() {
     const workspaceId = activeWorkspace?.id;
     if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
     try {
-      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, reviewQueueId, editKind, editFormat, videoEdit, quickDraftTopic: quickDraftTopicRef.current ?? undefined }));
+      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, publishProgress: pub, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, reviewQueueId, editKind, editFormat, videoEdit, quickDraftTopic: quickDraftTopicRef.current ?? undefined }));
       setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
       setEditAutosaveError("");
     } catch {
       setEditAutosaveError("자동 저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.");
     }
-  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, bodyServerRevision, img, vid, includes, draftId, publishReconciliations, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, reviewQueueId, editKind, editFormat, videoEdit]);
+  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, bodyServerRevision, img, vid, includes, draftId, publishReconciliations, pub, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, reviewQueueId, editKind, editFormat, videoEdit]);
 
   const upText = (patch: Partial<TextVariants>) => replaceText({ ...(textRef.current || {}), ...patch });
   const upIg = (patch: Partial<NonNullable<TextVariants["instagram"]>>) => replaceText({
@@ -1743,6 +1753,9 @@ export default function StudioPage() {
     persistedCardDeck: CardDeck | null,
     persistedVideoEdit: VideoEdit | null,
     bodyConflictRetryPlacement: "tail" | "head" = "tail",
+    // 채널별 발행 진행 상태(완료·실패·링크)를 초안에 함께 남겨 새로고침·다른 기기에서도
+    // 어느 채널이 이미 올라갔는지 복원한다. 발행 직후 호출은 setPub 반영 전 값을 넘긴다.
+    persistedProgress: PublishProgress = pub,
   ) {
     const saveTenantId = activeWorkspace?.id ?? null;
     const saveDocumentGeneration = editDocumentGenerationRef.current;
@@ -1783,6 +1796,7 @@ export default function StudioPage() {
             includes,
             status,
             publishReconciliations: reconciliations,
+            publishProgress: persistedProgress,
             titles,
             hashtags,
             topicTags,
@@ -1845,6 +1859,7 @@ export default function StudioPage() {
                 persistedCardDeck,
                 safeVideoEdit,
                 "head",
+                persistedProgress,
               ),
               retryWithoutVideo: () => save(
                 status,
@@ -1855,6 +1870,7 @@ export default function StudioPage() {
                 persistedCardDeck,
                 null,
                 "head",
+                persistedProgress,
               ),
             };
             // 원본 저장 충돌은 직렬 큐 도착 순서대로 tail에 쌓는다. 재적용 중 같은
@@ -2259,7 +2275,7 @@ export default function StudioPage() {
     if (!platforms.length) return;
     try {
       const result = await apiPost<{
-        repaired?: Array<{ platform: string; publicationId: string }>;
+        repaired?: Array<{ platform: string; publicationId: string; firstCommentStatus?: string }>;
         failed?: Array<{ platform: string; error: string }>;
       }>("/api/publish/reconcile", {
         tenant_id: activeWorkspace?.id,
@@ -2270,19 +2286,36 @@ export default function StudioPage() {
         Object.entries(publishReconciliations).filter(([platform]) => !repairedPlatforms.has(platform)),
       );
       if (repairedPlatforms.size === 0) throw new Error("발행 원장 복구 실패");
+      const nextStatus = { ...pub.status };
+      for (const repaired of result?.repaired ?? []) {
+        nextStatus[repaired.platform] = repaired.firstCommentStatus === "failed" || repaired.firstCommentStatus === "uncertain"
+          ? "failed" : "done";
+      }
+      // Legacy drafts have no per-platform result. They cannot be promoted to
+      // published merely because the last persistence receipt was repaired.
+      const incomplete = Object.keys(remaining).length > 0 || Object.keys(pub.status).length === 0
+        || Object.values(nextStatus).some((status) => status !== "done");
+      const nextProgress = { ...pub, running: false, status: nextStatus };
       // 발행 원장 기록만 남기는 호출이다 — 카드덱·영상 내용은 이 호출의 관심사가
       // 아니므로 null,null로 키 자체를 빼서 서버에 이미 저장된 값을 건드리지 않는다.
-      const savedDraftId = await save(Object.keys(remaining).length ? "partial" : "published", remaining, draftId, undefined, undefined, null, null);
+      const savedDraftId = await save(incomplete ? "partial" : "published", remaining, draftId, undefined, undefined, null, null, "tail", nextProgress);
       if (!savedDraftId) throw new Error("기록 저장 실패");
       setPublishReconciliations(remaining);
+      setReconciliationError(null);
+      setPub(nextProgress);
       const repairedLabels = [...repairedPlatforms].map((platform) => LABEL[platform as keyof typeof LABEL]).join(", ");
-      if (Object.keys(remaining).length) {
-        showToast(`${repairedLabels} 기록을 복구했습니다. 남은 채널은 잠시 뒤 다시 눌러 주세요.`, "error");
+      if (incomplete) {
+        showToast(`${repairedLabels} 내부 기록을 복구했습니다. 실패하거나 결과 미확인인 채널은 아직 완료되지 않았습니다.`, "error");
       } else {
         showToast(`${repairedLabels} 발행 원장과 사용량 기록을 복구했습니다. 이제 다음 작업을 이어가실 수 있습니다.`, "success");
       }
-    } catch {
-      showToast("기록을 정리하지 못했습니다. 잠시 뒤 다시 눌러 주세요.", "error");
+    } catch (error) {
+      const failed = error instanceof ApiResponseError
+        ? (error.payload as { failed?: Array<{ error?: string }> } | null)?.failed : undefined;
+      const reason = failed?.map((item) => item.error).filter(Boolean).join(" ");
+      const message = reason || "기록을 정리하지 못했습니다. 외부 게시 상태를 확인한 뒤 다시 시도해 주세요.";
+      setReconciliationError(message);
+      showToast(message, "error");
     }
   }
 
@@ -2528,6 +2561,7 @@ export default function StudioPage() {
     });
     const errs: string[] = [...blockedFailure.messages];
     const pendingReconciliations: PublishReconciliationMap = {};
+    setReconciliationError(null);
     setPub({ running: true, stopped: false, status: { ...status }, urls: {}, errors: {}, already: {} });
     await runWithConcurrency(targets, PUBLISH_CONCURRENCY, async (p) => {
       status[p] = "doing";
@@ -2713,19 +2747,20 @@ export default function StudioPage() {
         already: { ...already },
       });
     });
-    setPub({
+    const completedProgress: PublishProgress = {
       running: false,
       stopped: false,
       status: { ...status },
       urls: { ...urls },
       errors: { ...errors },
       already: { ...already },
-    });
+    };
+    setPub(completedProgress);
     if (Object.keys(pendingReconciliations).length > 0) {
       setPublishReconciliations(pendingReconciliations);
       try {
         // 발행 결과 기록만 남긴다 — 카드덱·영상은 이 호출의 관심사가 아니다.
-        await save("partial", pendingReconciliations, did, undefined, undefined, null, null);
+        await save("partial", pendingReconciliations, did, undefined, undefined, null, null, "tail", completedProgress);
       } catch {
         // The same storage incident can prevent the draft write too. The state was
         // already copied to localStorage-bound React state, so keep the no-republish
@@ -2735,7 +2770,7 @@ export default function StudioPage() {
     } else {
       try {
         // 발행 결과 기록만 남긴다 — 카드덱·영상은 이 호출의 관심사가 아니다.
-        const savedDraftId = await save(errs.length ? "partial" : "published", {}, did, undefined, undefined, null, null);
+        const savedDraftId = await save(errs.length ? "partial" : "published", {}, did, undefined, undefined, null, null, "tail", completedProgress);
         if (!savedDraftId) errs.push("발행 결과를 저장하지 못했습니다");
       } catch {
         errs.push("발행 결과를 저장하지 못했습니다");
@@ -2828,6 +2863,8 @@ export default function StudioPage() {
     setDraftId(d.id as string);
     const savedReconciliations = normalizePublishReconciliations(d.publishReconciliations ?? d.publishReconciliation);
     setPublishReconciliations(savedReconciliations);
+    setReconciliationError(null);
+    setPub(normalizePublishProgress(d.publishProgress) ?? { running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
     setEditorHandoff((d.editorHandoff as EditorHandoff) || null);
     setTitles((d.titles as Record<string, string>) || {});
     setHashtags((d.hashtags as Record<string, string>) || {});
@@ -4376,6 +4413,9 @@ export default function StudioPage() {
                   <span className="mt-stack-tight block">
                     <Button size="sm" data-testid="publish-reconciliation-resolve" onClick={resolvePublishReconciliation}>이미 올라간 것으로 기록하기</Button>
                   </span>
+                  {reconciliationError ? <p className="mt-stack-tight" role="alert">{reconciliationError}</p> : null}
+                  <p className="mt-stack-tight">증표가 만료되었거나 기록 복구가 실패하면 다시 게시하지 말고 외부 게시 주소와 작업물 번호를 준비해 지원에 문의해 주세요.</p>
+                  <a className="mt-stack-tight inline-flex text-accent underline" href="mailto:code0to1@gmail.com?subject=%EB%B0%9C%ED%96%89%20%EA%B8%B0%EB%A1%9D%20%EB%B3%B5%EA%B5%AC%20%EC%9A%94%EC%B2%AD" data-testid="publish-recovery-support">복구 문의 메일 열기</a>
                 </div>
               ) : null}
               <Stack direction="horizontal" gap={8} wrap>

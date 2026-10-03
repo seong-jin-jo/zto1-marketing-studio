@@ -10,6 +10,7 @@ import { getChannelCred, publishInstagramReels, findRecentProviderPost } from "@
 import { refreshYoutubeAccessToken } from "@/lib/youtube-token";
 import { withTenant } from "@/lib/db";
 import { publicationUsageOutbox, recordPublicationEvent } from "@/lib/usage-events";
+import { issueRecoveryProof } from "@/lib/publish-recovery-proof";
 import { createVideoPublishJob, updateVideoPublishJob } from "@/lib/video-publish-jobs";
 import { signMediaToken } from "@/lib/media-token";
 import { canonicalPublicOrigin } from "@/lib/social-connect";
@@ -98,6 +99,9 @@ function youtubeResumeOffset(range: string | null): number {
 }
 
 function videoPersistenceFailure(input: {
+  tenantId: string;
+  draftId: string;
+  accountId?: string | null;
   stage: "publication_record" | "usage_record";
   platform: string;
   publicationId: string;
@@ -108,6 +112,22 @@ function videoPersistenceFailure(input: {
   const message = usagePending
     ? "외부 게시와 발행 기록 저장에는 성공했지만 사용량 장부 반영이 대기 중입니다."
     : "외부 게시에는 성공했지만 발행 기록 저장에 실패했습니다.";
+  let receipt: string | null = null;
+  try {
+    receipt = issueRecoveryProof({
+      tenantId: input.tenantId,
+      publicationId: input.publicationId,
+      draftId: input.draftId,
+      accountId: input.accountId ?? null,
+      platform: input.platform,
+      externalId: input.externalId || null,
+      permalink: input.permalink || null,
+      occurredAt: new Date().toISOString(),
+      stage: input.stage,
+    });
+  } catch {
+    // Keep the no-republish warning when the signing key is unavailable.
+  }
   return Response.json({
     ok: false,
     partial: true,
@@ -131,9 +151,10 @@ function videoPersistenceFailure(input: {
         action: "repair_persistence_only",
         retryPublish: false,
         platform: input.platform,
-        draftId: null,
-        accountId: null,
+        draftId: input.draftId,
+        accountId: input.accountId ?? null,
         publicationId: input.publicationId,
+        receipt,
         stage: input.stage,
         externalId: input.externalId,
         permalink: input.permalink,
@@ -334,6 +355,7 @@ export async function POST(request: Request) {
             await recordPublicationEvent(tenantId, holder.id, "youtube");
           } catch {
             return videoPersistenceFailure({
+              tenantId, draftId: idKey, accountId: resolvedAccountId,
               stage: "usage_record",
               platform: "youtube",
               publicationId: holder.id,
@@ -421,7 +443,7 @@ export async function POST(request: Request) {
             `).catch(() => {});
             return Response.json({
               ok: false,
-              code: "publish_state_uncertain",
+              code: "PUBLISH_STATE_UNCERTAIN",
               error: "기존 YouTube 업로드 결과를 확인하지 못했습니다. 중복 업로드를 막기 위해 다시 보내지 않았습니다.",
               reconciliation: { required: true, retryPublish: false, platform: "youtube" },
             }, { status: 409 });
@@ -444,12 +466,12 @@ export async function POST(request: Request) {
                    RETURNING id::text`);
                 if (!saved) throw new Error("publication row missing");
               } catch {
-                return videoPersistenceFailure({ stage: "publication_record", platform: "youtube", publicationId: holder.id, externalId: recoveredId, permalink });
+                return videoPersistenceFailure({ tenantId, draftId: idKey, accountId: resolvedAccountId, stage: "publication_record", platform: "youtube", publicationId: holder.id, externalId: recoveredId, permalink });
               }
               try {
                 await recordPublicationEvent(tenantId, holder.id, "youtube");
               } catch {
-                return videoPersistenceFailure({ stage: "usage_record", platform: "youtube", publicationId: holder.id, externalId: recoveredId, permalink });
+                return videoPersistenceFailure({ tenantId, draftId: idKey, accountId: resolvedAccountId, stage: "usage_record", platform: "youtube", publicationId: holder.id, externalId: recoveredId, permalink });
               }
               return Response.json({ ok: true, platform: "youtube", videoId: recoveredId, url: permalink, alreadyPublished: true, recoveredFrom: "resumable_status" });
             }
@@ -485,7 +507,7 @@ export async function POST(request: Request) {
                WHERE tenant_id = ${tenantId}::uuid AND id = ${holder.id}::uuid AND status = 'in_progress'`).catch(() => {});
             return Response.json({
               ok: false,
-              code: "publish_state_uncertain",
+              code: "PUBLISH_STATE_UNCERTAIN",
               error: "기존 YouTube 업로드 결과가 불확실합니다. 중복 업로드를 막기 위해 다시 보내지 않았습니다.",
               reconciliation: { required: true, retryPublish: false, platform: "youtube" },
             }, { status: 409 });
@@ -682,12 +704,12 @@ export async function POST(request: Request) {
              RETURNING id::text`);
           if (!saved) throw new Error("publication row missing");
         } catch {
-          return videoPersistenceFailure({ stage: "publication_record", platform: "youtube", publicationId: reservationId, externalId: videoId, permalink });
+          return videoPersistenceFailure({ tenantId, draftId: idKey, accountId: resolvedAccountId, stage: "publication_record", platform: "youtube", publicationId: reservationId, externalId: videoId, permalink });
         }
         try {
           await recordPublicationEvent(tenantId, reservationId, "youtube");
         } catch {
-          return videoPersistenceFailure({ stage: "usage_record", platform: "youtube", publicationId: reservationId, externalId: videoId, permalink });
+          return videoPersistenceFailure({ tenantId, draftId: idKey, accountId: resolvedAccountId, stage: "usage_record", platform: "youtube", publicationId: reservationId, externalId: videoId, permalink });
         }
 
         return Response.json({
@@ -1048,6 +1070,7 @@ export async function POST(request: Request) {
                AND draft_id = ${idKey}::uuid
                AND platform = ${REELS_PLATFORM}
                AND status = 'in_progress'
+               AND provider_meta->>'reelsPublishAttemptStarted' IS NULL
                AND account_id IS NOT DISTINCT FROM ${cred.accountId ?? null}::uuid
                AND published_at < now() - interval '15 minutes'
           `);
@@ -1077,6 +1100,7 @@ export async function POST(request: Request) {
               await recordPublicationEvent(tenantId, staleRow.id, REELS_PLATFORM);
             } catch {
               return videoPersistenceFailure({
+                tenantId, draftId: idKey, accountId: cred.accountId ?? null,
                 stage: "usage_record", platform: REELS_PLATFORM, publicationId: staleRow.id,
                 externalId: readback.hit.externalId, permalink: readback.hit.permalink ?? "",
               });
@@ -1123,15 +1147,18 @@ export async function POST(request: Request) {
 
       if (!reservationId) {
         // ② 예약 패배 — 이미 누가 잡고 있다. 그 행의 상태로 정직하게 분기한다.
-        let holder: { id: string; status: string; external_id: string | null; permalink: string | null } | undefined;
+        let holder: { id: string; status: string; external_id: string | null; permalink: string | null;
+          publish_started_at: string | null } | undefined;
         try {
           [holder] = await withTenant(tenantId, (sql) => sql<{
             id: string;
             status: string;
             external_id: string | null;
             permalink: string | null;
+            publish_started_at: string | null;
           }[]>`
-            SELECT id::text, status, external_id, permalink
+            SELECT id::text, status, external_id, permalink,
+                   provider_meta->>'reelsPublishAttemptStarted' AS publish_started_at
               FROM published_posts
              WHERE tenant_id = ${tenantId}::uuid
                AND draft_id = ${idKey}::uuid
@@ -1153,6 +1180,7 @@ export async function POST(request: Request) {
             await recordPublicationEvent(tenantId, holder.id, REELS_PLATFORM);
           } catch {
             return videoPersistenceFailure({
+              tenantId, draftId: idKey, accountId: cred.accountId,
               stage: "usage_record",
               platform: REELS_PLATFORM,
               publicationId: holder.id,
@@ -1187,25 +1215,42 @@ export async function POST(request: Request) {
         return Response.json(
           {
             ok: false,
-            error: "같은 영상의 Reels 발행이 이미 진행 중입니다. 완료될 때까지 기다린 뒤 결과를 확인해주세요.",
-            code: "publish_in_progress",
+            error: holder?.status === "uncertain" || holder?.publish_started_at
+              ? "Reels 발행 결과를 확인할 수 없습니다. Instagram 게시물을 확인한 뒤 운영자에게 문의해 주세요. 자동 재발행하지 않습니다."
+              : "같은 영상의 Reels 발행이 이미 진행 중입니다. 완료될 때까지 기다린 뒤 결과를 확인해주세요.",
+            code: holder?.status === "uncertain" || holder?.publish_started_at
+              ? "PUBLISH_STATE_UNCERTAIN" : "publish_in_progress",
           },
           { status: 409 },
         );
       }
 
-      // ③ 예약 성공한 요청만 외부 발행. 어떤 경로로 끝나든 예약 행은 반드시 확정 상태로 닫는다
-      //    — 안 그러면 in_progress가 남아 이후 재시도가 영구히 409로 막힌다.
+      // ③ 외부 게시 가능성이 생기기 전에 durable marker를 저장한다. 이후 UPDATE 실패나
+      //    프로세스 종료로 in_progress가 남아도 stale lease가 재게시하지 못한다.
+      try {
+        const [marked] = await withTenant(tenantId, (sql) => sql<{ id: string }[]>`
+          UPDATE published_posts
+             SET provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+               || ${sql.json({ reelsPublishAttemptStarted: new Date().toISOString() } as never)}::jsonb
+           WHERE id = ${reservationId}::uuid AND tenant_id = ${tenantId}::uuid
+             AND status = 'in_progress'
+          RETURNING id::text`);
+        if (!marked) throw new Error("reservation row missing");
+      } catch {
+        return Response.json({ ok: false, error: "발행 의도를 저장하지 못해 Reels 게시를 시작하지 않았습니다." }, { status: 503 });
+      }
+
       let result: Awaited<ReturnType<typeof publishInstagramReels>>;
       try {
         result = await publishInstagramReels(cred, caption, videoUrl, { coverTimestampMs: coverMs });
       } catch {
         try {
           await withTenant(tenantId, (sql) => sql`
-            UPDATE published_posts SET status = 'failed', error = ${"발행 중 예기치 못한 오류"}
+            UPDATE published_posts SET status = 'uncertain', error = ${"발행 결과를 확인하지 못함"}
              WHERE id = ${reservationId}::uuid AND tenant_id = ${tenantId}::uuid`);
         } catch { /* 기록 실패가 응답을 바꾸지 않는다 */ }
-        return Response.json({ ok: false, error: "Reels 발행에 실패했습니다." }, { status: PROVIDER_FAILED });
+        return Response.json({ ok: false, code: "PUBLISH_STATE_UNCERTAIN",
+          error: "Reels 발행 결과를 확인할 수 없습니다. Instagram 게시물을 확인한 뒤 운영자에게 문의해 주세요. 자동 재발행하지 않습니다." }, { status: 409 });
       }
 
       // M-C(2026-10-02 재재검토): media_publish가 타임아웃·네트워크 오류·5xx·id없음으로
@@ -1230,6 +1275,7 @@ export async function POST(request: Request) {
       } catch {
         if (result.ok) {
           return videoPersistenceFailure({
+            tenantId, draftId: idKey, accountId: cred.accountId,
             stage: "publication_record",
             platform: REELS_PLATFORM,
             publicationId: reservationId,
@@ -1249,7 +1295,10 @@ export async function POST(request: Request) {
       }
       if (!result.ok) {
         // publishInstagramReels의 에러는 이미 프로바이더 원문을 담지 않는 고정 문구다.
-        return Response.json({ ok: false, error: result.error || "Reels 발행에 실패했습니다." }, { status: PROVIDER_FAILED });
+        return Response.json({ ok: false,
+          ...(result.failureKind === "indeterminate" ? { code: "PUBLISH_STATE_UNCERTAIN" } : {}),
+          error: result.error || "Reels 발행에 실패했습니다." },
+        { status: result.failureKind === "indeterminate" ? 409 : PROVIDER_FAILED });
       }
       // published_posts 는 위에서 이미 기록했다. 성과실 사용량 집계(usage_events)는 별도
       // 정본이라 여기서 따로 남긴다(2026-09-16, /api/publish 와 같은 원인).
@@ -1257,6 +1306,7 @@ export async function POST(request: Request) {
         await recordPublicationEvent(tenantId, reservationId, REELS_PLATFORM);
       } catch {
         return videoPersistenceFailure({
+          tenantId, draftId: idKey, accountId: cred.accountId,
           stage: "usage_record",
           platform: REELS_PLATFORM,
           publicationId: reservationId,
