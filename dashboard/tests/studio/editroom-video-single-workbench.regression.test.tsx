@@ -182,16 +182,17 @@ describe("v70 §4: 영상 편집 워크벤치(플레이어+자막 대본+타임�
     expect(document.querySelectorAll('[data-video-timeline] input[type="number"]').length).toBe(0);
   });
 
-  it("PR94-R3-VIDEO-01 정상: 390 플레이어는 180px이고 대본과 108px 타임라인이 뒤따른다", () => {
+  it("PR94-R3-VIDEO-01 정상: 390 영상 화면은 160px이고 3×44px 레인은 156px 타임라인 안에 머문다", () => {
     stubVoicesUnconfigured();
     render(<VideoRoomHarness initialLines={["첫 장면 대사"]} />);
     const playback = document.querySelector("[data-video-playback]");
     const screen = document.querySelector("[data-video-screen]");
-    expect(playback?.className).toContain("max-[26rem]:h-[11.25rem]");
+    expect(playback?.className).not.toContain("max-[26rem]:h-[11.25rem]");
     expect(playback?.className).toContain("max-[26rem]:space-y-none");
-    expect(screen?.className).toContain("max-[26rem]:min-h-0");
+    expect(screen?.className).toContain("max-[26rem]:h-40");
+    expect(screen?.className).toContain("max-[26rem]:min-h-40");
     expect(screen?.className).toContain("max-[26rem]:aspect-auto");
-    expect(document.querySelector("[data-video-workbench]")?.className).toContain("max-[26rem]:[grid-template-rows:auto_6.75rem]");
+    expect(document.querySelector("[data-video-workbench]")?.className).toContain("max-[26rem]:[grid-template-rows:auto_9.75rem]");
     expect(document.querySelector("[data-video-script-column]")).toBeInTheDocument();
   });
 

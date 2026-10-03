@@ -211,10 +211,9 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   return (
     <div className="space-y-stack" data-video-editor>
       {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-video-editor-error>{error}</p> : null}
-      {/* M8(교차 리뷰 MAJOR): 390px 폭에서는 타임라인 칸(108px)이 낮아 이 안내가 블록에
-          가려졌다. 편집기 맨 위 머리줄로 올린다 — 타임라인 안에는 더 안 둔다. */}
+      {/* M8(교차 리뷰 MAJOR): 타임라인 안내는 편집기 맨 위 머리줄에 한 번만 둔다. */}
       <p className="text-caption text-subtle" data-video-timeline-hint>← 옆으로 밀어 더 보기 · 블록을 끌어서 구간을 바꿉니다</p>
-      <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_10.5rem] max-[64rem]:[grid-template-rows:minmax(0,1fr)_9.375rem] max-[26rem]:[grid-template-rows:auto_6.75rem]">
+      <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_10.5rem] max-[64rem]:[grid-template-rows:minmax(0,1fr)_9.375rem] max-[26rem]:[grid-template-rows:auto_9.75rem]">
         <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
             src={effectivePreviewUrl}
@@ -431,8 +430,8 @@ function VideoPlayback({
   }
 
   return (
-    <div className="min-w-0 space-y-stack-tight max-[26rem]:grid max-[26rem]:h-[11.25rem] max-[26rem]:grid-rows-[minmax(0,1fr)_auto_auto] max-[26rem]:gap-stack-tight max-[26rem]:space-y-none" data-video-playback>
-      <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:min-h-0 max-[26rem]:aspect-auto" data-video-screen>
+    <div className="min-w-0 space-y-stack-tight max-[26rem]:grid max-[26rem]:grid-rows-[auto_auto_auto] max-[26rem]:gap-stack-tight max-[26rem]:space-y-none" data-video-playback>
+      <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:h-40 max-[26rem]:min-h-40 max-[26rem]:aspect-auto" data-video-screen>
         {loadFailed ? (
           <div className="space-y-stack-tight p-pad-inset" role="alert" data-video-load-failed>
             <p className="text-caption text-danger">영상 주소가 만료됐거나 원본 파일을 찾지 못해 재생하지 못했습니다.</p>

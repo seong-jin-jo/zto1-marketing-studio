@@ -812,17 +812,33 @@ async function captureVideoActual(viewport) {
     const screen = root.querySelector("[data-video-screen]").getBoundingClientRect();
     const script = root.querySelector("[data-video-script-column]").getBoundingClientRect();
     const timeline = root.querySelector("[data-video-timeline]").getBoundingClientRect();
+    const controls = root.querySelector("[data-video-controls]").getBoundingClientRect();
+    const workbench = root.querySelector("[data-video-workbench]").getBoundingClientRect();
+    const nextContent = root.querySelector("[data-video-workbench]").nextElementSibling?.getBoundingClientRect();
+    const laneBottoms = [...root.querySelectorAll("[data-video-timeline-lane]")]
+      .map((lane) => lane.getBoundingClientRect().bottom);
     return {
       playback: { top: playback.top, bottom: playback.bottom, height: playback.height },
       screen: { top: screen.top, bottom: screen.bottom, height: screen.height },
+      controls: { top: controls.top, bottom: controls.bottom, height: controls.height },
       script: { top: script.top, bottom: script.bottom, height: script.height },
       timeline: { top: timeline.top, bottom: timeline.bottom, height: timeline.height },
+      workbench: { top: workbench.top, bottom: workbench.bottom, height: workbench.height },
+      nextContentTop: nextContent?.top ?? null,
+      lastLaneBottom: laneBottoms.length ? Math.max(...laneBottoms) : null,
     };
   });
   if (viewport.width === 390) {
-    if (Math.abs(geometry.playback.height - 180) > 1) throw new Error(`390 영상 플레이어 전체가 180px이 아닙니다: ${JSON.stringify(geometry)}`);
+    if (geometry.screen.height < 159) throw new Error(`390 영상 화면이 160px보다 작습니다: ${JSON.stringify(geometry)}`);
+    if (geometry.controls.height < 44) throw new Error(`390 재생 조작 줄이 44px보다 작습니다: ${JSON.stringify(geometry)}`);
     if (geometry.script.top >= viewport.height) throw new Error(`390 첫 화면에 대본이 보이지 않습니다: ${JSON.stringify(geometry)}`);
-    if (Math.abs(geometry.timeline.height - 132) > 1) throw new Error(`390 영상 타임라인이 132px이 아닙니다: ${JSON.stringify(geometry)}`);
+    if (geometry.timeline.height < 155) throw new Error(`390 영상 타임라인 칸이 156px보다 작습니다: ${JSON.stringify(geometry)}`);
+    if (geometry.lastLaneBottom !== null && geometry.lastLaneBottom > geometry.timeline.bottom + 1) {
+      throw new Error(`390 타임라인 레인이 칸 아래로 넘습니다: ${JSON.stringify(geometry)}`);
+    }
+    if (geometry.nextContentTop !== null && geometry.timeline.bottom > geometry.nextContentTop + 1) {
+      throw new Error(`390 타임라인이 다음 콘텐츠를 침범합니다: ${JSON.stringify(geometry)}`);
+    }
   }
   const video = room.locator("[data-video-el]");
   await video.waitFor();
