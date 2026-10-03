@@ -1,3 +1,14 @@
+## 2026-10-04 07:12 KST 편집실 v2 본 구현 기술설계 완료, eng-design 검수 대기
+
+- handoff basis: 회장이 이 세션에 직접 지정한 tech-architect 과제와 D-2026-10-04-1·D-2026-10-03-2, 버전핀 PRD·v71 prototype·기존 3개 설계문서·현재 main을 정본으로 삼았다. tmux `371:0.1`은 같은 현재 Codex worker pane으로 확인했고 다른 live handoff와 충돌하지 않았다.
+- 산출물: `docs/eng/editroom-v2/card-element-model.md`, `export-queue.md`, `build-plan.md`, `user-flow-mapping.md`. 카드 v3의 5종 요소·v2 무손실 이관·동일 React 장 렌더, PostgreSQL job/item·RLS·SKIP LOCKED worker·API·발행 최신 판 차단, 8개 수직 슬라이스, v71 의미 행 85개의 endpoint·component·storage·test 매핑을 확정했다.
+- 핵심 판단: 카드 편집 DOM과 서버 PNG는 `CardSlideScene` 하나를 쓰고 기존 Remotion·Chromium을 재사용한다. export worker는 advisory lock으로 전역 1개만 active가 되고 tenant별 RLS transaction에서 item을 claim한다. 첫 build 슬라이스는 회장 체감이 큰 카드 자유 배치다.
+- 검증: 기능 원문 고유 ID 83개와 mapping 고유 ID 83개가 같고 missing·extra 0, 중복 의미를 포함한 mapping 행 85개, 빈 셀 0이다. 네 문서 em dash·내부 태그 0, `git diff --check` 통과. `pipeline-artifact-lint.sh`는 종료 코드 0이고 기존 design·qa 핀 위생 경고 28건은 남았다. 사용자 지시대로 제품 코드·DB·무거운 test·build는 실행하지 않았다.
+- 입력 결손: `docs/design/README.md`가 current UI architecture·screen inventory·v71 user-flow·capture manifest를 지목하지 않고, pipeline lint도 기존 design·qa 산출물 28건을 경고한다. 이번에는 회장이 직접 버전핀한 v71 HTML과 gap matrix로 설계를 닫았으나 build 승인 전 upstream 문서 결손을 별도 보강해야 한다.
+- 커밋: `2922b538`, `b21d82b0`, `699d0e11`, `7d412ede`, `627f6bb8`, `c8b1e49c`. 세 문서의 미래 STAMP를 자체 검수에서 발견해 실제 commit 시각으로 교정했고 평가 `ev-20261004-03`을 `c8b1e49c`로 해결 기록했다. push는 하지 않았다.
+- 다음 실행: 부모 컨트롤러가 eng-design 독립 리뷰와 회장 게이트를 진행한다. 승인 뒤 code-builder가 `build-plan.md` S1 카드 자유 배치부터 시작하고, related tests 전부 + integrity + 모든 contract + typecheck:ci + 실제 1440·1024·390 구동을 종료 증거로 낸다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않았다.
+
 ## 2026-10-04 02:42 KST 편집실 v2 drawtext 프레임 비교 전수 교정 완료, push 대기
 
 - handoff basis: 회장이 직접 지정한 CI run 37140251980과 최신 요청을 정본으로 삼았다. tmux `371:0.1`은 제한시간이 끝난 이전 code-builder 로그 창이며 현재 실행 주체가 아니다.
