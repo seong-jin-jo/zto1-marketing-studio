@@ -138,7 +138,7 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     const selection = screen.getByLabelText("제목 요소");
     fireEvent.focus(selection);
     expect(screen.getByRole("toolbar", { name: "제목 도구" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "삭제", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^삭제$/ }));
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
     await waitFor(() => expect(screen.getByLabelText("카드 편집 스테이지")).toHaveFocus());
     expect(current.slides[0].elements).toHaveLength(0);

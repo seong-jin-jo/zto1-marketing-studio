@@ -57,6 +57,7 @@ interface DraftRow {
     cardTextPositions?: unknown;
     cardDeck?: unknown;
     cardDeckV3?: unknown;
+    cardDeckV3SourceSnapshot?: unknown;
     videoEdit?: unknown;
     titles?: unknown;
     captions?: unknown;
@@ -211,7 +212,10 @@ export async function POST(request: Request) {
       }, { status: validation?.code === "CARD_DECK_TOO_LARGE" ? 413 : 400, headers: { "Cache-Control": "no-store" } });
     }
   }
-  const cardDeckV3SourceSnapshotPatch: { cardDeckV3SourceSnapshot?: unknown } = {};
+  // 아래 구조 검증을 통과한 JSON 트리만 SQL 경계로 넘긴다. postgres의 JSONValue는
+  // index signature가 없는 객체 타입을 받지 못하므로 cardDeck들과 같은 경계 캐스팅이다.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cardDeckV3SourceSnapshotPatch: { cardDeckV3SourceSnapshot?: any } = {};
   if (Object.prototype.hasOwnProperty.call(body, "cardDeckV3SourceSnapshot")) {
     const snapshot = body.cardDeckV3SourceSnapshot;
     const positions = new Set([

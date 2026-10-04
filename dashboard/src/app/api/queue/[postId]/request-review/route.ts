@@ -14,7 +14,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pos
     const { postId } = await params;
     const current = readJson<QueueData>(dataPath("queue.json")) || { posts: [] };
     const currentPost = current.posts.find((candidate) => candidate.id === postId);
-    if (currentPost && await draftHasCardDeckV3(tenantId, currentPost.draftId)) {
+    if (tenantId && currentPost && await draftHasCardDeckV3(tenantId, currentPost.draftId)) {
       return cardDeckV3PublishBlockedResponse();
     }
     let transition: ReviewTransitionResult | null = null;
