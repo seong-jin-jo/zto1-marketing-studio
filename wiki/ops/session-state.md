@@ -3,7 +3,7 @@
 - handoff basis: 회장이 지정한 PR 116 CI run `37186181393` 실패 6건과 기존 회귀 테스트 기대를 정본으로 삼았다. push는 하지 않는다.
 - 발견: v3 자동 생성이 `textEmbedded` 카드까지 선점했고, 저장 함수 중간에 v3 인자를 끼워 기존 cardDeck·videoEdit 위치 계약을 깨뜨렸다. 새 맨 button 2개, v3 누락 상태 판정, raw 이미지 2개도 CI 계약을 위반했다.
 - 수정: `e985fe54`, `647da886`, `0eaf5f5a`, `1f4dd05c`, `5db71aa2`로 원인별 분리했다. 기존 글자 내장 카드 잠금·장수·재합성 금지와 S1 자유 배치 기능을 함께 유지한다.
-- 검증: 변경 파일 import 56파일 422건, integrity 32파일 102건, 전체 contract 84파일 445건, `typecheck:ci` PASS. 첫 typecheck는 손상된 `.next/dev/types` 생성 캐시 때문에 문법 오류가 났고, 캐시를 `/tmp/zto1-next-dev-types.r5gZEK`로 보관한 뒤 재실행해 종료 코드 0을 확인했다.
+- 검증: 변경 파일 import 56파일 422건, integrity 32파일 102건, 전체 contract 84파일 445건, `typecheck:ci` PASS. 첫 typecheck는 손상된 `.next/dev/types` 생성 캐시 때문에 문법 오류가 났고, 캐시를 `/tmp/zto1-next-dev-types.r5gZEK`로 보관한 뒤 재실행해 종료 코드 0을 확인했다. 현재 커밋 dev 서버는 1,380ms에 준비됐고 Chromium 1440 끌기·크기·회전·글자 크기·5종 추가·저장·새로고침과 390 대체 조작을 통과했다. 가로 390=390, 콘솔 오류 0이다.
 - 다음 실행: 부모 컨트롤러가 이 브랜치를 push해 PR 116 원격 CI가 6건 포함 전체 green인지 확인한다. 종료 증거는 새 CI run의 실패 0이다. red일 때만 code-builder로 다시 회수한다.
 - 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
 
