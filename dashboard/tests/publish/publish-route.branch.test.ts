@@ -47,6 +47,9 @@ vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async (_tid: string, cb: (sql: unknown) => unknown) => {
     const sql = (strings: TemplateStringsArray, ...vals: unknown[]) => {
       const query = strings.join(" ");
+      if (query.includes("payload ? 'cardDeckV3'")) {
+        return Promise.resolve([{ has_card_deck_v3: false }]);
+      }
       if (query.includes("INSERT INTO published_posts") && query.includes("'in_progress'")) {
         if (H.existingPublication || H.reservationClaimed) return Promise.resolve([]);
         H.reservationClaimed = true;

@@ -98,6 +98,10 @@ beforeEach(() => {
     return { data: undefined, mutate: vi.fn() };
   });
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes("/api/studio/drafts?") && url.includes("&id=") && !init?.method) {
+      const id = new URL(url, "http://localhost").searchParams.get("id");
+      return Response.json({ draft: [draftWithBoth, draftVideoWithBrokenDeck].find((draft) => draft.id === id) ?? null });
+    }
     if (typeof url === "string" && url.includes("/api/studio/drafts") && init?.method === "POST") {
       const body = JSON.parse(String(init.body ?? "{}"));
       fetchCalls.push({ url, body });

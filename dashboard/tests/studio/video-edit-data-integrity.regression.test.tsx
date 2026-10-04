@@ -56,8 +56,17 @@ function storageKey(workspaceId: string) {
   return `studio_work:${workspaceId}`;
 }
 
+function draftDetailResponse(url: string, init?: RequestInit): Response | null {
+  if (!url.includes("/api/studio/drafts?") || !url.includes("&id=") || init?.method) return null;
+  const id = new URL(url, "http://localhost").searchParams.get("id");
+  const data = mocks.swr(`/api/studio/drafts?tenant_id=${mocks.workspace.id}`)?.data as { drafts?: Array<Record<string, unknown>> } | undefined;
+  return Response.json({ draft: data?.drafts?.find((draft) => draft.id === id) ?? null });
+}
+
 function setupFetch() {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    const detail = draftDetailResponse(url, init);
+    if (detail) return detail;
     if (typeof url === "string" && url.includes("/api/studio/drafts") && init?.method === "POST") {
       const body = JSON.parse(String(init.body ?? "{}"));
       fetchCalls.push({ url, body });
@@ -352,6 +361,8 @@ describe("PR87-MERGE-R1-MAJOR-01: 형식 전환 뒤 영상 자동저장이 최�
     const releaseFirstSavePromise = new Promise<void>((resolve) => { releaseFirstSave = resolve; });
     let saveCount = 0;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const detail = draftDetailResponse(url, init);
+      if (detail) return detail;
       if (typeof url === "string" && url.includes("/api/studio/drafts") && init?.method === "POST") {
         const body = JSON.parse(String(init.body ?? "{}"));
         fetchCalls.push({ url, body });
