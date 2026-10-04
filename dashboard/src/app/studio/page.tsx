@@ -270,6 +270,10 @@ interface BodyRevisionConflict {
   local: { lines: string[]; text: TextVariants | null; cardDeckV3: CardDeckV3 | null };
   viewingLatest: boolean;
 }
+interface CardDeckV3SourceSnapshot {
+  editLines: string[];
+  cardTextPositions: CardTextPosition[];
+}
 // topicKey = 이 매체가 **어느 주제로** 만들어졌는지 찍는 도장(lib/studio/work-media.ts).
 // 도장이 없으면 새 주제에 어제 영상이 그대로 붙는다. 2026-09-14 실측 사고.
 // aspectRatio = 이 그림이 어떤 비율로 만들어졌는지(work-media.ts isReusableVideoBaseImage).
@@ -712,6 +716,7 @@ export default function StudioPage() {
   // 카드뉴스 v2 덱(PR4). 있으면 편집실이 CardDeckPanel(말풍선 직접 편집)을 그린다.
   const [cardDeck, setCardDeck] = useState<CardDeck | null>(null);
   const [cardDeckV3, setCardDeckV3] = useState<CardDeckV3 | null>(null);
+  const [cardDeckV3SourceSnapshot, setCardDeckV3SourceSnapshot] = useState<CardDeckV3SourceSnapshot | null>(null);
   // 영상 편집 v1(세션맥락 과업 B). 있으면 편집실이 VideoEditor를 그린다.
   const [videoEdit, setVideoEdit] = useState<VideoEdit | null>(null);
   const [editSavedAt, setEditSavedAt] = useState("");
@@ -1049,7 +1054,7 @@ export default function StudioPage() {
     // 공간의 영상에 지난 선택이 그대로 넘어가면 안 된다).
     resetTiktokDisclosure();
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
-    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setCardDeckV3(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
+    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setCardDeckV3(null); setCardDeckV3SourceSnapshot(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
     quickDraftTopicRef.current = null;
     videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
@@ -1086,7 +1091,7 @@ export default function StudioPage() {
           savedTopic: typeof w.quickDraftTopic === "string" ? w.quickDraftTopic : null,
           restoredIdea: String(w.idea || ""),
         });
-        setCardTextPositions(w.cardTextPositions || []); setCardDeck((w.cardDeck as CardDeck) || null); setCardDeckV3((w.cardDeckV3 as CardDeckV3) || null); setReviewQueueId(w.reviewQueueId || null);
+        setCardTextPositions(w.cardTextPositions || []); setCardDeck((w.cardDeck as CardDeck) || null); setCardDeckV3((w.cardDeckV3 as CardDeckV3) || null); setCardDeckV3SourceSnapshot((w.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null); setReviewQueueId(w.reviewQueueId || null);
         // B1(교차 리뷰 BLOCK, 재리뷰로 절반만 닫힘 지적): videoEdit이 이 복원 블록에
         // 없으면 편집기가 빈 videoEdit을 받았다. 이제 무조건 세팅한다(없으면 null —
         // 이전 워크스페이스 값이 남아 있으면 안 된다, 위 리셋과 짝). 다만 localStorage
@@ -1151,13 +1156,13 @@ export default function StudioPage() {
     const workspaceId = activeWorkspace?.id;
     if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
     try {
-      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, publishProgress: pub, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, cardDeckV3, reviewQueueId, editKind, editFormat, videoEdit, quickDraftTopic: quickDraftTopicRef.current ?? undefined }));
+      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, publishProgress: pub, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, cardDeckV3, cardDeckV3SourceSnapshot, reviewQueueId, editKind, editFormat, videoEdit, quickDraftTopic: quickDraftTopicRef.current ?? undefined }));
       setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
       setEditAutosaveError("");
     } catch {
       setEditAutosaveError("자동 저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.");
     }
-  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, bodyServerRevision, img, vid, includes, draftId, publishReconciliations, pub, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, cardDeckV3, reviewQueueId, editKind, editFormat, videoEdit]);
+  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, bodyServerRevision, img, vid, includes, draftId, publishReconciliations, pub, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, cardDeckV3, cardDeckV3SourceSnapshot, reviewQueueId, editKind, editFormat, videoEdit]);
 
   const upText = (patch: Partial<TextVariants>) => replaceText({ ...(textRef.current || {}), ...patch });
   const upIg = (patch: Partial<NonNullable<TextVariants["instagram"]>>) => replaceText({
@@ -1233,7 +1238,7 @@ export default function StudioPage() {
         // videoEdit은 그대로 뒀다 — 옛 주제의 오버레이·댓글이 새 초안에 그대로 남았다.
         if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
         if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
-        setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null); setCardDeckV3(null); setVideoEdit(null);
+        setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null); setCardDeckV3(null); setCardDeckV3SourceSnapshot(null); setVideoEdit(null);
         videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
         invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
         if (dropped) showToast(dropped, "success");
@@ -1568,7 +1573,7 @@ export default function StudioPage() {
     if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setIdea(""); setImg(null); setVid(null); draftIdRef.current = null; setDraftId(null);
-    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setEditorHandoff(null); setCardDeck(null); setCardDeckV3(null); setVideoEdit(null);
+    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setEditorHandoff(null); setCardDeck(null); setCardDeckV3(null); setCardDeckV3SourceSnapshot(null); setVideoEdit(null);
     quickDraftTopicRef.current = null;
     videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
@@ -1764,6 +1769,11 @@ export default function StudioPage() {
     // 채널별 발행 진행 상태(완료·실패·링크)를 초안에 함께 남겨 새로고침·다른 기기에서도
     // 어느 채널이 이미 올라갔는지 복원한다. 발행 직후 호출은 setPub 반영 전 값을 넘긴다.
     persistedProgress: PublishProgress = pub,
+    cardDeckV3Options: {
+      clear?: boolean;
+      sourceSnapshot?: CardDeckV3SourceSnapshot | null;
+      cardTextPositions?: CardTextPosition[];
+    } = {},
   ) {
     const saveTenantId = activeWorkspace?.id ?? null;
     const saveDocumentGeneration = editDocumentGenerationRef.current;
@@ -1812,11 +1822,15 @@ export default function StudioPage() {
             captions,
             selectedAccounts,
             editLines: bodySnapshot.lines,
-            cardTextPositions,
+            cardTextPositions: cardDeckV3Options.cardTextPositions ?? cardTextPositions,
             // 자기 도메인만 저장하는 호출도 반대 도메인을 명시적으로 null로 보낸다. route.ts는
             // clear 플래그가 없는 null을 "기존 값 보존"으로 다룬다.
             cardDeck: persistedCardDeck,
             cardDeckV3: persistedCardDeckV3,
+            clearCardDeckV3: cardDeckV3Options.clear || undefined,
+            cardDeckV3SourceSnapshot: cardDeckV3Options.sourceSnapshot === undefined
+              ? cardDeckV3SourceSnapshot
+              : cardDeckV3Options.sourceSnapshot,
             videoEdit: safeVideoEdit,
             videoEditBaseRevision: safeVideoEdit ? videoEditBaseRevisionRef.current : undefined,
             editKind,
@@ -1877,6 +1891,7 @@ export default function StudioPage() {
                 persistedCardDeckV3,
                 "head",
                 persistedProgress,
+                cardDeckV3Options,
               ),
               retryWithoutVideo: () => save(
                 status,
@@ -1889,6 +1904,7 @@ export default function StudioPage() {
                 persistedCardDeckV3,
                 "head",
                 persistedProgress,
+                cardDeckV3Options,
               ),
             };
             // 원본 저장 충돌은 직렬 큐 도착 순서대로 tail에 쌓는다. 재적용 중 같은
@@ -2934,6 +2950,7 @@ export default function StudioPage() {
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
     setCardDeck((d.cardDeck as CardDeck) || null);
     setCardDeckV3((d.cardDeckV3 as CardDeckV3) || null);
+    setCardDeckV3SourceSnapshot((d.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null);
     setVideoEdit((d.videoEdit as VideoEdit) || null);
     setReviewQueueId((d.reviewQueueId as string) || null);
     const savedFormat = validateContentEditFormat(d.editFormat);
@@ -3336,7 +3353,7 @@ export default function StudioPage() {
     // 넘어갔다.
     if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
-    setCardDeck(null); setCardDeckV3(null); setVideoEdit(null);
+    setCardDeck(null); setCardDeckV3(null); setCardDeckV3SourceSnapshot(null); setVideoEdit(null);
     // MINOR(3차 재리뷰): draftId도 끊는다 — 남겨 두면 다음 저장이 이 후보와 무관한
     // 옛 초안 id 위에 그대로 얹혀 저장된다.
     draftIdRef.current = null;
@@ -3908,6 +3925,47 @@ export default function StudioPage() {
     }, 800);
   }
 
+  function startCardDeckV3() {
+    const blockedReason = plainCardDeckV3EntryBlockReason(resolvedEditLines);
+    if (blockedReason) {
+      showToast(blockedReason, "error");
+      return;
+    }
+    const snapshot = {
+      editLines: [...resolvedEditLines],
+      cardTextPositions: [...cardTextPositions],
+    } satisfies CardDeckV3SourceSnapshot;
+    setCardDeckV3SourceSnapshot(snapshot);
+    onCardDeckV3Change(createPlainCardDeckV3(snapshot.editLines, snapshot.cardTextPositions));
+    showToast("자유 배치를 시작했습니다. 기본 편집으로 돌아가면 지금 글과 위치를 복원할 수 있습니다.", "success");
+  }
+
+  async function returnFromCardDeckV3() {
+    const snapshot = cardDeckV3SourceSnapshot;
+    if (!snapshot) {
+      showToast("자유 배치로 바꾸기 전 기본 편집 내용을 찾지 못했습니다. 현재 작업은 그대로 보존했습니다.", "error");
+      return;
+    }
+    if (cardDeckAutosaveTimer.current) {
+      clearTimeout(cardDeckAutosaveTimer.current);
+      cardDeckAutosaveTimer.current = null;
+    }
+    replaceEditLines(snapshot.editLines);
+    setCardTextPositions(snapshot.cardTextPositions);
+    setCardDeckV3(null);
+    setCardDeckV3SourceSnapshot(null);
+    try {
+      await save(
+        "draft", publishReconciliations, draftIdRef.current, img, vid, null, null, null,
+        "tail", pub, { clear: true, sourceSnapshot: null, cardTextPositions: snapshot.cardTextPositions },
+      );
+      setCardDeckAutosaveError("");
+      showToast("자유 배치 전 기본 편집으로 돌아왔습니다.", "success");
+    } catch (error) {
+      setCardDeckAutosaveError(extractApiErrorMessage(error, "기본 편집 복원을 서버에 저장하지 못했습니다. 화면의 복원 내용은 유지했습니다."));
+    }
+  }
+
   /**
    * R2(2026-09-22 코드리뷰 3차): sanitizeForSave(빈 항목만 걸러 보냄)를 되돌렸다.
    * drafts/route.ts는 videoEdit를 통째 치환한다(부분 병합 아님) — 걸러낸 전체 객체를
@@ -4012,8 +4070,9 @@ export default function StudioPage() {
         onCardDeckChange={onCardDeckChange}
         cardDeckV3={cardDeckV3}
         onCardDeckV3Change={onCardDeckV3Change}
-        onStartCardDeckV3={() => onCardDeckV3Change(createPlainCardDeckV3(resolvedEditLines, cardTextPositions))}
+        onStartCardDeckV3={startCardDeckV3}
         cardDeckV3EntryBlockedReason={plainCardDeckV3EntryBlockReason(resolvedEditLines)}
+        onReturnFromCardDeckV3={() => { void returnFromCardDeckV3(); }}
         videoEdit={videoEdit}
         onVideoEditChange={onVideoEditChange}
         onOpenCreate={openCreateForEditKind}

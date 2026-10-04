@@ -102,7 +102,10 @@ function flattenDraft(r: DraftRow, options: { includeCardDeckV3: boolean }) {
     bodyRevision: Number.isSafeInteger(r.payload?.bodyRevision) ? r.payload.bodyRevision : 0,
     cardTextPositions: r.payload?.cardTextPositions ?? null,
     cardDeck: r.payload?.cardDeck ?? null,
-    ...(options.includeCardDeckV3 ? { cardDeckV3: r.payload?.cardDeckV3 ?? null } : {}),
+    ...(options.includeCardDeckV3 ? {
+      cardDeckV3: r.payload?.cardDeckV3 ?? null,
+      cardDeckV3SourceSnapshot: r.payload?.cardDeckV3SourceSnapshot ?? null,
+    } : {}),
     videoEdit: r.payload?.videoEdit ?? null,
     titles: r.payload?.titles ?? {},
     captions: r.payload?.captions ?? {},
@@ -208,6 +211,31 @@ export async function POST(request: Request) {
       }, { status: validation?.code === "CARD_DECK_TOO_LARGE" ? 413 : 400, headers: { "Cache-Control": "no-store" } });
     }
   }
+  const cardDeckV3SourceSnapshotPatch: { cardDeckV3SourceSnapshot?: unknown } = {};
+  if (Object.prototype.hasOwnProperty.call(body, "cardDeckV3SourceSnapshot")) {
+    const snapshot = body.cardDeckV3SourceSnapshot;
+    const positions = new Set([
+      "top-left", "top-center", "top-right", "center-left", "center", "center-right",
+      "bottom-left", "bottom-center", "bottom-right",
+    ]);
+    const valid = snapshot === null || (
+      snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+      && Array.isArray(snapshot.editLines)
+      && snapshot.editLines.length >= 2 && snapshot.editLines.length <= 11
+      && snapshot.editLines.every((line: unknown) => typeof line === "string" && line.trim().length > 0 && line.length <= 2_000)
+      && Array.isArray(snapshot.cardTextPositions)
+      && snapshot.cardTextPositions.length <= 11
+      && snapshot.cardTextPositions.every((position: unknown) => typeof position === "string" && positions.has(position))
+    );
+    if (!valid) {
+      return Response.json({
+        ok: false,
+        code: "INVALID_CARD_DECK_V3_SOURCE",
+        error: "자유 배치로 바꾸기 전 카드 원문을 확인해 주세요",
+      }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
+    cardDeckV3SourceSnapshotPatch.cardDeckV3SourceSnapshot = snapshot;
+  }
   if (body.videoEdit !== undefined && body.videoEdit !== null) {
     const serialized = JSON.stringify(body.videoEdit);
     if (Buffer.byteLength(serialized, "utf8") > VIDEO_EDIT_MAX_BYTES) {
@@ -312,6 +340,7 @@ export async function POST(request: Request) {
     reviewQueueId: body.reviewQueueId ?? null,
     ...cardDeckPatch,
     ...cardDeckV3Patch,
+    ...cardDeckV3SourceSnapshotPatch,
     ...videoEditPatch,
     ...editLinesPatch,
   };

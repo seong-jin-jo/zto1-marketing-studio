@@ -70,6 +70,29 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     expect(preserved.status).toBe(200);
     expect(Object.prototype.hasOwnProperty.call(H.jsonValues.at(-1) as object, "cardDeckV3")).toBe(false);
   });
+  it("S1-R4-RETURN-01 진입 전 스냅샷을 저장·조회하고 명시 플래그로 v3만 지운다", async () => {
+    const snapshot = { editLines: ["첫 장", "둘째 장"], cardTextPositions: ["top-left", "bottom-right"] };
+    H.rows = [{ id: "draft-v3-return" }];
+    const { POST, GET } = await import("@/app/api/studio/drafts/route");
+    const saved = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "복원", cardDeckV3SourceSnapshot: snapshot }),
+    }));
+    expect(saved.status).toBe(200);
+    expect((H.jsonValues[0] as { cardDeckV3SourceSnapshot: unknown }).cardDeckV3SourceSnapshot).toEqual(snapshot);
+
+    H.rows = [{ id: "draft-v3-return", idea: "복원", payload: H.jsonValues[0], status: "draft", updated_at: "2026-10-04T00:00:00Z" }];
+    const detail = await (await GET(new Request("http://localhost/api/studio/drafts?id=draft-v3-return"))).json();
+    expect(detail.draft.cardDeckV3SourceSnapshot).toEqual(snapshot);
+
+    H.rows = [{ id: "draft-v3-return" }];
+    const cleared = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "복원", clearCardDeckV3: true, cardDeckV3SourceSnapshot: null }),
+    }));
+    expect(cleared.status).toBe(200);
+    expect(H.jsonValues.at(-1)).toMatchObject({ cardDeckV3: null, cardDeckV3SourceSnapshot: null });
+  });
   it("정상 덱은 저장되고 editLines 가 투영으로 채워진다", async () => {
     H.rows = [{ id: "draft-deck-1" }];
     const { POST } = await import("@/app/api/studio/drafts/route");

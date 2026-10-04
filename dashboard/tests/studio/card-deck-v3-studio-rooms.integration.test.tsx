@@ -42,6 +42,16 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
   });
 
+  it("S1-R4-RETURN-01 자유 배치에서 기본 편집 복원 행동과 데이터 보존 안내를 노출한다", () => {
+    const onReturn = vi.fn();
+    const deck = createPlainCardDeckV3(["첫 장", "둘째 장"], "deck_return");
+    render(<EditRoom kind="card" lines={["첫 장", "둘째 장"]} onLinesChange={() => {}} cardDeckV3={deck} onCardDeckV3Change={() => {}} onReturnFromCardDeckV3={onReturn} />);
+
+    expect(screen.getByText(/진입 직전의 글과 위치를 그대로 복원/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "기본 편집으로 돌아가기" }));
+    expect(onReturn).toHaveBeenCalledOnce();
+  });
+
   it("S1-R3-ASSET-RESIGN-01 복원한 asset_id를 테넌트 범위 서명 URL로 바꿔 사진을 표시한다", async () => {
     const deck = createPlainCardDeckV3(["첫 장", "마지막 장"], "deck_asset_restore");
     deck.slides[0].elements.push({

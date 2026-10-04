@@ -74,9 +74,13 @@ function plainTextGeometry(position: PlainCardTextPosition | undefined) {
 
 export function createPlainCardDeckV3(
   lines: string[],
-  positions: readonly PlainCardTextPosition[] = [],
-  id = `deck_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+  positionsOrId: readonly PlainCardTextPosition[] | string = [],
+  explicitId?: string,
 ): CardDeckV3 {
+  const positions = typeof positionsOrId === "string" ? [] : positionsOrId;
+  const id = typeof positionsOrId === "string"
+    ? positionsOrId
+    : explicitId ?? `deck_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
   const blockedReason = plainCardDeckV3EntryBlockReason(lines);
   if (blockedReason) throw new RangeError(blockedReason);
   return {
