@@ -4076,7 +4076,15 @@ export default function StudioPage() {
   }
 
   async function returnFromCardDeckV3() {
-    const snapshot = cardDeckV3SourceSnapshot;
+    let snapshot = cardDeckV3SourceSnapshot;
+    // 목록 우선 열기와 단건 보강 사이에 사용자가 바로 복귀를 누를 수 있다. 이 짧은
+    // 구간에서 React state가 아직 null이라는 이유로 복귀를 막으면 서버에 보존된 원문을
+    // 쓸 수 없게 된다. 현재 초안의 단건 원문만 다시 확인하고, 다른 초안 값은 섞지 않는다.
+    if (!snapshot && draftIdRef.current) {
+      const detail = await fetchDraftDetail({ id: draftIdRef.current });
+      snapshot = (detail?.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot | null | undefined) ?? null;
+      if (snapshot) setCardDeckV3SourceSnapshot(snapshot);
+    }
     if (!snapshot) {
       showToast("자유 배치로 바꾸기 전 기본 편집 내용을 찾지 못했습니다. 현재 작업은 그대로 보존했습니다.", "error");
       return;
