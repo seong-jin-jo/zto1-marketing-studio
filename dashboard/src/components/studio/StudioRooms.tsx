@@ -1665,6 +1665,7 @@ interface EditRoomProps {
   onOpenCreate?: () => void;
   onRetry?: () => void;
   onOpenPublish?: () => void;
+  publishBlockedReason?: string | null;
   lastSavedAt?: string;
   moveBusy?: boolean;
   autosaveError?: string;
@@ -1992,6 +1993,7 @@ export function EditRoom({
   onOpenCreate,
   onRetry,
   onOpenPublish,
+  publishBlockedReason,
   lastSavedAt,
   moveBusy = false,
   autosaveError,
@@ -2677,9 +2679,14 @@ export function EditRoom({
                 </div>
               </div>
             ) : null}
+            {publishBlockedReason ? (
+              <p role="alert" className="rounded-control border border-warning bg-warning-soft p-stack text-caption text-warning" data-card-deck-v3-publish-block>
+                {publishBlockedReason}
+              </p>
+            ) : null}
             <div className={styles.editHelperFooter}>
               <small className={autosaveError ? "text-caption text-danger" : "text-caption text-success"}>{autosaveError || (lastSavedAt ? `마지막 자동 저장 ${lastSavedAt}` : "고치는 대로 자동 저장됨")}</small>
-              <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || bodyEditConflict || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>
+              <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || Boolean(publishBlockedReason) || bodyEditConflict || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>
             </div>
           </AssistantPanel>
         )}

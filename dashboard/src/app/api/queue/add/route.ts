@@ -1,11 +1,13 @@
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { addQueuePost, QueueInputError } from "@/lib/queue-add";
+import { cardDeckV3PublishBlockedResponse, draftHasCardDeckV3 } from "@/lib/studio/card-deck-v3-publish-gate";
 
 export async function POST(request: Request) {
   const data = await request.json().catch(() => ({}));
   const __t = await effectiveTenantId(request, data.tenant_id ?? null);
   return runWithTenant(__t, async () => {
+    if (__t && await draftHasCardDeckV3(__t, data.draftId)) return cardDeckV3PublishBlockedResponse();
     try {
       const result = await addQueuePost(__t, {
         text: typeof data.text === "string" ? data.text : "",

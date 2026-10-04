@@ -49,6 +49,7 @@ import {
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { cardDeckV3Projection, type CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { createPlainCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
+import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-gate";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
@@ -2204,6 +2205,10 @@ export default function StudioPage() {
     }
   }
   async function moveToPublish() {
+    if (cardDeckV3) {
+      showToast(CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE, "error");
+      return;
+    }
     const linesToPersist = editLines.length ? editLines : [text?.shorts?.hook || "", text?.shorts?.body || "", text?.shorts?.cta || ""].filter(Boolean);
     if (!linesToPersist.some((line) => line.trim())) {
       showToast("발행실로 넘길 편집 내용이 없습니다", "error");
@@ -2545,6 +2550,10 @@ export default function StudioPage() {
   }
 
   async function publish() {
+    if (cardDeckV3) {
+      showToast(CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE, "error");
+      return;
+    }
     // 2026-09-05 회장 계정 실측: 발행 단추를 눌렀는데 요청도 안 나가고 알림도 없었다.
     // 여기서 아무 말 없이 돌아섰기 때문이다. 조용한 반환은 고장으로 읽힌다. 이유를 말한다.
     if (!text && !editLines.some((line) => line.trim())) {
@@ -3552,6 +3561,10 @@ export default function StudioPage() {
   }
 
   async function requestReview() {
+    if (cardDeckV3) {
+      showToast(CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE, "error");
+      return;
+    }
     if ((!text && !editLines.some((line) => line.trim())) || !activeWorkspace) {
       showToast("검토할 작업물이 없습니다", "error");
       return;
@@ -4077,6 +4090,7 @@ export default function StudioPage() {
         onVideoEditChange={onVideoEditChange}
         onOpenCreate={openCreateForEditKind}
         onOpenPublish={moveToPublish}
+        publishBlockedReason={cardDeckV3 ? CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE : null}
         lastSavedAt={editSavedAt}
         moveBusy={moveToPublishBusy}
         autosaveError={[editAutosaveError, cardDeckAutosaveError, videoEditAutosaveError].filter(Boolean).join(" ")}
@@ -4251,19 +4265,24 @@ export default function StudioPage() {
               }}
             />
           ) : null}
+          {cardDeckV3 ? (
+            <p role="alert" className="rounded-control border border-warning bg-warning-soft p-stack text-caption text-warning" data-card-deck-v3-publish-block>
+              {CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE}
+            </p>
+          ) : null}
           {hasPublishableBody ? (
             <div className="card space-y-stack p-stack">
               <div className="flex flex-wrap items-center gap-stack">
               <b className="mr-auto min-w-0 truncate text-body text-text">{idea || "현재 작업물"}</b>
               <Button onClick={saveDraftWithNotice}>임시 저장하기</Button>
-              <Button onClick={requestReview} disabled={reviewBusy}>{reviewBusy ? "보내는 중" : "검토 요청하기"}</Button>
+              <Button onClick={requestReview} disabled={reviewBusy || Boolean(cardDeckV3)}>{reviewBusy ? "보내는 중" : "검토 요청하기"}</Button>
               {/*
                 계정을 아직 못 불러온 동안에는 고른 수를 그대로 보여 준다. 그때는 몇 곳에
                 올릴 수 있는지 알 수 없고, 0곳이라고 쓰면 없는 사실을 말하는 것이 된다.
                 다 불러온 뒤에는 실제로 올라갈 수만 센다. 고른 수를 그대로 쓰면 연결이
                 끊긴 채널까지 세어 "2곳에 발행"이라 해 놓고 아무 데도 안 올라간다.
               */}
-              <Button variant="primary" onClick={publish} disabled={pub.running || !accountsLoaded || publishTargets.length === 0}>선택한 {accountsLoaded ? publishTargets.length : selectedTargets.length}곳에 지금 발행{accountsLoaded && selectedTargets.length > publishTargets.length ? ` (올릴 수 없는 ${selectedTargets.length - publishTargets.length}곳 제외)` : ""}</Button>
+              <Button variant="primary" onClick={publish} disabled={Boolean(cardDeckV3) || pub.running || !accountsLoaded || publishTargets.length === 0}>선택한 {accountsLoaded ? publishTargets.length : selectedTargets.length}곳에 지금 발행{accountsLoaded && selectedTargets.length > publishTargets.length ? ` (올릴 수 없는 ${selectedTargets.length - publishTargets.length}곳 제외)` : ""}</Button>
               {/*
                 2026-10-02 운영 사고(결함 D): 버튼 문구는 숫자만 말해서("선택한 1곳에 지금
                 발행"), 미리보기 탭(보기 필터)에서 방금 Instagram 을 봐 놓고 실제로는 이전
@@ -4279,7 +4298,7 @@ export default function StudioPage() {
                   ({channelNameList(publishNameTargets)})
                 </span>
               ) : null}
-              {activeWorkspace ? <Button variant={showSchedule ? "primary" : "secondary"} onClick={() => setShowSchedule((value) => !value)}>예약 발행</Button> : null}
+              {activeWorkspace ? <Button variant={showSchedule ? "primary" : "secondary"} onClick={() => setShowSchedule((value) => !value)} disabled={Boolean(cardDeckV3)}>예약 발행</Button> : null}
               </div>
               {/*
                 2026-10-03 독립 리뷰 m1: 체크는 했는데 publishGuard에 걸려 지금 발행
@@ -4559,9 +4578,9 @@ export default function StudioPage() {
             </div>
             {hasPublishableBody ? (
               <div className="flex flex-wrap gap-stack-tight" aria-label="발행 담당 빠른 답장">
-                <Button size="sm" onClick={publish} disabled={!accountsLoaded || publishTargets.length === 0 || pub.running}>{publishRetryOnly ? "실패한 곳만 다시 발행" : "지금 발행하기"}</Button>
-                <Button size="sm" onClick={() => setShowSchedule(true)}>시간은 내가 골라 줘</Button>
-                <Button size="sm" onClick={requestReview}>먼저 검토받기</Button>
+                <Button size="sm" onClick={publish} disabled={Boolean(cardDeckV3) || !accountsLoaded || publishTargets.length === 0 || pub.running}>{publishRetryOnly ? "실패한 곳만 다시 발행" : "지금 발행하기"}</Button>
+                <Button size="sm" onClick={() => setShowSchedule(true)} disabled={Boolean(cardDeckV3)}>시간은 내가 골라 줘</Button>
+                <Button size="sm" onClick={requestReview} disabled={Boolean(cardDeckV3)}>먼저 검토받기</Button>
               </div>
             ) : (
               <Button variant="primary" onClick={() => changeRoom("create")}>생성실 열기</Button>

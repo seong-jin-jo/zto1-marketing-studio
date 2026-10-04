@@ -52,6 +52,16 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(onReturn).toHaveBeenCalledOnce();
   });
 
+  it("S1-R4-PUBLISH-GATE-01 v3 덱은 S2 전 발행실 이동을 막고 이유를 계속 보여준다", () => {
+    const onOpenPublish = vi.fn();
+    const deck = createPlainCardDeckV3(["첫 장", "둘째 장"], "deck_publish_block");
+    render(<EditRoom kind="card" lines={["첫 장", "둘째 장"]} onLinesChange={() => {}} cardDeckV3={deck} onCardDeckV3Change={() => {}} onOpenPublish={onOpenPublish} publishBlockedReason="자유 배치 결과물 만들기는 다음 업데이트에서 열립니다." />);
+    expect(screen.getByRole("alert")).toHaveTextContent("다음 업데이트");
+    expect(screen.getByRole("button", { name: "발행실로 이동" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    expect(onOpenPublish).not.toHaveBeenCalled();
+  });
+
   it("S1-R3-ASSET-RESIGN-01 복원한 asset_id를 테넌트 범위 서명 URL로 바꿔 사진을 표시한다", async () => {
     const deck = createPlainCardDeckV3(["첫 장", "마지막 장"], "deck_asset_restore");
     deck.slides[0].elements.push({

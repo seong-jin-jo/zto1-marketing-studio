@@ -37,6 +37,7 @@ import {
 } from "@/lib/publish";
 import { PUBLISH_IMAGE_LIMIT, channelImageCapacity } from "@/lib/studio/channel-image-capacity";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
+import { cardDeckV3PublishBlockedResponse, draftHasCardDeckV3 } from "@/lib/studio/card-deck-v3-publish-gate";
 import {
   buildPlatformPublishText,
   validatePlatformPublish,
@@ -256,6 +257,7 @@ export async function POST(request: Request) {
   if (!tenant_id || !platform) {
     return Response.json({ error: "tenant_id, platform required" }, { status: 400 });
   }
+  if (await draftHasCardDeckV3(tenant_id, draft_id)) return cardDeckV3PublishBlockedResponse();
   const fieldPlatforms = new Set<PublishPlatform>(["threads", "x", "facebook", "instagram", "shorts", "reels", "tiktok"]);
   const rawFields = __b.publish_fields;
   if (rawFields !== undefined && (!rawFields || typeof rawFields !== "object" || Array.isArray(rawFields))) {
