@@ -84,7 +84,7 @@ function extractVariants(payload: Record<string, unknown> | null | undefined): u
 }
 
 // GET /api/studio/drafts?tenant_id=... — 워크스페이스 초안 목록(최근 50)
-function flattenDraft(r: DraftRow) {
+function flattenDraft(r: DraftRow, options: { includeCardDeckV3: boolean }) {
   return {
     id: r.id,
     idea: r.idea,
@@ -102,7 +102,7 @@ function flattenDraft(r: DraftRow) {
     bodyRevision: Number.isSafeInteger(r.payload?.bodyRevision) ? r.payload.bodyRevision : 0,
     cardTextPositions: r.payload?.cardTextPositions ?? null,
     cardDeck: r.payload?.cardDeck ?? null,
-    cardDeckV3: r.payload?.cardDeckV3 ?? null,
+    ...(options.includeCardDeckV3 ? { cardDeckV3: r.payload?.cardDeckV3 ?? null } : {}),
     videoEdit: r.payload?.videoEdit ?? null,
     titles: r.payload?.titles ?? {},
     captions: r.payload?.captions ?? {},
@@ -129,7 +129,7 @@ export async function GET(request: Request) {
         SELECT id, tenant_id, idea, payload, status, created_at, updated_at
         FROM drafts WHERE tenant_id = ${tenantId} AND id = ${singleId}`);
       if (!rows[0]) return Response.json({ draft: null }, { status: 404 });
-      return Response.json({ draft: flattenDraft(rows[0]) });
+      return Response.json({ draft: flattenDraft(rows[0], { includeCardDeckV3: true }) });
     } catch (e) {
       return Response.json({ draft: null, error: String(e) }, { status: 500 });
     }
@@ -140,7 +140,7 @@ export async function GET(request: Request) {
       FROM drafts WHERE tenant_id = ${tenantId}
       ORDER BY updated_at DESC LIMIT 50`);
     // 기존 Studio 형식과 호환되게 평탄화
-    const drafts = rows.map(flattenDraft);
+    const drafts = rows.map((row) => flattenDraft(row, { includeCardDeckV3: false }));
     return Response.json({ drafts, currentWork: resolveCurrentWork(drafts) });
   } catch (e) {
     return Response.json({ drafts: [], currentWork: null, error: String(e) }, { status: 500 });

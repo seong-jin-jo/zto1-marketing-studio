@@ -45,8 +45,10 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     expect(savedPayload.editLines).toEqual(["자유 배치 첫 장", "저장하세요"]);
 
     H.rows = [{ id: "draft-v3", idea: "자유 배치", payload: savedPayload, status: "draft", updated_at: "2026-10-04T00:00:00Z" }];
-    const reloaded = await (await GET(new Request("http://localhost/api/studio/drafts"))).json();
-    expect(reloaded.drafts[0].cardDeckV3).toEqual(cardDeckV3);
+    const list = await (await GET(new Request("http://localhost/api/studio/drafts"))).json();
+    expect(list.drafts[0]).not.toHaveProperty("cardDeckV3");
+    const reloaded = await (await GET(new Request("http://localhost/api/studio/drafts?id=draft-v3"))).json();
+    expect(reloaded.draft.cardDeckV3).toEqual(cardDeckV3);
   });
 
   it("S1-AC1 거절: 잘못된 cardDeckV3는 DB 접근 전에 막고 null은 기존 값을 보존한다", async () => {
