@@ -27,7 +27,7 @@
 
 .floatingToolbar { position: relative; z-index: 300; }
 .toolbarDivider { align-self: stretch; width: 1px; background: var(--border); }
-.fileInput { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.fileInput { display: none; }
 .error { color: var(--danger); font-size: var(--font-body-size); }
 
 .toolbarField,
