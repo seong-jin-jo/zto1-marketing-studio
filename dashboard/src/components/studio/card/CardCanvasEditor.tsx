@@ -100,6 +100,9 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const commitRef = useRef<(next: CardDeckV3) => void>(() => {});
   const textEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const textEditBaseDeckRef = useRef<CardDeckV3 | null>(null);
+  const textEditCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textEditCommittedRef = useRef(false);
+  const textEditLastCommittedValueRef = useRef<string | null>(null);
   const workingDeck = previewDeck ?? history.present;
   const activeSlide = workingDeck.slides.find((slide) => slide.id === activeSlideId) ?? workingDeck.slides[0];
   const logicalHeight = workingDeck.ratio === "4:5" ? 1350 : 1080;
@@ -135,7 +138,22 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
     setEditingTextId(element.id);
     setEditingTextValue(element.text);
     textEditBaseDeckRef.current = history.present;
+    textEditCommittedRef.current = false;
+    textEditLastCommittedValueRef.current = null;
   }, [history.present]);
+  const flushTextEdit = useCallback((slideId: string, elementId: string, value: string) => {
+    const baseDeck = textEditBaseDeckRef.current;
+    if (!baseDeck || textEditLastCommittedValueRef.current === value) return;
+    const next = patchTextElement(baseDeck, slideId, elementId, { text: value });
+    lastExternalDeckRef.current = next;
+    setHistory((current) => textEditCommittedRef.current
+      ? { ...current, present: next, future: [] }
+      : commitCardCommand(current, next));
+    textEditCommittedRef.current = true;
+    textEditLastCommittedValueRef.current = value;
+    setPreviewDeck(null);
+    onDeckChange(next);
+  }, [onDeckChange]);
   const deleteAndRestoreStageFocus = useCallback((elementId: string) => {
     if (!activeSlide) return;
     apply((current) => deleteCardElement(current, activeSlide.id, elementId));
@@ -216,6 +234,10 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (textEditCommitTimerRef.current) clearTimeout(textEditCommitTimerRef.current);
   }, []);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -329,11 +351,21 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
                       setEditingTextValue(value);
                       const baseDeck = textEditBaseDeckRef.current ?? history.present;
                       setPreviewDeck(patchTextElement(baseDeck, activeSlide.id, element.id, { text: value }));
+                      if (textEditCommitTimerRef.current) clearTimeout(textEditCommitTimerRef.current);
+                      textEditCommitTimerRef.current = setTimeout(() => {
+                        textEditCommitTimerRef.current = null;
+                        flushTextEdit(activeSlide.id, element.id, value);
+                      }, 250);
                     }}
                     onBlur={() => {
-                      const baseDeck = textEditBaseDeckRef.current ?? history.present;
-                      commit(patchTextElement(baseDeck, activeSlide.id, element.id, { text: editingTextValue }));
+                      if (textEditCommitTimerRef.current) {
+                        clearTimeout(textEditCommitTimerRef.current);
+                        textEditCommitTimerRef.current = null;
+                      }
+                      flushTextEdit(activeSlide.id, element.id, editingTextValue);
                       textEditBaseDeckRef.current = null;
+                      textEditCommittedRef.current = false;
+                      textEditLastCommittedValueRef.current = null;
                       setEditingTextId(null);
                     }}
                   />

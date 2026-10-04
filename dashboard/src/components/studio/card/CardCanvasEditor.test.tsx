@@ -131,6 +131,23 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect(current.slides[0].elements[0]).toMatchObject({ height: 4, rotation: 17 });
   });
 
+  it("S1-R5-DIRECT-EDIT-02 직접 편집을 짧게 멈추면 저장값을 확정하되 실행 취소 이력은 한 칸만 쓴다", async () => {
+    let current = deck();
+    const onChange = (next: CardDeckV3) => { current = next; };
+    render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.doubleClick(screen.getByLabelText("제목 요소"));
+    const editor = screen.getByLabelText("글 내용 직접 편집");
+
+    fireEvent.change(editor, { target: { value: "첫 번째 입력" } });
+    await waitFor(() => expect((current.slides[0].elements[0] as { text: string }).text).toBe("첫 번째 입력"), { timeout: 1_000 });
+    fireEvent.change(editor, { target: { value: "두 번째 입력" } });
+    await waitFor(() => expect((current.slides[0].elements[0] as { text: string }).text).toBe("두 번째 입력"), { timeout: 1_000 });
+    fireEvent.blur(editor);
+
+    fireEvent.keyDown(screen.getByLabelText("카드 편집 스테이지"), { key: "z", ctrlKey: true });
+    expect((current.slides[0].elements[0] as { text: string }).text).toBe("첫 장");
+  });
+
   it("S1-R4-FOCUS-01 선택 상자 초점이 선택을 맞추고 삭제 뒤 스테이지로 초점을 돌린다", async () => {
     let current = deck();
     const onChange = (next: CardDeckV3) => { current = next; };
