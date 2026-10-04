@@ -1,3 +1,87 @@
+## 2026-10-05 04:16 KST 편집실 v2 S1 교차 리뷰 5차 m5-1 로컬 검증 완료, push 대기
+
+- handoff basis: 회장이 이 세션에 직접 지정한 교차 리뷰 5차 PASS 뒤 m5-1만 정본으로 삼았다. tmux `371:0.1`은 같은 작업의 이전 종료 기록으로 확인했고 새 지시와 충돌하지 않는다. push는 하지 않는다.
+- 수정: 새 작업 생성, 버리고 새로 시작, 후보 선택 세 경로가 `cardDeckV3`를 비울 때 남은 `cardDeckV3DetailStatus`도 `idle`로 되돌린다. 이전 초안의 상세 조회가 `loading` 또는 `error`였어도 새 작업의 자유 배치 진입과 발행은 잠기지 않는다. 제품·회귀 커밋 `cca3356a`, QA NG 선등록 `bda4835b`.
+- 검증: 전용 회귀와 관련 Studio 테스트 5파일 35건, `typecheck:ci`가 두 워커에서 종료 코드 0으로 통과했다. 원격 CI와 운영 배포는 미검증이다.
+- 다음 실행: 부모 컨트롤러가 커밋을 대상 브랜치에 머지한 뒤 원격 CI green을 확인한다. 종료 증거는 새 CI run 실패 0이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
+## 2026-10-05 03:53 KST 편집실 v2 S1 교차 리뷰 4차 로컬 검증 완료, push 대기
+
+- handoff basis: 회장이 이 세션에 직접 지정한 교차 리뷰 4차 N6·m4-1·m4-3·m4-4와 D-2026-10-04-1을 정본으로 삼았다. tmux `371:0.1`은 이전 R6 작업의 종료 기록으로 확인했고 새 작업과 충돌하지 않는다. push는 하지 않는다.
+- N6: 목록 응답에 `hasCardDeckV3` boolean만 추가하고 v3 본문은 계속 제외했다. 목록 신호가 true면 단건 상세 완료 전 진입·발행·검토·예약을 잠그며 실패 시 재시도 경로를 제공한다. 원문 스냅샷이 있는 초안에 다른 덱 ID를 쓰면 서버가 `CARD_DECK_V3_IDENTITY_CONFLICT` 409를 반환한다. 커밋 `fc063d0f`.
+- m4-1: 개별 승인과 일괄 승인도 `assertDraftCanEnterPublishQueue`를 거친다. 커밋 `c87fdf2e`.
+- m4-3: 예약 보류는 자동 재개되지 않아 기본 편집 복귀 뒤 재예약해야 한다고 안내하고, `schedules.status` 주석에 `blocked`를 추가했다. 커밋 `2fbeccb4`.
+- m4-4: `CardCanvasEditor`가 언마운트될 때 대기 중인 글 직접 편집값을 flush한다. 커밋 `aa9d39b5`.
+- 전체 검증: 변경 TypeScript 10파일의 import 영향 42파일 330건 통과, 2건 제외. integrity 32파일 102건, contract 85파일 452건, `typecheck:ci`가 모두 종료 코드 0이다. localhost 실제 Chromium은 저장 9회, 상세 조회 7회, 연속 편집 보존, 5종 요소, 사진 새로고침 복원, 409 충돌 재적용, 기본 편집 복귀 확인, 390px 가로 넘침 0, 콘솔 오류 0으로 종료했다. 같은 데이터 포함 픽스처의 360~1000 아홉 폭은 13px 미만 글자·44px 미만 누름·가로 넘침 0, 본문 16px, 눌림 상태 100%다. 디자인 lint는 기존 위반 2종, 파이프라인 산출물 검사는 기존 핀 위생 경고 28건을 남겼으나 둘 다 종료 코드 0이고 이번 변경 줄의 신규 디자인 위반은 0이다.
+- 다음 실행: 부모 컨트롤러가 이 브랜치를 push한 뒤 원격 CI에서 전체 실패 0을 확인한다. 종료 증거는 새 CI run green이며, red일 때만 code-builder로 회수한다. 운영 배포는 이 작업에서 실행하지 않는다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
+## 2026-10-05 03:12 KST 편집실 v2 S1 CI 힙 고갈 근본원인 교정 완료
+
+- handoff basis: 회장이 지정한 CI run `37212288414`, commit `61e2b8fd`, 과거 PR 83 렌더 루프 사례를 정본으로 삼았다. push는 하지 않는다.
+- 차집합: CI 완료 474파일과 `vitest list --filesOnly` 477파일을 비교해 `body-conflict-recovery`, `edit-autosave-cross-domain`, `video-edit-data-integrity` 3파일을 특정했다.
+- 근본원인: `draft_id` 딥링크 효과가 목록 초안을 먼저 state에 주입하고 처리 표식은 비동기 완료 뒤에 세웠다. 매 렌더 새 `hist.drafts` 배열이 들어오면 표식 전 다음 렌더가 같은 초안을 다시 주입해 무한 렌더와 워커 힙 증가를 만들었다.
+- 수정: `014b8be8`에서 목록 초안을 확보한 즉시 draft id를 선점해 state 변경 전 재진입을 차단했다. 메모리 상한, 테스트 제외, 기존 회귀 기대는 바꾸지 않았다. 증거 파일은 먼저 `c5686048`, QA NG 등록은 `d80885a9`로 고정했다.
+- 수정 전후: 세 파일은 수정 전 189초·103초·106초에도 테스트 0건이었고 워커 RSS 최소 394MB·288MB·312MB였다. 수정 후 3/3 47.42초 99MB, 2/2 48.93초 84MB, 6/6 60.54초 101MB다.
+- 검증: page import 48파일 320건 PASS. integrity는 31파일 98건 뒤 수집 RPC timeout 1건을 차집합 단독 실행해 4건 PASS, 합계 32파일 102건이다. contract는 84파일 450건 뒤 호스트 부하로 5초 timeout 1건을 기대 변경 없이 단독 재실행해 7건 PASS, 합계 85파일 451건이다. `typecheck:ci` PASS. localhost dev 실제 Chromium은 저장 9회, 상세 조회 7회, 5종 요소, 사진 복원, 충돌 재적용, 기본 편집 복귀 확인, 콘솔 오류 0으로 종료했다. 원격 CI는 미검증이다.
+- 다음 실행: 부모 컨트롤러가 이 브랜치를 push한 뒤 원격 CI에서 477파일 3,376건 전체 green과 워커 OOM 0을 확인한다. 종료 증거는 새 CI run 실패 0이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
+## 2026-10-04 22:10 KST 편집실 v2 S1 교차 재검토 2차 로컬 교정 완료
+
+- handoff basis: 회장이 지정한 Claude Opus R4 N1~N5와 기존 회귀 기대를 정본으로 삼았다. push는 하지 않는다.
+- 수정: `9464e891`, `b66cde85`, `b7998307`, `5afe5be8`, `b3c0b089`로 무손실 전환·기본 편집 복귀·S2 전 발행 차단·hydration 경합·재선택·조작 접근성을 분리했다. 후속 타입 경계 `e5af7d31`, 테스트 fixture `1c4d6a03`, 클라이언트/서버 모듈 경계 `7fae9bd8`, 실브라우저 `42f6e6fe`, 9폭 접근성 `7c22d84a`·`38179133`·`61307419`, 최종 증거 `42fee01a`를 추가했다.
+- 검증: contract 85파일 447건, integrity 32파일 102건, 표적 회귀 6파일 113건, 변경 영향 476파일 3,322건(45건 skip, DB 환경 전용 1파일 제외), typecheck, production build PASS. 실제 localhost 자유 배치는 저장 7회·5종 요소·사진 복원·충돌 재적용·연속 편집 보존·콘솔 오류 0. v70은 33관찰·일반 카드 diff 0·콘솔 오류 0. 360·390·412·600·700·780·820·900·1000은 글자<13·44px 미만·가로 넘침 0, 활성 상태 100%다.
+- 다음 실행: 부모 컨트롤러가 이 브랜치를 push하고 PR 116 원격 CI 전체 green을 확인한다. 종료 증거는 새 CI run 실패 0이며, red일 때만 code-builder로 회수한다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
+## 2026-10-04 18:58 KST 편집실 v2 S1 기존 plain 카드 작업대 회귀 로컬 교정 완료
+
+- handoff basis: 회장이 지정한 PR 116 CI run `37192534847`와 기존 v70 plain 카드 화면 계약을 정본으로 삼았다. push는 하지 않는다.
+- 근본원인: v3 덱이 없는 기존 plain 카드도 `editLines`가 있으면 `StudioPage` 진입 effect가 `cardDeckV3`를 새로 만들었다. 자동저장이 이를 localStorage에 남긴 뒤 `StudioRooms`가 자유 배치 편집기를 선택해 기존 `[data-plain-card-shell]`이 사라졌다.
+- 수정: `aa9a332b`에서 묵시적 v3 생성만 제거했다. 저장된 `cardDeckV3`가 있는 S1 작업의 렌더·저장 경로와 기존 plain 카드 작업대는 각각 유지한다.
+- 검증: page import 영향 39파일 266건, v3·설계 2파일 17건, `typecheck:ci`, production build가 통과했다. CI와 같은 `127.0.0.1:3472`, `STUDIO_V70_COMPARE=1`에서 전체 화면 정합 33관찰을 실행해 1440·1024·390 일반 카드·말풍선·발행실, 일반 카드 stage diff 0, 콘솔 오류 0, 종료 코드 0을 확인하고 서버를 종료했다.
+- 다음 실행: 부모 컨트롤러가 `16d72491`, `aa9a332b`와 후속 증거 커밋을 push하고 PR 116 CI 전체 green을 확인한다. 종료 증거는 run `37192534847`의 후속 실행에서 실패 0이다. red일 때만 code-builder로 회수한다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
+## 2026-10-04 17:06 KST 편집실 v2 S1 PR 116 회귀 6건 로컬 교정 완료
+
+- handoff basis: 회장이 지정한 PR 116 CI run `37186181393` 실패 6건과 기존 회귀 테스트 기대를 정본으로 삼았다. push는 하지 않는다.
+- 발견: v3 자동 생성이 `textEmbedded` 카드까지 선점했고, 저장 함수 중간에 v3 인자를 끼워 기존 cardDeck·videoEdit 위치 계약을 깨뜨렸다. 새 맨 button 2개, v3 누락 상태 판정, raw 이미지 2개도 CI 계약을 위반했다.
+- 수정: `e985fe54`, `647da886`, `0eaf5f5a`, `1f4dd05c`, `5db71aa2`로 원인별 분리했다. 기존 글자 내장 카드 잠금·장수·재합성 금지와 S1 자유 배치 기능을 함께 유지한다.
+- 검증: 변경 파일 import 56파일 422건, integrity 32파일 102건, 전체 contract 84파일 445건, `typecheck:ci` PASS. 첫 typecheck는 손상된 `.next/dev/types` 생성 캐시 때문에 문법 오류가 났고, 캐시를 `/tmp/zto1-next-dev-types.r5gZEK`로 보관한 뒤 재실행해 종료 코드 0을 확인했다. 현재 커밋 dev 서버는 1,380ms에 준비됐고 Chromium 1440 끌기·크기·회전·글자 크기·5종 추가·저장·새로고침과 390 대체 조작을 통과했다. 가로 390=390, 콘솔 오류 0이다.
+- 다음 실행: 부모 컨트롤러가 이 브랜치를 push해 PR 116 원격 CI가 6건 포함 전체 green인지 확인한다. 종료 증거는 새 CI run의 실패 0이다. red일 때만 code-builder로 다시 회수한다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
+## 2026-10-04 09:41 KST 편집실 v2 S1 화면·저장 import chain 연결
+
+- handoff basis: 회장의 최신 지시대로 `51be2111` 이후 S1을 이어가며 push하지 않는다.
+- 구현: `StudioRooms`가 plain 카드에서 `CardCanvasEditor`를 실제 렌더한다. `StudioPage`는 `CardDeckV3`를 로컬 복원·초안 불러오기·800ms 자동저장에 연결하고, draft API는 `payload.cardDeckV3`를 v2와 별도 검증·저장·조회한다.
+- 충돌 복구: 본문 revision 409의 최신본과 최초 로컬 보관본에 v3 덱을 함께 담아 최신본 보기와 내 변경 재적용이 요소 JSON을 잃지 않는다.
+- 검증: 새 계약·command·render/editor와 직접 영향 route/page/StudioRooms 테스트 9파일 52건 통과. 전체 typecheck 첫 실행은 JSONValue 경계 3건만 실패했고 v2와 같은 검증 후 JSON 경계 캐스팅으로 수정했다. 재실행 전이므로 현재 타입 등급은 미검증이다.
+- 다음 실행: 이 저장 배선 단위를 커밋하고 v3 route round-trip 계약을 추가한 뒤 typecheck, 모든 import 관련 테스트, integrity·contract, 실제 Playwright 저장·새로고침을 실행한다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
+## 2026-10-04 08:36 KST 편집실 v2 S1 카드 자유 배치 구현 착수
+
+- handoff basis: 회장이 이 세션에 직접 지정한 S1 과제와 버전핀 D-2026-10-04-1, `card-element-model.md`, `build-plan.md` S1·공통 완료 조건, `user-flow-mapping.md` S1 행, v71 prototype을 정본으로 삼는다. tmux `371:0.1`은 이 Codex worker 자신의 현재 pane으로 확인했고 별도 live handoff와 충돌하지 않는다.
+- 착수 실측: `CardDeckV3`, `CardCanvasEditor`, `CardSlideScene`, `cardDeckV3` 구현은 현재 0건이다. v2 plain 카드는 `EditPreview`의 문구·9칸 위치 편집만 제공해 v71의 요소 자유 배치가 아직 없다.
+- 현재 작업: S1의 v3 계약·순수 command·공용 scene·DOM editor·5종 요소 UI·draft 저장 왕복·기존 revision 충돌 복구 연결을 구현한다. 범위 밖 S2 이관·PNG render 전환과 S3 이후 queue는 만들지 않는다.
+- 다음 실행: 기존 `StudioRooms`와 `studio/page.tsx` 저장·충돌 흐름을 정밀 추적한 뒤 계약·command 테스트부터 작성하고 작은 단위로 커밋한다. 최종 종료 증거는 관련 테스트, integrity, 저장소 전체 contract, typecheck:ci, localhost 1440·1024·390 실제 조작, 9폭 모바일 실측이다.
+- 보존 대상: 기존 수정 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 건드리거나 커밋하지 않는다.
+
+## 2026-10-04 07:12 KST 편집실 v2 본 구현 기술설계 완료, eng-design 검수 대기
+
+- handoff basis: 회장이 이 세션에 직접 지정한 tech-architect 과제와 D-2026-10-04-1·D-2026-10-03-2, 버전핀 PRD·v71 prototype·기존 3개 설계문서·현재 main을 정본으로 삼았다. tmux `371:0.1`은 같은 현재 Codex worker pane으로 확인했고 다른 live handoff와 충돌하지 않았다.
+- 산출물: `docs/eng/editroom-v2/card-element-model.md`, `export-queue.md`, `build-plan.md`, `user-flow-mapping.md`. 카드 v3의 5종 요소·v2 무손실 이관·동일 React 장 렌더, PostgreSQL job/item·RLS·SKIP LOCKED worker·API·발행 최신 판 차단, 8개 수직 슬라이스, v71 의미 행 85개의 endpoint·component·storage·test 매핑을 확정했다.
+- 핵심 판단: 카드 편집 DOM과 서버 PNG는 `CardSlideScene` 하나를 쓰고 기존 Remotion·Chromium을 재사용한다. export worker는 advisory lock으로 전역 1개만 active가 되고 tenant별 RLS transaction에서 item을 claim한다. 첫 build 슬라이스는 회장 체감이 큰 카드 자유 배치다.
+- 검증: 기능 원문 고유 ID 83개와 mapping 고유 ID 83개가 같고 missing·extra 0, 중복 의미를 포함한 mapping 행 85개, 빈 셀 0이다. 네 문서 em dash·내부 태그 0, `git diff --check` 통과. build 공통 게이트는 `dashboard` 84개와 `openclaw` 127개, 저장소 전체 contract 211개를 모두 실행하도록 고정했다. `pipeline-artifact-lint.sh`는 종료 코드 0이고 기존 design·qa 핀 위생 경고 28건은 남았다. 사용자 지시대로 제품 코드·DB·무거운 test·build는 실행하지 않았다.
+- 입력 결손: `docs/design/README.md`가 current UI architecture·screen inventory·v71 user-flow·capture manifest를 지목하지 않고, pipeline lint도 기존 design·qa 산출물 28건을 경고한다. 이번에는 회장이 직접 버전핀한 v71 HTML과 gap matrix로 설계를 닫았으나 build 승인 전 upstream 문서 결손을 별도 보강해야 한다.
+- 커밋: `2922b538`, `b21d82b0`, `699d0e11`, `7d412ede`, `627f6bb8`, `c8b1e49c`, `d9c449b5`, `b105d7bc`. 미래 STAMP와 dashboard만 세던 contract 범위 축소를 자체 검수에서 발견해 교정했고 평가 `ev-20261004-03`, `ev-20261004-04`를 각각 교정 commit으로 해결 기록했다. push는 하지 않았다.
+- 다음 실행: 부모 컨트롤러가 eng-design 독립 리뷰와 회장 게이트를 진행한다. 승인 뒤 code-builder가 `build-plan.md` S1 카드 자유 배치부터 시작하고, related tests 전부 + integrity + 모든 contract + typecheck:ci + 실제 1440·1024·390 구동을 종료 증거로 낸다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않았다.
+
 ## 2026-10-04 02:42 KST 편집실 v2 drawtext 프레임 비교 전수 교정 완료, push 대기
 
 - handoff basis: 회장이 직접 지정한 CI run 37140251980과 최신 요청을 정본으로 삼았다. tmux `371:0.1`은 제한시간이 끝난 이전 code-builder 로그 창이며 현재 실행 주체가 아니다.

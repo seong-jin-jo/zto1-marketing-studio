@@ -7,6 +7,8 @@ import { EditPreview, type CardTextPosition } from "./EditPreview";
 import { EditOutline } from "./EditOutline";
 import { CardDeckPanel, CardStripThumbnail, elementToSegments, getEditableSelectionOffsets, restoreSelectionRange, segmentsToHtml } from "./BubbleEditor";
 import type { CardDeck, Segment } from "@/lib/studio/card-deck-contract";
+import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
+import { CardCanvasEditor } from "./card/CardCanvasEditor";
 import { toggleSegmentsBold } from "@/lib/studio/card-deck-ops";
 import { deckProjection, applyProjection } from "@/lib/studio/card-deck-contract";
 import { VideoEditor } from "./VideoEditor";
@@ -54,7 +56,7 @@ import {
   type LearningInfo,
 } from "./learning-info";
 import styles from "./StudioRooms.module.css";
-import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
+import { DeliveredMedia, resolveImageAssetUrl } from "@/components/studio/DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
 
 // M5(2026-09-22 코드리뷰): 매 렌더 새 객체를 만들지 않게 모듈 스코프에서 한 번만 만든다.
@@ -1663,6 +1665,7 @@ interface EditRoomProps {
   onOpenCreate?: () => void;
   onRetry?: () => void;
   onOpenPublish?: () => void;
+  publishBlockedReason?: string | null;
   lastSavedAt?: string;
   moveBusy?: boolean;
   autosaveError?: string;
@@ -1691,6 +1694,14 @@ interface EditRoomProps {
    */
   cardDeck?: CardDeck | null;
   onCardDeckChange?: (deck: CardDeck) => void;
+  cardDeckV3?: CardDeckV3 | null;
+  onCardDeckV3Change?: (deck: CardDeckV3) => void;
+  /** 기존 plain 카드의 줄과 v2 덱을 보존한 채 자유 배치 편집을 명시적으로 시작한다. */
+  onStartCardDeckV3?: () => void;
+  cardDeckV3EntryBlockedReason?: string | null;
+  onRetryCardDeckV3Detail?: () => void;
+  /** 자유 배치 진입 직전의 plain 카드 원문과 위치를 복원한다. */
+  onReturnFromCardDeckV3?: () => void;
   /**
    * 영상 편집 v1(세션맥락 과업 B). 있으면 `kind==="video"` 편집 워크벤치 위에
    * `VideoEditor`(후킹 CTA·댓글 오버레이·자막 기반 편집·음성 변경)를 얹는다. 기존
@@ -1983,6 +1994,7 @@ export function EditRoom({
   onOpenCreate,
   onRetry,
   onOpenPublish,
+  publishBlockedReason,
   lastSavedAt,
   moveBusy = false,
   autosaveError,
@@ -1998,6 +2010,12 @@ export function EditRoom({
   onBodyConflictReapply,
   cardDeck = null,
   onCardDeckChange,
+  cardDeckV3 = null,
+  onCardDeckV3Change,
+  onStartCardDeckV3,
+  cardDeckV3EntryBlockedReason,
+  onRetryCardDeckV3Detail,
+  onReturnFromCardDeckV3,
   videoEdit = null,
   onVideoEditChange,
 }: EditRoomProps) {
@@ -2025,6 +2043,32 @@ export function EditRoom({
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkAsk, setBulkAsk] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
+  const cardAssetIds = useMemo(() => {
+    if (!cardDeckV3) return [];
+    const ids = new Set<string>();
+    for (const slide of cardDeckV3.slides) {
+      if (slide.background.kind === "image" && !slide.background.asset_id.startsWith("builtin:")) ids.add(slide.background.asset_id);
+      for (const element of slide.elements) {
+        if ((element.type === "image" || element.type === "sticker" || element.type === "logo") && !element.asset_id.startsWith("builtin:")) ids.add(element.asset_id);
+      }
+    }
+    return [...ids].sort();
+  }, [cardDeckV3]);
+  const cardAssetKey = cardAssetIds.join("\u0000");
+  const [cardAssetUrls, setCardAssetUrls] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    if (!workspaceId || cardAssetIds.length === 0) {
+      setCardAssetUrls({});
+      return () => { cancelled = true; };
+    }
+    void Promise.all(cardAssetIds.map(async (assetId) => [assetId, await resolveImageAssetUrl(assetId, workspaceId)] as const))
+      .then((entries) => {
+        if (cancelled) return;
+        setCardAssetUrls(Object.fromEntries(entries.filter(([, url]) => Boolean(url))));
+      });
+    return () => { cancelled = true; };
+  }, [cardAssetKey, workspaceId]);
   const initialAudioSettings = audioSettingsFromFormat(initialFormat);
   const preservedAudio = useMemo<PreservedAudioSettings>(() => ({
     musicTrack: initialAudioSettings.musicTrack,
@@ -2074,7 +2118,8 @@ export function EditRoom({
   const outlineTitle = kind === "text" ? "글 문단" : kind === "card" ? "카드 목록" : kind === "audio" ? "대사 목록" : "영상 장면";
   const unit = kind === "card" ? "장" : kind === "text" ? "문단" : "장면";
   const hasEditableContent = safeLines.some((line) => line.trim().length > 0)
-    || Boolean(previewReady || previewImageUrl || previewImageUrls?.length || previewVideoUrl || cardDeck || videoEdit);
+    || Boolean(previewReady || previewImageUrl || previewImageUrls?.length || previewVideoUrl || cardDeck || videoEdit)
+    || Boolean(cardDeckV3);
   const roomState = state === "default" && !hasEditableContent ? "empty" : state;
   const editorVisible = roomState === "default" || roomState === "overflow";
   const updateLine = (value: string) => {
@@ -2215,7 +2260,15 @@ export function EditRoom({
               <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
-              {kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
+              {kind === "card" && !cardTextEmbedded && cardDeckV3 && onCardDeckV3Change ? (
+                <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-v3-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
+                  <div className="mb-stack flex flex-wrap items-center gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption text-muted" role="status" data-card-deck-v3-return-note>
+                    <span className="mr-auto">기본 편집으로 돌아가면 자유 배치 진입 직전의 글과 위치를 그대로 복원합니다.</span>
+                    {onReturnFromCardDeckV3 ? <Button type="button" size="sm" variant="secondary" onClick={onReturnFromCardDeckV3}>기본 편집으로 돌아가기</Button> : null}
+                  </div>
+                  <CardCanvasEditor deck={cardDeckV3} assetUrls={cardAssetUrls} onDeckChange={onCardDeckV3Change} />
+                </div>
+              ) : kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                   <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-card-deck-editor-note>
                     말풍선 카드뉴스는 직접 편집이 기본입니다. 여기서 고친 내용은 자동 저장됩니다.
@@ -2224,6 +2277,19 @@ export function EditRoom({
                 </div>
               ) : (
               <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""} ${kind === "video" && onVideoEditChange ? styles.videoDocumentWorkbench : ""} ${kind === "card" ? styles.plainCardWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined} inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
+                {kind === "card" && !cardTextEmbedded && onStartCardDeckV3 ? (
+                  <div className="border-b border-border p-pad-inset">
+                    <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3} disabled={Boolean(cardDeckV3EntryBlockedReason)}>
+                      자유 배치로 편집
+                    </Button>
+                    {cardDeckV3EntryBlockedReason ? (
+                      <div className="mt-stack-tight flex flex-wrap items-center gap-stack-tight text-caption text-warning" role="status" data-card-deck-v3-entry-blocked>
+                        <span>{cardDeckV3EntryBlockedReason}</span>
+                        {onRetryCardDeckV3Detail ? <Button type="button" size="sm" variant="secondary" onClick={onRetryCardDeckV3Detail}>다시 시도</Button> : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 {/*
                   2026-09-14. 여기는 `1. 첫 장` 같은 글자 목록이었고, 장을 옮기려면 미리보기
                   아래 `앞 장`·`다음 장` 화살표를 여러 번 눌러야 했다. 카드뉴스는 장과 장의
@@ -2620,9 +2686,14 @@ export function EditRoom({
                 </div>
               </div>
             ) : null}
+            {publishBlockedReason ? (
+              <p role="alert" className="rounded-control border border-warning bg-warning-soft p-stack text-caption text-warning" data-card-deck-v3-publish-block>
+                {publishBlockedReason}
+              </p>
+            ) : null}
             <div className={styles.editHelperFooter}>
               <small className={autosaveError ? "text-caption text-danger" : "text-caption text-success"}>{autosaveError || (lastSavedAt ? `마지막 자동 저장 ${lastSavedAt}` : "고치는 대로 자동 저장됨")}</small>
-              <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || bodyEditConflict || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>
+              <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || Boolean(publishBlockedReason) || bodyEditConflict || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>
             </div>
           </AssistantPanel>
         )}

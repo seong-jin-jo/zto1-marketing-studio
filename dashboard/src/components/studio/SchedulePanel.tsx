@@ -32,6 +32,7 @@ function statusLabel(status: string): string {
   if (status === "partial") return "일부 실패";
   if (status === "failed") return "실패";
   if (status === "processing") return "처리 중";
+  if (status === "blocked") return "보류";
   if (status === "canceled") return "취소";
   return "예약됨";
 }
@@ -41,6 +42,7 @@ function statusClass(status: string): string {
   if (status === "partial") return "bg-warning/15 text-warning";
   if (status === "failed") return "bg-danger/15 text-danger";
   if (status === "processing") return "bg-accent/15 text-accent";
+  if (status === "blocked") return "bg-warning/15 text-warning";
   if (status === "canceled") return "bg-surface-2 text-subtle";
   return "bg-warning/15 text-warning";
 }

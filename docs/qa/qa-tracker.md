@@ -1,3 +1,103 @@
+## 2026-10-05 편집실 v2 S1 교차 리뷰 5차 m5-1 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-R8-m5-1 | 새 작업 전환 시 남은 v3 상세 조회 상태가 진입과 발행을 막지 않도록 초기화 | S1-R8-DETAIL-RESET-01 | ✅ 로컬 PASS | 새 작업 생성, 버리고 새로 시작, 후보 선택 세 경로가 `cardDeckV3`와 함께 `cardDeckV3DetailStatus`를 `idle`로 되돌린다. 관련 Studio 5파일 35건과 `typecheck:ci`가 종료 코드 0으로 통과했다. 제품·회귀 커밋 `cca3356a`. 원격 CI는 미검증이다. |
+
+## 2026-10-05 편집실 v2 S1 교차 리뷰 4차 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-R7-N6 | 목록 우선 열기 중 서버 v3 덱과 원문 스냅샷 덮어쓰기 방지 | S1-R7-HYDRATION-GUARD-01 | ✅ 로컬 PASS | 목록은 본문 없이 `hasCardDeckV3`만 내리고, 상세 준비 전 진입·발행 동작을 잠근다. 실패 시 재시도하며 다른 덱 id 저장은 원자적 조건 검사로 409다. route 13건, StudioRooms 7건, 발행 계약 7건 통과. `fc063d0f` |
+| EDITROOM-V2-S1-R7-m4-1 | 개별 승인과 일괄 승인도 공통 발행 큐 안전문 적용 | S1-R7-QUEUE-APPROVE-01 | ✅ 로컬 PASS | 개별·일괄 승인 모두 mutation 전에 `assertDraftCanEnterPublishQueue`를 호출한다. 큐·승인 관련 22건 통과. `c87fdf2e` |
+| EDITROOM-V2-S1-R7-m4-3 | 예약 보류 뒤 재예약 필요 안내와 DB 상태 주석 정합 | S1-R7-SCHEDULE-BLOCKED-01 | ✅ 로컬 PASS | 진입 안내에 자동 복원되지 않음과 재예약 필요를 명시하고 스키마 상태 주석에 `blocked`를 추가했다. 계약 테스트 통과. `2fbeccb4` |
+| EDITROOM-V2-S1-R7-m4-4 | 편집기 언마운트 시 대기 중 글 편집 확정 | S1-R7-EDITOR-FLUSH-01 | ✅ 로컬 PASS | 대기 중 직접 편집 context를 ref에 보존하고 언마운트 cleanup에서 마지막 값을 flush한다. 컴포넌트 11건 통과. `aa9d39b5` |
+
+전체 종료 증거: 변경 TypeScript 10파일의 import 영향 42파일 330건 통과, 2건 제외. integrity 32파일 102건 통과. contract 85파일 452건 통과. `typecheck:ci` 오류 0. localhost 실제 Chromium은 저장 9회, 상세 조회 7회, 연속 편집 보존, 5종 요소, 사진 새로고침 복원, 409 충돌 재적용, 기본 편집 복귀 확인, 390px 가로 넘침 0, 콘솔 오류 0으로 종료 코드 0이다. 같은 데이터 포함 픽스처를 360·390·412·600·700·780·820·900·1000에서 다시 재어 13px 미만 글자 0, 본문 16px, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0을 확인했다. 디자인 lint는 기존 인라인 style 3파일·hex 8파일을 경고했으나 이번 변경 줄의 신규 위반은 0이다. 파이프라인 산출물 검사는 종료 코드 0이며 기존 핀 위생 경고 28건이다. 원격 CI와 운영 배포는 미검증이다.
+
+## 2026-10-05 편집실 v2 S1 CI Vitest 힙 고갈 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-R6-CI-OOM | CI run 37212288414의 미완료 3파일을 특정하고 제품 렌더 루프를 제거 | S1-R6-OOM-01 | ✅ 로컬 PASS | 차집합은 `body-conflict-recovery`, `edit-autosave-cross-domain`, `video-edit-data-integrity`였다. 목록 우선 주입이 state를 바꾼 뒤에야 `draft_id` 처리 표식을 세워, 매 렌더 새 `hist.drafts` 배열이 들어오면 같은 초안을 다시 주입했다. `014b8be8`은 state 변경 전에 초안을 선점한다. 수정 전 세 파일은 각각 189초·103초·106초에도 0건 완료, 워커 RSS 최소 394MB·288MB·312MB였다. 수정 후 3/3 47.42초 99MB, 2/2 48.93초 84MB, 6/6 60.54초 101MB다. page import 48파일 320건, integrity 32파일 102건, contract 85파일 451건, `typecheck:ci`가 통과했다. localhost dev 실제 Chromium에서도 저장 9회, 상세 조회 7회, 5종 요소, 사진 복원, 충돌 재적용, 복귀 확인, 콘솔 오류 0으로 종료했다. 원격 CI는 미검증이다. |
+
+## 2026-10-04 편집실 v2 S1 교차 재검토 3차 및 CI 회귀 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-R5-CI | 영상 자막 수정 직후 최신 문구 자동저장 | VIDEO-EDIT-B3 | ❌ NG | CI run 37206237145에서 영상 `editLines` 저장 POST가 0건이다. v3 hydration·저장 대기 경계가 기존 영상 자동저장까지 막았는지 제품 코드에서 추적한다. |
+| EDITROOM-V2-S1-R5-B1 | v3 초안의 예약 등록·예약 실행 우회 차단 | S1-R5-SCHEDULE-GATE-01 | ❌ NG | 예약 등록은 v3를 검사하지 않고, 예약 실행은 발행 시점 draft payload를 읽으면서도 plain 렌더로 진행한다. |
+| EDITROOM-V2-S1-R5-B2 | 모든 직접 큐 등록 경로를 공통 하위 함수에서 차단 | S1-R5-QUEUE-GATE-01 | ❌ NG | queue promote, draft enqueue, studio command가 공통 v3 검사 없이 큐를 만들 수 있다. |
+| EDITROOM-V2-S1-R5-m1~m5 | 직접 발행 범위 기록, 복귀 확인, 스냅샷 최소 전송, 목록 우선 열기, 글 편집 debounce 확정 | S1-R5-MINOR-01~05 | ❌ NG | 교차 재검토 3차 지적 기준으로 제품·결정문·계약 테스트를 보강한다. |
+
+## 2026-10-04 편집실 v2 S1 Claude Opus 교차 재검토 2차 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-R4-N1 | plain→v3 변환 무손실 | S1-R4-MIGRATION-01 | ✅ 로컬 PASS | 상한 밖 덱·빈 카드·1장 덱은 사유와 함께 진입 차단. 2~11장은 문구와 9칸 위치를 그대로 이관한다. `9464e891` |
+| EDITROOM-V2-S1-R4-N2 | 기본 편집 복귀와 진입 전 스냅샷 복원 | S1-R4-RETURN-01 | ✅ 로컬 PASS | 서버·로컬에 진입 전 `editLines`·`cardTextPositions`를 보존하고 명시적 v3 삭제 뒤 복원한다. `b66cde85` |
+| EDITROOM-V2-S1-R4-N3 | S2 전 발행·검토 차단 | S1-R4-PUBLISH-GATE-01 | ✅ 로컬 PASS | 화면 이동·검토·예약·발행과 서버 publish·queue·review를 같은 코드와 문구로 차단한다. `b7998307`, `7fae9bd8` |
+| EDITROOM-V2-S1-R4-N4 | 늦은 단건 응답의 진행 편집 덮어쓰기 금지 | S1-R4-HYDRATION-RACE-01 | ✅ 로컬 PASS | 로컬 덱·dirty·저장 대기·저장 세대 경계로 늦은 응답을 거절한다. 실브라우저 연속 편집 보존 true. `5afe5be8` |
+| EDITROOM-V2-S1-R4-N5 | 같은 초안 재선택도 단건 복원 | S1-R4-RESELECT-01 | ✅ 로컬 PASS | 목록을 누를 때 단건 GET을 먼저 완료하고 v3를 채운다. 실브라우저 detail GET 4회. `5afe5be8` |
+| EDITROOM-V2-S1-R4-m1~m5 | 초점·글 미리보기·정밀도·토큰·회전 배지 | S1-R4-FOCUS/TEXT/NUMERIC/TOKEN/ROTATION | ✅ 로컬 PASS | 초점 복귀, blur 1회 이력, 소수 셋째 자리, `border-border`, state 각도 배지. `b3c0b089` |
+| EDITROOM-V2-S1-R4-E2E | 실제 화면 저장·새로고침·충돌·반응형 | S1-AC1~07 | ✅ 로컬 PASS | production localhost에서 저장 7회, 5종 요소, 사진 복원, 충돌 재적용, 콘솔 오류 0. v70 33관찰도 종료 코드 0. 9폭은 글자<13·44px 미만·가로 넘침 0, 활성 상태 100%. 변경 영향 476파일은 3,322건 통과·45건 skip이며 DB 환경 전용 1파일은 별도 제외했다. `42f6e6fe`, `7c22d84a`, `61307419`, `42fee01a` |
+
+## 2026-10-04 편집실 v2 S1 Claude Opus 교차 재검토 2차 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-R4-N1 | plain→v3 변환에서 장·문구·위치 데이터를 자르거나 지어내지 않음 | S1-R4-MIGRATION-01 | ❌ NG | 현재 변환은 11장 이후를 자르고 2장 미만이면 가짜 장을 보태며 `cardTextPositions`를 이관하지 않는다. |
+| EDITROOM-V2-S1-R4-N2 | 자유 배치 진입 전 상태로 무손실 복귀 | S1-R4-RETURN-01 | ❌ NG | v3를 시작한 뒤 기존 `editLines`와 `cardTextPositions`로 돌아갈 사용자 경로가 없다. |
+| EDITROOM-V2-S1-R4-N3 | S2 공용 렌더 전 v3 결과의 발행·검토 요청 차단 | S1-R4-PUBLISH-GATE-01 | ❌ NG | 편집 화면의 v3와 실제 발행 PNG가 달라질 수 있는데 클라이언트와 서버 모두 이동을 허용한다. |
+| EDITROOM-V2-S1-R4-N4 | 단건 응답이 진행 중 로컬 v3 편집을 덮어쓰지 않음 | S1-R4-HYDRATION-RACE-01 | ❌ NG | 늦게 도착한 단건 조회가 이미 편집·저장 중인 로컬 덱을 다시 채울 수 있다. |
+| EDITROOM-V2-S1-R4-N5 | 목록에서 같은 초안을 다시 골라도 단건 v3를 직접 복원 | S1-R4-RESELECT-01 | ❌ NG | 목록은 의도적으로 v3를 제외하므로 재선택 직후 진입하면 서버 v3를 새 변환본으로 덮을 수 있다. |
+| EDITROOM-V2-S1-R4-m1 | 초점 선택과 삭제 뒤 스테이지 초점 복귀 | S1-R4-FOCUS-01 | ❌ NG | 요소 선택 상자 focus가 선택 상태를 맞추지 않고 삭제 후 키보드 조작 초점도 복구하지 않는다. |
+| EDITROOM-V2-S1-R4-m2 | 글 textarea 입력은 실시간 미리보기, blur에서 이력 한 칸 확정 | S1-R4-TEXT-HISTORY-01 | ❌ NG | 매 입력마다 이력을 쌓거나 실시간 반영과 확정 경계를 분리하지 못한다. |
+| EDITROOM-V2-S1-R4-m3 | 숫자 조작값을 소수 셋째 자리로 정규화 | S1-R4-NUMERIC-PRECISION-01 | ❌ NG | 글자 크기·각도·너비·높이 값의 저장 정밀도 상한이 없다. |
+| EDITROOM-V2-S1-R4-m4 | StudioRooms 테두리는 기존 디자인 토큰 사용 | S1-R4-TOKEN-01 | ❌ NG | `border-line`이 현재 디자인 토큰 계약과 어긋난다. |
+| EDITROOM-V2-S1-R4-m5 | 회전 중 각도 배지를 React state로 표시 | S1-R4-ROTATION-BADGE-01 | ❌ NG | 회전 배지가 렌더 state와 분리돼 표시값이 실제 명령값과 어긋날 수 있다. |
+
+## 2026-10-04 편집실 v2 S1 Claude Opus 교차 리뷰 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-R3-M1 | 실제 업로드 파일명을 안전한 `asset_id`로 저장하고 경로 순회는 거절 | S1-R3-ASSET-ID-01 | ❌ NG | 업로드 응답은 확장자를 포함하지만 `safeId`는 점을 거절해 사진 덱 저장이 400이 된다. |
+| EDITROOM-V2-S1-R3-M2 | 새로고침 뒤에도 테넌트 범위 재서명 URL로 사진 표시 | S1-R3-ASSET-RESIGN-01 | ❌ NG | 사진 URL이 `CardCanvasEditor.localAssetUrls`에만 있어 메모리 초기화 뒤 자리표시로 돌아간다. |
+| EDITROOM-V2-S1-R3-M3 | 409 충돌 보관본과 재적용본이 마지막 편집 덱과 일치 | S1-R3-CONFLICT-01 | ❌ NG | 충돌 보관 시 React state를 읽어 저장 요청에 사용한 v3 덱보다 한 단계 이전 값이 들어갈 수 있다. |
+| EDITROOM-V2-S1-R3-M4 | 같은 revision의 외부 최신본도 내용이 다르면 editor history 교체 | S1-R3-RELOAD-01 | ❌ NG | 외부 덱 동기화가 `id`와 `revision`만 비교해 내용만 바뀐 최신본을 무시한다. |
+| EDITROOM-V2-S1-R3-M5 | 입력칸 키를 단축키가 가로채지 않고 스테이지 초점에서만 실행 | S1-R3-KEYBOARD-01 | ❌ NG | editor 루트의 keydown이 input·select·textarea·contenteditable 이벤트까지 처리한다. |
+| EDITROOM-V2-S1-R3-M6 | 글 직접 편집과 숫자 크기·각도 대체 조작 제공 | S1-R3-DIRECT-EDIT-01 | ❌ NG | 글 더블클릭·Enter 편집, 각도 표시·입력, 가로·세로 숫자 입력이 없다. |
+| EDITROOM-V2-S1-R3-M7 | 기존 plain 카드에서 명시적으로 자유 배치 편집기로 전환 | S1-R3-ENTRY-01 | ❌ NG | 기존 화면 보존을 위해 자동 승격을 제거했으나 사용자가 v3를 시작할 진입점도 없다. |
+| EDITROOM-V2-S1-R3-m1 | 숫자칸 빈 값과 계약 범위를 안전하게 clamp | S1-R3-NUMBER-01 | ❌ NG | 글자 크기 입력이 빈 문자열을 0으로 바꾸고 계약 밖 수치를 그대로 명령에 넘긴다. |
+| EDITROOM-V2-S1-R3-m2 | 끌기·방향키 이동 뒤 요소가 장과 최소 1px 교차 | S1-R3-BOUNDS-01 | ❌ NG | 이동 명령이 x·y 경계를 제한하지 않아 요소를 장 밖으로 완전히 잃을 수 있다. |
+| EDITROOM-V2-S1-R3-m3 | 선택이 없어도 Ctrl/Cmd+Z 실행 | S1-R3-UNDO-01 | ❌ NG | keydown이 선택 요소가 없으면 undo 분기 전에 반환한다. |
+| EDITROOM-V2-S1-R3-m5 | 카톡 덱 투영에 말풍선 세그먼트 문구 포함 | S1-R3-BUBBLE-PROJECTION-01 | ❌ NG | v3 투영은 요소 글만 모아 카톡 base의 말풍선 문구를 저장 본문에서 잃는다. |
+| EDITROOM-V2-S1-R3-m6 | 목록 응답은 무거운 `cardDeckV3`를 제외하고 단건만 반환 | S1-R3-DRAFT-LIST-01 | ❌ NG | 목록과 단건이 같은 flatten 함수를 써 목록 전체에 v3 JSON이 반복된다. |
+| EDITROOM-V2-S1-R3-m7 | 끌기 중 pointer 이벤트 구독을 매 이동마다 재생성하지 않음 | S1-R3-POINTER-SUBSCRIPTION-01 | ❌ NG | pointer effect가 이동마다 바뀌는 history·slide 객체를 의존한다. |
+
+## 2026-10-04 편집실 v2 S1 기존 plain 카드 작업대 회귀 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-CI-07 | v3 덱이 없는 기존 plain 카드 작업은 v70 카드 작업대를 그대로 연다 | STUDIO-V70-CARD-SCREEN | ✅ 로컬 PASS | `aa9a332b`: `editLines`만으로 v3 덱을 자동 생성하던 effect를 제거했다. CI와 같은 production build·127.0.0.1:3472·비교 모드에서 전체 화면 정합 33관찰, 1440·1024·390 일반 카드와 말풍선·발행실, 콘솔 오류 0, 종료 코드 0을 확인했다. |
+
+## 2026-10-04 편집실 v2 S1 PR 116 회귀 6건 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-CI-01 | 연결 초안 없는 2장 `textEmbedded` 카드가 편집실·저장까지 2장을 유지 | PR95-R2-STUDIO-01 | ✅ 로컬 PASS | `e985fe54`: v3 자동 생성과 렌더를 글자 내장 카드에서 차단. 통합 테스트에서 2장 저장 유지 |
+| EDITROOM-V2-S1-CI-02 | 원본 정보 없는 한 장 `textEmbedded` 카드는 편집 잠금·재합성 금지 | PR95-R3-STUDIO-01 | ✅ 로컬 PASS | `e985fe54`: 기존 잠금 경로를 보존. 재합성 요청 0건과 원본 한 장 저장 유지 |
+| EDITROOM-V2-S1-CI-03 | 카드·영상·v3 자동저장은 다른 편집 도메인 자리에 명시 `null` 전달 | EDIT-AUTOSAVE-A/B-4 | ✅ 로컬 PASS | `0eaf5f5a`: 기존 cardDeck·videoEdit 위치 뒤에 v3를 추가하고 기본값을 `null`로 고정. 회귀 11건 통과 |
+| EDITROOM-V2-S1-CI-04 | 새 조작은 공용 `Button`을 사용해 맨 `<button>` 기준선 유지 | QA-APP-TOUCH-08 | ✅ 로컬 PASS | `1f4dd05c`: 크기·회전 핸들을 공용 `Button`으로 교체. 기준선 240 이하 계약 통과 |
+| EDITROOM-V2-S1-CI-05 | 목록이 없어도 v3 덱을 편집 가능한 복원 데이터로 인정 | QA-P1-04-STATE-01 | ✅ 로컬 PASS | `647da886`: 기존 상태 판정 문자열은 보존하고 v3를 별도 편집 가능 데이터로 합산. 설계 계약 15건 통과 |
+| EDITROOM-V2-S1-CI-06 | 카드 장면의 이미지도 만료 URL 복구 경계를 통과 | SIGNED-MEDIA-SOURCE | ✅ 로컬 PASS | `5db71aa2`: 요소·배경 이미지를 `DeliveredMedia`로 교체. 관련 import 테스트 7파일 43건 통과 |
+
+## 2026-10-04 편집실 v2 S1 자유 배치 미구현 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-FREEFORM-01 | v71에서 승인한 카드 요소 자유 배치를 실제 편집실에 구현하고 저장·새로고침까지 보존 | S1-AC1~07 | ❌ NG | 착수 실측에서 `dashboard/src`에 `CardDeckV3`, `CardCanvasEditor`, `CardSlideScene`, `cardDeckV3`가 0건이며 plain 카드는 `EditPreview`의 제한된 문구 위치 편집만 제공한다. D-2026-10-04-1과 `build-plan.md` S1 승인 뒤 구현·실브라우저 검증을 시작한다. |
+
 ## 2026-10-04 편집실 v2 drawtext 프레임 비교 전수 감사 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

@@ -1,0 +1,53 @@
+{
+  "result": "PASS",
+  "posts": 9,
+  "bodyRevision": 2,
+  "detailGets": 7,
+  "continuousEditPreserved": true,
+  "sourceSnapshotWrites": {
+    "main": 1,
+    "returnFlow": 2
+  },
+  "returnConfirmation": true,
+  "elementTypes": [
+    "image",
+    "logo",
+    "shape",
+    "sticker",
+    "text"
+  ],
+  "savedElement": {
+    "id": "el_text_deck_a3bfec065aa8_0",
+    "type": "text",
+    "name": "글",
+    "x": 271.579,
+    "y": 526.171,
+    "width": 900,
+    "height": 540,
+    "rotation": 16.981,
+    "z_index": 0,
+    "opacity": 1,
+    "locked": false,
+    "hidden": false,
+    "text": "자유 배치 첫 장",
+    "style": {
+      "font_family": "Pretendard Variable",
+      "font_size": 72,
+      "font_weight": 700,
+      "line_height": 1.2,
+      "letter_spacing": 0,
+      "color": "#111111",
+      "align": "center",
+      "vertical_align": "middle"
+    }
+  },
+  "restoredRotation": "16.981deg",
+  "restoredImage": true,
+  "conflictReapplied": true,
+  "expectedConflicts": 1,
+  "mobile": {
+    "viewport": 390,
+    "scroll": 390
+  },
+  "consoleErrors": 0
+}

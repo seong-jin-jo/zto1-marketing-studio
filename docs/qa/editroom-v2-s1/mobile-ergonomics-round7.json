@@ -1,0 +1,22 @@
+{
+  "stamp": "2026-10-05T03:57+09:00 | gpt-6.1-sol | code-builder | mobile-ergonomics-measure.mjs | round 7 localhost E2E fixture",
+  "source": "s1-freeform-measure-fixture.html",
+  "thresholds": {
+    "fontBelow13": 0,
+    "bodyFontMinimum": 16,
+    "tapBelow44": 0,
+    "activeCoverageMinimum": 0.9,
+    "overflowX": false
+  },
+  "results": [
+    { "width": 360, "fontBelow13": 0, "bodyFont": 16, "tapBelow44": 0, "activeCoverage": 1, "overflowX": false, "pass": true },
+    { "width": 390, "fontBelow13": 0, "bodyFont": 16, "tapBelow44": 0, "activeCoverage": 1, "overflowX": false, "pass": true },
+    { "width": 412, "fontBelow13": 0, "bodyFont": 16, "tapBelow44": 0, "activeCoverage": 1, "overflowX": false, "pass": true },
+    { "width": 600, "fontBelow13": 0, "bodyFont": 16, "tapBelow44": 0, "activeCoverage": 1, "overflowX": false, "pass": true },
+    { "width": 700, "fontBelow13": 0, "bodyFont": 16, "tapBelow44": 0, "activeCoverage": 1, "overflowX": false, "pass": true },
+    { "width": 780, "fontBelow13": 0, "bodyFont": 16, "tapBelow44": 0, "activeCoverage": 1, "overflowX": false, "pass": true },
+    { "width": 820, "fontBelow13": 0, "bodyFont": 16, "tapBelow44": 0, "activeCoverage": 1, "overflowX": false, "pass": true },
+    { "width": 900, "fontBelow13": 0, "bodyFont": 16, "tapBelow44": 0, "activeCoverage": 1, "overflowX": false, "pass": true },
+    { "width": 1000, "fontBelow13": 0, "bodyFont": 16, "tapBelow44": 0, "activeCoverage": 1, "overflowX": false, "pass": true }
+  ]
+}

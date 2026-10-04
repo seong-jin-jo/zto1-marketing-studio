@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // /api/schedule 검증 분기 (인프라 無, 항상 실행). INSERT/read-back은 DB 필요 → 별도 db-gated.
 // effectiveTenantId를 고정해 라우트 검증 로직만 본다. withTenant는 검증 통과 전엔 호출 안 됨.
 
-const H = vi.hoisted(() => ({ tenantId: "tenant-1" as string | null }));
+const H = vi.hoisted(() => ({ tenantId: "tenant-1" as string | null, hasCardDeckV3: false }));
 
 vi.mock("@/lib/tenant-auth", () => ({
   effectiveTenantId: vi.fn(async () => H.tenantId),
@@ -14,6 +14,15 @@ vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async () => {
     throw new Error("withTenant는 검증 통과 후에만 호출되어야 함");
   }),
+}));
+
+vi.mock("@/lib/studio/card-deck-v3-publish-gate", () => ({
+  draftHasCardDeckV3: vi.fn(async () => H.hasCardDeckV3),
+  cardDeckV3PublishBlockedResponse: () => Response.json({
+    ok: false,
+    code: "CARD_DECK_V3_PUBLISH_NOT_READY",
+    error: "자유 배치 결과물 만들기는 다음 업데이트에서 열립니다.",
+  }, { status: 409 }),
 }));
 
 async function schedule(body: Record<string, unknown>) {
@@ -30,6 +39,7 @@ async function schedule(body: Record<string, unknown>) {
 
 beforeEach(() => {
   H.tenantId = "tenant-1";
+  H.hasCardDeckV3 = false;
 });
 
 describe("POST /api/schedule — 검증 분기", () => {
@@ -62,6 +72,17 @@ describe("POST /api/schedule — 검증 분기", () => {
     const { status, body } = await schedule({ platforms: ["x"], scheduled_at: "2020-01-01T00:00:00Z" });
     expect(status).toBe(400);
     expect(body.error).toMatch(/미래/);
+  });
+
+  it("S1-R5-SCHEDULE-01 자유 배치 초안은 예약 등록을 409로 거절한다", async () => {
+    H.hasCardDeckV3 = true;
+    const { status, body } = await schedule({
+      draft_id: "22222222-2222-4222-8222-222222222222",
+      platforms: ["x"],
+      scheduled_at: future(),
+    });
+    expect(status).toBe(409);
+    expect(body.code).toBe("CARD_DECK_V3_PUBLISH_NOT_READY");
   });
 });
 

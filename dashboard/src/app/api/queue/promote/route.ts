@@ -3,6 +3,11 @@
 // 본문: { tenant_id, draft_id, platforms[], scheduled_at? }
 // 게이트웨이(OpenClaw extensions) HTTP로 큐 추가를 위임 — 실 발행은 게이트웨이 크론이 수행.
 // OPENCLAW_GATEWAY_URL 미설정 시 503(게이트웨이 미연결). 하드코딩 금지(CLAUDE.md 서비스 중립).
+import {
+  assertDraftCanEnterPublishQueue,
+  CardDeckV3PublishBlockedError,
+  cardDeckV3PublishBlockedErrorResponse,
+} from "@/lib/studio/card-deck-v3-publish-gate";
 
 interface PromoteBody {
   tenant_id?: string;
@@ -19,6 +24,12 @@ export async function POST(request: Request) {
   }
   if (!Array.isArray(platforms) || platforms.length === 0) {
     return Response.json({ error: "platforms[] required (1개 이상)" }, { status: 400 });
+  }
+  try {
+    await assertDraftCanEnterPublishQueue(tenant_id, draft_id);
+  } catch (error) {
+    if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
+    throw error;
   }
   // 예약 시각은 미래여야 함(과거 거부 — P6 예약 정합).
   if (scheduled_at) {

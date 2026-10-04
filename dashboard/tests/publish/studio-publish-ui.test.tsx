@@ -223,6 +223,11 @@ describe("Studio publish result integrity", () => {
       return { data: undefined, mutate: vi.fn() };
     });
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const inputUrl = String(input);
+      if (inputUrl.includes("/api/studio/drafts?") && inputUrl.includes("&id=")) {
+        const id = new URL(inputUrl, "http://localhost").searchParams.get("id");
+        return Response.json({ draft: mocks.drafts.find((draft) => draft.id === id) ?? null });
+      }
       const platform = /\/api\/channels\/([^/]+)\/accounts/.exec(String(input))?.[1];
       const connected = platform && mocks.connectedPlatforms.includes(platform)
         ? [{ id: `${platform}-account`, display_name: `${platform} 계정`, username: platform, is_default: true }]
@@ -979,7 +984,7 @@ describe("Studio publish result integrity", () => {
     expect(within(currentWork).getByText("고객 사례 카드뉴스", { exact: true })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "이어 편집하기" }));
 
-    expect(mocks.setStudioRoom).toHaveBeenCalledWith("edit");
+    await waitFor(() => expect(mocks.setStudioRoom).toHaveBeenCalledWith("edit"));
     expect(window.location.pathname + window.location.search).toBe("/studio?room=edit&kind=card");
     expect(mocks.showToast).toHaveBeenCalledWith("불러옴. 수정 후 재발행 가능", "success");
   });

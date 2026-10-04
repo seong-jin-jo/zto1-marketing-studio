@@ -57,6 +57,13 @@ function storageKey(workspaceId: string) {
 }
 const VID = { url: "/api/media/test-video", file: "/api/media/test-video", model: "x" };
 
+function draftDetailResponse(url: string, init?: RequestInit): Response | null {
+  if (!url.includes("/api/studio/drafts?") || !url.includes("&id=") || init?.method) return null;
+  const id = new URL(url, "http://localhost").searchParams.get("id");
+  const data = mocks.swr(`/api/studio/drafts?tenant_id=${mocks.workspace.id}`)?.data as { drafts?: Array<Record<string, unknown>> } | undefined;
+  return Response.json({ draft: data?.drafts?.find((draft) => draft.id === id) ?? null });
+}
+
 function swrFor(drafts: unknown[]) {
   mocks.swr.mockImplementation((key: string | null) => {
     if (key === "/api/me") return { data: { isOperator: false }, mutate: vi.fn() };
@@ -89,6 +96,8 @@ describe("P1: 재동기화 전에는 자동저장이 나가지 않는다(첫 조
     };
     swrFor([serverDraft]);
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const detail = draftDetailResponse(url, init);
+      if (detail) return detail;
       if (typeof url === "string" && url.includes("/api/studio/drafts") && init?.method === "POST") {
         const body = JSON.parse(String(init.body ?? "{}"));
         fetchCalls.push({ url, body });
@@ -127,6 +136,8 @@ describe("P5: 목록 밖 초안은 단건 조회로 서버 값을 맞춘다", ()
       if (typeof url === "string" && url.includes("/api/studio/drafts") && url.includes("id=draft-outside-list") && init?.method !== "POST") {
         return new Response(JSON.stringify({ draft: singleDraft }), { status: 200, headers: { "content-type": "application/json" } });
       }
+      const detail = draftDetailResponse(url, init);
+      if (detail) return detail;
       if (typeof url === "string" && url.includes("/api/studio/drafts") && init?.method === "POST") {
         const body = JSON.parse(String(init.body ?? "{}"));
         fetchCalls.push({ url, body });
@@ -167,7 +178,9 @@ describe("P7: 줄 순서만 바뀌면 컷·타이밍이 글자를 따라간다(�
         ],
       },
     }]);
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const detail = draftDetailResponse(url, init);
+      if (detail) return detail;
       if (typeof url === "string" && url.includes("elevenlabs-voices")) return new Response(JSON.stringify({ code: "ELEVENLABS_NOT_CONFIGURED" }), { status: 503 });
       return new Response(JSON.stringify({ accounts: [] }), { status: 200 });
     }));
@@ -194,6 +207,8 @@ describe("P8: 409가 나면 안내와 다시 불러오기 단추가 보인다", 
       videoEdit: { contract_version: "1.0", overlays: [], comments: [], voice: null, revision: 1, subtitles: [] },
     }]);
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const detail = draftDetailResponse(url, init);
+      if (detail) return detail;
       if (typeof url === "string" && url.includes("/api/studio/drafts") && init?.method === "POST") {
         fetchCalls.push({ url, body: JSON.parse(String(init.body)) });
         return new Response(JSON.stringify({
@@ -226,6 +241,8 @@ describe("두 탭: 같은 초안을 먼저 저장한 쪽만 성공한다", () =>
     let serverRevision = 3;
     let tabAAlreadySaved = false;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const detail = draftDetailResponse(url, init);
+      if (detail) return detail;
       if (typeof url === "string" && url.includes("/api/studio/drafts") && init?.method === "POST") {
         const body = JSON.parse(String(init.body ?? "{}"));
         fetchCalls.push({ url, body });

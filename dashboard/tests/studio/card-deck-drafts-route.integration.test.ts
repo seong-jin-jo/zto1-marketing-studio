@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { withTenant } from "@/lib/db";
 import deckD100 from "./fixtures/deck-d100.v2.json";
+import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 
 const H = vi.hoisted(() => ({
   rows: [] as Array<Record<string, unknown>>,
+  rowBatches: [] as Array<Array<Record<string, unknown>>>,
   jsonValues: [] as unknown[],
 }));
 
@@ -13,7 +15,7 @@ vi.mock("@/lib/tenant-auth", () => ({
 
 vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async (_tenantId: string, callback: (sql: unknown) => unknown) => {
-    const sql = Object.assign(() => Promise.resolve(H.rows), {
+    const sql = Object.assign(() => Promise.resolve(H.rowBatches.length > 0 ? H.rowBatches.shift()! : H.rows), {
       json: (value: unknown) => {
         H.jsonValues.push(value);
         return value;
@@ -26,10 +28,107 @@ vi.mock("@/lib/db", () => ({
 beforeEach(() => {
   vi.resetModules();
   H.rows = [];
+  H.rowBatches = [];
   H.jsonValues = [];
 });
 
 describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () => {
+  it("S1-AC1 정상: cardDeckV3 요소 JSON과 투영 본문을 저장하고 다시 조회한다", async () => {
+    const cardDeckV3 = createPlainCardDeckV3(["자유 배치 첫 장", "저장하세요"], "deck_route_v3");
+    H.rows = [{ id: "draft-v3" }];
+    const { POST, GET } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "자유 배치", cardDeckV3 }),
+    }));
+    expect(response.status).toBe(200);
+    const savedPayload = H.jsonValues[0] as { cardDeckV3: unknown; editLines: string[] };
+    expect(savedPayload.cardDeckV3).toEqual(cardDeckV3);
+    expect(savedPayload.editLines).toEqual(["자유 배치 첫 장", "저장하세요"]);
+
+    H.rows = [{ id: "draft-v3", idea: "자유 배치", payload: savedPayload, status: "draft", updated_at: "2026-10-04T00:00:00Z" }];
+    const list = await (await GET(new Request("http://localhost/api/studio/drafts"))).json();
+    expect(list.drafts[0]).not.toHaveProperty("cardDeckV3");
+    expect(list.drafts[0].hasCardDeckV3).toBe(true);
+    const reloaded = await (await GET(new Request("http://localhost/api/studio/drafts?id=draft-v3"))).json();
+    expect(reloaded.draft.cardDeckV3).toEqual(cardDeckV3);
+  });
+  it("S1-R7-HYDRATION-GUARD-01 원문 스냅샷이 있는 초안은 다른 덱 id 저장을 409로 거절한다", async () => {
+    const incoming = createPlainCardDeckV3(["다른 첫 장", "다른 마지막"], "deck_replacement");
+    H.rowBatches = [
+      [],
+      [{
+        id: "draft-protected",
+        body_revision: 4,
+        text: null,
+        edit_lines: ["서버 첫 장", "서버 마지막"],
+        card_deck_v3: createPlainCardDeckV3(["서버 첫 장", "서버 마지막"], "deck_server"),
+        card_deck_v3_source_snapshot: { editLines: ["원문 첫 장", "원문 마지막"], cardTextPositions: [] },
+        card_deck_v3_id: "deck_server",
+        revision: null,
+      }],
+    ];
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1",
+        id: "draft-protected",
+        idea: "보호 초안",
+        bodyBaseRevision: 4,
+        cardDeckV3: incoming,
+      }),
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "CARD_DECK_V3_IDENTITY_CONFLICT",
+      serverDeckId: "deck_server",
+      clientDeckId: "deck_replacement",
+    });
+  });
+
+  it("S1-AC1 거절: 잘못된 cardDeckV3는 DB 접근 전에 막고 null은 기존 값을 보존한다", async () => {
+    vi.mocked(withTenant).mockClear();
+    const broken = createPlainCardDeckV3(["첫 장", "마지막"], "deck_route_bad");
+    broken.slides[0].elements[0].width = 0;
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const rejected = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST", body: JSON.stringify({ tenant_id: "tenant-1", cardDeckV3: broken }),
+    }));
+    expect(rejected.status).toBe(400);
+    expect((await rejected.json()).code).toBe("INVALID_ELEMENT_GEOMETRY");
+    expect(withTenant).not.toHaveBeenCalled();
+
+    H.rows = [{ id: "draft-v3-null" }];
+    const preserved = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST", body: JSON.stringify({ tenant_id: "tenant-1", cardDeckV3: null }),
+    }));
+    expect(preserved.status).toBe(200);
+    expect(Object.prototype.hasOwnProperty.call(H.jsonValues.at(-1) as object, "cardDeckV3")).toBe(false);
+  });
+  it("S1-R4-RETURN-01 진입 전 스냅샷을 저장·조회하고 명시 플래그로 v3만 지운다", async () => {
+    const snapshot = { editLines: ["첫 장", "둘째 장"], cardTextPositions: ["top-left", "bottom-right"] };
+    H.rows = [{ id: "draft-v3-return" }];
+    const { POST, GET } = await import("@/app/api/studio/drafts/route");
+    const saved = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "복원", cardDeckV3SourceSnapshot: snapshot }),
+    }));
+    expect(saved.status).toBe(200);
+    expect((H.jsonValues[0] as { cardDeckV3SourceSnapshot: unknown }).cardDeckV3SourceSnapshot).toEqual(snapshot);
+
+    H.rows = [{ id: "draft-v3-return", idea: "복원", payload: H.jsonValues[0], status: "draft", updated_at: "2026-10-04T00:00:00Z" }];
+    const detail = await (await GET(new Request("http://localhost/api/studio/drafts?id=draft-v3-return"))).json();
+    expect(detail.draft.cardDeckV3SourceSnapshot).toEqual(snapshot);
+
+    H.rows = [{ id: "draft-v3-return" }];
+    const cleared = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "복원", clearCardDeckV3: true, cardDeckV3SourceSnapshot: null }),
+    }));
+    expect(cleared.status).toBe(200);
+    expect(H.jsonValues.at(-1)).toMatchObject({ cardDeckV3: null, cardDeckV3SourceSnapshot: null });
+  });
   it("정상 덱은 저장되고 editLines 가 투영으로 채워진다", async () => {
     H.rows = [{ id: "draft-deck-1" }];
     const { POST } = await import("@/app/api/studio/drafts/route");

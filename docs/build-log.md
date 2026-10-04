@@ -1,5 +1,38 @@
 # OSMU build log
 
+## 2026-10-04 18:58 KST · 편집실 v2 S1 기존 plain 카드 작업대 회귀 복구
+
+STAMP: 2026-10-04 18:58 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: PR 116 CI run 37192534847, v70 화면 정합 스크립트, 로컬 Vitest·TypeScript·production build | 고민: 과거 plain 카드 데이터를 묵시적으로 v3로 이관하지 않고 명시적인 v3 덱이 있을 때만 자유 배치 편집기를 열도록 소유권 경계를 복원했다.
+
+v70 픽스처는 v3 덱이 없었지만 `editLines`를 본 진입 effect가 v3 덱을 생성하고 자동 저장해 기존 카드 작업대를 숨겼다. 자동 승격을 제거해 과거 plain 카드는 기존 작업대를 유지하고, 저장된 `cardDeckV3`가 있는 S1 작업만 자유 배치 편집기를 연다.
+
+| 검증 | 결과 |
+|---|---|
+| `studio/page.tsx` import 영향 | 39파일 266건 PASS |
+| v3 명시 연결·편집실 설계 | 2파일 17건 PASS |
+| TypeScript·production build | 모두 종료 코드 0 |
+| 실제 v70 화면 정합 | 33관찰, 1440·1024·390 전체 시나리오 PASS, 일반 카드 stage diff 0, 콘솔 오류 0 |
+
+로컬 서버는 CI와 같은 `127.0.0.1:3472`와 비교 모드로 실행하고 검사 종료 뒤 중지했다. push와 원격 CI 재실행은 하지 않았다.
+
+## 2026-10-04 17:06 KST · 편집실 v2 S1 PR 116 회귀 6건 교정
+
+STAMP: 2026-10-04 17:06 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: CI run 37186181393 실패 로그, 기존 회귀 계약, 로컬 Vitest·TypeScript | 고민: v3를 모든 카드에 일반화하지 않고 승인 범위인 편집 가능한 plain 카드에만 연결해 기존 글자 내장 카드의 원본 보존을 지켰다.
+
+CI에서 깨진 여섯 항목은 하나의 증상이 아니었다. 글자 내장 카드 소유권, 저장 인자 위치, 조작 부품, 복원 상태 판정, 서명 이미지 경계가 각각 깨져 있었다. 기존 테스트 기대는 바꾸지 않고 제품 코드를 원인별 다섯 커밋으로 교정했다.
+
+| 검증 | 결과 |
+|---|---|
+| CI 실패 6건 표적 | 글자 내장 2건, 자동저장 격리, 맨 button, 복원 상태, 배달 이미지 모두 PASS |
+| 변경 파일 import 테스트 | 56파일 422건 PASS, 실패 0 |
+| 무결성 | 32파일 102건 PASS, 실패 0 |
+| 전체 `*.contract.test.*` | 84파일 445건 PASS, 실패 0 |
+| TypeScript | 손상된 `.next/dev/types` 캐시를 별도 보관한 뒤 `npm run typecheck:ci` 종료 코드 0 |
+| 실제 Chromium | dev 서버 1,380ms 기동. 1440에서 끌기·크기·회전·72px 글자·5종 요소 저장, 새로고침 복원. 390에서 대체 조작 저장, 가로 390=390, 콘솔 오류 0 |
+| 산출물 정합 | pipeline artifact lint 종료 코드 0, 기존 핀 위생 경고 28건 유지 |
+
+이번 교정은 기존 CSS 수치와 캔버스 배치를 바꾸지 않았다. 현재 커밋으로 1440·390 조작을 다시 관찰했고 앞선 9폭 모바일 측정 증거를 유지한다. 원격 CI는 push 전이라 미검증이며 push·배포는 하지 않았다.
+
 ## 2026-09-30 10:00 KST · PR #95 범위 축소와 대기열 확장 제거
 
 STAMP: 2026-09-30 10:00 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa, review | 근거: 사용자 범위 축소 결정, main `a8a52ade`, v70 §3.5, 표적 Vitest·TypeScript·Chromium | 고민: 대기열 동기화의 개별 오류를 더 고치지 않고 승인 설계가 있는 초안 내부 기능만 남겼다.

@@ -3,6 +3,7 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
 import { resolveCurrentWork } from "@/lib/studio/current-work";
 import { validateCardDeck, CardDeckValidationError, deckProjection } from "@/lib/studio/card-deck-contract";
+import { cardDeckV3Projection, CardDeckV3ValidationError, validateCardDeckV3 } from "@/lib/studio/card-element-contract";
 import { validateVideoEdit, VideoEditValidationError, type VideoEdit } from "@/lib/studio/video-edit-contract";
 
 /** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
@@ -20,6 +21,7 @@ class StaleVideoEditRevisionError extends Error {
 interface LatestBodySnapshot {
   text: unknown | null;
   editLines: unknown | null;
+  cardDeckV3: unknown | null;
   bodyRevision: number;
 }
 
@@ -31,6 +33,12 @@ class StaleBodyRevisionError extends Error {
     readonly latestBody: LatestBodySnapshot,
   ) {
     super(`body revision stale: server=${serverRevision} clientBase=${clientBaseRevision}`);
+  }
+}
+
+class CardDeckV3IdentityConflictError extends Error {
+  constructor(readonly serverDeckId: string | null, readonly clientDeckId: string) {
+    super(`cardDeckV3 identity conflict: server=${serverDeckId} client=${clientDeckId}`);
   }
 }
 
@@ -54,6 +62,8 @@ interface DraftRow {
     bodyRevision?: unknown;
     cardTextPositions?: unknown;
     cardDeck?: unknown;
+    cardDeckV3?: unknown;
+    cardDeckV3SourceSnapshot?: unknown;
     videoEdit?: unknown;
     titles?: unknown;
     captions?: unknown;
@@ -81,7 +91,7 @@ function extractVariants(payload: Record<string, unknown> | null | undefined): u
 }
 
 // GET /api/studio/drafts?tenant_id=... — 워크스페이스 초안 목록(최근 50)
-function flattenDraft(r: DraftRow) {
+function flattenDraft(r: DraftRow, options: { includeCardDeckV3: boolean }) {
   return {
     id: r.id,
     idea: r.idea,
@@ -99,6 +109,13 @@ function flattenDraft(r: DraftRow) {
     bodyRevision: Number.isSafeInteger(r.payload?.bodyRevision) ? r.payload.bodyRevision : 0,
     cardTextPositions: r.payload?.cardTextPositions ?? null,
     cardDeck: r.payload?.cardDeck ?? null,
+    // 목록은 큰 덱 본문을 계속 제외하되, 서버에 v3가 있다는 사실까지 숨기면 상세 응답
+    // 전의 plain 화면이 새 덱으로 덮어쓸 수 있다. boolean 한 칸만 실어 보호 구간을 연다.
+    hasCardDeckV3: r.payload?.cardDeckV3 != null,
+    ...(options.includeCardDeckV3 ? {
+      cardDeckV3: r.payload?.cardDeckV3 ?? null,
+      cardDeckV3SourceSnapshot: r.payload?.cardDeckV3SourceSnapshot ?? null,
+    } : {}),
     videoEdit: r.payload?.videoEdit ?? null,
     titles: r.payload?.titles ?? {},
     captions: r.payload?.captions ?? {},
@@ -125,7 +142,7 @@ export async function GET(request: Request) {
         SELECT id, tenant_id, idea, payload, status, created_at, updated_at
         FROM drafts WHERE tenant_id = ${tenantId} AND id = ${singleId}`);
       if (!rows[0]) return Response.json({ draft: null }, { status: 404 });
-      return Response.json({ draft: flattenDraft(rows[0]) });
+      return Response.json({ draft: flattenDraft(rows[0], { includeCardDeckV3: true }) });
     } catch (e) {
       return Response.json({ draft: null, error: String(e) }, { status: 500 });
     }
@@ -136,7 +153,7 @@ export async function GET(request: Request) {
       FROM drafts WHERE tenant_id = ${tenantId}
       ORDER BY updated_at DESC LIMIT 50`);
     // 기존 Studio 형식과 호환되게 평탄화
-    const drafts = rows.map(flattenDraft);
+    const drafts = rows.map((row) => flattenDraft(row, { includeCardDeckV3: false }));
     return Response.json({ drafts, currentWork: resolveCurrentWork(drafts) });
   } catch (e) {
     return Response.json({ drafts: [], currentWork: null, error: String(e) }, { status: 500 });
@@ -168,6 +185,7 @@ export async function POST(request: Request) {
     }, { status: 422, headers: { "Cache-Control": "no-store" } });
   }
   let cardDeckProjectedLines: string[] | null = null;
+  let cardDeckV3ProjectedLines: string[] | null = null;
   if (body.cardDeck !== undefined && body.cardDeck !== null) {
     const serialized = JSON.stringify(body.cardDeck);
     if (Buffer.byteLength(serialized, "utf8") > CARD_DECK_MAX_BYTES) {
@@ -189,6 +207,47 @@ export async function POST(request: Request) {
         error: e instanceof Error ? e.message : "카드 덱을 확인해 주세요",
       }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
+  }
+  if (body.cardDeckV3 !== undefined && body.cardDeckV3 !== null) {
+    try {
+      validateCardDeckV3(body.cardDeckV3);
+      cardDeckV3ProjectedLines = cardDeckV3Projection(body.cardDeckV3);
+    } catch (error) {
+      const validation = error instanceof CardDeckV3ValidationError ? error : null;
+      return Response.json({
+        ok: false,
+        code: validation?.code ?? "INVALID_CARD_DECK_V3",
+        error: error instanceof Error ? error.message : "자유 배치 카드 덱을 확인해 주세요",
+      }, { status: validation?.code === "CARD_DECK_TOO_LARGE" ? 413 : 400, headers: { "Cache-Control": "no-store" } });
+    }
+  }
+  // 아래 구조 검증을 통과한 JSON 트리만 SQL 경계로 넘긴다. postgres의 JSONValue는
+  // index signature가 없는 객체 타입을 받지 못하므로 cardDeck들과 같은 경계 캐스팅이다.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cardDeckV3SourceSnapshotPatch: { cardDeckV3SourceSnapshot?: any } = {};
+  if (Object.prototype.hasOwnProperty.call(body, "cardDeckV3SourceSnapshot")) {
+    const snapshot = body.cardDeckV3SourceSnapshot;
+    const positions = new Set([
+      "top-left", "top-center", "top-right", "center-left", "center", "center-right",
+      "bottom-left", "bottom-center", "bottom-right",
+    ]);
+    const valid = snapshot === null || (
+      snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+      && Array.isArray(snapshot.editLines)
+      && snapshot.editLines.length >= 2 && snapshot.editLines.length <= 11
+      && snapshot.editLines.every((line: unknown) => typeof line === "string" && line.trim().length > 0 && line.length <= 2_000)
+      && Array.isArray(snapshot.cardTextPositions)
+      && snapshot.cardTextPositions.length <= 11
+      && snapshot.cardTextPositions.every((position: unknown) => typeof position === "string" && positions.has(position))
+    );
+    if (!valid) {
+      return Response.json({
+        ok: false,
+        code: "INVALID_CARD_DECK_V3_SOURCE",
+        error: "자유 배치로 바꾸기 전 카드 원문을 확인해 주세요",
+      }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
+    cardDeckV3SourceSnapshotPatch.cardDeckV3SourceSnapshot = snapshot;
   }
   if (body.videoEdit !== undefined && body.videoEdit !== null) {
     const serialized = JSON.stringify(body.videoEdit);
@@ -238,6 +297,16 @@ export async function POST(request: Request) {
   } else if (Object.prototype.hasOwnProperty.call(body, "cardDeck") && body.cardDeck != null) {
     cardDeckPatch.cardDeck = body.cardDeck;
   }
+  // validateCardDeckV3를 통과한 JSON 트리지만 postgres의 JSONValue는 index signature가
+  // 없는 TypeScript interface를 받지 못한다. v2 cardDeck과 같은 검증 뒤 경계 캐스팅이다.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cardDeckV3Patch: { cardDeckV3?: any } = {};
+  if (body.clearCardDeckV3 === true) {
+    cardDeckV3Patch.cardDeckV3 = null;
+  } else if (Object.prototype.hasOwnProperty.call(body, "cardDeckV3") && body.cardDeckV3 != null) {
+    cardDeckV3Patch.cardDeckV3 = body.cardDeckV3;
+  }
+  const incomingCardDeckV3Id = typeof body.cardDeckV3?.id === "string" ? body.cardDeckV3.id : null;
   // videoEdit도 cardDeck과 같은 보존 규칙: 키가 없으면 payload 병합에서 빠져 기존 값을
   // 지키고, 명시 플래그 clearVideoEdit로만 지운다.
   // M7(2026-09-22 코드리뷰): `any` 대신 VideoEdit로 좁힌다. body.videoEdit는 위에서 이미
@@ -255,7 +324,9 @@ export async function POST(request: Request) {
   // 같은 보존 규칙으로 옮긴다: cardDeck을 보냈으면(투영 갱신) 또는 body에 editLines 키가
   // 명시로 있으면만 payload에 싣고, 둘 다 없으면 키 자체를 빼 기존 값을 지킨다.
   const editLinesPatch: { editLines?: string[] | null } = {};
-  if (cardDeckProjectedLines !== null) {
+  if (cardDeckV3ProjectedLines !== null) {
+    editLinesPatch.editLines = cardDeckV3ProjectedLines;
+  } else if (cardDeckProjectedLines !== null) {
     editLinesPatch.editLines = cardDeckProjectedLines;
   } else if (Object.prototype.hasOwnProperty.call(body, "editLines")) {
     editLinesPatch.editLines = body.editLines ?? null;
@@ -282,6 +353,8 @@ export async function POST(request: Request) {
     selectedAccounts: body.selectedAccounts ?? {},
     reviewQueueId: body.reviewQueueId ?? null,
     ...cardDeckPatch,
+    ...cardDeckV3Patch,
+    ...cardDeckV3SourceSnapshotPatch,
     ...videoEditPatch,
     ...editLinesPatch,
   };
@@ -317,6 +390,12 @@ export async function POST(request: Request) {
             WHERE drafts.id = ${body.id} AND drafts.tenant_id = ${tenantId}
               AND (drafts.payload->'videoEdit'->>'revision')::int IS NOT DISTINCT FROM ${baseRevision}::int
               AND COALESCE((drafts.payload->>'bodyRevision')::int, 0) = ${bodyBaseRevision}
+              AND NOT (
+                ${incomingCardDeckV3Id}::text IS NOT NULL
+                AND drafts.payload ? 'cardDeckV3SourceSnapshot'
+                AND drafts.payload->'cardDeckV3SourceSnapshot' <> 'null'::jsonb
+                AND drafts.payload->'cardDeckV3'->>'id' IS DISTINCT FROM ${incomingCardDeckV3Id}::text
+              )
             RETURNING drafts.id, (drafts.payload->>'bodyRevision')::int AS body_revision,
               (drafts.payload->'videoEdit'->>'revision')::int AS server_revision`;
           if (row) return { id: row.id, bodyRevision: row.body_revision, videoEditServerRevision: row.server_revision };
@@ -332,6 +411,12 @@ export async function POST(request: Request) {
               status = ${status}, updated_at = now()
             WHERE id = ${body.id} AND tenant_id = ${tenantId}
               AND COALESCE((drafts.payload->>'bodyRevision')::int, 0) = ${bodyBaseRevision}
+              AND NOT (
+                ${incomingCardDeckV3Id}::text IS NOT NULL
+                AND payload ? 'cardDeckV3SourceSnapshot'
+                AND payload->'cardDeckV3SourceSnapshot' <> 'null'::jsonb
+                AND payload->'cardDeckV3'->>'id' IS DISTINCT FROM ${incomingCardDeckV3Id}::text
+              )
             RETURNING id, (payload->>'bodyRevision')::int AS body_revision`;
           if (row) return { id: row.id, bodyRevision: row.body_revision, videoEditServerRevision: null };
         }
@@ -340,11 +425,17 @@ export async function POST(request: Request) {
           body_revision: number | null;
           text: unknown | null;
           edit_lines: unknown | null;
+          card_deck_v3: unknown | null;
+          card_deck_v3_source_snapshot: unknown | null;
+          card_deck_v3_id: string | null;
           revision: number | null;
         }[]>`
           SELECT id, COALESCE((payload->>'bodyRevision')::int, 0) AS body_revision,
             payload->'text' AS text,
             payload->'editLines' AS edit_lines,
+            payload->'cardDeckV3' AS card_deck_v3,
+            payload->'cardDeckV3SourceSnapshot' AS card_deck_v3_source_snapshot,
+            payload->'cardDeckV3'->>'id' AS card_deck_v3_id,
             (payload->'videoEdit'->>'revision')::int AS revision
           FROM drafts WHERE id = ${body.id} AND tenant_id = ${tenantId}`;
         if (existsRow) {
@@ -353,8 +444,16 @@ export async function POST(request: Request) {
             throw new StaleBodyRevisionError(serverBodyRevision, bodyBaseRevision, {
               text: existsRow.text,
               editLines: existsRow.edit_lines,
+              cardDeckV3: existsRow.card_deck_v3,
               bodyRevision: serverBodyRevision,
             });
+          }
+          if (
+            incomingCardDeckV3Id
+            && existsRow.card_deck_v3_source_snapshot != null
+            && existsRow.card_deck_v3_id !== incomingCardDeckV3Id
+          ) {
+            throw new CardDeckV3IdentityConflictError(existsRow.card_deck_v3_id, incomingCardDeckV3Id);
           }
           if (videoEditPatch.videoEdit) {
             const baseRevision = typeof body.videoEditBaseRevision === "number" ? body.videoEditBaseRevision : null;
@@ -369,6 +468,15 @@ export async function POST(request: Request) {
     });
     return Response.json({ ok: true, id: result.id, bodyRevision: result.bodyRevision, videoEditServerRevision: result.videoEditServerRevision });
   } catch (e) {
+    if (e instanceof CardDeckV3IdentityConflictError) {
+      return Response.json({
+        ok: false,
+        code: "CARD_DECK_V3_IDENTITY_CONFLICT",
+        error: "이미 저장된 자유 배치 작업이 있습니다. 최신 작업을 다시 불러온 뒤 이어서 편집해 주세요.",
+        serverDeckId: e.serverDeckId,
+        clientDeckId: e.clientDeckId,
+      }, { status: 409, headers: { "Cache-Control": "no-store" } });
+    }
     if (e instanceof StaleBodyRevisionError) {
       return Response.json({
         ok: false,

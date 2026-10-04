@@ -70,6 +70,21 @@ export async function resignDeliveryUrl(url: string, tenantId?: string): Promise
   }
 }
 
+/** 저장된 image asset_id를 현재 테넌트의 새 서명 배달 주소로 바꾼다. */
+export async function resolveImageAssetUrl(filename: string, tenantId?: string): Promise<string> {
+  try {
+    const res = await fetch("/api/media/resign", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ filename, purpose: "image", tenant_id: tenantId }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; file?: string };
+    return res.ok && data.ok && typeof data.file === "string" ? data.file : "";
+  } catch {
+    return "";
+  }
+}
+
 interface Props {
   src: string;
   type: "image" | "video";
@@ -86,11 +101,13 @@ interface Props {
   preload?: "none" | "metadata" | "auto";
   /** 이미지 전용. 긴 카드 목록에서는 화면 밖 원본을 미리 받지 않는다. */
   loading?: "eager" | "lazy";
+  /** 이미지 전용. 편집 캔버스에서는 브라우저 기본 이미지 끌기를 막는다. */
+  draggable?: boolean;
   /** 영상 전용. 재생 전에 보여 줄 대표 그림. */
   poster?: string;
 }
 
-export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, tenantId, preload, loading, poster }: Props) {
+export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, tenantId, preload, loading, draggable, poster }: Props) {
   const [url, setUrl] = useState(() => (isDeliveryUrlExpired(src) ? "" : src));
   const [phase, setPhase] = useState<"ready" | "renewing" | "failed">(() =>
     isDeliveryUrlExpired(src) ? "renewing" : "ready",
@@ -249,6 +266,7 @@ export function DeliveredMedia({ src, type, alt, className, testId, dataAttr, te
       alt={alt || ""}
       className={className}
       loading={loading}
+      draggable={draggable}
       onError={handleError}
     />
   );

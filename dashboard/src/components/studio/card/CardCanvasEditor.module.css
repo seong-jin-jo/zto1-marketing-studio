@@ -1,0 +1,182 @@
+.editor {
+  display: grid;
+  gap: var(--pad-inset);
+  min-width: 0;
+  outline: none;
+}
+
+.editor:focus-visible { box-shadow: 0 0 0 var(--space-micro) var(--focus); }
+
+.addToolbar,
+.floatingToolbar,
+.listActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--stack-tight);
+}
+
+.addToolbar,
+.floatingToolbar {
+  padding: var(--stack);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+  box-shadow: var(--elevation-floating);
+}
+
+.floatingToolbar { position: relative; z-index: 300; }
+.toolbarDivider { align-self: stretch; width: 1px; background: var(--border); }
+.fileInput { display: none; }
+.error { color: var(--danger); font-size: var(--font-body-size); }
+
+.toolbarField,
+.colorField {
+  display: inline-flex;
+  min-height: var(--control-touch);
+  align-items: center;
+  gap: var(--space-micro);
+  color: var(--text-muted);
+  font-size: var(--font-body-sm-size);
+}
+
+.toolbarField select,
+.toolbarField input {
+  min-height: var(--control-touch);
+  max-width: 9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface-2);
+  padding-inline: var(--stack-tight);
+  color: var(--text);
+  font-size: var(--font-body-size);
+}
+
+.colorField input { width: var(--control-touch); height: var(--control-touch); border: 0; background: transparent; }
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(4rem, 7rem) minmax(18rem, 1fr) minmax(15rem, 20rem);
+  gap: var(--pad-inset);
+  align-items: start;
+}
+
+.slideStrip {
+  display: grid;
+  gap: var(--stack-tight);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.stageColumn { display: grid; min-width: 0; gap: var(--stack); }
+.stage {
+  position: relative;
+  width: min(100%, 45rem);
+  margin-inline: auto;
+  overflow: visible;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-surface);
+  box-shadow: var(--shadow);
+  touch-action: none;
+}
+
+.stage > :global([data-card-slide-scene]) { border-radius: inherit; }
+
+.selectionBox {
+  position: absolute;
+  left: var(--selection-left);
+  top: var(--selection-top);
+  z-index: var(--selection-z);
+  width: var(--selection-width);
+  height: var(--selection-height);
+  transform: rotate(var(--selection-rotation));
+  transform-origin: center;
+  cursor: move;
+}
+
+.selectionBox[data-selected="true"] { outline: var(--space-micro) solid var(--accent); outline-offset: calc(var(--space-micro) * -1); }
+.selectionBox[data-locked="true"] { cursor: not-allowed; }
+
+.directTextEditor {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  border: 0;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  padding: var(--stack-tight);
+  color: var(--text);
+  font: inherit;
+}
+
+.resizeHandle,
+.rotationHandle {
+  position: absolute;
+  z-index: 1;
+  width: var(--control-touch);
+  height: var(--control-touch);
+  border: 0;
+  background: transparent;
+}
+
+.resizeHandle::after,
+.rotationHandle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--stack);
+  height: var(--stack);
+  translate: -50% -50%;
+  border: 2px solid var(--accent);
+  border-radius: var(--shape-pill);
+  background: var(--surface);
+}
+
+.resizeHandle[data-handle="nw"] { left: calc(var(--control-touch) / -2); top: calc(var(--control-touch) / -2); cursor: nwse-resize; }
+.resizeHandle[data-handle="n"] { left: calc(50% - var(--control-touch) / 2); top: calc(var(--control-touch) / -2); cursor: ns-resize; }
+.resizeHandle[data-handle="ne"] { right: calc(var(--control-touch) / -2); top: calc(var(--control-touch) / -2); cursor: nesw-resize; }
+.resizeHandle[data-handle="e"] { right: calc(var(--control-touch) / -2); top: calc(50% - var(--control-touch) / 2); cursor: ew-resize; }
+.resizeHandle[data-handle="se"] { right: calc(var(--control-touch) / -2); bottom: calc(var(--control-touch) / -2); cursor: nwse-resize; }
+.resizeHandle[data-handle="s"] { left: calc(50% - var(--control-touch) / 2); bottom: calc(var(--control-touch) / -2); cursor: ns-resize; }
+.resizeHandle[data-handle="sw"] { left: calc(var(--control-touch) / -2); bottom: calc(var(--control-touch) / -2); cursor: nesw-resize; }
+.resizeHandle[data-handle="w"] { left: calc(var(--control-touch) / -2); top: calc(50% - var(--control-touch) / 2); cursor: ew-resize; }
+.rotationHandle { left: calc(50% - var(--control-touch) / 2); top: calc(var(--control-touch) * -1.25); cursor: grab; }
+.rotationHandle::before { content: ""; position: absolute; left: 50%; top: 75%; width: 1px; height: calc(var(--control-touch) / 2); background: var(--accent); }
+.rotationBadge { position: absolute; left: 50%; top: calc(var(--control-touch) * -2); translate: -50% 0; border-radius: var(--shape-pill); background: var(--text); padding: var(--space-micro) var(--stack-tight); color: var(--surface); font-size: var(--font-body-size); }
+
+.snapGuide { position: absolute; z-index: 500; pointer-events: none; background: var(--danger); }
+.snapGuide[data-axis="x"] { left: var(--snap-position); top: 0; bottom: 0; width: 1px; }
+.snapGuide[data-axis="y"] { top: var(--snap-position); left: 0; right: 0; height: 1px; }
+
+.elementList {
+  min-width: 0;
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-surface);
+  background: var(--surface);
+  padding: var(--stack);
+}
+
+.elementList h3 { margin-bottom: var(--stack); color: var(--text); font-size: var(--font-body-size); font-weight: 700; }
+.elementList p { color: var(--text-muted); font-size: var(--font-body-size); }
+.elementList ol { display: grid; gap: var(--stack); }
+.elementList li { display: grid; gap: var(--stack-tight); padding: var(--stack); border: 1px solid var(--border); border-radius: var(--shape-control); }
+.elementList li[data-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.elementName { justify-content: flex-start; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.listActions > :global(button) { flex: 1 1 var(--control-touch); }
+
+@media (max-width: 1023px) {
+  .workspace { grid-template-columns: 1fr; }
+  .slideStrip { display: flex; overflow-x: auto; }
+  .stageColumn { order: -1; }
+  .floatingToolbar { position: static; overflow-x: auto; flex-wrap: nowrap; }
+  .floatingToolbar > * { flex: 0 0 auto; }
+  .elementList { max-height: none; }
+  .toolbarField,
+  .elementList h3,
+  .elementList p { font-size: var(--font-body-size); }
+}

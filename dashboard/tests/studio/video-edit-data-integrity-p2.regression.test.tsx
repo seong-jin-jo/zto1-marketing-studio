@@ -58,8 +58,17 @@ function storageKey(workspaceId: string) {
 }
 const VID = { url: "/api/media/test-video", file: "/api/media/test-video", model: "x" };
 
+function draftDetailResponse(url: string, init?: RequestInit): Response | null {
+  if (!url.includes("/api/studio/drafts?") || !url.includes("&id=") || init?.method) return null;
+  const id = new URL(url, "http://localhost").searchParams.get("id");
+  const data = mocks.swr(`/api/studio/drafts?tenant_id=${mocks.workspace.id}`)?.data as { drafts?: Array<Record<string, unknown>> } | undefined;
+  return Response.json({ draft: data?.drafts?.find((draft) => draft.id === id) ?? null });
+}
+
 function setupFetch() {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    const detail = draftDetailResponse(url, init);
+    if (detail) return detail;
     if (typeof url === "string" && url.includes("/api/studio/drafts") && init?.method === "POST") {
       const body = JSON.parse(String(init.body ?? "{}"));
       fetchCalls.push({ url, body });

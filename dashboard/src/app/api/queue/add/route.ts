@@ -1,6 +1,7 @@
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { addQueuePost, QueueInputError } from "@/lib/queue-add";
+import { CardDeckV3PublishBlockedError, cardDeckV3PublishBlockedErrorResponse } from "@/lib/studio/card-deck-v3-publish-gate";
 
 export async function POST(request: Request) {
   const data = await request.json().catch(() => ({}));
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
       });
       return Response.json({ success: true, ...result });
     } catch (error) {
+      if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
       if (error instanceof QueueInputError) {
         return Response.json({ error: error.message }, { status: 400 });
       }

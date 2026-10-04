@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { dataPath, mutateJson } from "@/lib/file-io";
 import { mirrorQueuePost } from "@/lib/queue-store";
+import { assertDraftCanEnterPublishQueue } from "@/lib/studio/card-deck-v3-publish-gate";
 
 export interface PerformanceSuggestionSourceContext {
   type: "performance_suggestion";
@@ -73,6 +74,7 @@ export async function addQueuePost(
 ): Promise<{ post: QueuePost; reused: boolean }> {
   const text = input.text.trim();
   if (!text) throw new QueueInputError("text required");
+  await assertDraftCanEnterPublishQueue(tenantId, input.draftId);
 
   const imageUrls = Array.isArray(input.imageUrls) ? input.imageUrls : null;
   const idempotencyKey = input.idempotencyKey?.trim() || undefined;

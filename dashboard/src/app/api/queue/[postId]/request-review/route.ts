@@ -1,8 +1,9 @@
-import { dataPath, mutateJson } from "@/lib/file-io";
+import { dataPath, mutateJson, readJson } from "@/lib/file-io";
 import { mirrorQueuePost } from "@/lib/queue-store";
 import { requestReviewTransition, type ReviewTransitionResult } from "@/lib/review-request";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
+import { cardDeckV3PublishBlockedResponse, draftHasCardDeckV3 } from "@/lib/studio/card-deck-v3-publish-gate";
 
 interface QueueData { posts: Array<Record<string, unknown>> }
 
@@ -11,6 +12,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ pos
   const tenantId = await effectiveTenantId(request, body.tenant_id ?? null);
   return runWithTenant(tenantId, async () => {
     const { postId } = await params;
+    const current = readJson<QueueData>(dataPath("queue.json")) || { posts: [] };
+    const currentPost = current.posts.find((candidate) => candidate.id === postId);
+    if (tenantId && currentPost && await draftHasCardDeckV3(tenantId, currentPost.draftId)) {
+      return cardDeckV3PublishBlockedResponse();
+    }
     let transition: ReviewTransitionResult | null = null;
 
     await mutateJson<QueueData>(dataPath("queue.json"), (queue) => {
