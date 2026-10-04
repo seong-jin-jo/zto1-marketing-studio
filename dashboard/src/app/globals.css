@@ -279,6 +279,7 @@ progress.progress-semantic::-moz-progress-bar { background: var(--success); }
    모바일 규격으로 올린다. caption은 화면에서 가장 많이 쓰이는 조작 라벨이라 16px로
    맞춰 실제 글자 중앙값도 본문 하한보다 작아지지 않게 한다. */
 @media (max-width: 1023px) {
+  body:has([data-room="edit"]),
   body:has([data-room="edit"]) [data-room="edit"] {
     --font-caption-size: 16px;
     --font-caption-leading: 24px;
