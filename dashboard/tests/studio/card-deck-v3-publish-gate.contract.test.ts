@@ -87,13 +87,27 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
   });
 
   it("S1-R5-LIST-FIRST-01 목록 데이터로 먼저 열고 상세 실패는 화면 진입을 막지 않는다", () => {
+    const route = read("src/app/api/studio/drafts/route.ts");
     const source = read("src/app/studio/page.tsx");
     const helperStart = source.indexOf("async function loadDraftDetail");
     const helperEnd = source.indexOf("async function resumeCurrentWork", helperStart);
     const helper = source.slice(helperStart, helperEnd);
     expect(helper.indexOf("const kind = loadDraft(draftToLoad)")).toBeGreaterThanOrEqual(0);
-    expect(helper.indexOf("void fetchDraftDetail(draftToLoad)")).toBeGreaterThan(helper.indexOf("const kind = loadDraft(draftToLoad)"));
+    expect(helper.indexOf("void hydrateCardDeckV3Detail(draftToLoad)")).toBeGreaterThan(helper.indexOf("const kind = loadDraft(draftToLoad)"));
     expect(helper).toContain("return { kind }");
-    expect(helper).toContain("목록 내용으로 열었습니다");
+    expect(source).toContain("목록 내용으로 열었습니다");
+    expect(route).toContain("hasCardDeckV3: r.payload?.cardDeckV3 != null");
+  });
+
+  it("S1-R7-HYDRATION-GUARD-01 목록 신호가 true면 상세 완료 전 진입과 모든 발행 행동을 잠근다", () => {
+    const source = read("src/app/studio/page.tsx");
+    expect(source).toContain('d.hasCardDeckV3 === true');
+    expect(source).toContain('cardDeckV3DetailStatusRef.current = "loading"');
+    expect(source).toContain('cardDeckV3DetailStatusRef.current = "error"');
+    expect(source).toContain("if (rejectWhileCardDeckV3DetailPending()) return;");
+    expect(source).toContain("cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? plainCardDeckV3EntryBlockReason(resolvedEditLines)}");
+    expect(source).toContain("disabled={cardDeckV3PublishBlocked");
+    expect(source).toContain("onRetryCardDeckV3Detail={cardDeckV3DetailStatus === \"error\" ? retryCardDeckV3Detail : undefined}");
+    expect(source).toContain("void loadDraftDetail(linkedDraft)");
   });
 });

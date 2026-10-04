@@ -718,13 +718,16 @@ export default function StudioPage() {
   const [cardDeck, setCardDeck] = useState<CardDeck | null>(null);
   const [cardDeckV3, setCardDeckV3] = useState<CardDeckV3 | null>(null);
   const [cardDeckV3SourceSnapshot, setCardDeckV3SourceSnapshot] = useState<CardDeckV3SourceSnapshot | null>(null);
+  const [cardDeckV3DetailStatus, setCardDeckV3DetailStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const cardDeckV3Ref = useRef<CardDeckV3 | null>(null);
+  const cardDeckV3DetailStatusRef = useRef<"idle" | "loading" | "ready" | "error">("idle");
   const cardDeckV3HydratedDraftRef = useRef<string | null>(null);
   const cardDeckV3EditGenerationRef = useRef(0);
   const cardDeckV3SavePendingGenerationRef = useRef<number | null>(null);
   const cardDeckV3PendingSourceSnapshotRef = useRef<CardDeckV3SourceSnapshot | null>(null);
   const cardDeckV3DirtyRef = useRef(false);
   cardDeckV3Ref.current = cardDeckV3;
+  cardDeckV3DetailStatusRef.current = cardDeckV3DetailStatus;
   // 영상 편집 v1(세션맥락 과업 B). 있으면 편집실이 VideoEditor를 그린다.
   const [videoEdit, setVideoEdit] = useState<VideoEdit | null>(null);
   const [editSavedAt, setEditSavedAt] = useState("");
@@ -1062,7 +1065,7 @@ export default function StudioPage() {
     // 공간의 영상에 지난 선택이 그대로 넘어가면 안 된다).
     resetTiktokDisclosure();
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
-    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setCardDeckV3(null); setCardDeckV3SourceSnapshot(null); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
+    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setCardDeckV3(null); setCardDeckV3SourceSnapshot(null); setCardDeckV3DetailStatus("idle"); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
     quickDraftTopicRef.current = null;
     videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
@@ -1099,7 +1102,7 @@ export default function StudioPage() {
           savedTopic: typeof w.quickDraftTopic === "string" ? w.quickDraftTopic : null,
           restoredIdea: String(w.idea || ""),
         });
-        setCardTextPositions(w.cardTextPositions || []); setCardDeck((w.cardDeck as CardDeck) || null); setCardDeckV3((w.cardDeckV3 as CardDeckV3) || null); setCardDeckV3SourceSnapshot((w.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null); setReviewQueueId(w.reviewQueueId || null);
+        setCardTextPositions(w.cardTextPositions || []); setCardDeck((w.cardDeck as CardDeck) || null); setCardDeckV3((w.cardDeckV3 as CardDeckV3) || null); setCardDeckV3SourceSnapshot((w.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null); setCardDeckV3DetailStatus(w.cardDeckV3 ? "ready" : "idle"); setReviewQueueId(w.reviewQueueId || null);
         // B1(교차 리뷰 BLOCK, 재리뷰로 절반만 닫힘 지적): videoEdit이 이 복원 블록에
         // 없으면 편집기가 빈 videoEdit을 받았다. 이제 무조건 세팅한다(없으면 null —
         // 이전 워크스페이스 값이 남아 있으면 안 된다, 위 리셋과 짝). 다만 localStorage
@@ -2220,6 +2223,7 @@ export default function StudioPage() {
     }
   }
   async function moveToPublish() {
+    if (rejectWhileCardDeckV3DetailPending()) return;
     if (cardDeckV3) {
       showToast(CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE, "error");
       return;
@@ -2565,6 +2569,7 @@ export default function StudioPage() {
   }
 
   async function publish() {
+    if (rejectWhileCardDeckV3DetailPending()) return;
     if (cardDeckV3) {
       showToast(CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE, "error");
       return;
@@ -2975,10 +2980,16 @@ export default function StudioPage() {
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
     setCardDeck((d.cardDeck as CardDeck) || null);
     const includesCardDeckV3 = Object.prototype.hasOwnProperty.call(d, "cardDeckV3");
+    const hasCardDeckV3 = includesCardDeckV3
+      ? d.cardDeckV3 != null
+      : d.hasCardDeckV3 === true;
     const loadedCardDeckV3 = includesCardDeckV3 ? (d.cardDeckV3 as CardDeckV3) || null : null;
     setCardDeckV3(loadedCardDeckV3);
     cardDeckV3Ref.current = loadedCardDeckV3;
     cardDeckV3HydratedDraftRef.current = includesCardDeckV3 ? loadedDraftId : null;
+    const detailStatus = includesCardDeckV3 ? "ready" : hasCardDeckV3 ? "loading" : "idle";
+    setCardDeckV3DetailStatus(detailStatus);
+    cardDeckV3DetailStatusRef.current = detailStatus;
     cardDeckV3EditGenerationRef.current = 0;
     cardDeckV3SavePendingGenerationRef.current = null;
     cardDeckV3DirtyRef.current = false;
@@ -3017,30 +3028,67 @@ export default function StudioPage() {
       return null;
     }
   }
+  async function hydrateCardDeckV3Detail(draftToLoad: Record<string, unknown>, notifyFailure = true): Promise<boolean> {
+    const requestedDraftId = typeof draftToLoad.id === "string" ? draftToLoad.id : "";
+    if (!requestedDraftId) return false;
+    const expectsCardDeckV3 = draftToLoad.hasCardDeckV3 === true
+      || (Object.prototype.hasOwnProperty.call(draftToLoad, "cardDeckV3") && draftToLoad.cardDeckV3 != null);
+    if (expectsCardDeckV3) {
+      setCardDeckV3DetailStatus("loading");
+      cardDeckV3DetailStatusRef.current = "loading";
+    }
+    const detail = await fetchDraftDetail(draftToLoad);
+    if (!detail) {
+      if (expectsCardDeckV3 && draftIdRef.current === requestedDraftId) {
+        setCardDeckV3DetailStatus("error");
+        cardDeckV3DetailStatusRef.current = "error";
+        if (notifyFailure) showToast("작업물은 목록 내용으로 열었습니다. 자유 배치 내용은 최신 상태를 불러오지 못했습니다. 다시 시도해 주세요.", "error");
+      }
+      return false;
+    }
+    if (!requestedDraftId
+      || draftIdRef.current !== requestedDraftId
+      || cardDeckV3DirtyRef.current
+      || cardDeckV3SavePendingGenerationRef.current !== null) return false;
+    const includesCardDeckV3 = Object.prototype.hasOwnProperty.call(detail, "cardDeckV3");
+    if (!includesCardDeckV3) {
+      setCardDeckV3DetailStatus("error");
+      cardDeckV3DetailStatusRef.current = "error";
+      return false;
+    }
+    const serverDeck = (detail.cardDeckV3 as CardDeckV3 | null | undefined) ?? null;
+    setCardDeckV3(serverDeck);
+    cardDeckV3Ref.current = serverDeck;
+    setCardDeckV3SourceSnapshot((detail.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot | null | undefined) ?? null);
+    cardDeckV3HydratedDraftRef.current = requestedDraftId;
+    const detailStatus = serverDeck ? "ready" : "idle";
+    setCardDeckV3DetailStatus(detailStatus);
+    cardDeckV3DetailStatusRef.current = detailStatus;
+    return true;
+  }
   async function loadDraftDetail(draftToLoad: Record<string, unknown>): Promise<{ kind: EditContentKind | null }> {
     // 목록 응답은 큰 v3 덱만 제외하고 편집에 필요한 나머지 필드를 모두 갖는다. 화면은
     // 목록 값으로 즉시 열고, 자유 배치 덱만 단건 응답으로 나중에 보강한다. 상세 조회가
     // 실패해도 기존 카드·영상 편집 화면 자체를 잃지 않는다.
     const kind = loadDraft(draftToLoad);
-    const requestedDraftId = typeof draftToLoad.id === "string" ? draftToLoad.id : "";
-    void fetchDraftDetail(draftToLoad).then((detail) => {
-      if (!detail) {
-        showToast("작업물은 목록 내용으로 열었습니다. 자유 배치 내용은 최신 상태를 불러오지 못했습니다.", "error");
-        return;
-      }
-      if (!requestedDraftId
-        || draftIdRef.current !== requestedDraftId
-        || cardDeckV3DirtyRef.current
-        || cardDeckV3SavePendingGenerationRef.current !== null) return;
-      const includesCardDeckV3 = Object.prototype.hasOwnProperty.call(detail, "cardDeckV3");
-      if (!includesCardDeckV3) return;
-      const serverDeck = (detail.cardDeckV3 as CardDeckV3 | null | undefined) ?? null;
-      setCardDeckV3(serverDeck);
-      cardDeckV3Ref.current = serverDeck;
-      setCardDeckV3SourceSnapshot((detail.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot | null | undefined) ?? null);
-      cardDeckV3HydratedDraftRef.current = requestedDraftId;
-    });
+    void hydrateCardDeckV3Detail(draftToLoad);
     return { kind };
+  }
+  function cardDeckV3DetailBlockedReason(status = cardDeckV3DetailStatusRef.current): string | null {
+    if (status === "loading") return "저장된 자유 배치 내용을 불러오는 중입니다. 불러온 뒤 편집하거나 발행할 수 있습니다.";
+    if (status === "error") return "저장된 자유 배치 내용을 불러오지 못했습니다. 다시 시도해 주세요.";
+    return null;
+  }
+  function rejectWhileCardDeckV3DetailPending(): boolean {
+    const reason = cardDeckV3DetailBlockedReason();
+    if (!reason) return false;
+    showToast(reason, "error");
+    return true;
+  }
+  function retryCardDeckV3Detail() {
+    const currentDraftId = draftIdRef.current;
+    if (!currentDraftId) return;
+    void hydrateCardDeckV3Detail({ id: currentDraftId, hasCardDeckV3: true }, false);
   }
   async function resumeCurrentWork() {
     const current = hist?.currentWork;
@@ -3327,7 +3375,9 @@ export default function StudioPage() {
     const linkedDraftHasPublishText = linkedDraft?.text !== null
       && typeof linkedDraft?.text === "object";
     if (linkedDraft && linkedDraftHasPublishText) {
-      loadDraft(linkedDraft);
+      // 목록에는 v3 본문이 없으므로 발행 복귀도 같은 상세 보강을 시작한다. 목록 신호가
+      // true인 동안은 아래 발행 행동이 잠겨, 상세 지연 창에서 plain 결과를 내보내지 않는다.
+      void loadDraftDetail(linkedDraft);
     } else {
       const work = buildPublishReturnWork(queuePost);
       if (!work) {
@@ -3643,6 +3693,7 @@ export default function StudioPage() {
   }
 
   async function requestReview() {
+    if (rejectWhileCardDeckV3DetailPending()) return;
     if (cardDeckV3) {
       showToast(CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE, "error");
       return;
@@ -3697,7 +3748,14 @@ export default function StudioPage() {
       case "onlyOne": keepOnlyChannel(command.platform); return;
       case "unifyHashtags": unifyHashtagsAcrossChannels(); return;
       case "trimOverLimit": trimOverLimitChannels(); return;
-      case "schedule": setShowSchedule(true); return;
+      case "schedule":
+        if (rejectWhileCardDeckV3DetailPending()) return;
+        if (cardDeckV3) {
+          showToast(CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE, "error");
+          return;
+        }
+        setShowSchedule(true);
+        return;
       case "requestReview": await requestReview(); return;
       case "saveDraft": await saveDraftWithNotice(); return;
       case "publishNow": await publish(); return;
@@ -4048,6 +4106,7 @@ export default function StudioPage() {
   }
 
   function startCardDeckV3() {
+    if (rejectWhileCardDeckV3DetailPending()) return;
     const blockedReason = plainCardDeckV3EntryBlockReason(resolvedEditLines);
     if (blockedReason) {
       showToast(blockedReason, "error");
@@ -4200,6 +4259,9 @@ export default function StudioPage() {
     attempt(10);
   }
 
+  const cardDeckV3HydrationBlockedReason = cardDeckV3DetailBlockedReason(cardDeckV3DetailStatus);
+  const cardDeckV3PublishBlocked = Boolean(cardDeckV3) || Boolean(cardDeckV3HydrationBlockedReason);
+
   if (activeRoom === "edit") {
     // 초안 목록 조회는 편집 데이터의 유일한 소스가 아니다. localStorage 복원값이나 이미
     // 생성된 미디어가 있으면 목록 재조회가 실패해도 편집기를 그대로 유지한다. 저장 실패는
@@ -4238,13 +4300,14 @@ export default function StudioPage() {
         cardDeckV3={cardDeckV3}
         onCardDeckV3Change={onCardDeckV3Change}
         onStartCardDeckV3={startCardDeckV3}
-        cardDeckV3EntryBlockedReason={plainCardDeckV3EntryBlockReason(resolvedEditLines)}
+        cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? plainCardDeckV3EntryBlockReason(resolvedEditLines)}
+        onRetryCardDeckV3Detail={cardDeckV3DetailStatus === "error" ? retryCardDeckV3Detail : undefined}
         onReturnFromCardDeckV3={() => { void returnFromCardDeckV3(); }}
         videoEdit={videoEdit}
         onVideoEditChange={onVideoEditChange}
         onOpenCreate={openCreateForEditKind}
         onOpenPublish={moveToPublish}
-        publishBlockedReason={cardDeckV3 ? CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE : null}
+        publishBlockedReason={cardDeckV3 ? CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE : cardDeckV3HydrationBlockedReason}
         lastSavedAt={editSavedAt}
         moveBusy={moveToPublishBusy}
         autosaveError={[editAutosaveError, cardDeckAutosaveError, videoEditAutosaveError].filter(Boolean).join(" ")}
@@ -4406,7 +4469,7 @@ export default function StudioPage() {
               {hasPublishedResult ? <Link href="/performance" className="shrink-0 rounded-control bg-accent px-stack py-stack-tight text-body-sm font-semibold text-accent-fg">성과실에서 결과 보기</Link> : null}
             </div>
           ) : null}
-          {showSchedule && activeWorkspace && !cardDeckV3 ? (
+          {showSchedule && activeWorkspace && !cardDeckV3PublishBlocked ? (
             <SchedulePanel
               tenantId={activeWorkspace.id}
               draftId={draftId}
@@ -4420,24 +4483,25 @@ export default function StudioPage() {
               }}
             />
           ) : null}
-          {cardDeckV3 ? (
-            <p role="alert" className="rounded-control border border-warning bg-warning-soft p-stack text-caption text-warning" data-card-deck-v3-publish-block>
-              {CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE}
-            </p>
+          {cardDeckV3PublishBlocked ? (
+            <div role="alert" className="flex flex-wrap items-center gap-stack-tight rounded-control border border-warning bg-warning-soft p-stack text-caption text-warning" data-card-deck-v3-publish-block>
+              <span>{cardDeckV3 ? CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE : cardDeckV3HydrationBlockedReason}</span>
+              {!cardDeckV3 && cardDeckV3DetailStatus === "error" ? <Button size="sm" variant="secondary" onClick={retryCardDeckV3Detail}>다시 시도</Button> : null}
+            </div>
           ) : null}
           {hasPublishableBody ? (
             <div className="card space-y-stack p-stack">
               <div className="flex flex-wrap items-center gap-stack">
               <b className="mr-auto min-w-0 truncate text-body text-text">{idea || "현재 작업물"}</b>
               <Button onClick={saveDraftWithNotice}>임시 저장하기</Button>
-              <Button onClick={requestReview} disabled={reviewBusy || Boolean(cardDeckV3)}>{reviewBusy ? "보내는 중" : "검토 요청하기"}</Button>
+              <Button onClick={requestReview} disabled={reviewBusy || cardDeckV3PublishBlocked}>{reviewBusy ? "보내는 중" : "검토 요청하기"}</Button>
               {/*
                 계정을 아직 못 불러온 동안에는 고른 수를 그대로 보여 준다. 그때는 몇 곳에
                 올릴 수 있는지 알 수 없고, 0곳이라고 쓰면 없는 사실을 말하는 것이 된다.
                 다 불러온 뒤에는 실제로 올라갈 수만 센다. 고른 수를 그대로 쓰면 연결이
                 끊긴 채널까지 세어 "2곳에 발행"이라 해 놓고 아무 데도 안 올라간다.
               */}
-              <Button variant="primary" onClick={publish} disabled={Boolean(cardDeckV3) || pub.running || !accountsLoaded || publishTargets.length === 0}>선택한 {accountsLoaded ? publishTargets.length : selectedTargets.length}곳에 지금 발행{accountsLoaded && selectedTargets.length > publishTargets.length ? ` (올릴 수 없는 ${selectedTargets.length - publishTargets.length}곳 제외)` : ""}</Button>
+              <Button variant="primary" onClick={publish} disabled={cardDeckV3PublishBlocked || pub.running || !accountsLoaded || publishTargets.length === 0}>선택한 {accountsLoaded ? publishTargets.length : selectedTargets.length}곳에 지금 발행{accountsLoaded && selectedTargets.length > publishTargets.length ? ` (올릴 수 없는 ${selectedTargets.length - publishTargets.length}곳 제외)` : ""}</Button>
               {/*
                 2026-10-02 운영 사고(결함 D): 버튼 문구는 숫자만 말해서("선택한 1곳에 지금
                 발행"), 미리보기 탭(보기 필터)에서 방금 Instagram 을 봐 놓고 실제로는 이전
@@ -4453,7 +4517,7 @@ export default function StudioPage() {
                   ({channelNameList(publishNameTargets)})
                 </span>
               ) : null}
-              {activeWorkspace ? <Button variant={showSchedule ? "primary" : "secondary"} onClick={() => setShowSchedule((value) => !value)} disabled={Boolean(cardDeckV3)}>예약 발행</Button> : null}
+              {activeWorkspace ? <Button variant={showSchedule ? "primary" : "secondary"} onClick={() => setShowSchedule((value) => !value)} disabled={cardDeckV3PublishBlocked}>예약 발행</Button> : null}
               </div>
               {/*
                 2026-10-03 독립 리뷰 m1: 체크는 했는데 publishGuard에 걸려 지금 발행
@@ -4733,9 +4797,9 @@ export default function StudioPage() {
             </div>
             {hasPublishableBody ? (
               <div className="flex flex-wrap gap-stack-tight" aria-label="발행 담당 빠른 답장">
-                <Button size="sm" onClick={publish} disabled={Boolean(cardDeckV3) || !accountsLoaded || publishTargets.length === 0 || pub.running}>{publishRetryOnly ? "실패한 곳만 다시 발행" : "지금 발행하기"}</Button>
-                <Button size="sm" onClick={() => setShowSchedule(true)} disabled={Boolean(cardDeckV3)}>시간은 내가 골라 줘</Button>
-                <Button size="sm" onClick={requestReview} disabled={Boolean(cardDeckV3)}>먼저 검토받기</Button>
+                <Button size="sm" onClick={publish} disabled={cardDeckV3PublishBlocked || !accountsLoaded || publishTargets.length === 0 || pub.running}>{publishRetryOnly ? "실패한 곳만 다시 발행" : "지금 발행하기"}</Button>
+                <Button size="sm" onClick={() => setShowSchedule(true)} disabled={cardDeckV3PublishBlocked}>시간은 내가 골라 줘</Button>
+                <Button size="sm" onClick={requestReview} disabled={cardDeckV3PublishBlocked}>먼저 검토받기</Button>
               </div>
             ) : (
               <Button variant="primary" onClick={() => changeRoom("create")}>생성실 열기</Button>

@@ -42,6 +42,39 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
   });
 
+  it("S1-R7-HYDRATION-GUARD-01 상세 지연과 실패 중에는 진입과 발행을 막고 실패 시 다시 시도한다", () => {
+    const onStart = vi.fn();
+    const onPublish = vi.fn();
+    const onRetry = vi.fn();
+    const view = render(<EditRoom
+      kind="card"
+      lines={["첫 장", "둘째 장"]}
+      onLinesChange={() => {}}
+      onStartCardDeckV3={onStart}
+      onOpenPublish={onPublish}
+      cardDeckV3EntryBlockedReason="저장된 자유 배치 내용을 불러오는 중입니다."
+      publishBlockedReason="저장된 자유 배치 내용을 불러오는 중입니다."
+    />);
+    expect(screen.getByRole("button", { name: "자유 배치로 편집" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "발행실로 이동" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "자유 배치로 편집" }));
+    expect(onStart).not.toHaveBeenCalled();
+    expect(onPublish).not.toHaveBeenCalled();
+
+    view.rerender(<EditRoom
+      kind="card"
+      lines={["첫 장", "둘째 장"]}
+      onLinesChange={() => {}}
+      onStartCardDeckV3={onStart}
+      onOpenPublish={onPublish}
+      cardDeckV3EntryBlockedReason="저장된 자유 배치 내용을 불러오지 못했습니다. 다시 시도해 주세요."
+      publishBlockedReason="저장된 자유 배치 내용을 불러오지 못했습니다. 다시 시도해 주세요."
+      onRetryCardDeckV3Detail={onRetry}
+    />);
+    fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
   it("S1-R4-RETURN-01 자유 배치에서 기본 편집 복원 행동과 데이터 보존 안내를 노출한다", () => {
     const onReturn = vi.fn();
     const deck = createPlainCardDeckV3(["첫 장", "둘째 장"], "deck_return");

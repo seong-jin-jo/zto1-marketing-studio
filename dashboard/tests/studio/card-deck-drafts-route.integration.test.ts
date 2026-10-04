@@ -5,6 +5,7 @@ import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 
 const H = vi.hoisted(() => ({
   rows: [] as Array<Record<string, unknown>>,
+  rowBatches: [] as Array<Array<Record<string, unknown>>>,
   jsonValues: [] as unknown[],
 }));
 
@@ -14,7 +15,7 @@ vi.mock("@/lib/tenant-auth", () => ({
 
 vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async (_tenantId: string, callback: (sql: unknown) => unknown) => {
-    const sql = Object.assign(() => Promise.resolve(H.rows), {
+    const sql = Object.assign(() => Promise.resolve(H.rowBatches.length > 0 ? H.rowBatches.shift()! : H.rows), {
       json: (value: unknown) => {
         H.jsonValues.push(value);
         return value;
@@ -27,6 +28,7 @@ vi.mock("@/lib/db", () => ({
 beforeEach(() => {
   vi.resetModules();
   H.rows = [];
+  H.rowBatches = [];
   H.jsonValues = [];
 });
 
@@ -47,8 +49,42 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     H.rows = [{ id: "draft-v3", idea: "자유 배치", payload: savedPayload, status: "draft", updated_at: "2026-10-04T00:00:00Z" }];
     const list = await (await GET(new Request("http://localhost/api/studio/drafts"))).json();
     expect(list.drafts[0]).not.toHaveProperty("cardDeckV3");
+    expect(list.drafts[0].hasCardDeckV3).toBe(true);
     const reloaded = await (await GET(new Request("http://localhost/api/studio/drafts?id=draft-v3"))).json();
     expect(reloaded.draft.cardDeckV3).toEqual(cardDeckV3);
+  });
+  it("S1-R7-HYDRATION-GUARD-01 원문 스냅샷이 있는 초안은 다른 덱 id 저장을 409로 거절한다", async () => {
+    const incoming = createPlainCardDeckV3(["다른 첫 장", "다른 마지막"], "deck_replacement");
+    H.rowBatches = [
+      [],
+      [{
+        id: "draft-protected",
+        body_revision: 4,
+        text: null,
+        edit_lines: ["서버 첫 장", "서버 마지막"],
+        card_deck_v3: createPlainCardDeckV3(["서버 첫 장", "서버 마지막"], "deck_server"),
+        card_deck_v3_source_snapshot: { editLines: ["원문 첫 장", "원문 마지막"], cardTextPositions: [] },
+        card_deck_v3_id: "deck_server",
+        revision: null,
+      }],
+    ];
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1",
+        id: "draft-protected",
+        idea: "보호 초안",
+        bodyBaseRevision: 4,
+        cardDeckV3: incoming,
+      }),
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "CARD_DECK_V3_IDENTITY_CONFLICT",
+      serverDeckId: "deck_server",
+      clientDeckId: "deck_replacement",
+    });
   });
 
   it("S1-AC1 거절: 잘못된 cardDeckV3는 DB 접근 전에 막고 null은 기존 값을 보존한다", async () => {

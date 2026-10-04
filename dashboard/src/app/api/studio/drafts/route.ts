@@ -36,6 +36,12 @@ class StaleBodyRevisionError extends Error {
   }
 }
 
+class CardDeckV3IdentityConflictError extends Error {
+  constructor(readonly serverDeckId: string | null, readonly clientDeckId: string) {
+    super(`cardDeckV3 identity conflict: server=${serverDeckId} client=${clientDeckId}`);
+  }
+}
+
 // Studio 초안/발행 이력 — Supabase drafts 테이블(테넌트별). payload jsonb에 본문 보관.
 interface DraftRow {
   id: string;
@@ -103,6 +109,9 @@ function flattenDraft(r: DraftRow, options: { includeCardDeckV3: boolean }) {
     bodyRevision: Number.isSafeInteger(r.payload?.bodyRevision) ? r.payload.bodyRevision : 0,
     cardTextPositions: r.payload?.cardTextPositions ?? null,
     cardDeck: r.payload?.cardDeck ?? null,
+    // 목록은 큰 덱 본문을 계속 제외하되, 서버에 v3가 있다는 사실까지 숨기면 상세 응답
+    // 전의 plain 화면이 새 덱으로 덮어쓸 수 있다. boolean 한 칸만 실어 보호 구간을 연다.
+    hasCardDeckV3: r.payload?.cardDeckV3 != null,
     ...(options.includeCardDeckV3 ? {
       cardDeckV3: r.payload?.cardDeckV3 ?? null,
       cardDeckV3SourceSnapshot: r.payload?.cardDeckV3SourceSnapshot ?? null,
@@ -297,6 +306,7 @@ export async function POST(request: Request) {
   } else if (Object.prototype.hasOwnProperty.call(body, "cardDeckV3") && body.cardDeckV3 != null) {
     cardDeckV3Patch.cardDeckV3 = body.cardDeckV3;
   }
+  const incomingCardDeckV3Id = typeof body.cardDeckV3?.id === "string" ? body.cardDeckV3.id : null;
   // videoEdit도 cardDeck과 같은 보존 규칙: 키가 없으면 payload 병합에서 빠져 기존 값을
   // 지키고, 명시 플래그 clearVideoEdit로만 지운다.
   // M7(2026-09-22 코드리뷰): `any` 대신 VideoEdit로 좁힌다. body.videoEdit는 위에서 이미
@@ -380,6 +390,12 @@ export async function POST(request: Request) {
             WHERE drafts.id = ${body.id} AND drafts.tenant_id = ${tenantId}
               AND (drafts.payload->'videoEdit'->>'revision')::int IS NOT DISTINCT FROM ${baseRevision}::int
               AND COALESCE((drafts.payload->>'bodyRevision')::int, 0) = ${bodyBaseRevision}
+              AND NOT (
+                ${incomingCardDeckV3Id}::text IS NOT NULL
+                AND drafts.payload ? 'cardDeckV3SourceSnapshot'
+                AND drafts.payload->'cardDeckV3SourceSnapshot' <> 'null'::jsonb
+                AND drafts.payload->'cardDeckV3'->>'id' IS DISTINCT FROM ${incomingCardDeckV3Id}::text
+              )
             RETURNING drafts.id, (drafts.payload->>'bodyRevision')::int AS body_revision,
               (drafts.payload->'videoEdit'->>'revision')::int AS server_revision`;
           if (row) return { id: row.id, bodyRevision: row.body_revision, videoEditServerRevision: row.server_revision };
@@ -395,6 +411,12 @@ export async function POST(request: Request) {
               status = ${status}, updated_at = now()
             WHERE id = ${body.id} AND tenant_id = ${tenantId}
               AND COALESCE((drafts.payload->>'bodyRevision')::int, 0) = ${bodyBaseRevision}
+              AND NOT (
+                ${incomingCardDeckV3Id}::text IS NOT NULL
+                AND payload ? 'cardDeckV3SourceSnapshot'
+                AND payload->'cardDeckV3SourceSnapshot' <> 'null'::jsonb
+                AND payload->'cardDeckV3'->>'id' IS DISTINCT FROM ${incomingCardDeckV3Id}::text
+              )
             RETURNING id, (payload->>'bodyRevision')::int AS body_revision`;
           if (row) return { id: row.id, bodyRevision: row.body_revision, videoEditServerRevision: null };
         }
@@ -404,12 +426,16 @@ export async function POST(request: Request) {
           text: unknown | null;
           edit_lines: unknown | null;
           card_deck_v3: unknown | null;
+          card_deck_v3_source_snapshot: unknown | null;
+          card_deck_v3_id: string | null;
           revision: number | null;
         }[]>`
           SELECT id, COALESCE((payload->>'bodyRevision')::int, 0) AS body_revision,
             payload->'text' AS text,
             payload->'editLines' AS edit_lines,
             payload->'cardDeckV3' AS card_deck_v3,
+            payload->'cardDeckV3SourceSnapshot' AS card_deck_v3_source_snapshot,
+            payload->'cardDeckV3'->>'id' AS card_deck_v3_id,
             (payload->'videoEdit'->>'revision')::int AS revision
           FROM drafts WHERE id = ${body.id} AND tenant_id = ${tenantId}`;
         if (existsRow) {
@@ -421,6 +447,13 @@ export async function POST(request: Request) {
               cardDeckV3: existsRow.card_deck_v3,
               bodyRevision: serverBodyRevision,
             });
+          }
+          if (
+            incomingCardDeckV3Id
+            && existsRow.card_deck_v3_source_snapshot != null
+            && existsRow.card_deck_v3_id !== incomingCardDeckV3Id
+          ) {
+            throw new CardDeckV3IdentityConflictError(existsRow.card_deck_v3_id, incomingCardDeckV3Id);
           }
           if (videoEditPatch.videoEdit) {
             const baseRevision = typeof body.videoEditBaseRevision === "number" ? body.videoEditBaseRevision : null;
@@ -435,6 +468,15 @@ export async function POST(request: Request) {
     });
     return Response.json({ ok: true, id: result.id, bodyRevision: result.bodyRevision, videoEditServerRevision: result.videoEditServerRevision });
   } catch (e) {
+    if (e instanceof CardDeckV3IdentityConflictError) {
+      return Response.json({
+        ok: false,
+        code: "CARD_DECK_V3_IDENTITY_CONFLICT",
+        error: "이미 저장된 자유 배치 작업이 있습니다. 최신 작업을 다시 불러온 뒤 이어서 편집해 주세요.",
+        serverDeckId: e.serverDeckId,
+        clientDeckId: e.clientDeckId,
+      }, { status: 409, headers: { "Cache-Control": "no-store" } });
+    }
     if (e instanceof StaleBodyRevisionError) {
       return Response.json({
         ok: false,

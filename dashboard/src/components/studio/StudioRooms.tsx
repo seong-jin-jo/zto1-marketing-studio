@@ -1699,6 +1699,7 @@ interface EditRoomProps {
   /** 기존 plain 카드의 줄과 v2 덱을 보존한 채 자유 배치 편집을 명시적으로 시작한다. */
   onStartCardDeckV3?: () => void;
   cardDeckV3EntryBlockedReason?: string | null;
+  onRetryCardDeckV3Detail?: () => void;
   /** 자유 배치 진입 직전의 plain 카드 원문과 위치를 복원한다. */
   onReturnFromCardDeckV3?: () => void;
   /**
@@ -2013,6 +2014,7 @@ export function EditRoom({
   onCardDeckV3Change,
   onStartCardDeckV3,
   cardDeckV3EntryBlockedReason,
+  onRetryCardDeckV3Detail,
   onReturnFromCardDeckV3,
   videoEdit = null,
   onVideoEditChange,
@@ -2280,7 +2282,12 @@ export function EditRoom({
                     <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3} disabled={Boolean(cardDeckV3EntryBlockedReason)}>
                       자유 배치로 편집
                     </Button>
-                    {cardDeckV3EntryBlockedReason ? <p className="mt-stack-tight text-caption text-warning" role="status" data-card-deck-v3-entry-blocked>{cardDeckV3EntryBlockedReason}</p> : null}
+                    {cardDeckV3EntryBlockedReason ? (
+                      <div className="mt-stack-tight flex flex-wrap items-center gap-stack-tight text-caption text-warning" role="status" data-card-deck-v3-entry-blocked>
+                        <span>{cardDeckV3EntryBlockedReason}</span>
+                        {onRetryCardDeckV3Detail ? <Button type="button" size="sm" variant="secondary" onClick={onRetryCardDeckV3Detail}>다시 시도</Button> : null}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 {/*
