@@ -1,3 +1,18 @@
+## 2026-10-04 편집실 v2 S1 Claude Opus 교차 재검토 2차 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-R4-N1 | plain→v3 변환에서 장·문구·위치 데이터를 자르거나 지어내지 않음 | S1-R4-MIGRATION-01 | ❌ NG | 현재 변환은 11장 이후를 자르고 2장 미만이면 가짜 장을 보태며 `cardTextPositions`를 이관하지 않는다. |
+| EDITROOM-V2-S1-R4-N2 | 자유 배치 진입 전 상태로 무손실 복귀 | S1-R4-RETURN-01 | ❌ NG | v3를 시작한 뒤 기존 `editLines`와 `cardTextPositions`로 돌아갈 사용자 경로가 없다. |
+| EDITROOM-V2-S1-R4-N3 | S2 공용 렌더 전 v3 결과의 발행·검토 요청 차단 | S1-R4-PUBLISH-GATE-01 | ❌ NG | 편집 화면의 v3와 실제 발행 PNG가 달라질 수 있는데 클라이언트와 서버 모두 이동을 허용한다. |
+| EDITROOM-V2-S1-R4-N4 | 단건 응답이 진행 중 로컬 v3 편집을 덮어쓰지 않음 | S1-R4-HYDRATION-RACE-01 | ❌ NG | 늦게 도착한 단건 조회가 이미 편집·저장 중인 로컬 덱을 다시 채울 수 있다. |
+| EDITROOM-V2-S1-R4-N5 | 목록에서 같은 초안을 다시 골라도 단건 v3를 직접 복원 | S1-R4-RESELECT-01 | ❌ NG | 목록은 의도적으로 v3를 제외하므로 재선택 직후 진입하면 서버 v3를 새 변환본으로 덮을 수 있다. |
+| EDITROOM-V2-S1-R4-m1 | 초점 선택과 삭제 뒤 스테이지 초점 복귀 | S1-R4-FOCUS-01 | ❌ NG | 요소 선택 상자 focus가 선택 상태를 맞추지 않고 삭제 후 키보드 조작 초점도 복구하지 않는다. |
+| EDITROOM-V2-S1-R4-m2 | 글 textarea 입력은 실시간 미리보기, blur에서 이력 한 칸 확정 | S1-R4-TEXT-HISTORY-01 | ❌ NG | 매 입력마다 이력을 쌓거나 실시간 반영과 확정 경계를 분리하지 못한다. |
+| EDITROOM-V2-S1-R4-m3 | 숫자 조작값을 소수 셋째 자리로 정규화 | S1-R4-NUMERIC-PRECISION-01 | ❌ NG | 글자 크기·각도·너비·높이 값의 저장 정밀도 상한이 없다. |
+| EDITROOM-V2-S1-R4-m4 | StudioRooms 테두리는 기존 디자인 토큰 사용 | S1-R4-TOKEN-01 | ❌ NG | `border-line`이 현재 디자인 토큰 계약과 어긋난다. |
+| EDITROOM-V2-S1-R4-m5 | 회전 중 각도 배지를 React state로 표시 | S1-R4-ROTATION-BADGE-01 | ❌ NG | 회전 배지가 렌더 state와 분리돼 표시값이 실제 명령값과 어긋날 수 있다. |
+
 ## 2026-10-04 편집실 v2 S1 Claude Opus 교차 리뷰 ❌ NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
