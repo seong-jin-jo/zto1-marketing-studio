@@ -98,4 +98,19 @@ describe("AC-CARD-01 카드 요소 v3 계약", () => {
     image.asset_id = "../tenant-b/secret.png";
     expect(() => parseCardDeckV3(uploaded)).toThrow(CardDeckV3ValidationError);
   });
+
+  it("S1-R3-CHAT-PROJECTION-01 카톡 덱은 표지와 말풍선 세그먼트를 순서대로 줄 투영한다", () => {
+    const value = deck();
+    value.template = "chat_bubble";
+    value.slides[0].base = {
+      kind: "chat_bubble",
+      cover: { headline: "표지 제목", sub: "표지 설명" },
+      bubbles: [
+        { id: "bubble_2", order: 1, speaker: "brand", segments: [{ text: "둘째", bold: false }], reaction: null },
+        { id: "bubble_1", order: 0, speaker: "reader", segments: [{ text: "첫", bold: false }, { text: "말풍선", bold: true }], reaction: "heart" },
+      ],
+    };
+
+    expect(cardDeckV3Projection(value)[0]).toBe("표지 제목\n표지 설명\n첫말풍선\n둘째");
+  });
 });

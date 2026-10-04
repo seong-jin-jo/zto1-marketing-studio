@@ -350,12 +350,22 @@ export function parseCardDeckV3(value: unknown): CardDeckV3 {
 
 export function cardDeckV3Projection(deck: CardDeckV3): string[] {
   return deck.slides.map((slide) => {
+    if (slide.base.kind === "chat_bubble") {
+      const coverLines = slide.base.cover
+        ? [slide.base.cover.headline.trim(), slide.base.cover.sub?.trim() ?? ""].filter(Boolean)
+        : [];
+      const bubbleLines = [...slide.base.bubbles]
+        .sort((left, right) => left.order - right.order)
+        .map((bubble) => bubble.segments.map((segment) => segment.text).join("").trim())
+        .filter(Boolean);
+      return [...coverLines, ...bubbleLines].join("\n");
+    }
     const text = slide.elements
       .filter((element): element is TextElement => element.type === "text" && !element.hidden)
       .sort((left, right) => left.z_index - right.z_index)
       .map((element) => element.text.trim())
       .filter(Boolean);
     if (text.length) return text.join("\n");
-    return slide.base.kind === "plain" ? slide.base.lines.join("\n") : "";
+    return slide.base.lines.join("\n");
   });
 }
