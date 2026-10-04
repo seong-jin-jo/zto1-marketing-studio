@@ -1,3 +1,21 @@
+## 2026-10-04 편집실 v2 S1 Claude Opus 교차 리뷰 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-R3-M1 | 실제 업로드 파일명을 안전한 `asset_id`로 저장하고 경로 순회는 거절 | S1-R3-ASSET-ID-01 | ❌ NG | 업로드 응답은 확장자를 포함하지만 `safeId`는 점을 거절해 사진 덱 저장이 400이 된다. |
+| EDITROOM-V2-S1-R3-M2 | 새로고침 뒤에도 테넌트 범위 재서명 URL로 사진 표시 | S1-R3-ASSET-RESIGN-01 | ❌ NG | 사진 URL이 `CardCanvasEditor.localAssetUrls`에만 있어 메모리 초기화 뒤 자리표시로 돌아간다. |
+| EDITROOM-V2-S1-R3-M3 | 409 충돌 보관본과 재적용본이 마지막 편집 덱과 일치 | S1-R3-CONFLICT-01 | ❌ NG | 충돌 보관 시 React state를 읽어 저장 요청에 사용한 v3 덱보다 한 단계 이전 값이 들어갈 수 있다. |
+| EDITROOM-V2-S1-R3-M4 | 같은 revision의 외부 최신본도 내용이 다르면 editor history 교체 | S1-R3-RELOAD-01 | ❌ NG | 외부 덱 동기화가 `id`와 `revision`만 비교해 내용만 바뀐 최신본을 무시한다. |
+| EDITROOM-V2-S1-R3-M5 | 입력칸 키를 단축키가 가로채지 않고 스테이지 초점에서만 실행 | S1-R3-KEYBOARD-01 | ❌ NG | editor 루트의 keydown이 input·select·textarea·contenteditable 이벤트까지 처리한다. |
+| EDITROOM-V2-S1-R3-M6 | 글 직접 편집과 숫자 크기·각도 대체 조작 제공 | S1-R3-DIRECT-EDIT-01 | ❌ NG | 글 더블클릭·Enter 편집, 각도 표시·입력, 가로·세로 숫자 입력이 없다. |
+| EDITROOM-V2-S1-R3-M7 | 기존 plain 카드에서 명시적으로 자유 배치 편집기로 전환 | S1-R3-ENTRY-01 | ❌ NG | 기존 화면 보존을 위해 자동 승격을 제거했으나 사용자가 v3를 시작할 진입점도 없다. |
+| EDITROOM-V2-S1-R3-m1 | 숫자칸 빈 값과 계약 범위를 안전하게 clamp | S1-R3-NUMBER-01 | ❌ NG | 글자 크기 입력이 빈 문자열을 0으로 바꾸고 계약 밖 수치를 그대로 명령에 넘긴다. |
+| EDITROOM-V2-S1-R3-m2 | 끌기·방향키 이동 뒤 요소가 장과 최소 1px 교차 | S1-R3-BOUNDS-01 | ❌ NG | 이동 명령이 x·y 경계를 제한하지 않아 요소를 장 밖으로 완전히 잃을 수 있다. |
+| EDITROOM-V2-S1-R3-m3 | 선택이 없어도 Ctrl/Cmd+Z 실행 | S1-R3-UNDO-01 | ❌ NG | keydown이 선택 요소가 없으면 undo 분기 전에 반환한다. |
+| EDITROOM-V2-S1-R3-m5 | 카톡 덱 투영에 말풍선 세그먼트 문구 포함 | S1-R3-BUBBLE-PROJECTION-01 | ❌ NG | v3 투영은 요소 글만 모아 카톡 base의 말풍선 문구를 저장 본문에서 잃는다. |
+| EDITROOM-V2-S1-R3-m6 | 목록 응답은 무거운 `cardDeckV3`를 제외하고 단건만 반환 | S1-R3-DRAFT-LIST-01 | ❌ NG | 목록과 단건이 같은 flatten 함수를 써 목록 전체에 v3 JSON이 반복된다. |
+| EDITROOM-V2-S1-R3-m7 | 끌기 중 pointer 이벤트 구독을 매 이동마다 재생성하지 않음 | S1-R3-POINTER-SUBSCRIPTION-01 | ❌ NG | pointer effect가 이동마다 바뀌는 history·slide 객체를 의존한다. |
+
 ## 2026-10-04 편집실 v2 S1 기존 plain 카드 작업대 회귀 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
