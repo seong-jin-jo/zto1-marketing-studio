@@ -1,8 +1,8 @@
-## 2026-10-05 편집실 v2 S1 교차 리뷰 5차 m5-1 ❌ NG
+## 2026-10-05 편집실 v2 S1 교차 리뷰 5차 m5-1 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| EDITROOM-V2-S1-R8-m5-1 | 새 작업 전환 시 남은 v3 상세 조회 상태가 진입과 발행을 막지 않도록 초기화 | S1-R8-DETAIL-RESET-01 | ❌ NG | 새 작업 생성, 버리고 새로 시작, 후보 선택 경로가 `cardDeckV3`만 비우고 `cardDeckV3DetailStatus`의 `loading` 또는 `error`를 남긴다. 세 경로 모두 `idle`로 되돌리고 회귀 테스트로 고정한다. |
+| EDITROOM-V2-S1-R8-m5-1 | 새 작업 전환 시 남은 v3 상세 조회 상태가 진입과 발행을 막지 않도록 초기화 | S1-R8-DETAIL-RESET-01 | ✅ 로컬 PASS | 새 작업 생성, 버리고 새로 시작, 후보 선택 세 경로가 `cardDeckV3`와 함께 `cardDeckV3DetailStatus`를 `idle`로 되돌린다. 관련 Studio 5파일 35건과 `typecheck:ci`가 종료 코드 0으로 통과했다. 제품·회귀 커밋 `cca3356a`. 원격 CI는 미검증이다. |
 
 ## 2026-10-05 편집실 v2 S1 교차 리뷰 4차 ❌ NG → ✅ 로컬 PASS
 
