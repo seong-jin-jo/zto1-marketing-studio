@@ -231,7 +231,9 @@ export function patchTextElement(
 ): CardDeckV3 {
   return mutateElement(deck, slideId, elementId, (element) => {
     if (element.type !== "text") return element;
-    return { ...element, ...patch, style: { ...element.style, ...patch.style } };
+    const style = { ...element.style, ...patch.style };
+    if (patch.style?.font_size !== undefined) style.font_size = round(patch.style.font_size);
+    return { ...element, ...patch, style };
   });
 }
 

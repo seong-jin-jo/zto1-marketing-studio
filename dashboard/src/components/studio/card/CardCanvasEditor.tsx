@@ -91,12 +91,15 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const [localAssetUrls, setLocalAssetUrls] = useState<Record<string, string>>({});
   const [uploadError, setUploadError] = useState("");
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [editingTextValue, setEditingTextValue] = useState("");
+  const [rotationPreview, setRotationPreview] = useState<number | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastExternalDeckRef = useRef(deck);
   const commitRef = useRef<(next: CardDeckV3) => void>(() => {});
   const textEditorRef = useRef<HTMLTextAreaElement | null>(null);
+  const textEditBaseDeckRef = useRef<CardDeckV3 | null>(null);
   const workingDeck = previewDeck ?? history.present;
   const activeSlide = workingDeck.slides.find((slide) => slide.id === activeSlideId) ?? workingDeck.slides[0];
   const logicalHeight = workingDeck.ratio === "4:5" ? 1350 : 1080;
@@ -126,6 +129,19 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   }, [editingTextId]);
 
   const apply = useCallback((command: (current: CardDeckV3) => CardDeckV3) => commit(command(history.present)), [commit, history.present]);
+  const beginTextEdit = useCallback((element: CardElement) => {
+    if (element.type !== "text" || element.locked) return;
+    setSelectedId(element.id);
+    setEditingTextId(element.id);
+    setEditingTextValue(element.text);
+    textEditBaseDeckRef.current = history.present;
+  }, [history.present]);
+  const deleteAndRestoreStageFocus = useCallback((elementId: string) => {
+    if (!activeSlide) return;
+    apply((current) => deleteCardElement(current, activeSlide.id, elementId));
+    setSelectedId(null);
+    requestAnimationFrame(() => stageRef.current?.focus());
+  }, [activeSlide, apply]);
   const duplicate = useCallback((elementId: string) => {
     const source = activeSlide?.elements.find((element) => element.id === elementId);
     if (!source || !activeSlide) return;
@@ -158,6 +174,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
       ratio: workingDeck.ratio,
       logicalHeight,
     };
+    if (kind === "rotate") setRotationPreview(element.rotation);
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
@@ -178,6 +195,8 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
         const startAngle = Math.atan2(interaction.startClientY - interaction.centerClientY, interaction.startClientX - interaction.centerClientX) * 180 / Math.PI;
         const nextAngle = Math.atan2(event.clientY - interaction.centerClientY, event.clientX - interaction.centerClientX) * 180 / Math.PI;
         interaction.latestDeck = rotateCardElement(interaction.baseDeck, interaction.slideId, interaction.element.id, interaction.element.rotation + nextAngle - startAngle, event.shiftKey);
+        const rotated = interaction.latestDeck.slides.find((slide) => slide.id === interaction.slideId)?.elements.find((candidate) => candidate.id === interaction.element.id);
+        setRotationPreview(rotated?.rotation ?? null);
       }
       setPreviewDeck(interaction.latestDeck);
     };
@@ -185,6 +204,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
       const interaction = interactionRef.current;
       if (!interaction || event.pointerId !== interaction.pointerId) return;
       interactionRef.current = null;
+      setRotationPreview(null);
       if (interaction.latestDeck) commitRef.current(interaction.latestDeck);
       else setGuides([]);
     };
@@ -210,7 +230,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
     if (!activeSlide || !selected || selected.locked) return;
     if (event.key === "Enter" && selected.type === "text") {
       event.preventDefault();
-      setEditingTextId(selected.id);
+      beginTextEdit(selected);
       return;
     }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
@@ -220,8 +240,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
     }
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
-      apply((current) => deleteCardElement(current, activeSlide.id, selected.id));
-      setSelectedId(null);
+      deleteAndRestoreStageFocus(selected.id);
       return;
     }
     const delta = event.shiftKey ? 10 : 1;
@@ -274,7 +293,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
           {workingDeck.slides.map((slide) => <Button key={slide.id} size="sm" aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>{slide.order + 1}장</Button>)}
         </nav>
         <div className={styles.stageColumn}>
-          {selected ? <CardElementToolbar element={selected} onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, selected.id, patch))} onGeometryChange={(patch) => apply((current) => setCardElementGeometry(current, activeSlide.id, selected.id, patch))} onLayer={(direction) => apply((current) => moveCardElementLayer(current, activeSlide.id, selected.id, direction))} onDuplicate={() => duplicate(selected.id)} onDelete={() => { apply((current) => deleteCardElement(current, activeSlide.id, selected.id)); setSelectedId(null); }} /> : null}
+          {selected ? <CardElementToolbar element={selected} onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, selected.id, patch))} onGeometryChange={(patch) => apply((current) => setCardElementGeometry(current, activeSlide.id, selected.id, patch))} onLayer={(direction) => apply((current) => moveCardElementLayer(current, activeSlide.id, selected.id, direction))} onDuplicate={() => duplicate(selected.id)} onDelete={() => deleteAndRestoreStageFocus(selected.id)} /> : null}
           <div ref={stageRef} className={styles.stage} data-card-stage tabIndex={0} aria-label="카드 편집 스테이지" onPointerDown={() => { setSelectedId(null); setEditingTextId(null); }}>
             <CardSlideScene model={model} renderMode="editor" />
             {activeSlide.elements.filter((element) => !element.hidden).map((element) => (
@@ -287,11 +306,11 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
                 style={elementOverlayStyle(element, logicalHeight)}
                 tabIndex={0}
                 aria-label={`${element.name} 요소`}
+                onFocus={() => setSelectedId(element.id)}
                 onDoubleClick={(event) => {
                   if (element.type !== "text" || element.locked) return;
                   event.stopPropagation();
-                  setSelectedId(element.id);
-                  setEditingTextId(element.id);
+                  beginTextEdit(element);
                 }}
                 onPointerDown={(event) => {
                   if (editingTextId === element.id) return;
@@ -303,16 +322,26 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
                     ref={textEditorRef}
                     className={styles.directTextEditor}
                     aria-label="글 내용 직접 편집"
-                    value={element.text}
+                    value={editingTextValue}
                     onPointerDown={(event) => event.stopPropagation()}
-                    onChange={(event) => apply((current) => patchTextElement(current, activeSlide.id, element.id, { text: event.target.value }))}
-                    onBlur={() => setEditingTextId(null)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setEditingTextValue(value);
+                      const baseDeck = textEditBaseDeckRef.current ?? history.present;
+                      setPreviewDeck(patchTextElement(baseDeck, activeSlide.id, element.id, { text: value }));
+                    }}
+                    onBlur={() => {
+                      const baseDeck = textEditBaseDeckRef.current ?? history.present;
+                      commit(patchTextElement(baseDeck, activeSlide.id, element.id, { text: editingTextValue }));
+                      textEditBaseDeckRef.current = null;
+                      setEditingTextId(null);
+                    }}
                   />
                 ) : null}
                 {selectedId === element.id && !element.locked ? <>
                   {RESIZE_HANDLES.map((handle) => <Button key={handle} size="sm" className={styles.resizeHandle} data-handle={handle} aria-label={`${handle} 크기 조절`} onPointerDown={(event) => beginInteraction(event, element, "resize", handle)} />)}
                   <Button size="sm" className={styles.rotationHandle} aria-label="회전" onPointerDown={(event) => beginInteraction(event, element, "rotate")} />
-                  {interactionRef.current?.kind === "rotate" ? <span className={styles.rotationBadge} aria-live="polite">{Math.round(element.rotation)}°</span> : null}
+                  {rotationPreview !== null ? <span className={styles.rotationBadge} aria-live="polite">{rotationPreview}°</span> : null}
                 </> : null}
               </div>
             ))}
@@ -327,7 +356,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
           onLayer={(id, direction: LayerDirection) => apply((current) => moveCardElementLayer(current, activeSlide.id, id, direction))}
           onToggle={(id, flag) => apply((current) => toggleCardElementFlag(current, activeSlide.id, id, flag))}
           onDuplicate={duplicate}
-          onDelete={(id) => { apply((current) => deleteCardElement(current, activeSlide.id, id)); if (selectedId === id) setSelectedId(null); }}
+          onDelete={deleteAndRestoreStageFocus}
         />
       </div>
     </section>

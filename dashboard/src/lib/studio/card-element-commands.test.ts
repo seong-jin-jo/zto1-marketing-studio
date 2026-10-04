@@ -10,6 +10,7 @@ import {
   moveCardElement,
   moveCardElementLayer,
   nudgeCardElement,
+  patchTextElement,
   redoCardCommand,
   resizeCardElement,
   rotateCardElement,
@@ -111,5 +112,17 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     const added = addCardElement(deck(), "slide_cover", "text", { id: "numeric" });
     const changed = setCardElementGeometry(added, "slide_cover", "numeric", { width: 0, height: Number.NaN, rotation: 540 });
     expect(changed.slides[0].elements[0]).toMatchObject({ width: 4, height: 180, rotation: -180 });
+  });
+
+  it("S1-R4-NUMERIC-PRECISION-01 글자 크기·각도·너비·높이를 소수 셋째 자리로 반올림한다", () => {
+    const added = addCardElement(deck(), "slide_cover", "text", { id: "precise" });
+    const textPatched = patchTextElement(added, "slide_cover", "precise", { style: { font_size: 72.1239 } });
+    const geometryPatched = setCardElementGeometry(textPatched, "slide_cover", "precise", { width: 601.2349, height: 181.2349, rotation: 17.1239 });
+    expect(geometryPatched.slides[0].elements[0]).toMatchObject({
+      width: 601.235,
+      height: 181.235,
+      rotation: 17.124,
+      style: { font_size: 72.124 },
+    });
   });
 });

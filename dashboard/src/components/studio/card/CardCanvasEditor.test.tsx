@@ -116,10 +116,12 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     const selection = screen.getByLabelText("제목 요소");
     fireEvent.doubleClick(selection);
     fireEvent.change(screen.getByLabelText("글 내용 직접 편집"), { target: { value: "직접 고친 글" } });
+    expect(document.querySelector("[data-card-slide-scene]")).toHaveTextContent("직접 고친 글");
+    expect((current.slides[0].elements[0] as { text: string }).text).toBe("첫 장");
+    fireEvent.blur(screen.getByLabelText("글 내용 직접 편집"));
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
     expect((current.slides[0].elements[0] as { text: string }).text).toBe("직접 고친 글");
 
-    fireEvent.blur(screen.getByLabelText("글 내용 직접 편집"));
     fireEvent.keyDown(screen.getByLabelText("제목 요소"), { key: "Enter" });
     expect(screen.getByLabelText("글 내용 직접 편집")).toBeInTheDocument();
     fireEvent.blur(screen.getByLabelText("글 내용 직접 편집"));
@@ -127,6 +129,19 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
     fireEvent.change(screen.getByLabelText("요소 각도"), { target: { value: "17" } });
     expect(current.slides[0].elements[0]).toMatchObject({ height: 4, rotation: 17 });
+  });
+
+  it("S1-R4-FOCUS-01 선택 상자 초점이 선택을 맞추고 삭제 뒤 스테이지로 초점을 돌린다", async () => {
+    let current = deck();
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    const selection = screen.getByLabelText("제목 요소");
+    fireEvent.focus(selection);
+    expect(screen.getByRole("toolbar", { name: "제목 도구" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "삭제", exact: true }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    await waitFor(() => expect(screen.getByLabelText("카드 편집 스테이지")).toHaveFocus());
+    expect(current.slides[0].elements).toHaveLength(0);
   });
 
   it("S1-R3-POINTER-01 덱 변경마다 전역 포인터 이벤트를 다시 구독하지 않는다", () => {
