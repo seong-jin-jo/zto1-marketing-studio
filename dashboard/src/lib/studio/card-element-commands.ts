@@ -39,6 +39,13 @@ const clone = <T,>(value: T): T => structuredClone(value);
 const round = (value: number) => Math.round(value * 1_000) / 1_000;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+function clampedPosition(element: Pick<CardElement, "width" | "height">, x: number, y: number, ratio: CardDeckV3["ratio"]) {
+  return {
+    x: clamp(round(x), 1 - element.width, CARD_LOGICAL_WIDTH - 1),
+    y: clamp(round(y), 1 - element.height, CARD_LOGICAL_HEIGHT[ratio] - 1),
+  };
+}
+
 export function createPlainCardDeckV3(lines: string[], id = `deck_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`): CardDeckV3 {
   const source = lines.length >= 2 ? lines : [lines[0] || "첫 장", "저장하고 다시 확인하세요"];
   return {
@@ -192,11 +199,29 @@ export function patchTextElement(
 }
 
 export function moveCardElement(deck: CardDeckV3, slideId: string, elementId: string, x: number, y: number): CardDeckV3 {
-  return patchCardElement(deck, slideId, elementId, { x: round(x), y: round(y) });
+  return mutateElement(deck, slideId, elementId, (element) => ({ ...element, ...clampedPosition(element, x, y, deck.ratio) }));
 }
 
 export function nudgeCardElement(deck: CardDeckV3, slideId: string, elementId: string, dx: number, dy: number): CardDeckV3 {
-  return mutateElement(deck, slideId, elementId, (element) => ({ ...element, x: round(element.x + dx), y: round(element.y + dy) }));
+  return mutateElement(deck, slideId, elementId, (element) => ({
+    ...element,
+    ...clampedPosition(element, element.x + dx, element.y + dy, deck.ratio),
+  }));
+}
+
+export function setCardElementGeometry(
+  deck: CardDeckV3,
+  slideId: string,
+  elementId: string,
+  patch: Partial<Pick<CardElement, "width" | "height" | "rotation">>,
+): CardDeckV3 {
+  return mutateElement(deck, slideId, elementId, (element) => {
+    const width = Number.isFinite(patch.width) ? Math.max(4, patch.width!) : element.width;
+    const height = Number.isFinite(patch.height) ? Math.max(4, patch.height!) : element.height;
+    const rotation = Number.isFinite(patch.rotation) ? snapRotation(patch.rotation!, true) : element.rotation;
+    const resized = { ...element, width: round(width), height: round(height), rotation };
+    return { ...resized, ...clampedPosition(resized, resized.x, resized.y, deck.ratio) };
+  });
 }
 
 export function resizeCardElement(
@@ -281,7 +306,7 @@ export function snapCardElementPosition(
       guides[verticalIndex] = { axis: "y", value: candidate.value, source: candidate.source };
     }
   }));
-  return { x: round(snappedX), y: round(snappedY), guides };
+  return { ...clampedPosition(element, snappedX, snappedY, ratio), guides };
 }
 
 export function moveCardElementLayer(deck: CardDeckV3, slideId: string, elementId: string, direction: LayerDirection): CardDeckV3 {

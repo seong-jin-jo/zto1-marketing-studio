@@ -17,6 +17,7 @@ import {
   redoCardCommand,
   resizeCardElement,
   rotateCardElement,
+  setCardElementGeometry,
   snapCardElementPosition,
   toggleCardElementFlag,
   undoCardCommand,
@@ -42,8 +43,23 @@ type Interaction = {
   startClientY: number;
   centerClientX: number;
   centerClientY: number;
+  baseDeck: CardDeckV3;
+  slideId: string;
+  siblings: CardElement[];
+  ratio: CardDeckV3["ratio"];
+  logicalHeight: number;
   latestDeck?: CardDeckV3;
 };
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.matches("input, select, textarea, [contenteditable='true']") || Boolean(target.closest("input, select, textarea, [contenteditable='true']"));
+}
+
+function isCanvasShortcutTarget(target: EventTarget | null, stage: HTMLElement | null): boolean {
+  if (!(target instanceof HTMLElement) || isTextEntryTarget(target)) return false;
+  return target === stage || Boolean(target.closest("[data-element-selection]"));
+}
 
 function nextElementId(type: CardElementType): string {
   return `el_${type}_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
@@ -74,10 +90,13 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const [guides, setGuides] = useState<SnapGuide[]>([]);
   const [localAssetUrls, setLocalAssetUrls] = useState<Record<string, string>>({});
   const [uploadError, setUploadError] = useState("");
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastExternalDeckRef = useRef(deck);
+  const commitRef = useRef<(next: CardDeckV3) => void>(() => {});
+  const textEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const workingDeck = previewDeck ?? history.present;
   const activeSlide = workingDeck.slides.find((slide) => slide.id === activeSlideId) ?? workingDeck.slides[0];
   const logicalHeight = workingDeck.ratio === "4:5" ? 1350 : 1080;
@@ -100,6 +119,11 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
     setGuides([]);
     onDeckChange(next);
   }, [onDeckChange]);
+  commitRef.current = commit;
+
+  useEffect(() => {
+    if (editingTextId) textEditorRef.current?.focus();
+  }, [editingTextId]);
 
   const apply = useCallback((command: (current: CardDeckV3) => CardDeckV3) => commit(command(history.present)), [commit, history.present]);
   const duplicate = useCallback((elementId: string) => {
@@ -119,7 +143,21 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
     if (!rect) return;
     const centerClientX = rect.left + (element.x + element.width / 2) / 1080 * rect.width;
     const centerClientY = rect.top + (element.y + element.height / 2) / logicalHeight * rect.height;
-    interactionRef.current = { kind, element: structuredClone(element), handle, pointerId: event.pointerId, startClientX: event.clientX, startClientY: event.clientY, centerClientX, centerClientY };
+    interactionRef.current = {
+      kind,
+      element: structuredClone(element),
+      handle,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      centerClientX,
+      centerClientY,
+      baseDeck: history.present,
+      slideId: activeSlide.id,
+      siblings: activeSlide.elements,
+      ratio: workingDeck.ratio,
+      logicalHeight,
+    };
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
@@ -127,19 +165,19 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
     const move = (event: PointerEvent) => {
       const interaction = interactionRef.current;
       const rect = stageRef.current?.getBoundingClientRect();
-      if (!interaction || !rect || event.pointerId !== interaction.pointerId || !activeSlide) return;
+      if (!interaction || !rect || event.pointerId !== interaction.pointerId) return;
       const dx = (event.clientX - interaction.startClientX) / rect.width * 1080;
-      const dy = (event.clientY - interaction.startClientY) / rect.height * logicalHeight;
+      const dy = (event.clientY - interaction.startClientY) / rect.height * interaction.logicalHeight;
       if (interaction.kind === "move") {
-        const snapped = snapCardElementPosition(interaction.element, interaction.element.x + dx, interaction.element.y + dy, activeSlide.elements, workingDeck.ratio);
+        const snapped = snapCardElementPosition(interaction.element, interaction.element.x + dx, interaction.element.y + dy, interaction.siblings, interaction.ratio);
         setGuides(snapped.guides);
-        interaction.latestDeck = moveCardElement(history.present, activeSlide.id, interaction.element.id, snapped.x, snapped.y);
+        interaction.latestDeck = moveCardElement(interaction.baseDeck, interaction.slideId, interaction.element.id, snapped.x, snapped.y);
       } else if (interaction.kind === "resize" && interaction.handle) {
-        interaction.latestDeck = resizeCardElement(history.present, activeSlide.id, interaction.element.id, interaction.handle, dx, dy);
+        interaction.latestDeck = resizeCardElement(interaction.baseDeck, interaction.slideId, interaction.element.id, interaction.handle, dx, dy);
       } else {
         const startAngle = Math.atan2(interaction.startClientY - interaction.centerClientY, interaction.startClientX - interaction.centerClientX) * 180 / Math.PI;
         const nextAngle = Math.atan2(event.clientY - interaction.centerClientY, event.clientX - interaction.centerClientX) * 180 / Math.PI;
-        interaction.latestDeck = rotateCardElement(history.present, activeSlide.id, interaction.element.id, interaction.element.rotation + nextAngle - startAngle, event.shiftKey);
+        interaction.latestDeck = rotateCardElement(interaction.baseDeck, interaction.slideId, interaction.element.id, interaction.element.rotation + nextAngle - startAngle, event.shiftKey);
       }
       setPreviewDeck(interaction.latestDeck);
     };
@@ -147,7 +185,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
       const interaction = interactionRef.current;
       if (!interaction || event.pointerId !== interaction.pointerId) return;
       interactionRef.current = null;
-      if (interaction.latestDeck) commit(interaction.latestDeck);
+      if (interaction.latestDeck) commitRef.current(interaction.latestDeck);
       else setGuides([]);
     };
     window.addEventListener("pointermove", move);
@@ -158,15 +196,21 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
     };
-  }, [activeSlide, commit, history.present, logicalHeight, workingDeck.ratio]);
+  }, []);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!activeSlide || !selected || selected.locked) return;
+    if (!isCanvasShortcutTarget(event.target, stageRef.current)) return;
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
       const nextHistory = event.shiftKey ? redoCardCommand(history) : undoCardCommand(history);
       setHistory(nextHistory);
       onDeckChange(nextHistory.present);
+      return;
+    }
+    if (!activeSlide || !selected || selected.locked) return;
+    if (event.key === "Enter" && selected.type === "text") {
+      event.preventDefault();
+      setEditingTextId(selected.id);
       return;
     }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
@@ -212,7 +256,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
 
   if (!activeSlide) return null;
   return (
-    <section className={styles.editor} data-card-canvas-editor onKeyDown={onKeyDown} tabIndex={0} aria-label="카드 자유 배치 편집기">
+    <section className={styles.editor} data-card-canvas-editor onKeyDown={onKeyDown} aria-label="카드 자유 배치 편집기">
       <div className={styles.addToolbar} role="toolbar" aria-label="카드 요소 추가">
         <Button size="sm" onClick={() => add("text")}>글 추가</Button>
         <Button size="sm" onClick={() => fileInputRef.current?.click()}>사진 추가</Button>
@@ -230,14 +274,45 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
           {workingDeck.slides.map((slide) => <Button key={slide.id} size="sm" aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>{slide.order + 1}장</Button>)}
         </nav>
         <div className={styles.stageColumn}>
-          {selected ? <CardElementToolbar element={selected} onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, selected.id, patch))} onLayer={(direction) => apply((current) => moveCardElementLayer(current, activeSlide.id, selected.id, direction))} onDuplicate={() => duplicate(selected.id)} onDelete={() => { apply((current) => deleteCardElement(current, activeSlide.id, selected.id)); setSelectedId(null); }} /> : null}
-          <div ref={stageRef} className={styles.stage} data-card-stage onPointerDown={() => setSelectedId(null)}>
+          {selected ? <CardElementToolbar element={selected} onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, selected.id, patch))} onGeometryChange={(patch) => apply((current) => setCardElementGeometry(current, activeSlide.id, selected.id, patch))} onLayer={(direction) => apply((current) => moveCardElementLayer(current, activeSlide.id, selected.id, direction))} onDuplicate={() => duplicate(selected.id)} onDelete={() => { apply((current) => deleteCardElement(current, activeSlide.id, selected.id)); setSelectedId(null); }} /> : null}
+          <div ref={stageRef} className={styles.stage} data-card-stage tabIndex={0} aria-label="카드 편집 스테이지" onPointerDown={() => { setSelectedId(null); setEditingTextId(null); }}>
             <CardSlideScene model={model} renderMode="editor" />
             {activeSlide.elements.filter((element) => !element.hidden).map((element) => (
-              <div key={element.id} className={styles.selectionBox} data-element-selection={element.id} data-selected={selectedId === element.id} data-locked={element.locked} style={elementOverlayStyle(element, logicalHeight)} onPointerDown={(event) => beginInteraction(event, element, "move")}>
+              <div
+                key={element.id}
+                className={styles.selectionBox}
+                data-element-selection={element.id}
+                data-selected={selectedId === element.id}
+                data-locked={element.locked}
+                style={elementOverlayStyle(element, logicalHeight)}
+                tabIndex={0}
+                aria-label={`${element.name} 요소`}
+                onDoubleClick={(event) => {
+                  if (element.type !== "text" || element.locked) return;
+                  event.stopPropagation();
+                  setSelectedId(element.id);
+                  setEditingTextId(element.id);
+                }}
+                onPointerDown={(event) => {
+                  if (editingTextId === element.id) return;
+                  beginInteraction(event, element, "move");
+                }}
+              >
+                {editingTextId === element.id && element.type === "text" ? (
+                  <textarea
+                    ref={textEditorRef}
+                    className={styles.directTextEditor}
+                    aria-label="글 내용 직접 편집"
+                    value={element.text}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onChange={(event) => apply((current) => patchTextElement(current, activeSlide.id, element.id, { text: event.target.value }))}
+                    onBlur={() => setEditingTextId(null)}
+                  />
+                ) : null}
                 {selectedId === element.id && !element.locked ? <>
                   {RESIZE_HANDLES.map((handle) => <Button key={handle} size="sm" className={styles.resizeHandle} data-handle={handle} aria-label={`${handle} 크기 조절`} onPointerDown={(event) => beginInteraction(event, element, "resize", handle)} />)}
                   <Button size="sm" className={styles.rotationHandle} aria-label="회전" onPointerDown={(event) => beginInteraction(event, element, "rotate")} />
+                  {interactionRef.current?.kind === "rotate" ? <span className={styles.rotationBadge} aria-live="polite">{Math.round(element.rotation)}°</span> : null}
                 </> : null}
               </div>
             ))}

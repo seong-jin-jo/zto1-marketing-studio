@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { CardCanvasEditor } from "./CardCanvasEditor";
 
@@ -60,13 +60,13 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     const onChange = (next: CardDeckV3) => { current = next; };
     const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "제목" }));
-    const editor = screen.getByRole("region", { name: "카드 자유 배치 편집기" });
-    fireEvent.keyDown(editor, { key: "ArrowRight", shiftKey: true });
+    const stage = screen.getByLabelText("카드 편집 스테이지");
+    fireEvent.keyDown(stage, { key: "ArrowRight", shiftKey: true });
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
     expect(current.slides[0].elements[0].x).toBe(110);
     fireEvent.click(screen.getByRole("button", { name: "제목 잠금" }));
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
-    fireEvent.keyDown(editor, { key: "ArrowRight" });
+    fireEvent.keyDown(stage, { key: "ArrowRight" });
     expect(current.slides[0].elements[0].x).toBe(110);
   });
 
@@ -91,5 +91,56 @@ describe("CardCanvasEditor S1 자유 배치", () => {
 
     await waitFor(() => expect(screen.getByText("서버 최신본")).toBeInTheDocument());
     expect(screen.queryByText("첫 장")).not.toBeInTheDocument();
+  });
+
+  it("S1-R3-KEYBOARD-01 입력칸 키는 무시하고 선택 없이 스테이지 Ctrl+Z는 실행한다", () => {
+    let current = deck();
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "제목" }));
+    fireEvent.change(screen.getByLabelText("요소 너비"), { target: { value: "700" } });
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(current.slides[0].elements[0].width).toBe(700);
+
+    fireEvent.keyDown(screen.getByLabelText("요소 너비"), { key: "Backspace" });
+    expect(current.slides[0].elements).toHaveLength(1);
+    fireEvent.pointerDown(screen.getByLabelText("카드 편집 스테이지"));
+    fireEvent.keyDown(screen.getByLabelText("카드 편집 스테이지"), { key: "z", ctrlKey: true });
+    expect(current.slides[0].elements[0].width).toBe(600);
+  });
+
+  it("S1-R3-DIRECT-EDIT-01 더블클릭과 Enter로 글을 직접 편집하고 숫자로 크기·각도를 바꾼다", () => {
+    let current = deck();
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    const selection = screen.getByLabelText("제목 요소");
+    fireEvent.doubleClick(selection);
+    fireEvent.change(screen.getByLabelText("글 내용 직접 편집"), { target: { value: "직접 고친 글" } });
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect((current.slides[0].elements[0] as { text: string }).text).toBe("직접 고친 글");
+
+    fireEvent.blur(screen.getByLabelText("글 내용 직접 편집"));
+    fireEvent.keyDown(screen.getByLabelText("제목 요소"), { key: "Enter" });
+    expect(screen.getByLabelText("글 내용 직접 편집")).toBeInTheDocument();
+    fireEvent.blur(screen.getByLabelText("글 내용 직접 편집"));
+    fireEvent.change(screen.getByLabelText("요소 높이"), { target: { value: "2" } });
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("요소 각도"), { target: { value: "17" } });
+    expect(current.slides[0].elements[0]).toMatchObject({ height: 4, rotation: 17 });
+  });
+
+  it("S1-R3-POINTER-01 덱 변경마다 전역 포인터 이벤트를 다시 구독하지 않는다", () => {
+    let current = deck();
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const addEventListener = vi.spyOn(window, "addEventListener");
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    const subscriptions = () => addEventListener.mock.calls.filter(([type]) => type === "pointermove" || type === "pointerup").length;
+    const initialSubscriptions = subscriptions();
+
+    fireEvent.click(screen.getByRole("button", { name: "글 추가" }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+
+    expect(subscriptions()).toBe(initialSubscriptions);
+    addEventListener.mockRestore();
   });
 });

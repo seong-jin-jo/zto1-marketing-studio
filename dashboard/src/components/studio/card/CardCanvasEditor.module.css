@@ -97,6 +97,20 @@
 .selectionBox[data-selected="true"] { outline: var(--space-micro) solid var(--accent); outline-offset: calc(var(--space-micro) * -1); }
 .selectionBox[data-locked="true"] { cursor: not-allowed; }
 
+.directTextEditor {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  border: 0;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  padding: var(--stack-tight);
+  color: var(--text);
+  font: inherit;
+}
+
 .resizeHandle,
 .rotationHandle {
   position: absolute;
@@ -131,6 +145,7 @@
 .resizeHandle[data-handle="w"] { left: calc(var(--control-touch) / -2); top: calc(50% - var(--control-touch) / 2); cursor: ew-resize; }
 .rotationHandle { left: calc(50% - var(--control-touch) / 2); top: calc(var(--control-touch) * -1.25); cursor: grab; }
 .rotationHandle::before { content: ""; position: absolute; left: 50%; top: 75%; width: 1px; height: calc(var(--control-touch) / 2); background: var(--accent); }
+.rotationBadge { position: absolute; left: 50%; top: calc(var(--control-touch) * -2); translate: -50% 0; border-radius: var(--shape-pill); background: var(--text); padding: var(--space-micro) var(--stack-tight); color: var(--surface); font-size: var(--font-body-size); }
 
 .snapGuide { position: absolute; z-index: 500; pointer-events: none; background: var(--danger); }
 .snapGuide[data-axis="x"] { left: var(--snap-position); top: 0; bottom: 0; width: 1px; }
