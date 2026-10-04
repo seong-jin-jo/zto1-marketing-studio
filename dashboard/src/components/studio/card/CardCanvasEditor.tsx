@@ -231,8 +231,8 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
             {activeSlide.elements.filter((element) => !element.hidden).map((element) => (
               <div key={element.id} className={styles.selectionBox} data-element-selection={element.id} data-selected={selectedId === element.id} data-locked={element.locked} style={elementOverlayStyle(element, logicalHeight)} onPointerDown={(event) => beginInteraction(event, element, "move")}>
                 {selectedId === element.id && !element.locked ? <>
-                  {RESIZE_HANDLES.map((handle) => <button key={handle} type="button" className={styles.resizeHandle} data-handle={handle} aria-label={`${handle} 크기 조절`} onPointerDown={(event) => beginInteraction(event, element, "resize", handle)} />)}
-                  <button type="button" className={styles.rotationHandle} aria-label="회전" onPointerDown={(event) => beginInteraction(event, element, "rotate")} />
+                  {RESIZE_HANDLES.map((handle) => <Button key={handle} size="sm" className={styles.resizeHandle} data-handle={handle} aria-label={`${handle} 크기 조절`} onPointerDown={(event) => beginInteraction(event, element, "resize", handle)} />)}
+                  <Button size="sm" className={styles.rotationHandle} aria-label="회전" onPointerDown={(event) => beginInteraction(event, element, "rotate")} />
                 </> : null}
               </div>
             ))}
