@@ -1850,7 +1850,13 @@ export default function StudioPage() {
               // 최초 409에서 실패 직전 사용자 입력을 한 번만 보관한다. 사용자가 최신본을
               // 확인한 뒤 대기 중이던 저장이 다시 409를 받아도 현재 편집기(서버 본문)를
               // local로 재캡처하면 복구할 원문이 사라진다. 해결할 때까지 이 슬롯은 불변이다.
-              local: current?.local ?? { lines: [...local.lines], text: local.text, cardDeckV3 },
+              local: current?.local ?? {
+                lines: [...local.lines],
+                text: local.text,
+                // 이 요청이 실제로 보낸 덱을 보관한다. React state는 연속 편집 직후 한 렌더
+                // 늦을 수 있어 그것을 읽으면 409 재적용에서 마지막 조작 한 번이 사라진다.
+                cardDeckV3: persistedCardDeckV3 ?? cardDeckV3,
+              },
               // 후속 409가 더 새 서버판을 알렸으므로, 직전에 최신본을 보고 있었더라도
               // 이제 화면의 본문은 최신이 아니다. 사용자가 새 최신본을 다시 불러오게 한다.
               viewingLatest: false,

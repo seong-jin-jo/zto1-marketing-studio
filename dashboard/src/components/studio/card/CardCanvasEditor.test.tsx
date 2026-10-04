@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { CardCanvasEditor } from "./CardCanvasEditor";
@@ -76,5 +76,20 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "제목 오른쪽 이동" }));
     expect(current.slides[0].elements[0].x).toBe(110);
+  });
+
+  it("S1-R3-RELOAD-01 같은 revision이어도 외부 덱 내용이 바뀌면 최신본으로 history를 교체한다", async () => {
+    const original = deck();
+    const latest = structuredClone(original);
+    const text = latest.slides[0].elements[0];
+    if (text.type !== "text") throw new Error("fixture");
+    text.text = "서버 최신본";
+    const view = render(<CardCanvasEditor deck={original} onDeckChange={() => {}} />);
+    expect(screen.getByText("첫 장")).toBeInTheDocument();
+
+    view.rerender(<CardCanvasEditor deck={latest} onDeckChange={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText("서버 최신본")).toBeInTheDocument());
+    expect(screen.queryByText("첫 장")).not.toBeInTheDocument();
   });
 });
