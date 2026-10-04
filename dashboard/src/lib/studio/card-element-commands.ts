@@ -203,8 +203,8 @@ export function snapCardElementPosition(
   const stageHeight = CARD_LOGICAL_HEIGHT[ratio];
   const movingX = [x, x + element.width / 2, x + element.width];
   const movingY = [y, y + element.height / 2, y + element.height];
-  const candidatesX = [{ value: CARD_LOGICAL_WIDTH / 2, source: "stage" as const }];
-  const candidatesY = [{ value: stageHeight / 2, source: "stage" as const }];
+  const candidatesX: Array<{ value: number; source: "stage" | "element" }> = [{ value: CARD_LOGICAL_WIDTH / 2, source: "stage" }];
+  const candidatesY: Array<{ value: number; source: "stage" | "element" }> = [{ value: stageHeight / 2, source: "stage" }];
   siblings.filter((candidate) => candidate.id !== element.id && !candidate.hidden).forEach((candidate) => {
     candidatesX.push(
       { value: candidate.x, source: "element" },

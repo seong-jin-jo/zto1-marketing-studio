@@ -4,9 +4,9 @@ import type {
   CardDeckBrand,
   CardDeckCta,
   CardSlideCover,
-  CardTheme,
   HookType,
 } from "@/lib/studio/card-deck-contract";
+import type { CardTheme } from "@/lib/studio/text-card-image-theme";
 
 export const CARD_DECK_V3_CONTRACT_VERSION = "3.0" as const;
 export const CARD_DECK_V3_MAX_BYTES = 256 * 1024;

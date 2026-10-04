@@ -1,0 +1,82 @@
+.scene {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--card-stage-ratio);
+  container-type: inline-size;
+  overflow: hidden;
+  background: var(--card-stage-background);
+  color: var(--card-stage-foreground);
+  isolation: isolate;
+}
+
+.backgroundImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.baseFallback {
+  position: absolute;
+  inset: var(--space-region);
+  display: grid;
+  place-items: center;
+  padding: var(--pad-inset);
+  white-space: pre-wrap;
+  text-align: center;
+  font-size: 6cqw;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.element {
+  position: absolute;
+  left: var(--card-element-left);
+  top: var(--card-element-top);
+  width: var(--card-element-width);
+  height: var(--card-element-height);
+  z-index: var(--card-element-z);
+  opacity: var(--card-element-opacity);
+  transform: rotate(var(--card-element-rotation));
+  transform-origin: center;
+  overflow: hidden;
+}
+
+.text {
+  display: flex;
+  align-items: var(--card-text-vertical);
+  width: 100%;
+  height: 100%;
+  color: var(--card-text-color);
+  font-family: var(--font-sans-stack);
+  font-size: var(--card-text-size);
+  font-weight: var(--card-text-weight);
+  line-height: var(--card-text-leading);
+  letter-spacing: var(--card-text-tracking);
+  text-align: var(--card-text-align);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.media,
+.imagePlaceholder,
+.sticker,
+.logo,
+.rectangle,
+.ellipse,
+.line {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}
+
+.media { object-fit: cover; }
+.imagePlaceholder { background: var(--surface-2); color: var(--text-muted); font-size: 5cqw; }
+.sticker { color: var(--warning); font-size: 18cqw; line-height: 1; }
+.logo { background: var(--accent); color: var(--accent-fg); font-size: 5cqw; font-weight: 800; letter-spacing: .08em; }
+.rectangle,
+.ellipse { background: var(--card-shape-fill); border: var(--card-shape-stroke-width) solid var(--card-shape-stroke); border-radius: var(--card-shape-radius); }
+.ellipse { border-radius: var(--shape-pill); }
+.line { height: var(--card-shape-stroke-width); min-height: var(--space-micro); margin-block: auto; background: var(--card-shape-stroke); }
