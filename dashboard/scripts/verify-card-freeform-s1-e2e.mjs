@@ -30,6 +30,7 @@ function draft(includeCardDeckV3 = false) {
     editKind: "card",
     editLines: ["자유 배치 첫 장", "두 번째 카드", "저장하세요"],
     bodyRevision,
+    hasCardDeckV3: serverDeck != null,
     ...(includeCardDeckV3 ? { cardDeckV3: serverDeck, cardDeckV3SourceSnapshot: serverSourceSnapshot } : {}),
     status: "draft",
     savedAt: "2026-10-04T00:00:00.000Z",
