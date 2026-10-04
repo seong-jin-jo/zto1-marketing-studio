@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { withTenant } from "@/lib/db";
 import deckD100 from "./fixtures/deck-d100.v2.json";
+import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 
 const H = vi.hoisted(() => ({
   rows: [] as Array<Record<string, unknown>>,
@@ -30,6 +31,43 @@ beforeEach(() => {
 });
 
 describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () => {
+  it("S1-AC1 정상: cardDeckV3 요소 JSON과 투영 본문을 저장하고 다시 조회한다", async () => {
+    const cardDeckV3 = createPlainCardDeckV3(["자유 배치 첫 장", "저장하세요"], "deck_route_v3");
+    H.rows = [{ id: "draft-v3" }];
+    const { POST, GET } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "자유 배치", cardDeckV3 }),
+    }));
+    expect(response.status).toBe(200);
+    const savedPayload = H.jsonValues[0] as { cardDeckV3: unknown; editLines: string[] };
+    expect(savedPayload.cardDeckV3).toEqual(cardDeckV3);
+    expect(savedPayload.editLines).toEqual(["자유 배치 첫 장", "저장하세요"]);
+
+    H.rows = [{ id: "draft-v3", idea: "자유 배치", payload: savedPayload, status: "draft", updated_at: "2026-10-04T00:00:00Z" }];
+    const reloaded = await (await GET(new Request("http://localhost/api/studio/drafts"))).json();
+    expect(reloaded.drafts[0].cardDeckV3).toEqual(cardDeckV3);
+  });
+
+  it("S1-AC1 거절: 잘못된 cardDeckV3는 DB 접근 전에 막고 null은 기존 값을 보존한다", async () => {
+    vi.mocked(withTenant).mockClear();
+    const broken = createPlainCardDeckV3(["첫 장", "마지막"], "deck_route_bad");
+    broken.slides[0].elements[0].width = 0;
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const rejected = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST", body: JSON.stringify({ tenant_id: "tenant-1", cardDeckV3: broken }),
+    }));
+    expect(rejected.status).toBe(400);
+    expect((await rejected.json()).code).toBe("INVALID_ELEMENT_GEOMETRY");
+    expect(withTenant).not.toHaveBeenCalled();
+
+    H.rows = [{ id: "draft-v3-null" }];
+    const preserved = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST", body: JSON.stringify({ tenant_id: "tenant-1", cardDeckV3: null }),
+    }));
+    expect(preserved.status).toBe(200);
+    expect(Object.prototype.hasOwnProperty.call(H.jsonValues.at(-1) as object, "cardDeckV3")).toBe(false);
+  });
   it("정상 덱은 저장되고 editLines 가 투영으로 채워진다", async () => {
     H.rows = [{ id: "draft-deck-1" }];
     const { POST } = await import("@/app/api/studio/drafts/route");

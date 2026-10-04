@@ -318,11 +318,12 @@ const deckSchema = z.strictObject({
 
 function validationCode(issues: readonly z.ZodIssue[]): string {
   const message = issues[0]?.message ?? "카드 요소 계약이 올바르지 않습니다";
+  const field = String(issues[0]?.path.at(-1) ?? "");
   if (/층 순서/.test(message)) return "INVALID_ELEMENT_ORDER";
   if (/자르기/.test(message)) return "INVALID_CROP";
   if (/대체 텍스트/.test(message)) return "ALT_TEXT_REQUIRED";
   if (/장 순서|장 ID|첫 장/.test(message)) return "INVALID_SLIDE_SET";
-  if (/요소|px|소수점|수는/.test(message)) return "INVALID_ELEMENT_GEOMETRY";
+  if (["x", "y", "width", "height", "rotation", "opacity"].includes(field) || /요소|px|소수점|수는/.test(message)) return "INVALID_ELEMENT_GEOMETRY";
   if (/색/.test(message)) return "INVALID_COLOR";
   return "INVALID_CARD_DECK_V3";
 }
