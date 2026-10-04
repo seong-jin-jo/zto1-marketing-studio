@@ -1,3 +1,12 @@
+## 2026-10-04 09:41 KST 편집실 v2 S1 화면·저장 import chain 연결
+
+- handoff basis: 회장의 최신 지시대로 `51be2111` 이후 S1을 이어가며 push하지 않는다.
+- 구현: `StudioRooms`가 plain 카드에서 `CardCanvasEditor`를 실제 렌더한다. `StudioPage`는 `CardDeckV3`를 로컬 복원·초안 불러오기·800ms 자동저장에 연결하고, draft API는 `payload.cardDeckV3`를 v2와 별도 검증·저장·조회한다.
+- 충돌 복구: 본문 revision 409의 최신본과 최초 로컬 보관본에 v3 덱을 함께 담아 최신본 보기와 내 변경 재적용이 요소 JSON을 잃지 않는다.
+- 검증: 새 계약·command·render/editor와 직접 영향 route/page/StudioRooms 테스트 9파일 52건 통과. 전체 typecheck 첫 실행은 JSONValue 경계 3건만 실패했고 v2와 같은 검증 후 JSON 경계 캐스팅으로 수정했다. 재실행 전이므로 현재 타입 등급은 미검증이다.
+- 다음 실행: 이 저장 배선 단위를 커밋하고 v3 route round-trip 계약을 추가한 뒤 typecheck, 모든 import 관련 테스트, integrity·contract, 실제 Playwright 저장·새로고침을 실행한다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
 ## 2026-10-04 08:36 KST 편집실 v2 S1 카드 자유 배치 구현 착수
 
 - handoff basis: 회장이 이 세션에 직접 지정한 S1 과제와 버전핀 D-2026-10-04-1, `card-element-model.md`, `build-plan.md` S1·공통 완료 조건, `user-flow-mapping.md` S1 행, v71 prototype을 정본으로 삼는다. tmux `371:0.1`은 이 Codex worker 자신의 현재 pane으로 확인했고 별도 live handoff와 충돌하지 않는다.

@@ -3,6 +3,7 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
 import { resolveCurrentWork } from "@/lib/studio/current-work";
 import { validateCardDeck, CardDeckValidationError, deckProjection } from "@/lib/studio/card-deck-contract";
+import { cardDeckV3Projection, CardDeckV3ValidationError, validateCardDeckV3 } from "@/lib/studio/card-element-contract";
 import { validateVideoEdit, VideoEditValidationError, type VideoEdit } from "@/lib/studio/video-edit-contract";
 
 /** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
@@ -20,6 +21,7 @@ class StaleVideoEditRevisionError extends Error {
 interface LatestBodySnapshot {
   text: unknown | null;
   editLines: unknown | null;
+  cardDeckV3: unknown | null;
   bodyRevision: number;
 }
 
@@ -54,6 +56,7 @@ interface DraftRow {
     bodyRevision?: unknown;
     cardTextPositions?: unknown;
     cardDeck?: unknown;
+    cardDeckV3?: unknown;
     videoEdit?: unknown;
     titles?: unknown;
     captions?: unknown;
@@ -99,6 +102,7 @@ function flattenDraft(r: DraftRow) {
     bodyRevision: Number.isSafeInteger(r.payload?.bodyRevision) ? r.payload.bodyRevision : 0,
     cardTextPositions: r.payload?.cardTextPositions ?? null,
     cardDeck: r.payload?.cardDeck ?? null,
+    cardDeckV3: r.payload?.cardDeckV3 ?? null,
     videoEdit: r.payload?.videoEdit ?? null,
     titles: r.payload?.titles ?? {},
     captions: r.payload?.captions ?? {},
@@ -168,6 +172,7 @@ export async function POST(request: Request) {
     }, { status: 422, headers: { "Cache-Control": "no-store" } });
   }
   let cardDeckProjectedLines: string[] | null = null;
+  let cardDeckV3ProjectedLines: string[] | null = null;
   if (body.cardDeck !== undefined && body.cardDeck !== null) {
     const serialized = JSON.stringify(body.cardDeck);
     if (Buffer.byteLength(serialized, "utf8") > CARD_DECK_MAX_BYTES) {
@@ -188,6 +193,19 @@ export async function POST(request: Request) {
         rule,
         error: e instanceof Error ? e.message : "카드 덱을 확인해 주세요",
       }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
+  }
+  if (body.cardDeckV3 !== undefined && body.cardDeckV3 !== null) {
+    try {
+      validateCardDeckV3(body.cardDeckV3);
+      cardDeckV3ProjectedLines = cardDeckV3Projection(body.cardDeckV3);
+    } catch (error) {
+      const validation = error instanceof CardDeckV3ValidationError ? error : null;
+      return Response.json({
+        ok: false,
+        code: validation?.code ?? "INVALID_CARD_DECK_V3",
+        error: error instanceof Error ? error.message : "자유 배치 카드 덱을 확인해 주세요",
+      }, { status: validation?.code === "CARD_DECK_TOO_LARGE" ? 413 : 400, headers: { "Cache-Control": "no-store" } });
     }
   }
   if (body.videoEdit !== undefined && body.videoEdit !== null) {
@@ -238,6 +256,15 @@ export async function POST(request: Request) {
   } else if (Object.prototype.hasOwnProperty.call(body, "cardDeck") && body.cardDeck != null) {
     cardDeckPatch.cardDeck = body.cardDeck;
   }
+  // validateCardDeckV3를 통과한 JSON 트리지만 postgres의 JSONValue는 index signature가
+  // 없는 TypeScript interface를 받지 못한다. v2 cardDeck과 같은 검증 뒤 경계 캐스팅이다.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cardDeckV3Patch: { cardDeckV3?: any } = {};
+  if (body.clearCardDeckV3 === true) {
+    cardDeckV3Patch.cardDeckV3 = null;
+  } else if (Object.prototype.hasOwnProperty.call(body, "cardDeckV3") && body.cardDeckV3 != null) {
+    cardDeckV3Patch.cardDeckV3 = body.cardDeckV3;
+  }
   // videoEdit도 cardDeck과 같은 보존 규칙: 키가 없으면 payload 병합에서 빠져 기존 값을
   // 지키고, 명시 플래그 clearVideoEdit로만 지운다.
   // M7(2026-09-22 코드리뷰): `any` 대신 VideoEdit로 좁힌다. body.videoEdit는 위에서 이미
@@ -255,7 +282,9 @@ export async function POST(request: Request) {
   // 같은 보존 규칙으로 옮긴다: cardDeck을 보냈으면(투영 갱신) 또는 body에 editLines 키가
   // 명시로 있으면만 payload에 싣고, 둘 다 없으면 키 자체를 빼 기존 값을 지킨다.
   const editLinesPatch: { editLines?: string[] | null } = {};
-  if (cardDeckProjectedLines !== null) {
+  if (cardDeckV3ProjectedLines !== null) {
+    editLinesPatch.editLines = cardDeckV3ProjectedLines;
+  } else if (cardDeckProjectedLines !== null) {
     editLinesPatch.editLines = cardDeckProjectedLines;
   } else if (Object.prototype.hasOwnProperty.call(body, "editLines")) {
     editLinesPatch.editLines = body.editLines ?? null;
@@ -282,6 +311,7 @@ export async function POST(request: Request) {
     selectedAccounts: body.selectedAccounts ?? {},
     reviewQueueId: body.reviewQueueId ?? null,
     ...cardDeckPatch,
+    ...cardDeckV3Patch,
     ...videoEditPatch,
     ...editLinesPatch,
   };
@@ -340,11 +370,13 @@ export async function POST(request: Request) {
           body_revision: number | null;
           text: unknown | null;
           edit_lines: unknown | null;
+          card_deck_v3: unknown | null;
           revision: number | null;
         }[]>`
           SELECT id, COALESCE((payload->>'bodyRevision')::int, 0) AS body_revision,
             payload->'text' AS text,
             payload->'editLines' AS edit_lines,
+            payload->'cardDeckV3' AS card_deck_v3,
             (payload->'videoEdit'->>'revision')::int AS revision
           FROM drafts WHERE id = ${body.id} AND tenant_id = ${tenantId}`;
         if (existsRow) {
@@ -353,6 +385,7 @@ export async function POST(request: Request) {
             throw new StaleBodyRevisionError(serverBodyRevision, bodyBaseRevision, {
               text: existsRow.text,
               editLines: existsRow.edit_lines,
+              cardDeckV3: existsRow.card_deck_v3,
               bodyRevision: serverBodyRevision,
             });
           }

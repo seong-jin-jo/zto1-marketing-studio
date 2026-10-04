@@ -39,6 +39,47 @@ const clone = <T,>(value: T): T => structuredClone(value);
 const round = (value: number) => Math.round(value * 1_000) / 1_000;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+export function createPlainCardDeckV3(lines: string[], id = `deck_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`): CardDeckV3 {
+  const source = lines.length >= 2 ? lines : [lines[0] || "첫 장", "저장하고 다시 확인하세요"];
+  return {
+    contract_version: "3.0",
+    id,
+    template: "plain",
+    ratio: "4:5",
+    revision: 0,
+    theme: { background: "#FFF9F0", foreground: "#111111", accent: "#2563EB" },
+    brand: { display_name: "OSMU", handle: null },
+    hook_type: "pain",
+    cta: { keyword: "정리본", comment_example: "정리본을 남겨 주세요", save_reason: "나중에 다시 확인하세요" },
+    slides: source.slice(0, 11).map((line, index, all) => ({
+      id: `slide_${id}_${index}`,
+      order: index,
+      role: index === 0 ? "cover" : index === all.length - 1 ? "cta" : "body",
+      content_state: line.trim() ? "filled" : "empty",
+      background: { kind: "solid", color: index === all.length - 1 ? "#111111" : "#FFF9F0" },
+      base: { kind: "plain", lines: [line] },
+      elements: [{
+        ...createDefaultCardElement("text", { id: `el_text_${id}_${index}` }, 0),
+        text: line,
+        x: 120,
+        y: 300,
+        width: 840,
+        height: 500,
+        style: {
+          font_family: "Pretendard Variable",
+          font_size: index === 0 ? 76 : 60,
+          font_weight: 700,
+          line_height: 1.2,
+          letter_spacing: 0,
+          color: index === all.length - 1 ? "#FFFFFF" : "#111111",
+          align: "center",
+          vertical_align: "middle",
+        },
+      }],
+    })) as CardDeckV3["slides"],
+  };
+}
+
 function normalizeZ(elements: CardElement[]): CardElement[] {
   return elements.map((element, index) => ({ ...element, z_index: index }));
 }

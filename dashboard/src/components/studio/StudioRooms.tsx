@@ -7,6 +7,8 @@ import { EditPreview, type CardTextPosition } from "./EditPreview";
 import { EditOutline } from "./EditOutline";
 import { CardDeckPanel, CardStripThumbnail, elementToSegments, getEditableSelectionOffsets, restoreSelectionRange, segmentsToHtml } from "./BubbleEditor";
 import type { CardDeck, Segment } from "@/lib/studio/card-deck-contract";
+import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
+import { CardCanvasEditor } from "./card/CardCanvasEditor";
 import { toggleSegmentsBold } from "@/lib/studio/card-deck-ops";
 import { deckProjection, applyProjection } from "@/lib/studio/card-deck-contract";
 import { VideoEditor } from "./VideoEditor";
@@ -1691,6 +1693,8 @@ interface EditRoomProps {
    */
   cardDeck?: CardDeck | null;
   onCardDeckChange?: (deck: CardDeck) => void;
+  cardDeckV3?: CardDeckV3 | null;
+  onCardDeckV3Change?: (deck: CardDeckV3) => void;
   /**
    * 영상 편집 v1(세션맥락 과업 B). 있으면 `kind==="video"` 편집 워크벤치 위에
    * `VideoEditor`(후킹 CTA·댓글 오버레이·자막 기반 편집·음성 변경)를 얹는다. 기존
@@ -1998,6 +2002,8 @@ export function EditRoom({
   onBodyConflictReapply,
   cardDeck = null,
   onCardDeckChange,
+  cardDeckV3 = null,
+  onCardDeckV3Change,
   videoEdit = null,
   onVideoEditChange,
 }: EditRoomProps) {
@@ -2215,7 +2221,11 @@ export function EditRoom({
               <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
-              {kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
+              {kind === "card" && cardDeckV3 && onCardDeckV3Change ? (
+                <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-v3-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
+                  <CardCanvasEditor deck={cardDeckV3} onDeckChange={onCardDeckV3Change} />
+                </div>
+              ) : kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                   <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-card-deck-editor-note>
                     말풍선 카드뉴스는 직접 편집이 기본입니다. 여기서 고친 내용은 자동 저장됩니다.
