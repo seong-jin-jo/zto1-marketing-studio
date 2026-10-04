@@ -29,6 +29,8 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(execute).toContain('status: "blocked"');
     expect(studio).toContain("showSchedule && activeWorkspace && !cardDeckV3");
     expect(studio).toContain("대기 중인 예약이 있습니다");
+    expect(studio).toContain("자동 재개되지 않으므로 다시 예약해야 합니다");
+    expect(read("db/schema.sql")).toContain("scheduled | processing | blocked | published");
   });
 
   it("S1-R5-QUEUE-01 큐 진입 경로를 전수 열거하고 모두 공통 하위 안전문으로 닫는다", () => {

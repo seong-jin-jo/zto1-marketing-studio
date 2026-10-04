@@ -386,7 +386,7 @@ CREATE TABLE IF NOT EXISTS schedules (
   draft_id      UUID,                          -- 원 초안(선택)
   platforms     TEXT[],                        -- 발행 대상 채널 목록
   scheduled_at  TIMESTAMPTZ NOT NULL,          -- 예약 발행 시각
-  status        TEXT NOT NULL DEFAULT 'scheduled', -- scheduled | processing | published | partial | uncertain | failed | canceled
+  status        TEXT NOT NULL DEFAULT 'scheduled', -- scheduled | processing | blocked | published | partial | uncertain | failed | canceled
   payload       JSONB,                         -- 발행 페이로드 스냅샷
   created_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

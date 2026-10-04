@@ -4127,7 +4127,7 @@ export default function StudioPage() {
           const hasPendingSchedule = data?.schedules?.some((schedule) => schedule.draftId === currentDraftId
             && (schedule.status === "scheduled" || schedule.status === "processing"));
           if (hasPendingSchedule) {
-            showToast("이 작업물에 대기 중인 예약이 있습니다. 자유 배치 결과는 발행할 수 없어 예약 시각에도 보류됩니다.", "error");
+            showToast("이 작업물에 대기 중인 예약이 있습니다. 자유 배치 결과는 예약 시각에도 보류되며, 기본 편집으로 돌아가도 자동 재개되지 않으므로 다시 예약해야 합니다.", "error");
           }
         })
         .catch(() => {
