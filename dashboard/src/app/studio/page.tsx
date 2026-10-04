@@ -718,6 +718,12 @@ export default function StudioPage() {
   const [cardDeck, setCardDeck] = useState<CardDeck | null>(null);
   const [cardDeckV3, setCardDeckV3] = useState<CardDeckV3 | null>(null);
   const [cardDeckV3SourceSnapshot, setCardDeckV3SourceSnapshot] = useState<CardDeckV3SourceSnapshot | null>(null);
+  const cardDeckV3Ref = useRef<CardDeckV3 | null>(null);
+  const cardDeckV3HydratedDraftRef = useRef<string | null>(null);
+  const cardDeckV3EditGenerationRef = useRef(0);
+  const cardDeckV3SavePendingGenerationRef = useRef<number | null>(null);
+  const cardDeckV3DirtyRef = useRef(false);
+  cardDeckV3Ref.current = cardDeckV3;
   // 영상 편집 v1(세션맥락 과업 B). 있으면 편집실이 VideoEditor를 그린다.
   const [videoEdit, setVideoEdit] = useState<VideoEdit | null>(null);
   const [editSavedAt, setEditSavedAt] = useState("");
@@ -2930,7 +2936,8 @@ export default function StudioPage() {
     // MINOR-g 근본원인: 초안을 불러오면 그 초안이 저장했던 체크 상태가 아무 표시 없이
     // 되살아난다. "지금 내가 고른 것"처럼 보이면 안 되므로 복원임을 배지로 남긴다.
     setRestoredSelectionNotice(Boolean(d.includes) && Object.values(d.includes as Record<string, boolean>).some(Boolean));
-    setDraftId(d.id as string);
+    const loadedDraftId = d.id as string;
+    setDraftId(loadedDraftId);
     const savedReconciliations = normalizePublishReconciliations(d.publishReconciliations ?? d.publishReconciliation);
     setPublishReconciliations(savedReconciliations);
     setReconciliationError(null);
@@ -2958,7 +2965,14 @@ export default function StudioPage() {
     });
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
     setCardDeck((d.cardDeck as CardDeck) || null);
-    setCardDeckV3((d.cardDeckV3 as CardDeckV3) || null);
+    const includesCardDeckV3 = Object.prototype.hasOwnProperty.call(d, "cardDeckV3");
+    const loadedCardDeckV3 = includesCardDeckV3 ? (d.cardDeckV3 as CardDeckV3) || null : null;
+    setCardDeckV3(loadedCardDeckV3);
+    cardDeckV3Ref.current = loadedCardDeckV3;
+    cardDeckV3HydratedDraftRef.current = includesCardDeckV3 ? loadedDraftId : null;
+    cardDeckV3EditGenerationRef.current = 0;
+    cardDeckV3SavePendingGenerationRef.current = null;
+    cardDeckV3DirtyRef.current = false;
     setCardDeckV3SourceSnapshot((d.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null);
     setVideoEdit((d.videoEdit as VideoEdit) || null);
     setReviewQueueId((d.reviewQueueId as string) || null);
@@ -2981,12 +2995,35 @@ export default function StudioPage() {
     );
     return loadedEditKind;
   }
-  function resumeCurrentWork() {
+  async function fetchDraftDetail(draftToLoad: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+    const requestedDraftId = typeof draftToLoad.id === "string" ? draftToLoad.id : "";
+    const tenantId = activeWorkspaceIdRef.current;
+    if (!requestedDraftId || !tenantId) return null;
+    try {
+      const response = await fetch(`/api/studio/drafts?tenant_id=${encodeURIComponent(tenantId)}&id=${encodeURIComponent(requestedDraftId)}`, { headers: authHeaders() });
+      if (!response.ok) return null;
+      const body = await response.json().catch(() => null) as { draft?: Record<string, unknown> } | null;
+      return body?.draft ?? null;
+    } catch {
+      return null;
+    }
+  }
+  async function loadDraftDetail(draftToLoad: Record<string, unknown>): Promise<{ kind: EditContentKind | null } | null> {
+    const detail = await fetchDraftDetail(draftToLoad);
+    if (!detail) {
+      showToast("작업물의 최신 편집 내용을 불러오지 못했습니다. 기존 내용을 덮지 않고 멈췄습니다.", "error");
+      return null;
+    }
+    return { kind: loadDraft(detail) };
+  }
+  async function resumeCurrentWork() {
     const current = hist?.currentWork;
     if (!current) return;
     const draft = hist.drafts.find((item) => item.id === current.draftId);
     if (!draft) return;
-    const loadedEditKind = loadDraft(draft);
+    const loaded = await loadDraftDetail(draft);
+    if (!loaded) return;
+    const loadedEditKind = loaded.kind;
     if (current.stage === "performance") {
       window.location.assign("/performance");
       return;
@@ -3006,12 +3043,15 @@ export default function StudioPage() {
     if (!requestedDraftId || publishReturnRequest || commentHandoffLoaded.current === requestedDraftId || !hist?.drafts) return;
     const requestedDraft = hist.drafts.find((draft) => draft.id === requestedDraftId);
     if (!requestedDraft) return;
-    loadDraft(requestedDraft);
-    // 댓글 인계는 편집실로, 발행 복귀는 요청 주소가 정한 방으로 남긴다. room이 없거나
-    // create로 들어온 일반 초안 딥링크는 작업물을 바로 다듬을 수 있게 편집실로 연다.
-    const requestedRoom = new URLSearchParams(window.location.search).get("room");
-    if (sourceCommentId || !requestedRoom || requestedRoom === "create") setActiveRoom("edit");
-    commentHandoffLoaded.current = requestedDraftId;
+    void (async () => {
+      const loaded = await loadDraftDetail(requestedDraft);
+      if (!loaded) return;
+      // 댓글 인계는 편집실로, 발행 복귀는 요청 주소가 정한 방으로 남긴다. room이 없거나
+      // create로 들어온 일반 초안 딥링크는 작업물을 바로 다듬을 수 있게 편집실로 연다.
+      const requestedRoom = new URLSearchParams(window.location.search).get("room");
+      if (sourceCommentId || !requestedRoom || requestedRoom === "create") setActiveRoom("edit");
+      commentHandoffLoaded.current = requestedDraftId;
+    })();
   }, [hist?.drafts, publishReturnRequest, setActiveRoom]);
   const publishReturnLoaded = useRef<string | null>(null);
   // 카드뉴스 v2 덱 연산 후 800ms 디바운스 자동저장이 쓰는 타이머(설계 §5 F4, onCardDeckChange
@@ -3040,7 +3080,11 @@ export default function StudioPage() {
   useEffect(() => {
     const requestedDraftId = draftId;
     const requestedTenantId = activeWorkspace?.id ?? null;
-    if (!requestedDraftId || !requestedTenantId) return;
+    if (!requestedDraftId || !requestedTenantId
+      || cardDeckV3HydratedDraftRef.current === requestedDraftId
+      || cardDeckV3Ref.current !== null
+      || cardDeckV3DirtyRef.current
+      || cardDeckV3SavePendingGenerationRef.current !== null) return;
     const controller = new AbortController();
     void (async () => {
       try {
@@ -3049,11 +3093,19 @@ export default function StudioPage() {
           signal: controller.signal,
         });
         if (!response.ok) return;
-        const data = await response.json().catch(() => null) as { draft?: { cardDeckV3?: CardDeckV3 | null } } | null;
+        const data = await response.json().catch(() => null) as { draft?: { cardDeckV3?: CardDeckV3 | null; cardDeckV3SourceSnapshot?: CardDeckV3SourceSnapshot | null } } | null;
         if (controller.signal.aborted
           || draftIdRef.current !== requestedDraftId
-          || activeWorkspaceIdRef.current !== requestedTenantId) return;
-        setCardDeckV3(data?.draft?.cardDeckV3 ?? null);
+          || activeWorkspaceIdRef.current !== requestedTenantId
+          || cardDeckV3HydratedDraftRef.current === requestedDraftId
+          || cardDeckV3Ref.current !== null
+          || cardDeckV3DirtyRef.current
+          || cardDeckV3SavePendingGenerationRef.current !== null) return;
+        const serverDeck = data?.draft?.cardDeckV3 ?? null;
+        setCardDeckV3(serverDeck);
+        cardDeckV3Ref.current = serverDeck;
+        setCardDeckV3SourceSnapshot(data?.draft?.cardDeckV3SourceSnapshot ?? null);
+        cardDeckV3HydratedDraftRef.current = requestedDraftId;
       } catch {
         // 목록의 기존 편집 데이터는 유지한다. 네트워크 복구 뒤 새로고침하면 단건 조회를
         // 다시 시도하며, 실패를 null 덮어쓰기로 오인하지 않는다.
@@ -3764,13 +3816,14 @@ export default function StudioPage() {
                 key={String((draft as { id?: unknown }).id ?? "")}
                 type="button"
                 data-work-item={String((draft as { id?: unknown }).id ?? "")}
-                onClick={() => {
+                onClick={() => { void (async () => {
                   const room = draftLandingRoom(draft as unknown as Record<string, unknown>);
-                  loadDraft(draft as unknown as Record<string, unknown>);
+                  const loaded = await loadDraftDetail(draft as unknown as Record<string, unknown>);
+                  if (!loaded) return;
                   setActiveRoom(room);
                   setShowWorks(false);
                   showToast(`${ROOM_LABEL[room]}에서 이어 작업합니다`, "success");
-                }}
+                })(); }}
                 className="flex min-h-control-touch w-full flex-wrap items-center gap-stack rounded-control border border-border bg-surface-2 px-stack py-stack-tight text-left hover:bg-surface"
               >
                 <b className="min-w-0 flex-1 truncate text-body-sm text-text">{(draft as { idea?: string }).idea || "제목 없는 작업물"}</b>
@@ -3823,17 +3876,17 @@ export default function StudioPage() {
         onTopicChange={setIdea}
         onOpenLearning={() => setShowWizard(true)}
         onCandidateSelect={chooseCandidate}
-        onOpenEditor={(draftId) => {
+        onOpenEditor={(draftId) => { void (async () => {
           // 설계 §6.1 "201 batch → 편집실 진입(draft 로드)" 계약. draftId 가 있으면(방금
           // 카톡 말풍선 카드뉴스 9장을 확정) 그 초안을 실어 넣고 연다 — 안 그러면
           // 회원이 돈을 내고 만든 덱이 편집실에서 안 보인다(코드리뷰 2026-09-22 M4).
           let loadedEditKind: EditContentKind | null = null;
           if (draftId) {
             const draft = hist?.drafts.find((d) => d.id === draftId);
-            if (draft) loadedEditKind = loadDraft(draft);
+            if (draft) loadedEditKind = (await loadDraftDetail(draft))?.kind ?? null;
           }
           changeRoom("edit", loadedEditKind ?? editKind);
-        }}
+        })(); }}
         onDerivationSucceeded={async () => {
           // 확정 성공 직후 초안 목록을 재검증해야 cardDeckByDraftId 가 방금 만든 덱을
           // 실제로 찾는다 — 안 하면 탭 포커스가 바뀔 때까지 썸네일이 안 뜬다
@@ -3923,15 +3976,26 @@ export default function StudioPage() {
 
   function onCardDeckV3Change(nextDeck: CardDeckV3) {
     setCardDeckV3(nextDeck);
+    cardDeckV3Ref.current = nextDeck;
+    cardDeckV3DirtyRef.current = true;
+    const editGeneration = cardDeckV3EditGenerationRef.current + 1;
+    cardDeckV3EditGenerationRef.current = editGeneration;
     replaceEditLines(cardDeckV3Projection(nextDeck));
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
     cardDeckAutosaveTimer.current = setTimeout(() => {
+      cardDeckV3SavePendingGenerationRef.current = editGeneration;
       save("draft", publishReconciliations, draftIdRef.current, img, vid, null, null, nextDeck)
         .then(() => {
+          if (cardDeckV3EditGenerationRef.current === editGeneration) {
+            cardDeckV3DirtyRef.current = false;
+            cardDeckV3HydratedDraftRef.current = draftIdRef.current;
+          }
+          if (cardDeckV3SavePendingGenerationRef.current === editGeneration) cardDeckV3SavePendingGenerationRef.current = null;
           setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
           setCardDeckAutosaveError("");
         })
         .catch((error) => {
+          if (cardDeckV3SavePendingGenerationRef.current === editGeneration) cardDeckV3SavePendingGenerationRef.current = null;
           if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "BODY_STALE_REVISION") return;
           setCardDeckAutosaveError(extractApiErrorMessage(error, "자유 배치 카드를 자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
         });
@@ -3966,15 +4030,24 @@ export default function StudioPage() {
     replaceEditLines(snapshot.editLines);
     setCardTextPositions(snapshot.cardTextPositions);
     setCardDeckV3(null);
+    cardDeckV3Ref.current = null;
+    cardDeckV3DirtyRef.current = true;
+    const returnGeneration = cardDeckV3EditGenerationRef.current + 1;
+    cardDeckV3EditGenerationRef.current = returnGeneration;
+    cardDeckV3SavePendingGenerationRef.current = returnGeneration;
     setCardDeckV3SourceSnapshot(null);
     try {
       await save(
         "draft", publishReconciliations, draftIdRef.current, img, vid, null, null, null,
         "tail", pub, { clear: true, sourceSnapshot: null, cardTextPositions: snapshot.cardTextPositions },
       );
+      cardDeckV3DirtyRef.current = false;
+      cardDeckV3HydratedDraftRef.current = draftIdRef.current;
+      cardDeckV3SavePendingGenerationRef.current = null;
       setCardDeckAutosaveError("");
       showToast("자유 배치 전 기본 편집으로 돌아왔습니다.", "success");
     } catch (error) {
+      cardDeckV3SavePendingGenerationRef.current = null;
       setCardDeckAutosaveError(extractApiErrorMessage(error, "기본 편집 복원을 서버에 저장하지 못했습니다. 화면의 복원 내용은 유지했습니다."));
     }
   }

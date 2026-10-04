@@ -16,6 +16,9 @@ let bodyRevision = 0;
 let posts = [];
 let serverDeck = null;
 let expectedConflictCount = 0;
+let detailGets = 0;
+let delayNextV3Save = false;
+let releaseDelayedV3Save = null;
 
 fs.mkdirSync(outputDir, { recursive: true });
 
@@ -76,11 +79,19 @@ await context.route("**/api/**", async (route) => {
   if (pathname === "/api/me") return json(route, { isOperator: false, tenant: { id: workspaceId, slug: "s1", name: "S1 실구동", status: "active" } });
   if (pathname === "/api/studio/drafts") {
     if (request.method() !== "POST") {
-      if (new URL(request.url()).searchParams.has("id")) return json(route, { draft: draft(true) });
+      if (new URL(request.url()).searchParams.has("id")) {
+        detailGets += 1;
+        return json(route, { draft: draft(true) });
+      }
       return json(route, { drafts: [draft()], currentWork: null });
     }
     const body = JSON.parse(request.postData() || "{}");
     posts.push(body);
+    if (body.cardDeckV3 && delayNextV3Save) {
+      delayNextV3Save = false;
+      await new Promise((resolve) => { releaseDelayedV3Save = resolve; });
+      releaseDelayedV3Save = null;
+    }
     if (body.bodyBaseRevision !== bodyRevision) {
       expectedConflictCount += 1;
       return json(route, { ok: false, code: "BODY_STALE_REVISION", latestBody: { text: null, editLines: draft().editLines, cardDeckV3: serverDeck, bodyRevision } }, 409);
@@ -163,6 +174,25 @@ try {
   const restoredRotation = await page.locator(`[data-element-selection="${primaryElementId}"]`).evaluate((node) => getComputedStyle(node).getPropertyValue("--selection-rotation").trim());
   if (restoredRotation !== `${savedElement.rotation}deg`) throw new Error(`새로고침 뒤 회전값이 다릅니다: ${restoredRotation}`);
 
+  const detailGetsBeforeReselect = detailGets;
+  await page.getByRole("button", { name: /작업물 전체/ }).click();
+  await page.locator(`[data-work-item="${draftId}"]`).click();
+  await page.locator("[data-card-canvas-editor]").waitFor({ state: "visible" });
+  if (detailGets <= detailGetsBeforeReselect) throw new Error("같은 초안 재선택이 단건 조회를 직접 호출하지 않았습니다");
+  if (await page.locator("[data-element-list-item]").count() < 6) throw new Error("같은 초안 재선택 뒤 서버 v3 덱이 사라졌습니다");
+
+  delayNextV3Save = true;
+  const postsBeforeContinuousEdit = posts.length;
+  await primaryListItem.getByRole("button", { name: "글", exact: true }).click();
+  await page.getByLabel("요소 너비").fill("901");
+  await waitUntil(() => posts.length > postsBeforeContinuousEdit && releaseDelayedV3Save !== null, 15_000, "첫 저장 응답을 지연할 수 없습니다");
+  await page.getByLabel("요소 높이").fill("541");
+  releaseDelayedV3Save();
+  await waitUntil(() => {
+    const element = serverDeck?.slides?.[0]?.elements?.find((candidate) => candidate.id === primaryElementId);
+    return element?.width === 901 && element?.height === 541;
+  }, 15_000, "첫 저장 응답 전후 연속 편집이 최종 저장 JSON에 남지 않았습니다");
+
   bodyRevision += 1;
   await primaryListItem.getByRole("button", { name: "글", exact: true }).click();
   await page.getByLabel("요소 너비").fill("777");
@@ -205,9 +235,9 @@ try {
   fs.writeFileSync(path.join(outputDir, "s1-freeform-measure-fixture.html"), measurementFixture);
 
   fs.writeFileSync(path.join(outputDir, "s1-freeform-result.json"), JSON.stringify({
-    result: "PASS", posts: posts.length, bodyRevision, elementTypes: [...types].sort(), savedElement, restoredRotation, restoredImage: true, conflictReapplied: true, expectedConflicts: expectedConflictCount, mobile: overflow, consoleErrors: unexpectedErrors.length,
+    result: "PASS", posts: posts.length, bodyRevision, detailGets, continuousEditPreserved: true, elementTypes: [...types].sort(), savedElement, restoredRotation, restoredImage: true, conflictReapplied: true, expectedConflicts: expectedConflictCount, mobile: overflow, consoleErrors: unexpectedErrors.length,
   }, null, 2));
-  console.log(JSON.stringify({ result: "PASS", posts: posts.length, bodyRevision, elementTypes: [...types].sort(), savedElement, restoredRotation, restoredImage: true, conflictReapplied: true, expectedConflicts: expectedConflictCount, mobile: overflow, consoleErrors: unexpectedErrors.length }, null, 2));
+  console.log(JSON.stringify({ result: "PASS", posts: posts.length, bodyRevision, detailGets, continuousEditPreserved: true, elementTypes: [...types].sort(), savedElement, restoredRotation, restoredImage: true, conflictReapplied: true, expectedConflicts: expectedConflictCount, mobile: overflow, consoleErrors: unexpectedErrors.length }, null, 2));
 } finally {
   await browser.close();
 }
