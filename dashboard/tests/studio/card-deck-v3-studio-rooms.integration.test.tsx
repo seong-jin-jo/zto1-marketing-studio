@@ -50,7 +50,7 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
       asset_id: "8f6a04d2c911.png", alt: "새로고침 뒤 사진", decorative: false, fit: "cover",
       crop: { x: 0, y: 0, width: 1, height: 1 }, corner_radius: 0,
     });
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, file: "/api/images/deliver/renewed" }) }) as Response);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({ ok: true, json: async () => ({ ok: true, file: "/api/images/deliver/renewed" }) }) as Response);
     vi.stubGlobal("fetch", fetchMock);
 
     render(<EditRoom workspaceId="tenant-s1" kind="card" lines={["첫 장", "마지막 장"]} onLinesChange={() => {}} cardDeckV3={deck} onCardDeckV3Change={() => {}} />);
