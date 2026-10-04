@@ -722,6 +722,7 @@ export default function StudioPage() {
   const cardDeckV3HydratedDraftRef = useRef<string | null>(null);
   const cardDeckV3EditGenerationRef = useRef(0);
   const cardDeckV3SavePendingGenerationRef = useRef<number | null>(null);
+  const cardDeckV3PendingSourceSnapshotRef = useRef<CardDeckV3SourceSnapshot | null>(null);
   const cardDeckV3DirtyRef = useRef(false);
   cardDeckV3Ref.current = cardDeckV3;
   // 영상 편집 v1(세션맥락 과업 B). 있으면 편집실이 VideoEditor를 그린다.
@@ -1793,6 +1794,7 @@ export default function StudioPage() {
         && activeWorkspaceIdRef.current === saveTenantId;
       let currentDraftId = persistedDraftId ?? (sameDocumentAtStart ? draftIdRef.current : null);
       let savedDraftId: string | undefined;
+      let includeSourceSnapshot = Object.prototype.hasOwnProperty.call(cardDeckV3Options, "sourceSnapshot");
 
       for (;;) {
         const sameDocument = editDocumentGenerationRef.current === saveDocumentGeneration
@@ -1835,7 +1837,7 @@ export default function StudioPage() {
             cardDeck: persistedCardDeck,
             cardDeckV3: persistedCardDeckV3,
             clearCardDeckV3: cardDeckV3Options.clear || undefined,
-            ...(Object.prototype.hasOwnProperty.call(cardDeckV3Options, "sourceSnapshot")
+            ...(includeSourceSnapshot
               ? { cardDeckV3SourceSnapshot: cardDeckV3Options.sourceSnapshot }
               : {}),
             videoEdit: safeVideoEdit,
@@ -1927,6 +1929,13 @@ export default function StudioPage() {
         }
         savedDraftId = r?.id ?? savedDraftId;
         currentDraftId = r?.id ?? currentDraftId;
+        if (includeSourceSnapshot) {
+          includeSourceSnapshot = false;
+          if (cardDeckV3Options.sourceSnapshot !== null
+            && cardDeckV3PendingSourceSnapshotRef.current === cardDeckV3Options.sourceSnapshot) {
+            cardDeckV3PendingSourceSnapshotRef.current = null;
+          }
+        }
 
         // B-2(4차 재리뷰 BLOCKER): 첫 저장으로 받은 id는 state보다 ref에 먼저 반영해
         // 같은 직렬 큐의 다음 저장이 중복 초안을 만들지 않게 한다.
@@ -3995,6 +4004,9 @@ export default function StudioPage() {
     nextDeck: CardDeckV3,
     options: { sourceSnapshot?: CardDeckV3SourceSnapshot | null } = {},
   ) {
+    if (Object.prototype.hasOwnProperty.call(options, "sourceSnapshot") && options.sourceSnapshot) {
+      cardDeckV3PendingSourceSnapshotRef.current = options.sourceSnapshot;
+    }
     setCardDeckV3(nextDeck);
     cardDeckV3Ref.current = nextDeck;
     cardDeckV3DirtyRef.current = true;
@@ -4004,8 +4016,14 @@ export default function StudioPage() {
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
     cardDeckAutosaveTimer.current = setTimeout(() => {
       cardDeckV3SavePendingGenerationRef.current = editGeneration;
-      const saveOptions = Object.prototype.hasOwnProperty.call(options, "sourceSnapshot")
-        ? { sourceSnapshot: options.sourceSnapshot }
+      // 진입 직후 800ms 안에 요소를 조작하면 다음 편집이 진입 타이머를 취소한다. 원문
+      // 스냅샷을 타이머 지역값으로만 들고 있으면 첫 저장에서 영원히 빠진다. 서버가 실제로
+      // 한 번 수락할 때까지 ref에 보관하되, 수락 뒤 일반 자동저장에는 키를 다시 싣지 않는다.
+      const pendingSourceSnapshot = Object.prototype.hasOwnProperty.call(options, "sourceSnapshot")
+        ? options.sourceSnapshot
+        : cardDeckV3PendingSourceSnapshotRef.current;
+      const saveOptions = pendingSourceSnapshot
+        ? { sourceSnapshot: pendingSourceSnapshot }
         : {};
       save("draft", publishReconciliations, draftIdRef.current, img, vid, null, null, nextDeck, "tail", pub, saveOptions)
         .then(() => {

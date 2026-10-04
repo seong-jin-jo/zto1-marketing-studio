@@ -79,6 +79,8 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(source).toContain('Object.prototype.hasOwnProperty.call(cardDeckV3Options, "sourceSnapshot")');
     expect(source).toContain("{ sourceSnapshot: snapshot }");
     expect(source).toContain("{ clear: true, sourceSnapshot: null");
+    expect(source).toContain("cardDeckV3PendingSourceSnapshotRef");
+    expect(source).toContain("includeSourceSnapshot = false");
   });
 
   it("S1-R5-LIST-FIRST-01 목록 데이터로 먼저 열고 상세 실패는 화면 진입을 막지 않는다", () => {
