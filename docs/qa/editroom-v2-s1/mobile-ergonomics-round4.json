@@ -1,5 +1,5 @@
 {
-  "stamp": "2026-10-04T22:07+09:00 | gpt-6.1-sol | code-builder | mobile-ergonomics-measure.mjs | data-loaded S1 fixture",
+  "stamp": "2026-10-04T22:29+09:00 | gpt-6.1-sol | code-builder | mobile-ergonomics-measure.mjs | final production-build S1 fixture",
   "source": "s1-freeform-measure-fixture.html",
   "thresholds": {
     "fontBelow13": 0,
