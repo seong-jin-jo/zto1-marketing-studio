@@ -15,6 +15,7 @@ const uploadedImageUrl = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3
 let bodyRevision = 0;
 let posts = [];
 let serverDeck = null;
+let serverSourceSnapshot = null;
 let expectedConflictCount = 0;
 let detailGets = 0;
 let delayNextV3Save = false;
@@ -29,7 +30,7 @@ function draft(includeCardDeckV3 = false) {
     editKind: "card",
     editLines: ["자유 배치 첫 장", "두 번째 카드", "저장하세요"],
     bodyRevision,
-    ...(includeCardDeckV3 ? { cardDeckV3: serverDeck } : {}),
+    ...(includeCardDeckV3 ? { cardDeckV3: serverDeck, cardDeckV3SourceSnapshot: serverSourceSnapshot } : {}),
     status: "draft",
     savedAt: "2026-10-04T00:00:00.000Z",
   };
@@ -101,6 +102,10 @@ await context.route("**/api/**", async (route) => {
       validateCardDeckV3(body.cardDeckV3);
       serverDeck = structuredClone(body.cardDeckV3);
     }
+    if (Object.prototype.hasOwnProperty.call(body, "cardDeckV3SourceSnapshot")) {
+      serverSourceSnapshot = structuredClone(body.cardDeckV3SourceSnapshot);
+    }
+    if (body.clearCardDeckV3) serverDeck = null;
     bodyRevision += 1;
     return json(route, { ok: true, id: draftId, bodyRevision, videoEditServerRevision: null });
   }
@@ -158,6 +163,10 @@ try {
   await page.locator('input[type="file"][aria-label="사진 파일"]').setInputFiles({ name: "photo.png", mimeType: "image/png", buffer: Buffer.from("s1-photo") });
 
   await waitUntil(() => posts.some((post) => post.cardDeckV3?.slides?.[0]?.elements?.length >= 6), 15_000, "5종 요소를 담은 자동저장 요청이 없습니다");
+  const snapshotPosts = posts.filter((post) => Object.prototype.hasOwnProperty.call(post, "cardDeckV3SourceSnapshot"));
+  if (snapshotPosts.length !== 1 || !snapshotPosts[0].cardDeckV3SourceSnapshot) {
+    throw new Error(`자유 배치 진입 저장 외에 원문 스냅샷이 전송됐습니다: ${snapshotPosts.length}건`);
+  }
   const savedElement = serverDeck.slides[0].elements.find((element) => element.id === primaryElementId);
   if (!savedElement || savedElement.x === 120 || savedElement.width !== 900 || savedElement.height !== 540 || savedElement.rotation === 0 || savedElement.style.font_size !== 72) {
     throw new Error(`끌기·크기·회전·글자 크기 저장값이 다릅니다: ${JSON.stringify(savedElement)}`);
@@ -238,10 +247,47 @@ try {
   });
   fs.writeFileSync(path.join(outputDir, "s1-freeform-measure-fixture.html"), measurementFixture);
 
+  const mainSnapshotWriteCount = posts.filter((post) => Object.prototype.hasOwnProperty.call(post, "cardDeckV3SourceSnapshot")).length;
+  if (mainSnapshotWriteCount !== 1) throw new Error(`일반 자유 배치 저장이 원문 스냅샷을 다시 보냈습니다: ${mainSnapshotWriteCount}건`);
+
+  // 복귀 확인은 충돌·새로고침 검증과 별도 회원 흐름으로 실제 클릭한다. 같은 페이지를
+  // 되돌리면 앞서 만든 5종 요소·충돌 증거가 사라져 후속 검증이 불가능하므로, 같은 mock
+  // 서버의 새 탭에서 plain→v3→취소→확정 전체 경로를 독립 실행한다.
+  await page.evaluate((id) => {
+    localStorage.removeItem("card_freeform_s1_skip_seed");
+    localStorage.removeItem(`studio_work:${id}`);
+  }, workspaceId);
+  serverDeck = null;
+  serverSourceSnapshot = null;
+  bodyRevision = 0;
+  const returnFlowPostStart = posts.length;
+  const returnPage = await context.newPage();
+  await returnPage.goto(`${baseUrl}/studio?room=edit&draft_id=${draftId}`, { waitUntil: "networkidle", timeout: 60_000 });
+  await returnPage.getByRole("button", { name: "자유 배치로 편집" }).click();
+  await returnPage.locator("[data-card-canvas-editor]").waitFor({ state: "visible" });
+  await waitUntil(() => posts.slice(returnFlowPostStart).some((post) => post.cardDeckV3SourceSnapshot), 15_000, "복귀 검증용 진입 저장에 원문 스냅샷이 없습니다");
+  const returnButton = returnPage.getByRole("button", { name: "기본 편집으로 돌아가기" });
+  await returnButton.click();
+  await returnPage.getByTestId("confirm-dialog").waitFor({ state: "visible" });
+  const confirmTitle = await returnPage.locator("#confirm-dialog-title").textContent();
+  if (confirmTitle?.trim() !== "기본 편집으로 돌아갈까요?") throw new Error(`기본 편집 복원 확인창 제목이 다릅니다: ${confirmTitle}`);
+  const destructiveNotice = await returnPage.getByTestId("confirm-dialog-description").textContent();
+  if (!destructiveNotice?.includes("자유 배치") || !destructiveNotice.includes("사라집니다")) throw new Error("기본 편집 복원 확인창이 데이터 손실 범위를 설명하지 않습니다");
+  await returnPage.getByTestId("confirm-dialog-cancel").click();
+  await returnPage.locator("[data-card-canvas-editor]").waitFor({ state: "visible" });
+  await returnButton.click();
+  await returnPage.getByTestId("confirm-dialog-accept").click();
+  await waitUntil(() => posts.some((post) => post.clearCardDeckV3 === true && post.cardDeckV3SourceSnapshot === null), 15_000, "기본 편집 복원 저장이 v3 덱과 원문 스냅샷을 함께 정리하지 않았습니다");
+  if (serverDeck !== null || serverSourceSnapshot !== null) throw new Error("기본 편집 복원 뒤 서버 자유 배치 데이터가 남았습니다");
+  await returnPage.getByRole("button", { name: "자유 배치로 편집" }).waitFor({ state: "visible" });
+  const returnFlowSnapshotWrites = posts.slice(returnFlowPostStart).filter((post) => Object.prototype.hasOwnProperty.call(post, "cardDeckV3SourceSnapshot"));
+  if (returnFlowSnapshotWrites.length !== 2) throw new Error(`복귀 흐름의 원문 스냅샷 저장은 진입·복귀 2회여야 합니다: ${returnFlowSnapshotWrites.length}건`);
+  await returnPage.close();
+
   fs.writeFileSync(path.join(outputDir, "s1-freeform-result.json"), JSON.stringify({
-    result: "PASS", posts: posts.length, bodyRevision, detailGets, continuousEditPreserved: true, elementTypes: [...types].sort(), savedElement, restoredRotation, restoredImage: true, conflictReapplied: true, expectedConflicts: expectedConflictCount, mobile: overflow, consoleErrors: unexpectedErrors.length,
+    result: "PASS", posts: posts.length, bodyRevision, detailGets, continuousEditPreserved: true, sourceSnapshotWrites: { main: mainSnapshotWriteCount, returnFlow: returnFlowSnapshotWrites.length }, returnConfirmation: true, elementTypes: [...types].sort(), savedElement, restoredRotation, restoredImage: true, conflictReapplied: true, expectedConflicts: expectedConflictCount, mobile: overflow, consoleErrors: unexpectedErrors.length,
   }, null, 2));
-  console.log(JSON.stringify({ result: "PASS", posts: posts.length, bodyRevision, detailGets, continuousEditPreserved: true, elementTypes: [...types].sort(), savedElement, restoredRotation, restoredImage: true, conflictReapplied: true, expectedConflicts: expectedConflictCount, mobile: overflow, consoleErrors: unexpectedErrors.length }, null, 2));
+  console.log(JSON.stringify({ result: "PASS", posts: posts.length, bodyRevision, detailGets, continuousEditPreserved: true, sourceSnapshotWrites: { main: mainSnapshotWriteCount, returnFlow: returnFlowSnapshotWrites.length }, returnConfirmation: true, elementTypes: [...types].sort(), savedElement, restoredRotation, restoredImage: true, conflictReapplied: true, expectedConflicts: expectedConflictCount, mobile: overflow, consoleErrors: unexpectedErrors.length }, null, 2));
 } finally {
   await browser.close();
 }

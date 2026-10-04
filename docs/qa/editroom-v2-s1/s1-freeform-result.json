@@ -1,9 +1,14 @@
 {
   "result": "PASS",
-  "posts": 7,
-  "bodyRevision": 7,
-  "detailGets": 4,
+  "posts": 9,
+  "bodyRevision": 2,
+  "detailGets": 7,
   "continuousEditPreserved": true,
+  "sourceSnapshotWrites": {
+    "main": 1,
+    "returnFlow": 2
+  },
+  "returnConfirmation": true,
   "elementTypes": [
     "image",
     "logo",
@@ -12,7 +17,7 @@
     "text"
   ],
   "savedElement": {
-    "id": "el_text_deck_493b349e3239_0",
+    "id": "el_text_deck_82a40d9d8f70_0",
     "type": "text",
     "name": "글",
     "x": 271.579,
