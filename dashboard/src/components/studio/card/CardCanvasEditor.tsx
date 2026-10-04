@@ -101,6 +101,8 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const textEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const textEditBaseDeckRef = useRef<CardDeckV3 | null>(null);
   const textEditCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textEditPendingRef = useRef<{ slideId: string; elementId: string; value: string } | null>(null);
+  const textEditFlushRef = useRef<(slideId: string, elementId: string, value: string) => void>(() => {});
   const textEditCommittedRef = useRef(false);
   const textEditLastCommittedValueRef = useRef<string | null>(null);
   const workingDeck = previewDeck ?? history.present;
@@ -154,6 +156,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
     setPreviewDeck(null);
     onDeckChange(next);
   }, [onDeckChange]);
+  textEditFlushRef.current = flushTextEdit;
   const deleteAndRestoreStageFocus = useCallback((elementId: string) => {
     if (!activeSlide) return;
     apply((current) => deleteCardElement(current, activeSlide.id, elementId));
@@ -238,6 +241,9 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
 
   useEffect(() => () => {
     if (textEditCommitTimerRef.current) clearTimeout(textEditCommitTimerRef.current);
+    const pending = textEditPendingRef.current;
+    if (pending) textEditFlushRef.current(pending.slideId, pending.elementId, pending.value);
+    textEditPendingRef.current = null;
   }, []);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -349,6 +355,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
                     onChange={(event) => {
                       const value = event.target.value;
                       setEditingTextValue(value);
+                      textEditPendingRef.current = { slideId: activeSlide.id, elementId: element.id, value };
                       const baseDeck = textEditBaseDeckRef.current ?? history.present;
                       setPreviewDeck(patchTextElement(baseDeck, activeSlide.id, element.id, { text: value }));
                       if (textEditCommitTimerRef.current) clearTimeout(textEditCommitTimerRef.current);
@@ -363,6 +370,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
                         textEditCommitTimerRef.current = null;
                       }
                       flushTextEdit(activeSlide.id, element.id, editingTextValue);
+                      textEditPendingRef.current = null;
                       textEditBaseDeckRef.current = null;
                       textEditCommittedRef.current = false;
                       textEditLastCommittedValueRef.current = null;

@@ -148,6 +148,18 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect((current.slides[0].elements[0] as { text: string }).text).toBe("첫 장");
   });
 
+  it("S1-R7-EDITOR-FLUSH-01 debounce 전에 편집기가 닫혀도 마지막 글을 상위 저장 경계로 확정한다", () => {
+    let current = deck();
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.doubleClick(screen.getByLabelText("제목 요소"));
+    fireEvent.change(screen.getByLabelText("글 내용 직접 편집"), { target: { value: "닫히기 직전 마지막 글" } });
+
+    view.unmount();
+
+    expect((current.slides[0].elements[0] as { text: string }).text).toBe("닫히기 직전 마지막 글");
+  });
+
   it("S1-R4-FOCUS-01 선택 상자 초점이 선택을 맞추고 삭제 뒤 스테이지로 초점을 돌린다", async () => {
     let current = deck();
     const onChange = (next: CardDeckV3) => { current = next; };
