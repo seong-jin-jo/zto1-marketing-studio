@@ -3008,6 +3008,33 @@ export default function StudioPage() {
   // await가 끝난 시점에 "그 결과가 지금도 유효한 요청인지" 판정할 수 있게 한다.
   const activeWorkspaceIdRef = useRef<string | null>(null);
   activeWorkspaceIdRef.current = activeWorkspace?.id ?? null;
+  // 초안 목록은 카드 자유 배치 JSON을 싣지 않는다. 목록에서 작업물을 고르거나 딥링크를
+  // 새로고침한 뒤에는 단건 응답을 읽어야만 v3 덱을 복원할 수 있다. draft/tenant가 바뀐
+  // 뒤 늦게 도착한 응답은 다른 작업물에 칠하지 않는다.
+  useEffect(() => {
+    const requestedDraftId = draftId;
+    const requestedTenantId = activeWorkspace?.id ?? null;
+    if (!requestedDraftId || !requestedTenantId) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const response = await fetch(`/api/studio/drafts?tenant_id=${encodeURIComponent(requestedTenantId)}&id=${encodeURIComponent(requestedDraftId)}`, {
+          headers: authHeaders(),
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const data = await response.json().catch(() => null) as { draft?: { cardDeckV3?: CardDeckV3 | null } } | null;
+        if (controller.signal.aborted
+          || draftIdRef.current !== requestedDraftId
+          || activeWorkspaceIdRef.current !== requestedTenantId) return;
+        setCardDeckV3(data?.draft?.cardDeckV3 ?? null);
+      } catch {
+        // 목록의 기존 편집 데이터는 유지한다. 네트워크 복구 뒤 새로고침하면 단건 조회를
+        // 다시 시도하며, 실패를 null 덮어쓰기로 오인하지 않는다.
+      }
+    })();
+    return () => controller.abort();
+  }, [activeWorkspace?.id, draftId]);
   // 영상 편집 state의 최신값은 닫힌 클로저 대신 ref로 비교한다. 글 본문은 위의
   // bodySnapshotRef 하나만 소유하므로 영상 전용 pending 복사본을 두지 않는다.
   const videoEditRef = useRef<VideoEdit | null>(null);

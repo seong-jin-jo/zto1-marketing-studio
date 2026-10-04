@@ -1,7 +1,7 @@
 {
   "result": "PASS",
-  "posts": 2,
-  "bodyRevision": 2,
+  "posts": 4,
+  "bodyRevision": 4,
   "elementTypes": [
     "image",
     "logo",
@@ -10,14 +10,14 @@
     "text"
   ],
   "savedElement": {
-    "id": "el_slide_cover",
+    "id": "el_text_deck_868e723a362a_0",
     "type": "text",
-    "name": "제목",
+    "name": "글",
     "x": 271.579,
-    "y": 401.171,
-    "width": 953.684,
-    "height": 588.525,
-    "rotation": 17.001,
+    "y": 405,
+    "width": 900,
+    "height": 540,
+    "rotation": 17.007,
     "z_index": 0,
     "opacity": 1,
     "locked": false,
@@ -34,7 +34,10 @@
       "vertical_align": "middle"
     }
   },
-  "restoredRotation": "17.001deg",
+  "restoredRotation": "17.007deg",
+  "restoredImage": true,
+  "conflictReapplied": true,
+  "expectedConflicts": 1,
   "mobile": {
     "viewport": 390,
     "scroll": 390

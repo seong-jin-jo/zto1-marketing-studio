@@ -14,29 +14,26 @@ const draftId = "22222222-2222-4222-8222-222222222222";
 const uploadedImageUrl = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0MCcgaGVpZ2h0PSc0MCc+PHJlY3Qgd2lkdGg9JzQwJyBoZWlnaHQ9JzQwJyBmaWxsPScjMjU2M0VCJy8+PC9zdmc+";
 let bodyRevision = 0;
 let posts = [];
-let serverDeck = deckFixture();
+let serverDeck = null;
+let expectedConflictCount = 0;
 
 fs.mkdirSync(outputDir, { recursive: true });
 
-function deckFixture() {
-  const text = (id, value, order, role) => ({
-    id, order, role, content_state: "filled", background: { kind: "solid", color: role === "cta" ? "#111111" : "#FFF9F0" }, base: { kind: "plain", lines: [value] },
-    elements: [{ id: `el_${id}`, type: "text", name: role === "cover" ? "제목" : "본문", x: 120, y: 300, width: 840, height: 500, rotation: 0, z_index: 0, opacity: 1, locked: false, hidden: false, text: value, style: { font_family: "Pretendard Variable", font_size: 64, font_weight: 700, line_height: 1.2, letter_spacing: 0, color: role === "cta" ? "#FFFFFF" : "#111111", align: "center", vertical_align: "middle" } }],
-  });
+function draft(includeCardDeckV3 = false) {
   return {
-    contract_version: "3.0", id: "deck_e2e_s1", template: "plain", ratio: "4:5", revision: 0,
-    theme: { background: "#FFF9F0", foreground: "#111111", accent: "#2563EB" }, brand: { display_name: "OSMU", handle: null }, hook_type: "pain",
-    cta: { keyword: "정리본", comment_example: "정리본을 남겨 주세요", save_reason: "나중에 다시 확인하세요" },
-    slides: [text("slide_cover", "자유 배치 첫 장", 0, "cover"), text("slide_body", "두 번째 카드", 1, "body"), text("slide_cta", "저장하세요", 2, "cta")],
+    id: draftId,
+    idea: "S1 자유 배치 실구동",
+    editKind: "card",
+    editLines: ["자유 배치 첫 장", "두 번째 카드", "저장하세요"],
+    bodyRevision,
+    ...(includeCardDeckV3 ? { cardDeckV3: serverDeck } : {}),
+    status: "draft",
+    savedAt: "2026-10-04T00:00:00.000Z",
   };
 }
 
-function draft() {
-  return { id: draftId, idea: "S1 자유 배치 실구동", editKind: "card", editLines: ["자유 배치 첫 장", "두 번째 카드", "저장하세요"], bodyRevision, cardDeckV3: serverDeck, status: "draft", savedAt: "2026-10-04T00:00:00.000Z" };
-}
-
 function work() {
-  return { idea: "S1 자유 배치 실구동", draftId, editKind: "card", editLines: ["자유 배치 첫 장", "두 번째 카드", "저장하세요"], bodyRevision, cardDeckV3: serverDeck, includes: {}, publishReconciliations: {}, publishProgress: { running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} } };
+  return { idea: "S1 자유 배치 실구동", draftId, editKind: "card", editLines: ["자유 배치 첫 장", "두 번째 카드", "저장하세요"], bodyRevision, includes: {}, publishReconciliations: {}, publishProgress: { running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} } };
 }
 
 function json(route, body, status = 200) {
@@ -79,12 +76,13 @@ await context.route("**/api/**", async (route) => {
   if (pathname === "/api/me") return json(route, { isOperator: false, tenant: { id: workspaceId, slug: "s1", name: "S1 실구동", status: "active" } });
   if (pathname === "/api/studio/drafts") {
     if (request.method() !== "POST") {
-      if (new URL(request.url()).searchParams.has("id")) return json(route, { draft: draft() });
+      if (new URL(request.url()).searchParams.has("id")) return json(route, { draft: draft(true) });
       return json(route, { drafts: [draft()], currentWork: null });
     }
     const body = JSON.parse(request.postData() || "{}");
     posts.push(body);
     if (body.bodyBaseRevision !== bodyRevision) {
+      expectedConflictCount += 1;
       return json(route, { ok: false, code: "BODY_STALE_REVISION", latestBody: { text: null, editLines: draft().editLines, cardDeckV3: serverDeck, bodyRevision } }, 409);
     }
     if (body.cardDeckV3) {
@@ -95,6 +93,7 @@ await context.route("**/api/**", async (route) => {
     return json(route, { ok: true, id: draftId, bodyRevision, videoEditServerRevision: null });
   }
   if (pathname === "/api/images/upload") return json(route, { filename: "s1-photo.png", url: uploadedImageUrl });
+  if (pathname === "/api/media/resign") return json(route, { ok: true, file: uploadedImageUrl });
   if (pathname === "/api/studio/brand-setup") return json(route, { guide: null });
   if (pathname === "/api/publish/first-comment-capabilities") return json(route, { capabilities: [] });
   if (/^\/api\/channels\/[^/]+\/accounts$/.test(pathname)) return json(route, { accounts: [] });
@@ -109,16 +108,22 @@ page.on("console", (message) => { if (message.type() === "error") errors.push(me
 
 try {
   await page.goto(`${baseUrl}/studio?room=edit&draft_id=${draftId}`, { waitUntil: "networkidle", timeout: 60_000 });
+  await page.getByRole("button", { name: "자유 배치로 편집" }).click();
   await page.locator("[data-card-canvas-editor]").waitFor({ state: "visible" });
   if (await page.locator("[data-element-list-item]").count() < 1) throw new Error("데이터가 있는 카드가 열리지 않았습니다");
+  const editor = page.getByRole("region", { name: "카드 자유 배치 편집기" });
 
-  await page.getByRole("button", { name: "제목", exact: true }).click();
+  const selection = page.locator("[data-element-selection]").first();
+  const primaryElementId = await selection.getAttribute("data-element-selection");
+  if (!primaryElementId) throw new Error("첫 글 요소 ID를 찾지 못했습니다");
+  const primaryListItem = editor.locator(`[data-element-list-item="${primaryElementId}"]`);
+  await primaryListItem.getByRole("button", { name: "글", exact: true }).click();
   await page.getByLabel("글자 크기").fill("72");
-  const selection = page.locator('[data-element-selection="el_slide_cover"]');
+  await page.getByLabel("요소 너비").fill("900");
+  await page.getByLabel("요소 높이").fill("540");
+  await primaryListItem.getByRole("button", { name: "글", exact: true }).click();
   await drag(page, selection, 48, 32);
-  await page.getByRole("button", { name: "제목", exact: true }).click();
-  await drag(page, selection.locator('[data-handle="se"]'), 36, 28);
-  await page.getByRole("button", { name: "제목", exact: true }).click();
+  await primaryListItem.getByRole("button", { name: "글", exact: true }).click();
   const rotateHandle = selection.getByRole("button", { name: "회전" });
   const rotateBox = await rotateHandle.boundingBox();
   const selectionBox = await selection.boundingBox();
@@ -138,8 +143,8 @@ try {
   await page.locator('input[type="file"][aria-label="사진 파일"]').setInputFiles({ name: "photo.png", mimeType: "image/png", buffer: Buffer.from("s1-photo") });
 
   await waitUntil(() => posts.some((post) => post.cardDeckV3?.slides?.[0]?.elements?.length >= 6), 15_000, "5종 요소를 담은 자동저장 요청이 없습니다");
-  const savedElement = serverDeck.slides[0].elements.find((element) => element.id === "el_slide_cover");
-  if (!savedElement || savedElement.x === 120 || savedElement.width === 840 || savedElement.rotation === 0 || savedElement.style.font_size !== 72) {
+  const savedElement = serverDeck.slides[0].elements.find((element) => element.id === primaryElementId);
+  if (!savedElement || savedElement.x === 120 || savedElement.width !== 900 || savedElement.height !== 540 || savedElement.rotation === 0 || savedElement.style.font_size !== 72) {
     throw new Error(`끌기·크기·회전·글자 크기 저장값이 다릅니다: ${JSON.stringify(savedElement)}`);
   }
   const types = new Set(serverDeck.slides[0].elements.map((element) => element.type));
@@ -153,17 +158,37 @@ try {
   await page.reload({ waitUntil: "networkidle", timeout: 60_000 });
   await page.locator("[data-card-canvas-editor]").waitFor({ state: "visible" });
   await page.waitForFunction(() => document.querySelectorAll("[data-element-list-item]").length >= 6);
-  const restoredRotation = await page.locator('[data-element-selection="el_slide_cover"]').evaluate((node) => getComputedStyle(node).getPropertyValue("--selection-rotation").trim());
+  await page.getByAltText("photo.png").waitFor({ state: "visible" });
+  if (await page.getByAltText("photo.png").getAttribute("src") !== uploadedImageUrl) throw new Error("새로고침 뒤 업로드 사진 URL이 복원되지 않았습니다");
+  const restoredRotation = await page.locator(`[data-element-selection="${primaryElementId}"]`).evaluate((node) => getComputedStyle(node).getPropertyValue("--selection-rotation").trim());
   if (restoredRotation !== `${savedElement.rotation}deg`) throw new Error(`새로고침 뒤 회전값이 다릅니다: ${restoredRotation}`);
 
+  bodyRevision += 1;
+  await primaryListItem.getByRole("button", { name: "글", exact: true }).click();
+  await page.getByLabel("요소 너비").fill("777");
+  await page.getByRole("button", { name: "최신본 불러오기" }).waitFor({ state: "visible", timeout: 15_000 });
+  await page.getByRole("button", { name: "최신본 불러오기" }).click();
+  await page.getByRole("button", { name: "내 변경 다시 적용" }).click();
+  await page.getByRole("button", { name: "내 변경 다시 적용" }).waitFor({ state: "detached", timeout: 15_000 });
+  await waitUntil(() => serverDeck?.slides?.[0]?.elements?.find((element) => element.id === primaryElementId)?.width === 777, 15_000, "409 재적용 뒤 저장 JSON에 최신 너비가 없습니다");
+  await primaryListItem.getByRole("button", { name: "글", exact: true }).click();
+  if (await page.getByLabel("요소 너비").inputValue() !== "777") throw new Error("409 재적용 뒤 화면과 저장 JSON의 너비가 다릅니다");
+  const lastSavedDeck = [...posts].reverse().find((post) => post.cardDeckV3)?.cardDeckV3;
+  if (JSON.stringify(lastSavedDeck) !== JSON.stringify(serverDeck)) throw new Error("409 재적용 뒤 요청 JSON과 저장 JSON이 다릅니다");
+
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "제목 오른쪽 이동" }).click();
-  await page.getByRole("button", { name: "제목 잠금" }).click();
-  await waitUntil(() => serverDeck.slides[0].elements.find((element) => element.id === "el_slide_cover")?.locked === true, 10_000, "390px 대체 조작이 저장되지 않았습니다");
+  await primaryListItem.getByRole("button", { name: "글 오른쪽 이동" }).click();
+  await primaryListItem.getByRole("button", { name: "글 잠금" }).click();
+  await waitUntil(() => serverDeck.slides[0].elements.find((element) => element.id === primaryElementId)?.locked === true, 10_000, "390px 대체 조작이 저장되지 않았습니다");
   const overflow = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   if (overflow.scroll > overflow.viewport + 1) throw new Error(`390px 가로 넘침: ${JSON.stringify(overflow)}`);
   await page.screenshot({ path: path.join(outputDir, "s1-freeform-390.png"), fullPage: true });
-  if (errors.length) throw new Error(`브라우저 오류 ${errors.length}건: ${errors.join(" | ")}`);
+  const unexpectedErrors = [...errors];
+  for (let index = 0; index < expectedConflictCount; index += 1) {
+    const expectedIndex = unexpectedErrors.findIndex((message) => message.includes("status of 409"));
+    if (expectedIndex >= 0) unexpectedErrors.splice(expectedIndex, 1);
+  }
+  if (unexpectedErrors.length) throw new Error(`브라우저 오류 ${unexpectedErrors.length}건: ${unexpectedErrors.join(" | ")}`);
 
   const measurementFixture = await page.evaluate(() => {
     const clone = document.documentElement.cloneNode(true);
@@ -180,9 +205,9 @@ try {
   fs.writeFileSync(path.join(outputDir, "s1-freeform-measure-fixture.html"), measurementFixture);
 
   fs.writeFileSync(path.join(outputDir, "s1-freeform-result.json"), JSON.stringify({
-    result: "PASS", posts: posts.length, bodyRevision, elementTypes: [...types].sort(), savedElement, restoredRotation, mobile: overflow, consoleErrors: errors.length,
+    result: "PASS", posts: posts.length, bodyRevision, elementTypes: [...types].sort(), savedElement, restoredRotation, restoredImage: true, conflictReapplied: true, expectedConflicts: expectedConflictCount, mobile: overflow, consoleErrors: unexpectedErrors.length,
   }, null, 2));
-  console.log(JSON.stringify({ result: "PASS", posts: posts.length, bodyRevision, elementTypes: [...types].sort(), savedElement, restoredRotation, mobile: overflow, consoleErrors: errors.length }, null, 2));
+  console.log(JSON.stringify({ result: "PASS", posts: posts.length, bodyRevision, elementTypes: [...types].sort(), savedElement, restoredRotation, restoredImage: true, conflictReapplied: true, expectedConflicts: expectedConflictCount, mobile: overflow, consoleErrors: unexpectedErrors.length }, null, 2));
 } finally {
   await browser.close();
 }
