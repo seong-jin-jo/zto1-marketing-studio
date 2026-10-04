@@ -50,6 +50,8 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
 
     expect(routeFiles.sort()).toEqual([
       "src/app/api/queue/add/route.ts",
+      "src/app/api/queue/[postId]/approve/route.ts",
+      "src/app/api/queue/bulk-approve/route.ts",
       "src/app/api/queue/promote/route.ts",
       "src/app/api/studio/commands/route.ts",
       "src/app/api/studio/drafts/[draftId]/enqueue/route.ts",
@@ -62,6 +64,8 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(read("src/app/api/studio/drafts/[draftId]/enqueue/route.ts")).toContain("addQueuePost");
     expect(read("src/app/api/studio/commands/route.ts")).toContain("enqueueDraft");
     expect(read("src/app/api/queue/promote/route.ts")).toContain("assertDraftCanEnterPublishQueue");
+    expect(read("src/app/api/queue/[postId]/approve/route.ts")).toContain("assertDraftCanEnterPublishQueue");
+    expect(read("src/app/api/queue/bulk-approve/route.ts")).toContain("assertDraftCanEnterPublishQueue");
     expect(read("src/app/api/suggestions/enqueue/route.ts")).toContain("addQueuePost");
   });
 

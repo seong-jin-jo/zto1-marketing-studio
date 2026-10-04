@@ -1,8 +1,13 @@
-import { mutateJson, dataPath } from "@/lib/file-io";
+import { mutateJson, dataPath, readJson } from "@/lib/file-io";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { mirrorQueuePost } from "@/lib/queue-store";
 import { missingReviewFields, type MissingReviewField } from "@/lib/review-content";
+import {
+  assertDraftCanEnterPublishQueue,
+  CardDeckV3PublishBlockedError,
+  cardDeckV3PublishBlockedErrorResponse,
+} from "@/lib/studio/card-deck-v3-publish-gate";
 
 interface QueueData { posts: Array<Record<string, unknown>> }
 
@@ -14,11 +19,20 @@ export async function POST(request: Request) {
     const ids: string[] = data.ids || [];
     const intervalHours = data.intervalHours ?? 2;
     const now = Date.now();
+    const queuePath = dataPath("queue.json");
+    const pendingPosts = (readJson<QueueData>(queuePath)?.posts || [])
+      .filter((post) => ids.includes(post.id as string) && post.status === "draft");
+    try {
+      await Promise.all(pendingPosts.map((post) => assertDraftCanEnterPublishQueue(__t, post.draftId)));
+    } catch (error) {
+      if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
+      throw error;
+    }
     let approved = 0;
     const changed: Array<Record<string, unknown> & { id: string }> = [];
     let invalid: Array<{ id: string; missingFields: MissingReviewField[] }> = [];
 
-    await mutateJson<QueueData>(dataPath("queue.json"), (queue) => {
+    await mutateJson<QueueData>(queuePath, (queue) => {
       approved = 0;
       invalid = (queue.posts || [])
         .filter((post) => ids.includes(post.id as string) && post.status === "draft")
