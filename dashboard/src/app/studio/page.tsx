@@ -1835,9 +1835,9 @@ export default function StudioPage() {
             cardDeck: persistedCardDeck,
             cardDeckV3: persistedCardDeckV3,
             clearCardDeckV3: cardDeckV3Options.clear || undefined,
-            cardDeckV3SourceSnapshot: cardDeckV3Options.sourceSnapshot === undefined
-              ? cardDeckV3SourceSnapshot
-              : cardDeckV3Options.sourceSnapshot,
+            ...(Object.prototype.hasOwnProperty.call(cardDeckV3Options, "sourceSnapshot")
+              ? { cardDeckV3SourceSnapshot: cardDeckV3Options.sourceSnapshot }
+              : {}),
             videoEdit: safeVideoEdit,
             videoEditBaseRevision: safeVideoEdit ? videoEditBaseRevisionRef.current : undefined,
             editKind,
@@ -3008,13 +3008,30 @@ export default function StudioPage() {
       return null;
     }
   }
-  async function loadDraftDetail(draftToLoad: Record<string, unknown>): Promise<{ kind: EditContentKind | null } | null> {
-    const detail = await fetchDraftDetail(draftToLoad);
-    if (!detail) {
-      showToast("작업물의 최신 편집 내용을 불러오지 못했습니다. 기존 내용을 덮지 않고 멈췄습니다.", "error");
-      return null;
-    }
-    return { kind: loadDraft(detail) };
+  async function loadDraftDetail(draftToLoad: Record<string, unknown>): Promise<{ kind: EditContentKind | null }> {
+    // 목록 응답은 큰 v3 덱만 제외하고 편집에 필요한 나머지 필드를 모두 갖는다. 화면은
+    // 목록 값으로 즉시 열고, 자유 배치 덱만 단건 응답으로 나중에 보강한다. 상세 조회가
+    // 실패해도 기존 카드·영상 편집 화면 자체를 잃지 않는다.
+    const kind = loadDraft(draftToLoad);
+    const requestedDraftId = typeof draftToLoad.id === "string" ? draftToLoad.id : "";
+    void fetchDraftDetail(draftToLoad).then((detail) => {
+      if (!detail) {
+        showToast("작업물은 목록 내용으로 열었습니다. 자유 배치 내용은 최신 상태를 불러오지 못했습니다.", "error");
+        return;
+      }
+      if (!requestedDraftId
+        || draftIdRef.current !== requestedDraftId
+        || cardDeckV3DirtyRef.current
+        || cardDeckV3SavePendingGenerationRef.current !== null) return;
+      const includesCardDeckV3 = Object.prototype.hasOwnProperty.call(detail, "cardDeckV3");
+      if (!includesCardDeckV3) return;
+      const serverDeck = (detail.cardDeckV3 as CardDeckV3 | null | undefined) ?? null;
+      setCardDeckV3(serverDeck);
+      cardDeckV3Ref.current = serverDeck;
+      setCardDeckV3SourceSnapshot((detail.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot | null | undefined) ?? null);
+      cardDeckV3HydratedDraftRef.current = requestedDraftId;
+    });
+    return { kind };
   }
   async function resumeCurrentWork() {
     const current = hist?.currentWork;
@@ -3974,7 +3991,10 @@ export default function StudioPage() {
     }, 800);
   }
 
-  function onCardDeckV3Change(nextDeck: CardDeckV3) {
+  function onCardDeckV3Change(
+    nextDeck: CardDeckV3,
+    options: { sourceSnapshot?: CardDeckV3SourceSnapshot | null } = {},
+  ) {
     setCardDeckV3(nextDeck);
     cardDeckV3Ref.current = nextDeck;
     cardDeckV3DirtyRef.current = true;
@@ -3984,7 +4004,10 @@ export default function StudioPage() {
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
     cardDeckAutosaveTimer.current = setTimeout(() => {
       cardDeckV3SavePendingGenerationRef.current = editGeneration;
-      save("draft", publishReconciliations, draftIdRef.current, img, vid, null, null, nextDeck)
+      const saveOptions = Object.prototype.hasOwnProperty.call(options, "sourceSnapshot")
+        ? { sourceSnapshot: options.sourceSnapshot }
+        : {};
+      save("draft", publishReconciliations, draftIdRef.current, img, vid, null, null, nextDeck, "tail", pub, saveOptions)
         .then(() => {
           if (cardDeckV3EditGenerationRef.current === editGeneration) {
             cardDeckV3DirtyRef.current = false;
@@ -4013,7 +4036,7 @@ export default function StudioPage() {
       cardTextPositions: [...cardTextPositions],
     } satisfies CardDeckV3SourceSnapshot;
     setCardDeckV3SourceSnapshot(snapshot);
-    onCardDeckV3Change(createPlainCardDeckV3(snapshot.editLines, snapshot.cardTextPositions));
+    onCardDeckV3Change(createPlainCardDeckV3(snapshot.editLines, snapshot.cardTextPositions), { sourceSnapshot: snapshot });
     const currentDraftId = draftIdRef.current;
     const tenantId = activeWorkspaceIdRef.current;
     if (currentDraftId && tenantId) {
@@ -4040,6 +4063,14 @@ export default function StudioPage() {
       showToast("자유 배치로 바꾸기 전 기본 편집 내용을 찾지 못했습니다. 현재 작업은 그대로 보존했습니다.", "error");
       return;
     }
+    const confirmed = await askConfirm({
+      title: "기본 편집으로 돌아갈까요?",
+      description: "자유 배치에서 바꾼 글, 사진, 크기, 위치와 회전 작업은 사라집니다. 자유 배치로 들어오기 직전의 기본 편집 내용으로 복원합니다.",
+      confirmLabel: "자유 배치 작업을 버리고 돌아가기",
+      cancelLabel: "자유 배치 계속하기",
+      destructive: true,
+    });
+    if (!confirmed) return;
     if (cardDeckAutosaveTimer.current) {
       clearTimeout(cardDeckAutosaveTimer.current);
       cardDeckAutosaveTimer.current = null;

@@ -71,4 +71,24 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(source).toContain("cardDeckV3DirtyRef.current");
     expect(source).toContain("const loaded = await loadDraftDetail(draft as unknown as Record<string, unknown>)");
   });
+
+  it("S1-R5-RETURN-SNAPSHOT-01 복원 확인과 스냅샷 전송 범위를 명시한다", () => {
+    const source = read("src/app/studio/page.tsx");
+    expect(source).toContain('title: "기본 편집으로 돌아갈까요?"');
+    expect(source).toContain('confirmLabel: "자유 배치 작업을 버리고 돌아가기"');
+    expect(source).toContain('Object.prototype.hasOwnProperty.call(cardDeckV3Options, "sourceSnapshot")');
+    expect(source).toContain("{ sourceSnapshot: snapshot }");
+    expect(source).toContain("{ clear: true, sourceSnapshot: null");
+  });
+
+  it("S1-R5-LIST-FIRST-01 목록 데이터로 먼저 열고 상세 실패는 화면 진입을 막지 않는다", () => {
+    const source = read("src/app/studio/page.tsx");
+    const helperStart = source.indexOf("async function loadDraftDetail");
+    const helperEnd = source.indexOf("async function resumeCurrentWork", helperStart);
+    const helper = source.slice(helperStart, helperEnd);
+    expect(helper.indexOf("const kind = loadDraft(draftToLoad)")).toBeGreaterThanOrEqual(0);
+    expect(helper.indexOf("void fetchDraftDetail(draftToLoad)")).toBeGreaterThan(helper.indexOf("const kind = loadDraft(draftToLoad)"));
+    expect(helper).toContain("return { kind }");
+    expect(helper).toContain("목록 내용으로 열었습니다");
+  });
 });
