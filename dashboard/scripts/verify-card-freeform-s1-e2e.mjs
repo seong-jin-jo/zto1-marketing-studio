@@ -53,6 +53,7 @@ async function waitUntil(predicate, timeoutMs, message) {
 }
 
 async function drag(page, locator, dx, dy) {
+  await locator.scrollIntoViewIfNeeded();
   const box = await locator.boundingBox();
   if (!box) throw new Error("조작 대상의 화면 좌표가 없습니다");
   const x = box.x + box.width / 2;
@@ -129,11 +130,14 @@ try {
   if (!primaryElementId) throw new Error("첫 글 요소 ID를 찾지 못했습니다");
   const primaryListItem = editor.locator(`[data-element-list-item="${primaryElementId}"]`);
   await primaryListItem.getByRole("button", { name: "글", exact: true }).click();
+  // 기본 폭에서 먼저 이동한다. 폭 900으로 키운 뒤 중앙을 집으면 작은 뷰포트에서는
+  // 선택 상자가 도구막대와 겹쳐 실제 회원의 포인터 시작점이 가려질 수 있다.
+  await drag(page, selection, 48, 32);
+  await page.waitForTimeout(100);
+  await primaryListItem.getByRole("button", { name: "글", exact: true }).click();
   await page.getByLabel("글자 크기").fill("72");
   await page.getByLabel("요소 너비").fill("900");
   await page.getByLabel("요소 높이").fill("540");
-  await primaryListItem.getByRole("button", { name: "글", exact: true }).click();
-  await drag(page, selection, 48, 32);
   await primaryListItem.getByRole("button", { name: "글", exact: true }).click();
   const rotateHandle = selection.getByRole("button", { name: "회전" });
   const rotateBox = await rotateHandle.boundingBox();
