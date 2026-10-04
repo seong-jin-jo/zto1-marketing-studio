@@ -2985,11 +2985,14 @@ export default function StudioPage() {
   // 렌더마다 순서가 같다.
   const cardDeckAutosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (editKind !== "card" || cardDeckV3 || cardDeck?.template === "chat_bubble") return;
+    // 장별 원본 정보가 없는 과거 글자 내장 카드는 기존 PNG가 유일한 원본이다. 이 경로를
+    // 자유 배치 덱으로 승격하면 잠금 UI가 사라지고, 저장 직전 본문으로 다시 합성돼 원본
+    // 장수와 픽셀이 바뀐다. v3는 편집 가능한 plain 카드만 소유한다.
+    if (editKind !== "card" || img?.textEmbedded === true || cardDeckV3 || cardDeck?.template === "chat_bubble") return;
     const sourceLines = bodySnapshotRef.current.lines.filter((line) => line.trim());
     if (!sourceLines.length) return;
     setCardDeckV3(createPlainCardDeckV3(sourceLines));
-  }, [cardDeck, cardDeckV3, editKind]);
+  }, [cardDeck, cardDeckV3, editKind, img?.textEmbedded]);
   // R1(2026-09-22 코드리뷰 3차): 타이머 통합(2차)이 CRITICAL을 두 라운드 연달아 냈다
   // (2차: 영상저장 삼킴 · 3차: 실패/언마운트 시 pending 유실). "덜 만들고 되돌린다" —
   // 카드덱·영상 자동저장을 독립 타이머로 되돌린다. 각자 최신 state를 통째로 실어

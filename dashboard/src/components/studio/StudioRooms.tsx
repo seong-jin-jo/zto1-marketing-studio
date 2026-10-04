@@ -2221,7 +2221,7 @@ export function EditRoom({
               <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
-              {kind === "card" && cardDeckV3 && onCardDeckV3Change ? (
+              {kind === "card" && !cardTextEmbedded && cardDeckV3 && onCardDeckV3Change ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-v3-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                   <CardCanvasEditor deck={cardDeckV3} onDeckChange={onCardDeckV3Change} />
                 </div>
