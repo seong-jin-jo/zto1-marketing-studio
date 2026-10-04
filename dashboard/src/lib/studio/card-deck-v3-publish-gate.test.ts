@@ -26,4 +26,21 @@ describe("S1-R4-PUBLISH-GATE-01 자유 배치 발행 안전문", () => {
     expect(await draftHasCardDeckV3("11111111-1111-1111-1111-111111111111", "not-a-draft")).toBe(false);
     expect(await draftHasCardDeckV3("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")).toBe(false);
   });
+
+  it("S1-R5-QUEUE-01 큐 공통 안전문은 v3 초안을 409 오류로 중단한다", async () => {
+    H.rows = [{ has_card_deck_v3: true }];
+    const {
+      assertDraftCanEnterPublishQueue,
+      CardDeckV3PublishBlockedError,
+      cardDeckV3PublishBlockedErrorResponse,
+    } = await import("./card-deck-v3-publish-gate");
+    const error = await assertDraftCanEnterPublishQueue(
+      "11111111-1111-1111-1111-111111111111",
+      "22222222-2222-2222-2222-222222222222",
+    ).catch((caught) => caught);
+    expect(error).toBeInstanceOf(CardDeckV3PublishBlockedError);
+    const response = cardDeckV3PublishBlockedErrorResponse(error as InstanceType<typeof CardDeckV3PublishBlockedError>);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "CARD_DECK_V3_RENDER_PENDING" });
+  });
 });
