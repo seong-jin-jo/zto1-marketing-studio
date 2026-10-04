@@ -1756,8 +1756,10 @@ export default function StudioPage() {
     // 검증 없이 같이 실린다(4차 A·B가 그 결함이었다). 기본값을 없애면 컴파일러가 모든
     // 호출부를 짚어 강제로 명시하게 한다 — 다음에 같은 결함이 또 나는 것을 막는다.
     persistedCardDeck: CardDeck | null,
-    persistedCardDeckV3: CardDeckV3 | null,
     persistedVideoEdit: VideoEdit | null,
+    // 자유 배치 덱은 기존 cardDeck/videoEdit 위치 계약 뒤에 붙인다. 기본값도 state가 아닌
+    // null이라, 기존 도메인 한정 저장이 새 도메인을 암묵적으로 함께 보내지 않는다.
+    persistedCardDeckV3: CardDeckV3 | null = null,
     bodyConflictRetryPlacement: "tail" | "head" = "tail",
     // 채널별 발행 진행 상태(완료·실패·링크)를 초안에 함께 남겨 새로고침·다른 기기에서도
     // 어느 채널이 이미 올라갔는지 복원한다. 발행 직후 호출은 setPub 반영 전 값을 넘긴다.
@@ -1865,8 +1867,8 @@ export default function StudioPage() {
                 persistedImg,
                 persistedVid,
                 persistedCardDeck,
-                persistedCardDeckV3,
                 safeVideoEdit,
+                persistedCardDeckV3,
                 "head",
                 persistedProgress,
               ),
@@ -1877,8 +1879,8 @@ export default function StudioPage() {
                 persistedImg,
                 persistedVid,
                 persistedCardDeck,
-                persistedCardDeckV3,
                 null,
+                persistedCardDeckV3,
                 "head",
                 persistedProgress,
               ),
@@ -2011,7 +2013,7 @@ export default function StudioPage() {
       // 수동 "임시 저장"은 카드덱·영상 자동저장과 달리 도메인 한정 저장이 아니라 전체
       // 스냅샷 저장이다 — 카드덱만 pruned로 검사·교체하고(위에서 이미 함) videoEdit는
       // 현재 state를 그대로 싣는다(이전 기본값 동작과 동일, 이번엔 명시적으로만 적었다).
-      const savedDraftId = await save("draft", undefined, undefined, undefined, undefined, prunedCardDeck, cardDeckV3, videoEdit);
+      const savedDraftId = await save("draft", undefined, undefined, undefined, undefined, prunedCardDeck, videoEdit, cardDeckV3);
       if (!savedDraftId) {
         showToast("초안을 저장하지 못했습니다", "error");
         return;
@@ -2209,10 +2211,10 @@ export default function StudioPage() {
         redrawn ?? img,
         subtitled.kind === "done" ? subtitled.vid : vid,
         cardDeck ? pruneEmptyBubbles(cardDeck) : null,
-        cardDeckV3,
         // 발행실로 넘어가기 직전 전체 스냅샷 저장이다(도메인 한정 자동저장이 아니다) —
         // 현재 videoEdit state를 그대로 싣는다(이전 기본값 동작과 동일, 이번엔 명시).
         subtitled.kind === "done" ? subtitled.videoEdit : videoEdit,
+        cardDeckV3,
       );
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
       changeRoom("publish");
@@ -3517,7 +3519,7 @@ export default function StudioPage() {
     try {
       // 신규·기존 초안과 기존 검토 큐를 가리지 않고, 검토 요청은 반드시 최신 본문
       // 스냅샷 저장이 끝난 뒤에만 진행한다. draftId 단축 평가는 저장을 건너뛰므로 금지한다.
-      const linkedDraftId = await save("draft", undefined, undefined, undefined, undefined, cardDeck, cardDeckV3, videoEdit);
+      const linkedDraftId = await save("draft", undefined, undefined, undefined, undefined, cardDeck, videoEdit, cardDeckV3);
       if (!linkedDraftId) throw new Error("검토 요청용 초안을 저장하지 못했습니다");
       let queueId = reviewQueueId;
       if (!queueId) {
@@ -3850,13 +3852,13 @@ export default function StudioPage() {
         setCardDeckAutosaveError(`${emptySlide}번 장에 말풍선이 비어 있어 자동 저장을 보류했습니다. 내용을 채우면 저장됩니다.`);
         return;
       }
-      // A(2026-09-22 코드리뷰 4차): save()의 마지막 인자(videoEdit)를 생략하면 기본값이
-      // 현재 videoEdit state를 통째로 실어 보낸다. 이 타이머는 카드덱 도메인만 책임진다 —
+      // A(2026-09-22 코드리뷰 4차): 이 타이머는 카드덱 도메인만 책임진다. videoEdit 자리에
+      // null을 명시하지 않으면 영상 state가 검증 없이 같이 실릴 수 있다 —
       // 사용자가 영상 오버레이 문구를 지우고 다시 타이핑하는 중(정상 편집 중, 보류
       // 대상)이면 그 state가 여기 실려가 서버 validateVideoEdit 400을 내고, 카드덱
       // 저장까지 함께 실패한다. null을 명시해 videoEdit 키 자체를 payload에서 뺀다
       // (drafts/route.ts는 키가 없으면 기존 값을 보존한다).
-      save("draft", publishReconciliations, draftIdRef.current, img, vid, pruned, null, null)
+      save("draft", publishReconciliations, draftIdRef.current, img, vid, pruned, null)
         .then(() => { setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date())); setCardDeckAutosaveError(""); })
         .catch((error) => {
           if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "BODY_STALE_REVISION") return;
@@ -3870,7 +3872,7 @@ export default function StudioPage() {
     replaceEditLines(cardDeckV3Projection(nextDeck));
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
     cardDeckAutosaveTimer.current = setTimeout(() => {
-      save("draft", publishReconciliations, draftIdRef.current, img, vid, null, nextDeck, null)
+      save("draft", publishReconciliations, draftIdRef.current, img, vid, null, null, nextDeck)
         .then(() => {
           setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
           setCardDeckAutosaveError("");
@@ -3926,7 +3928,7 @@ export default function StudioPage() {
         // 키 자체를 payload에서 뺀다(기존 서버 값 보존).
         // 영상 저장도 수동 저장·카드 자동저장·검토 요청과 같은 save 경로를 쓴다. save가
         // 실행 시점의 본문 세대를 읽으므로 예약 당시 자막 복사본은 존재하지 않는다.
-        save("draft", publishReconciliations, draftIdRef.current, img, vid, null, null, nextEdit)
+        save("draft", publishReconciliations, draftIdRef.current, img, vid, null, nextEdit)
           .then(() => {
             setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
             setVideoEditAutosaveError("");
