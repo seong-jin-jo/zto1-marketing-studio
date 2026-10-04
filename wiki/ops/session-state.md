@@ -1,3 +1,14 @@
+## 2026-10-05 03:12 KST 편집실 v2 S1 CI 힙 고갈 근본원인 교정 완료
+
+- handoff basis: 회장이 지정한 CI run `37212288414`, commit `61e2b8fd`, 과거 PR 83 렌더 루프 사례를 정본으로 삼았다. push는 하지 않는다.
+- 차집합: CI 완료 474파일과 `vitest list --filesOnly` 477파일을 비교해 `body-conflict-recovery`, `edit-autosave-cross-domain`, `video-edit-data-integrity` 3파일을 특정했다.
+- 근본원인: `draft_id` 딥링크 효과가 목록 초안을 먼저 state에 주입하고 처리 표식은 비동기 완료 뒤에 세웠다. 매 렌더 새 `hist.drafts` 배열이 들어오면 표식 전 다음 렌더가 같은 초안을 다시 주입해 무한 렌더와 워커 힙 증가를 만들었다.
+- 수정: `014b8be8`에서 목록 초안을 확보한 즉시 draft id를 선점해 state 변경 전 재진입을 차단했다. 메모리 상한, 테스트 제외, 기존 회귀 기대는 바꾸지 않았다. 증거 파일은 먼저 `c5686048`, QA NG 등록은 `d80885a9`로 고정했다.
+- 수정 전후: 세 파일은 수정 전 189초·103초·106초에도 테스트 0건이었고 워커 RSS 최소 394MB·288MB·312MB였다. 수정 후 3/3 47.42초 99MB, 2/2 48.93초 84MB, 6/6 60.54초 101MB다.
+- 검증: page import 48파일 320건 PASS. integrity는 31파일 98건 뒤 수집 RPC timeout 1건을 차집합 단독 실행해 4건 PASS, 합계 32파일 102건이다. contract는 84파일 450건 뒤 호스트 부하로 5초 timeout 1건을 기대 변경 없이 단독 재실행해 7건 PASS, 합계 85파일 451건이다. `typecheck:ci` PASS. 원격 CI는 미검증이다.
+- 다음 실행: 부모 컨트롤러가 이 브랜치를 push한 뒤 원격 CI에서 477파일 3,376건 전체 green과 워커 OOM 0을 확인한다. 종료 증거는 새 CI run 실패 0이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
 ## 2026-10-04 22:10 KST 편집실 v2 S1 교차 재검토 2차 로컬 교정 완료
 
 - handoff basis: 회장이 지정한 Claude Opus R4 N1~N5와 기존 회귀 기대를 정본으로 삼았다. push는 하지 않는다.
