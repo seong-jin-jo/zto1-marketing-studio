@@ -1,3 +1,14 @@
+## 2026-10-05 03:42 KST 편집실 v2 S1 교차 리뷰 4차 구현 완료, 전체 검증 중
+
+- handoff basis: 회장이 이 세션에 직접 지정한 교차 리뷰 4차 N6·m4-1·m4-3·m4-4와 D-2026-10-04-1을 정본으로 삼았다. tmux `371:0.1`은 이전 R6 작업의 종료 기록으로 확인했고 새 작업과 충돌하지 않는다. push는 하지 않는다.
+- N6: 목록 응답에 `hasCardDeckV3` boolean만 추가하고 v3 본문은 계속 제외했다. 목록 신호가 true면 단건 상세 완료 전 진입·발행·검토·예약을 잠그며 실패 시 재시도 경로를 제공한다. 원문 스냅샷이 있는 초안에 다른 덱 ID를 쓰면 서버가 `CARD_DECK_V3_IDENTITY_CONFLICT` 409를 반환한다. 커밋 `fc063d0f`.
+- m4-1: 개별 승인과 일괄 승인도 `assertDraftCanEnterPublishQueue`를 거친다. 커밋 `c87fdf2e`.
+- m4-3: 예약 보류는 자동 재개되지 않아 기본 편집 복귀 뒤 재예약해야 한다고 안내하고, `schedules.status` 주석에 `blocked`를 추가했다. 커밋 `2fbeccb4`.
+- m4-4: `CardCanvasEditor`가 언마운트될 때 대기 중인 글 직접 편집값을 flush한다. 커밋 `aa9d39b5`.
+- 표적 검증: drafts route 13건, StudioRooms 7건, publish gate contract 7건, queue approval 15건, CardCanvasEditor 11건, TypeScript가 통과했다. 전체 import·integrity·contract·typecheck는 2개 검증 워커, localhost 자유 배치 E2E는 메인 워커가 이어서 실행한다.
+- 다음 실행: 2개 검증 워커 결과와 실제 Chromium E2E를 회수하고 QA tracker를 PASS로 갱신한다. 종료 증거는 요청된 전체 검증 종료 코드 0, 자유 배치 E2E 종료 코드 0, 콘솔 오류 0이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
 ## 2026-10-05 03:12 KST 편집실 v2 S1 CI 힙 고갈 근본원인 교정 완료
 
 - handoff basis: 회장이 지정한 CI run `37212288414`, commit `61e2b8fd`, 과거 PR 83 렌더 루프 사례를 정본으로 삼았다. push는 하지 않는다.
