@@ -117,6 +117,30 @@ describe("POST /api/images/upload — 테넌트 격리 업로드", () => {
     expect(fs.existsSync(tenantImagesDir("tenant-b"))).toBe(false);
   });
 
+  it("S1-R3-ASSET-ID-01 실제 업로드 filename을 CardDeckV3 asset_id로 저장할 수 있다", async () => {
+    H.tenantId = "tenant-a";
+    const { status, body } = await upload(new File([new Uint8Array([1, 2, 3])], "photo.png", { type: "image/png" }));
+    const { validateCardDeckV3 } = await import("@/lib/studio/card-element-contract");
+    const element = {
+      id: "el_photo", type: "image", name: "업로드 사진", x: 0, y: 0, width: 100, height: 100,
+      rotation: 0, z_index: 0, opacity: 1, locked: false, hidden: false,
+      asset_id: body.filename, alt: "업로드 사진", decorative: false, fit: "cover",
+      crop: { x: 0, y: 0, width: 1, height: 1 }, corner_radius: 0,
+    };
+    const value = {
+      contract_version: "3.0", id: "deck_upload", template: "plain", ratio: "4:5", revision: 0,
+      theme: { background: "#FFFFFF", foreground: "#111111", accent: "#2563EB" },
+      brand: { display_name: "OSMU", handle: null }, hook_type: "pain",
+      cta: { keyword: "정리본", comment_example: "정리본을 남겨 주세요", save_reason: "나중에 다시 확인하세요" },
+      slides: [
+        { id: "slide_upload", order: 0, role: "cover", content_state: "filled", background: { kind: "solid", color: "#FFFFFF" }, base: { kind: "plain", lines: [] }, elements: [element] },
+        { id: "slide_cta", order: 1, role: "cta", content_state: "filled", background: { kind: "solid", color: "#111111" }, base: { kind: "plain", lines: ["저장하세요"] }, elements: [] },
+      ],
+    };
+    expect(status).toBe(200);
+    expect(() => validateCardDeckV3(value)).not.toThrow();
+  });
+
   it("허용되지 않은 확장자는 거부한다", async () => {
     H.tenantId = "tenant-a";
     const { status } = await upload(new File([new Uint8Array([1, 2, 3])], "evil.exe", { type: "application/octet-stream" }));

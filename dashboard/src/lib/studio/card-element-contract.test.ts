@@ -87,4 +87,15 @@ describe("AC-CARD-01 카드 요소 v3 계약", () => {
       expect((error as CardDeckV3ValidationError).code).toBe("CARD_DECK_TOO_LARGE");
     }
   });
+
+  it("S1-R3-ASSET-ID-01 실제 업로드 응답 형식: 확장자 파일명은 허용하고 경로 순회는 거절한다", () => {
+    const uploaded = deck();
+    const image = uploaded.slides[0].elements[1];
+    if (image.type !== "image") throw new Error("fixture");
+    image.asset_id = "8f6a04d2c911.png";
+    expect(parseCardDeckV3(uploaded).slides[0].elements[1]).toMatchObject({ asset_id: "8f6a04d2c911.png" });
+
+    image.asset_id = "../tenant-b/secret.png";
+    expect(() => parseCardDeckV3(uploaded)).toThrow(CardDeckV3ValidationError);
+  });
 });

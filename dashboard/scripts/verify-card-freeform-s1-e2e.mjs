@@ -2,6 +2,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright-core";
+import { createJiti } from "jiti";
+
+const jiti = createJiti(import.meta.url);
+const { validateCardDeckV3 } = await jiti.import("../src/lib/studio/card-element-contract.ts");
 
 const baseUrl = process.env.CARD_FREEFORM_BASE_URL || "http://127.0.0.1:3472";
 const outputDir = process.env.CARD_FREEFORM_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/qa/editroom-v2-s1");
@@ -83,7 +87,10 @@ await context.route("**/api/**", async (route) => {
     if (body.bodyBaseRevision !== bodyRevision) {
       return json(route, { ok: false, code: "BODY_STALE_REVISION", latestBody: { text: null, editLines: draft().editLines, cardDeckV3: serverDeck, bodyRevision } }, 409);
     }
-    if (body.cardDeckV3) serverDeck = structuredClone(body.cardDeckV3);
+    if (body.cardDeckV3) {
+      validateCardDeckV3(body.cardDeckV3);
+      serverDeck = structuredClone(body.cardDeckV3);
+    }
     bodyRevision += 1;
     return json(route, { ok: true, id: draftId, bodyRevision, videoEditServerRevision: null });
   }

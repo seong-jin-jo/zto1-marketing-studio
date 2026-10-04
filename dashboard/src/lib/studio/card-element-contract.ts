@@ -132,7 +132,11 @@ export class CardDeckV3ValidationError extends Error {
 }
 
 const hexColor = z.string().regex(/^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$/, "색은 #RRGGBB 또는 #RRGGBBAA 형식이어야 합니다");
-const safeId = z.string().min(3).max(120).regex(/^[A-Za-z0-9:_-]+$/, "ID에는 영문, 숫자, :, _, -만 사용할 수 있습니다");
+const safeId = z.string()
+  .min(3)
+  .max(120)
+  .regex(/^[A-Za-z0-9:_.-]+$/, "ID에는 영문, 숫자, :, _, -, .만 사용할 수 있습니다")
+  .refine((value) => !value.includes(".."), "ID에는 경로 순회 문자열(..)을 사용할 수 없습니다");
 const preciseNumber = z.number().finite().refine((value) => Math.abs(value * 1000 - Math.round(value * 1000)) < 1e-7, {
   message: "수는 소수점 셋째 자리까지만 허용됩니다",
 });
