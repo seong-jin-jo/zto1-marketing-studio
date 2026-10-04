@@ -1,12 +1,12 @@
-## 2026-10-05 03:42 KST 편집실 v2 S1 교차 리뷰 4차 구현 완료, 전체 검증 중
+## 2026-10-05 03:53 KST 편집실 v2 S1 교차 리뷰 4차 로컬 검증 완료, push 대기
 
 - handoff basis: 회장이 이 세션에 직접 지정한 교차 리뷰 4차 N6·m4-1·m4-3·m4-4와 D-2026-10-04-1을 정본으로 삼았다. tmux `371:0.1`은 이전 R6 작업의 종료 기록으로 확인했고 새 작업과 충돌하지 않는다. push는 하지 않는다.
 - N6: 목록 응답에 `hasCardDeckV3` boolean만 추가하고 v3 본문은 계속 제외했다. 목록 신호가 true면 단건 상세 완료 전 진입·발행·검토·예약을 잠그며 실패 시 재시도 경로를 제공한다. 원문 스냅샷이 있는 초안에 다른 덱 ID를 쓰면 서버가 `CARD_DECK_V3_IDENTITY_CONFLICT` 409를 반환한다. 커밋 `fc063d0f`.
 - m4-1: 개별 승인과 일괄 승인도 `assertDraftCanEnterPublishQueue`를 거친다. 커밋 `c87fdf2e`.
 - m4-3: 예약 보류는 자동 재개되지 않아 기본 편집 복귀 뒤 재예약해야 한다고 안내하고, `schedules.status` 주석에 `blocked`를 추가했다. 커밋 `2fbeccb4`.
 - m4-4: `CardCanvasEditor`가 언마운트될 때 대기 중인 글 직접 편집값을 flush한다. 커밋 `aa9d39b5`.
-- 표적 검증: drafts route 13건, StudioRooms 7건, publish gate contract 7건, queue approval 15건, CardCanvasEditor 11건, TypeScript가 통과했다. 전체 import·integrity·contract·typecheck는 2개 검증 워커, localhost 자유 배치 E2E는 메인 워커가 이어서 실행한다.
-- 다음 실행: 2개 검증 워커 결과와 실제 Chromium E2E를 회수하고 QA tracker를 PASS로 갱신한다. 종료 증거는 요청된 전체 검증 종료 코드 0, 자유 배치 E2E 종료 코드 0, 콘솔 오류 0이다.
+- 전체 검증: 변경 TypeScript 10파일의 import 영향 42파일 330건 통과, 2건 제외. integrity 32파일 102건, contract 85파일 452건, `typecheck:ci`가 모두 종료 코드 0이다. localhost 실제 Chromium은 저장 9회, 상세 조회 7회, 연속 편집 보존, 5종 요소, 사진 새로고침 복원, 409 충돌 재적용, 기본 편집 복귀 확인, 390px 가로 넘침 0, 콘솔 오류 0으로 종료했다. 디자인 lint는 기존 위반 2종, 파이프라인 산출물 검사는 기존 핀 위생 경고 28건을 남겼으나 둘 다 종료 코드 0이고 이번 변경 줄의 신규 디자인 위반은 0이다.
+- 다음 실행: 부모 컨트롤러가 이 브랜치를 push한 뒤 원격 CI에서 전체 실패 0을 확인한다. 종료 증거는 새 CI run green이며, red일 때만 code-builder로 회수한다. 운영 배포는 이 작업에서 실행하지 않는다.
 - 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
 
 ## 2026-10-05 03:12 KST 편집실 v2 S1 CI 힙 고갈 근본원인 교정 완료

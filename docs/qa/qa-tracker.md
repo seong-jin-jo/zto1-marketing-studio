@@ -1,11 +1,13 @@
-## 2026-10-05 편집실 v2 S1 교차 리뷰 4차 ❌ NG
+## 2026-10-05 편집실 v2 S1 교차 리뷰 4차 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| EDITROOM-V2-S1-R7-N6 | 목록 우선 열기 중 서버 v3 덱과 원문 스냅샷 덮어쓰기 방지 | S1-R7-HYDRATION-GUARD-01 | ❌ NG | 목록 응답에 v3 존재 신호가 없어 상세 지연 또는 실패 구간을 plain 초안으로 오인한다. 이 구간의 진입과 발행 동작을 잠그고, 다른 덱 id 저장을 서버 409로 거절해야 한다. |
-| EDITROOM-V2-S1-R7-m4-1 | 개별 승인과 일괄 승인도 공통 발행 큐 안전문 적용 | S1-R7-QUEUE-APPROVE-01 | ❌ NG | `queue/[postId]/approve`와 `bulk-approve`가 자유 배치 초안을 직접 승인할 수 있는지 제품 코드와 계약 테스트를 보강한다. |
-| EDITROOM-V2-S1-R7-m4-3 | 예약 보류 뒤 재예약 필요 안내와 DB 상태 주석 정합 | S1-R7-SCHEDULE-BLOCKED-01 | ❌ NG | 자유 배치 진입 안내가 보류된 예약이 자동 복원되지 않음을 말하지 않고, 스키마 상태 주석에도 `blocked`가 없다. |
-| EDITROOM-V2-S1-R7-m4-4 | 편집기 언마운트 시 대기 중 글 편집 확정 | S1-R7-EDITOR-FLUSH-01 | ❌ NG | 글 직접 편집 debounce가 언마운트될 때 취소만 되면 마지막 입력이 작업 이력과 자동저장에서 유실될 수 있다. |
+| EDITROOM-V2-S1-R7-N6 | 목록 우선 열기 중 서버 v3 덱과 원문 스냅샷 덮어쓰기 방지 | S1-R7-HYDRATION-GUARD-01 | ✅ 로컬 PASS | 목록은 본문 없이 `hasCardDeckV3`만 내리고, 상세 준비 전 진입·발행 동작을 잠근다. 실패 시 재시도하며 다른 덱 id 저장은 원자적 조건 검사로 409다. route 13건, StudioRooms 7건, 발행 계약 7건 통과. `fc063d0f` |
+| EDITROOM-V2-S1-R7-m4-1 | 개별 승인과 일괄 승인도 공통 발행 큐 안전문 적용 | S1-R7-QUEUE-APPROVE-01 | ✅ 로컬 PASS | 개별·일괄 승인 모두 mutation 전에 `assertDraftCanEnterPublishQueue`를 호출한다. 큐·승인 관련 22건 통과. `c87fdf2e` |
+| EDITROOM-V2-S1-R7-m4-3 | 예약 보류 뒤 재예약 필요 안내와 DB 상태 주석 정합 | S1-R7-SCHEDULE-BLOCKED-01 | ✅ 로컬 PASS | 진입 안내에 자동 복원되지 않음과 재예약 필요를 명시하고 스키마 상태 주석에 `blocked`를 추가했다. 계약 테스트 통과. `2fbeccb4` |
+| EDITROOM-V2-S1-R7-m4-4 | 편집기 언마운트 시 대기 중 글 편집 확정 | S1-R7-EDITOR-FLUSH-01 | ✅ 로컬 PASS | 대기 중 직접 편집 context를 ref에 보존하고 언마운트 cleanup에서 마지막 값을 flush한다. 컴포넌트 11건 통과. `aa9d39b5` |
+
+전체 종료 증거: 변경 TypeScript 10파일의 import 영향 42파일 330건 통과, 2건 제외. integrity 32파일 102건 통과. contract 85파일 452건 통과. `typecheck:ci` 오류 0. localhost 실제 Chromium은 저장 9회, 상세 조회 7회, 연속 편집 보존, 5종 요소, 사진 새로고침 복원, 409 충돌 재적용, 기본 편집 복귀 확인, 390px 가로 넘침 0, 콘솔 오류 0으로 종료 코드 0이다. 디자인 lint는 기존 인라인 style 3파일·hex 8파일을 경고했으나 이번 변경 줄의 신규 위반은 0이다. 파이프라인 산출물 검사는 종료 코드 0이며 기존 핀 위생 경고 28건이다. 원격 CI와 운영 배포는 미검증이다.
 
 ## 2026-10-05 편집실 v2 S1 CI Vitest 힙 고갈 ❌ NG → ✅ 로컬 PASS
 
