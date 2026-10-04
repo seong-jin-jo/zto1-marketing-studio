@@ -1,3 +1,32 @@
+## 2026-10-05 04:45 KST 편집실 v2 S1 카드 자유 배치 머지·운영 배포
+
+- PR 116 squash 머지 ed5f156d. 교차 리뷰(Claude Opus) 5회차 PASS(1차 MAJOR 7 → 2차 4 → 3차 2 → 4차 1 → 5차 0), CI verify 통과, main CI 통과, verify-agent-quality PASS.
+- 운영 배포 run 37229571248 success, /api/health build_commit ed5f156d.
+- 기능: plain 카드에서 '자유 배치로 편집' 진입(2~11장, 무손실 변환, 9칸 위치 이관), 끌기·크기·회전(15도 스냅)·글자 크기·각도 숫자 입력, 글·사진·도형·스티커·로고 추가, 두 번 눌러 글 고치기, 실행 취소, 저장·새로고침 유지, '기본 편집으로 돌아가기'(확인 대화상자, 원문 스냅샷 복원).
+- 안전장치: S2 공용 렌더 전까지 자유 배치 초안은 발행·검토·예약·큐 등록·승인이 클라이언트와 서버(공통 함수)에서 차단되고 사유를 보여 준다. 예약 실행 시 행별 재검사로 blocked 처리.
+- 미검증: 회장 화면 실측(9444 회원 OSMU 로그아웃). 백로그: m5-2 일괄 승인 부분 처리, m5-3 queue/promote tenant 인증(보안), m5-4 스냅샷 없는 v3 보호, m5-5 blocked 예약 재개(S2와 함께).
+- 다음: S2 공용 장 렌더(편집 화면과 발행 PNG 동일 컴포넌트) → 자유 배치 발행 차단 해제. S3 착수 전 카드 1장 서버 렌더 p95 실측.
+
+## 2026-10-04 22:50 KST 편집실 v2 S1 교차 리뷰 4회차 재작업 위임
+
+- PR 116(feat/editroom-v2-s1, head 58daa4bf): 교차 리뷰 1차 MAJOR 7 → 2차 MAJOR 4(진입점 가드 누락, 컨트롤러 지시 결함) → 3차 2차 지적 전부 해소, 서버 발행 차단 우회(예약 발행·큐 승격·enqueue·명령) MAJOR 2. CI 1건(B3 자막 자동저장).
+- 결정: 자유 배치 진입점은 보이되 S2 공용 렌더 전까지 v3 초안은 발행 전 경로 차단, 차단은 발행·큐 공통 하위 함수 한 곳에.
+- Codex 세션 01a1041c 에 재작업 위임(로그 scratchpad/codex-s1h.log, CODEX_TIMEOUT=5400).
+- 다음: Codex 회수 → push → CI → 교차 리뷰 4차 → PASS면 base main 머지(설계 커밋 포함) → 배포(회장 승인 범위: 이번 세션 "승인. 진행") → 9444 실측(회원 재로그인 필요).
+
+## 2026-10-04 19:20 KST 편집실 v2 S1(카드 자유 배치) CI 통과, 교차 리뷰 중
+
+- 설계: feat/editroom-v2-core(f72f890b, push됨). Codex tech-architect 4문서, 독립 리뷰 Sonnet 5 23/25 PASS. S3 착수 조건: 카드 1장 서버 렌더 p95 실측, T-TRACE 85행 전수 대조 확인.
+- S1: PR 116(feat/editroom-v2-s1, worktree /Users/sj/wt/zto1-editroom-s1, Codex 세션 01a1041c). 회귀 7건(글자 내장 카드, 자동저장 null 계약, 맨 button, 편집 상태, 기존 plain 작업대 등) 수정 후 CI verify 통과(run 37194168864). Claude code-reviewer 교차 리뷰 진행 중.
+- 운영: build_commit 1a5d8547. 9444 회원 OSMU 여전히 로그아웃. tenant2~4 정지는 회장 실행 대기.
+- 다음: 리뷰 PASS → PR 116 base를 main으로(설계 커밋 포함) 머지 → 배포(회장 승인 범위 확인) → S2.
+
+## 2026-10-04 07:00 KST 회장 "승인. 진행" 처리
+
+- 운영 배포 완료: run 37156423091 success, /api/health build_commit 1a5d8547(편집실 v2 1차 포함). 회원 화면 실측은 9444 OSMU 로그아웃(토큰 없음)이라 미검증.
+- tenant2~4 정지: 세션 docker stop 이 분류기 [Interfere With Workloads] 거절 → 회장 실행 필요.
+- 편집실 결정 D-2026-10-04-1 기록(브랜치 feat/editroom-v2-core 0c69f044, worktree /Users/sj/wt/zto1-editroom-core). Codex tech-architect 정식 설계 위임 중(로그 scratchpad/codex-core-design.log).
+
 ## 2026-10-04 03:00 KST 편집실 v2 1차 main 머지 (PR 114 문서, PR 115 구현 1a5d8547)
 
 - PR 115 CI verify 3,328건 통과(run 37141659761), Claude Opus 교차 리뷰 3회차 PASS. squash 머지 1a5d8547. 운영 미배포(배포 승인 대기).
