@@ -56,7 +56,7 @@ import {
   type LearningInfo,
 } from "./learning-info";
 import styles from "./StudioRooms.module.css";
-import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
+import { DeliveredMedia, resolveImageAssetUrl } from "@/components/studio/DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
 
 // M5(2026-09-22 코드리뷰): 매 렌더 새 객체를 만들지 않게 모듈 스코프에서 한 번만 만든다.
@@ -2031,6 +2031,32 @@ export function EditRoom({
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkAsk, setBulkAsk] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
+  const cardAssetIds = useMemo(() => {
+    if (!cardDeckV3) return [];
+    const ids = new Set<string>();
+    for (const slide of cardDeckV3.slides) {
+      if (slide.background.kind === "image" && !slide.background.asset_id.startsWith("builtin:")) ids.add(slide.background.asset_id);
+      for (const element of slide.elements) {
+        if ((element.type === "image" || element.type === "sticker" || element.type === "logo") && !element.asset_id.startsWith("builtin:")) ids.add(element.asset_id);
+      }
+    }
+    return [...ids].sort();
+  }, [cardDeckV3]);
+  const cardAssetKey = cardAssetIds.join("\u0000");
+  const [cardAssetUrls, setCardAssetUrls] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    if (!workspaceId || cardAssetIds.length === 0) {
+      setCardAssetUrls({});
+      return () => { cancelled = true; };
+    }
+    void Promise.all(cardAssetIds.map(async (assetId) => [assetId, await resolveImageAssetUrl(assetId, workspaceId)] as const))
+      .then((entries) => {
+        if (cancelled) return;
+        setCardAssetUrls(Object.fromEntries(entries.filter(([, url]) => Boolean(url))));
+      });
+    return () => { cancelled = true; };
+  }, [cardAssetKey, workspaceId]);
   const initialAudioSettings = audioSettingsFromFormat(initialFormat);
   const preservedAudio = useMemo<PreservedAudioSettings>(() => ({
     musicTrack: initialAudioSettings.musicTrack,
@@ -2224,7 +2250,7 @@ export function EditRoom({
               </p>
               {kind === "card" && !cardTextEmbedded && cardDeckV3 && onCardDeckV3Change ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-v3-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
-                  <CardCanvasEditor deck={cardDeckV3} onDeckChange={onCardDeckV3Change} />
+                  <CardCanvasEditor deck={cardDeckV3} assetUrls={cardAssetUrls} onDeckChange={onCardDeckV3Change} />
                 </div>
               ) : kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>

@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
 import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
 
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("StudioRooms CardDeckV3 실제 연결", () => {
   it("S1-AC1 정상: 카드 편집실이 자유 배치 편집기를 열고 요소 변경을 상위 저장 경계로 전달한다", () => {
@@ -25,5 +25,22 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     render(<EditRoom kind="card" lines={["기존 카드"]} onLinesChange={() => {}} />);
     expect(document.querySelector('[data-card-deck-v3-workbench]')).not.toBeInTheDocument();
     expect(document.querySelector('[data-plain-card-shell]')).toBeInTheDocument();
+  });
+
+  it("S1-R3-ASSET-RESIGN-01 복원한 asset_id를 테넌트 범위 서명 URL로 바꿔 사진을 표시한다", async () => {
+    const deck = createPlainCardDeckV3(["첫 장", "마지막 장"], "deck_asset_restore");
+    deck.slides[0].elements.push({
+      id: "el_uploaded_photo", type: "image", name: "업로드 사진", x: 40, y: 40, width: 300, height: 300,
+      rotation: 0, z_index: 1, opacity: 1, locked: false, hidden: false,
+      asset_id: "8f6a04d2c911.png", alt: "새로고침 뒤 사진", decorative: false, fit: "cover",
+      crop: { x: 0, y: 0, width: 1, height: 1 }, corner_radius: 0,
+    });
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, file: "/api/images/deliver/renewed" }) }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<EditRoom workspaceId="tenant-s1" kind="card" lines={["첫 장", "마지막 장"]} onLinesChange={() => {}} cardDeckV3={deck} onCardDeckV3Change={() => {}} />);
+
+    await waitFor(() => expect(screen.getByAltText("새로고침 뒤 사진")).toHaveAttribute("src", "/api/images/deliver/renewed"));
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ filename: "8f6a04d2c911.png", purpose: "image", tenant_id: "tenant-s1" });
   });
 });
