@@ -1,3 +1,9 @@
+## 2026-10-05 편집실 v2 S1 CI Vitest 힙 고갈 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-R6-CI-OOM | CI run 37212288414의 미완료 3파일을 특정하고 제품 렌더 루프를 제거 | S1-R6-OOM-01 | ❌ NG | commit `61e2b8fd`의 Vitest 실행은 477파일 중 474파일, 3,376건 중 3,365건 뒤 워커 3개가 `JavaScript heap out of memory`로 종료됐다. 메모리 상한 상향이나 테스트 제외 없이 hydration, autosave, snapshot, return confirmation 변경에서 반복 렌더 원인을 추적한다. |
+
 ## 2026-10-04 편집실 v2 S1 교차 재검토 3차 및 CI 회귀 ❌ NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
