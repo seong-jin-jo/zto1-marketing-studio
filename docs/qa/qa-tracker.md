@@ -1,3 +1,15 @@
+## 2026-10-04 편집실 v2 S1 Claude Opus 교차 재검토 2차 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-R4-N1 | plain→v3 변환 무손실 | S1-R4-MIGRATION-01 | ✅ 로컬 PASS | 상한 밖 덱·빈 카드·1장 덱은 사유와 함께 진입 차단. 2~11장은 문구와 9칸 위치를 그대로 이관한다. `9464e891` |
+| EDITROOM-V2-S1-R4-N2 | 기본 편집 복귀와 진입 전 스냅샷 복원 | S1-R4-RETURN-01 | ✅ 로컬 PASS | 서버·로컬에 진입 전 `editLines`·`cardTextPositions`를 보존하고 명시적 v3 삭제 뒤 복원한다. `b66cde85` |
+| EDITROOM-V2-S1-R4-N3 | S2 전 발행·검토 차단 | S1-R4-PUBLISH-GATE-01 | ✅ 로컬 PASS | 화면 이동·검토·예약·발행과 서버 publish·queue·review를 같은 코드와 문구로 차단한다. `b7998307`, `7fae9bd8` |
+| EDITROOM-V2-S1-R4-N4 | 늦은 단건 응답의 진행 편집 덮어쓰기 금지 | S1-R4-HYDRATION-RACE-01 | ✅ 로컬 PASS | 로컬 덱·dirty·저장 대기·저장 세대 경계로 늦은 응답을 거절한다. 실브라우저 연속 편집 보존 true. `5afe5be8` |
+| EDITROOM-V2-S1-R4-N5 | 같은 초안 재선택도 단건 복원 | S1-R4-RESELECT-01 | ✅ 로컬 PASS | 목록을 누를 때 단건 GET을 먼저 완료하고 v3를 채운다. 실브라우저 detail GET 4회. `5afe5be8` |
+| EDITROOM-V2-S1-R4-m1~m5 | 초점·글 미리보기·정밀도·토큰·회전 배지 | S1-R4-FOCUS/TEXT/NUMERIC/TOKEN/ROTATION | ✅ 로컬 PASS | 초점 복귀, blur 1회 이력, 소수 셋째 자리, `border-border`, state 각도 배지. `b3c0b089` |
+| EDITROOM-V2-S1-R4-E2E | 실제 화면 저장·새로고침·충돌·반응형 | S1-AC1~07 | ✅ 로컬 PASS | production localhost에서 저장 7회, 5종 요소, 사진 복원, 충돌 재적용, 콘솔 오류 0. v70 33관찰도 종료 코드 0. 9폭은 글자<13·44px 미만·가로 넘침 0, 활성 상태 100%. 변경 영향 476파일은 3,322건 통과·45건 skip이며 DB 환경 전용 1파일은 별도 제외했다. `42f6e6fe`, `7c22d84a`, `61307419`, `42fee01a` |
+
 ## 2026-10-04 편집실 v2 S1 Claude Opus 교차 재검토 2차 ❌ NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
