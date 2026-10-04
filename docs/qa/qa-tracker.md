@@ -2,7 +2,7 @@
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| EDITROOM-V2-S1-R6-CI-OOM | CI run 37212288414의 미완료 3파일을 특정하고 제품 렌더 루프를 제거 | S1-R6-OOM-01 | ✅ 로컬 PASS | 차집합은 `body-conflict-recovery`, `edit-autosave-cross-domain`, `video-edit-data-integrity`였다. 목록 우선 주입이 state를 바꾼 뒤에야 `draft_id` 처리 표식을 세워, 매 렌더 새 `hist.drafts` 배열이 들어오면 같은 초안을 다시 주입했다. `014b8be8`은 state 변경 전에 초안을 선점한다. 수정 전 세 파일은 각각 189초·103초·106초에도 0건 완료, 워커 RSS 최소 394MB·288MB·312MB였다. 수정 후 3/3 47.42초 99MB, 2/2 48.93초 84MB, 6/6 60.54초 101MB다. page import 48파일 320건, integrity 32파일 102건, contract 85파일 451건, `typecheck:ci`가 통과했다. 원격 CI는 미검증이다. |
+| EDITROOM-V2-S1-R6-CI-OOM | CI run 37212288414의 미완료 3파일을 특정하고 제품 렌더 루프를 제거 | S1-R6-OOM-01 | ✅ 로컬 PASS | 차집합은 `body-conflict-recovery`, `edit-autosave-cross-domain`, `video-edit-data-integrity`였다. 목록 우선 주입이 state를 바꾼 뒤에야 `draft_id` 처리 표식을 세워, 매 렌더 새 `hist.drafts` 배열이 들어오면 같은 초안을 다시 주입했다. `014b8be8`은 state 변경 전에 초안을 선점한다. 수정 전 세 파일은 각각 189초·103초·106초에도 0건 완료, 워커 RSS 최소 394MB·288MB·312MB였다. 수정 후 3/3 47.42초 99MB, 2/2 48.93초 84MB, 6/6 60.54초 101MB다. page import 48파일 320건, integrity 32파일 102건, contract 85파일 451건, `typecheck:ci`가 통과했다. localhost dev 실제 Chromium에서도 저장 9회, 상세 조회 7회, 5종 요소, 사진 복원, 충돌 재적용, 복귀 확인, 콘솔 오류 0으로 종료했다. 원격 CI는 미검증이다. |
 
 ## 2026-10-04 편집실 v2 S1 교차 재검토 3차 및 CI 회귀 ❌ NG
 
