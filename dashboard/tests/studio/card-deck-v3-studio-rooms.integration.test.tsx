@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
 import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
+import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import chatBubbleDeck from "./fixtures/deck-d100.v2.json";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -25,6 +27,19 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     render(<EditRoom kind="card" lines={["기존 카드"]} onLinesChange={() => {}} />);
     expect(document.querySelector('[data-card-deck-v3-workbench]')).not.toBeInTheDocument();
     expect(document.querySelector('[data-plain-card-shell]')).toBeInTheDocument();
+  });
+
+  it("S1-R3-ENTRY-01 기존 plain 카드에서만 자유 배치 시작 행동을 노출하고 상위 변환 경계를 호출한다", () => {
+    const onStart = vi.fn();
+    const view = render(<EditRoom kind="card" lines={["첫 장", "둘째 장"]} onLinesChange={() => {}} onStartCardDeckV3={onStart} />);
+    fireEvent.click(screen.getByRole("button", { name: "자유 배치로 편집" }));
+    expect(onStart).toHaveBeenCalledOnce();
+
+    view.rerender(<EditRoom kind="card" lines={["글자 내장 카드"]} onLinesChange={() => {}} cardTextEmbedded onStartCardDeckV3={onStart} />);
+    expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
+
+    view.rerender(<EditRoom kind="card" lines={["카톡 카드"]} onLinesChange={() => {}} cardDeck={chatBubbleDeck as CardDeck} onCardDeckChange={() => {}} onStartCardDeckV3={onStart} />);
+    expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
   });
 
   it("S1-R3-ASSET-RESIGN-01 복원한 asset_id를 테넌트 범위 서명 URL로 바꿔 사진을 표시한다", async () => {

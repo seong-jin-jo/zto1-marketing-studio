@@ -1695,6 +1695,8 @@ interface EditRoomProps {
   onCardDeckChange?: (deck: CardDeck) => void;
   cardDeckV3?: CardDeckV3 | null;
   onCardDeckV3Change?: (deck: CardDeckV3) => void;
+  /** 기존 plain 카드의 줄과 v2 덱을 보존한 채 자유 배치 편집을 명시적으로 시작한다. */
+  onStartCardDeckV3?: () => void;
   /**
    * 영상 편집 v1(세션맥락 과업 B). 있으면 `kind==="video"` 편집 워크벤치 위에
    * `VideoEditor`(후킹 CTA·댓글 오버레이·자막 기반 편집·음성 변경)를 얹는다. 기존
@@ -2004,6 +2006,7 @@ export function EditRoom({
   onCardDeckChange,
   cardDeckV3 = null,
   onCardDeckV3Change,
+  onStartCardDeckV3,
   videoEdit = null,
   onVideoEditChange,
 }: EditRoomProps) {
@@ -2261,6 +2264,13 @@ export function EditRoom({
                 </div>
               ) : (
               <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""} ${kind === "video" && onVideoEditChange ? styles.videoDocumentWorkbench : ""} ${kind === "card" ? styles.plainCardWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined} inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
+                {kind === "card" && !cardTextEmbedded && onStartCardDeckV3 ? (
+                  <div className="border-b border-line p-pad-inset">
+                    <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3}>
+                      자유 배치로 편집
+                    </Button>
+                  </div>
+                ) : null}
                 {/*
                   2026-09-14. 여기는 `1. 첫 장` 같은 글자 목록이었고, 장을 옮기려면 미리보기
                   아래 `앞 장`·`다음 장` 화살표를 여러 번 눌러야 했다. 카드뉴스는 장과 장의
