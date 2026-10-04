@@ -4075,14 +4075,17 @@ export default function StudioPage() {
     setVideoEdit(nextEdit);
     videoEditRef.current = nextEdit;
     if (videoEditAutosaveTimer.current) clearTimeout(videoEditAutosaveTimer.current);
-    const attempt = (retriesLeft: number) => {
+    const attempt = (retriesLeft: number, delayMs = 800) => {
       videoEditAutosaveTimer.current = setTimeout(() => {
         // [보안·데이터 유실](교차 리뷰 재리뷰 BLOCK 1): 서버 값을 아직 못 읽었으면(같은
         // draft를 다른 탭·기기가 먼저 저장했을 수 있는 창) 저장을 미룬다. 짧게 재시도하고,
         // 그래도 안 되면(오프라인 등) 포기하지 않고 그냥 보낸다 — 서버가 revision으로
         // 한 번 더 막는다(드래프트 route.ts StaleVideoEditRevisionError, 409).
         if (!videoEditReconciledRef.current && retriesLeft > 0) {
-          attempt(retriesLeft - 1);
+          // 최초 800ms는 사용자 입력 디바운스다. 그 뒤 서버 맞춤만 남았는데 다시
+          // 800ms씩 기다리면, 맞춤이 같은 순간 끝나도 자동저장이 한 박자 늦어진다.
+          // 안전 잠금은 그대로 유지하고 완료 여부만 짧게 다시 확인한다.
+          attempt(retriesLeft - 1, 50);
           return;
         }
         const blockedReason = videoEditIncompleteEntryReason(nextEdit);
@@ -4114,7 +4117,7 @@ export default function StudioPage() {
             }
             setVideoEditAutosaveError(extractApiErrorMessage(error, "자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
           });
-      }, 800);
+      }, delayMs);
     };
     attempt(10);
   }
