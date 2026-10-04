@@ -3954,7 +3954,8 @@ export default function StudioPage() {
     // 생성된 미디어가 있으면 목록 재조회가 실패해도 편집기를 그대로 유지한다. 저장 실패는
     // 아래 autosaveError 경로에서 별도로 보여 준다.
     const hasEditableContent = resolvedEditLines.some((line) => line.trim().length > 0)
-      || Boolean(vid?.file || vid?.url || img?.file || img?.url || cardDeck || cardDeckV3 || videoEdit);
+      || Boolean(vid?.file || vid?.url || img?.file || img?.url || cardDeck || videoEdit)
+      || Boolean(cardDeckV3);
     const editRoomState = !hist && !hasEditableContent
       ? (histError ? "error" : "loading")
       : "default";
