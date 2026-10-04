@@ -1,3 +1,12 @@
+## 2026-10-04 18:58 KST 편집실 v2 S1 기존 plain 카드 작업대 회귀 로컬 교정 완료
+
+- handoff basis: 회장이 지정한 PR 116 CI run `37192534847`와 기존 v70 plain 카드 화면 계약을 정본으로 삼았다. push는 하지 않는다.
+- 근본원인: v3 덱이 없는 기존 plain 카드도 `editLines`가 있으면 `StudioPage` 진입 effect가 `cardDeckV3`를 새로 만들었다. 자동저장이 이를 localStorage에 남긴 뒤 `StudioRooms`가 자유 배치 편집기를 선택해 기존 `[data-plain-card-shell]`이 사라졌다.
+- 수정: `aa9a332b`에서 묵시적 v3 생성만 제거했다. 저장된 `cardDeckV3`가 있는 S1 작업의 렌더·저장 경로와 기존 plain 카드 작업대는 각각 유지한다.
+- 검증: page import 영향 39파일 266건, v3·설계 2파일 17건, `typecheck:ci`, production build가 통과했다. CI와 같은 `127.0.0.1:3472`, `STUDIO_V70_COMPARE=1`에서 전체 화면 정합 33관찰을 실행해 1440·1024·390 일반 카드·말풍선·발행실, 일반 카드 stage diff 0, 콘솔 오류 0, 종료 코드 0을 확인하고 서버를 종료했다.
+- 다음 실행: 부모 컨트롤러가 `16d72491`, `aa9a332b`와 후속 증거 커밋을 push하고 PR 116 CI 전체 green을 확인한다. 종료 증거는 run `37192534847`의 후속 실행에서 실패 0이다. red일 때만 code-builder로 회수한다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
 ## 2026-10-04 17:06 KST 편집실 v2 S1 PR 116 회귀 6건 로컬 교정 완료
 
 - handoff basis: 회장이 지정한 PR 116 CI run `37186181393` 실패 6건과 기존 회귀 테스트 기대를 정본으로 삼았다. push는 하지 않는다.
