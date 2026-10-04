@@ -4,6 +4,7 @@ import {
   addCardElement,
   commitCardCommand,
   createCardCommandHistory,
+  createPlainCardDeckV3,
   deleteCardElement,
   duplicateCardElement,
   moveCardElement,
@@ -14,6 +15,7 @@ import {
   rotateCardElement,
   setCardElementGeometry,
   snapCardElementPosition,
+  plainCardDeckV3EntryBlockReason,
   toggleCardElementFlag,
   undoCardCommand,
 } from "./card-element-commands";
@@ -32,6 +34,24 @@ function deck(): CardDeckV3 {
 }
 
 describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
+  it("S1-R4-MIGRATION-01 변환 전후 editLines와 9칸 위치를 손실 없이 보존한다", () => {
+    const lines = ["첫 장 원문", "둘째 장 원문", "마지막 장 원문"];
+    const converted = createPlainCardDeckV3(lines, ["top-left", "center", "bottom-right"], "deck_migration");
+    expect(converted.slides.map((slide) => slide.base.kind === "plain" ? slide.base.lines[0] : "")).toEqual(lines);
+    expect(converted.slides.map((slide) => slide.elements[0])).toMatchObject([
+      { x: 60, y: 50, style: { align: "left", vertical_align: "top" } },
+      { x: 120, y: 425, style: { align: "center", vertical_align: "middle" } },
+      { x: 180, y: 800, style: { align: "right", vertical_align: "bottom" } },
+    ]);
+  });
+
+  it("S1-R4-MIGRATION-01 상한 초과·2장 미만·빈 장·2천자 초과는 자르거나 지어내지 않고 진입을 막는다", () => {
+    expect(plainCardDeckV3EntryBlockReason(Array.from({ length: 12 }, (_, index) => `${index + 1}장`))).toContain("최대 11장");
+    expect(plainCardDeckV3EntryBlockReason(["한 장"])).toContain("2장 이상");
+    expect(plainCardDeckV3EntryBlockReason(["첫 장", " "])).toContain("2번 카드");
+    expect(plainCardDeckV3EntryBlockReason(["첫 장", "가".repeat(2_001)])).toContain("2,000자");
+    expect(() => createPlainCardDeckV3(["한 장"], [], "deck_rejected")).toThrow(RangeError);
+  });
   it("S1-AC1 정상 경로: 추가, 이동, 크기, 15도 회전이 원본을 바꾸지 않고 한 단계씩 기록된다", () => {
     const original = deck();
     const added = addCardElement(original, "slide_cover", "text", { id: "el_text" });

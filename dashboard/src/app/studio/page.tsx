@@ -48,7 +48,7 @@ import {
 } from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { cardDeckV3Projection, type CardDeckV3 } from "@/lib/studio/card-element-contract";
-import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
+import { createPlainCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
@@ -4012,7 +4012,8 @@ export default function StudioPage() {
         onCardDeckChange={onCardDeckChange}
         cardDeckV3={cardDeckV3}
         onCardDeckV3Change={onCardDeckV3Change}
-        onStartCardDeckV3={() => onCardDeckV3Change(createPlainCardDeckV3(resolvedEditLines))}
+        onStartCardDeckV3={() => onCardDeckV3Change(createPlainCardDeckV3(resolvedEditLines, cardTextPositions))}
+        cardDeckV3EntryBlockedReason={plainCardDeckV3EntryBlockReason(resolvedEditLines)}
         videoEdit={videoEdit}
         onVideoEditChange={onVideoEditChange}
         onOpenCreate={openCreateForEditKind}

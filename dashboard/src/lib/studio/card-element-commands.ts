@@ -35,6 +35,11 @@ export interface CardCommandHistory {
 
 type ElementSeed = { id: string; assetId?: string; assetAlt?: string };
 
+export type PlainCardTextPosition =
+  | "top-left" | "top-center" | "top-right"
+  | "center-left" | "center" | "center-right"
+  | "bottom-left" | "bottom-center" | "bottom-right";
+
 const clone = <T,>(value: T): T => structuredClone(value);
 const round = (value: number) => Math.round(value * 1_000) / 1_000;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -46,8 +51,34 @@ function clampedPosition(element: Pick<CardElement, "width" | "height">, x: numb
   };
 }
 
-export function createPlainCardDeckV3(lines: string[], id = `deck_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`): CardDeckV3 {
-  const source = lines.length >= 2 ? lines : [lines[0] || "첫 장", "저장하고 다시 확인하세요"];
+export function plainCardDeckV3EntryBlockReason(lines: readonly string[]): string | null {
+  if (lines.length < 2) return "카드가 2장 이상일 때 자유 배치를 시작할 수 있습니다.";
+  if (lines.length > 11) return `자유 배치는 최대 11장까지 지원합니다. 현재 ${lines.length}장을 자르지 않고 그대로 보존했습니다.`;
+  const emptyIndex = lines.findIndex((line) => !line.trim());
+  if (emptyIndex >= 0) return `${emptyIndex + 1}번 카드가 비어 있습니다. 내용을 채운 뒤 자유 배치를 시작해 주세요.`;
+  const longIndex = lines.findIndex((line) => line.length > 2_000);
+  if (longIndex >= 0) return `${longIndex + 1}번 카드가 2,000자를 넘습니다. 원문을 줄인 뒤 자유 배치를 시작해 주세요.`;
+  return null;
+}
+
+function plainTextGeometry(position: PlainCardTextPosition | undefined) {
+  const value = position ?? "center";
+  const [vertical, horizontal] = value === "center" ? ["center", "center"] : value.split("-");
+  return {
+    x: horizontal === "left" ? 60 : horizontal === "right" ? 180 : 120,
+    y: vertical === "top" ? 50 : vertical === "bottom" ? 800 : 425,
+    align: horizontal === "left" ? "left" : horizontal === "right" ? "right" : "center",
+    verticalAlign: vertical === "top" ? "top" : vertical === "bottom" ? "bottom" : "middle",
+  } as const;
+}
+
+export function createPlainCardDeckV3(
+  lines: string[],
+  positions: readonly PlainCardTextPosition[] = [],
+  id = `deck_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+): CardDeckV3 {
+  const blockedReason = plainCardDeckV3EntryBlockReason(lines);
+  if (blockedReason) throw new RangeError(blockedReason);
   return {
     contract_version: "3.0",
     id,
@@ -58,7 +89,9 @@ export function createPlainCardDeckV3(lines: string[], id = `deck_${crypto.rando
     brand: { display_name: "OSMU", handle: null },
     hook_type: "pain",
     cta: { keyword: "정리본", comment_example: "정리본을 남겨 주세요", save_reason: "나중에 다시 확인하세요" },
-    slides: source.slice(0, 11).map((line, index, all) => ({
+    slides: lines.map((line, index, all) => {
+      const geometry = plainTextGeometry(positions[index]);
+      return ({
       id: `slide_${id}_${index}`,
       order: index,
       role: index === 0 ? "cover" : index === all.length - 1 ? "cta" : "body",
@@ -68,8 +101,8 @@ export function createPlainCardDeckV3(lines: string[], id = `deck_${crypto.rando
       elements: [{
         ...createDefaultCardElement("text", { id: `el_text_${id}_${index}` }, 0),
         text: line,
-        x: 120,
-        y: 300,
+        x: geometry.x,
+        y: geometry.y,
         width: 840,
         height: 500,
         style: {
@@ -79,11 +112,11 @@ export function createPlainCardDeckV3(lines: string[], id = `deck_${crypto.rando
           line_height: 1.2,
           letter_spacing: 0,
           color: index === all.length - 1 ? "#FFFFFF" : "#111111",
-          align: "center",
-          vertical_align: "middle",
+          align: geometry.align,
+          vertical_align: geometry.verticalAlign,
         },
       }],
-    })) as CardDeckV3["slides"],
+    }); }) as CardDeckV3["slides"],
   };
 }
 

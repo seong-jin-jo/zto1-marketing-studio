@@ -1697,6 +1697,9 @@ interface EditRoomProps {
   onCardDeckV3Change?: (deck: CardDeckV3) => void;
   /** 기존 plain 카드의 줄과 v2 덱을 보존한 채 자유 배치 편집을 명시적으로 시작한다. */
   onStartCardDeckV3?: () => void;
+  cardDeckV3EntryBlockedReason?: string | null;
+  /** 자유 배치 진입 직전의 plain 카드 원문과 위치를 복원한다. */
+  onReturnFromCardDeckV3?: () => void;
   /**
    * 영상 편집 v1(세션맥락 과업 B). 있으면 `kind==="video"` 편집 워크벤치 위에
    * `VideoEditor`(후킹 CTA·댓글 오버레이·자막 기반 편집·음성 변경)를 얹는다. 기존
@@ -2007,6 +2010,8 @@ export function EditRoom({
   cardDeckV3 = null,
   onCardDeckV3Change,
   onStartCardDeckV3,
+  cardDeckV3EntryBlockedReason,
+  onReturnFromCardDeckV3,
   videoEdit = null,
   onVideoEditChange,
 }: EditRoomProps) {
@@ -2253,6 +2258,10 @@ export function EditRoom({
               </p>
               {kind === "card" && !cardTextEmbedded && cardDeckV3 && onCardDeckV3Change ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-v3-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
+                  <div className="mb-stack flex flex-wrap items-center gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption text-muted" role="status" data-card-deck-v3-return-note>
+                    <span className="mr-auto">기본 편집으로 돌아가면 자유 배치 진입 직전의 글과 위치를 그대로 복원합니다.</span>
+                    {onReturnFromCardDeckV3 ? <Button type="button" size="sm" variant="secondary" onClick={onReturnFromCardDeckV3}>기본 편집으로 돌아가기</Button> : null}
+                  </div>
                   <CardCanvasEditor deck={cardDeckV3} assetUrls={cardAssetUrls} onDeckChange={onCardDeckV3Change} />
                 </div>
               ) : kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
@@ -2265,10 +2274,11 @@ export function EditRoom({
               ) : (
               <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""} ${kind === "video" && onVideoEditChange ? styles.videoDocumentWorkbench : ""} ${kind === "card" ? styles.plainCardWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined} inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                 {kind === "card" && !cardTextEmbedded && onStartCardDeckV3 ? (
-                  <div className="border-b border-line p-pad-inset">
-                    <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3}>
+                  <div className="border-b border-border p-pad-inset">
+                    <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3} disabled={Boolean(cardDeckV3EntryBlockedReason)}>
                       자유 배치로 편집
                     </Button>
+                    {cardDeckV3EntryBlockedReason ? <p className="mt-stack-tight text-caption text-warning" role="status" data-card-deck-v3-entry-blocked>{cardDeckV3EntryBlockedReason}</p> : null}
                   </div>
                 ) : null}
                 {/*
