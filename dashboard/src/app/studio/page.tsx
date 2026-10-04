@@ -4255,6 +4255,7 @@ export default function StudioPage() {
         onBodyConflictLoadLatest={loadLatestBodyAfterConflict}
         onBodyConflictReapply={() => { void reapplyLocalBodyAfterConflict(); }}
       />
+      <ConfirmDialog request={confirmRequest} onConfirm={() => settleConfirm(true)} onCancel={() => settleConfirm(false)} />
     </div>
   );
   }
