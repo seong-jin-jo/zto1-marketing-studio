@@ -3069,6 +3069,11 @@ export default function StudioPage() {
     if (!requestedDraftId || publishReturnRequest || commentHandoffLoaded.current === requestedDraftId || !hist?.drafts) return;
     const requestedDraft = hist.drafts.find((draft) => draft.id === requestedDraftId);
     if (!requestedDraft) return;
+    // 목록 우선 열기는 loadDraftDetail 안에서 동기적으로 여러 state를 갱신한다. SWR mock이나
+    // 재검증 응답이 매 렌더 새 drafts 배열을 주면 다음 렌더가 이 async 작업의 await 뒤보다
+    // 먼저 들어올 수 있다. 완료 뒤에만 표식을 세우면 같은 초안을 다시 주입하는 렌더 루프가
+    // 된다. 목록 초안은 이미 확보했으므로 주입 시작 전에 이 draft를 선점한다.
+    commentHandoffLoaded.current = requestedDraftId;
     void (async () => {
       const loaded = await loadDraftDetail(requestedDraft);
       if (!loaded) return;
@@ -3076,7 +3081,6 @@ export default function StudioPage() {
       // create로 들어온 일반 초안 딥링크는 작업물을 바로 다듬을 수 있게 편집실로 연다.
       const requestedRoom = new URLSearchParams(window.location.search).get("room");
       if (sourceCommentId || !requestedRoom || requestedRoom === "create") setActiveRoom("edit");
-      commentHandoffLoaded.current = requestedDraftId;
     })();
   }, [hist?.drafts, publishReturnRequest, setActiveRoom]);
   const publishReturnLoaded = useRef<string | null>(null);
