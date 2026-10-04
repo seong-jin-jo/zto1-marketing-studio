@@ -1,7 +1,10 @@
 import { withTenant } from "@/lib/db";
+import {
+  CARD_DECK_V3_PUBLISH_BLOCK_CODE,
+  CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE,
+} from "@/lib/studio/card-deck-v3-publish-contract";
 
-export const CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE = "자유 배치 결과물 만들기는 다음 업데이트에서 열립니다. 기본 편집으로 돌아가면 지금 발행할 수 있습니다.";
-export const CARD_DECK_V3_PUBLISH_BLOCK_CODE = "CARD_DECK_V3_RENDER_PENDING";
+export { CARD_DECK_V3_PUBLISH_BLOCK_CODE, CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

@@ -49,7 +49,7 @@ import {
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { cardDeckV3Projection, type CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { createPlainCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
-import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-gate";
+import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
 import { deckProjection, applyProjection, type ProjectionRef } from "@/lib/studio/card-deck-contract";
