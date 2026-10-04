@@ -19,6 +19,12 @@ export async function draftHasCardDeckV3(tenantId: string, draftId: unknown): Pr
   return row?.has_card_deck_v3 === true;
 }
 
+export function payloadHasCardDeckV3(payload: Record<string, unknown> | null | undefined): boolean {
+  return Boolean(payload)
+    && Object.prototype.hasOwnProperty.call(payload, "cardDeckV3")
+    && payload?.cardDeckV3 != null;
+}
+
 export function cardDeckV3PublishBlockedResponse(): Response {
   return Response.json({
     ok: false,

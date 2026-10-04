@@ -4014,6 +4014,23 @@ export default function StudioPage() {
     } satisfies CardDeckV3SourceSnapshot;
     setCardDeckV3SourceSnapshot(snapshot);
     onCardDeckV3Change(createPlainCardDeckV3(snapshot.editLines, snapshot.cardTextPositions));
+    const currentDraftId = draftIdRef.current;
+    const tenantId = activeWorkspaceIdRef.current;
+    if (currentDraftId && tenantId) {
+      void fetch(`/api/schedule?tenant_id=${encodeURIComponent(tenantId)}`, { headers: authHeaders() })
+        .then(async (response) => response.ok ? response.json() : null)
+        .then((data: { schedules?: Array<{ draftId?: string | null; status?: string }> } | null) => {
+          const hasPendingSchedule = data?.schedules?.some((schedule) => schedule.draftId === currentDraftId
+            && (schedule.status === "scheduled" || schedule.status === "processing"));
+          if (hasPendingSchedule) {
+            showToast("이 작업물에 대기 중인 예약이 있습니다. 자유 배치 결과는 발행할 수 없어 예약 시각에도 보류됩니다.", "error");
+          }
+        })
+        .catch(() => {
+          // 예약 안내 조회 실패가 편집 시작을 막지는 않는다. 서버 예약 실행 안전문이
+          // 결과 불일치 발행을 최종 차단한다.
+        });
+    }
     showToast("자유 배치를 시작했습니다. 기본 편집으로 돌아가면 지금 글과 위치를 복원할 수 있습니다.", "success");
   }
 
@@ -4327,7 +4344,7 @@ export default function StudioPage() {
               {hasPublishedResult ? <Link href="/performance" className="shrink-0 rounded-control bg-accent px-stack py-stack-tight text-body-sm font-semibold text-accent-fg">성과실에서 결과 보기</Link> : null}
             </div>
           ) : null}
-          {showSchedule && activeWorkspace ? (
+          {showSchedule && activeWorkspace && !cardDeckV3 ? (
             <SchedulePanel
               tenantId={activeWorkspace.id}
               draftId={draftId}

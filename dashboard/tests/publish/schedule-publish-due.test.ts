@@ -219,6 +219,24 @@ describe("POST /api/schedule/publish-due — 예약 실발행 루프", () => {
     expect(H.updates).toHaveLength(0);
   });
 
+  it("S1-R5-SCHEDULE-02 도래한 자유 배치 예약은 보류하고 채널 발행을 시작하지 않는다", async () => {
+    H.rows = [{
+      id: "sched-card-v3",
+      draft_id: "draft-card-v3",
+      platforms: ["threads"],
+      payload: {},
+      draft_payload: { cardDeckV3: { contract_version: "3.0", slides: [] } },
+    }];
+
+    const { status, body } = await publishDue({ tenant_id: H.tenantId });
+
+    expect(status).toBe(200);
+    expect(body.schedules[0].status).toBe("blocked");
+    expect(body.schedules[0].results[0].error).toMatch(/자유 배치 결과물/);
+    expect(publishThreads).not.toHaveBeenCalled();
+    expect(H.inserts).toHaveLength(0);
+  });
+
   it("due schedule을 claim하고 플랫폼별 발행/기록 후 published로 닫는다", async () => {
     H.rows = [
       {
