@@ -158,6 +158,20 @@ try {
   await page.screenshot({ path: path.join(outputDir, "s1-freeform-390.png"), fullPage: true });
   if (errors.length) throw new Error(`브라우저 오류 ${errors.length}건: ${errors.join(" | ")}`);
 
+  const measurementFixture = await page.evaluate(() => {
+    const clone = document.documentElement.cloneNode(true);
+    clone.querySelectorAll("script, link[rel='stylesheet'], meta[http-equiv]").forEach((node) => node.remove());
+    const css = [...document.styleSheets].flatMap((sheet) => {
+      try { return [...sheet.cssRules].map((rule) => rule.cssText); } catch { return []; }
+    }).join("\n");
+    const style = document.createElement("style");
+    style.textContent = css;
+    clone.querySelector("head")?.append(style);
+    clone.querySelector("body")?.setAttribute("data-measurement-source", "card-freeform-s1-data-loaded");
+    return `<!doctype html>${clone.outerHTML}`;
+  });
+  fs.writeFileSync(path.join(outputDir, "s1-freeform-measure-fixture.html"), measurementFixture);
+
   fs.writeFileSync(path.join(outputDir, "s1-freeform-result.json"), JSON.stringify({
     result: "PASS", posts: posts.length, bodyRevision, elementTypes: [...types].sort(), savedElement, restoredRotation, mobile: overflow, consoleErrors: errors.length,
   }, null, 2));
