@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import type { CardElement, TextElement } from "@/lib/studio/card-element-contract";
 import { cardElementStyle, visibleCardElements, type CardSlideRenderModel } from "@/lib/studio/card-render-model";
 import styles from "./CardSlideScene.module.css";
@@ -42,7 +43,7 @@ function ElementContent({ element, model }: { element: CardElement; model: CardS
   }
   const src = model.assetUrls[element.asset_id];
   if (!src || element.asset_id.startsWith("builtin:")) return <BuiltinAsset element={element} />;
-  return <img className={styles.media} src={src} alt={element.alt} draggable={false} />;
+  return <DeliveredMedia className={styles.media} src={src} type="image" alt={element.alt} draggable={false} />;
 }
 
 export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
@@ -57,7 +58,7 @@ export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
   const elements = visibleCardElements(model);
   return (
     <article className={styles.scene} style={sceneStyle} data-card-slide-scene data-render-mode={renderMode} aria-label={`카드 ${model.slide.order + 1}장`}>
-      {backgroundUrl ? <img className={styles.backgroundImage} src={backgroundUrl} alt="" /> : null}
+      {backgroundUrl ? <DeliveredMedia className={styles.backgroundImage} src={backgroundUrl} type="image" alt="" /> : null}
       {elements.length === 0 && model.slide.base.kind === "plain" ? (
         <div className={styles.baseFallback}>{model.slide.base.lines.join("\n")}</div>
       ) : null}
