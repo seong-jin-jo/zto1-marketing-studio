@@ -1,3 +1,14 @@
+## 2026-10-04 편집실 v2 S1 PR 116 회귀 6건 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-CI-01 | 연결 초안 없는 2장 `textEmbedded` 카드가 편집실·저장까지 2장을 유지 | PR95-R2-STUDIO-01 | ❌ NG | CI run 37186181393에서 S1 v3 편집기가 기존 글자 내장 카드 경로를 선점해 실패 |
+| EDITROOM-V2-S1-CI-02 | 원본 정보 없는 한 장 `textEmbedded` 카드는 편집 잠금·재합성 금지 | PR95-R3-STUDIO-01 | ❌ NG | 같은 CI에서 잠금 화면 대신 v3 편집 UI가 노출돼 실패 |
+| EDITROOM-V2-S1-CI-03 | 카드·영상·v3 자동저장은 다른 편집 도메인 자리에 명시 `null` 전달 | EDIT-AUTOSAVE-A/B-4 | ❌ NG | v3 저장 인자 추가 뒤 `onCardDeckChange`의 인자 위치 정적 계약이 깨짐 |
+| EDITROOM-V2-S1-CI-04 | 새 조작은 공용 `Button`을 사용해 맨 `<button>` 기준선 유지 | QA-APP-TOUCH-08 | ❌ NG | 맨 `<button>` 240→242개로 증가 |
+| EDITROOM-V2-S1-CI-05 | 목록이 없어도 v3 덱을 편집 가능한 복원 데이터로 인정 | QA-P1-04-STATE-01 | ❌ NG | 기존 편집 가능 상태 식이 v3 덱을 포함하지 않고 정적 계약 문자열도 사라짐 |
+| EDITROOM-V2-S1-CI-06 | 카드 장면의 이미지도 만료 URL 복구 경계를 통과 | SIGNED-MEDIA-SOURCE | ❌ NG | `CardSlideScene.tsx:60`의 새 `<img>`가 서명 미디어 공용 경계를 우회 |
+
 ## 2026-10-04 편집실 v2 S1 자유 배치 미구현 ❌ NG
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
