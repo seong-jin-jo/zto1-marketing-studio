@@ -597,3 +597,10 @@ HITS_USED: BRAIN의 모델 정본·DOM 투영, 실패 모델 우선 queue 선택
 HITS_REJECTED: 외부 broker·canvas editor·새 렌더 엔진은 승인 결정과 단순성 기준에 맞지 않아 제외했다.
 
 CONFLICTS: 없음. 첫 슬라이스의 사용자 체감 우선은 회장의 v71 불일치 지적과 일치하고, 데이터·queue 결정은 후속 기반으로 유지된다.
+
+## 독립 설계 리뷰 결과와 추가 착수 조건 (2026-10-04)
+
+- 리뷰: Claude Sonnet 5 eng-design-reviewer, RUBRIC 23/25, BLOCK 0, VERDICT PASS.
+- S3 착수 조건 추가: 운영 동급 4코어 환경에서 카드 1장 서버 렌더(renderStill) p95를 실측하고 수용 기준에 숫자로 고정한다(리뷰 MAJOR 1).
+- S1 착수 0스텝 재확인: T-TRACE 계약 테스트가 user-flow-mapping.md 85행 4열을 코드로 대조하는지 확인한다(리뷰 MAJOR 2).
+- MINOR: 글꼴 로드 실패 정책과 export-queue 재시도 분류표의 상호 참조, export 표가 FORCE RLS를 쓰는 이유 한 줄.
