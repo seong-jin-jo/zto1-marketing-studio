@@ -1,3 +1,12 @@
+## 2026-10-04 편집실 v2 S1 교차 재검토 3차 및 CI 회귀 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S1-R5-CI | 영상 자막 수정 직후 최신 문구 자동저장 | VIDEO-EDIT-B3 | ❌ NG | CI run 37206237145에서 영상 `editLines` 저장 POST가 0건이다. v3 hydration·저장 대기 경계가 기존 영상 자동저장까지 막았는지 제품 코드에서 추적한다. |
+| EDITROOM-V2-S1-R5-B1 | v3 초안의 예약 등록·예약 실행 우회 차단 | S1-R5-SCHEDULE-GATE-01 | ❌ NG | 예약 등록은 v3를 검사하지 않고, 예약 실행은 발행 시점 draft payload를 읽으면서도 plain 렌더로 진행한다. |
+| EDITROOM-V2-S1-R5-B2 | 모든 직접 큐 등록 경로를 공통 하위 함수에서 차단 | S1-R5-QUEUE-GATE-01 | ❌ NG | queue promote, draft enqueue, studio command가 공통 v3 검사 없이 큐를 만들 수 있다. |
+| EDITROOM-V2-S1-R5-m1~m5 | 직접 발행 범위 기록, 복귀 확인, 스냅샷 최소 전송, 목록 우선 열기, 글 편집 debounce 확정 | S1-R5-MINOR-01~05 | ❌ NG | 교차 재검토 3차 지적 기준으로 제품·결정문·계약 테스트를 보강한다. |
+
 ## 2026-10-04 편집실 v2 S1 Claude Opus 교차 재검토 2차 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
