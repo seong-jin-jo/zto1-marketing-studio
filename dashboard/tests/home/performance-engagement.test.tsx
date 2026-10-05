@@ -57,6 +57,28 @@ describe("FE-V63-07 성과실 댓글 행동", () => {
     expect(screen.queryByText(/owner@example\.test/)).not.toBeInTheDocument();
   });
 
+  it("PERF-ALIAS-01 정상: Shorts·Reels는 저장 플랫폼 별칭으로 집계·판정·목록·링크를 함께 바꾼다", () => {
+    H.fetcher.mockImplementation(() => new Promise(() => {}));
+    const youtube = { ...post, id: "youtube-post", platform: "youtube", text: "쇼츠 성과", views: 321, replies: 0 };
+    const reels = { ...post, id: "reels-post", platform: "instagram_reels", text: "릴스 성과", views: 123, replies: 0 };
+    render(room([youtube, reels]));
+
+    fireEvent.click(screen.getByRole("button", { name: "Shorts" }));
+    expect(screen.getByText("쇼츠 성과", { selector: "td span" })).toBeInTheDocument();
+    expect(screen.queryByText("릴스 성과", { selector: "td span" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Shorts").length).toBeGreaterThan(1);
+    expect(screen.queryByText("youtube")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Shorts 계정 자세히 보기 →" })).toHaveAttribute("href", "/channels/youtube");
+    expect(screen.getByText(/성과 표본 1건/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reels" }));
+    expect(screen.getByText("릴스 성과", { selector: "td span" })).toBeInTheDocument();
+    expect(screen.queryByText("쇼츠 성과", { selector: "td span" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Reels").length).toBeGreaterThan(1);
+    expect(screen.queryByText("instagram_reels")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Reels 계정 자세히 보기 →" })).toHaveAttribute("href", "/channels/instagram");
+  });
+
   it("FE-V63-07 정상 경로: 본문을 읽고 다섯 후속 행동 단추가 실제 API를 호출한다", async () => {
     H.fetcher.mockResolvedValue({
       postId: post.id, platform: "threads", capability: supported,
