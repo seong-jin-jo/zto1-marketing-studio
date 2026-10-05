@@ -238,6 +238,9 @@ jobs:
           PINTEREST_APP_SECRET=${{ secrets.PINTEREST_APP_SECRET }}
           TUMBLR_CONSUMER_KEY=${{ secrets.TUMBLR_CONSUMER_KEY }}
           TUMBLR_CONSUMER_SECRET=${{ secrets.TUMBLR_CONSUMER_SECRET }}
+          # 편집실 카드 공용 렌더(S2). 저장소 변수로 켜고 끈다. 끄고 다시 배포하면 이전 경로로 돌아간다.
+          CARD_DECK_V3_RENDER_ENABLED=${{ vars.CARD_DECK_V3_RENDER_ENABLED || '0' }}
+          NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=${{ vars.CARD_DECK_V3_RENDER_ENABLED || '0' }}
           TIKTOK_CLIENT_KEY=${{ secrets.TIKTOK_CLIENT_KEY }}
           TIKTOK_CLIENT_SECRET=${{ secrets.TIKTOK_CLIENT_SECRET }}
           SLACK_CLIENT_ID=${{ secrets.SLACK_CLIENT_ID }}
