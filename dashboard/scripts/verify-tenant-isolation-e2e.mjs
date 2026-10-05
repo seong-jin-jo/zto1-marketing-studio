@@ -207,6 +207,9 @@ const readCases = ({ tenantB, draftB, postB }) => [
   // (독립 리뷰 2026-10-02: READ-61은 PR #102(fix/higgsfield-server-side-finalize)가
   // /api/video/publish/job/probe-job-id로 먼저 썼다 — 충돌 방지로 READ-62로 바꿨다.)
   ["READ-62", "/api/video/intro-outro/job/probe-job-id"],
+  // 자막 굽기 계보는 결과 파일명에서 원본 파일명을 되찾는다. 다른 작업 공간의 기록을
+  // 읽으면 미디어 자체를 못 받아도 원본 파일 식별자가 새므로 테넌트 공격 목록에 둔다.
+  ["READ-63", "/api/video/subtitle?filename=probe.mp4"],
 ].map(([name, routePath]) => {
   const url = new URL(`${BASE_URL}${routePath}`);
   url.searchParams.set("tenant_id", tenantB);

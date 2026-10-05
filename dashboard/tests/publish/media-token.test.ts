@@ -86,6 +86,7 @@ describe("media-token", () => {
   it("경로 traversal 파일명과 불량 테넌트는 서명 자체를 거부한다", () => {
     expect(signMediaToken("tenantA", "../../etc/passwd")).toBeNull();
     expect(signMediaToken("tenantA", "a/b.mp4")).toBeNull();
+    expect(signMediaToken("tenantA", ".subtitle-bakes.json")).toBeNull();
     expect(signMediaToken("../x", "clip.mp4")).toBeNull();
   });
 

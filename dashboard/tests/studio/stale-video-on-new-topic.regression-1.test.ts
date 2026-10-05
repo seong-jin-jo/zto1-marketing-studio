@@ -105,9 +105,25 @@ describe("VID-STALE 화면이 그 판정을 실제로 쓴다", () => {
     // 2026-10-02 리뷰 MAJOR 5c: 새로고침 복구가 저장된 주제(topicLabel)로 도장을 찍을 수
     // 있게 `opts?.topicLabel ?? idea`로 바뀌었다 — 평소 흐름(opts 없음)에서는 그대로
     // idea로 떨어진다(동작 불변).
-    expect(pageSrc).toContain("const stamped = { ...r, topicKey: mediaTopicKey(opts?.topicLabel ?? idea) };");
-    expect(pageSrc).toContain("setImg(stamped)");
-    expect(pageSrc).toContain("setVid(stamped)");
+    const imageStart = pageSrc.indexOf("async function pollAndFinishImage(");
+    const imageEnd = pageSrc.indexOf("async function genImage(", imageStart);
+    const videoStart = pageSrc.indexOf("async function pollAndFinishVideo(");
+    const videoEnd = pageSrc.indexOf("async function genVideo(", videoStart);
+
+    expect(imageStart, "이미지 완료 함수가 사라졌다").toBeGreaterThanOrEqual(0);
+    expect(imageEnd, "이미지 완료 함수의 경계를 찾지 못했다").toBeGreaterThan(imageStart);
+    expect(videoStart, "영상 완료 함수가 사라졌다").toBeGreaterThanOrEqual(0);
+    expect(videoEnd, "영상 완료 함수의 경계를 찾지 못했다").toBeGreaterThan(videoStart);
+
+    for (const [label, body, setter] of [
+      ["이미지", pageSrc.slice(imageStart, imageEnd), "setImg(stamped)"],
+      ["영상", pageSrc.slice(videoStart, videoEnd), "setVid(stamped)"],
+    ] as const) {
+      expect(body, `${label} 결과 객체를 주제 도장과 함께 만들지 않는다`).toContain("const stamped =");
+      expect(body, `${label} 결과에 저장된 주제로 도장을 찍지 않는다`)
+        .toContain("topicKey: mediaTopicKey(opts?.topicLabel ?? idea)");
+      expect(body, `${label} 주제 도장이 화면 상태에 반영되지 않는다`).toContain(setter);
+    }
   });
 
   it("VID-STALE-10 새로 시작은 영상만 남은 상태도 비어 있지 않다고 본다", () => {

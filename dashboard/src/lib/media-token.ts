@@ -84,6 +84,9 @@ export function isVideoFilename(name: string): boolean {
 /** 파일명 화이트리스트 — 단일 파일명만, 경로 구분자/상위참조/NUL 금지. */
 export function isSafeMediaFilename(name: string): boolean {
   if (!name || name.length > 200) return false;
+  // 점 파일은 미디어가 아니라 서버 운영 메타데이터다. `.subtitle-bakes.json` 같은
+  // 레지스트리가 서명 배달 경로로 노출되지 않게 이름 판정에서 먼저 거절한다.
+  if (name.startsWith(".")) return false;
   if (name.includes("/") || name.includes("\\") || name.includes("..") || name.includes("\0")) return false;
   return /^[A-Za-z0-9._-]+$/.test(name);
 }

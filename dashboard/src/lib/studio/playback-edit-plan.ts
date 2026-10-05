@@ -131,7 +131,64 @@ type SourceWindow = { text: string; startSec: number; endSec: number; kind: Draw
 
 type OutputWindow = SourceWindow;
 
-function sourceWindows(edit: VideoEdit): { windows: SourceWindow[]; dropped: string[] } {
+export function normalizeSubtitleWindows(
+  subtitles: VideoEdit["subtitles"],
+  durationSec: number,
+): { windows: SourceWindow[]; warnings: string[] } {
+  const duration = finiteDuration(durationSec);
+  const ordered = subtitles
+    .filter((line) => !line.cut && line.text.trim())
+    .map((line) => ({ ...line, text: line.text.trim() }))
+    .sort((a, b) => a.startSec - b.startSec || a.order - b.order);
+  const windows: SourceWindow[] = [];
+  const pendingTexts: string[] = [];
+  let pendingStart = duration;
+  let mergedForShortVideo = false;
+
+  for (let index = 0; index < ordered.length; index += 1) {
+    const line = ordered[index];
+    const startSec = Math.max(0, Math.min(duration, line.startSec));
+    const nextStart = ordered[index + 1]
+      ? Math.max(0, Math.min(duration, ordered[index + 1].startSec))
+      : duration;
+    const endSec = Math.max(startSec, Math.min(duration, line.endSec, nextStart));
+    if (endSec - startSec < MIN_SPAN_SEC) {
+      mergedForShortVideo = true;
+      pendingTexts.push(line.text);
+      pendingStart = Math.min(pendingStart, startSec);
+      continue;
+    }
+    windows.push({
+      text: [...pendingTexts.splice(0), line.text].join(" · "),
+      startSec: pendingStart < duration ? Math.min(pendingStart, startSec) : startSec,
+      endSec,
+      kind: "subtitle",
+    });
+    pendingStart = duration;
+  }
+
+  if (pendingTexts.length) {
+    const last = windows[windows.length - 1];
+    if (last) last.text = [last.text, ...pendingTexts].join(" · ");
+    else if (duration > 0) {
+      windows.push({
+        text: pendingTexts.join(" · "),
+        startSec: Math.min(pendingStart, duration),
+        endSec: duration,
+        kind: "subtitle",
+      });
+    }
+  }
+
+  return {
+    windows,
+    warnings: mergedForShortVideo
+      ? ["subtitle_windows_merged_for_short_video"]
+      : [],
+  };
+}
+
+function sourceWindows(edit: VideoEdit, durationSec: number): { windows: SourceWindow[]; dropped: string[]; warnings: string[] } {
   const windows: SourceWindow[] = [];
   const dropped: string[] = [];
   for (const line of edit.subtitles) {
@@ -139,10 +196,10 @@ function sourceWindows(edit: VideoEdit): { windows: SourceWindow[]; dropped: str
     if (!text) continue;
     if (line.cut) {
       dropped.push(text);
-      continue;
     }
-    windows.push({ text, startSec: line.startSec, endSec: line.endSec, kind: "subtitle" });
   }
+  const normalizedSubtitles = normalizeSubtitleWindows(edit.subtitles, durationSec);
+  windows.push(...normalizedSubtitles.windows);
   for (const overlay of edit.overlays) {
     const text = overlay.text.trim();
     if (!text) continue;
@@ -154,7 +211,7 @@ function sourceWindows(edit: VideoEdit): { windows: SourceWindow[]; dropped: str
     if (!author || !text) continue;
     windows.push({ text: `${author} ${text}`, startSec: comment.startSec, endSec: comment.endSec, kind: "comment" });
   }
-  return { windows, dropped };
+  return { windows, dropped, warnings: normalizedSubtitles.warnings };
 }
 
 function shiftWindow(window: SourceWindow, cuts: PlaybackRange[]): OutputWindow[] {
@@ -273,6 +330,7 @@ export type PlaybackBurnPlan =
     filterComplex: string | null;
     includeAudio: boolean;
     voiceApplied: false;
+    warnings: string[];
   }
   | { ok: false; reason: "nothing_left" | "too_many_layers" };
 
@@ -291,7 +349,7 @@ export function planPlaybackBurn(input: {
   const outputDurationSec = Number(kept.reduce((sum, range) => sum + (range.endSec - range.startSec), 0).toFixed(3));
   if (outputDurationSec < 0.2) return { ok: false, reason: "nothing_left" };
 
-  const source = sourceWindows(input.edit);
+  const source = sourceWindows(input.edit, durationSec);
   const droppedTexts = [...source.dropped];
   const outputWindows: OutputWindow[] = [];
   for (const window of source.windows) {
@@ -317,6 +375,7 @@ export function planPlaybackBurn(input: {
       filterComplex: null,
       includeAudio: false,
       voiceApplied: false,
+      warnings: source.warnings,
     };
   }
   const video = videoGraph(kept, draws);
@@ -330,6 +389,7 @@ export function planPlaybackBurn(input: {
     filterComplex,
     includeAudio: input.hasAudio,
     voiceApplied: false,
+    warnings: source.warnings,
   };
 }
 

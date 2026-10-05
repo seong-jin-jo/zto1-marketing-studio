@@ -52,6 +52,16 @@ describe("CODE-REVIEW-20260915-04 고객 자막 파일 소유권", () => {
     expect(response.status).toBe(422);
     expect(await response.json()).toMatchObject({ ok: false });
   });
+
+  it("VIDEO-UPLOAD-SUBTITLE-01 자기 작업 공간에 업로드한 원본은 자막 입력으로 찾는다", async () => {
+    const ownDir = path.join(root, "tenants", "tenant-review-subtitle", "videos");
+    fs.mkdirSync(ownDir, { recursive: true });
+    fs.writeFileSync(path.join(ownDir, "a1b2c3d4e5f6.mp4"), "uploaded-original");
+    const { POST } = await import("@/app/api/video/subtitle/route");
+    const response = await POST(subtitleRequest("a1b2c3d4e5f6.mp4"));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ ok: false, code: "SUBTITLE_FONT_MISSING" });
+  });
 });
 
 describe("CODE-REVIEW-20260915-06 자막 실패 HTTP 계약", () => {

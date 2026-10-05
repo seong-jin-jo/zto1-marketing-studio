@@ -1,5 +1,83 @@
 # OSMU build log
 
+## 2026-10-05 23:08 KST · VID-STALE-09 주제 도장 계약의 의미 단위 검증
+
+STAMP: 2026-10-05 23:08 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `studio/page.tsx` 이미지·영상 완료 함수, 단일·related·Studio 전체 Vitest | 고민: 제품 동작은 그대로 두고, 객체 포맷이 아니라 이미지와 영상 각각의 주제 도장 계약을 검사했다.
+
+| 검증 | 결과 |
+|---|---|
+| 단일 회귀 | `npx vitest run tests/studio/stale-video-on-new-topic.regression-1.test.ts`, 13건 PASS |
+| 변경 파일 import 영향 | `npx vitest related <브랜치 변경 파일> --run`, 120파일 1,021건 PASS·5건 환경 skip |
+| Studio 전체 | `npx vitest run tests/studio`, 129파일 918건 PASS·17건 환경 skip |
+| 동작 보존 | 이미지·영상 완료 함수 모두 `topicKey: mediaTopicKey(opts?.topicLabel ?? idea)`와 `setImg/setVid(stamped)` 유지 |
+| 미검증 | 실제 브라우저 화면, 원격 CI, 운영 배포 |
+
+## 2026-10-05 22:32 KST · 편집실 생성·업로드 원본 계보 복원
+
+STAMP: 2026-10-05 22:32 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: 파일명 생성 코드, related Vitest, contract Vitest | 고민: 과거 UUID 결과는 보수적으로 막고, 생성기·업로드가 실제로 만드는 좁은 파일명만 원본으로 허용했다.
+
+| 검증 | 결과 |
+|---|---|
+| 변경 파일 import 영향 | `npx vitest related <변경 파일> --run`, 83파일 725건 PASS·3건 환경 skip |
+| 전체 contract | `npx vitest run contract`, 104파일 588건 PASS |
+| 생성 원본 복원 | `vid_...`·`vidsilent_...`를 `unbaked`로 판정, DOM 자막 1개와 원본 파일 재굽기 호출 |
+| 업로드 원본 | 12자리 hex 동영상 파일을 현재 테넌트 `videos` 경로에서만 해석 |
+| 숨김 파일 | `/api/higgsfield/asset/.subtitle-bakes.json` 404, 미디어 토큰 발급 거절 |
+| 미검증 | 실제 ffmpeg 글자 픽셀, 원격 CI, 운영 배포 |
+
+## 2026-10-05 22:01 KST · PR 119 origin/main 충돌 해소
+
+STAMP: 2026-10-05 22:01 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: origin/main 4a9aebb8, related Vitest, contract Vitest | 고민: 같은 편집실 파일에 들어온 TikTok 상태 처리와 자막 lineage를 선택적으로 버리지 않고 함께 유지했다.
+
+- 코드: `dashboard/src/app/studio/page.tsx` 자동 병합 결과에서 PR 118의 TikTok 진행 오류 안내·명시적 성공 판정과 이 브랜치의 서버 자막 lineage 조회·단일층 미리보기를 모두 확인했다.
+- 문서 충돌: `docs/build-log.md`, `docs/qa/qa-tracker.md`, `docs/구현현황.md`, `wiki/ops/session-state.md`의 양쪽 최신 항목을 모두 보존했다.
+- 검증: `npx vitest related ... --run` 42파일 379건 통과, 2건 환경 skip. `npx vitest run contract` 104파일 588건 통과.
+- 미검증: 실제 TikTok 계정 왕복, 실제 영상 미리보기, 원격 CI, 운영 배포.
+
+## 2026-10-05 21:44 KST · 편집실 구운 영상 서버 계보 복원
+
+STAMP: 2026-10-05 21:44 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: related Vitest, contract Vitest, 테넌트 격리 계약 | 고민: 기록 없는 과거 파일을 원본으로 낙관하지 않고 중복 자막과 구운 파일 재입력을 먼저 차단했다.
+
+| 검증 | 결과 |
+|---|---|
+| 변경 파일 import 영향 | `npx vitest related ... --run`, 16파일 129건 PASS |
+| 전체 contract | `npx vitest run contract`, 104파일 588건 PASS |
+| 표시 없는 운영 초안 | 서버 기록의 원본을 재생하고 DOM 자막 한 층, 재굽기 입력은 원본 파일명 |
+| 기존 작업물 열기 | 원본 없는 구운 파일은 DOM 자막 0개, 재굽기 API 0건 |
+| 테넌트 격리 | 새 GET 계보 조회를 READ-63 공격 목록에 편입, contract PASS |
+| 미검증 | 실제 ffmpeg 굽기, 원격 CI, 운영 배포 |
+
+배포 전 결과는 원본과 구운 파일 모두 UUID.ext였으므로 파일명만으로 완전한 소급 판별은 불가능하다. 이 경우 `unknown`으로 저장하고 DOM 글자층과 재굽기를 차단한다.
+
+## 2026-10-05 20:31 KST · 편집실 자막 계보 교차리뷰 교정
+
+STAMP: 2026-10-05 20:31 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: Claude Opus 교차리뷰, Vitest, TypeScript, localhost 실제 Chromium | 고민: 구운 결과를 원본 파일명과 짝짓는 fallback을 제거하고, 글자 없는 파일명·URL 한 쌍이 없으면 재굽기를 명시적으로 막았다.
+
+| 검증 | 결과 |
+|---|---|
+| 변경 파일 직접 import | 38파일 300건 PASS. 묶음 부하에서 기존 발행 상태 간섭 1건과 로컬 canvas 바이너리 누락 2건을 분리했고, 발행 파일 58건과 canvas 2파일 22건을 독립 재실행해 PASS |
+| 전체 contract | `npx vitest run contract`, 104파일 588건 PASS |
+| TypeScript | `npm run typecheck:ci` 종료 코드 0 |
+| 디자인 lint | 종료 코드 0. 기존 인라인 style 3파일·hex 8파일, 이번 diff 신규 위반 0 |
+| 실제 Chromium | localhost:3470 준비 4.1초, 390px 화면 9종 PASS, 콘솔 오류 0 |
+| 미검증 | 로컬 ffmpeg에 drawtext가 없어 실제 글자 픽셀 합성, 원격 CI, 운영 배포는 미검증 |
+
+개발 서버는 검사 뒤 종료했다. 820px에서 자막 입력이 8px로 접히던 실측 결함을 막는 `64rem` 반응형 줄바꿈과 44px 입력 하한은 유지한다.
+
+## 2026-10-05 19:37 KST · 편집실 영상 자막 단일층·구간 정규화
+
+STAMP: 2026-10-05 19:37 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: 관련 Vitest, TypeScript, 실제 Chromium, 9폭 모바일 실측 | 고민: 구운 결과를 편집 기준으로 재사용하지 않고 글자 없는 입력 계보를 보존하되, 과거 결과에 원본이 없는 경우도 중복 글자만은 차단했다.
+
+| 검증 | 결과 |
+|---|---|
+| 변경 파일 직접 import | 25파일 209건 중 208건 통과. 기존 발행 복구 1건은 묶음 상태 간섭, 단독 재실행 55건 PASS |
+| 전체 contract | `npx vitest run contract`, 103파일 586건 PASS |
+| TypeScript | `npm run typecheck:ci` 종료 코드 0 |
+| 실제 Chromium | edit-video 자막 데이터 3줄, 가로 넘침 0, 44px 미만 조작 0, 콘솔 오류 0 |
+| 모바일 실측 | 360·390·412·600·700·780·820·900·1000 전부 13px 미만 0, 본문 16px, 44px 미만 0, 눌림 100%, 넘침 0 |
+| 로컬 미검증 | ffmpeg drawtext 미지원으로 실제 글자 픽셀 합성은 CI에서 확인 필요 |
+
+개발 서버와 보조 snapshot 서버는 검사 뒤 모두 종료했다. 원격 CI와 운영 배포는 아직 실행하지 않았다.
 ## 2026-10-05 22:15 KST · 편집실 v2 S2 무손실 이관·공용 렌더
 
 STAMP: 2026-10-05 22:15 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: S2 수용 기준, 변경 import 테스트, 전체 contract, 로컬 Chromium·Remotion 실측 | 고민: v2 롤백과 S1 회귀를 보존하면서 v3 편집·발행 렌더를 하나로 통합했다.

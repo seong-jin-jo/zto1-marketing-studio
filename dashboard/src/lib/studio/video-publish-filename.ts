@@ -10,6 +10,67 @@
 import { isIntroOutroStale, type IntroOutroApplied, type VideoEdit } from "./video-edit-contract";
 import { introDurationSec } from "./video-edit-time-axis";
 
+export type UnbakedVideoSource = { filename: string; url: string };
+export type VideoBakedLineage = {
+  /** 현재 file/url 산출물에 자막·오버레이가 이미 픽셀로 들어갔는지. */
+  subtitlesBaked?: boolean;
+  /** 서버 기록 조회 결과. unknown은 배포 전 UUID 파일이 원본인지 구운 결과인지 구별 불가한 상태다. */
+  state?: "baked" | "unbaked" | "unknown";
+  /** 다시 편집하고 구울 때 쓸 글자 없는 기준 영상. */
+  editSource?: UnbakedVideoSource;
+};
+
+/** 현재 파일이 인트로·아웃트로 계보상 이미 글자를 구운 최종 결과인지 판정한다. */
+export function isLegacyIntroOutroBakedResult(currentFilename: string, introOutro: IntroOutroApplied): boolean {
+  return Boolean(introOutro
+    && introOutro.compositeFilename
+    && introOutro.resultFilename !== introOutro.compositeFilename
+    && currentFilename === introOutro.resultFilename);
+}
+
+/**
+ * 자막 굽기는 언제나 글자 없는 입력에서 시작한다. 원본 URL과 파일명이 같은 계보로
+ * 확인되지 않으면 구운 파일을 원본인 것처럼 다시 쓰지 않고 호출자가 중단한다.
+ */
+export function resolveUnbakedVideoSource(input: {
+  currentFilename: string;
+  currentUrl: string;
+  lineage: VideoBakedLineage;
+  introOutro: IntroOutroApplied;
+}): { ok: true } & UnbakedVideoSource | { ok: false; reason: "unbaked_source_missing" } {
+  const legacyBakedResult = isLegacyIntroOutroBakedResult(input.currentFilename, input.introOutro);
+  // 이전 구현은 compositeDeliverUrl이 없는 상태에서 글자 없는 합성본 파일명과 이미 구운
+  // deliverUrl을 editSource 한 쌍으로 저장할 수 있었다. 값의 존재만으로 신뢰하지 않고,
+  // 현재 구운 결과 URL과 같은 URL을 가리키는 오염 계보는 원본 없음으로 처리한다.
+  const editSourceAliasesBakedResult = Boolean(legacyBakedResult
+    && input.lineage.editSource?.url
+    && input.lineage.editSource.url === input.introOutro?.deliverUrl);
+  if (input.lineage.editSource?.filename && input.lineage.editSource.url && !editSourceAliasesBakedResult) {
+    return { ok: true, ...input.lineage.editSource };
+  }
+
+  const currentIsBaked = input.lineage.subtitlesBaked === true
+    || input.lineage.state === "baked"
+    || input.lineage.state === "unknown"
+    || legacyBakedResult;
+  if (currentIsBaked) return { ok: false, reason: "unbaked_source_missing" };
+
+  if (input.introOutro && !isIntroOutroStale(input.introOutro, input.currentFilename)) {
+    const compositeFilename = input.introOutro.compositeFilename || input.introOutro.resultFilename;
+    const compositeUrl = input.introOutro.compositeDeliverUrl
+      || (input.introOutro.resultFilename === compositeFilename ? input.introOutro.deliverUrl : "");
+    if (compositeFilename !== input.currentFilename) {
+      return compositeUrl
+        ? { ok: true, filename: compositeFilename, url: compositeUrl }
+        : { ok: false, reason: "unbaked_source_missing" };
+    }
+  }
+
+  return input.currentFilename && input.currentUrl
+    ? { ok: true, filename: input.currentFilename, url: input.currentUrl }
+    : { ok: false, reason: "unbaked_source_missing" };
+}
+
 /** 본문 편집을 굽거나 발행할 때 쓸 현재 최종 영상 파일을 고른다. */
 export function resolveVideoRenderSourceFilename(currentSourceFilename: string, introOutro: IntroOutroApplied): string {
   if (isIntroOutroStale(introOutro, currentSourceFilename)) return currentSourceFilename;

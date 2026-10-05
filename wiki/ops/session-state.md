@@ -1,3 +1,66 @@
+## 2026-10-05 23:08 KST PR 119 VID-STALE-09 원격 CI 회귀 교정 완료, push 대기
+
+- handoff basis: 회장이 직접 지정한 원격 CI 실패 1건과 교차 리뷰 4차 PASS를 기준으로 삼았다. 제품 동작 변경은 금지했고 push는 컨트롤러 소유다.
+- 근본원인: `VID-STALE-09`가 `topicKey` 계약이 아니라 결과 객체 전체의 한 줄 소스 형태를 고정했다. 영상 자막 계보 필드가 객체에 추가되자 실제 주제 도장 동작이 유지된 상태에서도 실패했다.
+- 수정: 이미지·영상 완료 함수의 범위를 각각 분리해 `stamped` 객체 생성, `topicKey: mediaTopicKey(opts?.topicLabel ?? idea)`, `setImg/setVid(stamped)`를 독립적으로 검사한다. `studio/page.tsx`는 변경하지 않았다.
+- 검증: 단일 회귀 13건 PASS. 브랜치 변경 파일 related 120파일 1,021건 PASS·5건 환경 skip. Studio 전체 129파일 918건 PASS·17건 환경 skip. 실제 브라우저 화면, 원격 CI, 운영 배포는 미검증이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 stage하지 않는다.
+- 커밋: `test(studio): decouple topic stamp contract from formatting`. 최종 SHA는 `git rev-parse HEAD`로 확인한다.
+- 다음 실행: 컨트롤러가 이 브랜치를 push하고 원격 CI를 확인한다. 종료 증거는 원격 브랜치 HEAD와 green CI다.
+
+## 2026-10-05 22:32 KST 편집실 생성·업로드 원본 계보 3차 교정 완료, push 대기
+
+- handoff basis: 회장이 이 세션에 직접 지정한 Claude Opus 3차 BLOCK과 생성기·업로드 실제 파일명 코드를 정본으로 삼았다. push는 컨트롤러 소유다.
+- 근본원인: 기록 없는 모든 파일을 `unknown`으로 묶어, 자막이 없는 정상 생성 원본까지 DOM 자막과 재굽기에서 차단했다. 숨김 계보 파일도 일반 자산 라우트에서 내려받을 수 있었다.
+- 수정: `vid_<timestamp>.mp4`, `vidsilent_<timestamp>.mp4`, 12자리 hex 업로드 동영상만 `unbaked`로 허용한다. UUID는 계속 `unknown`이다. 업로드 원본은 현재 테넌트 경로에서만 자막 입력으로 해석하고, 점으로 시작하는 파일은 자산 라우트와 미디어 서명에서 거절한다.
+- 검증: related 83파일 725건 PASS·3건 환경 skip, contract 104파일 588건 PASS. 컴포넌트 회귀에서 DOM 자막 1개와 원본 파일명 API 호출을 관찰했다. 실제 ffmpeg 글자 픽셀, 원격 CI, 운영 배포는 미검증이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 stage하지 않는다.
+- 커밋: `fix(editroom): recognize unbaked video originals`. pipeline artifact lint는 종료 코드 0이며 기존 핀 위생 경고 28건이다.
+- 다음 실행: 컨트롤러가 이 브랜치를 push하고 원격 CI를 확인한다. 종료 증거는 원격 브랜치 HEAD와 green CI다.
+
+## 2026-10-05 22:01 KST PR 119 origin/main 충돌 해소 완료, push 대기
+
+- handoff basis: 회장이 지정한 PR 118 TikTok 상태 처리와 이 브랜치 자막 lineage의 동시 보존을 기준으로 삼았다. push는 컨트롤러 소유다.
+- 병합: origin/main `4a9aebb8`을 병합했다. `studio/page.tsx` 자동 병합 결과에 TikTok 폴링 오류 안내·명시적 성공 판정과 자막 서버 lineage 조회·단일층 미리보기·재굽기 차단이 모두 남아 있다.
+- 충돌: `docs/build-log.md`, `docs/qa/qa-tracker.md`, `docs/구현현황.md`, `wiki/ops/session-state.md`의 양쪽 최신 기록을 모두 보존했다.
+- 검증: related 42파일 379건 PASS, 2건 환경 skip. contract 104파일 588건 PASS. 실제 TikTok 계정 왕복, 실제 영상 미리보기, 원격 CI와 운영 배포는 미검증이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 stage하지 않는다.
+- 다음 실행: 컨트롤러가 merge commit을 push하고 PR 119 충돌 해소 및 원격 CI를 확인한다. 종료 증거는 원격 브랜치 HEAD와 green CI다.
+
+## 2026-10-05 21:44 KST 편집실 자막 서버 계보 2차 교정 완료, 커밋 대기
+
+- handoff basis: 회장이 이 세션에 직접 지정한 Claude Opus 2차 BLOCK을 최신 정본으로 삼았다. push는 컨트롤러 소유라 이번 worker는 커밋까지만 한다.
+- 근본원인: 굽기 결과 파일명이 생성 원본과 같은 UUID.ext였고 서버에 결과→원본 계보가 없어, `subtitlesBaked`가 없는 운영 초안과 기존 작업물 열기에서 현재 파일을 원본으로 낙관했다.
+- 수정: 새 결과는 테넌트별 `.subtitle-bakes.json`과 `subtitle-UUID.ext` 규칙으로 기록한다. 편집실은 계보 GET을 조회해 원본이 있으면 원본+DOM 한 층을 사용하고, 원본이 없거나 배포 전 파일이라 확인 불가하면 DOM을 숨기고 재굽기를 막는다. 서버도 확인된 구운 입력을 409로 거절한다.
+- 검증: related 16파일 129건 PASS, contract 104파일 588건 PASS. GET 계보 경로는 테넌트 격리 공격 스크립트 READ-63에 편입했다.
+- 한계: 배포 전 무표식 UUID 파일은 원본과 구운 결과를 파일명만으로 소급 구별할 수 없다. 실제 ffmpeg, 원격 CI, 운영 배포는 미검증이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 사용자 변경으로 stage하지 않는다.
+- 다음 실행: 소유 파일만 커밋한다. 컨트롤러가 이후 push와 원격 CI를 수행한다.
+
+## 2026-10-05 20:31 KST 편집실 자막 계보 교차리뷰 교정 완료, 커밋 대기
+
+- handoff basis: 회장이 이 세션에 직접 지정한 Claude Opus 교차리뷰 BLOCK을 최신 정본으로 삼았다. push는 컨트롤러 소유라 이번 worker는 커밋까지만 한다.
+- 근본원인: 기존 인트로·아웃트로 데이터에서 원본 파일명과 이미 구운 `deliverUrl`이 섞였고, 인트로·아웃트로 없는 구운 결과에는 구운 여부를 복원할 표식이 없었다. 미리보기와 재굽기가 서로 다른 fallback을 써서 DOM 자막 숨김과 원본 선택도 갈렸다.
+- 수정: `subtitlesBaked`와 파일명·URL 한 쌍인 `editSource`를 저장하고, 공통 `resolveUnbakedVideoSource`로 미리보기·재굽기 경계를 맞췄다. 원본이 없으면 DOM 자막을 숨기고 재굽기를 막아 복원 안내를 보여준다. 미리보기 자막도 내보내기와 같은 구간 정규화를 쓴다.
+- 검증: 직접 import 38파일 300건, contract 104파일 588건, TypeScript PASS. localhost 실제 Chromium 390px 화면 9종은 콘솔 오류 0이다. 디자인 lint의 기존 위반 2종 외 이번 diff 신규 위반은 0이다. 실제 drawtext 픽셀, 원격 CI, 운영 배포는 미검증이다.
+- 반응형 유지 근거: `max-[64rem]` 줄바꿈과 44px 입력 하한은 앞선 실제 820px에서 입력 폭이 8px로 접힌 결함을 고친 것이며 360~1000 아홉 폭 측정을 통과했으므로 되돌리지 않는다.
+- 다음 실행: 소유 파일만 stage해 커밋하고, `.codex/logs/harness.jsonl`과 `wiki/거버넌스/요청.md`는 제외한다. 컨트롤러가 이후 push와 원격 CI를 수행한다.
+
+## 2026-10-05 19:37 KST 편집실 자막 중복 근본수정 로컬 검증 완료, PR 준비
+
+- handoff basis: 회장이 이 세션에 직접 지정한 이어가기 과제와 기존 커밋 `a7c9d606..ab59129d`, 남은 `VideoEditor.tsx` 수정만 정본으로 삼았다. 미커밋 수정은 820px에서 자막 입력 폭이 8px로 접히는 실측 결함을 고치는 반응형 배치였고 `92fdcc82`로 분리했다.
+- 수정: 원본·글자 없는 합성본과 DOM 자막을 우선하고 기존 구운 파일 fallback은 DOM 글자층을 숨긴다. 자막 굽기 직전 겹침·영상 끝을 정규화하며 너무 짧은 구간은 합치고 경고한다. Higgsfield 움직임 프롬프트는 이미지 경로의 글자 억제 장면 제약을 재사용한다.
+- 검증: 직접 import 25파일 묶음은 209건 중 208건 통과, 기존 발행 복구 1건은 단독 55건 전부 통과했다. 전체 contract 103파일 586건, TypeScript, 실제 Chromium, 360~1000 아홉 폭 접근성·넘침 검사가 통과했다. 로컬 ffmpeg에는 drawtext가 없어 실제 글자 픽셀은 CI 미검증이다.
+- 다음 실행: 문서 커밋 뒤 `origin/main`을 병합하고 핵심 회귀·TypeScript를 재확인한 다음 push와 PR을 연다. 종료 증거는 PR URL과 원격 CI 결과다. 운영 배포는 이 작업 범위가 아니다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
+## 2026-10-05 18:04 KST 편집실 자막 중복 근본수정 착수
+
+- handoff basis: 회장이 이 세션에 직접 지정한 과제와 `origin/main` 기준을 정본으로 삼았다. tmux `371:0.1`은 이 작업의 로그 창이며 별도 구현 handoff는 없었다.
+- 관찰된 결함: 구운 파일의 자막, 편집 DOM 자막·훅, Higgsfield가 만든 가짜 글자가 한 화면에 겹친다. QA 추적기 `EDITROOM-VIDEO-SUBTITLE-DUP-01~03`에 ❌ NG를 먼저 등록했다.
+- 작업 범위: 원본 우선 미리보기와 구운 파일 fallback 단일층, 굽기 직전 자막 구간 정규화, 영상 생성 프롬프트 가짜 글자 방지, 자막 기반 편집의 실제 구현 범위 확인. 회귀 테스트를 먼저 실패시키고 관련 테스트만 실행한다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+- 다음 실행: 현재 미리보기·drawtext·Higgsfield 프롬프트 경계에 실패 회귀 테스트를 추가한 뒤 최소 제품 변경을 구현한다. 종료 증거는 표적 Vitest, 실제 dev 화면 단일 자막층·콘솔 오류 0, push와 PR URL이다.
 ## 2026-10-05 22:15 KST 편집실 v2 S2 로컬 완료, 제어권 반환 준비
 
 - handoff basis: 회장이 직접 지정한 S2 이어가기, `docs/eng/editroom-v2/build-plan.md` S2, `card-element-model.md`, `export-queue.md`의 S3 범위 제외, D-2026-10-04-1·D-2026-10-03-2를 정본으로 삼았다. push·PR은 최신 인계대로 컨트롤러가 소유한다.

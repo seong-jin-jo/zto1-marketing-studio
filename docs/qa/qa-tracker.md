@@ -1,3 +1,40 @@
+## 2026-10-05 VID-STALE-09 주제 도장 계약의 소스 형식 결합 ❌ NG → ✅ 로컬 PASS
+
+`studio/page.tsx`의 이미지·영상 완료 경로는 모두 `topicKey: mediaTopicKey(opts?.topicLabel ?? idea)`를 유지했지만, `VID-STALE-09`가 결과 객체 전체를 한 줄 문자열로 고정해 자막 계보 필드 추가 뒤 원격 CI가 실패했다. 구현 동작은 바꾸지 않고 이미지·영상 함수 범위에서 결과 객체 생성, 주제 도장 계산, 상태 반영을 각각 검사하도록 계약 테스트를 고쳤다.
+
+단일 회귀 13건, 브랜치 변경 파일 관련 테스트 120파일 1,021건 PASS·5건 환경 skip, Studio 전체 129파일 918건 PASS·17건 환경 skip다. 실제 브라우저 화면, 원격 CI, 운영 배포는 미검증이다.
+
+## 2026-10-05 편집실 생성 원본 계보 오판·숨김 레지스트리 노출 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-VIDEO-LINEAGE-R3-01 | 기록 없는 생성기·업로드 원본을 미굽기 파일로 복원 | VIDEO-BAKE-LINEAGE-11~12, VIDEO-BAKED-LINEAGE-10 | ✅ 로컬 PASS | `vid_<timestamp>.mp4`, `vidsilent_<timestamp>.mp4`, 12자리 hex 업로드 파일은 `unbaked`로 판정한다. 저장 초안 복원에서 DOM 자막 1개를 렌더하고 같은 원본 파일명으로 굽기 API를 호출한다. UUID 파일은 계속 `unknown`이다. |
+| EDITROOM-VIDEO-LINEAGE-R3-02 | 업로드 원본도 자막 굽기 입력으로 사용 | VIDEO-SUBTITLE-UPLOAD-01 | ✅ 로컬 PASS | 자막 API 입력 해석을 현재 테넌트의 `videos`와 `studio` 경로만 읽는 공통 해석기로 통일했다. 다른 테넌트와 공유 legacy 경로는 열지 않는다. |
+| EDITROOM-VIDEO-LINEAGE-R3-03 | 숨김 계보 파일을 자산 경로에서 차단 | HIGGSFIELD-ASSET-HIDDEN-01~02 | ✅ 로컬 PASS | `/api/higgsfield/asset/.subtitle-bakes.json`은 404이고, 미디어 서명기도 점으로 시작하는 파일명을 거절한다. 정상 `clip.mp4`는 200이다. |
+
+최종 게이트는 `npx vitest related <변경 파일> --run` 83파일 725건 PASS·3건 환경 skip, `npx vitest run contract` 104파일 588건 PASS다. 실제 ffmpeg 글자 픽셀, 원격 CI, 운영 배포는 미검증이다.
+
+## 2026-10-05 PR 119 origin/main 충돌 ❌ NG → ✅ 로컬 PASS
+
+PR 118의 TikTok 상태 처리와 이 브랜치의 자막 bake lineage가 같은 편집실 파일을 바꿨다. Git은 코드 파일을 자동 병합했고, append-only 문서 4개는 양쪽 최신 기록을 순서대로 보존해 해소했다.
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-SUBTITLE-MERGE-01 | TikTok 상태 조회 오류 안내와 자막 bake lineage를 함께 보존 | 관련 import 테스트, contract | ✅ 로컬 PASS | `studio/page.tsx`가 서버 lineage 조회와 원본·구운 영상 판정을 유지하면서 TikTok 폴링 오류 토스트, 명시적 published 성공 판정, unknown 보존도 유지한다. 관련 42파일 379건 통과, 2건 환경 skip. contract 104파일 588건 통과. |
+
+충돌 파일은 `docs/build-log.md`, `docs/qa/qa-tracker.md`, `docs/구현현황.md`, `wiki/ops/session-state.md`다. 원격 CI와 운영 배포는 미검증이다.
+
+## 2026-10-05 편집실 영상 자막 중복 및 생성 영상 가짜 글자 ❌ 교차 리뷰 2차 BLOCK → ✅ 로컬 PASS
+
+2차 교차 리뷰에서 배포 전 인트로 없는 구운 영상과 기존 작업물 열기 경로에 서버 계보가 없어, 구운 파일을 원본으로 오판하는 결함이 남았음을 확인했다. 새 굽기 결과는 테넌트별 서버 기록과 `subtitle-UUID` 파일명으로 판정하고, 배포 전 UUID 파일은 원본과 구운 결과가 같은 규칙이라 확인 불가 상태에서 DOM 자막과 재굽기를 fail-closed 한다.
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-VIDEO-SUBTITLE-DUP-01 | 구운 영상과 편집 DOM 자막이 동시에 보이지 않도록 원본+DOM을 우선하고 원본이 없으면 구운 영상의 DOM 글자층을 숨김 | VIDEO-PREVIEW-SINGLE-LAYER-01, VIDEO-BAKED-LINEAGE-01~10, VIDEO-BAKE-LINEAGE-08~10 | ✅ 로컬 PASS | 굽기 API가 테넌트별 `.subtitle-bakes.json`에 결과→원본 파일명을 원자적으로 기록한다. 기존 작업물 열기와 저장 초안 복원은 이 기록을 조회한다. 원본이 있으면 원본+DOM 한 층, 없거나 배포 전 파일이라 판정 불가하면 DOM 0개·재굽기 0건이다. |
+| EDITROOM-VIDEO-SUBTITLE-DUP-02 | 굽기 직전 자막 구간을 다음 문장 시작과 영상 길이에 맞춰 정규화해 같은 위치의 문장 겹침 방지 | VIDEO-SUBTITLE-NORMALIZE-01 | ✅ 로컬 PASS | 저장 시점과 무관하게 굽기 직전 정규화한다. 앞 문장은 다음 시작에서 끊고 영상 길이를 넘지 않으며, 0.05초 미만 문장은 이웃 문장과 합치고 구조화 경고를 남긴다. playback 계획 단위 테스트 9건 통과. 로컬 ffmpeg의 drawtext 부재로 실제 글자 픽셀은 CI 판정 대상이다. |
+| EDITROOM-VIDEO-SUBTITLE-DUP-03 | Higgsfield 영상 요청이 화면 안 가짜 글자·자막·로고 생성을 피하는 기존 이미지 프롬프트 규칙을 재사용 | VIDEO-PROMPT-NO-GLYPH-01 | ✅ 로컬 PASS | 이미지 경로의 `NO_TEXT` 양성 장면 제약을 `buildMotionPrompt`에도 재사용한다. 프롬프트 계약 21건과 전체 contract 103파일 586건 통과. |
+
+2차 BLOCK 종료 증거: `npx vitest related ... --run` 16파일 129건, `npx vitest run contract` 104파일 588건 PASS. 새 GET 계보 경로는 기존 테넌트 격리 공격 스크립트 READ-63에 편입했다. 배포 전 무표식 UUID 파일은 원본과 구운 결과의 파일명 규칙이 같아 역사적 완전 판별이 불가능하며, 화면은 안전하게 DOM 자막을 숨기고 재굽기를 막는다. 원격 CI와 운영 배포는 미검증이다.
 ## 2026-10-05 편집실 v2 S2 무손실 이관·공용 렌더 ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 판정 | 근거 파일·실측 |
