@@ -357,8 +357,8 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
               // 교체되지 않는 stage의 capture 단계에서 같은 요소의 연속 누름을 판정한다.
               const now = performance.now();
               const previous = lastTextPointerDownRef.current;
-              lastTextPointerDownRef.current = { elementId, at: now };
-              if (previous?.elementId === elementId && now - previous.at <= 500) {
+              lastTextPointerDownRef.current = { elementId: element.id, at: now };
+              if (previous && previous.elementId === element.id && now - previous.at <= 500) {
                 lastTextPointerDownRef.current = null;
                 event.preventDefault();
                 event.stopPropagation();
