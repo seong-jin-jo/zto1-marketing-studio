@@ -1,3 +1,14 @@
+## 2026-10-05 22:15 KST 편집실 v2 S2 로컬 완료, 제어권 반환 준비
+
+- handoff basis: 회장이 직접 지정한 S2 이어가기, `docs/eng/editroom-v2/build-plan.md` S2, `card-element-model.md`, `export-queue.md`의 S3 범위 제외, D-2026-10-04-1·D-2026-10-03-2를 정본으로 삼았다. push·PR은 최신 인계대로 컨트롤러가 소유한다.
+- 기반 정합: `origin/main` PR 117·118을 merge한 `ae711625` 위에 S2 회귀 교정 `34ffed6b`와 적대적 리뷰 교정 `cfab7d95`를 적용했다. main의 Node 헬스체크와 성과실·TikTok 수정을 유지했다.
+- S2 결과: v2→v3 결정적 변환·legacy projection, `cardDeck`·`cardDeckV3` 이중 저장, `CardSlideScene` 공용 editor·Remotion still, Pretendard 고정, Canvas fallback·feature flag, AI 카드 자유 배치, flag on 서버 PNG 발행·예약·큐 경계를 연결했다.
+- 리뷰 교정: 렌더 중 덱이 바뀌면 compare-and-swap이 구형 PNG 확정을 거절한다. 공유 결정적 객체는 실패 요청이 삭제하지 않는다. asset resolver가 테넌트 저장소 소유·존재·이미지 확장자를 검증하고, 검토·승인 큐에 최신 서버 PNG URL을 반영한다. v3 계약 내 긴 v2 ID는 자르지 않는다.
+- 검증: 변경 import 관련 69파일 491건 PASS·2건 DB 환경 제외, contract 105파일 589건 PASS, `typecheck:ci` PASS. 실제 Chromium은 데이터 3장, 1440·390 더블클릭 글 수정·끌기, 픽셀 차이 2/1,458,000, 콘솔 오류 0이다. S1 E2E와 360~1000 아홉 폭 실측도 PASS다.
+- 미검증: 호스트 부하 제약으로 로컬 전체 Next build는 실행하지 않았다. 원격 CI·운영 배포도 미검증이다.
+- 다음 실행: 컨트롤러가 최종 로컬 HEAD를 `feat/editroom-v2-s2-card-render`에 push하고 PR을 연 뒤 CI 전체 green을 확인한다. 종료 증거는 PR URL과 CI 실패 0이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
 ## 2026-10-05 20:22 KST TikTok 조회 오류 오판 교정과 origin/main merge 완료, push 대기
 
 - handoff basis: 회장이 지정한 Claude Opus 5.5 교차 리뷰 BLOCK과 중복 발행 방지 원칙을 정본으로 삼았다. 공개 범위 자동 변경과 push는 금지했다.

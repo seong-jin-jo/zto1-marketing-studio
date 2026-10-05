@@ -1,3 +1,18 @@
+## 2026-10-05 편집실 v2 S2 무손실 이관·공용 렌더 ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 판정 | 근거 파일·실측 |
+|---|---|---|---|
+| S2-AC1 | 중간 빈 장이 있는 plain v2를 v3로 읽고 저장해도 원문·ID·순서·빈 장 위치 보존 | ✅ PASS | `dashboard/src/lib/studio/card-deck-v2-to-v3.test.ts`, `card-deck-v2-to-v3.ts` |
+| S2-AC2 | 강조 세그먼트·사진이 있는 chat_bubble 왕복 변환의 base 의미 구조 동등 | ✅ PASS | `dashboard/src/lib/studio/card-deck-v2-to-v3.test.ts` |
+| S2-AC3 | editor와 Remotion still이 같은 render model·`CardSlideScene`으로 허용치 내 픽셀 일치 | ✅ 관찰됨 | `s2-card-scene-editor.png`, `s2-card-scene-remotion.png`, `s2-freeform-result.json`: 1,458,000화소 중 2화소 차이, 비율 0.0000013717421124828533 |
+| S2-AC4 | Pretendard 파일 누락·hash 불일치를 fallback 없이 거절 | ✅ PASS | `dashboard/src/lib/studio/card-font.test.ts`, `card-font.ts`: `FONT_LOAD_FAILED` |
+| S2-AC5 | feature flag off에서 기존 Canvas PNG 경로로 즉시 롤백 | ✅ PASS | `dashboard/tests/studio/card-remotion-s2.contract.test.ts`, `card-deck-v3-render-feature.test.ts` |
+| S2-A | 복원 가능 AI 카드는 배경·글 요소로 자유 배치 진입, 복원 불가는 사유를 표시한 비활성 단추 | ✅ PASS | `card-element-commands.test.ts`, `card-deck-v3-studio-rooms.integration.test.tsx` |
+| S2-B | flag on은 장별 서버 PNG를 발행·예약·큐 이미지로 사용, off는 409 차단 유지 | ✅ PASS | `dashboard/src/lib/studio/card-deck-v3-publish-gate.test.ts`, `dashboard/tests/studio/card-v3-publish-boundaries.contract.test.ts` |
+| S2-C | AI 카드의 장 위 글 더블클릭 수정·끌기를 1440·390에서 직접 관찰 | ✅ 관찰됨 | `docs/qa/editroom-v2-s2/s2-ai-freeform-1440.png`, `s2-ai-freeform-390.png`, `s2-freeform-result.json`: 두 폭 모두 directEdit·drag true, 콘솔 오류 0 |
+
+최종 검증은 변경 import 관련 69파일 491건 PASS·2건 PostgreSQL 환경 전용 skip, contract 105파일 589건 PASS, `typecheck:ci` PASS다. 데이터 3장이 있는 화면에서 S2·S1 카드 E2E가 모두 통과했고, 360~1000 아홉 폭에서 인체공학 검사가 모두 PASS다. 적대적 리뷰의 최신 덱 경합·asset 소유권·ID 손실·구형 검토 PNG 지적은 `cfab7d95`로 교정했다. 로컬 전체 Next build, 원격 CI, 운영 배포는 미검증이다.
+
 ## 2026-10-05 TikTok 상태 조회 오류와 실제 발행 실패 오판 교차 리뷰 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
