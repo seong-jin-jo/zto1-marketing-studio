@@ -18,20 +18,20 @@ const H = vi.hoisted(() => ({
   started: { ok: true, publishId: "pub-1" } as Record<string, unknown>,
   getCredCalls: [] as unknown[][],
   startCalls: [] as unknown[],
-  rows: [] as Array<{ id: string; draftId: string; accountId: string | null; status: string; externalId: string | null }>,
+  rows: [] as Array<{ id: string; draftId: string; accountId: string | null; status: string; externalId: string | null; error: string | null; providerMeta: Record<string, unknown> }>,
   seq: 0,
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({ effectiveTenantId: vi.fn(async () => H.tenantId) }));
 vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async (_tenant: string, callback: (sql: unknown) => unknown) => {
-    const sql = (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const sql = Object.assign((strings: TemplateStringsArray, ...values: unknown[]) => {
       const query = strings.join(" ");
       if (query.includes("INSERT INTO published_posts")) {
         const [, draftId, , , accountId] = values as [string, string, string, string | null, string | null];
         const existing = H.rows.find((row) => row.draftId === draftId && row.accountId === (accountId ?? null) && ["in_progress", "published"].includes(row.status));
         if (existing) return Promise.resolve([]);
-        const row = { id: `reservation-${++H.seq}`, draftId, accountId: accountId ?? null, status: "in_progress", externalId: null };
+        const row = { id: `reservation-${++H.seq}`, draftId, accountId: accountId ?? null, status: "in_progress", externalId: null, error: null, providerMeta: {} };
         H.rows.push(row);
         return Promise.resolve([{ id: row.id }]);
       }
@@ -56,11 +56,16 @@ vi.mock("@/lib/db", () => ({
       if (query.includes("UPDATE published_posts")) {
         const reservationId = values[values.length - 2] as string;
         const row = H.rows.find((candidate) => candidate.id === reservationId);
-        if (row) row.status = "failed";
+        if (row) {
+          row.status = "failed";
+          row.error = values.find((value) => typeof value === "string" && value.includes("TikTok")) as string ?? null;
+          const metadata = values.find((value) => typeof value === "object" && value !== null) as Record<string, unknown> | undefined;
+          if (metadata) row.providerMeta = { ...row.providerMeta, ...metadata };
+        }
         return Promise.resolve([]);
       }
       return Promise.resolve([]);
-    };
+    }, { json: (value: unknown) => value });
     return callback(sql);
   }),
 }));
@@ -137,7 +142,7 @@ describe("/api/video/publish — TikTok reservation", () => {
 
   it("reclaims only an abandoned publish_id-less reservation, then permits one safe retry", async () => {
     const staleDraft = "44444444-4444-4444-4444-444444444444";
-    H.rows.push({ id: "stale", draftId: staleDraft, accountId: ACCOUNT, status: "in_progress", externalId: null });
+    H.rows.push({ id: "stale", draftId: staleDraft, accountId: ACCOUNT, status: "in_progress", externalId: null, error: null, providerMeta: {} });
     const { response } = await publish(request({ draft_id: staleDraft }));
     expect(response.status).toBe(202);
     expect(H.rows.find((row) => row.id === "stale")?.status).toBe("failed");
@@ -145,7 +150,11 @@ describe("/api/video/publish — TikTok reservation", () => {
   });
 
   it("marks an init rejection failed and never exposes the provider reason", async () => {
-    H.started = { ok: false, reason: "access_token=provider-secret" };
+    H.started = {
+      ok: false,
+      reason: "provider_rejected",
+      providerError: { code: "provider_rejected", message: "access_token=provider-secret", logId: null },
+    };
     const { response, body } = await publish(request());
     expect(response.status).toBe(200);
     expect(JSON.stringify(body)).not.toContain("provider-secret");
@@ -156,10 +165,26 @@ describe("/api/video/publish — TikTok reservation", () => {
   // 확인해주세요" 한 줄뿐이었다. 심사 전 앱은 공개 게시가 막혀 있다는 실제 원인을
   // 알려진 코드로 매핑해 전해야 한다.
   it("translates a known TikTok rejection code into an actionable Korean message", async () => {
-    H.started = { ok: false, reason: "unaudited_client_can_only_post_to_private_accounts" };
+    H.started = {
+      ok: false,
+      reason: "unaudited_client_can_only_post_to_private_accounts",
+      providerError: {
+        code: "unaudited_client_can_only_post_to_private_accounts",
+        message: "Unaudited clients can only post to private accounts",
+        logId: "log-init-1",
+      },
+    };
     const { response, body } = await publish(request());
     expect(response.status).toBe(200);
     expect(body.error).toContain("심사 전이라 공개 게시가 막혀");
     expect(H.rows[0]?.status).toBe("failed");
+    expect(H.rows[0]?.error).toContain("심사 전이라 공개 게시가 막혀");
+    expect(H.rows[0]?.providerMeta).toMatchObject({
+      tiktokError: {
+        code: "unaudited_client_can_only_post_to_private_accounts",
+        message: "Unaudited clients can only post to private accounts",
+        logId: "log-init-1",
+      },
+    });
   });
 });

@@ -888,21 +888,21 @@ export async function POST(request: Request) {
         coverTimestampMs: coverMs,
       });
       if (!started.ok) {
-        // 2026-10-02 결함(회장 지적): 거부 사유(reason 코드)가 로그·DB 어디에도 안 남고
-        // 화면에도 안 보여 "왜" 를 추적할 길이 없었다.
-        //
-        // 2026-10-02 자가 교차검수 수정: 원문 reason을 그대로 published_posts.error에
-        // 저장하면 안 된다 — GET /api/metrics가 그 컬럼을 운영자 구분 없이 그대로
-        // 돌려준다(이 파일의 다른 실패 경로는 전부 고정 한국어 문구만 저장한다,
-        // 예: "YouTube 업로드 세션 만료"). reason은 TikTok이 임의로 정하는 외부 문자열이라
-        // 안전하다고 보장할 수 없다(이 파일의 기존 회귀 테스트가 바로 그 상황을
-        // "access_token=provider-secret" 로 흉내 낸다). 원문은 서버 로그(운영자만 접근)
-        // 에만 남기고, DB·화면에는 둘 다 매핑된 고정 한국어 문구만 저장한다.
-        console.error("TikTok 발행 거부", { tenantId, reservationId, reason: started.reason });
+        // 화면에는 허용 목록으로 번역한 문구만 내보내고, 공급자 원문과 추적 ID는 운영
+        // 진단용 provider_meta에 구조화해 남긴다. 오류 코드도 tiktok.ts 경계에서 검증됐다.
+        console.error("TikTok 발행 거부", {
+          tenantId,
+          reservationId,
+          reason: started.reason,
+          logId: started.providerError.logId,
+        });
         const rejectMessage = tiktokRejectReasonMessage(started.reason);
         try {
           await withTenant(tenantId, (sql) => sql`
-            UPDATE published_posts SET status = 'failed', error = ${rejectMessage}
+            UPDATE published_posts
+               SET status = 'failed', error = ${rejectMessage},
+                   provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+                     || ${sql.json({ tiktokError: started.providerError } as never)}::jsonb
              WHERE id = ${reservationId}::uuid AND tenant_id = ${tenantId}::uuid`);
         } catch { /* 기록 실패가 provider 오류를 노출하지 않는다 */ }
         return Response.json({ ok: false, error: rejectMessage }, { status: PROVIDER_FAILED });

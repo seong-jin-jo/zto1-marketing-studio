@@ -24,7 +24,13 @@ export interface TikTokCreatorInfo {
 
 interface TikTokEnvelope<T> {
   data?: T;
-  error?: { code?: string; message?: string };
+  error?: { code?: string; message?: string; log_id?: string };
+}
+
+export interface TikTokProviderError {
+  code: string;
+  message: string;
+  logId: string | null;
 }
 
 export interface TikTokVideoMetrics {
@@ -164,7 +170,10 @@ export async function startTikTokVideoPost(input: {
   isAiGenerated: boolean;
   /** 대문으로 쓸 시점(밀리초). 안 주면 TikTok 이 알아서 고른다(대개 첫 프레임). */
   coverTimestampMs?: number;
-}, f: typeof fetch = fetch): Promise<{ ok: true; publishId: string } | { ok: false; reason: string }> {
+}, f: typeof fetch = fetch): Promise<
+  { ok: true; publishId: string }
+  | { ok: false; reason: string; providerError: TikTokProviderError }
+> {
   try {
     const res = await f(`${API_BASE}/video/init/`, {
       method: "POST",
@@ -197,11 +206,13 @@ export async function startTikTokVideoPost(input: {
       // (tiktokRejectReasonMessage의 매핑 키)으로만 통과시키고, 그 밖은 전부 고정 코드
       // "provider_rejected"로 접어서 반환한다 — 호출부가 로그에 찍는 reason은 이 시점에
       // 이미 안전이 보장된 값이다.
-      return { ok: false, reason: normalizeTikTokReason(body.error?.code) };
+      const providerError = tikTokProviderError(body.error);
+      return { ok: false, reason: providerError.code, providerError };
     }
     return { ok: true, publishId: body.data.publish_id };
   } catch {
-    return { ok: false, reason: "provider_unavailable" };
+    const providerError = { code: "provider_unavailable", message: "", logId: null };
+    return { ok: false, reason: providerError.code, providerError };
   }
 }
 
@@ -273,6 +284,27 @@ function normalizeTikTokReason(reason: string | undefined): string {
   return "provider_rejected";
 }
 
+function safeTikTokProviderMessage(message: unknown): string {
+  if (typeof message !== "string") return "";
+  return message.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 500);
+}
+
+function safeTikTokLogId(logId: unknown): string | null {
+  return typeof logId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(logId) ? logId : null;
+}
+
+function tikTokProviderError(
+  error: TikTokEnvelope<unknown>["error"],
+  fallbackCode = "provider_rejected",
+): TikTokProviderError {
+  const code = error?.code === "ok" ? fallbackCode : normalizeTikTokReason(error?.code);
+  return {
+    code,
+    message: safeTikTokProviderMessage(error?.message),
+    logId: safeTikTokLogId(error?.log_id),
+  };
+}
+
 export function tiktokRejectReasonMessage(reason: string): string {
   return TIKTOK_KNOWN_REJECT_MESSAGES[reason] ?? TIKTOK_KNOWN_REJECT_MESSAGES.provider_rejected;
 }
@@ -281,7 +313,10 @@ export async function fetchTikTokPostStatus(
   accessToken: string,
   publishId: string,
   f: typeof fetch = fetch,
-): Promise<{ status: string; postId?: string; failReason?: string } | null> {
+): Promise<
+  | { ok: true; status: string; postId?: string; failReason?: string; providerError: TikTokProviderError }
+  | { ok: false; providerError: TikTokProviderError }
+> {
   try {
     const res = await f(`${API_BASE}/status/fetch/`, {
       method: "POST",
@@ -294,14 +329,25 @@ export async function fetchTikTokPostStatus(
       fail_reason?: string;
       publicaly_available_post_id?: Array<string | number>;
     }>;
-    if (!res.ok || body.error?.code !== "ok" || !body.data?.status) return null;
+    if (!res.ok || body.error?.code !== "ok" || !body.data?.status) {
+      return { ok: false, providerError: tikTokProviderError(body.error) };
+    }
     const postId = body.data.publicaly_available_post_id?.[0];
     return {
+      ok: true,
       status: body.data.status,
       postId: postId === undefined ? undefined : String(postId),
-      failReason: body.data.fail_reason,
+      failReason: body.data.fail_reason ? normalizeTikTokReason(body.data.fail_reason) : undefined,
+      providerError: {
+        code: "ok",
+        message: safeTikTokProviderMessage(body.error?.message),
+        logId: safeTikTokLogId(body.error?.log_id),
+      },
     };
   } catch {
-    return null;
+    return {
+      ok: false,
+      providerError: { code: "provider_unavailable", message: "", logId: null },
+    };
   }
 }

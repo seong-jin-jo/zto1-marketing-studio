@@ -57,7 +57,7 @@ describe("TikTok Content Posting API", () => {
   it("normalizes provider failure without returning the provider message", async () => {
     const f = vi.fn(async () => response({
       data: {},
-      error: { code: "url_ownership_unverified", message: "raw provider detail" },
+      error: { code: "url_ownership_unverified", message: "raw provider detail", log_id: "log-init-1" },
     }, 403));
     await expect(startTikTokVideoPost({
       accessToken: "token",
@@ -68,7 +68,11 @@ describe("TikTok Content Posting API", () => {
       disableDuet: true,
       disableStitch: true,
       isAiGenerated: false,
-    }, f as typeof fetch)).resolves.toEqual({ ok: false, reason: "url_ownership_unverified" });
+    }, f as typeof fetch)).resolves.toEqual({
+      ok: false,
+      reason: "url_ownership_unverified",
+      providerError: { code: "url_ownership_unverified", message: "raw provider detail", logId: "log-init-1" },
+    });
   });
 
   // 2026-10-02 Codex 교차검수(PR #104) MAJOR: 허용 목록 밖의 reason을 검증 없이 돌려주면
@@ -88,7 +92,11 @@ describe("TikTok Content Posting API", () => {
       disableDuet: true,
       disableStitch: true,
       isAiGenerated: false,
-    }, f as typeof fetch)).resolves.toEqual({ ok: false, reason: "provider_rejected" });
+    }, f as typeof fetch)).resolves.toEqual({
+      ok: false,
+      reason: "provider_rejected",
+      providerError: { code: "provider_rejected", message: "raw provider detail", logId: null },
+    });
   });
 
   it("reads TikTok's documented publicaly_available_post_id field", async () => {
@@ -97,8 +105,33 @@ describe("TikTok Content Posting API", () => {
       error: { code: "ok" },
     }));
     await expect(fetchTikTokPostStatus("token", "pub-1", f as typeof fetch)).resolves.toEqual({
+      ok: true,
       status: "PUBLISH_COMPLETE",
       postId: "12345",
+      providerError: { code: "ok", message: "", logId: null },
     });
+  });
+
+  it("TIKTOK-ERROR-01 정상: 상태 조회 API 오류의 code·message·log_id를 구조화해 반환한다", async () => {
+    const f = vi.fn(async () => response({
+      data: {},
+      error: { code: "access_token_invalid", message: "token expired", log_id: "log-status-1" },
+    }, 401));
+
+    await expect(fetchTikTokPostStatus("token", "pub-1", f as typeof fetch)).resolves.toEqual({
+      ok: false,
+      providerError: { code: "access_token_invalid", message: "token expired", logId: "log-status-1" },
+    });
+  });
+
+  it.each([
+    ["unaudited_client_can_only_post_to_private_accounts", "심사 전이라 공개 게시가 막혀"],
+    ["privacy_level_option_mismatch", "공개 범위"],
+    ["spam_risk_too_many_posts", "하루 게시 한도"],
+    ["access_token_invalid", "다시 연결"],
+    ["scope_not_authorized", "권한"],
+  ])("TIKTOK-ERROR-02 정상: %s를 사람이 읽을 사유로 번역한다", async (code, message) => {
+    const { tiktokRejectReasonMessage } = await import("@/lib/tiktok");
+    expect(tiktokRejectReasonMessage(code)).toContain(message);
   });
 });

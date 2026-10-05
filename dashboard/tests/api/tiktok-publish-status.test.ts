@@ -5,9 +5,9 @@ const TENANT_B = "99999999-9999-9999-9999-999999999999";
 const ACCOUNT_A = "22222222-2222-2222-2222-222222222222";
 const H = vi.hoisted(() => ({
   tenantId: "11111111-1111-1111-1111-111111111111",
-  row: { id: "row-1", tenantId: "11111111-1111-1111-1111-111111111111", status: "in_progress", accountId: "22222222-2222-2222-2222-222222222222", externalId: "pub-1", providerPostId: null as string | null, providerMeta: { privacyLevel: "PUBLIC_TO_EVERYONE" } as Record<string, unknown>, permalink: null as string | null },
+  row: { id: "row-1", tenantId: "11111111-1111-1111-1111-111111111111", status: "in_progress", accountId: "22222222-2222-2222-2222-222222222222", externalId: "pub-1", providerPostId: null as string | null, providerMeta: { privacyLevel: "PUBLIC_TO_EVERYONE" } as Record<string, unknown>, permalink: null as string | null, error: null as string | null },
   cred: { token: "tenant-a-token", accountId: "22222222-2222-2222-2222-222222222222" } as { token: string; accountId: string } | null,
-  provider: { status: "PROCESSING_UPLOAD" } as { status: string; postId?: string; failReason?: string } | null,
+  provider: { ok: true, status: "PROCESSING_UPLOAD", providerError: { code: "ok", message: "", logId: null } } as Record<string, unknown> | null,
   creator: { username: "creator-a" } as { username: string } | null,
   credentialCalls: [] as unknown[][],
   statusCalls: [] as unknown[][],
@@ -27,7 +27,7 @@ vi.mock("@/lib/db", () => ({
         return Promise.resolve([{
           id: H.row.id, status: H.row.status, account_id: H.row.accountId,
           external_id: H.row.externalId, provider_post_id: H.row.providerPostId, provider_meta: H.row.providerMeta,
-          permalink: H.row.permalink, error: null,
+          permalink: H.row.permalink, error: H.row.error,
         }]);
       }
       if (query.includes("SET status = 'published'")) {
@@ -43,6 +43,10 @@ vi.mock("@/lib/db", () => ({
       }
       if (query.includes("SET status = 'failed'")) {
         H.row.status = "failed";
+        const message = values.find((value) => typeof value === "string" && value.includes("TikTok"));
+        if (typeof message === "string") H.row.error = message;
+        const metadata = values.find((value) => typeof value === "object" && value !== null) as Record<string, unknown> | undefined;
+        if (metadata) H.row.providerMeta = { ...H.row.providerMeta, ...metadata };
         return Promise.resolve([]);
       }
       return Promise.resolve([]);
@@ -53,7 +57,8 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/publish", () => ({
   getChannelCred: vi.fn(async (...args: unknown[]) => { H.credentialCalls.push(args); return H.cred; }),
 }));
-vi.mock("@/lib/tiktok", () => ({
+vi.mock("@/lib/tiktok", async (importActual) => ({
+  ...await importActual<typeof import("@/lib/tiktok")>(),
   fetchTikTokPostStatus: vi.fn(async (...args: unknown[]) => { H.statusCalls.push(args); return H.provider; }),
   queryTikTokCreatorInfo: vi.fn(async () => H.creator),
 }));
@@ -74,9 +79,9 @@ async function status(publishId = "pub-1") {
 describe("GET /api/tiktok/publish-status", () => {
   beforeEach(() => {
     H.tenantId = TENANT_A;
-    H.row = { id: "row-1", tenantId: TENANT_A, status: "in_progress", accountId: ACCOUNT_A, externalId: "pub-1", providerPostId: null, providerMeta: { privacyLevel: "PUBLIC_TO_EVERYONE" }, permalink: null };
+    H.row = { id: "row-1", tenantId: TENANT_A, status: "in_progress", accountId: ACCOUNT_A, externalId: "pub-1", providerPostId: null, providerMeta: { privacyLevel: "PUBLIC_TO_EVERYONE" }, permalink: null, error: null };
     H.cred = { token: "tenant-a-token", accountId: ACCOUNT_A };
-    H.provider = { status: "PROCESSING_UPLOAD" };
+    H.provider = { ok: true, status: "PROCESSING_UPLOAD", providerError: { code: "ok", message: "", logId: null } };
     H.creator = { username: "creator-a" };
     H.credentialCalls = [];
     H.statusCalls = [];
@@ -94,7 +99,7 @@ describe("GET /api/tiktok/publish-status", () => {
   });
 
   it("persists PUBLISH_COMPLETE and returns the post id/permalink without changing the saved publish_id", async () => {
-    H.provider = { status: "PUBLISH_COMPLETE", postId: "post-9" };
+    H.provider = { ok: true, status: "PUBLISH_COMPLETE", postId: "post-9", providerError: { code: "ok", message: "", logId: "log-complete-1" } };
     const { response, body } = await status();
     expect(response.status).toBe(200);
     expect(body).toMatchObject({
@@ -110,7 +115,7 @@ describe("GET /api/tiktok/publish-status", () => {
       providerPostId: "post-9",
       permalink: "https://www.tiktok.com/@creator-a/video/post-9",
     });
-    H.provider = { status: "PROCESSING_UPLOAD" };
+    H.provider = { ok: true, status: "PROCESSING_UPLOAD", providerError: { code: "ok", message: "", logId: null } };
     const stored = await status();
     expect(stored.body).toMatchObject({
       status: "published",
@@ -123,16 +128,20 @@ describe("GET /api/tiktok/publish-status", () => {
   });
 
   it("persists provider failure with a fixed message and hides raw provider reasons", async () => {
-    H.provider = { status: "FAILED", failReason: "access_token=raw-provider-secret" };
+    H.provider = { ok: true, status: "FAILED", failReason: "spam_risk_too_many_posts", providerError: { code: "ok", message: "", logId: "log-failed-1" } };
     const { response, body } = await status();
     expect(response.status).toBe(502);
     expect(body).toMatchObject({ status: "failed" });
     expect(H.row.status).toBe("failed");
-    expect(JSON.stringify(body)).not.toContain("raw-provider-secret");
+    expect(body.error).toContain("하루 게시 한도");
+    expect(H.row.error).toContain("하루 게시 한도");
+    expect(H.row.providerMeta).toMatchObject({
+      tiktokError: { code: "spam_risk_too_many_posts", message: "", logId: "log-failed-1" },
+    });
   });
 
   it("keeps a completed provider job pending until post id and creator metadata can both be recovered", async () => {
-    H.provider = { status: "PUBLISH_COMPLETE", postId: "post-9" };
+    H.provider = { ok: true, status: "PUBLISH_COMPLETE", postId: "post-9", providerError: { code: "ok", message: "", logId: null } };
     H.creator = null;
     const transient = await status();
     expect(transient.response.status).toBe(202);
@@ -151,7 +160,7 @@ describe("GET /api/tiktok/publish-status", () => {
     H.row.status = "in_progress";
     H.row.providerPostId = null;
     H.row.permalink = null;
-    H.provider = { status: "PUBLISH_COMPLETE" };
+    H.provider = { ok: true, status: "PUBLISH_COMPLETE", providerError: { code: "ok", message: "", logId: null } };
     const missingPostId = await status();
     expect(missingPostId.response.status).toBe(202);
     expect(H.row.status).toBe("in_progress");
@@ -159,7 +168,7 @@ describe("GET /api/tiktok/publish-status", () => {
 
   it("settles SELF_ONLY on PUBLISH_COMPLETE without requiring a public post id or permalink", async () => {
     H.row.providerMeta = { privacyLevel: "SELF_ONLY" };
-    H.provider = { status: "PUBLISH_COMPLETE" };
+    H.provider = { ok: true, status: "PUBLISH_COMPLETE", providerError: { code: "ok", message: "", logId: null } };
     const { response, body } = await status();
     expect(response.status).toBe(200);
     expect(body).toEqual({ ok: true, status: "published", publishId: "pub-1" });
@@ -184,5 +193,20 @@ describe("GET /api/tiktok/publish-status", () => {
     expect(String(body.error)).toContain("계정");
     expect(H.statusCalls).toHaveLength(0);
     expect(JSON.stringify(body)).not.toContain("other-account-token");
+  });
+
+  it("TIKTOK-ERROR-03 정상: 상태 조회 인증 오류를 기록하고 사람이 읽는 재연결 안내를 돌려준다", async () => {
+    H.provider = {
+      ok: false,
+      providerError: { code: "access_token_invalid", message: "Access token expired", logId: "log-status-1" },
+    };
+
+    const { response, body } = await status();
+    expect(response.status).toBe(502);
+    expect(body.error).toContain("다시 연결");
+    expect(H.row.status).toBe("failed");
+    expect(H.row.providerMeta).toMatchObject({
+      tiktokError: { code: "access_token_invalid", message: "Access token expired", logId: "log-status-1" },
+    });
   });
 });
