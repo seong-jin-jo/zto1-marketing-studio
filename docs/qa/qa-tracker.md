@@ -1,3 +1,11 @@
+## 2026-10-05 편집실 영상 자막 중복 및 생성 영상 가짜 글자 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-VIDEO-SUBTITLE-DUP-01 | 구운 영상과 편집 DOM 자막이 동시에 보이지 않도록 원본+DOM을 우선하고 원본이 없으면 구운 영상의 DOM 글자층을 숨김 | VIDEO-PREVIEW-SINGLE-LAYER-01 | ❌ NG | 운영 관찰에서 3.875초 구운 파일의 자막 위에 `data-video-subtitle-active`와 `data-video-overlay-kind=hook`이 다시 그려졌다. 회귀 테스트와 수정이 아직 없다. |
+| EDITROOM-VIDEO-SUBTITLE-DUP-02 | 굽기 직전 자막 구간을 다음 문장 시작과 영상 길이에 맞춰 정규화해 같은 위치의 문장 겹침 방지 | VIDEO-SUBTITLE-NORMALIZE-01 | ❌ NG | 현재 drawtext 조립 경로는 저장된 구간을 그대로 사용한다. 짧은 영상과 기존 중첩 데이터의 정규화 테스트가 아직 없다. |
+| EDITROOM-VIDEO-SUBTITLE-DUP-03 | Higgsfield 영상 요청이 화면 안 가짜 글자·자막·로고 생성을 피하는 기존 이미지 프롬프트 규칙을 재사용 | VIDEO-PROMPT-NO-GLYPH-01 | ❌ NG | 운영 생성 영상 중앙에 의미 없는 가짜 글자가 관찰됐다. `buildMotionPrompt`에는 이미지 경로의 `plain surfaces` 장치가 아직 없다. |
+
 ## 2026-10-05 편집실 v2 S1 교차 리뷰 5차 m5-1 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
