@@ -173,7 +173,9 @@ page.on("console", (message) => { if (message.type() === "error") errors.push(me
 
 try {
   await page.goto(`${baseUrl}/studio?room=edit&draft_id=${draftId}`, { waitUntil: "networkidle", timeout: 60_000 });
-  await page.getByRole("button", { name: "자유 배치로 편집" }).click();
+  const entryButton = page.getByRole("button", { name: "자유 배치로 편집" });
+  await entryButton.waitFor({ state: "visible", timeout: 60_000 });
+  await entryButton.click();
   await page.locator("[data-card-canvas-editor]").waitFor({ state: "visible" });
   await waitUntil(() => serverDeck !== null && posts.some((post) => post.cardDeckV3 && post.cardDeck === null), 15_000, "AI 카드 v3·legacy 이중 저장 요청이 없습니다");
   if (serverDeck.slides.length !== 3) throw new Error(`데이터 카드가 3장이 아닙니다: ${serverDeck.slides.length}`);

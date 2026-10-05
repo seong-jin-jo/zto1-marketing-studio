@@ -8,7 +8,7 @@ import {
   COMP_FPS,
   type IntroOutroCompId,
 } from "./IntroOutroComps";
-import { CardSlideComposition, type CardSlideCompositionProps } from "./CardSlideComposition";
+import { CardSlideComposition } from "./CardSlideComposition";
 import type { CardSlideRenderModel } from "../src/lib/studio/card-render-model";
 
 const defaultCardModel: CardSlideRenderModel = {
@@ -43,8 +43,8 @@ export const RemotionRoot: React.FC = () => {
           />
         );
       })}
-      <Still<never, CardSlideCompositionProps> id="CardSlideComposition-4x5" component={CardSlideComposition} width={1080} height={1350} defaultProps={{ model: defaultCardModel }} />
-      <Still<never, CardSlideCompositionProps> id="CardSlideComposition-1x1" component={CardSlideComposition} width={1080} height={1080} defaultProps={{ model: { ...defaultCardModel, ratio: "1:1", logicalHeight: 1080 } }} />
+      <Still id="CardSlideComposition-4x5" component={CardSlideComposition} width={1080} height={1350} defaultProps={{ model: defaultCardModel }} />
+      <Still id="CardSlideComposition-1x1" component={CardSlideComposition} width={1080} height={1080} defaultProps={{ model: { ...defaultCardModel, ratio: "1:1", logicalHeight: 1080 } }} />
     </>
   );
 };

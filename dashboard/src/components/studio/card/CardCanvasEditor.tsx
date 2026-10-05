@@ -105,6 +105,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const textEditFlushRef = useRef<(slideId: string, elementId: string, value: string) => void>(() => {});
   const textEditCommittedRef = useRef(false);
   const textEditLastCommittedValueRef = useRef<string | null>(null);
+  const lastTextPointerDownRef = useRef<{ elementId: string; at: number } | null>(null);
   const workingDeck = previewDeck ?? history.present;
   const activeSlide = workingDeck.slides.find((slide) => slide.id === activeSlideId) ?? workingDeck.slides[0];
   const logicalHeight = workingDeck.ratio === "4:5" ? 1350 : 1080;
@@ -340,8 +341,30 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
                   event.stopPropagation();
                   beginTextEdit(element);
                 }}
+                onClick={(event) => {
+                  if (event.detail < 2 || element.type !== "text" || element.locked) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  beginTextEdit(element);
+                }}
                 onPointerDown={(event) => {
                   if (editingTextId === element.id) return;
+                  // 실제 Chromium에서는 첫 누름이 선택 상태를 갱신하며 selection overlay를
+                  // 다시 그리고 pointer capture를 잡으면 브라우저 dblclick이 유실될 수 있다.
+                  // 같은 글을 500ms 안에 두 번 누른 것을 ref로 직접 판정해 capture보다 먼저
+                  // 편집을 연다. MouseEvent.detail은 이 경로에서 0인 Chromium도 있어 보조로만 쓴다.
+                  if (element.type === "text" && !element.locked) {
+                    const now = performance.now();
+                    const previous = lastTextPointerDownRef.current;
+                    lastTextPointerDownRef.current = { elementId: element.id, at: now };
+                    if (event.detail >= 2 || (previous?.elementId === element.id && now - previous.at <= 500)) {
+                      lastTextPointerDownRef.current = null;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      beginTextEdit(element);
+                      return;
+                    }
+                  }
                   beginInteraction(event, element, "move");
                 }}
               >
