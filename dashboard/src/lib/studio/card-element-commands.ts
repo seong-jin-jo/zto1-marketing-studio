@@ -4,6 +4,7 @@ import {
   type CardDeckV3,
   type CardElement,
   type CardElementType,
+  type ImageElement,
   type CardSlideV3,
   type TextElement,
 } from "./card-element-contract";
@@ -121,6 +122,51 @@ export function createPlainCardDeckV3(
         },
       }],
     }); }) as CardDeckV3["slides"],
+  };
+}
+
+export interface RecoverableCardBackground {
+  assetId: string;
+  alt: string;
+}
+
+/** AI 글자 카드의 원문과 글자를 지운 바탕을 독립 요소로 만들어 직접 편집에 넘긴다. */
+export function createRecoverableEmbeddedCardDeckV3(
+  lines: string[],
+  positions: readonly PlainCardTextPosition[],
+  backgrounds: readonly RecoverableCardBackground[],
+  explicitId?: string,
+): CardDeckV3 {
+  if (backgrounds.length !== lines.length) throw new RangeError("각 카드에는 글자를 지운 바탕 이미지가 하나씩 필요합니다.");
+  const deck = createPlainCardDeckV3(lines, positions, explicitId);
+  return {
+    ...deck,
+    slides: deck.slides.map((slide, index) => ({
+      ...slide,
+      elements: [
+        ({
+          id: `el_background_${deck.id}_${index}`,
+          type: "image",
+          name: "글자를 지운 바탕",
+          x: 0,
+          y: 0,
+          width: CARD_LOGICAL_WIDTH,
+          height: CARD_LOGICAL_HEIGHT[deck.ratio],
+          locked: true,
+          hidden: false,
+          rotation: 0,
+          z_index: 0,
+          opacity: 1,
+          asset_id: backgrounds[index].assetId,
+          alt: backgrounds[index].alt,
+          decorative: false,
+          fit: "cover",
+          crop: { x: 0, y: 0, width: 1, height: 1 },
+          corner_radius: 0,
+        } satisfies ImageElement),
+        ...slide.elements.map((element) => ({ ...element, z_index: element.z_index + 1 })),
+      ],
+    })),
   };
 }
 

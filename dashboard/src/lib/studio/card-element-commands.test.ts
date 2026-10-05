@@ -4,6 +4,7 @@ import {
   addCardElement,
   commitCardCommand,
   createCardCommandHistory,
+  createRecoverableEmbeddedCardDeckV3,
   createPlainCardDeckV3,
   deleteCardElement,
   duplicateCardElement,
@@ -52,6 +53,21 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     expect(plainCardDeckV3EntryBlockReason(["첫 장", " "])).toContain("2번 카드");
     expect(plainCardDeckV3EntryBlockReason(["첫 장", "가".repeat(2_001)])).toContain("2,000자");
     expect(() => createPlainCardDeckV3(["한 장"], [], "deck_rejected")).toThrow(RangeError);
+  });
+
+  it("S2-A 복구 가능한 AI 카드는 글자를 지운 배경 사진과 복원된 글을 별도 요소로 만든다", () => {
+    const converted = createRecoverableEmbeddedCardDeckV3(
+      ["첫 장 원문", "저장하세요"],
+      ["top-left", "bottom-right"],
+      [{ assetId: "background-1.png", alt: "첫 장 글자 없는 바탕" }, { assetId: "background-2.png", alt: "둘째 장 글자 없는 바탕" }],
+      "deck_embedded_recovery",
+    );
+    expect(converted.slides.map((slide) => slide.elements.map((element) => element.type))).toEqual([
+      ["image", "text"],
+      ["image", "text"],
+    ]);
+    expect(converted.slides[0].elements[0]).toMatchObject({ asset_id: "background-1.png", x: 0, y: 0, width: 1080, height: 1350, locked: true, z_index: 0 });
+    expect(converted.slides[0].elements[1]).toMatchObject({ text: "첫 장 원문", z_index: 1 });
   });
   it("S1-AC1 정상 경로: 추가, 이동, 크기, 15도 회전이 원본을 바꾸지 않고 한 단계씩 기록된다", () => {
     const original = deck();

@@ -29,17 +29,37 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(document.querySelector('[data-plain-card-shell]')).toBeInTheDocument();
   });
 
-  it("S1-R3-ENTRY-01 기존 plain 카드에서만 자유 배치 시작 행동을 노출하고 상위 변환 경계를 호출한다", () => {
+  it("S2-A 기존 plain과 복구 가능한 AI 카드에서 자유 배치 시작 행동을 노출한다", () => {
     const onStart = vi.fn();
     const view = render(<EditRoom kind="card" lines={["첫 장", "둘째 장"]} onLinesChange={() => {}} onStartCardDeckV3={onStart} />);
     fireEvent.click(screen.getByRole("button", { name: "자유 배치로 편집" }));
     expect(onStart).toHaveBeenCalledOnce();
 
-    view.rerender(<EditRoom kind="card" lines={["글자 내장 카드"]} onLinesChange={() => {}} cardTextEmbedded onStartCardDeckV3={onStart} />);
-    expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
+    view.rerender(<EditRoom kind="card" lines={["글자 내장 첫 장", "글자 내장 둘째 장"]} onLinesChange={() => {}} cardTextEmbedded cardTextSourceRecoverable onStartCardDeckV3={onStart} />);
+    expect(screen.getByRole("button", { name: "자유 배치로 편집" })).toBeEnabled();
 
     view.rerender(<EditRoom kind="card" lines={["카톡 카드"]} onLinesChange={() => {}} cardDeck={chatBubbleDeck as CardDeck} onCardDeckChange={() => {}} onStartCardDeckV3={onStart} />);
-    expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "자유 배치로 편집" })).toBeEnabled();
+  });
+
+  it("S2-A 복구 불가 AI 카드는 버튼을 숨기지 않고 비활성 사유를 보여준다", () => {
+    const onStart = vi.fn();
+    render(<EditRoom
+      kind="card"
+      lines={["픽셀에 박힌 첫 장", "픽셀에 박힌 둘째 장"]}
+      onLinesChange={() => {}}
+      cardTextEmbedded
+      cardTextSourceRecoverable={false}
+      onStartCardDeckV3={onStart}
+    />);
+    expect(screen.getByRole("button", { name: "자유 배치로 편집" })).toBeDisabled();
+    expect(screen.getByText("이 카드는 그림 안에 글자가 박혀 있어 글자를 따로 움직일 수 없습니다.")).toBeInTheDocument();
+  });
+
+  it("S2-A AI 카드의 v3 덱이 생기면 textEmbedded 여부와 무관하게 직접 편집 장면을 연다", () => {
+    const deck = createPlainCardDeckV3(["첫 장", "마지막 장"], "deck_embedded_visible");
+    render(<EditRoom kind="card" lines={["첫 장", "마지막 장"]} onLinesChange={() => {}} cardTextEmbedded cardTextSourceRecoverable cardDeckV3={deck} onCardDeckV3Change={() => {}} />);
+    expect(screen.getByRole("region", { name: "카드 자유 배치 편집기" })).toBeInTheDocument();
   });
 
   it("S1-R7-HYDRATION-GUARD-01 상세 지연과 실패 중에는 진입과 발행을 막고 실패 시 다시 시도한다", () => {

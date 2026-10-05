@@ -75,6 +75,7 @@ export type CardDeckDeps = {
 
 export type CardDeckUpload = {
   url: string;
+  filename?: string;
   /** 같은 요청에서 뒤 장이 실패했을 때 이미 저장된 이 객체를 회수한다. */
   rollback?: () => Promise<void>;
 };
@@ -217,6 +218,7 @@ export function browserCardUploader(headers: Record<string, string>): CardDeckDe
     const filename = typeof payload.filename === "string" ? payload.filename : null;
     return {
       url: payload.url,
+      filename: filename ?? undefined,
       rollback: filename
         ? async () => {
           const deleted = await fetch(`/api/images/${encodeURIComponent(filename)}`, {
