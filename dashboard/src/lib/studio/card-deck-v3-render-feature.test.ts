@@ -17,7 +17,7 @@ describe("S2-B CardDeckV3 공용 렌더 feature flag", () => {
     expect(cardDeckV3RenderingEnabled({ CARD_DECK_V3_RENDER_ENABLED: "0", NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED: "1" })).toBe(false);
   });
 
-  it("S2-R3-M1 flag off여도 운영 S1 일반 카드만 자유 배치 진입을 유지한다", () => {
+  it("S2-R4-M1 flag off여도 운영 S1 일반·plain v2 카드 자유 배치 진입을 유지한다", () => {
     expect(cardDeckV3EntryEnabled(false, { hasCardDeckV2: false, textEmbedded: false })).toBe(true);
     expect(cardDeckV3EntryEnabled(false, { hasCardDeckV2: false, textEmbedded: true })).toBe(false);
     expect(cardDeckV3EntryEnabled(false, { hasCardDeckV2: true, cardDeckTemplate: "plain", textEmbedded: false })).toBe(true);
