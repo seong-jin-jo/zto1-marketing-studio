@@ -2,12 +2,12 @@
 
 ## 2026-10-05 20:22 KST · TikTok 조회 오류와 발행 실패 분리
 
-STAMP: 2026-10-05 20:22 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: Claude Opus 5.5 BLOCK, 수정 전 회귀 실패 7건, 표적 Vitest 4파일 67건 | 고민: 공급자 조회 오류를 실패로 확정하지 않고 진행 원장과 사용자 안내를 분리했다.
+STAMP: 2026-10-05 20:22 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: Claude Opus 5.5 BLOCK, 수정 전 회귀 실패 7건, 표적 Vitest 4파일 70건 | 고민: 공급자 조회 오류를 실패로 확정하지 않고 진행 원장과 사용자 안내를 분리했다.
 
 | 검증 | 결과 |
 |---|---|
 | 수정 전 교차 리뷰 | 조회 오류를 `failed`로 저장해 실제 게시된 영상을 재발행할 위험, 처리 단계 code 손실, 독립 Bearer·긴 token 가림 결손 재현 |
-| 수정 후 표적 회귀 | `tiktok-publish-status`, `tiktok-api`, `job-poll`, 실제 Studio 마운트 4파일 67건 PASS |
+| 수정 후 표적 회귀 | `tiktok-publish-status`, `tiktok-api`, `job-poll`, 실제 Studio 마운트 4파일 70건 PASS |
 | 변경 import 영향 | 42파일 374건 PASS, DB 환경 전용 2건 skip |
 | 전체 contract | 104파일 586건 PASS |
 | 상태 계약 | 조회 오류는 `in_progress` 유지와 진단 저장만, 실제 provider `FAILED`만 영구 실패 |
