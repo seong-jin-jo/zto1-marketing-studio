@@ -335,6 +335,36 @@ describe("발행실 — video/publish 202(jobId) 응답을 거짓-성공으로 �
     expect(mocks.showToast).toHaveBeenCalledWith("TikTok 계정을 다시 연결해 주세요.", "error");
   }, 15000);
 
+  it("TikTok 상태 조회의 409 JSON 오류를 완료로 오인하지 않고 결과 확인 중으로 남긴다", async () => {
+    seedTikTokStudioWork();
+    mocks.apiPost.mockImplementation(async (path: string) => {
+      if (path === "/api/studio/drafts") return { id: "draft-tiktok-unknown-1" };
+      if (path === "/api/video/publish") return { ok: true, processing: true, publishId: "tt-publish-unknown-1" };
+      throw new Error(`unexpected apiPost path: ${path}`);
+    });
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      const accountsPlatform = /\/api\/channels\/([^/]+)\/accounts/.exec(url)?.[1];
+      if (accountsPlatform) {
+        return Response.json({ accounts: accountsPlatform === "tiktok"
+          ? [{ id: "tt-account", display_name: "TikTok 계정", username: "tt", is_default: true }]
+          : [] });
+      }
+      if (url.includes("/api/tiktok/publish-status")) {
+        return Response.json({ error: "TikTok 발행 계정을 찾을 수 없습니다. 계정 연결 상태를 확인해주세요." }, { status: 409 });
+      }
+      throw new Error(`unmocked fetch: ${url}`);
+    }));
+
+    render(<StudioPage />);
+    await chooseTikTokPrivacy();
+    fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
+
+    await waitFor(() => expect(screen.getByText(/TikTok 발행 계정을 찾을 수 없습니다/)).toBeInTheDocument(), { timeout: 8000 });
+    expect(screen.queryByRole("link", { name: /새 창/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "실패한 곳만 다시 발행" })).not.toBeInTheDocument();
+  }, 15000);
+
   // MAJOR-3 구멍(2026-10-02 재재검토): TikTok init 자체가(드물지만) 서버의 바깥 예산
   // (8초)을 넘기면, POST가 TikTok 전용 봉투({processing:true,publishId}) 대신 바깥
   // job 경로({status:"processing", jobId})를 돌려준다. 그 job이 "완료"되면 그 결과는

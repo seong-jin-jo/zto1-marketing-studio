@@ -219,8 +219,9 @@ export async function GET(request: Request) {
       failureCode,
       provider.rawFailReason,
     );
+    let transitioned = false;
     try {
-      await withTenant(tenantId, (sql) => sql`
+      const rows = await withTenant(tenantId, (sql) => sql<{ status: string }[]>`
         UPDATE published_posts
            SET status = 'failed', error = ${rejectMessage}, published_at = now(),
                provider_meta = COALESCE(provider_meta, '{}'::jsonb)
@@ -230,9 +231,16 @@ export async function GET(request: Request) {
            AND platform = ${"tiktok"}
            AND external_id = ${publishId}
            AND status = 'in_progress'
+        RETURNING status
       `);
+      transitioned = rows.length > 0;
     } catch {
       return Response.json({ error: "TikTok 실패 상태를 저장하지 못했습니다. 잠시 후 다시 확인해주세요." }, { status: 503 });
+    }
+    // 다른 poll이 먼저 published/failed로 마감했다면, 뒤늦은 FAILED 응답으로 그 결과를
+    // 덮거나 화면에 stale 실패를 돌려주지 않는다. 다음 조회가 DB의 확정 상태를 읽게 한다.
+    if (!transitioned) {
+      return Response.json({ ok: true, status: "processing", publishId }, { status: 202 });
     }
     return Response.json({ status: "failed", publishId, error: rejectMessage }, { status: 502 });
   }

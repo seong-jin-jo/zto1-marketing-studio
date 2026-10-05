@@ -208,6 +208,8 @@ describe("TikTok Content Posting API", () => {
     ["client_secret=provider-secret", "client_secret=[redacted]"],
     ["refresh_token=provider-secret", "refresh_token=[redacted]"],
     ["Authorization: Bearer provider-secret", "Authorization=[redacted]"],
+    ["cookie=session-cookie-value", "cookie=[redacted]"],
+    ["session=session-secret-value", "session=[redacted]"],
     ["Bearer abcdefghijklmnopqrstuvwxyz0123456789._-", "Bearer [redacted]"],
     ["trace abcdefghijklmnopqrstuvwxyz0123456789._- rejected", "trace [redacted] rejected"],
   ])("TIKTOK-ERROR-06 거절: 알려진 오류 메시지의 민감값 %s는 저장 전 가린다", async (message, redacted) => {

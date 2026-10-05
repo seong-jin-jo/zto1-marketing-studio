@@ -13,6 +13,7 @@ const H = vi.hoisted(() => ({
   statusCalls: [] as unknown[][],
   usageEvents: [] as unknown[][],
   diagnosticWrites: 0,
+  failedTransitionWins: true,
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({
@@ -43,12 +44,16 @@ vi.mock("@/lib/db", () => ({
         return Promise.resolve([]);
       }
       if (query.includes("SET status = 'failed'")) {
+        if (!H.failedTransitionWins) {
+          H.row.status = "published";
+          return Promise.resolve([]);
+        }
         H.row.status = "failed";
         const message = values.find((value) => typeof value === "string" && value.includes("TikTok"));
         if (typeof message === "string") H.row.error = message;
         const metadata = values.find((value) => typeof value === "object" && value !== null) as Record<string, unknown> | undefined;
         if (metadata) H.row.providerMeta = { ...H.row.providerMeta, ...metadata };
-        return Promise.resolve([]);
+        return Promise.resolve([{ status: "failed" }]);
       }
       if (query.includes("SET provider_meta")) {
         H.diagnosticWrites += 1;
@@ -94,6 +99,7 @@ describe("GET /api/tiktok/publish-status", () => {
     H.statusCalls = [];
     H.usageEvents = [];
     H.diagnosticWrites = 0;
+    H.failedTransitionWins = true;
     vi.resetModules();
   });
 
@@ -242,6 +248,23 @@ describe("GET /api/tiktok/publish-status", () => {
       tiktokError: { code: "provider_rejected", message: "", logId: "log-failed-raw-1" },
       tiktokFailReasonCode: "video_under_review_timeout",
     });
+  });
+
+  it("TIKTOK-ERROR-08 경합: 다른 poll이 먼저 완료했으면 늦은 FAILED를 화면 실패로 반환하지 않는다", async () => {
+    H.provider = {
+      ok: true,
+      status: "FAILED",
+      failReason: "provider_rejected",
+      providerError: { code: "ok", message: "", logId: "log-stale-failed-1" },
+    };
+    H.failedTransitionWins = false;
+
+    const { response, body } = await status();
+
+    expect(response.status).toBe(202);
+    expect(body).toEqual({ ok: true, status: "processing", publishId: "pub-1" });
+    expect(H.row.status).toBe("published");
+    expect(H.row.error).toBeNull();
   });
 
   it.each([
