@@ -1,3 +1,13 @@
+## 2026-10-05 Shorts·Reels 성과실·채널 링크·TikTok 실패 진단 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PERF-ALIAS-01 | Shorts·Reels가 저장 플랫폼 별칭을 포함해 집계·목록·판정됨 | PERF-ALIAS-01 | ✅ 로컬 PASS | `storagePlatforms` 단일 정의로 `youtube`, `instagram_reels`를 각각 Shorts·Reels에 포함한다. 성과실 회귀 9건 중 별칭 선택·표본·목록·라벨 계약 통과. |
+| CHANNEL-ALIAS-01 | 성과실 링크와 직접 별칭 URL이 실제 YouTube·Instagram 채널로 연결됨 | CHANNEL-ALIAS-01~02 | ✅ 로컬 PASS | Shorts는 `/channels/youtube`, Reels는 `/channels/instagram`으로 연결하며 직접 별칭 URL도 같은 정식 경로로 리다이렉트한다. 단위 계약 2건 통과. |
+| TIKTOK-ERROR-01 | init·status 실패의 code·message·log_id를 보존하고 사용자 사유를 번역함 | TIKTOK-ERROR-01~03 | ✅ 로컬 PASS | init·상태 조회·비동기 FAILED가 `provider_meta.tiktokError`에 구조화 오류를 남기고 고정 한국어 안내를 저장·응답한다. 관련 3파일 24건 통과. 실제 TikTok 계정 왕복은 미검증. |
+
+표적 회귀 합계 5파일 35건 PASS. Next dev 서버는 `localhost:3567`에서 준비됐고 `/login`, `/performance`, `/channels/shorts`가 HTTP 200으로 컴파일됐다. 브라우저 표면을 제어할 수 없어 hydration·콘솔 오류·데이터가 있는 9폭 모바일 실측은 미검증이며, 전체 Vitest·Next build는 호스트 부하 제약에 따라 CI로 넘긴다.
+
 ## 2026-10-05 편집실 v2 S1 교차 리뷰 5차 m5-1 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |

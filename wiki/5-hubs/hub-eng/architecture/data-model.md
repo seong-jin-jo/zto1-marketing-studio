@@ -76,6 +76,11 @@ outbox에는 발행 행의 `published_at`을 쓴다. `/api/usage`는 한 번에 
 - Coverage is derived from existing `published_posts.status` and `metrics_at`. It adds no table or migration.
   Time-series snapshots, reproducible 30-day comparisons, and the TikTok provider collector remain separate
   contracts and are not implied by coverage version `v1`.
+- The performance UI uses the coverage contract's `storagePlatforms` as the only alias source. Stored `youtube`
+  rows belong to Shorts and `instagram_reels` rows belong to Reels for totals, verdicts, and post lists.
+- TikTok publish-init and status failures keep the user-safe Korean explanation in `published_posts.error` and
+  the validated provider `code`, sanitized `message`, and `logId` in `provider_meta.tiktokError`. No migration is
+  required, and privacy settings remain the account owner's explicit choice.
 
 #### OSMU v63 editor handoff and queue bridge (2026-08-28)
 
