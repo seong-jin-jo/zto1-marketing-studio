@@ -126,7 +126,7 @@ describe("S2-B 자유 배치 발행 준비", () => {
     ["CARD_RENDER_PUBLIC_URL_MISSING", 503],
     ["CARD_RENDER_STALE_DECK", 422],
     ["CARD_RENDER_FAILED", 503],
-  ])("S2-R2-M3 %s를 코드와 한국어 사유가 있는 %i 응답으로 바꾼다", async (code, status) => {
+  ] as const)("S2-R2-M3 %s를 코드와 한국어 사유가 있는 %i 응답으로 바꾼다", async (code, status) => {
     const { CardDeckV3RenderError, cardDeckV3PublishErrorResponse } = await import("./card-deck-v3-publish-gate");
     const response = cardDeckV3PublishErrorResponse(new CardDeckV3RenderError(code, status));
     expect(response?.status).toBe(status);

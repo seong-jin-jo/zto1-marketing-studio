@@ -3,10 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const H = vi.hoisted(() => ({ gateCalls: 0 }));
+const H = vi.hoisted(() => ({ gateCalls: 0, prepared: null as null | { imageUrl: string; imageUrls: string[]; filenames: string[] } }));
 
 vi.mock("@/lib/studio/card-deck-v3-publish-gate", () => ({
-  assertDraftCanEnterPublishQueue: vi.fn(async () => { H.gateCalls += 1; return null; }),
+  assertDraftCanEnterPublishQueue: vi.fn(async () => { H.gateCalls += 1; return H.prepared; }),
 }));
 vi.mock("@/lib/queue-store", () => ({ mirrorQueuePost: vi.fn(async () => true) }));
 
@@ -16,6 +16,7 @@ describe("S2-B 큐 멱등 재시도", () => {
 
   beforeEach(() => {
     H.gateCalls = 0;
+    H.prepared = null;
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "queue-add-s2-"));
     process.env.DATA_DIR = dataDir;
   });
@@ -24,7 +25,8 @@ describe("S2-B 큐 멱등 재시도", () => {
     delete process.env.DATA_DIR;
   });
 
-  it("기존 idempotency key 재시도는 렌더나 초안 projection을 다시 실행하지 않는다", async () => {
+  it("S2-R2-m1 기존 idempotency key 재시도도 최신 v3 PNG를 렌더해 기존 큐 항목에 반영한다", async () => {
+    H.prepared = { imageUrl: "fresh-1", imageUrls: ["fresh-1", "fresh-2"], filenames: ["one.png", "two.png"] };
     const tenantDir = path.join(dataDir, "tenants", tenantId);
     fs.mkdirSync(tenantDir, { recursive: true });
     fs.writeFileSync(path.join(tenantDir, "queue.json"), JSON.stringify({ version: 2, posts: [{
@@ -39,7 +41,9 @@ describe("S2-B 큐 멱등 재시도", () => {
     const result = await runWithTenant(tenantId, () => addQueuePost(tenantId, {
       text: "재시도", draftId: "22222222-2222-4222-8222-222222222222", idempotencyKey: "same-key",
     }));
-    expect(result).toMatchObject({ reused: true, post: { id: "existing" } });
-    expect(H.gateCalls).toBe(0);
+    expect(result).toMatchObject({ reused: true, post: { id: "existing", imageUrl: "fresh-1", imageUrls: ["fresh-1", "fresh-2"] } });
+    expect(H.gateCalls).toBe(1);
+    const saved = JSON.parse(fs.readFileSync(path.join(tenantDir, "queue.json"), "utf8")) as { posts: Array<{ imageUrl: string; imageUrls: string[] }> };
+    expect(saved.posts[0]).toMatchObject({ imageUrl: "fresh-1", imageUrls: ["fresh-1", "fresh-2"] });
   });
 });
