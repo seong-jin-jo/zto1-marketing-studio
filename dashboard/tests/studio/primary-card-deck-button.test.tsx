@@ -25,6 +25,18 @@ import { GenerationService } from "@/lib/studio/generation/service";
 import { parseGenerationRequest } from "@/lib/studio/generation/contracts";
 import { derivationQuote } from "@/lib/studio/generation/derivation";
 
+vi.mock("@/lib/studio/card-templates/chat-bubble", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/studio/card-templates/chat-bubble")>(
+    "@/lib/studio/card-templates/chat-bubble",
+  );
+  return {
+    ...actual,
+    // 이 계약은 생성 요청과 9장 썸네일 배선이 대상이다. jsdom은 Canvas 2D를
+    // 구현하지 않으므로 렌더러 반환 계약만 대역하고 픽셀 렌더는 브라우저 E2E가 맡는다.
+    renderChatBubbleSlideToCanvas: vi.fn(async () => document.createElement("canvas")),
+  };
+});
+
 const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 
 function candidate(overrides: Partial<StudioGenerationCandidate> = {}): StudioGenerationCandidate {
