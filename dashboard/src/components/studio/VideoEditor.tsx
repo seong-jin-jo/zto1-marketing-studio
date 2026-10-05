@@ -643,10 +643,9 @@ function SubtitleScriptEditor({
   const resetByCountMismatch = edit.subtitles.length > 0 && edit.subtitles.length !== lines.length;
 
   /**
-   * 문구 수정만 `lines`(발행 원문)에도 반영한다 — 발행 자막은 여전히 `lines`를 굽는다.
-   * 컷·타임라인 조작은 `lines`를 건드리지 않는다(M2/M4: 컷은 미리보기 표시 전용, 전부
-   * 컷해도 방이 빈 상태로 떨어지지 않는다. 영상·음성은 물론 자막 글자도 실제로는 그대로
-   * 나간다 — "구간 자르기"는 다음 단계다).
+   * 문구 수정은 `lines`(대본 원문)와 `videoEdit.subtitles`에 함께 반영한다.
+   * 컷은 대본 문구를 지우지 않고 subtitle의 `cut` 표식만 바꾼다. 내보내기에서는
+   * playback-edit-plan이 그 표식의 시간 구간을 영상·음성·구운 자막에서 함께 제거한다.
    */
   function commitText(index: number, text: string) {
     // MINOR(5차 재리뷰): syncing 중에는 run()이 videoEdit 쪽을 거절하는데, 이 함수는
