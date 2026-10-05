@@ -289,12 +289,17 @@ function normalizeTikTokReason(reason: string | undefined): string {
   return "provider_rejected";
 }
 
+function safeTikTokReasonCode(reason: unknown): string | undefined {
+  return typeof reason === "string" && TIKTOK_REASON_CODE_PATTERN.test(reason) ? reason : undefined;
+}
+
 function safeTikTokProviderMessage(message: unknown): string {
   if (typeof message !== "string") return "";
   return message
     .replace(/[\u0000-\u001f\u007f]/g, " ")
     .replace(/\b(access[_ -]?token|refresh[_ -]?token|token|api[_ -]?key|client[_ -]?secret|authorization|password|secret)\b["']?\s*[:=]\s*["']?(?:bearer\s+)?[^\s"',;&}]+/gi, "$1=[redacted]")
     .replace(/\bbearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
+    .replace(/\b(?=[A-Za-z0-9._~+/-]{24,}={0,2}(?=$|[\s"',;&}]))(?=[A-Za-z0-9._~+/-]*[A-Za-z])(?=[A-Za-z0-9._~+/-]*\d)[A-Za-z0-9._~+/-]{24,}={0,2}/g, "[redacted]")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 500);
@@ -327,7 +332,7 @@ export async function fetchTikTokPostStatus(
   publishId: string,
   f: typeof fetch = fetch,
 ): Promise<
-  | { ok: true; status: string; postId?: string; failReason?: string; providerError: TikTokProviderError }
+  | { ok: true; status: string; postId?: string; failReason?: string; rawFailReason?: string; providerError: TikTokProviderError }
   | { ok: false; providerError: TikTokProviderError }
 > {
   try {
@@ -345,17 +350,19 @@ export async function fetchTikTokPostStatus(
     if (!res.ok || body.error?.code !== "ok" || !body.data?.status) {
       const fallbackCode = res.status === 429
         ? "rate_limit_exceeded"
-        : res.status >= 500 || !body.error?.code
+        : res.status >= 500 || !body.error?.code || (res.ok && body.error.code === "ok" && !body.data?.status)
           ? "provider_unavailable"
           : "provider_rejected";
       return { ok: false, providerError: tikTokProviderError(body.error, fallbackCode) };
     }
     const postId = body.data.publicaly_available_post_id?.[0];
+    const rawFailReason = safeTikTokReasonCode(body.data.fail_reason);
     return {
       ok: true,
       status: body.data.status,
       postId: postId === undefined ? undefined : String(postId),
       failReason: body.data.fail_reason ? normalizeTikTokReason(body.data.fail_reason) : undefined,
+      ...(rawFailReason ? { rawFailReason } : {}),
       providerError: {
         code: "ok",
         message: safeTikTokProviderMessage(body.error?.message),

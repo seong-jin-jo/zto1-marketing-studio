@@ -111,6 +111,15 @@ describe("TikTok Content Posting API", () => {
     });
   });
 
+  it("TIKTOK-ERROR-04 경계: HTTP 200이어도 status가 비었으면 조회 오류로 반환한다", async () => {
+    const f = vi.fn(async () => response({ data: {}, error: { code: "ok", log_id: "log-empty-status-1" } }));
+
+    await expect(fetchTikTokPostStatus("token", "pub-1", f as typeof fetch)).resolves.toEqual({
+      ok: false,
+      providerError: { code: "provider_unavailable", message: "", logId: "log-empty-status-1" },
+    });
+  });
+
   it.each([
     [429, "rate_limit_exceeded"],
     [503, "provider_unavailable"],
@@ -157,13 +166,31 @@ describe("TikTok Content Posting API", () => {
     });
   });
 
+  it("TIKTOK-ERROR-07 정상: 형식이 정상인 미정의 FAILED fail_reason은 원문 code를 별도 보존한다", async () => {
+    const f = vi.fn(async () => response({
+      data: { status: "FAILED", fail_reason: "video_under_review_timeout" },
+      error: { code: "ok", log_id: "log-failed-raw-1" },
+    }));
+
+    await expect(fetchTikTokPostStatus("token", "pub-1", f as typeof fetch)).resolves.toEqual({
+      ok: true,
+      status: "FAILED",
+      postId: undefined,
+      failReason: "provider_rejected",
+      rawFailReason: "video_under_review_timeout",
+      providerError: { code: "ok", message: "", logId: "log-failed-raw-1" },
+    });
+  });
+
   it.each([
-    ["access_token=provider-secret expired", "access_token=[redacted] expired"],
+    ["access_token=raw-provider-secret expired", "access_token=[redacted] expired"],
     ["token=provider-secret", "token=[redacted]"],
     ["api_key=provider-secret", "api_key=[redacted]"],
     ["client_secret=provider-secret", "client_secret=[redacted]"],
     ["refresh_token=provider-secret", "refresh_token=[redacted]"],
     ["Authorization: Bearer provider-secret", "Authorization=[redacted]"],
+    ["Bearer abcdefghijklmnopqrstuvwxyz0123456789._-", "Bearer [redacted]"],
+    ["trace abcdefghijklmnopqrstuvwxyz0123456789._- rejected", "trace [redacted] rejected"],
   ])("TIKTOK-ERROR-06 거절: 알려진 오류 메시지의 민감값 %s는 저장 전 가린다", async (message, redacted) => {
     const f = vi.fn(async () => response({
       data: {},

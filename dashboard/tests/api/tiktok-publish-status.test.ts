@@ -203,18 +203,44 @@ describe("GET /api/tiktok/publish-status", () => {
     expect(JSON.stringify(body)).not.toContain("other-account-token");
   });
 
-  it("TIKTOK-ERROR-03 정상: 상태 조회 인증 오류를 기록하고 사람이 읽는 재연결 안내를 돌려준다", async () => {
+  it.each([
+    ["access_token_invalid", "Access token expired", "다시 연결"],
+    ["scope_not_authorized", "Scope missing", "권한"],
+    ["provider_rejected", "", "발행 요청을 거부"],
+  ])("TIKTOK-ERROR-03 정상: 상태 조회 오류 %s는 진단만 남기고 발행 상태를 실패로 바꾸지 않는다", async (code, message, guidance) => {
     H.provider = {
       ok: false,
-      providerError: { code: "access_token_invalid", message: "Access token expired", logId: "log-status-1" },
+      providerError: { code, message, logId: "log-status-1" },
+    };
+
+    const { response, body } = await status();
+    expect(response.status).toBe(202);
+    expect(body).toMatchObject({ ok: true, status: "processing", publishId: "pub-1" });
+    expect(body.error).toContain(guidance);
+    expect(H.row.status).toBe("in_progress");
+    expect(H.row.error).toBeNull();
+    expect(H.row.providerMeta).toMatchObject({
+      tiktokError: { code, message, logId: "log-status-1" },
+    });
+    expect(H.diagnosticWrites).toBe(1);
+  });
+
+  it("TIKTOK-ERROR-07 정상: FAILED의 알려지지 않은 형식 정상 fail_reason을 진단용 원문 code로 보존한다", async () => {
+    H.provider = {
+      ok: true,
+      status: "FAILED",
+      failReason: "provider_rejected",
+      rawFailReason: "video_under_review_timeout",
+      providerError: { code: "ok", message: "", logId: "log-failed-raw-1" },
     };
 
     const { response, body } = await status();
     expect(response.status).toBe(502);
-    expect(body.error).toContain("다시 연결");
+    expect(body.error).toContain("발행 요청을 거부");
     expect(H.row.status).toBe("failed");
     expect(H.row.providerMeta).toMatchObject({
-      tiktokError: { code: "access_token_invalid", message: "Access token expired", logId: "log-status-1" },
+      tiktokError: { code: "provider_rejected", message: "", logId: "log-failed-raw-1" },
+      tiktokFailReasonCode: "video_under_review_timeout",
     });
   });
 
