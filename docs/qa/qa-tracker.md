@@ -1,12 +1,14 @@
-## 2026-10-05 편집실 영상 자막 중복 및 생성 영상 가짜 글자 ❌ NG → ✅ 로컬 PASS
+## 2026-10-05 편집실 영상 자막 중복 및 생성 영상 가짜 글자 ❌ 교차 리뷰 BLOCK → ✅ 로컬 PASS
+
+교차 리뷰에서 확인된 원본 URL·파일명 불일치, 인트로·아웃트로 없는 구운 영상의 계보 부재, 미리보기 자막 구간 비정규화를 교정했다.
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| EDITROOM-VIDEO-SUBTITLE-DUP-01 | 구운 영상과 편집 DOM 자막이 동시에 보이지 않도록 원본+DOM을 우선하고 원본이 없으면 구운 영상의 DOM 글자층을 숨김 | VIDEO-PREVIEW-SINGLE-LAYER-01 | ✅ 로컬 PASS | `editSource`와 글자 없는 인트로·아웃트로 합성본을 미리보기 기준으로 보존한다. 기존 구운 파일만 남은 fallback은 DOM 본문 글자층을 숨긴다. 컴포넌트 4건과 실제 Chromium edit-video 화면에서 콘솔 오류 0을 확인했다. |
+| EDITROOM-VIDEO-SUBTITLE-DUP-01 | 구운 영상과 편집 DOM 자막이 동시에 보이지 않도록 원본+DOM을 우선하고 원본이 없으면 구운 영상의 DOM 글자층을 숨김 | VIDEO-PREVIEW-SINGLE-LAYER-01, VIDEO-BAKED-LINEAGE-01~06 | ✅ 로컬 PASS | `subtitlesBaked`와 파일명·URL 한 쌍인 `editSource`를 저장한다. 원본이 없으면 DOM 자막은 0개이고 재굽기 API를 호출하지 않으며 복원 사유를 알린다. 기존 인트로·아웃트로의 구운 `deliverUrl`을 원본 파일명과 짝짓지 않는다. |
 | EDITROOM-VIDEO-SUBTITLE-DUP-02 | 굽기 직전 자막 구간을 다음 문장 시작과 영상 길이에 맞춰 정규화해 같은 위치의 문장 겹침 방지 | VIDEO-SUBTITLE-NORMALIZE-01 | ✅ 로컬 PASS | 저장 시점과 무관하게 굽기 직전 정규화한다. 앞 문장은 다음 시작에서 끊고 영상 길이를 넘지 않으며, 0.05초 미만 문장은 이웃 문장과 합치고 구조화 경고를 남긴다. playback 계획 단위 테스트 9건 통과. 로컬 ffmpeg의 drawtext 부재로 실제 글자 픽셀은 CI 판정 대상이다. |
 | EDITROOM-VIDEO-SUBTITLE-DUP-03 | Higgsfield 영상 요청이 화면 안 가짜 글자·자막·로고 생성을 피하는 기존 이미지 프롬프트 규칙을 재사용 | VIDEO-PROMPT-NO-GLYPH-01 | ✅ 로컬 PASS | 이미지 경로의 `NO_TEXT` 양성 장면 제약을 `buildMotionPrompt`에도 재사용한다. 프롬프트 계약 21건과 전체 contract 103파일 586건 통과. |
 
-전체 종료 증거: 변경 파일 직접 import 25파일 209건 중 묶음 실행에서 기존 발행 복구 1건이 상태 간섭으로 실패했고 같은 파일 단독 55건은 기대 변경 없이 전부 통과했다. 전체 `npx vitest run contract` 103파일 586건, TypeScript가 통과했다. 실제 Chromium 편집 화면은 자막 데이터 3줄, 가로 넘침 0, 44px 미만 조작 0, 콘솔 오류 0이다. 360·390·412·600·700·780·820·900·1000 아홉 폭은 13px 미만 글자·44px 미만 누름·가로 넘침 0, 본문 16px, 눌림 상태 100%다. 원격 CI와 운영 배포는 미검증이다.
+전체 종료 증거: 변경 파일 직접 import 38파일 300건, 전체 `npx vitest run contract` 104파일 588건, TypeScript가 통과했다. 실제 Chromium 390px 화면 9종은 콘솔 오류 0이다. 앞선 360·390·412·600·700·780·820·900·1000 아홉 폭은 13px 미만 글자·44px 미만 누름·가로 넘침 0, 본문 16px, 눌림 상태 100%다. 원격 CI와 운영 배포는 미검증이다.
 
 ## 2026-10-05 편집실 v2 S1 교차 리뷰 5차 m5-1 ❌ NG → ✅ 로컬 PASS
 

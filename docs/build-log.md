@@ -1,5 +1,20 @@
 # OSMU build log
 
+## 2026-10-05 20:31 KST · 편집실 자막 계보 교차리뷰 교정
+
+STAMP: 2026-10-05 20:31 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: Claude Opus 교차리뷰, Vitest, TypeScript, localhost 실제 Chromium | 고민: 구운 결과를 원본 파일명과 짝짓는 fallback을 제거하고, 글자 없는 파일명·URL 한 쌍이 없으면 재굽기를 명시적으로 막았다.
+
+| 검증 | 결과 |
+|---|---|
+| 변경 파일 직접 import | 38파일 300건 PASS. 묶음 부하에서 기존 발행 상태 간섭 1건과 로컬 canvas 바이너리 누락 2건을 분리했고, 발행 파일 58건과 canvas 2파일 22건을 독립 재실행해 PASS |
+| 전체 contract | `npx vitest run contract`, 104파일 588건 PASS |
+| TypeScript | `npm run typecheck:ci` 종료 코드 0 |
+| 디자인 lint | 종료 코드 0. 기존 인라인 style 3파일·hex 8파일, 이번 diff 신규 위반 0 |
+| 실제 Chromium | localhost:3470 준비 4.1초, 390px 화면 9종 PASS, 콘솔 오류 0 |
+| 미검증 | 로컬 ffmpeg에 drawtext가 없어 실제 글자 픽셀 합성, 원격 CI, 운영 배포는 미검증 |
+
+개발 서버는 검사 뒤 종료했다. 820px에서 자막 입력이 8px로 접히던 실측 결함을 막는 `64rem` 반응형 줄바꿈과 44px 입력 하한은 유지한다.
+
 ## 2026-10-05 19:37 KST · 편집실 영상 자막 단일층·구간 정규화
 
 STAMP: 2026-10-05 19:37 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: 관련 Vitest, TypeScript, 실제 Chromium, 9폭 모바일 실측 | 고민: 구운 결과를 편집 기준으로 재사용하지 않고 글자 없는 입력 계보를 보존하되, 과거 결과에 원본이 없는 경우도 중복 글자만은 차단했다.

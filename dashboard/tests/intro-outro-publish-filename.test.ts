@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveVideoPublishFilename, resolveVideoRenderSourceFilename } from "@/lib/studio/video-publish-filename";
+import {
+  resolveUnbakedVideoSource,
+  resolveVideoPublishFilename,
+  resolveVideoRenderSourceFilename,
+} from "@/lib/studio/video-publish-filename";
 
 // 2026-10-02 회장 반려: 인트로/아웃트로를 적용해도 발행 요청이 원본 파일명을 그대로
 // 보내고 있었다("화면은 적용됐다고 하는데 실제로 올라가는 파일은 원본"). 이 테스트는
@@ -36,5 +40,65 @@ describe("resolveVideoPublishFilename", () => {
     };
     expect(resolveVideoPublishFilename("video-NEW.mp4", stale)).toBe("video-NEW.mp4");
     expect(resolveVideoPublishFilename("video-NEW.mp4", stale)).not.toBe("video-concat-old.mp4");
+  });
+});
+
+describe("resolveUnbakedVideoSource", () => {
+  it("VIDEO-BAKED-LINEAGE-01 저장된 자막 없는 원본 계보를 재굽기 입력으로 쓴다", () => {
+    expect(resolveUnbakedVideoSource({
+      currentFilename: "baked.mp4",
+      currentUrl: "/api/media/baked",
+      lineage: {
+        subtitlesBaked: true,
+        editSource: { filename: "source.mp4", url: "/api/media/source" },
+      },
+      introOutro: null,
+    })).toEqual({ ok: true, filename: "source.mp4", url: "/api/media/source" });
+  });
+
+  it("VIDEO-BAKED-LINEAGE-02 인트로 합성 원본 URL이 없는 기존 구운 결과에 구운 deliverUrl을 원본으로 붙이지 않는다", () => {
+    expect(resolveUnbakedVideoSource({
+      currentFilename: "baked.mp4",
+      currentUrl: "/api/media/baked",
+      lineage: {
+        subtitlesBaked: true,
+        // 교차리뷰에서 적발된 이전 구현의 오염 계보: 파일명은 글자 없는 합성본인데
+        // URL은 첫 굽기 뒤 갱신된 구운 결과다. 값이 있다고 무조건 신뢰하면 안 된다.
+        editSource: { filename: "composite.mp4", url: "/api/media/baked" },
+      },
+      introOutro: {
+        introCompId: "intro-logo-reveal",
+        outroCompId: null,
+        compositeFilename: "composite.mp4",
+        resultFilename: "baked.mp4",
+        deliverUrl: "/api/media/baked",
+        sourceFilename: "source.mp4",
+      },
+    })).toEqual({ ok: false, reason: "unbaked_source_missing" });
+  });
+
+  it("VIDEO-BAKED-LINEAGE-03 첫 굽기 전 기존 인트로 합성 결과는 deliverUrl을 안전한 원본으로 쓴다", () => {
+    expect(resolveUnbakedVideoSource({
+      currentFilename: "source.mp4",
+      currentUrl: "/api/media/source",
+      lineage: {},
+      introOutro: {
+        introCompId: "intro-logo-reveal",
+        outroCompId: null,
+        compositeFilename: "composite.mp4",
+        resultFilename: "composite.mp4",
+        deliverUrl: "/api/media/composite",
+        sourceFilename: "source.mp4",
+      },
+    })).toEqual({ ok: true, filename: "composite.mp4", url: "/api/media/composite" });
+  });
+
+  it("VIDEO-BAKED-LINEAGE-04 인트로가 없어도 구운 표식만 있고 원본이 없으면 재굽기를 거절한다", () => {
+    expect(resolveUnbakedVideoSource({
+      currentFilename: "baked.mp4",
+      currentUrl: "/api/media/baked",
+      lineage: { subtitlesBaked: true },
+      introOutro: null,
+    })).toEqual({ ok: false, reason: "unbaked_source_missing" });
   });
 });

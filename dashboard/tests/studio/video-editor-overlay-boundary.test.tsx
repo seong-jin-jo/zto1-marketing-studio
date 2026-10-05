@@ -98,7 +98,33 @@ describe("VideoEditor 오버레이 경계", () => {
     expect(document.querySelector("[data-video-subtitle-active]")).toBeNull();
   });
 
-  it("VIDEO-PREVIEW-SINGLE-LAYER-01 원본 합성본이 있으면 그것을 재생하고 DOM 자막을 한 층만 그린다", () => {
+  it("VIDEO-PREVIEW-SINGLE-LAYER-01 구운 파일을 재생하면 인트로·아웃트로가 없어도 DOM 자막을 그리지 않는다", () => {
+    const edit: VideoEdit = {
+      ...emptyVideoEdit(),
+      subtitles: [
+        { id: "subtitle-1", order: 0, text: "이미 구운 자막", startSec: 0, endSec: 3, cut: false },
+      ],
+    };
+    render(
+      <VideoEditor
+        videoEdit={edit}
+        onVideoEditChange={() => {}}
+        previewVideoUrl="/api/media/baked-with-text"
+        sourceFilename="baked-with-text.mp4"
+        previewContainsBakedText
+        lines={["이미 구운 자막"]}
+      />,
+    );
+
+    const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 3, configurable: true });
+    fireEvent.loadedMetadata(video);
+    Object.defineProperty(video, "currentTime", { value: 1, configurable: true, writable: true });
+    fireEvent.timeUpdate(video);
+    expect(document.querySelectorAll("[data-video-subtitle-active]")).toHaveLength(0);
+  });
+
+  it("VIDEO-PREVIEW-SINGLE-LAYER-01B 원본 합성본이 있으면 그것을 재생하고 DOM 자막을 한 층만 그린다", () => {
     const edit: VideoEdit = {
       ...emptyVideoEdit(),
       subtitles: [
@@ -126,11 +152,72 @@ describe("VideoEditor 오버레이 경계", () => {
 
     const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
     expect(video.getAttribute("src")).toBe("/api/media/composite-without-text");
-    Object.defineProperty(video, "duration", { value: 3, configurable: true });
+    Object.defineProperty(video, "duration", { value: 5, configurable: true });
     fireEvent.loadedMetadata(video);
-    Object.defineProperty(video, "currentTime", { value: 1, configurable: true, writable: true });
+    Object.defineProperty(video, "currentTime", { value: 2.5, configurable: true, writable: true });
     fireEvent.timeUpdate(video);
     expect(document.querySelectorAll("[data-video-subtitle-active]")).toHaveLength(1);
+  });
+
+  it("VIDEO-PREVIEW-SINGLE-LAYER-01C 기존 합성 데이터도 원본 파일명에 구운 URL을 짝짓지 않는다", () => {
+    const edit: VideoEdit = {
+      ...emptyVideoEdit(),
+      subtitles: [
+        { id: "subtitle-1", order: 0, text: "고친 자막", startSec: 0, endSec: 3, cut: false },
+      ],
+      introOutro: {
+        introCompId: "intro-logo-reveal",
+        outroCompId: null,
+        compositeFilename: "composite-without-text.mp4",
+        resultFilename: "baked-with-text.mp4",
+        deliverUrl: "/api/media/baked-with-text",
+        sourceFilename: "body.mp4",
+      },
+    };
+    render(
+      <VideoEditor
+        videoEdit={edit}
+        onVideoEditChange={() => {}}
+        previewVideoUrl="/api/media/composite-without-text"
+        sourceFilename="composite-without-text.mp4"
+        lines={["고친 자막"]}
+      />,
+    );
+
+    const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    expect(video.getAttribute("src")).toBe("/api/media/composite-without-text");
+    Object.defineProperty(video, "duration", { value: 5, configurable: true });
+    fireEvent.loadedMetadata(video);
+    Object.defineProperty(video, "currentTime", { value: 2.5, configurable: true, writable: true });
+    fireEvent.timeUpdate(video);
+    expect(document.querySelectorAll("[data-video-subtitle-active]")).toHaveLength(1);
+  });
+
+  it("VIDEO-PREVIEW-NORMALIZE-01 겹친 원본 자막 대신 내보내기와 같은 정규화 구간을 보여준다", () => {
+    const edit: VideoEdit = {
+      ...emptyVideoEdit(),
+      subtitles: [
+        { id: "subtitle-1", order: 0, text: "첫 문장", startSec: 0, endSec: 3, cut: false },
+        { id: "subtitle-2", order: 1, text: "둘째 문장", startSec: 1.5, endSec: 4, cut: false },
+      ],
+    };
+    render(
+      <VideoEditor
+        videoEdit={edit}
+        onVideoEditChange={() => {}}
+        previewVideoUrl="/api/media/source"
+        sourceFilename="source.mp4"
+        lines={["첫 문장", "둘째 문장"]}
+      />,
+    );
+
+    const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 3.875, configurable: true });
+    fireEvent.loadedMetadata(video);
+    Object.defineProperty(video, "currentTime", { value: 2, configurable: true, writable: true });
+    fireEvent.timeUpdate(video);
+    expect(document.querySelector("[data-video-subtitle-active]")).toHaveTextContent("둘째 문장");
+    expect(document.querySelector("[data-video-subtitle-active]")).not.toHaveTextContent("첫 문장");
   });
 
   it("VIDEO-PREVIEW-SINGLE-LAYER-02 원본을 못 찾은 기존 구운 파일은 DOM 글자층을 숨긴다", () => {

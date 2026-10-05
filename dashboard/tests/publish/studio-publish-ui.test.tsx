@@ -492,6 +492,151 @@ describe("Studio publish result integrity", () => {
     expect(document.querySelector("[data-video-subtitle-text]"), "복귀한 영상 대본을 편집할 수 있어야 한다").toBeEnabled();
   });
 
+  it("VIDEO-BAKED-LINEAGE-05 인트로 없는 구운 초안을 복원하면 DOM 자막을 숨기고 원본 없는 재굽기를 막는다", async () => {
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "구운 영상",
+      editKind: "video",
+      editLines: ["이미 구운 자막"],
+      vid: {
+        url: fakeMediaUrl("baked.mp4"),
+        file: fakeMediaUrl("baked.mp4"),
+        model: "test",
+        topicKey: "구운 영상",
+        subtitlesBaked: true,
+      },
+      videoEdit: {
+        contract_version: "1.0",
+        overlays: [],
+        comments: [],
+        subtitles: [{ id: "s1", order: 0, text: "이미 구운 자막", startSec: 0, endSec: 3, cut: false }],
+        voice: null,
+        introOutro: null,
+        revision: 1,
+      },
+    }));
+    window.history.replaceState(null, "", "/studio?room=edit&kind=video");
+
+    render(<StudioPage />);
+    await waitFor(() => expect(document.querySelector("[data-video-subtitle-list]")).toBeTruthy());
+    const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 3, configurable: true });
+    fireEvent.loadedMetadata(video);
+    Object.defineProperty(video, "currentTime", { value: 1, configurable: true, writable: true });
+    fireEvent.timeUpdate(video);
+    expect(document.querySelector("[data-video-subtitle-active]")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      "자막 없는 원본 영상을 찾지 못해 다시 굽지 않았습니다. 생성실에서 영상을 다시 만들거나 원본을 복원해 주세요.",
+      "error",
+    ));
+    expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/video/subtitle")).toBe(false);
+  });
+
+  it("VIDEO-BAKED-LINEAGE-06 저장된 원본 계보로만 다시 굽고 새 결과에도 계보를 보존한다", async () => {
+    const sourceUrl = fakeMediaUrl("source.mp4");
+    const oldBakedUrl = fakeMediaUrl("old-baked.mp4");
+    const newBakedUrl = fakeMediaUrl("new-baked.mp4");
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "다시 굽는 영상",
+      editKind: "video",
+      editLines: ["고친 자막"],
+      vid: {
+        url: oldBakedUrl,
+        file: oldBakedUrl,
+        model: "test",
+        topicKey: "다시 굽는 영상",
+        subtitlesBaked: true,
+        editSource: { filename: "source.mp4", url: sourceUrl },
+      },
+      videoEdit: {
+        contract_version: "1.0",
+        overlays: [],
+        comments: [],
+        subtitles: [{ id: "s1", order: 0, text: "고친 자막", startSec: 0, endSec: 3, cut: false }],
+        voice: null,
+        introOutro: null,
+        revision: 1,
+      },
+    }));
+    mocks.apiPost.mockImplementation(async (path: string, body: Record<string, unknown>) => {
+      if (path === "/api/video/subtitle") {
+        expect(body.filename).toBe("source.mp4");
+        return { ok: true, file: newBakedUrl, filename: "new-baked.mp4" };
+      }
+      if (path === "/api/studio/drafts") return { id: "rebaked-draft", bodyRevision: 1, videoEditServerRevision: 1 };
+      return { ok: true };
+    });
+    window.history.replaceState(null, "", "/studio?room=edit&kind=video");
+
+    render(<StudioPage />);
+    await waitFor(() => expect(document.querySelector("[data-video-subtitle-list]")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+
+    await waitFor(() => expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/video/subtitle")).toBe(true));
+    await waitFor(() => {
+      const saves = mocks.apiPost.mock.calls.filter(([path]) => path === "/api/studio/drafts");
+      expect(saves.at(-1)?.[1]).toEqual(expect.objectContaining({
+        vid: expect.objectContaining({
+          file: newBakedUrl,
+          subtitlesBaked: true,
+          editSource: { filename: "source.mp4", url: sourceUrl },
+        }),
+      }));
+    });
+  });
+
+  it("VIDEO-BAKED-LINEAGE-07 원본 파일명에 구운 URL이 붙은 기존 오염 계보는 숨기고 재굽지 않는다", async () => {
+    const bakedUrl = fakeMediaUrl("baked.mp4");
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "기존 합성 영상",
+      editKind: "video",
+      editLines: ["고친 자막"],
+      vid: {
+        url: bakedUrl,
+        file: bakedUrl,
+        model: "test",
+        topicKey: "기존 합성 영상",
+        subtitlesBaked: true,
+        editSource: { filename: "composite.mp4", url: bakedUrl },
+      },
+      videoEdit: {
+        contract_version: "1.0",
+        overlays: [],
+        comments: [],
+        subtitles: [{ id: "s1", order: 0, text: "고친 자막", startSec: 0, endSec: 3, cut: false }],
+        voice: null,
+        introOutro: {
+          introCompId: "intro-logo-reveal",
+          outroCompId: null,
+          compositeFilename: "composite.mp4",
+          resultFilename: "baked.mp4",
+          deliverUrl: bakedUrl,
+          sourceFilename: "source.mp4",
+        },
+        revision: 1,
+      },
+    }));
+    window.history.replaceState(null, "", "/studio?room=edit&kind=video");
+
+    render(<StudioPage />);
+    await waitFor(() => expect(document.querySelector("[data-video-subtitle-list]")).toBeTruthy());
+    const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    expect(video.getAttribute("src")).toBe(bakedUrl);
+    Object.defineProperty(video, "duration", { value: 5, configurable: true });
+    fireEvent.loadedMetadata(video);
+    Object.defineProperty(video, "currentTime", { value: 2.5, configurable: true, writable: true });
+    fireEvent.timeUpdate(video);
+    expect(document.querySelector("[data-video-subtitle-active]")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      "자막 없는 원본 영상을 찾지 못해 다시 굽지 않았습니다. 생성실에서 영상을 다시 만들거나 원본을 복원해 주세요.",
+      "error",
+    ));
+    expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/video/subtitle")).toBe(false);
+  });
+
   it("PR95-SCOPE-CUT-VIDEO-01 연결 초안 없는 영상의 대표 이미지는 카드 잠금으로 오인하지 않는다", async () => {
     localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
       idea: "이전 카드 작업",

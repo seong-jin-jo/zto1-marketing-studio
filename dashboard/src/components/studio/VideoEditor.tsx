@@ -49,6 +49,7 @@ import {
   isPlaybackTimeWithinBody,
   playbackTimeFromBodyTime,
 } from "@/lib/studio/video-edit-time-axis";
+import { normalizeSubtitleWindows } from "@/lib/studio/playback-edit-plan";
 
 /** 1초를 몇 px로 그리는지. design-spec-editroom-v70.md §4.4 "1초 ≈ 12px". */
 const PX_PER_SEC = 12;
@@ -90,6 +91,8 @@ export interface VideoEditorProps {
    */
   /** 인트로/아웃트로(Remotion) 삽입 대상 원본 영상 파일명. 2026-10-02 신설(R-27-5). */
   sourceFilename?: string | null;
+  /** 현재 미리보기 파일 자체에 자막·오버레이가 이미 구워졌으면 DOM 글자층을 숨긴다. */
+  previewContainsBakedText?: boolean;
   tenantId?: string;
 }
 
@@ -113,7 +116,7 @@ function videoEditErrorMessage(rule: string): string {
   return "입력한 값을 확인해 주세요.";
 }
 
-export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false, sourceFilename = null, tenantId }: VideoEditorProps) {
+export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false, sourceFilename = null, previewContainsBakedText = false, tenantId }: VideoEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [playhead, setPlayhead] = useState(0);
@@ -124,6 +127,17 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   // 서버에 아직 커밋 안 된(시딩만 된) 상태에서도 글자가 보인다 — 셋이 서로 다른 자막을
   // 보여주면 어느 게 진짜인지 알 수 없다(B2와 같은 이유로 한 계산을 공유한다).
   const displaySubtitles = useMemo(() => reconcileSubtitles(videoEdit.subtitles, lines, duration), [videoEdit.subtitles, lines, duration]);
+  const previewSubtitles = useMemo(() => {
+    if (!duration) return displaySubtitles;
+    return normalizeSubtitleWindows(displaySubtitles, duration).windows.map((window, index) => ({
+      id: `preview-${index}`,
+      order: index,
+      text: window.text,
+      startSec: window.startSec,
+      endSec: window.endSec,
+      cut: false,
+    }));
+  }, [displaySubtitles, duration]);
 
   /**
    * B-1(4차 재리뷰 BLOCKER): 이 함수가 videoEdit을 바꾸는 유일한 입구다(오버레이·댓글·
@@ -174,7 +188,9 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
     && videoEdit.introOutro.resultFilename !== videoEdit.introOutro.compositeFilename);
   const effectivePreviewUrl = videoEdit.introOutro && !introOutroStale
     ? videoEdit.introOutro.compositeDeliverUrl
-      || (bakedIntroOutroResult && sourceFilename === videoEdit.introOutro.sourceFilename
+      || (sourceFilename === videoEdit.introOutro.compositeFilename
+        ? previewVideoUrl
+        : bakedIntroOutroResult && sourceFilename === videoEdit.introOutro.sourceFilename
         ? previewVideoUrl
         : videoEdit.introOutro.deliverUrl)
     : previewVideoUrl;
@@ -182,12 +198,13 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
     ? videoEdit.introOutro.sourceFilename
     : sourceFilename;
   const playbackIntroOutro = introOutroStale ? null : videoEdit.introOutro;
-  const previewContainsBakedText = Boolean(videoEdit.introOutro
+  const legacyPreviewContainsBakedText = Boolean(videoEdit.introOutro
     && !introOutroStale
     && bakedIntroOutroResult
     && !videoEdit.introOutro.compositeDeliverUrl
     && sourceFilename === videoEdit.introOutro.resultFilename);
   const bodyLayersVisible = !previewContainsBakedText
+    && !legacyPreviewContainsBakedText
     && isPlaybackTimeWithinBody(playbackTime, duration, playbackIntroOutro);
 
   useEffect(() => {
@@ -242,7 +259,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             videoRef={videoRef}
             overlays={videoEdit.overlays}
             comments={videoEdit.comments}
-            activeSubtitle={activeSubtitle(displaySubtitles, playhead)}
+            activeSubtitle={activeSubtitle(previewSubtitles, playhead)}
             playhead={playhead}
             playbackPlayhead={playbackPlayhead}
             bodyLayersVisible={bodyLayersVisible}
