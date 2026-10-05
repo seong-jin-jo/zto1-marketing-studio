@@ -11,6 +11,7 @@ import {
 import {
   alignPlaybackScript,
   keepRanges,
+  normalizeSubtitleWindows,
   planPlaybackBurn,
   playbackFfmpegArgs,
   readPlaybackEdit,
@@ -34,6 +35,40 @@ function edited() {
 }
 
 describe("재생 편집이 나가는 영상 명령에 남는다", () => {
+  it("VIDEO-SUBTITLE-NORMALIZE-01 겹친 자막은 다음 문장 시작에서 끊고 영상 끝을 넘지 않는다", () => {
+    const normalized = normalizeSubtitleWindows([
+      { id: "s1", order: 0, text: "프로필 링크에서 예약하세요", startSec: 0, endSec: 3, cut: false },
+      { id: "s2", order: 1, text: "바로 적용할 방법", startSec: 1.5, endSec: 5, cut: false },
+    ], 3.875);
+
+    expect(normalized.windows).toEqual([
+      { text: "프로필 링크에서 예약하세요", startSec: 0, endSec: 1.5, kind: "subtitle" },
+      { text: "바로 적용할 방법", startSec: 1.5, endSec: 3.875, kind: "subtitle" },
+    ]);
+    expect(normalized.warnings).toEqual([]);
+  });
+
+  it("VIDEO-SUBTITLE-NORMALIZE-02 표시할 틈이 없는 문장은 이웃 문장에 합치고 경고한다", () => {
+    const normalized = normalizeSubtitleWindows([
+      { id: "s1", order: 0, text: "첫 문장", startSec: 0, endSec: 3, cut: false },
+      { id: "s2", order: 1, text: "둘째 문장", startSec: 0, endSec: 3, cut: false },
+    ], 0.04);
+
+    expect(normalized.windows).toEqual([
+      { text: "첫 문장 · 둘째 문장", startSec: 0, endSec: 0.04, kind: "subtitle" },
+    ]);
+    expect(normalized.warnings).toContain("subtitle_windows_merged_for_short_video");
+  });
+
+  it("VIDEO-SUBTITLE-NORMALIZE-03 문장 자체의 가운데점은 짧은 영상 경고로 오인하지 않는다", () => {
+    const normalized = normalizeSubtitleWindows([
+      { id: "s1", order: 0, text: "예약 · 상담 안내", startSec: 0, endSec: 2, cut: false },
+    ], 2);
+
+    expect(normalized.windows).toHaveLength(1);
+    expect(normalized.warnings).toEqual([]);
+  });
+
   it("컷으로 뺀 2초는 남는 구간에서 빠지고 출력 길이는 4초다", () => {
     expect(keepRanges(6, [{ startSec: 2, endSec: 4 }])).toEqual([
       { startSec: 0, endSec: 2 },

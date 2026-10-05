@@ -359,6 +359,7 @@ export function buildMotionPrompt(subject: string, learning?: string | ImageProm
   const voice = VOICE_MOODS.find((one) => one.match.test(info.voice || ""));
   if (voice) parts.push(voice.mood);
   parts.push("subtle idle motion, gentle sway and glow, fixed camera, smooth");
+  parts.push(NO_TEXT);
   return stripForbidden(parts.join(". "), info.forbidden);
 }
 

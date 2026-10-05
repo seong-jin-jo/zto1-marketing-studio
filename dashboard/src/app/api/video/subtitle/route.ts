@@ -243,6 +243,9 @@ export async function POST(request: Request) {
       droppedTexts: plan.droppedTexts,
       voiceApplied: false,
     };
+    for (const warning of plan.warnings) {
+      console.warn(JSON.stringify({ kind: "video_subtitle_normalization", warning, filename }));
+    }
     args = playbackFfmpegArgs(plan, { inputPath, outputPath: outPath });
   } else {
     args = subtitleFfmpegArgs({
