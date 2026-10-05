@@ -1,5 +1,20 @@
 # OSMU build log
 
+## 2026-10-05 19:37 KST · 편집실 영상 자막 단일층·구간 정규화
+
+STAMP: 2026-10-05 19:37 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: 관련 Vitest, TypeScript, 실제 Chromium, 9폭 모바일 실측 | 고민: 구운 결과를 편집 기준으로 재사용하지 않고 글자 없는 입력 계보를 보존하되, 과거 결과에 원본이 없는 경우도 중복 글자만은 차단했다.
+
+| 검증 | 결과 |
+|---|---|
+| 변경 파일 직접 import | 25파일 209건 중 208건 통과. 기존 발행 복구 1건은 묶음 상태 간섭, 단독 재실행 55건 PASS |
+| 전체 contract | `npx vitest run contract`, 103파일 586건 PASS |
+| TypeScript | `npm run typecheck:ci` 종료 코드 0 |
+| 실제 Chromium | edit-video 자막 데이터 3줄, 가로 넘침 0, 44px 미만 조작 0, 콘솔 오류 0 |
+| 모바일 실측 | 360·390·412·600·700·780·820·900·1000 전부 13px 미만 0, 본문 16px, 44px 미만 0, 눌림 100%, 넘침 0 |
+| 로컬 미검증 | ffmpeg drawtext 미지원으로 실제 글자 픽셀 합성은 CI에서 확인 필요 |
+
+개발 서버와 보조 snapshot 서버는 검사 뒤 모두 종료했다. 원격 CI와 운영 배포는 아직 실행하지 않았다.
+
 ## 2026-10-04 18:58 KST · 편집실 v2 S1 기존 plain 카드 작업대 회귀 복구
 
 STAMP: 2026-10-04 18:58 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: PR 116 CI run 37192534847, v70 화면 정합 스크립트, 로컬 Vitest·TypeScript·production build | 고민: 과거 plain 카드 데이터를 묵시적으로 v3로 이관하지 않고 명시적인 v3 덱이 있을 때만 자유 배치 편집기를 열도록 소유권 경계를 복원했다.
