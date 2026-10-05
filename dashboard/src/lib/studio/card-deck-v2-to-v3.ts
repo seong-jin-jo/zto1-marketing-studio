@@ -70,8 +70,11 @@ export function sha256Text(text: string): string {
 }
 
 function safePart(value: string): string {
+  if (value.length <= 120 && /^[A-Za-z0-9:_.-]+$/.test(value) && !value.includes("..")) return value;
+  const suffix = sha256Text(value).slice(0, 12);
   const safe = value.replace(/[^A-Za-z0-9:_.-]/g, "_").replace(/\.\./g, "_");
-  return safe.slice(0, 80) || `id_${sha256Text(value).slice(0, 12)}`;
+  const prefix = safe.slice(0, 120 - suffix.length - 1) || "id";
+  return `${prefix}_${suffix}`;
 }
 
 function hexColor(value: string, fallback: `#${string}`): `#${string}` {
@@ -102,14 +105,14 @@ function textElement(id: string, text: string, order: number, total: number, pos
 function bubbleElements(slide: CardSlide): CardElement[] {
   const elements: CardElement[] = [];
   if (slide.role === "cover" && slide.cover) {
-    elements.push(textElement(`el_${safePart(slide.id)}_cover`, slide.cover.headline, 0, 2, "top"));
-    if (slide.cover.sub) elements.push({ ...textElement(`el_${safePart(slide.id)}_sub`, slide.cover.sub, 1, 3, "center"), y: 650, height: 260, style: { ...textElement("x", "", 1, 3, "center").style, font_size: 38, font_weight: 500 } });
+    elements.push(textElement(safePart(`el_${slide.id}_cover`), slide.cover.headline, 0, 2, "top"));
+    if (slide.cover.sub) elements.push({ ...textElement(safePart(`el_${slide.id}_sub`), slide.cover.sub, 1, 3, "center"), y: 650, height: 260, style: { ...textElement("x", "", 1, 3, "center").style, font_size: 38, font_weight: 500 } });
     return elements.map((element, index) => ({ ...element, z_index: index }));
   }
   for (const bubble of [...(slide.bubbles ?? [])].sort((left, right) => left.order - right.order)) {
     const text = bubble.segments.map((segment) => segment.text).join("");
     elements.push({
-      ...textElement(`el_${safePart(bubble.id)}`, text, elements.length, Math.max(2, slide.bubbles?.length ?? 2), "top"),
+      ...textElement(safePart(`el_${bubble.id}`), text, elements.length, Math.max(2, slide.bubbles?.length ?? 2), "top"),
       name: bubble.speaker === "reader" ? "독자 말풍선" : "브랜드 말풍선",
       x: bubble.speaker === "reader" ? 420 : 70,
       y: 100 + elements.length * 230,
@@ -136,7 +139,7 @@ export function migrateCardDeckV2ToV3(source: CardDeck): CardDeckV3 {
         ? { kind: "chat_bubble", cover: slide.cover ? structuredClone(slide.cover) : null, bubbles: structuredClone(slide.bubbles ?? []) }
         : { kind: "plain", lines: text ? [text] : [] },
       elements: text.trim()
-        ? isChat ? bubbleElements(slide) : [textElement(`el_${safePart(slide.id)}_text`, text, index, source.slides.length, slide.position)]
+        ? isChat ? bubbleElements(slide) : [textElement(safePart(`el_${slide.id}_text`), text, index, source.slides.length, slide.position)]
         : [],
     };
   });
@@ -153,7 +156,7 @@ export function migrateCardDeckV2ToV3(source: CardDeck): CardDeckV3 {
 }
 
 function patchBubbleFromElement(bubble: Bubble, elements: CardElement[]): Bubble {
-  const element = elements.find((candidate) => candidate.id === `el_${safePart(bubble.id)}` && candidate.type === "text");
+  const element = elements.find((candidate) => candidate.id === safePart(`el_${bubble.id}`) && candidate.type === "text");
   if (!element || element.type !== "text") return structuredClone(bubble);
   const current = bubble.segments.map((segment) => segment.text).join("");
   if (element.text === current) return structuredClone(bubble);
@@ -161,8 +164,8 @@ function patchBubbleFromElement(bubble: Bubble, elements: CardElement[]): Bubble
 }
 
 function patchCoverFromElements(slideId: string, cover: NonNullable<CardSlide["cover"]>, elements: CardElement[]): NonNullable<CardSlide["cover"]> {
-  const headlineElement = elements.find((candidate) => candidate.id === `el_${safePart(slideId)}_cover` && candidate.type === "text");
-  const subElement = elements.find((candidate) => candidate.id === `el_${safePart(slideId)}_sub` && candidate.type === "text");
+  const headlineElement = elements.find((candidate) => candidate.id === safePart(`el_${slideId}_cover`) && candidate.type === "text");
+  const subElement = elements.find((candidate) => candidate.id === safePart(`el_${slideId}_sub`) && candidate.type === "text");
   return {
     headline: headlineElement?.type === "text" ? headlineElement.text : cover.headline,
     sub: subElement?.type === "text" ? subElement.text || null : cover.sub,

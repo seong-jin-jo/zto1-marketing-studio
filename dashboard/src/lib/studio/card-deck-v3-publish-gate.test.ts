@@ -5,7 +5,10 @@ const H = vi.hoisted(() => ({
   payload: null as Record<string, unknown> | null,
   renders: [] as string[],
   puts: [] as string[],
+  deletes: [] as string[],
   jsonValues: [] as unknown[],
+  updateSucceeds: true,
+  failRenderAt: null as number | null,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -14,6 +17,7 @@ vi.mock("@/lib/db", () => ({
       const query = strings.join(" ");
       if (query.includes("has_card_deck_v3")) return Promise.resolve([{ has_card_deck_v3: H.has }]);
       if (query.includes("SELECT payload")) return Promise.resolve(H.payload ? [{ payload: H.payload }] : []);
+      if (query.includes("UPDATE drafts")) return Promise.resolve(H.updateSucceeds ? [{ id: "22222222-2222-2222-2222-222222222222" }] : []);
       return Promise.resolve([]);
     }, { json: (value: unknown) => { H.jsonValues.push(value); return value; } });
     return callback(sql);
@@ -22,11 +26,12 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/media-store", () => ({ mediaStore: {
   exists: vi.fn(async () => false),
   put: vi.fn(async (_tenant: string, filename: string) => { H.puts.push(filename); }),
-  delete: vi.fn(async () => true),
+  delete: vi.fn(async (_tenant: string, filename: string) => { H.deletes.push(filename); return true; }),
 } }));
 vi.mock("@/lib/image-token", () => ({ signImageToken: vi.fn((_tenant: string, filename: string) => `token-${filename}`) }));
 vi.mock("@/lib/studio/card-slide-render", () => ({
   renderCardSlidePng: vi.fn(async ({ outputPath }: { outputPath: string }) => {
+    if (H.failRenderAt === H.renders.length) throw new Error("render failed");
     const fs = await import("node:fs");
     fs.writeFileSync(outputPath, Buffer.from("png"));
     H.renders.push(outputPath);
@@ -45,13 +50,21 @@ const deck = {
 };
 
 beforeEach(() => {
-  H.has = false; H.payload = null; H.renders = []; H.puts = []; H.jsonValues = [];
+  H.has = false; H.payload = null; H.renders = []; H.puts = []; H.deletes = []; H.jsonValues = [];
+  H.updateSucceeds = true; H.failRenderAt = null;
   vi.stubEnv("OSMU_PUBLIC_URL", "https://studio.example.com");
   vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "0");
 });
 afterEach(() => vi.unstubAllEnvs());
 
 describe("S2-B 자유 배치 발행 준비", () => {
+  it("검토·승인 큐 항목에 최신 서버 PNG URL을 원자 반영할 수 있다", async () => {
+    const { applyPreparedCardDeckV3Images } = await import("./card-deck-v3-publish-gate");
+    const post: Record<string, unknown> = { imageUrl: "old", imageUrls: ["old"] };
+    applyPreparedCardDeckV3Images(post, { imageUrl: "new-1", imageUrls: ["new-1", "new-2"], filenames: ["one.png", "two.png"] });
+    expect(post).toMatchObject({ imageUrl: "new-1", imageUrls: ["new-1", "new-2"] });
+  });
+
   it("flag off면 v3 초안을 기존 409 오류로 중단한다", async () => {
     H.payload = { cardDeckV3: deck };
     const { assertDraftCanEnterPublishQueue, CardDeckV3PublishBlockedError, cardDeckV3PublishBlockedErrorResponse } = await import("./card-deck-v3-publish-gate");
@@ -77,5 +90,29 @@ describe("S2-B 자유 배치 발행 준비", () => {
     const { draftHasCardDeckV3, assertDraftCanEnterPublishQueue } = await import("./card-deck-v3-publish-gate");
     expect(await draftHasCardDeckV3("11111111-1111-1111-1111-111111111111", "not-a-draft")).toBe(false);
     expect(await assertDraftCanEnterPublishQueue("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")).toBeNull();
+  });
+
+  it("S2-B 경합: 렌더 중 최신 덱으로 바뀌면 구형 PNG를 초안이나 발행 입력에 확정하지 않는다", async () => {
+    vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "1");
+    H.payload = { cardDeckV3: deck };
+    H.updateSucceeds = false;
+    const { assertDraftCanEnterPublishQueue } = await import("./card-deck-v3-publish-gate");
+    await expect(assertDraftCanEnterPublishQueue(
+      "11111111-1111-1111-1111-111111111111",
+      "22222222-2222-2222-2222-222222222222",
+    )).rejects.toThrow("CARD_RENDER_STALE_DECK");
+  });
+
+  it("S2-B 경합: 결정적 객체 일부를 만든 뒤 실패해도 다른 인스턴스가 공유할 객체를 삭제하지 않는다", async () => {
+    vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "1");
+    H.payload = { cardDeckV3: deck };
+    H.failRenderAt = 1;
+    const { assertDraftCanEnterPublishQueue } = await import("./card-deck-v3-publish-gate");
+    await expect(assertDraftCanEnterPublishQueue(
+      "11111111-1111-1111-1111-111111111111",
+      "22222222-2222-2222-2222-222222222222",
+    )).rejects.toThrow("render failed");
+    expect(H.puts).toHaveLength(1);
+    expect(H.deletes).toHaveLength(0);
   });
 });

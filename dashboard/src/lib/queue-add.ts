@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { dataPath, mutateJson } from "@/lib/file-io";
+import { dataPath, mutateJson, readJson } from "@/lib/file-io";
 import { mirrorQueuePost } from "@/lib/queue-store";
 import { assertDraftCanEnterPublishQueue } from "@/lib/studio/card-deck-v3-publish-gate";
 
@@ -74,10 +74,14 @@ export async function addQueuePost(
 ): Promise<{ post: QueuePost; reused: boolean }> {
   const text = input.text.trim();
   if (!text) throw new QueueInputError("text required");
-  const prepared = await assertDraftCanEnterPublishQueue(tenantId, input.draftId);
-
-  const imageUrls = prepared?.imageUrls ?? (Array.isArray(input.imageUrls) ? input.imageUrls : null);
   const idempotencyKey = input.idempotencyKey?.trim() || undefined;
+  if (idempotencyKey) {
+    const existing = readJson<{ version: number; posts: QueuePost[] }>(dataPath("queue.json"))
+      ?.posts?.find((post) => post.idempotencyKey === idempotencyKey);
+    if (existing) return { post: existing, reused: true };
+  }
+  const prepared = await assertDraftCanEnterPublishQueue(tenantId, input.draftId);
+  const imageUrls = prepared?.imageUrls ?? (Array.isArray(input.imageUrls) ? input.imageUrls : null);
   let selected: QueuePost | null = null;
   let reused = false;
 

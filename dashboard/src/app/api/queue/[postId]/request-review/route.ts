@@ -5,6 +5,7 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import {
   assertDraftCanEnterPublishQueue,
+  applyPreparedCardDeckV3Images,
   CardDeckV3PublishBlockedError,
   cardDeckV3PublishBlockedErrorResponse,
 } from "@/lib/studio/card-deck-v3-publish-gate";
@@ -18,8 +19,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ pos
     const { postId } = await params;
     const current = readJson<QueueData>(dataPath("queue.json")) || { posts: [] };
     const currentPost = current.posts.find((candidate) => candidate.id === postId);
+    let prepared = null;
     try {
-      if (currentPost) await assertDraftCanEnterPublishQueue(tenantId, currentPost.draftId);
+      if (currentPost) prepared = await assertDraftCanEnterPublishQueue(tenantId, currentPost.draftId);
     } catch (error) {
       if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
       throw error;
@@ -28,7 +30,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ pos
 
     await mutateJson<QueueData>(dataPath("queue.json"), (queue) => {
       const post = (queue.posts || []).find((candidate) => candidate.id === postId);
-      if (post) transition = requestReviewTransition(post, new Date().toISOString());
+      if (post) {
+        applyPreparedCardDeckV3Images(post, prepared);
+        transition = requestReviewTransition(post, new Date().toISOString());
+      }
       return queue;
     }, { posts: [] });
 

@@ -9,6 +9,7 @@ import { cardDeckV3RenderingEnabled } from "@/lib/studio/card-deck-v3-render-fea
 import { parseCardDeckV3, type CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { cardSlideRenderModel } from "@/lib/studio/card-render-model";
 import { renderCardSlidePng } from "@/lib/studio/card-slide-render";
+import { resolveCardAssetUrls } from "@/lib/studio/card-assets";
 import {
   CARD_DECK_V3_PUBLISH_BLOCK_CODE,
   CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE,
@@ -49,7 +50,7 @@ function deliveryUrl(tenantId: string, filename: string): string {
   return `${origin}/api/images/deliver/${encodeURIComponent(token)}`;
 }
 
-function cardAssetUrls(tenantId: string, deck: CardDeckV3): Record<string, string> {
+function cardAssetIds(deck: CardDeckV3): string[] {
   const ids = new Set<string>();
   for (const slide of deck.slides) {
     if (slide.background.kind === "image") ids.add(slide.background.asset_id);
@@ -57,14 +58,13 @@ function cardAssetUrls(tenantId: string, deck: CardDeckV3): Record<string, strin
       if ((element.type === "image" || element.type === "sticker" || element.type === "logo") && !element.asset_id.startsWith("builtin:")) ids.add(element.asset_id);
     }
   }
-  return Object.fromEntries([...ids].map((assetId) => [assetId, deliveryUrl(tenantId, assetId)]));
+  return [...ids];
 }
 
 async function renderDraftDeck(tenantId: string, draftId: string, payload: Record<string, unknown>, deck: CardDeckV3): Promise<PreparedCardDeckV3Publish> {
-  const assetUrls = cardAssetUrls(tenantId, deck);
+  const assetUrls = await resolveCardAssetUrls(tenantId, cardAssetIds(deck), (filename) => deliveryUrl(tenantId, filename));
   const fingerprint = crypto.createHash("sha256").update(JSON.stringify(deck)).digest("hex").slice(0, 16);
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "card-slide-render-"));
-  const created: string[] = [];
   const filenames: string[] = [];
   try {
     for (const slide of [...deck.slides].sort((left, right) => left.order - right.order)) {
@@ -74,7 +74,6 @@ async function renderDraftDeck(tenantId: string, draftId: string, payload: Recor
       const outputPath = path.join(tmpDir, filename);
       await renderCardSlidePng({ model: cardSlideRenderModel(deck, slide.id, assetUrls), outputPath });
       await mediaStore.put(tenantId, filename, fs.readFileSync(outputPath), "image/png");
-      created.push(filename);
     }
     const imageUrls = filenames.map((filename) => deliveryUrl(tenantId, filename));
     const existingImg = payload.img && typeof payload.img === "object" && !Array.isArray(payload.img)
@@ -91,17 +90,17 @@ async function renderDraftDeck(tenantId: string, draftId: string, payload: Recor
     if (legacy?.slides?.length === imageUrls.length) {
       legacy.slides = legacy.slides.map((slide, index) => ({ ...slide, image_url: imageUrls[index] }));
     }
-    await withTenant(tenantId, (sql) => sql`
+    const updated = await withTenant(tenantId, (sql) => sql<{ id: string }[]>`
       UPDATE drafts
          SET payload = COALESCE(payload, '{}'::jsonb)
            || ${sql.json({ img, ...(legacy ? { cardDeck: legacy } : {}) } as Parameters<typeof sql.json>[0])}::jsonb,
              updated_at = now()
        WHERE tenant_id = ${tenantId}::uuid AND id = ${draftId}::uuid
+         AND payload->'cardDeckV3' = ${JSON.stringify(deck)}::jsonb
+       RETURNING id
     `);
+    if (updated.length !== 1) throw new Error("CARD_RENDER_STALE_DECK");
     return { imageUrl: imageUrls[0], imageUrls, filenames };
-  } catch (error) {
-    await Promise.allSettled(created.map((filename) => mediaStore.delete(tenantId, filename)));
-    throw error;
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -138,6 +137,15 @@ export async function draftHasCardDeckV3(tenantId: string, draftId: unknown): Pr
 
 export async function assertDraftCanEnterPublishQueue(tenantId: string | null, draftId: unknown): Promise<PreparedCardDeckV3Publish | null> {
   return prepareDraftCardDeckV3ForPublish(tenantId, draftId);
+}
+
+export function applyPreparedCardDeckV3Images(
+  post: Record<string, unknown>,
+  prepared: PreparedCardDeckV3Publish | null,
+): void {
+  if (!prepared) return;
+  post.imageUrl = prepared.imageUrl;
+  post.imageUrls = prepared.imageUrls;
 }
 
 export function payloadHasCardDeckV3(payload: Record<string, unknown> | null | undefined): boolean {

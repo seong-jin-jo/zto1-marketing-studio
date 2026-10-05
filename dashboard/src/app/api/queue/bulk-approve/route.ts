@@ -5,6 +5,7 @@ import { mirrorQueuePost } from "@/lib/queue-store";
 import { missingReviewFields, type MissingReviewField } from "@/lib/review-content";
 import {
   assertDraftCanEnterPublishQueue,
+  applyPreparedCardDeckV3Images,
   CardDeckV3PublishBlockedError,
   cardDeckV3PublishBlockedErrorResponse,
 } from "@/lib/studio/card-deck-v3-publish-gate";
@@ -22,8 +23,10 @@ export async function POST(request: Request) {
     const queuePath = dataPath("queue.json");
     const pendingPosts = (readJson<QueueData>(queuePath)?.posts || [])
       .filter((post) => ids.includes(post.id as string) && post.status === "draft");
+    const preparedByPostId = new Map<string, Awaited<ReturnType<typeof assertDraftCanEnterPublishQueue>>>();
     try {
-      await Promise.all(pendingPosts.map((post) => assertDraftCanEnterPublishQueue(__t, post.draftId)));
+      const prepared = await Promise.all(pendingPosts.map((post) => assertDraftCanEnterPublishQueue(__t, post.draftId)));
+      pendingPosts.forEach((post, index) => preparedByPostId.set(post.id as string, prepared[index]));
     } catch (error) {
       if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
       throw error;
@@ -42,6 +45,7 @@ export async function POST(request: Request) {
 
       for (const post of queue.posts || []) {
         if (ids.includes(post.id as string) && post.status === "draft") {
+          applyPreparedCardDeckV3Images(post, preparedByPostId.get(post.id as string) ?? null);
           post.status = "approved";
           post.approvedAt = new Date(now).toISOString();
           post.scheduledAt = new Date(now + intervalHours * 3600000 * approved).toISOString();

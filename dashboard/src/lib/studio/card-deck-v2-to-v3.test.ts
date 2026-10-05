@@ -58,4 +58,19 @@ describe("S2 기존 카드 무손실 이관", () => {
     expect(projected.slides[0].cover?.headline).toBe("바뀐 표지");
     expect(projected.slides.slice(1)).toEqual(source.slides.slice(1));
   });
+
+  it("S2-AC1 v3 계약 안의 긴 원본 ID는 자르지 않고 보존하며 계약 밖 ID도 충돌 없이 변환한다", () => {
+    const longId = `slide_${"a".repeat(90)}`;
+    const source = {
+      ...base,
+      slides: [
+        { id: longId, order: 0, role: "cover", cover: { headline: "첫 장", sub: null }, image_url: null, position: "top" },
+        { id: "unsafe/id", order: 1, role: "chat", bubbles: [], image_url: null, position: "center" },
+        { id: "unsafe\\id", order: 2, role: "cta", bubbles: [{ id: "bubble-final", order: 0, speaker: "brand", segments: [{ text: "저장", bold: true }], reaction: null }], image_url: null, position: "bottom" },
+      ],
+    } as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    expect(migrated.slides[0].id).toBe(longId);
+    expect(migrated.slides[1].id).not.toBe(migrated.slides[2].id);
+  });
 });

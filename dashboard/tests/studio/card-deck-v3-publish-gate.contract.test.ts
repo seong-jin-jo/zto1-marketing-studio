@@ -11,6 +11,7 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(publish).toContain("prepared.imageUrls");
     const review = read("src/app/api/queue/[postId]/request-review/route.ts");
     expect(review).toContain("assertDraftCanEnterPublishQueue");
+    expect(review).toContain("applyPreparedCardDeckV3Images(post, prepared)");
     expect(review).toContain("cardDeckV3PublishBlockedErrorResponse");
     const queueRoute = read("src/app/api/queue/add/route.ts");
     expect(queueRoute).toContain("addQueuePost");
@@ -67,7 +68,9 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(read("src/app/api/studio/commands/route.ts")).toContain("enqueueDraft");
     expect(read("src/app/api/queue/promote/route.ts")).toContain("assertDraftCanEnterPublishQueue");
     expect(read("src/app/api/queue/[postId]/approve/route.ts")).toContain("assertDraftCanEnterPublishQueue");
+    expect(read("src/app/api/queue/[postId]/approve/route.ts")).toContain("applyPreparedCardDeckV3Images(post, prepared)");
     expect(read("src/app/api/queue/bulk-approve/route.ts")).toContain("assertDraftCanEnterPublishQueue");
+    expect(read("src/app/api/queue/bulk-approve/route.ts")).toContain("applyPreparedCardDeckV3Images(post, preparedByPostId.get(post.id as string) ?? null)");
     expect(read("src/app/api/suggestions/enqueue/route.ts")).toContain("addQueuePost");
   });
 
