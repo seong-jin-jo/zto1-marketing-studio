@@ -399,6 +399,29 @@ jobs:
           fi
       - name: 상태
         run: docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml ps
+      - name: 앱 헬스체크 healthy 확인 (배포 뒤)
+        # 컨테이너가 떠 있는 것과 Docker 헬스체크를 통과하는 것은 다르다. 2026-10-03~05 에는
+        # 헬스체크 명령(wget)이 이미지에 없어 매번 실패했고, autoheal 이 2분마다 재시작했는데도
+        # 배포는 성공으로 끝났다. Docker 가 healthy 라고 판정할 때까지 기다리고, 아니면 되돌린다.
+        if: ${{ github.event.inputs.services == '' || contains(github.event.inputs.services, 'openclaw-dashboard-osmu') }}
+        run: |
+          status=""
+          for i in $(seq 1 24); do
+            status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' openclaw-dashboard-osmu 2>/dev/null || echo missing)"
+            echo "health[$i]=$status"
+            [ "$status" = "healthy" ] && exit 0
+            sleep 10
+          done
+          docker inspect -f '{{json .State.Health.Log}}' openclaw-dashboard-osmu 2>/dev/null | tail -c 1500 || true
+          echo "::error::openclaw-dashboard-osmu 가 240초 안에 healthy 가 되지 않았다(마지막 상태: $status)"
+          previous="openclaw-dashboard-osmu-pre-${GITHUB_RUN_ID}"
+          if docker container inspect "$previous" >/dev/null 2>&1; then
+            docker rm -f openclaw-dashboard-osmu >/dev/null 2>&1 || true
+            docker rename "$previous" openclaw-dashboard-osmu
+            docker start openclaw-dashboard-osmu
+            echo "::error::이전 컨테이너로 되돌렸다"
+          fi
+          exit 1
       - name: 생성기 API 생존 최종 확인 (배포 뒤)
         id: generator_liveness
         # 새 컨테이너가 뜬 뒤 계정 API를 실제로 호출한다. 생성 호출은 비용이 드니 사용하지 않는다.
