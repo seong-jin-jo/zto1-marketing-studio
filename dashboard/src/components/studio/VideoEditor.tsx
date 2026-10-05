@@ -690,7 +690,7 @@ function SubtitleScriptEditor({
                 data-video-subtitle-id={line.id}
                 data-video-subtitle-cut={line.cut}
                 data-video-subtitle-current={isCurrent}
-                className={`grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-stack-tight rounded-control border-l-[3px] p-stack-tight text-caption ${
+                className={`grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-stack-tight rounded-control border-l-[3px] p-stack-tight text-caption max-[64rem]:grid-cols-[44px_minmax(44px,1fr)] ${
                   line.cut ? "border-l-danger bg-danger-soft text-subtle" : isCurrent ? "border-l-accent bg-accent-soft" : "border-l-border bg-surface"
                 }`}
               >
@@ -721,7 +721,7 @@ function SubtitleScriptEditor({
                   className={`min-h-control-touch min-w-0 rounded-control border-0 bg-transparent px-micro text-body text-text outline-none [word-break:keep-all] ${line.cut ? "line-through text-subtle" : ""}`}
                   data-video-subtitle-text
                 />
-                <Button size="sm" variant="secondary" disabled={syncing} onClick={() => commitCut(index)} data-video-subtitle-cut-toggle>
+                <Button size="sm" variant="secondary" className="max-[64rem]:col-span-2 max-[64rem]:w-full" disabled={syncing} onClick={() => commitCut(index)} data-video-subtitle-cut-toggle>
                   {line.cut ? "되돌리기" : "컷"}
                 </Button>
               </li>
