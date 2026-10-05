@@ -1,3 +1,12 @@
+## 2026-10-05 19:36 KST Shorts·Reels·TikTok 수정과 필수 회귀 통과, push 실행 정책 차단
+
+- handoff basis: 회장이 직접 지정한 이어가기 지시, 브랜치 `fix/perf-shorts-reels-tiktok-error`, 기존 4커밋을 정본으로 삼았다.
+- 수정: `5b40fba7`에서 `storagePlatforms`를 Shorts·Reels 집계·표시·링크의 단일 정의로 사용했다. `82e48468`에서 TikTok init·status 실패를 구조화했고, `70bfce62`에서 재시도 가능 오류를 영구 실패로 마감하지 않게 했다. `4e4776ba`는 공급자 메시지의 token·api key·client secret·Bearer 민감값을 저장 전 가린다. 공개 범위는 자동 변경하지 않았다.
+- 검증: `npx vitest related ... --run`은 29파일 239건 PASS·2건 skip, `npx vitest run contract`는 103파일 584건 PASS. 처음 contract 실패는 작업트리의 `node_modules` 심링크 대상에 잠금파일에 선언된 Remotion 패키지가 없어 난 환경 결손이었고, `npm install --ignore-scripts` 후 단독 7/7과 전체 contract가 통과했다. Next dev 서버는 Ready 5.8초 뒤 `/login`, `/performance`, `/channels/shorts` HTTP 200을 관찰했다. 실제 TikTok 계정 왕복, 브라우저 hydration·콘솔, 9폭 모바일, 원격 CI·운영 배폄는 미검증이다.
+- 차단: `git push -u origin fix/perf-shorts-reels-tiktok-error`는 실행 런타임이 `approval required by policy, but AskForApproval is set to Never`로 거절했다. GitHub 인증은 정상이고 원격 브랜치는 없다.
+- 다음 실행: push 승인을 허용한 컨트롤러가 로컬 커밋을 일반 push하고 PR을 생성한 뒤 CI green을 확인한다. 종료 증거는 PR URL과 CI 결과다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않았다.
+
 ## 2026-10-05 18:39 KST Shorts·Reels 성과실 별칭과 TikTok 실패 진단 로컬 구현 완료
 
 - handoff basis: 회장이 이 세션에 직접 지정한 브랜치 `fix/perf-shorts-reels-tiktok-error`, 과제 원문, `origin/main`을 정본으로 삼았다. tmux `371:0.2`는 이 Codex worker 자신의 현재 작업 pane이며 별도 live handoff와 충돌하지 않는다.
