@@ -14,6 +14,8 @@ export type UnbakedVideoSource = { filename: string; url: string };
 export type VideoBakedLineage = {
   /** 현재 file/url 산출물에 자막·오버레이가 이미 픽셀로 들어갔는지. */
   subtitlesBaked?: boolean;
+  /** 서버 기록 조회 결과. unknown은 배포 전 UUID 파일이 원본인지 구운 결과인지 구별 불가한 상태다. */
+  state?: "baked" | "unbaked" | "unknown";
   /** 다시 편집하고 구울 때 쓸 글자 없는 기준 영상. */
   editSource?: UnbakedVideoSource;
 };
@@ -48,6 +50,8 @@ export function resolveUnbakedVideoSource(input: {
   }
 
   const currentIsBaked = input.lineage.subtitlesBaked === true
+    || input.lineage.state === "baked"
+    || input.lineage.state === "unknown"
     || legacyBakedResult;
   if (currentIsBaked) return { ok: false, reason: "unbaked_source_missing" };
 

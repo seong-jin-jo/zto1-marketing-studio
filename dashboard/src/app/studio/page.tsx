@@ -307,6 +307,8 @@ interface VidResult {
   editSource?: { filename: string; url: string };
   /** 현재 file/url에 자막·오버레이가 이미 픽셀로 들어간 결과인지. 초안과 로컬 복원에도 보존한다. */
   subtitlesBaked?: boolean;
+  /** 서버 굽기 기록 조회 결과. unknown은 과거 UUID 파일을 원본이라고 추측하지 않는 안전 상태다. */
+  subtitleLineageState?: "baked" | "unbaked" | "unknown";
 }
 // "unknown" = 비동기 발행이 상한(15분)을 넘겨 더 기다리지 않지만, "실패"로 단정하지도
 // 않는 상태(세션맥락: 524 오판으로 인한 재발행이 중복 게시를 부른다 — 재발행을 유도하지
@@ -586,6 +588,39 @@ export default function StudioPage() {
   }, [text]);
   const [img, setImg] = useState<ImgResult | null>(null);
   const [vid, setVid] = useState<VidResult | null>(null);
+  const lineageFilename = videoFilename(vid?.file || vid?.url || "");
+  const needsVideoLineageLookup = Boolean(
+    activeWorkspace
+    && lineageFilename
+    && vid?.subtitlesBaked === undefined
+    && vid?.subtitleLineageState === undefined,
+  );
+  const { data: storedVideoLineage } = useSWR<{
+    ok?: boolean;
+    state?: "baked" | "unknown";
+    sourceFilename?: string;
+    sourceFile?: string;
+  }>(
+    needsVideoLineageLookup
+      ? `/api/video/subtitle?tenant_id=${encodeURIComponent(activeWorkspace!.id)}&filename=${encodeURIComponent(lineageFilename)}`
+      : null,
+    fetcher,
+  );
+  useEffect(() => {
+    if (!needsVideoLineageLookup || !storedVideoLineage?.ok || !storedVideoLineage.state) return;
+    setVid((current) => {
+      if (!current || videoFilename(current.file || current.url || "") !== lineageFilename) return current;
+      const source = storedVideoLineage.sourceFilename && storedVideoLineage.sourceFile
+        ? { filename: storedVideoLineage.sourceFilename, url: storedVideoLineage.sourceFile }
+        : undefined;
+      return {
+        ...current,
+        subtitleLineageState: storedVideoLineage.state,
+        ...(storedVideoLineage.state === "baked" ? { subtitlesBaked: true } : {}),
+        ...(source ? { editSource: source } : {}),
+      };
+    });
+  }, [lineageFilename, needsVideoLineageLookup, storedVideoLineage]);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [publishReconciliations, setPublishReconciliations] = useState<PublishReconciliationMap>({});
   const [reconciliationError, setReconciliationError] = useState<string | null>(null);
@@ -1450,7 +1485,12 @@ export default function StudioPage() {
       const msg = "영상을 만들었지만 화면에 걸 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.";
       setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
     }
-    const stamped = { ...r, topicKey: mediaTopicKey(opts?.topicLabel ?? idea) };
+    const stamped = {
+      ...r,
+      topicKey: mediaTopicKey(opts?.topicLabel ?? idea),
+      subtitlesBaked: false,
+      subtitleLineageState: "unbaked" as const,
+    };
     setVid(stamped); mutateAcct(); return stamped;
   }
   async function genVideo(source: { filename?: string }) {
@@ -2191,7 +2231,12 @@ export default function StudioPage() {
     const source = resolveUnbakedVideoSource({
       currentFilename: currentResultFilename,
       currentUrl: vid?.file || vid?.url || "",
-      lineage: { subtitlesBaked: vid?.subtitlesBaked, editSource: vid?.editSource },
+      lineage: {
+        subtitlesBaked: vid?.subtitlesBaked,
+        state: vid?.subtitleLineageState
+          ?? (vid?.subtitlesBaked === true ? "baked" : vid?.subtitlesBaked === false ? "unbaked" : "unknown"),
+        editSource: vid?.editSource,
+      },
       introOutro: videoEdit?.introOutro ?? null,
     });
     if (!source.ok) {
@@ -2228,6 +2273,7 @@ export default function StudioPage() {
         url: r.file,
         file: r.file,
         subtitlesBaked: true,
+        subtitleLineageState: "baked",
         editSource: { filename, url: sourceUrl },
       };
       let nextVideoEdit = videoEdit;
@@ -4305,12 +4351,20 @@ export default function StudioPage() {
       ? resolveUnbakedVideoSource({
         currentFilename: currentVideoFilename,
         currentUrl: currentVideoUrl,
-        lineage: { subtitlesBaked: vid?.subtitlesBaked, editSource: vid?.editSource },
+        lineage: {
+          subtitlesBaked: vid?.subtitlesBaked,
+          state: vid?.subtitleLineageState
+            ?? (vid?.subtitlesBaked === true ? "baked" : vid?.subtitlesBaked === false ? "unbaked" : "unknown"),
+          editSource: vid?.editSource,
+        },
         introOutro: videoEdit?.introOutro ?? null,
       })
       : null;
     const previewContainsBakedText = Boolean(previewSource && !previewSource.ok && (
       vid?.subtitlesBaked === true
+      || vid?.subtitleLineageState === "baked"
+      || vid?.subtitleLineageState === "unknown"
+      || (vid?.subtitleLineageState === undefined && vid?.subtitlesBaked === undefined)
       || isLegacyIntroOutroBakedResult(currentVideoFilename, videoEdit?.introOutro ?? null)
     ));
     return (

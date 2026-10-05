@@ -101,4 +101,25 @@ describe("resolveUnbakedVideoSource", () => {
       introOutro: null,
     })).toEqual({ ok: false, reason: "unbaked_source_missing" });
   });
+
+  it("VIDEO-BAKED-LINEAGE-08 표시 없는 기존 파일을 서버가 미확인으로 판정하면 재굽지 않는다", () => {
+    expect(resolveUnbakedVideoSource({
+      currentFilename: "11111111-1111-4111-8111-111111111111.mp4",
+      currentUrl: "/api/media/legacy",
+      lineage: { state: "unknown" },
+      introOutro: null,
+    })).toEqual({ ok: false, reason: "unbaked_source_missing" });
+  });
+
+  it("VIDEO-BAKED-LINEAGE-09 서버 기록에서 되찾은 원본만 기존 작업물 재굽기에 쓴다", () => {
+    expect(resolveUnbakedVideoSource({
+      currentFilename: "subtitle-11111111-1111-4111-8111-111111111111.mp4",
+      currentUrl: "/api/media/baked",
+      lineage: {
+        state: "baked",
+        editSource: { filename: "source.mp4", url: "/api/media/source" },
+      },
+      introOutro: null,
+    })).toEqual({ ok: true, filename: "source.mp4", url: "/api/media/source" });
+  });
 });

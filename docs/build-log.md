@@ -1,5 +1,20 @@
 # OSMU build log
 
+## 2026-10-05 21:44 KST · 편집실 구운 영상 서버 계보 복원
+
+STAMP: 2026-10-05 21:44 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: related Vitest, contract Vitest, 테넌트 격리 계약 | 고민: 기록 없는 과거 파일을 원본으로 낙관하지 않고 중복 자막과 구운 파일 재입력을 먼저 차단했다.
+
+| 검증 | 결과 |
+|---|---|
+| 변경 파일 import 영향 | `npx vitest related ... --run`, 16파일 129건 PASS |
+| 전체 contract | `npx vitest run contract`, 104파일 588건 PASS |
+| 표시 없는 운영 초안 | 서버 기록의 원본을 재생하고 DOM 자막 한 층, 재굽기 입력은 원본 파일명 |
+| 기존 작업물 열기 | 원본 없는 구운 파일은 DOM 자막 0개, 재굽기 API 0건 |
+| 테넌트 격리 | 새 GET 계보 조회를 READ-63 공격 목록에 편입, contract PASS |
+| 미검증 | 실제 ffmpeg 굽기, 원격 CI, 운영 배포 |
+
+배포 전 결과는 원본과 구운 파일 모두 UUID.ext였으므로 파일명만으로 완전한 소급 판별은 불가능하다. 이 경우 `unknown`으로 저장하고 DOM 글자층과 재굽기를 차단한다.
+
 ## 2026-10-05 20:31 KST · 편집실 자막 계보 교차리뷰 교정
 
 STAMP: 2026-10-05 20:31 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: Claude Opus 교차리뷰, Vitest, TypeScript, localhost 실제 Chromium | 고민: 구운 결과를 원본 파일명과 짝짓는 fallback을 제거하고, 글자 없는 파일명·URL 한 쌍이 없으면 재굽기를 명시적으로 막았다.

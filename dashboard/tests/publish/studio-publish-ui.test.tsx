@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   tiktokCreator: undefined as Record<string, unknown> | undefined,
   // 2026-10-03 독립 리뷰 m2: creator-info 404/502 재현용.
   tiktokCreatorError: undefined as Error | undefined,
+  bakeLineage: undefined as Record<string, unknown> | undefined,
 }));
 
 vi.mock("swr", () => ({
@@ -181,6 +182,7 @@ describe("Studio publish result integrity", () => {
     mocks.connectedPlatforms = ["threads", "x", "instagram"];
     mocks.tiktokCreator = undefined;
     mocks.tiktokCreatorError = undefined;
+    mocks.bakeLineage = undefined;
     mocks.swr.mockImplementation((key: string | null) => {
       mocks.swrKeys.push(key);
       if (key === "/api/me") {
@@ -188,6 +190,9 @@ describe("Studio publish result integrity", () => {
       }
       if (key === "/api/studio/drafts?tenant_id=tenant-a") {
         return { data: { drafts: mocks.drafts, currentWork: mocks.currentWork }, mutate: vi.fn() };
+      }
+      if (key?.startsWith("/api/video/subtitle?tenant_id=tenant-a&filename=")) {
+        return { data: mocks.bakeLineage, mutate: vi.fn() };
       }
       if (key?.startsWith("/api/queue?status=all&returnTo=")) {
         return { data: { posts: mocks.returnPosts }, mutate: vi.fn() };
@@ -635,6 +640,87 @@ describe("Studio publish result integrity", () => {
       "error",
     ));
     expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/video/subtitle")).toBe(false);
+  });
+
+  it("VIDEO-BAKED-LINEAGE-08 표시 없는 운영 초안도 서버 계보의 원본으로 미리보기와 재굽기를 한다", async () => {
+    const bakedUrl = fakeMediaUrl("subtitle-11111111-1111-4111-8111-111111111111.mp4");
+    const sourceUrl = fakeMediaUrl("source.mp4");
+    mocks.bakeLineage = {
+      ok: true,
+      state: "baked",
+      sourceFilename: "source.mp4",
+      sourceFile: sourceUrl,
+    };
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "표시 없는 운영 초안",
+      editKind: "video",
+      editLines: ["서버 기록으로 복원한 자막"],
+      vid: { url: bakedUrl, file: bakedUrl, model: "test", topicKey: "표시 없는 운영 초안" },
+      videoEdit: {
+        contract_version: "1.0",
+        overlays: [],
+        comments: [],
+        subtitles: [{ id: "s1", order: 0, text: "서버 기록으로 복원한 자막", startSec: 0, endSec: 3, cut: false }],
+        voice: null,
+        introOutro: null,
+        revision: 1,
+      },
+    }));
+    mocks.apiPost.mockImplementation(async (requestPath: string, body: Record<string, unknown>) => {
+      if (requestPath === "/api/video/subtitle") {
+        expect(body.filename).toBe("source.mp4");
+        return { ok: true, file: fakeMediaUrl("subtitle-22222222-2222-4222-8222-222222222222.mp4") };
+      }
+      if (requestPath === "/api/studio/drafts") return { id: "lineage-draft", bodyRevision: 1, videoEditServerRevision: 1 };
+      return { ok: true };
+    });
+    window.history.replaceState(null, "", "/studio?room=edit&kind=video");
+
+    render(<StudioPage />);
+    await waitFor(() => expect((document.querySelector("[data-video-el]") as HTMLVideoElement)?.getAttribute("src")).toBe(sourceUrl));
+    const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 3, configurable: true });
+    fireEvent.loadedMetadata(video);
+    Object.defineProperty(video, "currentTime", { value: 1, configurable: true, writable: true });
+    fireEvent.timeUpdate(video);
+    expect(document.querySelectorAll("[data-video-subtitle-active]")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    await waitFor(() => expect(mocks.apiPost.mock.calls.some(([requestPath]) => requestPath === "/api/video/subtitle")).toBe(true));
+  });
+
+  it("VIDEO-BAKED-LINEAGE-09 기존 작업물 열기에서 서버가 구운 파일로 확인하고 원본이 없으면 DOM 자막과 재굽기를 막는다", async () => {
+    const bakedUrl = fakeMediaUrl("subtitle-33333333-3333-4333-8333-333333333333.mp4");
+    mocks.bakeLineage = { ok: true, state: "baked" };
+    mocks.returnPosts = [{
+      id: "legacy-baked-work",
+      text: "기존 작업물의 자막 문장",
+      topic: "기존 구운 작업물",
+      videoUrl: bakedUrl,
+      channels: { threads: { status: "pending" } },
+      publishContext: { sourceRoute: "inbox", queuePostId: "legacy-baked-work", draftId: null },
+    }];
+    window.history.replaceState(null, "", "/studio?room=publish&from=inbox&queue_id=legacy-baked-work");
+
+    const page = render(<StudioPage />);
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith("검토 대기 작업물을 불러왔습니다", "success"));
+    window.history.replaceState(null, "", "/studio?room=edit");
+    page.rerender(<StudioPage />);
+
+    await waitFor(() => expect(document.querySelector("[data-video-el]")).toBeTruthy());
+    const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 3, configurable: true });
+    fireEvent.loadedMetadata(video);
+    Object.defineProperty(video, "currentTime", { value: 1, configurable: true, writable: true });
+    fireEvent.timeUpdate(video);
+    expect(document.querySelector("[data-video-subtitle-active]")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
+      "자막 없는 원본 영상을 찾지 못해 다시 굽지 않았습니다. 생성실에서 영상을 다시 만들거나 원본을 복원해 주세요.",
+      "error",
+    ));
+    expect(mocks.apiPost.mock.calls.some(([requestPath]) => requestPath === "/api/video/subtitle")).toBe(false);
   });
 
   it("PR95-SCOPE-CUT-VIDEO-01 연결 초안 없는 영상의 대표 이미지는 카드 잠금으로 오인하지 않는다", async () => {

@@ -40,6 +40,11 @@ import {
   readPlaybackEdit,
 } from "@/lib/studio/playback-edit-plan";
 import { acquireSubtitleSlot } from "@/lib/studio/subtitle-work-limit";
+import {
+  readSubtitleBakeLineage,
+  recordSubtitleBake,
+  subtitleBakeOutputFilename,
+} from "@/lib/studio/video-bake-lineage";
 
 const execFileP = promisify(execFile);
 
@@ -100,6 +105,26 @@ function deliverUrl(tenantId: string, filename: string): string {
   return token ? `/api/media/${encodeURIComponent(token)}` : assetUrl(tenantId, filename);
 }
 
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const filename = url.searchParams.get("filename") || "";
+  if (!filename || filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
+    return Response.json({ ok: false, error: "영상 파일 이름이 올바르지 않습니다." }, { status: 400 });
+  }
+  const tenantId = await effectiveTenantId(request, url.searchParams.get("tenant_id"));
+  if (!tenantId) return Response.json({ ok: false, error: "작업 공간을 식별할 수 없습니다." }, { status: 401 });
+
+  const lineage = readSubtitleBakeLineage(tenantId, filename);
+  const sourceFilename = lineage.state === "baked" ? lineage.sourceFilename : undefined;
+  const sourceExists = sourceFilename ? resolveTenantGeneratedFile(tenantId, sourceFilename) : null;
+  return Response.json({
+    ok: true,
+    state: lineage.state,
+    ...(sourceFilename ? { sourceFilename } : {}),
+    ...(sourceFilename && sourceExists ? { sourceFile: deliverUrl(tenantId, sourceFilename) } : {}),
+  });
+}
+
 export async function POST(request: Request) {
   let body: Record<string, unknown>;
   try {
@@ -150,6 +175,14 @@ export async function POST(request: Request) {
 
   const tenantId = await effectiveTenantId(request, typeof body.tenant_id === "string" ? body.tenant_id : null);
   if (!tenantId) return Response.json({ error: "작업 공간을 식별할 수 없습니다." }, { status: 401 });
+
+  if (readSubtitleBakeLineage(tenantId, filename).state === "baked") {
+    return Response.json({
+      ok: false,
+      code: "SUBTITLE_INPUT_ALREADY_BAKED",
+      error: "자막이 이미 들어간 영상은 다시 굽지 않았습니다. 자막 없는 원본을 복원해 주세요.",
+    }, { status: 409 });
+  }
 
   const inputPath = resolveTenantGeneratedFile(tenantId, filename);
   if (!inputPath) {
@@ -208,7 +241,7 @@ export async function POST(request: Request) {
   }
   // 같은 밀리초에 들어온 두 요청이 같은 이름을 쓰면 서로의 결과를 덮어쓴다(교차 리뷰 지적).
   // 파일명 생성은 이미 무작위 UUID 로 하는 자리가 있다. 그것을 쓴다.
-  const outName = mediaFilename((path.extname(filename) || ".mp4").slice(1));
+  const outName = subtitleBakeOutputFilename(mediaFilename((path.extname(filename) || ".mp4").slice(1)));
   const outPath = path.join(studioDir(tenantId), outName);
   let playbackSummary: {
     outputDurationSec: number;
@@ -282,6 +315,17 @@ export async function POST(request: Request) {
           ? "자막을 넣는 시간이 제한을 넘어 중단했습니다. 영상을 줄이거나 압축해 다시 시도해 주세요."
           : "영상 형식을 처리하지 못해 자막을 넣지 않았습니다. 다른 영상으로 다시 시도해 주세요.",
     }, { status: failure.status });
+  }
+
+  try {
+    await recordSubtitleBake({ tenantId, outputFilename: outName, sourceFilename: filename });
+  } catch {
+    try { fs.unlinkSync(outPath); } catch { /* 없으면 그만 */ }
+    return Response.json({
+      ok: false,
+      code: "SUBTITLE_LINEAGE_WRITE_FAILED",
+      error: "자막 결과의 원본 연결 정보를 저장하지 못해 결과 파일을 폐기했습니다. 다시 시도해 주세요.",
+    }, { status: 500 });
   }
 
   return Response.json({

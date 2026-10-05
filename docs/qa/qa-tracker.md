@@ -1,14 +1,14 @@
-## 2026-10-05 편집실 영상 자막 중복 및 생성 영상 가짜 글자 ❌ 교차 리뷰 BLOCK → ✅ 로컬 PASS
+## 2026-10-05 편집실 영상 자막 중복 및 생성 영상 가짜 글자 ❌ 교차 리뷰 2차 BLOCK → ✅ 로컬 PASS
 
-교차 리뷰에서 확인된 원본 URL·파일명 불일치, 인트로·아웃트로 없는 구운 영상의 계보 부재, 미리보기 자막 구간 비정규화를 교정했다.
+2차 교차 리뷰에서 배포 전 인트로 없는 구운 영상과 기존 작업물 열기 경로에 서버 계보가 없어, 구운 파일을 원본으로 오판하는 결함이 남았음을 확인했다. 새 굽기 결과는 테넌트별 서버 기록과 `subtitle-UUID` 파일명으로 판정하고, 배포 전 UUID 파일은 원본과 구운 결과가 같은 규칙이라 확인 불가 상태에서 DOM 자막과 재굽기를 fail-closed 한다.
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| EDITROOM-VIDEO-SUBTITLE-DUP-01 | 구운 영상과 편집 DOM 자막이 동시에 보이지 않도록 원본+DOM을 우선하고 원본이 없으면 구운 영상의 DOM 글자층을 숨김 | VIDEO-PREVIEW-SINGLE-LAYER-01, VIDEO-BAKED-LINEAGE-01~06 | ✅ 로컬 PASS | `subtitlesBaked`와 파일명·URL 한 쌍인 `editSource`를 저장한다. 원본이 없으면 DOM 자막은 0개이고 재굽기 API를 호출하지 않으며 복원 사유를 알린다. 기존 인트로·아웃트로의 구운 `deliverUrl`을 원본 파일명과 짝짓지 않는다. |
+| EDITROOM-VIDEO-SUBTITLE-DUP-01 | 구운 영상과 편집 DOM 자막이 동시에 보이지 않도록 원본+DOM을 우선하고 원본이 없으면 구운 영상의 DOM 글자층을 숨김 | VIDEO-PREVIEW-SINGLE-LAYER-01, VIDEO-BAKED-LINEAGE-01~10, VIDEO-BAKE-LINEAGE-08~10 | ✅ 로컬 PASS | 굽기 API가 테넌트별 `.subtitle-bakes.json`에 결과→원본 파일명을 원자적으로 기록한다. 기존 작업물 열기와 저장 초안 복원은 이 기록을 조회한다. 원본이 있으면 원본+DOM 한 층, 없거나 배포 전 파일이라 판정 불가하면 DOM 0개·재굽기 0건이다. |
 | EDITROOM-VIDEO-SUBTITLE-DUP-02 | 굽기 직전 자막 구간을 다음 문장 시작과 영상 길이에 맞춰 정규화해 같은 위치의 문장 겹침 방지 | VIDEO-SUBTITLE-NORMALIZE-01 | ✅ 로컬 PASS | 저장 시점과 무관하게 굽기 직전 정규화한다. 앞 문장은 다음 시작에서 끊고 영상 길이를 넘지 않으며, 0.05초 미만 문장은 이웃 문장과 합치고 구조화 경고를 남긴다. playback 계획 단위 테스트 9건 통과. 로컬 ffmpeg의 drawtext 부재로 실제 글자 픽셀은 CI 판정 대상이다. |
 | EDITROOM-VIDEO-SUBTITLE-DUP-03 | Higgsfield 영상 요청이 화면 안 가짜 글자·자막·로고 생성을 피하는 기존 이미지 프롬프트 규칙을 재사용 | VIDEO-PROMPT-NO-GLYPH-01 | ✅ 로컬 PASS | 이미지 경로의 `NO_TEXT` 양성 장면 제약을 `buildMotionPrompt`에도 재사용한다. 프롬프트 계약 21건과 전체 contract 103파일 586건 통과. |
 
-전체 종료 증거: 변경 파일 직접 import 38파일 300건, 전체 `npx vitest run contract` 104파일 588건, TypeScript가 통과했다. 실제 Chromium 390px 화면 9종은 콘솔 오류 0이다. 앞선 360·390·412·600·700·780·820·900·1000 아홉 폭은 13px 미만 글자·44px 미만 누름·가로 넘침 0, 본문 16px, 눌림 상태 100%다. 원격 CI와 운영 배포는 미검증이다.
+2차 BLOCK 종료 증거: `npx vitest related ... --run` 16파일 129건, `npx vitest run contract` 104파일 588건 PASS. 새 GET 계보 경로는 기존 테넌트 격리 공격 스크립트 READ-63에 편입했다. 배포 전 무표식 UUID 파일은 원본과 구운 결과의 파일명 규칙이 같아 역사적 완전 판별이 불가능하며, 화면은 안전하게 DOM 자막을 숨기고 재굽기를 막는다. 원격 CI와 운영 배포는 미검증이다.
 
 ## 2026-10-05 편집실 v2 S1 교차 리뷰 5차 m5-1 ❌ NG → ✅ 로컬 PASS
 
