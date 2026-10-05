@@ -20,6 +20,18 @@ function tiktokErrorMetadata(providerError: TikTokProviderError, code = provider
   };
 }
 
+function hasSameTikTokError(
+  providerMeta: Record<string, unknown> | null,
+  providerError: TikTokProviderError,
+): boolean {
+  const stored = providerMeta?.tiktokError;
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) return false;
+  const value = stored as Record<string, unknown>;
+  return value.code === providerError.code
+    && value.message === providerError.message
+    && value.logId === providerError.logId;
+}
+
 // publish_id는 client가 임의로 제출할 수 있지만, 이 endpoint는 먼저 현재 tenant의
 // published_posts 예약을 찾는다. 저장되지 않은 ID나 다른 tenant/account의 토큰으로는 절대
 // provider status를 조회하지 않는다.
@@ -101,19 +113,21 @@ export async function GET(request: Request) {
     const providerMeta = tiktokErrorMetadata(provider.providerError);
     if (RETRYABLE_STATUS_ERRORS.has(provider.providerError.code)) {
       // 일시 실패는 다음 poll에서 회수할 수 있도록 작업 상태를 유지하되, 진단 정보는 잃지 않는다.
-      try {
-        await withTenant(tenantId, (sql) => sql`
-          UPDATE published_posts
-             SET provider_meta = COALESCE(provider_meta, '{}'::jsonb)
-                   || ${sql.json(providerMeta as never)}::jsonb
-           WHERE id = ${post.id}::uuid
-             AND tenant_id = ${tenantId}::uuid
-             AND platform = ${"tiktok"}
-             AND external_id = ${publishId}
-             AND status = 'in_progress'
-        `);
-      } catch {
-        return Response.json({ error: "TikTok 상태 오류를 저장하지 못했습니다. 잠시 후 다시 확인해주세요." }, { status: 503 });
+      if (!hasSameTikTokError(post.provider_meta, provider.providerError)) {
+        try {
+          await withTenant(tenantId, (sql) => sql`
+            UPDATE published_posts
+               SET provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+                     || ${sql.json(providerMeta as never)}::jsonb
+             WHERE id = ${post.id}::uuid
+               AND tenant_id = ${tenantId}::uuid
+               AND platform = ${"tiktok"}
+               AND external_id = ${publishId}
+               AND status = 'in_progress'
+          `);
+        } catch {
+          return Response.json({ error: "TikTok 상태 오류를 저장하지 못했습니다. 잠시 후 다시 확인해주세요." }, { status: 503 });
+        }
       }
       return Response.json({ ok: true, status: "processing", publishId, error: rejectMessage }, { status: 202 });
     }

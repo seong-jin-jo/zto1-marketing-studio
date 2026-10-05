@@ -3,7 +3,7 @@
 - handoff basis: 회장이 이 세션에 직접 지정한 브랜치 `fix/perf-shorts-reels-tiktok-error`, 과제 원문, `origin/main`을 정본으로 삼았다. tmux `371:0.2`는 이 Codex worker 자신의 현재 작업 pane이며 별도 live handoff와 충돌하지 않는다.
 - 운영 근거: `published_posts.platform`은 Shorts가 `youtube`, Reels가 `instagram_reels`인데 성과실이 화면 focus key와 문자열 일치만 검사해 두 채널의 집계·판정·목록이 0건이 됐다. `/channels/shorts`, `/channels/reels`는 실제 채널 키가 아니라서 알 수 없는 채널로 렌더된다. TikTok 실패 행은 외부 오류 코드·메시지·log_id를 잃어 실제 원인을 복원할 수 없다.
 - 수정: `5b40fba7`에서 성과실이 `storagePlatforms`로 Shorts·Reels를 필터·표시하고 실제 채널 링크와 별칭 리다이렉트를 사용한다. `82e48468`에서 TikTok init·status 실패를 `provider_meta.tiktokError`에 구조화하고 `published_posts.error`와 화면에 한국어 사유를 남긴다. 공개 범위는 자동 변경하지 않았다.
-- 검증: 수정 전 5파일 8건 실패, 수정 후 같은 5파일 35건 PASS. Next dev 서버는 Ready 5.8초 뒤 `/login`, `/performance`, `/channels/shorts`를 HTTP 200으로 컴파일했다. 브라우저 제어 표면이 없어 hydration·콘솔 오류와 데이터 포함 9폭 모바일은 미검증이다. 실제 TikTok 계정 왕복, 전체 Vitest·build, 원격 CI·운영 배포도 미검증이다.
+- 검증: 수정 전 5파일 8건 실패. 독립 리뷰에서 5xx 영구 실패 오판, 재시도 오류의 반복 DB 쓰기, 공급자 메시지 민감값 보존을 발견해 교정했고 최종 같은 5파일 39건 PASS. Next dev 서버는 Ready 5.8초 뒤 `/login`, `/performance`, `/channels/shorts`를 HTTP 200으로 컴파일했다. 브라우저 제어 표면이 없어 hydration·콘솔 오류와 데이터 포함 9폭 모바일은 미검증이다. 실제 TikTok 계정 왕복, 전체 Vitest·build, 원격 CI·운영 배포도 미검증이다.
 - 다음 실행: diff 리뷰와 파이프라인 산출물 검사를 마친 뒤 문서 커밋, origin push, PR 생성, 원격 CI 확인. 종료 증거는 PR URL과 CI 결과다.
 - 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
 

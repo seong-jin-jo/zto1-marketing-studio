@@ -2,12 +2,12 @@
 
 ## 2026-10-05 18:39 KST · 성과실 Shorts·Reels 별칭과 TikTok 실패 진단
 
-STAMP: 2026-10-05 18:39 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review, ship | 근거: 수정 전 실패 8건, 표적 Vitest 5파일 35건, localhost Next dev 로그 | 고민: 운영 실패 원인을 복원할 수 있게 하되 공급자 원문을 사용자 화면에 직접 노출하지 않았다.
+STAMP: 2026-10-05 18:39 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review, ship | 근거: 수정 전 실패 8건, 표적 Vitest 5파일 39건, localhost Next dev 로그 | 고민: 운영 실패 원인을 복원할 수 있게 하되 공급자 원문을 사용자 화면에 직접 노출하지 않았다.
 
 | 검증 | 결과 |
 |---|---|
 | 수정 전 회귀 | 5파일 8건 실패로 성과 별칭, 채널 링크, TikTok 구조화 오류 결손 재현 |
-| 수정 후 회귀 | 성과·채널 2파일 11건, TikTok 3파일 24건, 합계 35건 PASS |
+| 수정 후 회귀 | 성과·채널 2파일 11건, TikTok 3파일 28건, 합계 39건 PASS. 리뷰에서 발견한 5xx 영구 실패 오판, 반복 진단 쓰기, 민감 메시지 보존도 교정 |
 | 개발 서버 | Next 16.2.2, `localhost:3567`, Ready 5.8초. `/login`, `/performance`, `/channels/shorts` HTTP 200 |
 | 미검증 | 실제 TikTok 계정 왕복, 브라우저 hydration·콘솔, 데이터 포함 9폭 모바일, 전체 Vitest·build, 원격 CI·운영 배포 |
 

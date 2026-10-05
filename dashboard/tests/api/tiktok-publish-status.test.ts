@@ -12,6 +12,7 @@ const H = vi.hoisted(() => ({
   credentialCalls: [] as unknown[][],
   statusCalls: [] as unknown[][],
   usageEvents: [] as unknown[][],
+  diagnosticWrites: 0,
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({
@@ -45,6 +46,12 @@ vi.mock("@/lib/db", () => ({
         H.row.status = "failed";
         const message = values.find((value) => typeof value === "string" && value.includes("TikTok"));
         if (typeof message === "string") H.row.error = message;
+        const metadata = values.find((value) => typeof value === "object" && value !== null) as Record<string, unknown> | undefined;
+        if (metadata) H.row.providerMeta = { ...H.row.providerMeta, ...metadata };
+        return Promise.resolve([]);
+      }
+      if (query.includes("SET provider_meta")) {
+        H.diagnosticWrites += 1;
         const metadata = values.find((value) => typeof value === "object" && value !== null) as Record<string, unknown> | undefined;
         if (metadata) H.row.providerMeta = { ...H.row.providerMeta, ...metadata };
         return Promise.resolve([]);
@@ -86,6 +93,7 @@ describe("GET /api/tiktok/publish-status", () => {
     H.credentialCalls = [];
     H.statusCalls = [];
     H.usageEvents = [];
+    H.diagnosticWrites = 0;
     vi.resetModules();
   });
 
@@ -208,5 +216,30 @@ describe("GET /api/tiktok/publish-status", () => {
     expect(H.row.providerMeta).toMatchObject({
       tiktokError: { code: "access_token_invalid", message: "Access token expired", logId: "log-status-1" },
     });
+  });
+
+  it.each([
+    ["provider_unavailable", "잠시 후"],
+    ["rate_limit_exceeded", "몇 분 뒤"],
+  ])("TIKTOK-ERROR-05 정상: 재시도 오류 %s는 진행 상태를 유지하고 진단을 한 번만 저장한다", async (code, guidance) => {
+    H.provider = {
+      ok: false,
+      providerError: { code, message: "temporary provider failure", logId: "log-retry-1" },
+    };
+
+    const first = await status();
+    expect(first.response.status).toBe(202);
+    expect(first.body).toMatchObject({ ok: true, status: "processing", publishId: "pub-1" });
+    expect(first.body.error).toContain(guidance);
+    expect(H.row.status).toBe("in_progress");
+    expect(H.row.providerMeta).toMatchObject({
+      tiktokError: { code, message: "temporary provider failure", logId: "log-retry-1" },
+    });
+    expect(H.diagnosticWrites).toBe(1);
+
+    const second = await status();
+    expect(second.response.status).toBe(202);
+    expect(H.row.status).toBe("in_progress");
+    expect(H.diagnosticWrites).toBe(1);
   });
 });

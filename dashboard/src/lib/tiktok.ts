@@ -206,7 +206,12 @@ export async function startTikTokVideoPost(input: {
       // (tiktokRejectReasonMessage의 매핑 키)으로만 통과시키고, 그 밖은 전부 고정 코드
       // "provider_rejected"로 접어서 반환한다 — 호출부가 로그에 찍는 reason은 이 시점에
       // 이미 안전이 보장된 값이다.
-      const providerError = tikTokProviderError(body.error);
+      const fallbackCode = res.status === 429
+        ? "rate_limit_exceeded"
+        : res.status >= 500
+          ? "provider_unavailable"
+          : "provider_rejected";
+      const providerError = tikTokProviderError(body.error, fallbackCode);
       return { ok: false, reason: providerError.code, providerError };
     }
     return { ok: true, publishId: body.data.publish_id };
@@ -286,7 +291,12 @@ function normalizeTikTokReason(reason: string | undefined): string {
 
 function safeTikTokProviderMessage(message: unknown): string {
   if (typeof message !== "string") return "";
-  return message.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 500);
+  return message
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\b(access[_ -]?token|authorization|password|secret)\b\s*[:=]\s*(?:bearer\s+)?[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
 }
 
 function safeTikTokLogId(logId: unknown): string | null {
@@ -297,10 +307,12 @@ function tikTokProviderError(
   error: TikTokEnvelope<unknown>["error"],
   fallbackCode = "provider_rejected",
 ): TikTokProviderError {
-  const code = error?.code === "ok" ? fallbackCode : normalizeTikTokReason(error?.code);
+  const rawCode = error?.code;
+  const code = !rawCode || rawCode === "ok" ? fallbackCode : normalizeTikTokReason(rawCode);
+  const message = rawCode && rawCode === code ? safeTikTokProviderMessage(error?.message) : "";
   return {
     code,
-    message: safeTikTokProviderMessage(error?.message),
+    message,
     logId: safeTikTokLogId(error?.log_id),
   };
 }
@@ -330,7 +342,12 @@ export async function fetchTikTokPostStatus(
       publicaly_available_post_id?: Array<string | number>;
     }>;
     if (!res.ok || body.error?.code !== "ok" || !body.data?.status) {
-      return { ok: false, providerError: tikTokProviderError(body.error) };
+      const fallbackCode = res.status === 429
+        ? "rate_limit_exceeded"
+        : res.status >= 500 || !body.error?.code
+          ? "provider_unavailable"
+          : "provider_rejected";
+      return { ok: false, providerError: tikTokProviderError(body.error, fallbackCode) };
     }
     const postId = body.data.publicaly_available_post_id?.[0];
     return {

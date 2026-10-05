@@ -95,7 +95,16 @@ describe("TikTok Content Posting API", () => {
     }, f as typeof fetch)).resolves.toEqual({
       ok: false,
       reason: "provider_rejected",
-      providerError: { code: "provider_rejected", message: "raw provider detail", logId: null },
+      providerError: { code: "provider_rejected", message: "", logId: null },
+    });
+  });
+
+  it("TIKTOK-ERROR-04 거절: 상태 조회 5xx 빈 응답은 영구 거절이 아니라 재시도 오류다", async () => {
+    const f = vi.fn(async () => response({}, 503));
+
+    await expect(fetchTikTokPostStatus("token", "pub-1", f as typeof fetch)).resolves.toEqual({
+      ok: false,
+      providerError: { code: "provider_unavailable", message: "", logId: null },
     });
   });
 
@@ -121,6 +130,18 @@ describe("TikTok Content Posting API", () => {
     await expect(fetchTikTokPostStatus("token", "pub-1", f as typeof fetch)).resolves.toEqual({
       ok: false,
       providerError: { code: "access_token_invalid", message: "token expired", logId: "log-status-1" },
+    });
+  });
+
+  it("TIKTOK-ERROR-06 거절: 알려진 오류 메시지에 섞인 민감값은 저장 전 가린다", async () => {
+    const f = vi.fn(async () => response({
+      data: {},
+      error: { code: "access_token_invalid", message: "access_token=provider-secret expired", log_id: "log-status-2" },
+    }, 401));
+
+    await expect(fetchTikTokPostStatus("token", "pub-1", f as typeof fetch)).resolves.toEqual({
+      ok: false,
+      providerError: { code: "access_token_invalid", message: "access_token=[redacted] expired", logId: "log-status-2" },
     });
   });
 
