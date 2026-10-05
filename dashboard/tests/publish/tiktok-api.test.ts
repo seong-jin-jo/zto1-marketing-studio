@@ -99,12 +99,36 @@ describe("TikTok Content Posting API", () => {
     });
   });
 
-  it("TIKTOK-ERROR-04 거절: 상태 조회 5xx 빈 응답은 영구 거절이 아니라 재시도 오류다", async () => {
-    const f = vi.fn(async () => response({}, 503));
+  it.each([
+    [429, "rate_limit_exceeded"],
+    [503, "provider_unavailable"],
+  ])("TIKTOK-ERROR-04 거절: 상태 조회 HTTP %s 빈 응답은 %s 재시도 오류다", async (status, code) => {
+    const f = vi.fn(async () => response({}, status));
 
     await expect(fetchTikTokPostStatus("token", "pub-1", f as typeof fetch)).resolves.toEqual({
       ok: false,
-      providerError: { code: "provider_unavailable", message: "", logId: null },
+      providerError: { code, message: "", logId: null },
+    });
+  });
+
+  it.each([
+    [429, "rate_limit_exceeded"],
+    [503, "provider_unavailable"],
+  ])("TIKTOK-ERROR-05 거절: 발행 초기화 HTTP %s 빈 응답도 %s로 분류한다", async (status, code) => {
+    const f = vi.fn(async () => response({}, status));
+    await expect(startTikTokVideoPost({
+      accessToken: "token",
+      videoUrl: "https://media.example/video.mp4",
+      title: "caption",
+      privacyLevel: "SELF_ONLY",
+      disableComment: true,
+      disableDuet: true,
+      disableStitch: true,
+      isAiGenerated: false,
+    }, f as typeof fetch)).resolves.toEqual({
+      ok: false,
+      reason: code,
+      providerError: { code, message: "", logId: null },
     });
   });
 
@@ -133,15 +157,22 @@ describe("TikTok Content Posting API", () => {
     });
   });
 
-  it("TIKTOK-ERROR-06 거절: 알려진 오류 메시지에 섞인 민감값은 저장 전 가린다", async () => {
+  it.each([
+    ["access_token=provider-secret expired", "access_token=[redacted] expired"],
+    ["token=provider-secret", "token=[redacted]"],
+    ["api_key=provider-secret", "api_key=[redacted]"],
+    ["client_secret=provider-secret", "client_secret=[redacted]"],
+    ["refresh_token=provider-secret", "refresh_token=[redacted]"],
+    ["Authorization: Bearer provider-secret", "Authorization=[redacted]"],
+  ])("TIKTOK-ERROR-06 거절: 알려진 오류 메시지의 민감값 %s는 저장 전 가린다", async (message, redacted) => {
     const f = vi.fn(async () => response({
       data: {},
-      error: { code: "access_token_invalid", message: "access_token=provider-secret expired", log_id: "log-status-2" },
+      error: { code: "access_token_invalid", message, log_id: "log-status-2" },
     }, 401));
 
     await expect(fetchTikTokPostStatus("token", "pub-1", f as typeof fetch)).resolves.toEqual({
       ok: false,
-      providerError: { code: "access_token_invalid", message: "access_token=[redacted] expired", logId: "log-status-2" },
+      providerError: { code: "access_token_invalid", message: redacted, logId: "log-status-2" },
     });
   });
 

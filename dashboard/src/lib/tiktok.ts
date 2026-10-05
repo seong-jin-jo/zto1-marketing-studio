@@ -293,7 +293,8 @@ function safeTikTokProviderMessage(message: unknown): string {
   if (typeof message !== "string") return "";
   return message
     .replace(/[\u0000-\u001f\u007f]/g, " ")
-    .replace(/\b(access[_ -]?token|authorization|password|secret)\b\s*[:=]\s*(?:bearer\s+)?[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/\b(access[_ -]?token|refresh[_ -]?token|token|api[_ -]?key|client[_ -]?secret|authorization|password|secret)\b["']?\s*[:=]\s*["']?(?:bearer\s+)?[^\s"',;&}]+/gi, "$1=[redacted]")
+    .replace(/\bbearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 500);
