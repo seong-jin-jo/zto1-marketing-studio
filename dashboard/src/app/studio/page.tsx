@@ -298,6 +298,8 @@ interface VidResult {
   topicKey?: string;
   hasAudio?: boolean;
   narration?: { requested: boolean; included: boolean; reason?: string; message?: string };
+  /** 자막·오버레이를 굽기 전 편집용 기준 파일. 구운 결과를 다시 굽거나 DOM 글자층과 겹치지 않게 한다. */
+  editSource?: { filename: string; url: string };
 }
 // "unknown" = 비동기 발행이 상한(15분)을 넘겨 더 기다리지 않지만, "실패"로 단정하지도
 // 않는 상태(세션맥락: 524 오판으로 인한 재발행이 중복 게시를 부른다 — 재발행을 유도하지
@@ -2173,13 +2175,18 @@ export default function StudioPage() {
   async function burnVideoSubtitles(lines: string[]): Promise<SubtitleBurnOutcome> {
     if (editKind !== "video") return { kind: "skipped" };
     if (!activeWorkspace) return { kind: "skipped" };
-    const currentSourceFilename = videoFilename(vid?.file || vid?.url || "");
-    if (!currentSourceFilename) return { kind: "skipped" };
+    const currentResultFilename = videoFilename(vid?.file || vid?.url || "");
+    if (!currentResultFilename) return { kind: "skipped" };
     // 인트로·아웃트로를 적용한 뒤 컷·자막·오버레이를 고치면 합성 결과를 입력으로 다시
     // 굽는다. 원본을 따로 구운 뒤 발행에서 옛 합성본을 우선하면 두 편집 중 하나가 사라진다.
-    const filename = resolveVideoRenderSourceFilename(currentSourceFilename, videoEdit?.introOutro ?? null);
+    const filename = vid?.editSource?.filename
+      || resolveVideoRenderSourceFilename(currentResultFilename, videoEdit?.introOutro ?? null);
+    const sourceUrl = vid?.editSource?.url
+      || (videoEdit?.introOutro && filename === videoEdit.introOutro.compositeFilename
+        ? videoEdit.introOutro.compositeDeliverUrl || videoEdit.introOutro.deliverUrl
+        : vid?.file || vid?.url || "");
     const renderVideoEdit = videoEdit
-      ? alignVideoEditToRenderSource(videoEdit, videoEdit.introOutro, currentSourceFilename)
+      ? alignVideoEditToRenderSource(videoEdit, videoEdit.introOutro, currentResultFilename)
       : null;
     const spoken = lines.filter((line) => line.trim());
     const editNeedsFile = Boolean(videoEdit && (
@@ -2201,10 +2208,15 @@ export default function StudioPage() {
         showToast(r?.error || "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요.", "error");
         return { kind: "failed" };
       }
-      const next: VidResult = { ...(vid as VidResult), url: r.file, file: r.file };
-      let nextVideoEdit = videoEdit;
       const resultFilename = r.filename || videoFilename(r.file);
-      if (nextVideoEdit?.introOutro && resultFilename && !isIntroOutroStale(nextVideoEdit.introOutro, currentSourceFilename)) {
+      const next: VidResult = {
+        ...(vid as VidResult),
+        url: r.file,
+        file: r.file,
+        ...(resultFilename && sourceUrl ? { editSource: { filename, url: sourceUrl } } : {}),
+      };
+      let nextVideoEdit = videoEdit;
+      if (nextVideoEdit?.introOutro && resultFilename && !isIntroOutroStale(nextVideoEdit.introOutro, currentResultFilename)) {
         nextVideoEdit = setIntroOutroApplied(nextVideoEdit, {
           ...nextVideoEdit.introOutro,
           compositeFilename: nextVideoEdit.introOutro.compositeFilename || nextVideoEdit.introOutro.resultFilename,
@@ -4291,8 +4303,8 @@ export default function StudioPage() {
         previewImageUrls={liveTextCardPreview ?? img?.imageUrls ?? null}
         cardTextEmbedded={img?.textEmbedded === true}
         cardTextSourceRecoverable={img?.textSourceRecoverable !== false}
-        previewVideoUrl={vid?.file || vid?.url || null}
-        videoSourceFilename={videoFilename(vid?.file || vid?.url || "") || null}
+        previewVideoUrl={vid?.editSource?.url || vid?.file || vid?.url || null}
+        videoSourceFilename={vid?.editSource?.filename || videoFilename(vid?.file || vid?.url || "") || null}
         cardTextPositions={cardTextPositions}
         onCardTextPositionsChange={setCardTextPositions}
         cardDeck={cardDeck}

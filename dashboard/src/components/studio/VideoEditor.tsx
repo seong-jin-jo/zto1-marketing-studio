@@ -169,14 +169,26 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   // 인트로/아웃트로가 적용돼 있으면 편집실 미리보기도 합성 결과를 보여준다(2026-10-02
   // 회장 반려: 발행은 됐는데 미리보기가 원본을 계속 보여주면 "적용 안 된 것처럼" 보인다).
   const introOutroStale = isIntroOutroStale(videoEdit.introOutro, sourceFilename);
+  const bakedIntroOutroResult = Boolean(videoEdit.introOutro
+    && videoEdit.introOutro.compositeFilename
+    && videoEdit.introOutro.resultFilename !== videoEdit.introOutro.compositeFilename);
   const effectivePreviewUrl = videoEdit.introOutro && !introOutroStale
-    ? videoEdit.introOutro.deliverUrl
+    ? videoEdit.introOutro.compositeDeliverUrl
+      || (bakedIntroOutroResult && sourceFilename === videoEdit.introOutro.sourceFilename
+        ? previewVideoUrl
+        : videoEdit.introOutro.deliverUrl)
     : previewVideoUrl;
   const introOutroSourceFilename = videoEdit.introOutro && !introOutroStale
     ? videoEdit.introOutro.sourceFilename
     : sourceFilename;
   const playbackIntroOutro = introOutroStale ? null : videoEdit.introOutro;
-  const bodyLayersVisible = isPlaybackTimeWithinBody(playbackTime, duration, playbackIntroOutro);
+  const previewContainsBakedText = Boolean(videoEdit.introOutro
+    && !introOutroStale
+    && bakedIntroOutroResult
+    && !videoEdit.introOutro.compositeDeliverUrl
+    && sourceFilename === videoEdit.introOutro.resultFilename);
+  const bodyLayersVisible = !previewContainsBakedText
+    && isPlaybackTimeWithinBody(playbackTime, duration, playbackIntroOutro);
 
   useEffect(() => {
     setPlaybackTime(0);

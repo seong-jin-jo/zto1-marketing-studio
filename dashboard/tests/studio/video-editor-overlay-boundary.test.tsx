@@ -97,4 +97,72 @@ describe("VideoEditor 오버레이 경계", () => {
     expect(document.querySelector("[data-video-comment-active]")).toBeNull();
     expect(document.querySelector("[data-video-subtitle-active]")).toBeNull();
   });
+
+  it("VIDEO-PREVIEW-SINGLE-LAYER-01 원본 합성본이 있으면 그것을 재생하고 DOM 자막을 한 층만 그린다", () => {
+    const edit: VideoEdit = {
+      ...emptyVideoEdit(),
+      subtitles: [
+        { id: "subtitle-1", order: 0, text: "고친 자막", startSec: 0, endSec: 3, cut: false },
+      ],
+      introOutro: {
+        introCompId: null,
+        outroCompId: null,
+        compositeFilename: "composite-without-text.mp4",
+        compositeDeliverUrl: "/api/media/composite-without-text",
+        resultFilename: "baked-with-text.mp4",
+        deliverUrl: "/api/media/baked-with-text",
+        sourceFilename: "body.mp4",
+      },
+    };
+    render(
+      <VideoEditor
+        videoEdit={edit}
+        onVideoEditChange={() => {}}
+        previewVideoUrl="/api/media/body"
+        sourceFilename="body.mp4"
+        lines={["고친 자막"]}
+      />,
+    );
+
+    const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    expect(video.getAttribute("src")).toBe("/api/media/composite-without-text");
+    Object.defineProperty(video, "duration", { value: 3, configurable: true });
+    fireEvent.loadedMetadata(video);
+    Object.defineProperty(video, "currentTime", { value: 1, configurable: true, writable: true });
+    fireEvent.timeUpdate(video);
+    expect(document.querySelectorAll("[data-video-subtitle-active]")).toHaveLength(1);
+  });
+
+  it("VIDEO-PREVIEW-SINGLE-LAYER-02 원본을 못 찾은 기존 구운 파일은 DOM 글자층을 숨긴다", () => {
+    const edit: VideoEdit = {
+      ...emptyVideoEdit(),
+      overlays: [{ id: "hook-1", order: 0, kind: "hook", text: "구운 훅", startSec: 0, endSec: 3 }],
+      subtitles: [{ id: "subtitle-1", order: 0, text: "구운 자막", startSec: 0, endSec: 3, cut: false }],
+      introOutro: {
+        introCompId: null,
+        outroCompId: null,
+        compositeFilename: "composite-without-text.mp4",
+        resultFilename: "baked-with-text.mp4",
+        deliverUrl: "/api/media/baked-with-text",
+        sourceFilename: "body.mp4",
+      },
+    };
+    render(
+      <VideoEditor
+        videoEdit={edit}
+        onVideoEditChange={() => {}}
+        previewVideoUrl="/api/media/baked-with-text"
+        sourceFilename="baked-with-text.mp4"
+        lines={["구운 자막"]}
+      />,
+    );
+
+    const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 3, configurable: true });
+    fireEvent.loadedMetadata(video);
+    Object.defineProperty(video, "currentTime", { value: 1, configurable: true, writable: true });
+    fireEvent.timeUpdate(video);
+    expect(document.querySelector("[data-video-overlay-active]")).toBeNull();
+    expect(document.querySelector("[data-video-subtitle-active]")).toBeNull();
+  });
 });

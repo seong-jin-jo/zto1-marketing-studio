@@ -71,6 +71,8 @@ export type IntroOutroApplied = {
   outroCompId: string | null;
   /** 인트로·아웃트로만 합친 기준 파일. 자막을 다시 구울 때 항상 이 파일에서 시작한다. */
   compositeFilename?: string;
+  /** 글자 없는 합성 기준 파일의 배달 URL. 편집 미리보기는 구운 결과 대신 이 주소를 쓴다. */
+  compositeDeliverUrl?: string;
   /** 인트로 길이. 원본 기준 자막·컷 시간을 합성본 시간축으로 옮길 때 쓴다. */
   introDurationSec?: number;
   /** 현재 발행할 최종 결과. 자막을 다시 구우면 이 값만 새 결과로 전진한다. */
@@ -219,6 +221,9 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
     }
     if (io.compositeFilename !== undefined && (typeof io.compositeFilename !== "string" || !io.compositeFilename)) {
       throw new VideoEditValidationError("intro_outro_composite_filename", "videoEdit.introOutro.compositeFilename must be a non-empty string when set");
+    }
+    if (io.compositeDeliverUrl !== undefined && (typeof io.compositeDeliverUrl !== "string" || !io.compositeDeliverUrl)) {
+      throw new VideoEditValidationError("intro_outro_composite_deliver_url", "videoEdit.introOutro.compositeDeliverUrl must be a non-empty string when set");
     }
     if (io.introDurationSec !== undefined && (!isFiniteNumber(io.introDurationSec) || io.introDurationSec < 0)) {
       throw new VideoEditValidationError("intro_outro_intro_duration", "videoEdit.introOutro.introDurationSec must be a non-negative finite number when set");

@@ -15,6 +15,7 @@ import {
   setSubtitles,
   toggleSubtitleCut,
   setVoice,
+  setIntroOutroApplied,
   cutRanges,
   VideoEditValidationError,
   type SubtitleLine,
@@ -85,6 +86,25 @@ describe("video-edit-contract", () => {
     expect(edit.voice).toEqual({ voiceId: "v1", voiceName: "차분한 남성" });
     edit = setVoice(edit, null);
     expect(edit.voice).toBeNull();
+  });
+
+  it("VIDEO-PREVIEW-LINEAGE-01 글자 없는 합성본 URL을 저장하고 빈 URL은 거절한다", () => {
+    const applied = setIntroOutroApplied(emptyVideoEdit(), {
+      introCompId: "intro-1",
+      outroCompId: null,
+      compositeFilename: "composite.mp4",
+      compositeDeliverUrl: "/api/media/composite",
+      resultFilename: "baked.mp4",
+      deliverUrl: "/api/media/baked",
+      sourceFilename: "source.mp4",
+    });
+
+    expect(() => validateVideoEdit(applied)).not.toThrow();
+    expect(applied.introOutro?.compositeDeliverUrl).toBe("/api/media/composite");
+    expect(() => validateVideoEdit({
+      ...applied,
+      introOutro: { ...applied.introOutro, compositeDeliverUrl: "" },
+    })).toThrow(VideoEditValidationError);
   });
 
   it("validateVideoEdit rejects a payload missing contract_version", () => {
