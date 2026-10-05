@@ -1,0 +1,26 @@
+{
+  "result": "PASS",
+  "cards": 3,
+  "uploads": 3,
+  "textElement": "el_text_deck_a2b8fcde9189_0",
+  "directEdit": {
+    "width1440": true,
+    "width390": true
+  },
+  "drag": {
+    "width1440": true,
+    "width390": true
+  },
+  "mobile": {
+    "viewport": 390,
+    "scroll": 390
+  },
+  "pixelDiff": {
+    "width": 1080,
+    "height": 1350,
+    "changedPixels": 2,
+    "changedPixelRatio": 0.0000013717421124828533,
+    "maxChannelDelta": 9
+  },
+  "consoleErrors": 0
+}

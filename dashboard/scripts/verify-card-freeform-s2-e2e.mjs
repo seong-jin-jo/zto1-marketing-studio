@@ -91,6 +91,18 @@ async function drag(page, locator, dx, dy) {
   await page.mouse.up();
 }
 
+async function doubleClickAt(page, locator) {
+  await locator.scrollIntoViewIfNeeded();
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("더블클릭할 글 요소의 화면 좌표를 찾지 못했습니다");
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  // 첫 클릭 뒤 selection overlay가 교체돼도 사람이 같은 좌표를 다시 누르는 행동을 재현한다.
+  await page.mouse.click(x, y);
+  await page.waitForTimeout(100);
+  await page.mouse.click(x, y);
+}
+
 async function comparePng(leftPath, rightPath) {
   const left = await sharp(leftPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const right = await sharp(rightPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -187,8 +199,9 @@ try {
   }
 
   const selection = page.locator(`[data-element-selection="${text.id}"]`);
-  await selection.dblclick();
+  await doubleClickAt(page, selection);
   const editor = page.getByLabel("글 내용 직접 편집");
+  if (await editor.count() === 0) throw new Error("두 번 누름 뒤 직접 편집기가 열리지 않았습니다");
   await editor.fill("AI 카드 문구를 1440에서 직접 수정");
   await editor.press("Tab");
   await waitUntil(() => serverDeck?.slides[0]?.elements?.find((element) => element.id === text.id)?.text.includes("1440"), 15_000, "1440 직접 글 편집이 저장되지 않았습니다");
@@ -202,7 +215,7 @@ try {
 
   await page.setViewportSize({ width: 390, height: 844 });
   await selection.scrollIntoViewIfNeeded();
-  await selection.dblclick();
+  await doubleClickAt(page, selection);
   await page.getByLabel("글 내용 직접 편집").fill("AI 카드 문구를 390에서도 직접 수정");
   await page.getByLabel("글 내용 직접 편집").press("Tab");
   await waitUntil(() => serverDeck?.slides[0]?.elements?.find((element) => element.id === text.id)?.text.includes("390"), 15_000, "390 직접 글 편집이 저장되지 않았습니다");
@@ -216,11 +229,35 @@ try {
   if (overflow.scroll > overflow.viewport + 1) throw new Error(`390px 가로 넘침: ${JSON.stringify(overflow)}`);
   await page.screenshot({ path: path.join(outputDir, "s2-ai-freeform-390.png"), fullPage: true });
 
+  const measurementFixture = await page.evaluate(() => {
+    const clone = document.documentElement.cloneNode(true);
+    clone.querySelectorAll("script, link[rel='stylesheet'], meta[http-equiv]").forEach((node) => node.remove());
+    const css = [...document.styleSheets].flatMap((sheet) => {
+      try { return [...sheet.cssRules].map((rule) => rule.cssText); } catch { return []; }
+    }).join("\n");
+    const style = document.createElement("style");
+    style.textContent = css;
+    clone.querySelector("head")?.append(style);
+    clone.querySelector("body")?.setAttribute("data-measurement-source", "card-freeform-s2-ai-data-loaded");
+    return `<!doctype html>${clone.outerHTML}`;
+  });
+  fs.writeFileSync(path.join(outputDir, "s2-freeform-measure-fixture.html"), measurementFixture);
+
   await page.setViewportSize({ width: 1600, height: 1600 });
   await page.locator("[data-card-stage]").evaluate((node) => {
     node.style.width = "1080px";
     node.style.minWidth = "1080px";
     node.style.maxWidth = "none";
+    node.style.border = "0";
+    node.style.borderRadius = "0";
+    node.style.boxShadow = "none";
+    node.style.position = "fixed";
+    node.style.left = "0";
+    node.style.top = "0";
+    node.style.zIndex = "2147483647";
+    for (const child of node.children) {
+      if (!child.hasAttribute("data-card-slide-scene")) child.style.visibility = "hidden";
+    }
   });
   await page.evaluate(() => document.fonts.ready);
   const editorPng = path.join(outputDir, "s2-card-scene-editor.png");
