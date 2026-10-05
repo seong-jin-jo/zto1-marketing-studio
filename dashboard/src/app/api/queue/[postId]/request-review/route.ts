@@ -16,9 +16,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ pos
     const current = readJson<QueueData>(dataPath("queue.json")) || { posts: [] };
     const currentPost = current.posts.find((candidate) => candidate.id === postId);
     let prepared: PreparedCardDeckV3Publish | null = null;
+    let publishGate: typeof import("@/lib/studio/card-deck-v3-publish-gate") | null = null;
     const draftId = currentPost?.draftId;
     if (typeof draftId === "string" && UUID_RE.test(draftId)) {
-      const publishGate = await import("@/lib/studio/card-deck-v3-publish-gate");
+      publishGate = await import("@/lib/studio/card-deck-v3-publish-gate");
       try {
         prepared = await publishGate.assertDraftCanEnterPublishQueue(tenantId, draftId);
       } catch (error) {
@@ -32,10 +33,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pos
     await mutateJson<QueueData>(dataPath("queue.json"), (queue) => {
       const post = (queue.posts || []).find((candidate) => candidate.id === postId);
       if (post) {
-        if (prepared) {
-          post.imageUrl = prepared.imageUrl;
-          post.imageUrls = prepared.imageUrls;
-        }
+        publishGate?.applyPreparedCardDeckV3Images(post, prepared);
         transition = requestReviewTransition(post, new Date().toISOString());
       }
       return queue;

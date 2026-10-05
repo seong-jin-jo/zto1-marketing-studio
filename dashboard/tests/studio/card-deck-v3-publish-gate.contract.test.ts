@@ -10,9 +10,10 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(publish).toContain("prepareDraftCardDeckV3ForPublish");
     expect(publish).toContain("prepared.imageUrls");
     const review = read("src/app/api/queue/[postId]/request-review/route.ts");
-    expect(review).toContain("assertDraftCanEnterPublishQueue");
-    expect(review).toContain("applyPreparedCardDeckV3Images(post, prepared)");
-    expect(review).toContain("cardDeckV3PublishErrorResponse(error)");
+    expect(review).toContain('await import("@/lib/studio/card-deck-v3-publish-gate")');
+    expect(review).toContain("publishGate.assertDraftCanEnterPublishQueue");
+    expect(review).toContain("publishGate?.applyPreparedCardDeckV3Images(post, prepared)");
+    expect(review).toContain("publishGate.cardDeckV3PublishErrorResponse(error)");
     const queueRoute = read("src/app/api/queue/add/route.ts");
     expect(queueRoute).toContain("addQueuePost");
     expect(queueRoute).toContain("cardDeckV3PublishErrorResponse(error)");
