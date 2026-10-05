@@ -183,6 +183,25 @@ describe("TikTok Content Posting API", () => {
   });
 
   it.each([
+    "access_token=raw-provider-secret",
+    "sk_abcdefghijklmnopqrstuvwxyz0123456789",
+    `reason_${"x".repeat(65)}`,
+  ])("TIKTOK-ERROR-07 거절: 손상되거나 토큰 형태인 FAILED fail_reason %s는 원문 code로 저장하지 않는다", async (failReason) => {
+    const f = vi.fn(async () => response({
+      data: { status: "FAILED", fail_reason: failReason },
+      error: { code: "ok", log_id: "log-failed-unsafe-1" },
+    }));
+
+    await expect(fetchTikTokPostStatus("token", "pub-1", f as typeof fetch)).resolves.toEqual({
+      ok: true,
+      status: "FAILED",
+      postId: undefined,
+      failReason: "provider_rejected",
+      providerError: { code: "ok", message: "", logId: "log-failed-unsafe-1" },
+    });
+  });
+
+  it.each([
     ["access_token=raw-provider-secret expired", "access_token=[redacted] expired"],
     ["token=provider-secret", "token=[redacted]"],
     ["api_key=provider-secret", "api_key=[redacted]"],

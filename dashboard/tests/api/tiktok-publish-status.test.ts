@@ -267,5 +267,14 @@ describe("GET /api/tiktok/publish-status", () => {
     expect(second.response.status).toBe(202);
     expect(H.row.status).toBe("in_progress");
     expect(H.diagnosticWrites).toBe(1);
+
+    H.provider = {
+      ok: false,
+      providerError: { code, message: "temporary provider failure", logId: "log-retry-2" },
+    };
+    const third = await status();
+    expect(third.response.status).toBe(202);
+    expect(H.row.status).toBe("in_progress");
+    expect(H.diagnosticWrites).toBe(1);
   });
 });

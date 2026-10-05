@@ -15,7 +15,7 @@ export interface JobPollOptions {
   // 내내 굳는다 — 토큰이 그 사이 돌면 이후 요청이 전부 401로 떨어진다. 함수를 주면 매
   // 요청 직전에 새로 만든다. 기존 호출부(고정 객체)와의 하위호환을 위해 둘 다 받는다.
   headers?: Record<string, string> | (() => Record<string, string>);
-  onStatus?: (status: "processing") => void;
+  onStatus?: (status: "processing", data: JobStatusPayload) => void;
   /** 테스트에서 setTimeout 없이 즉시 진행시키기 위한 주입점. */
   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
@@ -33,6 +33,7 @@ export const JOB_POLL_INTERVAL_MS = 2500;
 
 interface JobStatusPayload {
   status?: string;
+  error?: string;
 }
 
 /**
@@ -97,7 +98,7 @@ export async function pollJobUntilDone<T extends JobStatusPayload = JobStatusPay
     // 그 몸통이 유효한 JSON이면("서버가 실제로 응답했다") 2xx가 아니어도 최종으로 본다.
     // 몸통 없는 진짜 전송 장애(위에서 이미 재시도 처리)와 구분된다.
     if (data.status === "processing") {
-      options.onStatus?.("processing");
+      options.onStatus?.("processing", data);
       await sleep(interval, options.signal);
       continue;
     }

@@ -31,8 +31,7 @@ function hasSameTikTokError(
   if (!stored || typeof stored !== "object" || Array.isArray(stored)) return false;
   const value = stored as Record<string, unknown>;
   return value.code === providerError.code
-    && value.message === providerError.message
-    && value.logId === providerError.logId;
+    && value.message === providerError.message;
 }
 
 // publish_id는 client가 임의로 제출할 수 있지만, 이 endpoint는 먼저 현재 tenant의

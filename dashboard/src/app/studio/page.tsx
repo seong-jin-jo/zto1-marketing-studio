@@ -2477,12 +2477,26 @@ export default function StudioPage() {
   async function awaitAsyncTikTokPublish(
     publishId: string, signal?: AbortSignal,
   ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> {
+    let latestPollError = "";
     const outcome = await pollJobUntilDone<{ ok?: boolean; status?: string; url?: string; error?: string }>(
       `/api/tiktok/publish-status?publish_id=${encodeURIComponent(publishId)}`,
-      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000, signal },
+      {
+        headers: () => authHeaders(),
+        timeoutMs: 15 * 60 * 1000,
+        signal,
+        onStatus: (_status, data) => {
+          if (!data.error || data.error === latestPollError) return;
+          latestPollError = data.error;
+          showToast(data.error, "error");
+        },
+      },
     );
     if (outcome.timedOut) {
-      return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+      return {
+        ok: false,
+        unresolved: true,
+        error: latestPollError || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.",
+      };
     }
     if (outcome.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
     if (outcome.notFound) return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };

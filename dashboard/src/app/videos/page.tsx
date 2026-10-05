@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher, apiPost, handleUnauthorizedResponse, isUnresolvedPublishPayload, isExternalPublishConfirmedPayload } from "@/lib/api";
 import { authHeaders, getAuthToken } from "@/lib/auth";
@@ -109,6 +109,7 @@ export default function VideosPage() {
     fetcher,
   );
   const { showToast } = useToast();
+  const lastTikTokPollErrorRef = useRef<Record<string, string>>({});
 
   const [tab, setTab] = useState<"list" | "generate">("list");
   const [slides, setSlides] = useState<SlideInput[]>([
@@ -228,6 +229,7 @@ export default function VideosPage() {
   const clearTikTokPending = (filename: string) => {
     const workspaceId = activeWorkspace?.id;
     if (!workspaceId) return;
+    delete lastTikTokPollErrorRef.current[filename];
     setTiktokPendingState((current) => {
       if (current.workspaceId !== workspaceId) return current;
       const { [filename]: _removed, ...entries } = current.entries;
@@ -253,7 +255,14 @@ export default function VideosPage() {
             return;
           }
           const body = await response.json() as { ok?: boolean; status?: string; url?: string; error?: string };
-          if (cancelled || body.status === "processing") return;
+          if (cancelled) return;
+          if (body.status === "processing") {
+            if (body.error && lastTikTokPollErrorRef.current[filename] !== body.error) {
+              lastTikTokPollErrorRef.current[filename] = body.error;
+              showToast(body.error, "error");
+            }
+            return;
+          }
           if (body.status === "published") {
             clearTikTokPending(filename);
             showToast(body.url ? `TikTok 발행 완료: ${body.url}` : "TikTok 발행이 완료되었습니다.", "success");

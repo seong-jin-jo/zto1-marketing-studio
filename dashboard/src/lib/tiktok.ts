@@ -290,7 +290,10 @@ function normalizeTikTokReason(reason: string | undefined): string {
 }
 
 function safeTikTokReasonCode(reason: unknown): string | undefined {
-  return typeof reason === "string" && TIKTOK_REASON_CODE_PATTERN.test(reason) ? reason : undefined;
+  if (typeof reason !== "string" || !TIKTOK_REASON_CODE_PATTERN.test(reason)) return undefined;
+  // 문서에 없는 처리 단계 code는 운영 진단을 위해 보존하되, 외부 문자열이 토큰 형태면
+  // code 정규식만 통과하더라도 저장하지 않는다. 메시지와 같은 redaction 경계를 공유한다.
+  return safeTikTokProviderMessage(reason) === reason ? reason : undefined;
 }
 
 function safeTikTokProviderMessage(message: unknown): string {

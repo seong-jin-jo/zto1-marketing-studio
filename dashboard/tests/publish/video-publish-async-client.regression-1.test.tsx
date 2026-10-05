@@ -311,6 +311,7 @@ describe("발행실 — video/publish 202(jobId) 응답을 거짓-성공으로 �
       }
       if (url.includes("/api/tiktok/publish-status")) {
         pollCount += 1;
+        if (pollCount === 1) return Response.json({ ok: true, status: "processing", publishId: "tt-publish-1", error: "TikTok 계정을 다시 연결해 주세요." }, { status: 202 });
         if (pollCount < 3) return Response.json({ ok: true, status: "processing", publishId: "tt-publish-1" }, { status: 202 });
         return Response.json({ ok: true, status: "published", publishId: "tt-publish-1", url: "https://www.tiktok.com/@creator/video/real-one" });
       }
@@ -331,6 +332,7 @@ describe("발행실 — video/publish 202(jobId) 응답을 거짓-성공으로 �
       expect(link).toHaveAttribute("href", "https://www.tiktok.com/@creator/video/real-one");
     }, { timeout: 8000 });
     expect(pollCount).toBeGreaterThanOrEqual(3);
+    expect(mocks.showToast).toHaveBeenCalledWith("TikTok 계정을 다시 연결해 주세요.", "error");
   }, 15000);
 
   // MAJOR-3 구멍(2026-10-02 재재검토): TikTok init 자체가(드물지만) 서버의 바깥 예산
