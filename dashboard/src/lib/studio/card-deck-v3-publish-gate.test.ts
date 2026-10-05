@@ -1,46 +1,81 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const H = vi.hoisted(() => ({ rows: [] as Array<{ has_card_deck_v3: boolean }> }));
+const H = vi.hoisted(() => ({
+  has: false,
+  payload: null as Record<string, unknown> | null,
+  renders: [] as string[],
+  puts: [] as string[],
+  jsonValues: [] as unknown[],
+}));
 
 vi.mock("@/lib/db", () => ({
   withTenant: vi.fn(async (_tenantId: string, callback: (sql: unknown) => unknown) => {
-    const sql = () => Promise.resolve(H.rows);
+    const sql = Object.assign((strings: TemplateStringsArray) => {
+      const query = strings.join(" ");
+      if (query.includes("has_card_deck_v3")) return Promise.resolve([{ has_card_deck_v3: H.has }]);
+      if (query.includes("SELECT payload")) return Promise.resolve(H.payload ? [{ payload: H.payload }] : []);
+      return Promise.resolve([]);
+    }, { json: (value: unknown) => { H.jsonValues.push(value); return value; } });
     return callback(sql);
   }),
 }));
+vi.mock("@/lib/media-store", () => ({ mediaStore: {
+  exists: vi.fn(async () => false),
+  put: vi.fn(async (_tenant: string, filename: string) => { H.puts.push(filename); }),
+  delete: vi.fn(async () => true),
+} }));
+vi.mock("@/lib/image-token", () => ({ signImageToken: vi.fn((_tenant: string, filename: string) => `token-${filename}`) }));
+vi.mock("@/lib/studio/card-slide-render", () => ({
+  renderCardSlidePng: vi.fn(async ({ outputPath }: { outputPath: string }) => {
+    const fs = await import("node:fs");
+    fs.writeFileSync(outputPath, Buffer.from("png"));
+    H.renders.push(outputPath);
+  }),
+}));
 
-beforeEach(() => { H.rows = []; });
+const deck = {
+  contract_version: "3.0", id: "deck_publish_test", template: "plain", ratio: "4:5", revision: 2,
+  theme: { background: "#FFF9F0", foreground: "#111111", accent: "#2563EB" },
+  brand: { display_name: "OSMU", handle: null }, hook_type: "pain",
+  cta: { keyword: "정리본", comment_example: "정리본을 남겨 주세요", save_reason: "나중에 다시 확인하세요" },
+  slides: [
+    { id: "slide_publish_cover", order: 0, role: "cover", content_state: "filled", background: { kind: "solid", color: "#FFF9F0" }, base: { kind: "plain", lines: ["첫 장"] }, elements: [] },
+    { id: "slide_publish_cta", order: 1, role: "cta", content_state: "filled", background: { kind: "solid", color: "#111111" }, base: { kind: "plain", lines: ["저장"] }, elements: [] },
+  ],
+};
 
-describe("S1-R4-PUBLISH-GATE-01 자유 배치 발행 안전문", () => {
-  it("v3 덱이 저장된 초안은 서버 발행 경계에서 차단한다", async () => {
-    H.rows = [{ has_card_deck_v3: true }];
-    const { draftHasCardDeckV3, cardDeckV3PublishBlockedResponse } = await import("./card-deck-v3-publish-gate");
-    expect(await draftHasCardDeckV3("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")).toBe(true);
-    const response = cardDeckV3PublishBlockedResponse();
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ code: "CARD_DECK_V3_RENDER_PENDING" });
+beforeEach(() => {
+  H.has = false; H.payload = null; H.renders = []; H.puts = []; H.jsonValues = [];
+  vi.stubEnv("OSMU_PUBLIC_URL", "https://studio.example.com");
+  vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "0");
+});
+afterEach(() => vi.unstubAllEnvs());
+
+describe("S2-B 자유 배치 발행 준비", () => {
+  it("flag off면 v3 초안을 기존 409 오류로 중단한다", async () => {
+    H.payload = { cardDeckV3: deck };
+    const { assertDraftCanEnterPublishQueue, CardDeckV3PublishBlockedError, cardDeckV3PublishBlockedErrorResponse } = await import("./card-deck-v3-publish-gate");
+    const error = await assertDraftCanEnterPublishQueue("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222").catch((caught) => caught);
+    expect(error).toBeInstanceOf(CardDeckV3PublishBlockedError);
+    expect(cardDeckV3PublishBlockedErrorResponse(error as InstanceType<typeof CardDeckV3PublishBlockedError>).status).toBe(409);
+    expect(H.renders).toHaveLength(0);
+  });
+
+  it("flag on이면 CardSlideScene 정지 PNG를 장별 저장하고 그 URL을 발행 입력으로 돌려준다", async () => {
+    vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "1");
+    H.payload = { cardDeckV3: deck, img: { topicKey: "topic-s2" } };
+    const { assertDraftCanEnterPublishQueue } = await import("./card-deck-v3-publish-gate");
+    const prepared = await assertDraftCanEnterPublishQueue("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222");
+    expect(H.renders).toHaveLength(2);
+    expect(H.puts).toHaveLength(2);
+    expect(prepared?.imageUrls).toHaveLength(2);
+    expect(prepared?.imageUrls.every((url) => url.startsWith("https://studio.example.com/api/images/deliver/"))).toBe(true);
+    expect(H.jsonValues.at(-1)).toMatchObject({ img: { topicKey: "topic-s2", textEmbedded: true, textSourceRecoverable: true } });
   });
 
   it("v3 덱이 없거나 초안 번호가 유효하지 않으면 기존 발행 경로를 유지한다", async () => {
-    const { draftHasCardDeckV3 } = await import("./card-deck-v3-publish-gate");
+    const { draftHasCardDeckV3, assertDraftCanEnterPublishQueue } = await import("./card-deck-v3-publish-gate");
     expect(await draftHasCardDeckV3("11111111-1111-1111-1111-111111111111", "not-a-draft")).toBe(false);
-    expect(await draftHasCardDeckV3("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")).toBe(false);
-  });
-
-  it("S1-R5-QUEUE-01 큐 공통 안전문은 v3 초안을 409 오류로 중단한다", async () => {
-    H.rows = [{ has_card_deck_v3: true }];
-    const {
-      assertDraftCanEnterPublishQueue,
-      CardDeckV3PublishBlockedError,
-      cardDeckV3PublishBlockedErrorResponse,
-    } = await import("./card-deck-v3-publish-gate");
-    const error = await assertDraftCanEnterPublishQueue(
-      "11111111-1111-1111-1111-111111111111",
-      "22222222-2222-2222-2222-222222222222",
-    ).catch((caught) => caught);
-    expect(error).toBeInstanceOf(CardDeckV3PublishBlockedError);
-    const response = cardDeckV3PublishBlockedErrorResponse(error as InstanceType<typeof CardDeckV3PublishBlockedError>);
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ code: "CARD_DECK_V3_RENDER_PENDING" });
+    expect(await assertDraftCanEnterPublishQueue("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")).toBeNull();
   });
 });

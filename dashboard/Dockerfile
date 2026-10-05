@@ -22,6 +22,10 @@ ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 # GitHub secret 이름: OSMU_GA4_MEASUREMENT_ID (.github/workflows/deploy-marketing.yml 참고).
 ARG NEXT_PUBLIC_GA_MEASUREMENT_ID=""
 ENV NEXT_PUBLIC_GA_MEASUREMENT_ID=$NEXT_PUBLIC_GA_MEASUREMENT_ID
+# 편집 화면과 서버 발행 안전문이 같은 CardDeckV3 활성 상태를 보도록 빌드 시 고정한다.
+# 서버 전용 CARD_DECK_V3_RENDER_ENABLED와 값이 다르면 코드가 fail-closed한다.
+ARG NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED="0"
+ENV NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=$NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED
 # next build의 중복 검사는 이웃 OpenClaw 테스트 의존성을 설치하지 않는 이미지에서 제외한다.
 # 대신 같은 builder stage와 같은 소스에서 CI 전용 타입 검사를 먼저 통과해야 빌드가 시작된다.
 RUN npm run typecheck:ci && npm run build

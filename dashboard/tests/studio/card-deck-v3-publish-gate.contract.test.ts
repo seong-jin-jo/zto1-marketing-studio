@@ -6,14 +6,12 @@ const read = (relative: string) => fs.readFileSync(path.join(process.cwd(), rela
 
 describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
   it("실발행, 큐 생성, 기존 큐 검토 요청이 모두 같은 서버 안전문을 지난다", () => {
-    for (const file of [
-      "src/app/api/publish/route.ts",
-      "src/app/api/queue/[postId]/request-review/route.ts",
-    ]) {
-      const source = read(file);
-      expect(source).toContain("draftHasCardDeckV3");
-      expect(source).toContain("cardDeckV3PublishBlockedResponse");
-    }
+    const publish = read("src/app/api/publish/route.ts");
+    expect(publish).toContain("prepareDraftCardDeckV3ForPublish");
+    expect(publish).toContain("prepared.imageUrls");
+    const review = read("src/app/api/queue/[postId]/request-review/route.ts");
+    expect(review).toContain("assertDraftCanEnterPublishQueue");
+    expect(review).toContain("cardDeckV3PublishBlockedErrorResponse");
     const queueRoute = read("src/app/api/queue/add/route.ts");
     expect(queueRoute).toContain("addQueuePost");
     expect(queueRoute).toContain("cardDeckV3PublishBlockedErrorResponse");
@@ -24,10 +22,11 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     const register = read("src/app/api/schedule/route.ts");
     const execute = read("src/app/api/schedule/publish-due/route.ts");
     const studio = read("src/app/studio/page.tsx");
-    expect(register).toContain("draftHasCardDeckV3");
+    expect(register).toContain("prepareDraftCardDeckV3ForPublish");
+    expect(register).toContain("prepared.imageUrls");
     expect(execute).toContain("payloadHasCardDeckV3");
     expect(execute).toContain('status: "blocked"');
-    expect(studio).toContain("showSchedule && activeWorkspace && !cardDeckV3");
+    expect(studio).toContain("showSchedule && activeWorkspace && !cardDeckV3PublishBlocked");
     expect(studio).toContain("대기 중인 예약이 있습니다");
     expect(studio).toContain("자동 재개되지 않으므로 다시 예약해야 합니다");
     expect(read("db/schema.sql")).toContain("scheduled | processing | blocked | published");
@@ -53,6 +52,7 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(routeFiles.sort()).toEqual([
       "src/app/api/queue/add/route.ts",
       "src/app/api/queue/[postId]/approve/route.ts",
+      "src/app/api/queue/[postId]/request-review/route.ts",
       "src/app/api/queue/bulk-approve/route.ts",
       "src/app/api/queue/promote/route.ts",
       "src/app/api/studio/commands/route.ts",
@@ -111,7 +111,7 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(source).toContain('cardDeckV3DetailStatusRef.current = "loading"');
     expect(source).toContain('cardDeckV3DetailStatusRef.current = "error"');
     expect(source).toContain("if (rejectWhileCardDeckV3DetailPending()) return;");
-    expect(source).toContain("cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? plainCardDeckV3EntryBlockReason(resolvedEditLines)}");
+    expect(source).toContain("cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines))}");
     expect(source).toContain("disabled={cardDeckV3PublishBlocked");
     expect(source).toContain("onRetryCardDeckV3Detail={cardDeckV3DetailStatus === \"error\" ? retryCardDeckV3Detail : undefined}");
     expect(source).toContain("void loadDraftDetail(linkedDraft)");

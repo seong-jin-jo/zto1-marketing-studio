@@ -3,7 +3,11 @@ import { mirrorQueuePost } from "@/lib/queue-store";
 import { requestReviewTransition, type ReviewTransitionResult } from "@/lib/review-request";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
-import { cardDeckV3PublishBlockedResponse, draftHasCardDeckV3 } from "@/lib/studio/card-deck-v3-publish-gate";
+import {
+  assertDraftCanEnterPublishQueue,
+  CardDeckV3PublishBlockedError,
+  cardDeckV3PublishBlockedErrorResponse,
+} from "@/lib/studio/card-deck-v3-publish-gate";
 
 interface QueueData { posts: Array<Record<string, unknown>> }
 
@@ -14,8 +18,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ pos
     const { postId } = await params;
     const current = readJson<QueueData>(dataPath("queue.json")) || { posts: [] };
     const currentPost = current.posts.find((candidate) => candidate.id === postId);
-    if (tenantId && currentPost && await draftHasCardDeckV3(tenantId, currentPost.draftId)) {
-      return cardDeckV3PublishBlockedResponse();
+    try {
+      if (currentPost) await assertDraftCanEnterPublishQueue(tenantId, currentPost.draftId);
+    } catch (error) {
+      if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
+      throw error;
     }
     let transition: ReviewTransitionResult | null = null;
 

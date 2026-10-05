@@ -74,9 +74,9 @@ export async function addQueuePost(
 ): Promise<{ post: QueuePost; reused: boolean }> {
   const text = input.text.trim();
   if (!text) throw new QueueInputError("text required");
-  await assertDraftCanEnterPublishQueue(tenantId, input.draftId);
+  const prepared = await assertDraftCanEnterPublishQueue(tenantId, input.draftId);
 
-  const imageUrls = Array.isArray(input.imageUrls) ? input.imageUrls : null;
+  const imageUrls = prepared?.imageUrls ?? (Array.isArray(input.imageUrls) ? input.imageUrls : null);
   const idempotencyKey = input.idempotencyKey?.trim() || undefined;
   let selected: QueuePost | null = null;
   let reused = false;
@@ -113,7 +113,7 @@ export async function addQueuePost(
           : input.sourceContext?.type === "studio_handoff"
             ? "studio-handoff"
             : "manual",
-        imageUrl: input.imageUrl || imageUrls?.[0] || null,
+        imageUrl: prepared?.imageUrl || input.imageUrl || imageUrls?.[0] || null,
         imageUrls,
         cardBatchId: input.cardBatchId || null,
         videoFilename: input.videoFilename || null,

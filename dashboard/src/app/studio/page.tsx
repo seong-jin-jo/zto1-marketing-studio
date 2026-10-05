@@ -48,7 +48,9 @@ import {
 } from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { cardDeckV3Projection, type CardDeckV3 } from "@/lib/studio/card-element-contract";
-import { createPlainCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
+import { createPlainCardDeckV3, createRecoverableEmbeddedCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
+import { migrateCardDeckV2ToV3, projectCardDeckV3ToV2 } from "@/lib/studio/card-deck-v2-to-v3";
+import { cardDeckV3RenderingEnabled } from "@/lib/studio/card-deck-v3-render-feature";
 import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
@@ -111,6 +113,9 @@ const VIDEO_PUBLISH_REQUEST_TIMEOUT_MS = 130_000;
 // 계정 셀렉터를 노출한다. shorts/reels/tiktok은 /api/publish 미지원(실발행 분기 없음. 위
 // ChannelConnect.tsx 주석과 동일 SSOT 판단)이라 대상에서 뺀다.
 const PREVIEW_PLATFORM_KEYS = new Set<string>(PREVIEW_PLATFORMS.map((platform) => platform.key));
+const CARD_DECK_V3_RENDER_ENABLED = cardDeckV3RenderingEnabled({
+  NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED: process.env.NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED,
+});
 /**
  * 영상으로 올리는 채널. 글 발행 경로가 아니라 영상 발행 경로(/api/video/publish)로 간다.
  *
@@ -2224,7 +2229,7 @@ export default function StudioPage() {
   }
   async function moveToPublish() {
     if (rejectWhileCardDeckV3DetailPending()) return;
-    if (cardDeckV3) {
+    if (cardDeckV3 && !CARD_DECK_V3_RENDER_ENABLED) {
       showToast(CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE, "error");
       return;
     }
@@ -2570,7 +2575,7 @@ export default function StudioPage() {
 
   async function publish() {
     if (rejectWhileCardDeckV3DetailPending()) return;
-    if (cardDeckV3) {
+    if (cardDeckV3 && !CARD_DECK_V3_RENDER_ENABLED) {
       showToast(CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE, "error");
       return;
     }
@@ -3694,7 +3699,7 @@ export default function StudioPage() {
 
   async function requestReview() {
     if (rejectWhileCardDeckV3DetailPending()) return;
-    if (cardDeckV3) {
+    if (cardDeckV3 && !CARD_DECK_V3_RENDER_ENABLED) {
       showToast(CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE, "error");
       return;
     }
@@ -3750,7 +3755,7 @@ export default function StudioPage() {
       case "trimOverLimit": trimOverLimitChannels(); return;
       case "schedule":
         if (rejectWhileCardDeckV3DetailPending()) return;
-        if (cardDeckV3) {
+        if (cardDeckV3 && !CARD_DECK_V3_RENDER_ENABLED) {
           showToast(CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE, "error");
           return;
         }
@@ -4069,6 +4074,8 @@ export default function StudioPage() {
     if (Object.prototype.hasOwnProperty.call(options, "sourceSnapshot") && options.sourceSnapshot) {
       cardDeckV3PendingSourceSnapshotRef.current = options.sourceSnapshot;
     }
+    const legacyProjection = cardDeck ? projectCardDeckV3ToV2(nextDeck, cardDeck) : null;
+    if (legacyProjection) setCardDeck(legacyProjection);
     setCardDeckV3(nextDeck);
     cardDeckV3Ref.current = nextDeck;
     cardDeckV3DirtyRef.current = true;
@@ -4087,7 +4094,7 @@ export default function StudioPage() {
       const saveOptions = pendingSourceSnapshot
         ? { sourceSnapshot: pendingSourceSnapshot }
         : {};
-      save("draft", publishReconciliations, draftIdRef.current, img, vid, null, null, nextDeck, "tail", pub, saveOptions)
+      save("draft", publishReconciliations, draftIdRef.current, img, vid, legacyProjection, null, nextDeck, "tail", pub, saveOptions)
         .then(() => {
           if (cardDeckV3EditGenerationRef.current === editGeneration) {
             cardDeckV3DirtyRef.current = false;
@@ -4105,9 +4112,9 @@ export default function StudioPage() {
     }, 800);
   }
 
-  function startCardDeckV3() {
+  async function startCardDeckV3() {
     if (rejectWhileCardDeckV3DetailPending()) return;
-    const blockedReason = plainCardDeckV3EntryBlockReason(resolvedEditLines);
+    const blockedReason = cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines);
     if (blockedReason) {
       showToast(blockedReason, "error");
       return;
@@ -4117,7 +4124,40 @@ export default function StudioPage() {
       cardTextPositions: [...cardTextPositions],
     } satisfies CardDeckV3SourceSnapshot;
     setCardDeckV3SourceSnapshot(snapshot);
-    onCardDeckV3Change(createPlainCardDeckV3(snapshot.editLines, snapshot.cardTextPositions), { sourceSnapshot: snapshot });
+    try {
+      let nextDeck: CardDeckV3;
+      if (cardDeck) {
+        nextDeck = migrateCardDeckV2ToV3(cardDeck);
+      } else if (img?.textEmbedded === true && img.textSourceRecoverable !== false) {
+        const rendered = renderPlainCardDeckIncremental({
+          lines: snapshot.editLines.map(() => ""),
+          ratio: cardRatioFrom(cardAspectRatio),
+          theme: themeFromPalette(learningInfo.palette),
+          positions: snapshot.cardTextPositions,
+        });
+        const upload = browserCardUploader(authHeaders());
+        const backgrounds = [] as Array<{ assetId: string; alt: string }>;
+        const rollback: Array<() => Promise<void>> = [];
+        try {
+          for (let index = 0; index < rendered.urls.length; index += 1) {
+            const uploaded = await upload(rendered.urls[index], index);
+            if (typeof uploaded === "string" || !uploaded.filename) throw new Error(`${index + 1}번 카드 바탕 파일명을 받지 못했습니다.`);
+            backgrounds.push({ assetId: uploaded.filename, alt: `${index + 1}번 카드 글자 없는 바탕` });
+            if (uploaded.rollback) rollback.push(uploaded.rollback);
+          }
+        } catch (error) {
+          await Promise.allSettled(rollback.reverse().map((remove) => remove()));
+          throw error;
+        }
+        nextDeck = createRecoverableEmbeddedCardDeckV3(snapshot.editLines, snapshot.cardTextPositions, backgrounds);
+      } else {
+        nextDeck = createPlainCardDeckV3(snapshot.editLines, snapshot.cardTextPositions);
+      }
+      onCardDeckV3Change(nextDeck, { sourceSnapshot: snapshot });
+    } catch (error) {
+      showToast(extractApiErrorMessage(error, "자유 배치용 카드 바탕을 준비하지 못했습니다."), "error");
+      return;
+    }
     const currentDraftId = draftIdRef.current;
     const tenantId = activeWorkspaceIdRef.current;
     if (currentDraftId && tenantId) {
@@ -4260,7 +4300,7 @@ export default function StudioPage() {
   }
 
   const cardDeckV3HydrationBlockedReason = cardDeckV3DetailBlockedReason(cardDeckV3DetailStatus);
-  const cardDeckV3PublishBlocked = Boolean(cardDeckV3) || Boolean(cardDeckV3HydrationBlockedReason);
+  const cardDeckV3PublishBlocked = Boolean(cardDeckV3HydrationBlockedReason) || (Boolean(cardDeckV3) && !CARD_DECK_V3_RENDER_ENABLED);
 
   if (activeRoom === "edit") {
     // 초안 목록 조회는 편집 데이터의 유일한 소스가 아니다. localStorage 복원값이나 이미
@@ -4300,14 +4340,14 @@ export default function StudioPage() {
         cardDeckV3={cardDeckV3}
         onCardDeckV3Change={onCardDeckV3Change}
         onStartCardDeckV3={startCardDeckV3}
-        cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? plainCardDeckV3EntryBlockReason(resolvedEditLines)}
+        cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines))}
         onRetryCardDeckV3Detail={cardDeckV3DetailStatus === "error" ? retryCardDeckV3Detail : undefined}
         onReturnFromCardDeckV3={() => { void returnFromCardDeckV3(); }}
         videoEdit={videoEdit}
         onVideoEditChange={onVideoEditChange}
         onOpenCreate={openCreateForEditKind}
         onOpenPublish={moveToPublish}
-        publishBlockedReason={cardDeckV3 ? CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE : cardDeckV3HydrationBlockedReason}
+        publishBlockedReason={cardDeckV3 && !CARD_DECK_V3_RENDER_ENABLED ? CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE : cardDeckV3HydrationBlockedReason}
         lastSavedAt={editSavedAt}
         moveBusy={moveToPublishBusy}
         autosaveError={[editAutosaveError, cardDeckAutosaveError, videoEditAutosaveError].filter(Boolean).join(" ")}
@@ -4485,7 +4525,7 @@ export default function StudioPage() {
           ) : null}
           {cardDeckV3PublishBlocked ? (
             <div role="alert" className="flex flex-wrap items-center gap-stack-tight rounded-control border border-warning bg-warning-soft p-stack text-caption text-warning" data-card-deck-v3-publish-block>
-              <span>{cardDeckV3 ? CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE : cardDeckV3HydrationBlockedReason}</span>
+              <span>{cardDeckV3 && !CARD_DECK_V3_RENDER_ENABLED ? CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE : cardDeckV3HydrationBlockedReason}</span>
               {!cardDeckV3 && cardDeckV3DetailStatus === "error" ? <Button size="sm" variant="secondary" onClick={retryCardDeckV3Detail}>다시 시도</Button> : null}
             </div>
           ) : null}

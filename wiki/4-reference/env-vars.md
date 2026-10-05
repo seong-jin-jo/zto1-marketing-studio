@@ -1,5 +1,12 @@
 # Environment Variables & Configuration
 
+## 편집실 v2 S2 카드 렌더 기능 플래그 (2026-10-05)
+
+- `CARD_DECK_V3_RENDER_ENABLED`: 서버의 CardDeckV3 PNG 렌더·발행 허용 플래그.
+- `NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED`: 브라우저 편집실 진입·발행 UI 플래그. Next.js 빌드 시 Docker build arg로 고정된다.
+- 두 값이 모두 존재하면 둘 다 `1` 또는 `true`여야 활성화된다. 값이 다르거나 미설정이면 fail-closed하여 기존 CardDeckV3 발행 차단을 유지한다.
+- 운영 전환은 두 값을 같은 배포에서 함께 바꾸고, 화면 장면과 서버 PNG의 픽셀 비교를 통과한 이미지에서만 수행한다.
+
 ## 로컬과 운영의 OSMU 주입 경계 (2026-08-29)
 
 - 운영은 GitHub Secrets의 `OSMU_DATABASE_URL`, `OSMU_SUPABASE_URL`, `OSMU_SUPABASE_ANON_KEY`를 배포 workflow가 `.env.osmu`로 렌더한다. `NEXT_PUBLIC_SUPABASE_*`는 브라우저 bundle에 들어가므로 Docker build 시점 주입이 필수다.

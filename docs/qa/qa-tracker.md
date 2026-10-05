@@ -7839,3 +7839,8 @@ SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-is
 | PR94-R3-MAJOR-03 | 읽기 전용 계정 행의 보이는 핸들과 실제 발행 계정을 현재 기본 계정으로 일치 | PR94-R3-ACCOUNT-01 | ❌ NG | 저장된 비기본 계정이 새 기본 계정보다 우선되며 화면에서 바꿀 수 없다. |
 | PR94-R3-MAJOR-04 | 일반 카드 캡처를 일반 카드 기준과 비교하고 말풍선은 별도 기준을 사용 | PR94-R3-VISUAL-01 | ❌ NG | `cardShot`을 만들고 쓰지 않으며 일반 카드 기준을 말풍선 무대와 비교한다. |
 | PR94-R3-CI-01 | CI 전체 스위트의 5개 실패 파일을 현재 v70 계약과 유효한 기존 계약으로 정합 | V65-EDIT-04, PR85-R7, OUTLINE-01 | ❌ NG | 원격 run 36467804880에서 5개 파일 6개 테스트가 실패했다. |
+## 2026-10-05 편집실 v2 S2 공용 카드 렌더·AI 카드 자유 배치 미구현 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S2-CARD-01 | v2 카드 무손실 이관, 공용 장 렌더, AI 글자 내장 카드 자유 배치, feature flag 기반 서버 PNG 발행을 구현 | S2-AC1~05·S2-A·S2-B | ❌ NG | 착수 실측에서 AI 카드의 진입점과 v3 장면은 `StudioRooms.tsx`의 `!cardTextEmbedded` 조건으로 숨고, `card-deck-v3-publish-gate.ts`는 feature flag 없이 항상 발행을 차단한다. Remotion에는 `CardSlideComposition`과 고정 Pretendard 파일이 없고 v2→v3 결정적 변환도 없다. 회장 지시대로 실패 계약을 먼저 추가한 뒤 구현한다. |

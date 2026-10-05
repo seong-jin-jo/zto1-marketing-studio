@@ -1,7 +1,11 @@
 import { withTenant } from "@/lib/db";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { channelAccountBelongsToProvider } from "@/lib/channel-accounts";
-import { cardDeckV3PublishBlockedResponse, draftHasCardDeckV3 } from "@/lib/studio/card-deck-v3-publish-gate";
+import {
+  CardDeckV3PublishBlockedError,
+  cardDeckV3PublishBlockedErrorResponse,
+  prepareDraftCardDeckV3ForPublish,
+} from "@/lib/studio/card-deck-v3-publish-gate";
 
 // P6 예약 발행 API — schedules 테이블(테넌트별, RLS 방어심층).
 //   GET  ?tenant_id=...           → 워크스페이스 예약 목록(최근 50)
@@ -90,10 +94,14 @@ export async function POST(request: Request) {
       }
     }
   }
-  const payload = accountIds ? { ...(body.payload ?? {}), account_ids: accountIds } : (body.payload ?? {});
+  let payload = accountIds ? { ...(body.payload ?? {}), account_ids: accountIds } : (body.payload ?? {});
   const draftId = body.draft_id ?? null;
-  if (draftId && await draftHasCardDeckV3(tenantId, draftId)) {
-    return cardDeckV3PublishBlockedResponse();
+  try {
+    const prepared = await prepareDraftCardDeckV3ForPublish(tenantId, draftId);
+    if (prepared) payload = { ...payload, imageUrl: prepared.imageUrl, imageUrls: prepared.imageUrls };
+  } catch (error) {
+    if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
+    throw error;
   }
   // 단일 플랫폼 예약이면 schedules.account_id 컬럼(감사/조인용)도 함께 채운다 — 여러 플랫폼이면
   // 플랫폼마다 계정이 다를 수 있어 단일 컬럼으로 못 담고 payload.account_ids가 SSOT.

@@ -2375,3 +2375,11 @@ stage하지 않는다. 다음 액션은 편집실 계약 테스트를 먼저 추
 - 자기검토: 형식 교체 본문이 빈 문자열이면 이전 대기열 본문이 남는 인접 결함 1건을 발견해 함께 수정했다. 검증된 형식 교체는 빈 본문도 현재 스냅샷으로 저장하며, 같은 표적 87건과 TypeScript를 다시 통과했다.
 - 커밋·원격 상태: 제품·테스트 `d2f1f0b8`, 기록 `b32678c4`를 같은 원격 브랜치에 push했다. 이 종료 기록 커밋까지 push한 뒤 로컬 HEAD와 원격 HEAD를 다시 대조한다. 머지·배포는 하지 않았다.
 - 다음 실행: 원격 CI가 최종 HEAD에서 green인지 확인하고 PR #95 독립 재리뷰를 받는다. 원격 CI 최종 판정은 현재 미검증이다.
+## 2026-10-05 18:21 KST 편집실 v2 S2 구현 착수
+
+- handoff basis: 회장이 이 세션에 직접 지정한 S2 과제와 `docs/eng/editroom-v2/build-plan.md` S2, `card-element-model.md`, `export-queue.md`, D-2026-10-04-1·D-2026-10-03-2를 정본으로 삼았다. tmux `371:0.1`은 같은 현재 Codex worker pane이며 별도 live handoff와 충돌하지 않는다.
+- 기존 구현 확인: S1의 `CardDeckV3`, `CardCanvasEditor`, `CardSlideScene`, 초안 이중 필드 저장, S2 전 발행 차단이 이미 있다. AI 글자 내장 카드는 `StudioRooms.tsx`의 `!cardTextEmbedded` 조건 때문에 자유 배치 진입점과 v3 장면이 숨고, 발행 차단은 feature flag 없이 항상 동작한다.
+- 현재 작업: 테스트를 먼저 추가해 S2-AC1~5, AI 카드 복구 가능/불가능 진입, flag off 차단과 flag on 공용 장 렌더를 고정한다. 이후 v2→v3 결정적 이관, 공용 Remotion runtime·Pretendard 고정, 서버 PNG 발행 배선을 작은 커밋으로 구현한다.
+- 이웃 영향 후보: 초안 저장·상세 복원, 발행·예약·큐 등록, Remotion 인트로/아웃트로, signed media, 기존 Canvas fallback, 기존 plain/chat 카드 UI와 S1 직접 편집 회귀를 함께 확인한다.
+- 다음 실행: AI 카드 원본 파일명과 publish/schedule/queue의 공통 진입점을 확정한 뒤 수용 기준 테스트부터 작성한다. 종료 증거는 관련 import 테스트 전부, 전체 contract, `verify-card-freeform-s1-e2e.mjs`, 실제 1440·390 더블클릭·끌기 캡처, CI green이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.

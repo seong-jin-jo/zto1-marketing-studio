@@ -3,7 +3,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // /api/schedule 검증 분기 (인프라 無, 항상 실행). INSERT/read-back은 DB 필요 → 별도 db-gated.
 // effectiveTenantId를 고정해 라우트 검증 로직만 본다. withTenant는 검증 통과 전엔 호출 안 됨.
 
-const H = vi.hoisted(() => ({ tenantId: "tenant-1" as string | null, hasCardDeckV3: false }));
+const H = vi.hoisted(() => ({
+  tenantId: "tenant-1" as string | null,
+  hasCardDeckV3: false,
+  BlockError: class CardDeckV3PublishBlockedError extends Error {},
+}));
 
 vi.mock("@/lib/tenant-auth", () => ({
   effectiveTenantId: vi.fn(async () => H.tenantId),
@@ -17,12 +21,12 @@ vi.mock("@/lib/db", () => ({
 }));
 
 vi.mock("@/lib/studio/card-deck-v3-publish-gate", () => ({
-  draftHasCardDeckV3: vi.fn(async () => H.hasCardDeckV3),
-  cardDeckV3PublishBlockedResponse: () => Response.json({
-    ok: false,
-    code: "CARD_DECK_V3_PUBLISH_NOT_READY",
-    error: "자유 배치 결과물 만들기는 다음 업데이트에서 열립니다.",
-  }, { status: 409 }),
+  CardDeckV3PublishBlockedError: H.BlockError,
+  prepareDraftCardDeckV3ForPublish: vi.fn(async () => {
+    if (H.hasCardDeckV3) throw new H.BlockError("blocked-v3");
+    return null;
+  }),
+  cardDeckV3PublishBlockedErrorResponse: () => Response.json({ ok: false, code: "CARD_DECK_V3_PUBLISH_NOT_READY" }, { status: 409 }),
 }));
 
 async function schedule(body: Record<string, unknown>) {

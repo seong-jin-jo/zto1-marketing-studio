@@ -25,8 +25,9 @@ export async function POST(request: Request) {
   if (!Array.isArray(platforms) || platforms.length === 0) {
     return Response.json({ error: "platforms[] required (1개 이상)" }, { status: 400 });
   }
+  let prepared: Awaited<ReturnType<typeof assertDraftCanEnterPublishQueue>> = null;
   try {
-    await assertDraftCanEnterPublishQueue(tenant_id, draft_id);
+    prepared = await assertDraftCanEnterPublishQueue(tenant_id, draft_id);
   } catch (error) {
     if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
     throw error;
@@ -64,6 +65,8 @@ export async function POST(request: Request) {
         draft_id,
         platforms,
         channels,
+        image_url: prepared?.imageUrl ?? null,
+        image_urls: prepared?.imageUrls ?? null,
         status: scheduled_at ? "scheduled" : "approved",
         scheduled_at: scheduled_at ?? null,
       }),

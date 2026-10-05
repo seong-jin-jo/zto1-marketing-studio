@@ -218,6 +218,7 @@ data/
 | `DASHBOARD_PORT` | 대시보드 포트 (기본 3456) |
 | `DASHBOARD_AUTH_TOKEN` | 대시보드 로그인 토큰. 미설정 시 인증 비활성화 |
 | `OSMU_PUBLIC_URL` | 정본 공개 URL. OAuth redirect_uri를 이 값으로 고정(프록시 뒤 내부주소 오염 방지). 미설정 시 x-forwarded-*→request.url fallback |
+| `CARD_DECK_V3_RENDER_ENABLED` / `NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED` | 편집실 v2 S2 공용 카드 렌더 서버/브라우저 플래그. 둘을 같은 값으로 배포하며 불일치·미설정은 발행 차단 |
 | `OAUTH_APP_REVIEW_APPROVED_PROVIDERS` | 앱 심사가 승인된 provider의 쉼표 구분 목록. 예: `threads,instagram`. 여기에 든 provider는 심사 전 초대 안내와 심사 대기 사유를 readiness에서 제거 |
 | `VIRAL_THRESHOLD` | 터진 글 기준 views (기본 500) |
 
@@ -315,4 +316,3 @@ Key routing rules:
 진행 판정 = frontmatter `status` (파일 존재는 완료가 아니다, §7.2.1)
 그로스 진행을 `pipeline-state` 에 적지 마라(§7.9). 게이트 파일 = `growth-state.<스프린트>.md`, 서사 = `session-state.growth.md`.
 이 벤처의 특이점: 4칸 "외주"는 OpenClaw 크론, 즉 제품 자체다(도그푸딩). 캠페인 컨셉 = 메타 데모(회장 2026-09-16).
-

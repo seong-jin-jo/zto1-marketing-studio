@@ -50,6 +50,7 @@ x-dashboard-base: &dashboard-base
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?run compose with --env-file .env.osmu}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?run compose with --env-file .env.osmu}
       NEXT_PUBLIC_GA_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_MEASUREMENT_ID:-}
+      NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED: ${NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED:-0}
       BUILD_COMMIT: ${OSMU_BUILD_COMMIT:-unknown}
   image: openclaw-auto/dashboard:postagi
   network_mode: host
