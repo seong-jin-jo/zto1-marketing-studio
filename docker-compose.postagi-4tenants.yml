@@ -260,8 +260,11 @@ services:
       NODE_ENV: production
     # 헬스체크(L4 재발방지) — hang/DB불가 감지. unhealthy 자동재시작은 autoheal 워치독이 수행
     # (restart:unless-stopped는 프로세스 *종료*만 재시작 → 100% CPU hang엔 무력했음. 2026-06-28 장애).
+    # 검사 명령은 node 로 한다. 대시보드 이미지가 node:20-bookworm-slim 으로 바뀌면서(#105) wget 이
+    # 빠졌고, 그 뒤로 검사가 매번 "wget 없음"으로 실패해 autoheal 이 2분마다 재시작했다(2026-10-05 발견).
+    # node 는 이 이미지에 반드시 있으므로 apt 패키지 구성과 무관하게 검사가 돈다.
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:18789/api/health"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:18789/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
       interval: 30s
       timeout: 8s
       retries: 3
