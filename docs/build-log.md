@@ -1,5 +1,17 @@
 # OSMU build log
 
+## 2026-10-05 23:08 KST · VID-STALE-09 주제 도장 계약의 의미 단위 검증
+
+STAMP: 2026-10-05 23:08 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `studio/page.tsx` 이미지·영상 완료 함수, 단일·related·Studio 전체 Vitest | 고민: 제품 동작은 그대로 두고, 객체 포맷이 아니라 이미지와 영상 각각의 주제 도장 계약을 검사했다.
+
+| 검증 | 결과 |
+|---|---|
+| 단일 회귀 | `npx vitest run tests/studio/stale-video-on-new-topic.regression-1.test.ts`, 13건 PASS |
+| 변경 파일 import 영향 | `npx vitest related <브랜치 변경 파일> --run`, 120파일 1,021건 PASS·5건 환경 skip |
+| Studio 전체 | `npx vitest run tests/studio`, 129파일 918건 PASS·17건 환경 skip |
+| 동작 보존 | 이미지·영상 완료 함수 모두 `topicKey: mediaTopicKey(opts?.topicLabel ?? idea)`와 `setImg/setVid(stamped)` 유지 |
+| 미검증 | 실제 브라우저 화면, 원격 CI, 운영 배포 |
+
 ## 2026-10-05 22:32 KST · 편집실 생성·업로드 원본 계보 복원
 
 STAMP: 2026-10-05 22:32 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: 파일명 생성 코드, related Vitest, contract Vitest | 고민: 과거 UUID 결과는 보수적으로 막고, 생성기·업로드가 실제로 만드는 좁은 파일명만 원본으로 허용했다.

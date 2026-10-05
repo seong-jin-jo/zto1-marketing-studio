@@ -1,3 +1,13 @@
+## 2026-10-05 23:08 KST PR 119 VID-STALE-09 원격 CI 회귀 교정 완료, push 대기
+
+- handoff basis: 회장이 직접 지정한 원격 CI 실패 1건과 교차 리뷰 4차 PASS를 기준으로 삼았다. 제품 동작 변경은 금지했고 push는 컨트롤러 소유다.
+- 근본원인: `VID-STALE-09`가 `topicKey` 계약이 아니라 결과 객체 전체의 한 줄 소스 형태를 고정했다. 영상 자막 계보 필드가 객체에 추가되자 실제 주제 도장 동작이 유지된 상태에서도 실패했다.
+- 수정: 이미지·영상 완료 함수의 범위를 각각 분리해 `stamped` 객체 생성, `topicKey: mediaTopicKey(opts?.topicLabel ?? idea)`, `setImg/setVid(stamped)`를 독립적으로 검사한다. `studio/page.tsx`는 변경하지 않았다.
+- 검증: 단일 회귀 13건 PASS. 브랜치 변경 파일 related 120파일 1,021건 PASS·5건 환경 skip. Studio 전체 129파일 918건 PASS·17건 환경 skip. 실제 브라우저 화면, 원격 CI, 운영 배포는 미검증이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 stage하지 않는다.
+- 커밋: `test(studio): decouple topic stamp contract from formatting`. 최종 SHA는 `git rev-parse HEAD`로 확인한다.
+- 다음 실행: 컨트롤러가 이 브랜치를 push하고 원격 CI를 확인한다. 종료 증거는 원격 브랜치 HEAD와 green CI다.
+
 ## 2026-10-05 22:32 KST 편집실 생성·업로드 원본 계보 3차 교정 완료, push 대기
 
 - handoff basis: 회장이 이 세션에 직접 지정한 Claude Opus 3차 BLOCK과 생성기·업로드 실제 파일명 코드를 정본으로 삼았다. push는 컨트롤러 소유다.
