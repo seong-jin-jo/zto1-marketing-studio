@@ -38,8 +38,32 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     view.rerender(<EditRoom kind="card" lines={["글자 내장 첫 장", "글자 내장 둘째 장"]} onLinesChange={() => {}} cardTextEmbedded cardTextSourceRecoverable onStartCardDeckV3={onStart} />);
     expect(screen.getByRole("button", { name: "자유 배치로 편집" })).toBeEnabled();
 
-    view.rerender(<EditRoom kind="card" lines={["카톡 카드"]} onLinesChange={() => {}} cardDeck={chatBubbleDeck as CardDeck} onCardDeckChange={() => {}} onStartCardDeckV3={onStart} />);
-    expect(screen.getByRole("button", { name: "자유 배치로 편집" })).toBeEnabled();
+  });
+
+  it("S2-R2-M1 flag off면 plain·AI·말풍선 카드에 v3 진입 버튼을 만들지 않는다", () => {
+    const view = render(<EditRoom kind="card" lines={["plain 카드"]} onLinesChange={() => {}} />);
+    expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
+
+    view.rerender(<EditRoom kind="card" lines={["AI 카드"]} onLinesChange={() => {}} cardTextEmbedded cardTextSourceRecoverable />);
+    expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
+
+    view.rerender(<EditRoom kind="card" lines={["말풍선 카드"]} onLinesChange={() => {}} cardDeck={chatBubbleDeck as CardDeck} onCardDeckChange={() => {}} />);
+    expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
+  });
+
+  it("S2-R2-M2 말풍선 카드는 flag on이어도 무손실 이관 전까지 진입을 막고 사유를 보여준다", () => {
+    const onStart = vi.fn();
+    render(<EditRoom
+      kind="card"
+      lines={["말풍선 카드"]}
+      onLinesChange={() => {}}
+      cardDeck={chatBubbleDeck as CardDeck}
+      onCardDeckChange={() => {}}
+      onStartCardDeckV3={onStart}
+      cardDeckV3EntryBlockedReason="말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어 기본 편집만 지원합니다."
+    />);
+    expect(screen.getByRole("button", { name: "자유 배치로 편집" })).toBeDisabled();
+    expect(screen.getByText("말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어 기본 편집만 지원합니다.")).toBeInTheDocument();
   });
 
   it("S2-A 복구 불가 AI 카드는 버튼을 숨기지 않고 비활성 사유를 보여준다", () => {

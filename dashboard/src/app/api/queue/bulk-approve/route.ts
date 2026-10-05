@@ -6,8 +6,7 @@ import { missingReviewFields, type MissingReviewField } from "@/lib/review-conte
 import {
   assertDraftCanEnterPublishQueue,
   applyPreparedCardDeckV3Images,
-  CardDeckV3PublishBlockedError,
-  cardDeckV3PublishBlockedErrorResponse,
+  cardDeckV3PublishErrorResponse,
 } from "@/lib/studio/card-deck-v3-publish-gate";
 
 interface QueueData { posts: Array<Record<string, unknown>> }
@@ -28,7 +27,8 @@ export async function POST(request: Request) {
       const prepared = await Promise.all(pendingPosts.map((post) => assertDraftCanEnterPublishQueue(__t, post.draftId)));
       pendingPosts.forEach((post, index) => preparedByPostId.set(post.id as string, prepared[index]));
     } catch (error) {
-      if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
+      const response = cardDeckV3PublishErrorResponse(error);
+      if (response) return response;
       throw error;
     }
     let approved = 0;

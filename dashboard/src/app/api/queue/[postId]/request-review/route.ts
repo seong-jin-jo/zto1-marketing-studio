@@ -6,8 +6,7 @@ import { runWithTenant } from "@/lib/tenant-context";
 import {
   assertDraftCanEnterPublishQueue,
   applyPreparedCardDeckV3Images,
-  CardDeckV3PublishBlockedError,
-  cardDeckV3PublishBlockedErrorResponse,
+  cardDeckV3PublishErrorResponse,
 } from "@/lib/studio/card-deck-v3-publish-gate";
 
 interface QueueData { posts: Array<Record<string, unknown>> }
@@ -23,7 +22,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ pos
     try {
       if (currentPost) prepared = await assertDraftCanEnterPublishQueue(tenantId, currentPost.draftId);
     } catch (error) {
-      if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
+      const response = cardDeckV3PublishErrorResponse(error);
+      if (response) return response;
       throw error;
     }
     let transition: ReviewTransitionResult | null = null;

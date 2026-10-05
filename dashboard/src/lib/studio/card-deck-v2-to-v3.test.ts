@@ -73,4 +73,22 @@ describe("S2 기존 카드 무손실 이관", () => {
     expect(migrated.slides[0].id).toBe(longId);
     expect(migrated.slides[1].id).not.toBe(migrated.slides[2].id);
   });
+
+  it("S2-R2-M2 plain 표지 사진은 업로드된 asset id의 사진 요소로 이관한다", () => {
+    const source = {
+      ...base,
+      slides: [
+        { id: "plain-cover", order: 0, role: "cover", cover: { headline: "사진 표지", sub: null }, image_url: null, cover_image_url: "https://example.test/api/images/deliver/signed", position: "top" },
+      ],
+    } as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source, {
+      coverImageAssetIds: { "https://example.test/api/images/deliver/signed": "cover-owned.png" },
+    });
+    expect(migrated.slides[0].elements).toContainEqual(expect.objectContaining({
+      type: "image",
+      asset_id: "cover-owned.png",
+      name: "표지 사진",
+    }));
+    expect(migrated.slides[0].elements.find((element) => element.type === "text")?.z_index).toBeGreaterThan(0);
+  });
 });

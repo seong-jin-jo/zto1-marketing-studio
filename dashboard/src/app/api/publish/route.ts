@@ -38,8 +38,7 @@ import {
 import { PUBLISH_IMAGE_LIMIT, channelImageCapacity } from "@/lib/studio/channel-image-capacity";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
 import {
-  CardDeckV3PublishBlockedError,
-  cardDeckV3PublishBlockedErrorResponse,
+  cardDeckV3PublishErrorResponse,
   prepareDraftCardDeckV3ForPublish,
 } from "@/lib/studio/card-deck-v3-publish-gate";
 import {
@@ -270,7 +269,8 @@ export async function POST(request: Request) {
       image_urls = prepared.imageUrls;
     }
   } catch (error) {
-    if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
+    const response = cardDeckV3PublishErrorResponse(error);
+    if (response) return response;
     throw error;
   }
   const fieldPlatforms = new Set<PublishPlatform>(["threads", "x", "facebook", "instagram", "shorts", "reels", "tiktok"]);

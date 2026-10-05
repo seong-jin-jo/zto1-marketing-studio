@@ -5,8 +5,7 @@
 // OPENCLAW_GATEWAY_URL 미설정 시 503(게이트웨이 미연결). 하드코딩 금지(CLAUDE.md 서비스 중립).
 import {
   assertDraftCanEnterPublishQueue,
-  CardDeckV3PublishBlockedError,
-  cardDeckV3PublishBlockedErrorResponse,
+  cardDeckV3PublishErrorResponse,
 } from "@/lib/studio/card-deck-v3-publish-gate";
 
 interface PromoteBody {
@@ -29,7 +28,8 @@ export async function POST(request: Request) {
   try {
     prepared = await assertDraftCanEnterPublishQueue(tenant_id, draft_id);
   } catch (error) {
-    if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
+    const response = cardDeckV3PublishErrorResponse(error);
+    if (response) return response;
     throw error;
   }
   // 예약 시각은 미래여야 함(과거 거부 — P6 예약 정합).

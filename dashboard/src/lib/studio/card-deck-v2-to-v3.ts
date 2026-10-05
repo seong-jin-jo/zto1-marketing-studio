@@ -4,6 +4,7 @@ import {
   CARD_LOGICAL_WIDTH,
   type CardDeckV3,
   type CardElement,
+  type ImageElement,
   type CardSlideV3,
   type TextElement,
 } from "./card-element-contract";
@@ -124,7 +125,29 @@ function bubbleElements(slide: CardSlide): CardElement[] {
   return elements.map((element, index) => ({ ...element, z_index: index }));
 }
 
-export function migrateCardDeckV2ToV3(source: CardDeck): CardDeckV3 {
+export interface CardDeckV2ToV3Options {
+  coverImageAssetIds?: Readonly<Record<string, string>>;
+}
+
+function plainElements(source: CardDeck, slide: CardSlide, index: number, text: string, options: CardDeckV2ToV3Options): CardElement[] {
+  const elements: CardElement[] = [];
+  if (slide.cover_image_url) {
+    const assetId = options.coverImageAssetIds?.[slide.cover_image_url];
+    if (!assetId) throw new Error("CARD_COVER_IMAGE_ASSET_REQUIRED");
+    const image: ImageElement = {
+      id: safePart(`el_${slide.id}_photo`), type: "image", name: "표지 사진",
+      x: 0, y: 0, width: CARD_LOGICAL_WIDTH, height: CARD_LOGICAL_HEIGHT[source.ratio],
+      rotation: 0, z_index: 0, opacity: 1, locked: false, hidden: false,
+      asset_id: assetId, alt: "표지 사진", decorative: true, fit: "cover",
+      crop: { x: 0, y: 0, width: 1, height: 1 }, corner_radius: 0,
+    };
+    elements.push(image);
+  }
+  if (text.trim()) elements.push({ ...textElement(safePart(`el_${slide.id}_text`), text, index, source.slides.length, slide.position), z_index: elements.length });
+  return elements;
+}
+
+export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3Options = {}): CardDeckV3 {
   const sourceSha256 = sha256Text(canonicalJson(source));
   const deckId = `deck_migrated_${sourceSha256.slice(0, 16)}`;
   const slides: CardSlideV3[] = source.slides.map((slide, index) => {
@@ -138,9 +161,7 @@ export function migrateCardDeckV2ToV3(source: CardDeck): CardDeckV3 {
       base: isChat
         ? { kind: "chat_bubble", cover: slide.cover ? structuredClone(slide.cover) : null, bubbles: structuredClone(slide.bubbles ?? []) }
         : { kind: "plain", lines: text ? [text] : [] },
-      elements: text.trim()
-        ? isChat ? bubbleElements(slide) : [textElement(safePart(`el_${slide.id}_text`), text, index, source.slides.length, slide.position)]
-        : [],
+      elements: isChat ? bubbleElements(slide) : plainElements(source, slide, index, text, options),
     };
   });
   return {

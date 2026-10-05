@@ -2276,6 +2276,11 @@ export function EditRoom({
                   {onStartCardDeckV3 ? (
                     <div className="mb-stack border-b border-border pb-stack">
                       <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3} disabled={Boolean(cardDeckV3EntryBlockedReason)}>자유 배치로 편집</Button>
+                      {cardDeckV3EntryBlockedReason ? (
+                        <p className="mt-stack-tight text-caption text-warning" role="status" data-card-deck-v3-entry-blocked>
+                          {cardDeckV3EntryBlockedReason}
+                        </p>
+                      ) : null}
                     </div>
                   ) : null}
                   <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-card-deck-editor-note>

@@ -3,7 +3,7 @@ import { runWithTenant } from "@/lib/tenant-context";
 import { addQueuePost, QueueInputError } from "@/lib/queue-add";
 import { EditorContractError, handoffQueueInput } from "@/lib/studio/editor-handoff";
 import { loadEditorHandoff } from "@/lib/studio/editor-handoff-store";
-import { CardDeckV3PublishBlockedError, cardDeckV3PublishBlockedErrorResponse } from "@/lib/studio/card-deck-v3-publish-gate";
+import { cardDeckV3PublishErrorResponse } from "@/lib/studio/card-deck-v3-publish-gate";
 
 export async function POST(
   request: Request,
@@ -20,7 +20,8 @@ export async function POST(
     const result = await runWithTenant(tenantId, () => addQueuePost(tenantId, input));
     return Response.json({ ok: true, draft_id: draftId, ...result }, { status: result.reused ? 200 : 201 });
   } catch (error) {
-    if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
+    const response = cardDeckV3PublishErrorResponse(error);
+    if (response) return response;
     if (error instanceof EditorContractError) {
       return Response.json({ error: error.message, code: error.code }, { status: error.status });
     }

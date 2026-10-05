@@ -12,10 +12,10 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     const review = read("src/app/api/queue/[postId]/request-review/route.ts");
     expect(review).toContain("assertDraftCanEnterPublishQueue");
     expect(review).toContain("applyPreparedCardDeckV3Images(post, prepared)");
-    expect(review).toContain("cardDeckV3PublishBlockedErrorResponse");
+    expect(review).toContain("cardDeckV3PublishErrorResponse(error)");
     const queueRoute = read("src/app/api/queue/add/route.ts");
     expect(queueRoute).toContain("addQueuePost");
-    expect(queueRoute).toContain("cardDeckV3PublishBlockedErrorResponse");
+    expect(queueRoute).toContain("cardDeckV3PublishErrorResponse(error)");
     expect(read("src/lib/queue-add.ts")).toContain("assertDraftCanEnterPublishQueue");
   });
 
@@ -114,9 +114,29 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(source).toContain('cardDeckV3DetailStatusRef.current = "loading"');
     expect(source).toContain('cardDeckV3DetailStatusRef.current = "error"');
     expect(source).toContain("if (rejectWhileCardDeckV3DetailPending()) return;");
-    expect(source).toContain("cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines))}");
+    expect(source).toContain("cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck?.template === \"chat_bubble\"");
     expect(source).toContain("disabled={cardDeckV3PublishBlocked");
     expect(source).toContain("onRetryCardDeckV3Detail={cardDeckV3DetailStatus === \"error\" ? retryCardDeckV3Detail : undefined}");
     expect(source).toContain("void loadDraftDetail(linkedDraft)");
+  });
+
+  it("S2-R2-M1 렌더 flag off면 v2·AI 카드의 v3 변환 진입점을 만들지 않는다", () => {
+    const source = read("src/app/studio/page.tsx");
+    expect(source).toContain("if (!CARD_DECK_V3_RENDER_ENABLED) return;");
+    expect(source).toContain("onStartCardDeckV3={CARD_DECK_V3_RENDER_ENABLED ? startCardDeckV3 : undefined}");
+  });
+
+  it("S2-R2-M3 발행·예약·큐 경계는 렌더 실패를 공통 구조화 응답으로 변환한다", () => {
+    const routes = [
+      "src/app/api/publish/route.ts",
+      "src/app/api/schedule/route.ts",
+      "src/app/api/queue/add/route.ts",
+      "src/app/api/queue/promote/route.ts",
+      "src/app/api/queue/[postId]/request-review/route.ts",
+      "src/app/api/queue/[postId]/approve/route.ts",
+      "src/app/api/queue/bulk-approve/route.ts",
+      "src/app/api/studio/drafts/[draftId]/enqueue/route.ts",
+    ];
+    for (const route of routes) expect(read(route)).toContain("cardDeckV3PublishErrorResponse(error)");
   });
 });

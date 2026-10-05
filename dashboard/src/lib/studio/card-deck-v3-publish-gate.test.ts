@@ -96,23 +96,42 @@ describe("S2-B 자유 배치 발행 준비", () => {
     vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "1");
     H.payload = { cardDeckV3: deck };
     H.updateSucceeds = false;
-    const { assertDraftCanEnterPublishQueue } = await import("./card-deck-v3-publish-gate");
-    await expect(assertDraftCanEnterPublishQueue(
+    const { assertDraftCanEnterPublishQueue, CardDeckV3RenderError } = await import("./card-deck-v3-publish-gate");
+    const error = await assertDraftCanEnterPublishQueue(
       "11111111-1111-1111-1111-111111111111",
       "22222222-2222-2222-2222-222222222222",
-    )).rejects.toThrow("CARD_RENDER_STALE_DECK");
+    ).catch((caught) => caught);
+    expect(error).toBeInstanceOf(CardDeckV3RenderError);
+    expect((error as InstanceType<typeof CardDeckV3RenderError>).code).toBe("CARD_RENDER_STALE_DECK");
   });
 
   it("S2-B 경합: 결정적 객체 일부를 만든 뒤 실패해도 다른 인스턴스가 공유할 객체를 삭제하지 않는다", async () => {
     vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "1");
     H.payload = { cardDeckV3: deck };
     H.failRenderAt = 1;
-    const { assertDraftCanEnterPublishQueue } = await import("./card-deck-v3-publish-gate");
-    await expect(assertDraftCanEnterPublishQueue(
+    const { assertDraftCanEnterPublishQueue, CardDeckV3RenderError } = await import("./card-deck-v3-publish-gate");
+    const error = await assertDraftCanEnterPublishQueue(
       "11111111-1111-1111-1111-111111111111",
       "22222222-2222-2222-2222-222222222222",
-    )).rejects.toThrow("render failed");
+    ).catch((caught) => caught);
+    expect(error).toBeInstanceOf(CardDeckV3RenderError);
+    expect((error as InstanceType<typeof CardDeckV3RenderError>).code).toBe("CARD_RENDER_FAILED");
     expect(H.puts).toHaveLength(1);
     expect(H.deletes).toHaveLength(0);
+  });
+
+  it.each([
+    ["FONT_LOAD_FAILED", 503],
+    ["CARD_ASSET_INVALID", 422],
+    ["CARD_RENDER_PUBLIC_URL_MISSING", 503],
+    ["CARD_RENDER_STALE_DECK", 422],
+    ["CARD_RENDER_FAILED", 503],
+  ])("S2-R2-M3 %s를 코드와 한국어 사유가 있는 %i 응답으로 바꾼다", async (code, status) => {
+    const { CardDeckV3RenderError, cardDeckV3PublishErrorResponse } = await import("./card-deck-v3-publish-gate");
+    const response = cardDeckV3PublishErrorResponse(new CardDeckV3RenderError(code, status));
+    expect(response?.status).toBe(status);
+    const body = await response?.json() as { code?: string; error?: string };
+    expect(body.code).toBe(code);
+    expect(body.error).toMatch(/[가-힣]/);
   });
 });

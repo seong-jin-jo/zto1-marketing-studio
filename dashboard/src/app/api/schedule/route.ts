@@ -2,8 +2,7 @@ import { withTenant } from "@/lib/db";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { channelAccountBelongsToProvider } from "@/lib/channel-accounts";
 import {
-  CardDeckV3PublishBlockedError,
-  cardDeckV3PublishBlockedErrorResponse,
+  cardDeckV3PublishErrorResponse,
   prepareDraftCardDeckV3ForPublish,
 } from "@/lib/studio/card-deck-v3-publish-gate";
 
@@ -100,7 +99,8 @@ export async function POST(request: Request) {
     const prepared = await prepareDraftCardDeckV3ForPublish(tenantId, draftId);
     if (prepared) payload = { ...payload, imageUrl: prepared.imageUrl, imageUrls: prepared.imageUrls };
   } catch (error) {
-    if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
+    const response = cardDeckV3PublishErrorResponse(error);
+    if (response) return response;
     throw error;
   }
   // 단일 플랫폼 예약이면 schedules.account_id 컬럼(감사/조인용)도 함께 채운다 — 여러 플랫폼이면

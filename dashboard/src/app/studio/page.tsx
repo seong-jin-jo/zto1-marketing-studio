@@ -4209,8 +4209,11 @@ export default function StudioPage() {
   }
 
   async function startCardDeckV3() {
+    if (!CARD_DECK_V3_RENDER_ENABLED) return;
     if (rejectWhileCardDeckV3DetailPending()) return;
-    const blockedReason = cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines);
+    const blockedReason = cardDeck?.template === "chat_bubble"
+      ? "말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어 기본 편집만 지원합니다."
+      : cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines);
     if (blockedReason) {
       showToast(blockedReason, "error");
       return;
@@ -4223,7 +4226,22 @@ export default function StudioPage() {
     try {
       let nextDeck: CardDeckV3;
       if (cardDeck) {
-        nextDeck = migrateCardDeckV2ToV3(cardDeck);
+        const upload = browserCardUploader(authHeaders());
+        const coverImageAssetIds: Record<string, string> = {};
+        const rollback: Array<() => Promise<void>> = [];
+        try {
+          for (const [index, slide] of cardDeck.slides.entries()) {
+            if (!slide.cover_image_url || coverImageAssetIds[slide.cover_image_url]) continue;
+            const uploaded = await upload(slide.cover_image_url, index);
+            if (typeof uploaded === "string" || !uploaded.filename) throw new Error(`${index + 1}번 표지 사진 파일명을 받지 못했습니다.`);
+            coverImageAssetIds[slide.cover_image_url] = uploaded.filename;
+            if (uploaded.rollback) rollback.push(uploaded.rollback);
+          }
+          nextDeck = migrateCardDeckV2ToV3(cardDeck, { coverImageAssetIds });
+        } catch (error) {
+          await Promise.allSettled(rollback.reverse().map((remove) => remove()));
+          throw error;
+        }
       } else if (img?.textEmbedded === true && img.textSourceRecoverable !== false) {
         const rendered = renderPlainCardDeckIncremental({
           lines: snapshot.editLines.map(() => ""),
@@ -4458,8 +4476,10 @@ export default function StudioPage() {
         onCardDeckChange={onCardDeckChange}
         cardDeckV3={cardDeckV3}
         onCardDeckV3Change={onCardDeckV3Change}
-        onStartCardDeckV3={startCardDeckV3}
-        cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines))}
+        onStartCardDeckV3={CARD_DECK_V3_RENDER_ENABLED ? startCardDeckV3 : undefined}
+        cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck?.template === "chat_bubble"
+          ? "말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어 기본 편집만 지원합니다."
+          : cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines))}
         onRetryCardDeckV3Detail={cardDeckV3DetailStatus === "error" ? retryCardDeckV3Detail : undefined}
         onReturnFromCardDeckV3={() => { void returnFromCardDeckV3(); }}
         videoEdit={videoEdit}
