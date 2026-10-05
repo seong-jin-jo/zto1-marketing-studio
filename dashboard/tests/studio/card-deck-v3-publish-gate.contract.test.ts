@@ -121,12 +121,14 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(source).toContain("void loadDraftDetail(linkedDraft)");
   });
 
-  it("S2-R3-M1 렌더 flag off면 S1 일반 카드만 유지하고 v2·AI 진입은 만들지 않는다", () => {
+  it("S2-R4-M1 렌더 flag off면 S1 일반·plain v2를 유지하고 AI·말풍선 이관은 만들지 않는다", () => {
     const source = read("src/app/studio/page.tsx");
     const feature = read("src/lib/studio/card-deck-v3-render-feature.ts");
     expect(source).not.toContain("if (!CARD_DECK_V3_RENDER_ENABLED) return;");
     expect(source).toContain("cardDeckV3EntryEnabled(CARD_DECK_V3_RENDER_ENABLED");
-    expect(feature).toContain("return !source.hasCardDeckV2 && !source.textEmbedded;");
+    expect(source).toContain("cardDeckTemplate: cardDeck?.template ?? null");
+    expect(source).toContain("if (cardDeck && CARD_DECK_V3_RENDER_ENABLED) {");
+    expect(feature).toContain('return source.cardDeckTemplate === "plain";');
   });
 
   it("S2-R2-M3 발행·예약·큐 경계는 렌더 실패를 공통 구조화 응답으로 변환한다", () => {
