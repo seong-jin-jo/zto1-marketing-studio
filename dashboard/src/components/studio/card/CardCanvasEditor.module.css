@@ -26,6 +26,7 @@
 }
 
 .floatingToolbar { position: relative; z-index: 300; }
+.toolbarSlot[data-placeholder="true"] { visibility: hidden; pointer-events: none; }
 .toolbarDivider { align-self: stretch; width: 1px; background: var(--border); }
 .fileInput { display: none; }
 .error { color: var(--danger); font-size: var(--font-body-size); }
