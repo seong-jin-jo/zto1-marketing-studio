@@ -103,6 +103,10 @@ vi.mock("@/lib/db", () => ({
       if (query.includes("INSERT INTO published_posts") && H.publicationRecordError) {
         return Promise.reject(H.publicationRecordError);
       }
+      // S2 발행 전처리는 초안에 cardDeckV3가 있는지 같은 tenant 트랜잭션에서 먼저 읽는다.
+      // 이 분기 검증의 기본 초안은 v3 카드가 아니므로 빈 조회 결과를 돌려주고,
+      // published_posts 기록 횟수에 이 읽기 쿼리를 섞지 않는다.
+      if (query.includes("SELECT payload FROM drafts")) return Promise.resolve([]);
       if (query.includes("UPDATE published_posts") && query.includes("SET external_id")) {
         if (H.publicationRecordError) return Promise.reject(H.publicationRecordError);
         const reservation = H.reservation!;

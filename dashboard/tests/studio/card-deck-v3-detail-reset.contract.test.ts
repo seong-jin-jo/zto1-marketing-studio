@@ -24,6 +24,6 @@ describe("S1-R8 자유 배치 상세 상태 초기화", () => {
     expect(chooseCandidate, "후보 선택 경로가 남은 loading/error를 해제하지 않는다").toMatch(resetSequence);
 
     expect(pageSource).toContain('const cardDeckV3HydrationBlockedReason = cardDeckV3DetailBlockedReason(cardDeckV3DetailStatus)');
-    expect(pageSource).toContain('publishBlockedReason={cardDeckV3 ? CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE : cardDeckV3HydrationBlockedReason}');
+    expect(pageSource).toContain('publishBlockedReason={cardDeckV3 && !CARD_DECK_V3_RENDER_ENABLED ? CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE : cardDeckV3HydrationBlockedReason}');
   });
 });

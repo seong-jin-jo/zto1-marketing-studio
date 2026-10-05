@@ -74,10 +74,9 @@ export async function addQueuePost(
 ): Promise<{ post: QueuePost; reused: boolean }> {
   const text = input.text.trim();
   if (!text) throw new QueueInputError("text required");
-  await assertDraftCanEnterPublishQueue(tenantId, input.draftId);
-
-  const imageUrls = Array.isArray(input.imageUrls) ? input.imageUrls : null;
   const idempotencyKey = input.idempotencyKey?.trim() || undefined;
+  const prepared = await assertDraftCanEnterPublishQueue(tenantId, input.draftId);
+  const imageUrls = prepared?.imageUrls ?? (Array.isArray(input.imageUrls) ? input.imageUrls : null);
   let selected: QueuePost | null = null;
   let reused = false;
 
@@ -87,7 +86,11 @@ export async function addQueuePost(
       if (idempotencyKey) {
         const existing = queue.posts.find((post) => post.idempotencyKey === idempotencyKey);
         if (existing) {
-          selected = existing;
+          const refreshed = prepared
+            ? { ...existing, imageUrl: prepared.imageUrl, imageUrls: prepared.imageUrls }
+            : existing;
+          if (prepared) queue.posts = queue.posts.map((post) => post.id === existing.id ? refreshed : post);
+          selected = refreshed;
           reused = true;
           return queue;
         }
@@ -113,7 +116,7 @@ export async function addQueuePost(
           : input.sourceContext?.type === "studio_handoff"
             ? "studio-handoff"
             : "manual",
-        imageUrl: input.imageUrl || imageUrls?.[0] || null,
+        imageUrl: prepared?.imageUrl || input.imageUrl || imageUrls?.[0] || null,
         imageUrls,
         cardBatchId: input.cardBatchId || null,
         videoFilename: input.videoFilename || null,

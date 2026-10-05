@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { Img } from "remotion";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import type { CardElement, TextElement } from "@/lib/studio/card-element-contract";
 import { cardElementStyle, visibleCardElements, type CardSlideRenderModel } from "@/lib/studio/card-render-model";
@@ -19,7 +20,7 @@ function BuiltinAsset({ element }: { element: CardElement }) {
   return <span className={styles.imagePlaceholder} aria-hidden="true">사진</span>;
 }
 
-function ElementContent({ element, model }: { element: CardElement; model: CardSlideRenderModel }) {
+function ElementContent({ element, model, renderMode }: { element: CardElement; model: CardSlideRenderModel; renderMode: CardSlideSceneProps["renderMode"] }) {
   if (element.type === "text") {
     const style = {
       "--card-text-size": `${element.style.font_size / model.logicalWidth * 100}cqw`,
@@ -43,6 +44,7 @@ function ElementContent({ element, model }: { element: CardElement; model: CardS
   }
   const src = model.assetUrls[element.asset_id];
   if (!src || element.asset_id.startsWith("builtin:")) return <BuiltinAsset element={element} />;
+  if (renderMode === "export") return <Img className={styles.media} src={src} alt={element.alt} />;
   return <DeliveredMedia className={styles.media} src={src} type="image" alt={element.alt} draggable={false} />;
 }
 
@@ -58,13 +60,15 @@ export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
   const elements = visibleCardElements(model);
   return (
     <article className={styles.scene} style={sceneStyle} data-card-slide-scene data-render-mode={renderMode} aria-label={`카드 ${model.slide.order + 1}장`}>
-      {backgroundUrl ? <DeliveredMedia className={styles.backgroundImage} src={backgroundUrl} type="image" alt="" /> : null}
+      {backgroundUrl ? renderMode === "export"
+        ? <Img className={styles.backgroundImage} src={backgroundUrl} alt="" />
+        : <DeliveredMedia className={styles.backgroundImage} src={backgroundUrl} type="image" alt="" /> : null}
       {elements.length === 0 && model.slide.base.kind === "plain" ? (
         <div className={styles.baseFallback}>{model.slide.base.lines.join("\n")}</div>
       ) : null}
       {elements.map((element) => (
         <div key={element.id} className={styles.element} style={cardElementStyle(element, model) as CSSProperties} data-card-element={element.id} data-card-element-type={element.type}>
-          <ElementContent element={element} model={model} />
+          <ElementContent element={element} model={model} renderMode={renderMode} />
         </div>
       ))}
     </article>

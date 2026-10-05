@@ -131,6 +131,16 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect(current.slides[0].elements[0]).toMatchObject({ height: 4, rotation: 17 });
   });
 
+  it("S2-C-DIRECT-EDIT-01 실제 포인터 두 번째 클릭에서도 이동보다 직접 편집을 우선한다", () => {
+    const current = deck();
+    render(<CardCanvasEditor deck={current} onDeckChange={() => {}} />);
+    const selection = screen.getByLabelText("제목 요소");
+    fireEvent.pointerDown(selection, { pointerId: 7 });
+    fireEvent.pointerUp(window, { pointerId: 7 });
+    fireEvent.pointerDown(selection, { pointerId: 8 });
+    expect(screen.getByLabelText("글 내용 직접 편집")).toBeInTheDocument();
+  });
+
   it("S1-R5-DIRECT-EDIT-02 직접 편집을 짧게 멈추면 저장값을 확정하되 실행 취소 이력은 한 칸만 쓴다", async () => {
     let current = deck();
     const onChange = (next: CardDeckV3) => { current = next; };

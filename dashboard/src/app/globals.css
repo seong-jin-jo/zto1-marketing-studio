@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Pretendard Variable";
+  src: url("/fonts/PretendardVariable.woff2") format("woff2-variations");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 /* ─────────────────────────────────────────────────────────────
    테마 토큰 (라이트 기본 + 다크 토글). 도박틱 퍼플→핑크 제거, 신뢰형 플랫 블루 액센트.
    Linear/shadcn/Vercel 라이트·다크 벤치마크. <html data-theme="dark"> 로 전환.

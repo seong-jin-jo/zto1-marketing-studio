@@ -6,17 +6,17 @@ const read = (relative: string) => fs.readFileSync(path.join(process.cwd(), rela
 
 describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
   it("실발행, 큐 생성, 기존 큐 검토 요청이 모두 같은 서버 안전문을 지난다", () => {
-    for (const file of [
-      "src/app/api/publish/route.ts",
-      "src/app/api/queue/[postId]/request-review/route.ts",
-    ]) {
-      const source = read(file);
-      expect(source).toContain("draftHasCardDeckV3");
-      expect(source).toContain("cardDeckV3PublishBlockedResponse");
-    }
+    const publish = read("src/app/api/publish/route.ts");
+    expect(publish).toContain("prepareDraftCardDeckV3ForPublish");
+    expect(publish).toContain("prepared.imageUrls");
+    const review = read("src/app/api/queue/[postId]/request-review/route.ts");
+    expect(review).toContain('await import("@/lib/studio/card-deck-v3-publish-gate")');
+    expect(review).toContain("publishGate.assertDraftCanEnterPublishQueue");
+    expect(review).toContain("publishGate?.applyPreparedCardDeckV3Images(post, prepared)");
+    expect(review).toContain("publishGate.cardDeckV3PublishErrorResponse(error)");
     const queueRoute = read("src/app/api/queue/add/route.ts");
     expect(queueRoute).toContain("addQueuePost");
-    expect(queueRoute).toContain("cardDeckV3PublishBlockedErrorResponse");
+    expect(queueRoute).toContain("cardDeckV3PublishErrorResponse(error)");
     expect(read("src/lib/queue-add.ts")).toContain("assertDraftCanEnterPublishQueue");
   });
 
@@ -24,10 +24,11 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     const register = read("src/app/api/schedule/route.ts");
     const execute = read("src/app/api/schedule/publish-due/route.ts");
     const studio = read("src/app/studio/page.tsx");
-    expect(register).toContain("draftHasCardDeckV3");
+    expect(register).toContain("prepareDraftCardDeckV3ForPublish");
+    expect(register).toContain("prepared.imageUrls");
     expect(execute).toContain("payloadHasCardDeckV3");
     expect(execute).toContain('status: "blocked"');
-    expect(studio).toContain("showSchedule && activeWorkspace && !cardDeckV3");
+    expect(studio).toContain("showSchedule && activeWorkspace && !cardDeckV3PublishBlocked");
     expect(studio).toContain("대기 중인 예약이 있습니다");
     expect(studio).toContain("자동 재개되지 않으므로 다시 예약해야 합니다");
     expect(read("db/schema.sql")).toContain("scheduled | processing | blocked | published");
@@ -53,6 +54,7 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(routeFiles.sort()).toEqual([
       "src/app/api/queue/add/route.ts",
       "src/app/api/queue/[postId]/approve/route.ts",
+      "src/app/api/queue/[postId]/request-review/route.ts",
       "src/app/api/queue/bulk-approve/route.ts",
       "src/app/api/queue/promote/route.ts",
       "src/app/api/studio/commands/route.ts",
@@ -67,7 +69,9 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(read("src/app/api/studio/commands/route.ts")).toContain("enqueueDraft");
     expect(read("src/app/api/queue/promote/route.ts")).toContain("assertDraftCanEnterPublishQueue");
     expect(read("src/app/api/queue/[postId]/approve/route.ts")).toContain("assertDraftCanEnterPublishQueue");
+    expect(read("src/app/api/queue/[postId]/approve/route.ts")).toContain("applyPreparedCardDeckV3Images(post, prepared)");
     expect(read("src/app/api/queue/bulk-approve/route.ts")).toContain("assertDraftCanEnterPublishQueue");
+    expect(read("src/app/api/queue/bulk-approve/route.ts")).toContain("applyPreparedCardDeckV3Images(post, preparedByPostId.get(post.id as string) ?? null)");
     expect(read("src/app/api/suggestions/enqueue/route.ts")).toContain("addQueuePost");
   });
 
@@ -111,9 +115,33 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(source).toContain('cardDeckV3DetailStatusRef.current = "loading"');
     expect(source).toContain('cardDeckV3DetailStatusRef.current = "error"');
     expect(source).toContain("if (rejectWhileCardDeckV3DetailPending()) return;");
-    expect(source).toContain("cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? plainCardDeckV3EntryBlockReason(resolvedEditLines)}");
+    expect(source).toContain("cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck?.template === \"chat_bubble\"");
     expect(source).toContain("disabled={cardDeckV3PublishBlocked");
     expect(source).toContain("onRetryCardDeckV3Detail={cardDeckV3DetailStatus === \"error\" ? retryCardDeckV3Detail : undefined}");
     expect(source).toContain("void loadDraftDetail(linkedDraft)");
+  });
+
+  it("S2-R4-M1 렌더 flag off면 S1 일반·plain v2를 유지하고 AI·말풍선 이관은 만들지 않는다", () => {
+    const source = read("src/app/studio/page.tsx");
+    const feature = read("src/lib/studio/card-deck-v3-render-feature.ts");
+    expect(source).not.toContain("if (!CARD_DECK_V3_RENDER_ENABLED) return;");
+    expect(source).toContain("cardDeckV3EntryEnabled(CARD_DECK_V3_RENDER_ENABLED");
+    expect(source).toContain("cardDeckTemplate: cardDeck?.template ?? null");
+    expect(source).toContain("if (cardDeck && CARD_DECK_V3_RENDER_ENABLED) {");
+    expect(feature).toContain('return source.cardDeckTemplate === "plain";');
+  });
+
+  it("S2-R2-M3 발행·예약·큐 경계는 렌더 실패를 공통 구조화 응답으로 변환한다", () => {
+    const routes = [
+      "src/app/api/publish/route.ts",
+      "src/app/api/schedule/route.ts",
+      "src/app/api/queue/add/route.ts",
+      "src/app/api/queue/promote/route.ts",
+      "src/app/api/queue/[postId]/request-review/route.ts",
+      "src/app/api/queue/[postId]/approve/route.ts",
+      "src/app/api/queue/bulk-approve/route.ts",
+      "src/app/api/studio/drafts/[draftId]/enqueue/route.ts",
+    ];
+    for (const route of routes) expect(read(route)).toContain("cardDeckV3PublishErrorResponse(error)");
   });
 });

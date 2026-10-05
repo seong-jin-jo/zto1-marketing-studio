@@ -5,8 +5,8 @@ import { mirrorQueuePost } from "@/lib/queue-store";
 import { missingReviewFields, type MissingReviewField } from "@/lib/review-content";
 import {
   assertDraftCanEnterPublishQueue,
-  CardDeckV3PublishBlockedError,
-  cardDeckV3PublishBlockedErrorResponse,
+  applyPreparedCardDeckV3Images,
+  cardDeckV3PublishErrorResponse,
 } from "@/lib/studio/card-deck-v3-publish-gate";
 
 interface QueueData { posts: Array<Record<string, unknown>> }
@@ -19,10 +19,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ pos
     const data = await request.json();
     const queuePath = dataPath("queue.json");
     const pendingPost = readJson<QueueData>(queuePath)?.posts?.find((post) => post.id === postId);
+    let prepared = null;
     try {
-      await assertDraftCanEnterPublishQueue(__t, pendingPost?.draftId);
+      prepared = await assertDraftCanEnterPublishQueue(__t, pendingPost?.draftId);
     } catch (error) {
-      if (error instanceof CardDeckV3PublishBlockedError) return cardDeckV3PublishBlockedErrorResponse(error);
+      const response = cardDeckV3PublishErrorResponse(error);
+      if (response) return response;
       throw error;
     }
     let found: Record<string, unknown> | null = null;
@@ -30,6 +32,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pos
     await mutateJson<QueueData>(queuePath, (queue) => {
       for (const post of queue.posts || []) {
         if (post.id === postId) {
+          applyPreparedCardDeckV3Images(post, prepared);
           const missingFields = missingReviewFields(post);
           if (missingFields.length > 0) {
             invalidFields = missingFields;

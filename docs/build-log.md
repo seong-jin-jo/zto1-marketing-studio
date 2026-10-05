@@ -78,6 +78,25 @@ STAMP: 2026-10-05 19:37 KST | model: gpt-6.1-sol/Codex | agent: code-builder | s
 | 로컬 미검증 | ffmpeg drawtext 미지원으로 실제 글자 픽셀 합성은 CI에서 확인 필요 |
 
 개발 서버와 보조 snapshot 서버는 검사 뒤 모두 종료했다. 원격 CI와 운영 배포는 아직 실행하지 않았다.
+## 2026-10-05 22:15 KST · 편집실 v2 S2 무손실 이관·공용 렌더
+
+STAMP: 2026-10-05 22:15 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: S2 수용 기준, 변경 import 테스트, 전체 contract, 로컬 Chromium·Remotion 실측 | 고민: v2 롤백과 S1 회귀를 보존하면서 v3 편집·발행 렌더를 하나로 통합했다.
+
+| 검증 | 결과 |
+|---|---|
+| `npx vitest related <S2 변경 파일> --run` | 69파일 491건 PASS, 2건 PostgreSQL 환경 전용 skip, 123.63초 |
+| `npx vitest run contract` | 105파일 589건 PASS, 118.90초 |
+| TypeScript | `npm run typecheck:ci` 종료 코드 0 |
+| S2 실제 Chromium | 데이터 3장, 1440·390 글 직접 수정·끌기 PASS, 콘솔 오류 0 |
+| 화면·발행 PNG 픽셀 정합 | 1080×1350, 변경 2화소, 비율 0.0000013717421124828533, 최대 채널 차이 9 |
+| S1 카드 회귀 | `verify-card-freeform-s1-e2e.mjs` PASS, 콘솔 오류 0 |
+| 9폭 모바일 | 360~1000 전부 PASS, 본문 16px, 13px 미만 0, 44px 미만 0, 누림 100%, 넘침 0 |
+| 산출물 검사 | pipeline artifact lint 종료 0, 기존 핀 위생 경고 28건 유지 |
+| 미검증 | 호스트 부하 제약으로 로컬 전체 Next build 미실행, 원격 CI·운영 배포 미검증 |
+
+`origin/main` 최신 PR 117·118을 merge했고, 충돌 없이 main의 Node 헬스체크와 성과실·TikTok 수정을 유지했다.
+적대적 리뷰가 발견한 최신 덱 경합·asset 소유권·ID 손실·구형 검토 PNG 결함은 `cfab7d95`로 교정했고, 교정 후 위 검증을 전부 재실행했다.
+
 ## 2026-10-05 20:22 KST · TikTok 조회 오류와 발행 실패 분리
 
 STAMP: 2026-10-05 20:22 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: Claude Opus 5.5 BLOCK, 수정 전 회귀 실패 7건, 표적 Vitest 4파일 70건 | 고민: 공급자 조회 오류를 실패로 확정하지 않고 진행 원장과 사용자 안내를 분리했다.

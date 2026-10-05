@@ -3,9 +3,10 @@ import { mirrorQueuePost } from "@/lib/queue-store";
 import { requestReviewTransition, type ReviewTransitionResult } from "@/lib/review-request";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
-import { cardDeckV3PublishBlockedResponse, draftHasCardDeckV3 } from "@/lib/studio/card-deck-v3-publish-gate";
+import type { PreparedCardDeckV3Publish } from "@/lib/studio/card-deck-v3-publish-gate";
 
 interface QueueData { posts: Array<Record<string, unknown>> }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(request: Request, { params }: { params: Promise<{ postId: string }> }) {
   const body = await request.json().catch(() => ({}));
@@ -14,14 +15,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ pos
     const { postId } = await params;
     const current = readJson<QueueData>(dataPath("queue.json")) || { posts: [] };
     const currentPost = current.posts.find((candidate) => candidate.id === postId);
-    if (tenantId && currentPost && await draftHasCardDeckV3(tenantId, currentPost.draftId)) {
-      return cardDeckV3PublishBlockedResponse();
+    let prepared: PreparedCardDeckV3Publish | null = null;
+    let publishGate: typeof import("@/lib/studio/card-deck-v3-publish-gate") | null = null;
+    const draftId = currentPost?.draftId;
+    if (typeof draftId === "string" && UUID_RE.test(draftId)) {
+      publishGate = await import("@/lib/studio/card-deck-v3-publish-gate");
+      try {
+        prepared = await publishGate.assertDraftCanEnterPublishQueue(tenantId, draftId);
+      } catch (error) {
+        const response = publishGate.cardDeckV3PublishErrorResponse(error);
+        if (response) return response;
+        throw error;
+      }
     }
     let transition: ReviewTransitionResult | null = null;
 
     await mutateJson<QueueData>(dataPath("queue.json"), (queue) => {
       const post = (queue.posts || []).find((candidate) => candidate.id === postId);
-      if (post) transition = requestReviewTransition(post, new Date().toISOString());
+      if (post) {
+        publishGate?.applyPreparedCardDeckV3Images(post, prepared);
+        transition = requestReviewTransition(post, new Date().toISOString());
+      }
       return queue;
     }, { posts: [] });
 

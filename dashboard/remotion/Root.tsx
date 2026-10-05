@@ -1,5 +1,5 @@
 import React from "react";
-import { Composition } from "remotion";
+import { Composition, Still } from "remotion";
 import {
   INTRO_OUTRO_COMPS,
   DEFAULT_BRAND_PROPS,
@@ -8,6 +8,22 @@ import {
   COMP_FPS,
   type IntroOutroCompId,
 } from "./IntroOutroComps";
+import { CardSlideComposition } from "./CardSlideComposition";
+import type { CardSlideRenderModel } from "../src/lib/studio/card-render-model";
+
+const defaultCardModel: CardSlideRenderModel = {
+  deckId: "deck_remotion_default",
+  ratio: "4:5",
+  logicalWidth: 1080,
+  logicalHeight: 1350,
+  theme: { background: "#FFF9F0", foreground: "#111111", accent: "#2563EB" },
+  brand: { display_name: "OSMU", handle: null },
+  slide: {
+    id: "slide_remotion_default", order: 0, role: "cover", content_state: "filled",
+    background: { kind: "solid", color: "#FFF9F0" }, base: { kind: "plain", lines: ["OSMU"] }, elements: [],
+  },
+  assetUrls: {},
+};
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -27,6 +43,8 @@ export const RemotionRoot: React.FC = () => {
           />
         );
       })}
+      <Still id="CardSlideComposition-4x5" component={CardSlideComposition} width={1080} height={1350} defaultProps={{ model: defaultCardModel }} />
+      <Still id="CardSlideComposition-1x1" component={CardSlideComposition} width={1080} height={1080} defaultProps={{ model: { ...defaultCardModel, ratio: "1:1", logicalHeight: 1080 } }} />
     </>
   );
 };

@@ -1,3 +1,20 @@
+## 2026-10-06 편집실 v2 S2 교차 리뷰 2차 flag off·렌더 과부하 ❌ NG
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S2-R3-M1 | flag OFF가 운영 S1 일반 카드 자유 배치 진입까지 숨김 | ❌ NG | flag OFF에서 일반 카드 진입 버튼·S1 발행 차단 보존, AI·v2 진입 미노출 테스트 |
+| S2-R3-m1 | 덱 검증·저장·DB 예외 일부가 구조화 응답 밖으로 샘 | ❌ NG | 모든 렌더 경계 오류의 422/503 코드·한국어 사유 테스트 |
+| S2-R3-m2 | 렌더 대기열 상한이 없어 프록시 100초를 넘길 수 있음 | ❌ NG | 대기 초과 시 `CARD_RENDER_BUSY` 503 테스트 |
+| S2-R3-m3 | 브라우저 `cancelRender` 폰트 실패가 `FONT_LOAD_FAILED`로 분류되지 않음 | ❌ NG | 브라우저 폰트 실패 분류 테스트 |
+
+## 2026-10-06 편집실 v2 S2 교차 리뷰 롤백·무손실·오류 응답 ❌ NG
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S2-R2-M1 | 렌더 flag가 꺼져도 말풍선·AI 카드가 v3로 이관되어 기존 발행이 409로 막힘 | ❌ NG | flag OFF에서 S1 진입 규칙과 기존 발행 경로 보존 테스트 |
+| S2-R2-M2 | 말풍선 이관이 모양·강조·리액션·표지 사진을 잃고도 발행 가능 | ❌ NG | 말풍선 진입 차단 사유와 plain 표지 사진 이관 테스트 |
+| S2-R2-M3 | 폰트·자산·공개 URL·구형 덱·Remotion 실패가 코드 없는 500 | ❌ NG | 발행·예약·큐 라우트의 구조화된 422/503 응답 테스트 |
+
 ## 2026-10-05 VID-STALE-09 주제 도장 계약의 소스 형식 결합 ❌ NG → ✅ 로컬 PASS
 
 `studio/page.tsx`의 이미지·영상 완료 경로는 모두 `topicKey: mediaTopicKey(opts?.topicLabel ?? idea)`를 유지했지만, `VID-STALE-09`가 결과 객체 전체를 한 줄 문자열로 고정해 자막 계보 필드 추가 뒤 원격 CI가 실패했다. 구현 동작은 바꾸지 않고 이미지·영상 함수 범위에서 결과 객체 생성, 주제 도장 계산, 상태 반영을 각각 검사하도록 계약 테스트를 고쳤다.
@@ -35,6 +52,21 @@ PR 118의 TikTok 상태 처리와 이 브랜치의 자막 bake lineage가 같은
 | EDITROOM-VIDEO-SUBTITLE-DUP-03 | Higgsfield 영상 요청이 화면 안 가짜 글자·자막·로고 생성을 피하는 기존 이미지 프롬프트 규칙을 재사용 | VIDEO-PROMPT-NO-GLYPH-01 | ✅ 로컬 PASS | 이미지 경로의 `NO_TEXT` 양성 장면 제약을 `buildMotionPrompt`에도 재사용한다. 프롬프트 계약 21건과 전체 contract 103파일 586건 통과. |
 
 2차 BLOCK 종료 증거: `npx vitest related ... --run` 16파일 129건, `npx vitest run contract` 104파일 588건 PASS. 새 GET 계보 경로는 기존 테넌트 격리 공격 스크립트 READ-63에 편입했다. 배포 전 무표식 UUID 파일은 원본과 구운 결과의 파일명 규칙이 같아 역사적 완전 판별이 불가능하며, 화면은 안전하게 DOM 자막을 숨기고 재굽기를 막는다. 원격 CI와 운영 배포는 미검증이다.
+## 2026-10-05 편집실 v2 S2 무손실 이관·공용 렌더 ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 판정 | 근거 파일·실측 |
+|---|---|---|---|
+| S2-AC1 | 중간 빈 장이 있는 plain v2를 v3로 읽고 저장해도 원문·ID·순서·빈 장 위치 보존 | ✅ PASS | `dashboard/src/lib/studio/card-deck-v2-to-v3.test.ts`, `card-deck-v2-to-v3.ts` |
+| S2-AC2 | 강조 세그먼트·사진이 있는 chat_bubble 왕복 변환의 base 의미 구조 동등 | ✅ PASS | `dashboard/src/lib/studio/card-deck-v2-to-v3.test.ts` |
+| S2-AC3 | editor와 Remotion still이 같은 render model·`CardSlideScene`으로 허용치 내 픽셀 일치 | ✅ 관찰됨 | `s2-card-scene-editor.png`, `s2-card-scene-remotion.png`, `s2-freeform-result.json`: 1,458,000화소 중 2화소 차이, 비율 0.0000013717421124828533 |
+| S2-AC4 | Pretendard 파일 누락·hash 불일치를 fallback 없이 거절 | ✅ PASS | `dashboard/src/lib/studio/card-font.test.ts`, `card-font.ts`: `FONT_LOAD_FAILED` |
+| S2-AC5 | feature flag off에서 기존 Canvas PNG 경로로 즉시 롤백 | ✅ PASS | `dashboard/tests/studio/card-remotion-s2.contract.test.ts`, `card-deck-v3-render-feature.test.ts` |
+| S2-A | 복원 가능 AI 카드는 배경·글 요소로 자유 배치 진입, 복원 불가는 사유를 표시한 비활성 단추 | ✅ PASS | `card-element-commands.test.ts`, `card-deck-v3-studio-rooms.integration.test.tsx` |
+| S2-B | flag on은 장별 서버 PNG를 발행·예약·큐 이미지로 사용, off는 409 차단 유지 | ✅ PASS | `dashboard/src/lib/studio/card-deck-v3-publish-gate.test.ts`, `dashboard/tests/studio/card-v3-publish-boundaries.contract.test.ts` |
+| S2-C | AI 카드의 장 위 글 더블클릭 수정·끌기를 1440·390에서 직접 관찰 | ✅ 관찰됨 | `docs/qa/editroom-v2-s2/s2-ai-freeform-1440.png`, `s2-ai-freeform-390.png`, `s2-freeform-result.json`: 두 폭 모두 directEdit·drag true, 콘솔 오류 0 |
+
+최종 검증은 변경 import 관련 69파일 491건 PASS·2건 PostgreSQL 환경 전용 skip, contract 105파일 589건 PASS, `typecheck:ci` PASS다. 데이터 3장이 있는 화면에서 S2·S1 카드 E2E가 모두 통과했고, 360~1000 아홉 폭에서 인체공학 검사가 모두 PASS다. 적대적 리뷰의 최신 덱 경합·asset 소유권·ID 손실·구형 검토 PNG 지적은 `cfab7d95`로 교정했다. 로컬 전체 Next build, 원격 CI, 운영 배포는 미검증이다.
+
 ## 2026-10-05 TikTok 상태 조회 오류와 실제 발행 실패 오판 교차 리뷰 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
@@ -7896,3 +7928,8 @@ SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-is
 | PR94-R3-MAJOR-03 | 읽기 전용 계정 행의 보이는 핸들과 실제 발행 계정을 현재 기본 계정으로 일치 | PR94-R3-ACCOUNT-01 | ❌ NG | 저장된 비기본 계정이 새 기본 계정보다 우선되며 화면에서 바꿀 수 없다. |
 | PR94-R3-MAJOR-04 | 일반 카드 캡처를 일반 카드 기준과 비교하고 말풍선은 별도 기준을 사용 | PR94-R3-VISUAL-01 | ❌ NG | `cardShot`을 만들고 쓰지 않으며 일반 카드 기준을 말풍선 무대와 비교한다. |
 | PR94-R3-CI-01 | CI 전체 스위트의 5개 실패 파일을 현재 v70 계약과 유효한 기존 계약으로 정합 | V65-EDIT-04, PR85-R7, OUTLINE-01 | ❌ NG | 원격 run 36467804880에서 5개 파일 6개 테스트가 실패했다. |
+## 2026-10-05 편집실 v2 S2 공용 카드 렌더·AI 카드 자유 배치 미구현 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-V2-S2-CARD-01 | v2 카드 무손실 이관, 공용 장 렌더, AI 글자 내장 카드 자유 배치, feature flag 기반 서버 PNG 발행을 구현 | S2-AC1~05·S2-A·S2-B | ❌ NG | 착수 실측에서 AI 카드의 진입점과 v3 장면은 `StudioRooms.tsx`의 `!cardTextEmbedded` 조건으로 숨고, `card-deck-v3-publish-gate.ts`는 feature flag 없이 항상 발행을 차단한다. Remotion에는 `CardSlideComposition`과 고정 Pretendard 파일이 없고 v2→v3 결정적 변환도 없다. 회장 지시대로 실패 계약을 먼저 추가한 뒤 구현한다. |

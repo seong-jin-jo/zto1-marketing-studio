@@ -2263,7 +2263,7 @@ export function EditRoom({
               <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
-              {kind === "card" && !cardTextEmbedded && cardDeckV3 && onCardDeckV3Change ? (
+              {kind === "card" && cardDeckV3 && onCardDeckV3Change ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-v3-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                   <div className="mb-stack flex flex-wrap items-center gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption text-muted" role="status" data-card-deck-v3-return-note>
                     <span className="mr-auto">기본 편집으로 돌아가면 자유 배치 진입 직전의 글과 위치를 그대로 복원합니다.</span>
@@ -2273,6 +2273,16 @@ export function EditRoom({
                 </div>
               ) : kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
+                  {onStartCardDeckV3 ? (
+                    <div className="mb-stack border-b border-border pb-stack">
+                      <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3} disabled={Boolean(cardDeckV3EntryBlockedReason)}>자유 배치로 편집</Button>
+                      {cardDeckV3EntryBlockedReason ? (
+                        <p className="mt-stack-tight text-caption text-warning" role="status" data-card-deck-v3-entry-blocked>
+                          {cardDeckV3EntryBlockedReason}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-card-deck-editor-note>
                     말풍선 카드뉴스는 직접 편집이 기본입니다. 여기서 고친 내용은 자동 저장됩니다.
                   </p>
@@ -2280,11 +2290,16 @@ export function EditRoom({
                 </div>
               ) : (
               <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""} ${kind === "video" && onVideoEditChange ? styles.videoDocumentWorkbench : ""} ${kind === "card" ? styles.plainCardWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined} inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
-                {kind === "card" && !cardTextEmbedded && onStartCardDeckV3 ? (
+                {kind === "card" && onStartCardDeckV3 ? (
                   <div className="border-b border-border p-pad-inset">
-                    <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3} disabled={Boolean(cardDeckV3EntryBlockedReason)}>
+                    <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3} disabled={Boolean(cardDeckV3EntryBlockedReason) || (cardTextEmbedded && !cardTextSourceRecoverable)}>
                       자유 배치로 편집
                     </Button>
+                    {cardTextEmbedded && !cardTextSourceRecoverable ? (
+                      <p className="mt-stack-tight text-caption text-warning" role="status" data-card-deck-v3-source-unrecoverable>
+                        이 카드는 그림 안에 글자가 박혀 있어 글자를 따로 움직일 수 없습니다.
+                      </p>
+                    ) : null}
                     {cardDeckV3EntryBlockedReason ? (
                       <div className="mt-stack-tight flex flex-wrap items-center gap-stack-tight text-caption text-warning" role="status" data-card-deck-v3-entry-blocked>
                         <span>{cardDeckV3EntryBlockedReason}</span>

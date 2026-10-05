@@ -3,7 +3,13 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // /api/schedule 검증 분기 (인프라 無, 항상 실행). INSERT/read-back은 DB 필요 → 별도 db-gated.
 // effectiveTenantId를 고정해 라우트 검증 로직만 본다. withTenant는 검증 통과 전엔 호출 안 됨.
 
-const H = vi.hoisted(() => ({ tenantId: "tenant-1" as string | null, hasCardDeckV3: false }));
+const H = vi.hoisted(() => ({
+  tenantId: "tenant-1" as string | null,
+  hasCardDeckV3: false,
+  renderFailure: false,
+  BlockError: class CardDeckV3PublishBlockedError extends Error {},
+  RenderError: class CardDeckV3RenderError extends Error { code = "CARD_RENDER_FAILED"; },
+}));
 
 vi.mock("@/lib/tenant-auth", () => ({
   effectiveTenantId: vi.fn(async () => H.tenantId),
@@ -17,12 +23,17 @@ vi.mock("@/lib/db", () => ({
 }));
 
 vi.mock("@/lib/studio/card-deck-v3-publish-gate", () => ({
-  draftHasCardDeckV3: vi.fn(async () => H.hasCardDeckV3),
-  cardDeckV3PublishBlockedResponse: () => Response.json({
-    ok: false,
-    code: "CARD_DECK_V3_PUBLISH_NOT_READY",
-    error: "자유 배치 결과물 만들기는 다음 업데이트에서 열립니다.",
-  }, { status: 409 }),
+  CardDeckV3PublishBlockedError: H.BlockError,
+  prepareDraftCardDeckV3ForPublish: vi.fn(async () => {
+    if (H.hasCardDeckV3) throw new H.BlockError("blocked-v3");
+    if (H.renderFailure) throw new H.RenderError("render-v3");
+    return null;
+  }),
+  cardDeckV3PublishErrorResponse: (error: unknown) => error instanceof H.BlockError
+    ? Response.json({ ok: false, code: "CARD_DECK_V3_PUBLISH_NOT_READY" }, { status: 409 })
+    : error instanceof H.RenderError
+      ? Response.json({ ok: false, code: error.code, error: "카드 발행 이미지를 만들지 못했습니다." }, { status: 503 })
+      : null,
 }));
 
 async function schedule(body: Record<string, unknown>) {
@@ -40,6 +51,7 @@ async function schedule(body: Record<string, unknown>) {
 beforeEach(() => {
   H.tenantId = "tenant-1";
   H.hasCardDeckV3 = false;
+  H.renderFailure = false;
 });
 
 describe("POST /api/schedule — 검증 분기", () => {
@@ -83,6 +95,17 @@ describe("POST /api/schedule — 검증 분기", () => {
     });
     expect(status).toBe(409);
     expect(body.code).toBe("CARD_DECK_V3_PUBLISH_NOT_READY");
+  });
+
+  it("S2-R2-M3 렌더 실패는 코드와 한국어 사유가 있는 503으로 응답한다", async () => {
+    H.renderFailure = true;
+    const { status, body } = await schedule({
+      draft_id: "22222222-2222-4222-8222-222222222222",
+      platforms: ["x"],
+      scheduled_at: future(),
+    });
+    expect(status).toBe(503);
+    expect(body).toMatchObject({ code: "CARD_RENDER_FAILED", error: expect.stringMatching(/[가-힣]/) });
   });
 });
 

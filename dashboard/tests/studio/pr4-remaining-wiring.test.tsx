@@ -30,9 +30,12 @@ vi.mock("@/lib/studio/card-templates/chat-bubble", async () => {
     ...actual,
     // M4 회귀 재현: 표지(0번 장) 렌더가 항상 던지게 만들어, try/catch 없이 우회했던 옛
     // 코드라면 생성실 useEffect 가 그대로 throw 해 컴포넌트가 언마운트된다.
-    renderChatBubbleSlideToCanvas: vi.fn((input: Parameters<typeof actual.renderChatBubbleSlideToCanvas>[0]) => {
+    renderChatBubbleSlideToCanvas: vi.fn(async (input: Parameters<typeof actual.renderChatBubbleSlideToCanvas>[0]) => {
       if (input.index === 0) throw new actual.ChatBubbleRenderError("1번 장 말풍선이 카드보다 깁니다. 쪼개세요");
-      return actual.renderChatBubbleSlideToCanvas(input);
+      // 이 계약은 장별 실패 격리와 DOM 유지가 대상이다. jsdom에는 Canvas 2D 구현이
+      // 없으므로 나머지 장은 렌더러의 반환 계약인 canvas로 대체해 브라우저 구현 여부가
+      // 실패 격리 검증을 가리지 않게 한다. 실제 캔버스 렌더는 브라우저 E2E가 맡는다.
+      return document.createElement("canvas");
     }),
   };
 });

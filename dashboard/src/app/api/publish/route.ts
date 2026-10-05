@@ -37,7 +37,10 @@ import {
 } from "@/lib/publish";
 import { PUBLISH_IMAGE_LIMIT, channelImageCapacity } from "@/lib/studio/channel-image-capacity";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
-import { cardDeckV3PublishBlockedResponse, draftHasCardDeckV3 } from "@/lib/studio/card-deck-v3-publish-gate";
+import {
+  cardDeckV3PublishErrorResponse,
+  prepareDraftCardDeckV3ForPublish,
+} from "@/lib/studio/card-deck-v3-publish-gate";
 import {
   buildPlatformPublishText,
   validatePlatformPublish,
@@ -229,7 +232,9 @@ const PUBLISH_FAST_PATH_BUDGET_MS = Number(process.env.PUBLISH_FAST_PATH_BUDGET_
 
 export async function POST(request: Request) {
   const __b = await request.json();
-  const { platform, image_url, image_urls, draft_id, account_id } = __b;
+  const { platform, draft_id, account_id } = __b;
+  let image_url = __b.image_url;
+  let image_urls = __b.image_urls;
   const legacyText = typeof __b.text === "string" ? __b.text : "";
   // draft_id가 UUID일 때만 느린 경로를 쓴다 — 느린 경로의 유일한 결과 조회 수단(GET
   // ?draft_id=...)이 UUID draft_id를 요구하기 때문이다. idempotency_key만 쓰는 호출자
@@ -257,7 +262,17 @@ export async function POST(request: Request) {
   if (!tenant_id || !platform) {
     return Response.json({ error: "tenant_id, platform required" }, { status: 400 });
   }
-  if (await draftHasCardDeckV3(tenant_id, draft_id)) return cardDeckV3PublishBlockedResponse();
+  try {
+    const prepared = await prepareDraftCardDeckV3ForPublish(tenant_id, draft_id);
+    if (prepared) {
+      image_url = prepared.imageUrl;
+      image_urls = prepared.imageUrls;
+    }
+  } catch (error) {
+    const response = cardDeckV3PublishErrorResponse(error);
+    if (response) return response;
+    throw error;
+  }
   const fieldPlatforms = new Set<PublishPlatform>(["threads", "x", "facebook", "instagram", "shorts", "reels", "tiktok"]);
   const rawFields = __b.publish_fields;
   if (rawFields !== undefined && (!rawFields || typeof rawFields !== "object" || Array.isArray(rawFields))) {

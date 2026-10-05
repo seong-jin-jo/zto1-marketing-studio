@@ -7,6 +7,7 @@ import { refreshImageDeliveryUrl } from "@/lib/image-token";
 import { SCHEDULABLE_PLATFORMS } from "@/lib/constants";
 import { channelImageCapacity } from "@/lib/studio/channel-image-capacity";
 import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE, payloadHasCardDeckV3 } from "@/lib/studio/card-deck-v3-publish-gate";
+import { cardDeckV3RenderingEnabled } from "@/lib/studio/card-deck-v3-render-feature";
 import { runWithTenant } from "@/lib/tenant-context";
 import { drainQueueMirrorOutbox, listQueueMirrorOutboxTenantIds } from "@/lib/queue-mirror-outbox";
 import { publicationUsageOutbox, recordPublicationEvent, drainPendingPublicationEvents, pendingPublicationUsageTenantIds } from "@/lib/usage-events";
@@ -104,7 +105,7 @@ async function processTenant(tenantId: string, limit: number) {
     const platforms = Array.isArray(row.platforms) ? row.platforms : [];
     const results: PlatformPublishResult[] = [];
 
-    if (payloadHasCardDeckV3(row.draft_payload)) {
+    if (payloadHasCardDeckV3(row.draft_payload) && !cardDeckV3RenderingEnabled()) {
       results.push({ platform: "(blocked)", ok: false, error: CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE });
       await finishSchedule(tenantId, row.id, row.worker_token, "blocked", results);
       schedules.push({ id: row.id, status: "blocked", results });

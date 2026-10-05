@@ -105,10 +105,15 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const textEditFlushRef = useRef<(slideId: string, elementId: string, value: string) => void>(() => {});
   const textEditCommittedRef = useRef(false);
   const textEditLastCommittedValueRef = useRef<string | null>(null);
+  const lastTextPointerDownRef = useRef<{ elementId: string; at: number } | null>(null);
   const workingDeck = previewDeck ?? history.present;
   const activeSlide = workingDeck.slides.find((slide) => slide.id === activeSlideId) ?? workingDeck.slides[0];
   const logicalHeight = workingDeck.ratio === "4:5" ? 1350 : 1080;
   const selected = activeSlide?.elements.find((element) => element.id === selectedId) ?? null;
+  // 첫 클릭 뒤 도구막대가 새로 삽입되면 스테이지가 아래로 밀려 두 번째 클릭 좌표가
+  // 다른 곳을 가리킨다. 선택 전에도 첫 글 요소 크기의 숨은 도구막대를 두어 레이아웃을
+  // 고정하고, 실제 선택 뒤 같은 자리를 활성화한다.
+  const toolbarElement = selected ?? activeSlide?.elements.find((element) => element.type === "text") ?? null;
   const model = useMemo(() => cardSlideRenderModel(workingDeck, activeSlideId, { ...assetUrls, ...localAssetUrls }), [workingDeck, activeSlideId, assetUrls, localAssetUrls]);
 
   useEffect(() => {
@@ -321,8 +326,47 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
           {workingDeck.slides.map((slide) => <Button key={slide.id} size="sm" aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>{slide.order + 1}장</Button>)}
         </nav>
         <div className={styles.stageColumn}>
-          {selected ? <CardElementToolbar element={selected} onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, selected.id, patch))} onGeometryChange={(patch) => apply((current) => setCardElementGeometry(current, activeSlide.id, selected.id, patch))} onLayer={(direction) => apply((current) => moveCardElementLayer(current, activeSlide.id, selected.id, direction))} onDuplicate={() => duplicate(selected.id)} onDelete={() => deleteAndRestoreStageFocus(selected.id)} /> : null}
-          <div ref={stageRef} className={styles.stage} data-card-stage tabIndex={0} aria-label="카드 편집 스테이지" onPointerDown={() => { setSelectedId(null); setEditingTextId(null); }}>
+          {toolbarElement ? (
+            <div className={styles.toolbarSlot} data-placeholder={selected ? "false" : "true"}>
+              <CardElementToolbar
+                element={toolbarElement}
+                onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, toolbarElement.id, patch))}
+                onGeometryChange={(patch) => apply((current) => setCardElementGeometry(current, activeSlide.id, toolbarElement.id, patch))}
+                onLayer={(direction) => apply((current) => moveCardElementLayer(current, activeSlide.id, toolbarElement.id, direction))}
+                onDuplicate={() => duplicate(toolbarElement.id)}
+                onDelete={() => deleteAndRestoreStageFocus(toolbarElement.id)}
+              />
+            </div>
+          ) : null}
+          <div
+            ref={stageRef}
+            className={styles.stage}
+            data-card-stage
+            tabIndex={0}
+            aria-label="카드 편집 스테이지"
+            onPointerDownCapture={(event) => {
+              const target = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-element-selection]") : null;
+              const elementId = target?.dataset.elementSelection;
+              const element = elementId ? activeSlide.elements.find((candidate) => candidate.id === elementId) : null;
+              if (!element || element.type !== "text" || element.locked) {
+                lastTextPointerDownRef.current = null;
+                return;
+              }
+              // selection overlay는 첫 클릭의 선택 상태 변경으로 교체될 수 있다. dblclick을
+              // 자식에게만 걸면 두 번째 click이 새 DOM으로 가며 이벤트가 사라지므로,
+              // 교체되지 않는 stage의 capture 단계에서 같은 요소의 연속 누름을 판정한다.
+              const now = performance.now();
+              const previous = lastTextPointerDownRef.current;
+              lastTextPointerDownRef.current = { elementId: element.id, at: now };
+              if (previous && previous.elementId === element.id && now - previous.at <= 500) {
+                lastTextPointerDownRef.current = null;
+                event.preventDefault();
+                event.stopPropagation();
+                beginTextEdit(element);
+              }
+            }}
+            onPointerDown={() => { setSelectedId(null); setEditingTextId(null); }}
+          >
             <CardSlideScene model={model} renderMode="editor" />
             {activeSlide.elements.filter((element) => !element.hidden).map((element) => (
               <div
@@ -337,6 +381,12 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
                 onFocus={() => setSelectedId(element.id)}
                 onDoubleClick={(event) => {
                   if (element.type !== "text" || element.locked) return;
+                  event.stopPropagation();
+                  beginTextEdit(element);
+                }}
+                onClick={(event) => {
+                  if (event.detail < 2 || element.type !== "text" || element.locked) return;
+                  event.preventDefault();
                   event.stopPropagation();
                   beginTextEdit(element);
                 }}
