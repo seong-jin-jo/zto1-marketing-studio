@@ -49,6 +49,7 @@ import {
   isPlaybackTimeWithinBody,
   playbackTimeFromBodyTime,
 } from "@/lib/studio/video-edit-time-axis";
+import { normalizeSubtitleWindows } from "@/lib/studio/playback-edit-plan";
 
 /** 1초를 몇 px로 그리는지. design-spec-editroom-v70.md §4.4 "1초 ≈ 12px". */
 const PX_PER_SEC = 12;
@@ -90,6 +91,8 @@ export interface VideoEditorProps {
    */
   /** 인트로/아웃트로(Remotion) 삽입 대상 원본 영상 파일명. 2026-10-02 신설(R-27-5). */
   sourceFilename?: string | null;
+  /** 현재 미리보기 파일 자체에 자막·오버레이가 이미 구워졌으면 DOM 글자층을 숨긴다. */
+  previewContainsBakedText?: boolean;
   tenantId?: string;
 }
 
@@ -113,7 +116,7 @@ function videoEditErrorMessage(rule: string): string {
   return "입력한 값을 확인해 주세요.";
 }
 
-export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false, sourceFilename = null, tenantId }: VideoEditorProps) {
+export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false, sourceFilename = null, previewContainsBakedText = false, tenantId }: VideoEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [playhead, setPlayhead] = useState(0);
@@ -124,6 +127,17 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   // 서버에 아직 커밋 안 된(시딩만 된) 상태에서도 글자가 보인다 — 셋이 서로 다른 자막을
   // 보여주면 어느 게 진짜인지 알 수 없다(B2와 같은 이유로 한 계산을 공유한다).
   const displaySubtitles = useMemo(() => reconcileSubtitles(videoEdit.subtitles, lines, duration), [videoEdit.subtitles, lines, duration]);
+  const previewSubtitles = useMemo(() => {
+    if (!duration) return displaySubtitles;
+    return normalizeSubtitleWindows(displaySubtitles, duration).windows.map((window, index) => ({
+      id: `preview-${index}`,
+      order: index,
+      text: window.text,
+      startSec: window.startSec,
+      endSec: window.endSec,
+      cut: false,
+    }));
+  }, [displaySubtitles, duration]);
 
   /**
    * B-1(4차 재리뷰 BLOCKER): 이 함수가 videoEdit을 바꾸는 유일한 입구다(오버레이·댓글·
@@ -169,14 +183,29 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   // 인트로/아웃트로가 적용돼 있으면 편집실 미리보기도 합성 결과를 보여준다(2026-10-02
   // 회장 반려: 발행은 됐는데 미리보기가 원본을 계속 보여주면 "적용 안 된 것처럼" 보인다).
   const introOutroStale = isIntroOutroStale(videoEdit.introOutro, sourceFilename);
+  const bakedIntroOutroResult = Boolean(videoEdit.introOutro
+    && videoEdit.introOutro.compositeFilename
+    && videoEdit.introOutro.resultFilename !== videoEdit.introOutro.compositeFilename);
   const effectivePreviewUrl = videoEdit.introOutro && !introOutroStale
-    ? videoEdit.introOutro.deliverUrl
+    ? videoEdit.introOutro.compositeDeliverUrl
+      || (sourceFilename === videoEdit.introOutro.compositeFilename
+        ? previewVideoUrl
+        : bakedIntroOutroResult && sourceFilename === videoEdit.introOutro.sourceFilename
+        ? previewVideoUrl
+        : videoEdit.introOutro.deliverUrl)
     : previewVideoUrl;
   const introOutroSourceFilename = videoEdit.introOutro && !introOutroStale
     ? videoEdit.introOutro.sourceFilename
     : sourceFilename;
   const playbackIntroOutro = introOutroStale ? null : videoEdit.introOutro;
-  const bodyLayersVisible = isPlaybackTimeWithinBody(playbackTime, duration, playbackIntroOutro);
+  const legacyPreviewContainsBakedText = Boolean(videoEdit.introOutro
+    && !introOutroStale
+    && bakedIntroOutroResult
+    && !videoEdit.introOutro.compositeDeliverUrl
+    && sourceFilename === videoEdit.introOutro.resultFilename);
+  const bodyLayersVisible = !previewContainsBakedText
+    && !legacyPreviewContainsBakedText
+    && isPlaybackTimeWithinBody(playbackTime, duration, playbackIntroOutro);
 
   useEffect(() => {
     setPlaybackTime(0);
@@ -230,7 +259,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             videoRef={videoRef}
             overlays={videoEdit.overlays}
             comments={videoEdit.comments}
-            activeSubtitle={activeSubtitle(displaySubtitles, playhead)}
+            activeSubtitle={activeSubtitle(previewSubtitles, playhead)}
             playhead={playhead}
             playbackPlayhead={playbackPlayhead}
             bodyLayersVisible={bodyLayersVisible}
@@ -631,10 +660,9 @@ function SubtitleScriptEditor({
   const resetByCountMismatch = edit.subtitles.length > 0 && edit.subtitles.length !== lines.length;
 
   /**
-   * 문구 수정만 `lines`(발행 원문)에도 반영한다 — 발행 자막은 여전히 `lines`를 굽는다.
-   * 컷·타임라인 조작은 `lines`를 건드리지 않는다(M2/M4: 컷은 미리보기 표시 전용, 전부
-   * 컷해도 방이 빈 상태로 떨어지지 않는다. 영상·음성은 물론 자막 글자도 실제로는 그대로
-   * 나간다 — "구간 자르기"는 다음 단계다).
+   * 문구 수정은 `lines`(대본 원문)와 `videoEdit.subtitles`에 함께 반영한다.
+   * 컷은 대본 문구를 지우지 않고 subtitle의 `cut` 표식만 바꾼다. 내보내기에서는
+   * playback-edit-plan이 그 표식의 시간 구간을 영상·음성·구운 자막에서 함께 제거한다.
    */
   function commitText(index: number, text: string) {
     // MINOR(5차 재리뷰): syncing 중에는 run()이 videoEdit 쪽을 거절하는데, 이 함수는
@@ -678,7 +706,7 @@ function SubtitleScriptEditor({
                 data-video-subtitle-id={line.id}
                 data-video-subtitle-cut={line.cut}
                 data-video-subtitle-current={isCurrent}
-                className={`grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-stack-tight rounded-control border-l-[3px] p-stack-tight text-caption ${
+                className={`grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-stack-tight rounded-control border-l-[3px] p-stack-tight text-caption max-[64rem]:grid-cols-[44px_minmax(44px,1fr)] ${
                   line.cut ? "border-l-danger bg-danger-soft text-subtle" : isCurrent ? "border-l-accent bg-accent-soft" : "border-l-border bg-surface"
                 }`}
               >
@@ -709,7 +737,7 @@ function SubtitleScriptEditor({
                   className={`min-h-control-touch min-w-0 rounded-control border-0 bg-transparent px-micro text-body text-text outline-none [word-break:keep-all] ${line.cut ? "line-through text-subtle" : ""}`}
                   data-video-subtitle-text
                 />
-                <Button size="sm" variant="secondary" disabled={syncing} onClick={() => commitCut(index)} data-video-subtitle-cut-toggle>
+                <Button size="sm" variant="secondary" className="max-[64rem]:col-span-2 max-[64rem]:w-full" disabled={syncing} onClick={() => commitCut(index)} data-video-subtitle-cut-toggle>
                   {line.cut ? "되돌리기" : "컷"}
                 </Button>
               </li>

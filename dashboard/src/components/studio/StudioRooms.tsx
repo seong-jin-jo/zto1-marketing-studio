@@ -1656,6 +1656,8 @@ interface EditRoomProps {
    * 회장 반려 R-27-5: 연결 안 돼 있었음).
    */
   videoSourceFilename?: string | null;
+  /** 현재 재생 파일에 글자층이 이미 구워졌으면 VideoEditor의 DOM 글자층을 숨긴다. */
+  previewContainsBakedText?: boolean;
   commandPanel?: ReactNode;
   initialFormat?: ContentEditFormat;
   onFormatChange?: (format: ContentEditFormat) => void;
@@ -1985,6 +1987,7 @@ export function EditRoom({
   cardTextSourceRecoverable = true,
   previewVideoUrl = null,
   videoSourceFilename = null,
+  previewContainsBakedText = false,
   commandPanel,
   initialFormat,
   onFormatChange,
@@ -2369,6 +2372,7 @@ export function EditRoom({
                         onOpenCreate={onOpenCreate}
                         syncing={videoEditReconciling}
                         sourceFilename={videoSourceFilename}
+                        previewContainsBakedText={previewContainsBakedText}
                         tenantId={workspaceId}
                       />
                     </>

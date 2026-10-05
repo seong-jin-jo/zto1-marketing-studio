@@ -125,7 +125,12 @@ const VIDEO_PUBLISH_NAME: Record<string, string> = { shorts: "youtube", reels: "
 const VIDEO_ACCOUNT_PROVIDER: Record<string, string> = { shorts: "youtube", reels: "instagram", tiktok: "tiktok" };
 
 import { draftStatusLabel } from "@/lib/studio/draft-status-label";
-import { alignVideoEditToRenderSource, resolveVideoPublishFilename, resolveVideoRenderSourceFilename } from "@/lib/studio/video-publish-filename";
+import {
+  alignVideoEditToRenderSource,
+  isLegacyIntroOutroBakedResult,
+  resolveUnbakedVideoSource,
+  resolveVideoPublishFilename,
+} from "@/lib/studio/video-publish-filename";
 import { connectedOnlyTargets, publishableTargets as computePublishableTargets, type ChannelReadiness } from "@/lib/studio/publish-connected-targets";
 import { channelNameList, PLATFORM_LABEL } from "@/lib/studio/channel-name-list";
 import {
@@ -298,6 +303,12 @@ interface VidResult {
   topicKey?: string;
   hasAudio?: boolean;
   narration?: { requested: boolean; included: boolean; reason?: string; message?: string };
+  /** 자막·오버레이를 굽기 전 편집용 기준 파일. 구운 결과를 다시 굽거나 DOM 글자층과 겹치지 않게 한다. */
+  editSource?: { filename: string; url: string };
+  /** 현재 file/url에 자막·오버레이가 이미 픽셀로 들어간 결과인지. 초안과 로컬 복원에도 보존한다. */
+  subtitlesBaked?: boolean;
+  /** 서버 굽기 기록 조회 결과. unknown은 과거 UUID 파일을 원본이라고 추측하지 않는 안전 상태다. */
+  subtitleLineageState?: "baked" | "unbaked" | "unknown";
 }
 // "unknown" = 비동기 발행이 상한(15분)을 넘겨 더 기다리지 않지만, "실패"로 단정하지도
 // 않는 상태(세션맥락: 524 오판으로 인한 재발행이 중복 게시를 부른다 — 재발행을 유도하지
@@ -577,6 +588,39 @@ export default function StudioPage() {
   }, [text]);
   const [img, setImg] = useState<ImgResult | null>(null);
   const [vid, setVid] = useState<VidResult | null>(null);
+  const lineageFilename = videoFilename(vid?.file || vid?.url || "");
+  const needsVideoLineageLookup = Boolean(
+    activeWorkspace
+    && lineageFilename
+    && vid?.subtitlesBaked === undefined
+    && vid?.subtitleLineageState === undefined,
+  );
+  const { data: storedVideoLineage } = useSWR<{
+    ok?: boolean;
+    state?: "baked" | "unbaked" | "unknown";
+    sourceFilename?: string;
+    sourceFile?: string;
+  }>(
+    needsVideoLineageLookup
+      ? `/api/video/subtitle?tenant_id=${encodeURIComponent(activeWorkspace!.id)}&filename=${encodeURIComponent(lineageFilename)}`
+      : null,
+    fetcher,
+  );
+  useEffect(() => {
+    if (!needsVideoLineageLookup || !storedVideoLineage?.ok || !storedVideoLineage.state) return;
+    setVid((current) => {
+      if (!current || videoFilename(current.file || current.url || "") !== lineageFilename) return current;
+      const source = storedVideoLineage.sourceFilename && storedVideoLineage.sourceFile
+        ? { filename: storedVideoLineage.sourceFilename, url: storedVideoLineage.sourceFile }
+        : undefined;
+      return {
+        ...current,
+        subtitleLineageState: storedVideoLineage.state,
+        ...(storedVideoLineage.state === "baked" ? { subtitlesBaked: true } : {}),
+        ...(source ? { editSource: source } : {}),
+      };
+    });
+  }, [lineageFilename, needsVideoLineageLookup, storedVideoLineage]);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [publishReconciliations, setPublishReconciliations] = useState<PublishReconciliationMap>({});
   const [reconciliationError, setReconciliationError] = useState<string | null>(null);
@@ -1441,7 +1485,12 @@ export default function StudioPage() {
       const msg = "영상을 만들었지만 화면에 걸 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.";
       setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
     }
-    const stamped = { ...r, topicKey: mediaTopicKey(opts?.topicLabel ?? idea) };
+    const stamped = {
+      ...r,
+      topicKey: mediaTopicKey(opts?.topicLabel ?? idea),
+      subtitlesBaked: false,
+      subtitleLineageState: "unbaked" as const,
+    };
     setVid(stamped); mutateAcct(); return stamped;
   }
   async function genVideo(source: { filename?: string }) {
@@ -2173,13 +2222,30 @@ export default function StudioPage() {
   async function burnVideoSubtitles(lines: string[]): Promise<SubtitleBurnOutcome> {
     if (editKind !== "video") return { kind: "skipped" };
     if (!activeWorkspace) return { kind: "skipped" };
-    const currentSourceFilename = videoFilename(vid?.file || vid?.url || "");
-    if (!currentSourceFilename) return { kind: "skipped" };
-    // 인트로·아웃트로를 적용한 뒤 컷·자막·오버레이를 고치면 합성 결과를 입력으로 다시
-    // 굽는다. 원본을 따로 구운 뒤 발행에서 옛 합성본을 우선하면 두 편집 중 하나가 사라진다.
-    const filename = resolveVideoRenderSourceFilename(currentSourceFilename, videoEdit?.introOutro ?? null);
+    const currentResultFilename = videoFilename(vid?.file || vid?.url || "");
+    if (!currentResultFilename) return { kind: "skipped" };
+    // 글자를 이미 구운 결과를 다시 입력으로 쓰면 기존 글자 위에 새 글자가 겹친다. 파일명과
+    // URL이 함께 보존된 글자 없는 계보만 입력으로 허용하고, 없으면 사용자에게 복구 사유를
+    // 밝힌 뒤 중단한다. 특히 기존 introOutro.deliverUrl은 첫 굽기 뒤 구운 결과로 바뀌므로
+    // compositeDeliverUrl 대용으로 쓰면 안 된다.
+    const source = resolveUnbakedVideoSource({
+      currentFilename: currentResultFilename,
+      currentUrl: vid?.file || vid?.url || "",
+      lineage: {
+        subtitlesBaked: vid?.subtitlesBaked,
+        state: vid?.subtitleLineageState
+          ?? (vid?.subtitlesBaked === true ? "baked" : vid?.subtitlesBaked === false ? "unbaked" : "unknown"),
+        editSource: vid?.editSource,
+      },
+      introOutro: videoEdit?.introOutro ?? null,
+    });
+    if (!source.ok) {
+      showToast("자막 없는 원본 영상을 찾지 못해 다시 굽지 않았습니다. 생성실에서 영상을 다시 만들거나 원본을 복원해 주세요.", "error");
+      return { kind: "failed" };
+    }
+    const { filename, url: sourceUrl } = source;
     const renderVideoEdit = videoEdit
-      ? alignVideoEditToRenderSource(videoEdit, videoEdit.introOutro, currentSourceFilename)
+      ? alignVideoEditToRenderSource(videoEdit, videoEdit.introOutro, currentResultFilename)
       : null;
     const spoken = lines.filter((line) => line.trim());
     const editNeedsFile = Boolean(videoEdit && (
@@ -2201,10 +2267,17 @@ export default function StudioPage() {
         showToast(r?.error || "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요.", "error");
         return { kind: "failed" };
       }
-      const next: VidResult = { ...(vid as VidResult), url: r.file, file: r.file };
-      let nextVideoEdit = videoEdit;
       const resultFilename = r.filename || videoFilename(r.file);
-      if (nextVideoEdit?.introOutro && resultFilename && !isIntroOutroStale(nextVideoEdit.introOutro, currentSourceFilename)) {
+      const next: VidResult = {
+        ...(vid as VidResult),
+        url: r.file,
+        file: r.file,
+        subtitlesBaked: true,
+        subtitleLineageState: "baked",
+        editSource: { filename, url: sourceUrl },
+      };
+      let nextVideoEdit = videoEdit;
+      if (nextVideoEdit?.introOutro && resultFilename && !isIntroOutroStale(nextVideoEdit.introOutro, currentResultFilename)) {
         nextVideoEdit = setIntroOutroApplied(nextVideoEdit, {
           ...nextVideoEdit.introOutro,
           compositeFilename: nextVideoEdit.introOutro.compositeFilename || nextVideoEdit.introOutro.resultFilename,
@@ -4295,6 +4368,28 @@ export default function StudioPage() {
     const editRoomState = !hist && !hasEditableContent
       ? (histError ? "error" : "loading")
       : "default";
+    const currentVideoUrl = vid?.file || vid?.url || "";
+    const currentVideoFilename = videoFilename(currentVideoUrl);
+    const previewSource = currentVideoFilename
+      ? resolveUnbakedVideoSource({
+        currentFilename: currentVideoFilename,
+        currentUrl: currentVideoUrl,
+        lineage: {
+          subtitlesBaked: vid?.subtitlesBaked,
+          state: vid?.subtitleLineageState
+            ?? (vid?.subtitlesBaked === true ? "baked" : vid?.subtitlesBaked === false ? "unbaked" : "unknown"),
+          editSource: vid?.editSource,
+        },
+        introOutro: videoEdit?.introOutro ?? null,
+      })
+      : null;
+    const previewContainsBakedText = Boolean(previewSource && !previewSource.ok && (
+      vid?.subtitlesBaked === true
+      || vid?.subtitleLineageState === "baked"
+      || vid?.subtitleLineageState === "unknown"
+      || (vid?.subtitleLineageState === undefined && vid?.subtitlesBaked === undefined)
+      || isLegacyIntroOutroBakedResult(currentVideoFilename, videoEdit?.introOutro ?? null)
+    ));
     return (
     <div className="px-stack-section py-pad-inset">
       {showWizard && activeWorkspace ? <LearningCardWizard workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onSaved={(info, completed) => { setLearningInfo(info); if (completed) { setShowWizard(false); mutateBrand(); showToast("학습 정보를 배웠습니다"); } else { setLearningFlash((value) => value + 1); } }} onClose={() => setShowWizard(false)} /> : null}
@@ -4314,8 +4409,9 @@ export default function StudioPage() {
         previewImageUrls={liveTextCardPreview ?? img?.imageUrls ?? null}
         cardTextEmbedded={img?.textEmbedded === true}
         cardTextSourceRecoverable={img?.textSourceRecoverable !== false}
-        previewVideoUrl={vid?.file || vid?.url || null}
-        videoSourceFilename={videoFilename(vid?.file || vid?.url || "") || null}
+        previewVideoUrl={previewSource?.ok ? previewSource.url : currentVideoUrl || null}
+        videoSourceFilename={previewSource?.ok ? previewSource.filename : currentVideoFilename || null}
+        previewContainsBakedText={previewContainsBakedText}
         cardTextPositions={cardTextPositions}
         onCardTextPositionsChange={setCardTextPositions}
         cardDeck={cardDeck}
