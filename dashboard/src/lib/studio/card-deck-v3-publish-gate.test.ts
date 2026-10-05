@@ -9,6 +9,8 @@ const H = vi.hoisted(() => ({
   jsonValues: [] as unknown[],
   updateSucceeds: true,
   failRenderAt: null as number | null,
+  failPut: false,
+  failDbUpdate: false,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -17,7 +19,10 @@ vi.mock("@/lib/db", () => ({
       const query = strings.join(" ");
       if (query.includes("has_card_deck_v3")) return Promise.resolve([{ has_card_deck_v3: H.has }]);
       if (query.includes("SELECT payload")) return Promise.resolve(H.payload ? [{ payload: H.payload }] : []);
-      if (query.includes("UPDATE drafts")) return Promise.resolve(H.updateSucceeds ? [{ id: "22222222-2222-2222-2222-222222222222" }] : []);
+      if (query.includes("UPDATE drafts")) {
+        if (H.failDbUpdate) return Promise.reject(new Error("database failed"));
+        return Promise.resolve(H.updateSucceeds ? [{ id: "22222222-2222-2222-2222-222222222222" }] : []);
+      }
       return Promise.resolve([]);
     }, { json: (value: unknown) => { H.jsonValues.push(value); return value; } });
     return callback(sql);
@@ -25,7 +30,10 @@ vi.mock("@/lib/db", () => ({
 }));
 vi.mock("@/lib/media-store", () => ({ mediaStore: {
   exists: vi.fn(async () => false),
-  put: vi.fn(async (_tenant: string, filename: string) => { H.puts.push(filename); }),
+  put: vi.fn(async (_tenant: string, filename: string) => {
+    if (H.failPut) throw new Error("object store failed");
+    H.puts.push(filename);
+  }),
   delete: vi.fn(async (_tenant: string, filename: string) => { H.deletes.push(filename); return true; }),
 } }));
 vi.mock("@/lib/image-token", () => ({ signImageToken: vi.fn((_tenant: string, filename: string) => `token-${filename}`) }));
@@ -52,6 +60,7 @@ const deck = {
 beforeEach(() => {
   H.has = false; H.payload = null; H.renders = []; H.puts = []; H.deletes = []; H.jsonValues = [];
   H.updateSucceeds = true; H.failRenderAt = null;
+  H.failPut = false; H.failDbUpdate = false;
   vi.stubEnv("OSMU_PUBLIC_URL", "https://studio.example.com");
   vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "0");
 });
@@ -126,6 +135,8 @@ describe("S2-B 자유 배치 발행 준비", () => {
     ["CARD_RENDER_PUBLIC_URL_MISSING", 503],
     ["CARD_RENDER_STALE_DECK", 422],
     ["CARD_RENDER_FAILED", 503],
+    ["CARD_DECK_INVALID", 422],
+    ["CARD_RENDER_BUSY", 503],
   ] as const)("S2-R2-M3 %s를 코드와 한국어 사유가 있는 %i 응답으로 바꾼다", async (code, status) => {
     const { CardDeckV3RenderError, cardDeckV3PublishErrorResponse } = await import("./card-deck-v3-publish-gate");
     const response = cardDeckV3PublishErrorResponse(new CardDeckV3RenderError(code, status));
@@ -133,5 +144,33 @@ describe("S2-B 자유 배치 발행 준비", () => {
     const body = await response?.json() as { code?: string; error?: string };
     expect(body.code).toBe(code);
     expect(body.error).toMatch(/[가-힣]/);
+  });
+
+  it("S2-R3-m1 잘못된 v3 덱 검증 실패를 CARD_DECK_INVALID 422로 바꾼다", async () => {
+    vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "1");
+    H.payload = { cardDeckV3: { contract_version: "3.0", slides: [] } };
+    const { assertDraftCanEnterPublishQueue, cardDeckV3PublishErrorResponse } = await import("./card-deck-v3-publish-gate");
+    const error = await assertDraftCanEnterPublishQueue("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222").catch((caught) => caught);
+    const response = cardDeckV3PublishErrorResponse(error);
+    expect(response?.status).toBe(422);
+    await expect(response?.json()).resolves.toMatchObject({ code: "CARD_DECK_INVALID", error: expect.stringMatching(/[가-힣]/) });
+  });
+
+  it("S2-R3-m1 객체 저장 실패를 CARD_RENDER_FAILED 503으로 바꾼다", async () => {
+    vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "1");
+    H.payload = { cardDeckV3: deck };
+    H.failPut = true;
+    const { assertDraftCanEnterPublishQueue, cardDeckV3PublishErrorResponse } = await import("./card-deck-v3-publish-gate");
+    const error = await assertDraftCanEnterPublishQueue("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222").catch((caught) => caught);
+    expect(cardDeckV3PublishErrorResponse(error)?.status).toBe(503);
+  });
+
+  it("S2-R3-m1 초안 DB 갱신 실패를 CARD_RENDER_FAILED 503으로 바꾼다", async () => {
+    vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "1");
+    H.payload = { cardDeckV3: deck };
+    H.failDbUpdate = true;
+    const { assertDraftCanEnterPublishQueue, cardDeckV3PublishErrorResponse } = await import("./card-deck-v3-publish-gate");
+    const error = await assertDraftCanEnterPublishQueue("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222").catch((caught) => caught);
+    expect(cardDeckV3PublishErrorResponse(error)?.status).toBe(503);
   });
 });

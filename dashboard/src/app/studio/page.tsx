@@ -50,7 +50,7 @@ import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { cardDeckV3Projection, type CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { createPlainCardDeckV3, createRecoverableEmbeddedCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
 import { migrateCardDeckV2ToV3, projectCardDeckV3ToV2 } from "@/lib/studio/card-deck-v2-to-v3";
-import { cardDeckV3RenderingEnabled } from "@/lib/studio/card-deck-v3-render-feature";
+import { cardDeckV3EntryEnabled, cardDeckV3RenderingEnabled } from "@/lib/studio/card-deck-v3-render-feature";
 import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
@@ -4209,7 +4209,10 @@ export default function StudioPage() {
   }
 
   async function startCardDeckV3() {
-    if (!CARD_DECK_V3_RENDER_ENABLED) return;
+    if (!cardDeckV3EntryEnabled(CARD_DECK_V3_RENDER_ENABLED, {
+      hasCardDeckV2: Boolean(cardDeck),
+      textEmbedded: img?.textEmbedded === true,
+    })) return;
     if (rejectWhileCardDeckV3DetailPending()) return;
     const blockedReason = cardDeck?.template === "chat_bubble"
       ? "말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어 기본 편집만 지원합니다."
@@ -4476,7 +4479,10 @@ export default function StudioPage() {
         onCardDeckChange={onCardDeckChange}
         cardDeckV3={cardDeckV3}
         onCardDeckV3Change={onCardDeckV3Change}
-        onStartCardDeckV3={CARD_DECK_V3_RENDER_ENABLED ? startCardDeckV3 : undefined}
+        onStartCardDeckV3={cardDeckV3EntryEnabled(CARD_DECK_V3_RENDER_ENABLED, {
+          hasCardDeckV2: Boolean(cardDeck),
+          textEmbedded: img?.textEmbedded === true,
+        }) ? startCardDeckV3 : undefined}
         cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck?.template === "chat_bubble"
           ? "말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어 기본 편집만 지원합니다."
           : cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines))}

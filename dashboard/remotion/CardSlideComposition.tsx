@@ -25,7 +25,10 @@ export function CardSlideComposition({ model }: CardSlideCompositionProps) {
         continueRender(fontHandle);
       })
       .catch((error) => {
-        if (!canceled) cancelRender(error instanceof Error ? error : new Error("FONT_LOAD_FAILED"));
+        if (!canceled) {
+          const detail = error instanceof Error ? error.message : String(error);
+          cancelRender(new Error(`FONT_LOAD_FAILED: ${detail}`, { cause: error }));
+        }
       });
     return () => { canceled = true; };
   }, [fontHandle]);

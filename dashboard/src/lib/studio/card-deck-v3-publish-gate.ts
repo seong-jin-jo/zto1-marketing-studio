@@ -35,6 +35,8 @@ export type CardDeckV3RenderErrorCode =
   | "CARD_ASSET_INVALID"
   | "CARD_RENDER_PUBLIC_URL_MISSING"
   | "CARD_RENDER_STALE_DECK"
+  | "CARD_DECK_INVALID"
+  | "CARD_RENDER_BUSY"
   | "CARD_RENDER_FAILED";
 
 const CARD_RENDER_ERROR_MESSAGES: Record<CardDeckV3RenderErrorCode, string> = {
@@ -42,6 +44,8 @@ const CARD_RENDER_ERROR_MESSAGES: Record<CardDeckV3RenderErrorCode, string> = {
   CARD_ASSET_INVALID: "카드에 사용할 수 없거나 현재 작업공간에 없는 사진이 있습니다. 사진을 다시 선택해 주세요.",
   CARD_RENDER_PUBLIC_URL_MISSING: "발행 이미지의 공개 주소를 만들 수 없습니다. 운영 설정을 확인한 뒤 다시 시도해 주세요.",
   CARD_RENDER_STALE_DECK: "카드를 만드는 동안 더 최신 편집본이 저장됐습니다. 최신 내용을 확인한 뒤 다시 발행해 주세요.",
+  CARD_DECK_INVALID: "저장된 자유 배치 카드 형식이 올바르지 않습니다. 편집실에서 카드를 다시 확인해 주세요.",
+  CARD_RENDER_BUSY: "카드 이미지 생성 요청이 몰렸습니다. 잠시 후 다시 시도해 주세요.",
   CARD_RENDER_FAILED: "카드 발행 이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.",
 };
 
@@ -59,6 +63,9 @@ function normalizeRenderError(error: unknown, fallback: CardDeckV3RenderErrorCod
   }
   if (error instanceof Error && error.message === "CARD_ASSET_INVALID") {
     return new CardDeckV3RenderError("CARD_ASSET_INVALID", 422, { cause: error });
+  }
+  if (error && typeof error === "object" && "code" in error && error.code === "CARD_RENDER_BUSY") {
+    return new CardDeckV3RenderError("CARD_RENDER_BUSY", 503, { cause: error });
   }
   return new CardDeckV3RenderError(fallback, fallback === "CARD_RENDER_STALE_DECK" ? 422 : 503, { cause: error });
 }
@@ -151,11 +158,18 @@ export async function prepareDraftCardDeckV3ForPublish(tenantId: string | null, 
   const rawDeck = row?.payload?.cardDeckV3;
   if (rawDeck == null) return null;
   if (!cardDeckV3RenderingEnabled()) throw new CardDeckV3PublishBlockedError();
-  const deck = parseCardDeckV3(rawDeck);
+  let deck: CardDeckV3;
+  try {
+    deck = parseCardDeckV3(rawDeck);
+  } catch (error) {
+    throw new CardDeckV3RenderError("CARD_DECK_INVALID", 422, { cause: error });
+  }
   const key = `${tenantId}:${draftId}:${deck.revision}:${deck.id}`;
   const existing = inflightRenders.get(key);
   if (existing) return existing;
-  const work = renderDraftDeck(tenantId, draftId, row.payload ?? {}, deck).finally(() => inflightRenders.delete(key));
+  const work = renderDraftDeck(tenantId, draftId, row.payload ?? {}, deck)
+    .catch((error) => { throw normalizeRenderError(error); })
+    .finally(() => inflightRenders.delete(key));
   inflightRenders.set(key, work);
   return work;
 }

@@ -7,6 +7,7 @@ import { EditRoom } from "@/components/studio/StudioRooms";
 import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import { cardDeckV3EntryEnabled } from "@/lib/studio/card-deck-v3-render-feature";
 import chatBubbleDeck from "./fixtures/deck-d100.v2.json";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -40,14 +41,19 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
 
   });
 
-  it("S2-R2-M1 flag off면 plain·AI·말풍선 카드에 v3 진입 버튼을 만들지 않는다", () => {
-    const view = render(<EditRoom kind="card" lines={["plain 카드"]} onLinesChange={() => {}} />);
+  it("S2-R3-M1 flag off면 S1 일반 카드 진입은 보존하고 AI·v2만 숨긴다", () => {
+    const onStart = vi.fn();
+    const s1Enabled = cardDeckV3EntryEnabled(false, { hasCardDeckV2: false, textEmbedded: false });
+    const view = render(<EditRoom kind="card" lines={["plain 카드"]} onLinesChange={() => {}} onStartCardDeckV3={s1Enabled ? onStart : undefined} />);
+    fireEvent.click(screen.getByRole("button", { name: "자유 배치로 편집" }));
+    expect(onStart).toHaveBeenCalledOnce();
+
+    const aiEnabled = cardDeckV3EntryEnabled(false, { hasCardDeckV2: false, textEmbedded: true });
+    view.rerender(<EditRoom kind="card" lines={["AI 카드"]} onLinesChange={() => {}} cardTextEmbedded cardTextSourceRecoverable onStartCardDeckV3={aiEnabled ? onStart : undefined} />);
     expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
 
-    view.rerender(<EditRoom kind="card" lines={["AI 카드"]} onLinesChange={() => {}} cardTextEmbedded cardTextSourceRecoverable />);
-    expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
-
-    view.rerender(<EditRoom kind="card" lines={["말풍선 카드"]} onLinesChange={() => {}} cardDeck={chatBubbleDeck as CardDeck} onCardDeckChange={() => {}} />);
+    const v2Enabled = cardDeckV3EntryEnabled(false, { hasCardDeckV2: true, textEmbedded: false });
+    view.rerender(<EditRoom kind="card" lines={["말풍선 카드"]} onLinesChange={() => {}} cardDeck={chatBubbleDeck as CardDeck} onCardDeckChange={() => {}} onStartCardDeckV3={v2Enabled ? onStart : undefined} />);
     expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
   });
 

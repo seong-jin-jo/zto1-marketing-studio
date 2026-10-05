@@ -7,3 +7,11 @@ export function cardDeckV3RenderingEnabled(env: FlagEnv = process.env): boolean 
   if (serverValue !== undefined && publicValue !== undefined) return enabled(serverValue) && enabled(publicValue);
   return enabled(serverValue ?? publicValue);
 }
+
+export function cardDeckV3EntryEnabled(
+  renderEnabled: boolean,
+  source: { hasCardDeckV2: boolean; textEmbedded: boolean },
+): boolean {
+  if (renderEnabled) return true;
+  return !source.hasCardDeckV2 && !source.textEmbedded;
+}
