@@ -14,6 +14,7 @@ const H = vi.hoisted(() => ({
   usageEvents: [] as unknown[][],
   diagnosticWrites: 0,
   failedTransitionWins: true,
+  publishedTransitionWins: true,
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({
@@ -33,6 +34,10 @@ vi.mock("@/lib/db", () => ({
         }]);
       }
       if (query.includes("SET status = 'published'")) {
+        if (!H.publishedTransitionWins) {
+          H.row.status = "failed";
+          return Promise.resolve([]);
+        }
         H.row.status = "published";
         if (query.includes("provider_post_id = null")) {
           H.row.providerPostId = null;
@@ -41,7 +46,7 @@ vi.mock("@/lib/db", () => ({
           H.row.providerPostId = values[0] as string | null;
           H.row.permalink = values[1] as string | null;
         }
-        return Promise.resolve([]);
+        return Promise.resolve([{ status: "published" }]);
       }
       if (query.includes("SET status = 'failed'")) {
         if (!H.failedTransitionWins) {
@@ -100,6 +105,7 @@ describe("GET /api/tiktok/publish-status", () => {
     H.usageEvents = [];
     H.diagnosticWrites = 0;
     H.failedTransitionWins = true;
+    H.publishedTransitionWins = true;
     vi.resetModules();
   });
 
@@ -189,6 +195,27 @@ describe("GET /api/tiktok/publish-status", () => {
     expect(H.row).toMatchObject({ status: "published", providerPostId: null, permalink: null });
     expect(H.statusCalls).toHaveLength(1);
     expect(H.usageEvents).toEqual([[TENANT_A, "row-1", "tiktok"]]);
+  });
+
+  it.each([
+    ["PUBLIC_TO_EVERYONE", "post-9"],
+    ["SELF_ONLY", undefined],
+  ])("TIKTOK-ERROR-09 경합: %s 완료 응답보다 다른 poll의 실패 저장이 먼저면 stale 성공을 반환하지 않는다", async (privacyLevel, postId) => {
+    H.row.providerMeta = { privacyLevel };
+    H.provider = {
+      ok: true,
+      status: "PUBLISH_COMPLETE",
+      ...(postId ? { postId } : {}),
+      providerError: { code: "ok", message: "", logId: "log-stale-complete-1" },
+    };
+    H.publishedTransitionWins = false;
+
+    const { response, body } = await status();
+
+    expect(response.status).toBe(202);
+    expect(body).toEqual({ ok: true, status: "processing", publishId: "pub-1" });
+    expect(H.row.status).toBe("failed");
+    expect(H.usageEvents).toHaveLength(0);
   });
 
   it("does not reveal or poll another tenant's reservation", async () => {

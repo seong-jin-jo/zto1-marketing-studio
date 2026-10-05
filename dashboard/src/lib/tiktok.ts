@@ -300,7 +300,7 @@ function safeTikTokProviderMessage(message: unknown): string {
   if (typeof message !== "string") return "";
   return message
     .replace(/[\u0000-\u001f\u007f]/g, " ")
-    .replace(/\b(access[_ -]?token|refresh[_ -]?token|id[_ -]?token|token|api[_ -]?key|client[_ -]?secret|authorization|password|secret|session|cookie)\b["']?\s*[:=]\s*["']?(?:bearer\s+)?[^\s"',;&}]+/gi, "$1=[redacted]")
+    .replace(/\b(access[_ -]?token|refresh[_ -]?token|id[_ -]?token|token|api[_ -]?key|client[_ -]?secret|authorization|password|secret|session|cookie)\b["']?\s*(?:[:=]\s*["']?(?:bearer\s+)?[^\s"',;&}]+|\s+["']?(?:bearer\s+)?[A-Za-z0-9._~+/-]{16,}=*)/gi, "$1=[redacted]")
     .replace(/\bbearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
     .replace(/\b(?=[A-Za-z0-9._~+/-]{24,}={0,2}(?=$|[\s"',;&}]))(?=[A-Za-z0-9._~+/-]*[A-Za-z])(?=[A-Za-z0-9._~+/-]*\d)[A-Za-z0-9._~+/-]{24,}={0,2}/g, "[redacted]")
     .replace(/\s+/g, " ")

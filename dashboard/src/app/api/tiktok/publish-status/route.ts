@@ -126,6 +126,10 @@ export async function GET(request: Request) {
              AND platform = ${"tiktok"}
              AND external_id = ${publishId}
              AND status = 'in_progress'
+             AND (
+               provider_meta->'tiktokError'->>'code' IS DISTINCT FROM ${provider.providerError.code}
+               OR provider_meta->'tiktokError'->>'message' IS DISTINCT FROM ${provider.providerError.message}
+             )
         `);
       } catch {
         return Response.json({ error: "TikTok 상태 오류를 저장하지 못했습니다. 잠시 후 다시 확인해주세요." }, { status: 503 });
@@ -136,8 +140,9 @@ export async function GET(request: Request) {
   if (provider.status === "PUBLISH_COMPLETE") {
     const isSelfOnly = post.provider_meta?.privacyLevel === "SELF_ONLY";
     if (isSelfOnly) {
+      let transitioned = false;
       try {
-        await withTenant(tenantId, (sql) => sql`
+        const rows = await withTenant(tenantId, (sql) => sql<{ status: string }[]>`
           UPDATE published_posts
              SET status = 'published', provider_post_id = null, permalink = null,
                  error = null, published_at = now(),
@@ -148,9 +153,14 @@ export async function GET(request: Request) {
              AND platform = ${"tiktok"}
              AND external_id = ${publishId}
              AND status = 'in_progress'
+        RETURNING status
         `);
+        transitioned = rows.length > 0;
       } catch {
         return Response.json({ error: "TikTok 완료 상태를 저장하지 못했습니다. 잠시 후 다시 확인해주세요." }, { status: 503 });
+      }
+      if (!transitioned) {
+        return Response.json({ ok: true, status: "processing", publishId }, { status: 202 });
       }
       try {
         await recordPublicationEvent(tenantId, post.id, "tiktok");
@@ -175,8 +185,9 @@ export async function GET(request: Request) {
       return Response.json({ ok: true, status: "processing", publishId }, { status: 202 });
     }
     const permalink = `https://www.tiktok.com/@${encodeURIComponent(creator.username)}/video/${postId}`;
+    let transitioned = false;
     try {
-      await withTenant(tenantId, (sql) => sql`
+      const rows = await withTenant(tenantId, (sql) => sql<{ status: string }[]>`
         UPDATE published_posts
            SET status = 'published', provider_post_id = ${postId},
                permalink = ${permalink}, error = null, published_at = now(),
@@ -187,9 +198,14 @@ export async function GET(request: Request) {
            AND platform = ${"tiktok"}
            AND external_id = ${publishId}
            AND status = 'in_progress'
+      RETURNING status
       `);
+      transitioned = rows.length > 0;
     } catch {
       return Response.json({ error: "TikTok 완료 상태를 저장하지 못했습니다. 중복 방지를 위해 잠시 후 다시 확인해주세요." }, { status: 503 });
+    }
+    if (!transitioned) {
+      return Response.json({ ok: true, status: "processing", publishId }, { status: 202 });
     }
     try {
       await recordPublicationEvent(tenantId, post.id, "tiktok");
