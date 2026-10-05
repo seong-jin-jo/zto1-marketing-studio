@@ -1,10 +1,12 @@
-## 2026-10-05 TikTok 상태 조회 오류와 실제 발행 실패 오판 교차 리뷰 ❌ NG
+## 2026-10-05 TikTok 상태 조회 오류와 실제 발행 실패 오판 교차 리뷰 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
-| TIKTOK-ERROR-R2-01 | 인증·권한·모르는 4xx·빈 status 조회 오류를 실제 발행 실패로 마감하지 않음 | TIKTOK-ERROR-03 | ❌ NG | `publish-status/route.ts`가 상태 조회 오류에서 `published_posts.status=failed`를 저장해 실제 TikTok에 게시된 영상을 재발행할 위험이 있다. |
-| TIKTOK-ERROR-R2-02 | FAILED 처리 사유의 원문 code 보존 | TIKTOK-ERROR-07 | ❌ NG | 발행 단계 허용 목록이 처리 단계 code를 `provider_rejected`로 덩어 운영 진단 정보가 손실된다. |
-| TIKTOK-ERROR-R2-03 | 저장 전 민감값 가림 회귀 | TIKTOK-ERROR-06 | ❌ NG | 키 이름이 붙은 token 외에 독립 `Bearer` 값과 긴 token 형태 문자열을 가리고 `access_token=raw-provider-secret`을 회귀 테스트로 다시 고정해야 한다. |
+| TIKTOK-ERROR-R2-01 | 인증·권한·모르는 4xx·빈 status 조회 오류를 실제 발행 실패로 마감하지 않음 | TIKTOK-ERROR-03 | ✅ 로컬 PASS | 모든 조회 오류는 DB 상태를 `in_progress`로 유지하고 `provider_meta.tiktokError`만 갱신한다. 응답은 `processing`과 사용자 조치 문구를 함께 내려 화면이 재연결 안내를 보여주되 재발행을 열지 않는다. |
+| TIKTOK-ERROR-R2-02 | FAILED 처리 사유의 원문 code 보존 | TIKTOK-ERROR-07 | ✅ 로컬 PASS | 실제 provider `FAILED`만 영구 실패로 마감한다. 형식이 정상이고 토큰 형태가 아닌 원문 code는 `tiktokFailReasonCode`에 별도 보존하며, 손상·민감값 형태는 저장하지 않는다. |
+| TIKTOK-ERROR-R2-03 | 저장 전 민감값 가림 회귀 | TIKTOK-ERROR-06 | ✅ 로컬 PASS | `access_token=raw-provider-secret`, 독립 `Bearer`, 긴 token 형태 문자열을 모두 가리고 관련 표적 4파일 67건이 통과했다. 같은 오류의 새 `log_id`는 반복 DB 쓰기를 만들지 않는다. |
+
+최종 변경 import 영향은 42파일 374건 PASS·2건 skip, `npx vitest run contract`는 104파일 586건 PASS다. 성공·실패 terminal 전이는 `in_progress`를 실제로 바꾼 요청만 응답하고 사용량을 기록해, 경합한 늦은 응답이 DB와 반대되는 결과를 화면에 내지 않는다.
 
 ## 2026-10-05 Shorts·Reels 성과실·채널 링크·TikTok 실패 진단 ❌ NG → ✅ 로컬 PASS
 

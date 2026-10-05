@@ -1,5 +1,21 @@
 # OSMU build log
 
+## 2026-10-05 20:22 KST · TikTok 조회 오류와 발행 실패 분리
+
+STAMP: 2026-10-05 20:22 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: Claude Opus 5.5 BLOCK, 수정 전 회귀 실패 7건, 표적 Vitest 4파일 67건 | 고민: 공급자 조회 오류를 실패로 확정하지 않고 진행 원장과 사용자 안내를 분리했다.
+
+| 검증 | 결과 |
+|---|---|
+| 수정 전 교차 리뷰 | 조회 오류를 `failed`로 저장해 실제 게시된 영상을 재발행할 위험, 처리 단계 code 손실, 독립 Bearer·긴 token 가림 결손 재현 |
+| 수정 후 표적 회귀 | `tiktok-publish-status`, `tiktok-api`, `job-poll`, 실제 Studio 마운트 4파일 67건 PASS |
+| 변경 import 영향 | 42파일 374건 PASS, DB 환경 전용 2건 skip |
+| 전체 contract | 104파일 586건 PASS |
+| 상태 계약 | 조회 오류는 `in_progress` 유지와 진단 저장만, 실제 provider `FAILED`만 영구 실패 |
+| 기반 정합 | `origin/main`을 충돌 없이 merge. 공개 범위와 AI 표시는 자동 변경 없음 |
+| 미검증 | 실제 TikTok 계정 왕복, 원격 CI·운영 배포 |
+
+제품 커밋은 `38ab4289`, 교차 검수 후속 커밋은 `66235652`, `18689ae9`, `85b03e6f`다. 최종 red-team과 adversarial 재검토는 추가 결함 0건이다.
+
 ## 2026-10-05 18:39 KST · 성과실 Shorts·Reels 별칭과 TikTok 실패 진단
 
 STAMP: 2026-10-05 18:39 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review, ship | 근거: 수정 전 실패 8건, 표적 Vitest 5파일 39건, localhost Next dev 로그 | 고민: 운영 실패 원인을 복원할 수 있게 하되 공급자 원문을 사용자 화면에 직접 노출하지 않았다.

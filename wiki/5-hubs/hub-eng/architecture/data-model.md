@@ -78,9 +78,11 @@ outbox에는 발행 행의 `published_at`을 쓴다. `/api/usage`는 한 번에 
   contracts and are not implied by coverage version `v1`.
 - The performance UI uses the coverage contract's `storagePlatforms` as the only alias source. Stored `youtube`
   rows belong to Shorts and `instagram_reels` rows belong to Reels for totals, verdicts, and post lists.
-- TikTok publish-init and status failures keep the user-safe Korean explanation in `published_posts.error` and
-  the validated provider `code`, sanitized `message`, and `logId` in `provider_meta.tiktokError`. No migration is
-  required, and privacy settings remain the account owner's explicit choice.
+- TikTok publish-init rejection and explicit provider `FAILED` keep the user-safe Korean explanation in
+  `published_posts.error`. Status-query transport, auth, scope, unknown 4xx, and missing-status errors do not prove
+  publication failure, so they keep `status='in_progress'` and store only validated `code`, sanitized `message`, and
+  `logId` in `provider_meta.tiktokError`. A format-valid, non-secret raw processing failure code is stored separately
+  as `provider_meta.tiktokFailReasonCode`. No migration is required, and privacy remains the account owner's choice.
 
 #### OSMU v63 editor handoff and queue bridge (2026-08-28)
 

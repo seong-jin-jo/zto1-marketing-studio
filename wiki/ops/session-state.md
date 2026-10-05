@@ -1,3 +1,12 @@
+## 2026-10-05 20:22 KST TikTok 조회 오류 오판 교정과 origin/main merge 완료, push 대기
+
+- handoff basis: 회장이 지정한 Claude Opus 5.5 교차 리뷰 BLOCK과 중복 발행 방지 원칙을 정본으로 삼았다. 공개 범위 자동 변경과 push는 금지했다.
+- 수정: `38ab4289`에서 상태 조회 오류를 진단 전용으로 바꿔 DB `in_progress`를 유지하고, 실제 provider `FAILED`만 영구 실패로 남겼다. `66235652`에서 토큰형 원문 사유 저장을 차단하고, 같은 오류의 새 `log_id` 반복 쓰기를 막았으며, Studio·영상 화면이 processing 응답의 사용자 조치 문구를 버리지 않게 했다. `18689ae9`과 `85b03e6f`는 명시적 published만 성공으로 읽고 성공·실패 terminal UPDATE 경합에서 DB 전이를 이긴 요청만 terminal 응답·사용량 기록을 하게 했다.
+- 기반 정합: `origin/main` 최신 `15cf772e`를 충돌 없이 merge한 HEAD 위에서 작업했다. 공개 범위와 AI 표시는 소유자 선택을 유지한다.
+- 검증: 표적 4파일 67건, 변경 import 영향 42파일 374건·2건 skip, contract 104파일 586건 PASS. 최종 red-team과 adversarial 재검토는 추가 결함 0건이다. 실제 TikTok 계정 왕복, 원격 CI와 운영 배포는 미검증이다.
+- 다음 실행: 컨트롤러가 이 브랜치를 push하고 PR을 만든 뒤 원격 CI green을 확인한다. 종료 증거는 PR URL과 CI 결과다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
 ## 2026-10-05 19:36 KST Shorts·Reels·TikTok 수정과 필수 회귀 통과, push 실행 정책 차단
 
 - handoff basis: 회장이 직접 지정한 이어가기 지시, 브랜치 `fix/perf-shorts-reels-tiktok-error`, 기존 4커밋을 정본으로 삼았다.

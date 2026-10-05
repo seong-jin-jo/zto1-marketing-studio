@@ -136,6 +136,8 @@ Analytics, Growth, Popular를 제거하고 Settings만 노출한다.
 - YouTube/TikTok 영상 직접 발행은 `/api/video/publish`를 사용하며 각 채널 상세로 연결한다.
 - 두 영상 provider가 채널 그룹에 보이는 사실은 텍스트 예약 발행 지원을 뜻하지 않는다.
 - Studio의 실제 발행 대상은 `SCHEDULABLE_PLATFORMS`와 preview capability의 교집합으로 제한한다.
+- TikTok 발행 접수 거절과 provider가 명시한 `FAILED`만 영구 실패로 저장한다. 상태 조회의 인증·권한·모르는 4xx·빈 `status`는 발행 실패 증거가 아니므로 `in_progress`를 유지하고 `provider_meta.tiktokError`에 진단만 남긴다.
+- 상태 조회 응답의 `error`는 Studio와 영상 화면이 사용자 조치 문구로 보여주되 pending 발행 기록을 지우거나 재발행 가능 상태로 바꾸지 않는다. 실제 `FAILED`의 형식 정상 원문 사유는 `provider_meta.tiktokFailReasonCode`에 별도 저장하며 민감값 형태는 제외한다.
 
 ## 연결 readiness 상태 계약
 
