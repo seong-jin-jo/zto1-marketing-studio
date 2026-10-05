@@ -15,51 +15,27 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import crypto from "crypto";
-import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
+import {
+  getRemotionBundleUrl,
+  remotionBrowserExecutable,
+  remotionRenderSlotDebugState,
+  withRemotionRenderSlot,
+} from "@/lib/remotion-runtime";
 import { studioDir, FFMPEG_BIN } from "@/lib/higgsfield";
 import { MAX_VIDEO_DURATION_SECONDS } from "@/lib/video-limits";
 import type { IntroOutroCompId, BrandProps } from "../../remotion/IntroOutroComps";
 
 const execFileP = promisify(execFile);
 const FFPROBE_BIN = process.env.FFPROBE_BIN || "ffprobe";
-const ENTRY = path.join(process.cwd(), "remotion", "entry.ts");
-
-let cachedBundleUrl: string | null = null;
-
-async function getBundleUrl(): Promise<string> {
-  if (cachedBundleUrl && fs.existsSync(cachedBundleUrl)) return cachedBundleUrl;
-  cachedBundleUrl = await bundle({ entryPoint: ENTRY, onProgress: () => {} });
-  return cachedBundleUrl;
-}
-
 // 독립 리뷰 M-2(자원): Remotion 렌더는 Chrome 프로세스 하나를 통째로 띄운다. 운영 VM은
 // 이 컨테이너 혼자 쓰는 게 아니라 발행·생성·자막 굽기 ffmpeg까지 같이 돈다 — 동시에
 // 여러 Chrome이 뜨면 그 작업들까지 끌고 내려간다. 프로세스 전역으로 동시 렌더 1개만
 // 허용하고, 나머지는 큐에서 기다린다(멀티 인스턴스 배포라면 프로세스별로만 적용되는
 // 한계가 있다 — 지금은 단일 컨테이너 배포라 충분하다).
-const MAX_CONCURRENT_RENDERS = 1;
-let activeRenderCount = 0;
-const renderWaitQueue: Array<() => void> = [];
-
-async function acquireRenderSlot(): Promise<void> {
-  if (activeRenderCount < MAX_CONCURRENT_RENDERS) {
-    activeRenderCount++;
-    return;
-  }
-  await new Promise<void>((resolve) => renderWaitQueue.push(resolve));
-  activeRenderCount++;
-}
-
-function releaseRenderSlot(): void {
-  activeRenderCount--;
-  const next = renderWaitQueue.shift();
-  if (next) next();
-}
-
 /** 테스트 전용: 큐 상태를 들여다본다(시간 의존 없이 "대기로 밀렸다"를 단언하기 위해). */
 export function _renderSlotDebugState(): { active: number; waiting: number } {
-  return { active: activeRenderCount, waiting: renderWaitQueue.length };
+  return remotionRenderSlotDebugState();
 }
 
 export async function renderIntroOutroClip(
@@ -67,15 +43,14 @@ export async function renderIntroOutroClip(
   props: Partial<BrandProps>,
   outputPath: string,
 ): Promise<void> {
-  await acquireRenderSlot();
-  try {
-    const bundleUrl = await getBundleUrl();
+  await withRemotionRenderSlot(async () => {
+    const bundleUrl = await getRemotionBundleUrl();
     // 운영 이미지는 빌드 시점에 `npx remotion browser ensure`로 Chrome Headless Shell을
     // 내려받아 이미지에 굳힌다(Dockerfile, Debian/bookworm-slim — Alpine은 BusyBox
     // setpriv가 Remotion의 --pdeathsig를 몰라 브라우저 실행 자체가 안 됐다, 2026-10-02
     // 컨테이너 안 실측). REMOTION_CHROME_PATH를 명시하면 그 경로를 우선 쓰고, 없으면
     // Remotion이 자기가 내려받은 경로를 스스로 찾는다.
-    const browserExecutable = process.env.REMOTION_CHROME_PATH || undefined;
+    const browserExecutable = remotionBrowserExecutable();
     // 독립 리뷰 M-2(--disable-dev-shm-usage): ChromiumOptions 타입에는 임의 플래그를
     // 얹는 자리가 없다 — 대신 Remotion의 openBrowser()가 모든 렌더에 이 플래그를
     // 무조건 포함한다(node_modules/@remotion/renderer/dist/open-browser.js:115,
@@ -99,9 +74,7 @@ export async function renderIntroOutroClip(
       // "browser crashed while rendering frame 42"). 1~2초 클립이라 탭 하나로 충분하다.
       concurrency: 1,
     });
-  } finally {
-    releaseRenderSlot();
-  }
+  });
 }
 
 async function probe(filePath: string): Promise<{ width: number; height: number; durationSec: number; hasAudio: boolean }> {
