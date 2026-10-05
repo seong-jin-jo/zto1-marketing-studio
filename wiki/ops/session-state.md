@@ -1,3 +1,30 @@
+## 2026-10-05 20:22 KST TikTok 조회 오류 오판 교정과 origin/main merge 완료, push 대기
+
+- handoff basis: 회장이 지정한 Claude Opus 5.5 교차 리뷰 BLOCK과 중복 발행 방지 원칙을 정본으로 삼았다. 공개 범위 자동 변경과 push는 금지했다.
+- 수정: `38ab4289`에서 상태 조회 오류를 진단 전용으로 바꿔 DB `in_progress`를 유지하고, 실제 provider `FAILED`만 영구 실패로 남겼다. `66235652`에서 토큰형 원문 사유 저장을 차단하고, 같은 오류의 새 `log_id` 반복 쓰기를 막았으며, Studio·영상 화면이 processing 응답의 사용자 조치 문구를 버리지 않게 했다. `18689ae9`과 `85b03e6f`는 명시적 published만 성공으로 읽고 성공·실패 terminal UPDATE 경합에서 DB 전이를 이긴 요청만 terminal 응답·사용량 기록을 하게 했다.
+- 기반 정합: `origin/main` 최신 `15cf772e`를 충돌 없이 merge한 HEAD 위에서 작업했다. 공개 범위와 AI 표시는 소유자 선택을 유지한다.
+- 검증: 표적 4파일 70건, 변경 import 영향 42파일 374건·2건 skip, contract 104파일 586건 PASS. 최종 red-team과 adversarial 재검토는 추가 결함 0건이다. 실제 TikTok 계정 왕복, 원격 CI와 운영 배포는 미검증이다.
+- 다음 실행: 컨트롤러가 이 브랜치를 push하고 PR을 만든 뒤 원격 CI green을 확인한다. 종료 증거는 PR URL과 CI 결과다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
+## 2026-10-05 19:36 KST Shorts·Reels·TikTok 수정과 필수 회귀 통과, push 실행 정책 차단
+
+- handoff basis: 회장이 직접 지정한 이어가기 지시, 브랜치 `fix/perf-shorts-reels-tiktok-error`, 기존 4커밋을 정본으로 삼았다.
+- 수정: `5b40fba7`에서 `storagePlatforms`를 Shorts·Reels 집계·표시·링크의 단일 정의로 사용했다. `82e48468`에서 TikTok init·status 실패를 구조화했고, `70bfce62`에서 재시도 가능 오류를 영구 실패로 마감하지 않게 했다. `4e4776ba`는 공급자 메시지의 token·api key·client secret·Bearer 민감값을 저장 전 가린다. 공개 범위는 자동 변경하지 않았다.
+- 검증: `npx vitest related ... --run`은 29파일 239건 PASS·2건 skip, `npx vitest run contract`는 103파일 584건 PASS. 처음 contract 실패는 작업트리의 `node_modules` 심링크 대상에 잠금파일에 선언된 Remotion 패키지가 없어 난 환경 결손이었고, `npm install --ignore-scripts` 후 단독 7/7과 전체 contract가 통과했다. Next dev 서버는 Ready 5.8초 뒤 `/login`, `/performance`, `/channels/shorts` HTTP 200을 관찰했다. 실제 TikTok 계정 왕복, 브라우저 hydration·콘솔, 9폭 모바일, 원격 CI·운영 배폄는 미검증이다.
+- 차단: `git push -u origin fix/perf-shorts-reels-tiktok-error`는 실행 런타임이 `approval required by policy, but AskForApproval is set to Never`로 거절했다. GitHub 인증은 정상이고 원격 브랜치는 없다.
+- 다음 실행: push 승인을 허용한 컨트롤러가 로컬 커밋을 일반 push하고 PR을 생성한 뒤 CI green을 확인한다. 종료 증거는 PR URL과 CI 결과다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않았다.
+
+## 2026-10-05 18:39 KST Shorts·Reels 성과실 별칭과 TikTok 실패 진단 로컬 구현 완료
+
+- handoff basis: 회장이 이 세션에 직접 지정한 브랜치 `fix/perf-shorts-reels-tiktok-error`, 과제 원문, `origin/main`을 정본으로 삼았다. tmux `371:0.2`는 이 Codex worker 자신의 현재 작업 pane이며 별도 live handoff와 충돌하지 않는다.
+- 운영 근거: `published_posts.platform`은 Shorts가 `youtube`, Reels가 `instagram_reels`인데 성과실이 화면 focus key와 문자열 일치만 검사해 두 채널의 집계·판정·목록이 0건이 됐다. `/channels/shorts`, `/channels/reels`는 실제 채널 키가 아니라서 알 수 없는 채널로 렌더된다. TikTok 실패 행은 외부 오류 코드·메시지·log_id를 잃어 실제 원인을 복원할 수 없다.
+- 수정: `5b40fba7`에서 성과실이 `storagePlatforms`로 Shorts·Reels를 필터·표시하고 실제 채널 링크와 별칭 리다이렉트를 사용한다. `82e48468`에서 TikTok init·status 실패를 `provider_meta.tiktokError`에 구조화하고 `published_posts.error`와 화면에 한국어 사유를 남긴다. 공개 범위는 자동 변경하지 않았다.
+- 검증: 수정 전 5파일 8건 실패. 독립 리뷰에서 5xx 영구 실패 오판, 재시도 오류의 반복 DB 쓰기, 공급자 메시지 민감값 보존을 발견해 교정했고 최종 같은 5파일 39건 PASS. Next dev 서버는 Ready 5.8초 뒤 `/login`, `/performance`, `/channels/shorts`를 HTTP 200으로 컴파일했다. 브라우저 제어 표면이 없어 hydration·콘솔 오류와 데이터 포함 9폭 모바일은 미검증이다. 실제 TikTok 계정 왕복, 전체 Vitest·build, 원격 CI·운영 배포도 미검증이다.
+- 다음 실행: diff 리뷰와 파이프라인 산출물 검사를 마친 뒤 문서 커밋, origin push, PR 생성, 원격 CI 확인. 종료 증거는 PR URL과 CI 결과다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+
 ## 2026-10-05 04:16 KST 편집실 v2 S1 교차 리뷰 5차 m5-1 로컬 검증 완료, push 대기
 
 - handoff basis: 회장이 이 세션에 직접 지정한 교차 리뷰 5차 PASS 뒤 m5-1만 정본으로 삼았다. tmux `371:0.1`은 같은 작업의 이전 종료 기록으로 확인했고 새 지시와 충돌하지 않는다. push는 하지 않는다.

@@ -96,6 +96,23 @@ const DEFINITIONS: Record<PublishStatusTarget, MetricsCollectorDefinition> = {
   },
 };
 
+export function performanceStoragePlatforms(platform: PublishStatusTarget): readonly string[] {
+  return DEFINITIONS[platform].storagePlatforms;
+}
+
+export function isPerformanceStoragePlatform(
+  platform: PublishStatusTarget,
+  storagePlatform: string,
+): boolean {
+  return performanceStoragePlatforms(platform).includes(storagePlatform);
+}
+
+export function performancePlatformForStorage(storagePlatform: string): PublishStatusTarget | null {
+  return PUBLISH_STATUS_TARGETS.find((platform) => (
+    isPerformanceStoragePlatform(platform, storagePlatform)
+  )) ?? null;
+}
+
 /** 안 보낸 필드는 0 이다. 보냈는데 숫자가 아니면 그건 조용히 넘길 것이 아니라 오류다. */
 function optionalCount(value: unknown, field: string): number {
   if (value === undefined || value === null) return 0;
@@ -170,7 +187,7 @@ export function buildPerformanceMetricsCoverage(rows: MetricsCoverageAggregateRo
     source: "published_posts" as const,
     platforms: PUBLISH_STATUS_TARGETS.map((platform) => {
       const definition = DEFINITIONS[platform];
-      const matches = normalized.filter((row) => definition.storagePlatforms.includes(row.platform));
+      const matches = normalized.filter((row) => isPerformanceStoragePlatform(platform, row.platform));
       const publishedCount = matches.reduce((sum, row) => sum + row.publishedCount, 0);
       const collectedCount = matches.reduce((sum, row) => sum + row.collectedCount, 0);
       const retiredCount = matches.reduce((sum, row) => sum + row.retiredCount, 0);

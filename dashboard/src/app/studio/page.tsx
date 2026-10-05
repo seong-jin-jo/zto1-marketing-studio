@@ -2477,12 +2477,26 @@ export default function StudioPage() {
   async function awaitAsyncTikTokPublish(
     publishId: string, signal?: AbortSignal,
   ): Promise<{ ok: boolean; url?: string; error?: string; unresolved?: boolean }> {
+    let latestPollError = "";
     const outcome = await pollJobUntilDone<{ ok?: boolean; status?: string; url?: string; error?: string }>(
       `/api/tiktok/publish-status?publish_id=${encodeURIComponent(publishId)}`,
-      { headers: () => authHeaders(), timeoutMs: 15 * 60 * 1000, signal },
+      {
+        headers: () => authHeaders(),
+        timeoutMs: 15 * 60 * 1000,
+        signal,
+        onStatus: (_status, data) => {
+          if (!data.error || data.error === latestPollError) return;
+          latestPollError = data.error;
+          showToast(data.error, "error");
+        },
+      },
     );
     if (outcome.timedOut) {
-      return { ok: false, unresolved: true, error: "결과 확인 중입니다. 게시물 목록에서 확인해 주세요." };
+      return {
+        ok: false,
+        unresolved: true,
+        error: latestPollError || "결과 확인 중입니다. 게시물 목록에서 확인해 주세요.",
+      };
     }
     if (outcome.aborted) return { ok: false, unresolved: true, error: "확인이 중단됐습니다." };
     if (outcome.notFound) return { ok: false, unresolved: true, error: "발행 작업을 찾지 못했습니다. 게시물 목록에서 확인해 주세요." };
@@ -2493,7 +2507,16 @@ export default function StudioPage() {
       }
       return { ok: false, error: data?.error || "TikTok 발행에 실패했습니다" };
     }
-    return { ok: true, url: data?.url };
+    if (data?.status === "published" && data.ok === true) {
+      return { ok: true, url: data.url };
+    }
+    // 409/503 JSON 오류처럼 status가 없는 응답도 발행 성공이 아니다. 실패로 확정해
+    // 재발행을 열지 않고 unknown으로 남겨 다음 조회에서 DB 확정 상태를 회수한다.
+    return {
+      ok: false,
+      unresolved: true,
+      error: data?.error || "외부 게시 여부를 확인하지 못했습니다. 게시물 목록에서 확인해 주세요.",
+    };
   }
 
   // 같은 감사 반려: /api/publish도 150초대 폴링(인스타 캐러셀·Threads 상태확인)이 예산(8초)을

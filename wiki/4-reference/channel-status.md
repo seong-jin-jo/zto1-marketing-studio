@@ -1,6 +1,6 @@
 # Channel Status & Implementation
 
-**최종 갱신: 2026-09-18** (근거: 현재 코드와 예약 발행 계약 테스트. 소스 존재는 운영 연결을 증명하지 않는다.)
+**최종 갱신: 2026-10-05** (근거: 현재 코드와 영상 발행·성과 별칭 계약 테스트. 소스 존재는 운영 연결을 증명하지 않는다.)
 
 > Current UI truth is mapped in [Marketing Hub surface map](../2-product/build/marketing-hub-surface-map.md). In particular,
 > provider connection/publish status is **not** inferred from a local component, landing copy, or an extension entry.
@@ -13,6 +13,8 @@
 - 최신 QA에서 실제 공개 채널 발행과 provider 댓글 읽기는 **미검증**이다. 과거 Threads Live, Instagram 연결 관찰을 현재 운영 상태로 승격하지 않는다.
 - 텍스트 예약·발행 코드의 단일 목록은 Threads, X, Facebook, Instagram, LinkedIn, Bluesky, Telegram, Discord, Slack의 9개다. LinkedIn은 텍스트만 지원하며 예약 발행도 기존 `publishLinkedIn` 어댑터를 호출한다. 예약에 이미지가 붙으면 이미지를 조용히 버리지 않고 발행 전에 거절한다. 즉시 발행의 이미지 처리와 LinkedIn 카드뉴스·영상 업로드는 아직 미완이다.
 - 영상 직접 발행 경로는 YouTube, TikTok, Instagram Reels 3개이며 텍스트 예약 루프와 분리돼 있다. Reels는 별도 OAuth provider가 아니라 Instagram 연결을 사용하므로 `VIDEO_PUBLISH_PLATFORMS` provider 목록에는 넣지 않는다.
+- 성과실의 Shorts·Reels 화면 키는 저장 키와 다르다. Shorts는 `youtube`와 `shorts`, Reels는 `instagram_reels`와 `reels`를 하나로 묶어 집계하며 채널 상세는 각각 YouTube와 Instagram 페이지를 연다.
+- TikTok 발행 실패는 `published_posts.error`에 한국어 조치 문구를, `provider_meta.tiktokError`에 검증한 코드·정리한 메시지·`logId`를 남긴다. 심사 전 공개 차단이 발생해도 제품이 공개 범위를 자동으로 바꾸지 않는다. 실제 운영 실패 건의 과거 공급자 코드는 이미 유실돼 소급 복원할 수 없다.
 - 저장소에는 15개 발행 extension이 있지만 extension 존재만으로 credential, 심사, 연결, 실발행을 주장하지 않는다.
 
 과거 2026-08-14 관찰에서는 Threads가 Live, Instagram이 연결 상태로 기록됐다. 이 기록은 이력이며 2026-08-28 운영 재검증 증거가 아니다.
@@ -134,6 +136,8 @@ Analytics, Growth, Popular를 제거하고 Settings만 노출한다.
 - YouTube/TikTok 영상 직접 발행은 `/api/video/publish`를 사용하며 각 채널 상세로 연결한다.
 - 두 영상 provider가 채널 그룹에 보이는 사실은 텍스트 예약 발행 지원을 뜻하지 않는다.
 - Studio의 실제 발행 대상은 `SCHEDULABLE_PLATFORMS`와 preview capability의 교집합으로 제한한다.
+- TikTok 발행 접수 거절과 provider가 명시한 `FAILED`만 영구 실패로 저장한다. 상태 조회의 인증·권한·모르는 4xx·빈 `status`는 발행 실패 증거가 아니므로 `in_progress`를 유지하고 `provider_meta.tiktokError`에 진단만 남긴다.
+- 상태 조회 응답의 `error`는 Studio와 영상 화면이 사용자 조치 문구로 보여주되 pending 발행 기록을 지우거나 재발행 가능 상태로 바꾸지 않는다. 실제 `FAILED`의 형식 정상 원문 사유는 `provider_meta.tiktokFailReasonCode`에 별도 저장하며 민감값 형태는 제외한다.
 
 ## 연결 readiness 상태 계약
 

@@ -26,6 +26,21 @@ describe("pollJobUntilDone", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
+  it("processing 응답의 사용자 조치 문구를 onStatus 호출자에게 전달한다", async () => {
+    const onStatus = vi.fn();
+    const fetchImpl = fetchSequence([
+      { body: { status: "processing", error: "TikTok 계정을 다시 연결해 주세요." } },
+      { body: { ok: true, status: "published" } },
+    ]);
+
+    await pollJobUntilDone("/job/tiktok-guidance", { fetchImpl, sleepImpl: instantSleep, onStatus });
+
+    expect(onStatus).toHaveBeenCalledWith("processing", {
+      status: "processing",
+      error: "TikTok 계정을 다시 연결해 주세요.",
+    });
+  });
+
   it("404면 notFound다", async () => {
     const fetchImpl = fetchSequence([{ status: 404, body: { error: "x" } }]);
     const result = await pollJobUntilDone("/job/2", { fetchImpl, sleepImpl: instantSleep });
