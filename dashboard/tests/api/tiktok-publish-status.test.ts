@@ -5,13 +5,16 @@ const TENANT_B = "99999999-9999-9999-9999-999999999999";
 const ACCOUNT_A = "22222222-2222-2222-2222-222222222222";
 const H = vi.hoisted(() => ({
   tenantId: "11111111-1111-1111-1111-111111111111",
-  row: { id: "row-1", tenantId: "11111111-1111-1111-1111-111111111111", status: "in_progress", accountId: "22222222-2222-2222-2222-222222222222", externalId: "pub-1", providerPostId: null as string | null, providerMeta: { privacyLevel: "PUBLIC_TO_EVERYONE" } as Record<string, unknown>, permalink: null as string | null },
+  row: { id: "row-1", tenantId: "11111111-1111-1111-1111-111111111111", status: "in_progress", accountId: "22222222-2222-2222-2222-222222222222", externalId: "pub-1", providerPostId: null as string | null, providerMeta: { privacyLevel: "PUBLIC_TO_EVERYONE" } as Record<string, unknown>, permalink: null as string | null, error: null as string | null },
   cred: { token: "tenant-a-token", accountId: "22222222-2222-2222-2222-222222222222" } as { token: string; accountId: string } | null,
-  provider: { status: "PROCESSING_UPLOAD" } as { status: string; postId?: string; failReason?: string } | null,
+  provider: { ok: true, status: "PROCESSING_UPLOAD", providerError: { code: "ok", message: "", logId: null } } as Record<string, unknown> | null,
   creator: { username: "creator-a" } as { username: string } | null,
   credentialCalls: [] as unknown[][],
   statusCalls: [] as unknown[][],
   usageEvents: [] as unknown[][],
+  diagnosticWrites: 0,
+  failedTransitionWins: true,
+  publishedTransitionWins: true,
 }));
 
 vi.mock("@/lib/tenant-auth", () => ({
@@ -27,10 +30,14 @@ vi.mock("@/lib/db", () => ({
         return Promise.resolve([{
           id: H.row.id, status: H.row.status, account_id: H.row.accountId,
           external_id: H.row.externalId, provider_post_id: H.row.providerPostId, provider_meta: H.row.providerMeta,
-          permalink: H.row.permalink, error: null,
+          permalink: H.row.permalink, error: H.row.error,
         }]);
       }
       if (query.includes("SET status = 'published'")) {
+        if (!H.publishedTransitionWins) {
+          H.row.status = "failed";
+          return Promise.resolve([]);
+        }
         H.row.status = "published";
         if (query.includes("provider_post_id = null")) {
           H.row.providerPostId = null;
@@ -39,10 +46,24 @@ vi.mock("@/lib/db", () => ({
           H.row.providerPostId = values[0] as string | null;
           H.row.permalink = values[1] as string | null;
         }
-        return Promise.resolve([]);
+        return Promise.resolve([{ status: "published" }]);
       }
       if (query.includes("SET status = 'failed'")) {
+        if (!H.failedTransitionWins) {
+          H.row.status = "published";
+          return Promise.resolve([]);
+        }
         H.row.status = "failed";
+        const message = values.find((value) => typeof value === "string" && value.includes("TikTok"));
+        if (typeof message === "string") H.row.error = message;
+        const metadata = values.find((value) => typeof value === "object" && value !== null) as Record<string, unknown> | undefined;
+        if (metadata) H.row.providerMeta = { ...H.row.providerMeta, ...metadata };
+        return Promise.resolve([{ status: "failed" }]);
+      }
+      if (query.includes("SET provider_meta")) {
+        H.diagnosticWrites += 1;
+        const metadata = values.find((value) => typeof value === "object" && value !== null) as Record<string, unknown> | undefined;
+        if (metadata) H.row.providerMeta = { ...H.row.providerMeta, ...metadata };
         return Promise.resolve([]);
       }
       return Promise.resolve([]);
@@ -53,7 +74,8 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/publish", () => ({
   getChannelCred: vi.fn(async (...args: unknown[]) => { H.credentialCalls.push(args); return H.cred; }),
 }));
-vi.mock("@/lib/tiktok", () => ({
+vi.mock("@/lib/tiktok", async (importActual) => ({
+  ...await importActual<typeof import("@/lib/tiktok")>(),
   fetchTikTokPostStatus: vi.fn(async (...args: unknown[]) => { H.statusCalls.push(args); return H.provider; }),
   queryTikTokCreatorInfo: vi.fn(async () => H.creator),
 }));
@@ -74,13 +96,16 @@ async function status(publishId = "pub-1") {
 describe("GET /api/tiktok/publish-status", () => {
   beforeEach(() => {
     H.tenantId = TENANT_A;
-    H.row = { id: "row-1", tenantId: TENANT_A, status: "in_progress", accountId: ACCOUNT_A, externalId: "pub-1", providerPostId: null, providerMeta: { privacyLevel: "PUBLIC_TO_EVERYONE" }, permalink: null };
+    H.row = { id: "row-1", tenantId: TENANT_A, status: "in_progress", accountId: ACCOUNT_A, externalId: "pub-1", providerPostId: null, providerMeta: { privacyLevel: "PUBLIC_TO_EVERYONE" }, permalink: null, error: null };
     H.cred = { token: "tenant-a-token", accountId: ACCOUNT_A };
-    H.provider = { status: "PROCESSING_UPLOAD" };
+    H.provider = { ok: true, status: "PROCESSING_UPLOAD", providerError: { code: "ok", message: "", logId: null } };
     H.creator = { username: "creator-a" };
     H.credentialCalls = [];
     H.statusCalls = [];
     H.usageEvents = [];
+    H.diagnosticWrites = 0;
+    H.failedTransitionWins = true;
+    H.publishedTransitionWins = true;
     vi.resetModules();
   });
 
@@ -94,7 +119,7 @@ describe("GET /api/tiktok/publish-status", () => {
   });
 
   it("persists PUBLISH_COMPLETE and returns the post id/permalink without changing the saved publish_id", async () => {
-    H.provider = { status: "PUBLISH_COMPLETE", postId: "post-9" };
+    H.provider = { ok: true, status: "PUBLISH_COMPLETE", postId: "post-9", providerError: { code: "ok", message: "", logId: "log-complete-1" } };
     const { response, body } = await status();
     expect(response.status).toBe(200);
     expect(body).toMatchObject({
@@ -110,7 +135,7 @@ describe("GET /api/tiktok/publish-status", () => {
       providerPostId: "post-9",
       permalink: "https://www.tiktok.com/@creator-a/video/post-9",
     });
-    H.provider = { status: "PROCESSING_UPLOAD" };
+    H.provider = { ok: true, status: "PROCESSING_UPLOAD", providerError: { code: "ok", message: "", logId: null } };
     const stored = await status();
     expect(stored.body).toMatchObject({
       status: "published",
@@ -123,16 +148,20 @@ describe("GET /api/tiktok/publish-status", () => {
   });
 
   it("persists provider failure with a fixed message and hides raw provider reasons", async () => {
-    H.provider = { status: "FAILED", failReason: "access_token=raw-provider-secret" };
+    H.provider = { ok: true, status: "FAILED", failReason: "spam_risk_too_many_posts", providerError: { code: "ok", message: "", logId: "log-failed-1" } };
     const { response, body } = await status();
     expect(response.status).toBe(502);
     expect(body).toMatchObject({ status: "failed" });
     expect(H.row.status).toBe("failed");
-    expect(JSON.stringify(body)).not.toContain("raw-provider-secret");
+    expect(body.error).toContain("하루 게시 한도");
+    expect(H.row.error).toContain("하루 게시 한도");
+    expect(H.row.providerMeta).toMatchObject({
+      tiktokError: { code: "spam_risk_too_many_posts", message: "", logId: "log-failed-1" },
+    });
   });
 
   it("keeps a completed provider job pending until post id and creator metadata can both be recovered", async () => {
-    H.provider = { status: "PUBLISH_COMPLETE", postId: "post-9" };
+    H.provider = { ok: true, status: "PUBLISH_COMPLETE", postId: "post-9", providerError: { code: "ok", message: "", logId: null } };
     H.creator = null;
     const transient = await status();
     expect(transient.response.status).toBe(202);
@@ -151,7 +180,7 @@ describe("GET /api/tiktok/publish-status", () => {
     H.row.status = "in_progress";
     H.row.providerPostId = null;
     H.row.permalink = null;
-    H.provider = { status: "PUBLISH_COMPLETE" };
+    H.provider = { ok: true, status: "PUBLISH_COMPLETE", providerError: { code: "ok", message: "", logId: null } };
     const missingPostId = await status();
     expect(missingPostId.response.status).toBe(202);
     expect(H.row.status).toBe("in_progress");
@@ -159,13 +188,34 @@ describe("GET /api/tiktok/publish-status", () => {
 
   it("settles SELF_ONLY on PUBLISH_COMPLETE without requiring a public post id or permalink", async () => {
     H.row.providerMeta = { privacyLevel: "SELF_ONLY" };
-    H.provider = { status: "PUBLISH_COMPLETE" };
+    H.provider = { ok: true, status: "PUBLISH_COMPLETE", providerError: { code: "ok", message: "", logId: null } };
     const { response, body } = await status();
     expect(response.status).toBe(200);
     expect(body).toEqual({ ok: true, status: "published", publishId: "pub-1" });
     expect(H.row).toMatchObject({ status: "published", providerPostId: null, permalink: null });
     expect(H.statusCalls).toHaveLength(1);
     expect(H.usageEvents).toEqual([[TENANT_A, "row-1", "tiktok"]]);
+  });
+
+  it.each([
+    ["PUBLIC_TO_EVERYONE", "post-9"],
+    ["SELF_ONLY", undefined],
+  ])("TIKTOK-ERROR-09 경합: %s 완료 응답보다 다른 poll의 실패 저장이 먼저면 stale 성공을 반환하지 않는다", async (privacyLevel, postId) => {
+    H.row.providerMeta = { privacyLevel };
+    H.provider = {
+      ok: true,
+      status: "PUBLISH_COMPLETE",
+      ...(postId ? { postId } : {}),
+      providerError: { code: "ok", message: "", logId: "log-stale-complete-1" },
+    };
+    H.publishedTransitionWins = false;
+
+    const { response, body } = await status();
+
+    expect(response.status).toBe(202);
+    expect(body).toEqual({ ok: true, status: "processing", publishId: "pub-1" });
+    expect(H.row.status).toBe("failed");
+    expect(H.usageEvents).toHaveLength(0);
   });
 
   it("does not reveal or poll another tenant's reservation", async () => {
@@ -184,5 +234,97 @@ describe("GET /api/tiktok/publish-status", () => {
     expect(String(body.error)).toContain("계정");
     expect(H.statusCalls).toHaveLength(0);
     expect(JSON.stringify(body)).not.toContain("other-account-token");
+  });
+
+  it.each([
+    ["access_token_invalid", "Access token expired", "다시 연결"],
+    ["scope_not_authorized", "Scope missing", "권한"],
+    ["provider_rejected", "", "발행 요청을 거부"],
+  ])("TIKTOK-ERROR-03 정상: 상태 조회 오류 %s는 진단만 남기고 발행 상태를 실패로 바꾸지 않는다", async (code, message, guidance) => {
+    H.provider = {
+      ok: false,
+      providerError: { code, message, logId: "log-status-1" },
+    };
+
+    const { response, body } = await status();
+    expect(response.status).toBe(202);
+    expect(body).toMatchObject({ ok: true, status: "processing", publishId: "pub-1" });
+    expect(body.error).toContain(guidance);
+    expect(H.row.status).toBe("in_progress");
+    expect(H.row.error).toBeNull();
+    expect(H.row.providerMeta).toMatchObject({
+      tiktokError: { code, message, logId: "log-status-1" },
+    });
+    expect(H.diagnosticWrites).toBe(1);
+  });
+
+  it("TIKTOK-ERROR-07 정상: FAILED의 알려지지 않은 형식 정상 fail_reason을 진단용 원문 code로 보존한다", async () => {
+    H.provider = {
+      ok: true,
+      status: "FAILED",
+      failReason: "provider_rejected",
+      rawFailReason: "video_under_review_timeout",
+      providerError: { code: "ok", message: "", logId: "log-failed-raw-1" },
+    };
+
+    const { response, body } = await status();
+    expect(response.status).toBe(502);
+    expect(body.error).toContain("발행 요청을 거부");
+    expect(H.row.status).toBe("failed");
+    expect(H.row.providerMeta).toMatchObject({
+      tiktokError: { code: "provider_rejected", message: "", logId: "log-failed-raw-1" },
+      tiktokFailReasonCode: "video_under_review_timeout",
+    });
+  });
+
+  it("TIKTOK-ERROR-08 경합: 다른 poll이 먼저 완료했으면 늦은 FAILED를 화면 실패로 반환하지 않는다", async () => {
+    H.provider = {
+      ok: true,
+      status: "FAILED",
+      failReason: "provider_rejected",
+      providerError: { code: "ok", message: "", logId: "log-stale-failed-1" },
+    };
+    H.failedTransitionWins = false;
+
+    const { response, body } = await status();
+
+    expect(response.status).toBe(202);
+    expect(body).toEqual({ ok: true, status: "processing", publishId: "pub-1" });
+    expect(H.row.status).toBe("published");
+    expect(H.row.error).toBeNull();
+  });
+
+  it.each([
+    ["provider_unavailable", "잠시 후"],
+    ["rate_limit_exceeded", "몇 분 뒤"],
+  ])("TIKTOK-ERROR-05 정상: 재시도 오류 %s는 진행 상태를 유지하고 진단을 한 번만 저장한다", async (code, guidance) => {
+    H.provider = {
+      ok: false,
+      providerError: { code, message: "temporary provider failure", logId: "log-retry-1" },
+    };
+
+    const first = await status();
+    expect(first.response.status).toBe(202);
+    expect(first.body).toMatchObject({ ok: true, status: "processing", publishId: "pub-1" });
+    expect(first.body.error).toContain(guidance);
+    expect(H.row.status).toBe("in_progress");
+    expect(H.row.providerMeta).toMatchObject({
+      tiktokError: { code, message: "temporary provider failure", logId: "log-retry-1" },
+    });
+    expect(H.diagnosticWrites).toBe(1);
+
+    const second = await status();
+    expect(second.response.status).toBe(202);
+    expect(H.row.status).toBe("in_progress");
+    expect(H.diagnosticWrites).toBe(1);
+
+    H.provider = {
+      ok: false,
+      providerError: { code, message: "temporary provider failure", logId: "log-retry-2" },
+    };
+    const third = await status();
+    expect(third.response.status).toBe(202);
+    expect(H.row.status).toBe("in_progress");
+    expect(H.diagnosticWrites).toBe(1);
   });
 });

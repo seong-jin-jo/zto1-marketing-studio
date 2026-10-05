@@ -1,8 +1,38 @@
 import { effectiveTenantId, AuthError } from "@/lib/tenant-auth";
 import { withTenant } from "@/lib/db";
 import { getChannelCred } from "@/lib/publish";
-import { fetchTikTokPostStatus, queryTikTokCreatorInfo } from "@/lib/tiktok";
+import {
+  fetchTikTokPostStatus,
+  queryTikTokCreatorInfo,
+  tiktokRejectReasonMessage,
+  type TikTokProviderError,
+} from "@/lib/tiktok";
 import { publicationUsageOutbox, recordPublicationEvent } from "@/lib/usage-events";
+
+function tiktokErrorMetadata(
+  providerError: TikTokProviderError,
+  code = providerError.code,
+  failReasonCode?: string,
+) {
+  return {
+    tiktokError: {
+      ...providerError,
+      code,
+    },
+    ...(failReasonCode ? { tiktokFailReasonCode: failReasonCode } : {}),
+  };
+}
+
+function hasSameTikTokError(
+  providerMeta: Record<string, unknown> | null,
+  providerError: TikTokProviderError,
+): boolean {
+  const stored = providerMeta?.tiktokError;
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) return false;
+  const value = stored as Record<string, unknown>;
+  return value.code === providerError.code
+    && value.message === providerError.message;
+}
 
 // publish_id는 client가 임의로 제출할 수 있지만, 이 endpoint는 먼저 현재 tenant의
 // published_posts 예약을 찾는다. 저장되지 않은 ID나 다른 tenant/account의 토큰으로는 절대
@@ -62,7 +92,11 @@ export async function GET(request: Request) {
     });
   }
   if (post.status === "failed") {
-    return Response.json({ status: "failed", publishId, error: "TikTok 영상 처리에 실패했습니다. 영상 규격과 계정 권한을 확인해주세요." }, { status: 502 });
+    return Response.json({
+      status: "failed",
+      publishId,
+      error: post.error || "TikTok 영상 처리에 실패했습니다. 영상 규격과 계정 권한을 확인해주세요.",
+    }, { status: 502 });
   }
 
   // account_id는 예약을 만든 실제 TikTok 계정이다. UI 선택값/기본계정이 이후 바뀌어도 이 작업의
@@ -76,15 +110,39 @@ export async function GET(request: Request) {
   }
 
   const provider = await fetchTikTokPostStatus(cred.token, publishId);
-  if (!provider || !provider.status) {
-    // provider 일시 실패는 failed로 덮어쓰지 않는다. 저장된 작업은 다음 poll/reload에서 회수 가능하다.
-    return Response.json({ ok: true, status: "processing", publishId }, { status: 202 });
+  if (!provider.ok) {
+    const rejectMessage = tiktokRejectReasonMessage(provider.providerError.code);
+    const providerMeta = tiktokErrorMetadata(provider.providerError);
+    // 상태 조회 실패는 실제 발행 실패가 아니다. 인증·권한·4xx·손상 응답을
+    // failed로 마감하면 TikTok에 이미 게시된 영상을 다시 올릴 수 있으므로 진단만 남긴다.
+    if (!hasSameTikTokError(post.provider_meta, provider.providerError)) {
+      try {
+        await withTenant(tenantId, (sql) => sql`
+          UPDATE published_posts
+             SET provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+                   || ${sql.json(providerMeta as never)}::jsonb
+           WHERE id = ${post.id}::uuid
+             AND tenant_id = ${tenantId}::uuid
+             AND platform = ${"tiktok"}
+             AND external_id = ${publishId}
+             AND status = 'in_progress'
+             AND (
+               provider_meta->'tiktokError'->>'code' IS DISTINCT FROM ${provider.providerError.code}
+               OR provider_meta->'tiktokError'->>'message' IS DISTINCT FROM ${provider.providerError.message}
+             )
+        `);
+      } catch {
+        return Response.json({ error: "TikTok 상태 오류를 저장하지 못했습니다. 잠시 후 다시 확인해주세요." }, { status: 503 });
+      }
+    }
+    return Response.json({ ok: true, status: "processing", publishId, error: rejectMessage }, { status: 202 });
   }
   if (provider.status === "PUBLISH_COMPLETE") {
     const isSelfOnly = post.provider_meta?.privacyLevel === "SELF_ONLY";
     if (isSelfOnly) {
+      let transitioned = false;
       try {
-        await withTenant(tenantId, (sql) => sql`
+        const rows = await withTenant(tenantId, (sql) => sql<{ status: string }[]>`
           UPDATE published_posts
              SET status = 'published', provider_post_id = null, permalink = null,
                  error = null, published_at = now(),
@@ -95,9 +153,14 @@ export async function GET(request: Request) {
              AND platform = ${"tiktok"}
              AND external_id = ${publishId}
              AND status = 'in_progress'
+        RETURNING status
         `);
+        transitioned = rows.length > 0;
       } catch {
         return Response.json({ error: "TikTok 완료 상태를 저장하지 못했습니다. 잠시 후 다시 확인해주세요." }, { status: 503 });
+      }
+      if (!transitioned) {
+        return Response.json({ ok: true, status: "processing", publishId }, { status: 202 });
       }
       try {
         await recordPublicationEvent(tenantId, post.id, "tiktok");
@@ -122,8 +185,9 @@ export async function GET(request: Request) {
       return Response.json({ ok: true, status: "processing", publishId }, { status: 202 });
     }
     const permalink = `https://www.tiktok.com/@${encodeURIComponent(creator.username)}/video/${postId}`;
+    let transitioned = false;
     try {
-      await withTenant(tenantId, (sql) => sql`
+      const rows = await withTenant(tenantId, (sql) => sql<{ status: string }[]>`
         UPDATE published_posts
            SET status = 'published', provider_post_id = ${postId},
                permalink = ${permalink}, error = null, published_at = now(),
@@ -134,9 +198,14 @@ export async function GET(request: Request) {
            AND platform = ${"tiktok"}
            AND external_id = ${publishId}
            AND status = 'in_progress'
+      RETURNING status
       `);
+      transitioned = rows.length > 0;
     } catch {
       return Response.json({ error: "TikTok 완료 상태를 저장하지 못했습니다. 중복 방지를 위해 잠시 후 다시 확인해주세요." }, { status: 503 });
+    }
+    if (!transitioned) {
+      return Response.json({ ok: true, status: "processing", publishId }, { status: 202 });
     }
     try {
       await recordPublicationEvent(tenantId, post.id, "tiktok");
@@ -159,20 +228,37 @@ export async function GET(request: Request) {
     });
   }
   if (provider.status === "FAILED") {
+    const failureCode = provider.failReason || provider.providerError.code;
+    const rejectMessage = tiktokRejectReasonMessage(failureCode);
+    const providerMeta = tiktokErrorMetadata(
+      provider.providerError,
+      failureCode,
+      provider.rawFailReason,
+    );
+    let transitioned = false;
     try {
-      await withTenant(tenantId, (sql) => sql`
+      const rows = await withTenant(tenantId, (sql) => sql<{ status: string }[]>`
         UPDATE published_posts
-           SET status = 'failed', error = ${"TikTok 영상 처리 실패"}, published_at = now()
+           SET status = 'failed', error = ${rejectMessage}, published_at = now(),
+               provider_meta = COALESCE(provider_meta, '{}'::jsonb)
+                 || ${sql.json(providerMeta as never)}::jsonb
          WHERE id = ${post.id}::uuid
            AND tenant_id = ${tenantId}::uuid
            AND platform = ${"tiktok"}
            AND external_id = ${publishId}
            AND status = 'in_progress'
+        RETURNING status
       `);
+      transitioned = rows.length > 0;
     } catch {
       return Response.json({ error: "TikTok 실패 상태를 저장하지 못했습니다. 잠시 후 다시 확인해주세요." }, { status: 503 });
     }
-    return Response.json({ status: "failed", publishId, error: "TikTok 영상 처리에 실패했습니다. 영상 규격과 계정 권한을 확인해주세요." }, { status: 502 });
+    // 다른 poll이 먼저 published/failed로 마감했다면, 뒤늦은 FAILED 응답으로 그 결과를
+    // 덮거나 화면에 stale 실패를 돌려주지 않는다. 다음 조회가 DB의 확정 상태를 읽게 한다.
+    if (!transitioned) {
+      return Response.json({ ok: true, status: "processing", publishId }, { status: 202 });
+    }
+    return Response.json({ status: "failed", publishId, error: rejectMessage }, { status: 502 });
   }
 
   return Response.json({ ok: true, status: "processing", publishId }, { status: 202 });

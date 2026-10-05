@@ -1,5 +1,14 @@
 # OSMU build log
 
+## 2026-10-05 22:01 KST · PR 119 origin/main 충돌 해소
+
+STAMP: 2026-10-05 22:01 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: origin/main 4a9aebb8, related Vitest, contract Vitest | 고민: 같은 편집실 파일에 들어온 TikTok 상태 처리와 자막 lineage를 선택적으로 버리지 않고 함께 유지했다.
+
+- 코드: `dashboard/src/app/studio/page.tsx` 자동 병합 결과에서 PR 118의 TikTok 진행 오류 안내·명시적 성공 판정과 이 브랜치의 서버 자막 lineage 조회·단일층 미리보기를 모두 확인했다.
+- 문서 충돌: `docs/build-log.md`, `docs/qa/qa-tracker.md`, `docs/구현현황.md`, `wiki/ops/session-state.md`의 양쪽 최신 항목을 모두 보존했다.
+- 검증: `npx vitest related ... --run` 42파일 379건 통과, 2건 환경 skip. `npx vitest run contract` 104파일 588건 통과.
+- 미검증: 실제 TikTok 계정 왕복, 실제 영상 미리보기, 원격 CI, 운영 배포.
+
 ## 2026-10-05 21:44 KST · 편집실 구운 영상 서버 계보 복원
 
 STAMP: 2026-10-05 21:44 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: related Vitest, contract Vitest, 테넌트 격리 계약 | 고민: 기록 없는 과거 파일을 원본으로 낙관하지 않고 중복 자막과 구운 파일 재입력을 먼저 차단했다.
@@ -44,6 +53,34 @@ STAMP: 2026-10-05 19:37 KST | model: gpt-6.1-sol/Codex | agent: code-builder | s
 | 로컬 미검증 | ffmpeg drawtext 미지원으로 실제 글자 픽셀 합성은 CI에서 확인 필요 |
 
 개발 서버와 보조 snapshot 서버는 검사 뒤 모두 종료했다. 원격 CI와 운영 배포는 아직 실행하지 않았다.
+## 2026-10-05 20:22 KST · TikTok 조회 오류와 발행 실패 분리
+
+STAMP: 2026-10-05 20:22 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: Claude Opus 5.5 BLOCK, 수정 전 회귀 실패 7건, 표적 Vitest 4파일 70건 | 고민: 공급자 조회 오류를 실패로 확정하지 않고 진행 원장과 사용자 안내를 분리했다.
+
+| 검증 | 결과 |
+|---|---|
+| 수정 전 교차 리뷰 | 조회 오류를 `failed`로 저장해 실제 게시된 영상을 재발행할 위험, 처리 단계 code 손실, 독립 Bearer·긴 token 가림 결손 재현 |
+| 수정 후 표적 회귀 | `tiktok-publish-status`, `tiktok-api`, `job-poll`, 실제 Studio 마운트 4파일 70건 PASS |
+| 변경 import 영향 | 42파일 374건 PASS, DB 환경 전용 2건 skip |
+| 전체 contract | 104파일 586건 PASS |
+| 상태 계약 | 조회 오류는 `in_progress` 유지와 진단 저장만, 실제 provider `FAILED`만 영구 실패 |
+| 기반 정합 | `origin/main`을 충돌 없이 merge. 공개 범위와 AI 표시는 자동 변경 없음 |
+| 미검증 | 실제 TikTok 계정 왕복, 원격 CI·운영 배포 |
+
+제품 커밋은 `38ab4289`, 교차 검수 후속 커밋은 `66235652`, `18689ae9`, `85b03e6f`다. 최종 red-team과 adversarial 재검토는 추가 결함 0건이다.
+
+## 2026-10-05 18:39 KST · 성과실 Shorts·Reels 별칭과 TikTok 실패 진단
+
+STAMP: 2026-10-05 18:39 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review, ship | 근거: 수정 전 실패 8건, 표적 Vitest 5파일 39건, localhost Next dev 로그 | 고민: 운영 실패 원인을 복원할 수 있게 하되 공급자 원문을 사용자 화면에 직접 노출하지 않았다.
+
+| 검증 | 결과 |
+|---|---|
+| 수정 전 회귀 | 5파일 8건 실패로 성과 별칭, 채널 링크, TikTok 구조화 오류 결손 재현 |
+| 수정 후 회귀 | 성과·채널 2파일 11건, TikTok 3파일 28건, 합계 39건 PASS. 리뷰에서 발견한 5xx 영구 실패 오판, 반복 진단 쓰기, 민감 메시지 보존도 교정 |
+| 개발 서버 | Next 16.2.2, `localhost:3567`, Ready 5.8초. `/login`, `/performance`, `/channels/shorts` HTTP 200 |
+| 미검증 | 실제 TikTok 계정 왕복, 브라우저 hydration·콘솔, 데이터 포함 9폭 모바일, 전체 Vitest·build, 원격 CI·운영 배포 |
+
+제품 커밋은 `5b40fba7`, `82e48468`이다. 호스트 부하 제약에 따라 전체 검증은 실행하지 않았다.
 
 ## 2026-10-04 18:58 KST · 편집실 v2 S1 기존 plain 카드 작업대 회귀 복구
 

@@ -1,7 +1,9 @@
 "use client";
 
 import { use } from "react";
-import { MESSAGING_CHANNELS, DATA_CHANNELS, CH_LABELS } from "@/lib/constants";
+import { redirect } from "next/navigation";
+import { MESSAGING_CHANNELS, DATA_CHANNELS } from "@/lib/constants";
+import { resolveChannelPage } from "@/lib/channel-route";
 import { ChannelPage } from "@/components/channel/ChannelPage";
 import { MessagingPage } from "@/components/channel/MessagingPage";
 import { DataChannelPage } from "@/components/channel/DataChannelPage";
@@ -11,16 +13,21 @@ const BLOG_CHANNELS = ["naver_blog", "medium", "substack"];
 const VIDEO_CHANNELS = ["tiktok", "youtube"];
 
 export default function ChannelRoute({ params }: { params: Promise<{ channel: string }> }) {
-  const { channel } = use(params);
+  const { channel: requestedChannel } = use(params);
+  const resolved = resolveChannelPage(requestedChannel);
 
   // Validate channel exists
-  if (!CH_LABELS[channel]) {
+  if (!resolved) {
     return (
       <div className="px-region py-stack-section">
-        <p className="text-[var(--text-muted)]">알 수 없는 채널: {channel}</p>
+        <p className="text-[var(--text-muted)]">알 수 없는 채널: {requestedChannel}</p>
       </div>
     );
   }
+
+  if (resolved.redirectTo) redirect(resolved.redirectTo);
+
+  const { channel } = resolved;
 
   if (channel === "instagram") {
     return <InstagramPage />;

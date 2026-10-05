@@ -13,6 +13,11 @@ import { PerformanceChatPanel } from "./PerformanceChatPanel";
 import { AutomationRulesPanel } from "./AutomationRulesPanel";
 import { workspaceDisplayName } from "@/lib/workspace-display-name";
 import { emptyMetricLabel } from "@/lib/metrics-support";
+import {
+  isPerformanceStoragePlatform,
+  performancePlatformForStorage,
+} from "@/lib/performance-metrics-coverage";
+import { channelPageHref } from "@/lib/channel-route";
 
 export interface PerformancePost {
   id: string;
@@ -172,12 +177,14 @@ function metricValue(value: string | number | null | undefined, empty: boolean):
 }
 
 function platformLabel(platform: string): string {
-  return PREVIEW_PLATFORMS.find((item) => item.key === platform)?.label ?? platform;
+  const displayPlatform = performancePlatformForStorage(platform) ?? platform;
+  return PREVIEW_PLATFORMS.find((item) => item.key === displayPlatform)?.label ?? displayPlatform;
 }
 
 function platformPreviewKey(platform: string): PreviewPlatform | null {
-  return PREVIEW_PLATFORMS.some((item) => item.key === platform)
-    ? platform as PreviewPlatform
+  const displayPlatform = performancePlatformForStorage(platform) ?? platform;
+  return PREVIEW_PLATFORMS.some((item) => item.key === displayPlatform)
+    ? displayPlatform as PreviewPlatform
     : null;
 }
 
@@ -263,13 +270,19 @@ export function PerformanceRoom({
     () => posts.filter((post) => post.status === "published"),
     [posts],
   );
+  const focusedAllPosts = useMemo(
+    () => focus === "all"
+      ? posts
+      : posts.filter((post) => isPerformanceStoragePlatform(focus, post.platform)),
+    [focus, posts],
+  );
   const measuredPosts = useMemo(
     () => publishedPosts.filter((post) => post.views !== null && post.views !== undefined),
     [publishedPosts],
   );
   const focusedPosts = useMemo(
-    () => focus === "all" ? publishedPosts : publishedPosts.filter((post) => post.platform === focus),
-    [focus, publishedPosts],
+    () => focusedAllPosts.filter((post) => post.status === "published"),
+    [focusedAllPosts],
   );
   const focusedMeasuredPosts = useMemo(
     () => focusedPosts.filter((post) => post.views !== null && post.views !== undefined),
@@ -287,6 +300,7 @@ export function PerformanceRoom({
   };
   const assessment = focus === "all" ? sampleAssessment ?? focusedAssessment : focusedAssessment;
   const empty = focusedMeasuredPosts.length === 0;
+  const focusedChannelHref = focus === "all" ? null : channelPageHref(focus);
 
   const winnerCount = rankedPosts.length >= SAMPLE_THRESHOLD ? 2 : Math.min(1, rankedPosts.length);
   const winnerAverage = average(rankedPosts.slice(0, winnerCount).map((post) => Number(post.views || 0)));
@@ -526,9 +540,9 @@ export function PerformanceRoom({
             ))}
           </Stack>
           <span className="text-caption text-subtle sm:hidden">옆으로 밀어 더 보기</span>
-          {focus !== "all" && (
+          {focus !== "all" && focusedChannelHref && (
             <Link
-              href={`/channels/${focus}`}
+              href={focusedChannelHref}
               className="inline-flex w-fit items-center gap-micro text-caption font-semibold text-accent hover:underline"
             >
               {platformLabel(focus)} 계정 자세히 보기 →
@@ -787,12 +801,14 @@ export function PerformanceRoom({
         <details>
           <summary className="flex min-h-control-touch cursor-pointer items-center gap-stack text-body font-bold text-text">
             <span>올린 글별 성적</span>
-            <span className="text-caption font-normal text-muted">{posts.length}건</span>
+            <span className="text-caption font-normal text-muted">{focusedAllPosts.length}건</span>
           </summary>
           <div className="pt-stack">
             {coverage ? (
               <div className="mb-stack grid gap-micro text-caption text-subtle" data-metrics-coverage>
-                {coverage.platforms.filter((item) => item.publishedCount > 0).map((item) => (
+                {coverage.platforms.filter((item) => (
+                  item.publishedCount > 0 && (focus === "all" || item.platform === focus)
+                )).map((item) => (
                   <p key={item.platform}>
                     <b className="text-muted">{platformLabel(item.platform)}</b>: 수집 {item.collectedCount}건, 대기 {item.missingCount}건, 제외 {item.retiredCount}건
                     {item.missingReason?.message ? ` · ${item.missingReason.message}` : ""}
@@ -813,7 +829,7 @@ export function PerformanceRoom({
                 </tr>
               </thead>
               <tbody className="block divide-y divide-border lg:table-row-group">
-                {posts.map((post) => {
+                {focusedAllPosts.map((post) => {
                   const failure = failureByPost.get(post.id);
                   const excludedDetail = excludedByPost.get(post.id);
                   const retired = post.metrics_retired;
@@ -853,7 +869,7 @@ export function PerformanceRoom({
                   </tr>
                   );
                 })}
-                {posts.length === 0 && <tr className="block lg:table-row"><td colSpan={7} className="block p-stack-section text-center text-caption text-subtle lg:table-cell">아직 나간 글이 없습니다. 발행실에서 올리면 여기에 쌓입니다.</td></tr>}
+                {focusedAllPosts.length === 0 && <tr className="block lg:table-row"><td colSpan={7} className="block p-stack-section text-center text-caption text-subtle lg:table-cell">아직 나간 글이 없습니다. 발행실에서 올리면 여기에 쌓입니다.</td></tr>}
               </tbody>
             </table>
           </div>

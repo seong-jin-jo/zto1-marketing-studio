@@ -1,3 +1,13 @@
+## 2026-10-05 PR 119 origin/main 충돌 ❌ NG → ✅ 로컬 PASS
+
+PR 118의 TikTok 상태 처리와 이 브랜치의 자막 bake lineage가 같은 편집실 파일을 바꿨다. Git은 코드 파일을 자동 병합했고, append-only 문서 4개는 양쪽 최신 기록을 순서대로 보존해 해소했다.
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-SUBTITLE-MERGE-01 | TikTok 상태 조회 오류 안내와 자막 bake lineage를 함께 보존 | 관련 import 테스트, contract | ✅ 로컬 PASS | `studio/page.tsx`가 서버 lineage 조회와 원본·구운 영상 판정을 유지하면서 TikTok 폴링 오류 토스트, 명시적 published 성공 판정, unknown 보존도 유지한다. 관련 42파일 379건 통과, 2건 환경 skip. contract 104파일 588건 통과. |
+
+충돌 파일은 `docs/build-log.md`, `docs/qa/qa-tracker.md`, `docs/구현현황.md`, `wiki/ops/session-state.md`다. 원격 CI와 운영 배포는 미검증이다.
+
 ## 2026-10-05 편집실 영상 자막 중복 및 생성 영상 가짜 글자 ❌ 교차 리뷰 2차 BLOCK → ✅ 로컬 PASS
 
 2차 교차 리뷰에서 배포 전 인트로 없는 구운 영상과 기존 작업물 열기 경로에 서버 계보가 없어, 구운 파일을 원본으로 오판하는 결함이 남았음을 확인했다. 새 굽기 결과는 테넌트별 서버 기록과 `subtitle-UUID` 파일명으로 판정하고, 배포 전 UUID 파일은 원본과 구운 결과가 같은 규칙이라 확인 불가 상태에서 DOM 자막과 재굽기를 fail-closed 한다.
@@ -9,6 +19,25 @@
 | EDITROOM-VIDEO-SUBTITLE-DUP-03 | Higgsfield 영상 요청이 화면 안 가짜 글자·자막·로고 생성을 피하는 기존 이미지 프롬프트 규칙을 재사용 | VIDEO-PROMPT-NO-GLYPH-01 | ✅ 로컬 PASS | 이미지 경로의 `NO_TEXT` 양성 장면 제약을 `buildMotionPrompt`에도 재사용한다. 프롬프트 계약 21건과 전체 contract 103파일 586건 통과. |
 
 2차 BLOCK 종료 증거: `npx vitest related ... --run` 16파일 129건, `npx vitest run contract` 104파일 588건 PASS. 새 GET 계보 경로는 기존 테넌트 격리 공격 스크립트 READ-63에 편입했다. 배포 전 무표식 UUID 파일은 원본과 구운 결과의 파일명 규칙이 같아 역사적 완전 판별이 불가능하며, 화면은 안전하게 DOM 자막을 숨기고 재굽기를 막는다. 원격 CI와 운영 배포는 미검증이다.
+## 2026-10-05 TikTok 상태 조회 오류와 실제 발행 실패 오판 교차 리뷰 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| TIKTOK-ERROR-R2-01 | 인증·권한·모르는 4xx·빈 status 조회 오류를 실제 발행 실패로 마감하지 않음 | TIKTOK-ERROR-03 | ✅ 로컬 PASS | 모든 조회 오류는 DB 상태를 `in_progress`로 유지하고 `provider_meta.tiktokError`만 갱신한다. 응답은 `processing`과 사용자 조치 문구를 함께 내려 화면이 재연결 안내를 보여주되 재발행을 열지 않는다. |
+| TIKTOK-ERROR-R2-02 | FAILED 처리 사유의 원문 code 보존 | TIKTOK-ERROR-07 | ✅ 로컬 PASS | 실제 provider `FAILED`만 영구 실패로 마감한다. 형식이 정상이고 토큰 형태가 아닌 원문 code는 `tiktokFailReasonCode`에 별도 보존하며, 손상·민감값 형태는 저장하지 않는다. |
+| TIKTOK-ERROR-R2-03 | 저장 전 민감값 가림 회귀 | TIKTOK-ERROR-06 | ✅ 로컬 PASS | `access_token=raw-provider-secret`, 독립 `Bearer`, 긴 token 형태 문자열을 모두 가리고 관련 표적 4파일 70건이 통과했다. 같은 오류의 새 `log_id`는 반복 DB 쓰기를 만들지 않는다. |
+
+최종 변경 import 영향은 42파일 374건 PASS·2건 skip, `npx vitest run contract`는 104파일 586건 PASS다. 성공·실패 terminal 전이는 `in_progress`를 실제로 바꾼 요청만 응답하고 사용량을 기록해, 경합한 늦은 응답이 DB와 반대되는 결과를 화면에 내지 않는다.
+
+## 2026-10-05 Shorts·Reels 성과실·채널 링크·TikTok 실패 진단 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| PERF-ALIAS-01 | Shorts·Reels가 저장 플랫폼 별칭을 포함해 집계·목록·판정됨 | PERF-ALIAS-01 | ✅ 로컬 PASS | `storagePlatforms` 단일 정의로 `youtube`, `instagram_reels`를 각각 Shorts·Reels에 포함한다. 성과실 회귀 9건 중 별칭 선택·표본·목록·라벨 계약 통과. |
+| CHANNEL-ALIAS-01 | 성과실 링크와 직접 별칭 URL이 실제 YouTube·Instagram 채널로 연결됨 | CHANNEL-ALIAS-01~02 | ✅ 로컬 PASS | Shorts는 `/channels/youtube`, Reels는 `/channels/instagram`으로 연결하며 직접 별칭 URL도 같은 정식 경로로 리다이렉트한다. 단위 계약 2건 통과. |
+| TIKTOK-ERROR-01 | init·status 실패의 code·message·log_id를 보존하고 사용자 사유를 번역함 | TIKTOK-ERROR-01~03 | ✅ 로컬 PASS | init·상태 조회·비동기 FAILED가 `provider_meta.tiktokError`에 구조화 오류를 남기고 고정 한국어 안내를 저장·응답한다. 관련 3파일 24건 통과. 실제 TikTok 계정 왕복은 미검증. |
+
+표적 회귀 합계 5파일 39건 PASS. 리뷰에서 5xx 빈 응답의 영구 실패 오판과 동일 재시도 진단 반복 쓰기를 발견해 5xx·429 재시도 분류, 동일 메타데이터 쓰기 생략, 공급자 메시지 민감값 가림을 추가했다. Next dev 서버는 `localhost:3567`에서 준비됐고 `/login`, `/performance`, `/channels/shorts`가 HTTP 200으로 컴파일됐다. 브라우저 표면을 제어할 수 없어 hydration·콘솔 오류·데이터가 있는 9폭 모바일 실측은 미검증이며, 전체 Vitest·Next build는 호스트 부하 제약에 따라 CI로 넘긴다.
 
 ## 2026-10-05 편집실 v2 S1 교차 리뷰 5차 m5-1 ❌ NG → ✅ 로컬 PASS
 
