@@ -20,7 +20,8 @@ describe("S2-B CardDeckV3 공용 렌더 feature flag", () => {
   it("S2-R3-M1 flag off여도 운영 S1 일반 카드만 자유 배치 진입을 유지한다", () => {
     expect(cardDeckV3EntryEnabled(false, { hasCardDeckV2: false, textEmbedded: false })).toBe(true);
     expect(cardDeckV3EntryEnabled(false, { hasCardDeckV2: false, textEmbedded: true })).toBe(false);
-    expect(cardDeckV3EntryEnabled(false, { hasCardDeckV2: true, textEmbedded: false })).toBe(false);
+    expect(cardDeckV3EntryEnabled(false, { hasCardDeckV2: true, cardDeckTemplate: "plain", textEmbedded: false })).toBe(true);
+    expect(cardDeckV3EntryEnabled(false, { hasCardDeckV2: true, cardDeckTemplate: "chat_bubble", textEmbedded: false })).toBe(false);
   });
 
   it("flag on이면 S2 AI·v2 진입 판단을 상위 화면에 연다", () => {

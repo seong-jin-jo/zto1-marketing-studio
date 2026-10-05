@@ -4211,6 +4211,7 @@ export default function StudioPage() {
   async function startCardDeckV3() {
     if (!cardDeckV3EntryEnabled(CARD_DECK_V3_RENDER_ENABLED, {
       hasCardDeckV2: Boolean(cardDeck),
+      cardDeckTemplate: cardDeck?.template ?? null,
       textEmbedded: img?.textEmbedded === true,
     })) return;
     if (rejectWhileCardDeckV3DetailPending()) return;
@@ -4228,7 +4229,7 @@ export default function StudioPage() {
     setCardDeckV3SourceSnapshot(snapshot);
     try {
       let nextDeck: CardDeckV3;
-      if (cardDeck) {
+      if (cardDeck && CARD_DECK_V3_RENDER_ENABLED) {
         const upload = browserCardUploader(authHeaders());
         const coverImageAssetIds: Record<string, string> = {};
         const rollback: Array<() => Promise<void>> = [];
@@ -4481,6 +4482,7 @@ export default function StudioPage() {
         onCardDeckV3Change={onCardDeckV3Change}
         onStartCardDeckV3={cardDeckV3EntryEnabled(CARD_DECK_V3_RENDER_ENABLED, {
           hasCardDeckV2: Boolean(cardDeck),
+          cardDeckTemplate: cardDeck?.template ?? null,
           textEmbedded: img?.textEmbedded === true,
         }) ? startCardDeckV3 : undefined}
         cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck?.template === "chat_bubble"

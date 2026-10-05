@@ -10,8 +10,14 @@ export function cardDeckV3RenderingEnabled(env: FlagEnv = process.env): boolean 
 
 export function cardDeckV3EntryEnabled(
   renderEnabled: boolean,
-  source: { hasCardDeckV2: boolean; textEmbedded: boolean },
+  source: {
+    hasCardDeckV2: boolean;
+    cardDeckTemplate?: "plain" | "chat_bubble" | null;
+    textEmbedded: boolean;
+  },
 ): boolean {
   if (renderEnabled) return true;
-  return !source.hasCardDeckV2 && !source.textEmbedded;
+  if (source.textEmbedded) return false;
+  if (!source.hasCardDeckV2) return true;
+  return source.cardDeckTemplate === "plain";
 }
