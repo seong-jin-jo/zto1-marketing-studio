@@ -1,3 +1,11 @@
+## 2026-10-05 TikTok 상태 조회 오류와 실제 발행 실패 오판 교차 리뷰 ❌ NG
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| TIKTOK-ERROR-R2-01 | 인증·권한·모르는 4xx·빈 status 조회 오류를 실제 발행 실패로 마감하지 않음 | TIKTOK-ERROR-03 | ❌ NG | `publish-status/route.ts`가 상태 조회 오류에서 `published_posts.status=failed`를 저장해 실제 TikTok에 게시된 영상을 재발행할 위험이 있다. |
+| TIKTOK-ERROR-R2-02 | FAILED 처리 사유의 원문 code 보존 | TIKTOK-ERROR-07 | ❌ NG | 발행 단계 허용 목록이 처리 단계 code를 `provider_rejected`로 덩어 운영 진단 정보가 손실된다. |
+| TIKTOK-ERROR-R2-03 | 저장 전 민감값 가림 회귀 | TIKTOK-ERROR-06 | ❌ NG | 키 이름이 붙은 token 외에 독립 `Bearer` 값과 긴 token 형태 문자열을 가리고 `access_token=raw-provider-secret`을 회귀 테스트로 다시 고정해야 한다. |
+
 ## 2026-10-05 Shorts·Reels 성과실·채널 링크·TikTok 실패 진단 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
