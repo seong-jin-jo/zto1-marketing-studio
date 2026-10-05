@@ -723,6 +723,49 @@ describe("Studio publish result integrity", () => {
     expect(mocks.apiPost.mock.calls.some(([requestPath]) => requestPath === "/api/video/subtitle")).toBe(false);
   });
 
+  it("VIDEO-BAKED-LINEAGE-10 표시 없는 vid_ 생성 원본은 DOM 자막을 보이고 재생성 없이 굽는다", async () => {
+    const originalFilename = "vid_1723456789012.mp4";
+    const originalUrl = fakeMediaUrl(originalFilename);
+    mocks.bakeLineage = { ok: true, state: "unbaked" };
+    localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
+      idea: "배포 전 생성 원본",
+      editKind: "video",
+      editLines: ["원본 위 편집 자막"],
+      vid: { url: originalUrl, file: originalUrl, model: "test", topicKey: "배포 전 생성 원본" },
+      videoEdit: {
+        contract_version: "1.0",
+        overlays: [],
+        comments: [],
+        subtitles: [{ id: "s1", order: 0, text: "원본 위 편집 자막", startSec: 0, endSec: 3, cut: false }],
+        voice: null,
+        introOutro: null,
+        revision: 1,
+      },
+    }));
+    mocks.apiPost.mockImplementation(async (requestPath: string, body: Record<string, unknown>) => {
+      if (requestPath === "/api/video/subtitle") {
+        expect(body.filename).toBe(originalFilename);
+        return { ok: true, file: fakeMediaUrl("subtitle-44444444-4444-4444-8444-444444444444.mp4") };
+      }
+      if (requestPath === "/api/studio/drafts") return { id: "unbaked-draft", bodyRevision: 1, videoEditServerRevision: 1 };
+      return { ok: true };
+    });
+    window.history.replaceState(null, "", "/studio?room=edit&kind=video");
+
+    render(<StudioPage />);
+    await waitFor(() => expect(document.querySelector("[data-video-subtitle-list]")).toBeTruthy());
+    const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 3, configurable: true });
+    fireEvent.loadedMetadata(video);
+    Object.defineProperty(video, "currentTime", { value: 1, configurable: true, writable: true });
+    fireEvent.timeUpdate(video);
+    expect(document.querySelectorAll("[data-video-subtitle-active]")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    await waitFor(() => expect(mocks.apiPost.mock.calls.some(([requestPath]) => requestPath === "/api/video/subtitle")).toBe(true));
+    expect(mocks.showToast).not.toHaveBeenCalledWith(expect.stringContaining("영상을 다시 만들어"), "error");
+  });
+
   it("PR95-SCOPE-CUT-VIDEO-01 연결 초안 없는 영상의 대표 이미지는 카드 잠금으로 오인하지 않는다", async () => {
     localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
       idea: "이전 카드 작업",

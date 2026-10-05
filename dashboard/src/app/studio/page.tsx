@@ -597,7 +597,7 @@ export default function StudioPage() {
   );
   const { data: storedVideoLineage } = useSWR<{
     ok?: boolean;
-    state?: "baked" | "unknown";
+    state?: "baked" | "unbaked" | "unknown";
     sourceFilename?: string;
     sourceFile?: string;
   }>(

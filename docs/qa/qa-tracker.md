@@ -1,3 +1,13 @@
+## 2026-10-05 편집실 생성 원본 계보 오판·숨김 레지스트리 노출 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
+|---|---|---|---|---|
+| EDITROOM-VIDEO-LINEAGE-R3-01 | 기록 없는 생성기·업로드 원본을 미굽기 파일로 복원 | VIDEO-BAKE-LINEAGE-11~12, VIDEO-BAKED-LINEAGE-10 | ✅ 로컬 PASS | `vid_<timestamp>.mp4`, `vidsilent_<timestamp>.mp4`, 12자리 hex 업로드 파일은 `unbaked`로 판정한다. 저장 초안 복원에서 DOM 자막 1개를 렌더하고 같은 원본 파일명으로 굽기 API를 호출한다. UUID 파일은 계속 `unknown`이다. |
+| EDITROOM-VIDEO-LINEAGE-R3-02 | 업로드 원본도 자막 굽기 입력으로 사용 | VIDEO-SUBTITLE-UPLOAD-01 | ✅ 로컬 PASS | 자막 API 입력 해석을 현재 테넌트의 `videos`와 `studio` 경로만 읽는 공통 해석기로 통일했다. 다른 테넌트와 공유 legacy 경로는 열지 않는다. |
+| EDITROOM-VIDEO-LINEAGE-R3-03 | 숨김 계보 파일을 자산 경로에서 차단 | HIGGSFIELD-ASSET-HIDDEN-01~02 | ✅ 로컬 PASS | `/api/higgsfield/asset/.subtitle-bakes.json`은 404이고, 미디어 서명기도 점으로 시작하는 파일명을 거절한다. 정상 `clip.mp4`는 200이다. |
+
+최종 게이트는 `npx vitest related <변경 파일> --run` 83파일 725건 PASS·3건 환경 skip, `npx vitest run contract` 104파일 588건 PASS다. 실제 ffmpeg 글자 픽셀, 원격 CI, 운영 배포는 미검증이다.
+
 ## 2026-10-05 PR 119 origin/main 충돌 ❌ NG → ✅ 로컬 PASS
 
 PR 118의 TikTok 상태 처리와 이 브랜치의 자막 bake lineage가 같은 편집실 파일을 바꿨다. Git은 코드 파일을 자동 병합했고, append-only 문서 4개는 양쪽 최신 기록을 순서대로 보존해 해소했다.

@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { resolveMediaPath } from "@/lib/storage";
 import { effectiveTenantId } from "@/lib/tenant-auth";
+import { isSafeMediaFilename } from "@/lib/media-token";
 
 const TYPES: Record<string, string> = {
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -14,6 +15,9 @@ const TYPES: Record<string, string> = {
 // 보안: 모든 실패를 404로 통일해 다른 테넌트 파일 존재 여부 열거(enumerate)를 차단.
 export async function GET(req: Request, { params }: { params: Promise<{ file: string }> }) {
   const { file } = await params;
+  // 이 경로는 미디어만 배달한다. 점 파일은 같은 테넌트 폴더에 있어도 자막 계보 같은
+  // 운영 메타데이터이므로 존재 여부까지 감춰 404로 통일한다.
+  if (!isSafeMediaFilename(file)) return Response.json({ error: "not found" }, { status: 404 });
   // 2026-09-07 감사 지적: 쿼리 tenant_id 를 그대로 믿으면 인증된 고객 A 가
   // ?tenant_id=B 로 다른 작업 공간 파일을 받아 갈 수 있다. 파일명이 어렵다는 것은
   // 인가가 아니라 은폐다. 부르는 쪽 토큰으로 테넌트를 확정하고, 쿼리 값은 그 확정값과

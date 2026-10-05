@@ -1,5 +1,18 @@
 # OSMU build log
 
+## 2026-10-05 22:32 KST · 편집실 생성·업로드 원본 계보 복원
+
+STAMP: 2026-10-05 22:32 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: 파일명 생성 코드, related Vitest, contract Vitest | 고민: 과거 UUID 결과는 보수적으로 막고, 생성기·업로드가 실제로 만드는 좁은 파일명만 원본으로 허용했다.
+
+| 검증 | 결과 |
+|---|---|
+| 변경 파일 import 영향 | `npx vitest related <변경 파일> --run`, 83파일 725건 PASS·3건 환경 skip |
+| 전체 contract | `npx vitest run contract`, 104파일 588건 PASS |
+| 생성 원본 복원 | `vid_...`·`vidsilent_...`를 `unbaked`로 판정, DOM 자막 1개와 원본 파일 재굽기 호출 |
+| 업로드 원본 | 12자리 hex 동영상 파일을 현재 테넌트 `videos` 경로에서만 해석 |
+| 숨김 파일 | `/api/higgsfield/asset/.subtitle-bakes.json` 404, 미디어 토큰 발급 거절 |
+| 미검증 | 실제 ffmpeg 글자 픽셀, 원격 CI, 운영 배포 |
+
 ## 2026-10-05 22:01 KST · PR 119 origin/main 충돌 해소
 
 STAMP: 2026-10-05 22:01 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: origin/main 4a9aebb8, related Vitest, contract Vitest | 고민: 같은 편집실 파일에 들어온 TikTok 상태 처리와 자막 lineage를 선택적으로 버리지 않고 함께 유지했다.

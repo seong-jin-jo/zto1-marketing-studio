@@ -1,3 +1,13 @@
+## 2026-10-05 22:32 KST 편집실 생성·업로드 원본 계보 3차 교정 완료, push 대기
+
+- handoff basis: 회장이 이 세션에 직접 지정한 Claude Opus 3차 BLOCK과 생성기·업로드 실제 파일명 코드를 정본으로 삼았다. push는 컨트롤러 소유다.
+- 근본원인: 기록 없는 모든 파일을 `unknown`으로 묶어, 자막이 없는 정상 생성 원본까지 DOM 자막과 재굽기에서 차단했다. 숨김 계보 파일도 일반 자산 라우트에서 내려받을 수 있었다.
+- 수정: `vid_<timestamp>.mp4`, `vidsilent_<timestamp>.mp4`, 12자리 hex 업로드 동영상만 `unbaked`로 허용한다. UUID는 계속 `unknown`이다. 업로드 원본은 현재 테넌트 경로에서만 자막 입력으로 해석하고, 점으로 시작하는 파일은 자산 라우트와 미디어 서명에서 거절한다.
+- 검증: related 83파일 725건 PASS·3건 환경 skip, contract 104파일 588건 PASS. 컴포넌트 회귀에서 DOM 자막 1개와 원본 파일명 API 호출을 관찰했다. 실제 ffmpeg 글자 픽셀, 원격 CI, 운영 배포는 미검증이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 stage하지 않는다.
+- 커밋: `fix(editroom): recognize unbaked video originals`. pipeline artifact lint는 종료 코드 0이며 기존 핀 위생 경고 28건이다.
+- 다음 실행: 컨트롤러가 이 브랜치를 push하고 원격 CI를 확인한다. 종료 증거는 원격 브랜치 HEAD와 green CI다.
+
 ## 2026-10-05 22:01 KST PR 119 origin/main 충돌 해소 완료, push 대기
 
 - handoff basis: 회장이 지정한 PR 118 TikTok 상태 처리와 이 브랜치 자막 lineage의 동시 보존을 기준으로 삼았다. push는 컨트롤러 소유다.

@@ -19,7 +19,7 @@ import fs from "fs";
 import path from "path";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { signMediaToken } from "@/lib/media-token";
-import { resolveTenantGeneratedFile } from "@/lib/storage";
+import { resolveGeneratedFile } from "@/lib/storage";
 import { studioDir, assetUrl, mediaFilename, FFMPEG_BIN } from "@/lib/higgsfield";
 import { MAX_VIDEO_BYTES, MAX_VIDEO_DURATION_SECONDS, MAX_VIDEO_MIB } from "@/lib/video-limits";
 import {
@@ -116,7 +116,7 @@ export async function GET(request: Request) {
 
   const lineage = readSubtitleBakeLineage(tenantId, filename);
   const sourceFilename = lineage.state === "baked" ? lineage.sourceFilename : undefined;
-  const sourceExists = sourceFilename ? resolveTenantGeneratedFile(tenantId, sourceFilename) : null;
+  const sourceExists = sourceFilename ? resolveGeneratedFile(tenantId, sourceFilename) : null;
   return Response.json({
     ok: true,
     state: lineage.state,
@@ -184,7 +184,7 @@ export async function POST(request: Request) {
     }, { status: 409 });
   }
 
-  const inputPath = resolveTenantGeneratedFile(tenantId, filename);
+  const inputPath = resolveGeneratedFile(tenantId, filename);
   if (!inputPath) {
     return Response.json({ ok: false, error: "자막을 넣을 영상을 이 작업 공간에서 찾지 못했습니다. 생성실에서 영상을 다시 만들어 주세요." }, { status: 422 });
   }

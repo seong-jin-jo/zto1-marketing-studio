@@ -37,9 +37,25 @@ describe("영상 자막 굽기 서버 계보", () => {
       .toEqual({ state: "baked" });
   });
 
-  it("VIDEO-BAKE-LINEAGE-10 배포 전 UUID 파일명은 원본과 구운 결과가 같아 추측하지 않는다", async () => {
+  it("VIDEO-BAKE-LINEAGE-10 UUID 산출물은 자막·인트로 합성 결과일 수 있어 추측하지 않는다", async () => {
     const { readSubtitleBakeLineage } = await import("@/lib/studio/video-bake-lineage");
     expect(readSubtitleBakeLineage("tenant-a", "11111111-1111-4111-8111-111111111111.mp4"))
       .toEqual({ state: "unknown" });
   });
+
+  it.each(["vid_1723456789012.mp4", "vidsilent_1723456789012.mp4"])(
+    "VIDEO-BAKE-LINEAGE-11 생성기 원본 %s는 기록이 없어도 자막 없는 원본이다",
+    async (filename) => {
+      const { readSubtitleBakeLineage } = await import("@/lib/studio/video-bake-lineage");
+      expect(readSubtitleBakeLineage("tenant-a", filename)).toEqual({ state: "unbaked" });
+    },
+  );
+
+  it.each(["a1b2c3d4e5f6.mp4", "001122aabbcc.mov", "abcdef123456.m4v", "123456abcdef.webm"])(
+    "VIDEO-BAKE-LINEAGE-12 업로드 원본 %s는 기록이 없어도 자막 없는 원본이다",
+    async (filename) => {
+      const { readSubtitleBakeLineage } = await import("@/lib/studio/video-bake-lineage");
+      expect(readSubtitleBakeLineage("tenant-a", filename)).toEqual({ state: "unbaked" });
+    },
+  );
 });
