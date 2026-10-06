@@ -41,14 +41,16 @@ export async function POST(request: Request) {
   if (!body?.sourceFilename || typeof body.sourceFilename !== "string") {
     return Response.json({ error: "sourceFilename이 필요합니다." }, { status: 400 });
   }
-  const introCompId = body.introCompId ?? null;
-  const outroCompId = body.outroCompId ?? null;
-  if (introCompId !== null && !isValidCompId(introCompId)) {
+  const introCompIdValue: unknown = body.introCompId ?? null;
+  const outroCompIdValue: unknown = body.outroCompId ?? null;
+  if (introCompIdValue !== null && !isValidCompId(introCompIdValue)) {
     return Response.json({ error: "유효하지 않은 인트로 템플릿입니다." }, { status: 400 });
   }
-  if (outroCompId !== null && !isValidCompId(outroCompId)) {
+  if (outroCompIdValue !== null && !isValidCompId(outroCompIdValue)) {
     return Response.json({ error: "유효하지 않은 아웃트로 템플릿입니다." }, { status: 400 });
   }
+  const introCompId: IntroOutroCompId | null = introCompIdValue;
+  const outroCompId: IntroOutroCompId | null = outroCompIdValue;
   if (!introCompId && !outroCompId) {
     return Response.json({ error: "인트로 또는 아웃트로 중 하나는 선택해야 합니다." }, { status: 400 });
   }
