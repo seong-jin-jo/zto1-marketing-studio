@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { Button } from "@/components/shared/Button";
 import { authHeaders } from "@/lib/auth";
 import type { CardDeckV3, CardElement, CardElementType } from "@/lib/studio/card-element-contract";
+import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import {
   addCardElement,
   addChatOverlayElement,
@@ -49,7 +50,7 @@ import {
   type ResizeHandle,
   type SnapGuide,
 } from "@/lib/studio/card-element-commands";
-import { projectChatCardDeckV3ToRenderableV2 } from "@/lib/studio/card-deck-v2-to-v3";
+import { assertValidChatCardDeckV3CommandResult, projectChatCardDeckV3ToRenderableV2 } from "@/lib/studio/card-deck-v2-to-v3";
 import { assertChatSlidesRenderable } from "@/lib/studio/chat-deck-layout";
 import { CHAT_TONE_IDS, isChatToneCandidateList, type ChatToneCandidate, type ChatToneId } from "@/lib/studio/chat-tone-suggestions";
 import { cardSlideRenderModel, isChatBaseProjectionElement } from "@/lib/studio/card-render-model";
@@ -104,12 +105,13 @@ function elementOverlayStyle(element: CardElement, logicalHeight: number): CSSPr
 
 export interface CardCanvasEditorProps {
   deck: CardDeckV3;
+  sourceDeck?: CardDeck | null;
   assetUrls?: Record<string, string>;
   onAssetUrlChange?: (assetId: string, url: string) => void;
   onDeckChange: (deck: CardDeckV3) => void;
 }
 
-export function CardCanvasEditor({ deck, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
+export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
   const [history, setHistory] = useState<CardCommandHistory>(() => createCardCommandHistory(deck));
   const [activeSlideId, setActiveSlideId] = useState(deck.slides[0]?.id ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -180,11 +182,12 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onAssetUrlChange, onDec
   }, [deck, editorComparableDeck, history.present]);
 
   const commit = useCallback((next: CardDeckV3) => {
+    if (sourceDeck) assertValidChatCardDeckV3CommandResult(next, sourceDeck);
     setHistory((current) => commitCardCommand(current, next));
     setPreviewDeck(null);
     setGuides([]);
     onDeckChange(next);
-  }, [onDeckChange]);
+  }, [onDeckChange, sourceDeck]);
   commitRef.current = commit;
 
   useEffect(() => {
@@ -374,7 +377,10 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onAssetUrlChange, onDec
                 : code === "OPS_BOLD_LIMIT" ? "한 장에 굵은 덩이는 하나만 둘 수 있습니다."
                   : code === "OPS_SLIDE_LIMIT" ? "카드는 11장을 넘을 수 없습니다."
                     : code === "OPS_SLIDE_MIN" ? "카드는 7장 아래로 줄일 수 없습니다."
-                      : code === "OPS_SLIDE_LOCKED" ? "표지와 마지막 장은 이동·복제·삭제할 수 없습니다."
+                      : code === "CARD_CHAT_COMMENT_PROMPT_REQUIRED" ? "댓글 유도 장은 삭제하거나 역할을 바꿀 수 없습니다."
+                        : code === "CARD_CHAT_SLIDE_MIN" ? "대화 장은 4장 아래로 줄일 수 없습니다."
+                          : code === "CARD_CHAT_DECK_INVALID" ? "저장 계약을 깨는 변경이라 적용하지 않았습니다."
+                          : code === "OPS_SLIDE_LOCKED" ? "표지·댓글 유도·마지막 장은 이동·복제·삭제할 수 없습니다."
                         : code === "OPS_BUBBLE_TARGET_LOCKED" ? "표지와 마지막 장에는 말풍선을 옮길 수 없습니다."
                           : "말풍선 편집을 적용하지 못했습니다.";
       setBubbleEditError(message);

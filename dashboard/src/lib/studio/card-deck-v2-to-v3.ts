@@ -1,4 +1,4 @@
-import type { CardDeck, CardSlide } from "./card-deck-contract";
+import { CardDeckValidationError, validateCardDeck, type CardDeck, type CardSlide } from "./card-deck-contract";
 import {
   CARD_LOGICAL_HEIGHT,
   CARD_LOGICAL_WIDTH,
@@ -143,7 +143,7 @@ export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3O
     if (slide.cover_image_url && !coverAssetId) throw new Error("CARD_COVER_IMAGE_ASSET_REQUIRED");
     return {
       id: safePart(slide.id), order: slide.order,
-      role: slide.role === "cover" ? "cover" : slide.role === "cta" ? "cta" : "body",
+      role: slide.role === "cover" ? "cover" : slide.role === "comment_prompt" ? "comment_prompt" : slide.role === "cta" ? "cta" : "body",
       content_state: text.trim() ? "filled" : "empty",
       background: isChat && coverAssetId
         ? { kind: "image", asset_id: coverAssetId, crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" }
@@ -203,7 +203,7 @@ export function projectCardDeckV3ToV2(deck: CardDeckV3, source: CardDeck): CardD
       return {
         id: slide.id,
         order,
-        role: slide.role === "cover" ? "cover" : slide.role === "cta" ? "cta" : legacy?.role === "comment_prompt" ? "comment_prompt" : "chat",
+        role: slide.role === "cover" ? "cover" : slide.role === "comment_prompt" ? "comment_prompt" : slide.role === "cta" ? "cta" : legacy?.role === "comment_prompt" ? "comment_prompt" : "chat",
         ...(slide.role === "cover" && base.cover ? { cover: structuredClone(base.cover) } : {}),
         ...(slide.role !== "cover" ? { bubbles: structuredClone(base.bubbles) } : {}),
         image_url: legacy?.image_url ?? null,
@@ -237,6 +237,28 @@ export function projectCardDeckV3ToV2(deck: CardDeckV3, source: CardDeck): CardD
     return legacySlide;
   });
   return projected;
+}
+
+/**
+ * 카톡 v3 명령은 화면 state에 반영하기 전에 서버가 함께 저장할 v2 projection도 통과해야 한다.
+ * UI 버튼별 예외 처리 대신 이 경계를 공유해 역할·장수 계약이 깨진 덱의 자동저장을 막는다.
+ */
+export function assertValidChatCardDeckV3CommandResult(deck: CardDeckV3, source: CardDeck): CardDeckV3 {
+  if (deck.template !== "chat_bubble" || source.template !== "chat_bubble") return deck;
+  try {
+    validateCardDeck(projectCardDeckV3ToV2(deck, source));
+    return deck;
+  } catch (error) {
+    if (error instanceof CardDeckValidationError) {
+      if (error.message.includes("exactly 1 comment_prompt")) {
+        throw new RangeError("CARD_CHAT_COMMENT_PROMPT_REQUIRED");
+      }
+      if (error.message.includes("at least 4 chat slides") || error.rule === "slide_count") {
+        throw new RangeError("CARD_CHAT_SLIDE_MIN");
+      }
+    }
+    throw new RangeError("CARD_CHAT_DECK_INVALID");
+  }
 }
 
 /** v3 한 화면 편집기의 넘침 검사에서 기존 발행 canvas 렌더러를 그대로 쓰기 위한 무손실 투영. */

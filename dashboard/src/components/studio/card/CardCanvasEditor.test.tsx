@@ -39,6 +39,18 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect(document.querySelector("[data-card-right-panel]")).toBeInTheDocument();
   });
 
+  it("S5b-R4-C 댓글 유도 장은 삭제 버튼을 잠그고 원본 역할을 유지한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const current = migrateCardDeckV2ToV3(source);
+    const commentPrompt = current.slides.find((slide) => slide.role === "comment_prompt")!;
+    render(<CardCanvasEditor deck={current} sourceDeck={source} onDeckChange={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: `${commentPrompt.order + 1}장` }));
+
+    expect(screen.getByRole("button", { name: "이 장 삭제" })).toBeDisabled();
+    expect(current.slides.find((slide) => slide.id === commentPrompt.id)?.role).toBe("comment_prompt");
+  });
+
   it("S5b-R2-MINOR 발행 장면 실측은 넘침을 안내만 하고 undo history 밖에서 자동 commit하지 않는다", async () => {
     const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
     const scrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");

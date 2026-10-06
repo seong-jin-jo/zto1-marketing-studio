@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { validateCardDeck, type CardDeck } from "./card-deck-contract";
+import { deleteChatSlide } from "./card-element-commands";
 import * as cardDeckConverters from "./card-deck-v2-to-v3";
-import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, projectChatCardDeckV3ToRenderableV2, synchronizeChatCardDeckV3 } from "./card-deck-v2-to-v3";
+import { assertValidChatCardDeckV3CommandResult, cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, projectChatCardDeckV3ToRenderableV2, synchronizeChatCardDeckV3 } from "./card-deck-v2-to-v3";
 import chatDeckFixture from "../../../tests/studio/fixtures/deck-d100.v2.json";
 
 const base = {
@@ -110,6 +111,26 @@ describe("S2 기존 카드 무손실 이관", () => {
       deck: null,
       missingAssetIds: ["missing-cover.png"],
     });
+  });
+
+  it("S5b-R4-C 댓글 유도 역할을 v3에 보존해 해당 장 삭제를 거절한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    const commentPrompt = migrated.slides.find((slide) => slide.role === "comment_prompt");
+
+    expect(commentPrompt).toBeDefined();
+    expect(() => deleteChatSlide(migrated, commentPrompt!.id)).toThrow("OPS_SLIDE_LOCKED");
+    expect(projectCardDeckV3ToV2(migrated, source).slides.filter((slide) => slide.role === "comment_prompt")).toHaveLength(1);
+  });
+
+  it("S5b-R4-C v2 projection의 chat 장 하한을 깨는 v3 명령 결과를 commit 전에 거절한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    const invalid = structuredClone(migrated);
+    invalid.slides.filter((slide) => slide.role === "body").slice(0, 3).forEach((slide) => { slide.role = "cover"; });
+
+    expect(() => assertValidChatCardDeckV3CommandResult(invalid, source)).toThrow("CARD_CHAT_SLIDE_MIN");
+    expect(() => assertValidChatCardDeckV3CommandResult(migrated, source)).not.toThrow();
   });
 
   it("S5b-AC3 v3와 함께 저장할 v2 projection 지문만 현재본으로 인정한다", () => {
