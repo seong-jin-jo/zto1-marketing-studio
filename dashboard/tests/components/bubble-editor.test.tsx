@@ -155,4 +155,33 @@ describe("CardDeckPanel (표지·CTA 고정, 세션맥락: card-deck-ops 순수 
     fireEvent.click(screen.getByRole("button", { name: "실행 취소" }));
     expect(current.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker))).toEqual(originalSpeakers);
   });
+
+  it("S5-AC3 정상: 후보 3개를 원문 옆에서 비교하고 고른 후보만 적용하며 사실 경고를 남긴다", async () => {
+    let current = deck();
+    const original = current.slides[1].bubbles!.map((bubble) => bubble.segments.map((segment) => segment.text).join(""));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      fact_warning: "숫자와 고유명사는 적용 전에 원문과 다시 확인하세요.",
+      candidates: [
+        { id: "a", label: "후보 1", lines: original.map((line) => `${line} A`), fact_warnings: [] },
+        { id: "b", label: "후보 2", lines: original.map((line) => `${line} B`), fact_warnings: ["새 숫자 10시간"] },
+        { id: "c", label: "후보 3", lines: original.map((line) => `${line} C`), fact_warnings: [] },
+      ],
+    }), { status: 200 })));
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    const view = render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    fireEvent.click(document.querySelector(`[data-slide-id="${current.slides[1].id}"]`)!);
+    fireEvent.click(screen.getByRole("button", { name: "후보 3개 비교" }));
+
+    expect(await screen.findByRole("dialog", { name: "말투 다듬기 비교" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "이 후보 적용" })).toHaveLength(3);
+    expect(screen.getByText(/숫자와 고유명사는 적용 전에/)).toBeInTheDocument();
+    fireEvent.click(within(document.querySelector('[data-tone-candidate="b"]')!).getByRole("button", { name: "이 후보 적용" }));
+    view.rerender(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+
+    const changed = current.slides[1].bubbles!.map((bubble) => bubble.segments.map((segment) => segment.text).join(""));
+    expect(changed).toEqual(original.map((line) => `${line} B`));
+    expect(changed).not.toEqual(original.map((line) => `${line} A`));
+    expect(screen.getByText(/원문과 다름/)).toBeInTheDocument();
+  });
 });

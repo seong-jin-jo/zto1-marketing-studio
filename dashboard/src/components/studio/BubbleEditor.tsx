@@ -16,6 +16,7 @@ import type { Bubble, CardDeck, CardSlide, Segment } from "@/lib/studio/card-dec
 import {
   CardDeckOpsError,
   addBubble,
+  applyBubbleTextBatch,
   caretToSegment,
   deleteBubble,
   deleteSlide,
@@ -35,6 +36,7 @@ import {
   trimBubbleTrailingNewline,
   trimSegmentsTrailingNewline,
 } from "@/lib/studio/card-deck-ops";
+import { CHAT_TONE_IDS, type ChatToneCandidate, type ChatToneId } from "@/lib/studio/chat-tone-suggestions";
 import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
 import { DeliveredMedia } from "./DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
@@ -76,6 +78,7 @@ export interface BubbleEditorProps {
   onBubbleDragStart?: (source: { slideId: string; bubbleId: string }) => void;
   onBubbleDrop?: (source: { slideId: string; bubbleId: string }, targetSlideId: string, targetIndex: number) => void;
   draggedBubble?: { slideId: string; bubbleId: string } | null;
+  onSelectedBubbleChange?: (bubbleId: string | null) => void;
 }
 
 export function CardStripThumbnail({
@@ -659,7 +662,7 @@ function BubbleContentEditable({
 }
 
 /** 편집실 카드 탭: 선택된 장(chat/comment_prompt/cta)의 말풍선을 직접 편집한다. */
-export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, onBubbleDrop, draggedBubble }: BubbleEditorProps) {
+export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, onBubbleDrop, draggedBubble, onSelectedBubbleChange }: BubbleEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
   const editableRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -677,7 +680,8 @@ export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, o
 
   useEffect(() => {
     setSelectedBubbleId(null);
-  }, [slideId]);
+    onSelectedBubbleChange?.(null);
+  }, [onSelectedBubbleChange, slideId]);
 
   useEffect(() => {
     function handleSelectionChange() {
@@ -853,7 +857,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, o
                   editableRef={(el) => { editableRefs.current[bubble.id] = el; }}
                   onSegmentsChange={(segments) => updateBubbleSegments(bubble.id, segments)}
                   onTrimTrailingNewline={() => run((d) => trimBubbleTrailingNewline(d, currentSlideId, bubble.id))}
-                  onFocus={() => setSelectedBubbleId(bubble.id)}
+                  onFocus={() => { setSelectedBubbleId(bubble.id); onSelectedBubbleChange?.(bubble.id); }}
                   onCaretChange={(caret) => { caretRefs.current[bubble.id] = caret; }}
                 />
                 {isEmpty ? (
@@ -1114,6 +1118,18 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
   const [splitNotice, setSplitNotice] = useState<string | null>(null);
   const [draggedBubble, setDraggedBubble] = useState<{ slideId: string; bubbleId: string } | null>(null);
   const [history, setHistory] = useState<CardDeck[]>([]);
+  const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
+  const [toneScope, setToneScope] = useState<"one" | "slide" | "all">("slide");
+  const [toneId, setToneId] = useState<ChatToneId>("learned");
+  const [toneBusy, setToneBusy] = useState(false);
+  const [toneError, setToneError] = useState<string | null>(null);
+  const [toneComparison, setToneComparison] = useState<{
+    revision: number;
+    targets: Array<{ slideId: string; bubbleId: string; original: string }>;
+    candidates: ChatToneCandidate[];
+    factWarning: string;
+    appliedId: string | null;
+  } | null>(null);
   const autoSplitTargetRef = useRef<string | null>(null);
   const activeIndex = deck.slides.findIndex((s) => s.id === activeSlideId);
   const activeSlide = activeIndex >= 0 ? deck.slides[activeIndex] : deck.slides[0];
@@ -1133,6 +1149,66 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
       return current.slice(0, -1);
     });
   }, [onDeckChange]);
+
+  const toneTargets = useCallback(() => {
+    const all = deck.slides.flatMap((slide) => (slide.bubbles ?? []).map((bubble) => ({
+      slideId: slide.id,
+      bubbleId: bubble.id,
+      original: bubbleText(bubble),
+    })));
+    if (toneScope === "all") return all;
+    const inSlide = all.filter((target) => target.slideId === activeSlide?.id);
+    if (toneScope === "slide") return inSlide;
+    return selectedBubbleId ? inSlide.filter((target) => target.bubbleId === selectedBubbleId) : [];
+  }, [activeSlide?.id, deck.slides, selectedBubbleId, toneScope]);
+
+  async function requestToneSuggestions() {
+    const targets = toneTargets();
+    if (targets.length === 0) {
+      setToneError(toneScope === "one" ? "먼저 말풍선 하나를 눌러 주세요." : "다듬을 말풍선이 없습니다.");
+      return;
+    }
+    setToneBusy(true);
+    setToneError(null);
+    try {
+      const response = await fetch("/api/studio/commands", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ action: "suggest_chat_tone", tone: toneId, lines: targets.map((target) => target.original) }),
+      });
+      const data = await response.json().catch(() => ({})) as { ok?: boolean; candidates?: ChatToneCandidate[]; fact_warning?: string; error?: string };
+      if (!response.ok || !data.ok || !Array.isArray(data.candidates) || data.candidates.length !== 3) {
+        setToneError(data.error || "말투 후보 3개를 만들지 못했습니다. 원문은 바뀌지 않았습니다.");
+        return;
+      }
+      setToneComparison({
+        revision: deck.revision,
+        targets,
+        candidates: data.candidates,
+        factWarning: data.fact_warning || "숫자와 고유명사는 적용 전에 원문과 다시 확인하세요.",
+        appliedId: null,
+      });
+    } catch {
+      setToneError("연결이 끊겨 말투 후보를 만들지 못했습니다. 원문은 바뀌지 않았습니다.");
+    } finally {
+      setToneBusy(false);
+    }
+  }
+
+  function applyToneCandidate(candidate: ChatToneCandidate) {
+    if (!toneComparison) return;
+    if (toneComparison.revision !== deck.revision) {
+      setToneError("후보를 만든 뒤 대화가 바뀌었습니다. 최신 원문으로 후보를 다시 만들어 주세요.");
+      return;
+    }
+    const next = applyBubbleTextBatch(deck, toneComparison.targets.map((target, index) => ({
+      slideId: target.slideId,
+      bubbleId: target.bubbleId,
+      text: candidate.lines[index],
+    })));
+    commitDeck(next);
+    setToneComparison((current) => current ? { ...current, revision: next.revision, appliedId: candidate.id } : current);
+  }
 
   useEffect(() => {
     if (!deck.slides.find((s) => s.id === activeSlideId)) {
@@ -1248,7 +1324,41 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
         <Button size="sm" variant="secondary" disabled={!activeSlide?.bubbles?.length} onClick={() => commitDeck(swapSpeakers(deck, activeSlide?.id ?? null))}>이 장 화자 서로 바꾸기</Button>
         <Button size="sm" variant="secondary" onClick={() => commitDeck(swapSpeakers(deck, null))}>덱 전체 화자 서로 바꾸기</Button>
         <Button size="sm" variant="secondary" disabled={history.length === 0} onClick={undo}>실행 취소</Button>
+        <label className={styles.toneField}>범위
+          <select aria-label="말투 다듬기 범위" value={toneScope} onChange={(event) => setToneScope(event.target.value as typeof toneScope)}>
+            <option value="one">고른 말풍선</option>
+            <option value="slide">이 장</option>
+            <option value="all">덱 전체</option>
+          </select>
+        </label>
+        <label className={styles.toneField}>말투
+          <select aria-label="다듬을 말투" value={toneId} onChange={(event) => setToneId(event.target.value as ChatToneId)}>
+            {CHAT_TONE_IDS.map((id) => <option key={id} value={id}>{id === "learned" ? "학습 정보 말투" : id === "warm" ? "더 친근하게" : id === "short" ? "더 짧게" : "반말↔존댓말"}</option>)}
+          </select>
+        </label>
+        <Button size="sm" onClick={() => { void requestToneSuggestions(); }} disabled={toneBusy}>{toneBusy ? "후보 만드는 중" : "후보 3개 비교"}</Button>
       </div>
+      {toneError ? <p role="alert" className={styles.toneError}>{toneError}</p> : null}
+      {toneComparison ? (
+        <section className={styles.toneComparison} role="dialog" aria-label="말투 다듬기 비교" data-tone-comparison>
+          <header>
+            <b>원문과 후보 3개 비교</b>
+            <span>{toneComparison.targets.length}개 말풍선. 적용하기 전에는 덱이 바뀌지 않습니다.</span>
+          </header>
+          <p className={styles.factWarning} role="status">{toneComparison.factWarning}</p>
+          <div className={styles.toneCandidateGrid}>
+            <article><b>원문</b><p>{toneComparison.targets.map((target) => target.original).join("\n")}</p></article>
+            {toneComparison.candidates.map((candidate) => (
+              <article key={candidate.id} data-tone-candidate={candidate.id} data-applied={toneComparison.appliedId === candidate.id ? "true" : undefined}>
+                <b>{candidate.label}</b>
+                <p>{candidate.lines.join("\n")}</p>
+                {candidate.fact_warnings.length ? <p className={styles.factWarning}>원문과 다름. {candidate.fact_warnings.join(" ")}</p> : <p className={styles.factSafe}>숫자·고유명사 자동 대조 통과</p>}
+                <Button size="sm" onClick={() => applyToneCandidate(candidate)}>{toneComparison.appliedId === candidate.id ? "적용됨" : "이 후보 적용"}</Button>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <nav aria-label="카드 목록" className={styles.thumbnailStrip} data-card-deck-slide-list data-card-deck-thumbnail-strip>
         {deck.slides.map((slide, index) => {
           const locked = slide.role === "cover" || slide.role === "cta";
@@ -1324,6 +1434,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
             onDeckChange={commitDeck}
             draggedBubble={draggedBubble}
             onBubbleDragStart={setDraggedBubble}
+            onSelectedBubbleChange={setSelectedBubbleId}
             onBubbleDrop={(source, targetSlideId, targetIndex) => {
               try {
                 commitDeck(moveBubbleToSlide(deck, source.slideId, source.bubbleId, targetSlideId, targetIndex));
