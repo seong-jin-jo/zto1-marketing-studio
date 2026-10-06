@@ -1,3 +1,15 @@
+## 2026-10-07 편집실 S5b 카톡 v3 프로필·덧붙임 렌더 ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 판정 | 종료 증거 |
+|---|---|---|---|
+| S5b-AC1 | v2 카톡 말풍선·화자·사진을 보존한 v3 고급 편집 | ✅ 관찰됨 | 데이터 9장 플래그 ON Chromium에서 고급 편집 진입, 화자 교환·undo, 말투 후보 3개, 표지/마지막 사진 보존 |
+| S5b-AC2 | 글·스티커·로고의 화면·Remotion PNG 정합 | ✅ 관찰됨 | 브라우저 scene과 Remotion PNG를 원본 해상도로 확인. 세 요소와 층 순서가 양쪽에 표시 |
+| S5b-AC3 | 저장·재열기·발행 뒤 고급 편집과 사진 회귀 없음 | ✅ 관찰됨 | 저장 4회, 재열기·발행 렌더 PASS, 콘솔 오류 0, 실패 요청 0 |
+| S5b-ORPHAN-01 | 원형 삭제 뒤 `el_<옛 id>` projection 고아 미렌더·정리 | ✅ PASS | command·통합·E2E에서 `orphanProjectionRemoved: true` |
+| S5b-AVATAR-R1 | 공유 편집기의 profile asset resolver 누락 | ❌ NG → ✅ 관찰됨 | 최초 적대적 리뷰에서 브라우저 editor 아바타 누락 발견. resolver에 brand profile asset을 연결하고 editor marker·통합 테스트 추가. 브라우저 캔버스와 Remotion PNG 양쪽에서 주황색 아바타 육안 확인 |
+
+최종 로컬 증거는 `docs/qa/osmu-editroom-s5b-build-evidence-v1-gpt-codex.md`와 `docs/qa/osmu-editroom-s5b-build-evidence-20261007/`에 있다. 원격 CI·QA 단계 승인·운영 배포는 미검증이다.
+
 ## 2026-10-06 편집실 v2 S2 교차 리뷰 2차 flag off·렌더 과부하 ❌ NG
 
 | 요청번호 | 결함 | 현재 판정 | 종료 증거 |

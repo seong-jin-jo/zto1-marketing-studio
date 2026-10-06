@@ -1,5 +1,13 @@
 # OSMU build log
 
+## 2026-10-07 00:48 KST · 편집실 S5b 카톡 v3 고급 도구와 덧붙임 요소
+
+STAMP: 2026-10-07 00:48 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: S5b 수용 기준, Vitest 3단, 플래그 ON localhost Chromium, Remotion PNG | 고민: 기존 v2 내용과 운영 롤백을 보존하면서 카톡 고급 도구와 덧붙임 요소를 공용 v3 scene에 연결했다.
+
+S5b-AC1~3을 구현했다. 화자·프로필·말풍선·말투 도구와 글·사진·도형·스티커·로고 덧붙임을 `CardCanvasEditor` 기반 v3 화면에 연결했고, 저장·재열기·발행은 `CardSlideScene`을 공유한다. 원형을 복사한 뒤 고아가 된 `el_<옛 id>` projection은 저장·렌더에서 제거한다.
+
+검증: TypeScript PASS, integrity 33파일 104건 PASS, contract 107파일 621건 PASS, 변경 import 영향 64파일 530건 PASS·환경 skip 1파일 12건이다. Next production build도 PASS했다. 플래그 ON 실제 Next dev E2E는 데이터 9장, 저장 4회, 콘솔 오류 0, 실패 요청 0이며, 브라우저 캔버스와 Remotion PNG 양쪽에서 프로필 아바타와 덧붙임 요소를 육안 확인했다. 360~1000 아홉 폭은 본문 16px, 13px 미만·44px 미만·가로 넘침 0, 눌림 상태 100%다. 상세 증거는 `docs/qa/osmu-editroom-s5b-build-evidence-v1-gpt-codex.md`다. 원격 CI·QA 승인·운영 배포는 미검증이며 push하지 않았다.
+
 ## 2026-10-05 23:08 KST · VID-STALE-09 주제 도장 계약의 의미 단위 검증
 
 STAMP: 2026-10-05 23:08 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `studio/page.tsx` 이미지·영상 완료 함수, 단일·related·Studio 전체 Vitest | 고민: 제품 동작은 그대로 두고, 객체 포맷이 아니라 이미지와 영상 각각의 주제 도장 계약을 검사했다.

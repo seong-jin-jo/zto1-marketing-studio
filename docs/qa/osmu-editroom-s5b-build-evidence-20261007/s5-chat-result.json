@@ -1,0 +1,122 @@
+{
+  "result": "PASS",
+  "cards": 9,
+  "uploads": 0,
+  "chatV3Workbench": true,
+  "speakerSwapUndo": true,
+  "toneCandidateCount": 3,
+  "advancedEditorPreserved": true,
+  "overlayPreserved": true,
+  "overlayTypes": [
+    "logo",
+    "text",
+    "sticker"
+  ],
+  "orphanProjectionRemoved": true,
+  "profileAssetId": "s5b-profile.svg",
+  "browserEditorProfileVisible": true,
+  "browserCanvasPng": "/tmp/s5b-evidence-avatar-final/s5b-chat-profile-browser-canvas.png",
+  "editorScenePng": "/tmp/s5b-evidence-avatar-final/s5b-chat-overlay-browser-scene.png",
+  "remotionPng": "/tmp/s5b-evidence-avatar-final/s5b-chat-overlay-profile-remotion.png",
+  "readerBubbleCount": 1,
+  "authorReaderAuthorRendered": true,
+  "overflowRejected": true,
+  "overflowError": "CARD_CHAT_OVERFLOW: 2번 장 말풍선이 카드보다 깁니다. 쪼개세요.",
+  "coverPhoto": {
+    "kind": "image",
+    "asset_id": "s5-fixture-photo.svg",
+    "crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "overlay": "#000000"
+  },
+  "finalPhoto": {
+    "kind": "image",
+    "asset_id": "s5-fixture-photo.svg",
+    "crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "overlay": "#000000"
+  },
+  "responsive": [
+    {
+      "viewport": 360,
+      "overflow": {
+        "width": 360,
+        "scroll": 360
+      }
+    },
+    {
+      "viewport": 390,
+      "overflow": {
+        "width": 390,
+        "scroll": 390
+      }
+    },
+    {
+      "viewport": 412,
+      "overflow": {
+        "width": 412,
+        "scroll": 412
+      }
+    },
+    {
+      "viewport": 600,
+      "overflow": {
+        "width": 600,
+        "scroll": 600
+      }
+    },
+    {
+      "viewport": 700,
+      "overflow": {
+        "width": 700,
+        "scroll": 700
+      }
+    },
+    {
+      "viewport": 780,
+      "overflow": {
+        "width": 780,
+        "scroll": 780
+      }
+    },
+    {
+      "viewport": 820,
+      "overflow": {
+        "width": 820,
+        "scroll": 820
+      }
+    },
+    {
+      "viewport": 900,
+      "overflow": {
+        "width": 900,
+        "scroll": 900
+      }
+    },
+    {
+      "viewport": 1000,
+      "overflow": {
+        "width": 1000,
+        "scroll": 1000
+      }
+    },
+    {
+      "viewport": 1440,
+      "overflow": {
+        "width": 1440,
+        "scroll": 1440
+      }
+    }
+  ],
+  "consoleErrors": 0,
+  "failedRequests": 0,
+  "saves": 4
+}
