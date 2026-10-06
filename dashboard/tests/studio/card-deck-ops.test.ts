@@ -8,6 +8,8 @@ import {
   deleteBubble,
   toggleSpeaker,
   moveBubble,
+  moveBubbleToSlide,
+  swapSpeakers,
   toggleBold,
   moveSlide,
   addSlide,
@@ -132,6 +134,56 @@ describe("card-deck-ops 말풍선 연산 (TC-F1-02~04, 07~09)", () => {
     const firstId = slide.bubbles![0].id;
     const result = moveBubble(d, slide.id, firstId, 1);
     expect(result.slides[1].bubbles![1].id).toBe(firstId);
+  });
+});
+
+describe("S5-AC1·AC2 말풍선 이동과 화자 일괄 변경", () => {
+  it("S5-AC1 정상: 말풍선을 다른 장 끝으로 옮겨도 세그먼트·화자·reaction을 보존하고 양쪽 order를 다시 매긴다", () => {
+    const d = deck();
+    const source = d.slides[1];
+    const target = d.slides[2];
+    const moved = source.bubbles![0];
+    const result = moveBubbleToSlide(d, source.id, moved.id, target.id);
+
+    expect(result.slides[1].bubbles?.map((bubble) => bubble.order)).toEqual([0]);
+    expect(result.slides[2].bubbles?.map((bubble) => bubble.order)).toEqual([0, 1, 2]);
+    expect(result.slides[2].bubbles?.at(-1)).toEqual({ ...moved, order: 2 });
+    expect(result.revision).toBe(d.revision + 1);
+  });
+
+  it("S5-AC1 거절: 장의 마지막 말풍선과 표지·CTA drop target은 이동하지 않는다", () => {
+    const d = deck();
+    const sourceWithOne = {
+      ...d,
+      slides: d.slides.map((slide, index) => index === 2 ? { ...slide, bubbles: [slide.bubbles![0]] } : slide),
+    };
+    const only = sourceWithOne.slides[2].bubbles![0];
+    expectOpsCode(() => moveBubbleToSlide(sourceWithOne, sourceWithOne.slides[2].id, only.id, sourceWithOne.slides[3].id), "OPS_MOVE_LAST_BUBBLE");
+    expectOpsCode(() => moveBubbleToSlide(d, d.slides[1].id, d.slides[1].bubbles![0].id, d.slides[0].id), "OPS_BUBBLE_TARGET_LOCKED");
+  });
+
+  it("S5-AC1 정상: 같은 장 임의 위치 이동도 원본 구조를 보존한다", () => {
+    const d = deck();
+    const slide = d.slides[1];
+    const moved = slide.bubbles![1];
+    const result = moveBubbleToSlide(d, slide.id, moved.id, slide.id, 0);
+    expect(result.slides[1].bubbles?.[0]).toEqual({ ...moved, order: 0 });
+    expect(result.slides[1].bubbles?.map((bubble) => bubble.order)).toEqual([0, 1]);
+  });
+
+  it("S5-AC2 정상: 덱 전체 화자를 한 revision에서 원자적으로 바꾸고 같은 명령으로 원복된다", () => {
+    const d = deck();
+    const swapped = swapSpeakers(d, null);
+    d.slides.forEach((slide, slideIndex) => {
+      slide.bubbles?.forEach((bubble, bubbleIndex) => {
+        expect(swapped.slides[slideIndex].bubbles?.[bubbleIndex].speaker)
+          .toBe(bubble.speaker === "reader" ? "brand" : "reader");
+      });
+    });
+    expect(swapped.revision).toBe(d.revision + 1);
+    const restored = swapSpeakers(swapped, null);
+    expect(restored.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker)))
+      .toEqual(d.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker)));
   });
 });
 
