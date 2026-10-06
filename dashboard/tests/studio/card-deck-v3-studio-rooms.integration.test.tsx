@@ -173,6 +173,26 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(onReturn).not.toHaveBeenCalled();
   });
 
+  it("S5b-AC1 프로필 asset_id를 테넌트 범위 URL로 복원해 카톡 아바타에 표시한다", async () => {
+    const deck = migrateCardDeckV2ToV3(structuredClone(chatBubbleDeck) as CardDeck);
+    deck.brand.profile_image_asset_id = "profile-avatar.png";
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, file: "/api/images/deliver/profile-avatar" }) }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<EditRoom
+      workspaceId="tenant-s5b"
+      kind="card"
+      lines={["첫 장", "둘째 장"]}
+      onLinesChange={() => {}}
+      cardDeckV3={deck}
+      onCardDeckV3Change={() => {}}
+    />);
+    fireEvent.click(screen.getByRole("button", { name: "2장" }));
+
+    await waitFor(() => expect(document.querySelector('img[src="/api/images/deliver/profile-avatar"]')).toBeInTheDocument());
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ filename: "profile-avatar.png", purpose: "image", tenant_id: "tenant-s5b" });
+  });
+
   it("S1-R4-PUBLISH-GATE-01 v3 덱은 S2 전 발행실 이동을 막고 이유를 계속 보여준다", () => {
     const onOpenPublish = vi.fn();
     const deck = createPlainCardDeckV3(["첫 장", "둘째 장"], "deck_publish_block");

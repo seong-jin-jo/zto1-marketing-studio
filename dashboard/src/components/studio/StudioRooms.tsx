@@ -2049,6 +2049,9 @@ export function EditRoom({
   const cardAssetIds = useMemo(() => {
     if (!cardDeckV3) return [];
     const ids = new Set<string>();
+    if (cardDeckV3.brand.profile_image_asset_id && !cardDeckV3.brand.profile_image_asset_id.startsWith("builtin:")) {
+      ids.add(cardDeckV3.brand.profile_image_asset_id);
+    }
     for (const slide of cardDeckV3.slides) {
       if (slide.background.kind === "image" && !slide.background.asset_id.startsWith("builtin:")) ids.add(slide.background.asset_id);
       for (const element of slide.elements) {
