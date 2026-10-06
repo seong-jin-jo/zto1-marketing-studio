@@ -58,7 +58,7 @@ describe("EDIT-CARD v70", () => {
     expect(bubbleCss).toContain("aspect-ratio: 4 / 5");
   });
 
-  it("V70-CARD-02 정상: 말풍선 한 번 클릭으로 그 자리 입력과 5개 도구가 열린다", () => {
+  it("V70-CARD-02 정상: 말풍선 한 번 클릭으로 그 자리 입력과 6개 도구가 열린다", () => {
     const d = deck();
     const onDeckChange = vi.fn();
     render(<CardDeckPanel deck={d} onDeckChange={onDeckChange} />);
@@ -70,7 +70,7 @@ describe("EDIT-CARD v70", () => {
 
     expect(bubble).toHaveAttribute("data-bubble-editing", "true");
     const toolbar = within(bubble).getByLabelText("선택한 말풍선 도구");
-    expect(within(toolbar).getAllByRole("button")).toHaveLength(5);
+    expect(within(toolbar).getAllByRole("button")).toHaveLength(6);
     expect(within(toolbar).queryByText("▲")).not.toBeInTheDocument();
     expect(within(toolbar).queryByText("▼")).not.toBeInTheDocument();
 
