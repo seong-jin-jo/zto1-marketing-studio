@@ -8,6 +8,7 @@ const compose = readFileSync(resolve(root, "docker-compose.postagi-4tenants.yml"
 const envExample = readFileSync(resolve(root, ".env.example"), "utf8");
 const deploy = readFileSync(resolve(root, ".github/workflows/deploy-marketing.yml"), "utf8");
 const worker = readFileSync(resolve(root, "dashboard/src/workers/studio-export-worker.ts"), "utf8");
+const studioPage = readFileSync(resolve(root, "dashboard/src/app/studio/page.tsx"), "utf8");
 const repository = readFileSync(resolve(root, "dashboard/src/lib/studio/export-repository.ts"), "utf8");
 const packageJson = JSON.parse(readFileSync(resolve(root, "dashboard/package.json"), "utf8")) as {
   dependencies?: Record<string, string>;
@@ -31,6 +32,15 @@ describe("S3 별도 export worker 실행·배포 계약", () => {
     expect(workerService).not.toContain("container_name:");
     expect(workerService).not.toContain("network_mode: host");
     expect(workerService).not.toContain("ports:");
+  });
+
+  it("S6-MAJOR1-01 배포: dashboard와 worker가 같은 영상 데이터 볼륨과 경로를 사용한다", () => {
+    const workerService = compose.slice(compose.indexOf("  openclaw-studio-export-worker:"), compose.indexOf("\nvolumes:"));
+    expect(workerService).toContain("- osmu-data:/app/data");
+    expect(workerService).toContain("DATA_DIR: /app/data");
+    expect(studioPage).toContain("artifact_filename?: string");
+    expect(studioPage).toContain("filename: resultFilename");
+    expect(studioPage).toContain("videoResultFilename(vid)");
   });
 
   it("S3-DEPLOY-03 거절: concurrency=1과 R2 필수 설정을 fail-closed로 검사한다", () => {

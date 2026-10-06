@@ -77,6 +77,25 @@ describe("S3 export route 통합 계약", () => {
     expect(body.items[1]).not.toHaveProperty("artifact_url");
   });
 
+  it("S6-MAJOR1-02 정상: 영상 상태 응답은 만료 URL과 별도로 영구 파일 키를 준다", async () => {
+    const { GET } = await import("@/app/api/studio/drafts/[draftId]/exports/[exportId]/route");
+    H.get.mockResolvedValue({
+      ...job(), kind: "video", status: "succeeded", succeeded_items: 1, total_items: 1,
+      items: [
+        { item_key: "video-main", ordinal: 0, status: "succeeded", attempt_count: 1, artifact_key: "export-permanent.mp4", error_code: null },
+      ],
+    });
+    const response = await GET(new Request("http://localhost/api/status"), {
+      params: Promise.resolve({ draftId: DRAFT_ID, exportId: EXPORT_ID }),
+    });
+    const body = await response.json();
+    expect(body.items[0]).toMatchObject({
+      artifact_filename: "export-permanent.mp4",
+      artifact_url: expect.stringMatching(/^\/api\/exports\/deliver\//),
+    });
+    expect(body.items[0]).not.toHaveProperty("artifact_key");
+  });
+
   it("S3-ROUTE-03 정상: 실패 장 재시도는 202와 선택한 item key만 반환한다", async () => {
     const { POST } = await import("@/app/api/studio/drafts/[draftId]/exports/[exportId]/retry/route");
     H.retry.mockResolvedValue(["slide-failed"]);
