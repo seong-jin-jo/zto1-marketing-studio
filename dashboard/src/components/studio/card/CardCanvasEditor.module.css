@@ -180,6 +180,15 @@
 .chatBaseEditor h3 { color: var(--text); font-size: var(--font-body-size); font-weight: 700; }
 .chatBaseEditor p { color: var(--text-muted); font-size: var(--font-body-size); }
 .chatBaseEditor label { display: grid; gap: var(--stack-tight); color: var(--text-muted); font-size: var(--font-body-size); }
+.chatBaseEditor input {
+  min-height: var(--control-touch);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface-2);
+  padding-inline: var(--stack-tight);
+  color: var(--text);
+  font: inherit;
+}
 .chatBaseEditor textarea {
   min-height: calc(var(--control-touch) * 2);
   resize: vertical;
