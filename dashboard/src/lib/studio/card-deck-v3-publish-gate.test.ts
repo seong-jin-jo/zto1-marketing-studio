@@ -103,6 +103,17 @@ describe("S2-B 자유 배치 발행 준비", () => {
     expect(await assertDraftCanEnterPublishQueue("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")).toBeNull();
   });
 
+  it("S5-R3-2 chat_bubble v2와 잔존 v3가 함께 있어도 v2 발행 경로를 유지한다", async () => {
+    H.payload = { cardDeck: { template: "chat_bubble" }, cardDeckV3: deck };
+    const { assertDraftCanEnterPublishQueue, payloadHasCardDeckV3 } = await import("./card-deck-v3-publish-gate");
+    expect(payloadHasCardDeckV3(H.payload)).toBe(false);
+    await expect(assertDraftCanEnterPublishQueue(
+      "11111111-1111-1111-1111-111111111111",
+      "22222222-2222-2222-2222-222222222222",
+    )).resolves.toBeNull();
+    expect(H.renders).toHaveLength(0);
+  });
+
   it("S2-B 경합: 렌더 중 최신 덱으로 바뀌면 구형 PNG를 초안이나 발행 입력에 확정하지 않는다", async () => {
     vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "1");
     H.payload = { cardDeckV3: deck };

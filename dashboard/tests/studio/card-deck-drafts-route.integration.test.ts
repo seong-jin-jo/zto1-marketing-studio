@@ -129,6 +129,34 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     expect(cleared.status).toBe(200);
     expect(H.jsonValues.at(-1)).toMatchObject({ cardDeckV3: null, cardDeckV3SourceSnapshot: null });
   });
+  it("S5-R3-2 chat_bubble v2 저장·조회는 잔존 v3와 원문 스냅샷을 비운다", async () => {
+    const staleV3 = createPlainCardDeckV3(["옛 첫 장", "옛 마지막"], "deck_stale_chat_v3");
+    H.rows = [{ id: "draft-chat-v2" }];
+    const { POST, GET } = await import("@/app/api/studio/drafts/route");
+    const saved = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1",
+        idea: "카톡 v2 정본",
+        cardDeck: deckD100,
+        cardDeckV3: staleV3,
+        cardDeckV3SourceSnapshot: { editLines: ["옛 첫 장", "옛 마지막"], cardTextPositions: [] },
+      }),
+    }));
+    expect(saved.status).toBe(200);
+    expect(H.jsonValues[0]).toMatchObject({ cardDeck: deckD100, cardDeckV3: null, cardDeckV3SourceSnapshot: null });
+
+    H.rows = [{
+      id: "draft-chat-v2", idea: "카톡 v2 정본",
+      payload: { cardDeck: deckD100, cardDeckV3: staleV3, cardDeckV3SourceSnapshot: { editLines: ["옛 첫 장", "옛 마지막"] } },
+      status: "draft", updated_at: "2026-10-06T00:00:00Z",
+    }];
+    const detail = await (await GET(new Request("http://localhost/api/studio/drafts?id=draft-chat-v2"))).json();
+    expect(detail.draft.cardDeck).toEqual(deckD100);
+    expect(detail.draft.hasCardDeckV3).toBe(false);
+    expect(detail.draft.cardDeckV3).toBeNull();
+    expect(detail.draft.cardDeckV3SourceSnapshot).toBeNull();
+  });
   it("정상 덱은 저장되고 editLines 가 투영으로 채워진다", async () => {
     H.rows = [{ id: "draft-deck-1" }];
     const { POST } = await import("@/app/api/studio/drafts/route");

@@ -4,6 +4,7 @@ import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
 import { resolveCurrentWork } from "@/lib/studio/current-work";
 import { validateCardDeck, CardDeckValidationError, deckProjection } from "@/lib/studio/card-deck-contract";
 import { cardDeckV3Projection, CardDeckV3ValidationError, validateCardDeckV3 } from "@/lib/studio/card-element-contract";
+import { cardDeckV3ForDraft, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
 import { validateVideoEdit, VideoEditValidationError, type VideoEdit } from "@/lib/studio/video-edit-contract";
 
 /** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
@@ -92,6 +93,9 @@ function extractVariants(payload: Record<string, unknown> | null | undefined): u
 
 // GET /api/studio/drafts?tenant_id=... — 워크스페이스 초안 목록(최근 50)
 function flattenDraft(r: DraftRow, options: { includeCardDeckV3: boolean }) {
+  const cardDeck = r.payload?.cardDeck ?? null;
+  const chatBubbleV2 = usesChatBubbleV2(cardDeck);
+  const cardDeckV3 = cardDeckV3ForDraft(cardDeck, r.payload?.cardDeckV3);
   return {
     id: r.id,
     idea: r.idea,
@@ -108,13 +112,13 @@ function flattenDraft(r: DraftRow, options: { includeCardDeckV3: boolean }) {
     editLines: r.payload?.editLines ?? null,
     bodyRevision: Number.isSafeInteger(r.payload?.bodyRevision) ? r.payload.bodyRevision : 0,
     cardTextPositions: r.payload?.cardTextPositions ?? null,
-    cardDeck: r.payload?.cardDeck ?? null,
+    cardDeck,
     // 목록은 큰 덱 본문을 계속 제외하되, 서버에 v3가 있다는 사실까지 숨기면 상세 응답
     // 전의 plain 화면이 새 덱으로 덮어쓸 수 있다. boolean 한 칸만 실어 보호 구간을 연다.
-    hasCardDeckV3: r.payload?.cardDeckV3 != null,
+    hasCardDeckV3: cardDeckV3 != null,
     ...(options.includeCardDeckV3 ? {
-      cardDeckV3: r.payload?.cardDeckV3 ?? null,
-      cardDeckV3SourceSnapshot: r.payload?.cardDeckV3SourceSnapshot ?? null,
+      cardDeckV3,
+      cardDeckV3SourceSnapshot: chatBubbleV2 ? null : r.payload?.cardDeckV3SourceSnapshot ?? null,
     } : {}),
     videoEdit: r.payload?.videoEdit ?? null,
     titles: r.payload?.titles ?? {},
@@ -208,7 +212,8 @@ export async function POST(request: Request) {
       }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
   }
-  if (body.cardDeckV3 !== undefined && body.cardDeckV3 !== null) {
+  const savesChatBubbleV2 = usesChatBubbleV2(body.cardDeck);
+  if (!savesChatBubbleV2 && body.cardDeckV3 !== undefined && body.cardDeckV3 !== null) {
     try {
       validateCardDeckV3(body.cardDeckV3);
       cardDeckV3ProjectedLines = cardDeckV3Projection(body.cardDeckV3);
@@ -225,7 +230,9 @@ export async function POST(request: Request) {
   // index signature가 없는 객체 타입을 받지 못하므로 cardDeck들과 같은 경계 캐스팅이다.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cardDeckV3SourceSnapshotPatch: { cardDeckV3SourceSnapshot?: any } = {};
-  if (Object.prototype.hasOwnProperty.call(body, "cardDeckV3SourceSnapshot")) {
+  if (savesChatBubbleV2) {
+    cardDeckV3SourceSnapshotPatch.cardDeckV3SourceSnapshot = null;
+  } else if (Object.prototype.hasOwnProperty.call(body, "cardDeckV3SourceSnapshot")) {
     const snapshot = body.cardDeckV3SourceSnapshot;
     const positions = new Set([
       "top-left", "top-center", "top-right", "center-left", "center", "center-right",
@@ -301,12 +308,12 @@ export async function POST(request: Request) {
   // 없는 TypeScript interface를 받지 못한다. v2 cardDeck과 같은 검증 뒤 경계 캐스팅이다.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cardDeckV3Patch: { cardDeckV3?: any } = {};
-  if (body.clearCardDeckV3 === true) {
+  if (savesChatBubbleV2 || body.clearCardDeckV3 === true) {
     cardDeckV3Patch.cardDeckV3 = null;
   } else if (Object.prototype.hasOwnProperty.call(body, "cardDeckV3") && body.cardDeckV3 != null) {
     cardDeckV3Patch.cardDeckV3 = body.cardDeckV3;
   }
-  const incomingCardDeckV3Id = typeof body.cardDeckV3?.id === "string" ? body.cardDeckV3.id : null;
+  const incomingCardDeckV3Id = !savesChatBubbleV2 && typeof body.cardDeckV3?.id === "string" ? body.cardDeckV3.id : null;
   // videoEdit도 cardDeck과 같은 보존 규칙: 키가 없으면 payload 병합에서 빠져 기존 값을
   // 지키고, 명시 플래그 clearVideoEdit로만 지운다.
   // M7(2026-09-22 코드리뷰): `any` 대신 VideoEdit로 좁힌다. body.videoEdit는 위에서 이미
