@@ -77,6 +77,8 @@ integration.sequential("S3 영속 내보내기 실제 PostgreSQL 통합", () => 
     const repository = new PostgresExportRepository();
     const created = await repository.create(tenantA, draft.id, "member-ac2", "ac2", "c".repeat(64), input(draft.source));
     await expect(repository.get(tenantB, draft.id, created.job.id)).rejects.toMatchObject({ status: 404, code: "EXPORT_NOT_FOUND" });
+    await expect(repository.retry(tenantB, draft.id, created.job.id, { item_keys: [draft.deck.slides[0].id] }))
+      .rejects.toMatchObject({ status: 404, code: "DRAFT_NOT_FOUND" });
   });
 
   it("S3-AC3 경계: 만료 lease는 재대기 후 상한에서 LEASE_EXPIRED로 실패한다", async () => {
