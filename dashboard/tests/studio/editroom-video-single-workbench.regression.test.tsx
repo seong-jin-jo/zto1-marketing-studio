@@ -224,6 +224,16 @@ describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임�
     expect((document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement).getAttribute("aria-label")).toContain("0.1초부터 3.2초");
   });
 
+  it("S6-MAJOR4-01 타임라인 블록의 접근 가능한 손잡이는 본문 텍스트에 화살표를 섞지 않는다", () => {
+    stubVoicesUnconfigured();
+    render(<VideoRoomHarness initialLines={["둘째 장면 대사"]} />);
+    const block = document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement;
+    expect(block).toHaveTextContent("둘째 장면 대사");
+    expect(block.textContent).toBe("둘째 장면 대사");
+    expect(screen.getByRole("button", { name: "둘째 장면 대사 시작점 조절" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "둘째 장면 대사 끝점 조절" })).toBeInTheDocument();
+  });
+
   it("S6-DRAWER-01 넣기 서랍에서 글 블록과 3종 전환을 계약에 저장한다", () => {
     stubVoicesUnconfigured();
     render(<VideoRoomHarness initialLines={["첫 장면 대사"]} />);
