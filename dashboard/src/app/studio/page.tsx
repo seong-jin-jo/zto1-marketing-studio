@@ -2354,13 +2354,19 @@ export default function StudioPage() {
     try {
       const redrawn = await recompositeCards(linesToPersist);
       if (editKind === "card" && !redrawn) return;
-      if (!bodySnapshotRef.current.lines.length) replaceEditLines(linesToPersist);
-      const queueDraftId = await save(
-        "draft", publishReconciliations, draftId, redrawn ?? img, vid,
-        cardDeck ? pruneEmptyBubbles(cardDeck) : null, videoEdit, cardDeckV3,
-      );
-      if (!queueDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
-      const subtitled = await burnVideoSubtitles(linesToPersist, queueDraftId);
+      let subtitled: SubtitleBurnOutcome = { kind: "skipped" };
+      if (editKind === "video") {
+        // 영상 내보내기 대기열은 현재 source revision/hash를 기준으로 작업을 만든다.
+        // 따라서 영상만 대기열 등록 전에 최신 편집 상태를 저장한다. 텍스트·카드는
+        // 아래 공통 최종 저장만 수행해야 본문 revision이 사용자 저장 1회당 1번 오른다.
+        if (!bodySnapshotRef.current.lines.length) replaceEditLines(linesToPersist);
+        const queueDraftId = await save(
+          "draft", publishReconciliations, draftId, redrawn ?? img, vid,
+          cardDeck ? pruneEmptyBubbles(cardDeck) : null, videoEdit, cardDeckV3,
+        );
+        if (!queueDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
+        subtitled = await burnVideoSubtitles(linesToPersist, queueDraftId);
+      }
       // 자막을 못 구웠으면 넘어가지 않는다. 넘어가면 무자막 파일이 그대로 발행된다.
       if (subtitled.kind === "failed") return;
       // 생성 결과에서 곧장 발행실로 이동해 editLines가 아직 비어 있어도, 저장보다 먼저
