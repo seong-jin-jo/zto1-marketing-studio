@@ -38,7 +38,7 @@ export interface CardCommandHistory {
   future: CardDeckV3[];
 }
 
-type ElementSeed = { id: string; assetId?: string; assetAlt?: string };
+type ElementSeed = { id: string; assetId?: string; assetAlt?: string; textColor?: `#${string}` };
 
 export type PlainCardTextPosition =
   | "top-left" | "top-center" | "top-right"
@@ -235,7 +235,7 @@ export function createDefaultCardElement(type: CardElementType, seed: ElementSee
         font_weight: 700,
         line_height: 1.2,
         letter_spacing: 0,
-        color: "#111111",
+        color: seed.textColor ?? "#111111",
         align: "left",
         vertical_align: "middle",
       },
@@ -262,10 +262,28 @@ export function createDefaultCardElement(type: CardElementType, seed: ElementSee
   return { ...base, type, width: 300, height: 120, asset_id: seed.assetId ?? "builtin:logo-osmu", alt: seed.assetAlt ?? "OSMU 로고", fit: "contain" };
 }
 
+function placeCardElementInEmptyArea(slide: CardSlideV3, element: CardElement, logicalHeight: number): CardElement {
+  const candidates = [
+    { x: 40, y: 40 },
+    { x: CARD_LOGICAL_WIDTH - element.width - 40, y: 40 },
+    { x: 40, y: logicalHeight - element.height - 40 },
+    { x: CARD_LOGICAL_WIDTH - element.width - 40, y: logicalHeight - element.height - 40 },
+    { x: (CARD_LOGICAL_WIDTH - element.width) / 2, y: (logicalHeight - element.height) / 2 },
+  ];
+  const occupied = slide.elements.filter((candidate) => !candidate.hidden && !(candidate.type === "image" && candidate.locked && candidate.x === 0 && candidate.y === 0));
+  const open = candidates.find((candidate) => !occupied.some((other) => (
+    candidate.x < other.x + other.width
+    && candidate.x + element.width > other.x
+    && candidate.y < other.y + other.height
+    && candidate.y + element.height > other.y
+  ))) ?? candidates.at(-1)!;
+  return { ...element, x: round(open.x), y: round(open.y) };
+}
+
 export function addCardElement(deck: CardDeckV3, slideId: string, type: CardElementType, seed: ElementSeed): CardDeckV3 {
   return mutateSlide(deck, slideId, (slide) => ({
     ...slide,
-    elements: [...slide.elements, createDefaultCardElement(type, seed, slide.elements.length)],
+    elements: [...slide.elements, placeCardElementInEmptyArea(slide, createDefaultCardElement(type, { ...seed, textColor: deck.theme.foreground as `#${string}` }, slide.elements.length), CARD_LOGICAL_HEIGHT[deck.ratio])],
   }));
 }
 
@@ -275,7 +293,8 @@ export function addChatOverlayElement(deck: CardDeckV3, slideId: string, type: C
   if (!slide || slide.base.kind !== "chat_bubble") return clone(deck);
   return mutateSlide(deck, slideId, (current) => {
     const elements = normalizeZ(current.elements.filter((element) => !isChatBaseProjectionElement(current, element)));
-    return { ...current, elements: [...elements, createDefaultCardElement(type, seed, elements.length)] };
+    const cleaned = { ...current, elements };
+    return { ...cleaned, elements: [...elements, placeCardElementInEmptyArea(cleaned, createDefaultCardElement(type, { ...seed, textColor: deck.theme.foreground as `#${string}` }, elements.length), CARD_LOGICAL_HEIGHT[deck.ratio])] };
   });
 }
 
@@ -352,7 +371,11 @@ function mutateChatSlide(
 }
 
 export function patchChatDeckBrand(deck: CardDeckV3, patch: Partial<CardDeckBrand>): CardDeckV3 {
-  const brand = { ...deck.brand, ...patch };
+  const brand = {
+    ...deck.brand,
+    ...patch,
+    ...(Object.prototype.hasOwnProperty.call(patch, "reader_name") ? { reader_name: patch.reader_name?.trim() || "구독자" } : {}),
+  };
   if (!brand.display_name.trim()) throw new RangeError("CARD_CHAT_BRAND_NAME_REQUIRED");
   if (JSON.stringify(brand) === JSON.stringify(deck.brand)) return clone(deck);
   return { ...clone(deck), revision: deck.revision + 1, brand };

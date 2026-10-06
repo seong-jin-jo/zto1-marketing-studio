@@ -43,4 +43,16 @@ describe("T-PARITY CardSlideRenderModel", () => {
     ];
     expect(visibleCardElements(cardSlideRenderModel(chat, "slide_cover")).map((element) => element.id)).toEqual(["overlay_logo"]);
   });
+
+  it("S5b-R1-MINOR 고아 projection은 표시 이름이 아니라 converter ID 구조로만 판별한다", () => {
+    const chat = structuredClone(deck);
+    chat.template = "chat_bubble";
+    chat.slides[0].base = { kind: "chat_bubble", cover: { headline: "첫 장", sub: null }, bubbles: [] };
+    const seed = chat.slides[0].elements[0] as Extract<CardElement, { type: "text" }>;
+    chat.slides[0].elements = [
+      { ...seed, id: "el_deleted-bubble-id", name: "이름이 바뀐 원형", hidden: false },
+      { ...seed, id: "el_text_user-added", name: "사용자가 붙인 말풍선 메모", hidden: false, z_index: 2 },
+    ];
+    expect(visibleCardElements(cardSlideRenderModel(chat, "slide_cover")).map((element) => element.id)).toEqual(["el_text_user-added"]);
+  });
 });

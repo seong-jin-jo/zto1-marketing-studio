@@ -22,6 +22,7 @@ import {
   nudgeCardElement,
   patchTextElement,
   patchChatBubbleText,
+  patchChatDeckBrand,
   redoCardCommand,
   resizeCardElement,
   rotateCardElement,
@@ -257,6 +258,19 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     expect(added.slides[0].base).toEqual(chat.slides[0].base);
     expect(added.slides[0].elements).toMatchObject([{ id: "chat_logo", type: "logo", z_index: 0 }]);
     expect(addChatOverlayElement(deck(), "slide_cover", "logo", { id: "rejected_logo" })).toEqual(deck());
+  });
+
+  it("S5b-R1-MINOR 새 글은 테마 전경색과 겹치지 않는 빈 영역을 쓰고 빈 독자 이름은 구독자로 정규화한다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.theme.foreground = "#F9FAFB";
+    chat.slides[0].base = { kind: "chat_bubble", cover: { headline: "첫 장", sub: null }, bubbles: [] };
+    const first = addChatOverlayElement(chat, "slide_cover", "text", { id: "el_text_first" });
+    const second = addChatOverlayElement(first, "slide_cover", "text", { id: "el_text_second" });
+    const [firstText, secondText] = second.slides[0].elements;
+    expect(firstText.type === "text" ? firstText.style.color : null).toBe("#F9FAFB");
+    expect([firstText.x, firstText.y]).not.toEqual([secondText.x, secondText.y]);
+    expect(patchChatDeckBrand(second, { reader_name: "   " }).brand.reader_name).toBe("구독자");
   });
 
   it("S1-R3-BOUNDS-01 끌기와 방향키 이동 뒤에도 장과 최소 1px 교차한다", () => {

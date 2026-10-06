@@ -1,7 +1,7 @@
 {
   "result": "PASS",
   "cards": 9,
-  "uploads": 0,
+  "uploads": 9,
   "chatV3Workbench": true,
   "speakerSwapUndo": true,
   "toneCandidateCount": 3,
@@ -15,9 +15,9 @@
   "orphanProjectionRemoved": true,
   "profileAssetId": "s5b-profile.svg",
   "browserEditorProfileVisible": true,
-  "browserCanvasPng": "/tmp/s5b-evidence-avatar-final/s5b-chat-profile-browser-canvas.png",
-  "editorScenePng": "/tmp/s5b-evidence-avatar-final/s5b-chat-overlay-browser-scene.png",
-  "remotionPng": "/tmp/s5b-evidence-avatar-final/s5b-chat-overlay-profile-remotion.png",
+  "browserCanvasPng": "/Users/sj/wt/zto1-editroom-s5b/docs/qa/osmu-editroom-s5b-build-evidence-20261007/s5b-chat-profile-browser-canvas.png",
+  "editorScenePng": "/Users/sj/wt/zto1-editroom-s5b/docs/qa/osmu-editroom-s5b-build-evidence-20261007/s5b-chat-overlay-browser-scene.png",
+  "remotionPng": "/Users/sj/wt/zto1-editroom-s5b/docs/qa/osmu-editroom-s5b-build-evidence-20261007/s5b-chat-overlay-profile-remotion.png",
   "readerBubbleCount": 1,
   "authorReaderAuthorRendered": true,
   "overflowRejected": true,
@@ -118,5 +118,6 @@
   ],
   "consoleErrors": 0,
   "failedRequests": 0,
-  "saves": 4
+  "saves": 5,
+  "publishRoute": "http://localhost:3477/studio?room=publish"
 }

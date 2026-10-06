@@ -10,7 +10,7 @@ const jiti = createJiti(import.meta.url, { alias: { "@": path.resolve("src") } }
 const { validateCardDeckV3 } = await jiti.import("../src/lib/studio/card-element-contract.ts");
 const { cardSlideRenderModel } = await jiti.import("../src/lib/studio/card-render-model.ts");
 const { renderCardSlidePng } = await jiti.import("../src/lib/studio/card-slide-render.ts");
-const { migrateCardDeckV2ToV3 } = await jiti.import("../src/lib/studio/card-deck-v2-to-v3.ts");
+const { isSynchronizedChatCardDeckV3, migrateCardDeckV2ToV3 } = await jiti.import("../src/lib/studio/card-deck-v2-to-v3.ts");
 
 const baseUrl = process.env.CHAT_S5_BASE_URL || "http://localhost:3475";
 const outputDir = process.env.CHAT_S5_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/qa/editroom-v2-s5");
@@ -116,6 +116,9 @@ await context.route("**/api/**", async (route) => {
     posts.push(body);
     if (body.bodyBaseRevision !== undefined && body.bodyBaseRevision !== bodyRevision) {
       return json(route, { ok: false, code: "BODY_STALE_REVISION", latestBody: { editLines: ["카톡 대화 카드"], cardDeck: serverLegacyDeck, cardDeckV3: serverDeck, bodyRevision } }, 409);
+    }
+    if (body.cardDeckV3 && body.cardDeck && !isSynchronizedChatCardDeckV3(body.cardDeck, body.cardDeckV3)) {
+      return json(route, { ok: false, code: "CARD_CHAT_V3_SOURCE_MISMATCH", error: "v2/v3 source hash mismatch" }, 409);
     }
     if (body.cardDeck) serverLegacyDeck = structuredClone(body.cardDeck);
     if (body.cardDeckV3) {
@@ -282,6 +285,9 @@ try {
   const finalPng = path.join(outputDir, "s5-chat-final-photo.png");
   await renderCardSlidePng({ model: cardSlideRenderModel(serverDeck, cover.id, uploadedAssets), outputPath: coverPng });
   await renderCardSlidePng({ model: cardSlideRenderModel(serverDeck, final.id, uploadedAssets), outputPath: finalPng });
+  await page.getByRole("button", { name: "발행실로 이동" }).click();
+  await page.locator('[data-room="publish"]').waitFor({ state: "visible", timeout: 30_000 });
+  if (!new URL(page.url()).searchParams.get("room")?.includes("publish")) throw new Error(`실제 발행실 route로 이동하지 않았습니다: ${page.url()}`);
   if (runtimeErrors.length) throw new Error(`브라우저 console/page 오류 ${runtimeErrors.length}건: ${runtimeErrors.join(" | ")}`);
   if (failedRequests.length) throw new Error(`실패 network request ${failedRequests.length}건: ${failedRequests.join(" | ")}`);
 
@@ -311,6 +317,7 @@ try {
     consoleErrors: runtimeErrors.length,
     failedRequests: failedRequests.length,
     saves: posts.length,
+    publishRoute: page.url(),
   };
   fs.writeFileSync(path.join(outputDir, "s5-chat-result.json"), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));

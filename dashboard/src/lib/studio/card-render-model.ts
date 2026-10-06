@@ -46,9 +46,10 @@ export function isChatBaseProjectionElement(slide: CardSlideV3, element: CardEle
   if (slide.base.kind !== "chat_bubble" || element.type !== "text") return false;
   if (element.id === `el_${slide.id}_cover` || element.id === `el_${slide.id}_sub`) return true;
   if (slide.base.bubbles.some((bubble) => element.id === `el_${bubble.id}`)) return true;
-  // S5 이전 덱에서 말풍선을 삭제·이동하면 projection만 남을 수 있다. 사용자가 추가한
-  // 자유 글(name="글")과 구분해 옛 말풍선 projection 및 그 복사본을 렌더 대상에서 뺀다.
-  return element.id.startsWith("el_") && /말풍선/.test(element.name);
+  // converter v1은 원형 projection을 `el_<원본 id>` namespace로 만들었고, 자유 글은
+  // `el_text_<uuid>` namespace로 만든다. 사용자에게 보이는 name 정규식에 기대지 않고
+  // 이 구조적 ID 계약으로 삭제·이동 뒤 고아 projection과 그 복사본을 제외한다.
+  return element.id.startsWith("el_") && !element.id.startsWith("el_text_");
 }
 
 export function visibleCardElements(model: CardSlideRenderModel): CardElement[] {
