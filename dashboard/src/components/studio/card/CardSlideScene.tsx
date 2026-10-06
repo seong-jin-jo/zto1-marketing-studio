@@ -123,15 +123,15 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
     );
   }
   const orderedBubbles = [...bubbles].sort((left, right) => left.order - right.order);
-  const firstBrandBubbleId = orderedBubbles.find((bubble) => bubble.speaker === "brand")?.id;
   return (
     <div className={styles.chatBase} data-chat-base="conversation">
       <header className={styles.chatHeader}>
         <span>{model.brand.display_name}</span>
       </header>
       <div ref={chatListRef} className={styles.chatList} data-chat-list>
-        {orderedBubbles.map((bubble) => {
-          const showBrandIdentity = bubble.id === firstBrandBubbleId;
+        {orderedBubbles.map((bubble, bubbleIndex) => {
+          const showBrandIdentity = bubble.speaker === "brand"
+            && orderedBubbles[bubbleIndex - 1]?.speaker !== "brand";
           return (
             <div key={bubble.id} className={`${styles.chatRow} ${bubble.speaker === "reader" ? styles.readerRow : styles.brandRow}`} data-chat-bubble={bubble.id}>
               {showBrandIdentity ? <span className={styles.chatAvatar} aria-hidden="true">

@@ -101,21 +101,24 @@ describe("CardSlideScene S5 카톡 원형과 자유 요소", () => {
     await expect(verification).rejects.toThrow("CARD_CHAT_OVERFLOW: 3번 장 말풍선이 카드보다 깁니다");
   });
 
-  it("S5-R2-A 작성자 첫 말풍선에만 이름·프로필을 렌더하고 독자 이름은 높이를 차지하지 않는다", () => {
+  it("S5-R3-1 작성자 차례가 다시 시작될 때마다 이름·프로필을 렌더하고 독자 이름은 숨긴다", () => {
     const deck = chatDeck();
     deck.brand.reader_name = "절대 렌더하지 않을 독자 이름";
     deck.brand.profile_image_asset_id = "profile-owned.png";
     const slide = deck.slides[0];
     if (slide.base.kind !== "chat_bubble") throw new Error("chat fixture required");
-    slide.base.bubbles.push({ id: "bubble_brand_second", order: 2, speaker: "brand", segments: [{ text: "두 번째 답변", bold: false }], reaction: null });
+    slide.base.bubbles.push(
+      { id: "bubble_reader_second", order: 2, speaker: "reader", segments: [{ text: "그다음은요?", bold: false }], reaction: null },
+      { id: "bubble_brand_second", order: 3, speaker: "brand", segments: [{ text: "두 번째 답변", bold: false }], reaction: null },
+    );
     const model = cardSlideRenderModel(deck, "slide_chat", { "profile-owned.png": "https://example.test/profile.png" });
     const view = render(<CardSlideScene model={model} renderMode="editor" />);
     const scene = view.container.querySelector<HTMLElement>("[data-card-slide-scene]")!;
     expect(scene).not.toHaveTextContent("절대 렌더하지 않을 독자 이름");
-    expect(scene.querySelectorAll("[data-chat-speaker-name]")).toHaveLength(1);
-    expect(scene.querySelector("[data-chat-speaker-name]")).toHaveTextContent("OSMU");
-    expect(scene.querySelectorAll("img")).toHaveLength(1);
-    expect(scene.querySelector("img")).toHaveAttribute("src", "https://example.test/profile.png");
+    expect(scene.querySelectorAll("[data-chat-speaker-name]")).toHaveLength(2);
+    for (const name of scene.querySelectorAll("[data-chat-speaker-name]")) expect(name).toHaveTextContent("OSMU");
+    expect(scene.querySelectorAll("img")).toHaveLength(2);
+    for (const image of scene.querySelectorAll("img")) expect(image).toHaveAttribute("src", "https://example.test/profile.png");
   });
 
   it("S5-R2-MINOR 대화 장 번호는 legacy PNG처럼 아래에 한 번만 렌더한다", () => {

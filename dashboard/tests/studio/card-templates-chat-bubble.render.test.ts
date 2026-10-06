@@ -105,6 +105,36 @@ describe("renderChatBubbleSlide 실물 렌더 (TC-F2-01~04)", () => {
     expect(named).toBe(plain);
   });
 
+  it("S5-R3-1 작성자-독자-작성자 덱은 origin/main처럼 두 작성자 차례 모두 이름을 그린다", async () => {
+    const alternating = structuredClone(deck);
+    const slide = alternating.slides[1];
+    slide.bubbles = [
+      { id: "brand-first", order: 0, speaker: "brand", segments: [{ text: "첫 답변", bold: false }] },
+      { id: "reader", order: 1, speaker: "reader", segments: [{ text: "추가 질문", bold: false }] },
+      { id: "brand-second", order: 2, speaker: "brand", segments: [{ text: "둘째 답변", bold: false }] },
+    ];
+    const canvas = (await renderChatBubbleSlideToCanvas({ deck: alternating, slide, index: 1, total: alternating.slides.length }))!;
+    const ctx = canvas.getContext("2d")!;
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    expect(pixels.some((value) => value !== 0)).toBe(true);
+
+    const contextPrototype = Object.getPrototypeOf(ctx) as CanvasRenderingContext2D;
+    const originalFillText = contextPrototype.fillText;
+    const labels: string[] = [];
+    contextPrototype.fillText = function fillText(text, x, y, maxWidth) {
+      labels.push(String(text));
+      return maxWidth === undefined
+        ? originalFillText.call(this, text, x, y)
+        : originalFillText.call(this, text, x, y, maxWidth);
+    };
+    try {
+      await renderChatBubbleSlideToCanvas({ deck: alternating, slide, index: 1, total: alternating.slides.length });
+    } finally {
+      contextPrototype.fillText = originalFillText;
+    }
+    expect(labels.filter((label) => label === alternating.brand.display_name)).toHaveLength(3);
+  });
+
   it("서버(document 없음)에서 부르면 null 이다(text-card-image.ts 와 같은 계약)", async () => {
     // 이 파일은 jsdom 환경이라 document 가 있다. node 환경 파일(text-card-image.test.ts)이
     // 같은 계약을 이미 검증하므로 여기서는 계약 문서화만 남긴다.
