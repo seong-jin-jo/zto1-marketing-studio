@@ -161,6 +161,30 @@ describe("CardDeckPanel (표지·CTA 고정, 세션맥락: card-deck-ops 순수 
     expect(onDeckChange).not.toHaveBeenCalled();
   });
 
+  it("S5-R1-M7 터치·키보드는 드래그 없이 다른 장을 골라 말풍선을 옮긴다", () => {
+    let current = deck();
+    const source = current.slides[1];
+    const moved = structuredClone(source.bubbles![0]);
+    const targetIndex = current.slides.findIndex((slide, index) => index > 1 && slide.role !== "cover" && slide.role !== "cta");
+    const target = current.slides[targetIndex];
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    fireEvent.click(document.querySelector(`[data-slide-id="${source.id}"]`)!);
+    fireEvent.focus(screen.getByRole("textbox", { name: "말풍선 내용 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "다른 장으로 옮기기" }));
+
+    const dialog = screen.getByRole("dialog", { name: "옮길 장 선택" });
+    const targetRole = target.role === "comment_prompt" ? "댓글유도" : "대화";
+    fireEvent.click(within(dialog).getByRole("button", { name: `${targetIndex + 1}번 장 ${targetRole}` }));
+
+    expect(onDeckChange).toHaveBeenCalledTimes(1);
+    expect(current.slides.find((slide) => slide.id === source.id)?.bubbles?.some((bubble) => bubble.id === moved.id)).toBe(false);
+    expect(current.slides.find((slide) => slide.id === target.id)?.bubbles?.at(-1)).toEqual({
+      ...moved,
+      order: current.slides.find((slide) => slide.id === target.id)!.bubbles!.length - 1,
+    });
+  });
+
   it("S5-AC2 정상: 덱 전체 화자 교환은 한 번에 반영되고 실행 취소 한 번으로 원복된다", () => {
     let current = deck();
     const originalSpeakers = current.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker));

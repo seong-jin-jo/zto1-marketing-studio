@@ -667,6 +667,7 @@ function BubbleContentEditable({
 export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, onBubbleDragEnd, onBubbleDrop, draggedBubble, onSelectedBubbleChange }: BubbleEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
+  const [moveDialogBubbleId, setMoveDialogBubbleId] = useState<string | null>(null);
   const editableRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const caretRefs = useRef<Record<string, number>>({});
   // MINOR(2, 4차 재검증): WebKit에서 키보드만으로(마우스 클릭 없이 Shift+화살표로 범위를
@@ -682,6 +683,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, o
 
   useEffect(() => {
     setSelectedBubbleId(null);
+    setMoveDialogBubbleId(null);
     onSelectedBubbleChange?.(null);
   }, [onSelectedBubbleChange, slideId]);
 
@@ -891,6 +893,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, o
                       run((d) => splitBubble(d, slide.id, bubble.id, caretToSegment(bubble.segments, caret)));
                     }}>쪼개기</Button>
                     <Button size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => run((d) => mergeBubble(d, slide.id, bubble.id))}>합치기</Button>
+                    <Button size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => setMoveDialogBubbleId(bubble.id)}>다른 장으로 옮기기</Button>
                     <Button size="sm" variant="secondary" onMouseDown={(e) => e.preventDefault()} onClick={() => handleDeleteBubble(bubble)}>삭제</Button>
                   </div>
                 ) : null}
@@ -899,6 +902,29 @@ export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, o
           );
         })}
       </ul>
+      {moveDialogBubbleId ? (
+        <section className={styles.moveBubbleDialog} role="dialog" aria-modal="true" aria-label="옮길 장 선택" data-bubble-move-dialog>
+          <b>옮길 장 선택</b>
+          <p>표지와 마지막 장을 제외한 대화 장 끝으로 말풍선을 옮깁니다.</p>
+          <div>
+            {deck.slides.map((target, targetIndex) => {
+              if (target.id === currentSlideId || target.role === "cover" || target.role === "cta") return null;
+              return (
+                <Button key={target.id} size="sm" onClick={() => {
+                  const next = run((d) => moveBubbleToSlide(d, currentSlideId, moveDialogBubbleId, target.id));
+                  if (!next) return;
+                  setMoveDialogBubbleId(null);
+                  setSelectedBubbleId(null);
+                  onSelectedBubbleChange?.(null);
+                }}>
+                  {targetIndex + 1}번 장 {SLIDE_ROLE_LABEL[target.role]}
+                </Button>
+              );
+            })}
+          </div>
+          <Button size="sm" variant="secondary" onClick={() => setMoveDialogBubbleId(null)}>취소</Button>
+        </section>
+      ) : null}
       {slide.role === "cta" ? (
         <>
           <CtaEditor deck={deck} onChange={(cta) => run((d) => ({ ...d, cta, revision: d.revision + 1 }))} />

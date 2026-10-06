@@ -65,6 +65,20 @@
 .factWarning { border-radius: var(--shape-control); background: var(--warning-soft); padding: var(--stack-tight); color: var(--warning) !important; }
 .factSafe { color: var(--success) !important; }
 
+.moveBubbleDialog {
+  display: grid;
+  gap: var(--stack-tight);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+  padding: var(--stack);
+  color: var(--text);
+  box-shadow: var(--elevation-floating);
+}
+
+.moveBubbleDialog > p { color: var(--text-muted); font-size: var(--font-body-size); }
+.moveBubbleDialog > div { display: flex; flex-wrap: wrap; gap: var(--stack-tight); }
+
 .thumbnailStrip {
   display: flex;
   max-height: calc(var(--editroom-stage-width) * 5 / 4);
