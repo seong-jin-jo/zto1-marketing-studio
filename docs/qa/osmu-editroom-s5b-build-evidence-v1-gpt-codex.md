@@ -1,12 +1,12 @@
 # 편집실 S5b 카톡 v3 고급 도구와 덧붙임 요소, build 증거
 
-STAMP: 2026-10-07 02:42 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: S5b build plan, v71 prototype, 교차 리뷰 R2, localhost Chromium, Remotion `renderStill`, Vitest | 고민: 운영 플래그가 켜진 상태에서 모바일 배치와 기본 편집 복귀가 실제 사용자 경로에서 끝까지 성립하도록 닫았다.
+STAMP: 2026-10-07 05:31 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: S5b build plan, v71 prototype, 교차 리뷰 R3, localhost Chromium, Remotion `renderStill`, Vitest | 고민: Android 폭에서 수평으로 잘린 도구와 패널을 컨테이너 폭 계약으로 고치고, 폰트 준비 시점을 제품 코드에 주입해 테스트 전용 분기를 제거했다.
 
 기반 포맷: `docs/build-log.md`의 편집실 v2 수직 슬라이스 검증 기록.
 
 ## 결론
 
-S5b-AC1~3과 교차 리뷰 R2 A·B·MINOR는 로컬 build 단계에서 통과했다. 플래그를 켠 실제 Next 개발 서버에서 v2 카톡 덱을 v3 고급 편집기로 열고 표지 사진을 바꾼 뒤 저장·발행실 이동·재진입·기본 말풍선 편집기 복귀까지 실행했다. 1440·600·390의 미리보기 가시 영역과 오른쪽 패널 최소 폭을 수치로 단언했고 캡처를 재생성했다.
+S5b-AC1~3과 교차 리뷰 R3 A·B·MINOR는 로컬 build 단계에서 통과했다. 플래그를 켠 실제 Next 개발 서버에서 v2 카톡 덱을 v3 고급 편집기로 열고 표지 사진을 바꾼 뒤 저장·발행실 이동·재진입·기본 말풍선 편집기 복귀까지 실행했다. 600·390에서 도구줄·오른쪽 패널·첫 말풍선 버튼의 수평 가시 폭과 편집기 `scrollLeft=0`을 단언했고 원본 크기 캡처를 재생성해 직접 확인했다.
 
 ## 수용 기준
 
@@ -18,6 +18,9 @@ S5b-AC1~3과 교차 리뷰 R2 A·B·MINOR는 로컬 build 단계에서 통과했
 | S5b-R2-A | ✅ 관찰됨 | 미리보기 가시 폭 1440=342px, 600=568px, 390=358px. 오른쪽 패널 폭 320px, 518px, 308px. 세 폭 모두 가로 넘침 0 |
 | S5b-R2-B | ✅ 관찰됨 | 바꾼 표지 사진을 v2 projection에 반영하고 기본 말풍선 편집기로 복귀. 서버 fixture의 v3 덱 정리와 사진 URL 보존 확인 |
 | S5b-R2-MINOR | ✅ 테스트됨 | 사진 빼기, CardSlideScene 넘침 실측, 명시적 분할, 원형 회피 배치, 복제 고아 projection 제거 계약 통과 |
+| S5b-R3-A | ✅ 관찰됨 | 390px에서 stage·도구줄·오른쪽 패널 수평 가시 폭 308px, 첫 말풍선 버튼 128px, 편집기 `scrollWidth=clientWidth=308`, `scrollLeft=0`. 600px에서는 각각 518px·233px, `scrollWidth=clientWidth=518`, `scrollLeft=0` |
+| S5b-R3-B | ✅ 관찰됨 | 원본 역할을 보존하는 v3→v2 projection으로 복귀하고 서버 저장 검증 통과. 표지·CTA 사진 URL 보존, 발행실 이동과 기본 편집 복귀 완료 |
+| S5b-R3-MINOR | ✅ 테스트됨 | `NODE_ENV` 테스트 분기를 제거하고 `fontsReady` Promise를 주입. 주입 Promise가 resolve되기 전에는 overflow callback이 실행되지 않고 이후 실제 높이로 판정하는 계약 통과 |
 
 ## 실행 조건과 결과
 
@@ -26,10 +29,10 @@ S5b-AC1~3과 교차 리뷰 R2 A·B·MINOR는 로컬 build 단계에서 통과했
 | CI 타입 검사 | `npm run typecheck:ci` | 종료 코드 0 |
 | integrity | `npx vitest run tests/integrity` | 33파일, 104건 PASS |
 | contract | `npx vitest run contract` | 107파일, 621건 PASS |
-| 변경 import 영향 | `npx vitest related --run <R2 변경 TypeScript 5파일>` | 38파일 PASS, 1파일 환경 skip. 343건 PASS, 8건 환경 skip |
+| 변경 연관 테스트 | `npx vitest run CardCanvasEditor.test.tsx CardSlideScene.test.tsx card-deck-v2-to-v3.test.ts card-deck-v3-studio-rooms.integration.test.tsx` | 4파일, 61건 PASS |
 | 생산 build | `~/.claude/harness/bin/heavy-slot.sh npm run build` | Next.js 16.2.2 production build PASS, 188개 static page 생성. 기존 NFT trace 경고 1묶음 |
 | 실제 drafts route 통합 | `npx vitest run tests/studio/card-deck-drafts-route.integration.test.ts` | 실제 `POST` route handler와 저장 adapter mock을 연결한 17건 PASS. 편집된 동기 v2/v3 본문을 200으로 수락 |
-| 플래그 ON E2E | `CARD_DECK_V3_RENDER_ENABLED=1 NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=1`, Next dev `http://localhost:3477`, `CHAT_S5_BASE_URL=http://localhost:3477 npm run e2e:chat-s5` | PASS, 카드 9장, 저장 7회, `/studio?room=publish` 이동 뒤 편집실 재진입과 기본 편집 복귀, 변경 표지 사진 보존, 콘솔 오류 0, 실패 요청 0. 1440·600·390 가시 영역 단언과 360~1440 가로 넘침 0. drafts API는 브라우저 픽스처가 가로채되 production 동기화·clear 조건을 적용 |
+| 플래그 ON E2E | `CARD_DECK_V3_RENDER_ENABLED=1 NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=1`, Next dev `http://localhost:3477`, `CHAT_S5_BASE_URL=http://localhost:3477 npm run e2e:chat-s5` | PASS, 카드 9장, 저장 7회, `/studio?room=publish` 이동 뒤 편집실 재진입과 기본 편집 복귀, 변경 표지 사진 보존, 콘솔 오류 0, 실패 요청 0. 600·390에서 stage·도구줄·패널·첫 말풍선 버튼의 `visibleWidth`와 편집기 `scrollLeft=0` 단언, 360~1440 가로 넘침 0. drafts API는 브라우저 픽스처가 가로채되 production 동기화·clear 조건을 적용 |
 | Remotion overflow 경계 | 같은 E2E에서 실제 `renderStill` 실행 | `CARD_CHAT_OVERFLOW`로 긴 말풍선 거절 확인 |
 | 모바일 인체공학 | 데이터 9장, 조작 대상 30개 fixture, 폭 360·390·412·600·700·780·820·900·1000 | 전 폭 본문 16px, 13px 미만 0, 44px 미만 0, 눌림 상태 100%, 가로 넘침 0 |
 | 디자인 lint | `bash ~/.claude/harness/bin/design-lint.sh dashboard/src` | 검사 종료 0. 저장소 기존 인라인 style 3파일·hex 8파일 경고 유지, 이번 diff 신규 리터럴 없음 |

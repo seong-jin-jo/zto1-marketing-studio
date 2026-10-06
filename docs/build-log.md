@@ -1,5 +1,13 @@
 # OSMU build log
 
+## 2026-10-07 05:31 KST · 편집실 S5b 교차 리뷰 3차 교정
+
+STAMP: 2026-10-07 05:31 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `s5b-review-r3.md`, localhost Chromium 600·390 bounding box, 원본 크기 캡처, fontsReady 단위 계약 | 고민: viewport가 아니라 실제 부모 컨테이너를 폭 기준으로 삼고 테스트 환경 차이는 의존성 주입으로 제거했다.
+
+모바일 `.stage`를 부모 폭 `100%`와 `max-width:100%`로 제한하고 바깥·안쪽 grid track을 `minmax(0,1fr)`로 바꿨다. 600·390에서 stage·고급 도구줄·오른쪽 패널·첫 말풍선 버튼이 수평 viewport 안에 있고 편집기 `scrollLeft=0`임을 실제 route E2E로 고정했다. 기본 편집 복귀는 역할 보존 projection을 사용해 서버 v2 검증을 통과한다. `CardSlideScene`은 `NODE_ENV` 분기 대신 주입된 `fontsReady`가 끝난 뒤 overflow를 측정한다.
+
+검증: TypeScript PASS, integrity 33파일 104건 PASS, contract 107파일 621건 PASS, 변경 연관 4파일 61건 PASS다. 플래그 ON E2E는 데이터 9장, 저장 7회, 발행실 이동과 기본 편집 복귀, 콘솔 오류 0, 실패 요청 0이다. 원본 크기 600·390 PNG에서 도구·카드·오른쪽 패널을 직접 확인했다. 커밋은 `97a81e0a`, `458e5996`, `e1117e9b`이며 원격 CI·QA 승인·운영 배포는 미검증이고 push하지 않았다.
+
 ## 2026-10-07 02:42 KST · 편집실 S5b 교차 리뷰 2차 교정
 
 STAMP: 2026-10-07 02:42 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `s5b-review-r2.md`, localhost Chromium 세 폭 bounding box, v3→v2 복귀 E2E, 9폭 모바일 실측 | 고민: 운영 플래그가 켜진 상태에서 미리보기 가시성과 기본 편집 복귀를 대리지표가 아니라 실제 route 왕복으로 닫았다.
