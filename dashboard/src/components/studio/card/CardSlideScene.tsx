@@ -4,6 +4,13 @@ import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import type { Bubble } from "@/lib/studio/card-deck-contract";
 import type { CardElement, TextElement } from "@/lib/studio/card-element-contract";
 import { cardElementStyle, visibleCardElements, type CardSlideRenderModel } from "@/lib/studio/card-render-model";
+import {
+  BRAND_BUBBLE_BG,
+  BUBBLE_TEXT,
+  PHOTO_TEXT_PRIMARY,
+  PHOTO_TEXT_SECONDARY,
+  READER_BUBBLE_BG,
+} from "@/lib/studio/card-templates/chat-bubble";
 import styles from "./CardSlideScene.module.css";
 
 export interface CardSlideSceneProps {
@@ -100,14 +107,18 @@ function ChatBubbleBase({ model }: { model: CardSlideRenderModel }) {
 
 export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
   const background = model.slide.background;
+  const hasPhoto = background.kind === "image";
   const sceneStyle = {
     "--card-stage-ratio": `${model.logicalWidth} / ${model.logicalHeight}`,
     "--card-stage-background": background.kind === "solid" ? background.color : model.theme.background,
     "--card-stage-foreground": model.theme.foreground,
     "--card-stage-accent": model.theme.accent,
-    "--card-chat-reader-background": "#FEE500",
-    "--card-chat-brand-background": "#FFFFFF",
-    "--card-chat-text": "#12100E",
+    "--card-chat-reader-background": READER_BUBBLE_BG,
+    "--card-chat-brand-background": BRAND_BUBBLE_BG,
+    "--card-chat-text": BUBBLE_TEXT,
+    "--card-chat-primary-text": hasPhoto ? PHOTO_TEXT_PRIMARY : model.theme.foreground,
+    "--card-chat-muted-text": hasPhoto ? PHOTO_TEXT_SECONDARY : `color-mix(in srgb, ${model.theme.foreground} 75%, transparent)`,
+    "--card-chat-accent-text": hasPhoto ? PHOTO_TEXT_SECONDARY : model.theme.accent,
     "--card-background-overlay": background.kind === "image" ? background.overlay ?? "transparent" : "transparent",
     ...(background.kind === "gradient" ? { backgroundImage: `linear-gradient(${background.angle}deg, ${background.from}, ${background.to})` } : {}),
   } as CSSProperties;

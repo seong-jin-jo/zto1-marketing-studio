@@ -7,6 +7,7 @@ import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { cardSlideRenderModel } from "@/lib/studio/card-render-model";
 import { migrateCardDeckV2ToV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import { PHOTO_TEXT_PRIMARY, PHOTO_TEXT_SECONDARY } from "@/lib/studio/card-templates/chat-bubble";
 import chatDeckFixture from "../../../../tests/studio/fixtures/deck-d100.v2.json";
 import { CardSlideScene } from "./CardSlideScene";
 
@@ -63,5 +64,20 @@ describe("CardSlideScene S5 카톡 원형과 자유 요소", () => {
     expect(coverScene).toHaveTextContent(deck.brand.display_name);
     expect(ctaScene).toHaveTextContent(deck.brand.display_name);
     expect(within(ctaScene).getAllByText(String(deck.slides.length)).length).toBeGreaterThan(0);
+  });
+
+  it("S5-R1-M2 사진 표지는 legacy PNG 렌더러와 같은 흰색 주·보조 글자 상수를 쓴다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    source.slides[0].cover_image_url = "https://example.test/photo-cover.png";
+    const deck = migrateCardDeckV2ToV3(source, {
+      coverImageAssetIds: { "https://example.test/photo-cover.png": "photo-cover.png" },
+    });
+    const model = cardSlideRenderModel(deck, deck.slides[0].id);
+    const view = render(<CardSlideScene model={model} renderMode="export" />);
+    const scene = view.container.querySelector<HTMLElement>("[data-card-slide-scene]")!;
+
+    expect(scene).toHaveStyle(`--card-chat-primary-text: ${PHOTO_TEXT_PRIMARY}`);
+    expect(scene).toHaveStyle(`--card-chat-muted-text: ${PHOTO_TEXT_SECONDARY}`);
+    expect(within(scene).getByRole("heading", { level: 2 })).toHaveTextContent(source.slides[0].cover!.headline.replace(/\s+/g, " "));
   });
 });

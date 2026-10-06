@@ -26,9 +26,9 @@ const PAGE_NUMBER_RATIO = 0.026;
 const TIMESTAMP_RATIO = 0.022;
 const FONT_FAMILY = '"Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif';
 
-const READER_BUBBLE_BG = "#FEE500";
-const BRAND_BUBBLE_BG = "#FFFFFF";
-const BUBBLE_TEXT = "#12100E";
+export const READER_BUBBLE_BG = "#FEE500";
+export const BRAND_BUBBLE_BG = "#FFFFFF";
+export const BUBBLE_TEXT = "#12100E";
 
 export class ChatBubbleRenderError extends Error {}
 
@@ -38,8 +38,8 @@ const COVER_IMAGE_LOAD_TIMEOUT_MS = 8000;
 const PHOTO_SCRIM_START_RATIO = 0.35;
 const PHOTO_SCRIM_MAX_OPACITY = 0.6;
 /** 사진 배경 위 글자색(MINOR, 2026-09-22 코드리뷰 4차: 리터럴 대신 이름 붙은 상수로). */
-const PHOTO_TEXT_PRIMARY = "#FFFFFF";
-const PHOTO_TEXT_SECONDARY = "rgba(255,255,255,0.85)";
+export const PHOTO_TEXT_PRIMARY = "#FFFFFF";
+export const PHOTO_TEXT_SECONDARY = "rgba(255,255,255,0.85)";
 
 export type ChatBubbleRenderInput = {
   deck: CardDeck;

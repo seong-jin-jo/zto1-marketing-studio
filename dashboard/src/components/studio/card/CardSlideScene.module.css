@@ -5,7 +5,7 @@
   container-type: inline-size;
   overflow: hidden;
   background: var(--card-stage-background);
-  color: var(--card-stage-foreground);
+  color: var(--card-chat-primary-text);
   isolation: isolate;
 }
 
@@ -97,7 +97,7 @@
   font-size: 2.2cqw;
 }
 
-.chatName { color: color-mix(in srgb, var(--card-stage-foreground) 80%, transparent); }
+.chatName { color: var(--card-chat-muted-text); }
 
 .chatBubbleLine {
   display: flex;
@@ -127,13 +127,13 @@
 .chatBubble strong { font-weight: 800; }
 
 .chatTime,
-.chatReaction { color: color-mix(in srgb, var(--card-stage-foreground) 70%, transparent); white-space: nowrap; }
+.chatReaction { color: var(--card-chat-muted-text); white-space: nowrap; }
 
 .chatFooter {
   display: flex;
   justify-content: space-between;
   padding: 0 6cqw 3cqw;
-  color: color-mix(in srgb, var(--card-stage-foreground) 75%, transparent);
+  color: var(--card-chat-muted-text);
 }
 
 .chatCover { justify-content: flex-end; }
@@ -152,7 +152,7 @@
 
 .chatCoverCopy p {
   margin: 2.4cqw 0 0;
-  color: var(--card-stage-accent);
+  color: var(--card-chat-accent-text);
   font-size: 3.2cqw;
   font-weight: 600;
 }
