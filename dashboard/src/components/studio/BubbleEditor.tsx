@@ -1466,7 +1466,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
               <article key={candidate.id} data-tone-candidate={candidate.id} data-applied={toneComparison.appliedId === candidate.id ? "true" : undefined}>
                 <b>{candidate.label}</b>
                 <p>{candidate.lines.join("\n")}</p>
-                {candidate.fact_warnings.length ? <p className={styles.factWarning}>원문과 다름. {candidate.fact_warnings.join(" ")}</p> : <p className={styles.factSafe}>숫자·고유명사 자동 대조 통과</p>}
+                {candidate.fact_warnings.length ? <p className={styles.factWarning}>원문과 다름. {candidate.fact_warnings.join(" ")}</p> : <p className={styles.factSafe}>숫자 자동 대조 통과</p>}
                 <Button size="sm" onClick={() => void applyToneCandidate(candidate)}>{toneComparison.appliedId === candidate.id ? "적용됨" : "이 후보 적용"}</Button>
               </article>
             ))}

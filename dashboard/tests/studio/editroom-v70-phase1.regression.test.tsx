@@ -10,6 +10,7 @@ import deckFixture from "./fixtures/deck-d100.v2.json";
 
 const roomCss = readFileSync("src/components/studio/StudioRooms.module.css", "utf8");
 const bubbleCss = readFileSync("src/components/studio/BubbleEditor.module.css", "utf8");
+const bubbleSource = readFileSync("src/components/studio/BubbleEditor.tsx", "utf8");
 
 function deck(): CardDeck {
   return JSON.parse(JSON.stringify(deckFixture)) as CardDeck;
@@ -103,5 +104,10 @@ describe("EDIT-CARD v70", () => {
     expect(bubbleCss).toContain(".bubbleRowReader .bubbleToolbar");
     expect(bubbleCss).toContain("min-height: var(--editroom-mobile-toolbar-height)");
     expect(bubbleCss).toContain(".bubbleContent:focus-visible");
+  });
+
+  it("S5-R2-MINOR 말투 후보 검수 문구는 실제 검사 범위인 숫자만 약속한다", () => {
+    expect(bubbleSource).toContain("숫자 자동 대조 통과");
+    expect(bubbleSource).not.toContain("숫자·고유명사 자동 대조 통과");
   });
 });
