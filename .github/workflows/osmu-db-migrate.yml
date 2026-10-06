@@ -15,6 +15,7 @@ on:
           - expand-guard
           - expand-member
           - prepare-rollback
+          - expand-export-queue
           - contract-generation
           - rollback-generation
           - rollback-quota
@@ -54,10 +55,10 @@ jobs:
           path: source-${{ github.run_id }}
       - name: Observe and verify every running compatibility image
         id: app
-        # audit 와 preflight 는 읽기 전용이고, baseline 부터 expand-guard 까지는 DDL 이
+        # audit 와 preflight 는 읽기 전용이고, baseline 부터 expand-guard 및 export queue는 DDL 이
         # 앱 동작과 호환되는 방향(추가 전용)이라 실행 중 이미지 관측을 요구하지 않는다.
         # 이 목록에 expand-guard 가 들어 있는 것이 배포와 마이그레이션의 교착을 푸는 지점이다.
-        if: ${{ !contains(fromJSON('["audit","preflight","baseline","apply-legacy","expand-fk","expand-guard"]'), inputs.phase) }}
+        if: ${{ !contains(fromJSON('["audit","preflight","baseline","apply-legacy","expand-fk","expand-guard","expand-export-queue"]'), inputs.phase) }}
         env:
           COMPATIBILITY_BASE_COMMIT: 9b72c05bf7ab2ff30ec4a669267ee3133ff71db4
         run: |

@@ -577,7 +577,7 @@ apply_phase() {
   row="$(manifest_entry "$wanted")"
   IFS=$'\t' read -r id manifest_phase file expected <<<"$row"
   case "$manifest_phase" in
-    expand-fk|expand-guard|expand-member|prepare-rollback) ledger_phase="expand" ;;
+    expand-fk|expand-guard|expand-member|prepare-rollback|expand-export-queue) ledger_phase="expand" ;;
     contract-generation|contract-quota) ledger_phase="contract" ;;
     cleanup) ledger_phase="cleanup" ;;
     *) echo "ERROR: phase $manifest_phase is not executable" >&2; exit 2 ;;
@@ -687,7 +687,7 @@ SQL
     fi
     report_fingerprint
     ;;
-  expand-guard|expand-member|prepare-rollback|contract-generation|contract-quota|cleanup)
+  expand-guard|expand-member|prepare-rollback|expand-export-queue|contract-generation|contract-quota|cleanup)
     if [ "$PHASE" = "contract-quota" ]; then assert_fingerprint "S3|S2"; else assert_fingerprint; fi
     assert_no_duplicates
     ensure_ledger
@@ -700,7 +700,7 @@ SQL
     if [ "$PHASE" = "contract-generation" ]; then assert_fingerprint "S3|S2"; else assert_fingerprint; fi
     ;;
   *)
-    echo "usage: $0 {audit|preflight|bootstrap|baseline|apply-legacy|expand-fk|expand-guard|expand-member|prepare-rollback|contract-generation|contract-quota|cleanup}" >&2
+    echo "usage: $0 {audit|preflight|bootstrap|baseline|apply-legacy|expand-fk|expand-guard|expand-member|prepare-rollback|expand-export-queue|contract-generation|contract-quota|cleanup}" >&2
     exit 2
     ;;
 esac
