@@ -7,8 +7,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 import { ExportQueueError } from "@/lib/studio/export-contract";
 import { PostgresExportRepository } from "@/lib/studio/export-repository";
-import { cardDeckExportSource } from "@/lib/studio/export-source-hash";
-import { ExportItemWorker, realExportWorkerDependencies } from "@/lib/studio/export-worker";
+import { cardDeckExportSource, videoExportSource } from "@/lib/studio/export-source-hash";
+import { ExportItemWorker, exportArtifactFilename, realExportWorkerDependencies } from "@/lib/studio/export-worker";
+import { emptyVideoEdit } from "@/lib/studio/video-edit-contract";
 
 const databaseUrl = process.env.S3_DATABASE_URL;
 const integration = databaseUrl ? describe : describe.skip;
@@ -26,9 +27,32 @@ async function seedDraft(lines: string[]) {
   return { id, deck, source: cardDeckExportSource(deck) };
 }
 
+async function seedVideoDraft() {
+  const id = crypto.randomUUID();
+  const payload = {
+    editLines: ["실제 영상 첫 자막", "실제 영상 둘째 자막"],
+    editFormat: { subtitleSize: "보통" },
+    videoEdit: emptyVideoEdit(),
+    vid: { editSource: { filename: "source.mp4" } },
+  };
+  await admin!`
+    INSERT INTO drafts(id,tenant_id,payload)
+    VALUES (${id},${tenantA},${admin!.json(payload as never)})`;
+  return { id, source: videoExportSource(payload, tenantA) };
+}
+
 function input(source: ReturnType<typeof cardDeckExportSource>) {
   return {
     kind: "card_deck" as const,
+    expected_source_revision: source.sourceRevision,
+    expected_source_hash: source.sourceHash,
+    item_keys: null,
+  };
+}
+
+function videoInput(source: ReturnType<typeof videoExportSource>) {
+  return {
+    kind: "video" as const,
     expected_source_revision: source.sourceRevision,
     expected_source_hash: source.sourceHash,
     item_keys: null,
@@ -99,6 +123,29 @@ integration.sequential("S3 영속 내보내기 실제 PostgreSQL 통합", () => 
     await repository.reclaimExpired(tenantA);
     [row] = await admin!<{ status: string; error_code: string }[]>`SELECT status,error_code FROM studio_export_items WHERE id=${claimed!.id}`;
     expect(row).toEqual({ status: "failed", error_code: "LEASE_EXPIRED" });
+  });
+
+  it("S6-AC5 통합: 영상 worker가 죽어 lease가 만료돼도 같은 item·artifact key로 회수되고 stale worker 완료는 거절된다", async () => {
+    const draft = await seedVideoDraft();
+    const repository = new PostgresExportRepository();
+    const created = await repository.create(tenantA, draft.id, "member-s6-ac5", "s6-ac5", "6".repeat(64), videoInput(draft.source));
+    const crashed = await repository.claim(tenantA, "video-worker-crashed");
+    expect(crashed).toMatchObject({ kind: "video", item_key: "video-main" });
+    const deterministicArtifact = exportArtifactFilename(crashed!);
+
+    await admin!`UPDATE studio_export_items SET lease_expires_at=now()-interval '1 second' WHERE id=${crashed!.id}`;
+    expect(await repository.reclaimExpired(tenantA)).toBe(1);
+    const recovered = await repository.claim(tenantA, "video-worker-recovered");
+    expect(recovered).toMatchObject({ id: crashed!.id, job_id: created.job.id, item_key: "video-main", kind: "video" });
+    expect(exportArtifactFilename(recovered!)).toBe(deterministicArtifact);
+
+    const artifact = { key: deterministicArtifact, sha256: "a".repeat(64), contentType: "video/mp4", byteSize: 12345, width: 360, height: 640 };
+    expect(await repository.complete(crashed!, artifact)).toBe(false);
+    expect(await repository.complete(recovered!, artifact)).toBe(true);
+    const rows = await admin!<{ item_count: number; artifact_count: number; artifact_key: string }[]>`
+      SELECT count(*)::int AS item_count,count(artifact_key)::int AS artifact_count,max(artifact_key) AS artifact_key
+      FROM studio_export_items WHERE job_id=${created.job.id}`;
+    expect(rows[0]).toEqual({ item_count: 1, artifact_count: 1, artifact_key: deterministicArtifact });
   });
 
   it("S3-AC4 경계: 같은 key와 본문은 재사용하고 다른 request hash는 409다", async () => {
