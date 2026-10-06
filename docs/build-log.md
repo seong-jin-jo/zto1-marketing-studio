@@ -1,5 +1,13 @@
 # OSMU build log
 
+## 2026-10-07 07:51 KST · S5b와 S6 main 병합 검증
+
+STAMP: 2026-10-07 07:51 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: merge commit `43ae2897`, CI 동일 production server Chromium 게이트, Vitest 3단 | 고민: append-only 기록을 모두 보존하면서 카톡 v3 저장 동기화와 영상 export queue가 한 `page.tsx`에서 함께 동작하는지 검증했다.
+
+`origin/main`의 S6 `df387bf8`을 S5b에 merge했다. `docs/qa/qa-tracker.md`와 `docs/구현현황.md`는 양쪽 기록을 시간 역순으로 모두 보존했고, S5b build plan에는 댓글 유도 장 이동 잠금을 MINOR 1로 명시했다. 자동 병합된 `studio/page.tsx`는 S5b의 v2↔v3 덱 동기화와 S6의 영상 export queue 경로를 모두 유지한다.
+
+검증: `typecheck:ci` PASS, integrity 33파일 104건 PASS, contract 107파일 625건 PASS, Studio 영향 149파일 1,124건 PASS·2파일 28건 환경 skip, production build PASS다. CI와 같은 `next start` 실제 Chromium에서 v70 화면 게이트는 1440·1024·390과 콘솔 오류 0, 두 탭 본문 충돌 게이트는 revision 5→6→8, 연속 409 로컬 입력 보존, 콘솔 오류 0으로 PASS했다. push·원격 CI·QA 승인·운영 배포는 미검증이다.
+
 ## 2026-10-07 07:13 KST · 편집실 S5b 교차 리뷰 4차 교정
 
 STAMP: 2026-10-07 07:13 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `s5b-review-r4.md`, v2 projection validator, 플래그 ON localhost Chromium, 390·Remotion 원본 PNG | 고민: 삭제 가능한 자유 편집과 서버가 요구하는 댓글 유도 장 불변식을 명령 경계에서 함께 지키고, 모바일 가독성과 발행 줄바꿈의 차이는 숨기지 않고 측정했다.
