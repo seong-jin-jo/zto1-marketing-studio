@@ -1089,7 +1089,7 @@ function VideoInsertDrawer({ edit, duration, playhead, sourceFilename, tenantId,
 
       {activeTab === "intro" ? (
         <div className="space-y-stack-tight" data-video-drawer-intro>
-          <IntroOutroPanel sourceFilename={sourceFilename} tenantId={tenantId} applied={edit.introOutro} onApplied={(applied) => run((value) => setIntroOutroApplied(value, applied))} />
+          <IntroOutroPanel sourceFilename={sourceFilename} tenantId={tenantId} applied={edit.introOutro} transitions={edit.transitions} onApplied={(applied) => run((value) => setIntroOutroApplied(value, applied))} />
           <div className="grid grid-cols-2 gap-stack-tight">
             <Button size="sm" variant={edit.introOutroDefaults?.intro ? "primary" : "secondary"} aria-pressed={edit.introOutroDefaults?.intro ?? false} onClick={() => run((value) => setIntroOutroDefaults(value, { intro: !(value.introOutroDefaults?.intro ?? false) }))}>다음 영상에도 인트로</Button>
             <Button size="sm" variant={edit.introOutroDefaults?.outro ? "primary" : "secondary"} aria-pressed={edit.introOutroDefaults?.outro ?? false} onClick={() => run((value) => setIntroOutroDefaults(value, { outro: !(value.introOutroDefaults?.outro ?? false) }))}>다음 영상에도 아웃트로</Button>

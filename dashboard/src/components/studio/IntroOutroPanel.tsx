@@ -22,7 +22,7 @@ import {
   type IntroOutroCompId,
   type BrandProps,
 } from "../../../remotion/IntroOutroComps";
-import { isIntroOutroStale, type IntroOutroApplied } from "@/lib/studio/video-edit-contract";
+import { isIntroOutroStale, type IntroOutroApplied, type VideoTransition } from "@/lib/studio/video-edit-contract";
 
 export interface IntroOutroPanelProps {
   /** 편집실에 로드된, 아직 인트로/아웃트로를 입히지 않은 원본 영상 파일명. 없으면 패널 비활성. */
@@ -38,6 +38,7 @@ export interface IntroOutroPanelProps {
    */
   applied?: IntroOutroApplied;
   onApplied?: (applied: IntroOutroApplied) => void;
+  transitions?: { introToMain: VideoTransition; mainToOutro: VideoTransition };
 }
 
 const JOB_STORAGE_KEY = "osmu-intro-outro-job";
@@ -64,10 +65,12 @@ function storeJobId(sourceFilename: string, jobId: string | null) {
   }
 }
 
-export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, primaryColor, secondaryColor, applied = null, onApplied }: IntroOutroPanelProps) {
+export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, primaryColor, secondaryColor, applied = null, onApplied, transitions = { introToMain: "cut", mainToOutro: "cut" } }: IntroOutroPanelProps) {
   const [introId, setIntroId] = useState<IntroOutroCompId | null>(null);
   const [outroId, setOutroId] = useState<IntroOutroCompId | null>(null);
-  const [titleText, setTitleText] = useState("");
+  const [titleText, setTitleText] = useState(applied?.titleText ?? "");
+  const [introDurationSec, setIntroDurationSec] = useState(applied?.introDurationSec ?? 2);
+  const [outroDurationSec, setOutroDurationSec] = useState(applied?.outroDurationSec ?? 2);
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "queued" | "processing" | "completed" | "failed">("idle");
   const [resultUrl, setResultUrl] = useState<string | null>(null);
@@ -91,6 +94,15 @@ export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, 
       setStatus("processing");
     }
   }, [sourceFilename]);
+
+  useEffect(() => {
+    if (!applied) return;
+    setIntroId(applied.introCompId as IntroOutroCompId | null);
+    setOutroId(applied.outroCompId as IntroOutroCompId | null);
+    setTitleText(applied.titleText ?? "");
+    setIntroDurationSec(applied.introDurationSec ?? 2);
+    setOutroDurationSec(applied.outroDurationSec ?? 2);
+  }, [applied]);
 
   useEffect(() => {
     if (!jobId || status === "completed" || status === "failed") {
@@ -123,7 +135,9 @@ export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, 
               outroCompId: outroId,
               compositeFilename: body.filename,
               compositeDeliverUrl: body.file,
-              introDurationSec: introId ? INTRO_OUTRO_COMPS[introId].durationInFrames / COMP_FPS : 0,
+              introDurationSec: introId ? Math.max(0, introDurationSec - (transitions.introToMain === "cut" ? 0 : 0.35)) : 0,
+              outroDurationSec: outroId ? outroDurationSec : 0,
+              titleText,
               resultFilename: body.filename,
               renderedCutRanges: [],
               deliverUrl: body.file,
@@ -145,7 +159,7 @@ export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, 
       if (pollRef.current) clearInterval(pollRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId, status]);
+  }, [jobId, status, introId, outroId, introDurationSec, outroDurationSec, titleText, transitions, sourceFilename, onApplied]);
 
   async function submit() {
     if (!sourceFilename || (!introId && !outroId)) return;
@@ -166,6 +180,9 @@ export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, 
           secondaryColor: brand.secondaryColor,
           introTitleText: introId ? titleText : undefined,
           outroTitleText: outroId ? titleText : undefined,
+          introDurationSec,
+          outroDurationSec,
+          transitions,
         }),
       });
       const body = await res.json();
@@ -226,6 +243,11 @@ export function IntroOutroPanel({ sourceFilename, tenantId, brandName, logoUrl, 
           className="w-full rounded-control border border-border bg-surface p-stack-tight text-body"
         />
       </label>
+
+      <div className="grid grid-cols-2 gap-stack-tight">
+        <label className="grid gap-micro text-caption">인트로 길이<input type="number" min="0.5" max="5" step="0.1" value={introDurationSec} disabled={!introId} onChange={(event) => setIntroDurationSec(Number(event.target.value))} className="min-h-control-touch rounded-control border border-border bg-surface px-stack text-body" /></label>
+        <label className="grid gap-micro text-caption">아웃트로 길이<input type="number" min="0.5" max="5" step="0.1" value={outroDurationSec} disabled={!outroId} onChange={(event) => setOutroDurationSec(Number(event.target.value))} className="min-h-control-touch rounded-control border border-border bg-surface px-stack text-body" /></label>
+      </div>
 
       <div className="flex items-center gap-stack-tight">
         <Button onClick={submit} disabled={(!introId && !outroId) || status === "queued" || status === "processing"} data-intro-outro-submit>

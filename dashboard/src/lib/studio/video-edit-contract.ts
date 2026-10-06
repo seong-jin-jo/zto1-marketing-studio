@@ -118,6 +118,8 @@ export type IntroOutroApplied = {
   compositeDeliverUrl?: string;
   /** 인트로 길이. 원본 기준 자막·컷 시간을 합성본 시간축으로 옮길 때 쓴다. */
   introDurationSec?: number;
+  outroDurationSec?: number;
+  titleText?: string;
   /** 현재 발행할 최종 결과. 자막을 다시 구우면 이 값만 새 결과로 전진한다. */
   resultFilename: string;
   /** 현재 결과 파일에 이미 반영된 컷. 값은 본문 원본 시간축이며 재생 위치 역변환에 쓴다. */
@@ -330,6 +332,12 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
     }
     if (io.introDurationSec !== undefined && (!isFiniteNumber(io.introDurationSec) || io.introDurationSec < 0)) {
       throw new VideoEditValidationError("intro_outro_intro_duration", "videoEdit.introOutro.introDurationSec must be a non-negative finite number when set");
+    }
+    if (io.outroDurationSec !== undefined && (!isFiniteNumber(io.outroDurationSec) || io.outroDurationSec < 0)) {
+      throw new VideoEditValidationError("intro_outro_outro_duration", "videoEdit.introOutro.outroDurationSec must be a non-negative finite number when set");
+    }
+    if (io.titleText !== undefined && typeof io.titleText !== "string") {
+      throw new VideoEditValidationError("intro_outro_title", "videoEdit.introOutro.titleText must be a string when set");
     }
     if (io.renderedCutRanges !== undefined) {
       if (!Array.isArray(io.renderedCutRanges)) {

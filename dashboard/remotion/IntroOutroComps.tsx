@@ -105,6 +105,14 @@ function TitleCard({ brandName, titleText, primaryColor, secondaryColor, fontFam
   );
 }
 
+/** 브랜드 색 띠가 화면을 가로지르며 이름을 드러내는 세 번째 무과금 템플릿. */
+function BrandStripe({ brandName, titleText, primaryColor, secondaryColor, fontFamily }: BrandProps) {
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  const progress = interpolate(frame, [0, 10, durationInFrames - 8, durationInFrames], [-100, 0, 0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  return <AbsoluteFill style={{ backgroundColor: primaryColor, alignItems: "center", justifyContent: "center", overflow: "hidden" }}><div style={{ width: "120%", transform: `translateX(${progress}%) rotate(-5deg)`, backgroundColor: secondaryColor, padding: "70px 40px", textAlign: "center" }}><div style={{ color: primaryColor, fontFamily, fontSize: 58, fontWeight: 800 }}>{titleText || brandName}</div></div></AbsoluteFill>;
+}
+
 export function IntroLogoReveal(props: Partial<BrandProps>) {
   return <LogoReveal {...withDefaults(props)} />;
 }
@@ -117,12 +125,16 @@ export function IntroTitleCard(props: Partial<BrandProps>) {
 export function OutroTitleCard(props: Partial<BrandProps>) {
   return <TitleCard {...withDefaults(props)} />;
 }
+export function IntroBrandStripe(props: Partial<BrandProps>) { return <BrandStripe {...withDefaults(props)} />; }
+export function OutroBrandStripe(props: Partial<BrandProps>) { return <BrandStripe {...withDefaults(props)} />; }
 
 export type IntroOutroCompId =
   | "intro-logo-reveal"
   | "intro-title-card"
+  | "intro-brand-stripe"
   | "outro-logo-reveal"
-  | "outro-title-card";
+  | "outro-title-card"
+  | "outro-brand-stripe";
 
 export const INTRO_OUTRO_COMPS: Record<
   IntroOutroCompId,
@@ -130,8 +142,10 @@ export const INTRO_OUTRO_COMPS: Record<
 > = {
   "intro-logo-reveal": { component: IntroLogoReveal, durationInFrames: 60, label: "인트로 · 로고 리빌 (2s)" },
   "intro-title-card": { component: IntroTitleCard, durationInFrames: 75, label: "인트로 · 타이틀 카드 (2.5s)" },
+  "intro-brand-stripe": { component: IntroBrandStripe, durationInFrames: 60, label: "인트로 · 브랜드 띠 (2s)" },
   "outro-logo-reveal": { component: OutroLogoReveal, durationInFrames: 45, label: "아웃트로 · 로고 리빌 (1.5s)" },
   "outro-title-card": { component: OutroTitleCard, durationInFrames: 90, label: "아웃트로 · 타이틀 카드 (3s)" },
+  "outro-brand-stripe": { component: OutroBrandStripe, durationInFrames: 60, label: "아웃트로 · 브랜드 띠 (2s)" },
 };
 
 export const COMP_WIDTH = 1080;
