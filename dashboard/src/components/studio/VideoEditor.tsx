@@ -17,8 +17,8 @@
  * 렌더 반영(ADR-007): 발행실로 이동할 때 videoEdit 을 /api/video/subtitle 에 보낸다.
  * 컷으로 뺀 구간, 타임라인에서 고친 자막 시간, 후킹·CTA 문구, 댓글 문구는 그때
  * 나가는 mp4 에 굽힌다. 적용을 마친 인트로·아웃트로 합성 결과는 미리보기와 발행
- * 파일 후보로 쓴다. 목소리는 선택만 저장하며, 표지와 움직이는 제목은 아직 파일에
- * 들어가지 않는다. 화면 문구도 이 범위만 말한다.
+ * 파일 후보로 쓴다. S6에서는 목소리·표지·움직이는 제목까지 같은 videoEdit 계약에
+ * 저장하고, 목소리·제목은 export queue의 실제 mp4 렌더 입력으로 쓴다.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
@@ -931,6 +931,7 @@ function CommentOverlayEditor({ edit, duration, playhead, run, syncing = false }
 function VoiceSelector({ edit, run, syncing = false }: { edit: VideoEdit; run: (op: (e: VideoEdit) => VideoEdit) => void; syncing?: boolean }) {
   const [voices, setVoices] = useState<Array<{ id: string; name: string; category: string }> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [pendingVoice, setPendingVoice] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -973,15 +974,27 @@ function VoiceSelector({ edit, run, syncing = false }: { edit: VideoEdit; run: (
               variant={edit.voice?.voiceId === voice.id ? "primary" : "secondary"}
               aria-pressed={edit.voice?.voiceId === voice.id}
               disabled={syncing}
-              onClick={() => run((e) => setVoice(e, { voiceId: voice.id, voiceName: voice.name }))}
+              onClick={() => {
+                if (edit.voice?.voiceId === voice.id) return;
+                setPendingVoice({ id: voice.id, name: voice.name });
+              }}
             >
               {voice.name}
             </Button>
           ))}
         </div>
       ) : null}
+      {pendingVoice ? (
+        <div role="alert" className="space-y-stack-tight rounded-control border border-warning bg-warning-soft p-stack text-caption text-warning" data-video-voice-confirm>
+          <p><b>{pendingVoice.name}</b> 목소리로 바꾸면 내보낼 때 나레이션을 다시 만들고 예상 크레딧 30을 사용합니다.</p>
+          <div className="flex flex-wrap gap-stack-tight">
+            <Button size="sm" onClick={() => { run((e) => setVoice(e, { voiceId: pendingVoice.id, voiceName: pendingVoice.name })); setPendingVoice(null); }}>바꾸기 · 크레딧 30</Button>
+            <Button size="sm" variant="secondary" onClick={() => setPendingVoice(null)}>그대로 두기</Button>
+          </div>
+        </div>
+      ) : null}
       <p className="text-caption text-subtle" data-video-voice-status>
-        {edit.voice ? `선택된 목소리: ${edit.voice.voiceName}. 지금은 선택만 저장됩니다. 실제 목소리 교체는 다음 단계입니다.` : "아직 목소리를 고르지 않았습니다. 지금 이 영상은 기존 음성을 그대로 씁니다."}
+        {edit.voice ? `선택된 목소리: ${edit.voice.voiceName}. 내보낸 MP4의 나레이션에 반영됩니다.` : "아직 목소리를 고르지 않았습니다. 지금 이 영상은 기존 음성을 그대로 씁니다."}
       </p>
     </section>
   );

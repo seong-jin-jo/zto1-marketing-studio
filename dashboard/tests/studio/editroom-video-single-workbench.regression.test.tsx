@@ -166,6 +166,22 @@ function VideoRoomHarness({ initialLines, onLinesChangeSpy }: { initialLines: st
 }
 
 describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임라인)", () => {
+  it("S6-VOICE-01 목소리는 비용 확인 전에는 바뀌지 않고 확인 뒤 실제 렌더 계약에 저장된다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ voices: [{ id: "voice-calm", name: "차분한 남성", category: "premade" }] }),
+    })));
+    render(<VideoRoomHarness initialLines={["첫 장면 대사"]} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "차분한 남성" }));
+    expect(screen.getByText(/예상 크레딧 30/)).toBeInTheDocument();
+    expect(screen.getByText("아직 목소리를 고르지 않았습니다. 지금 이 영상은 기존 음성을 그대로 씁니다.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "바꾸기 · 크레딧 30" }));
+    expect(screen.getByText("선택된 목소리: 차분한 남성. 내보낸 MP4의 나레이션에 반영됩니다.")).toBeInTheDocument();
+  });
+
   it("S6-TL-01 영상이 있으면 5레인 타임라인과 넣기 서랍 진입점이 뜬다", () => {
     stubVoicesUnconfigured();
     render(<VideoRoomHarness initialLines={["첫 장면 대사", "둘째 장면 대사"]} />);
