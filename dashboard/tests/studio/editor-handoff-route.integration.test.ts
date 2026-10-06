@@ -161,6 +161,18 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
     expect(await response.json()).toEqual(expect.objectContaining({ ok: false }));
   });
 
+  it("S5-AC3 거절: 문자열 아닌 줄과 2천자를 넘는 줄은 AI 호출 전에 400으로 막는다", async () => {
+    const { POST } = await import("@/app/api/studio/commands/route");
+    for (const lines of [[{ text: "문장" }], ["가".repeat(2_001)]]) {
+      const response = await POST(new Request("http://localhost/api/studio/commands", {
+        method: "POST",
+        body: JSON.stringify({ tenant_id: H.tenantId, action: "suggest_chat_tone", tone: "short", lines }),
+      }));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual(expect.objectContaining({ code: "CHAT_TONE_LINES_INVALID" }));
+    }
+  });
+
   it("BE-V63-36 경합 경로: 저장 직전 revision이 바뀌면 409로 끝내고 덮어쓰지 않는다", async () => {
     H.handoff = createEditorHandoff(handoffBody());
     H.updateAllowed = false;

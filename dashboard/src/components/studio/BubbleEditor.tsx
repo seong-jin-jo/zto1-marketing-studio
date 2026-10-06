@@ -36,7 +36,7 @@ import {
   trimBubbleTrailingNewline,
   trimSegmentsTrailingNewline,
 } from "@/lib/studio/card-deck-ops";
-import { CHAT_TONE_IDS, type ChatToneCandidate, type ChatToneId } from "@/lib/studio/chat-tone-suggestions";
+import { CHAT_TONE_IDS, isChatToneCandidateList, type ChatToneCandidate, type ChatToneId } from "@/lib/studio/chat-tone-suggestions";
 import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
 import { DeliveredMedia } from "./DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
@@ -76,6 +76,7 @@ export interface BubbleEditorProps {
   slideId: string;
   onDeckChange: (deck: CardDeck) => void;
   onBubbleDragStart?: (source: { slideId: string; bubbleId: string }) => void;
+  onBubbleDragEnd?: () => void;
   onBubbleDrop?: (source: { slideId: string; bubbleId: string }, targetSlideId: string, targetIndex: number) => void;
   draggedBubble?: { slideId: string; bubbleId: string } | null;
   onSelectedBubbleChange?: (bubbleId: string | null) => void;
@@ -662,7 +663,7 @@ function BubbleContentEditable({
 }
 
 /** 편집실 카드 탭: 선택된 장(chat/comment_prompt/cta)의 말풍선을 직접 편집한다. */
-export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, onBubbleDrop, draggedBubble, onSelectedBubbleChange }: BubbleEditorProps) {
+export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, onBubbleDragEnd, onBubbleDrop, draggedBubble, onSelectedBubbleChange }: BubbleEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
   const editableRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -842,6 +843,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, o
                   event.dataTransfer.setData("application/x-editroom-bubble", JSON.stringify(source));
                   onBubbleDragStart?.(source);
                 }}
+                onDragEnd={onBubbleDragEnd}
                 onKeyDown={(event) => {
                   if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
                   event.preventDefault();
@@ -1177,7 +1179,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
         body: JSON.stringify({ action: "suggest_chat_tone", tone: toneId, lines: targets.map((target) => target.original) }),
       });
       const data = await response.json().catch(() => ({})) as { ok?: boolean; candidates?: ChatToneCandidate[]; fact_warning?: string; error?: string };
-      if (!response.ok || !data.ok || !Array.isArray(data.candidates) || data.candidates.length !== 3) {
+      if (!response.ok || !data.ok || !isChatToneCandidateList(data.candidates, targets.length)) {
         setToneError(data.error || "말투 후보 3개를 만들지 못했습니다. 원문은 바뀌지 않았습니다.");
         return;
       }
@@ -1434,6 +1436,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
             onDeckChange={commitDeck}
             draggedBubble={draggedBubble}
             onBubbleDragStart={setDraggedBubble}
+            onBubbleDragEnd={() => setDraggedBubble(null)}
             onSelectedBubbleChange={setSelectedBubbleId}
             onBubbleDrop={(source, targetSlideId, targetIndex) => {
               try {

@@ -46,9 +46,9 @@ export async function POST(request: Request) {
     return commandResponse(response, action, target);
   }
   if (action === "suggest_chat_tone") {
-    const lines = Array.isArray(input.lines) ? input.lines.map((line) => String(line ?? "")) : null;
+    const lines = Array.isArray(input.lines) && input.lines.every((line) => typeof line === "string") ? input.lines as string[] : null;
     const tone = CHAT_TONE_IDS.includes(input.tone as ChatToneId) ? input.tone as ChatToneId : null;
-    if (!lines || lines.length === 0 || lines.length > 50 || lines.some((line) => !line.trim())) {
+    if (!lines || lines.length === 0 || lines.length > 50 || lines.some((line) => !line.trim() || line.length > 2_000)) {
       return Response.json({ error: "말투를 다듬을 말풍선은 1개에서 50개까지 필요합니다.", code: "CHAT_TONE_LINES_INVALID" }, { status: 400 });
     }
     if (!tone) return Response.json({ error: "지원하지 않는 말투입니다.", code: "CHAT_TONE_INVALID" }, { status: 400 });

@@ -145,6 +145,22 @@ describe("CardDeckPanel (표지·CTA 고정, 세션맥락: card-deck-ops 순수 
     expect(current.slides[1].bubbles?.some((bubble) => bubble.id === original.id)).toBe(false);
   });
 
+  it("S5-AC1 거절: 취소한 drag는 다음 장 drop에 남아 있지 않는다", () => {
+    let current = deck();
+    const before = structuredClone(current);
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    fireEvent.click(document.querySelector(`[data-slide-id="${current.slides[1].id}"]`)!);
+    const transfer = { effectAllowed: "none", dropEffect: "none", setData: vi.fn(), getData: vi.fn(() => "") };
+    const handle = screen.getByRole("button", { name: "1번째 말풍선 옮기기" });
+    fireEvent.dragStart(handle, { dataTransfer: transfer });
+    fireEvent.dragEnd(handle, { dataTransfer: transfer });
+    const target = document.querySelector(`[data-slide-id="${current.slides[2].id}"]`)!.closest("[data-slide-draggable]")!;
+    fireEvent.drop(target, { dataTransfer: transfer });
+    expect(current).toEqual(before);
+    expect(onDeckChange).not.toHaveBeenCalled();
+  });
+
   it("S5-AC2 정상: 덱 전체 화자 교환은 한 번에 반영되고 실행 취소 한 번으로 원복된다", () => {
     let current = deck();
     const originalSpeakers = current.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker));
