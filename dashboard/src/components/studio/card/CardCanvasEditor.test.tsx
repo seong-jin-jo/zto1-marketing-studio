@@ -246,7 +246,7 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
 
     expect(current.slides[0].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ id: "bubble_reader" }] });
-    expect(current.slides[0].elements.map((element) => element.type)).toEqual(["text", "logo"]);
+    expect(current.slides[0].elements.map((element) => element.type)).toEqual(["logo"]);
     expect(screen.getByRole("button", { name: "로고" })).toBeInTheDocument();
 
     const bubbleEditor = screen.getByRole("textbox", { name: "1번째 말풍선 내용" });
