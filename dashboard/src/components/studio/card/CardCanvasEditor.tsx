@@ -9,6 +9,7 @@ import {
   addChatOverlayElement,
   addChatBubble,
   addChatSlide,
+  clearChatSlideBackgroundImage,
   commitCardCommand,
   createCardCommandHistory,
   deleteCardElement,
@@ -49,7 +50,7 @@ import {
   type SnapGuide,
 } from "@/lib/studio/card-element-commands";
 import { projectChatCardDeckV3ToRenderableV2 } from "@/lib/studio/card-deck-v2-to-v3";
-import { assertChatSlidesRenderable, findChatSlideOverflowSplit } from "@/lib/studio/chat-deck-layout";
+import { assertChatSlidesRenderable } from "@/lib/studio/chat-deck-layout";
 import { CHAT_TONE_IDS, isChatToneCandidateList, type ChatToneCandidate, type ChatToneId } from "@/lib/studio/chat-tone-suggestions";
 import { cardSlideRenderModel, isChatBaseProjectionElement } from "@/lib/studio/card-render-model";
 import { CardElementList } from "./CardElementList";
@@ -127,6 +128,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onAssetUrlChange, onDec
   const [toneBusy, setToneBusy] = useState(false);
   const [toneError, setToneError] = useState("");
   const [splitNotice, setSplitNotice] = useState("");
+  const [sceneOverflow, setSceneOverflow] = useState(false);
   const [toneCandidates, setToneCandidates] = useState<{ targets: Array<{ slideId: string; bubbleId: string; text: string }>; candidates: ChatToneCandidate[]; revision: number } | null>(null);
   const [speakerEditorOpen, setSpeakerEditorOpen] = useState(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -148,7 +150,6 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onAssetUrlChange, onDec
   const textEditCommittedRef = useRef(false);
   const textEditLastCommittedValueRef = useRef<string | null>(null);
   const lastTextPointerDownRef = useRef<{ elementId: string; at: number } | null>(null);
-  const autoSplitCheckRef = useRef("");
   const workingDeck = previewDeck ?? history.present;
   const activeSlide = workingDeck.slides.find((slide) => slide.id === activeSlideId) ?? workingDeck.slides[0];
   const logicalHeight = workingDeck.ratio === "4:5" ? 1350 : 1080;
@@ -381,30 +382,26 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onAssetUrlChange, onDec
     }
   };
 
-  useEffect(() => {
-    if (process.env.NODE_ENV === "test" || workingDeck.template !== "chat_bubble" || activeSlide?.role !== "body") return;
-    const key = `${workingDeck.revision}:${activeSlide.id}`;
-    if (autoSplitCheckRef.current === key) return;
-    autoSplitCheckRef.current = key;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const legacy = projectChatCardDeckV3ToRenderableV2(workingDeck, resolvedAssetUrls);
-        const split = await findChatSlideOverflowSplit(legacy, activeSlide.id);
-        if (cancelled || !split) return;
-        const next = split.offset === undefined
-          ? splitChatSlideAtBubble(workingDeck, activeSlide.id, split.bubbleIndex)
-          : splitChatSlideAtBubbleOffset(workingDeck, activeSlide.id, split.bubbleIndex, split.offset);
-        const continuation = next.slides[activeSlide.order + 1];
-        commit(next);
-        if (continuation) setActiveSlideId(continuation.id);
-        setSplitNotice("넘친 대화가 다음 장으로 자동 분할됐습니다.");
-      } catch (error) {
-        if (!cancelled) setBubbleEditError(error instanceof Error ? error.message : "카드 넘침을 확인하지 못했습니다.");
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [activeSlide?.id, activeSlide?.order, activeSlide?.role, commit, resolvedAssetUrls, workingDeck]);
+  const handleSceneOverflowChange = useCallback((overflow: boolean) => {
+    setSceneOverflow(overflow);
+    setSplitNotice(overflow ? "발행 장면 기준으로 대화가 넘칩니다. 버튼을 눌러 다음 장으로 나눠 주세요." : "");
+  }, []);
+
+  const splitOverflowToNextSlide = () => {
+    if (activeSlide.base.kind !== "chat_bubble" || activeSlide.role !== "body" || !activeSlide.base.bubbles.length) return;
+    const bubbles = activeSlide.base.bubbles;
+    const next = bubbles.length > 1
+      ? runChatCommand((current) => splitChatSlideAtBubble(current, activeSlide.id, Math.ceil(bubbles.length / 2)))
+      : runChatCommand((current) => {
+          const length = bubbles[0].segments.reduce((sum, segment) => sum + segment.text.length, 0);
+          return splitChatSlideAtBubbleOffset(current, activeSlide.id, 0, Math.max(1, Math.floor(length / 2)));
+        });
+    if (next) {
+      setActiveSlideId(next.slides[activeSlide.order + 1]?.id ?? activeSlide.id);
+      setSceneOverflow(false);
+      setSplitNotice("넘친 대화를 다음 장으로 나눴습니다.");
+    }
+  };
 
   const toneTargets = () => workingDeck.slides.flatMap((slide) => slide.base.kind === "chat_bubble"
     ? slide.base.bubbles.map((bubble) => ({
@@ -565,6 +562,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onAssetUrlChange, onDec
               if (next && fallback) setActiveSlideId(fallback);
             }}>이 장 삭제</Button>
             {(activeSlide.role === "cover" || activeSlide.role === "cta") ? <Button size="sm" variant="secondary" onClick={() => backgroundInputRef.current?.click()}>배경 사진 고르기</Button> : null}
+            {(activeSlide.role === "cover" || activeSlide.role === "cta") && activeSlide.background.kind === "image" ? <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => clearChatSlideBackgroundImage(current, activeSlide.id))}>사진 빼기</Button> : null}
           </div> : null}
           {toolbarElement ? (
             <div className={styles.toolbarSlot} data-placeholder={selected ? "false" : "true"}>
@@ -607,7 +605,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onAssetUrlChange, onDec
             }}
             onPointerDown={() => { setSelectedId(null); setEditingTextId(null); }}
           >
-            <CardSlideScene model={model} renderMode="editor" />
+            <CardSlideScene model={model} renderMode="editor" onChatOverflowChange={handleSceneOverflowChange} />
             {editableElements.filter((element) => !element.hidden).map((element) => (
               <div
                 key={element.id}
@@ -724,11 +722,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onAssetUrlChange, onDec
                 );
               })}
               <Button size="sm" onClick={() => runChatCommand((current) => addChatBubble(current, activeSlide.id))}>말풍선 추가</Button>
-              {activeSlide.role === "body" && activeSlide.base.bubbles.length > 1 ? <Button size="sm" variant="secondary" onClick={() => {
-                const splitAt = Math.ceil(activeSlide.base.kind === "chat_bubble" ? activeSlide.base.bubbles.length / 2 : 1);
-                const next = runChatCommand((current) => splitChatSlideAtBubble(current, activeSlide.id, splitAt));
-                if (next) setActiveSlideId(next.slides[activeSlide.order + 1]?.id ?? activeSlide.id);
-              }}>넘침을 다음 장으로 나누기</Button> : null}
+              {activeSlide.role === "body" && (sceneOverflow || activeSlide.base.bubbles.length > 1) ? <Button size="sm" variant="secondary" onClick={splitOverflowToNextSlide}>넘침을 다음 장으로 나누기</Button> : null}
               {bubbleEditError ? <p role="alert" className={styles.error}>{bubbleEditError}</p> : null}
             </section>
           ) : null}

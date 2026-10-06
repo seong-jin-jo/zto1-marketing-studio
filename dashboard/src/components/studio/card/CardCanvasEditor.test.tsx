@@ -39,6 +39,34 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect(document.querySelector("[data-card-right-panel]")).toBeInTheDocument();
   });
 
+  it("S5b-R2-MINOR 발행 장면 실측은 넘침을 안내만 하고 undo history 밖에서 자동 commit하지 않는다", async () => {
+    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    const scrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 100 });
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 200 });
+    try {
+      const current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+      const onChange = vi.fn();
+      render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+      fireEvent.click(screen.getByRole("button", { name: "2장" }));
+      await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("발행 장면 기준으로 대화가 넘칩니다"));
+      expect(onChange).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "넘침을 다음 장으로 나누기" })).toBeInTheDocument();
+    } finally {
+      if (clientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeight);
+      if (scrollHeight) Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeight);
+    }
+  });
+
+  it("S5b-R2-MINOR 사진이 있는 표지에서 배경 사진 빼기를 실행한다", () => {
+    let current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    current.slides[0].background = { kind: "image", asset_id: "cover.png", crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" };
+    const onChange = (next: CardDeckV3) => { current = next; };
+    render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "사진 빼기" }));
+    expect(current.slides[0].background).toEqual({ kind: "solid", color: current.theme.background });
+  });
+
   it("S5b-AC1 고급 화자 도구와 undo를 같은 v3 화면에서 실행한다", () => {
     let current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
     const original = structuredClone(current);

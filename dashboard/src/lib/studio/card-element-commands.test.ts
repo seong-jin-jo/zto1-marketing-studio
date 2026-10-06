@@ -5,6 +5,7 @@ import {
   addChatOverlayElement,
   addChatBubble,
   addChatSlide,
+  clearChatSlideBackgroundImage,
   commitCardCommand,
   createCardCommandHistory,
   createRecoverableEmbeddedCardDeckV3,
@@ -183,7 +184,10 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     chat.template = "chat_bubble";
     chat.slides = [
       { ...chat.slides[0], base: { kind: "chat_bubble", cover: { headline: "표지", sub: null }, bubbles: [] } },
-      { ...structuredClone(chat.slides[0]), id: "body_a", order: 1, role: "body", base: { kind: "chat_bubble", cover: null, bubbles: [{ id: "a", order: 0, speaker: "brand", segments: [{ text: "원문", bold: false }], reaction: null }] }, elements: [{ ...createPlainCardDeckV3(["가", "나"], [], "seed").slides[0].elements[0], id: "overlay" }] },
+      { ...structuredClone(chat.slides[0]), id: "body_a", order: 1, role: "body", base: { kind: "chat_bubble", cover: null, bubbles: [{ id: "a", order: 0, speaker: "brand", segments: [{ text: "원문", bold: false }], reaction: null }] }, elements: [
+        { ...createPlainCardDeckV3(["가", "나"], [], "seed").slides[0].elements[0], id: "overlay" },
+        { ...createPlainCardDeckV3(["가", "나"], [], "legacy").slides[0].elements[0], id: "el_removed-bubble" },
+      ] },
       { ...structuredClone(chat.slides[0]), id: "body_b", order: 2, role: "body", base: { kind: "chat_bubble", cover: null, bubbles: [{ id: "b", order: 0, speaker: "reader", segments: [{ text: "둘째", bold: false }], reaction: null }] } },
       { ...chat.slides[1], order: 3, base: { kind: "chat_bubble", cover: null, bubbles: [] } },
     ];
@@ -195,9 +199,42 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     const padded = { ...moved, slides: [...moved.slides.slice(0, -1), ...padding, moved.slides.at(-1)!].map((slide, order) => ({ ...slide, order })) };
     const deleted = deleteChatSlide(padded, moved.slides[2].id);
     expect(withPhoto.slides[0].background).toMatchObject({ kind: "image", asset_id: "cover.png" });
-    expect(duplicated.slides.some((slide) => slide.elements.some((element) => element.id.includes("_el_")))).toBe(true);
+    const duplicatedSlide = duplicated.slides[2];
+    expect(duplicatedSlide.elements).toHaveLength(1);
+    expect(duplicatedSlide.elements[0].id).toContain("_el_");
+    expect(duplicatedSlide.elements[0].id).not.toContain("removed-bubble");
     expect(deleted.slides.map((slide) => slide.order)).toEqual(deleted.slides.map((_, index) => index));
     expect(() => moveChatSlide(chat, "body_a", -1)).toThrow("OPS_SLIDE_LOCKED");
+  });
+
+  it("S5b-R2-MINOR 표지·마지막 사진을 빼고 본문에서는 사진 제거를 거절한다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides = [
+      { ...chat.slides[0], base: { kind: "chat_bubble", cover: { headline: "표지", sub: null }, bubbles: [] } },
+      { ...structuredClone(chat.slides[0]), id: "body", order: 1, role: "body", base: { kind: "chat_bubble", cover: null, bubbles: [] } },
+      { ...chat.slides[1], order: 2, base: { kind: "chat_bubble", cover: null, bubbles: [] } },
+    ];
+    const withCover = setChatSlideBackgroundImage(chat, "slide_cover", "cover.png");
+    const withBoth = setChatSlideBackgroundImage(withCover, "slide_cta", "final.png");
+    const cleared = clearChatSlideBackgroundImage(clearChatSlideBackgroundImage(withBoth, "slide_cover"), "slide_cta");
+    expect(cleared.slides[0].background).toEqual({ kind: "solid", color: chat.theme.background });
+    expect(cleared.slides[2].background).toEqual({ kind: "solid", color: chat.theme.background });
+    expect(() => clearChatSlideBackgroundImage(withBoth, "body")).toThrow("OPS_NOT_COVER_OR_CTA_SLIDE");
+  });
+
+  it("S5b-R2-MINOR 새 덧붙임 요소는 카톡 머리글과 말풍선 원형을 피한 빈 영역에 놓인다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides[0] = {
+      ...chat.slides[0], role: "body", base: {
+        kind: "chat_bubble", cover: null,
+        bubbles: [{ id: "bubble_base", order: 0, speaker: "brand", segments: [{ text: "원형 말풍선", bold: false }], reaction: null }],
+      },
+    };
+    const added = addChatOverlayElement(chat, "slide_cover", "logo", { id: "overlay-logo" });
+    const overlay = added.slides[0].elements.find((element) => element.id === "overlay-logo")!;
+    expect(overlay.y).toBeGreaterThanOrEqual(300);
   });
 
   it("S5b-R1-M2 범위 굵기·장 분할은 구조를 보존하고 두 번째 굵은 덩이를 거절한다", () => {

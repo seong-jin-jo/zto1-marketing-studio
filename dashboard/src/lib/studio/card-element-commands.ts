@@ -262,21 +262,42 @@ export function createDefaultCardElement(type: CardElementType, seed: ElementSee
   return { ...base, type, width: 300, height: 120, asset_id: seed.assetId ?? "builtin:logo-osmu", alt: seed.assetAlt ?? "OSMU 로고", fit: "contain" };
 }
 
+type OccupiedRect = Pick<CardElement, "x" | "y" | "width" | "height">;
+
+function chatBaseOccupiedRects(slide: CardSlideV3, logicalHeight: number): OccupiedRect[] {
+  if (slide.base.kind !== "chat_bubble") return [];
+  if (slide.role === "cover") return [{ x: 0, y: logicalHeight * .5, width: CARD_LOGICAL_WIDTH, height: logicalHeight * .5 }];
+  const rows: OccupiedRect[] = [{ x: 0, y: 0, width: CARD_LOGICAL_WIDTH, height: 112 }];
+  let y = 126;
+  for (const bubble of slide.base.bubbles) {
+    const length = bubble.segments.reduce((sum, segment) => sum + segment.text.length, 0);
+    const height = Math.max(104, Math.ceil(length / 20) * 56 + 48);
+    rows.push({ x: bubble.speaker === "reader" ? 220 : 54, y, width: 806, height });
+    y += height + 26;
+  }
+  rows.push({ x: 0, y: logicalHeight - 82, width: CARD_LOGICAL_WIDTH, height: 82 });
+  return rows;
+}
+
+function overlapArea(candidate: OccupiedRect, occupied: OccupiedRect): number {
+  const width = Math.max(0, Math.min(candidate.x + candidate.width, occupied.x + occupied.width) - Math.max(candidate.x, occupied.x));
+  const height = Math.max(0, Math.min(candidate.y + candidate.height, occupied.y + occupied.height) - Math.max(candidate.y, occupied.y));
+  return width * height;
+}
+
 function placeCardElementInEmptyArea(slide: CardSlideV3, element: CardElement, logicalHeight: number): CardElement {
-  const candidates = [
-    { x: 40, y: 40 },
-    { x: CARD_LOGICAL_WIDTH - element.width - 40, y: 40 },
-    { x: 40, y: logicalHeight - element.height - 40 },
-    { x: CARD_LOGICAL_WIDTH - element.width - 40, y: logicalHeight - element.height - 40 },
-    { x: (CARD_LOGICAL_WIDTH - element.width) / 2, y: (logicalHeight - element.height) / 2 },
+  const xs = [40, (CARD_LOGICAL_WIDTH - element.width) / 2, CARD_LOGICAL_WIDTH - element.width - 40];
+  const ys = [40, 180, logicalHeight * .45, logicalHeight - element.height - 120, logicalHeight - element.height - 40];
+  const candidates = ys.flatMap((y) => xs.map((x) => ({ x: clamp(x, 0, CARD_LOGICAL_WIDTH - element.width), y: clamp(y, 0, logicalHeight - element.height) })));
+  const occupied: OccupiedRect[] = [
+    ...slide.elements.filter((candidate) => !candidate.hidden && !(candidate.type === "image" && candidate.locked && candidate.x === 0 && candidate.y === 0)),
+    ...chatBaseOccupiedRects(slide, logicalHeight),
   ];
-  const occupied = slide.elements.filter((candidate) => !candidate.hidden && !(candidate.type === "image" && candidate.locked && candidate.x === 0 && candidate.y === 0));
-  const open = candidates.find((candidate) => !occupied.some((other) => (
-    candidate.x < other.x + other.width
-    && candidate.x + element.width > other.x
-    && candidate.y < other.y + other.height
-    && candidate.y + element.height > other.y
-  ))) ?? candidates.at(-1)!;
+  const scored = candidates.map((candidate) => ({
+    candidate,
+    overlap: occupied.reduce((sum, other) => sum + overlapArea({ ...candidate, width: element.width, height: element.height }, other), 0),
+  }));
+  const open = scored.reduce((best, current) => current.overlap < best.overlap ? current : best).candidate;
   return { ...element, x: round(open.x), y: round(open.y) };
 }
 
@@ -433,7 +454,9 @@ export function duplicateChatSlide(deck: CardDeckV3, slideId: string): CardDeckV
       ...clone(source.base),
       bubbles: source.base.bubbles.map((bubble, order) => ({ ...clone(bubble), id: nextChatBubbleId(deck, `${duplicateId}_bubble_${order + 1}`), order })),
     },
-    elements: source.elements.map((element, order) => ({ ...clone(element), id: `${duplicateId}_el_${order + 1}`, z_index: order })),
+    elements: source.elements
+      .filter((element) => !isChatBaseProjectionElement(source, element))
+      .map((element, order) => ({ ...clone(element), id: `${duplicateId}_el_${order + 1}`, z_index: order })),
   };
   return mutateChatSlides(deck, [...deck.slides.slice(0, index + 1), duplicate, ...deck.slides.slice(index + 1)]);
 }
@@ -462,6 +485,15 @@ export function setChatSlideBackgroundImage(deck: CardDeckV3, slideId: string, a
   return mutateSlide(deck, slideId, (current) => ({
     ...current,
     background: { kind: "image", asset_id: assetId, crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" },
+  }));
+}
+
+export function clearChatSlideBackgroundImage(deck: CardDeckV3, slideId: string): CardDeckV3 {
+  const slide = deck.slides.find((candidate) => candidate.id === slideId);
+  if (!slide || (slide.role !== "cover" && slide.role !== "cta")) throw new RangeError("OPS_NOT_COVER_OR_CTA_SLIDE");
+  return mutateSlide(deck, slideId, (current) => ({
+    ...current,
+    background: { kind: "solid", color: deck.theme.background as `#${string}` },
   }));
 }
 

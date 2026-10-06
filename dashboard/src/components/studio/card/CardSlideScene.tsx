@@ -16,6 +16,7 @@ import styles from "./CardSlideScene.module.css";
 export interface CardSlideSceneProps {
   model: CardSlideRenderModel;
   renderMode: "editor" | "export";
+  onChatOverflowChange?: (overflow: boolean) => void;
 }
 
 function verticalAlignment(value: TextElement["style"]["vertical_align"]): "flex-start" | "center" | "flex-end" {
@@ -66,9 +67,13 @@ export function assertChatListFits(
   element: Pick<HTMLElement, "clientHeight" | "scrollHeight">,
   slideOrder: number,
 ): void {
-  if (element.scrollHeight > element.clientHeight + 1) {
+  if (chatListOverflows(element)) {
     throw new Error(`CARD_CHAT_OVERFLOW: ${slideOrder + 1}번 장 말풍선이 카드보다 깁니다. 쪼개세요.`);
   }
+}
+
+export function chatListOverflows(element: Pick<HTMLElement, "clientHeight" | "scrollHeight">): boolean {
+  return element.scrollHeight > element.clientHeight + 1;
 }
 
 export async function assertChatListFitsAfterFonts(
@@ -80,13 +85,27 @@ export async function assertChatListFitsAfterFonts(
   assertChatListFits(element, slideOrder);
 }
 
-function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; renderMode: CardSlideSceneProps["renderMode"] }) {
+function ChatBubbleBase({ model, renderMode, onChatOverflowChange }: { model: CardSlideRenderModel; renderMode: CardSlideSceneProps["renderMode"]; onChatOverflowChange?: CardSlideSceneProps["onChatOverflowChange"] }) {
   const chatListRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
-    if (renderMode !== "export" || !chatListRef.current) return;
-    const renderHandle = delayRender(`카톡 ${model.slide.order + 1}번 장 폰트·넘침 확인`);
+    if (!chatListRef.current) {
+      onChatOverflowChange?.(false);
+      return;
+    }
     const chatList = chatListRef.current;
     const fontsReady = document.fonts?.ready ?? Promise.resolve();
+    if (renderMode === "editor") {
+      if (process.env.NODE_ENV === "test") {
+        onChatOverflowChange?.(chatListOverflows(chatList));
+        return;
+      }
+      let disposed = false;
+      void fontsReady.then(() => {
+        if (!disposed) onChatOverflowChange?.(chatListOverflows(chatList));
+      });
+      return () => { disposed = true; };
+    }
+    const renderHandle = delayRender(`카톡 ${model.slide.order + 1}번 장 폰트·넘침 확인`);
     let settled = false;
     let disposed = false;
     const finish = () => {
@@ -107,7 +126,7 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
       disposed = true;
       finish();
     };
-  }, [model.slide.order, model.slide.base, renderMode]);
+  }, [model.slide.order, model.slide.base, onChatOverflowChange, renderMode]);
   if (model.slide.base.kind !== "chat_bubble") return null;
   const { cover, bubbles } = model.slide.base;
   const profileUrl = model.brand.profile_image_asset_id ? model.assetUrls[model.brand.profile_image_asset_id] : undefined;
@@ -161,7 +180,7 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
   );
 }
 
-export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
+export function CardSlideScene({ model, renderMode, onChatOverflowChange }: CardSlideSceneProps) {
   const background = model.slide.background;
   const hasPhoto = background.kind === "image";
   const isChatSlide = model.slide.base.kind === "chat_bubble";
@@ -187,7 +206,7 @@ export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
         ? <Img className={styles.backgroundImage} src={backgroundUrl} alt="" />
         : <DeliveredMedia className={styles.backgroundImage} src={backgroundUrl} type="image" alt="" /> : null}
       {backgroundUrl && background.kind === "image" && background.overlay ? <span className={styles.backgroundOverlay} aria-hidden="true" /> : null}
-      {model.slide.base.kind === "chat_bubble" ? <ChatBubbleBase model={model} renderMode={renderMode} /> : null}
+      {model.slide.base.kind === "chat_bubble" ? <ChatBubbleBase model={model} renderMode={renderMode} onChatOverflowChange={onChatOverflowChange} /> : null}
       {elements.length === 0 && model.slide.base.kind === "plain" ? (
         <div className={styles.baseFallback}>{model.slide.base.lines.join("\n")}</div>
       ) : null}
