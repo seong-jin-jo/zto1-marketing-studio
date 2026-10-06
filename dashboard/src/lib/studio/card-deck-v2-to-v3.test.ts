@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CardDeck } from "./card-deck-contract";
-import { migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "./card-deck-v2-to-v3";
+import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "./card-deck-v2-to-v3";
 import chatDeckFixture from "../../../tests/studio/fixtures/deck-d100.v2.json";
 
 const base = {
@@ -75,6 +75,18 @@ describe("S2 기존 카드 무손실 이관", () => {
     expect(synchronized.migration?.source_sha256).toBe(migrated.migration?.source_sha256);
     projected.brand.display_name = "다른 원문";
     expect(synchronizeChatCardDeckV3(migrated, projected).migration?.source_sha256).not.toBe(migrated.migration?.source_sha256);
+  });
+
+  it("S5b-R1-M1 공통 저장 경계는 편집기 덱을 현재 v2 projection hash와 동기화한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const edited = migrateCardDeckV2ToV3(source);
+    edited.brand.display_name = "편집한 작성자";
+    const projected = projectCardDeckV3ToV2(edited, source);
+    const persisted = cardDeckV3ForSave(projected, edited);
+
+    expect(persisted?.migration?.source_sha256).not.toBe(edited.migration?.source_sha256);
+    expect(persisted).toEqual(synchronizeChatCardDeckV3(edited, projected));
+    expect(cardDeckV3ForSave(null, edited)).toBe(edited);
   });
 
   it("S2-AC1 v3 계약 안의 긴 원본 ID는 자르지 않고 보존하며 계약 밖 ID도 충돌 없이 변환한다", () => {

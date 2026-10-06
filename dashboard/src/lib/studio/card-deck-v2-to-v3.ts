@@ -238,6 +238,16 @@ export function synchronizeChatCardDeckV3(deck: CardDeckV3, projected: CardDeck)
   };
 }
 
+/**
+ * 모든 저장 호출부가 같은 chat v2/v3 동기화 경계를 쓰게 한다. 편집기 state는 hash만
+ * 달라지는 외부 덱 교체로 undo history가 지워지지 않도록 원본 객체를 계속 소유한다.
+ */
+export function cardDeckV3ForSave(projected: CardDeck | null, deck: CardDeckV3 | null): CardDeckV3 | null {
+  if (!deck || deck.template !== "chat_bubble") return deck;
+  if (!projected || projected.template !== "chat_bubble") return deck;
+  return synchronizeChatCardDeckV3(deck, projected);
+}
+
 export function isSynchronizedChatCardDeckV3(source: CardDeck, candidate: unknown): candidate is CardDeckV3 {
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
   const deck = candidate as Partial<CardDeckV3>;

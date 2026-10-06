@@ -140,15 +140,22 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const toolbarElement = selected ?? editableElements.find((element) => element.type === "text") ?? null;
   const model = useMemo(() => cardSlideRenderModel(workingDeck, activeSlideId, { ...assetUrls, ...localAssetUrls }), [workingDeck, activeSlideId, assetUrls, localAssetUrls]);
 
+  const editorComparableDeck = useCallback((candidate: CardDeckV3) => JSON.stringify({
+    ...candidate,
+    migration: candidate.migration
+      ? { ...candidate.migration, source_sha256: "" }
+      : undefined,
+  }), []);
+
   useEffect(() => {
     // 최신본 불러오기와 충돌 복구는 같은 revision 안에서도 내용을 통째로 바꿀 수 있다.
     // id/revision만 비교하면 editor history가 옛 덱을 계속 그려 서버 최신본이 화면에 안 뜬다.
     if (deck === lastExternalDeckRef.current) return;
     lastExternalDeckRef.current = deck;
-    if (JSON.stringify(deck) === JSON.stringify(history.present)) return;
+    if (editorComparableDeck(deck) === editorComparableDeck(history.present)) return;
     setHistory(createCardCommandHistory(deck));
     setPreviewDeck(null);
-  }, [deck, history.present]);
+  }, [deck, editorComparableDeck, history.present]);
 
   const commit = useCallback((next: CardDeckV3) => {
     setHistory((current) => commitCardCommand(current, next));

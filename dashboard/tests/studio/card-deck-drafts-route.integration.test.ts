@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { withTenant } from "@/lib/db";
 import deckD100 from "./fixtures/deck-d100.v2.json";
 import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
-import { migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
+import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 
 const H = vi.hoisted(() => ({
@@ -179,6 +179,34 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     const detail = await (await GET(new Request("http://localhost/api/studio/drafts?id=draft-chat-v3"))).json();
     expect(detail.draft.cardDeckV3).toEqual(synchronized);
     expect(detail.draft.hasCardDeckV3).toBe(true);
+  });
+
+  it("S5b-R1-M1 편집 뒤 발행실 이동 저장 payload는 실제 drafts route에서 200으로 수락된다", async () => {
+    const source = structuredClone(deckD100) as unknown as CardDeck;
+    const edited = migrateCardDeckV2ToV3(source);
+    const bodySlide = edited.slides.find((slide) => slide.role === "body");
+    if (!bodySlide || bodySlide.base.kind !== "chat_bubble") throw new Error("fixture");
+    bodySlide.base.bubbles[0].segments[0].text = "발행실로 보낼 최신 문장";
+    edited.revision += 1;
+    const projected = projectCardDeckV3ToV2(edited, source);
+    const persisted = cardDeckV3ForSave(projected, edited);
+    H.rows = [{ id: "draft-chat-publish" }];
+
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1",
+        id: "draft-chat-publish",
+        bodyBaseRevision: 0,
+        idea: "편집 뒤 발행실 이동",
+        cardDeck: projected,
+        cardDeckV3: persisted,
+      }),
+    }));
+
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
+    expect(H.jsonValues[0]).toMatchObject({ cardDeck: projected, cardDeckV3: persisted });
   });
 
   it("S5b-AC3 v2와 지문이 다른 카톡 v3 저장은 옛 내용 발행을 막기 위해 409로 거절한다", async () => {

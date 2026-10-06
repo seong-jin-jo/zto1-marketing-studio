@@ -121,6 +121,24 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect(screen.queryByText("첫 장")).not.toBeInTheDocument();
   });
 
+  it("S5b-R1-M1 저장 hash만 바뀐 외부 덱은 undo history를 지우지 않는다", () => {
+    let current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "글 추가" }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(screen.getByRole("button", { name: "실행 취소" })).toBeEnabled();
+
+    const synchronized = structuredClone(current);
+    if (!synchronized.migration) throw new Error("fixture");
+    synchronized.migration.source_sha256 = "f".repeat(64);
+    view.rerender(<CardCanvasEditor deck={synchronized} onDeckChange={onChange} />);
+
+    expect(screen.getByRole("button", { name: "실행 취소" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "실행 취소" }));
+    expect(current.slides[0].elements).toEqual([]);
+  });
+
   it("S1-R3-KEYBOARD-01 입력칸 키는 무시하고 선택 없이 스테이지 Ctrl+Z는 실행한다", () => {
     let current = deck();
     const onChange = (next: CardDeckV3) => { current = next; };
