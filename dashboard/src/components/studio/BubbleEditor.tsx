@@ -831,8 +831,8 @@ export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, o
                 onBubbleDrop(draggedBubble, currentSlideId, bubbleIndex);
               }}
             >
-              <button
-                type="button"
+              <Button
+                size="sm"
                 draggable
                 className={styles.bubbleDragHandle}
                 aria-label={`${bubble.order + 1}번째 말풍선 옮기기`}
@@ -852,7 +852,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, o
                   if (destination < 0 || destination >= bubbles.length) return;
                   onBubbleDrop?.({ slideId: currentSlideId, bubbleId: bubble.id }, currentSlideId, destination);
                 }}
-              >⋮⋮</button>
+              >⋮⋮</Button>
               <span id={`bubble-move-help-${bubble.id}`} className="sr-only">끌어서 같은 장이나 다른 대화 장으로 옮깁니다. 키보드는 Alt와 위아래 화살표를 함께 누릅니다.</span>
               <div className={`${styles.bubble} ${bubble.speaker === "reader" ? styles.bubbleReader : styles.bubbleBrand}`}>
                 <BubbleContentEditable
