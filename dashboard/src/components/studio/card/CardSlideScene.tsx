@@ -128,7 +128,6 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
     <div className={styles.chatBase} data-chat-base="conversation">
       <header className={styles.chatHeader}>
         <span>{model.brand.display_name}</span>
-        <span>{model.slide.order + 1}</span>
       </header>
       <div ref={chatListRef} className={styles.chatList} data-chat-list>
         {orderedBubbles.map((bubble) => {

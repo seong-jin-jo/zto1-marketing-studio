@@ -116,4 +116,10 @@ describe("CardSlideScene S5 카톡 원형과 자유 요소", () => {
     expect(scene.querySelectorAll("img")).toHaveLength(1);
     expect(scene.querySelector("img")).toHaveAttribute("src", "https://example.test/profile.png");
   });
+
+  it("S5-R2-MINOR 대화 장 번호는 legacy PNG처럼 아래에 한 번만 렌더한다", () => {
+    const view = render(<CardSlideScene model={cardSlideRenderModel(chatDeck(), "slide_chat")} renderMode="editor" />);
+    const scene = view.container.querySelector<HTMLElement>("[data-card-slide-scene]")!;
+    expect(within(scene).getAllByText("1")).toHaveLength(1);
+  });
 });
