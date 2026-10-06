@@ -7933,3 +7933,14 @@ SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-is
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
 |---|---|---|---|---|
 | EDITROOM-V2-S2-CARD-01 | v2 카드 무손실 이관, 공용 장 렌더, AI 글자 내장 카드 자유 배치, feature flag 기반 서버 PNG 발행을 구현 | S2-AC1~05·S2-A·S2-B | ❌ NG | 착수 실측에서 AI 카드의 진입점과 v3 장면은 `StudioRooms.tsx`의 `!cardTextEmbedded` 조건으로 숨고, `card-deck-v3-publish-gate.ts`는 feature flag 없이 항상 발행을 차단한다. Remotion에는 `CardSlideComposition`과 고정 Pretendard 파일이 없고 v2→v3 결정적 변환도 없다. 회장 지시대로 실패 계약을 먼저 추가한 뒤 구현한다. |
+## 2026-10-06 편집실 v2 S3 PR 122 교차 리뷰 MINOR ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S3-PR122-M1 | advisory lock 예약 접속이 postgres.js 기본 `max_lifetime`으로 주기적으로 끊겨 active가 불필요하게 전환됨 | ✅ 로컬 PASS | `96549b34`, 전용 pool `max_lifetime: null`, worker 배포 계약 5건 PASS |
+| S3-PR122-M2 | Bearer 원문 해시를 `member_id`로 써 토큰 갱신 시 같은 회원의 멱등 재사용이 깨지고 운영자 토큰 사용자가 한 회원으로 합쳐짐 | ✅ 로컬 PASS | `b1c7f40e`, 인증 principal의 `memberId` 사용, S3-AC4 토큰 갱신 route 경계 PASS |
+| S3-PR122-M3 | 다른 초안의 같은 멱등 key 동시 삽입 경합이 PostgreSQL `23505`를 500으로 노출함 | ✅ 로컬 PASS | `0f66297c`, 실제 PostgreSQL 동시 요청에서 생성 1건·409 1건·DB 행 1건 관찰 |
+| S3-PR122-M4 | 잘못된 draftId·exportId가 PostgreSQL UUID cast 오류로 500이 됨 | ✅ 로컬 PASS | `535f4a09`, create·status·retry·latest 모두 repository 호출 없이 404 계약 PASS |
+| S3-PR122-M5 | dashboard만 선택 배포하면 같은 태그의 별도 export worker가 재기동되지 않아 옛 소스로 남음 | ✅ 로컬 PASS | `a9d6b614`, dashboard 선택 시 worker를 `up` 대상에 추가하는 workflow 계약 PASS |
+
+최종 검증은 실제 PostgreSQL 연결을 포함한 related 5파일 35건 PASS·실제 PNG 전용 1건 skip, `npx vitest run contract` 107파일 618건 PASS, `typecheck:ci` PASS다. 운영 배포와 push는 범위 밖이라 실행하지 않았다.
