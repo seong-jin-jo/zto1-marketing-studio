@@ -330,6 +330,110 @@ export function moveBubble(deck: CardDeck, slideId: string, bubbleId: string, di
 }
 
 /**
+ * S5-AC1: 말풍선을 같은 장의 임의 위치 또는 다른 대화 장으로 옮긴다.
+ *
+ * drag/drop UI가 배열을 직접 바꾸지 않게 source/target을 모두 id로 받는다. 원본 말풍선의
+ * segments, speaker, reaction은 그대로 유지하고 두 장의 order만 다시 매긴다. 표지와 CTA는
+ * drop target이 아니며, 원본 장을 비우는 이동도 저장 계약을 깨므로 거절한다.
+ */
+export function moveBubbleToSlide(
+  deck: CardDeck,
+  sourceSlideId: string,
+  bubbleId: string,
+  targetSlideId: string,
+  targetIndex?: number,
+): CardDeck {
+  const { slide: sourceSlide, index: sourceSlideIndex } = findSlide(deck, sourceSlideId);
+  const { slide: targetSlide, index: targetSlideIndex } = findSlide(deck, targetSlideId);
+  const { bubble, index: sourceBubbleIndex } = findBubble(sourceSlide, bubbleId);
+
+  if (targetSlide.role === "cover" || targetSlide.role === "cta") {
+    throw new CardDeckOpsError("OPS_BUBBLE_TARGET_LOCKED", "bubbles cannot be moved to cover or cta slides");
+  }
+
+  const sourceBubbles = sourceSlide.bubbles ?? [];
+  const targetBubbles = targetSlide.bubbles ?? [];
+  if (sourceSlideIndex !== targetSlideIndex && sourceBubbles.length <= 1) {
+    throw new CardDeckOpsError("OPS_MOVE_LAST_BUBBLE", "cannot move the only bubble out of a slide");
+  }
+
+  if (sourceSlideIndex === targetSlideIndex) {
+    const without = sourceBubbles.filter((candidate) => candidate.id !== bubbleId);
+    const requested = targetIndex ?? without.length;
+    const insertionIndex = Math.max(0, Math.min(requested, without.length));
+    const reordered = [...without.slice(0, insertionIndex), bubble, ...without.slice(insertionIndex)];
+    if (reordered.every((candidate, index) => candidate.id === sourceBubbles[index]?.id)) return deck;
+    return withRevision(deck, replaceSlide(deck, sourceSlideIndex, { ...sourceSlide, bubbles: reindexBubbles(reordered) }));
+  }
+
+  const insertionIndex = Math.max(0, Math.min(targetIndex ?? targetBubbles.length, targetBubbles.length));
+  const nextSource = reindexBubbles(sourceBubbles.filter((candidate) => candidate.id !== bubbleId));
+  const nextTarget = reindexBubbles([
+    ...targetBubbles.slice(0, insertionIndex),
+    bubble,
+    ...targetBubbles.slice(insertionIndex),
+  ]);
+  const slides = deck.slides.map((slide, index) => {
+    if (index === sourceSlideIndex) return { ...sourceSlide, bubbles: nextSource };
+    if (index === targetSlideIndex) return { ...targetSlide, bubbles: nextTarget };
+    return slide;
+  });
+  return withRevision(deck, slides);
+}
+
+/** S5-AC2: 한 장 또는 전 덱의 reader/brand를 한 revision에서 원자적으로 맞바꾼다. */
+export function swapSpeakers(deck: CardDeck, slideId: string | null): CardDeck {
+  if (slideId !== null) findSlide(deck, slideId);
+  let changed = false;
+  const slides = deck.slides.map((slide) => {
+    if (slideId !== null && slide.id !== slideId) return slide;
+    if (!slide.bubbles?.length) return slide;
+    changed = true;
+    return {
+      ...slide,
+      bubbles: slide.bubbles.map((bubble) => ({
+        ...bubble,
+        speaker: bubble.speaker === "reader" ? "brand" as const : "reader" as const,
+      })),
+    };
+  });
+  return changed ? withRevision(deck, slides) : deck;
+}
+
+/** S5-AC3: 사람이 고른 말투 후보만 여러 말풍선에 한 revision으로 적용한다. */
+export function applyBubbleTextBatch(
+  deck: CardDeck,
+  changes: Array<{ slideId: string; bubbleId: string; text: string }>,
+): CardDeck {
+  if (changes.length === 0) return deck;
+  const seen = new Set<string>();
+  const bySlide = new Map<string, Map<string, string>>();
+  for (const change of changes) {
+    const key = `${change.slideId}:${change.bubbleId}`;
+    if (seen.has(key)) throw new CardDeckOpsError("OPS_BUBBLE_CHANGE_DUPLICATE", `duplicate bubble change ${key}`);
+    if (!change.text.trim()) throw new CardDeckOpsError("OPS_BUBBLE_TEXT_EMPTY", `bubble ${change.bubbleId} text is empty`);
+    const { slide } = findSlide(deck, change.slideId);
+    findBubble(slide, change.bubbleId);
+    seen.add(key);
+    const slideChanges = bySlide.get(change.slideId) ?? new Map<string, string>();
+    slideChanges.set(change.bubbleId, change.text);
+    bySlide.set(change.slideId, slideChanges);
+  }
+  const slides = deck.slides.map((slide) => {
+    const slideChanges = bySlide.get(slide.id);
+    if (!slideChanges || !slide.bubbles) return slide;
+    return {
+      ...slide,
+      bubbles: slide.bubbles.map((bubble) => {
+        const text = slideChanges.get(bubble.id);
+        return text === undefined ? bubble : { ...bubble, segments: retextSegments(bubble.segments, text) };
+      }),
+    };
+  });
+  return withRevision(deck, slides);
+}
+
+/**
  * 03c rich/cleanRich/saveEditor 254~275행(HTML `<strong>` 왕복)을 세그먼트 조작으로 대체.
  * range 는 말풍선 전체 텍스트 기준 문자 오프셋(from ≤ to)이다. 그 범위만 bold:true 로
  * 분리하고, 인접한 같은 bold 값의 세그먼트는 병합한다(normalizeSegments). 이미 장에

@@ -65,7 +65,16 @@ export type CardSlide = {
 };
 
 export type CardDeckCta = { keyword: string; comment_example: string; save_reason: string };
-export type CardDeckBrand = { display_name: string; handle: string | null };
+export type CardDeckBrand = {
+  display_name: string;
+  handle: string | null;
+  /** K-02: 독자 화자 이름. 기존 덱은 없으면 "구독자"로 투영한다. */
+  reader_name?: string;
+  /** 기존 canvas 미리보기용 서명 URL. */
+  profile_image_url?: string | null;
+  /** CardDeckV3 Remotion 렌더용 테넌트 소유 asset ID. */
+  profile_image_asset_id?: string | null;
+};
 
 export type CardDeck = {
   contract_version: typeof CARD_DECK_CONTRACT_VERSION;
@@ -131,6 +140,8 @@ const DECK_ALLOWED_KEYS = new Set([
 ]);
 const SLIDE_ALLOWED_KEYS = new Set(["id", "order", "role", "cover", "bubbles", "image_url", "cover_image_url", "position"]);
 const BUBBLE_ALLOWED_KEYS = new Set(["id", "order", "speaker", "segments", "reaction"]);
+const BRAND_ALLOWED_KEYS = new Set(["display_name", "handle", "reader_name", "profile_image_url", "profile_image_asset_id"]);
+const SAFE_ASSET_ID = /^[A-Za-z0-9:_.-]+$/;
 
 function assertNoUnknownKeys(value: Record<string, unknown>, allowed: Set<string>, field: string): void {
   for (const key of Object.keys(value)) {
@@ -176,12 +187,29 @@ export function validateCardDeck(deck: unknown): asserts deck is CardDeck {
     }
   }
   const brand = record(d.brand, "cardDeck.brand");
+  assertNoUnknownKeys(brand, BRAND_ALLOWED_KEYS, "cardDeck.brand");
   if (typeof brand.display_name !== "string" || !brand.display_name.trim()) {
     throw new CardDeckValidationError("brand", "cardDeck.brand.display_name must be a non-empty string");
   }
   assertNoHtml(brand.display_name as string, "cardDeck.brand.display_name");
   if (brand.handle !== null && typeof brand.handle !== "string") {
     throw new CardDeckValidationError("brand", "cardDeck.brand.handle must be a string or null");
+  }
+  if (brand.reader_name !== undefined && (typeof brand.reader_name !== "string" || !brand.reader_name.trim())) {
+    throw new CardDeckValidationError("brand", "cardDeck.brand.reader_name must be a non-empty string when present");
+  }
+  if (typeof brand.reader_name === "string") assertNoHtml(brand.reader_name, "cardDeck.brand.reader_name");
+  if (brand.profile_image_url !== undefined && brand.profile_image_url !== null
+    && (typeof brand.profile_image_url !== "string" || UNSAFE_URL_SCHEME.test(brand.profile_image_url))) {
+    throw new CardDeckValidationError("brand", "cardDeck.brand.profile_image_url must be null or a safe URL");
+  }
+  if (brand.profile_image_asset_id !== undefined && brand.profile_image_asset_id !== null
+    && (typeof brand.profile_image_asset_id !== "string"
+      || !brand.profile_image_asset_id.trim()
+      || brand.profile_image_asset_id.length > 160
+      || !SAFE_ASSET_ID.test(brand.profile_image_asset_id)
+      || brand.profile_image_asset_id.includes(".."))) {
+    throw new CardDeckValidationError("brand", "cardDeck.brand.profile_image_asset_id must be null or a safe asset id");
   }
   if (!["question", "number", "pain"].includes(d.hook_type as string)) {
     throw new CardDeckValidationError("hook_type", "cardDeck.hook_type must be question, number, or pain");

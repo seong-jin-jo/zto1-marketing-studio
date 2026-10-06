@@ -9,6 +9,7 @@ const H = vi.hoisted(() => ({
   jsonValues: [] as unknown[],
   updateSucceeds: true,
   failRenderAt: null as number | null,
+  failRenderMessage: "render failed",
   failPut: false,
   failDbUpdate: false,
 }));
@@ -39,7 +40,7 @@ vi.mock("@/lib/media-store", () => ({ mediaStore: {
 vi.mock("@/lib/image-token", () => ({ signImageToken: vi.fn((_tenant: string, filename: string) => `token-${filename}`) }));
 vi.mock("@/lib/studio/card-slide-render", () => ({
   renderCardSlidePng: vi.fn(async ({ outputPath }: { outputPath: string }) => {
-    if (H.failRenderAt === H.renders.length) throw new Error("render failed");
+    if (H.failRenderAt === H.renders.length) throw new Error(H.failRenderMessage);
     const fs = await import("node:fs");
     fs.writeFileSync(outputPath, Buffer.from("png"));
     H.renders.push(outputPath);
@@ -60,6 +61,7 @@ const deck = {
 beforeEach(() => {
   H.has = false; H.payload = null; H.renders = []; H.puts = []; H.deletes = []; H.jsonValues = [];
   H.updateSucceeds = true; H.failRenderAt = null;
+  H.failRenderMessage = "render failed";
   H.failPut = false; H.failDbUpdate = false;
   vi.stubEnv("OSMU_PUBLIC_URL", "https://studio.example.com");
   vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "0");
@@ -101,6 +103,17 @@ describe("S2-B 자유 배치 발행 준비", () => {
     expect(await assertDraftCanEnterPublishQueue("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")).toBeNull();
   });
 
+  it("S5-R3-2 chat_bubble v2와 잔존 v3가 함께 있어도 v2 발행 경로를 유지한다", async () => {
+    H.payload = { cardDeck: { template: "chat_bubble" }, cardDeckV3: deck };
+    const { assertDraftCanEnterPublishQueue, payloadHasCardDeckV3 } = await import("./card-deck-v3-publish-gate");
+    expect(payloadHasCardDeckV3(H.payload)).toBe(false);
+    await expect(assertDraftCanEnterPublishQueue(
+      "11111111-1111-1111-1111-111111111111",
+      "22222222-2222-2222-2222-222222222222",
+    )).resolves.toBeNull();
+    expect(H.renders).toHaveLength(0);
+  });
+
   it("S2-B 경합: 렌더 중 최신 덱으로 바뀌면 구형 PNG를 초안이나 발행 입력에 확정하지 않는다", async () => {
     vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "1");
     H.payload = { cardDeckV3: deck };
@@ -136,6 +149,7 @@ describe("S2-B 자유 배치 발행 준비", () => {
     ["CARD_RENDER_STALE_DECK", 422],
     ["CARD_RENDER_FAILED", 503],
     ["CARD_DECK_INVALID", 422],
+    ["CARD_CHAT_OVERFLOW", 422],
     ["CARD_RENDER_BUSY", 503],
   ] as const)("S2-R2-M3 %s를 코드와 한국어 사유가 있는 %i 응답으로 바꾼다", async (code, status) => {
     const { CardDeckV3RenderError, cardDeckV3PublishErrorResponse } = await import("./card-deck-v3-publish-gate");
@@ -144,6 +158,22 @@ describe("S2-B 자유 배치 발행 준비", () => {
     const body = await response?.json() as { code?: string; error?: string };
     expect(body.code).toBe(code);
     expect(body.error).toMatch(/[가-힣]/);
+  });
+
+  it("S5-R1-M3 Remotion 실측에서 카톡 넘침을 발견하면 잘린 PNG를 저장하지 않고 422로 거절한다", async () => {
+    vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "1");
+    H.payload = { cardDeckV3: deck };
+    H.failRenderAt = 0;
+    H.failRenderMessage = "CARD_CHAT_OVERFLOW: 1번 장 말풍선이 카드보다 깁니다.";
+    const { assertDraftCanEnterPublishQueue, CardDeckV3RenderError } = await import("./card-deck-v3-publish-gate");
+    const error = await assertDraftCanEnterPublishQueue(
+      "11111111-1111-1111-1111-111111111111",
+      "22222222-2222-2222-2222-222222222222",
+    ).catch((caught) => caught);
+    expect(error).toBeInstanceOf(CardDeckV3RenderError);
+    expect((error as InstanceType<typeof CardDeckV3RenderError>).code).toBe("CARD_CHAT_OVERFLOW");
+    expect((error as InstanceType<typeof CardDeckV3RenderError>).status).toBe(422);
+    expect(H.puts).toHaveLength(0);
   });
 
   it("S2-R3-m1 잘못된 v3 덱 검증 실패를 CARD_DECK_INVALID 422로 바꾼다", async () => {

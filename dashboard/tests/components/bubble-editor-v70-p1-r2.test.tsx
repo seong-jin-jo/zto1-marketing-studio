@@ -67,9 +67,9 @@ describe("BLOCKER 잔여(a): 툴바 버튼은 mousedown 기본 동작을 막아 
     expect(mouseDownEvent.defaultPrevented).toBe(true);
   });
 
-  it("코드 대조: 5개 툴바 버튼(굵게·화자 전환·쪼개기·합치기·삭제) 전부 onMouseDown preventDefault를 건다", () => {
+  it("코드 대조: 6개 툴바 버튼(굵게·화자 전환·쪼개기·합치기·장 이동·삭제) 전부 onMouseDown preventDefault를 건다", () => {
     const mouseDownCount = (tsxSrc.match(/onMouseDown=\{\(e\) => e\.preventDefault\(\)\}/g) ?? []).length;
-    expect(mouseDownCount).toBe(5);
+    expect(mouseDownCount).toBe(6);
   });
 });
 

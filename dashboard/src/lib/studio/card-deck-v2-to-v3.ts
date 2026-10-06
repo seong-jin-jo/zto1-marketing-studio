@@ -127,6 +127,7 @@ function bubbleElements(slide: CardSlide): CardElement[] {
 
 export interface CardDeckV2ToV3Options {
   coverImageAssetIds?: Readonly<Record<string, string>>;
+  profileImageAssetId?: string;
 }
 
 function plainElements(source: CardDeck, slide: CardSlide, index: number, text: string, options: CardDeckV2ToV3Options): CardElement[] {
@@ -150,14 +151,20 @@ function plainElements(source: CardDeck, slide: CardSlide, index: number, text: 
 export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3Options = {}): CardDeckV3 {
   const sourceSha256 = sha256Text(canonicalJson(source));
   const deckId = `deck_migrated_${sourceSha256.slice(0, 16)}`;
+  const profileImageAssetId = source.brand.profile_image_asset_id ?? options.profileImageAssetId;
+  if (source.brand.profile_image_url && !profileImageAssetId) throw new Error("CARD_PROFILE_IMAGE_ASSET_REQUIRED");
   const slides: CardSlideV3[] = source.slides.map((slide, index) => {
     const text = slideText(slide);
     const isChat = source.template === "chat_bubble";
+    const coverAssetId = slide.cover_image_url ? options.coverImageAssetIds?.[slide.cover_image_url] : undefined;
+    if (slide.cover_image_url && !coverAssetId) throw new Error("CARD_COVER_IMAGE_ASSET_REQUIRED");
     return {
       id: safePart(slide.id), order: slide.order,
       role: slide.role === "cover" ? "cover" : slide.role === "cta" ? "cta" : "body",
       content_state: text.trim() ? "filled" : "empty",
-      background: { kind: "solid", color: index === source.slides.length - 1 ? hexColor(source.theme.foreground, "#111111") : hexColor(source.theme.background, "#FFF9F0") },
+      background: isChat && coverAssetId
+        ? { kind: "image", asset_id: coverAssetId, crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" }
+        : { kind: "solid", color: !isChat && index === source.slides.length - 1 ? hexColor(source.theme.foreground, "#111111") : hexColor(source.theme.background, "#FFF9F0") },
       base: isChat
         ? { kind: "chat_bubble", cover: slide.cover ? structuredClone(slide.cover) : null, bubbles: structuredClone(slide.bubbles ?? []) }
         : { kind: "plain", lines: text ? [text] : [] },
@@ -171,7 +178,12 @@ export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3O
       foreground: hexColor(source.theme.foreground, "#111111"),
       accent: hexColor(source.theme.accent, "#2563EB"),
     },
-    brand: structuredClone(source.brand), hook_type: source.hook_type, cta: structuredClone(source.cta), slides,
+    brand: {
+      ...structuredClone(source.brand),
+      reader_name: source.brand.reader_name?.trim() || "구독자",
+      ...(profileImageAssetId ? { profile_image_asset_id: profileImageAssetId } : {}),
+    },
+    hook_type: source.hook_type, cta: structuredClone(source.cta), slides,
     migration: { source_contract_version: "2.0", source_sha256: sourceSha256, converter_version: CONVERTER_VERSION },
   };
 }
@@ -198,7 +210,20 @@ export function projectCardDeckV3ToV2(deck: CardDeckV3, source: CardDeck): CardD
   const projected = structuredClone(source);
   projected.ratio = deck.ratio;
   projected.theme = structuredClone(deck.theme);
-  projected.brand = structuredClone(deck.brand);
+  projected.brand = {
+    ...structuredClone(source.brand),
+    display_name: deck.brand.display_name,
+    handle: deck.brand.handle,
+    ...(Object.prototype.hasOwnProperty.call(source.brand, "reader_name")
+      ? { reader_name: deck.brand.reader_name }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(source.brand, "profile_image_url")
+      ? { profile_image_url: deck.brand.profile_image_url ?? null }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(source.brand, "profile_image_asset_id")
+      ? { profile_image_asset_id: deck.brand.profile_image_asset_id ?? null }
+      : {}),
+  };
   projected.hook_type = deck.hook_type;
   projected.cta = structuredClone(deck.cta);
   projected.revision = deck.revision;

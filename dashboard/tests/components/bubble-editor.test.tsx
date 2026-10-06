@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BubbleEditor, CardDeckPanel } from "@/components/studio/BubbleEditor";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
@@ -15,7 +15,10 @@ function deck(): CardDeck {
   return clone(deckD100) as unknown as CardDeck;
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 // canvas 미지원 jsdom 환경에서도 CardDeckPanel 이 죽지 않아야 한다(렌더 실패는 화면에
 // 문구로만 남는다).
@@ -122,5 +125,138 @@ describe("CardDeckPanel (표지·CTA 고정, 세션맥락: card-deck-ops 순수 
 
     expect(onDeckChange).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("S5-AC1 정상: 말풍선 손잡이를 다른 장 썸네일에 놓으면 내용·화자·세그먼트가 보존된다", () => {
+    let current = deck();
+    const original = structuredClone(current.slides[1].bubbles![0]);
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    const view = render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    fireEvent.click(document.querySelector(`[data-slide-id="${current.slides[1].id}"]`)!);
+
+    const transfer = { effectAllowed: "none", dropEffect: "none", setData: vi.fn(), getData: vi.fn(() => "") };
+    fireEvent.dragStart(screen.getByRole("button", { name: "1번째 말풍선 옮기기" }), { dataTransfer: transfer });
+    const target = document.querySelector(`[data-slide-id="${current.slides[2].id}"]`)!.closest("[data-slide-draggable]")!;
+    fireEvent.dragOver(target, { dataTransfer: transfer });
+    fireEvent.drop(target, { dataTransfer: transfer });
+
+    view.rerender(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    expect(current.slides[2].bubbles?.at(-1)).toEqual({ ...original, order: current.slides[2].bubbles!.length - 1 });
+    expect(current.slides[1].bubbles?.some((bubble) => bubble.id === original.id)).toBe(false);
+  });
+
+  it("S5-AC1 거절: 취소한 drag는 다음 장 drop에 남아 있지 않는다", () => {
+    let current = deck();
+    const before = structuredClone(current);
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    fireEvent.click(document.querySelector(`[data-slide-id="${current.slides[1].id}"]`)!);
+    const transfer = { effectAllowed: "none", dropEffect: "none", setData: vi.fn(), getData: vi.fn(() => "") };
+    const handle = screen.getByRole("button", { name: "1번째 말풍선 옮기기" });
+    fireEvent.dragStart(handle, { dataTransfer: transfer });
+    fireEvent.dragEnd(handle, { dataTransfer: transfer });
+    const target = document.querySelector(`[data-slide-id="${current.slides[2].id}"]`)!.closest("[data-slide-draggable]")!;
+    fireEvent.drop(target, { dataTransfer: transfer });
+    expect(current).toEqual(before);
+    expect(onDeckChange).not.toHaveBeenCalled();
+  });
+
+  it("S5-R1-M7 터치·키보드는 드래그 없이 다른 장을 골라 말풍선을 옮긴다", () => {
+    let current = deck();
+    const source = current.slides[1];
+    const moved = structuredClone(source.bubbles![0]);
+    const targetIndex = current.slides.findIndex((slide, index) => index > 1 && slide.role !== "cover" && slide.role !== "cta");
+    const target = current.slides[targetIndex];
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    fireEvent.click(document.querySelector(`[data-slide-id="${source.id}"]`)!);
+    fireEvent.focus(screen.getByRole("textbox", { name: "말풍선 내용 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "다른 장으로 옮기기" }));
+
+    const dialog = screen.getByRole("dialog", { name: "옮길 장 선택" });
+    const targetRole = target.role === "comment_prompt" ? "댓글유도" : "대화";
+    fireEvent.click(within(dialog).getByRole("button", { name: `${targetIndex + 1}번 장 ${targetRole}` }));
+
+    expect(onDeckChange).toHaveBeenCalledTimes(1);
+    expect(current.slides.find((slide) => slide.id === source.id)?.bubbles?.some((bubble) => bubble.id === moved.id)).toBe(false);
+    expect(current.slides.find((slide) => slide.id === target.id)?.bubbles?.at(-1)).toEqual({
+      ...moved,
+      order: current.slides.find((slide) => slide.id === target.id)!.bubbles!.length - 1,
+    });
+  });
+
+  it("S5-AC2 정상: 덱 전체 화자 교환은 한 번에 반영되고 실행 취소 한 번으로 원복된다", () => {
+    let current = deck();
+    const originalSpeakers = current.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker));
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    const view = render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "덱 전체 화자 서로 바꾸기" }));
+    view.rerender(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    expect(current.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker))).not.toEqual(originalSpeakers);
+
+    fireEvent.click(screen.getByRole("button", { name: "실행 취소" }));
+    expect(current.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker))).toEqual(originalSpeakers);
+  });
+
+  it("S5-R1-M5 작성자·독자 이름을 덱 전체 화자 정보로 저장한다", () => {
+    let current = deck();
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "화자 이름·프로필" }));
+    const dialog = screen.getByRole("dialog", { name: "화자 이름·프로필" });
+    const author = within(dialog).getByRole("textbox", { name: "작성자 이름" });
+    fireEvent.change(author, { target: { value: "이상한수학 연구소" } });
+    fireEvent.blur(author);
+    expect(current.brand.display_name).toBe("이상한수학 연구소");
+    expect(current.revision).toBe(deck().revision + 1);
+  });
+
+  it("S5-R1-M5 프로필 사진 업로드의 URL과 소유 asset ID를 함께 저장한다", async () => {
+    let current = deck();
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+      url: "https://studio.example.com/api/images/deliver/profile-token",
+      filename: "profile-owned.png",
+    })));
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "화자 이름·프로필" }));
+    const fileInput = screen.getByLabelText("작성자 프로필 사진");
+    fireEvent.change(fileInput, { target: { files: [new File(["profile"], "profile.png", { type: "image/png" })] } });
+    await waitFor(() => expect(onDeckChange).toHaveBeenCalledTimes(1));
+    expect(current.brand).toMatchObject({
+      profile_image_url: "https://studio.example.com/api/images/deliver/profile-token",
+      profile_image_asset_id: "profile-owned.png",
+    });
+  });
+
+  it("S5-AC3 정상: 후보 3개를 원문 옆에서 비교하고 고른 후보만 적용하며 사실 경고를 남긴다", async () => {
+    let current = deck();
+    const original = current.slides[1].bubbles!.map((bubble) => bubble.segments.map((segment) => segment.text).join(""));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      fact_warning: "숫자와 고유명사는 적용 전에 원문과 다시 확인하세요.",
+      candidates: [
+        { id: "a", label: "후보 1", lines: original.map((line) => `${line} A`), fact_warnings: [] },
+        { id: "b", label: "후보 2", lines: original.map((line) => `${line} B`), fact_warnings: ["새 숫자 10시간"] },
+        { id: "c", label: "후보 3", lines: original.map((line) => `${line} C`), fact_warnings: [] },
+      ],
+    }), { status: 200 })));
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    const view = render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    fireEvent.click(document.querySelector(`[data-slide-id="${current.slides[1].id}"]`)!);
+    fireEvent.click(screen.getByRole("button", { name: "후보 3개 비교" }));
+
+    expect(await screen.findByRole("dialog", { name: "말투 다듬기 비교" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "이 후보 적용" })).toHaveLength(3);
+    expect(screen.getByText(/숫자와 고유명사는 적용 전에/)).toBeInTheDocument();
+    fireEvent.click(within(document.querySelector('[data-tone-candidate="b"]')!).getByRole("button", { name: "이 후보 적용" }));
+    await waitFor(() => expect(onDeckChange).toHaveBeenCalledTimes(1));
+    view.rerender(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+
+    const changed = current.slides[1].bubbles!.map((bubble) => bubble.segments.map((segment) => segment.text).join(""));
+    expect(changed).toEqual(original.map((line) => `${line} B`));
+    expect(changed).not.toEqual(original.map((line) => `${line} A`));
+    expect(screen.getByText(/원문과 다름/)).toBeInTheDocument();
   });
 });

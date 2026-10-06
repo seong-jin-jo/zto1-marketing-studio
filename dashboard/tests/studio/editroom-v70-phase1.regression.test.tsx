@@ -10,6 +10,7 @@ import deckFixture from "./fixtures/deck-d100.v2.json";
 
 const roomCss = readFileSync("src/components/studio/StudioRooms.module.css", "utf8");
 const bubbleCss = readFileSync("src/components/studio/BubbleEditor.module.css", "utf8");
+const bubbleSource = readFileSync("src/components/studio/BubbleEditor.tsx", "utf8");
 
 function deck(): CardDeck {
   return JSON.parse(JSON.stringify(deckFixture)) as CardDeck;
@@ -58,7 +59,7 @@ describe("EDIT-CARD v70", () => {
     expect(bubbleCss).toContain("aspect-ratio: 4 / 5");
   });
 
-  it("V70-CARD-02 정상: 말풍선 한 번 클릭으로 그 자리 입력과 5개 도구가 열린다", () => {
+  it("V70-CARD-02 정상: 말풍선 한 번 클릭으로 그 자리 입력과 6개 도구가 열린다", () => {
     const d = deck();
     const onDeckChange = vi.fn();
     render(<CardDeckPanel deck={d} onDeckChange={onDeckChange} />);
@@ -70,7 +71,7 @@ describe("EDIT-CARD v70", () => {
 
     expect(bubble).toHaveAttribute("data-bubble-editing", "true");
     const toolbar = within(bubble).getByLabelText("선택한 말풍선 도구");
-    expect(within(toolbar).getAllByRole("button")).toHaveLength(5);
+    expect(within(toolbar).getAllByRole("button")).toHaveLength(6);
     expect(within(toolbar).queryByText("▲")).not.toBeInTheDocument();
     expect(within(toolbar).queryByText("▼")).not.toBeInTheDocument();
 
@@ -103,5 +104,10 @@ describe("EDIT-CARD v70", () => {
     expect(bubbleCss).toContain(".bubbleRowReader .bubbleToolbar");
     expect(bubbleCss).toContain("min-height: var(--editroom-mobile-toolbar-height)");
     expect(bubbleCss).toContain(".bubbleContent:focus-visible");
+  });
+
+  it("S5-R2-MINOR 말투 후보 검수 문구는 실제 검사 범위인 숫자만 약속한다", () => {
+    expect(bubbleSource).toContain("숫자 자동 대조 통과");
+    expect(bubbleSource).not.toContain("숫자·고유명사 자동 대조 통과");
   });
 });

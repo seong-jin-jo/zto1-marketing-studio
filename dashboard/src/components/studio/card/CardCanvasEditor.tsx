@@ -6,6 +6,7 @@ import { authHeaders } from "@/lib/auth";
 import type { CardDeckV3, CardElement, CardElementType } from "@/lib/studio/card-element-contract";
 import {
   addCardElement,
+  addChatOverlayElement,
   commitCardCommand,
   createCardCommandHistory,
   deleteCardElement,
@@ -14,6 +15,7 @@ import {
   moveCardElementLayer,
   nudgeCardElement,
   patchTextElement,
+  patchChatBubbleText,
   redoCardCommand,
   resizeCardElement,
   rotateCardElement,
@@ -26,7 +28,7 @@ import {
   type ResizeHandle,
   type SnapGuide,
 } from "@/lib/studio/card-element-commands";
-import { cardSlideRenderModel } from "@/lib/studio/card-render-model";
+import { cardSlideRenderModel, isChatBaseProjectionElement } from "@/lib/studio/card-render-model";
 import { CardElementList } from "./CardElementList";
 import { CardElementToolbar } from "./CardElementToolbar";
 import { CardSlideScene } from "./CardSlideScene";
@@ -93,6 +95,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [editingTextValue, setEditingTextValue] = useState("");
   const [rotationPreview, setRotationPreview] = useState<number | null>(null);
+  const [bubbleEditError, setBubbleEditError] = useState("");
   const stageRef = useRef<HTMLDivElement | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -109,11 +112,12 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const workingDeck = previewDeck ?? history.present;
   const activeSlide = workingDeck.slides.find((slide) => slide.id === activeSlideId) ?? workingDeck.slides[0];
   const logicalHeight = workingDeck.ratio === "4:5" ? 1350 : 1080;
-  const selected = activeSlide?.elements.find((element) => element.id === selectedId) ?? null;
+  const editableElements = activeSlide?.elements.filter((element) => !isChatBaseProjectionElement(activeSlide, element)) ?? [];
+  const selected = editableElements.find((element) => element.id === selectedId) ?? null;
   // 첫 클릭 뒤 도구막대가 새로 삽입되면 스테이지가 아래로 밀려 두 번째 클릭 좌표가
   // 다른 곳을 가리킨다. 선택 전에도 첫 글 요소 크기의 숨은 도구막대를 두어 레이아웃을
   // 고정하고, 실제 선택 뒤 같은 자리를 활성화한다.
-  const toolbarElement = selected ?? activeSlide?.elements.find((element) => element.type === "text") ?? null;
+  const toolbarElement = selected ?? editableElements.find((element) => element.type === "text") ?? null;
   const model = useMemo(() => cardSlideRenderModel(workingDeck, activeSlideId, { ...assetUrls, ...localAssetUrls }), [workingDeck, activeSlideId, assetUrls, localAssetUrls]);
 
   useEffect(() => {
@@ -169,12 +173,12 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
     requestAnimationFrame(() => stageRef.current?.focus());
   }, [activeSlide, apply]);
   const duplicate = useCallback((elementId: string) => {
-    const source = activeSlide?.elements.find((element) => element.id === elementId);
+    const source = editableElements.find((element) => element.id === elementId);
     if (!source || !activeSlide) return;
     const id = nextElementId(source.type);
     apply((current) => duplicateCardElement(current, activeSlide.id, elementId, id));
     setSelectedId(id);
-  }, [activeSlide, apply]);
+  }, [activeSlide, apply, editableElements]);
 
   const beginInteraction = (event: ReactPointerEvent, element: CardElement, kind: Interaction["kind"], handle?: ResizeHandle) => {
     if (element.locked) return;
@@ -196,7 +200,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
       centerClientY,
       baseDeck: history.present,
       slideId: activeSlide.id,
-      siblings: activeSlide.elements,
+      siblings: editableElements,
       ratio: workingDeck.ratio,
       logicalHeight,
     };
@@ -287,8 +291,22 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const add = (type: CardElementType, seed?: { assetId?: string; assetAlt?: string }) => {
     if (!activeSlide) return;
     const id = nextElementId(type);
-    apply((current) => addCardElement(current, activeSlide.id, type, { id, ...seed }));
+    apply((current) => activeSlide.base.kind === "chat_bubble"
+      ? addChatOverlayElement(current, activeSlide.id, type, { id, ...seed })
+      : addCardElement(current, activeSlide.id, type, { id, ...seed }));
     setSelectedId(id);
+  };
+
+  const commitBubbleText = (bubbleId: string, text: string) => {
+    if (!activeSlide) return;
+    try {
+      apply((current) => patchChatBubbleText(current, activeSlide.id, bubbleId, text));
+      setBubbleEditError("");
+    } catch (error) {
+      setBubbleEditError(error instanceof RangeError && error.message === "CARD_CHAT_BUBBLE_TEXT_REQUIRED"
+        ? "말풍선 내용은 비워 둘 수 없습니다."
+        : "말풍선은 120자 안에서 입력해 주세요.");
+    }
   };
 
   const uploadImage = async (file: File) => {
@@ -347,7 +365,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
             onPointerDownCapture={(event) => {
               const target = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-element-selection]") : null;
               const elementId = target?.dataset.elementSelection;
-              const element = elementId ? activeSlide.elements.find((candidate) => candidate.id === elementId) : null;
+              const element = elementId ? editableElements.find((candidate) => candidate.id === elementId) : null;
               if (!element || element.type !== "text" || element.locked) {
                 lastTextPointerDownRef.current = null;
                 return;
@@ -368,7 +386,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
             onPointerDown={() => { setSelectedId(null); setEditingTextId(null); }}
           >
             <CardSlideScene model={model} renderMode="editor" />
-            {activeSlide.elements.filter((element) => !element.hidden).map((element) => (
+            {editableElements.filter((element) => !element.hidden).map((element) => (
               <div
                 key={element.id}
                 className={styles.selectionBox}
@@ -438,16 +456,42 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
             {guides.map((guide, index) => <span key={`${guide.axis}-${guide.value}-${index}`} className={styles.snapGuide} data-axis={guide.axis} style={{ "--snap-position": `${guide.value / (guide.axis === "x" ? 1080 : logicalHeight) * 100}%` } as CSSProperties} />)}
           </div>
         </div>
-        <CardElementList
-          elements={activeSlide.elements}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onMove={(id, dx, dy) => apply((current) => nudgeCardElement(current, activeSlide.id, id, dx, dy))}
-          onLayer={(id, direction: LayerDirection) => apply((current) => moveCardElementLayer(current, activeSlide.id, id, direction))}
-          onToggle={(id, flag) => apply((current) => toggleCardElementFlag(current, activeSlide.id, id, flag))}
-          onDuplicate={duplicate}
-          onDelete={deleteAndRestoreStageFocus}
-        />
+        <aside className={styles.rightPanel}>
+          {activeSlide.base.kind === "chat_bubble" && activeSlide.base.bubbles.length ? (
+            <section className={styles.chatBaseEditor} aria-label="말풍선 직접 편집">
+              <h3>말풍선 직접 편집</h3>
+              <p>말풍선과 로고·스티커를 이 화면에서 함께 고칩니다.</p>
+              {activeSlide.base.bubbles.map((bubble, index) => {
+                const text = bubble.segments.map((segment) => segment.text).join("");
+                const speaker = bubble.speaker === "brand"
+                  ? workingDeck.brand.display_name
+                  : workingDeck.brand.reader_name?.trim() || "구독자";
+                return (
+                  <label key={`${bubble.id}:${text}`}>
+                    <span>{speaker} · {index + 1}번째</span>
+                    <textarea
+                      aria-label={`${index + 1}번째 말풍선 내용`}
+                      defaultValue={text}
+                      maxLength={120}
+                      onBlur={(event) => commitBubbleText(bubble.id, event.target.value)}
+                    />
+                  </label>
+                );
+              })}
+              {bubbleEditError ? <p role="alert" className={styles.error}>{bubbleEditError}</p> : null}
+            </section>
+          ) : null}
+          <CardElementList
+            elements={editableElements}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onMove={(id, dx, dy) => apply((current) => nudgeCardElement(current, activeSlide.id, id, dx, dy))}
+            onLayer={(id, direction: LayerDirection) => apply((current) => moveCardElementLayer(current, activeSlide.id, id, direction))}
+            onToggle={(id, flag) => apply((current) => toggleCardElementFlag(current, activeSlide.id, id, flag))}
+            onDuplicate={duplicate}
+            onDelete={deleteAndRestoreStageFocus}
+          />
+        </aside>
       </div>
     </section>
   );

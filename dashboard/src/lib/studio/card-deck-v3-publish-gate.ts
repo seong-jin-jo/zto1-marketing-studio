@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { withTenant } from "@/lib/db";
 import { mediaStore } from "@/lib/media-store";
 import { signImageToken } from "@/lib/image-token";
-import { cardDeckV3RenderingEnabled } from "@/lib/studio/card-deck-v3-render-feature";
+import { cardDeckV3RenderingEnabled, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
 import { parseCardDeckV3, type CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { cardSlideRenderModel } from "@/lib/studio/card-render-model";
 import { renderCardSlidePng } from "@/lib/studio/card-slide-render";
@@ -36,6 +36,7 @@ export type CardDeckV3RenderErrorCode =
   | "CARD_RENDER_PUBLIC_URL_MISSING"
   | "CARD_RENDER_STALE_DECK"
   | "CARD_DECK_INVALID"
+  | "CARD_CHAT_OVERFLOW"
   | "CARD_RENDER_BUSY"
   | "CARD_RENDER_FAILED";
 
@@ -45,6 +46,7 @@ const CARD_RENDER_ERROR_MESSAGES: Record<CardDeckV3RenderErrorCode, string> = {
   CARD_RENDER_PUBLIC_URL_MISSING: "발행 이미지의 공개 주소를 만들 수 없습니다. 운영 설정을 확인한 뒤 다시 시도해 주세요.",
   CARD_RENDER_STALE_DECK: "카드를 만드는 동안 더 최신 편집본이 저장됐습니다. 최신 내용을 확인한 뒤 다시 발행해 주세요.",
   CARD_DECK_INVALID: "저장된 자유 배치 카드 형식이 올바르지 않습니다. 편집실에서 카드를 다시 확인해 주세요.",
+  CARD_CHAT_OVERFLOW: "말풍선이 카드보다 길어 발행 이미지를 만들 수 없습니다. 편집실에서 대화를 여러 장으로 나눠 주세요.",
   CARD_RENDER_BUSY: "카드 이미지 생성 요청이 몰렸습니다. 잠시 후 다시 시도해 주세요.",
   CARD_RENDER_FAILED: "카드 발행 이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.",
 };
@@ -63,6 +65,9 @@ function normalizeRenderError(error: unknown, fallback: CardDeckV3RenderErrorCod
   }
   if (error instanceof Error && error.message === "CARD_ASSET_INVALID") {
     return new CardDeckV3RenderError("CARD_ASSET_INVALID", 422, { cause: error });
+  }
+  if (error instanceof Error && error.message.includes("CARD_CHAT_OVERFLOW")) {
+    return new CardDeckV3RenderError("CARD_CHAT_OVERFLOW", 422, { cause: error });
   }
   if (error && typeof error === "object" && "code" in error && error.code === "CARD_RENDER_BUSY") {
     return new CardDeckV3RenderError("CARD_RENDER_BUSY", 503, { cause: error });
@@ -93,6 +98,7 @@ function deliveryUrl(tenantId: string, filename: string): string {
 
 function cardAssetIds(deck: CardDeckV3): string[] {
   const ids = new Set<string>();
+  if (deck.brand.profile_image_asset_id) ids.add(deck.brand.profile_image_asset_id);
   for (const slide of deck.slides) {
     if (slide.background.kind === "image") ids.add(slide.background.asset_id);
     for (const element of slide.elements) {
@@ -155,6 +161,7 @@ export async function prepareDraftCardDeckV3ForPublish(tenantId: string | null, 
   const [row] = await withTenant(tenantId, (sql) => sql<DraftRenderRow[]>`
     SELECT payload FROM drafts WHERE tenant_id = ${tenantId}::uuid AND id = ${draftId}::uuid LIMIT 1
   `);
+  if (usesChatBubbleV2(row?.payload?.cardDeck)) return null;
   const rawDeck = row?.payload?.cardDeckV3;
   if (rawDeck == null) return null;
   if (!cardDeckV3RenderingEnabled()) throw new CardDeckV3PublishBlockedError();
@@ -177,7 +184,12 @@ export async function prepareDraftCardDeckV3ForPublish(tenantId: string | null, 
 export async function draftHasCardDeckV3(tenantId: string, draftId: unknown): Promise<boolean> {
   if (typeof draftId !== "string" || !UUID_RE.test(draftId)) return false;
   const [row] = await withTenant(tenantId, (sql) => sql<{ has_card_deck_v3: boolean }[]>`
-    SELECT COALESCE(payload ? 'cardDeckV3' AND payload->'cardDeckV3' <> 'null'::jsonb, false) AS has_card_deck_v3
+    SELECT COALESCE(
+      payload ? 'cardDeckV3'
+      AND payload->'cardDeckV3' <> 'null'::jsonb
+      AND COALESCE(payload->'cardDeck'->>'template', '') <> 'chat_bubble',
+      false
+    ) AS has_card_deck_v3
       FROM drafts
      WHERE tenant_id = ${tenantId}::uuid AND id = ${draftId}::uuid
      LIMIT 1
@@ -200,6 +212,7 @@ export function applyPreparedCardDeckV3Images(
 
 export function payloadHasCardDeckV3(payload: Record<string, unknown> | null | undefined): boolean {
   return Boolean(payload)
+    && !usesChatBubbleV2(payload?.cardDeck)
     && Object.prototype.hasOwnProperty.call(payload, "cardDeckV3")
     && payload?.cardDeckV3 != null;
 }

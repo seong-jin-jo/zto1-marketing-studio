@@ -113,4 +113,13 @@ describe("AC-CARD-01 카드 요소 v3 계약", () => {
 
     expect(cardDeckV3Projection(value)[0]).toBe("표지 제목\n표지 설명\n첫말풍선\n둘째");
   });
+
+  it("S5-R1-M5 화자 이름과 프로필 asset ID를 저장하고 경로 순회 ID는 거절한다", () => {
+    const value = deck();
+    value.brand.reader_name = "구독자";
+    value.brand.profile_image_asset_id = "profile-owned.png";
+    expect(parseCardDeckV3(value).brand).toMatchObject({ reader_name: "구독자", profile_image_asset_id: "profile-owned.png" });
+    value.brand.profile_image_asset_id = "../other/profile.png";
+    expect(() => parseCardDeckV3(value)).toThrow(CardDeckV3ValidationError);
+  });
 });

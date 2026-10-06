@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardDeckV3EntryEnabled, cardDeckV3RenderingEnabled } from "./card-deck-v3-render-feature";
+import { cardDeckV3EntryEnabled, cardDeckV3ForDraft, cardDeckV3RenderingEnabled, usesChatBubbleV2 } from "./card-deck-v3-render-feature";
 
 describe("S2-B CardDeckV3 공용 렌더 feature flag", () => {
   it("flag off가 기본이며 S1 발행 차단을 유지한다", () => {
@@ -27,5 +27,16 @@ describe("S2-B CardDeckV3 공용 렌더 feature flag", () => {
   it("flag on이면 S2 AI·v2 진입 판단을 상위 화면에 연다", () => {
     expect(cardDeckV3EntryEnabled(true, { hasCardDeckV2: false, textEmbedded: true })).toBe(true);
     expect(cardDeckV3EntryEnabled(true, { hasCardDeckV2: true, textEmbedded: false })).toBe(true);
+  });
+
+  it("S5-R2-M4 렌더 flag가 켜져도 카톡 덱은 고급 도구가 있는 기본 편집을 유지한다", () => {
+    expect(cardDeckV3EntryEnabled(true, { hasCardDeckV2: true, cardDeckTemplate: "chat_bubble", textEmbedded: false })).toBe(false);
+  });
+
+  it("S5-R3-2 chat_bubble v2가 있으면 잔존 v3를 로드 대상으로 돌려주지 않는다", () => {
+    const staleV3 = { id: "stale-v3" };
+    expect(usesChatBubbleV2({ template: "chat_bubble" })).toBe(true);
+    expect(cardDeckV3ForDraft({ template: "chat_bubble" }, staleV3)).toBeNull();
+    expect(cardDeckV3ForDraft({ template: "plain" }, staleV3)).toBe(staleV3);
   });
 });

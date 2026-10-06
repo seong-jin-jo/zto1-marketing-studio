@@ -50,7 +50,7 @@ import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { cardDeckV3Projection, type CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { createPlainCardDeckV3, createRecoverableEmbeddedCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
 import { migrateCardDeckV2ToV3, projectCardDeckV3ToV2 } from "@/lib/studio/card-deck-v2-to-v3";
-import { cardDeckV3EntryEnabled, cardDeckV3RenderingEnabled } from "@/lib/studio/card-deck-v3-render-feature";
+import { cardDeckV3EntryEnabled, cardDeckV3ForDraft, cardDeckV3RenderingEnabled, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
 import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
@@ -1151,7 +1151,9 @@ export default function StudioPage() {
           savedTopic: typeof w.quickDraftTopic === "string" ? w.quickDraftTopic : null,
           restoredIdea: String(w.idea || ""),
         });
-        setCardTextPositions(w.cardTextPositions || []); setCardDeck((w.cardDeck as CardDeck) || null); setCardDeckV3((w.cardDeckV3 as CardDeckV3) || null); setCardDeckV3SourceSnapshot((w.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null); setCardDeckV3DetailStatus(w.cardDeckV3 ? "ready" : "idle"); setReviewQueueId(w.reviewQueueId || null);
+        const restoredCardDeck = (w.cardDeck as CardDeck) || null;
+        const restoredCardDeckV3 = cardDeckV3ForDraft(restoredCardDeck, w.cardDeckV3 as CardDeckV3 | null);
+        setCardTextPositions(w.cardTextPositions || []); setCardDeck(restoredCardDeck); setCardDeckV3(restoredCardDeckV3); setCardDeckV3SourceSnapshot(restoredCardDeckV3 ? (w.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null : null); setCardDeckV3DetailStatus(restoredCardDeckV3 ? "ready" : "idle"); setReviewQueueId(w.reviewQueueId || null);
         // B1(교차 리뷰 BLOCK, 재리뷰로 절반만 닫힘 지적): videoEdit이 이 복원 블록에
         // 없으면 편집기가 빈 videoEdit을 받았다. 이제 무조건 세팅한다(없으면 null —
         // 이전 워크스페이스 값이 남아 있으면 안 된다, 위 리셋과 짝). 다만 localStorage
@@ -3079,12 +3081,13 @@ export default function StudioPage() {
       restoredIdea: String(d.idea || ""),
     });
     setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
-    setCardDeck((d.cardDeck as CardDeck) || null);
+    const loadedCardDeck = (d.cardDeck as CardDeck) || null;
+    setCardDeck(loadedCardDeck);
     const includesCardDeckV3 = Object.prototype.hasOwnProperty.call(d, "cardDeckV3");
-    const hasCardDeckV3 = includesCardDeckV3
+    const hasCardDeckV3 = !usesChatBubbleV2(loadedCardDeck) && (includesCardDeckV3
       ? d.cardDeckV3 != null
-      : d.hasCardDeckV3 === true;
-    const loadedCardDeckV3 = includesCardDeckV3 ? (d.cardDeckV3 as CardDeckV3) || null : null;
+      : d.hasCardDeckV3 === true);
+    const loadedCardDeckV3 = cardDeckV3ForDraft(loadedCardDeck, includesCardDeckV3 ? d.cardDeckV3 as CardDeckV3 | null : null);
     setCardDeckV3(loadedCardDeckV3);
     cardDeckV3Ref.current = loadedCardDeckV3;
     cardDeckV3HydratedDraftRef.current = includesCardDeckV3 ? loadedDraftId : null;
@@ -3094,7 +3097,7 @@ export default function StudioPage() {
     cardDeckV3EditGenerationRef.current = 0;
     cardDeckV3SavePendingGenerationRef.current = null;
     cardDeckV3DirtyRef.current = false;
-    setCardDeckV3SourceSnapshot((d.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null);
+    setCardDeckV3SourceSnapshot(loadedCardDeckV3 ? (d.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null : null);
     setVideoEdit((d.videoEdit as VideoEdit) || null);
     setReviewQueueId((d.reviewQueueId as string) || null);
     const savedFormat = validateContentEditFormat(d.editFormat);
@@ -3259,7 +3262,7 @@ export default function StudioPage() {
   useEffect(() => {
     const requestedDraftId = draftId;
     const requestedTenantId = activeWorkspace?.id ?? null;
-    if (!requestedDraftId || !requestedTenantId
+    if (!requestedDraftId || !requestedTenantId || usesChatBubbleV2(cardDeck)
       || cardDeckV3HydratedDraftRef.current === requestedDraftId
       || cardDeckV3Ref.current !== null
       || cardDeckV3DirtyRef.current
@@ -3291,7 +3294,7 @@ export default function StudioPage() {
       }
     })();
     return () => controller.abort();
-  }, [activeWorkspace?.id, draftId]);
+  }, [activeWorkspace?.id, cardDeck, draftId]);
   // 영상 편집 state의 최신값은 닫힌 클로저 대신 ref로 비교한다. 글 본문은 위의
   // bodySnapshotRef 하나만 소유하므로 영상 전용 pending 복사본을 두지 않는다.
   const videoEditRef = useRef<VideoEdit | null>(null);
@@ -3543,8 +3546,9 @@ export default function StudioPage() {
         restoredIdea: String((linkedDraft?.idea as string) || work.idea || ""),
       });
       setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
-      setCardDeck((linkedDraft?.cardDeck as CardDeck) || null);
-      setCardDeckV3((linkedDraft?.cardDeckV3 as CardDeckV3) || null);
+      const linkedCardDeck = (linkedDraft?.cardDeck as CardDeck) || null;
+      setCardDeck(linkedCardDeck);
+      setCardDeckV3(cardDeckV3ForDraft(linkedCardDeck, linkedDraft?.cardDeckV3 as CardDeckV3 | null));
       setVideoEdit((linkedDraft?.videoEdit as VideoEdit) || null);
       // MINOR(7차 재리뷰): 이 분기도 videoEdit을 reconcile 밖에서 직접 세팅한다(워크스페이스
       // 전환·새 작업·후보 선택·버리고 새로 시작과 같은 계열) — 그 아래 setDraftId(linkedDraftId)가
@@ -4215,9 +4219,7 @@ export default function StudioPage() {
       textEmbedded: img?.textEmbedded === true,
     })) return;
     if (rejectWhileCardDeckV3DetailPending()) return;
-    const blockedReason = cardDeck?.template === "chat_bubble"
-      ? "말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어 기본 편집만 지원합니다."
-      : cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines);
+    const blockedReason = cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines);
     if (blockedReason) {
       showToast(blockedReason, "error");
       return;
@@ -4232,6 +4234,7 @@ export default function StudioPage() {
       if (cardDeck && CARD_DECK_V3_RENDER_ENABLED) {
         const upload = browserCardUploader(authHeaders());
         const coverImageAssetIds: Record<string, string> = {};
+        let profileImageAssetId = cardDeck.brand.profile_image_asset_id ?? undefined;
         const rollback: Array<() => Promise<void>> = [];
         try {
           for (const [index, slide] of cardDeck.slides.entries()) {
@@ -4241,7 +4244,13 @@ export default function StudioPage() {
             coverImageAssetIds[slide.cover_image_url] = uploaded.filename;
             if (uploaded.rollback) rollback.push(uploaded.rollback);
           }
-          nextDeck = migrateCardDeckV2ToV3(cardDeck, { coverImageAssetIds });
+          if (cardDeck.brand.profile_image_url && !profileImageAssetId) {
+            const uploaded = await upload(cardDeck.brand.profile_image_url, cardDeck.slides.length);
+            if (typeof uploaded === "string" || !uploaded.filename) throw new Error("작성자 프로필 사진 파일명을 받지 못했습니다.");
+            profileImageAssetId = uploaded.filename;
+            if (uploaded.rollback) rollback.push(uploaded.rollback);
+          }
+          nextDeck = migrateCardDeckV2ToV3(cardDeck, { coverImageAssetIds, profileImageAssetId });
         } catch (error) {
           await Promise.allSettled(rollback.reverse().map((remove) => remove()));
           throw error;
@@ -4485,9 +4494,7 @@ export default function StudioPage() {
           cardDeckTemplate: cardDeck?.template ?? null,
           textEmbedded: img?.textEmbedded === true,
         }) ? startCardDeckV3 : undefined}
-        cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck?.template === "chat_bubble"
-          ? "말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어 기본 편집만 지원합니다."
-          : cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines))}
+        cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines))}
         onRetryCardDeckV3Detail={cardDeckV3DetailStatus === "error" ? retryCardDeckV3Detail : undefined}
         onReturnFromCardDeckV3={() => { void returnFromCardDeckV3(); }}
         videoEdit={videoEdit}

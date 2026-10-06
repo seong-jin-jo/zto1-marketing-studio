@@ -10,18 +10,20 @@
  * 로 옮긴 한국어 고정 문구를 화면에 보여주고, 원문은 console.error로만 보낸다(F4,
  * 2026-09-22 코드리뷰 3차).
  */
-import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/shared/Button";
-import type { Bubble, CardDeck, CardSlide, Segment } from "@/lib/studio/card-deck-contract";
+import type { Bubble, CardDeck, CardDeckBrand, CardSlide, Segment } from "@/lib/studio/card-deck-contract";
 import {
   CardDeckOpsError,
   addBubble,
+  applyBubbleTextBatch,
   caretToSegment,
   deleteBubble,
   deleteSlide,
   duplicateSlide,
   mergeBubble,
   moveSlide,
+  moveBubbleToSlide,
   setBubbleSegments,
   setSlideCover,
   setSlideCoverImage,
@@ -30,10 +32,13 @@ import {
   splitSlideAtBubbleOffset,
   toggleBold,
   toggleSpeaker,
+  swapSpeakers,
   trimBubbleTrailingNewline,
   trimSegmentsTrailingNewline,
 } from "@/lib/studio/card-deck-ops";
+import { CHAT_TONE_IDS, isChatToneCandidateList, type ChatToneCandidate, type ChatToneId } from "@/lib/studio/chat-tone-suggestions";
 import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
+import { assertChatSlidesRenderable } from "@/lib/studio/chat-deck-layout";
 import { DeliveredMedia } from "./DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
 import styles from "./BubbleEditor.module.css";
@@ -71,6 +76,11 @@ export interface BubbleEditorProps {
   deck: CardDeck;
   slideId: string;
   onDeckChange: (deck: CardDeck) => void;
+  onBubbleDragStart?: (source: { slideId: string; bubbleId: string }) => void;
+  onBubbleDragEnd?: () => void;
+  onBubbleDrop?: (source: { slideId: string; bubbleId: string }, targetSlideId: string, targetIndex: number) => void;
+  draggedBubble?: { slideId: string; bubbleId: string } | null;
+  onSelectedBubbleChange?: (bubbleId: string | null) => void;
 }
 
 export function CardStripThumbnail({
@@ -144,6 +154,8 @@ function cardDeckOpsErrorMessage(code: string): string {
     case "OPS_SPEAKER_MISMATCH": return "화자가 다른 말풍선은 합칠 수 없습니다.";
     case "OPS_DELETE_LAST_BUBBLE": return "장에 말풍선이 하나뿐이면 지울 수 없습니다.";
     case "OPS_MOVE_OUT_OF_RANGE": return "그 방향으로는 옮길 수 없습니다.";
+    case "OPS_MOVE_LAST_BUBBLE": return "장에 하나뿐인 말풍선은 다른 장으로 옮길 수 없습니다.";
+    case "OPS_BUBBLE_TARGET_LOCKED": return "표지와 마지막 장에는 말풍선을 옮길 수 없습니다.";
     case "OPS_BOLD_EMPTY_RANGE": return "굵게 만들 글을 먼저 선택해 주세요.";
     case "OPS_BOLD_LIMIT": return "한 장에 굵은 덩이는 하나입니다.";
     case "OPS_SLIDE_LOCKED": return "표지·CTA 장은 옮기거나 지울 수 없습니다.";
@@ -652,9 +664,10 @@ function BubbleContentEditable({
 }
 
 /** 편집실 카드 탭: 선택된 장(chat/comment_prompt/cta)의 말풍선을 직접 편집한다. */
-export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps) {
+export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, onBubbleDragEnd, onBubbleDrop, draggedBubble, onSelectedBubbleChange }: BubbleEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
+  const [moveDialogBubbleId, setMoveDialogBubbleId] = useState<string | null>(null);
   const editableRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const caretRefs = useRef<Record<string, number>>({});
   // MINOR(2, 4차 재검증): WebKit에서 키보드만으로(마우스 클릭 없이 Shift+화살표로 범위를
@@ -670,7 +683,9 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
 
   useEffect(() => {
     setSelectedBubbleId(null);
-  }, [slideId]);
+    setMoveDialogBubbleId(null);
+    onSelectedBubbleChange?.(null);
+  }, [onSelectedBubbleChange, slideId]);
 
   useEffect(() => {
     function handleSelectionChange() {
@@ -792,7 +807,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
     <div className="space-y-stack" data-bubble-editor data-bubble-editor-slide-role={slide.role} aria-label={`${SLIDE_ROLE_LABEL[slide.role]} 장, 말풍선 ${bubbles.length}개`}>
       {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-bubble-editor-error>{error}</p> : null}
       <ul className={styles.bubbleTurns} data-bubble-editor-turns>
-        {bubbles.map((bubble) => {
+        {bubbles.map((bubble, bubbleIndex) => {
           const selected = selectedBubbleId === bubble.id;
           // MINOR(4, PR 재리뷰): 빈 말풍선을 그대로 저장하면 서버 계약
           // (card-deck-contract.ts validateCardDeck: "segments[].text must be
@@ -807,14 +822,47 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
               data-bubble-speaker={bubble.speaker}
               data-bubble-editing={selected ? "true" : undefined}
               className={`${styles.bubbleRow} ${bubble.speaker === "reader" ? styles.bubbleRowReader : ""}`}
+              onDragOver={(event) => {
+                if (!draggedBubble || !onBubbleDrop) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(event) => {
+                if (!draggedBubble || !onBubbleDrop) return;
+                event.preventDefault();
+                onBubbleDrop(draggedBubble, currentSlideId, bubbleIndex);
+              }}
             >
+              <Button
+                size="sm"
+                draggable
+                className={styles.bubbleDragHandle}
+                aria-label={`${bubble.order + 1}번째 말풍선 옮기기`}
+                aria-describedby={`bubble-move-help-${bubble.id}`}
+                data-bubble-drag-handle
+                onDragStart={(event) => {
+                  const source = { slideId: currentSlideId, bubbleId: bubble.id };
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("application/x-editroom-bubble", JSON.stringify(source));
+                  onBubbleDragStart?.(source);
+                }}
+                onDragEnd={onBubbleDragEnd}
+                onKeyDown={(event) => {
+                  if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+                  event.preventDefault();
+                  const destination = bubbleIndex + (event.key === "ArrowUp" ? -1 : 1);
+                  if (destination < 0 || destination >= bubbles.length) return;
+                  onBubbleDrop?.({ slideId: currentSlideId, bubbleId: bubble.id }, currentSlideId, destination);
+                }}
+              >⋮⋮</Button>
+              <span id={`bubble-move-help-${bubble.id}`} className="sr-only">끌어서 같은 장이나 다른 대화 장으로 옮깁니다. 키보드는 Alt와 위아래 화살표를 함께 누릅니다.</span>
               <div className={`${styles.bubble} ${bubble.speaker === "reader" ? styles.bubbleReader : styles.bubbleBrand}`}>
                 <BubbleContentEditable
                   bubble={bubble}
                   editableRef={(el) => { editableRefs.current[bubble.id] = el; }}
                   onSegmentsChange={(segments) => updateBubbleSegments(bubble.id, segments)}
                   onTrimTrailingNewline={() => run((d) => trimBubbleTrailingNewline(d, currentSlideId, bubble.id))}
-                  onFocus={() => setSelectedBubbleId(bubble.id)}
+                  onFocus={() => { setSelectedBubbleId(bubble.id); onSelectedBubbleChange?.(bubble.id); }}
                   onCaretChange={(caret) => { caretRefs.current[bubble.id] = caret; }}
                 />
                 {isEmpty ? (
@@ -845,6 +893,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
                       run((d) => splitBubble(d, slide.id, bubble.id, caretToSegment(bubble.segments, caret)));
                     }}>쪼개기</Button>
                     <Button size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => run((d) => mergeBubble(d, slide.id, bubble.id))}>합치기</Button>
+                    <Button size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => setMoveDialogBubbleId(bubble.id)}>다른 장으로 옮기기</Button>
                     <Button size="sm" variant="secondary" onMouseDown={(e) => e.preventDefault()} onClick={() => handleDeleteBubble(bubble)}>삭제</Button>
                   </div>
                 ) : null}
@@ -853,6 +902,29 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
           );
         })}
       </ul>
+      {moveDialogBubbleId ? (
+        <section className={styles.moveBubbleDialog} role="dialog" aria-modal="true" aria-label="옮길 장 선택" data-bubble-move-dialog>
+          <b>옮길 장 선택</b>
+          <p>표지와 마지막 장을 제외한 대화 장 끝으로 말풍선을 옮깁니다.</p>
+          <div>
+            {deck.slides.map((target, targetIndex) => {
+              if (target.id === currentSlideId || target.role === "cover" || target.role === "cta") return null;
+              return (
+                <Button key={target.id} size="sm" onClick={() => {
+                  const next = run((d) => moveBubbleToSlide(d, currentSlideId, moveDialogBubbleId, target.id));
+                  if (!next) return;
+                  setMoveDialogBubbleId(null);
+                  setSelectedBubbleId(null);
+                  onSelectedBubbleChange?.(null);
+                }}>
+                  {targetIndex + 1}번 장 {SLIDE_ROLE_LABEL[target.role]}
+                </Button>
+              );
+            })}
+          </div>
+          <Button size="sm" variant="secondary" onClick={() => setMoveDialogBubbleId(null)}>취소</Button>
+        </section>
+      ) : null}
       {slide.role === "cta" ? (
         <>
           <CtaEditor deck={deck} onChange={(cta) => run((d) => ({ ...d, cta, revision: d.revision + 1 }))} />
@@ -978,6 +1050,80 @@ function CoverImagePicker({ imageUrl, onChange }: { imageUrl: string | null; onC
   );
 }
 
+function SpeakerProfileEditor({ brand, onChange, onClose }: {
+  brand: CardDeckBrand;
+  onChange: (brand: CardDeckBrand) => void;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  async function handleProfile(file: File) {
+    setBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch("/api/images/upload", { method: "POST", headers: authHeaders(), body: form });
+      const data = await response.json().catch(() => ({})) as { url?: string; filename?: string; error?: string };
+      if (!response.ok || !data.url || !data.filename) {
+        setError(data.error || "프로필 사진을 올리지 못했습니다.");
+        return;
+      }
+      onChange({ ...brand, profile_image_url: data.url, profile_image_asset_id: data.filename });
+    } catch {
+      setError("연결이 끊겨 프로필 사진을 올리지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={styles.speakerEditor} role="dialog" aria-label="화자 이름·프로필" data-speaker-profile-editor>
+      <header><b>화자 이름·프로필</b><Button size="sm" variant="secondary" onClick={onClose}>닫기</Button></header>
+      <label>작성자 이름
+        <input
+          aria-label="작성자 이름"
+          defaultValue={brand.display_name}
+          onBlur={(event) => {
+            const displayName = event.target.value.trim() || brand.display_name;
+            if (displayName !== brand.display_name) onChange({ ...brand, display_name: displayName });
+          }}
+        />
+      </label>
+      <label>독자 이름
+        <input
+          aria-label="독자 이름"
+          defaultValue={brand.reader_name?.trim() || "구독자"}
+          onBlur={(event) => {
+            const readerName = event.target.value.trim() || "구독자";
+            if (readerName !== (brand.reader_name?.trim() || "구독자")) onChange({ ...brand, reader_name: readerName });
+          }}
+        />
+      </label>
+      <div className={styles.profilePicker}>
+        {brand.profile_image_url ? <DeliveredMedia src={brand.profile_image_url} type="image" alt="작성자 프로필" /> : <span aria-hidden="true">{brand.display_name.slice(0, 2)}</span>}
+        <Button size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "올리는 중…" : "프로필 사진 올리기"}</Button>
+        {brand.profile_image_url ? <Button size="sm" variant="secondary" onClick={() => onChange({ ...brand, profile_image_url: null, profile_image_asset_id: null })}>사진 빼기</Button> : null}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          className="hidden"
+          aria-label="작성자 프로필 사진"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void handleProfile(file);
+            event.target.value = "";
+          }}
+        />
+      </div>
+      {error ? <p role="alert">{error}</p> : null}
+    </section>
+  );
+}
+
 function CoverEditor({ slide, onChange, onImageChange }: {
   slide: CardSlide;
   onChange: (cover: NonNullable<CardSlide["cover"]>) => void;
@@ -1073,10 +1219,104 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
   const [slideError, setSlideError] = useState<string | null>(null);
   const [draggedSlideIndex, setDraggedSlideIndex] = useState<number | null>(null);
   const [splitNotice, setSplitNotice] = useState<string | null>(null);
+  const [draggedBubble, setDraggedBubble] = useState<{ slideId: string; bubbleId: string } | null>(null);
+  const [history, setHistory] = useState<CardDeck[]>([]);
+  const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
+  const [toneScope, setToneScope] = useState<"one" | "slide" | "all">("slide");
+  const [toneId, setToneId] = useState<ChatToneId>("learned");
+  const [toneBusy, setToneBusy] = useState(false);
+  const [toneError, setToneError] = useState<string | null>(null);
+  const [speakerEditorOpen, setSpeakerEditorOpen] = useState(false);
+  const [toneComparison, setToneComparison] = useState<{
+    revision: number;
+    targets: Array<{ slideId: string; bubbleId: string; original: string }>;
+    candidates: ChatToneCandidate[];
+    factWarning: string;
+    appliedId: string | null;
+  } | null>(null);
   const autoSplitTargetRef = useRef<string | null>(null);
   const activeIndex = deck.slides.findIndex((s) => s.id === activeSlideId);
   const activeSlide = activeIndex >= 0 ? deck.slides[activeIndex] : deck.slides[0];
   const { canvas: renderPreview, warning: renderWarning, checkedRevision } = useSlideRenderCheck(deck, activeSlide, Math.max(0, activeIndex), deck.slides.length);
+
+  const commitDeck = useCallback((next: CardDeck) => {
+    if (JSON.stringify(next) === JSON.stringify(deck)) return;
+    setHistory((current) => [...current, structuredClone(deck)].slice(-50));
+    onDeckChange(next);
+  }, [deck, onDeckChange]);
+
+  const undo = useCallback(() => {
+    const previous = history.at(-1);
+    if (!previous) return;
+    setHistory((current) => current.slice(0, -1));
+    onDeckChange(previous);
+  }, [history, onDeckChange]);
+
+  const toneTargets = useCallback(() => {
+    const all = deck.slides.flatMap((slide) => (slide.bubbles ?? []).map((bubble) => ({
+      slideId: slide.id,
+      bubbleId: bubble.id,
+      original: bubbleText(bubble),
+    })));
+    if (toneScope === "all") return all;
+    const inSlide = all.filter((target) => target.slideId === activeSlide?.id);
+    if (toneScope === "slide") return inSlide;
+    return selectedBubbleId ? inSlide.filter((target) => target.bubbleId === selectedBubbleId) : [];
+  }, [activeSlide?.id, deck.slides, selectedBubbleId, toneScope]);
+
+  async function requestToneSuggestions() {
+    const targets = toneTargets();
+    if (targets.length === 0) {
+      setToneError(toneScope === "one" ? "먼저 말풍선 하나를 눌러 주세요." : "다듬을 말풍선이 없습니다.");
+      return;
+    }
+    setToneBusy(true);
+    setToneError(null);
+    try {
+      const response = await fetch("/api/studio/commands", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ action: "suggest_chat_tone", tone: toneId, lines: targets.map((target) => target.original) }),
+      });
+      const data = await response.json().catch(() => ({})) as { ok?: boolean; candidates?: ChatToneCandidate[]; fact_warning?: string; error?: string };
+      if (!response.ok || !data.ok || !isChatToneCandidateList(data.candidates, targets.length)) {
+        setToneError(data.error || "말투 후보 3개를 만들지 못했습니다. 원문은 바뀌지 않았습니다.");
+        return;
+      }
+      setToneComparison({
+        revision: deck.revision,
+        targets,
+        candidates: data.candidates,
+        factWarning: data.fact_warning || "숫자와 고유명사는 적용 전에 원문과 다시 확인하세요.",
+        appliedId: null,
+      });
+    } catch {
+      setToneError("연결이 끊겨 말투 후보를 만들지 못했습니다. 원문은 바뀌지 않았습니다.");
+    } finally {
+      setToneBusy(false);
+    }
+  }
+
+  async function applyToneCandidate(candidate: ChatToneCandidate) {
+    if (!toneComparison) return;
+    if (toneComparison.revision !== deck.revision) {
+      setToneError("후보를 만든 뒤 대화가 바뀌었습니다. 최신 원문으로 후보를 다시 만들어 주세요.");
+      return;
+    }
+    const next = applyBubbleTextBatch(deck, toneComparison.targets.map((target, index) => ({
+      slideId: target.slideId,
+      bubbleId: target.bubbleId,
+      text: candidate.lines[index],
+    })));
+    try {
+      await assertChatSlidesRenderable(next, toneComparison.targets.map((target) => target.slideId));
+    } catch (error) {
+      setToneError(error instanceof Error ? error.message : "말풍선이 카드를 넘어 후보를 적용할 수 없습니다.");
+      return;
+    }
+    commitDeck(next);
+    setToneComparison((current) => current ? { ...current, revision: next.revision, appliedId: candidate.id } : current);
+  }
 
   useEffect(() => {
     if (!deck.slides.find((s) => s.id === activeSlideId)) {
@@ -1153,7 +1393,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
           if (fit <= 0) return;
           next = splitSlideAtBubbleOffset(deck, activeIndex, 0, fit);
         }
-        onDeckChange(next);
+        commitDeck(next);
         // 새 장에 옮긴 나머지도 카드 높이를 넘을 수 있다. 검사 대상을 새 장으로 넘겨
         // 같은 렌더 검사와 분할을 반복하고, 모든 후속 장이 맞을 때 멈춘다.
         const continuation = next.slides[activeIndex + 1];
@@ -1167,13 +1407,13 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
       }
     })();
     return () => { cancelled = true; };
-  }, [activeIndex, activeSlide, checkedRevision, deck, onDeckChange, renderWarning]);
+  }, [activeIndex, activeSlide, checkedRevision, commitDeck, deck, renderWarning]);
 
   function runSlide(op: (deck: CardDeck) => CardDeck): CardDeck | null {
     try {
       setSlideError(null);
       const next = op(deck);
-      onDeckChange(next);
+      commitDeck(next);
       return next;
     } catch (cause) {
       if (cause instanceof CardDeckOpsError) {
@@ -1188,6 +1428,51 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
 
   return (
     <div className={styles.cardDeckPanel} data-card-deck-panel>
+      <div className={styles.deckToolbar} aria-label="카톡 대화 고급 편집 도구">
+        <Button size="sm" variant="secondary" disabled={!activeSlide?.bubbles?.length} onClick={() => commitDeck(swapSpeakers(deck, activeSlide?.id ?? null))}>이 장 화자 서로 바꾸기</Button>
+        <Button size="sm" variant="secondary" onClick={() => commitDeck(swapSpeakers(deck, null))}>덱 전체 화자 서로 바꾸기</Button>
+        <Button size="sm" variant="secondary" onClick={() => setSpeakerEditorOpen((open) => !open)}>화자 이름·프로필</Button>
+        <Button size="sm" variant="secondary" disabled={history.length === 0} onClick={undo}>실행 취소</Button>
+        <label className={styles.toneField}>범위
+          <select aria-label="말투 다듬기 범위" value={toneScope} onChange={(event) => setToneScope(event.target.value as typeof toneScope)}>
+            <option value="one">고른 말풍선</option>
+            <option value="slide">이 장</option>
+            <option value="all">덱 전체</option>
+          </select>
+        </label>
+        <label className={styles.toneField}>말투
+          <select aria-label="다듬을 말투" value={toneId} onChange={(event) => setToneId(event.target.value as ChatToneId)}>
+            {CHAT_TONE_IDS.map((id) => <option key={id} value={id}>{id === "learned" ? "학습 정보 말투" : id === "warm" ? "더 친근하게" : id === "short" ? "더 짧게" : "반말↔존댓말"}</option>)}
+          </select>
+        </label>
+        <Button size="sm" onClick={() => { void requestToneSuggestions(); }} disabled={toneBusy}>{toneBusy ? "후보 만드는 중" : "후보 3개 비교"}</Button>
+      </div>
+      {speakerEditorOpen ? <SpeakerProfileEditor
+        brand={deck.brand}
+        onClose={() => setSpeakerEditorOpen(false)}
+        onChange={(brand) => commitDeck({ ...deck, brand, revision: deck.revision + 1 })}
+      /> : null}
+      {toneError ? <p role="alert" className={styles.toneError}>{toneError}</p> : null}
+      {toneComparison ? (
+        <section className={styles.toneComparison} role="dialog" aria-label="말투 다듬기 비교" data-tone-comparison>
+          <header>
+            <b>원문과 후보 3개 비교</b>
+            <span>{toneComparison.targets.length}개 말풍선. 적용하기 전에는 덱이 바뀌지 않습니다.</span>
+          </header>
+          <p className={styles.factWarning} role="status">{toneComparison.factWarning}</p>
+          <div className={styles.toneCandidateGrid}>
+            <article><b>원문</b><p>{toneComparison.targets.map((target) => target.original).join("\n")}</p></article>
+            {toneComparison.candidates.map((candidate) => (
+              <article key={candidate.id} data-tone-candidate={candidate.id} data-applied={toneComparison.appliedId === candidate.id ? "true" : undefined}>
+                <b>{candidate.label}</b>
+                <p>{candidate.lines.join("\n")}</p>
+                {candidate.fact_warnings.length ? <p className={styles.factWarning}>원문과 다름. {candidate.fact_warnings.join(" ")}</p> : <p className={styles.factSafe}>숫자 자동 대조 통과</p>}
+                <Button size="sm" onClick={() => void applyToneCandidate(candidate)}>{toneComparison.appliedId === candidate.id ? "적용됨" : "이 후보 적용"}</Button>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <nav aria-label="카드 목록" className={styles.thumbnailStrip} data-card-deck-slide-list data-card-deck-thumbnail-strip>
         {deck.slides.map((slide, index) => {
           const locked = slide.role === "cover" || slide.role === "cta";
@@ -1205,10 +1490,20 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
                 event.dataTransfer.setData("text/plain", String(index));
               }}
               onDragOver={(event) => {
-                if (!locked && draggedSlideIndex !== null) event.preventDefault();
+                if (!locked && (draggedSlideIndex !== null || draggedBubble !== null)) event.preventDefault();
               }}
               onDrop={(event) => {
                 event.preventDefault();
+                if (draggedBubble && !locked) {
+                  try {
+                    commitDeck(moveBubbleToSlide(deck, draggedBubble.slideId, draggedBubble.bubbleId, slide.id));
+                    setDraggedBubble(null);
+                    setActiveSlideId(slide.id);
+                  } catch (cause) {
+                    if (cause instanceof CardDeckOpsError) setSlideError(cardDeckOpsErrorMessage(cause.code));
+                  }
+                  return;
+                }
                 const from = draggedSlideIndex ?? Number.parseInt(event.dataTransfer.getData("text/plain"), 10);
                 setDraggedSlideIndex(null);
                 if (!locked && Number.isInteger(from) && from !== index) runSlide((d) => moveSlide(d, from, index));
@@ -1247,7 +1542,23 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
               <span>{activeIndex + 1} / {deck.slides.length}</span>
             </header>
           ) : null}
-          {activeSlide ? <BubbleEditor deck={deck} slideId={activeSlide.id} onDeckChange={onDeckChange} /> : null}
+          {activeSlide ? <BubbleEditor
+            deck={deck}
+            slideId={activeSlide.id}
+            onDeckChange={commitDeck}
+            draggedBubble={draggedBubble}
+            onBubbleDragStart={setDraggedBubble}
+            onBubbleDragEnd={() => setDraggedBubble(null)}
+            onSelectedBubbleChange={setSelectedBubbleId}
+            onBubbleDrop={(source, targetSlideId, targetIndex) => {
+              try {
+                commitDeck(moveBubbleToSlide(deck, source.slideId, source.bubbleId, targetSlideId, targetIndex));
+                setDraggedBubble(null);
+              } catch (cause) {
+                if (cause instanceof CardDeckOpsError) setSlideError(cardDeckOpsErrorMessage(cause.code));
+              }
+            }}
+          /> : null}
         </div>
         {activeSlide ? (
           <div className={styles.selectedSlideActions} data-selected-slide-actions>

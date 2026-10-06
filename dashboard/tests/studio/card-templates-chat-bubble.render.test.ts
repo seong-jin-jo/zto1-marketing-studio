@@ -95,6 +95,46 @@ describe("renderChatBubbleSlide 실물 렌더 (TC-F2-01~04)", () => {
       .rejects.toThrowError(/말풍선이 카드보다 깁니다/);
   });
 
+  it("S5-R2-A 독자 이름은 legacy PNG의 픽셀과 높이를 바꾸지 않는다", async () => {
+    const withoutReaderName = structuredClone(deck);
+    delete withoutReaderName.brand.reader_name;
+    const withReaderName = structuredClone(deck);
+    withReaderName.brand.reader_name = "이 독자 이름은 PNG에 그리지 않는다";
+    const plain = await renderChatBubbleSlide({ deck: withoutReaderName, slide: withoutReaderName.slides[1], index: 1, total: withoutReaderName.slides.length });
+    const named = await renderChatBubbleSlide({ deck: withReaderName, slide: withReaderName.slides[1], index: 1, total: withReaderName.slides.length });
+    expect(named).toBe(plain);
+  });
+
+  it("S5-R3-1 작성자-독자-작성자 덱은 origin/main처럼 두 작성자 차례 모두 이름을 그린다", async () => {
+    const alternating = structuredClone(deck);
+    const slide = alternating.slides[1];
+    slide.bubbles = [
+      { id: "brand-first", order: 0, speaker: "brand", segments: [{ text: "첫 답변", bold: false }], reaction: null },
+      { id: "reader", order: 1, speaker: "reader", segments: [{ text: "추가 질문", bold: false }], reaction: null },
+      { id: "brand-second", order: 2, speaker: "brand", segments: [{ text: "둘째 답변", bold: false }], reaction: null },
+    ];
+    const canvas = (await renderChatBubbleSlideToCanvas({ deck: alternating, slide, index: 1, total: alternating.slides.length }))!;
+    const ctx = canvas.getContext("2d")!;
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    expect(pixels.some((value) => value !== 0)).toBe(true);
+
+    const contextPrototype = Object.getPrototypeOf(ctx) as CanvasRenderingContext2D;
+    const originalFillText = contextPrototype.fillText;
+    const labels: string[] = [];
+    contextPrototype.fillText = function fillText(text, x, y, maxWidth) {
+      labels.push(String(text));
+      return maxWidth === undefined
+        ? originalFillText.call(this, text, x, y)
+        : originalFillText.call(this, text, x, y, maxWidth);
+    };
+    try {
+      await renderChatBubbleSlideToCanvas({ deck: alternating, slide, index: 1, total: alternating.slides.length });
+    } finally {
+      contextPrototype.fillText = originalFillText;
+    }
+    expect(labels.filter((label) => label === alternating.brand.display_name)).toHaveLength(3);
+  });
+
   it("서버(document 없음)에서 부르면 null 이다(text-card-image.ts 와 같은 계약)", async () => {
     // 이 파일은 jsdom 환경이라 document 가 있다. node 환경 파일(text-card-image.test.ts)이
     // 같은 계약을 이미 검증하므로 여기서는 계약 문서화만 남긴다.

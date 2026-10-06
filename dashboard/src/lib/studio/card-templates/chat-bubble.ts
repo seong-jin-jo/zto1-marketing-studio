@@ -26,9 +26,9 @@ const PAGE_NUMBER_RATIO = 0.026;
 const TIMESTAMP_RATIO = 0.022;
 const FONT_FAMILY = '"Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif';
 
-const READER_BUBBLE_BG = "#FEE500";
-const BRAND_BUBBLE_BG = "#FFFFFF";
-const BUBBLE_TEXT = "#12100E";
+export const READER_BUBBLE_BG = "#FEE500";
+export const BRAND_BUBBLE_BG = "#FFFFFF";
+export const BUBBLE_TEXT = "#12100E";
 
 export class ChatBubbleRenderError extends Error {}
 
@@ -38,8 +38,8 @@ const COVER_IMAGE_LOAD_TIMEOUT_MS = 8000;
 const PHOTO_SCRIM_START_RATIO = 0.35;
 const PHOTO_SCRIM_MAX_OPACITY = 0.6;
 /** 사진 배경 위 글자색(MINOR, 2026-09-22 코드리뷰 4차: 리터럴 대신 이름 붙은 상수로). */
-const PHOTO_TEXT_PRIMARY = "#FFFFFF";
-const PHOTO_TEXT_SECONDARY = "rgba(255,255,255,0.85)";
+export const PHOTO_TEXT_PRIMARY = "#FFFFFF";
+export const PHOTO_TEXT_SECONDARY = "rgba(255,255,255,0.85)";
 
 export type ChatBubbleRenderInput = {
   deck: CardDeck;
@@ -132,10 +132,20 @@ export async function renderChatBubbleSlideToCanvas(input: ChatBubbleRenderInput
     }
   }
 
+  let profileImage: HTMLImageElement | null = null;
+  if (deck.brand.profile_image_url) {
+    try {
+      profileImage = await loadCoverImage(deck.brand.profile_image_url);
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "프로필 사진을 불러오지 못했습니다.";
+      throw new ChatBubbleRenderError(`작성자 프로필 ${reason}`);
+    }
+  }
+
   if (slide.role === "cover") {
     drawCover(ctx, deck, slide, width, height, index, total, hasPhoto);
   } else {
-    drawChatSlide(ctx, deck, slide, width, height, index, total, hasPhoto);
+    drawChatSlide(ctx, deck, slide, width, height, index, total, hasPhoto, profileImage);
   }
 
   return canvas;
@@ -231,6 +241,7 @@ function drawChatSlide(
   index: number,
   total: number,
   hasPhoto = false,
+  profileImage: HTMLImageElement | null = null,
 ): void {
   const margin = Math.max(SAFE_ZONE_PX, Math.round(width * 0.06));
   const maxBubbleWidth = width * 0.66;
@@ -254,13 +265,21 @@ function drawChatSlide(
   for (const turn of turns) {
     const isReader = turn.speaker === "reader";
     if (!isReader) {
-      // brand 이름 라벨
+      const avatarSize = profileImage ? Math.round(width * 0.05) : 0;
       ctx.font = `600 ${Math.round(width * BUBBLE_NAME_LABEL_RATIO)}px ${FONT_FAMILY}`;
       ctx.fillStyle = deck.theme.accent;
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
-      ctx.fillText(deck.brand.display_name, margin, y);
-      y += width * BUBBLE_NAME_LABEL_RATIO * 1.6;
+      if (profileImage) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(margin + avatarSize / 2, y + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(profileImage, margin, y, avatarSize, avatarSize);
+        ctx.restore();
+      }
+      ctx.fillText(deck.brand.display_name, margin + (avatarSize ? avatarSize + width * 0.012 : 0), y);
+      y += Math.max(width * BUBBLE_NAME_LABEL_RATIO * 1.6, avatarSize);
     }
     for (const bubble of turn.bubbles) {
       const bubbleHeight = drawBubble(ctx, deck, bubble, isReader, width, margin, maxBubbleWidth, y);

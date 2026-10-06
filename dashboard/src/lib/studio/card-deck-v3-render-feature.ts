@@ -1,5 +1,16 @@
 type FlagEnv = Record<string, string | undefined>;
 
+export function usesChatBubbleV2(cardDeck: unknown): boolean {
+  return Boolean(cardDeck)
+    && typeof cardDeck === "object"
+    && !Array.isArray(cardDeck)
+    && (cardDeck as { template?: unknown }).template === "chat_bubble";
+}
+
+export function cardDeckV3ForDraft<T>(cardDeck: unknown, cardDeckV3: T | null | undefined): T | null {
+  return usesChatBubbleV2(cardDeck) ? null : cardDeckV3 ?? null;
+}
+
 export function cardDeckV3RenderingEnabled(env: FlagEnv = process.env): boolean {
   const serverValue = env.CARD_DECK_V3_RENDER_ENABLED;
   const publicValue = env.NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED;
@@ -16,6 +27,9 @@ export function cardDeckV3EntryEnabled(
     textEmbedded: boolean;
   },
 ): boolean {
+  // 렌더 스위치는 PNG 경로만 연다. v71 고급 도구가 CardCanvasEditor에
+  // 모두 이식되기 전까지 카톡 덱은 기존 BubbleEditor를 유지한다.
+  if (source.cardDeckTemplate === "chat_bubble") return false;
   if (renderEnabled) return true;
   if (source.textEmbedded) return false;
   if (!source.hasCardDeckV2) return true;

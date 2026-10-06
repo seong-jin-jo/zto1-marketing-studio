@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CardDeckV3 } from "./card-element-contract";
+import type { CardDeckV3, CardElement } from "./card-element-contract";
 import { cardElementStyle, cardSlideRenderModel, visibleCardElements } from "./card-render-model";
 
 const deck: CardDeckV3 = {
@@ -31,5 +31,16 @@ describe("T-PARITY CardSlideRenderModel", () => {
 
   it("거절 경로: 존재하지 않는 장은 첫 장으로 안전하게 복귀한다", () => {
     expect(cardSlideRenderModel(deck, "missing").slide.id).toBe("slide_cover");
+  });
+
+  it("S5-AC4 카톡 원형 projection은 중복 렌더에서 숨기고 자유 요소만 화면·PNG 목록에 남긴다", () => {
+    const chat = structuredClone(deck);
+    chat.template = "chat_bubble";
+    chat.slides[0].base = { kind: "chat_bubble", cover: { headline: "첫 장", sub: null }, bubbles: [] };
+    chat.slides[0].elements = [
+      { ...(chat.slides[0].elements[0] as Extract<CardElement, { type: "text" }>), id: "el_slide_cover_cover", hidden: false },
+      { id: "overlay_logo", type: "logo", name: "로고", x: 10, y: 20, width: 300, height: 120, rotation: 0, z_index: 2, opacity: 1, locked: false, hidden: false, asset_id: "builtin:logo-osmu", alt: "OSMU", fit: "contain" },
+    ];
+    expect(visibleCardElements(cardSlideRenderModel(chat, "slide_cover")).map((element) => element.id)).toEqual(["overlay_logo"]);
   });
 });

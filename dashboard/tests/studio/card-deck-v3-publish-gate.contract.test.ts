@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 const read = (relative: string) => fs.readFileSync(path.join(process.cwd(), relative), "utf8");
 
 describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
+  it("S5-R3-2 발행 차단 문구에 카톡 사용자가 갈 수 없는 기본 편집 안내를 넣지 않는다", () => {
+    expect(read("src/lib/studio/card-deck-v3-publish-contract.ts")).not.toContain("기본 편집으로 돌아가면");
+  });
+
   it("실발행, 큐 생성, 기존 큐 검토 요청이 모두 같은 서버 안전문을 지난다", () => {
     const publish = read("src/app/api/publish/route.ts");
     expect(publish).toContain("prepareDraftCardDeckV3ForPublish");
@@ -106,7 +110,7 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(helper.indexOf("void hydrateCardDeckV3Detail(draftToLoad)")).toBeGreaterThan(helper.indexOf("const kind = loadDraft(draftToLoad)"));
     expect(helper).toContain("return { kind }");
     expect(source).toContain("목록 내용으로 열었습니다");
-    expect(route).toContain("hasCardDeckV3: r.payload?.cardDeckV3 != null");
+    expect(route).toContain("hasCardDeckV3: cardDeckV3 != null");
   });
 
   it("S1-R7-HYDRATION-GUARD-01 목록 신호가 true면 상세 완료 전 진입과 모든 발행 행동을 잠근다", () => {
@@ -115,7 +119,8 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(source).toContain('cardDeckV3DetailStatusRef.current = "loading"');
     expect(source).toContain('cardDeckV3DetailStatusRef.current = "error"');
     expect(source).toContain("if (rejectWhileCardDeckV3DetailPending()) return;");
-    expect(source).toContain("cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck?.template === \"chat_bubble\"");
+    expect(source).toContain("cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck ? null");
+    expect(source).not.toContain("말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어");
     expect(source).toContain("disabled={cardDeckV3PublishBlocked");
     expect(source).toContain("onRetryCardDeckV3Detail={cardDeckV3DetailStatus === \"error\" ? retryCardDeckV3Detail : undefined}");
     expect(source).toContain("void loadDraftDetail(linkedDraft)");

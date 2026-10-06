@@ -7,11 +7,34 @@ const H = vi.hoisted(() => ({
   handoff: null as EditorHandoff | null,
   updateAllowed: true,
   queueCalls: [] as Array<Record<string, unknown>>,
+  generatedText: "",
+  authFailure: null as null | { reason: "invalid" | "unavailable" | "forbidden"; message: string; code?: string },
 }));
 
-vi.mock("@/lib/tenant-auth", () => ({
-  effectiveTenantId: vi.fn(async () => H.tenantId),
+vi.mock("@/lib/anthropic", () => ({
+  generateText: vi.fn(async () => H.generatedText),
+  sharedAiApprovalErrorResponse: vi.fn(() => null),
+  sharedGenerationQuotaErrorResponse: vi.fn(() => null),
 }));
+
+vi.mock("@/lib/tenant-auth", () => {
+  class AuthError extends Error {
+    readonly status: 401 | 403 | 503;
+    readonly code: string;
+    constructor(reason: "invalid" | "unavailable" | "forbidden", message: string, code?: string) {
+      super(message);
+      this.status = reason === "unavailable" ? 503 : reason === "forbidden" ? 403 : 401;
+      this.code = code ?? (reason === "unavailable" ? "service_unavailable" : reason === "forbidden" ? "forbidden" : "invalid_token");
+    }
+  }
+  return {
+    AuthError,
+    effectiveTenantId: vi.fn(async () => {
+      if (H.authFailure) throw new AuthError(H.authFailure.reason, H.authFailure.message, H.authFailure.code);
+      return H.tenantId;
+    }),
+  };
+});
 
 vi.mock("@/lib/studio/editor-handoff-store", () => ({
   saveEditorHandoff: vi.fn(async (_tenantId: string, input: { handoff: EditorHandoff }) => {
@@ -65,6 +88,8 @@ beforeEach(() => {
   H.handoff = null;
   H.updateAllowed = true;
   H.queueCalls = [];
+  H.generatedText = "";
+  H.authFailure = null;
 });
 
 describe("Studio 편집 인계 HTTP 통합 계약", () => {
@@ -120,6 +145,60 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
     const body = await response.json();
     expect(response.status).toBe(422);
     expect(body.code).toBe("CHAT_COMMAND_NOT_SUPPORTED");
+  });
+
+  it("S5-AC3 정상: 말투 후보 3개만 반환하고 숫자가 달라진 후보에는 사실 경고를 붙인다", async () => {
+    H.generatedText = JSON.stringify({ candidates: [
+      { id: "a", label: "후보 1", lines: ["9시간 중 오답은 몇 분이야?"] },
+      { id: "b", label: "후보 2", lines: ["10시간 중 오답은 몇 분이야?"] },
+      { id: "c", label: "후보 3", lines: ["오답 복습은 9시간 중 몇 분이야?"] },
+    ] });
+    const { POST } = await import("@/app/api/studio/commands/route");
+    const response = await POST(new Request("http://localhost/api/studio/commands", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: H.tenantId, action: "suggest_chat_tone", tone: "warm", lines: ["9시간 중 오답은 몇 분이야?"] }),
+    }));
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.candidates).toHaveLength(3);
+    expect(body.candidates[0].fact_warnings).toEqual([]);
+    expect(body.candidates[1].fact_warnings.join(" ")).toContain("9시간");
+    expect(body.candidates[1].fact_warnings.join(" ")).toContain("10시간");
+    expect(body.fact_warning).toContain("적용 전에");
+  });
+
+  it("S5-AC3 거절: 후보가 3개가 아니면 ok:false로 끝내고 원문을 적용하지 않는다", async () => {
+    H.generatedText = JSON.stringify({ candidates: [{ id: "a", label: "하나", lines: ["문장"] }] });
+    const { POST } = await import("@/app/api/studio/commands/route");
+    const response = await POST(new Request("http://localhost/api/studio/commands", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: H.tenantId, action: "suggest_chat_tone", tone: "short", lines: ["문장"] }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.objectContaining({ ok: false }));
+  });
+
+  it("S5-AC3 거절: 문자열 아닌 줄과 2천자를 넘는 줄은 AI 호출 전에 400으로 막는다", async () => {
+    const { POST } = await import("@/app/api/studio/commands/route");
+    for (const lines of [[{ text: "문장" }], ["가".repeat(2_001)]]) {
+      const response = await POST(new Request("http://localhost/api/studio/commands", {
+        method: "POST",
+        body: JSON.stringify({ tenant_id: H.tenantId, action: "suggest_chat_tone", tone: "short", lines }),
+      }));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual(expect.objectContaining({ code: "CHAT_TONE_LINES_INVALID" }));
+    }
+  });
+
+  it("S5-R2-MINOR 인증 검증 장애를 작업 공간 없음 401로 숨기지 않고 AuthError 상태로 돌려준다", async () => {
+    H.authFailure = { reason: "unavailable", message: "인증 검증기를 사용할 수 없습니다.", code: "auth_verifier_unavailable" };
+    const { POST } = await import("@/app/api/studio/commands/route");
+    const response = await POST(new Request("http://localhost/api/studio/commands", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: H.tenantId, action: "suggest_chat_tone", tone: "short", lines: ["문장"] }),
+    }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual(expect.objectContaining({ code: "auth_verifier_unavailable" }));
   });
 
   it("BE-V63-36 경합 경로: 저장 직전 revision이 바뀌면 409로 끝내고 덮어쓰지 않는다", async () => {
