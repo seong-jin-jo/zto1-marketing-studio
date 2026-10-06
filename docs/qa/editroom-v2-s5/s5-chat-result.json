@@ -62,42 +62,70 @@
       },
       "layout": {
         "stage": {
-          "left": 16,
-          "right": 374,
-          "top": 397,
-          "bottom": 844,
-          "width": 358,
-          "height": 447,
-          "visibleWidth": 358,
-          "visibleHeight": 447
+          "left": 41,
+          "right": 349,
+          "top": 459,
+          "bottom": 843.5,
+          "width": 308,
+          "height": 384.5,
+          "visibleWidth": 308,
+          "visibleHeight": 384.5
+        },
+        "advancedToolbar": {
+          "left": 41,
+          "right": 349,
+          "top": -29,
+          "bottom": 201,
+          "width": 308,
+          "height": 230,
+          "visibleWidth": 308,
+          "visibleHeight": 201
         },
         "rightPanel": {
-          "left": -496,
-          "right": -188,
-          "width": 308
+          "left": 41,
+          "right": 349,
+          "top": 919.5,
+          "bottom": 2894.5,
+          "width": 308,
+          "height": 1975,
+          "visibleWidth": 308,
+          "visibleHeight": 0
+        },
+        "firstBubbleButton": {
+          "left": 63,
+          "right": 191,
+          "top": 1165.5,
+          "bottom": 1209.5,
+          "width": 128,
+          "height": 44,
+          "visibleWidth": 128,
+          "visibleHeight": 0
         },
         "containers": {
           "innerWidth": 390,
           "mobileMedia": true,
           "editor": {
-            "left": -496,
-            "right": -188,
-            "width": 308
+            "left": 41,
+            "right": 349,
+            "width": 308,
+            "scrollLeft": 0,
+            "scrollWidth": 308,
+            "clientWidth": 308
           },
           "workspace": {
-            "left": -496,
-            "right": -188,
+            "left": 41,
+            "right": 349,
             "width": 308
           },
           "stageColumn": {
-            "left": -496,
-            "right": -188,
+            "left": 41,
+            "right": 349,
             "width": 308
           },
           "stageStyle": {
-            "width": "358px",
+            "width": "308px",
             "minWidth": "0px",
-            "maxWidth": "358px",
+            "maxWidth": "100%",
             "display": "block",
             "position": "relative"
           }
@@ -119,42 +147,70 @@
       },
       "layout": {
         "stage": {
-          "left": 25,
-          "right": 593,
-          "top": 81,
-          "bottom": 790.5,
-          "width": 568,
-          "height": 709.5,
-          "visibleWidth": 568,
-          "visibleHeight": 709.5
+          "left": 41,
+          "right": 559,
+          "top": 143,
+          "bottom": 790,
+          "width": 518,
+          "height": 647,
+          "visibleWidth": 518,
+          "visibleHeight": 647
+        },
+        "advancedToolbar": {
+          "left": 41,
+          "right": 559,
+          "top": -265,
+          "bottom": -115,
+          "width": 518,
+          "height": 150,
+          "visibleWidth": 518,
+          "visibleHeight": 0
         },
         "rightPanel": {
-          "left": -382,
-          "right": 136,
-          "width": 518
+          "left": 41,
+          "right": 559,
+          "top": 866,
+          "bottom": 2817,
+          "width": 518,
+          "height": 1951,
+          "visibleWidth": 518,
+          "visibleHeight": 34
+        },
+        "firstBubbleButton": {
+          "left": 63,
+          "right": 296,
+          "top": 1088,
+          "bottom": 1132,
+          "width": 233,
+          "height": 44,
+          "visibleWidth": 233,
+          "visibleHeight": 0
         },
         "containers": {
           "innerWidth": 600,
           "mobileMedia": true,
           "editor": {
-            "left": -382,
-            "right": 136,
-            "width": 518
+            "left": 41,
+            "right": 559,
+            "width": 518,
+            "scrollLeft": 0,
+            "scrollWidth": 518,
+            "clientWidth": 518
           },
           "workspace": {
-            "left": -382,
-            "right": 136,
+            "left": 41,
+            "right": 559,
             "width": 518
           },
           "stageColumn": {
-            "left": -382,
-            "right": 136,
+            "left": 41,
+            "right": 559,
             "width": 518
           },
           "stageStyle": {
-            "width": "568px",
+            "width": "518px",
             "minWidth": "0px",
-            "maxWidth": "568px",
+            "maxWidth": "100%",
             "display": "block",
             "position": "relative"
           }
@@ -206,17 +262,42 @@
         "stage": {
           "left": 393,
           "right": 735,
-          "top": 28.5,
-          "bottom": 455.5,
+          "top": 90.5,
+          "bottom": 517.5,
           "width": 342,
           "height": 427,
           "visibleWidth": 342,
           "visibleHeight": 427
         },
+        "advancedToolbar": {
+          "left": 265,
+          "right": 1071,
+          "top": -472,
+          "bottom": -375.5,
+          "width": 806,
+          "height": 96.5,
+          "visibleWidth": 806,
+          "visibleHeight": 0
+        },
         "rightPanel": {
           "left": 751,
           "right": 1071,
-          "width": 320
+          "top": -359.5,
+          "bottom": 1605.5,
+          "width": 320,
+          "height": 1965,
+          "visibleWidth": 320,
+          "visibleHeight": 1000
+        },
+        "firstBubbleButton": {
+          "left": 773,
+          "right": 907,
+          "top": -119.5,
+          "bottom": -75.5,
+          "width": 134,
+          "height": 44,
+          "visibleWidth": 134,
+          "visibleHeight": 0
         },
         "containers": {
           "innerWidth": 1440,
@@ -224,7 +305,10 @@
           "editor": {
             "left": 265,
             "right": 1071,
-            "width": 806
+            "width": 806,
+            "scrollLeft": 0,
+            "scrollWidth": 806,
+            "clientWidth": 806
           },
           "workspace": {
             "left": 265,
@@ -249,6 +333,6 @@
   ],
   "consoleErrors": 0,
   "failedRequests": 0,
-  "saves": 7,
+  "saves": 9,
   "publishRoute": "http://localhost:3477/studio?room=publish"
 }

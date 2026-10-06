@@ -19,14 +19,16 @@ const workspaceId = "51111111-1111-4111-8111-111111111111";
 const draftId = "52222222-2222-4222-8222-222222222222";
 const photoSvg = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxMDgwJyBoZWlnaHQ9JzEzNTAnPjxyZWN0IHdpZHRoPScxMDgwJyBoZWlnaHQ9JzEzNTAnIGZpbGw9JyMzMzU1YWEnLz48Y2lyY2xlIGN4PSc4ODAnIGN5PScyMjAnIHI9JzE2MCcgZmlsbD0nIzIyYWE3NycvPjwvc3ZnPg==";
 const profileSvg = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxNjAnIGhlaWdodD0nMTYwJz48cmVjdCB3aWR0aD0nMTYwJyBoZWlnaHQ9JzE2MCcgZmlsbD0nI0ZFNDUwMCcvPjxjaXJjbGUgY3g9JzgwJyBjeT0nNTUnIHI9JzMwJyBmaWxsPScjRkZGRkZGJy8+PHBhdGggZD0nTTMwIDE0MGM1LTM1IDk1LTM1IDEwMCAwJyBmaWxsPScjRkZGRkZGJy8+PC9zdmc+";
+const photoUrl = `${baseUrl}/__s5-assets/s5-chat-photo.svg`;
+const profileUrl = `${baseUrl}/__s5-assets/s5-chat-profile.svg`;
 const sourceDeck = JSON.parse(fs.readFileSync(path.resolve("tests/studio/fixtures/deck-d100.v2.json"), "utf8"));
-sourceDeck.slides[0].cover_image_url = photoSvg;
-sourceDeck.slides[sourceDeck.slides.length - 1].cover_image_url = photoSvg;
-sourceDeck.brand.profile_image_url = profileSvg;
+sourceDeck.slides[0].cover_image_url = photoUrl;
+sourceDeck.slides[sourceDeck.slides.length - 1].cover_image_url = photoUrl;
+sourceDeck.brand.profile_image_url = profileUrl;
 sourceDeck.brand.profile_image_asset_id = "s5b-profile.svg";
 let serverLegacyDeck = structuredClone(sourceDeck);
 const fixturePhotoAssetId = "s5-fixture-photo.svg";
-let serverDeck = migrateCardDeckV2ToV3(sourceDeck, { coverImageAssetIds: { [photoSvg]: fixturePhotoAssetId }, profileImageAssetId: "s5b-profile.svg" });
+let serverDeck = migrateCardDeckV2ToV3(sourceDeck, { coverImageAssetIds: { [photoUrl]: fixturePhotoAssetId }, profileImageAssetId: "s5b-profile.svg" });
 serverDeck.slides[1].elements.push({
   id: "el_orphan-old", type: "text", name: "브랜드 말풍선", x: 80, y: 120, width: 500, height: 180,
   rotation: 0, z_index: 0, opacity: 1, locked: false, hidden: false, text: "렌더되면 안 되는 옛 projection",
@@ -42,6 +44,7 @@ let bodyRevision = 0;
 let uploadCount = 0;
 const uploadedAssets = { [fixturePhotoAssetId]: photoSvg, "s5b-profile.svg": profileSvg };
 const posts = [];
+const rejectedDraftSaves = [];
 
 fs.mkdirSync(outputDir, { recursive: true });
 
@@ -88,7 +91,7 @@ async function waitUntil(predicate, timeoutMs, message) {
     if (predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error(message);
+  throw new Error(typeof message === "function" ? message() : message);
 }
 
 const canvasProofServer = await createViteServer({
@@ -107,6 +110,16 @@ await context.addInitScript(({ id, state }) => {
   localStorage.setItem(`studio_work:${id}`, JSON.stringify(state));
 }, { id: workspaceId, state: work() });
 
+await context.route("**/__s5-assets/**", async (route) => {
+  const dataUrl = route.request().url().includes("profile") ? profileSvg : photoSvg;
+  return route.fulfill({
+    status: 200,
+    contentType: "image/svg+xml",
+    headers: { "access-control-allow-origin": "*" },
+    body: Buffer.from(dataUrl.split(",")[1], "base64"),
+  });
+});
+
 await context.route("**/api/**", async (route) => {
   const request = route.request();
   const pathname = new URL(request.url()).pathname;
@@ -116,15 +129,18 @@ await context.route("**/api/**", async (route) => {
     const body = JSON.parse(request.postData() || "{}");
     posts.push(body);
     if (body.bodyBaseRevision !== undefined && body.bodyBaseRevision !== bodyRevision) {
+      rejectedDraftSaves.push({ status: 409, code: "BODY_STALE_REVISION" });
       return json(route, { ok: false, code: "BODY_STALE_REVISION", latestBody: { editLines: ["카톡 대화 카드"], cardDeck: serverLegacyDeck, cardDeckV3: serverDeck, bodyRevision } }, 409);
     }
     if (body.cardDeckV3 && body.cardDeck && !isSynchronizedChatCardDeckV3(body.cardDeck, body.cardDeckV3)) {
+      rejectedDraftSaves.push({ status: 409, code: "CARD_CHAT_V3_SOURCE_MISMATCH" });
       return json(route, { ok: false, code: "CARD_CHAT_V3_SOURCE_MISMATCH", error: "v2/v3 source hash mismatch" }, 409);
     }
     if (body.cardDeck) {
       try {
         validateCardDeck(body.cardDeck);
       } catch (error) {
+        rejectedDraftSaves.push({ status: 422, code: "CARD_DECK_INVALID", error: error instanceof Error ? error.message : String(error) });
         return json(route, { ok: false, code: "CARD_DECK_INVALID", error: error instanceof Error ? error.message : String(error) }, 422);
       }
       serverLegacyDeck = structuredClone(body.cardDeck);
@@ -154,12 +170,12 @@ await context.route("**/api/**", async (route) => {
     uploadCount += 1;
     const filename = `s5-chat-photo-${uploadCount}.png`;
     uploadedAssets[filename] = photoSvg;
-    return json(route, { filename, url: photoSvg });
+    return json(route, { filename, url: photoUrl });
   }
   if (pathname.startsWith("/api/images/") && request.method() === "DELETE") return json(route, { ok: true });
   if (pathname === "/api/media/resign") {
     const body = JSON.parse(request.postData() || "{}");
-    return json(route, { ok: true, file: uploadedAssets[body.filename] || photoSvg });
+    return json(route, { ok: true, file: body.filename === "s5b-profile.svg" ? profileUrl : photoUrl });
   }
   if (pathname === "/api/studio/brand-setup") return json(route, { guide: null });
   if (pathname === "/api/publish/first-comment-capabilities") return json(route, { capabilities: [] });
@@ -193,7 +209,7 @@ try {
   await waitUntil(
     () => serverDeck?.slides[0]?.background?.kind === "image" && serverDeck.slides[0].background.asset_id === "s5-chat-photo-1.png",
     15_000,
-    "바꾼 표지 사진이 v3 덱에 저장되지 않았습니다",
+    () => `바꾼 표지 사진이 v3 덱에 저장되지 않았습니다: ${JSON.stringify(rejectedDraftSaves)}`,
   );
   await page.getByRole("button", { name: "2장" }).click();
   if ((await page.locator("[data-chat-bubble-id]").count()) < 2) throw new Error("데이터가 있는 말풍선 장을 열지 못했습니다");
@@ -253,20 +269,34 @@ try {
       layout = await page.evaluate(({ width, height }) => {
         const stageElement = document.querySelector("[data-card-stage]");
         const stage = stageElement?.getBoundingClientRect();
-        const rightPanel = document.querySelector("[data-card-right-panel]")?.getBoundingClientRect();
-        const editor = document.querySelector("[data-card-canvas-editor]")?.getBoundingClientRect();
+        const rightPanelElement = document.querySelector("[data-card-right-panel]");
+        const rightPanel = rightPanelElement?.getBoundingClientRect();
+        const editorElement = document.querySelector("[data-card-canvas-editor]");
+        const editor = editorElement?.getBoundingClientRect();
+        const advancedToolbar = document.querySelector('[aria-label="카톡 대화 고급 편집 도구"]')?.getBoundingClientRect();
+        const firstBubbleButton = document.querySelector("[data-chat-bubble-id] button")?.getBoundingClientRect();
         const workspace = document.querySelector("[data-card-stage-column]")?.parentElement?.getBoundingClientRect();
         const stageColumn = document.querySelector("[data-card-stage-column]")?.getBoundingClientRect();
-        if (!stage || !rightPanel) return null;
-        const visibleWidth = Math.max(0, Math.min(stage.right, width) - Math.max(stage.left, 0));
-        const visibleHeight = Math.max(0, Math.min(stage.bottom, height) - Math.max(stage.top, 0));
+        if (!stage || !rightPanel || !advancedToolbar || !firstBubbleButton) return null;
+        const visibleRect = (rect) => ({
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+          bottom: rect.bottom,
+          width: rect.width,
+          height: rect.height,
+          visibleWidth: Math.max(0, Math.min(rect.right, width) - Math.max(rect.left, 0)),
+          visibleHeight: Math.max(0, Math.min(rect.bottom, height) - Math.max(rect.top, 0)),
+        });
         return {
-          stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom, width: stage.width, height: stage.height, visibleWidth, visibleHeight },
-          rightPanel: { left: rightPanel.left, right: rightPanel.right, width: rightPanel.width },
+          stage: visibleRect(stage),
+          advancedToolbar: visibleRect(advancedToolbar),
+          rightPanel: visibleRect(rightPanel),
+          firstBubbleButton: visibleRect(firstBubbleButton),
           containers: {
             innerWidth: window.innerWidth,
             mobileMedia: window.matchMedia("(max-width: 1023px)").matches,
-            editor: editor ? { left: editor.left, right: editor.right, width: editor.width } : null,
+            editor: editor ? { left: editor.left, right: editor.right, width: editor.width, scrollLeft: editorElement.scrollLeft, scrollWidth: editorElement.scrollWidth, clientWidth: editorElement.clientWidth } : null,
             workspace: workspace ? { left: workspace.left, right: workspace.right, width: workspace.width } : null,
             stageColumn: stageColumn ? { left: stageColumn.left, right: stageColumn.right, width: stageColumn.width } : null,
             stageStyle: {
@@ -283,7 +313,18 @@ try {
       if (layout.stage.visibleWidth < layout.stage.width - 1 || layout.stage.visibleHeight < Math.min(layout.stage.height, 160)) {
         throw new Error(`${viewport.width}px 카드 미리보기가 가시 영역 밖입니다: ${JSON.stringify(layout)}`);
       }
-      if (layout.rightPanel.width < 240) throw new Error(`${viewport.width}px 오른쪽 패널 폭이 240px 미만입니다: ${JSON.stringify(layout.rightPanel)}`);
+      if (layout.rightPanel.width < 240 || layout.rightPanel.visibleWidth < Math.min(layout.rightPanel.width, 240) - 1) {
+        throw new Error(`${viewport.width}px 오른쪽 패널이 가시 영역 밖입니다: ${JSON.stringify(layout.rightPanel)}`);
+      }
+      if (layout.advancedToolbar.visibleWidth < Math.min(layout.advancedToolbar.width, 240) - 1) {
+        throw new Error(`${viewport.width}px 카톡 고급 편집 도구가 가시 영역 밖입니다: ${JSON.stringify(layout.advancedToolbar)}`);
+      }
+      if (layout.firstBubbleButton.visibleWidth < Math.min(layout.firstBubbleButton.width, 44) - 1) {
+        throw new Error(`${viewport.width}px 첫 말풍선 편집 버튼이 가시 영역 밖입니다: ${JSON.stringify(layout.firstBubbleButton)}`);
+      }
+      if (layout.containers.editor?.scrollLeft !== 0) {
+        throw new Error(`${viewport.width}px 편집기 컨테이너가 가로 스크롤됐습니다: ${JSON.stringify(layout.containers.editor)}`);
+      }
     }
     const screenshot = path.join(outputDir, `s5-chat-advanced-editor-${viewport.width}.png`);
     await page.screenshot({ path: screenshot, fullPage: true });
@@ -343,8 +384,35 @@ try {
   const finalPng = path.join(outputDir, "s5-chat-final-photo.png");
   await renderCardSlidePng({ model: cardSlideRenderModel(serverDeck, cover.id, uploadedAssets), outputPath: coverPng });
   await renderCardSlidePng({ model: cardSlideRenderModel(serverDeck, final.id, uploadedAssets), outputPath: finalPng });
+  await page.evaluate(() => {
+    window.__s5bPublishMessages = [];
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          const text = node.textContent?.trim();
+          if (text) window.__s5bPublishMessages.push(text);
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
   await page.getByRole("button", { name: "발행실로 이동" }).click();
-  await page.locator('[data-room="publish"]').waitFor({ state: "visible", timeout: 30_000 });
+  try {
+    await page.locator('[data-room="publish"]').waitFor({ state: "visible", timeout: 30_000 });
+  } catch (error) {
+    await page.screenshot({ path: path.join(outputDir, "s5-chat-publish-route-failure.png"), fullPage: true });
+    const bodyText = await page.locator("body").innerText();
+    throw new Error(`발행실 route 이동 실패: ${JSON.stringify({
+      url: page.url(),
+      rejectedDraftSaves,
+      posts: posts.length,
+      uploads: uploadCount,
+      runtimeErrors,
+      failedRequests,
+      observedMessages: await page.evaluate(() => window.__s5bPublishMessages ?? []),
+      messages: bodyText.split("\n").filter((line) => /(못|실패|오류|사진|저장)/.test(line)).slice(-20),
+    })}`, { cause: error });
+  }
   if (!new URL(page.url()).searchParams.get("room")?.includes("publish")) throw new Error(`실제 발행실 route로 이동하지 않았습니다: ${page.url()}`);
   const publishRoute = page.url();
   const finalDeck = structuredClone(serverDeck);
@@ -353,8 +421,12 @@ try {
   await page.getByRole("button", { name: "기본 편집으로 돌아가기" }).click();
   await page.getByRole("button", { name: "기본 말풍선 편집기로 돌아가기" }).click();
   await page.locator("[data-card-deck-workbench]").waitFor({ state: "visible", timeout: 30_000 });
-  await waitUntil(() => serverDeck === null, 15_000, "카톡 v3 덱이 서버에서 정리되지 않았습니다");
-  if (serverLegacyDeck.slides[0].cover_image_url !== photoSvg) throw new Error("바꾼 표지 사진이 기본 말풍선 편집기로 보존되지 않았습니다");
+  await waitUntil(
+    () => serverDeck === null,
+    15_000,
+    () => `카톡 v3 덱이 서버에서 정리되지 않았습니다: ${JSON.stringify(rejectedDraftSaves)}`,
+  );
+  if (serverLegacyDeck.slides[0].cover_image_url !== photoUrl) throw new Error("바꾼 표지 사진이 기본 말풍선 편집기로 보존되지 않았습니다");
   if (runtimeErrors.length) throw new Error(`브라우저 console/page 오류 ${runtimeErrors.length}건: ${runtimeErrors.join(" | ")}`);
   if (failedRequests.length) throw new Error(`실패 network request ${failedRequests.length}건: ${failedRequests.join(" | ")}`);
 
@@ -381,7 +453,7 @@ try {
     coverPhoto: cover.background,
     finalPhoto: final.background,
     returnedToBasicEditor: true,
-    returnedCoverPhotoPreserved: serverLegacyDeck.slides[0].cover_image_url === photoSvg,
+    returnedCoverPhotoPreserved: serverLegacyDeck.slides[0].cover_image_url === photoUrl,
     responsive,
     consoleErrors: runtimeErrors.length,
     failedRequests: failedRequests.length,

@@ -245,13 +245,14 @@
     max-width: calc(100vw - var(--pad-inset) - var(--pad-inset));
     margin-inline: auto;
   }
-  .workspace { grid-template-columns: 1fr; }
+  .workspace { grid-template-columns: minmax(0, 1fr); }
   .workspace,
   .stageColumn,
   .rightPanel { width: 100%; max-width: 100%; min-width: 0; }
+  .stageColumn { grid-template-columns: minmax(0, 1fr); }
   .stage {
-    width: calc(100vw - var(--pad-inset) - var(--pad-inset));
-    max-width: calc(100vw - var(--pad-inset) - var(--pad-inset));
+    width: 100%;
+    max-width: 100%;
   }
   .slideStrip { display: flex; overflow-x: auto; }
   .stageColumn { order: -1; }
