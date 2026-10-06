@@ -10,13 +10,14 @@ import {
 } from "@/lib/studio/export-contract";
 
 describe("S3 export API request·response·오류 contract", () => {
-  it("S3-API-01 정상: 전체 카드 내보내기 요청만 허용한다", () => {
+  it("S3-API-01 정상: 전체 카드와 S6 영상 내보내기 요청을 허용한다", () => {
     expect(parseCreateExport({ kind: "card_deck", expected_source_revision: 13, expected_source_hash: "a".repeat(64), item_keys: null }))
       .toMatchObject({ kind: "card_deck", expected_source_revision: 13, item_keys: null });
+    expect(parseCreateExport({ kind: "video", expected_source_revision: 7, expected_source_hash: "b".repeat(64), item_keys: null }))
+      .toMatchObject({ kind: "video", expected_source_revision: 7, item_keys: null });
   });
 
   it.each([
-    ["video kind", { kind: "video", expected_source_revision: 1, expected_source_hash: "a".repeat(64), item_keys: null }],
     ["부분 선택", { kind: "card_deck", expected_source_revision: 1, expected_source_hash: "a".repeat(64), item_keys: ["slide-1"] }],
     ["잘못된 hash", { kind: "card_deck", expected_source_revision: 1, expected_source_hash: "A".repeat(64), item_keys: null }],
   ])("S3-API-02 거절: %s 요청은 INVALID_EXPORT_REQUEST다", (_case, value) => {

@@ -8,6 +8,7 @@ import { safeTenantId, tenantMediaDir } from "@/lib/storage";
 import { assetUrl } from "@/lib/higgsfield";
 import { signMediaToken } from "@/lib/media-token";
 import type { IntroOutroCompId } from "../../remotion/IntroOutroComps";
+import type { VideoTransition } from "@/lib/studio/video-edit-contract";
 
 export type IntroOutroJobStatus = "queued" | "processing" | "completed" | "failed";
 
@@ -22,6 +23,9 @@ export interface IntroOutroJobInput {
   fontFamily?: string;
   introTitleText?: string;
   outroTitleText?: string;
+  introDurationSec?: number;
+  outroDurationSec?: number;
+  transitions?: { introToMain: VideoTransition; mainToOutro: VideoTransition };
 }
 
 export interface IntroOutroJobRecord {

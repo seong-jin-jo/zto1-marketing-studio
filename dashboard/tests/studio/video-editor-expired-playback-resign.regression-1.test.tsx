@@ -242,7 +242,7 @@ describe("편집실 영상 플레이어 — 만료된 배달 주소 재서명", 
     expect(document.querySelector("[data-video-el]")).toBeNull();
   });
 
-  it("P1-01-TRUTH-01 화면이 파일 반영 범위와 목소리 선택 한계를 사실대로 알린다", () => {
+  it("S6-TRUTH-01 화면이 실제 MP4 파일 반영 범위를 사실대로 알린다", () => {
     render(
       <VideoEditor
         videoEdit={emptyVideoEdit()}
@@ -253,9 +253,10 @@ describe("편집실 영상 플레이어 — 만료된 배달 주소 재서명", 
       />,
     );
 
-    const note = screen.getByText(/적용을 마친 인트로·아웃트로 합성 결과/);
-    expect(note).toHaveTextContent("미리보기와 발행 파일에 쓰입니다");
-    expect(note).toHaveTextContent("목소리는 선택만 저장");
+    const note = screen.getByText(/내보내면 컷, 자막 시간·스타일/);
+    expect(note).toHaveTextContent("배경음악, 인트로·아웃트로가 한 영상 파일에 반영됩니다");
+    expect(note).toHaveTextContent("안전 영역과 원본 보기 표시는 편집 가이드");
+    expect(note).not.toHaveTextContent("목소리는 선택만 저장");
     expect(note).not.toHaveTextContent("인트로, 아웃트로, 움직이는 제목은 아직 파일에 들어가지 않습니다");
   });
 });

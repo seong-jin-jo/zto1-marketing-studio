@@ -30,7 +30,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ draf
           ordinal: item.ordinal,
           status: item.status,
           attempt_count: item.attempt_count,
-          ...(token ? { artifact_url: `/api/images/deliver/${encodeURIComponent(token)}` } : {}),
+          ...(token ? { artifact_url: `${job.kind === "video" ? "/api/exports/deliver/" : "/api/images/deliver/"}${encodeURIComponent(token)}` } : {}),
+          ...(job.kind === "video" && item.status === "succeeded" && item.artifact_key
+            ? { artifact_filename: item.artifact_key }
+            : {}),
           ...(item.error_code ? { error_code: item.error_code } : {}),
         };
       }),

@@ -221,7 +221,7 @@ interface FirstCommentCapability { platform: PreviewPlatform; supported: boolean
  */
 function videoFilename(mediaUrl: string): string {
   if (!mediaUrl) return "";
-  const marker = "/api/media/";
+  const marker = mediaUrl.includes("/api/exports/deliver/") ? "/api/exports/deliver/" : "/api/media/";
   const at = mediaUrl.indexOf(marker);
   if (at < 0) return "";
   try {
@@ -232,6 +232,10 @@ function videoFilename(mediaUrl: string): string {
   } catch {
     return "";
   }
+}
+
+function videoResultFilename(result: VidResult | null): string {
+  return result?.filename || videoFilename(result?.file || result?.url || "");
 }
 
 function extractApiErrorMessage(e: unknown, fallback: string): string {
@@ -304,6 +308,8 @@ interface ImgResult {
 interface VidResult {
   url: string;
   file: string;
+  /** 만료되는 배달 URL과 별도로 보존하는 영구 영상 파일 키. 발행은 이 값을 사용한다. */
+  filename?: string;
   model: string;
   topicKey?: string;
   hasAudio?: boolean;
@@ -593,7 +599,7 @@ export default function StudioPage() {
   }, [text]);
   const [img, setImg] = useState<ImgResult | null>(null);
   const [vid, setVid] = useState<VidResult | null>(null);
-  const lineageFilename = videoFilename(vid?.file || vid?.url || "");
+  const lineageFilename = videoResultFilename(vid);
   const needsVideoLineageLookup = Boolean(
     activeWorkspace
     && lineageFilename
@@ -2227,10 +2233,10 @@ export default function StudioPage() {
     | { kind: "skipped" }
     | { kind: "done"; vid: VidResult; videoEdit: VideoEdit | null }
     | { kind: "failed" };
-  async function burnVideoSubtitles(lines: string[]): Promise<SubtitleBurnOutcome> {
+  async function burnVideoSubtitles(lines: string[], queueDraftId: string): Promise<SubtitleBurnOutcome> {
     if (editKind !== "video") return { kind: "skipped" };
     if (!activeWorkspace) return { kind: "skipped" };
-    const currentResultFilename = videoFilename(vid?.file || vid?.url || "");
+    const currentResultFilename = videoResultFilename(vid);
     if (!currentResultFilename) return { kind: "skipped" };
     // 글자를 이미 구운 결과를 다시 입력으로 쓰면 기존 글자 위에 새 글자가 겹친다. 파일명과
     // URL이 함께 보존된 글자 없는 계보만 입력으로 허용하고, 없으면 사용자에게 복구 사유를
@@ -2238,7 +2244,7 @@ export default function StudioPage() {
     // compositeDeliverUrl 대용으로 쓰면 안 된다.
     const source = resolveUnbakedVideoSource({
       currentFilename: currentResultFilename,
-      currentUrl: vid?.file || vid?.url || "",
+      currentUrl: vid?.url || vid?.file || "",
       lineage: {
         subtitlesBaked: vid?.subtitlesBaked,
         state: vid?.subtitleLineageState
@@ -2264,22 +2270,49 @@ export default function StudioPage() {
     if (!spoken.length && !editNeedsFile) return { kind: "skipped" };
     const subtitleSize = editFormat.kind === "video" ? editFormat.subtitleSize : "보통";
     try {
-      const r = await apiPost<{ ok?: boolean; file?: string; filename?: string; error?: string }>("/api/video/subtitle", {
-        tenant_id: activeWorkspace.id,
-        filename,
-        lines: spoken,
-        subtitleSize,
-        ...(renderVideoEdit ? { videoEdit: renderVideoEdit } : {}),
+      const latest = await fetcher<{ current_source_revision: number; current_source_hash: string }>(`/api/studio/drafts/${queueDraftId}/exports/latest?kind=video&tenant_id=${encodeURIComponent(activeWorkspace.id)}`);
+      const enqueueResponse = await fetch(`/api/studio/drafts/${queueDraftId}/exports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID(), ...authHeaders() },
+        body: JSON.stringify({
+          kind: "video",
+          expected_source_revision: latest.current_source_revision,
+          expected_source_hash: latest.current_source_hash,
+          item_keys: null,
+          tenant_id: activeWorkspace.id,
+        }),
       });
-      if (!r?.ok || !r.file) {
-        showToast(r?.error || "자막을 영상에 넣지 못해 발행실로 이동하지 않았습니다. 다시 시도해주세요.", "error");
+      const queued = await enqueueResponse.json() as { export_id?: string; status_url?: string; error?: string };
+      if (!enqueueResponse.ok || !queued.export_id || !queued.status_url) {
+        showToast(queued.error || "영상 내보내기 대기열에 넣지 못했습니다.", "error");
         return { kind: "failed" };
       }
-      const resultFilename = r.filename || videoFilename(r.file);
+      let artifactUrl = "";
+      let artifactFilename = "";
+      for (let attempt = 0; attempt < 240; attempt += 1) {
+        const status = await fetcher<{ status: string; items: Array<{ status: string; artifact_url?: string; artifact_filename?: string; error_code?: string }> }>(`${queued.status_url}?tenant_id=${encodeURIComponent(activeWorkspace.id)}`);
+        const item = status.items[0];
+        if (item?.status === "succeeded" && item.artifact_url && item.artifact_filename) {
+          artifactUrl = item.artifact_url;
+          artifactFilename = item.artifact_filename;
+          break;
+        }
+        if (status.status === "failed" || item?.status === "failed") {
+          showToast(`영상 내보내기에 실패했습니다${item?.error_code ? ` (${item.error_code})` : ""}. 편집 내용은 보존했습니다.`, "error");
+          return { kind: "failed" };
+        }
+        await wakeableSleep(1000);
+      }
+      if (!artifactUrl) {
+        showToast("영상 내보내기는 대기열에서 계속 진행 중입니다. 잠시 뒤 다시 시도해 주세요.", "error");
+        return { kind: "failed" };
+      }
+      const resultFilename = artifactFilename;
       const next: VidResult = {
         ...(vid as VidResult),
-        url: r.file,
-        file: r.file,
+        filename: resultFilename,
+        url: artifactUrl,
+        file: artifactUrl,
         subtitlesBaked: true,
         subtitleLineageState: "baked",
         editSource: { filename, url: sourceUrl },
@@ -2291,7 +2324,7 @@ export default function StudioPage() {
           compositeFilename: nextVideoEdit.introOutro.compositeFilename || nextVideoEdit.introOutro.resultFilename,
           resultFilename,
           renderedCutRanges: cutRanges(nextVideoEdit),
-          deliverUrl: r.file,
+          deliverUrl: artifactUrl,
         });
         setVideoEdit(nextVideoEdit);
         videoEditRef.current = nextVideoEdit;
@@ -2322,7 +2355,19 @@ export default function StudioPage() {
     try {
       const redrawn = await recompositeCards(linesToPersist);
       if (editKind === "card" && !redrawn) return;
-      const subtitled = await burnVideoSubtitles(linesToPersist);
+      let subtitled: SubtitleBurnOutcome = { kind: "skipped" };
+      if (editKind === "video") {
+        // 영상 내보내기 대기열은 현재 source revision/hash를 기준으로 작업을 만든다.
+        // 따라서 영상만 대기열 등록 전에 최신 편집 상태를 저장한다. 텍스트·카드는
+        // 아래 공통 최종 저장만 수행해야 본문 revision이 사용자 저장 1회당 1번 오른다.
+        if (!bodySnapshotRef.current.lines.length) replaceEditLines(linesToPersist);
+        const queueDraftId = await save(
+          "draft", publishReconciliations, draftId, redrawn ?? img, vid,
+          cardDeck ? pruneEmptyBubbles(cardDeck) : null, videoEdit, cardDeckV3,
+        );
+        if (!queueDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
+        subtitled = await burnVideoSubtitles(linesToPersist, queueDraftId);
+      }
       // 자막을 못 구웠으면 넘어가지 않는다. 넘어가면 무자막 파일이 그대로 발행된다.
       if (subtitled.kind === "failed") return;
       // 생성 결과에서 곧장 발행실로 이동해 editLines가 아직 비어 있어도, 저장보다 먼저
@@ -2771,7 +2816,7 @@ export default function StudioPage() {
           // 인트로/아웃트로가 적용돼 있으면(videoEdit.introOutro) 원본이 아니라 그 합성
           // 결과 파일을 올린다 — 안 그러면 "적용됐다"는 화면과 실제 발행물이 어긋난다
           // (2026-10-02 회장 반려).
-          const filename = resolveVideoPublishFilename(videoFilename(vid?.file || vid?.url || ""), videoEdit?.introOutro ?? null);
+          const filename = resolveVideoPublishFilename(videoResultFilename(vid), videoEdit?.introOutro ?? null);
           if (!filename) {
             failureReason = "올릴 영상이 없습니다. 생성실에서 숏폼 영상을 먼저 만들어 주세요.";
             errs.push(`${LABEL[p]}: ${failureReason}`);
@@ -2985,7 +3030,7 @@ export default function StudioPage() {
     if (!activeWorkspace || !draftId) return;
     const workspaceId = activeWorkspace.id;
     const currentDraftId = draftId;
-    const videoFilenameNow = videoFilename(vid?.file || vid?.url || "");
+    const videoFilenameNow = videoResultFilename(vid);
     let cancelled = false;
     // MINOR(2026-10-02 재재검토): cancelled 플래그만으로는 "이 effect의 setPub을 더는
     // 안 쓴다"만 멈춘다 — 그 밑에서 돌던 네트워크 폴링(fetch 루프)은 그대로 계속 돈다.
@@ -4456,8 +4501,8 @@ export default function StudioPage() {
     const editRoomState = !hist && !hasEditableContent
       ? (histError ? "error" : "loading")
       : "default";
-    const currentVideoUrl = vid?.file || vid?.url || "";
-    const currentVideoFilename = videoFilename(currentVideoUrl);
+    const currentVideoUrl = vid?.url || vid?.file || "";
+    const currentVideoFilename = videoResultFilename(vid);
     const previewSource = currentVideoFilename
       ? resolveUnbakedVideoSource({
         currentFilename: currentVideoFilename,

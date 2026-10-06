@@ -14,6 +14,7 @@ import { isSafePublicImageUrl, isAllowedServerFetchImageHost } from "@/lib/publi
 import { createIntroOutroJob, hasInProgressIntroOutroJob, updateIntroOutroJob } from "@/lib/intro-outro-jobs";
 import { composeIntroOutro } from "@/lib/intro-outro-render";
 import { INTRO_OUTRO_COMPS, type IntroOutroCompId } from "../../../../../remotion/IntroOutroComps";
+import { VIDEO_TRANSITIONS, type VideoTransition } from "@/lib/studio/video-edit-contract";
 
 function isValidCompId(id: unknown): id is IntroOutroCompId {
   return typeof id === "string" && id in INTRO_OUTRO_COMPS;
@@ -40,17 +41,28 @@ export async function POST(request: Request) {
   if (!body?.sourceFilename || typeof body.sourceFilename !== "string") {
     return Response.json({ error: "sourceFilename이 필요합니다." }, { status: 400 });
   }
-  const introCompId = body.introCompId ?? null;
-  const outroCompId = body.outroCompId ?? null;
-  if (introCompId !== null && !isValidCompId(introCompId)) {
+  const introCompIdValue: unknown = body.introCompId ?? null;
+  const outroCompIdValue: unknown = body.outroCompId ?? null;
+  if (introCompIdValue !== null && !isValidCompId(introCompIdValue)) {
     return Response.json({ error: "유효하지 않은 인트로 템플릿입니다." }, { status: 400 });
   }
-  if (outroCompId !== null && !isValidCompId(outroCompId)) {
+  if (outroCompIdValue !== null && !isValidCompId(outroCompIdValue)) {
     return Response.json({ error: "유효하지 않은 아웃트로 템플릿입니다." }, { status: 400 });
   }
+  const introCompId: IntroOutroCompId | null = introCompIdValue;
+  const outroCompId: IntroOutroCompId | null = outroCompIdValue;
   if (!introCompId && !outroCompId) {
     return Response.json({ error: "인트로 또는 아웃트로 중 하나는 선택해야 합니다." }, { status: 400 });
   }
+  const introDurationSec = Number(body.introDurationSec ?? (introCompId ? INTRO_OUTRO_COMPS[introCompId].durationInFrames / 30 : 0));
+  const outroDurationSec = Number(body.outroDurationSec ?? (outroCompId ? INTRO_OUTRO_COMPS[outroCompId].durationInFrames / 30 : 0));
+  if ((introCompId && (!Number.isFinite(introDurationSec) || introDurationSec < 0.5 || introDurationSec > 5))
+    || (outroCompId && (!Number.isFinite(outroDurationSec) || outroDurationSec < 0.5 || outroDurationSec > 5))) {
+    return Response.json({ error: "인트로·아웃트로 길이는 0.5초부터 5초까지입니다." }, { status: 422 });
+  }
+  const transitions = body.transitions && typeof body.transitions === "object" ? body.transitions : {};
+  const introToMain = VIDEO_TRANSITIONS.includes(transitions.introToMain as VideoTransition) ? transitions.introToMain as VideoTransition : "cut";
+  const mainToOutro = VIDEO_TRANSITIONS.includes(transitions.mainToOutro as VideoTransition) ? transitions.mainToOutro as VideoTransition : "cut";
   const logoUrlRaw = typeof body.logoUrl === "string" ? body.logoUrl.trim() : "";
   if (logoUrlRaw && !isValidLogoUrl(logoUrlRaw)) {
     return Response.json({ error: "로고 URL이 유효한 공개 HTTPS 주소가 아닙니다." }, { status: 400 });
@@ -80,6 +92,9 @@ export async function POST(request: Request) {
     fontFamily: body.fontFamily,
     introTitleText: body.introTitleText,
     outroTitleText: body.outroTitleText,
+    introDurationSec,
+    outroDurationSec,
+    transitions: { introToMain, mainToOutro },
   });
 
   setTimeout(() => {
@@ -93,6 +108,9 @@ export async function POST(request: Request) {
       fontFamily: job.input.fontFamily,
       introTitleText: job.input.introTitleText,
       outroTitleText: job.input.outroTitleText,
+      introDurationSec: job.input.introDurationSec,
+      outroDurationSec: job.input.outroDurationSec,
+      transitions: job.input.transitions,
     });
   }, 0);
 
@@ -113,6 +131,9 @@ async function runIntroOutroJob(
     fontFamily?: string;
     introTitleText?: string;
     outroTitleText?: string;
+    introDurationSec?: number;
+    outroDurationSec?: number;
+    transitions?: { introToMain: VideoTransition; mainToOutro: VideoTransition };
   },
 ) {
   updateIntroOutroJob(tenantId, jobId, { status: "processing" });
@@ -132,6 +153,9 @@ async function runIntroOutroJob(
         titleText: input.introTitleText || input.outroTitleText,
       },
       outputFilename,
+      introDurationSec: input.introDurationSec,
+      outroDurationSec: input.outroDurationSec,
+      transitions: input.transitions,
     });
     updateIntroOutroJob(tenantId, jobId, { status: "completed", resultFilename: outputFilename });
   } catch (err) {

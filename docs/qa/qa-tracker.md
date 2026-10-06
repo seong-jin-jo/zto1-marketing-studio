@@ -1,3 +1,9 @@
+## 2026-10-07 PR 125 본문 충돌 복구 추가 저장 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| EDITROOM-S6-BODY-CONFLICT-01 | 탭 A의 본문 저장 1회 뒤 revision이 6이 아니라 7로 증가해 두 탭 충돌 복구 계약이 깨짐 | ✅ 로컬 PASS | 텍스트·카드 발행의 중복 사전 저장을 제거했다. 실제 Chromium 두 탭 게이트에서 첫 저장 revision 6, 복구 저장 revision 8, 콘솔 오류 0을 확인했다. CI verify 순서의 typecheck, build, schema·seed·RLS, migration matrix, Vitest 3,610건, 발행실 정렬, 말풍선 Chromium, v70 화면 정합, 본문 충돌 E2E가 모두 PASS했다. |
+
 ## 2026-10-07 편집실 S5b 교차 리뷰 4차 ✅ 로컬 PASS
 
 | 요청번호 | 결함 | 현재 판정 | 종료 증거 |

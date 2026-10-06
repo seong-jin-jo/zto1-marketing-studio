@@ -436,6 +436,7 @@ v71 시안처럼 카톡 편집 한 화면에서 말풍선과 고급 도구를 �
 - 고급 도구 interaction과 undo 통합 테스트.
 - 글·스티커·로고 덧붙임 요소 화면·Remotion PNG parity.
 - 표지·본문·마지막 사진 실제 PNG 회귀.
+- 교차 리뷰 MINOR 1: 댓글 유도(`comment_prompt`) 장은 UI와 command 양쪽에서 순서 이동을 잠근다.
 
 ## S6 영상 5레인과 넣기 서랍
 

@@ -8,6 +8,8 @@ import { signMediaToken } from "@/lib/media-token";
 import { MAX_VIDEO_BYTES } from "@/lib/video-limits";
 
 const ALLOWED_VIDEO_EXTS = [".mp4", ".mov", ".m4v", ".webm"];
+const ALLOWED_AUDIO_EXTS = [".mp3", ".m4a", ".wav"];
+const MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 
 // SNS-015 업로드 상한: 제품 정책값(100 MiB)을 발행 경로와 **같은 상수**로 공유한다.
 // 주의 — 이 검사는 multipart 파서의 메모리 할당을 막지 못한다(Request.formData()는 이 코드보다
@@ -19,6 +21,7 @@ const MB = 1024 * 1024;
 export async function POST(request: Request) {
   const formData = await request.formData();
   const file = formData.get("file");
+  const kind = formData.get("kind") === "music" ? "music" : "video";
 
   if (!file || !(file instanceof Blob)) {
     return Response.json({ error: "No file" }, { status: 400 });
@@ -27,8 +30,13 @@ export async function POST(request: Request) {
   const originalName = (file as File).name || "upload";
   const ext = path.extname(originalName).toLowerCase();
 
-  if (!ALLOWED_VIDEO_EXTS.includes(ext)) {
-    return Response.json({ error: `Unsupported video format: ${ext}` }, { status: 400 });
+  const allowed = kind === "music" ? ALLOWED_AUDIO_EXTS : ALLOWED_VIDEO_EXTS;
+  const maxBytes = kind === "music" ? MAX_AUDIO_BYTES : MAX_UPLOAD_BYTES;
+  if (!allowed.includes(ext)) {
+    return Response.json({ error: kind === "music" ? `Unsupported audio format: ${ext}` : `Unsupported video format: ${ext}` }, { status: 400 });
+  }
+  if (kind === "music" && formData.get("rightsConfirmed") !== "true") {
+    return Response.json({ error: "음악 사용 권한 확인이 필요합니다." }, { status: 422 });
   }
 
   // 크기 검사는 반드시 arrayBuffer() "앞"에서 — Blob.size는 본문을 메모리로 읽지 않고 알 수 있다.
@@ -37,10 +45,10 @@ export async function POST(request: Request) {
   if (!(size > 0)) {
     return Response.json({ error: "빈 파일은 업로드할 수 없습니다. 영상 파일을 다시 선택해주세요." }, { status: 400 });
   }
-  if (size > MAX_UPLOAD_BYTES) {
+  if (size > maxBytes) {
     return Response.json(
       {
-        error: `영상이 너무 큽니다 — 최대 ${MAX_UPLOAD_BYTES / MB}MiB까지 업로드할 수 있습니다(현재 ${Math.ceil(size / MB)}MiB). 파일을 압축하거나 길이를 줄여 다시 시도해주세요.`,
+        error: `${kind === "music" ? "음악" : "영상"}이 너무 큽니다 — 최대 ${maxBytes / MB}MiB까지 업로드할 수 있습니다(현재 ${Math.ceil(size / MB)}MiB). 파일을 압축하거나 길이를 줄여 다시 시도해주세요.`,
       },
       { status: 413 },
     );
@@ -59,9 +67,9 @@ export async function POST(request: Request) {
     const buf = Buffer.from(await file.arrayBuffer());
     // 2차 방어: Blob.size는 신뢰 가능한 값이지만, 사전검사와 실제 바이트가 어긋나는 런타임/폴리필
     // 조합에서도 상한을 넘긴 파일이 디스크에 남지 않게 한 번 더 확인한다(fail closed).
-    if (buf.length <= 0 || buf.length > MAX_UPLOAD_BYTES) {
+    if (buf.length <= 0 || buf.length > maxBytes) {
       return Response.json(
-        { error: `업로드 크기가 허용 범위를 벗어났습니다(1B 이상 ~ ${MAX_UPLOAD_BYTES / MB}MiB 이하).` },
+        { error: `업로드 크기가 허용 범위를 벗어났습니다(1B 이상 ~ ${maxBytes / MB}MiB 이하).` },
         { status: 413 },
       );
     }
@@ -83,6 +91,6 @@ export async function POST(request: Request) {
       url = `/videos/${safeName}`; // 운영자(공유 루트) — 기존 정적 경로 유지.
     }
 
-    return Response.json({ url, filename: safeName });
+    return Response.json({ url, filename: safeName, kind });
   });
 }

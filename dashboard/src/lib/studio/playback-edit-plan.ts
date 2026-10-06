@@ -56,7 +56,10 @@ export function alignPlaybackScript(edit: VideoEdit, lines: string[]): VideoEdit
 export function playbackHasWork(edit: VideoEdit): boolean {
   return edit.subtitles.some((line) => line.cut || line.text.trim().length > 0)
     || edit.overlays.some((item) => item.text.trim().length > 0)
-    || edit.comments.some((item) => item.author.trim().length > 0 && item.text.trim().length > 0);
+    || edit.comments.some((item) => item.author.trim().length > 0 && item.text.trim().length > 0)
+    || (edit.textStickers ?? []).some((item) => item.text.trim().length > 0)
+    || Boolean(edit.music)
+    || Boolean(edit.voice);
 }
 
 /** 겹친 컷을 한 구간으로 합치고, 영상 길이 밖으로 나간 부분은 버린다. */
@@ -125,9 +128,15 @@ function piecesOutsideCuts(startSec: number, endSec: number, cuts: PlaybackRange
   return pieces;
 }
 
-type DrawKind = "subtitle" | "hook" | "cta" | "comment";
+type DrawKind = "subtitle" | "text" | "sticker" | "hook" | "cta" | "comment";
 
-type SourceWindow = { text: string; startSec: number; endSec: number; kind: DrawKind };
+type SourceWindow = {
+  text: string;
+  startSec: number;
+  endSec: number;
+  kind: DrawKind;
+  animation?: NonNullable<VideoEdit["textStickers"]>[number]["animation"];
+};
 
 type OutputWindow = SourceWindow;
 
@@ -211,6 +220,11 @@ function sourceWindows(edit: VideoEdit, durationSec: number): { windows: SourceW
     if (!author || !text) continue;
     windows.push({ text: `${author} ${text}`, startSec: comment.startSec, endSec: comment.endSec, kind: "comment" });
   }
+  for (const item of edit.textStickers ?? []) {
+    const text = item.text.trim();
+    if (!text) continue;
+    windows.push({ text, startSec: item.startSec, endSec: item.endSec, kind: item.kind, animation: item.animation });
+  }
   return { windows, dropped, warnings: normalizedSubtitles.warnings };
 }
 
@@ -220,6 +234,30 @@ function shiftWindow(window: SourceWindow, cuts: PlaybackRange[]): OutputWindow[
     startSec: piece.startSec - removedBefore(piece.startSec, cuts),
     endSec: piece.endSec - removedBefore(piece.endSec, cuts),
   }));
+}
+
+/** type 움직임은 렌더 시간 앞부분에 글자 묶음을 순차 노출한다. 레이어 폭증은 12단계로 제한한다. */
+function expandTypeWindows(windows: OutputWindow[]): OutputWindow[] {
+  return windows.flatMap((window) => {
+    if (window.animation !== "type") return window;
+    const chars = Array.from(window.text);
+    if (chars.length < 2) return { ...window, animation: "none" as const };
+    const steps = Math.min(chars.length, 12);
+    const revealDuration = Math.min(0.8, Math.max(MIN_SPAN_SEC, (window.endSec - window.startSec) * 0.5));
+    return Array.from({ length: steps }, (_, index) => {
+      const startSec = window.startSec + revealDuration * index / steps;
+      const endSec = index === steps - 1
+        ? window.endSec
+        : window.startSec + revealDuration * (index + 1) / steps;
+      return {
+        ...window,
+        text: chars.slice(0, Math.ceil(chars.length * (index + 1) / steps)).join(""),
+        startSec,
+        endSec,
+        animation: "none" as const,
+      };
+    });
+  });
 }
 
 function coversFullDuration(kept: PlaybackRange[], durationSec: number): boolean {
@@ -235,22 +273,36 @@ function drawtext(input: {
   startSec: number;
   endSec: number;
   fontFile?: string | null;
+  fontColor?: string;
+  boxColor?: string;
+  box?: boolean;
+  outline?: boolean;
+  animation?: SourceWindow["animation"];
 }): string {
   const border = Math.max(2, Math.round(input.fontSize * 0.09));
+  const animationSec = Math.min(0.3, Math.max(MIN_SPAN_SEC, input.endSec - input.startSec));
+  const progress = `if(lt(t\\,${fmt(input.startSec + animationSec)})\\,(t-${fmt(input.startSec)})/${fmt(animationSec)}\\,1)`;
+  const fontSize = input.animation === "scale"
+    ? `'${input.fontSize}*(0.85+0.15*${progress})'`
+    : String(input.fontSize);
+  const y = input.animation === "rise"
+    ? `${input.y}+${Math.max(8, Math.round(input.fontSize * 0.8))}*(1-${progress})`
+    : input.y;
   const args = [
     `text='${escapeDrawText(input.text)}'`,
     "expansion=none",
-    `fontsize=${input.fontSize}`,
-    "fontcolor=white",
-    `borderw=${border}`,
+    `fontsize=${fontSize}`,
+    `fontcolor=${input.fontColor ?? "white"}`,
+    `borderw=${input.outline === false ? 0 : border}`,
     "bordercolor=black@0.9",
-    "box=1",
-    "boxcolor=black@0.45",
+    `box=${input.box === false ? 0 : 1}`,
+    `boxcolor=${input.boxColor ?? "black@0.45"}`,
     `boxborderw=${Math.round(input.fontSize * 0.3)}`,
     "x=(w-text_w)/2",
-    `y=${input.y}`,
+    `y=${y}`,
     `enable='between(t,${fmt(input.startSec)},${fmt(input.endSec)})'`,
   ];
+  if (input.animation === "fade") args.push(`alpha='${progress}'`);
   if (input.fontFile) args.splice(1, 0, `fontfile='${escapeFilterPath(input.fontFile)}'`);
   return `drawtext=${args.join(":")}`;
 }
@@ -260,23 +312,32 @@ function drawFilters(windows: OutputWindow[], input: {
   height: number;
   size: SubtitleSize;
   fontFile?: string | null;
+  edit: VideoEdit;
 }): string[] {
-  const fontSize = subtitleFontSize(input.size, input.width);
+  const subtitleStyle = input.edit.subtitleStyle ?? { preset: "basic", position: "bottom", sizePercent: 100, outline: true };
+  const fontSize = Math.max(14, Math.round(subtitleFontSize(input.size, input.width) * subtitleStyle.sizePercent / 100));
   const maxWidth = Math.max(fontSize * 4, Math.round(input.width * 0.86));
   const lineHeight = Math.round(fontSize * 1.32);
   const bottomInset = Math.round(input.height * 0.16);
   const filters: string[] = [];
   const ordered = [
     ...windows.filter((window) => window.kind === "comment"),
+    ...windows.filter((window) => window.kind === "text" || window.kind === "sticker"),
     ...windows.filter((window) => window.kind === "hook" || window.kind === "cta"),
     ...windows.filter((window) => window.kind === "subtitle"),
   ];
   for (const window of ordered) {
     const lines = wrapSubtitleLine(window.text, fontSize, maxWidth);
     lines.forEach((line, row) => {
+      const subtitleY = subtitleStyle.position === "top"
+        ? String(Math.round(input.height * 0.14) + row * lineHeight)
+        : subtitleStyle.position === "middle"
+          ? `(h-text_h)/2+${row * lineHeight}`
+          : `h-${bottomInset + (lines.length - 1 - row) * lineHeight}-text_h`;
       const y = window.kind === "subtitle"
-        ? `h-${bottomInset + (lines.length - 1 - row) * lineHeight}-text_h`
-        : String(Math.round(input.height * (window.kind === "hook" ? 0.12 : window.kind === "cta" ? 0.22 : 0.40)) + row * lineHeight);
+        ? subtitleY
+        : String(Math.round(input.height * (window.kind === "hook" ? 0.12 : window.kind === "cta" ? 0.22 : window.kind === "text" || window.kind === "sticker" ? 0.30 : 0.40)) + row * lineHeight);
+      const preset = window.kind === "subtitle" ? subtitleStyle.preset : "basic";
       filters.push(drawtext({
         text: line,
         fontSize,
@@ -284,6 +345,11 @@ function drawFilters(windows: OutputWindow[], input: {
         startSec: window.startSec,
         endSec: window.endSec,
         fontFile: input.fontFile,
+        fontColor: preset === "yellow" || preset === "word" ? "yellow" : preset === "brand" ? "0x7C5CFC" : "white",
+        box: preset === "box" || preset === "band" || window.kind !== "subtitle",
+        boxColor: preset === "brand" ? "0x241B4B@0.88" : preset === "band" ? "black@0.82" : "black@0.45",
+        outline: subtitleStyle.outline,
+        animation: window.animation,
       }));
     });
   }
@@ -329,7 +395,13 @@ export type PlaybackBurnPlan =
     videoFilter: string | null;
     filterComplex: string | null;
     includeAudio: boolean;
-    voiceApplied: false;
+    voiceRequested: boolean;
+    musicRequested: boolean;
+    musicVolume: number;
+    musicOffsetSec: number;
+    musicFadeOut: boolean;
+    musicDuckUnderVoice: boolean;
+    outputHasAudio: boolean;
     warnings: string[];
   }
   | { ok: false; reason: "nothing_left" | "too_many_layers" };
@@ -351,16 +423,17 @@ export function planPlaybackBurn(input: {
 
   const source = sourceWindows(input.edit, durationSec);
   const droppedTexts = [...source.dropped];
-  const outputWindows: OutputWindow[] = [];
+  const shiftedWindows: OutputWindow[] = [];
   for (const window of source.windows) {
     const shifted = shiftWindow(window, cuts);
     if (!shifted.length) {
       droppedTexts.push(window.text);
       continue;
     }
-    outputWindows.push(...shifted);
+    shiftedWindows.push(...shifted);
   }
-  const draws = drawFilters(outputWindows, input);
+  const outputWindows = expandTypeWindows(shiftedWindows);
+  const draws = drawFilters(outputWindows, { ...input, edit: input.edit });
   if (draws.length > MAX_DRAW_LAYERS) return { ok: false, reason: "too_many_layers" };
 
   const keptTexts = [...new Set(outputWindows.map((window) => window.text))];
@@ -373,8 +446,14 @@ export function planPlaybackBurn(input: {
       droppedTexts,
       videoFilter: draws.join(",") || null,
       filterComplex: null,
-      includeAudio: false,
-      voiceApplied: false,
+      includeAudio: input.hasAudio,
+      voiceRequested: Boolean(input.edit.voice),
+      musicRequested: Boolean(input.edit.music),
+      musicVolume: input.edit.music?.volume ?? 0,
+      musicOffsetSec: input.edit.music?.offsetSec ?? 0,
+      musicFadeOut: input.edit.music?.fadeOut ?? false,
+      musicDuckUnderVoice: input.edit.music?.duckUnderVoice ?? false,
+      outputHasAudio: input.hasAudio || Boolean(input.edit.voice) || Boolean(input.edit.music),
       warnings: source.warnings,
     };
   }
@@ -388,17 +467,71 @@ export function planPlaybackBurn(input: {
     videoFilter: null,
     filterComplex,
     includeAudio: input.hasAudio,
-    voiceApplied: false,
+    voiceRequested: Boolean(input.edit.voice),
+    musicRequested: Boolean(input.edit.music),
+    musicVolume: input.edit.music?.volume ?? 0,
+    musicOffsetSec: input.edit.music?.offsetSec ?? 0,
+    musicFadeOut: input.edit.music?.fadeOut ?? false,
+    musicDuckUnderVoice: input.edit.music?.duckUnderVoice ?? false,
+    outputHasAudio: input.hasAudio || Boolean(input.edit.voice) || Boolean(input.edit.music),
     warnings: source.warnings,
   };
 }
 
 export function playbackFfmpegArgs(
   plan: PlaybackBurnPlan,
-  paths: { inputPath: string; outputPath: string },
+  paths: { inputPath: string; outputPath: string; musicPath?: string | null; voicePath?: string | null },
 ): string[] | null {
   if (!plan.ok) return null;
+  if (plan.musicRequested && !paths.musicPath) return null;
+  if (plan.voiceRequested && !paths.voicePath) return null;
   const videoCodec = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "20"];
+  const externalAudio = Boolean(paths.musicPath || paths.voicePath);
+  if (externalAudio) {
+    const args = ["-y", "-i", paths.inputPath];
+    let nextInput = 1;
+    const voiceIndex = paths.voicePath ? nextInput++ : null;
+    const musicIndex = paths.musicPath ? nextInput++ : null;
+    if (paths.voicePath) args.push("-i", paths.voicePath);
+    if (paths.musicPath) args.push("-stream_loop", "-1", "-i", paths.musicPath);
+    const filters: string[] = [];
+    if (plan.filterComplex) filters.push(voiceIndex !== null ? plan.filterComplex.split(";[0:a]")[0] : plan.filterComplex);
+    else if (plan.videoFilter) filters.push(`[0:v]${plan.videoFilter}[vout]`);
+    else filters.push("[0:v]null[vout]");
+    let primaryAudio: string | null = null;
+    if (voiceIndex !== null) {
+      filters.push(`[${voiceIndex}:a]atrim=duration=${fmt(plan.outputDurationSec)},asetpts=PTS-STARTPTS[voice]`);
+      primaryAudio = "[voice]";
+    } else if (plan.includeAudio) {
+      // 컷이 있는 경우 plan.filterComplex에 [aout]이 이미 들어 있다.
+      primaryAudio = plan.filterComplex ? "[aout]" : "[0:a]";
+    }
+    let musicAudio: string | null = null;
+    if (musicIndex !== null) {
+      const musicFilters = [
+        `atrim=start=${fmt(plan.musicOffsetSec)}:duration=${fmt(plan.outputDurationSec)}`,
+        "asetpts=PTS-STARTPTS",
+        `volume=${fmt(plan.musicVolume / 100)}`,
+      ];
+      if (plan.musicFadeOut) musicFilters.push(`afade=t=out:st=${fmt(Math.max(0, plan.outputDurationSec - 1))}:d=1`);
+      filters.push(`[${musicIndex}:a]${musicFilters.join(",")}[musicraw]`);
+      musicAudio = "[musicraw]";
+    }
+    if (musicAudio && primaryAudio && plan.musicDuckUnderVoice) {
+      filters.push(`${primaryAudio}asplit=2[primarymix][duckkey]`);
+      filters.push(`${musicAudio}[duckkey]sidechaincompress=threshold=0.04:ratio=8:attack=20:release=250[musicducked]`);
+      primaryAudio = "[primarymix]";
+      musicAudio = "[musicducked]";
+    }
+    const audioInputs = [primaryAudio, musicAudio].filter((value): value is string => Boolean(value));
+    if (audioInputs.length > 1) filters.push(`${audioInputs.join("")}amix=inputs=${audioInputs.length}:duration=first:normalize=0[audioout]`);
+    else if (audioInputs.length === 1) filters.push(`${audioInputs[0]}anull[audioout]`);
+    args.push("-filter_complex", filters.join(";"), "-map", "[vout]");
+    if (audioInputs.length) args.push("-map", "[audioout]", "-c:a", "aac", "-b:a", "128k");
+    else args.push("-an");
+    args.push(...videoCodec, "-t", fmt(plan.outputDurationSec), paths.outputPath);
+    return args;
+  }
   if (plan.filterComplex) {
     const args = ["-y", "-i", paths.inputPath, "-filter_complex", plan.filterComplex, "-map", "[vout]"];
     if (plan.includeAudio) args.push("-map", "[aout]", "-c:a", "aac", "-b:a", "128k");

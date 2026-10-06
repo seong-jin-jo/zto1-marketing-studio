@@ -19,6 +19,7 @@
  * 돌연변이 검증으로 확인했다(보고 참조).
  */
 import "@testing-library/jest-dom/vitest";
+import { readFileSync } from "node:fs";
 import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +27,8 @@ import { EditRoom } from "@/components/studio/StudioRooms";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { emptyVideoEdit, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import deckD100 from "./fixtures/deck-d100.v2.json";
+
+const globalsCss = readFileSync("src/app/globals.css", "utf8");
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -165,8 +168,24 @@ function VideoRoomHarness({ initialLines, onLinesChangeSpy }: { initialLines: st
   );
 }
 
-describe("v70 §4: 영상 편집 워크벤치(플레이어+자막 대본+타임라인)", () => {
-  it("영상이 있으면 배치(위 플레이어+대본, 아래 3레인 타임라인)가 전부 뜬다", () => {
+describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임라인)", () => {
+  it("S6-VOICE-01 목소리는 비용 확인 전에는 바뀌지 않고 확인 뒤 실제 렌더 계약에 저장된다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ voices: [{ id: "voice-calm", name: "차분한 남성", category: "premade" }] }),
+    })));
+    render(<VideoRoomHarness initialLines={["첫 장면 대사"]} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "차분한 남성" }));
+    expect(screen.getByText(/예상 크레딧 30/)).toBeInTheDocument();
+    expect(screen.getByText("아직 목소리를 고르지 않았습니다. 지금 이 영상은 기존 음성을 그대로 씁니다.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "바꾸기 · 크레딧 30" }));
+    expect(screen.getByText("선택된 목소리: 차분한 남성. 내보낸 MP4의 나레이션에 반영됩니다.")).toBeInTheDocument();
+  });
+
+  it("S6-TL-01 영상이 있으면 5레인 타임라인과 넣기 서랍 진입점이 뜬다", () => {
     stubVoicesUnconfigured();
     render(<VideoRoomHarness initialLines={["첫 장면 대사", "둘째 장면 대사"]} />);
     expect(document.querySelector("[data-video-workbench]")).toBeTruthy();
@@ -175,14 +194,15 @@ describe("v70 §4: 영상 편집 워크벤치(플레이어+자막 대본+타임�
     expect(document.querySelector("[data-video-subtitle-script]")).toBeTruthy();
     expect(document.querySelector("[data-video-timeline]")).toBeTruthy();
     const lanes = document.querySelectorAll("[data-video-timeline-lane]");
-    expect(lanes.length).toBe(3);
+    expect(lanes.length).toBe(5);
     const laneLabels = Array.from(lanes).map((lane) => lane.getAttribute("data-video-timeline-lane"));
-    expect(laneLabels).toEqual(["자막", "훅·CTA", "댓글"]);
+    expect(laneLabels).toEqual(["영상", "자막", "글·스티커", "훅·댓글", "배경 음악"]);
+    expect(document.querySelector("[data-video-insert-drawer-toggle]")).toBeInTheDocument();
     // §4.4 "초 숫자 입력칸 0개".
     expect(document.querySelectorAll('[data-video-timeline] input[type="number"]').length).toBe(0);
   });
 
-  it("PR94-R3-VIDEO-01 정상: 390 영상 화면은 160px이고 3×44px 레인은 156px 타임라인 안에 머문다", () => {
+  it("S6-TL-02 390 영상 화면은 160px이고 5×44px 레인은 토큰화한 타임라인 안에 머문다", () => {
     stubVoicesUnconfigured();
     render(<VideoRoomHarness initialLines={["첫 장면 대사"]} />);
     const playback = document.querySelector("[data-video-playback]");
@@ -192,8 +212,54 @@ describe("v70 §4: 영상 편집 워크벤치(플레이어+자막 대본+타임�
     expect(screen?.className).toContain("max-[26rem]:h-40");
     expect(screen?.className).toContain("max-[26rem]:min-h-40");
     expect(screen?.className).toContain("max-[26rem]:aspect-auto");
-    expect(document.querySelector("[data-video-workbench]")?.className).toContain("max-[26rem]:[grid-template-rows:auto_9.75rem]");
+    const workbenchClass = document.querySelector("[data-video-workbench]")?.className ?? "";
+    expect(workbenchClass).toContain("max-[26rem]:[grid-template-rows:auto_var(--video-editor-timeline-height)]");
+    expect(workbenchClass).not.toContain("max-[26rem]:[grid-template-rows:auto_15rem]");
+
+    const timelineHeightToken = globalsCss.match(
+      /--video-editor-timeline-height:\s*calc\(([\s\S]*?)\);/,
+    )?.[1] ?? "";
+    expect(globalsCss).toContain("--control-touch: 44px;");
+    expect(timelineHeightToken.match(/var\(--control-touch\)/g)).toHaveLength(5);
+    expect(timelineHeightToken.match(/var\(--stack-tight\)/g)).toHaveLength(2);
+    expect(timelineHeightToken.match(/var\(--space-micro\)/g)).toHaveLength(2);
     expect(document.querySelector("[data-video-script-column]")).toBeInTheDocument();
+  });
+
+  it("S6-TL-03 키보드 방향키는 블록을 0.1초 옮기고 Shift+방향키는 끝점을 조절한다", () => {
+    stubVoicesUnconfigured();
+    render(<VideoRoomHarness initialLines={["첫 장면 대사", "둘째 장면 대사"]} />);
+    const first = document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement;
+    expect(first.getAttribute("aria-label")).toContain("0초부터 3초");
+    fireEvent.keyDown(first, { key: "ArrowRight" });
+    expect((document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement).getAttribute("aria-label")).toContain("0.1초부터 3.1초");
+    fireEvent.keyDown(document.querySelector('[data-video-timeline-block="subtitle"]')!, { key: "ArrowRight", shiftKey: true });
+    expect((document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement).getAttribute("aria-label")).toContain("0.1초부터 3.2초");
+  });
+
+  it("S6-MAJOR4-01 타임라인 블록의 접근 가능한 손잡이는 본문 텍스트에 화살표를 섞지 않는다", () => {
+    stubVoicesUnconfigured();
+    render(<VideoRoomHarness initialLines={["둘째 장면 대사"]} />);
+    const block = document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement;
+    expect(block).toHaveTextContent("둘째 장면 대사");
+    expect(block.textContent).toBe("둘째 장면 대사");
+    expect(screen.getByRole("button", { name: "둘째 장면 대사 시작점 조절" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "둘째 장면 대사 끝점 조절" })).toBeInTheDocument();
+  });
+
+  it("S6-DRAWER-01 넣기 서랍에서 글 블록과 3종 전환을 계약에 저장한다", () => {
+    stubVoicesUnconfigured();
+    render(<VideoRoomHarness initialLines={["첫 장면 대사"]} />);
+    fireEvent.click(document.querySelector("[data-video-insert-drawer-toggle]")!);
+    expect(document.querySelector("[data-video-insert-drawer]")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "글·스티커" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "글 또는 스티커 내용" }), { target: { value: "핵심 제목" } });
+    fireEvent.click(screen.getByRole("button", { name: "추가" }));
+    expect(document.querySelectorAll('[data-video-timeline-block="text"]')).toHaveLength(1);
+    fireEvent.click(screen.getByRole("tab", { name: "전환" }));
+    const fadeButtons = screen.getAllByRole("button", { name: "페이드" });
+    fireEvent.click(fadeButtons[0]);
+    expect(fadeButtons[0]).toHaveAttribute("aria-pressed", "true");
   });
 
   it("자막 대본이 lines에서 시딩되고, 한 줄 = 한 컷이다", () => {
