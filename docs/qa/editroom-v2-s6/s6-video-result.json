@@ -1,0 +1,42 @@
+{
+  "result": "PASS",
+  "playbackTime": 0.170495,
+  "lanes": 5,
+  "subtitleBlocks": 3,
+  "beforeDrag": "첫 장면 자막, 0초부터 1.3초",
+  "afterDrag": "첫 장면 자막, 2초부터 3.3초",
+  "beforeResize": "첫 장면 자막, 2초부터 3.3초",
+  "afterResize": "첫 장면 자막, 2초부터 4.3초",
+  "savedStartSec": 2,
+  "savedEndSec": 4.3,
+  "saves": 1,
+  "responsive": [
+    {
+      "viewport": 1440,
+      "overflow": {
+        "width": 1440,
+        "scroll": 1440
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-s6/docs/qa/editroom-v2-s6/s6-video-editor-1440.png"
+    },
+    {
+      "viewport": 1024,
+      "overflow": {
+        "width": 1024,
+        "scroll": 1024
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-s6/docs/qa/editroom-v2-s6/s6-video-editor-1024.png"
+    },
+    {
+      "viewport": 390,
+      "overflow": {
+        "width": 390,
+        "scroll": 390
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-s6/docs/qa/editroom-v2-s6/s6-video-editor-390.png"
+    }
+  ],
+  "consoleErrors": 0,
+  "failedRequests": 0,
+  "snapshotPath": "/var/folders/18/01vfd1vd44z8yc13lsmrgl4m0000gn/T/editroom-v2-s6-mobile-snapshot.html"
+}

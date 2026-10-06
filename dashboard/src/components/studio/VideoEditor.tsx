@@ -858,7 +858,7 @@ function OverlayEditor({ edit, duration, playhead, run, syncing = false }: { edi
               aria-label={`${overlayIndex + 1}번째 오버레이 문구`}
               value={overlay.text}
               onChange={(e) => run((d) => updateOverlay(d, overlay.id, { text: e.target.value }))}
-              className="min-w-0 flex-1 rounded-control border border-border bg-surface-2 p-micro text-caption text-text"
+              className="min-h-control-touch min-w-control-touch flex-1 rounded-control border border-border bg-surface-2 px-stack-tight text-caption text-text"
             />
             <span className="text-subtle" data-video-overlay-range>{formatClock(overlay.startSec)}~{formatClock(overlay.endSec)} · 타임라인에서 끌어 바꿉니다</span>
             <Button size="sm" variant="secondary" aria-label={`${overlayIndex + 1}번째 오버레이 삭제`} onClick={() => run((d) => removeOverlay(d, overlay.id))}>삭제</Button>
@@ -911,13 +911,13 @@ function CommentOverlayEditor({ edit, duration, playhead, run, syncing = false }
               aria-label={`${commentIndex + 1}번째 댓글 작성자`}
               value={comment.author}
               onChange={(e) => run((d) => updateComment(d, comment.id, { author: e.target.value }))}
-              className="w-24 rounded-control border border-border bg-surface-2 p-micro text-caption text-text"
+              className="min-h-control-touch w-24 rounded-control border border-border bg-surface-2 px-stack-tight text-caption text-text"
             />
             <input
               aria-label={`${commentIndex + 1}번째 댓글 내용`}
               value={comment.text}
               onChange={(e) => run((d) => updateComment(d, comment.id, { text: e.target.value }))}
-              className="min-w-0 flex-1 rounded-control border border-border bg-surface-2 p-micro text-caption text-text"
+              className="min-h-control-touch min-w-0 flex-1 rounded-control border border-border bg-surface-2 px-stack-tight text-caption text-text"
             />
             <Button size="sm" variant="secondary" aria-label={`${commentIndex + 1}번째 댓글 삭제`} onClick={() => run((d) => removeComment(d, comment.id))}>삭제</Button>
             {!comment.author.trim() || !comment.text.trim() ? <p className="w-full text-caption text-warning" data-video-comment-incomplete>작성자·내용이 비어 있는 동안 저장되지 않습니다.</p> : null}
@@ -1355,15 +1355,15 @@ function TimelineEditableBlock({ lane, id, label, startSec, endSec, tone, onSeek
       aria-label={`${label}, ${formatSec(startSec)}초부터 ${formatSec(endSec)}초`}
       data-video-timeline-block={lane}
       data-video-timeline-block-id={id}
-      className={`absolute top-0 flex min-h-control-touch items-center overflow-hidden rounded-control border border-border text-caption font-semibold ${tones[tone]}`}
+      className={`absolute top-0 flex min-h-control-touch items-center overflow-visible rounded-control border border-border text-caption font-semibold active:opacity-90 max-[64rem]:!w-[calc(var(--control-touch)*2)] ${tones[tone]}`}
       style={{ left: `${startSec * PX_PER_SEC}px`, width: `${Math.max(44, (endSec - startSec) * PX_PER_SEC)}px` }}
       onClick={() => onSeek(startSec)}
       onKeyDown={(event) => handleKey(event, "move")}
       onPointerDown={(event) => onStartDrag(lane, id, "move", startSec, endSec, event.clientX)}
     >
-      <Button size="sm" className="h-full min-w-control-touch cursor-ew-resize rounded-none border-0 border-r border-border bg-transparent p-none text-current" aria-label={`${label} 시작점 조절`} onKeyDown={(event) => handleKey(event, "start")} onPointerDown={(event) => { event.stopPropagation(); onStartDrag(lane, id, "start", startSec, endSec, event.clientX); }}>‹</Button>
+      <Button size="sm" className="h-full w-control-touch shrink-0 cursor-ew-resize rounded-none border-0 border-r border-border bg-transparent p-none text-current" aria-label={`${label} 시작점 조절`} onKeyDown={(event) => handleKey(event, "start")} onPointerDown={(event) => { event.stopPropagation(); onStartDrag(lane, id, "start", startSec, endSec, event.clientX); }}>‹</Button>
       <span className="min-w-0 flex-1 truncate px-micro">{label}</span>
-      <Button size="sm" className="h-full min-w-control-touch cursor-ew-resize rounded-none border-0 border-l border-border bg-transparent p-none text-current" aria-label={`${label} 끝점 조절`} onKeyDown={(event) => handleKey(event, "end")} onPointerDown={(event) => { event.stopPropagation(); onStartDrag(lane, id, "end", startSec, endSec, event.clientX); }}>›</Button>
+      <Button size="sm" className="h-full w-control-touch shrink-0 cursor-ew-resize rounded-none border-0 border-l border-border bg-transparent p-none text-current" aria-label={`${label} 끝점 조절`} onKeyDown={(event) => handleKey(event, "end")} onPointerDown={(event) => { event.stopPropagation(); onStartDrag(lane, id, "end", startSec, endSec, event.clientX); }}>›</Button>
     </div>
   );
 }
