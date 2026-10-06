@@ -16,6 +16,10 @@ import {
   toggleSubtitleCut,
   setVoice,
   setIntroOutroApplied,
+  addTextSticker,
+  setSubtitleStyle,
+  setVideoMusic,
+  setVideoTransition,
   cutRanges,
   VideoEditValidationError,
   type SubtitleLine,
@@ -86,6 +90,35 @@ describe("video-edit-contract", () => {
     expect(edit.voice).toEqual({ voiceId: "v1", voiceName: "차분한 남성" });
     edit = setVoice(edit, null);
     expect(edit.voice).toBeNull();
+  });
+
+  it("S6-CONTRACT-01 정상: 5레인 글 블록·전환·자막 스타일·음악을 한 판에 저장한다", () => {
+    let edit = addTextSticker(emptyVideoEdit(), {
+      kind: "text", text: "핵심 제목", startSec: 1, endSec: 4, animation: "rise",
+    });
+    edit = setVideoTransition(edit, "introToMain", "fade");
+    edit = setSubtitleStyle(edit, { preset: "box", position: "middle", sizePercent: 120 });
+    edit = setVideoMusic(edit, {
+      source: "upload", assetId: "music.m4a", label: "내 음악", volume: 35,
+      offsetSec: 2, fadeOut: true, duckUnderVoice: true, rightsConfirmed: true,
+    });
+
+    expect(() => validateVideoEdit(edit)).not.toThrow();
+    expect(edit.textStickers[0]).toMatchObject({ text: "핵심 제목", startSec: 1, endSec: 4 });
+    expect(edit.transitions.introToMain).toBe("fade");
+    expect(edit.subtitleStyle).toMatchObject({ preset: "box", position: "middle", sizePercent: 120 });
+    expect(edit.music?.assetId).toBe("music.m4a");
+  });
+
+  it("S6-CONTRACT-02 거절: 사용권 확인 없는 업로드 음악은 저장하지 않는다", () => {
+    const edit = {
+      ...emptyVideoEdit(),
+      music: {
+        source: "upload" as const, assetId: "music.m4a", label: "내 음악", volume: 35,
+        offsetSec: 0, fadeOut: false, duckUnderVoice: false, rightsConfirmed: false,
+      },
+    };
+    expect(() => validateVideoEdit(edit)).toThrow(VideoEditValidationError);
   });
 
   it("VIDEO-PREVIEW-LINEAGE-01 글자 없는 합성본 URL을 저장하고 빈 URL은 거절한다", () => {
