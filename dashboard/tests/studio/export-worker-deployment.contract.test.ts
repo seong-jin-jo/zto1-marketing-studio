@@ -43,6 +43,8 @@ describe("S3 별도 export worker 실행·배포 계약", () => {
   });
 
   it("S3-DEPLOY-04 정상: session advisory lock, tenant round-robin, SKIP LOCKED를 사용한다", () => {
+    expect(worker).toContain("max_lifetime: null");
+    expect(worker).toContain("advisoryLockPool.reserve()");
     expect(worker).toContain("pg_try_advisory_lock(hashtextextended('studio-export-render-worker-v1',0))");
     expect(worker).toContain("tenantCursor");
     expect(repository).toContain("FOR UPDATE SKIP LOCKED LIMIT 1");

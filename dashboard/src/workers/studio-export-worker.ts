@@ -1,5 +1,5 @@
 import http from "node:http";
-import { db } from "@/lib/db";
+import postgres from "postgres";
 import { ExportItemWorker, realExportWorkerDependencies, workerId } from "@/lib/studio/export-worker";
 import { PostgresExportRepository } from "@/lib/studio/export-repository";
 
@@ -10,6 +10,11 @@ for (const key of ["R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "R2_
 }
 
 const healthPort = Number(process.env.EXPORT_WORKER_HEALTH_PORT ?? "34620");
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl?.trim()) throw new Error("DATABASE_URL is required for the persistent export worker");
+// Advisory locks are connection-scoped. postgres.js defaults max_lifetime to a random
+// 45–90 minutes, so the lock connection must opt out of lifetime recycling.
+const advisoryLockPool = postgres(databaseUrl, { max: 1, max_lifetime: null });
 const repository = new PostgresExportRepository();
 const itemWorker = new ExportItemWorker(realExportWorkerDependencies(repository));
 const id = workerId();
@@ -27,7 +32,7 @@ health.listen(healthPort, "0.0.0.0");
 const delay = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function main(): Promise<void> {
-  const session = await db().reserve();
+  const session = await advisoryLockPool.reserve();
   try {
     let acquired = false;
     while (!stopping && !acquired) {
@@ -63,6 +68,7 @@ async function main(): Promise<void> {
   } finally {
     role = "draining";
     session.release();
+    await advisoryLockPool.end({ timeout: 5 });
   }
 }
 
