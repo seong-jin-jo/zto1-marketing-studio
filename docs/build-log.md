@@ -1,5 +1,28 @@
 # OSMU build log
 
+## 2026-10-07 08:30 KST · Higgsfield 로그인 상태전이 감시
+
+STAMP: 2026-10-07 08:30 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: 없음 | 근거: `osmu-health-monitor.yml`, GitHub Actions concurrency·cache 공식 문서, BRAIN 모니터링 정본, 로컬 셸·Vitest | 고민: 생성 비용 없이 계정 API만 읽고, 배포 중 컨테이너 교체와 지속 장애의 반복 알림을 각각 직렬화와 상태전이 판정으로 제거했다.
+
+배포 때만 실행되던 `scripts/probe-generator-session.sh`를 30분 정기 감시로 확장했다. 최초 확인과 세 번 재시도 모두 실패할 때만 장애로 판정하고, 컨테이너가 미기동이면 이전 상태를 유지한다. `deploy-marketing.yml`과 새 감시 워크플로는 같은 concurrency 그룹을 사용해 컨테이너 교체 중 오판과 self-hosted 러너 경합을 막는다. 장애와 복구 전이에만 기존 `OSMU_ALERT_SLACK_WEBHOOK_URL`로 알리고, 생성 요청이나 자격증명 덮어쓰기는 하지 않는다.
+
+| 검증 | 결과 |
+|---|---|
+| 셸 함수 단위 | 정상·장애·컨테이너 없음·전이 없음 4건 PASS |
+| ShellCheck·bash 문법 | 오류 0 |
+| 워크플로 YAML | 신규 감시·기존 배포 2파일 파싱 PASS |
+| 표적 Vitest | 신규 워크플로 계약 6건 PASS |
+| 전체 integrity | 34파일 110건 PASS |
+| 운영 주기 실행·Slack 실전송 | 미검증. push와 workflow dispatch를 하지 않음 |
+
+기존 구현 확인: 배포 워크플로의 읽기 전용 `account status` 탐침과 외부 health monitor의 cache·상태전이·Slack 패턴을 보존해 확장했다. 별도 생성 API나 새 시크릿은 만들지 않았다.
+
+레드팀: 감시가 배포와 겹치면 컨테이너 교체를 로그인 만료로 오판할 수 있다. 같은 concurrency 그룹으로 두 워크플로를 직렬화했고, 컨테이너 미기동은 `hold`로 분리해 이전 상태를 덮지 않는다. 알림이 반복되면 무시될 수 있으므로 동일 상태에는 전송하지 않는다.
+
+셀프심문: 이 결론이 틀렸다면 가장 그럴듯한 이유는 GitHub에 올라간 기본 브랜치에서 schedule과 cache가 로컬 계약과 다르게 동작하는 경우다. 로컬은 구조와 판정만 검증했으므로 운영 실행은 미검증으로 남긴다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `.github/workflows/osmu-health-monitor.yml` | `.github/workflows/deploy-marketing.yml` | `scripts/probe-generator-session.sh` | `/Users/sj/SJ_BRAIN_wiki/wiki/cto/인프라/concept-모니터링-로깅-알림-스택.md` | https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/control-deployments | https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching
+
 ## 2026-10-07 07:51 KST · S5b와 S6 main 병합 검증
 
 STAMP: 2026-10-07 07:51 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: merge commit `43ae2897`, CI 동일 production server Chromium 게이트, Vitest 3단 | 고민: append-only 기록을 모두 보존하면서 카톡 v3 저장 동기화와 영상 export queue가 한 `page.tsx`에서 함께 동작하는지 검증했다.
