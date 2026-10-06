@@ -279,11 +279,16 @@ services:
     image: openclaw-auto/dashboard:0.2.0
     init: true
     restart: unless-stopped
+    volumes:
+      # 영상 원본과 결과를 dashboard와 같은 영속 볼륨에서 읽고 쓴다. 이 마운트가 없으면
+      # worker의 /app/data는 빈 컨테이너 레이어라 운영 영상 내보내기가 항상 원본 없음으로 끝난다.
+      - osmu-data:/app/data
     labels:
       autoheal: "true"
     env_file: .env.osmu
     environment:
       NODE_ENV: production
+      DATA_DIR: /app/data
       EXPORT_RENDER_CONCURRENCY: "1"
       EXPORT_WORKER_HEALTH_PORT: "34620"
     command: ["node_modules/.bin/tsx", "src/workers/studio-export-worker.ts"]

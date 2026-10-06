@@ -7,17 +7,19 @@ import {
   type CreateExportInput,
   type ExportItemRecord,
   type ExportJobRecord,
+  type ExportKind,
   type RetryExportInput,
 } from "./export-contract";
-import { cardDeckExportSource, cardSlideSourceHash, firstEmptySlide } from "./export-source-hash";
+import { cardDeckExportSource, cardSlideSourceHash, firstEmptySlide, videoExportSource, VideoExportSourceError, type VideoExportSource } from "./export-source-hash";
 
 type Sql = ReturnType<typeof db>;
 
-interface DraftSource {
+interface CardDraftSource {
   deck: CardDeckV3;
   sourceHash: string;
   sourceRevision: number;
 }
+type DraftSource = CardDraftSource | VideoExportSource;
 
 function number(value: unknown): number {
   return Number(value ?? 0);
@@ -59,12 +61,15 @@ function mapJob(row: Record<string, unknown>, items: ExportItemRecord[]): Export
   };
 }
 
-function sourceFromDraft(row: { payload?: unknown } | undefined): DraftSource {
+function sourceFromDraft(row: { payload?: unknown } | undefined, kind: ExportKind, tenantId: string): DraftSource {
   if (!row) throw new ExportQueueError(404, "DRAFT_NOT_FOUND", "초안을 찾을 수 없습니다");
   const payload = row.payload && typeof row.payload === "object" ? row.payload as Record<string, unknown> : {};
   try {
-    return cardDeckExportSource(payload.cardDeckV3);
+    return kind === "video" ? videoExportSource(payload, tenantId) : cardDeckExportSource(payload.cardDeckV3);
   } catch (error) {
+    if (error instanceof VideoExportSourceError) {
+      throw new ExportQueueError(error.code === "SUBTITLE_INPUT_ALREADY_BAKED" ? 409 : 400, error.code, error.message);
+    }
     if (error instanceof CardDeckV3ValidationError && error.code === "CARD_DECK_TOO_LARGE") {
       throw new ExportQueueError(413, error.code, error.message);
     }
@@ -128,7 +133,7 @@ export class PostgresExportRepository {
       return await withTenant(tenantId, async (tx) => {
       const [draft] = await tx<{ payload: unknown }[]>`
         SELECT payload FROM drafts WHERE tenant_id=${tenantId} AND id=${draftId} FOR UPDATE`;
-      const source = sourceFromDraft(draft);
+      const source = sourceFromDraft(draft, input.kind, tenantId);
       const [existing] = await tx<Record<string, unknown>[]>`
         SELECT id,request_hash FROM studio_export_jobs
         WHERE tenant_id=${tenantId} AND member_id=${memberId} AND kind=${input.kind}
@@ -147,7 +152,7 @@ export class PostgresExportRepository {
       if (source.sourceHash !== input.expected_source_hash) {
         throw new ExportQueueError(409, "SOURCE_HASH_CONFLICT", "초안 내용 hash가 변경됐습니다");
       }
-      const empty = firstEmptySlide(source.deck);
+      const empty = "deck" in source ? firstEmptySlide(source.deck) : null;
       if (empty) throw new ExportQueueError(409, "EMPTY_SLIDE", "빈 장은 내보낼 수 없습니다", { first_empty_slide: empty });
       const [active] = await tx<{ id: string }[]>`
         SELECT id FROM studio_export_jobs
@@ -166,14 +171,16 @@ export class PostgresExportRepository {
            idempotency_key,request_hash,total_items)
         VALUES
           (${jobId},${tenantId},${draftId},${memberId},${input.kind},'queued',${source.sourceRevision},
-           ${source.sourceHash},${tx.json({ deck: source.deck } as unknown as Parameters<typeof tx.json>[0])},${idempotencyKey},${requestHash},${source.deck.slides.length})`;
-      for (const slide of source.deck.slides) {
+           ${source.sourceHash},${tx.json(("deck" in source ? { deck: source.deck } : { video: { sourceFilename: source.sourceFilename, edit: source.edit, lines: source.lines, subtitleSize: source.subtitleSize } }) as unknown as Parameters<typeof tx.json>[0])},${idempotencyKey},${requestHash},${"deck" in source ? source.deck.slides.length : 1})`;
+      const exportItems = "deck" in source
+        ? source.deck.slides.map((slide) => ({ key: slide.id, ordinal: slide.order, hash: cardSlideSourceHash(source.deck, slide) }))
+        : [{ key: "video-main", ordinal: 0, hash: source.sourceHash }];
+      for (const item of exportItems) {
         await tx`
           INSERT INTO studio_export_items
             (id,tenant_id,job_id,item_key,ordinal,status,source_hash)
           VALUES
-            (${crypto.randomUUID()},${tenantId},${jobId},${slide.id},${slide.order},'queued',
-             ${cardSlideSourceHash(source.deck, slide)})`;
+            (${crypto.randomUUID()},${tenantId},${jobId},${item.key},${item.ordinal},'queued',${item.hash})`;
       }
       const job = await loadJob(tx, tenantId, draftId, jobId);
       if (!job) throw new Error("created export job disappeared");
@@ -199,11 +206,11 @@ export class PostgresExportRepository {
     return withTenant(tenantId, async (tx) => {
       const [draft] = await tx<{ payload: unknown }[]>`
         SELECT payload FROM drafts WHERE tenant_id=${tenantId} AND id=${draftId} FOR UPDATE`;
-      const source = sourceFromDraft(draft);
-      const [job] = await tx<{ id: string; source_hash: string }[]>`
-        SELECT id,source_hash FROM studio_export_jobs
+      const [job] = await tx<{ id: string; source_hash: string; kind: ExportKind }[]>`
+        SELECT id,source_hash,kind FROM studio_export_jobs
         WHERE tenant_id=${tenantId} AND draft_id=${draftId} AND id=${exportId} FOR UPDATE`;
       if (!job) throw new ExportQueueError(404, "EXPORT_NOT_FOUND", "내보내기를 찾을 수 없습니다");
+      const source = sourceFromDraft(draft, job.kind, tenantId);
       if (job.source_hash !== source.sourceHash) {
         throw new ExportQueueError(409, "EXPORT_SOURCE_STALE", "현재 초안과 다른 판의 내보내기입니다");
       }
@@ -225,16 +232,16 @@ export class PostgresExportRepository {
     });
   }
 
-  async latest(tenantId: string, draftId: string): Promise<Record<string, unknown>> {
+  async latest(tenantId: string, draftId: string, kind: ExportKind = "card_deck"): Promise<Record<string, unknown>> {
     return withTenant(tenantId, async (tx) => {
       const [draft] = await tx<{ payload: unknown }[]>`
         SELECT payload FROM drafts WHERE tenant_id=${tenantId} AND id=${draftId}`;
-      const source = sourceFromDraft(draft);
-      const empty = firstEmptySlide(source.deck);
+      const source = sourceFromDraft(draft, kind, tenantId);
+      const empty = "deck" in source ? firstEmptySlide(source.deck) : null;
       const rows = await tx<Record<string, unknown>[]>`
         SELECT id,status,source_revision,source_hash,finished_at,created_at
         FROM studio_export_jobs
-        WHERE tenant_id=${tenantId} AND draft_id=${draftId} AND kind='card_deck'
+        WHERE tenant_id=${tenantId} AND draft_id=${draftId} AND kind=${kind}
         ORDER BY created_at DESC`;
       const current = rows.find((row) => row.source_hash === source.sourceHash);
       const successful = rows.find((row) => row.status === "succeeded");
@@ -248,7 +255,7 @@ export class PostgresExportRepository {
       else blocker = "NO_SUCCESSFUL_EXPORT";
       return {
         draft_id: draftId,
-        kind: "card_deck",
+        kind,
         current_source_revision: source.sourceRevision,
         current_source_hash: source.sourceHash,
         latest_export: latest ? {
@@ -290,7 +297,7 @@ export class PostgresExportRepository {
           FROM candidate WHERE item.id=candidate.id
           RETURNING item.*
         )
-        SELECT claimed.*,job.draft_id,job.request_payload
+        SELECT claimed.*,job.draft_id,job.request_payload,job.kind
         FROM claimed JOIN studio_export_jobs job
           ON job.tenant_id=claimed.tenant_id AND job.id=claimed.job_id`;
       if (!row) return null;
@@ -300,7 +307,8 @@ export class PostgresExportRepository {
         draft_id: String(row.draft_id), item_key: String(row.item_key), ordinal: number(row.ordinal),
         source_hash: String(row.source_hash), attempt_count: number(row.attempt_count),
         max_attempts: number(row.max_attempts), lease_token: String(row.lease_token),
-        request_payload: row.request_payload as { deck: CardDeckV3 },
+        kind: row.kind as ExportKind,
+        request_payload: row.request_payload as ClaimedExportItem["request_payload"],
       };
     });
   }

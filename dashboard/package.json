@@ -23,6 +23,7 @@
     "e2e:card-freeform-s1": "node scripts/verify-card-freeform-s1-e2e.mjs",
     "e2e:card-freeform-s2": "node scripts/verify-card-freeform-s2-e2e.mjs",
     "e2e:chat-s5": "node scripts/verify-chat-s5-e2e.mjs",
+    "e2e:video-s6": "node scripts/verify-video-s6-e2e.mjs",
     "e2e:studio-v70-screen": "node scripts/verify-studio-v70-screen-conformance.mjs",
     "qa:publish-room-alignment": "node scripts/measure-publish-room-alignment.mjs",
     "qa:publish-room-alignment:ci": "bash scripts/ci-publish-room-alignment.sh",

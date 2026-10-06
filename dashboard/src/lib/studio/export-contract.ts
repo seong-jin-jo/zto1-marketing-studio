@@ -1,11 +1,13 @@
 import { z } from "zod";
 import { AuthError } from "@/lib/tenant-auth";
 import type { CardDeckV3 } from "./card-element-contract";
+import type { VideoEdit } from "./video-edit-contract";
+import type { SubtitleSize } from "./video-subtitle";
 import { canonicalJson, sha256Hex } from "./export-source-hash";
 import { resolveStudioPrincipal } from "./generation/identity";
 import { StudioApiError } from "./generation/errors";
 
-export const exportKindSchema = z.enum(["card_deck"]);
+export const exportKindSchema = z.enum(["card_deck", "video"]);
 export type ExportKind = z.infer<typeof exportKindSchema>;
 export type ExportJobStatus = "queued" | "processing" | "succeeded" | "partially_failed" | "failed" | "cancelled";
 export type ExportItemStatus = "queued" | "processing" | "succeeded" | "failed" | "cancelled";
@@ -128,5 +130,6 @@ export interface ClaimedExportItem {
   attempt_count: number;
   max_attempts: number;
   lease_token: string;
-  request_payload: { deck: CardDeckV3 };
+  kind: ExportKind;
+  request_payload: { deck: CardDeckV3 } | { video: { sourceFilename: string; edit: VideoEdit; lines: string[]; subtitleSize: SubtitleSize } };
 }

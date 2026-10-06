@@ -25,6 +25,7 @@ import {
 import { studioDir, FFMPEG_BIN } from "@/lib/higgsfield";
 import { MAX_VIDEO_DURATION_SECONDS } from "@/lib/video-limits";
 import type { IntroOutroCompId, BrandProps } from "../../remotion/IntroOutroComps";
+import type { VideoTransition } from "@/lib/studio/video-edit-contract";
 
 const execFileP = promisify(execFile);
 const FFPROBE_BIN = process.env.FFPROBE_BIN || "ffprobe";
@@ -98,13 +99,14 @@ async function probe(filePath: string): Promise<{ width: number; height: number;
 }
 
 /** 세그먼트를 공통 타겟(1080x1920, 30fps, aac 오디오 — 무음이면 무음 트랙 생성)으로 정규화. */
-async function normalizeSegment(input: string, output: string): Promise<void> {
+async function normalizeSegment(input: string, output: string, targetDurationSec?: number): Promise<void> {
   const info = await probe(input);
-  const vf = `scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30`;
+  const vf = `scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30${targetDurationSec ? `,tpad=stop_mode=clone:stop_duration=${targetDurationSec}` : ""}`;
   const args = ["-y", "-i", input];
   if (!info.hasAudio) {
     args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
   }
+  if (targetDurationSec) args.push("-t", String(Math.max(0.5, Math.min(5, targetDurationSec))));
   args.push("-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20");
   if (!info.hasAudio) {
     args.push("-shortest", "-c:a", "aac", "-map", "0:v:0", "-map", "1:a:0");
@@ -118,6 +120,34 @@ async function normalizeSegment(input: string, output: string): Promise<void> {
     fs.rmSync(output, { force: true });
     throw err;
   }
+}
+
+async function transitionSegments(segments: string[], transitions: VideoTransition[], outputPath: string): Promise<ConcatResult> {
+  if (segments.length < 2) return concatSegments(segments, outputPath);
+  const infos = await Promise.all(segments.map(probe));
+  const args = ["-y", ...segments.flatMap((segment) => ["-i", segment])];
+  const filters: string[] = [];
+  let videoLabel = "0:v";
+  let audioLabel = "0:a";
+  let elapsed = infos[0].durationSec;
+  for (let index = 1; index < segments.length; index += 1) {
+    const requested = transitions[index - 1] ?? "cut";
+    const duration = requested === "cut" ? 0.001 : 0.35;
+    const transition = requested === "push" ? "slideleft" : "fade";
+    const nextVideo = index === segments.length - 1 ? "vout" : `vx${index}`;
+    const nextAudio = index === segments.length - 1 ? "aout" : `ax${index}`;
+    filters.push(`[${videoLabel}][${index}:v]xfade=transition=${transition}:duration=${duration}:offset=${Math.max(0, elapsed - duration)}[${nextVideo}]`);
+    filters.push(`[${audioLabel}][${index}:a]acrossfade=d=${duration}[${nextAudio}]`);
+    videoLabel = nextVideo;
+    audioLabel = nextAudio;
+    elapsed += infos[index].durationSec - duration;
+  }
+  args.push("-filter_complex", filters.join(";"), "-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", outputPath);
+  try { await execFileP(FFMPEG_BIN, args, { timeout: 120_000 }); }
+  catch (error) { fs.rmSync(outputPath, { force: true }); throw error; }
+  const info = await probe(outputPath);
+  if (info.durationSec > MAX_VIDEO_DURATION_SECONDS) { fs.rmSync(outputPath, { force: true }); throw new Error("합쳐진 영상이 길이 상한을 넘습니다."); }
+  return { outputPath, durationSec: info.durationSec };
 }
 
 export interface ConcatResult {
@@ -165,6 +195,9 @@ export interface ComposeInput {
   outroCompId: IntroOutroCompId | null;
   brand: Partial<BrandProps>;
   outputFilename: string;
+  introDurationSec?: number;
+  outroDurationSec?: number;
+  transitions?: { introToMain: VideoTransition; mainToOutro: VideoTransition };
 }
 
 /** 전체 파이프라인: 필요한 intro/outro만 렌더하고 메인 영상과 합쳐 최종 파일을 만든다. */
@@ -173,13 +206,15 @@ export async function composeIntroOutro(input: ComposeInput): Promise<ConcatResu
   fs.mkdirSync(dir, { recursive: true });
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "intro-outro-"));
   const segments: string[] = [];
+  const transitions: VideoTransition[] = [];
   try {
     if (input.introCompId) {
       const introRaw = path.join(tmpDir, "intro-raw.mp4");
       const introNorm = path.join(tmpDir, "intro-norm.mp4");
       await renderIntroOutroClip(input.introCompId, input.brand, introRaw);
-      await normalizeSegment(introRaw, introNorm);
+      await normalizeSegment(introRaw, introNorm, input.introDurationSec);
       segments.push(introNorm);
+      transitions.push(input.transitions?.introToMain ?? "cut");
     }
     const mainNorm = path.join(tmpDir, "main-norm.mp4");
     await normalizeSegment(input.mainVideoPath, mainNorm);
@@ -188,11 +223,15 @@ export async function composeIntroOutro(input: ComposeInput): Promise<ConcatResu
       const outroRaw = path.join(tmpDir, "outro-raw.mp4");
       const outroNorm = path.join(tmpDir, "outro-norm.mp4");
       await renderIntroOutroClip(input.outroCompId, input.brand, outroRaw);
-      await normalizeSegment(outroRaw, outroNorm);
+      await normalizeSegment(outroRaw, outroNorm, input.outroDurationSec);
+      if (!input.introCompId) transitions.push(input.transitions?.mainToOutro ?? "cut");
+      else transitions.push(input.transitions?.mainToOutro ?? "cut");
       segments.push(outroNorm);
     }
     const outputPath = path.join(dir, input.outputFilename);
-    return await concatSegments(segments, outputPath);
+    return transitions.some((transition) => transition !== "cut")
+      ? await transitionSegments(segments, transitions, outputPath)
+      : await concatSegments(segments, outputPath);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

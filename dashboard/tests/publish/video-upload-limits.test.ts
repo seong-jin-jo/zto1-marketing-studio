@@ -21,9 +21,13 @@ function fakeFile(name: string, size: number, bytes?: Buffer): File {
   return f;
 }
 
-async function callUpload(file: File) {
+async function callUpload(file: File, options?: { kind: "music"; rightsConfirmed: boolean }) {
   const form = new FormData();
   form.append("file", file);
+  if (options) {
+    form.set("kind", options.kind);
+    form.set("rightsConfirmed", String(options.rightsConfirmed));
+  }
   // Request(body: FormData)로 감싸면 런타임이 본문을 재직렬화하면서 우리가 덮어쓴 size가 사라진다.
   // 라우트는 request.formData()만 쓰므로 그 지점만 대역으로 준다(상한 크기를 실제 할당하지 않기 위함).
   const req = { formData: async () => form, headers: new Headers() } as unknown as Request;
@@ -81,5 +85,18 @@ describe("/api/video/upload — 크기 경계", () => {
   it("허용 확장자가 아니면 크기와 무관하게 400", async () => {
     const { status } = await callUpload(fakeFile("a.exe", 1024));
     expect(status).toBe(400);
+  });
+
+  it("S6-MUSIC-UPLOAD-01 권리를 확인한 MP3는 음악 계약으로 저장한다", async () => {
+    const { status, json } = await callUpload(fakeFile("my-track.mp3", 128, Buffer.alloc(128, 2)), { kind: "music", rightsConfirmed: true });
+    expect(status).toBe(200);
+    expect(json).toMatchObject({ kind: "music" });
+    expect(json.filename).toMatch(/\.mp3$/);
+  });
+
+  it("S6-MUSIC-UPLOAD-02 권리 확인 없는 음악은 저장 전에 거부한다", async () => {
+    const { status, json } = await callUpload(fakeFile("my-track.wav", 128, Buffer.alloc(128, 2)), { kind: "music", rightsConfirmed: false });
+    expect(status).toBe(422);
+    expect(String(json.error)).toContain("사용 권한");
   });
 });

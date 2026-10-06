@@ -16,6 +16,11 @@ import {
   toggleSubtitleCut,
   setVoice,
   setIntroOutroApplied,
+  addTextSticker,
+  setSubtitleStyle,
+  setVideoMusic,
+  setVideoCover,
+  setVideoTransition,
   cutRanges,
   VideoEditValidationError,
   type SubtitleLine,
@@ -86,6 +91,50 @@ describe("video-edit-contract", () => {
     expect(edit.voice).toEqual({ voiceId: "v1", voiceName: "차분한 남성" });
     edit = setVoice(edit, null);
     expect(edit.voice).toBeNull();
+  });
+
+  it("S6-CONTRACT-01 정상: 5레인 글 블록·전환·자막 스타일·음악을 한 판에 저장한다", () => {
+    let edit = addTextSticker(emptyVideoEdit(), {
+      kind: "text", text: "핵심 제목", startSec: 1, endSec: 4, animation: "rise",
+    });
+    edit = setVideoTransition(edit, "introToMain", "fade");
+    edit = setSubtitleStyle(edit, { preset: "box", position: "middle", sizePercent: 120 });
+    edit = setVideoMusic(edit, {
+      source: "upload", assetId: "music.m4a", label: "내 음악", volume: 35,
+      offsetSec: 2, fadeOut: true, duckUnderVoice: true, rightsConfirmed: true,
+    });
+
+    expect(() => validateVideoEdit(edit)).not.toThrow();
+    expect(edit.textStickers[0]).toMatchObject({ text: "핵심 제목", startSec: 1, endSec: 4 });
+    expect(edit.transitions.introToMain).toBe("fade");
+    expect(edit.subtitleStyle).toMatchObject({ preset: "box", position: "middle", sizePercent: 120 });
+    expect(edit.music?.assetId).toBe("music.m4a");
+  });
+
+  it("S6-CONTRACT-02 거절: 사용권 확인 없는 업로드 음악은 저장하지 않는다", () => {
+    const edit = {
+      ...emptyVideoEdit(),
+      music: {
+        source: "upload" as const, assetId: "music.m4a", label: "내 음악", volume: 35,
+        offsetSec: 0, fadeOut: false, duckUnderVoice: false, rightsConfirmed: false,
+      },
+    };
+    expect(() => validateVideoEdit(edit)).toThrow(VideoEditValidationError);
+  });
+
+  it("S6-AC4 정상: 추천·재생 프레임·업로드 표지가 같은 cover 계약으로 저장된다", () => {
+    const recommended = setVideoCover(emptyVideoEdit(), { source: "recommended", recommendationIndex: 1, frameSec: 5, textPreset: "headline" });
+    const frame = setVideoCover(emptyVideoEdit(), { source: "frame", frameSec: 7.5, textPreset: "question" });
+    const upload = setVideoCover(emptyVideoEdit(), { source: "upload", imageFilename: "cover.webp", imageUrl: "/api/images/deliver/token", textPreset: "none" });
+
+    for (const edit of [recommended, frame, upload]) expect(() => validateVideoEdit(edit)).not.toThrow();
+    expect([recommended.cover?.source, frame.cover?.source, upload.cover?.source]).toEqual(["recommended", "frame", "upload"]);
+  });
+
+  it("S6-AC4 거절: 원본 식별자가 없는 업로드 표지는 저장하지 않는다", () => {
+    expect(() => setVideoCover(emptyVideoEdit(), {
+      source: "upload", imageUrl: "/api/images/deliver/token", textPreset: "headline",
+    })).toThrow(VideoEditValidationError);
   });
 
   it("VIDEO-PREVIEW-LINEAGE-01 글자 없는 합성본 URL을 저장하고 빈 URL은 거절한다", () => {

@@ -14,6 +14,49 @@
 
 export const VIDEO_EDIT_CONTRACT_VERSION = "1.0" as const;
 
+export const VIDEO_TRANSITIONS = ["cut", "fade", "push"] as const;
+export type VideoTransition = typeof VIDEO_TRANSITIONS[number];
+
+export const VIDEO_SUBTITLE_STYLE_PRESETS = ["basic", "yellow", "box", "brand", "band", "word"] as const;
+export type VideoSubtitleStylePreset = typeof VIDEO_SUBTITLE_STYLE_PRESETS[number];
+export type VideoSubtitleStyle = {
+  preset: VideoSubtitleStylePreset;
+  position: "top" | "middle" | "bottom";
+  sizePercent: number;
+  outline: boolean;
+};
+
+export type VideoTextSticker = {
+  id: string;
+  order: number;
+  kind: "text" | "sticker";
+  text: string;
+  startSec: number;
+  endSec: number;
+  animation: "none" | "fade" | "rise" | "scale" | "type";
+};
+
+export type VideoMusic = {
+  source: "builtin" | "upload";
+  /** builtin은 제품 카탈로그 ID, upload는 현재 테넌트의 저장 파일명이다. */
+  assetId: string;
+  label: string;
+  volume: number;
+  offsetSec: number;
+  fadeOut: boolean;
+  duckUnderVoice: boolean;
+  rightsConfirmed: boolean;
+} | null;
+
+export type VideoCover = {
+  source: "recommended" | "frame" | "upload";
+  recommendationIndex?: number;
+  frameSec?: number;
+  imageUrl?: string;
+  imageFilename?: string;
+  textPreset: "none" | "headline" | "question";
+} | null;
+
 /** 영상 위 훅/CTA 배너. 구간(초) 동안만 보인다. */
 export type VideoOverlay = {
   id: string;
@@ -75,6 +118,8 @@ export type IntroOutroApplied = {
   compositeDeliverUrl?: string;
   /** 인트로 길이. 원본 기준 자막·컷 시간을 합성본 시간축으로 옮길 때 쓴다. */
   introDurationSec?: number;
+  outroDurationSec?: number;
+  titleText?: string;
   /** 현재 발행할 최종 결과. 자막을 다시 구우면 이 값만 새 결과로 전진한다. */
   resultFilename: string;
   /** 현재 결과 파일에 이미 반영된 컷. 값은 본문 원본 시간축이며 재생 위치 역변환에 쓴다. */
@@ -103,6 +148,17 @@ export type VideoEdit = {
   comments: VideoComment[];
   subtitles: SubtitleLine[];
   voice: VoiceSelection;
+  /** v71 S6: 영상 레인 사이의 전환. 인트로/아웃트로가 없으면 해당 값은 저장만 된다. */
+  transitions: { introToMain: VideoTransition; mainToOutro: VideoTransition };
+  /** v71 S6: 글·스티커 레인의 시간 블록. */
+  textStickers: VideoTextSticker[];
+  subtitleStyle: VideoSubtitleStyle;
+  music: VideoMusic;
+  /** 안전영역은 편집 가이드이며 결과 픽셀에는 들어가지 않는다. */
+  safeArea: boolean;
+  cover: VideoCover;
+  /** 인트로/아웃트로를 다음 신규 영상의 기본값으로 복사할지 여부. */
+  introOutroDefaults: { intro: boolean; outro: boolean };
   /** 인트로/아웃트로 적용 결과. 없으면(구데이터 포함) null과 동일하게 취급한다. */
   introOutro: IntroOutroApplied;
   /** 편집 연산마다 +1(card-deck-ops.ts withRevision 관습과 동일). */
@@ -139,6 +195,13 @@ export function emptyVideoEdit(): VideoEdit {
     comments: [],
     subtitles: [],
     voice: null,
+    transitions: { introToMain: "cut", mainToOutro: "cut" },
+    textStickers: [],
+    subtitleStyle: { preset: "basic", position: "bottom", sizePercent: 100, outline: true },
+    music: null,
+    safeArea: false,
+    cover: null,
+    introOutroDefaults: { intro: false, outro: false },
     introOutro: null,
     revision: 0,
   };
@@ -147,6 +210,8 @@ export function emptyVideoEdit(): VideoEdit {
 const OVERLAY_ALLOWED_KEYS = new Set(["id", "order", "kind", "text", "startSec", "endSec"]);
 const COMMENT_ALLOWED_KEYS = new Set(["id", "order", "author", "text", "source", "startSec", "endSec"]);
 const SUBTITLE_ALLOWED_KEYS = new Set(["id", "order", "text", "startSec", "endSec", "cut"]);
+const TEXT_STICKER_ALLOWED_KEYS = new Set(["id", "order", "kind", "text", "startSec", "endSec", "animation"]);
+const COVER_ALLOWED_KEYS = new Set(["source", "recommendationIndex", "frameSec", "imageUrl", "imageFilename", "textPreset"]);
 
 function assertNoUnknownKeys(value: Record<string, unknown>, allowed: Set<string>, field: string): void {
   for (const key of Object.keys(value)) {
@@ -159,6 +224,31 @@ function assertNoUnknownKeys(value: Record<string, unknown>, allowed: Set<string
 function assertValidOrder(order: unknown, field: string): void {
   if (typeof order !== "number" || !Number.isInteger(order) || order < 0) {
     throw new VideoEditValidationError("order", `${field}.order must be a non-negative integer`);
+  }
+}
+
+function assertValidVideoCover(value: unknown): asserts value is NonNullable<VideoCover> {
+  if (!value || typeof value !== "object") throw new VideoEditValidationError("cover", "videoEdit.cover must be an object when set");
+  const cover = value as Record<string, unknown>;
+  assertNoUnknownKeys(cover, COVER_ALLOWED_KEYS, "cover");
+  if (!['recommended', 'frame', 'upload'].includes(String(cover.source))) {
+    throw new VideoEditValidationError("cover_source", "videoEdit.cover.source is invalid");
+  }
+  if (!['none', 'headline', 'question'].includes(String(cover.textPreset))) {
+    throw new VideoEditValidationError("cover_text_preset", "videoEdit.cover.textPreset is invalid");
+  }
+  if (cover.source === "recommended") {
+    if (!Number.isInteger(cover.recommendationIndex) || Number(cover.recommendationIndex) < 0 || Number(cover.recommendationIndex) > 2
+      || !isFiniteNumber(cover.frameSec) || cover.frameSec < 0) {
+      throw new VideoEditValidationError("cover_recommended", "recommended cover requires recommendationIndex 0..2 and a non-negative frameSec");
+    }
+  } else if (cover.source === "frame") {
+    if (!isFiniteNumber(cover.frameSec) || cover.frameSec < 0) {
+      throw new VideoEditValidationError("cover_frame", "frame cover requires a non-negative frameSec");
+    }
+  } else if (typeof cover.imageFilename !== "string" || !cover.imageFilename
+    || typeof cover.imageUrl !== "string" || !cover.imageUrl) {
+    throw new VideoEditValidationError("cover_upload", "upload cover requires imageFilename and imageUrl");
   }
 }
 
@@ -207,6 +297,48 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
     if (typeof voice.voiceId !== "string" || !voice.voiceId) throw new VideoEditValidationError("voice_id", "videoEdit.voice.voiceId must be a non-empty string when set");
     if (typeof voice.voiceName !== "string" || !voice.voiceName) throw new VideoEditValidationError("voice_name", "videoEdit.voice.voiceName must be a non-empty string when set");
   }
+  const transitions = (v.transitions ?? { introToMain: "cut", mainToOutro: "cut" }) as Record<string, unknown>;
+  if (!VIDEO_TRANSITIONS.includes(transitions.introToMain as VideoTransition)
+    || !VIDEO_TRANSITIONS.includes(transitions.mainToOutro as VideoTransition)) {
+    throw new VideoEditValidationError("transition", "videoEdit.transitions must contain supported transition values");
+  }
+  const textStickers = v.textStickers ?? [];
+  if (!Array.isArray(textStickers)) throw new VideoEditValidationError("text_stickers_not_array", "videoEdit.textStickers must be an array");
+  textStickers.forEach((item, index) => {
+    assertNoUnknownKeys(item as Record<string, unknown>, TEXT_STICKER_ALLOWED_KEYS, `textStickers[${index}]`);
+    const block = item as Partial<VideoTextSticker>;
+    if (typeof block.id !== "string" || !block.id) throw new VideoEditValidationError("text_sticker_id", `textStickers[${index}].id must be set`);
+    assertValidOrder(block.order, `textStickers[${index}]`);
+    if (block.kind !== "text" && block.kind !== "sticker") throw new VideoEditValidationError("text_sticker_kind", `textStickers[${index}].kind is invalid`);
+    if (typeof block.text !== "string" || !block.text.trim()) throw new VideoEditValidationError("text_sticker_text", `textStickers[${index}].text must not be empty`);
+    if (!["none", "fade", "rise", "scale", "type"].includes(String(block.animation))) throw new VideoEditValidationError("text_sticker_animation", `textStickers[${index}].animation is invalid`);
+    assertValidRange(block.startSec, block.endSec, `textStickers[${index}]`);
+  });
+  const subtitleStyle = (v.subtitleStyle ?? { preset: "basic", position: "bottom", sizePercent: 100, outline: true }) as Record<string, unknown>;
+  if (!VIDEO_SUBTITLE_STYLE_PRESETS.includes(subtitleStyle.preset as VideoSubtitleStylePreset)
+    || !["top", "middle", "bottom"].includes(String(subtitleStyle.position))
+    || !isFiniteNumber(subtitleStyle.sizePercent) || subtitleStyle.sizePercent < 70 || subtitleStyle.sizePercent > 160
+    || typeof subtitleStyle.outline !== "boolean") {
+    throw new VideoEditValidationError("subtitle_style", "videoEdit.subtitleStyle is invalid");
+  }
+  if (v.music !== undefined && v.music !== null) {
+    const music = v.music as Record<string, unknown>;
+    if ((music.source !== "builtin" && music.source !== "upload") || typeof music.assetId !== "string" || !music.assetId
+      || typeof music.label !== "string" || !music.label || !isFiniteNumber(music.volume) || music.volume < 0 || music.volume > 100
+      || !isFiniteNumber(music.offsetSec) || music.offsetSec < 0 || typeof music.fadeOut !== "boolean"
+      || typeof music.duckUnderVoice !== "boolean" || typeof music.rightsConfirmed !== "boolean") {
+      throw new VideoEditValidationError("music", "videoEdit.music is invalid");
+    }
+    if (music.source === "upload" && music.rightsConfirmed !== true) {
+      throw new VideoEditValidationError("music_rights", "uploaded music requires rights confirmation");
+    }
+  }
+  if (v.safeArea !== undefined && typeof v.safeArea !== "boolean") throw new VideoEditValidationError("safe_area", "videoEdit.safeArea must be boolean");
+  if (v.cover !== undefined && v.cover !== null) assertValidVideoCover(v.cover);
+  const defaults = (v.introOutroDefaults ?? { intro: false, outro: false }) as Record<string, unknown>;
+  if (typeof defaults.intro !== "boolean" || typeof defaults.outro !== "boolean") {
+    throw new VideoEditValidationError("intro_outro_defaults", "videoEdit.introOutroDefaults is invalid");
+  }
   // introOutro는 신규 필드라 구데이터에는 없다(undefined) — 없으면 null과 동일하게 통과.
   if (v.introOutro !== undefined && v.introOutro !== null) {
     const io = v.introOutro as Record<string, unknown>;
@@ -227,6 +359,12 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
     }
     if (io.introDurationSec !== undefined && (!isFiniteNumber(io.introDurationSec) || io.introDurationSec < 0)) {
       throw new VideoEditValidationError("intro_outro_intro_duration", "videoEdit.introOutro.introDurationSec must be a non-negative finite number when set");
+    }
+    if (io.outroDurationSec !== undefined && (!isFiniteNumber(io.outroDurationSec) || io.outroDurationSec < 0)) {
+      throw new VideoEditValidationError("intro_outro_outro_duration", "videoEdit.introOutro.outroDurationSec must be a non-negative finite number when set");
+    }
+    if (io.titleText !== undefined && typeof io.titleText !== "string") {
+      throw new VideoEditValidationError("intro_outro_title", "videoEdit.introOutro.titleText must be a string when set");
     }
     if (io.renderedCutRanges !== undefined) {
       if (!Array.isArray(io.renderedCutRanges)) {
@@ -328,6 +466,62 @@ export function updateSubtitleTiming(edit: VideoEdit, id: string, patch: { start
 
 export function setVoice(edit: VideoEdit, voice: VoiceSelection): VideoEdit {
   return withRevision(edit, { voice });
+}
+
+export function normalizeVideoEdit(edit: VideoEdit): VideoEdit {
+  return {
+    ...emptyVideoEdit(),
+    ...edit,
+    transitions: edit.transitions ?? { introToMain: "cut", mainToOutro: "cut" },
+    textStickers: edit.textStickers ?? [],
+    subtitleStyle: edit.subtitleStyle ?? { preset: "basic", position: "bottom", sizePercent: 100, outline: true },
+    music: edit.music ?? null,
+    safeArea: edit.safeArea ?? false,
+    cover: edit.cover ?? null,
+    introOutroDefaults: edit.introOutroDefaults ?? { intro: false, outro: false },
+  };
+}
+
+export function addTextSticker(edit: VideoEdit, block: Omit<VideoTextSticker, "id" | "order">): VideoEdit {
+  assertValidRange(block.startSec, block.endSec, "textSticker");
+  if (!block.text.trim()) throw new VideoEditValidationError("text_sticker_text", "text sticker text must not be empty");
+  return withRevision(edit, { textStickers: [...(edit.textStickers ?? []), { ...block, id: newId("txt"), order: edit.textStickers?.length ?? 0 }] });
+}
+
+export function updateTextSticker(edit: VideoEdit, id: string, patch: Partial<Omit<VideoTextSticker, "id" | "order">>): VideoEdit {
+  const textStickers = (edit.textStickers ?? []).map((item) => item.id === id ? { ...item, ...patch } : item);
+  const updated = textStickers.find((item) => item.id === id);
+  if (updated) assertValidRange(updated.startSec, updated.endSec, "textSticker");
+  return withRevision(edit, { textStickers });
+}
+
+export function removeTextSticker(edit: VideoEdit, id: string): VideoEdit {
+  return withRevision(edit, { textStickers: (edit.textStickers ?? []).filter((item) => item.id !== id).map((item, order) => ({ ...item, order })) });
+}
+
+export function setVideoTransition(edit: VideoEdit, edge: "introToMain" | "mainToOutro", transition: VideoTransition): VideoEdit {
+  return withRevision(edit, { transitions: { ...(edit.transitions ?? { introToMain: "cut", mainToOutro: "cut" }), [edge]: transition } });
+}
+
+export function setSubtitleStyle(edit: VideoEdit, patch: Partial<VideoSubtitleStyle>): VideoEdit {
+  return withRevision(edit, { subtitleStyle: { ...(edit.subtitleStyle ?? emptyVideoEdit().subtitleStyle), ...patch } });
+}
+
+export function setVideoMusic(edit: VideoEdit, music: VideoMusic): VideoEdit {
+  return withRevision(edit, { music });
+}
+
+export function setVideoSafeArea(edit: VideoEdit, safeArea: boolean): VideoEdit {
+  return withRevision(edit, { safeArea });
+}
+
+export function setVideoCover(edit: VideoEdit, cover: VideoCover): VideoEdit {
+  if (cover !== null) assertValidVideoCover(cover);
+  return withRevision(edit, { cover });
+}
+
+export function setIntroOutroDefaults(edit: VideoEdit, patch: Partial<VideoEdit["introOutroDefaults"]>): VideoEdit {
+  return withRevision(edit, { introOutroDefaults: { ...(edit.introOutroDefaults ?? { intro: false, outro: false }), ...patch } });
 }
 
 /** 인트로/아웃트로 렌더 완료 시 결과를 계약에 싣는다. 제거 시 호출자가 null을 넘긴다. */
