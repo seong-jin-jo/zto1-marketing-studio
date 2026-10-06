@@ -400,6 +400,39 @@ export function swapSpeakers(deck: CardDeck, slideId: string | null): CardDeck {
   return changed ? withRevision(deck, slides) : deck;
 }
 
+/** S5-AC3: 사람이 고른 말투 후보만 여러 말풍선에 한 revision으로 적용한다. */
+export function applyBubbleTextBatch(
+  deck: CardDeck,
+  changes: Array<{ slideId: string; bubbleId: string; text: string }>,
+): CardDeck {
+  if (changes.length === 0) return deck;
+  const seen = new Set<string>();
+  const bySlide = new Map<string, Map<string, string>>();
+  for (const change of changes) {
+    const key = `${change.slideId}:${change.bubbleId}`;
+    if (seen.has(key)) throw new CardDeckOpsError("OPS_BUBBLE_CHANGE_DUPLICATE", `duplicate bubble change ${key}`);
+    if (!change.text.trim()) throw new CardDeckOpsError("OPS_BUBBLE_TEXT_EMPTY", `bubble ${change.bubbleId} text is empty`);
+    const { slide } = findSlide(deck, change.slideId);
+    findBubble(slide, change.bubbleId);
+    seen.add(key);
+    const slideChanges = bySlide.get(change.slideId) ?? new Map<string, string>();
+    slideChanges.set(change.bubbleId, change.text);
+    bySlide.set(change.slideId, slideChanges);
+  }
+  const slides = deck.slides.map((slide) => {
+    const slideChanges = bySlide.get(slide.id);
+    if (!slideChanges || !slide.bubbles) return slide;
+    return {
+      ...slide,
+      bubbles: slide.bubbles.map((bubble) => {
+        const text = slideChanges.get(bubble.id);
+        return text === undefined ? bubble : { ...bubble, segments: retextSegments(bubble.segments, text) };
+      }),
+    };
+  });
+  return withRevision(deck, slides);
+}
+
 /**
  * 03c rich/cleanRich/saveEditor 254~275행(HTML `<strong>` 왕복)을 세그먼트 조작으로 대체.
  * range 는 말풍선 전체 텍스트 기준 문자 오프셋(from ≤ to)이다. 그 범위만 bold:true 로

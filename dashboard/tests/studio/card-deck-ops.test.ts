@@ -10,6 +10,7 @@ import {
   moveBubble,
   moveBubbleToSlide,
   swapSpeakers,
+  applyBubbleTextBatch,
   toggleBold,
   moveSlide,
   addSlide,
@@ -184,6 +185,33 @@ describe("S5-AC1·AC2 말풍선 이동과 화자 일괄 변경", () => {
     const restored = swapSpeakers(swapped, null);
     expect(restored.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker)))
       .toEqual(d.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker)));
+  });
+});
+
+describe("S5-AC3 선택한 말투 후보 적용", () => {
+  it("정상: 선택한 후보의 줄만 대상 말풍선에 한 revision으로 적용하고 다른 말풍선은 보존한다", () => {
+    const d = deck();
+    const first = d.slides[1].bubbles![0];
+    const second = d.slides[2].bubbles![0];
+    const untouched = structuredClone(d.slides[1].bubbles![1]);
+    const next = applyBubbleTextBatch(d, [
+      { slideId: d.slides[1].id, bubbleId: first.id, text: "첫 후보 문장" },
+      { slideId: d.slides[2].id, bubbleId: second.id, text: "둘째 후보 문장" },
+    ]);
+    expect(next.slides[1].bubbles![0].segments.map((segment) => segment.text).join("")).toBe("첫 후보 문장");
+    expect(next.slides[2].bubbles![0].segments.map((segment) => segment.text).join("")).toBe("둘째 후보 문장");
+    expect(next.slides[1].bubbles![1]).toEqual(untouched);
+    expect(next.revision).toBe(d.revision + 1);
+  });
+
+  it("거절: 빈 후보나 중복 대상은 전체를 적용하지 않는다", () => {
+    const d = deck();
+    const bubble = d.slides[1].bubbles![0];
+    expectOpsCode(() => applyBubbleTextBatch(d, [{ slideId: d.slides[1].id, bubbleId: bubble.id, text: " " }]), "OPS_BUBBLE_TEXT_EMPTY");
+    expectOpsCode(() => applyBubbleTextBatch(d, [
+      { slideId: d.slides[1].id, bubbleId: bubble.id, text: "하나" },
+      { slideId: d.slides[1].id, bubbleId: bubble.id, text: "둘" },
+    ]), "OPS_BUBBLE_CHANGE_DUPLICATE");
   });
 });
 
