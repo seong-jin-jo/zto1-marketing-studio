@@ -165,8 +165,8 @@ function VideoRoomHarness({ initialLines, onLinesChangeSpy }: { initialLines: st
   );
 }
 
-describe("v70 §4: 영상 편집 워크벤치(플레이어+자막 대본+타임라인)", () => {
-  it("영상이 있으면 배치(위 플레이어+대본, 아래 3레인 타임라인)가 전부 뜬다", () => {
+describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임라인)", () => {
+  it("S6-TL-01 영상이 있으면 5레인 타임라인과 넣기 서랍 진입점이 뜬다", () => {
     stubVoicesUnconfigured();
     render(<VideoRoomHarness initialLines={["첫 장면 대사", "둘째 장면 대사"]} />);
     expect(document.querySelector("[data-video-workbench]")).toBeTruthy();
@@ -175,14 +175,15 @@ describe("v70 §4: 영상 편집 워크벤치(플레이어+자막 대본+타임�
     expect(document.querySelector("[data-video-subtitle-script]")).toBeTruthy();
     expect(document.querySelector("[data-video-timeline]")).toBeTruthy();
     const lanes = document.querySelectorAll("[data-video-timeline-lane]");
-    expect(lanes.length).toBe(3);
+    expect(lanes.length).toBe(5);
     const laneLabels = Array.from(lanes).map((lane) => lane.getAttribute("data-video-timeline-lane"));
-    expect(laneLabels).toEqual(["자막", "훅·CTA", "댓글"]);
+    expect(laneLabels).toEqual(["영상", "자막", "글·스티커", "훅·댓글", "배경 음악"]);
+    expect(document.querySelector("[data-video-insert-drawer-toggle]")).toBeInTheDocument();
     // §4.4 "초 숫자 입력칸 0개".
     expect(document.querySelectorAll('[data-video-timeline] input[type="number"]').length).toBe(0);
   });
 
-  it("PR94-R3-VIDEO-01 정상: 390 영상 화면은 160px이고 3×44px 레인은 156px 타임라인 안에 머문다", () => {
+  it("S6-TL-02 390 영상 화면은 160px이고 5×44px 레인은 240px 타임라인 안에 머문다", () => {
     stubVoicesUnconfigured();
     render(<VideoRoomHarness initialLines={["첫 장면 대사"]} />);
     const playback = document.querySelector("[data-video-playback]");
@@ -192,8 +193,34 @@ describe("v70 §4: 영상 편집 워크벤치(플레이어+자막 대본+타임�
     expect(screen?.className).toContain("max-[26rem]:h-40");
     expect(screen?.className).toContain("max-[26rem]:min-h-40");
     expect(screen?.className).toContain("max-[26rem]:aspect-auto");
-    expect(document.querySelector("[data-video-workbench]")?.className).toContain("max-[26rem]:[grid-template-rows:auto_9.75rem]");
+    expect(document.querySelector("[data-video-workbench]")?.className).toContain("max-[26rem]:[grid-template-rows:auto_15rem]");
     expect(document.querySelector("[data-video-script-column]")).toBeInTheDocument();
+  });
+
+  it("S6-TL-03 키보드 방향키는 블록을 0.1초 옮기고 Shift+방향키는 끝점을 조절한다", () => {
+    stubVoicesUnconfigured();
+    render(<VideoRoomHarness initialLines={["첫 장면 대사", "둘째 장면 대사"]} />);
+    const first = document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement;
+    expect(first.getAttribute("aria-label")).toContain("0초부터 3초");
+    fireEvent.keyDown(first, { key: "ArrowRight" });
+    expect((document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement).getAttribute("aria-label")).toContain("0.1초부터 3.1초");
+    fireEvent.keyDown(document.querySelector('[data-video-timeline-block="subtitle"]')!, { key: "ArrowRight", shiftKey: true });
+    expect((document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement).getAttribute("aria-label")).toContain("0.1초부터 3.2초");
+  });
+
+  it("S6-DRAWER-01 넣기 서랍에서 글 블록과 3종 전환을 계약에 저장한다", () => {
+    stubVoicesUnconfigured();
+    render(<VideoRoomHarness initialLines={["첫 장면 대사"]} />);
+    fireEvent.click(document.querySelector("[data-video-insert-drawer-toggle]")!);
+    expect(document.querySelector("[data-video-insert-drawer]")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "글·스티커" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "글 또는 스티커 내용" }), { target: { value: "핵심 제목" } });
+    fireEvent.click(screen.getByRole("button", { name: "추가" }));
+    expect(document.querySelectorAll('[data-video-timeline-block="text"]')).toHaveLength(1);
+    fireEvent.click(screen.getByRole("tab", { name: "전환" }));
+    const fadeButtons = screen.getAllByRole("button", { name: "페이드" });
+    fireEvent.click(fadeButtons[0]);
+    expect(fadeButtons[0]).toHaveAttribute("aria-pressed", "true");
   });
 
   it("자막 대본이 lines에서 시딩되고, 한 줄 = 한 컷이다", () => {
