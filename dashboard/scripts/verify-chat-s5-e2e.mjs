@@ -220,6 +220,20 @@ try {
     : 0;
   if (readerBubbleCount < 1) throw new Error("독자 말풍선이 있는 실렌더 픽스처가 아닙니다");
 
+  const alternatingDeck = structuredClone(serverDeck);
+  const alternatingSlide = alternatingDeck.slides[1];
+  if (alternatingSlide.base.kind !== "chat_bubble") throw new Error("작성자-독자-작성자 검증용 카톡 장이 없습니다");
+  const readerBubble = alternatingSlide.base.bubbles.find((bubble) => bubble.speaker === "reader");
+  const authorBubble = alternatingSlide.base.bubbles.find((bubble) => bubble.speaker === "brand");
+  if (!readerBubble || !authorBubble) throw new Error("작성자-독자-작성자 검증용 두 화자가 없습니다");
+  alternatingSlide.base.bubbles = [
+    { ...structuredClone(authorBubble), id: "s5-author-first", order: 0 },
+    { ...structuredClone(readerBubble), id: "s5-reader-middle", order: 1 },
+    { ...structuredClone(authorBubble), id: "s5-author-second", order: 2, segments: [{ text: "다시 답할 때 이름도 다시 보여요", bold: false }] },
+  ];
+  const alternatingPng = path.join(outputDir, "s5-chat-author-reader-author-remotion.png");
+  await renderCardSlidePng({ model: cardSlideRenderModel(alternatingDeck, alternatingSlide.id, uploadedAssets), outputPath: alternatingPng });
+
   const overflowingDeck = structuredClone(serverDeck);
   const overflowSlide = overflowingDeck.slides[1];
   if (overflowSlide.base.kind !== "chat_bubble") throw new Error("넘침 검증용 카톡 장이 없습니다");
@@ -252,6 +266,7 @@ try {
     advancedEditorPreserved: true,
     overlayPreserved: JSON.stringify(currentOverlay) === JSON.stringify(preservedOverlay),
     readerBubbleCount,
+    authorReaderAuthorRendered: true,
     overflowRejected: overflowError.includes("CARD_CHAT_OVERFLOW"),
     overflowError,
     coverPhoto: cover.background,
