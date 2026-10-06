@@ -26,7 +26,6 @@ on:
         description: '지운 블록을 저장소에 돌려줄지 (fstrim. 다른 VM 이 쓸 공간을 회수한다)'
         required: false
         default: ''
-
 jobs:
   deploy:
     runs-on: [self-hosted, marketing_runner]
