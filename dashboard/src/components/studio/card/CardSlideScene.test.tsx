@@ -127,7 +127,7 @@ describe("CardSlideScene S5 카톡 원형과 자유 요소", () => {
   it("S5-R2-MINOR 사진 배경의 흰 기본 글자색은 카톡 덱에만 적용한다", () => {
     const deck = createPlainCardDeckV3(["일반 카드", "두 번째 카드"], "deck_plain_photo");
     deck.theme.foreground = "#123456";
-    deck.slides[0].background = { kind: "image", asset_id: "photo.png", fit: "cover", overlay: null };
+    deck.slides[0].background = { kind: "image", asset_id: "photo.png", crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: null };
     const view = render(<CardSlideScene model={cardSlideRenderModel(deck, deck.slides[0].id)} renderMode="editor" />);
     const scene = view.container.querySelector<HTMLElement>("[data-card-slide-scene]")!;
     expect(scene).toHaveStyle("--card-chat-primary-text: #123456");

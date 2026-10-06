@@ -2266,10 +2266,8 @@ export function EditRoom({
               {kind === "card" && cardDeckV3 && cardDeckV3.template !== "chat_bubble" && onCardDeckV3Change ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-v3-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                   <div className="mb-stack flex flex-wrap items-center gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption text-muted" role="status" data-card-deck-v3-return-note>
-                    <span className="mr-auto">{cardDeckV3.template === "chat_bubble"
-                      ? "말풍선과 자유 요소를 이 화면에서 함께 편집합니다."
-                      : "기본 편집으로 돌아가면 자유 배치 진입 직전의 글과 위치를 그대로 복원합니다."}</span>
-                    {cardDeckV3.template !== "chat_bubble" && onReturnFromCardDeckV3 ? <Button type="button" size="sm" variant="secondary" onClick={onReturnFromCardDeckV3}>기본 편집으로 돌아가기</Button> : null}
+                    <span className="mr-auto">기본 편집으로 돌아가면 자유 배치 진입 직전의 글과 위치를 그대로 복원합니다.</span>
+                    {onReturnFromCardDeckV3 ? <Button type="button" size="sm" variant="secondary" onClick={onReturnFromCardDeckV3}>기본 편집으로 돌아가기</Button> : null}
                   </div>
                   <CardCanvasEditor deck={cardDeckV3} assetUrls={cardAssetUrls} onDeckChange={onCardDeckV3Change} />
                 </div>
