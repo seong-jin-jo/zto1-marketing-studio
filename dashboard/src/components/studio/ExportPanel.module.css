@@ -1,0 +1,84 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  overflow-y: auto;
+  place-items: start center;
+  background: color-mix(in srgb, var(--text) 42%, transparent);
+  padding: var(--space-region) var(--pad-inset);
+}
+
+.panel {
+  width: min(100%, 72rem);
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-surface);
+  background: var(--surface);
+  box-shadow: var(--elevation-floating);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--stack-section);
+  border-bottom: 1px solid var(--border);
+  padding: var(--pad-inset);
+}
+
+.content {
+  display: grid;
+  min-width: 0;
+  gap: var(--stack-section);
+  padding: var(--pad-inset);
+}
+
+.statusColumn,
+.itemsColumn {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--stack);
+}
+
+.statusColumn {
+  order: -1;
+}
+
+.progress {
+  width: 100%;
+  height: var(--stack-tight);
+  margin-top: var(--stack);
+  accent-color: var(--accent);
+}
+
+.thumbnail {
+  width: 100%;
+  max-height: 18rem;
+  border-radius: var(--shape-control);
+  object-fit: contain;
+  background: var(--surface-2);
+}
+
+@media (min-width: 48rem) {
+  .content {
+    grid-template-columns: minmax(0, 1fr) minmax(17.5rem, 0.55fr);
+  }
+
+  .statusColumn {
+    order: 0;
+    grid-column: 2;
+  }
+
+  .itemsColumn {
+    grid-column: 1;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 63.9375rem) {
+  .overlay {
+    padding-inline: var(--stack);
+  }
+}

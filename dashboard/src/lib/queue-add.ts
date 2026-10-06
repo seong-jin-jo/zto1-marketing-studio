@@ -20,6 +20,9 @@ export interface StudioHandoffSourceContext {
   revision: number;
   generationId: string | null;
   candidateId: string | null;
+  /** 발행실이 고정한 최신 내보내기 영수증. 카드·영상 handoff에서만 존재한다. */
+  exportId?: string;
+  exportSourceHash?: string;
 }
 
 export type QueueSourceContext = PerformanceSuggestionSourceContext | StudioHandoffSourceContext;

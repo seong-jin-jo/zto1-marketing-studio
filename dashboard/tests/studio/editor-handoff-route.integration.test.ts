@@ -8,6 +8,12 @@ const H = vi.hoisted(() => ({
   updateAllowed: true,
   queueCalls: [] as Array<Record<string, unknown>>,
   generatedText: "",
+  latestExport: {
+    blocker: null as string | null,
+    is_latest: true,
+    current_source_hash: "a".repeat(64),
+    latest_export: { export_id: "22222222-2222-4222-8222-222222222222", status: "succeeded" },
+  },
   authFailure: null as null | { reason: "invalid" | "unavailable" | "forbidden"; message: string; code?: string },
 }));
 
@@ -54,6 +60,7 @@ vi.mock("@/lib/studio/editor-handoff-store", () => ({
 
 vi.mock("@/lib/tenant-context", () => ({
   runWithTenant: vi.fn(async (_tenantId: string, callback: () => unknown) => callback()),
+  currentTenantId: vi.fn(() => H.tenantId),
 }));
 
 vi.mock("@/lib/queue-add", async (importOriginal) => {
@@ -66,6 +73,10 @@ vi.mock("@/lib/queue-add", async (importOriginal) => {
     }),
   };
 });
+
+vi.mock("@/lib/studio/export-repository", () => ({
+  exportRepository: () => ({ latest: vi.fn(async () => H.latestExport) }),
+}));
 
 function handoffBody() {
   return {
@@ -89,6 +100,12 @@ beforeEach(() => {
   H.updateAllowed = true;
   H.queueCalls = [];
   H.generatedText = "";
+  H.latestExport = {
+    blocker: null,
+    is_latest: true,
+    current_source_hash: "a".repeat(64),
+    latest_export: { export_id: "22222222-2222-4222-8222-222222222222", status: "succeeded" },
+  };
   H.authFailure = null;
 });
 
@@ -224,7 +241,31 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
     expect(response.status).toBe(201);
     expect(body.command).toEqual(expect.objectContaining({ action: "enqueue_openclaw", executed: true }));
     expect(H.queueCalls[0]).toEqual(expect.objectContaining({
-      sourceContext: expect.objectContaining({ type: "studio_handoff", draftId: H.draftId }),
+      sourceContext: expect.objectContaining({
+        type: "studio_handoff",
+        draftId: H.draftId,
+        exportId: "22222222-2222-4222-8222-222222222222",
+        exportSourceHash: "a".repeat(64),
+      }),
     }));
+  });
+
+  it("S4-AC6 거절: 클라이언트를 우회해도 최신 내보내기가 아니면 큐 등록을 막는다", async () => {
+    H.handoff = applyEditorOperation(createEditorHandoff(handoffBody()), 0, { operation: "mark_ready" });
+    H.latestExport = {
+      blocker: "EXPORT_SOURCE_STALE",
+      is_latest: false,
+      current_source_hash: "b".repeat(64),
+      latest_export: { export_id: "22222222-2222-4222-8222-222222222222", status: "succeeded" },
+    };
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: H.tenantId }),
+    }), { params: Promise.resolve({ draftId: H.draftId }) });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "EXPORT_SOURCE_STALE" });
+    expect(H.queueCalls).toHaveLength(0);
   });
 });

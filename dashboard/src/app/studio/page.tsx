@@ -18,6 +18,7 @@ import { useToast } from "@/components/layout/Toast";
 import { PlatformPreview, PREVIEW_PLATFORMS, type PreviewAccount, type PreviewInlineEditor, type PreviewPlatform } from "@/components/studio/PlatformPreview";
 import { PlatformFocusFilter } from "@/components/studio/PlatformFocusFilter";
 import { PublishHeaderControls } from "@/components/studio/PublishHeaderControls";
+import { ExportPanel, type ExportPanelKind } from "@/components/studio/ExportPanel";
 import { CreateRoom, EditRoom, type CreateContentBranch, type CreateKind, type CreateStructureChoice, type EditContentKind } from "@/components/studio/StudioRooms";
 import type { StudioGenerationCandidate } from "@/lib/studio/generation/client";
 import { useUsage } from "@/hooks/useOverview";
@@ -793,6 +794,8 @@ export default function StudioPage() {
   const [cardDeckAutosaveError, setCardDeckAutosaveError] = useState("");
   const [videoEditAutosaveError, setVideoEditAutosaveError] = useState("");
   const [moveToPublishBusy, setMoveToPublishBusy] = useState(false);
+  const [exportPanel, setExportPanel] = useState<{ draftId: string; kind: ExportPanelKind } | null>(null);
+  const [requestedCardSlide, setRequestedCardSlide] = useState<{ id: string; requestId: number } | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<StudioGenerationCandidate | null>(null);
   const [createBranch, setCreateBranch] = useState<CreateContentBranch>("video");
   // "새로 시작" 이 생성실 안쪽까지 닿게 하는 신호. 값이 바뀌면 생성실이 스스로 비운다.
@@ -2389,8 +2392,14 @@ export default function StudioPage() {
         cardDeckV3,
       );
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
-      changeRoom("publish");
-      showToast("편집 내용을 저장하고 발행실로 이동했습니다", "success");
+      const exportKind: ExportPanelKind | null = editKind === "video" ? "video" : editKind === "card" ? "card_deck" : null;
+      if (!exportKind) {
+        changeRoom("publish");
+        showToast("편집 내용을 저장하고 발행실로 이동했습니다", "success");
+        return;
+      }
+      setExportPanel({ draftId: savedDraftId, kind: exportKind });
+      showToast("편집 내용을 저장했습니다. 최신 파일을 내보내면 발행실로 갈 수 있습니다.", "success");
     } catch (error) {
       showToast(extractApiErrorMessage(error, "편집 내용을 저장하지 못했습니다"), "error");
     } finally {
@@ -4551,6 +4560,7 @@ export default function StudioPage() {
         onCardDeckChange={onCardDeckChange}
         cardDeckV3={cardDeckV3}
         onCardDeckV3Change={onCardDeckV3Change}
+        requestedCardSlide={requestedCardSlide}
         onStartCardDeckV3={cardDeckV3EntryEnabled(CARD_DECK_V3_RENDER_ENABLED, {
           hasCardDeckV2: Boolean(cardDeck),
           cardDeckTemplate: cardDeck?.template ?? null,
@@ -4578,6 +4588,25 @@ export default function StudioPage() {
         onBodyConflictLoadLatest={loadLatestBodyAfterConflict}
         onBodyConflictReapply={() => { void reapplyLocalBodyAfterConflict(); }}
       />
+      {exportPanel && activeWorkspace ? (
+        <ExportPanel
+          tenantId={activeWorkspace.id}
+          draftId={exportPanel.draftId}
+          kind={exportPanel.kind}
+          onClose={() => setExportPanel(null)}
+          onOpenEmptySlide={(slide) => {
+            setExportPanel(null);
+            changeEditKind("card");
+            setRequestedCardSlide({ id: slide.item_key, requestId: Date.now() });
+            showToast(`${slide.number}장이 비어 있습니다. 내용을 채운 뒤 다시 내보내 주세요.`, "error");
+          }}
+          onOpenPublish={() => {
+            setExportPanel(null);
+            changeRoom("publish");
+            showToast("최신 내보내기를 확인하고 발행실로 이동했습니다", "success");
+          }}
+        />
+      ) : null}
       <ConfirmDialog request={confirmRequest} onConfirm={() => settleConfirm(true)} onCancel={() => settleConfirm(false)} />
     </div>
   );
