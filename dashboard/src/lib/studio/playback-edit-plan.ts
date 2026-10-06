@@ -130,7 +130,13 @@ function piecesOutsideCuts(startSec: number, endSec: number, cuts: PlaybackRange
 
 type DrawKind = "subtitle" | "text" | "sticker" | "hook" | "cta" | "comment";
 
-type SourceWindow = { text: string; startSec: number; endSec: number; kind: DrawKind };
+type SourceWindow = {
+  text: string;
+  startSec: number;
+  endSec: number;
+  kind: DrawKind;
+  animation?: NonNullable<VideoEdit["textStickers"]>[number]["animation"];
+};
 
 type OutputWindow = SourceWindow;
 
@@ -217,7 +223,7 @@ function sourceWindows(edit: VideoEdit, durationSec: number): { windows: SourceW
   for (const item of edit.textStickers ?? []) {
     const text = item.text.trim();
     if (!text) continue;
-    windows.push({ text, startSec: item.startSec, endSec: item.endSec, kind: item.kind });
+    windows.push({ text, startSec: item.startSec, endSec: item.endSec, kind: item.kind, animation: item.animation });
   }
   return { windows, dropped, warnings: normalizedSubtitles.warnings };
 }
@@ -228,6 +234,30 @@ function shiftWindow(window: SourceWindow, cuts: PlaybackRange[]): OutputWindow[
     startSec: piece.startSec - removedBefore(piece.startSec, cuts),
     endSec: piece.endSec - removedBefore(piece.endSec, cuts),
   }));
+}
+
+/** type 움직임은 렌더 시간 앞부분에 글자 묶음을 순차 노출한다. 레이어 폭증은 12단계로 제한한다. */
+function expandTypeWindows(windows: OutputWindow[]): OutputWindow[] {
+  return windows.flatMap((window) => {
+    if (window.animation !== "type") return window;
+    const chars = Array.from(window.text);
+    if (chars.length < 2) return { ...window, animation: "none" as const };
+    const steps = Math.min(chars.length, 12);
+    const revealDuration = Math.min(0.8, Math.max(MIN_SPAN_SEC, (window.endSec - window.startSec) * 0.5));
+    return Array.from({ length: steps }, (_, index) => {
+      const startSec = window.startSec + revealDuration * index / steps;
+      const endSec = index === steps - 1
+        ? window.endSec
+        : window.startSec + revealDuration * (index + 1) / steps;
+      return {
+        ...window,
+        text: chars.slice(0, Math.ceil(chars.length * (index + 1) / steps)).join(""),
+        startSec,
+        endSec,
+        animation: "none" as const,
+      };
+    });
+  });
 }
 
 function coversFullDuration(kept: PlaybackRange[], durationSec: number): boolean {
@@ -247,12 +277,21 @@ function drawtext(input: {
   boxColor?: string;
   box?: boolean;
   outline?: boolean;
+  animation?: SourceWindow["animation"];
 }): string {
   const border = Math.max(2, Math.round(input.fontSize * 0.09));
+  const animationSec = Math.min(0.3, Math.max(MIN_SPAN_SEC, input.endSec - input.startSec));
+  const progress = `if(lt(t\\,${fmt(input.startSec + animationSec)})\\,(t-${fmt(input.startSec)})/${fmt(animationSec)}\\,1)`;
+  const fontSize = input.animation === "scale"
+    ? `'${input.fontSize}*(0.85+0.15*${progress})'`
+    : String(input.fontSize);
+  const y = input.animation === "rise"
+    ? `${input.y}+${Math.max(8, Math.round(input.fontSize * 0.8))}*(1-${progress})`
+    : input.y;
   const args = [
     `text='${escapeDrawText(input.text)}'`,
     "expansion=none",
-    `fontsize=${input.fontSize}`,
+    `fontsize=${fontSize}`,
     `fontcolor=${input.fontColor ?? "white"}`,
     `borderw=${input.outline === false ? 0 : border}`,
     "bordercolor=black@0.9",
@@ -260,9 +299,10 @@ function drawtext(input: {
     `boxcolor=${input.boxColor ?? "black@0.45"}`,
     `boxborderw=${Math.round(input.fontSize * 0.3)}`,
     "x=(w-text_w)/2",
-    `y=${input.y}`,
+    `y=${y}`,
     `enable='between(t,${fmt(input.startSec)},${fmt(input.endSec)})'`,
   ];
+  if (input.animation === "fade") args.push(`alpha='${progress}'`);
   if (input.fontFile) args.splice(1, 0, `fontfile='${escapeFilterPath(input.fontFile)}'`);
   return `drawtext=${args.join(":")}`;
 }
@@ -309,6 +349,7 @@ function drawFilters(windows: OutputWindow[], input: {
         box: preset === "box" || preset === "band" || window.kind !== "subtitle",
         boxColor: preset === "brand" ? "0x241B4B@0.88" : preset === "band" ? "black@0.82" : "black@0.45",
         outline: subtitleStyle.outline,
+        animation: window.animation,
       }));
     });
   }
@@ -357,6 +398,9 @@ export type PlaybackBurnPlan =
     voiceRequested: boolean;
     musicRequested: boolean;
     musicVolume: number;
+    musicOffsetSec: number;
+    musicFadeOut: boolean;
+    musicDuckUnderVoice: boolean;
     outputHasAudio: boolean;
     warnings: string[];
   }
@@ -379,15 +423,16 @@ export function planPlaybackBurn(input: {
 
   const source = sourceWindows(input.edit, durationSec);
   const droppedTexts = [...source.dropped];
-  const outputWindows: OutputWindow[] = [];
+  const shiftedWindows: OutputWindow[] = [];
   for (const window of source.windows) {
     const shifted = shiftWindow(window, cuts);
     if (!shifted.length) {
       droppedTexts.push(window.text);
       continue;
     }
-    outputWindows.push(...shifted);
+    shiftedWindows.push(...shifted);
   }
+  const outputWindows = expandTypeWindows(shiftedWindows);
   const draws = drawFilters(outputWindows, { ...input, edit: input.edit });
   if (draws.length > MAX_DRAW_LAYERS) return { ok: false, reason: "too_many_layers" };
 
@@ -405,6 +450,9 @@ export function planPlaybackBurn(input: {
       voiceRequested: Boolean(input.edit.voice),
       musicRequested: Boolean(input.edit.music),
       musicVolume: input.edit.music?.volume ?? 0,
+      musicOffsetSec: input.edit.music?.offsetSec ?? 0,
+      musicFadeOut: input.edit.music?.fadeOut ?? false,
+      musicDuckUnderVoice: input.edit.music?.duckUnderVoice ?? false,
       outputHasAudio: input.hasAudio || Boolean(input.edit.voice) || Boolean(input.edit.music),
       warnings: source.warnings,
     };
@@ -422,6 +470,9 @@ export function planPlaybackBurn(input: {
     voiceRequested: Boolean(input.edit.voice),
     musicRequested: Boolean(input.edit.music),
     musicVolume: input.edit.music?.volume ?? 0,
+    musicOffsetSec: input.edit.music?.offsetSec ?? 0,
+    musicFadeOut: input.edit.music?.fadeOut ?? false,
+    musicDuckUnderVoice: input.edit.music?.duckUnderVoice ?? false,
     outputHasAudio: input.hasAudio || Boolean(input.edit.voice) || Boolean(input.edit.music),
     warnings: source.warnings,
   };
@@ -447,18 +498,32 @@ export function playbackFfmpegArgs(
     if (plan.filterComplex) filters.push(voiceIndex !== null ? plan.filterComplex.split(";[0:a]")[0] : plan.filterComplex);
     else if (plan.videoFilter) filters.push(`[0:v]${plan.videoFilter}[vout]`);
     else filters.push("[0:v]null[vout]");
-    const audioInputs: string[] = [];
+    let primaryAudio: string | null = null;
     if (voiceIndex !== null) {
       filters.push(`[${voiceIndex}:a]atrim=duration=${fmt(plan.outputDurationSec)},asetpts=PTS-STARTPTS[voice]`);
-      audioInputs.push("[voice]");
+      primaryAudio = "[voice]";
     } else if (plan.includeAudio) {
       // 컷이 있는 경우 plan.filterComplex에 [aout]이 이미 들어 있다.
-      audioInputs.push(plan.filterComplex ? "[aout]" : "[0:a]");
+      primaryAudio = plan.filterComplex ? "[aout]" : "[0:a]";
     }
+    let musicAudio: string | null = null;
     if (musicIndex !== null) {
-      filters.push(`[${musicIndex}:a]atrim=duration=${fmt(plan.outputDurationSec)},asetpts=PTS-STARTPTS,volume=${fmt(plan.musicVolume / 100)},afade=t=out:st=${fmt(Math.max(0, plan.outputDurationSec - 1))}:d=1[music]`);
-      audioInputs.push("[music]");
+      const musicFilters = [
+        `atrim=start=${fmt(plan.musicOffsetSec)}:duration=${fmt(plan.outputDurationSec)}`,
+        "asetpts=PTS-STARTPTS",
+        `volume=${fmt(plan.musicVolume / 100)}`,
+      ];
+      if (plan.musicFadeOut) musicFilters.push(`afade=t=out:st=${fmt(Math.max(0, plan.outputDurationSec - 1))}:d=1`);
+      filters.push(`[${musicIndex}:a]${musicFilters.join(",")}[musicraw]`);
+      musicAudio = "[musicraw]";
     }
+    if (musicAudio && primaryAudio && plan.musicDuckUnderVoice) {
+      filters.push(`${primaryAudio}asplit=2[primarymix][duckkey]`);
+      filters.push(`${musicAudio}[duckkey]sidechaincompress=threshold=0.04:ratio=8:attack=20:release=250[musicducked]`);
+      primaryAudio = "[primarymix]";
+      musicAudio = "[musicducked]";
+    }
+    const audioInputs = [primaryAudio, musicAudio].filter((value): value is string => Boolean(value));
     if (audioInputs.length > 1) filters.push(`${audioInputs.join("")}amix=inputs=${audioInputs.length}:duration=first:normalize=0[audioout]`);
     else if (audioInputs.length === 1) filters.push(`${audioInputs[0]}anull[audioout]`);
     args.push("-filter_complex", filters.join(";"), "-map", "[vout]");

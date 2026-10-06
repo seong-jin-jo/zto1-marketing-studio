@@ -154,20 +154,47 @@ describe("재생 편집이 나가는 영상 명령에 남는다", () => {
     expect(plan.videoFilter).toContain("움직이는 제목");
     expect(plan.videoFilter).toContain("fontcolor=yellow");
     expect(plan.videoFilter).toContain("borderw=0");
+    expect(plan.videoFilter).toContain("*(1-if(lt(t\\,1.3)");
+  });
+
+  it("S6-MINOR-ANIMATION-01 fade·scale·type 움직임을 각각 렌더 필터와 순차 글자층으로 바꾼다", () => {
+    let edit = addTextSticker(emptyVideoEdit(), { kind: "text", text: "페이드", startSec: 0, endSec: 2, animation: "fade" });
+    edit = addTextSticker(edit, { kind: "text", text: "확대", startSec: 0.5, endSec: 2.5, animation: "scale" });
+    edit = addTextSticker(edit, { kind: "text", text: "타이핑", startSec: 1, endSec: 3, animation: "type" });
+    const plan = planPlaybackBurn({ edit, durationSec: 4, width: 1080, height: 1920, size: "보통", hasAudio: false });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.videoFilter).toContain("alpha='if(lt(t\\,0.3)");
+    expect(plan.videoFilter).toContain("*(0.85+0.15*if(lt(t\\,0.8)");
+    expect(plan.keptTexts).toEqual(expect.arrayContaining(["타", "타이핑"]));
   });
 
   it("S6-RENDER-02 배경음악은 볼륨·페이드와 함께 출력 오디오로 섞인다", () => {
     const edit = {
       ...setSubtitles(emptyVideoEdit(), [{ id: "s1", order: 0, text: "자막", startSec: 0, endSec: 2, cut: false }]),
-      music: { source: "upload" as const, assetId: "music.mp3", label: "내 음악", volume: 24, offsetSec: 0, fadeOut: true, duckUnderVoice: true, rightsConfirmed: true },
+      music: { source: "upload" as const, assetId: "music.mp3", label: "내 음악", volume: 24, offsetSec: 1.25, fadeOut: true, duckUnderVoice: true, rightsConfirmed: true },
     };
     const plan = planPlaybackBurn({ edit, durationSec: 4, width: 1080, height: 1920, size: "보통", hasAudio: true });
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     const args = playbackFfmpegArgs(plan, { inputPath: "in.mp4", outputPath: "out.mp4", musicPath: "music.mp3" });
     expect(args).toEqual(expect.arrayContaining(["-stream_loop", "-1", "-filter_complex"]));
-    expect(args?.join(" ")).toContain("volume=0.24");
-    expect(args?.join(" ")).toContain("amix=inputs=2");
+    const command = args?.join(" ") ?? "";
+    expect(command).toContain("atrim=start=1.25:duration=4");
+    expect(command).toContain("volume=0.24");
+    expect(command).toContain("afade=t=out:st=3:d=1");
+    expect(command).toContain("sidechaincompress=threshold=0.04");
+    expect(command).toContain("amix=inputs=2");
+  });
+
+  it("S6-MINOR-MUSIC-02 fadeOut=false이면 음악 끝을 임의로 줄이지 않는다", () => {
+    const edit = {
+      ...emptyVideoEdit(),
+      music: { source: "upload" as const, assetId: "music.mp3", label: "내 음악", volume: 18, offsetSec: 0, fadeOut: false, duckUnderVoice: false, rightsConfirmed: true },
+    };
+    const plan = planPlaybackBurn({ edit, durationSec: 4, width: 1080, height: 1920, size: "보통", hasAudio: false });
+    const args = playbackFfmpegArgs(plan, { inputPath: "in.mp4", outputPath: "out.mp4", musicPath: "music.mp3" });
+    expect(args?.join(" ")).not.toContain("afade=");
   });
 
   it("전부 잘라 남는 영상이 없으면 명령을 만들지 않는다", () => {
