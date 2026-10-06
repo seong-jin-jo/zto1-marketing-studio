@@ -542,25 +542,25 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
         <nav className={styles.slideStrip} aria-label="카드 장 목록">
           {workingDeck.slides.map((slide) => <Button key={slide.id} size="sm" aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>{slide.order + 1}장</Button>)}
         </nav>
-        {activeSlide.base.kind === "chat_bubble" ? <div className={styles.bubbleActions} role="toolbar" aria-label="카톡 장 편집 도구">
-          <Button size="sm" variant="secondary" disabled={activeSlide.role === "cta"} onClick={() => {
-            const next = runChatCommand((current) => addChatSlide(current, activeSlide.id));
-            if (next) setActiveSlideId(next.slides[activeSlide.order + 1]?.id ?? activeSlide.id);
-          }}>새 장 추가</Button>
-          <Button size="sm" variant="secondary" disabled={activeSlide.role !== "body"} onClick={() => {
-            const next = runChatCommand((current) => duplicateChatSlide(current, activeSlide.id));
-            if (next) setActiveSlideId(next.slides[activeSlide.order + 1]?.id ?? activeSlide.id);
-          }}>이 장 복제</Button>
-          <Button size="sm" variant="secondary" disabled={activeSlide.role !== "body" || workingDeck.slides[activeSlide.order - 1]?.role !== "body"} onClick={() => runChatCommand((current) => moveChatSlide(current, activeSlide.id, -1))}>장 앞으로</Button>
-          <Button size="sm" variant="secondary" disabled={activeSlide.role !== "body" || workingDeck.slides[activeSlide.order + 1]?.role !== "body"} onClick={() => runChatCommand((current) => moveChatSlide(current, activeSlide.id, 1))}>장 뒤로</Button>
-          <Button size="sm" variant="secondary" disabled={activeSlide.role !== "body"} onClick={() => {
-            const fallback = workingDeck.slides[activeSlide.order - 1]?.id ?? workingDeck.slides[0]?.id;
-            const next = runChatCommand((current) => deleteChatSlide(current, activeSlide.id));
-            if (next && fallback) setActiveSlideId(fallback);
-          }}>이 장 삭제</Button>
-          {(activeSlide.role === "cover" || activeSlide.role === "cta") ? <Button size="sm" variant="secondary" onClick={() => backgroundInputRef.current?.click()}>배경 사진 고르기</Button> : null}
-        </div> : null}
-        <div className={styles.stageColumn}>
+        <div className={styles.stageColumn} data-card-stage-column>
+          {activeSlide.base.kind === "chat_bubble" ? <div className={styles.bubbleActions} role="toolbar" aria-label="카톡 장 편집 도구">
+            <Button size="sm" variant="secondary" disabled={activeSlide.role === "cta"} onClick={() => {
+              const next = runChatCommand((current) => addChatSlide(current, activeSlide.id));
+              if (next) setActiveSlideId(next.slides[activeSlide.order + 1]?.id ?? activeSlide.id);
+            }}>새 장 추가</Button>
+            <Button size="sm" variant="secondary" disabled={activeSlide.role !== "body"} onClick={() => {
+              const next = runChatCommand((current) => duplicateChatSlide(current, activeSlide.id));
+              if (next) setActiveSlideId(next.slides[activeSlide.order + 1]?.id ?? activeSlide.id);
+            }}>이 장 복제</Button>
+            <Button size="sm" variant="secondary" disabled={activeSlide.role !== "body" || workingDeck.slides[activeSlide.order - 1]?.role !== "body"} onClick={() => runChatCommand((current) => moveChatSlide(current, activeSlide.id, -1))}>장 앞으로</Button>
+            <Button size="sm" variant="secondary" disabled={activeSlide.role !== "body" || workingDeck.slides[activeSlide.order + 1]?.role !== "body"} onClick={() => runChatCommand((current) => moveChatSlide(current, activeSlide.id, 1))}>장 뒤로</Button>
+            <Button size="sm" variant="secondary" disabled={activeSlide.role !== "body"} onClick={() => {
+              const fallback = workingDeck.slides[activeSlide.order - 1]?.id ?? workingDeck.slides[0]?.id;
+              const next = runChatCommand((current) => deleteChatSlide(current, activeSlide.id));
+              if (next && fallback) setActiveSlideId(fallback);
+            }}>이 장 삭제</Button>
+            {(activeSlide.role === "cover" || activeSlide.role === "cta") ? <Button size="sm" variant="secondary" onClick={() => backgroundInputRef.current?.click()}>배경 사진 고르기</Button> : null}
+          </div> : null}
           {toolbarElement ? (
             <div className={styles.toolbarSlot} data-placeholder={selected ? "false" : "true"}>
               <CardElementToolbar
@@ -673,7 +673,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
             {guides.map((guide, index) => <span key={`${guide.axis}-${guide.value}-${index}`} className={styles.snapGuide} data-axis={guide.axis} style={{ "--snap-position": `${guide.value / (guide.axis === "x" ? 1080 : logicalHeight) * 100}%` } as CSSProperties} />)}
           </div>
         </div>
-        <aside className={styles.rightPanel}>
+        <aside className={styles.rightPanel} data-card-right-panel>
           {activeSlide.base.kind === "chat_bubble" && activeSlide.role === "cover" ? (
             <section className={styles.chatBaseEditor} aria-label="표지 문구 편집">
               <h3>표지 문구</h3>

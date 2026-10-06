@@ -28,6 +28,17 @@ function deck(): CardDeckV3 {
 }
 
 describe("CardCanvasEditor S1 자유 배치", () => {
+  it("S5b-R2-A 카톡 장 도구를 미리보기 열 안에 두고 3열 workspace 구조를 보존한다", () => {
+    const current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    render(<CardCanvasEditor deck={current} onDeckChange={() => {}} />);
+
+    const toolbar = screen.getByRole("toolbar", { name: "카톡 장 편집 도구" });
+    const stageColumn = toolbar.parentElement;
+    expect(stageColumn).toHaveAttribute("data-card-stage-column");
+    expect(within(stageColumn!).getByLabelText("카드 편집 스테이지")).toBeInTheDocument();
+    expect(document.querySelector("[data-card-right-panel]")).toBeInTheDocument();
+  });
+
   it("S5b-AC1 고급 화자 도구와 undo를 같은 v3 화면에서 실행한다", () => {
     let current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
     const original = structuredClone(current);

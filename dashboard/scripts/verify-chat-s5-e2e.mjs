@@ -222,14 +222,35 @@ try {
     { width: 1440, height: 1000 },
   ];
   const responsive = [];
+  const layoutAssertionWidths = new Set([390, 600, 1440]);
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await page.locator("[data-card-canvas-editor]").scrollIntoViewIfNeeded();
     const overflow = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     if (overflow.scroll > overflow.width + 1) throw new Error(`${viewport.width}px 가로 넘침: ${JSON.stringify(overflow)}`);
+    let layout = null;
+    if (layoutAssertionWidths.has(viewport.width)) {
+      await page.locator("[data-card-stage]").scrollIntoViewIfNeeded();
+      layout = await page.evaluate(({ width, height }) => {
+        const stage = document.querySelector("[data-card-stage]")?.getBoundingClientRect();
+        const rightPanel = document.querySelector("[data-card-right-panel]")?.getBoundingClientRect();
+        if (!stage || !rightPanel) return null;
+        const visibleWidth = Math.max(0, Math.min(stage.right, width) - Math.max(stage.left, 0));
+        const visibleHeight = Math.max(0, Math.min(stage.bottom, height) - Math.max(stage.top, 0));
+        return {
+          stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom, width: stage.width, height: stage.height, visibleWidth, visibleHeight },
+          rightPanel: { left: rightPanel.left, right: rightPanel.right, width: rightPanel.width },
+        };
+      }, viewport);
+      if (!layout) throw new Error(`${viewport.width}px 카드 미리보기 또는 오른쪽 패널을 찾지 못했습니다`);
+      if (layout.stage.visibleWidth < layout.stage.width - 1 || layout.stage.visibleHeight < Math.min(layout.stage.height, 160)) {
+        throw new Error(`${viewport.width}px 카드 미리보기가 가시 영역 밖입니다: ${JSON.stringify(layout.stage)}`);
+      }
+      if (layout.rightPanel.width < 240) throw new Error(`${viewport.width}px 오른쪽 패널 폭이 240px 미만입니다: ${JSON.stringify(layout.rightPanel)}`);
+    }
     const screenshot = path.join(outputDir, `s5-chat-advanced-editor-${viewport.width}.png`);
     await page.screenshot({ path: screenshot, fullPage: true });
-    responsive.push({ viewport: viewport.width, overflow });
+    responsive.push({ viewport: viewport.width, overflow, ...(layout ? { layout } : {}) });
   }
 
   await page.setViewportSize({ width: 1440, height: 1000 });
