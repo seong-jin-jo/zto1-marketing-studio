@@ -215,7 +215,7 @@
 .media { object-fit: cover; }
 .imagePlaceholder { background: var(--surface-2); color: var(--text-muted); font-size: 5cqw; }
 .sticker { color: var(--warning); font-size: 18cqw; line-height: 1; }
-.logo { background: var(--accent); color: var(--accent-fg); font-size: 5cqw; font-weight: 800; letter-spacing: .08em; }
+.logo { background: var(--card-stage-accent); color: var(--card-stage-background); font-family: "Pretendard Variable"; font-size: 5cqw; font-weight: 800; letter-spacing: .08em; }
 .rectangle,
 .ellipse { background: var(--card-shape-fill); border: var(--card-shape-stroke-width) solid var(--card-shape-stroke); border-radius: var(--card-shape-radius); }
 .ellipse { border-radius: var(--shape-pill); }

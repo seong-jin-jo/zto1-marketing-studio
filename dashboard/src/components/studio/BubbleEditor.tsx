@@ -1144,13 +1144,11 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
   }, [deck, onDeckChange]);
 
   const undo = useCallback(() => {
-    setHistory((current) => {
-      const previous = current.at(-1);
-      if (!previous) return current;
-      onDeckChange(previous);
-      return current.slice(0, -1);
-    });
-  }, [onDeckChange]);
+    const previous = history.at(-1);
+    if (!previous) return;
+    setHistory((current) => current.slice(0, -1));
+    onDeckChange(previous);
+  }, [history, onDeckChange]);
 
   const toneTargets = useCallback(() => {
     const all = deck.slides.flatMap((slide) => (slide.bubbles ?? []).map((bubble) => ({
