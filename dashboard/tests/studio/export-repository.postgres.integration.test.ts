@@ -111,6 +111,26 @@ integration.sequential("S3 영속 내보내기 실제 PostgreSQL 통합", () => 
       .rejects.toEqual(expect.objectContaining<Partial<ExportQueueError>>({ status: 409, code: "IDEMPOTENCY_KEY_REUSED" }));
   });
 
+  it("S3-PR122-M3 경합: 다른 초안의 같은 key 동시 요청은 한 건만 만들고 다른 건은 409다", async () => {
+    const firstDraft = await seedDraft(["첫 초안 1", "첫 초안 2"]);
+    const secondDraft = await seedDraft(["둘째 초안 1", "둘째 초안 2"]);
+    const repository = new PostgresExportRepository();
+    const results = await Promise.allSettled([
+      repository.create(tenantA, firstDraft.id, "member-race", "same-draft-race-key", "3".repeat(64), input(firstDraft.source)),
+      repository.create(tenantA, secondDraft.id, "member-race", "same-draft-race-key", "4".repeat(64), input(secondDraft.source)),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    expect(rejected?.reason).toEqual(expect.objectContaining<Partial<ExportQueueError>>({
+      status: 409,
+      code: "IDEMPOTENCY_KEY_REUSED",
+    }));
+    const [count] = await admin!<{ value: number }[]>`
+      SELECT count(*)::int AS value FROM studio_export_jobs
+      WHERE tenant_id=${tenantA} AND member_id='member-race' AND idempotency_key='same-draft-race-key'`;
+    expect(count.value).toBe(1);
+  });
+
   it("S3-AC5 정상: 9장 중 실패한 한 장만 queued로 돌리고 성공 8장은 보존한다", async () => {
     const draft = await seedDraft(Array.from({ length: 9 }, (_, index) => `${index + 1}번 장`));
     const repository = new PostgresExportRepository();

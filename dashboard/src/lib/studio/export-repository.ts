@@ -23,6 +23,13 @@ function number(value: unknown): number {
   return Number(value ?? 0);
 }
 
+function isIdempotencyUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; constraint_name?: unknown };
+  return candidate.code === "23505"
+    && candidate.constraint_name === "studio_export_jobs_tenant_id_member_id_kind_idempotency_key_key";
+}
+
 function mapItem(row: Record<string, unknown>): ExportItemRecord {
   return {
     item_key: String(row.item_key),
@@ -117,7 +124,8 @@ export class PostgresExportRepository {
     requestHash: string,
     input: CreateExportInput,
   ): Promise<{ job: ExportJobRecord; reused: boolean }> {
-    return withTenant(tenantId, async (tx) => {
+    try {
+      return await withTenant(tenantId, async (tx) => {
       const [draft] = await tx<{ payload: unknown }[]>`
         SELECT payload FROM drafts WHERE tenant_id=${tenantId} AND id=${draftId} FOR UPDATE`;
       const source = sourceFromDraft(draft);
@@ -170,7 +178,13 @@ export class PostgresExportRepository {
       const job = await loadJob(tx, tenantId, draftId, jobId);
       if (!job) throw new Error("created export job disappeared");
       return { job, reused: false };
-    });
+      });
+    } catch (error) {
+      if (isIdempotencyUniqueViolation(error)) {
+        throw new ExportQueueError(409, "IDEMPOTENCY_KEY_REUSED", "Idempotency-Key가 다른 요청에 사용됐습니다");
+      }
+      throw error;
+    }
   }
 
   async get(tenantId: string, draftId: string, exportId: string): Promise<ExportJobRecord> {
