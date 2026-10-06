@@ -1372,7 +1372,7 @@ function TimelineLane({ label, labelWidth, children }: { label: string; labelWid
   // 간격을 두지 않는다 — 이 라벨 폭이 곧 위 눈금 오버레이의 오프셋 상수와 같아야
   // 블록이 눈금과 같은 원점에서 시작한다(M7).
   return (
-    <div className="relative flex min-h-control-touch items-center border-t border-border/40 pt-micro first:border-t-0" data-video-timeline-lane={label}>
+    <div className="relative flex min-h-control-touch items-center border-t border-border/40 pt-micro first:border-t-0 max-[26rem]:pt-0" data-video-timeline-lane={label}>
       <span className="sticky left-0 z-[1] shrink-0 bg-surface-2 text-caption uppercase text-subtle" style={{ width: `${labelWidth}px` }} data-video-timeline-lane-label>{label}</span>
       <div className="relative min-h-control-touch min-w-0 flex-1">{children}</div>
     </div>
