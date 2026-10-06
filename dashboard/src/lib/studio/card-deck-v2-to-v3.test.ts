@@ -91,4 +91,28 @@ describe("S2 기존 카드 무손실 이관", () => {
     }));
     expect(migrated.slides[0].elements.find((element) => element.type === "text")?.z_index).toBeGreaterThan(0);
   });
+
+  it("S5-AC5 카톡 표지·마지막 장 사진을 공용 화면·PNG 배경으로 옮기고 원문은 그대로 왕복한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const last = source.slides.at(-1)!;
+    source.slides[0].cover_image_url = "https://example.test/cover.png";
+    last.cover_image_url = "https://example.test/final.png";
+
+    const migrated = migrateCardDeckV2ToV3(source, {
+      coverImageAssetIds: {
+        "https://example.test/cover.png": "chat-cover-owned.png",
+        "https://example.test/final.png": "chat-final-owned.png",
+      },
+    });
+
+    expect(migrated.slides[0].background).toMatchObject({ kind: "image", asset_id: "chat-cover-owned.png" });
+    expect(migrated.slides.at(-1)?.background).toMatchObject({ kind: "image", asset_id: "chat-final-owned.png" });
+    expect(projectCardDeckV3ToV2(migrated, source)).toEqual(source);
+  });
+
+  it("S5-AC5 사진을 고른 카톡 장의 소유 asset이 없으면 조용히 사진을 빼지 않고 이관을 거절한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    source.slides[0].cover_image_url = "https://example.test/cover.png";
+    expect(() => migrateCardDeckV2ToV3(source)).toThrow("CARD_COVER_IMAGE_ASSET_REQUIRED");
+  });
 });

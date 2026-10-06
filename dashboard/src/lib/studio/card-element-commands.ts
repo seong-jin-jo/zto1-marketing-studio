@@ -265,6 +265,13 @@ export function addCardElement(deck: CardDeckV3, slideId: string, type: CardElem
   }));
 }
 
+/** 카톡 원형은 고정 흐름으로 두고 그 위에만 자유 요소를 추가한다. */
+export function addChatOverlayElement(deck: CardDeckV3, slideId: string, type: CardElementType, seed: ElementSeed): CardDeckV3 {
+  const slide = deck.slides.find((candidate) => candidate.id === slideId);
+  if (!slide || slide.base.kind !== "chat_bubble") return clone(deck);
+  return addCardElement(deck, slideId, type, seed);
+}
+
 export function patchCardElement(deck: CardDeckV3, slideId: string, elementId: string, patch: Partial<CardElement>): CardDeckV3 {
   return mutateElement(deck, slideId, elementId, (element) => ({ ...element, ...patch } as CardElement));
 }

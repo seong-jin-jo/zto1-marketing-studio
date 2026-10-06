@@ -197,4 +197,28 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect(subscriptions()).toBe(initialSubscriptions);
     addEventListener.mockRestore();
   });
+
+  it("S5-AC4 카톡 원형 말풍선은 요소 목록에서 숨기고 로고만 자유 요소로 덧붙인다", () => {
+    let current = deck();
+    current.template = "chat_bubble";
+    current.slides[0].base = { kind: "chat_bubble", cover: null, bubbles: [
+      { id: "bubble_reader", order: 0, speaker: "reader", segments: [{ text: "원형 말풍선", bold: false }], reaction: null },
+    ] };
+    const projection = current.slides[0].elements[0];
+    if (projection.type !== "text") throw new Error("fixture");
+    projection.id = "el_bubble_reader";
+    projection.text = "원형 말풍선";
+    projection.name = "독자 말풍선";
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+
+    expect(screen.getByText("원형 말풍선")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "독자 말풍선" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "로고 추가" }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+
+    expect(current.slides[0].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ id: "bubble_reader" }] });
+    expect(current.slides[0].elements.map((element) => element.type)).toEqual(["text", "logo"]);
+    expect(screen.getByRole("button", { name: "로고" })).toBeInTheDocument();
+  });
 });

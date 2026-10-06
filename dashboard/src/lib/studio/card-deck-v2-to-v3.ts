@@ -153,11 +153,15 @@ export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3O
   const slides: CardSlideV3[] = source.slides.map((slide, index) => {
     const text = slideText(slide);
     const isChat = source.template === "chat_bubble";
+    const coverAssetId = slide.cover_image_url ? options.coverImageAssetIds?.[slide.cover_image_url] : undefined;
+    if (slide.cover_image_url && !coverAssetId) throw new Error("CARD_COVER_IMAGE_ASSET_REQUIRED");
     return {
       id: safePart(slide.id), order: slide.order,
       role: slide.role === "cover" ? "cover" : slide.role === "cta" ? "cta" : "body",
       content_state: text.trim() ? "filled" : "empty",
-      background: { kind: "solid", color: index === source.slides.length - 1 ? hexColor(source.theme.foreground, "#111111") : hexColor(source.theme.background, "#FFF9F0") },
+      background: isChat && coverAssetId
+        ? { kind: "image", asset_id: coverAssetId, crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" }
+        : { kind: "solid", color: index === source.slides.length - 1 ? hexColor(source.theme.foreground, "#111111") : hexColor(source.theme.background, "#FFF9F0") },
       base: isChat
         ? { kind: "chat_bubble", cover: slide.cover ? structuredClone(slide.cover) : null, bubbles: structuredClone(slide.bubbles ?? []) }
         : { kind: "plain", lines: text ? [text] : [] },

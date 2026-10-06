@@ -36,9 +36,21 @@ export function cardSlideRenderModel(
   };
 }
 
+/**
+ * v2 chat_bubble의 원문을 무손실 projection 하기 위해 남겨 둔 글 요소다.
+ * 화면에는 slide.base가 말풍선 형태를 직접 그리므로 이 요소까지 그리거나 선택하면
+ * 같은 문장이 두 번 보인다. 자유 배치 요소 목록에서는 제외하되 legacy projection에는
+ * 그대로 남겨 직접 편집 왕복 계약을 보존한다.
+ */
+export function isChatBaseProjectionElement(slide: CardSlideV3, element: CardElement): boolean {
+  if (slide.base.kind !== "chat_bubble" || element.type !== "text") return false;
+  if (element.id === `el_${slide.id}_cover` || element.id === `el_${slide.id}_sub`) return true;
+  return slide.base.bubbles.some((bubble) => element.id === `el_${bubble.id}`);
+}
+
 export function visibleCardElements(model: CardSlideRenderModel): CardElement[] {
   return model.slide.elements
-    .filter((element) => !element.hidden)
+    .filter((element) => !element.hidden && !isChatBaseProjectionElement(model.slide, element))
     .sort((left, right) => left.z_index - right.z_index);
 }
 

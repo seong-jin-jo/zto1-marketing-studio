@@ -6,6 +6,7 @@ import { authHeaders } from "@/lib/auth";
 import type { CardDeckV3, CardElement, CardElementType } from "@/lib/studio/card-element-contract";
 import {
   addCardElement,
+  addChatOverlayElement,
   commitCardCommand,
   createCardCommandHistory,
   deleteCardElement,
@@ -26,7 +27,7 @@ import {
   type ResizeHandle,
   type SnapGuide,
 } from "@/lib/studio/card-element-commands";
-import { cardSlideRenderModel } from "@/lib/studio/card-render-model";
+import { cardSlideRenderModel, isChatBaseProjectionElement } from "@/lib/studio/card-render-model";
 import { CardElementList } from "./CardElementList";
 import { CardElementToolbar } from "./CardElementToolbar";
 import { CardSlideScene } from "./CardSlideScene";
@@ -109,11 +110,12 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const workingDeck = previewDeck ?? history.present;
   const activeSlide = workingDeck.slides.find((slide) => slide.id === activeSlideId) ?? workingDeck.slides[0];
   const logicalHeight = workingDeck.ratio === "4:5" ? 1350 : 1080;
-  const selected = activeSlide?.elements.find((element) => element.id === selectedId) ?? null;
+  const editableElements = activeSlide?.elements.filter((element) => !isChatBaseProjectionElement(activeSlide, element)) ?? [];
+  const selected = editableElements.find((element) => element.id === selectedId) ?? null;
   // 첫 클릭 뒤 도구막대가 새로 삽입되면 스테이지가 아래로 밀려 두 번째 클릭 좌표가
   // 다른 곳을 가리킨다. 선택 전에도 첫 글 요소 크기의 숨은 도구막대를 두어 레이아웃을
   // 고정하고, 실제 선택 뒤 같은 자리를 활성화한다.
-  const toolbarElement = selected ?? activeSlide?.elements.find((element) => element.type === "text") ?? null;
+  const toolbarElement = selected ?? editableElements.find((element) => element.type === "text") ?? null;
   const model = useMemo(() => cardSlideRenderModel(workingDeck, activeSlideId, { ...assetUrls, ...localAssetUrls }), [workingDeck, activeSlideId, assetUrls, localAssetUrls]);
 
   useEffect(() => {
@@ -169,12 +171,12 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
     requestAnimationFrame(() => stageRef.current?.focus());
   }, [activeSlide, apply]);
   const duplicate = useCallback((elementId: string) => {
-    const source = activeSlide?.elements.find((element) => element.id === elementId);
+    const source = editableElements.find((element) => element.id === elementId);
     if (!source || !activeSlide) return;
     const id = nextElementId(source.type);
     apply((current) => duplicateCardElement(current, activeSlide.id, elementId, id));
     setSelectedId(id);
-  }, [activeSlide, apply]);
+  }, [activeSlide, apply, editableElements]);
 
   const beginInteraction = (event: ReactPointerEvent, element: CardElement, kind: Interaction["kind"], handle?: ResizeHandle) => {
     if (element.locked) return;
@@ -196,7 +198,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
       centerClientY,
       baseDeck: history.present,
       slideId: activeSlide.id,
-      siblings: activeSlide.elements,
+      siblings: editableElements,
       ratio: workingDeck.ratio,
       logicalHeight,
     };
@@ -287,7 +289,9 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const add = (type: CardElementType, seed?: { assetId?: string; assetAlt?: string }) => {
     if (!activeSlide) return;
     const id = nextElementId(type);
-    apply((current) => addCardElement(current, activeSlide.id, type, { id, ...seed }));
+    apply((current) => activeSlide.base.kind === "chat_bubble"
+      ? addChatOverlayElement(current, activeSlide.id, type, { id, ...seed })
+      : addCardElement(current, activeSlide.id, type, { id, ...seed }));
     setSelectedId(id);
   };
 
@@ -347,7 +351,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
             onPointerDownCapture={(event) => {
               const target = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-element-selection]") : null;
               const elementId = target?.dataset.elementSelection;
-              const element = elementId ? activeSlide.elements.find((candidate) => candidate.id === elementId) : null;
+              const element = elementId ? editableElements.find((candidate) => candidate.id === elementId) : null;
               if (!element || element.type !== "text" || element.locked) {
                 lastTextPointerDownRef.current = null;
                 return;
@@ -368,7 +372,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
             onPointerDown={() => { setSelectedId(null); setEditingTextId(null); }}
           >
             <CardSlideScene model={model} renderMode="editor" />
-            {activeSlide.elements.filter((element) => !element.hidden).map((element) => (
+            {editableElements.filter((element) => !element.hidden).map((element) => (
               <div
                 key={element.id}
                 className={styles.selectionBox}
@@ -439,7 +443,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
           </div>
         </div>
         <CardElementList
-          elements={activeSlide.elements}
+          elements={editableElements}
           selectedId={selectedId}
           onSelect={setSelectedId}
           onMove={(id, dx, dy) => apply((current) => nudgeCardElement(current, activeSlide.id, id, dx, dy))}

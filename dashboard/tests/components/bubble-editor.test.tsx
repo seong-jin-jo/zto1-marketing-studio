@@ -15,7 +15,10 @@ function deck(): CardDeck {
   return clone(deckD100) as unknown as CardDeck;
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 // canvas 미지원 jsdom 환경에서도 CardDeckPanel 이 죽지 않아야 한다(렌더 실패는 화면에
 // 문구로만 남는다).

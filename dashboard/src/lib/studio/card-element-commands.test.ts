@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CardDeckV3 } from "./card-element-contract";
 import {
   addCardElement,
+  addChatOverlayElement,
   commitCardCommand,
   createCardCommandHistory,
   createRecoverableEmbeddedCardDeckV3,
@@ -114,6 +115,16 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     const original = deck();
     expect(moveCardElement(original, "missing", "missing", 1, 1)).toEqual(original);
     expect(deleteCardElement(original, "slide_cover", "missing").slides[0].elements).toHaveLength(0);
+  });
+
+  it("S5-AC4 카톡 장에는 원형을 건드리지 않고 자유 요소를 덧붙이며 일반 장 요청은 거절한다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides[0].base = { kind: "chat_bubble", cover: { headline: "첫 장", sub: null }, bubbles: [] };
+    const added = addChatOverlayElement(chat, "slide_cover", "logo", { id: "chat_logo" });
+    expect(added.slides[0].base).toEqual(chat.slides[0].base);
+    expect(added.slides[0].elements).toMatchObject([{ id: "chat_logo", type: "logo" }]);
+    expect(addChatOverlayElement(deck(), "slide_cover", "logo", { id: "rejected_logo" })).toEqual(deck());
   });
 
   it("S1-R3-BOUNDS-01 끌기와 방향키 이동 뒤에도 장과 최소 1px 교차한다", () => {

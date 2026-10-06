@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { Img } from "remotion";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
+import type { Bubble } from "@/lib/studio/card-deck-contract";
 import type { CardElement, TextElement } from "@/lib/studio/card-element-contract";
 import { cardElementStyle, visibleCardElements, type CardSlideRenderModel } from "@/lib/studio/card-render-model";
 import styles from "./CardSlideScene.module.css";
@@ -48,12 +49,66 @@ function ElementContent({ element, model, renderMode }: { element: CardElement; 
   return <DeliveredMedia className={styles.media} src={src} type="image" alt={element.alt} draggable={false} />;
 }
 
+function BubbleText({ bubble }: { bubble: Bubble }) {
+  return <>{bubble.segments.map((segment, index) => segment.bold
+    ? <strong key={`${bubble.id}-${index}`}>{segment.text}</strong>
+    : <span key={`${bubble.id}-${index}`}>{segment.text}</span>)}</>;
+}
+
+function ChatBubbleBase({ model }: { model: CardSlideRenderModel }) {
+  if (model.slide.base.kind !== "chat_bubble") return null;
+  const { cover, bubbles } = model.slide.base;
+  if (model.slide.role === "cover" && cover) {
+    return (
+      <div className={styles.chatCover} data-chat-base="cover">
+        <div className={styles.chatCoverCopy}>
+          <h2>{cover.headline}</h2>
+          {cover.sub ? <p>{cover.sub}</p> : null}
+        </div>
+        <div className={styles.chatFooter}><span>{model.brand.display_name}</span><span>{model.slide.order + 1}</span></div>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.chatBase} data-chat-base="conversation">
+      <header className={styles.chatHeader}>
+        <span>{model.brand.display_name}</span>
+        <span>{model.slide.order + 1}</span>
+      </header>
+      <div className={styles.chatList}>
+        {[...bubbles].sort((left, right) => left.order - right.order).map((bubble) => (
+          <div key={bubble.id} className={`${styles.chatRow} ${bubble.speaker === "reader" ? styles.readerRow : styles.brandRow}`} data-chat-bubble={bubble.id}>
+            <span className={styles.chatAvatar} aria-hidden="true">{model.brand.display_name.slice(0, 2)}</span>
+            <div className={styles.chatColumn}>
+              {bubble.speaker === "brand" ? <span className={styles.chatName}>{model.brand.display_name}</span> : null}
+              <div className={styles.chatBubbleLine}>
+                <div className={styles.chatBubble}><BubbleText bubble={bubble} /></div>
+                <time className={styles.chatTime}>오후 9:20</time>
+              </div>
+              {bubble.reaction ? <span className={styles.chatReaction} aria-label="좋아요">♥</span> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+      <footer className={styles.chatFooter}>
+        <span>{model.slide.role === "cta" ? model.brand.display_name : model.brand.handle ?? model.brand.display_name}</span>
+        <span>{model.slide.order + 1}</span>
+      </footer>
+    </div>
+  );
+}
+
 export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
   const background = model.slide.background;
   const sceneStyle = {
     "--card-stage-ratio": `${model.logicalWidth} / ${model.logicalHeight}`,
     "--card-stage-background": background.kind === "solid" ? background.color : model.theme.background,
     "--card-stage-foreground": model.theme.foreground,
+    "--card-stage-accent": model.theme.accent,
+    "--card-chat-reader-background": "#FEE500",
+    "--card-chat-brand-background": "#FFFFFF",
+    "--card-chat-text": "#12100E",
+    "--card-background-overlay": background.kind === "image" ? background.overlay ?? "transparent" : "transparent",
     ...(background.kind === "gradient" ? { backgroundImage: `linear-gradient(${background.angle}deg, ${background.from}, ${background.to})` } : {}),
   } as CSSProperties;
   const backgroundUrl = background.kind === "image" ? model.assetUrls[background.asset_id] : undefined;
@@ -63,6 +118,8 @@ export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
       {backgroundUrl ? renderMode === "export"
         ? <Img className={styles.backgroundImage} src={backgroundUrl} alt="" />
         : <DeliveredMedia className={styles.backgroundImage} src={backgroundUrl} type="image" alt="" /> : null}
+      {backgroundUrl && background.kind === "image" && background.overlay ? <span className={styles.backgroundOverlay} aria-hidden="true" /> : null}
+      {model.slide.base.kind === "chat_bubble" ? <ChatBubbleBase model={model} /> : null}
       {elements.length === 0 && model.slide.base.kind === "plain" ? (
         <div className={styles.baseFallback}>{model.slide.base.lines.join("\n")}</div>
       ) : null}

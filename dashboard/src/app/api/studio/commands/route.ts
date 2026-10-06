@@ -52,7 +52,8 @@ export async function POST(request: Request) {
       return Response.json({ error: "말투를 다듬을 말풍선은 1개에서 50개까지 필요합니다.", code: "CHAT_TONE_LINES_INVALID" }, { status: 400 });
     }
     if (!tone) return Response.json({ error: "지원하지 않는 말투입니다.", code: "CHAT_TONE_INVALID" }, { status: 400 });
-    const tenantId = await effectiveTenantId(request, input.tenant_id).catch(() => null);
+    const tenantHint = typeof input.tenant_id === "string" ? input.tenant_id : null;
+    const tenantId = await effectiveTenantId(request, tenantHint).catch(() => null);
     if (!tenantId) return Response.json({ error: "작업 공간을 확인할 수 없습니다.", code: "TENANT_REQUIRED" }, { status: 401 });
     try {
       const raw = await generateText(chatTonePrompt(lines, tone), tenantId);
