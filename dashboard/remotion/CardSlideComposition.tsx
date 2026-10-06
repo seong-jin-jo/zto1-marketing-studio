@@ -12,6 +12,7 @@ export const CARD_REMOTION_FONT_URL = "fonts/PretendardVariable.woff2";
 
 export function CardSlideComposition({ model }: CardSlideCompositionProps) {
   const [fontHandle] = useState(() => delayRender("Pretendard Variable font"));
+  const [fontReady, setFontReady] = useState(false);
   useEffect(() => {
     let canceled = false;
     const font = new FontFace(CARD_REMOTION_FONT_FAMILY, `url(${staticFile(CARD_REMOTION_FONT_URL)})`, {
@@ -22,6 +23,7 @@ export function CardSlideComposition({ model }: CardSlideCompositionProps) {
       .then((loaded) => {
         if (canceled) return;
         document.fonts.add(loaded);
+        setFontReady(true);
         continueRender(fontHandle);
       })
       .catch((error) => {
@@ -32,5 +34,6 @@ export function CardSlideComposition({ model }: CardSlideCompositionProps) {
       });
     return () => { canceled = true; };
   }, [fontHandle]);
+  if (!fontReady) return null;
   return <CardSlideScene model={model} renderMode="export" />;
 }

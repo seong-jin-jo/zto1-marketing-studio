@@ -42,5 +42,6 @@ describe("S2-AC3~5 공용 CardSlideScene 서버 PNG 계약", () => {
     const composition = read("remotion/CardSlideComposition.tsx");
     expect(composition).toContain("FONT_LOAD_FAILED:");
     expect(composition).toContain("cancelRender");
+    expect(composition).toContain("if (!fontReady) return null");
   });
 });
