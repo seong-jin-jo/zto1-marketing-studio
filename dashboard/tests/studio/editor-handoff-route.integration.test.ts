@@ -8,6 +8,7 @@ const H = vi.hoisted(() => ({
   updateAllowed: true,
   queueCalls: [] as Array<Record<string, unknown>>,
   generatedText: "",
+  authFailure: null as null | { reason: "invalid" | "unavailable" | "forbidden"; message: string; code?: string },
 }));
 
 vi.mock("@/lib/anthropic", () => ({
@@ -16,9 +17,24 @@ vi.mock("@/lib/anthropic", () => ({
   sharedGenerationQuotaErrorResponse: vi.fn(() => null),
 }));
 
-vi.mock("@/lib/tenant-auth", () => ({
-  effectiveTenantId: vi.fn(async () => H.tenantId),
-}));
+vi.mock("@/lib/tenant-auth", () => {
+  class AuthError extends Error {
+    readonly status: 401 | 403 | 503;
+    readonly code: string;
+    constructor(reason: "invalid" | "unavailable" | "forbidden", message: string, code?: string) {
+      super(message);
+      this.status = reason === "unavailable" ? 503 : reason === "forbidden" ? 403 : 401;
+      this.code = code ?? (reason === "unavailable" ? "service_unavailable" : reason === "forbidden" ? "forbidden" : "invalid_token");
+    }
+  }
+  return {
+    AuthError,
+    effectiveTenantId: vi.fn(async () => {
+      if (H.authFailure) throw new AuthError(H.authFailure.reason, H.authFailure.message, H.authFailure.code);
+      return H.tenantId;
+    }),
+  };
+});
 
 vi.mock("@/lib/studio/editor-handoff-store", () => ({
   saveEditorHandoff: vi.fn(async (_tenantId: string, input: { handoff: EditorHandoff }) => {
@@ -73,6 +89,7 @@ beforeEach(() => {
   H.updateAllowed = true;
   H.queueCalls = [];
   H.generatedText = "";
+  H.authFailure = null;
 });
 
 describe("Studio 편집 인계 HTTP 통합 계약", () => {
@@ -171,6 +188,17 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual(expect.objectContaining({ code: "CHAT_TONE_LINES_INVALID" }));
     }
+  });
+
+  it("S5-R2-MINOR 인증 검증 장애를 작업 공간 없음 401로 숨기지 않고 AuthError 상태로 돌려준다", async () => {
+    H.authFailure = { reason: "unavailable", message: "인증 검증기를 사용할 수 없습니다.", code: "auth_verifier_unavailable" };
+    const { POST } = await import("@/app/api/studio/commands/route");
+    const response = await POST(new Request("http://localhost/api/studio/commands", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: H.tenantId, action: "suggest_chat_tone", tone: "short", lines: ["문장"] }),
+    }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual(expect.objectContaining({ code: "auth_verifier_unavailable" }));
   });
 
   it("BE-V63-36 경합 경로: 저장 직전 revision이 바뀌면 409로 끝내고 덮어쓰지 않는다", async () => {

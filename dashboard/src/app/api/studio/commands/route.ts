@@ -4,7 +4,7 @@ import { POST as enqueueDraft } from "@/app/api/studio/drafts/[draftId]/enqueue/
 import { generateText, sharedAiApprovalErrorResponse, sharedGenerationQuotaErrorResponse } from "@/lib/anthropic";
 import { upstreamFailure } from "@/lib/api-failure";
 import { chatTonePrompt, CHAT_TONE_IDS, parseChatToneSuggestionResponse, type ChatToneId } from "@/lib/studio/chat-tone-suggestions";
-import { effectiveTenantId } from "@/lib/tenant-auth";
+import { AuthError, effectiveTenantId } from "@/lib/tenant-auth";
 
 const EDIT_ACTIONS = new Set(["reorder_scenes", "delete_line", "restore_line", "mark_ready"]);
 
@@ -53,7 +53,15 @@ export async function POST(request: Request) {
     }
     if (!tone) return Response.json({ error: "지원하지 않는 말투입니다.", code: "CHAT_TONE_INVALID" }, { status: 400 });
     const tenantHint = typeof input.tenant_id === "string" ? input.tenant_id : null;
-    const tenantId = await effectiveTenantId(request, tenantHint).catch(() => null);
+    let tenantId: string | null;
+    try {
+      tenantId = await effectiveTenantId(request, tenantHint);
+    } catch (error) {
+      if (error instanceof AuthError) {
+        return Response.json({ error: error.message, code: error.code }, { status: error.status });
+      }
+      throw error;
+    }
     if (!tenantId) return Response.json({ error: "작업 공간을 확인할 수 없습니다.", code: "TENANT_REQUIRED" }, { status: 401 });
     try {
       const raw = await generateText(chatTonePrompt(lines, tone), tenantId);
