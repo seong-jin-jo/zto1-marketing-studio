@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BubbleEditor, CardDeckPanel } from "@/components/studio/BubbleEditor";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
@@ -196,6 +196,7 @@ describe("CardDeckPanel (표지·CTA 고정, 세션맥락: card-deck-ops 순수 
     expect(screen.getAllByRole("button", { name: "이 후보 적용" })).toHaveLength(3);
     expect(screen.getByText(/숫자와 고유명사는 적용 전에/)).toBeInTheDocument();
     fireEvent.click(within(document.querySelector('[data-tone-candidate="b"]')!).getByRole("button", { name: "이 후보 적용" }));
+    await waitFor(() => expect(onDeckChange).toHaveBeenCalledTimes(1));
     view.rerender(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
 
     const changed = current.slides[1].bubbles!.map((bubble) => bubble.segments.map((segment) => segment.text).join(""));

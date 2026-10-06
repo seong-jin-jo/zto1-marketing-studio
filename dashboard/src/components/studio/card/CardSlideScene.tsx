@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import { Img } from "remotion";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import type { Bubble } from "@/lib/studio/card-deck-contract";
@@ -62,7 +62,22 @@ function BubbleText({ bubble }: { bubble: Bubble }) {
     : <span key={`${bubble.id}-${index}`}>{segment.text}</span>)}</>;
 }
 
-function ChatBubbleBase({ model }: { model: CardSlideRenderModel }) {
+export function assertChatListFits(
+  element: Pick<HTMLElement, "clientHeight" | "scrollHeight">,
+  slideOrder: number,
+): void {
+  if (element.scrollHeight > element.clientHeight + 1) {
+    throw new Error(`CARD_CHAT_OVERFLOW: ${slideOrder + 1}번 장 말풍선이 카드보다 깁니다. 쪼개세요.`);
+  }
+}
+
+function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; renderMode: CardSlideSceneProps["renderMode"] }) {
+  const chatListRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (renderMode === "export" && chatListRef.current) {
+      assertChatListFits(chatListRef.current, model.slide.order);
+    }
+  }, [model.slide.order, model.slide.base, renderMode]);
   if (model.slide.base.kind !== "chat_bubble") return null;
   const { cover, bubbles } = model.slide.base;
   if (model.slide.role === "cover" && cover) {
@@ -82,7 +97,7 @@ function ChatBubbleBase({ model }: { model: CardSlideRenderModel }) {
         <span>{model.brand.display_name}</span>
         <span>{model.slide.order + 1}</span>
       </header>
-      <div className={styles.chatList}>
+      <div ref={chatListRef} className={styles.chatList} data-chat-list>
         {[...bubbles].sort((left, right) => left.order - right.order).map((bubble) => (
           <div key={bubble.id} className={`${styles.chatRow} ${bubble.speaker === "reader" ? styles.readerRow : styles.brandRow}`} data-chat-bubble={bubble.id}>
             <span className={styles.chatAvatar} aria-hidden="true">{model.brand.display_name.slice(0, 2)}</span>
@@ -130,7 +145,7 @@ export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
         ? <Img className={styles.backgroundImage} src={backgroundUrl} alt="" />
         : <DeliveredMedia className={styles.backgroundImage} src={backgroundUrl} type="image" alt="" /> : null}
       {backgroundUrl && background.kind === "image" && background.overlay ? <span className={styles.backgroundOverlay} aria-hidden="true" /> : null}
-      {model.slide.base.kind === "chat_bubble" ? <ChatBubbleBase model={model} /> : null}
+      {model.slide.base.kind === "chat_bubble" ? <ChatBubbleBase model={model} renderMode={renderMode} /> : null}
       {elements.length === 0 && model.slide.base.kind === "plain" ? (
         <div className={styles.baseFallback}>{model.slide.base.lines.join("\n")}</div>
       ) : null}

@@ -38,6 +38,7 @@ import {
 } from "@/lib/studio/card-deck-ops";
 import { CHAT_TONE_IDS, isChatToneCandidateList, type ChatToneCandidate, type ChatToneId } from "@/lib/studio/chat-tone-suggestions";
 import { renderChatBubbleSlideToCanvas } from "@/lib/studio/card-templates/chat-bubble";
+import { assertChatSlidesRenderable } from "@/lib/studio/chat-deck-layout";
 import { DeliveredMedia } from "./DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
 import styles from "./BubbleEditor.module.css";
@@ -1195,7 +1196,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
     }
   }
 
-  function applyToneCandidate(candidate: ChatToneCandidate) {
+  async function applyToneCandidate(candidate: ChatToneCandidate) {
     if (!toneComparison) return;
     if (toneComparison.revision !== deck.revision) {
       setToneError("후보를 만든 뒤 대화가 바뀌었습니다. 최신 원문으로 후보를 다시 만들어 주세요.");
@@ -1206,6 +1207,12 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
       bubbleId: target.bubbleId,
       text: candidate.lines[index],
     })));
+    try {
+      await assertChatSlidesRenderable(next, toneComparison.targets.map((target) => target.slideId));
+    } catch (error) {
+      setToneError(error instanceof Error ? error.message : "말풍선이 카드를 넘어 후보를 적용할 수 없습니다.");
+      return;
+    }
     commitDeck(next);
     setToneComparison((current) => current ? { ...current, revision: next.revision, appliedId: candidate.id } : current);
   }
@@ -1353,7 +1360,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
                 <b>{candidate.label}</b>
                 <p>{candidate.lines.join("\n")}</p>
                 {candidate.fact_warnings.length ? <p className={styles.factWarning}>원문과 다름. {candidate.fact_warnings.join(" ")}</p> : <p className={styles.factSafe}>숫자·고유명사 자동 대조 통과</p>}
-                <Button size="sm" onClick={() => applyToneCandidate(candidate)}>{toneComparison.appliedId === candidate.id ? "적용됨" : "이 후보 적용"}</Button>
+                <Button size="sm" onClick={() => void applyToneCandidate(candidate)}>{toneComparison.appliedId === candidate.id ? "적용됨" : "이 후보 적용"}</Button>
               </article>
             ))}
           </div>

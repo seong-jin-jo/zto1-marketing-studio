@@ -9,7 +9,7 @@ import { migrateCardDeckV2ToV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { PHOTO_TEXT_PRIMARY, PHOTO_TEXT_SECONDARY } from "@/lib/studio/card-templates/chat-bubble";
 import chatDeckFixture from "../../../../tests/studio/fixtures/deck-d100.v2.json";
-import { CardSlideScene } from "./CardSlideScene";
+import { assertChatListFits, CardSlideScene } from "./CardSlideScene";
 
 afterEach(cleanup);
 
@@ -79,5 +79,11 @@ describe("CardSlideScene S5 카톡 원형과 자유 요소", () => {
     expect(scene).toHaveStyle(`--card-chat-primary-text: ${PHOTO_TEXT_PRIMARY}`);
     expect(scene).toHaveStyle(`--card-chat-muted-text: ${PHOTO_TEXT_SECONDARY}`);
     expect(within(scene).getByRole("heading", { level: 2 })).toHaveTextContent(source.slides[0].cover!.headline.replace(/\s+/g, " "));
+  });
+
+  it("S5-R1-M3 export 장면은 말풍선 목록의 실측 높이가 할당 높이를 넘으면 잘라내지 않고 거절한다", () => {
+    expect(() => assertChatListFits({ clientHeight: 600, scrollHeight: 602 }, 2))
+      .toThrow("CARD_CHAT_OVERFLOW: 3번 장 말풍선이 카드보다 깁니다");
+    expect(() => assertChatListFits({ clientHeight: 600, scrollHeight: 600 }, 2)).not.toThrow();
   });
 });

@@ -51,7 +51,7 @@
   flex-direction: column;
   gap: 2.2cqw;
   padding: 2cqw 6cqw 4cqw;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .chatRow {
