@@ -19,6 +19,7 @@
  * 돌연변이 검증으로 확인했다(보고 참조).
  */
 import "@testing-library/jest-dom/vitest";
+import { readFileSync } from "node:fs";
 import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +27,8 @@ import { EditRoom } from "@/components/studio/StudioRooms";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { emptyVideoEdit, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import deckD100 from "./fixtures/deck-d100.v2.json";
+
+const globalsCss = readFileSync("src/app/globals.css", "utf8");
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -199,7 +202,7 @@ describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임�
     expect(document.querySelectorAll('[data-video-timeline] input[type="number"]').length).toBe(0);
   });
 
-  it("S6-TL-02 390 영상 화면은 160px이고 5×44px 레인은 240px 타임라인 안에 머문다", () => {
+  it("S6-TL-02 390 영상 화면은 160px이고 5×44px 레인은 토큰화한 타임라인 안에 머문다", () => {
     stubVoicesUnconfigured();
     render(<VideoRoomHarness initialLines={["첫 장면 대사"]} />);
     const playback = document.querySelector("[data-video-playback]");
@@ -209,7 +212,17 @@ describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임�
     expect(screen?.className).toContain("max-[26rem]:h-40");
     expect(screen?.className).toContain("max-[26rem]:min-h-40");
     expect(screen?.className).toContain("max-[26rem]:aspect-auto");
-    expect(document.querySelector("[data-video-workbench]")?.className).toContain("max-[26rem]:[grid-template-rows:auto_15rem]");
+    const workbenchClass = document.querySelector("[data-video-workbench]")?.className ?? "";
+    expect(workbenchClass).toContain("max-[26rem]:[grid-template-rows:auto_var(--video-editor-timeline-height)]");
+    expect(workbenchClass).not.toContain("max-[26rem]:[grid-template-rows:auto_15rem]");
+
+    const timelineHeightToken = globalsCss.match(
+      /--video-editor-timeline-height:\s*calc\(([\s\S]*?)\);/,
+    )?.[1] ?? "";
+    expect(globalsCss).toContain("--control-touch: 44px;");
+    expect(timelineHeightToken.match(/var\(--control-touch\)/g)).toHaveLength(5);
+    expect(timelineHeightToken.match(/var\(--stack-tight\)/g)).toHaveLength(2);
+    expect(timelineHeightToken.match(/var\(--space-micro\)/g)).toHaveLength(2);
     expect(document.querySelector("[data-video-script-column]")).toBeInTheDocument();
   });
 
