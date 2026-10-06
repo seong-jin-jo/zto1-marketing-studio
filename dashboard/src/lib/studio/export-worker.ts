@@ -93,7 +93,9 @@ export class ExportItemWorker {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-export-"));
     const filename = exportArtifactFilename(item);
     const outputPath = path.join(tmpDir, filename);
-    const heartbeat = setInterval(() => void this.dependencies.repository.heartbeat(item), 15_000);
+    const heartbeat = setInterval(() => {
+      void this.dependencies.repository.heartbeat(item).catch(() => undefined);
+    }, 15_000);
     try {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {

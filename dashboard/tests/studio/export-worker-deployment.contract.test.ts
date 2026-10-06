@@ -9,6 +9,10 @@ const envExample = readFileSync(resolve(root, ".env.example"), "utf8");
 const deploy = readFileSync(resolve(root, ".github/workflows/deploy-marketing.yml"), "utf8");
 const worker = readFileSync(resolve(root, "dashboard/src/workers/studio-export-worker.ts"), "utf8");
 const repository = readFileSync(resolve(root, "dashboard/src/lib/studio/export-repository.ts"), "utf8");
+const packageJson = JSON.parse(readFileSync(resolve(root, "dashboard/package.json"), "utf8")) as {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+};
 
 describe("S3 별도 export worker 실행·배포 계약", () => {
   it("S3-DEPLOY-01 정상: 같은 image의 별도 worker entry와 healthcheck를 선언한다", () => {
@@ -17,6 +21,9 @@ describe("S3 별도 export worker 실행·배포 계약", () => {
     expect(compose).toContain('["node_modules/.bin/tsx", "src/workers/studio-export-worker.ts"]');
     expect(compose).toContain("EXPORT_WORKER_HEALTH_PORT: \"34620\"");
     expect(compose).toContain("fetch('http://127.0.0.1:34620')");
+    expect(packageJson.dependencies).toHaveProperty("tsx");
+    expect(packageJson.dependencies).toHaveProperty("@aws-sdk/client-s3");
+    expect(packageJson.devDependencies).not.toHaveProperty("@aws-sdk/client-s3");
   });
 
   it("S3-DEPLOY-02 경계: worker는 scale을 막는 container_name과 host port 공유가 없다", () => {
