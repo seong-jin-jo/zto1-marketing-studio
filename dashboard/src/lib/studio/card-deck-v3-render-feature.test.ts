@@ -28,4 +28,8 @@ describe("S2-B CardDeckV3 공용 렌더 feature flag", () => {
     expect(cardDeckV3EntryEnabled(true, { hasCardDeckV2: false, textEmbedded: true })).toBe(true);
     expect(cardDeckV3EntryEnabled(true, { hasCardDeckV2: true, textEmbedded: false })).toBe(true);
   });
+
+  it("S5-R2-M4 렌더 flag가 켜져도 카톡 덱은 고급 도구가 있는 기본 편집을 유지한다", () => {
+    expect(cardDeckV3EntryEnabled(true, { hasCardDeckV2: true, cardDeckTemplate: "chat_bubble", textEmbedded: false })).toBe(false);
+  });
 });

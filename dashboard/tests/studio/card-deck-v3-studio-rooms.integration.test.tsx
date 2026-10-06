@@ -63,18 +63,20 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
   });
 
-  it("S5-AC4 말풍선 카드는 flag on이면 원형을 보존한 자유 배치로 진입한다", () => {
+  it("S5-R2-M4 말풍선 카드는 flag on이어도 고급 도구 없는 자유 배치 진입을 막는다", () => {
     const onStart = vi.fn();
+    const entryEnabled = cardDeckV3EntryEnabled(true, { hasCardDeckV2: true, cardDeckTemplate: "chat_bubble", textEmbedded: false });
     render(<EditRoom
       kind="card"
       lines={["말풍선 카드"]}
       onLinesChange={() => {}}
       cardDeck={chatBubbleDeck as CardDeck}
       onCardDeckChange={() => {}}
-      onStartCardDeckV3={onStart}
+      onStartCardDeckV3={entryEnabled ? onStart : undefined}
     />);
-    fireEvent.click(screen.getByRole("button", { name: "자유 배치로 편집" }));
-    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("카톡 대화 고급 편집 도구")).toBeInTheDocument();
+    expect(onStart).not.toHaveBeenCalled();
   });
 
   it("S2-A 복구 불가 AI 카드는 버튼을 숨기지 않고 비활성 사유를 보여준다", () => {
@@ -140,7 +142,7 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(onReturn).toHaveBeenCalledOnce();
   });
 
-  it("S5-R1-M4 카톡 자유 배치는 말풍선 직접 편집을 열고 자유 요소를 버리는 복귀 버튼을 숨긴다", () => {
+  it("S5-R2-M4 저장된 카톡 v3 덱이 있어도 기본 편집과 고급 도구를 유지하고 덧붙임은 보존한다", () => {
     const onReturn = vi.fn();
     const deck = createPlainCardDeckV3(["첫 장", "둘째 장"], "deck_chat_combined");
     deck.template = "chat_bubble";
@@ -154,10 +156,24 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     projection.id = "el_bubble_reader";
     projection.text = "한 화면 편집";
 
-    render(<EditRoom kind="card" lines={["첫 장", "둘째 장"]} onLinesChange={() => {}} cardDeckV3={deck} onCardDeckV3Change={() => {}} onReturnFromCardDeckV3={onReturn} />);
+    render(<EditRoom
+      kind="card"
+      lines={["첫 장", "둘째 장"]}
+      onLinesChange={() => {}}
+      cardDeck={chatBubbleDeck as CardDeck}
+      onCardDeckChange={() => {}}
+      cardDeckV3={deck}
+      onCardDeckV3Change={() => {}}
+      onReturnFromCardDeckV3={onReturn}
+    />);
 
-    expect(screen.getByText("말풍선과 자유 요소를 이 화면에서 함께 편집합니다.")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "말풍선 직접 편집" })).toBeInTheDocument();
+    expect(document.querySelector("[data-card-deck-v3-workbench]")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-card-deck-workbench]")).toBeInTheDocument();
+    expect(screen.getByLabelText("카톡 대화 고급 편집 도구")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "이 장 화자 서로 바꾸기" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "화자 이름·프로필" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /2장/ }));
+    expect(document.querySelector("[data-bubble-editor]")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "기본 편집으로 돌아가기" })).not.toBeInTheDocument();
     expect(onReturn).not.toHaveBeenCalled();
   });
