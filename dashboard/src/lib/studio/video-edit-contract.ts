@@ -211,6 +211,7 @@ const OVERLAY_ALLOWED_KEYS = new Set(["id", "order", "kind", "text", "startSec",
 const COMMENT_ALLOWED_KEYS = new Set(["id", "order", "author", "text", "source", "startSec", "endSec"]);
 const SUBTITLE_ALLOWED_KEYS = new Set(["id", "order", "text", "startSec", "endSec", "cut"]);
 const TEXT_STICKER_ALLOWED_KEYS = new Set(["id", "order", "kind", "text", "startSec", "endSec", "animation"]);
+const COVER_ALLOWED_KEYS = new Set(["source", "recommendationIndex", "frameSec", "imageUrl", "imageFilename", "textPreset"]);
 
 function assertNoUnknownKeys(value: Record<string, unknown>, allowed: Set<string>, field: string): void {
   for (const key of Object.keys(value)) {
@@ -223,6 +224,31 @@ function assertNoUnknownKeys(value: Record<string, unknown>, allowed: Set<string
 function assertValidOrder(order: unknown, field: string): void {
   if (typeof order !== "number" || !Number.isInteger(order) || order < 0) {
     throw new VideoEditValidationError("order", `${field}.order must be a non-negative integer`);
+  }
+}
+
+function assertValidVideoCover(value: unknown): asserts value is NonNullable<VideoCover> {
+  if (!value || typeof value !== "object") throw new VideoEditValidationError("cover", "videoEdit.cover must be an object when set");
+  const cover = value as Record<string, unknown>;
+  assertNoUnknownKeys(cover, COVER_ALLOWED_KEYS, "cover");
+  if (!['recommended', 'frame', 'upload'].includes(String(cover.source))) {
+    throw new VideoEditValidationError("cover_source", "videoEdit.cover.source is invalid");
+  }
+  if (!['none', 'headline', 'question'].includes(String(cover.textPreset))) {
+    throw new VideoEditValidationError("cover_text_preset", "videoEdit.cover.textPreset is invalid");
+  }
+  if (cover.source === "recommended") {
+    if (!Number.isInteger(cover.recommendationIndex) || Number(cover.recommendationIndex) < 0 || Number(cover.recommendationIndex) > 2
+      || !isFiniteNumber(cover.frameSec) || cover.frameSec < 0) {
+      throw new VideoEditValidationError("cover_recommended", "recommended cover requires recommendationIndex 0..2 and a non-negative frameSec");
+    }
+  } else if (cover.source === "frame") {
+    if (!isFiniteNumber(cover.frameSec) || cover.frameSec < 0) {
+      throw new VideoEditValidationError("cover_frame", "frame cover requires a non-negative frameSec");
+    }
+  } else if (typeof cover.imageFilename !== "string" || !cover.imageFilename
+    || typeof cover.imageUrl !== "string" || !cover.imageUrl) {
+    throw new VideoEditValidationError("cover_upload", "upload cover requires imageFilename and imageUrl");
   }
 }
 
@@ -308,6 +334,7 @@ export function validateVideoEdit(value: unknown): asserts value is VideoEdit {
     }
   }
   if (v.safeArea !== undefined && typeof v.safeArea !== "boolean") throw new VideoEditValidationError("safe_area", "videoEdit.safeArea must be boolean");
+  if (v.cover !== undefined && v.cover !== null) assertValidVideoCover(v.cover);
   const defaults = (v.introOutroDefaults ?? { intro: false, outro: false }) as Record<string, unknown>;
   if (typeof defaults.intro !== "boolean" || typeof defaults.outro !== "boolean") {
     throw new VideoEditValidationError("intro_outro_defaults", "videoEdit.introOutroDefaults is invalid");
@@ -489,6 +516,7 @@ export function setVideoSafeArea(edit: VideoEdit, safeArea: boolean): VideoEdit 
 }
 
 export function setVideoCover(edit: VideoEdit, cover: VideoCover): VideoEdit {
+  if (cover !== null) assertValidVideoCover(cover);
   return withRevision(edit, { cover });
 }
 
