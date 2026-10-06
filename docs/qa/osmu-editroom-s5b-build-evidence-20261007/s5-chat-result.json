@@ -1,7 +1,7 @@
 {
   "result": "PASS",
   "cards": 9,
-  "uploads": 9,
+  "uploads": 10,
   "chatV3Workbench": true,
   "speakerSwapUndo": true,
   "toneCandidateCount": 3,
@@ -20,11 +20,12 @@
   "remotionPng": "/Users/sj/wt/zto1-editroom-s5b/docs/qa/osmu-editroom-s5b-build-evidence-20261007/s5b-chat-overlay-profile-remotion.png",
   "readerBubbleCount": 1,
   "authorReaderAuthorRendered": true,
+  "commentPromptDeleteLocked": true,
   "overflowRejected": true,
   "overflowError": "CARD_CHAT_OVERFLOW: 2번 장 말풍선이 카드보다 깁니다. 쪼개세요.",
   "coverPhoto": {
     "kind": "image",
-    "asset_id": "s5-fixture-photo.svg",
+    "asset_id": "s5-chat-photo-1.png",
     "crop": {
       "x": 0,
       "y": 0,
@@ -44,6 +45,8 @@
     },
     "overlay": "#000000"
   },
+  "returnedToBasicEditor": true,
+  "returnedCoverPhotoPreserved": true,
   "responsive": [
     {
       "viewport": 360,
@@ -57,6 +60,86 @@
       "overflow": {
         "width": 390,
         "scroll": 390
+      },
+      "layout": {
+        "stage": {
+          "left": 41,
+          "right": 349,
+          "top": 459,
+          "bottom": 843.5,
+          "width": 308,
+          "height": 384.5,
+          "visibleWidth": 308,
+          "visibleHeight": 384.5
+        },
+        "advancedToolbar": {
+          "left": 41,
+          "right": 349,
+          "top": -29,
+          "bottom": 201,
+          "width": 308,
+          "height": 230,
+          "visibleWidth": 308,
+          "visibleHeight": 201
+        },
+        "rightPanel": {
+          "left": 41,
+          "right": 349,
+          "top": 919.5,
+          "bottom": 2790.5,
+          "width": 308,
+          "height": 1871,
+          "visibleWidth": 308,
+          "visibleHeight": 0
+        },
+        "firstBubbleButton": {
+          "left": 63,
+          "right": 191,
+          "top": 1165.5,
+          "bottom": 1209.5,
+          "width": 128,
+          "height": 44,
+          "visibleWidth": 128,
+          "visibleHeight": 0
+        },
+        "brandBubble": {
+          "width": 131.125,
+          "height": 102.5,
+          "fontSize": 16,
+          "lineHeight": 22.72,
+          "paddingTop": 5.814,
+          "paddingBottom": 5.814,
+          "lineCount": 4
+        },
+        "containers": {
+          "innerWidth": 390,
+          "mobileMedia": true,
+          "editor": {
+            "left": 41,
+            "right": 349,
+            "width": 308,
+            "scrollLeft": 0,
+            "scrollWidth": 308,
+            "clientWidth": 308
+          },
+          "workspace": {
+            "left": 41,
+            "right": 349,
+            "width": 308
+          },
+          "stageColumn": {
+            "left": 41,
+            "right": 349,
+            "width": 308
+          },
+          "stageStyle": {
+            "width": "308px",
+            "minWidth": "0px",
+            "maxWidth": "100%",
+            "display": "block",
+            "position": "relative"
+          }
+        }
       }
     },
     {
@@ -71,6 +154,86 @@
       "overflow": {
         "width": 600,
         "scroll": 600
+      },
+      "layout": {
+        "stage": {
+          "left": 41,
+          "right": 559,
+          "top": 143,
+          "bottom": 790,
+          "width": 518,
+          "height": 647,
+          "visibleWidth": 518,
+          "visibleHeight": 647
+        },
+        "advancedToolbar": {
+          "left": 41,
+          "right": 559,
+          "top": -265,
+          "bottom": -115,
+          "width": 518,
+          "height": 150,
+          "visibleWidth": 518,
+          "visibleHeight": 0
+        },
+        "rightPanel": {
+          "left": 41,
+          "right": 559,
+          "top": 866,
+          "bottom": 2713,
+          "width": 518,
+          "height": 1847,
+          "visibleWidth": 518,
+          "visibleHeight": 34
+        },
+        "firstBubbleButton": {
+          "left": 63,
+          "right": 296,
+          "top": 1088,
+          "bottom": 1132,
+          "width": 233,
+          "height": 44,
+          "visibleWidth": 233,
+          "visibleHeight": 0
+        },
+        "brandBubble": {
+          "width": 265.359375,
+          "height": 72.34375,
+          "fontSize": 18.576,
+          "lineHeight": 26.3779,
+          "paddingTop": 9.804,
+          "paddingBottom": 9.804,
+          "lineCount": 2
+        },
+        "containers": {
+          "innerWidth": 600,
+          "mobileMedia": true,
+          "editor": {
+            "left": 41,
+            "right": 559,
+            "width": 518,
+            "scrollLeft": 0,
+            "scrollWidth": 518,
+            "clientWidth": 518
+          },
+          "workspace": {
+            "left": 41,
+            "right": 559,
+            "width": 518
+          },
+          "stageColumn": {
+            "left": 41,
+            "right": 559,
+            "width": 518
+          },
+          "stageStyle": {
+            "width": "518px",
+            "minWidth": "0px",
+            "maxWidth": "100%",
+            "display": "block",
+            "position": "relative"
+          }
+        }
       }
     },
     {
@@ -113,11 +276,113 @@
       "overflow": {
         "width": 1440,
         "scroll": 1440
+      },
+      "layout": {
+        "stage": {
+          "left": 393,
+          "right": 735,
+          "top": 90.5,
+          "bottom": 517.5,
+          "width": 342,
+          "height": 427,
+          "visibleWidth": 342,
+          "visibleHeight": 427
+        },
+        "advancedToolbar": {
+          "left": 265,
+          "right": 1071,
+          "top": -472,
+          "bottom": -375.5,
+          "width": 806,
+          "height": 96.5,
+          "visibleWidth": 806,
+          "visibleHeight": 0
+        },
+        "rightPanel": {
+          "left": 751,
+          "right": 1071,
+          "top": -359.5,
+          "bottom": 1501.5,
+          "width": 320,
+          "height": 1861,
+          "visibleWidth": 320,
+          "visibleHeight": 1000
+        },
+        "firstBubbleButton": {
+          "left": 773,
+          "right": 907,
+          "top": -119.5,
+          "bottom": -75.5,
+          "width": 134,
+          "height": 44,
+          "visibleWidth": 134,
+          "visibleHeight": 0
+        },
+        "brandBubble": {
+          "width": 187.203125,
+          "height": 47.625,
+          "fontSize": 12.24,
+          "lineHeight": 17.3808,
+          "paddingTop": 6.46,
+          "paddingBottom": 6.46,
+          "lineCount": 2
+        },
+        "containers": {
+          "innerWidth": 1440,
+          "mobileMedia": false,
+          "editor": {
+            "left": 265,
+            "right": 1071,
+            "width": 806,
+            "scrollLeft": 0,
+            "scrollWidth": 806,
+            "clientWidth": 806
+          },
+          "workspace": {
+            "left": 265,
+            "right": 1071,
+            "width": 806
+          },
+          "stageColumn": {
+            "left": 393,
+            "right": 735,
+            "width": 342
+          },
+          "stageStyle": {
+            "width": "342px",
+            "minWidth": "0px",
+            "maxWidth": "none",
+            "display": "block",
+            "position": "relative"
+          }
+        }
       }
     }
   ],
+  "bubbleWrapComparison": {
+    "mobile390": {
+      "width": 131.125,
+      "height": 102.5,
+      "fontSize": 16,
+      "lineHeight": 22.72,
+      "paddingTop": 5.814,
+      "paddingBottom": 5.814,
+      "lineCount": 4
+    },
+    "desktop1440": {
+      "width": 187.203125,
+      "height": 47.625,
+      "fontSize": 12.24,
+      "lineHeight": 17.3808,
+      "paddingTop": 6.46,
+      "paddingBottom": 6.46,
+      "lineCount": 2
+    },
+    "cause": "1023px 이하 editor는 모바일 가독성 하한 16px을 적용하고, Remotion과 desktop은 3.6cqw 비례 글자 크기를 사용한다.",
+    "limitation": "390px stage에서 3.6cqw는 16px보다 작아 두 조건을 동시에 만족할 수 없으므로 모바일 편집 미리보기의 줄바꿈은 발행 PNG와 다를 수 있다."
+  },
   "consoleErrors": 0,
   "failedRequests": 0,
-  "saves": 5,
+  "saves": 7,
   "publishRoute": "http://localhost:3477/studio?room=publish"
 }

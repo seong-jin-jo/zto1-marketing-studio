@@ -156,7 +156,7 @@ function ChatBubbleBase({ model, renderMode, onChatOverflowChange, fontsReady }:
           const showBrandIdentity = bubble.speaker === "brand"
             && orderedBubbles[bubbleIndex - 1]?.speaker !== "brand";
           return (
-            <div key={bubble.id} className={`${styles.chatRow} ${bubble.speaker === "reader" ? styles.readerRow : styles.brandRow}`} data-chat-bubble={bubble.id}>
+            <div key={bubble.id} className={`${styles.chatRow} ${bubble.speaker === "reader" ? styles.readerRow : styles.brandRow}`} data-chat-bubble={bubble.id} data-chat-speaker={bubble.speaker}>
               {showBrandIdentity ? <span className={styles.chatAvatar} aria-hidden="true">
                 {profileUrl
                   ? renderMode === "export"
@@ -167,7 +167,7 @@ function ChatBubbleBase({ model, renderMode, onChatOverflowChange, fontsReady }:
               <div className={styles.chatColumn}>
                 {showBrandIdentity ? <span className={styles.chatName} data-chat-speaker-name>{model.brand.display_name}</span> : null}
                 <div className={styles.chatBubbleLine}>
-                  <div className={styles.chatBubble}><BubbleText bubble={bubble} /></div>
+                  <div className={styles.chatBubble} data-chat-bubble-text><BubbleText bubble={bubble} /></div>
                   <time className={styles.chatTime}>오후 9:20</time>
                 </div>
                 {bubble.reaction ? <span className={styles.chatReaction} aria-label="좋아요">♥</span> : null}

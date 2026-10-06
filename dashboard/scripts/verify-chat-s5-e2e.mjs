@@ -211,8 +211,13 @@ try {
     15_000,
     () => `바꾼 표지 사진이 v3 덱에 저장되지 않았습니다: ${JSON.stringify(rejectedDraftSaves)}`,
   );
-  await page.getByRole("button", { name: "2장" }).click();
+  await page.getByRole("button", { name: "2장", exact: true }).click();
   if ((await page.locator("[data-chat-bubble-id]").count()) < 2) throw new Error("데이터가 있는 말풍선 장을 열지 못했습니다");
+  const commentPromptSlide = serverDeck.slides.find((slide) => slide.role === "comment_prompt");
+  if (!commentPromptSlide) throw new Error("v3 덱에 comment_prompt 역할이 보존되지 않았습니다");
+  await page.getByRole("button", { name: `${commentPromptSlide.order + 1}장`, exact: true }).click();
+  if (!await page.getByRole("button", { name: "이 장 삭제" }).isDisabled()) throw new Error("댓글 유도 장 삭제가 잠기지 않았습니다");
+  await page.getByRole("button", { name: "2장", exact: true }).click();
   const beforeSpeakers = serverDeck.slides.map((slide) => slide.base.kind === "chat_bubble" ? slide.base.bubbles.map((bubble) => bubble.speaker) : []);
   await page.getByRole("button", { name: "덱 전체 화자 서로 바꾸기" }).click();
   await waitUntil(() => JSON.stringify(serverDeck.slides.map((slide) => slide.base.kind === "chat_bubble" ? slide.base.bubbles.map((bubble) => bubble.speaker) : [])) !== JSON.stringify(beforeSpeakers), 15_000, "전체 화자 교환이 저장되지 않았습니다");
@@ -277,6 +282,9 @@ try {
         const firstBubbleButton = document.querySelector("[data-chat-bubble-id] button")?.getBoundingClientRect();
         const workspace = document.querySelector("[data-card-stage-column]")?.parentElement?.getBoundingClientRect();
         const stageColumn = document.querySelector("[data-card-stage-column]")?.getBoundingClientRect();
+        const brandBubbleElement = document.querySelector('[data-chat-speaker="brand"] [data-chat-bubble-text]');
+        const brandBubble = brandBubbleElement?.getBoundingClientRect();
+        const brandBubbleStyle = brandBubbleElement ? getComputedStyle(brandBubbleElement) : null;
         if (!stage || !rightPanel || !advancedToolbar || !firstBubbleButton) return null;
         const visibleRect = (rect) => ({
           left: rect.left,
@@ -293,6 +301,15 @@ try {
           advancedToolbar: visibleRect(advancedToolbar),
           rightPanel: visibleRect(rightPanel),
           firstBubbleButton: visibleRect(firstBubbleButton),
+          brandBubble: brandBubble && brandBubbleStyle ? {
+            width: brandBubble.width,
+            height: brandBubble.height,
+            fontSize: Number.parseFloat(brandBubbleStyle.fontSize),
+            lineHeight: Number.parseFloat(brandBubbleStyle.lineHeight),
+            paddingTop: Number.parseFloat(brandBubbleStyle.paddingTop),
+            paddingBottom: Number.parseFloat(brandBubbleStyle.paddingBottom),
+            lineCount: Math.round((brandBubble.height - Number.parseFloat(brandBubbleStyle.paddingTop) - Number.parseFloat(brandBubbleStyle.paddingBottom)) / Number.parseFloat(brandBubbleStyle.lineHeight)),
+          } : null,
           containers: {
             innerWidth: window.innerWidth,
             mobileMedia: window.matchMedia("(max-width: 1023px)").matches,
@@ -448,6 +465,7 @@ try {
     remotionPng,
     readerBubbleCount,
     authorReaderAuthorRendered: true,
+    commentPromptDeleteLocked: true,
     overflowRejected: overflowError.includes("CARD_CHAT_OVERFLOW"),
     overflowError,
     coverPhoto: cover.background,
@@ -455,6 +473,12 @@ try {
     returnedToBasicEditor: true,
     returnedCoverPhotoPreserved: serverLegacyDeck.slides[0].cover_image_url === photoUrl,
     responsive,
+    bubbleWrapComparison: {
+      mobile390: responsive.find((entry) => entry.viewport === 390)?.layout?.brandBubble ?? null,
+      desktop1440: responsive.find((entry) => entry.viewport === 1440)?.layout?.brandBubble ?? null,
+      cause: "1023px 이하 editor는 모바일 가독성 하한 16px을 적용하고, Remotion과 desktop은 3.6cqw 비례 글자 크기를 사용한다.",
+      limitation: "390px stage에서 3.6cqw는 16px보다 작아 두 조건을 동시에 만족할 수 없으므로 모바일 편집 미리보기의 줄바꿈은 발행 PNG와 다를 수 있다.",
+    },
     consoleErrors: runtimeErrors.length,
     failedRequests: failedRequests.length,
     saves: posts.length,

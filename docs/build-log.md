@@ -1,5 +1,13 @@
 # OSMU build log
 
+## 2026-10-07 07:13 KST · 편집실 S5b 교차 리뷰 4차 교정
+
+STAMP: 2026-10-07 07:13 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `s5b-review-r4.md`, v2 projection validator, 플래그 ON localhost Chromium, 390·Remotion 원본 PNG | 고민: 삭제 가능한 자유 편집과 서버가 요구하는 댓글 유도 장 불변식을 명령 경계에서 함께 지키고, 모바일 가독성과 발행 줄바꿈의 차이는 숨기지 않고 측정했다.
+
+카톡 v3는 `comment_prompt` 역할을 명시적으로 보존하고 해당 장 삭제를 잠근다. 모든 편집 명령은 결과를 v2로 projection한 뒤 `validateCardDeck`를 통과해야 commit되므로 댓글 유도 장이나 chat 본문 4장 하한을 깨는 변경은 저장 전에 거절된다. 플래그 ON E2E에서 삭제 잠금, 저장 7회, 발행실 이동, 기본 편집 복귀, 콘솔 오류 0, 실패 요청 0을 관찰했다.
+
+390px 작성자 말풍선은 모바일 본문 16px 하한으로 4줄이고, 1440px/Remotion은 비례 글자 크기로 2줄이다. 390px에서 동일한 2줄을 강제하면 16px 하한을 깨므로 발행 PNG를 최종 줄바꿈 정본으로 유지하고 이 제약을 QA 증거에 기록했다. 원격 CI, QA 승인, 운영 배포는 미검증이며 push하지 않았다.
+
 ## 2026-10-07 05:31 KST · 편집실 S5b 교차 리뷰 3차 교정
 
 STAMP: 2026-10-07 05:31 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `s5b-review-r3.md`, localhost Chromium 600·390 bounding box, 원본 크기 캡처, fontsReady 단위 계약 | 고민: viewport가 아니라 실제 부모 컨테이너를 폭 기준으로 삼고 테스트 환경 차이는 의존성 주입으로 제거했다.

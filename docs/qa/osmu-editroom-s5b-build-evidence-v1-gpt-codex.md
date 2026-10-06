@@ -1,12 +1,12 @@
 # 편집실 S5b 카톡 v3 고급 도구와 덧붙임 요소, build 증거
 
-STAMP: 2026-10-07 05:31 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: S5b build plan, v71 prototype, 교차 리뷰 R3, localhost Chromium, Remotion `renderStill`, Vitest | 고민: Android 폭에서 수평으로 잘린 도구와 패널을 컨테이너 폭 계약으로 고치고, 폰트 준비 시점을 제품 코드에 주입해 테스트 전용 분기를 제거했다.
+STAMP: 2026-10-07 07:13 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: S5b build plan, v71 prototype, 교차 리뷰 R4, localhost Chromium, Remotion `renderStill`, Vitest | 고민: 댓글 유도 장을 구조적으로 보존하고 모든 명령을 서버 v2 계약으로 사전검증하되, 모바일 가독성 하한과 발행 PNG의 줄바꿈 차이는 측정값으로 공개했다.
 
 기반 포맷: `docs/build-log.md`의 편집실 v2 수직 슬라이스 검증 기록.
 
 ## 결론
 
-S5b-AC1~3과 교차 리뷰 R3 A·B·MINOR는 로컬 build 단계에서 통과했다. 플래그를 켠 실제 Next 개발 서버에서 v2 카톡 덱을 v3 고급 편집기로 열고 표지 사진을 바꾼 뒤 저장·발행실 이동·재진입·기본 말풍선 편집기 복귀까지 실행했다. 600·390에서 도구줄·오른쪽 패널·첫 말풍선 버튼의 수평 가시 폭과 편집기 `scrollLeft=0`을 단언했고 원본 크기 캡처를 재생성해 직접 확인했다.
+S5b-AC1~3과 교차 리뷰 R4 C·MINOR는 로컬 build 단계에서 통과했다. 플래그를 켠 실제 Next 개발 서버에서 댓글 유도 장의 삭제 잠금, 저장·발행실 이동·재진입·기본 말풍선 편집기 복귀까지 실행했다. 390px 편집기와 1440px/Remotion의 같은 작성자 말풍선을 원본 크기로 대조했고, 모바일 16px 가독성 하한 때문에 생기는 줄바꿈 차이를 실측값과 함께 제약으로 기록했다.
 
 ## 수용 기준
 
@@ -21,6 +21,8 @@ S5b-AC1~3과 교차 리뷰 R3 A·B·MINOR는 로컬 build 단계에서 통과했
 | S5b-R3-A | ✅ 관찰됨 | 390px에서 stage·도구줄·오른쪽 패널 수평 가시 폭 308px, 첫 말풍선 버튼 128px, 편집기 `scrollWidth=clientWidth=308`, `scrollLeft=0`. 600px에서는 각각 518px·233px, `scrollWidth=clientWidth=518`, `scrollLeft=0` |
 | S5b-R3-B | ✅ 관찰됨 | 원본 역할을 보존하는 v3→v2 projection으로 복귀하고 서버 저장 검증 통과. 표지·CTA 사진 URL 보존, 발행실 이동과 기본 편집 복귀 완료 |
 | S5b-R3-MINOR | ✅ 테스트됨 | `NODE_ENV` 테스트 분기를 제거하고 `fontsReady` Promise를 주입. 주입 Promise가 resolve되기 전에는 overflow callback이 실행되지 않고 이후 실제 높이로 판정하는 계약 통과 |
+| S5b-R4-C | ✅ 관찰됨 | v3 `comment_prompt` 역할 보존, 삭제 버튼 잠금, 모든 명령 결과의 v2 `validateCardDeck` 사전검증을 적용. 댓글 유도 장 삭제와 chat 본문 4장 하한 위반 테스트 및 실제 저장·발행실 이동·기본 편집 복귀 통과 |
+| S5b-R4-MINOR | ✅ 원인 규명·제약 기록 | 동일 작성자 말풍선이 390px 편집기에서는 16px·4줄, 1440px에서는 12.24px·2줄로 실측됨. Remotion 원본 PNG도 2줄. 390px에서 2줄을 강제하려면 모바일 16px 하한을 깨므로 편집기 줄바꿈 완전 일치는 보장하지 않고 발행 PNG를 최종 결과로 유지 |
 
 ## 실행 조건과 결과
 
@@ -32,29 +34,31 @@ S5b-AC1~3과 교차 리뷰 R3 A·B·MINOR는 로컬 build 단계에서 통과했
 | 변경 연관 테스트 | `npx vitest run CardCanvasEditor.test.tsx CardSlideScene.test.tsx card-deck-v2-to-v3.test.ts card-deck-v3-studio-rooms.integration.test.tsx` | 4파일, 61건 PASS |
 | 생산 build | `~/.claude/harness/bin/heavy-slot.sh npm run build` | Next.js 16.2.2 production build PASS, 188개 static page 생성. 기존 NFT trace 경고 1묶음 |
 | 실제 drafts route 통합 | `npx vitest run tests/studio/card-deck-drafts-route.integration.test.ts` | 실제 `POST` route handler와 저장 adapter mock을 연결한 17건 PASS. 편집된 동기 v2/v3 본문을 200으로 수락 |
-| 플래그 ON E2E | `CARD_DECK_V3_RENDER_ENABLED=1 NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=1`, Next dev `http://localhost:3477`, `CHAT_S5_BASE_URL=http://localhost:3477 npm run e2e:chat-s5` | PASS, 카드 9장, 저장 7회, `/studio?room=publish` 이동 뒤 편집실 재진입과 기본 편집 복귀, 변경 표지 사진 보존, 콘솔 오류 0, 실패 요청 0. 600·390에서 stage·도구줄·패널·첫 말풍선 버튼의 `visibleWidth`와 편집기 `scrollLeft=0` 단언, 360~1440 가로 넘침 0. drafts API는 브라우저 픽스처가 가로채되 production 동기화·clear 조건을 적용 |
+| 플래그 ON E2E | `CARD_DECK_V3_RENDER_ENABLED=1 NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=1`, Next dev `http://localhost:3477`, `CHAT_S5_BASE_URL=http://localhost:3477 npm run e2e:chat-s5` | PASS, 카드 9장, 저장 7회, 댓글 유도 장 삭제 잠금, `/studio?room=publish` 이동 뒤 편집실 재진입과 기본 편집 복귀, 변경 표지 사진 보존, 콘솔 오류 0, 실패 요청 0. 600·390에서 stage·도구줄·패널·첫 말풍선 버튼의 `visibleWidth`와 편집기 `scrollLeft=0` 단언, 360~1440 가로 넘침 0. drafts API는 브라우저 픽스처가 가로채되 production 동기화·clear 조건을 적용 |
+| 말풍선 줄바꿈 대조 | 실제 DOM `getComputedStyle`·bounding box와 원본 PNG 대조 | 390px: 폭 131.125px, 글자 16px, line-height 22.72px, 4줄. 1440px: 폭 187.203px, 글자 12.24px, line-height 17.3808px, 2줄. Remotion 원본 PNG 2줄. 모바일 가독성 하한과 동일 줄바꿈의 동시 충족 불가를 확인 |
 | Remotion overflow 경계 | 같은 E2E에서 실제 `renderStill` 실행 | `CARD_CHAT_OVERFLOW`로 긴 말풍선 거절 확인 |
 | 모바일 인체공학 | 데이터 9장, 조작 대상 30개 fixture, 폭 360·390·412·600·700·780·820·900·1000 | 전 폭 본문 16px, 13px 미만 0, 44px 미만 0, 눌림 상태 100%, 가로 넘침 0 |
 | 디자인 lint | `bash ~/.claude/harness/bin/design-lint.sh dashboard/src` | 검사 종료 0. 저장소 기존 인라인 style 3파일·hex 8파일 경고 유지, 이번 diff 신규 리터럴 없음 |
 
 ## 실제 PNG
 
-- [390px 고급 편집 전체 캡처](editroom-v2-s5/s5-chat-advanced-editor-390.png)
-- [600px 고급 편집 전체 캡처](editroom-v2-s5/s5-chat-advanced-editor-600.png)
-- [1440px 고급 편집 전체 캡처](editroom-v2-s5/s5-chat-advanced-editor-1440.png)
+- [390px 고급 편집 전체 캡처](osmu-editroom-s5b-build-evidence-20261007/s5-chat-advanced-editor-390.png)
+- [600px 고급 편집 전체 캡처](osmu-editroom-s5b-build-evidence-20261007/s5-chat-advanced-editor-600.png)
+- [1440px 고급 편집 전체 캡처](osmu-editroom-s5b-build-evidence-20261007/s5-chat-advanced-editor-1440.png)
 - [브라우저 캔버스, 프로필 아바타](editroom-v2-s5/s5b-chat-profile-browser-canvas.png)
-- [브라우저 공용 장 scene, 덧붙임 요소](editroom-v2-s5/s5b-chat-overlay-browser-scene.png)
-- [Remotion PNG, 프로필 아바타와 덧붙임 요소](editroom-v2-s5/s5b-chat-overlay-profile-remotion.png)
-- [E2E 원문 결과](editroom-v2-s5/s5-chat-result.json)
+- [브라우저 공용 장 scene, 덧붙임 요소](osmu-editroom-s5b-build-evidence-20261007/s5b-chat-overlay-browser-scene.png)
+- [Remotion PNG, 프로필 아바타와 덧붙임 요소](osmu-editroom-s5b-build-evidence-20261007/s5b-chat-overlay-profile-remotion.png)
+- [작성자 말풍선 Remotion 원본 PNG](osmu-editroom-s5b-build-evidence-20261007/s5-chat-author-reader-author-remotion.png)
+- [E2E 원문 결과](osmu-editroom-s5b-build-evidence-20261007/s5-chat-result.json)
 - [9폭 모바일 실측 원문](osmu-editroom-s5b-build-evidence-20261007/mobile-ergonomics.jsonl)
 
-대표 PNG를 원본 해상도로 육안 대조했다. 주황색 프로필 아바타, 작성자 이름, 말풍선, 글·별 스티커·로고가 브라우저와 Remotion 결과에 실제로 보인다.
+390px 편집기와 작성자 말풍선 Remotion PNG를 원본 해상도로 직접 열어 대조했다. 390px에서는 도구·카드·오른쪽 패널이 화면 안에 있고 작성자 말풍선이 4줄이며, Remotion PNG에서는 같은 문구가 2줄이다. 이 차이는 모바일 편집기의 16px 가독성 하한과 발행 renderer의 비례 글자 크기 차이로 측정됐다.
 
 ## 기존 구현 보존과 변경
 
 - 유지: v2 `cardDeck`, 표지·마지막 사진, 말풍선 순서·화자·강조·리액션, v3 feature flag와 공용 저장·발행 경계.
-- 추가: v3 안에서 화자·프로필·말풍선·말투를 조작하는 고급 도구, 글·사진·도형·스티커·로고 덧붙임, 사진 빼기, v3→v2 복귀, 고아 projection 정리, 아바타 asset resolver.
-- 회귀 방어: 넘침 감지는 발행과 같은 CardSlideScene이 수행하되 분할 commit은 사용자 행동에서만 일어나 undo를 덮지 않는다. 편집기와 Remotion은 같은 asset을 해석한다.
+- 추가: v3 안에서 화자·프로필·말풍선·말투를 조작하는 고급 도구, 글·사진·도형·스티커·로고 덧붙임, 사진 빼기, v3→v2 복귀, 고아 projection 정리, 아바타 asset resolver, `comment_prompt` 역할 보존과 삭제 잠금.
+- 회귀 방어: 모든 v3 명령은 v2 projection 뒤 `validateCardDeck`를 통과해야 commit된다. 넘침 감지는 발행과 같은 CardSlideScene이 수행하되 분할 commit은 사용자 행동에서만 일어나 undo를 덮지 않는다. 편집기와 Remotion은 같은 asset을 해석한다.
 
 ## 남은 경계
 
@@ -62,6 +66,7 @@ S5b-AC1~3과 교차 리뷰 R3 A·B·MINOR는 로컬 build 단계에서 통과했
 - Storybook은 이 저장소에 설정되어 있지 않아 Storybook smoke는 미검증이다. 실제 Next 개발 서버와 Chromium E2E로 사용자 축을 검증했다.
 - 원격 CI, QA 단계 승인, 운영 배포는 미검증이다. push하지 않았다.
 - `pipeline-artifact-lint`는 상태 파일의 핀 실체·버전 정합을 통과했지만 기존 QA/design 산출물 위생 경고 28건을 유지한다.
+- 1023px 이하 편집기는 본문 16px 하한을 지키므로, 좁은 stage에서 발행 PNG와 줄바꿈이 완전히 같다는 보장은 없다. 저장되는 텍스트와 발행 결과는 동일하며 최종 줄바꿈은 Remotion PNG가 정본이다.
 
 ## 벤치마크 반영
 
@@ -70,8 +75,8 @@ S5b-AC1~3과 교차 리뷰 R3 A·B·MINOR는 로컬 build 단계에서 통과했
 
 PRESENTATION_CHECK: 내부 태그 잔재 없음, PNG 3종 원본 해상도 렌더 확인함.
 
-SKILLS_USED: review, 최종 diff와 회귀·증거 누락을 적대적으로 점검
-SKILLS_SKIPPED: 없음
+SKILLS_USED: qa, 실제 사용자 경로와 회귀·증거를 체계적으로 검증
+SKILLS_SKIPPED: review, 이번 교정은 이미 확정된 4차 리뷰 결함의 구현·재검증이므로 별도 PR 리뷰를 중복 실행하지 않음
 SOURCES/MODEL: gpt-6.1-sol/Codex | `docs/eng/editroom-v2/build-plan.md`, `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html`, `wiki/거버넌스/결정.md`, `wiki/거버넌스/실수.md`, Remotion·Canva 공식 웹
 KNOWLEDGE_QUERY: BRAIN business/cto의 디자인-개발 정합·레버리지 지식과 Remotion still·Canva 요소 편집 사례를 조회했다.
 HITS_USED: BRAIN 디자인-개발 정합 문서는 승인 산출물·실행물 비교 원칙에, Remotion 문서는 실제 PNG 렌더 증거 경로에 채택했다.
