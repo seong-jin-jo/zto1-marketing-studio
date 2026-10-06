@@ -538,6 +538,86 @@ async function runScenario(engineName) {
       hasRichNode: false,
       model: "붙여넣은 평문",
     });
+
+    // S5: 실제 HTML5 drag로 장 사이 이동, 전체 화자 교환과 한 번 undo, 후보 3개 중
+    // 선택 후보만 적용하는 사용자 축을 한 브라우저 세션에서 연속 검증한다.
+    await nav("slide-1");
+    const movedBefore = await page.evaluate(() => structuredClone(window.__deck.slides.find((slide) => slide.id === "slide-1").bubbles.find((bubble) => bubble.id === "b-1-1")));
+    await page.getByRole("button", { name: "2번째 말풍선 옮기기" }).dragTo(page.locator('[data-slide-id="slide-2"]'));
+    await page.waitForTimeout(150);
+    const movedAfter = await page.evaluate(() => {
+      const source = window.__deck.slides.find((slide) => slide.id === "slide-1");
+      const target = window.__deck.slides.find((slide) => slide.id === "slide-2");
+      return {
+        stillInSource: source.bubbles.some((bubble) => bubble.id === "b-1-1"),
+        moved: target.bubbles.find((bubble) => bubble.id === "b-1-1"),
+        targetOrders: target.bubbles.map((bubble) => bubble.order),
+      };
+    });
+    record("S5-AC1: 손잡이를 다른 장에 놓으면 세그먼트·화자·reaction과 순서가 보존된다", {
+      stillInSource: movedAfter.stillInSource,
+      movedPayload: movedAfter.moved && { speaker: movedAfter.moved.speaker, segments: movedAfter.moved.segments, reaction: movedAfter.moved.reaction },
+      originalPayload: { speaker: movedBefore.speaker, segments: movedBefore.segments, reaction: movedBefore.reaction },
+      targetOrders: movedAfter.targetOrders,
+    }, {
+      stillInSource: false,
+      movedPayload: { speaker: movedBefore.speaker, segments: movedBefore.segments, reaction: movedBefore.reaction },
+      originalPayload: { speaker: movedBefore.speaker, segments: movedBefore.segments, reaction: movedBefore.reaction },
+      targetOrders: movedAfter.targetOrders.map((_, index) => index),
+    });
+
+    const speakersBefore = await page.evaluate(() => window.__deck.slides.map((slide) => (slide.bubbles || []).map((bubble) => bubble.speaker)));
+    await page.getByRole("button", { name: "덱 전체 화자 서로 바꾸기" }).click();
+    const speakersSwapped = await page.evaluate(() => window.__deck.slides.map((slide) => (slide.bubbles || []).map((bubble) => bubble.speaker)));
+    await page.getByRole("button", { name: "실행 취소" }).click();
+    const speakersRestored = await page.evaluate(() => window.__deck.slides.map((slide) => (slide.bubbles || []).map((bubble) => bubble.speaker)));
+    record("S5-AC2: 전 덱 화자가 원자적으로 바뀌고 undo 한 번으로 복원된다", {
+      swapped: JSON.stringify(speakersSwapped) !== JSON.stringify(speakersBefore),
+      restored: speakersRestored,
+    }, { swapped: true, restored: speakersBefore });
+
+    await page.evaluate(() => {
+      window.fetch = async () => new Response(JSON.stringify({
+        ok: true,
+        fact_warning: "숫자와 고유명사는 적용 전에 원문과 다시 확인하세요.",
+        candidates: [
+          { id: "a", label: "후보 1", lines: ["A 첫째", "A 둘째", "A 셋째"], fact_warnings: [] },
+          { id: "b", label: "후보 2", lines: ["B 첫째", "B 둘째", "B 셋째"], fact_warnings: ["후보에 새로 생긴 숫자·고유명사: 10시간"] },
+          { id: "c", label: "후보 3", lines: ["C 첫째", "C 둘째", "C 셋째"], fact_warnings: [] },
+        ],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    await nav("slide-2");
+    const toneTargetCount = await page.evaluate(() => window.__deck.slides.find((slide) => slide.id === "slide-2").bubbles.length);
+    await page.evaluate((count) => {
+      const lines = ["B 첫째", "B 둘째", "B 셋째"].slice(0, count);
+      window.fetch = async () => new Response(JSON.stringify({
+        ok: true,
+        fact_warning: "숫자와 고유명사는 적용 전에 원문과 다시 확인하세요.",
+        candidates: [
+          { id: "a", label: "후보 1", lines: lines.map((line) => line.replace("B", "A")), fact_warnings: [] },
+          { id: "b", label: "후보 2", lines, fact_warnings: ["후보에 새로 생긴 숫자·고유명사: 10시간"] },
+          { id: "c", label: "후보 3", lines: lines.map((line) => line.replace("B", "C")), fact_warnings: [] },
+        ],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }, toneTargetCount);
+    await page.getByRole("button", { name: "후보 3개 비교" }).click();
+    await page.getByRole("dialog", { name: "말투 다듬기 비교" }).waitFor();
+    const candidateButtons = page.getByRole("button", { name: "이 후보 적용" });
+    const candidateCount = await candidateButtons.count();
+    await page.locator('[data-tone-candidate="b"]').getByRole("button", { name: "이 후보 적용" }).click();
+    const toneResult = await page.evaluate(() => window.__deck.slides.find((slide) => slide.id === "slide-2").bubbles.map((bubble) => bubble.segments.map((segment) => segment.text).join("")));
+    record("S5-AC3: 후보 3개 비교 뒤 선택한 후보만 적용되고 사실 경고가 남는다", {
+      candidateCount,
+      toneResult,
+      warningVisible: await page.getByText(/숫자와 고유명사는 적용 전에/).isVisible(),
+      candidateWarningVisible: await page.getByText(/10시간/).isVisible(),
+    }, {
+      candidateCount: 3,
+      toneResult: ["B 첫째", "B 둘째", "B 셋째"].slice(0, toneTargetCount),
+      warningVisible: true,
+      candidateWarningVisible: true,
+    });
   } finally {
     await browser.close();
   }
