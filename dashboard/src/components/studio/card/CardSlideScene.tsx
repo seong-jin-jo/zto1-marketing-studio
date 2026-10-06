@@ -164,6 +164,7 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
 export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
   const background = model.slide.background;
   const hasPhoto = background.kind === "image";
+  const isChatSlide = model.slide.base.kind === "chat_bubble";
   const sceneStyle = {
     "--card-stage-ratio": `${model.logicalWidth} / ${model.logicalHeight}`,
     "--card-stage-background": background.kind === "solid" ? background.color : model.theme.background,
@@ -172,9 +173,9 @@ export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
     "--card-chat-reader-background": READER_BUBBLE_BG,
     "--card-chat-brand-background": BRAND_BUBBLE_BG,
     "--card-chat-text": BUBBLE_TEXT,
-    "--card-chat-primary-text": hasPhoto ? PHOTO_TEXT_PRIMARY : model.theme.foreground,
-    "--card-chat-muted-text": hasPhoto ? PHOTO_TEXT_SECONDARY : `color-mix(in srgb, ${model.theme.foreground} 75%, transparent)`,
-    "--card-chat-accent-text": hasPhoto ? PHOTO_TEXT_SECONDARY : model.theme.accent,
+    "--card-chat-primary-text": isChatSlide && hasPhoto ? PHOTO_TEXT_PRIMARY : model.theme.foreground,
+    "--card-chat-muted-text": isChatSlide && hasPhoto ? PHOTO_TEXT_SECONDARY : `color-mix(in srgb, ${model.theme.foreground} 75%, transparent)`,
+    "--card-chat-accent-text": isChatSlide && hasPhoto ? PHOTO_TEXT_SECONDARY : model.theme.accent,
     "--card-background-overlay": background.kind === "image" ? background.overlay ?? "transparent" : "transparent",
     ...(background.kind === "gradient" ? { backgroundImage: `linear-gradient(${background.angle}deg, ${background.from}, ${background.to})` } : {}),
   } as CSSProperties;
