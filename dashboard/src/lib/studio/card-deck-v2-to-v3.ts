@@ -267,6 +267,43 @@ export function projectChatCardDeckV3ToRenderableV2(deck: CardDeckV3, assetUrls:
   };
 }
 
+export interface ChatBasicEditorProjection {
+  deck: CardDeck | null;
+  missingAssetIds: string[];
+}
+
+/**
+ * 카톡 v3를 기본 말풍선 편집기로 되돌릴 때 쓰는 projection.
+ * 렌더용 projection은 모든 본문 역할을 chat으로 평탄화하므로 저장 계약에 쓰지 않는다.
+ */
+export function projectChatCardDeckV3ToBasicEditor(
+  deck: CardDeckV3,
+  source: CardDeck,
+  assetUrls: Readonly<Record<string, string>> = {},
+): ChatBasicEditorProjection {
+  const photoSlides = deck.slides.filter((slide) => (
+    (slide.role === "cover" || slide.role === "cta") && slide.background.kind === "image"
+  ));
+  const missingAssetIds = [...new Set(photoSlides
+    .map((slide) => slide.background.kind === "image" ? slide.background.asset_id : "")
+    .filter((assetId) => assetId && !assetUrls[assetId]))];
+  if (missingAssetIds.length) return { deck: null, missingAssetIds };
+
+  const projected = projectCardDeckV3ToV2(deck, source);
+  const v3ById = new Map(deck.slides.map((slide) => [slide.id, slide]));
+  projected.slides = projected.slides.map((slide) => {
+    const v3 = v3ById.get(slide.id);
+    if (!v3 || (v3.role !== "cover" && v3.role !== "cta")) return slide;
+    return {
+      ...slide,
+      cover_image_url: v3.background.kind === "image"
+        ? assetUrls[v3.background.asset_id]
+        : null,
+    };
+  });
+  return { deck: projected, missingAssetIds: [] };
+}
+
 /**
  * v3 편집 결과와 함께 저장되는 v2 projection의 지문을 v3에 박는다. 예전 stale v3는
  * 이 지문이 현재 v2와 다르므로 조회·발행 경계에서 열리지 않는다.

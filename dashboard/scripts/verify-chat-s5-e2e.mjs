@@ -7,6 +7,7 @@ import { createJiti } from "jiti";
 import { createServer as createViteServer } from "vite";
 
 const jiti = createJiti(import.meta.url, { alias: { "@": path.resolve("src") } });
+const { validateCardDeck } = await jiti.import("../src/lib/studio/card-deck-contract.ts");
 const { validateCardDeckV3 } = await jiti.import("../src/lib/studio/card-element-contract.ts");
 const { cardSlideRenderModel } = await jiti.import("../src/lib/studio/card-render-model.ts");
 const { renderCardSlidePng } = await jiti.import("../src/lib/studio/card-slide-render.ts");
@@ -120,7 +121,14 @@ await context.route("**/api/**", async (route) => {
     if (body.cardDeckV3 && body.cardDeck && !isSynchronizedChatCardDeckV3(body.cardDeck, body.cardDeckV3)) {
       return json(route, { ok: false, code: "CARD_CHAT_V3_SOURCE_MISMATCH", error: "v2/v3 source hash mismatch" }, 409);
     }
-    if (body.cardDeck) serverLegacyDeck = structuredClone(body.cardDeck);
+    if (body.cardDeck) {
+      try {
+        validateCardDeck(body.cardDeck);
+      } catch (error) {
+        return json(route, { ok: false, code: "CARD_DECK_INVALID", error: error instanceof Error ? error.message : String(error) }, 422);
+      }
+      serverLegacyDeck = structuredClone(body.cardDeck);
+    }
     if (body.cardDeckV3) {
       validateCardDeckV3(body.cardDeckV3);
       serverDeck = structuredClone(body.cardDeckV3);

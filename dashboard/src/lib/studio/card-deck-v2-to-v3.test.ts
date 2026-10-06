@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { CardDeck } from "./card-deck-contract";
+import { validateCardDeck, type CardDeck } from "./card-deck-contract";
+import * as cardDeckConverters from "./card-deck-v2-to-v3";
 import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, projectChatCardDeckV3ToRenderableV2, synchronizeChatCardDeckV3 } from "./card-deck-v2-to-v3";
 import chatDeckFixture from "../../../tests/studio/fixtures/deck-d100.v2.json";
 
@@ -79,6 +80,36 @@ describe("S2 기존 카드 무손실 이관", () => {
     expect(renderable.slides).toHaveLength(source.slides.length + 1);
     expect(renderable.slides[0].cover_image_url).toBe("https://assets.example/cover.png");
     expect(renderable.slides[2]).toMatchObject({ id: "new_body", role: "chat", bubbles: migrated.slides[2].base.kind === "chat_bubble" ? migrated.slides[2].base.bubbles : [] });
+  });
+
+  it("S5b-R3-B 기본 편집 복귀는 comment_prompt 역할을 보존하고 표지·CTA asset URL만 덧입힌다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    migrated.slides[0].background = { kind: "image", asset_id: "new-cover.png", crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" };
+    migrated.slides.at(-1)!.background = { kind: "image", asset_id: "new-cta.png", crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" };
+
+    const result = cardDeckConverters.projectChatCardDeckV3ToBasicEditor(migrated, source, {
+      "new-cover.png": "https://assets.example/new-cover.png",
+      "new-cta.png": "https://assets.example/new-cta.png",
+    });
+
+    expect(result.missingAssetIds).toEqual([]);
+    expect(result.deck).not.toBeNull();
+    expect(() => validateCardDeck(result.deck)).not.toThrow();
+    expect(result.deck!.slides.map((slide) => slide.role)).toEqual(source.slides.map((slide) => slide.role));
+    expect(result.deck!.slides[0].cover_image_url).toBe("https://assets.example/new-cover.png");
+    expect(result.deck!.slides.at(-1)?.cover_image_url).toBe("https://assets.example/new-cta.png");
+  });
+
+  it("S5b-R3-B 표지·CTA asset URL이 없으면 기본 편집 복귀 projection을 만들지 않는다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    migrated.slides[0].background = { kind: "image", asset_id: "missing-cover.png", crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" };
+
+    expect(cardDeckConverters.projectChatCardDeckV3ToBasicEditor(migrated, source)).toEqual({
+      deck: null,
+      missingAssetIds: ["missing-cover.png"],
+    });
   });
 
   it("S5b-AC3 v3와 함께 저장할 v2 projection 지문만 현재본으로 인정한다", () => {

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
 import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
-import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import { validateCardDeck, type CardDeck } from "@/lib/studio/card-deck-contract";
 import { cardDeckV3EntryEnabled } from "@/lib/studio/card-deck-v3-render-feature";
 import { migrateCardDeckV2ToV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import chatBubbleDeck from "./fixtures/deck-d100.v2.json";
@@ -205,12 +205,40 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     await waitFor(() => expect(onReturn).toHaveBeenCalledOnce());
     const projected = onReturn.mock.calls[0]?.[0] as CardDeck;
     expect(projected.template).toBe("chat_bubble");
+    expect(() => validateCardDeck(projected)).not.toThrow();
+    expect(projected.slides.map((slide) => slide.role)).toEqual((chatBubbleDeck as CardDeck).slides.map((slide) => slide.role));
     expect(projected.slides[0].cover_image_url).toBe("https://assets.test/changed-cover.png");
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       filename: "changed-cover.png",
       purpose: "image",
       tenant_id: "tenant-s5b-return",
     });
+  });
+
+  it("S5b-R3-B 표지 asset URL이 준비되지 않으면 기본 편집 복귀를 막고 이유를 보여 준다", () => {
+    const onReturn = vi.fn();
+    const deck = migrateCardDeckV2ToV3(structuredClone(chatBubbleDeck) as CardDeck);
+    deck.slides[0].background = {
+      kind: "image",
+      asset_id: "missing-cover.png",
+      crop: { x: 0, y: 0, width: 1, height: 1 },
+      overlay: "#000000",
+    };
+
+    render(<EditRoom
+      kind="card"
+      lines={["첫 장", "둘째 장"]}
+      onLinesChange={() => {}}
+      cardDeck={chatBubbleDeck as CardDeck}
+      onCardDeckChange={() => {}}
+      cardDeckV3={deck}
+      onCardDeckV3Change={() => {}}
+      onReturnFromCardDeckV3={onReturn}
+    />);
+
+    expect(screen.getByRole("button", { name: "기본 편집으로 돌아가기" })).toBeDisabled();
+    expect(screen.getByText(/표지·마지막 사진을 불러오는 중/)).toBeInTheDocument();
+    expect(onReturn).not.toHaveBeenCalled();
   });
 
   it("S5b-AC1 프로필 asset_id를 테넌트 범위 URL로 복원해 카톡 아바타에 표시한다", async () => {
