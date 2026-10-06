@@ -1,5 +1,13 @@
 # OSMU build log
 
+## 2026-10-07 01:51 KST · 편집실 S5b 교차 리뷰 1차 교정
+
+STAMP: 2026-10-07 01:51 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `s5b-review-r1.md`, 실제 drafts route, 플래그 ON localhost Chromium, 9폭 모바일 실측 | 고민: 운영 스위치가 켜진 상태라 v3 진입을 닫는 대신 v71 한 화면 도구를 전부 복원하고 모든 저장 경계에서 v2/v3 hash를 동기화했다.
+
+교차 리뷰의 MAJOR 1→3→2와 MINOR를 순서대로 교정했다. 수동 저장·자동 저장·검토·발행은 공통 저장 직전 v3 migration hash를 투영된 v2 덱과 동기화한다. 표지·마지막 장으로 말풍선을 옮기는 명령은 UI와 command 양쪽에서 거절한다. 한 화면에는 장 추가·복제·삭제·순서 변경, 표지 문구·사진, 선택 범위 굵게, 실제 발행 renderer 기반 overflow 판정·자동 쪼개기를 복원했다. 고아 `el_<옛 id>`는 구조적 ID로 판정하며, 빈 독자 이름은 `구독자`로 정규화한다.
+
+검증: TypeScript PASS, integrity 33파일 104건 PASS, contract 107파일 621건 PASS, 변경 import 영향 72파일 627건 PASS·1파일 12건 환경 skip, 실제 drafts route 17건 PASS, Next production build PASS다. 플래그 ON E2E는 데이터 9장, 저장 5회, 실제 `/studio?room=publish` 이동, 콘솔 오류 0, 실패 요청 0이다. 브라우저 canvas와 Remotion PNG 모두 프로필 아바타를 포함한다. 360~1000 아홉 폭은 본문 16px, 13px 미만·44px 미만·가로 넘침 0, 눌림 상태 100%다. 원격 CI·QA 승인·운영 배포는 미검증이며 push하지 않았다.
+
 ## 2026-10-07 00:48 KST · 편집실 S5b 카톡 v3 고급 도구와 덧붙임 요소
 
 STAMP: 2026-10-07 00:48 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: S5b 수용 기준, Vitest 3단, 플래그 ON localhost Chromium, Remotion PNG | 고민: 기존 v2 내용과 운영 롤백을 보존하면서 카톡 고급 도구와 덧붙임 요소를 공용 v3 scene에 연결했다.

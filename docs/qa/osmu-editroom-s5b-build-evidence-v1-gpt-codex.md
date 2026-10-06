@@ -14,7 +14,7 @@ S5b-AC1~3은 로컬 build 단계에서 통과했다. 플래그를 켠 실제 Nex
 |---|---|---|
 | S5b-AC1 | ✅ 관찰됨 | 데이터 9장 덱에서 v2 말풍선·화자·표지/마지막 사진을 보존한 채 v3 workbench 진입. 화자 서로 바꾸기와 undo, 말투 후보 3개, 고급 편집 상태 보존을 실제 Chromium에서 확인 |
 | S5b-AC2 | ✅ 관찰됨 | 글·스티커·로고를 같은 장에 추가하고 브라우저 scene과 Remotion still에 같은 내용·층 순서로 렌더. 프로필 아바타도 양쪽 PNG에 표시 |
-| S5b-AC3 | ✅ 관찰됨 | 저장 4회 뒤 재열기와 발행 렌더 완료. 덧붙임 요소와 표지·본문·마지막 사진 보존. 원형에서 분리된 `el_<옛 id>` projection은 제거 |
+| S5b-AC3 | ✅ 관찰됨 | 저장 5회 뒤 재열기와 발행 렌더 완료. 덧붙임 요소와 표지·본문·마지막 사진 보존. 원형에서 분리된 `el_<옛 id>` projection은 제거 |
 
 ## 실행 조건과 결과
 
@@ -23,12 +23,12 @@ S5b-AC1~3은 로컬 build 단계에서 통과했다. 플래그를 켠 실제 Nex
 | CI 타입 검사 | `npm run typecheck:ci` | 종료 코드 0 |
 | integrity | `npx vitest run tests/integrity` | 33파일, 104건 PASS |
 | contract | `npx vitest run contract` | 107파일, 621건 PASS |
-| 변경 import 영향 | `npx vitest related --run <S5b 변경 TypeScript 10파일>` | 64파일 PASS, 1파일 환경 skip. 530건 PASS, 12건 환경 skip |
-| 생산 build | `~/.claude/harness/bin/heavy-slot.sh npm run build` | Next.js 16.2.2 production build PASS, 188개 static page 생성. 기존 NFT trace 경고 2건 |
-| 실제 drafts route 통합 | `npx vitest run tests/api/studio-drafts-route-card-deck-v3.integration.test.ts` | 실제 `POST` route handler와 저장 adapter mock을 연결해 편집된 동기 v2/v3 본문을 200으로 수락 |
+| 변경 import 영향 | `npx vitest related --run <S5b 변경 TypeScript 7파일>` | 72파일 PASS, 1파일 환경 skip. 627건 PASS, 12건 환경 skip |
+| 생산 build | `~/.claude/harness/bin/heavy-slot.sh npm run build` | Next.js 16.2.2 production build PASS, 188개 static page 생성. 기존 NFT trace 경고 1묶음 |
+| 실제 drafts route 통합 | `npx vitest run tests/studio/card-deck-drafts-route.integration.test.ts` | 실제 `POST` route handler와 저장 adapter mock을 연결한 17건 PASS. 편집된 동기 v2/v3 본문을 200으로 수락 |
 | 플래그 ON E2E | `CARD_DECK_V3_RENDER_ENABLED=1 NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=1`, Next dev `http://localhost:3477`, `CHAT_S5_BASE_URL=http://localhost:3477 npm run e2e:chat-s5` | PASS, 카드 9장, 저장 5회, `/studio?room=publish` 이동, 콘솔 오류 0, 실패 요청 0, 360~1440 가로 넘침 0. drafts API는 브라우저 픽스처가 가로채되 production `isSynchronizedChatCardDeckV3`와 같은 409 조건을 적용 |
 | Remotion overflow 경계 | 같은 E2E에서 실제 `renderStill` 실행 | `CARD_CHAT_OVERFLOW`로 긴 말풍선 거절 확인 |
-| 모바일 인체공학 | 데이터 9장, 조작 대상 22개 fixture, 폭 360·390·412·600·700·780·820·900·1000 | 전 폭 본문 16px, 13px 미만 0, 44px 미만 0, 눌림 상태 100%, 가로 넘침 0 |
+| 모바일 인체공학 | 데이터 9장, 조작 대상 30개 fixture, 폭 360·390·412·600·700·780·820·900·1000 | 전 폭 본문 16px, 13px 미만 0, 44px 미만 0, 눌림 상태 100%, 가로 넘침 0 |
 | 디자인 lint | `bash ~/.claude/harness/bin/design-lint.sh dashboard/src` | 검사 종료 0. 저장소 기존 인라인 style 3파일·hex 8파일 경고 유지, 이번 diff 신규 리터럴 없음 |
 
 ## 실제 PNG
