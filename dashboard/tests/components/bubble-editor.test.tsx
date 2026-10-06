@@ -199,6 +199,37 @@ describe("CardDeckPanel (표지·CTA 고정, 세션맥락: card-deck-ops 순수 
     expect(current.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker))).toEqual(originalSpeakers);
   });
 
+  it("S5-R1-M5 작성자·독자 이름을 덱 전체 화자 정보로 저장한다", () => {
+    let current = deck();
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "화자 이름·프로필" }));
+    const dialog = screen.getByRole("dialog", { name: "화자 이름·프로필" });
+    const author = within(dialog).getByRole("textbox", { name: "작성자 이름" });
+    fireEvent.change(author, { target: { value: "이상한수학 연구소" } });
+    fireEvent.blur(author);
+    expect(current.brand.display_name).toBe("이상한수학 연구소");
+    expect(current.revision).toBe(deck().revision + 1);
+  });
+
+  it("S5-R1-M5 프로필 사진 업로드의 URL과 소유 asset ID를 함께 저장한다", async () => {
+    let current = deck();
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+      url: "https://studio.example.com/api/images/deliver/profile-token",
+      filename: "profile-owned.png",
+    })));
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "화자 이름·프로필" }));
+    const fileInput = screen.getByLabelText("작성자 프로필 사진");
+    fireEvent.change(fileInput, { target: { files: [new File(["profile"], "profile.png", { type: "image/png" })] } });
+    await waitFor(() => expect(onDeckChange).toHaveBeenCalledTimes(1));
+    expect(current.brand).toMatchObject({
+      profile_image_url: "https://studio.example.com/api/images/deliver/profile-token",
+      profile_image_asset_id: "profile-owned.png",
+    });
+  });
+
   it("S5-AC3 정상: 후보 3개를 원문 옆에서 비교하고 고른 후보만 적용하며 사실 경고를 남긴다", async () => {
     let current = deck();
     const original = current.slides[1].bubbles!.map((bubble) => bubble.segments.map((segment) => segment.text).join(""));

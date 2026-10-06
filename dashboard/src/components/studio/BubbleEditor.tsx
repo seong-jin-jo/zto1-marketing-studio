@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/shared/Button";
-import type { Bubble, CardDeck, CardSlide, Segment } from "@/lib/studio/card-deck-contract";
+import type { Bubble, CardDeck, CardDeckBrand, CardSlide, Segment } from "@/lib/studio/card-deck-contract";
 import {
   CardDeckOpsError,
   addBubble,
@@ -1050,6 +1050,80 @@ function CoverImagePicker({ imageUrl, onChange }: { imageUrl: string | null; onC
   );
 }
 
+function SpeakerProfileEditor({ brand, onChange, onClose }: {
+  brand: CardDeckBrand;
+  onChange: (brand: CardDeckBrand) => void;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  async function handleProfile(file: File) {
+    setBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch("/api/images/upload", { method: "POST", headers: authHeaders(), body: form });
+      const data = await response.json().catch(() => ({})) as { url?: string; filename?: string; error?: string };
+      if (!response.ok || !data.url || !data.filename) {
+        setError(data.error || "프로필 사진을 올리지 못했습니다.");
+        return;
+      }
+      onChange({ ...brand, profile_image_url: data.url, profile_image_asset_id: data.filename });
+    } catch {
+      setError("연결이 끊겨 프로필 사진을 올리지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={styles.speakerEditor} role="dialog" aria-label="화자 이름·프로필" data-speaker-profile-editor>
+      <header><b>화자 이름·프로필</b><Button size="sm" variant="secondary" onClick={onClose}>닫기</Button></header>
+      <label>작성자 이름
+        <input
+          aria-label="작성자 이름"
+          defaultValue={brand.display_name}
+          onBlur={(event) => {
+            const displayName = event.target.value.trim() || brand.display_name;
+            if (displayName !== brand.display_name) onChange({ ...brand, display_name: displayName });
+          }}
+        />
+      </label>
+      <label>독자 이름
+        <input
+          aria-label="독자 이름"
+          defaultValue={brand.reader_name?.trim() || "구독자"}
+          onBlur={(event) => {
+            const readerName = event.target.value.trim() || "구독자";
+            if (readerName !== (brand.reader_name?.trim() || "구독자")) onChange({ ...brand, reader_name: readerName });
+          }}
+        />
+      </label>
+      <div className={styles.profilePicker}>
+        {brand.profile_image_url ? <DeliveredMedia src={brand.profile_image_url} type="image" alt="작성자 프로필" /> : <span aria-hidden="true">{brand.display_name.slice(0, 2)}</span>}
+        <Button size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "올리는 중…" : "프로필 사진 올리기"}</Button>
+        {brand.profile_image_url ? <Button size="sm" variant="secondary" onClick={() => onChange({ ...brand, profile_image_url: null, profile_image_asset_id: null })}>사진 빼기</Button> : null}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          className="hidden"
+          aria-label="작성자 프로필 사진"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void handleProfile(file);
+            event.target.value = "";
+          }}
+        />
+      </div>
+      {error ? <p role="alert">{error}</p> : null}
+    </section>
+  );
+}
+
 function CoverEditor({ slide, onChange, onImageChange }: {
   slide: CardSlide;
   onChange: (cover: NonNullable<CardSlide["cover"]>) => void;
@@ -1152,6 +1226,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
   const [toneId, setToneId] = useState<ChatToneId>("learned");
   const [toneBusy, setToneBusy] = useState(false);
   const [toneError, setToneError] = useState<string | null>(null);
+  const [speakerEditorOpen, setSpeakerEditorOpen] = useState(false);
   const [toneComparison, setToneComparison] = useState<{
     revision: number;
     targets: Array<{ slideId: string; bubbleId: string; original: string }>;
@@ -1356,6 +1431,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
       <div className={styles.deckToolbar} aria-label="카톡 대화 고급 편집 도구">
         <Button size="sm" variant="secondary" disabled={!activeSlide?.bubbles?.length} onClick={() => commitDeck(swapSpeakers(deck, activeSlide?.id ?? null))}>이 장 화자 서로 바꾸기</Button>
         <Button size="sm" variant="secondary" onClick={() => commitDeck(swapSpeakers(deck, null))}>덱 전체 화자 서로 바꾸기</Button>
+        <Button size="sm" variant="secondary" onClick={() => setSpeakerEditorOpen((open) => !open)}>화자 이름·프로필</Button>
         <Button size="sm" variant="secondary" disabled={history.length === 0} onClick={undo}>실행 취소</Button>
         <label className={styles.toneField}>범위
           <select aria-label="말투 다듬기 범위" value={toneScope} onChange={(event) => setToneScope(event.target.value as typeof toneScope)}>
@@ -1371,6 +1447,11 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
         </label>
         <Button size="sm" onClick={() => { void requestToneSuggestions(); }} disabled={toneBusy}>{toneBusy ? "후보 만드는 중" : "후보 3개 비교"}</Button>
       </div>
+      {speakerEditorOpen ? <SpeakerProfileEditor
+        brand={deck.brand}
+        onClose={() => setSpeakerEditorOpen(false)}
+        onChange={(brand) => commitDeck({ ...deck, brand, revision: deck.revision + 1 })}
+      /> : null}
       {toneError ? <p role="alert" className={styles.toneError}>{toneError}</p> : null}
       {toneComparison ? (
         <section className={styles.toneComparison} role="dialog" aria-label="말투 다듬기 비교" data-tone-comparison>

@@ -98,6 +98,7 @@ function deliveryUrl(tenantId: string, filename: string): string {
 
 function cardAssetIds(deck: CardDeckV3): string[] {
   const ids = new Set<string>();
+  if (deck.brand.profile_image_asset_id) ids.add(deck.brand.profile_image_asset_id);
   for (const slide of deck.slides) {
     if (slide.background.kind === "image") ids.add(slide.background.asset_id);
     for (const element of slide.elements) {

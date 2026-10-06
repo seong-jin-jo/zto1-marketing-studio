@@ -4230,6 +4230,7 @@ export default function StudioPage() {
       if (cardDeck && CARD_DECK_V3_RENDER_ENABLED) {
         const upload = browserCardUploader(authHeaders());
         const coverImageAssetIds: Record<string, string> = {};
+        let profileImageAssetId = cardDeck.brand.profile_image_asset_id ?? undefined;
         const rollback: Array<() => Promise<void>> = [];
         try {
           for (const [index, slide] of cardDeck.slides.entries()) {
@@ -4239,7 +4240,13 @@ export default function StudioPage() {
             coverImageAssetIds[slide.cover_image_url] = uploaded.filename;
             if (uploaded.rollback) rollback.push(uploaded.rollback);
           }
-          nextDeck = migrateCardDeckV2ToV3(cardDeck, { coverImageAssetIds });
+          if (cardDeck.brand.profile_image_url && !profileImageAssetId) {
+            const uploaded = await upload(cardDeck.brand.profile_image_url, cardDeck.slides.length);
+            if (typeof uploaded === "string" || !uploaded.filename) throw new Error("작성자 프로필 사진 파일명을 받지 못했습니다.");
+            profileImageAssetId = uploaded.filename;
+            if (uploaded.rollback) rollback.push(uploaded.rollback);
+          }
+          nextDeck = migrateCardDeckV2ToV3(cardDeck, { coverImageAssetIds, profileImageAssetId });
         } catch (error) {
           await Promise.allSettled(rollback.reverse().map((remove) => remove()));
           throw error;

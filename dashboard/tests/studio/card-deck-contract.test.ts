@@ -33,6 +33,19 @@ describe("card-deck-contract validateCardDeck (TC-F1-01)", () => {
     expect(() => validateCardDeck(clone(validDeck))).not.toThrow();
   });
 
+  it("S5-R1-M5 화자 이름·프로필 필드를 검증하고 위험 URL을 거절한다", () => {
+    const deck = clone(validDeck);
+    deck.brand.reader_name = "구독자";
+    deck.brand.profile_image_url = "https://studio.example.com/api/images/deliver/token";
+    deck.brand.profile_image_asset_id = "profile-owned.png";
+    expect(() => validateCardDeck(deck)).not.toThrow();
+    deck.brand.profile_image_url = "javascript:alert(1)";
+    expectRule(deck, "brand");
+    deck.brand.profile_image_url = null;
+    deck.brand.profile_image_asset_id = "../profile.png";
+    expectRule(deck, "brand");
+  });
+
   it("V70-3.5 정상: 한 장에 말풍선이 9개여도 장당 상한 없이 통과한다", () => {
     const deck = clone(validDeck);
     const source = deck.slides[1].bubbles![0];

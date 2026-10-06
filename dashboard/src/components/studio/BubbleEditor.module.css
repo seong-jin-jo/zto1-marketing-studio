@@ -43,7 +43,8 @@
 }
 
 .toneError,
-.toneComparison { grid-column: 1 / -1; }
+.toneComparison,
+.speakerEditor { grid-column: 1 / -1; }
 .toneError { color: var(--danger); font-size: var(--font-body-size); }
 
 .toneComparison {
@@ -64,6 +65,26 @@
 .toneCandidateGrid p { white-space: pre-wrap; color: var(--text); font-size: var(--font-body-size); line-height: var(--font-body-line-height); }
 .factWarning { border-radius: var(--shape-control); background: var(--warning-soft); padding: var(--stack-tight); color: var(--warning) !important; }
 .factSafe { color: var(--success) !important; }
+
+.speakerEditor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--stack);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-surface);
+  background: var(--surface);
+  padding: var(--pad-inset);
+  box-shadow: var(--elevation-floating);
+}
+
+.speakerEditor > header { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: var(--stack); }
+.speakerEditor label { display: grid; gap: var(--stack-tight); color: var(--text-muted); font-size: var(--font-body-size); }
+.speakerEditor input { min-height: var(--control-touch); border: 1px solid var(--border); border-radius: var(--shape-control); background: var(--surface-2); padding-inline: var(--stack); color: var(--text); }
+.speakerEditor > p { grid-column: 1 / -1; color: var(--danger); font-size: var(--font-body-size); }
+.profilePicker { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--stack-tight); }
+.profilePicker > img,
+.profilePicker > span { width: var(--control-touch); height: var(--control-touch); border-radius: var(--shape-pill); object-fit: cover; }
+.profilePicker > span { display: grid; place-items: center; background: var(--accent); color: var(--accent-fg); font-size: var(--font-caption-size); font-weight: 800; }
 
 .moveBubbleDialog {
   display: grid;
@@ -377,6 +398,10 @@
     --editroom-thumbnail-width: 3.5rem;
     grid-template-columns: 1fr;
   }
+
+  .speakerEditor { grid-template-columns: 1fr; }
+  .speakerEditor > header,
+  .profilePicker { grid-column: 1; }
 
   .thumbnailStrip {
     max-height: none;

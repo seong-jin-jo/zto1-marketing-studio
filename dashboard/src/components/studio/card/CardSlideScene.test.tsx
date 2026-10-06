@@ -86,4 +86,15 @@ describe("CardSlideScene S5 카톡 원형과 자유 요소", () => {
       .toThrow("CARD_CHAT_OVERFLOW: 3번 장 말풍선이 카드보다 깁니다");
     expect(() => assertChatListFits({ clientHeight: 600, scrollHeight: 600 }, 2)).not.toThrow();
   });
+
+  it("S5-R1-M5 화자 이름과 작성자 프로필 사진을 공용 장면에 렌더한다", () => {
+    const deck = chatDeck();
+    deck.brand.reader_name = "구독자";
+    deck.brand.profile_image_asset_id = "profile-owned.png";
+    const model = cardSlideRenderModel(deck, "slide_chat", { "profile-owned.png": "https://example.test/profile.png" });
+    const view = render(<CardSlideScene model={model} renderMode="editor" />);
+    const scene = view.container.querySelector<HTMLElement>("[data-card-slide-scene]")!;
+    expect(within(scene).getByText("구독자")).toBeInTheDocument();
+    expect(scene.querySelector("img")).toHaveAttribute("src", "https://example.test/profile.png");
+  });
 });

@@ -124,4 +124,31 @@ describe("S2 기존 카드 무손실 이관", () => {
     source.slides[0].cover_image_url = "https://example.test/cover.png";
     expect(() => migrateCardDeckV2ToV3(source)).toThrow("CARD_COVER_IMAGE_ASSET_REQUIRED");
   });
+
+  it("S5-R1-M5 화자 이름·프로필 asset을 v3에 보존하고 기존 덱의 독자 이름은 구독자로 보정한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    source.brand.reader_name = "학생";
+    source.brand.profile_image_url = "https://example.test/profile.png";
+    source.brand.profile_image_asset_id = "profile-owned.png";
+    const migrated = migrateCardDeckV2ToV3(source);
+    expect(migrated.brand).toMatchObject({ reader_name: "학생", profile_image_asset_id: "profile-owned.png" });
+    migrated.brand.reader_name = "구독자";
+    expect(projectCardDeckV3ToV2(migrated, source).brand).toMatchObject({
+      reader_name: "구독자",
+      profile_image_url: source.brand.profile_image_url,
+      profile_image_asset_id: "profile-owned.png",
+    });
+  });
+
+  it("S5-R1-M5 구 덱 투영은 원본에 없던 화자 필드를 만들지 않는다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    expect(projectCardDeckV3ToV2(migrated, source)).toEqual(source);
+  });
+
+  it("S5-R1-M5 프로필 URL은 있지만 소유 asset ID가 없으면 v3 이관을 거절한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    source.brand.profile_image_url = "https://example.test/profile.png";
+    expect(() => migrateCardDeckV2ToV3(source)).toThrow("CARD_PROFILE_IMAGE_ASSET_REQUIRED");
+  });
 });

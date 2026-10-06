@@ -132,10 +132,20 @@ export async function renderChatBubbleSlideToCanvas(input: ChatBubbleRenderInput
     }
   }
 
+  let profileImage: HTMLImageElement | null = null;
+  if (deck.brand.profile_image_url) {
+    try {
+      profileImage = await loadCoverImage(deck.brand.profile_image_url);
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "프로필 사진을 불러오지 못했습니다.";
+      throw new ChatBubbleRenderError(`작성자 프로필 ${reason}`);
+    }
+  }
+
   if (slide.role === "cover") {
     drawCover(ctx, deck, slide, width, height, index, total, hasPhoto);
   } else {
-    drawChatSlide(ctx, deck, slide, width, height, index, total, hasPhoto);
+    drawChatSlide(ctx, deck, slide, width, height, index, total, hasPhoto, profileImage);
   }
 
   return canvas;
@@ -231,6 +241,7 @@ function drawChatSlide(
   index: number,
   total: number,
   hasPhoto = false,
+  profileImage: HTMLImageElement | null = null,
 ): void {
   const margin = Math.max(SAFE_ZONE_PX, Math.round(width * 0.06));
   const maxBubbleWidth = width * 0.66;
@@ -253,15 +264,25 @@ function drawChatSlide(
 
   for (const turn of turns) {
     const isReader = turn.speaker === "reader";
-    if (!isReader) {
-      // brand 이름 라벨
-      ctx.font = `600 ${Math.round(width * BUBBLE_NAME_LABEL_RATIO)}px ${FONT_FAMILY}`;
-      ctx.fillStyle = deck.theme.accent;
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
-      ctx.fillText(deck.brand.display_name, margin, y);
-      y += width * BUBBLE_NAME_LABEL_RATIO * 1.6;
+    const avatarSize = profileImage && !isReader ? Math.round(width * 0.05) : 0;
+    ctx.font = `600 ${Math.round(width * BUBBLE_NAME_LABEL_RATIO)}px ${FONT_FAMILY}`;
+    ctx.fillStyle = deck.theme.accent;
+    ctx.textAlign = isReader ? "right" : "left";
+    ctx.textBaseline = "top";
+    if (profileImage && !isReader) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(margin + avatarSize / 2, y + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(profileImage, margin, y, avatarSize, avatarSize);
+      ctx.restore();
     }
+    ctx.fillText(
+      isReader ? deck.brand.reader_name?.trim() || "구독자" : deck.brand.display_name,
+      isReader ? width - margin : margin + (avatarSize ? avatarSize + width * 0.012 : 0),
+      y,
+    );
+    y += Math.max(width * BUBBLE_NAME_LABEL_RATIO * 1.6, avatarSize);
     for (const bubble of turn.bubbles) {
       const bubbleHeight = drawBubble(ctx, deck, bubble, isReader, width, margin, maxBubbleWidth, y);
       y += bubbleHeight + margin * 0.35;

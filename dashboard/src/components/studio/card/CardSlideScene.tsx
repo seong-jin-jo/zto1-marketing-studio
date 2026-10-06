@@ -80,6 +80,7 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
   }, [model.slide.order, model.slide.base, renderMode]);
   if (model.slide.base.kind !== "chat_bubble") return null;
   const { cover, bubbles } = model.slide.base;
+  const profileUrl = model.brand.profile_image_asset_id ? model.assetUrls[model.brand.profile_image_asset_id] : undefined;
   if (model.slide.role === "cover" && cover) {
     return (
       <div className={styles.chatCover} data-chat-base="cover">
@@ -100,9 +101,15 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
       <div ref={chatListRef} className={styles.chatList} data-chat-list>
         {[...bubbles].sort((left, right) => left.order - right.order).map((bubble) => (
           <div key={bubble.id} className={`${styles.chatRow} ${bubble.speaker === "reader" ? styles.readerRow : styles.brandRow}`} data-chat-bubble={bubble.id}>
-            <span className={styles.chatAvatar} aria-hidden="true">{model.brand.display_name.slice(0, 2)}</span>
+            <span className={styles.chatAvatar} aria-hidden="true">
+              {bubble.speaker === "brand" && profileUrl
+                ? renderMode === "export"
+                  ? <Img className={styles.chatAvatarMedia} src={profileUrl} alt="" />
+                  : <DeliveredMedia className={styles.chatAvatarMedia} src={profileUrl} type="image" alt="" />
+                : model.brand.display_name.slice(0, 2)}
+            </span>
             <div className={styles.chatColumn}>
-              {bubble.speaker === "brand" ? <span className={styles.chatName}>{model.brand.display_name}</span> : null}
+              <span className={styles.chatName}>{bubble.speaker === "brand" ? model.brand.display_name : model.brand.reader_name?.trim() || "구독자"}</span>
               <div className={styles.chatBubbleLine}>
                 <div className={styles.chatBubble}><BubbleText bubble={bubble} /></div>
                 <time className={styles.chatTime}>오후 9:20</time>
