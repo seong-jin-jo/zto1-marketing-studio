@@ -4,12 +4,12 @@ import path from "node:path";
 import { ensureBrowser } from "@remotion/renderer";
 import { chromium } from "playwright-core";
 import { createJiti } from "jiti";
-import sharp from "sharp";
 
 const jiti = createJiti(import.meta.url, { alias: { "@": path.resolve("src") } });
 const { validateCardDeckV3 } = await jiti.import("../src/lib/studio/card-element-contract.ts");
 const { cardSlideRenderModel } = await jiti.import("../src/lib/studio/card-render-model.ts");
 const { renderCardSlidePng } = await jiti.import("../src/lib/studio/card-slide-render.ts");
+const { migrateCardDeckV2ToV3 } = await jiti.import("../src/lib/studio/card-deck-v2-to-v3.ts");
 
 const baseUrl = process.env.CHAT_S5_BASE_URL || "http://localhost:3475";
 const outputDir = process.env.CHAT_S5_OUTPUT_DIR || path.resolve(process.cwd(), "../docs/qa/editroom-v2-s5");
@@ -20,10 +20,17 @@ const sourceDeck = JSON.parse(fs.readFileSync(path.resolve("tests/studio/fixture
 sourceDeck.slides[0].cover_image_url = photoSvg;
 sourceDeck.slides[sourceDeck.slides.length - 1].cover_image_url = photoSvg;
 let serverLegacyDeck = structuredClone(sourceDeck);
-let serverDeck = null;
+const fixturePhotoAssetId = "s5-fixture-photo.svg";
+let serverDeck = migrateCardDeckV2ToV3(sourceDeck, { coverImageAssetIds: { [photoSvg]: fixturePhotoAssetId } });
+serverDeck.slides[1].elements.push({
+  id: "s5-preserved-logo", type: "logo", name: "보존할 로고", x: 640, y: 980, width: 300, height: 120,
+  rotation: 0, z_index: 10, opacity: 1, locked: false, hidden: false,
+  asset_id: "builtin:logo-osmu", alt: "OSMU 로고", fit: "contain",
+});
+const preservedOverlay = structuredClone(serverDeck.slides[1].elements.find((element) => element.id === "s5-preserved-logo"));
 let bodyRevision = 0;
 let uploadCount = 0;
-const uploadedAssets = {};
+const uploadedAssets = { [fixturePhotoAssetId]: photoSvg };
 const posts = [];
 
 fs.mkdirSync(outputDir, { recursive: true });
@@ -72,21 +79,6 @@ async function waitUntil(predicate, timeoutMs, message) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(message);
-}
-
-async function comparePng(leftPath, rightPath, region) {
-  const left = await sharp(leftPath).extract(region).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const right = await sharp(rightPath).extract(region).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  if (left.info.width !== right.info.width || left.info.height !== right.info.height) {
-    throw new Error(`PNG 크기가 다릅니다: ${left.info.width}x${left.info.height} / ${right.info.width}x${right.info.height}`);
-  }
-  let changedPixels = 0;
-  for (let offset = 0; offset < left.data.length; offset += 4) {
-    let pixelDelta = 0;
-    for (let channel = 0; channel < 4; channel += 1) pixelDelta = Math.max(pixelDelta, Math.abs(left.data[offset + channel] - right.data[offset + channel]));
-    if (pixelDelta > 8) changedPixels += 1;
-  }
-  return { width: left.info.width, height: left.info.height, changedPixels, changedPixelRatio: changedPixels / (left.info.width * left.info.height) };
 }
 
 const browserInfo = await ensureBrowser({ logLevel: "silent" });
@@ -194,66 +186,49 @@ try {
   await waitUntil(() => serverLegacyDeck.slides[2].bubbles.every((bubble) => bubble.segments.map((segment) => segment.text).join("").endsWith(" B")), 15_000, "선택한 말투 후보만 저장되지 않았습니다");
   if (!await page.getByText(/10시간/).isVisible()) throw new Error("후보 사실 변화 경고가 남지 않았습니다");
 
-  await page.getByRole("button", { name: "자유 배치로 편집" }).click();
-  await page.locator("[data-card-canvas-editor]").waitFor({ state: "visible" });
-  await waitUntil(() => serverDeck !== null, 15_000, "카톡 v3 덱이 저장되지 않았습니다");
   const cover = serverDeck.slides[0];
   const final = serverDeck.slides.at(-1);
   if (cover.background.kind !== "image" || final.background.kind !== "image") throw new Error("표지·마지막 사진이 v3 배경에 남지 않았습니다");
   if (!serverLegacyDeck.slides[0].cover_image_url || !serverLegacyDeck.slides.at(-1).cover_image_url) throw new Error("legacy 표지·마지막 사진이 사라졌습니다");
-
-  await page.getByRole("button", { name: "2장" }).click();
-  await page.getByRole("button", { name: "로고 추가" }).click();
-  await waitUntil(() => serverDeck?.slides[1]?.elements?.some((element) => element.type === "logo"), 15_000, "대화 장 로고가 저장되지 않았습니다");
-  const logo = serverDeck.slides[1].elements.find((element) => element.type === "logo");
-  const initialLogoX = logo.x;
-  await page.getByRole("button", { name: "로고 오른쪽 이동" }).click();
-  await waitUntil(() => serverDeck?.slides[1]?.elements?.find((element) => element.id === logo.id)?.x > initialLogoX, 15_000, "요소 목록 로고 이동이 저장되지 않았습니다");
-  const renderedChatBubbles = page.locator("[data-card-slide-scene] [data-chat-bubble]");
-  if (await renderedChatBubbles.count() < 1 || !(await renderedChatBubbles.first().innerText()).trim()) {
-    throw new Error("카톡 원형 말풍선이 자유 배치 화면에 보이지 않습니다");
-  }
+  if (await page.getByRole("button", { name: "자유 배치로 편집" }).count()) throw new Error("카톡 덱에 도구가 빠진 자유 배치 진입이 노출됐습니다");
+  if (!await page.getByLabel("카톡 대화 고급 편집 도구").isVisible()) throw new Error("카톡 고급 편집 도구가 보이지 않습니다");
+  if (await page.locator("[data-card-deck-v3-workbench]").count()) throw new Error("저장된 카톡 v3 덱이 고급 도구 없는 화면을 열었습니다");
+  const currentOverlay = serverDeck.slides[1].elements.find((element) => element.id === "s5-preserved-logo");
+  if (JSON.stringify(currentOverlay) !== JSON.stringify(preservedOverlay)) throw new Error("기본 편집 중 v3 덧붙임 요소가 바뀌었습니다");
 
   const viewports = [{ width: 1440, height: 1000 }, { width: 1024, height: 900 }, { width: 390, height: 844 }];
   const responsive = [];
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
-    await page.locator("[data-card-canvas-editor]").scrollIntoViewIfNeeded();
+    await page.locator("[data-card-deck-panel]").scrollIntoViewIfNeeded();
     const overflow = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     if (overflow.scroll > overflow.width + 1) throw new Error(`${viewport.width}px 가로 넘침: ${JSON.stringify(overflow)}`);
-    const screenshot = path.join(outputDir, `s5-chat-overlay-${viewport.width}.png`);
+    const screenshot = path.join(outputDir, `s5-chat-advanced-editor-${viewport.width}.png`);
     await page.screenshot({ path: screenshot, fullPage: true });
     responsive.push({ viewport: viewport.width, overflow });
   }
 
-  await page.setViewportSize({ width: 1600, height: 1600 });
-  await page.locator("[data-card-stage]").evaluate((node) => {
-    node.style.width = "1080px";
-    node.style.minWidth = "1080px";
-    node.style.maxWidth = "none";
-    node.style.border = "0";
-    node.style.borderRadius = "0";
-    node.style.boxShadow = "none";
-    node.style.position = "fixed";
-    node.style.left = "0";
-    node.style.top = "0";
-    node.style.zIndex = "2147483647";
-    for (const child of node.children) if (!child.hasAttribute("data-card-slide-scene")) child.style.visibility = "hidden";
-  });
-  await page.evaluate(() => document.fonts.ready);
-  const editorPng = path.join(outputDir, "s5-chat-overlay-editor.png");
-  const remotionPng = path.join(outputDir, "s5-chat-overlay-remotion.png");
-  await page.locator("[data-card-slide-scene]").screenshot({ path: editorPng });
+  const remotionPng = path.join(outputDir, "s5-chat-reader-remotion.png");
   await renderCardSlidePng({ model: cardSlideRenderModel(serverDeck, serverDeck.slides[1].id, uploadedAssets), outputPath: remotionPng });
-  const exportedLogo = serverDeck.slides[1].elements.find((element) => element.id === logo.id);
-  const logoRegion = {
-    left: Math.round(exportedLogo.x),
-    top: Math.round(exportedLogo.y),
-    width: Math.round(exportedLogo.width),
-    height: Math.round(exportedLogo.height),
-  };
-  const pixelDiff = await comparePng(editorPng, remotionPng, logoRegion);
-  if (pixelDiff.changedPixelRatio > 0.005) throw new Error(`로고 화면/PNG 픽셀 차이가 0.5%를 넘었습니다: ${JSON.stringify({ logoRegion, pixelDiff })}`);
+  const readerBubbleCount = serverDeck.slides[1].base.kind === "chat_bubble"
+    ? serverDeck.slides[1].base.bubbles.filter((bubble) => bubble.speaker === "reader").length
+    : 0;
+  if (readerBubbleCount < 1) throw new Error("독자 말풍선이 있는 실렌더 픽스처가 아닙니다");
+
+  const overflowingDeck = structuredClone(serverDeck);
+  const overflowSlide = overflowingDeck.slides[1];
+  if (overflowSlide.base.kind !== "chat_bubble") throw new Error("넘침 검증용 카톡 장이 없습니다");
+  overflowSlide.base.bubbles = overflowSlide.base.bubbles.map((bubble) => ({
+    ...bubble,
+    segments: [{ text: `${bubble.segments.map((segment) => segment.text).join("")} `.repeat(45), bold: false }],
+  }));
+  let overflowError = "";
+  try {
+    await renderCardSlidePng({ model: cardSlideRenderModel(overflowingDeck, overflowSlide.id, uploadedAssets), outputPath: path.join(outputDir, "s5-chat-overflow-should-not-exist.png") });
+  } catch (error) {
+    overflowError = error instanceof Error ? error.message : String(error);
+  }
+  if (!overflowError.includes("CARD_CHAT_OVERFLOW")) throw new Error(`넘치는 Remotion 렌더가 거절되지 않았습니다: ${overflowError}`);
 
   const coverPng = path.join(outputDir, "s5-chat-cover-photo.png");
   const finalPng = path.join(outputDir, "s5-chat-final-photo.png");
@@ -269,12 +244,14 @@ try {
     bubbleMove: true,
     speakerSwapUndo: true,
     toneCandidateCount: 3,
-    logo: { id: logo.id, x: serverDeck.slides[1].elements.find((element) => element.id === logo.id).x },
+    advancedEditorPreserved: true,
+    overlayPreserved: JSON.stringify(currentOverlay) === JSON.stringify(preservedOverlay),
+    readerBubbleCount,
+    overflowRejected: overflowError.includes("CARD_CHAT_OVERFLOW"),
+    overflowError,
     coverPhoto: cover.background,
     finalPhoto: final.background,
     responsive,
-    logoRegion,
-    pixelDiff,
     consoleErrors: runtimeErrors.length,
     failedRequests: failedRequests.length,
     saves: posts.length,
