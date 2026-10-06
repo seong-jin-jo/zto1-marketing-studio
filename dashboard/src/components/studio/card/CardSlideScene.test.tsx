@@ -9,7 +9,7 @@ import { migrateCardDeckV2ToV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { PHOTO_TEXT_PRIMARY, PHOTO_TEXT_SECONDARY } from "@/lib/studio/card-templates/chat-bubble";
 import chatDeckFixture from "../../../../tests/studio/fixtures/deck-d100.v2.json";
-import { assertChatListFits, CardSlideScene } from "./CardSlideScene";
+import { assertChatListFits, assertChatListFitsAfterFonts, CardSlideScene } from "./CardSlideScene";
 
 afterEach(cleanup);
 
@@ -85,6 +85,19 @@ describe("CardSlideScene S5 카톡 원형과 자유 요소", () => {
     expect(() => assertChatListFits({ clientHeight: 600, scrollHeight: 602 }, 2))
       .toThrow("CARD_CHAT_OVERFLOW: 3번 장 말풍선이 카드보다 깁니다");
     expect(() => assertChatListFits({ clientHeight: 600, scrollHeight: 600 }, 2)).not.toThrow();
+  });
+
+  it("S5-R2-B Pretendard 로드가 끝난 뒤의 실측 높이로 넘침을 거절한다", async () => {
+    let releaseFonts!: () => void;
+    const fontsReady = new Promise<void>((resolve) => { releaseFonts = resolve; });
+    const verification = assertChatListFitsAfterFonts({ clientHeight: 600, scrollHeight: 602 }, 2, fontsReady);
+    let settled = false;
+    void verification.finally(() => { settled = true; }).catch(() => undefined);
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    releaseFonts();
+    await expect(verification).rejects.toThrow("CARD_CHAT_OVERFLOW: 3번 장 말풍선이 카드보다 깁니다");
   });
 
   it("S5-R2-A 작성자 첫 말풍선에만 이름·프로필을 렌더하고 독자 이름은 높이를 차지하지 않는다", () => {

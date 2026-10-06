@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type CSSProperties } from "react";
-import { Img } from "remotion";
+import { cancelRender, continueRender, delayRender, Img } from "remotion";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import type { Bubble } from "@/lib/studio/card-deck-contract";
 import type { CardElement, TextElement } from "@/lib/studio/card-element-contract";
@@ -71,12 +71,42 @@ export function assertChatListFits(
   }
 }
 
+export async function assertChatListFitsAfterFonts(
+  element: Pick<HTMLElement, "clientHeight" | "scrollHeight">,
+  slideOrder: number,
+  fontsReady: Promise<unknown>,
+): Promise<void> {
+  await fontsReady;
+  assertChatListFits(element, slideOrder);
+}
+
 function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; renderMode: CardSlideSceneProps["renderMode"] }) {
   const chatListRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
-    if (renderMode === "export" && chatListRef.current) {
-      assertChatListFits(chatListRef.current, model.slide.order);
-    }
+    if (renderMode !== "export" || !chatListRef.current) return;
+    const renderHandle = delayRender(`카톡 ${model.slide.order + 1}번 장 폰트·넘침 확인`);
+    const chatList = chatListRef.current;
+    const fontsReady = document.fonts?.ready ?? Promise.resolve();
+    let settled = false;
+    let disposed = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      continueRender(renderHandle);
+    };
+    void assertChatListFitsAfterFonts(chatList, model.slide.order, fontsReady)
+      .then(() => {
+        if (!disposed) finish();
+      })
+      .catch((error: unknown) => {
+        if (disposed || settled) return;
+        settled = true;
+        cancelRender(error instanceof Error ? error : new Error(String(error)));
+      });
+    return () => {
+      disposed = true;
+      finish();
+    };
   }, [model.slide.order, model.slide.base, renderMode]);
   if (model.slide.base.kind !== "chat_bubble") return null;
   const { cover, bubbles } = model.slide.base;
