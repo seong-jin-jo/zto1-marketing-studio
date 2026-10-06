@@ -8,7 +8,7 @@ import {
 } from "../remotion/IntroOutroComps";
 
 // 2026-10-02 Remotion 인트로/아웃트로 도입 — 컴포지션 카탈로그와 기본 props 계약 단위 테스트.
-// PRD §8.3: 1080x1920, 30fps, 1.5~3초(45~90프레임), 인트로 2종 + 아웃트로 2종.
+// PRD §8.3: 1080x1920, 30fps, 1.5~3초(45~90프레임), 인트로 3종 + 아웃트로 3종.
 describe("INTRO_OUTRO_COMPS 카탈로그", () => {
   it("1080x1920 30fps 를 쓴다", () => {
     expect(COMP_WIDTH).toBe(1080);
@@ -16,13 +16,20 @@ describe("INTRO_OUTRO_COMPS 카탈로그", () => {
     expect(COMP_FPS).toBe(30);
   });
 
-  it("인트로 2종 + 아웃트로 2종을 노출한다", () => {
+  it("인트로 3종 + 아웃트로 3종을 노출한다", () => {
     const ids = Object.keys(INTRO_OUTRO_COMPS);
     expect(ids).toEqual(
-      expect.arrayContaining(["intro-logo-reveal", "intro-title-card", "outro-logo-reveal", "outro-title-card"]),
+      expect.arrayContaining([
+        "intro-logo-reveal",
+        "intro-title-card",
+        "intro-brand-stripe",
+        "outro-logo-reveal",
+        "outro-title-card",
+        "outro-brand-stripe",
+      ]),
     );
-    expect(ids.filter((id) => id.startsWith("intro-"))).toHaveLength(2);
-    expect(ids.filter((id) => id.startsWith("outro-"))).toHaveLength(2);
+    expect(ids.filter((id) => id.startsWith("intro-"))).toHaveLength(3);
+    expect(ids.filter((id) => id.startsWith("outro-"))).toHaveLength(3);
   });
 
   it("각 컴포지션 길이가 1.5~3초(45~90프레임) 안에 있다", () => {
