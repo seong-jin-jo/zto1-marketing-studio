@@ -610,7 +610,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
                       <Button size="sm" variant="secondary" disabled={index === (activeSlide.base.kind === "chat_bubble" ? activeSlide.base.bubbles.length : 0) - 1} onClick={() => runChatCommand((current) => moveChatBubble(current, activeSlide.id, bubble.id, 1))}>아래로</Button>
                       <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => splitChatBubble(current, activeSlide.id, bubble.id))}>둘로 나누기</Button>
                       <Button size="sm" variant="secondary" disabled={index === (activeSlide.base.kind === "chat_bubble" ? activeSlide.base.bubbles.length : 0) - 1} onClick={() => runChatCommand((current) => mergeChatBubbleWithNext(current, activeSlide.id, bubble.id))}>다음과 합치기</Button>
-                      {workingDeck.slides.filter((slide) => slide.id !== activeSlide.id && slide.base.kind === "chat_bubble").map((slide) => <Button key={slide.id} size="sm" variant="secondary" onClick={() => runChatCommand((current) => moveChatBubbleToSlide(current, activeSlide.id, bubble.id, slide.id))}>{slide.order + 1}장으로</Button>)}
+                      {workingDeck.slides.filter((slide) => slide.id !== activeSlide.id && slide.role === "body" && slide.base.kind === "chat_bubble").map((slide) => <Button key={slide.id} size="sm" variant="secondary" onClick={() => runChatCommand((current) => moveChatBubbleToSlide(current, activeSlide.id, bubble.id, slide.id))}>{slide.order + 1}장으로</Button>)}
                       <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => deleteChatBubble(current, activeSlide.id, bubble.id))}>삭제</Button>
                     </div>
                   </article>

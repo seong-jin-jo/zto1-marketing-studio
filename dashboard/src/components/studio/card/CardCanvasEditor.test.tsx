@@ -41,6 +41,15 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect(current).toEqual(original);
   });
 
+  it("S5b-R1-M3 이동 대상에는 본문 장만 노출하고 표지·CTA는 숨긴다", () => {
+    const current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    render(<CardCanvasEditor deck={current} onDeckChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "2장" }));
+    expect(screen.queryByRole("button", { name: "1장으로" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: `${current.slides.length}장으로` })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /장으로$/ }).length).toBeGreaterThan(0);
+  });
+
   it("S5b-AC2 카톡 장에 글·스티커·로고를 추가하고 undo로 마지막 요소만 되돌린다", () => {
     let current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
     const onChange = (next: CardDeckV3) => { current = next; };

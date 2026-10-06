@@ -14,6 +14,7 @@ import {
   moveCardElement,
   moveCardElementLayer,
   moveChatBubble,
+  moveChatBubbleToSlide,
   nudgeCardElement,
   patchTextElement,
   patchChatBubbleText,
@@ -143,6 +144,29 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
       ["bubble_b", 0, "brand", true],
       ["bubble_c", 1, "brand", false],
     ]);
+  });
+
+  it("S5b-R1-M3 말풍선은 본문 장으로만 이동하고 표지·CTA 이동은 거절한다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides = [
+      { ...chat.slides[0], base: { kind: "chat_bubble", cover: { headline: "표지", sub: null }, bubbles: [] } },
+      {
+        ...structuredClone(chat.slides[0]), id: "slide_body", order: 1, role: "body",
+        base: {
+          kind: "chat_bubble", cover: null,
+          bubbles: [
+            { id: "bubble_a", order: 0, speaker: "brand", segments: [{ text: "첫째", bold: false }], reaction: null },
+            { id: "bubble_b", order: 1, speaker: "reader", segments: [{ text: "둘째", bold: false }], reaction: null },
+          ],
+        },
+      },
+      { ...chat.slides[1], order: 2, base: { kind: "chat_bubble", cover: null, bubbles: [] } },
+    ];
+
+    expect(() => moveChatBubbleToSlide(chat, "slide_body", "bubble_a", "slide_cover")).toThrow("OPS_BUBBLE_TARGET_LOCKED");
+    expect(() => moveChatBubbleToSlide(chat, "slide_body", "bubble_a", "slide_cta")).toThrow("OPS_BUBBLE_TARGET_LOCKED");
+    expect(chat.slides[1].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ id: "bubble_a" }, { id: "bubble_b" }] });
   });
 
   it("S1-AC5 정상 경로: 키보드 이동, 복제, 삭제, undo와 redo가 같은 덱을 복원한다", () => {

@@ -399,6 +399,7 @@ export function moveChatBubbleToSlide(deck: CardDeckV3, sourceSlideId: string, b
   const source = next.slides.find((slide) => slide.id === sourceSlideId);
   const target = next.slides.find((slide) => slide.id === targetSlideId);
   if (source?.base.kind !== "chat_bubble" || target?.base.kind !== "chat_bubble") return next;
+  if (target.role !== "body") throw new RangeError("OPS_BUBBLE_TARGET_LOCKED");
   if (source.base.bubbles.length <= 1) throw new RangeError("CARD_CHAT_BUBBLE_MIN_ONE");
   const index = source.base.bubbles.findIndex((bubble) => bubble.id === bubbleId);
   if (index < 0) return next;
