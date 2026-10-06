@@ -21,14 +21,9 @@ describe("OSMU Higgsfield 로그인 정기 감시 계약", () => {
     expect(monitor).toContain("timeout-minutes: 5");
   });
 
-  it("GENERATOR-MONITOR-WORKFLOW-02 경합: 배포와 같은 concurrency 그룹을 사용해 컨테이너 교체 중 탐침하지 않는다", () => {
-    const concurrencyGroup = "group: marketing-runner-exclusive";
-    expect(monitor).toContain(concurrencyGroup);
-    expect(deploy).toContain(concurrencyGroup);
-    expect(monitor).toContain("cancel-in-progress: false");
-    expect(deploy).toContain("cancel-in-progress: false");
-    expect(monitor).toContain("queue: max");
-    expect(deploy).toContain("queue: max");
+  it("GENERATOR-MONITOR-WORKFLOW-02 격리: 감시 기능이 운영 배포의 concurrency 계약을 바꾸지 않는다", () => {
+    expect(deploy).not.toMatch(/^concurrency:/m);
+    expect(deploy).not.toContain("queue: max");
   });
 
   it("GENERATOR-MONITOR-WORKFLOW-03 경계: 최초 시도와 세 번 재시도 뒤 판정하고 컨테이너 미기동은 보류한다", () => {
