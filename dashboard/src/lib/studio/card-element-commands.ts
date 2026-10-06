@@ -10,6 +10,7 @@ import {
 } from "./card-element-contract";
 import { retextSegments } from "./card-deck-contract";
 import type { Bubble, CardDeckBrand, CardSlideCover } from "./card-deck-contract";
+import { toggleSegmentsBold } from "./card-deck-ops";
 import { isChatBaseProjectionElement } from "./card-render-model";
 
 export const CARD_SNAP_DISTANCE = 4;
@@ -360,6 +361,163 @@ export function patchChatDeckBrand(deck: CardDeckV3, patch: Partial<CardDeckBran
 export function patchChatSlideCover(deck: CardDeckV3, slideId: string, cover: CardSlideCover): CardDeckV3 {
   if (!cover.headline.trim()) throw new RangeError("CARD_CHAT_COVER_HEADLINE_REQUIRED");
   return mutateChatSlide(deck, slideId, (bubbles) => ({ bubbles, cover }));
+}
+
+function reindexSlides(slides: CardSlideV3[]): CardSlideV3[] {
+  return slides.map((slide, order) => ({ ...slide, order }));
+}
+
+function nextChatSlideId(deck: CardDeckV3): string {
+  const ids = new Set(deck.slides.map((slide) => slide.id));
+  let index = deck.slides.length + 1;
+  while (ids.has(`slide_v3_${index}`)) index += 1;
+  return `slide_v3_${index}`;
+}
+
+function mutateChatSlides(deck: CardDeckV3, slides: CardSlideV3[]): CardDeckV3 {
+  return { ...clone(deck), revision: deck.revision + 1, slides: reindexSlides(slides) };
+}
+
+export function addChatSlide(deck: CardDeckV3, afterSlideId: string): CardDeckV3 {
+  if (deck.slides.length >= 11) throw new RangeError("OPS_SLIDE_LIMIT");
+  const afterIndex = deck.slides.findIndex((slide) => slide.id === afterSlideId);
+  if (afterIndex < 0 || afterIndex >= deck.slides.length - 1) throw new RangeError("OPS_SLIDE_OUT_OF_RANGE");
+  const slide: CardSlideV3 = {
+    id: nextChatSlideId(deck), order: 0, role: "body", content_state: "filled",
+    background: { kind: "solid", color: deck.theme.background as `#${string}` },
+    base: {
+      kind: "chat_bubble", cover: null,
+      bubbles: [
+        { id: nextChatBubbleId(deck), order: 0, speaker: "reader", segments: [{ text: "질문을 입력하세요", bold: false }], reaction: null },
+        { id: nextChatBubbleId(deck, `bubble_v3_${deck.slides.length + 2}`), order: 1, speaker: "brand", segments: [{ text: "답변을 입력하세요", bold: false }], reaction: null },
+      ],
+    },
+    elements: [],
+  };
+  return mutateChatSlides(deck, [...deck.slides.slice(0, afterIndex + 1), slide, ...deck.slides.slice(afterIndex + 1)]);
+}
+
+export function duplicateChatSlide(deck: CardDeckV3, slideId: string): CardDeckV3 {
+  if (deck.slides.length >= 11) throw new RangeError("OPS_SLIDE_LIMIT");
+  const index = deck.slides.findIndex((slide) => slide.id === slideId);
+  const source = deck.slides[index];
+  if (!source || source.role !== "body" || source.base.kind !== "chat_bubble") throw new RangeError("OPS_SLIDE_LOCKED");
+  const duplicateId = nextChatSlideId(deck);
+  const duplicate: CardSlideV3 = {
+    ...clone(source),
+    id: duplicateId,
+    base: {
+      ...clone(source.base),
+      bubbles: source.base.bubbles.map((bubble, order) => ({ ...clone(bubble), id: nextChatBubbleId(deck, `${duplicateId}_bubble_${order + 1}`), order })),
+    },
+    elements: source.elements.map((element, order) => ({ ...clone(element), id: `${duplicateId}_el_${order + 1}`, z_index: order })),
+  };
+  return mutateChatSlides(deck, [...deck.slides.slice(0, index + 1), duplicate, ...deck.slides.slice(index + 1)]);
+}
+
+export function deleteChatSlide(deck: CardDeckV3, slideId: string): CardDeckV3 {
+  const index = deck.slides.findIndex((slide) => slide.id === slideId);
+  const source = deck.slides[index];
+  if (!source || source.role !== "body") throw new RangeError("OPS_SLIDE_LOCKED");
+  if (deck.slides.length <= 7) throw new RangeError("OPS_SLIDE_MIN");
+  return mutateChatSlides(deck, deck.slides.filter((slide) => slide.id !== slideId));
+}
+
+export function moveChatSlide(deck: CardDeckV3, slideId: string, delta: -1 | 1): CardDeckV3 {
+  const from = deck.slides.findIndex((slide) => slide.id === slideId);
+  const to = from + delta;
+  if (from < 0 || to < 0 || to >= deck.slides.length) throw new RangeError("OPS_SLIDE_OUT_OF_RANGE");
+  if (deck.slides[from].role !== "body" || deck.slides[to].role !== "body") throw new RangeError("OPS_SLIDE_LOCKED");
+  const slides = clone(deck.slides);
+  [slides[from], slides[to]] = [slides[to], slides[from]];
+  return mutateChatSlides(deck, slides);
+}
+
+export function setChatSlideBackgroundImage(deck: CardDeckV3, slideId: string, assetId: string): CardDeckV3 {
+  const slide = deck.slides.find((candidate) => candidate.id === slideId);
+  if (!slide || (slide.role !== "cover" && slide.role !== "cta")) throw new RangeError("OPS_NOT_COVER_OR_CTA_SLIDE");
+  return mutateSlide(deck, slideId, (current) => ({
+    ...current,
+    background: { kind: "image", asset_id: assetId, crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" },
+  }));
+}
+
+function countBoldChunks(bubbles: Bubble[]): number {
+  let chunks = 0;
+  let bold = false;
+  for (const bubble of bubbles) {
+    for (const segment of bubble.segments) {
+      if (segment.bold && segment.text) {
+        if (!bold) chunks += 1;
+        bold = true;
+      } else if (segment.text) bold = false;
+    }
+  }
+  return chunks;
+}
+
+export function toggleChatBubbleBoldRange(deck: CardDeckV3, slideId: string, bubbleId: string, range: { from: number; to: number }): CardDeckV3 {
+  return mutateChatSlide(deck, slideId, (bubbles) => {
+    const next = bubbles.map((bubble) => bubble.id === bubbleId
+      ? { ...bubble, segments: toggleSegmentsBold(bubble.segments, range) }
+      : bubble);
+    if (countBoldChunks(next) > 1) throw new RangeError("OPS_BOLD_LIMIT");
+    return { bubbles: next };
+  });
+}
+
+export function splitChatSlideAtBubble(deck: CardDeckV3, slideId: string, firstMovedBubbleIndex: number): CardDeckV3 {
+  if (deck.slides.length >= 11) throw new RangeError("OPS_SLIDE_LIMIT");
+  const index = deck.slides.findIndex((slide) => slide.id === slideId);
+  const source = deck.slides[index];
+  if (!source || source.role !== "body" || source.base.kind !== "chat_bubble") throw new RangeError("OPS_SLIDE_LOCKED");
+  if (firstMovedBubbleIndex <= 0 || firstMovedBubbleIndex >= source.base.bubbles.length) throw new RangeError("OPS_SLIDE_OUT_OF_RANGE");
+  const first: CardSlideV3 = { ...clone(source), base: { ...clone(source.base), bubbles: normalizeBubbles(source.base.bubbles.slice(0, firstMovedBubbleIndex)) } };
+  const continuation: CardSlideV3 = {
+    ...clone(source), id: nextChatSlideId(deck),
+    base: { ...clone(source.base), bubbles: normalizeBubbles(source.base.bubbles.slice(firstMovedBubbleIndex)) },
+    elements: [],
+  };
+  return mutateChatSlides(deck, [...deck.slides.slice(0, index), first, continuation, ...deck.slides.slice(index + 1)]);
+}
+
+function splitBubbleSegmentsAtOffset(segments: Bubble["segments"], offset: number): [Bubble["segments"], Bubble["segments"]] {
+  const before: Bubble["segments"] = [];
+  const after: Bubble["segments"] = [];
+  let cursor = 0;
+  for (const segment of segments) {
+    const end = cursor + segment.text.length;
+    if (end <= offset) before.push({ ...segment });
+    else if (cursor >= offset) after.push({ ...segment });
+    else {
+      before.push({ ...segment, text: segment.text.slice(0, offset - cursor) });
+      after.push({ ...segment, text: segment.text.slice(offset - cursor) });
+    }
+    cursor = end;
+  }
+  return [before.filter((segment) => segment.text), after.filter((segment) => segment.text)];
+}
+
+export function splitChatSlideAtBubbleOffset(deck: CardDeckV3, slideId: string, bubbleIndex: number, offset: number): CardDeckV3 {
+  if (deck.slides.length >= 11) throw new RangeError("OPS_SLIDE_LIMIT");
+  const index = deck.slides.findIndex((slide) => slide.id === slideId);
+  const source = deck.slides[index];
+  if (!source || source.role !== "body" || source.base.kind !== "chat_bubble") throw new RangeError("OPS_SLIDE_LOCKED");
+  const bubble = source.base.bubbles[bubbleIndex];
+  const length = bubble?.segments.reduce((sum, segment) => sum + segment.text.length, 0) ?? 0;
+  if (!bubble || offset <= 0 || offset >= length) throw new RangeError("OPS_SLIDE_OUT_OF_RANGE");
+  const [before, after] = splitBubbleSegmentsAtOffset(bubble.segments, offset);
+  const continuationId = nextChatSlideId(deck);
+  const first: CardSlideV3 = {
+    ...clone(source),
+    base: { ...clone(source.base), bubbles: normalizeBubbles([...source.base.bubbles.slice(0, bubbleIndex), { ...clone(bubble), segments: before }]) },
+  };
+  const continuation: CardSlideV3 = {
+    ...clone(source), id: continuationId,
+    base: { ...clone(source.base), bubbles: normalizeBubbles([{ ...clone(bubble), id: `${continuationId}_bubble_1`, segments: after, reaction: null }, ...source.base.bubbles.slice(bubbleIndex + 1)]) },
+    elements: [],
+  };
+  return mutateChatSlides(deck, [...deck.slides.slice(0, index), first, continuation, ...deck.slides.slice(index + 1)]);
 }
 
 export function addChatBubble(deck: CardDeckV3, slideId: string, explicitId?: string): CardDeckV3 {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CardDeck } from "./card-deck-contract";
-import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "./card-deck-v2-to-v3";
+import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, projectChatCardDeckV3ToRenderableV2, synchronizeChatCardDeckV3 } from "./card-deck-v2-to-v3";
 import chatDeckFixture from "../../../tests/studio/fixtures/deck-d100.v2.json";
 
 const base = {
@@ -65,6 +65,20 @@ describe("S2 기존 카드 무손실 이관", () => {
     const projected = projectCardDeckV3ToV2(migrated, source);
     expect(projected.slides[0].cover?.headline).toBe("바뀐 표지");
     expect(projected.slides.slice(1)).toEqual(source.slides.slice(1));
+  });
+
+  it("S5b-R1-M2 v3 신규 장과 asset 배경을 기존 발행 canvas 계약으로 무손실 투영한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    migrated.slides[0].background = { kind: "image", asset_id: "cover.png", crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" };
+    migrated.slides.splice(2, 0, { ...structuredClone(migrated.slides[1]), id: "new_body", order: 2 });
+    migrated.slides = migrated.slides.map((slide, order) => ({ ...slide, order }));
+    const persisted = projectCardDeckV3ToV2(migrated, source);
+    const renderable = projectChatCardDeckV3ToRenderableV2(migrated, { "cover.png": "https://assets.example/cover.png" });
+    expect(persisted.slides.map((slide) => slide.id)).toEqual(migrated.slides.map((slide) => slide.id));
+    expect(renderable.slides).toHaveLength(source.slides.length + 1);
+    expect(renderable.slides[0].cover_image_url).toBe("https://assets.example/cover.png");
+    expect(renderable.slides[2]).toMatchObject({ id: "new_body", role: "chat", bubbles: migrated.slides[2].base.kind === "chat_bubble" ? migrated.slides[2].base.bubbles : [] });
   });
 
   it("S5b-AC3 v3와 함께 저장할 v2 projection 지문만 현재본으로 인정한다", () => {

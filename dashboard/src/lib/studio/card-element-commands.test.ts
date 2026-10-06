@@ -4,17 +4,21 @@ import {
   addCardElement,
   addChatOverlayElement,
   addChatBubble,
+  addChatSlide,
   commitCardCommand,
   createCardCommandHistory,
   createRecoverableEmbeddedCardDeckV3,
   createPlainCardDeckV3,
   deleteCardElement,
   deleteChatBubble,
+  deleteChatSlide,
   duplicateCardElement,
+  duplicateChatSlide,
   moveCardElement,
   moveCardElementLayer,
   moveChatBubble,
   moveChatBubbleToSlide,
+  moveChatSlide,
   nudgeCardElement,
   patchTextElement,
   patchChatBubbleText,
@@ -24,8 +28,12 @@ import {
   setCardElementGeometry,
   snapCardElementPosition,
   swapChatSpeakers,
+  setChatSlideBackgroundImage,
+  splitChatSlideAtBubble,
+  splitChatSlideAtBubbleOffset,
   plainCardDeckV3EntryBlockReason,
   toggleChatBubbleBold,
+  toggleChatBubbleBoldRange,
   toggleCardElementFlag,
   undoCardCommand,
 } from "./card-element-commands";
@@ -167,6 +175,51 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     expect(() => moveChatBubbleToSlide(chat, "slide_body", "bubble_a", "slide_cover")).toThrow("OPS_BUBBLE_TARGET_LOCKED");
     expect(() => moveChatBubbleToSlide(chat, "slide_body", "bubble_a", "slide_cta")).toThrow("OPS_BUBBLE_TARGET_LOCKED");
     expect(chat.slides[1].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ id: "bubble_a" }, { id: "bubble_b" }] });
+  });
+
+  it("S5b-R1-M2 v3 장 추가·복제·순서·삭제와 표지 사진을 원형·overlay 손실 없이 바꾼다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides = [
+      { ...chat.slides[0], base: { kind: "chat_bubble", cover: { headline: "표지", sub: null }, bubbles: [] } },
+      { ...structuredClone(chat.slides[0]), id: "body_a", order: 1, role: "body", base: { kind: "chat_bubble", cover: null, bubbles: [{ id: "a", order: 0, speaker: "brand", segments: [{ text: "원문", bold: false }], reaction: null }] }, elements: [{ ...createPlainCardDeckV3(["가", "나"], [], "seed").slides[0].elements[0], id: "overlay" }] },
+      { ...structuredClone(chat.slides[0]), id: "body_b", order: 2, role: "body", base: { kind: "chat_bubble", cover: null, bubbles: [{ id: "b", order: 0, speaker: "reader", segments: [{ text: "둘째", bold: false }], reaction: null }] } },
+      { ...chat.slides[1], order: 3, base: { kind: "chat_bubble", cover: null, bubbles: [] } },
+    ];
+    const withPhoto = setChatSlideBackgroundImage(chat, "slide_cover", "cover.png");
+    const added = addChatSlide(withPhoto, "body_a");
+    const duplicated = duplicateChatSlide(added, "body_a");
+    const moved = moveChatSlide(duplicated, duplicated.slides[2].id, 1);
+    const padding = Array.from({ length: 3 }, (_, index) => ({ ...structuredClone(moved.slides[1]), id: `padding_${index}` }));
+    const padded = { ...moved, slides: [...moved.slides.slice(0, -1), ...padding, moved.slides.at(-1)!].map((slide, order) => ({ ...slide, order })) };
+    const deleted = deleteChatSlide(padded, moved.slides[2].id);
+    expect(withPhoto.slides[0].background).toMatchObject({ kind: "image", asset_id: "cover.png" });
+    expect(duplicated.slides.some((slide) => slide.elements.some((element) => element.id.includes("_el_")))).toBe(true);
+    expect(deleted.slides.map((slide) => slide.order)).toEqual(deleted.slides.map((_, index) => index));
+    expect(() => moveChatSlide(chat, "body_a", -1)).toThrow("OPS_SLIDE_LOCKED");
+  });
+
+  it("S5b-R1-M2 범위 굵기·장 분할은 구조를 보존하고 두 번째 굵은 덩이를 거절한다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides = Array.from({ length: 7 }, (_, index) => ({
+      ...structuredClone(chat.slides[index === 0 ? 0 : 1]), id: `slide_${index}`, order: index,
+      role: index === 0 ? "cover" as const : index === 6 ? "cta" as const : "body" as const,
+      base: { kind: "chat_bubble" as const, cover: index === 0 ? { headline: "표지", sub: null } : null, bubbles: index === 1 ? [
+        { id: "bubble_a", order: 0, speaker: "brand" as const, segments: [{ text: "첫째 문장", bold: false }], reaction: null },
+        { id: "bubble_b", order: 1, speaker: "reader" as const, segments: [{ text: "둘째", bold: false }], reaction: null },
+      ] : [] }, elements: [],
+    }));
+    const bold = toggleChatBubbleBoldRange(chat, "slide_1", "bubble_a", { from: 0, to: 2 });
+    expect(bold.slides[1].base.kind === "chat_bubble" ? bold.slides[1].base.bubbles[0].segments : []).toEqual([{ text: "첫째", bold: true }, { text: " 문장", bold: false }]);
+    expect(() => toggleChatBubbleBoldRange(bold, "slide_1", "bubble_b", { from: 0, to: 2 })).toThrow("OPS_BOLD_LIMIT");
+    const split = splitChatSlideAtBubble(bold, "slide_1", 1);
+    expect(split.slides).toHaveLength(8);
+    expect(split.slides[1].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ id: "bubble_a" }] });
+    expect(split.slides[2].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ id: "bubble_b" }] });
+    const offsetSplit = splitChatSlideAtBubbleOffset(chat, "slide_1", 0, 2);
+    expect(offsetSplit.slides[1].base.kind === "chat_bubble" ? offsetSplit.slides[1].base.bubbles[0].segments.map((segment) => segment.text).join("") : "").toBe("첫째");
+    expect(offsetSplit.slides[2].base.kind === "chat_bubble" ? offsetSplit.slides[2].base.bubbles[0].segments.map((segment) => segment.text).join("") : "").toBe(" 문장");
   });
 
   it("S1-AC5 정상 경로: 키보드 이동, 복제, 삭제, undo와 redo가 같은 덱을 복원한다", () => {

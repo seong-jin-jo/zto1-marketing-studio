@@ -195,6 +195,23 @@ export function projectCardDeckV3ToV2(deck: CardDeckV3, source: CardDeck): CardD
   projected.hook_type = deck.hook_type;
   projected.cta = structuredClone(deck.cta);
   projected.revision = deck.revision;
+  if (deck.template === "chat_bubble") {
+    const legacyById = new Map(source.slides.map((slide) => [safePart(slide.id), slide]));
+    projected.slides = deck.slides.map((slide, order) => {
+      const legacy = legacyById.get(slide.id);
+      const base = slide.base.kind === "chat_bubble" ? slide.base : { kind: "chat_bubble" as const, cover: null, bubbles: [] };
+      return {
+        id: slide.id,
+        order,
+        role: slide.role === "cover" ? "cover" : slide.role === "cta" ? "cta" : legacy?.role === "comment_prompt" ? "comment_prompt" : "chat",
+        ...(slide.role === "cover" && base.cover ? { cover: structuredClone(base.cover) } : {}),
+        ...(slide.role !== "cover" ? { bubbles: structuredClone(base.bubbles) } : {}),
+        image_url: legacy?.image_url ?? null,
+        ...(legacy && Object.prototype.hasOwnProperty.call(legacy, "cover_image_url") ? { cover_image_url: legacy.cover_image_url ?? null } : {}),
+      };
+    });
+    return projected;
+  }
   projected.slides = projected.slides.map((legacySlide) => {
     const slide = deck.slides.find((candidate) => candidate.id === safePart(legacySlide.id));
     if (!slide) return legacySlide;
@@ -220,6 +237,34 @@ export function projectCardDeckV3ToV2(deck: CardDeckV3, source: CardDeck): CardD
     return legacySlide;
   });
   return projected;
+}
+
+/** v3 한 화면 편집기의 넘침 검사에서 기존 발행 canvas 렌더러를 그대로 쓰기 위한 무손실 투영. */
+export function projectChatCardDeckV3ToRenderableV2(deck: CardDeckV3, assetUrls: Readonly<Record<string, string>> = {}): CardDeck {
+  return {
+    contract_version: "2.0",
+    template: "chat_bubble",
+    ratio: deck.ratio,
+    theme: structuredClone(deck.theme),
+    brand: {
+      ...structuredClone(deck.brand),
+      profile_image_url: deck.brand.profile_image_asset_id
+        ? assetUrls[deck.brand.profile_image_asset_id] ?? deck.brand.profile_image_url ?? null
+        : deck.brand.profile_image_url ?? null,
+    },
+    hook_type: deck.hook_type,
+    cta: structuredClone(deck.cta),
+    revision: deck.revision,
+    slides: deck.slides.map((slide, order) => ({
+      id: slide.id,
+      order,
+      role: slide.role === "cover" ? "cover" : slide.role === "cta" ? "cta" : "chat",
+      ...(slide.base.kind === "chat_bubble" && slide.base.cover ? { cover: structuredClone(slide.base.cover) } : {}),
+      ...(slide.base.kind === "chat_bubble" ? { bubbles: structuredClone(slide.base.bubbles) } : {}),
+      image_url: null,
+      cover_image_url: slide.background.kind === "image" ? assetUrls[slide.background.asset_id] ?? null : null,
+    })),
+  };
 }
 
 /**

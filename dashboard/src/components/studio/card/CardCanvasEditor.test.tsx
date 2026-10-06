@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { CardCanvasEditor } from "./CardCanvasEditor";
@@ -44,10 +44,39 @@ describe("CardCanvasEditor S1 자유 배치", () => {
   it("S5b-R1-M3 이동 대상에는 본문 장만 노출하고 표지·CTA는 숨긴다", () => {
     const current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
     render(<CardCanvasEditor deck={current} onDeckChange={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "2장" }));
+    fireEvent.click(screen.getByRole("button", { name: "3장" }));
     expect(screen.queryByRole("button", { name: "1장으로" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: `${current.slides.length}장으로` })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /장으로$/ }).length).toBeGreaterThan(0);
+  });
+
+  it("S5b-R1-M2 표지·장·범위 굵기·분할 도구를 v3 한 화면에서 실행한다", () => {
+    let current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(screen.getByLabelText("표지 문구 편집")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "배경 사진 고르기" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("표지 제목"), { target: { value: "고친 표지" } });
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(current.slides[0].base).toMatchObject({ kind: "chat_bubble", cover: { headline: "고친 표지" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "3장" }));
+    const firstText = screen.getByLabelText("1번째 말풍선 내용") as HTMLTextAreaElement;
+    const boldButton = within(firstText.closest("article")!).getByRole("button", { name: "선택 굵게" });
+    act(() => fireEvent.select(firstText, { target: { selectionStart: 0, selectionEnd: 2 } }));
+    act(() => {
+      fireEvent.mouseDown(boldButton);
+      fireEvent.click(boldButton);
+      view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    });
+    expect(current.slides[2].base.kind === "chat_bubble" && current.slides[2].base.bubbles[0].segments.some((segment) => segment.bold)).toBe(true);
+
+    const before = current.slides.length;
+    fireEvent.click(screen.getByRole("button", { name: "이 장 복제" }));
+    expect(current.slides).toHaveLength(before + 1);
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(screen.getByRole("button", { name: "장 앞으로" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "넘침을 다음 장으로 나누기" })).toBeInTheDocument();
   });
 
   it("S5b-AC2 카톡 장에 글·스티커·로고를 추가하고 undo로 마지막 요소만 되돌린다", () => {

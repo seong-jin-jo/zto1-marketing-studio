@@ -169,8 +169,8 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(screen.getByRole("button", { name: "이 장 화자 서로 바꾸기" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "화자 이름·프로필" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "로고" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "기본 편집으로 돌아가기" })).not.toBeInTheDocument();
-    expect(onReturn).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "기본 편집으로 돌아가기" }));
+    expect(onReturn).toHaveBeenCalledTimes(1);
   });
 
   it("S5b-AC1 프로필 asset_id를 테넌트 범위 URL로 복원해 카톡 아바타에 표시한다", async () => {
