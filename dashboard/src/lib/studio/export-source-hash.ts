@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { parseCardDeckV3, type CardDeckV3, type CardSlideV3 } from "./card-element-contract";
 import { verifyMediaTokenSignature } from "@/lib/media-token";
 import { normalizeVideoEdit, validateVideoEdit, type VideoEdit } from "./video-edit-contract";
+import { alignVideoEditToRenderSource } from "./video-publish-filename";
 import type { SubtitleSize } from "./video-subtitle";
 
 function canonical(value: unknown): unknown {
@@ -79,9 +80,12 @@ export function videoExportSource(payloadValue: unknown, tenantId: string): Vide
     || filenameFromDeliveryUrl(vid.file, tenantId)
     || filenameFromDeliveryUrl(vid.url, tenantId);
   if (!sourceFilename) throw new Error("VIDEO_SOURCE_MISSING");
+  const renderEdit = edit.introOutro?.compositeFilename === sourceFilename
+    ? alignVideoEditToRenderSource(edit, edit.introOutro, edit.introOutro.sourceFilename)
+    : edit;
   const lines = Array.isArray(payload.editLines) ? payload.editLines.filter((line): line is string => typeof line === "string") : [];
   const editFormat = payload.editFormat && typeof payload.editFormat === "object" ? payload.editFormat as Record<string, unknown> : {};
   const subtitleSize: SubtitleSize = editFormat.subtitleSize === "작게" || editFormat.subtitleSize === "크게" ? editFormat.subtitleSize : "보통";
-  const source = { sourceFilename, edit, lines, subtitleSize };
+  const source = { sourceFilename, edit: renderEdit, lines, subtitleSize };
   return { ...source, sourceHash: sha256Hex(canonicalJson(source)), sourceRevision: edit.revision };
 }
