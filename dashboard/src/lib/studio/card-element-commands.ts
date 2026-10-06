@@ -8,6 +8,7 @@ import {
   type CardSlideV3,
   type TextElement,
 } from "./card-element-contract";
+import { retextSegments } from "./card-deck-contract";
 
 export const CARD_SNAP_DISTANCE = 4;
 export const CARD_ROTATION_SNAP = 15;
@@ -287,6 +288,31 @@ export function patchTextElement(
     const style = { ...element.style, ...patch.style };
     if (patch.style?.font_size !== undefined) style.font_size = round(patch.style.font_size);
     return { ...element, ...patch, style };
+  });
+}
+
+/** 카톡 원형과 legacy projection 글을 한 번에 바꿔 화면·저장본·PNG를 같은 값으로 유지한다. */
+export function patchChatBubbleText(deck: CardDeckV3, slideId: string, bubbleId: string, text: string): CardDeckV3 {
+  if (!text.trim()) throw new RangeError("CARD_CHAT_BUBBLE_TEXT_REQUIRED");
+  if (text.length > 120) throw new RangeError("CARD_CHAT_BUBBLE_TEXT_TOO_LONG");
+  return mutateSlide(deck, slideId, (slide) => {
+    if (slide.base.kind !== "chat_bubble") return slide;
+    const bubble = slide.base.bubbles.find((candidate) => candidate.id === bubbleId);
+    if (!bubble) return slide;
+    const currentText = bubble.segments.map((segment) => segment.text).join("");
+    if (currentText === text) return slide;
+    return {
+      ...slide,
+      base: {
+        ...slide.base,
+        bubbles: slide.base.bubbles.map((candidate) => candidate.id === bubbleId
+          ? { ...candidate, segments: retextSegments(candidate.segments, text) }
+          : candidate),
+      },
+      elements: slide.elements.map((element) => element.id === `el_${bubbleId}` && element.type === "text"
+        ? { ...element, text }
+        : element),
+    };
   });
 }
 

@@ -13,6 +13,7 @@ import {
   moveCardElementLayer,
   nudgeCardElement,
   patchTextElement,
+  patchChatBubbleText,
   redoCardCommand,
   resizeCardElement,
   rotateCardElement,
@@ -93,6 +94,27 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     const other = snapCardElementPosition(moving, 103, 360, [moving, sibling], "4:5");
     expect(other.x).toBe(100);
     expect(other.guides).toContainEqual({ axis: "x", value: 100, source: "element" });
+  });
+
+  it("S5-R1-M4 말풍선 직접 편집은 원형과 v2 projection을 한 revision에서 함께 바꾼다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides[0].base = {
+      kind: "chat_bubble",
+      cover: null,
+      bubbles: [{ id: "bubble_reader", order: 0, speaker: "reader", segments: [{ text: "원문", bold: true }], reaction: null }],
+    };
+    chat.slides[0].elements = [{
+      id: "el_bubble_reader", type: "text", name: "독자 말풍선", x: 0, y: 0, width: 100, height: 100,
+      rotation: 0, z_index: 0, opacity: 1, locked: false, hidden: false, text: "원문",
+      style: { font_family: "Pretendard Variable", font_size: 32, font_weight: 700, line_height: 1.2, letter_spacing: 0, color: "#111111", align: "left", vertical_align: "middle" },
+    }];
+
+    const changed = patchChatBubbleText(chat, "slide_cover", "bubble_reader", "직접 고친 말풍선");
+    expect(changed.revision).toBe(chat.revision + 1);
+    expect(changed.slides[0].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ segments: [{ text: "직접 고친 말풍선", bold: true }] }] });
+    expect(changed.slides[0].elements[0]).toMatchObject({ text: "직접 고친 말풍선" });
+    expect(() => patchChatBubbleText(changed, "slide_cover", "bubble_reader", " ")).toThrow("CARD_CHAT_BUBBLE_TEXT_REQUIRED");
   });
 
   it("S1-AC5 정상 경로: 키보드 이동, 복제, 삭제, undo와 redo가 같은 덱을 복원한다", () => {

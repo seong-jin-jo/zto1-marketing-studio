@@ -15,6 +15,7 @@ import {
   moveCardElementLayer,
   nudgeCardElement,
   patchTextElement,
+  patchChatBubbleText,
   redoCardCommand,
   resizeCardElement,
   rotateCardElement,
@@ -94,6 +95,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [editingTextValue, setEditingTextValue] = useState("");
   const [rotationPreview, setRotationPreview] = useState<number | null>(null);
+  const [bubbleEditError, setBubbleEditError] = useState("");
   const stageRef = useRef<HTMLDivElement | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -295,6 +297,18 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
     setSelectedId(id);
   };
 
+  const commitBubbleText = (bubbleId: string, text: string) => {
+    if (!activeSlide) return;
+    try {
+      apply((current) => patchChatBubbleText(current, activeSlide.id, bubbleId, text));
+      setBubbleEditError("");
+    } catch (error) {
+      setBubbleEditError(error instanceof RangeError && error.message === "CARD_CHAT_BUBBLE_TEXT_REQUIRED"
+        ? "말풍선 내용은 비워 둘 수 없습니다."
+        : "말풍선은 120자 안에서 입력해 주세요.");
+    }
+  };
+
   const uploadImage = async (file: File) => {
     setUploadError("");
     const body = new FormData();
@@ -442,16 +456,42 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
             {guides.map((guide, index) => <span key={`${guide.axis}-${guide.value}-${index}`} className={styles.snapGuide} data-axis={guide.axis} style={{ "--snap-position": `${guide.value / (guide.axis === "x" ? 1080 : logicalHeight) * 100}%` } as CSSProperties} />)}
           </div>
         </div>
-        <CardElementList
-          elements={editableElements}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onMove={(id, dx, dy) => apply((current) => nudgeCardElement(current, activeSlide.id, id, dx, dy))}
-          onLayer={(id, direction: LayerDirection) => apply((current) => moveCardElementLayer(current, activeSlide.id, id, direction))}
-          onToggle={(id, flag) => apply((current) => toggleCardElementFlag(current, activeSlide.id, id, flag))}
-          onDuplicate={duplicate}
-          onDelete={deleteAndRestoreStageFocus}
-        />
+        <aside className={styles.rightPanel}>
+          {activeSlide.base.kind === "chat_bubble" && activeSlide.base.bubbles.length ? (
+            <section className={styles.chatBaseEditor} aria-label="말풍선 직접 편집">
+              <h3>말풍선 직접 편집</h3>
+              <p>말풍선과 로고·스티커를 이 화면에서 함께 고칩니다.</p>
+              {activeSlide.base.bubbles.map((bubble, index) => {
+                const text = bubble.segments.map((segment) => segment.text).join("");
+                const speaker = bubble.speaker === "brand"
+                  ? workingDeck.brand.display_name
+                  : workingDeck.brand.reader_name?.trim() || "구독자";
+                return (
+                  <label key={`${bubble.id}:${text}`}>
+                    <span>{speaker} · {index + 1}번째</span>
+                    <textarea
+                      aria-label={`${index + 1}번째 말풍선 내용`}
+                      defaultValue={text}
+                      maxLength={120}
+                      onBlur={(event) => commitBubbleText(bubble.id, event.target.value)}
+                    />
+                  </label>
+                );
+              })}
+              {bubbleEditError ? <p role="alert" className={styles.error}>{bubbleEditError}</p> : null}
+            </section>
+          ) : null}
+          <CardElementList
+            elements={editableElements}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onMove={(id, dx, dy) => apply((current) => nudgeCardElement(current, activeSlide.id, id, dx, dy))}
+            onLayer={(id, direction: LayerDirection) => apply((current) => moveCardElementLayer(current, activeSlide.id, id, direction))}
+            onToggle={(id, flag) => apply((current) => toggleCardElementFlag(current, activeSlide.id, id, flag))}
+            onDuplicate={duplicate}
+            onDelete={deleteAndRestoreStageFocus}
+          />
+        </aside>
       </div>
     </section>
   );

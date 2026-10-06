@@ -198,7 +198,7 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     addEventListener.mockRestore();
   });
 
-  it("S5-AC4 카톡 원형 말풍선은 요소 목록에서 숨기고 로고만 자유 요소로 덧붙인다", () => {
+  it("S5-AC4·R1-M4 카톡 원형을 직접 고치면서 로고 자유 요소를 보존한다", () => {
     let current = deck();
     current.template = "chat_bubble";
     current.slides[0].base = { kind: "chat_bubble", cover: null, bubbles: [
@@ -212,13 +212,25 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     const onChange = (next: CardDeckV3) => { current = next; };
     const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
 
-    expect(screen.getByText("원형 말풍선")).toBeInTheDocument();
+    expect(screen.getAllByText("원형 말풍선").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "독자 말풍선" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "로고 추가" }));
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
 
     expect(current.slides[0].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ id: "bubble_reader" }] });
     expect(current.slides[0].elements.map((element) => element.type)).toEqual(["text", "logo"]);
+    expect(screen.getByRole("button", { name: "로고" })).toBeInTheDocument();
+
+    const bubbleEditor = screen.getByRole("textbox", { name: "1번째 말풍선 내용" });
+    fireEvent.change(bubbleEditor, { target: { value: "한 화면에서 직접 고친 말풍선" } });
+    fireEvent.blur(bubbleEditor);
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+
+    expect(current.slides[0].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ segments: [{ text: "한 화면에서 직접 고친 말풍선" }] }] });
+    expect(current.slides[0].elements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "el_bubble_reader", text: "한 화면에서 직접 고친 말풍선" }),
+      expect.objectContaining({ type: "logo" }),
+    ]));
     expect(screen.getByRole("button", { name: "로고" })).toBeInTheDocument();
   });
 });

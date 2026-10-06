@@ -162,6 +162,35 @@
   padding: var(--stack);
 }
 
+.rightPanel {
+  display: grid;
+  min-width: 0;
+  gap: var(--stack);
+}
+
+.chatBaseEditor {
+  display: grid;
+  gap: var(--stack);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-surface);
+  background: var(--surface);
+  padding: var(--stack);
+}
+
+.chatBaseEditor h3 { color: var(--text); font-size: var(--font-body-size); font-weight: 700; }
+.chatBaseEditor p { color: var(--text-muted); font-size: var(--font-body-size); }
+.chatBaseEditor label { display: grid; gap: var(--stack-tight); color: var(--text-muted); font-size: var(--font-body-size); }
+.chatBaseEditor textarea {
+  min-height: calc(var(--control-touch) * 2);
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface-2);
+  padding: var(--stack-tight);
+  color: var(--text);
+  font: inherit;
+}
+
 .elementList h3 { margin-bottom: var(--stack); color: var(--text); font-size: var(--font-body-size); font-weight: 700; }
 .elementList p { color: var(--text-muted); font-size: var(--font-body-size); }
 .elementList ol { display: grid; gap: var(--stack); }

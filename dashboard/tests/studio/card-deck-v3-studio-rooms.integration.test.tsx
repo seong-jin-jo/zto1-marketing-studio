@@ -140,6 +140,28 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(onReturn).toHaveBeenCalledOnce();
   });
 
+  it("S5-R1-M4 카톡 자유 배치는 말풍선 직접 편집을 열고 자유 요소를 버리는 복귀 버튼을 숨긴다", () => {
+    const onReturn = vi.fn();
+    const deck = createPlainCardDeckV3(["첫 장", "둘째 장"], "deck_chat_combined");
+    deck.template = "chat_bubble";
+    deck.slides[0].base = {
+      kind: "chat_bubble",
+      cover: null,
+      bubbles: [{ id: "bubble_reader", order: 0, speaker: "reader", segments: [{ text: "한 화면 편집", bold: false }], reaction: null }],
+    };
+    const projection = deck.slides[0].elements[0];
+    if (projection.type !== "text") throw new Error("fixture");
+    projection.id = "el_bubble_reader";
+    projection.text = "한 화면 편집";
+
+    render(<EditRoom kind="card" lines={["첫 장", "둘째 장"]} onLinesChange={() => {}} cardDeckV3={deck} onCardDeckV3Change={() => {}} onReturnFromCardDeckV3={onReturn} />);
+
+    expect(screen.getByText("말풍선과 자유 요소를 이 화면에서 함께 편집합니다.")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "말풍선 직접 편집" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "기본 편집으로 돌아가기" })).not.toBeInTheDocument();
+    expect(onReturn).not.toHaveBeenCalled();
+  });
+
   it("S1-R4-PUBLISH-GATE-01 v3 덱은 S2 전 발행실 이동을 막고 이유를 계속 보여준다", () => {
     const onOpenPublish = vi.fn();
     const deck = createPlainCardDeckV3(["첫 장", "둘째 장"], "deck_publish_block");
