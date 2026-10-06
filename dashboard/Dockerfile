@@ -79,6 +79,10 @@ ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+# 별도 내보내기 작업자는 Next HTTP 프로세스가 아니라 같은 이미지의 TypeScript entry를
+# tsx로 실행한다. 소스와 package metadata를 명시적으로 복사해 standalone tracing에 기대지 않는다.
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/package.json ./package.json
 # remotion/entry.ts는 @remotion/bundler가 런타임에 경로 문자열로 읽는다(정적 import가
 # 아니라 Next의 standalone 파일 트레이싱이 못 따라간다) — 명시적으로 복사해야 한다.
 COPY --from=builder /app/remotion ./remotion

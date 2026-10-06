@@ -128,6 +128,12 @@ const TENANT_AWARE_PATHS = [
   "/api/studio/edit-bulk",
   "/api/studio/drafts/[draftId]/editor",
   "/api/studio/drafts/[draftId]/enqueue",
+  // 편집실 v2 영속 내보내기. 각 route가 effectiveTenantId와 RLS 복합 key로 초안·작업을
+  // 다시 확인하며, 다른 작업 공간의 export ID는 404로 숨긴다.
+  "/api/studio/drafts/[draftId]/exports",
+  "/api/studio/drafts/[draftId]/exports/latest",
+  "/api/studio/drafts/[draftId]/exports/[exportId]",
+  "/api/studio/drafts/[draftId]/exports/[exportId]/retry",
   "/api/studio/engine-status",
   // 만들기 전 비용 산정. 고객이 승인 여부를 판단하는 화면이 부르므로 테넌트 경로다
   // (사업계획 v0.4 7절·10절의 비용 승인 관문).

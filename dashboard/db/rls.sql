@@ -34,7 +34,7 @@ END $$;
 DO $$
 DECLARE t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['brand_guides','integrations','channel_accounts','drafts','studio_generation_jobs','studio_generation_idempotency','studio_free_regeneration_uses','studio_generation_candidate_rejections','shorts_factory_runs','shorts_factory_concept_runs','published_posts','engagement_items','operational_incidents','queue_posts','schedules','growth_metrics','viral_signals','wiki_docs','usage_events','subscriptions','usage_quotas'] LOOP
+  FOREACH t IN ARRAY ARRAY['brand_guides','integrations','channel_accounts','drafts','studio_export_jobs','studio_export_items','studio_generation_jobs','studio_generation_idempotency','studio_free_regeneration_uses','studio_generation_candidate_rejections','shorts_factory_runs','shorts_factory_concept_runs','published_posts','engagement_items','operational_incidents','queue_posts','schedules','growth_metrics','viral_signals','wiki_docs','usage_events','subscriptions','usage_quotas'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
     EXECUTE format('DROP POLICY IF EXISTS tenant_iso ON %I', t);

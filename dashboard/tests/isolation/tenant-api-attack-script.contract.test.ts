@@ -67,6 +67,7 @@ describe("작업 공간 격리 실앱 공격 스크립트 계약", () => {
       "WRITE-10 편집실 큐 인계",
       "WRITE-11 댓글 상태 수정",
       "WRITE-12 이미지 삭제",
+      "WRITE-13 내보내기 실패 장 재시도",
       "BODY-01 guide tenant_id 위조",
       "BODY-02 integration tenant_id 위조",
       "BODY-03 schedule tenant_id 위조",

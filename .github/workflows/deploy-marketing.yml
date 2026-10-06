@@ -241,6 +241,8 @@ jobs:
           # 편집실 카드 공용 렌더(S2). 저장소 변수로 켜고 끈다. 끄고 다시 배포하면 이전 경로로 돌아간다.
           CARD_DECK_V3_RENDER_ENABLED=${{ vars.CARD_DECK_V3_RENDER_ENABLED || '0' }}
           NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=${{ vars.CARD_DECK_V3_RENDER_ENABLED || '0' }}
+          EXPORT_RENDER_CONCURRENCY=1
+          EXPORT_WORKER_HEALTH_PORT=34620
           TIKTOK_CLIENT_KEY=${{ secrets.TIKTOK_CLIENT_KEY }}
           TIKTOK_CLIENT_SECRET=${{ secrets.TIKTOK_CLIENT_SECRET }}
           SLACK_CLIENT_ID=${{ secrets.SLACK_CLIENT_ID }}
@@ -383,6 +385,13 @@ jobs:
       - name: 기동
         # required NEXT_PUBLIC_* interpolation은 build와 up 모두에서 실행된다.
         run: |
+          SERVICES="${{ github.event.inputs.services }}"
+          # export worker는 dashboard가 방금 빌드한 같은 image tag를 쓴다. dashboard만 선택한
+          # 배포에서도 worker를 up 대상에 넣어 새 image ID로 반드시 재생성한다.
+          if [[ " $SERVICES " == *" openclaw-dashboard-osmu "* ]] \
+             && [[ " $SERVICES " != *" openclaw-studio-export-worker "* ]]; then
+            SERVICES="$SERVICES openclaw-studio-export-worker"
+          fi
           # 과거 수동 배포 컨테이너는 compose 라벨 없이 고정 container_name만 점유할 수 있다.
           # 앱 컨테이너만 rollback 이름으로 보존하고, 새 기동 실패 시 즉시 원복한다. named volume은 건드리지 않는다.
           previous=""
@@ -392,7 +401,7 @@ jobs:
             docker rename openclaw-dashboard-osmu "$previous"
             docker stop "$previous"
           fi
-          if ! docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml up -d ${{ github.event.inputs.services }}; then
+          if ! docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml up -d $SERVICES; then
             if [ -n "$previous" ]; then
               docker rm -f openclaw-dashboard-osmu >/dev/null 2>&1 || true
               docker rename "$previous" openclaw-dashboard-osmu

@@ -259,6 +259,8 @@ services:
       DASHBOARD_PORT: "18789"
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
+    depends_on:
+      - openclaw-studio-export-worker
     # 헬스체크(L4 재발방지) — hang/DB불가 감지. unhealthy 자동재시작은 autoheal 워치독이 수행
     # (restart:unless-stopped는 프로세스 *종료*만 재시작 → 100% CPU hang엔 무력했음. 2026-06-28 장애).
     # 검사 명령은 node 로 한다. 대시보드 이미지가 node:20-bookworm-slim 으로 바뀌면서(#105) wget 이
@@ -270,6 +272,27 @@ services:
       timeout: 8s
       retries: 3
       start_period: 40s
+
+  # 편집실 v2 S3 영속 내보내기 작업자. HTTP 요청 안에서 렌더하지 않고 같은 이미지의
+  # 별도 entry를 실행한다. PostgreSQL advisory lock으로 여러 컨테이너 중 하나만 active다.
+  openclaw-studio-export-worker:
+    image: openclaw-auto/dashboard:0.2.0
+    init: true
+    restart: unless-stopped
+    labels:
+      autoheal: "true"
+    env_file: .env.osmu
+    environment:
+      NODE_ENV: production
+      EXPORT_RENDER_CONCURRENCY: "1"
+      EXPORT_WORKER_HEALTH_PORT: "34620"
+    command: ["node_modules/.bin/tsx", "src/workers/studio-export-worker.ts"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:34620').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 20s
 
 volumes:
   osmu-data:

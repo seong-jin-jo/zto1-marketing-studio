@@ -25,7 +25,7 @@ describe("OSMU explicit migration runner 계약", () => {
   it("GEN-MIG-01 정상: manifest의 모든 SQL checksum이 실제 파일과 일치한다", () => {
     for (const [id, phase, file, expected] of manifestRows()) {
       expect(id).toBeTruthy();
-      expect(["baseline", "legacy", "expand-fk", "expand-guard", "expand-member", "prepare-rollback", "contract-generation", "contract-quota", "cleanup"]).toContain(phase);
+      expect(["baseline", "legacy", "expand-fk", "expand-guard", "expand-member", "prepare-rollback", "expand-export-queue", "contract-generation", "contract-quota", "cleanup"]).toContain(phase);
       const actual = crypto.createHash("sha256").update(readFileSync(resolve(dbRoot, file))).digest("hex");
       expect(actual, `${id} checksum`).toBe(expected);
     }
@@ -108,6 +108,17 @@ describe("OSMU explicit migration runner 계약", () => {
     }
     expect(runner).toContain("apply_legacy_manifest");
     expect(runner).toContain('require_applied "20260829_010_studio_generation_expand_contract"');
+  });
+
+  it("S3-MIG-01 정상: 영속 내보내기 대기열은 승인 workflow의 additive 명시 phase다", () => {
+    expect(manifest).toContain("20261004_010_studio_export_queue\texpand-export-queue");
+    expect(runner).toContain("expand-export-queue");
+    expect(migrationWorkflow).toContain("- expand-export-queue");
+    const imageObservation = migrationWorkflow.slice(
+      migrationWorkflow.indexOf("Observe and verify every running compatibility image"),
+      migrationWorkflow.indexOf("COMPATIBILITY_BASE_COMMIT"),
+    );
+    expect(imageObservation).toContain("expand-export-queue");
   });
 
   it("GEN-MIG-09 경계: invalid concurrent index는 제거·재생성하고 definition drift는 중단한다", () => {

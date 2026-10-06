@@ -130,7 +130,7 @@ function expiredJwtShape() {
   return `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ sub: "qa-expired", exp: 1 })}.expired`;
 }
 
-const readCases = ({ tenantB, draftB, postB }) => [
+const readCases = ({ tenantB, draftB, postB, exportB }) => [
   ["READ-01", "/api/activity"],
   ["READ-02", "/api/agent-logs"],
   ["READ-03", "/api/alerts"],
@@ -210,6 +210,10 @@ const readCases = ({ tenantB, draftB, postB }) => [
   // 자막 굽기 계보는 결과 파일명에서 원본 파일명을 되찾는다. 다른 작업 공간의 기록을
   // 읽으면 미디어 자체를 못 받아도 원본 파일 식별자가 새므로 테넌트 공격 목록에 둔다.
   ["READ-63", "/api/video/subtitle?filename=probe.mp4"],
+  // 편집실 v2 영속 내보내기 상태와 최신 판은 export ID·source hash·오류 코드를 반환한다.
+  // 다른 작업 공간 토큰으로 B의 ID를 넣어도 존재 여부와 MARKER_B가 모두 숨겨져야 한다.
+  ["READ-64", `/api/studio/drafts/${draftB}/exports/${exportB}`],
+  ["READ-65", `/api/studio/drafts/${draftB}/exports/latest?kind=card_deck`],
 ].map(([name, routePath]) => {
   const url = new URL(`${BASE_URL}${routePath}`);
   url.searchParams.set("tenant_id", tenantB);
@@ -255,11 +259,20 @@ try {
   const postB = crypto.randomUUID();
   const accountB = crypto.randomUUID();
   const scheduleB = crypto.randomUUID();
+  const exportB = crypto.randomUUID();
+  const exportItemB = crypto.randomUUID();
 
   await sql.begin(async (tx) => {
     await tx`insert into drafts (id, tenant_id, idea, payload, status) values
       (${draftA}::uuid, ${tenantA}::uuid, ${MARKER_A}, ${tx.json({ marker: MARKER_A })}, 'draft'),
       (${draftB}::uuid, ${tenantB}::uuid, ${MARKER_B}, ${tx.json({ marker: MARKER_B, editor_handoff: { revision: 1 } })}, 'draft')`;
+    await tx`insert into studio_export_jobs
+      (id,tenant_id,draft_id,member_id,kind,status,source_revision,source_hash,request_payload,idempotency_key,request_hash,total_items,failed_items,error_code)
+      values (${exportB}::uuid,${tenantB}::uuid,${draftB}::uuid,'qa-isolation','card_deck','failed',1,repeat('b',64),
+              ${tx.json({ marker: MARKER_B })},'qa-isolation',repeat('c',64),1,1,${MARKER_B})`;
+    await tx`insert into studio_export_items
+      (id,tenant_id,job_id,item_key,ordinal,status,source_hash,attempt_count,max_attempts,error_code)
+      values (${exportItemB}::uuid,${tenantB}::uuid,${exportB}::uuid,'slide-qa',0,'failed',repeat('d',64),1,3,${MARKER_B})`;
     await tx`insert into brand_guides (tenant_id, prompt_guide, visual_rules, source)
       values (${tenantB}::uuid, ${MARKER_B}, ${tx.json({ marker: MARKER_B })}, 'qa')`;
     await tx`insert into integrations (tenant_id, kind, label, secret_enc, meta)
@@ -296,7 +309,7 @@ try {
   const ownB = await request(`/api/studio/drafts?tenant_id=${tenantB}`, { token: tokenB });
   addResult("정상", "HAPPY-02 B 토큰으로 B 초안 읽기", ownB, ownB.status === 200 && ownB.text.includes(MARKER_B), "B 데이터 존재 증명");
 
-  const cases = readCases({ tenantB, draftB, postB });
+  const cases = readCases({ tenantB, draftB, postB, exportB });
   for (const [name, routePath] of cases) {
     const cross = await request(routePath, { token: tokenA });
     addResult("교차 읽기", `${name} ${routePath.split("?")[0]}`, cross, !cross.text.includes(MARKER_B), "A 토큰과 B tenant_id");
@@ -330,6 +343,7 @@ try {
     ["WRITE-10 편집실 큐 인계", `/api/studio/drafts/${draftB}/enqueue`, "POST", { tenant_id: tenantB }],
     ["WRITE-11 댓글 상태 수정", "/api/engagement", "POST", { tenant_id: tenantB, action: "defer", post_id: postB, comment_id: MARKER_B }],
     ["WRITE-12 이미지 삭제", `/api/images/${encodeURIComponent(`${MARKER_B}.txt`)}`, "DELETE", undefined],
+    ["WRITE-13 내보내기 실패 장 재시도", `/api/studio/drafts/${draftB}/exports/${exportB}/retry`, "POST", { item_keys: ["slide-qa"] }],
   ];
 
   for (const [name, routePath, method, body] of mutationCases) {
@@ -358,8 +372,9 @@ try {
       (select text from queue_posts where id = ${queueB}::uuid) as queue_text,
       (select display_name from channel_accounts where id = ${accountB}::uuid) as account_name,
       (select status from schedules where id = ${scheduleB}::uuid) as schedule_status,
+      (select status from studio_export_items where id = ${exportItemB}::uuid) as export_item_status,
       (select reply_text from engagement_items where tenant_id = ${tenantB}::uuid and provider_comment_id = ${MARKER_B}) as reply_text`;
-  const bDbIntact = Object.values(bDb).every((value) => value === MARKER_B || value === "scheduled");
+  const bDbIntact = Object.values(bDb).every((value) => value === MARKER_B || value === "scheduled" || value === "failed");
   const bFilesIntact = hashDirectory(bPaths.tenantData) === bDataHashBefore && hashDirectory(bPaths.tenantConfig) === bConfigHashBefore;
   const [aRedirectCounts] = await sql`
     select
