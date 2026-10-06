@@ -1,5 +1,13 @@
 # OSMU build log
 
+## 2026-10-07 02:42 KST · 편집실 S5b 교차 리뷰 2차 교정
+
+STAMP: 2026-10-07 02:42 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `s5b-review-r2.md`, localhost Chromium 세 폭 bounding box, v3→v2 복귀 E2E, 9폭 모바일 실측 | 고민: 운영 플래그가 켜진 상태에서 미리보기 가시성과 기본 편집 복귀를 대리지표가 아니라 실제 route 왕복으로 닫았다.
+
+카톡 장 도구를 stageColumn 안으로 옮기고 1023px 이하 스테이지 폭을 viewport 토큰으로 제한했다. 카톡 v3는 현재 말풍선·화자·표지·마지막 사진을 v2로 투영해 기본 편집기로 돌아가며, v3 덱을 서버에서 정리한다. 사진 빼기, CardSlideScene 기반 넘침 안내와 명시적 분할, 카톡 원형 회피 배치, 복제 시 legacy projection 제거도 함께 반영했다.
+
+검증: TypeScript PASS, integrity 104건 PASS, contract 621건 PASS, 관련 343건 PASS·환경 skip 8건, Next production build PASS다. 플래그 ON E2E는 데이터 9장, 저장 7회, 발행실 이동과 기본 편집 복귀, 변경 표지 사진 보존, 콘솔 오류 0, 실패 요청 0이다. 1440·600·390 미리보기와 패널 폭을 수치로 단언했고, 360~1000 아홉 폭은 본문 16px, 13px 미만·44px 미만·가로 넘침 0, 눌림 상태 100%다. 원격 CI·QA 승인·운영 배포는 미검증이며 push하지 않았다.
+
 ## 2026-10-07 01:51 KST · 편집실 S5b 교차 리뷰 1차 교정
 
 STAMP: 2026-10-07 01:51 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `s5b-review-r1.md`, 실제 drafts route, 플래그 ON localhost Chromium, 9폭 모바일 실측 | 고민: 운영 스위치가 켜진 상태라 v3 진입을 닫는 대신 v71 한 화면 도구를 전부 복원하고 모든 저장 경계에서 v2/v3 hash를 동기화했다.
