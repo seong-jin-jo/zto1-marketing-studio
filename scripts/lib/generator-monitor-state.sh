@@ -27,7 +27,7 @@ generator_monitor_transition() {
   local previous="${1:-unknown}"
   local current="${2:-hold}"
 
-  if [ "$current" = "down" ] && [ "$previous" != "down" ]; then
+  if [ "$current" = "down" ] && [ "$previous" = "suspect" ]; then
     printf '%s\n' "failure"
   elif [ "$current" = "up" ] && [ "$previous" = "down" ]; then
     printf '%s\n' "recovery"
@@ -40,9 +40,22 @@ generator_monitor_persisted_state() {
   local previous="${1:-unknown}"
   local current="${2:-hold}"
 
-  if [ "$current" = "hold" ]; then
-    printf '%s\n' "$previous"
-  else
-    printf '%s\n' "$current"
-  fi
+  case "$current" in
+    hold)
+      printf '%s\n' "$previous"
+      ;;
+    down)
+      if [ "$previous" = "suspect" ] || [ "$previous" = "down" ]; then
+        printf '%s\n' "down"
+      else
+        printf '%s\n' "suspect"
+      fi
+      ;;
+    up)
+      printf '%s\n' "up"
+      ;;
+    *)
+      printf '%s\n' "$previous"
+      ;;
+  esac
 }

@@ -7,12 +7,11 @@ on:
     - cron: '*/30 * * * *'
   workflow_dispatch: {}
 
-# deploy-marketing.yml과 같은 그룹이다. 배포 중 컨테이너 교체를 장애로 오판하지 않고,
-# self-hosted marketing_runner의 CPU·Docker daemon을 동시에 점유하지 않는다.
+# 감시 실행끼리만 직렬화한다. 새 주기가 시작되면 오래 걸리는 이전 감시를 취소하되,
+# 운영 배포 워크플로의 실행·대기 순서에는 관여하지 않는다.
 concurrency:
-  group: marketing-runner-exclusive
-  cancel-in-progress: false
-  queue: max
+  group: osmu-generator-monitor
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -155,6 +154,7 @@ jobs:
             echo "- 현재 판정: ${{ steps.check.outputs.status }}"
             echo "- 이전 상태: ${{ steps.prev.outputs.status }}"
             echo "- 상태 전이: ${{ steps.transition.outputs.kind }}"
+            echo "- 저장 상태: ${{ steps.transition.outputs.persisted }}"
             echo "- 탐침 횟수: ${{ steps.check.outputs.attempts }}"
             echo "- 판정 사유: ${{ steps.check.outputs.reason }}"
             echo "- 생성 요청: 실행하지 않음"

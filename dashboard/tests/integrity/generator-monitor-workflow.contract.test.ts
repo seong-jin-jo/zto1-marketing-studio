@@ -22,8 +22,11 @@ describe("OSMU Higgsfield 로그인 정기 감시 계약", () => {
   });
 
   it("GENERATOR-MONITOR-WORKFLOW-02 격리: 감시 기능이 운영 배포의 concurrency 계약을 바꾸지 않는다", () => {
+    expect(monitor).toContain("group: osmu-generator-monitor");
+    expect(monitor).toContain("cancel-in-progress: true");
+    expect(monitor).not.toContain("queue:");
     expect(deploy).not.toMatch(/^concurrency:/m);
-    expect(deploy).not.toContain("queue: max");
+    expect(deploy).not.toContain("queue:");
   });
 
   it("GENERATOR-MONITOR-WORKFLOW-03 경계: 최초 시도와 세 번 재시도 뒤 판정하고 컨테이너 미기동은 보류한다", () => {
@@ -35,7 +38,7 @@ describe("OSMU Higgsfield 로그인 정기 감시 계약", () => {
     expect(monitor).toContain("generator_monitor_persisted_state");
   });
 
-  it("GENERATOR-MONITOR-WORKFLOW-04 전이: 캐시 상태를 복원하고 장애·복구 전이에만 기존 Slack 시크릿으로 알린다", () => {
+  it("GENERATOR-MONITOR-WORKFLOW-04 전이: 첫 down은 suspect로 저장하고 두 번째 down과 복구에만 알린다", () => {
     expect(monitor).toContain("actions/cache/restore@v4");
     expect(monitor).toContain("actions/cache/save@v4");
     expect(monitor).toContain("generator_monitor_transition");
@@ -53,7 +56,7 @@ describe("OSMU Higgsfield 로그인 정기 감시 계약", () => {
     expect(monitor).not.toMatch(/echo.*\$SLACK_WEBHOOK/);
   });
 
-  it("GENERATOR-MONITOR-WORKFLOW-06 단위: 정상·장애·컨테이너 없음·전이 없음 네 판정이 bash에서 통과한다", () => {
+  it("GENERATOR-MONITOR-WORKFLOW-06 단위: 정상·1회 실패·2회 실패·컨테이너 없음·복구 다섯 판정이 bash에서 통과한다", () => {
     const result = spawnSync(
       "bash",
       [resolve(repositoryRoot, "scripts/tests/generator-monitor-state.test.sh")],
@@ -61,6 +64,6 @@ describe("OSMU Higgsfield 로그인 정기 감시 계약", () => {
     );
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("generator monitor state tests: 4 passed");
+    expect(result.stdout).toContain("generator monitor state tests: 5 passed");
   });
 });

@@ -28,22 +28,27 @@ assert_eq \
   "$(generator_monitor_classify running 7 7 0 7)"
 
 assert_eq \
-  "GENERATOR-MONITOR-02 장애: 최초 시도와 세 번 재시도가 모두 실패하면 down" \
-  "down" \
-  "$(generator_monitor_classify running 7 7 7 7)"
+  "GENERATOR-MONITOR-02 일시 실패: 첫 down은 suspect로 저장하고 알리지 않음" \
+  "none:suspect" \
+  "$(generator_monitor_transition up down):$(generator_monitor_persisted_state up down)"
 
 assert_eq \
-  "GENERATOR-MONITOR-03 보류: 컨테이너 미기동은 장애로 판정하지 않고 이전 상태 유지" \
+  "GENERATOR-MONITOR-03 연속 장애: suspect 다음 down에서만 failure 전이" \
+  "failure:down" \
+  "$(generator_monitor_transition suspect down):$(generator_monitor_persisted_state suspect down)"
+
+assert_eq \
+  "GENERATOR-MONITOR-04 보류: 컨테이너 미기동은 장애로 판정하지 않고 이전 상태 유지" \
   "hold:up" \
   "$(generator_monitor_classify stopped 7 7 7 7):$(generator_monitor_persisted_state up hold)"
 
 assert_eq \
-  "GENERATOR-MONITOR-04 전이 없음: 정상 상태가 유지되면 Slack 알림 없음" \
-  "none" \
-  "$(generator_monitor_transition up up)"
+  "GENERATOR-MONITOR-05 복구: 장애 뒤 한 번의 up으로 recovery 전이" \
+  "recovery:up" \
+  "$(generator_monitor_transition down up):$(generator_monitor_persisted_state down up)"
 
 if [ "$failures" -ne 0 ]; then
   exit 1
 fi
 
-printf 'generator monitor state tests: 4 passed\n'
+printf 'generator monitor state tests: 5 passed\n'
