@@ -1361,9 +1361,9 @@ function TimelineEditableBlock({ lane, id, label, startSec, endSec, tone, onSeek
       onKeyDown={(event) => handleKey(event, "move")}
       onPointerDown={(event) => onStartDrag(lane, id, "move", startSec, endSec, event.clientX)}
     >
-      <button type="button" className="h-full min-w-control-touch cursor-ew-resize border-r border-border bg-transparent text-current" aria-label={`${label} 시작점 조절`} onKeyDown={(event) => handleKey(event, "start")} onPointerDown={(event) => { event.stopPropagation(); onStartDrag(lane, id, "start", startSec, endSec, event.clientX); }}>‹</button>
+      <Button size="sm" className="h-full min-w-control-touch cursor-ew-resize rounded-none border-0 border-r border-border bg-transparent p-none text-current" aria-label={`${label} 시작점 조절`} onKeyDown={(event) => handleKey(event, "start")} onPointerDown={(event) => { event.stopPropagation(); onStartDrag(lane, id, "start", startSec, endSec, event.clientX); }}>‹</Button>
       <span className="min-w-0 flex-1 truncate px-micro">{label}</span>
-      <button type="button" className="h-full min-w-control-touch cursor-ew-resize border-l border-border bg-transparent text-current" aria-label={`${label} 끝점 조절`} onKeyDown={(event) => handleKey(event, "end")} onPointerDown={(event) => { event.stopPropagation(); onStartDrag(lane, id, "end", startSec, endSec, event.clientX); }}>›</button>
+      <Button size="sm" className="h-full min-w-control-touch cursor-ew-resize rounded-none border-0 border-l border-border bg-transparent p-none text-current" aria-label={`${label} 끝점 조절`} onKeyDown={(event) => handleKey(event, "end")} onPointerDown={(event) => { event.stopPropagation(); onStartDrag(lane, id, "end", startSec, endSec, event.clientX); }}>›</Button>
     </div>
   );
 }
