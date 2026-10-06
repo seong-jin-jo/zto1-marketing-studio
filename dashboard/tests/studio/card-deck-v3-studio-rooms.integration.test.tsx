@@ -176,7 +176,7 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
   it("S5b-AC1 프로필 asset_id를 테넌트 범위 URL로 복원해 카톡 아바타에 표시한다", async () => {
     const deck = migrateCardDeckV2ToV3(structuredClone(chatBubbleDeck) as CardDeck);
     deck.brand.profile_image_asset_id = "profile-avatar.png";
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, file: "/api/images/deliver/profile-avatar" }) }) as Response);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({ ok: true, json: async () => ({ ok: true, file: "/api/images/deliver/profile-avatar" }) }) as Response);
     vi.stubGlobal("fetch", fetchMock);
 
     render(<EditRoom
@@ -189,7 +189,7 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     />);
     fireEvent.click(screen.getByRole("button", { name: "2장" }));
 
-    await waitFor(() => expect(document.querySelector('img[src="/api/images/deliver/profile-avatar"]')).toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector('[data-chat-avatar="media"][src="/api/images/deliver/profile-avatar"]')).toBeInTheDocument());
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ filename: "profile-avatar.png", purpose: "image", tenant_id: "tenant-s5b" });
   });
 

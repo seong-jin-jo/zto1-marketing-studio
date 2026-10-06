@@ -208,6 +208,7 @@ try {
   if (!serverLegacyDeck.slides[0].cover_image_url || !serverLegacyDeck.slides.at(-1).cover_image_url) throw new Error("legacy 표지·마지막 사진이 사라졌습니다");
   if (!await page.getByLabel("카톡 대화 고급 편집 도구").isVisible()) throw new Error("카톡 고급 편집 도구가 보이지 않습니다");
   if (!await page.locator("[data-card-deck-v3-workbench]").isVisible()) throw new Error("저장된 카톡 v3 덱이 공용 편집 화면을 열지 않았습니다");
+  if (!await page.locator('[data-card-slide-scene] [data-chat-avatar="media"]').isVisible()) throw new Error("브라우저 고급 편집 화면에 프로필 아바타가 보이지 않습니다");
   const currentOverlay = serverDeck.slides[1].elements.find((element) => element.id === "s5-preserved-logo");
   if (!currentOverlay || currentOverlay.x !== preservedOverlay.x || currentOverlay.y !== preservedOverlay.y) throw new Error("기존 v3 덧붙임 요소 위치가 바뀌었습니다");
 
@@ -296,6 +297,7 @@ try {
     overlayTypes: serverDeck.slides[1].elements.map((element) => element.type),
     orphanProjectionRemoved: !serverDeck.slides[1].elements.some((element) => element.id === "el_orphan-old"),
     profileAssetId: serverDeck.brand.profile_image_asset_id,
+    browserEditorProfileVisible: true,
     browserCanvasPng,
     editorScenePng,
     remotionPng,

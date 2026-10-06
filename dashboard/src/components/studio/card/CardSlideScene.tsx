@@ -137,8 +137,8 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
               {showBrandIdentity ? <span className={styles.chatAvatar} aria-hidden="true">
                 {profileUrl
                   ? renderMode === "export"
-                    ? <Img className={styles.chatAvatarMedia} src={profileUrl} alt="" />
-                    : <DeliveredMedia className={styles.chatAvatarMedia} src={profileUrl} type="image" alt="" />
+                    ? <Img className={styles.chatAvatarMedia} src={profileUrl} alt="" data-chat-avatar="media" />
+                    : <DeliveredMedia className={styles.chatAvatarMedia} src={profileUrl} type="image" alt="" dataAttr={{ "data-chat-avatar": "media" }} />
                   : model.brand.display_name.slice(0, 2)}
               </span> : null}
               <div className={styles.chatColumn}>
