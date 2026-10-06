@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, render, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, render, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 import { cardSlideRenderModel } from "@/lib/studio/card-render-model";
@@ -101,6 +101,31 @@ describe("CardSlideScene S5 카톡 원형과 자유 요소", () => {
     expect(settled).toBe(false);
     releaseFonts();
     await expect(verification).rejects.toThrow("CARD_CHAT_OVERFLOW: 3번 장 말풍선이 카드보다 깁니다");
+  });
+
+  it("S5-R3-MINOR 편집 장면은 주입된 폰트 준비가 끝난 뒤 넘침 상태를 알린다", async () => {
+    let releaseFonts!: () => void;
+    const fontsReady = new Promise<void>((resolve) => { releaseFonts = resolve; });
+    const onChatOverflowChange = vi.fn();
+    const view = render(
+      <CardSlideScene
+        model={cardSlideRenderModel(chatDeck(), "slide_chat")}
+        renderMode="editor"
+        fontsReady={fontsReady}
+        onChatOverflowChange={onChatOverflowChange}
+      />,
+    );
+    const chatList = view.container.querySelector<HTMLElement>("[data-chat-list]")!;
+    Object.defineProperty(chatList, "clientHeight", { configurable: true, value: 600 });
+    Object.defineProperty(chatList, "scrollHeight", { configurable: true, value: 602 });
+
+    await Promise.resolve();
+    expect(onChatOverflowChange).not.toHaveBeenCalled();
+    await act(async () => {
+      releaseFonts();
+      await fontsReady;
+    });
+    expect(onChatOverflowChange).toHaveBeenCalledWith(true);
   });
 
   it("S5-R3-1 작성자 차례가 다시 시작될 때마다 이름·프로필을 렌더하고 독자 이름은 숨긴다", () => {

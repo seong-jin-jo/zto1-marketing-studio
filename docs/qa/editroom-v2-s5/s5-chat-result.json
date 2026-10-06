@@ -333,6 +333,6 @@
   ],
   "consoleErrors": 0,
   "failedRequests": 0,
-  "saves": 9,
+  "saves": 7,
   "publishRoute": "http://localhost:3477/studio?room=publish"
 }

@@ -17,7 +17,10 @@ export interface CardSlideSceneProps {
   model: CardSlideRenderModel;
   renderMode: "editor" | "export";
   onChatOverflowChange?: (overflow: boolean) => void;
+  fontsReady?: Promise<unknown>;
 }
+
+const IMMEDIATELY_READY_FONTS = Promise.resolve();
 
 function verticalAlignment(value: TextElement["style"]["vertical_align"]): "flex-start" | "center" | "flex-end" {
   return value === "top" ? "flex-start" : value === "bottom" ? "flex-end" : "center";
@@ -85,7 +88,12 @@ export async function assertChatListFitsAfterFonts(
   assertChatListFits(element, slideOrder);
 }
 
-function ChatBubbleBase({ model, renderMode, onChatOverflowChange }: { model: CardSlideRenderModel; renderMode: CardSlideSceneProps["renderMode"]; onChatOverflowChange?: CardSlideSceneProps["onChatOverflowChange"] }) {
+function ChatBubbleBase({ model, renderMode, onChatOverflowChange, fontsReady }: {
+  model: CardSlideRenderModel;
+  renderMode: CardSlideSceneProps["renderMode"];
+  onChatOverflowChange?: CardSlideSceneProps["onChatOverflowChange"];
+  fontsReady?: CardSlideSceneProps["fontsReady"];
+}) {
   const chatListRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     if (!chatListRef.current) {
@@ -93,14 +101,10 @@ function ChatBubbleBase({ model, renderMode, onChatOverflowChange }: { model: Ca
       return;
     }
     const chatList = chatListRef.current;
-    const fontsReady = document.fonts?.ready ?? Promise.resolve();
+    const ready = fontsReady ?? document.fonts?.ready ?? IMMEDIATELY_READY_FONTS;
     if (renderMode === "editor") {
-      if (process.env.NODE_ENV === "test") {
-        onChatOverflowChange?.(chatListOverflows(chatList));
-        return;
-      }
       let disposed = false;
-      void fontsReady.then(() => {
+      void ready.then(() => {
         if (!disposed) onChatOverflowChange?.(chatListOverflows(chatList));
       });
       return () => { disposed = true; };
@@ -113,7 +117,7 @@ function ChatBubbleBase({ model, renderMode, onChatOverflowChange }: { model: Ca
       settled = true;
       continueRender(renderHandle);
     };
-    void assertChatListFitsAfterFonts(chatList, model.slide.order, fontsReady)
+    void assertChatListFitsAfterFonts(chatList, model.slide.order, ready)
       .then(() => {
         if (!disposed) finish();
       })
@@ -126,7 +130,7 @@ function ChatBubbleBase({ model, renderMode, onChatOverflowChange }: { model: Ca
       disposed = true;
       finish();
     };
-  }, [model.slide.order, model.slide.base, onChatOverflowChange, renderMode]);
+  }, [fontsReady, model.slide.order, model.slide.base, onChatOverflowChange, renderMode]);
   if (model.slide.base.kind !== "chat_bubble") return null;
   const { cover, bubbles } = model.slide.base;
   const profileUrl = model.brand.profile_image_asset_id ? model.assetUrls[model.brand.profile_image_asset_id] : undefined;
@@ -180,7 +184,7 @@ function ChatBubbleBase({ model, renderMode, onChatOverflowChange }: { model: Ca
   );
 }
 
-export function CardSlideScene({ model, renderMode, onChatOverflowChange }: CardSlideSceneProps) {
+export function CardSlideScene({ model, renderMode, onChatOverflowChange, fontsReady }: CardSlideSceneProps) {
   const background = model.slide.background;
   const hasPhoto = background.kind === "image";
   const isChatSlide = model.slide.base.kind === "chat_bubble";
@@ -206,7 +210,7 @@ export function CardSlideScene({ model, renderMode, onChatOverflowChange }: Card
         ? <Img className={styles.backgroundImage} src={backgroundUrl} alt="" />
         : <DeliveredMedia className={styles.backgroundImage} src={backgroundUrl} type="image" alt="" /> : null}
       {backgroundUrl && background.kind === "image" && background.overlay ? <span className={styles.backgroundOverlay} aria-hidden="true" /> : null}
-      {model.slide.base.kind === "chat_bubble" ? <ChatBubbleBase model={model} renderMode={renderMode} onChatOverflowChange={onChatOverflowChange} /> : null}
+      {model.slide.base.kind === "chat_bubble" ? <ChatBubbleBase model={model} renderMode={renderMode} onChatOverflowChange={onChatOverflowChange} fontsReady={fontsReady} /> : null}
       {elements.length === 0 && model.slide.base.kind === "plain" ? (
         <div className={styles.baseFallback}>{model.slide.base.lines.join("\n")}</div>
       ) : null}
