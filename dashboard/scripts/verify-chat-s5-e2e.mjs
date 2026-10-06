@@ -196,7 +196,12 @@ try {
   const currentOverlay = serverDeck.slides[1].elements.find((element) => element.id === "s5-preserved-logo");
   if (JSON.stringify(currentOverlay) !== JSON.stringify(preservedOverlay)) throw new Error("기본 편집 중 v3 덧붙임 요소가 바뀌었습니다");
 
-  const viewports = [{ width: 1440, height: 1000 }, { width: 1024, height: 900 }, { width: 390, height: 844 }];
+  const viewports = [
+    { width: 360, height: 800 }, { width: 390, height: 844 }, { width: 412, height: 915 },
+    { width: 600, height: 900 }, { width: 700, height: 1000 }, { width: 780, height: 1000 },
+    { width: 820, height: 1100 }, { width: 900, height: 1100 }, { width: 1000, height: 1200 },
+    { width: 1440, height: 1000 },
+  ];
   const responsive = [];
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);

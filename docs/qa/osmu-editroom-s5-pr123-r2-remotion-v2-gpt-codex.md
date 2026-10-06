@@ -10,7 +10,7 @@ STAMP: 2026-10-06 22:32 KST | model=gpt-codex | agent=code-builder | skill=없�
 - 결과: PASS. 9장, 저장 4회, 브라우저 console error 0, failed request 0.
 - 고급 편집 보존: 운영 렌더 스위치가 켜진 상태에서도 카톡 덱 자유 배치 진입 0건, 기존 고급 편집 도구 노출 확인.
 - 덧붙임 보존: 저장된 v3 로고 요소 deep equality 유지.
-- 반응형 가로 넘침: 1440px 0, 1024px 0, 390px 0.
+- 반응형 가로 넘침: 360·390·412·600·700·780·820·900·1000·1440px 전부 0.
 - 넘침 거절: 실제 Remotion 렌더가 `CARD_CHAT_OVERFLOW: 2번 장 말풍선이 카드보다 깁니다. 쪼개세요.`로 실패했다. 실패 파일은 생성되지 않았다.
 
 ## PNG 직접 확인
