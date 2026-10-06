@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { dataPath, readJson } from "@/lib/file-io";
 import { FFMPEG_BIN } from "@/lib/higgsfield";
-import { resolveGeneratedFile } from "@/lib/storage";
+import { resolveGeneratedFile, tenantMediaDir } from "@/lib/storage";
 import type { VideoEdit } from "./video-edit-contract";
 
 const execFileP = promisify(execFile);
@@ -18,6 +19,9 @@ const BUILTIN_MUSIC: Record<string, { frequencies: [number, number]; tempo: numb
   "warm-story": { frequencies: [196, 294], tempo: 0.09 },
   "clean-drive": { frequencies: [247, 370], tempo: 0.18 },
 };
+
+// TODO(S6-LICENSED-MUSIC): 운영 배포 전에 라이선스가 검증된 실제 음원 5곡으로 교체한다.
+// 현재 카탈로그는 기능·믹싱 검증용 결정적 사인파이며 고객 출고용 음악 자산이 아니다.
 
 export class VideoRenderAssetError extends Error {
   constructor(readonly code: string, message: string) { super(message); }
@@ -50,16 +54,26 @@ export async function resolveRenderMusic(edit: VideoEdit, tenantId: string, tmpD
 }
 
 /** 선택한 목소리로 현재 남은 자막 원문을 합성한다. 실패하면 원본 음성을 조용히 내보내지 않는다. */
-export async function renderSelectedVoice(edit: VideoEdit, script: string, outputPath: string): Promise<string | null> {
+export async function renderSelectedVoice(edit: VideoEdit, script: string, outputPath: string, tenantId: string): Promise<string | null> {
   if (!edit.voice) return null;
-  if (!script.trim()) throw new VideoRenderAssetError("VIDEO_VOICE_SCRIPT_EMPTY", "바꿀 목소리의 대본이 비어 있습니다.");
+  const normalizedScript = script.trim();
+  if (!normalizedScript) throw new VideoRenderAssetError("VIDEO_VOICE_SCRIPT_EMPTY", "바꿀 목소리의 대본이 비어 있습니다.");
   const config = readJson<ElevenLabsConfig>(dataPath("elevenlabs-config.json")) || {};
   if (!config.apiKey) throw new VideoRenderAssetError("VIDEO_VOICE_NOT_CONFIGURED", "음성 서비스 설정이 없어 목소리를 바꾸지 못했습니다.");
+  const cacheKey = crypto.createHash("sha256")
+    .update(JSON.stringify({ version: 1, voiceId: edit.voice.voiceId, script: normalizedScript, model: "eleven_multilingual_v2", stability: 0.5, similarityBoost: 0.75 }))
+    .digest("hex");
+  const cacheDir = path.join(tenantMediaDir(tenantId), ".voice-cache");
+  const cachePath = path.join(cacheDir, `${cacheKey}.mp3`);
+  if (fs.existsSync(cachePath) && fs.statSync(cachePath).size > 0) {
+    fs.copyFileSync(cachePath, outputPath);
+    return outputPath;
+  }
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(edit.voice.voiceId)}`, {
     method: "POST",
     headers: { "xi-api-key": config.apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
-      text: script,
+      text: normalizedScript,
       model_id: "eleven_multilingual_v2",
       voice_settings: { stability: 0.5, similarity_boost: 0.75 },
     }),
@@ -68,6 +82,10 @@ export async function renderSelectedVoice(edit: VideoEdit, script: string, outpu
   if (!response.ok) throw new VideoRenderAssetError("VIDEO_VOICE_RENDER_FAILED", "선택한 목소리를 만들지 못했습니다.");
   const buffer = Buffer.from(await response.arrayBuffer());
   if (!buffer.length) throw new VideoRenderAssetError("VIDEO_VOICE_RENDER_FAILED", "음성 결과가 비어 있습니다.");
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const temporaryCachePath = path.join(cacheDir, `.${cacheKey}.${crypto.randomBytes(6).toString("hex")}.tmp`);
+  fs.writeFileSync(temporaryCachePath, buffer);
+  fs.renameSync(temporaryCachePath, cachePath);
   fs.writeFileSync(outputPath, buffer);
   return outputPath;
 }

@@ -50,7 +50,7 @@ export async function renderVideoExport(tenantId: string, request: VideoRenderRe
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "video-export-assets-"));
     try {
       const musicPath = await resolveRenderMusic(edit, tenantId, tmpDir, plan.outputDurationSec);
-      const voicePath = await renderSelectedVoice(edit, edit.subtitles.filter((line) => !line.cut).map((line) => line.text.trim()).filter(Boolean).join(". "), path.join(tmpDir, "voice.mp3"));
+      const voicePath = await renderSelectedVoice(edit, edit.subtitles.filter((line) => !line.cut).map((line) => line.text.trim()).filter(Boolean).join(". "), path.join(tmpDir, "voice.mp3"), tenantId);
       const args = playbackFfmpegArgs(plan, { inputPath, outputPath, musicPath, voicePath });
       if (!args) throw new Error("VIDEO_RENDER_ARGS_EMPTY");
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });

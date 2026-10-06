@@ -282,6 +282,7 @@ export async function POST(request: Request) {
         alignedEdit,
         alignedEdit.subtitles.filter((line) => !line.cut).map((line) => line.text.trim()).filter(Boolean).join(". "),
         path.join(renderTmpDir, "voice.mp3"),
+        tenantId,
       );
     } catch (error) {
       const assetError = error instanceof VideoRenderAssetError ? error : null;
