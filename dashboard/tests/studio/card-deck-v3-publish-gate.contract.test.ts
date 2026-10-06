@@ -115,7 +115,8 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(source).toContain('cardDeckV3DetailStatusRef.current = "loading"');
     expect(source).toContain('cardDeckV3DetailStatusRef.current = "error"');
     expect(source).toContain("if (rejectWhileCardDeckV3DetailPending()) return;");
-    expect(source).toContain("cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck?.template === \"chat_bubble\"");
+    expect(source).toContain("cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck ? null");
+    expect(source).not.toContain("말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어");
     expect(source).toContain("disabled={cardDeckV3PublishBlocked");
     expect(source).toContain("onRetryCardDeckV3Detail={cardDeckV3DetailStatus === \"error\" ? retryCardDeckV3Detail : undefined}");
     expect(source).toContain("void loadDraftDetail(linkedDraft)");

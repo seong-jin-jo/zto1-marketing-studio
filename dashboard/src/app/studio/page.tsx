@@ -4215,9 +4215,7 @@ export default function StudioPage() {
       textEmbedded: img?.textEmbedded === true,
     })) return;
     if (rejectWhileCardDeckV3DetailPending()) return;
-    const blockedReason = cardDeck?.template === "chat_bubble"
-      ? "말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어 기본 편집만 지원합니다."
-      : cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines);
+    const blockedReason = cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines);
     if (blockedReason) {
       showToast(blockedReason, "error");
       return;
@@ -4485,9 +4483,7 @@ export default function StudioPage() {
           cardDeckTemplate: cardDeck?.template ?? null,
           textEmbedded: img?.textEmbedded === true,
         }) ? startCardDeckV3 : undefined}
-        cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck?.template === "chat_bubble"
-          ? "말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어 기본 편집만 지원합니다."
-          : cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines))}
+        cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines))}
         onRetryCardDeckV3Detail={cardDeckV3DetailStatus === "error" ? retryCardDeckV3Detail : undefined}
         onReturnFromCardDeckV3={() => { void returnFromCardDeckV3(); }}
         videoEdit={videoEdit}

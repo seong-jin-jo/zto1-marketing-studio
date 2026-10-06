@@ -63,7 +63,7 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
   });
 
-  it("S2-R2-M2 말풍선 카드는 flag on이어도 무손실 이관 전까지 진입을 막고 사유를 보여준다", () => {
+  it("S5-AC4 말풍선 카드는 flag on이면 원형을 보존한 자유 배치로 진입한다", () => {
     const onStart = vi.fn();
     render(<EditRoom
       kind="card"
@@ -72,10 +72,9 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
       cardDeck={chatBubbleDeck as CardDeck}
       onCardDeckChange={() => {}}
       onStartCardDeckV3={onStart}
-      cardDeckV3EntryBlockedReason="말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어 기본 편집만 지원합니다."
     />);
-    expect(screen.getByRole("button", { name: "자유 배치로 편집" })).toBeDisabled();
-    expect(screen.getByText("말풍선 카드는 아직 자유 배치로 옮기면 모양이 바뀌어 기본 편집만 지원합니다.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "자유 배치로 편집" }));
+    expect(onStart).toHaveBeenCalledTimes(1);
   });
 
   it("S2-A 복구 불가 AI 카드는 버튼을 숨기지 않고 비활성 사유를 보여준다", () => {
