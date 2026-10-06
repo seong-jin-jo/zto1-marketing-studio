@@ -16,7 +16,11 @@ import styles from "./CardSlideScene.module.css";
 export interface CardSlideSceneProps {
   model: CardSlideRenderModel;
   renderMode: "editor" | "export";
+  onChatOverflowChange?: (overflow: boolean) => void;
+  fontsReady?: Promise<unknown>;
 }
+
+const IMMEDIATELY_READY_FONTS = Promise.resolve();
 
 function verticalAlignment(value: TextElement["style"]["vertical_align"]): "flex-start" | "center" | "flex-end" {
   return value === "top" ? "flex-start" : value === "bottom" ? "flex-end" : "center";
@@ -66,9 +70,13 @@ export function assertChatListFits(
   element: Pick<HTMLElement, "clientHeight" | "scrollHeight">,
   slideOrder: number,
 ): void {
-  if (element.scrollHeight > element.clientHeight + 1) {
+  if (chatListOverflows(element)) {
     throw new Error(`CARD_CHAT_OVERFLOW: ${slideOrder + 1}번 장 말풍선이 카드보다 깁니다. 쪼개세요.`);
   }
+}
+
+export function chatListOverflows(element: Pick<HTMLElement, "clientHeight" | "scrollHeight">): boolean {
+  return element.scrollHeight > element.clientHeight + 1;
 }
 
 export async function assertChatListFitsAfterFonts(
@@ -80,13 +88,28 @@ export async function assertChatListFitsAfterFonts(
   assertChatListFits(element, slideOrder);
 }
 
-function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; renderMode: CardSlideSceneProps["renderMode"] }) {
+function ChatBubbleBase({ model, renderMode, onChatOverflowChange, fontsReady }: {
+  model: CardSlideRenderModel;
+  renderMode: CardSlideSceneProps["renderMode"];
+  onChatOverflowChange?: CardSlideSceneProps["onChatOverflowChange"];
+  fontsReady?: CardSlideSceneProps["fontsReady"];
+}) {
   const chatListRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
-    if (renderMode !== "export" || !chatListRef.current) return;
-    const renderHandle = delayRender(`카톡 ${model.slide.order + 1}번 장 폰트·넘침 확인`);
+    if (!chatListRef.current) {
+      onChatOverflowChange?.(false);
+      return;
+    }
     const chatList = chatListRef.current;
-    const fontsReady = document.fonts?.ready ?? Promise.resolve();
+    const ready = fontsReady ?? document.fonts?.ready ?? IMMEDIATELY_READY_FONTS;
+    if (renderMode === "editor") {
+      let disposed = false;
+      void ready.then(() => {
+        if (!disposed) onChatOverflowChange?.(chatListOverflows(chatList));
+      });
+      return () => { disposed = true; };
+    }
+    const renderHandle = delayRender(`카톡 ${model.slide.order + 1}번 장 폰트·넘침 확인`);
     let settled = false;
     let disposed = false;
     const finish = () => {
@@ -94,7 +117,7 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
       settled = true;
       continueRender(renderHandle);
     };
-    void assertChatListFitsAfterFonts(chatList, model.slide.order, fontsReady)
+    void assertChatListFitsAfterFonts(chatList, model.slide.order, ready)
       .then(() => {
         if (!disposed) finish();
       })
@@ -107,7 +130,7 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
       disposed = true;
       finish();
     };
-  }, [model.slide.order, model.slide.base, renderMode]);
+  }, [fontsReady, model.slide.order, model.slide.base, onChatOverflowChange, renderMode]);
   if (model.slide.base.kind !== "chat_bubble") return null;
   const { cover, bubbles } = model.slide.base;
   const profileUrl = model.brand.profile_image_asset_id ? model.assetUrls[model.brand.profile_image_asset_id] : undefined;
@@ -133,18 +156,18 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
           const showBrandIdentity = bubble.speaker === "brand"
             && orderedBubbles[bubbleIndex - 1]?.speaker !== "brand";
           return (
-            <div key={bubble.id} className={`${styles.chatRow} ${bubble.speaker === "reader" ? styles.readerRow : styles.brandRow}`} data-chat-bubble={bubble.id}>
+            <div key={bubble.id} className={`${styles.chatRow} ${bubble.speaker === "reader" ? styles.readerRow : styles.brandRow}`} data-chat-bubble={bubble.id} data-chat-speaker={bubble.speaker}>
               {showBrandIdentity ? <span className={styles.chatAvatar} aria-hidden="true">
                 {profileUrl
                   ? renderMode === "export"
-                    ? <Img className={styles.chatAvatarMedia} src={profileUrl} alt="" />
-                    : <DeliveredMedia className={styles.chatAvatarMedia} src={profileUrl} type="image" alt="" />
+                    ? <Img className={styles.chatAvatarMedia} src={profileUrl} alt="" data-chat-avatar="media" />
+                    : <DeliveredMedia className={styles.chatAvatarMedia} src={profileUrl} type="image" alt="" dataAttr={{ "data-chat-avatar": "media" }} />
                   : model.brand.display_name.slice(0, 2)}
               </span> : null}
               <div className={styles.chatColumn}>
                 {showBrandIdentity ? <span className={styles.chatName} data-chat-speaker-name>{model.brand.display_name}</span> : null}
                 <div className={styles.chatBubbleLine}>
-                  <div className={styles.chatBubble}><BubbleText bubble={bubble} /></div>
+                  <div className={styles.chatBubble} data-chat-bubble-text><BubbleText bubble={bubble} /></div>
                   <time className={styles.chatTime}>오후 9:20</time>
                 </div>
                 {bubble.reaction ? <span className={styles.chatReaction} aria-label="좋아요">♥</span> : null}
@@ -161,7 +184,7 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
   );
 }
 
-export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
+export function CardSlideScene({ model, renderMode, onChatOverflowChange, fontsReady }: CardSlideSceneProps) {
   const background = model.slide.background;
   const hasPhoto = background.kind === "image";
   const isChatSlide = model.slide.base.kind === "chat_bubble";
@@ -187,7 +210,7 @@ export function CardSlideScene({ model, renderMode }: CardSlideSceneProps) {
         ? <Img className={styles.backgroundImage} src={backgroundUrl} alt="" />
         : <DeliveredMedia className={styles.backgroundImage} src={backgroundUrl} type="image" alt="" /> : null}
       {backgroundUrl && background.kind === "image" && background.overlay ? <span className={styles.backgroundOverlay} aria-hidden="true" /> : null}
-      {model.slide.base.kind === "chat_bubble" ? <ChatBubbleBase model={model} renderMode={renderMode} /> : null}
+      {model.slide.base.kind === "chat_bubble" ? <ChatBubbleBase model={model} renderMode={renderMode} onChatOverflowChange={onChatOverflowChange} fontsReady={fontsReady} /> : null}
       {elements.length === 0 && model.slide.base.kind === "plain" ? (
         <div className={styles.baseFallback}>{model.slide.base.lines.join("\n")}</div>
       ) : null}

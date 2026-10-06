@@ -3,23 +3,39 @@ import type { CardDeckV3 } from "./card-element-contract";
 import {
   addCardElement,
   addChatOverlayElement,
+  addChatBubble,
+  addChatSlide,
+  clearChatSlideBackgroundImage,
   commitCardCommand,
   createCardCommandHistory,
   createRecoverableEmbeddedCardDeckV3,
   createPlainCardDeckV3,
   deleteCardElement,
+  deleteChatBubble,
+  deleteChatSlide,
   duplicateCardElement,
+  duplicateChatSlide,
   moveCardElement,
   moveCardElementLayer,
+  moveChatBubble,
+  moveChatBubbleToSlide,
+  moveChatSlide,
   nudgeCardElement,
   patchTextElement,
   patchChatBubbleText,
+  patchChatDeckBrand,
   redoCardCommand,
   resizeCardElement,
   rotateCardElement,
   setCardElementGeometry,
   snapCardElementPosition,
+  swapChatSpeakers,
+  setChatSlideBackgroundImage,
+  splitChatSlideAtBubble,
+  splitChatSlideAtBubbleOffset,
   plainCardDeckV3EntryBlockReason,
+  toggleChatBubbleBold,
+  toggleChatBubbleBoldRange,
   toggleCardElementFlag,
   undoCardCommand,
 } from "./card-element-commands";
@@ -96,7 +112,7 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     expect(other.guides).toContainEqual({ axis: "x", value: 100, source: "element" });
   });
 
-  it("S5-R1-M4 말풍선 직접 편집은 원형과 v2 projection을 한 revision에서 함께 바꾼다", () => {
+  it("S5b-AC1 말풍선 직접 편집은 base를 바꾸고 옛 projection을 정리한다", () => {
     const chat = deck();
     chat.template = "chat_bubble";
     chat.slides[0].base = {
@@ -113,8 +129,135 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     const changed = patchChatBubbleText(chat, "slide_cover", "bubble_reader", "직접 고친 말풍선");
     expect(changed.revision).toBe(chat.revision + 1);
     expect(changed.slides[0].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ segments: [{ text: "직접 고친 말풍선", bold: true }] }] });
-    expect(changed.slides[0].elements[0]).toMatchObject({ text: "직접 고친 말풍선" });
+    expect(changed.slides[0].elements).toEqual([]);
     expect(() => patchChatBubbleText(changed, "slide_cover", "bubble_reader", " ")).toThrow("CARD_CHAT_BUBBLE_TEXT_REQUIRED");
+  });
+
+  it("S5b-AC1 고급 도구는 순서·화자·굵기·추가·삭제를 한 덱에서 보존한다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides[0].base = {
+      kind: "chat_bubble", cover: null,
+      bubbles: [
+        { id: "bubble_a", order: 0, speaker: "brand", segments: [{ text: "첫째", bold: false }], reaction: null },
+        { id: "bubble_b", order: 1, speaker: "reader", segments: [{ text: "둘째", bold: false }], reaction: null },
+      ],
+    };
+    const moved = moveChatBubble(chat, "slide_cover", "bubble_b", -1);
+    const swapped = swapChatSpeakers(moved, "slide_cover");
+    const bold = toggleChatBubbleBold(swapped, "slide_cover", "bubble_b");
+    const added = addChatBubble(bold, "slide_cover", "bubble_c");
+    const deleted = deleteChatBubble(added, "slide_cover", "bubble_a");
+    const base = deleted.slides[0].base;
+    if (base.kind !== "chat_bubble") throw new Error("fixture");
+    expect(base.bubbles.map((bubble) => [bubble.id, bubble.order, bubble.speaker, bubble.segments.every((segment) => segment.bold)])).toEqual([
+      ["bubble_b", 0, "brand", true],
+      ["bubble_c", 1, "brand", false],
+    ]);
+  });
+
+  it("S5b-R1-M3 말풍선은 본문 장으로만 이동하고 표지·CTA 이동은 거절한다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides = [
+      { ...chat.slides[0], base: { kind: "chat_bubble", cover: { headline: "표지", sub: null }, bubbles: [] } },
+      {
+        ...structuredClone(chat.slides[0]), id: "slide_body", order: 1, role: "body",
+        base: {
+          kind: "chat_bubble", cover: null,
+          bubbles: [
+            { id: "bubble_a", order: 0, speaker: "brand", segments: [{ text: "첫째", bold: false }], reaction: null },
+            { id: "bubble_b", order: 1, speaker: "reader", segments: [{ text: "둘째", bold: false }], reaction: null },
+          ],
+        },
+      },
+      { ...chat.slides[1], order: 2, base: { kind: "chat_bubble", cover: null, bubbles: [] } },
+    ];
+
+    expect(() => moveChatBubbleToSlide(chat, "slide_body", "bubble_a", "slide_cover")).toThrow("OPS_BUBBLE_TARGET_LOCKED");
+    expect(() => moveChatBubbleToSlide(chat, "slide_body", "bubble_a", "slide_cta")).toThrow("OPS_BUBBLE_TARGET_LOCKED");
+    expect(chat.slides[1].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ id: "bubble_a" }, { id: "bubble_b" }] });
+  });
+
+  it("S5b-R1-M2 v3 장 추가·복제·순서·삭제와 표지 사진을 원형·overlay 손실 없이 바꾼다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides = [
+      { ...chat.slides[0], base: { kind: "chat_bubble", cover: { headline: "표지", sub: null }, bubbles: [] } },
+      { ...structuredClone(chat.slides[0]), id: "body_a", order: 1, role: "body", base: { kind: "chat_bubble", cover: null, bubbles: [{ id: "a", order: 0, speaker: "brand", segments: [{ text: "원문", bold: false }], reaction: null }] }, elements: [
+        { ...createPlainCardDeckV3(["가", "나"], [], "seed").slides[0].elements[0], id: "overlay" },
+        { ...createPlainCardDeckV3(["가", "나"], [], "legacy").slides[0].elements[0], id: "el_removed-bubble" },
+      ] },
+      { ...structuredClone(chat.slides[0]), id: "body_b", order: 2, role: "body", base: { kind: "chat_bubble", cover: null, bubbles: [{ id: "b", order: 0, speaker: "reader", segments: [{ text: "둘째", bold: false }], reaction: null }] } },
+      { ...chat.slides[1], order: 3, base: { kind: "chat_bubble", cover: null, bubbles: [] } },
+    ];
+    const withPhoto = setChatSlideBackgroundImage(chat, "slide_cover", "cover.png");
+    const added = addChatSlide(withPhoto, "body_a");
+    const duplicated = duplicateChatSlide(added, "body_a");
+    const moved = moveChatSlide(duplicated, duplicated.slides[2].id, 1);
+    const padding = Array.from({ length: 3 }, (_, index) => ({ ...structuredClone(moved.slides[1]), id: `padding_${index}` }));
+    const padded = { ...moved, slides: [...moved.slides.slice(0, -1), ...padding, moved.slides.at(-1)!].map((slide, order) => ({ ...slide, order })) };
+    const deleted = deleteChatSlide(padded, moved.slides[2].id);
+    expect(withPhoto.slides[0].background).toMatchObject({ kind: "image", asset_id: "cover.png" });
+    const duplicatedSlide = duplicated.slides[2];
+    expect(duplicatedSlide.elements).toHaveLength(1);
+    expect(duplicatedSlide.elements[0].id).toContain("_el_");
+    expect(duplicatedSlide.elements[0].id).not.toContain("removed-bubble");
+    expect(deleted.slides.map((slide) => slide.order)).toEqual(deleted.slides.map((_, index) => index));
+    expect(() => moveChatSlide(chat, "body_a", -1)).toThrow("OPS_SLIDE_LOCKED");
+  });
+
+  it("S5b-R2-MINOR 표지·마지막 사진을 빼고 본문에서는 사진 제거를 거절한다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides = [
+      { ...chat.slides[0], base: { kind: "chat_bubble", cover: { headline: "표지", sub: null }, bubbles: [] } },
+      { ...structuredClone(chat.slides[0]), id: "body", order: 1, role: "body", base: { kind: "chat_bubble", cover: null, bubbles: [] } },
+      { ...chat.slides[1], order: 2, base: { kind: "chat_bubble", cover: null, bubbles: [] } },
+    ];
+    const withCover = setChatSlideBackgroundImage(chat, "slide_cover", "cover.png");
+    const withBoth = setChatSlideBackgroundImage(withCover, "slide_cta", "final.png");
+    const cleared = clearChatSlideBackgroundImage(clearChatSlideBackgroundImage(withBoth, "slide_cover"), "slide_cta");
+    expect(cleared.slides[0].background).toEqual({ kind: "solid", color: chat.theme.background });
+    expect(cleared.slides[2].background).toEqual({ kind: "solid", color: chat.theme.background });
+    expect(() => clearChatSlideBackgroundImage(withBoth, "body")).toThrow("OPS_NOT_COVER_OR_CTA_SLIDE");
+  });
+
+  it("S5b-R2-MINOR 새 덧붙임 요소는 카톡 머리글과 말풍선 원형을 피한 빈 영역에 놓인다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides[0] = {
+      ...chat.slides[0], role: "body", base: {
+        kind: "chat_bubble", cover: null,
+        bubbles: [{ id: "bubble_base", order: 0, speaker: "brand", segments: [{ text: "원형 말풍선", bold: false }], reaction: null }],
+      },
+    };
+    const added = addChatOverlayElement(chat, "slide_cover", "logo", { id: "overlay-logo" });
+    const overlay = added.slides[0].elements.find((element) => element.id === "overlay-logo")!;
+    expect(overlay.y).toBeGreaterThanOrEqual(300);
+  });
+
+  it("S5b-R1-M2 범위 굵기·장 분할은 구조를 보존하고 두 번째 굵은 덩이를 거절한다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides = Array.from({ length: 7 }, (_, index) => ({
+      ...structuredClone(chat.slides[index === 0 ? 0 : 1]), id: `slide_${index}`, order: index,
+      role: index === 0 ? "cover" as const : index === 6 ? "cta" as const : "body" as const,
+      base: { kind: "chat_bubble" as const, cover: index === 0 ? { headline: "표지", sub: null } : null, bubbles: index === 1 ? [
+        { id: "bubble_a", order: 0, speaker: "brand" as const, segments: [{ text: "첫째 문장", bold: false }], reaction: null },
+        { id: "bubble_b", order: 1, speaker: "reader" as const, segments: [{ text: "둘째", bold: false }], reaction: null },
+      ] : [] }, elements: [],
+    }));
+    const bold = toggleChatBubbleBoldRange(chat, "slide_1", "bubble_a", { from: 0, to: 2 });
+    expect(bold.slides[1].base.kind === "chat_bubble" ? bold.slides[1].base.bubbles[0].segments : []).toEqual([{ text: "첫째", bold: true }, { text: " 문장", bold: false }]);
+    expect(() => toggleChatBubbleBoldRange(bold, "slide_1", "bubble_b", { from: 0, to: 2 })).toThrow("OPS_BOLD_LIMIT");
+    const split = splitChatSlideAtBubble(bold, "slide_1", 1);
+    expect(split.slides).toHaveLength(8);
+    expect(split.slides[1].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ id: "bubble_a" }] });
+    expect(split.slides[2].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ id: "bubble_b" }] });
+    const offsetSplit = splitChatSlideAtBubbleOffset(chat, "slide_1", 0, 2);
+    expect(offsetSplit.slides[1].base.kind === "chat_bubble" ? offsetSplit.slides[1].base.bubbles[0].segments.map((segment) => segment.text).join("") : "").toBe("첫째");
+    expect(offsetSplit.slides[2].base.kind === "chat_bubble" ? offsetSplit.slides[2].base.bubbles[0].segments.map((segment) => segment.text).join("") : "").toBe(" 문장");
   });
 
   it("S1-AC5 정상 경로: 키보드 이동, 복제, 삭제, undo와 redo가 같은 덱을 복원한다", () => {
@@ -143,10 +286,28 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     const chat = deck();
     chat.template = "chat_bubble";
     chat.slides[0].base = { kind: "chat_bubble", cover: { headline: "첫 장", sub: null }, bubbles: [] };
+    chat.slides[0].elements = [{
+      id: "el_orphan-old", type: "text", name: "브랜드 말풍선", x: 0, y: 0, width: 100, height: 100,
+      rotation: 0, z_index: 0, opacity: 1, locked: false, hidden: false, text: "옛 projection",
+      style: { font_family: "Pretendard Variable", font_size: 32, font_weight: 500, line_height: 1.2, letter_spacing: 0, color: "#111111", align: "left", vertical_align: "middle" },
+    }];
     const added = addChatOverlayElement(chat, "slide_cover", "logo", { id: "chat_logo" });
     expect(added.slides[0].base).toEqual(chat.slides[0].base);
-    expect(added.slides[0].elements).toMatchObject([{ id: "chat_logo", type: "logo" }]);
+    expect(added.slides[0].elements).toMatchObject([{ id: "chat_logo", type: "logo", z_index: 0 }]);
     expect(addChatOverlayElement(deck(), "slide_cover", "logo", { id: "rejected_logo" })).toEqual(deck());
+  });
+
+  it("S5b-R1-MINOR 새 글은 테마 전경색과 겹치지 않는 빈 영역을 쓰고 빈 독자 이름은 구독자로 정규화한다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.theme.foreground = "#F9FAFB";
+    chat.slides[0].base = { kind: "chat_bubble", cover: { headline: "첫 장", sub: null }, bubbles: [] };
+    const first = addChatOverlayElement(chat, "slide_cover", "text", { id: "el_text_first" });
+    const second = addChatOverlayElement(first, "slide_cover", "text", { id: "el_text_second" });
+    const [firstText, secondText] = second.slides[0].elements;
+    expect(firstText.type === "text" ? firstText.style.color : null).toBe("#F9FAFB");
+    expect([firstText.x, firstText.y]).not.toEqual([secondText.x, secondText.y]);
+    expect(patchChatDeckBrand(second, { reader_name: "   " }).brand.reader_name).toBe("구독자");
   });
 
   it("S1-R3-BOUNDS-01 끌기와 방향키 이동 뒤에도 장과 최소 1px 교차한다", () => {

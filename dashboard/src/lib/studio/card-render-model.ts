@@ -45,7 +45,11 @@ export function cardSlideRenderModel(
 export function isChatBaseProjectionElement(slide: CardSlideV3, element: CardElement): boolean {
   if (slide.base.kind !== "chat_bubble" || element.type !== "text") return false;
   if (element.id === `el_${slide.id}_cover` || element.id === `el_${slide.id}_sub`) return true;
-  return slide.base.bubbles.some((bubble) => element.id === `el_${bubble.id}`);
+  if (slide.base.bubbles.some((bubble) => element.id === `el_${bubble.id}`)) return true;
+  // converter v1은 원형 projection을 `el_<원본 id>` namespace로 만들었고, 자유 글은
+  // `el_text_<uuid>` namespace로 만든다. 사용자에게 보이는 name 정규식에 기대지 않고
+  // 이 구조적 ID 계약으로 삭제·이동 뒤 고아 projection과 그 복사본을 제외한다.
+  return element.id.startsWith("el_") && !element.id.startsWith("el_text_");
 }
 
 export function visibleCardElements(model: CardSlideRenderModel): CardElement[] {

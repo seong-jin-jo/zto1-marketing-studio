@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { CardCanvasEditor } from "./CardCanvasEditor";
+import { migrateCardDeckV2ToV3 } from "@/lib/studio/card-deck-v2-to-v3";
+import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import chatDeckFixture from "../../../../tests/studio/fixtures/deck-d100.v2.json";
 
 afterEach(() => cleanup());
 
@@ -25,6 +28,120 @@ function deck(): CardDeckV3 {
 }
 
 describe("CardCanvasEditor S1 자유 배치", () => {
+  it("S5b-R2-A 카톡 장 도구를 미리보기 열 안에 두고 3열 workspace 구조를 보존한다", () => {
+    const current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    render(<CardCanvasEditor deck={current} onDeckChange={() => {}} />);
+
+    const toolbar = screen.getByRole("toolbar", { name: "카톡 장 편집 도구" });
+    const stageColumn = toolbar.parentElement;
+    expect(stageColumn).toHaveAttribute("data-card-stage-column");
+    expect(within(stageColumn!).getByLabelText("카드 편집 스테이지")).toBeInTheDocument();
+    expect(document.querySelector("[data-card-right-panel]")).toBeInTheDocument();
+  });
+
+  it("S5b-R4-C 댓글 유도 장은 삭제 버튼을 잠그고 원본 역할을 유지한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const current = migrateCardDeckV2ToV3(source);
+    const commentPrompt = current.slides.find((slide) => slide.role === "comment_prompt")!;
+    render(<CardCanvasEditor deck={current} sourceDeck={source} onDeckChange={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: `${commentPrompt.order + 1}장` }));
+
+    expect(screen.getByRole("button", { name: "이 장 삭제" })).toBeDisabled();
+    expect(current.slides.find((slide) => slide.id === commentPrompt.id)?.role).toBe("comment_prompt");
+  });
+
+  it("S5b-R2-MINOR 발행 장면 실측은 넘침을 안내만 하고 undo history 밖에서 자동 commit하지 않는다", async () => {
+    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    const scrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 100 });
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 200 });
+    try {
+      const current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+      const onChange = vi.fn();
+      render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+      fireEvent.click(screen.getByRole("button", { name: "2장" }));
+      await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("발행 장면 기준으로 대화가 넘칩니다"));
+      expect(onChange).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "넘침을 다음 장으로 나누기" })).toBeInTheDocument();
+    } finally {
+      if (clientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeight);
+      if (scrollHeight) Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeight);
+    }
+  });
+
+  it("S5b-R2-MINOR 사진이 있는 표지에서 배경 사진 빼기를 실행한다", () => {
+    let current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    current.slides[0].background = { kind: "image", asset_id: "cover.png", crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" };
+    const onChange = (next: CardDeckV3) => { current = next; };
+    render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "사진 빼기" }));
+    expect(current.slides[0].background).toEqual({ kind: "solid", color: current.theme.background });
+  });
+
+  it("S5b-AC1 고급 화자 도구와 undo를 같은 v3 화면에서 실행한다", () => {
+    let current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    const original = structuredClone(current);
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(screen.getByLabelText("카톡 대화 고급 편집 도구")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "덱 전체 화자 서로 바꾸기" }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(current.slides[1].base).not.toEqual(original.slides[1].base);
+    fireEvent.click(screen.getByRole("button", { name: "실행 취소" }));
+    expect(current).toEqual(original);
+  });
+
+  it("S5b-R1-M3 이동 대상에는 본문 장만 노출하고 표지·CTA는 숨긴다", () => {
+    const current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    render(<CardCanvasEditor deck={current} onDeckChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "3장" }));
+    expect(screen.queryByRole("button", { name: "1장으로" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: `${current.slides.length}장으로` })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /장으로$/ }).length).toBeGreaterThan(0);
+  });
+
+  it("S5b-R1-M2 표지·장·범위 굵기·분할 도구를 v3 한 화면에서 실행한다", () => {
+    let current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(screen.getByLabelText("표지 문구 편집")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "배경 사진 고르기" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("표지 제목"), { target: { value: "고친 표지" } });
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(current.slides[0].base).toMatchObject({ kind: "chat_bubble", cover: { headline: "고친 표지" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "3장" }));
+    const firstText = screen.getByLabelText("1번째 말풍선 내용") as HTMLTextAreaElement;
+    const boldButton = within(firstText.closest("article")!).getByRole("button", { name: "선택 굵게" });
+    act(() => fireEvent.select(firstText, { target: { selectionStart: 0, selectionEnd: 2 } }));
+    act(() => {
+      fireEvent.mouseDown(boldButton);
+      fireEvent.click(boldButton);
+      view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    });
+    expect(current.slides[2].base.kind === "chat_bubble" && current.slides[2].base.bubbles[0].segments.some((segment) => segment.bold)).toBe(true);
+
+    const before = current.slides.length;
+    fireEvent.click(screen.getByRole("button", { name: "이 장 복제" }));
+    expect(current.slides).toHaveLength(before + 1);
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(screen.getByRole("button", { name: "장 앞으로" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "넘침을 다음 장으로 나누기" })).toBeInTheDocument();
+  });
+
+  it("S5b-AC2 카톡 장에 글·스티커·로고를 추가하고 undo로 마지막 요소만 되돌린다", () => {
+    let current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    for (const label of ["글 추가", "스티커 추가", "로고 추가"]) {
+      fireEvent.click(screen.getByRole("button", { name: label }));
+      view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    }
+    expect(current.slides[0].elements.map((element) => element.type)).toEqual(["text", "sticker", "logo"]);
+    fireEvent.click(screen.getByRole("button", { name: "실행 취소" }));
+    expect(current.slides[0].elements.map((element) => element.type)).toEqual(["text", "sticker"]);
+  });
   it("S1-AC2 정상 경로: 요소 선택 뒤 글자 크기, 굵기, 정렬을 바꾸면 상위 덱으로 전달한다", () => {
     let current = deck();
     const { rerender } = render(<CardCanvasEditor deck={current} onDeckChange={(next) => { current = next; }} />);
@@ -91,6 +208,24 @@ describe("CardCanvasEditor S1 자유 배치", () => {
 
     await waitFor(() => expect(screen.getByText("서버 최신본")).toBeInTheDocument());
     expect(screen.queryByText("첫 장")).not.toBeInTheDocument();
+  });
+
+  it("S5b-R1-M1 저장 hash만 바뀐 외부 덱은 undo history를 지우지 않는다", () => {
+    let current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "글 추가" }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(screen.getByRole("button", { name: "실행 취소" })).toBeEnabled();
+
+    const synchronized = structuredClone(current);
+    if (!synchronized.migration) throw new Error("fixture");
+    synchronized.migration.source_sha256 = "f".repeat(64);
+    view.rerender(<CardCanvasEditor deck={synchronized} onDeckChange={onChange} />);
+
+    expect(screen.getByRole("button", { name: "실행 취소" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "실행 취소" }));
+    expect(current.slides[0].elements).toEqual([]);
   });
 
   it("S1-R3-KEYBOARD-01 입력칸 키는 무시하고 선택 없이 스테이지 Ctrl+Z는 실행한다", () => {
@@ -218,7 +353,7 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
 
     expect(current.slides[0].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ id: "bubble_reader" }] });
-    expect(current.slides[0].elements.map((element) => element.type)).toEqual(["text", "logo"]);
+    expect(current.slides[0].elements.map((element) => element.type)).toEqual(["logo"]);
     expect(screen.getByRole("button", { name: "로고" })).toBeInTheDocument();
 
     const bubbleEditor = screen.getByRole("textbox", { name: "1번째 말풍선 내용" });
@@ -227,10 +362,7 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
 
     expect(current.slides[0].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ segments: [{ text: "한 화면에서 직접 고친 말풍선" }] }] });
-    expect(current.slides[0].elements).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "el_bubble_reader", text: "한 화면에서 직접 고친 말풍선" }),
-      expect.objectContaining({ type: "logo" }),
-    ]));
+    expect(current.slides[0].elements).toEqual([expect.objectContaining({ type: "logo" })]);
     expect(screen.getByRole("button", { name: "로고" })).toBeInTheDocument();
   });
 });

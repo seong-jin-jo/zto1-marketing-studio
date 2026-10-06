@@ -1,5 +1,53 @@
 # OSMU build log
 
+## 2026-10-07 07:51 KST · S5b와 S6 main 병합 검증
+
+STAMP: 2026-10-07 07:51 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: merge commit `43ae2897`, CI 동일 production server Chromium 게이트, Vitest 3단 | 고민: append-only 기록을 모두 보존하면서 카톡 v3 저장 동기화와 영상 export queue가 한 `page.tsx`에서 함께 동작하는지 검증했다.
+
+`origin/main`의 S6 `df387bf8`을 S5b에 merge했다. `docs/qa/qa-tracker.md`와 `docs/구현현황.md`는 양쪽 기록을 시간 역순으로 모두 보존했고, S5b build plan에는 댓글 유도 장 이동 잠금을 MINOR 1로 명시했다. 자동 병합된 `studio/page.tsx`는 S5b의 v2↔v3 덱 동기화와 S6의 영상 export queue 경로를 모두 유지한다.
+
+검증: `typecheck:ci` PASS, integrity 33파일 104건 PASS, contract 107파일 625건 PASS, Studio 영향 149파일 1,124건 PASS·2파일 28건 환경 skip, production build PASS다. CI와 같은 `next start` 실제 Chromium에서 v70 화면 게이트는 1440·1024·390과 콘솔 오류 0, 두 탭 본문 충돌 게이트는 revision 5→6→8, 연속 409 로컬 입력 보존, 콘솔 오류 0으로 PASS했다. push·원격 CI·QA 승인·운영 배포는 미검증이다.
+
+## 2026-10-07 07:13 KST · 편집실 S5b 교차 리뷰 4차 교정
+
+STAMP: 2026-10-07 07:13 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `s5b-review-r4.md`, v2 projection validator, 플래그 ON localhost Chromium, 390·Remotion 원본 PNG | 고민: 삭제 가능한 자유 편집과 서버가 요구하는 댓글 유도 장 불변식을 명령 경계에서 함께 지키고, 모바일 가독성과 발행 줄바꿈의 차이는 숨기지 않고 측정했다.
+
+카톡 v3는 `comment_prompt` 역할을 명시적으로 보존하고 해당 장 삭제를 잠근다. 모든 편집 명령은 결과를 v2로 projection한 뒤 `validateCardDeck`를 통과해야 commit되므로 댓글 유도 장이나 chat 본문 4장 하한을 깨는 변경은 저장 전에 거절된다. 플래그 ON E2E에서 삭제 잠금, 저장 7회, 발행실 이동, 기본 편집 복귀, 콘솔 오류 0, 실패 요청 0을 관찰했다.
+
+390px 작성자 말풍선은 모바일 본문 16px 하한으로 4줄이고, 1440px/Remotion은 비례 글자 크기로 2줄이다. 390px에서 동일한 2줄을 강제하면 16px 하한을 깨므로 발행 PNG를 최종 줄바꿈 정본으로 유지하고 이 제약을 QA 증거에 기록했다. 원격 CI, QA 승인, 운영 배포는 미검증이며 push하지 않았다.
+
+## 2026-10-07 05:31 KST · 편집실 S5b 교차 리뷰 3차 교정
+
+STAMP: 2026-10-07 05:31 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `s5b-review-r3.md`, localhost Chromium 600·390 bounding box, 원본 크기 캡처, fontsReady 단위 계약 | 고민: viewport가 아니라 실제 부모 컨테이너를 폭 기준으로 삼고 테스트 환경 차이는 의존성 주입으로 제거했다.
+
+모바일 `.stage`를 부모 폭 `100%`와 `max-width:100%`로 제한하고 바깥·안쪽 grid track을 `minmax(0,1fr)`로 바꿨다. 600·390에서 stage·고급 도구줄·오른쪽 패널·첫 말풍선 버튼이 수평 viewport 안에 있고 편집기 `scrollLeft=0`임을 실제 route E2E로 고정했다. 기본 편집 복귀는 역할 보존 projection을 사용해 서버 v2 검증을 통과한다. `CardSlideScene`은 `NODE_ENV` 분기 대신 주입된 `fontsReady`가 끝난 뒤 overflow를 측정한다.
+
+검증: TypeScript PASS, integrity 33파일 104건 PASS, contract 107파일 621건 PASS, 변경 연관 4파일 61건 PASS다. 플래그 ON E2E는 데이터 9장, 저장 7회, 발행실 이동과 기본 편집 복귀, 콘솔 오류 0, 실패 요청 0이다. 원본 크기 600·390 PNG에서 도구·카드·오른쪽 패널을 직접 확인했다. 커밋은 `97a81e0a`, `458e5996`, `e1117e9b`이며 원격 CI·QA 승인·운영 배포는 미검증이고 push하지 않았다.
+
+## 2026-10-07 02:42 KST · 편집실 S5b 교차 리뷰 2차 교정
+
+STAMP: 2026-10-07 02:42 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `s5b-review-r2.md`, localhost Chromium 세 폭 bounding box, v3→v2 복귀 E2E, 9폭 모바일 실측 | 고민: 운영 플래그가 켜진 상태에서 미리보기 가시성과 기본 편집 복귀를 대리지표가 아니라 실제 route 왕복으로 닫았다.
+
+카톡 장 도구를 stageColumn 안으로 옮기고 1023px 이하 스테이지 폭을 viewport 토큰으로 제한했다. 카톡 v3는 현재 말풍선·화자·표지·마지막 사진을 v2로 투영해 기본 편집기로 돌아가며, v3 덱을 서버에서 정리한다. 사진 빼기, CardSlideScene 기반 넘침 안내와 명시적 분할, 카톡 원형 회피 배치, 복제 시 legacy projection 제거도 함께 반영했다.
+
+검증: TypeScript PASS, integrity 104건 PASS, contract 621건 PASS, 관련 343건 PASS·환경 skip 8건, Next production build PASS다. 플래그 ON E2E는 데이터 9장, 저장 7회, 발행실 이동과 기본 편집 복귀, 변경 표지 사진 보존, 콘솔 오류 0, 실패 요청 0이다. 1440·600·390 미리보기와 패널 폭을 수치로 단언했고, 360~1000 아홉 폭은 본문 16px, 13px 미만·44px 미만·가로 넘침 0, 눌림 상태 100%다. 원격 CI·QA 승인·운영 배포는 미검증이며 push하지 않았다.
+
+## 2026-10-07 01:51 KST · 편집실 S5b 교차 리뷰 1차 교정
+
+STAMP: 2026-10-07 01:51 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `s5b-review-r1.md`, 실제 drafts route, 플래그 ON localhost Chromium, 9폭 모바일 실측 | 고민: 운영 스위치가 켜진 상태라 v3 진입을 닫는 대신 v71 한 화면 도구를 전부 복원하고 모든 저장 경계에서 v2/v3 hash를 동기화했다.
+
+교차 리뷰의 MAJOR 1→3→2와 MINOR를 순서대로 교정했다. 수동 저장·자동 저장·검토·발행은 공통 저장 직전 v3 migration hash를 투영된 v2 덱과 동기화한다. 표지·마지막 장으로 말풍선을 옮기는 명령은 UI와 command 양쪽에서 거절한다. 한 화면에는 장 추가·복제·삭제·순서 변경, 표지 문구·사진, 선택 범위 굵게, 실제 발행 renderer 기반 overflow 판정·자동 쪼개기를 복원했다. 고아 `el_<옛 id>`는 구조적 ID로 판정하며, 빈 독자 이름은 `구독자`로 정규화한다.
+
+검증: TypeScript PASS, integrity 33파일 104건 PASS, contract 107파일 621건 PASS, 변경 import 영향 72파일 627건 PASS·1파일 12건 환경 skip, 실제 drafts route 17건 PASS, Next production build PASS다. 플래그 ON E2E는 데이터 9장, 저장 5회, 실제 `/studio?room=publish` 이동, 콘솔 오류 0, 실패 요청 0이다. 브라우저 canvas와 Remotion PNG 모두 프로필 아바타를 포함한다. 360~1000 아홉 폭은 본문 16px, 13px 미만·44px 미만·가로 넘침 0, 눌림 상태 100%다. 원격 CI·QA 승인·운영 배포는 미검증이며 push하지 않았다.
+
+## 2026-10-07 00:48 KST · 편집실 S5b 카톡 v3 고급 도구와 덧붙임 요소
+
+STAMP: 2026-10-07 00:48 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: S5b 수용 기준, Vitest 3단, 플래그 ON localhost Chromium, Remotion PNG | 고민: 기존 v2 내용과 운영 롤백을 보존하면서 카톡 고급 도구와 덧붙임 요소를 공용 v3 scene에 연결했다.
+
+S5b-AC1~3을 구현했다. 화자·프로필·말풍선·말투 도구와 글·사진·도형·스티커·로고 덧붙임을 `CardCanvasEditor` 기반 v3 화면에 연결했고, 저장·재열기·발행은 `CardSlideScene`을 공유한다. 원형을 복사한 뒤 고아가 된 `el_<옛 id>` projection은 저장·렌더에서 제거한다.
+
+검증: TypeScript PASS, integrity 33파일 104건 PASS, contract 107파일 621건 PASS, 변경 import 영향 64파일 530건 PASS·환경 skip 1파일 12건이다. Next production build도 PASS했다. 플래그 ON 실제 Next dev E2E는 데이터 9장, 저장 4회, 콘솔 오류 0, 실패 요청 0이며, 브라우저 캔버스와 Remotion PNG 양쪽에서 프로필 아바타와 덧붙임 요소를 육안 확인했다. 360~1000 아홉 폭은 본문 16px, 13px 미만·44px 미만·가로 넘침 0, 눌림 상태 100%다. 상세 증거는 `docs/qa/osmu-editroom-s5b-build-evidence-v1-gpt-codex.md`다. 원격 CI·QA 승인·운영 배포는 미검증이며 push하지 않았다.
+
 ## 2026-10-05 23:08 KST · VID-STALE-09 주제 도장 계약의 의미 단위 검증
 
 STAMP: 2026-10-05 23:08 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `studio/page.tsx` 이미지·영상 완료 함수, 단일·related·Studio 전체 Vitest | 고민: 제품 동작은 그대로 두고, 객체 포맷이 아니라 이미지와 영상 각각의 주제 도장 계약을 검사했다.

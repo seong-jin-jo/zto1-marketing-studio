@@ -72,6 +72,7 @@
 .stageColumn { display: grid; min-width: 0; gap: var(--stack); }
 .stage {
   position: relative;
+  min-width: 0;
   width: min(100%, 45rem);
   margin-inline: auto;
   overflow: visible;
@@ -180,6 +181,15 @@
 .chatBaseEditor h3 { color: var(--text); font-size: var(--font-body-size); font-weight: 700; }
 .chatBaseEditor p { color: var(--text-muted); font-size: var(--font-body-size); }
 .chatBaseEditor label { display: grid; gap: var(--stack-tight); color: var(--text-muted); font-size: var(--font-body-size); }
+.chatBaseEditor input {
+  min-height: var(--control-touch);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface-2);
+  padding-inline: var(--stack-tight);
+  color: var(--text);
+  font: inherit;
+}
 .chatBaseEditor textarea {
   min-height: calc(var(--control-touch) * 2);
   resize: vertical;
@@ -191,6 +201,36 @@
   font: inherit;
 }
 
+.advancedToolbar,
+.profileGrid,
+.toneToolbar,
+.toneCandidates,
+.bubbleCard,
+.bubbleActions {
+  display: grid;
+  gap: var(--stack-tight);
+}
+
+.advancedToolbar {
+  padding: var(--stack);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface-2);
+}
+
+.profileGrid,
+.toneToolbar { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); align-items: end; }
+.profileGrid label,
+.toneToolbar label { display: grid; gap: var(--space-micro); color: var(--text-muted); font-size: var(--font-body-size); }
+.profileGrid input,
+.toneToolbar select { min-height: var(--control-touch); border: 1px solid var(--border); border-radius: var(--shape-control); background: var(--surface); padding-inline: var(--stack-tight); color: var(--text); font-size: var(--font-body-size); }
+.toneCandidates { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
+.toneCandidates article,
+.bubbleCard { padding: var(--stack-tight); border: 1px solid var(--border); border-radius: var(--shape-control); background: var(--surface); }
+.toneCandidates p { white-space: pre-wrap; }
+.bubbleCard[data-selected="true"] { border-color: var(--accent); }
+.bubbleActions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
 .elementList h3 { margin-bottom: var(--stack); color: var(--text); font-size: var(--font-body-size); font-weight: 700; }
 .elementList p { color: var(--text-muted); font-size: var(--font-body-size); }
 .elementList ol { display: grid; gap: var(--stack); }
@@ -200,7 +240,20 @@
 .listActions > :global(button) { flex: 1 1 var(--control-touch); }
 
 @media (max-width: 1023px) {
-  .workspace { grid-template-columns: 1fr; }
+  .editor {
+    width: min(100%, calc(100vw - var(--pad-inset) - var(--pad-inset)));
+    max-width: calc(100vw - var(--pad-inset) - var(--pad-inset));
+    margin-inline: auto;
+  }
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+  .workspace,
+  .stageColumn,
+  .rightPanel { width: 100%; max-width: 100%; min-width: 0; }
+  .stageColumn { grid-template-columns: minmax(0, 1fr); }
+  .stage {
+    width: 100%;
+    max-width: 100%;
+  }
   .slideStrip { display: flex; overflow-x: auto; }
   .stageColumn { order: -1; }
   .floatingToolbar { position: static; overflow-x: auto; flex-wrap: nowrap; }

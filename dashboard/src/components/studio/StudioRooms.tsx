@@ -58,6 +58,7 @@ import {
 import styles from "./StudioRooms.module.css";
 import { DeliveredMedia, resolveImageAssetUrl } from "@/components/studio/DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
+import { projectChatCardDeckV3ToBasicEditor } from "@/lib/studio/card-deck-v2-to-v3";
 
 // M5(2026-09-22 코드리뷰): 매 렌더 새 객체를 만들지 않게 모듈 스코프에서 한 번만 만든다.
 // videoEdit는 순수함수(video-edit-contract.ts)로만 바뀌므로 이 상수를 직접 변형하지 않는다.
@@ -1703,7 +1704,7 @@ interface EditRoomProps {
   cardDeckV3EntryBlockedReason?: string | null;
   onRetryCardDeckV3Detail?: () => void;
   /** 자유 배치 진입 직전의 plain 카드 원문과 위치를 복원한다. */
-  onReturnFromCardDeckV3?: () => void;
+  onReturnFromCardDeckV3?: (projectedChatDeck?: CardDeck) => void;
   /**
    * 영상 편집 v1(세션맥락 과업 B). 있으면 `kind==="video"` 편집 워크벤치 위에
    * `VideoEditor`(후킹 CTA·댓글 오버레이·자막 기반 편집·음성 변경)를 얹는다. 기존
@@ -2049,6 +2050,9 @@ export function EditRoom({
   const cardAssetIds = useMemo(() => {
     if (!cardDeckV3) return [];
     const ids = new Set<string>();
+    if (cardDeckV3.brand.profile_image_asset_id && !cardDeckV3.brand.profile_image_asset_id.startsWith("builtin:")) {
+      ids.add(cardDeckV3.brand.profile_image_asset_id);
+    }
     for (const slide of cardDeckV3.slides) {
       if (slide.background.kind === "image" && !slide.background.asset_id.startsWith("builtin:")) ids.add(slide.background.asset_id);
       for (const element of slide.elements) {
@@ -2072,6 +2076,10 @@ export function EditRoom({
       });
     return () => { cancelled = true; };
   }, [cardAssetKey, workspaceId]);
+  const chatBasicEditorProjection = useMemo(() => {
+    if (cardDeckV3?.template !== "chat_bubble" || cardDeck?.template !== "chat_bubble") return null;
+    return projectChatCardDeckV3ToBasicEditor(cardDeckV3, cardDeck, cardAssetUrls);
+  }, [cardDeckV3, cardDeck, cardAssetUrls]);
   const initialAudioSettings = audioSettingsFromFormat(initialFormat);
   const preservedAudio = useMemo<PreservedAudioSettings>(() => ({
     musicTrack: initialAudioSettings.musicTrack,
@@ -2263,19 +2271,34 @@ export function EditRoom({
               <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
                 <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
               </p>
-              {kind === "card" && cardDeckV3 && cardDeckV3.template !== "chat_bubble" && onCardDeckV3Change ? (
+              {kind === "card" && cardDeckV3 && onCardDeckV3Change ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-v3-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                   <div className="mb-stack flex flex-wrap items-center gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption text-muted" role="status" data-card-deck-v3-return-note>
-                    <span className="mr-auto">기본 편집으로 돌아가면 자유 배치 진입 직전의 글과 위치를 그대로 복원합니다.</span>
-                    {onReturnFromCardDeckV3 ? <Button type="button" size="sm" variant="secondary" onClick={onReturnFromCardDeckV3}>기본 편집으로 돌아가기</Button> : null}
+                    <span className="mr-auto">{cardDeckV3.template === "chat_bubble" ? "필요하면 기본 말풍선 편집기로 돌아갈 수 있습니다." : "기본 편집으로 돌아가면 자유 배치 진입 직전의 글과 위치를 그대로 복원합니다."}</span>
+                    {onReturnFromCardDeckV3 ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={cardDeckV3.template === "chat_bubble" && !chatBasicEditorProjection?.deck}
+                        onClick={() => onReturnFromCardDeckV3(cardDeckV3.template === "chat_bubble" ? chatBasicEditorProjection?.deck ?? undefined : undefined)}
+                      >
+                        기본 편집으로 돌아가기
+                      </Button>
+                    ) : null}
+                    {cardDeckV3.template === "chat_bubble" && chatBasicEditorProjection?.missingAssetIds.length ? (
+                      <span className="w-full text-warning" role="status" data-card-basic-return-blocked>
+                        표지·마지막 사진을 불러오는 중입니다. 사진 준비가 끝나면 기본 편집으로 돌아갈 수 있습니다.
+                      </span>
+                    ) : null}
                   </div>
-                  <CardCanvasEditor deck={cardDeckV3} assetUrls={cardAssetUrls} onDeckChange={onCardDeckV3Change} />
+                  <CardCanvasEditor deck={cardDeckV3} sourceDeck={cardDeck} assetUrls={cardAssetUrls} onAssetUrlChange={(assetId, url) => setCardAssetUrls((current) => ({ ...current, [assetId]: url }))} onDeckChange={onCardDeckV3Change} />
                 </div>
               ) : kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                   {onStartCardDeckV3 ? (
                     <div className="mb-stack border-b border-border pb-stack">
-                      <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3} disabled={Boolean(cardDeckV3EntryBlockedReason)}>자유 배치로 편집</Button>
+                      <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3} disabled={Boolean(cardDeckV3EntryBlockedReason)}>v3 고급 편집 열기</Button>
                       {cardDeckV3EntryBlockedReason ? (
                         <p className="mt-stack-tight text-caption text-warning" role="status" data-card-deck-v3-entry-blocked>
                           {cardDeckV3EntryBlockedReason}

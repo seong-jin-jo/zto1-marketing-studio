@@ -221,8 +221,27 @@
 
 .media { object-fit: cover; }
 .imagePlaceholder { background: var(--surface-2); color: var(--text-muted); font-size: 5cqw; }
-.sticker { color: var(--warning); font-size: 18cqw; line-height: 1; }
+.sticker { color: var(--card-stage-accent); font-size: 18cqw; line-height: 1; }
 .logo { background: var(--card-stage-accent); color: var(--card-stage-background); font-family: "Pretendard Variable"; font-size: 5cqw; font-weight: 800; letter-spacing: .08em; }
+
+@media (max-width: 1023px) {
+  .scene[data-render-mode="editor"] .chatHeader,
+  .scene[data-render-mode="editor"] .chatCoverCopy p {
+    font-size: max(var(--font-body-size), 3.2cqw);
+  }
+
+  .scene[data-render-mode="editor"] .chatAvatar,
+  .scene[data-render-mode="editor"] .chatName,
+  .scene[data-render-mode="editor"] .chatTime,
+  .scene[data-render-mode="editor"] .chatReaction,
+  .scene[data-render-mode="editor"] .chatFooter {
+    font-size: max(var(--font-body-size), 2.2cqw);
+  }
+
+  .scene[data-render-mode="editor"] .chatBubble {
+    font-size: max(var(--font-body-size), 3.6cqw);
+  }
+}
 .rectangle,
 .ellipse { background: var(--card-shape-fill); border: var(--card-shape-stroke-width) solid var(--card-shape-stroke); border-radius: var(--card-shape-radius); }
 .ellipse { border-radius: var(--shape-pill); }

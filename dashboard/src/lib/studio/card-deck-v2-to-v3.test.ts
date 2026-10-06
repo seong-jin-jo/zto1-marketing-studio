@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { CardDeck } from "./card-deck-contract";
-import { migrateCardDeckV2ToV3, projectCardDeckV3ToV2 } from "./card-deck-v2-to-v3";
+import { validateCardDeck, type CardDeck } from "./card-deck-contract";
+import { deleteChatSlide } from "./card-element-commands";
+import * as cardDeckConverters from "./card-deck-v2-to-v3";
+import { assertValidChatCardDeckV3CommandResult, cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, projectChatCardDeckV3ToRenderableV2, synchronizeChatCardDeckV3 } from "./card-deck-v2-to-v3";
 import chatDeckFixture from "../../../tests/studio/fixtures/deck-d100.v2.json";
 
 const base = {
@@ -54,18 +56,103 @@ describe("S2 기존 카드 무손실 이관", () => {
     expect(migrated.slides.at(-1)?.background).toEqual({ kind: "solid", color: source.theme.background });
   });
 
-  it("S2-AC1 변경한 v3 글자는 legacy projection에도 반영하고 나머지 v2 필드는 보존한다", () => {
+  it("S5b-AC1 카톡 원문은 base만 SSOT로 쓰고 바꾼 표지를 v2 projection에 반영한다", () => {
     const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
     const migrated = migrateCardDeckV2ToV3(source);
     const cover = migrated.slides[0];
     expect(cover.base.kind).toBe("chat_bubble");
     if (cover.base.kind !== "chat_bubble") throw new Error("fixture");
-    const headline = cover.elements.find((element) => element.id === "el_slide-0_cover");
-    if (!headline || headline.type !== "text") throw new Error("fixture");
-    headline.text = "바뀐 표지";
+    cover.base.cover = { ...cover.base.cover!, headline: "바뀐 표지" };
+    expect(cover.elements).toEqual([]);
     const projected = projectCardDeckV3ToV2(migrated, source);
     expect(projected.slides[0].cover?.headline).toBe("바뀐 표지");
     expect(projected.slides.slice(1)).toEqual(source.slides.slice(1));
+  });
+
+  it("S5b-R1-M2 v3 신규 장과 asset 배경을 기존 발행 canvas 계약으로 무손실 투영한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    migrated.slides[0].background = { kind: "image", asset_id: "cover.png", crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" };
+    migrated.slides.splice(2, 0, { ...structuredClone(migrated.slides[1]), id: "new_body", order: 2 });
+    migrated.slides = migrated.slides.map((slide, order) => ({ ...slide, order }));
+    const persisted = projectCardDeckV3ToV2(migrated, source);
+    const renderable = projectChatCardDeckV3ToRenderableV2(migrated, { "cover.png": "https://assets.example/cover.png" });
+    expect(persisted.slides.map((slide) => slide.id)).toEqual(migrated.slides.map((slide) => slide.id));
+    expect(renderable.slides).toHaveLength(source.slides.length + 1);
+    expect(renderable.slides[0].cover_image_url).toBe("https://assets.example/cover.png");
+    expect(renderable.slides[2]).toMatchObject({ id: "new_body", role: "chat", bubbles: migrated.slides[2].base.kind === "chat_bubble" ? migrated.slides[2].base.bubbles : [] });
+  });
+
+  it("S5b-R3-B 기본 편집 복귀는 comment_prompt 역할을 보존하고 표지·CTA asset URL만 덧입힌다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    migrated.slides[0].background = { kind: "image", asset_id: "new-cover.png", crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" };
+    migrated.slides.at(-1)!.background = { kind: "image", asset_id: "new-cta.png", crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" };
+
+    const result = cardDeckConverters.projectChatCardDeckV3ToBasicEditor(migrated, source, {
+      "new-cover.png": "https://assets.example/new-cover.png",
+      "new-cta.png": "https://assets.example/new-cta.png",
+    });
+
+    expect(result.missingAssetIds).toEqual([]);
+    expect(result.deck).not.toBeNull();
+    expect(() => validateCardDeck(result.deck)).not.toThrow();
+    expect(result.deck!.slides.map((slide) => slide.role)).toEqual(source.slides.map((slide) => slide.role));
+    expect(result.deck!.slides[0].cover_image_url).toBe("https://assets.example/new-cover.png");
+    expect(result.deck!.slides.at(-1)?.cover_image_url).toBe("https://assets.example/new-cta.png");
+  });
+
+  it("S5b-R3-B 표지·CTA asset URL이 없으면 기본 편집 복귀 projection을 만들지 않는다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    migrated.slides[0].background = { kind: "image", asset_id: "missing-cover.png", crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" };
+
+    expect(cardDeckConverters.projectChatCardDeckV3ToBasicEditor(migrated, source)).toEqual({
+      deck: null,
+      missingAssetIds: ["missing-cover.png"],
+    });
+  });
+
+  it("S5b-R4-C 댓글 유도 역할을 v3에 보존해 해당 장 삭제를 거절한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    const commentPrompt = migrated.slides.find((slide) => slide.role === "comment_prompt");
+
+    expect(commentPrompt).toBeDefined();
+    expect(() => deleteChatSlide(migrated, commentPrompt!.id)).toThrow("OPS_SLIDE_LOCKED");
+    expect(projectCardDeckV3ToV2(migrated, source).slides.filter((slide) => slide.role === "comment_prompt")).toHaveLength(1);
+  });
+
+  it("S5b-R4-C v2 projection의 chat 장 하한을 깨는 v3 명령 결과를 commit 전에 거절한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    const invalid = structuredClone(migrated);
+    invalid.slides.filter((slide) => slide.role === "body").slice(0, 3).forEach((slide) => { slide.role = "cover"; });
+
+    expect(() => assertValidChatCardDeckV3CommandResult(invalid, source)).toThrow("CARD_CHAT_SLIDE_MIN");
+    expect(() => assertValidChatCardDeckV3CommandResult(migrated, source)).not.toThrow();
+  });
+
+  it("S5b-AC3 v3와 함께 저장할 v2 projection 지문만 현재본으로 인정한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    const projected = projectCardDeckV3ToV2(migrated, source);
+    const synchronized = synchronizeChatCardDeckV3(migrated, projected);
+    expect(synchronized.migration?.source_sha256).toBe(migrated.migration?.source_sha256);
+    projected.brand.display_name = "다른 원문";
+    expect(synchronizeChatCardDeckV3(migrated, projected).migration?.source_sha256).not.toBe(migrated.migration?.source_sha256);
+  });
+
+  it("S5b-R1-M1 공통 저장 경계는 편집기 덱을 현재 v2 projection hash와 동기화한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const edited = migrateCardDeckV2ToV3(source);
+    edited.brand.display_name = "편집한 작성자";
+    const projected = projectCardDeckV3ToV2(edited, source);
+    const persisted = cardDeckV3ForSave(projected, edited);
+
+    expect(persisted?.migration?.source_sha256).not.toBe(edited.migration?.source_sha256);
+    expect(persisted).toEqual(synchronizeChatCardDeckV3(edited, projected));
+    expect(cardDeckV3ForSave(null, edited)).toBe(edited);
   });
 
   it("S2-AC1 v3 계약 안의 긴 원본 ID는 자르지 않고 보존하며 계약 밖 ID도 충돌 없이 변환한다", () => {

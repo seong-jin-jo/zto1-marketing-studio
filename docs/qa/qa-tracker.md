@@ -1,8 +1,58 @@
+## 2026-10-07 S5b·S6 main 병합 ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| EDITROOM-S5B-S6-MERGE-01 | S5b 카톡 v3와 S6 영상 5레인을 같은 Studio 화면에서 함께 보존 | ✅ 관찰됨 | merge `43ae2897`; TypeScript, integrity 104건, contract 625건, Studio 영향 1,124건, production build PASS. 실제 Chromium v70 화면 1440·1024·390 및 본문 충돌 두 탭 PASS, 콘솔 오류 0 |
+
 ## 2026-10-07 PR 125 본문 충돌 복구 추가 저장 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 결함 | 현재 판정 | 종료 증거 |
 |---|---|---|---|
 | EDITROOM-S6-BODY-CONFLICT-01 | 탭 A의 본문 저장 1회 뒤 revision이 6이 아니라 7로 증가해 두 탭 충돌 복구 계약이 깨짐 | ✅ 로컬 PASS | 텍스트·카드 발행의 중복 사전 저장을 제거했다. 실제 Chromium 두 탭 게이트에서 첫 저장 revision 6, 복구 저장 revision 8, 콘솔 오류 0을 확인했다. CI verify 순서의 typecheck, build, schema·seed·RLS, migration matrix, Vitest 3,610건, 발행실 정렬, 말풍선 Chromium, v70 화면 정합, 본문 충돌 E2E가 모두 PASS했다. |
+
+## 2026-10-07 편집실 S5b 교차 리뷰 4차 ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S5b-R4-C | 카톡 v3에서 댓글 유도 장을 삭제하면 v2 projection의 `comment_prompt`가 0개가 되어 이후 저장·발행실 이동·복귀가 모두 서버 계약에서 거절됨 | ✅ 관찰됨 | v3에 `comment_prompt` 역할을 보존하고 모든 명령 결과를 v2 projection 뒤 `validateCardDeck`로 사전검증한다. 댓글 유도 장 삭제 잠금과 chat 본문 4장 하한 회귀 테스트, 플래그 ON 저장·발행실 이동·기본 편집 복귀 E2E 통과 |
+| S5b-R4-m1 | 390px 편집 미리보기의 작성자 말풍선 줄바꿈이 같은 덱의 1080px Remotion PNG와 다름 | ✅ 원인 규명·제약 기록 | 390px 편집기는 모바일 가독성 하한 16px 때문에 4줄, 1440px/Remotion은 3.6cqw 비례 크기로 2줄임을 실제 DOM 수치와 원본 PNG로 대조했다. 390px에서 동일 줄바꿈을 강제하면 16px 하한을 깨므로 정합화하지 않고 발행 PNG가 최종 결과임을 증거 문서에 기록 |
+
+## 2026-10-07 편집실 S5b 교차 리뷰 3차 ❌ BLOCK
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S5b-R3-B | 카톡 v3 기본 편집 복귀가 렌더용 projection을 저장해 `comment_prompt` 역할과 사진 URL을 잃고 서버 v2 계약에서 거절됨 | ❌ NG | 원본 대조 projection으로 역할을 보존하고 asset URL을 덧입힌 뒤 v2 계약 통과와 실제 route 저장을 재검증해야 함 |
+| S5b-R3-A | 600px에서 도구줄·패널이 잘리고 390px에서 빈 영역만 보임 | ❌ NG | stage를 내부 컨테이너 기준 폭으로 고치고 도구·패널·첫 말풍선 버튼 visibleWidth와 `scrollLeft === 0`을 실구동 단언해야 함 |
+| S5b-R3-m1 | `CardSlideScene`이 `NODE_ENV === "test"`에서만 폰트 준비를 우회해 테스트와 운영 렌더 경로가 다름 | ❌ NG | 환경 분기를 제거하고 `fontsReady`를 명시적으로 주입하는 계약으로 교체해야 함 |
+
+## 2026-10-07 편집실 S5b 교차 리뷰 2차 ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S5b-R2-A | 카톡 장 도구가 3열 workspace의 직접 자식이라 1440px에서 버튼이 겹치고 600px에서 미리보기가 잘리며 390px에서 카드가 보이지 않음 | ✅ 관찰됨 | 도구를 stageColumn으로 이동. 플래그 ON Chromium에서 미리보기 폭 1440=342px, 600=568px, 390=358px가 전부 가시 영역 안이며 오른쪽 패널 폭은 각각 320px, 518px, 308px. 캡처 재생성 |
+| S5b-R2-B | 카톡 v3의 기본 편집 복귀 버튼이 원본 snapshot 부재로 항상 실패 | ✅ 관찰됨 | v3→v2 projection 복귀 구현. 실제 route E2E에서 표지 사진 변경, 저장, 발행실 이동, 편집실 재진입, 기본 말풍선 편집기 복귀, 사진 보존과 v3 clear를 확인 |
+| S5b-R2-m1 | 배경 사진 제거, 발행 renderer와 동일한 자동 분할 측정, undo 안전성, 원형 회피 배치, 복제 시 고아 projection 제거가 미완 | ✅ 테스트됨 | 사진 빼기, CardSlideScene 실측 안내와 명시적 분할, effect 밖 commit, 카톡 원형 점유 영역 회피, 복제 시 legacy `el_` 제거를 명령·컴포넌트 48건과 E2E로 검증 |
+
+## 2026-10-07 편집실 S5b 교차 리뷰 1차 ❌ BLOCK
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S5b-R1-M1 | v3 카톡 편집 뒤 공통 저장 경로가 동기화되지 않은 v3 hash를 보내 발행실 이동·검토 요청·임시 저장이 409 | ✅ 로컬 PASS | 공통 저장 hash 동기화, 실제 drafts route handler 통합, 플래그 ON 발행실 이동 PASS |
+| S5b-R1-M3 | 말풍선을 표지·CTA 장으로 옮길 수 있어 PNG에서 내용이 사라짐 | ✅ 로컬 PASS | UI 대상 제외, command의 `OPS_BUBBLE_TARGET_LOCKED` 거절, 경계 테스트 PASS |
+| S5b-R1-M2 | v3 카톡 편집기에 장·표지·사진·범위 굵게·overflow 검사·기본 편집 복귀 도구가 누락됨 | ✅ 로컬 PASS | v71 한 화면 도구 전수 이식, 발행 renderer 기반 자동 분할·말투 적용 전 검사, StudioRooms 통합 PASS |
+| S5b-R1-m1 | 새 글 색상·빈 영역 배치·독자명·고아 projection 구조 판별·route E2E 증거가 불완전함 | ✅ 로컬 PASS | 테마 기반 글 요소, 빈 영역 배치, 독자명 정규화, converter ID 구조 판별, 실제 Next 발행실 route 이동 PASS |
+
+## 2026-10-07 편집실 S5b 카톡 v3 프로필·덧붙임 렌더 ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 판정 | 종료 증거 |
+|---|---|---|---|
+| S5b-AC1 | v2 카톡 말풍선·화자·사진을 보존한 v3 고급 편집 | ✅ 관찰됨 | 데이터 9장 플래그 ON Chromium에서 고급 편집 진입, 화자 교환·undo, 말투 후보 3개, 표지/마지막 사진 보존 |
+| S5b-AC2 | 글·스티커·로고의 화면·Remotion PNG 정합 | ✅ 관찰됨 | 브라우저 scene과 Remotion PNG를 원본 해상도로 확인. 세 요소와 층 순서가 양쪽에 표시 |
+| S5b-AC3 | 저장·재열기·발행 뒤 고급 편집과 사진 회귀 없음 | ✅ 관찰됨 | 저장 4회, 재열기·발행 렌더 PASS, 콘솔 오류 0, 실패 요청 0 |
+| S5b-ORPHAN-01 | 원형 삭제 뒤 `el_<옛 id>` projection 고아 미렌더·정리 | ✅ PASS | command·통합·E2E에서 `orphanProjectionRemoved: true` |
+| S5b-AVATAR-R1 | 공유 편집기의 profile asset resolver 누락 | ❌ NG → ✅ 관찰됨 | 최초 적대적 리뷰에서 브라우저 editor 아바타 누락 발견. resolver에 brand profile asset을 연결하고 editor marker·통합 테스트 추가. 브라우저 캔버스와 Remotion PNG 양쪽에서 주황색 아바타 육안 확인 |
+
+최종 로컬 증거는 `docs/qa/osmu-editroom-s5b-build-evidence-v1-gpt-codex.md`와 `docs/qa/osmu-editroom-s5b-build-evidence-20261007/`에 있다. 원격 CI·QA 단계 승인·운영 배포는 미검증이다.
 
 ## 2026-10-06 편집실 v2 S2 교차 리뷰 2차 flag off·렌더 과부하 ❌ NG
 

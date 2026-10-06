@@ -86,10 +86,12 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(source).toContain("const loaded = await loadDraftDetail(draft as unknown as Record<string, unknown>)");
   });
 
-  it("S1-R5-RETURN-SNAPSHOT-01 복원 확인과 스냅샷 전송 범위를 명시한다", () => {
+  it("S1-R5-RETURN-SNAPSHOT-01 plain 스냅샷 복원과 카톡 v2 projection 복귀 범위를 명시한다", () => {
     const source = read("src/app/studio/page.tsx");
     expect(source).toContain('title: "기본 편집으로 돌아갈까요?"');
-    expect(source).toContain('confirmLabel: "자유 배치 작업을 버리고 돌아가기"');
+    expect(source).toContain('returningChatDeck ? "기본 말풍선 편집기로 돌아가기" : "자유 배치 작업을 버리고 돌아가기"');
+    expect(source).toContain("const returningChatDeck = cardDeckV3?.template === \"chat_bubble\"");
+    expect(source).toContain("setCardDeck(returningChatDeck)");
     expect(source).toContain('Object.prototype.hasOwnProperty.call(cardDeckV3Options, "sourceSnapshot")');
     expect(source).toContain("{ sourceSnapshot: snapshot }");
     expect(source).toContain("{ clear: true, sourceSnapshot: null");

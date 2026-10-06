@@ -1,4 +1,4 @@
-import type { Bubble, CardDeck, CardSlide } from "./card-deck-contract";
+import { CardDeckValidationError, validateCardDeck, type CardDeck, type CardSlide } from "./card-deck-contract";
 import {
   CARD_LOGICAL_HEIGHT,
   CARD_LOGICAL_WIDTH,
@@ -16,6 +16,11 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   const record = value as Record<string, unknown>;
   return `{${Object.keys(record).sort().filter((key) => record[key] !== undefined).map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+}
+
+/** 저장·조회·발행 경계가 같은 v2 카톡 원문을 가리키는지 확인하는 결정적 지문이다. */
+export function cardDeckV2Fingerprint(source: CardDeck): string {
+  return sha256Text(canonicalJson(source));
 }
 
 function rotateRight(value: number, amount: number): number {
@@ -103,28 +108,6 @@ function textElement(id: string, text: string, order: number, total: number, pos
   };
 }
 
-function bubbleElements(slide: CardSlide): CardElement[] {
-  const elements: CardElement[] = [];
-  if (slide.role === "cover" && slide.cover) {
-    elements.push(textElement(safePart(`el_${slide.id}_cover`), slide.cover.headline, 0, 2, "top"));
-    if (slide.cover.sub) elements.push({ ...textElement(safePart(`el_${slide.id}_sub`), slide.cover.sub, 1, 3, "center"), y: 650, height: 260, style: { ...textElement("x", "", 1, 3, "center").style, font_size: 38, font_weight: 500 } });
-    return elements.map((element, index) => ({ ...element, z_index: index }));
-  }
-  for (const bubble of [...(slide.bubbles ?? [])].sort((left, right) => left.order - right.order)) {
-    const text = bubble.segments.map((segment) => segment.text).join("");
-    elements.push({
-      ...textElement(safePart(`el_${bubble.id}`), text, elements.length, Math.max(2, slide.bubbles?.length ?? 2), "top"),
-      name: bubble.speaker === "reader" ? "독자 말풍선" : "브랜드 말풍선",
-      x: bubble.speaker === "reader" ? 420 : 70,
-      y: 100 + elements.length * 230,
-      width: 590,
-      height: 190,
-      style: { ...textElement("x", "", 1, 3, "center").style, font_size: 38, font_weight: bubble.segments.some((segment) => segment.bold) ? 700 : 500, align: bubble.speaker === "reader" ? "right" : "left" },
-    });
-  }
-  return elements.map((element, index) => ({ ...element, z_index: index }));
-}
-
 export interface CardDeckV2ToV3Options {
   coverImageAssetIds?: Readonly<Record<string, string>>;
   profileImageAssetId?: string;
@@ -149,7 +132,7 @@ function plainElements(source: CardDeck, slide: CardSlide, index: number, text: 
 }
 
 export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3Options = {}): CardDeckV3 {
-  const sourceSha256 = sha256Text(canonicalJson(source));
+  const sourceSha256 = cardDeckV2Fingerprint(source);
   const deckId = `deck_migrated_${sourceSha256.slice(0, 16)}`;
   const profileImageAssetId = source.brand.profile_image_asset_id ?? options.profileImageAssetId;
   if (source.brand.profile_image_url && !profileImageAssetId) throw new Error("CARD_PROFILE_IMAGE_ASSET_REQUIRED");
@@ -160,7 +143,7 @@ export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3O
     if (slide.cover_image_url && !coverAssetId) throw new Error("CARD_COVER_IMAGE_ASSET_REQUIRED");
     return {
       id: safePart(slide.id), order: slide.order,
-      role: slide.role === "cover" ? "cover" : slide.role === "cta" ? "cta" : "body",
+      role: slide.role === "cover" ? "cover" : slide.role === "comment_prompt" ? "comment_prompt" : slide.role === "cta" ? "cta" : "body",
       content_state: text.trim() ? "filled" : "empty",
       background: isChat && coverAssetId
         ? { kind: "image", asset_id: coverAssetId, crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" }
@@ -168,7 +151,9 @@ export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3O
       base: isChat
         ? { kind: "chat_bubble", cover: slide.cover ? structuredClone(slide.cover) : null, bubbles: structuredClone(slide.bubbles ?? []) }
         : { kind: "plain", lines: text ? [text] : [] },
-      elements: isChat ? bubbleElements(slide) : plainElements(source, slide, index, text, options),
+      // 카톡 원문은 base가 SSOT다. 예전 projection 글 요소를 함께 만들면 말풍선 삭제 뒤
+      // `el_<옛 id>`가 자유 글로 되살아나 화면·PNG에 중복 노출될 수 있다.
+      elements: isChat ? [] : plainElements(source, slide, index, text, options),
     };
   });
   return {
@@ -185,23 +170,6 @@ export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3O
     },
     hook_type: source.hook_type, cta: structuredClone(source.cta), slides,
     migration: { source_contract_version: "2.0", source_sha256: sourceSha256, converter_version: CONVERTER_VERSION },
-  };
-}
-
-function patchBubbleFromElement(bubble: Bubble, elements: CardElement[]): Bubble {
-  const element = elements.find((candidate) => candidate.id === safePart(`el_${bubble.id}`) && candidate.type === "text");
-  if (!element || element.type !== "text") return structuredClone(bubble);
-  const current = bubble.segments.map((segment) => segment.text).join("");
-  if (element.text === current) return structuredClone(bubble);
-  return { ...structuredClone(bubble), segments: [{ text: element.text, bold: bubble.segments.some((segment) => segment.bold) }] };
-}
-
-function patchCoverFromElements(slideId: string, cover: NonNullable<CardSlide["cover"]>, elements: CardElement[]): NonNullable<CardSlide["cover"]> {
-  const headlineElement = elements.find((candidate) => candidate.id === safePart(`el_${slideId}_cover`) && candidate.type === "text");
-  const subElement = elements.find((candidate) => candidate.id === safePart(`el_${slideId}_sub`) && candidate.type === "text");
-  return {
-    headline: headlineElement?.type === "text" ? headlineElement.text : cover.headline,
-    sub: subElement?.type === "text" ? subElement.text || null : cover.sub,
   };
 }
 
@@ -227,6 +195,23 @@ export function projectCardDeckV3ToV2(deck: CardDeckV3, source: CardDeck): CardD
   projected.hook_type = deck.hook_type;
   projected.cta = structuredClone(deck.cta);
   projected.revision = deck.revision;
+  if (deck.template === "chat_bubble") {
+    const legacyById = new Map(source.slides.map((slide) => [safePart(slide.id), slide]));
+    projected.slides = deck.slides.map((slide, order) => {
+      const legacy = legacyById.get(slide.id);
+      const base = slide.base.kind === "chat_bubble" ? slide.base : { kind: "chat_bubble" as const, cover: null, bubbles: [] };
+      return {
+        id: slide.id,
+        order,
+        role: slide.role === "cover" ? "cover" : slide.role === "comment_prompt" ? "comment_prompt" : slide.role === "cta" ? "cta" : legacy?.role === "comment_prompt" ? "comment_prompt" : "chat",
+        ...(slide.role === "cover" && base.cover ? { cover: structuredClone(base.cover) } : {}),
+        ...(slide.role !== "cover" ? { bubbles: structuredClone(base.bubbles) } : {}),
+        image_url: legacy?.image_url ?? null,
+        ...(legacy && Object.prototype.hasOwnProperty.call(legacy, "cover_image_url") ? { cover_image_url: legacy.cover_image_url ?? null } : {}),
+      };
+    });
+    return projected;
+  }
   projected.slides = projected.slides.map((legacySlide) => {
     const slide = deck.slides.find((candidate) => candidate.id === safePart(legacySlide.id));
     if (!slide) return legacySlide;
@@ -234,9 +219,9 @@ export function projectCardDeckV3ToV2(deck: CardDeckV3, source: CardDeck): CardD
       return {
         ...legacySlide,
         ...(legacySlide.role === "cover" && slide.base.cover
-          ? { cover: patchCoverFromElements(legacySlide.id, slide.base.cover, slide.elements) }
+          ? { cover: structuredClone(slide.base.cover) }
           : {}),
-        ...(legacySlide.bubbles ? { bubbles: legacySlide.bubbles.map((bubble) => patchBubbleFromElement(bubble, slide.elements)) } : {}),
+        ...(legacySlide.bubbles ? { bubbles: structuredClone(slide.base.bubbles) } : {}),
       };
     }
     const text = slide.elements.find((element) => element.type === "text");
@@ -252,4 +237,127 @@ export function projectCardDeckV3ToV2(deck: CardDeckV3, source: CardDeck): CardD
     return legacySlide;
   });
   return projected;
+}
+
+/**
+ * 카톡 v3 명령은 화면 state에 반영하기 전에 서버가 함께 저장할 v2 projection도 통과해야 한다.
+ * UI 버튼별 예외 처리 대신 이 경계를 공유해 역할·장수 계약이 깨진 덱의 자동저장을 막는다.
+ */
+export function assertValidChatCardDeckV3CommandResult(deck: CardDeckV3, source: CardDeck): CardDeckV3 {
+  if (deck.template !== "chat_bubble" || source.template !== "chat_bubble") return deck;
+  try {
+    validateCardDeck(projectCardDeckV3ToV2(deck, source));
+    return deck;
+  } catch (error) {
+    if (error instanceof CardDeckValidationError) {
+      if (error.message.includes("exactly 1 comment_prompt")) {
+        throw new RangeError("CARD_CHAT_COMMENT_PROMPT_REQUIRED");
+      }
+      if (error.message.includes("at least 4 chat slides") || error.rule === "slide_count") {
+        throw new RangeError("CARD_CHAT_SLIDE_MIN");
+      }
+    }
+    throw new RangeError("CARD_CHAT_DECK_INVALID");
+  }
+}
+
+/** v3 한 화면 편집기의 넘침 검사에서 기존 발행 canvas 렌더러를 그대로 쓰기 위한 무손실 투영. */
+export function projectChatCardDeckV3ToRenderableV2(deck: CardDeckV3, assetUrls: Readonly<Record<string, string>> = {}): CardDeck {
+  return {
+    contract_version: "2.0",
+    template: "chat_bubble",
+    ratio: deck.ratio,
+    theme: structuredClone(deck.theme),
+    brand: {
+      ...structuredClone(deck.brand),
+      profile_image_url: deck.brand.profile_image_asset_id
+        ? assetUrls[deck.brand.profile_image_asset_id] ?? deck.brand.profile_image_url ?? null
+        : deck.brand.profile_image_url ?? null,
+    },
+    hook_type: deck.hook_type,
+    cta: structuredClone(deck.cta),
+    revision: deck.revision,
+    slides: deck.slides.map((slide, order) => ({
+      id: slide.id,
+      order,
+      role: slide.role === "cover" ? "cover" : slide.role === "cta" ? "cta" : "chat",
+      ...(slide.base.kind === "chat_bubble" && slide.base.cover ? { cover: structuredClone(slide.base.cover) } : {}),
+      ...(slide.base.kind === "chat_bubble" ? { bubbles: structuredClone(slide.base.bubbles) } : {}),
+      image_url: null,
+      cover_image_url: slide.background.kind === "image" ? assetUrls[slide.background.asset_id] ?? null : null,
+    })),
+  };
+}
+
+export interface ChatBasicEditorProjection {
+  deck: CardDeck | null;
+  missingAssetIds: string[];
+}
+
+/**
+ * 카톡 v3를 기본 말풍선 편집기로 되돌릴 때 쓰는 projection.
+ * 렌더용 projection은 모든 본문 역할을 chat으로 평탄화하므로 저장 계약에 쓰지 않는다.
+ */
+export function projectChatCardDeckV3ToBasicEditor(
+  deck: CardDeckV3,
+  source: CardDeck,
+  assetUrls: Readonly<Record<string, string>> = {},
+): ChatBasicEditorProjection {
+  const photoSlides = deck.slides.filter((slide) => (
+    (slide.role === "cover" || slide.role === "cta") && slide.background.kind === "image"
+  ));
+  const missingAssetIds = [...new Set(photoSlides
+    .map((slide) => slide.background.kind === "image" ? slide.background.asset_id : "")
+    .filter((assetId) => assetId && !assetUrls[assetId]))];
+  if (missingAssetIds.length) return { deck: null, missingAssetIds };
+
+  const projected = projectCardDeckV3ToV2(deck, source);
+  const v3ById = new Map(deck.slides.map((slide) => [slide.id, slide]));
+  projected.slides = projected.slides.map((slide) => {
+    const v3 = v3ById.get(slide.id);
+    if (!v3 || (v3.role !== "cover" && v3.role !== "cta")) return slide;
+    return {
+      ...slide,
+      cover_image_url: v3.background.kind === "image"
+        ? assetUrls[v3.background.asset_id]
+        : null,
+    };
+  });
+  return { deck: projected, missingAssetIds: [] };
+}
+
+/**
+ * v3 편집 결과와 함께 저장되는 v2 projection의 지문을 v3에 박는다. 예전 stale v3는
+ * 이 지문이 현재 v2와 다르므로 조회·발행 경계에서 열리지 않는다.
+ */
+export function synchronizeChatCardDeckV3(deck: CardDeckV3, projected: CardDeck): CardDeckV3 {
+  if (deck.template !== "chat_bubble") return structuredClone(deck);
+  return {
+    ...structuredClone(deck),
+    migration: {
+      source_contract_version: "2.0",
+      source_sha256: cardDeckV2Fingerprint(projected),
+      converter_version: CONVERTER_VERSION,
+    },
+  };
+}
+
+/**
+ * 모든 저장 호출부가 같은 chat v2/v3 동기화 경계를 쓰게 한다. 편집기 state는 hash만
+ * 달라지는 외부 덱 교체로 undo history가 지워지지 않도록 원본 객체를 계속 소유한다.
+ */
+export function cardDeckV3ForSave(projected: CardDeck | null, deck: CardDeckV3 | null): CardDeckV3 | null {
+  if (!deck || deck.template !== "chat_bubble") return deck;
+  if (!projected || projected.template !== "chat_bubble") return deck;
+  return synchronizeChatCardDeckV3(deck, projected);
+}
+
+export function isSynchronizedChatCardDeckV3(source: CardDeck, candidate: unknown): candidate is CardDeckV3 {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+  const deck = candidate as Partial<CardDeckV3>;
+  return source.template === "chat_bubble"
+    && deck.template === "chat_bubble"
+    && deck.migration?.source_contract_version === "2.0"
+    && deck.migration.converter_version === CONVERTER_VERSION
+    && deck.migration.source_sha256 === cardDeckV2Fingerprint(source);
 }

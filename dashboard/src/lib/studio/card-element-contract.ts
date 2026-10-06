@@ -87,7 +87,7 @@ export type CardElement = TextElement | ImageElement | ShapeElement | StickerEle
 export interface CardSlideV3 {
   id: string;
   order: number;
-  role: "cover" | "body" | "cta";
+  role: "cover" | "body" | "comment_prompt" | "cta";
   content_state: "filled" | "empty";
   background:
     | { kind: "solid"; color: CssHexColor }
@@ -252,7 +252,7 @@ const backgroundSchema = z.discriminatedUnion("kind", [
 const slideSchema = z.strictObject({
   id: safeId,
   order: z.number().int().min(0).max(10),
-  role: z.enum(["cover", "body", "cta"]),
+  role: z.enum(["cover", "body", "comment_prompt", "cta"]),
   content_state: z.enum(["filled", "empty"]),
   background: backgroundSchema,
   base: z.discriminatedUnion("kind", [

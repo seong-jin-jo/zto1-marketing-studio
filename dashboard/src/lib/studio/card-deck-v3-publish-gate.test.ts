@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import chatDeckFixture from "../../../tests/studio/fixtures/deck-d100.v2.json";
+import type { CardDeck } from "./card-deck-contract";
+import { migrateCardDeckV2ToV3 } from "./card-deck-v2-to-v3";
 
 const H = vi.hoisted(() => ({
   has: false,
@@ -112,6 +115,21 @@ describe("S2-B 자유 배치 발행 준비", () => {
       "22222222-2222-2222-2222-222222222222",
     )).resolves.toBeNull();
     expect(H.renders).toHaveLength(0);
+  });
+
+  it("S5b-AC3 동기화된 카톡 v3는 공용 CardSlideScene PNG로 발행한다", async () => {
+    vi.stubEnv("CARD_DECK_V3_RENDER_ENABLED", "1");
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const chatV3 = migrateCardDeckV2ToV3(source);
+    H.payload = { cardDeck: source, cardDeckV3: chatV3 };
+    const { assertDraftCanEnterPublishQueue, payloadHasCardDeckV3 } = await import("./card-deck-v3-publish-gate");
+    expect(payloadHasCardDeckV3(H.payload)).toBe(true);
+    const prepared = await assertDraftCanEnterPublishQueue(
+      "11111111-1111-1111-1111-111111111111",
+      "22222222-2222-2222-2222-222222222222",
+    );
+    expect(prepared?.imageUrls).toHaveLength(source.slides.length);
+    expect(H.renders).toHaveLength(source.slides.length);
   });
 
   it("S2-B 경합: 렌더 중 최신 덱으로 바뀌면 구형 PNG를 초안이나 발행 입력에 확정하지 않는다", async () => {

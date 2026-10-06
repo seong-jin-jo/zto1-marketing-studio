@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { withTenant } from "@/lib/db";
 import deckD100 from "./fixtures/deck-d100.v2.json";
 import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
+import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
+import type { CardDeck } from "@/lib/studio/card-deck-contract";
 
 const H = vi.hoisted(() => ({
   rows: [] as Array<Record<string, unknown>>,
@@ -156,6 +158,68 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     expect(detail.draft.hasCardDeckV3).toBe(false);
     expect(detail.draft.cardDeckV3).toBeNull();
     expect(detail.draft.cardDeckV3SourceSnapshot).toBeNull();
+  });
+  it("S5b-AC3 동기화된 chat_bubble v2+v3는 함께 저장하고 다시 연다", async () => {
+    const source = structuredClone(deckD100) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    migrated.brand.display_name = "v3에서 고친 작성자";
+    migrated.revision += 1;
+    const projected = projectCardDeckV3ToV2(migrated, source);
+    const synchronized = synchronizeChatCardDeckV3(migrated, projected);
+    H.rows = [{ id: "draft-chat-v3" }];
+    const { POST, GET } = await import("@/app/api/studio/drafts/route");
+    const saved = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "카톡 v3", cardDeck: projected, cardDeckV3: synchronized }),
+    }));
+    expect(saved.status).toBe(200);
+    expect(H.jsonValues[0]).toMatchObject({ cardDeck: projected, cardDeckV3: synchronized, cardDeckV3SourceSnapshot: null });
+
+    H.rows = [{ id: "draft-chat-v3", idea: "카톡 v3", payload: H.jsonValues[0], status: "draft", updated_at: "2026-10-06T00:00:00Z" }];
+    const detail = await (await GET(new Request("http://localhost/api/studio/drafts?id=draft-chat-v3"))).json();
+    expect(detail.draft.cardDeckV3).toEqual(synchronized);
+    expect(detail.draft.hasCardDeckV3).toBe(true);
+  });
+
+  it("S5b-R1-M1 편집 뒤 발행실 이동 저장 payload는 실제 drafts route에서 200으로 수락된다", async () => {
+    const source = structuredClone(deckD100) as unknown as CardDeck;
+    const edited = migrateCardDeckV2ToV3(source);
+    const bodySlide = edited.slides.find((slide) => slide.role === "body");
+    if (!bodySlide || bodySlide.base.kind !== "chat_bubble") throw new Error("fixture");
+    bodySlide.base.bubbles[0].segments[0].text = "발행실로 보낼 최신 문장";
+    edited.revision += 1;
+    const projected = projectCardDeckV3ToV2(edited, source);
+    const persisted = cardDeckV3ForSave(projected, edited);
+    H.rows = [{ id: "draft-chat-publish" }];
+
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1",
+        id: "draft-chat-publish",
+        bodyBaseRevision: 0,
+        idea: "편집 뒤 발행실 이동",
+        cardDeck: projected,
+        cardDeckV3: persisted,
+      }),
+    }));
+
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
+    expect(H.jsonValues[0]).toMatchObject({ cardDeck: projected, cardDeckV3: persisted });
+  });
+
+  it("S5b-AC3 v2와 지문이 다른 카톡 v3 저장은 옛 내용 발행을 막기 위해 409로 거절한다", async () => {
+    const source = structuredClone(deckD100) as unknown as CardDeck;
+    const stale = migrateCardDeckV2ToV3(source);
+    source.brand.display_name = "최신 v2 작성자";
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "불일치", cardDeck: source, cardDeckV3: stale }),
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "CARD_CHAT_V3_SOURCE_MISMATCH" });
   });
   it("정상 덱은 저장되고 editLines 가 투영으로 채워진다", async () => {
     H.rows = [{ id: "draft-deck-1" }];
