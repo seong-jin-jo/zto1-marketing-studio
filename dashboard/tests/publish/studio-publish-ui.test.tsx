@@ -163,6 +163,38 @@ async function findEnabledButton(name: string) {
   return button;
 }
 
+function installVideoQueueMocks(artifactFilename = "export-video.mp4") {
+  const artifactUrl = fakeMediaUrl(artifactFilename);
+  mocks.apiPost.mockImplementation(async (path: string) => {
+    if (path === "/api/studio/drafts") return { id: "video-queue-draft", bodyRevision: 1, videoEditServerRevision: 1 };
+    return { ok: true };
+  });
+  mocks.fetcher.mockImplementation(async (path: string) => {
+    if (path.includes("/exports/latest?kind=video")) {
+      return { current_source_revision: 1, current_source_hash: "a".repeat(64) };
+    }
+    if (path.includes("/exports/video-export-1")) {
+      return {
+        status: "succeeded",
+        items: [{ status: "succeeded", artifact_url: artifactUrl, artifact_filename: artifactFilename }],
+      };
+    }
+    return undefined;
+  });
+  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+    const inputUrl = String(input);
+    if (/\/api\/studio\/drafts\/[^/]+\/exports$/.test(new URL(inputUrl, "http://localhost").pathname)) {
+      return Response.json({ export_id: "video-export-1", status_url: "/api/studio/drafts/video-queue-draft/exports/video-export-1" }, { status: 202 });
+    }
+    const platform = /\/api\/channels\/([^/]+)\/accounts/.exec(inputUrl)?.[1];
+    const connected = platform && mocks.connectedPlatforms.includes(platform)
+      ? [{ id: `${platform}-account`, display_name: `${platform} 계정`, username: platform, is_default: true }]
+      : [];
+    return Response.json({ accounts: connected });
+  }));
+  return { artifactUrl, artifactFilename };
+}
+
 describe("Studio publish result integrity", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -498,6 +530,7 @@ describe("Studio publish result integrity", () => {
   });
 
   it("VIDEO-BAKED-LINEAGE-05 인트로 없는 구운 초안을 복원하면 DOM 자막을 숨기고 원본 없는 재굽기를 막는다", async () => {
+    installVideoQueueMocks();
     localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
       idea: "구운 영상",
       editKind: "video",
@@ -535,13 +568,13 @@ describe("Studio publish result integrity", () => {
       "자막 없는 원본 영상을 찾지 못해 다시 굽지 않았습니다. 생성실에서 영상을 다시 만들거나 원본을 복원해 주세요.",
       "error",
     ));
-    expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/video/subtitle")).toBe(false);
+    expect(vi.mocked(fetch).mock.calls.some(([request]) => String(request).includes("/exports"))).toBe(false);
   });
 
   it("VIDEO-BAKED-LINEAGE-06 저장된 원본 계보로만 다시 굽고 새 결과에도 계보를 보존한다", async () => {
     const sourceUrl = fakeMediaUrl("source.mp4");
     const oldBakedUrl = fakeMediaUrl("old-baked.mp4");
-    const newBakedUrl = fakeMediaUrl("new-baked.mp4");
+    const { artifactUrl: newBakedUrl } = installVideoQueueMocks("new-baked.mp4");
     localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
       idea: "다시 굽는 영상",
       editKind: "video",
@@ -564,21 +597,13 @@ describe("Studio publish result integrity", () => {
         revision: 1,
       },
     }));
-    mocks.apiPost.mockImplementation(async (path: string, body: Record<string, unknown>) => {
-      if (path === "/api/video/subtitle") {
-        expect(body.filename).toBe("source.mp4");
-        return { ok: true, file: newBakedUrl, filename: "new-baked.mp4" };
-      }
-      if (path === "/api/studio/drafts") return { id: "rebaked-draft", bodyRevision: 1, videoEditServerRevision: 1 };
-      return { ok: true };
-    });
     window.history.replaceState(null, "", "/studio?room=edit&kind=video");
 
     render(<StudioPage />);
     await waitFor(() => expect(document.querySelector("[data-video-subtitle-list]")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
 
-    await waitFor(() => expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/video/subtitle")).toBe(true));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([request]) => String(request).includes("/exports"))).toBe(true));
     await waitFor(() => {
       const saves = mocks.apiPost.mock.calls.filter(([path]) => path === "/api/studio/drafts");
       expect(saves.at(-1)?.[1]).toEqual(expect.objectContaining({
@@ -592,6 +617,7 @@ describe("Studio publish result integrity", () => {
   });
 
   it("VIDEO-BAKED-LINEAGE-07 원본 파일명에 구운 URL이 붙은 기존 오염 계보는 숨기고 재굽지 않는다", async () => {
+    installVideoQueueMocks();
     const bakedUrl = fakeMediaUrl("baked.mp4");
     localStorage.setItem(`studio_work:${mocks.workspace.id}`, JSON.stringify({
       idea: "기존 합성 영상",
@@ -639,10 +665,11 @@ describe("Studio publish result integrity", () => {
       "자막 없는 원본 영상을 찾지 못해 다시 굽지 않았습니다. 생성실에서 영상을 다시 만들거나 원본을 복원해 주세요.",
       "error",
     ));
-    expect(mocks.apiPost.mock.calls.some(([path]) => path === "/api/video/subtitle")).toBe(false);
+    expect(vi.mocked(fetch).mock.calls.some(([request]) => String(request).includes("/exports"))).toBe(false);
   });
 
   it("VIDEO-BAKED-LINEAGE-08 표시 없는 운영 초안도 서버 계보의 원본으로 미리보기와 재굽기를 한다", async () => {
+    installVideoQueueMocks("subtitle-22222222-2222-4222-8222-222222222222.mp4");
     const bakedUrl = fakeMediaUrl("subtitle-11111111-1111-4111-8111-111111111111.mp4");
     const sourceUrl = fakeMediaUrl("source.mp4");
     mocks.bakeLineage = {
@@ -666,14 +693,6 @@ describe("Studio publish result integrity", () => {
         revision: 1,
       },
     }));
-    mocks.apiPost.mockImplementation(async (requestPath: string, body: Record<string, unknown>) => {
-      if (requestPath === "/api/video/subtitle") {
-        expect(body.filename).toBe("source.mp4");
-        return { ok: true, file: fakeMediaUrl("subtitle-22222222-2222-4222-8222-222222222222.mp4") };
-      }
-      if (requestPath === "/api/studio/drafts") return { id: "lineage-draft", bodyRevision: 1, videoEditServerRevision: 1 };
-      return { ok: true };
-    });
     window.history.replaceState(null, "", "/studio?room=edit&kind=video");
 
     render(<StudioPage />);
@@ -686,10 +705,11 @@ describe("Studio publish result integrity", () => {
     expect(document.querySelectorAll("[data-video-subtitle-active]")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
-    await waitFor(() => expect(mocks.apiPost.mock.calls.some(([requestPath]) => requestPath === "/api/video/subtitle")).toBe(true));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([request]) => String(request).includes("/exports"))).toBe(true));
   });
 
   it("VIDEO-BAKED-LINEAGE-09 기존 작업물 열기에서 서버가 구운 파일로 확인하고 원본이 없으면 DOM 자막과 재굽기를 막는다", async () => {
+    installVideoQueueMocks();
     const bakedUrl = fakeMediaUrl("subtitle-33333333-3333-4333-8333-333333333333.mp4");
     mocks.bakeLineage = { ok: true, state: "baked" };
     mocks.returnPosts = [{
@@ -720,10 +740,11 @@ describe("Studio publish result integrity", () => {
       "자막 없는 원본 영상을 찾지 못해 다시 굽지 않았습니다. 생성실에서 영상을 다시 만들거나 원본을 복원해 주세요.",
       "error",
     ));
-    expect(mocks.apiPost.mock.calls.some(([requestPath]) => requestPath === "/api/video/subtitle")).toBe(false);
+    expect(vi.mocked(fetch).mock.calls.some(([request]) => String(request).includes("/exports"))).toBe(false);
   });
 
   it("VIDEO-BAKED-LINEAGE-10 표시 없는 vid_ 생성 원본은 DOM 자막을 보이고 재생성 없이 굽는다", async () => {
+    installVideoQueueMocks("subtitle-44444444-4444-4444-8444-444444444444.mp4");
     const originalFilename = "vid_1723456789012.mp4";
     const originalUrl = fakeMediaUrl(originalFilename);
     mocks.bakeLineage = { ok: true, state: "unbaked" };
@@ -742,14 +763,6 @@ describe("Studio publish result integrity", () => {
         revision: 1,
       },
     }));
-    mocks.apiPost.mockImplementation(async (requestPath: string, body: Record<string, unknown>) => {
-      if (requestPath === "/api/video/subtitle") {
-        expect(body.filename).toBe(originalFilename);
-        return { ok: true, file: fakeMediaUrl("subtitle-44444444-4444-4444-8444-444444444444.mp4") };
-      }
-      if (requestPath === "/api/studio/drafts") return { id: "unbaked-draft", bodyRevision: 1, videoEditServerRevision: 1 };
-      return { ok: true };
-    });
     window.history.replaceState(null, "", "/studio?room=edit&kind=video");
 
     render(<StudioPage />);
@@ -762,7 +775,7 @@ describe("Studio publish result integrity", () => {
     expect(document.querySelectorAll("[data-video-subtitle-active]")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
-    await waitFor(() => expect(mocks.apiPost.mock.calls.some(([requestPath]) => requestPath === "/api/video/subtitle")).toBe(true));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([request]) => String(request).includes("/exports"))).toBe(true));
     expect(mocks.showToast).not.toHaveBeenCalledWith(expect.stringContaining("영상을 다시 만들어"), "error");
   });
 

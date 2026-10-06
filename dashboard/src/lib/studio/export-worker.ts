@@ -15,6 +15,7 @@ import { PostgresExportRepository } from "./export-repository";
 import { sha256Hex } from "./export-source-hash";
 import { probeRenderedVideo, renderVideoExport } from "./video-export-renderer";
 import { VideoRenderAssetError } from "./video-render-assets";
+import { recordSubtitleBake } from "./video-bake-lineage";
 
 const CARD_RENDER_TIMEOUT_MS = 120_000;
 const VIDEO_RENDER_TIMEOUT_MS = 240_000;
@@ -32,6 +33,7 @@ export interface ExportWorkerDependencies {
   repository: Pick<PostgresExportRepository, "heartbeat" | "complete" | "fail">;
   render(item: ClaimedExportItem, outputPath: string): Promise<void>;
   put(tenantId: string, filename: string, body: Buffer): Promise<void>;
+  recordVideoBake?(input: { tenantId: string; outputFilename: string; sourceFilename: string }): Promise<void>;
   afterUpload?(item: ClaimedExportItem, artifact: ExportArtifact): Promise<void>;
 }
 
@@ -109,6 +111,7 @@ export function realExportWorkerDependencies(repository = new PostgresExportRepo
         });
       }
     },
+    recordVideoBake: recordSubtitleBake,
   };
 }
 
@@ -158,6 +161,13 @@ export class ExportItemWorker {
         height,
       };
       await this.dependencies.put(item.tenant_id, filename, body);
+      if (item.kind === "video" && "video" in item.request_payload && this.dependencies.recordVideoBake) {
+        await this.dependencies.recordVideoBake({
+          tenantId: item.tenant_id,
+          outputFilename: filename,
+          sourceFilename: item.request_payload.video.sourceFilename,
+        });
+      }
       await this.dependencies.afterUpload?.(item, artifact);
       return this.dependencies.repository.complete(item, artifact);
     } catch (error) {

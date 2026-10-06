@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import { parseCardDeckV3, type CardDeckV3, type CardSlideV3 } from "./card-element-contract";
 import { verifyMediaTokenSignature } from "@/lib/media-token";
-import { normalizeVideoEdit, validateVideoEdit, type VideoEdit } from "./video-edit-contract";
-import { alignVideoEditToRenderSource } from "./video-publish-filename";
+import { isIntroOutroStale, normalizeVideoEdit, validateVideoEdit, type VideoEdit } from "./video-edit-contract";
+import { readSubtitleBakeLineage } from "./video-bake-lineage";
+import { alignVideoEditToRenderSource, resolveVideoRenderSourceFilename } from "./video-publish-filename";
 import type { SubtitleSize } from "./video-subtitle";
 
 function canonical(value: unknown): unknown {
@@ -59,6 +60,13 @@ export interface VideoExportSource {
   sourceRevision: number;
 }
 
+export class VideoExportSourceError extends Error {
+  constructor(readonly code: "SUBTITLE_INPUT_ALREADY_BAKED" | "VIDEO_SOURCE_MISSING", message: string) {
+    super(message);
+    this.name = "VideoExportSourceError";
+  }
+}
+
 function filenameFromDeliveryUrl(value: unknown, tenantId: string): string | null {
   if (typeof value !== "string") return null;
   const marker = "/api/media/";
@@ -75,14 +83,31 @@ export function videoExportSource(payloadValue: unknown, tenantId: string): Vide
   const edit = normalizeVideoEdit(payload.videoEdit);
   const vid = payload.vid && typeof payload.vid === "object" ? payload.vid as Record<string, unknown> : {};
   const editSource = vid.editSource && typeof vid.editSource === "object" ? vid.editSource as Record<string, unknown> : {};
-  const sourceFilename = edit.introOutro?.compositeFilename
-    || (typeof editSource.filename === "string" ? editSource.filename : null)
+  const explicitSource = typeof editSource.filename === "string" && editSource.filename ? editSource.filename : undefined;
+  const currentFilename = (typeof vid.filename === "string" ? vid.filename : null)
     || filenameFromDeliveryUrl(vid.file, tenantId)
-    || filenameFromDeliveryUrl(vid.url, tenantId);
-  if (!sourceFilename) throw new Error("VIDEO_SOURCE_MISSING");
-  const renderEdit = edit.introOutro?.compositeFilename === sourceFilename
-    ? alignVideoEditToRenderSource(edit, edit.introOutro, edit.introOutro.sourceFilename)
-    : edit;
+    || filenameFromDeliveryUrl(vid.url, tenantId)
+    || explicitSource;
+  if (!currentFilename) throw new VideoExportSourceError("VIDEO_SOURCE_MISSING", "영상 원본을 찾을 수 없습니다");
+  const registryLineage = readSubtitleBakeLineage(tenantId, currentFilename);
+  const persistedState = vid.subtitleLineageState === "baked" || vid.subtitleLineageState === "unbaked" || vid.subtitleLineageState === "unknown"
+    ? vid.subtitleLineageState
+    : vid.subtitlesBaked === true ? "baked" : vid.subtitlesBaked === false ? "unbaked" : undefined;
+  const recordedSource = registryLineage.state === "baked" ? registryLineage.sourceFilename : undefined;
+  const currentIsKnownComposite = Boolean(edit.introOutro?.compositeFilename === currentFilename
+    && !isIntroOutroStale(edit.introOutro, currentFilename));
+  const lineageState = registryLineage.state === "unknown" ? persistedState ?? "unknown" : registryLineage.state;
+  const unbakedFilename = recordedSource
+    || explicitSource
+    || (lineageState === "unbaked" || currentIsKnownComposite ? currentFilename : undefined);
+  if (!unbakedFilename) {
+    throw new VideoExportSourceError(
+      "SUBTITLE_INPUT_ALREADY_BAKED",
+      "자막이 이미 들어간 영상의 자막 없는 원본을 찾을 수 없습니다",
+    );
+  }
+  const sourceFilename = resolveVideoRenderSourceFilename(unbakedFilename, edit.introOutro);
+  const renderEdit = alignVideoEditToRenderSource(edit, edit.introOutro, unbakedFilename);
   const lines = Array.isArray(payload.editLines) ? payload.editLines.filter((line): line is string => typeof line === "string") : [];
   const editFormat = payload.editFormat && typeof payload.editFormat === "object" ? payload.editFormat as Record<string, unknown> : {};
   const subtitleSize: SubtitleSize = editFormat.subtitleSize === "작게" || editFormat.subtitleSize === "크게" ? editFormat.subtitleSize : "보통";

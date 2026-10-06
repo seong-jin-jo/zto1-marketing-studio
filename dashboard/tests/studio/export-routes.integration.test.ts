@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ExportQueueError } from "@/lib/studio/export-contract";
 
 const H = vi.hoisted(() => ({
   create: vi.fn(),
@@ -115,6 +116,22 @@ describe("S3 export route 통합 계약", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ kind: "video" });
     expect(H.latest).toHaveBeenCalledWith("tenant-route", DRAFT_ID, "video");
+  });
+
+  it("S6-MAJOR3-04 거절: 글자 없는 원본 계보가 없는 영상은 409로 다시 굽기를 막는다", async () => {
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/exports/route");
+    H.create.mockRejectedValue(new ExportQueueError(
+      409,
+      "SUBTITLE_INPUT_ALREADY_BAKED",
+      "자막이 이미 들어간 영상의 자막 없는 원본을 찾을 수 없습니다",
+    ));
+    const response = await POST(new Request(`http://localhost/api/studio/drafts/${DRAFT_ID}/exports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": "video-baked-lineage" },
+      body: JSON.stringify({ kind: "video", expected_source_revision: 1, expected_source_hash: "a".repeat(64), item_keys: null }),
+    }), { params: Promise.resolve({ draftId: DRAFT_ID }) });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "SUBTITLE_INPUT_ALREADY_BAKED" });
   });
 
   it("S3-PR122-M4 거절: 잘못된 draftId·exportId는 repository를 호출하지 않고 404다", async () => {

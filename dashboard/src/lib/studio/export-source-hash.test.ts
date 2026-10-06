@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createPlainCardDeckV3 } from "./card-element-commands";
-import { canonicalJson, cardDeckExportSource, firstEmptySlide, videoExportSource } from "./export-source-hash";
+import { canonicalJson, cardDeckExportSource, firstEmptySlide, videoExportSource, VideoExportSourceError } from "./export-source-hash";
 import { emptyVideoEdit } from "./video-edit-contract";
 
 describe("S3 내보내기 source hash 계약", () => {
@@ -44,5 +44,29 @@ describe("S3 내보내기 source hash 계약", () => {
     expect(source.edit.subtitles[0]).toMatchObject({ startSec: 2, endSec: 3.5 });
     expect(source.edit.overlays[0]).toMatchObject({ startSec: 2.2, endSec: 3.2 });
     expect(source.edit.comments[0]).toMatchObject({ startSec: 2.4, endSec: 3.4 });
+  });
+
+  it("S6-MAJOR3-01 거절: 자막이 이미 구운 영상인데 글자 없는 원본 계보가 없으면 다시 굽지 않는다", () => {
+    expect(() => videoExportSource({
+      videoEdit: emptyVideoEdit(),
+      vid: {
+        filename: "subtitle-11111111-1111-4111-8111-111111111111.mp4",
+        subtitlesBaked: true,
+      },
+    }, "tenant-s6")).toThrow(expect.objectContaining<Partial<VideoExportSourceError>>({
+      code: "SUBTITLE_INPUT_ALREADY_BAKED",
+    }));
+  });
+
+  it("S6-MAJOR3-02 정상: 구운 현재 영상은 저장된 글자 없는 원본으로만 다시 굽는다", () => {
+    const source = videoExportSource({
+      videoEdit: emptyVideoEdit(),
+      vid: {
+        filename: "subtitle-11111111-1111-4111-8111-111111111111.mp4",
+        subtitlesBaked: true,
+        editSource: { filename: "vid_1728000000000.mp4", url: "/api/media/original" },
+      },
+    }, "tenant-s6");
+    expect(source.sourceFilename).toBe("vid_1728000000000.mp4");
   });
 });

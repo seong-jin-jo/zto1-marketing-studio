@@ -10,7 +10,7 @@ import {
   type ExportKind,
   type RetryExportInput,
 } from "./export-contract";
-import { cardDeckExportSource, cardSlideSourceHash, firstEmptySlide, videoExportSource, type VideoExportSource } from "./export-source-hash";
+import { cardDeckExportSource, cardSlideSourceHash, firstEmptySlide, videoExportSource, VideoExportSourceError, type VideoExportSource } from "./export-source-hash";
 
 type Sql = ReturnType<typeof db>;
 
@@ -67,6 +67,9 @@ function sourceFromDraft(row: { payload?: unknown } | undefined, kind: ExportKin
   try {
     return kind === "video" ? videoExportSource(payload, tenantId) : cardDeckExportSource(payload.cardDeckV3);
   } catch (error) {
+    if (error instanceof VideoExportSourceError) {
+      throw new ExportQueueError(error.code === "SUBTITLE_INPUT_ALREADY_BAKED" ? 409 : 400, error.code, error.message);
+    }
     if (error instanceof CardDeckV3ValidationError && error.code === "CARD_DECK_TOO_LARGE") {
       throw new ExportQueueError(413, error.code, error.message);
     }
