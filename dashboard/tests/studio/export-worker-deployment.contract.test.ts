@@ -50,4 +50,11 @@ describe("S3 별도 export worker 실행·배포 계약", () => {
     expect(repository).toContain("FOR UPDATE SKIP LOCKED LIMIT 1");
     expect(repository).toContain("lease_token=${item.lease_token}");
   });
+
+  it("S3-PR122-M5 배포: dashboard 선택 배포는 같은 image의 export worker도 재기동한다", () => {
+    expect(deploy).toContain('SERVICES="${{ github.event.inputs.services }}"');
+    expect(deploy).toContain('SERVICES="$SERVICES openclaw-studio-export-worker"');
+    expect(deploy).toContain("up -d $SERVICES");
+    expect(deploy).not.toContain("up -d ${{ github.event.inputs.services }}");
+  });
 });
