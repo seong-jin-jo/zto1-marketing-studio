@@ -4311,24 +4311,29 @@ export default function StudioPage() {
     showToast("자유 배치를 시작했습니다. 기본 편집으로 돌아가면 지금 글과 위치를 복원할 수 있습니다.", "success");
   }
 
-  async function returnFromCardDeckV3() {
+  async function returnFromCardDeckV3(projectedChatDeck?: CardDeck) {
+    const returningChatDeck = cardDeckV3?.template === "chat_bubble" && projectedChatDeck?.template === "chat_bubble"
+      ? projectedChatDeck
+      : null;
     let snapshot = cardDeckV3SourceSnapshot;
     // 목록 우선 열기와 단건 보강 사이에 사용자가 바로 복귀를 누를 수 있다. 이 짧은
     // 구간에서 React state가 아직 null이라는 이유로 복귀를 막으면 서버에 보존된 원문을
     // 쓸 수 없게 된다. 현재 초안의 단건 원문만 다시 확인하고, 다른 초안 값은 섞지 않는다.
-    if (!snapshot && draftIdRef.current) {
+    if (!returningChatDeck && !snapshot && draftIdRef.current) {
       const detail = await fetchDraftDetail({ id: draftIdRef.current });
       snapshot = (detail?.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot | null | undefined) ?? null;
       if (snapshot) setCardDeckV3SourceSnapshot(snapshot);
     }
-    if (!snapshot) {
+    if (!returningChatDeck && !snapshot) {
       showToast("자유 배치로 바꾸기 전 기본 편집 내용을 찾지 못했습니다. 현재 작업은 그대로 보존했습니다.", "error");
       return;
     }
     const confirmed = await askConfirm({
       title: "기본 편집으로 돌아갈까요?",
-      description: "자유 배치에서 바꾼 글, 사진, 크기, 위치와 회전 작업은 사라집니다. 자유 배치로 들어오기 직전의 기본 편집 내용으로 복원합니다.",
-      confirmLabel: "자유 배치 작업을 버리고 돌아가기",
+      description: returningChatDeck
+        ? "말풍선, 화자, 표지 문구와 표지·마지막 사진은 기본 편집기로 옮깁니다. 자유 배치로 덧붙인 글, 스티커, 로고와 위치 작업은 사라집니다."
+        : "자유 배치에서 바꾼 글, 사진, 크기, 위치와 회전 작업은 사라집니다. 자유 배치로 들어오기 직전의 기본 편집 내용으로 복원합니다.",
+      confirmLabel: returningChatDeck ? "기본 말풍선 편집기로 돌아가기" : "자유 배치 작업을 버리고 돌아가기",
       cancelLabel: "자유 배치 계속하기",
       destructive: true,
     });
@@ -4337,8 +4342,14 @@ export default function StudioPage() {
       clearTimeout(cardDeckAutosaveTimer.current);
       cardDeckAutosaveTimer.current = null;
     }
-    replaceEditLines(snapshot.editLines);
-    setCardTextPositions(snapshot.cardTextPositions);
+    if (returningChatDeck) {
+      setCardDeck(returningChatDeck);
+      replaceEditLines(deckProjection(returningChatDeck).lines);
+      setCardTextPositions([]);
+    } else {
+      replaceEditLines(snapshot!.editLines);
+      setCardTextPositions(snapshot!.cardTextPositions);
+    }
     setCardDeckV3(null);
     cardDeckV3Ref.current = null;
     cardDeckV3DirtyRef.current = true;
@@ -4348,8 +4359,8 @@ export default function StudioPage() {
     setCardDeckV3SourceSnapshot(null);
     try {
       await save(
-        "draft", publishReconciliations, draftIdRef.current, img, vid, null, null, null,
-        "tail", pub, { clear: true, sourceSnapshot: null, cardTextPositions: snapshot.cardTextPositions },
+        "draft", publishReconciliations, draftIdRef.current, img, vid, returningChatDeck, null, null,
+        "tail", pub, { clear: true, sourceSnapshot: null, cardTextPositions: returningChatDeck ? [] : snapshot!.cardTextPositions },
       );
       cardDeckV3DirtyRef.current = false;
       cardDeckV3HydratedDraftRef.current = draftIdRef.current;
@@ -4502,7 +4513,7 @@ export default function StudioPage() {
         }) ? startCardDeckV3 : undefined}
         cardDeckV3EntryBlockedReason={cardDeckV3HydrationBlockedReason ?? (cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines))}
         onRetryCardDeckV3Detail={cardDeckV3DetailStatus === "error" ? retryCardDeckV3Detail : undefined}
-        onReturnFromCardDeckV3={() => { void returnFromCardDeckV3(); }}
+        onReturnFromCardDeckV3={(projectedChatDeck) => { void returnFromCardDeckV3(projectedChatDeck); }}
         videoEdit={videoEdit}
         onVideoEditChange={onVideoEditChange}
         onOpenCreate={openCreateForEditKind}

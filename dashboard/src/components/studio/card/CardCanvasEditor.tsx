@@ -104,10 +104,11 @@ function elementOverlayStyle(element: CardElement, logicalHeight: number): CSSPr
 export interface CardCanvasEditorProps {
   deck: CardDeckV3;
   assetUrls?: Record<string, string>;
+  onAssetUrlChange?: (assetId: string, url: string) => void;
   onDeckChange: (deck: CardDeckV3) => void;
 }
 
-export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCanvasEditorProps) {
+export function CardCanvasEditor({ deck, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
   const [history, setHistory] = useState<CardCommandHistory>(() => createCardCommandHistory(deck));
   const [activeSlideId, setActiveSlideId] = useState(deck.slides[0]?.id ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -133,6 +134,10 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const profileInputRef = useRef<HTMLInputElement | null>(null);
   const backgroundInputRef = useRef<HTMLInputElement | null>(null);
+  const rememberAssetUrl = useCallback((assetId: string, url: string) => {
+    setLocalAssetUrls((current) => ({ ...current, [assetId]: url }));
+    onAssetUrlChange?.(assetId, url);
+  }, [onAssetUrlChange]);
   const lastExternalDeckRef = useRef(deck);
   const commitRef = useRef<(next: CardDeckV3) => void>(() => {});
   const textEditorRef = useRef<HTMLTextAreaElement | null>(null);
@@ -462,7 +467,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
       const response = await fetch("/api/images/upload", { method: "POST", headers: authHeaders(), body });
       const data = await response.json() as { filename?: string; url?: string; error?: string };
       if (!response.ok || !data.filename || !data.url) throw new Error(data.error || "사진을 올리지 못했습니다");
-      setLocalAssetUrls((current) => ({ ...current, [data.filename!]: data.url! }));
+      rememberAssetUrl(data.filename, data.url);
       add("image", { assetId: data.filename, assetAlt: file.name });
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "사진을 올리지 못했습니다");
@@ -477,7 +482,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
       const response = await fetch("/api/images/upload", { method: "POST", headers: authHeaders(), body });
       const data = await response.json() as { filename?: string; url?: string; error?: string };
       if (!response.ok || !data.filename || !data.url) throw new Error(data.error || "프로필 사진을 올리지 못했습니다");
-      setLocalAssetUrls((current) => ({ ...current, [data.filename!]: data.url! }));
+      rememberAssetUrl(data.filename, data.url);
       apply((current) => patchChatDeckBrand(current, { profile_image_asset_id: data.filename, profile_image_url: data.url }));
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "프로필 사진을 올리지 못했습니다");
@@ -493,7 +498,7 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
       const response = await fetch("/api/images/upload", { method: "POST", headers: authHeaders(), body });
       const data = await response.json() as { filename?: string; url?: string; error?: string };
       if (!response.ok || !data.filename || !data.url) throw new Error(data.error || "배경 사진을 올리지 못했습니다");
-      setLocalAssetUrls((current) => ({ ...current, [data.filename!]: data.url! }));
+      rememberAssetUrl(data.filename, data.url);
       runChatCommand((current) => setChatSlideBackgroundImage(current, activeSlide.id, data.filename!));
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "배경 사진을 올리지 못했습니다");

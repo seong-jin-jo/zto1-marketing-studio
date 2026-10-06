@@ -125,6 +125,7 @@ await context.route("**/api/**", async (route) => {
       validateCardDeckV3(body.cardDeckV3);
       serverDeck = structuredClone(body.cardDeckV3);
     }
+    if (body.clearCardDeckV3 === true) serverDeck = null;
     bodyRevision += 1;
     return json(route, { ok: true, id: draftId, bodyRevision, videoEditServerRevision: null });
   }
@@ -176,6 +177,16 @@ try {
     console.error("S5_LOAD_DIAGNOSTIC", JSON.stringify({ url: page.url(), body: (await page.locator("body").innerText()).slice(0, 4_000), runtimeErrors, failedRequests }, null, 2));
     throw error;
   }
+  await page.getByLabel("표지 또는 마지막 장 배경 사진 파일").setInputFiles({
+    name: "changed-cover.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("89504e470d0a1a0a", "hex"),
+  });
+  await waitUntil(
+    () => serverDeck?.slides[0]?.background?.kind === "image" && serverDeck.slides[0].background.asset_id === "s5-chat-photo-1.png",
+    15_000,
+    "바꾼 표지 사진이 v3 덱에 저장되지 않았습니다",
+  );
   await page.getByRole("button", { name: "2장" }).click();
   if ((await page.locator("[data-chat-bubble-id]").count()) < 2) throw new Error("데이터가 있는 말풍선 장을 열지 못했습니다");
   const beforeSpeakers = serverDeck.slides.map((slide) => slide.base.kind === "chat_bubble" ? slide.base.bubbles.map((bubble) => bubble.speaker) : []);
@@ -309,21 +320,30 @@ try {
   await page.getByRole("button", { name: "발행실로 이동" }).click();
   await page.locator('[data-room="publish"]').waitFor({ state: "visible", timeout: 30_000 });
   if (!new URL(page.url()).searchParams.get("room")?.includes("publish")) throw new Error(`실제 발행실 route로 이동하지 않았습니다: ${page.url()}`);
+  const publishRoute = page.url();
+  const finalDeck = structuredClone(serverDeck);
+  await page.goto(`${baseUrl}/studio?room=edit&draft_id=${draftId}`, { waitUntil: "networkidle", timeout: 60_000 });
+  await page.locator("[data-card-deck-v3-workbench]").waitFor({ state: "visible", timeout: 60_000 });
+  await page.getByRole("button", { name: "기본 편집으로 돌아가기" }).click();
+  await page.getByRole("button", { name: "기본 말풍선 편집기로 돌아가기" }).click();
+  await page.locator("[data-card-deck-workbench]").waitFor({ state: "visible", timeout: 30_000 });
+  await waitUntil(() => serverDeck === null, 15_000, "카톡 v3 덱이 서버에서 정리되지 않았습니다");
+  if (serverLegacyDeck.slides[0].cover_image_url !== photoSvg) throw new Error("바꾼 표지 사진이 기본 말풍선 편집기로 보존되지 않았습니다");
   if (runtimeErrors.length) throw new Error(`브라우저 console/page 오류 ${runtimeErrors.length}건: ${runtimeErrors.join(" | ")}`);
   if (failedRequests.length) throw new Error(`실패 network request ${failedRequests.length}건: ${failedRequests.join(" | ")}`);
 
   const result = {
     result: "PASS",
-    cards: serverDeck.slides.length,
+    cards: finalDeck.slides.length,
     uploads: uploadCount,
     chatV3Workbench: true,
     speakerSwapUndo: true,
     toneCandidateCount: 3,
     advancedEditorPreserved: true,
     overlayPreserved: Boolean(currentOverlay) && currentOverlay.x === preservedOverlay.x && currentOverlay.y === preservedOverlay.y,
-    overlayTypes: serverDeck.slides[1].elements.map((element) => element.type),
-    orphanProjectionRemoved: !serverDeck.slides[1].elements.some((element) => element.id === "el_orphan-old"),
-    profileAssetId: serverDeck.brand.profile_image_asset_id,
+    overlayTypes: finalDeck.slides[1].elements.map((element) => element.type),
+    orphanProjectionRemoved: !finalDeck.slides[1].elements.some((element) => element.id === "el_orphan-old"),
+    profileAssetId: finalDeck.brand.profile_image_asset_id,
     browserEditorProfileVisible: true,
     browserCanvasPng,
     editorScenePng,
@@ -334,11 +354,13 @@ try {
     overflowError,
     coverPhoto: cover.background,
     finalPhoto: final.background,
+    returnedToBasicEditor: true,
+    returnedCoverPhotoPreserved: serverLegacyDeck.slides[0].cover_image_url === photoSvg,
     responsive,
     consoleErrors: runtimeErrors.length,
     failedRequests: failedRequests.length,
     saves: posts.length,
-    publishRoute: page.url(),
+    publishRoute,
   };
   fs.writeFileSync(path.join(outputDir, "s5-chat-result.json"), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));

@@ -58,6 +58,7 @@ import {
 import styles from "./StudioRooms.module.css";
 import { DeliveredMedia, resolveImageAssetUrl } from "@/components/studio/DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
+import { projectChatCardDeckV3ToRenderableV2 } from "@/lib/studio/card-deck-v2-to-v3";
 
 // M5(2026-09-22 코드리뷰): 매 렌더 새 객체를 만들지 않게 모듈 스코프에서 한 번만 만든다.
 // videoEdit는 순수함수(video-edit-contract.ts)로만 바뀌므로 이 상수를 직접 변형하지 않는다.
@@ -1703,7 +1704,7 @@ interface EditRoomProps {
   cardDeckV3EntryBlockedReason?: string | null;
   onRetryCardDeckV3Detail?: () => void;
   /** 자유 배치 진입 직전의 plain 카드 원문과 위치를 복원한다. */
-  onReturnFromCardDeckV3?: () => void;
+  onReturnFromCardDeckV3?: (projectedChatDeck?: CardDeck) => void;
   /**
    * 영상 편집 v1(세션맥락 과업 B). 있으면 `kind==="video"` 편집 워크벤치 위에
    * `VideoEditor`(후킹 CTA·댓글 오버레이·자막 기반 편집·음성 변경)를 얹는다. 기존
@@ -2270,9 +2271,9 @@ export function EditRoom({
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-v3-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                   <div className="mb-stack flex flex-wrap items-center gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption text-muted" role="status" data-card-deck-v3-return-note>
                     <span className="mr-auto">{cardDeckV3.template === "chat_bubble" ? "필요하면 기본 말풍선 편집기로 돌아갈 수 있습니다." : "기본 편집으로 돌아가면 자유 배치 진입 직전의 글과 위치를 그대로 복원합니다."}</span>
-                    {onReturnFromCardDeckV3 ? <Button type="button" size="sm" variant="secondary" onClick={onReturnFromCardDeckV3}>기본 편집으로 돌아가기</Button> : null}
+                    {onReturnFromCardDeckV3 ? <Button type="button" size="sm" variant="secondary" onClick={() => onReturnFromCardDeckV3(cardDeckV3.template === "chat_bubble" ? projectChatCardDeckV3ToRenderableV2(cardDeckV3, cardAssetUrls) : undefined)}>기본 편집으로 돌아가기</Button> : null}
                   </div>
-                  <CardCanvasEditor deck={cardDeckV3} assetUrls={cardAssetUrls} onDeckChange={onCardDeckV3Change} />
+                  <CardCanvasEditor deck={cardDeckV3} assetUrls={cardAssetUrls} onAssetUrlChange={(assetId, url) => setCardAssetUrls((current) => ({ ...current, [assetId]: url }))} onDeckChange={onCardDeckV3Change} />
                 </div>
               ) : kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>

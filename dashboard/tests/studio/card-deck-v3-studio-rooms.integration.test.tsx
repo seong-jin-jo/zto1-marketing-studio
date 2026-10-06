@@ -173,6 +173,46 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(onReturn).toHaveBeenCalledTimes(1);
   });
 
+  it("S5b-R2-B 카톡 v3에서 바꾼 표지 사진을 기본 말풍선 편집기로 투영해 복귀한다", async () => {
+    const onReturn = vi.fn();
+    const deck = migrateCardDeckV2ToV3(structuredClone(chatBubbleDeck) as CardDeck);
+    deck.slides[0].background = {
+      kind: "image",
+      asset_id: "changed-cover.png",
+      crop: { x: 0, y: 0, width: 1, height: 1 },
+      overlay: "#000000",
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({
+      ok: true,
+      json: async () => ({ ok: true, file: "https://assets.test/changed-cover.png" }),
+    }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<EditRoom
+      workspaceId="tenant-s5b-return"
+      kind="card"
+      lines={["첫 장", "둘째 장"]}
+      onLinesChange={() => {}}
+      cardDeck={chatBubbleDeck as CardDeck}
+      onCardDeckChange={() => {}}
+      cardDeckV3={deck}
+      onCardDeckV3Change={() => {}}
+      onReturnFromCardDeckV3={onReturn}
+    />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "기본 편집으로 돌아가기" }));
+    await waitFor(() => expect(onReturn).toHaveBeenCalledOnce());
+    const projected = onReturn.mock.calls[0]?.[0] as CardDeck;
+    expect(projected.template).toBe("chat_bubble");
+    expect(projected.slides[0].cover_image_url).toBe("https://assets.test/changed-cover.png");
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      filename: "changed-cover.png",
+      purpose: "image",
+      tenant_id: "tenant-s5b-return",
+    });
+  });
+
   it("S5b-AC1 프로필 asset_id를 테넌트 범위 URL로 복원해 카톡 아바타에 표시한다", async () => {
     const deck = migrateCardDeckV2ToV3(structuredClone(chatBubbleDeck) as CardDeck);
     deck.brand.profile_image_asset_id = "profile-avatar.png";
