@@ -243,19 +243,37 @@ try {
     if (layoutAssertionWidths.has(viewport.width)) {
       await page.locator("[data-card-stage]").scrollIntoViewIfNeeded();
       layout = await page.evaluate(({ width, height }) => {
-        const stage = document.querySelector("[data-card-stage]")?.getBoundingClientRect();
+        const stageElement = document.querySelector("[data-card-stage]");
+        const stage = stageElement?.getBoundingClientRect();
         const rightPanel = document.querySelector("[data-card-right-panel]")?.getBoundingClientRect();
+        const editor = document.querySelector("[data-card-canvas-editor]")?.getBoundingClientRect();
+        const workspace = document.querySelector("[data-card-stage-column]")?.parentElement?.getBoundingClientRect();
+        const stageColumn = document.querySelector("[data-card-stage-column]")?.getBoundingClientRect();
         if (!stage || !rightPanel) return null;
         const visibleWidth = Math.max(0, Math.min(stage.right, width) - Math.max(stage.left, 0));
         const visibleHeight = Math.max(0, Math.min(stage.bottom, height) - Math.max(stage.top, 0));
         return {
           stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom, width: stage.width, height: stage.height, visibleWidth, visibleHeight },
           rightPanel: { left: rightPanel.left, right: rightPanel.right, width: rightPanel.width },
+          containers: {
+            innerWidth: window.innerWidth,
+            mobileMedia: window.matchMedia("(max-width: 1023px)").matches,
+            editor: editor ? { left: editor.left, right: editor.right, width: editor.width } : null,
+            workspace: workspace ? { left: workspace.left, right: workspace.right, width: workspace.width } : null,
+            stageColumn: stageColumn ? { left: stageColumn.left, right: stageColumn.right, width: stageColumn.width } : null,
+            stageStyle: {
+              width: getComputedStyle(stageElement).width,
+              minWidth: getComputedStyle(stageElement).minWidth,
+              maxWidth: getComputedStyle(stageElement).maxWidth,
+              display: getComputedStyle(stageElement).display,
+              position: getComputedStyle(stageElement).position,
+            },
+          },
         };
       }, viewport);
       if (!layout) throw new Error(`${viewport.width}px 카드 미리보기 또는 오른쪽 패널을 찾지 못했습니다`);
       if (layout.stage.visibleWidth < layout.stage.width - 1 || layout.stage.visibleHeight < Math.min(layout.stage.height, 160)) {
-        throw new Error(`${viewport.width}px 카드 미리보기가 가시 영역 밖입니다: ${JSON.stringify(layout.stage)}`);
+        throw new Error(`${viewport.width}px 카드 미리보기가 가시 영역 밖입니다: ${JSON.stringify(layout)}`);
       }
       if (layout.rightPanel.width < 240) throw new Error(`${viewport.width}px 오른쪽 패널 폭이 240px 미만입니다: ${JSON.stringify(layout.rightPanel)}`);
     }

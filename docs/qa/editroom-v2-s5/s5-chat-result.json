@@ -1,0 +1,254 @@
+{
+  "result": "PASS",
+  "cards": 9,
+  "uploads": 10,
+  "chatV3Workbench": true,
+  "speakerSwapUndo": true,
+  "toneCandidateCount": 3,
+  "advancedEditorPreserved": true,
+  "overlayPreserved": true,
+  "overlayTypes": [
+    "logo",
+    "text",
+    "sticker"
+  ],
+  "orphanProjectionRemoved": true,
+  "profileAssetId": "s5b-profile.svg",
+  "browserEditorProfileVisible": true,
+  "browserCanvasPng": "/Users/sj/wt/zto1-editroom-s5b/docs/qa/editroom-v2-s5/s5b-chat-profile-browser-canvas.png",
+  "editorScenePng": "/Users/sj/wt/zto1-editroom-s5b/docs/qa/editroom-v2-s5/s5b-chat-overlay-browser-scene.png",
+  "remotionPng": "/Users/sj/wt/zto1-editroom-s5b/docs/qa/editroom-v2-s5/s5b-chat-overlay-profile-remotion.png",
+  "readerBubbleCount": 1,
+  "authorReaderAuthorRendered": true,
+  "overflowRejected": true,
+  "overflowError": "CARD_CHAT_OVERFLOW: 2번 장 말풍선이 카드보다 깁니다. 쪼개세요.",
+  "coverPhoto": {
+    "kind": "image",
+    "asset_id": "s5-chat-photo-1.png",
+    "crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "overlay": "#000000"
+  },
+  "finalPhoto": {
+    "kind": "image",
+    "asset_id": "s5-fixture-photo.svg",
+    "crop": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+    },
+    "overlay": "#000000"
+  },
+  "returnedToBasicEditor": true,
+  "returnedCoverPhotoPreserved": true,
+  "responsive": [
+    {
+      "viewport": 360,
+      "overflow": {
+        "width": 360,
+        "scroll": 360
+      }
+    },
+    {
+      "viewport": 390,
+      "overflow": {
+        "width": 390,
+        "scroll": 390
+      },
+      "layout": {
+        "stage": {
+          "left": 16,
+          "right": 374,
+          "top": 397,
+          "bottom": 844,
+          "width": 358,
+          "height": 447,
+          "visibleWidth": 358,
+          "visibleHeight": 447
+        },
+        "rightPanel": {
+          "left": -496,
+          "right": -188,
+          "width": 308
+        },
+        "containers": {
+          "innerWidth": 390,
+          "mobileMedia": true,
+          "editor": {
+            "left": -496,
+            "right": -188,
+            "width": 308
+          },
+          "workspace": {
+            "left": -496,
+            "right": -188,
+            "width": 308
+          },
+          "stageColumn": {
+            "left": -496,
+            "right": -188,
+            "width": 308
+          },
+          "stageStyle": {
+            "width": "358px",
+            "minWidth": "0px",
+            "maxWidth": "358px",
+            "display": "block",
+            "position": "relative"
+          }
+        }
+      }
+    },
+    {
+      "viewport": 412,
+      "overflow": {
+        "width": 412,
+        "scroll": 412
+      }
+    },
+    {
+      "viewport": 600,
+      "overflow": {
+        "width": 600,
+        "scroll": 600
+      },
+      "layout": {
+        "stage": {
+          "left": 25,
+          "right": 593,
+          "top": 81,
+          "bottom": 790.5,
+          "width": 568,
+          "height": 709.5,
+          "visibleWidth": 568,
+          "visibleHeight": 709.5
+        },
+        "rightPanel": {
+          "left": -382,
+          "right": 136,
+          "width": 518
+        },
+        "containers": {
+          "innerWidth": 600,
+          "mobileMedia": true,
+          "editor": {
+            "left": -382,
+            "right": 136,
+            "width": 518
+          },
+          "workspace": {
+            "left": -382,
+            "right": 136,
+            "width": 518
+          },
+          "stageColumn": {
+            "left": -382,
+            "right": 136,
+            "width": 518
+          },
+          "stageStyle": {
+            "width": "568px",
+            "minWidth": "0px",
+            "maxWidth": "568px",
+            "display": "block",
+            "position": "relative"
+          }
+        }
+      }
+    },
+    {
+      "viewport": 700,
+      "overflow": {
+        "width": 700,
+        "scroll": 700
+      }
+    },
+    {
+      "viewport": 780,
+      "overflow": {
+        "width": 780,
+        "scroll": 780
+      }
+    },
+    {
+      "viewport": 820,
+      "overflow": {
+        "width": 820,
+        "scroll": 820
+      }
+    },
+    {
+      "viewport": 900,
+      "overflow": {
+        "width": 900,
+        "scroll": 900
+      }
+    },
+    {
+      "viewport": 1000,
+      "overflow": {
+        "width": 1000,
+        "scroll": 1000
+      }
+    },
+    {
+      "viewport": 1440,
+      "overflow": {
+        "width": 1440,
+        "scroll": 1440
+      },
+      "layout": {
+        "stage": {
+          "left": 393,
+          "right": 735,
+          "top": 28.5,
+          "bottom": 455.5,
+          "width": 342,
+          "height": 427,
+          "visibleWidth": 342,
+          "visibleHeight": 427
+        },
+        "rightPanel": {
+          "left": 751,
+          "right": 1071,
+          "width": 320
+        },
+        "containers": {
+          "innerWidth": 1440,
+          "mobileMedia": false,
+          "editor": {
+            "left": 265,
+            "right": 1071,
+            "width": 806
+          },
+          "workspace": {
+            "left": 265,
+            "right": 1071,
+            "width": 806
+          },
+          "stageColumn": {
+            "left": 393,
+            "right": 735,
+            "width": 342
+          },
+          "stageStyle": {
+            "width": "342px",
+            "minWidth": "0px",
+            "maxWidth": "none",
+            "display": "block",
+            "position": "relative"
+          }
+        }
+      }
+    }
+  ],
+  "consoleErrors": 0,
+  "failedRequests": 0,
+  "saves": 7,
+  "publishRoute": "http://localhost:3477/studio?room=publish"
+}

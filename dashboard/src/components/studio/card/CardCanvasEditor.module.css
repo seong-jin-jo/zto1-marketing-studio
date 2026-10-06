@@ -72,6 +72,7 @@
 .stageColumn { display: grid; min-width: 0; gap: var(--stack); }
 .stage {
   position: relative;
+  min-width: 0;
   width: min(100%, 45rem);
   margin-inline: auto;
   overflow: visible;
@@ -239,7 +240,19 @@
 .listActions > :global(button) { flex: 1 1 var(--control-touch); }
 
 @media (max-width: 1023px) {
+  .editor {
+    width: min(100%, calc(100vw - var(--pad-inset) - var(--pad-inset)));
+    max-width: calc(100vw - var(--pad-inset) - var(--pad-inset));
+    margin-inline: auto;
+  }
   .workspace { grid-template-columns: 1fr; }
+  .workspace,
+  .stageColumn,
+  .rightPanel { width: 100%; max-width: 100%; min-width: 0; }
+  .stage {
+    width: calc(100vw - var(--pad-inset) - var(--pad-inset));
+    max-width: calc(100vw - var(--pad-inset) - var(--pad-inset));
+  }
   .slideStrip { display: flex; overflow-x: auto; }
   .stageColumn { order: -1; }
   .floatingToolbar { position: static; overflow-x: auto; flex-wrap: nowrap; }
