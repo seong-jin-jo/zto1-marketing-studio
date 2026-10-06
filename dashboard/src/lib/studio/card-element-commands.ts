@@ -272,7 +272,10 @@ export function addCardElement(deck: CardDeckV3, slideId: string, type: CardElem
 export function addChatOverlayElement(deck: CardDeckV3, slideId: string, type: CardElementType, seed: ElementSeed): CardDeckV3 {
   const slide = deck.slides.find((candidate) => candidate.id === slideId);
   if (!slide || slide.base.kind !== "chat_bubble") return clone(deck);
-  return addCardElement(deck, slideId, type, seed);
+  return mutateSlide(deck, slideId, (current) => {
+    const elements = normalizeZ(current.elements.filter((element) => !isChatBaseProjectionElement(current, element)));
+    return { ...current, elements: [...elements, createDefaultCardElement(type, seed, elements.length)] };
+  });
 }
 
 export function patchCardElement(deck: CardDeckV3, slideId: string, elementId: string, patch: Partial<CardElement>): CardDeckV3 {

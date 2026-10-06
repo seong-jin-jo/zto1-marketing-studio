@@ -4179,12 +4179,14 @@ export default function StudioPage() {
       ? synchronizeChatCardDeckV3(nextDeck, legacyProjection)
       : nextDeck;
     if (legacyProjection) setCardDeck(legacyProjection);
-    setCardDeckV3(persistedDeck);
-    cardDeckV3Ref.current = persistedDeck;
+    // 저장본에만 v2 동기화 지문을 붙인다. 편집기 state까지 별도 객체로 치환하면
+    // CardCanvasEditor가 외부 덱 교체로 판단해 방금 쌓은 undo 이력을 지운다.
+    setCardDeckV3(nextDeck);
+    cardDeckV3Ref.current = nextDeck;
     cardDeckV3DirtyRef.current = true;
     const editGeneration = cardDeckV3EditGenerationRef.current + 1;
     cardDeckV3EditGenerationRef.current = editGeneration;
-    replaceEditLines(cardDeckV3Projection(persistedDeck));
+    replaceEditLines(cardDeckV3Projection(nextDeck));
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
     cardDeckAutosaveTimer.current = setTimeout(() => {
       cardDeckV3SavePendingGenerationRef.current = editGeneration;

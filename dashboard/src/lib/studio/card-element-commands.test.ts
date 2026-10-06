@@ -171,9 +171,14 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     const chat = deck();
     chat.template = "chat_bubble";
     chat.slides[0].base = { kind: "chat_bubble", cover: { headline: "첫 장", sub: null }, bubbles: [] };
+    chat.slides[0].elements = [{
+      id: "el_orphan-old", type: "text", name: "브랜드 말풍선", x: 0, y: 0, width: 100, height: 100,
+      rotation: 0, z_index: 0, opacity: 1, locked: false, hidden: false, text: "옛 projection",
+      style: { font_family: "Pretendard Variable", font_size: 32, font_weight: 500, line_height: 1.2, letter_spacing: 0, color: "#111111", align: "left", vertical_align: "middle" },
+    }];
     const added = addChatOverlayElement(chat, "slide_cover", "logo", { id: "chat_logo" });
     expect(added.slides[0].base).toEqual(chat.slides[0].base);
-    expect(added.slides[0].elements).toMatchObject([{ id: "chat_logo", type: "logo" }]);
+    expect(added.slides[0].elements).toMatchObject([{ id: "chat_logo", type: "logo", z_index: 0 }]);
     expect(addChatOverlayElement(deck(), "slide_cover", "logo", { id: "rejected_logo" })).toEqual(deck());
   });
 
