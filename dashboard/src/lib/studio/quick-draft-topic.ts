@@ -1,4 +1,5 @@
 import { filterInstructionPlaceholderLines } from "@/lib/studio/generated-copy";
+import type { TextCandidate } from "@/lib/studio/text-candidate-contract";
 
 /**
  * 생성실 "고른 형식의 생성 후보"(영상 대본 후보·글 후보) 패널의 주제 추적 + 자리표시 제거.
@@ -22,6 +23,9 @@ export interface TextVariantsLike {
   instagram?: { caption?: string; hashtags?: string[]; slides?: string[] };
   shorts?: { hook?: string; body?: string; cta?: string };
   image_prompt?: string;
+  text_candidates?: TextCandidate[];
+  selected_text_candidate_id?: string;
+  recommended_text_candidate_id?: string;
 }
 
 /**
@@ -58,6 +62,27 @@ export function sanitizeRestoredQuickDraftText<T extends TextVariantsLike | null
           cta: cleanMultiline(text.shorts.cta),
         }
       : text.shorts,
+    text_candidates: text.text_candidates?.map((candidate) => ({
+      ...candidate,
+      content: {
+        ...candidate.content,
+        threads: cleanMultiline(candidate.content.threads) ?? "",
+        facebook: cleanMultiline(candidate.content.facebook) ?? "",
+        x: cleanMultiline(candidate.content.x) ?? "",
+        image_prompt: cleanMultiline(candidate.content.image_prompt),
+        instagram: {
+          ...candidate.content.instagram,
+          caption: cleanMultiline(candidate.content.instagram.caption) ?? "",
+          slides: filterInstructionPlaceholderLines(candidate.content.instagram.slides),
+        },
+        shorts: candidate.content.shorts ? {
+          ...candidate.content.shorts,
+          hook: cleanMultiline(candidate.content.shorts.hook) ?? "",
+          body: cleanMultiline(candidate.content.shorts.body) ?? "",
+          cta: cleanMultiline(candidate.content.shorts.cta) ?? "",
+        } : undefined,
+      },
+    })),
   } as T;
 }
 

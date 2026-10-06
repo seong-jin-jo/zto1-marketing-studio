@@ -7,6 +7,7 @@ import { CHANNEL_TEXT_LIMITS } from "@/lib/channel-text-limits";
 import { getLearnedRulesContext } from "@/lib/studio/learned-rules-context";
 import { NO_DASH_RULE, withoutDashes } from "@/lib/studio/generation/llm";
 import { findInstructionPlaceholder } from "@/lib/studio/generated-copy";
+import { evaluateTextCandidates, recommendedTextCandidate } from "@/lib/studio/text-candidate-contract";
 
 // POST /api/studio/text — 글감 1개 → 플랫폼별 텍스트 변형(OSMU).
 // body: { idea, guide?, tenant_id?, context_sources? } 
@@ -69,15 +70,17 @@ ${structureGuide}
 규칙: 100% 한국어, AI가 쓴 티 금지, 후킹 첫 문장, 과한 이모지 금지.
 학습 정보가 비어 있으면 글감만으로 성립하는 완성된 일반 문장을 쓴다. 괄호 안에 "입력", "작성", "채우기", "한 문장으로 대체" 같은 다음 작성자용 지시를 절대 남기지 않는다.
 ${NO_DASH_RULE}
+같은 사실과 구조를 쓰되 첫 문장 각도가 다른 후보를 정확히 3개 만든다.
+- question: 독자에게 묻는 질문형
+- number: 위 글감·구조·학습 정보에 실제로 있는 숫자로 시작하는 숫자형. 없는 숫자를 만들지 않는다.
+- pain: 독자가 겪는 불편을 짚는 고통 인식형
+추천은 정확히 하나다. 확인되지 않은 숫자·고유명사를 넣은 후보는 추천하지 않는다.
 출력은 JSON만(다른 텍스트 없이):
-{
- "threads": "Threads용 본문 (${CHANNEL_TEXT_LIMITS.threads}자 이내, 구어체, 첫 줄 훅)",
- "facebook": "Facebook용 본문 (확인되지 않은 글자 상한을 만들지 말고, Threads 문장을 재사용하지 않으며 Facebook 독자 맥락에 맞춰 독립 작성)",
- "x": "X용 (${CHANNEL_TEXT_LIMITS.x}자 이내, 압축)",
- "instagram": {"caption": "IG 캡션", "hashtags": ["태그", ...], "slides": ["카드1(표지 훅)", "카드2", "카드3", "카드4(CTA)"]},
- "shorts": {"hook": "0~3초 훅", "body": "3~20초 3포인트", "cta": "20~30초 CTA"},
- "image_prompt": "히어로 이미지 생성용 영문 프롬프트. 영어 1~2문장. 사람의 손·물건·공간 같은 실물 피사체 하나와 구도·빛·재질만 묘사한다. 한국어·브랜드명·제품명 금지. 화면·모니터·문서·간판·아이콘·차트·말풍선처럼 글자가 놓일 물체는 절대 등장시키지 않는다(부정어로 적지 말고 그냥 다른 피사체를 골라라). 예: 'A hand pouring coffee into a ceramic cup on a wooden table, soft morning light.' / 'Two people shaking hands in a bright office, warm natural light.' / 'A pair of running shoes resting on a park bench, dappled shade.'"
-}`;
+{"text_candidates":[
+ {"id":"question","label":"질문형","recommended":true,"recommendation_reason":"채널과 말투에 맞는 이유 한 줄","content":{"threads":"${CHANNEL_TEXT_LIMITS.threads}자 이내","facebook":"Facebook 독자 맥락에 맞춘 독립 본문","x":"${CHANNEL_TEXT_LIMITS.x}자 이내","instagram":{"caption":"${CHANNEL_TEXT_LIMITS.instagram}자 이내","hashtags":["태그"],"slides":["표지 훅","본문","CTA"]},"shorts":{"hook":"0~3초 훅","body":"3~20초 본문","cta":"20~30초 CTA"},"image_prompt":"영문 이미지 프롬프트"}},
+ {"id":"number","label":"숫자형","recommended":false,"recommendation_reason":"이유 한 줄","content":{"threads":"...","facebook":"...","x":"...","instagram":{"caption":"...","hashtags":[],"slides":[]}}},
+ {"id":"pain","label":"고통 인식형","recommended":false,"recommendation_reason":"이유 한 줄","content":{"threads":"...","facebook":"...","x":"...","instagram":{"caption":"...","hashtags":[],"slides":[]}}}
+]}`;
   try {
     // 고객이 자기 Anthropic 키 등록 시 그 키로(고객 과금), 없으면 공유 claude -p
     const stdout = await generateText(prompt, tenantId);
@@ -88,6 +91,19 @@ ${NO_DASH_RULE}
     if (placeholder) {
       return Response.json({ ok: false, error: "완성 문장 대신 자리표시가 남아 초안을 저장하지 않았습니다. 다시 만들어 주세요." }, { status: UPSTREAM_FAILED });
     }
+    if (generated.text_candidates) {
+      try {
+        const candidates = evaluateTextCandidates(
+          generated.text_candidates,
+          [idea, guide, structureGuide, learnedRules, wiki, extraContext].filter(Boolean).join("\n"),
+        );
+        const recommended = recommendedTextCandidate(candidates);
+        return Response.json({ ok: true, ...recommended.content, text_candidates: candidates, recommended_text_candidate_id: recommended.id });
+      } catch {
+        return Response.json({ ok: false, error: "생성기가 글 후보 3개 계약을 지키지 않아 초안을 저장하지 않았습니다. 다시 만들어 주세요." }, { status: UPSTREAM_FAILED });
+      }
+    }
+    // 구버전 BYO 생성기 응답은 기존 채널별 1개 계약으로 계속 읽는다.
     return Response.json({ ok: true, ...generated });
   } catch (e) {
     const approvalResponse = sharedAiApprovalErrorResponse(e);

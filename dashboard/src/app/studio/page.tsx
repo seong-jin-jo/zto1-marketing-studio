@@ -151,6 +151,7 @@ import {
   sanitizeRestoredQuickDraftText,
   shouldInvalidateQuickDraft,
 } from "@/lib/studio/quick-draft-topic";
+import type { TextCandidate } from "@/lib/studio/text-candidate-contract";
 
 const ROOM_LABEL: Record<StudioRoom, string> = { create: "생성실", edit: "편집실", publish: "발행실" };
 
@@ -279,6 +280,9 @@ interface TextVariants {
   instagram?: { caption?: string; hashtags?: string[]; slides?: string[] };
   shorts?: { hook?: string; body?: string; cta?: string };
   image_prompt?: string;
+  text_candidates?: TextCandidate[];
+  selected_text_candidate_id?: string;
+  recommended_text_candidate_id?: string;
 }
 interface BodyRevisionConflict {
   latest: { lines: string[]; text: TextVariants | null; cardDeckV3: CardDeckV3 | null; serverRevision: number };
@@ -1311,7 +1315,12 @@ export default function StudioPage() {
         invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
         if (dropped) showToast(dropped, "success");
         const nextKind = createPrimaryKind ?? "text";
-        const nextLines = nextKind === "video"
+        const pendingTextCandidates = nextKind === "text" && result.text_candidates?.length
+          ? result.text_candidates
+          : null;
+        const nextLines = pendingTextCandidates
+          ? []
+          : nextKind === "video"
           ? [result.shorts?.hook, result.shorts?.body, result.shorts?.cta].filter((line): line is string => Boolean(line))
           : nextKind === "card"
             ? (result.instagram?.slides?.length ? result.instagram.slides : [result.instagram?.caption || ""]).filter(Boolean)
@@ -1326,7 +1335,13 @@ export default function StudioPage() {
               .filter(Boolean);
         setEditKind(nextKind);
         setEditFormat(defaultContentEditFormat(nextKind));
-        replaceBodySnapshot(nextLines, result, { replaceDocument: true, serverRevision: 0 });
+        replaceBodySnapshot(
+          nextLines,
+          pendingTextCandidates
+            ? { text_candidates: pendingTextCandidates, recommended_text_candidate_id: result.recommended_text_candidate_id }
+            : result,
+          { replaceDocument: true, serverRevision: 0 },
+        );
         // 이 후보를 만든 실제 주제를 기억해 둔다. 이후 주제가 바뀌면(trim 비교) 옛 주제로
         // 만든 후보를 비운다 — 2026-10-01 운영 실측.
         quickDraftTopicRef.current = idea.trim() || null;
@@ -1336,6 +1351,24 @@ export default function StudioPage() {
       generationAbort.current = null;
       setBusy(null);
     }
+  }
+
+  function selectTextCandidate(candidate: TextCandidate) {
+    const candidates = textRef.current?.text_candidates ?? [candidate];
+    const nextText: TextVariants = {
+      ...candidate.content,
+      text_candidates: candidates,
+      selected_text_candidate_id: candidate.id,
+      recommended_text_candidate_id: textRef.current?.recommended_text_candidate_id,
+    };
+    const nextLines = candidate.content.threads
+      .split(/\n\s*\n/)
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean);
+    setEditKind("text");
+    setEditFormat(defaultContentEditFormat("text"));
+    replaceBodySnapshot(nextLines, nextText);
+    showToast(`${candidate.label} 후보를 본문에 적용했습니다`, "success");
   }
   // 2026-09-06 회장 확정: "고객이 이미지 영상 생성 하려고 서비스 쓰는거아니야?"
   // 종전에는 운영자만 생성할 수 있어 고객 계정에서는 카드뉴스와 영상이 아예 안 만들어졌다.
@@ -4141,6 +4174,7 @@ export default function StudioPage() {
         quickDraftLoading={busy === "초안 만드는 중"}
         quickDraftError={lastError}
         onQuickDraftGenerate={generateQuickDraft}
+        onTextCandidateSelect={selectTextCandidate}
         onGenerateCardImages={generateCardImages}
         cardDeckByDraftId={(draftId) => {
           const draft = hist?.drafts.find((d) => d.id === draftId);

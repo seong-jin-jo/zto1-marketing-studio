@@ -28,6 +28,35 @@ function deck(): CardDeckV3 {
 }
 
 describe("CardCanvasEditor S1 자유 배치", () => {
+  it("S7-AC3 템플릿 전체 적용을 undo 한 번으로 원래 덱에 되돌린다", () => {
+    let current = deck();
+    const original = structuredClone(current);
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /큰 제목 표지형/ }));
+    fireEvent.click(screen.getByRole("button", { name: "이 템플릿으로 바꾸기" }));
+    expect(current.slides[0].elements[0]).not.toEqual(original.slides[0].elements[0]);
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "실행 취소" }));
+    expect(current).toEqual(original);
+  });
+
+  it("S7-AC5 전후 비교 뒤 이전 템플릿 복원은 요소 상태를 정확히 되돌린다", () => {
+    let current = deck();
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /큰 제목 표지형/ }));
+    expect(document.querySelector("[data-template-comparison]")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "이 템플릿으로 바꾸기" }));
+    const headlineState = structuredClone(current.slides);
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /번호 목록형/ }));
+    fireEvent.click(screen.getByRole("button", { name: "이 템플릿으로 바꾸기" }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "이전 템플릿\(큰 제목 표지형\)으로" }));
+    expect(current.slides).toEqual(headlineState);
+  });
+
   it("S5b-R2-A 카톡 장 도구를 미리보기 열 안에 두고 3열 workspace 구조를 보존한다", () => {
     const current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
     render(<CardCanvasEditor deck={current} onDeckChange={() => {}} />);

@@ -57,6 +57,12 @@ import { cardSlideRenderModel, isChatBaseProjectionElement } from "@/lib/studio/
 import { CardElementList } from "./CardElementList";
 import { CardElementToolbar } from "./CardElementToolbar";
 import { CardSlideScene } from "./CardSlideScene";
+import { CardTemplateGallery } from "./CardTemplateGallery";
+import {
+  applyCardDeckTemplate,
+  cardTemplateName,
+  type CardDeckTemplateId,
+} from "@/lib/studio/card-templates";
 import styles from "./CardCanvasEditor.module.css";
 
 const RESIZE_HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -129,6 +135,10 @@ export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAs
   const [toneId, setToneId] = useState<ChatToneId>("learned");
   const [toneBusy, setToneBusy] = useState(false);
   const [toneError, setToneError] = useState("");
+  const [activeTemplateId, setActiveTemplateId] = useState<CardDeckTemplateId>(() => deck.template === "chat_bubble" ? "chat_bubble" : "text_only");
+  const [pendingTemplateId, setPendingTemplateId] = useState<CardDeckTemplateId>(() => deck.template === "chat_bubble" ? "chat_bubble" : "text_only");
+  const [templateScope, setTemplateScope] = useState<"all" | "slide">("all");
+  const [previousTemplate, setPreviousTemplate] = useState<{ id: CardDeckTemplateId; deck: CardDeckV3 } | null>(null);
   const [splitNotice, setSplitNotice] = useState("");
   const [sceneOverflow, setSceneOverflow] = useState(false);
   const [toneCandidates, setToneCandidates] = useState<{ targets: Array<{ slideId: string; bubbleId: string; text: string }>; candidates: ChatToneCandidate[]; revision: number } | null>(null);
@@ -163,6 +173,13 @@ export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAs
   const toolbarElement = selected ?? editableElements.find((element) => element.type === "text") ?? null;
   const resolvedAssetUrls = useMemo(() => ({ ...assetUrls, ...localAssetUrls }), [assetUrls, localAssetUrls]);
   const model = useMemo(() => cardSlideRenderModel(workingDeck, activeSlideId, resolvedAssetUrls), [workingDeck, activeSlideId, resolvedAssetUrls]);
+  const templatePreviewDeck = useMemo(() => {
+    try {
+      return applyCardDeckTemplate(history.present, pendingTemplateId, templateScope === "slide" ? { kind: "slide", slideId: activeSlideId } : { kind: "all" });
+    } catch {
+      return null;
+    }
+  }, [activeSlideId, history.present, pendingTemplateId, templateScope]);
 
   const editorComparableDeck = useCallback((candidate: CardDeckV3) => JSON.stringify({
     ...candidate,
@@ -195,6 +212,22 @@ export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAs
   }, [editingTextId]);
 
   const apply = useCallback((command: (current: CardDeckV3) => CardDeckV3) => commit(command(history.present)), [commit, history.present]);
+  const applyTemplate = useCallback(() => {
+    const before = structuredClone(history.present);
+    const next = applyCardDeckTemplate(before, pendingTemplateId, templateScope === "slide" ? { kind: "slide", slideId: activeSlideId } : { kind: "all" });
+    setPreviousTemplate({ id: activeTemplateId, deck: before });
+    commit(next);
+    setActiveTemplateId(pendingTemplateId);
+  }, [activeSlideId, activeTemplateId, commit, history.present, pendingTemplateId, templateScope]);
+  const restorePreviousTemplate = useCallback(() => {
+    if (!previousTemplate) return;
+    const current = structuredClone(history.present);
+    const restored = { ...structuredClone(previousTemplate.deck), revision: history.present.revision + 1 };
+    commit(restored);
+    setPreviousTemplate({ id: activeTemplateId, deck: current });
+    setActiveTemplateId(previousTemplate.id);
+    setPendingTemplateId(previousTemplate.id);
+  }, [activeTemplateId, commit, history.present, previousTemplate]);
   const beginTextEdit = useCallback((element: CardElement) => {
     if (element.type !== "text" || element.locked) return;
     setSelectedId(element.id);
@@ -546,6 +579,19 @@ export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAs
       </section> : null}
       {splitNotice ? <p role="status" className={styles.error}>{splitNotice}</p> : null}
       {uploadError ? <p role="alert" className={styles.error}>{uploadError}</p> : null}
+      <CardTemplateGallery
+        mode="edit"
+        selectedId={pendingTemplateId}
+        onSelect={setPendingTemplateId}
+        beforeDeck={history.present}
+        afterDeck={templatePreviewDeck}
+        scope={templateScope}
+        canApplySlide={history.present.template !== "chat_bubble"}
+        previousTemplateName={previousTemplate ? cardTemplateName(previousTemplate.id) : null}
+        onScopeChange={setTemplateScope}
+        onApply={applyTemplate}
+        onRestore={restorePreviousTemplate}
+      />
       <div className={styles.workspace}>
         <nav className={styles.slideStrip} aria-label="카드 장 목록">
           {workingDeck.slides.map((slide) => <Button key={slide.id} size="sm" aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>{slide.order + 1}장</Button>)}
