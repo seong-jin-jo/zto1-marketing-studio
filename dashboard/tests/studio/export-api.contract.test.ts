@@ -3,6 +3,8 @@ import {
   ExportQueueError,
   exportErrorResponse,
   parseCreateExport,
+  parseDraftId,
+  parseExportId,
   parseIdempotencyKey,
   parseRetryExport,
 } from "@/lib/studio/export-contract";
@@ -24,6 +26,11 @@ describe("S3 export API request·response·오류 contract", () => {
   it("S3-API-03 거절: Idempotency-Key 누락과 중복 retry key를 막는다", () => {
     expect(() => parseIdempotencyKey(new Request("http://localhost"))).toThrowError(expect.objectContaining({ code: "INVALID_EXPORT_REQUEST" }));
     expect(() => parseRetryExport({ item_keys: ["slide-1", "slide-1"] })).toThrowError(expect.objectContaining({ code: "INVALID_EXPORT_REQUEST" }));
+  });
+
+  it("S3-PR122-M4 거절: UUID가 아닌 초안·내보내기 경로는 DB 접근 전 404다", () => {
+    expect(() => parseDraftId("not-a-uuid")).toThrowError(expect.objectContaining({ status: 404, code: "DRAFT_NOT_FOUND" }));
+    expect(() => parseExportId("not-a-uuid")).toThrowError(expect.objectContaining({ status: 404, code: "EXPORT_NOT_FOUND" }));
   });
 
   it.each([

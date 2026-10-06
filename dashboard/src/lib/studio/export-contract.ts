@@ -11,6 +11,7 @@ export type ExportJobStatus = "queued" | "processing" | "succeeded" | "partially
 export type ExportItemStatus = "queued" | "processing" | "succeeded" | "failed" | "cancelled";
 
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const createExportSchema = z.strictObject({
   kind: exportKindSchema,
   expected_source_revision: z.number().int().min(0),
@@ -57,6 +58,16 @@ export function parseIdempotencyKey(request: Request): string {
   if (!value || value.length > 255) {
     throw new ExportQueueError(400, "INVALID_EXPORT_REQUEST", "Idempotency-Key는 1자 이상 255자 이하여야 합니다");
   }
+  return value;
+}
+
+export function parseDraftId(value: string): string {
+  if (!uuidPattern.test(value)) throw new ExportQueueError(404, "DRAFT_NOT_FOUND", "초안을 찾을 수 없습니다");
+  return value;
+}
+
+export function parseExportId(value: string): string {
+  if (!uuidPattern.test(value)) throw new ExportQueueError(404, "EXPORT_NOT_FOUND", "내보내기를 찾을 수 없습니다");
   return value;
 }
 

@@ -96,4 +96,40 @@ describe("S3 export route 통합 계약", () => {
     expect(await response.json()).toMatchObject({ code: "INVALID_EXPORT_REQUEST" });
     expect(H.latest).not.toHaveBeenCalled();
   });
+
+  it("S3-PR122-M4 거절: 잘못된 draftId·exportId는 repository를 호출하지 않고 404다", async () => {
+    const { POST: createExport } = await import("@/app/api/studio/drafts/[draftId]/exports/route");
+    const create = await createExport(new Request("http://localhost/api/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": "invalid-path" },
+      body: JSON.stringify({ kind: "card_deck", expected_source_revision: 13, expected_source_hash: "a".repeat(64), item_keys: null }),
+    }), { params: Promise.resolve({ draftId: "not-a-uuid" }) });
+    expect(create.status).toBe(404);
+    expect(await create.json()).toMatchObject({ code: "DRAFT_NOT_FOUND" });
+    expect(H.create).not.toHaveBeenCalled();
+
+    const { GET: getStatus } = await import("@/app/api/studio/drafts/[draftId]/exports/[exportId]/route");
+    const status = await getStatus(new Request("http://localhost/api/status"), {
+      params: Promise.resolve({ draftId: DRAFT_ID, exportId: "not-a-uuid" }),
+    });
+    expect(status.status).toBe(404);
+    expect(await status.json()).toMatchObject({ code: "EXPORT_NOT_FOUND" });
+    expect(H.get).not.toHaveBeenCalled();
+
+    const { POST: retryExport } = await import("@/app/api/studio/drafts/[draftId]/exports/[exportId]/retry/route");
+    const retry = await retryExport(new Request("http://localhost/api/retry", {
+      method: "POST", body: JSON.stringify({ item_keys: ["slide-failed"] }),
+    }), { params: Promise.resolve({ draftId: DRAFT_ID, exportId: "not-a-uuid" }) });
+    expect(retry.status).toBe(404);
+    expect(await retry.json()).toMatchObject({ code: "EXPORT_NOT_FOUND" });
+    expect(H.retry).not.toHaveBeenCalled();
+
+    const { GET: getLatest } = await import("@/app/api/studio/drafts/[draftId]/exports/latest/route");
+    const latest = await getLatest(new Request("http://localhost/api/latest?kind=card_deck"), {
+      params: Promise.resolve({ draftId: "not-a-uuid" }),
+    });
+    expect(latest.status).toBe(404);
+    expect(await latest.json()).toMatchObject({ code: "DRAFT_NOT_FOUND" });
+    expect(H.latest).not.toHaveBeenCalled();
+  });
 });

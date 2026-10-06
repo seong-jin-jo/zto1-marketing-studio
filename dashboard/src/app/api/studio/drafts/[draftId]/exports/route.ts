@@ -4,6 +4,7 @@ import {
   exportMemberId,
   exportRequestHash,
   parseCreateExport,
+  parseDraftId,
   parseIdempotencyKey,
 } from "@/lib/studio/export-contract";
 import { exportRepository } from "@/lib/studio/export-repository";
@@ -17,7 +18,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ dra
       body && typeof body === "object" && typeof body.tenant_id === "string" ? body.tenant_id : null,
     );
     if (!tenantId) return Response.json({ error: "워크스페이스가 필요합니다", code: "NO_TENANT" }, { status: 401 });
-    const { draftId } = await params;
+    const draftId = parseDraftId((await params).draftId);
     const result = await exportRepository().create(
       tenantId,
       draftId,
