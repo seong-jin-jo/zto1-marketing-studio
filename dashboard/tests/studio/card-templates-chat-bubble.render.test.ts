@@ -109,9 +109,9 @@ describe("renderChatBubbleSlide 실물 렌더 (TC-F2-01~04)", () => {
     const alternating = structuredClone(deck);
     const slide = alternating.slides[1];
     slide.bubbles = [
-      { id: "brand-first", order: 0, speaker: "brand", segments: [{ text: "첫 답변", bold: false }] },
-      { id: "reader", order: 1, speaker: "reader", segments: [{ text: "추가 질문", bold: false }] },
-      { id: "brand-second", order: 2, speaker: "brand", segments: [{ text: "둘째 답변", bold: false }] },
+      { id: "brand-first", order: 0, speaker: "brand", segments: [{ text: "첫 답변", bold: false }], reaction: null },
+      { id: "reader", order: 1, speaker: "reader", segments: [{ text: "추가 질문", bold: false }], reaction: null },
+      { id: "brand-second", order: 2, speaker: "brand", segments: [{ text: "둘째 답변", bold: false }], reaction: null },
     ];
     const canvas = (await renderChatBubbleSlideToCanvas({ deck: alternating, slide, index: 1, total: alternating.slides.length }))!;
     const ctx = canvas.getContext("2d")!;
