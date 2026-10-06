@@ -51,5 +51,9 @@ real("S6 실제 MP4 렌더", () => {
     expect(probed.hasAudio).toBe(true);
     expect(probed.durationSec).toBeGreaterThan(1.8);
     expect(fs.statSync(outputPath).size).toBeGreaterThan(10_000);
+    if (process.env.S6_RENDER_OUTPUT) {
+      fs.mkdirSync(path.dirname(process.env.S6_RENDER_OUTPUT), { recursive: true });
+      fs.copyFileSync(outputPath, process.env.S6_RENDER_OUTPUT);
+    }
   }, 120_000);
 });
