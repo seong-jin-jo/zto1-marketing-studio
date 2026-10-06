@@ -1,5 +1,28 @@
 # OSMU build log
 
+## 2026-10-07 08:45 KST · 생성기 감시 배포 격리와 연속 장애 판정 교정
+
+STAMP: 2026-10-07 08:45 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: 컨트롤러 반려, GitHub Actions concurrency 공식 문서, 셸 상태 판정, 전체 integrity | 고민: 감시기의 일시 실패 흡수는 감시기 내부 상태로 해결하고 운영 배포 워크플로에는 영향을 주지 않았다.
+
+첫 구현은 감시와 배포에 같은 concurrency 그룹을 넣어 운영 배포 경로까지 바꿨다. 두 워크플로의 대기 실행이 서로 영향을 받을 수 있으므로 `deploy-marketing.yml`을 원본으로 복구했다. 감시는 전용 `osmu-generator-monitor` 그룹에서 이전 감시만 취소한다.
+
+로그인 probe 한 주기 실패는 `suspect`로만 저장하고 Slack을 보내지 않는다. 다음 30분 주기에도 연속으로 실패해야 `down`과 failure 알림으로 전환한다. 컨테이너 미기동은 이전 상태를 유지하고, 장애 뒤 한 번의 정상 응답은 즉시 recovery로 전환한다.
+
+| 검증 | 결과 |
+|---|---|
+| RED 관찰 | 첫 실패가 `failure:down`으로 즉시 전이돼 신규 단위·계약 테스트 실패 |
+| 셸 상태 판정 | 정상·1회 실패·2회 실패·컨테이너 없음·복구 5건 PASS |
+| ShellCheck·YAML 파싱 | 오류 0, 감시·배포 2파일 파싱 PASS |
+| 표적 Vitest | 워크플로 계약 6건 PASS |
+| 전체 integrity | 34파일 110건 PASS |
+| 운영 주기·Slack 실전송 | 미검증. push와 workflow dispatch를 하지 않음 |
+
+레드팀: `queue: max`의 지원 여부와 무관하게 감시 기능이 운영 출고 워크플로를 수정하는 것은 범위 침범이다. 배포 파일을 원복하고, 배포·재기동의 짧은 실패는 감시기 자체의 `suspect` 단계로 흡수했다.
+
+셀프심문: 이 교정이 틀렸다면 가장 그럴듯한 이유는 cache 복원 순서가 운영 schedule에서 예상과 다르게 작동하는 경우다. 로컬은 상태 함수와 워크플로 구조만 검증했으므로 실제 두 주기 장애·복구 알림은 미검증으로 남긴다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `.github/workflows/osmu-generator-monitor.yml` | `.github/workflows/deploy-marketing.yml` | `scripts/lib/generator-monitor-state.sh` | `docs/qa/qa-tracker.md` | https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+
 ## 2026-10-07 08:30 KST · Higgsfield 로그인 상태전이 감시
 
 STAMP: 2026-10-07 08:30 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: 없음 | 근거: `osmu-health-monitor.yml`, GitHub Actions concurrency·cache 공식 문서, BRAIN 모니터링 정본, 로컬 셸·Vitest | 고민: 생성 비용 없이 계정 API만 읽고, 배포 중 컨테이너 교체와 지속 장애의 반복 알림을 각각 직렬화와 상태전이 판정으로 제거했다.
