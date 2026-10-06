@@ -1,8 +1,9 @@
-import crypto from "node:crypto";
 import { z } from "zod";
 import { AuthError } from "@/lib/tenant-auth";
 import type { CardDeckV3 } from "./card-element-contract";
 import { canonicalJson, sha256Hex } from "./export-source-hash";
+import { resolveStudioPrincipal } from "./generation/identity";
+import { StudioApiError } from "./generation/errors";
 
 export const exportKindSchema = z.enum(["card_deck"]);
 export type ExportKind = z.infer<typeof exportKindSchema>;
@@ -63,9 +64,8 @@ export function exportRequestHash(input: CreateExportInput): string {
   return sha256Hex(canonicalJson(input));
 }
 
-export function exportMemberId(request: Request): string {
-  const bearer = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ?? "anonymous-development";
-  return `auth:${crypto.createHash("sha256").update(bearer).digest("hex").slice(0, 32)}`;
+export async function exportMemberId(request: Request): Promise<string> {
+  return (await resolveStudioPrincipal(request)).memberId;
 }
 
 export function exportErrorResponse(error: unknown): Response {
@@ -73,6 +73,9 @@ export function exportErrorResponse(error: unknown): Response {
     return Response.json({ error: error.message, code: error.code, ...error.details }, { status: error.status });
   }
   if (error instanceof AuthError) {
+    return Response.json({ error: error.message, code: error.code }, { status: error.status });
+  }
+  if (error instanceof StudioApiError) {
     return Response.json({ error: error.message, code: error.code }, { status: error.status });
   }
   return Response.json({ error: "내보내기 대기열 처리에 실패했습니다", code: "EXPORT_ENQUEUE_FAILED" }, { status: 500 });
