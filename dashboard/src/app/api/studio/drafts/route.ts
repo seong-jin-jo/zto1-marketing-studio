@@ -5,6 +5,7 @@ import { resolveCurrentWork } from "@/lib/studio/current-work";
 import { validateCardDeck, CardDeckValidationError, deckProjection } from "@/lib/studio/card-deck-contract";
 import { cardDeckV3Projection, CardDeckV3ValidationError, validateCardDeckV3 } from "@/lib/studio/card-element-contract";
 import { cardDeckV3ForDraft, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
+import { isSynchronizedChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import { validateVideoEdit, VideoEditValidationError, type VideoEdit } from "@/lib/studio/video-edit-contract";
 
 /** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
@@ -213,7 +214,9 @@ export async function POST(request: Request) {
     }
   }
   const savesChatBubbleV2 = usesChatBubbleV2(body.cardDeck);
-  if (!savesChatBubbleV2 && body.cardDeckV3 !== undefined && body.cardDeckV3 !== null) {
+  const savesChatBubbleV3 = savesChatBubbleV2
+    && body.cardDeckV3?.template === "chat_bubble";
+  if ((!savesChatBubbleV2 || savesChatBubbleV3) && body.cardDeckV3 !== undefined && body.cardDeckV3 !== null) {
     try {
       validateCardDeckV3(body.cardDeckV3);
       cardDeckV3ProjectedLines = cardDeckV3Projection(body.cardDeckV3);
@@ -224,6 +227,13 @@ export async function POST(request: Request) {
         code: validation?.code ?? "INVALID_CARD_DECK_V3",
         error: error instanceof Error ? error.message : "자유 배치 카드 덱을 확인해 주세요",
       }, { status: validation?.code === "CARD_DECK_TOO_LARGE" ? 413 : 400, headers: { "Cache-Control": "no-store" } });
+    }
+    if (savesChatBubbleV3 && !isSynchronizedChatCardDeckV3(body.cardDeck, body.cardDeckV3)) {
+      return Response.json({
+        ok: false,
+        code: "CARD_CHAT_V3_SOURCE_MISMATCH",
+        error: "카톡 v3 편집본과 현재 원문이 달라 저장하지 않았습니다.",
+      }, { status: 409, headers: { "Cache-Control": "no-store" } });
     }
   }
   // 아래 구조 검증을 통과한 JSON 트리만 SQL 경계로 넘긴다. postgres의 JSONValue는
@@ -308,12 +318,12 @@ export async function POST(request: Request) {
   // 없는 TypeScript interface를 받지 못한다. v2 cardDeck과 같은 검증 뒤 경계 캐스팅이다.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cardDeckV3Patch: { cardDeckV3?: any } = {};
-  if (savesChatBubbleV2 || body.clearCardDeckV3 === true) {
+  if ((savesChatBubbleV2 && !savesChatBubbleV3) || body.clearCardDeckV3 === true) {
     cardDeckV3Patch.cardDeckV3 = null;
   } else if (Object.prototype.hasOwnProperty.call(body, "cardDeckV3") && body.cardDeckV3 != null) {
     cardDeckV3Patch.cardDeckV3 = body.cardDeckV3;
   }
-  const incomingCardDeckV3Id = !savesChatBubbleV2 && typeof body.cardDeckV3?.id === "string" ? body.cardDeckV3.id : null;
+  const incomingCardDeckV3Id = (!savesChatBubbleV2 || savesChatBubbleV3) && typeof body.cardDeckV3?.id === "string" ? body.cardDeckV3.id : null;
   // videoEdit도 cardDeck과 같은 보존 규칙: 키가 없으면 payload 병합에서 빠져 기존 값을
   // 지키고, 명시 플래그 clearVideoEdit로만 지운다.
   // M7(2026-09-22 코드리뷰): `any` 대신 VideoEdit로 좁힌다. body.videoEdit는 위에서 이미

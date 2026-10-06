@@ -9,6 +9,8 @@ import {
   type TextElement,
 } from "./card-element-contract";
 import { retextSegments } from "./card-deck-contract";
+import type { Bubble, CardDeckBrand, CardSlideCover } from "./card-deck-contract";
+import { isChatBaseProjectionElement } from "./card-render-model";
 
 export const CARD_SNAP_DISTANCE = 4;
 export const CARD_ROTATION_SNAP = 15;
@@ -309,10 +311,173 @@ export function patchChatBubbleText(deck: CardDeckV3, slideId: string, bubbleId:
           ? { ...candidate, segments: retextSegments(candidate.segments, text) }
           : candidate),
       },
-      elements: slide.elements.map((element) => element.id === `el_${bubbleId}` && element.type === "text"
-        ? { ...element, text }
-        : element),
+      elements: slide.elements.filter((element) => !isChatBaseProjectionElement(slide, element)),
     };
+  });
+}
+
+function normalizeBubbles(bubbles: Bubble[]): Bubble[] {
+  return bubbles.map((bubble, order) => ({ ...bubble, order }));
+}
+
+function nextChatBubbleId(deck: CardDeckV3, explicitId?: string): string {
+  if (explicitId) return explicitId;
+  const ids = new Set(deck.slides.flatMap((slide) => slide.base.kind === "chat_bubble"
+    ? slide.base.bubbles.map((bubble) => bubble.id)
+    : []));
+  let index = ids.size + 1;
+  while (ids.has(`bubble_v3_${index}`)) index += 1;
+  return `bubble_v3_${index}`;
+}
+
+function mutateChatSlide(
+  deck: CardDeckV3,
+  slideId: string,
+  mutate: (bubbles: Bubble[], cover: CardSlideCover | null) => { bubbles: Bubble[]; cover?: CardSlideCover | null },
+): CardDeckV3 {
+  return mutateSlide(deck, slideId, (slide) => {
+    if (slide.base.kind !== "chat_bubble") return slide;
+    const next = mutate(structuredClone(slide.base.bubbles), structuredClone(slide.base.cover));
+    return {
+      ...slide,
+      content_state: next.bubbles.length || next.cover?.headline.trim() ? "filled" : "empty",
+      base: { ...slide.base, bubbles: normalizeBubbles(next.bubbles), cover: next.cover === undefined ? slide.base.cover : next.cover },
+      elements: normalizeZ(slide.elements.filter((element) => !isChatBaseProjectionElement(slide, element))),
+    };
+  });
+}
+
+export function patchChatDeckBrand(deck: CardDeckV3, patch: Partial<CardDeckBrand>): CardDeckV3 {
+  const brand = { ...deck.brand, ...patch };
+  if (!brand.display_name.trim()) throw new RangeError("CARD_CHAT_BRAND_NAME_REQUIRED");
+  if (JSON.stringify(brand) === JSON.stringify(deck.brand)) return clone(deck);
+  return { ...clone(deck), revision: deck.revision + 1, brand };
+}
+
+export function patchChatSlideCover(deck: CardDeckV3, slideId: string, cover: CardSlideCover): CardDeckV3 {
+  if (!cover.headline.trim()) throw new RangeError("CARD_CHAT_COVER_HEADLINE_REQUIRED");
+  return mutateChatSlide(deck, slideId, (bubbles) => ({ bubbles, cover }));
+}
+
+export function addChatBubble(deck: CardDeckV3, slideId: string, explicitId?: string): CardDeckV3 {
+  const id = nextChatBubbleId(deck, explicitId);
+  return mutateChatSlide(deck, slideId, (bubbles) => ({
+    bubbles: [...bubbles, {
+      id,
+      order: bubbles.length,
+      speaker: bubbles.at(-1)?.speaker === "brand" ? "reader" : "brand",
+      segments: [{ text: "새 말풍선", bold: false }],
+      reaction: null,
+    }],
+  }));
+}
+
+export function deleteChatBubble(deck: CardDeckV3, slideId: string, bubbleId: string): CardDeckV3 {
+  return mutateChatSlide(deck, slideId, (bubbles) => {
+    if (bubbles.length <= 1) throw new RangeError("CARD_CHAT_BUBBLE_MIN_ONE");
+    return { bubbles: bubbles.filter((bubble) => bubble.id !== bubbleId) };
+  });
+}
+
+export function moveChatBubble(deck: CardDeckV3, slideId: string, bubbleId: string, delta: -1 | 1): CardDeckV3 {
+  return mutateChatSlide(deck, slideId, (bubbles) => {
+    const from = bubbles.findIndex((bubble) => bubble.id === bubbleId);
+    const to = clamp(from + delta, 0, bubbles.length - 1);
+    if (from < 0 || from === to) return { bubbles };
+    const [bubble] = bubbles.splice(from, 1);
+    bubbles.splice(to, 0, bubble);
+    return { bubbles };
+  });
+}
+
+export function moveChatBubbleToSlide(deck: CardDeckV3, sourceSlideId: string, bubbleId: string, targetSlideId: string): CardDeckV3 {
+  if (sourceSlideId === targetSlideId) return clone(deck);
+  const next = clone(deck);
+  const source = next.slides.find((slide) => slide.id === sourceSlideId);
+  const target = next.slides.find((slide) => slide.id === targetSlideId);
+  if (source?.base.kind !== "chat_bubble" || target?.base.kind !== "chat_bubble") return next;
+  if (source.base.bubbles.length <= 1) throw new RangeError("CARD_CHAT_BUBBLE_MIN_ONE");
+  const index = source.base.bubbles.findIndex((bubble) => bubble.id === bubbleId);
+  if (index < 0) return next;
+  const [bubble] = source.base.bubbles.splice(index, 1);
+  source.base.bubbles = normalizeBubbles(source.base.bubbles);
+  target.base.bubbles = normalizeBubbles([...target.base.bubbles, bubble]);
+  source.elements = normalizeZ(source.elements.filter((element) => !isChatBaseProjectionElement(source, element)));
+  target.elements = normalizeZ(target.elements.filter((element) => !isChatBaseProjectionElement(target, element)));
+  next.revision += 1;
+  return next;
+}
+
+export function toggleChatBubbleSpeaker(deck: CardDeckV3, slideId: string, bubbleId: string): CardDeckV3 {
+  return mutateChatSlide(deck, slideId, (bubbles) => ({
+    bubbles: bubbles.map((bubble) => bubble.id === bubbleId
+      ? { ...bubble, speaker: bubble.speaker === "brand" ? "reader" : "brand" }
+      : bubble),
+  }));
+}
+
+export function swapChatSpeakers(deck: CardDeckV3, slideId: string | null): CardDeckV3 {
+  const next = clone(deck);
+  let changed = false;
+  next.slides = next.slides.map((slide) => {
+    if (slide.base.kind !== "chat_bubble" || (slideId && slide.id !== slideId)) return slide;
+    changed = changed || slide.base.bubbles.length > 0;
+    return {
+      ...slide,
+      base: {
+        ...slide.base,
+        bubbles: slide.base.bubbles.map((bubble) => ({ ...bubble, speaker: bubble.speaker === "brand" ? "reader" as const : "brand" as const })),
+      },
+      elements: normalizeZ(slide.elements.filter((element) => !isChatBaseProjectionElement(slide, element))),
+    };
+  });
+  if (changed) next.revision += 1;
+  return next;
+}
+
+export function toggleChatBubbleBold(deck: CardDeckV3, slideId: string, bubbleId: string): CardDeckV3 {
+  return mutateChatSlide(deck, slideId, (bubbles) => ({
+    bubbles: bubbles.map((bubble) => {
+      if (bubble.id !== bubbleId) return bubble;
+      const bold = !bubble.segments.every((segment) => segment.bold);
+      return { ...bubble, segments: bubble.segments.map((segment) => ({ ...segment, bold })) };
+    }),
+  }));
+}
+
+export function toggleChatBubbleReaction(deck: CardDeckV3, slideId: string, bubbleId: string): CardDeckV3 {
+  return mutateChatSlide(deck, slideId, (bubbles) => ({
+    bubbles: bubbles.map((bubble) => bubble.id === bubbleId
+      ? { ...bubble, reaction: bubble.reaction === "heart" ? null : "heart" as const }
+      : bubble),
+  }));
+}
+
+export function splitChatBubble(deck: CardDeckV3, slideId: string, bubbleId: string): CardDeckV3 {
+  const id = nextChatBubbleId(deck);
+  return mutateChatSlide(deck, slideId, (bubbles) => {
+    const index = bubbles.findIndex((bubble) => bubble.id === bubbleId);
+    if (index < 0) return { bubbles };
+    const source = bubbles[index];
+    const text = source.segments.map((segment) => segment.text).join("");
+    if (text.length < 2) throw new RangeError("CARD_CHAT_BUBBLE_TOO_SHORT_TO_SPLIT");
+    const offset = Math.ceil(text.length / 2);
+    const first = { ...source, segments: retextSegments(source.segments, text.slice(0, offset)) };
+    const second = { ...source, id, segments: retextSegments(source.segments, text.slice(offset)) };
+    return { bubbles: [...bubbles.slice(0, index), first, second, ...bubbles.slice(index + 1)] };
+  });
+}
+
+export function mergeChatBubbleWithNext(deck: CardDeckV3, slideId: string, bubbleId: string): CardDeckV3 {
+  return mutateChatSlide(deck, slideId, (bubbles) => {
+    const index = bubbles.findIndex((bubble) => bubble.id === bubbleId);
+    if (index < 0 || index >= bubbles.length - 1) throw new RangeError("CARD_CHAT_BUBBLE_NEXT_REQUIRED");
+    const source = bubbles[index];
+    const next = bubbles[index + 1];
+    const text = `${source.segments.map((segment) => segment.text).join("")} ${next.segments.map((segment) => segment.text).join("")}`;
+    if (text.length > 120) throw new RangeError("CARD_CHAT_BUBBLE_TEXT_TOO_LONG");
+    const merged = { ...source, segments: retextSegments(source.segments, text) };
+    return { bubbles: [...bubbles.slice(0, index), merged, ...bubbles.slice(index + 2)] };
   });
 }
 

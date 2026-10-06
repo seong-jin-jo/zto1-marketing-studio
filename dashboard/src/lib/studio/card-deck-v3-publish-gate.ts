@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { withTenant } from "@/lib/db";
 import { mediaStore } from "@/lib/media-store";
 import { signImageToken } from "@/lib/image-token";
-import { cardDeckV3RenderingEnabled, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
+import { cardDeckV3ForDraft, cardDeckV3RenderingEnabled } from "@/lib/studio/card-deck-v3-render-feature";
 import { parseCardDeckV3, type CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { cardSlideRenderModel } from "@/lib/studio/card-render-model";
 import { renderCardSlidePng } from "@/lib/studio/card-slide-render";
@@ -161,8 +161,7 @@ export async function prepareDraftCardDeckV3ForPublish(tenantId: string | null, 
   const [row] = await withTenant(tenantId, (sql) => sql<DraftRenderRow[]>`
     SELECT payload FROM drafts WHERE tenant_id = ${tenantId}::uuid AND id = ${draftId}::uuid LIMIT 1
   `);
-  if (usesChatBubbleV2(row?.payload?.cardDeck)) return null;
-  const rawDeck = row?.payload?.cardDeckV3;
+  const rawDeck = cardDeckV3ForDraft(row?.payload?.cardDeck, row?.payload?.cardDeckV3);
   if (rawDeck == null) return null;
   if (!cardDeckV3RenderingEnabled()) throw new CardDeckV3PublishBlockedError();
   let deck: CardDeckV3;
@@ -183,18 +182,13 @@ export async function prepareDraftCardDeckV3ForPublish(tenantId: string | null, 
 
 export async function draftHasCardDeckV3(tenantId: string, draftId: unknown): Promise<boolean> {
   if (typeof draftId !== "string" || !UUID_RE.test(draftId)) return false;
-  const [row] = await withTenant(tenantId, (sql) => sql<{ has_card_deck_v3: boolean }[]>`
-    SELECT COALESCE(
-      payload ? 'cardDeckV3'
-      AND payload->'cardDeckV3' <> 'null'::jsonb
-      AND COALESCE(payload->'cardDeck'->>'template', '') <> 'chat_bubble',
-      false
-    ) AS has_card_deck_v3
+  const [row] = await withTenant(tenantId, (sql) => sql<DraftRenderRow[]>`
+    SELECT payload
       FROM drafts
      WHERE tenant_id = ${tenantId}::uuid AND id = ${draftId}::uuid
      LIMIT 1
   `);
-  return row?.has_card_deck_v3 === true;
+  return cardDeckV3ForDraft(row?.payload?.cardDeck, row?.payload?.cardDeckV3) != null;
 }
 
 export async function assertDraftCanEnterPublishQueue(tenantId: string | null, draftId: unknown): Promise<PreparedCardDeckV3Publish | null> {
@@ -211,10 +205,7 @@ export function applyPreparedCardDeckV3Images(
 }
 
 export function payloadHasCardDeckV3(payload: Record<string, unknown> | null | undefined): boolean {
-  return Boolean(payload)
-    && !usesChatBubbleV2(payload?.cardDeck)
-    && Object.prototype.hasOwnProperty.call(payload, "cardDeckV3")
-    && payload?.cardDeckV3 != null;
+  return Boolean(payload) && cardDeckV3ForDraft(payload?.cardDeck, payload?.cardDeckV3) != null;
 }
 
 export function cardDeckV3PublishBlockedResponse(): Response {

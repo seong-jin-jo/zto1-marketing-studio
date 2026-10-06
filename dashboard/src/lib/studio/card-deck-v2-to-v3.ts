@@ -1,4 +1,4 @@
-import type { Bubble, CardDeck, CardSlide } from "./card-deck-contract";
+import type { CardDeck, CardSlide } from "./card-deck-contract";
 import {
   CARD_LOGICAL_HEIGHT,
   CARD_LOGICAL_WIDTH,
@@ -16,6 +16,11 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   const record = value as Record<string, unknown>;
   return `{${Object.keys(record).sort().filter((key) => record[key] !== undefined).map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+}
+
+/** 저장·조회·발행 경계가 같은 v2 카톡 원문을 가리키는지 확인하는 결정적 지문이다. */
+export function cardDeckV2Fingerprint(source: CardDeck): string {
+  return sha256Text(canonicalJson(source));
 }
 
 function rotateRight(value: number, amount: number): number {
@@ -103,28 +108,6 @@ function textElement(id: string, text: string, order: number, total: number, pos
   };
 }
 
-function bubbleElements(slide: CardSlide): CardElement[] {
-  const elements: CardElement[] = [];
-  if (slide.role === "cover" && slide.cover) {
-    elements.push(textElement(safePart(`el_${slide.id}_cover`), slide.cover.headline, 0, 2, "top"));
-    if (slide.cover.sub) elements.push({ ...textElement(safePart(`el_${slide.id}_sub`), slide.cover.sub, 1, 3, "center"), y: 650, height: 260, style: { ...textElement("x", "", 1, 3, "center").style, font_size: 38, font_weight: 500 } });
-    return elements.map((element, index) => ({ ...element, z_index: index }));
-  }
-  for (const bubble of [...(slide.bubbles ?? [])].sort((left, right) => left.order - right.order)) {
-    const text = bubble.segments.map((segment) => segment.text).join("");
-    elements.push({
-      ...textElement(safePart(`el_${bubble.id}`), text, elements.length, Math.max(2, slide.bubbles?.length ?? 2), "top"),
-      name: bubble.speaker === "reader" ? "독자 말풍선" : "브랜드 말풍선",
-      x: bubble.speaker === "reader" ? 420 : 70,
-      y: 100 + elements.length * 230,
-      width: 590,
-      height: 190,
-      style: { ...textElement("x", "", 1, 3, "center").style, font_size: 38, font_weight: bubble.segments.some((segment) => segment.bold) ? 700 : 500, align: bubble.speaker === "reader" ? "right" : "left" },
-    });
-  }
-  return elements.map((element, index) => ({ ...element, z_index: index }));
-}
-
 export interface CardDeckV2ToV3Options {
   coverImageAssetIds?: Readonly<Record<string, string>>;
   profileImageAssetId?: string;
@@ -149,7 +132,7 @@ function plainElements(source: CardDeck, slide: CardSlide, index: number, text: 
 }
 
 export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3Options = {}): CardDeckV3 {
-  const sourceSha256 = sha256Text(canonicalJson(source));
+  const sourceSha256 = cardDeckV2Fingerprint(source);
   const deckId = `deck_migrated_${sourceSha256.slice(0, 16)}`;
   const profileImageAssetId = source.brand.profile_image_asset_id ?? options.profileImageAssetId;
   if (source.brand.profile_image_url && !profileImageAssetId) throw new Error("CARD_PROFILE_IMAGE_ASSET_REQUIRED");
@@ -168,7 +151,9 @@ export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3O
       base: isChat
         ? { kind: "chat_bubble", cover: slide.cover ? structuredClone(slide.cover) : null, bubbles: structuredClone(slide.bubbles ?? []) }
         : { kind: "plain", lines: text ? [text] : [] },
-      elements: isChat ? bubbleElements(slide) : plainElements(source, slide, index, text, options),
+      // 카톡 원문은 base가 SSOT다. 예전 projection 글 요소를 함께 만들면 말풍선 삭제 뒤
+      // `el_<옛 id>`가 자유 글로 되살아나 화면·PNG에 중복 노출될 수 있다.
+      elements: isChat ? [] : plainElements(source, slide, index, text, options),
     };
   });
   return {
@@ -185,23 +170,6 @@ export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3O
     },
     hook_type: source.hook_type, cta: structuredClone(source.cta), slides,
     migration: { source_contract_version: "2.0", source_sha256: sourceSha256, converter_version: CONVERTER_VERSION },
-  };
-}
-
-function patchBubbleFromElement(bubble: Bubble, elements: CardElement[]): Bubble {
-  const element = elements.find((candidate) => candidate.id === safePart(`el_${bubble.id}`) && candidate.type === "text");
-  if (!element || element.type !== "text") return structuredClone(bubble);
-  const current = bubble.segments.map((segment) => segment.text).join("");
-  if (element.text === current) return structuredClone(bubble);
-  return { ...structuredClone(bubble), segments: [{ text: element.text, bold: bubble.segments.some((segment) => segment.bold) }] };
-}
-
-function patchCoverFromElements(slideId: string, cover: NonNullable<CardSlide["cover"]>, elements: CardElement[]): NonNullable<CardSlide["cover"]> {
-  const headlineElement = elements.find((candidate) => candidate.id === safePart(`el_${slideId}_cover`) && candidate.type === "text");
-  const subElement = elements.find((candidate) => candidate.id === safePart(`el_${slideId}_sub`) && candidate.type === "text");
-  return {
-    headline: headlineElement?.type === "text" ? headlineElement.text : cover.headline,
-    sub: subElement?.type === "text" ? subElement.text || null : cover.sub,
   };
 }
 
@@ -234,9 +202,9 @@ export function projectCardDeckV3ToV2(deck: CardDeckV3, source: CardDeck): CardD
       return {
         ...legacySlide,
         ...(legacySlide.role === "cover" && slide.base.cover
-          ? { cover: patchCoverFromElements(legacySlide.id, slide.base.cover, slide.elements) }
+          ? { cover: structuredClone(slide.base.cover) }
           : {}),
-        ...(legacySlide.bubbles ? { bubbles: legacySlide.bubbles.map((bubble) => patchBubbleFromElement(bubble, slide.elements)) } : {}),
+        ...(legacySlide.bubbles ? { bubbles: structuredClone(slide.base.bubbles) } : {}),
       };
     }
     const text = slide.elements.find((element) => element.type === "text");
@@ -252,4 +220,30 @@ export function projectCardDeckV3ToV2(deck: CardDeckV3, source: CardDeck): CardD
     return legacySlide;
   });
   return projected;
+}
+
+/**
+ * v3 편집 결과와 함께 저장되는 v2 projection의 지문을 v3에 박는다. 예전 stale v3는
+ * 이 지문이 현재 v2와 다르므로 조회·발행 경계에서 열리지 않는다.
+ */
+export function synchronizeChatCardDeckV3(deck: CardDeckV3, projected: CardDeck): CardDeckV3 {
+  if (deck.template !== "chat_bubble") return structuredClone(deck);
+  return {
+    ...structuredClone(deck),
+    migration: {
+      source_contract_version: "2.0",
+      source_sha256: cardDeckV2Fingerprint(projected),
+      converter_version: CONVERTER_VERSION,
+    },
+  };
+}
+
+export function isSynchronizedChatCardDeckV3(source: CardDeck, candidate: unknown): candidate is CardDeckV3 {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+  const deck = candidate as Partial<CardDeckV3>;
+  return source.template === "chat_bubble"
+    && deck.template === "chat_bubble"
+    && deck.migration?.source_contract_version === "2.0"
+    && deck.migration.converter_version === CONVERTER_VERSION
+    && deck.migration.source_sha256 === cardDeckV2Fingerprint(source);
 }

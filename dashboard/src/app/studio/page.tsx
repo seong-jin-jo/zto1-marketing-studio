@@ -49,7 +49,7 @@ import {
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { cardDeckV3Projection, type CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { createPlainCardDeckV3, createRecoverableEmbeddedCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
-import { migrateCardDeckV2ToV3, projectCardDeckV3ToV2 } from "@/lib/studio/card-deck-v2-to-v3";
+import { migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import { cardDeckV3EntryEnabled, cardDeckV3ForDraft, cardDeckV3RenderingEnabled, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
 import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
@@ -4175,13 +4175,16 @@ export default function StudioPage() {
       cardDeckV3PendingSourceSnapshotRef.current = options.sourceSnapshot;
     }
     const legacyProjection = cardDeck ? projectCardDeckV3ToV2(nextDeck, cardDeck) : null;
+    const persistedDeck = legacyProjection && nextDeck.template === "chat_bubble"
+      ? synchronizeChatCardDeckV3(nextDeck, legacyProjection)
+      : nextDeck;
     if (legacyProjection) setCardDeck(legacyProjection);
-    setCardDeckV3(nextDeck);
-    cardDeckV3Ref.current = nextDeck;
+    setCardDeckV3(persistedDeck);
+    cardDeckV3Ref.current = persistedDeck;
     cardDeckV3DirtyRef.current = true;
     const editGeneration = cardDeckV3EditGenerationRef.current + 1;
     cardDeckV3EditGenerationRef.current = editGeneration;
-    replaceEditLines(cardDeckV3Projection(nextDeck));
+    replaceEditLines(cardDeckV3Projection(persistedDeck));
     if (cardDeckAutosaveTimer.current) clearTimeout(cardDeckAutosaveTimer.current);
     cardDeckAutosaveTimer.current = setTimeout(() => {
       cardDeckV3SavePendingGenerationRef.current = editGeneration;
@@ -4194,7 +4197,7 @@ export default function StudioPage() {
       const saveOptions = pendingSourceSnapshot
         ? { sourceSnapshot: pendingSourceSnapshot }
         : {};
-      save("draft", publishReconciliations, draftIdRef.current, img, vid, legacyProjection, null, nextDeck, "tail", pub, saveOptions)
+      save("draft", publishReconciliations, draftIdRef.current, img, vid, legacyProjection, null, persistedDeck, "tail", pub, saveOptions)
         .then(() => {
           if (cardDeckV3EditGenerationRef.current === editGeneration) {
             cardDeckV3DirtyRef.current = false;
@@ -4228,7 +4231,7 @@ export default function StudioPage() {
       editLines: [...resolvedEditLines],
       cardTextPositions: [...cardTextPositions],
     } satisfies CardDeckV3SourceSnapshot;
-    setCardDeckV3SourceSnapshot(snapshot);
+    if (cardDeck?.template !== "chat_bubble") setCardDeckV3SourceSnapshot(snapshot);
     try {
       let nextDeck: CardDeckV3;
       if (cardDeck && CARD_DECK_V3_RENDER_ENABLED) {
@@ -4280,7 +4283,7 @@ export default function StudioPage() {
       } else {
         nextDeck = createPlainCardDeckV3(snapshot.editLines, snapshot.cardTextPositions);
       }
-      onCardDeckV3Change(nextDeck, { sourceSnapshot: snapshot });
+      onCardDeckV3Change(nextDeck, cardDeck?.template === "chat_bubble" ? {} : { sourceSnapshot: snapshot });
     } catch (error) {
       showToast(extractApiErrorMessage(error, "자유 배치용 카드 바탕을 준비하지 못했습니다."), "error");
       return;

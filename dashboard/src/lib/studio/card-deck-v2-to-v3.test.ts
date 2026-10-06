@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CardDeck } from "./card-deck-contract";
-import { migrateCardDeckV2ToV3, projectCardDeckV3ToV2 } from "./card-deck-v2-to-v3";
+import { migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "./card-deck-v2-to-v3";
 import chatDeckFixture from "../../../tests/studio/fixtures/deck-d100.v2.json";
 
 const base = {
@@ -54,18 +54,27 @@ describe("S2 기존 카드 무손실 이관", () => {
     expect(migrated.slides.at(-1)?.background).toEqual({ kind: "solid", color: source.theme.background });
   });
 
-  it("S2-AC1 변경한 v3 글자는 legacy projection에도 반영하고 나머지 v2 필드는 보존한다", () => {
+  it("S5b-AC1 카톡 원문은 base만 SSOT로 쓰고 바꾼 표지를 v2 projection에 반영한다", () => {
     const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
     const migrated = migrateCardDeckV2ToV3(source);
     const cover = migrated.slides[0];
     expect(cover.base.kind).toBe("chat_bubble");
     if (cover.base.kind !== "chat_bubble") throw new Error("fixture");
-    const headline = cover.elements.find((element) => element.id === "el_slide-0_cover");
-    if (!headline || headline.type !== "text") throw new Error("fixture");
-    headline.text = "바뀐 표지";
+    cover.base.cover = { ...cover.base.cover!, headline: "바뀐 표지" };
+    expect(cover.elements).toEqual([]);
     const projected = projectCardDeckV3ToV2(migrated, source);
     expect(projected.slides[0].cover?.headline).toBe("바뀐 표지");
     expect(projected.slides.slice(1)).toEqual(source.slides.slice(1));
+  });
+
+  it("S5b-AC3 v3와 함께 저장할 v2 projection 지문만 현재본으로 인정한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+    const projected = projectCardDeckV3ToV2(migrated, source);
+    const synchronized = synchronizeChatCardDeckV3(migrated, projected);
+    expect(synchronized.migration?.source_sha256).toBe(migrated.migration?.source_sha256);
+    projected.brand.display_name = "다른 원문";
+    expect(synchronizeChatCardDeckV3(migrated, projected).migration?.source_sha256).not.toBe(migrated.migration?.source_sha256);
   });
 
   it("S2-AC1 v3 계약 안의 긴 원본 ID는 자르지 않고 보존하며 계약 밖 ID도 충돌 없이 변환한다", () => {

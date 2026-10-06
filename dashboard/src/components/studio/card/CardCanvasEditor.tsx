@@ -7,20 +7,31 @@ import type { CardDeckV3, CardElement, CardElementType } from "@/lib/studio/card
 import {
   addCardElement,
   addChatOverlayElement,
+  addChatBubble,
   commitCardCommand,
   createCardCommandHistory,
   deleteCardElement,
+  deleteChatBubble,
   duplicateCardElement,
+  mergeChatBubbleWithNext,
   moveCardElement,
   moveCardElementLayer,
+  moveChatBubble,
+  moveChatBubbleToSlide,
   nudgeCardElement,
   patchTextElement,
   patchChatBubbleText,
+  patchChatDeckBrand,
   redoCardCommand,
   resizeCardElement,
   rotateCardElement,
   setCardElementGeometry,
   snapCardElementPosition,
+  splitChatBubble,
+  swapChatSpeakers,
+  toggleChatBubbleBold,
+  toggleChatBubbleReaction,
+  toggleChatBubbleSpeaker,
   toggleCardElementFlag,
   undoCardCommand,
   type CardCommandHistory,
@@ -28,6 +39,7 @@ import {
   type ResizeHandle,
   type SnapGuide,
 } from "@/lib/studio/card-element-commands";
+import { CHAT_TONE_IDS, isChatToneCandidateList, type ChatToneCandidate, type ChatToneId } from "@/lib/studio/chat-tone-suggestions";
 import { cardSlideRenderModel, isChatBaseProjectionElement } from "@/lib/studio/card-render-model";
 import { CardElementList } from "./CardElementList";
 import { CardElementToolbar } from "./CardElementToolbar";
@@ -96,9 +108,17 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
   const [editingTextValue, setEditingTextValue] = useState("");
   const [rotationPreview, setRotationPreview] = useState<number | null>(null);
   const [bubbleEditError, setBubbleEditError] = useState("");
+  const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
+  const [toneScope, setToneScope] = useState<"one" | "slide" | "all">("slide");
+  const [toneId, setToneId] = useState<ChatToneId>("learned");
+  const [toneBusy, setToneBusy] = useState(false);
+  const [toneError, setToneError] = useState("");
+  const [toneCandidates, setToneCandidates] = useState<{ targets: Array<{ slideId: string; bubbleId: string; text: string }>; candidates: ChatToneCandidate[]; revision: number } | null>(null);
+  const [speakerEditorOpen, setSpeakerEditorOpen] = useState(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const profileInputRef = useRef<HTMLInputElement | null>(null);
   const lastExternalDeckRef = useRef(deck);
   const commitRef = useRef<(next: CardDeckV3) => void>(() => {});
   const textEditorRef = useRef<HTMLTextAreaElement | null>(null);
@@ -309,6 +329,67 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
     }
   };
 
+  const runChatCommand = (command: (current: CardDeckV3) => CardDeckV3) => {
+    try {
+      apply(command);
+      setBubbleEditError("");
+    } catch (error) {
+      const code = error instanceof RangeError ? error.message : "";
+      const message = code === "CARD_CHAT_BUBBLE_MIN_ONE" ? "한 장에는 말풍선이 하나 이상 있어야 합니다."
+        : code === "CARD_CHAT_BUBBLE_TOO_SHORT_TO_SPLIT" ? "두 글자 이상인 말풍선만 나눌 수 있습니다."
+          : code === "CARD_CHAT_BUBBLE_NEXT_REQUIRED" ? "합칠 다음 말풍선이 없습니다."
+            : code === "CARD_CHAT_BUBBLE_TEXT_TOO_LONG" ? "합친 말풍선은 120자를 넘을 수 없습니다."
+              : "말풍선 편집을 적용하지 못했습니다.";
+      setBubbleEditError(message);
+    }
+  };
+
+  const toneTargets = () => workingDeck.slides.flatMap((slide) => slide.base.kind === "chat_bubble"
+    ? slide.base.bubbles.map((bubble) => ({
+      slideId: slide.id,
+      bubbleId: bubble.id,
+      text: bubble.segments.map((segment) => segment.text).join(""),
+    }))
+    : []).filter((target) => toneScope === "all"
+      || (target.slideId === activeSlide.id && (toneScope === "slide" || target.bubbleId === selectedBubbleId)));
+
+  const requestToneSuggestions = async () => {
+    const targets = toneTargets();
+    if (!targets.length) {
+      setToneError(toneScope === "one" ? "먼저 말풍선 하나를 골라 주세요." : "다듬을 말풍선이 없습니다.");
+      return;
+    }
+    setToneBusy(true);
+    setToneError("");
+    try {
+      const response = await fetch("/api/studio/commands", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ action: "suggest_chat_tone", tone: toneId, lines: targets.map((target) => target.text) }),
+      });
+      const data = await response.json().catch(() => ({})) as { ok?: boolean; candidates?: ChatToneCandidate[]; error?: string };
+      if (!response.ok || !data.ok || !isChatToneCandidateList(data.candidates, targets.length)) {
+        throw new Error(data.error || "말투 후보를 만들지 못했습니다.");
+      }
+      setToneCandidates({ targets, candidates: data.candidates, revision: workingDeck.revision });
+    } catch (error) {
+      setToneError(error instanceof Error ? error.message : "말투 후보를 만들지 못했습니다.");
+    } finally {
+      setToneBusy(false);
+    }
+  };
+
+  const applyToneCandidate = (candidate: ChatToneCandidate) => {
+    if (!toneCandidates || toneCandidates.revision !== workingDeck.revision) {
+      setToneError("후보를 만든 뒤 대화가 바뀌었습니다. 다시 비교해 주세요.");
+      return;
+    }
+    runChatCommand((current) => toneCandidates.targets.reduce((next, target, index) => (
+      patchChatBubbleText(next, target.slideId, target.bubbleId, candidate.lines[index])
+    ), current));
+    setToneCandidates(null);
+  };
+
   const uploadImage = async (file: File) => {
     setUploadError("");
     const body = new FormData();
@@ -321,6 +402,21 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
       add("image", { assetId: data.filename, assetAlt: file.name });
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "사진을 올리지 못했습니다");
+    }
+  };
+
+  const uploadProfileImage = async (file: File) => {
+    setUploadError("");
+    const body = new FormData();
+    body.append("file", file);
+    try {
+      const response = await fetch("/api/images/upload", { method: "POST", headers: authHeaders(), body });
+      const data = await response.json() as { filename?: string; url?: string; error?: string };
+      if (!response.ok || !data.filename || !data.url) throw new Error(data.error || "프로필 사진을 올리지 못했습니다");
+      setLocalAssetUrls((current) => ({ ...current, [data.filename!]: data.url! }));
+      apply((current) => patchChatDeckBrand(current, { profile_image_asset_id: data.filename, profile_image_url: data.url }));
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "프로필 사진을 올리지 못했습니다");
     }
   };
 
@@ -337,7 +433,28 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
         <span className={styles.toolbarDivider} aria-hidden="true" />
         <Button size="sm" disabled={history.past.length === 0} onClick={() => { const next = undoCardCommand(history); setHistory(next); onDeckChange(next.present); }}>실행 취소</Button>
         <Button size="sm" disabled={history.future.length === 0} onClick={() => { const next = redoCardCommand(history); setHistory(next); onDeckChange(next.present); }}>다시 실행</Button>
+        {activeSlide.base.kind === "chat_bubble" ? <>
+          <span className={styles.toolbarDivider} aria-hidden="true" />
+          <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => swapChatSpeakers(current, activeSlide.id))}>이 장 화자 서로 바꾸기</Button>
+          <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => swapChatSpeakers(current, null))}>덱 전체 화자 서로 바꾸기</Button>
+          <Button size="sm" variant="secondary" onClick={() => setSpeakerEditorOpen((open) => !open)}>화자 이름·프로필</Button>
+        </> : null}
       </div>
+      {activeSlide.base.kind === "chat_bubble" ? <section className={styles.advancedToolbar} aria-label="카톡 대화 고급 편집 도구">
+        {speakerEditorOpen ? <div className={styles.profileGrid}>
+          <label>작성자 이름<input aria-label="작성자 이름" value={workingDeck.brand.display_name} onChange={(event) => runChatCommand((current) => patchChatDeckBrand(current, { display_name: event.target.value }))} /></label>
+          <label>독자 이름<input aria-label="독자 이름" value={workingDeck.brand.reader_name ?? "구독자"} onChange={(event) => runChatCommand((current) => patchChatDeckBrand(current, { reader_name: event.target.value }))} /></label>
+          <Button size="sm" variant="secondary" onClick={() => profileInputRef.current?.click()}>프로필 사진 바꾸기</Button>
+          <input ref={profileInputRef} className={styles.fileInput} type="file" accept="image/png,image/jpeg,image/webp" aria-label="프로필 사진 파일" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadProfileImage(file); event.target.value = ""; }} />
+        </div> : null}
+        <div className={styles.toneToolbar}>
+          <label>범위<select aria-label="말투 다듬기 범위" value={toneScope} onChange={(event) => setToneScope(event.target.value as typeof toneScope)}><option value="one">고른 말풍선</option><option value="slide">이 장</option><option value="all">덱 전체</option></select></label>
+          <label>말투<select aria-label="다듬을 말투" value={toneId} onChange={(event) => setToneId(event.target.value as ChatToneId)}>{CHAT_TONE_IDS.map((id) => <option key={id} value={id}>{id === "learned" ? "학습 정보 말투" : id === "warm" ? "더 친근하게" : id === "short" ? "더 짧게" : "반말↔존댓말"}</option>)}</select></label>
+          <Button size="sm" onClick={() => void requestToneSuggestions()} disabled={toneBusy}>{toneBusy ? "후보 만드는 중" : "후보 3개 비교"}</Button>
+        </div>
+        {toneError ? <p role="alert" className={styles.error}>{toneError}</p> : null}
+        {toneCandidates ? <div className={styles.toneCandidates} role="dialog" aria-label="말투 다듬기 비교">{toneCandidates.candidates.map((candidate) => <article key={candidate.id} data-tone-candidate={candidate.id}><b>{candidate.label}</b><p>{candidate.lines.join("\n")}</p><Button size="sm" onClick={() => applyToneCandidate(candidate)}>이 후보 적용</Button></article>)}</div> : null}
+      </section> : null}
       {uploadError ? <p role="alert" className={styles.error}>{uploadError}</p> : null}
       <div className={styles.workspace}>
         <nav className={styles.slideStrip} aria-label="카드 장 목록">
@@ -467,17 +584,32 @@ export function CardCanvasEditor({ deck, assetUrls = {}, onDeckChange }: CardCan
                   ? workingDeck.brand.display_name
                   : workingDeck.brand.reader_name?.trim() || "구독자";
                 return (
-                  <label key={`${bubble.id}:${text}`}>
+                  <article key={`${bubble.id}:${text}`} className={styles.bubbleCard} data-chat-bubble-id={bubble.id} data-selected={selectedBubbleId === bubble.id}>
+                    <label>
                     <span>{speaker} · {index + 1}번째</span>
                     <textarea
                       aria-label={`${index + 1}번째 말풍선 내용`}
                       defaultValue={text}
                       maxLength={120}
                       onBlur={(event) => commitBubbleText(bubble.id, event.target.value)}
+                      onFocus={() => setSelectedBubbleId(bubble.id)}
                     />
-                  </label>
+                    </label>
+                    <div className={styles.bubbleActions}>
+                      <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => toggleChatBubbleSpeaker(current, activeSlide.id, bubble.id))}>화자 바꾸기</Button>
+                      <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => toggleChatBubbleBold(current, activeSlide.id, bubble.id))}>전체 굵게</Button>
+                      <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => toggleChatBubbleReaction(current, activeSlide.id, bubble.id))}>하트</Button>
+                      <Button size="sm" variant="secondary" disabled={index === 0} onClick={() => runChatCommand((current) => moveChatBubble(current, activeSlide.id, bubble.id, -1))}>위로</Button>
+                      <Button size="sm" variant="secondary" disabled={index === activeSlide.base.bubbles.length - 1} onClick={() => runChatCommand((current) => moveChatBubble(current, activeSlide.id, bubble.id, 1))}>아래로</Button>
+                      <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => splitChatBubble(current, activeSlide.id, bubble.id))}>둘로 나누기</Button>
+                      <Button size="sm" variant="secondary" disabled={index === activeSlide.base.bubbles.length - 1} onClick={() => runChatCommand((current) => mergeChatBubbleWithNext(current, activeSlide.id, bubble.id))}>다음과 합치기</Button>
+                      {workingDeck.slides.filter((slide) => slide.id !== activeSlide.id && slide.base.kind === "chat_bubble").map((slide) => <Button key={slide.id} size="sm" variant="secondary" onClick={() => runChatCommand((current) => moveChatBubbleToSlide(current, activeSlide.id, bubble.id, slide.id))}>{slide.order + 1}장으로</Button>)}
+                      <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => deleteChatBubble(current, activeSlide.id, bubble.id))}>삭제</Button>
+                    </div>
+                  </article>
                 );
               })}
+              <Button size="sm" onClick={() => runChatCommand((current) => addChatBubble(current, activeSlide.id))}>말풍선 추가</Button>
               {bubbleEditError ? <p role="alert" className={styles.error}>{bubbleEditError}</p> : null}
             </section>
           ) : null}

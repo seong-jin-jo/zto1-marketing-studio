@@ -3,14 +3,17 @@ import type { CardDeckV3 } from "./card-element-contract";
 import {
   addCardElement,
   addChatOverlayElement,
+  addChatBubble,
   commitCardCommand,
   createCardCommandHistory,
   createRecoverableEmbeddedCardDeckV3,
   createPlainCardDeckV3,
   deleteCardElement,
+  deleteChatBubble,
   duplicateCardElement,
   moveCardElement,
   moveCardElementLayer,
+  moveChatBubble,
   nudgeCardElement,
   patchTextElement,
   patchChatBubbleText,
@@ -19,7 +22,9 @@ import {
   rotateCardElement,
   setCardElementGeometry,
   snapCardElementPosition,
+  swapChatSpeakers,
   plainCardDeckV3EntryBlockReason,
+  toggleChatBubbleBold,
   toggleCardElementFlag,
   undoCardCommand,
 } from "./card-element-commands";
@@ -96,7 +101,7 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     expect(other.guides).toContainEqual({ axis: "x", value: 100, source: "element" });
   });
 
-  it("S5-R1-M4 말풍선 직접 편집은 원형과 v2 projection을 한 revision에서 함께 바꾼다", () => {
+  it("S5b-AC1 말풍선 직접 편집은 base를 바꾸고 옛 projection을 정리한다", () => {
     const chat = deck();
     chat.template = "chat_bubble";
     chat.slides[0].base = {
@@ -113,8 +118,31 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     const changed = patchChatBubbleText(chat, "slide_cover", "bubble_reader", "직접 고친 말풍선");
     expect(changed.revision).toBe(chat.revision + 1);
     expect(changed.slides[0].base).toMatchObject({ kind: "chat_bubble", bubbles: [{ segments: [{ text: "직접 고친 말풍선", bold: true }] }] });
-    expect(changed.slides[0].elements[0]).toMatchObject({ text: "직접 고친 말풍선" });
+    expect(changed.slides[0].elements).toEqual([]);
     expect(() => patchChatBubbleText(changed, "slide_cover", "bubble_reader", " ")).toThrow("CARD_CHAT_BUBBLE_TEXT_REQUIRED");
+  });
+
+  it("S5b-AC1 고급 도구는 순서·화자·굵기·추가·삭제를 한 덱에서 보존한다", () => {
+    const chat = deck();
+    chat.template = "chat_bubble";
+    chat.slides[0].base = {
+      kind: "chat_bubble", cover: null,
+      bubbles: [
+        { id: "bubble_a", order: 0, speaker: "brand", segments: [{ text: "첫째", bold: false }], reaction: null },
+        { id: "bubble_b", order: 1, speaker: "reader", segments: [{ text: "둘째", bold: false }], reaction: null },
+      ],
+    };
+    const moved = moveChatBubble(chat, "slide_cover", "bubble_b", -1);
+    const swapped = swapChatSpeakers(moved, "slide_cover");
+    const bold = toggleChatBubbleBold(swapped, "slide_cover", "bubble_b");
+    const added = addChatBubble(bold, "slide_cover", "bubble_c");
+    const deleted = deleteChatBubble(added, "slide_cover", "bubble_a");
+    const base = deleted.slides[0].base;
+    if (base.kind !== "chat_bubble") throw new Error("fixture");
+    expect(base.bubbles.map((bubble) => [bubble.id, bubble.order, bubble.speaker, bubble.segments.every((segment) => segment.bold)])).toEqual([
+      ["bubble_b", 0, "brand", true],
+      ["bubble_c", 1, "brand", false],
+    ]);
   });
 
   it("S1-AC5 정상 경로: 키보드 이동, 복제, 삭제, undo와 redo가 같은 덱을 복원한다", () => {

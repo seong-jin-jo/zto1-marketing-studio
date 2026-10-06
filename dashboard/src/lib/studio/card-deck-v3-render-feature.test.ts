@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { cardDeckV3EntryEnabled, cardDeckV3ForDraft, cardDeckV3RenderingEnabled, usesChatBubbleV2 } from "./card-deck-v3-render-feature";
+import { migrateCardDeckV2ToV3 } from "./card-deck-v2-to-v3";
+import type { CardDeck } from "./card-deck-contract";
+import chatDeckFixture from "../../../tests/studio/fixtures/deck-d100.v2.json";
 
 describe("S2-B CardDeckV3 공용 렌더 feature flag", () => {
   it("flag off가 기본이며 S1 발행 차단을 유지한다", () => {
@@ -29,8 +32,17 @@ describe("S2-B CardDeckV3 공용 렌더 feature flag", () => {
     expect(cardDeckV3EntryEnabled(true, { hasCardDeckV2: true, textEmbedded: false })).toBe(true);
   });
 
-  it("S5-R2-M4 렌더 flag가 켜져도 카톡 덱은 고급 도구가 있는 기본 편집을 유지한다", () => {
-    expect(cardDeckV3EntryEnabled(true, { hasCardDeckV2: true, cardDeckTemplate: "chat_bubble", textEmbedded: false })).toBe(false);
+  it("S5b-AC1 렌더 flag가 켜지면 카톡 v3 고급 편집 진입을 연다", () => {
+    expect(cardDeckV3EntryEnabled(true, { hasCardDeckV2: true, cardDeckTemplate: "chat_bubble", textEmbedded: false })).toBe(true);
+  });
+
+  it("S5b-AC3 현재 v2 지문과 일치하는 카톡 v3만 다시 연다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const current = migrateCardDeckV2ToV3(source);
+    expect(cardDeckV3ForDraft(source, current)).toBe(current);
+    const staleSource = structuredClone(source);
+    staleSource.brand.display_name = "새 원문";
+    expect(cardDeckV3ForDraft(staleSource, current)).toBeNull();
   });
 
   it("S5-R3-2 chat_bubble v2가 있으면 잔존 v3를 로드 대상으로 돌려주지 않는다", () => {

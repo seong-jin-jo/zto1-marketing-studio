@@ -191,6 +191,36 @@
   font: inherit;
 }
 
+.advancedToolbar,
+.profileGrid,
+.toneToolbar,
+.toneCandidates,
+.bubbleCard,
+.bubbleActions {
+  display: grid;
+  gap: var(--stack-tight);
+}
+
+.advancedToolbar {
+  padding: var(--stack);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface-2);
+}
+
+.profileGrid,
+.toneToolbar { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); align-items: end; }
+.profileGrid label,
+.toneToolbar label { display: grid; gap: var(--space-micro); color: var(--text-muted); font-size: var(--font-body-size); }
+.profileGrid input,
+.toneToolbar select { min-height: var(--control-touch); border: 1px solid var(--border); border-radius: var(--shape-control); background: var(--surface); padding-inline: var(--stack-tight); color: var(--text); font-size: var(--font-body-size); }
+.toneCandidates { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
+.toneCandidates article,
+.bubbleCard { padding: var(--stack-tight); border: 1px solid var(--border); border-radius: var(--shape-control); background: var(--surface); }
+.toneCandidates p { white-space: pre-wrap; }
+.bubbleCard[data-selected="true"] { border-color: var(--accent); }
+.bubbleActions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
 .elementList h3 { margin-bottom: var(--stack); color: var(--text); font-size: var(--font-body-size); font-weight: 700; }
 .elementList p { color: var(--text-muted); font-size: var(--font-body-size); }
 .elementList ol { display: grid; gap: var(--stack); }

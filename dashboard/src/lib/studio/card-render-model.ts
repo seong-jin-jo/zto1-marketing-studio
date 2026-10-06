@@ -45,7 +45,10 @@ export function cardSlideRenderModel(
 export function isChatBaseProjectionElement(slide: CardSlideV3, element: CardElement): boolean {
   if (slide.base.kind !== "chat_bubble" || element.type !== "text") return false;
   if (element.id === `el_${slide.id}_cover` || element.id === `el_${slide.id}_sub`) return true;
-  return slide.base.bubbles.some((bubble) => element.id === `el_${bubble.id}`);
+  if (slide.base.bubbles.some((bubble) => element.id === `el_${bubble.id}`)) return true;
+  // S5 이전 덱에서 말풍선을 삭제·이동하면 projection만 남을 수 있다. 사용자가 추가한
+  // 자유 글(name="글")과 구분해 옛 말풍선 projection 및 그 복사본을 렌더 대상에서 뺀다.
+  return element.id.startsWith("el_") && /말풍선/.test(element.name);
 }
 
 export function visibleCardElements(model: CardSlideRenderModel): CardElement[] {

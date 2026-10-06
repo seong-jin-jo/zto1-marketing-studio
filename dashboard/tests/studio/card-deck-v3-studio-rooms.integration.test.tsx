@@ -8,6 +8,7 @@ import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { cardDeckV3EntryEnabled } from "@/lib/studio/card-deck-v3-render-feature";
+import { migrateCardDeckV2ToV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import chatBubbleDeck from "./fixtures/deck-d100.v2.json";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -63,7 +64,7 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
   });
 
-  it("S5-R2-M4 말풍선 카드는 flag on이어도 고급 도구 없는 자유 배치 진입을 막는다", () => {
+  it("S5b-AC1 말풍선 카드는 flag on이면 v3 고급 편집 진입을 연다", () => {
     const onStart = vi.fn();
     const entryEnabled = cardDeckV3EntryEnabled(true, { hasCardDeckV2: true, cardDeckTemplate: "chat_bubble", textEmbedded: false });
     render(<EditRoom
@@ -74,9 +75,9 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
       onCardDeckChange={() => {}}
       onStartCardDeckV3={entryEnabled ? onStart : undefined}
     />);
-    expect(screen.queryByRole("button", { name: "자유 배치로 편집" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("카톡 대화 고급 편집 도구")).toBeInTheDocument();
-    expect(onStart).not.toHaveBeenCalled();
+    const entry = screen.getByRole("button", { name: "v3 고급 편집 열기" });
+    fireEvent.click(entry);
+    expect(onStart).toHaveBeenCalledOnce();
   });
 
   it("S2-A 복구 불가 AI 카드는 버튼을 숨기지 않고 비활성 사유를 보여준다", () => {
@@ -142,19 +143,14 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     expect(onReturn).toHaveBeenCalledOnce();
   });
 
-  it("S5-R2-M4 저장된 카톡 v3 덱이 있어도 기본 편집과 고급 도구를 유지하고 덧붙임은 보존한다", () => {
+  it("S5b-AC3 저장된 카톡 v3 덱은 공용 화면과 고급 도구·덧붙임을 함께 복원한다", () => {
     const onReturn = vi.fn();
-    const deck = createPlainCardDeckV3(["첫 장", "둘째 장"], "deck_chat_combined");
-    deck.template = "chat_bubble";
-    deck.slides[0].base = {
-      kind: "chat_bubble",
-      cover: null,
-      bubbles: [{ id: "bubble_reader", order: 0, speaker: "reader", segments: [{ text: "한 화면 편집", bold: false }], reaction: null }],
-    };
-    const projection = deck.slides[0].elements[0];
-    if (projection.type !== "text") throw new Error("fixture");
-    projection.id = "el_bubble_reader";
-    projection.text = "한 화면 편집";
+    const deck = migrateCardDeckV2ToV3(structuredClone(chatBubbleDeck) as CardDeck);
+    deck.slides[0].elements.push({
+      id: "chat_logo", type: "logo", name: "로고", x: 100, y: 100, width: 300, height: 120,
+      rotation: 0, z_index: 0, opacity: 1, locked: false, hidden: false,
+      asset_id: "builtin:logo-osmu", alt: "OSMU 로고", fit: "contain",
+    });
 
     render(<EditRoom
       kind="card"
@@ -167,13 +163,12 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
       onReturnFromCardDeckV3={onReturn}
     />);
 
-    expect(document.querySelector("[data-card-deck-v3-workbench]")).not.toBeInTheDocument();
-    expect(document.querySelector("[data-card-deck-workbench]")).toBeInTheDocument();
+    expect(document.querySelector("[data-card-deck-v3-workbench]")).toBeInTheDocument();
+    expect(document.querySelector("[data-card-deck-workbench]")).not.toBeInTheDocument();
     expect(screen.getByLabelText("카톡 대화 고급 편집 도구")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "이 장 화자 서로 바꾸기" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "화자 이름·프로필" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /2장/ }));
-    expect(document.querySelector("[data-bubble-editor]")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "로고" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "기본 편집으로 돌아가기" })).not.toBeInTheDocument();
     expect(onReturn).not.toHaveBeenCalled();
   });
