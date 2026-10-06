@@ -161,7 +161,7 @@ export function migrateCardDeckV2ToV3(source: CardDeck, options: CardDeckV2ToV3O
       content_state: text.trim() ? "filled" : "empty",
       background: isChat && coverAssetId
         ? { kind: "image", asset_id: coverAssetId, crop: { x: 0, y: 0, width: 1, height: 1 }, overlay: "#000000" }
-        : { kind: "solid", color: index === source.slides.length - 1 ? hexColor(source.theme.foreground, "#111111") : hexColor(source.theme.background, "#FFF9F0") },
+        : { kind: "solid", color: !isChat && index === source.slides.length - 1 ? hexColor(source.theme.foreground, "#111111") : hexColor(source.theme.background, "#FFF9F0") },
       base: isChat
         ? { kind: "chat_bubble", cover: slide.cover ? structuredClone(slide.cover) : null, bubbles: structuredClone(slide.bubbles ?? []) }
         : { kind: "plain", lines: text ? [text] : [] },

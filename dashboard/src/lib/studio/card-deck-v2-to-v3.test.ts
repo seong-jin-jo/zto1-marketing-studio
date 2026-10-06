@@ -45,6 +45,15 @@ describe("S2 기존 카드 무손실 이관", () => {
     expect(projectCardDeckV3ToV2(migrated, source)).toEqual(source);
   });
 
+  it("S5-R1-M1 카톡 CTA는 텍스트와 겹치는 foreground 대신 대화 배경을 유지한다", () => {
+    const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
+    const migrated = migrateCardDeckV2ToV3(source);
+
+    expect(migrated.slides[0].background).toEqual({ kind: "solid", color: source.theme.background });
+    expect(migrated.slides.at(-1)?.role).toBe("cta");
+    expect(migrated.slides.at(-1)?.background).toEqual({ kind: "solid", color: source.theme.background });
+  });
+
   it("S2-AC1 변경한 v3 글자는 legacy projection에도 반영하고 나머지 v2 필드는 보존한다", () => {
     const source = structuredClone(chatDeckFixture) as unknown as CardDeck;
     const migrated = migrateCardDeckV2ToV3(source);

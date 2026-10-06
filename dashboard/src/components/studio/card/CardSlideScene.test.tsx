@@ -5,6 +5,9 @@ import { cleanup, render, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { cardSlideRenderModel } from "@/lib/studio/card-render-model";
+import { migrateCardDeckV2ToV3 } from "@/lib/studio/card-deck-v2-to-v3";
+import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import chatDeckFixture from "../../../../tests/studio/fixtures/deck-d100.v2.json";
 import { CardSlideScene } from "./CardSlideScene";
 
 afterEach(cleanup);
@@ -44,5 +47,21 @@ describe("CardSlideScene S5 카톡 원형과 자유 요소", () => {
     const exportLogo = exportScene.querySelector<HTMLElement>("[data-card-element='logo_overlay']")!;
     expect(editorLogo.getAttribute("style")).toBe(exportLogo.getAttribute("style"));
     expect(exportScene).toHaveTextContent("어떻게 바꿔요?");
+  });
+
+  it("S5-R1-M1 표지·CTA를 대화 배경 위에 실제 장면으로 렌더한다", () => {
+    const deck = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
+    const cover = cardSlideRenderModel(deck, deck.slides[0].id);
+    const cta = cardSlideRenderModel(deck, deck.slides.at(-1)!.id);
+    const coverView = render(<CardSlideScene model={cover} renderMode="export" />);
+    const ctaView = render(<CardSlideScene model={cta} renderMode="export" />);
+    const coverScene = coverView.container.querySelector<HTMLElement>("[data-card-slide-scene]")!;
+    const ctaScene = ctaView.container.querySelector<HTMLElement>("[data-card-slide-scene]")!;
+
+    expect(cover.slide.background).toEqual({ kind: "solid", color: deck.theme.background });
+    expect(cta.slide.background).toEqual({ kind: "solid", color: deck.theme.background });
+    expect(coverScene).toHaveTextContent(deck.brand.display_name);
+    expect(ctaScene).toHaveTextContent(deck.brand.display_name);
+    expect(within(ctaScene).getAllByText(String(deck.slides.length)).length).toBeGreaterThan(0);
   });
 });
