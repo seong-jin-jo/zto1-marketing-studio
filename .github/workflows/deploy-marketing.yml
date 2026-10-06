@@ -26,6 +26,14 @@ on:
         description: '지운 블록을 저장소에 돌려줄지 (fstrim. 다른 VM 이 쓸 공간을 회수한다)'
         required: false
         default: ''
+
+# 운영 생성기 감시는 같은 self-hosted 러너와 앱 컨테이너를 읽는다. 같은 그룹으로 직렬화해
+# 배포가 컨테이너를 교체하는 순간을 로그인 장애로 오판하거나 러너 자원을 함께 쓰지 않는다.
+concurrency:
+  group: marketing-runner-exclusive
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   deploy:
     runs-on: [self-hosted, marketing_runner]
