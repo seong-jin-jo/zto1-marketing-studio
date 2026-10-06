@@ -56,4 +56,59 @@ real("S6 실제 MP4 렌더", () => {
       fs.copyFileSync(outputPath, process.env.S6_RENDER_OUTPUT);
     }
   }, 120_000);
+
+  it("S6-MAJOR2-REAL-01 2초 인트로 구간에는 자막이 없고 본문 시간축에서만 자막이 보인다", async () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "s6-real-intro-render-"));
+    process.env.DATA_DIR = root;
+    process.env.FFMPEG_BIN = ffmpegBin;
+    process.env.FFPROBE_BIN = ffprobeBin;
+    process.env.SUBTITLE_FONT_FILE = "/System/Library/Fonts/AppleSDGothicNeo.ttc";
+    const tenantId = "tenant-s6-intro";
+    const videosDir = path.join(root, "tenants", tenantId, "videos");
+    fs.mkdirSync(videosDir, { recursive: true });
+    const compositePath = path.join(videosDir, "intro-composite.mp4");
+    const outputPath = path.join(root, "intro-result.mp4");
+    execFileSync(ffmpegBin, [
+      "-y",
+      "-f", "lavfi", "-i", "color=c=0x7A2020:s=360x640:d=2:r=30",
+      "-f", "lavfi", "-i", "color=c=0x203A7A:s=360x640:d=3:r=30",
+      "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+      "-map", "[v]", "-c:v", "libx264", "-pix_fmt", "yuv420p", compositePath,
+    ], { stdio: "ignore" });
+    vi.resetModules();
+    const { setSubtitles, setSubtitleStyle } = await import("@/lib/studio/video-edit-contract");
+    const { videoExportSource } = await import("@/lib/studio/export-source-hash");
+    const { renderVideoExport, probeRenderedVideo } = await import("@/lib/studio/video-export-renderer");
+    let edit = setSubtitles(emptyVideoEdit(), [{ id: "s1", order: 0, text: "인트로 뒤 자막", startSec: 0, endSec: 1.5, cut: false }]);
+    edit = setSubtitleStyle(edit, { preset: "yellow", position: "middle", sizePercent: 120, outline: true });
+    edit = {
+      ...edit,
+      introOutro: {
+        introCompId: "intro-logo-reveal", outroCompId: null, sourceFilename: "source.mp4",
+        compositeFilename: "intro-composite.mp4", resultFilename: "intro-composite.mp4",
+        introDurationSec: 2, renderedCutRanges: [], deliverUrl: "/api/media/intro-composite",
+      },
+    };
+    const source = videoExportSource({
+      videoEdit: edit,
+      editLines: ["인트로 뒤 자막"],
+      editFormat: { subtitleSize: "보통" },
+      vid: { filename: "intro-composite.mp4", subtitlesBaked: false },
+    }, tenantId);
+    expect(source.sourceFilename).toBe("intro-composite.mp4");
+    expect(source.edit.subtitles[0]).toMatchObject({ startSec: 2, endSec: 3.5 });
+
+    await renderVideoExport(tenantId, source, outputPath);
+    const probed = await probeRenderedVideo(outputPath);
+    expect(probed.durationSec).toBeGreaterThan(4.8);
+    const introFrame = path.join(root, "intro-frame.png");
+    const bodyFrame = path.join(root, "body-frame.png");
+    execFileSync(ffmpegBin, ["-y", "-ss", "1", "-i", outputPath, "-frames:v", "1", introFrame], { stdio: "ignore" });
+    execFileSync(ffmpegBin, ["-y", "-ss", "2.5", "-i", outputPath, "-frames:v", "1", bodyFrame], { stdio: "ignore" });
+    expect(fs.statSync(bodyFrame).size).toBeGreaterThan(fs.statSync(introFrame).size + 1_000);
+    if (process.env.S6_RENDER_INTRO_OUTPUT) {
+      fs.mkdirSync(path.dirname(process.env.S6_RENDER_INTRO_OUTPUT), { recursive: true });
+      fs.copyFileSync(outputPath, process.env.S6_RENDER_INTRO_OUTPUT);
+    }
+  }, 120_000);
 });
