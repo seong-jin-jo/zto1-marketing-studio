@@ -92,6 +92,8 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
       </div>
     );
   }
+  const orderedBubbles = [...bubbles].sort((left, right) => left.order - right.order);
+  const firstBrandBubbleId = orderedBubbles.find((bubble) => bubble.speaker === "brand")?.id;
   return (
     <div className={styles.chatBase} data-chat-base="conversation">
       <header className={styles.chatHeader}>
@@ -99,25 +101,28 @@ function ChatBubbleBase({ model, renderMode }: { model: CardSlideRenderModel; re
         <span>{model.slide.order + 1}</span>
       </header>
       <div ref={chatListRef} className={styles.chatList} data-chat-list>
-        {[...bubbles].sort((left, right) => left.order - right.order).map((bubble) => (
-          <div key={bubble.id} className={`${styles.chatRow} ${bubble.speaker === "reader" ? styles.readerRow : styles.brandRow}`} data-chat-bubble={bubble.id}>
-            <span className={styles.chatAvatar} aria-hidden="true">
-              {bubble.speaker === "brand" && profileUrl
-                ? renderMode === "export"
-                  ? <Img className={styles.chatAvatarMedia} src={profileUrl} alt="" />
-                  : <DeliveredMedia className={styles.chatAvatarMedia} src={profileUrl} type="image" alt="" />
-                : model.brand.display_name.slice(0, 2)}
-            </span>
-            <div className={styles.chatColumn}>
-              <span className={styles.chatName}>{bubble.speaker === "brand" ? model.brand.display_name : model.brand.reader_name?.trim() || "구독자"}</span>
-              <div className={styles.chatBubbleLine}>
-                <div className={styles.chatBubble}><BubbleText bubble={bubble} /></div>
-                <time className={styles.chatTime}>오후 9:20</time>
+        {orderedBubbles.map((bubble) => {
+          const showBrandIdentity = bubble.id === firstBrandBubbleId;
+          return (
+            <div key={bubble.id} className={`${styles.chatRow} ${bubble.speaker === "reader" ? styles.readerRow : styles.brandRow}`} data-chat-bubble={bubble.id}>
+              {showBrandIdentity ? <span className={styles.chatAvatar} aria-hidden="true">
+                {profileUrl
+                  ? renderMode === "export"
+                    ? <Img className={styles.chatAvatarMedia} src={profileUrl} alt="" />
+                    : <DeliveredMedia className={styles.chatAvatarMedia} src={profileUrl} type="image" alt="" />
+                  : model.brand.display_name.slice(0, 2)}
+              </span> : null}
+              <div className={styles.chatColumn}>
+                {showBrandIdentity ? <span className={styles.chatName} data-chat-speaker-name>{model.brand.display_name}</span> : null}
+                <div className={styles.chatBubbleLine}>
+                  <div className={styles.chatBubble}><BubbleText bubble={bubble} /></div>
+                  <time className={styles.chatTime}>오후 9:20</time>
+                </div>
+                {bubble.reaction ? <span className={styles.chatReaction} aria-label="좋아요">♥</span> : null}
               </div>
-              {bubble.reaction ? <span className={styles.chatReaction} aria-label="좋아요">♥</span> : null}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <footer className={styles.chatFooter}>
         <span>{model.slide.role === "cta" ? model.brand.display_name : model.brand.handle ?? model.brand.display_name}</span>

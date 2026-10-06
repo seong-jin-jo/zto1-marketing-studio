@@ -260,29 +260,29 @@ function drawChatSlide(
 
   const turns = groupTurns(slide.bubbles ?? []);
   let y = headerHeight + margin * 0.5;
+  let brandIdentityDrawn = false;
   const bottomLimit = height - margin - (slide.role === "cta" ? height * 0.14 : 0);
 
   for (const turn of turns) {
     const isReader = turn.speaker === "reader";
-    const avatarSize = profileImage && !isReader ? Math.round(width * 0.05) : 0;
-    ctx.font = `600 ${Math.round(width * BUBBLE_NAME_LABEL_RATIO)}px ${FONT_FAMILY}`;
-    ctx.fillStyle = deck.theme.accent;
-    ctx.textAlign = isReader ? "right" : "left";
-    ctx.textBaseline = "top";
-    if (profileImage && !isReader) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(margin + avatarSize / 2, y + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(profileImage, margin, y, avatarSize, avatarSize);
-      ctx.restore();
+    if (!isReader && !brandIdentityDrawn) {
+      const avatarSize = profileImage ? Math.round(width * 0.05) : 0;
+      ctx.font = `600 ${Math.round(width * BUBBLE_NAME_LABEL_RATIO)}px ${FONT_FAMILY}`;
+      ctx.fillStyle = deck.theme.accent;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      if (profileImage) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(margin + avatarSize / 2, y + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(profileImage, margin, y, avatarSize, avatarSize);
+        ctx.restore();
+      }
+      ctx.fillText(deck.brand.display_name, margin + (avatarSize ? avatarSize + width * 0.012 : 0), y);
+      y += Math.max(width * BUBBLE_NAME_LABEL_RATIO * 1.6, avatarSize);
+      brandIdentityDrawn = true;
     }
-    ctx.fillText(
-      isReader ? deck.brand.reader_name?.trim() || "구독자" : deck.brand.display_name,
-      isReader ? width - margin : margin + (avatarSize ? avatarSize + width * 0.012 : 0),
-      y,
-    );
-    y += Math.max(width * BUBBLE_NAME_LABEL_RATIO * 1.6, avatarSize);
     for (const bubble of turn.bubbles) {
       const bubbleHeight = drawBubble(ctx, deck, bubble, isReader, width, margin, maxBubbleWidth, y);
       y += bubbleHeight + margin * 0.35;

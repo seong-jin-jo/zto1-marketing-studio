@@ -95,6 +95,16 @@ describe("renderChatBubbleSlide 실물 렌더 (TC-F2-01~04)", () => {
       .rejects.toThrowError(/말풍선이 카드보다 깁니다/);
   });
 
+  it("S5-R2-A 독자 이름은 legacy PNG의 픽셀과 높이를 바꾸지 않는다", async () => {
+    const withoutReaderName = structuredClone(deck);
+    delete withoutReaderName.brand.reader_name;
+    const withReaderName = structuredClone(deck);
+    withReaderName.brand.reader_name = "이 독자 이름은 PNG에 그리지 않는다";
+    const plain = await renderChatBubbleSlide({ deck: withoutReaderName, slide: withoutReaderName.slides[1], index: 1, total: withoutReaderName.slides.length });
+    const named = await renderChatBubbleSlide({ deck: withReaderName, slide: withReaderName.slides[1], index: 1, total: withReaderName.slides.length });
+    expect(named).toBe(plain);
+  });
+
   it("서버(document 없음)에서 부르면 null 이다(text-card-image.ts 와 같은 계약)", async () => {
     // 이 파일은 jsdom 환경이라 document 가 있다. node 환경 파일(text-card-image.test.ts)이
     // 같은 계약을 이미 검증하므로 여기서는 계약 문서화만 남긴다.
