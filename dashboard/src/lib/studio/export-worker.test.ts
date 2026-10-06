@@ -10,6 +10,7 @@ function claimed(token: string): ClaimedExportItem {
     id: "item-1", tenant_id: "tenant-1", job_id: "11111111-1111-4111-8111-111111111111",
     draft_id: "draft-1", item_key: deck.slides[0].id, ordinal: 0, source_hash: "a".repeat(64),
     attempt_count: token === "lease-1" ? 1 : 2, max_attempts: 3, lease_token: token,
+    kind: "card_deck",
     request_payload: { deck },
   };
 }

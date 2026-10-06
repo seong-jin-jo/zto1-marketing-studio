@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addComment,
   addOverlay,
+  addTextSticker,
   emptyVideoEdit,
   setSubtitles,
   setVoice,
@@ -95,7 +96,7 @@ describe("재생 편집이 나가는 영상 명령에 남는다", () => {
     expect(plan.filterComplex).toContain("훅 문구");
     expect(plan.filterComplex).toContain("댓글 문구");
     expect(plan.filterComplex).not.toContain("다른 목소리");
-    expect(plan.voiceApplied).toBe(false);
+    expect(plan.voiceRequested).toBe(true);
   });
 
   it("컷이 없으면 자막은 줄 수 균등이 아니라 타임라인 시간에 굽힌다", () => {
@@ -134,11 +135,39 @@ describe("재생 편집이 나가는 영상 명령에 남는다", () => {
     if (!plan.ok) return;
     expect(plan.filterComplex).toContain("atrim=start=0:end=2");
     expect(plan.filterComplex).toContain("atrim=start=4:end=6");
-    const args = playbackFfmpegArgs(plan, { inputPath: "in.mp4", outputPath: "out.mp4" });
+    const args = playbackFfmpegArgs(plan, { inputPath: "in.mp4", outputPath: "out.mp4", voicePath: "voice.mp3" });
     expect(args).toContain("-filter_complex");
-    expect(args).toContain("[aout]");
+    expect(args).toContain("[audioout]");
     expect(args).toContain("aac");
     expect(args).not.toContain("copy");
+  });
+
+  it("S6-RENDER-01 글·스티커와 자막 프리셋을 실제 drawtext 필터에 반영한다", () => {
+    const edit = addTextSticker({
+      ...setSubtitles(emptyVideoEdit(), [{ id: "s1", order: 0, text: "강조 자막", startSec: 0, endSec: 2, cut: false }]),
+      subtitleStyle: { preset: "yellow", position: "top", sizePercent: 120, outline: false },
+    }, { kind: "text", text: "움직이는 제목", startSec: 1, endSec: 3, animation: "rise" });
+    const plan = planPlaybackBurn({ edit, durationSec: 4, width: 1080, height: 1920, size: "보통", hasAudio: false });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.videoFilter).toContain("강조 자막");
+    expect(plan.videoFilter).toContain("움직이는 제목");
+    expect(plan.videoFilter).toContain("fontcolor=yellow");
+    expect(plan.videoFilter).toContain("borderw=0");
+  });
+
+  it("S6-RENDER-02 배경음악은 볼륨·페이드와 함께 출력 오디오로 섞인다", () => {
+    const edit = {
+      ...setSubtitles(emptyVideoEdit(), [{ id: "s1", order: 0, text: "자막", startSec: 0, endSec: 2, cut: false }]),
+      music: { source: "upload" as const, assetId: "music.mp3", label: "내 음악", volume: 24, offsetSec: 0, fadeOut: true, duckUnderVoice: true, rightsConfirmed: true },
+    };
+    const plan = planPlaybackBurn({ edit, durationSec: 4, width: 1080, height: 1920, size: "보통", hasAudio: true });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    const args = playbackFfmpegArgs(plan, { inputPath: "in.mp4", outputPath: "out.mp4", musicPath: "music.mp3" });
+    expect(args).toEqual(expect.arrayContaining(["-stream_loop", "-1", "-filter_complex"]));
+    expect(args?.join(" ")).toContain("volume=0.24");
+    expect(args?.join(" ")).toContain("amix=inputs=2");
   });
 
   it("전부 잘라 남는 영상이 없으면 명령을 만들지 않는다", () => {

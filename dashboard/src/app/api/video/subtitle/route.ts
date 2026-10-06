@@ -17,6 +17,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
 import path from "path";
+import os from "os";
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { signMediaToken } from "@/lib/media-token";
 import { resolveGeneratedFile } from "@/lib/storage";
@@ -40,6 +41,7 @@ import {
   readPlaybackEdit,
 } from "@/lib/studio/playback-edit-plan";
 import { acquireSubtitleSlot } from "@/lib/studio/subtitle-work-limit";
+import { renderSelectedVoice, resolveRenderMusic, VideoRenderAssetError } from "@/lib/studio/video-render-assets";
 import {
   readSubtitleBakeLineage,
   recordSubtitleBake,
@@ -219,6 +221,7 @@ export async function POST(request: Request) {
     }, { status: 429 });
   }
 
+  const renderTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "video-edit-assets-"));
   try {
   let width: number;
   let height: number;
@@ -247,7 +250,7 @@ export async function POST(request: Request) {
     outputDurationSec: number;
     keptTexts: string[];
     droppedTexts: string[];
-    voiceApplied: false;
+    voiceApplied: boolean;
   } | null = null;
   let args: string[] | null;
   if (usePlayback && playback.edit) {
@@ -270,16 +273,34 @@ export async function POST(request: Request) {
           : "한 영상에 올릴 글자 층이 너무 많습니다. 자막과 오버레이를 줄여 주세요.",
       }, { status: 422 });
     }
+    const alignedEdit = alignPlaybackScript(playback.edit, raw);
+    let musicPath: string | null = null;
+    let voicePath: string | null = null;
+    try {
+      musicPath = await resolveRenderMusic(alignedEdit, tenantId, renderTmpDir, plan.outputDurationSec);
+      voicePath = await renderSelectedVoice(
+        alignedEdit,
+        alignedEdit.subtitles.filter((line) => !line.cut).map((line) => line.text.trim()).filter(Boolean).join(". "),
+        path.join(renderTmpDir, "voice.mp3"),
+      );
+    } catch (error) {
+      const assetError = error instanceof VideoRenderAssetError ? error : null;
+      return Response.json({
+        ok: false,
+        code: assetError?.code ?? "VIDEO_AUDIO_RENDER_FAILED",
+        error: assetError?.message ?? "영상 소리를 만들지 못해 내보내기를 중단했습니다.",
+      }, { status: assetError?.code === "VIDEO_MUSIC_NOT_FOUND" ? 422 : 503 });
+    }
     playbackSummary = {
       outputDurationSec: plan.outputDurationSec,
       keptTexts: plan.keptTexts,
       droppedTexts: plan.droppedTexts,
-      voiceApplied: false,
+      voiceApplied: Boolean(voicePath),
     };
     for (const warning of plan.warnings) {
       console.warn(JSON.stringify({ kind: "video_subtitle_normalization", warning, filename }));
     }
-    args = playbackFfmpegArgs(plan, { inputPath, outputPath: outPath });
+    args = playbackFfmpegArgs(plan, { inputPath, outputPath: outPath, musicPath, voicePath });
   } else {
     args = subtitleFfmpegArgs({
       lines, size, width, height, durationSec, fontFile,
@@ -336,6 +357,7 @@ export async function POST(request: Request) {
     ...(playbackSummary ? { playback: playbackSummary } : {}),
   });
   } finally {
+    try { fs.rmSync(renderTmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
     releaseSlot();
   }
 }

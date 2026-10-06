@@ -87,14 +87,15 @@ describe("S3 export route 통합 계약", () => {
     expect(await response.json()).toEqual({ export_id: EXPORT_ID, status: "queued", requeued_item_keys: ["slide-failed"] });
   });
 
-  it("S3-ROUTE-04 거절: latest는 card_deck 이외 kind를 DB 접근 전 400으로 막는다", async () => {
+  it("S6-QUEUE-ROUTE-01 정상: latest는 video kind를 저장소까지 전달한다", async () => {
     const { GET } = await import("@/app/api/studio/drafts/[draftId]/exports/latest/route");
+    H.latest.mockResolvedValue({ draft_id: DRAFT_ID, kind: "video", blocker: "NO_SUCCESSFUL_EXPORT" });
     const response = await GET(new Request("http://localhost/api/latest?kind=video"), {
       params: Promise.resolve({ draftId: DRAFT_ID }),
     });
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ code: "INVALID_EXPORT_REQUEST" });
-    expect(H.latest).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ kind: "video" });
+    expect(H.latest).toHaveBeenCalledWith("tenant-route", DRAFT_ID, "video");
   });
 
   it("S3-PR122-M4 거절: 잘못된 draftId·exportId는 repository를 호출하지 않고 404다", async () => {
