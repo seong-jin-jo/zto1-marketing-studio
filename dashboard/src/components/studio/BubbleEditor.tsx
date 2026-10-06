@@ -10,7 +10,7 @@
  * 로 옮긴 한국어 고정 문구를 화면에 보여주고, 원문은 console.error로만 보낸다(F4,
  * 2026-09-22 코드리뷰 3차).
  */
-import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/shared/Button";
 import type { Bubble, CardDeck, CardSlide, Segment } from "@/lib/studio/card-deck-contract";
 import {
@@ -22,6 +22,7 @@ import {
   duplicateSlide,
   mergeBubble,
   moveSlide,
+  moveBubbleToSlide,
   setBubbleSegments,
   setSlideCover,
   setSlideCoverImage,
@@ -30,6 +31,7 @@ import {
   splitSlideAtBubbleOffset,
   toggleBold,
   toggleSpeaker,
+  swapSpeakers,
   trimBubbleTrailingNewline,
   trimSegmentsTrailingNewline,
 } from "@/lib/studio/card-deck-ops";
@@ -71,6 +73,9 @@ export interface BubbleEditorProps {
   deck: CardDeck;
   slideId: string;
   onDeckChange: (deck: CardDeck) => void;
+  onBubbleDragStart?: (source: { slideId: string; bubbleId: string }) => void;
+  onBubbleDrop?: (source: { slideId: string; bubbleId: string }, targetSlideId: string, targetIndex: number) => void;
+  draggedBubble?: { slideId: string; bubbleId: string } | null;
 }
 
 export function CardStripThumbnail({
@@ -144,6 +149,8 @@ function cardDeckOpsErrorMessage(code: string): string {
     case "OPS_SPEAKER_MISMATCH": return "화자가 다른 말풍선은 합칠 수 없습니다.";
     case "OPS_DELETE_LAST_BUBBLE": return "장에 말풍선이 하나뿐이면 지울 수 없습니다.";
     case "OPS_MOVE_OUT_OF_RANGE": return "그 방향으로는 옮길 수 없습니다.";
+    case "OPS_MOVE_LAST_BUBBLE": return "장에 하나뿐인 말풍선은 다른 장으로 옮길 수 없습니다.";
+    case "OPS_BUBBLE_TARGET_LOCKED": return "표지와 마지막 장에는 말풍선을 옮길 수 없습니다.";
     case "OPS_BOLD_EMPTY_RANGE": return "굵게 만들 글을 먼저 선택해 주세요.";
     case "OPS_BOLD_LIMIT": return "한 장에 굵은 덩이는 하나입니다.";
     case "OPS_SLIDE_LOCKED": return "표지·CTA 장은 옮기거나 지울 수 없습니다.";
@@ -652,7 +659,7 @@ function BubbleContentEditable({
 }
 
 /** 편집실 카드 탭: 선택된 장(chat/comment_prompt/cta)의 말풍선을 직접 편집한다. */
-export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps) {
+export function BubbleEditor({ deck, slideId, onDeckChange, onBubbleDragStart, onBubbleDrop, draggedBubble }: BubbleEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
   const editableRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -792,7 +799,7 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
     <div className="space-y-stack" data-bubble-editor data-bubble-editor-slide-role={slide.role} aria-label={`${SLIDE_ROLE_LABEL[slide.role]} 장, 말풍선 ${bubbles.length}개`}>
       {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-bubble-editor-error>{error}</p> : null}
       <ul className={styles.bubbleTurns} data-bubble-editor-turns>
-        {bubbles.map((bubble) => {
+        {bubbles.map((bubble, bubbleIndex) => {
           const selected = selectedBubbleId === bubble.id;
           // MINOR(4, PR 재리뷰): 빈 말풍선을 그대로 저장하면 서버 계약
           // (card-deck-contract.ts validateCardDeck: "segments[].text must be
@@ -807,7 +814,39 @@ export function BubbleEditor({ deck, slideId, onDeckChange }: BubbleEditorProps)
               data-bubble-speaker={bubble.speaker}
               data-bubble-editing={selected ? "true" : undefined}
               className={`${styles.bubbleRow} ${bubble.speaker === "reader" ? styles.bubbleRowReader : ""}`}
+              onDragOver={(event) => {
+                if (!draggedBubble || !onBubbleDrop) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(event) => {
+                if (!draggedBubble || !onBubbleDrop) return;
+                event.preventDefault();
+                onBubbleDrop(draggedBubble, currentSlideId, bubbleIndex);
+              }}
             >
+              <button
+                type="button"
+                draggable
+                className={styles.bubbleDragHandle}
+                aria-label={`${bubble.order + 1}번째 말풍선 옮기기`}
+                aria-describedby={`bubble-move-help-${bubble.id}`}
+                data-bubble-drag-handle
+                onDragStart={(event) => {
+                  const source = { slideId: currentSlideId, bubbleId: bubble.id };
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("application/x-editroom-bubble", JSON.stringify(source));
+                  onBubbleDragStart?.(source);
+                }}
+                onKeyDown={(event) => {
+                  if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+                  event.preventDefault();
+                  const destination = bubbleIndex + (event.key === "ArrowUp" ? -1 : 1);
+                  if (destination < 0 || destination >= bubbles.length) return;
+                  onBubbleDrop?.({ slideId: currentSlideId, bubbleId: bubble.id }, currentSlideId, destination);
+                }}
+              >⋮⋮</button>
+              <span id={`bubble-move-help-${bubble.id}`} className="sr-only">끌어서 같은 장이나 다른 대화 장으로 옮깁니다. 키보드는 Alt와 위아래 화살표를 함께 누릅니다.</span>
               <div className={`${styles.bubble} ${bubble.speaker === "reader" ? styles.bubbleReader : styles.bubbleBrand}`}>
                 <BubbleContentEditable
                   bubble={bubble}
@@ -1073,10 +1112,27 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
   const [slideError, setSlideError] = useState<string | null>(null);
   const [draggedSlideIndex, setDraggedSlideIndex] = useState<number | null>(null);
   const [splitNotice, setSplitNotice] = useState<string | null>(null);
+  const [draggedBubble, setDraggedBubble] = useState<{ slideId: string; bubbleId: string } | null>(null);
+  const [history, setHistory] = useState<CardDeck[]>([]);
   const autoSplitTargetRef = useRef<string | null>(null);
   const activeIndex = deck.slides.findIndex((s) => s.id === activeSlideId);
   const activeSlide = activeIndex >= 0 ? deck.slides[activeIndex] : deck.slides[0];
   const { canvas: renderPreview, warning: renderWarning, checkedRevision } = useSlideRenderCheck(deck, activeSlide, Math.max(0, activeIndex), deck.slides.length);
+
+  const commitDeck = useCallback((next: CardDeck) => {
+    if (JSON.stringify(next) === JSON.stringify(deck)) return;
+    setHistory((current) => [...current, structuredClone(deck)].slice(-50));
+    onDeckChange(next);
+  }, [deck, onDeckChange]);
+
+  const undo = useCallback(() => {
+    setHistory((current) => {
+      const previous = current.at(-1);
+      if (!previous) return current;
+      onDeckChange(previous);
+      return current.slice(0, -1);
+    });
+  }, [onDeckChange]);
 
   useEffect(() => {
     if (!deck.slides.find((s) => s.id === activeSlideId)) {
@@ -1153,7 +1209,7 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
           if (fit <= 0) return;
           next = splitSlideAtBubbleOffset(deck, activeIndex, 0, fit);
         }
-        onDeckChange(next);
+        commitDeck(next);
         // 새 장에 옮긴 나머지도 카드 높이를 넘을 수 있다. 검사 대상을 새 장으로 넘겨
         // 같은 렌더 검사와 분할을 반복하고, 모든 후속 장이 맞을 때 멈춘다.
         const continuation = next.slides[activeIndex + 1];
@@ -1167,13 +1223,13 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
       }
     })();
     return () => { cancelled = true; };
-  }, [activeIndex, activeSlide, checkedRevision, deck, onDeckChange, renderWarning]);
+  }, [activeIndex, activeSlide, checkedRevision, commitDeck, deck, renderWarning]);
 
   function runSlide(op: (deck: CardDeck) => CardDeck): CardDeck | null {
     try {
       setSlideError(null);
       const next = op(deck);
-      onDeckChange(next);
+      commitDeck(next);
       return next;
     } catch (cause) {
       if (cause instanceof CardDeckOpsError) {
@@ -1188,6 +1244,11 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
 
   return (
     <div className={styles.cardDeckPanel} data-card-deck-panel>
+      <div className={styles.deckToolbar} aria-label="카톡 대화 고급 편집 도구">
+        <Button size="sm" variant="secondary" disabled={!activeSlide?.bubbles?.length} onClick={() => commitDeck(swapSpeakers(deck, activeSlide?.id ?? null))}>이 장 화자 서로 바꾸기</Button>
+        <Button size="sm" variant="secondary" onClick={() => commitDeck(swapSpeakers(deck, null))}>덱 전체 화자 서로 바꾸기</Button>
+        <Button size="sm" variant="secondary" disabled={history.length === 0} onClick={undo}>실행 취소</Button>
+      </div>
       <nav aria-label="카드 목록" className={styles.thumbnailStrip} data-card-deck-slide-list data-card-deck-thumbnail-strip>
         {deck.slides.map((slide, index) => {
           const locked = slide.role === "cover" || slide.role === "cta";
@@ -1205,10 +1266,20 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
                 event.dataTransfer.setData("text/plain", String(index));
               }}
               onDragOver={(event) => {
-                if (!locked && draggedSlideIndex !== null) event.preventDefault();
+                if (!locked && (draggedSlideIndex !== null || draggedBubble !== null)) event.preventDefault();
               }}
               onDrop={(event) => {
                 event.preventDefault();
+                if (draggedBubble && !locked) {
+                  try {
+                    commitDeck(moveBubbleToSlide(deck, draggedBubble.slideId, draggedBubble.bubbleId, slide.id));
+                    setDraggedBubble(null);
+                    setActiveSlideId(slide.id);
+                  } catch (cause) {
+                    if (cause instanceof CardDeckOpsError) setSlideError(cardDeckOpsErrorMessage(cause.code));
+                  }
+                  return;
+                }
                 const from = draggedSlideIndex ?? Number.parseInt(event.dataTransfer.getData("text/plain"), 10);
                 setDraggedSlideIndex(null);
                 if (!locked && Number.isInteger(from) && from !== index) runSlide((d) => moveSlide(d, from, index));
@@ -1247,7 +1318,21 @@ export function CardDeckPanel({ deck, onDeckChange }: { deck: CardDeck; onDeckCh
               <span>{activeIndex + 1} / {deck.slides.length}</span>
             </header>
           ) : null}
-          {activeSlide ? <BubbleEditor deck={deck} slideId={activeSlide.id} onDeckChange={onDeckChange} /> : null}
+          {activeSlide ? <BubbleEditor
+            deck={deck}
+            slideId={activeSlide.id}
+            onDeckChange={commitDeck}
+            draggedBubble={draggedBubble}
+            onBubbleDragStart={setDraggedBubble}
+            onBubbleDrop={(source, targetSlideId, targetIndex) => {
+              try {
+                commitDeck(moveBubbleToSlide(deck, source.slideId, source.bubbleId, targetSlideId, targetIndex));
+                setDraggedBubble(null);
+              } catch (cause) {
+                if (cause instanceof CardDeckOpsError) setSlideError(cardDeckOpsErrorMessage(cause.code));
+              }
+            }}
+          /> : null}
         </div>
         {activeSlide ? (
           <div className={styles.selectedSlideActions} data-selected-slide-actions>

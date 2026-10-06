@@ -123,4 +123,36 @@ describe("CardDeckPanel (표지·CTA 고정, 세션맥락: card-deck-ops 순수 
     expect(onDeckChange).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  it("S5-AC1 정상: 말풍선 손잡이를 다른 장 썸네일에 놓으면 내용·화자·세그먼트가 보존된다", () => {
+    let current = deck();
+    const original = structuredClone(current.slides[1].bubbles![0]);
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    const view = render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    fireEvent.click(document.querySelector(`[data-slide-id="${current.slides[1].id}"]`)!);
+
+    const transfer = { effectAllowed: "none", dropEffect: "none", setData: vi.fn(), getData: vi.fn(() => "") };
+    fireEvent.dragStart(screen.getByRole("button", { name: "1번째 말풍선 옮기기" }), { dataTransfer: transfer });
+    const target = document.querySelector(`[data-slide-id="${current.slides[2].id}"]`)!.closest("[data-slide-draggable]")!;
+    fireEvent.dragOver(target, { dataTransfer: transfer });
+    fireEvent.drop(target, { dataTransfer: transfer });
+
+    view.rerender(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    expect(current.slides[2].bubbles?.at(-1)).toEqual({ ...original, order: current.slides[2].bubbles!.length - 1 });
+    expect(current.slides[1].bubbles?.some((bubble) => bubble.id === original.id)).toBe(false);
+  });
+
+  it("S5-AC2 정상: 덱 전체 화자 교환은 한 번에 반영되고 실행 취소 한 번으로 원복된다", () => {
+    let current = deck();
+    const originalSpeakers = current.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker));
+    const onDeckChange = vi.fn((next: CardDeck) => { current = next; });
+    const view = render(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "덱 전체 화자 서로 바꾸기" }));
+    view.rerender(<CardDeckPanel deck={current} onDeckChange={onDeckChange} />);
+    expect(current.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker))).not.toEqual(originalSpeakers);
+
+    fireEvent.click(screen.getByRole("button", { name: "실행 취소" }));
+    expect(current.slides.map((slide) => slide.bubbles?.map((bubble) => bubble.speaker))).toEqual(originalSpeakers);
+  });
 });

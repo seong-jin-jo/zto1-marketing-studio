@@ -12,6 +12,17 @@
   min-width: 0;
 }
 
+.deckToolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--stack-tight);
+  padding: var(--stack);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface-2);
+}
+
 .thumbnailStrip {
   display: flex;
   max-height: calc(var(--editroom-stage-width) * 5 / 4);
@@ -192,12 +203,31 @@
 
 .bubbleRow {
   display: flex;
+  align-items: flex-start;
   justify-content: flex-start;
+  gap: var(--space-micro);
 }
 
 .bubbleRowReader {
+  flex-direction: row-reverse;
   justify-content: flex-end;
 }
+
+.bubbleDragHandle {
+  flex: 0 0 auto;
+  min-width: var(--control-touch);
+  min-height: var(--control-touch);
+  border: 0;
+  border-radius: var(--shape-control);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: grab;
+  font-size: var(--font-body-size);
+  letter-spacing: -0.35em;
+}
+
+.bubbleDragHandle:active { cursor: grabbing; }
+.bubbleDragHandle:focus-visible { outline: 2px solid var(--focus); outline-offset: var(--space-micro); }
 
 .bubbleRow[data-bubble-editing="true"] {
   margin-bottom: calc(var(--control-touch) + var(--space-micro));
