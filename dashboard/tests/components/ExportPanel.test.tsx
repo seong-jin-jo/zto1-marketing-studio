@@ -100,7 +100,9 @@ describe("S4 ExportPanel 계약", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<ExportPanel {...props} />);
-    fireEvent.click(await screen.findByRole("button", { name: "내보내기" }));
+    const startButton = await screen.findByRole("button", { name: "내보내기" });
+    await waitFor(() => expect(startButton).toBeEnabled(), { timeout: 5_000 });
+    fireEvent.click(startButton);
 
     expect(await screen.findByText("3 / 9장")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining(`/exports/${ACTIVE_EXPORT_ID}`), expect.objectContaining({ cache: "no-store" }));

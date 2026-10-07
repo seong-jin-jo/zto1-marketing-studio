@@ -225,8 +225,9 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
       onReturnFromCardDeckV3={onReturn}
     />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("button", { name: "기본 편집으로 돌아가기" }));
+    const returnButton = screen.getByRole("button", { name: "기본 편집으로 돌아가기" });
+    await waitFor(() => expect(returnButton).toBeEnabled(), { timeout: 5_000 });
+    fireEvent.click(returnButton);
     await waitFor(() => expect(onReturn).toHaveBeenCalledOnce());
     const projected = onReturn.mock.calls[0]?.[0] as CardDeck;
     expect(projected.template).toBe("chat_bubble");
