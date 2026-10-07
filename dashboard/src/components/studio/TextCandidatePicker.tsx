@@ -53,7 +53,7 @@ export function TextCandidatePicker({ candidates, selectedId = null, onSelect }:
           <ul className="space-y-micro" aria-label={`${preview.label} 경고`}>
             {preview.warnings.map((warning, index) => <li key={`${warning.channel}-${warning.code}-${index}`} className="text-caption font-semibold text-warning">{warning.message}</li>)}
           </ul>
-        ) : <p className="text-caption text-success">원문 사실과 채널 길이를 확인했습니다.</p>}
+        ) : <p className="text-caption text-success">원문의 숫자·라틴 문자와 채널 길이를 확인했습니다.</p>}
         <Button variant="primary" className="w-full" aria-pressed={selectedId === preview.id} onClick={() => onSelect(preview)}>
           {selectedId === preview.id ? "본문에 적용됨" : "이 후보로"}
         </Button>

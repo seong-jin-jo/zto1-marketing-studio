@@ -23,6 +23,8 @@ function candidate(id: "question" | "number" | "pain", threads: string, recommen
       facebook: threads,
       x: threads,
       instagram: { caption: threads, hashtags: ["수능"], slides: [threads] },
+      shorts: { hook: `${threads} 훅`, body: `${threads} 본문`, cta: `${threads} CTA` },
+      image_prompt: `Editorial image about ${id}`,
     },
   };
 }
@@ -56,6 +58,9 @@ describe("POST /api/studio/text S7 후보 계약", () => {
     expect(body.recommended_text_candidate_id).toBe("question");
     expect(body.card_template_id).toBe("headline_cover");
     expect(generateText).toHaveBeenCalledWith(expect.stringContaining("큰 제목 표지형 (headline_cover)"), "tenant-1");
+    const prompt = generateText.mock.calls[0]?.[0] as string;
+    expect(prompt.match(/"shorts"/g)).toHaveLength(3);
+    expect(prompt.match(/"image_prompt"/g)).toHaveLength(3);
   });
 
   it("하위 호환: 후보 배열이 없는 기존 생성기 응답은 종전 최상위 계약 그대로 통과한다", async () => {
@@ -85,6 +90,28 @@ describe("POST /api/studio/text S7 후보 계약", () => {
       body: JSON.stringify({ idea: "계약 위반" }),
     }));
     // 상류 실패는 프록시가 본문을 HTML로 바꾸지 않도록 200 + ok:false 계약을 쓴다.
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ ok: false, error: expect.stringContaining("후보 3개 계약") });
+  });
+
+  it("S7-R1-M5 거절: 어느 후보든 영상 대본이나 이미지 프롬프트가 빠지면 생성 전체를 거절한다", async () => {
+    const broken = candidate("number", "100일 계획");
+    delete (broken.content as Partial<typeof broken.content>).shorts;
+    delete (broken.content as Partial<typeof broken.content>).image_prompt;
+    generateText.mockResolvedValue(JSON.stringify({
+      text_candidates: [
+        candidate("question", "수능 100일, 지금 무엇을 바꿔야 할까요?", true),
+        broken,
+        candidate("pain", "계획은 세웠는데 매일 흔들리시나요?"),
+      ],
+    }));
+    const { POST } = await import("@/app/api/studio/text/route");
+    const response = await POST(new Request("http://localhost/api/studio/text", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idea: "수능 100일 공부 계획" }),
+    }));
+
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ ok: false, error: expect.stringContaining("후보 3개 계약") });
   });

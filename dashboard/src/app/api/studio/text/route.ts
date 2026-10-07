@@ -86,8 +86,8 @@ ${NO_DASH_RULE}
 출력은 JSON만(다른 텍스트 없이):
 {"text_candidates":[
  {"id":"question","label":"질문형","recommended":true,"recommendation_reason":"채널과 말투에 맞는 이유 한 줄","content":{"threads":"${CHANNEL_TEXT_LIMITS.threads}자 이내","facebook":"Facebook 독자 맥락에 맞춘 독립 본문","x":"${CHANNEL_TEXT_LIMITS.x}자 이내","instagram":{"caption":"${CHANNEL_TEXT_LIMITS.instagram}자 이내","hashtags":["태그"],"slides":["표지 훅","본문","CTA"]},"shorts":{"hook":"0~3초 훅","body":"3~20초 본문","cta":"20~30초 CTA"},"image_prompt":"영문 이미지 프롬프트"}},
- {"id":"number","label":"숫자형","recommended":false,"recommendation_reason":"이유 한 줄","content":{"threads":"...","facebook":"...","x":"...","instagram":{"caption":"...","hashtags":[],"slides":[]}}},
- {"id":"pain","label":"고통 인식형","recommended":false,"recommendation_reason":"이유 한 줄","content":{"threads":"...","facebook":"...","x":"...","instagram":{"caption":"...","hashtags":[],"slides":[]}}}
+ {"id":"number","label":"숫자형","recommended":false,"recommendation_reason":"이유 한 줄","content":{"threads":"...","facebook":"...","x":"...","instagram":{"caption":"...","hashtags":[],"slides":[]},"shorts":{"hook":"0~3초 훅","body":"3~20초 본문","cta":"20~30초 CTA"},"image_prompt":"영문 이미지 프롬프트"}},
+ {"id":"pain","label":"고통 인식형","recommended":false,"recommendation_reason":"이유 한 줄","content":{"threads":"...","facebook":"...","x":"...","instagram":{"caption":"...","hashtags":[],"slides":[]},"shorts":{"hook":"0~3초 훅","body":"3~20초 본문","cta":"20~30초 CTA"},"image_prompt":"영문 이미지 프롬프트"}}
 ]}`;
   try {
     // 고객이 자기 Anthropic 키 등록 시 그 키로(고객 과금), 없으면 공유 claude -p

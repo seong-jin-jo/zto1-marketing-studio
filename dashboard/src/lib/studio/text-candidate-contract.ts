@@ -17,8 +17,8 @@ const textVariantsSchema = z.strictObject({
     hook: z.string(),
     body: z.string(),
     cta: z.string(),
-  }).optional(),
-  image_prompt: z.string().optional(),
+  }),
+  image_prompt: z.string().min(1),
 });
 
 const generatedCandidateSchema = z.strictObject({
