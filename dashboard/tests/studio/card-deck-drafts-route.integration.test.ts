@@ -160,6 +160,35 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     expect(await rejected.json()).toMatchObject({ code: "INVALID_CARD_TEMPLATE_STATE" });
     expect(withTenant).not.toHaveBeenCalled();
   });
+  it("S7-R2-API 거절: 템플릿 상태의 임의 필드와 현재 덱 불일치를 DB 접근 전에 막는다", async () => {
+    vi.mocked(withTenant).mockClear();
+    const current = createPlainCardDeckV3(["현재 첫 장", "현재 마지막"], "deck_template_strict");
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const extraField = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", cardDeckV3: current, cardTemplateState: { activeTemplateId: "text_only", previousTemplate: null, pad: "x" } }),
+    }));
+    expect(extraField.status).toBe(400);
+    expect(await extraField.json()).toMatchObject({ code: "INVALID_CARD_TEMPLATE_STATE" });
+
+    const mismatched = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", cardDeckV3: current, cardTemplateState: { activeTemplateId: "chat_bubble", previousTemplate: null } }),
+    }));
+    expect(mismatched.status).toBe(400);
+    expect(await mismatched.json()).toMatchObject({ code: "INVALID_CARD_TEMPLATE_STATE" });
+    expect(withTenant).not.toHaveBeenCalled();
+  });
+  it("S7-R2-API 정상: v3 덱을 지우면 템플릿 복원 상태도 같은 저장에서 지운다", async () => {
+    H.rows = [{ id: "draft-template-clear" }];
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const cleared = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", clearCardDeckV3: true }),
+    }));
+    expect(cleared.status).toBe(200);
+    expect(H.jsonValues.at(-1)).toMatchObject({ cardDeckV3: null, cardTemplateState: null });
+  });
   it("S5-R3-2 chat_bubble v2 저장·조회는 잔존 v3와 원문 스냅샷을 비운다", async () => {
     const staleV3 = createPlainCardDeckV3(["옛 첫 장", "옛 마지막"], "deck_stale_chat_v3");
     H.rows = [{ id: "draft-chat-v2" }];

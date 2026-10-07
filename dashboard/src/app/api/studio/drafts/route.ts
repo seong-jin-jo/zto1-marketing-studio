@@ -3,7 +3,7 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { validateContentEditFormat } from "@/lib/studio/content-edit-format";
 import { resolveCurrentWork } from "@/lib/studio/current-work";
 import { validateCardDeck, CardDeckValidationError, deckProjection } from "@/lib/studio/card-deck-contract";
-import { cardDeckV3Projection, CardDeckV3ValidationError, validateCardDeckV3 } from "@/lib/studio/card-element-contract";
+import { CARD_DECK_V3_MAX_BYTES, cardDeckV3Projection, CardDeckV3ValidationError, validateCardDeckV3, type CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { cardDeckV3ForDraft, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
 import { isSynchronizedChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import { validateVideoEdit, VideoEditValidationError, type VideoEdit } from "@/lib/studio/video-edit-contract";
@@ -11,6 +11,8 @@ import { CARD_DECK_TEMPLATE_IDS, type CardTemplateState } from "@/lib/studio/car
 
 /** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
 const CARD_DECK_MAX_BYTES = 64 * 1024;
+/** 현재 덱과 복원용 직전 덱을 합친 JSON 상한. 덱 두 벌 보존 계약은 지키되 무제한 JSONB 증폭은 막는다. */
+const CARD_TEMPLATE_STATE_TOTAL_MAX_BYTES = CARD_DECK_V3_MAX_BYTES * 2;
 /** videoEdit 도 같은 상한을 쓴다(오버레이·댓글·자막 목록 크기가 카드덱과 비슷한 자릿수). */
 const VIDEO_EDIT_MAX_BYTES = 64 * 1024;
 
@@ -321,7 +323,8 @@ export async function POST(request: Request) {
   // 없는 TypeScript interface를 받지 못한다. v2 cardDeck과 같은 검증 뒤 경계 캐스팅이다.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cardDeckV3Patch: { cardDeckV3?: any } = {};
-  if ((savesChatBubbleV2 && !savesChatBubbleV3) || body.clearCardDeckV3 === true) {
+  const clearsCardDeckV3 = (savesChatBubbleV2 && !savesChatBubbleV3) || body.clearCardDeckV3 === true;
+  if (clearsCardDeckV3) {
     cardDeckV3Patch.cardDeckV3 = null;
   } else if (Object.prototype.hasOwnProperty.call(body, "cardDeckV3") && body.cardDeckV3 != null) {
     cardDeckV3Patch.cardDeckV3 = body.cardDeckV3;
@@ -331,18 +334,35 @@ export async function POST(request: Request) {
   // CardTemplateState의 index signature를 추론하지 못한다. cardDeckV3와 같은 경계 캐스팅이다.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cardTemplateStatePatch: { cardTemplateState?: any } = {};
-  if (Object.prototype.hasOwnProperty.call(body, "cardTemplateState")) {
-    const state = body.cardTemplateState as CardTemplateState | null;
+  if (clearsCardDeckV3) {
+    // v3를 지운 뒤 옛 템플릿 상태가 JSONB merge에 남아 다음 덱에 붙지 않게 같은 저장에서 비운다.
+    cardTemplateStatePatch.cardTemplateState = null;
+  } else if (Object.prototype.hasOwnProperty.call(body, "cardTemplateState")) {
+    const rawState = body.cardTemplateState as Record<string, unknown> | null;
     const validId = (value: unknown) => typeof value === "string" && CARD_DECK_TEMPLATE_IDS.includes(value as typeof CARD_DECK_TEMPLATE_IDS[number]);
     try {
-      if (state !== null) {
-        if (!state || typeof state !== "object" || !validId(state.activeTemplateId)) throw new Error("INVALID_CARD_TEMPLATE_STATE");
-        if (state.previousTemplate !== null) {
-          if (!state.previousTemplate || !validId(state.previousTemplate.id)) throw new Error("INVALID_CARD_TEMPLATE_STATE");
-          validateCardDeckV3(state.previousTemplate.deck);
+      let normalizedState: CardTemplateState | null = null;
+      if (rawState !== null) {
+        if (!rawState || typeof rawState !== "object" || Array.isArray(rawState)) throw new Error("INVALID_CARD_TEMPLATE_STATE");
+        if (Object.keys(rawState).some((key) => key !== "activeTemplateId" && key !== "previousTemplate")) throw new Error("INVALID_CARD_TEMPLATE_STATE");
+        if (!validId(rawState.activeTemplateId)) throw new Error("INVALID_CARD_TEMPLATE_STATE");
+        const rawPrevious = rawState.previousTemplate as Record<string, unknown> | null;
+        let previousTemplate: CardTemplateState["previousTemplate"] = null;
+        if (rawPrevious !== null) {
+          if (!rawPrevious || typeof rawPrevious !== "object" || Array.isArray(rawPrevious)) throw new Error("INVALID_CARD_TEMPLATE_STATE");
+          if (Object.keys(rawPrevious).some((key) => key !== "id" && key !== "deck")) throw new Error("INVALID_CARD_TEMPLATE_STATE");
+          if (!validId(rawPrevious.id)) throw new Error("INVALID_CARD_TEMPLATE_STATE");
+          validateCardDeckV3(rawPrevious.deck);
+          const previousDeck = rawPrevious.deck as CardDeckV3;
+          if ((previousDeck.template === "chat_bubble") !== (rawPrevious.id === "chat_bubble")) throw new Error("INVALID_CARD_TEMPLATE_STATE");
+          previousTemplate = { id: rawPrevious.id as CardTemplateState["activeTemplateId"], deck: previousDeck };
         }
+        if (body.cardDeckV3 && (body.cardDeckV3.template === "chat_bubble") !== (rawState.activeTemplateId === "chat_bubble")) throw new Error("INVALID_CARD_TEMPLATE_STATE");
+        normalizedState = { activeTemplateId: rawState.activeTemplateId as CardTemplateState["activeTemplateId"], previousTemplate };
       }
-      cardTemplateStatePatch.cardTemplateState = state;
+      const combined = JSON.stringify({ cardDeckV3: body.cardDeckV3 ?? null, cardTemplateState: normalizedState });
+      if (Buffer.byteLength(combined, "utf8") > CARD_TEMPLATE_STATE_TOTAL_MAX_BYTES) throw new Error("CARD_TEMPLATE_STATE_TOO_LARGE");
+      cardTemplateStatePatch.cardTemplateState = normalizedState;
     } catch {
       return Response.json({ ok: false, code: "INVALID_CARD_TEMPLATE_STATE", error: "카드 템플릿 복원 상태를 확인해 주세요" }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
