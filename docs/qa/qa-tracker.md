@@ -11,7 +11,7 @@
 | S7-R2-MINOR-6 | S4 PR 128 충돌 | ⏸️ 목록 유지 | `StudioRooms.tsx`, `CardCanvasEditor.tsx`, `dashboard/package.json`은 수정하지 않았다. |
 | S7-R2-MINOR-7 | 생성 직후 v3 저장 실패 시 화면에만 남은 템플릿 덱 방지 | ✅ 테스트됨 | 첫 저장 실패 시 화면의 v3·템플릿 상태를 제거하고 같은 생성 본문을 기본 카드로 재저장한다. fallback까지 실패하면 기존 저장 오류 상태를 유지한다. |
 
-검증: 코드 `91f62178`. TypeScript 종료 코드 0, production webpack build PASS. 직접 대응 4파일 26건, 관련 51파일 512건과 3건 skip, integrity 104건, dashboard contract 492건 PASS. 실제 Chromium S7은 PostgreSQL 초안 1건, 핵심 drafts POST 13회, 전체 POST 19회, 5개 viewport, 콘솔 오류 0이다. v70 화면과 두 탭 본문 충돌 PASS, 모바일 9폭은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다. OpenClaw 계약은 S7과 무관한 `bluebubbles/channel-plugin-api.js` 플러그인 표면 해석 실패가 남아 전체 명령은 BLOCK이다. push·원격 CI·QA 승인·운영 배포는 미검증이다.
+검증: 코드 `91f62178`. TypeScript 종료 코드 0, production webpack build PASS. 직접 대응 4파일 26건, 관련 51파일 512건과 3건 skip, integrity 104건, dashboard contract 492건 PASS. 실제 Chromium S7은 PostgreSQL 초안 1건, 핵심 drafts POST 13회, 전체 POST 19회, 5개 viewport, 콘솔 오류 0이다. v70 수치 계약과 두 탭 본문 충돌 PASS, 모바일 9폭은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다. 승인 clean-frame과 dev 캡처를 직접 대조한 결과 일반 카드 stage diff는 0이지만 카톡 말풍선 stage는 390px에서 18.17% 차이가 있으며 기존 게이트도 이를 report-only로 분류한다. OpenClaw 계약은 S7과 무관한 `bluebubbles/channel-plugin-api.js` 플러그인 표면 해석 실패가 남아 전체 명령은 BLOCK이다. push·원격 CI·QA 승인·운영 배포는 미검증이다.
 
 ## 2026-10-08 편집실 S7 교차 리뷰 1차 MAJOR 6 폐쇄 ✅ 로컬 PASS
 
