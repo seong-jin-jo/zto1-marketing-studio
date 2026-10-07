@@ -8009,3 +8009,12 @@ SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-is
 | S3-PR122-M5 | dashboard만 선택 배포하면 같은 태그의 별도 export worker가 재기동되지 않아 옛 소스로 남음 | ✅ 로컬 PASS | `a9d6b614`, dashboard 선택 시 worker를 `up` 대상에 추가하는 workflow 계약 PASS |
 
 최종 검증은 실제 PostgreSQL 연결을 포함한 related 5파일 35건 PASS·실제 PNG 전용 1건 skip, `npx vitest run contract` 107파일 618건 PASS, `typecheck:ci` PASS다. 운영 배포와 push는 범위 밖이라 실행하지 않았다.
+## 2026-10-07 편집실 S7 자체 점검 BLOCK 4건 ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S7-R1-B1 | 생성실 `cardTemplateId`가 생성 요청과 결과 덱까지 이어져야 함 | ✅ 관찰됨 | 실제 Chromium에서 `number_list` 선택 후 `/api/studio/text` 요청 필드와 결과 v3 덱 x=244, 저장 상태 ID를 확인 |
+| S7-R1-B2 | 편집실 템플릿 ID·직전 상태가 재접속 뒤 복원돼야 함 | ✅ 관찰됨 | 기존 draft payload JSONB에 `cardTemplateState` 저장. 재로드 뒤 이전 템플릿 복원 버튼과 직전 덱 복원 확인. DB migration 없음 |
+| S7-R1-B3 | plain 덱의 카톡 템플릿 무동작 금지 | ✅ 관찰됨 | 생성실·편집실 모두 카톡 템플릿을 비활성화하고 기존 카톡 말풍선 덱 생성 경로 이유를 표시. S5b 댓글 유도 장 계약 유지 |
+| S7-MOBILE-01 | 데이터가 있는 편집실 360~1000 아홉 폭 인체공학 | ✅ 관찰됨 | 실제 편집실 데이터 3장. 9폭 모두 본문 16px, 13px 미만 0, 44px 미만 0, 눌림 상태 100%, 가로 넘침 0 |
+| S7-REGRESSION | 기존 생성·카드 v3·카톡 덱·두 탭 충돌 회귀 없음 | ✅ 테스트됨·관찰됨 | integrity 104, contract 629, related 511 PASS. S7 1440·1024·390, v70 화면, body-conflict production Chromium PASS, 콘솔 오류 0 |
