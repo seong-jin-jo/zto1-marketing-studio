@@ -1,5 +1,10 @@
 {
   "result": "PASS",
+  "backendPath": {
+    "api": "actual Next route",
+    "database": "PostgreSQL",
+    "worker": "stub only; actual repository claim/complete/fail"
+  },
   "responsive": [
     {
       "viewport": 1440,
@@ -38,7 +43,12 @@
     "retriedItemKeys": [
       "slide_deck_s4_browser_3"
     ],
-    "finalStatus": "succeeded-before-empty-case"
+    "finalStatus": "succeeded"
+  },
+  "enqueueReceipt": {
+    "exportId": "9a427d69-5c86-4a4d-9fa9-b6b6bb3e423e",
+    "sourceHash": "4abb5d31362fc5614809ed69ff1be9de61490be3449e0a39efe6333333f0c7e7",
+    "queuePostId": "a2e5a2d8-a12c-492c-b468-b74a5d6a9589"
   },
   "stale": {
     "blocker": "EXPORT_SOURCE_STALE",
@@ -49,9 +59,9 @@
     "selectedSlideId": "slide_deck_s4_browser_5",
     "focusedStage": true
   },
-  "draftSaves": 8,
-  "imageUploads": 72,
+  "draftSaves": 9,
+  "imageUploads": 81,
   "consoleErrors": 0,
   "failedRequests": 0,
-  "intentionalPollingAborts": 8
+  "intentionalPollingAborts": 10
 }
