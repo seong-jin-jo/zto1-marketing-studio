@@ -1,3 +1,12 @@
+## 2026-10-07 편집실 S7 최종 검증 ❌ BLOCK
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S7-AC1~5 | 글 후보 선택, 템플릿 전체·한 장 적용, 복원·undo | ✅ 관찰됨 | production Chromium 1440·1024·390, 저장 API 3회, 가로 넘침 0, 콘솔 오류 0. Vitest 표적 41건, integrity 104건, contract 628건, related 112건 PASS |
+| S7-R1-B1 | 생성실에서 고른 템플릿이 생성 요청·생성 덱에 반영되지 않음 | ❌ NG | `cardTemplateId`는 `StudioRooms.tsx`의 갤러리 선택 상태에서만 사용되고 생성 콜백 인자에는 없음. 선택과 결과가 이어지는 테스트도 없음 |
+| S7-R1-B2 | 편집실 템플릿 ID·직전 덱 복원이 재열기 가능한 저장 경계에 없음 | ❌ NG | `activeTemplateId`·`previousTemplate`가 `CardCanvasEditor` 로컬 state뿐이고 `CardDeckV3.template`은 바뀌지 않음. plain 덱의 `chat_bubble` 선택은 base 변환이 없음 |
+| S7-MOBILE-01 | 데이터가 있는 편집실 360~1000 아홉 폭 인체공학 | ❌ NG | 기존 fixture가 생성실로 이탈. 360px 실측에서 13px 미만 92건, 44px 미만 1건, 눌림 상태 80%, 넘침 0. S7 실제 390px 데이터 3장 화면은 넘침 0·콘솔 오류 0이나 아홉 폭 게이트를 대신하지 않음 |
+
 ## 2026-10-07 S5b·S6 main 병합 ✅ 로컬 PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

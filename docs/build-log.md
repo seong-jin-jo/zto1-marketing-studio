@@ -1,5 +1,17 @@
 # OSMU build log
 
+## 2026-10-07 20:34 KST · 편집실 v2 S7 구현 검증, 회수 전 BLOCK
+
+STAMP: 2026-10-07 20:34 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: S7 build-plan, v1.3 PRD, 실제 production Chromium 3게이트, Vitest 3단 | 고민: 통과 수치만 모으지 않고 생성실 선택이 실제 결과물로 이어지는지와 9폭 측정이 올바른 방을 열었는지를 최종 diff에서 다시 공격했다.
+
+S7 글 후보 3개, 사실·길이 경고, 생성실 템플릿 6개 추천 줄, 편집실 전체·한 장 적용, 전후 비교, 복원, undo를 구현했다. 기존 글 생성 응답은 하위 호환으로 유지했고 카드 요소 ID와 카톡 덱 역할·댓글 유도 장을 보존한다. 제품 커밋은 `6ab7efb0`, 브라우저·복원 회귀는 `03eb4536`, 공용 Button 교정은 `1fab474f`다.
+
+검증은 TypeScript PASS, integrity 33파일 104건 PASS, contract 108파일 628건 PASS, 관련 12파일 112건 PASS, webpack production build PASS다. 실제 production Chromium은 S7 1440·1024·390에서 후보 선택, 전체·한 장 적용, 이전 템플릿 복원, undo, 저장 API 3회, 가로 넘침 0, 콘솔 오류 0이다. 기존 v70 화면 게이트와 두 탭 본문 충돌 복구도 PASS했다. 기본 Turbopack build는 공유 `node_modules` 심링크가 worktree 밖을 가리켜 환경 오류로 실패했고, 설치 없이 webpack 경로로 같은 소스를 빌드했다.
+
+`review` 최종 점검에서 두 BLOCK을 남겼다. 생성실에서 고른 `cardTemplateId`는 아직 생성 요청·덱에 전달되지 않아 생성실과 편집실 경험이 실제로 이어지지 않는다. 편집실은 선택한 템플릿 ID를 덱에 저장하지 않아 재열기 뒤 선택 상태를 복원할 수 없고, plain 덱에서 `chat_bubble` 선택은 의미 구조 변환 없이 사실상 무동작이다. 또한 9폭 측정기는 기존 모바일 fixture가 편집실 대신 생성실로 이탈해 360px에서 13px 미만 92건, 44px 미만 1건, 눌림 상태 80%로 FAIL했다. S7 실제 390px 화면의 데이터 3장·넘침 0과는 별개로 9폭 인체공학 게이트는 미통과다. 새 구현을 늘리지 말라는 회수 지시에 따라 여기서 추가 제품 변경은 하지 않았다.
+
+벤치마크: Canva의 현재 장·전체 페이지 적용과 버전 복원 흐름을 차용하되, 우리 덱은 글·요소 ID와 카톡 필수 장을 보존하도록 달리했다. 출처: https://www.canva.com/help/change-template/ · https://www.canva.com/help/version-history/
+
 ## 2026-10-07 07:51 KST · S5b와 S6 main 병합 검증
 
 STAMP: 2026-10-07 07:51 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: merge commit `43ae2897`, CI 동일 production server Chromium 게이트, Vitest 3단 | 고민: append-only 기록을 모두 보존하면서 카톡 v3 저장 동기화와 영상 export queue가 한 `page.tsx`에서 함께 동작하는지 검증했다.
