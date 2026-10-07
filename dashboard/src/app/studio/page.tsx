@@ -1393,7 +1393,41 @@ export default function StudioPage() {
               },
             );
           } catch (error) {
-            setCardDeckAutosaveError(extractApiErrorMessage(error, "생성한 카드 템플릿을 서버에 저장하지 못했습니다. 다시 저장해 주세요."));
+            // S7-R2 MINOR 7: 생성 직후 첫 저장이 실패한 자유 배치 덱을 화면에만 남기면
+            // 사용자는 저장됐다고 믿고 이탈할 수 있다. 자유 배치 상태를 먼저 걷고 같은
+            // 본문을 기본 카드 편집으로 한 번 더 저장해, 서버와 화면이 서로 다른 상태를
+            // 유지하지 않게 한다.
+            setCardDeckV3(null);
+            cardDeckV3Ref.current = null;
+            setCardTemplateState(null);
+            setCardDeckV3SourceSnapshot(null);
+            cardDeckV3PendingSourceSnapshotRef.current = null;
+            setCardDeckV3DetailStatus("idle");
+            try {
+              await save(
+                "draft",
+                {},
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "tail",
+                freshPublishProgress,
+                {
+                  clear: true,
+                  sourceSnapshot: null,
+                  templateState: null,
+                  editKind: nextKind,
+                  editFormat: nextEditFormat,
+                },
+              );
+              setCardDeckAutosaveError("");
+              showToast("자유 배치 템플릿 저장에 실패해 기본 카드 편집으로 저장했습니다.", "error");
+            } catch (fallbackError) {
+              setCardDeckAutosaveError(extractApiErrorMessage(fallbackError, extractApiErrorMessage(error, "생성한 카드를 서버에 저장하지 못했습니다. 초안을 다시 만들어 주세요.")));
+            }
           }
         }
         // 이 후보를 만든 실제 주제를 기억해 둔다. 이후 주제가 바뀌면(trim 비교) 옛 주제로

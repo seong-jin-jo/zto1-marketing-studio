@@ -83,6 +83,41 @@ describe("S7 템플릿 command", () => {
     }
   });
 
+  it("S7-R2-MINOR-01 한 장에 보이는 글 요소가 5개면 카드 밖 배치 전에 템플릿 적용을 거절한다", () => {
+    const before = plainDeck();
+    const seed = before.slides[0].elements[0] as TextElement;
+    before.slides[0].elements = Array.from({ length: 5 }, (_, index) => ({
+      ...structuredClone(seed),
+      id: `text_overflow_${index}`,
+      text: `본문 ${index + 1}`,
+      z_index: index,
+    }));
+    const snapshot = structuredClone(before);
+
+    expect(() => applyCardDeckTemplate(before, "photo_band", { kind: "all" }))
+      .toThrow("CARD_TEMPLATE_TOO_MANY_TEXT_ELEMENTS");
+    expect(before).toEqual(snapshot);
+  });
+
+  it("S7-R2-MINOR-01 이 장만 적용은 선택하지 않은 혼잡 장을 검사하거나 바꾸지 않는다", () => {
+    const before = plainDeck();
+    const seed = before.slides[0].elements[0] as TextElement;
+    before.slides[0].elements = Array.from({ length: 5 }, (_, index) => ({
+      ...structuredClone(seed),
+      id: `text_unselected_${index}`,
+      z_index: index,
+    }));
+    before.slides[1].elements = [{
+      ...structuredClone(seed),
+      id: "text_selected_cta",
+      text: "저장",
+    }];
+
+    const after = applyCardDeckTemplate(before, "headline_cover", { kind: "slide", slideId: "slide_cta" });
+    expect(after.slides[0]).toEqual(before.slides[0]);
+    expect(after.slides[1]).not.toEqual(before.slides[1]);
+  });
+
   it("거절 조건: 카톡 덱은 이 장만 템플릿 적용을 허용하지 않는다", () => {
     const before = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
     expect(() => applyCardDeckTemplate(before, "text_only", { kind: "slide", slideId: before.slides[1].id })).toThrow("CARD_CHAT_TEMPLATE_DECK_ONLY");

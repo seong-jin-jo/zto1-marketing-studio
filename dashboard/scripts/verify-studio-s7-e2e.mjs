@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 import { chromium } from "playwright-core";
+import postgres from "postgres";
 
 const baseUrl = process.env.STUDIO_S7_BASE_URL || "http://127.0.0.1:3481";
 const workspaceId = "71111111-1111-4111-8111-111111111111";
 const draftId = "72222222-2222-4222-8222-222222222222";
-let bodyRevision = 0;
+const databaseUrl = process.env.DATABASE_URL;
+const operatorToken = process.env.DASHBOARD_AUTH_TOKEN;
+if (!databaseUrl) throw new Error("DATABASE_URL is required for S7 live E2E");
+if (!operatorToken) throw new Error("DASHBOARD_AUTH_TOKEN is required for S7 live E2E");
+const sql = postgres(databaseUrl, { max: 4, idle_timeout: 5, connect_timeout: 8, onnotice: () => {} });
 const posts = [];
 
 function json(route, body, status = 200) {
@@ -14,7 +19,7 @@ function json(route, body, status = 200) {
 async function waitUntil(predicate, timeoutMs, message) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (predicate()) return;
+    if (await predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(message);
@@ -69,43 +74,36 @@ function commonWork() {
 }
 
 function textWork() {
-  return { ...commonWork(), idea: "수능 100일 공부 계획", text: { text_candidates: textCandidates, recommended_text_candidate_id: "question" }, editLines: [], editKind: "text", bodyRevision: 0 };
+  return {
+    ...commonWork(),
+    idea: "수능 100일 공부 계획",
+    text: { text_candidates: textCandidates, selected_text_candidate_id: "question", recommended_text_candidate_id: "question" },
+    editLines: ["직접 고친 첫 문장", "직접 고친 둘째 문장"],
+    editKind: "text",
+    bodyRevision: 0,
+  };
 }
 
 function cardWork(deck) {
-  return { ...commonWork(), idea: "S7 템플릿 실구동", draftId, text: null, editLines: ["수능 100일의 문제", "바꿀 공부 순서", "오늘 할 행동"], editKind: "card", editFormat: { kind: "card", aspectRatio: "4:5", background: "화이트", subtitleSize: "보통" }, cardDeckV3: deck, cardDeckV3SourceSnapshot: null, bodyRevision };
+  return { ...commonWork(), idea: "S7 템플릿 실구동", draftId, text: null, editLines: ["수능 100일의 문제", "바꿀 공부 순서", "오늘 할 행동"], editKind: "card", editFormat: { kind: "card", aspectRatio: "4:5", background: "작업실 책상", subtitleSize: "보통" }, cardDeckV3: deck, cardDeckV3SourceSnapshot: null, bodyRevision: 0 };
 }
 
-async function installRoutes(context, getDeck, getTemplateState = () => null) {
+function observeCoreRequests(page) {
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (request.method() !== "POST" || !["/api/studio/drafts", "/api/studio/text", "/api/queue/add"].includes(pathname) && !/\/api\/queue\/[^/]+\/request-review$/.test(pathname)) return;
+    let body = {};
+    try { body = JSON.parse(request.postData() || "{}"); } catch { body = {}; }
+    posts.push({ endpoint: pathname, ...body });
+  });
+}
+
+async function installRoutes(context) {
   const handler = async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const pathname = url.pathname;
     if (pathname === "/api/me") return json(route, { isOperator: false, tenant: { id: workspaceId, slug: "s7", name: "S7 실구동", status: "active" } });
-    if (pathname === "/api/studio/drafts") {
-      if (request.method() === "POST") {
-        const body = JSON.parse(request.postData() || "{}");
-        posts.push(body);
-        bodyRevision += 1;
-        return json(route, { ok: true, id: draftId, bodyRevision, videoEditServerRevision: null });
-      }
-      const deck = getDeck();
-      const draft = { id: draftId, idea: "S7 템플릿 실구동", editKind: "card", editLines: cardWork(deck).editLines, bodyRevision, hasCardDeckV3: true, cardDeckV3: deck, cardTemplateState: getTemplateState(), cardDeckV3SourceSnapshot: null, status: "draft", savedAt: "2026-10-07T00:00:00.000Z" };
-      return json(route, url.searchParams.has("id") ? { draft } : { drafts: [draft], currentWork: null });
-    }
-    if (pathname === "/api/studio/text" && request.method() === "POST") {
-      const body = JSON.parse(request.postData() || "{}");
-      posts.push({ endpoint: "text", ...body });
-      return json(route, {
-        ok: true,
-        threads: "수능 100일의 문제",
-        facebook: "수능 100일의 문제",
-        x: "수능 100일의 문제",
-        instagram: { caption: "수능 100일의 문제", hashtags: ["S7"], slides: ["수능 100일의 문제", "바꿀 공부 순서", "오늘 할 행동"] },
-        shorts: { hook: "수능 100일의 문제", body: "바꿀 공부 순서", cta: "오늘 할 행동" },
-        ...(body.card_template_id ? { card_template_id: body.card_template_id } : {}),
-      });
-    }
     if (pathname === "/api/studio/brand-setup") return json(route, { guide: "따뜻하고 구체적인 존댓말" });
     if (pathname === "/api/usage") return json(route, { today: {}, thisWeek: {}, tier: "team", quota: {} });
     if (pathname === "/api/studio/engine-status") return json(route, { ready: true });
@@ -127,13 +125,14 @@ async function installRoutes(context, getDeck, getTemplateState = () => null) {
     }
     if (pathname === "/api/publish/first-comment-capabilities") return json(route, { capabilities: [] });
     if (/^\/api\/channels\/[^/]+\/accounts$/.test(pathname)) return json(route, { accounts: [] });
+    if (pathname === "/api/images/upload") return json(route, { url: "/qa/alignment-card-1.jpg", filename: "alignment-card-1.jpg" });
     if (pathname === "/api/images") return json(route, { images: [] });
+    if (pathname === "/api/queue/add" && request.method() === "POST") return json(route, { post: { id: "s7-review-queue" } });
+    if (/^\/api\/queue\/[^/]+\/request-review$/.test(pathname) && request.method() === "POST") return json(route, { ok: true, reused: false });
     return json(route, {});
   };
   const mockedApiRoutes = [
     "**/api/me",
-    "**/api/studio/drafts**",
-    "**/api/studio/text",
     "**/api/studio/brand-setup**",
     "**/api/usage**",
     "**/api/studio/engine-status**",
@@ -145,37 +144,73 @@ async function installRoutes(context, getDeck, getTemplateState = () => null) {
     "**/api/publish/first-comment-capabilities**",
     "**/api/channels/*/accounts**",
     "**/api/images**",
+    "**/api/queue/add",
+    "**/api/queue/*/request-review",
   ];
   for (const pattern of mockedApiRoutes) await context.route(pattern, handler);
+}
+
+async function prepareDatabase() {
+  await sql`DELETE FROM tenants WHERE id = ${workspaceId}`;
+  await sql`
+    INSERT INTO tenants (id, slug, name, status, tier, shared_cli_approved_at)
+    VALUES (${workspaceId}, 's7-live-e2e', 'S7 실구동', 'active', 'team', now())`;
+}
+
+async function resetCardDraft() {
+  const deck = plainDeck();
+  await sql`DELETE FROM drafts WHERE tenant_id = ${workspaceId}`;
+  await sql`
+    INSERT INTO drafts (id, tenant_id, idea, payload, status)
+    VALUES (${draftId}, ${workspaceId}, 'S7 템플릿 실구동', ${sql.json(cardWork(deck))}, 'draft')`;
+  return deck;
+}
+
+async function latestStoredDraft() {
+  const [row] = await sql`
+    SELECT id, payload, updated_at FROM drafts
+    WHERE tenant_id = ${workspaceId}
+    ORDER BY updated_at DESC LIMIT 1`;
+  if (!row) throw new Error("실제 PostgreSQL에 저장된 S7 초안이 없습니다");
+  return row;
 }
 
 async function runCreateCardFlow(browser) {
   const postStart = posts.length;
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
-  await context.addInitScript(({ id, work, createState }) => {
-    localStorage.setItem("dashboard_auth_token", "studio-s7-token");
+  await context.addInitScript(({ id, work, createState, token }) => {
+    localStorage.setItem("dashboard_auth_token", token);
     localStorage.setItem("active_workspace", JSON.stringify({ id, slug: "s7", name: "S7 실구동", tier: "team" }));
     localStorage.setItem(`studio_work:${id}`, JSON.stringify(work));
     localStorage.setItem(`studio_create_state:${id}`, JSON.stringify(createState));
   }, {
     id: workspaceId,
+    token: operatorToken,
     work: textWork(),
     createState: { primaryKind: "card", alsoKinds: [], questionIndex: 5, purpose: "공부 계획 안내", audience: "수험생", rightsConfirmed: true, topicOpen: false, candidates: [structureCandidate], selected: "A", quickStructure: { label: "A", title: "문제 제시형", outline: structureCandidate.format.outline }, cardTemplateId: "number_list", topic: "수능 100일 공부 계획" },
   });
-  await installRoutes(context, () => plainDeck());
+  await installRoutes(context);
   const page = await context.newPage();
+  observeCoreRequests(page);
   collectBrowserErrors(page, errors);
   await page.goto(`${baseUrl}/studio?room=create&kind=card`, { waitUntil: "networkidle", timeout: 60_000 });
+  await page.getByLabel("초안 주제").fill("수능 100일 공부 계획");
+  const useStructure = page.getByRole("button", { name: "A 구조 사용" });
+  if (await useStructure.isVisible()) await useStructure.click();
   const numberTemplate = page.locator('[data-card-template="number_list"]');
-  await numberTemplate.waitFor({ state: "visible" });
+  try {
+    await numberTemplate.waitFor({ state: "visible" });
+  } catch (error) {
+    throw new Error(`생성실 카드 템플릿을 찾지 못했습니다. 화면=${(await page.locator("body").innerText()).slice(0, 1800)} 오류=${errors.join(" | ")} 원인=${error instanceof Error ? error.message : String(error)}`);
+  }
   await numberTemplate.click();
   const chatButton = page.locator('[data-card-template="chat_bubble"]');
   if (!(await chatButton.isDisabled()) || !(await chatButton.innerText()).includes("기존 카톡 말풍선 덱")) throw new Error("plain 카드의 카톡 템플릿이 기존 변환 경로 안내와 함께 비활성화되지 않았습니다");
   await page.getByRole("button", { name: "초안 만들기" }).click();
   try {
     await waitUntil(
-      () => posts.slice(postStart).some((post) => post.endpoint === "text" && post.card_template_id === "number_list"),
+      () => posts.slice(postStart).some((post) => post.endpoint === "/api/studio/text" && post.card_template_id === "number_list"),
       10_000,
       "생성실에서 고른 cardTemplateId가 글 생성 API에 전달되지 않았습니다",
     );
@@ -186,10 +221,18 @@ async function runCreateCardFlow(browser) {
     const value = JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}");
     return value.cardTemplateState?.activeTemplateId === "number_list" && value.cardDeckV3?.slides?.[0]?.elements?.[0]?.x === 244;
   }, workspaceId);
+  await waitUntil(async () => {
+    const [stored] = await sql`
+      SELECT payload FROM drafts WHERE tenant_id = ${workspaceId}
+      ORDER BY updated_at DESC LIMIT 1`;
+    return stored?.payload?.cardTemplateState?.activeTemplateId === "number_list"
+      && stored?.payload?.cardDeckV3?.slides?.[0]?.elements?.[0]?.x === 244;
+  }, 15_000, "생성 직후 v3 덱과 템플릿 상태가 실제 PostgreSQL에 저장되지 않았습니다");
+  const stored = await latestStoredDraft();
   const dimensions = await noHorizontalOverflow(page, "생성실 카드 템플릿 1440");
   if (errors.length) throw new Error(`생성실 카드 템플릿 콘솔 오류: ${errors.join(" | ")}`);
   await context.close();
-  return { viewport: 1440, dimensions, template: "number_list" };
+  return { viewport: 1440, dimensions, template: "number_list", storedDraftId: stored.id };
 }
 
 async function noHorizontalOverflow(page, label) {
@@ -209,18 +252,20 @@ function collectBrowserErrors(page, errors) {
 async function runTextFlow(browser, viewport) {
   const context = await browser.newContext({ viewport });
   const errors = [];
-  await context.addInitScript(({ id, work, createState }) => {
-    localStorage.setItem("dashboard_auth_token", "studio-s7-token");
+  await context.addInitScript(({ id, work, createState, token }) => {
+    localStorage.setItem("dashboard_auth_token", token);
     localStorage.setItem("active_workspace", JSON.stringify({ id, slug: "s7", name: "S7 실구동", tier: "team" }));
     localStorage.setItem(`studio_work:${id}`, JSON.stringify(work));
     localStorage.setItem(`studio_create_state:${id}`, JSON.stringify(createState));
   }, {
     id: workspaceId,
+    token: operatorToken,
     work: textWork(),
     createState: { primaryKind: "text", alsoKinds: [], questionIndex: 5, purpose: "공부 계획 안내", audience: "수험생", rightsConfirmed: true, topicOpen: false, candidates: [structureCandidate], selected: "A", quickStructure: { label: "A", title: "문제 제시형", outline: structureCandidate.format.outline }, topic: "수능 100일 공부 계획" },
   });
-  await installRoutes(context, () => plainDeck());
+  await installRoutes(context);
   const page = await context.newPage();
+  observeCoreRequests(page);
   collectBrowserErrors(page, errors);
   await page.goto(`${baseUrl}/studio?room=create&kind=text`, { waitUntil: "networkidle", timeout: 60_000 });
   try {
@@ -230,6 +275,14 @@ async function runTextFlow(browser, viewport) {
   }
   await page.locator('[data-text-candidate-tab="number"]').click();
   await page.locator('[data-text-candidate-preview="number"]').getByRole("button", { name: "이 후보로" }).click();
+  await page.getByRole("heading", { name: "고친 본문을 다른 후보로 바꿀까요?" }).waitFor({ state: "visible" });
+  await page.getByRole("button", { name: "현재 본문 유지" }).click();
+  await page.waitForFunction((id) => {
+    const value = JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}");
+    return value.text?.selected_text_candidate_id === "question" && value.editLines?.[0] === "직접 고친 첫 문장";
+  }, workspaceId);
+  await page.locator('[data-text-candidate-preview="number"]').getByRole("button", { name: "이 후보로" }).click();
+  await page.getByRole("button", { name: "고친 내용을 버리고 바꾸기" }).click();
   await page.waitForFunction((id) => {
     const value = JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}");
     return value.text?.selected_text_candidate_id === "number" && value.editLines?.[0]?.includes("100일 동안");
@@ -242,29 +295,33 @@ async function runTextFlow(browser, viewport) {
 
 async function runCardFlow(browser, viewport) {
   const postStart = posts.length;
-  const initial = plainDeck();
-  let latestDeck = structuredClone(initial);
-  let latestTemplateState = null;
+  const initial = await resetCardDraft();
   const context = await browser.newContext({ viewport });
   const errors = [];
-  await context.addInitScript(({ id, work }) => {
-    localStorage.setItem("dashboard_auth_token", "studio-s7-token");
+  await context.addInitScript(({ id, work, token }) => {
+    localStorage.setItem("dashboard_auth_token", token);
     localStorage.setItem("active_workspace", JSON.stringify({ id, slug: "s7", name: "S7 실구동", tier: "team" }));
     localStorage.setItem(`studio_work:${id}`, JSON.stringify(work));
-  }, { id: workspaceId, work: cardWork(initial) });
-  await installRoutes(context, () => latestDeck, () => latestTemplateState);
+  }, { id: workspaceId, work: cardWork(initial), token: operatorToken });
+  await installRoutes(context);
   const page = await context.newPage();
+  observeCoreRequests(page);
   collectBrowserErrors(page, errors);
   await page.goto(`${baseUrl}/studio?room=edit&kind=card&draft_id=${draftId}`, { waitUntil: "networkidle", timeout: 60_000 });
   await page.locator("[data-card-canvas-editor]").waitFor({ state: "visible" });
+  if (await page.locator("[data-card-stage]").count() < 1) throw new Error("데이터가 있는 카드 작업대가 열리지 않았습니다");
 
   await page.locator('[data-card-template="headline_cover"]').click();
   await page.getByRole("button", { name: "이 템플릿으로 바꾸기" }).click();
   await page.waitForFunction((id) => JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}").cardDeckV3?.slides?.[0]?.elements?.[0]?.x === 96, workspaceId);
-  latestDeck = await page.evaluate((id) => JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}").cardDeckV3, workspaceId);
+  const latestDeck = await page.evaluate((id) => JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}").cardDeckV3, workspaceId);
   if (latestDeck.slides[0].elements[0].id !== "el_s7_cover" || latestDeck.slides[0].elements[0].x !== 96) throw new Error("전체 템플릿이 요소 ID를 보존해 적용되지 않았습니다");
   await page.getByRole("button", { name: "실행 취소" }).click();
-  await page.waitForFunction((id) => JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}").cardDeckV3?.slides?.[0]?.elements?.[0]?.x === 100, workspaceId);
+  await page.waitForFunction((id) => {
+    const value = JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}");
+    return value.cardDeckV3?.slides?.[0]?.elements?.[0]?.x === 100
+      && value.cardTemplateState?.activeTemplateId === "text_only";
+  }, workspaceId);
   const undone = await page.evaluate((id) => JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}").cardDeckV3, workspaceId);
   if (undone.slides[0].elements[0].x !== initial.slides[0].elements[0].x) throw new Error("템플릿 undo 1회가 원래 배치를 복원하지 않았습니다");
 
@@ -289,26 +346,67 @@ async function runCardFlow(browser, viewport) {
   if (JSON.stringify(oneSlide.slides[1]) !== JSON.stringify(beforeOne.slides[1])) throw new Error("이 장만 적용이 다른 장 JSON을 바꿨습니다");
   if (JSON.stringify(oneSlide.slides[0]) === JSON.stringify(beforeOne.slides[0])) throw new Error("이 장만 적용이 고른 장을 바꾸지 않았습니다");
   await waitUntil(
-    () => posts.slice(postStart).some((post) => post.cardDeckV3?.slides?.[0]?.elements?.[0]?.x === 72
+    () => posts.slice(postStart).some((post) => post.endpoint === "/api/studio/drafts"
+      && post.cardDeckV3?.slides?.[0]?.elements?.[0]?.x === 72
       && JSON.stringify(post.cardDeckV3.slides[1]) === JSON.stringify(oneSlide.slides[1])),
     15_000,
     "템플릿 최종 덱이 실제 초안 저장 API까지 왕복하지 않았습니다",
   );
-  const persisted = posts.slice(postStart).findLast((post) => post.cardTemplateState?.activeTemplateId === "photo_band");
+  const persisted = posts.slice(postStart).findLast((post) => post.endpoint === "/api/studio/drafts" && post.cardTemplateState?.activeTemplateId === "photo_band");
   if (!persisted?.cardTemplateState?.previousTemplate?.deck) throw new Error("템플릿 ID와 복원용 직전 상태가 초안 저장 API에 함께 영속되지 않았습니다");
-  latestDeck = structuredClone(persisted.cardDeckV3);
-  latestTemplateState = structuredClone(persisted.cardTemplateState);
+  await waitUntil(async () => {
+    const [stored] = await sql`SELECT payload FROM drafts WHERE id = ${draftId} AND tenant_id = ${workspaceId}`;
+    return stored?.payload?.cardTemplateState?.activeTemplateId === "photo_band"
+      && stored?.payload?.cardDeckV3?.slides?.[0]?.elements?.[0]?.x === 72;
+  }, 15_000, "템플릿 덱과 복원 상태가 실제 PostgreSQL에 함께 저장되지 않았습니다");
   await page.reload({ waitUntil: "networkidle", timeout: 60_000 });
   await page.locator("[data-card-canvas-editor]").waitFor({ state: "visible" });
   await page.getByRole("button", { name: /이전 템플릿\(큰 제목 표지형\)으로/ }).waitFor({ state: "visible" });
 
+  const draftsBeforeMove = posts.filter((post) => post.endpoint === "/api/studio/drafts").length;
+  await page.getByRole("button", { name: "발행실로 이동" }).click();
+  await page.waitForURL(/room=publish/, { timeout: 30_000 });
+  await waitUntil(
+    () => posts.filter((post) => post.endpoint === "/api/studio/drafts").length > draftsBeforeMove,
+    10_000,
+    "발행실 이동 전 실제 drafts 저장이 호출되지 않았습니다",
+  );
+
+  const draftsBeforePublishSave = posts.filter((post) => post.endpoint === "/api/studio/drafts").length;
+  await page.getByRole("button", { name: "임시 저장하기" }).click();
+  await waitUntil(
+    () => posts.filter((post) => post.endpoint === "/api/studio/drafts").length > draftsBeforePublishSave,
+    10_000,
+    "발행실 임시 저장이 실제 drafts route를 호출하지 않았습니다",
+  );
+
+  const draftsBeforeReview = posts.filter((post) => post.endpoint === "/api/studio/drafts").length;
+  await page.getByRole("button", { name: "검토 요청하기" }).click();
+  await waitUntil(
+    () => posts.filter((post) => post.endpoint === "/api/studio/drafts").length > draftsBeforeReview
+      && posts.some((post) => post.endpoint === "/api/queue/add")
+      && posts.some((post) => /\/api\/queue\/[^/]+\/request-review$/.test(post.endpoint)),
+    15_000,
+    "검토 요청 전 저장 또는 검토 큐 호출을 관찰하지 못했습니다",
+  );
+
+  const [storedAfterActions] = await sql`SELECT payload FROM drafts WHERE id = ${draftId} AND tenant_id = ${workspaceId}`;
+  if (storedAfterActions?.payload?.cardTemplateState?.activeTemplateId !== "photo_band") {
+    throw new Error("수동 저장·발행실 이동·검토 요청 뒤 실제 DB의 템플릿 상태가 유지되지 않았습니다");
+  }
+
   const dimensions = await noHorizontalOverflow(page, `카드 템플릿 ${viewport.width}`);
-  if (await page.locator("[data-card-stage]").count() < 1) throw new Error("데이터가 있는 카드 작업대가 열리지 않았습니다");
   if (errors.length) throw new Error(`카드 템플릿 콘솔 오류: ${errors.join(" | ")}`);
   await context.close();
-  return { viewport: viewport.width, dimensions, slideCount: oneSlide.slides.length };
+  return {
+    viewport: viewport.width,
+    dimensions,
+    slideCount: oneSlide.slides.length,
+    bodyRevision: storedAfterActions.payload.bodyRevision,
+  };
 }
 
+await prepareDatabase();
 const browser = await chromium.launch({ headless: true });
 try {
   const results = [];
@@ -317,14 +415,20 @@ try {
   results.push(await runCardFlow(browser, { width: 1440, height: 1000 }));
   results.push(await runCardFlow(browser, { width: 1024, height: 900 }));
   results.push(await runCardFlow(browser, { width: 390, height: 844 }));
+  const [{ count: draftRows }] = await sql`SELECT count(*)::int AS count FROM drafts WHERE tenant_id = ${workspaceId}`;
   process.stdout.write(`${JSON.stringify({
     ok: true,
-    apiEvidence: "browser-fixture",
-    draftRouteEvidence: "vitest-route-integration",
+    apiEvidence: "live-dev-server-postgresql",
+    draftRouteEvidence: "actual-route-rls-postgresql",
+    llmEvidence: "server-side-cli-stub-only",
     results,
     posts: posts.length,
+    coreDraftPosts: posts.filter((post) => post.endpoint === "/api/studio/drafts").length,
+    draftRows,
     consoleErrors: 0,
   }, null, 2)}\n`);
 } finally {
   await browser.close();
+  await sql`DELETE FROM tenants WHERE id = ${workspaceId}`;
+  await sql.end({ timeout: 5 });
 }

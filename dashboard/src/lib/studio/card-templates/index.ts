@@ -150,6 +150,13 @@ export function applyCardDeckTemplate(
   if (templateId !== "chat_bubble" && deck.template === "chat_bubble") {
     throw new RangeError("CARD_PHOTO_TEXT_TEMPLATE_CHAT_DECK_UNSUPPORTED");
   }
+  const selectedSlides = deck.slides.filter((slide) => scope.kind === "all" || slide.id === scope.slideId);
+  if (
+    templateId !== "chat_bubble"
+    && selectedSlides.some((slide) => slide.elements.filter((element) => element.type === "text" && !element.hidden).length > 4)
+  ) {
+    throw new RangeError("CARD_TEMPLATE_TOO_MANY_TEXT_ELEMENTS");
+  }
   const next = {
     ...structuredClone(deck),
     revision: deck.revision + 1,

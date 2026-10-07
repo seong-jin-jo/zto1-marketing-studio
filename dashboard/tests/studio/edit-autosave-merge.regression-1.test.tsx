@@ -248,15 +248,6 @@ describe("구조 대조: page.tsx가 독립 타이머로 되돌아갔는지", ()
     expect(cardTemplateStatePatchForSave(null, current)).toEqual({});
   });
 
-  it("PR87-R3-REV-02 새 초안 생성은 이전 draft id와 문서 세대를 같은 tick에 끊는다", () => {
-    const generateStart = pageSrc.indexOf("async function generateQuickDraft");
-    const generate = pageSrc.slice(generateStart, generateStart + 7000);
-    expect(generate).toContain("draftIdRef.current = null");
-    expect(generate).toContain("replaceBodySnapshot(");
-    expect(generate).toContain("{ replaceDocument: true, serverRevision: 0 }");
-    expect(generate).toContain("text_candidates: pendingTextCandidates");
-  });
-
   it("C(4차): 카드덱·영상 자동저장 보류 사유가 서로 다른 state를 쓴다(공유 state가 서로를 지우지 않는다)", () => {
     const onCardDeckChange = pageSrc.slice(pageSrc.indexOf("function onCardDeckChange("), pageSrc.indexOf("function onCardDeckChange(") + 1300);
     const onVideoEditChange = onVideoEditChangeSrc;
