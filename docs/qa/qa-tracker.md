@@ -10,7 +10,7 @@
 | S7-R1-M6 | mock 브라우저 증거와 실제 서버 저장 증거를 분리 | ✅ 테스트됨 | `studio-s7-api-evidence.contract`와 drafts route 통합 24건으로 실제 route 저장·재접속을 별도 증거로 고정했다. |
 | S7-R2-CLIENT | 템플릿 자동저장 전 수동·검토·발행 저장도 v3 덱과 템플릿 상태를 한 payload로 보냄 | ✅ 테스트됨 | 공통 저장이 호출 시점 상태를 캡처하고 명시 null·v3 없음 경계를 포함한 동작 회귀를 통과했다. |
 
-검증: TypeScript 종료 코드 0. MAJOR 대응 묶음 10파일 94건 PASS. `vitest related` 50파일 509건 PASS, DB 환경 의존 2건 skip. 코드 커밋 `22b3506b`. 원격 CI·QA 승인·운영 배포는 미검증이며 push하지 않았다.
+검증: TypeScript 종료 코드 0. MAJOR 대응 묶음 10파일 94건 PASS. `vitest related` 50파일 509건 PASS, DB 환경 의존 2건 skip. 공통 저장 회귀 2파일 15건 PASS. 코드 `22b3506b`, 실제 StudioPage POST 회귀 `bafb7ab9`. 원격 CI·QA 승인·운영 배포는 미검증이며 push하지 않았다.
 
 ## 2026-10-07 편집실 S7 교차 리뷰 1차 ❌ BLOCK
 

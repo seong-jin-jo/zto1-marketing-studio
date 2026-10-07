@@ -3,9 +3,10 @@
 ## 2026-10-08 01:17 KST · 편집실 S7 교차 리뷰 MAJOR 6 폐쇄와 저장 짝 보강
 
 - 코드 커밋: `22b3506b fix(studio): persist template state on all saves`
+- 실제 화면 저장 회귀: `bafb7ab9 test(studio): cover manual template state save`
 - 수정: v3 덱과 템플릿 상태를 공통 저장의 단일 payload로 묶었다. 템플릿 전용 800ms 자동저장 전에 수동 저장·검토 요청·발행실 이동이 실행돼도 호출 시점 상태를 보존한다.
 - 회귀: 문자열 소스 일치 검사를 제거하고 payload patch의 실제 동작, 명시 null, v3 덱 없음 경계를 검증한다.
-- 검증: TypeScript PASS. MAJOR 직접 대응 10파일 94건 PASS. 변경 소스 관련 50파일 509건 PASS, DB 환경 의존 2건 skip.
+- 검증: TypeScript PASS. MAJOR 직접 대응 10파일 94건 PASS. 변경 소스 관련 50파일 509건 PASS, DB 환경 의존 2건 skip. 실제 `StudioPage` POST 회귀 2파일 15건 PASS.
 - 범위: 원격 CI·QA 승인·운영 배포는 미검증. push하지 않았다.
 
 ## 2026-10-07 21:31 KST · 편집실 v2 S7 자체 점검 BLOCK 4건 폐쇄
