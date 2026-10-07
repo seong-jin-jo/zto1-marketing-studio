@@ -10,9 +10,11 @@
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StudioPage from "@/app/studio/page";
+import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
+import { applyCardDeckTemplate } from "@/lib/studio/card-templates";
 import deckD100 from "./fixtures/deck-d100.v2.json";
 
 const mocks = vi.hoisted(() => ({
@@ -58,6 +60,32 @@ const draftVideoWithBrokenDeck = {
   savedAt: new Date().toISOString(),
 };
 
+const v3DeckBeforeTemplate = createPlainCardDeckV3(
+  ["템플릿 저장 짝 검증", "덱과 상태는 함께 저장돼야 합니다"],
+  "deck_template_pair",
+);
+const v3DeckAfterTemplate = applyCardDeckTemplate(v3DeckBeforeTemplate, "headline_cover", { scope: "all" });
+const v3TemplateState = {
+  activeTemplateId: "headline_cover" as const,
+  previousTemplate: { id: "text_only" as const, deck: v3DeckBeforeTemplate },
+};
+const draftWithCardDeckV3 = {
+  id: "draft-cross-v3",
+  idea: "템플릿 저장 짝 검증",
+  editKind: "card",
+  editFormat: "card",
+  editLines: ["템플릿 저장 짝 검증", "덱과 상태는 함께 저장돼야 합니다"],
+  cardDeck: null,
+  cardDeckV3: v3DeckAfterTemplate,
+  cardTemplateState: v3TemplateState,
+  hasCardDeckV3: true,
+  videoEdit: null,
+  status: "draft",
+  savedAt: new Date().toISOString(),
+};
+
+const drafts = [draftWithBoth, draftVideoWithBrokenDeck, draftWithCardDeckV3];
+
 const fetchCalls: Array<{ url: string; body: Record<string, unknown> }> = [];
 
 vi.mock("swr", () => ({ default: (...args: unknown[]) => mocks.swr(...args) }));
@@ -92,7 +120,7 @@ beforeEach(() => {
   mocks.swr.mockReset();
   mocks.swr.mockImplementation((key: string | null) => {
     if (key === "/api/me") return { data: { isOperator: false }, mutate: vi.fn() };
-    if (key === "/api/studio/drafts?tenant_id=tenant-cross-domain") return { data: { drafts: [draftWithBoth, draftVideoWithBrokenDeck], currentWork: null }, mutate: vi.fn() };
+    if (key === "/api/studio/drafts?tenant_id=tenant-cross-domain") return { data: { drafts, currentWork: null }, mutate: vi.fn() };
     if (key === "/api/studio/brand-setup?tenant_id=tenant-cross-domain") return { data: { guide: null }, mutate: vi.fn() };
     if (key === "/api/publish/first-comment-capabilities") return { data: { capabilities: [] }, mutate: vi.fn() };
     return { data: undefined, mutate: vi.fn() };
@@ -100,7 +128,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (url.includes("/api/studio/drafts?") && url.includes("&id=") && !init?.method) {
       const id = new URL(url, "http://localhost").searchParams.get("id");
-      return Response.json({ draft: [draftWithBoth, draftVideoWithBrokenDeck].find((draft) => draft.id === id) ?? null });
+      return Response.json({ draft: drafts.find((draft) => draft.id === id) ?? null });
     }
     if (typeof url === "string" && url.includes("/api/studio/drafts") && init?.method === "POST") {
       const body = JSON.parse(String(init.body ?? "{}"));
@@ -161,5 +189,22 @@ describe("A·B 회귀: 실제 StudioPage에서 자동저장이 반대 도메인�
     // 명시적 null은 반대 도메인 state를 보내지 않았음을 payload에서 바로 확인하게 한다.
     expect(Object.prototype.hasOwnProperty.call(last.body, "cardDeck")).toBe(true);
     expect(last.body.cardDeck).toBeNull();
+  }, 20000);
+
+  it("S7-R2-CLIENT 발행실 수동 저장은 v3 덱과 현재 템플릿 상태를 같은 실제 POST에 보낸다", async () => {
+    window.history.replaceState(null, "", "/studio?room=publish&draft_id=draft-cross-v3");
+    render(<StudioPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "임시 저장하기" }));
+
+    const saved = await waitFor(() => {
+      const call = fetchCalls.find((candidate) => {
+        const deck = candidate.body.cardDeckV3 as { id?: string } | undefined;
+        return deck?.id === "deck_template_pair";
+      });
+      if (!call) throw new Error("v3 덱을 담은 수동 저장 요청이 아직 안 나갔다");
+      return call;
+    });
+    expect(saved.body.cardTemplateState).toEqual(v3TemplateState);
   }, 20000);
 });
