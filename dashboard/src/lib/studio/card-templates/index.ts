@@ -98,8 +98,12 @@ function stackedY(input: {
 function textLayout(templateId: CardDeckTemplateId, element: TextElement, textIndex: number, textCount: number, slide: CardSlideV3, stageHeight: number): TextElement {
   const preserve = { ...element, style: { ...element.style } };
   if (templateId === "headline_cover") {
-    const height = slide.role === "cover" ? 360 : 176;
-    return { ...preserve, x: 96, y: stackedY({ preferredStart: slide.role === "cover" ? 180 : 144, preferredGap: 196, height, textIndex, textCount, stageHeight }), width: 888, height, rotation: 0, style: { ...preserve.style, font_size: slide.role === "cover" ? 88 : 56, font_weight: 800, align: "left", vertical_align: "middle" } };
+    // 표지의 큰 글 상자(360)는 한 개일 때만 쓴다. 두 개 이상에 같은 높이를 쓰면
+    // stackedY 간격(196)보다 상자가 커져 서로 덮인다. 다중 글은 기존 본문 규격을
+    // 재사용해 임의 수치를 늘리지 않고 2~4개 모두 비겹침을 보장한다.
+    const singleCoverHeadline = slide.role === "cover" && textCount === 1;
+    const height = singleCoverHeadline ? 360 : 176;
+    return { ...preserve, x: 96, y: stackedY({ preferredStart: slide.role === "cover" ? 180 : 144, preferredGap: 196, height, textIndex, textCount, stageHeight }), width: 888, height, rotation: 0, style: { ...preserve.style, font_size: singleCoverHeadline ? 88 : 56, font_weight: 800, align: "left", vertical_align: "middle" } };
   }
   if (templateId === "photo_band") {
     return { ...preserve, x: 72, y: stackedY({ preferredStart: 930, preferredGap: 128, height: 112, textIndex, textCount, stageHeight }), width: 936, height: 112, rotation: 0, style: { ...preserve.style, font_size: 48, font_weight: 700, align: "left", vertical_align: "middle" } };

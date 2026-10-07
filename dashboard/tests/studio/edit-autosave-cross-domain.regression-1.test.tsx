@@ -265,4 +265,38 @@ describe("A·B 회귀: 실제 StudioPage에서 자동저장이 반대 도메인�
     expect(fallbackSave.body).toMatchObject({ cardDeckV3: null, clearCardDeckV3: true, cardTemplateState: null });
     expect(mocks.showToast).toHaveBeenCalledWith("자유 배치 템플릿 저장에 실패해 기본 카드 편집으로 저장했습니다.", "error");
   }, 20000);
+
+  it("PR87-R3-REV-02 새 초안 생성은 이전 draft id를 끊고 새 문서로 저장한다", async () => {
+    window.history.replaceState(null, "", "/studio?room=edit&draft_id=draft-cross-v3");
+    const view = render(<StudioPage />);
+
+    await waitFor(() => {
+      if (!document.querySelector("[data-card-canvas-editor]")) {
+        throw new Error("기존 v3 초안이 편집실에 아직 복원되지 않았다");
+      }
+    });
+
+    // 실제 사용자는 기존 초안을 편집하던 같은 StudioPage 세션에서 생성실로 이동한다.
+    // 컴포넌트를 새로 마운트하면 draftId state도 사라져 결함을 가리므로 rerender한다.
+    window.history.replaceState(null, "", "/studio?room=create&kind=card");
+    view.rerender(<StudioPage />);
+
+    fireEvent.change(await screen.findByLabelText("초안 주제"), { target: { value: "이전 초안과 분리할 새 카드" } });
+    fireEvent.click(screen.getByRole("button", { name: "A 구조 사용" }));
+    fireEvent.click(document.querySelector('[data-card-template="number_list"]') as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: "초안 만들기" }));
+
+    const created = await waitFor(() => {
+      const call = fetchCalls.find((candidate) => {
+        const deck = candidate.body.cardDeckV3 as { id?: string } | undefined;
+        return candidate.body.idea === "이전 초안과 분리할 새 카드" && Boolean(deck?.id);
+      });
+      if (!call) throw new Error(`새 카드 저장 요청이 아직 나가지 않았다. calls=${JSON.stringify(fetchCalls)}`);
+      return call;
+    });
+
+    expect(created.body.id).toBeNull();
+    expect(created.body).not.toHaveProperty("bodyBaseRevision");
+    expect(created.body.id).not.toBe("draft-cross-v3");
+  }, 20000);
 });

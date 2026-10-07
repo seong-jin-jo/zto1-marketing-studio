@@ -83,6 +83,34 @@ describe("S7 템플릿 command", () => {
     }
   });
 
+  it.each(["4:5", "1:1"] as const)("S7-R3-MINOR-01 %s 큰 제목 표지형은 글 2~4개를 겹치지 않게 배치한다", (ratio) => {
+    for (const textCount of [2, 3, 4]) {
+      const before = crowdedPlainDeck(ratio);
+      const stickers = before.slides[0].elements.filter((element) => element.type === "sticker");
+      const seed = before.slides[0].elements.find((element): element is TextElement => element.type === "text")!;
+      before.slides[0].elements = [
+        ...stickers,
+        ...Array.from({ length: textCount }, (_, index) => ({
+          ...structuredClone(seed),
+          id: `headline_text_${textCount}_${index}`,
+          text: `표지 글 ${index + 1}`,
+          z_index: stickers.length + index,
+        })),
+      ];
+
+      const after = applyCardDeckTemplate(before, "headline_cover", { kind: "all" });
+      const texts = after.slides[0].elements
+        .filter((element): element is TextElement => element.type === "text")
+        .sort((left, right) => left.y - right.y);
+
+      expect(() => validateCardDeckV3(after), `${ratio} 글 ${textCount}개`).not.toThrow();
+      for (let index = 0; index < texts.length - 1; index += 1) {
+        expect(texts[index].y + texts[index].height, `${ratio} 글 ${textCount}개: ${index + 1}번과 ${index + 2}번 상자가 겹침`)
+          .toBeLessThanOrEqual(texts[index + 1].y);
+      }
+    }
+  });
+
   it("S7-R2-MINOR-01 한 장에 보이는 글 요소가 5개면 카드 밖 배치 전에 템플릿 적용을 거절한다", () => {
     const before = plainDeck();
     const seed = before.slides[0].elements[0] as TextElement;
