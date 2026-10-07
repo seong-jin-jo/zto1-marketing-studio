@@ -7,6 +7,74 @@ STAMP: 2026-10-07 20:00 KST | model: gpt-6.1-sol/Codex | agent: code-builder | s
 `ci.yml`은 `_ci/src`, `osmu-db-migrate.yml`은 `_ci/migrate-${{ github.run_id }}/src`에 checkout한다. 각 workflow의 run working-directory와 cache, source 경로도 checkout 하위로 정렬했다. `marketing_runner`를 쓰는 모든 workflow를 순회하는 integrity 계약은 deploy 이외의 루트 checkout, working-directory 이탈, 루트 `git clean`, workspace 대상 `rm -rf`를 거절한다.
 
 수정 전 신규 계약은 `ci.yml`의 path 누락과 `dashboard` 루트 기준 working-directory 때문에 2건 실패했다. 수정 후 표적 32건, 전체 integrity 34파일 108건, workflow YAML 8파일 파싱이 통과했다. 임시 루트 실측에서 `_ci/src`의 untracked 파일만 정리되고 형제 `config-tenant2`와 `data-tenant2` sentinel은 보존됐다. actionlint는 로컬에 설치돼 있지 않아 미검증이다. 원격 CI, 운영 러너 실행, 현재 운영 tenant 데이터 상태와 운영 배포는 미검증이며 push하지 않았다.
+## 2026-10-07 20:01 KST · 생성기 감시 운영 워크스페이스 격리
+
+STAMP: 2026-10-07 20:01 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: 교차 리뷰 R1, tenant bind mount 삭제 복구 workflow, 셸·Vitest·YAML 실측 | 고민: 운영 compose 원본이 있는 self-hosted workspace를 건드리지 않으면서 고정 commit의 감시 코드만 실행하게 했다.
+
+발견: 감시 워크플로가 30분마다 `$GITHUB_WORKSPACE`를 컨테이너에서 `rm -rf`한 뒤 checkout했다. 이 runner의 workspace는 운영 compose 프로젝트이자 tenant 설정·데이터 bind mount 원본이므로, 로그인 감시가 운영 데이터를 삭제할 수 있었다.
+
+변경: workspace 정리와 checkout을 모두 제거했다. GitHub Contents API가 현재 commit의 probe·상태 함수 두 파일만 실행별 `$RUNNER_TEMP/genmon-*`에 받고, 상태 cache도 `$RUNNER_TEMP` 아래에서만 복원·저장한다. 운영 배포 workflow는 바꾸지 않았다. 계약 테스트는 `GITHUB_WORKSPACE`, `rm -rf`, `actions/checkout` 부재와 임시영역 경로를 고정한다.
+
+| 검증 | 결과 |
+|---|---|
+| RED 관찰 | 기존 workflow의 `GITHUB_WORKSPACE` 때문에 신규 안전 계약 1건 실패 |
+| 셸 상태 판정 | 정상·1회 실패·2회 실패·컨테이너 없음·복구 5건 PASS |
+| ShellCheck·YAML 파싱 | 오류 0, 감시·배포 workflow 파싱 PASS |
+| 표적 Vitest | workflow 계약 7건 PASS |
+| 전체 integrity | 34파일 111건 PASS |
+| 운영 주기·Slack 실전송 | 미검증. push와 workflow dispatch를 하지 않음 |
+
+레드팀: self-hosted runner에서 workspace는 폐기 가능한 checkout 폴더라는 전제가 틀렸다. 필요한 두 파일만 임시영역으로 가져오게 해 운영 프로젝트와의 쓰기 경로를 없앴다.
+
+셀프심문: 이 교정이 틀렸다면 GitHub Contents API가 운영 runner에서 막혀 감시 자체가 시작되지 않는 경우다. 로컬 계약과 파싱은 통과했지만 실제 schedule 실행은 하지 않았으므로 미검증으로 남긴다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/Users/sj/wt/genmon-review-r1.md` | `.github/workflows/rescue-tenant-gateway-data.yml` | `.github/workflows/osmu-generator-monitor.yml` | `dashboard/tests/integrity/generator-monitor-workflow.contract.test.ts`
+
+## 2026-10-07 08:45 KST · 생성기 감시 배포 격리와 연속 장애 판정 교정
+
+STAMP: 2026-10-07 08:45 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: 컨트롤러 반려, GitHub Actions concurrency 공식 문서, 셸 상태 판정, 전체 integrity | 고민: 감시기의 일시 실패 흡수는 감시기 내부 상태로 해결하고 운영 배포 워크플로에는 영향을 주지 않았다.
+
+첫 구현은 감시와 배포에 같은 concurrency 그룹을 넣어 운영 배포 경로까지 바꿨다. 두 워크플로의 대기 실행이 서로 영향을 받을 수 있으므로 `deploy-marketing.yml`을 원본으로 복구했다. 감시는 전용 `osmu-generator-monitor` 그룹에서 이전 감시만 취소한다.
+
+로그인 probe 한 주기 실패는 `suspect`로만 저장하고 Slack을 보내지 않는다. 다음 30분 주기에도 연속으로 실패해야 `down`과 failure 알림으로 전환한다. 컨테이너 미기동은 이전 상태를 유지하고, 장애 뒤 한 번의 정상 응답은 즉시 recovery로 전환한다.
+
+| 검증 | 결과 |
+|---|---|
+| RED 관찰 | 첫 실패가 `failure:down`으로 즉시 전이돼 신규 단위·계약 테스트 실패 |
+| 셸 상태 판정 | 정상·1회 실패·2회 실패·컨테이너 없음·복구 5건 PASS |
+| ShellCheck·YAML 파싱 | 오류 0, 감시·배포 2파일 파싱 PASS |
+| 표적 Vitest | 워크플로 계약 6건 PASS |
+| 전체 integrity | 34파일 110건 PASS |
+| 운영 주기·Slack 실전송 | 미검증. push와 workflow dispatch를 하지 않음 |
+
+레드팀: `queue: max`의 지원 여부와 무관하게 감시 기능이 운영 출고 워크플로를 수정하는 것은 범위 침범이다. 배포 파일을 원복하고, 배포·재기동의 짧은 실패는 감시기 자체의 `suspect` 단계로 흡수했다.
+
+셀프심문: 이 교정이 틀렸다면 가장 그럴듯한 이유는 cache 복원 순서가 운영 schedule에서 예상과 다르게 작동하는 경우다. 로컬은 상태 함수와 워크플로 구조만 검증했으므로 실제 두 주기 장애·복구 알림은 미검증으로 남긴다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `.github/workflows/osmu-generator-monitor.yml` | `.github/workflows/deploy-marketing.yml` | `scripts/lib/generator-monitor-state.sh` | `docs/qa/qa-tracker.md` | https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+
+## 2026-10-07 08:30 KST · Higgsfield 로그인 상태전이 감시
+
+STAMP: 2026-10-07 08:30 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: 없음 | 근거: `osmu-health-monitor.yml`, GitHub Actions concurrency·cache 공식 문서, BRAIN 모니터링 정본, 로컬 셸·Vitest | 고민: 생성 비용 없이 계정 API만 읽고, 배포 중 컨테이너 교체와 지속 장애의 반복 알림을 각각 직렬화와 상태전이 판정으로 제거했다.
+
+배포 때만 실행되던 `scripts/probe-generator-session.sh`를 30분 정기 감시로 확장했다. 최초 확인과 세 번 재시도 모두 실패할 때만 장애로 판정하고, 컨테이너가 미기동이면 이전 상태를 유지한다. `deploy-marketing.yml`과 새 감시 워크플로는 같은 concurrency 그룹을 사용해 컨테이너 교체 중 오판과 self-hosted 러너 경합을 막는다. 장애와 복구 전이에만 기존 `OSMU_ALERT_SLACK_WEBHOOK_URL`로 알리고, 생성 요청이나 자격증명 덮어쓰기는 하지 않는다.
+
+| 검증 | 결과 |
+|---|---|
+| 셸 함수 단위 | 정상·장애·컨테이너 없음·전이 없음 4건 PASS |
+| ShellCheck·bash 문법 | 오류 0 |
+| 워크플로 YAML | 신규 감시·기존 배포 2파일 파싱 PASS |
+| 표적 Vitest | 신규 워크플로 계약 6건 PASS |
+| 전체 integrity | 34파일 110건 PASS |
+| 운영 주기 실행·Slack 실전송 | 미검증. push와 workflow dispatch를 하지 않음 |
+
+기존 구현 확인: 배포 워크플로의 읽기 전용 `account status` 탐침과 외부 health monitor의 cache·상태전이·Slack 패턴을 보존해 확장했다. 별도 생성 API나 새 시크릿은 만들지 않았다.
+
+레드팀: 감시가 배포와 겹치면 컨테이너 교체를 로그인 만료로 오판할 수 있다. 같은 concurrency 그룹으로 두 워크플로를 직렬화했고, 컨테이너 미기동은 `hold`로 분리해 이전 상태를 덮지 않는다. 알림이 반복되면 무시될 수 있으므로 동일 상태에는 전송하지 않는다.
+
+셀프심문: 이 결론이 틀렸다면 가장 그럴듯한 이유는 GitHub에 올라간 기본 브랜치에서 schedule과 cache가 로컬 계약과 다르게 동작하는 경우다. 로컬은 구조와 판정만 검증했으므로 운영 실행은 미검증으로 남긴다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `.github/workflows/osmu-health-monitor.yml` | `.github/workflows/deploy-marketing.yml` | `scripts/probe-generator-session.sh` | `/Users/sj/SJ_BRAIN_wiki/wiki/cto/인프라/concept-모니터링-로깅-알림-스택.md` | https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/control-deployments | https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching
 
 ## 2026-10-07 07:51 KST · S5b와 S6 main 병합 검증
 
