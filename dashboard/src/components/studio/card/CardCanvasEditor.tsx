@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "@/components/shared/Button";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { authHeaders } from "@/lib/auth";
 import type { CardDeckV3, CardElement, CardElementType } from "@/lib/studio/card-element-contract";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
@@ -195,6 +196,7 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
   const [pendingTemplateId, setPendingTemplateId] = useState<CardDeckTemplateId>(() => initialTemplateState.activeTemplateId);
   const [templateScope, setTemplateScope] = useState<"all" | "slide">("all");
   const [previousTemplate, setPreviousTemplate] = useState<{ id: CardDeckTemplateId; deck: CardDeckV3 } | null>(() => initialTemplateState.previousTemplate);
+  const [restoreConfirmationOpen, setRestoreConfirmationOpen] = useState(false);
   const [splitNotice, setSplitNotice] = useState("");
   const [sceneOverflow, setSceneOverflow] = useState(false);
   const [toneCandidates, setToneCandidates] = useState<{ targets: Array<{ slideId: string; bubbleId: string; text: string }>; candidates: ChatToneCandidate[]; revision: number } | null>(null);
@@ -285,10 +287,8 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
     commit(next, { activeTemplateId: pendingTemplateId, previousTemplate: nextPrevious });
     setActiveTemplateId(pendingTemplateId);
   }, [activeSlideId, activeTemplateId, commit, history.present, pendingTemplateId, templateScope]);
-  const restorePreviousTemplate = useCallback(() => {
+  const performRestorePreviousTemplate = useCallback(() => {
     if (!previousTemplate) return;
-    const editedAfterTemplateApplication = history.present.revision !== previousTemplate.deck.revision + 1;
-    if (editedAfterTemplateApplication && !window.confirm("템플릿 적용 뒤 편집 내용이 있습니다. 이전 템플릿으로 복원하면 그 편집 내용이 사라집니다. 계속할까요?")) return;
     const current = structuredClone(history.present);
     const restored = { ...structuredClone(previousTemplate.deck), revision: history.present.revision + 1 };
     const nextPrevious = { id: activeTemplateId, deck: current };
@@ -297,6 +297,15 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
     setActiveTemplateId(previousTemplate.id);
     setPendingTemplateId(previousTemplate.id);
   }, [activeTemplateId, commit, history.present, previousTemplate]);
+  const restorePreviousTemplate = useCallback(() => {
+    if (!previousTemplate) return;
+    const editedAfterTemplateApplication = history.present.revision !== previousTemplate.deck.revision + 1;
+    if (editedAfterTemplateApplication) {
+      setRestoreConfirmationOpen(true);
+      return;
+    }
+    performRestorePreviousTemplate();
+  }, [history.present.revision, performRestorePreviousTemplate, previousTemplate]);
   const beginTextEdit = useCallback((element: CardElement) => {
     if (element.type !== "text" || element.locked) return;
     setSelectedId(element.id);
@@ -616,6 +625,20 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
   if (!activeSlide) return null;
   return (
     <section className={styles.editor} data-card-canvas-editor onKeyDown={onKeyDown} aria-label="카드 자유 배치 편집기">
+      <ConfirmDialog
+        request={restoreConfirmationOpen ? {
+          title: "이전 템플릿으로 복원할까요?",
+          description: "템플릿 적용 뒤 직접 편집한 글과 배치가 사라지고, 이전 템플릿 상태로 돌아갑니다.",
+          confirmLabel: "편집 내용을 버리고 복원",
+          cancelLabel: "현재 편집 유지",
+          destructive: true,
+        } : null}
+        onCancel={() => setRestoreConfirmationOpen(false)}
+        onConfirm={() => {
+          setRestoreConfirmationOpen(false);
+          performRestorePreviousTemplate();
+        }}
+      />
       <div className={styles.addToolbar} role="toolbar" aria-label="카드 요소 추가">
         <Button size="sm" onClick={() => add("text")}>글 추가</Button>
         <Button size="sm" onClick={() => fileInputRef.current?.click()}>사진 추가</Button>

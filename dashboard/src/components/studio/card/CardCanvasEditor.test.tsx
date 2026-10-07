@@ -74,13 +74,12 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     fireEvent.click(screen.getByRole("button", { name: "글 추가" }));
     view.rerender(<CardCanvasEditor deck={current} templateState={currentTemplateState} onDeckChange={onChange} />);
     const edited = structuredClone(current);
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-
     fireEvent.click(screen.getByRole("button", { name: /이전 템플릿/ }));
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("편집 내용"));
+    expect(screen.getByRole("dialog", { name: "이전 템플릿으로 복원할까요?" })).toBeInTheDocument();
+    expect(screen.getByText(/직접 편집한 글과 배치가 사라지고/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "현재 편집 유지" }));
     expect(current).toEqual(edited);
-    confirm.mockRestore();
   });
 
   it("S7-AC5 전후 비교 뒤 이전 템플릿 복원은 요소 상태를 정확히 되돌린다", () => {
