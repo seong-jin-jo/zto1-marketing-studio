@@ -563,7 +563,7 @@ describe("Studio publish result integrity", () => {
     fireEvent.timeUpdate(video);
     expect(document.querySelector("[data-video-subtitle-active]")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
     await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
       "자막 없는 원본 영상을 찾지 못해 다시 굽지 않았습니다. 생성실에서 영상을 다시 만들거나 원본을 복원해 주세요.",
       "error",
@@ -601,7 +601,7 @@ describe("Studio publish result integrity", () => {
 
     render(<StudioPage />);
     await waitFor(() => expect(document.querySelector("[data-video-subtitle-list]")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
 
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([request]) => String(request).includes("/exports"))).toBe(true));
     await waitFor(() => {
@@ -660,7 +660,7 @@ describe("Studio publish result integrity", () => {
     fireEvent.timeUpdate(video);
     expect(document.querySelector("[data-video-subtitle-active]")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
     await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
       "자막 없는 원본 영상을 찾지 못해 다시 굽지 않았습니다. 생성실에서 영상을 다시 만들거나 원본을 복원해 주세요.",
       "error",
@@ -704,7 +704,7 @@ describe("Studio publish result integrity", () => {
     fireEvent.timeUpdate(video);
     expect(document.querySelectorAll("[data-video-subtitle-active]")).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([request]) => String(request).includes("/exports"))).toBe(true));
   });
 
@@ -735,7 +735,7 @@ describe("Studio publish result integrity", () => {
     fireEvent.timeUpdate(video);
     expect(document.querySelector("[data-video-subtitle-active]")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
     await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
       "자막 없는 원본 영상을 찾지 못해 다시 굽지 않았습니다. 생성실에서 영상을 다시 만들거나 원본을 복원해 주세요.",
       "error",
@@ -774,7 +774,7 @@ describe("Studio publish result integrity", () => {
     fireEvent.timeUpdate(video);
     expect(document.querySelectorAll("[data-video-subtitle-active]")).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([request]) => String(request).includes("/exports"))).toBe(true));
     expect(mocks.showToast).not.toHaveBeenCalledWith(expect.stringContaining("영상을 다시 만들어"), "error");
   });
@@ -840,7 +840,7 @@ describe("Studio publish result integrity", () => {
     expect(screen.getByRole("button", { name: "카드 추가" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "상단" })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
 
     await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
       "이전 카드 2장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.",
@@ -882,7 +882,7 @@ describe("Studio publish result integrity", () => {
 
     expect(await screen.findByText(/편집 원본 정보가 없어 문구·위치·순서를 바꿀 수 없습니다/)).toBeInTheDocument();
     expect(screen.getByLabelText("문구 1")).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
 
     await waitFor(() => expect(mocks.showToast).toHaveBeenCalledWith(
       "이전 카드 1장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.",

@@ -114,7 +114,7 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
       publishBlockedReason="저장된 자유 배치 내용을 불러오는 중입니다."
     />);
     expect(screen.getByRole("button", { name: "자유 배치로 편집" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "발행실로 이동" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "내보내기" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "자유 배치로 편집" }));
     expect(onStart).not.toHaveBeenCalled();
     expect(onPublish).not.toHaveBeenCalled();
@@ -266,8 +266,8 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     const deck = createPlainCardDeckV3(["첫 장", "둘째 장"], "deck_publish_block");
     render(<EditRoom kind="card" lines={["첫 장", "둘째 장"]} onLinesChange={() => {}} cardDeckV3={deck} onCardDeckV3Change={() => {}} onOpenPublish={onOpenPublish} publishBlockedReason="자유 배치 결과물 만들기는 다음 업데이트에서 열립니다." />);
     expect(screen.getByRole("alert")).toHaveTextContent("다음 업데이트");
-    expect(screen.getByRole("button", { name: "발행실로 이동" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    expect(screen.getByRole("button", { name: "내보내기" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
     expect(onOpenPublish).not.toHaveBeenCalled();
   });
 
