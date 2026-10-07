@@ -5,9 +5,9 @@
 - 수정: CI는 `_ci/src`, 승인 DB migration은 `_ci/migrate-${{ github.run_id }}/src`에 checkout한다. working-directory, npm cache lockfile, openclaw 의존성 복사, migration `SOURCE_DIR`를 같은 하위 tree로 정렬했다. deploy workflow는 수정하지 않았다.
 - 회귀 방지: `marketing_runner`를 쓰는 모든 workflow를 자동 순회해 deploy 외 루트 checkout, checkout 밖 working-directory, root `git clean`, workspace `rm -rf`를 거절하는 integrity 계약을 추가했다.
 - 검증: 수정 전 계약 2건 실패를 재현했다. 수정 후 표적 32건, 전체 integrity 34파일 108건, workflow YAML 8파일이 통과했다. 임시 루트에서 child `git clean -ffdx` 후 tenant sentinel 2개 보존과 child untracked 삭제를 관찰했다. actionlint는 미설치라 미검증이다.
-- 커밋: `e49d8c56 fix(ci): isolate self-hosted runner checkouts`. 문서 커밋은 다음 실행에서 남긴다. push는 하지 않는다.
+- 커밋: `e49d8c56` workflow 격리, `27c0c30c` 운영 문서 정합, `cdd735cb` 신규 workflow의 기본 working-directory 누락 차단. 최종 전체 integrity도 34파일 108건 PASS다. push는 하지 않는다.
 - 미검증: 원격 CI, 운영 self-hosted runner 실제 checkout, 현재 `config-tenantN`·`data-tenantN` 존재와 데이터 무결성, 운영 배포.
-- 다음 실행: 문서 정합 커밋과 pipeline artifact lint를 끝낸 뒤 컨트롤러가 diff를 재검증한다. 근본 해결인 workspace 밖 영속 bind mount 전환은 운영 변경 승인 뒤 별도 작업으로 진행한다.
+- 다음 실행: 컨트롤러가 diff를 재검증한다. 근본 해결인 workspace 밖 영속 bind mount 전환은 운영 변경 승인 뒤 별도 작업으로 진행한다.
 
 ## 2026-10-05 23:08 KST PR 119 VID-STALE-09 원격 CI 회귀 교정 완료, push 대기
 
