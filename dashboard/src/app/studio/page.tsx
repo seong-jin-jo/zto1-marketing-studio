@@ -19,6 +19,7 @@ import { PlatformPreview, PREVIEW_PLATFORMS, type PreviewAccount, type PreviewIn
 import { PlatformFocusFilter } from "@/components/studio/PlatformFocusFilter";
 import { PublishHeaderControls } from "@/components/studio/PublishHeaderControls";
 import { ExportPanel, type ExportPanelKind } from "@/components/studio/ExportPanel";
+import { exportKindForDraftState } from "@/lib/studio/export-eligibility";
 import { CreateRoom, EditRoom, type CreateContentBranch, type CreateKind, type CreateStructureChoice, type EditContentKind } from "@/components/studio/StudioRooms";
 import type { StudioGenerationCandidate } from "@/lib/studio/generation/client";
 import { useUsage } from "@/hooks/useOverview";
@@ -2392,7 +2393,7 @@ export default function StudioPage() {
         cardDeckV3,
       );
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
-      const exportKind: ExportPanelKind | null = editKind === "video" ? "video" : editKind === "card" ? "card_deck" : null;
+      const exportKind: ExportPanelKind | null = exportKindForDraftState(editKind, { cardDeckV3, videoEdit });
       if (!exportKind) {
         changeRoom("publish");
         showToast("편집 내용을 저장하고 발행실로 이동했습니다", "success");
@@ -4600,10 +4601,20 @@ export default function StudioPage() {
             setRequestedCardSlide({ id: slide.item_key, requestId: Date.now() });
             showToast(`${slide.number}장이 비어 있습니다. 내용을 채운 뒤 다시 내보내 주세요.`, "error");
           }}
-          onOpenPublish={() => {
+          onOpenPublish={async (receipt) => {
+            const response = await fetch(`/api/studio/drafts/${encodeURIComponent(exportPanel.draftId)}/enqueue`, {
+              method: "POST",
+              headers: { ...authHeaders(), "Content-Type": "application/json" },
+              body: JSON.stringify({ tenant_id: activeWorkspace.id }),
+            });
+            const payload = await response.json().catch(() => ({})) as { error?: string; export_id?: string; source_hash?: string };
+            if (!response.ok) throw new Error(payload.error || "발행 대기열에 편집 결과를 고정하지 못했습니다.");
+            if (payload.export_id !== receipt.exportId || payload.source_hash !== receipt.sourceHash) {
+              throw new Error("발행 대기열의 내보내기 판이 화면에서 확인한 판과 다릅니다.");
+            }
             setExportPanel(null);
             changeRoom("publish");
-            showToast("최신 내보내기를 확인하고 발행실로 이동했습니다", "success");
+            showToast("최신 내보내기 판을 발행 대기열에 고정하고 발행실로 이동했습니다", "success");
           }}
         />
       ) : null}

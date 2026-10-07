@@ -50,7 +50,7 @@ interface ExportPanelProps {
   draftId: string;
   kind: ExportPanelKind;
   onClose: () => void;
-  onOpenPublish: (receipt: { exportId: string; sourceHash: string }) => void;
+  onOpenPublish: (receipt: { exportId: string; sourceHash: string }) => Promise<void> | void;
   onOpenEmptySlide: (slide: { order: number; number: number; item_key: string }) => void;
 }
 
@@ -72,9 +72,13 @@ function itemStatusLabel(status: ExportItemStatus): string {
   return "대기 중";
 }
 
-function blockerMessage(latest: LatestExportResponse | null): string | null {
+function blockerMessage(latest: LatestExportResponse | null, kind: ExportPanelKind): string | null {
   if (!latest?.blocker) return null;
-  if (latest.blocker === "EXPORT_SOURCE_STALE") return "내보낸 뒤에 편집했습니다. 최신 내용으로 다시 내보내야 발행실로 갈 수 있습니다.";
+  if (latest.blocker === "EXPORT_SOURCE_STALE") {
+    return kind === "card_deck"
+      ? "카드 이미지에 영향을 주는 편집을 내보낸 뒤 바꿨습니다. 캡션·발행 본문만 바꾼 경우는 다시 내보내지 않아도 됩니다. 최신 카드 이미지로 다시 내보내야 발행실로 갈 수 있습니다."
+      : "영상 파일에 영향을 주는 편집을 내보낸 뒤 바꿨습니다. 캡션·발행 본문만 바꾼 경우는 다시 내보내지 않아도 됩니다. 최신 영상으로 다시 내보내야 발행실로 갈 수 있습니다.";
+  }
   if (latest.blocker === "NO_SUCCESSFUL_EXPORT") return "이 편집본의 내보내기 결과가 아직 없습니다.";
   if (latest.blocker === "EXPORT_IN_PROGRESS") return "최신 편집본을 내보내고 있습니다.";
   if (latest.blocker === "EXPORT_FAILED") return "최신 편집본에서 실패한 항목이 있습니다. 실패한 항목만 다시 시도할 수 있습니다.";
@@ -89,6 +93,8 @@ export function ExportPanel({ tenantId, draftId, kind, onClose, onOpenPublish, o
   const [error, setError] = useState("");
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const pollingStartedAt = useRef<number | null>(null);
+  const pollFailureCount = useRef(0);
+  const pollRetryTimer = useRef<number | null>(null);
 
   const latestUrl = `/api/studio/drafts/${encodeURIComponent(draftId)}/exports/latest?kind=${kind}&tenant_id=${encodeURIComponent(tenantId)}`;
 
@@ -131,24 +137,43 @@ export function ExportPanel({ tenantId, draftId, kind, onClose, onOpenPublish, o
     if (!job || FINAL_STATUSES.has(job.status) || pollTimedOut) return;
     if (pollingStartedAt.current === null) pollingStartedAt.current = Date.now();
     const controller = new AbortController();
+    const acceptJob = (next: ExportJobResponse) => {
+      if (pollFailureCount.current > 0) {
+        pollFailureCount.current = 0;
+        setError("");
+      }
+      if (FINAL_STATUSES.has(next.status)) {
+        pollingStartedAt.current = null;
+        void loadLatest().catch((cause) => {
+          setError(cause instanceof Error ? cause.message : "최신 내보내기 확인에 실패했습니다.");
+        });
+      }
+    };
+    const poll = () => {
+      void loadJob(job.export_id, controller.signal)
+        .then(acceptJob)
+        .catch((cause) => {
+          if (controller.signal.aborted) return;
+          if (pollFailureCount.current === 0) {
+            pollFailureCount.current = 1;
+            setError("진행 상태 확인이 한 번 실패했습니다. 자동으로 다시 확인합니다.");
+            pollRetryTimer.current = window.setTimeout(poll, POLL_INTERVAL_MS);
+            return;
+          }
+          setError(cause instanceof Error ? cause.message : "진행 상태 확인에 실패했습니다.");
+        });
+    };
     const timer = window.setTimeout(() => {
       if (pollingStartedAt.current !== null && Date.now() - pollingStartedAt.current >= POLL_TIMEOUT_MS) {
         setPollTimedOut(true);
         return;
       }
-      void loadJob(job.export_id, controller.signal)
-        .then((next) => {
-          if (FINAL_STATUSES.has(next.status)) {
-            pollingStartedAt.current = null;
-            void loadLatest().catch((cause) => {
-              setError(cause instanceof Error ? cause.message : "최신 내보내기 확인에 실패했습니다.");
-            });
-          }
-        })
-        .catch((cause) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "진행 상태 확인에 실패했습니다."); });
+      poll();
     }, POLL_INTERVAL_MS);
     return () => {
       window.clearTimeout(timer);
+      if (pollRetryTimer.current !== null) window.clearTimeout(pollRetryTimer.current);
+      pollRetryTimer.current = null;
       controller.abort();
     };
   }, [job, loadJob, loadLatest, pollTimedOut]);
@@ -157,6 +182,7 @@ export function ExportPanel({ tenantId, draftId, kind, onClose, onOpenPublish, o
     setBusy(true);
     setError("");
     setPollTimedOut(false);
+    pollFailureCount.current = 0;
     try {
       const source = await loadLatest();
       if (source.first_empty_slide) {
@@ -212,6 +238,7 @@ export function ExportPanel({ tenantId, draftId, kind, onClose, onOpenPublish, o
       if (!response.ok) throw new Error(apiError(payload, "실패한 항목을 다시 접수하지 못했습니다."));
       pollingStartedAt.current = Date.now();
       setPollTimedOut(false);
+      pollFailureCount.current = 0;
       await loadJob(job.export_id);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "실패한 항목을 다시 접수하지 못했습니다.");
@@ -226,9 +253,9 @@ export function ExportPanel({ tenantId, draftId, kind, onClose, onOpenPublish, o
     try {
       const current = await loadLatest();
       if (!current.is_latest || current.blocker || !current.latest_export) {
-        throw new Error(blockerMessage(current) ?? "최신 내보내기를 확인한 뒤 발행실로 이동할 수 있습니다.");
+        throw new Error(blockerMessage(current, kind) ?? "최신 내보내기를 확인한 뒤 발행실로 이동할 수 있습니다.");
       }
-      onOpenPublish({ exportId: current.latest_export.export_id, sourceHash: current.current_source_hash });
+      await onOpenPublish({ exportId: current.latest_export.export_id, sourceHash: current.current_source_hash });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "최신 내보내기를 확인하지 못했습니다.");
     } finally {
@@ -236,7 +263,7 @@ export function ExportPanel({ tenantId, draftId, kind, onClose, onOpenPublish, o
     }
   };
 
-  const message = blockerMessage(latest);
+  const message = blockerMessage(latest, kind);
   const failedItems = job?.items.filter((item) => item.status === "failed") ?? [];
   const canPublish = Boolean(latest?.is_latest && !latest.blocker && latest.latest_export?.status === "succeeded" && job?.status === "succeeded");
 

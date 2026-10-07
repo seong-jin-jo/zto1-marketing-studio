@@ -156,7 +156,7 @@ describe("S4 ExportPanel 계약", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { rerender } = render(<ExportPanel {...props} />);
 
-    expect(await screen.findByText(/내보낸 뒤에 편집했습니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/캡션·발행 본문만 바꾼 경우/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "최신 내용 다시 내보내기" })).toBeInTheDocument();
 
     fetchMock.mockImplementation(() => response(latest({
@@ -182,7 +182,7 @@ describe("S4 ExportPanel 계약", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
       await vi.runAllTicks();
-      for (let index = 0; index < 6; index += 1) await Promise.resolve();
+      for (let index = 0; index < 20; index += 1) await Promise.resolve();
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const callsBeforeUnmount = fetchMock.mock.calls.length;
@@ -190,5 +190,43 @@ describe("S4 ExportPanel 계약", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
 
     expect(fetchMock).toHaveBeenCalledTimes(callsBeforeUnmount);
+  });
+
+  it("S4-POLL-02 경계: 진행 조회가 한 번 실패해도 다음 주기에 자동 재시도한다", async () => {
+    vi.useFakeTimers();
+    let jobLoads = 0;
+    const fetchMock = vi.fn((url: string | URL | Request) => {
+      if (String(url).includes("/latest")) {
+        return response(latest({
+          latest_export: { export_id: EXPORT_ID, status: "processing", source_revision: 7, source_hash: HASH, finished_at: null },
+          blocker: "EXPORT_IN_PROGRESS",
+        }));
+      }
+      jobLoads += 1;
+      if (jobLoads === 2) return response({ error: "temporary" }, 503);
+      return response(job({ progress: { completed: jobLoads >= 3 ? 4 : 3, total: 9 } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ExportPanel {...props} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.runAllTicks();
+      for (let index = 0; index < 30; index += 1) await Promise.resolve();
+    });
+    expect(screen.getByText("3 / 9장")).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.runAllTicks();
+      for (let index = 0; index < 30; index += 1) await Promise.resolve();
+    });
+    expect(screen.getByText(/자동으로 다시 확인합니다/)).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersToNextTimerAsync();
+      await vi.runAllTicks();
+      for (let index = 0; index < 6; index += 1) await Promise.resolve();
+    });
+    expect(jobLoads).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText("4 / 9장")).toBeInTheDocument();
   });
 });

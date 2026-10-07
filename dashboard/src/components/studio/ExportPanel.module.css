@@ -10,9 +10,9 @@
 }
 
 .panel {
-  width: min(100%, 72rem);
+  width: min(100%, var(--export-panel-max-width));
   min-width: 0;
-  border: 1px solid var(--border);
+  border: var(--stroke-hairline) solid var(--border);
   border-radius: var(--shape-surface);
   background: var(--surface);
   box-shadow: var(--elevation-floating);
@@ -23,7 +23,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--stack-section);
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--stroke-hairline) solid var(--border);
   padding: var(--pad-inset);
 }
 
@@ -55,7 +55,7 @@
 
 .thumbnail {
   width: 100%;
-  max-height: 18rem;
+  max-height: var(--export-panel-preview-max-height);
   border-radius: var(--shape-control);
   object-fit: contain;
   background: var(--surface-2);
@@ -63,7 +63,7 @@
 
 @media (min-width: 48rem) {
   .content {
-    grid-template-columns: minmax(0, 1fr) minmax(17.5rem, 0.55fr);
+    grid-template-columns: minmax(0, 1fr) minmax(var(--export-panel-status-min-width), 0.55fr);
   }
 
   .statusColumn {

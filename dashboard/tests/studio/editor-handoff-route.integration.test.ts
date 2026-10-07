@@ -5,6 +5,7 @@ const H = vi.hoisted(() => ({
   tenantId: "11111111-1111-4111-8111-111111111111" as string | null,
   draftId: "draft-editor-1",
   handoff: null as EditorHandoff | null,
+  draftPayload: { videoEdit: {} } as Record<string, unknown>,
   updateAllowed: true,
   queueCalls: [] as Array<Record<string, unknown>>,
   queueOptions: [] as Array<Record<string, unknown>>,
@@ -56,9 +57,14 @@ vi.mock("@/lib/studio/editor-handoff-store", () => ({
     return { draftId: H.draftId, handoff: input.handoff };
   }),
   loadEditorHandoff: vi.fn(async () => H.handoff ? {
-    draft: { id: H.draftId, idea: H.handoff.summary, payload: { editor_handoff: H.handoff }, status: "draft" },
+    draft: { id: H.draftId, idea: H.handoff.summary, payload: { ...H.draftPayload, editor_handoff: H.handoff }, status: "draft" },
     handoff: H.handoff,
   } : null),
+  editorHandoffFromDraftPayload: vi.fn((payload: unknown) => {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    const handoff = (payload as Record<string, unknown>).editor_handoff;
+    return handoff && typeof handoff === "object" && !Array.isArray(handoff) ? handoff : null;
+  }),
   updateEditorHandoff: vi.fn(async (_tenantId: string, _draftId: string, _expected: number, handoff: EditorHandoff) => {
     if (!H.updateAllowed) return false;
     H.handoff = handoff;
@@ -87,7 +93,7 @@ vi.mock("@/lib/studio/export-repository", async () => {
   const { ExportQueueError } = await vi.importActual<typeof import("@/lib/studio/export-contract")>("@/lib/studio/export-contract");
   return {
     exportRepository: () => ({
-      withLatestForPublish: vi.fn(async (_tenantId: string, _draftId: string, kind: "card_deck" | "video", publish: (receipt: Record<string, unknown>) => unknown) => {
+      withLatestForPublish: vi.fn(async (_tenantId: string, _draftId: string, kind: "card_deck" | "video", publish: (receipt: Record<string, unknown>, payload: Record<string, unknown>) => unknown) => {
         if (H.latestExport.blocker || !H.latestExport.is_latest || H.latestExport.latest_export?.status !== "succeeded") {
           const code = H.latestExport.blocker ?? "NO_SUCCESSFUL_EXPORT";
           throw new ExportQueueError(409, code, "latest export blocked", H.latestExport.first_empty_slide ? { first_empty_slide: H.latestExport.first_empty_slide } : {});
@@ -98,7 +104,7 @@ vi.mock("@/lib/studio/export-repository", async () => {
           sourceHash: H.latestExport.current_source_hash,
           kind,
           artifactKeys: kind === "video" ? ["export-final.mp4"] : ["slide-1.png", "slide-2.png"],
-        });
+        }, { ...H.draftPayload, editor_handoff: H.handoff });
       }),
     }),
   };
@@ -125,6 +131,7 @@ beforeEach(() => {
   H.tenantId = "11111111-1111-4111-8111-111111111111";
   H.draftId = "draft-editor-1";
   H.handoff = null;
+  H.draftPayload = { videoEdit: {} };
   H.updateAllowed = true;
   H.queueCalls = [];
   H.queueOptions = [];
@@ -153,7 +160,7 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
     }));
     const body = await response.json();
 
-    expect(response.status).toBe(201);
+    expect(response.status, JSON.stringify(body)).toBe(201);
     expect(response.headers.get("X-Contract-Version")).toBe("1.0");
     expect(body).toEqual(expect.objectContaining({ draft_id: H.draftId, handoff: expect.objectContaining({ kind: "video" }) }));
   });
@@ -273,7 +280,7 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
     }));
     const body = await response.json();
 
-    expect(response.status).toBe(201);
+    expect(response.status, JSON.stringify(body)).toBe(201);
     expect(body.command).toEqual(expect.objectContaining({ action: "enqueue_openclaw", executed: true }));
     expect(H.queueCalls[0]).toEqual(expect.objectContaining({
       sourceContext: expect.objectContaining({
@@ -303,7 +310,8 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
       body: JSON.stringify({ tenant_id: H.tenantId }),
     }), { params: Promise.resolve({ draftId: H.draftId }) });
 
-    expect(response.status).toBe(201);
+    const body = await response.clone().json();
+    expect(response.status, JSON.stringify(body)).toBe(201);
     expect(H.queueCalls[0]).toEqual(expect.objectContaining({
       text: "잠금 뒤 확정된 최신 영상 원본",
       sourceContext: expect.objectContaining({ revision: 1 }),
@@ -319,7 +327,8 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
       body: JSON.stringify({ tenant_id: H.tenantId }),
     }), { params: Promise.resolve({ draftId: H.draftId }) });
 
-    expect(response.status).toBe(503);
+    const body = await response.clone().json();
+    expect(response.status, JSON.stringify(body)).toBe(503);
     expect(await response.json()).toMatchObject({ code: "EXPORT_DELIVERY_UNAVAILABLE" });
     expect(H.queueCalls).toHaveLength(0);
   });

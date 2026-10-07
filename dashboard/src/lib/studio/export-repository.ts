@@ -28,6 +28,11 @@ export interface PublishExportReceipt {
   artifactKeys: string[];
 }
 
+interface PublishExportSnapshot {
+  receipt: PublishExportReceipt;
+  draftPayload: Record<string, unknown>;
+}
+
 function number(value: unknown): number {
   return Number(value ?? 0);
 }
@@ -283,9 +288,9 @@ export class PostgresExportRepository {
     tenantId: string,
     draftId: string,
     kind: ExportKind,
-    publish: (receipt: PublishExportReceipt) => Promise<T>,
+    publish: (receipt: PublishExportReceipt, draftPayload: Record<string, unknown>) => Promise<T>,
   ): Promise<T> {
-    return withTenant(tenantId, async (tx) => {
+    const snapshot = await withTenant(tenantId, async (tx): Promise<PublishExportSnapshot> => {
       const [draft] = await tx<{ payload: unknown }[]>`
         SELECT payload FROM drafts WHERE tenant_id=${tenantId} AND id=${draftId} FOR UPDATE`;
       const source = sourceFromDraft(draft, kind, tenantId);
@@ -327,13 +332,23 @@ export class PostgresExportRepository {
         || items.some((item) => item.status !== "succeeded" || !item.artifact_key || !item.artifact_sha256)) {
         throw new ExportQueueError(409, "EXPORT_FAILED", "내보내기 결과 파일이 완전하지 않습니다");
       }
-      return publish({
-        exportId: String(current.id),
-        sourceHash: source.sourceHash,
-        kind,
-        artifactKeys: items.map((item) => item.artifact_key!),
-      });
+      return {
+        receipt: {
+          exportId: String(current.id),
+          sourceHash: source.sourceHash,
+          kind,
+          artifactKeys: items.map((item) => item.artifact_key!),
+        },
+        draftPayload: draft?.payload && typeof draft.payload === "object" && !Array.isArray(draft.payload)
+          ? draft.payload as Record<string, unknown>
+          : {},
+      };
     });
+    // The callback may write to the file queue and mirror that write to the
+    // database. Run it only after the draft transaction releases its
+    // connection and SELECT ... FOR UPDATE lock, so pool max=5 cannot deadlock
+    // when six requests arrive together.
+    return publish(snapshot.receipt, snapshot.draftPayload);
   }
 
   async runnableTenants(): Promise<string[]> {

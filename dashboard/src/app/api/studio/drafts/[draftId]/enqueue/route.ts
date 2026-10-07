@@ -2,10 +2,11 @@ import { effectiveTenantId } from "@/lib/tenant-auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { addQueuePost, QueueInputError } from "@/lib/queue-add";
 import { EditorContractError, handoffQueueInput } from "@/lib/studio/editor-handoff";
-import { loadEditorHandoff } from "@/lib/studio/editor-handoff-store";
+import { editorHandoffFromDraftPayload, loadEditorHandoff } from "@/lib/studio/editor-handoff-store";
 import { cardDeckV3PublishErrorResponse } from "@/lib/studio/card-deck-v3-publish-gate";
 import { exportRepository } from "@/lib/studio/export-repository";
 import { ExportQueueError, type ExportKind } from "@/lib/studio/export-contract";
+import { exportKindForDraftState } from "@/lib/studio/export-eligibility";
 import { signImageToken } from "@/lib/image-token";
 
 function artifactDeliveryUrl(tenantId: string, kind: ExportKind, artifactKey: string): string {
@@ -34,18 +35,16 @@ export async function POST(
   try {
     const loaded = await loadEditorHandoff(tenantId, draftId);
     if (!loaded) return Response.json({ error: "editor handoff not found", code: "EDITOR_HANDOFF_NOT_FOUND" }, { status: 404 });
-    const exportKind: ExportKind | null = loaded.handoff.kind === "card" ? "card_deck" : loaded.handoff.kind === "video" ? "video" : null;
+    const exportKind = exportKindForDraftState(loaded.handoff.kind, loaded.draft.payload ?? {});
     if (exportKind) {
-      return await exportRepository().withLatestForPublish(tenantId, draftId, exportKind, async (receipt) => {
-        const lockedLoaded = await loadEditorHandoff(tenantId, draftId);
-        const lockedKind: ExportKind | null = lockedLoaded?.handoff.kind === "card"
-          ? "card_deck"
-          : lockedLoaded?.handoff.kind === "video" ? "video" : null;
-        if (!lockedLoaded || lockedKind !== exportKind) {
+      return await exportRepository().withLatestForPublish(tenantId, draftId, exportKind, async (receipt, lockedPayload) => {
+        const lockedHandoff = editorHandoffFromDraftPayload(lockedPayload);
+        const lockedKind = exportKindForDraftState(lockedHandoff?.kind, lockedPayload);
+        if (!lockedHandoff || lockedKind !== exportKind) {
           throw new EditorContractError("발행 준비 중 편집본이 바뀌었습니다. 최신 내용을 확인한 뒤 다시 시도해 주세요.", 409, "EDITOR_HANDOFF_CHANGED");
         }
         const artifactUrls = receipt.artifactKeys.map((key) => artifactDeliveryUrl(tenantId, exportKind, key));
-        const input = handoffQueueInput(lockedLoaded.handoff, draftId, receipt);
+        const input = handoffQueueInput(lockedHandoff, draftId, receipt);
         const preparedMedia = exportKind === "card_deck"
           ? { imageUrl: artifactUrls[0] ?? null, imageUrls: artifactUrls, videoFilename: null, videoUrl: null }
           : { imageUrl: null, imageUrls: null, videoFilename: receipt.artifactKeys[0] ?? null, videoUrl: artifactUrls[0] ?? null };

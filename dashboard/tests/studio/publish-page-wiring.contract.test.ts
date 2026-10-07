@@ -54,3 +54,13 @@ describe("발행실 연결/발행가능 판정 배선 계약", () => {
     expect(body).toMatch(/const publishableTargets = computePublishableTargets\(channelReadiness\)/);
   });
 });
+
+describe("S4 내보내기 영수증 발행 대기열 배선 계약", () => {
+  it("S4-AC5: ExportPanel 영수증을 enqueue API 응답과 대조한 뒤에만 발행실로 이동한다", () => {
+    const body = sliceFrom("onOpenPublish={async (receipt)", 1_400);
+    expect(body).toContain("/enqueue");
+    expect(body).toContain("payload.export_id !== receipt.exportId");
+    expect(body).toContain("payload.source_hash !== receipt.sourceHash");
+    expect(body.indexOf("changeRoom(\"publish\")")).toBeGreaterThan(body.indexOf("payload.source_hash !== receipt.sourceHash"));
+  });
+});
