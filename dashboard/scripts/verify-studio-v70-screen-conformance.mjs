@@ -748,10 +748,10 @@ async function captureUnrecoverableTextCard(viewport, cardCount) {
   await page.screenshot({ path: screenshot });
 
   await room.getByRole("button", { name: "내보내기" }).click();
-  const exportPanel = page.locator("[data-export-panel]");
-  await exportPanel.waitFor({ state: "visible" });
-  await exportPanel.getByRole("button", { name: "발행실로", exact: true }).click();
   await page.waitForFunction(() => new URL(location.href).searchParams.get("room") === "publish");
+  if (await page.locator("[data-export-panel]").count()) {
+    throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드가 내보내기 대기열 패널을 강제로 열었습니다`);
+  }
   if (imageUploadCount !== uploadCountBefore) {
     throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드가 ${imageUploadCount - uploadCountBefore}장을 다시 업로드했습니다`);
   }

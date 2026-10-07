@@ -475,7 +475,7 @@ try {
 
   const result = {
     result: "PASS",
-    backendPath: { api: "actual Next route", database: "PostgreSQL", worker: "stub only; actual repository claim/complete/fail" },
+    backendPath: { api: "actual Next route", database: "PostgreSQL", worker: "stub only; actual PostgreSQL claim/complete/fail" },
     responsive,
     persistedProgressAfterReload: "3 / 9장",
     partialFailure: { failedOrdinal: 4, retriedItemKeys: retryRequests[0].item_keys, finalStatus: "succeeded" },

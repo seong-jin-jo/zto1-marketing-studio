@@ -3,7 +3,7 @@
   "backendPath": {
     "api": "actual Next route",
     "database": "PostgreSQL",
-    "worker": "stub only; actual repository claim/complete/fail"
+    "worker": "stub only; actual PostgreSQL claim/complete/fail"
   },
   "responsive": [
     {
