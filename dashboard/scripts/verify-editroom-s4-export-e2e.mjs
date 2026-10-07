@@ -16,7 +16,8 @@ const outputDir = process.env.EDITROOM_S4_OUTPUT_DIR || path.resolve(process.cwd
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("EDITROOM S4 actual-backend E2E requires DATABASE_URL");
 const workspaceId = "41111111-1111-4111-8111-111111111111";
-const draftId = "42222222-2222-4222-8222-222222222222";
+const browserToken = process.env.EDITROOM_S4_BEARER_TOKEN || "osmu_editroom_s4_browser_token";
+let draftId = "";
 const lines = Array.from({ length: 9 }, (_, index) => `${index + 1}장 실제 내보내기 검증 내용`);
 const deck = createPlainCardDeckV3(lines, "deck_s4_browser");
 function canonical(value) {
@@ -45,34 +46,11 @@ let retryRequests = [];
 let draftSaves = [];
 let imageUploads = 0;
 let enqueueReceipt = null;
+let createdDrafts = 0;
+let resettingPage = false;
 
 const admin = postgres(databaseUrl, { max: 2 });
 const tinyPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XQ8lWQAAAABJRU5ErkJggg==", "base64");
-
-function readyCardHandoff() {
-  const timestamp = new Date().toISOString();
-  return {
-    contract_version: "1.0",
-    handoff_id: crypto.randomUUID(),
-    kind: "card",
-    summary: "S4 실제 대기열 발행 본문",
-    source: { generation_id: "generation-s4-e2e", candidate_id: "candidate-s4-e2e" },
-    payload: {
-      kind: "card",
-      slides: deck.slides.map((slide, index) => ({
-        id: slide.id,
-        order: index,
-        text: lines[index],
-        image_url: null,
-      })),
-    },
-    revision: 1,
-    status: "ready_for_openclaw",
-    history: [{ operation: "mark_ready", target_id: null, revision: 1, at: timestamp }],
-    created_at: timestamp,
-    updated_at: timestamp,
-  };
-}
 
 async function aggregateJob(jobId) {
   await admin`
@@ -146,20 +124,35 @@ async function resetDatabase(nextScenario) {
     INSERT INTO tenants(id,slug,name,status)
     VALUES (${workspaceId},'editroom-s4-browser','S4 브라우저 검증','active')
     ON CONFLICT (id) DO UPDATE SET status='active',name=EXCLUDED.name`;
-  const payload = {
-    editor_handoff: readyCardHandoff(),
-    cardDeckV3: deck,
-    cardDeck: { template: "plain", slides: [] },
-    editLines: lines,
-    editKind: "card",
-  };
   await admin`
-    INSERT INTO drafts(id,tenant_id,idea,payload,status)
-    VALUES (${draftId},${workspaceId},'S4 내보내기 브라우저 검증',${admin.json(payload)},'draft')`;
+    INSERT INTO tenant_tokens(tenant_id,token_hash,label)
+    VALUES (${workspaceId},${crypto.createHash("sha256").update(browserToken).digest("hex")},'editroom-s4-browser-e2e')
+    ON CONFLICT (token_hash) DO UPDATE SET tenant_id=EXCLUDED.tenant_id,revoked=false`;
+  const saveResponse = await fetch(`${baseUrl}/api/studio/drafts`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${browserToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      tenant_id: workspaceId,
+      idea: "S4 내보내기 브라우저 검증",
+      cardDeckV3: deck,
+      editLines: lines,
+      editKind: "card",
+      status: "draft",
+    }),
+  });
+  const saved = await saveResponse.json();
+  if (saveResponse.status !== 200 || saved.ok !== true || typeof saved.id !== "string") {
+    throw new Error(`실제 초안 저장 API가 실패했습니다: ${saveResponse.status} ${JSON.stringify(saved)}`);
+  }
+  draftId = saved.id;
+  createdDrafts += 1;
   const createResponse = await fetch(`${baseUrl}/api/studio/drafts/${draftId}/exports`, {
     method: "POST",
     headers: {
-      Authorization: "Bearer editroom-s4-browser-token",
+      Authorization: `Bearer ${browserToken}`,
       "Content-Type": "application/json",
       "Idempotency-Key": `s4-browser-${nextScenario}-${Date.now()}`,
     },
@@ -192,24 +185,6 @@ async function resetDatabase(nextScenario) {
   if (nextScenario === "success" || nextScenario === "stale") {
     await processQueued(20);
   }
-  if (nextScenario === "stale") {
-    const staleDeck = structuredClone(deck);
-    staleDeck.revision += 1;
-    staleDeck.slides[0].elements = staleDeck.slides[0].elements.map((element) => element.type === "text"
-      ? { ...element, text: `${element.text} 수정됨` }
-      : element);
-    await admin`
-      UPDATE drafts SET payload=jsonb_set(payload,'{cardDeckV3}',${admin.json(staleDeck)}::jsonb),updated_at=now()
-      WHERE tenant_id=${workspaceId} AND id=${draftId}`;
-  }
-  if (nextScenario === "empty") {
-    const emptyDeck = structuredClone(deck);
-    emptyDeck.revision += 1;
-    emptyDeck.slides[5] = { ...emptyDeck.slides[5], content_state: "empty", elements: [] };
-    await admin`
-      UPDATE drafts SET payload=jsonb_set(payload,'{cardDeckV3}',${admin.json(emptyDeck)}::jsonb),updated_at=now()
-      WHERE tenant_id=${workspaceId} AND id=${draftId}`;
-  }
 }
 
 fs.mkdirSync(outputDir, { recursive: true });
@@ -225,15 +200,11 @@ function work() {
     editKind: "card",
     editLines: lines,
     cardDeckV3: deck,
-    bodyRevision: 8,
+    bodyRevision: 0,
     includes: {},
     publishReconciliations: {},
     publishProgress: { running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} },
   };
-}
-
-function draft() {
-  return { id: draftId, ...work(), hasCardDeckV3: true, status: "draft", savedAt: "2026-10-07T00:00:00.000Z" };
 }
 
 function assertNoOverflow(page, label) {
@@ -255,39 +226,21 @@ function assertNoOverflow(page, label) {
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: viewports[0] });
-await context.addInitScript(({ id, state }) => {
-  localStorage.setItem("dashboard_auth_token", "editroom-s4-browser-token");
-  localStorage.setItem("active_workspace", JSON.stringify({ id, slug: "editroom-s4", name: "S4 브라우저 검증", tier: "team" }));
-  localStorage.setItem(`studio_work:${id}`, JSON.stringify(state));
-}, { id: workspaceId, state: work() });
+await context.addInitScript(({ id }) => {
+  try {
+    const payload = JSON.parse(window.name || "null");
+    localStorage.setItem("dashboard_auth_token", payload?.token ?? "");
+    localStorage.setItem("active_workspace", JSON.stringify({ id, slug: "editroom-s4", name: "S4 브라우저 검증", tier: "team" }));
+    if (payload?.state) localStorage.setItem(`studio_work:${id}`, JSON.stringify(payload.state));
+  } catch { /* about:blank에는 저장소 origin이 없다. 실제 앱 origin에서 다시 실행된다. */ }
+}, { id: workspaceId });
 
-await context.route("**/api/**", async (route) => {
-  const request = route.request();
-  const url = new URL(request.url());
-  const pathname = url.pathname;
-  if (pathname.startsWith(`/api/studio/drafts/${draftId}/exports`)
-    || pathname === `/api/studio/drafts/${draftId}/enqueue`) {
-    return route.fallback();
-  }
-  if (pathname === "/api/me") return json(route, { isOperator: false, tenant: { id: workspaceId, slug: "editroom-s4", name: "S4 브라우저 검증", status: "active" } });
-  if (pathname === "/api/studio/drafts") {
-    if (request.method() === "POST") {
-      draftSaves.push(request.postDataJSON());
-      return json(route, { ok: true, id: draftId, bodyRevision: 8 });
-    }
-    return json(route, url.searchParams.has("id") ? { draft: draft() } : { drafts: [draft()], currentWork: null });
-  }
-  if (pathname === "/api/images/upload") {
-    imageUploads += 1;
-    return json(route, { url: `/qa/alignment-card-${imageUploads % 3 + 1}.jpg` });
-  }
-  if (pathname === "/api/studio/brand-setup") return json(route, { guide: null });
-  if (pathname === "/api/publish/first-comment-capabilities") return json(route, { capabilities: [] });
-  if (/^\/api\/channels\/[^/]+\/accounts$/.test(pathname)) return json(route, { accounts: [] });
-  if (pathname === "/api/images") return json(route, { images: [] });
-  if (pathname === "/api/elevenlabs-voices") return json(route, { voices: [] });
-  return json(route, {});
-});
+// 인증 세션만 고정한다. 초안 저장과 조회, 이미지 업로드, 내보내기, 재시도,
+// 발행실 고정은 실제 Next API와 PostgreSQL을 통과해야 이 검증의 증거가 된다.
+await context.route("**/api/me", (route) => json(route, {
+  isOperator: false,
+  tenant: { id: workspaceId, slug: "editroom-s4", name: "S4 브라우저 검증", status: "active" },
+}));
 
 const page = await context.newPage();
 page.setDefaultTimeout(60_000);
@@ -298,15 +251,26 @@ page.on("pageerror", (error) => browserErrors.push(error.message));
 page.on("console", (message) => { if (message.type() === "error") browserErrors.push(message.text()); });
 page.on("requestfailed", (request) => {
   const failure = `${request.method()} ${request.url()} ${request.failure()?.errorText ?? "failed"}`;
-  if (request.failure()?.errorText === "net::ERR_ABORTED" && request.url().includes(`/drafts/${draftId}/exports/`)) {
+  if (request.failure()?.errorText === "net::ERR_ABORTED"
+    && (
+      resettingPage
+      || request.url().includes(`/drafts/${draftId}/exports/`)
+      || request.url().includes("/api/images/deliver/")
+      || request.url().includes("/__nextjs_font/")
+    )) {
     intentionalAborts.push(failure);
     return;
   }
   failedRequests.push(failure);
 });
 page.on("request", (request) => {
-  if (request.method() !== "POST" || !exportId) return;
+  if (request.method() !== "POST") return;
   const pathname = new URL(request.url()).pathname;
+  if (pathname === "/api/studio/drafts") {
+    try { draftSaves.push(request.postDataJSON()); } catch { draftSaves.push(null); }
+  }
+  if (pathname === "/api/images/upload") imageUploads += 1;
+  if (!exportId) return;
   if (pathname !== `/api/studio/drafts/${draftId}/exports/${exportId}/retry`) return;
   try {
     retryRequests.push(request.postDataJSON());
@@ -333,6 +297,9 @@ async function openPanel() {
   }
   const button = room.getByRole("button", { name: "내보내기", exact: true });
   await button.waitFor({ state: "visible" });
+  for (let attempt = 0; attempt < 120 && await button.evaluate((node) => node.disabled); attempt += 1) {
+    await page.waitForTimeout(250);
+  }
   const buttonState = await button.evaluate((node) => ({
     disabled: node.disabled,
     inertAncestor: Boolean(node.closest("[inert]")),
@@ -378,8 +345,12 @@ async function openPanel() {
 }
 
 async function reset(nextScenario, viewport) {
+  resettingPage = true;
+  await page.goto("about:blank");
+  resettingPage = false;
   await resetDatabase(nextScenario);
   await page.setViewportSize(viewport);
+  await page.evaluate(({ state, token }) => { window.name = JSON.stringify({ state, token }); }, { state: work(), token: browserToken });
   await page.goto(`${baseUrl}/studio?room=edit&kind=card&draft_id=${draftId}`, { waitUntil: "networkidle", timeout: 60_000 });
   await openPanel();
 }
@@ -402,9 +373,7 @@ try {
   await openPanel();
   await page.getByText("3 / 9장", { exact: true }).waitFor();
 
-  await resetDatabase("partial");
-  await page.getByRole("button", { name: "내보내기 닫기" }).click();
-  await openPanel();
+  await reset("partial", viewports[0]);
   await page.getByRole("button", { name: "4장 다시 시도", exact: true }).waitFor();
   await page.screenshot({ path: path.join(outputDir, "s4-partial-failure.png"), fullPage: true });
   const retryResponsePromise = page.waitForResponse((response) => {
@@ -414,7 +383,23 @@ try {
   });
   await page.getByRole("button", { name: "4장 다시 시도", exact: true }).click();
   const retryResponse = await retryResponsePromise;
-  if (retryResponse.status() !== 202) throw new Error(`실제 retry API 상태가 202가 아닙니다: ${retryResponse.status()}`);
+  if (retryResponse.status() !== 202) {
+    const [draftBeforeRetry] = await admin`
+      SELECT id,(payload->>'bodyRevision')::int AS body_revision
+      FROM drafts WHERE tenant_id=${workspaceId} AND id=${draftId}`;
+    const [jobBeforeRetry] = await admin`
+      SELECT id,draft_id,status,source_hash
+      FROM studio_export_jobs
+      WHERE tenant_id=${workspaceId} AND draft_id=${draftId} AND id=${exportId}`;
+    throw new Error(`실제 retry API 상태가 202가 아닙니다: ${JSON.stringify({
+      status: retryResponse.status(),
+      body: await retryResponse.json().catch(() => null),
+      draftBeforeRetry,
+      jobBeforeRetry,
+      draftId,
+      exportId,
+    })}`);
+  }
   if (JSON.stringify(retryRequests) !== JSON.stringify([{ item_keys: [deck.slides[3].id], tenant_id: workspaceId }])) {
     throw new Error(`실패 장 단독 retry 요청이 다릅니다: ${JSON.stringify(retryRequests)}`);
   }
@@ -439,27 +424,54 @@ try {
   await page.getByRole("button", { name: "발행실로", exact: true }).click();
   const enqueueResponse = await enqueueResponsePromise;
   const enqueueBody = await enqueueResponse.json();
-  if (![200, 201].includes(enqueueResponse.status())
-    || enqueueBody.export_id !== exportId
-    || enqueueBody.source_hash !== source.sourceHash) {
-    throw new Error(`발행 큐 영수증이 실제 내보내기와 다릅니다: ${JSON.stringify({ status: enqueueResponse.status(), body: enqueueBody })}`);
+  if (enqueueResponse.status() !== 200 || enqueueBody.pin_status !== "unpinned" || enqueueBody.code !== "EDITOR_HANDOFF_NOT_FOUND") {
+    throw new Error(`handoff 없는 실제 초안의 고정 실패 응답이 다릅니다: ${JSON.stringify({ status: enqueueResponse.status(), body: enqueueBody })}`);
+  }
+  await page.locator('[data-room="publish"]').waitFor({ state: "visible" });
+  const pinNotice = page.getByTestId("publish-export-pin-notice");
+  await pinNotice.waitFor({ state: "visible" });
+  if (await pinNotice.getAttribute("data-pin-status") !== "unpinned") {
+    throw new Error(`handoff 없는 이동의 고정 상태가 unpinned가 아닙니다: ${await pinNotice.innerText()}`);
   }
   const queuedRows = await admin`
-    SELECT id,payload FROM queue_posts WHERE tenant_id=${workspaceId} ORDER BY created_at DESC LIMIT 1`;
-  const sourceContext = queuedRows[0]?.payload?.sourceContext;
-  if (!sourceContext || typeof sourceContext !== "object"
-    || sourceContext.exportId !== exportId
-    || sourceContext.exportSourceHash !== source.sourceHash) {
-    throw new Error(`발행 큐 DB에 영수증이 고정되지 않았습니다: ${JSON.stringify(queuedRows[0] ?? null)}`);
+    SELECT id,payload FROM queue_posts WHERE tenant_id=${workspaceId}`;
+  if (queuedRows.length !== 0) {
+    throw new Error(`고정 실패인데 발행 큐 항목이 생겼습니다: ${JSON.stringify(queuedRows)}`);
   }
-  enqueueReceipt = { exportId, sourceHash: source.sourceHash, queuePostId: queuedRows[0].id };
+  enqueueReceipt = {
+    status: "unpinned",
+    enqueueStatus: enqueueResponse.status(),
+    code: enqueueBody.code,
+    navigatedToPublish: true,
+  };
+  await page.waitForLoadState("networkidle");
 
-  await reset("stale", viewports[1]);
+  await reset("success", viewports[1]);
+  await page.getByRole("button", { name: "내보내기 닫기" }).click();
+  const staleSave = page.waitForResponse((response) => response.request().method() === "POST"
+    && new URL(response.url()).pathname === "/api/studio/drafts"
+    && response.status() === 200);
+  await page.locator(`[data-element-selection="${deck.slides[0].elements[0].id}"]`).dblclick();
+  const directEditor = page.getByRole("textbox", { name: "글 내용 직접 편집" });
+  await directEditor.fill(`${lines[0]} 수정됨`);
+  await directEditor.press("Tab");
+  await staleSave;
+  await openPanel();
   await page.locator('[data-export-blocker="EXPORT_SOURCE_STALE"]').waitFor();
   await page.getByRole("button", { name: "최신 내용 다시 내보내기", exact: true }).waitFor();
   await page.screenshot({ path: path.join(outputDir, "s4-stale.png"), fullPage: true });
 
-  await reset("empty", viewports[2]);
+  await reset("success", viewports[2]);
+  await page.getByRole("button", { name: "내보내기 닫기" }).click();
+  await page.locator(`[data-card-slide="${deck.slides[5].id}"]`).click();
+  const emptyTarget = page.locator(`[data-element-selection="${deck.slides[5].elements[0].id}"]`);
+  await emptyTarget.focus();
+  const emptySave = page.waitForResponse((response) => response.request().method() === "POST"
+    && new URL(response.url()).pathname === "/api/studio/drafts"
+    && response.status() === 200);
+  await page.locator('[data-placeholder="false"]').getByRole("button", { name: "삭제", exact: true }).click();
+  await emptySave;
+  await openPanel();
   await page.locator("[data-export-empty-slide]").waitFor();
   await page.getByRole("button", { name: "6장 열기", exact: true }).click();
   await page.locator("[data-export-panel]").waitFor({ state: "detached" });
@@ -468,7 +480,8 @@ try {
   if (await page.locator("[data-card-stage]").evaluate((node) => document.activeElement === node) !== true) throw new Error("빈 장 카드 스테이지에 초점이 이동하지 않았습니다");
   await page.screenshot({ path: path.join(outputDir, "s4-empty-slide-focus.png"), fullPage: true });
 
-  if (draftSaves.length < viewports.length + 4) throw new Error(`실제 편집 저장 요청이 부족합니다: ${draftSaves.length}`);
+  if (createdDrafts < viewports.length + 4) throw new Error(`실제 API로 만든 초안이 부족합니다: ${createdDrafts}`);
+  if (draftSaves.length < viewports.length + 4) throw new Error(`브라우저의 실제 편집 저장 요청이 부족합니다: ${draftSaves.length}`);
   if (imageUploads < 9) throw new Error(`카드 결과 파일 업로드가 실제 실행되지 않았습니다: ${imageUploads}`);
   if (browserErrors.length) throw new Error(`브라우저 console/page 오류 ${browserErrors.length}건: ${browserErrors.join(" | ")}`);
   if (failedRequests.length) throw new Error(`실패 network request ${failedRequests.length}건: ${failedRequests.join(" | ")}`);
@@ -483,6 +496,7 @@ try {
     stale: { blocker: "EXPORT_SOURCE_STALE", action: "최신 내용 다시 내보내기" },
     empty: { number: emptySlide.number, selectedSlideId: emptySlide.item_key, focusedStage: true },
     draftSaves: draftSaves.length,
+    createdDrafts,
     imageUploads,
     consoleErrors: browserErrors.length,
     failedRequests: failedRequests.length,

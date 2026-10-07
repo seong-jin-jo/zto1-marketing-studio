@@ -289,8 +289,9 @@ export class PostgresExportRepository {
     draftId: string,
     kind: ExportKind,
     publish: (receipt: PublishExportReceipt, draftPayload: Record<string, unknown>) => Promise<T>,
+    options: { holdDraftLockDuringCallback?: boolean } = {},
   ): Promise<T> {
-    const snapshot = await withTenant(tenantId, async (tx): Promise<PublishExportSnapshot> => {
+    const inspect = async (tx: Sql): Promise<PublishExportSnapshot> => {
       const [draft] = await tx<{ payload: unknown }[]>`
         SELECT payload FROM drafts WHERE tenant_id=${tenantId} AND id=${draftId} FOR UPDATE`;
       const source = sourceFromDraft(draft, kind, tenantId);
@@ -343,11 +344,19 @@ export class PostgresExportRepository {
           ? draft.payload as Record<string, unknown>
           : {},
       };
-    });
-    // The callback may write to the file queue and mirror that write to the
-    // database. Run it only after the draft transaction releases its
-    // connection and SELECT ... FOR UPDATE lock, so pool max=5 cannot deadlock
-    // when six requests arrive together.
+    };
+    if (options.holdDraftLockDuringCallback) {
+      // publish_room 고정은 queue.json 쓰기까지 같은 비관적 락(SELECT ... FOR UPDATE)
+      // 안에서 끝낸다. 이 callback은 새 DB 연결을 얻으면 안 된다. DB mirror는 호출자가
+      // transaction 종료 뒤 수행해야 풀 max=5에서 동시 6요청 교착이 나지 않는다.
+      return withTenant(tenantId, async (tx) => {
+        const snapshot = await inspect(tx);
+        return publish(snapshot.receipt, snapshot.draftPayload);
+      });
+    }
+    const snapshot = await withTenant(tenantId, inspect);
+    // OpenClaw enqueue 같은 일반 callback은 새 DB 연결을 쓸 수 있으므로 비관적 락
+    // 해제 뒤 실행한다. publish_room 경로만 위 옵션으로 파일 queue 기록을 잠금 안에 둔다.
     return publish(snapshot.receipt, snapshot.draftPayload);
   }
 

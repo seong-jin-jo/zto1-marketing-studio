@@ -115,6 +115,24 @@ beforeEach(() => {
   }));
 });
 
+describe("canonicalPublicOrigin", () => {
+  it("S4-E2E 정상·거절: 개발 loopback HTTP만 허용하고 운영에서는 같은 값을 거절한다", async () => {
+    process.env.OSMU_PUBLIC_URL = "http://127.0.0.1:3474/";
+    vi.stubEnv("NODE_ENV", "development");
+    const { canonicalPublicOrigin } = await import("@/lib/social-connect");
+    expect(canonicalPublicOrigin()).toBe("http://127.0.0.1:3474");
+
+    vi.stubEnv("NODE_ENV", "production");
+    expect(canonicalPublicOrigin()).toBeNull();
+    process.env.OSMU_PUBLIC_URL = "http://example.com";
+    vi.stubEnv("NODE_ENV", "development");
+    expect(canonicalPublicOrigin()).toBeNull();
+
+    delete process.env.OSMU_PUBLIC_URL;
+    vi.unstubAllEnvs();
+  });
+});
+
 describe("GET /api/connect/instagram — OAuth 동의 URL", () => {
   it("META-SCOPE-001 정상: Instagram 연결·발행·댓글·인사이트 권한을 요청한다", async () => {
     const { GET } = await import("@/app/api/connect/[provider]/route");

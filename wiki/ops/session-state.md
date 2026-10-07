@@ -1,3 +1,14 @@
+## 2026-10-08 03:25 KST 편집실 S4 교차 리뷰 2차 교정 완료, 커밋 대기
+
+- handoff basis: 회장이 지정한 작업 폴더의 미커밋 diff, `wiki/거버넌스/결정.md`, `/Users/sj/wt/s4-review-r2.md`를 기준으로 네트워크 중단 지점부터 재개했다. 별도 tmux 추론은 사용하지 않았다.
+- 수정: 발행실 이동을 export 고정 성공과 분리했다. handoff 없음·미준비는 HTTP 200 `unpinned`로 상태를 드러내며 이동을 막지 않는다. 성공 고정은 export ID 멱등키와 `publish_ready` 상태를 사용하고, 승인 인박스 draft에서 제외하며 발행 성공 시 전달된 큐 항목만 `published`로 바꾼다.
+- 잠금: 비관적 락(SELECT ... FOR UPDATE) 안에서는 파일 큐 기록만 수행하고 DB mirror는 transaction 종료 뒤 실행한다.
+- 한계: 고정 artifact는 감사 기록이다. 현재 발행실 S2가 실제 외부 발행 파일을 다시 준비하므로 바이트 동일성은 미보장이고, 화면 안내·코드 주석·QA 추적기에 기록했다.
+- 검증: B2 RED 1건 확인 뒤 GREEN. 관련 Vitest 7파일 108건 PASS, 실제 PostgreSQL 2파일 13건 PASS·조건부 렌더 1건 skip, `typecheck:ci` PASS, 변경 UI 파일 design-lint 위반 0. 실제 API·PostgreSQL Chromium E2E는 초안 7건, 저장 13회, 이미지 업로드 99회, retry 202, enqueue 200, 콘솔 오류 0, 실패 요청 0이다.
+- 환경: Next webpack build 뒤 Turbopack dev가 신규 retry route를 `_not-found`로 읽던 캐시 충돌은 `.next`를 안전 이동한 뒤 해소했다. 제품 결함이 아니며 깨끗한 dev cache에서 최종 PASS했다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 사용자 소유 변경으로 stage하지 않는다.
+- 다음 실행: pipeline artifact lint와 최종 diff를 확인하고 소유 파일만 커밋한다. push, 원격 CI, QA 승인, 운영 배포는 이번 작업 범위 밖이며 미검증이다.
+
 ## 2026-10-08 01:15 KST 편집실 S4 재부팅 재개 최종 검증 완료, 제어권 반환 준비
 
 - handoff basis: 회장이 지정한 커밋 `253217d3`, `wiki/거버넌스/결정.md`, `/Users/sj/wt/s4-review-r1.md`를 기준으로 재개했다. 별도 tmux 추론은 사용하지 않았다.

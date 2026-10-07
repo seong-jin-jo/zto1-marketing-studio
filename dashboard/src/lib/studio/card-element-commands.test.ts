@@ -276,6 +276,14 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     expect(history.present.slides[0].elements).toMatchObject([{ id: "shape_b", hidden: true, z_index: 0 }]);
   });
 
+  it("S4-E2E 빈 장 계약: 일반 장의 마지막 요소를 지우면 empty가 되고 새 요소를 넣으면 filled로 복구된다", () => {
+    const withText = addCardElement(deck(), "slide_cover", "text", { id: "only_text" });
+    const emptied = deleteCardElement(withText, "slide_cover", "only_text");
+    expect(emptied.slides[0]).toMatchObject({ content_state: "empty", elements: [] });
+    const restored = addCardElement(emptied, "slide_cover", "text", { id: "restored_text" });
+    expect(restored.slides[0]).toMatchObject({ content_state: "filled" });
+  });
+
   it("S1-AC1 거절 경로: 없는 장이나 요소 명령은 내용을 바꾸지 않는다", () => {
     const original = deck();
     expect(moveCardElement(original, "missing", "missing", 1, 1)).toEqual(original);

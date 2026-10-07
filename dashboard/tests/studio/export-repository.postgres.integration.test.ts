@@ -233,6 +233,35 @@ integration.sequential("S3 영속 내보내기 실제 PostgreSQL 통합", () => 
     expect(concurrentUpdateResolved).toBe(true);
   });
 
+  it("S4-R2-m1 경합: 발행실 큐 기록은 같은 트랜잭션의 draft 잠금 안에서 끝나고 외부 갱신은 잠금 해제 뒤 진행한다", async () => {
+    const draft = await seedDraft(["첫 장", "마지막 장"]);
+    const repository = new PostgresExportRepository();
+    const created = await repository.create(tenantA, draft.id, "member-s4-r2-m1", "s4-r2-m1", "7".repeat(64), input(draft.source));
+    await admin!`
+      UPDATE studio_export_items
+      SET status='succeeded',artifact_key='locked-'||ordinal||'.png',artifact_sha256=repeat('a',64),
+          content_type='image/png',byte_size=100,finished_at=now()
+      WHERE tenant_id=${tenantA} AND job_id=${created.job.id}`;
+    await admin!`
+      UPDATE studio_export_jobs
+      SET status='succeeded',succeeded_items=total_items,failed_items=0,finished_at=now()
+      WHERE tenant_id=${tenantA} AND id=${created.job.id}`;
+
+    let concurrentUpdateResolved = false;
+    let concurrentUpdate: Promise<unknown> | null = null;
+    await repository.withLatestForPublish(tenantA, draft.id, "card_deck", async () => {
+      concurrentUpdate = admin!`
+        UPDATE drafts SET updated_at=now()
+        WHERE tenant_id=${tenantA} AND id=${draft.id}`.then(() => { concurrentUpdateResolved = true; });
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(concurrentUpdateResolved).toBe(false);
+      return "queued";
+    }, { holdDraftLockDuringCallback: true });
+
+    await concurrentUpdate;
+    expect(concurrentUpdateResolved).toBe(true);
+  });
+
   it("S4-M2 경합: 최대 5개 연결에서 동시 6요청이 callback의 새 연결을 기다리지 않고 종료한다", async () => {
     const repository = new PostgresExportRepository();
     const cases = await Promise.all(Array.from({ length: 6 }, async (_, index) => {

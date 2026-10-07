@@ -154,13 +154,14 @@ export function ExportPanel({ tenantId, draftId, kind, onClose, onOpenPublish, o
         .then(acceptJob)
         .catch((cause) => {
           if (controller.signal.aborted) return;
-          if (pollFailureCount.current === 0) {
-            pollFailureCount.current = 1;
-            setError("진행 상태 확인이 한 번 실패했습니다. 자동으로 다시 확인합니다.");
-            pollRetryTimer.current = window.setTimeout(poll, POLL_INTERVAL_MS);
+          pollFailureCount.current += 1;
+          if (pollingStartedAt.current !== null && Date.now() - pollingStartedAt.current >= POLL_TIMEOUT_MS) {
+            setPollTimedOut(true);
             return;
           }
-          setError(cause instanceof Error ? cause.message : "진행 상태 확인에 실패했습니다.");
+          const detail = cause instanceof Error ? cause.message : "진행 상태 확인에 실패했습니다.";
+          setError(`${detail} 자동으로 다시 확인합니다. (${pollFailureCount.current}회 실패)`);
+          pollRetryTimer.current = window.setTimeout(poll, POLL_INTERVAL_MS);
         });
     };
     const timer = window.setTimeout(() => {

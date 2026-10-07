@@ -1,3 +1,16 @@
+## 2026-10-08 편집실 S4 교차 리뷰 2차 ❌ BLOCK → ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| EDITROOM-S4-R2-B2 | `발행실로`가 export 고정 성공을 기다려 handoff 없음·미준비 상태에서 이동을 막음 | ✅ 관찰됨 | 이동을 먼저 확정하고 고정은 부가 단계로 분리했다. handoff 없는 실제 초안과 Next API·PostgreSQL 브라우저 E2E에서 enqueue 200 `unpinned`, 발행실 화면 진입, 상태 안내 노출, queue 0건을 확인했다 |
+| EDITROOM-S4-R2-M4 | 버튼을 누를 때마다 같은 export가 승인 인박스 draft로 중복 쌓이고 이중 발행 가능 | ✅ 테스트됨 | `studio-export:<exportId>` 멱등키와 `publish_ready` 상태를 사용한다. 같은 export 두 번 고정 시 큐 1건을 유지하고 승인 인박스 `status=draft` 조회에서 제외하며, 실제 발행 성공 시 전달된 `queue_post_id`만 `published`로 전환한다 |
+| EDITROOM-S4-R2-m1 | 초안 잠금 안에서 큐 DB 미러가 새 풀 연결을 잡을 수 있음 | ✅ 테스트됨 | 비관적 락(SELECT ... FOR UPDATE) 안에서는 파일 큐만 원자적으로 기록하고, transaction 종료 뒤 DB mirror를 실행한다. 풀 최대 5, 동시 6요청 통합 회귀 PASS |
+| EDITROOM-S4-R2-m2 | polling 첫 오류 뒤 한 번만 재시도하고 다음 오류에 영구 정지 | ✅ 테스트됨 | 전체 제한시간 안에서는 polling 오류 뒤 다음 주기를 계속 예약한다. 컴포넌트 회귀 PASS |
+
+실제 발행 파일 동일성 한계: 고정된 export ID, source hash, artifact는 감사 및 추적용이다. 현재 발행실 S2는 플랫폼 발행 직전에 파일을 다시 준비하므로 고정 artifact와 실제 외부 발행 파일의 바이트 동일성은 아직 보장하지 않는다. 화면 상태 안내와 코드 주석에 이 범위를 명시했다.
+
+검증: 관련 Vitest 7파일 108건 PASS, 실제 PostgreSQL 2파일 13건 PASS·조건부 렌더 1건 skip, `typecheck:ci` PASS. 실제 API·PostgreSQL·브라우저 E2E는 초안 7건, 저장 13회, 이미지 업로드 99회, retry 202, enqueue 200, 콘솔 오류 0, 실패 요청 0이다. `/api/me`만 인증 스텁이며 초안 저장·조회와 export·retry·enqueue는 mock하지 않았다. 원격 CI·QA 승인·운영 배포는 미검증이고 push하지 않았다.
+
 ## 2026-10-08 편집실 S4 재부팅 재개 최종 대조 ✅ 로컬 PASS
 
 | 요청번호 | 재대조 결과 | 이번 실행 증거 |
@@ -8041,3 +8054,11 @@ SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-is
 | S3-PR122-M5 | dashboard만 선택 배포하면 같은 태그의 별도 export worker가 재기동되지 않아 옛 소스로 남음 | ✅ 로컬 PASS | `a9d6b614`, dashboard 선택 시 worker를 `up` 대상에 추가하는 workflow 계약 PASS |
 
 최종 검증은 실제 PostgreSQL 연결을 포함한 related 5파일 35건 PASS·실제 PNG 전용 1건 skip, `npx vitest run contract` 107파일 618건 PASS, `typecheck:ci` PASS다. 운영 배포와 push는 범위 밖이라 실행하지 않았다.
+## 2026-10-08 편집실 S4 교차 리뷰 2차 ❌ NG
+
+| 요청번호 | 결함 | 현재 판정 | 종료 조건 |
+|---|---|---|---|
+| EDITROOM-S4-R2-B2 | `발행실로` 이동이 `editor_handoff` 준비 상태와 enqueue 성공에 결합돼 저장 직후 초안이 발행실로 가지 못함 | ❌ NG | handoff 없음·미준비·준비 상태 모두 이동, 고정 실패 상태 노출, 실제 저장 API 기반 E2E |
+| EDITROOM-S4-R2-M4 | 버튼 반복 클릭마다 승인 인박스에 같은 draft가 쌓여 이중 발행 가능 | ❌ NG | export ID 멱등, 발행 완료 항목 승인 후보 제외, 실제 PostgreSQL 회귀 테스트 |
+| EDITROOM-S4-R2-m1 | 비관적 락(SELECT ... FOR UPDATE) 해제 뒤 queue 기록 사이에 draft 변경 가능 | ❌ NG | queue 기록 순서와 snapshot 한계를 코드·테스트에서 명시하고 경계 검증 |
+| EDITROOM-S4-R2-m2 | polling 자동 재시도가 두 번째 연속 오류 뒤 중단됨 | ❌ NG | 연속 오류 뒤에도 자동 polling 복구하는 회귀 테스트 |

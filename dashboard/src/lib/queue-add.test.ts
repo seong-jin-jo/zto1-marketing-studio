@@ -15,6 +15,7 @@ describe("S2-B 큐 멱등 재시도", () => {
   const tenantId = "11111111-1111-4111-8111-111111111111";
 
   beforeEach(() => {
+    vi.resetModules();
     H.gateCalls = 0;
     H.prepared = null;
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "queue-add-s2-"));
@@ -69,5 +70,30 @@ describe("S2-B 큐 멱등 재시도", () => {
       videoFilename: "export-final.mp4",
       videoUrl: "/api/exports/deliver/signed-export",
     });
+  });
+
+  it("S4-R2-M4 정상: 같은 export ID의 발행실 고정은 publish_ready 한 건만 유지한다", async () => {
+    const tenantDir = path.join(dataDir, "tenants", tenantId);
+    fs.mkdirSync(tenantDir, { recursive: true });
+    const { runWithTenant } = await import("@/lib/tenant-context");
+    const { addQueuePost } = await import("./queue-add");
+    const input = {
+      text: "발행실 고정 본문",
+      draftId: "22222222-2222-4222-8222-222222222222",
+      idempotencyKey: "studio-export:33333333-3333-4333-8333-333333333333",
+    };
+    const options = {
+      preparedMedia: { imageUrl: "signed-1", imageUrls: ["signed-1"] },
+      initialStatus: "publish_ready" as const,
+    };
+
+    const first = await runWithTenant(tenantId, () => addQueuePost(tenantId, input, options));
+    const second = await runWithTenant(tenantId, () => addQueuePost(tenantId, input, options));
+
+    expect(first.reused).toBe(false);
+    expect(second).toMatchObject({ reused: true, post: { id: first.post.id, status: "publish_ready" } });
+    const saved = JSON.parse(fs.readFileSync(path.join(tenantDir, "queue.json"), "utf8")) as { posts: Array<{ status: string }> };
+    expect(saved.posts).toHaveLength(1);
+    expect(saved.posts[0].status).toBe("publish_ready");
   });
 });

@@ -46,9 +46,10 @@
     "finalStatus": "succeeded"
   },
   "enqueueReceipt": {
-    "exportId": "9a427d69-5c86-4a4d-9fa9-b6b6bb3e423e",
-    "sourceHash": "4abb5d31362fc5614809ed69ff1be9de61490be3449e0a39efe6333333f0c7e7",
-    "queuePostId": "a2e5a2d8-a12c-492c-b468-b74a5d6a9589"
+    "status": "unpinned",
+    "enqueueStatus": 200,
+    "code": "EDITOR_HANDOFF_NOT_FOUND",
+    "navigatedToPublish": true
   },
   "stale": {
     "blocker": "EXPORT_SOURCE_STALE",
@@ -59,9 +60,10 @@
     "selectedSlideId": "slide_deck_s4_browser_5",
     "focusedStage": true
   },
-  "draftSaves": 9,
-  "imageUploads": 81,
+  "draftSaves": 13,
+  "createdDrafts": 7,
+  "imageUploads": 99,
   "consoleErrors": 0,
   "failedRequests": 0,
-  "intentionalPollingAborts": 10
+  "intentionalPollingAborts": 20
 }

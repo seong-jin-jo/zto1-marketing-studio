@@ -9,6 +9,8 @@ const H = vi.hoisted(() => ({
   updateAllowed: true,
   queueCalls: [] as Array<Record<string, unknown>>,
   queueOptions: [] as Array<Record<string, unknown>>,
+  publishOptions: [] as Array<Record<string, unknown>>,
+  mirrorCalls: [] as Array<Record<string, unknown>>,
   replaceHandoffInsidePublish: null as EditorHandoff | null,
   generatedText: "",
   latestExport: {
@@ -89,11 +91,19 @@ vi.mock("@/lib/queue-add", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/queue-store", () => ({
+  mirrorQueuePost: vi.fn(async (_tenantId: string, post: Record<string, unknown>) => {
+    H.mirrorCalls.push(post);
+    return true;
+  }),
+}));
+
 vi.mock("@/lib/studio/export-repository", async () => {
   const { ExportQueueError } = await vi.importActual<typeof import("@/lib/studio/export-contract")>("@/lib/studio/export-contract");
   return {
     exportRepository: () => ({
-      withLatestForPublish: vi.fn(async (_tenantId: string, _draftId: string, kind: "card_deck" | "video", publish: (receipt: Record<string, unknown>, payload: Record<string, unknown>) => unknown) => {
+      withLatestForPublish: vi.fn(async (_tenantId: string, _draftId: string, kind: "card_deck" | "video", publish: (receipt: Record<string, unknown>, payload: Record<string, unknown>) => unknown, options: Record<string, unknown> = {}) => {
+        H.publishOptions.push(options);
         if (H.latestExport.blocker || !H.latestExport.is_latest || H.latestExport.latest_export?.status !== "succeeded") {
           const code = H.latestExport.blocker ?? "NO_SUCCESSFUL_EXPORT";
           throw new ExportQueueError(409, code, "latest export blocked", H.latestExport.first_empty_slide ? { first_empty_slide: H.latestExport.first_empty_slide } : {});
@@ -135,6 +145,8 @@ beforeEach(() => {
   H.updateAllowed = true;
   H.queueCalls = [];
   H.queueOptions = [];
+  H.publishOptions = [];
+  H.mirrorCalls = [];
   H.replaceHandoffInsidePublish = null;
   H.generatedText = "";
   H.latestExport = {
@@ -316,6 +328,59 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
       text: "잠금 뒤 확정된 최신 영상 원본",
       sourceContext: expect.objectContaining({ revision: 1 }),
     }));
+  });
+
+  it("S4-R2-M4 정상: 발행실 고정은 export ID 멱등키와 publish_ready 상태를 쓰고 잠금 해제 뒤 DB에 미러한다", async () => {
+    H.handoff = applyEditorOperation(createEditorHandoff(handoffBody()), 0, { operation: "mark_ready" });
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: H.tenantId,
+        purpose: "publish_room",
+        expected_export_id: H.latestExport.latest_export!.export_id,
+        expected_source_hash: H.latestExport.current_source_hash,
+      }),
+    }), { params: Promise.resolve({ draftId: H.draftId }) });
+
+    const body = await response.json();
+    expect(response.status, JSON.stringify(body)).toBe(201);
+    expect(body).toMatchObject({
+      pin_status: "publish_ready",
+      export_id: H.latestExport.latest_export!.export_id,
+      source_hash: H.latestExport.current_source_hash,
+    });
+    expect(H.queueCalls[0]).toMatchObject({
+      idempotencyKey: `studio-export:${H.latestExport.latest_export!.export_id}`,
+    });
+    expect(H.queueOptions[0]).toMatchObject({
+      initialStatus: "publish_ready",
+      mirror: false,
+    });
+    expect(H.publishOptions[0]).toEqual({ holdDraftLockDuringCallback: true });
+    expect(H.mirrorCalls).toEqual([expect.objectContaining({ id: "queue-1" })]);
+  });
+
+  it("S4-R2-B2 회귀: handoff가 없어도 발행실 고정 요청은 unpinned 정상 응답으로 이동을 막지 않는다", async () => {
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: H.tenantId,
+        purpose: "publish_room",
+        expected_export_id: H.latestExport.latest_export!.export_id,
+        expected_source_hash: H.latestExport.current_source_hash,
+      }),
+    }), { params: Promise.resolve({ draftId: H.draftId }) });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      queued: false,
+      pin_status: "unpinned",
+      code: "EDITOR_HANDOFF_NOT_FOUND",
+    });
+    expect(H.queueCalls).toHaveLength(0);
   });
 
   it("S4-AC5 거절: 공개 HTTPS origin이 없으면 상대 artifact URL을 큐에 넣지 않는다", async () => {

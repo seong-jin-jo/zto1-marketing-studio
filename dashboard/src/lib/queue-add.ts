@@ -50,6 +50,7 @@ export interface PreparedQueueMedia {
 }
 
 export interface QueuePost {
+  [key: string]: unknown;
   id: string;
   draftId: string | null;
   text: string;
@@ -81,7 +82,11 @@ export class QueueInputError extends Error {}
 export async function addQueuePost(
   tenantId: string | null,
   input: AddQueuePostInput,
-  options: { preparedMedia?: PreparedQueueMedia } = {},
+  options: {
+    preparedMedia?: PreparedQueueMedia;
+    initialStatus?: "draft" | "publish_ready";
+    mirror?: boolean;
+  } = {},
 ): Promise<{ post: QueuePost; reused: boolean }> {
   const text = input.text.trim();
   if (!text) throw new QueueInputError("text required");
@@ -101,7 +106,7 @@ export async function addQueuePost(
         const existing = queue.posts.find((post) => post.idempotencyKey === idempotencyKey);
         if (existing) {
           const refreshed = prepared || options.preparedMedia
-            ? { ...existing, imageUrl, imageUrls, videoFilename, videoUrl }
+            ? { ...existing, imageUrl, imageUrls, videoFilename, videoUrl, status: options.initialStatus ?? existing.status }
             : existing;
           if (prepared || options.preparedMedia) queue.posts = queue.posts.map((post) => post.id === existing.id ? refreshed : post);
           selected = refreshed;
@@ -117,7 +122,7 @@ export async function addQueuePost(
         originalText: null,
         topic: input.topic?.trim() || "general",
         hashtags: Array.isArray(input.hashtags) ? input.hashtags : [],
-        status: "draft",
+        status: options.initialStatus ?? "draft",
         generatedAt: new Date().toISOString().replace(/\.\d+Z$/, ""),
         approvedAt: null,
         scheduledAt: null,
@@ -148,6 +153,6 @@ export async function addQueuePost(
   );
 
   if (!selected) throw new Error("queue post creation failed");
-  await mirrorQueuePost(tenantId, selected);
+  if (options.mirror !== false) await mirrorQueuePost(tenantId, selected);
   return { post: selected, reused };
 }

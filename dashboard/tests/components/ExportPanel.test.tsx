@@ -192,7 +192,7 @@ describe("S4 ExportPanel 계약", () => {
     expect(fetchMock).toHaveBeenCalledTimes(callsBeforeUnmount);
   });
 
-  it("S4-POLL-02 경계: 진행 조회가 한 번 실패해도 다음 주기에 자동 재시도한다", async () => {
+  it("S4-R2-m2 경계: 진행 조회가 두 번 연속 실패해도 성공할 때까지 자동 재시도한다", async () => {
     vi.useFakeTimers();
     let jobLoads = 0;
     const fetchMock = vi.fn((url: string | URL | Request) => {
@@ -203,8 +203,8 @@ describe("S4 ExportPanel 계약", () => {
         }));
       }
       jobLoads += 1;
-      if (jobLoads === 2) return response({ error: "temporary" }, 503);
-      return response(job({ progress: { completed: jobLoads >= 3 ? 4 : 3, total: 9 } }));
+      if (jobLoads === 2 || jobLoads === 3) return response({ error: "temporary" }, 503);
+      return response(job({ progress: { completed: jobLoads >= 4 ? 4 : 3, total: 9 } }));
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -226,7 +226,12 @@ describe("S4 ExportPanel 계약", () => {
       await vi.runAllTicks();
       for (let index = 0; index < 6; index += 1) await Promise.resolve();
     });
-    expect(jobLoads).toBeGreaterThanOrEqual(3);
+    await act(async () => {
+      await vi.advanceTimersToNextTimerAsync();
+      await vi.runAllTicks();
+      for (let index = 0; index < 12; index += 1) await Promise.resolve();
+    });
+    expect(jobLoads).toBeGreaterThanOrEqual(4);
     expect(screen.getByText("4 / 9장")).toBeInTheDocument();
   });
 });
