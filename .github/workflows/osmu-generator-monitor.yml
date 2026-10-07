@@ -18,7 +18,6 @@ permissions:
 
 env:
   CONTAINER_NAME: openclaw-dashboard-osmu
-  STATE_FILE: .osmu-generator-state
   STATE_KEY_PREFIX: osmu-generator-state-
 
 jobs:
@@ -27,19 +26,35 @@ jobs:
     runs-on: [self-hosted, marketing_runner]
     timeout-minutes: 5
     steps:
-      - name: 워크스페이스 root-owned 잔재 정리
+      - name: 감시 스크립트만 runner 임시 폴더에 받기
+        id: assets
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -d "$GITHUB_WORKSPACE" ]; then
-            docker run --rm -v "$GITHUB_WORKSPACE":/w alpine:3 sh -c 'rm -rf /w/.[!.]* /w/..?* /w/* 2>/dev/null || true' || true
-          fi
+          set -euo pipefail
+          genmon_dir="$RUNNER_TEMP/genmon-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$genmon_dir/scripts/lib"
 
-      - name: Checkout
-        uses: actions/checkout@v4
+          fetch_repo_file() {
+            local repo_path="$1"
+            local target="$2"
+            curl -fsSL --retry 3 --retry-delay 2 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github.raw+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/contents/$repo_path?ref=$GITHUB_SHA" \
+              -o "$target"
+          }
+
+          fetch_repo_file "scripts/probe-generator-session.sh" "$genmon_dir/scripts/probe-generator-session.sh"
+          fetch_repo_file "scripts/lib/generator-monitor-state.sh" "$genmon_dir/scripts/lib/generator-monitor-state.sh"
+          chmod 0500 "$genmon_dir/scripts/probe-generator-session.sh" "$genmon_dir/scripts/lib/generator-monitor-state.sh"
+          echo "dir=$genmon_dir" >> "$GITHUB_OUTPUT"
 
       - name: 이전 상태 캐시 복원
         uses: actions/cache/restore@v4
         with:
-          path: ${{ env.STATE_FILE }}
+          path: ${{ runner.temp }}/.osmu-generator-state
           key: ${{ env.STATE_KEY_PREFIX }}${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             ${{ env.STATE_KEY_PREFIX }}
@@ -47,17 +62,20 @@ jobs:
       - name: 이전 상태 읽기
         id: prev
         run: |
-          if [ -f "$STATE_FILE" ]; then
-            echo "status=$(cat "$STATE_FILE")" >> "$GITHUB_OUTPUT"
+          state_file="$RUNNER_TEMP/.osmu-generator-state"
+          if [ -f "$state_file" ]; then
+            echo "status=$(cat "$state_file")" >> "$GITHUB_OUTPUT"
           else
             echo "status=unknown" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 생성기 로그인 읽기 전용 탐침
         id: check
+        env:
+          GENMON_DIR: ${{ steps.assets.outputs.dir }}
         run: |
           set -euo pipefail
-          source scripts/lib/generator-monitor-state.sh
+          source "$GENMON_DIR/scripts/lib/generator-monitor-state.sh"
 
           container_state="$(docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || true)"
           probe_statuses=()
@@ -68,7 +86,7 @@ jobs:
             # 최초 시도 뒤 세 번 재시도한다. probe 자체의 원문 출력은 폐기되고 종료 코드만 남는다.
             for attempt in 1 2 3 4; do
               attempts="$attempt"
-              if bash scripts/probe-generator-session.sh "$CONTAINER_NAME"; then
+              if bash "$GENMON_DIR/scripts/probe-generator-session.sh" "$CONTAINER_NAME"; then
                 probe_statuses+=(0)
                 break
               else
@@ -104,11 +122,12 @@ jobs:
       - name: 상태 전이 판정
         id: transition
         env:
+          GENMON_DIR: ${{ steps.assets.outputs.dir }}
           PREVIOUS: ${{ steps.prev.outputs.status }}
           CURRENT: ${{ steps.check.outputs.status }}
         run: |
           set -euo pipefail
-          source scripts/lib/generator-monitor-state.sh
+          source "$GENMON_DIR/scripts/lib/generator-monitor-state.sh"
           echo "kind=$(generator_monitor_transition "$PREVIOUS" "$CURRENT")" >> "$GITHUB_OUTPUT"
           echo "persisted=$(generator_monitor_persisted_state "$PREVIOUS" "$CURRENT")" >> "$GITHUB_OUTPUT"
 
@@ -137,13 +156,13 @@ jobs:
         if: ${{ steps.check.outcome == 'success' }}
         env:
           PERSISTED: ${{ steps.transition.outputs.persisted }}
-        run: printf '%s' "$PERSISTED" > "$STATE_FILE"
+        run: printf '%s' "$PERSISTED" > "$RUNNER_TEMP/.osmu-generator-state"
 
       - name: 새 상태 캐시 저장
         if: ${{ steps.check.outcome == 'success' }}
         uses: actions/cache/save@v4
         with:
-          path: ${{ env.STATE_FILE }}
+          path: ${{ runner.temp }}/.osmu-generator-state
           key: ${{ env.STATE_KEY_PREFIX }}${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: 실행 요약

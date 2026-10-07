@@ -29,6 +29,16 @@ describe("OSMU Higgsfield 로그인 정기 감시 계약", () => {
     expect(deploy).not.toContain("queue:");
   });
 
+  it("GENERATOR-MONITOR-WORKFLOW-02B 안전: 운영 compose workspace를 지우거나 checkout하지 않는다", () => {
+    expect(monitor).not.toContain("GITHUB_WORKSPACE");
+    expect(monitor).not.toContain("rm -rf");
+    expect(monitor).not.toContain("actions/checkout");
+    expect(monitor).toContain("$RUNNER_TEMP/genmon-");
+    expect(monitor).toContain("${{ runner.temp }}/.osmu-generator-state");
+    expect(monitor).toContain("scripts/probe-generator-session.sh");
+    expect(monitor).toContain("scripts/lib/generator-monitor-state.sh");
+  });
+
   it("GENERATOR-MONITOR-WORKFLOW-03 경계: 최초 시도와 세 번 재시도 뒤 판정하고 컨테이너 미기동은 보류한다", () => {
     expect(monitor).toContain("for attempt in 1 2 3 4");
     expect(monitor).toContain("scripts/probe-generator-session.sh");
