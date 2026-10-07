@@ -256,6 +256,20 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     expect(await mismatched.json()).toMatchObject({ code: "INVALID_CARD_TEMPLATE_STATE" });
     expect(withTenant).not.toHaveBeenCalled();
   });
+  it("S7-R2-API 거절: 현재 덱 없이 템플릿 상태만 부분 저장하지 않는다", async () => {
+    vi.mocked(withTenant).mockClear();
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const rejected = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1",
+        cardTemplateState: { activeTemplateId: "text_only", previousTemplate: null },
+      }),
+    }));
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toMatchObject({ code: "INVALID_CARD_TEMPLATE_STATE" });
+    expect(withTenant).not.toHaveBeenCalled();
+  });
   it("S7-R2-API 정상: v3 덱을 지우면 템플릿 복원 상태도 같은 저장에서 지운다", async () => {
     H.rows = [{ id: "draft-template-clear" }];
     const { POST } = await import("@/app/api/studio/drafts/route");

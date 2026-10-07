@@ -341,6 +341,10 @@ export async function POST(request: Request) {
     const rawState = body.cardTemplateState as Record<string, unknown> | null;
     const validId = (value: unknown) => typeof value === "string" && CARD_DECK_TEMPLATE_IDS.includes(value as typeof CARD_DECK_TEMPLATE_IDS[number]);
     try {
+      // 템플릿 상태는 저장된 기존 덱을 읽지 않는 JSONB 부분 병합 값이다. 현재 덱 없이
+      // 상태만 받으면 기존 plain/chat 덱과 모순된 ID를 조용히 영속할 수 있으므로 둘을
+      // 하나의 원자적 계약으로 강제한다. 옛 호출은 이 선택 필드 자체를 보내지 않아 영향 없다.
+      if (!body.cardDeckV3) throw new Error("INVALID_CARD_TEMPLATE_STATE");
       let normalizedState: CardTemplateState | null = null;
       if (rawState !== null) {
         if (!rawState || typeof rawState !== "object" || Array.isArray(rawState)) throw new Error("INVALID_CARD_TEMPLATE_STATE");
