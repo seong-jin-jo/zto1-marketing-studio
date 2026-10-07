@@ -88,7 +88,14 @@ describe("운영 marketing_runner 워크스페이스 격리 계약", () => {
       const checkedOut = checkoutPaths(source).map(workspaceRelative);
       if (checkedOut.length === 0) continue;
 
-      for (const workingDirectory of workingDirectories(source)) {
+      expect(
+        source,
+        `${filename}: checkout job의 모든 run step이 상속할 defaults.run.working-directory 필요`,
+      ).toMatch(/defaults:\s*\n\s*run:\s*\n\s*working-directory:\s*\S/);
+
+      const directories = workingDirectories(source);
+      expect(directories.length, `${filename}: working-directory 누락`).toBeGreaterThan(0);
+      for (const workingDirectory of directories) {
         const relative = workspaceRelative(workingDirectory);
         expect(
           checkedOut.some((checkoutPath) => relative === checkoutPath || relative.startsWith(`${checkoutPath}/`)),
