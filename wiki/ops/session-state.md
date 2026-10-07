@@ -1,3 +1,13 @@
+## 2026-10-08 04:30 KST PR 128 CI 테스트 경합 교정 완료, 제어권 반환 준비
+
+- handoff basis: 메인 에이전트가 지정한 HEAD `ddb05919`, `wiki/거버넌스/결정.md`, CI run `37668742639` 실패 로그를 기준으로 삼았다. tmux pane은 같은 위임 작업의 로그라 별도 구현 근거로 사용하지 않았다.
+- 근본원인: 두 테스트 모두 비동기 초기화가 끝나기 전에 비활성 버튼을 클릭했다. CI 부하에서 click이 버려졌고 timeout 시점에는 버튼이 활성화돼 있어 제품 결함처럼 보였다.
+- 수정: 내보내기와 카톡 v3 기본 편집 복귀 버튼이 활성화될 때까지 명시적으로 기다린 뒤 click한다. 기존 진행률, export ID, callback, projection 단언은 유지했고 제품 코드는 바꾸지 않았다.
+- 검증: 대상 두 파일 3회 연속 각 23건 PASS, `typecheck:ci` 종료 코드 0. 전체 `npx vitest run`에서도 대상 파일은 7건과 16건 전부 PASS했다.
+- 전체 실행 한계: 로컬 공유 `node_modules`의 `proper-lockfile` 해석 실패 7 suite, `DATABASE_URL` 미설정 1건, 장시간 실행 중 관측성 테스트 timeout 2건으로 전체는 493파일 PASS, 11파일 FAIL이다. 이 실패들은 이번 두 대상과 분리돼 있다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 사용자 소유 변경으로 stage하지 않는다.
+- 다음 실행: 컨트롤러가 커밋을 push한 뒤 PR 128 원격 CI Test green을 확인한다. push, 원격 CI, QA 승인, 운영 배포는 이번 작업 범위 밖이며 미검증이다.
+
 ## 2026-10-08 03:30 KST 편집실 S4 교차 리뷰 2차 교정 완료, 제어권 반환 준비
 
 - handoff basis: 회장이 지정한 작업 폴더의 미커밋 diff, `wiki/거버넌스/결정.md`, `/Users/sj/wt/s4-review-r2.md`를 기준으로 네트워크 중단 지점부터 재개했다. 별도 tmux 추론은 사용하지 않았다.
