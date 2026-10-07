@@ -180,6 +180,8 @@ describe("V68 생성실 계약", () => {
         facebook: `${id} Facebook 후보`,
         x: `${id} X 후보`,
         instagram: { caption: `${id} Instagram 후보`, hashtags: [], slides: [] },
+        shorts: { hook: `${id} 훅`, body: `${id} 본문`, cta: `${id} CTA` },
+        image_prompt: `Editorial image for ${id}`,
       },
     }));
 
