@@ -69,7 +69,7 @@ function cardWork(deck) {
   return { ...commonWork(), idea: "S7 템플릿 실구동", draftId, text: null, editLines: ["수능 100일의 문제", "바꿀 공부 순서", "오늘 할 행동"], editKind: "card", editFormat: { kind: "card", aspectRatio: "4:5", background: "화이트", subtitleSize: "보통" }, cardDeckV3: deck, cardDeckV3SourceSnapshot: null, bodyRevision };
 }
 
-async function installRoutes(context, getDeck) {
+async function installRoutes(context, getDeck, getTemplateState = () => null) {
   await context.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -83,8 +83,21 @@ async function installRoutes(context, getDeck) {
         return json(route, { ok: true, id: draftId, bodyRevision, videoEditServerRevision: null });
       }
       const deck = getDeck();
-      const draft = { id: draftId, idea: "S7 템플릿 실구동", editKind: "card", editLines: cardWork(deck).editLines, bodyRevision, hasCardDeckV3: true, cardDeckV3: deck, cardDeckV3SourceSnapshot: null, status: "draft", savedAt: "2026-10-07T00:00:00.000Z" };
+      const draft = { id: draftId, idea: "S7 템플릿 실구동", editKind: "card", editLines: cardWork(deck).editLines, bodyRevision, hasCardDeckV3: true, cardDeckV3: deck, cardTemplateState: getTemplateState(), cardDeckV3SourceSnapshot: null, status: "draft", savedAt: "2026-10-07T00:00:00.000Z" };
       return json(route, url.searchParams.has("id") ? { draft } : { drafts: [draft], currentWork: null });
+    }
+    if (pathname === "/api/studio/text" && request.method() === "POST") {
+      const body = JSON.parse(request.postData() || "{}");
+      posts.push({ endpoint: "text", ...body });
+      return json(route, {
+        ok: true,
+        threads: "수능 100일의 문제",
+        facebook: "수능 100일의 문제",
+        x: "수능 100일의 문제",
+        instagram: { caption: "수능 100일의 문제", hashtags: ["S7"], slides: ["수능 100일의 문제", "바꿀 공부 순서", "오늘 할 행동"] },
+        shorts: { hook: "수능 100일의 문제", body: "바꿀 공부 순서", cta: "오늘 할 행동" },
+        ...(body.card_template_id ? { card_template_id: body.card_template_id } : {}),
+      });
     }
     if (pathname === "/api/studio/brand-setup") return json(route, { guide: "따뜻하고 구체적인 존댓말" });
     if (pathname === "/api/publish/first-comment-capabilities") return json(route, { capabilities: [] });
@@ -92,6 +105,44 @@ async function installRoutes(context, getDeck) {
     if (pathname === "/api/images") return json(route, { images: [] });
     return json(route, {});
   });
+}
+
+async function runCreateCardFlow(browser) {
+  const postStart = posts.length;
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const errors = [];
+  await context.addInitScript(({ id, work, createState }) => {
+    localStorage.setItem("dashboard_auth_token", "studio-s7-token");
+    localStorage.setItem("active_workspace", JSON.stringify({ id, slug: "s7", name: "S7 실구동", tier: "team" }));
+    localStorage.setItem(`studio_work:${id}`, JSON.stringify(work));
+    localStorage.setItem(`studio_create_state:${id}`, JSON.stringify(createState));
+  }, {
+    id: workspaceId,
+    work: textWork(),
+    createState: { primaryKind: "card", alsoKinds: [], questionIndex: 5, purpose: "공부 계획 안내", audience: "수험생", rightsConfirmed: true, topicOpen: false, candidates: [structureCandidate], selected: "A", quickStructure: { label: "A", title: "문제 제시형", outline: structureCandidate.format.outline }, cardTemplateId: "number_list", topic: "수능 100일 공부 계획" },
+  });
+  await installRoutes(context, () => plainDeck());
+  const page = await context.newPage();
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  await page.goto(`${baseUrl}/studio?room=create&kind=card`, { waitUntil: "networkidle", timeout: 60_000 });
+  await page.locator('[data-card-template="number_list"]').waitFor({ state: "visible" });
+  const chatButton = page.locator('[data-card-template="chat_bubble"]');
+  if (!(await chatButton.isDisabled()) || !(await chatButton.innerText()).includes("기존 카톡 말풍선 덱")) throw new Error("plain 카드의 카톡 템플릿이 기존 변환 경로 안내와 함께 비활성화되지 않았습니다");
+  await page.getByRole("button", { name: "초안 만들기" }).click();
+  await waitUntil(
+    () => posts.slice(postStart).some((post) => post.endpoint === "text" && post.card_template_id === "number_list"),
+    10_000,
+    "생성실에서 고른 cardTemplateId가 글 생성 API에 전달되지 않았습니다",
+  );
+  await page.waitForFunction((id) => {
+    const value = JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}");
+    return value.cardTemplateState?.activeTemplateId === "number_list" && value.cardDeckV3?.slides?.[0]?.elements?.[0]?.x === 244;
+  }, workspaceId);
+  const dimensions = await noHorizontalOverflow(page, "생성실 카드 템플릿 1440");
+  if (errors.length) throw new Error(`생성실 카드 템플릿 콘솔 오류: ${errors.join(" | ")}`);
+  await context.close();
+  return { viewport: 1440, dimensions, template: "number_list" };
 }
 
 async function noHorizontalOverflow(page, label) {
@@ -139,6 +190,7 @@ async function runCardFlow(browser, viewport) {
   const postStart = posts.length;
   const initial = plainDeck();
   let latestDeck = structuredClone(initial);
+  let latestTemplateState = null;
   const context = await browser.newContext({ viewport });
   const errors = [];
   await context.addInitScript(({ id, work }) => {
@@ -146,7 +198,7 @@ async function runCardFlow(browser, viewport) {
     localStorage.setItem("active_workspace", JSON.stringify({ id, slug: "s7", name: "S7 실구동", tier: "team" }));
     localStorage.setItem(`studio_work:${id}`, JSON.stringify(work));
   }, { id: workspaceId, work: cardWork(initial) });
-  await installRoutes(context, () => latestDeck);
+  await installRoutes(context, () => latestDeck, () => latestTemplateState);
   const page = await context.newPage();
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
@@ -189,6 +241,13 @@ async function runCardFlow(browser, viewport) {
     15_000,
     "템플릿 최종 덱이 실제 초안 저장 API까지 왕복하지 않았습니다",
   );
+  const persisted = posts.slice(postStart).findLast((post) => post.cardTemplateState?.activeTemplateId === "photo_band");
+  if (!persisted?.cardTemplateState?.previousTemplate?.deck) throw new Error("템플릿 ID와 복원용 직전 상태가 초안 저장 API에 함께 영속되지 않았습니다");
+  latestDeck = structuredClone(persisted.cardDeckV3);
+  latestTemplateState = structuredClone(persisted.cardTemplateState);
+  await page.reload({ waitUntil: "networkidle", timeout: 60_000 });
+  await page.locator("[data-card-canvas-editor]").waitFor({ state: "visible" });
+  await page.getByRole("button", { name: /이전 템플릿\(큰 제목 표지형\)으로/ }).waitFor({ state: "visible" });
 
   const dimensions = await noHorizontalOverflow(page, `카드 템플릿 ${viewport.width}`);
   if (await page.locator("[data-card-stage]").count() < 1) throw new Error("데이터가 있는 카드 작업대가 열리지 않았습니다");
@@ -200,6 +259,7 @@ async function runCardFlow(browser, viewport) {
 const browser = await chromium.launch({ headless: true });
 try {
   const results = [];
+  results.push(await runCreateCardFlow(browser));
   results.push(await runTextFlow(browser, { width: 1440, height: 1000 }));
   results.push(await runCardFlow(browser, { width: 1440, height: 1000 }));
   results.push(await runCardFlow(browser, { width: 1024, height: 900 }));
