@@ -8,6 +8,7 @@ const H = vi.hoisted(() => ({
   updateAllowed: true,
   queueCalls: [] as Array<Record<string, unknown>>,
   queueOptions: [] as Array<Record<string, unknown>>,
+  replaceHandoffInsidePublish: null as EditorHandoff | null,
   generatedText: "",
   latestExport: {
     blocker: null as string | null,
@@ -91,6 +92,7 @@ vi.mock("@/lib/studio/export-repository", async () => {
           const code = H.latestExport.blocker ?? "NO_SUCCESSFUL_EXPORT";
           throw new ExportQueueError(409, code, "latest export blocked", H.latestExport.first_empty_slide ? { first_empty_slide: H.latestExport.first_empty_slide } : {});
         }
+        if (H.replaceHandoffInsidePublish) H.handoff = H.replaceHandoffInsidePublish;
         return publish({
           exportId: H.latestExport.latest_export.export_id,
           sourceHash: H.latestExport.current_source_hash,
@@ -119,12 +121,14 @@ function handoffBody() {
 
 beforeEach(() => {
   process.env.MEDIA_SIGNING_SECRET = "editroom-s4-test-signing-secret";
+  process.env.OSMU_PUBLIC_URL = "https://studio.example.test";
   H.tenantId = "11111111-1111-4111-8111-111111111111";
   H.draftId = "draft-editor-1";
   H.handoff = null;
   H.updateAllowed = true;
   H.queueCalls = [];
   H.queueOptions = [];
+  H.replaceHandoffInsidePublish = null;
   H.generatedText = "";
   H.latestExport = {
     blocker: null,
@@ -137,6 +141,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.MEDIA_SIGNING_SECRET;
+  delete process.env.OSMU_PUBLIC_URL;
 });
 
 describe("Studio 편집 인계 HTTP 통합 계약", () => {
@@ -284,6 +289,39 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
         videoUrl: expect.stringContaining("/api/exports/deliver/"),
       }),
     }));
+  });
+
+  it("S4-AC5 정상: draft 잠금 뒤 다시 읽은 최신 handoff 본문을 큐에 넣는다", async () => {
+    H.handoff = applyEditorOperation(createEditorHandoff(handoffBody()), 0, { operation: "mark_ready" });
+    H.replaceHandoffInsidePublish = applyEditorOperation(createEditorHandoff({
+      ...handoffBody(),
+      summary: "잠금 뒤 확정된 최신 영상 원본",
+    }), 0, { operation: "mark_ready" });
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: H.tenantId }),
+    }), { params: Promise.resolve({ draftId: H.draftId }) });
+
+    expect(response.status).toBe(201);
+    expect(H.queueCalls[0]).toEqual(expect.objectContaining({
+      text: "잠금 뒤 확정된 최신 영상 원본",
+      sourceContext: expect.objectContaining({ revision: 1 }),
+    }));
+  });
+
+  it("S4-AC5 거절: 공개 HTTPS origin이 없으면 상대 artifact URL을 큐에 넣지 않는다", async () => {
+    delete process.env.OSMU_PUBLIC_URL;
+    H.handoff = applyEditorOperation(createEditorHandoff(handoffBody()), 0, { operation: "mark_ready" });
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: H.tenantId }),
+    }), { params: Promise.resolve({ draftId: H.draftId }) });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: "EXPORT_DELIVERY_UNAVAILABLE" });
+    expect(H.queueCalls).toHaveLength(0);
   });
 
   it("S4-AC6 거절: 클라이언트를 우회해도 최신 내보내기가 아니면 큐 등록을 막는다", async () => {

@@ -10,9 +10,17 @@ import { signImageToken } from "@/lib/image-token";
 
 function artifactDeliveryUrl(tenantId: string, kind: ExportKind, artifactKey: string): string {
   const token = signImageToken(tenantId, artifactKey);
-  if (!token) throw new ExportQueueError(503, "EXPORT_DELIVERY_UNAVAILABLE", "내보내기 결과 주소를 만들 수 없습니다");
+  const origin = process.env.OSMU_PUBLIC_URL?.replace(/\/+$/, "") ?? "";
+  let parsed: URL;
+  try { parsed = new URL(origin); } catch {
+    throw new ExportQueueError(503, "EXPORT_DELIVERY_UNAVAILABLE", "내보내기 결과 주소를 만들 수 없습니다");
+  }
+  const local = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+  if (!token || (parsed.protocol !== "https:" && !(local && parsed.protocol === "http:"))) {
+    throw new ExportQueueError(503, "EXPORT_DELIVERY_UNAVAILABLE", "내보내기 결과 주소를 만들 수 없습니다");
+  }
   const path = `${kind === "video" ? "/api/exports/deliver/" : "/api/images/deliver/"}${encodeURIComponent(token)}`;
-  return `${process.env.OSMU_PUBLIC_URL?.replace(/\/+$/, "") ?? ""}${path}`;
+  return `${origin}${path}`;
 }
 
 export async function POST(
@@ -29,8 +37,15 @@ export async function POST(
     const exportKind: ExportKind | null = loaded.handoff.kind === "card" ? "card_deck" : loaded.handoff.kind === "video" ? "video" : null;
     if (exportKind) {
       return await exportRepository().withLatestForPublish(tenantId, draftId, exportKind, async (receipt) => {
+        const lockedLoaded = await loadEditorHandoff(tenantId, draftId);
+        const lockedKind: ExportKind | null = lockedLoaded?.handoff.kind === "card"
+          ? "card_deck"
+          : lockedLoaded?.handoff.kind === "video" ? "video" : null;
+        if (!lockedLoaded || lockedKind !== exportKind) {
+          throw new EditorContractError("발행 준비 중 편집본이 바뀌었습니다. 최신 내용을 확인한 뒤 다시 시도해 주세요.", 409, "EDITOR_HANDOFF_CHANGED");
+        }
         const artifactUrls = receipt.artifactKeys.map((key) => artifactDeliveryUrl(tenantId, exportKind, key));
-        const input = handoffQueueInput(loaded.handoff, draftId, receipt);
+        const input = handoffQueueInput(lockedLoaded.handoff, draftId, receipt);
         const preparedMedia = exportKind === "card_deck"
           ? { imageUrl: artifactUrls[0] ?? null, imageUrls: artifactUrls, videoFilename: null, videoUrl: null }
           : { imageUrl: null, imageUrls: null, videoFilename: receipt.artifactKeys[0] ?? null, videoUrl: artifactUrls[0] ?? null };
