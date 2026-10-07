@@ -1,3 +1,9 @@
+## 2026-10-07 운영 러너 워크스페이스 격리 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| CI-RUNNER-WORKSPACE-ISOLATION-01 | `ci.yml`의 기본 `actions/checkout`이 운영 compose 루트에서 `git clean`을 실행해 `config-tenantN`과 `data-tenantN` bind mount 원본을 지울 수 있음 | ✅ 로컬 PASS | CI는 `_ci/src`, migration은 `_ci/migrate-<run_id>/src`로 격리. fail-before 2건 재현, 표적 32건, integrity 108건, YAML 8파일, 하위 clean sentinel 보존 PASS. 운영 러너와 현재 운영 데이터는 미검증 |
+
 ## 2026-10-07 S5b·S6 main 병합 ✅ 로컬 PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

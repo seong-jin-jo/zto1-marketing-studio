@@ -1,3 +1,14 @@
+## 2026-10-07 20:00 KST 운영 러너 CI 워크스페이스 격리 로컬 완료, 제어권 반환 준비
+
+- handoff basis: 메인 에이전트가 지정한 `fix/ci-runner-workspace-isolation` 과제와 tmux `openclaw-auto-3:0.1`을 확인했다. 해당 pane은 이 워커 자신의 로그이고 별도 구현자는 없다.
+- 근본원인: 운영 compose와 GitHub Actions가 같은 `GITHUB_WORKSPACE`를 생명주기가 다른 두 자산의 루트로 공유했다. deploy는 root wipe 뒤 persist를 복원하지만 CI는 기본 checkout clean만 실행해 bind mount 원본을 삭제할 수 있었다. workflow 소비처 전체를 검사하는 계약도 없었다.
+- 수정: CI는 `_ci/src`, 승인 DB migration은 `_ci/migrate-${{ github.run_id }}/src`에 checkout한다. working-directory, npm cache lockfile, openclaw 의존성 복사, migration `SOURCE_DIR`를 같은 하위 tree로 정렬했다. deploy workflow는 수정하지 않았다.
+- 회귀 방지: `marketing_runner`를 쓰는 모든 workflow를 자동 순회해 deploy 외 루트 checkout, checkout 밖 working-directory, root `git clean`, workspace `rm -rf`를 거절하는 integrity 계약을 추가했다.
+- 검증: 수정 전 계약 2건 실패를 재현했다. 수정 후 표적 32건, 전체 integrity 34파일 108건, workflow YAML 8파일이 통과했다. 임시 루트에서 child `git clean -ffdx` 후 tenant sentinel 2개 보존과 child untracked 삭제를 관찰했다. actionlint는 미설치라 미검증이다.
+- 커밋: `e49d8c56 fix(ci): isolate self-hosted runner checkouts`. 문서 커밋은 다음 실행에서 남긴다. push는 하지 않는다.
+- 미검증: 원격 CI, 운영 self-hosted runner 실제 checkout, 현재 `config-tenantN`·`data-tenantN` 존재와 데이터 무결성, 운영 배포.
+- 다음 실행: 문서 정합 커밋과 pipeline artifact lint를 끝낸 뒤 컨트롤러가 diff를 재검증한다. 근본 해결인 workspace 밖 영속 bind mount 전환은 운영 변경 승인 뒤 별도 작업으로 진행한다.
+
 ## 2026-10-05 23:08 KST PR 119 VID-STALE-09 원격 CI 회귀 교정 완료, push 대기
 
 - handoff basis: 회장이 직접 지정한 원격 CI 실패 1건과 교차 리뷰 4차 PASS를 기준으로 삼았다. 제품 동작 변경은 금지했고 push는 컨트롤러 소유다.

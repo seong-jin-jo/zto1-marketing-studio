@@ -1,5 +1,13 @@
 # OSMU build log
 
+## 2026-10-07 20:00 KST · 운영 self-hosted runner 워크스페이스 격리
+
+STAMP: 2026-10-07 20:00 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: actions/checkout v4 공식 README, GitHub Actions variables reference, PR 126 교차 리뷰, fail-first integrity 계약 | 고민: deploy의 복원 절차는 보존하고 CI와 DB migration의 checkout clean 범위만 하위 source tree로 제한했다.
+
+`ci.yml`은 `_ci/src`, `osmu-db-migrate.yml`은 `_ci/migrate-${{ github.run_id }}/src`에 checkout한다. 각 workflow의 run working-directory와 cache, source 경로도 checkout 하위로 정렬했다. `marketing_runner`를 쓰는 모든 workflow를 순회하는 integrity 계약은 deploy 이외의 루트 checkout, working-directory 이탈, 루트 `git clean`, workspace 대상 `rm -rf`를 거절한다.
+
+수정 전 신규 계약은 `ci.yml`의 path 누락과 `dashboard` 루트 기준 working-directory 때문에 2건 실패했다. 수정 후 표적 32건, 전체 integrity 34파일 108건, workflow YAML 8파일 파싱이 통과했다. 임시 루트 실측에서 `_ci/src`의 untracked 파일만 정리되고 형제 `config-tenant2`와 `data-tenant2` sentinel은 보존됐다. actionlint는 로컬에 설치돼 있지 않아 미검증이다. 원격 CI, 운영 러너 실행, 현재 운영 tenant 데이터 상태와 운영 배포는 미검증이며 push하지 않았다.
+
 ## 2026-10-07 07:51 KST · S5b와 S6 main 병합 검증
 
 STAMP: 2026-10-07 07:51 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: merge commit `43ae2897`, CI 동일 production server Chromium 게이트, Vitest 3단 | 고민: append-only 기록을 모두 보존하면서 카톡 v3 저장 동기화와 영상 export queue가 한 `page.tsx`에서 함께 동작하는지 검증했다.
