@@ -8,13 +8,14 @@ import { getLearnedRulesContext } from "@/lib/studio/learned-rules-context";
 import { NO_DASH_RULE, withoutDashes } from "@/lib/studio/generation/llm";
 import { findInstructionPlaceholder } from "@/lib/studio/generated-copy";
 import { evaluateTextCandidates, recommendedTextCandidate } from "@/lib/studio/text-candidate-contract";
+import { CARD_DECK_TEMPLATE_IDS, cardTemplateName, type CardDeckTemplateId } from "@/lib/studio/card-templates";
 
 // POST /api/studio/text — 글감 1개 → 플랫폼별 텍스트 변형(OSMU).
 // body: { idea, guide?, tenant_id?, context_sources? } 
 // 0차: context_sources for multi-repo wiki (operator's other services). See sourcing for format.
 // tenant_id for Brand Wiki. Respects handoff deploy (no new build vars).
 export async function POST(request: Request) {
-  const { idea, guide = "", tenant_id, context_sources, structure } = await request.json();
+  const { idea, guide = "", tenant_id, context_sources, structure, card_template_id } = await request.json();
   if (!idea || typeof idea !== "string") {
     return Response.json({ error: "idea required" }, { status: 400 });
   }
@@ -29,8 +30,15 @@ export async function POST(request: Request) {
   )) {
     return Response.json({ error: "structure invalid" }, { status: 400 });
   }
+  const cardTemplateId = card_template_id as CardDeckTemplateId | undefined;
+  if (cardTemplateId !== undefined && !CARD_DECK_TEMPLATE_IDS.includes(cardTemplateId)) {
+    return Response.json({ error: "card_template_id invalid" }, { status: 400 });
+  }
   const structureGuide = structureInput
     ? `\n사용자가 고른 구조: ${structureInput.label} ${structureInput.title}\n이야기 순서: ${(structureInput.outline as string[]).join(" → ")}\n모든 플랫폼 초안에 이 구조와 순서를 반드시 반영한다.\n`
+    : "";
+  const cardTemplateGuide = cardTemplateId
+    ? `\n사용자가 고른 카드 템플릿: ${cardTemplateName(cardTemplateId)} (${cardTemplateId}). 카드뉴스 문구는 이 배치에 맞게 짧고 장별로 완결되게 쓴다.\n`
     : "";
   // 위키 근거: 위키 전체 주입(작으면) 또는 관련 top-K(크면 자동 폴백) → 프롬프트 주입(사실 기반 생성)
   const tenantId = await effectiveTenantId(request, tenant_id);
@@ -65,7 +73,7 @@ export async function POST(request: Request) {
   const prompt = `너는 SNS 마케팅 카피라이터다. 아래 글감을 플랫폼 특성에 맞춰 변형하라.
 ${guide ? `브랜드 톤 가이드:\n${withoutDashes(guide)}\n` : ""}${learnedRules}${wiki ? `\n=== 위키 참조(아래 사실에 근거해 작성, 없는 내용 지어내기 금지) ===\n${wiki}\n===\n` : ""}${extraContext ? `\n=== 추가 컨텍스트 (0차 multi-repo) ===\n${extraContext}\n===\n` : ""}
 글감: "${idea}"
-${structureGuide}
+${structureGuide}${cardTemplateGuide}
 
 규칙: 100% 한국어, AI가 쓴 티 금지, 후킹 첫 문장, 과한 이모지 금지.
 학습 정보가 비어 있으면 글감만으로 성립하는 완성된 일반 문장을 쓴다. 괄호 안에 "입력", "작성", "채우기", "한 문장으로 대체" 같은 다음 작성자용 지시를 절대 남기지 않는다.
@@ -98,13 +106,13 @@ ${NO_DASH_RULE}
           [idea, guide, structureGuide, learnedRules, wiki, extraContext].filter(Boolean).join("\n"),
         );
         const recommended = recommendedTextCandidate(candidates);
-        return Response.json({ ok: true, ...recommended.content, text_candidates: candidates, recommended_text_candidate_id: recommended.id });
+        return Response.json({ ok: true, ...recommended.content, text_candidates: candidates, recommended_text_candidate_id: recommended.id, ...(cardTemplateId ? { card_template_id: cardTemplateId } : {}) });
       } catch {
         return Response.json({ ok: false, error: "생성기가 글 후보 3개 계약을 지키지 않아 초안을 저장하지 않았습니다. 다시 만들어 주세요." }, { status: UPSTREAM_FAILED });
       }
     }
     // 구버전 BYO 생성기 응답은 기존 채널별 1개 계약으로 계속 읽는다.
-    return Response.json({ ok: true, ...generated });
+    return Response.json({ ok: true, ...generated, ...(cardTemplateId ? { card_template_id: cardTemplateId } : {}) });
   } catch (e) {
     const approvalResponse = sharedAiApprovalErrorResponse(e);
     if (approvalResponse) return approvalResponse;

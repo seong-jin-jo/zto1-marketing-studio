@@ -62,7 +62,7 @@ import { projectChatCardDeckV3ToBasicEditor } from "@/lib/studio/card-deck-v2-to
 import { TextCandidatePicker } from "./TextCandidatePicker";
 import type { TextCandidate } from "@/lib/studio/text-candidate-contract";
 import { CardTemplateGallery } from "./card/CardTemplateGallery";
-import { recommendedCardTemplate, type CardDeckTemplateId, type CardTemplateState } from "@/lib/studio/card-templates";
+import { CARD_DECK_TEMPLATE_IDS, recommendedCardTemplate, type CardDeckTemplateId, type CardTemplateState } from "@/lib/studio/card-templates";
 
 // M5(2026-09-22 코드리뷰): 매 렌더 새 객체를 만들지 않게 모듈 스코프에서 한 번만 만든다.
 // videoEdit는 순수함수(video-edit-contract.ts)로만 바뀌므로 이 상수를 직접 변형하지 않는다.
@@ -86,6 +86,7 @@ export interface QuickDraftResult {
   text_candidates?: TextCandidate[];
   selected_text_candidate_id?: string;
   recommended_text_candidate_id?: string;
+  card_template_id?: CardDeckTemplateId;
 }
 const ONBOARDING_CONTENT_BRANCH_KEY = "studio_content_branch";
 // 생성실이 답한 질문과 만든 후보를 브라우저에 남기는 자리.
@@ -109,6 +110,7 @@ interface PersistedCreateDraft {
   candidates: StudioGenerationCandidate[];
   selected: "A" | "B" | "C" | null;
   quickStructure: CreateStructureChoice | null;
+  cardTemplateId?: CardDeckTemplateId;
   /**
    * 구조 초안(candidates)을 만들 때 실제로 썼던 주제. 2026-10-01 리뷰 BLOCK 재발견:
    * 이 값을 저장해 두지 않고 복원 시점의 `topic` prop 을 대신 기억하면, 부모(page.tsx)의
@@ -130,6 +132,10 @@ function isCreateKind(value: unknown): value is CreateKind {
 
 function isCandidateLabel(value: unknown): value is "A" | "B" | "C" {
   return value === "A" || value === "B" || value === "C";
+}
+
+function isCardDeckTemplateId(value: unknown): value is CardDeckTemplateId {
+  return typeof value === "string" && CARD_DECK_TEMPLATE_IDS.includes(value as CardDeckTemplateId);
 }
 
 function isStudioGenerationCandidate(value: unknown): value is StudioGenerationCandidate {
@@ -287,7 +293,7 @@ interface CreateRoomProps {
   madeImageUrl?: string | null;
   madeVideoUrl?: string | null;
   cardImageBusy?: boolean;
-  onQuickDraftGenerate?: (structure: CreateStructureChoice) => Promise<void> | void;
+  onQuickDraftGenerate?: (structure: CreateStructureChoice, cardTemplateId?: CardDeckTemplateId) => Promise<void> | void;
   onTextCandidateSelect?: (candidate: TextCandidate) => void;
   /**
    * "다른 형식도 같이" 로 만든 카톡 말풍선 카드뉴스의 실제 덱을 draft_id 로 찾는다.
@@ -559,9 +565,6 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
   // 카톡 말풍선 카드뉴스 9장의 표지 훅 공식. 기본은 모델이 고르는 auto(설계 §8 OD-D 추천안).
   const [cardHookType, setCardHookType] = useState<"auto" | "question" | "number" | "pain">("auto");
   const [cardTemplateId, setCardTemplateId] = useState<CardDeckTemplateId>("headline_cover");
-  useEffect(() => {
-    setCardTemplateId(recommendedCardTemplate(quickStructure?.label ?? null));
-  }, [quickStructure?.label]);
   // 초안을 못 만드는 이유를 단추 옆에서 말한다(조용한 비활성 금지).
   const [quickBlockReason, setQuickBlockReason] = useState<string | null>(null);
   const generationInFlight = useRef(false);
@@ -605,6 +608,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     setPurpose(""); setAudience(""); setRightsConfirmed(false); setTopicOpen(false);
     setPrimaryKind(null); setAlsoKinds([]);
     setCandidates([]); setSelected(null); setQuickStructure(null);
+    setCardTemplateId("headline_cover");
     setAlsoQuote(null); setAlsoBatch(null); setQuickBlockReason(null); setError(null);
     setPrimaryCardDeckQuote(null); setPrimaryCardDeckQuoteError(null); setPrimaryCardDeckBatch(null);
     primaryCardDeckIdemKeyRef.current = null;
@@ -733,6 +737,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       setCandidates(saved.candidates.map(sanitizeRestoredCandidate));
       setSelected(saved.selected);
       setQuickStructure(sanitizeRestoredStructure(saved.quickStructure));
+      setCardTemplateId(isCardDeckTemplateId(saved.cardTemplateId) ? saved.cardTemplateId : recommendedCardTemplate(saved.quickStructure?.label ?? null));
       // 2026-10-01 리뷰 BLOCK 재발견: 복원 시점의 `topic` prop 은 부모(page.tsx)가
       // 아직 주제 복원을 끝내지 못했을 수 있어(늦은 주제 복원 경로) 신뢰할 수 없다.
       // 저장해 둔 실제 주제(saved.topic)가 있으면 그걸 쓰고, 옛 저장본(주제를 같이
@@ -780,6 +785,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       candidates,
       selected,
       quickStructure,
+      cardTemplateId,
       // candidates 를 만들 때 실제로 썼던 주제. 복원 시점의 불안정한 topic prop 대신
       // 이 값을 기준으로 삼는다(위 PersistedCreateDraft.topic 주석 참고).
       topic: candidatesTopicRef.current ?? undefined,
@@ -789,7 +795,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
     } catch {
       setError("생성실 입력을 임시 저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.");
     }
-  }, [workspaceId, hydratedCreateWorkspaceId, primaryKind, alsoKinds, questionIndex, purpose, audience, rightsConfirmed, topicOpen, candidates, selected, quickStructure]);
+  }, [workspaceId, hydratedCreateWorkspaceId, primaryKind, alsoKinds, questionIndex, purpose, audience, rightsConfirmed, topicOpen, candidates, selected, quickStructure, cardTemplateId]);
 
   const rememberLearning = (patch: LearningInfo) => {
     const next = { ...learning, ...patch };
@@ -905,7 +911,9 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       outline: candidate.format.outline,
     };
     setQuickStructure(structure);
-    void onQuickDraftGenerate?.(structure);
+    const nextTemplateId = recommendedCardTemplate(structure.label);
+    setCardTemplateId(nextTemplateId);
+    void (primaryKind === "card" ? onQuickDraftGenerate?.(structure, nextTemplateId) : onQuickDraftGenerate?.(structure));
   }
 
   // 같이 만들 갈래를 고른 채로 후보를 고르면, 확정을 누르기 전에 값을 먼저 보여 준다.
@@ -1185,7 +1193,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                   return;
                 }
                 setQuickBlockReason(null);
-                if (quickStructure) onQuickDraftGenerate?.(quickStructure);
+                if (quickStructure) void (primaryKind === "card" ? onQuickDraftGenerate?.(quickStructure, cardTemplateId) : onQuickDraftGenerate?.(quickStructure));
               }}
               disabled={quickDraftLoading}
             >
@@ -1239,7 +1247,10 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
                         variant={quickStructure?.label === candidate.label ? "primary" : "secondary"}
                         className="w-full min-w-0"
                         aria-pressed={quickStructure?.label === candidate.label}
-                        onClick={() => setQuickStructure({ label: candidate.label, title: candidate.title, outline: candidate.outline })}
+                        onClick={() => {
+                          setQuickStructure({ label: candidate.label, title: candidate.title, outline: candidate.outline });
+                          setCardTemplateId(recommendedCardTemplate(candidate.label));
+                        }}
                       >
                         {candidate.label} 구조 사용
                       </Button>
@@ -1257,6 +1268,7 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
               structureTitle={quickStructure.title}
               structureFirstLine={quickStructure.outline[0] ?? ""}
               onSelect={setCardTemplateId}
+              disabledReasons={{ chat_bubble: "카톡 대화는 아래 기존 카톡 말풍선 덱 만들기에서 생성해 주세요." }}
             />
           ) : null}
           {primaryKind === "text" && quickDraft?.text_candidates?.length ? (

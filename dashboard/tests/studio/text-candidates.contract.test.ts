@@ -42,7 +42,7 @@ describe("POST /api/studio/text S7 후보 계약", () => {
     const response = await POST(new Request("http://localhost/api/studio/text", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ idea: "수능 100일 공부 계획", structure: { label: "A", title: "문제 제시", outline: ["100일 계획"] } }),
+      body: JSON.stringify({ idea: "수능 100일 공부 계획", structure: { label: "A", title: "문제 제시", outline: ["100일 계획"] }, card_template_id: "headline_cover" }),
     }));
     const body = await response.json();
 
@@ -54,6 +54,8 @@ describe("POST /api/studio/text S7 후보 계약", () => {
     ]));
     expect(body.threads).toBe(body.text_candidates[0].content.threads);
     expect(body.recommended_text_candidate_id).toBe("question");
+    expect(body.card_template_id).toBe("headline_cover");
+    expect(generateText).toHaveBeenCalledWith(expect.stringContaining("큰 제목 표지형 (headline_cover)"), "tenant-1");
   });
 
   it("하위 호환: 후보 배열이 없는 기존 생성기 응답은 종전 최상위 계약 그대로 통과한다", async () => {
@@ -85,5 +87,16 @@ describe("POST /api/studio/text S7 후보 계약", () => {
     // 상류 실패는 프록시가 본문을 HTML로 바꾸지 않도록 200 + ok:false 계약을 쓴다.
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ ok: false, error: expect.stringContaining("후보 3개 계약") });
+  });
+
+  it("S7-R1-B1 거절: 알 수 없는 카드 템플릿 ID는 생성기를 호출하지 않는다", async () => {
+    const { POST } = await import("@/app/api/studio/text/route");
+    const response = await POST(new Request("http://localhost/api/studio/text", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idea: "잘못된 템플릿", card_template_id: "unknown" }),
+    }));
+    expect(response.status).toBe(400);
+    expect(generateText).not.toHaveBeenCalled();
   });
 });

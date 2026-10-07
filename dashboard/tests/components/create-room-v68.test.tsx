@@ -194,6 +194,20 @@ describe("V68 생성실 계약", () => {
     expect(onCandidateSelect).not.toHaveBeenCalled();
   });
 
+  it("S7-R1-B1 정상: 카드 템플릿 선택을 생성 콜백에 전달하고 카톡은 기존 생성 경로 이유와 함께 잠근다", () => {
+    const onQuickDraftGenerate = vi.fn();
+    const { container } = render(<CreateRoom {...props} topic="고객 질문" onQuickDraftGenerate={onQuickDraftGenerate} />);
+    const workspace = container.querySelector("[data-create-workspace]") as HTMLElement;
+    fireEvent.click(screen.getByRole("button", { name: "카드뉴스" }));
+    fireEvent.click(within(workspace).getByRole("button", { name: "A 구조 사용" }));
+    const chat = screen.getByRole("button", { name: /카톡 대화/ });
+    expect(chat).toBeDisabled();
+    expect(chat).toHaveTextContent("기존 카톡 말풍선 덱 만들기");
+    fireEvent.click(screen.getByRole("button", { name: /번호 목록형/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: "초안 만들기" }));
+    expect(onQuickDraftGenerate).toHaveBeenCalledWith(expect.objectContaining({ label: "A" }), "number_list");
+  });
+
   it("시험 18 정상: 글자 카드를 자산 저장소에 올린 뒤 편집과 발행 인계 콜백에 전달한다", async () => {
     const onTextCardsCreated = vi.fn();
     vi.stubGlobal("File", class {

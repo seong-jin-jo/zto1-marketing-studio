@@ -51,7 +51,7 @@ import { cardDeckV3Projection, type CardDeckV3 } from "@/lib/studio/card-element
 import { createPlainCardDeckV3, createRecoverableEmbeddedCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
 import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import { cardDeckV3EntryEnabled, cardDeckV3ForDraft, cardDeckV3RenderingEnabled, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
-import { defaultCardTemplateState, type CardTemplateState } from "@/lib/studio/card-templates";
+import { applyCardDeckTemplate, defaultCardTemplateState, type CardDeckTemplateId, type CardTemplateState } from "@/lib/studio/card-templates";
 import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
@@ -284,6 +284,7 @@ interface TextVariants {
   text_candidates?: TextCandidate[];
   selected_text_candidate_id?: string;
   recommended_text_candidate_id?: string;
+  card_template_id?: CardDeckTemplateId;
 }
 interface BodyRevisionConflict {
   latest: { lines: string[]; text: TextVariants | null; cardDeckV3: CardDeckV3 | null; serverRevision: number };
@@ -1270,7 +1271,7 @@ export default function StudioPage() {
     replaceBodySnapshot(nextLines, nextText);
   };
 
-  async function genText(structure?: CreateStructureChoice) {
+  async function genText(structure?: CreateStructureChoice, cardTemplateId?: CardDeckTemplateId) {
     setLastError(null);
     try {
       const r = await apiPost<TextVariants & { ok?: boolean; error?: string }>("/api/studio/text", {
@@ -1278,6 +1279,7 @@ export default function StudioPage() {
         guide,
         tenant_id: activeWorkspace?.id,
         structure: structure ? { label: structure.label, title: structure.title, outline: structure.outline } : undefined,
+        card_template_id: cardTemplateId,
       }, { signal: generationAbort.current?.signal });
       if (!r?.ok) { const msg = r?.error || "텍스트 생성 실패"; setLastError(`텍스트: ${msg}`); showToast(msg, "error"); return null; }
       // API가 성공을 확인한 뒤에만 발행한다. 클릭 시점 아님.
@@ -1288,12 +1290,12 @@ export default function StudioPage() {
       setLastError(`텍스트: ${msg}`); showToast(msg, "error"); return null;
     }
   }
-  async function generateQuickDraft(structure: CreateStructureChoice) {
+  async function generateQuickDraft(structure: CreateStructureChoice, cardTemplateId?: CardDeckTemplateId) {
     if (!idea.trim()) { showToast("주제를 입력해 주세요", "error"); return; }
     generationAbort.current = new AbortController();
     setBusy("초안 만드는 중");
     try {
-      const result = await genText(structure);
+      const result = await genText(structure, cardTemplateId);
       if (result) {
         // 2026-09-05 회장 계정 실측: 새 초안을 만들어도 이전 초안 번호를 그대로 들고 가서,
         // 그 번호가 이미 발행된 것이면 발행이 매번 "이미 올라갔습니다"로 닫혔다. 스튜디오에서
@@ -1337,6 +1339,15 @@ export default function StudioPage() {
               .filter(Boolean);
         setEditKind(nextKind);
         setEditFormat(defaultContentEditFormat(nextKind));
+        if (nextKind === "card" && result.card_template_id && result.card_template_id !== "chat_bubble" && nextLines.length >= 2) {
+          const baseDeck = createPlainCardDeckV3(nextLines);
+          const generatedDeck = applyCardDeckTemplate(baseDeck, result.card_template_id, { kind: "all" });
+          const generatedTemplateState: CardTemplateState = { activeTemplateId: result.card_template_id, previousTemplate: null };
+          setCardDeckV3(generatedDeck);
+          cardDeckV3Ref.current = generatedDeck;
+          setCardTemplateState(generatedTemplateState);
+          setCardDeckV3DetailStatus("ready");
+        }
         replaceBodySnapshot(
           nextLines,
           pendingTextCandidates
