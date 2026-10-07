@@ -1,3 +1,10 @@
+## 2026-10-08 편집실 S4·S7 main 병합 ❌ NG
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S7-MERGE-01 | `origin/main`의 S4 PR 128과 S7을 merge commit으로 통합하고 양쪽 기능을 보존 | ❌ NG | 병합 전. 예상 충돌 파일의 S4·S7 동작을 함께 보존해야 한다. |
+| S7-MERGE-02 | ExportPanel, card-deck-v3-studio-rooms, S7 template, edit-autosave, integrity, `typecheck:ci` 통과 | ❌ NG | 통합 브랜치 검증 전. |
+
 ## 2026-10-08 편집실 S7 교차 리뷰 3차 MINOR 정리 ✅ 로컬 PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
