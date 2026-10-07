@@ -41,9 +41,10 @@ function TemplateCard({ id, selected, recommended, title, body, onSelect }: {
 }) {
   const template = CARD_DECK_TEMPLATES.find((item) => item.id === id)!;
   return (
-    <button
-      type="button"
-      className="min-h-control-touch w-56 shrink-0 rounded-control border border-border bg-surface-2 p-stack text-left text-caption text-text aria-pressed:border-accent aria-pressed:bg-accent-soft"
+    <Button
+      variant="secondary"
+      size="sm"
+      className="w-56 shrink-0 flex-col items-stretch justify-start p-stack text-left aria-pressed:border-accent aria-pressed:bg-accent-soft"
       aria-pressed={selected}
       onClick={onSelect}
       data-card-template={id}
@@ -54,7 +55,7 @@ function TemplateCard({ id, selected, recommended, title, body, onSelect }: {
       </span>
       <b className="block">{template.name}</b>
       {recommended ? <span className="text-accent">추천</span> : <span className="text-subtle">{template.family === "chat" ? "대화형" : "사진·글"}</span>}
-    </button>
+    </Button>
   );
 }
 

@@ -27,17 +27,18 @@ export function TextCandidatePicker({ candidates, selectedId = null, onSelect }:
         {candidates.map((candidate) => {
           const hasWarning = candidate.warnings.length > 0;
           return (
-            <button
+            <Button
               key={candidate.id}
-              type="button"
+              variant="secondary"
+              size="sm"
               role="tab"
               aria-selected={candidate.id === preview.id}
-              className="min-h-control-touch shrink-0 rounded-control border border-border bg-surface-2 px-stack py-stack-tight text-left text-caption text-text aria-selected:border-accent aria-selected:bg-accent-soft"
+              className="shrink-0 justify-start py-stack-tight text-left aria-selected:border-accent aria-selected:bg-accent-soft"
               onClick={() => setPreviewId(candidate.id)}
               data-text-candidate-tab={candidate.id}
             >
               <b>{candidate.label}</b>{candidate.recommended ? <span className="ml-micro text-accent">추천</span> : null}{hasWarning ? <span className="ml-micro text-warning">주의</span> : null}
-            </button>
+            </Button>
           );
         })}
       </div>
