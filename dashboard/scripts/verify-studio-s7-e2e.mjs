@@ -107,6 +107,24 @@ async function installRoutes(context, getDeck, getTemplateState = () => null) {
       });
     }
     if (pathname === "/api/studio/brand-setup") return json(route, { guide: "따뜻하고 구체적인 존댓말" });
+    if (pathname === "/api/usage") return json(route, { today: {}, thisWeek: {}, tier: "team", quota: {} });
+    if (pathname === "/api/studio/engine-status") return json(route, { ready: true });
+    if (pathname === "/api/studio/learning") return json(route, { info: {} });
+    if (pathname === "/api/channel-config") return json(route, {});
+    if (pathname === "/api/onboarding") return json(route, { completed: true });
+    if (pathname === "/api/performance/learned-rules") return json(route, { rules: [] });
+    if (/^\/api\/studio\/v1\/generations\/[^/]+\/derivations$/.test(pathname) && request.method() === "GET") {
+      return json(route, {
+        data: {
+          quote: {
+            currency: "KRW",
+            total_minor: 0,
+            lines: [{ kind: "card", label: "카드뉴스", unit_minor: 0 }],
+            assumptions: ["S7 브라우저 픽스처"],
+          },
+        },
+      });
+    }
     if (pathname === "/api/publish/first-comment-capabilities") return json(route, { capabilities: [] });
     if (/^\/api\/channels\/[^/]+\/accounts$/.test(pathname)) return json(route, { accounts: [] });
     if (pathname === "/api/images") return json(route, { images: [] });
@@ -117,6 +135,13 @@ async function installRoutes(context, getDeck, getTemplateState = () => null) {
     "**/api/studio/drafts**",
     "**/api/studio/text",
     "**/api/studio/brand-setup**",
+    "**/api/usage**",
+    "**/api/studio/engine-status**",
+    "**/api/studio/learning**",
+    "**/api/channel-config**",
+    "**/api/onboarding**",
+    "**/api/performance/learned-rules**",
+    "**/api/studio/v1/generations/*/derivations**",
     "**/api/publish/first-comment-capabilities**",
     "**/api/channels/*/accounts**",
     "**/api/images**",
@@ -140,8 +165,7 @@ async function runCreateCardFlow(browser) {
   });
   await installRoutes(context, () => plainDeck());
   const page = await context.newPage();
-  page.on("pageerror", (error) => errors.push(error.message));
-  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  collectBrowserErrors(page, errors);
   await page.goto(`${baseUrl}/studio?room=create&kind=card`, { waitUntil: "networkidle", timeout: 60_000 });
   const numberTemplate = page.locator('[data-card-template="number_list"]');
   await numberTemplate.waitFor({ state: "visible" });
@@ -174,6 +198,14 @@ async function noHorizontalOverflow(page, label) {
   return dimensions;
 }
 
+function collectBrowserErrors(page, errors) {
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("response", (response) => {
+    if (response.status() >= 500) errors.push(`${response.status()} ${new URL(response.url()).pathname}`);
+  });
+}
+
 async function runTextFlow(browser, viewport) {
   const context = await browser.newContext({ viewport });
   const errors = [];
@@ -189,8 +221,7 @@ async function runTextFlow(browser, viewport) {
   });
   await installRoutes(context, () => plainDeck());
   const page = await context.newPage();
-  page.on("pageerror", (error) => errors.push(error.message));
-  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  collectBrowserErrors(page, errors);
   await page.goto(`${baseUrl}/studio?room=create&kind=text`, { waitUntil: "networkidle", timeout: 60_000 });
   try {
     await page.locator("[data-text-candidate-picker]").waitFor({ state: "visible" });
@@ -223,8 +254,7 @@ async function runCardFlow(browser, viewport) {
   }, { id: workspaceId, work: cardWork(initial) });
   await installRoutes(context, () => latestDeck, () => latestTemplateState);
   const page = await context.newPage();
-  page.on("pageerror", (error) => errors.push(error.message));
-  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  collectBrowserErrors(page, errors);
   await page.goto(`${baseUrl}/studio?room=edit&kind=card&draft_id=${draftId}`, { waitUntil: "networkidle", timeout: 60_000 });
   await page.locator("[data-card-canvas-editor]").waitFor({ state: "visible" });
 
