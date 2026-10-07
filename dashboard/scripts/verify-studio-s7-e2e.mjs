@@ -23,7 +23,14 @@ async function waitUntil(predicate, timeoutMs, message) {
 function textCandidate(id, label, body, recommended = false, warnings = []) {
   return {
     id, label, recommended, recommendation_reason: recommended ? "A 문제 제시형 구조에 잘 맞습니다" : "다른 첫 문장 각도입니다", warnings,
-    content: { threads: body, facebook: `${body} Facebook`, x: body, instagram: { caption: `${body} Instagram`, hashtags: ["S7"], slides: [body, "두 번째 장", "세 번째 장", "저장해 두세요"] } },
+    content: {
+      threads: body,
+      facebook: `${body} Facebook`,
+      x: body,
+      instagram: { caption: `${body} Instagram`, hashtags: ["S7"], slides: [body, "두 번째 장", "세 번째 장", "저장해 두세요"] },
+      shorts: { hook: `${body} 훅`, body: `${body} 본문`, cta: `${body} CTA` },
+      image_prompt: `Editorial study image for ${id}`,
+    },
   };
 }
 
@@ -70,7 +77,7 @@ function cardWork(deck) {
 }
 
 async function installRoutes(context, getDeck, getTemplateState = () => null) {
-  await context.route("**/api/**", async (route) => {
+  const handler = async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const pathname = url.pathname;
@@ -104,7 +111,17 @@ async function installRoutes(context, getDeck, getTemplateState = () => null) {
     if (/^\/api\/channels\/[^/]+\/accounts$/.test(pathname)) return json(route, { accounts: [] });
     if (pathname === "/api/images") return json(route, { images: [] });
     return json(route, {});
-  });
+  };
+  const mockedApiRoutes = [
+    "**/api/me",
+    "**/api/studio/drafts**",
+    "**/api/studio/text",
+    "**/api/studio/brand-setup**",
+    "**/api/publish/first-comment-capabilities**",
+    "**/api/channels/*/accounts**",
+    "**/api/images**",
+  ];
+  for (const pattern of mockedApiRoutes) await context.route(pattern, handler);
 }
 
 async function runCreateCardFlow(browser) {
@@ -270,7 +287,14 @@ try {
   results.push(await runCardFlow(browser, { width: 1440, height: 1000 }));
   results.push(await runCardFlow(browser, { width: 1024, height: 900 }));
   results.push(await runCardFlow(browser, { width: 390, height: 844 }));
-  process.stdout.write(`${JSON.stringify({ ok: true, results, posts: posts.length, consoleErrors: 0 }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({
+    ok: true,
+    apiEvidence: "browser-fixture",
+    draftRouteEvidence: "vitest-route-integration",
+    results,
+    posts: posts.length,
+    consoleErrors: 0,
+  }, null, 2)}\n`);
 } finally {
   await browser.close();
 }

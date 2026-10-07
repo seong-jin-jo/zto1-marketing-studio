@@ -3,6 +3,7 @@ import { withTenant } from "@/lib/db";
 import deckD100 from "./fixtures/deck-d100.v2.json";
 import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
+import { buildGeneratedCardTemplate } from "@/lib/studio/s7-generated-card-template";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 
 const H = vi.hoisted(() => ({
@@ -35,6 +36,47 @@ beforeEach(() => {
 });
 
 describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () => {
+  it("S7-R1-M6 생성실 결과를 실제 route로 저장하고 재접속 조회하면 덱·원본·템플릿 상태가 함께 복원된다", async () => {
+    const generated = buildGeneratedCardTemplate({
+      renderEnabled: true,
+      templateId: "number_list",
+      lines: ["첫 장", "둘째 장", "마지막 장"],
+    });
+    if (!generated) throw new Error("fixture");
+    H.rows = [{ id: "draft-s7-generated" }];
+    const { POST, GET } = await import("@/app/api/studio/drafts/route");
+    const saved = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1",
+        idea: "생성실 템플릿",
+        editKind: "card",
+        cardDeckV3: generated.deck,
+        cardDeckV3SourceSnapshot: generated.sourceSnapshot,
+        cardTemplateState: generated.templateState,
+      }),
+    }));
+    expect(saved.status, JSON.stringify(await saved.clone().json())).toBe(200);
+    expect(H.jsonValues[0]).toMatchObject({
+      cardDeckV3: generated.deck,
+      cardDeckV3SourceSnapshot: generated.sourceSnapshot,
+      cardTemplateState: generated.templateState,
+    });
+
+    H.rows = [{
+      id: "draft-s7-generated",
+      idea: "생성실 템플릿",
+      payload: H.jsonValues[0],
+      status: "draft",
+      updated_at: "2026-10-07T00:00:00Z",
+    }];
+    const detail = await (await GET(new Request("http://localhost/api/studio/drafts?id=draft-s7-generated"))).json();
+    expect(detail.draft).toMatchObject({
+      cardDeckV3: generated.deck,
+      cardDeckV3SourceSnapshot: generated.sourceSnapshot,
+      cardTemplateState: generated.templateState,
+    });
+  });
   it("S1-AC1 정상: cardDeckV3 요소 JSON과 투영 본문을 저장하고 다시 조회한다", async () => {
     const cardDeckV3 = createPlainCardDeckV3(["자유 배치 첫 장", "저장하세요"], "deck_route_v3");
     H.rows = [{ id: "draft-v3" }];

@@ -6,7 +6,7 @@ STAMP: 2026-10-07 21:31 KST | model: gpt-6.1-sol/Codex | agent: code-builder | s
 
 생성실 `cardTemplateId`를 하위 호환 선택 필드로 글 생성 API에 전달하고, 응답의 ID로 실제 plain v3 덱을 만든 뒤 선택 템플릿을 적용한다. 편집실의 활성 템플릿 ID와 직전 덱은 기존 draft `payload` JSONB에 함께 저장하며 DB 스키마는 바꾸지 않았다. plain 덱의 카톡 템플릿은 무동작 대신 기존 카톡 말풍선 덱 생성 경로를 안내하며 비활성화한다. 모바일 fixture는 실제 `room=edit` URL과 초안 상세 응답을 사용한다.
 
-검증은 TypeScript PASS, integrity 33파일 104건 PASS, contract 108파일 629건 PASS, 변경 import 영향 51파일 511건 PASS·2건 환경 skip, webpack production build PASS다. 최종 빌드의 실제 Chromium에서 S7 생성실 선택→API→결과 덱, 전체·한 장 적용, 저장·재접속 복원, undo를 1440·1024·390에서 확인했고 가로 넘침·콘솔 오류는 0이다. v70 화면 게이트와 두 탭 본문 충돌 복구도 PASS했다. 모바일 360·390·412·600·700·780·820·900·1000은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다. 기본 Turbopack은 공유 `node_modules` 심링크를 작업트리 밖 경로로 거부해 실패했으며, 설치나 링크 변경 없이 webpack 빌드로 검증했다.
+검증은 TypeScript PASS, integrity 33파일 104건 PASS, contract 108파일 629건 PASS, 변경 import 영향 51파일 511건 PASS·2건 환경 skip, webpack production build PASS다. 최종 빌드의 Chromium에서는 API fixture를 사용해 S7 생성실 선택→요청 payload→결과 덱, 전체·한 장 적용, 재접속 UI 복원, undo를 1440·1024·390에서 확인했고 가로 넘침·콘솔 오류는 0이었다. 실제 drafts route는 별도 Vitest 통합 테스트에서 생성 덱·복귀 원본·템플릿 상태의 POST→GET과 거절 계약을 실행했다. v70 화면 게이트와 두 탭 본문 충돌 복구도 PASS했다. 모바일 360·390·412·600·700·780·820·900·1000은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다. 기본 Turbopack은 공유 `node_modules` 심링크를 작업트리 밖 경로로 거부해 실패했으며, 설치나 링크 변경 없이 webpack 빌드로 검증했다.
 
 벤치마크: Canva의 현재 장·전체 페이지 적용과 버전 복원 흐름을 차용하되, 우리 덱은 글·요소 ID와 카톡 댓글 유도 장을 보존하고 plain→카톡은 기존 전용 생성 경로로만 진입시켰다. 출처: https://www.canva.com/help/change-template/ · https://www.canva.com/help/version-history/
 
