@@ -126,15 +126,21 @@ async function runCreateCardFlow(browser) {
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
   await page.goto(`${baseUrl}/studio?room=create&kind=card`, { waitUntil: "networkidle", timeout: 60_000 });
-  await page.locator('[data-card-template="number_list"]').waitFor({ state: "visible" });
+  const numberTemplate = page.locator('[data-card-template="number_list"]');
+  await numberTemplate.waitFor({ state: "visible" });
+  await numberTemplate.click();
   const chatButton = page.locator('[data-card-template="chat_bubble"]');
   if (!(await chatButton.isDisabled()) || !(await chatButton.innerText()).includes("기존 카톡 말풍선 덱")) throw new Error("plain 카드의 카톡 템플릿이 기존 변환 경로 안내와 함께 비활성화되지 않았습니다");
   await page.getByRole("button", { name: "초안 만들기" }).click();
-  await waitUntil(
-    () => posts.slice(postStart).some((post) => post.endpoint === "text" && post.card_template_id === "number_list"),
-    10_000,
-    "생성실에서 고른 cardTemplateId가 글 생성 API에 전달되지 않았습니다",
-  );
+  try {
+    await waitUntil(
+      () => posts.slice(postStart).some((post) => post.endpoint === "text" && post.card_template_id === "number_list"),
+      10_000,
+      "생성실에서 고른 cardTemplateId가 글 생성 API에 전달되지 않았습니다",
+    );
+  } catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : String(error)} 요청=${JSON.stringify(posts.slice(postStart))} 화면=${(await page.locator("body").innerText()).slice(0, 1600)} 오류=${errors.join(" | ")}`);
+  }
   await page.waitForFunction((id) => {
     const value = JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}");
     return value.cardTemplateState?.activeTemplateId === "number_list" && value.cardDeckV3?.slides?.[0]?.elements?.[0]?.x === 244;
@@ -202,7 +208,7 @@ async function runCardFlow(browser, viewport) {
   const page = await context.newPage();
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
-  await page.goto(`${baseUrl}/studio?room=edit&kind=card`, { waitUntil: "networkidle", timeout: 60_000 });
+  await page.goto(`${baseUrl}/studio?room=edit&kind=card&draft_id=${draftId}`, { waitUntil: "networkidle", timeout: 60_000 });
   await page.locator("[data-card-canvas-editor]").waitFor({ state: "visible" });
 
   await page.locator('[data-card-template="headline_cover"]').click();
