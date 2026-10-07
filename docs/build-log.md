@@ -1,5 +1,20 @@
 # OSMU build log
 
+## 2026-10-08 04:30 KST · PR 128 CI 비동기 준비 경합 교정
+
+STAMP: 2026-10-08 04:30 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: CI run 37668742639, targeted Vitest 3회, 전체 Vitest, typecheck:ci | 고민: timeout을 늘리거나 단언을 약화하지 않고 실제 활성 상태를 click 선행조건으로 고정했다.
+
+`ExportPanel` 경합 테스트는 초기 최신 export 조회가 끝나 버튼이 활성화된 뒤 내보내기를 누른다. 카톡 v3 복귀 테스트도 asset projection이 끝나 복귀 버튼이 활성화된 뒤 누른다. 두 테스트의 기존 결과 단언과 제품 코드는 유지했다.
+
+| 검증 | 결과 |
+|---|---|
+| 대상 두 파일 3회 연속 | 각 실행 2파일, 23건 PASS |
+| `typecheck:ci` | 종료 코드 0 |
+| 전체 `npx vitest run`의 대상 파일 | ExportPanel 7건, StudioRooms 16건 PASS |
+| 전체 로컬 실행 | 493파일 PASS, 11파일 FAIL. 로컬 DB 미설정, 공유 의존성 해석 실패, 장시간 실행 timeout이 대상 외 실패 원인 |
+| 원격 CI | 미검증. push하지 않음 |
+
+
 ## 2026-10-07 20:00 KST · 운영 self-hosted runner 워크스페이스 격리
 
 STAMP: 2026-10-07 20:00 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: actions/checkout v4 공식 README, GitHub Actions variables reference, PR 126 교차 리뷰, fail-first integrity 계약 | 고민: deploy의 복원 절차는 보존하고 CI와 DB migration의 checkout clean 범위만 하위 source tree로 제한했다.

@@ -388,7 +388,22 @@ export function canonicalPublicOrigin(): string | null {
   const env = process.env.OSMU_PUBLIC_URL;
   if (!env) return null;
   const trimmed = env.replace(/\/+$/, "");
-  return trimmed.startsWith("https://") ? trimmed : null;
+  if (trimmed.startsWith("https://")) return trimmed;
+
+  // 실제 저장 API를 붙이는 로컬 개발과 E2E는 HTTPS 종단이 없다. 운영의 공개 URL 규칙을
+  // 느슨하게 만들지 않으면서 이 경로만 열기 위해 비운영 환경의 loopback HTTP만 허용한다.
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol === "http:"
+        && ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname)) {
+        return trimmed;
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 // OAuth 동의 URL.

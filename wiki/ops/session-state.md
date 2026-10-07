@@ -1,3 +1,33 @@
+## 2026-10-08 04:30 KST PR 128 CI 테스트 경합 교정 완료, 제어권 반환 준비
+
+- handoff basis: 메인 에이전트가 지정한 HEAD `ddb05919`, `wiki/거버넌스/결정.md`, CI run `37668742639` 실패 로그를 기준으로 삼았다. tmux pane은 같은 위임 작업의 로그라 별도 구현 근거로 사용하지 않았다.
+- 근본원인: 두 테스트 모두 비동기 초기화가 끝나기 전에 비활성 버튼을 클릭했다. CI 부하에서 click이 버려졌고 timeout 시점에는 버튼이 활성화돼 있어 제품 결함처럼 보였다.
+- 수정: 내보내기와 카톡 v3 기본 편집 복귀 버튼이 활성화될 때까지 명시적으로 기다린 뒤 click한다. 기존 진행률, export ID, callback, projection 단언은 유지했고 제품 코드는 바꾸지 않았다.
+- 검증: 대상 두 파일 3회 연속 각 23건 PASS, `typecheck:ci` 종료 코드 0. 전체 `npx vitest run`에서도 대상 파일은 7건과 16건 전부 PASS했다.
+- 전체 실행 한계: 로컬 공유 `node_modules`의 `proper-lockfile` 해석 실패 7 suite, `DATABASE_URL` 미설정 1건, 장시간 실행 중 관측성 테스트 timeout 2건으로 전체는 493파일 PASS, 11파일 FAIL이다. 이 실패들은 이번 두 대상과 분리돼 있다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 사용자 소유 변경으로 stage하지 않는다.
+- 다음 실행: 컨트롤러가 커밋을 push한 뒤 PR 128 원격 CI Test green을 확인한다. push, 원격 CI, QA 승인, 운영 배포는 이번 작업 범위 밖이며 미검증이다.
+
+## 2026-10-08 03:30 KST 편집실 S4 교차 리뷰 2차 교정 완료, 제어권 반환 준비
+
+- handoff basis: 회장이 지정한 작업 폴더의 미커밋 diff, `wiki/거버넌스/결정.md`, `/Users/sj/wt/s4-review-r2.md`를 기준으로 네트워크 중단 지점부터 재개했다. 별도 tmux 추론은 사용하지 않았다.
+- 수정: 발행실 이동을 export 고정 성공과 분리했다. handoff 없음·미준비는 HTTP 200 `unpinned`로 상태를 드러내며 이동을 막지 않는다. 성공 고정은 export ID 멱등키와 `publish_ready` 상태를 사용하고, 승인 인박스 draft에서 제외하며 발행 성공 시 전달된 큐 항목만 `published`로 바꾼다.
+- 잠금: 비관적 락(SELECT ... FOR UPDATE) 안에서는 파일 큐 기록만 수행하고 DB mirror는 transaction 종료 뒤 실행한다.
+- 한계: 고정 artifact는 감사 기록이다. 현재 발행실 S2가 실제 외부 발행 파일을 다시 준비하므로 바이트 동일성은 미보장이고, 화면 안내·코드 주석·QA 추적기에 기록했다.
+- 검증: B2 RED 1건 확인 뒤 GREEN. 관련 Vitest 7파일 108건 PASS, 실제 PostgreSQL 2파일 13건 PASS·조건부 렌더 1건 skip, `typecheck:ci` PASS, 변경 UI 파일 design-lint 위반 0. 실제 API·PostgreSQL Chromium E2E는 초안 7건, 저장 13회, 이미지 업로드 99회, retry 202, enqueue 200, 콘솔 오류 0, 실패 요청 0이다.
+- 환경: Next webpack build 뒤 Turbopack dev가 신규 retry route를 `_not-found`로 읽던 캐시 충돌은 `.next`를 안전 이동한 뒤 해소했다. 제품 결함이 아니며 깨끗한 dev cache에서 최종 PASS했다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 사용자 소유 변경으로 stage하지 않는다.
+- 커밋: 제품·회귀·증거 `af32ee6d` (`fix(studio): decouple publish entry from export pin`).
+- 다음 실행: 컨트롤러가 교차 리뷰 재검수를 수행한다. push, 원격 CI, QA 승인, 운영 배포는 이번 작업 범위 밖이며 미검증이다.
+
+## 2026-10-08 01:15 KST 편집실 S4 재부팅 재개 최종 검증 완료, 제어권 반환 준비
+
+- handoff basis: 회장이 지정한 커밋 `253217d3`, `wiki/거버넌스/결정.md`, `/Users/sj/wt/s4-review-r1.md`를 기준으로 재개했다. 별도 tmux 추론은 사용하지 않았다.
+- 재대조: B1, M1, M2, M3와 세 가지 소항목이 현재 코드·실제 PostgreSQL 통합 테스트·컴포넌트 계약에 모두 연결되어 추가 제품 코드 수정은 필요하지 않았다.
+- 검증: 관련 8파일 64건 PASS, 조건부 실제 렌더 1건 skip. `typecheck:ci` PASS. `ExportPanel.module.css` 파일 단위 design-lint 위반 없음. pipeline artifact lint 종료 코드 0, 기존 핀 위생 경고 28건.
+- 환경: 재부팅 뒤 시스템 Node 실행 파일이 없어 검증 전용 Node v22.23.3을 임시 디렉터리에 내려받아 SHA-256을 검증한 뒤 사용했다. 저장소 의존성과 제품 코드는 바꾸지 않았다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 사용자 소유 변경으로 stage하지 않는다.
+- 다음 실행: 이 검증 기록만 커밋한다. push, 원격 CI, QA 승인, 운영 배포는 이번 작업 범위 밖이며 미검증이다.
 ## 2026-10-07 20:00 KST 운영 러너 CI 워크스페이스 격리 로컬 완료, 제어권 반환 준비
 
 - handoff basis: 메인 에이전트가 지정한 `fix/ci-runner-workspace-isolation` 과제와 tmux `openclaw-auto-3:0.1`을 확인했다. 해당 pane은 이 워커 자신의 로그이고 별도 구현자는 없다.

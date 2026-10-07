@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { parseGenerationRequest } from "@/lib/studio/generation/contracts";
 import { GenerationService } from "@/lib/studio/generation/service";
 import { isStudioApiError } from "@/lib/studio/generation/errors";
-import { parseDerivationOptions } from "@/app/api/studio/v1/generations/[jobId]/derivations/route";
+import { parseDerivationOptions } from "@/lib/studio/generation/derivation-options";
 import {
   buildDerivationPayload,
   derivationQuote,

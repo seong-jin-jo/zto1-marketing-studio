@@ -452,7 +452,7 @@ CREATE TABLE IF NOT EXISTS queue_posts (
   tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   text          TEXT,
   topic         TEXT,
-  status        TEXT NOT NULL DEFAULT 'draft',     -- draft | approved | published | failed
+  status        TEXT NOT NULL DEFAULT 'draft',     -- draft | publish_ready | approved | published | failed
   hashtags      TEXT[],
   channels      JSONB,                             -- v2 멀티채널 발행 상태
   payload       JSONB,                             -- 원 queue.json 항목 스냅샷(무손실)

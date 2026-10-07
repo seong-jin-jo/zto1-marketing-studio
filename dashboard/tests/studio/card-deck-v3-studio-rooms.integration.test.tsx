@@ -11,7 +11,12 @@ import { cardDeckV3EntryEnabled } from "@/lib/studio/card-deck-v3-render-feature
 import { migrateCardDeckV2ToV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import chatBubbleDeck from "./fixtures/deck-d100.v2.json";
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+});
 
 describe("StudioRooms CardDeckV3 실제 연결", () => {
   it("S1-AC1 정상: 카드 편집실이 자유 배치 편집기를 열고 요소 변경을 상위 저장 경계로 전달한다", () => {
@@ -23,6 +28,26 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     view.rerender(<EditRoom kind="card" lines={["첫 장", "마지막 장"]} onLinesChange={() => {}} cardDeckV3={deck} onCardDeckV3Change={onDeckChange} />);
     expect(deck.slides[0].elements.some((element) => element.type === "shape")).toBe(true);
     expect(document.querySelector('[data-card-deck-v3-workbench]')).toBeInTheDocument();
+  });
+
+  it("S4-AC4 회귀: 빈 장 이동 요청은 한 번만 소비하고 이후 덱 갱신에서 사용자의 현재 장을 덮지 않는다", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    const initial = createPlainCardDeckV3(["첫 장", "빈 장"], "deck_empty_focus_once");
+    const requestedSlide = { id: initial.slides[1].id, requestId: 41 };
+    const view = render(<EditRoom kind="card" lines={["첫 장", "빈 장"]} onLinesChange={() => {}} cardDeckV3={initial} onCardDeckV3Change={() => {}} requestedCardSlide={requestedSlide} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "2장" })).toHaveAttribute("aria-pressed", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "1장" }));
+    expect(screen.getByRole("button", { name: "1장" })).toHaveAttribute("aria-pressed", "true");
+
+    const refreshed = structuredClone(initial);
+    refreshed.revision += 1;
+    const refreshedText = refreshed.slides[0].elements.find((element) => element.type === "text");
+    if (!refreshedText || refreshedText.type !== "text") throw new Error("첫 장 text fixture가 필요합니다");
+    refreshedText.text = "서버에서 갱신된 첫 장";
+    view.rerender(<EditRoom kind="card" lines={["첫 장", "빈 장"]} onLinesChange={() => {}} cardDeckV3={refreshed} onCardDeckV3Change={() => {}} requestedCardSlide={requestedSlide} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "1장" })).toHaveAttribute("aria-pressed", "true"));
   });
 
   it("S1 회귀 거절: v3 덱이 없으면 기존 plain 카드 편집기를 유지한다", () => {
@@ -114,7 +139,7 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
       publishBlockedReason="저장된 자유 배치 내용을 불러오는 중입니다."
     />);
     expect(screen.getByRole("button", { name: "자유 배치로 편집" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "발행실로 이동" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "내보내기" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "자유 배치로 편집" }));
     expect(onStart).not.toHaveBeenCalled();
     expect(onPublish).not.toHaveBeenCalled();
@@ -200,8 +225,9 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
       onReturnFromCardDeckV3={onReturn}
     />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("button", { name: "기본 편집으로 돌아가기" }));
+    const returnButton = screen.getByRole("button", { name: "기본 편집으로 돌아가기" });
+    await waitFor(() => expect(returnButton).toBeEnabled(), { timeout: 5_000 });
+    fireEvent.click(returnButton);
     await waitFor(() => expect(onReturn).toHaveBeenCalledOnce());
     const projected = onReturn.mock.calls[0]?.[0] as CardDeck;
     expect(projected.template).toBe("chat_bubble");
@@ -266,8 +292,8 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
     const deck = createPlainCardDeckV3(["첫 장", "둘째 장"], "deck_publish_block");
     render(<EditRoom kind="card" lines={["첫 장", "둘째 장"]} onLinesChange={() => {}} cardDeckV3={deck} onCardDeckV3Change={() => {}} onOpenPublish={onOpenPublish} publishBlockedReason="자유 배치 결과물 만들기는 다음 업데이트에서 열립니다." />);
     expect(screen.getByRole("alert")).toHaveTextContent("다음 업데이트");
-    expect(screen.getByRole("button", { name: "발행실로 이동" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "발행실로 이동" }));
+    expect(screen.getByRole("button", { name: "내보내기" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
     expect(onOpenPublish).not.toHaveBeenCalled();
   });
 

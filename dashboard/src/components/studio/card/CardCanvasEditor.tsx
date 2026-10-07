@@ -106,12 +106,13 @@ function elementOverlayStyle(element: CardElement, logicalHeight: number): CSSPr
 export interface CardCanvasEditorProps {
   deck: CardDeckV3;
   sourceDeck?: CardDeck | null;
+  requestedSlide?: { id: string; requestId: number } | null;
   assetUrls?: Record<string, string>;
   onAssetUrlChange?: (assetId: string, url: string) => void;
   onDeckChange: (deck: CardDeckV3) => void;
 }
 
-export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
+export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = null, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
   const [history, setHistory] = useState<CardCommandHistory>(() => createCardCommandHistory(deck));
   const [activeSlideId, setActiveSlideId] = useState(deck.slides[0]?.id ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -134,6 +135,7 @@ export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAs
   const [toneCandidates, setToneCandidates] = useState<{ targets: Array<{ slideId: string; bubbleId: string; text: string }>; candidates: ChatToneCandidate[]; revision: number } | null>(null);
   const [speakerEditorOpen, setSpeakerEditorOpen] = useState(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const handledRequestedSlideRef = useRef<number | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const profileInputRef = useRef<HTMLInputElement | null>(null);
@@ -193,6 +195,18 @@ export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAs
   useEffect(() => {
     if (editingTextId) textEditorRef.current?.focus();
   }, [editingTextId]);
+
+  useEffect(() => {
+    if (!requestedSlide || !workingDeck.slides.some((slide) => slide.id === requestedSlide.id)) return;
+    if (handledRequestedSlideRef.current === requestedSlide.requestId) return;
+    handledRequestedSlideRef.current = requestedSlide.requestId;
+    setActiveSlideId(requestedSlide.id);
+    setSelectedId(null);
+    window.requestAnimationFrame(() => {
+      stageRef.current?.scrollIntoView({ block: "center" });
+      stageRef.current?.focus();
+    });
+  }, [requestedSlide?.id, requestedSlide?.requestId, workingDeck.slides]);
 
   const apply = useCallback((command: (current: CardDeckV3) => CardDeckV3) => commit(command(history.present)), [commit, history.present]);
   const beginTextEdit = useCallback((element: CardElement) => {
@@ -548,7 +562,7 @@ export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAs
       {uploadError ? <p role="alert" className={styles.error}>{uploadError}</p> : null}
       <div className={styles.workspace}>
         <nav className={styles.slideStrip} aria-label="카드 장 목록">
-          {workingDeck.slides.map((slide) => <Button key={slide.id} size="sm" aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>{slide.order + 1}장</Button>)}
+          {workingDeck.slides.map((slide) => <Button key={slide.id} size="sm" data-card-slide={slide.id} aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>{slide.order + 1}장</Button>)}
         </nav>
         <div className={styles.stageColumn} data-card-stage-column>
           {activeSlide.base.kind === "chat_bubble" ? <div className={styles.bubbleActions} role="toolbar" aria-label="카톡 장 편집 도구">

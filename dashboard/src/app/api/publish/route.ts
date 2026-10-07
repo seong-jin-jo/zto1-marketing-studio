@@ -233,6 +233,11 @@ const PUBLISH_FAST_PATH_BUDGET_MS = Number(process.env.PUBLISH_FAST_PATH_BUDGET_
 export async function POST(request: Request) {
   const __b = await request.json();
   const { platform, draft_id, account_id } = __b;
+  const rawQueuePostId = __b.queue_post_id;
+  if (rawQueuePostId !== undefined && (typeof rawQueuePostId !== "string" || !UUID_RE.test(rawQueuePostId))) {
+    return Response.json({ error: "queue_post_id must be a UUID" }, { status: 400 });
+  }
+  const queuePostId = typeof rawQueuePostId === "string" ? rawQueuePostId : null;
   let image_url = __b.image_url;
   let image_urls = __b.image_urls;
   const legacyText = typeof __b.text === "string" ? __b.text : "";
@@ -646,7 +651,7 @@ export async function POST(request: Request) {
       // queue 기록은 초안 기반 발행에만 있다. 멱등 키 기반 발행은 대상 queue 행이 없다.
       if (isDraftUuid) {
         try {
-          const queueRecorded = await markQueuePublished(tenant_id, draft_id, {
+          const queueRecorded = await markQueuePublished(tenant_id, queuePostId ?? draft_id, {
             platform,
             externalId: existing.external_id ?? undefined,
             permalink,
@@ -870,7 +875,7 @@ export async function POST(request: Request) {
 
   if (result.ok && isDraftUuid) {
     try {
-      const queueRecorded = await markQueuePublished(tenant_id, draft_id, {
+      const queueRecorded = await markQueuePublished(tenant_id, queuePostId ?? draft_id, {
         platform,
         externalId: result.externalId,
         permalink: result.permalink,

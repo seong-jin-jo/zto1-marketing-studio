@@ -48,6 +48,14 @@ export async function loadEditorHandoff(
   });
 }
 
+export function editorHandoffFromDraftPayload(payload: unknown): EditorHandoff | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const handoff = (payload as Record<string, unknown>).editor_handoff;
+  return handoff && typeof handoff === "object" && !Array.isArray(handoff)
+    ? handoff as EditorHandoff
+    : null;
+}
+
 export async function updateEditorHandoff(
   tenantId: string,
   draftId: string,

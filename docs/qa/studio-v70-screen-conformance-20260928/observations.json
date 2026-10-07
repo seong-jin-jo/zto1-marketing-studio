@@ -8,22 +8,22 @@
         "strip": {
           "left": 281,
           "right": 393,
-          "top": 454,
-          "bottom": 1298,
+          "top": 531,
+          "bottom": 1375,
           "width": 112
         },
         "thumbnail": {
           "left": 281,
           "right": 393,
-          "top": 454,
-          "bottom": 594,
+          "top": 531,
+          "bottom": 671,
           "width": 112
         },
         "stage": {
           "left": 472,
           "right": 992,
-          "top": 523,
-          "bottom": 1173,
+          "top": 600,
+          "bottom": 1250,
           "width": 520,
           "height": 650,
           "ratio": "4 / 5",
@@ -32,8 +32,8 @@
         "faceCopy": {
           "left": 537,
           "right": 927,
-          "top": 821.5,
-          "bottom": 919.5,
+          "top": 898.5,
+          "bottom": 996.5,
           "width": 390
         },
         "assistant": {
@@ -54,6 +54,90 @@
       "inputCount": 3
     },
     {
+      "screen": "edit-text-card",
+      "width": 1440,
+      "height": 900,
+      "duplicateControls": 0,
+      "placeholderOverlays": 0,
+      "inputCount": 3,
+      "editedLine": "즉시 반영 1440",
+      "textPreviewChanged": true,
+      "positionPreviewChanged": true,
+      "previewIsBrowserRenderedDataUrl": true,
+      "geometry": {
+        "stage": {
+          "left": 472,
+          "right": 992,
+          "top": -16,
+          "bottom": 634,
+          "width": 520,
+          "height": 650
+        },
+        "media": {
+          "left": 472,
+          "right": 992,
+          "top": -16,
+          "bottom": 634,
+          "width": 520,
+          "height": 650
+        }
+      },
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      }
+    },
+    {
+      "screen": "edit-text-card-locked-1",
+      "width": 1440,
+      "height": 900,
+      "cardCount": 1,
+      "thumbnailCount": 1,
+      "originalImageUrls": [
+        "/qa/alignment-card-1.jpg"
+      ],
+      "savedImageUrls": [
+        "/qa/alignment-card-1.jpg"
+      ],
+      "imageUploads": 0,
+      "lockGuidanceVisible": true,
+      "controlsDisabled": true,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928/edit-text-card-locked-1-1440x900.png"
+    },
+    {
+      "screen": "edit-text-card-locked-2",
+      "width": 1440,
+      "height": 900,
+      "cardCount": 2,
+      "thumbnailCount": 2,
+      "originalImageUrls": [
+        "/qa/alignment-card-1.jpg",
+        "/qa/alignment-card-2.jpg"
+      ],
+      "savedImageUrls": [
+        "/qa/alignment-card-1.jpg",
+        "/qa/alignment-card-2.jpg"
+      ],
+      "imageUploads": 0,
+      "lockGuidanceVisible": true,
+      "controlsDisabled": true,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928/edit-text-card-locked-2-1440x900.png"
+    },
+    {
       "screen": "edit-bubble-deck",
       "width": 1440,
       "height": 900,
@@ -61,23 +145,23 @@
         "strip": {
           "left": 265,
           "right": 377,
-          "top": 464,
-          "bottom": 1114,
+          "top": 165,
+          "bottom": 815,
           "width": 112,
           "height": 650
         },
         "thumbnail": {
           "left": 265,
           "right": 377,
-          "top": 464,
-          "bottom": 604,
+          "top": 165,
+          "bottom": 305,
           "width": 112
         },
         "stage": {
           "left": 472,
           "right": 992,
-          "top": 464,
-          "bottom": 1114,
+          "top": 165,
+          "bottom": 815,
           "width": 520,
           "height": 650
         },
@@ -86,8 +170,8 @@
           "position": "absolute",
           "intersectionArea": 0,
           "buttonTopDelta": 0,
-          "top": 605,
-          "bottom": 637
+          "top": 313,
+          "bottom": 345
         }
       },
       "overflow": {
@@ -100,6 +184,19 @@
       "toolbarCount": 0
     },
     {
+      "screen": "edit-text",
+      "width": 1440,
+      "height": 900,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "editorVisible": true,
+      "screenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928/edit-text-1440x900.png"
+    },
+    {
       "screen": "edit-video-empty",
       "width": 1440,
       "height": 900,
@@ -110,6 +207,76 @@
         "scopeScroll": 1168
       },
       "deepLinkKind": "video"
+    },
+    {
+      "screen": "edit-video-actual",
+      "width": 1440,
+      "height": 900,
+      "geometry": {
+        "playback": {
+          "top": 16,
+          "bottom": 920,
+          "height": 904
+        },
+        "screen": {
+          "top": 16,
+          "bottom": 528,
+          "height": 512
+        },
+        "controls": {
+          "top": 536,
+          "bottom": 596,
+          "height": 60
+        },
+        "script": {
+          "top": 16,
+          "bottom": 920,
+          "height": 904
+        },
+        "timeline": {
+          "top": 936,
+          "bottom": 1180,
+          "height": 244
+        },
+        "workbench": {
+          "top": 16,
+          "bottom": 1180,
+          "height": 1164
+        },
+        "nextContentTop": 1192,
+        "lastLaneBottom": 1190
+      },
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "playback": {
+        "before": 0,
+        "after": 0.166291,
+        "delta": 0.166291
+      },
+      "touchTargets": {
+        "measured": 2,
+        "below44": 0
+      }
+    },
+    {
+      "screen": "edit-save-error",
+      "width": 1440,
+      "height": 900,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "scopeClient": 1168,
+        "scopeScroll": 1168
+      },
+      "alertText": "자동 저장 서버가 응답하지 않았습니다.",
+      "expectedNetworkErrors": [
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+      ],
+      "screenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928/edit-save-error-1440x900.png"
     },
     {
       "screen": "publish-cards",
@@ -245,22 +412,22 @@
       "xChecked": false,
       "missingMediaDisabled": 3,
       "accountSelectCount": 0,
-      "missingMediaScreenshot": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928/publish-missing-media-1440x900.png"
+      "missingMediaScreenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928/publish-missing-media-1440x900.png"
     },
     {
       "screen": "edit-card-stage-diff",
       "width": 1440,
       "height": 900,
-      "stageDiffScore": 0.03685504118807286,
-      "stageDiffThreshold": 0.36,
+      "stageDiffScore": 0,
+      "stageDiffThreshold": 0.025,
       "reference": "dashboard/public/qa/alignment-card-1.jpg"
     },
     {
       "screen": "edit-bubble-stage-diff",
       "width": 1440,
       "height": 900,
-      "stageDiffScore": 0.04509548671539622,
-      "stageDiffThreshold": 0.36,
+      "stageDiffScore": 0.042737533356537884,
+      "stageDiffThreshold": 0.025,
       "gateMode": "report-only",
       "reference": "docs/design/clean-frames/osmu-v70-편집실-카드뉴스-편집중@1440x900.png"
     },
@@ -272,22 +439,22 @@
         "strip": {
           "left": 105,
           "right": 205,
-          "top": 446,
-          "bottom": 1290,
+          "top": 523,
+          "bottom": 1367,
           "width": 100
         },
         "thumbnail": {
           "left": 105,
           "right": 205,
-          "top": 446,
-          "bottom": 571,
+          "top": 523,
+          "bottom": 648,
           "width": 100
         },
         "stage": {
           "left": 226,
           "right": 746,
-          "top": 515,
-          "bottom": 1165,
+          "top": 592,
+          "bottom": 1242,
           "width": 520,
           "height": 650,
           "ratio": "4 / 5",
@@ -296,8 +463,8 @@
         "faceCopy": {
           "left": 291,
           "right": 681,
-          "top": 813.5,
-          "bottom": 911.5,
+          "top": 890.5,
+          "bottom": 988.5,
           "width": 390
         },
         "assistant": {
@@ -318,6 +485,42 @@
       "inputCount": 3
     },
     {
+      "screen": "edit-text-card",
+      "width": 1024,
+      "height": 820,
+      "duplicateControls": 0,
+      "placeholderOverlays": 0,
+      "inputCount": 3,
+      "editedLine": "즉시 반영 1024",
+      "textPreviewChanged": true,
+      "positionPreviewChanged": true,
+      "previewIsBrowserRenderedDataUrl": true,
+      "geometry": {
+        "stage": {
+          "left": 226,
+          "right": 746,
+          "top": -88,
+          "bottom": 562,
+          "width": 520,
+          "height": 650
+        },
+        "media": {
+          "left": 226,
+          "right": 746,
+          "top": -88,
+          "bottom": 562,
+          "width": 520,
+          "height": 650
+        }
+      },
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      }
+    },
+    {
       "screen": "edit-bubble-deck",
       "width": 1024,
       "height": 820,
@@ -325,23 +528,23 @@
         "strip": {
           "left": 97,
           "right": 197,
-          "top": 429,
-          "bottom": 1079,
+          "top": 85,
+          "bottom": 735,
           "width": 100,
           "height": 650
         },
         "thumbnail": {
           "left": 97,
           "right": 197,
-          "top": 429,
-          "bottom": 554,
+          "top": 85,
+          "bottom": 210,
           "width": 100
         },
         "stage": {
           "left": 213,
           "right": 733,
-          "top": 429,
-          "bottom": 1079,
+          "top": 85,
+          "bottom": 735,
           "width": 520,
           "height": 650
         },
@@ -350,8 +553,8 @@
           "position": "absolute",
           "intersectionArea": 0,
           "buttonTopDelta": 0,
-          "top": 570,
-          "bottom": 602
+          "top": 233,
+          "bottom": 265
         }
       },
       "overflow": {
@@ -364,6 +567,19 @@
       "toolbarCount": 0
     },
     {
+      "screen": "edit-text",
+      "width": 1024,
+      "height": 820,
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "editorVisible": true,
+      "screenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928/edit-text-1024x820.png"
+    },
+    {
       "screen": "edit-video-empty",
       "width": 1024,
       "height": 820,
@@ -374,6 +590,73 @@
         "scopeScroll": 920
       },
       "deepLinkKind": "video"
+    },
+    {
+      "screen": "edit-video-actual",
+      "width": 1024,
+      "height": 820,
+      "geometry": {
+        "playback": {
+          "top": 16,
+          "bottom": 1136,
+          "height": 1120
+        },
+        "screen": {
+          "top": 16,
+          "bottom": 528,
+          "height": 512
+        },
+        "controls": {
+          "top": 536,
+          "bottom": 596,
+          "height": 60
+        },
+        "script": {
+          "top": 16,
+          "bottom": 1136,
+          "height": 1120
+        },
+        "timeline": {
+          "top": 1152,
+          "bottom": 1396,
+          "height": 244
+        },
+        "workbench": {
+          "top": 16,
+          "bottom": 1396,
+          "height": 1380
+        },
+        "nextContentTop": 1408,
+        "lastLaneBottom": 1406
+      },
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "playback": {
+        "before": 0,
+        "after": 0.166232,
+        "delta": 0.166232
+      },
+      "touchTargets": {
+        "measured": 2,
+        "below44": 0
+      }
+    },
+    {
+      "screen": "edit-loading",
+      "width": 1024,
+      "height": 820,
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "scopeClient": 920,
+        "scopeScroll": 920
+      },
+      "ariaBusy": "true",
+      "screenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928/edit-loading-1024x820.png"
     },
     {
       "screen": "publish-cards",
@@ -509,22 +792,22 @@
       "xChecked": false,
       "missingMediaDisabled": 3,
       "accountSelectCount": 0,
-      "missingMediaScreenshot": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928/publish-missing-media-1024x820.png"
+      "missingMediaScreenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928/publish-missing-media-1024x820.png"
     },
     {
       "screen": "edit-card-stage-diff",
       "width": 1024,
       "height": 820,
-      "stageDiffScore": 0.03685861468847894,
-      "stageDiffThreshold": 0.36,
+      "stageDiffScore": 0,
+      "stageDiffThreshold": 0.025,
       "reference": "dashboard/public/qa/alignment-card-1.jpg"
     },
     {
       "screen": "edit-bubble-stage-diff",
       "width": 1024,
       "height": 820,
-      "stageDiffScore": 0.048380229725026105,
-      "stageDiffThreshold": 0.36,
+      "stageDiffScore": 0.045773430792435316,
+      "stageDiffThreshold": 0.025,
       "gateMode": "report-only",
       "reference": "docs/design/clean-frames/osmu-v70-편집실-카드뉴스-편집중@1024x820.png"
     },
@@ -536,22 +819,22 @@
         "strip": {
           "left": 41,
           "right": 349,
-          "top": 625,
-          "bottom": 703,
+          "top": 746,
+          "bottom": 824,
           "width": 308
         },
         "thumbnail": {
           "left": 41,
           "right": 97,
-          "top": 625,
-          "bottom": 695,
+          "top": 746,
+          "bottom": 816,
           "width": 56
         },
         "stage": {
           "left": 41,
           "right": 349,
-          "top": 775,
-          "bottom": 1160,
+          "top": 896,
+          "bottom": 1281,
           "width": 308,
           "height": 385,
           "ratio": "4 / 5",
@@ -560,13 +843,13 @@
         "faceCopy": {
           "left": 84.8046875,
           "right": 305.1953125,
-          "top": 941,
-          "bottom": 1039,
+          "top": 1062,
+          "bottom": 1160,
           "width": 220.390625
         },
         "assistant": {
           "width": 342,
-          "height": 577
+          "height": 583
         },
         "chatLog": {
           "width": 317,
@@ -582,6 +865,90 @@
       "inputCount": 3
     },
     {
+      "screen": "edit-text-card",
+      "width": 390,
+      "height": 844,
+      "duplicateControls": 0,
+      "placeholderOverlays": 0,
+      "inputCount": 3,
+      "editedLine": "즉시 반영 390",
+      "textPreviewChanged": true,
+      "positionPreviewChanged": true,
+      "previewIsBrowserRenderedDataUrl": true,
+      "geometry": {
+        "stage": {
+          "left": 41,
+          "right": 349,
+          "top": 142,
+          "bottom": 527,
+          "width": 308,
+          "height": 385
+        },
+        "media": {
+          "left": 41,
+          "right": 349,
+          "top": 142,
+          "bottom": 527,
+          "width": 308,
+          "height": 385
+        }
+      },
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      }
+    },
+    {
+      "screen": "edit-text-card-locked-1",
+      "width": 390,
+      "height": 844,
+      "cardCount": 1,
+      "thumbnailCount": 1,
+      "originalImageUrls": [
+        "/qa/alignment-card-1.jpg"
+      ],
+      "savedImageUrls": [
+        "/qa/alignment-card-1.jpg"
+      ],
+      "imageUploads": 0,
+      "lockGuidanceVisible": true,
+      "controlsDisabled": true,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928/edit-text-card-locked-1-390x844.png"
+    },
+    {
+      "screen": "edit-text-card-locked-2",
+      "width": 390,
+      "height": 844,
+      "cardCount": 2,
+      "thumbnailCount": 2,
+      "originalImageUrls": [
+        "/qa/alignment-card-1.jpg",
+        "/qa/alignment-card-2.jpg"
+      ],
+      "savedImageUrls": [
+        "/qa/alignment-card-1.jpg",
+        "/qa/alignment-card-2.jpg"
+      ],
+      "imageUploads": 0,
+      "lockGuidanceVisible": true,
+      "controlsDisabled": true,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928/edit-text-card-locked-2-390x844.png"
+    },
+    {
       "screen": "edit-bubble-deck",
       "width": 390,
       "height": 844,
@@ -589,33 +956,33 @@
         "strip": {
           "left": 41,
           "right": 349,
-          "top": 199,
-          "bottom": 277,
+          "top": 387,
+          "bottom": 465,
           "width": 308,
           "height": 78
         },
         "thumbnail": {
           "left": 41,
           "right": 97,
-          "top": 199,
-          "bottom": 269,
+          "top": 387,
+          "bottom": 457,
           "width": 56
         },
         "stage": {
           "left": 41,
           "right": 349,
-          "top": 293,
-          "bottom": 678,
+          "top": 481,
+          "bottom": 866,
           "width": 308,
           "height": 385
         },
         "stripDirection": "row",
         "bubbleToolbar": {
           "position": "static",
-          "intersectionArea": 18223.4375,
-          "buttonTopDelta": 48,
-          "top": 449,
-          "bottom": 549
+          "intersectionArea": 0,
+          "buttonTopDelta": 144,
+          "top": 650,
+          "bottom": 846
         }
       },
       "overflow": {
@@ -626,6 +993,19 @@
       },
       "thumbnailCount": 9,
       "toolbarCount": 0
+    },
+    {
+      "screen": "edit-text",
+      "width": 390,
+      "height": 844,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "scopeClient": 342,
+        "scopeScroll": 342
+      },
+      "editorVisible": true,
+      "screenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928/edit-text-390x844.png"
     },
     {
       "screen": "edit-video-empty",
@@ -644,27 +1024,53 @@
       "width": 390,
       "height": 844,
       "geometry": {
+        "playback": {
+          "top": 16,
+          "bottom": 276,
+          "height": 260
+        },
         "screen": {
           "top": 16,
-          "bottom": 196,
-          "height": 180
+          "bottom": 176,
+          "height": 160
+        },
+        "controls": {
+          "top": 184,
+          "bottom": 244,
+          "height": 60
         },
         "script": {
-          "top": 290,
-          "bottom": 1340,
-          "height": 1050
+          "top": 292,
+          "bottom": 1634,
+          "height": 1342
         },
         "timeline": {
-          "top": 1356,
-          "bottom": 1464,
-          "height": 108
-        }
+          "top": 1650,
+          "bottom": 1894,
+          "height": 244
+        },
+        "workbench": {
+          "top": 16,
+          "bottom": 1894,
+          "height": 1878
+        },
+        "nextContentTop": 1906,
+        "lastLaneBottom": 1884
       },
       "overflow": {
         "viewport": 390,
         "documentScroll": 390,
         "scopeClient": 342,
         "scopeScroll": 342
+      },
+      "playback": {
+        "before": 0,
+        "after": 0.165906,
+        "delta": 0.165906
+      },
+      "touchTargets": {
+        "measured": 2,
+        "below44": 0
       }
     },
     {
@@ -801,28 +1207,40 @@
       "xChecked": false,
       "missingMediaDisabled": 3,
       "accountSelectCount": 0,
-      "missingMediaScreenshot": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928/publish-missing-media-390x844.png"
+      "missingMediaScreenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928/publish-missing-media-390x844.png"
     },
     {
       "screen": "edit-card-stage-diff",
       "width": 390,
       "height": 844,
-      "stageDiffScore": 0.05951056967165565,
-      "stageDiffThreshold": 0.36,
+      "stageDiffScore": 0,
+      "stageDiffThreshold": 0.025,
       "reference": "dashboard/public/qa/alignment-card-1.jpg"
     },
     {
       "screen": "edit-bubble-stage-diff",
       "width": 390,
       "height": 844,
-      "stageDiffScore": 0.17146406775728043,
-      "stageDiffThreshold": 0.36,
+      "stageDiffScore": 0.18171031442162663,
+      "stageDiffThreshold": 0.025,
       "gateMode": "report-only",
       "reference": "docs/design/clean-frames/osmu-v70-편집실-카드뉴스-편집중@390x844.png"
     }
   ],
   "consoleErrorCount": 0,
-  "outputDir": "/Users/sj/sj_code_master/zto1-marketing-studio-worktrees/fix-studio-screen-v70-conformance/docs/qa/studio-v70-screen-conformance-20260928",
+  "outputDir": "/Users/sj/wt/zto1-editroom-s4/docs/qa/studio-v70-screen-conformance-20260928",
   "referenceComparison": true,
+  "visualDiffMutationCheck": {
+    "sameScore": 0,
+    "wrongImageScore": 0.06666666666666667,
+    "blackFrameScore": 0.265359477124183,
+    "stageDiffThreshold": 0.025,
+    "directStageDiffRegion": {
+      "left": 26,
+      "top": 26,
+      "width": 208,
+      "height": 39
+    }
+  },
   "imageDiffNote": "일반 카드는 생성 이미지 fixture와 실제 무대를 비교해 CI 판정한다. 말풍선 덱은 승인 clean-frame의 카드 영역과 대조 리포트만 만들며, CI는 폭·비율·겹침·툴바 위치 수치 계약으로 판정한다."
 }

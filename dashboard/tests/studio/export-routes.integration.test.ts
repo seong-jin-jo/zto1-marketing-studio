@@ -6,13 +6,14 @@ const H = vi.hoisted(() => ({
   get: vi.fn(),
   retry: vi.fn(),
   latest: vi.fn(),
+  effectiveTenantId: vi.fn(async () => "tenant-route"),
 }));
 
 const DRAFT_ID = "11111111-1111-4111-8111-111111111111";
 const EXPORT_ID = "22222222-2222-4222-8222-222222222222";
 
 vi.mock("@/lib/tenant-auth", () => ({
-  effectiveTenantId: vi.fn(async () => "tenant-route"),
+  effectiveTenantId: H.effectiveTenantId,
   AuthError: class AuthError extends Error {
     status = 401;
     code = "invalid_token";
@@ -105,6 +106,34 @@ describe("S3 export route 통합 계약", () => {
     }), { params: Promise.resolve({ draftId: DRAFT_ID, exportId: EXPORT_ID }) });
     expect(response.status).toBe(202);
     expect(await response.json()).toEqual({ export_id: EXPORT_ID, status: "queued", requeued_item_keys: ["slide-failed"] });
+  });
+
+  it("S4-ROUTE-01 정상: 활성 workspace 힌트는 엄격한 내보내기 계약과 분리해 생성·재시도에 전달한다", async () => {
+    const { POST: createExport } = await import("@/app/api/studio/drafts/[draftId]/exports/route");
+    H.create.mockResolvedValue({ job: job(), reused: false });
+    const created = await createExport(new Request("http://localhost/api/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": "tenant-hint" },
+      body: JSON.stringify({
+        tenant_id: "tenant-active",
+        kind: "card_deck",
+        expected_source_revision: 13,
+        expected_source_hash: "a".repeat(64),
+        item_keys: null,
+      }),
+    }), { params: Promise.resolve({ draftId: DRAFT_ID }) });
+    expect(created.status).toBe(202);
+    expect(H.effectiveTenantId).toHaveBeenLastCalledWith(expect.any(Request), "tenant-active");
+
+    const { POST: retryExport } = await import("@/app/api/studio/drafts/[draftId]/exports/[exportId]/retry/route");
+    H.retry.mockResolvedValue(["slide-failed"]);
+    const retried = await retryExport(new Request("http://localhost/api/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenant_id: "tenant-active", item_keys: ["slide-failed"] }),
+    }), { params: Promise.resolve({ draftId: DRAFT_ID, exportId: EXPORT_ID }) });
+    expect(retried.status).toBe(202);
+    expect(H.effectiveTenantId).toHaveBeenLastCalledWith(expect.any(Request), "tenant-active");
   });
 
   it("S6-QUEUE-ROUTE-01 정상: latest는 video kind를 저장소까지 전달한다", async () => {

@@ -1,13 +1,30 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyEditorOperation, createEditorHandoff, type EditorHandoff } from "@/lib/studio/editor-handoff";
 
 const H = vi.hoisted(() => ({
   tenantId: "11111111-1111-4111-8111-111111111111" as string | null,
   draftId: "draft-editor-1",
   handoff: null as EditorHandoff | null,
+  draftPayload: { videoEdit: {} } as Record<string, unknown>,
   updateAllowed: true,
   queueCalls: [] as Array<Record<string, unknown>>,
+  queueOptions: [] as Array<Record<string, unknown>>,
+  publishOptions: [] as Array<Record<string, unknown>>,
+  mirrorCalls: [] as Array<Record<string, unknown>>,
+  replaceHandoffInsidePublish: null as EditorHandoff | null,
   generatedText: "",
+  latestExport: {
+    blocker: null as string | null,
+    is_latest: true,
+    current_source_hash: "a".repeat(64),
+    latest_export: { export_id: "22222222-2222-4222-8222-222222222222", status: "succeeded" },
+  } as {
+    blocker: string | null;
+    is_latest: boolean;
+    current_source_hash: string;
+    latest_export: { export_id: string; status: string } | null;
+    first_empty_slide?: { order: number; number: number; item_key: string };
+  },
   authFailure: null as null | { reason: "invalid" | "unavailable" | "forbidden"; message: string; code?: string },
 }));
 
@@ -42,9 +59,14 @@ vi.mock("@/lib/studio/editor-handoff-store", () => ({
     return { draftId: H.draftId, handoff: input.handoff };
   }),
   loadEditorHandoff: vi.fn(async () => H.handoff ? {
-    draft: { id: H.draftId, idea: H.handoff.summary, payload: { editor_handoff: H.handoff }, status: "draft" },
+    draft: { id: H.draftId, idea: H.handoff.summary, payload: { ...H.draftPayload, editor_handoff: H.handoff }, status: "draft" },
     handoff: H.handoff,
   } : null),
+  editorHandoffFromDraftPayload: vi.fn((payload: unknown) => {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    const handoff = (payload as Record<string, unknown>).editor_handoff;
+    return handoff && typeof handoff === "object" && !Array.isArray(handoff) ? handoff : null;
+  }),
   updateEditorHandoff: vi.fn(async (_tenantId: string, _draftId: string, _expected: number, handoff: EditorHandoff) => {
     if (!H.updateAllowed) return false;
     H.handoff = handoff;
@@ -54,15 +76,46 @@ vi.mock("@/lib/studio/editor-handoff-store", () => ({
 
 vi.mock("@/lib/tenant-context", () => ({
   runWithTenant: vi.fn(async (_tenantId: string, callback: () => unknown) => callback()),
+  currentTenantId: vi.fn(() => H.tenantId),
 }));
 
 vi.mock("@/lib/queue-add", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/queue-add")>();
   return {
     ...original,
-    addQueuePost: vi.fn(async (_tenantId: string, input: Record<string, unknown>) => {
+    addQueuePost: vi.fn(async (_tenantId: string, input: Record<string, unknown>, options: Record<string, unknown> = {}) => {
       H.queueCalls.push(input);
+      H.queueOptions.push(options);
       return { post: { id: "queue-1", ...input }, reused: false };
+    }),
+  };
+});
+
+vi.mock("@/lib/queue-store", () => ({
+  mirrorQueuePost: vi.fn(async (_tenantId: string, post: Record<string, unknown>) => {
+    H.mirrorCalls.push(post);
+    return true;
+  }),
+}));
+
+vi.mock("@/lib/studio/export-repository", async () => {
+  const { ExportQueueError } = await vi.importActual<typeof import("@/lib/studio/export-contract")>("@/lib/studio/export-contract");
+  return {
+    exportRepository: () => ({
+      withLatestForPublish: vi.fn(async (_tenantId: string, _draftId: string, kind: "card_deck" | "video", publish: (receipt: Record<string, unknown>, payload: Record<string, unknown>) => unknown, options: Record<string, unknown> = {}) => {
+        H.publishOptions.push(options);
+        if (H.latestExport.blocker || !H.latestExport.is_latest || H.latestExport.latest_export?.status !== "succeeded") {
+          const code = H.latestExport.blocker ?? "NO_SUCCESSFUL_EXPORT";
+          throw new ExportQueueError(409, code, "latest export blocked", H.latestExport.first_empty_slide ? { first_empty_slide: H.latestExport.first_empty_slide } : {});
+        }
+        if (H.replaceHandoffInsidePublish) H.handoff = H.replaceHandoffInsidePublish;
+        return publish({
+          exportId: H.latestExport.latest_export.export_id,
+          sourceHash: H.latestExport.current_source_hash,
+          kind,
+          artifactKeys: kind === "video" ? ["export-final.mp4"] : ["slide-1.png", "slide-2.png"],
+        }, { ...H.draftPayload, editor_handoff: H.handoff });
+      }),
     }),
   };
 });
@@ -83,13 +136,31 @@ function handoffBody() {
 }
 
 beforeEach(() => {
+  process.env.MEDIA_SIGNING_SECRET = "editroom-s4-test-signing-secret";
+  process.env.OSMU_PUBLIC_URL = "https://studio.example.test";
   H.tenantId = "11111111-1111-4111-8111-111111111111";
   H.draftId = "draft-editor-1";
   H.handoff = null;
+  H.draftPayload = { videoEdit: {} };
   H.updateAllowed = true;
   H.queueCalls = [];
+  H.queueOptions = [];
+  H.publishOptions = [];
+  H.mirrorCalls = [];
+  H.replaceHandoffInsidePublish = null;
   H.generatedText = "";
+  H.latestExport = {
+    blocker: null,
+    is_latest: true,
+    current_source_hash: "a".repeat(64),
+    latest_export: { export_id: "22222222-2222-4222-8222-222222222222", status: "succeeded" },
+  };
   H.authFailure = null;
+});
+
+afterEach(() => {
+  delete process.env.MEDIA_SIGNING_SECRET;
+  delete process.env.OSMU_PUBLIC_URL;
 });
 
 describe("Studio 편집 인계 HTTP 통합 계약", () => {
@@ -101,7 +172,7 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
     }));
     const body = await response.json();
 
-    expect(response.status).toBe(201);
+    expect(response.status, JSON.stringify(body)).toBe(201);
     expect(response.headers.get("X-Contract-Version")).toBe("1.0");
     expect(body).toEqual(expect.objectContaining({ draft_id: H.draftId, handoff: expect.objectContaining({ kind: "video" }) }));
   });
@@ -212,7 +283,7 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
     expect(response.status).toBe(409);
   });
 
-  it("BE-V63-37 정상 경로: ready Studio draft를 OpenClaw 큐에 출처와 함께 넣는다", async () => {
+  it("BE-V63-37·S4-AC5 정상: ready Studio draft를 최신 export ID·hash와 함께 OpenClaw 큐에 넣는다", async () => {
     H.handoff = applyEditorOperation(createEditorHandoff(handoffBody()), 0, { operation: "mark_ready" });
     const { POST } = await import("@/app/api/studio/commands/route");
     const response = await POST(new Request("http://localhost/api/studio/commands", {
@@ -221,10 +292,152 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
     }));
     const body = await response.json();
 
-    expect(response.status).toBe(201);
+    expect(response.status, JSON.stringify(body)).toBe(201);
     expect(body.command).toEqual(expect.objectContaining({ action: "enqueue_openclaw", executed: true }));
     expect(H.queueCalls[0]).toEqual(expect.objectContaining({
-      sourceContext: expect.objectContaining({ type: "studio_handoff", draftId: H.draftId }),
+      sourceContext: expect.objectContaining({
+        type: "studio_handoff",
+        draftId: H.draftId,
+        exportId: "22222222-2222-4222-8222-222222222222",
+        exportSourceHash: "a".repeat(64),
+      }),
     }));
+    expect(H.queueOptions[0]).toEqual(expect.objectContaining({
+      preparedMedia: expect.objectContaining({
+        videoFilename: "export-final.mp4",
+        videoUrl: expect.stringContaining("/api/exports/deliver/"),
+      }),
+    }));
+  });
+
+  it("S4-AC5 정상: draft 잠금 뒤 다시 읽은 최신 handoff 본문을 큐에 넣는다", async () => {
+    H.handoff = applyEditorOperation(createEditorHandoff(handoffBody()), 0, { operation: "mark_ready" });
+    H.replaceHandoffInsidePublish = applyEditorOperation(createEditorHandoff({
+      ...handoffBody(),
+      summary: "잠금 뒤 확정된 최신 영상 원본",
+    }), 0, { operation: "mark_ready" });
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: H.tenantId }),
+    }), { params: Promise.resolve({ draftId: H.draftId }) });
+
+    const body = await response.clone().json();
+    expect(response.status, JSON.stringify(body)).toBe(201);
+    expect(H.queueCalls[0]).toEqual(expect.objectContaining({
+      text: "잠금 뒤 확정된 최신 영상 원본",
+      sourceContext: expect.objectContaining({ revision: 1 }),
+    }));
+  });
+
+  it("S4-R2-M4 정상: 발행실 고정은 export ID 멱등키와 publish_ready 상태를 쓰고 잠금 해제 뒤 DB에 미러한다", async () => {
+    H.handoff = applyEditorOperation(createEditorHandoff(handoffBody()), 0, { operation: "mark_ready" });
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: H.tenantId,
+        purpose: "publish_room",
+        expected_export_id: H.latestExport.latest_export!.export_id,
+        expected_source_hash: H.latestExport.current_source_hash,
+      }),
+    }), { params: Promise.resolve({ draftId: H.draftId }) });
+
+    const body = await response.json();
+    expect(response.status, JSON.stringify(body)).toBe(201);
+    expect(body).toMatchObject({
+      pin_status: "publish_ready",
+      export_id: H.latestExport.latest_export!.export_id,
+      source_hash: H.latestExport.current_source_hash,
+    });
+    expect(H.queueCalls[0]).toMatchObject({
+      idempotencyKey: `studio-export:${H.latestExport.latest_export!.export_id}`,
+    });
+    expect(H.queueOptions[0]).toMatchObject({
+      initialStatus: "publish_ready",
+      mirror: false,
+    });
+    expect(H.publishOptions[0]).toEqual({ holdDraftLockDuringCallback: true });
+    expect(H.mirrorCalls).toEqual([expect.objectContaining({ id: "queue-1" })]);
+  });
+
+  it("S4-R2-B2 회귀: handoff가 없어도 발행실 고정 요청은 unpinned 정상 응답으로 이동을 막지 않는다", async () => {
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: H.tenantId,
+        purpose: "publish_room",
+        expected_export_id: H.latestExport.latest_export!.export_id,
+        expected_source_hash: H.latestExport.current_source_hash,
+      }),
+    }), { params: Promise.resolve({ draftId: H.draftId }) });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      queued: false,
+      pin_status: "unpinned",
+      code: "EDITOR_HANDOFF_NOT_FOUND",
+    });
+    expect(H.queueCalls).toHaveLength(0);
+  });
+
+  it("S4-AC5 거절: 공개 HTTPS origin이 없으면 상대 artifact URL을 큐에 넣지 않는다", async () => {
+    delete process.env.OSMU_PUBLIC_URL;
+    H.handoff = applyEditorOperation(createEditorHandoff(handoffBody()), 0, { operation: "mark_ready" });
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: H.tenantId }),
+    }), { params: Promise.resolve({ draftId: H.draftId }) });
+
+    const body = await response.clone().json();
+    expect(response.status, JSON.stringify(body)).toBe(503);
+    expect(await response.json()).toMatchObject({ code: "EXPORT_DELIVERY_UNAVAILABLE" });
+    expect(H.queueCalls).toHaveLength(0);
+  });
+
+  it("S4-AC6 거절: 클라이언트를 우회해도 최신 내보내기가 아니면 큐 등록을 막는다", async () => {
+    H.handoff = applyEditorOperation(createEditorHandoff(handoffBody()), 0, { operation: "mark_ready" });
+    H.latestExport = {
+      blocker: "EXPORT_SOURCE_STALE",
+      is_latest: false,
+      current_source_hash: "b".repeat(64),
+      latest_export: { export_id: "22222222-2222-4222-8222-222222222222", status: "succeeded" },
+    };
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: H.tenantId }),
+    }), { params: Promise.resolve({ draftId: H.draftId }) });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "EXPORT_SOURCE_STALE" });
+    expect(H.queueCalls).toHaveLength(0);
+  });
+
+  it.each([
+    ["EMPTY_SLIDE", { first_empty_slide: { order: 5, number: 6, item_key: "slide-6" } }],
+    ["EXPORT_FAILED", {}],
+    ["NO_SUCCESSFUL_EXPORT", {}],
+  ])("S4-AC4·AC6 거절: %s이면 직접 enqueue API도 409로 막는다", async (blocker, details) => {
+    H.handoff = applyEditorOperation(createEditorHandoff(handoffBody()), 0, { operation: "mark_ready" });
+    H.latestExport = {
+      blocker,
+      is_latest: false,
+      current_source_hash: "a".repeat(64),
+      latest_export: { export_id: "22222222-2222-4222-8222-222222222222", status: "failed" },
+      ...details,
+    };
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: H.tenantId }),
+    }), { params: Promise.resolve({ draftId: H.draftId }) });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: blocker, ...details });
+    expect(H.queueCalls).toHaveLength(0);
   });
 });
