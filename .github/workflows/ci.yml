@@ -16,7 +16,7 @@ concurrency:
 
 defaults:
   run:
-    working-directory: dashboard
+    working-directory: _ci/src/dashboard
 
 jobs:
   verify:
@@ -38,13 +38,17 @@ jobs:
       # 컨테이너 잡이라 서비스는 docker 네트워크에서 서비스명(postgres)으로 도달.
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/testdb
     steps:
+      # 운영 compose도 같은 GITHUB_WORKSPACE 루트를 쓴다. checkout의 기본 clean은
+      # 저장소 루트가 아니라 이 하위 소스 폴더에서만 실행돼야 한다.
       - uses: actions/checkout@v4
+        with:
+          path: _ci/src
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: dashboard/package-lock.json
+          cache-dependency-path: _ci/src/dashboard/package-lock.json
 
       - run: npm ci
 
@@ -55,7 +59,7 @@ jobs:
         # 심볼릭 링크는 vitest 가 realpath 로 풀어 tests/setup.ts 의 proper-lockfile mock 과 같은
         # 모듈로 합쳐 버리고, 그러면 진짜 자물쇠를 검사하는 테스트가 무너진다. 그래서 복사한다.
         # 로컬은 pnpm 이 별도 실체를 두므로 같은 조건이다.
-        working-directory: ${{ github.workspace }}
+        working-directory: ${{ github.workspace }}/_ci/src
         run: |
           mkdir -p openclaw/node_modules
           for m in proper-lockfile graceful-fs retry signal-exit; do

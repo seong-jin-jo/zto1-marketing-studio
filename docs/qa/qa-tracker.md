@@ -51,6 +51,33 @@
 | 요청번호 | 결함 | 현재 판정 | 종료 증거 |
 |---|---|---|---|
 | EDITROOM-S4-POLL-01 | 실패 장 재시도가 성공해도 최종 job 반영 직후 effect cleanup이 최신 내보내기 요청을 취소해 `발행실로` 버튼이 열리지 않음 | ✅ 관찰됨 | 최종 최신 판 조회를 polling controller와 분리했다. 회귀 테스트 1건 PASS. 실제 Chromium에서 4장만 재시도한 뒤 `발행실로` 노출, 1440·1024·390 진행·새로고침 유지·stale·빈 6장 초점 이동 PASS, 콘솔 오류 0, 실제 실패 요청 0 |
+## 2026-10-07 운영 러너 워크스페이스 격리 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| CI-RUNNER-WORKSPACE-ISOLATION-01 | `ci.yml`의 기본 `actions/checkout`이 운영 compose 루트에서 `git clean`을 실행해 `config-tenantN`과 `data-tenantN` bind mount 원본을 지울 수 있음 | ✅ 로컬 PASS | CI는 `_ci/src`, migration은 `_ci/migrate-<run_id>/src`로 격리. fail-before 2건 재현, 표적 32건, integrity 108건, YAML 8파일, 하위 clean sentinel 보존 PASS. 운영 러너와 현재 운영 데이터는 미검증 |
+## 2026-10-07 생성기 감시 운영 bind mount 원본 삭제 위험 ❌ BLOCK → ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| GENERATOR-MONITOR-R2-B1 | self-hosted 감시가 `$GITHUB_WORKSPACE`를 `rm -rf`로 비운 뒤 checkout해 운영 tenant config·data bind mount 원본을 30분마다 삭제할 수 있음 | ✅ 로컬 PASS | workspace 정리·checkout 제거. 실행별 `$RUNNER_TEMP`에 두 스크립트만 받고 cache도 임시영역 사용. 안전 계약 RED→GREEN, 표적 7건·전체 integrity 111건 PASS |
+| GENERATOR-MONITOR-R2-M3 | Slack webhook 미설정 상태에서 failure 전이가 저장되면 이후 같은 장애 알림은 재전송되지 않음 | ✅ 문서화 | `wiki/ops/인프라.md`에 best-effort 한계와 실제 수신 미검증을 명시 |
+
+## 2026-10-07 생성기 감시 공유 concurrency 반려 교정 ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| GENERATOR-MONITOR-R1-01 | 감시 기능이 운영 배포 workflow에 공유 concurrency를 추가함 | ✅ 테스트됨 | `deploy-marketing.yml` 원복, 계약 테스트가 top-level concurrency와 `queue` 부재를 고정 |
+| GENERATOR-MONITOR-R1-02 | 한 주기의 probe 실패가 즉시 장애 알림으로 전이됨 | ✅ 테스트됨 | 첫 down은 `none:suspect`, 다음 down은 `failure:down`, 장애 뒤 up은 `recovery:up` |
+| GENERATOR-MONITOR-R1-03 | 공유 경합과 즉시 장애가 계약 테스트에 정상으로 고정됨 | ✅ 테스트됨 | 셸 5건, 워크플로 계약 6건, 전체 integrity 34파일 110건 PASS |
+
+## 2026-10-07 생성기 감시 공유 concurrency 운영 경로 침범 ❌ NG
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| GENERATOR-MONITOR-R1-01 | 30분 감시와 운영 배포가 같은 concurrency 그룹을 사용해 서로의 대기 실행을 취소할 수 있고, 감시 기능 때문에 운영 배포 워크플로가 변경됨 | ❌ NG | `deploy-marketing.yml`을 원복하고 감시기는 독립 그룹만 사용해야 함 |
+| GENERATOR-MONITOR-R1-02 | 한 주기의 probe 4회 실패만으로 즉시 장애 전이가 발생해 배포·재기동 직후 일시 실패를 로그인 만료로 오판할 수 있음 | ❌ NG | 첫 down은 `suspect`로 저장하고 다음 주기 연속 down에서만 failure 전이해야 함 |
+| GENERATOR-MONITOR-R1-03 | 계약 테스트가 공유 concurrency와 즉시 장애 전이를 정상으로 고정함 | ❌ NG | 배포 concurrency 부재와 정상·1회 실패·2회 실패·hold·복구 5경우를 계약으로 고정해야 함 |
 
 ## 2026-10-07 S5b·S6 main 병합 ✅ 로컬 PASS
 
