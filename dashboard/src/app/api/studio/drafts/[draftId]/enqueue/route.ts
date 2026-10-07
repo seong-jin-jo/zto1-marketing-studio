@@ -6,6 +6,14 @@ import { loadEditorHandoff } from "@/lib/studio/editor-handoff-store";
 import { cardDeckV3PublishErrorResponse } from "@/lib/studio/card-deck-v3-publish-gate";
 import { exportRepository } from "@/lib/studio/export-repository";
 import { ExportQueueError, type ExportKind } from "@/lib/studio/export-contract";
+import { signImageToken } from "@/lib/image-token";
+
+function artifactDeliveryUrl(tenantId: string, kind: ExportKind, artifactKey: string): string {
+  const token = signImageToken(tenantId, artifactKey);
+  if (!token) throw new ExportQueueError(503, "EXPORT_DELIVERY_UNAVAILABLE", "내보내기 결과 주소를 만들 수 없습니다");
+  const path = `${kind === "video" ? "/api/exports/deliver/" : "/api/images/deliver/"}${encodeURIComponent(token)}`;
+  return `${process.env.OSMU_PUBLIC_URL?.replace(/\/+$/, "") ?? ""}${path}`;
+}
 
 export async function POST(
   request: Request,
@@ -19,35 +27,20 @@ export async function POST(
     const loaded = await loadEditorHandoff(tenantId, draftId);
     if (!loaded) return Response.json({ error: "editor handoff not found", code: "EDITOR_HANDOFF_NOT_FOUND" }, { status: 404 });
     const exportKind: ExportKind | null = loaded.handoff.kind === "card" ? "card_deck" : loaded.handoff.kind === "video" ? "video" : null;
-    let exportReceipt: { exportId: string; sourceHash: string } | undefined;
     if (exportKind) {
-      const latest = await exportRepository().latest(tenantId, draftId, exportKind);
-      const latestExport = latest.latest_export && typeof latest.latest_export === "object"
-        ? latest.latest_export as Record<string, unknown>
-        : null;
-      if (latest.blocker || latest.is_latest !== true || !latestExport || latestExport.status !== "succeeded") {
-        const code = typeof latest.blocker === "string" ? latest.blocker : "NO_SUCCESSFUL_EXPORT";
-        const message = code === "EMPTY_SLIDE"
-          ? "빈 장은 발행실로 보낼 수 없습니다"
-          : code === "EXPORT_SOURCE_STALE"
-            ? "편집 뒤 최신 내용으로 다시 내보내야 합니다"
-            : code === "EXPORT_IN_PROGRESS"
-              ? "최신 내보내기가 아직 진행 중입니다"
-              : code === "EXPORT_FAILED"
-                ? "실패한 항목을 다시 내보낸 뒤 발행할 수 있습니다"
-                : "최신 내보내기 결과가 있어야 발행할 수 있습니다";
-        throw new ExportQueueError(409, code, message, {
-          ...(latest.first_empty_slide ? { first_empty_slide: latest.first_empty_slide } : {}),
-        });
-      }
-      exportReceipt = {
-        exportId: String(latestExport.export_id),
-        sourceHash: String(latest.current_source_hash),
-      };
+      return await exportRepository().withLatestForPublish(tenantId, draftId, exportKind, async (receipt) => {
+        const artifactUrls = receipt.artifactKeys.map((key) => artifactDeliveryUrl(tenantId, exportKind, key));
+        const input = handoffQueueInput(loaded.handoff, draftId, receipt);
+        const preparedMedia = exportKind === "card_deck"
+          ? { imageUrl: artifactUrls[0] ?? null, imageUrls: artifactUrls, videoFilename: null, videoUrl: null }
+          : { imageUrl: null, imageUrls: null, videoFilename: receipt.artifactKeys[0] ?? null, videoUrl: artifactUrls[0] ?? null };
+        const result = await runWithTenant(tenantId, () => addQueuePost(tenantId, input, { preparedMedia }));
+        return Response.json({ ok: true, draft_id: draftId, export_id: receipt.exportId, source_hash: receipt.sourceHash, ...result }, { status: result.reused ? 200 : 201 });
+      });
     }
-    const input = handoffQueueInput(loaded.handoff, draftId, exportReceipt);
+    const input = handoffQueueInput(loaded.handoff, draftId);
     const result = await runWithTenant(tenantId, () => addQueuePost(tenantId, input));
-    return Response.json({ ok: true, draft_id: draftId, ...(exportReceipt ? { export_id: exportReceipt.exportId, source_hash: exportReceipt.sourceHash } : {}), ...result }, { status: result.reused ? 200 : 201 });
+    return Response.json({ ok: true, draft_id: draftId, ...result }, { status: result.reused ? 200 : 201 });
   } catch (error) {
     const response = cardDeckV3PublishErrorResponse(error);
     if (response) return response;

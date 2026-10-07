@@ -140,7 +140,9 @@ export function ExportPanel({ tenantId, draftId, kind, onClose, onOpenPublish, o
         .then((next) => {
           if (FINAL_STATUSES.has(next.status)) {
             pollingStartedAt.current = null;
-            void loadLatest();
+            void loadLatest().catch((cause) => {
+              setError(cause instanceof Error ? cause.message : "최신 내보내기 확인에 실패했습니다.");
+            });
           }
         })
         .catch((cause) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "진행 상태 확인에 실패했습니다."); });

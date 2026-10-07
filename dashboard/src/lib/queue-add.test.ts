@@ -46,4 +46,28 @@ describe("S2-B 큐 멱등 재시도", () => {
     const saved = JSON.parse(fs.readFileSync(path.join(tenantDir, "queue.json"), "utf8")) as { posts: Array<{ imageUrl: string; imageUrls: string[] }> };
     expect(saved.posts[0]).toMatchObject({ imageUrl: "fresh-1", imageUrls: ["fresh-1", "fresh-2"] });
   });
+
+  it("S4-AC5 정상: 검증된 export artifact를 큐 미디어로 고정하고 draft 재렌더를 건너뛴다", async () => {
+    const { runWithTenant } = await import("@/lib/tenant-context");
+    const { addQueuePost } = await import("./queue-add");
+    const result = await runWithTenant(tenantId, () => addQueuePost(tenantId, {
+      text: "최신 영상",
+      draftId: "22222222-2222-4222-8222-222222222222",
+      videoUrl: "/media/source.mp4",
+      idempotencyKey: "export-bound",
+    }, {
+      preparedMedia: {
+        imageUrl: null,
+        imageUrls: null,
+        videoFilename: "export-final.mp4",
+        videoUrl: "/api/exports/deliver/signed-export",
+      },
+    }));
+
+    expect(H.gateCalls).toBe(0);
+    expect(result.post).toMatchObject({
+      videoFilename: "export-final.mp4",
+      videoUrl: "/api/exports/deliver/signed-export",
+    });
+  });
 });

@@ -198,6 +198,40 @@ integration.sequential("S3 영속 내보내기 실제 PostgreSQL 통합", () => 
     expect(rows).toEqual([{ status: "queued", count: 1 }, { status: "succeeded", count: 8 }]);
   });
 
+  it("S4-AC5 경합: 최신 export 확인부터 queue callback 종료까지 draft 행을 잠그고 artifact manifest를 고정한다", async () => {
+    const draft = await seedDraft(["첫 장", "마지막 장"]);
+    const repository = new PostgresExportRepository();
+    const created = await repository.create(tenantA, draft.id, "member-s4-ac5", "s4-ac5", "5".repeat(64), input(draft.source));
+    for (let index = 0; index < 2; index += 1) {
+      const claimed = await repository.claim(tenantA, `worker-s4-${index}`);
+      expect(claimed).not.toBeNull();
+      expect(await repository.complete(claimed!, {
+        key: `s4-${index}.png`, sha256: String(index + 1).repeat(64), contentType: "image/png", byteSize: 100, width: 1080, height: 1350,
+      })).toBe(true);
+    }
+
+    let concurrentUpdateResolved = false;
+    let concurrentUpdate: Promise<unknown> | null = null;
+    const receipt = await repository.withLatestForPublish(tenantA, draft.id, "card_deck", async (lockedReceipt) => {
+      concurrentUpdate = admin!`
+        UPDATE drafts
+        SET payload=jsonb_set(payload,'{cardDeckV3,revision}','14'::jsonb),updated_at=now()
+        WHERE tenant_id=${tenantA} AND id=${draft.id}`.then(() => { concurrentUpdateResolved = true; });
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(concurrentUpdateResolved).toBe(false);
+      return lockedReceipt;
+    });
+    await concurrentUpdate;
+
+    expect(receipt).toEqual({
+      exportId: created.job.id,
+      sourceHash: draft.source.sourceHash,
+      kind: "card_deck",
+      artifactKeys: ["s4-0.png", "s4-1.png"],
+    });
+    expect(concurrentUpdateResolved).toBe(true);
+  });
+
   it("S3-AC6 정상: 두 session의 advisory lock은 active 1, standby 1이다", async () => {
     const first = await admin!.reserve();
     const second = await admin!.reserve();

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyEditorOperation, createEditorHandoff, type EditorHandoff } from "@/lib/studio/editor-handoff";
 
 const H = vi.hoisted(() => ({
@@ -7,6 +7,7 @@ const H = vi.hoisted(() => ({
   handoff: null as EditorHandoff | null,
   updateAllowed: true,
   queueCalls: [] as Array<Record<string, unknown>>,
+  queueOptions: [] as Array<Record<string, unknown>>,
   generatedText: "",
   latestExport: {
     blocker: null as string | null,
@@ -73,16 +74,33 @@ vi.mock("@/lib/queue-add", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/queue-add")>();
   return {
     ...original,
-    addQueuePost: vi.fn(async (_tenantId: string, input: Record<string, unknown>) => {
+    addQueuePost: vi.fn(async (_tenantId: string, input: Record<string, unknown>, options: Record<string, unknown> = {}) => {
       H.queueCalls.push(input);
+      H.queueOptions.push(options);
       return { post: { id: "queue-1", ...input }, reused: false };
     }),
   };
 });
 
-vi.mock("@/lib/studio/export-repository", () => ({
-  exportRepository: () => ({ latest: vi.fn(async () => H.latestExport) }),
-}));
+vi.mock("@/lib/studio/export-repository", async () => {
+  const { ExportQueueError } = await vi.importActual<typeof import("@/lib/studio/export-contract")>("@/lib/studio/export-contract");
+  return {
+    exportRepository: () => ({
+      withLatestForPublish: vi.fn(async (_tenantId: string, _draftId: string, kind: "card_deck" | "video", publish: (receipt: Record<string, unknown>) => unknown) => {
+        if (H.latestExport.blocker || !H.latestExport.is_latest || H.latestExport.latest_export?.status !== "succeeded") {
+          const code = H.latestExport.blocker ?? "NO_SUCCESSFUL_EXPORT";
+          throw new ExportQueueError(409, code, "latest export blocked", H.latestExport.first_empty_slide ? { first_empty_slide: H.latestExport.first_empty_slide } : {});
+        }
+        return publish({
+          exportId: H.latestExport.latest_export.export_id,
+          sourceHash: H.latestExport.current_source_hash,
+          kind,
+          artifactKeys: kind === "video" ? ["export-final.mp4"] : ["slide-1.png", "slide-2.png"],
+        });
+      }),
+    }),
+  };
+});
 
 function handoffBody() {
   return {
@@ -100,11 +118,13 @@ function handoffBody() {
 }
 
 beforeEach(() => {
+  process.env.MEDIA_SIGNING_SECRET = "editroom-s4-test-signing-secret";
   H.tenantId = "11111111-1111-4111-8111-111111111111";
   H.draftId = "draft-editor-1";
   H.handoff = null;
   H.updateAllowed = true;
   H.queueCalls = [];
+  H.queueOptions = [];
   H.generatedText = "";
   H.latestExport = {
     blocker: null,
@@ -113,6 +133,10 @@ beforeEach(() => {
     latest_export: { export_id: "22222222-2222-4222-8222-222222222222", status: "succeeded" },
   };
   H.authFailure = null;
+});
+
+afterEach(() => {
+  delete process.env.MEDIA_SIGNING_SECRET;
 });
 
 describe("Studio 편집 인계 HTTP 통합 계약", () => {
@@ -252,6 +276,12 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
         draftId: H.draftId,
         exportId: "22222222-2222-4222-8222-222222222222",
         exportSourceHash: "a".repeat(64),
+      }),
+    }));
+    expect(H.queueOptions[0]).toEqual(expect.objectContaining({
+      preparedMedia: expect.objectContaining({
+        videoFilename: "export-final.mp4",
+        videoUrl: expect.stringContaining("/api/exports/deliver/"),
       }),
     }));
   });

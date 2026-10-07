@@ -92,4 +92,44 @@ describe("EDITROOM-S4-POLL-01 최종 상태 갱신", () => {
     expect(screen.getByRole("button", { name: "발행실로" })).toBeInTheDocument();
     expect(latestCalls).toBe(2);
   });
+
+  it("S4-POLL-02 거절: 최종 job 뒤 latest 재조회 실패를 처리되지 않은 Promise로 남기지 않는다", async () => {
+    let latestCalls = 0;
+    let jobCalls = 0;
+    vi.stubGlobal("fetch", vi.fn((url: string | URL | Request) => {
+      const target = String(url);
+      if (target.includes("/latest")) {
+        latestCalls += 1;
+        if (latestCalls > 1) return Promise.reject(new Error("latest refresh failed"));
+        return response({
+          current_source_revision: 7,
+          current_source_hash: HASH,
+          latest_export: { export_id: EXPORT_ID, status: "processing", source_revision: 7, source_hash: HASH, finished_at: null },
+          is_latest: false,
+          blocker: "EXPORT_IN_PROGRESS",
+        });
+      }
+      jobCalls += 1;
+      return response({
+        export_id: EXPORT_ID,
+        status: jobCalls > 1 ? "succeeded" : "processing",
+        source_revision: 7,
+        source_hash: HASH,
+        progress: { completed: jobCalls > 1 ? 9 : 3, total: 9 },
+        items: [],
+        updated_at: "2026-10-07T01:00:00.000Z",
+        finished_at: jobCalls > 1 ? "2026-10-07T01:00:00.000Z" : null,
+      });
+    }));
+
+    render(<ExportPanel tenantId={TENANT_ID} draftId={DRAFT_ID} kind="card_deck" onClose={vi.fn()} onOpenPublish={vi.fn()} onOpenEmptySlide={vi.fn()} />);
+    await act(async () => { for (let index = 0; index < 12; index += 1) await Promise.resolve(); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      for (let index = 0; index < 20; index += 1) await Promise.resolve();
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("latest refresh failed");
+    expect(latestCalls).toBe(2);
+  });
 });

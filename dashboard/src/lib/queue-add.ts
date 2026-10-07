@@ -42,6 +42,13 @@ export interface AddQueuePostInput {
   idempotencyKey?: string;
 }
 
+export interface PreparedQueueMedia {
+  imageUrl?: string | null;
+  imageUrls?: string[] | null;
+  videoFilename?: string | null;
+  videoUrl?: string | null;
+}
+
 export interface QueuePost {
   id: string;
   draftId: string | null;
@@ -74,12 +81,16 @@ export class QueueInputError extends Error {}
 export async function addQueuePost(
   tenantId: string | null,
   input: AddQueuePostInput,
+  options: { preparedMedia?: PreparedQueueMedia } = {},
 ): Promise<{ post: QueuePost; reused: boolean }> {
   const text = input.text.trim();
   if (!text) throw new QueueInputError("text required");
   const idempotencyKey = input.idempotencyKey?.trim() || undefined;
-  const prepared = await assertDraftCanEnterPublishQueue(tenantId, input.draftId);
-  const imageUrls = prepared?.imageUrls ?? (Array.isArray(input.imageUrls) ? input.imageUrls : null);
+  const prepared = options.preparedMedia ? null : await assertDraftCanEnterPublishQueue(tenantId, input.draftId);
+  const imageUrls = options.preparedMedia?.imageUrls ?? prepared?.imageUrls ?? (Array.isArray(input.imageUrls) ? input.imageUrls : null);
+  const imageUrl = options.preparedMedia?.imageUrl ?? prepared?.imageUrl ?? input.imageUrl ?? imageUrls?.[0] ?? null;
+  const videoFilename = options.preparedMedia?.videoFilename ?? input.videoFilename ?? null;
+  const videoUrl = options.preparedMedia?.videoUrl ?? input.videoUrl ?? null;
   let selected: QueuePost | null = null;
   let reused = false;
 
@@ -89,10 +100,10 @@ export async function addQueuePost(
       if (idempotencyKey) {
         const existing = queue.posts.find((post) => post.idempotencyKey === idempotencyKey);
         if (existing) {
-          const refreshed = prepared
-            ? { ...existing, imageUrl: prepared.imageUrl, imageUrls: prepared.imageUrls }
+          const refreshed = prepared || options.preparedMedia
+            ? { ...existing, imageUrl, imageUrls, videoFilename, videoUrl }
             : existing;
-          if (prepared) queue.posts = queue.posts.map((post) => post.id === existing.id ? refreshed : post);
+          if (prepared || options.preparedMedia) queue.posts = queue.posts.map((post) => post.id === existing.id ? refreshed : post);
           selected = refreshed;
           reused = true;
           return queue;
@@ -119,11 +130,11 @@ export async function addQueuePost(
           : input.sourceContext?.type === "studio_handoff"
             ? "studio-handoff"
             : "manual",
-        imageUrl: prepared?.imageUrl || input.imageUrl || imageUrls?.[0] || null,
+        imageUrl,
         imageUrls,
         cardBatchId: input.cardBatchId || null,
-        videoFilename: input.videoFilename || null,
-        videoUrl: input.videoUrl || null,
+        videoFilename,
+        videoUrl,
         videoThumbnail: input.videoThumbnail || null,
         engagement: null,
         ...(input.sourceContext ? { sourceContext: input.sourceContext } : {}),
