@@ -61,6 +61,8 @@ import { CardTemplateGallery } from "./CardTemplateGallery";
 import {
   applyCardDeckTemplate,
   cardTemplateName,
+  defaultCardTemplateState,
+  type CardTemplateState,
   type CardDeckTemplateId,
 } from "@/lib/studio/card-templates";
 import styles from "./CardCanvasEditor.module.css";
@@ -111,13 +113,15 @@ function elementOverlayStyle(element: CardElement, logicalHeight: number): CSSPr
 
 export interface CardCanvasEditorProps {
   deck: CardDeckV3;
+  templateState?: CardTemplateState | null;
   sourceDeck?: CardDeck | null;
   assetUrls?: Record<string, string>;
   onAssetUrlChange?: (assetId: string, url: string) => void;
-  onDeckChange: (deck: CardDeckV3) => void;
+  onDeckChange: (deck: CardDeckV3, templateState?: CardTemplateState) => void;
 }
 
-export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
+export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
+  const initialTemplateState = templateState ?? defaultCardTemplateState(deck);
   const [history, setHistory] = useState<CardCommandHistory>(() => createCardCommandHistory(deck));
   const [activeSlideId, setActiveSlideId] = useState(deck.slides[0]?.id ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -135,10 +139,10 @@ export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAs
   const [toneId, setToneId] = useState<ChatToneId>("learned");
   const [toneBusy, setToneBusy] = useState(false);
   const [toneError, setToneError] = useState("");
-  const [activeTemplateId, setActiveTemplateId] = useState<CardDeckTemplateId>(() => deck.template === "chat_bubble" ? "chat_bubble" : "text_only");
-  const [pendingTemplateId, setPendingTemplateId] = useState<CardDeckTemplateId>(() => deck.template === "chat_bubble" ? "chat_bubble" : "text_only");
+  const [activeTemplateId, setActiveTemplateId] = useState<CardDeckTemplateId>(() => initialTemplateState.activeTemplateId);
+  const [pendingTemplateId, setPendingTemplateId] = useState<CardDeckTemplateId>(() => initialTemplateState.activeTemplateId);
   const [templateScope, setTemplateScope] = useState<"all" | "slide">("all");
-  const [previousTemplate, setPreviousTemplate] = useState<{ id: CardDeckTemplateId; deck: CardDeckV3 } | null>(null);
+  const [previousTemplate, setPreviousTemplate] = useState<{ id: CardDeckTemplateId; deck: CardDeckV3 } | null>(() => initialTemplateState.previousTemplate);
   const [splitNotice, setSplitNotice] = useState("");
   const [sceneOverflow, setSceneOverflow] = useState(false);
   const [toneCandidates, setToneCandidates] = useState<{ targets: Array<{ slideId: string; bubbleId: string; text: string }>; candidates: ChatToneCandidate[]; revision: number } | null>(null);
@@ -198,13 +202,20 @@ export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAs
     setPreviewDeck(null);
   }, [deck, editorComparableDeck, history.present]);
 
-  const commit = useCallback((next: CardDeckV3) => {
+  useEffect(() => {
+    if (!templateState) return;
+    setActiveTemplateId(templateState.activeTemplateId);
+    setPendingTemplateId(templateState.activeTemplateId);
+    setPreviousTemplate(templateState.previousTemplate ? structuredClone(templateState.previousTemplate) : null);
+  }, [templateState]);
+
+  const commit = useCallback((next: CardDeckV3, nextTemplateState?: CardTemplateState) => {
     if (sourceDeck) assertValidChatCardDeckV3CommandResult(next, sourceDeck);
     setHistory((current) => commitCardCommand(current, next));
     setPreviewDeck(null);
     setGuides([]);
-    onDeckChange(next);
-  }, [onDeckChange, sourceDeck]);
+    onDeckChange(next, nextTemplateState ?? { activeTemplateId, previousTemplate });
+  }, [activeTemplateId, onDeckChange, previousTemplate, sourceDeck]);
   commitRef.current = commit;
 
   useEffect(() => {
@@ -215,16 +226,18 @@ export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAs
   const applyTemplate = useCallback(() => {
     const before = structuredClone(history.present);
     const next = applyCardDeckTemplate(before, pendingTemplateId, templateScope === "slide" ? { kind: "slide", slideId: activeSlideId } : { kind: "all" });
-    setPreviousTemplate({ id: activeTemplateId, deck: before });
-    commit(next);
+    const nextPrevious = { id: activeTemplateId, deck: before };
+    setPreviousTemplate(nextPrevious);
+    commit(next, { activeTemplateId: pendingTemplateId, previousTemplate: nextPrevious });
     setActiveTemplateId(pendingTemplateId);
   }, [activeSlideId, activeTemplateId, commit, history.present, pendingTemplateId, templateScope]);
   const restorePreviousTemplate = useCallback(() => {
     if (!previousTemplate) return;
     const current = structuredClone(history.present);
     const restored = { ...structuredClone(previousTemplate.deck), revision: history.present.revision + 1 };
-    commit(restored);
-    setPreviousTemplate({ id: activeTemplateId, deck: current });
+    const nextPrevious = { id: activeTemplateId, deck: current };
+    commit(restored, { activeTemplateId: previousTemplate.id, previousTemplate: nextPrevious });
+    setPreviousTemplate(nextPrevious);
     setActiveTemplateId(previousTemplate.id);
     setPendingTemplateId(previousTemplate.id);
   }, [activeTemplateId, commit, history.present, previousTemplate]);
@@ -583,6 +596,7 @@ export function CardCanvasEditor({ deck, sourceDeck = null, assetUrls = {}, onAs
         mode="edit"
         selectedId={pendingTemplateId}
         onSelect={setPendingTemplateId}
+        disabledReasons={history.present.template === "plain" ? { chat_bubble: "카톡 대화는 생성실의 기존 카톡 덱 만들기에서 선택해 주세요." } : undefined}
         beforeDeck={history.present}
         afterDeck={templatePreviewDeck}
         scope={templateScope}

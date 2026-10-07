@@ -7,6 +7,7 @@ import { cardDeckV3Projection, CardDeckV3ValidationError, validateCardDeckV3 } f
 import { cardDeckV3ForDraft, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
 import { isSynchronizedChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import { validateVideoEdit, VideoEditValidationError, type VideoEdit } from "@/lib/studio/video-edit-contract";
+import { CARD_DECK_TEMPLATE_IDS, type CardTemplateState } from "@/lib/studio/card-templates";
 
 /** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
 const CARD_DECK_MAX_BYTES = 64 * 1024;
@@ -65,6 +66,7 @@ interface DraftRow {
     cardTextPositions?: unknown;
     cardDeck?: unknown;
     cardDeckV3?: unknown;
+    cardTemplateState?: unknown;
     cardDeckV3SourceSnapshot?: unknown;
     videoEdit?: unknown;
     titles?: unknown;
@@ -119,6 +121,7 @@ function flattenDraft(r: DraftRow, options: { includeCardDeckV3: boolean }) {
     hasCardDeckV3: cardDeckV3 != null,
     ...(options.includeCardDeckV3 ? {
       cardDeckV3,
+      cardTemplateState: cardDeckV3 != null ? r.payload?.cardTemplateState ?? null : null,
       cardDeckV3SourceSnapshot: chatBubbleV2 ? null : r.payload?.cardDeckV3SourceSnapshot ?? null,
     } : {}),
     videoEdit: r.payload?.videoEdit ?? null,
@@ -324,6 +327,26 @@ export async function POST(request: Request) {
     cardDeckV3Patch.cardDeckV3 = body.cardDeckV3;
   }
   const incomingCardDeckV3Id = (!savesChatBubbleV2 || savesChatBubbleV3) && typeof body.cardDeckV3?.id === "string" ? body.cardDeckV3.id : null;
+  // 위에서 내부 덱까지 validateCardDeckV3로 검증한 JSON 트리지만 postgres JSONValue는
+  // CardTemplateState의 index signature를 추론하지 못한다. cardDeckV3와 같은 경계 캐스팅이다.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cardTemplateStatePatch: { cardTemplateState?: any } = {};
+  if (Object.prototype.hasOwnProperty.call(body, "cardTemplateState")) {
+    const state = body.cardTemplateState as CardTemplateState | null;
+    const validId = (value: unknown) => typeof value === "string" && CARD_DECK_TEMPLATE_IDS.includes(value as typeof CARD_DECK_TEMPLATE_IDS[number]);
+    try {
+      if (state !== null) {
+        if (!state || typeof state !== "object" || !validId(state.activeTemplateId)) throw new Error("INVALID_CARD_TEMPLATE_STATE");
+        if (state.previousTemplate !== null) {
+          if (!state.previousTemplate || !validId(state.previousTemplate.id)) throw new Error("INVALID_CARD_TEMPLATE_STATE");
+          validateCardDeckV3(state.previousTemplate.deck);
+        }
+      }
+      cardTemplateStatePatch.cardTemplateState = state;
+    } catch {
+      return Response.json({ ok: false, code: "INVALID_CARD_TEMPLATE_STATE", error: "카드 템플릿 복원 상태를 확인해 주세요" }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
+  }
   // videoEdit도 cardDeck과 같은 보존 규칙: 키가 없으면 payload 병합에서 빠져 기존 값을
   // 지키고, 명시 플래그 clearVideoEdit로만 지운다.
   // M7(2026-09-22 코드리뷰): `any` 대신 VideoEdit로 좁힌다. body.videoEdit는 위에서 이미
@@ -371,6 +394,7 @@ export async function POST(request: Request) {
     reviewQueueId: body.reviewQueueId ?? null,
     ...cardDeckPatch,
     ...cardDeckV3Patch,
+    ...cardTemplateStatePatch,
     ...cardDeckV3SourceSnapshotPatch,
     ...videoEditPatch,
     ...editLinesPatch,

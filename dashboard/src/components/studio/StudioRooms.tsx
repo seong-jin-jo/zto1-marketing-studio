@@ -62,7 +62,7 @@ import { projectChatCardDeckV3ToBasicEditor } from "@/lib/studio/card-deck-v2-to
 import { TextCandidatePicker } from "./TextCandidatePicker";
 import type { TextCandidate } from "@/lib/studio/text-candidate-contract";
 import { CardTemplateGallery } from "./card/CardTemplateGallery";
-import { recommendedCardTemplate, type CardDeckTemplateId } from "@/lib/studio/card-templates";
+import { recommendedCardTemplate, type CardDeckTemplateId, type CardTemplateState } from "@/lib/studio/card-templates";
 
 // M5(2026-09-22 코드리뷰): 매 렌더 새 객체를 만들지 않게 모듈 스코프에서 한 번만 만든다.
 // videoEdit는 순수함수(video-edit-contract.ts)로만 바뀌므로 이 상수를 직접 변형하지 않는다.
@@ -1735,7 +1735,8 @@ interface EditRoomProps {
   cardDeck?: CardDeck | null;
   onCardDeckChange?: (deck: CardDeck) => void;
   cardDeckV3?: CardDeckV3 | null;
-  onCardDeckV3Change?: (deck: CardDeckV3) => void;
+  cardTemplateState?: CardTemplateState | null;
+  onCardDeckV3Change?: (deck: CardDeckV3, templateState?: CardTemplateState) => void;
   /** 기존 plain 카드의 줄과 v2 덱을 보존한 채 자유 배치 편집을 명시적으로 시작한다. */
   onStartCardDeckV3?: () => void;
   cardDeckV3EntryBlockedReason?: string | null;
@@ -2052,6 +2053,7 @@ export function EditRoom({
   cardDeck = null,
   onCardDeckChange,
   cardDeckV3 = null,
+  cardTemplateState = null,
   onCardDeckV3Change,
   onStartCardDeckV3,
   cardDeckV3EntryBlockedReason,
@@ -2329,7 +2331,7 @@ export function EditRoom({
                       </span>
                     ) : null}
                   </div>
-                  <CardCanvasEditor deck={cardDeckV3} sourceDeck={cardDeck} assetUrls={cardAssetUrls} onAssetUrlChange={(assetId, url) => setCardAssetUrls((current) => ({ ...current, [assetId]: url }))} onDeckChange={onCardDeckV3Change} />
+                  <CardCanvasEditor deck={cardDeckV3} templateState={cardTemplateState} sourceDeck={cardDeck} assetUrls={cardAssetUrls} onAssetUrlChange={(assetId, url) => setCardAssetUrls((current) => ({ ...current, [assetId]: url }))} onDeckChange={onCardDeckV3Change} />
                 </div>
               ) : kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>

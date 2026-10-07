@@ -50,4 +50,8 @@ describe("S7 템플릿 command", () => {
     const before = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
     expect(() => applyCardDeckTemplate(before, "text_only", { kind: "slide", slideId: before.slides[1].id })).toThrow("CARD_CHAT_TEMPLATE_DECK_ONLY");
   });
+
+  it("S7-R1-B2 거절: plain 덱의 카톡 템플릿 선택은 무동작 대신 명시적으로 거절한다", () => {
+    expect(() => applyCardDeckTemplate(plainDeck(), "chat_bubble", { kind: "all" })).toThrow("CARD_CHAT_TEMPLATE_CONVERSION_REQUIRED");
+  });
 });

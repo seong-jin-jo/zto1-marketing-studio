@@ -25,6 +25,18 @@ export interface CardDeckTemplateDefinition {
   description: string;
 }
 
+export interface CardTemplateState {
+  activeTemplateId: CardDeckTemplateId;
+  previousTemplate: { id: CardDeckTemplateId; deck: CardDeckV3 } | null;
+}
+
+export function defaultCardTemplateState(deck: CardDeckV3): CardTemplateState {
+  return {
+    activeTemplateId: deck.template === "chat_bubble" ? "chat_bubble" : "text_only",
+    previousTemplate: null,
+  };
+}
+
 export const CARD_DECK_TEMPLATES: readonly CardDeckTemplateDefinition[] = [
   { id: "chat_bubble", name: "카톡 대화", family: "chat", description: "질문과 답을 말풍선으로 이어갑니다" },
   { id: "headline_cover", name: "큰 제목 표지형", family: "photo_text", description: "큰 제목으로 문제를 먼저 보여 줍니다" },
@@ -82,6 +94,9 @@ export function applyCardDeckTemplate(
   templateId: CardDeckTemplateId,
   scope: { kind: "all" } | { kind: "slide"; slideId: string },
 ): CardDeckV3 {
+  if (templateId === "chat_bubble" && deck.template !== "chat_bubble") {
+    throw new RangeError("CARD_CHAT_TEMPLATE_CONVERSION_REQUIRED");
+  }
   if (scope.kind === "slide" && deck.template === "chat_bubble") {
     throw new RangeError("CARD_CHAT_TEMPLATE_DECK_ONLY");
   }

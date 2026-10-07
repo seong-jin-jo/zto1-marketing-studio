@@ -13,6 +13,7 @@ interface BaseProps {
   selectedId: CardDeckTemplateId;
   recommendedId?: CardDeckTemplateId;
   onSelect: (id: CardDeckTemplateId) => void;
+  disabledReasons?: Partial<Record<CardDeckTemplateId, string>>;
 }
 
 type CardTemplateGalleryProps = BaseProps & ({
@@ -31,12 +32,13 @@ type CardTemplateGalleryProps = BaseProps & ({
   onRestore: () => void;
 });
 
-function TemplateCard({ id, selected, recommended, title, body, onSelect }: {
+function TemplateCard({ id, selected, recommended, title, body, disabledReason, onSelect }: {
   id: CardDeckTemplateId;
   selected: boolean;
   recommended: boolean;
   title: string;
   body: string;
+  disabledReason?: string;
   onSelect: () => void;
 }) {
   const template = CARD_DECK_TEMPLATES.find((item) => item.id === id)!;
@@ -46,6 +48,8 @@ function TemplateCard({ id, selected, recommended, title, body, onSelect }: {
       size="sm"
       className="w-56 shrink-0 flex-col items-stretch justify-start p-stack text-left aria-pressed:border-accent aria-pressed:bg-accent-soft"
       aria-pressed={selected}
+      aria-describedby={disabledReason ? `card-template-disabled-${id}` : undefined}
+      disabled={Boolean(disabledReason)}
       onClick={onSelect}
       data-card-template={id}
     >
@@ -54,7 +58,7 @@ function TemplateCard({ id, selected, recommended, title, body, onSelect }: {
         <span className="mt-micro line-clamp-2 block text-subtle">내용: {body || template.description}</span>
       </span>
       <b className="block">{template.name}</b>
-      {recommended ? <span className="text-accent">추천</span> : <span className="text-subtle">{template.family === "chat" ? "대화형" : "사진·글"}</span>}
+      {disabledReason ? <span id={`card-template-disabled-${id}`} className="text-warning">{disabledReason}</span> : recommended ? <span className="text-accent">추천</span> : <span className="text-subtle">{template.family === "chat" ? "대화형" : "사진·글"}</span>}
     </Button>
   );
 }
@@ -80,6 +84,7 @@ export function CardTemplateGallery(props: CardTemplateGalleryProps) {
             recommended={props.recommendedId === template.id}
             title={title}
             body={body}
+            disabledReason={props.disabledReasons?.[template.id]}
             onSelect={() => props.onSelect(template.id)}
           />
         ))}
@@ -100,7 +105,7 @@ export function CardTemplateGallery(props: CardTemplateGalleryProps) {
             </div>
           ) : null}
           <div className="flex flex-wrap gap-stack-tight">
-            <Button variant="primary" onClick={props.onApply}>이 템플릿으로 바꾸기</Button>
+            <Button variant="primary" onClick={props.onApply} disabled={Boolean(props.disabledReasons?.[props.selectedId])}>이 템플릿으로 바꾸기</Button>
             {props.previousTemplateName ? <Button variant="secondary" onClick={props.onRestore}>이전 템플릿({props.previousTemplateName})으로</Button> : null}
           </div>
         </>

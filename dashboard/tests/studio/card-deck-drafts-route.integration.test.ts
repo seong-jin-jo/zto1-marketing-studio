@@ -131,6 +131,35 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     expect(cleared.status).toBe(200);
     expect(H.jsonValues.at(-1)).toMatchObject({ cardDeckV3: null, cardDeckV3SourceSnapshot: null });
   });
+  it("S7-R1-B2 템플릿 ID와 직전 덱을 JSON 초안에 저장하고 단건 조회로 복원한다", async () => {
+    const current = createPlainCardDeckV3(["현재 첫 장", "현재 마지막"], "deck_template_current");
+    const previous = createPlainCardDeckV3(["이전 첫 장", "이전 마지막"], "deck_template_previous");
+    const cardTemplateState = { activeTemplateId: "headline_cover", previousTemplate: { id: "text_only", deck: previous } };
+    H.rows = [{ id: "draft-template-state" }];
+    const { POST, GET } = await import("@/app/api/studio/drafts/route");
+    const saved = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "템플릿 복원", cardDeckV3: current, cardTemplateState }),
+    }));
+    expect(saved.status).toBe(200);
+    expect(H.jsonValues[0]).toMatchObject({ cardDeckV3: current, cardTemplateState });
+
+    H.rows = [{ id: "draft-template-state", idea: "템플릿 복원", payload: H.jsonValues[0], status: "draft", updated_at: "2026-10-07T00:00:00Z" }];
+    const detail = await (await GET(new Request("http://localhost/api/studio/drafts?id=draft-template-state"))).json();
+    expect(detail.draft.cardTemplateState).toEqual(cardTemplateState);
+  });
+
+  it("S7-R1-B2 거절: 알 수 없는 템플릿 ID는 DB 접근 전에 거절한다", async () => {
+    vi.mocked(withTenant).mockClear();
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const rejected = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", cardTemplateState: { activeTemplateId: "unknown", previousTemplate: null } }),
+    }));
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toMatchObject({ code: "INVALID_CARD_TEMPLATE_STATE" });
+    expect(withTenant).not.toHaveBeenCalled();
+  });
   it("S5-R3-2 chat_bubble v2 저장·조회는 잔존 v3와 원문 스냅샷을 비운다", async () => {
     const staleV3 = createPlainCardDeckV3(["옛 첫 장", "옛 마지막"], "deck_stale_chat_v3");
     H.rows = [{ id: "draft-chat-v2" }];

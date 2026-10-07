@@ -57,6 +57,32 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect(current.slides).toEqual(headlineState);
   });
 
+  it("S7-R1-B2 정상: 저장된 템플릿 ID와 직전 덱을 재접속 뒤 복원한다", () => {
+    const before = deck();
+    const applied = structuredClone(before);
+    applied.revision = 1;
+    const onChange = vi.fn();
+    render(<CardCanvasEditor
+      deck={applied}
+      templateState={{ activeTemplateId: "headline_cover", previousTemplate: { id: "text_only", deck: before } }}
+      onDeckChange={onChange}
+    />);
+
+    expect(screen.getByRole("button", { name: /큰 제목 표지형/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "이전 템플릿\(글자만형\)으로" }));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ revision: 2, slides: before.slides }),
+      expect.objectContaining({ activeTemplateId: "text_only" }),
+    );
+  });
+
+  it("S7-R1-B3 거절: plain 덱의 카톡 템플릿은 이유를 보이고 비활성 처리한다", () => {
+    render(<CardCanvasEditor deck={deck()} onDeckChange={() => {}} />);
+    const chatTemplate = screen.getByRole("button", { name: /카톡 대화/ });
+    expect(chatTemplate).toBeDisabled();
+    expect(chatTemplate).toHaveTextContent("기존 카톡 덱 만들기에서 선택");
+  });
+
   it("S5b-R2-A 카톡 장 도구를 미리보기 열 안에 두고 3열 workspace 구조를 보존한다", () => {
     const current = migrateCardDeckV2ToV3(structuredClone(chatDeckFixture) as unknown as CardDeck);
     render(<CardCanvasEditor deck={current} onDeckChange={() => {}} />);
