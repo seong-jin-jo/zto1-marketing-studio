@@ -135,6 +135,7 @@ export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = nul
   const [toneCandidates, setToneCandidates] = useState<{ targets: Array<{ slideId: string; bubbleId: string; text: string }>; candidates: ChatToneCandidate[]; revision: number } | null>(null);
   const [speakerEditorOpen, setSpeakerEditorOpen] = useState(false);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const handledRequestedSlideRef = useRef<number | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const profileInputRef = useRef<HTMLInputElement | null>(null);
@@ -197,6 +198,8 @@ export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = nul
 
   useEffect(() => {
     if (!requestedSlide || !workingDeck.slides.some((slide) => slide.id === requestedSlide.id)) return;
+    if (handledRequestedSlideRef.current === requestedSlide.requestId) return;
+    handledRequestedSlideRef.current = requestedSlide.requestId;
     setActiveSlideId(requestedSlide.id);
     setSelectedId(null);
     window.requestAnimationFrame(() => {

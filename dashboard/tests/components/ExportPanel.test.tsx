@@ -61,6 +61,51 @@ afterEach(() => {
 });
 
 describe("S4 ExportPanel 계약", () => {
+  it("S4-AC1 정상: 최초 내보내기는 최신 revision·hash로 접수하고 새 job을 표시한다", async () => {
+    const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes("/latest")) return response(latest());
+      if (target.endsWith("/exports") && init?.method === "POST") return response({ export_id: EXPORT_ID, status: "queued" }, 202);
+      return response(job({ status: "queued", progress: { completed: 0, total: 9 } }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ExportPanel {...props} />);
+    fireEvent.click(await screen.findByRole("button", { name: "내보내기" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/exports$/), expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        kind: "card_deck",
+        expected_source_revision: 7,
+        expected_source_hash: HASH,
+        item_keys: null,
+        tenant_id: props.tenantId,
+      }),
+    })));
+    expect(await screen.findByText("0 / 9장")).toBeInTheDocument();
+  });
+
+  it("S4-AC1 경합: 다른 탭의 활성 내보내기는 반환된 export ID로 이어서 조회한다", async () => {
+    const ACTIVE_EXPORT_ID = "44444444-4444-4444-8444-444444444444";
+    const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes("/latest")) return response(latest());
+      if (target.endsWith("/exports") && init?.method === "POST") {
+        return response({ code: "EXPORT_ALREADY_ACTIVE", export_id: ACTIVE_EXPORT_ID }, 429);
+      }
+      if (target.includes(ACTIVE_EXPORT_ID)) return response(job({ export_id: ACTIVE_EXPORT_ID }));
+      throw new Error(`unexpected request: ${target}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ExportPanel {...props} />);
+    fireEvent.click(await screen.findByRole("button", { name: "내보내기" }));
+
+    expect(await screen.findByText("3 / 9장")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining(`/exports/${ACTIVE_EXPORT_ID}`), expect.objectContaining({ cache: "no-store" }));
+  });
+
   it("S4-AC1 정상: 실제 API 진행 응답의 3 / 9장과 장별 상태를 표시한다", async () => {
     vi.stubGlobal("fetch", vi.fn((url: string | URL | Request) => {
       const target = String(url);
