@@ -51,7 +51,7 @@ import { cardDeckV3Projection, type CardDeckV3 } from "@/lib/studio/card-element
 import { createPlainCardDeckV3, createRecoverableEmbeddedCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
 import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import { cardDeckV3EntryEnabled, cardDeckV3ForDraft, cardDeckV3RenderingEnabled, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
-import { defaultCardTemplateState, type CardDeckTemplateId, type CardTemplateState } from "@/lib/studio/card-templates";
+import { cardTemplateStatePatchForSave, defaultCardTemplateState, type CardDeckTemplateId, type CardTemplateState } from "@/lib/studio/card-templates";
 import { buildGeneratedCardTemplate } from "@/lib/studio/s7-generated-card-template";
 import { textCandidateLines, textCandidateSelectionWouldDiscardEdits } from "@/lib/studio/text-candidate-selection";
 import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-contract";
@@ -1953,6 +1953,9 @@ export default function StudioPage() {
     const saveTenantId = activeWorkspace?.id ?? null;
     const saveDocumentGeneration = editDocumentGenerationRef.current;
     const invocationBodySnapshot = bodySnapshotRef.current;
+    // 저장 큐가 실행되기 전에 다른 초안으로 이동해도, 이 요청의 v3 덱에 새 문서의 템플릿
+    // 상태가 섞이지 않도록 호출 시점의 짝을 고정한다.
+    const invocationCardTemplateState = cardTemplateState;
     // PR87 재리뷰 r2 MAJOR 1: 모든 저장을 한 큐에서 직렬 실행한다. 네트워크 응답 순서가
     // 뒤집혀도 먼저 시작한 요청이 나중 요청 뒤에 서버를 덮을 수 없다. 각 실행은 호출
     // 시점의 인자에서 글 본문만 예외로 두고, 반드시 유일한 최신값 출처를 읽는다.
@@ -1963,6 +1966,11 @@ export default function StudioPage() {
       let savedDraftId: string | undefined;
       let includeSourceSnapshot = Object.prototype.hasOwnProperty.call(cardDeckV3Options, "sourceSnapshot");
       const synchronizedCardDeckV3 = cardDeckV3ForSave(persistedCardDeck, persistedCardDeckV3);
+      const cardTemplateStatePatch = cardTemplateStatePatchForSave(
+        synchronizedCardDeckV3,
+        invocationCardTemplateState,
+        cardDeckV3Options,
+      );
 
       for (;;) {
         const sameDocument = editDocumentGenerationRef.current === saveDocumentGeneration
@@ -2008,9 +2016,7 @@ export default function StudioPage() {
             ...(includeSourceSnapshot
               ? { cardDeckV3SourceSnapshot: cardDeckV3Options.sourceSnapshot }
               : {}),
-            ...(Object.prototype.hasOwnProperty.call(cardDeckV3Options, "templateState")
-              ? { cardTemplateState: cardDeckV3Options.templateState }
-              : {}),
+            ...cardTemplateStatePatch,
             videoEdit: safeVideoEdit,
             videoEditBaseRevision: safeVideoEdit ? videoEditBaseRevisionRef.current : undefined,
             editKind: cardDeckV3Options.editKind ?? editKind,

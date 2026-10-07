@@ -44,6 +44,23 @@ export function defaultCardTemplateState(deck: CardDeckV3): CardTemplateState {
   };
 }
 
+/**
+ * v3 덱과 템플릿 상태는 하나의 저장 단위다. 템플릿 자동저장은 명시 상태를 넘기지만,
+ * 수동 저장·검토 요청·발행실 이동처럼 공통 save 경로만 부르는 곳도 현재 상태를
+ * 빠뜨리지 않아야 한다. 명시 null은 서버의 상태 초기화 의도이므로 그대로 보존한다.
+ */
+export function cardTemplateStatePatchForSave(
+  deck: CardDeckV3 | null,
+  currentState: CardTemplateState | null,
+  options: { templateState?: CardTemplateState | null } = {},
+): { cardTemplateState?: CardTemplateState | null } {
+  if (Object.prototype.hasOwnProperty.call(options, "templateState")) {
+    return { cardTemplateState: options.templateState ?? null };
+  }
+  if (!deck) return {};
+  return { cardTemplateState: currentState ?? defaultCardTemplateState(deck) };
+}
+
 export const CARD_DECK_TEMPLATES: readonly CardDeckTemplateDefinition[] = [
   { id: "chat_bubble", name: "카톡 대화", family: "chat", description: "질문과 답을 말풍선으로 이어갑니다" },
   { id: "headline_cover", name: "큰 제목 표지형", family: "photo_text", description: "큰 제목으로 문제를 먼저 보여 줍니다" },
