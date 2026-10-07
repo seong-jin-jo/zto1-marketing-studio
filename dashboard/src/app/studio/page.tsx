@@ -53,6 +53,7 @@ import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchr
 import { cardDeckV3EntryEnabled, cardDeckV3ForDraft, cardDeckV3RenderingEnabled, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
 import { defaultCardTemplateState, type CardDeckTemplateId, type CardTemplateState } from "@/lib/studio/card-templates";
 import { buildGeneratedCardTemplate } from "@/lib/studio/s7-generated-card-template";
+import { textCandidateLines, textCandidateSelectionWouldDiscardEdits } from "@/lib/studio/text-candidate-selection";
 import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
@@ -1406,18 +1407,30 @@ export default function StudioPage() {
     }
   }
 
-  function selectTextCandidate(candidate: TextCandidate) {
+  async function selectTextCandidate(candidate: TextCandidate) {
     const candidates = textRef.current?.text_candidates ?? [candidate];
+    if (textCandidateSelectionWouldDiscardEdits({
+      currentSelectedId: textRef.current?.selected_text_candidate_id,
+      currentLines: bodySnapshotRef.current.lines,
+      nextCandidateId: candidate.id,
+      candidates,
+    })) {
+      const confirmed = await askConfirm({
+        title: "고친 본문을 다른 후보로 바꿀까요?",
+        description: "현재 본문에서 직접 고친 내용이 사라지고, 선택한 후보의 원문으로 교체됩니다.",
+        confirmLabel: "고친 내용을 버리고 바꾸기",
+        cancelLabel: "현재 본문 유지",
+        destructive: true,
+      });
+      if (!confirmed) return;
+    }
     const nextText: TextVariants = {
       ...candidate.content,
       text_candidates: candidates,
       selected_text_candidate_id: candidate.id,
       recommended_text_candidate_id: textRef.current?.recommended_text_candidate_id,
     };
-    const nextLines = candidate.content.threads
-      .split(/\n\s*\n/)
-      .map((paragraph) => paragraph.trim())
-      .filter(Boolean);
+    const nextLines = textCandidateLines(candidate);
     setEditKind("text");
     setEditFormat(defaultContentEditFormat("text"));
     replaceBodySnapshot(nextLines, nextText);
