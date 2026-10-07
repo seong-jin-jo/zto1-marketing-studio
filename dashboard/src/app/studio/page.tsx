@@ -51,7 +51,8 @@ import { cardDeckV3Projection, type CardDeckV3 } from "@/lib/studio/card-element
 import { createPlainCardDeckV3, createRecoverableEmbeddedCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
 import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import { cardDeckV3EntryEnabled, cardDeckV3ForDraft, cardDeckV3RenderingEnabled, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
-import { applyCardDeckTemplate, defaultCardTemplateState, type CardDeckTemplateId, type CardTemplateState } from "@/lib/studio/card-templates";
+import { defaultCardTemplateState, type CardDeckTemplateId, type CardTemplateState } from "@/lib/studio/card-templates";
+import { buildGeneratedCardTemplate } from "@/lib/studio/s7-generated-card-template";
 import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
@@ -1303,7 +1304,8 @@ export default function StudioPage() {
         // 발행 흔적을 끊는다. 끊지 않으면 새 글이 옛 글의 발행 기록에 덮어써진다.
         draftIdRef.current = null;
         setDraftId(null);
-        setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
+        const freshPublishProgress: PublishProgress = { running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} };
+        setPub(freshPublishProgress);
         setPublishReconciliations({});
         // 2026-09-14 실측: 초안번호와 발행 흔적은 끊으면서 **그림과 영상만 그대로 뒀다.**
         // 그래서 주제를 바꿔 새 초안을 만들어도 발행실에는 어제 주제의 영상이 붙어 있었고,
@@ -1337,16 +1339,23 @@ export default function StudioPage() {
               .split(/\n\s*\n/)
               .map((paragraph) => paragraph.trim())
               .filter(Boolean);
+        const nextEditFormat = defaultContentEditFormat(nextKind);
         setEditKind(nextKind);
-        setEditFormat(defaultContentEditFormat(nextKind));
-        if (nextKind === "card" && result.card_template_id && result.card_template_id !== "chat_bubble" && nextLines.length >= 2) {
-          const baseDeck = createPlainCardDeckV3(nextLines);
-          const generatedDeck = applyCardDeckTemplate(baseDeck, result.card_template_id, { kind: "all" });
-          const generatedTemplateState: CardTemplateState = { activeTemplateId: result.card_template_id, previousTemplate: null };
-          setCardDeckV3(generatedDeck);
-          cardDeckV3Ref.current = generatedDeck;
-          setCardTemplateState(generatedTemplateState);
-          setCardDeckV3DetailStatus("ready");
+        setEditFormat(nextEditFormat);
+        let generatedCardTemplate: ReturnType<typeof buildGeneratedCardTemplate> = null;
+        if (nextKind === "card" && result.card_template_id && result.card_template_id !== "chat_bubble") {
+          try {
+            generatedCardTemplate = buildGeneratedCardTemplate({
+              renderEnabled: CARD_DECK_V3_RENDER_ENABLED,
+              templateId: result.card_template_id,
+              lines: nextLines,
+            });
+          } catch (error) {
+            showToast(extractApiErrorMessage(error, "카드가 2장 이상일 때 템플릿을 적용할 수 있습니다."), "error");
+          }
+          if (!CARD_DECK_V3_RENDER_ENABLED) {
+            showToast("자유 배치 카드 기능이 꺼져 있어 기본 카드 편집으로 만들었습니다.", "success");
+          }
         }
         replaceBodySnapshot(
           nextLines,
@@ -1355,6 +1364,37 @@ export default function StudioPage() {
             : result,
           { replaceDocument: true, serverRevision: 0 },
         );
+        if (generatedCardTemplate) {
+          const { deck: generatedDeck, sourceSnapshot, templateState } = generatedCardTemplate;
+          setCardDeckV3(generatedDeck);
+          cardDeckV3Ref.current = generatedDeck;
+          setCardTemplateState(templateState);
+          setCardDeckV3SourceSnapshot(sourceSnapshot);
+          cardDeckV3PendingSourceSnapshotRef.current = sourceSnapshot;
+          setCardDeckV3DetailStatus("ready");
+          try {
+            await save(
+              "draft",
+              {},
+              null,
+              null,
+              null,
+              null,
+              null,
+              generatedDeck,
+              "tail",
+              freshPublishProgress,
+              {
+                sourceSnapshot,
+                templateState,
+                editKind: nextKind,
+                editFormat: nextEditFormat,
+              },
+            );
+          } catch (error) {
+            setCardDeckAutosaveError(extractApiErrorMessage(error, "생성한 카드 템플릿을 서버에 저장하지 못했습니다. 다시 저장해 주세요."));
+          }
+        }
         // 이 후보를 만든 실제 주제를 기억해 둔다. 이후 주제가 바뀌면(trim 비교) 옛 주제로
         // 만든 후보를 비운다 — 2026-10-01 운영 실측.
         quickDraftTopicRef.current = idea.trim() || null;
@@ -1893,6 +1933,8 @@ export default function StudioPage() {
       sourceSnapshot?: CardDeckV3SourceSnapshot | null;
       cardTextPositions?: CardTextPosition[];
       templateState?: CardTemplateState | null;
+      editKind?: EditContentKind;
+      editFormat?: ContentEditFormat;
     } = {},
   ) {
     const saveTenantId = activeWorkspace?.id ?? null;
@@ -1958,8 +2000,8 @@ export default function StudioPage() {
               : {}),
             videoEdit: safeVideoEdit,
             videoEditBaseRevision: safeVideoEdit ? videoEditBaseRevisionRef.current : undefined,
-            editKind,
-            editFormat,
+            editKind: cardDeckV3Options.editKind ?? editKind,
+            editFormat: cardDeckV3Options.editFormat ?? editFormat,
             reviewQueueId,
             publishedAt: status === "published" ? new Date().toISOString() : undefined,
           });
