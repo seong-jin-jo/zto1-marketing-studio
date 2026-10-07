@@ -13,6 +13,12 @@ const H = vi.hoisted(() => ({
     is_latest: true,
     current_source_hash: "a".repeat(64),
     latest_export: { export_id: "22222222-2222-4222-8222-222222222222", status: "succeeded" },
+  } as {
+    blocker: string | null;
+    is_latest: boolean;
+    current_source_hash: string;
+    latest_export: { export_id: string; status: string } | null;
+    first_empty_slide?: { order: number; number: number; item_key: string };
   },
   authFailure: null as null | { reason: "invalid" | "unavailable" | "forbidden"; message: string; code?: string },
 }));
@@ -229,7 +235,7 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
     expect(response.status).toBe(409);
   });
 
-  it("BE-V63-37 정상 경로: ready Studio draft를 OpenClaw 큐에 출처와 함께 넣는다", async () => {
+  it("BE-V63-37·S4-AC5 정상: ready Studio draft를 최신 export ID·hash와 함께 OpenClaw 큐에 넣는다", async () => {
     H.handoff = applyEditorOperation(createEditorHandoff(handoffBody()), 0, { operation: "mark_ready" });
     const { POST } = await import("@/app/api/studio/commands/route");
     const response = await POST(new Request("http://localhost/api/studio/commands", {
@@ -266,6 +272,30 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ code: "EXPORT_SOURCE_STALE" });
+    expect(H.queueCalls).toHaveLength(0);
+  });
+
+  it.each([
+    ["EMPTY_SLIDE", { first_empty_slide: { order: 5, number: 6, item_key: "slide-6" } }],
+    ["EXPORT_FAILED", {}],
+    ["NO_SUCCESSFUL_EXPORT", {}],
+  ])("S4-AC4·AC6 거절: %s이면 직접 enqueue API도 409로 막는다", async (blocker, details) => {
+    H.handoff = applyEditorOperation(createEditorHandoff(handoffBody()), 0, { operation: "mark_ready" });
+    H.latestExport = {
+      blocker,
+      is_latest: false,
+      current_source_hash: "a".repeat(64),
+      latest_export: { export_id: "22222222-2222-4222-8222-222222222222", status: "failed" },
+      ...details,
+    };
+    const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: H.tenantId }),
+    }), { params: Promise.resolve({ draftId: H.draftId }) });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: blocker, ...details });
     expect(H.queueCalls).toHaveLength(0);
   });
 });
