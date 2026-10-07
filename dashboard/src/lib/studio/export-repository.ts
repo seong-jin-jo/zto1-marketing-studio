@@ -21,6 +21,18 @@ interface CardDraftSource {
 }
 type DraftSource = CardDraftSource | VideoExportSource;
 
+export interface PublishExportReceipt {
+  exportId: string;
+  sourceHash: string;
+  kind: ExportKind;
+  artifactKeys: string[];
+}
+
+interface PublishExportSnapshot {
+  receipt: PublishExportReceipt;
+  draftPayload: Record<string, unknown>;
+}
+
 function number(value: unknown): number {
   return Number(value ?? 0);
 }
@@ -270,6 +282,82 @@ export class PostgresExportRepository {
         ...(empty ? { first_empty_slide: empty } : {}),
       };
     });
+  }
+
+  async withLatestForPublish<T>(
+    tenantId: string,
+    draftId: string,
+    kind: ExportKind,
+    publish: (receipt: PublishExportReceipt, draftPayload: Record<string, unknown>) => Promise<T>,
+    options: { holdDraftLockDuringCallback?: boolean } = {},
+  ): Promise<T> {
+    const inspect = async (tx: Sql): Promise<PublishExportSnapshot> => {
+      const [draft] = await tx<{ payload: unknown }[]>`
+        SELECT payload FROM drafts WHERE tenant_id=${tenantId} AND id=${draftId} FOR UPDATE`;
+      const source = sourceFromDraft(draft, kind, tenantId);
+      const empty = "deck" in source ? firstEmptySlide(source.deck) : null;
+      if (empty) {
+        throw new ExportQueueError(409, "EMPTY_SLIDE", "빈 장은 발행실로 보낼 수 없습니다", { first_empty_slide: empty });
+      }
+      const rows = await tx<Record<string, unknown>[]>`
+        SELECT id,status,source_hash,total_items,created_at
+        FROM studio_export_jobs
+        WHERE tenant_id=${tenantId} AND draft_id=${draftId} AND kind=${kind}
+        ORDER BY created_at DESC`;
+      const current = rows.find((row) => row.source_hash === source.sourceHash);
+      if (!current || current.status !== "succeeded") {
+        const successful = rows.find((row) => row.status === "succeeded");
+        const code = current?.status === "queued" || current?.status === "processing"
+          ? "EXPORT_IN_PROGRESS"
+          : current
+            ? "EXPORT_FAILED"
+            : successful
+              ? "EXPORT_SOURCE_STALE"
+              : "NO_SUCCESSFUL_EXPORT";
+        const message = code === "EXPORT_SOURCE_STALE"
+          ? "편집 뒤 최신 내용으로 다시 내보내야 합니다"
+          : code === "EXPORT_IN_PROGRESS"
+            ? "최신 내보내기가 아직 진행 중입니다"
+            : code === "EXPORT_FAILED"
+              ? "실패한 항목을 다시 내보낸 뒤 발행할 수 있습니다"
+              : "최신 내보내기 결과가 있어야 발행할 수 있습니다";
+        throw new ExportQueueError(409, code, message);
+      }
+      const items = await tx<{ artifact_key: string | null; artifact_sha256: string | null; status: string }[]>`
+        SELECT artifact_key,artifact_sha256,status
+        FROM studio_export_items
+        WHERE tenant_id=${tenantId} AND job_id=${String(current.id)}
+        ORDER BY ordinal
+        FOR SHARE`;
+      if (items.length !== number(current.total_items)
+        || items.some((item) => item.status !== "succeeded" || !item.artifact_key || !item.artifact_sha256)) {
+        throw new ExportQueueError(409, "EXPORT_FAILED", "내보내기 결과 파일이 완전하지 않습니다");
+      }
+      return {
+        receipt: {
+          exportId: String(current.id),
+          sourceHash: source.sourceHash,
+          kind,
+          artifactKeys: items.map((item) => item.artifact_key!),
+        },
+        draftPayload: draft?.payload && typeof draft.payload === "object" && !Array.isArray(draft.payload)
+          ? draft.payload as Record<string, unknown>
+          : {},
+      };
+    };
+    if (options.holdDraftLockDuringCallback) {
+      // publish_room 고정은 queue.json 쓰기까지 같은 비관적 락(SELECT ... FOR UPDATE)
+      // 안에서 끝낸다. 이 callback은 새 DB 연결을 얻으면 안 된다. DB mirror는 호출자가
+      // transaction 종료 뒤 수행해야 풀 max=5에서 동시 6요청 교착이 나지 않는다.
+      return withTenant(tenantId, async (tx) => {
+        const snapshot = await inspect(tx);
+        return publish(snapshot.receipt, snapshot.draftPayload);
+      });
+    }
+    const snapshot = await withTenant(tenantId, inspect);
+    // OpenClaw enqueue 같은 일반 callback은 새 DB 연결을 쓸 수 있으므로 비관적 락
+    // 해제 뒤 실행한다. publish_room 경로만 위 옵션으로 파일 queue 기록을 잠금 안에 둔다.
+    return publish(snapshot.receipt, snapshot.draftPayload);
   }
 
   async runnableTenants(): Promise<string[]> {

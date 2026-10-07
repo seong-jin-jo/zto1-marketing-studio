@@ -35,6 +35,24 @@ describe('GET /api/queue', () => {
     expect(body.total).toBe(1);
   });
 
+  it('S4-R2-M4 회귀: 발행실 고정 산출물은 승인 인박스 draft 대상에서 제외한다', async () => {
+    const queue = readTempJson<{ posts: Array<Record<string, unknown>> }>(tmpDir, 'queue.json');
+    queue!.posts.push({
+      id: 'publish-room-export',
+      text: '발행실에서 바로 발행할 본문',
+      status: 'publish_ready',
+      sourceContext: { exportId: 'export-1' },
+    });
+    fs.writeFileSync(path.join(tmpDir, 'queue.json'), JSON.stringify(queue, null, 2));
+
+    const { GET } = await import('@/app/api/queue/route');
+    const res = await GET(new Request('http://localhost/api/queue?status=draft'));
+    const body = await res.json();
+
+    expect(body.posts).toHaveLength(1);
+    expect(body.posts.map((post: { id: string }) => post.id)).not.toContain('publish-room-export');
+  });
+
   it('returns sorted by generatedAt descending', async () => {
     const { GET } = await import('@/app/api/queue/route');
     const res = await GET(new Request('http://localhost/api/queue'));

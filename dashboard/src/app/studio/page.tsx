@@ -18,6 +18,8 @@ import { useToast } from "@/components/layout/Toast";
 import { PlatformPreview, PREVIEW_PLATFORMS, type PreviewAccount, type PreviewInlineEditor, type PreviewPlatform } from "@/components/studio/PlatformPreview";
 import { PlatformFocusFilter } from "@/components/studio/PlatformFocusFilter";
 import { PublishHeaderControls } from "@/components/studio/PublishHeaderControls";
+import { ExportPanel, type ExportPanelKind } from "@/components/studio/ExportPanel";
+import { exportKindForDraftState } from "@/lib/studio/export-eligibility";
 import { CreateRoom, EditRoom, type CreateContentBranch, type CreateKind, type CreateStructureChoice, type EditContentKind } from "@/components/studio/StudioRooms";
 import type { StudioGenerationCandidate } from "@/lib/studio/generation/client";
 import { useUsage } from "@/hooks/useOverview";
@@ -701,6 +703,10 @@ export default function StudioPage() {
   // 탓에 한 곳을 고치면 나머지도 같이 바뀌었다. 여기에 플랫폼 키로 따로 담아 각자 편집한다.
   const [captions, setCaptions] = useState<Record<string, string>>({});
   const [reviewQueueId, setReviewQueueId] = useState<string | null>(null);
+  const [publishExportPinNotice, setPublishExportPinNotice] = useState<{
+    status: "pinned" | "unpinned";
+    message: string;
+  } | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
   const [publishChatDraft, setPublishChatDraft] = useState("");
   const [editLines, setEditLines] = useState<string[]>([]);
@@ -802,6 +808,8 @@ export default function StudioPage() {
   const [cardDeckAutosaveError, setCardDeckAutosaveError] = useState("");
   const [videoEditAutosaveError, setVideoEditAutosaveError] = useState("");
   const [moveToPublishBusy, setMoveToPublishBusy] = useState(false);
+  const [exportPanel, setExportPanel] = useState<{ draftId: string; kind: ExportPanelKind } | null>(null);
+  const [requestedCardSlide, setRequestedCardSlide] = useState<{ id: string; requestId: number } | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<StudioGenerationCandidate | null>(null);
   const [createBranch, setCreateBranch] = useState<CreateContentBranch>("video");
   // "새로 시작" 이 생성실 안쪽까지 닿게 하는 신호. 값이 바뀌면 생성실이 스스로 비운다.
@@ -2534,8 +2542,14 @@ export default function StudioPage() {
         cardDeckV3,
       );
       if (!savedDraftId) throw new Error("편집 내용을 저장하지 못했습니다");
-      changeRoom("publish");
-      showToast("편집 내용을 저장하고 발행실로 이동했습니다", "success");
+      const exportKind: ExportPanelKind | null = exportKindForDraftState(editKind, { cardDeckV3, videoEdit });
+      if (!exportKind) {
+        changeRoom("publish");
+        showToast("편집 내용을 저장하고 발행실로 이동했습니다", "success");
+        return;
+      }
+      setExportPanel({ draftId: savedDraftId, kind: exportKind });
+      showToast("편집 내용을 저장했습니다. 최신 파일을 내보내면 발행실로 갈 수 있습니다.", "success");
     } catch (error) {
       showToast(extractApiErrorMessage(error, "편집 내용을 저장하지 못했습니다"), "error");
     } finally {
@@ -2979,6 +2993,7 @@ export default function StudioPage() {
               // 저장된 ID가 연결 해제·만료 상태로 바뀌어도 발행 요청에는 절대 싣지 않는다.
               account_id: selectedConnectedAccountId(p),
               draft_id: did,
+              queue_post_id: reviewQueueId || undefined,
               // 대문으로 쓸 시점. 지원하는 플랫폼만 실제로 쓴다(lib/video-cover.ts).
               cover_seconds: supportsCoverTimestamp(p) ? (coverSeconds[p] ?? DEFAULT_COVER_SECONDS) : undefined,
               // 2026-10-03 운영 사고: TikTok은 이 네 필드가 없으면 서버가 400으로 거부한다
@@ -3058,6 +3073,7 @@ export default function StudioPage() {
             ? planChannelImages(p, publishDeck).images
             : undefined,
           draft_id: did,
+          queue_post_id: reviewQueueId || undefined,
           publish_fields: platformPublishInput(p),
           account_id: selectedConnectedAccountId(p),
           first_comment: capabilityFor(p).supported && firstComments[p]?.trim() ? firstComments[p].trim() : undefined,
@@ -4709,6 +4725,7 @@ export default function StudioPage() {
         cardDeckV3={cardDeckV3}
         cardTemplateState={cardTemplateState}
         onCardDeckV3Change={onCardDeckV3Change}
+        requestedCardSlide={requestedCardSlide}
         onStartCardDeckV3={cardDeckV3EntryEnabled(CARD_DECK_V3_RENDER_ENABLED, {
           hasCardDeckV2: Boolean(cardDeck),
           cardDeckTemplate: cardDeck?.template ?? null,
@@ -4736,6 +4753,64 @@ export default function StudioPage() {
         onBodyConflictLoadLatest={loadLatestBodyAfterConflict}
         onBodyConflictReapply={() => { void reapplyLocalBodyAfterConflict(); }}
       />
+      {exportPanel && activeWorkspace ? (
+        <ExportPanel
+          tenantId={activeWorkspace.id}
+          draftId={exportPanel.draftId}
+          kind={exportPanel.kind}
+          onClose={() => setExportPanel(null)}
+          onOpenEmptySlide={(slide) => {
+            setExportPanel(null);
+            changeEditKind("card");
+            setRequestedCardSlide({ id: slide.item_key, requestId: Date.now() });
+            showToast(`${slide.number}장이 비어 있습니다. 내용을 채운 뒤 다시 내보내 주세요.`, "error");
+          }}
+          onOpenPublish={async (receipt) => {
+            setExportPanel(null);
+            changeRoom("publish");
+            setPublishExportPinNotice(null);
+            try {
+              const response = await fetch(`/api/studio/drafts/${encodeURIComponent(exportPanel.draftId)}/enqueue`, {
+                method: "POST",
+                headers: { ...authHeaders(), "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  tenant_id: activeWorkspace.id,
+                  purpose: "publish_room",
+                  expected_export_id: receipt.exportId,
+                  expected_source_hash: receipt.sourceHash,
+                }),
+              });
+              const payload = await response.json().catch(() => ({})) as {
+                error?: string;
+                code?: string;
+                export_id?: string;
+                source_hash?: string;
+                pin_status?: "publish_ready" | "unpinned";
+                post?: { id?: string };
+              };
+              if (!response.ok) throw new Error(payload.error || "내보내기 판을 고정하지 못했습니다.");
+              if (payload.pin_status === "unpinned") {
+                throw new Error(payload.error || "내보내기 판을 고정하지 못했습니다.");
+              }
+              if (payload.export_id !== receipt.exportId || payload.source_hash !== receipt.sourceHash) {
+                throw new Error("고정된 내보내기 판이 화면에서 확인한 판과 다릅니다.");
+              }
+              if (payload.post?.id) setReviewQueueId(payload.post.id);
+              // 현재 발행실은 S2 재렌더 파일을 실제 채널 발행에 사용한다. 이 고정은
+              // 내보내기 영수증과 산출물의 감사 기록이며, 실제 발행 파일과 동일하다는
+              // 보장은 아직 없다. 사용자가 오해하지 않도록 상태 문구에도 범위를 밝힌다.
+              const message = "내보내기 판을 기록했습니다. 실제 발행은 발행실에서 다시 준비한 파일을 사용합니다.";
+              setPublishExportPinNotice({ status: "pinned", message });
+              showToast("발행실로 이동했습니다. 내보내기 판 기록도 완료했습니다", "success");
+            } catch (error) {
+              const reason = error instanceof Error ? error.message : "내보내기 판을 고정하지 못했습니다.";
+              const message = `발행실로 이동했습니다. 내보내기 판은 고정되지 않았습니다: ${reason}`;
+              setPublishExportPinNotice({ status: "unpinned", message });
+              showToast(message, "error");
+            }
+          }}
+        />
+      ) : null}
       <ConfirmDialog request={confirmRequest} onConfirm={() => settleConfirm(true)} onCancel={() => settleConfirm(false)} />
     </div>
   );
@@ -4853,6 +4928,16 @@ export default function StudioPage() {
           {restoredSelectionNotice && publishNameTargets.length > 0 ? (
             <p data-testid="publish-restored-selection-notice" role="status" className="rounded-control border border-warning/30 bg-warning/10 p-stack text-caption text-warning">
               지난번 선택 유지: {channelNameList(publishNameTargets)}
+            </p>
+          ) : null}
+          {publishExportPinNotice ? (
+            <p
+              data-testid="publish-export-pin-notice"
+              data-pin-status={publishExportPinNotice.status}
+              role="status"
+              className={`rounded-control border p-stack text-caption ${publishExportPinNotice.status === "pinned" ? "border-success/30 bg-success/10 text-success" : "border-warning/30 bg-warning/10 text-warning"}`}
+            >
+              {publishExportPinNotice.message}
             </p>
           ) : null}
           <PlatformFocusFilter>

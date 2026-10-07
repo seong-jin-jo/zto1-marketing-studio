@@ -421,6 +421,30 @@ describe("/api/publish — happy path (실 publish* + fetch 목)", () => {
     })]);
   });
 
+  it("S4-R2-M4 정상: 발행실에서 넘긴 queue_post_id만 published로 전환한다", async () => {
+    installFetch([
+      { match: "me?fields=id", json: { id: "live-id" } },
+      { match: "fields=status", json: { status: "FINISHED" } },
+      { match: "/threads_publish", json: { id: "media-queue-post" } },
+      { match: "/threads", json: { id: "container-queue-post" } },
+      { match: "fields=permalink", json: { permalink: "https://www.threads.net/@u/post/queue-post" } },
+    ]);
+    const draftId = "13730d99-a268-47de-9cf9-90157ea1fa79";
+    const queuePostId = "ac6bbef2-dcc0-45c7-a0fd-f6ed1177f05e";
+    const { body } = await callPublish({
+      platform: "threads",
+      text: "hi",
+      draft_id: draftId,
+      queue_post_id: queuePostId,
+    });
+
+    expect(body.ok).toBe(true);
+    expect(H.markQueuePublishedCalls[0]).toEqual(["tenant-1", queuePostId, expect.objectContaining({
+      platform: "threads",
+      externalId: "media-queue-post",
+    })]);
+  });
+
   it("동일 UUID draft/platform/account 성공 기록이 있으면 외부 발행 없이 queue만 멱등 복구한다", async () => {
     H.cred = { token: "tok", userId: "u-1", accountId: "11111111-1111-4111-8111-111111111111" };
     H.existingPublication = {

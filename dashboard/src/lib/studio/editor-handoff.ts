@@ -319,7 +319,11 @@ export function applyEditorOperation(
   };
 }
 
-export function handoffQueueInput(handoff: EditorHandoff, draftId: string): AddQueuePostInput {
+export function handoffQueueInput(
+  handoff: EditorHandoff,
+  draftId: string,
+  exportReceipt?: { exportId: string; sourceHash: string },
+): AddQueuePostInput {
   if (handoff.status !== "ready_for_openclaw") {
     throw new EditorContractError("handoff must be marked ready before enqueue", 409, "EDITOR_HANDOFF_NOT_READY");
   }
@@ -331,6 +335,7 @@ export function handoffQueueInput(handoff: EditorHandoff, draftId: string): AddQ
     revision: handoff.revision,
     generationId: handoff.source.generation_id,
     candidateId: handoff.source.candidate_id,
+    ...(exportReceipt ? { exportId: exportReceipt.exportId, exportSourceHash: exportReceipt.sourceHash } : {}),
   };
   const media = handoff.payload;
   return {
@@ -340,6 +345,12 @@ export function handoffQueueInput(handoff: EditorHandoff, draftId: string): AddQ
     imageUrls: media.kind === "card" ? media.slides.map((slide) => slide.image_url).filter((url): url is string => Boolean(url)) : null,
     videoUrl: media.kind === "video" ? media.asset_url : null,
     sourceContext,
-    idempotencyKey: `studio-handoff:${handoff.handoff_id}:revision:${handoff.revision}`,
+    // 발행실 고정은 export가 동일하면 같은 의도다. handoff revision을 키에 섞으면
+    // 같은 export를 다시 누를 때 승인 큐 항목이 늘어날 수 있으므로 export ID 하나로
+    // 멱등 범위를 고정한다. export가 없는 OpenClaw 검토 요청은 기존 handoff revision
+    // 범위를 그대로 유지한다.
+    idempotencyKey: exportReceipt
+      ? `studio-export:${exportReceipt.exportId}`
+      : `studio-handoff:${handoff.handoff_id}:revision:${handoff.revision}`,
   };
 }

@@ -1749,6 +1749,7 @@ interface EditRoomProps {
   cardDeckV3?: CardDeckV3 | null;
   cardTemplateState?: CardTemplateState | null;
   onCardDeckV3Change?: (deck: CardDeckV3, templateState?: CardTemplateState) => void;
+  requestedCardSlide?: { id: string; requestId: number } | null;
   /** 기존 plain 카드의 줄과 v2 덱을 보존한 채 자유 배치 편집을 명시적으로 시작한다. */
   onStartCardDeckV3?: () => void;
   cardDeckV3EntryBlockedReason?: string | null;
@@ -2067,6 +2068,7 @@ export function EditRoom({
   cardDeckV3 = null,
   cardTemplateState = null,
   onCardDeckV3Change,
+  requestedCardSlide = null,
   onStartCardDeckV3,
   cardDeckV3EntryBlockedReason,
   onRetryCardDeckV3Detail,
@@ -2343,7 +2345,7 @@ export function EditRoom({
                       </span>
                     ) : null}
                   </div>
-                  <CardCanvasEditor deck={cardDeckV3} templateState={cardTemplateState} sourceDeck={cardDeck} assetUrls={cardAssetUrls} onAssetUrlChange={(assetId, url) => setCardAssetUrls((current) => ({ ...current, [assetId]: url }))} onDeckChange={onCardDeckV3Change} />
+                  <CardCanvasEditor deck={cardDeckV3} templateState={cardTemplateState} sourceDeck={cardDeck} requestedSlide={requestedCardSlide} assetUrls={cardAssetUrls} onAssetUrlChange={(assetId, url) => setCardAssetUrls((current) => ({ ...current, [assetId]: url }))} onDeckChange={onCardDeckV3Change} />
                 </div>
               ) : kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
@@ -2786,7 +2788,7 @@ export function EditRoom({
             ) : null}
             <div className={styles.editHelperFooter}>
               <small className={autosaveError ? "text-caption text-danger" : "text-caption text-success"}>{autosaveError || (lastSavedAt ? `마지막 자동 저장 ${lastSavedAt}` : "고치는 대로 자동 저장됨")}</small>
-              <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || Boolean(publishBlockedReason) || bodyEditConflict || moveBusy}>{moveBusy ? "저장하고 이동 중" : "발행실로 이동"}</Button>
+              <Button variant="primary" size="lg" className="w-full min-w-0" onClick={onOpenPublish} disabled={!editorVisible || !hasEditableContent || Boolean(autosaveError) || Boolean(publishBlockedReason) || bodyEditConflict || moveBusy}>{moveBusy ? "저장하는 중" : kind === "text" ? "발행실로 이동" : "내보내기"}</Button>
             </div>
           </AssistantPanel>
         )}

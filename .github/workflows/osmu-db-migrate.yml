@@ -44,15 +44,17 @@ jobs:
     runs-on: [self-hosted, marketing_runner]
     environment: osmu-db-migration-approval
     env:
-      SOURCE_DIR: ${{ github.workspace }}/source-${{ github.run_id }}
+      SOURCE_DIR: ${{ github.workspace }}/_ci/migrate-${{ github.run_id }}/src
     defaults:
       run:
-        working-directory: ${{ github.workspace }}/source-${{ github.run_id }}
+        working-directory: ${{ github.workspace }}/_ci/migrate-${{ github.run_id }}/src
     steps:
+      # checkout clean의 범위를 운영 compose 루트와 분리한다. run_id별 하위 폴더라
+      # 마이그레이션 실행끼리도 같은 checkout을 공유하지 않는다.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          path: source-${{ github.run_id }}
+          path: _ci/migrate-${{ github.run_id }}/src
       - name: Observe and verify every running compatibility image
         id: app
         # audit 와 preflight 는 읽기 전용이고, baseline 부터 expand-guard 및 export queue는 DDL 이

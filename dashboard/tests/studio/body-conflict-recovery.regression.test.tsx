@@ -246,7 +246,7 @@ describe("PR87-R5-MAJOR-01 두 탭 본문 충돌 복구", () => {
     const subtitle = await waitFor(() => document.querySelector("[data-video-subtitle-text]") as HTMLInputElement | null);
     fireEvent.change(subtitle!, { target: { value: "탭 B 마지막 영상 변경" } });
     const publishButton = Array.from(document.querySelectorAll("section[data-room='edit'] button"))
-      .find((button) => button.textContent === "발행실로 이동") as HTMLButtonElement;
+      .find((button) => button.textContent === "내보내기") as HTMLButtonElement;
     fireEvent.click(publishButton);
     await waitFor(() => expect(document.querySelector("[data-body-edit-conflict]")).toBeTruthy());
 

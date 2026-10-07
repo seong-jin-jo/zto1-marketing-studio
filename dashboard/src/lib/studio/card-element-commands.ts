@@ -304,6 +304,7 @@ function placeCardElementInEmptyArea(slide: CardSlideV3, element: CardElement, l
 export function addCardElement(deck: CardDeckV3, slideId: string, type: CardElementType, seed: ElementSeed): CardDeckV3 {
   return mutateSlide(deck, slideId, (slide) => ({
     ...slide,
+    content_state: "filled",
     elements: [...slide.elements, placeCardElementInEmptyArea(slide, createDefaultCardElement(type, { ...seed, textColor: deck.theme.foreground as `#${string}` }, slide.elements.length), CARD_LOGICAL_HEIGHT[deck.ratio])],
   }));
 }
@@ -838,7 +839,15 @@ export function duplicateCardElement(deck: CardDeckV3, slideId: string, elementI
 }
 
 export function deleteCardElement(deck: CardDeckV3, slideId: string, elementId: string): CardDeckV3 {
-  return mutateSlide(deck, slideId, (slide) => ({ ...slide, elements: normalizeZ(slide.elements.filter((element) => element.id !== elementId)) }));
+  return mutateSlide(deck, slideId, (slide) => {
+    if (!slide.elements.some((element) => element.id === elementId)) return slide;
+    const elements = normalizeZ(slide.elements.filter((element) => element.id !== elementId));
+    return {
+      ...slide,
+      elements,
+      ...(slide.base.kind === "plain" ? { content_state: elements.length ? "filled" as const : "empty" as const } : {}),
+    };
+  });
 }
 
 export function createCardCommandHistory(deck: CardDeckV3): CardCommandHistory {

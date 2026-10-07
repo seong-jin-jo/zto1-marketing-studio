@@ -10,6 +10,7 @@ import { PostgresExportRepository } from "@/lib/studio/export-repository";
 import { cardDeckExportSource, videoExportSource } from "@/lib/studio/export-source-hash";
 import { ExportItemWorker, exportArtifactFilename, realExportWorkerDependencies } from "@/lib/studio/export-worker";
 import { emptyVideoEdit } from "@/lib/studio/video-edit-contract";
+import { withTenant } from "@/lib/db";
 
 const databaseUrl = process.env.S3_DATABASE_URL;
 const integration = databaseUrl ? describe : describe.skip;
@@ -197,6 +198,113 @@ integration.sequential("S3 영속 내보내기 실제 PostgreSQL 통합", () => 
       SELECT status,count(*)::int AS count FROM studio_export_items WHERE job_id=${created.job.id} GROUP BY status ORDER BY status`;
     expect(rows).toEqual([{ status: "queued", count: 1 }, { status: "succeeded", count: 8 }]);
   });
+
+  it("S4-AC5 경합: 최신 export snapshot을 고정한 뒤 draft 잠금을 풀고 queue callback을 실행한다", async () => {
+    const draft = await seedDraft(["첫 장", "마지막 장"]);
+    const repository = new PostgresExportRepository();
+    const created = await repository.create(tenantA, draft.id, "member-s4-ac5", "s4-ac5", "5".repeat(64), input(draft.source));
+    for (let index = 0; index < 2; index += 1) {
+      const claimed = await repository.claim(tenantA, `worker-s4-${index}`);
+      expect(claimed).not.toBeNull();
+      expect(await repository.complete(claimed!, {
+        key: `s4-${index}.png`, sha256: String(index + 1).repeat(64), contentType: "image/png", byteSize: 100, width: 1080, height: 1350,
+      })).toBe(true);
+    }
+
+    let concurrentUpdateResolved = false;
+    let concurrentUpdate: Promise<unknown> | null = null;
+    const receipt = await repository.withLatestForPublish(tenantA, draft.id, "card_deck", async (lockedReceipt) => {
+      concurrentUpdate = admin!`
+        UPDATE drafts
+        SET payload=jsonb_set(payload,'{cardDeckV3,revision}','14'::jsonb),updated_at=now()
+        WHERE tenant_id=${tenantA} AND id=${draft.id}`.then(() => { concurrentUpdateResolved = true; });
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(concurrentUpdateResolved).toBe(true);
+      return lockedReceipt;
+    });
+    await concurrentUpdate;
+
+    expect(receipt).toMatchObject({
+      exportId: created.job.id,
+      sourceHash: draft.source.sourceHash,
+      kind: "card_deck",
+    });
+    expect(new Set(receipt.artifactKeys)).toEqual(new Set(["s4-0.png", "s4-1.png"]));
+    expect(concurrentUpdateResolved).toBe(true);
+  });
+
+  it("S4-R2-m1 경합: 발행실 큐 기록은 같은 트랜잭션의 draft 잠금 안에서 끝나고 외부 갱신은 잠금 해제 뒤 진행한다", async () => {
+    const draft = await seedDraft(["첫 장", "마지막 장"]);
+    const repository = new PostgresExportRepository();
+    const created = await repository.create(tenantA, draft.id, "member-s4-r2-m1", "s4-r2-m1", "7".repeat(64), input(draft.source));
+    await admin!`
+      UPDATE studio_export_items
+      SET status='succeeded',artifact_key='locked-'||ordinal||'.png',artifact_sha256=repeat('a',64),
+          content_type='image/png',byte_size=100,finished_at=now()
+      WHERE tenant_id=${tenantA} AND job_id=${created.job.id}`;
+    await admin!`
+      UPDATE studio_export_jobs
+      SET status='succeeded',succeeded_items=total_items,failed_items=0,finished_at=now()
+      WHERE tenant_id=${tenantA} AND id=${created.job.id}`;
+
+    let concurrentUpdateResolved = false;
+    let concurrentUpdate: Promise<unknown> | null = null;
+    await repository.withLatestForPublish(tenantA, draft.id, "card_deck", async () => {
+      concurrentUpdate = admin!`
+        UPDATE drafts SET updated_at=now()
+        WHERE tenant_id=${tenantA} AND id=${draft.id}`.then(() => { concurrentUpdateResolved = true; });
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      expect(concurrentUpdateResolved).toBe(false);
+      return "queued";
+    }, { holdDraftLockDuringCallback: true });
+
+    await concurrentUpdate;
+    expect(concurrentUpdateResolved).toBe(true);
+  });
+
+  it("S4-M2 경합: 최대 5개 연결에서 동시 6요청이 callback의 새 연결을 기다리지 않고 종료한다", async () => {
+    const repository = new PostgresExportRepository();
+    const cases = await Promise.all(Array.from({ length: 6 }, async (_, index) => {
+      const draft = await seedDraft([`${index + 1}번 첫 장`, `${index + 1}번 마지막 장`]);
+      const created = await repository.create(
+        tenantA,
+        draft.id,
+        `member-s4-m2-${index}`,
+        `s4-m2-${index}`,
+        String(index + 1).repeat(64),
+        input(draft.source),
+      );
+      await admin!`
+        UPDATE studio_export_items
+        SET status='succeeded',artifact_key='pool-'||ordinal||'.png',artifact_sha256=repeat('a',64),
+            content_type='image/png',byte_size=100,finished_at=now()
+        WHERE tenant_id=${tenantA} AND job_id=${created.job.id}`;
+      await admin!`
+        UPDATE studio_export_jobs
+        SET status='succeeded',succeeded_items=total_items,failed_items=0,finished_at=now()
+        WHERE tenant_id=${tenantA} AND id=${created.job.id}`;
+      return { draft, created };
+    }));
+
+    const allRequests = Promise.all(cases.map(({ draft }) => repository.withLatestForPublish(
+      tenantA,
+      draft.id,
+      "card_deck",
+      async (receipt) => withTenant(tenantA, async (tx) => {
+        const [row] = await tx<{ id: string }[]>`
+          SELECT id FROM drafts WHERE tenant_id=${tenantA} AND id=${draft.id}`;
+        expect(row.id).toBe(draft.id);
+        return receipt.exportId;
+      }),
+    )));
+    const result = await Promise.race([
+      allRequests,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("POOL_MAX_5_DEADLOCK")), 3_000)),
+    ]);
+
+    expect(result).toHaveLength(6);
+    expect(new Set(result).size).toBe(6);
+  }, 15_000);
 
   it("S3-AC6 정상: 두 session의 advisory lock은 active 1, standby 1이다", async () => {
     const first = await admin!.reserve();

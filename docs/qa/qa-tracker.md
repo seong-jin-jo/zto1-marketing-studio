@@ -1,9 +1,9 @@
-## 2026-10-08 편집실 S4·S7 main 병합 ❌ NG
+## 2026-10-08 편집실 S4·S7 main 병합 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
 |---|---|---|---|
-| S7-MERGE-01 | `origin/main`의 S4 PR 128과 S7을 merge commit으로 통합하고 양쪽 기능을 보존 | ❌ NG | 병합 전. 예상 충돌 파일의 S4·S7 동작을 함께 보존해야 한다. |
-| S7-MERGE-02 | ExportPanel, card-deck-v3-studio-rooms, S7 template, edit-autosave, integrity, `typecheck:ci` 통과 | ❌ NG | 통합 브랜치 검증 전. |
+| S7-MERGE-01 | `origin/main`의 S4 PR 128과 S7을 merge commit으로 통합하고 양쪽 기능을 보존 | ✅ 테스트됨 | S4의 `requestedCardSlide`와 S7의 `cardTemplateState`·통합 undo를 같은 편집기 경계에 유지했다. 충돌 7파일은 양쪽 코드·문서를 모두 보존했다. |
+| S7-MERGE-02 | ExportPanel, card-deck-v3-studio-rooms, S7 template, edit-autosave, integrity, `typecheck:ci` 통과 | ✅ 테스트됨 | 집중 6파일 53건, S7 편집기·템플릿 4파일 57건, integrity 35파일 115건, TypeScript exit 0. 원격 CI는 push 금지로 미검증이다. |
 
 ## 2026-10-08 편집실 S7 교차 리뷰 3차 MINOR 정리 ✅ 로컬 PASS
 
@@ -66,6 +66,95 @@
 | S7-R1-B1 | 생성실에서 고른 템플릿이 생성 요청·생성 덱에 반영되지 않음 | ❌ NG | `cardTemplateId`는 `StudioRooms.tsx`의 갤러리 선택 상태에서만 사용되고 생성 콜백 인자에는 없음. 선택과 결과가 이어지는 테스트도 없음 |
 | S7-R1-B2 | 편집실 템플릿 ID·직전 덱 복원이 재열기 가능한 저장 경계에 없음 | ❌ NG | `activeTemplateId`·`previousTemplate`가 `CardCanvasEditor` 로컬 state뿐이고 `CardDeckV3.template`은 바뀌지 않음. plain 덱의 `chat_bubble` 선택은 base 변환이 없음 |
 | S7-MOBILE-01 | 데이터가 있는 편집실 360~1000 아홉 폭 인체공학 | ❌ NG | 기존 fixture가 생성실로 이탈. 360px 실측에서 13px 미만 92건, 44px 미만 1건, 눌림 상태 80%, 넘침 0. S7 실제 390px 데이터 3장 화면은 넘침 0·콘솔 오류 0이나 아홉 폭 게이트를 대신하지 않음 |
+## 2026-10-08 PR 128 CI 테스트 경합 2건 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| PR128-CI-EXPORT-S4-AC1 | 초기 `/latest` 조회가 끝나기 전 비활성 내보내기 버튼을 클릭해 CI 부하에서 click이 버려짐 | ✅ 테스트됨 | 버튼 활성화를 명시적으로 기다린 뒤 기존 `3 / 9장`과 활성 export ID 단언 유지. 두 대상 파일 3회 연속 23/23 PASS, 전체 실행에서도 7/7 PASS |
+| PR128-CI-S5B-R2-B | 첫 fetch 호출만 기다려 projection 준비 전 비활성 복귀 버튼을 클릭해 callback이 0회로 남음 | ✅ 테스트됨 | 복귀 버튼 활성화를 명시적으로 기다린 뒤 기존 callback 1회와 projection 전체 단언 유지. 두 대상 파일 3회 연속 23/23 PASS, 전체 실행에서도 16/16 PASS |
+
+CI run `37668742639`의 실패 DOM은 두 버튼이 timeout 시점에는 활성 상태였음을 보여 줬다. 최초 click 시점만 비활성이어서 이벤트가 버려진 비동기 준비 경합이었다. 제품 코드는 바꾸지 않았고 테스트 기대값도 완화하지 않았다. `typecheck:ci`는 종료 코드 0이다. 전체 `npx vitest run`에서 두 대상 파일은 통과했으나, 로컬 공유 `node_modules`의 `proper-lockfile` 해석 실패 7 suite, `DATABASE_URL` 미설정 1건, 장시간 실행 중 관측성 테스트 timeout 2건 때문에 전체 판정은 493파일 PASS, 11파일 FAIL이다. 원격 CI 재실행은 push 금지로 미검증이다.
+
+## 2026-10-08 편집실 S4 교차 리뷰 2차 ❌ BLOCK → ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| EDITROOM-S4-R2-B2 | `발행실로`가 export 고정 성공을 기다려 handoff 없음·미준비 상태에서 이동을 막음 | ✅ 관찰됨 | 이동을 먼저 확정하고 고정은 부가 단계로 분리했다. handoff 없는 실제 초안과 Next API·PostgreSQL 브라우저 E2E에서 enqueue 200 `unpinned`, 발행실 화면 진입, 상태 안내 노출, queue 0건을 확인했다 |
+| EDITROOM-S4-R2-M4 | 버튼을 누를 때마다 같은 export가 승인 인박스 draft로 중복 쌓이고 이중 발행 가능 | ✅ 테스트됨 | `studio-export:<exportId>` 멱등키와 `publish_ready` 상태를 사용한다. 같은 export 두 번 고정 시 큐 1건을 유지하고 승인 인박스 `status=draft` 조회에서 제외하며, 실제 발행 성공 시 전달된 `queue_post_id`만 `published`로 전환한다 |
+| EDITROOM-S4-R2-m1 | 초안 잠금 안에서 큐 DB 미러가 새 풀 연결을 잡을 수 있음 | ✅ 테스트됨 | 비관적 락(SELECT ... FOR UPDATE) 안에서는 파일 큐만 원자적으로 기록하고, transaction 종료 뒤 DB mirror를 실행한다. 풀 최대 5, 동시 6요청 통합 회귀 PASS |
+| EDITROOM-S4-R2-m2 | polling 첫 오류 뒤 한 번만 재시도하고 다음 오류에 영구 정지 | ✅ 테스트됨 | 전체 제한시간 안에서는 polling 오류 뒤 다음 주기를 계속 예약한다. 컴포넌트 회귀 PASS |
+
+실제 발행 파일 동일성 한계: 고정된 export ID, source hash, artifact는 감사 및 추적용이다. 현재 발행실 S2는 플랫폼 발행 직전에 파일을 다시 준비하므로 고정 artifact와 실제 외부 발행 파일의 바이트 동일성은 아직 보장하지 않는다. 화면 상태 안내와 코드 주석에 이 범위를 명시했다.
+
+검증: 관련 Vitest 7파일 108건 PASS, 실제 PostgreSQL 2파일 13건 PASS·조건부 렌더 1건 skip, `typecheck:ci` PASS. 실제 API·PostgreSQL·브라우저 E2E는 초안 7건, 저장 13회, 이미지 업로드 99회, retry 202, enqueue 200, 콘솔 오류 0, 실패 요청 0이다. `/api/me`만 인증 스텁이며 초안 저장·조회와 export·retry·enqueue는 mock하지 않았다. 원격 CI·QA 승인·운영 배포는 미검증이고 push하지 않았다.
+
+## 2026-10-08 편집실 S4 재부팅 재개 최종 대조 ✅ 로컬 PASS
+
+| 요청번호 | 재대조 결과 | 이번 실행 증거 |
+|---|---|---|
+| EDITROOM-S4-R1-B1 | ✅ 해소 | 실제 PostgreSQL을 쓰는 기존 카드·편집 없는 영상 enqueue 2건 PASS. export 적격성 6건 PASS |
+| EDITROOM-S4-R1-M1 | ✅ 해소 | 주 화면이 export ID·source hash를 enqueue 응답과 대조한 뒤 발행실로 이동하는 배선 계약 PASS |
+| EDITROOM-S4-R1-M2 | ✅ 해소 | 비관적 락(SELECT ... FOR UPDATE) transaction 종료 뒤 callback 실행. 풀 최대 5, 동시 6요청 경합 PASS |
+| EDITROOM-S4-R1-M3 | ✅ 해소 | 실제 PostgreSQL claim·complete·fail 통합과 enqueue route를 포함한 관련 Vitest PASS. API 전체 mock 증거에 의존하지 않음 |
+| EDITROOM-S4-R1-m1 | ✅ 해소 | `ExportPanel.module.css` 파일 단위 design-lint 위반 없음 |
+| EDITROOM-S4-R1-m2 | ✅ 해소 | polling 1회 오류 자동 재시도와 최종 latest 재조회 회귀 PASS |
+| EDITROOM-S4-R1-m3 | ✅ 해소 | stale 안내의 캡션·발행 본문 제외 범위와 카드 이미지·영상 파일 영향 범위 계약 PASS |
+
+현재 HEAD `253217d3` 기준 관련 8파일 64건 PASS, 조건부 실제 렌더 1건 skip, `typecheck:ci` PASS다. 원격 CI·QA 승인·운영 배포는 미검증이며 push하지 않았다. 사용자 소유 변경 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 보존했다.
+
+## 2026-10-07 편집실 S4 교차 리뷰 1차 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| EDITROOM-S4-R1-B1 | v3가 아닌 일반·카톡·AI 카드와 편집 없는 영상이 기존 발행실 경로를 잃음 | ✅ 관찰됨 | 일반·카톡·AI 미진입 카드와 편집 없는 영상은 패널 없이 기존 발행실로 이동한다. 실제 PostgreSQL enqueue 회귀와 v70 Chromium 화면 검증 PASS |
+| EDITROOM-S4-R1-M1 | 주 화면이 성공 export 영수증을 버려 발행 queue에 export ID·source hash가 고정되지 않음 | ✅ 관찰됨 | 주 화면 `onOpenPublish`가 실제 enqueue 응답의 `exportId`·`sourceHash`를 queue metadata와 prepared media에 고정. 실제 PostgreSQL 브라우저 E2E PASS |
+| EDITROOM-S4-R1-M2 | draft 비관적 락(SELECT ... FOR UPDATE) 안에서 새 풀 연결을 얻어 동시 6요청 교착 가능 | ✅ 테스트됨 | 잠금 transaction 종료 뒤 callback을 실행하도록 분리. 풀 최대 5, 동시 6요청 회귀가 359ms에 종료 |
+| EDITROOM-S4-R1-M3 | 진행·부분실패·retry 브라우저 증거가 API 전체 mock이라 실제 대기열·작업자를 증명하지 못함 | ✅ 관찰됨 | 작업자만 스텁하고 실제 Next API·PostgreSQL claim·complete·fail 경로로 9장 중 3장 진행 유지, 4번 실패만 재시도, queue 영수증 저장 확인 |
+| EDITROOM-S4-R1-m1 | ExportPanel CSS에 직접 수치가 남음 | ✅ 테스트됨 | 기존 디자인 토큰으로 치환. UI 토큰 감사 위반 0, 데이터 화면 9폭 모바일 사용성 PASS |
+| EDITROOM-S4-R1-m2 | polling 1회 오류로 진행 표시가 영구 정지함 | ✅ 테스트됨 | 단발 polling 오류 자동 재시도와 컴포넌트 회귀 테스트 PASS |
+| EDITROOM-S4-R1-m3 | stale 안내가 카드 이미지에 영향을 주는 편집 범위를 설명하지 않음 | ✅ 테스트됨 | 캡션을 포함한 이미지 영향 범위를 stale 안내와 계약 테스트에 고정 |
+
+## 2026-10-07 편집실 S4 발행 인계 교차 검수 ❌ NG → ✅ 테스트됨
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| EDITROOM-S4-REVIEW-01 | 최신 export ID·hash만 queue metadata에 기록하고 실제 media는 이전 handoff를 사용할 수 있음 | ✅ 테스트됨 | 성공 export artifact를 `preparedMedia`로 직접 결선. 최종 경계 계약 18건과 enqueue 16건 PASS |
+| EDITROOM-S4-REVIEW-02 | 최신 판 확인과 queue 삽입 사이에 draft가 바뀔 수 있음 | ✅ 테스트됨 | draft `FOR UPDATE`와 같은 transaction callback 안에서 artifact 완결성 확인·handoff 재조회·queue 등록 실행 |
+| EDITROOM-S4-REVIEW-03 | 공개 origin이 없으면 상대 artifact URL이 queue에 들어감 | ✅ 테스트됨 | HTTPS 공개 origin fail-closed. origin 누락 503과 queue 미삽입 계약 PASS |
+| EDITROOM-S4-REVIEW-04 | 완료 polling의 마지막 latest 조회 rejection이 처리되지 않음 | ✅ 테스트됨 | 마지막 조회도 catch 경계에 포함. 수정 후 레드팀·적대 검수 모두 CLEAN |
+
+## 2026-10-07 편집실 S4 재시도 완료 뒤 최신 상태 갱신 누락 ❌ NG → ✅ 관찰됨
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| EDITROOM-S4-POLL-01 | 실패 장 재시도가 성공해도 최종 job 반영 직후 effect cleanup이 최신 내보내기 요청을 취소해 `발행실로` 버튼이 열리지 않음 | ✅ 관찰됨 | 최종 최신 판 조회를 polling controller와 분리했다. 회귀 테스트 1건 PASS. 실제 Chromium에서 4장만 재시도한 뒤 `발행실로` 노출, 1440·1024·390 진행·새로고침 유지·stale·빈 6장 초점 이동 PASS, 콘솔 오류 0, 실제 실패 요청 0 |
+## 2026-10-07 운영 러너 워크스페이스 격리 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| CI-RUNNER-WORKSPACE-ISOLATION-01 | `ci.yml`의 기본 `actions/checkout`이 운영 compose 루트에서 `git clean`을 실행해 `config-tenantN`과 `data-tenantN` bind mount 원본을 지울 수 있음 | ✅ 로컬 PASS | CI는 `_ci/src`, migration은 `_ci/migrate-<run_id>/src`로 격리. fail-before 2건 재현, 표적 32건, integrity 108건, YAML 8파일, 하위 clean sentinel 보존 PASS. 운영 러너와 현재 운영 데이터는 미검증 |
+## 2026-10-07 생성기 감시 운영 bind mount 원본 삭제 위험 ❌ BLOCK → ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| GENERATOR-MONITOR-R2-B1 | self-hosted 감시가 `$GITHUB_WORKSPACE`를 `rm -rf`로 비운 뒤 checkout해 운영 tenant config·data bind mount 원본을 30분마다 삭제할 수 있음 | ✅ 로컬 PASS | workspace 정리·checkout 제거. 실행별 `$RUNNER_TEMP`에 두 스크립트만 받고 cache도 임시영역 사용. 안전 계약 RED→GREEN, 표적 7건·전체 integrity 111건 PASS |
+| GENERATOR-MONITOR-R2-M3 | Slack webhook 미설정 상태에서 failure 전이가 저장되면 이후 같은 장애 알림은 재전송되지 않음 | ✅ 문서화 | `wiki/ops/인프라.md`에 best-effort 한계와 실제 수신 미검증을 명시 |
+
+## 2026-10-07 생성기 감시 공유 concurrency 반려 교정 ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| GENERATOR-MONITOR-R1-01 | 감시 기능이 운영 배포 workflow에 공유 concurrency를 추가함 | ✅ 테스트됨 | `deploy-marketing.yml` 원복, 계약 테스트가 top-level concurrency와 `queue` 부재를 고정 |
+| GENERATOR-MONITOR-R1-02 | 한 주기의 probe 실패가 즉시 장애 알림으로 전이됨 | ✅ 테스트됨 | 첫 down은 `none:suspect`, 다음 down은 `failure:down`, 장애 뒤 up은 `recovery:up` |
+| GENERATOR-MONITOR-R1-03 | 공유 경합과 즉시 장애가 계약 테스트에 정상으로 고정됨 | ✅ 테스트됨 | 셸 5건, 워크플로 계약 6건, 전체 integrity 34파일 110건 PASS |
+
+## 2026-10-07 생성기 감시 공유 concurrency 운영 경로 침범 ❌ NG
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| GENERATOR-MONITOR-R1-01 | 30분 감시와 운영 배포가 같은 concurrency 그룹을 사용해 서로의 대기 실행을 취소할 수 있고, 감시 기능 때문에 운영 배포 워크플로가 변경됨 | ❌ NG | `deploy-marketing.yml`을 원복하고 감시기는 독립 그룹만 사용해야 함 |
+| GENERATOR-MONITOR-R1-02 | 한 주기의 probe 4회 실패만으로 즉시 장애 전이가 발생해 배포·재기동 직후 일시 실패를 로그인 만료로 오판할 수 있음 | ❌ NG | 첫 down은 `suspect`로 저장하고 다음 주기 연속 down에서만 failure 전이해야 함 |
+| GENERATOR-MONITOR-R1-03 | 계약 테스트가 공유 concurrency와 즉시 장애 전이를 정상으로 고정함 | ❌ NG | 배포 concurrency 부재와 정상·1회 실패·2회 실패·hold·복구 5경우를 계약으로 고정해야 함 |
 
 ## 2026-10-07 S5b·S6 main 병합 ✅ 로컬 PASS
 
@@ -8078,3 +8167,11 @@ SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-is
 | S7-R1-B3 | plain 덱의 카톡 템플릿 무동작 금지 | ✅ 관찰됨 | 생성실·편집실 모두 카톡 템플릿을 비활성화하고 기존 카톡 말풍선 덱 생성 경로 이유를 표시. S5b 댓글 유도 장 계약 유지 |
 | S7-MOBILE-01 | 데이터가 있는 편집실 360~1000 아홉 폭 인체공학 | ✅ 관찰됨 | 실제 편집실 데이터 3장. 9폭 모두 본문 16px, 13px 미만 0, 44px 미만 0, 눌림 상태 100%, 가로 넘침 0 |
 | S7-REGRESSION | 기존 생성·카드 v3·카톡 덱·두 탭 충돌 회귀 없음 | ✅ 테스트됨·관찰됨 | integrity 104, contract 629, related 511 PASS. S7 1440·1024·390, v70 화면, body-conflict production Chromium PASS, 콘솔 오류 0 |
+## 2026-10-08 편집실 S4 교차 리뷰 2차 ❌ NG
+
+| 요청번호 | 결함 | 현재 판정 | 종료 조건 |
+|---|---|---|---|
+| EDITROOM-S4-R2-B2 | `발행실로` 이동이 `editor_handoff` 준비 상태와 enqueue 성공에 결합돼 저장 직후 초안이 발행실로 가지 못함 | ❌ NG | handoff 없음·미준비·준비 상태 모두 이동, 고정 실패 상태 노출, 실제 저장 API 기반 E2E |
+| EDITROOM-S4-R2-M4 | 버튼 반복 클릭마다 승인 인박스에 같은 draft가 쌓여 이중 발행 가능 | ❌ NG | export ID 멱등, 발행 완료 항목 승인 후보 제외, 실제 PostgreSQL 회귀 테스트 |
+| EDITROOM-S4-R2-m1 | 비관적 락(SELECT ... FOR UPDATE) 해제 뒤 queue 기록 사이에 draft 변경 가능 | ❌ NG | queue 기록 순서와 snapshot 한계를 코드·테스트에서 명시하고 경계 검증 |
+| EDITROOM-S4-R2-m2 | polling 자동 재시도가 두 번째 연속 오류 뒤 중단됨 | ❌ NG | 연속 오류 뒤에도 자동 polling 복구하는 회귀 테스트 |
