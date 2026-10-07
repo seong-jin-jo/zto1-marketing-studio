@@ -1,3 +1,17 @@
+## 2026-10-08 편집실 S4 재부팅 재개 최종 대조 ✅ 로컬 PASS
+
+| 요청번호 | 재대조 결과 | 이번 실행 증거 |
+|---|---|---|
+| EDITROOM-S4-R1-B1 | ✅ 해소 | 실제 PostgreSQL을 쓰는 기존 카드·편집 없는 영상 enqueue 2건 PASS. export 적격성 6건 PASS |
+| EDITROOM-S4-R1-M1 | ✅ 해소 | 주 화면이 export ID·source hash를 enqueue 응답과 대조한 뒤 발행실로 이동하는 배선 계약 PASS |
+| EDITROOM-S4-R1-M2 | ✅ 해소 | 비관적 락(SELECT ... FOR UPDATE) transaction 종료 뒤 callback 실행. 풀 최대 5, 동시 6요청 경합 PASS |
+| EDITROOM-S4-R1-M3 | ✅ 해소 | 실제 PostgreSQL claim·complete·fail 통합과 enqueue route를 포함한 관련 Vitest PASS. API 전체 mock 증거에 의존하지 않음 |
+| EDITROOM-S4-R1-m1 | ✅ 해소 | `ExportPanel.module.css` 파일 단위 design-lint 위반 없음 |
+| EDITROOM-S4-R1-m2 | ✅ 해소 | polling 1회 오류 자동 재시도와 최종 latest 재조회 회귀 PASS |
+| EDITROOM-S4-R1-m3 | ✅ 해소 | stale 안내의 캡션·발행 본문 제외 범위와 카드 이미지·영상 파일 영향 범위 계약 PASS |
+
+현재 HEAD `253217d3` 기준 관련 8파일 64건 PASS, 조건부 실제 렌더 1건 skip, `typecheck:ci` PASS다. 원격 CI·QA 승인·운영 배포는 미검증이며 push하지 않았다. 사용자 소유 변경 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 보존했다.
+
 ## 2026-10-07 편집실 S4 교차 리뷰 1차 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 결함 | 현재 판정 | 종료 증거 |

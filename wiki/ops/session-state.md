@@ -1,3 +1,12 @@
+## 2026-10-08 01:15 KST 편집실 S4 재부팅 재개 최종 검증 완료, 제어권 반환 준비
+
+- handoff basis: 회장이 지정한 커밋 `253217d3`, `wiki/거버넌스/결정.md`, `/Users/sj/wt/s4-review-r1.md`를 기준으로 재개했다. 별도 tmux 추론은 사용하지 않았다.
+- 재대조: B1, M1, M2, M3와 세 가지 소항목이 현재 코드·실제 PostgreSQL 통합 테스트·컴포넌트 계약에 모두 연결되어 추가 제품 코드 수정은 필요하지 않았다.
+- 검증: 관련 8파일 64건 PASS, 조건부 실제 렌더 1건 skip. `typecheck:ci` PASS. `ExportPanel.module.css` 파일 단위 design-lint 위반 없음. pipeline artifact lint 종료 코드 0, 기존 핀 위생 경고 28건.
+- 환경: 재부팅 뒤 시스템 Node 실행 파일이 없어 검증 전용 Node v22.23.3을 임시 디렉터리에 내려받아 SHA-256을 검증한 뒤 사용했다. 저장소 의존성과 제품 코드는 바꾸지 않았다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 사용자 소유 변경으로 stage하지 않는다.
+- 다음 실행: 이 검증 기록만 커밋한다. push, 원격 CI, QA 승인, 운영 배포는 이번 작업 범위 밖이며 미검증이다.
+
 ## 2026-10-05 23:08 KST PR 119 VID-STALE-09 원격 CI 회귀 교정 완료, push 대기
 
 - handoff basis: 회장이 직접 지정한 원격 CI 실패 1건과 교차 리뷰 4차 PASS를 기준으로 삼았다. 제품 동작 변경은 금지했고 push는 컨트롤러 소유다.
