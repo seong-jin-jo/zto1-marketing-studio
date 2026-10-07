@@ -5,7 +5,7 @@
 - 코드 커밋: `91f62178 fix(studio): prove S7 templates on live storage`
 - 수정: 잘못된 템플릿 명령 타입을 실제 전체 적용으로 교체하고, 글 요소 5개 이상 적용 거절과 생성 직후 저장 실패의 기본 카드 fallback을 추가했다.
 - 실경로: drafts·text 브라우저 mock을 제거했다. 실제 Next dev 서버, PostgreSQL RLS, route handler, 서버측 CLI LLM stub, Chromium으로 생성·저장·조회·undo·복원·검토·발행실 이동을 실행했다.
-- 검증: `typecheck:ci` 종료 코드 0. 직접 대응 4파일 26건, 관련 51파일 512건·3건 skip, integrity 104건, dashboard contract 492건 PASS. S7 실브라우저는 POST 19회, DB 초안 1건, 5 viewport, 콘솔 오류 0. v70·본문 충돌 PASS. 모바일 9폭 전부 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0.
+- 검증: `typecheck:ci` 종료 코드 0, production webpack build PASS. 직접 대응 4파일 26건, 관련 51파일 512건·3건 skip, integrity 104건, dashboard contract 492건 PASS. S7 실브라우저는 POST 19회, DB 초안 1건, 5 viewport, 콘솔 오류 0. v70·본문 충돌 PASS. 모바일 9폭 전부 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0.
 - 잔존: OpenClaw 계약은 별도 BlueBubbles 플러그인 표면 해석 실패로 전체 명령 미통과. 실제 외부 LLM 실패율, 원격 CI, QA 승인, 운영 배포 미검증. S4 PR 128 충돌 파일은 수정하지 않았고 push하지 않았다.
 
 ## 2026-10-08 01:17 KST · 편집실 S7 교차 리뷰 MAJOR 6 폐쇄와 저장 짝 보강
