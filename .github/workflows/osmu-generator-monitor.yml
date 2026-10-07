@@ -1,0 +1,180 @@
+name: OSMU Generator Session Monitor
+
+# 생성 요청 없이 Higgsfield account status만 확인한다. 배포 때만 확인하던 구조 때문에
+# 2026-10-04부터 로그인이 죽은 채 1.5일 동안 감지되지 않은 사고의 재발 방지다.
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+
+# 감시 실행끼리만 직렬화한다. 새 주기가 시작되면 오래 걸리는 이전 감시를 취소하되,
+# 운영 배포 워크플로의 실행·대기 순서에는 관여하지 않는다.
+concurrency:
+  group: osmu-generator-monitor
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CONTAINER_NAME: openclaw-dashboard-osmu
+  STATE_KEY_PREFIX: osmu-generator-state-
+
+jobs:
+  check:
+    name: Higgsfield 로그인 상태 + Slack 상태전이 알림
+    runs-on: [self-hosted, marketing_runner]
+    timeout-minutes: 5
+    steps:
+      - name: 감시 스크립트만 runner 임시 폴더에 받기
+        id: assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          genmon_dir="$RUNNER_TEMP/genmon-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$genmon_dir/scripts/lib"
+
+          fetch_repo_file() {
+            local repo_path="$1"
+            local target="$2"
+            curl -fsSL --retry 3 --retry-delay 2 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github.raw+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/contents/$repo_path?ref=$GITHUB_SHA" \
+              -o "$target"
+          }
+
+          fetch_repo_file "scripts/probe-generator-session.sh" "$genmon_dir/scripts/probe-generator-session.sh"
+          fetch_repo_file "scripts/lib/generator-monitor-state.sh" "$genmon_dir/scripts/lib/generator-monitor-state.sh"
+          chmod 0500 "$genmon_dir/scripts/probe-generator-session.sh" "$genmon_dir/scripts/lib/generator-monitor-state.sh"
+          echo "dir=$genmon_dir" >> "$GITHUB_OUTPUT"
+
+      - name: 이전 상태 캐시 복원
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/.osmu-generator-state
+          key: ${{ env.STATE_KEY_PREFIX }}${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ${{ env.STATE_KEY_PREFIX }}
+
+      - name: 이전 상태 읽기
+        id: prev
+        run: |
+          state_file="$RUNNER_TEMP/.osmu-generator-state"
+          if [ -f "$state_file" ]; then
+            echo "status=$(cat "$state_file")" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=unknown" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 생성기 로그인 읽기 전용 탐침
+        id: check
+        env:
+          GENMON_DIR: ${{ steps.assets.outputs.dir }}
+        run: |
+          set -euo pipefail
+          source "$GENMON_DIR/scripts/lib/generator-monitor-state.sh"
+
+          container_state="$(docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || true)"
+          probe_statuses=()
+          attempts=0
+
+          if [ "$container_state" = "true" ]; then
+            container_state="running"
+            # 최초 시도 뒤 세 번 재시도한다. probe 자체의 원문 출력은 폐기되고 종료 코드만 남는다.
+            for attempt in 1 2 3 4; do
+              attempts="$attempt"
+              if bash "$GENMON_DIR/scripts/probe-generator-session.sh" "$CONTAINER_NAME"; then
+                probe_statuses+=(0)
+                break
+              else
+                probe_statuses+=("$?")
+              fi
+
+              # 배포·재기동으로 컨테이너가 사라졌다면 로그인 장애가 아니라 판정 보류다.
+              if [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || true)" != "true" ]; then
+                container_state="stopped"
+                break
+              fi
+              [ "$attempt" -eq 4 ] || sleep 3
+            done
+          else
+            container_state="stopped"
+          fi
+
+          if [ "${#probe_statuses[@]}" -eq 0 ]; then
+            current="$(generator_monitor_classify "$container_state")"
+          else
+            current="$(generator_monitor_classify "$container_state" "${probe_statuses[@]}")"
+          fi
+          case "$current" in
+            up) reason="account_status_ok" ;;
+            down) reason="account_status_failed" ;;
+            hold) reason="container_not_running" ;;
+          esac
+
+          echo "status=$current" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "attempts=$attempts" >> "$GITHUB_OUTPUT"
+
+      - name: 상태 전이 판정
+        id: transition
+        env:
+          GENMON_DIR: ${{ steps.assets.outputs.dir }}
+          PREVIOUS: ${{ steps.prev.outputs.status }}
+          CURRENT: ${{ steps.check.outputs.status }}
+        run: |
+          set -euo pipefail
+          source "$GENMON_DIR/scripts/lib/generator-monitor-state.sh"
+          echo "kind=$(generator_monitor_transition "$PREVIOUS" "$CURRENT")" >> "$GITHUB_OUTPUT"
+          echo "persisted=$(generator_monitor_persisted_state "$PREVIOUS" "$CURRENT")" >> "$GITHUB_OUTPUT"
+
+      - name: Slack 알림(상태 전이 시에만)
+        if: ${{ steps.transition.outputs.kind != 'none' }}
+        env:
+          SLACK_WEBHOOK: ${{ secrets.OSMU_ALERT_SLACK_WEBHOOK_URL }}
+          KIND: ${{ steps.transition.outputs.kind }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK" ]; then
+            echo "OSMU_ALERT_SLACK_WEBHOOK_URL 미설정: 상태 기록은 유지하고 알림만 건너뜀"
+            exit 0
+          fi
+
+          if [ "$KIND" = "failure" ]; then
+            TEXT=":rotating_light: 생성기(Higgsfield) 로그인 만료: 사진 카드와 숏폼 영상 생성 중단, 글자 카드는 정상. 복구: 서버에서 higgsfield 재로그인 또는 HIGGSFIELD_CREDENTIALS_JSON 갱신 후 force_generator_credentials 배포"
+          else
+            TEXT=":white_check_mark: 생성기(Higgsfield) 로그인 복구: 사진 카드와 숏폼 영상 생성을 다시 사용할 수 있음"
+          fi
+
+          BODY=$(printf '{"text":"%s"}' "$TEXT")
+          curl -fsS --max-time 5 -X POST -H 'Content-Type: application/json' -d "$BODY" "$SLACK_WEBHOOK" >/dev/null \
+            || echo "::warning::Slack 알림 발송 실패(상태 판정과 기록은 유지, 응답과 webhook은 미출력)"
+
+      - name: 새 상태 파일 기록
+        if: ${{ steps.check.outcome == 'success' }}
+        env:
+          PERSISTED: ${{ steps.transition.outputs.persisted }}
+        run: printf '%s' "$PERSISTED" > "$RUNNER_TEMP/.osmu-generator-state"
+
+      - name: 새 상태 캐시 저장
+        if: ${{ steps.check.outcome == 'success' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/.osmu-generator-state
+          key: ${{ env.STATE_KEY_PREFIX }}${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: 실행 요약
+        if: always()
+        run: |
+          {
+            echo "### OSMU Generator Session Monitor"
+            echo "- 현재 판정: ${{ steps.check.outputs.status }}"
+            echo "- 이전 상태: ${{ steps.prev.outputs.status }}"
+            echo "- 상태 전이: ${{ steps.transition.outputs.kind }}"
+            echo "- 저장 상태: ${{ steps.transition.outputs.persisted }}"
+            echo "- 탐침 횟수: ${{ steps.check.outputs.attempts }}"
+            echo "- 판정 사유: ${{ steps.check.outputs.reason }}"
+            echo "- 생성 요청: 실행하지 않음"
+          } >> "$GITHUB_STEP_SUMMARY"
