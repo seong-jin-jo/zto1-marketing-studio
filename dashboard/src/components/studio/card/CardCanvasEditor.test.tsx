@@ -41,6 +41,48 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect(current).toEqual(original);
   });
 
+  it("S7-R1-M3 undo는 덱과 활성 템플릿·복원 상태를 같은 이력 한 칸으로 되돌린다", () => {
+    let current = deck();
+    let currentTemplateState: Parameters<NonNullable<React.ComponentProps<typeof CardCanvasEditor>["onDeckChange"]>>[1];
+    const onChange = (next: CardDeckV3, nextTemplateState?: typeof currentTemplateState) => {
+      current = next;
+      currentTemplateState = nextTemplateState;
+    };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /큰 제목 표지형/ }));
+    fireEvent.click(screen.getByRole("button", { name: "이 템플릿으로 바꾸기" }));
+    expect(currentTemplateState?.activeTemplateId).toBe("headline_cover");
+
+    view.rerender(<CardCanvasEditor deck={current} templateState={currentTemplateState} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "실행 취소" }));
+
+    expect(current.revision).toBe(0);
+    expect(currentTemplateState).toEqual({ activeTemplateId: "text_only", previousTemplate: null });
+  });
+
+  it("S7-R1-M3 템플릿 적용 뒤 편집한 내용은 확인 없이 이전 템플릿 복원으로 버리지 않는다", () => {
+    let current = deck();
+    let currentTemplateState: Parameters<NonNullable<React.ComponentProps<typeof CardCanvasEditor>["onDeckChange"]>>[1];
+    const onChange = (next: CardDeckV3, nextTemplateState?: typeof currentTemplateState) => {
+      current = next;
+      currentTemplateState = nextTemplateState;
+    };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /큰 제목 표지형/ }));
+    fireEvent.click(screen.getByRole("button", { name: "이 템플릿으로 바꾸기" }));
+    view.rerender(<CardCanvasEditor deck={current} templateState={currentTemplateState} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "글 추가" }));
+    view.rerender(<CardCanvasEditor deck={current} templateState={currentTemplateState} onDeckChange={onChange} />);
+    const edited = structuredClone(current);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    fireEvent.click(screen.getByRole("button", { name: /이전 템플릿/ }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("편집 내용"));
+    expect(current).toEqual(edited);
+    confirm.mockRestore();
+  });
+
   it("S7-AC5 전후 비교 뒤 이전 템플릿 복원은 요소 상태를 정확히 되돌린다", () => {
     let current = deck();
     const onChange = (next: CardDeckV3) => { current = next; };
