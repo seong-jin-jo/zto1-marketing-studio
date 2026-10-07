@@ -5,12 +5,47 @@ import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import { buildGeneratedCardTemplate } from "@/lib/studio/s7-generated-card-template";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import { CARD_DECK_V3_MAX_BYTES, type CardDeckV3 } from "@/lib/studio/card-element-contract";
 
 const H = vi.hoisted(() => ({
   rows: [] as Array<Record<string, unknown>>,
   rowBatches: [] as Array<Array<Record<string, unknown>>>,
   jsonValues: [] as unknown[],
 }));
+
+function nearLimitDeck(id: string): CardDeckV3 {
+  const deck = createPlainCardDeckV3(["첫 장", "마지막 장"], id);
+  const seed = deck.slides[0].elements.find((element) => element.type === "text");
+  if (!seed || seed.type !== "text") throw new Error("fixture");
+  deck.slides[0].elements = Array.from({ length: 50 }, (_, index) => ({
+    ...structuredClone(seed),
+    id: `el_near_limit_${index}`,
+    z_index: index,
+  }));
+  let low = 0;
+  let high = 2_001;
+  while (low + 1 < high) {
+    const middle = Math.floor((low + high) / 2);
+    for (const element of deck.slides[0].elements) {
+      if (element.type === "text") element.text = "가".repeat(middle);
+    }
+    if (Buffer.byteLength(JSON.stringify(deck), "utf8") < CARD_DECK_V3_MAX_BYTES - 8) low = middle;
+    else high = middle;
+  }
+  for (const element of deck.slides[0].elements) {
+    if (element.type === "text") element.text = "가".repeat(low);
+  }
+  let reasonLow = 6;
+  let reasonHigh = 2_001;
+  while (reasonLow + 1 < reasonHigh) {
+    const middle = Math.floor((reasonLow + reasonHigh) / 2);
+    deck.cta.save_reason = "가".repeat(middle);
+    if (Buffer.byteLength(JSON.stringify(deck), "utf8") < CARD_DECK_V3_MAX_BYTES) reasonLow = middle;
+    else reasonHigh = middle;
+  }
+  deck.cta.save_reason = "가".repeat(reasonLow);
+  return deck;
+}
 
 vi.mock("@/lib/tenant-auth", () => ({
   effectiveTenantId: vi.fn(async () => "tenant-1"),
@@ -85,7 +120,7 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
       method: "POST",
       body: JSON.stringify({ tenant_id: "tenant-1", idea: "자유 배치", cardDeckV3 }),
     }));
-    expect(response.status).toBe(200);
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
     const savedPayload = H.jsonValues[0] as { cardDeckV3: unknown; editLines: string[] };
     expect(savedPayload.cardDeckV3).toEqual(cardDeckV3);
     expect(savedPayload.editLines).toEqual(["자유 배치 첫 장", "저장하세요"]);
@@ -230,6 +265,30 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     }));
     expect(cleared.status).toBe(200);
     expect(H.jsonValues.at(-1)).toMatchObject({ cardDeckV3: null, cardTemplateState: null });
+  });
+  it("S7-R1-MINOR-1 직전 덱까지 합쳐 저장 상한을 넘으면 현재 덱 저장은 살리고 복원본만 버린다", async () => {
+    const current = nearLimitDeck("deck_template_near_limit_current");
+    const previous = nearLimitDeck("deck_template_near_limit_previous");
+    H.rows = [{ id: "draft-template-near-limit" }];
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1",
+        idea: "큰 템플릿 덱",
+        cardDeckV3: current,
+        cardTemplateState: {
+          activeTemplateId: "text_only",
+          previousTemplate: { id: "headline_cover", deck: previous },
+        },
+      }),
+    }));
+
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
+    expect(H.jsonValues[0]).toMatchObject({
+      cardDeckV3: current,
+      cardTemplateState: { activeTemplateId: "text_only", previousTemplate: null },
+    });
   });
   it("S5-R3-2 chat_bubble v2 저장·조회는 잔존 v3와 원문 스냅샷을 비운다", async () => {
     const staleV3 = createPlainCardDeckV3(["옛 첫 장", "옛 마지막"], "deck_stale_chat_v3");

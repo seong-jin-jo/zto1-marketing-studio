@@ -360,7 +360,14 @@ export async function POST(request: Request) {
         if (body.cardDeckV3 && (body.cardDeckV3.template === "chat_bubble") !== (rawState.activeTemplateId === "chat_bubble")) throw new Error("INVALID_CARD_TEMPLATE_STATE");
         normalizedState = { activeTemplateId: rawState.activeTemplateId as CardTemplateState["activeTemplateId"], previousTemplate };
       }
-      const combined = JSON.stringify({ cardDeckV3: body.cardDeckV3 ?? null, cardTemplateState: normalizedState });
+      let combined = JSON.stringify({ cardDeckV3: body.cardDeckV3 ?? null, cardTemplateState: normalizedState });
+      if (Buffer.byteLength(combined, "utf8") > CARD_TEMPLATE_STATE_TOTAL_MAX_BYTES && normalizedState?.previousTemplate) {
+        // 현재 덱과 복원용 직전 덱은 각각 정상이어도 JSON 래퍼만큼 합계 상한을 넘을 수 있다.
+        // 이때 자동저장 전체를 실패시키면 이후 편집까지 계속 막히므로, 현재 덱·활성 ID를
+        // 보존하고 선택 기능인 1단 복원본만 버린다. 일반 undo 이력은 클라이언트에 남는다.
+        normalizedState = { ...normalizedState, previousTemplate: null };
+        combined = JSON.stringify({ cardDeckV3: body.cardDeckV3 ?? null, cardTemplateState: normalizedState });
+      }
       if (Buffer.byteLength(combined, "utf8") > CARD_TEMPLATE_STATE_TOTAL_MAX_BYTES) throw new Error("CARD_TEMPLATE_STATE_TOO_LARGE");
       cardTemplateStatePatch.cardTemplateState = normalizedState;
     } catch {
