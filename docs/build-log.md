@@ -1,5 +1,14 @@
 # OSMU build log
 
+## 2026-10-08 04:13 KST · 편집실 S7 교차 리뷰 3차 MINOR 정리
+
+- 코드 커밋: `286dd3b4 fix(studio): restore S7 regression guards`
+- 수정: 삭제됐던 `PR87-R3-REV-02`를 실제 `StudioPage`의 기존 초안 복원→생성실 전환→새 카드 저장 POST로 복원했다. `headline_cover`는 단일 표지만 360px·88px을 유지하고, 글 2개 이상은 기존 176px·56px 규격을 재사용해 4:5·1:1의 글 2·3·4개가 겹치지 않게 했다.
+- S7 실서버 E2E 기동 계약: `dashboard/`에서 `CLAUDE_BIN="$PWD/scripts/fixtures/studio-s7-claude-stub.mjs" DATABASE_URL="$DATABASE_URL" DASHBOARD_AUTH_TOKEN="$DASHBOARD_AUTH_TOKEN" CARD_DECK_V3_RENDER_ENABLED=1 NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=1 npm run dev -- --hostname 127.0.0.1 --port 3481`로 서버를 띄운다. 별도 터미널에서 `STUDIO_S7_BASE_URL=http://127.0.0.1:3481 DATABASE_URL="$DATABASE_URL" DASHBOARD_AUTH_TOKEN="$DASHBOARD_AUTH_TOKEN" npm run e2e:studio-s7`를 실행한다. drafts·text는 실제 route와 PostgreSQL을 쓰고, 외부 LLM만 서버측 CLI stub이다. 실값은 기록하지 않는다.
+- 카톡 390px diff: 승인본은 `10년차 국어쌤`의 굵은 답변과 2행 도구, dev fixture는 `이상한수학`의 다른 문구와 `다른 장으로 옮기기`가 추가된 4행 도구다. 같은 픽셀 상태가 아니어서 18.17%는 회귀 판정값이 아니다. S7 merge-base 이후 말풍선 렌더러·변환기·fixture·캡처 스크립트 변경은 0파일이며, 동일 상태의 승인 baseline 전까지 report-only를 유지한다.
+- 검증: 수정 전 표지 겹침 실패를 4:5·1:1에서 재현했다. 수정 뒤 focused 2파일 17건 PASS, 관련 51파일 515건 PASS·DB 환경 의존 3건 skip, `npm run typecheck:ci` 종료 코드 0이다. 첫 TypeScript 시도는 중단된 Next dev가 `.next/dev/types`를 중복·절단한 생성 캐시 때문에 실패했고, 캐시를 `/tmp/zto1-s7-r3-next-dev-types-corrupt-20261008-0408`로 보존 이동한 뒤 같은 명령이 통과했다. 승인 시안·dev 원본·좌우 합성본을 모두 직접 열어 대조했다.
+- 범위: S4 PR 128 충돌과 main 병합은 하지 않았다. 원격 CI, QA 승인, 운영 배포는 미검증이며 push하지 않았다.
+
 ## 2026-10-08 03:21 KST · 편집실 S7 교차 리뷰 2차 폐쇄
 
 - 코드 커밋: `91f62178 fix(studio): prove S7 templates on live storage`

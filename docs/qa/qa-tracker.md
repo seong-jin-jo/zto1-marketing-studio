@@ -1,3 +1,16 @@
+## 2026-10-08 편집실 S7 교차 리뷰 3차 MINOR 정리 ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S7-R3-MINOR-03 | 새 초안 생성 시 이전 `draft_id`와 문서 세대를 같은 동작에서 끊고 첫 저장 요청에 옛 ID를 싣지 않음 | ✅ 테스트됨 | 실제 `StudioPage`에서 기존 `draft-cross-v3`를 복원한 같은 컴포넌트를 생성실로 전환했다. 새 카드 생성 뒤 실제 저장 POST의 `id:null`, `bodyBaseRevision` 없음, 새 v3 덱을 단언한다. 문자열 소스 단언은 쓰지 않았다. |
+| S7-R3-MINOR-01 | `headline_cover` 표지에 글 요소가 2개 이상이어도 글 상자가 겹치지 않고 카드 경계 안에 남음 | ✅ 테스트됨 | 수정 전 4:5·1:1 모두 첫 상자 끝 540, 다음 시작 376으로 실패를 고정했다. 단일 표지만 360px·88px을 유지하고 다중 글은 기존 176px·56px 규격을 재사용했다. 두 비율에서 글 2·3·4개의 실제 상자 좌표와 v3 계약을 검증한다. |
+| S7-R3-MINOR-04 | S7 실서버 E2E의 `CLAUDE_BIN` stub 기동 계약을 스크립트와 build-log에서 재현 가능하게 설명 | ✅ 근거 확인 | `verify-studio-s7-e2e.mjs` 머리말과 build-log에 dev 서버의 `CLAUDE_BIN`, 실제 PostgreSQL·토큰·v3 플래그·포트와 별도 Chromium 실행 명령을 기재했다. 실값은 기록하지 않는다. |
+| S7-R3-MINOR-05 | 카톡 말풍선 390px stage diff 18.17%의 원인을 정본 시안과 dev 캡처·캡처 상태로 구분 | ✅ 원인 규명 | 승인 시안과 dev 원본, 좌우 합성본을 직접 대조했다. 참조는 `10년차 국어쌤`의 굵은 부분이 있는 답변과 2행 도구, dev fixture는 `이상한수학`의 다른 문구와 `다른 장으로 옮기기`가 추가된 4행 도구라 선택 말풍선 높이·하단 노출 범위가 다르다. 동일 픽셀 상태가 아니므로 18.17%는 시각 회귀 판정값이 아니다. S7 merge-base 이후 `BubbleEditor`, `CardSlideScene`, v2→v3 변환기, v70 캡처 스크립트, D100 fixture 변경은 0파일이어서 S7과 무관하다. 기존 폭·비율·겹침·도구 위치 수치 계약은 통과했고, 동일 데이터·선택 상태의 승인 baseline이 생기기 전 report-only를 유지한다. |
+
+검증 근거: `logs/diff/editroom-v2-phase1/screen-conformance/compare-edit-bubble-stage-390.png`, 승인본 `docs/design/clean-frames/osmu-v70-편집실-카드뉴스-편집중@390x844.png`, dev 원본 `logs/diff/editroom-v2-phase1/screen-conformance/edit-bubble-deck-390x844.png`. Playwright의 시각 비교 원칙처럼 baseline과 실행 화면은 같은 환경과 결정적 상태여야 하므로, 내용·선택 도구가 다른 현재 두 이미지를 임계값 PASS/FAIL로 승격하지 않았다. S4 PR 128 충돌과 main 병합은 이 작업에서 건드리지 않았다.
+
+실행 증거: 수정 전 겹침 회귀는 4:5·1:1 모두 실패했고, 수정 뒤 focused 2파일 17건과 관련 51파일 515건이 PASS했다. DB 환경 의존 3건은 skip이다. 손상된 `.next/dev/types` 생성 캐시를 보존 이동한 뒤 `npm run typecheck:ci` 종료 코드 0을 확인했다. 원격 CI·QA 승인·운영 배포는 미검증이다.
+
 ## 2026-10-08 편집실 S7 교차 리뷰 2차 ✅ 로컬 PASS, 외부 플러그인 계약 BLOCK 분리
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

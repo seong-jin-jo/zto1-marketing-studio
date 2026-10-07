@@ -1,4 +1,20 @@
 #!/usr/bin/env node
+/**
+ * S7 실서버 E2E 기동 계약 (dashboard/에서 실행):
+ *
+ * 터미널 1, 실제 Next dev 서버 + 실제 PostgreSQL + 서버측 LLM stub:
+ *   CLAUDE_BIN="$PWD/scripts/fixtures/studio-s7-claude-stub.mjs" \
+ *   DATABASE_URL="$DATABASE_URL" DASHBOARD_AUTH_TOKEN="$DASHBOARD_AUTH_TOKEN" \
+ *   CARD_DECK_V3_RENDER_ENABLED=1 NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=1 \
+ *   npm run dev -- --hostname 127.0.0.1 --port 3481
+ *
+ * 터미널 2, 실제 Chromium 검증:
+ *   STUDIO_S7_BASE_URL=http://127.0.0.1:3481 DATABASE_URL="$DATABASE_URL" \
+ *   DASHBOARD_AUTH_TOKEN="$DASHBOARD_AUTH_TOKEN" npm run e2e:studio-s7
+ *
+ * /api/studio/drafts와 /api/studio/text는 브라우저 route mock을 쓰지 않는다. 외부 LLM만
+ * CLAUDE_BIN을 통해 서버 프로세스 안에서 stub하며, DB URL과 토큰의 실값은 문서·로그에 남기지 않는다.
+ */
 import { chromium } from "playwright-core";
 import postgres from "postgres";
 
