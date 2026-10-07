@@ -68,6 +68,13 @@ import {
 import styles from "./CardCanvasEditor.module.css";
 
 const RESIZE_HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+const CHAT_DECK_TEMPLATE_DISABLED_REASONS: Partial<Record<CardDeckTemplateId, string>> = {
+  headline_cover: "카톡 덱의 말풍선·CTA 대비를 보존하려면 카톡 대화 템플릿을 사용해 주세요.",
+  photo_band: "카톡 덱의 말풍선·CTA 대비를 보존하려면 카톡 대화 템플릿을 사용해 주세요.",
+  number_list: "카톡 덱의 말풍선·CTA 대비를 보존하려면 카톡 대화 템플릿을 사용해 주세요.",
+  qa: "카톡 덱의 말풍선·CTA 대비를 보존하려면 카톡 대화 템플릿을 사용해 주세요.",
+  text_only: "카톡 덱의 말풍선·CTA 대비를 보존하려면 카톡 대화 템플릿을 사용해 주세요.",
+};
 
 type Interaction = {
   kind: "move" | "resize" | "rotate";
@@ -596,7 +603,9 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
         mode="edit"
         selectedId={pendingTemplateId}
         onSelect={setPendingTemplateId}
-        disabledReasons={history.present.template === "plain" ? { chat_bubble: "카톡 대화는 생성실의 기존 카톡 덱 만들기에서 선택해 주세요." } : undefined}
+        disabledReasons={history.present.template === "plain"
+          ? { chat_bubble: "카톡 대화는 생성실의 기존 카톡 덱 만들기에서 선택해 주세요." }
+          : CHAT_DECK_TEMPLATE_DISABLED_REASONS}
         beforeDeck={history.present}
         afterDeck={templatePreviewDeck}
         scope={templateScope}
