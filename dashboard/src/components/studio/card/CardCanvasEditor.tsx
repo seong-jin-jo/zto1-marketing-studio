@@ -92,8 +92,10 @@ function commitCardEditorHistory(current: CardEditorHistory, nextDeck: CardDeckV
   if (nextDeckHistory === current) return current;
   return {
     ...nextDeckHistory,
-    templatePast: [...current.templatePast, structuredClone(current.templatePresent)].slice(-nextDeckHistory.past.length),
-    templatePresent: structuredClone(nextTemplateState),
+    // Template states are immutable history values. Reusing their references keeps
+    // ordinary element edits from cloning the full restore deck up to 50 times.
+    templatePast: [...current.templatePast, current.templatePresent].slice(-nextDeckHistory.past.length),
+    templatePresent: nextTemplateState,
     templateFuture: [],
   };
 }
@@ -105,8 +107,8 @@ function undoCardEditorHistory(current: CardEditorHistory): CardEditorHistory {
   return {
     ...nextDeckHistory,
     templatePast: current.templatePast.slice(0, -1),
-    templatePresent: structuredClone(previousTemplateState),
-    templateFuture: [structuredClone(current.templatePresent), ...current.templateFuture].slice(0, nextDeckHistory.future.length),
+    templatePresent: previousTemplateState,
+    templateFuture: [current.templatePresent, ...current.templateFuture].slice(0, nextDeckHistory.future.length),
   };
 }
 
@@ -116,8 +118,8 @@ function redoCardEditorHistory(current: CardEditorHistory): CardEditorHistory {
   const nextDeckHistory = redoCardCommand(current);
   return {
     ...nextDeckHistory,
-    templatePast: [...current.templatePast, structuredClone(current.templatePresent)].slice(-nextDeckHistory.past.length),
-    templatePresent: structuredClone(nextTemplateState),
+    templatePast: [...current.templatePast, current.templatePresent].slice(-nextDeckHistory.past.length),
+    templatePresent: nextTemplateState,
     templateFuture: current.templateFuture.slice(1),
   };
 }
