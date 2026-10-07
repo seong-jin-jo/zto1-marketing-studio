@@ -24,6 +24,7 @@
     "e2e:card-freeform-s2": "node scripts/verify-card-freeform-s2-e2e.mjs",
     "e2e:chat-s5": "node scripts/verify-chat-s5-e2e.mjs",
     "e2e:video-s6": "node scripts/verify-video-s6-e2e.mjs",
+    "e2e:studio-s7": "node scripts/verify-studio-s7-e2e.mjs",
     "e2e:editroom-s4": "node scripts/verify-editroom-s4-export-e2e.mjs",
     "e2e:studio-v70-screen": "node scripts/verify-studio-v70-screen-conformance.mjs",
     "qa:publish-room-alignment": "node scripts/measure-publish-room-alignment.mjs",

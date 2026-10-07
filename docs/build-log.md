@@ -1,5 +1,68 @@
 # OSMU build log
 
+## 2026-10-08 04:59 KST · 편집실 S4·S7 main 병합 충돌 해소
+
+STAMP: 2026-10-08 04:59 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review, qa | 근거: `origin/main` 3e04fd97, S7 HEAD 4eb75fd1, 집중 Vitest·integrity·TypeScript | 고민: 어느 한쪽 구현을 선택하지 않고 S4의 빈 장 포커스와 S7의 템플릿 상태 이력을 같은 편집기 경계에 결선했다.
+
+| 충돌 파일 | 해소 결정 |
+|---|---|
+| `dashboard/package.json` | S4 `e2e:editroom-s4`와 S7 `e2e:studio-s7` 명령을 모두 유지했다. |
+| `dashboard/src/components/studio/StudioRooms.tsx` | S7 `cardTemplateState`·확장 콜백과 S4 `requestedCardSlide`를 동시에 전달했다. |
+| `dashboard/src/components/studio/card/CardCanvasEditor.tsx` | S7의 덱·템플릿 통합 undo 이력을 기준으로 유지하고 S4의 `requestedSlide` 포커스 이동을 같은 컴포넌트에 결합했다. |
+| `docs/build-log.md` | S4와 S7의 최신 빌드 기록을 모두 보존했다. |
+| `docs/qa/qa-tracker.md` | S4와 S7의 QA 판정 기록을 모두 보존하고 통합 게이트 결과를 최상단에 갱신했다. |
+| `docs/구현현황.md` | S4 내보내기와 S7 템플릿 구현현황을 모두 보존했다. |
+| `wiki/ops/session-state.md` | 양쪽 handoff 서사를 모두 보존하고 통합 검증 결과를 새 최상단 기록으로 남겼다. |
+
+검증: S4 ExportPanel, S4 빈 장 포커스, S7 템플릿 명령·생성 덱·통합 undo, edit-autosave를 묶은 10파일 110건과 integrity 35파일 115건이 통과했다. `npm run typecheck:ci` 종료 코드 0이다. 원격 CI·운영 배포는 push 금지로 미검증이다.
+
+## 2026-10-08 04:13 KST · 편집실 S7 교차 리뷰 3차 MINOR 정리
+
+- 코드 커밋: `286dd3b4 fix(studio): restore S7 regression guards`
+- 수정: 삭제됐던 `PR87-R3-REV-02`를 실제 `StudioPage`의 기존 초안 복원→생성실 전환→새 카드 저장 POST로 복원했다. `headline_cover`는 단일 표지만 360px·88px을 유지하고, 글 2개 이상은 기존 176px·56px 규격을 재사용해 4:5·1:1의 글 2·3·4개가 겹치지 않게 했다.
+- S7 실서버 E2E 기동 계약: `dashboard/`에서 `CLAUDE_BIN="$PWD/scripts/fixtures/studio-s7-claude-stub.mjs" DATABASE_URL="$DATABASE_URL" DASHBOARD_AUTH_TOKEN="$DASHBOARD_AUTH_TOKEN" CARD_DECK_V3_RENDER_ENABLED=1 NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=1 npm run dev -- --hostname 127.0.0.1 --port 3481`로 서버를 띄운다. 별도 터미널에서 `STUDIO_S7_BASE_URL=http://127.0.0.1:3481 DATABASE_URL="$DATABASE_URL" DASHBOARD_AUTH_TOKEN="$DASHBOARD_AUTH_TOKEN" npm run e2e:studio-s7`를 실행한다. drafts·text는 실제 route와 PostgreSQL을 쓰고, 외부 LLM만 서버측 CLI stub이다. 실값은 기록하지 않는다.
+- 카톡 390px diff: 승인본은 `10년차 국어쌤`의 굵은 답변과 2행 도구, dev fixture는 `이상한수학`의 다른 문구와 `다른 장으로 옮기기`가 추가된 4행 도구다. 같은 픽셀 상태가 아니어서 18.17%는 회귀 판정값이 아니다. S7 merge-base 이후 말풍선 렌더러·변환기·fixture·캡처 스크립트 변경은 0파일이며, 동일 상태의 승인 baseline 전까지 report-only를 유지한다.
+- 검증: 수정 전 표지 겹침 실패를 4:5·1:1에서 재현했다. 수정 뒤 focused 2파일 17건 PASS, 관련 51파일 515건 PASS·DB 환경 의존 3건 skip, `npm run typecheck:ci` 종료 코드 0이다. 첫 TypeScript 시도는 중단된 Next dev가 `.next/dev/types`를 중복·절단한 생성 캐시 때문에 실패했고, 캐시를 `/tmp/zto1-s7-r3-next-dev-types-corrupt-20261008-0408`로 보존 이동한 뒤 같은 명령이 통과했다. 승인 시안·dev 원본·좌우 합성본을 모두 직접 열어 대조했다.
+- 범위: S4 PR 128 충돌과 main 병합은 하지 않았다. 원격 CI, QA 승인, 운영 배포는 미검증이며 push하지 않았다.
+
+## 2026-10-08 03:21 KST · 편집실 S7 교차 리뷰 2차 폐쇄
+
+- 코드 커밋: `91f62178 fix(studio): prove S7 templates on live storage`
+- 수정: 잘못된 템플릿 명령 타입을 실제 전체 적용으로 교체하고, 글 요소 5개 이상 적용 거절과 생성 직후 저장 실패의 기본 카드 fallback을 추가했다.
+- 실경로: drafts·text 브라우저 mock을 제거했다. 실제 Next dev 서버, PostgreSQL RLS, route handler, 서버측 CLI LLM stub, Chromium으로 생성·저장·조회·undo·복원·검토·발행실 이동을 실행했다.
+- 검증: `typecheck:ci` 종료 코드 0, production webpack build PASS. 직접 대응 4파일 26건, 관련 51파일 512건·3건 skip, integrity 104건, dashboard contract 492건 PASS. S7 실브라우저는 POST 19회, DB 초안 1건, 5 viewport, 콘솔 오류 0. v70 수치 계약·본문 충돌 PASS. 모바일 9폭 전부 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0. 육안 픽셀 대조에서 일반 카드 stage diff는 0, 카톡 말풍선 stage 390px diff는 18.17% report-only다.
+- 잔존: OpenClaw 계약은 별도 BlueBubbles 플러그인 표면 해석 실패로 전체 명령 미통과. 실제 외부 LLM 실패율, 원격 CI, QA 승인, 운영 배포 미검증. S4 PR 128 충돌 파일은 수정하지 않았고 push하지 않았다.
+
+## 2026-10-08 01:17 KST · 편집실 S7 교차 리뷰 MAJOR 6 폐쇄와 저장 짝 보강
+
+- 코드 커밋: `22b3506b fix(studio): persist template state on all saves`
+- 실제 화면 저장 회귀: `bafb7ab9 test(studio): cover manual template state save`
+- 수정: v3 덱과 템플릿 상태를 공통 저장의 단일 payload로 묶었다. 템플릿 전용 800ms 자동저장 전에 수동 저장·검토 요청·발행실 이동이 실행돼도 호출 시점 상태를 보존한다.
+- 회귀: 문자열 소스 일치 검사를 제거하고 payload patch의 실제 동작, 명시 null, v3 덱 없음 경계를 검증한다.
+- 검증: TypeScript PASS. MAJOR 직접 대응 10파일 94건 PASS. 변경 소스 관련 50파일 509건 PASS, DB 환경 의존 2건 skip. 실제 `StudioPage` POST 회귀 2파일 15건 PASS.
+- 범위: 원격 CI·QA 승인·운영 배포는 미검증. push하지 않았다.
+
+## 2026-10-07 21:31 KST · 편집실 v2 S7 자체 점검 BLOCK 4건 폐쇄
+
+STAMP: 2026-10-07 21:31 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: S7 build-plan, production webpack build, 실제 Chromium 4게이트, Vitest 3단 | 고민: 생성실에서 고른 값이 결과 덱과 재접속 저장 경계까지 이어지는지, 모바일 측정이 실제 편집실 데이터를 보고 있는지를 최종 빌드에서 다시 검증했다.
+
+생성실 `cardTemplateId`를 하위 호환 선택 필드로 글 생성 API에 전달하고, 응답의 ID로 실제 plain v3 덱을 만든 뒤 선택 템플릿을 적용한다. 편집실의 활성 템플릿 ID와 직전 덱은 기존 draft `payload` JSONB에 함께 저장하며 DB 스키마는 바꾸지 않았다. plain 덱의 카톡 템플릿은 무동작 대신 기존 카톡 말풍선 덱 생성 경로를 안내하며 비활성화한다. 모바일 fixture는 실제 `room=edit` URL과 초안 상세 응답을 사용한다.
+
+검증은 TypeScript PASS, integrity 33파일 104건 PASS, contract 108파일 629건 PASS, 변경 import 영향 51파일 511건 PASS·2건 환경 skip, webpack production build PASS다. 최종 빌드의 Chromium에서는 API fixture를 사용해 S7 생성실 선택→요청 payload→결과 덱, 전체·한 장 적용, 재접속 UI 복원, undo를 1440·1024·390에서 확인했고 가로 넘침·콘솔 오류는 0이었다. 실제 drafts route는 별도 Vitest 통합 테스트에서 생성 덱·복귀 원본·템플릿 상태의 POST→GET과 거절 계약을 실행했다. v70 화면 게이트와 두 탭 본문 충돌 복구도 PASS했다. 모바일 360·390·412·600·700·780·820·900·1000은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다. 기본 Turbopack은 공유 `node_modules` 심링크를 작업트리 밖 경로로 거부해 실패했으며, 설치나 링크 변경 없이 webpack 빌드로 검증했다.
+
+벤치마크: Canva의 현재 장·전체 페이지 적용과 버전 복원 흐름을 차용하되, 우리 덱은 글·요소 ID와 카톡 댓글 유도 장을 보존하고 plain→카톡은 기존 전용 생성 경로로만 진입시켰다. 출처: https://www.canva.com/help/change-template/ · https://www.canva.com/help/version-history/
+
+## 2026-10-07 20:34 KST · 편집실 v2 S7 구현 검증, 회수 전 BLOCK
+
+STAMP: 2026-10-07 20:34 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: S7 build-plan, v1.3 PRD, 실제 production Chromium 3게이트, Vitest 3단 | 고민: 통과 수치만 모으지 않고 생성실 선택이 실제 결과물로 이어지는지와 9폭 측정이 올바른 방을 열었는지를 최종 diff에서 다시 공격했다.
+
+S7 글 후보 3개, 사실·길이 경고, 생성실 템플릿 6개 추천 줄, 편집실 전체·한 장 적용, 전후 비교, 복원, undo를 구현했다. 기존 글 생성 응답은 하위 호환으로 유지했고 카드 요소 ID와 카톡 덱 역할·댓글 유도 장을 보존한다. 제품 커밋은 `6ab7efb0`, 브라우저·복원 회귀는 `03eb4536`, 공용 Button 교정은 `1fab474f`다.
+
+검증은 TypeScript PASS, integrity 33파일 104건 PASS, contract 108파일 628건 PASS, 관련 12파일 112건 PASS, webpack production build PASS다. 실제 production Chromium은 S7 1440·1024·390에서 후보 선택, 전체·한 장 적용, 이전 템플릿 복원, undo, 저장 API 3회, 가로 넘침 0, 콘솔 오류 0이다. 기존 v70 화면 게이트와 두 탭 본문 충돌 복구도 PASS했다. 기본 Turbopack build는 공유 `node_modules` 심링크가 worktree 밖을 가리켜 환경 오류로 실패했고, 설치 없이 webpack 경로로 같은 소스를 빌드했다.
+
+`review` 최종 점검에서 두 BLOCK을 남겼다. 생성실에서 고른 `cardTemplateId`는 아직 생성 요청·덱에 전달되지 않아 생성실과 편집실 경험이 실제로 이어지지 않는다. 편집실은 선택한 템플릿 ID를 덱에 저장하지 않아 재열기 뒤 선택 상태를 복원할 수 없고, plain 덱에서 `chat_bubble` 선택은 의미 구조 변환 없이 사실상 무동작이다. 또한 9폭 측정기는 기존 모바일 fixture가 편집실 대신 생성실로 이탈해 360px에서 13px 미만 92건, 44px 미만 1건, 눌림 상태 80%로 FAIL했다. S7 실제 390px 화면의 데이터 3장·넘침 0과는 별개로 9폭 인체공학 게이트는 미통과다. 새 구현을 늘리지 말라는 회수 지시에 따라 여기서 추가 제품 변경은 하지 않았다.
+
+벤치마크: Canva의 현재 장·전체 페이지 적용과 버전 복원 흐름을 차용하되, 우리 덱은 글·요소 ID와 카톡 필수 장을 보존하도록 달리했다. 출처: https://www.canva.com/help/change-template/ · https://www.canva.com/help/version-history/
 ## 2026-10-08 04:30 KST · PR 128 CI 비동기 준비 경합 교정
 
 STAMP: 2026-10-08 04:30 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: CI run 37668742639, targeted Vitest 3회, 전체 Vitest, typecheck:ci | 고민: timeout을 늘리거나 단언을 약화하지 않고 실제 활성 상태를 click 선행조건으로 고정했다.

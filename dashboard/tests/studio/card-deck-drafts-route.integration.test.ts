@@ -3,13 +3,49 @@ import { withTenant } from "@/lib/db";
 import deckD100 from "./fixtures/deck-d100.v2.json";
 import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
 import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
+import { buildGeneratedCardTemplate } from "@/lib/studio/s7-generated-card-template";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
+import { CARD_DECK_V3_MAX_BYTES, type CardDeckV3 } from "@/lib/studio/card-element-contract";
 
 const H = vi.hoisted(() => ({
   rows: [] as Array<Record<string, unknown>>,
   rowBatches: [] as Array<Array<Record<string, unknown>>>,
   jsonValues: [] as unknown[],
 }));
+
+function nearLimitDeck(id: string): CardDeckV3 {
+  const deck = createPlainCardDeckV3(["첫 장", "마지막 장"], id);
+  const seed = deck.slides[0].elements.find((element) => element.type === "text");
+  if (!seed || seed.type !== "text") throw new Error("fixture");
+  deck.slides[0].elements = Array.from({ length: 50 }, (_, index) => ({
+    ...structuredClone(seed),
+    id: `el_near_limit_${index}`,
+    z_index: index,
+  }));
+  let low = 0;
+  let high = 2_001;
+  while (low + 1 < high) {
+    const middle = Math.floor((low + high) / 2);
+    for (const element of deck.slides[0].elements) {
+      if (element.type === "text") element.text = "가".repeat(middle);
+    }
+    if (Buffer.byteLength(JSON.stringify(deck), "utf8") < CARD_DECK_V3_MAX_BYTES - 8) low = middle;
+    else high = middle;
+  }
+  for (const element of deck.slides[0].elements) {
+    if (element.type === "text") element.text = "가".repeat(low);
+  }
+  let reasonLow = 6;
+  let reasonHigh = 2_001;
+  while (reasonLow + 1 < reasonHigh) {
+    const middle = Math.floor((reasonLow + reasonHigh) / 2);
+    deck.cta.save_reason = "가".repeat(middle);
+    if (Buffer.byteLength(JSON.stringify(deck), "utf8") < CARD_DECK_V3_MAX_BYTES) reasonLow = middle;
+    else reasonHigh = middle;
+  }
+  deck.cta.save_reason = "가".repeat(reasonLow);
+  return deck;
+}
 
 vi.mock("@/lib/tenant-auth", () => ({
   effectiveTenantId: vi.fn(async () => "tenant-1"),
@@ -35,6 +71,47 @@ beforeEach(() => {
 });
 
 describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () => {
+  it("S7-R1-M6 생성실 결과를 실제 route로 저장하고 재접속 조회하면 덱·원본·템플릿 상태가 함께 복원된다", async () => {
+    const generated = buildGeneratedCardTemplate({
+      renderEnabled: true,
+      templateId: "number_list",
+      lines: ["첫 장", "둘째 장", "마지막 장"],
+    });
+    if (!generated) throw new Error("fixture");
+    H.rows = [{ id: "draft-s7-generated" }];
+    const { POST, GET } = await import("@/app/api/studio/drafts/route");
+    const saved = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1",
+        idea: "생성실 템플릿",
+        editKind: "card",
+        cardDeckV3: generated.deck,
+        cardDeckV3SourceSnapshot: generated.sourceSnapshot,
+        cardTemplateState: generated.templateState,
+      }),
+    }));
+    expect(saved.status, JSON.stringify(await saved.clone().json())).toBe(200);
+    expect(H.jsonValues[0]).toMatchObject({
+      cardDeckV3: generated.deck,
+      cardDeckV3SourceSnapshot: generated.sourceSnapshot,
+      cardTemplateState: generated.templateState,
+    });
+
+    H.rows = [{
+      id: "draft-s7-generated",
+      idea: "생성실 템플릿",
+      payload: H.jsonValues[0],
+      status: "draft",
+      updated_at: "2026-10-07T00:00:00Z",
+    }];
+    const detail = await (await GET(new Request("http://localhost/api/studio/drafts?id=draft-s7-generated"))).json();
+    expect(detail.draft).toMatchObject({
+      cardDeckV3: generated.deck,
+      cardDeckV3SourceSnapshot: generated.sourceSnapshot,
+      cardTemplateState: generated.templateState,
+    });
+  });
   it("S1-AC1 정상: cardDeckV3 요소 JSON과 투영 본문을 저장하고 다시 조회한다", async () => {
     const cardDeckV3 = createPlainCardDeckV3(["자유 배치 첫 장", "저장하세요"], "deck_route_v3");
     H.rows = [{ id: "draft-v3" }];
@@ -43,7 +120,7 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
       method: "POST",
       body: JSON.stringify({ tenant_id: "tenant-1", idea: "자유 배치", cardDeckV3 }),
     }));
-    expect(response.status).toBe(200);
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
     const savedPayload = H.jsonValues[0] as { cardDeckV3: unknown; editLines: string[] };
     expect(savedPayload.cardDeckV3).toEqual(cardDeckV3);
     expect(savedPayload.editLines).toEqual(["자유 배치 첫 장", "저장하세요"]);
@@ -130,6 +207,102 @@ describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () =
     }));
     expect(cleared.status).toBe(200);
     expect(H.jsonValues.at(-1)).toMatchObject({ cardDeckV3: null, cardDeckV3SourceSnapshot: null });
+  });
+  it("S7-R1-B2 템플릿 ID와 직전 덱을 JSON 초안에 저장하고 단건 조회로 복원한다", async () => {
+    const current = createPlainCardDeckV3(["현재 첫 장", "현재 마지막"], "deck_template_current");
+    const previous = createPlainCardDeckV3(["이전 첫 장", "이전 마지막"], "deck_template_previous");
+    const cardTemplateState = { activeTemplateId: "headline_cover", previousTemplate: { id: "text_only", deck: previous } };
+    H.rows = [{ id: "draft-template-state" }];
+    const { POST, GET } = await import("@/app/api/studio/drafts/route");
+    const saved = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "템플릿 복원", cardDeckV3: current, cardTemplateState }),
+    }));
+    expect(saved.status).toBe(200);
+    expect(H.jsonValues[0]).toMatchObject({ cardDeckV3: current, cardTemplateState });
+
+    H.rows = [{ id: "draft-template-state", idea: "템플릿 복원", payload: H.jsonValues[0], status: "draft", updated_at: "2026-10-07T00:00:00Z" }];
+    const detail = await (await GET(new Request("http://localhost/api/studio/drafts?id=draft-template-state"))).json();
+    expect(detail.draft.cardTemplateState).toEqual(cardTemplateState);
+  });
+
+  it("S7-R1-B2 거절: 알 수 없는 템플릿 ID는 DB 접근 전에 거절한다", async () => {
+    vi.mocked(withTenant).mockClear();
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const rejected = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", cardTemplateState: { activeTemplateId: "unknown", previousTemplate: null } }),
+    }));
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toMatchObject({ code: "INVALID_CARD_TEMPLATE_STATE" });
+    expect(withTenant).not.toHaveBeenCalled();
+  });
+  it("S7-R2-API 거절: 템플릿 상태의 임의 필드와 현재 덱 불일치를 DB 접근 전에 막는다", async () => {
+    vi.mocked(withTenant).mockClear();
+    const current = createPlainCardDeckV3(["현재 첫 장", "현재 마지막"], "deck_template_strict");
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const extraField = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", cardDeckV3: current, cardTemplateState: { activeTemplateId: "text_only", previousTemplate: null, pad: "x" } }),
+    }));
+    expect(extraField.status).toBe(400);
+    expect(await extraField.json()).toMatchObject({ code: "INVALID_CARD_TEMPLATE_STATE" });
+
+    const mismatched = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", cardDeckV3: current, cardTemplateState: { activeTemplateId: "chat_bubble", previousTemplate: null } }),
+    }));
+    expect(mismatched.status).toBe(400);
+    expect(await mismatched.json()).toMatchObject({ code: "INVALID_CARD_TEMPLATE_STATE" });
+    expect(withTenant).not.toHaveBeenCalled();
+  });
+  it("S7-R2-API 거절: 현재 덱 없이 템플릿 상태만 부분 저장하지 않는다", async () => {
+    vi.mocked(withTenant).mockClear();
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const rejected = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1",
+        cardTemplateState: { activeTemplateId: "text_only", previousTemplate: null },
+      }),
+    }));
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toMatchObject({ code: "INVALID_CARD_TEMPLATE_STATE" });
+    expect(withTenant).not.toHaveBeenCalled();
+  });
+  it("S7-R2-API 정상: v3 덱을 지우면 템플릿 복원 상태도 같은 저장에서 지운다", async () => {
+    H.rows = [{ id: "draft-template-clear" }];
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const cleared = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", clearCardDeckV3: true }),
+    }));
+    expect(cleared.status).toBe(200);
+    expect(H.jsonValues.at(-1)).toMatchObject({ cardDeckV3: null, cardTemplateState: null });
+  });
+  it("S7-R1-MINOR-1 직전 덱까지 합쳐 저장 상한을 넘으면 현재 덱 저장은 살리고 복원본만 버린다", async () => {
+    const current = nearLimitDeck("deck_template_near_limit_current");
+    const previous = nearLimitDeck("deck_template_near_limit_previous");
+    H.rows = [{ id: "draft-template-near-limit" }];
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1",
+        idea: "큰 템플릿 덱",
+        cardDeckV3: current,
+        cardTemplateState: {
+          activeTemplateId: "text_only",
+          previousTemplate: { id: "headline_cover", deck: previous },
+        },
+      }),
+    }));
+
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
+    expect(H.jsonValues[0]).toMatchObject({
+      cardDeckV3: current,
+      cardTemplateState: { activeTemplateId: "text_only", previousTemplate: null },
+    });
   });
   it("S5-R3-2 chat_bubble v2 저장·조회는 잔존 v3와 원문 스냅샷을 비운다", async () => {
     const staleV3 = createPlainCardDeckV3(["옛 첫 장", "옛 마지막"], "deck_stale_chat_v3");

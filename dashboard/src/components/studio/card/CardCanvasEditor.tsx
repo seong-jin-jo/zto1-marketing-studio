@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "@/components/shared/Button";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { authHeaders } from "@/lib/auth";
 import type { CardDeckV3, CardElement, CardElementType } from "@/lib/studio/card-element-contract";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
@@ -57,9 +58,71 @@ import { cardSlideRenderModel, isChatBaseProjectionElement } from "@/lib/studio/
 import { CardElementList } from "./CardElementList";
 import { CardElementToolbar } from "./CardElementToolbar";
 import { CardSlideScene } from "./CardSlideScene";
+import { CardTemplateGallery } from "./CardTemplateGallery";
+import {
+  applyCardDeckTemplate,
+  cardTemplateName,
+  defaultCardTemplateState,
+  type CardTemplateState,
+  type CardDeckTemplateId,
+} from "@/lib/studio/card-templates";
 import styles from "./CardCanvasEditor.module.css";
 
 const RESIZE_HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+const CHAT_DECK_TEMPLATE_DISABLED_REASONS: Partial<Record<CardDeckTemplateId, string>> = {
+  headline_cover: "카톡 덱의 말풍선·CTA 대비를 보존하려면 카톡 대화 템플릿을 사용해 주세요.",
+  photo_band: "카톡 덱의 말풍선·CTA 대비를 보존하려면 카톡 대화 템플릿을 사용해 주세요.",
+  number_list: "카톡 덱의 말풍선·CTA 대비를 보존하려면 카톡 대화 템플릿을 사용해 주세요.",
+  qa: "카톡 덱의 말풍선·CTA 대비를 보존하려면 카톡 대화 템플릿을 사용해 주세요.",
+  text_only: "카톡 덱의 말풍선·CTA 대비를 보존하려면 카톡 대화 템플릿을 사용해 주세요.",
+};
+
+type CardEditorHistory = CardCommandHistory & {
+  templatePast: CardTemplateState[];
+  templatePresent: CardTemplateState;
+  templateFuture: CardTemplateState[];
+};
+
+function createCardEditorHistory(deck: CardDeckV3, templateState: CardTemplateState): CardEditorHistory {
+  return { ...createCardCommandHistory(deck), templatePast: [], templatePresent: structuredClone(templateState), templateFuture: [] };
+}
+
+function commitCardEditorHistory(current: CardEditorHistory, nextDeck: CardDeckV3, nextTemplateState: CardTemplateState): CardEditorHistory {
+  const nextDeckHistory = commitCardCommand(current, nextDeck);
+  if (nextDeckHistory === current) return current;
+  return {
+    ...nextDeckHistory,
+    // Template states are immutable history values. Reusing their references keeps
+    // ordinary element edits from cloning the full restore deck up to 50 times.
+    templatePast: [...current.templatePast, current.templatePresent].slice(-nextDeckHistory.past.length),
+    templatePresent: nextTemplateState,
+    templateFuture: [],
+  };
+}
+
+function undoCardEditorHistory(current: CardEditorHistory): CardEditorHistory {
+  const previousTemplateState = current.templatePast.at(-1);
+  if (!previousTemplateState) return current;
+  const nextDeckHistory = undoCardCommand(current);
+  return {
+    ...nextDeckHistory,
+    templatePast: current.templatePast.slice(0, -1),
+    templatePresent: previousTemplateState,
+    templateFuture: [current.templatePresent, ...current.templateFuture].slice(0, nextDeckHistory.future.length),
+  };
+}
+
+function redoCardEditorHistory(current: CardEditorHistory): CardEditorHistory {
+  const nextTemplateState = current.templateFuture[0];
+  if (!nextTemplateState) return current;
+  const nextDeckHistory = redoCardCommand(current);
+  return {
+    ...nextDeckHistory,
+    templatePast: [...current.templatePast, current.templatePresent].slice(-nextDeckHistory.past.length),
+    templatePresent: nextTemplateState,
+    templateFuture: current.templateFuture.slice(1),
+  };
+}
 
 type Interaction = {
   kind: "move" | "resize" | "rotate";
@@ -105,15 +168,17 @@ function elementOverlayStyle(element: CardElement, logicalHeight: number): CSSPr
 
 export interface CardCanvasEditorProps {
   deck: CardDeckV3;
+  templateState?: CardTemplateState | null;
   sourceDeck?: CardDeck | null;
   requestedSlide?: { id: string; requestId: number } | null;
   assetUrls?: Record<string, string>;
   onAssetUrlChange?: (assetId: string, url: string) => void;
-  onDeckChange: (deck: CardDeckV3) => void;
+  onDeckChange: (deck: CardDeckV3, templateState?: CardTemplateState) => void;
 }
 
-export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = null, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
-  const [history, setHistory] = useState<CardCommandHistory>(() => createCardCommandHistory(deck));
+export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null, requestedSlide = null, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
+  const initialTemplateState = templateState ?? defaultCardTemplateState(deck);
+  const [history, setHistory] = useState<CardEditorHistory>(() => createCardEditorHistory(deck, initialTemplateState));
   const [activeSlideId, setActiveSlideId] = useState(deck.slides[0]?.id ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewDeck, setPreviewDeck] = useState<CardDeckV3 | null>(null);
@@ -130,6 +195,11 @@ export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = nul
   const [toneId, setToneId] = useState<ChatToneId>("learned");
   const [toneBusy, setToneBusy] = useState(false);
   const [toneError, setToneError] = useState("");
+  const [activeTemplateId, setActiveTemplateId] = useState<CardDeckTemplateId>(() => initialTemplateState.activeTemplateId);
+  const [pendingTemplateId, setPendingTemplateId] = useState<CardDeckTemplateId>(() => initialTemplateState.activeTemplateId);
+  const [templateScope, setTemplateScope] = useState<"all" | "slide">("all");
+  const [previousTemplate, setPreviousTemplate] = useState<{ id: CardDeckTemplateId; deck: CardDeckV3 } | null>(() => initialTemplateState.previousTemplate);
+  const [restoreConfirmationOpen, setRestoreConfirmationOpen] = useState(false);
   const [splitNotice, setSplitNotice] = useState("");
   const [sceneOverflow, setSceneOverflow] = useState(false);
   const [toneCandidates, setToneCandidates] = useState<{ targets: Array<{ slideId: string; bubbleId: string; text: string }>; candidates: ChatToneCandidate[]; revision: number } | null>(null);
@@ -165,6 +235,13 @@ export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = nul
   const toolbarElement = selected ?? editableElements.find((element) => element.type === "text") ?? null;
   const resolvedAssetUrls = useMemo(() => ({ ...assetUrls, ...localAssetUrls }), [assetUrls, localAssetUrls]);
   const model = useMemo(() => cardSlideRenderModel(workingDeck, activeSlideId, resolvedAssetUrls), [workingDeck, activeSlideId, resolvedAssetUrls]);
+  const templatePreviewDeck = useMemo(() => {
+    try {
+      return applyCardDeckTemplate(history.present, pendingTemplateId, templateScope === "slide" ? { kind: "slide", slideId: activeSlideId } : { kind: "all" });
+    } catch {
+      return null;
+    }
+  }, [activeSlideId, history.present, pendingTemplateId, templateScope]);
 
   const editorComparableDeck = useCallback((candidate: CardDeckV3) => JSON.stringify({
     ...candidate,
@@ -179,17 +256,26 @@ export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = nul
     if (deck === lastExternalDeckRef.current) return;
     lastExternalDeckRef.current = deck;
     if (editorComparableDeck(deck) === editorComparableDeck(history.present)) return;
-    setHistory(createCardCommandHistory(deck));
+    setHistory(createCardEditorHistory(deck, templateState ?? defaultCardTemplateState(deck)));
     setPreviewDeck(null);
   }, [deck, editorComparableDeck, history.present]);
 
-  const commit = useCallback((next: CardDeckV3) => {
+  useEffect(() => {
+    if (!templateState) return;
+    setActiveTemplateId(templateState.activeTemplateId);
+    setPendingTemplateId(templateState.activeTemplateId);
+    setPreviousTemplate(templateState.previousTemplate ? structuredClone(templateState.previousTemplate) : null);
+    setHistory((current) => ({ ...current, templatePresent: structuredClone(templateState) }));
+  }, [templateState]);
+
+  const commit = useCallback((next: CardDeckV3, nextTemplateState?: CardTemplateState) => {
     if (sourceDeck) assertValidChatCardDeckV3CommandResult(next, sourceDeck);
-    setHistory((current) => commitCardCommand(current, next));
+    const resolvedTemplateState = nextTemplateState ?? history.templatePresent;
+    setHistory((current) => commitCardEditorHistory(current, next, resolvedTemplateState));
     setPreviewDeck(null);
     setGuides([]);
-    onDeckChange(next);
-  }, [onDeckChange, sourceDeck]);
+    onDeckChange(next, resolvedTemplateState);
+  }, [history.templatePresent, onDeckChange, sourceDeck]);
   commitRef.current = commit;
 
   useEffect(() => {
@@ -209,6 +295,33 @@ export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = nul
   }, [requestedSlide?.id, requestedSlide?.requestId, workingDeck.slides]);
 
   const apply = useCallback((command: (current: CardDeckV3) => CardDeckV3) => commit(command(history.present)), [commit, history.present]);
+  const applyTemplate = useCallback(() => {
+    const before = structuredClone(history.present);
+    const next = applyCardDeckTemplate(before, pendingTemplateId, templateScope === "slide" ? { kind: "slide", slideId: activeSlideId } : { kind: "all" });
+    const nextPrevious = { id: activeTemplateId, deck: before };
+    setPreviousTemplate(nextPrevious);
+    commit(next, { activeTemplateId: pendingTemplateId, previousTemplate: nextPrevious });
+    setActiveTemplateId(pendingTemplateId);
+  }, [activeSlideId, activeTemplateId, commit, history.present, pendingTemplateId, templateScope]);
+  const performRestorePreviousTemplate = useCallback(() => {
+    if (!previousTemplate) return;
+    const current = structuredClone(history.present);
+    const restored = { ...structuredClone(previousTemplate.deck), revision: history.present.revision + 1 };
+    const nextPrevious = { id: activeTemplateId, deck: current };
+    commit(restored, { activeTemplateId: previousTemplate.id, previousTemplate: nextPrevious });
+    setPreviousTemplate(nextPrevious);
+    setActiveTemplateId(previousTemplate.id);
+    setPendingTemplateId(previousTemplate.id);
+  }, [activeTemplateId, commit, history.present, previousTemplate]);
+  const restorePreviousTemplate = useCallback(() => {
+    if (!previousTemplate) return;
+    const editedAfterTemplateApplication = history.present.revision !== previousTemplate.deck.revision + 1;
+    if (editedAfterTemplateApplication) {
+      setRestoreConfirmationOpen(true);
+      return;
+    }
+    performRestorePreviousTemplate();
+  }, [history.present.revision, performRestorePreviousTemplate, previousTemplate]);
   const beginTextEdit = useCallback((element: CardElement) => {
     if (element.type !== "text" || element.locked) return;
     setSelectedId(element.id);
@@ -224,13 +337,13 @@ export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = nul
     const next = patchTextElement(baseDeck, slideId, elementId, { text: value });
     lastExternalDeckRef.current = next;
     setHistory((current) => textEditCommittedRef.current
-      ? { ...current, present: next, future: [] }
-      : commitCardCommand(current, next));
+      ? { ...current, present: next, future: [], templateFuture: [] }
+      : commitCardEditorHistory(current, next, current.templatePresent));
     textEditCommittedRef.current = true;
     textEditLastCommittedValueRef.current = value;
     setPreviewDeck(null);
-    onDeckChange(next);
-  }, [onDeckChange]);
+    onDeckChange(next, history.templatePresent);
+  }, [history.templatePresent, onDeckChange]);
   textEditFlushRef.current = flushTextEdit;
   const deleteAndRestoreStageFocus = useCallback((elementId: string) => {
     if (!activeSlide) return;
@@ -325,9 +438,12 @@ export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = nul
     if (!isCanvasShortcutTarget(event.target, stageRef.current)) return;
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
-      const nextHistory = event.shiftKey ? redoCardCommand(history) : undoCardCommand(history);
+      const nextHistory = event.shiftKey ? redoCardEditorHistory(history) : undoCardEditorHistory(history);
       setHistory(nextHistory);
-      onDeckChange(nextHistory.present);
+      setActiveTemplateId(nextHistory.templatePresent.activeTemplateId);
+      setPendingTemplateId(nextHistory.templatePresent.activeTemplateId);
+      setPreviousTemplate(nextHistory.templatePresent.previousTemplate ? structuredClone(nextHistory.templatePresent.previousTemplate) : null);
+      onDeckChange(nextHistory.present, nextHistory.templatePresent);
       return;
     }
     if (!activeSlide || !selected || selected.locked) return;
@@ -525,6 +641,20 @@ export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = nul
   if (!activeSlide) return null;
   return (
     <section className={styles.editor} data-card-canvas-editor onKeyDown={onKeyDown} aria-label="카드 자유 배치 편집기">
+      <ConfirmDialog
+        request={restoreConfirmationOpen ? {
+          title: "이전 템플릿으로 복원할까요?",
+          description: "템플릿 적용 뒤 직접 편집한 글과 배치가 사라지고, 이전 템플릿 상태로 돌아갑니다.",
+          confirmLabel: "편집 내용을 버리고 복원",
+          cancelLabel: "현재 편집 유지",
+          destructive: true,
+        } : null}
+        onCancel={() => setRestoreConfirmationOpen(false)}
+        onConfirm={() => {
+          setRestoreConfirmationOpen(false);
+          performRestorePreviousTemplate();
+        }}
+      />
       <div className={styles.addToolbar} role="toolbar" aria-label="카드 요소 추가">
         <Button size="sm" onClick={() => add("text")}>글 추가</Button>
         <Button size="sm" onClick={() => fileInputRef.current?.click()}>사진 추가</Button>
@@ -534,8 +664,8 @@ export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = nul
         <input ref={fileInputRef} className={styles.fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="사진 파일" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file); event.target.value = ""; }} />
         <input ref={backgroundInputRef} className={styles.fileInput} type="file" accept="image/png,image/jpeg,image/webp" aria-label="표지 또는 마지막 장 배경 사진 파일" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadBackgroundImage(file); event.target.value = ""; }} />
         <span className={styles.toolbarDivider} aria-hidden="true" />
-        <Button size="sm" disabled={history.past.length === 0} onClick={() => { const next = undoCardCommand(history); setHistory(next); onDeckChange(next.present); }}>실행 취소</Button>
-        <Button size="sm" disabled={history.future.length === 0} onClick={() => { const next = redoCardCommand(history); setHistory(next); onDeckChange(next.present); }}>다시 실행</Button>
+        <Button size="sm" disabled={history.past.length === 0} onClick={() => { const next = undoCardEditorHistory(history); setHistory(next); setActiveTemplateId(next.templatePresent.activeTemplateId); setPendingTemplateId(next.templatePresent.activeTemplateId); setPreviousTemplate(next.templatePresent.previousTemplate ? structuredClone(next.templatePresent.previousTemplate) : null); onDeckChange(next.present, next.templatePresent); }}>실행 취소</Button>
+        <Button size="sm" disabled={history.future.length === 0} onClick={() => { const next = redoCardEditorHistory(history); setHistory(next); setActiveTemplateId(next.templatePresent.activeTemplateId); setPendingTemplateId(next.templatePresent.activeTemplateId); setPreviousTemplate(next.templatePresent.previousTemplate ? structuredClone(next.templatePresent.previousTemplate) : null); onDeckChange(next.present, next.templatePresent); }}>다시 실행</Button>
         {activeSlide.base.kind === "chat_bubble" ? <>
           <span className={styles.toolbarDivider} aria-hidden="true" />
           <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => swapChatSpeakers(current, activeSlide.id))}>이 장 화자 서로 바꾸기</Button>
@@ -560,6 +690,22 @@ export function CardCanvasEditor({ deck, sourceDeck = null, requestedSlide = nul
       </section> : null}
       {splitNotice ? <p role="status" className={styles.error}>{splitNotice}</p> : null}
       {uploadError ? <p role="alert" className={styles.error}>{uploadError}</p> : null}
+      <CardTemplateGallery
+        mode="edit"
+        selectedId={pendingTemplateId}
+        onSelect={setPendingTemplateId}
+        disabledReasons={history.present.template === "plain"
+          ? { chat_bubble: "카톡 대화는 생성실의 기존 카톡 덱 만들기에서 선택해 주세요." }
+          : CHAT_DECK_TEMPLATE_DISABLED_REASONS}
+        beforeDeck={history.present}
+        afterDeck={templatePreviewDeck}
+        scope={templateScope}
+        canApplySlide={history.present.template !== "chat_bubble"}
+        previousTemplateName={previousTemplate ? cardTemplateName(previousTemplate.id) : null}
+        onScopeChange={setTemplateScope}
+        onApply={applyTemplate}
+        onRestore={restorePreviousTemplate}
+      />
       <div className={styles.workspace}>
         <nav className={styles.slideStrip} aria-label="카드 장 목록">
           {workingDeck.slides.map((slide) => <Button key={slide.id} size="sm" data-card-slide={slide.id} aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>{slide.order + 1}장</Button>)}

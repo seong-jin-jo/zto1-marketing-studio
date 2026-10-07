@@ -1,3 +1,71 @@
+## 2026-10-08 편집실 S4·S7 main 병합 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S7-MERGE-01 | `origin/main`의 S4 PR 128과 S7을 merge commit으로 통합하고 양쪽 기능을 보존 | ✅ 테스트됨 | S4의 `requestedCardSlide`와 S7의 `cardTemplateState`·통합 undo를 같은 편집기 경계에 유지했다. 충돌 7파일은 양쪽 코드·문서를 모두 보존했다. |
+| S7-MERGE-02 | ExportPanel, card-deck-v3-studio-rooms, S7 template, edit-autosave, integrity, `typecheck:ci` 통과 | ✅ 테스트됨 | 집중 6파일 53건, S7 편집기·템플릿 4파일 57건, integrity 35파일 115건, TypeScript exit 0. 원격 CI는 push 금지로 미검증이다. |
+
+## 2026-10-08 편집실 S7 교차 리뷰 3차 MINOR 정리 ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S7-R3-MINOR-03 | 새 초안 생성 시 이전 `draft_id`와 문서 세대를 같은 동작에서 끊고 첫 저장 요청에 옛 ID를 싣지 않음 | ✅ 테스트됨 | 실제 `StudioPage`에서 기존 `draft-cross-v3`를 복원한 같은 컴포넌트를 생성실로 전환했다. 새 카드 생성 뒤 실제 저장 POST의 `id:null`, `bodyBaseRevision` 없음, 새 v3 덱을 단언한다. 문자열 소스 단언은 쓰지 않았다. |
+| S7-R3-MINOR-01 | `headline_cover` 표지에 글 요소가 2개 이상이어도 글 상자가 겹치지 않고 카드 경계 안에 남음 | ✅ 테스트됨 | 수정 전 4:5·1:1 모두 첫 상자 끝 540, 다음 시작 376으로 실패를 고정했다. 단일 표지만 360px·88px을 유지하고 다중 글은 기존 176px·56px 규격을 재사용했다. 두 비율에서 글 2·3·4개의 실제 상자 좌표와 v3 계약을 검증한다. |
+| S7-R3-MINOR-04 | S7 실서버 E2E의 `CLAUDE_BIN` stub 기동 계약을 스크립트와 build-log에서 재현 가능하게 설명 | ✅ 근거 확인 | `verify-studio-s7-e2e.mjs` 머리말과 build-log에 dev 서버의 `CLAUDE_BIN`, 실제 PostgreSQL·토큰·v3 플래그·포트와 별도 Chromium 실행 명령을 기재했다. 실값은 기록하지 않는다. |
+| S7-R3-MINOR-05 | 카톡 말풍선 390px stage diff 18.17%의 원인을 정본 시안과 dev 캡처·캡처 상태로 구분 | ✅ 원인 규명 | 승인 시안과 dev 원본, 좌우 합성본을 직접 대조했다. 참조는 `10년차 국어쌤`의 굵은 부분이 있는 답변과 2행 도구, dev fixture는 `이상한수학`의 다른 문구와 `다른 장으로 옮기기`가 추가된 4행 도구라 선택 말풍선 높이·하단 노출 범위가 다르다. 동일 픽셀 상태가 아니므로 18.17%는 시각 회귀 판정값이 아니다. S7 merge-base 이후 `BubbleEditor`, `CardSlideScene`, v2→v3 변환기, v70 캡처 스크립트, D100 fixture 변경은 0파일이어서 S7과 무관하다. 기존 폭·비율·겹침·도구 위치 수치 계약은 통과했고, 동일 데이터·선택 상태의 승인 baseline이 생기기 전 report-only를 유지한다. |
+
+검증 근거: `logs/diff/editroom-v2-phase1/screen-conformance/compare-edit-bubble-stage-390.png`, 승인본 `docs/design/clean-frames/osmu-v70-편집실-카드뉴스-편집중@390x844.png`, dev 원본 `logs/diff/editroom-v2-phase1/screen-conformance/edit-bubble-deck-390x844.png`. Playwright의 시각 비교 원칙처럼 baseline과 실행 화면은 같은 환경과 결정적 상태여야 하므로, 내용·선택 도구가 다른 현재 두 이미지를 임계값 PASS/FAIL로 승격하지 않았다. S4 PR 128 충돌과 main 병합은 이 작업에서 건드리지 않았다.
+
+실행 증거: 수정 전 겹침 회귀는 4:5·1:1 모두 실패했고, 수정 뒤 focused 2파일 17건과 관련 51파일 515건이 PASS했다. DB 환경 의존 3건은 skip이다. 손상된 `.next/dev/types` 생성 캐시를 보존 이동한 뒤 `npm run typecheck:ci` 종료 코드 0을 확인했다. 원격 CI·QA 승인·운영 배포는 미검증이다.
+
+## 2026-10-08 편집실 S7 교차 리뷰 2차 ✅ 로컬 PASS, 외부 플러그인 계약 BLOCK 분리
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S7-R2-MAJOR-A | 회귀 픽스처가 실제 템플릿을 적용하고 `typecheck:ci`가 종료 코드 0이어야 함 | ✅ 테스트됨 | `{ kind: "all" }` 실제 명령 결과와 저장 payload의 변환 좌표를 단언했고 `typecheck:ci` 종료 코드 0을 확인했다. |
+| S7-R2-MAJOR-B | 핵심 브라우저 흐름의 drafts·text가 실제 dev 서버와 PostgreSQL을 지나야 함 | ✅ 관찰됨 | drafts·text 브라우저 mock을 제거했다. 실제 Next dev 서버, PostgreSQL RLS, 서버측 CLI LLM stub, Chromium에서 생성·저장·조회·undo·복원·발행실 이동과 콘솔 오류 0을 확인했다. |
+| S7-R2-MINOR-1 | 템플릿 적용 뒤 자유 글 요소가 4개를 넘으면 카드 경계와 검증이 무너지지 않아야 함 | ✅ 테스트됨 | 선택 장의 보이는 글 요소가 4개를 넘으면 명령 전 단계에서 `CARD_TEMPLATE_TOO_MANY_TEXT_ELEMENTS`로 거절한다. 선택하지 않은 장은 영향받지 않는다. |
+| S7-R2-MINOR-2 | 글 후보 3개 생성 계약의 운영 실패율 | ⚠️ 미검증 | 서버측 stub으로 정확히 3개 계약은 검증했지만 실제 외부 LLM 운영 실패율은 계측 기간이 없어 이번 로컬 빌드에서 확정하지 않았다. |
+| S7-R2-MINOR-3 | `structuredClone` 복제 비용 | ⏸️ S4 충돌 보류 | PR 128이 같은 편집기 경계를 수정하므로 이번 S7에서는 손대지 않았다. |
+| S7-R2-MINOR-4~5 | 문자열·증거 문구 일치가 아니라 실제 동작을 검증 | ✅ 테스트됨 | 소스 문자열 단언 파일을 제거하고 실제 `StudioPage` 템플릿 적용·실패·기본 카드 fallback과 실DB route 왕복으로 교체했다. |
+| S7-R2-MINOR-6 | S4 PR 128 충돌 | ⏸️ 목록 유지 | `StudioRooms.tsx`, `CardCanvasEditor.tsx`, `dashboard/package.json`은 수정하지 않았다. |
+| S7-R2-MINOR-7 | 생성 직후 v3 저장 실패 시 화면에만 남은 템플릿 덱 방지 | ✅ 테스트됨 | 첫 저장 실패 시 화면의 v3·템플릿 상태를 제거하고 같은 생성 본문을 기본 카드로 재저장한다. fallback까지 실패하면 기존 저장 오류 상태를 유지한다. |
+
+검증: 코드 `91f62178`. TypeScript 종료 코드 0, production webpack build PASS. 직접 대응 4파일 26건, 관련 51파일 512건과 3건 skip, integrity 104건, dashboard contract 492건 PASS. 실제 Chromium S7은 PostgreSQL 초안 1건, 핵심 drafts POST 13회, 전체 POST 19회, 5개 viewport, 콘솔 오류 0이다. v70 수치 계약과 두 탭 본문 충돌 PASS, 모바일 9폭은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다. 승인 clean-frame과 dev 캡처를 직접 대조한 결과 일반 카드 stage diff는 0이지만 카톡 말풍선 stage는 390px에서 18.17% 차이가 있으며 기존 게이트도 이를 report-only로 분류한다. OpenClaw 계약은 S7과 무관한 `bluebubbles/channel-plugin-api.js` 플러그인 표면 해석 실패가 남아 전체 명령은 BLOCK이다. push·원격 CI·QA 승인·운영 배포는 미검증이다.
+
+## 2026-10-08 편집실 S7 교차 리뷰 1차 MAJOR 6 폐쇄 ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S7-R1-M1 | 카톡 덱 템플릿 적용 뒤 CTA 대비 보존 | ✅ 테스트됨 | 카톡 덱의 사진·글 템플릿 적용을 명시 거절하고 `s7-template-command`의 CTA 회귀를 통과했다. |
+| S7-R1-M2 | 다중 자유 요소가 4:5·1:1 카드 경계 안에 남고 v3 검증 통과 | ✅ 테스트됨 | 두 비율의 모든 사진·글 템플릿 명령 결과를 실제 `validateCardDeckV3`로 검사했다. |
+| S7-R1-M3 | undo가 덱·활성 템플릿·복원 상태를 함께 되돌리고, 적용 뒤 편집 복원은 확인을 요구 | ✅ 테스트됨 | `CardCanvasEditor` 28건에서 동일 history 단위와 확인 대화상자를 검증했다. |
+| S7-R1-M4 | 생성실 템플릿이 플래그·원본 스냅샷·즉시 저장·재접속 복원을 지킴 | ✅ 테스트됨 | 생성실 계약, 생성 템플릿 빌더, drafts 실제 route 저장·단건 조회를 통과했다. |
+| S7-R1-M5 | 글 후보 3개 모두 영상 대본·이미지 프롬프트를 보존 | ✅ 테스트됨 | 후보 API 계약은 둘 중 하나라도 빠진 응답 전체를 거절하고 기존 단일 응답 필드도 유지한다. |
+| S7-R1-M6 | mock 브라우저 증거와 실제 서버 저장 증거를 분리 | ✅ 테스트됨 | `studio-s7-api-evidence.contract`와 drafts route 통합 24건으로 실제 route 저장·재접속을 별도 증거로 고정했다. |
+| S7-R2-CLIENT | 템플릿 자동저장 전 수동·검토·발행 저장도 v3 덱과 템플릿 상태를 한 payload로 보냄 | ✅ 테스트됨 | 공통 저장이 호출 시점 상태를 캡처하고 명시 null·v3 없음 경계를 포함한 동작 회귀를 통과했다. |
+
+검증: TypeScript 종료 코드 0. MAJOR 대응 묶음 10파일 94건 PASS. `vitest related` 50파일 509건 PASS, DB 환경 의존 2건 skip. 공통 저장 회귀 2파일 15건 PASS. 코드 `22b3506b`, 실제 StudioPage POST 회귀 `bafb7ab9`. 원격 CI·QA 승인·운영 배포는 미검증이며 push하지 않았다.
+
+## 2026-10-07 편집실 S7 교차 리뷰 1차 ❌ BLOCK
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S7-R1-M1 | 카톡 덱 템플릿 적용 뒤 CTA 장 배경·글자색 대비가 사라짐 | ❌ NG | S5에서 고친 CTA 대비 규칙이 S7 템플릿 경로에서 재발. 카톡 덱 템플릿 명령의 실제 렌더색과 CTA 가시성 회귀 테스트 필요 |
+| S7-R1-M2 | 자유 요소가 여럿인 장에서 글 요소가 카드 밖으로 밀리고 v3 검증이 깨짐 | ❌ NG | 4:5·1:1 다중 요소 덱의 템플릿 명령 직접 구동에서 장 경계 이탈 재현. 배치 순번·높이 제한·사전검증 필요 |
+| S7-R1-M3 | undo가 템플릿 상태를 되돌리지 않고, 복원이 적용 뒤 편집을 경고 없이 버림 | ❌ NG | 덱과 템플릿 상태의 이력 단위가 분리돼 재접속 표시도 어긋남. 이후 편집 보호와 동일 undo 이력 필요 |
+| S7-R1-M4 | 생성실 v3 덱이 스위치를 우회하고 원본 스냅샷·즉시 저장이 없어 기본 편집 복귀가 막힘 | ❌ NG | 운영 플래그 ON에서 사용자 막다른 길 재현. 플래그 OFF 계약, 복귀 스냅샷, 실제 저장·재접속 검증 필요 |
+| S7-R1-M5 | 글 후보 계약이 영상·이미지 필드를 선택 사항으로 바꿔 기존 생성 경로를 훼손할 수 있음 | ❌ NG | 세 후보 모두의 `shorts`·`image_prompt` 보존과 후보 계약 경계 테스트 필요 |
+| S7-R1-M6 | S7 브라우저 증거가 모든 API를 mock해 실제 drafts 저장 검증을 우회함 | ❌ NG | 실제 route handler 또는 테스트 DB 경로에서 저장·재접속·서버 검증을 통과하는 증거 필요. mock 범위를 문서에 명시해야 함 |
+
+## 2026-10-07 편집실 S7 최종 검증 ❌ BLOCK
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S7-AC1~5 | 글 후보 선택, 템플릿 전체·한 장 적용, 복원·undo | ✅ 관찰됨 | production Chromium 1440·1024·390, 저장 API 3회, 가로 넘침 0, 콘솔 오류 0. Vitest 표적 41건, integrity 104건, contract 628건, related 112건 PASS |
+| S7-R1-B1 | 생성실에서 고른 템플릿이 생성 요청·생성 덱에 반영되지 않음 | ❌ NG | `cardTemplateId`는 `StudioRooms.tsx`의 갤러리 선택 상태에서만 사용되고 생성 콜백 인자에는 없음. 선택과 결과가 이어지는 테스트도 없음 |
+| S7-R1-B2 | 편집실 템플릿 ID·직전 덱 복원이 재열기 가능한 저장 경계에 없음 | ❌ NG | `activeTemplateId`·`previousTemplate`가 `CardCanvasEditor` 로컬 state뿐이고 `CardDeckV3.template`은 바뀌지 않음. plain 덱의 `chat_bubble` 선택은 base 변환이 없음 |
+| S7-MOBILE-01 | 데이터가 있는 편집실 360~1000 아홉 폭 인체공학 | ❌ NG | 기존 fixture가 생성실로 이탈. 360px 실측에서 13px 미만 92건, 44px 미만 1건, 눌림 상태 80%, 넘침 0. S7 실제 390px 데이터 3장 화면은 넘침 0·콘솔 오류 0이나 아홉 폭 게이트를 대신하지 않음 |
 ## 2026-10-08 PR 128 CI 테스트 경합 2건 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 결함 | 현재 판정 | 종료 증거 |
@@ -8090,6 +8158,15 @@ SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-is
 | S3-PR122-M5 | dashboard만 선택 배포하면 같은 태그의 별도 export worker가 재기동되지 않아 옛 소스로 남음 | ✅ 로컬 PASS | `a9d6b614`, dashboard 선택 시 worker를 `up` 대상에 추가하는 workflow 계약 PASS |
 
 최종 검증은 실제 PostgreSQL 연결을 포함한 related 5파일 35건 PASS·실제 PNG 전용 1건 skip, `npx vitest run contract` 107파일 618건 PASS, `typecheck:ci` PASS다. 운영 배포와 push는 범위 밖이라 실행하지 않았다.
+## 2026-10-07 편집실 S7 자체 점검 BLOCK 4건 ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| S7-R1-B1 | 생성실 `cardTemplateId`가 생성 요청과 결과 덱까지 이어져야 함 | ✅ 관찰됨 | 실제 Chromium에서 `number_list` 선택 후 `/api/studio/text` 요청 필드와 결과 v3 덱 x=244, 저장 상태 ID를 확인 |
+| S7-R1-B2 | 편집실 템플릿 ID·직전 상태가 재접속 뒤 복원돼야 함 | ✅ 관찰됨 | 기존 draft payload JSONB에 `cardTemplateState` 저장. 재로드 뒤 이전 템플릿 복원 버튼과 직전 덱 복원 확인. DB migration 없음 |
+| S7-R1-B3 | plain 덱의 카톡 템플릿 무동작 금지 | ✅ 관찰됨 | 생성실·편집실 모두 카톡 템플릿을 비활성화하고 기존 카톡 말풍선 덱 생성 경로 이유를 표시. S5b 댓글 유도 장 계약 유지 |
+| S7-MOBILE-01 | 데이터가 있는 편집실 360~1000 아홉 폭 인체공학 | ✅ 관찰됨 | 실제 편집실 데이터 3장. 9폭 모두 본문 16px, 13px 미만 0, 44px 미만 0, 눌림 상태 100%, 가로 넘침 0 |
+| S7-REGRESSION | 기존 생성·카드 v3·카톡 덱·두 탭 충돌 회귀 없음 | ✅ 테스트됨·관찰됨 | integrity 104, contract 629, related 511 PASS. S7 1440·1024·390, v70 화면, body-conflict production Chromium PASS, 콘솔 오류 0 |
 ## 2026-10-08 편집실 S4 교차 리뷰 2차 ❌ NG
 
 | 요청번호 | 결함 | 현재 판정 | 종료 조건 |

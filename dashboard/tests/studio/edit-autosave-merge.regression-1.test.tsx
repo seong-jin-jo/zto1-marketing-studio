@@ -27,6 +27,8 @@ import { VideoEditor } from "@/components/studio/VideoEditor";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { pruneEmptyBubbles, emptyBubbleSlideNumber } from "@/lib/studio/card-deck-ops";
 import { emptyVideoEdit, videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
+import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
+import { cardTemplateStatePatchForSave } from "@/lib/studio/card-templates";
 import deckD100 from "./fixtures/deck-d100.v2.json";
 
 const pageSrc = fs.readFileSync(path.resolve(__dirname, "../../src/app/studio/page.tsx"), "utf8");
@@ -234,11 +236,16 @@ describe("구조 대조: page.tsx가 독립 타이머로 되돌아갔는지", ()
     expect(save).not.toMatch(/^\s*text,\s*$/m);
   });
 
-  it("PR87-R3-REV-02 새 초안 생성은 이전 draft id와 문서 세대를 같은 tick에 끊는다", () => {
-    const generateStart = pageSrc.indexOf("async function generateQuickDraft");
-    const generate = pageSrc.slice(generateStart, generateStart + 7000);
-    expect(generate).toContain("draftIdRef.current = null");
-    expect(generate).toContain("replaceBodySnapshot(nextLines, result, { replaceDocument: true");
+  it("S7-R2-CLIENT v3 덱 저장은 명시 옵션이 없어도 현재 템플릿 상태를 같은 payload patch에 넣는다", () => {
+    const deck = createPlainCardDeckV3(["첫 장", "마지막 장"], "deck_template_pair");
+    const current = {
+      activeTemplateId: "headline_cover" as const,
+      previousTemplate: { id: "text_only" as const, deck },
+    };
+
+    expect(cardTemplateStatePatchForSave(deck, current)).toEqual({ cardTemplateState: current });
+    expect(cardTemplateStatePatchForSave(deck, current, { templateState: null })).toEqual({ cardTemplateState: null });
+    expect(cardTemplateStatePatchForSave(null, current)).toEqual({});
   });
 
   it("C(4차): 카드덱·영상 자동저장 보류 사유가 서로 다른 state를 쓴다(공유 state가 서로를 지우지 않는다)", () => {

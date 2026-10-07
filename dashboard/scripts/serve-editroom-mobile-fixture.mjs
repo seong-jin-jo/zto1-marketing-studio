@@ -8,10 +8,11 @@ import { fileURLToPath } from "node:url";
 const listenPort = Number(process.env.EDITROOM_MOBILE_FIXTURE_PORT || "3472");
 const upstream = new URL(process.env.EDITROOM_MOBILE_UPSTREAM || "http://localhost:3470");
 const workspaceId = "11111111-1111-4111-8111-111111111111";
+const workId = "81111111-1111-4111-8111-111111111111";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const snapshotPath = path.resolve(scriptDir, "../../logs/diff/editroom-v2-phase1/screen-conformance/mobile-editroom-snapshot.html");
 const work = {
-  id: "editroom-mobile-fixture",
+  id: workId,
   status: "draft",
   idea: "모바일 편집실 사용성 검증",
   text: {
@@ -72,7 +73,13 @@ const server = http.createServer((request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(fs.readFileSync(snapshotPath));
   }
-  if (url.pathname === "/qa/mobile-editroom") return bootstrap(request, response);
+  if (url.pathname === "/qa/mobile-editroom") {
+    response.writeHead(302, {
+      location: `/studio?room=edit&kind=video&draft_id=${workId}&fixture=1`,
+      "cache-control": "no-store",
+    });
+    return response.end();
+  }
   if (url.pathname === "/studio" && url.searchParams.get("fixture") === "1") return bootstrap(request, response);
   if (url.pathname === "/api/me") return sendJson(response, { isOperator: false, tenant: { id: workspaceId, slug: "editroom-mobile-fixture", name: "모바일 편집실 검증", status: "active" } });
   if (url.pathname === "/api/overview") return sendJson(response, { statusCounts: {}, followers: 0, weekDelta: 0, viralPosts: [], summary: { published: 0, engagementRate: 0 } });
@@ -84,6 +91,7 @@ const server = http.createServer((request, response) => {
   if (url.pathname === "/api/elevenlabs-voices") return sendJson(response, { voices: [] });
   if (url.pathname === "/api/studio/drafts") {
     if (request.method === "POST") return sendJson(response, { ok: true, id: work.id, bodyRevision: 1 });
+    if (url.searchParams.get("id") === work.id) return sendJson(response, { draft: work });
     return sendJson(response, { drafts: [work], currentWork: { draftId: work.id, stage: "edit", stageLabel: "편집실", idea: work.idea } });
   }
 

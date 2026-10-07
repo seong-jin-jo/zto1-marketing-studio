@@ -53,6 +53,9 @@ import { cardDeckV3Projection, type CardDeckV3 } from "@/lib/studio/card-element
 import { createPlainCardDeckV3, createRecoverableEmbeddedCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
 import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import { cardDeckV3EntryEnabled, cardDeckV3ForDraft, cardDeckV3RenderingEnabled, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
+import { cardTemplateStatePatchForSave, defaultCardTemplateState, type CardDeckTemplateId, type CardTemplateState } from "@/lib/studio/card-templates";
+import { buildGeneratedCardTemplate } from "@/lib/studio/s7-generated-card-template";
+import { textCandidateLines, textCandidateSelectionWouldDiscardEdits } from "@/lib/studio/text-candidate-selection";
 import { CARD_DECK_V3_PUBLISH_BLOCK_MESSAGE } from "@/lib/studio/card-deck-v3-publish-contract";
 import { videoEditIncompleteEntryReason, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { cutRanges, isIntroOutroStale, setIntroOutroApplied } from "@/lib/studio/video-edit-contract";
@@ -153,6 +156,7 @@ import {
   sanitizeRestoredQuickDraftText,
   shouldInvalidateQuickDraft,
 } from "@/lib/studio/quick-draft-topic";
+import type { TextCandidate } from "@/lib/studio/text-candidate-contract";
 
 const ROOM_LABEL: Record<StudioRoom, string> = { create: "생성실", edit: "편집실", publish: "발행실" };
 
@@ -281,6 +285,10 @@ interface TextVariants {
   instagram?: { caption?: string; hashtags?: string[]; slides?: string[] };
   shorts?: { hook?: string; body?: string; cta?: string };
   image_prompt?: string;
+  text_candidates?: TextCandidate[];
+  selected_text_candidate_id?: string;
+  recommended_text_candidate_id?: string;
+  card_template_id?: CardDeckTemplateId;
 }
 interface BodyRevisionConflict {
   latest: { lines: string[]; text: TextVariants | null; cardDeckV3: CardDeckV3 | null; serverRevision: number };
@@ -778,6 +786,7 @@ export default function StudioPage() {
   // 카드뉴스 v2 덱(PR4). 있으면 편집실이 CardDeckPanel(말풍선 직접 편집)을 그린다.
   const [cardDeck, setCardDeck] = useState<CardDeck | null>(null);
   const [cardDeckV3, setCardDeckV3] = useState<CardDeckV3 | null>(null);
+  const [cardTemplateState, setCardTemplateState] = useState<CardTemplateState | null>(null);
   const [cardDeckV3SourceSnapshot, setCardDeckV3SourceSnapshot] = useState<CardDeckV3SourceSnapshot | null>(null);
   const [cardDeckV3DetailStatus, setCardDeckV3DetailStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const cardDeckV3Ref = useRef<CardDeckV3 | null>(null);
@@ -1128,7 +1137,7 @@ export default function StudioPage() {
     // 공간의 영상에 지난 선택이 그대로 넘어가면 안 된다).
     resetTiktokDisclosure();
     setTitles({}); setHashtags({}); setTopicTags({}); setFirstComments({}); setCaptions({});
-    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setCardDeckV3(null); setCardDeckV3SourceSnapshot(null); setCardDeckV3DetailStatus("idle"); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
+    replaceBodySnapshot([], null, { replaceDocument: true, serverRevision: 0 }); setCardTextPositions([]); setCardDeck(null); setCardDeckV3(null); setCardTemplateState(null); setCardDeckV3SourceSnapshot(null); setCardDeckV3DetailStatus("idle"); setVideoEdit(null); setReviewQueueId(null); setSelectedCandidate(null);
     quickDraftTopicRef.current = null;
     videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
     invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
@@ -1167,7 +1176,7 @@ export default function StudioPage() {
         });
         const restoredCardDeck = (w.cardDeck as CardDeck) || null;
         const restoredCardDeckV3 = cardDeckV3ForDraft(restoredCardDeck, w.cardDeckV3 as CardDeckV3 | null);
-        setCardTextPositions(w.cardTextPositions || []); setCardDeck(restoredCardDeck); setCardDeckV3(restoredCardDeckV3); setCardDeckV3SourceSnapshot(restoredCardDeckV3 ? (w.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null : null); setCardDeckV3DetailStatus(restoredCardDeckV3 ? "ready" : "idle"); setReviewQueueId(w.reviewQueueId || null);
+        setCardTextPositions(w.cardTextPositions || []); setCardDeck(restoredCardDeck); setCardDeckV3(restoredCardDeckV3); setCardTemplateState(restoredCardDeckV3 ? (w.cardTemplateState as CardTemplateState | null) ?? defaultCardTemplateState(restoredCardDeckV3) : null); setCardDeckV3SourceSnapshot(restoredCardDeckV3 ? (w.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null : null); setCardDeckV3DetailStatus(restoredCardDeckV3 ? "ready" : "idle"); setReviewQueueId(w.reviewQueueId || null);
         // B1(교차 리뷰 BLOCK, 재리뷰로 절반만 닫힘 지적): videoEdit이 이 복원 블록에
         // 없으면 편집기가 빈 videoEdit을 받았다. 이제 무조건 세팅한다(없으면 null —
         // 이전 워크스페이스 값이 남아 있으면 안 된다, 위 리셋과 짝). 다만 localStorage
@@ -1232,13 +1241,13 @@ export default function StudioPage() {
     const workspaceId = activeWorkspace?.id;
     if (!workspaceId || hydratedWorkspaceId !== workspaceId) return;
     try {
-      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, publishProgress: pub, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, cardDeckV3, cardDeckV3SourceSnapshot, reviewQueueId, editKind, editFormat, videoEdit, quickDraftTopic: quickDraftTopicRef.current ?? undefined }));
+      localStorage.setItem(studioWorkStorageKey(workspaceId), JSON.stringify({ idea, text, bodyRevision: bodySnapshotRef.current.serverRevision, img, vid, includes, draftId, publishReconciliations, publishProgress: pub, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, cardDeckV3, cardTemplateState, cardDeckV3SourceSnapshot, reviewQueueId, editKind, editFormat, videoEdit, quickDraftTopic: quickDraftTopicRef.current ?? undefined }));
       setEditSavedAt(new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()));
       setEditAutosaveError("");
     } catch {
       setEditAutosaveError("자동 저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.");
     }
-  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, bodyServerRevision, img, vid, includes, draftId, publishReconciliations, pub, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, cardDeckV3, cardDeckV3SourceSnapshot, reviewQueueId, editKind, editFormat, videoEdit]);
+  }, [activeWorkspace?.id, hydratedWorkspaceId, idea, text, bodyServerRevision, img, vid, includes, draftId, publishReconciliations, pub, titles, hashtags, topicTags, firstComments, captions, selectedAccounts, editLines, cardTextPositions, cardDeck, cardDeckV3, cardTemplateState, cardDeckV3SourceSnapshot, reviewQueueId, editKind, editFormat, videoEdit]);
 
   const upText = (patch: Partial<TextVariants>) => replaceText({ ...(textRef.current || {}), ...patch });
   const upIg = (patch: Partial<NonNullable<TextVariants["instagram"]>>) => replaceText({
@@ -1272,7 +1281,7 @@ export default function StudioPage() {
     replaceBodySnapshot(nextLines, nextText);
   };
 
-  async function genText(structure?: CreateStructureChoice) {
+  async function genText(structure?: CreateStructureChoice, cardTemplateId?: CardDeckTemplateId) {
     setLastError(null);
     try {
       const r = await apiPost<TextVariants & { ok?: boolean; error?: string }>("/api/studio/text", {
@@ -1280,6 +1289,7 @@ export default function StudioPage() {
         guide,
         tenant_id: activeWorkspace?.id,
         structure: structure ? { label: structure.label, title: structure.title, outline: structure.outline } : undefined,
+        card_template_id: cardTemplateId,
       }, { signal: generationAbort.current?.signal });
       if (!r?.ok) { const msg = r?.error || "텍스트 생성 실패"; setLastError(`텍스트: ${msg}`); showToast(msg, "error"); return null; }
       // API가 성공을 확인한 뒤에만 발행한다. 클릭 시점 아님.
@@ -1290,12 +1300,12 @@ export default function StudioPage() {
       setLastError(`텍스트: ${msg}`); showToast(msg, "error"); return null;
     }
   }
-  async function generateQuickDraft(structure: CreateStructureChoice) {
+  async function generateQuickDraft(structure: CreateStructureChoice, cardTemplateId?: CardDeckTemplateId) {
     if (!idea.trim()) { showToast("주제를 입력해 주세요", "error"); return; }
     generationAbort.current = new AbortController();
     setBusy("초안 만드는 중");
     try {
-      const result = await genText(structure);
+      const result = await genText(structure, cardTemplateId);
       if (result) {
         // 2026-09-05 회장 계정 실측: 새 초안을 만들어도 이전 초안 번호를 그대로 들고 가서,
         // 그 번호가 이미 발행된 것이면 발행이 매번 "이미 올라갔습니다"로 닫혔다. 스튜디오에서
@@ -1303,7 +1313,8 @@ export default function StudioPage() {
         // 발행 흔적을 끊는다. 끊지 않으면 새 글이 옛 글의 발행 기록에 덮어써진다.
         draftIdRef.current = null;
         setDraftId(null);
-        setPub({ running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} });
+        const freshPublishProgress: PublishProgress = { running: false, stopped: false, status: {}, urls: {}, errors: {}, already: {} };
+        setPub(freshPublishProgress);
         setPublishReconciliations({});
         // 2026-09-14 실측: 초안번호와 발행 흔적은 끊으면서 **그림과 영상만 그대로 뒀다.**
         // 그래서 주제를 바꿔 새 초안을 만들어도 발행실에는 어제 주제의 영상이 붙어 있었고,
@@ -1314,12 +1325,17 @@ export default function StudioPage() {
         // videoEdit은 그대로 뒀다 — 옛 주제의 오버레이·댓글이 새 초안에 그대로 남았다.
         if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
         if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
-        setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null); setCardDeckV3(null); setCardDeckV3DetailStatus("idle"); setCardDeckV3SourceSnapshot(null); setVideoEdit(null);
+        setImg(null); setVid(null); setCardTextPositions([]); setCardDeck(null); setCardDeckV3(null); setCardDeckV3DetailStatus("idle"); setCardTemplateState(null); setCardDeckV3SourceSnapshot(null); setVideoEdit(null);
         videoEditReconciledRef.current = true; reconciledDraftIdRef.current = null; videoEditBaseRevisionRef.current = null;
         invalidateVideoEditReconcile(); // B-7: 진행 중이던 맞춤 결과를 버린다
         if (dropped) showToast(dropped, "success");
         const nextKind = createPrimaryKind ?? "text";
-        const nextLines = nextKind === "video"
+        const pendingTextCandidates = nextKind === "text" && result.text_candidates?.length
+          ? result.text_candidates
+          : null;
+        const nextLines = pendingTextCandidates
+          ? []
+          : nextKind === "video"
           ? [result.shorts?.hook, result.shorts?.body, result.shorts?.cta].filter((line): line is string => Boolean(line))
           : nextKind === "card"
             ? (result.instagram?.slides?.length ? result.instagram.slides : [result.instagram?.caption || ""]).filter(Boolean)
@@ -1332,9 +1348,96 @@ export default function StudioPage() {
               .split(/\n\s*\n/)
               .map((paragraph) => paragraph.trim())
               .filter(Boolean);
+        const nextEditFormat = defaultContentEditFormat(nextKind);
         setEditKind(nextKind);
-        setEditFormat(defaultContentEditFormat(nextKind));
-        replaceBodySnapshot(nextLines, result, { replaceDocument: true, serverRevision: 0 });
+        setEditFormat(nextEditFormat);
+        let generatedCardTemplate: ReturnType<typeof buildGeneratedCardTemplate> = null;
+        if (nextKind === "card" && result.card_template_id && result.card_template_id !== "chat_bubble") {
+          try {
+            generatedCardTemplate = buildGeneratedCardTemplate({
+              renderEnabled: CARD_DECK_V3_RENDER_ENABLED,
+              templateId: result.card_template_id,
+              lines: nextLines,
+            });
+          } catch (error) {
+            showToast(extractApiErrorMessage(error, "카드가 2장 이상일 때 템플릿을 적용할 수 있습니다."), "error");
+          }
+          if (!CARD_DECK_V3_RENDER_ENABLED) {
+            showToast("자유 배치 카드 기능이 꺼져 있어 기본 카드 편집으로 만들었습니다.", "success");
+          }
+        }
+        replaceBodySnapshot(
+          nextLines,
+          pendingTextCandidates
+            ? { text_candidates: pendingTextCandidates, recommended_text_candidate_id: result.recommended_text_candidate_id }
+            : result,
+          { replaceDocument: true, serverRevision: 0 },
+        );
+        if (generatedCardTemplate) {
+          const { deck: generatedDeck, sourceSnapshot, templateState } = generatedCardTemplate;
+          setCardDeckV3(generatedDeck);
+          cardDeckV3Ref.current = generatedDeck;
+          setCardTemplateState(templateState);
+          setCardDeckV3SourceSnapshot(sourceSnapshot);
+          cardDeckV3PendingSourceSnapshotRef.current = sourceSnapshot;
+          setCardDeckV3DetailStatus("ready");
+          try {
+            await save(
+              "draft",
+              {},
+              null,
+              null,
+              null,
+              null,
+              null,
+              generatedDeck,
+              "tail",
+              freshPublishProgress,
+              {
+                sourceSnapshot,
+                templateState,
+                editKind: nextKind,
+                editFormat: nextEditFormat,
+              },
+            );
+          } catch (error) {
+            // S7-R2 MINOR 7: 생성 직후 첫 저장이 실패한 자유 배치 덱을 화면에만 남기면
+            // 사용자는 저장됐다고 믿고 이탈할 수 있다. 자유 배치 상태를 먼저 걷고 같은
+            // 본문을 기본 카드 편집으로 한 번 더 저장해, 서버와 화면이 서로 다른 상태를
+            // 유지하지 않게 한다.
+            setCardDeckV3(null);
+            cardDeckV3Ref.current = null;
+            setCardTemplateState(null);
+            setCardDeckV3SourceSnapshot(null);
+            cardDeckV3PendingSourceSnapshotRef.current = null;
+            setCardDeckV3DetailStatus("idle");
+            try {
+              await save(
+                "draft",
+                {},
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "tail",
+                freshPublishProgress,
+                {
+                  clear: true,
+                  sourceSnapshot: null,
+                  templateState: null,
+                  editKind: nextKind,
+                  editFormat: nextEditFormat,
+                },
+              );
+              setCardDeckAutosaveError("");
+              showToast("자유 배치 템플릿 저장에 실패해 기본 카드 편집으로 저장했습니다.", "error");
+            } catch (fallbackError) {
+              setCardDeckAutosaveError(extractApiErrorMessage(fallbackError, extractApiErrorMessage(error, "생성한 카드를 서버에 저장하지 못했습니다. 초안을 다시 만들어 주세요.")));
+            }
+          }
+        }
         // 이 후보를 만든 실제 주제를 기억해 둔다. 이후 주제가 바뀌면(trim 비교) 옛 주제로
         // 만든 후보를 비운다 — 2026-10-01 운영 실측.
         quickDraftTopicRef.current = idea.trim() || null;
@@ -1344,6 +1447,36 @@ export default function StudioPage() {
       generationAbort.current = null;
       setBusy(null);
     }
+  }
+
+  async function selectTextCandidate(candidate: TextCandidate) {
+    const candidates = textRef.current?.text_candidates ?? [candidate];
+    if (textCandidateSelectionWouldDiscardEdits({
+      currentSelectedId: textRef.current?.selected_text_candidate_id,
+      currentLines: bodySnapshotRef.current.lines,
+      nextCandidateId: candidate.id,
+      candidates,
+    })) {
+      const confirmed = await askConfirm({
+        title: "고친 본문을 다른 후보로 바꿀까요?",
+        description: "현재 본문에서 직접 고친 내용이 사라지고, 선택한 후보의 원문으로 교체됩니다.",
+        confirmLabel: "고친 내용을 버리고 바꾸기",
+        cancelLabel: "현재 본문 유지",
+        destructive: true,
+      });
+      if (!confirmed) return;
+    }
+    const nextText: TextVariants = {
+      ...candidate.content,
+      text_candidates: candidates,
+      selected_text_candidate_id: candidate.id,
+      recommended_text_candidate_id: textRef.current?.recommended_text_candidate_id,
+    };
+    const nextLines = textCandidateLines(candidate);
+    setEditKind("text");
+    setEditFormat(defaultContentEditFormat("text"));
+    replaceBodySnapshot(nextLines, nextText);
+    showToast(`${candidate.label} 후보를 본문에 적용했습니다`, "success");
   }
   // 2026-09-06 회장 확정: "고객이 이미지 영상 생성 하려고 서비스 쓰는거아니야?"
   // 종전에는 운영자만 생성할 수 있어 고객 계정에서는 카드뉴스와 영상이 아예 안 만들어졌다.
@@ -1854,11 +1987,17 @@ export default function StudioPage() {
       clear?: boolean;
       sourceSnapshot?: CardDeckV3SourceSnapshot | null;
       cardTextPositions?: CardTextPosition[];
+      templateState?: CardTemplateState | null;
+      editKind?: EditContentKind;
+      editFormat?: ContentEditFormat;
     } = {},
   ) {
     const saveTenantId = activeWorkspace?.id ?? null;
     const saveDocumentGeneration = editDocumentGenerationRef.current;
     const invocationBodySnapshot = bodySnapshotRef.current;
+    // 저장 큐가 실행되기 전에 다른 초안으로 이동해도, 이 요청의 v3 덱에 새 문서의 템플릿
+    // 상태가 섞이지 않도록 호출 시점의 짝을 고정한다.
+    const invocationCardTemplateState = cardTemplateState;
     // PR87 재리뷰 r2 MAJOR 1: 모든 저장을 한 큐에서 직렬 실행한다. 네트워크 응답 순서가
     // 뒤집혀도 먼저 시작한 요청이 나중 요청 뒤에 서버를 덮을 수 없다. 각 실행은 호출
     // 시점의 인자에서 글 본문만 예외로 두고, 반드시 유일한 최신값 출처를 읽는다.
@@ -1869,6 +2008,11 @@ export default function StudioPage() {
       let savedDraftId: string | undefined;
       let includeSourceSnapshot = Object.prototype.hasOwnProperty.call(cardDeckV3Options, "sourceSnapshot");
       const synchronizedCardDeckV3 = cardDeckV3ForSave(persistedCardDeck, persistedCardDeckV3);
+      const cardTemplateStatePatch = cardTemplateStatePatchForSave(
+        synchronizedCardDeckV3,
+        invocationCardTemplateState,
+        cardDeckV3Options,
+      );
 
       for (;;) {
         const sameDocument = editDocumentGenerationRef.current === saveDocumentGeneration
@@ -1914,10 +2058,11 @@ export default function StudioPage() {
             ...(includeSourceSnapshot
               ? { cardDeckV3SourceSnapshot: cardDeckV3Options.sourceSnapshot }
               : {}),
+            ...cardTemplateStatePatch,
             videoEdit: safeVideoEdit,
             videoEditBaseRevision: safeVideoEdit ? videoEditBaseRevisionRef.current : undefined,
-            editKind,
-            editFormat,
+            editKind: cardDeckV3Options.editKind ?? editKind,
+            editFormat: cardDeckV3Options.editFormat ?? editFormat,
             reviewQueueId,
             publishedAt: status === "published" ? new Date().toISOString() : undefined,
           });
@@ -3151,6 +3296,7 @@ export default function StudioPage() {
       : d.hasCardDeckV3 === true);
     const loadedCardDeckV3 = cardDeckV3ForDraft(loadedCardDeck, includesCardDeckV3 ? d.cardDeckV3 as CardDeckV3 | null : null);
     setCardDeckV3(loadedCardDeckV3);
+    setCardTemplateState(loadedCardDeckV3 ? (d.cardTemplateState as CardTemplateState | null) ?? defaultCardTemplateState(loadedCardDeckV3) : null);
     cardDeckV3Ref.current = loadedCardDeckV3;
     cardDeckV3HydratedDraftRef.current = includesCardDeckV3 ? loadedDraftId : null;
     const detailStatus = includesCardDeckV3 ? "ready" : hasCardDeckV3 ? "loading" : "idle";
@@ -3224,6 +3370,7 @@ export default function StudioPage() {
     }
     const serverDeck = (detail.cardDeckV3 as CardDeckV3 | null | undefined) ?? null;
     setCardDeckV3(serverDeck);
+    setCardTemplateState(serverDeck ? (detail.cardTemplateState as CardTemplateState | null | undefined) ?? defaultCardTemplateState(serverDeck) : null);
     cardDeckV3Ref.current = serverDeck;
     setCardDeckV3SourceSnapshot((detail.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot | null | undefined) ?? null);
     cardDeckV3HydratedDraftRef.current = requestedDraftId;
@@ -4157,6 +4304,7 @@ export default function StudioPage() {
         quickDraftLoading={busy === "초안 만드는 중"}
         quickDraftError={lastError}
         onQuickDraftGenerate={generateQuickDraft}
+        onTextCandidateSelect={selectTextCandidate}
         onGenerateCardImages={generateCardImages}
         cardDeckByDraftId={(draftId) => {
           const draft = hist?.drafts.find((d) => d.id === draftId);
@@ -4231,8 +4379,15 @@ export default function StudioPage() {
 
   function onCardDeckV3Change(
     nextDeck: CardDeckV3,
-    options: { sourceSnapshot?: CardDeckV3SourceSnapshot | null } = {},
+    templateStateOrOptions?: CardTemplateState | { sourceSnapshot?: CardDeckV3SourceSnapshot | null },
   ) {
+    const options: { sourceSnapshot?: CardDeckV3SourceSnapshot | null; templateState?: CardTemplateState } = templateStateOrOptions && "activeTemplateId" in templateStateOrOptions
+      ? { templateState: templateStateOrOptions }
+      : templateStateOrOptions ?? {};
+    const nextTemplateState = options.templateState
+      ?? cardTemplateState
+      ?? defaultCardTemplateState(nextDeck);
+    setCardTemplateState(nextTemplateState);
     if (Object.prototype.hasOwnProperty.call(options, "sourceSnapshot") && options.sourceSnapshot) {
       cardDeckV3PendingSourceSnapshotRef.current = options.sourceSnapshot;
     }
@@ -4258,9 +4413,10 @@ export default function StudioPage() {
       const pendingSourceSnapshot = Object.prototype.hasOwnProperty.call(options, "sourceSnapshot")
         ? options.sourceSnapshot
         : cardDeckV3PendingSourceSnapshotRef.current;
-      const saveOptions = pendingSourceSnapshot
-        ? { sourceSnapshot: pendingSourceSnapshot }
-        : {};
+      const saveOptions = {
+        ...(pendingSourceSnapshot ? { sourceSnapshot: pendingSourceSnapshot } : {}),
+        templateState: nextTemplateState,
+      };
       save("draft", publishReconciliations, draftIdRef.current, img, vid, legacyProjection, null, persistedDeck, "tail", pub, saveOptions)
         .then(() => {
           if (cardDeckV3EditGenerationRef.current === editGeneration) {
@@ -4347,7 +4503,7 @@ export default function StudioPage() {
       } else {
         nextDeck = createPlainCardDeckV3(snapshot.editLines, snapshot.cardTextPositions);
       }
-      onCardDeckV3Change(nextDeck, cardDeck?.template === "chat_bubble" ? {} : { sourceSnapshot: snapshot });
+      onCardDeckV3Change(nextDeck, cardDeck?.template === "chat_bubble" ? undefined : { sourceSnapshot: snapshot });
     } catch (error) {
       showToast(extractApiErrorMessage(error, "자유 배치용 카드 바탕을 준비하지 못했습니다."), "error");
       return;
@@ -4412,6 +4568,7 @@ export default function StudioPage() {
       setCardTextPositions(snapshot!.cardTextPositions);
     }
     setCardDeckV3(null);
+    setCardTemplateState(null);
     cardDeckV3Ref.current = null;
     cardDeckV3DirtyRef.current = true;
     const returnGeneration = cardDeckV3EditGenerationRef.current + 1;
@@ -4421,7 +4578,7 @@ export default function StudioPage() {
     try {
       await save(
         "draft", publishReconciliations, draftIdRef.current, img, vid, returningChatDeck, null, null,
-        "tail", pub, { clear: true, sourceSnapshot: null, cardTextPositions: returningChatDeck ? [] : snapshot!.cardTextPositions },
+        "tail", pub, { clear: true, sourceSnapshot: null, cardTextPositions: returningChatDeck ? [] : snapshot!.cardTextPositions, templateState: null },
       );
       cardDeckV3DirtyRef.current = false;
       cardDeckV3HydratedDraftRef.current = draftIdRef.current;
@@ -4566,6 +4723,7 @@ export default function StudioPage() {
         cardDeck={cardDeck}
         onCardDeckChange={onCardDeckChange}
         cardDeckV3={cardDeckV3}
+        cardTemplateState={cardTemplateState}
         onCardDeckV3Change={onCardDeckV3Change}
         requestedCardSlide={requestedCardSlide}
         onStartCardDeckV3={cardDeckV3EntryEnabled(CARD_DECK_V3_RENDER_ENABLED, {

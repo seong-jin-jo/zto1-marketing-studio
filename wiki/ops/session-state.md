@@ -1,3 +1,83 @@
+## 2026-10-08 04:59 KST · S4·S7 main 병합 충돌 해소 및 로컬 검증 완료
+
+- 인계 기준: 사용자 지시, `origin/main` 3e04fd97, `/Users/sj/wt/s7-review-r3.md`, 현재 worktree. tmux `openclaw-auto-3:0.1`은 같은 작업의 이전 실행 기록으로 확인했다.
+- 선행 기록: 직전 S7 handoff를 `ca74244d`, 병합 전 QA NG를 `4c7ad2c9`로 각각 단독 커밋했다. 사용자 소유 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 stage하지 않았다.
+- 충돌 해소: package script 두 개를 모두 유지했다. `StudioRooms`·`CardCanvasEditor`는 S4 빈 장 요청 포커스와 S7 템플릿 상태·통합 undo를 함께 결선했다. build-log, qa-tracker, 구현현황, session-state는 양쪽 기록을 모두 보존했다.
+- 검증: 집중 6파일 53건, S7 편집기·템플릿 4파일 57건, integrity 35파일 115건, `npm run typecheck:ci` exit 0.
+- 완료 커밋: 현재 HEAD는 부모 `4c7ad2c9`와 `origin/main` `3e04fd97`을 가진 merge commit이다. 사용자 소유 변경은 보존했다. push·원격 CI·QA 승인·운영 배포는 하지 않았다.
+
+## 2026-10-08 04:15 KST · S7 교차 리뷰 3차 MINOR 정리 완료
+
+- 인계 기준: 사용자 지시와 `/Users/sj/wt/s7-review-r3.md`. 기존 tmux pane은 같은 S7 작업의 이전 진행 기록으로 확인했다.
+- 완료 커밋: `286dd3b4 fix(studio): restore S7 regression guards`, `4eb75fd1 docs(studio): close S7 review minors`.
+- 변경: 실제 `StudioPage` 새 초안 저장 요청으로 `PR87-R3-REV-02`를 복원했다. `headline_cover` 다중 표지 글의 360px 상자 겹침을 기존 176px·56px 규격 재사용으로 제거했다. S7 실서버 E2E의 `CLAUDE_BIN` stub 기동 명령을 스크립트와 build-log에 기록했다.
+- 390px diff 판정: 승인본과 dev fixture의 브랜드·본문·굵기·선택 도구 행 수가 달라 동일 픽셀 상태가 아니다. S7 merge-base 이후 말풍선 렌더러·변환기·fixture·캡처 스크립트 변경은 0파일이므로 S7 회귀가 아니다. 동일 상태 승인 baseline 전까지 report-only 유지.
+- 검증: 수정 전 4:5·1:1 겹침 실패 확인. 수정 뒤 focused 2파일 17건 PASS, related 51파일 515건 PASS·3건 skip, `npm run typecheck:ci` exit 0, E2E 스크립트 syntax PASS, design-lint exit 0(레포 기존 인라인 style·hex 경고 2종), pipeline artifact lint 정합 PASS·기존 핀 위생 경고 28건.
+- 환경: 중단된 Next dev가 만든 손상 `.next/dev/types`를 `/tmp/zto1-s7-r3-next-dev-types-corrupt-20261008-0408`로 보존 이동한 뒤 typecheck가 통과했다.
+- 보존: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 다른 세션 변경이라 커밋하지 않았다. 이 session-state도 인계용이라 unstaged 유지한다.
+- 다음 실행: 컨트롤러가 S4 PR 128을 먼저 병합한 뒤 S7을 병합하고 충돌을 해소한다. 이 워커는 main 병합·S4 충돌·push를 하지 않았다.
+
+## 2026-10-08 편집실 S7 교차 리뷰 3차 MINOR 정리 착수
+
+- handoff basis: 사용자가 직접 지정한 `/Users/sj/wt/s7-review-r3.md`, 현재 `feat/editroom-v2-s7` HEAD `0e9fa149`, 기존 `wiki/ops/session-state.md`를 정본으로 삼았다. tmux `openclaw-auto-3:0.1`은 중단 전 이 작업 자체의 transcript여서 숨은 별도 지시가 없음을 확인했다.
+- 현재 판정: 제품 코드 미커밋 변경은 없다. main의 `PR87-R3-REV-02` 대체 없는 삭제, `headline_cover` 표지 다중 글 겹침, `CLAUDE_BIN` stub 재현성 누락, 카톡 390px diff 18.17% 원인 미기록을 QA tracker에 NG로 등록했다.
+- 이웃 영향 후보: 새 초안의 `draft_id`·revision 절단과 첫 저장 payload, 4:5·1:1 템플릿 배치와 v3 validator, S7 실서버 E2E 기동 계약, v70 캡처의 데이터·선택 상태·stage crop을 대조한다. S4 충돌 파일과 main 병합은 건드리지 않는다.
+- 다음 실행: main의 삭제 전 동작 테스트와 현재 컴포넌트 저장 흐름을 대조해 실패 테스트를 복원하고, 표지 배치 회귀를 고정한 뒤 최소 소스 수정을 한다. 이어 시각 diff 원인을 캡처·git diff로 판정하고 문서화, 관련 Vitest와 `typecheck:ci`를 통과해 커밋한다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, 이 파일의 기존 타 세션 기록은 제품 커밋에 섞지 않는다.
+
+## 2026-10-08 03:24 KST 편집실 S7 교차 리뷰 2차 교정 완료, push 대기
+
+- handoff basis: 사용자가 직접 지정한 `/Users/sj/wt/s7-review-r2.md`, 현재 git status와 기존 미커밋 변경을 정본으로 삼았다. 관련 tmux pane은 이 Codex 세션 자체였고 별도 handoff를 추론하지 않았다.
+- 수정: 실제 전체 템플릿 적용 회귀, 글 요소 5개 이상 사전 거절, 생성 직후 v3 저장 실패의 기본 카드 fallback을 추가했다. drafts·text 브라우저 mock을 제거하고 실제 PostgreSQL RLS route와 서버측 CLI LLM stub으로 교체했다.
+- 커밋: `91f62178` 제품·동작 테스트, `d479c08c` QA 문서·v70 캡처·9폭 측정 증거. push하지 않았다.
+- 검증 PASS: `typecheck:ci`, production webpack build, 직접 대응 4파일 26건, related 51파일 512건·3건 skip, integrity 104건, dashboard contract 492건. 실제 Chromium S7은 POST 19회, 핵심 drafts POST 13회, DB 초안 1건, 5 viewport, 콘솔 오류 0이다. v70 수치 계약과 두 탭 본문 충돌도 PASS했다. 모바일 9폭은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다. 육안 픽셀 대조에서 일반 카드 stage diff는 0, 카톡 말풍선 stage 390px diff는 18.17% report-only다.
+- 잔존: OpenClaw 전체 contract는 S7과 무관한 `bluebubbles/channel-plugin-api.js` 플러그인 표면 해석 실패로 미통과다. 실제 외부 LLM의 후보 생성 실패율, 원격 CI, QA 승인, 운영 배포는 미검증이다. S4 PR 128 충돌 파일은 수정하지 않았다.
+- 정리: 임시 PostgreSQL 데이터베이스를 삭제했고 3470·3471·3472 포트의 검증 서버를 종료했다. `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, 이 파일은 제품 커밋에 섞지 않았다.
+- 다음 실행: 컨트롤러가 두 커밋을 검수한 뒤 push 여부를 결정한다. 종료 증거는 원격 브랜치 HEAD와 green CI다.
+
+## 2026-10-08 01:34 KST 편집실 S7 교차 리뷰 2차 BLOCK 교정 진행 중
+
+- handoff basis: 사용자가 직접 지정한 `/Users/sj/wt/s7-review-r2.md`, 현재 `feat/editroom-v2-s7` HEAD `0ab555ca`, 현재 worktree diff를 정본으로 삼았다. 관련 tmux pane `openclaw-auto-3:0.1`은 이 Codex 세션 자체임을 확인했으며 별도 숨은 변경은 없었다.
+- 현재 판정: MAJOR A는 회귀 픽스처의 잘못된 scope 타입과 실제 미적용, MAJOR B는 drafts·text 브라우저 mock과 `withTenant` mock으로 실서버·실DB 증거가 없다는 결함이다. 기존 QA의 TypeScript PASS와 M6 폐쇄 표시는 무효로 내리고 BLOCK을 등록했다.
+- 다음 실행: 타입 픽스처를 실제 템플릿 적용 단언과 함께 고친다. 기존 PostgreSQL 통합 패턴을 재사용해 route 실DB 테스트를 추가하고 S7 E2E의 drafts·text 브라우저 mock을 제거한다. 이어 실제 Chromium 사용자 흐름, integrity·contract·related·typecheck:ci를 heavy slot 규율대로 통과시킨다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, 이 `wiki/ops/session-state.md`는 다른 세션용 기록이므로 제품 커밋에 섞지 않는다.
+
+## 2026-10-08 01:17 KST 편집실 S7 교차 리뷰 MAJOR 6 폐쇄, push 대기
+
+- handoff basis: 사용자가 지정한 커밋 `b663042f`, 현재 diff, `/Users/sj/wt/s7-review-r1.md`의 MAJOR 6건을 정본으로 삼았다. tmux 추론은 사용하지 않았다.
+- 근본원인: v3 템플릿 상태가 템플릿 자동저장 옵션에만 묶여 있어, 그 800ms 전에 수동 저장·검토 요청·발행실 이동이 실행되면 새 덱과 옛 템플릿 상태가 서버에 남을 수 있었다.
+- 수정: 공통 저장이 호출 시점 템플릿 상태를 캡처해 v3 덱과 같은 payload로 보낸다. 명시 null과 v3 덱 없음은 기존 의미를 유지한다. 문자열 소스 검사는 payload patch 동작 테스트로 교체했다.
+- 커밋: `22b3506b` 제품·단위 회귀, `bafb7ab9` 실제 StudioPage 수동 저장 POST 회귀, `b8e62420`·`0ab555ca` QA·구현현황·빌드 로그. push하지 않았다.
+- 검증: TypeScript 종료 코드 0. MAJOR 대응 10파일 94건 PASS. related 50파일 509건 PASS·DB 환경 2건 skip. 실제 공통 저장 회귀 2파일 15건 PASS. pipeline artifact lint 종료 코드 0, 기존 핀 위생 경고 28건.
+- MAJOR 대조: M1 CTA 대비, M2 다중 자유 요소 경계, M3 undo·복원 확인, M4 생성실 스냅샷·저장·재접속, M5 후보 미디어 필드, M6 실제 drafts route 증거 모두 자동 회귀로 닫혔다.
+- 남은 것: 원격 CI·QA 승인·운영 배포는 미검증이다. 다음 소유자는 컨트롤러이며 종료 증거는 원격 브랜치 HEAD와 green CI다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, 이 `wiki/ops/session-state.md`는 stage하지 않았다.
+
+## 2026-10-07 편집실 S7 교차 리뷰 1차 BLOCK 교정 진행 중
+
+- handoff basis: 사용자가 직접 지정한 `/Users/sj/wt/s7-review-r1.md`의 MAJOR 6건과 현재 `feat/editroom-v2-s7` worktree를 정본으로 삼았다. 관련 tmux pane `openclaw-auto-3:0.3`은 존재하지만, 사용자가 명시 작업을 primary로 지정했으므로 transcript 추론은 사용하지 않았다.
+- 현재 판정: S7 템플릿 경로에서 S5 CTA 대비와 S5b 기본 편집 복귀 결함이 재발했다. 다중 자유 요소 배치, 템플릿 상태 undo·복원, 글 후보 공통 필드, mock-only 증거도 BLOCK이다.
+- 다음 실행: MAJOR 1~6 각각의 재현을 실패 테스트로 고정하고, 작은 의미 단위로 수정·커밋한다. 그 뒤 typecheck, integrity, contract, related, 실제 production Chromium S7·모바일 9폭·v70·body-conflict를 다시 구동한다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, 이 `wiki/ops/session-state.md`는 stage하지 않는다. push 금지.
+
+## 2026-10-07 21:52 KST 편집실 v2 S7 BLOCK 폐쇄·독립 리뷰 교정 완료, push 대기
+
+- handoff basis: 사용자가 명시한 S7 이어가기 과제와 현재 `feat/editroom-v2-s7` worktree를 정본으로 삼았다. tmux 추론은 사용하지 않았고 push하지 않았다.
+- 구현: 생성실 `cardTemplateId`를 선택 필드로 생성 API와 결과 v3 덱까지 전달했다. 편집실 활성 템플릿 ID·직전 덱은 기존 draft JSONB에 영속한다. plain→카톡 선택은 기존 카톡 덱 생성 경로 안내와 함께 비활성화했고, 모바일 fixture는 데이터 3장 편집실을 연다.
+- 독립 리뷰 교정: `cardTemplateState` 허용 필드 정규화, 현재·직전 덱 합산 512KiB 상한, v3 삭제와 상태 삭제 원자화, 덱 종류·템플릿 ID 불일치 거절을 `313499da`에 반영했다. 구현현황은 `31814ffc`에 갱신했다.
+- 검증 PASS: typecheck, integrity 33파일 104건, contract 108파일 629건, related 51파일 513건·환경 skip 2건, route 통합 21건, webpack production build. 같은 최종 빌드의 Chromium에서 S7 1440·1024·390, v70 화면, 두 탭 body-conflict, 모바일 360·390·412·600·700·780·820·900·1000 전부 PASS·콘솔 오류 0이다.
+- 직접 관찰: S7 선택→API→결과 덱, 전체·한 장 적용, undo, 저장·재접속 복원. 9폭은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, 이 `wiki/ops/session-state.md`는 stage하지 않았다.
+- 남은 것: 원격 CI·QA 승인·운영 배포는 미검증이다. 다음 소유자는 컨트롤러이며, 종료 증거는 원격 브랜치 HEAD와 green CI다.
+
+## 2026-10-07 20:34 KST 편집실 v2 S7 구현·로컬 검증 종료, BLOCK 회수
+
+- handoff basis: 사용자가 명시한 S7 브랜치의 세 커밋 `6ab7efb0`, `03eb4536`, `1fab474f`와 현재 worktree를 정본으로 삼았다. tmux 추론은 사용하지 않았고 push하지 않았다.
+- 구현: 글 후보 3개·서버 사실/길이 경고·선택 복원, 생성실 템플릿 6개 추천 줄, 편집실 전체/한 장 적용·전후 비교·복원·undo, 실제 브라우저 E2E.
+- 검증 PASS: typecheck, integrity 104건, contract 628건, related 112건, webpack production build. production Chromium S7 1440·1024·390과 v70 화면, body-conflict가 모두 PASS했고 콘솔 오류 0이다.
+- BLOCK: 생성실 template 선택이 생성 덱으로 전달되지 않는다. 편집실 template ID와 직전 덱이 재열기 가능한 저장 경계에 없다. plain→카톡 선택은 의미 구조 변환이 없다. 모바일 fixture가 생성실로 이탈해 9폭 측정은 360에서 FAIL했다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, 이 `wiki/ops/session-state.md`는 stage하지 않는다.
+- 다음 실행: 같은 S7 세션에서 TP-01 선택 전달, 템플릿 저장·재열기·plain↔chat 결정적 변환 계약을 먼저 확정하고 수정한다. 그 뒤 데이터 3장 편집실 fixture를 복구해 9폭을 모두 통과한다. 종료 증거는 저장 후 재열기 E2E, 카톡 댓글 유도 장 1장·chat 4장 이상, 9폭 전부 PASS다.
 ## 2026-10-08 04:30 KST PR 128 CI 테스트 경합 교정 완료, 제어권 반환 준비
 
 - handoff basis: 메인 에이전트가 지정한 HEAD `ddb05919`, `wiki/거버넌스/결정.md`, CI run `37668742639` 실패 로그를 기준으로 삼았다. tmux pane은 같은 위임 작업의 로그라 별도 구현 근거로 사용하지 않았다.
@@ -2525,3 +2605,17 @@ stage하지 않는다. 다음 액션은 편집실 계약 테스트를 먼저 추
 - 이웃 영향 후보: 초안 저장·상세 복원, 발행·예약·큐 등록, Remotion 인트로/아웃트로, signed media, 기존 Canvas fallback, 기존 plain/chat 카드 UI와 S1 직접 편집 회귀를 함께 확인한다.
 - 다음 실행: AI 카드 원본 파일명과 publish/schedule/queue의 공통 진입점을 확정한 뒤 수용 기준 테스트부터 작성한다. 종료 증거는 관련 import 테스트 전부, 전체 contract, `verify-card-freeform-s1-e2e.mjs`, 실제 1440·390 더블클릭·끌기 캡처, CI green이다.
 - 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자 변경으로 stage하지 않는다.
+## 2026-10-07 21:31 KST 편집실 v2 S7 자체 점검 BLOCK 폐쇄, push 대기
+
+- handoff basis: 사용자가 지정한 S7 자체 점검 BLOCK 4건과 이 worktree의 기존 커밋을 정본으로 이어갔다. tmux 추론은 사용하지 않았고 push하지 않았다.
+- 수정: 생성실 `cardTemplateId`를 API와 결과 덱까지 전달, 편집실 `cardTemplateState`를 기존 draft payload JSONB에 영속, plain→카톡을 기존 전용 생성 경로 안내와 함께 비활성화, 모바일 fixture를 실제 편집실 URL·상세 초안 응답으로 교정했다. DB migration 없음.
+- 검증 PASS: typecheck, integrity 104, contract 629, related 511, webpack production build. 최종 빌드 production Chromium에서 S7 1440·1024·390, v70 화면, body-conflict, 모바일 9폭 모두 PASS, 콘솔 오류·가로 넘침 0.
+- 환경 메모: 기본 Turbopack은 공유 `node_modules` 심링크가 worktree 밖이라 실패했다. 설치·링크 변경 없이 webpack 빌드로 검증했다. design-lint는 레포 기존 인라인 style·hex 2종 경고, artifact lint는 정합 PASS와 기존 핀 위생 경고 28건이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`, 이 `wiki/ops/session-state.md`는 stage하지 않는다.
+- 다음 실행: 컨트롤러가 커밋된 S7 브랜치를 검수·push하고 원격 CI를 확인한다. 종료 증거는 원격 branch HEAD와 green CI다.
+## 2026-10-08 02:05 KST 편집실 S7 2차 리뷰 교정 재개, 타입·레이아웃 회귀 고정
+
+- handoff basis: 사용자가 명시한 현재 git status와 `/Users/sj/wt/s7-review-r2.md`를 정본으로 재개했다. 01:39 네트워크 중단 전 미커밋 변경을 보존했다.
+- 완료한 의미 단위: MAJOR A의 잘못된 `{ scope: "all" }`를 실제 명령 계약 `{ kind: "all" }`로 고치고, 저장 payload가 변환된 덱 좌표까지 담는 동작 단언을 추가했다. 글 요소 5개 이상 장은 템플릿 적용 전 거절하고, 선택하지 않은 혼잡 장은 한 장 적용에서 건드리지 않는 경계 테스트를 추가했다. 약한 소스 문자열 증거 2건은 제거했다.
+- 다음 실행: 실제 PostgreSQL route 통합 테스트와 drafts·text browser mock 없는 dev-server Chromium E2E를 구현한다. 이어 typecheck:ci, 관련 Vitest, integrity, contract를 실행하고 커밋한다.
+- 충돌 금지: PR 128 동시 수정 파일 `StudioRooms.tsx`, `CardCanvasEditor.tsx`, `package.json`은 손대지 않는다.

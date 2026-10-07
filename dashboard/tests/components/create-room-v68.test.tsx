@@ -154,6 +154,62 @@ describe("V68 생성실 계약", () => {
     expect(screen.queryByText("고르지 않은 글")).toBeNull();
   });
 
+  it("S7-AC1-RESTORE 정상: 저장된 글 후보 3개가 있으면 구조 초안 복원이 선택 결과를 덮지 않는다", async () => {
+    const onCandidateSelect = vi.fn();
+    localStorage.setItem("studio_create_state:workspace-v68", JSON.stringify({
+      primaryKind: "text",
+      alsoKinds: [],
+      questionIndex: 0,
+      purpose: "공부 계획 안내",
+      audience: "수험생",
+      rightsConfirmed: true,
+      topicOpen: false,
+      candidates,
+      selected: "A",
+      quickStructure: { label: "A", title: "A 구조", outline: ["A 첫 장면"] },
+      topic: "수능 100일 공부 계획",
+    }));
+    const textCandidates = (["question", "number", "pain"] as const).map((id, index) => ({
+      id,
+      label: ["질문형", "숫자형", "고통 인식형"][index],
+      recommended: index === 0,
+      recommendation_reason: "A 구조와 잘 맞습니다",
+      warnings: [],
+      content: {
+        threads: `${id} Threads 후보`,
+        facebook: `${id} Facebook 후보`,
+        x: `${id} X 후보`,
+        instagram: { caption: `${id} Instagram 후보`, hashtags: [], slides: [] },
+        shorts: { hook: `${id} 훅`, body: `${id} 본문`, cta: `${id} CTA` },
+        image_prompt: `Editorial image for ${id}`,
+      },
+    }));
+
+    render(<CreateRoom
+      {...props}
+      onCandidateSelect={onCandidateSelect}
+      quickDraft={{ text_candidates: textCandidates, recommended_text_candidate_id: "question" }}
+    />);
+
+    await waitFor(() => expect(document.querySelector("[data-text-candidate-picker]")).toBeInTheDocument());
+    expect(document.querySelectorAll("[data-text-candidate-tab]")).toHaveLength(3);
+    expect(onCandidateSelect).not.toHaveBeenCalled();
+  });
+
+  it("S7-R1-B1 정상: 카드 템플릿 선택을 생성 콜백에 전달하고 카톡은 기존 생성 경로 이유와 함께 잠근다", () => {
+    const onQuickDraftGenerate = vi.fn();
+    const { container } = render(<CreateRoom {...props} topic="고객 질문" onQuickDraftGenerate={onQuickDraftGenerate} />);
+    const workspace = container.querySelector("[data-create-workspace]") as HTMLElement;
+    fireEvent.click(screen.getByRole("button", { name: "카드뉴스" }));
+    fireEvent.click(within(workspace).getByRole("button", { name: "A 구조 사용" }));
+    const chat = screen.getByRole("button", { name: /카톡 대화/ });
+    expect(chat).toBeDisabled();
+    expect(chat).toHaveTextContent("기존 카톡 말풍선 덱 만들기");
+    fireEvent.click(screen.getByRole("button", { name: /번호 목록형/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: "초안 만들기" }));
+    expect(onQuickDraftGenerate).toHaveBeenCalledWith(expect.objectContaining({ label: "A" }), "number_list");
+  });
+
   it("시험 18 정상: 글자 카드를 자산 저장소에 올린 뒤 편집과 발행 인계 콜백에 전달한다", async () => {
     const onTextCardsCreated = vi.fn();
     vi.stubGlobal("File", class {
