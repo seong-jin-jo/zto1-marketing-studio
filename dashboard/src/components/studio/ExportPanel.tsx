@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/shared/Button";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
 import styles from "./ExportPanel.module.css";
 
@@ -304,7 +305,7 @@ export function ExportPanel({ tenantId, draftId, kind, onClose, onOpenPublish, o
                   <span className={`ml-auto text-caption ${item.status === "failed" ? "text-danger" : item.status === "succeeded" ? "text-success" : "text-subtle"}`}>{itemStatusLabel(item.status)}</span>
                 </div>
                 {item.error_code ? <p className="ds-copy text-caption text-danger">{item.error_code}</p> : null}
-                {item.artifact_url ? <img className={styles.thumbnail} src={item.artifact_url} alt={`${item.ordinal + 1}장 내보내기 결과`} /> : null}
+                {item.artifact_url ? <DeliveredMedia type="image" className={styles.thumbnail} src={item.artifact_url} tenantId={tenantId} alt={`${item.ordinal + 1}장 내보내기 결과`} /> : null}
                 {item.status === "failed" ? <Button size="sm" onClick={() => void retryItem(item.item_key)} disabled={busy}>{kind === "card_deck" ? `${item.ordinal + 1}장` : "영상"} 다시 시도</Button> : null}
               </article>
             ))}
