@@ -1,3 +1,15 @@
+## 2026-10-07 편집실 S4 교차 리뷰 1차 ❌ NG
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| EDITROOM-S4-R1-B1 | v3가 아닌 일반·카톡·AI 카드와 편집 없는 영상이 기존 발행실 경로를 잃음 | ❌ NG | 대기열 대상 판별을 클라이언트·서버에 동일 적용하고 repository mock 없는 회귀 테스트 필요 |
+| EDITROOM-S4-R1-M1 | 주 화면이 성공 export 영수증을 버려 발행 queue에 export ID·source hash가 고정되지 않음 | ❌ NG | 실제 enqueue 결과의 metadata와 prepared media에 영수증 고정 증거 필요 |
+| EDITROOM-S4-R1-M2 | draft 비관적 락(SELECT ... FOR UPDATE) 안에서 새 풀 연결을 얻어 동시 6요청 교착 가능 | ❌ NG | 풀 최대 5에서 6요청 종료 및 동일 client 사용 증거 필요 |
+| EDITROOM-S4-R1-M3 | 진행·부분실패·retry 브라우저 증거가 API 전체 mock이라 실제 대기열·작업자를 증명하지 못함 | ❌ NG | PostgreSQL API·DB 실제 경로와 작업자 경로를 거친 브라우저 E2E 필요 |
+| EDITROOM-S4-R1-m1 | ExportPanel CSS에 직접 수치가 남음 | ❌ NG | 기존 디자인 토큰으로 치환하고 design lint 통과 필요 |
+| EDITROOM-S4-R1-m2 | polling 1회 오류로 진행 표시가 영구 정지함 | ❌ NG | 1회 자동 재시도 계약과 컴포넌트 테스트 필요 |
+| EDITROOM-S4-R1-m3 | stale 안내가 카드 이미지에 영향을 주는 편집 범위를 설명하지 않음 | ❌ NG | 캡션 범위를 포함한 안내 문구와 테스트 필요 |
+
 ## 2026-10-07 편집실 S4 발행 인계 교차 검수 ❌ NG → ✅ 테스트됨
 
 | 요청번호 | 결함 | 현재 판정 | 종료 증거 |
