@@ -744,7 +744,10 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       onAlsoKindsChange?.(saved.alsoKinds);
       if (saved.primaryKind) onContentBranchChange?.(kindToBranch(saved.primaryKind));
       const savedCandidate = saved.candidates.find((candidate) => candidate.label === saved.selected);
-      if (savedCandidate) onCandidateSelect(savedCandidate);
+      // S7 글 후보가 이미 작업물에 저장돼 있으면 구조 초안 복원은 선택 표시만 살린다.
+      // 기존 콜백을 다시 부르면 부모의 chooseCandidate가 후보 3개를 구조 제목 1개로
+      // 덮어써, 새로고침 직후 비교 화면이 사라진다(실제 Chromium 복원 경로에서 재현).
+      if (savedCandidate && !quickDraft?.text_candidates?.length) onCandidateSelect(savedCandidate);
     } else {
       setPurpose(PURPOSE_CARDS.find((card) => isCardChosen(card, learned.purpose))?.sample || learned.purpose || "");
       setAudience(learned.audience || "");
