@@ -1,3 +1,18 @@
+## 2026-10-07 편집실 S4 발행 인계 교차 검수 ❌ NG → ✅ 테스트됨
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| EDITROOM-S4-REVIEW-01 | 최신 export ID·hash만 queue metadata에 기록하고 실제 media는 이전 handoff를 사용할 수 있음 | ✅ 테스트됨 | 성공 export artifact를 `preparedMedia`로 직접 결선. 최종 경계 계약 18건과 enqueue 16건 PASS |
+| EDITROOM-S4-REVIEW-02 | 최신 판 확인과 queue 삽입 사이에 draft가 바뀔 수 있음 | ✅ 테스트됨 | draft `FOR UPDATE`와 같은 transaction callback 안에서 artifact 완결성 확인·handoff 재조회·queue 등록 실행 |
+| EDITROOM-S4-REVIEW-03 | 공개 origin이 없으면 상대 artifact URL이 queue에 들어감 | ✅ 테스트됨 | HTTPS 공개 origin fail-closed. origin 누락 503과 queue 미삽입 계약 PASS |
+| EDITROOM-S4-REVIEW-04 | 완료 polling의 마지막 latest 조회 rejection이 처리되지 않음 | ✅ 테스트됨 | 마지막 조회도 catch 경계에 포함. 수정 후 레드팀·적대 검수 모두 CLEAN |
+
+## 2026-10-07 편집실 S4 재시도 완료 뒤 최신 상태 갱신 누락 ❌ NG → ✅ 관찰됨
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| EDITROOM-S4-POLL-01 | 실패 장 재시도가 성공해도 최종 job 반영 직후 effect cleanup이 최신 내보내기 요청을 취소해 `발행실로` 버튼이 열리지 않음 | ✅ 관찰됨 | 최종 최신 판 조회를 polling controller와 분리했다. 회귀 테스트 1건 PASS. 실제 Chromium에서 4장만 재시도한 뒤 `발행실로` 노출, 1440·1024·390 진행·새로고침 유지·stale·빈 6장 초점 이동 PASS, 콘솔 오류 0, 실제 실패 요청 0 |
+
 ## 2026-10-07 S5b·S6 main 병합 ✅ 로컬 PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

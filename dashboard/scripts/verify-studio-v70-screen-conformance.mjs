@@ -456,6 +456,27 @@ await page.route("**/api/**", async (route) => {
   if (pathname === "/api/studio/brand-setup") return json(route, { guide: null });
   if (pathname === "/api/studio/engine-status") return json(route, { ready: true });
   if (pathname === "/api/elevenlabs-voices") return json(route, { voices: [] });
+  if (/\/api\/studio\/drafts\/[^/]+\/exports\/latest$/.test(pathname)) {
+    return json(route, {
+      current_source_revision: 1,
+      current_source_hash: "a".repeat(64),
+      latest_export: { export_id: "71111111-1111-4111-8111-111111111111", status: "succeeded", source_revision: 1, source_hash: "a".repeat(64), finished_at: "2026-10-07T00:00:00.000Z" },
+      is_latest: true,
+      blocker: null,
+    });
+  }
+  if (/\/api\/studio\/drafts\/[^/]+\/exports\/71111111-1111-4111-8111-111111111111$/.test(pathname)) {
+    return json(route, {
+      export_id: "71111111-1111-4111-8111-111111111111",
+      status: "succeeded",
+      source_revision: 1,
+      source_hash: "a".repeat(64),
+      progress: { completed: 1, total: 1 },
+      items: [{ item_key: "locked-card", ordinal: 0, status: "succeeded", attempt_count: 1, artifact_url: "/qa/alignment-card-1.jpg" }],
+      updated_at: "2026-10-07T00:00:00.000Z",
+      finished_at: "2026-10-07T00:00:00.000Z",
+    });
+  }
   if (pathname === "/api/studio/drafts") {
     if (request.method() === "POST") {
       if (failNextDraftSave) {
@@ -726,7 +747,10 @@ async function captureUnrecoverableTextCard(viewport, cardCount) {
   const screenshot = path.join(outputDir, `edit-text-card-locked-${cardCount}-${viewport.width}x${viewport.height}.png`);
   await page.screenshot({ path: screenshot });
 
-  await room.getByRole("button", { name: "발행실로 이동" }).click();
+  await room.getByRole("button", { name: "내보내기" }).click();
+  const exportPanel = page.locator("[data-export-panel]");
+  await exportPanel.waitFor({ state: "visible" });
+  await exportPanel.getByRole("button", { name: "발행실로", exact: true }).click();
   await page.waitForFunction(() => new URL(location.href).searchParams.get("room") === "publish");
   if (imageUploadCount !== uploadCountBefore) {
     throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드가 ${imageUploadCount - uploadCountBefore}장을 다시 업로드했습니다`);

@@ -1,0 +1,57 @@
+{
+  "result": "PASS",
+  "responsive": [
+    {
+      "viewport": 1440,
+      "overflow": {
+        "viewport": 1440,
+        "documentScroll": 1440,
+        "panelClient": 1440,
+        "panelScroll": 1440
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/editroom-v2-s4/s4-progress-1440.png"
+    },
+    {
+      "viewport": 1024,
+      "overflow": {
+        "viewport": 1024,
+        "documentScroll": 1024,
+        "panelClient": 1024,
+        "panelScroll": 1024
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/editroom-v2-s4/s4-progress-1024.png"
+    },
+    {
+      "viewport": 390,
+      "overflow": {
+        "viewport": 390,
+        "documentScroll": 390,
+        "panelClient": 390,
+        "panelScroll": 390
+      },
+      "screenshot": "/Users/sj/wt/zto1-editroom-s4/docs/qa/editroom-v2-s4/s4-progress-390.png"
+    }
+  ],
+  "persistedProgressAfterReload": "3 / 9장",
+  "partialFailure": {
+    "failedOrdinal": 4,
+    "retriedItemKeys": [
+      "slide_deck_s4_browser_3"
+    ],
+    "finalStatus": "succeeded-before-empty-case"
+  },
+  "stale": {
+    "blocker": "EXPORT_SOURCE_STALE",
+    "action": "최신 내용 다시 내보내기"
+  },
+  "empty": {
+    "number": 6,
+    "selectedSlideId": "slide_deck_s4_browser_5",
+    "focusedStage": true
+  },
+  "draftSaves": 8,
+  "imageUploads": 72,
+  "consoleErrors": 0,
+  "failedRequests": 0,
+  "intentionalPollingAborts": 8
+}
