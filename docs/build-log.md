@@ -1,5 +1,28 @@
 # OSMU build log
 
+## 2026-10-07 20:01 KST · 생성기 감시 운영 워크스페이스 격리
+
+STAMP: 2026-10-07 20:01 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: 교차 리뷰 R1, tenant bind mount 삭제 복구 workflow, 셸·Vitest·YAML 실측 | 고민: 운영 compose 원본이 있는 self-hosted workspace를 건드리지 않으면서 고정 commit의 감시 코드만 실행하게 했다.
+
+발견: 감시 워크플로가 30분마다 `$GITHUB_WORKSPACE`를 컨테이너에서 `rm -rf`한 뒤 checkout했다. 이 runner의 workspace는 운영 compose 프로젝트이자 tenant 설정·데이터 bind mount 원본이므로, 로그인 감시가 운영 데이터를 삭제할 수 있었다.
+
+변경: workspace 정리와 checkout을 모두 제거했다. GitHub Contents API가 현재 commit의 probe·상태 함수 두 파일만 실행별 `$RUNNER_TEMP/genmon-*`에 받고, 상태 cache도 `$RUNNER_TEMP` 아래에서만 복원·저장한다. 운영 배포 workflow는 바꾸지 않았다. 계약 테스트는 `GITHUB_WORKSPACE`, `rm -rf`, `actions/checkout` 부재와 임시영역 경로를 고정한다.
+
+| 검증 | 결과 |
+|---|---|
+| RED 관찰 | 기존 workflow의 `GITHUB_WORKSPACE` 때문에 신규 안전 계약 1건 실패 |
+| 셸 상태 판정 | 정상·1회 실패·2회 실패·컨테이너 없음·복구 5건 PASS |
+| ShellCheck·YAML 파싱 | 오류 0, 감시·배포 workflow 파싱 PASS |
+| 표적 Vitest | workflow 계약 7건 PASS |
+| 전체 integrity | 34파일 111건 PASS |
+| 운영 주기·Slack 실전송 | 미검증. push와 workflow dispatch를 하지 않음 |
+
+레드팀: self-hosted runner에서 workspace는 폐기 가능한 checkout 폴더라는 전제가 틀렸다. 필요한 두 파일만 임시영역으로 가져오게 해 운영 프로젝트와의 쓰기 경로를 없앴다.
+
+셀프심문: 이 교정이 틀렸다면 GitHub Contents API가 운영 runner에서 막혀 감시 자체가 시작되지 않는 경우다. 로컬 계약과 파싱은 통과했지만 실제 schedule 실행은 하지 않았으므로 미검증으로 남긴다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/Users/sj/wt/genmon-review-r1.md` | `.github/workflows/rescue-tenant-gateway-data.yml` | `.github/workflows/osmu-generator-monitor.yml` | `dashboard/tests/integrity/generator-monitor-workflow.contract.test.ts`
+
 ## 2026-10-07 08:45 KST · 생성기 감시 배포 격리와 연속 장애 판정 교정
 
 STAMP: 2026-10-07 08:45 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: 컨트롤러 반려, GitHub Actions concurrency 공식 문서, 셸 상태 판정, 전체 integrity | 고민: 감시기의 일시 실패 흡수는 감시기 내부 상태로 해결하고 운영 배포 워크플로에는 영향을 주지 않았다.

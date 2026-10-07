@@ -1,3 +1,10 @@
+## 2026-10-07 생성기 감시 운영 bind mount 원본 삭제 위험 ❌ BLOCK → ✅ 로컬 PASS
+
+| 요청번호 | 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| GENERATOR-MONITOR-R2-B1 | self-hosted 감시가 `$GITHUB_WORKSPACE`를 `rm -rf`로 비운 뒤 checkout해 운영 tenant config·data bind mount 원본을 30분마다 삭제할 수 있음 | ✅ 로컬 PASS | workspace 정리·checkout 제거. 실행별 `$RUNNER_TEMP`에 두 스크립트만 받고 cache도 임시영역 사용. 안전 계약 RED→GREEN, 표적 7건·전체 integrity 111건 PASS |
+| GENERATOR-MONITOR-R2-M3 | Slack webhook 미설정 상태에서 failure 전이가 저장되면 이후 같은 장애 알림은 재전송되지 않음 | ✅ 문서화 | `wiki/ops/인프라.md`에 best-effort 한계와 실제 수신 미검증을 명시 |
+
 ## 2026-10-07 생성기 감시 공유 concurrency 반려 교정 ✅ 로컬 PASS
 
 | 요청번호 | 결함 | 현재 판정 | 종료 증거 |
