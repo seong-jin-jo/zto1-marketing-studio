@@ -44,17 +44,33 @@ jobs:
     runs-on: [self-hosted, marketing_runner]
     environment: osmu-db-migration-approval
     env:
-      SOURCE_DIR: ${{ github.workspace }}/_ci/migrate-${{ github.run_id }}/src
+      SOURCE_DIR: ${{ github.workspace }}/source-migration
     defaults:
       run:
-        working-directory: ${{ github.workspace }}/_ci/migrate-${{ github.run_id }}/src
+        working-directory: ${{ github.workspace }}/source-migration
     steps:
-      # checkout clean의 범위를 운영 compose 루트와 분리한다. run_id별 하위 폴더라
-      # 마이그레이션 실행끼리도 같은 checkout을 공유하지 않는다.
+      - name: Prepare isolated checkout directory
+        working-directory: ${{ github.workspace }}
+        env:
+          CHECKOUT_DIR: ${{ github.workspace }}/source-migration
+        run: |
+          if ! mkdir -p "$CHECKOUT_DIR"; then
+            echo "::error::runner cannot create the isolated migration checkout directory"
+            stat -c 'workspace owner=%U group=%G mode=%a' "$GITHUB_WORKSPACE" || true
+            stat -c '_ci owner=%U group=%G mode=%a' "$GITHUB_WORKSPACE/_ci" || true
+            exit 1
+          fi
+      # actions/checkout의 path는 GITHUB_WORKSPACE 아래 상대경로이고, clean: true는
+      # 그 checkout 저장소에서 git clean -ffdx && git reset --hard HEAD를 실행한다.
+      # https://github.com/actions/checkout/blob/main/README.md#usage
+      # 운영 migration run 35772965580에서 성공한 root child 패턴을 고정 경로로 재사용한다.
+      # 위 concurrency가 migration 실행을 직렬화하고, config-tenantN/data-tenantN은
+      # checkout 저장소의 형제라 clean 대상 밖이다.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          path: _ci/migrate-${{ github.run_id }}/src
+          path: source-migration
+          clean: true
       - name: Observe and verify every running compatibility image
         id: app
         # audit 와 preflight 는 읽기 전용이고, baseline 부터 expand-guard 및 export queue는 DDL 이

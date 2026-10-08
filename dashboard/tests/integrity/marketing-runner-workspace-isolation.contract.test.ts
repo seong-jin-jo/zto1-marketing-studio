@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const WORKFLOWS_DIR = path.join(REPO_ROOT, ".github/workflows");
 const DEPLOY_WORKFLOW = "deploy-marketing.yml";
+const DB_MIGRATION_WORKFLOW = "osmu-db-migrate.yml";
+const DB_MIGRATION_CHECKOUT_PATH = "source-migration";
 
 type WorkflowSource = {
   filename: string;
@@ -45,8 +47,15 @@ function checkoutPaths(source: string): string[] {
   return paths;
 }
 
-function workingDirectories(source: string): string[] {
-  return [...source.matchAll(/^\s*working-directory:\s*(\S.*)$/gm)].map((match) =>
+function defaultWorkingDirectory(source: string): string {
+  return source.match(/defaults:\s*\n\s*run:\s*\n\s*working-directory:\s*(\S.*)/)?.[1]
+    .replace(/^['\"]|['\"]$/g, "") ?? "";
+}
+
+function workingDirectoriesAfterCheckout(source: string): string[] {
+  const checkoutIndex = source.search(/uses:\s*actions\/checkout@/);
+  const postCheckoutSource = checkoutIndex >= 0 ? source.slice(checkoutIndex) : "";
+  return [...postCheckoutSource.matchAll(/^\s*working-directory:\s*(\S.*)$/gm)].map((match) =>
     match[1].replace(/^['\"]|['\"]$/g, ""),
   );
 }
@@ -66,6 +75,7 @@ function isSafeChildPath(value: string): boolean {
 describe("운영 marketing_runner 워크스페이스 격리 계약", () => {
   const workflows = marketingRunnerWorkflows();
   const nonDeployWorkflows = workflows.filter(({ filename }) => filename !== DEPLOY_WORKFLOW);
+  const dbMigrationWorkflow = workflows.find(({ filename }) => filename === DB_MIGRATION_WORKFLOW);
 
   it("CI-RUNNER-WORKSPACE-ISOLATION-01 정상: 새 비배포 워크플로까지 전부 검사한다", () => {
     expect(workflows.map(({ filename }) => filename)).toContain(DEPLOY_WORKFLOW);
@@ -93,8 +103,11 @@ describe("운영 marketing_runner 워크스페이스 격리 계약", () => {
         `${filename}: checkout job의 모든 run step이 상속할 defaults.run.working-directory 필요`,
       ).toMatch(/defaults:\s*\n\s*run:\s*\n\s*working-directory:\s*\S/);
 
-      const directories = workingDirectories(source);
-      expect(directories.length, `${filename}: working-directory 누락`).toBeGreaterThan(0);
+      const directories = [
+        defaultWorkingDirectory(source),
+        ...workingDirectoriesAfterCheckout(source),
+      ];
+      expect(directories[0], `${filename}: defaults.run.working-directory 누락`).not.toBe("");
       for (const workingDirectory of directories) {
         const relative = workspaceRelative(workingDirectory);
         expect(
@@ -120,5 +133,26 @@ describe("운영 marketing_runner 워크스페이스 격리 계약", () => {
         /-v\s+["']?\$GITHUB_WORKSPACE["']?:\/w[\s\S]*?rm\s+-rf\s+\/w\//,
       );
     }
+  });
+
+  it("CI-RUNNER-WORKSPACE-ISOLATION-05 정상: DB migration은 운영에서 검증된 root child 고정 경로를 쓴다", () => {
+    expect(dbMigrationWorkflow, `${DB_MIGRATION_WORKFLOW} 누락`).toBeDefined();
+    expect(checkoutPaths(dbMigrationWorkflow!.source)).toEqual([DB_MIGRATION_CHECKOUT_PATH]);
+    expect(dbMigrationWorkflow!.source).toContain(
+      `SOURCE_DIR: \${{ github.workspace }}/${DB_MIGRATION_CHECKOUT_PATH}`,
+    );
+    expect(dbMigrationWorkflow!.source).toContain(
+      `working-directory: \${{ github.workspace }}/${DB_MIGRATION_CHECKOUT_PATH}`,
+    );
+  });
+
+  it("CI-RUNNER-WORKSPACE-ISOLATION-06 거절: migration 실행은 겹치지 않고 경로 생성 실패 때 권한 원인을 남긴다", () => {
+    expect(dbMigrationWorkflow, `${DB_MIGRATION_WORKFLOW} 누락`).toBeDefined();
+    expect(dbMigrationWorkflow!.source).toMatch(
+      /concurrency:\s*\n\s*group:\s*osmu-approved-db-migration\s*\n\s*cancel-in-progress:\s*false/,
+    );
+    expect(dbMigrationWorkflow!.source).toContain("name: Prepare isolated checkout directory");
+    expect(dbMigrationWorkflow!.source).toContain('mkdir -p "$CHECKOUT_DIR"');
+    expect(dbMigrationWorkflow!.source).toContain("workspace owner=%U group=%G mode=%a");
   });
 });

@@ -1,3 +1,9 @@
+## 2026-10-08 운영 DB 마이그레이션 checkout 권한 오류 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| DB-MIGRATE-CHECKOUT-01 | 승인된 `expand-export-queue`가 운영 tenant 폴더 밖의 runner 소스 경로에서 checkout을 마치고 DB 단계에 진입해야 함 | ✅ 로컬 PASS, 운영 미검증 | run `37751223311`은 `_ci/migrate-37751223311` 생성에서 `EACCES`로 실패했고 DB 단계는 skipped였다. host migration 성공 이력이 있는 root child 패턴의 `source-migration`으로 checkout·source·working-directory를 통일하고 권한 진단을 추가했다. 표적 34건, integrity 117건, TypeScript, YAML, tenant sentinel 보존은 통과했다. push 금지로 운영 workflow 재실행은 미검증이다. |
+
 ## 2026-10-08 편집실 S4·S7 main 병합 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

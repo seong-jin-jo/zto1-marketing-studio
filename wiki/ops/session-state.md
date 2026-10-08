@@ -1,3 +1,13 @@
+## 2026-10-08 18:08 KST · 운영 DB 마이그레이션 checkout 권한 오류 로컬 교정 완료
+
+- 인계 기준: 사용자가 지정한 과제와 Read 목록, GitHub Actions run `37751223311`, 현재 worktree를 정본으로 삼았다. tmux `openclaw-auto-3:0.1`은 이 Codex 워커 자신의 실행 기록이며 별도 숨은 지시는 없었다.
+- 관찰: run `37751223311`은 checkout이 `_ci/migrate-37751223311`을 만들 때 `EACCES`로 실패했고 이후 DB 관련 단계는 모두 skipped였다. 같은 runner workflow의 `_ci/src`는 CI run `37682437320`에서 성공했다. 운영 DB 변경은 없었다.
+- 변경: migration checkout, `SOURCE_DIR`, 기본 working-directory를 host migration run `35772965580`에서 성공한 root child 패턴의 고정 경로 `source-migration`으로 통일하고 `clean: true`와 공식 근거를 주석에 남겼다. 기존 concurrency가 migration 실행을 직렬화해 run별 폴더가 필요 없다. checkout 전에 mkdir을 검사하고 실패 시 workspace와 `_ci`의 소유자·권한만 기록한다. runner workflow 계약은 격리 경로·권한 진단·migration concurrency를, migration 계약은 source와 working-directory 정렬을 검증한다. 인프라 정본, build-log, 구현현황, QA tracker를 최신순으로 갱신했다.
+- 이웃 영향 확인: checkout clean은 `source-migration` 저장소에만 적용되고 형제 tenant 폴더는 대상 밖이다. 로컬 `git clean -ffdx` 실측은 형제 `config-tenant2`·`data-tenant2` sentinel을 보존했다. migration SQL, DB 스키마, deploy workflow는 diff 0이다.
+- 검증: fail-first는 신규 workspace 계약 1건과 기존 migration 계약 1건에서 확인했다. 수정 후 표적 2파일 34건, 전체 integrity 35파일 117건, `typecheck:ci`, YAML 파싱, tenant sentinel 보존이 통과했다. pipeline artifact lint는 실체·슬롯키·버전 정합 PASS이며 기존 핀 위생 경고 28건이다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 기존 사용자/다른 세션 변경이므로 수정·stage하지 않는다. 커밋·push하지 않는다.
+- 다음 실행: 컨트롤러가 변경 8파일과 로컬 증거를 검수한다. push 뒤 같은 승인 phase를 재실행해 checkout 성공과 DB migration 결과를 확인해야 운영 관찰 등급으로 올라간다. 이 워커는 커밋·push·운영 재실행을 하지 않았다.
+
 ## 2026-10-08 04:59 KST · S4·S7 main 병합 충돌 해소 및 로컬 검증 완료
 
 - 인계 기준: 사용자 지시, `origin/main` 3e04fd97, `/Users/sj/wt/s7-review-r3.md`, 현재 worktree. tmux `openclaw-auto-3:0.1`은 같은 작업의 이전 실행 기록으로 확인했다.
