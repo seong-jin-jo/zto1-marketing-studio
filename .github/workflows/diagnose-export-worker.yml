@@ -1,0 +1,191 @@
+name: Diagnose studio export worker (read-only)
+
+# STAMP: 2026-10-08 19:39 KST | model: gpt-6.1-sol/Codex | agent: code-builder
+# 근거: 운영 내보내기 3개 항목 queued 고착, Docker inspect 공식 문서, GitHub Actions 로그 마스킹 공식 문서
+# 고민: 운영 상태를 바꾸지 않고도 기동 실패, 재시작, health, RLS 가시성, 대기열 적체를 한 실행에서 구분한다.
+#
+# 안전장치
+#   - 수동 실행만 허용하고 checkout, 배포, 컨테이너 재시작을 하지 않는다.
+#   - DB 조회는 기존 dashboard 컨테이너의 연결로 READ ONLY 트랜잭션 안에서 집계만 수행한다.
+#   - 테넌트 식별자, 요청 payload, 오류 detail 등 고객 데이터 내용은 출력하지 않는다.
+#   - 로그와 health 응답은 자격증명 패턴을 가린 뒤 출력한다.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  diagnose:
+    runs-on: [self-hosted, marketing_runner]
+    timeout-minutes: 5
+    steps:
+      - name: 작업자 컨테이너 상태·health·재시작 횟수
+        shell: bash
+        run: |
+          set -uo pipefail
+          mapfile -t workers < <(
+            docker ps -a \
+              --filter 'label=com.docker.compose.service=openclaw-studio-export-worker' \
+              --format '{{.ID}}'
+          )
+          if [ "${#workers[@]}" -eq 0 ]; then
+            echo "::error::openclaw-studio-export-worker 컨테이너를 찾지 못했다"
+            exit 1
+          fi
+          failed=0
+          for worker in "${workers[@]}"; do
+            if ! docker inspect --type=container -f \
+              'name={{.Name}} state={{.State.Status}} running={{.State.Running}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} restarts={{.RestartCount}} started={{.State.StartedAt}} finished={{.State.FinishedAt}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} image={{.Image}}' \
+              "$worker"; then
+              echo "::error::작업자 컨테이너 상태 조회 실패"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+      - name: 작업자 health 응답과 최근 로그 200줄
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          mask_output() {
+            perl -pe '
+              s{(postgres(?:ql)?://)[^\s"]+}{$1[REDACTED]}ig;
+              s{(https?://[^\s?#"]+)[?#][^\s"]+}{$1?[REDACTED_QUERY]}ig;
+              s{^.*\bauthorization\b.*$}{[REDACTED_AUTHORIZATION_LINE]}ig;
+              s{(Bearer\s+)[A-Za-z0-9._~+/=-]+}{$1[REDACTED]}ig;
+              s{((?:authorization|token|secret|password|credential|signature|cookie|set-cookie|api[_-]?key|access[_-]?key|client[_-]?secret)[^:=\s]*\s*[:=]\s*)[^\s,;]+}{$1[REDACTED]}ig;
+              s{\b(?:gh[pousr]_[A-Za-z0-9_]+|ya29\.[A-Za-z0-9._-]+|eyJ[A-Za-z0-9._-]+)\b}{[REDACTED]}g;
+              s{\b(?:xox[baprs]-[A-Za-z0-9-]+|sk-[A-Za-z0-9_-]{20,}|(?:AKIA|ASIA)[A-Z0-9]{16})\b}{[REDACTED]}g;
+              s{https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+}{https://hooks.slack.com/services/[REDACTED]}ig;
+              s{^.*\b(?:request_payload|requestPayload|payload|error_detail|errorDetail)\b.*$}{[REDACTED_SENSITIVE_LOG_LINE]}ig;
+              s{((?:"?(?:tenant_id|tenantId|draft_id|draftId)"?\s*[:=]\s*)"?)[^"\s,;]+}{$1[REDACTED]}ig;
+              s{\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b}{[REDACTED_UUID]}ig;
+              s{\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b}{[REDACTED_EMAIL]}ig;
+              s{\b[A-Za-z0-9_+/=-]{32,}\b}{[REDACTED_HIGH_ENTROPY]}g;
+            '
+          }
+          safe_masked_output() {
+            local stop_token="diag-${GITHUB_RUN_ID:-0}-${RANDOM}-${RANDOM}"
+            local mask_status
+            printf '::stop-commands::%s\n' "$stop_token"
+            mask_output
+            mask_status=$?
+            printf '::%s::\n' "$stop_token"
+            return "$mask_status"
+          }
+          mapfile -t workers < <(
+            docker ps -a \
+              --filter 'label=com.docker.compose.service=openclaw-studio-export-worker' \
+              --format '{{.ID}}'
+          )
+          if [ "${#workers[@]}" -eq 0 ]; then
+            echo "::error::health와 로그를 읽을 작업자 컨테이너가 없다"
+            exit 1
+          fi
+          failed=0
+          for worker in "${workers[@]}"; do
+            name="$(docker inspect --type=container -f '{{.Name}}' "$worker" | sed 's#^/##')"
+            echo "::group::${name} health"
+            if [ "$(docker inspect --type=container -f '{{.State.Running}}' "$worker" 2>/dev/null)" = "true" ]; then
+              health_status="$(docker inspect --type=container -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$worker" 2>/dev/null || echo unknown)"
+              if [ "$health_status" != "healthy" ]; then
+                echo "::error::${name} Docker health 상태가 ${health_status}다"
+                failed=1
+              fi
+              if ! docker exec "$worker" node -e \
+                "const port=process.env.EXPORT_WORKER_HEALTH_PORT??'34620';fetch('http://127.0.0.1:'+port,{signal:AbortSignal.timeout(5000)}).then(async response=>{console.log('http='+response.status);console.log((await response.text()).slice(0,4096));if(!response.ok)process.exitCode=1},error=>{console.error(error.message);process.exit(1)})" \
+                2>&1 | safe_masked_output; then
+                echo "::error::${name} health endpoint 호출 실패"
+                failed=1
+              fi
+            else
+              echo "::error::${name}가 실행 중이 아니므로 health endpoint를 호출하지 않음"
+              failed=1
+            fi
+            echo "::endgroup::"
+            echo "::group::${name} recent logs"
+            if ! docker logs --tail 200 "$worker" 2>&1 | safe_masked_output; then
+              echo "::error::${name} 최근 로그 조회 실패"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
+
+      - name: DB 작업·항목 상태별 건수와 연결 역할
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          mask_output() {
+            perl -pe '
+              s{(postgres(?:ql)?://)[^\s"]+}{$1[REDACTED]}ig;
+              s{(https?://[^\s?#"]+)[?#][^\s"]+}{$1?[REDACTED_QUERY]}ig;
+              s{^.*\bauthorization\b.*$}{[REDACTED_AUTHORIZATION_LINE]}ig;
+              s{(Bearer\s+)[A-Za-z0-9._~+/=-]+}{$1[REDACTED]}ig;
+              s{((?:authorization|token|secret|password|credential|signature|cookie|set-cookie|api[_-]?key|access[_-]?key|client[_-]?secret)[^:=\s]*\s*[:=]\s*)[^\s,;]+}{$1[REDACTED]}ig;
+              s{\b(?:gh[pousr]_[A-Za-z0-9_]+|ya29\.[A-Za-z0-9._-]+|eyJ[A-Za-z0-9._-]+)\b}{[REDACTED]}g;
+              s{\b(?:xox[baprs]-[A-Za-z0-9-]+|sk-[A-Za-z0-9_-]{20,}|(?:AKIA|ASIA)[A-Z0-9]{16})\b}{[REDACTED]}g;
+              s{https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+}{https://hooks.slack.com/services/[REDACTED]}ig;
+              s{^.*\b(?:request_payload|requestPayload|payload|error_detail|errorDetail)\b.*$}{[REDACTED_SENSITIVE_LOG_LINE]}ig;
+              s{((?:"?(?:tenant_id|tenantId|draft_id|draftId)"?\s*[:=]\s*)"?)[^"\s,;]+}{$1[REDACTED]}ig;
+              s{\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b}{[REDACTED_UUID]}ig;
+              s{\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b}{[REDACTED_EMAIL]}ig;
+              s{\b[A-Za-z0-9_+/=-]{32,}\b}{[REDACTED_HIGH_ENTROPY]}g;
+            '
+          }
+          safe_masked_output() {
+            local stop_token="diag-${GITHUB_RUN_ID:-0}-${RANDOM}-${RANDOM}"
+            local mask_status
+            printf '::stop-commands::%s\n' "$stop_token"
+            mask_output
+            mask_status=$?
+            printf '::%s::\n' "$stop_token"
+            return "$mask_status"
+          }
+          dashboard="openclaw-dashboard-osmu"
+          if [ "$(docker inspect --type=container -f '{{.State.Running}}' "$dashboard" 2>/dev/null || true)" != "true" ]; then
+            echo "::error::${dashboard}가 실행 중이 아니어서 DB 집계를 수행하지 못했다"
+            exit 1
+          fi
+          docker exec -i "$dashboard" node 2>&1 <<'NODE' | safe_masked_output || { echo "::error::DB 읽기 전용 집계 실패"; exit 1; }
+          const postgres = require("postgres");
+          void (async () => {
+            const databaseUrl = process.env.DATABASE_URL;
+            if (!databaseUrl) throw new Error("DATABASE_URL is not configured");
+            const sql = postgres(databaseUrl, { max: 1, idle_timeout: 2 });
+            try {
+              await sql.begin(async (tx) => {
+                await tx.unsafe("SET TRANSACTION READ ONLY");
+                const role = await tx.unsafe(`
+                  SELECT current_user AS role,
+                         rolsuper AS is_superuser,
+                         rolbypassrls AS has_bypass_rls,
+                         (rolsuper OR rolbypassrls) AS effective_rls_bypass,
+                         row_security_active('public.studio_export_jobs'::regclass) AS jobs_rls_active,
+                         row_security_active('public.studio_export_items'::regclass) AS items_rls_active,
+                         coalesce(current_setting('app.tenant_id', true), '') <> '' AS tenant_context_set
+                  FROM pg_roles WHERE rolname=current_user
+                `);
+                const jobs = await tx.unsafe(`
+                  SELECT status, count(*)::int AS count
+                  FROM studio_export_jobs GROUP BY status ORDER BY status
+                `);
+                const items = await tx.unsafe(`
+                  SELECT status, count(*)::int AS count
+                  FROM studio_export_items GROUP BY status ORDER BY status
+                `);
+                console.log("connection_role=" + JSON.stringify(role));
+                console.log("studio_export_jobs=" + JSON.stringify(jobs));
+                console.log("studio_export_items=" + JSON.stringify(items));
+              });
+            } finally {
+              await sql.end({ timeout: 2 });
+            }
+          })().catch((error) => {
+            console.error(error instanceof Error ? error.message : String(error));
+            process.exitCode = 1;
+          });
+          NODE
