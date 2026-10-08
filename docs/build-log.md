@@ -1,5 +1,17 @@
 # OSMU build log
 
+## 2026-10-08 18:08 KST · 운영 DB 마이그레이션 checkout 권한 오류 교정
+
+STAMP: 2026-10-08 18:08 KST | model: gpt-5/Codex | agent: code-builder | skill: 없음 | 근거: 실패 run 37751223311, 성공 migration run 35772965580, actions/checkout 공식 README, fail-first 계약 | 고민: container CI 경로의 성공을 host 권한 증거로 쓰지 않고 같은 host migration에서 성공한 root child 경로를 복구했다.
+
+**기존 구현 확인:** DB migration은 원래 root child `source-<run_id>`에서 성공했지만 runner 격리 보강 때 `_ci/migrate-<run_id>/src`로 바뀌었다. 승인 실행은 새 `_ci` 하위 폴더 생성에서 `EACCES`로 멈췄고 DB 단계는 전부 skipped였다. 등록된 `marketing_runner`는 한 대이며 migration은 고정 concurrency 그룹으로 직렬화돼 있었다.
+
+**추가·변경:** `osmu-db-migrate.yml`의 checkout path, `SOURCE_DIR`, 기본 working-directory를 운영 성공 이력이 있는 root child 패턴의 고정 경로 `source-migration`으로 맞추고 `clean: true`를 명시했다. 기존 concurrency가 migration 실행을 직렬화해 run별 폴더가 필요 없다. checkout 전에 디렉터리 생성을 검사하고 실패하면 workspace와 `_ci` 소유자·권한만 기록한다. 공식 `actions/checkout` 문서가 `path`를 `$GITHUB_WORKSPACE` 아래 상대경로, clean을 checkout 저장소의 `git clean -ffdx`로 정의한다는 근거를 workflow 주석에 남겼다. 계약 테스트는 격리 경로, source 정렬, 권한 진단, migration concurrency를 검증한다.
+
+**검증:** 수정 전 새 계약 1건과 기존 migration 계약 1건이 각각 실패했다. 수정 후 표적 2파일 34건, 전체 integrity 35파일 117건, `typecheck:ci`, workflow YAML 파싱이 통과했다. checkout child clean 실측에서 tenant 형제 sentinel 2개가 보존됐다. 원격 workflow 재실행과 운영 DB migration은 push 금지로 미검증이다.
+
+SOURCES/MODEL: gpt-5/Codex | `.github/workflows/osmu-db-migrate.yml` | `dashboard/tests/integrity/marketing-runner-workspace-isolation.contract.test.ts` | `dashboard/tests/db/osmu-migration-runner.contract.test.ts` | `wiki/ops/인프라.md` | https://github.com/actions/checkout/blob/main/README.md#usage
+
 ## 2026-10-08 04:59 KST · 편집실 S4·S7 main 병합 충돌 해소
 
 STAMP: 2026-10-08 04:59 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review, qa | 근거: `origin/main` 3e04fd97, S7 HEAD 4eb75fd1, 집중 Vitest·integrity·TypeScript | 고민: 어느 한쪽 구현을 선택하지 않고 S4의 빈 장 포커스와 S7의 템플릿 상태 이력을 같은 편집기 경계에 결선했다.
@@ -82,7 +94,7 @@ STAMP: 2026-10-08 04:30 KST | model: gpt-6.1-sol/Codex | agent: code-builder | s
 
 STAMP: 2026-10-07 20:00 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: actions/checkout v4 공식 README, GitHub Actions variables reference, PR 126 교차 리뷰, fail-first integrity 계약 | 고민: deploy의 복원 절차는 보존하고 CI와 DB migration의 checkout clean 범위만 하위 source tree로 제한했다.
 
-`ci.yml`은 `_ci/src`, `osmu-db-migrate.yml`은 `_ci/migrate-${{ github.run_id }}/src`에 checkout한다. 각 workflow의 run working-directory와 cache, source 경로도 checkout 하위로 정렬했다. `marketing_runner`를 쓰는 모든 workflow를 순회하는 integrity 계약은 deploy 이외의 루트 checkout, working-directory 이탈, 루트 `git clean`, workspace 대상 `rm -rf`를 거절한다.
+당시 `ci.yml`은 `_ci/src`, `osmu-db-migrate.yml`은 `_ci/migrate-${{ github.run_id }}/src`에 checkout하도록 만들었다. migration의 `_ci` 경로는 2026-10-08 운영 권한 오류가 확인돼 이 문서 최상단의 `source-migration`으로 대체됐다. `marketing_runner`를 쓰는 모든 workflow를 순회하는 integrity 계약은 deploy 이외의 루트 checkout, working-directory 이탈, 루트 `git clean`, workspace 대상 `rm -rf`를 거절한다.
 
 수정 전 신규 계약은 `ci.yml`의 path 누락과 `dashboard` 루트 기준 working-directory 때문에 2건 실패했다. 수정 후 표적 32건, 전체 integrity 34파일 108건, workflow YAML 8파일 파싱이 통과했다. 임시 루트 실측에서 `_ci/src`의 untracked 파일만 정리되고 형제 `config-tenant2`와 `data-tenant2` sentinel은 보존됐다. actionlint는 로컬에 설치돼 있지 않아 미검증이다. 원격 CI, 운영 러너 실행, 현재 운영 tenant 데이터 상태와 운영 배포는 미검증이며 push하지 않았다.
 ## 2026-10-07 20:01 KST · 생성기 감시 운영 워크스페이스 격리

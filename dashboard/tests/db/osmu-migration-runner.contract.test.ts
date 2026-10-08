@@ -289,9 +289,10 @@ describe("OSMU explicit migration runner 계약", () => {
   });
 
   it("GEN-MIG-19 정상: 승인 DB workflow는 host psql 없이 postgres:16 client로 모든 DB script를 실행한다", () => {
-    expect(migrationWorkflow).toContain('path: _ci/migrate-${{ github.run_id }}/src');
-    expect(migrationWorkflow).toContain('SOURCE_DIR: ${{ github.workspace }}/_ci/migrate-${{ github.run_id }}/src');
-    expect(migrationWorkflow).toContain('working-directory: ${{ github.workspace }}/_ci/migrate-${{ github.run_id }}/src');
+    expect(migrationWorkflow).toContain("path: source-migration");
+    expect(migrationWorkflow).toContain("clean: true");
+    expect(migrationWorkflow).toContain('SOURCE_DIR: ${{ github.workspace }}/source-migration');
+    expect(migrationWorkflow).toContain('working-directory: ${{ github.workspace }}/source-migration');
     const manifestStep = migrationWorkflow.slice(
       migrationWorkflow.indexOf("Build rollback manifest from observed pre-contract state"),
       migrationWorkflow.indexOf("Download the original rollback manifest"),
