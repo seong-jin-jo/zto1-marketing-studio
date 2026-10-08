@@ -27,6 +27,7 @@
     "e2e:studio-s7": "node scripts/verify-studio-s7-e2e.mjs",
     "e2e:editroom-s4": "node scripts/verify-editroom-s4-export-e2e.mjs",
     "e2e:studio-v70-screen": "node scripts/verify-studio-v70-screen-conformance.mjs",
+    "e2e:chairman-defects": "node scripts/verify-chairman-defects-20261009-e2e.mjs",
     "qa:publish-room-alignment": "node scripts/measure-publish-room-alignment.mjs",
     "qa:publish-room-alignment:ci": "bash scripts/ci-publish-room-alignment.sh",
     "qa:editroom-mobile-caption": "node scripts/verify-editroom-mobile-caption.mjs",

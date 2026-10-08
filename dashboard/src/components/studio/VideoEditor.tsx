@@ -127,6 +127,12 @@ function formatClock(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+export function nextPlayableBodyTime(bodyTime: number, subtitles: SubtitleLine[], showOriginal = false): number {
+  if (showOriginal) return bodyTime;
+  const cut = subtitles.find((line) => line.cut && bodyTime >= line.startSec && bodyTime < line.endSec);
+  return cut ? cut.endSec : bodyTime;
+}
+
 /** VideoEditValidationError.rule → 화면에 보여줄 고정 한국어 문구(N3). */
 function videoEditErrorMessage(rule: string): string {
   if (rule === "overlay_text") return "오버레이 문구를 입력해 주세요.";
@@ -261,12 +267,13 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   const playbackPlayhead = playbackTime;
 
   function seekBodyTime(sec: number) {
-    const targetPlaybackTime = playbackTimeFromBodyTime(sec, duration ?? sec, playbackIntroOutro);
+    const playableBodyTime = nextPlayableBodyTime(sec, displaySubtitles, showOriginal);
+    const targetPlaybackTime = playbackTimeFromBodyTime(playableBodyTime, duration ?? playableBodyTime, playbackIntroOutro);
     if (videoRef.current) {
       videoRef.current.currentTime = targetPlaybackTime;
     }
     setPlaybackTime(targetPlaybackTime);
-    setPlayhead(sec);
+    setPlayhead(playableBodyTime);
   }
 
   return (
@@ -304,12 +311,21 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
               setPlaybackTime(videoRef.current?.currentTime ?? 0);
             }}
             onTimeUpdate={(t) => {
+              const bodyTime = bodyTimeFromPlaybackTime(t, duration ?? t, playbackIntroOutro);
+              const playableBodyTime = nextPlayableBodyTime(bodyTime, displaySubtitles, showOriginal);
+              if (playableBodyTime !== bodyTime && videoRef.current) {
+                const nextPlaybackTime = playbackTimeFromBodyTime(playableBodyTime, duration ?? playableBodyTime, playbackIntroOutro);
+                videoRef.current.currentTime = nextPlaybackTime;
+                setPlaybackTime(nextPlaybackTime);
+                setPlayhead(playableBodyTime);
+                return;
+              }
               setPlaybackTime(t);
-              setPlayhead(bodyTimeFromPlaybackTime(t, duration ?? t, playbackIntroOutro));
+              setPlayhead(bodyTime);
             }}
             onSeek={seekBodyTime}
           />
-          <div className="min-w-0 space-y-stack" data-video-script-column>
+          <div className="min-w-0 max-h-[32rem] space-y-stack overflow-y-auto" data-video-script-column>
             {drawerOpen ? (
               <VideoInsertDrawer
                 edit={videoEdit}

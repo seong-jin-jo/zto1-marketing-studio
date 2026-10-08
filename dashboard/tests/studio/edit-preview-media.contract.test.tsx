@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditPreview } from "@/components/studio/EditPreview";
 
 // 2026-09-08 회장 실사용: "생성한 다음 편집실 가면 카드뉴스 영상 아무것도 안 나온다".
@@ -20,6 +20,68 @@ describe("편집실 미리보기", () => {
     const img = container.querySelector('[data-edit-preview-media="image"]');
     expect(img).toBeInTheDocument();
     expect(img?.getAttribute("src")).toBe("/api/media/tok");
+  });
+
+  it("CHAIRMAN-FIX-R2-08 별도 위치 버튼 없이도 카드 글자를 키보드로 직접 옮긴다", () => {
+    const onPositionsChange = vi.fn();
+    const { container } = render(
+      <EditPreview
+        kind="card"
+        lines={["한 줄"]}
+        activeLine={0}
+        onActiveLine={() => {}}
+        cardTextPositions={["center"]}
+        onCardTextPositionsChange={onPositionsChange}
+      />,
+    );
+    const mover = container.querySelector('[aria-label="카드 글자 직접 끌어 옮기기"]') as HTMLElement;
+    expect(mover).toHaveAttribute("tabindex", "0");
+    fireEvent.keyDown(mover, { key: "ArrowRight" });
+    expect(onPositionsChange).toHaveBeenCalledWith(["center-right"]);
+  });
+
+  it("CHAIRMAN-FIX-R4-04 잘못 저장된 위치는 center로 복구하고 키보드 이동도 예외 없이 동작한다", () => {
+    const onPositionsChange = vi.fn();
+    const { container } = render(
+      <EditPreview
+        kind="card"
+        lines={["한 줄"]}
+        activeLine={0}
+        onActiveLine={() => {}}
+        cardTextPositions={["broken-position" as never]}
+        onCardTextPositionsChange={onPositionsChange}
+      />,
+    );
+    const mover = container.querySelector('[aria-label="카드 글자 직접 끌어 옮기기"]') as HTMLElement;
+    expect(mover).toHaveAttribute("data-card-text-position", "center");
+    fireEvent.keyDown(mover, { key: "ArrowRight" });
+    expect(onPositionsChange).toHaveBeenCalledWith(["center-right"]);
+  });
+
+  it("CHAIRMAN-FIX-R4-05 글자 상자를 클릭만 하면 위치를 저장하지 않고 실제 드래그만 반영한다", () => {
+    const onPositionsChange = vi.fn();
+    const { container } = render(
+      <EditPreview
+        kind="card"
+        lines={["한 줄"]}
+        activeLine={0}
+        onActiveLine={() => {}}
+        cardTextPositions={["center"]}
+        onCardTextPositionsChange={onPositionsChange}
+      />,
+    );
+    const mover = container.querySelector('[aria-label="카드 글자 직접 끌어 옮기기"]') as HTMLElement;
+    const canvas = container.querySelector("[data-card-canvas]") as HTMLElement;
+    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 300, bottom: 400, width: 300, height: 400, toJSON: () => ({}),
+    });
+    fireEvent.pointerDown(mover, { pointerId: 7, clientX: 150, clientY: 200 });
+    fireEvent.pointerUp(canvas, { pointerId: 7, clientX: 150, clientY: 200 });
+    expect(onPositionsChange).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(mover, { pointerId: 8, clientX: 150, clientY: 200 });
+    fireEvent.pointerUp(canvas, { pointerId: 8, clientX: 280, clientY: 40 });
+    expect(onPositionsChange).toHaveBeenCalledWith(["top-right"]);
   });
 
   it("영상은 만든 영상을 그린다", () => {

@@ -19,7 +19,7 @@ describe("편집실 v65 화면 계약", () => {
       expect(formatGroup.querySelector(`button[aria-label="${label}"]`)).not.toBeNull();
     }
     expect(formatGroup.querySelector('button[aria-label="음악"]')).toBeNull();
-    expect(screen.getByText("형식과 채널은 다릅니다.")).toBeInTheDocument();
+    expect(screen.queryByText("형식과 채널은 다릅니다.")).not.toBeInTheDocument();
     expect(screen.queryByText("여기서만 한 번에 되는 일")).not.toBeInTheDocument();
     expect(document.querySelectorAll("button.bg-accent")).toHaveLength(1);
 
@@ -87,7 +87,7 @@ describe("편집실 v65 화면 계약", () => {
     });
   });
 
-  it("V65-EDIT-03 정상: 카드 글자를 이미지 안에서 고치고 상단·중앙·하단으로 옮긴다", () => {
+  it("V65-EDIT-03 정상: 카드 글자를 이미지 안에서 고치고 기본 화면에서 직접 끌 수 있다", () => {
     const onLinesChange = vi.fn();
     const onCardTextPositionsChange = vi.fn();
     render(
@@ -102,8 +102,10 @@ describe("편집실 v65 화면 계약", () => {
 
     fireEvent.change(screen.getByRole("textbox", { name: "카드 1 글자" }), { target: { value: "카드 안에서 고침" } });
     expect(onLinesChange).toHaveBeenCalledWith(["카드 안에서 고침"]);
-    fireEvent.click(screen.getByRole("button", { name: "상단" }));
-    expect(onCardTextPositionsChange).toHaveBeenCalledWith(["top-center"]);
+    expect(screen.getByLabelText("카드 글자 직접 끌어 옮기기")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "상단" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "글자 위치 옮기기" })).not.toBeInTheDocument();
+    expect(onCardTextPositionsChange).not.toHaveBeenCalled();
     // v70에서는 중복 도구줄을 없애고 미리보기의 비율 선택기 한 벌만 남긴다.
     expect(screen.getAllByRole("group", { name: "콘텐츠 크기 고르기" })).toHaveLength(1);
     expect(screen.getByRole("button", { name: "세로 카드 4:5" })).toHaveAttribute("aria-pressed", "true");

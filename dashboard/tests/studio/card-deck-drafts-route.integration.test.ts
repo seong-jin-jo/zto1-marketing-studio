@@ -71,6 +71,35 @@ beforeEach(() => {
 });
 
 describe("POST /api/studio/drafts cardDeck 저장·검증 (TC-API-01·02)", () => {
+  it("CHAIRMAN-FIX-R4-06 경계: 알 수 없는 카드 글자 위치는 저장하지 않는다", async () => {
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: "tenant-1", idea: "잘못된 위치", cardTextPositions: ["outside"] }),
+    }));
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({ code: "INVALID_CARD_TEXT_POSITIONS" });
+    expect(withTenant).not.toHaveBeenCalled();
+  });
+
+  it("CHAIRMAN-FIX-R4-06 호환: 구버전 {x,y} 카드 글자 좌표는 계속 저장한다", async () => {
+    H.rows = [{ id: "draft-legacy-card-offset" }];
+    const { POST } = await import("@/app/api/studio/drafts/route");
+    const response = await POST(new Request("http://localhost/api/studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: "tenant-1",
+        idea: "구버전 좌표",
+        cardTextPositions: [{ x: 10, y: 20 }],
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(H.jsonValues[0]).toEqual(expect.objectContaining({
+      cardTextPositions: [{ x: 10, y: 20 }],
+    }));
+  });
+
   it("S7-R1-M6 생성실 결과를 실제 route로 저장하고 재접속 조회하면 덱·원본·템플릿 상태가 함께 복원된다", async () => {
     const generated = buildGeneratedCardTemplate({
       renderEnabled: true,

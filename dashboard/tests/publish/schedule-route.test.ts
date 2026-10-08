@@ -86,7 +86,7 @@ describe("POST /api/schedule — 검증 분기", () => {
     expect(body.error).toMatch(/미래/);
   });
 
-  it("S1-R5-SCHEDULE-01 자유 배치 초안은 예약 등록을 409로 거절한다", async () => {
+  it("S1-R5-SCHEDULE-01 카드 직접 편집 초안은 예약 등록을 409로 거절한다", async () => {
     H.hasCardDeckV3 = true;
     const { status, body } = await schedule({
       draft_id: "22222222-2222-4222-8222-222222222222",

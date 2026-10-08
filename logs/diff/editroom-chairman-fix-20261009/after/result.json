@@ -1,0 +1,177 @@
+{
+  "ok": true,
+  "draftSaveCount": 5,
+  "cardDrag": {
+    "before": {
+      "x": 427.546875,
+      "y": 501.828125,
+      "width": 234.875,
+      "height": 139.8125
+    },
+    "after": {
+      "x": 461.109375,
+      "y": 613.25,
+      "width": 234.875,
+      "height": 139.8125
+    },
+    "pixelMean": [
+      107.34692876414731,
+      108.34412558253618,
+      111.38751357791092
+    ]
+  },
+  "cardResizeContainment": {
+    "before": {
+      "x": 461.109375,
+      "y": 613.25,
+      "width": 234.875,
+      "height": 139.8125
+    },
+    "selection": {
+      "x": 394,
+      "y": 383,
+      "width": 302,
+      "height": 377.5
+    },
+    "stage": {
+      "x": 394,
+      "y": 383,
+      "width": 302,
+      "height": 377.5
+    }
+  },
+  "cardLayout": [
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "root": {
+        "x": 248,
+        "y": 279,
+        "width": 840,
+        "height": 1786.65625,
+        "right": 1088,
+        "bottom": 2065.65625
+      },
+      "canvas": {
+        "x": 393,
+        "y": 382,
+        "width": 304,
+        "height": 379.5,
+        "right": 697,
+        "bottom": 761.5
+      },
+      "overflow": [],
+      "outside": [],
+      "rootScrollLeft": 0
+    },
+    {
+      "viewport": {
+        "width": 1512,
+        "height": 982
+      },
+      "root": {
+        "x": 248,
+        "y": 279,
+        "width": 912,
+        "height": 1834.671875,
+        "right": 1160,
+        "bottom": 2113.671875
+      },
+      "canvas": {
+        "x": 393,
+        "y": 382,
+        "width": 304,
+        "height": 379.5,
+        "right": 697,
+        "bottom": 761.5
+      },
+      "overflow": [],
+      "outside": [],
+      "rootScrollLeft": 0
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "root": {
+        "x": 24,
+        "y": 472,
+        "width": 342,
+        "height": 4902.5,
+        "right": 366,
+        "bottom": 5374.5
+      },
+      "canvas": {
+        "x": 41,
+        "y": 679,
+        "width": 308,
+        "height": 384.5,
+        "right": 349,
+        "bottom": 1063.5
+      },
+      "overflow": [],
+      "outside": [],
+      "rootScrollLeft": 0
+    }
+  ],
+  "videoTabGeometry": {
+    "rect": {
+      "x": 1044,
+      "y": 219,
+      "width": 44,
+      "height": 44
+    },
+    "hit": "<button type=\"button\" class=\"ds-label inline-flex min-h-control-touch ds-touch-target items-center justify-center gap-micro rounded-control font-medium transition-colors disabled:c"
+  },
+  "videoCutSkippedTo": 1,
+  "videoFrame": {
+    "readyState": 4,
+    "currentTime": 1,
+    "videoWidth": 540,
+    "videoHeight": 960
+  },
+  "selectedPublishMedia": [
+    {
+      "x": 261,
+      "y": 219,
+      "width": 393,
+      "height": 192
+    },
+    {
+      "x": 666,
+      "y": 219,
+      "width": 393,
+      "height": 192
+    }
+  ],
+  "exportFlow": {
+    "exportStarted": true,
+    "exportJobReads": 2,
+    "selectedImageSrc": "/qa/chairman-photo.jpg?export=chairman-v3"
+  },
+  "publishBoxes": [
+    {
+      "x": 248,
+      "y": -777,
+      "width": 824
+    },
+    {
+      "x": 248,
+      "y": 30,
+      "width": 824
+    },
+    {
+      "x": 248,
+      "y": 837,
+      "width": 824
+    }
+  ],
+  "toastCounts": {
+    "edit": 1,
+    "publish": 1
+  },
+  "consoleErrors": 0
+}

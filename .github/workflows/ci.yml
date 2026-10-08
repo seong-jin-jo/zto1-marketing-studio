@@ -74,6 +74,9 @@ jobs:
         run: npx tsc --noEmit -p tsconfig.ci.json
 
       - name: Build
+        env:
+          CARD_DECK_V3_RENDER_ENABLED: "1"
+          NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED: "1"
         run: npm run build   # NEXT_PUBLIC_SUPABASE_* 미설정도 빌드 OK(런타임만 영향)
 
       - name: Install psql client
@@ -140,6 +143,20 @@ jobs:
           trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
           timeout --kill-after=5s 60s bash -c 'until curl -fsS http://127.0.0.1:3472/studio >/dev/null; do sleep 1; done'
           timeout --kill-after=10s 150s npm run e2e:studio-v70-screen
+
+      - name: 회장 결함 생성→편집→발행 통합 회귀 게이트
+        timeout-minutes: 4
+        env:
+          CARD_DECK_V3_RENDER_ENABLED: "1"
+          NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED: "1"
+          CHAIRMAN_FIX_BASE_URL: http://127.0.0.1:3473
+          CHAIRMAN_FIX_OUTPUT_DIR: /tmp/editroom-chairman-fix
+        run: |
+          npm run start -- -p 3473 > /tmp/editroom-chairman-fix-dev.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+          timeout --kill-after=5s 60s bash -c 'until curl -fsS http://127.0.0.1:3473/studio >/dev/null; do sleep 1; done'
+          timeout --kill-after=10s 150s npm run e2e:chairman-defects
 
       - name: 편집실 본문 충돌 복구 두 탭 회귀 게이트 (chromium)
         timeout-minutes: 3

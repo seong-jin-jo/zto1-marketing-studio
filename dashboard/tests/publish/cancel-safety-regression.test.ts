@@ -364,6 +364,7 @@ describe('발행기 도구 계약 — get_approved/update_channel 이 가드를 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Codex 교차 리뷰 잔여 결함 — 경계 케이스', () => {
   it('MAJOR 1: 발행기도 대시보드와 같은 자물쇠(${file}.lock)를 쓴다', async () => {
+    vi.doUnmock('proper-lockfile');
     const { withQueueLock } = await import('../../../openclaw/extensions/threads-queue/src/queue-lock');
     const target = path.join(tmpDir, 'lock-probe.json');
     fs.writeFileSync(target, '{}');
@@ -391,6 +392,7 @@ describe('Codex 교차 리뷰 잔여 결함 — 경계 케이스', () => {
   });
 
   it('MAJOR 1: 잠금을 못 잡으면 조용히 진행하지 않고 실패한다(fail-open 금지)', async () => {
+    vi.doUnmock('proper-lockfile');
     const { withQueueLock } = await import('../../../openclaw/extensions/threads-queue/src/queue-lock');
     const target = path.join(tmpDir, 'lock-busy.json');
     fs.writeFileSync(target, '{}');
@@ -401,6 +403,7 @@ describe('Codex 교차 리뷰 잔여 결함 — 경계 케이스', () => {
   }, 20000);
 
   it('MAJOR 1: 죽은 프로세스가 남긴 낡은 자물쇠는 회수한다(큐 영구 정지 방지)', async () => {
+    vi.doUnmock('proper-lockfile');
     const { withQueueLock } = await import('../../../openclaw/extensions/threads-queue/src/queue-lock');
     const target = path.join(tmpDir, 'lock-stale.json');
     fs.writeFileSync(target, '{}');

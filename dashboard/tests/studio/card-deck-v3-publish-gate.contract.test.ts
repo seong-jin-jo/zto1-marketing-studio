@@ -24,7 +24,7 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(read("src/lib/queue-add.ts")).toContain("assertDraftCanEnterPublishQueue");
   });
 
-  it("S1-R5-SCHEDULE-01 예약 등록과 예약 실행도 자유 배치 안전문을 지난다", () => {
+  it("S1-R5-SCHEDULE-01 예약 등록과 예약 실행도 카드 직접 편집 안전문을 지난다", () => {
     const register = read("src/app/api/schedule/route.ts");
     const execute = read("src/app/api/schedule/publish-due/route.ts");
     const studio = read("src/app/studio/page.tsx");
@@ -34,7 +34,10 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
     expect(execute).toContain('status: "blocked"');
     expect(studio).toContain("showSchedule && activeWorkspace && !cardDeckV3PublishBlocked");
     expect(studio).toContain("대기 중인 예약이 있습니다");
-    expect(studio).toContain("자동 재개되지 않으므로 다시 예약해야 합니다");
+    // 계약 갱신 근거: wiki/거버넌스/결정.md OD-2026-10-09-2.
+    // 회장 원문: "그냥 텍스트 이동하면 되는거지". 별도 모드 이름은 없애도 예약 실행의
+    // v3 결과 불일치 차단과 다시 예약 안내는 약화하지 않는다.
+    expect(studio).toContain("카드 편집 결과는 예약 시각에도 보류되므로 다시 예약해야 합니다");
     expect(read("db/schema.sql")).toContain("scheduled | processing | blocked | published");
   });
 
@@ -88,8 +91,11 @@ describe("S1-R4-PUBLISH-GATE-01 v3 결과 불일치 차단 연결", () => {
 
   it("S1-R5-RETURN-SNAPSHOT-01 plain 스냅샷 복원과 카톡 v2 projection 복귀 범위를 명시한다", () => {
     const source = read("src/app/studio/page.tsx");
-    expect(source).toContain('title: "기본 편집으로 돌아갈까요?"');
-    expect(source).toContain('returningChatDeck ? "기본 말풍선 편집기로 돌아가기" : "자유 배치 작업을 버리고 돌아가기"');
+    // 계약 갱신 근거: wiki/거버넌스/결정.md OD-2026-10-09-2.
+    // 회장 원문: "그냥 텍스트 이동하면 되는거지". 폐기된 모드 이름만 제거하고, 아래의
+    // 평문 스냅샷 복원과 카톡 v2 projection, 서버 저장 범위 단언은 그대로 유지한다.
+    expect(source).toContain('title: returningChatDeck ? "기본 말풍선 편집기로 돌아갈까요?" : "이전 카드 내용으로 복원할까요?"');
+    expect(source).toContain('confirmLabel: returningChatDeck ? "기본 말풍선 편집기로 돌아가기" : "이전 카드 내용 복원"');
     expect(source).toContain("const returningChatDeck = cardDeckV3?.template === \"chat_bubble\"");
     expect(source).toContain("setCardDeck(returningChatDeck)");
     expect(source).toContain('Object.prototype.hasOwnProperty.call(cardDeckV3Options, "sourceSnapshot")');

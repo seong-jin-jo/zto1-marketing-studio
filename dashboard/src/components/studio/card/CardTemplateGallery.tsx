@@ -8,12 +8,15 @@ import {
 } from "@/lib/studio/card-templates";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { cardDeckV3Projection } from "@/lib/studio/card-element-contract";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 
 interface BaseProps {
   selectedId: CardDeckTemplateId;
   recommendedId?: CardDeckTemplateId;
   onSelect: (id: CardDeckTemplateId) => void;
   disabledReasons?: Partial<Record<CardDeckTemplateId, string>>;
+  previewImageUrl?: string | null;
+  tenantId?: string;
 }
 
 type CardTemplateGalleryProps = BaseProps & ({
@@ -32,13 +35,16 @@ type CardTemplateGalleryProps = BaseProps & ({
   onRestore: () => void;
 });
 
-function TemplateCard({ id, selected, recommended, title, body, disabledReason, onSelect }: {
+function TemplateCard({ id, selected, recommended, title, body, disabledReason, previewImageUrl, tenantId, fitContainer = false, onSelect }: {
   id: CardDeckTemplateId;
   selected: boolean;
   recommended: boolean;
   title: string;
   body: string;
   disabledReason?: string;
+  previewImageUrl?: string | null;
+  tenantId?: string;
+  fitContainer?: boolean;
   onSelect: () => void;
 }) {
   const template = CARD_DECK_TEMPLATES.find((item) => item.id === id)!;
@@ -46,7 +52,7 @@ function TemplateCard({ id, selected, recommended, title, body, disabledReason, 
     <Button
       variant="secondary"
       size="sm"
-      className="w-56 shrink-0 flex-col items-stretch justify-start p-stack text-left aria-pressed:border-accent aria-pressed:bg-accent-soft"
+      className={`${fitContainer ? "ds-label-fill min-w-0 w-full overflow-hidden" : "w-56 shrink-0"} flex-col items-stretch justify-start p-stack text-left aria-pressed:border-accent aria-pressed:bg-accent-soft`}
       aria-pressed={selected}
       aria-describedby={disabledReason ? `card-template-disabled-${id}` : undefined}
       disabled={Boolean(disabledReason)}
@@ -54,11 +60,12 @@ function TemplateCard({ id, selected, recommended, title, body, disabledReason, 
       data-card-template={id}
     >
       <span className="mb-stack-tight block rounded-control border border-border bg-surface p-stack-tight">
-        <b className="line-clamp-2 block text-body-sm">미리보기: {title || template.name}</b>
-        <span className="mt-micro line-clamp-2 block text-subtle">내용: {body || template.description}</span>
+        {previewImageUrl ? <DeliveredMedia type="image" src={previewImageUrl} tenantId={tenantId} alt={`${template.name} 실제 이미지 미리보기`} className="mb-stack-tight aspect-square w-full rounded-control object-cover" /> : null}
+        <b className="line-clamp-2 block text-body-sm">{title || template.name}</b>
+        <span className="mt-micro line-clamp-2 block text-subtle">{body || template.description}</span>
       </span>
       <b className="block">{template.name}</b>
-      {disabledReason ? <span id={`card-template-disabled-${id}`} className="text-warning">{disabledReason}</span> : recommended ? <span className="text-accent">추천</span> : <span className="text-subtle">{template.family === "chat" ? "대화형" : "사진·글"}</span>}
+      {disabledReason ? <span id={`card-template-disabled-${id}`} className="block whitespace-normal break-keep text-warning">{disabledReason}</span> : recommended ? <span className="text-accent">추천</span> : <span className="text-subtle">{template.family === "chat" ? "대화형" : "사진·글"}</span>}
     </Button>
   );
 }
@@ -75,7 +82,7 @@ export function CardTemplateGallery(props: CardTemplateGalleryProps) {
         <h3 id={`card-template-title-${props.mode}`} className="text-body font-bold text-text">카드 템플릿</h3>
         <p className="text-caption text-subtle">지금 작업물의 글과 브랜드 색으로 미리 봅니다. 템플릿 선택은 무료입니다.</p>
       </div>
-      <div className="flex min-w-0 gap-stack overflow-x-auto pb-micro" aria-label="카드 템플릿 6개">
+      <div className={props.mode === "edit" ? "grid min-w-0 grid-cols-1 gap-stack sm:grid-cols-2 xl:grid-cols-3" : "flex min-w-0 gap-stack overflow-x-auto pb-micro"} aria-label="카드 템플릿 6개">
         {CARD_DECK_TEMPLATES.map((template) => (
           <TemplateCard
             key={template.id}
@@ -85,6 +92,9 @@ export function CardTemplateGallery(props: CardTemplateGalleryProps) {
             title={title}
             body={body}
             disabledReason={props.disabledReasons?.[template.id]}
+            previewImageUrl={props.previewImageUrl}
+            tenantId={props.tenantId}
+            fitContainer={props.mode === "edit"}
             onSelect={() => props.onSelect(template.id)}
           />
         ))}

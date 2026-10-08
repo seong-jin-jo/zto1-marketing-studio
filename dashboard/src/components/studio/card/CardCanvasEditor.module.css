@@ -1,7 +1,11 @@
 .editor {
   display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--pad-inset);
   min-width: 0;
+  max-width: 100%;
+  overflow: clip;
   outline: none;
 }
 
@@ -18,6 +22,8 @@
 
 .addToolbar,
 .floatingToolbar {
+  min-width: 0;
+  max-width: 100%;
   padding: var(--stack);
   border: 1px solid var(--border);
   border-radius: var(--shape-control);
@@ -25,8 +31,7 @@
   box-shadow: var(--elevation-floating);
 }
 
-.floatingToolbar { position: relative; z-index: 300; }
-.toolbarSlot[data-placeholder="true"] { visibility: hidden; pointer-events: none; }
+.floatingToolbar { position: relative; z-index: 300; box-shadow: none; }
 .toolbarDivider { align-self: stretch; width: 1px; background: var(--border); }
 .fileInput { display: none; }
 .error { color: var(--danger); font-size: var(--font-body-size); }
@@ -34,6 +39,7 @@
 .toolbarField,
 .colorField {
   display: inline-flex;
+  min-width: 0;
   min-height: var(--control-touch);
   align-items: center;
   gap: var(--space-micro);
@@ -43,8 +49,10 @@
 
 .toolbarField select,
 .toolbarField input {
+  width: 100%;
+  min-width: 0;
   min-height: var(--control-touch);
-  max-width: 9rem;
+  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--shape-control);
   background: var(--surface-2);
@@ -57,10 +65,20 @@
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(4rem, 7rem) minmax(18rem, 1fr) minmax(15rem, 20rem);
+  /*
+    v71의 장 스트립 + 가운데 캔버스를 첫 화면에 보존한다. 회장 R3가 허용한
+    우측 접이식 선택 도구만 세 번째 열에 두고, 긴 고급 편집은 접힌 상태로 시작한다.
+  */
+  grid-template-columns: minmax(4rem, 7rem) minmax(15rem, 19rem) minmax(0, 1fr);
   gap: var(--pad-inset);
   align-items: start;
+  min-width: 0;
+  max-width: 100%;
+  overflow: clip;
+  order: 2;
 }
+
+.editor > :global([data-card-template-gallery]) { order: 3; }
 
 .slideStrip {
   display: grid;
@@ -69,20 +87,24 @@
   overflow-y: auto;
 }
 
-.stageColumn { display: grid; min-width: 0; gap: var(--stack); }
+.stageColumn { display: grid; min-width: 0; max-width: 100%; grid-column: 2; gap: var(--stack); }
 .stage {
   position: relative;
   min-width: 0;
-  width: min(100%, 45rem);
+  /* 900px 높이에서도 상단 방 제목·추가 도구·선택 도구를 포함한 뒤 4:5 전체가 보인다. */
+  width: min(100%, 19rem);
   margin-inline: auto;
-  overflow: visible;
+  overflow: clip;
   border: 1px solid var(--border);
   border-radius: var(--shape-surface);
   box-shadow: var(--shadow);
   touch-action: none;
 }
 
-.stage > :global([data-card-slide-scene]) { border-radius: inherit; }
+.stage > :global([data-card-slide-scene]) {
+  overflow: hidden;
+  border-radius: inherit;
+}
 
 .selectionBox {
   position: absolute;
@@ -137,17 +159,17 @@
   background: var(--surface);
 }
 
-.resizeHandle[data-handle="nw"] { left: calc(var(--control-touch) / -2); top: calc(var(--control-touch) / -2); cursor: nwse-resize; }
-.resizeHandle[data-handle="n"] { left: calc(50% - var(--control-touch) / 2); top: calc(var(--control-touch) / -2); cursor: ns-resize; }
-.resizeHandle[data-handle="ne"] { right: calc(var(--control-touch) / -2); top: calc(var(--control-touch) / -2); cursor: nesw-resize; }
-.resizeHandle[data-handle="e"] { right: calc(var(--control-touch) / -2); top: calc(50% - var(--control-touch) / 2); cursor: ew-resize; }
-.resizeHandle[data-handle="se"] { right: calc(var(--control-touch) / -2); bottom: calc(var(--control-touch) / -2); cursor: nwse-resize; }
-.resizeHandle[data-handle="s"] { left: calc(50% - var(--control-touch) / 2); bottom: calc(var(--control-touch) / -2); cursor: ns-resize; }
-.resizeHandle[data-handle="sw"] { left: calc(var(--control-touch) / -2); bottom: calc(var(--control-touch) / -2); cursor: nesw-resize; }
-.resizeHandle[data-handle="w"] { left: calc(var(--control-touch) / -2); top: calc(50% - var(--control-touch) / 2); cursor: ew-resize; }
-.rotationHandle { left: calc(50% - var(--control-touch) / 2); top: calc(var(--control-touch) * -1.25); cursor: grab; }
+.resizeHandle[data-handle="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+.resizeHandle[data-handle="n"] { left: calc(50% - var(--control-touch) / 2); top: 0; cursor: ns-resize; }
+.resizeHandle[data-handle="ne"] { right: 0; top: 0; cursor: nesw-resize; }
+.resizeHandle[data-handle="e"] { right: 0; top: calc(50% - var(--control-touch) / 2); cursor: ew-resize; }
+.resizeHandle[data-handle="se"] { right: 0; bottom: 0; cursor: nwse-resize; }
+.resizeHandle[data-handle="s"] { left: calc(50% - var(--control-touch) / 2); bottom: 0; cursor: ns-resize; }
+.resizeHandle[data-handle="sw"] { left: 0; bottom: 0; cursor: nesw-resize; }
+.resizeHandle[data-handle="w"] { left: 0; top: calc(50% - var(--control-touch) / 2); cursor: ew-resize; }
+.rotationHandle { left: calc(50% - var(--control-touch) / 2); top: 0; cursor: grab; }
 .rotationHandle::before { content: ""; position: absolute; left: 50%; top: 75%; width: 1px; height: calc(var(--control-touch) / 2); background: var(--accent); }
-.rotationBadge { position: absolute; left: 50%; top: calc(var(--control-touch) * -2); translate: -50% 0; border-radius: var(--shape-pill); background: var(--text); padding: var(--space-micro) var(--stack-tight); color: var(--surface); font-size: var(--font-body-size); }
+.rotationBadge { position: absolute; left: 50%; top: 0; translate: -50% 0; border-radius: var(--shape-pill); background: var(--text); padding: var(--space-micro) var(--stack-tight); color: var(--surface); font-size: var(--font-body-size); }
 
 .snapGuide { position: absolute; z-index: 500; pointer-events: none; background: var(--danger); }
 .snapGuide[data-axis="x"] { left: var(--snap-position); top: 0; bottom: 0; width: 1px; }
@@ -156,7 +178,8 @@
 .elementList {
   min-width: 0;
   max-height: 70vh;
-  overflow: auto;
+  overflow-x: clip;
+  overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--shape-surface);
   background: var(--surface);
@@ -165,8 +188,40 @@
 
 .rightPanel {
   display: grid;
+  grid-column: 3;
   min-width: 0;
+  max-width: 100%;
   gap: var(--stack);
+  align-content: start;
+}
+
+.inspectorDetails {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface-2);
+  overflow: clip;
+}
+
+.inspectorDetails > summary {
+  min-height: var(--control-touch);
+  cursor: pointer;
+  padding: var(--stack);
+  color: var(--text);
+  font-size: var(--font-body-size);
+  font-weight: 700;
+}
+
+.inspectorDetails > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: var(--space-micro);
+}
+
+.inspectorDetails .floatingToolbar {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
 }
 
 .chatBaseEditor {
@@ -237,7 +292,11 @@
 .elementList li { display: grid; gap: var(--stack-tight); padding: var(--stack); border: 1px solid var(--border); border-radius: var(--shape-control); }
 .elementList li[data-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
 .elementName { justify-content: flex-start; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.listActions > :global(button) { flex: 1 1 var(--control-touch); }
+.listActions > :global(button) {
+  flex: 0 0 auto;
+  min-width: var(--control-touch);
+  white-space: nowrap;
+}
 
 @media (max-width: 1023px) {
   .editor {
@@ -249,17 +308,31 @@
   .workspace,
   .stageColumn,
   .rightPanel { width: 100%; max-width: 100%; min-width: 0; }
-  .stageColumn { grid-template-columns: minmax(0, 1fr); }
+  .stageColumn { grid-column: auto; grid-template-columns: minmax(0, 1fr); }
   .stage {
-    width: 100%;
-    max-width: 100%;
+    width: min(100%, 19.375rem);
+    max-width: 19.375rem;
   }
-  .slideStrip { display: flex; overflow-x: auto; }
-  .stageColumn { order: -1; }
-  .floatingToolbar { position: static; overflow-x: auto; flex-wrap: nowrap; }
-  .floatingToolbar > * { flex: 0 0 auto; }
+  .rightPanel { grid-column: auto; }
+  .slideStrip {
+    display: grid;
+    max-height: none;
+    grid-template-columns: repeat(auto-fit, minmax(var(--control-touch), 1fr));
+    overflow: visible;
+  }
+  .stageColumn { order: -2; }
+  .slideStrip { order: -1; }
+  .floatingToolbar { position: static; overflow: clip; flex-wrap: wrap; }
+  .floatingToolbar > * { flex: 1 1 8rem; min-width: 0; }
   .elementList { max-height: none; }
   .toolbarField,
   .elementList h3,
   .elementList p { font-size: var(--font-body-size); }
+}
+
+@media (max-width: 26rem) {
+  .floatingToolbar > * {
+    flex-basis: 100%;
+    width: 100%;
+  }
 }

@@ -49,20 +49,45 @@ const clone = <T,>(value: T): T => structuredClone(value);
 const round = (value: number) => Math.round(value * 1_000) / 1_000;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-function clampedPosition(element: Pick<CardElement, "width" | "height">, x: number, y: number, ratio: CardDeckV3["ratio"]) {
+function containedGeometry(
+  element: Pick<CardElement, "x" | "y" | "width" | "height" | "rotation">,
+  ratio: CardDeckV3["ratio"],
+) {
+  const stageWidth = CARD_LOGICAL_WIDTH;
+  const stageHeight = CARD_LOGICAL_HEIGHT[ratio];
+  let width = clamp(element.width, 4, stageWidth);
+  let height = clamp(element.height, 4, stageHeight);
+  const radians = element.rotation * Math.PI / 180;
+  const cosine = Math.abs(Math.cos(radians));
+  const sine = Math.abs(Math.sin(radians));
+  let boundsWidth = width * cosine + height * sine;
+  let boundsHeight = width * sine + height * cosine;
+  const scale = Math.min(1, stageWidth / boundsWidth, stageHeight / boundsHeight);
+
+  if (scale < 1) {
+    width = Math.max(4, width * scale);
+    height = Math.max(4, height * scale);
+    boundsWidth = width * cosine + height * sine;
+    boundsHeight = width * sine + height * cosine;
+  }
+
+  const centerX = clamp(element.x + element.width / 2, boundsWidth / 2, stageWidth - boundsWidth / 2);
+  const centerY = clamp(element.y + element.height / 2, boundsHeight / 2, stageHeight - boundsHeight / 2);
   return {
-    x: clamp(round(x), 1 - element.width, CARD_LOGICAL_WIDTH - 1),
-    y: clamp(round(y), 1 - element.height, CARD_LOGICAL_HEIGHT[ratio] - 1),
+    x: round(centerX - width / 2),
+    y: round(centerY - height / 2),
+    width: round(width),
+    height: round(height),
   };
 }
 
 export function plainCardDeckV3EntryBlockReason(lines: readonly string[]): string | null {
-  if (lines.length < 2) return "카드가 2장 이상일 때 자유 배치를 시작할 수 있습니다.";
-  if (lines.length > 11) return `자유 배치는 최대 11장까지 지원합니다. 현재 ${lines.length}장을 자르지 않고 그대로 보존했습니다.`;
+  if (lines.length < 2) return "카드가 2장 이상일 때 직접 편집할 수 있습니다.";
+  if (lines.length > 11) return `카드 직접 편집은 최대 11장까지 지원합니다. 현재 ${lines.length}장을 자르지 않고 그대로 보존했습니다.`;
   const emptyIndex = lines.findIndex((line) => !line.trim());
-  if (emptyIndex >= 0) return `${emptyIndex + 1}번 카드가 비어 있습니다. 내용을 채운 뒤 자유 배치를 시작해 주세요.`;
+  if (emptyIndex >= 0) return `${emptyIndex + 1}번 카드가 비어 있습니다. 내용을 채운 뒤 직접 편집해 주세요.`;
   const longIndex = lines.findIndex((line) => line.length > 2_000);
-  if (longIndex >= 0) return `${longIndex + 1}번 카드가 2,000자를 넘습니다. 원문을 줄인 뒤 자유 배치를 시작해 주세요.`;
+  if (longIndex >= 0) return `${longIndex + 1}번 카드가 2,000자를 넘습니다. 원문을 줄인 뒤 직접 편집해 주세요.`;
   return null;
 }
 
@@ -126,6 +151,27 @@ export function createPlainCardDeckV3(
         },
       }],
     }); }) as CardDeckV3["slides"],
+  };
+}
+
+/** 생성된 대표 이미지를 카드 편집기의 실제 바탕으로 이어 붙인다. */
+export function applyGeneratedImageBackground(deck: CardDeckV3, assetId: string): CardDeckV3 {
+  if (!assetId.trim()) throw new RangeError("카드 바탕 이미지 파일명이 비어 있습니다.");
+  return {
+    ...clone(deck),
+    theme: { ...clone(deck.theme), foreground: "#FFFFFF" },
+    slides: deck.slides.map((slide) => ({
+      ...clone(slide),
+      background: {
+        kind: "image",
+        asset_id: assetId,
+        crop: { x: 0, y: 0, width: 1, height: 1 },
+        overlay: "#000000",
+      },
+      elements: slide.elements.map((element) => element.type === "text"
+        ? { ...clone(element), style: { ...clone(element.style), color: "#FFFFFF" } }
+        : clone(element)),
+    })),
   };
 }
 
@@ -700,13 +746,16 @@ export function mergeChatBubbleWithNext(deck: CardDeckV3, slideId: string, bubbl
 }
 
 export function moveCardElement(deck: CardDeckV3, slideId: string, elementId: string, x: number, y: number): CardDeckV3 {
-  return mutateElement(deck, slideId, elementId, (element) => ({ ...element, ...clampedPosition(element, x, y, deck.ratio) }));
+  return mutateElement(deck, slideId, elementId, (element) => ({
+    ...element,
+    ...containedGeometry({ ...element, x, y }, deck.ratio),
+  }));
 }
 
 export function nudgeCardElement(deck: CardDeckV3, slideId: string, elementId: string, dx: number, dy: number): CardDeckV3 {
   return mutateElement(deck, slideId, elementId, (element) => ({
     ...element,
-    ...clampedPosition(element, element.x + dx, element.y + dy, deck.ratio),
+    ...containedGeometry({ ...element, x: element.x + dx, y: element.y + dy }, deck.ratio),
   }));
 }
 
@@ -721,7 +770,7 @@ export function setCardElementGeometry(
     const height = Number.isFinite(patch.height) ? Math.max(4, patch.height!) : element.height;
     const rotation = Number.isFinite(patch.rotation) ? snapRotation(patch.rotation!, true) : element.rotation;
     const resized = { ...element, width: round(width), height: round(height), rotation };
-    return { ...resized, ...clampedPosition(resized, resized.x, resized.y, deck.ratio) };
+    return { ...resized, ...containedGeometry(resized, deck.ratio) };
   });
 }
 
@@ -747,7 +796,8 @@ export function resizeCardElement(
       y += height - nextHeight;
       height = nextHeight;
     }
-    return { ...element, x: round(x), y: round(y), width: round(width), height: round(height) };
+    const resized = { ...element, x: round(x), y: round(y), width: round(width), height: round(height) };
+    return { ...resized, ...containedGeometry(resized, deck.ratio) };
   });
 }
 
@@ -757,7 +807,10 @@ export function snapRotation(angle: number, fine: boolean): number {
 }
 
 export function rotateCardElement(deck: CardDeckV3, slideId: string, elementId: string, angle: number, fine = false): CardDeckV3 {
-  return patchCardElement(deck, slideId, elementId, { rotation: snapRotation(angle, fine) });
+  return mutateElement(deck, slideId, elementId, (element) => {
+    const rotated = { ...element, rotation: snapRotation(angle, fine) };
+    return { ...rotated, ...containedGeometry(rotated, deck.ratio) };
+  });
 }
 
 export function snapCardElementPosition(
@@ -807,7 +860,8 @@ export function snapCardElementPosition(
       guides[verticalIndex] = { axis: "y", value: candidate.value, source: candidate.source };
     }
   }));
-  return { ...clampedPosition(element, snappedX, snappedY, ratio), guides };
+  const contained = containedGeometry({ ...element, x: snappedX, y: snappedY }, ratio);
+  return { x: contained.x, y: contained.y, guides };
 }
 
 export function moveCardElementLayer(deck: CardDeckV3, slideId: string, elementId: string, direction: LayerDirection): CardDeckV3 {

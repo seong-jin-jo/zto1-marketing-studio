@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CardDeckV3 } from "./card-element-contract";
 import {
   addCardElement,
+  applyGeneratedImageBackground,
   addChatOverlayElement,
   addChatBubble,
   addChatSlide,
@@ -40,6 +41,18 @@ import {
   undoCardCommand,
 } from "./card-element-commands";
 
+describe("CH-20261009 생성 이미지 카드 편집 연결", () => {
+  it("CH-20261009-1 모든 카드에 실제 생성 이미지 파일을 바탕으로 연결한다", () => {
+    const connected = applyGeneratedImageBackground(createPlainCardDeckV3(["첫 장", "둘째 장"]), "generated-card.jpg");
+    expect(connected.slides.every((slide) => slide.background.kind === "image" && slide.background.asset_id === "generated-card.jpg")).toBe(true);
+    expect(connected.slides.flatMap((slide) => slide.elements).filter((element) => element.type === "text").every((element) => element.style.color === "#FFFFFF")).toBe(true);
+  });
+
+  it("CH-20261009-2 빈 이미지 파일명은 카드 바탕으로 허용하지 않는다", () => {
+    expect(() => applyGeneratedImageBackground(createPlainCardDeckV3(["첫 장", "둘째 장"]), "  ")).toThrow("비어 있습니다");
+  });
+});
+
 function deck(): CardDeckV3 {
   return {
     contract_version: "3.0", id: "deck_commands", template: "plain", ratio: "4:5", revision: 0,
@@ -51,6 +64,19 @@ function deck(): CardDeckV3 {
       { id: "slide_cta", order: 1, role: "cta", content_state: "filled", background: { kind: "solid", color: "#111111" }, base: { kind: "plain", lines: ["저장"] }, elements: [] },
     ],
   };
+}
+
+function expectRotatedElementInsideCanvas(element: CardDeckV3["slides"][number]["elements"][number], ratio: CardDeckV3["ratio"]) {
+  const radians = element.rotation * Math.PI / 180;
+  const boundsWidth = Math.abs(element.width * Math.cos(radians)) + Math.abs(element.height * Math.sin(radians));
+  const boundsHeight = Math.abs(element.width * Math.sin(radians)) + Math.abs(element.height * Math.cos(radians));
+  const centerX = element.x + element.width / 2;
+  const centerY = element.y + element.height / 2;
+  const logicalHeight = ratio === "4:5" ? 1350 : 1080;
+  expect(centerX - boundsWidth / 2).toBeGreaterThanOrEqual(-0.001);
+  expect(centerY - boundsHeight / 2).toBeGreaterThanOrEqual(-0.001);
+  expect(centerX + boundsWidth / 2).toBeLessThanOrEqual(1080.001);
+  expect(centerY + boundsHeight / 2).toBeLessThanOrEqual(logicalHeight + 0.001);
 }
 
 describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
@@ -318,12 +344,30 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     expect(patchChatDeckBrand(second, { reader_name: "   " }).brand.reader_name).toBe("구독자");
   });
 
-  it("S1-R3-BOUNDS-01 끌기와 방향키 이동 뒤에도 장과 최소 1px 교차한다", () => {
+  it("CHAIRMAN-FIX-R2-01 거절 경로: 끌기와 방향키 이동 뒤에도 요소 전체가 카드 안에 남는다", () => {
     const added = addCardElement(deck(), "slide_cover", "text", { id: "bounded" });
     const moved = moveCardElement(added, "slide_cover", "bounded", -9_000, 9_000);
-    expect(moved.slides[0].elements[0]).toMatchObject({ x: -599, y: 1349 });
+    expect(moved.slides[0].elements[0]).toMatchObject({ x: 0, y: 1170 });
     const nudged = nudgeCardElement(moved, "slide_cover", "bounded", -100, 100);
-    expect(nudged.slides[0].elements[0]).toMatchObject({ x: -599, y: 1349 });
+    expect(nudged.slides[0].elements[0]).toMatchObject({ x: 0, y: 1170 });
+  });
+
+  it("CHAIRMAN-FIX-R3-04 경계 경로: 과도한 크기 조절과 회전 뒤에도 변환된 요소 전체가 카드 안에 남는다", () => {
+    const added = addCardElement(deck(), "slide_cover", "text", { id: "transformed" });
+    const moved = moveCardElement(added, "slide_cover", "transformed", 9_000, 9_000);
+    const resized = resizeCardElement(moved, "slide_cover", "transformed", "se", 9_000, 9_000);
+    const rotated = rotateCardElement(resized, "slide_cover", "transformed", 45, true);
+    expectRotatedElementInsideCanvas(resized.slides[0].elements[0], resized.ratio);
+    expectRotatedElementInsideCanvas(rotated.slides[0].elements[0], rotated.ratio);
+  });
+
+  it("CHAIRMAN-FIX-R3-05 정상 경로: 회전 요소를 끌어도 회전 경계 전체가 카드 안에서 유지된다", () => {
+    const added = addCardElement(deck(), "slide_cover", "text", { id: "rotated-move" });
+    const rotated = rotateCardElement(added, "slide_cover", "rotated-move", 30, true);
+    const moved = moveCardElement(rotated, "slide_cover", "rotated-move", -9_000, -9_000);
+    const nudged = nudgeCardElement(moved, "slide_cover", "rotated-move", 18_000, 18_000);
+    expectRotatedElementInsideCanvas(moved.slides[0].elements[0], moved.ratio);
+    expectRotatedElementInsideCanvas(nudged.slides[0].elements[0], nudged.ratio);
   });
 
   it("S1-R3-NUMBER-01 숫자 대체 조작은 빈 값·최솟값·각도 범위를 계약 안으로 접는다", () => {

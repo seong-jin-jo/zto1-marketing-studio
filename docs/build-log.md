@@ -1,5 +1,81 @@
 # OSMU build log
 
+## 2026-10-09 07:50 KST · PR 134 Linux 글꼴 폭 카드 버튼 회귀 복구
+
+STAMP: 2026-10-09 07:50 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `/tmp/zto1-r6-focused.log`, `/tmp/zto1-r6-typecheck.log`, `/tmp/zto1-r6-build.log`, `/tmp/zto1-r6-v70.log`, `/tmp/zto1-r6-chairman-2.log` | 고민: CI의 전체 자손 넘침 검사는 완화하지 않고, 같은 행의 10개 버튼에 더 강한 크기·내용·축소 수치 검사를 추가했다.
+
+**변경:** 카드 요소 행의 `flex-shrink:1` 재정의를 제거하고 `flex:0 0 auto`, `min-width:var(--control-touch)`, `white-space:nowrap`으로 공용 버튼 계약을 복원했다. 신규 소스 계약은 같은 행 10개 전부와 축소 재도입 경계를 고정한다. production E2E는 각 버튼의 경계 폭·높이, client·scroll 폭, `flexShrink`를 기록한다.
+
+**검증:** 집중 Vitest 1파일 2건 PASS. `npm run typecheck:ci` PASS. 기능 플래그를 켠 `npm run build` PASS. `npm run start -p 3473`은 248ms에 Ready였고 같은 build의 `e2e:studio-v70-screen`, `e2e:chairman-defects`가 종료 코드 0이다. 회장 게이트는 `ok=true`, 초안 저장 5회, 영상 컷 건너뛰기 1초다. 390 `글 숨기기` 59.484×44px, client·scroll 폭 57px이며 같은 행 최소 44×44px·내부 넘침 0이다. 모바일 9폭도 모두 PASS다.
+
+**기존 경고:** design-lint는 종료 코드 0이며 기존 인라인 style·hex 2종 경고를 유지한다. 이번 수정은 토큰만 사용했고 신규 경고는 없다. push와 원격 CI는 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `.github/workflows/ci.yml` | `/tmp/zto1-r6-chairman-2/result.json` | `/tmp/zto1-r6-mobile-ergonomics.jsonl`
+
+## 2026-10-09 07:28 KST · PR 134 v70 화면 게이트 v71 계약 복구
+
+STAMP: 2026-10-09 07:28 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: PR 134 run 37850906497, `/tmp/zto1-r5-build.log`, `/tmp/zto1-r5-final-v70.log`, `/tmp/zto1-r5-final-chairman.log` | 고민: CI가 실제로 빌드한 기능 플래그 경로를 다시 빌드·서빙하고 두 브라우저 게이트를 같은 서버에서 연속 실행했다.
+
+**판정:** 제품 진입 회귀가 아니라 게이트가 제거된 v70 DOM을 기다린 테스트 회귀다. CI 실패 본문에도 v71 장 목록·캔버스·도구가 렌더됐고, 로컬 production 재현도 `[data-plain-card-shell]` 대기에서 동일 실패했다.
+
+**변경:** 화면 정합 게이트의 일반 카드, 글자 복구 가능·불가 카드, 카톡 덱을 v71 직접 편집 작업대 계약으로 교체했다. OD-2026-10-09-2 근거 주석을 남기고, v70 clean-frame 카드 면 비교·일반 카드 오염 검출·중복 글자 방지·잠금 검사는 유지했다.
+
+**검증:** `CARD_DECK_V3_RENDER_ENABLED=1 NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=1 npm run build` 종료 코드 0. 같은 fresh build를 `npm run start -p 3472`로 서빙해 `npm run e2e:studio-v70-screen`과 `npm run e2e:chairman-defects`를 연속 실행했고 둘 다 종료 코드 0이다. 서버는 424ms에 Ready, 콘솔 오류 0, 회장 결함 게이트 `ok=true`, 초안 저장 5회다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/tmp/zto1-r5-build.log` | `/tmp/zto1-r5-start.log` | `/tmp/zto1-r5-final-v70.log` | `/tmp/zto1-r5-final-chairman.log`
+
+## 2026-10-09 06:48 KST · PR 134 전체 dashboard CI 복구
+
+STAMP: 2026-10-09 06:48 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skills: qa, review | 근거: `.github/workflows/ci.yml`, PR 134 run 37835647473, `/tmp/zto1-r4-full-clean3.log` | 고민: 부분 스위트 대신 CI verify 잡의 전체 명령과 동일 DB pathname에서 안전문과 구버전 초안 호환까지 실행했다.
+
+**변경:** 14개 실패·진단 출력을 의도된 직접 편집 계약 변경과 테스트·제품 회귀로 나눴다. 계약 변경 테스트에는 OD-2026-10-09-2와 회장 원문을 주석으로 남겼다. 제거된 모드에 의존하던 동적 자동저장 테스트는 현재 v3 편집 화면을 구동하도록 바꿨고, 희귀 오류 경로의 “자유 배치”와 “내보내기 판” 문구를 평문으로 교정했다. 독립 리뷰 뒤 생성 결과 pending 삭제 순서와 반대 도메인 clear 의도 보존, 클릭 드래그 최소 거리·취소, 위치값 서버 검증·구버전 좌표 보존·UI 정규화, E2E 조건 대기, 접이식 도구 초점 표시도 보강했다.
+
+**보호 유지:** 카드 자동저장 `videoEdit:null`, 영상 자동저장 `cardDeck:null`, 빈 말풍선 정리, source snapshot 복원, 서버 절대경로 비노출, 예약 등록·실행 안전문을 계속 단언한다.
+
+**검증:** CI 동일 `npx vitest run`은 514파일 통과·3파일 skip, 3,773건 통과·16건 skip, 315.73초, 종료 코드 0이다. `npx tsc --noEmit -p tsconfig.ci.json`과 `CARD_DECK_V3_RENDER_ENABLED=1 NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=1 npm run build`도 종료 코드 0이다. 발행 전용 스위트도 605건 통과·3건 skip이다. 처음 임의 이름 DB 실행의 1건 실패는 DB 안전 테스트가 `/testdb` 외 pathname을 의도대로 거절한 환경 검증이며, `/testdb` 재실행에서 전체 통과했다.
+
+**미검증:** CI가 주입하지 않는 `S3_DATABASE_URL` 전용 export worker·enqueue PostgreSQL 통합은 기존처럼 skip된다. draft 실제 DB 저장은 CI 범위에서 실행되지만 생성→export→enqueue 전 경로의 실제 DB 연속 증거는 별도 테스트 부채다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `.github/workflows/ci.yml` | `/tmp/zto1-r4-full-clean3.log` | `/tmp/zto1-r4-build-clean2.log`
+
+## 2026-10-09 05:42 KST · PR 134 카드 편집 내부 넘침과 비동기 경합 교정
+
+STAMP: 2026-10-09 05:42 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skills: qa, review | 근거: 회장 R3 반려, v71, production Chromium 수치 E2E, 독립 적대 리뷰 | 고민: 화면 폭을 닫은 뒤에도 크기 조절·회전과 늦은 비동기 응답이 다시 요소나 작업물을 덮지 못하도록 변환 경계와 작업 번호를 함께 고정했다.
+
+**기존 구현 확인:** 카드 편집 루트는 `display:grid`인데 명시 열이 없어 암시적 `auto` track이 자손의 최소 콘텐츠 폭 1438px까지 늘어났다. 선택 요소 도구가 상단 전체 폭을 차지했고 템플릿 캐러셀과 공용 `.ds-label`의 `min-width:max-content`도 편집 패널을 밀었다. 초안 불러오기와 방 전환이 각각 성공 토스트를 띄워 두 개가 겹쳤다.
+
+**추가·변경:** 편집 루트를 `minmax(0,1fr)` 한 열로 고정하고 작업대는 장 목록·304px 카드·접이식 속성 도구의 세 열로 맞췄다. 선택 핸들은 요소 경계 안에 두고 390에서는 한 열로 쌓는다. 회전된 경계 상자를 기준으로 이동·크기 조절·회전 결과를 카드 안에 제한한다. 편집실 템플릿은 컨테이너 폭에 맞춘 grid로 바꾸고 버튼은 공용 `ds-label-fill` 계약을 사용한다. 초안 불러오기 토스트 하나만 남기고 `내보내기 판` 조어를 실제 동작 문장으로 교체했다. 이미지·영상·초안 생성은 단일 작업 번호로 직렬화하고, 새로 시작·작업 공간 전환·카드 편집 이탈 뒤 늦은 응답은 무효화한다. DB·API 계약은 바꾸지 않았다.
+
+**검증:** 1440·1512·390에서 편집 패널과 보이는 전체 자손의 `scrollWidth > clientWidth` 0건, 패널 경계 이탈 0건, canvas rect 패널 포함, root `scrollLeft=0`. 과도한 크기 조절은 화면상 234.875×139.813에서 302×377.5로 실제 변했고 카드 302×377.5 안에 완전히 제한됐다. 초안 편집과 발행 전환 토스트는 상태 정착 뒤 각각 1개, 콘솔 오류 0이다. 변환·경합 집중 4파일 51건, `test:publish` 605건·3건 skip, TypeScript, 기능 플래그를 켠 production build·E2E, 모바일 9폭이 PASS했다. design-lint와 artifact lint는 종료 코드 0이며 기존 경고 2종·28건을 유지한다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | `logs/diff/editroom-chairman-fix-20261009/after/result.json` | `docs/qa/qa-tracker.md`
+
+## 2026-10-09 04:50 KST · PR 134 시각 반려와 실제 내보내기 경로 교정
+
+STAMP: 2026-10-09 04:50 KST | model: gpt-5/Codex | agent: code-builder | skills: qa, review | 근거: v71, 회장 R2 반려, production Chromium E2E, 독립 전문 리뷰 | 고민: 방 탭 직접 이동이 아니라 편집실의 실제 내보내기 버튼을 눌러 발행실의 고정 산출물까지 같은 사진인지 검증했다.
+
+**기존 구현 확인:** 첫 R1 결과는 캔버스 일부와 글자를 잘랐고 단색 픽스처·빈 영상 프레임으로 미디어 표시를 증명하지 못했다. 새 E2E도 발행실 링크를 직접 눌러 `내보내기 → 고정 → 발행실` 경로를 우회했다. 코드 리뷰 결과 v3 사진 카드를 발행 직전 plain 글자 카드로 다시 합성하는 결함, 자동 편집 준비 실패 후 재시도 불가, 컷 구간 직접 탐색·키보드 이동 회귀를 추가로 확인했다.
+
+**추가·변경:** 4:5 카드를 19rem 상한으로 중앙 배치하고 선택 핸들을 자르지 않되 사진 장면만 경계 안에서 클립한다. 카드 직접 편집 실패에는 재시도를 제공한다. v3는 plain 재합성을 건너뛰고 enqueue가 반환한 고정 이미지·영상 주소를 발행실 상태에 반영한다. 영상 탐색도 컷 끝으로 정규화하고, 별도 위치 버튼 없이 포커스 가능한 글 상자에서 화살표 이동을 지원한다. 새 수용 E2E를 package script와 PR CI에 연결했다. DB 스키마는 바꾸지 않았다.
+
+**검증:** 집중 7파일 82건 PASS, `test:publish` 59파일 605건 PASS·3건 skip, TypeScript와 production build PASS. dev와 production 서버 모두 실제 사진 JPG·실제 프레임 MP4로 생성→작업물→편집→드래그→영상 컷→내보내기→발행실을 통과했고 콘솔 오류 0이다. 모바일 360·390·412·600·700·780·820·900·1000은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 100%, 가로 넘침 0이다. design-lint는 종료 코드 0이지만 레포 기존 인라인 style·hex 경고 2종, artifact lint는 정합 PASS와 기존 핀 위생 경고 28건을 유지한다. 외부 SNS 게시와 운영 배포는 미검증이다.
+
+SOURCES/MODEL: gpt-5/Codex | `logs/diff/editroom-chairman-fix-20261009/report.md` | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | `wiki/business/pmf/idea-zero-one-marketing-studio.md`
+
+## 2026-10-09 03:49 KST · 생성→편집→발행 미디어 경로 복구
+
+STAMP: 2026-10-09 03:49 KST | model: gpt-5/Codex | agent: code-builder | skill: qa | 근거: 회장 결함 재현 보고, v71 프로토타입, Chromium 단일경로 E2E, Vitest 604건, production build | 고민: 화면 존재가 아니라 같은 초안의 실제 미디어가 세 방을 끝까지 통과하는지를 종료 기준으로 삼았다.
+
+**기존 구현 확인:** 생성 성공은 `img`·`vid` 화면 상태만 바꾸고 초안을 저장하지 않았다. 작업물 클릭은 저장소 상태만 바꿔 URL이 생성실로 되돌렸고, 카드 v3는 별도 자유배치 진입과 상·중·하 프리셋을 동시에 노출했다. 컷은 상태만 저장하고 재생 헤드는 잘린 구간을 통과했다. 발행 미리보기는 미디어 없는 초안과 가로 그리드를 사용했다.
+
+**추가·변경:** 생성 성공 즉시 같은 초안에 이미지·영상을 저장하고 작업물 목록을 갱신한다. 작업물 클릭은 공용 URL 전환 경로를 사용한다. 카드 편집은 기본 화면에서 직접 드래그하며 실제 생성 이미지를 배경으로 쓴다. 별도 자유배치·상중하·글자 위치 버튼은 제거했다. v71 첫 화면 높이에 맞춰 캔버스와 템플릿 순서를 조정했다. 영상 재생은 컷 구간을 건너뛰고, 이미지→영상 프롬프트에서는 본문 문구를 제거했다. 발행 카드는 실제 미디어를 보여 주며 세로로 쌓인다. DB 스키마는 바꾸지 않았다.
+
+**검증:** TypeScript PASS, 편집 관련 86건 PASS, `test:publish` 604건 PASS·3건 skip, production build PASS. 실제 Next.js dev와 Chromium에서 생성→작업물 썸네일→같은 초안 편집→카드 드래그 픽셀 변화→영상 컷 점프→발행실 실제 미디어를 연속 실행했고 콘솔 오류 0이었다. 모바일 9폭은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 100%, 가로 넘침 0이다. dev 종료 직후 `.next/dev/types`가 절단된 채 남아 첫 TypeScript 재검사가 실패했고, 해당 생성 캐시를 `/tmp/zto1-chairman-next-dev-types-corrupt-20261009-0355`로 보존 이동한 뒤 같은 명령과 최종 build가 통과했다. 실제 외부 SNS 게시와 운영 배포는 실행하지 않아 미검증이다.
+
+**벤치마크 적용:** Canva의 캔버스 직접 조작, Adobe Express와 CapCut의 트림 후 재생 모델을 적용했다. 상세 전후 캡처와 수치는 `logs/diff/editroom-chairman-fix-20261009/report.md`에 있다.
+
+SOURCES/MODEL: gpt-5/Codex | `logs/diff/chairman-defects-20261009/report.md` | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | https://www.canva.com/help/layers/ | https://helpx.adobe.com/express/web/create-and-edit-videos/edit-videos/trim-videos.html | https://www.capcut.com/resource/how-to-trim-video
+
 ## 2026-10-08 23:27 KST · 내보내기 작업자 저장소 규칙을 대시보드와 통일
 
 STAMP: 2026-10-08 23:27 KST | model: gpt-5/Codex | agent: code-builder | skill: review | 근거: run 37787296935, local 저장 경로 통합 테스트, Compose 실해석, TypeScript·production build·Chromium smoke | 고민: R2 누락을 장애로 취급한 PR 132의 과잉 필수 계약만 되돌리고 작업자 health 게이트는 보존했다.

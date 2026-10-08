@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import React from "react";
+import { afterEach, describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";
+import { cleanup, render, screen } from "@testing-library/react";
+import { CreateRoom } from "@/components/studio/StudioRooms";
+
+afterEach(cleanup);
 
 // 2026-09-07 사고 계약.
 //
@@ -52,6 +59,42 @@ describe("생성실 배선 계약", () => {
     for (const dead of ["async function runOSMU(", "async function autoGenerate("]) {
       expect(pageSrc, `${dead} 가 되살아났다. 화면에 잇거나 지워야 한다`).not.toContain(dead);
     }
+  });
+
+  it("CHAIRMAN-FIX-R3-07 경합 거절: 한 생성 작업 동안 모든 생성 진입을 잠그고 같은 작업 번호의 결과만 반영한다", () => {
+    expect(pageSrc).toContain("generationOperations.begin()");
+    expect(pageSrc).toContain("generationOperationIsCurrent(opts?.operationId)");
+    expect(pageSrc).toContain("finishGenerationOperation(operationId)");
+    expect(pageSrc).toContain("invalidateGenerationOperation();\n    generationAbort.current?.abort()");
+    expect(pageSrc).toContain("quickDraftLoading={busy !== null}");
+    expect(pageSrc).toContain("videoBusy={busy !== null}");
+    expect(pageSrc).toContain("cardImageBusy={busy !== null}");
+    expect(roomsSrc).toContain("disabled={cardImageBusy || videoBusy}");
+  });
+
+  it("CHAIRMAN-FIX-R3-09 행동 경로: 이미지나 영상 생성 중에는 두 생성 진입점을 함께 잠근다", () => {
+    const props = {
+      workspaceId: "tenant-lock",
+      workspaceName: "작업 공간",
+      guide: "",
+      topic: "",
+      onTopicChange: () => {},
+      onOpenLearning: () => {},
+      onCandidateSelect: () => {},
+      onGenerateCardImages: async () => {},
+      onGenerateVideo: async () => {},
+    };
+    const view = render(<CreateRoom {...props} cardImageBusy />);
+    expect(screen.getByTestId("create-card-image")).toBeDisabled();
+    expect(screen.getByTestId("create-video")).toBeDisabled();
+
+    view.rerender(<CreateRoom {...props} />);
+    expect(screen.getByTestId("create-card-image")).toBeEnabled();
+    expect(screen.getByTestId("create-video")).toBeEnabled();
+
+    view.rerender(<CreateRoom {...props} videoBusy />);
+    expect(screen.getByTestId("create-card-image")).toBeDisabled();
+    expect(screen.getByTestId("create-video")).toBeDisabled();
   });
 
   it("시험 18 정상: 저장된 글자 카드 묶음을 초안과 편집실과 발행실이 함께 쓰는 img 상태로 잇는다", () => {

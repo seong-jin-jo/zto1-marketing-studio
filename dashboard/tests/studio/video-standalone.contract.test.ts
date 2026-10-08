@@ -22,6 +22,10 @@ describe("숏폼 영상 단독 실행", () => {
     const at = src.indexOf("needsBaseImage");
     const body = src.slice(at, at + 3000);
     expect(body.indexOf("영상 바탕 그림 만드는 중")).toBeGreaterThan(0);
-    expect(body.indexOf("genVideo({ filename: baseFilename })")).toBeGreaterThan(body.indexOf("영상 바탕 그림 만드는 중"));
+    // 계약 갱신 근거: wiki/거버넌스/결정.md OD-2026-10-09-2.
+    // 회장 원문: "미리보기나 초안예시에서는 실제 이미지나 영상 보이게끔 하라고 하지 않았냐?"
+    // 실제 source를 보존하고 현재 생성 operation만 반영하는 인자를 추가해도 순차 생성
+    // 보호는 그대로 유지돼야 한다.
+    expect(body.indexOf("genVideo({ filename: baseFilename, image: source }, operationId)")).toBeGreaterThan(body.indexOf("영상 바탕 그림 만드는 중"));
   });
 });

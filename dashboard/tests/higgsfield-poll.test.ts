@@ -128,6 +128,16 @@ describe("savePendingJob/readPendingJob — 비율·주제 보존", () => {
     expect(readPendingJob("ws-1", "image")?.aspectRatio).toBe("9:16");
   });
 
+  it("영상 만들기 선행 이미지 작업은 기존 영상을 비우라는 의도까지 복원한다", () => {
+    savePendingJob("ws-1", "image", {
+      jobId: "job-video-base",
+      aspectRatio: "9:16",
+      idea: "숏폼 주제",
+      videoDisposition: "clear",
+    });
+    expect(readPendingJob("ws-1", "image")?.videoDisposition).toBe("clear");
+  });
+
   it("구버전(문자열만 저장된) 기록도 jobId로는 읽히되 비율은 알 수 없다(마이그레이션 안전망)", () => {
     localStorage.setItem("hf_pending_job:ws-1:image", "legacy-job-id");
     const restored = readPendingJob("ws-1", "image");

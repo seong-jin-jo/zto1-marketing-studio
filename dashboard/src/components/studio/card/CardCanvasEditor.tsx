@@ -168,6 +168,7 @@ function elementOverlayStyle(element: CardElement, logicalHeight: number): CSSPr
 
 export interface CardCanvasEditorProps {
   deck: CardDeckV3;
+  tenantId?: string;
   templateState?: CardTemplateState | null;
   sourceDeck?: CardDeck | null;
   requestedSlide?: { id: string; requestId: number } | null;
@@ -176,7 +177,7 @@ export interface CardCanvasEditorProps {
   onDeckChange: (deck: CardDeckV3, templateState?: CardTemplateState) => void;
 }
 
-export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null, requestedSlide = null, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
+export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceDeck = null, requestedSlide = null, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
   const initialTemplateState = templateState ?? defaultCardTemplateState(deck);
   const [history, setHistory] = useState<CardEditorHistory>(() => createCardEditorHistory(deck, initialTemplateState));
   const [activeSlideId, setActiveSlideId] = useState(deck.slides[0]?.id ?? "");
@@ -204,6 +205,7 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
   const [sceneOverflow, setSceneOverflow] = useState(false);
   const [toneCandidates, setToneCandidates] = useState<{ targets: Array<{ slideId: string; bubbleId: string; text: string }>; candidates: ChatToneCandidate[]; revision: number } | null>(null);
   const [speakerEditorOpen, setSpeakerEditorOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const handledRequestedSlideRef = useRef<number | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
@@ -229,10 +231,7 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
   const logicalHeight = workingDeck.ratio === "4:5" ? 1350 : 1080;
   const editableElements = activeSlide?.elements.filter((element) => !isChatBaseProjectionElement(activeSlide, element)) ?? [];
   const selected = editableElements.find((element) => element.id === selectedId) ?? null;
-  // 첫 클릭 뒤 도구막대가 새로 삽입되면 스테이지가 아래로 밀려 두 번째 클릭 좌표가
-  // 다른 곳을 가리킨다. 선택 전에도 첫 글 요소 크기의 숨은 도구막대를 두어 레이아웃을
-  // 고정하고, 실제 선택 뒤 같은 자리를 활성화한다.
-  const toolbarElement = selected ?? editableElements.find((element) => element.type === "text") ?? null;
+  const toolbarElement = selected;
   const resolvedAssetUrls = useMemo(() => ({ ...assetUrls, ...localAssetUrls }), [assetUrls, localAssetUrls]);
   const model = useMemo(() => cardSlideRenderModel(workingDeck, activeSlideId, resolvedAssetUrls), [workingDeck, activeSlideId, resolvedAssetUrls]);
   const templatePreviewDeck = useMemo(() => {
@@ -281,6 +280,10 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
   useEffect(() => {
     if (editingTextId) textEditorRef.current?.focus();
   }, [editingTextId]);
+
+  useEffect(() => {
+    if (selectedId) setInspectorOpen(true);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!requestedSlide || !workingDeck.slides.some((slide) => slide.id === requestedSlide.id)) return;
@@ -640,7 +643,7 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
 
   if (!activeSlide) return null;
   return (
-    <section className={styles.editor} data-card-canvas-editor onKeyDown={onKeyDown} aria-label="카드 자유 배치 편집기">
+    <section className={styles.editor} data-card-canvas-editor onKeyDown={onKeyDown} aria-label="카드 직접 편집기">
       <ConfirmDialog
         request={restoreConfirmationOpen ? {
           title: "이전 템플릿으로 복원할까요?",
@@ -690,22 +693,6 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
       </section> : null}
       {splitNotice ? <p role="status" className={styles.error}>{splitNotice}</p> : null}
       {uploadError ? <p role="alert" className={styles.error}>{uploadError}</p> : null}
-      <CardTemplateGallery
-        mode="edit"
-        selectedId={pendingTemplateId}
-        onSelect={setPendingTemplateId}
-        disabledReasons={history.present.template === "plain"
-          ? { chat_bubble: "카톡 대화는 생성실의 기존 카톡 덱 만들기에서 선택해 주세요." }
-          : CHAT_DECK_TEMPLATE_DISABLED_REASONS}
-        beforeDeck={history.present}
-        afterDeck={templatePreviewDeck}
-        scope={templateScope}
-        canApplySlide={history.present.template !== "chat_bubble"}
-        previousTemplateName={previousTemplate ? cardTemplateName(previousTemplate.id) : null}
-        onScopeChange={setTemplateScope}
-        onApply={applyTemplate}
-        onRestore={restorePreviousTemplate}
-      />
       <div className={styles.workspace}>
         <nav className={styles.slideStrip} aria-label="카드 장 목록">
           {workingDeck.slides.map((slide) => <Button key={slide.id} size="sm" data-card-slide={slide.id} aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>{slide.order + 1}장</Button>)}
@@ -730,18 +717,6 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
             {(activeSlide.role === "cover" || activeSlide.role === "cta") ? <Button size="sm" variant="secondary" onClick={() => backgroundInputRef.current?.click()}>배경 사진 고르기</Button> : null}
             {(activeSlide.role === "cover" || activeSlide.role === "cta") && activeSlide.background.kind === "image" ? <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => clearChatSlideBackgroundImage(current, activeSlide.id))}>사진 빼기</Button> : null}
           </div> : null}
-          {toolbarElement ? (
-            <div className={styles.toolbarSlot} data-placeholder={selected ? "false" : "true"}>
-              <CardElementToolbar
-                element={toolbarElement}
-                onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, toolbarElement.id, patch))}
-                onGeometryChange={(patch) => apply((current) => setCardElementGeometry(current, activeSlide.id, toolbarElement.id, patch))}
-                onLayer={(direction) => apply((current) => moveCardElementLayer(current, activeSlide.id, toolbarElement.id, direction))}
-                onDuplicate={() => duplicate(toolbarElement.id)}
-                onDelete={() => deleteAndRestoreStageFocus(toolbarElement.id)}
-              />
-            </div>
-          ) : null}
           <div
             ref={stageRef}
             className={styles.stage}
@@ -843,6 +818,24 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
           </div>
         </div>
         <aside className={styles.rightPanel} data-card-right-panel>
+          {toolbarElement ? (
+            <details
+              className={styles.inspectorDetails}
+              open={inspectorOpen}
+              onToggle={(event) => setInspectorOpen(event.currentTarget.open)}
+              data-card-element-inspector
+            >
+              <summary>{toolbarElement.name} 도구</summary>
+              <CardElementToolbar
+                element={toolbarElement}
+                onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, toolbarElement.id, patch))}
+                onGeometryChange={(patch) => apply((current) => setCardElementGeometry(current, activeSlide.id, toolbarElement.id, patch))}
+                onLayer={(direction) => apply((current) => moveCardElementLayer(current, activeSlide.id, toolbarElement.id, direction))}
+                onDuplicate={() => duplicate(toolbarElement.id)}
+                onDelete={() => deleteAndRestoreStageFocus(toolbarElement.id)}
+              />
+            </details>
+          ) : null}
           {activeSlide.base.kind === "chat_bubble" && activeSlide.role === "cover" ? (
             <section className={styles.chatBaseEditor} aria-label="표지 문구 편집">
               <h3>표지 문구</h3>
@@ -904,6 +897,24 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
           />
         </aside>
       </div>
+      <CardTemplateGallery
+        mode="edit"
+        selectedId={pendingTemplateId}
+        onSelect={setPendingTemplateId}
+        previewImageUrl={Object.values(assetUrls).find(Boolean) ?? null}
+        tenantId={tenantId}
+        disabledReasons={history.present.template === "plain"
+          ? { chat_bubble: "카톡 대화는 생성실의 기존 카톡 덱 만들기에서 선택해 주세요." }
+          : CHAT_DECK_TEMPLATE_DISABLED_REASONS}
+        beforeDeck={history.present}
+        afterDeck={templatePreviewDeck}
+        scope={templateScope}
+        canApplySlide={history.present.template !== "chat_bubble"}
+        previousTemplateName={previousTemplate ? cardTemplateName(previousTemplate.id) : null}
+        onScopeChange={setTemplateScope}
+        onApply={applyTemplate}
+        onRestore={restorePreviousTemplate}
+      />
     </section>
   );
 }

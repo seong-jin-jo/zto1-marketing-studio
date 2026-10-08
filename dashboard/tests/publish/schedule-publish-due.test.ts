@@ -219,7 +219,7 @@ describe("POST /api/schedule/publish-due — 예약 실발행 루프", () => {
     expect(H.updates).toHaveLength(0);
   });
 
-  it("S1-R5-SCHEDULE-02 도래한 자유 배치 예약은 보류하고 채널 발행을 시작하지 않는다", async () => {
+  it("S1-R5-SCHEDULE-02 도래한 카드 직접 편집 예약은 보류하고 채널 발행을 시작하지 않는다", async () => {
     H.rows = [{
       id: "sched-card-v3",
       draft_id: "draft-card-v3",
@@ -232,7 +232,9 @@ describe("POST /api/schedule/publish-due — 예약 실발행 루프", () => {
 
     expect(status).toBe(200);
     expect(body.schedules[0].status).toBe("blocked");
-    expect(body.schedules[0].results[0].error).toMatch(/자유 배치 결과물/);
+    // 계약 갱신 근거: wiki/거버넌스/결정.md OD-2026-10-09-2.
+    // 회장 원문: "그냥 텍스트 이동하면 되는거지". 모드 이름만 제거하고 예약 발행 차단은 유지한다.
+    expect(body.schedules[0].results[0].error).toMatch(/카드 직접 편집 결과물/);
     expect(publishThreads).not.toHaveBeenCalled();
     expect(H.inserts).toHaveLength(0);
   });

@@ -100,6 +100,20 @@ describe("카드뉴스 이음매 계약", () => {
     expect(move, "다시 그린 그림이 저장에 안 실린다").toContain("redrawn ?? img");
   });
 
+  it("CHAIRMAN-FIX-R2-06 v3 사진 카드는 plain 재합성으로 덮지 않고 고정 산출물을 발행실 미디어로 쓴다", () => {
+    const recomposite = pageSrc.slice(pageSrc.indexOf("async function recompositeCards("), pageSrc.indexOf("type SubtitleBurnOutcome"));
+    expect(recomposite).toContain("if (cardDeckV3) return img");
+    const publishStart = pageSrc.indexOf("onOpenPublish={async (receipt)");
+    const publishHandoff = pageSrc.slice(publishStart, publishStart + 5_500);
+    expect(publishHandoff).toContain("pinnedPost?.imageUrls");
+    expect(publishHandoff).toContain("setImg((current)");
+    expect(publishHandoff).toContain("내보낸 파일로 발행실에서 미리 봅니다");
+    const enqueueRoute = fs.readFileSync(path.resolve(__dirname, "../../src/app/api/studio/drafts/[draftId]/enqueue/route.ts"), "utf8");
+    expect(publishHandoff).not.toContain("내보내기 판");
+    expect(enqueueRoute).not.toContain("내보내기 판");
+    expect(enqueueRoute).toContain("화면에서 확인한 내보낸 파일이 최신 발행 대상과 다릅니다");
+  });
+
   it("CARD-LINK-06 발행은 채널 규격대로 여러 장을 싣는다", () => {
     const deck = ["a", "b", "c"];
     expect(planChannelImages("instagram", deck).images).toEqual(deck);

@@ -44,6 +44,24 @@ describe("VideoEditor 오버레이 경계", () => {
     expect(document.querySelector("[data-video-editor-error]")).toBeNull();
   });
 
+  it("CHAIRMAN-FIX-R2-07 멈춘 영상에서 컷 구간으로 탐색해도 제거된 프레임을 보여 주지 않는다", () => {
+    const edit: VideoEdit = {
+      ...emptyVideoEdit(),
+      subtitles: [
+        { id: "keep-1", order: 0, text: "유지", startSec: 0, endSec: 2, cut: false },
+        { id: "cut-1", order: 1, text: "삭제", startSec: 2, endSec: 5, cut: true },
+        { id: "keep-2", order: 2, text: "유지", startSec: 5, endSec: 8, cut: false },
+      ],
+    };
+    render(<VideoEditor videoEdit={edit} onVideoEditChange={() => {}} previewVideoUrl="/api/media/cut-test" lines={["유지", "삭제", "유지"]} />);
+    const video = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 8, configurable: true });
+    Object.defineProperty(video, "currentTime", { value: 0, configurable: true, writable: true });
+    fireEvent.loadedMetadata(video);
+    fireEvent.change(screen.getByLabelText("재생 위치"), { target: { value: "2.4" } });
+    expect(video.currentTime).toBe(5);
+  });
+
   it("PREVIEW-OUTSIDE-BODY 정상: 인트로·아웃트로를 재생할 때 본문 자막·훅·CTA·댓글을 숨긴다", () => {
     const edit: VideoEdit = {
       ...emptyVideoEdit(),

@@ -14,7 +14,7 @@ afterEach(cleanup);
 describe("OSMU 코드리뷰 발행실 회귀", () => {
   it("OSMU-012 거절 경로: 카드 재합성 실패 시 옛 그림을 저장하거나 발행실로 이동하지 않는다", () => {
     const move = pageSource.slice(pageSource.indexOf("async function moveToPublish()"), pageSource.indexOf("// 플랫폼별 발행 텍스트 추출"));
-    const failureGuard = move.indexOf('if (editKind === "card" && !redrawn) return;');
+    const failureGuard = move.indexOf('if (editKind === "card" && !cardDeckV3 && !redrawn) return;');
     // save 호출의 줄바꿈이나 인자 배치는 동작 계약이 아니다. 호출 순서만 고정한다.
     const saveCall = move.search(/await\s+save\s*\(/);
     const roomChange = move.indexOf('changeRoom("publish")');

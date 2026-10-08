@@ -64,7 +64,7 @@ function work(kind) {
       instagram: { caption: "카드뉴스 캡션", hashtags: ["화면검수"], slides: lines },
       shorts: { hook: "영상 화면 검수", body: "미디어가 없으면 발행할 수 없습니다.", cta: "생성실에서 먼저 만드세요." },
     },
-    img: { url: images[0], file: images[0], imageUrls: images, topicKey: "v70-screen", aspectRatio: "4:5" },
+    img: { url: images[0], file: images[0], filename: "alignment-card-1.jpg", imageUrls: images, topicKey: "v70-screen", aspectRatio: "4:5" },
     vid: null,
     includes: { threads: true, x: true, facebook: true, instagram: true, shorts: true, reels: true, tiktok: true },
     editLines: lines,
@@ -494,7 +494,20 @@ await page.route("**/api/**", async (route) => {
   }
   if (pathname === "/api/images/upload") {
     imageUploadCount += 1;
-    return json(route, { url: `/api/images/deliver/screen-upload-${imageUploadCount}` });
+    return json(route, {
+      filename: `screen-upload-${imageUploadCount}.png`,
+      url: `/api/images/deliver/screen-upload-${imageUploadCount}.png`,
+    });
+  }
+  if (pathname === "/api/media/resign") {
+    const body = request.postDataJSON();
+    const filename = typeof body?.filename === "string" ? body.filename : "";
+    const source = filename === "alignment-card-2.jpg"
+      ? images[1]
+      : filename === "alignment-card-3.jpg"
+        ? images[2]
+        : images[0];
+    return json(route, { ok: true, file: source });
   }
   if (pathname === "/api/publish/first-comment-capabilities") return json(route, { capabilities: [] });
   if (/^\/api\/channels\/[^/]+\/accounts$/.test(pathname)) {
@@ -523,8 +536,16 @@ async function captureCard(viewport) {
   await setWork(work("card"));
   await page.goto(`${baseUrl}/studio?room=edit&kind=card`, { waitUntil: "networkidle", timeout: 60_000 });
   const room = page.locator('[data-room="edit"][data-edit-kind="card"]');
+  // OD-2026-10-09-2와 회장 원문 "그냥 텍스트 이동하면 되는거지"에 따라 v71의
+  // 카드 직접 편집 작업대가 기본이다. 제거된 기본 편집·자유배치 진입 DOM을 기다리지
+  // 않는다. v70 clean-frame은 아래 카드 면 픽셀 비교의 기준으로만 계속 사용한다.
+  const workbench = room.locator("[data-card-deck-v3-workbench]");
+  const editor = workbench.locator("[data-card-canvas-editor]");
+  const stage = editor.locator("[data-card-stage]");
   try {
-    await room.locator("[data-plain-card-shell]").waitFor({ timeout: 10_000 });
+    await editor.waitFor({ timeout: 10_000 });
+    await stage.waitFor({ timeout: 10_000 });
+    await stage.locator("[data-card-slide-scene] img").waitFor({ timeout: 10_000 });
   } catch (error) {
     const diagnostic = await page.evaluate(({ id }) => ({
       url: location.href,
@@ -538,70 +559,47 @@ async function captureCard(viewport) {
     throw new Error(`카드 작업대가 열리지 않았습니다: ${JSON.stringify(diagnostic)}`, { cause: error });
   }
   if (await room.locator("[data-card-deck-missing-note]").count()) throw new Error("일반 카드 위에 말풍선 안내 상자가 남았습니다");
-  if (await room.getByRole("group", { name: "콘텐츠 크기 고르기" }).count() !== 1) throw new Error("카드 비율 선택기가 한 벌이 아닙니다");
-  if (await room.getByRole("group", { name: "콘텐츠 크기 고르기" }).getByRole("button").count() !== 1) throw new Error("일반 카드에 4:5 외 비율 선택지가 남았습니다");
-  if (await room.locator("[data-card-thumbnail]").evaluateAll((nodes) => nodes.some((node) => (node.textContent || "").includes("문제") || (node.textContent || "").includes("원인")))) {
-    throw new Error("일반 카드 스트립 썸네일에 본문 글자가 남았습니다");
+  const slideButtons = editor.locator('[aria-label="카드 장 목록"] [data-card-slide]');
+  if (await slideButtons.count() !== images.length) {
+    throw new Error(`v71 카드 장 목록이 ${images.length}장을 보존하지 않습니다`);
   }
-  if (await room.locator("[data-card-thumbnail-image]").count() !== images.length) {
-    throw new Error("일반 카드의 장별 생성 이미지 썸네일이 모두 보이지 않습니다");
-  }
-  await room.locator('[data-edit-preview-media="image"]').waitFor();
-  const inputValues = await room.locator("[data-line-input]").evaluateAll((nodes) => nodes.map((node) => node.value));
-  if (inputValues.some((value) => !value.trim())) throw new Error(`카드 문구 입력이 비었습니다: ${JSON.stringify(inputValues)}`);
-  const geometry = await room.evaluate((root) => {
-    const strip = root.querySelector("[data-plain-card-strip]").getBoundingClientRect();
-    const thumbnail = root.querySelector("[data-card-thumbnail]").getBoundingClientRect();
-    const stage = root.querySelector("[data-edit-preview-frame]").getBoundingClientRect();
-    const frame = root.querySelector("[data-edit-preview-frame]");
-    const faceCopy = root.querySelector("[data-card-face-copy]").getBoundingClientRect();
-    const assistant = root.querySelector("[data-edit-helper]").getBoundingClientRect();
-    const chatLog = root.querySelector("[data-edit-chat-log]").getBoundingClientRect();
+  const textElements = stage.locator('[data-card-element-type="text"]');
+  if (await textElements.count() < 1) throw new Error("v71 카드 캔버스에 글 요소가 없습니다");
+  const geometry = await editor.evaluate((root) => {
+    const workbench = root.closest("[data-card-deck-v3-workbench]").getBoundingClientRect();
+    const slideList = root.querySelector('[aria-label="카드 장 목록"]').getBoundingClientRect();
+    const stageColumn = root.querySelector("[data-card-stage-column]").getBoundingClientRect();
+    const stage = root.querySelector("[data-card-stage]").getBoundingClientRect();
     return {
-      strip: { left: strip.left, right: strip.right, top: strip.top, bottom: strip.bottom, width: strip.width },
-      thumbnail: { left: thumbnail.left, right: thumbnail.right, top: thumbnail.top, bottom: thumbnail.bottom, width: thumbnail.width },
-      stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom, width: stage.width, height: stage.height, ratio: frame.getAttribute("data-edit-preview-frame"), background: getComputedStyle(frame).backgroundColor },
-      faceCopy: { left: faceCopy.left, right: faceCopy.right, top: faceCopy.top, bottom: faceCopy.bottom, width: faceCopy.width },
-      assistant: { width: assistant.width, height: assistant.height },
-      chatLog: { width: chatLog.width, height: chatLog.height },
+      workbench: { left: workbench.left, right: workbench.right, top: workbench.top, bottom: workbench.bottom, width: workbench.width },
+      slideList: { left: slideList.left, right: slideList.right, top: slideList.top, bottom: slideList.bottom, width: slideList.width },
+      stageColumn: { left: stageColumn.left, right: stageColumn.right, top: stageColumn.top, bottom: stageColumn.bottom, width: stageColumn.width },
+      stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom, width: stage.width, height: stage.height, ratio: stage.width / stage.height },
     };
   });
-  if (overlaps(geometry.strip, geometry.stage)) throw new Error(`카드 스트립과 무대가 겹칩니다: ${JSON.stringify(geometry)}`);
-  const expectedStripWidth = viewport.width === 1440 ? 112 : viewport.width === 1024 ? 100 : 56;
-  if (Math.abs(geometry.thumbnail.width - expectedStripWidth) > 1) {
-    throw new Error(`${viewport.width} 카드 썸네일 폭 불일치: ${JSON.stringify({ expectedStripWidth, geometry })}`);
+  if (overlaps(geometry.slideList, geometry.stage)) throw new Error(`v71 카드 장 목록과 캔버스가 겹칩니다: ${JSON.stringify(geometry)}`);
+  if (Math.abs(geometry.stage.ratio - 0.8) > 0.01) {
+    throw new Error(`${viewport.width} v71 카드 캔버스가 4:5 비율이 아닙니다: ${JSON.stringify(geometry.stage)}`);
   }
-  const expectedStageWidth = viewport.width === 390 ? "300~310" : 520;
-  const stageWidthMatches = viewport.width === 390
-    ? geometry.stage.width >= 300 && geometry.stage.width <= 310
-    : Math.abs(geometry.stage.width - 520) <= 1;
-  if (!stageWidthMatches || geometry.stage.ratio !== "4 / 5") {
-    throw new Error(`${viewport.width} 카드 520px·4:5 규격 불일치: ${JSON.stringify({ expectedStageWidth, geometry })}`);
-  }
-  if (geometry.stage.background !== "rgb(255, 255, 255)") {
-    throw new Error(`${viewport.width} 일반 카드 캔버스가 흰색이 아닙니다: ${geometry.stage.background}`);
-  }
-  if (viewport.width >= 1024 && Math.abs(geometry.assistant.width - 304) > 1) {
-    throw new Error(`${viewport.width} 편집 담당 폭이 304px이 아닙니다: ${JSON.stringify(geometry.assistant)}`);
-  }
-  if (geometry.chatLog.height < 200) {
-    throw new Error(`${viewport.width} 편집 담당 대화 흐름이 숨겨졌습니다: ${JSON.stringify(geometry.chatLog)}`);
-  }
-  if (geometry.faceCopy.left < geometry.stage.left || geometry.faceCopy.right > geometry.stage.right
-    || geometry.faceCopy.top < geometry.stage.top || geometry.faceCopy.bottom > geometry.stage.bottom) {
-    throw new Error(`카드 문구가 카드 면 밖에 있습니다: ${JSON.stringify(geometry)}`);
+  if (geometry.stage.left < geometry.workbench.left - 1 || geometry.stage.right > geometry.workbench.right + 1
+    || geometry.stage.left < -1 || geometry.stage.right > viewport.width + 1) {
+    throw new Error(`${viewport.width} v71 카드 캔버스가 편집 패널 또는 화면 폭 밖입니다: ${JSON.stringify(geometry)}`);
   }
   await assertVisibleEditorControlsDoNotOverlap(room, `카드 편집 영역 ${viewport.width}`);
   const overflow = await assertNoOverflow(page, '[data-room="edit"]', `카드 ${viewport.width}`);
-  await room.locator("[data-plain-card-shell]").evaluate((node) => {
+  const stageScreenshot = path.join(outputDir, `edit-card-stage-${viewport.width}x${viewport.height}.png`);
+  await stage.screenshot({ path: stageScreenshot });
+  const firstSelection = stage.locator("[data-element-selection]").first();
+  await firstSelection.focus();
+  await editor.locator("[data-card-element-inspector]").waitFor();
+  await editor.getByRole("toolbar", { name: /글 도구/ }).waitFor();
+  await workbench.evaluate((node) => {
     node.scrollIntoView({ block: "start" });
     window.scrollBy(0, -16);
   });
   const screenshot = path.join(outputDir, `edit-card-${viewport.width}x${viewport.height}.png`);
   await page.screenshot({ path: screenshot });
-  const stageScreenshot = path.join(outputDir, `edit-card-stage-${viewport.width}x${viewport.height}.png`);
-  await room.locator("[data-edit-preview-frame]").screenshot({ path: stageScreenshot });
-  observations.push({ screen: "edit-card", ...viewport, geometry, overflow, inputCount: inputValues.length });
+  observations.push({ screen: "edit-card", ...viewport, geometry, overflow, slideCount: await slideButtons.count(), textElementCount: await textElements.count(), textToolbarVisible: true });
   return { screenshot, stageScreenshot };
 }
 
@@ -610,58 +608,57 @@ async function captureBakedTextCard(viewport) {
   await setWork(bakedTextWork());
   await page.goto(`${baseUrl}/studio?room=edit&kind=card`, { waitUntil: "networkidle", timeout: 60_000 });
   const room = page.locator('[data-room="edit"][data-edit-kind="card"]');
-  const stage = room.locator("[data-edit-preview-frame]");
-  const stageImage = stage.locator('[data-edit-preview-media="image"]');
-  await stageImage.waitFor({ timeout: 10_000 });
-
-  // v70 544행 계약을 실제 브라우저에서 검증한다. 글자 내장 원본을 그대로 둔 채
-  // 별도 DOM 글자를 얹는 방식이면 src가 바뀌지 않으므로 이 두 변화가 모두 실패한다.
-  const initialPreviewSrc = await stageImage.getAttribute("src");
+  // OD-2026-10-09-2와 회장 원문 "그냥 텍스트 이동하면 되는거지"에 따라 복구 가능한
+  // 글자 카드도 v71 직접 편집 작업대에서 글을 고치고 끈다. 폐기된 상·중·하 단추를
+  // 되살려 통과시키지 않는다. 글자를 지운 바탕과 복원 글 요소 분리는 그대로 검증한다.
+  const editor = room.locator("[data-card-deck-v3-workbench] [data-card-canvas-editor]");
+  const stage = editor.locator("[data-card-stage]");
+  await editor.waitFor({ timeout: 15_000 });
+  await stage.locator('[data-card-element-type="image"] img').waitFor({ timeout: 10_000 });
+  const textSelection = stage.getByLabel("글 요소", { exact: true });
+  await textSelection.waitFor();
+  const beforePixels = await stage.screenshot();
   const editedLine = `즉시 반영 ${viewport.width}`;
-  const firstLineInput = room.locator('[data-line-input="0"]');
-  await firstLineInput.fill(editedLine);
-  await page.waitForFunction(
-    ({ selector, before }) => document.querySelector(selector)?.getAttribute("src") !== before,
-    { selector: '[data-room="edit"] [data-edit-preview-media="image"]', before: initialPreviewSrc },
-  );
-  const textEditedPreviewSrc = await stageImage.getAttribute("src");
-  await room.getByRole("group", { name: "카드 글자 위치" }).getByRole("button", { name: "하단" }).click();
-  await page.waitForFunction(
-    ({ selector, before }) => document.querySelector(selector)?.getAttribute("src") !== before,
-    { selector: '[data-room="edit"] [data-edit-preview-media="image"]', before: textEditedPreviewSrc },
-  );
-  const positionEditedPreviewSrc = await stageImage.getAttribute("src");
-  if (!positionEditedPreviewSrc?.startsWith("data:image/")) {
-    throw new Error(`${viewport.width} 글자 수정 뒤 미리보기가 브라우저 재합성 이미지가 아닙니다`);
+  await textSelection.dblclick();
+  const directTextEditor = stage.getByRole("textbox", { name: "글 내용 직접 편집" });
+  await directTextEditor.fill(editedLine);
+  await directTextEditor.press("Tab");
+  await stage.getByText(editedLine, { exact: true }).waitFor();
+  const beforeMove = await textSelection.boundingBox();
+  if (!beforeMove) throw new Error(`${viewport.width} 복구 카드 글 요소 좌표를 읽지 못했습니다`);
+  await page.mouse.move(beforeMove.x + beforeMove.width / 2, beforeMove.y + beforeMove.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(beforeMove.x + beforeMove.width / 2 + 28, beforeMove.y + beforeMove.height / 2 + 34, { steps: 4 });
+  await page.mouse.up();
+  const afterMove = await textSelection.boundingBox();
+  if (!afterMove || (Math.abs(afterMove.x - beforeMove.x) < 2 && Math.abs(afterMove.y - beforeMove.y) < 2)) {
+    throw new Error(`${viewport.width} 복구 카드 글 요소를 직접 끌어도 좌표가 바뀌지 않았습니다: ${JSON.stringify({ beforeMove, afterMove })}`);
   }
+  const afterPixels = await stage.screenshot();
+  if (beforePixels.equals(afterPixels)) throw new Error(`${viewport.width} 복구 카드 글 편집 뒤 캔버스 픽셀이 바뀌지 않았습니다`);
 
-  const duplicateControls = await room.locator('[aria-label="카드 글자 끌어 옮기기"], [data-card-face-copy]').count();
+  const legacyPositionControls = await room.getByRole("group", { name: "카드 글자 위치" }).count();
   const placeholderOverlays = await room.getByText("여기에 카드 화면이 놓입니다", { exact: true }).count();
-  if (duplicateControls !== 0 || placeholderOverlays !== 0) {
+  if (legacyPositionControls !== 0 || placeholderOverlays !== 0) {
     const storedImg = await page.evaluate((id) => JSON.parse(localStorage.getItem(`studio_work:${id}`) || "{}").img ?? null, workspaceId);
     const diagnostic = path.join(outputDir, `failed-edit-text-card-${viewport.width}x${viewport.height}.png`);
     await page.screenshot({ path: diagnostic });
-    throw new Error(`${viewport.width} 글자 내장 카드 위에 편집 글자 레이어 ${duplicateControls}개·자리표시 레이어 ${placeholderOverlays}개가 다시 겹쳤습니다: ${JSON.stringify({ storedImg, diagnostic })}`);
-  }
-  await room.locator("[data-card-text-embedded-note]").waitFor();
-  const inputValues = await room.locator("[data-line-input]").evaluateAll((nodes) => nodes.map((node) => node.value));
-  const expectedEditedLines = [editedLine, ...bakedTextLines.slice(1)];
-  if (JSON.stringify(inputValues) !== JSON.stringify(expectedEditedLines)) {
-    throw new Error(`${viewport.width} 카드 문구 편집 목록이 수정 원문을 보존하지 않습니다: ${JSON.stringify(inputValues)}`);
+    throw new Error(`${viewport.width} 글자 카드에 폐기된 위치 단추 ${legacyPositionControls}벌·자리표시 레이어 ${placeholderOverlays}개가 남았습니다: ${JSON.stringify({ storedImg, diagnostic })}`);
   }
   const geometry = await stage.evaluate((frame) => {
     const stageRect = frame.getBoundingClientRect();
-    const mediaRect = frame.querySelector('[data-edit-preview-media="image"]').getBoundingClientRect();
+    const mediaRect = frame.querySelector('[data-card-element-type="image"]').getBoundingClientRect();
     return {
       stage: { left: stageRect.left, right: stageRect.right, top: stageRect.top, bottom: stageRect.bottom, width: stageRect.width, height: stageRect.height },
       media: { left: mediaRect.left, right: mediaRect.right, top: mediaRect.top, bottom: mediaRect.bottom, width: mediaRect.width, height: mediaRect.height },
     };
   });
-  if (Math.abs(geometry.stage.width - geometry.media.width) > 1 || Math.abs(geometry.stage.height - geometry.media.height) > 1) {
+  // v71 스테이지의 1px 테두리 양쪽을 제외하면 바탕 이미지가 카드 면을 전부 채운다.
+  if (Math.abs(geometry.stage.width - geometry.media.width) > 2.5 || Math.abs(geometry.stage.height - geometry.media.height) > 2.5) {
     throw new Error(`${viewport.width} 내장 글자 카드 이미지가 무대 전체를 채우지 않습니다: ${JSON.stringify(geometry)}`);
   }
   const overflow = await assertNoOverflow(page, '[data-room="edit"]', `글자 내장 카드 ${viewport.width}`);
-  await room.locator("[data-plain-card-shell]").evaluate((node) => {
+  await editor.evaluate((node) => {
     node.scrollIntoView({ block: "start" });
     window.scrollBy(0, -16);
   });
@@ -672,13 +669,14 @@ async function captureBakedTextCard(viewport) {
   observations.push({
     screen: "edit-text-card",
     ...viewport,
-    duplicateControls,
+    legacyPositionControls,
     placeholderOverlays,
-    inputCount: inputValues.length,
     editedLine,
-    textPreviewChanged: initialPreviewSrc !== textEditedPreviewSrc,
-    positionPreviewChanged: textEditedPreviewSrc !== positionEditedPreviewSrc,
-    previewIsBrowserRenderedDataUrl: positionEditedPreviewSrc?.startsWith("data:image/") === true,
+    directTextEdited: true,
+    directTextMoved: true,
+    pixelsChanged: true,
+    beforeMove,
+    afterMove,
     geometry,
     overflow,
   });
@@ -718,13 +716,15 @@ async function captureUnrecoverableTextCard(viewport, cardCount) {
     room.locator("[data-line-toggle]"),
     room.locator("[data-line-add]"),
     room.locator("[data-content-size-option]"),
-    room.getByRole("group", { name: "카드 글자 위치" }).getByRole("button"),
   ];
   for (const controls of lockedControls) {
     const states = await controls.evaluateAll((nodes) => nodes.map((node) => node.disabled));
     if (!states.length || states.some((disabled) => !disabled)) {
       throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드에 활성 조작이 남았습니다: ${JSON.stringify(states)}`);
     }
+  }
+  if (await room.getByRole("group", { name: "카드 글자 위치" }).count()) {
+    throw new Error(`${viewport.width} 원본 없는 ${cardCount}장 카드에 폐기된 상·중·하 위치 단추가 남았습니다`);
   }
 
   const previewSources = await room.locator('[data-edit-preview-media="image"]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute("src")));
@@ -956,90 +956,54 @@ async function captureBubbleDeck(viewport) {
   await setWork(bubbleWork());
   await page.goto(`${baseUrl}/studio?room=edit&kind=card&draft_id=screen-bubble-draft`, { waitUntil: "networkidle", timeout: 60_000 });
   const room = page.locator('[data-room="edit"][data-edit-kind="card"]');
-  const panel = room.locator("[data-card-deck-panel]");
-  await panel.waitFor({ timeout: 10_000 });
-  await panel.locator("[data-slide-id]").nth(2).click();
-  await panel.locator("[data-bubble-content-editable]").nth(1).click();
-  const thumbnailCount = await panel.locator("[data-slide-id]").count();
+  // OD-2026-10-09-2 이후 카톡 덱도 v71 직접 편집 작업대를 쓴다. v70 clean-frame과의
+  // 카드 면 대조 리포트는 유지하지만, 제거된 CardDeckPanel DOM을 계약으로 삼지 않는다.
+  const editor = room.locator("[data-card-deck-v3-workbench] [data-card-canvas-editor]");
+  await editor.waitFor({ timeout: 15_000 });
+  const slideButtons = editor.locator('[aria-label="카드 장 목록"] [data-card-slide]');
+  await slideButtons.nth(2).click();
+  const thumbnailCount = await slideButtons.count();
   if (thumbnailCount !== bubbleDeck.slides.length) {
     throw new Error(`말풍선 덱 장 수 불일치: 기대 ${bubbleDeck.slides.length}, 실제 ${thumbnailCount}`);
   }
-  if (await panel.locator("[data-card-deck-thumbnail-strip] [data-selected-slide-toolbar]").count()) {
-    throw new Error("말풍선 장 조작 툴바가 스트립 안에 반복 렌더됐습니다");
+  const stage = editor.locator("[data-card-stage]");
+  await stage.waitFor();
+  const bubbleEditor = editor.getByRole("region", { name: "말풍선 직접 편집" });
+  await bubbleEditor.waitFor();
+  await bubbleEditor.getByRole("textbox").first().focus();
+  for (const label of ["새 장 추가", "이 장 복제", "장 앞으로", "장 뒤로", "이 장 삭제", "말풍선 추가"]) {
+    if (await editor.getByRole("button", { name: label, exact: true }).count() !== 1) {
+      throw new Error(`v71 카톡 편집 동작 '${label}'이 한 벌이 아닙니다`);
+    }
   }
-  if (await panel.locator("[data-selected-slide-toolbar]").count() !== 0) {
-    throw new Error("선택 장 위 ▲▼+장 툴바가 남았습니다");
-  }
-  const actionLabels = await panel.locator("[data-selected-slide-actions] button").allTextContents();
-  if (JSON.stringify(actionLabels.map((label) => label.trim())) !== JSON.stringify(["이 장 복제", "이 장 삭제", "말풍선 추가"])) {
-    throw new Error(`카드 아래 장 작업 단추가 규격과 다릅니다: ${JSON.stringify(actionLabels)}`);
-  }
-  const selectedSlide = panel.locator("[data-slide-id]").nth(2);
-  const selectedSlideId = await selectedSlide.getAttribute("data-slide-id");
-  const nextSlideIdBefore = await panel.locator("[data-slide-id]").nth(3).getAttribute("data-slide-id");
-  await selectedSlide.focus();
-  await selectedSlide.press("Alt+ArrowDown");
-  if (await panel.locator("[data-slide-id]").nth(3).getAttribute("data-slide-id") !== selectedSlideId) throw new Error("Alt+↓ 키보드 순서 이동이 동작하지 않습니다");
-  await panel.locator(`[data-slide-id="${selectedSlideId}"]`).press("Alt+ArrowUp");
-  if (await panel.locator("[data-slide-id]").nth(3).getAttribute("data-slide-id") !== nextSlideIdBefore) throw new Error("Alt+↑ 키보드 순서 복원이 동작하지 않습니다");
-  const geometry = await panel.evaluate((root) => {
-    const strip = root.querySelector("[data-card-deck-thumbnail-strip]").getBoundingClientRect();
-    const thumbnail = root.querySelector("[data-slide-id]").getBoundingClientRect();
-    const stage = root.querySelector("[data-card-deck-stage]").getBoundingClientRect();
-    const stripStyle = getComputedStyle(root.querySelector("[data-card-deck-thumbnail-strip]"));
-    const selectedBubbleRow = root.querySelector('[data-bubble-editing="true"]');
-    const selectedBubble = selectedBubbleRow?.firstElementChild;
-    const toolbar = selectedBubbleRow?.querySelector("[data-bubble-controls]");
-    const bubbleRect = selectedBubble?.getBoundingClientRect();
-    const toolbarRect = toolbar?.getBoundingClientRect();
-    const toolbarButtonRects = [...(toolbar?.querySelectorAll("button") ?? [])].map((button) => button.getBoundingClientRect());
-    const intersectionWidth = bubbleRect && toolbarRect ? Math.max(0, Math.min(bubbleRect.right, toolbarRect.right) - Math.max(bubbleRect.left, toolbarRect.left)) : 0;
-    const intersectionHeight = bubbleRect && toolbarRect ? Math.max(0, Math.min(bubbleRect.bottom, toolbarRect.bottom) - Math.max(bubbleRect.top, toolbarRect.top)) : 0;
+  const geometry = await editor.evaluate((root) => {
+    const workbench = root.closest("[data-card-deck-v3-workbench]").getBoundingClientRect();
+    const strip = root.querySelector('[aria-label="카드 장 목록"]').getBoundingClientRect();
+    const stage = root.querySelector("[data-card-stage]").getBoundingClientRect();
+    const bubbleEditor = root.querySelector('[aria-label="말풍선 직접 편집"]').getBoundingClientRect();
     return {
+      workbench: { left: workbench.left, right: workbench.right, top: workbench.top, bottom: workbench.bottom, width: workbench.width },
       strip: { left: strip.left, right: strip.right, top: strip.top, bottom: strip.bottom, width: strip.width, height: strip.height },
-      thumbnail: { left: thumbnail.left, right: thumbnail.right, top: thumbnail.top, bottom: thumbnail.bottom, width: thumbnail.width },
       stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom, width: stage.width, height: stage.height },
-      stripDirection: stripStyle.flexDirection,
-      bubbleToolbar: toolbar && toolbarRect ? {
-        position: getComputedStyle(toolbar).position,
-        intersectionArea: intersectionWidth * intersectionHeight,
-        buttonTopDelta: toolbarButtonRects.length ? Math.max(...toolbarButtonRects.map((rect) => rect.top)) - Math.min(...toolbarButtonRects.map((rect) => rect.top)) : 0,
-        top: toolbarRect.top,
-        bottom: toolbarRect.bottom,
-      } : null,
+      bubbleEditor: { left: bubbleEditor.left, right: bubbleEditor.right, top: bubbleEditor.top, bottom: bubbleEditor.bottom, width: bubbleEditor.width },
     };
   });
-  const expectedWidth = viewport.width === 1440 ? 112 : viewport.width === 1024 ? 100 : 56;
-  if (Math.abs(geometry.thumbnail.width - expectedWidth) > 1) {
-    throw new Error(`${viewport.width} 말풍선 썸네일 폭 불일치: ${JSON.stringify({ expectedWidth, geometry })}`);
-  }
-  if (viewport.width === 390 && geometry.stripDirection !== "row") {
-    throw new Error(`390 말풍선 스트립이 가로가 아닙니다: ${JSON.stringify(geometry)}`);
-  }
-  if (viewport.width !== 390 && geometry.strip.bottom > geometry.stage.bottom + 1) {
-    throw new Error(`${viewport.width} 말풍선 스트립이 카드 아래로 넘습니다: ${JSON.stringify(geometry)}`);
-  }
-  if (!geometry.bubbleToolbar) throw new Error(`${viewport.width} 선택 말풍선 툴바를 찾지 못했습니다`);
-  if (viewport.width !== 390 && geometry.bubbleToolbar.intersectionArea > 0.5) {
-    throw new Error(`${viewport.width} 선택 말풍선과 툴바가 겹칩니다: ${JSON.stringify(geometry.bubbleToolbar)}`);
-  }
-  if (viewport.width !== 390 && geometry.bubbleToolbar.buttonTopDelta > 1) {
-    throw new Error(`${viewport.width} 말풍선 툴바가 한 줄이 아닙니다: ${JSON.stringify(geometry.bubbleToolbar)}`);
-  }
-  if (viewport.width === 390 && geometry.bubbleToolbar.position !== "static") {
-    throw new Error(`390 말풍선 내부 툴바 배치가 유지되지 않았습니다: ${JSON.stringify(geometry.bubbleToolbar)}`);
+  if (overlaps(geometry.strip, geometry.stage)) throw new Error(`${viewport.width} v71 카톡 장 목록과 캔버스가 겹칩니다: ${JSON.stringify(geometry)}`);
+  if (geometry.stage.left < geometry.workbench.left - 1 || geometry.stage.right > geometry.workbench.right + 1
+    || geometry.stage.left < -1 || geometry.stage.right > viewport.width + 1) {
+    throw new Error(`${viewport.width} v71 카톡 캔버스가 편집 패널 또는 화면 폭 밖입니다: ${JSON.stringify(geometry)}`);
   }
   const overflow = await assertNoOverflow(page, '[data-room="edit"]', `말풍선 덱 ${viewport.width}`);
-  await panel.evaluate((node) => {
+  await editor.evaluate((node) => {
     node.scrollIntoView({ block: "start" });
     window.scrollBy(0, -16);
   });
   const screenshot = path.join(outputDir, `edit-bubble-deck-${viewport.width}x${viewport.height}.png`);
   await page.screenshot({ path: screenshot });
-  await assertVisibleEditorControlsDoNotOverlap(panel, `말풍선 덱 편집 영역 ${viewport.width}`);
+  await assertVisibleEditorControlsDoNotOverlap(editor, `말풍선 덱 편집 영역 ${viewport.width}`);
   const stageScreenshot = path.join(outputDir, `edit-bubble-stage-${viewport.width}x${viewport.height}.png`);
-  await panel.locator("[data-card-deck-stage]").screenshot({ path: stageScreenshot });
-  observations.push({ screen: "edit-bubble-deck", ...viewport, geometry, overflow, thumbnailCount, toolbarCount: 0 });
+  await stage.screenshot({ path: stageScreenshot });
+  observations.push({ screen: "edit-bubble-deck", ...viewport, geometry, overflow, thumbnailCount, v71DirectBubbleEditor: true });
   return { screenshot, stageScreenshot };
 }
 

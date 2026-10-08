@@ -5,7 +5,9 @@ import { Button } from "@/components/shared/Button";
 import type { EditContentKind } from "./StudioRooms";
 import styles from "./EditPreview.module.css";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
+import { isCardTextPosition, type CardTextPosition } from "@/lib/studio/card-text-position";
 import { cardPositionFromPoint } from "@/lib/studio/text-card-image";
+export type { CardTextPosition } from "@/lib/studio/card-text-position";
 
 // 편집실 미리보기.
 //
@@ -38,11 +40,6 @@ export const PREVIEW_SPECS: readonly PreviewSpec[] = [
   { key: "card-horizontal", label: "가로 카드 1.91:1", ratio: "1.91 / 1", size: "1200 × 628", safeTop: 0, safeBottom: 0, kinds: ["card"] },
 ] as const;
 
-export type CardTextPosition =
-  | "top-left" | "top-center" | "top-right"
-  | "center-left" | "center" | "center-right"
-  | "bottom-left" | "bottom-center" | "bottom-right";
-
 const CARD_POSITION_CLASS: Record<CardTextPosition, string> = {
   "top-left": styles.cardTopLeft,
   "top-center": styles.cardTopCenter,
@@ -54,6 +51,23 @@ const CARD_POSITION_CLASS: Record<CardTextPosition, string> = {
   "bottom-center": styles.cardBottomCenter,
   "bottom-right": styles.cardBottomRight,
 };
+
+const CARD_POSITION_GRID: readonly (readonly CardTextPosition[])[] = [
+  ["top-left", "top-center", "top-right"],
+  ["center-left", "center", "center-right"],
+  ["bottom-left", "bottom-center", "bottom-right"],
+] as const;
+
+function nudgeCardTextPosition(position: CardTextPosition, key: string): CardTextPosition {
+  const row = CARD_POSITION_GRID.findIndex((items) => items.includes(position));
+  if (row < 0) return "center";
+  const column = CARD_POSITION_GRID[row]?.indexOf(position) ?? 1;
+  if (key === "ArrowUp") return CARD_POSITION_GRID[Math.max(0, row - 1)][column];
+  if (key === "ArrowDown") return CARD_POSITION_GRID[Math.min(CARD_POSITION_GRID.length - 1, row + 1)][column];
+  if (key === "ArrowLeft") return CARD_POSITION_GRID[row][Math.max(0, column - 1)];
+  if (key === "ArrowRight") return CARD_POSITION_GRID[row][Math.min(CARD_POSITION_GRID[row].length - 1, column + 1)];
+  return position;
+}
 
 
 
@@ -173,10 +187,9 @@ export function EditPreview({
   const spec = specs.find((one) => one.key === specKey) ?? specs[0] ?? PREVIEW_SPECS[0];
   const line = lines[activeLine] ?? lines[0] ?? "";
   const unit = kind === "card" ? "장" : kind === "text" ? "문단" : "장면";
-  const cardPosition = cardTextPositions[activeLine] ?? "center";
+  const cardPosition = isCardTextPosition(cardTextPositions[activeLine]) ? cardTextPositions[activeLine] : "center";
   const activeMediaUrl = mediaUrls?.[activeLine] ?? mediaUrl;
-  const cardVerticalPosition = cardPosition.startsWith("top") ? "top" : cardPosition.startsWith("bottom") ? "bottom" : "center";
-  const movingCardText = useRef(false);
+  const movingCardText = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
   // 자막이 아래 UI가 덮는 자리 안으로 들어가면 실제 업로드 화면에서 가린다.
   const subtitleHidden = spec.safeBottom >= 20 && (subtitleSize === "크게" || line.length > 34);
 
@@ -200,8 +213,10 @@ export function EditPreview({
           data-edit-preview-frame={spec.ratio}
           data-card-canvas={kind === "card" ? "true" : undefined}
           onPointerUp={(event) => {
-            if (kind !== "card" || !movingCardText.current || !onCardTextPositionsChange) return;
-            movingCardText.current = false;
+            const movement = movingCardText.current;
+            movingCardText.current = null;
+            if (kind !== "card" || !movement || movement.pointerId !== event.pointerId || !onCardTextPositionsChange) return;
+            if (Math.hypot(event.clientX - movement.startX, event.clientY - movement.startY) < 4) return;
             const next = lines.map((_, index) => cardTextPositions[index] ?? "center");
             const bounds = event.currentTarget.getBoundingClientRect();
             const relX = bounds.width > 0 ? (event.clientX - bounds.left) / bounds.width : 0.5;
@@ -235,18 +250,29 @@ export function EditPreview({
             <div
               className={`absolute z-10 w-4/5 rounded-control border border-border p-stack shadow-lg ${stageSize === "card-v70" ? styles.cardV70TextOverlay : styles.cardTextOverlay} ${CARD_POSITION_CLASS[cardPosition]}`}
               data-card-text-position={cardPosition}
+              aria-label="카드 글자 직접 끌어 옮기기"
+              aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+              role="group"
+              tabIndex={cardEditingLocked ? -1 : 0}
+              onKeyDown={(event) => {
+                if (cardEditingLocked || !onCardTextPositionsChange || !event.key.startsWith("Arrow")) return;
+                const nextPosition = nudgeCardTextPosition(cardPosition, event.key);
+                if (nextPosition === cardPosition) return;
+                event.preventDefault();
+                const next = lines.map((_, index) => cardTextPositions[index] ?? "center");
+                next[activeLine] = nextPosition;
+                onCardTextPositionsChange(next);
+              }}
+              onPointerDown={(event) => {
+                if (cardEditingLocked || event.target instanceof HTMLTextAreaElement) return;
+                movingCardText.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY };
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+              }}
+              onPointerCancel={(event) => {
+                if (movingCardText.current?.pointerId === event.pointerId) movingCardText.current = null;
+                event.currentTarget.releasePointerCapture?.(event.pointerId);
+              }}
             >
-              <button
-                type="button"
-                aria-label="카드 글자 끌어 옮기기"
-                className={`mb-stack-tight min-h-control-touch w-full cursor-move rounded-control border border-border px-stack text-caption font-semibold ${styles.cardTextHandle}`}
-                onPointerDown={(event) => {
-                  movingCardText.current = true;
-                  event.currentTarget.setPointerCapture?.(event.pointerId);
-                }}
-              >
-                글자 위치 옮기기
-              </button>
               <textarea
                 aria-label={`카드 ${activeLine + 1} 글자`}
                 data-card-face-copy
@@ -297,30 +323,6 @@ export function EditPreview({
           ) : null}
         </div>
       </div>
-
-      {kind === "card" ? (
-        <div className="mt-stack flex flex-wrap items-center gap-stack-tight" role="group" aria-label="카드 글자 위치">
-          <span className="text-caption font-semibold text-muted">글자 위치</span>
-          {(["top", "center", "bottom"] as const).map((position) => (
-            <Button
-              key={position}
-              size="sm"
-              variant="secondary"
-              className={cardVerticalPosition === position ? "border-accent bg-accent-soft text-accent" : ""}
-              aria-pressed={cardVerticalPosition === position}
-              disabled={cardEditingLocked}
-              onClick={() => {
-                if (!onCardTextPositionsChange) return;
-                const next = lines.map((_, index) => cardTextPositions[index] ?? "center");
-                next[activeLine] = position === "top" ? "top-center" : position === "bottom" ? "bottom-center" : "center";
-                onCardTextPositionsChange(next);
-              }}
-            >
-              {position === "top" ? "상단" : position === "bottom" ? "하단" : "중앙"}
-            </Button>
-          ))}
-        </div>
-      ) : null}
 
       <div className="mt-stack flex flex-wrap items-center gap-stack-tight">
         <Button size="sm" onClick={() => onActiveLine(Math.max(0, activeLine - 1))} disabled={activeLine <= 0}>앞 {unit}</Button>

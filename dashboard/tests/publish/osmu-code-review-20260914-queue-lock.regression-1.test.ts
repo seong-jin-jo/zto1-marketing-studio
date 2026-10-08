@@ -1,8 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { withQueueLock } from "../../../openclaw/extensions/threads-queue/src/queue-lock";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Regression: OSMU-20260914-04. 살아 있는 13초 임계 구역의 잠금을 10초 뒤 다른 작업이 빼앗던 문제
 // Found by /qa on 2026-09-14
@@ -21,6 +20,8 @@ describe("OSMU 감사 항목 4 큐 잠금 소유권과 heartbeat", () => {
   afterEach(() => fs.rmSync(tempDir, { recursive: true, force: true }));
 
   it("항목 4 경합 경로: 13초 작업이 끝나기 전에 두 번째 작업이 진입하지 않는다", async () => {
+    vi.doUnmock("proper-lockfile");
+    const { withQueueLock } = await import("../../../openclaw/extensions/threads-queue/src/queue-lock");
     const startedAt = Date.now();
     const events: Record<string, number> = {};
     const first = withQueueLock(target, async () => {
@@ -39,6 +40,8 @@ describe("OSMU 감사 항목 4 큐 잠금 소유권과 heartbeat", () => {
   }, 20_000);
 
   it("항목 4 정상 경로: 잠금 안에서 작업하고 자기 잠금만 해제한다", async () => {
+    vi.doUnmock("proper-lockfile");
+    const { withQueueLock } = await import("../../../openclaw/extensions/threads-queue/src/queue-lock");
     await expect(withQueueLock(target, async () => "ok")).resolves.toBe("ok");
     expect(fs.existsSync(`${target}.lock`)).toBe(false);
   });

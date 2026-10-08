@@ -66,7 +66,10 @@ describe("TEXTCARD-OVERLAY-01 무료 글자 카드 편집 무대", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "카드 글자 끌어 옮기기" })).toBeInTheDocument();
+    // 계약 갱신 근거: wiki/거버넌스/결정.md OD-2026-10-09-2.
+    // 회장 원문: "그냥 텍스트 이동하면 되는거지". 별도 이동 버튼은 없애되 일반 배경의
+    // 편집 가능한 글자 레이어와 직접 드래그 표면은 반드시 남아야 한다.
+    expect(screen.getByRole("group", { name: "카드 글자 직접 끌어 옮기기" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "카드 1 글자" })).toHaveValue("사진 위에 올릴 문구");
   });
 
