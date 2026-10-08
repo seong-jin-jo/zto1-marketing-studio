@@ -1,5 +1,17 @@
 # OSMU build log
 
+## 2026-10-08 22:24 KST · 내보내기 작업자 R2 환경변수·health 게이트 교정
+
+STAMP: 2026-10-08 22:24 KST | model: gpt-5/Codex | agent: code-builder | skill: review | 근거: run 37772730741, 로컬 계약 30건, TypeScript, production build, Compose 실해석 | 고민: dashboard 정상과 작업자 준비 완료를 분리해 배포 성공 조건을 실제 작업 처리 가능 상태에 맞췄다.
+
+**기존 구현 확인:** 별도 작업자, PostgreSQL advisory lock, 34620 health endpoint, R2 저장 경로는 이미 구현돼 있었다. 운영 작업자는 R2 키 누락으로 재시작했고, 배포는 dashboard health만 기다려 이를 놓쳤다. DB role은 RLS 우회였고 queue가 남아 있어 RLS 문제는 배제됐다.
+
+**추가·변경:** 작업자 entry의 필수 환경변수 7개를 단일 계약으로 추출하고 Compose가 같은 목록을 fail-closed로 전달하게 했다. deploy는 작업자 Docker health를 240초 기다리고 실패 시 최근 로그를 마스킹해 남긴다. health endpoint는 DB/advisory lock 초기화가 끝나기 전에는 503을 반환한다. 계약 테스트는 작업자 요구 목록, Compose 전달, workflow `.env` 렌더, 누락 거절, health 대기, 실제 마스커를 한 경로로 대조한다.
+
+**검증:** 관련 5파일 30건 PASS, `typecheck:ci` 종료 코드 0, `next build` 종료 코드 0이다. workflow·Compose YAML, health step `bash -n`·ShellCheck가 통과했다. 합성값 Compose 실해석은 필수 키 누락 종료 코드 1, 완전한 계약 종료 코드 0이다. 운영 배포와 queue drain은 미검증이다.
+
+SOURCES/MODEL: gpt-5/Codex | `dashboard/src/workers/studio-export-worker.ts` | `docker-compose.postagi-4tenants.yml` | `.github/workflows/deploy-marketing.yml` | https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/ | https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands
+
 ## 2026-10-08 20:30 KST · 진단 테스트 push protection 차단 교정
 
 STAMP: 2026-10-08 20:30 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: GitHub push protection 차단 위치, 진단 계약 테스트 19건, TypeScript, push 대상 이력 전수 검사, GitHub 공식 문서 | 고민: 마스킹 입력의 실제 바이트와 거절 단언은 유지하면서 소스와 모든 push 대상 커밋에서만 자격증명 형태를 제거했다.

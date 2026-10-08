@@ -1,3 +1,13 @@
+## 2026-10-08 22:24 KST · 운영 내보내기 작업자 R2 환경변수·health 게이트 로컬 교정 완료
+
+- 인계 기준: 사용자가 지정한 진단 run `37772730741`, Read 목록, 현재 `fix/export-worker-r2-env` 브랜치를 정본으로 삼았다. tmux `openclaw-auto-3:0.1`은 이 워커 자신의 실행 기록이었다.
+- 원인: 작업자 entry는 R2 4개 키가 필수였지만 Compose의 작업자 환경 계약과 deploy의 작업자 health 대기가 없었다. 운영 DB role은 RLS를 우회했고 jobs 1건·items 3건이 queued여서 RLS는 원인이 아니다.
+- 변경: 필수 환경변수 7개를 단일 목록으로 만들고 Compose `${VAR:?}` 전달과 workflow `.env` 렌더를 계약으로 묶었다. deploy는 작업자 healthy를 최대 240초 기다리고 실패 시 최근 로그 200줄을 비밀 마스킹 후 남긴다. health endpoint는 DB/advisory lock 초기화 전 `starting`과 종료·실패 상태에서 503을 반환한다.
+- 검증: 관련 계약 5파일 30건, TypeScript, production Next.js build, workflow·Compose YAML, health step Bash·ShellCheck PASS. 합성값 Compose 실해석은 R2 접근 키 누락 rc=1, 전체 계약 rc=0이다. 독립 리뷰에서 잘못된 `env_file` 표현 단언과 readiness 조기 200을 찾아 수정했다.
+- 이웃 영향 확인: DB schema·RLS·queue 처리 알고리즘·dashboard UI 변경 없음. 실제 비밀값 출력 없음. `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 다른 세션 소유라 stage하지 않는다. Compose `${VAR:?}`는 공유 파일 전체 해석에 적용되지만 workflow가 `.env.osmu`에 7개를 항상 렌더하며, 작업자 필수값을 누락한 배포를 fail-closed로 막는 요청 계약과 일치한다.
+- 코드 커밋: `8dfdde6e fix(studio): enforce export worker runtime health`. push하지 않았다.
+- 미검증: push, 운영 재배포, 작업자 healthy, queued 3개 처리 재개. 다음 실행 소유자는 배포 권한이 있는 컨트롤러이며 종료 증거는 GitHub Actions worker health 단계 PASS와 DB queue 감소다.
+
 ## 2026-10-08 20:30 KST · push protection 합성 자격증명 픽스처 교정 완료
 
 - 인계 기준: 사용자가 지정한 차단 위치와 현재 브랜치를 기준으로 교정했다. GitHub 공식 문서는 차단 문자열이 나타나는 모든 push 대상 커밋에서 제거해야 한다고 명시한다.
