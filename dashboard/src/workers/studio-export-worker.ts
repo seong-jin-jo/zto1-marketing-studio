@@ -2,16 +2,14 @@ import http from "node:http";
 import postgres from "postgres";
 import { ExportItemWorker, realExportWorkerDependencies, workerId } from "@/lib/studio/export-worker";
 import { PostgresExportRepository } from "@/lib/studio/export-repository";
+import { requireStudioExportWorkerEnv } from "./studio-export-worker-env";
 
 const concurrency = Number(process.env.EXPORT_RENDER_CONCURRENCY ?? "1");
 if (concurrency !== 1) throw new Error("EXPORT_RENDER_CONCURRENCY must be 1 until capacity approval");
-for (const key of ["R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "R2_ENDPOINT"] as const) {
-  if (!process.env[key]?.trim()) throw new Error(`${key} is required for the persistent export worker`);
-}
+const requiredEnvironment = requireStudioExportWorkerEnv();
 
 const healthPort = Number(process.env.EXPORT_WORKER_HEALTH_PORT ?? "34620");
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl?.trim()) throw new Error("DATABASE_URL is required for the persistent export worker");
+const databaseUrl = requiredEnvironment.DATABASE_URL;
 // Advisory locks are connection-scoped. postgres.js defaults max_lifetime to a random
 // 45–90 minutes, so the lock connection must opt out of lifetime recycling.
 const advisoryLockPool = postgres(databaseUrl, { max: 1, max_lifetime: null });
@@ -24,7 +22,8 @@ let lastActivityAt = new Date().toISOString();
 let stopping = false;
 
 const health = http.createServer((_request, response) => {
-  response.writeHead(role === "failed" ? 503 : 200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+  const ready = role === "active" || role === "standby";
+  response.writeHead(ready ? 200 : 503, { "Content-Type": "application/json", "Cache-Control": "no-store" });
   response.end(JSON.stringify({ status: role, worker_id: id, last_activity_at: lastActivityAt, last_error: lastError }));
 });
 health.listen(healthPort, "0.0.0.0");
