@@ -1,0 +1,79 @@
+{
+  "verified_at": "2026-10-09T00:31:24+09:00",
+  "environment": {
+    "url": "https://openclaw.sj-onpremise-cloudflare-tunnel.cloud",
+    "health_http": 200,
+    "database": "up",
+    "build_commit": "ea74a7dfde0b73425ddf304b7c9c848b092295c1",
+    "deployment_run": 37796572407,
+    "deployment_run_conclusion": "success",
+    "browser_tabs_before": 2,
+    "browser_tabs_after_close": 2
+  },
+  "draft": {
+    "title": "요가 스튜디오 첫 수업 안내",
+    "fresh_revision_method": "번호 목록형 템플릿을 한 번 적용해 새 내보내기 버전을 생성",
+    "slide_count": 3
+  },
+  "export": {
+    "create_http": 202,
+    "status_poll_http": 200,
+    "elapsed_seconds": 10.4,
+    "final_status": "최신 편집본 내보내기 완료",
+    "completed_slides": 3,
+    "total_slides": 3,
+    "console_errors": 0,
+    "page_errors": 0,
+    "api_4xx_5xx": 0,
+    "result": "pass"
+  },
+  "publish_handoff": {
+    "button_visible": true,
+    "button_enabled": true,
+    "url_path_after_click": "/studio?room=publish",
+    "active_publish_step_count": 1,
+    "draft_title_visible_count": 1,
+    "three_slide_carousel_visible": true,
+    "loaded_visible_image_count": 4,
+    "handoff_status": "발행실로 이동했습니다. 내보내기 판은 고정되지 않았습니다: editor handoff not found",
+    "exported_deck_displayed": false,
+    "console_errors": 0,
+    "page_errors": 0,
+    "result": "fail"
+  },
+  "approval_inbox": {
+    "pending": 0,
+    "draft_title_occurrences": 0,
+    "duplicate_posts": 0,
+    "console_errors": 0,
+    "page_errors": 0,
+    "result": "pass_conditional"
+  },
+  "viewport_checks": {
+    "widths": [390, 1440],
+    "screens": ["export_started", "export_complete", "publish_room", "approval_inbox"],
+    "horizontal_overflow_px": {
+      "export_started": {"390": 0, "1440": 0},
+      "export_complete": {"390": 0, "1440": 0},
+      "publish_room": {"390": 0, "1440": 0},
+      "approval_inbox": {"390": 0, "1440": 0}
+    },
+    "console_errors": {
+      "export_started_and_complete": 0,
+      "publish_room": 0,
+      "approval_inbox": 0
+    }
+  },
+  "external_social_publish_attempted": false,
+  "overall_result": "ng_publish_handoff",
+  "screenshots": [
+    "01-export-started-1440.png",
+    "01-export-started-390.png",
+    "02-export-complete-1440.png",
+    "02-export-complete-390.png",
+    "03-publish-room-1440.png",
+    "03-publish-room-390.png",
+    "04-approval-inbox-1440.png",
+    "04-approval-inbox-390.png"
+  ]
+}

@@ -1,3 +1,60 @@
+## 2026-10-09 운영 편집실 v2 S4 R2 재실측 ❌ 부분 복구·인계 NG
+
+<!-- READ_EVIDENCE: sed -n '1,260p' /Users/sj/.codex/skills/qa/SKILL.md ; sed -n '1,260p' /Users/sj/.claude/standards/standard-dev.md ; sed -n '1,260p' /Users/sj/.claude/standards/standard-qa-methodology.md ; sed -n '1,260p' /Users/sj/.claude/standards/standard-doc-review.md -->
+
+> 결론: 배포 `ea74a7df`, run `37796572407`에서 새 카드뉴스 내보내기는 `10.4초`, `3 / 3장` 완료로 복구됐다. `발행실로` 버튼도 노출·클릭됐지만 발행실에 `editor handoff not found`가 표시되어 내보낸 판 고정은 실패했다. S4 전체는 NG다.
+
+### 단계별 수치
+
+| 요청번호 | 무엇을 확인 | 테스트번호 | 판정 | 실행 증거 |
+|---|---|---|---|---|
+| S4 | 새 편집 버전을 운영 작업자가 실제 내보내기 완료 | PROD-S4-R2-EXPORT | ✅ PASS | `POST /api/studio/drafts/{draft}/exports` HTTP `202`, 상태 조회 HTTP `200`, `10.4초`, 최종 `최신 편집본 내보내기 완료`, `3 / 3장`, 장별 완료 `3건`. |
+| S4 | 완료 뒤 `발행실로` 버튼 노출·활성 | PROD-S4-R2-HANDOFF-BUTTON | ✅ PASS | 버튼 노출 `1`, 활성 `1`. 클릭 뒤 URL `/studio?room=publish`, 발행실 활성 단계 `1`. |
+| S4 | 발행실에 방금 내보낸 판을 고정해 표시 | PROD-S4-R2-HANDOFF-DECK | ❌ NG | 제목 `요가 스튜디오 첫 수업 안내`와 `1 / 3` 미리보기는 보였으나, 화면에 `발행실로 이동했습니다. 내보내기 판은 고정되지 않았습니다: editor handoff not found`가 표시됐다. `exported_deck_displayed=false`. |
+| S4 | 승인 인박스 중복 글이 없음 | PROD-S4-R2-INBOX-DEDUPE | ✅ PASS, 조건부 | 승인 인박스 `0 / 0 검토 중`, 선택 초안 제목 `0건`, 중복 `0건`. 발행실 인계 실패로 신규 인박스 항목 생성은 보장하지 않는다. |
+| 공통 | 화면별 콘솔 오류와 가로 넘침 | PROD-S4-R2-UI-390-1440 | ✅ PASS | 내보내기 진행·완료, 발행실, 승인 인박스 4화면 모두 390px·1440px 가로 넘침 `0px`. 콘솔 오류 `0건`, page error `0건`, export API 4xx·5xx `0건`. |
+
+### 운영 클릭 경로와 관찰값
+
+1. 회장 9444 Chrome의 로그인된 멤버 세션에서 새 탭 하나로 운영 `/studio`를 열었다.
+2. `작업물 전체`에서 `요가 스튜디오 첫 수업 안내`를 열고, 번호 목록형 템플릿을 한 번 적용해 새 내보내기 버전을 만들었다.
+3. `내보내기` 패널의 실제 시작 버튼을 눌렀다. 접수 `202` 뒤 `10.4초`에 세 장 모두 완료됐다.
+4. 완료 패널의 `발행실로`를 눌렀다. 화면 전환은 됐지만 내보낸 판 고정은 `editor handoff not found`로 실패했다.
+5. `/inbox`를 열어 검토 대기 `0`, 같은 제목 `0`, 중복 `0`을 확인했다. 외부 SNS 실제 발행은 누르지 않았다.
+
+### 출고 기준 충족 여부
+
+| 필수 출고 기준 | 이번 재실측 상태 | 이유 |
+|---|---|---|
+| 변경 기능 해피·엣지 | ❌ 미충족 | 내보내기 해피 경로는 PASS지만 발행실 인계 해피 경로가 NG다. |
+| 누적 전체 리그레션 | 미실행 | 이번 위임은 직전 운영 실패 2건의 표적 재실측이다. 전체 스위트 통과를 주장하지 않는다. |
+| 디자인 QA | 미실행 | UI 소스 변경이 아닌 운영 동작 재실측이며 승인 시안 전수 대조는 이번 범위가 아니다. |
+
+### 보장 범위
+
+- 보장한다: 운영 배포 신원 `ea74a7df`, 새 내보내기 접수와 `3 / 3장` 완료, 완료까지 `10.4초`, 발행실 버튼 노출·클릭과 URL 전환, 승인 인박스 중복 `0`, 관찰한 4화면의 콘솔 오류와 390·1440 가로 넘침 `0`.
+- 보장하지 않는다: 내보낸 판의 발행실 고정, 신규 승인 인박스 생성, 외부 SNS 실제 발행, 누적 전체 리그레션, 승인 시안 전수 정합. 이 항목들 때문에 전체 QA PASS와 릴리즈 상신은 금지한다.
+
+증거 디렉터리: `logs/diff/editroom-v2-prod-verify-r2/`. DPR 3 캡처 8장은 390px 화면이 1170px, 1440px 화면이 4320px로 저장됐다. 회장 기존 탭은 닫지 않았고 새 탭만 닫아 브라우저 페이지 수가 `2 → 2`로 복원됐다. 비밀값·브라우저 토큰·서명 URL은 기록하지 않았다.
+
+하네스 검사: 캡처 화질 `8 PASS, 미달 0, 검사 실패 0`, `verify-agent-quality.sh` PASS, `pipeline-artifact-lint.sh` 종료 0·기존 핀 위생 경고 28건이다. `design-lint.sh dashboard/src`는 종료 0이지만 기존 인라인 style 1파일·토큰 밖 hex 8파일의 2종 경고가 남아 있다. 이번 표적 운영 재실측은 소스 수정이 없어 해당 기존 경고를 고치지 않았다.
+
+셀프심문: 이 결론이 틀렸다면 가장 그럴듯한 이유는 발행실의 일반 3장 미리보기를 방금 내보낸 판으로 오인하는 것이다. 그러나 화면 자체가 `내보내기 판은 고정되지 않았습니다: editor handoff not found`를 명시해, 제목·`1 / 3` 표시만으로 인계 성공을 세지 않았다.
+
+레드팀: 작업자 복구로 내보내기가 빨라졌다는 사실만 보고 S4 전체를 PASS 처리하면 버튼 이후의 실제 인계 결함을 숨긴다. 그래서 worker 완료, 버튼 노출, 화면 전환, 내보낸 판 고정을 서로 다른 TC로 분리했고 마지막 TC를 NG로 유지했다.
+
+벤치마크: Playwright 공식 `connectOverCDP` 계약을 회장 Chrome 연결 기준으로, Chrome DevTools Protocol의 Runtime·Page 명세를 콘솔 관찰과 DPR 3 캡처 기준으로 사용했다. 제품 판정은 프로젝트 ADR과 `standard-dev.md`, `standard-qa-methodology.md`를 우선했다.
+
+RUBRIC_SCORE: 완결=5/5 정밀=5/5 벤치마크=4/5 추적성=5/5 표현=5/5 total=24/25
+WEAKEST_LINE: 발행실이 `editor handoff not found`를 내는 정확한 코드·데이터 원인은 이번 운영 표적 실측 범위에서 진단하지 않았다.
+SKILLS_USED: qa, 회장 Chrome 운영 클릭 재검증·증거 수집·NG 판정에 사용.
+SKILLS_SKIPPED: review, 이번 과제는 코드 변경 리뷰가 아니라 배포 후 두 실패의 운영 재실측. design-review, UI 변경과 승인 시안 대조가 아닌 동작 확인 범위.
+SOURCES/MODEL: gpt-6.1-sol Codex | `wiki/거버넌스/결정.md` | `logs/diff/editroom-v2-prod-verify/prod-verify-summary.json` | `~/.claude/standards/standard-dev.md` | `~/.claude/standards/standard-qa-methodology.md` | `~/.claude/standards/standard-doc-review.md` | `~/.claude/standards/benchmarks.md` | Playwright BrowserType API | Chrome DevTools Protocol Runtime·Page
+KNOWLEDGE_QUERY: BRAIN CTO 허브의 OpenClaw Auto 상태와 Playwright CDP·Chrome Runtime 공식 명세를 조회했다.
+HITS_USED: ADR과 QA 표준은 증거·NG 경계에, Playwright·CDP 공식 문서는 기존 Chrome 연결·콘솔·DPR 3 캡처 방법에 사용했다.
+HITS_REJECTED: BRAIN `status-openclaw-auto.md`는 2026-08-28 기준이라 2026-10-09 운영 배포 판정에 사용하지 않았다.
+CONFLICTS: 없음. 이전 `0 / 3장` 고착은 복구됐지만 발행실 인계는 새 운영 관찰에서 별도 결함으로 남았다.
+
 ## 2026-10-08 운영 편집실 v2 S4·S7 클릭 QA ❌ NG
 
 <!-- READ_EVIDENCE: sed -n '1,260p' /Users/sj/.codex/skills/qa/SKILL.md ; sed -n '1,260p' /Users/sj/.claude/standards/standard-doc-review.md -->
