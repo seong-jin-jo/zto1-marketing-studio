@@ -11,8 +11,8 @@ const repoRoot = path.resolve(scriptDir, "../..");
 const baseUrl = process.env.CHAIRMAN_FIX_BASE_URL || "http://127.0.0.1:3471";
 const outputDir = process.env.CHAIRMAN_FIX_OUTPUT_DIR || path.join(repoRoot, "logs/diff/editroom-chairman-fix-20261009/after");
 const workspaceId = "11111111-1111-4111-8111-111111111111";
-const imageUrl = "/qa/alignment-card-1.jpg";
-const videoUrl = "/qa/alignment-sample.mp4";
+const imageUrl = "/qa/chairman-photo.jpg";
+const videoUrl = "/qa/chairman-photo-motion.mp4";
 const lines = ["문제를 먼저 짚습니다", "이 구간은 컷합니다", "다음 행동을 제안합니다"];
 
 fs.mkdirSync(outputDir, { recursive: true });
@@ -31,7 +31,7 @@ const initialWork = {
     shorts: { hook: lines[0], body: lines[1], cta: lines[2] },
   },
   img: null,
-  vid: { url: videoUrl, file: videoUrl, filename: "alignment-sample.mp4", subtitlesBaked: false },
+  vid: { url: videoUrl, file: videoUrl, filename: "chairman-photo-motion.mp4", subtitlesBaked: false },
   includes: { threads: true, x: true, facebook: true, instagram: true, shorts: true, reels: true, tiktok: true },
   editLines: lines,
   editKind: "card",
@@ -69,7 +69,7 @@ await page.route("**/api/**", async (route) => {
   if (pathname === "/api/studio/engine-status") return json(route, { ready: true });
   if (pathname === "/api/studio/estimate") return json(route, { ok: true, min_minor: 10, max_minor: 20, estimated_seconds_min: 1, estimated_seconds_max: 2, assumptions: ["브라우저 통합 검증"] });
   if (pathname === "/api/higgsfield/image") return json(route, { ok: true, jobId: "chairman-image-job" }, 202);
-  if (pathname === "/api/higgsfield/job/chairman-image-job") return json(route, { ok: true, status: "completed", file: imageUrl, url: imageUrl, filename: "alignment-card-1.jpg" });
+  if (pathname === "/api/higgsfield/job/chairman-image-job") return json(route, { ok: true, status: "completed", file: imageUrl, url: imageUrl, filename: "chairman-photo.jpg" });
   if (pathname === "/api/higgsfield/status") return json(route, { credits: 100 });
   if (pathname === "/api/media/resign") {
     const body = request.postDataJSON();
@@ -121,6 +121,8 @@ const createRect = await page.getByTestId("create-made").boundingBox();
 if (!createRect || createRect.y + createRect.height > 900) throw new Error(`생성 결과가 첫 화면 밖입니다: ${JSON.stringify(createRect)}`);
 const generatedNaturalWidth = await page.getByTestId("create-made-image").evaluate((image) => image.naturalWidth);
 if (generatedNaturalWidth <= 0) throw new Error("생성 결과 이미지가 실제 픽셀을 불러오지 못했습니다");
+const generatedImageStats = await sharp(await page.getByTestId("create-made-image").screenshot()).stats();
+if (!generatedImageStats.channels.some((channel) => channel.stdev > 20)) throw new Error("생성 결과가 식별 가능한 실제 이미지가 아니라 단색 픽스처입니다");
 if (!draftSaves.some((save) => save.img?.file === imageUrl && save.vid?.file === videoUrl)) throw new Error("생성 결과 이미지와 기존 영상이 같은 초안에 저장되지 않았습니다");
 
 await page.getByRole("button", { name: /작업물 전체/ }).click();
@@ -146,7 +148,7 @@ const cardBackground = editRoom.locator('[data-card-slide-scene] img').first();
 await cardBackground.waitFor();
 if (await cardBackground.evaluate((image) => image.naturalWidth) <= 0) throw new Error("편집실 카드에 실제 생성 이미지 픽셀이 표시되지 않았습니다");
 const stageRect = await editRoom.locator('[data-card-slide-scene]').boundingBox();
-if (!stageRect || stageRect.y + stageRect.height > 900) {
+if (!stageRect || stageRect.x < 0 || stageRect.x + stageRect.width > 1440 || stageRect.y < 0 || stageRect.y + stageRect.height > 900) {
   const geometry = await editRoom.evaluate((root) => Array.from(root.querySelectorAll('[data-room-top="edit"], [data-card-canvas-editor] > *, [data-edit-workspace]')).map((node) => {
     const rect = node.getBoundingClientRect();
     return { tag: node.tagName, marker: node.getAttribute("data-card-template-gallery") || node.getAttribute("data-edit-workspace") || node.getAttribute("role") || node.className, y: rect.y, height: rect.height };
@@ -160,13 +162,18 @@ const beforePixels = await editRoom.locator('[data-card-slide-scene]').screensho
 if (!beforeBox) throw new Error("드래그할 카드 글자 요소가 없습니다");
 await page.mouse.move(beforeBox.x + beforeBox.width / 2, beforeBox.y + beforeBox.height / 2);
 await page.mouse.down();
-await page.mouse.move(beforeBox.x + 84, beforeBox.y + 112, { steps: 12 });
+await page.mouse.move(beforeBox.x + beforeBox.width / 2 + 84, beforeBox.y + beforeBox.height / 2 + 112, { steps: 12 });
 await page.mouse.up();
 const afterBox = await textElement.boundingBox();
 const afterPixels = await editRoom.locator('[data-card-slide-scene]').screenshot();
 if (!afterBox || (Math.abs(afterBox.x - beforeBox.x) < 2 && Math.abs(afterBox.y - beforeBox.y) < 2)) throw new Error("카드 글자 드래그 뒤 좌표가 바뀌지 않았습니다");
+const movedStageRect = await editRoom.locator('[data-card-slide-scene]').boundingBox();
+if (!movedStageRect || !afterBox || afterBox.x < movedStageRect.x - 1 || afterBox.y < movedStageRect.y - 1 || afterBox.x + afterBox.width > movedStageRect.x + movedStageRect.width + 1 || afterBox.y + afterBox.height > movedStageRect.y + movedStageRect.height + 1) {
+  throw new Error(`카드 글자 요소가 캔버스 밖으로 잘렸습니다: ${JSON.stringify({ movedStageRect, afterBox })}`);
+}
 const pixelDiff = await sharp(beforePixels).composite([{ input: afterPixels, blend: "difference" }]).stats();
 if (!pixelDiff.channels.some((channel) => channel.mean > 0.2)) throw new Error("카드 글자 드래그 뒤 미리보기 픽셀이 바뀌지 않았습니다");
+if ((await page.getByText(/자유 배치를 시작했습니다|기본 편집으로 돌아가면/).count()) > 0) throw new Error("기본 카드 편집에 별도 자유 배치 모드 토스트가 남아 있습니다");
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982 }, { width: 390, height: 844 }]) {
   await page.setViewportSize(viewport);
@@ -199,7 +206,24 @@ const videoTabGeometry = await videoTab.evaluate((element) => {
   return { rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, hit: hit?.outerHTML.slice(0, 180) ?? null };
 });
 await videoTab.click({ timeout: 10_000 });
-await editRoom.locator('[data-video-el]').waitFor();
+const videoElement = editRoom.locator('[data-video-el]');
+await videoElement.waitFor();
+const videoFrame = await videoElement.evaluate(async (video) => {
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    await new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("영상 프레임 로드 시간 초과")), 10_000);
+      video.addEventListener("loadeddata", () => { window.clearTimeout(timeout); resolve(undefined); }, { once: true });
+      video.load();
+    });
+  }
+  video.currentTime = Math.min(1, Math.max(0, video.duration / 2));
+  await new Promise((resolve) => video.addEventListener("seeked", resolve, { once: true }));
+  video.pause();
+  return { readyState: video.readyState, currentTime: video.currentTime, videoWidth: video.videoWidth, videoHeight: video.videoHeight };
+});
+if (videoFrame.videoWidth <= 0 || videoFrame.videoHeight <= 0) throw new Error(`영상 실제 프레임이 없습니다: ${JSON.stringify(videoFrame)}`);
+const videoFrameStats = await sharp(await videoElement.screenshot()).stats();
+if (!videoFrameStats.channels.some((channel) => channel.stdev > 20)) throw new Error(`영상 플레이어가 식별 가능한 프레임 대신 단색입니다: ${JSON.stringify(videoFrameStats.channels)}`);
 await editRoom.locator('[data-video-subtitle-cut-toggle]').first().click();
 const skippedTime = await editRoom.locator('[data-video-el]').evaluate((video) => {
   video.currentTime = 0.1;
@@ -207,13 +231,34 @@ const skippedTime = await editRoom.locator('[data-video-el]').evaluate((video) =
   return video.currentTime;
 });
 if (skippedTime <= 0.1) throw new Error(`컷 재생이 구간을 건너뛰지 않았습니다: ${skippedTime}`);
-await page.screenshot({ path: path.join(outputDir, "edit-video-1440x900.png") });
+for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982 }, { width: 390, height: 844 }]) {
+  await page.setViewportSize(viewport);
+  await assertNoHorizontalOverflow(`영상 편집실 ${viewport.width}`);
+  await page.screenshot({ path: path.join(outputDir, `edit-video-${viewport.width}x${viewport.height}.png`) });
+}
 
+await page.setViewportSize({ width: 1440, height: 900 });
 await page.evaluate(() => window.scrollTo(0, 0));
 const publishLink = page.locator('a[href*="room=publish"]').first();
 await publishLink.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
 await publishLink.click({ timeout: 10_000 });
 const publishRoom = page.locator('[data-room="publish"]');
+const selectedPublishImage = publishRoom.getByTestId("publish-selected-image");
+const selectedPublishVideo = publishRoom.getByTestId("publish-selected-video");
+await selectedPublishImage.waitFor();
+await selectedPublishVideo.waitFor();
+const selectedMediaBoxes = await Promise.all([selectedPublishImage.boundingBox(), selectedPublishVideo.boundingBox()]);
+if (selectedMediaBoxes.some((box) => !box || box.y < 0 || box.y + box.height > 900)) throw new Error(`발행실 선택 미디어가 1440 첫 화면 밖입니다: ${JSON.stringify(selectedMediaBoxes)}`);
+if (await selectedPublishImage.evaluate((image) => image.naturalWidth) <= 0) throw new Error("발행실 첫 화면 이미지가 실제 픽셀을 불러오지 못했습니다");
+for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982 }, { width: 390, height: 844 }]) {
+  await page.setViewportSize(viewport);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await assertNoHorizontalOverflow(`발행실 ${viewport.width}`);
+  await page.screenshot({ path: path.join(outputDir, `publish-${viewport.width}x${viewport.height}.png`) });
+}
+
+await page.setViewportSize({ width: 1440, height: 900 });
+await publishRoom.locator('[data-publish-preview-stack]').first().scrollIntoViewIfNeeded();
 await publishRoom.locator('[data-publish-preview-stack]').first().waitFor();
 const previewCards = publishRoom.locator('[data-room-preview]');
 const boxes = await previewCards.evaluateAll((nodes) => nodes.slice(0, 3).map((node) => {
@@ -223,8 +268,8 @@ const boxes = await previewCards.evaluateAll((nodes) => nodes.slice(0, 3).map((n
 if (boxes.length < 3 || !(boxes[0].y < boxes[1].y && boxes[1].y < boxes[2].y) || boxes.some((box) => Math.abs(box.x - boxes[0].x) > 2)) {
   throw new Error(`발행 플랫폼 카드가 세로로 쌓이지 않았습니다: ${JSON.stringify(boxes)}`);
 }
-if (await publishRoom.locator('img[src*="alignment-card-1"], video[src*="alignment-sample"]').count() < 3) throw new Error("발행 미리보기에 실제 이미지·영상이 표시되지 않았습니다");
-await page.screenshot({ path: path.join(outputDir, "publish-1440x900.png") });
+if (await publishRoom.locator('img[src*="chairman-photo"], video[src*="chairman-photo-motion"]').count() < 3) throw new Error("발행 미리보기에 실제 이미지·영상이 표시되지 않았습니다");
+await page.screenshot({ path: path.join(outputDir, "publish-platforms-1440x900.png") });
 
 if (consoleErrors.length) throw new Error(`브라우저 콘솔 오류: ${JSON.stringify(consoleErrors.slice(0, 10))}`);
 fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify({
@@ -233,6 +278,8 @@ fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify({
   cardDrag: { before: beforeBox, after: afterBox, pixelMean: pixelDiff.channels.map((channel) => channel.mean) },
   videoTabGeometry,
   videoCutSkippedTo: skippedTime,
+  videoFrame,
+  selectedPublishMedia: selectedMediaBoxes,
   publishBoxes: boxes,
   consoleErrors: 0,
 }, null, 2));

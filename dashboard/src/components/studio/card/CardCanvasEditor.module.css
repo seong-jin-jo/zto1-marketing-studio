@@ -57,7 +57,11 @@
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(4rem, 6rem) minmax(0, 1fr) minmax(12rem, 16rem);
+  /*
+    v71은 우측 속성 패널을 없애고 장 스트립 + 가운데 캔버스만 첫 줄에 둔다.
+    요소 목록과 카톡 보조 편집은 캔버스 아래로 내려 첫 화면의 캔버스 폭을 잠식하지 않는다.
+  */
+  grid-template-columns: minmax(4rem, 7rem) minmax(0, 1fr);
   gap: var(--pad-inset);
   align-items: start;
   min-width: 0;
@@ -79,7 +83,8 @@
 .stage {
   position: relative;
   min-width: 0;
-  width: min(100%, 25rem);
+  /* 900px 높이에서도 상단 방 제목·추가 도구·선택 도구를 포함한 뒤 4:5 전체가 보인다. */
+  width: min(100%, 23rem);
   margin-inline: auto;
   overflow: hidden;
   border: 1px solid var(--border);
@@ -171,6 +176,7 @@
 
 .rightPanel {
   display: grid;
+  grid-column: 2;
   min-width: 0;
   gap: var(--stack);
 }
@@ -260,6 +266,7 @@
     width: 100%;
     max-width: 100%;
   }
+  .rightPanel { grid-column: auto; }
   .slideStrip { display: flex; overflow-x: auto; }
   .stageColumn { order: -1; }
   .floatingToolbar { position: static; overflow-x: auto; flex-wrap: nowrap; }

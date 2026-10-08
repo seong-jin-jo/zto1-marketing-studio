@@ -51,8 +51,8 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 function clampedPosition(element: Pick<CardElement, "width" | "height">, x: number, y: number, ratio: CardDeckV3["ratio"]) {
   return {
-    x: clamp(round(x), 1 - element.width, CARD_LOGICAL_WIDTH - 1),
-    y: clamp(round(y), 1 - element.height, CARD_LOGICAL_HEIGHT[ratio] - 1),
+    x: clamp(round(x), 0, Math.max(0, CARD_LOGICAL_WIDTH - element.width)),
+    y: clamp(round(y), 0, Math.max(0, CARD_LOGICAL_HEIGHT[ratio] - element.height)),
   };
 }
 

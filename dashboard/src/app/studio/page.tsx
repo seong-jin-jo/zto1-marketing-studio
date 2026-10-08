@@ -4556,7 +4556,6 @@ export default function StudioPage() {
           // 결과 불일치 발행을 최종 차단한다.
         });
     }
-    showToast("자유 배치를 시작했습니다. 기본 편집으로 돌아가면 지금 글과 위치를 복원할 수 있습니다.", "success");
   }
 
   async function returnFromCardDeckV3(projectedChatDeck?: CardDeck) {
@@ -4949,6 +4948,28 @@ export default function StudioPage() {
               전부 해제
             </Button>
           </section>
+          {img?.file || vid?.file ? (
+            <section data-testid="publish-selected-media" aria-label="선택한 초안 실제 미디어" className="rounded-surface border border-border bg-surface p-stack">
+              <div className="mb-stack-tight flex flex-wrap items-center gap-stack-tight">
+                <b className="mr-auto text-body text-text">선택한 초안 미디어</b>
+                <span className="text-caption text-subtle">발행할 이미지와 영상을 먼저 확인합니다</span>
+              </div>
+              <div className="grid grid-cols-1 gap-stack sm:grid-cols-2">
+                {img?.file ? (
+                  <figure className="min-w-0">
+                    <DeliveredMedia type="image" src={img.file} tenantId={activeWorkspace?.id} testId="publish-selected-image" alt="선택한 초안 이미지" className="h-48 w-full rounded-control bg-surface-2 object-cover" />
+                    <figcaption className="mt-micro text-caption text-muted">이미지</figcaption>
+                  </figure>
+                ) : null}
+                {vid?.file ? (
+                  <figure className="min-w-0">
+                    <DeliveredMedia type="video" src={vid.file} tenantId={activeWorkspace?.id} testId="publish-selected-video" poster={img?.file} preload="metadata" className="h-48 w-full rounded-control bg-player-surface object-cover" />
+                    <figcaption className="mt-micro text-caption text-muted">영상</figcaption>
+                  </figure>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
           {/*
             2026-10-03 독립 리뷰 MINOR-g 근본원인: 운영 사고의 실제 뿌리는 "이전 세션의
             선택이 표시 없이 되살아난 것"이다. 되살아난 직후(사용자가 아직 체크박스를

@@ -331,12 +331,12 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     expect(patchChatDeckBrand(second, { reader_name: "   " }).brand.reader_name).toBe("구독자");
   });
 
-  it("S1-R3-BOUNDS-01 끌기와 방향키 이동 뒤에도 장과 최소 1px 교차한다", () => {
+  it("CHAIRMAN-FIX-R2-01 거절 경로: 끌기와 방향키 이동 뒤에도 요소 전체가 카드 안에 남는다", () => {
     const added = addCardElement(deck(), "slide_cover", "text", { id: "bounded" });
     const moved = moveCardElement(added, "slide_cover", "bounded", -9_000, 9_000);
-    expect(moved.slides[0].elements[0]).toMatchObject({ x: -599, y: 1349 });
+    expect(moved.slides[0].elements[0]).toMatchObject({ x: 0, y: 1170 });
     const nudged = nudgeCardElement(moved, "slide_cover", "bounded", -100, 100);
-    expect(nudged.slides[0].elements[0]).toMatchObject({ x: -599, y: 1349 });
+    expect(nudged.slides[0].elements[0]).toMatchObject({ x: 0, y: 1170 });
   });
 
   it("S1-R3-NUMBER-01 숫자 대체 조작은 빈 값·최솟값·각도 범위를 계약 안으로 접는다", () => {

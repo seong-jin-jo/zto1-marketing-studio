@@ -1366,6 +1366,25 @@ describe("Studio publish result integrity", () => {
     expect(screen.getByRole("complementary", { name: "발행 담당 대화창" })).toBeInTheDocument();
   });
 
+  it("CHAIRMAN-FIX-R2-04 정상: 선택 초안의 실제 이미지와 영상은 플랫폼 목록보다 먼저 보인다", async () => {
+    restoreStudio(["threads", "instagram", "shorts"]);
+    const key = `studio_work:${mocks.workspace.id}`;
+    const saved = JSON.parse(localStorage.getItem(key) || "{}") as Record<string, unknown>;
+    localStorage.setItem(key, JSON.stringify({
+      ...saved,
+      img: { file: "/qa/chairman-photo.jpg", url: "/qa/chairman-photo.jpg" },
+      vid: { file: "/qa/chairman-photo-motion.mp4", url: "/qa/chairman-photo-motion.mp4" },
+    }));
+
+    render(<StudioPage />);
+
+    const selectedMedia = await screen.findByTestId("publish-selected-media");
+    expect(within(selectedMedia).getByTestId("publish-selected-image")).toHaveAttribute("src", "/qa/chairman-photo.jpg");
+    expect(within(selectedMedia).getByTestId("publish-selected-video")).toHaveAttribute("src", "/qa/chairman-photo-motion.mp4");
+    const firstPlatform = await screen.findByTestId("preview-threads");
+    expect(selectedMedia.compareDocumentPosition(firstPlatform) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("PUB-DRAFT-UI-01 정상: 플랫폼 필드를 임시 저장하고 계정은 한 줄 표시·관리 링크로만 다룬다", async () => {
     restoreStudio(["threads", "instagram"]);
     mocks.apiPost.mockResolvedValue({ id: "draft-v67" });
