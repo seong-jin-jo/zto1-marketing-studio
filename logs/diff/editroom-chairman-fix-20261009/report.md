@@ -1,6 +1,22 @@
 # 생성·편집·발행 미디어 경로 결함 교정 보고
 
-STAMP: 2026-10-09 07:28 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skills: qa, review | 근거: OD-2026-10-09-2, 회장 원문, PR 134 CI runs 37835647473·37850906497, CI 동일 전체 Vitest, production build·Chromium E2E | 고민: 제품이 정상 렌더된 상태에서 구형 DOM 때문에 실패한 화면 게이트를 현재 계약으로 옮기되 픽셀 비교와 데이터 안전 검사를 약화하지 않았다.
+STAMP: 2026-10-09 07:50 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skills: qa, review | 근거: OD-2026-10-09-2, 회장 원문, PR 134 CI runs 37835647473·37850906497·37853933999, CI 동일 전체 Vitest, production build·Chromium E2E | 고민: 제품이 정상 렌더된 상태에서 구형 DOM과 Linux 글꼴 폭 때문에 실패한 게이트를 현재 계약으로 교정하되 픽셀 비교·데이터 안전·전체 자손 넘침 검사를 약화하지 않았다.
+
+## R6 PR 134 Linux 글꼴 폭 카드 버튼 넘침 복구
+
+CI run `37853933999`은 390×844 카드 요소 행의 `글 숨기기` 버튼에서 `clientWidth=43`, `scrollWidth=45`를 관찰해 전체 자손 넘침 게이트가 실패했다. 공용 버튼은 이미 내용 폭과 44px 최소를 보장하지만, 카드 요소 행의 더 높은 특이도 `flex:1 1 var(--control-touch)`가 이를 덮어써 Linux 글꼴에서만 2px 잘렸다.
+
+요소 행의 버튼을 고정폭으로 늘리지 않고 `flex:0 0 auto`, 44px 최소, 줄바꿈 없음으로 바꿨다. 따라서 화살표 같은 짧은 버튼은 44px을 유지하고 `숨기기`·`잠금 풀기`처럼 긴 버튼은 실제 콘텐츠 폭만큼 넓어진다. 좁은 화면에서는 기존 flex wrap으로 다음 줄에 배치된다.
+
+기존 전체 자손 `scrollWidth > clientWidth + 1` 단언은 그대로 유지했다. 여기에 이동·레이어·표시·잠금·복제·삭제 10개 버튼의 실제 경계 상자 44px 이상, 내부 scroll 폭 비초과, `flexShrink=0`을 추가했다. production Chromium 결과는 다음과 같다.
+
+| 화면 | 버튼 수 | 최소 크기 | 최대 내부 넘침 | 축소값 | `글 숨기기` |
+|---|---:|---:|---:|---:|---:|
+| 1440×900 | 10 | 44×44px | 0px | 0 | 49.125×44px, client·scroll 47px |
+| 1512×982 | 10 | 44×44px | 0px | 0 | 49.125×44px, client·scroll 47px |
+| 390×844 | 10 | 44×44px | 0px | 0 | 59.484×44px, client·scroll 57px |
+
+소스 계약 2건, TypeScript, 기능 플래그 production build, v70 화면 정합 게이트와 회장 결함 통합 게이트가 모두 통과했다. 카드 편집의 overflow·outside는 세 폭 모두 0건이다. 데이터 포함 fixture의 360·390·412·600·700·780·820·900·1000도 13px 미만 글자 0, 본문 16px, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다. 제품 커밋은 `81fdf9b7`이며 push·원격 신규 CI·외부 SNS 발행은 하지 않았다.
 
 ## R5 PR 134 v70 화면 정합 게이트의 v71 작업대 복구
 
@@ -138,9 +154,9 @@ E2E는 세 폭에서 편집 컨테이너와 보이는 모든 자손을 순회해
 
 ## 전달 상태
 
-- 로컬 완료 커밋: 현재 브랜치의 최신 커밋이며 정확한 해시는 `git rev-parse --short HEAD`로 확인한다.
+- 로컬 제품·테스트 커밋: `81fdf9b7`. 구현현황·build log·보고서·인계 문서 정합 커밋도 완료했다.
 - PR: [#134](https://github.com/seong-jin-jo/zto1-marketing-studio/pull/134), OPEN
-- 원격 상태: 이번 R3 지시는 로컬 커밋까지여서 push하지 않았다. PR head 반영과 신규 CI는 미검증이다.
+- 원격 상태: 이번 R6 지시는 로컬 커밋까지여서 push하지 않았다. PR head 반영과 신규 CI는 미검증이다.
 - 다음 종료 조건: 컨트롤러가 동일 브랜치를 push한 뒤 PR head 반영과 신규 `CI (dashboard) / verify` 성공을 직접 확인한다.
 
 원본 로그는 [`evidence/`](evidence/)에 보존했다. 모바일은 데이터가 있는 편집실 DOM과 실제 CSS를 고정한 [`mobile-edit-data-fixture.html`](after/mobile-edit-data-fixture.html)에서 측정했다.

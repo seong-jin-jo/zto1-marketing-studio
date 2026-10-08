@@ -1,5 +1,17 @@
 # OSMU build log
 
+## 2026-10-09 07:50 KST · PR 134 Linux 글꼴 폭 카드 버튼 회귀 복구
+
+STAMP: 2026-10-09 07:50 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `/tmp/zto1-r6-focused.log`, `/tmp/zto1-r6-typecheck.log`, `/tmp/zto1-r6-build.log`, `/tmp/zto1-r6-v70.log`, `/tmp/zto1-r6-chairman-2.log` | 고민: CI의 전체 자손 넘침 검사는 완화하지 않고, 같은 행의 10개 버튼에 더 강한 크기·내용·축소 수치 검사를 추가했다.
+
+**변경:** 카드 요소 행의 `flex-shrink:1` 재정의를 제거하고 `flex:0 0 auto`, `min-width:var(--control-touch)`, `white-space:nowrap`으로 공용 버튼 계약을 복원했다. 신규 소스 계약은 같은 행 10개 전부와 축소 재도입 경계를 고정한다. production E2E는 각 버튼의 경계 폭·높이, client·scroll 폭, `flexShrink`를 기록한다.
+
+**검증:** 집중 Vitest 1파일 2건 PASS. `npm run typecheck:ci` PASS. 기능 플래그를 켠 `npm run build` PASS. `npm run start -p 3473`은 248ms에 Ready였고 같은 build의 `e2e:studio-v70-screen`, `e2e:chairman-defects`가 종료 코드 0이다. 회장 게이트는 `ok=true`, 초안 저장 5회, 영상 컷 건너뛰기 1초다. 390 `글 숨기기` 59.484×44px, client·scroll 폭 57px이며 같은 행 최소 44×44px·내부 넘침 0이다. 모바일 9폭도 모두 PASS다.
+
+**기존 경고:** design-lint는 종료 코드 0이며 기존 인라인 style·hex 2종 경고를 유지한다. 이번 수정은 토큰만 사용했고 신규 경고는 없다. push와 원격 CI는 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `.github/workflows/ci.yml` | `/tmp/zto1-r6-chairman-2/result.json` | `/tmp/zto1-r6-mobile-ergonomics.jsonl`
+
 ## 2026-10-09 07:28 KST · PR 134 v70 화면 게이트 v71 계약 복구
 
 STAMP: 2026-10-09 07:28 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: PR 134 run 37850906497, `/tmp/zto1-r5-build.log`, `/tmp/zto1-r5-final-v70.log`, `/tmp/zto1-r5-final-chairman.log` | 고민: CI가 실제로 빌드한 기능 플래그 경로를 다시 빌드·서빙하고 두 브라우저 게이트를 같은 서버에서 연속 실행했다.
