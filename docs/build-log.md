@@ -1,5 +1,19 @@
 # OSMU build log
 
+## 2026-10-08 23:27 KST · 내보내기 작업자 저장소 규칙을 대시보드와 통일
+
+STAMP: 2026-10-08 23:27 KST | model: gpt-5/Codex | agent: code-builder | skill: review | 근거: run 37787296935, local 저장 경로 통합 테스트, Compose 실해석, TypeScript·production build·Chromium smoke | 고민: R2 누락을 장애로 취급한 PR 132의 과잉 필수 계약만 되돌리고 작업자 health 게이트는 보존했다.
+
+**기존 구현 확인:** `media-store.ts`는 R2 4키가 전부 있으면 R2, 전부 없으면 `DATA_DIR/tenants/<tenant>/images`, 일부만 있으면 `R2_CONFIG`로 실패했다. 작업자도 저장 때 이 모듈을 썼지만 별도 시작 계약과 Compose `${VAR:?}`가 R2 4키를 무조건 요구해 run `37787296935`가 빌드 전에 중단됐다. 대시보드와 작업자는 이미 `osmu-data:/app/data`, `DATA_DIR=/app/data`를 공유하고 있었다.
+
+**추가·변경:** 작업자 시작 시 `media-store.ts`의 동일 검증 함수를 호출한다. 작업자 필수 목록은 `DATABASE_URL`, `MEDIA_SIGNING_SECRET`, `OSMU_PUBLIC_URL`만 남겼다. Compose의 R2 필수 보간 4줄을 제거하고 선택값은 기존 `.env.osmu`로 전달한다. 일부 R2 설정은 작업자 entry에서 명확히 실패하며, local 모드는 기존 테넌트 폴더 구조를 그대로 쓴다. local 쓰기는 같은 디렉터리의 임시 파일을 원자적으로 교체해 부분 파일 노출을 막는다. PR 132의 작업자 healthy 대기와 마스킹 로그 수집은 변경하지 않았다.
+
+**검증:** 관련 7파일 46건 PASS, PostgreSQL 환경 의존 12건 skip, `typecheck:ci` 종료 코드 0, `next build` 종료 코드 0이다. R2 값 없는 합성 `.env.osmu`로 실제 `docker compose config` 종료 코드 0을 확인했다. local 작업자 처리 로직이 항목을 완료한 뒤 같은 `mediaStore.get()`과 `DATA_DIR/tenants/<tenant>/images/<artifact>`에서 동일 바이트를 읽었고, rename 실패 때 기존 파일 보존과 임시 파일 정리를 확인했다. 실제 PostgreSQL claim부터 작업자 처리까지의 통합 시험은 `S3_DATABASE_URL`이 없어 12건과 함께 skip됐다. Next dev `http://localhost:3456/`는 HTTP 200, 제목 `Marketing Hub`, 콘솔 오류 0이었다. 운영 재배포와 queued 3개 처리 재개는 push 금지로 미검증이다.
+
+**벤치마크 적용:** Docker Compose 공식 문서의 `${VAR:?error}` 의미와 여러 서비스가 같은 named volume을 재사용하는 계약을 그대로 적용했다. R2가 선택 사항이라는 제품 결정에 맞춰 필수 보간은 실제 필수 3개에만 남겼다.
+
+SOURCES/MODEL: gpt-5/Codex | `dashboard/src/lib/media-store.ts` | `dashboard/src/workers/studio-export-worker.ts` | `docker-compose.postagi-4tenants.yml` | https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/ | https://docs.docker.com/reference/compose-file/volumes/
+
 ## 2026-10-08 22:24 KST · 내보내기 작업자 R2 환경변수·health 게이트 교정
 
 STAMP: 2026-10-08 22:24 KST | model: gpt-5/Codex | agent: code-builder | skill: review | 근거: run 37772730741, 로컬 계약 30건, TypeScript, production build, Compose 실해석 | 고민: dashboard 정상과 작업자 준비 완료를 분리해 배포 성공 조건을 실제 작업 처리 가능 상태에 맞췄다.
