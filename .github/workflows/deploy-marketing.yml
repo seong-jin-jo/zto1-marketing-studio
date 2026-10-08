@@ -434,6 +434,68 @@ jobs:
             echo "::error::이전 컨테이너로 되돌렸다"
           fi
           exit 1
+      - name: 내보내기 작업자 healthy 확인 (배포 뒤)
+        # dashboard 선택 배포는 같은 이미지의 작업자도 재생성한다. 작업자가 기동 직후
+        # 필수 환경변수 누락으로 재시작해도 dashboard만 healthy면 성공하던 공백을 닫는다.
+        if: ${{ github.event.inputs.services == '' || contains(github.event.inputs.services, 'openclaw-dashboard-osmu') || contains(github.event.inputs.services, 'openclaw-studio-export-worker') }}
+        run: |
+          set -uo pipefail
+          mask_output() {
+            perl -pe '
+              s{(postgres(?:ql)?://)[^\s"]+}{$1[REDACTED]}ig;
+              s{(https?://[^\s?#"]+)[?#][^\s"]+}{$1?[REDACTED_QUERY]}ig;
+              s{^.*\bauthorization\b.*$}{[REDACTED_AUTHORIZATION_LINE]}ig;
+              s{(Bearer\s+)[A-Za-z0-9._~+/=-]+}{$1[REDACTED]}ig;
+              s{((?:authorization|token|secret|password|credential|signature|cookie|set-cookie|api[_-]?key|access[_-]?key|client[_-]?secret)[^:=\s]*\s*[:=]\s*)[^\s,;]+}{$1[REDACTED]}ig;
+              s{\b(?:gh[pousr]_[A-Za-z0-9_]+|ya29\.[A-Za-z0-9._-]+|eyJ[A-Za-z0-9._-]+)\b}{[REDACTED]}g;
+              s{\b(?:xox[baprs]-[A-Za-z0-9-]+|sk-[A-Za-z0-9_-]{20,}|(?:AKIA|ASIA)[A-Z0-9]{16})\b}{[REDACTED]}g;
+              s{https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+}{https://hooks.slack.com/services/[REDACTED]}ig;
+              s{^.*\b(?:request_payload|requestPayload|payload|error_detail|errorDetail)\b.*$}{[REDACTED_SENSITIVE_LOG_LINE]}ig;
+              s{((?:"?(?:tenant_id|tenantId|draft_id|draftId)"?\s*[:=]\s*)"?)[^"\s,;]+}{$1[REDACTED]}ig;
+              s{\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b}{[REDACTED_UUID]}ig;
+              s{\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b}{[REDACTED_EMAIL]}ig;
+              s{\b[A-Za-z0-9_+/=-]{32,}\b}{[REDACTED_HIGH_ENTROPY]}g;
+            '
+          }
+          safe_masked_output() {
+            local stop_token="deploy-${GITHUB_RUN_ID:-0}-${RANDOM}-${RANDOM}"
+            local mask_status
+            printf '::stop-commands::%s\n' "$stop_token"
+            mask_output
+            mask_status=$?
+            printf '::%s::\n' "$stop_token"
+            return "$mask_status"
+          }
+          compose=(docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml)
+          workers=()
+          status="missing"
+          for i in $(seq 1 24); do
+            mapfile -t workers < <("${compose[@]}" ps -q --all openclaw-studio-export-worker)
+            all_healthy=yes
+            if [ "${#workers[@]}" -eq 0 ]; then
+              all_healthy=no
+              status="missing"
+              echo "worker_health[$i]=missing"
+            fi
+            for worker in "${workers[@]}"; do
+              status="$(docker inspect --type=container -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$worker" 2>/dev/null || echo missing)"
+              echo "worker_health[$i]=$status"
+              if [ "$status" != "healthy" ]; then
+                all_healthy=no
+              fi
+            done
+            if [ "$all_healthy" = "yes" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          for worker in "${workers[@]}"; do
+            echo "::group::export worker recent logs"
+            docker logs --tail 200 "$worker" 2>&1 | safe_masked_output || true
+            echo "::endgroup::"
+          done
+          echo "::error::openclaw-studio-export-worker 가 240초 안에 healthy 가 되지 않았다(마지막 상태: $status)"
+          exit 1
       - name: 생성기 API 생존 최종 확인 (배포 뒤)
         id: generator_liveness
         # 새 컨테이너가 뜬 뒤 계정 API를 실제로 호출한다. 생성 호출은 비용이 드니 사용하지 않는다.

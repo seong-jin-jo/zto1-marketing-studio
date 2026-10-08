@@ -1,3 +1,11 @@
+## 2026-10-08 운영 내보내기 작업자 R2 누락 ❌ NG → ✅ 로컬 교정, 운영 미검증
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| EXPORT-WORKER-ENV-01 | 작업자 entry의 필수 환경변수 전부를 Compose와 배포 `.env`가 전달하고 빈 값은 기동 전에 거절 | ✅ 로컬 PASS | 단일 필수 목록 7개와 Compose·workflow를 계약 테스트로 대조했다. 합성값 `docker compose config`는 R2 접근 키 누락 시 rc=1, 전체 제공 시 rc=0이다. |
+| EXPORT-WORKER-HEALTH-01 | 34620은 DB/advisory lock 초기화 전에는 준비 완료로 응답하지 않고, 배포가 Docker healthy를 기다려야 함 | ✅ 로컬 PASS | `starting`·`draining`·`failed`는 503, `active`·`standby`만 200이다. 배포는 최대 240초 대기하고 실패 시 마스킹된 최근 로그 200줄을 남긴다. |
+| EXPORT-WORKER-PROD-01 | 운영 작업자가 정상 기동해 queued 작업 1건·항목 3건을 claim하고 진행 상태를 갱신 | ❌ 운영 미검증 | 코드·로컬 계약은 교정됐으나 push·배포하지 않았다. run 37772730741의 마지막 관찰은 R2 키 누락 반복 종료와 queued 유지다. |
+
 ## 2026-10-08 진단 테스트의 합성 자격증명 형태가 push protection을 차단 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
