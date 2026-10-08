@@ -838,7 +838,8 @@ describe("Studio publish result integrity", () => {
     expect(screen.getByLabelText("문구 1")).toBeDisabled();
     expect(screen.getByLabelText("1번째를 아래로")).toBeDisabled();
     expect(screen.getByRole("button", { name: "카드 추가" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "상단" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "상단" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "글자 위치 옮기기" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
 

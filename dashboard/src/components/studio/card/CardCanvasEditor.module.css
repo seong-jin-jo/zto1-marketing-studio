@@ -26,7 +26,7 @@
 }
 
 .floatingToolbar { position: relative; z-index: 300; }
-.toolbarSlot[data-placeholder="true"] { visibility: hidden; pointer-events: none; }
+.toolbarSlot[data-placeholder="true"] { display: none; }
 .toolbarDivider { align-self: stretch; width: 1px; background: var(--border); }
 .fileInput { display: none; }
 .error { color: var(--danger); font-size: var(--font-body-size); }
@@ -63,7 +63,10 @@
   min-width: 0;
   max-width: 100%;
   overflow: clip;
+  order: 2;
 }
+
+.editor > :global([data-card-template-gallery]) { order: 3; }
 
 .slideStrip {
   display: grid;
@@ -76,7 +79,7 @@
 .stage {
   position: relative;
   min-width: 0;
-  width: min(100%, 45rem);
+  width: min(100%, 25rem);
   margin-inline: auto;
   overflow: hidden;
   border: 1px solid var(--border);

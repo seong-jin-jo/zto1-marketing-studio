@@ -129,6 +129,27 @@ export function createPlainCardDeckV3(
   };
 }
 
+/** 생성된 대표 이미지를 카드 편집기의 실제 바탕으로 이어 붙인다. */
+export function applyGeneratedImageBackground(deck: CardDeckV3, assetId: string): CardDeckV3 {
+  if (!assetId.trim()) throw new RangeError("카드 바탕 이미지 파일명이 비어 있습니다.");
+  return {
+    ...clone(deck),
+    theme: { ...clone(deck.theme), foreground: "#FFFFFF" },
+    slides: deck.slides.map((slide) => ({
+      ...clone(slide),
+      background: {
+        kind: "image",
+        asset_id: assetId,
+        crop: { x: 0, y: 0, width: 1, height: 1 },
+        overlay: "#000000",
+      },
+      elements: slide.elements.map((element) => element.type === "text"
+        ? { ...clone(element), style: { ...clone(element.style), color: "#FFFFFF" } }
+        : clone(element)),
+    })),
+  };
+}
+
 export interface RecoverableCardBackground {
   assetId: string;
   alt: string;

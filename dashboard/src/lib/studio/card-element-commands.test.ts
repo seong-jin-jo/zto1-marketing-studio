@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CardDeckV3 } from "./card-element-contract";
 import {
   addCardElement,
+  applyGeneratedImageBackground,
   addChatOverlayElement,
   addChatBubble,
   addChatSlide,
@@ -39,6 +40,18 @@ import {
   toggleCardElementFlag,
   undoCardCommand,
 } from "./card-element-commands";
+
+describe("CH-20261009 생성 이미지 카드 편집 연결", () => {
+  it("CH-20261009-1 모든 카드에 실제 생성 이미지 파일을 바탕으로 연결한다", () => {
+    const connected = applyGeneratedImageBackground(createPlainCardDeckV3(["첫 장", "둘째 장"]), "generated-card.jpg");
+    expect(connected.slides.every((slide) => slide.background.kind === "image" && slide.background.asset_id === "generated-card.jpg")).toBe(true);
+    expect(connected.slides.flatMap((slide) => slide.elements).filter((element) => element.type === "text").every((element) => element.style.color === "#FFFFFF")).toBe(true);
+  });
+
+  it("CH-20261009-2 빈 이미지 파일명은 카드 바탕으로 허용하지 않는다", () => {
+    expect(() => applyGeneratedImageBackground(createPlainCardDeckV3(["첫 장", "둘째 장"]), "  ")).toThrow("비어 있습니다");
+  });
+});
 
 function deck(): CardDeckV3 {
   return {

@@ -690,23 +690,6 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
       </section> : null}
       {splitNotice ? <p role="status" className={styles.error}>{splitNotice}</p> : null}
       {uploadError ? <p role="alert" className={styles.error}>{uploadError}</p> : null}
-      <CardTemplateGallery
-        mode="edit"
-        selectedId={pendingTemplateId}
-        onSelect={setPendingTemplateId}
-        previewImageUrl={Object.values(assetUrls).find(Boolean) ?? null}
-        disabledReasons={history.present.template === "plain"
-          ? { chat_bubble: "카톡 대화는 생성실의 기존 카톡 덱 만들기에서 선택해 주세요." }
-          : CHAT_DECK_TEMPLATE_DISABLED_REASONS}
-        beforeDeck={history.present}
-        afterDeck={templatePreviewDeck}
-        scope={templateScope}
-        canApplySlide={history.present.template !== "chat_bubble"}
-        previousTemplateName={previousTemplate ? cardTemplateName(previousTemplate.id) : null}
-        onScopeChange={setTemplateScope}
-        onApply={applyTemplate}
-        onRestore={restorePreviousTemplate}
-      />
       <div className={styles.workspace}>
         <nav className={styles.slideStrip} aria-label="카드 장 목록">
           {workingDeck.slides.map((slide) => <Button key={slide.id} size="sm" data-card-slide={slide.id} aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>{slide.order + 1}장</Button>)}
@@ -905,6 +888,23 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
           />
         </aside>
       </div>
+      <CardTemplateGallery
+        mode="edit"
+        selectedId={pendingTemplateId}
+        onSelect={setPendingTemplateId}
+        previewImageUrl={Object.values(assetUrls).find(Boolean) ?? null}
+        disabledReasons={history.present.template === "plain"
+          ? { chat_bubble: "카톡 대화는 생성실의 기존 카톡 덱 만들기에서 선택해 주세요." }
+          : CHAT_DECK_TEMPLATE_DISABLED_REASONS}
+        beforeDeck={history.present}
+        afterDeck={templatePreviewDeck}
+        scope={templateScope}
+        canApplySlide={history.present.template !== "chat_bubble"}
+        previousTemplateName={previousTemplate ? cardTemplateName(previousTemplate.id) : null}
+        onScopeChange={setTemplateScope}
+        onApply={applyTemplate}
+        onRestore={restorePreviousTemplate}
+      />
     </section>
   );
 }

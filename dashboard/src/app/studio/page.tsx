@@ -51,7 +51,7 @@ import {
 } from "@/lib/studio/card-deck";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { cardDeckV3Projection, type CardDeckV3 } from "@/lib/studio/card-element-contract";
-import { createPlainCardDeckV3, createRecoverableEmbeddedCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
+import { applyGeneratedImageBackground, createPlainCardDeckV3, createRecoverableEmbeddedCardDeckV3, plainCardDeckV3EntryBlockReason } from "@/lib/studio/card-element-commands";
 import { cardDeckV3ForSave, migrateCardDeckV2ToV3, projectCardDeckV3ToV2, synchronizeChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import { cardDeckV3EntryEnabled, cardDeckV3ForDraft, cardDeckV3RenderingEnabled, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-render-feature";
 import { cardTemplateStatePatchForSave, defaultCardTemplateState, type CardDeckTemplateId, type CardTemplateState } from "@/lib/studio/card-templates";
@@ -4240,8 +4240,7 @@ export default function StudioPage() {
                   const room = draftLandingRoom(draft as unknown as Record<string, unknown>);
                   const loaded = await loadDraftDetail(draft as unknown as Record<string, unknown>);
                   if (!loaded) return;
-                  setActiveRoom(room);
-                  setShowWorks(false);
+                  changeRoom(room, loaded.kind ?? editKind);
                   showToast(`${ROOM_LABEL[room]}에서 이어 작업합니다`, "success");
                 })(); }}
                 className="flex min-h-control-touch w-full flex-wrap items-center gap-stack rounded-control border border-border bg-surface-2 px-stack py-stack-tight text-left hover:bg-surface"
@@ -4533,6 +4532,7 @@ export default function StudioPage() {
         nextDeck = createRecoverableEmbeddedCardDeckV3(snapshot.editLines, snapshot.cardTextPositions, backgrounds);
       } else {
         nextDeck = createPlainCardDeckV3(snapshot.editLines, snapshot.cardTextPositions);
+        if (img?.filename) nextDeck = applyGeneratedImageBackground(nextDeck, img.filename);
       }
       onCardDeckV3Change(nextDeck, cardDeck?.template === "chat_bubble" ? undefined : { sourceSnapshot: snapshot });
     } catch (error) {

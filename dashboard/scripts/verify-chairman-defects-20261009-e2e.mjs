@@ -50,13 +50,16 @@ const page = await context.newPage();
 page.setDefaultTimeout(90_000);
 const consoleErrors = [];
 const draftSaves = [];
+const apiRequests = [];
 let currentDraft = null;
 page.on("pageerror", (error) => consoleErrors.push(error.message));
 page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
 
 await page.route("**/api/**", async (route) => {
   const request = route.request();
-  const pathname = new URL(request.url()).pathname;
+  const requestUrl = new URL(request.url());
+  const pathname = requestUrl.pathname;
+  apiRequests.push(`${request.method()} ${pathname}`);
   if (pathname === "/api/me") return json(route, { isOperator: false, tenant: { id: workspaceId, slug: "chairman-fix", name: "회장 통합 검증", status: "active" } });
   if (pathname === "/api/overview") return json(route, { statusCounts: {}, followers: 0, weekDelta: 0, viralPosts: [], summary: { published: 0, engagementRate: 0 } });
   if (pathname === "/api/usage") return json(route, { today: {}, thisWeek: {}, tier: "team", quota: {} });
@@ -68,6 +71,10 @@ await page.route("**/api/**", async (route) => {
   if (pathname === "/api/higgsfield/image") return json(route, { ok: true, jobId: "chairman-image-job" }, 202);
   if (pathname === "/api/higgsfield/job/chairman-image-job") return json(route, { ok: true, status: "completed", file: imageUrl, url: imageUrl, filename: "alignment-card-1.jpg" });
   if (pathname === "/api/higgsfield/status") return json(route, { credits: 100 });
+  if (pathname === "/api/media/resign") {
+    const body = request.postDataJSON();
+    return json(route, { ok: true, file: body?.purpose === "video" ? videoUrl : imageUrl });
+  }
   if (pathname === "/api/studio/drafts") {
     if (request.method() === "POST") {
       const body = request.postDataJSON();
@@ -75,6 +82,7 @@ await page.route("**/api/**", async (route) => {
       currentDraft = { ...currentDraft, ...body, id: body.id || currentDraft?.id || "chairman-draft", status: body.status || "draft" };
       return json(route, { ok: true, id: currentDraft.id, bodyRevision: draftSaves.length });
     }
+    if (requestUrl.searchParams.get("id")) return json(route, { draft: currentDraft });
     return json(route, { drafts: currentDraft ? [currentDraft] : [], currentWork: currentDraft ? { draftId: currentDraft.id, stage: "edit", stageLabel: "편집실", idea: currentDraft.idea } : null });
   }
   if (/^\/api\/studio\/drafts\/[^/]+$/.test(pathname)) return currentDraft ? json(route, currentDraft) : json(route, { error: "not found" }, 404);
@@ -96,26 +104,64 @@ async function assertNoHorizontalOverflow(label) {
 await page.goto(`${baseUrl}/studio?room=create`, { waitUntil: "networkidle" });
 await page.getByTestId("create-card-image").click();
 await page.getByTestId("cost-approval-approve").click();
-await page.getByTestId("create-made-image").waitFor();
+try {
+  await page.getByTestId("create-made-image").waitFor({ state: "attached", timeout: 30_000 });
+} catch (error) {
+  await page.screenshot({ path: path.join(outputDir, "failed-create.png") });
+  fs.writeFileSync(path.join(outputDir, "failed-create.json"), JSON.stringify({
+    apiRequests,
+    draftSaves,
+    consoleErrors,
+    body: (await page.locator("body").innerText()).slice(0, 4000),
+  }, null, 2));
+  throw error;
+}
+await page.evaluate(() => window.scrollTo(0, 0));
 const createRect = await page.getByTestId("create-made").boundingBox();
 if (!createRect || createRect.y + createRect.height > 900) throw new Error(`생성 결과가 첫 화면 밖입니다: ${JSON.stringify(createRect)}`);
+const generatedNaturalWidth = await page.getByTestId("create-made-image").evaluate((image) => image.naturalWidth);
+if (generatedNaturalWidth <= 0) throw new Error("생성 결과 이미지가 실제 픽셀을 불러오지 못했습니다");
 if (!draftSaves.some((save) => save.img?.file === imageUrl && save.vid?.file === videoUrl)) throw new Error("생성 결과 이미지와 기존 영상이 같은 초안에 저장되지 않았습니다");
 
 await page.getByRole("button", { name: /작업물 전체/ }).click();
 await page.getByTestId("work-thumbnail-chairman-draft").waitFor();
 await page.screenshot({ path: path.join(outputDir, "create-1440x900.png") });
 
-await page.getByRole("link", { name: /02편집실/ }).click();
+await page.locator('[data-work-item="chairman-draft"]').click();
 const editRoom = page.locator('[data-room="edit"]');
-await editRoom.locator('[data-card-canvas-editor]').waitFor();
+try {
+  await editRoom.locator('[data-card-canvas-editor]').waitFor({ timeout: 15_000 });
+} catch (error) {
+  fs.writeFileSync(path.join(outputDir, "failed-work-item-edit.json"), JSON.stringify({
+    currentDraft,
+    roomText: (await editRoom.innerText().catch(() => "편집실 없음")).slice(0, 5000),
+    apiRequests,
+    consoleErrors,
+  }, null, 2));
+  await page.screenshot({ path: path.join(outputDir, "failed-work-item-edit.png") });
+  throw error;
+}
 await editRoom.locator('[data-card-slide-scene]').waitFor();
+const cardBackground = editRoom.locator('[data-card-slide-scene] img').first();
+await cardBackground.waitFor();
+if (await cardBackground.evaluate((image) => image.naturalWidth) <= 0) throw new Error("편집실 카드에 실제 생성 이미지 픽셀이 표시되지 않았습니다");
 const stageRect = await editRoom.locator('[data-card-slide-scene]').boundingBox();
-if (!stageRect || stageRect.y + stageRect.height > 900) throw new Error(`카드 캔버스가 1440 첫 화면 밖입니다: ${JSON.stringify(stageRect)}`);
+if (!stageRect || stageRect.y + stageRect.height > 900) {
+  const geometry = await editRoom.evaluate((root) => Array.from(root.querySelectorAll('[data-room-top="edit"], [data-card-canvas-editor] > *, [data-edit-workspace]')).map((node) => {
+    const rect = node.getBoundingClientRect();
+    return { tag: node.tagName, marker: node.getAttribute("data-card-template-gallery") || node.getAttribute("data-edit-workspace") || node.getAttribute("role") || node.className, y: rect.y, height: rect.height };
+  }));
+  await page.screenshot({ path: path.join(outputDir, "failed-edit-card-first-screen.png") });
+  throw new Error(`카드 캔버스가 1440 첫 화면 밖입니다: ${JSON.stringify({ stageRect, geometry })}`);
+}
 const textElement = editRoom.locator('[data-element-selection]').first();
 const beforeBox = await textElement.boundingBox();
 const beforePixels = await editRoom.locator('[data-card-slide-scene]').screenshot();
 if (!beforeBox) throw new Error("드래그할 카드 글자 요소가 없습니다");
-await textElement.dragTo(editRoom.locator('[data-card-slide-scene]'), { targetPosition: { x: Math.max(60, stageRect.width * 0.3), y: Math.max(100, stageRect.height * 0.65) } });
+await page.mouse.move(beforeBox.x + beforeBox.width / 2, beforeBox.y + beforeBox.height / 2);
+await page.mouse.down();
+await page.mouse.move(beforeBox.x + 84, beforeBox.y + 112, { steps: 12 });
+await page.mouse.up();
 const afterBox = await textElement.boundingBox();
 const afterPixels = await editRoom.locator('[data-card-slide-scene]').screenshot();
 if (!afterBox || (Math.abs(afterBox.x - beforeBox.x) < 2 && Math.abs(afterBox.y - beforeBox.y) < 2)) throw new Error("카드 글자 드래그 뒤 좌표가 바뀌지 않았습니다");
@@ -130,8 +176,29 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982
   await page.screenshot({ path: path.join(outputDir, `edit-card-${viewport.width}x${viewport.height}.png`) });
 }
 
+const mobileFixture = await page.evaluate(() => {
+  const clone = document.documentElement.cloneNode(true);
+  clone.querySelectorAll("script, link[rel='stylesheet']").forEach((node) => node.remove());
+  const css = Array.from(document.styleSheets).flatMap((sheet) => {
+    try { return Array.from(sheet.cssRules).map((rule) => rule.cssText); } catch { return []; }
+  }).join("\n");
+  const style = document.createElement("style");
+  style.textContent = css;
+  clone.querySelector("head")?.append(style);
+  return `<!doctype html>${clone.outerHTML}`;
+});
+fs.writeFileSync(path.join(outputDir, "mobile-edit-data-fixture.html"), mobileFixture);
+
 await page.setViewportSize({ width: 1440, height: 900 });
-await editRoom.getByRole("button", { name: "영상" }).click();
+await page.evaluate(() => window.scrollTo(0, 0));
+const videoTab = editRoom.getByRole("button", { name: "영상" });
+await videoTab.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
+const videoTabGeometry = await videoTab.evaluate((element) => {
+  const rect = element.getBoundingClientRect();
+  const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  return { rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, hit: hit?.outerHTML.slice(0, 180) ?? null };
+});
+await videoTab.click({ timeout: 10_000 });
 await editRoom.locator('[data-video-el]').waitFor();
 await editRoom.locator('[data-video-subtitle-cut-toggle]').first().click();
 const skippedTime = await editRoom.locator('[data-video-el]').evaluate((video) => {
@@ -142,7 +209,10 @@ const skippedTime = await editRoom.locator('[data-video-el]').evaluate((video) =
 if (skippedTime <= 0.1) throw new Error(`컷 재생이 구간을 건너뛰지 않았습니다: ${skippedTime}`);
 await page.screenshot({ path: path.join(outputDir, "edit-video-1440x900.png") });
 
-await page.getByRole("link", { name: /03발행실/ }).click();
+await page.evaluate(() => window.scrollTo(0, 0));
+const publishLink = page.locator('a[href*="room=publish"]').first();
+await publishLink.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
+await publishLink.click({ timeout: 10_000 });
 const publishRoom = page.locator('[data-room="publish"]');
 await publishRoom.locator('[data-publish-preview-stack]').first().waitFor();
 const previewCards = publishRoom.locator('[data-room-preview]');
@@ -161,6 +231,7 @@ fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify({
   ok: true,
   draftSaveCount: draftSaves.length,
   cardDrag: { before: beforeBox, after: afterBox, pixelMean: pixelDiff.channels.map((channel) => channel.mean) },
+  videoTabGeometry,
   videoCutSkippedTo: skippedTime,
   publishBoxes: boxes,
   consoleErrors: 0,

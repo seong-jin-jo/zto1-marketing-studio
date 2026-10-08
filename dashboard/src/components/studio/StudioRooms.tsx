@@ -1147,11 +1147,14 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
       {madeImageUrl || madeVideoUrl ? (
         <section data-testid="create-made" className="grid gap-stack rounded-surface border border-accent/30 bg-surface p-stack sm:grid-cols-[minmax(0,18rem)_1fr]" aria-label="방금 만든 결과">
           <div className="min-w-0">
-            {madeVideoUrl ? (
-              <DeliveredMedia type="video" src={madeVideoUrl} testId="create-made-video" tenantId={workspaceId} className="max-h-72 w-full rounded-control object-contain" />
-            ) : madeImageUrl ? (
+            <div className="grid gap-stack sm:grid-cols-2">
+            {madeImageUrl ? (
               <DeliveredMedia type="image" src={madeImageUrl} testId="create-made-image" alt="방금 만든 카드뉴스 대표 이미지" tenantId={workspaceId} className="max-h-72 w-full rounded-control object-contain" />
             ) : null}
+            {madeVideoUrl ? (
+              <DeliveredMedia type="video" src={madeVideoUrl} testId="create-made-video" tenantId={workspaceId} className="max-h-72 w-full rounded-control object-contain" />
+            ) : null}
+            </div>
           </div>
           <div className="self-center">
             <b className="block text-body text-text">방금 만든 결과</b>

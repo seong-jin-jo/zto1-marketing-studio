@@ -38,6 +38,10 @@ export default defineConfig({
       '@aws-sdk/client-s3': path.resolve(__dirname, 'node_modules/@aws-sdk/client-s3'),
       // 2026-09-16: threads-publish 도구가 미리 서명 주소(getSignedUrl)를 쓰기 시작했다. 같은 방식.
       '@aws-sdk/s3-request-presigner': path.resolve(__dirname, 'node_modules/@aws-sdk/s3-request-presigner'),
+      // 저장소 밖 openclaw 소스를 직접 불러오는 회귀 테스트에서도 대시보드가 설치한
+      // 잠금 구현을 같은 절대 경로로 쓴다. 패키지 이름만 두면 Vite가 외부 모듈을
+      // dashboard/proper-lockfile로 재배치해 내부 ./lib/lockfile 상대 import를 잃는다.
+      'proper-lockfile': path.resolve(__dirname, 'node_modules/proper-lockfile/index.js'),
     },
   },
 });
