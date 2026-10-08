@@ -1,3 +1,13 @@
+## 2026-10-09 03:49 KST · 회장 지적 생성→편집→발행 미디어 경로 교정 완료, PR 준비
+
+- 인계 기준: 사용자가 직접 지정한 세션맥락, `logs/diff/chairman-defects-20261009/report.md`, v71 프로토타입, `origin/main` `ea74a7df`를 정본으로 삼았다. 작업 폴더는 `/Users/sj/wt/zto1-editroom-chairman-defects-20261009`, 브랜치는 `fix/editroom-chairman-defects-20261009`이다.
+- 근본원인: 생성 성공이 화면 상태만 바꾸고 초안을 저장하지 않았다. 작업물 클릭은 URL을 안 바꿔 생성실로 되돌아갔다. plain v3 변환은 생성 이미지 자산을 잃었다. 컷은 저장 상태만 바꾸고 플레이어가 구간을 건너뛰지 않았다. 영상 모션 프롬프트가 본문 문구를 제공자에 다시 보내 유사 글자와 앱 자막이 겹쳤다.
+- 변경: 이미지·영상 생성 즉시 같은 초안 저장, 작업물 썸네일과 실제 클릭 편집실 진입, 기본 카드 직접 드래그와 생성 이미지 배경, v71 첫 화면 레이아웃, 실제 템플릿 미리보기, 영상 컷 점프, 본문 없는 모션 프롬프트, 발행실 실제 미디어·세로 카드, 사이드바 하단 정렬을 구현했다. 상·중·하, 글자 위치, 별도 자유배치 버튼은 제거했다. DB 스키마와 실제 SNS 게시 경로는 바꾸지 않았다.
+- 검증: TypeScript와 production build PASS, 편집 86건 PASS, `test:publish` 604건 PASS·3건 skip. 실제 Next.js Chromium에서 생성→작업물→편집→드래그→컷→발행 직전까지 PASS, 콘솔 오류 0. 9개 모바일 폭은 본문 16px, 13px 미만 0, 44px 미만 0, 눌림 100%, 가로 넘침 0이다. pipeline artifact lint는 정합 PASS와 기존 핀 위생 경고 28건이다.
+- 커밋: `5eaff35e`, `e9fadb92`, `e850d04b`, `c4db7ba4`. 문서와 최종 증거 커밋은 아직 남아 있다.
+- 증거: `logs/diff/editroom-chairman-fix-20261009/report.md`와 그 아래 before·after·evidence 폴더.
+- 다음 실행: 문서·증거를 커밋하고 브랜치를 push한 뒤 main 대상 PR을 생성한다. 원격 CI green을 확인하기 전에는 운영 완료가 아니다. 실제 외부 SNS 발행과 운영 배포는 하지 않는다.
+
 ## 2026-10-08 23:27 KST · 내보내기 작업자 local 저장 폴백 로컬 검증 완료
 
 - 인계 기준: 사용자가 직접 지정한 run `37787296935`, Read 목록, 세션맥락, 현재 `fix/export-worker-local-media` 브랜치를 정본으로 삼았다. tmux `openclaw-auto-3:0.1`은 이 Codex 워커 자신의 실행 기록이다.

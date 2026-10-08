@@ -1,5 +1,19 @@
 # OSMU build log
 
+## 2026-10-09 03:49 KST · 생성→편집→발행 미디어 경로 복구
+
+STAMP: 2026-10-09 03:49 KST | model: gpt-5/Codex | agent: code-builder | skill: qa | 근거: 회장 결함 재현 보고, v71 프로토타입, Chromium 단일경로 E2E, Vitest 604건, production build | 고민: 화면 존재가 아니라 같은 초안의 실제 미디어가 세 방을 끝까지 통과하는지를 종료 기준으로 삼았다.
+
+**기존 구현 확인:** 생성 성공은 `img`·`vid` 화면 상태만 바꾸고 초안을 저장하지 않았다. 작업물 클릭은 저장소 상태만 바꿔 URL이 생성실로 되돌렸고, 카드 v3는 별도 자유배치 진입과 상·중·하 프리셋을 동시에 노출했다. 컷은 상태만 저장하고 재생 헤드는 잘린 구간을 통과했다. 발행 미리보기는 미디어 없는 초안과 가로 그리드를 사용했다.
+
+**추가·변경:** 생성 성공 즉시 같은 초안에 이미지·영상을 저장하고 작업물 목록을 갱신한다. 작업물 클릭은 공용 URL 전환 경로를 사용한다. 카드 편집은 기본 화면에서 직접 드래그하며 실제 생성 이미지를 배경으로 쓴다. 별도 자유배치·상중하·글자 위치 버튼은 제거했다. v71 첫 화면 높이에 맞춰 캔버스와 템플릿 순서를 조정했다. 영상 재생은 컷 구간을 건너뛰고, 이미지→영상 프롬프트에서는 본문 문구를 제거했다. 발행 카드는 실제 미디어를 보여 주며 세로로 쌓인다. DB 스키마는 바꾸지 않았다.
+
+**검증:** TypeScript PASS, 편집 관련 86건 PASS, `test:publish` 604건 PASS·3건 skip, production build PASS. 실제 Next.js dev와 Chromium에서 생성→작업물 썸네일→같은 초안 편집→카드 드래그 픽셀 변화→영상 컷 점프→발행실 실제 미디어를 연속 실행했고 콘솔 오류 0이었다. 모바일 9폭은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 100%, 가로 넘침 0이다. dev 종료 직후 `.next/dev/types`가 절단된 채 남아 첫 TypeScript 재검사가 실패했고, 해당 생성 캐시를 `/tmp/zto1-chairman-next-dev-types-corrupt-20261009-0355`로 보존 이동한 뒤 같은 명령과 최종 build가 통과했다. 실제 외부 SNS 게시와 운영 배포는 실행하지 않아 미검증이다.
+
+**벤치마크 적용:** Canva의 캔버스 직접 조작, Adobe Express와 CapCut의 트림 후 재생 모델을 적용했다. 상세 전후 캡처와 수치는 `logs/diff/editroom-chairman-fix-20261009/report.md`에 있다.
+
+SOURCES/MODEL: gpt-5/Codex | `logs/diff/chairman-defects-20261009/report.md` | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | https://www.canva.com/help/layers/ | https://helpx.adobe.com/express/web/create-and-edit-videos/edit-videos/trim-videos.html | https://www.capcut.com/resource/how-to-trim-video
+
 ## 2026-10-08 23:27 KST · 내보내기 작업자 저장소 규칙을 대시보드와 통일
 
 STAMP: 2026-10-08 23:27 KST | model: gpt-5/Codex | agent: code-builder | skill: review | 근거: run 37787296935, local 저장 경로 통합 테스트, Compose 실해석, TypeScript·production build·Chromium smoke | 고민: R2 누락을 장애로 취급한 PR 132의 과잉 필수 계약만 되돌리고 작업자 health 게이트는 보존했다.

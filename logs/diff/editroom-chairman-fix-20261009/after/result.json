@@ -1,0 +1,51 @@
+{
+  "ok": true,
+  "draftSaveCount": 4,
+  "cardDrag": {
+    "before": {
+      "x": 749.21875,
+      "y": 539.609375,
+      "width": 309.546875,
+      "height": 184.25
+    },
+    "after": {
+      "x": 662.8125,
+      "y": 693.40625,
+      "width": 309.546875,
+      "height": 184.25
+    },
+    "pixelMean": [
+      43.41370507154245,
+      58.47061108756635,
+      70.35910476075155
+    ]
+  },
+  "videoTabGeometry": {
+    "rect": {
+      "x": 1044,
+      "y": 219,
+      "width": 44,
+      "height": 44
+    },
+    "hit": "<button type=\"button\" class=\"ds-label inline-flex min-h-control-touch ds-touch-target items-center justify-center gap-micro rounded-control font-medium transition-colors disabled:c"
+  },
+  "videoCutSkippedTo": 0.666666,
+  "publishBoxes": [
+    {
+      "x": 248,
+      "y": 952,
+      "width": 824
+    },
+    {
+      "x": 248,
+      "y": 1759,
+      "width": 824
+    },
+    {
+      "x": 248,
+      "y": 2566,
+      "width": 824
+    }
+  ],
+  "consoleErrors": 0
+}
