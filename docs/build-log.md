@@ -1,5 +1,29 @@
 # OSMU build log
 
+## 2026-10-08 20:30 KST · 진단 테스트 push protection 차단 교정
+
+STAMP: 2026-10-08 20:30 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: GitHub push protection 차단 위치, 진단 계약 테스트 19건, TypeScript, push 대상 이력 전수 검사, GitHub 공식 문서 | 고민: 마스킹 입력의 실제 바이트와 거절 단언은 유지하면서 소스와 모든 push 대상 커밋에서만 자격증명 형태를 제거했다.
+
+**기존 구현 확인:** 읽기 전용 진단과 마스킹 계약은 이미 구현됐고 동작은 통과했다. 그러나 테스트가 Slack·OpenAI·AWS 자격증명 형태의 합성값을 완전한 문자열로 저장해 GitHub push protection이 push를 차단했다.
+
+**추가·변경:** 합성 자격증명의 접두부·호스트·경로를 소스에서 분할하고 테스트 실행 때 결합한다. 마스커에 전달되는 입력과 원문 비노출 단언은 동일하다. fixup과 autosquash로 기능 커밋을 `0185c3b7`로 재작성해 별도 수정 커밋을 남기지 않았다.
+
+**검증:** 진단·배포·runner 격리 계약 3파일 19건 PASS, `typecheck:ci` 종료 코드 0이다. `origin/main..HEAD`의 2개 커밋에서 Slack·OpenAI·AWS·Slack Webhook의 완전한 자격증명 형태를 전수 검사해 0건을 확인했다. push하지 않아 GitHub 원격 재판정은 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `dashboard/tests/studio/diagnose-export-worker-workflow.contract.test.ts` | `git rev-list origin/main..HEAD` + 커밋별 `git grep` | https://docs.github.com/en/code-security/how-tos/secure-your-secrets/work-with-leak-prevention/push-protection-on-the-command-line
+
+## 2026-10-08 19:48 KST · 운영 내보내기 작업자 읽기 전용 진단
+
+STAMP: 2026-10-08 19:48 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: 운영 0/3 고착 증거, 작업자·RLS 코드, Docker inspect·GitHub Actions 공식 문서, 계약 테스트 19건 | 고민: 원인을 추정으로 고치지 않고 운영 상태를 바꾸지 않는 한 번의 진단으로 기동·health·RLS·대기열을 구분한다.
+
+**기존 구현 확인:** export 작업자는 PostgreSQL queue를 순회하지만 배포 성공 판정은 dashboard health만 기다렸다. 작업자의 첫 tenant 탐색은 tenant context 없는 DB 연결로 FORCE RLS 테이블을 읽으므로, 운영 연결 역할이 `BYPASSRLS`가 아니면 runnable tenant가 0건일 수 있다. 운영 증거는 작업자 `Started`, health `starting`까지만 있어 기동 실패와 RLS 무가시성을 구분하지 못한다.
+
+**추가·변경:** 수동 `marketing_runner` 진단 workflow를 추가했다. checkout·배포·재시작 없이 compose service label로 모든 작업자 컨테이너를 찾아 상태, health, 재시작 횟수, 종료 상태, 최근 로그 200줄과 5초 제한 health 응답을 수집한다. 로그·응답은 DB URL·URL query·Cookie, 토큰, 비밀번호, API key, Bearer, GitHub·Google·Slack·OpenAI·AWS·JWT·고엔트로피 형태와 tenant·draft 식별자, payload·오류 상세 줄을 마스킹한다. 기존 dashboard 컨테이너의 같은 DB 연결을 새 프로세스에서 사용해 `SET TRANSACTION READ ONLY` 뒤 연결 역할의 RLS 우회 여부와 job/item 상태별 건수만 출력한다. 모든 수집 단계는 앞 단계 실패 뒤에도 실행하되 진단 실패와 마스커 실패는 최종 workflow 실패로 남긴다. 제품 작업자·배포 workflow·DB 스키마는 변경하지 않았다.
+
+**검증:** YAML 파싱·ShellCheck PASS, 진단·기존 배포·runner 격리 계약 3파일 19건 PASS, `typecheck:ci` 종료 코드 0이다. Bearer·Basic·Digest·Token을 포함한 합성 비밀값과 테넌트 식별 패턴을 실제 Perl 마스커에 통과시켜 원문이 남지 않음과 마스커 실패 코드 보존을 검증했다. RLS 진단은 superuser·`BYPASSRLS`와 테이블별 실제 정책 활성 상태를 함께 출력한다. pipeline artifact lint는 실체·슬롯키·버전 정합 PASS와 기존 핀 위생 경고 28건이다. workflow는 push·dispatch하지 않아 실제 운영 컨테이너와 DB 결과는 미검증이며, 따라서 제품 원인 수정도 하지 않았다. 커밋 `0185c3b7`.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `.github/workflows/diagnose-export-worker.yml` | `dashboard/src/workers/studio-export-worker.ts` | `dashboard/src/lib/studio/export-repository.ts` | `dashboard/db/migrations/20261004_010_studio_export_queue.sql` | https://docs.docker.com/reference/cli/docker/container/inspect/ | https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands
+
 ## 2026-10-08 18:08 KST · 운영 DB 마이그레이션 checkout 권한 오류 교정
 
 STAMP: 2026-10-08 18:08 KST | model: gpt-5/Codex | agent: code-builder | skill: 없음 | 근거: 실패 run 37751223311, 성공 migration run 35772965580, actions/checkout 공식 README, fail-first 계약 | 고민: container CI 경로의 성공을 host 권한 증거로 쓰지 않고 같은 host migration에서 성공한 root child 경로를 복구했다.
