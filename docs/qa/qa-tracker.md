@@ -1,3 +1,13 @@
+## 2026-10-09 PR 134 Linux 글꼴 폭 카드 버튼 넘침 ❌ NG → ✅ PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| CHAIRMAN-FIX-R6-01 | 390×844 카드 편집의 `글 숨기기` 버튼이 Linux 글꼴에서도 `scrollWidth <= clientWidth`이고 44px 터치 최소를 유지해야 함 | ✅ PASS | 요소 행의 상위 특이도 `flex-shrink:1`을 제거했다. production Chromium 390에서 `글 숨기기`는 59.484×44px, `clientWidth=57`, `scrollWidth=57`, `flexShrink=0`이다. |
+| CHAIRMAN-FIX-R6-02 | 같은 요소 행의 작은 버튼 전부가 내용 폭과 44px 터치 최소를 함께 만족해야 함 | ✅ PASS | 이동·레이어·숨기기·잠금·복제·삭제 10개 모두 1440·1512·390에서 최소 44×44px, 최대 `scrollWidth-clientWidth=0`, `flexShrink=0`이다. 소스 계약 정상·경계 2건도 통과했다. |
+| CHAIRMAN-FIX-R6-03 | 기존 자손 가로 넘침 단언을 완화하지 않고 회장 결함 E2E가 통과해야 함 | ✅ PASS | 기존 전체 자손 `scrollWidth > clientWidth + 1` 단언은 그대로다. production `e2e:chairman-defects`는 `ok=true`, 세 폭 overflow·outside 0건이며 v70 화면 게이트도 같은 build에서 통과했다. |
+
+모바일 실측: 데이터 포함 편집실 fixture를 360·390·412·600·700·780·820·900·1000에서 재측정했다. 아홉 폭 모두 13px 미만 글자 0, 본문 16px, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다.
+
 ## 2026-10-09 PR 134 v70 화면 정합 게이트 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

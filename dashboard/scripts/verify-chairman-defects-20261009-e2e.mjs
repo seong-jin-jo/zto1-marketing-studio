@@ -198,18 +198,41 @@ async function assertCardEditorFits(viewport) {
         scrollWidth: node.scrollWidth,
         scrollLeft: node.scrollLeft,
       }));
+    const elementActionButtons = [...root.querySelectorAll('[data-card-element-list] [aria-label$=" 조작"] button')]
+      .filter((node) => node instanceof HTMLElement && node.offsetParent !== null)
+      .map((node) => {
+        const bounds = node.getBoundingClientRect();
+        return {
+          label: node.getAttribute('aria-label') || node.textContent?.trim() || '',
+          width: bounds.width,
+          height: bounds.height,
+          clientWidth: node.clientWidth,
+          scrollWidth: node.scrollWidth,
+          flexShrink: getComputedStyle(node).flexShrink,
+        };
+      });
     return {
       viewport: currentViewport,
       root: rootRect,
       canvas: canvasRect,
       overflow,
       outside,
+      elementActionButtons,
       rootScrollLeft: root.scrollLeft,
     };
   }, viewport);
   if (measurement.overflow.length) throw new Error(`카드 편집 자손 가로 넘침: ${JSON.stringify(measurement)}`);
   if (measurement.outside.length) throw new Error(`카드 편집 자손이 편집 패널 밖으로 이탈했습니다: ${JSON.stringify(measurement)}`);
   if (measurement.rootScrollLeft !== 0) throw new Error(`카드 편집 작업대가 가로로 스크롤됐습니다: ${JSON.stringify(measurement)}`);
+  const invalidActionButton = measurement.elementActionButtons.find((button) => (
+    button.width < 44
+    || button.height < 44
+    || button.scrollWidth > button.clientWidth + 1
+    || button.flexShrink !== '0'
+  ));
+  if (invalidActionButton) {
+    throw new Error(`카드 요소 조작 버튼의 44px·라벨 비절단 계약 위반: ${JSON.stringify(measurement)}`);
+  }
   const canvasInsidePanel = measurement.canvas.x >= measurement.root.x - 1
     && measurement.canvas.right <= measurement.root.right + 1;
   const canvasInsideViewport = measurement.canvas.x >= -1

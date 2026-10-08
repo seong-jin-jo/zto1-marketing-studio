@@ -292,7 +292,11 @@
 .elementList li { display: grid; gap: var(--stack-tight); padding: var(--stack); border: 1px solid var(--border); border-radius: var(--shape-control); }
 .elementList li[data-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
 .elementName { justify-content: flex-start; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.listActions > :global(button) { flex: 1 1 var(--control-touch); }
+.listActions > :global(button) {
+  flex: 0 0 auto;
+  min-width: var(--control-touch);
+  white-space: nowrap;
+}
 
 @media (max-width: 1023px) {
   .editor {
