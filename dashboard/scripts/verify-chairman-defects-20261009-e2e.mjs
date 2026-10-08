@@ -165,6 +165,63 @@ async function assertNoHorizontalOverflow(label) {
   return measure;
 }
 
+async function assertCardEditorFits(viewport) {
+  const workbench = page.locator('[data-card-deck-v3-workbench]');
+  const measurement = await workbench.evaluate((root, currentViewport) => {
+    const rect = (node) => {
+      const value = node.getBoundingClientRect();
+      return { x: value.x, y: value.y, width: value.width, height: value.height, right: value.right, bottom: value.bottom };
+    };
+    const canvas = root.querySelector('[data-card-stage]');
+    if (!(canvas instanceof HTMLElement)) throw new Error('카드 캔버스를 찾지 못했습니다');
+    const rootRect = rect(root);
+    const canvasRect = rect(canvas);
+    const outside = [root, ...root.querySelectorAll('*')]
+      .filter((node) => node instanceof HTMLElement && node.offsetParent !== null)
+      .map((node) => ({ node, value: rect(node) }))
+      .filter(({ value }) => value.x < rootRect.x - 1 || value.right > rootRect.right + 1)
+      .slice(0, 20)
+      .map(({ node, value }) => ({
+        tag: node.tagName,
+        marker: node.getAttribute('aria-label') || node.getAttribute('data-card-template-gallery') || node.className,
+        rect: value,
+      }));
+    const overflow = [root, ...root.querySelectorAll('*')]
+      .filter((node) => node instanceof HTMLElement && node.clientWidth > 0 && node.scrollWidth > node.clientWidth + 1)
+      .map((node) => ({
+        tag: node.tagName,
+        marker: node.getAttribute('data-card-canvas-editor') !== null ? 'card-editor'
+          : node.getAttribute('data-card-stage') !== null ? 'card-stage'
+            : node.getAttribute('data-card-right-panel') !== null ? 'right-panel'
+              : node.getAttribute('aria-label') || node.className,
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+        scrollLeft: node.scrollLeft,
+      }));
+    return {
+      viewport: currentViewport,
+      root: rootRect,
+      canvas: canvasRect,
+      overflow,
+      outside,
+      rootScrollLeft: root.scrollLeft,
+    };
+  }, viewport);
+  if (measurement.overflow.length) throw new Error(`카드 편집 자손 가로 넘침: ${JSON.stringify(measurement)}`);
+  if (measurement.outside.length) throw new Error(`카드 편집 자손이 편집 패널 밖으로 이탈했습니다: ${JSON.stringify(measurement)}`);
+  if (measurement.rootScrollLeft !== 0) throw new Error(`카드 편집 작업대가 가로로 스크롤됐습니다: ${JSON.stringify(measurement)}`);
+  const canvasInsidePanel = measurement.canvas.x >= measurement.root.x - 1
+    && measurement.canvas.right <= measurement.root.right + 1;
+  const canvasInsideViewport = measurement.canvas.x >= -1
+    && measurement.canvas.right <= viewport.width + 1;
+  const canvasInsideFirstScreen = viewport.width < 1024
+    || (measurement.canvas.y >= -1 && measurement.canvas.bottom <= viewport.height + 1);
+  if (!canvasInsidePanel || !canvasInsideViewport || !canvasInsideFirstScreen) {
+    throw new Error(`카드 캔버스가 편집 패널 또는 첫 화면 밖입니다: ${JSON.stringify(measurement)}`);
+  }
+  return measurement;
+}
+
 await page.goto(`${baseUrl}/studio?room=create`, { waitUntil: "domcontentloaded" });
 await page.getByTestId("create-card-image").waitFor();
 await page.getByTestId("create-card-image").click();
@@ -217,6 +274,10 @@ try {
   throw error;
 }
 await editRoom.locator('[data-card-slide-scene]').waitFor();
+const editRoomToasts = page.locator('#toast-container > div');
+const editToastCount = await editRoomToasts.count();
+if (editToastCount > 1) throw new Error(`초안 불러오기 뒤 토스트가 중복 표시됩니다: ${await editRoomToasts.allTextContents()}`);
+if ((await page.getByText(/내보내기 판/).count()) > 0) throw new Error("사용자 안내에 '내보내기 판' 조어가 남아 있습니다");
 const cardBackground = editRoom.locator('[data-card-slide-scene] img').first();
 await cardBackground.waitFor();
 if (await cardBackground.evaluate((image) => image.naturalWidth) <= 0) throw new Error("편집실 카드에 실제 생성 이미지 픽셀이 표시되지 않았습니다");
@@ -248,11 +309,13 @@ const pixelDiff = await sharp(beforePixels).composite([{ input: afterPixels, ble
 if (!pixelDiff.channels.some((channel) => channel.mean > 0.2)) throw new Error("카드 글자 드래그 뒤 미리보기 픽셀이 바뀌지 않았습니다");
 if ((await page.getByText(/자유 배치를 시작했습니다|기본 편집으로 돌아가면/).count()) > 0) throw new Error("기본 카드 편집에 별도 자유 배치 모드 토스트가 남아 있습니다");
 
+const cardLayout = [];
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982 }, { width: 390, height: 844 }]) {
   await page.setViewportSize(viewport);
   await assertNoHorizontalOverflow(`편집실 ${viewport.width}`);
   const canvas = editRoom.locator('[data-card-slide-scene]');
   await canvas.waitFor();
+  cardLayout.push(await assertCardEditorFits(viewport));
   await page.screenshot({ path: path.join(outputDir, `edit-card-${viewport.width}x${viewport.height}.png`) });
 }
 
@@ -271,6 +334,28 @@ fs.writeFileSync(path.join(outputDir, "mobile-edit-data-fixture.html"), mobileFi
 
 await page.setViewportSize({ width: 1440, height: 900 });
 await page.evaluate(() => window.scrollTo(0, 0));
+const resizeHandle = textElement.locator('[data-handle="se"]');
+await resizeHandle.waitFor();
+const resizeBeforeRect = await textElement.boundingBox();
+const resizeHandleBox = await resizeHandle.boundingBox();
+if (!resizeBeforeRect || !resizeHandleBox) throw new Error("카드 글자 크기 조절점을 찾지 못했습니다");
+await page.mouse.move(resizeHandleBox.x + resizeHandleBox.width / 2, resizeHandleBox.y + resizeHandleBox.height / 2);
+await page.mouse.down();
+await page.mouse.move(resizeHandleBox.x + 2_000, resizeHandleBox.y + 2_000, { steps: 12 });
+await page.mouse.up();
+const resizedSelectionRect = await textElement.boundingBox();
+const resizedStageRect = await editRoom.locator('[data-card-slide-scene]').boundingBox();
+if (!resizedSelectionRect || resizedSelectionRect.width <= resizeBeforeRect.width + 2 || resizedSelectionRect.height <= resizeBeforeRect.height + 2) {
+  throw new Error(`카드 크기 조절 드래그가 요소 크기를 바꾸지 못했습니다: ${JSON.stringify({ resizeBeforeRect, resizedSelectionRect })}`);
+}
+if (!resizedStageRect
+  || resizedSelectionRect.x < resizedStageRect.x - 1
+  || resizedSelectionRect.y < resizedStageRect.y - 1
+  || resizedSelectionRect.x + resizedSelectionRect.width > resizedStageRect.x + resizedStageRect.width + 1
+  || resizedSelectionRect.y + resizedSelectionRect.height > resizedStageRect.y + resizedStageRect.height + 1) {
+  throw new Error(`과도한 크기 조절 뒤 카드 요소가 캔버스 밖으로 잘렸습니다: ${JSON.stringify({ resizedSelectionRect, resizedStageRect })}`);
+}
+const cardResizeContainment = { before: resizeBeforeRect, selection: resizedSelectionRect, stage: resizedStageRect };
 const videoTab = editRoom.getByRole("button", { name: "영상" });
 await videoTab.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
 const videoTabGeometry = await videoTab.evaluate((element) => {
@@ -333,6 +418,13 @@ await editRoom.getByRole("button", { name: "카드뉴스" }).click();
 await editRoom.locator("[data-card-canvas-editor]").waitFor();
 const openExportButton = editRoom.getByRole("button", { name: "내보내기", exact: true }).last();
 await openExportButton.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
+await page.waitForTimeout(1_000);
+if (!(await openExportButton.isEnabled())) {
+  const exportBlock = await openExportButton.locator("xpath=../..").innerText().catch(() => "내보내기 영역을 읽지 못했습니다");
+  const alerts = await editRoom.getByRole("alert").allTextContents();
+  const workbenchDisabled = await editRoom.locator('[data-card-deck-v3-workbench]').getAttribute('aria-disabled');
+  throw new Error(`카드 편집 뒤 내보내기가 비활성입니다: ${JSON.stringify({ exportBlock, alerts, workbenchDisabled, room: (await editRoom.innerText()).slice(-4_000) })}`);
+}
 await openExportButton.click();
 const exportPanel = page.locator("[data-export-panel]");
 await exportPanel.waitFor();
@@ -344,6 +436,11 @@ const selectedPublishImage = publishRoom.getByTestId("publish-selected-image");
 const selectedPublishVideo = publishRoom.getByTestId("publish-selected-video");
 await selectedPublishImage.waitFor();
 await selectedPublishVideo.waitFor();
+await page.getByTestId("publish-export-pin-notice").waitFor();
+const visibleToasts = page.locator('#toast-container > div');
+const publishToastCount = await visibleToasts.count();
+if (publishToastCount > 1) throw new Error(`내보내기 뒤 토스트가 중복 표시됩니다: ${await visibleToasts.allTextContents()}`);
+if ((await page.getByText(/내보내기 판/).count()) > 0) throw new Error("사용자 안내에 '내보내기 판' 조어가 남아 있습니다");
 const selectedMediaBoxes = await Promise.all([selectedPublishImage.boundingBox(), selectedPublishVideo.boundingBox()]);
 if (selectedMediaBoxes.some((box) => !box || box.y < 0 || box.y + box.height > 900)) throw new Error(`발행실 선택 미디어가 1440 첫 화면 밖입니다: ${JSON.stringify(selectedMediaBoxes)}`);
 if (await selectedPublishImage.evaluate((image) => image.naturalWidth) <= 0) throw new Error("발행실 첫 화면 이미지가 실제 픽셀을 불러오지 못했습니다");
@@ -374,12 +471,15 @@ fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify({
   ok: true,
   draftSaveCount: draftSaves.length,
   cardDrag: { before: beforeBox, after: afterBox, pixelMean: pixelDiff.channels.map((channel) => channel.mean) },
+  cardResizeContainment,
+  cardLayout,
   videoTabGeometry,
   videoCutSkippedTo: skippedTime,
   videoFrame,
   selectedPublishMedia: selectedMediaBoxes,
   exportFlow: { exportStarted, exportJobReads, selectedImageSrc: await selectedPublishImage.getAttribute("src") },
   publishBoxes: boxes,
+  toastCounts: { edit: editToastCount, publish: publishToastCount },
   consoleErrors: 0,
 }, null, 2));
 

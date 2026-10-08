@@ -1,5 +1,17 @@
 # OSMU build log
 
+## 2026-10-09 05:42 KST · PR 134 카드 편집 내부 넘침과 비동기 경합 교정
+
+STAMP: 2026-10-09 05:42 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skills: qa, review | 근거: 회장 R3 반려, v71, production Chromium 수치 E2E, 독립 적대 리뷰 | 고민: 화면 폭을 닫은 뒤에도 크기 조절·회전과 늦은 비동기 응답이 다시 요소나 작업물을 덮지 못하도록 변환 경계와 작업 번호를 함께 고정했다.
+
+**기존 구현 확인:** 카드 편집 루트는 `display:grid`인데 명시 열이 없어 암시적 `auto` track이 자손의 최소 콘텐츠 폭 1438px까지 늘어났다. 선택 요소 도구가 상단 전체 폭을 차지했고 템플릿 캐러셀과 공용 `.ds-label`의 `min-width:max-content`도 편집 패널을 밀었다. 초안 불러오기와 방 전환이 각각 성공 토스트를 띄워 두 개가 겹쳤다.
+
+**추가·변경:** 편집 루트를 `minmax(0,1fr)` 한 열로 고정하고 작업대는 장 목록·304px 카드·접이식 속성 도구의 세 열로 맞췄다. 선택 핸들은 요소 경계 안에 두고 390에서는 한 열로 쌓는다. 회전된 경계 상자를 기준으로 이동·크기 조절·회전 결과를 카드 안에 제한한다. 편집실 템플릿은 컨테이너 폭에 맞춘 grid로 바꾸고 버튼은 공용 `ds-label-fill` 계약을 사용한다. 초안 불러오기 토스트 하나만 남기고 `내보내기 판` 조어를 실제 동작 문장으로 교체했다. 이미지·영상·초안 생성은 단일 작업 번호로 직렬화하고, 새로 시작·작업 공간 전환·카드 편집 이탈 뒤 늦은 응답은 무효화한다. DB·API 계약은 바꾸지 않았다.
+
+**검증:** 1440·1512·390에서 편집 패널과 보이는 전체 자손의 `scrollWidth > clientWidth` 0건, 패널 경계 이탈 0건, canvas rect 패널 포함, root `scrollLeft=0`. 과도한 크기 조절은 화면상 234.875×139.813에서 302×377.5로 실제 변했고 카드 302×377.5 안에 완전히 제한됐다. 초안 편집과 발행 전환 토스트는 상태 정착 뒤 각각 1개, 콘솔 오류 0이다. 변환·경합 집중 4파일 51건, `test:publish` 605건·3건 skip, TypeScript, 기능 플래그를 켠 production build·E2E, 모바일 9폭이 PASS했다. design-lint와 artifact lint는 종료 코드 0이며 기존 경고 2종·28건을 유지한다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | `logs/diff/editroom-chairman-fix-20261009/after/result.json` | `docs/qa/qa-tracker.md`
+
 ## 2026-10-09 04:50 KST · PR 134 시각 반려와 실제 내보내기 경로 교정
 
 STAMP: 2026-10-09 04:50 KST | model: gpt-5/Codex | agent: code-builder | skills: qa, review | 근거: v71, 회장 R2 반려, production Chromium E2E, 독립 전문 리뷰 | 고민: 방 탭 직접 이동이 아니라 편집실의 실제 내보내기 버튼을 눌러 발행실의 고정 산출물까지 같은 사진인지 검증했다.

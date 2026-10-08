@@ -35,7 +35,7 @@ type CardTemplateGalleryProps = BaseProps & ({
   onRestore: () => void;
 });
 
-function TemplateCard({ id, selected, recommended, title, body, disabledReason, previewImageUrl, tenantId, onSelect }: {
+function TemplateCard({ id, selected, recommended, title, body, disabledReason, previewImageUrl, tenantId, fitContainer = false, onSelect }: {
   id: CardDeckTemplateId;
   selected: boolean;
   recommended: boolean;
@@ -44,6 +44,7 @@ function TemplateCard({ id, selected, recommended, title, body, disabledReason, 
   disabledReason?: string;
   previewImageUrl?: string | null;
   tenantId?: string;
+  fitContainer?: boolean;
   onSelect: () => void;
 }) {
   const template = CARD_DECK_TEMPLATES.find((item) => item.id === id)!;
@@ -51,7 +52,7 @@ function TemplateCard({ id, selected, recommended, title, body, disabledReason, 
     <Button
       variant="secondary"
       size="sm"
-      className="w-56 shrink-0 flex-col items-stretch justify-start p-stack text-left aria-pressed:border-accent aria-pressed:bg-accent-soft"
+      className={`${fitContainer ? "ds-label-fill min-w-0 w-full overflow-hidden" : "w-56 shrink-0"} flex-col items-stretch justify-start p-stack text-left aria-pressed:border-accent aria-pressed:bg-accent-soft`}
       aria-pressed={selected}
       aria-describedby={disabledReason ? `card-template-disabled-${id}` : undefined}
       disabled={Boolean(disabledReason)}
@@ -81,7 +82,7 @@ export function CardTemplateGallery(props: CardTemplateGalleryProps) {
         <h3 id={`card-template-title-${props.mode}`} className="text-body font-bold text-text">카드 템플릿</h3>
         <p className="text-caption text-subtle">지금 작업물의 글과 브랜드 색으로 미리 봅니다. 템플릿 선택은 무료입니다.</p>
       </div>
-      <div className="flex min-w-0 gap-stack overflow-x-auto pb-micro" aria-label="카드 템플릿 6개">
+      <div className={props.mode === "edit" ? "grid min-w-0 grid-cols-1 gap-stack sm:grid-cols-2 xl:grid-cols-3" : "flex min-w-0 gap-stack overflow-x-auto pb-micro"} aria-label="카드 템플릿 6개">
         {CARD_DECK_TEMPLATES.map((template) => (
           <TemplateCard
             key={template.id}
@@ -93,6 +94,7 @@ export function CardTemplateGallery(props: CardTemplateGalleryProps) {
             disabledReason={props.disabledReasons?.[template.id]}
             previewImageUrl={props.previewImageUrl}
             tenantId={props.tenantId}
+            fitContainer={props.mode === "edit"}
             onSelect={() => props.onSelect(template.id)}
           />
         ))}

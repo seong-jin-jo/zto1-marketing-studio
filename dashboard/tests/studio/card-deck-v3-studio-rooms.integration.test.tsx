@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
 import { createPlainCardDeckV3 } from "@/lib/studio/card-element-commands";
@@ -80,6 +80,22 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
 
     await waitFor(() => expect(onStart).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole("button", { name: "다시 준비" })).not.toBeInTheDocument();
+  });
+
+  it("CHAIRMAN-FIX-R3-06 경합 거절: 카드 준비 중 다른 편집으로 이동하면 늦은 실패를 현재 화면에 적용하지 않는다", async () => {
+    let finishEntry: ((started: boolean) => void) | undefined;
+    const onStart = vi.fn()
+      .mockImplementationOnce(() => new Promise<boolean>((resolve) => { finishEntry = resolve; }))
+      .mockResolvedValueOnce(true);
+    const view = render(<EditRoom kind="card" lines={["첫 장", "둘째 장"]} onLinesChange={() => {}} onStartCardDeckV3={onStart} />);
+
+    await waitFor(() => expect(onStart).toHaveBeenCalledOnce());
+    view.rerender(<EditRoom kind="video" lines={["영상 첫 장면"]} onLinesChange={() => {}} onStartCardDeckV3={onStart} />);
+    await act(async () => { finishEntry?.(false); });
+    view.rerender(<EditRoom kind="card" lines={["새 첫 장", "새 둘째 장"]} onLinesChange={() => {}} onStartCardDeckV3={onStart} />);
+
+    await waitFor(() => expect(onStart).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("카드 직접 편집을 준비하지 못했습니다.")).not.toBeInTheDocument();
   });
 
   it("S2-R4-M1 flag off면 S1 일반·plain v2 직접 편집 시작은 보존하고 AI·말풍선만 막는다", async () => {

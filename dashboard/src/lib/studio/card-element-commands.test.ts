@@ -66,6 +66,19 @@ function deck(): CardDeckV3 {
   };
 }
 
+function expectRotatedElementInsideCanvas(element: CardDeckV3["slides"][number]["elements"][number], ratio: CardDeckV3["ratio"]) {
+  const radians = element.rotation * Math.PI / 180;
+  const boundsWidth = Math.abs(element.width * Math.cos(radians)) + Math.abs(element.height * Math.sin(radians));
+  const boundsHeight = Math.abs(element.width * Math.sin(radians)) + Math.abs(element.height * Math.cos(radians));
+  const centerX = element.x + element.width / 2;
+  const centerY = element.y + element.height / 2;
+  const logicalHeight = ratio === "4:5" ? 1350 : 1080;
+  expect(centerX - boundsWidth / 2).toBeGreaterThanOrEqual(-0.001);
+  expect(centerY - boundsHeight / 2).toBeGreaterThanOrEqual(-0.001);
+  expect(centerX + boundsWidth / 2).toBeLessThanOrEqual(1080.001);
+  expect(centerY + boundsHeight / 2).toBeLessThanOrEqual(logicalHeight + 0.001);
+}
+
 describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
   it("S1-R4-MIGRATION-01 변환 전후 editLines와 9칸 위치를 손실 없이 보존한다", () => {
     const lines = ["첫 장 원문", "둘째 장 원문", "마지막 장 원문"];
@@ -337,6 +350,24 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     expect(moved.slides[0].elements[0]).toMatchObject({ x: 0, y: 1170 });
     const nudged = nudgeCardElement(moved, "slide_cover", "bounded", -100, 100);
     expect(nudged.slides[0].elements[0]).toMatchObject({ x: 0, y: 1170 });
+  });
+
+  it("CHAIRMAN-FIX-R3-04 경계 경로: 과도한 크기 조절과 회전 뒤에도 변환된 요소 전체가 카드 안에 남는다", () => {
+    const added = addCardElement(deck(), "slide_cover", "text", { id: "transformed" });
+    const moved = moveCardElement(added, "slide_cover", "transformed", 9_000, 9_000);
+    const resized = resizeCardElement(moved, "slide_cover", "transformed", "se", 9_000, 9_000);
+    const rotated = rotateCardElement(resized, "slide_cover", "transformed", 45, true);
+    expectRotatedElementInsideCanvas(resized.slides[0].elements[0], resized.ratio);
+    expectRotatedElementInsideCanvas(rotated.slides[0].elements[0], rotated.ratio);
+  });
+
+  it("CHAIRMAN-FIX-R3-05 정상 경로: 회전 요소를 끌어도 회전 경계 전체가 카드 안에서 유지된다", () => {
+    const added = addCardElement(deck(), "slide_cover", "text", { id: "rotated-move" });
+    const rotated = rotateCardElement(added, "slide_cover", "rotated-move", 30, true);
+    const moved = moveCardElement(rotated, "slide_cover", "rotated-move", -9_000, -9_000);
+    const nudged = nudgeCardElement(moved, "slide_cover", "rotated-move", 18_000, 18_000);
+    expectRotatedElementInsideCanvas(moved.slides[0].elements[0], moved.ratio);
+    expectRotatedElementInsideCanvas(nudged.slides[0].elements[0], nudged.ratio);
   });
 
   it("S1-R3-NUMBER-01 숫자 대체 조작은 빈 값·최솟값·각도 범위를 계약 안으로 접는다", () => {

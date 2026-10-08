@@ -104,6 +104,7 @@ import { PLATFORM_FIELD_CONTRACT } from "@/lib/studio/platform-publish-fields";
 import { DEFAULT_COVER_SECONDS, coverUnsupportedReason, supportsCoverTimestamp } from "@/lib/video-cover";
 import { runWithConcurrency } from "@/lib/async-pool";
 import { embeddedTextCardImage, recoverDraftEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
+import { GenerationOperationGate } from "@/lib/studio/generation-operation";
 
 const PUBLISH_CONCURRENCY = 3;
 // 2026-10-02 컨트롤러 감사: 이 타임아웃은 더 이상 "서버가 끝날 때까지" 기다리는 역할이
@@ -560,6 +561,7 @@ export default function StudioPage() {
   // 화면에 모델 선택이 없다. 고르게 할 때까지는 상수로 둔다(죽은 상태값 금지).
   const videoModel = "minimax_hailuo";
   const [busy, setBusy] = useState<string | null>(null);
+  const generationOperations = useRef(new GenerationOperationGate()).current;
   // 2026-09-06 회장 스모크: 생성이 시작되면 끝날 때까지 취소할 방법이 없었고, 도는 동안
   // 화면에 아무 표시도 없었다. 진행 중임을 보여 주고 그만둘 수 있게 한다.
   const generationAbort = useRef<AbortController | null>(null);
@@ -568,9 +570,25 @@ export default function StudioPage() {
   // 시작"을 누르면 그 복구 폴링도 함께 끊겨야 한다. 끊지 않으면 취소했다고 말해 놓고
   // 복구 폴링이 뒤에서 계속 돌며 지운 화면에 결과를 다시 꽂으려 든다.
   const resumePollAbort = useRef<AbortController | null>(null);
+  function beginGenerationOperation(): number | null {
+    if (resumePollAbort.current) return null;
+    return generationOperations.begin();
+  }
+  function generationOperationIsCurrent(operationId: number | undefined): boolean {
+    return generationOperations.isCurrent(operationId);
+  }
+  function finishGenerationOperation(operationId: number) {
+    if (!generationOperations.finish(operationId)) return;
+    generationAbort.current = null;
+    setBusy(null);
+  }
+  function invalidateGenerationOperation() {
+    generationOperations.invalidate();
+  }
   function cancelGeneration() {
     generationAbort.current?.abort();
     generationAbort.current = null;
+    invalidateGenerationOperation();
     resumePollAbort.current?.abort();
     setBusy(null);
     showToast("생성을 취소했습니다", "success");
@@ -620,6 +638,10 @@ export default function StudioPage() {
   }, [text]);
   const [img, setImg] = useState<ImgResult | null>(null);
   const [vid, setVid] = useState<VidResult | null>(null);
+  const imgRef = useRef<ImgResult | null>(null);
+  const vidRef = useRef<VidResult | null>(null);
+  imgRef.current = img;
+  vidRef.current = vid;
   const lineageFilename = videoResultFilename(vid);
   const needsVideoLineageLookup = Boolean(
     activeWorkspace
@@ -838,6 +860,9 @@ export default function StudioPage() {
   const [learningInfo, setLearningInfo] = useState<LearningInfo>({});
   const [learningFlash, setLearningFlash] = useState(0);
   const [editKind, setEditKind] = useState<EditContentKind>("video");
+  const editKindRef = useRef<EditContentKind>(editKind);
+  const cardDeckV3EntryRequestRef = useRef(0);
+  editKindRef.current = editKind;
   const [editFormat, setEditFormat] = useState<ContentEditFormat>(() => defaultContentEditFormat("video"));
   // 카드 비율 하나만 본다. 생성실도 편집실도 발행 그림도 이 값을 쓴다.
   // 종전에는 생성실이 "4:5" 를 코드에 박아 두어 무엇을 골라도 픽셀이 1080×1350 하나였다.
@@ -1313,11 +1338,13 @@ export default function StudioPage() {
   }
   async function generateQuickDraft(structure: CreateStructureChoice, cardTemplateId?: CardDeckTemplateId) {
     if (!idea.trim()) { showToast("주제를 입력해 주세요", "error"); return; }
+    const operationId = beginGenerationOperation();
+    if (operationId === null) { showToast("진행 중인 생성을 마친 뒤 다시 눌러 주세요", "error"); return; }
     generationAbort.current = new AbortController();
     setBusy("초안 만드는 중");
     try {
       const result = await genText(structure, cardTemplateId);
-      if (result) {
+      if (result && generationOperationIsCurrent(operationId)) {
         // 2026-09-05 회장 계정 실측: 새 초안을 만들어도 이전 초안 번호를 그대로 들고 가서,
         // 그 번호가 이미 발행된 것이면 발행이 매번 "이미 올라갔습니다"로 닫혔다. 스튜디오에서
         // 두 번째 글을 영영 못 올리는 상태였다. 새로 만든 것은 새 작업물이므로 이전 번호와
@@ -1455,8 +1482,7 @@ export default function StudioPage() {
         showToast(`${structure.label} 구조로 초안을 만들었습니다`, "success");
       }
     } finally {
-      generationAbort.current = null;
-      setBusy(null);
+      finishGenerationOperation(operationId);
     }
   }
 
@@ -1503,7 +1529,7 @@ export default function StudioPage() {
   // 있게 한다 — 안 그러면 완료된 결과(크레딧은 이미 씀)를 영영 못 받는다.
   async function pollAndFinishImage(
     jobId: string, tenantId: string, aspectRatio: "1:1" | "9:16",
-    opts?: { signal?: AbortSignal; topicLabel?: string },
+    opts?: { signal?: AbortSignal; topicLabel?: string; operationId?: number; persistedVideo?: VidResult | null },
   ) {
     const result = await pollHiggsfieldJob<ImgResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean; status?: string }>(
       jobId, tenantId,
@@ -1515,6 +1541,7 @@ export default function StudioPage() {
         signal: opts?.signal ?? generationAbort.current?.signal,
         headers: authHeaders(),
         onStatus: (status) => {
+          if (!generationOperationIsCurrent(opts?.operationId)) return;
           setBusy(
             status === "queued" ? "이미지 생성 대기열에서 기다리는 중"
               : status === "retrying" ? "이미지 생성기 연결을 복구하는 중입니다. 잠시만 기다려 주세요"
@@ -1523,6 +1550,7 @@ export default function StudioPage() {
         },
       },
     );
+    if (!generationOperationIsCurrent(opts?.operationId)) return null;
     // 2026-10-02 리뷰 MINOR: 취소·시간초과 때는 pending 기록을 지우지 않는다. 이미
     // 202로 접수된 작업은 서버·생성기 쪽에서 계속 만들어지고 있을 수 있다(크레딧도 이미
     // 썼을 수 있다) — 여기서 지우면 다음 방문에서 그 결과를 영영 회수할 수 없다. 정상
@@ -1569,16 +1597,24 @@ export default function StudioPage() {
     // 2026-09-16 실측: 1:1 대표 이미지를 영상 바탕으로 재사용해 정사각 영상이 나갔다).
     const stamped = { ...r, topicKey: mediaTopicKey(opts?.topicLabel ?? idea), aspectRatio };
     setImg(stamped);
-    await save("draft", publishReconciliations, draftIdRef.current, stamped, vid, cardDeck, videoEdit, cardDeckV3);
+    const persistedVideo = opts && Object.prototype.hasOwnProperty.call(opts, "persistedVideo")
+      ? opts.persistedVideo ?? null
+      : vidRef.current;
+    await save("draft", publishReconciliations, draftIdRef.current, stamped, persistedVideo, null, null, null);
     await mutateHist();
     mutateAcct();
     return stamped;
   }
-  async function genImage(prompt: string, aspectRatio: "1:1" | "9:16" = "9:16") {
+  async function genImage(
+    prompt: string,
+    aspectRatio: "1:1" | "9:16" = "9:16",
+    opts?: { operationId?: number; persistedVideo?: VidResult | null },
+  ) {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return null; }
     setLastError(null);
     try {
       const r = await apiPost<{ ok?: boolean; jobId?: string; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/image", { prompt, aspectRatio, label: idea, tenant_id: activeWorkspace.id });
+      if (!generationOperationIsCurrent(opts?.operationId)) return null;
       if (!r?.ok || !r.jobId) {
         const msg = r?.credits
           ? "이미지 생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다."
@@ -1588,8 +1624,12 @@ export default function StudioPage() {
         setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
       }
       savePendingJob(activeWorkspace.id, "image", { jobId: r.jobId, aspectRatio, idea });
-      return await pollAndFinishImage(r.jobId, activeWorkspace.id, aspectRatio);
+      return await pollAndFinishImage(r.jobId, activeWorkspace.id, aspectRatio, {
+        operationId: opts?.operationId,
+        ...(opts && Object.prototype.hasOwnProperty.call(opts, "persistedVideo") ? { persistedVideo: opts.persistedVideo } : {}),
+      });
     } catch (e) {
+      if (!generationOperationIsCurrent(opts?.operationId)) return null;
       // 2026-09-08 실측: 생성기가 막은 주제였는데 화면에는 "Request failed: 502" 만 떴다.
       // 서버는 이유(nsfw·크레딧 부족)를 응답 본문에 담아 보내는데, 응답이 2xx 가 아니면
       // 그 본문을 읽지 않고 버리고 있었다. 이유를 아는 실패는 이유를 말한다.
@@ -1609,7 +1649,7 @@ export default function StudioPage() {
   // 가져온 작업물(파일 이름만 앎)도 이 한 가지 방식으로 처리된다(코드 감사 F-05 취지 유지).
   async function pollAndFinishVideo(
     jobId: string, tenantId: string,
-    opts?: { signal?: AbortSignal; topicLabel?: string; sourceImage?: ImgResult | null },
+    opts?: { signal?: AbortSignal; topicLabel?: string; sourceImage?: ImgResult | null; operationId?: number },
   ) {
     const result = await pollHiggsfieldJob<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean; status?: string }>(
       jobId, tenantId,
@@ -1617,6 +1657,7 @@ export default function StudioPage() {
         signal: opts?.signal ?? generationAbort.current?.signal,
         headers: authHeaders(),
         onStatus: (status) => {
+          if (!generationOperationIsCurrent(opts?.operationId)) return;
           setBusy(
             status === "queued" ? "영상 생성 대기열에서 기다리는 중"
               : status === "retrying" ? "영상 생성기 연결을 복구하는 중입니다. 잠시만 기다려 주세요"
@@ -1625,6 +1666,7 @@ export default function StudioPage() {
         },
       },
     );
+    if (!generationOperationIsCurrent(opts?.operationId)) return null;
     // 2026-10-02 리뷰 MINOR: 취소·시간초과 때는 pending 기록을 지우지 않는다(이미지와
     // 같은 이유 — 접수된 작업은 서버에서 계속 만들어지고 있을 수 있다).
     if (result.aborted) return null;
@@ -1661,12 +1703,12 @@ export default function StudioPage() {
       subtitleLineageState: "unbaked" as const,
     };
     setVid(stamped);
-    await save("draft", publishReconciliations, draftIdRef.current, opts?.sourceImage ?? img, stamped, cardDeck, videoEdit, cardDeckV3);
+    await save("draft", publishReconciliations, draftIdRef.current, opts?.sourceImage ?? imgRef.current, stamped, null, null, null);
     await mutateHist();
     mutateAcct();
     return stamped;
   }
-  async function genVideo(source: { filename?: string; image?: ImgResult | null }) {
+  async function genVideo(source: { filename?: string; image?: ImgResult | null }, operationId?: number) {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return null; }
     setLastError(null);
     const s = text?.shorts;
@@ -1676,6 +1718,7 @@ export default function StudioPage() {
       // 무엇에 관한 영상이든 같은 지시가 갔고, 결과가 주제와 무관하게 나오는 원인 중 하나였다.
       const motion = buildImageToVideoMotionPrompt(learningInfo);
       const r = await apiPost<{ ok?: boolean; jobId?: string; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { filename: source.filename, prompt: motion, model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
+      if (!generationOperationIsCurrent(operationId)) return null;
       if (!r?.ok || !r.jobId) {
         const msg = r?.nsfw
           ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요."
@@ -1685,8 +1728,9 @@ export default function StudioPage() {
         setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
       }
       savePendingJob(activeWorkspace.id, "video", { jobId: r.jobId, idea });
-      return await pollAndFinishVideo(r.jobId, activeWorkspace.id, { sourceImage: source.image ?? img });
+      return await pollAndFinishVideo(r.jobId, activeWorkspace.id, { sourceImage: source.image ?? imgRef.current, operationId });
     } catch (e) {
+      if (!generationOperationIsCurrent(operationId)) return null;
       const msg = extractApiErrorMessage(e, "영상 생성 실패");
       setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
     }
@@ -1708,6 +1752,8 @@ export default function StudioPage() {
     const pendingImg = readPendingJob(workspaceId, "image");
     const pendingVid = readPendingJob(workspaceId, "video");
     if (!pendingImg && !pendingVid) return;
+    const operationId = beginGenerationOperation();
+    if (operationId === null) return;
     const controller = new AbortController();
     resumePollAbort.current = controller;
     showToast("이전에 시작한 생성을 이어서 확인하는 중", "success");
@@ -1721,6 +1767,7 @@ export default function StudioPage() {
       tasks.push(pollAndFinishImage(pendingImg.jobId, workspaceId, pendingImg.aspectRatio ?? "9:16", {
         signal: controller.signal,
         topicLabel: pendingImg.idea,
+        operationId,
       }));
     }
     if (pendingVid) {
@@ -1728,10 +1775,11 @@ export default function StudioPage() {
       tasks.push(pollAndFinishVideo(pendingVid.jobId, workspaceId, {
         signal: controller.signal,
         topicLabel: pendingVid.idea,
+        operationId,
       }));
     }
     Promise.allSettled(tasks).finally(() => {
-      setBusy(null);
+      finishGenerationOperation(operationId);
       if (resumePollAbort.current === controller) resumePollAbort.current = null;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1743,8 +1791,12 @@ export default function StudioPage() {
   useEffect(() => {
     resumePendingJobs();
     return () => {
+      generationAbort.current?.abort();
+      generationAbort.current = null;
       resumePollAbort.current?.abort();
       resumePollAbort.current = null;
+      invalidateGenerationOperation();
+      setBusy(null);
     };
     // activeWorkspace.id가 바뀔 때(작업 공간 전환)만 재확인한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1794,6 +1846,7 @@ export default function StudioPage() {
       destructive: true,
     });
     if (!ok) return;
+    invalidateGenerationOperation();
     generationAbort.current?.abort();
     generationAbort.current = null;
     resumePollAbort.current?.abort(); // MINOR: 버리고 새로 시작하면 복구 폴링도 함께 끊는다.
@@ -1836,6 +1889,9 @@ export default function StudioPage() {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return; }
     const slides = text?.instagram?.slides?.length ? text.instagram.slides : [];
     if (!slides.length) { showToast("먼저 카드뉴스 초안을 만들어 주세요", "error"); return; }
+    const operationId = beginGenerationOperation();
+    if (operationId === null) { showToast("진행 중인 생성을 마친 뒤 다시 눌러 주세요", "error"); return; }
+    setBusy("생성 준비 중");
 
     // ADR-007: 비용 산정·승인 단계가 여기서 예외를 던지면(네트워크 오류·401 등)
     // try 밖이라 아무도 못 잡아 "눌러도 아무 일이 없다"가 됐다(2026-09-23 회장 지적,
@@ -1846,6 +1902,7 @@ export default function StudioPage() {
         ok?: boolean; min_minor?: number; max_minor?: number;
         estimated_seconds_min?: number; estimated_seconds_max?: number; assumptions?: string[];
       }>("/api/studio/estimate", { tenant_id: activeWorkspace.id, kind: "card", count: 1 });
+      if (!generationOperationIsCurrent(operationId)) return;
       if (!est?.ok) { showToast("비용을 산정하지 못했습니다. 잠시 후 다시 시도해 주세요.", "error"); return; }
 
       const approved = await askCostApproval({
@@ -1855,6 +1912,7 @@ export default function StudioPage() {
         secondsMin: est.estimated_seconds_min, secondsMax: est.estimated_seconds_max,
         assumptions: est.assumptions,
       });
+      if (!generationOperationIsCurrent(operationId)) return;
       if (!approved) { showToast("만들지 않았습니다", "success"); return; }
 
       generationAbort.current = new AbortController();
@@ -1870,6 +1928,7 @@ export default function StudioPage() {
           learningInfo,
         ),
         "1:1",
+        { operationId },
       );
     } catch (e) {
       // genImage 자체는 이미 실패 사유를 화면에 말한다. 여기서 잡는 것은 그 앞뒤
@@ -1877,8 +1936,7 @@ export default function StudioPage() {
       const msg = extractApiErrorMessage(e, "카드뉴스 이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
       setLastError(`이미지: ${msg}`); showToast(msg, "error");
     } finally {
-      generationAbort.current = null;
-      setBusy(null);
+      finishGenerationOperation(operationId);
     }
   }
   // 회장 2026-09-07 "생성실에는 영상 버튼 자체가 없는데". 영상은 API 로만 만들 수 있고
@@ -1886,6 +1944,9 @@ export default function StudioPage() {
   // 영상은 대표 이미지를 움직이게 하는 것이라 이미지가 먼저 있어야 한다.
   async function generateShortVideo() {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return; }
+    const operationId = beginGenerationOperation();
+    if (operationId === null) { showToast("진행 중인 생성을 마친 뒤 다시 눌러 주세요", "error"); return; }
+    setBusy("생성 준비 중");
     // 2026-09-08 회장: "왜 카드뉴스 대표이미지를 만들어야 숏폼 영상만들기가 되는거냐".
     // 영상은 그림을 움직여 만드는 것이라 바탕 그림이 필요한 것은 맞다. 그런데 그 사정은
     // 우리 사정이지 고객 사정이 아니다. 고객은 "영상 만들기" 를 눌렀을 뿐인데 거절당하고
@@ -1909,6 +1970,7 @@ export default function StudioPage() {
           confirmLabel: "다시 만들기",
           cancelLabel: "지금 영상 그대로 두기",
         });
+        if (!generationOperationIsCurrent(operationId)) return;
         if (!again) { showToast("지금 영상을 그대로 둡니다", "success"); return; }
       }
       let source = decision.baseImage === "reuse" ? img : null;
@@ -1919,6 +1981,7 @@ export default function StudioPage() {
         ok?: boolean; min_minor?: number; max_minor?: number;
         estimated_seconds_min?: number; estimated_seconds_max?: number; assumptions?: string[];
       }>("/api/studio/estimate", { tenant_id: activeWorkspace.id, kind: "video", count: 1 });
+      if (!generationOperationIsCurrent(operationId)) return;
       if (!est?.ok) { showToast("비용을 산정하지 못했습니다. 잠시 후 다시 시도해 주세요.", "error"); return; }
 
       const approved = await askCostApproval({
@@ -1930,6 +1993,7 @@ export default function StudioPage() {
         secondsMin: est.estimated_seconds_min, secondsMax: est.estimated_seconds_max,
         assumptions: est.assumptions,
       });
+      if (!generationOperationIsCurrent(operationId)) return;
       if (!approved) { showToast("만들지 않았습니다", "success"); return; }
 
       // 옛 주제 영상은 만들기 시작하는 순간 내린다. 생성이 실패해도 화면에 남아 발행되면
@@ -1947,6 +2011,7 @@ export default function StudioPage() {
             learningInfo,
           ),
           "9:16",
+          { operationId, persistedVideo: null },
         );
         if (!source) return; // 실패 사유는 genImage 가 이미 화면에 말했다
       }
@@ -1963,15 +2028,14 @@ export default function StudioPage() {
         showToast(msg, "error");
         return;
       }
-      await genVideo({ filename: baseFilename, image: source });
+      await genVideo({ filename: baseFilename, image: source }, operationId);
     } catch (e) {
       // genImage/genVideo 는 각자 실패 사유를 이미 화면에 말한다. 여기서 잡는 것은
       // 그 앞뒤(주제 재확인·비용 산정·승인) 단계에서 던진 예외다.
       const msg = extractApiErrorMessage(e, "영상을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
       setLastError(`영상: ${msg}`); showToast(msg, "error");
     } finally {
-      generationAbort.current = null;
-      setBusy(null);
+      finishGenerationOperation(operationId);
     }
   }
   // P8: AI 자동초안. 브랜드 가이드 + 글감을 소스로 후보 초안 N개를 생성(status=draft).
@@ -2570,7 +2634,8 @@ export default function StudioPage() {
         return;
       }
       setExportPanel({ draftId: savedDraftId, kind: exportKind });
-      showToast("편집 내용을 저장했습니다. 최신 파일을 내보내면 발행실로 갈 수 있습니다.", "success");
+      // 내보내기 패널 자체가 다음 단계를 보여 준다. 여기서 토스트를 하나 더 띄우면
+      // 내보내기 완료 뒤 발행실 안내와 겹쳐 같은 동작을 두 번 알리게 된다.
     } catch (error) {
       showToast(extractApiErrorMessage(error, "편집 내용을 저장하지 못했습니다"), "error");
     } finally {
@@ -4246,7 +4311,6 @@ export default function StudioPage() {
                   const loaded = await loadDraftDetail(draft as unknown as Record<string, unknown>);
                   if (!loaded) return;
                   changeRoom(room, loaded.kind ?? editKind);
-                  showToast(`${ROOM_LABEL[room]}에서 이어 작업합니다`, "success");
                 })(); }}
                 className="flex min-h-control-touch w-full flex-wrap items-center gap-stack rounded-control border border-border bg-surface-2 px-stack py-stack-tight text-left hover:bg-surface"
               >
@@ -4338,7 +4402,7 @@ export default function StudioPage() {
         resumeCount={hist?.drafts.length ?? 0}
         onResume={() => setShowWorks(true)}
         quickDraft={text}
-        quickDraftLoading={busy === "초안 만드는 중"}
+        quickDraftLoading={busy !== null}
         quickDraftError={lastError}
         onQuickDraftGenerate={generateQuickDraft}
         onTextCandidateSelect={selectTextCandidate}
@@ -4364,14 +4428,14 @@ export default function StudioPage() {
         }}
         cardRatio={cardAspectRatio}
         onGenerateVideo={generateShortVideo}
-        videoBusy={busy === "숏폼 영상 만드는 중"}
+        videoBusy={busy !== null}
         imageStyleId={imageStyleId}
         imageStyleCustom={imageStyleCustom}
         onImageStyleChange={(styleId, custom) => { setImageStyleId(styleId); setImageStyleCustom(custom); }}
         resetToken={createResetToken}
         madeImageUrl={img?.file || img?.url || null}
         madeVideoUrl={vid?.file || vid?.url || null}
-        cardImageBusy={busy === "카드뉴스 이미지 만드는 중"}
+        cardImageBusy={busy !== null}
       />
       <CostApprovalDialog request={costApproval} onApprove={() => settleCostApproval(true)} onCancel={() => settleCostApproval(false)} />
       <ConfirmDialog request={confirmRequest} onConfirm={() => settleConfirm(true)} onCancel={() => settleConfirm(false)} />
@@ -4484,6 +4548,14 @@ export default function StudioPage() {
       showToast(blockedReason, "error");
       return false;
     }
+    const entryRequestId = cardDeckV3EntryRequestRef.current + 1;
+    cardDeckV3EntryRequestRef.current = entryRequestId;
+    const entryDraftId = draftIdRef.current;
+    const entryWorkspaceId = activeWorkspaceIdRef.current;
+    const entryIsCurrent = () => cardDeckV3EntryRequestRef.current === entryRequestId
+      && draftIdRef.current === entryDraftId
+      && activeWorkspaceIdRef.current === entryWorkspaceId
+      && editKindRef.current === "card";
     const snapshot = {
       editLines: [...resolvedEditLines],
       cardTextPositions: [...cardTextPositions],
@@ -4510,6 +4582,10 @@ export default function StudioPage() {
             profileImageAssetId = uploaded.filename;
             if (uploaded.rollback) rollback.push(uploaded.rollback);
           }
+          if (!entryIsCurrent()) {
+            await Promise.allSettled(rollback.reverse().map((remove) => remove()));
+            return false;
+          }
           nextDeck = migrateCardDeckV2ToV3(cardDeck, { coverImageAssetIds, profileImageAssetId });
         } catch (error) {
           await Promise.allSettled(rollback.reverse().map((remove) => remove()));
@@ -4532,6 +4608,10 @@ export default function StudioPage() {
             backgrounds.push({ assetId: uploaded.filename, alt: `${index + 1}번 카드 글자 없는 바탕` });
             if (uploaded.rollback) rollback.push(uploaded.rollback);
           }
+          if (!entryIsCurrent()) {
+            await Promise.allSettled(rollback.reverse().map((remove) => remove()));
+            return false;
+          }
         } catch (error) {
           await Promise.allSettled(rollback.reverse().map((remove) => remove()));
           throw error;
@@ -4541,8 +4621,10 @@ export default function StudioPage() {
         nextDeck = createPlainCardDeckV3(snapshot.editLines, snapshot.cardTextPositions);
         if (img?.filename) nextDeck = applyGeneratedImageBackground(nextDeck, img.filename);
       }
+      if (!entryIsCurrent()) return false;
       onCardDeckV3Change(nextDeck, cardDeck?.template === "chat_bubble" ? undefined : { sourceSnapshot: snapshot });
     } catch (error) {
+      if (!entryIsCurrent()) return false;
       showToast(extractApiErrorMessage(error, "카드 직접 편집용 바탕을 준비하지 못했습니다."), "error");
       return false;
     }
@@ -4832,12 +4914,12 @@ export default function StudioPage() {
                   videoUrl?: string | null;
                 };
               };
-              if (!response.ok) throw new Error(payload.error || "내보내기 판을 고정하지 못했습니다.");
+              if (!response.ok) throw new Error(payload.error || "내보낸 파일을 발행실에 연결하지 못했습니다.");
               if (payload.pin_status === "unpinned") {
-                throw new Error(payload.error || "내보내기 판을 고정하지 못했습니다.");
+                throw new Error(payload.error || "내보낸 파일을 발행실에 연결하지 못했습니다.");
               }
               if (payload.export_id !== receipt.exportId || payload.source_hash !== receipt.sourceHash) {
-                throw new Error("고정된 내보내기 판이 화면에서 확인한 판과 다릅니다.");
+                throw new Error("내보낸 파일이 화면에서 확인한 편집 내용과 다릅니다.");
               }
               const pinnedPost = payload.post;
               if (pinnedPost?.id) setReviewQueueId(pinnedPost.id);
@@ -4862,12 +4944,12 @@ export default function StudioPage() {
                   filename: pinnedPost.videoFilename ?? current.filename,
                 } : current);
               }
-              const message = "내보내기 판을 고정했고 발행실도 같은 파일을 미리 봅니다.";
+              const message = "내보낸 파일로 발행실에서 미리 봅니다.";
               setPublishExportPinNotice({ status: "pinned", message });
-              showToast("발행실로 이동했습니다. 내보내기 판 기록도 완료했습니다", "success");
+              showToast(message, "success");
             } catch (error) {
-              const reason = error instanceof Error ? error.message : "내보내기 판을 고정하지 못했습니다.";
-              const message = `발행실로 이동했습니다. 내보내기 판은 고정되지 않았습니다: ${reason}`;
+              const reason = error instanceof Error ? error.message : "내보낸 파일을 발행실에 연결하지 못했습니다.";
+              const message = `발행실로 이동했지만 내보낸 파일을 연결하지 못했습니다: ${reason}`;
               setPublishExportPinNotice({ status: "unpinned", message });
               showToast(message, "error");
             }

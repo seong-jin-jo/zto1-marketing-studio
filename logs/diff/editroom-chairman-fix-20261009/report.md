@@ -1,6 +1,20 @@
 # 생성·편집·발행 미디어 경로 결함 교정 보고
 
-STAMP: 2026-10-09 04:50 KST | model: gpt-5/Codex | agent: code-builder | skills: qa, review | 근거: v71 프로토타입, 회장 R2 반려, dev·production Chromium E2E, Vitest 605건, production build | 고민: 방 탭 직접 이동이 아니라 실제 내보내기 버튼을 눌러 고정된 사진이 발행실까지 이어지는지를 단일 사용자 경로로 검증했다.
+STAMP: 2026-10-09 05:42 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skills: qa, review | 근거: v71 프로토타입, 회장 R3 반려, production Chromium E2E, Vitest 605건, production build | 고민: 보이는 캡처뿐 아니라 모든 자손 폭, 변환된 요소 경계, 늦은 비동기 결과를 자동 거절하게 했다.
+
+## R3 카드 편집 2차 반려 교정
+
+카드 편집 루트의 암시적 CSS grid 열이 자손의 최소 콘텐츠 폭을 따라 1438px까지 늘어난 것이 핵심 원인이었다. 장 목록·캔버스를 줄여도 바깥 grid track, 선택 핸들, 템플릿 캐러셀의 고유폭이 다시 편집 패널을 밀었다. 루트 한 열을 `minmax(0,1fr)`로 고정하고, 선택 핸들을 요소 경계 안에 두며, 편집 템플릿을 반응형 grid와 공용 `ds-label-fill` 버튼 계약으로 바꿨다.
+
+선택 요소 도구는 v71의 작은 도구 원칙을 현재 편집 계약에 맞춰 우측 접이식 패널로 옮겼다. 1440×900에서는 장 목록 x=265~377, 전체 4:5 카드 x=393~697·y=382~761.5, 접이식 도구가 x=713~1071에 함께 보인다. 1512×982도 캔버스가 같은 좌표로 첫 화면 안에 있다. 390×844에서는 패널 x=24~366, 캔버스 x=41~349로 화면 폭 안에 들어간다.
+
+E2E는 세 폭에서 편집 컨테이너와 보이는 모든 자손을 순회해 `scrollWidth > clientWidth`와 패널 경계 이탈을 모두 거절한다. 최종 결과는 세 폭 모두 overflow 0건, outside 0건, root `scrollLeft=0`이다. 초안 불러오기와 내보내기 뒤 발행 전환은 상태 정착 뒤 각각 토스트 1개이며 `내보내기 판` 문구는 0건이다. 갱신 캡처와 상세 수치는 [`after/result.json`](after/result.json)에 있다.
+
+크기 조절·회전 뒤 요소가 카드 밖으로 다시 나가는 경로도 닫았다. 회전된 경계 상자를 계산해 이동·크기 조절·회전을 카드 논리 좌표 안에 제한한다. 실제 포인터 E2E에서 선택 요소는 234.875×139.813에서 302×377.5로 변했고, 같은 크기의 카드 경계 안에 완전히 포함됐다.
+
+독립 적대 리뷰에서 이미지·영상 생성의 중복 실행과 카드 준비 중 다른 편집으로 이동한 뒤 늦은 응답이 현재 작업물을 덮는 경합을 추가로 확인했다. 생성은 단일 작업 번호로 직렬화하고 버리기·작업 공간 전환에서 번호를 무효화한다. 카드 편집 준비는 시작 초안·작업 공간·편집 종류가 유지될 때만 결과를 적용한다.
+
+검증은 변환·경합 집중 4파일 51건, `test:publish` 59파일 605건·3건 skip, TypeScript, 기능 플래그를 켠 production build·Chromium E2E, 모바일 9폭 PASS다. 콘솔 오류는 0이다. 실제 외부 SNS 발행은 누르지 않았고 데이터 스키마는 바꾸지 않았다.
 
 ## R2 반려 교정 결론
 
@@ -36,7 +50,7 @@ STAMP: 2026-10-09 04:50 KST | model: gpt-5/Codex | agent: code-builder | skills:
 3. 카드 글자를 실제 포인터로 끌어 좌표와 픽셀 변화를 확인하고, 영상 컷 구간 재생을 건너뛴다.
 4. 편집실 `내보내기`를 눌러 export 완료와 발행실 고정을 거친다. 발행실 첫 화면의 실제 이미지·영상, 고정 URL, 플랫폼 카드 세로 쌓임을 확인한다. 실제 발행 버튼은 누르지 않는다.
 
-결과: dev·production 모두 `ok=true`, 콘솔 오류 0, 초안 저장 4회, export job 조회 2회. 상세 수치는 [`after/result.json`](after/result.json)에 있다.
+결과: 기능 플래그를 켠 production 서버에서 `ok=true`, 콘솔 오류 0, 초안 저장 5회, export job 조회 2회다. 상세 수치는 [`after/result.json`](after/result.json)에 있다.
 
 ## 화면 증거
 
@@ -59,22 +73,21 @@ STAMP: 2026-10-09 04:50 KST | model: gpt-5/Codex | agent: code-builder | skills:
 | 공정 | 결과 | 증거 |
 |---|---|---|
 | TypeScript | PASS | `tsc --noEmit -p tsconfig.ci.json`, 종료 코드 0 |
-| 편집 회귀 | PASS | 집중 7파일 82건 |
+| 편집·경합 회귀 | PASS | 최종 변환·경합 집중 4파일 51건, 앞선 편집 집중 회귀도 통과 |
 | 발행 회귀 | PASS | 59파일 605건, 환경 의존 3건 skip |
 | production build | PASS | Next.js build 종료 코드 0 |
-| 실제 dev 서버 | PASS | `http://localhost:3471`, HTTP 200, Next.js Ready |
-| Chromium E2E | PASS | dev·production에서 생성→작업물→편집→컷→내보내기→발행 직전, 콘솔 오류 0 |
+| 실제 production 서버 | PASS | `http://127.0.0.1:3473`, HTTP 200, Next.js Ready |
+| Chromium E2E | PASS | 생성→작업물→편집→드래그·크기 조절→컷→내보내기→발행 직전, 콘솔 오류 0 |
 | 모바일 사용성 | PASS | 360·390·412·600·700·780·820·900·1000 모두 13px 미만 0, 본문 16px, 44px 미만 0, 눌림 100%, 가로 넘침 0 |
 | design lint | PASS WITH BASELINE WARNINGS | 종료 코드 0, 레포 기존 인라인 style·hex 경고 2종 |
 | pipeline artifact lint | PASS WITH WARNINGS | 실체·슬롯키·버전 정합 통과, 기존 핀 위생 경고 28건 |
 
 ## 전달 상태
 
-- 로컬 완료 커밋: 현재 브랜치 HEAD (`fix(studio): close chairman editroom visual regressions`). 정확한 해시는 인계 시 `git rev-parse --short HEAD`로 확인한다.
+- 로컬 완료 커밋: 현재 브랜치의 최신 커밋이며 정확한 해시는 `git rev-parse --short HEAD`로 확인한다.
 - PR: [#134](https://github.com/seong-jin-jo/zto1-marketing-studio/pull/134), OPEN
-- 원격 상태: 현재 head `c48f3c98`, 기존 `CI (dashboard) / verify` FAILURE
-- 차단: 이 세션의 실행 정책이 `git push`를 승인 필요 작업으로 분류했지만 승인 요청은 금지돼 명령 실행 전에 거부됐다. 따라서 최신 로컬 커밋과 신규 CI는 미검증이다.
-- 다음 종료 조건: push 권한이 허용된 컨트롤러가 동일 브랜치를 push하고 PR head 반영과 신규 CI green을 직접 확인한다.
+- 원격 상태: 이번 R3 지시는 로컬 커밋까지여서 push하지 않았다. PR head 반영과 신규 CI는 미검증이다.
+- 다음 종료 조건: 컨트롤러가 동일 브랜치를 push한 뒤 PR head 반영과 신규 `CI (dashboard) / verify` 성공을 직접 확인한다.
 
 원본 로그는 [`evidence/`](evidence/)에 보존했다. 모바일은 데이터가 있는 편집실 DOM과 실제 CSS를 고정한 [`mobile-edit-data-fixture.html`](after/mobile-edit-data-fixture.html)에서 측정했다.
 
@@ -96,7 +109,7 @@ STAMP: 2026-10-09 04:50 KST | model: gpt-5/Codex | agent: code-builder | skills:
 
 SKILLS_USED: qa, 결함 재현·실제 브라우저 경로·증거 캡처에 사용; review, 전문 리뷰와 레드팀으로 실제 export 우회·복구 경로·접근성 결함을 찾아 교정하는 데 사용
 SKILLS_SKIPPED: 없음
-SOURCES/MODEL: gpt-5/Codex | `logs/diff/chairman-defects-20261009/report.md` | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | `docs/design/design-spec-editroom-v70.md` | https://www.canva.com/help/layers/ | https://helpx.adobe.com/express/web/create-and-edit-videos/edit-videos/trim-videos.html | https://www.capcut.com/resource/how-to-trim-video
+SOURCES/MODEL: gpt-6.1-sol/Codex | `logs/diff/chairman-defects-20261009/report.md` | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | `docs/design/design-spec-editroom-v70.md` | https://www.canva.com/help/layers/ | https://helpx.adobe.com/express/web/create-and-edit-videos/edit-videos/trim-videos.html | https://www.capcut.com/resource/how-to-trim-video
 PRESENTATION_CHECK: 내부 태그 잔재 없음, 전후 캡처와 Markdown 구조 확인함
 KNOWLEDGE_QUERY: BRAIN `wiki/business/index.md`에서 ZERO-ONE Marketing Studio와 OSMU 편집·발행 맥락을 좁혀 조회했다. 이번 R2는 정해진 버그 교정이라 신규 웹 벤치마크는 면제하고 기존 v71·R1 조사 근거를 재사용했다.
 HITS_USED: `wiki/business/pmf/idea-zero-one-marketing-studio.md`의 한 초안 다중 채널 원칙, v71의 3열 편집 구조, Canva 직접 조작, Adobe·CapCut 트림 동작을 채택했다.

@@ -2192,22 +2192,26 @@ export function EditRoom({
   const roomState = state === "default" && !hasEditableContent ? "empty" : state;
   const editorVisible = roomState === "default" || roomState === "overflow";
   const directCardStartRequested = useRef(false);
+  const directCardStartGeneration = useRef(0);
   const [directCardStartFailed, setDirectCardStartFailed] = useState(false);
   const requestDirectCardStart = useCallback(async () => {
     if (!onStartCardDeckV3 || directCardStartRequested.current) return;
+    const generation = directCardStartGeneration.current + 1;
+    directCardStartGeneration.current = generation;
     directCardStartRequested.current = true;
     setDirectCardStartFailed(false);
     try {
       const started = await onStartCardDeckV3();
-      if (started === false) setDirectCardStartFailed(true);
+      if (directCardStartGeneration.current === generation && started === false) setDirectCardStartFailed(true);
     } catch {
-      setDirectCardStartFailed(true);
+      if (directCardStartGeneration.current === generation) setDirectCardStartFailed(true);
     } finally {
-      directCardStartRequested.current = false;
+      if (directCardStartGeneration.current === generation) directCardStartRequested.current = false;
     }
   }, [onStartCardDeckV3]);
   useEffect(() => {
     if (kind !== "card") {
+      directCardStartGeneration.current += 1;
       directCardStartRequested.current = false;
       setDirectCardStartFailed(false);
       return;
@@ -2350,7 +2354,7 @@ export function EditRoom({
                 </div>
               </section>
               {kind === "card" && cardDeckV3 && onCardDeckV3Change ? (
-                <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-v3-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
+                <div className={`card p-pad-inset ${styles.cardDeckV3Workbench}`} data-edit-workspace data-card-deck-v3-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
                   {cardDeckV3.template === "chat_bubble" ? <div className="mb-stack flex flex-wrap items-center gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption text-muted" role="status" data-card-deck-v3-return-note>
                     <span className="mr-auto">필요하면 기본 말풍선 편집기로 돌아갈 수 있습니다.</span>
                     {onReturnFromCardDeckV3 ? (

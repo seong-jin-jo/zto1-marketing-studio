@@ -205,6 +205,7 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
   const [sceneOverflow, setSceneOverflow] = useState(false);
   const [toneCandidates, setToneCandidates] = useState<{ targets: Array<{ slideId: string; bubbleId: string; text: string }>; candidates: ChatToneCandidate[]; revision: number } | null>(null);
   const [speakerEditorOpen, setSpeakerEditorOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const handledRequestedSlideRef = useRef<number | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
@@ -230,10 +231,7 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
   const logicalHeight = workingDeck.ratio === "4:5" ? 1350 : 1080;
   const editableElements = activeSlide?.elements.filter((element) => !isChatBaseProjectionElement(activeSlide, element)) ?? [];
   const selected = editableElements.find((element) => element.id === selectedId) ?? null;
-  // 첫 클릭 뒤 도구막대가 새로 삽입되면 스테이지가 아래로 밀려 두 번째 클릭 좌표가
-  // 다른 곳을 가리킨다. 선택 전에도 첫 글 요소 크기의 숨은 도구막대를 두어 레이아웃을
-  // 고정하고, 실제 선택 뒤 같은 자리를 활성화한다.
-  const toolbarElement = selected ?? editableElements.find((element) => element.type === "text") ?? null;
+  const toolbarElement = selected;
   const resolvedAssetUrls = useMemo(() => ({ ...assetUrls, ...localAssetUrls }), [assetUrls, localAssetUrls]);
   const model = useMemo(() => cardSlideRenderModel(workingDeck, activeSlideId, resolvedAssetUrls), [workingDeck, activeSlideId, resolvedAssetUrls]);
   const templatePreviewDeck = useMemo(() => {
@@ -282,6 +280,10 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
   useEffect(() => {
     if (editingTextId) textEditorRef.current?.focus();
   }, [editingTextId]);
+
+  useEffect(() => {
+    if (selectedId) setInspectorOpen(true);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!requestedSlide || !workingDeck.slides.some((slide) => slide.id === requestedSlide.id)) return;
@@ -715,18 +717,6 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
             {(activeSlide.role === "cover" || activeSlide.role === "cta") ? <Button size="sm" variant="secondary" onClick={() => backgroundInputRef.current?.click()}>배경 사진 고르기</Button> : null}
             {(activeSlide.role === "cover" || activeSlide.role === "cta") && activeSlide.background.kind === "image" ? <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => clearChatSlideBackgroundImage(current, activeSlide.id))}>사진 빼기</Button> : null}
           </div> : null}
-          {toolbarElement ? (
-            <div className={styles.toolbarSlot} data-placeholder={selected ? "false" : "true"}>
-              <CardElementToolbar
-                element={toolbarElement}
-                onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, toolbarElement.id, patch))}
-                onGeometryChange={(patch) => apply((current) => setCardElementGeometry(current, activeSlide.id, toolbarElement.id, patch))}
-                onLayer={(direction) => apply((current) => moveCardElementLayer(current, activeSlide.id, toolbarElement.id, direction))}
-                onDuplicate={() => duplicate(toolbarElement.id)}
-                onDelete={() => deleteAndRestoreStageFocus(toolbarElement.id)}
-              />
-            </div>
-          ) : null}
           <div
             ref={stageRef}
             className={styles.stage}
@@ -828,6 +818,24 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
           </div>
         </div>
         <aside className={styles.rightPanel} data-card-right-panel>
+          {toolbarElement ? (
+            <details
+              className={styles.inspectorDetails}
+              open={inspectorOpen}
+              onToggle={(event) => setInspectorOpen(event.currentTarget.open)}
+              data-card-element-inspector
+            >
+              <summary>{toolbarElement.name} 도구</summary>
+              <CardElementToolbar
+                element={toolbarElement}
+                onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, toolbarElement.id, patch))}
+                onGeometryChange={(patch) => apply((current) => setCardElementGeometry(current, activeSlide.id, toolbarElement.id, patch))}
+                onLayer={(direction) => apply((current) => moveCardElementLayer(current, activeSlide.id, toolbarElement.id, direction))}
+                onDuplicate={() => duplicate(toolbarElement.id)}
+                onDelete={() => deleteAndRestoreStageFocus(toolbarElement.id)}
+              />
+            </details>
+          ) : null}
           {activeSlide.base.kind === "chat_bubble" && activeSlide.role === "cover" ? (
             <section className={styles.chatBaseEditor} aria-label="표지 문구 편집">
               <h3>표지 문구</h3>

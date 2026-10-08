@@ -12,6 +12,12 @@
   container-name: edit-workbench;
 }
 
+.cardDeckV3Workbench {
+  min-width: 0;
+  max-width: 100%;
+  overflow: clip;
+}
+
 .textDocumentWorkbench {
   --editroom-document-width: 42.5rem;
   --editroom-document-min-height: 38rem;
