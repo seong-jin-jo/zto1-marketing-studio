@@ -1,3 +1,11 @@
+## 2026-10-09 PR 134 v70 화면 정합 게이트 ❌ NG → ✅ PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| CHAIRMAN-FIX-R5-01 | `e2e:studio-v70-screen`이 v71 카드 직접 편집 작업대를 열고 장 목록·캔버스·글 도구를 검증해야 함 | ✅ PASS | CI 진단 본문과 로컬 production 재현에서 v71 작업대는 열렸고, 제거된 `[data-plain-card-shell]` 대기만 실패했다. 게이트를 `[data-card-deck-v3-workbench] [data-card-canvas-editor]` 기준으로 갱신해 일반 카드·복구 가능 글자 카드·복구 불가 카드·카톡 덱을 모두 통과했다. |
+| CHAIRMAN-FIX-R5-02 | v70 clean-frame의 카드 면 픽셀 비교 의도와 일반 카드 오염 검출 돌연변이 검사를 유지해야 함 | ✅ PASS | 일반 카드 무대와 실제 fixture의 픽셀 차이는 1440·1024·390에서 모두 `0`이다. 동일 이미지 `0`, 오염 이미지 `0.0667`, 검은 프레임 `0.2654`로 임계값 `0.025`가 오염을 검출했다. 카톡 덱의 v70 clean-frame 비교는 기존과 같이 report-only로 유지했다. |
+| CHAIRMAN-FIX-R5-03 | CI와 같은 production `npm run start`에서 화면 정합 게이트와 회장 결함 통합 게이트가 모두 통과해야 함 | ✅ PASS | 기능 플래그를 켠 fresh production build 뒤 단일 `npm run start -p 3472`에서 `e2e:studio-v70-screen`과 `e2e:chairman-defects`가 모두 종료 코드 0이다. 콘솔 오류 0, 회장 결함 게이트 `ok=true`, 초안 저장 5회, 컷 건너뛰기 1초다. |
+
 ## 2026-10-09 PR 134 전체 CI 회귀 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
