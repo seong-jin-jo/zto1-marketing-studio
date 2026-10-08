@@ -1,0 +1,59 @@
+{
+  "observed_at": "2026-10-09T02:01:00+09:00",
+  "deployment": {
+    "run_id": 37809308410,
+    "conclusion": "success",
+    "head_sha": "ea74a7dfde0b73425ddf304b7c9c848b092295c1"
+  },
+  "verdict_counts": {
+    "reproduced": 6,
+    "partial": 5,
+    "not_reproduced": 1,
+    "qa_gate": "NG"
+  },
+  "generation": {
+    "standalone_image": {"http": 202, "width": 1536, "height": 1536, "success": true},
+    "video_seed_image": {"http": 202, "width": 960, "height": 1696, "success": true},
+    "video": {"width": 768, "height": 1356, "duration_seconds": 5.875, "success": true},
+    "visible_after_reload": true,
+    "create_room_image_document_y": 1324,
+    "create_room_video_document_y": 1588,
+    "work_list_media_thumbnail_count": 0
+  },
+  "edit_handoff": {
+    "fresh_card_media_count": 0,
+    "fresh_video_media_count": 1,
+    "fresh_video_duration_seconds": 5.875
+  },
+  "text_drag": {
+    "basic_before": {"x": 442.59375, "y": 401},
+    "basic_after": {"x": 442.59375, "y": 401},
+    "free_before": {"x": 392.8828125, "y": 500.3515625},
+    "free_after": {"x": 452.71875, "y": 560.2109375}
+  },
+  "layout": {
+    "desktop_workspace": {"x": 265, "width": 1438, "right": 1703},
+    "desktop_chat": {"x": 1112, "width": 304, "right": 1416},
+    "canvas_chat_intersection_1440_px2": 0,
+    "canvas_chat_intersection_1512_px2": 0,
+    "mobile_390_canvas": {"x": -523, "width": 1436, "viewport_width": 390}
+  },
+  "cut_preview": {
+    "first_button_document_y": 752,
+    "viewport_height": 900,
+    "cut_then_play_observed_seconds": 0.801258,
+    "cut_segment_skipped": false,
+    "restored_after_test": true
+  },
+  "publish": {
+    "platform_preview_count": 7,
+    "contenteditable_count": 13,
+    "media_count": 0,
+    "actual_month_calendar": true,
+    "external_publish_clicked": false
+  },
+  "security": {
+    "signed_media_urls_recorded": false,
+    "secrets_recorded": false
+  }
+}
