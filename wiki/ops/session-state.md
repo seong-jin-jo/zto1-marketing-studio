@@ -1,3 +1,38 @@
+## 2026-10-08 20:30 KST · push protection 합성 자격증명 픽스처 교정 완료
+
+- 인계 기준: 사용자가 지정한 차단 위치와 현재 브랜치를 기준으로 교정했다. GitHub 공식 문서는 차단 문자열이 나타나는 모든 push 대상 커밋에서 제거해야 한다고 명시한다.
+- 변경: Slack·OpenAI·AWS·Slack Webhook 합성값을 접두부와 나머지 조각으로 나눠 런타임에 결합한다. 마스커 입력값과 원문 비노출 단언은 유지했다. `fixup! dc116352`를 만든 뒤 `GIT_SEQUENCE_EDITOR=:` autosquash로 기존 기능 커밋을 `0185c3b7`로 재작성했다. 브랜치는 여전히 `origin/main`보다 2개 커밋 앞이며 새 영구 커밋은 추가하지 않았다.
+- 검증: 관련 계약 3파일 19건 PASS, `typecheck:ci` 종료 코드 0. 소스와 `origin/main..HEAD`의 모든 커밋에서 완전한 Slack·OpenAI·AWS·Slack Webhook 자격증명 형태 0건이다. 로컬 시크릿 전용 검사 도구는 설치돼 있지 않으며 push 금지로 GitHub 원격 재판정은 미검증이다.
+- 이웃 영향 확인: 진단 workflow·작업자·DB·배포 코드 diff 0, 합성 입력의 실제 값과 마스킹 단언 유지, 문서 커밋 보존, 다른 세션 소유 변경은 stage하지 않았다.
+- 완료 커밋: 코드 `0185c3b7`, 문서 변경은 기존 handoff 커밋 amend에 포함한다. 다음 실행은 컨트롤러가 이력과 로컬 증거를 검수한 뒤 별도 권한으로 push해 GitHub 차단 해제를 관찰하는 것이다.
+
+## 2026-10-08 20:25 KST · push protection 합성 자격증명 픽스처 교정 착수
+
+- 인계 기준: 사용자가 직접 지정한 push protection 차단과 현재 `fix/export-worker-stuck` 브랜치를 정본으로 삼았다. tmux `openclaw-auto-3:0.1`은 이 워커 자신의 연속 실행 기록이다.
+- 관찰: `dashboard/tests/studio/diagnose-export-worker-workflow.contract.test.ts`가 Slack·OpenAI·AWS 자격증명 형태의 완전한 합성 문자열을 소스와 `dc116352`에 남겼다. 마스킹 동작 검증에는 필요하지만 GitHub push protection은 실제 시크릿 형태로 판정했다.
+- 현재 실행: 접두부와 나머지 조각을 런타임에 결합해 같은 입력값을 만들고, 표적 테스트 통과 뒤 fixup과 autosquash로 기존 기능 커밋을 재작성한다. 새 기능 커밋은 만들지 않으며 push하지 않는다.
+- 이웃 영향 후보: 마스킹 대상값의 바이트 동일성, `[REDACTED]` 단언, 브랜치의 모든 push 대상 커밋에서 완전한 자격증명 형태 제거, 기존 문서 커밋 유지, 다른 세션 소유 변경 비포함을 종료 전에 대조한다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 다른 세션 소유이므로 stage하지 않는다.
+
+## 2026-10-08 19:48 KST · 운영 내보내기 작업자 읽기 전용 진단 로컬 완료
+
+- 인계 기준: 사용자가 지정한 운영 증거와 Read 목록, 현재 `fix/export-worker-stuck` worktree를 기준으로 완료했다. tmux `openclaw-auto-3:0.1`은 이 워커 자신의 기록이었다.
+- 판정: 코드만으로 제품 원인은 확정되지 않았다. 1순위는 deploy가 dashboard health만 확인해 작업자 `starting`·재시작·실패를 통과시키는 관찰 공백이다. 2순위는 tenant context 없는 `runnableTenants()`가 FORCE RLS 테이블을 읽어 운영 DB role이 RLS를 우회하지 못하면 0건을 반환하는 경우다. queued가 claim되지 않았으므로 렌더 브라우저·폰트·R2 실패는 후순위다.
+- 변경: 수동 `marketing_runner` 진단 workflow를 추가했다. checkout·쓰기·재시작 없이 작업자 상태·health·재시작·로그 200줄·5초 제한 health 응답과 DB role/RLS·job/item 상태별 건수만 읽고 비밀·테넌트 패턴을 마스킹한다. 앞 단계 실패 뒤에도 나머지 진단은 실행하되 최종 workflow는 실패한다. 제품 worker, deploy, compose, DB schema는 diff 0이다.
+- 검증: YAML 파싱, ShellCheck, 신규 7건을 포함한 관련 3파일 19건, `typecheck:ci`가 통과했다. 실제 Perl 마스커에 Bearer·Basic·Digest·Token, URL query·Cookie·테넌트 식별 패턴을 통과시켜 원문 비노출과 마스커 실패 코드 보존을 확인했다. RLS 진단은 superuser·`BYPASSRLS`·테이블별 실제 정책 활성 상태를 구분한다. pipeline artifact lint는 실체·슬롯키·버전 정합 PASS와 기존 경고 28건이다. 코드 커밋 `dc116352`. 운영 workflow는 push·dispatch하지 않아 실제 원인은 미검증이다.
+- 이웃 영향 확인: marketing runner workspace checkout 없음, DB READ ONLY, 컨테이너 변경 명령 없음, SQL write 없음, 환경 전체 출력 없음, 기존 worker 배포 계약과 runner 격리 계약 PASS다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`의 기존 변경은 stage하지 않는다.
+- 다음 실행: 컨트롤러가 두 커밋을 검수해 기본 브랜치에 병합·push한 뒤 `Diagnose studio export worker (read-only)`를 수동 실행한다. `workflow_dispatch`는 workflow 파일이 기본 브랜치에 있어야 한다. 종료 증거는 worker health·restart·로그, DB role의 `effective_rls_bypass`, 두 queue 테이블의 `*_rls_active`, jobs/items 상태별 건수다. 그 결과로 기동·RLS·claim 중 하나를 확정한 뒤 같은 브랜치에서 제품 수정과 회귀 테스트를 수행한다.
+
+## 2026-10-08 19:39 KST · 운영 내보내기 작업자 미처리 진단 착수
+
+- 인계 기준: 사용자가 직접 지정한 운영 증거, 과제, Read 목록과 현재 `fix/export-worker-stuck` worktree를 정본으로 삼았다. tmux `openclaw-auto-3:0.1`은 이 Codex 워커 자신의 실행 기록으로 확인했다.
+- 운영 관찰: 배포 run `37758259663`, main `0a00005e` 뒤 9444에서 내보내기 POST 202·조회 200이었으나 181.6초 뒤에도 0/3장, 항목 3개가 모두 `queued`였다. 작업자 컨테이너는 `Started`, health `starting`까지만 확인됐다.
+- 코드상 후보: 배포 workflow는 대시보드 healthy만 기다리고 작업자는 확인하지 않는다. 작업자의 `runnableTenants()`는 테넌트 컨텍스트 없이 FORCE RLS 테이블을 조회하므로 운영 DB 연결 역할의 `BYPASSRLS` 여부에 따라 0건이 될 수 있다. 컨테이너 재시작, advisory lock standby, R2·브라우저·폰트 실패는 운영 로그와 health 응답 없이는 확정할 수 없다.
+- 현재 실행: 쓰기·재시작 없이 컨테이너 상태·health·재시작 수·마스킹 로그 200줄·health 응답·DB 상태별 건수를 수집하는 수동 진단 workflow와 계약 테스트를 작성한다. 운영 SSH·push·workflow 실행은 하지 않는다.
+- 이웃 영향 후보: marketing runner workflow의 checkout 부재와 workspace 안전, 비밀값 마스킹, DB `BEGIN READ ONLY`, 테넌트 데이터 내용 미출력, 제품 worker·배포 workflow 무변경을 종료 전에 대조한다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`의 기존 변경은 다른 세션 소유이므로 stage하지 않는다.
+
 ## 2026-10-08 18:08 KST · 운영 DB 마이그레이션 checkout 권한 오류 로컬 교정 완료
 
 - 인계 기준: 사용자가 지정한 과제와 Read 목록, GitHub Actions run `37751223311`, 현재 worktree를 정본으로 삼았다. tmux `openclaw-auto-3:0.1`은 이 Codex 워커 자신의 실행 기록이며 별도 숨은 지시는 없었다.
