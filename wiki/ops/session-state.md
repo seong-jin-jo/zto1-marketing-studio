@@ -6,7 +6,8 @@
 - 검증: TypeScript와 production build PASS, 편집 86건 PASS, `test:publish` 604건 PASS·3건 skip. 실제 Next.js Chromium에서 생성→작업물→편집→드래그→컷→발행 직전까지 PASS, 콘솔 오류 0. 9개 모바일 폭은 본문 16px, 13px 미만 0, 44px 미만 0, 눌림 100%, 가로 넘침 0이다. pipeline artifact lint는 정합 PASS와 기존 핀 위생 경고 28건이다.
 - 커밋: `5eaff35e`, `e9fadb92`, `e850d04b`, `c4db7ba4`. 문서와 최종 증거 커밋은 아직 남아 있다.
 - 증거: `logs/diff/editroom-chairman-fix-20261009/report.md`와 그 아래 before·after·evidence 폴더.
-- 다음 실행: 문서·증거를 커밋하고 브랜치를 push한 뒤 main 대상 PR을 생성한다. 원격 CI green을 확인하기 전에는 운영 완료가 아니다. 실제 외부 SNS 발행과 운영 배포는 하지 않는다.
+- 원격 차단: 문서·증거까지 `4dac46c1`로 커밋했고 worktree는 깨끗하다. 그러나 현재 Codex 실행 정책이 `git push`를 승인 필요 작업으로 분류했고 승인 정책이 `never`라 명령 실행 전에 거부했다. `git ls-remote`로 원격 브랜치가 아직 없음을 확인했으며 PR도 만들지 못했다.
+- 다음 실행: git push 권한이 허용된 세션에서 `fix/editroom-chairman-defects-20261009`를 원격에 올리고 main 대상 PR을 생성한 뒤 CI green을 확인한다. 실제 외부 SNS 발행과 운영 배포는 하지 않는다.
 
 ## 2026-10-08 23:27 KST · 내보내기 작업자 local 저장 폴백 로컬 검증 완료
 
