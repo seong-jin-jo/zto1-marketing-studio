@@ -3,21 +3,21 @@
   "draftSaveCount": 4,
   "cardDrag": {
     "before": {
-      "x": 749.21875,
-      "y": 539.609375,
-      "width": 309.546875,
-      "height": 184.25
+      "x": 930.546875,
+      "y": 635.828125,
+      "width": 234.875,
+      "height": 139.8125
     },
     "after": {
-      "x": 662.8125,
-      "y": 693.40625,
-      "width": 309.546875,
-      "height": 184.25
+      "x": 852.109375,
+      "y": 747.25,
+      "width": 234.875,
+      "height": 139.8125
     },
     "pixelMean": [
-      43.41370507154245,
-      58.47061108756635,
-      70.35910476075155
+      107.33872945793476,
+      108.33646939276079,
+      111.38114509968814
     ]
   },
   "videoTabGeometry": {
@@ -29,21 +29,46 @@
     },
     "hit": "<button type=\"button\" class=\"ds-label inline-flex min-h-control-touch ds-touch-target items-center justify-center gap-micro rounded-control font-medium transition-colors disabled:c"
   },
-  "videoCutSkippedTo": 0.666666,
+  "videoCutSkippedTo": 1,
+  "videoFrame": {
+    "readyState": 4,
+    "currentTime": 1,
+    "videoWidth": 540,
+    "videoHeight": 960
+  },
+  "selectedPublishMedia": [
+    {
+      "x": 261,
+      "y": 219,
+      "width": 393,
+      "height": 192
+    },
+    {
+      "x": 666,
+      "y": 219,
+      "width": 393,
+      "height": 192
+    }
+  ],
+  "exportFlow": {
+    "exportStarted": true,
+    "exportJobReads": 2,
+    "selectedImageSrc": "/qa/chairman-photo.jpg?export=chairman-v3"
+  },
   "publishBoxes": [
     {
       "x": 248,
-      "y": 952,
+      "y": -777,
       "width": 824
     },
     {
       "x": 248,
-      "y": 1759,
+      "y": 30,
       "width": 824
     },
     {
       "x": 248,
-      "y": 2566,
+      "y": 837,
       "width": 824
     }
   ],

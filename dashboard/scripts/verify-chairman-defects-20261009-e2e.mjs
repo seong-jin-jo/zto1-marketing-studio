@@ -13,6 +13,7 @@ const outputDir = process.env.CHAIRMAN_FIX_OUTPUT_DIR || path.join(repoRoot, "lo
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const imageUrl = "/qa/chairman-photo.jpg";
 const videoUrl = "/qa/chairman-photo-motion.mp4";
+const exportedImageUrl = "/qa/chairman-photo.jpg?export=chairman-v3";
 const lines = ["문제를 먼저 짚습니다", "이 구간은 컷합니다", "다음 행동을 제안합니다"];
 
 fs.mkdirSync(outputDir, { recursive: true });
@@ -52,6 +53,8 @@ const consoleErrors = [];
 const draftSaves = [];
 const apiRequests = [];
 let currentDraft = null;
+let exportStarted = false;
+let exportJobReads = 0;
 page.on("pageerror", (error) => consoleErrors.push(error.message));
 page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
 
@@ -85,6 +88,67 @@ await page.route("**/api/**", async (route) => {
     if (requestUrl.searchParams.get("id")) return json(route, { draft: currentDraft });
     return json(route, { drafts: currentDraft ? [currentDraft] : [], currentWork: currentDraft ? { draftId: currentDraft.id, stage: "edit", stageLabel: "편집실", idea: currentDraft.idea } : null });
   }
+  if (/^\/api\/studio\/drafts\/[^/]+\/exports\/latest$/.test(pathname)) {
+    return json(route, exportStarted ? {
+      current_source_revision: draftSaves.length || 1,
+      current_source_hash: "chairman-source-hash",
+      latest_export: {
+        export_id: "chairman-export",
+        status: exportJobReads >= 2 ? "succeeded" : "processing",
+        source_revision: draftSaves.length || 1,
+        source_hash: "chairman-source-hash",
+        finished_at: exportJobReads >= 2 ? new Date().toISOString() : null,
+      },
+      is_latest: exportJobReads >= 2,
+      blocker: exportJobReads >= 2 ? null : "EXPORT_IN_PROGRESS",
+    } : {
+      current_source_revision: draftSaves.length || 1,
+      current_source_hash: "chairman-source-hash",
+      latest_export: null,
+      is_latest: false,
+      blocker: "NO_SUCCESSFUL_EXPORT",
+    });
+  }
+  if (/^\/api\/studio\/drafts\/[^/]+\/exports$/.test(pathname) && request.method() === "POST") {
+    exportStarted = true;
+    exportJobReads = 0;
+    return json(route, { export_id: "chairman-export", status: "queued" }, 202);
+  }
+  if (/^\/api\/studio\/drafts\/[^/]+\/exports\/chairman-export$/.test(pathname)) {
+    exportJobReads += 1;
+    const succeeded = exportJobReads >= 2;
+    return json(route, {
+      export_id: "chairman-export",
+      status: succeeded ? "succeeded" : "processing",
+      source_revision: draftSaves.length || 1,
+      source_hash: "chairman-source-hash",
+      progress: { completed: succeeded ? 1 : 0, total: 1 },
+      items: [{
+        item_key: "slide-1",
+        ordinal: 0,
+        status: succeeded ? "succeeded" : "processing",
+        attempt_count: 1,
+        ...(succeeded ? { artifact_url: exportedImageUrl } : {}),
+      }],
+      updated_at: new Date().toISOString(),
+      finished_at: succeeded ? new Date().toISOString() : null,
+    });
+  }
+  if (/^\/api\/studio\/drafts\/[^/]+\/enqueue$/.test(pathname) && request.method() === "POST") {
+    return json(route, {
+      ok: true,
+      export_id: "chairman-export",
+      source_hash: "chairman-source-hash",
+      pin_status: "publish_ready",
+      post: {
+        id: "chairman-queue-post",
+        imageUrl: exportedImageUrl,
+        imageUrls: [exportedImageUrl],
+        videoFilename: "chairman-photo-motion.mp4",
+        videoUrl,
+      },
+    }, 201);
+  }
   if (/^\/api\/studio\/drafts\/[^/]+$/.test(pathname)) return currentDraft ? json(route, currentDraft) : json(route, { error: "not found" }, 404);
   if (pathname === "/api/publish/first-comment-capabilities") return json(route, { capabilities: [] });
   if (/^\/api\/channels\/[^/]+\/accounts$/.test(pathname)) return json(route, { accounts: [{ id: "account-1", display_name: "운영 계정", username: "studio.official", is_default: true, connection_state: "connected" }] });
@@ -101,7 +165,8 @@ async function assertNoHorizontalOverflow(label) {
   return measure;
 }
 
-await page.goto(`${baseUrl}/studio?room=create`, { waitUntil: "networkidle" });
+await page.goto(`${baseUrl}/studio?room=create`, { waitUntil: "domcontentloaded" });
+await page.getByTestId("create-card-image").waitFor();
 await page.getByTestId("create-card-image").click();
 await page.getByTestId("cost-approval-approve").click();
 try {
@@ -126,7 +191,15 @@ if (!generatedImageStats.channels.some((channel) => channel.stdev > 20)) throw n
 if (!draftSaves.some((save) => save.img?.file === imageUrl && save.vid?.file === videoUrl)) throw new Error("생성 결과 이미지와 기존 영상이 같은 초안에 저장되지 않았습니다");
 
 await page.getByRole("button", { name: /작업물 전체/ }).click();
-await page.getByTestId("work-thumbnail-chairman-draft").waitFor();
+const workThumbnail = page.getByTestId("work-thumbnail-chairman-draft");
+await workThumbnail.waitFor();
+const workThumbnailDelivery = await workThumbnail.evaluate((media) => ({
+  tag: media.tagName,
+  preload: media.getAttribute("preload"),
+}));
+if (workThumbnailDelivery.tag === "VIDEO" && workThumbnailDelivery.preload !== "none") {
+  throw new Error(`작업물 영상 썸네일이 원본을 미리 내려받습니다: ${JSON.stringify(workThumbnailDelivery)}`);
+}
 await page.screenshot({ path: path.join(outputDir, "create-1440x900.png") });
 
 await page.locator('[data-work-item="chairman-draft"]').click();
@@ -216,8 +289,25 @@ const videoFrame = await videoElement.evaluate(async (video) => {
       video.load();
     });
   }
-  video.currentTime = Math.min(1, Math.max(0, video.duration / 2));
-  await new Promise((resolve) => video.addEventListener("seeked", resolve, { once: true }));
+  const targetTime = Math.min(1, Math.max(0, video.duration / 2));
+  if (Math.abs(video.currentTime - targetTime) > 0.01) {
+    await new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        cleanup();
+        reject(new Error("영상 프레임 탐색 시간 초과"));
+      }, 5_000);
+      const cleanup = () => {
+        window.clearTimeout(timeout);
+        video.removeEventListener("seeked", onSeeked);
+        video.removeEventListener("error", onError);
+      };
+      const onSeeked = () => { cleanup(); resolve(undefined); };
+      const onError = () => { cleanup(); reject(new Error("영상 프레임 탐색 실패")); };
+      video.addEventListener("seeked", onSeeked, { once: true });
+      video.addEventListener("error", onError, { once: true });
+      video.currentTime = targetTime;
+    });
+  }
   video.pause();
   return { readyState: video.readyState, currentTime: video.currentTime, videoWidth: video.videoWidth, videoHeight: video.videoHeight };
 });
@@ -239,9 +329,16 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982
 
 await page.setViewportSize({ width: 1440, height: 900 });
 await page.evaluate(() => window.scrollTo(0, 0));
-const publishLink = page.locator('a[href*="room=publish"]').first();
-await publishLink.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
-await publishLink.click({ timeout: 10_000 });
+await editRoom.getByRole("button", { name: "카드뉴스" }).click();
+await editRoom.locator("[data-card-canvas-editor]").waitFor();
+const openExportButton = editRoom.getByRole("button", { name: "내보내기", exact: true }).last();
+await openExportButton.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
+await openExportButton.click();
+const exportPanel = page.locator("[data-export-panel]");
+await exportPanel.waitFor();
+await exportPanel.locator("[data-export-start]").click();
+await exportPanel.locator("[data-export-open-publish]").waitFor({ timeout: 20_000 });
+await exportPanel.locator("[data-export-open-publish]").click();
 const publishRoom = page.locator('[data-room="publish"]');
 const selectedPublishImage = publishRoom.getByTestId("publish-selected-image");
 const selectedPublishVideo = publishRoom.getByTestId("publish-selected-video");
@@ -250,6 +347,7 @@ await selectedPublishVideo.waitFor();
 const selectedMediaBoxes = await Promise.all([selectedPublishImage.boundingBox(), selectedPublishVideo.boundingBox()]);
 if (selectedMediaBoxes.some((box) => !box || box.y < 0 || box.y + box.height > 900)) throw new Error(`발행실 선택 미디어가 1440 첫 화면 밖입니다: ${JSON.stringify(selectedMediaBoxes)}`);
 if (await selectedPublishImage.evaluate((image) => image.naturalWidth) <= 0) throw new Error("발행실 첫 화면 이미지가 실제 픽셀을 불러오지 못했습니다");
+if (!(await selectedPublishImage.getAttribute("src"))?.includes("export=chairman-v3")) throw new Error("발행실이 편집실 내보내기 고정 이미지를 사용하지 않습니다");
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982 }, { width: 390, height: 844 }]) {
   await page.setViewportSize(viewport);
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -280,6 +378,7 @@ fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify({
   videoCutSkippedTo: skippedTime,
   videoFrame,
   selectedPublishMedia: selectedMediaBoxes,
+  exportFlow: { exportStarted, exportJobReads, selectedImageSrc: await selectedPublishImage.getAttribute("src") },
   publishBoxes: boxes,
   consoleErrors: 0,
 }, null, 2));

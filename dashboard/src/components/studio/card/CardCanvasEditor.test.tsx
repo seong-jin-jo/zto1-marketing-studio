@@ -298,12 +298,12 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     if (text.type !== "text") throw new Error("fixture");
     text.text = "서버 최신본";
     const view = render(<CardCanvasEditor deck={original} onDeckChange={() => {}} />);
-    expect(screen.getByText("첫 장")).toBeInTheDocument();
+    expect(screen.getAllByText("첫 장").length).toBeGreaterThan(0);
 
     view.rerender(<CardCanvasEditor deck={latest} onDeckChange={() => {}} />);
 
-    await waitFor(() => expect(screen.getByText("서버 최신본")).toBeInTheDocument());
-    expect(screen.queryByText("첫 장")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("서버 최신본").length).toBeGreaterThan(0));
+    expect(screen.queryAllByText("첫 장")).toHaveLength(0);
   });
 
   it("S5b-R1-M1 저장 hash만 바뀐 외부 덱은 undo history를 지우지 않는다", () => {

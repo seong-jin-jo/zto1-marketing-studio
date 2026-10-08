@@ -267,12 +267,13 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   const playbackPlayhead = playbackTime;
 
   function seekBodyTime(sec: number) {
-    const targetPlaybackTime = playbackTimeFromBodyTime(sec, duration ?? sec, playbackIntroOutro);
+    const playableBodyTime = nextPlayableBodyTime(sec, displaySubtitles, showOriginal);
+    const targetPlaybackTime = playbackTimeFromBodyTime(playableBodyTime, duration ?? playableBodyTime, playbackIntroOutro);
     if (videoRef.current) {
       videoRef.current.currentTime = targetPlaybackTime;
     }
     setPlaybackTime(targetPlaybackTime);
-    setPlayhead(sec);
+    setPlayhead(playableBodyTime);
   }
 
   return (

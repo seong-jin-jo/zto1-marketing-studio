@@ -26,7 +26,10 @@
 }
 
 .floatingToolbar { position: relative; z-index: 300; }
-.toolbarSlot[data-placeholder="true"] { display: none; }
+.toolbarSlot[data-placeholder="true"] {
+  visibility: hidden;
+  pointer-events: none;
+}
 .toolbarDivider { align-self: stretch; width: 1px; background: var(--border); }
 .fileInput { display: none; }
 .error { color: var(--danger); font-size: var(--font-body-size); }
@@ -84,16 +87,19 @@
   position: relative;
   min-width: 0;
   /* 900px 높이에서도 상단 방 제목·추가 도구·선택 도구를 포함한 뒤 4:5 전체가 보인다. */
-  width: min(100%, 23rem);
+  width: min(100%, 19rem);
   margin-inline: auto;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--border);
   border-radius: var(--shape-surface);
   box-shadow: var(--shadow);
   touch-action: none;
 }
 
-.stage > :global([data-card-slide-scene]) { border-radius: inherit; }
+.stage > :global([data-card-slide-scene]) {
+  overflow: hidden;
+  border-radius: inherit;
+}
 
 .selectionBox {
   position: absolute;
@@ -263,8 +269,8 @@
   .rightPanel { width: 100%; max-width: 100%; min-width: 0; }
   .stageColumn { grid-template-columns: minmax(0, 1fr); }
   .stage {
-    width: 100%;
-    max-width: 100%;
+    width: min(100%, 19.375rem);
+    max-width: 19.375rem;
   }
   .rightPanel { grid-column: auto; }
   .slideStrip { display: flex; overflow-x: auto; }

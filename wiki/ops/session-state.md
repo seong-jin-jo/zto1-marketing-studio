@@ -1,3 +1,20 @@
+## 2026-10-09 04:50 KST · PR 134 R2 반려 교정과 실제 내보내기 경로 검증 완료
+
+- 인계 기준: 사용자가 지정한 worktree·브랜치·PR 134와 R2 반려 5항목, v71을 정본으로 이어서 작업했다.
+- 근본원인: 캔버스 폭과 선택 도구 높이가 접힘선 예산을 넘었고, E2E가 단색 픽스처와 발행실 링크 직접 이동으로 실제 산출물·내보내기 경로를 우회했다. v3 카드도 발행 직전 plain 렌더러가 사진·요소 좌표를 덮었다.
+- 변경: 전체 카드·선택 핸들을 첫 화면에 맞추고, 실제 JPG·MP4를 쓴다. 카드 준비 실패 재시도, 컷 직접 탐색 건너뛰기, 키보드 이동을 추가했다. `내보내기 → export 완료 → enqueue 고정 → 발행실`에서 서버가 반환한 동일 미디어를 화면에 반영하고 이 경로를 CI E2E로 연결했다.
+- 검증: 집중 82건, `test:publish` 605건, TypeScript, production build, dev·production Chromium E2E PASS. 캔버스·영상·발행실 1440·1512·390 캡처 직접 확인, 콘솔 오류 0, 모바일 9폭 PASS. design-lint 기존 경고 2종, artifact lint 기존 경고 28건. DB·외부 SNS 게시 변경 없음.
+- 로컬 커밋: 현재 브랜치 HEAD에 코드·테스트·문서·전후 캡처를 묶었고 worktree는 깨끗하다. 정확한 해시는 인계 시 `git rev-parse --short HEAD`로 확인한다.
+- 원격 차단: 현재 Codex 실행 정책이 `git push`를 승인 필요 작업으로 분류했고 이 세션은 승인 요청이 금지돼 실행 전에 거부됐다. PR 134는 OPEN이나 원격 head는 아직 `c48f3c98`, 기존 CI는 FAILURE다.
+- 다음 실행: push 권한이 허용된 컨트롤러가 `fix/editroom-chairman-defects-20261009`를 push하고 PR 134의 신규 CI green을 직접 확인한다. 종료 증거는 이 로컬 커밋이 PR head에 반영되고 신규 `CI (dashboard) / verify`가 성공하는 것이다.
+
+## 2026-10-09 04:04 KST · PR 134 시각 검수 반려 교정 착수
+
+- 인계 기준: 사용자가 명시한 `/Users/sj/wt/zto1-editroom-chairman-defects-20261009`, 브랜치 `fix/editroom-chairman-defects-20261009`, 열린 PR 134를 정본으로 삼았다. tmux `openclaw-auto-3:0.1`은 직전 작업과 이번 이어서 실행 자체의 기록임을 확인했다.
+- 관찰: 카드 캔버스와 글 요소가 첫 화면에서 잘리고 자유 배치 모드 토스트가 남았다. 카드 픽스처는 단색이고 영상은 회색 빈 프레임이며 발행실 첫 화면에는 선택 초안의 미디어가 없다. 기존 자동 테스트 PASS는 이 다섯 시각·실사용 결함을 검출하지 못했다.
+- 현재 실행: QA tracker에 NG를 먼저 등록했다. v71 배치와 실제 식별 가능한 repo 미디어를 기준으로 캔버스 크기·경계 제한·직접 드래그·발행실 상단 미디어·영상 프레임 대기를 교정하고, 단일 E2E와 1440·1512·390 캡처로 재검증한다.
+- 이웃 영향 후보: 기존 카드 요소 resize·rotate·undo, 영상 컷 점프·자막, 플랫폼 세로 카드, 생성실 썸네일, 모바일 가로 넘침과 사이드바 footer를 종료 전에 함께 대조한다. DB 스키마와 외부 SNS 발행은 건드리지 않는다.
+
 ## 2026-10-09 03:49 KST · 회장 지적 생성→편집→발행 미디어 경로 교정 완료, PR 준비
 
 - 인계 기준: 사용자가 직접 지정한 세션맥락, `logs/diff/chairman-defects-20261009/report.md`, v71 프로토타입, `origin/main` `ea74a7df`를 정본으로 삼았다. 작업 폴더는 `/Users/sj/wt/zto1-editroom-chairman-defects-20261009`, 브랜치는 `fix/editroom-chairman-defects-20261009`이다.

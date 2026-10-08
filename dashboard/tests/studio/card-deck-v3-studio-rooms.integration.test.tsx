@@ -69,6 +69,19 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
 
   });
 
+  it("CHAIRMAN-FIX-R2-05 거절 경로: 카드 직접 편집 준비 실패 뒤 사용자가 같은 화면에서 다시 시도한다", async () => {
+    const onStart = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    render(<EditRoom kind="card" lines={["첫 장", "둘째 장"]} onLinesChange={() => {}} onStartCardDeckV3={onStart} />);
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("카드 직접 편집을 준비하지 못했습니다."));
+    fireEvent.click(screen.getByRole("button", { name: "다시 준비" }));
+
+    await waitFor(() => expect(onStart).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("button", { name: "다시 준비" })).not.toBeInTheDocument();
+  });
+
   it("S2-R4-M1 flag off면 S1 일반·plain v2 직접 편집 시작은 보존하고 AI·말풍선만 막는다", async () => {
     const onStart = vi.fn();
     const s1Enabled = cardDeckV3EntryEnabled(false, { hasCardDeckV2: false, textEmbedded: false });
@@ -136,8 +149,8 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
       onLinesChange={() => {}}
       onStartCardDeckV3={onStart}
       onOpenPublish={onPublish}
-      cardDeckV3EntryBlockedReason="저장된 자유 배치 내용을 불러오는 중입니다."
-      publishBlockedReason="저장된 자유 배치 내용을 불러오는 중입니다."
+      cardDeckV3EntryBlockedReason="저장된 카드 직접 편집 내용을 불러오는 중입니다."
+      publishBlockedReason="저장된 카드 직접 편집 내용을 불러오는 중입니다."
     />);
     expect(screen.getByRole("button", { name: "내보내기" })).toBeDisabled();
     expect(onStart).not.toHaveBeenCalled();
@@ -149,8 +162,8 @@ describe("StudioRooms CardDeckV3 실제 연결", () => {
       onLinesChange={() => {}}
       onStartCardDeckV3={onStart}
       onOpenPublish={onPublish}
-      cardDeckV3EntryBlockedReason="저장된 자유 배치 내용을 불러오지 못했습니다. 다시 시도해 주세요."
-      publishBlockedReason="저장된 자유 배치 내용을 불러오지 못했습니다. 다시 시도해 주세요."
+      cardDeckV3EntryBlockedReason="저장된 카드 직접 편집 내용을 불러오지 못했습니다. 다시 시도해 주세요."
+      publishBlockedReason="저장된 카드 직접 편집 내용을 불러오지 못했습니다. 다시 시도해 주세요."
       onRetryCardDeckV3Detail={onRetry}
     />);
     fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));

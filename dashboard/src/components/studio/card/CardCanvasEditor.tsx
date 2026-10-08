@@ -168,6 +168,7 @@ function elementOverlayStyle(element: CardElement, logicalHeight: number): CSSPr
 
 export interface CardCanvasEditorProps {
   deck: CardDeckV3;
+  tenantId?: string;
   templateState?: CardTemplateState | null;
   sourceDeck?: CardDeck | null;
   requestedSlide?: { id: string; requestId: number } | null;
@@ -176,7 +177,7 @@ export interface CardCanvasEditorProps {
   onDeckChange: (deck: CardDeckV3, templateState?: CardTemplateState) => void;
 }
 
-export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null, requestedSlide = null, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
+export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceDeck = null, requestedSlide = null, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
   const initialTemplateState = templateState ?? defaultCardTemplateState(deck);
   const [history, setHistory] = useState<CardEditorHistory>(() => createCardEditorHistory(deck, initialTemplateState));
   const [activeSlideId, setActiveSlideId] = useState(deck.slides[0]?.id ?? "");
@@ -893,6 +894,7 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
         selectedId={pendingTemplateId}
         onSelect={setPendingTemplateId}
         previewImageUrl={Object.values(assetUrls).find(Boolean) ?? null}
+        tenantId={tenantId}
         disabledReasons={history.present.template === "plain"
           ? { chat_bubble: "카톡 대화는 생성실의 기존 카톡 덱 만들기에서 선택해 주세요." }
           : CHAT_DECK_TEMPLATE_DISABLED_REASONS}

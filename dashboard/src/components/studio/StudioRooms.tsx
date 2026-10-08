@@ -1755,8 +1755,8 @@ interface EditRoomProps {
   cardTemplateState?: CardTemplateState | null;
   onCardDeckV3Change?: (deck: CardDeckV3, templateState?: CardTemplateState) => void;
   requestedCardSlide?: { id: string; requestId: number } | null;
-  /** 기존 plain 카드의 줄과 v2 덱을 보존한 채 자유 배치 편집을 명시적으로 시작한다. */
-  onStartCardDeckV3?: () => void;
+  /** 기존 plain 카드의 줄과 v2 덱을 보존한 채 카드 직접 편집을 준비한다. false면 재시도 UI를 연다. */
+  onStartCardDeckV3?: () => boolean | void | Promise<boolean | void>;
   cardDeckV3EntryBlockedReason?: string | null;
   onRetryCardDeckV3Detail?: () => void;
   /** 자유 배치 진입 직전의 plain 카드 원문과 위치를 복원한다. */
@@ -2192,16 +2192,29 @@ export function EditRoom({
   const roomState = state === "default" && !hasEditableContent ? "empty" : state;
   const editorVisible = roomState === "default" || roomState === "overflow";
   const directCardStartRequested = useRef(false);
+  const [directCardStartFailed, setDirectCardStartFailed] = useState(false);
+  const requestDirectCardStart = useCallback(async () => {
+    if (!onStartCardDeckV3 || directCardStartRequested.current) return;
+    directCardStartRequested.current = true;
+    setDirectCardStartFailed(false);
+    try {
+      const started = await onStartCardDeckV3();
+      if (started === false) setDirectCardStartFailed(true);
+    } catch {
+      setDirectCardStartFailed(true);
+    } finally {
+      directCardStartRequested.current = false;
+    }
+  }, [onStartCardDeckV3]);
   useEffect(() => {
     if (kind !== "card") {
       directCardStartRequested.current = false;
+      setDirectCardStartFailed(false);
       return;
     }
-    if (!editorVisible || cardDeckV3 || !onStartCardDeckV3 || cardDeckV3EntryBlockedReason || cardSourceLocked) return;
-    if (directCardStartRequested.current) return;
-    directCardStartRequested.current = true;
-    onStartCardDeckV3();
-  }, [cardDeckV3, cardDeckV3EntryBlockedReason, cardSourceLocked, editorVisible, kind, onStartCardDeckV3]);
+    if (!editorVisible || cardDeckV3 || !onStartCardDeckV3 || cardDeckV3EntryBlockedReason || cardSourceLocked || directCardStartFailed) return;
+    void requestDirectCardStart();
+  }, [cardDeckV3, cardDeckV3EntryBlockedReason, cardSourceLocked, directCardStartFailed, editorVisible, kind, onStartCardDeckV3, requestDirectCardStart]);
   const updateLine = (value: string) => {
     if (cardSourceLocked) return;
     onLinesChange(safeLines.map((line, index) => index === activeLine ? value : line));
@@ -2357,7 +2370,7 @@ export function EditRoom({
                       </span>
                     ) : null}
                   </div> : null}
-                  <CardCanvasEditor deck={cardDeckV3} templateState={cardTemplateState} sourceDeck={cardDeck} requestedSlide={requestedCardSlide} assetUrls={cardAssetUrls} onAssetUrlChange={(assetId, url) => setCardAssetUrls((current) => ({ ...current, [assetId]: url }))} onDeckChange={onCardDeckV3Change} />
+                  <CardCanvasEditor deck={cardDeckV3} tenantId={workspaceId} templateState={cardTemplateState} sourceDeck={cardDeck} requestedSlide={requestedCardSlide} assetUrls={cardAssetUrls} onAssetUrlChange={(assetId, url) => setCardAssetUrls((current) => ({ ...current, [assetId]: url }))} onDeckChange={onCardDeckV3Change} />
                 </div>
               ) : kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
@@ -2368,8 +2381,14 @@ export function EditRoom({
                 </div>
               ) : (
               <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""} ${kind === "video" && onVideoEditChange ? styles.videoDocumentWorkbench : ""} ${kind === "card" ? styles.plainCardWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined} inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
-                {kind === "card" && (cardDeckV3EntryBlockedReason || (cardTextEmbedded && !cardTextSourceRecoverable)) ? (
+                {kind === "card" && (directCardStartFailed || cardDeckV3EntryBlockedReason || (cardTextEmbedded && !cardTextSourceRecoverable)) ? (
                   <div className="border-b border-border p-pad-inset">
+                    {directCardStartFailed ? (
+                      <div className="flex flex-wrap items-center gap-stack-tight text-caption text-warning" role="alert" data-card-direct-start-failed>
+                        <span>카드 직접 편집을 준비하지 못했습니다.</span>
+                        <Button type="button" size="sm" variant="secondary" onClick={() => { void requestDirectCardStart(); }}>다시 준비</Button>
+                      </div>
+                    ) : null}
                     {cardTextEmbedded && !cardTextSourceRecoverable ? (
                       <p className="mt-stack-tight text-caption text-warning" role="status" data-card-deck-v3-source-unrecoverable>
                         이 카드는 그림 안에 글자가 박혀 있어 글자를 따로 움직일 수 없습니다.

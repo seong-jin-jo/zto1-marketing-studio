@@ -1374,7 +1374,7 @@ export default function StudioPage() {
             showToast(extractApiErrorMessage(error, "카드가 2장 이상일 때 템플릿을 적용할 수 있습니다."), "error");
           }
           if (!CARD_DECK_V3_RENDER_ENABLED) {
-            showToast("자유 배치 카드 기능이 꺼져 있어 기본 카드 편집으로 만들었습니다.", "success");
+            showToast("카드 직접 편집 기능이 꺼져 있어 기본 카드 편집으로 만들었습니다.", "success");
           }
         }
         replaceBodySnapshot(
@@ -1443,7 +1443,7 @@ export default function StudioPage() {
                 },
               );
               setCardDeckAutosaveError("");
-              showToast("자유 배치 템플릿 저장에 실패해 기본 카드 편집으로 저장했습니다.", "error");
+              showToast("카드 직접 편집 저장에 실패해 기본 카드 편집으로 저장했습니다.", "error");
             } catch (fallbackError) {
               setCardDeckAutosaveError(extractApiErrorMessage(fallbackError, extractApiErrorMessage(error, "생성한 카드를 서버에 저장하지 못했습니다. 초안을 다시 만들어 주세요.")));
             }
@@ -2315,6 +2315,11 @@ export default function StudioPage() {
    */
   async function recompositeCards(lines: string[]): Promise<ImgResult | null> {
     if (editKind !== "card") return null;
+    // v3 카드는 서버 내보내기가 실제 요소 좌표와 배경 사진을 렌더한다. 여기서 옛 plain
+    // 글자 카드 렌더러를 먼저 돌리면 생성 사진과 드래그 좌표를 잃은 임시 PNG가 발행실에
+    // 남는다. 현재 미디어는 내보내기 완료 전까지 보존하고, 고정된 산출물 주소는 enqueue
+    // 응답으로 교체한다.
+    if (cardDeckV3) return img;
     if (img?.textEmbedded === true && img.textSourceRecoverable === false) {
       const preservedCardCount = img.imageUrls?.length ?? (img.url || img.file ? 1 : 0);
       showToast(`이전 카드 ${preservedCardCount}장의 장별 원본 정보가 없어 다시 그리지 않고 기존 이미지를 유지합니다.`, "success");
@@ -2523,7 +2528,7 @@ export default function StudioPage() {
     setMoveToPublishBusy(true);
     try {
       const redrawn = await recompositeCards(linesToPersist);
-      if (editKind === "card" && !redrawn) return;
+      if (editKind === "card" && !cardDeckV3 && !redrawn) return;
       let subtitled: SubtitleBurnOutcome = { kind: "skipped" };
       if (editKind === "video") {
         // 영상 내보내기 대기열은 현재 source revision/hash를 기준으로 작업을 만든다.
@@ -3370,7 +3375,7 @@ export default function StudioPage() {
       if (expectsCardDeckV3 && draftIdRef.current === requestedDraftId) {
         setCardDeckV3DetailStatus("error");
         cardDeckV3DetailStatusRef.current = "error";
-        if (notifyFailure) showToast("작업물은 목록 내용으로 열었습니다. 자유 배치 내용은 최신 상태를 불러오지 못했습니다. 다시 시도해 주세요.", "error");
+        if (notifyFailure) showToast("작업물은 목록 내용으로 열었습니다. 카드 직접 편집 내용은 최신 상태를 불러오지 못했습니다. 다시 시도해 주세요.", "error");
       }
       return false;
     }
@@ -3404,8 +3409,8 @@ export default function StudioPage() {
     return { kind };
   }
   function cardDeckV3DetailBlockedReason(status = cardDeckV3DetailStatusRef.current): string | null {
-    if (status === "loading") return "저장된 자유 배치 내용을 불러오는 중입니다. 불러온 뒤 편집하거나 발행할 수 있습니다.";
-    if (status === "error") return "저장된 자유 배치 내용을 불러오지 못했습니다. 다시 시도해 주세요.";
+    if (status === "loading") return "저장된 카드 직접 편집 내용을 불러오는 중입니다. 불러온 뒤 편집하거나 발행할 수 있습니다.";
+    if (status === "error") return "저장된 카드 직접 편집 내용을 불러오지 못했습니다. 다시 시도해 주세요.";
     return null;
   }
   function rejectWhileCardDeckV3DetailPending(): boolean {
@@ -4252,6 +4257,8 @@ export default function StudioPage() {
                     tenantId={activeWorkspace?.id}
                     testId={`work-thumbnail-${String((draft as { id?: unknown }).id ?? "")}`}
                     alt="작업물 미리보기"
+                    preload="none"
+                    loading="lazy"
                     className="h-control-touch w-control-touch shrink-0 rounded-control object-cover"
                   />
                 ) : (
@@ -4460,22 +4467,22 @@ export default function StudioPage() {
         .catch((error) => {
           if (cardDeckV3SavePendingGenerationRef.current === editGeneration) cardDeckV3SavePendingGenerationRef.current = null;
           if (error instanceof ApiResponseError && (error.payload as { code?: string } | undefined)?.code === "BODY_STALE_REVISION") return;
-          setCardDeckAutosaveError(extractApiErrorMessage(error, "자유 배치 카드를 자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+          setCardDeckAutosaveError(extractApiErrorMessage(error, "카드 직접 편집 내용을 자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
         });
     }, 800);
   }
 
-  async function startCardDeckV3() {
+  async function startCardDeckV3(): Promise<boolean> {
     if (!cardDeckV3EntryEnabled(CARD_DECK_V3_RENDER_ENABLED, {
       hasCardDeckV2: Boolean(cardDeck),
       cardDeckTemplate: cardDeck?.template ?? null,
       textEmbedded: img?.textEmbedded === true,
-    })) return;
-    if (rejectWhileCardDeckV3DetailPending()) return;
+    })) return false;
+    if (rejectWhileCardDeckV3DetailPending()) return false;
     const blockedReason = cardDeck ? null : plainCardDeckV3EntryBlockReason(resolvedEditLines);
     if (blockedReason) {
       showToast(blockedReason, "error");
-      return;
+      return false;
     }
     const snapshot = {
       editLines: [...resolvedEditLines],
@@ -4536,8 +4543,8 @@ export default function StudioPage() {
       }
       onCardDeckV3Change(nextDeck, cardDeck?.template === "chat_bubble" ? undefined : { sourceSnapshot: snapshot });
     } catch (error) {
-      showToast(extractApiErrorMessage(error, "자유 배치용 카드 바탕을 준비하지 못했습니다."), "error");
-      return;
+      showToast(extractApiErrorMessage(error, "카드 직접 편집용 바탕을 준비하지 못했습니다."), "error");
+      return false;
     }
     const currentDraftId = draftIdRef.current;
     const tenantId = activeWorkspaceIdRef.current;
@@ -4548,7 +4555,7 @@ export default function StudioPage() {
           const hasPendingSchedule = data?.schedules?.some((schedule) => schedule.draftId === currentDraftId
             && (schedule.status === "scheduled" || schedule.status === "processing"));
           if (hasPendingSchedule) {
-            showToast("이 작업물에 대기 중인 예약이 있습니다. 자유 배치 결과는 예약 시각에도 보류되며, 기본 편집으로 돌아가도 자동 재개되지 않으므로 다시 예약해야 합니다.", "error");
+            showToast("이 작업물에 대기 중인 예약이 있습니다. 카드 편집 결과는 예약 시각에도 보류되므로 다시 예약해야 합니다.", "error");
           }
         })
         .catch(() => {
@@ -4556,6 +4563,7 @@ export default function StudioPage() {
           // 결과 불일치 발행을 최종 차단한다.
         });
     }
+    return true;
   }
 
   async function returnFromCardDeckV3(projectedChatDeck?: CardDeck) {
@@ -4572,16 +4580,16 @@ export default function StudioPage() {
       if (snapshot) setCardDeckV3SourceSnapshot(snapshot);
     }
     if (!returningChatDeck && !snapshot) {
-      showToast("자유 배치로 바꾸기 전 기본 편집 내용을 찾지 못했습니다. 현재 작업은 그대로 보존했습니다.", "error");
+      showToast("카드 직접 편집 이전 내용을 찾지 못했습니다. 현재 작업은 그대로 보존했습니다.", "error");
       return;
     }
     const confirmed = await askConfirm({
-      title: "기본 편집으로 돌아갈까요?",
+      title: returningChatDeck ? "기본 말풍선 편집기로 돌아갈까요?" : "이전 카드 내용으로 복원할까요?",
       description: returningChatDeck
-        ? "말풍선, 화자, 표지 문구와 표지·마지막 사진은 기본 편집기로 옮깁니다. 자유 배치로 덧붙인 글, 스티커, 로고와 위치 작업은 사라집니다."
-        : "자유 배치에서 바꾼 글, 사진, 크기, 위치와 회전 작업은 사라집니다. 자유 배치로 들어오기 직전의 기본 편집 내용으로 복원합니다.",
-      confirmLabel: returningChatDeck ? "기본 말풍선 편집기로 돌아가기" : "자유 배치 작업을 버리고 돌아가기",
-      cancelLabel: "자유 배치 계속하기",
+        ? "말풍선, 화자, 표지 문구와 표지·마지막 사진은 기본 편집기로 옮깁니다. 직접 편집에서 덧붙인 글, 스티커, 로고와 위치 작업은 사라집니다."
+        : "현재 카드에서 바꾼 글, 사진, 크기, 위치와 회전 작업은 사라집니다. 직접 편집을 시작하기 전 내용으로 복원합니다.",
+      confirmLabel: returningChatDeck ? "기본 말풍선 편집기로 돌아가기" : "이전 카드 내용 복원",
+      cancelLabel: "현재 카드 계속 편집",
       destructive: true,
     });
     if (!confirmed) return;
@@ -4614,7 +4622,7 @@ export default function StudioPage() {
       cardDeckV3HydratedDraftRef.current = draftIdRef.current;
       cardDeckV3SavePendingGenerationRef.current = null;
       setCardDeckAutosaveError("");
-      showToast("자유 배치 전 기본 편집으로 돌아왔습니다.", "success");
+      showToast("이전 카드 내용으로 복원했습니다.", "success");
     } catch (error) {
       cardDeckV3SavePendingGenerationRef.current = null;
       setCardDeckAutosaveError(extractApiErrorMessage(error, "기본 편집 복원을 서버에 저장하지 못했습니다. 화면의 복원 내용은 유지했습니다."));
@@ -4816,7 +4824,13 @@ export default function StudioPage() {
                 export_id?: string;
                 source_hash?: string;
                 pin_status?: "publish_ready" | "unpinned";
-                post?: { id?: string };
+                post?: {
+                  id?: string;
+                  imageUrl?: string | null;
+                  imageUrls?: string[] | null;
+                  videoFilename?: string | null;
+                  videoUrl?: string | null;
+                };
               };
               if (!response.ok) throw new Error(payload.error || "내보내기 판을 고정하지 못했습니다.");
               if (payload.pin_status === "unpinned") {
@@ -4825,11 +4839,30 @@ export default function StudioPage() {
               if (payload.export_id !== receipt.exportId || payload.source_hash !== receipt.sourceHash) {
                 throw new Error("고정된 내보내기 판이 화면에서 확인한 판과 다릅니다.");
               }
-              if (payload.post?.id) setReviewQueueId(payload.post.id);
-              // 현재 발행실은 S2 재렌더 파일을 실제 채널 발행에 사용한다. 이 고정은
-              // 내보내기 영수증과 산출물의 감사 기록이며, 실제 발행 파일과 동일하다는
-              // 보장은 아직 없다. 사용자가 오해하지 않도록 상태 문구에도 범위를 밝힌다.
-              const message = "내보내기 판을 기록했습니다. 실제 발행은 발행실에서 다시 준비한 파일을 사용합니다.";
+              const pinnedPost = payload.post;
+              if (pinnedPost?.id) setReviewQueueId(pinnedPost.id);
+              if (exportPanel.kind === "card_deck") {
+                const imageUrls = pinnedPost?.imageUrls?.filter(Boolean) ?? [];
+                const imageUrl = imageUrls[0] ?? pinnedPost?.imageUrl ?? null;
+                if (imageUrl) {
+                  setImg((current) => ({
+                    ...(current ?? { topicKey: mediaTopicKey(idea) }),
+                    url: imageUrl,
+                    file: imageUrl,
+                    imageUrls: imageUrls.length ? imageUrls : [imageUrl],
+                    textEmbedded: true,
+                    textSourceRecoverable: true,
+                  }));
+                }
+              } else if (pinnedPost?.videoUrl) {
+                setVid((current) => current ? {
+                  ...current,
+                  url: pinnedPost.videoUrl!,
+                  file: pinnedPost.videoUrl!,
+                  filename: pinnedPost.videoFilename ?? current.filename,
+                } : current);
+              }
+              const message = "내보내기 판을 고정했고 발행실도 같은 파일을 미리 봅니다.";
               setPublishExportPinNotice({ status: "pinned", message });
               showToast("발행실로 이동했습니다. 내보내기 판 기록도 완료했습니다", "success");
             } catch (error) {

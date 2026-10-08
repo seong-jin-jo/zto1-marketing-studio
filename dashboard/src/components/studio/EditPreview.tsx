@@ -55,6 +55,22 @@ const CARD_POSITION_CLASS: Record<CardTextPosition, string> = {
   "bottom-right": styles.cardBottomRight,
 };
 
+const CARD_POSITION_GRID: readonly (readonly CardTextPosition[])[] = [
+  ["top-left", "top-center", "top-right"],
+  ["center-left", "center", "center-right"],
+  ["bottom-left", "bottom-center", "bottom-right"],
+] as const;
+
+function nudgeCardTextPosition(position: CardTextPosition, key: string): CardTextPosition {
+  const row = CARD_POSITION_GRID.findIndex((items) => items.includes(position));
+  const column = CARD_POSITION_GRID[row]?.indexOf(position) ?? 1;
+  if (key === "ArrowUp") return CARD_POSITION_GRID[Math.max(0, row - 1)][column];
+  if (key === "ArrowDown") return CARD_POSITION_GRID[Math.min(CARD_POSITION_GRID.length - 1, row + 1)][column];
+  if (key === "ArrowLeft") return CARD_POSITION_GRID[row][Math.max(0, column - 1)];
+  if (key === "ArrowRight") return CARD_POSITION_GRID[row][Math.min(CARD_POSITION_GRID[row].length - 1, column + 1)];
+  return position;
+}
+
 
 
 const SUBTITLE_CLASS: Record<string, string> = {
@@ -235,6 +251,18 @@ export function EditPreview({
               className={`absolute z-10 w-4/5 rounded-control border border-border p-stack shadow-lg ${stageSize === "card-v70" ? styles.cardV70TextOverlay : styles.cardTextOverlay} ${CARD_POSITION_CLASS[cardPosition]}`}
               data-card-text-position={cardPosition}
               aria-label="카드 글자 직접 끌어 옮기기"
+              aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+              role="group"
+              tabIndex={cardEditingLocked ? -1 : 0}
+              onKeyDown={(event) => {
+                if (cardEditingLocked || !onCardTextPositionsChange || !event.key.startsWith("Arrow")) return;
+                const nextPosition = nudgeCardTextPosition(cardPosition, event.key);
+                if (nextPosition === cardPosition) return;
+                event.preventDefault();
+                const next = lines.map((_, index) => cardTextPositions[index] ?? "center");
+                next[activeLine] = nextPosition;
+                onCardTextPositionsChange(next);
+              }}
               onPointerDown={(event) => {
                 if (cardEditingLocked || event.target instanceof HTMLTextAreaElement) return;
                 movingCardText.current = true;

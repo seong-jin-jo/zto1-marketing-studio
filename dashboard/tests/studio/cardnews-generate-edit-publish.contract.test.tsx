@@ -100,6 +100,16 @@ describe("카드뉴스 이음매 계약", () => {
     expect(move, "다시 그린 그림이 저장에 안 실린다").toContain("redrawn ?? img");
   });
 
+  it("CHAIRMAN-FIX-R2-06 v3 사진 카드는 plain 재합성으로 덮지 않고 고정 산출물을 발행실 미디어로 쓴다", () => {
+    const recomposite = pageSrc.slice(pageSrc.indexOf("async function recompositeCards("), pageSrc.indexOf("type SubtitleBurnOutcome"));
+    expect(recomposite).toContain("if (cardDeckV3) return img");
+    const publishStart = pageSrc.indexOf("onOpenPublish={async (receipt)");
+    const publishHandoff = pageSrc.slice(publishStart, publishStart + 5_500);
+    expect(publishHandoff).toContain("pinnedPost?.imageUrls");
+    expect(publishHandoff).toContain("setImg((current)");
+    expect(publishHandoff).toContain("발행실도 같은 파일을 미리 봅니다");
+  });
+
   it("CARD-LINK-06 발행은 채널 규격대로 여러 장을 싣는다", () => {
     const deck = ["a", "b", "c"];
     expect(planChannelImages("instagram", deck).images).toEqual(deck);

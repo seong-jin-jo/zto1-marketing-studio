@@ -1,5 +1,17 @@
 # OSMU build log
 
+## 2026-10-09 04:50 KST · PR 134 시각 반려와 실제 내보내기 경로 교정
+
+STAMP: 2026-10-09 04:50 KST | model: gpt-5/Codex | agent: code-builder | skills: qa, review | 근거: v71, 회장 R2 반려, production Chromium E2E, 독립 전문 리뷰 | 고민: 방 탭 직접 이동이 아니라 편집실의 실제 내보내기 버튼을 눌러 발행실의 고정 산출물까지 같은 사진인지 검증했다.
+
+**기존 구현 확인:** 첫 R1 결과는 캔버스 일부와 글자를 잘랐고 단색 픽스처·빈 영상 프레임으로 미디어 표시를 증명하지 못했다. 새 E2E도 발행실 링크를 직접 눌러 `내보내기 → 고정 → 발행실` 경로를 우회했다. 코드 리뷰 결과 v3 사진 카드를 발행 직전 plain 글자 카드로 다시 합성하는 결함, 자동 편집 준비 실패 후 재시도 불가, 컷 구간 직접 탐색·키보드 이동 회귀를 추가로 확인했다.
+
+**추가·변경:** 4:5 카드를 19rem 상한으로 중앙 배치하고 선택 핸들을 자르지 않되 사진 장면만 경계 안에서 클립한다. 카드 직접 편집 실패에는 재시도를 제공한다. v3는 plain 재합성을 건너뛰고 enqueue가 반환한 고정 이미지·영상 주소를 발행실 상태에 반영한다. 영상 탐색도 컷 끝으로 정규화하고, 별도 위치 버튼 없이 포커스 가능한 글 상자에서 화살표 이동을 지원한다. 새 수용 E2E를 package script와 PR CI에 연결했다. DB 스키마는 바꾸지 않았다.
+
+**검증:** 집중 7파일 82건 PASS, `test:publish` 59파일 605건 PASS·3건 skip, TypeScript와 production build PASS. dev와 production 서버 모두 실제 사진 JPG·실제 프레임 MP4로 생성→작업물→편집→드래그→영상 컷→내보내기→발행실을 통과했고 콘솔 오류 0이다. 모바일 360·390·412·600·700·780·820·900·1000은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 100%, 가로 넘침 0이다. design-lint는 종료 코드 0이지만 레포 기존 인라인 style·hex 경고 2종, artifact lint는 정합 PASS와 기존 핀 위생 경고 28건을 유지한다. 외부 SNS 게시와 운영 배포는 미검증이다.
+
+SOURCES/MODEL: gpt-5/Codex | `logs/diff/editroom-chairman-fix-20261009/report.md` | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | `wiki/business/pmf/idea-zero-one-marketing-studio.md`
+
 ## 2026-10-09 03:49 KST · 생성→편집→발행 미디어 경로 복구
 
 STAMP: 2026-10-09 03:49 KST | model: gpt-5/Codex | agent: code-builder | skill: qa | 근거: 회장 결함 재현 보고, v71 프로토타입, Chromium 단일경로 E2E, Vitest 604건, production build | 고민: 화면 존재가 아니라 같은 초안의 실제 미디어가 세 방을 끝까지 통과하는지를 종료 기준으로 삼았다.
