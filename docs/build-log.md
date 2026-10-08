@@ -1,5 +1,17 @@
 # OSMU build log
 
+## 2026-10-09 07:28 KST · PR 134 v70 화면 게이트 v71 계약 복구
+
+STAMP: 2026-10-09 07:28 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: PR 134 run 37850906497, `/tmp/zto1-r5-build.log`, `/tmp/zto1-r5-final-v70.log`, `/tmp/zto1-r5-final-chairman.log` | 고민: CI가 실제로 빌드한 기능 플래그 경로를 다시 빌드·서빙하고 두 브라우저 게이트를 같은 서버에서 연속 실행했다.
+
+**판정:** 제품 진입 회귀가 아니라 게이트가 제거된 v70 DOM을 기다린 테스트 회귀다. CI 실패 본문에도 v71 장 목록·캔버스·도구가 렌더됐고, 로컬 production 재현도 `[data-plain-card-shell]` 대기에서 동일 실패했다.
+
+**변경:** 화면 정합 게이트의 일반 카드, 글자 복구 가능·불가 카드, 카톡 덱을 v71 직접 편집 작업대 계약으로 교체했다. OD-2026-10-09-2 근거 주석을 남기고, v70 clean-frame 카드 면 비교·일반 카드 오염 검출·중복 글자 방지·잠금 검사는 유지했다.
+
+**검증:** `CARD_DECK_V3_RENDER_ENABLED=1 NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=1 npm run build` 종료 코드 0. 같은 fresh build를 `npm run start -p 3472`로 서빙해 `npm run e2e:studio-v70-screen`과 `npm run e2e:chairman-defects`를 연속 실행했고 둘 다 종료 코드 0이다. 서버는 424ms에 Ready, 콘솔 오류 0, 회장 결함 게이트 `ok=true`, 초안 저장 5회다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/tmp/zto1-r5-build.log` | `/tmp/zto1-r5-start.log` | `/tmp/zto1-r5-final-v70.log` | `/tmp/zto1-r5-final-chairman.log`
+
 ## 2026-10-09 06:48 KST · PR 134 전체 dashboard CI 복구
 
 STAMP: 2026-10-09 06:48 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skills: qa, review | 근거: `.github/workflows/ci.yml`, PR 134 run 37835647473, `/tmp/zto1-r4-full-clean3.log` | 고민: 부분 스위트 대신 CI verify 잡의 전체 명령과 동일 DB pathname에서 안전문과 구버전 초안 호환까지 실행했다.
