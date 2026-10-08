@@ -1,10 +1,13 @@
-## 2026-10-09 PR 134 전체 CI 회귀 ❌ NG
+## 2026-10-09 PR 134 전체 CI 회귀 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
 |---|---|---|---|
-| CHAIRMAN-FIX-R4-01 | PR #134의 `Test (격리 테스트가 DB 연결로 실제 assert)`와 동일한 전체 dashboard 테스트가 통과해야 함 | ❌ NG | GitHub Actions run `37835647473`, 원격 head `a8f18887`에서 편집실·자동저장·발행 안전문·직접 드래그·파일 경로·영상 단독 생성 계약이 실패했다. 직전 로컬 검증은 부분 스위트만 실행해 전체 회귀를 검출하지 못했다. |
-| CHAIRMAN-FIX-R4-02 | 각 실패를 회장 지시로 바뀐 계약과 실제 제품 회귀로 분류하고, 변경 계약은 OD-2026-10-09-2와 회장 원문을 테스트 근거로 남겨야 함 | 🔧 판정 중 | 실패한 테스트와 제품 코드를 1:1 대조하고 있다. 자동저장 반대 도메인 `null`, 빈 말풍선 검사, 평문 붙여넣기 보호는 약화하지 않는다. |
-| CHAIRMAN-FIX-R4-03 | 실제 회귀를 코드에서 고치고 CI verify 잡의 전체 명령을 로컬에서 동일하게 통과시켜야 함 | ❌ NG | 전체 명령 재현 전이다. 부분 테스트 PASS는 종료 증거로 쓰지 않는다. |
+| CHAIRMAN-FIX-R4-01 | PR #134의 `Test (격리 테스트가 DB 연결로 실제 assert)`와 동일한 전체 dashboard 테스트가 통과해야 함 | ✅ PASS | CI와 같은 `/testdb`에서 `npx vitest run`: 514파일 통과·3파일 skip, 3,773건 통과·16건 skip, 종료 코드 0. |
+| CHAIRMAN-FIX-R4-02 | 각 실패를 회장 지시로 바뀐 계약과 실제 제품 회귀로 분류하고, 변경 계약은 OD-2026-10-09-2와 회장 원문을 테스트 근거로 남겨야 함 | ✅ PASS | `logs/diff/editroom-chairman-fix-20261009/report.md` R4 표에 14개 실패·진단 출력을 (a)/(b)로 판정했다. 변경 계약 테스트에 결정과 회장 원문 주석을 남겼다. |
+| CHAIRMAN-FIX-R4-03 | 실제 회귀를 코드에서 고치고 CI verify 잡의 전체 명령을 로컬에서 동일하게 통과시켜야 함 | ✅ PASS | 잔존 “자유 배치” 사용자 문구를 “카드 직접 편집”으로 교정했다. 자동저장 반대 도메인 `null`, 빈 말풍선 검사, 스냅샷 복원, 서버 절대경로 비노출을 전체 테스트로 재확인했다. TypeScript와 production build도 종료 코드 0이다. |
+| CHAIRMAN-FIX-R4-04 | 전문 리뷰가 찾은 생성 결과 유실·클릭 오이동·잘못된 위치값 예외·고정 시간 대기를 닫아야 함 | ✅ PASS | pending 삭제를 저장 성공 뒤로 이동하고 영상 clear 의도를 재개까지 보존했다. 클릭 4px 미만 무시·pointercancel 정리, API 위치값 422·구버전 좌표 보존·UI 중앙 복구, 내보내기 활성 조건 대기, 속성 도구 focus-visible을 구현했다. 전문 재검수의 고위험 지적은 0건이다. |
+
+미검증: CI의 `DATABASE_URL`로 draft PostgreSQL 저장은 실행한다. `S3_DATABASE_URL` 전용 export worker·enqueue PostgreSQL 통합은 기존 CI에서 skip되므로 생성→export→enqueue 전 DB 연속 경로는 이 판의 PASS 범위가 아니다.
 
 ## 2026-10-09 PR 134 카드 편집 2차 시각 검수 ❌ NG → ✅ PASS
 

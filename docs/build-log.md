@@ -1,5 +1,19 @@
 # OSMU build log
 
+## 2026-10-09 06:48 KST · PR 134 전체 dashboard CI 복구
+
+STAMP: 2026-10-09 06:48 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skills: qa, review | 근거: `.github/workflows/ci.yml`, PR 134 run 37835647473, `/tmp/zto1-r4-full-clean3.log` | 고민: 부분 스위트 대신 CI verify 잡의 전체 명령과 동일 DB pathname에서 안전문과 구버전 초안 호환까지 실행했다.
+
+**변경:** 14개 실패·진단 출력을 의도된 직접 편집 계약 변경과 테스트·제품 회귀로 나눴다. 계약 변경 테스트에는 OD-2026-10-09-2와 회장 원문을 주석으로 남겼다. 제거된 모드에 의존하던 동적 자동저장 테스트는 현재 v3 편집 화면을 구동하도록 바꿨고, 희귀 오류 경로의 “자유 배치”와 “내보내기 판” 문구를 평문으로 교정했다. 독립 리뷰 뒤 생성 결과 pending 삭제 순서와 반대 도메인 clear 의도 보존, 클릭 드래그 최소 거리·취소, 위치값 서버 검증·구버전 좌표 보존·UI 정규화, E2E 조건 대기, 접이식 도구 초점 표시도 보강했다.
+
+**보호 유지:** 카드 자동저장 `videoEdit:null`, 영상 자동저장 `cardDeck:null`, 빈 말풍선 정리, source snapshot 복원, 서버 절대경로 비노출, 예약 등록·실행 안전문을 계속 단언한다.
+
+**검증:** CI 동일 `npx vitest run`은 514파일 통과·3파일 skip, 3,773건 통과·16건 skip, 315.73초, 종료 코드 0이다. `npx tsc --noEmit -p tsconfig.ci.json`과 `CARD_DECK_V3_RENDER_ENABLED=1 NEXT_PUBLIC_CARD_DECK_V3_RENDER_ENABLED=1 npm run build`도 종료 코드 0이다. 발행 전용 스위트도 605건 통과·3건 skip이다. 처음 임의 이름 DB 실행의 1건 실패는 DB 안전 테스트가 `/testdb` 외 pathname을 의도대로 거절한 환경 검증이며, `/testdb` 재실행에서 전체 통과했다.
+
+**미검증:** CI가 주입하지 않는 `S3_DATABASE_URL` 전용 export worker·enqueue PostgreSQL 통합은 기존처럼 skip된다. draft 실제 DB 저장은 CI 범위에서 실행되지만 생성→export→enqueue 전 경로의 실제 DB 연속 증거는 별도 테스트 부채다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `.github/workflows/ci.yml` | `/tmp/zto1-r4-full-clean3.log` | `/tmp/zto1-r4-build-clean2.log`
+
 ## 2026-10-09 05:42 KST · PR 134 카드 편집 내부 넘침과 비동기 경합 교정
 
 STAMP: 2026-10-09 05:42 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skills: qa, review | 근거: 회장 R3 반려, v71, production Chromium 수치 E2E, 독립 적대 리뷰 | 고민: 화면 폭을 닫은 뒤에도 크기 조절·회전과 늦은 비동기 응답이 다시 요소나 작업물을 덮지 못하도록 변환 경계와 작업 번호를 함께 고정했다.
