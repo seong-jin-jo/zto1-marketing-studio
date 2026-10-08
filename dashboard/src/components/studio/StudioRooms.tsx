@@ -1144,6 +1144,21 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
         </div>
         <div className="text-right"><b className="block text-body font-bold text-accent">{stage.count}</b><span className="text-caption text-subtle">{stage.label}</span></div>
       </section>
+      {madeImageUrl || madeVideoUrl ? (
+        <section data-testid="create-made" className="grid gap-stack rounded-surface border border-accent/30 bg-surface p-stack sm:grid-cols-[minmax(0,18rem)_1fr]" aria-label="방금 만든 결과">
+          <div className="min-w-0">
+            {madeVideoUrl ? (
+              <DeliveredMedia type="video" src={madeVideoUrl} testId="create-made-video" tenantId={workspaceId} className="max-h-72 w-full rounded-control object-contain" />
+            ) : madeImageUrl ? (
+              <DeliveredMedia type="image" src={madeImageUrl} testId="create-made-image" alt="방금 만든 카드뉴스 대표 이미지" tenantId={workspaceId} className="max-h-72 w-full rounded-control object-contain" />
+            ) : null}
+          </div>
+          <div className="self-center">
+            <b className="block text-body text-text">방금 만든 결과</b>
+            <p className="mt-stack-tight break-keep text-caption text-subtle">작업물에 저장했습니다. 편집실에서 바로 다듬거나 발행실 미리보기에서 확인할 수 있습니다.</p>
+          </div>
+        </section>
+      ) : null}
       <div className="grid gap-stack-section lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-region" data-create-workspace>
           <section className="card space-y-stack-section p-pad-inset" aria-labelledby="create-quick-title" data-create-quick-start>
@@ -1267,6 +1282,8 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
               recommendedId={recommendedCardTemplate(quickStructure.label)}
               structureTitle={quickStructure.title}
               structureFirstLine={quickStructure.outline[0] ?? ""}
+              previewImageUrl={madeImageUrl}
+              tenantId={workspaceId}
               onSelect={setCardTemplateId}
               disabledReasons={{ chat_bubble: "카톡 대화는 아래 기존 카톡 말풍선 덱 만들기에서 생성해 주세요." }}
             />
@@ -1457,21 +1474,6 @@ export function CreateRoom({ workspaceId, workspaceName, guide, topic, contentBr
               단추를 눌러 생성이 끝났는데 화면이 그대로라 "안 된다" 로 읽혔다
               (회장 2026-09-07). 만든 것은 그 자리에서 보여 준다.
             */}
-            {madeImageUrl || madeVideoUrl ? (
-              <div data-testid="create-made" className="space-y-stack-tight rounded-control border border-border bg-surface p-stack">
-                <b className="block text-caption text-text">방금 만든 것</b>
-                {madeImageUrl ? (
-                  <DeliveredMedia type="image" src={madeImageUrl} testId="create-made-image"
-                    alt="방금 만든 카드뉴스 대표 이미지" tenantId={workspaceId}
-                    className="max-h-64 w-full rounded-control object-contain" />
-                ) : null}
-                {madeVideoUrl ? (
-                  <DeliveredMedia type="video" src={madeVideoUrl} testId="create-made-video"
-                    tenantId={workspaceId} className="max-h-64 w-full rounded-control" />
-                ) : null}
-                <p className="text-caption text-subtle break-keep">편집실에서 글자를 얹고 발행실로 보낼 수 있습니다.</p>
-              </div>
-            ) : null}
             {!candidates.length ? <>
               <div className="space-y-stack rounded-surface border border-border bg-surface p-stack" data-create-question={question}>
                 {question === "kind" ? <fieldset data-create-kind-picker><legend className="mb-stack-tight text-caption font-semibold text-text">무엇을 만들까요?</legend>
@@ -2186,6 +2188,17 @@ export function EditRoom({
     || Boolean(cardDeckV3);
   const roomState = state === "default" && !hasEditableContent ? "empty" : state;
   const editorVisible = roomState === "default" || roomState === "overflow";
+  const directCardStartRequested = useRef(false);
+  useEffect(() => {
+    if (kind !== "card") {
+      directCardStartRequested.current = false;
+      return;
+    }
+    if (!editorVisible || cardDeckV3 || !onStartCardDeckV3 || cardDeckV3EntryBlockedReason || cardSourceLocked) return;
+    if (directCardStartRequested.current) return;
+    directCardStartRequested.current = true;
+    onStartCardDeckV3();
+  }, [cardDeckV3, cardDeckV3EntryBlockedReason, cardSourceLocked, editorVisible, kind, onStartCardDeckV3]);
   const updateLine = (value: string) => {
     if (cardSourceLocked) return;
     onLinesChange(safeLines.map((line, index) => index === activeLine ? value : line));
@@ -2301,11 +2314,9 @@ export function EditRoom({
         <main className="min-w-0 space-y-pad-inset">
           {editorVisible ? (
             <>
-              <section data-room-top="edit" aria-label="편집실 현재 작업">
-                <h2 className="break-keep text-heading font-bold text-text">내용과 화면을 직접 다듬습니다</h2>
-                <p className="mt-stack-tight break-keep text-body-sm text-muted">만들 형식을 고른 뒤 결과물 자체를 고칩니다. 올릴 채널과 채널별 문구는 발행실에서 정합니다.</p>
-              </section>
-              <div role="group" aria-label="만들 콘텐츠 형식" className="flex flex-wrap gap-stack-tight">
+              <section data-room-top="edit" aria-label="편집실 현재 작업" className="flex flex-wrap items-center gap-stack">
+                <h2 className="mr-auto break-keep text-heading font-bold text-text">내용과 화면을 직접 다듬습니다</h2>
+                <div role="group" aria-label="만들 콘텐츠 형식" className="flex flex-wrap gap-stack-tight">
                 {EDIT_KIND_ORDER.map((editKind) => (
                   <Button
                     key={editKind}
@@ -2320,14 +2331,12 @@ export function EditRoom({
                     {EDIT_KIND_LABELS[editKind]}
                   </Button>
                 ))}
-              </div>
-              <p className="rounded-control bg-surface-2 p-pad-inset text-caption text-muted" data-platform-boundary>
-                <strong className="text-text">형식과 채널은 다릅니다.</strong> 여기서는 무엇을 만들지 고칩니다. 스레드, 인스타그램처럼 어디에 올릴지는 발행실에서 정합니다.
-              </p>
+                </div>
+              </section>
               {kind === "card" && cardDeckV3 && onCardDeckV3Change ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-v3-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
-                  <div className="mb-stack flex flex-wrap items-center gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption text-muted" role="status" data-card-deck-v3-return-note>
-                    <span className="mr-auto">{cardDeckV3.template === "chat_bubble" ? "필요하면 기본 말풍선 편집기로 돌아갈 수 있습니다." : "기본 편집으로 돌아가면 자유 배치 진입 직전의 글과 위치를 그대로 복원합니다."}</span>
+                  {cardDeckV3.template === "chat_bubble" ? <div className="mb-stack flex flex-wrap items-center gap-stack-tight rounded-control border border-border bg-surface-2 p-stack text-caption text-muted" role="status" data-card-deck-v3-return-note>
+                    <span className="mr-auto">필요하면 기본 말풍선 편집기로 돌아갈 수 있습니다.</span>
                     {onReturnFromCardDeckV3 ? (
                       <Button
                         type="button"
@@ -2339,26 +2348,16 @@ export function EditRoom({
                         기본 편집으로 돌아가기
                       </Button>
                     ) : null}
-                    {cardDeckV3.template === "chat_bubble" && chatBasicEditorProjection?.missingAssetIds.length ? (
+                    {chatBasicEditorProjection?.missingAssetIds.length ? (
                       <span className="w-full text-warning" role="status" data-card-basic-return-blocked>
                         표지·마지막 사진을 불러오는 중입니다. 사진 준비가 끝나면 기본 편집으로 돌아갈 수 있습니다.
                       </span>
                     ) : null}
-                  </div>
+                  </div> : null}
                   <CardCanvasEditor deck={cardDeckV3} templateState={cardTemplateState} sourceDeck={cardDeck} requestedSlide={requestedCardSlide} assetUrls={cardAssetUrls} onAssetUrlChange={(assetId, url) => setCardAssetUrls((current) => ({ ...current, [assetId]: url }))} onDeckChange={onCardDeckV3Change} />
                 </div>
               ) : kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
-                  {onStartCardDeckV3 ? (
-                    <div className="mb-stack border-b border-border pb-stack">
-                      <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3} disabled={Boolean(cardDeckV3EntryBlockedReason)}>v3 고급 편집 열기</Button>
-                      {cardDeckV3EntryBlockedReason ? (
-                        <p className="mt-stack-tight text-caption text-warning" role="status" data-card-deck-v3-entry-blocked>
-                          {cardDeckV3EntryBlockedReason}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
                   <p className="mb-stack rounded-control bg-surface-2 p-stack text-caption text-muted" data-card-deck-editor-note>
                     말풍선 카드뉴스는 직접 편집이 기본입니다. 여기서 고친 내용은 자동 저장됩니다.
                   </p>
@@ -2366,11 +2365,8 @@ export function EditRoom({
                 </div>
               ) : (
               <div className={`card overflow-hidden ${styles.editWorkbench} ${kind === "text" ? styles.textDocumentWorkbench : ""} ${kind === "video" && onVideoEditChange ? styles.videoDocumentWorkbench : ""} ${kind === "card" ? styles.plainCardWorkbench : ""}`} data-edit-workspace data-text-document-editor={kind === "text" ? "true" : undefined} inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
-                {kind === "card" && onStartCardDeckV3 ? (
+                {kind === "card" && (cardDeckV3EntryBlockedReason || (cardTextEmbedded && !cardTextSourceRecoverable)) ? (
                   <div className="border-b border-border p-pad-inset">
-                    <Button type="button" size="sm" variant="secondary" onClick={onStartCardDeckV3} disabled={Boolean(cardDeckV3EntryBlockedReason) || (cardTextEmbedded && !cardTextSourceRecoverable)}>
-                      자유 배치로 편집
-                    </Button>
                     {cardTextEmbedded && !cardTextSourceRecoverable ? (
                       <p className="mt-stack-tight text-caption text-warning" role="status" data-card-deck-v3-source-unrecoverable>
                         이 카드는 그림 안에 글자가 박혀 있어 글자를 따로 움직일 수 없습니다.
@@ -2433,27 +2429,6 @@ export function EditRoom({
                     // 뺐다 — VideoEditor 안의 VoiceSelector가 이미 그 조작을 갖고 있어
                     // 둘을 두면 같은 것을 두 군데서 고르게 된다(교차 리뷰 재리뷰 MAJOR).
                     <>
-                      <section className="mb-pad-inset flex flex-wrap gap-stack-tight border-b border-border pb-pad-inset" aria-label="형식 도구" data-edit-tools>
-                        {tools.filter((tool) => tool !== "목소리").map((tool) => (
-                          <Button key={tool} size="sm" variant="secondary" className={activeTool === tool ? "border-accent bg-accent-soft text-accent" : ""} onClick={() => setActiveTool(tool)} aria-pressed={activeTool === tool} aria-label={`${visibleToolName(kind, tool)} 도구`}>
-                            <ToolIcon tool={tool} /><span>{visibleToolName(kind, tool)}: {visibleToolValue(tool, toolValues[tool], kind)}</span>
-                          </Button>
-                        ))}
-                      </section>
-                      <div className="mb-stack-tight flex flex-wrap gap-stack-tight" aria-label={`${visibleToolName(kind, activeTool)} 선택지`}>
-                        {toolOptions(formatKind, activeTool).map((option) => (
-                          <Button key={option} size="sm" variant="secondary" className={toolValues[activeTool] === option ? "border-accent bg-accent-soft text-accent" : ""} aria-pressed={toolValues[activeTool] === option} onClick={() => setToolValues((current) => ({ ...current, [activeTool]: option }))}>
-                            {visibleToolValue(activeTool, option, kind)}
-                          </Button>
-                        ))}
-                      </div>
-                      {/* 재리뷰 MAJOR: 이 줄의 값이 실제로 반영되는지 사실대로 말한다 —
-                          자막 크기만 굽기에 실제 쓰이고(video-subtitle.ts
-                          subtitleFontSize), 비율·재생 속도는 아직 발행 파일에 반영되지
-                          않는다. */}
-                      <p className="mb-pad-inset text-caption text-subtle" data-video-tools-status-note>
-                        자막 크기만 발행 영상에 실제로 반영됩니다. 비율·재생 속도는 아직 반영되지 않습니다.
-                      </p>
                       <VideoEditor
                         videoEdit={videoEdit ?? EMPTY_VIDEO_EDIT}
                         onVideoEditChange={onVideoEditChange}

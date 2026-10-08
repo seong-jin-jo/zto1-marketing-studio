@@ -8,12 +8,15 @@ import {
 } from "@/lib/studio/card-templates";
 import type { CardDeckV3 } from "@/lib/studio/card-element-contract";
 import { cardDeckV3Projection } from "@/lib/studio/card-element-contract";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 
 interface BaseProps {
   selectedId: CardDeckTemplateId;
   recommendedId?: CardDeckTemplateId;
   onSelect: (id: CardDeckTemplateId) => void;
   disabledReasons?: Partial<Record<CardDeckTemplateId, string>>;
+  previewImageUrl?: string | null;
+  tenantId?: string;
 }
 
 type CardTemplateGalleryProps = BaseProps & ({
@@ -32,13 +35,15 @@ type CardTemplateGalleryProps = BaseProps & ({
   onRestore: () => void;
 });
 
-function TemplateCard({ id, selected, recommended, title, body, disabledReason, onSelect }: {
+function TemplateCard({ id, selected, recommended, title, body, disabledReason, previewImageUrl, tenantId, onSelect }: {
   id: CardDeckTemplateId;
   selected: boolean;
   recommended: boolean;
   title: string;
   body: string;
   disabledReason?: string;
+  previewImageUrl?: string | null;
+  tenantId?: string;
   onSelect: () => void;
 }) {
   const template = CARD_DECK_TEMPLATES.find((item) => item.id === id)!;
@@ -54,11 +59,12 @@ function TemplateCard({ id, selected, recommended, title, body, disabledReason, 
       data-card-template={id}
     >
       <span className="mb-stack-tight block rounded-control border border-border bg-surface p-stack-tight">
-        <b className="line-clamp-2 block text-body-sm">미리보기: {title || template.name}</b>
-        <span className="mt-micro line-clamp-2 block text-subtle">내용: {body || template.description}</span>
+        {previewImageUrl ? <DeliveredMedia type="image" src={previewImageUrl} tenantId={tenantId} alt={`${template.name} 실제 이미지 미리보기`} className="mb-stack-tight aspect-square w-full rounded-control object-cover" /> : null}
+        <b className="line-clamp-2 block text-body-sm">{title || template.name}</b>
+        <span className="mt-micro line-clamp-2 block text-subtle">{body || template.description}</span>
       </span>
       <b className="block">{template.name}</b>
-      {disabledReason ? <span id={`card-template-disabled-${id}`} className="text-warning">{disabledReason}</span> : recommended ? <span className="text-accent">추천</span> : <span className="text-subtle">{template.family === "chat" ? "대화형" : "사진·글"}</span>}
+      {disabledReason ? <span id={`card-template-disabled-${id}`} className="block whitespace-normal break-keep text-warning">{disabledReason}</span> : recommended ? <span className="text-accent">추천</span> : <span className="text-subtle">{template.family === "chat" ? "대화형" : "사진·글"}</span>}
     </Button>
   );
 }
@@ -85,6 +91,8 @@ export function CardTemplateGallery(props: CardTemplateGalleryProps) {
             title={title}
             body={body}
             disabledReason={props.disabledReasons?.[template.id]}
+            previewImageUrl={props.previewImageUrl}
+            tenantId={props.tenantId}
             onSelect={() => props.onSelect(template.id)}
           />
         ))}

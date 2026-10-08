@@ -57,9 +57,12 @@
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(4rem, 7rem) minmax(18rem, 1fr) minmax(15rem, 20rem);
+  grid-template-columns: minmax(4rem, 6rem) minmax(0, 1fr) minmax(12rem, 16rem);
   gap: var(--pad-inset);
   align-items: start;
+  min-width: 0;
+  max-width: 100%;
+  overflow: clip;
 }
 
 .slideStrip {
@@ -75,7 +78,7 @@
   min-width: 0;
   width: min(100%, 45rem);
   margin-inline: auto;
-  overflow: visible;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--shape-surface);
   box-shadow: var(--shadow);

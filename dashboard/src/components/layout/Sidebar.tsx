@@ -240,7 +240,7 @@ function SidebarFooter({ isOperator, compactOnNarrow = false }: { isOperator: bo
   const setActiveWorkspace = useUIStore((state) => state.setActiveWorkspace);
 
   return (
-    <div className="shrink-0 px-pad-inset py-stack border-t border-border/50 space-y-stack-tight max-xl:px-stack-tight md:px-micro md:py-stack-tight">
+    <div className="relative grid shrink-0 auto-rows-min gap-stack-tight border-t border-border/50 bg-surface px-pad-inset py-stack max-xl:px-stack-tight md:px-micro md:py-stack-tight" data-sidebar-footer>
       <ThemeToggle compactOnNarrow={compactOnNarrow} />
       <button
         onClick={async () => {
@@ -252,7 +252,7 @@ function SidebarFooter({ isOperator, compactOnNarrow = false }: { isOperator: bo
           setActiveWorkspace(null);
           window.location.href = isOperator ? "/operator" : "/login";
         }}
-        className="min-h-control-touch w-full flex items-center gap-stack-tight px-micro py-micro text-caption text-subtle hover:text-danger transition-colors"
+        className="relative flex min-h-control-touch w-full items-center justify-start gap-stack-tight rounded-control px-micro py-micro text-caption text-subtle transition-colors hover:bg-surface-2 hover:text-danger"
         title="로그아웃"
       >
         <span aria-hidden>⎋</span><span className={compactOnNarrow ? "md:sr-only" : ""}>로그아웃</span>
@@ -545,7 +545,7 @@ function CustomerSidebar({
 
       <button
         type="button"
-        className="hidden min-h-control-touch items-center justify-center border-t border-border text-caption text-subtle md:flex"
+        className="hidden min-h-control-touch shrink-0 items-center justify-center border-t border-border text-caption text-subtle md:flex"
         aria-label={railCollapsed ? "사이드바 펴기" : "사이드바 접기"}
         onClick={() => {
           const next = !railCollapsed;

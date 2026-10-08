@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildImagePrompt, buildMotionPrompt, paletteToColors, pickImageSubject, stripRiskyNouns, learningVisualHints, IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
+import { buildImagePrompt, buildImageToVideoMotionPrompt, buildMotionPrompt, paletteToColors, pickImageSubject, stripRiskyNouns, learningVisualHints, IMAGE_STYLES, CUSTOM_STYLE_ID } from "@/components/studio/image-style";
 
 // 회장 2026-09-08: "생성할 때 여러 옵션은 안 받는 거냐. 고객은 이것저것 결을 보고 선택한
 // 다음 생성하고 싶어할 듯." 종전에는 결을 고를 자리가 없어 같은 글감이면 늘 같은 결만
@@ -63,6 +63,14 @@ describe("영상 움직임 지시문 조립", () => {
     expect(out).toContain("plain surfaces");
     expect(out).toContain("close interior framing");
     expect(out).not.toMatch(/text|letter|signage|watermark|logo|label/i);
+  });
+
+  it("VIDEO-PROMPT-SINGLE-CAPTION-02 이미지 기반 영상에는 주제 문자열을 다시 싣지 않는다", () => {
+    const out = buildImageToVideoMotionPrompt({ voice: "따뜻하게", forbidden: "과장 표현" });
+    expect(out).toContain("warm gentle mood");
+    expect(out).toContain("fixed camera");
+    expect(out).not.toContain("계약서 조건");
+    expect(out).not.toMatch(/[가-힣]/);
   });
 });
 

@@ -363,6 +363,23 @@ export function buildMotionPrompt(subject: string, learning?: string | ImageProm
   return stripForbidden(parts.join(". "), info.forbidden);
 }
 
+/**
+ * 이미지 기반 영상은 장면을 이미 픽셀로 전달한다. 여기에 주제나 본문을 다시 보내면
+ * 생성기가 그 문자열을 화면 글자로 재해석해, 앱 자막과 겹치는 가짜 자막을 만들 수 있다.
+ * 따라서 이 경로는 움직임과 분위기만 전달하고 글 콘텐츠는 편집실 자막 한 곳이 소유한다.
+ */
+export function buildImageToVideoMotionPrompt(learning?: string | ImagePromptLearning): string {
+  const info: ImagePromptLearning = typeof learning === "string" || learning == null
+    ? { palette: learning ?? undefined }
+    : learning;
+  const parts: string[] = [];
+  const voice = VOICE_MOODS.find((one) => one.match.test(info.voice || ""));
+  if (voice) parts.push(voice.mood);
+  parts.push("subtle idle motion, gentle sway and glow, fixed camera, smooth");
+  parts.push(NO_TEXT);
+  return stripForbidden(parts.join(". "), info.forbidden);
+}
+
 /** 학습 정보 여러 칸을 그림이 알아듣는 장면 묘사 조각으로 옮긴다. 못 알아본 칸은 빠진다. */
 export function learningVisualHints(info: ImagePromptLearning): string[] {
   const out: string[] = [];

@@ -26,7 +26,8 @@ import { useUsage } from "@/hooks/useOverview";
 import { useUIStore, type StudioRoom } from "@/store/ui-store";
 import { LearningCardWizard } from "@/components/studio/LearningCardWizard";
 import { LearningStatus } from "@/components/studio/LearningStatus";
-import { buildImagePrompt, buildMotionPrompt, pickImageSubject } from "@/components/studio/image-style";
+import { buildImagePrompt, buildImageToVideoMotionPrompt, pickImageSubject } from "@/components/studio/image-style";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { countFilledUserSlots, fetchLearningInfo, LEARNING_USER_SLOT_TOTAL, mergeLearningInfo, readLearningInfo, saveLearningInfo, type LearningInfo } from "@/components/studio/learning-info";
 import { RepoConnect } from "@/components/studio/RepoConnect";
 import { SchedulePanel } from "@/components/studio/SchedulePanel";
@@ -178,6 +179,16 @@ function draftLandingRoom(draft: Record<string, unknown>): StudioRoom {
   const text = draft.text as Record<string, unknown> | null | undefined;
   const hasBody = !!text && typeof text === "object" && Object.values(text).some((v) => typeof v === "string" ? v.trim() : v);
   return hasBody ? "edit" : "create";
+}
+
+function draftPreviewMedia(draft: Record<string, unknown>): { type: "image" | "video"; src: string } | null {
+  const video = draft.vid as { file?: unknown; url?: unknown } | null | undefined;
+  const videoSrc = typeof video?.file === "string" ? video.file : typeof video?.url === "string" ? video.url : "";
+  if (videoSrc) return { type: "video", src: videoSrc };
+  const image = draft.img as { file?: unknown; url?: unknown; imageUrls?: unknown } | null | undefined;
+  const firstImage = Array.isArray(image?.imageUrls) && typeof image.imageUrls[0] === "string" ? image.imageUrls[0] : "";
+  const imageSrc = typeof image?.file === "string" ? image.file : typeof image?.url === "string" ? image.url : firstImage;
+  return imageSrc ? { type: "image", src: imageSrc } : null;
 }
 
 // 채널 화면 주소는 제공자 이름으로 만든다.
@@ -1557,7 +1568,11 @@ export default function StudioPage() {
     // 비율 도장은 영상 바탕으로 써도 되는지를 가른다(work-media.ts isReusableVideoBaseImage,
     // 2026-09-16 실측: 1:1 대표 이미지를 영상 바탕으로 재사용해 정사각 영상이 나갔다).
     const stamped = { ...r, topicKey: mediaTopicKey(opts?.topicLabel ?? idea), aspectRatio };
-    setImg(stamped); mutateAcct(); return stamped;
+    setImg(stamped);
+    await save("draft", publishReconciliations, draftIdRef.current, stamped, vid, cardDeck, videoEdit, cardDeckV3);
+    await mutateHist();
+    mutateAcct();
+    return stamped;
   }
   async function genImage(prompt: string, aspectRatio: "1:1" | "9:16" = "9:16") {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return null; }
@@ -1594,7 +1609,7 @@ export default function StudioPage() {
   // 가져온 작업물(파일 이름만 앎)도 이 한 가지 방식으로 처리된다(코드 감사 F-05 취지 유지).
   async function pollAndFinishVideo(
     jobId: string, tenantId: string,
-    opts?: { signal?: AbortSignal; topicLabel?: string },
+    opts?: { signal?: AbortSignal; topicLabel?: string; sourceImage?: ImgResult | null },
   ) {
     const result = await pollHiggsfieldJob<VidResult & { ok?: boolean; error?: string; nsfw?: boolean; credits?: boolean; status?: string }>(
       jobId, tenantId,
@@ -1645,9 +1660,13 @@ export default function StudioPage() {
       subtitlesBaked: false,
       subtitleLineageState: "unbaked" as const,
     };
-    setVid(stamped); mutateAcct(); return stamped;
+    setVid(stamped);
+    await save("draft", publishReconciliations, draftIdRef.current, opts?.sourceImage ?? img, stamped, cardDeck, videoEdit, cardDeckV3);
+    await mutateHist();
+    mutateAcct();
+    return stamped;
   }
-  async function genVideo(source: { filename?: string }) {
+  async function genVideo(source: { filename?: string; image?: ImgResult | null }) {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return null; }
     setLastError(null);
     const s = text?.shorts;
@@ -1655,10 +1674,7 @@ export default function StudioPage() {
     try {
       // 2026-09-14 이전에는 여기 지시문이 고정 문자열이라 주제도 학습 정보도 실리지 않았다.
       // 무엇에 관한 영상이든 같은 지시가 갔고, 결과가 주제와 무관하게 나오는 원인 중 하나였다.
-      const motion = buildMotionPrompt(
-        pickImageSubject({ imagePrompt: text?.image_prompt, topic: idea, industry: learningInfo.industry }),
-        learningInfo,
-      );
+      const motion = buildImageToVideoMotionPrompt(learningInfo);
       const r = await apiPost<{ ok?: boolean; jobId?: string; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { filename: source.filename, prompt: motion, model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
       if (!r?.ok || !r.jobId) {
         const msg = r?.nsfw
@@ -1669,7 +1685,7 @@ export default function StudioPage() {
         setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
       }
       savePendingJob(activeWorkspace.id, "video", { jobId: r.jobId, idea });
-      return await pollAndFinishVideo(r.jobId, activeWorkspace.id);
+      return await pollAndFinishVideo(r.jobId, activeWorkspace.id, { sourceImage: source.image ?? img });
     } catch (e) {
       const msg = extractApiErrorMessage(e, "영상 생성 실패");
       setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
@@ -1947,7 +1963,7 @@ export default function StudioPage() {
         showToast(msg, "error");
         return;
       }
-      await genVideo({ filename: baseFilename });
+      await genVideo({ filename: baseFilename, image: source });
     } catch (e) {
       // genImage/genVideo 는 각자 실패 사유를 이미 화면에 말한다. 여기서 잡는 것은
       // 그 앞뒤(주제 재확인·비용 산정·승인) 단계에서 던진 예외다.
@@ -4213,7 +4229,9 @@ export default function StudioPage() {
           <div className="space-y-stack-tight" data-work-list>
             {(hist?.drafts ?? []).length === 0 ? (
               <p className="break-keep text-body-sm text-muted">아직 작업물이 없습니다. 생성실에서 첫 초안을 만들어 보세요.</p>
-            ) : (hist?.drafts ?? []).slice(0, 20).map((draft) => (
+            ) : (hist?.drafts ?? []).slice(0, 20).map((draft) => {
+              const preview = draftPreviewMedia(draft);
+              return (
               <button
                 key={String((draft as { id?: unknown }).id ?? "")}
                 type="button"
@@ -4228,6 +4246,18 @@ export default function StudioPage() {
                 })(); }}
                 className="flex min-h-control-touch w-full flex-wrap items-center gap-stack rounded-control border border-border bg-surface-2 px-stack py-stack-tight text-left hover:bg-surface"
               >
+                {preview ? (
+                  <DeliveredMedia
+                    type={preview.type}
+                    src={preview.src}
+                    tenantId={activeWorkspace?.id}
+                    testId={`work-thumbnail-${String((draft as { id?: unknown }).id ?? "")}`}
+                    alt="작업물 미리보기"
+                    className="h-control-touch w-control-touch shrink-0 rounded-control object-cover"
+                  />
+                ) : (
+                  <span aria-hidden="true" className="grid h-control-touch w-control-touch shrink-0 place-items-center rounded-control bg-surface text-caption text-subtle">없음</span>
+                )}
                 <b className="min-w-0 flex-1 truncate text-body-sm text-text">{(draft as { idea?: string }).idea || "제목 없는 작업물"}</b>
                 <span className="shrink-0 text-caption text-subtle">{draftStatusLabel((draft as { status?: string }).status)}</span>
                 {/*
@@ -4240,7 +4270,8 @@ export default function StudioPage() {
                   {ROOM_LABEL[draftLandingRoom(draft as unknown as Record<string, unknown>)]}로
                 </span>
               </button>
-            ))}
+              );
+            })}
             {(hist?.drafts ?? []).length > 20 ? (
               <p className="text-caption text-subtle">최근 20개만 보여 드립니다. 전체 {hist?.drafts.length}개.</p>
             ) : null}
@@ -5069,7 +5100,7 @@ export default function StudioPage() {
                     달라 그 아래 편집 칸 시작점이 제각각이었다(실측 1417·1448·1532픽셀).
                     같은 줄의 카드가 같은 높이를 갖게 하면 편집 칸이 한 줄에서 시작한다.
                   */}
-                  <div className="grid gap-stack-section md:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-stack-section" data-publish-preview-stack>
                     {visiblePlatforms.map((platform) => (
                   <div key={platform} data-room-preview={platform} className="flex min-w-0 flex-col rounded-surface border border-border bg-surface p-stack">
                     {(() => {

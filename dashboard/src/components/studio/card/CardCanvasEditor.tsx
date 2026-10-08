@@ -640,7 +640,7 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
 
   if (!activeSlide) return null;
   return (
-    <section className={styles.editor} data-card-canvas-editor onKeyDown={onKeyDown} aria-label="카드 자유 배치 편집기">
+    <section className={styles.editor} data-card-canvas-editor onKeyDown={onKeyDown} aria-label="카드 직접 편집기">
       <ConfirmDialog
         request={restoreConfirmationOpen ? {
           title: "이전 템플릿으로 복원할까요?",
@@ -694,6 +694,7 @@ export function CardCanvasEditor({ deck, templateState = null, sourceDeck = null
         mode="edit"
         selectedId={pendingTemplateId}
         onSelect={setPendingTemplateId}
+        previewImageUrl={Object.values(assetUrls).find(Boolean) ?? null}
         disabledReasons={history.present.template === "plain"
           ? { chat_bubble: "카톡 대화는 생성실의 기존 카톡 덱 만들기에서 선택해 주세요." }
           : CHAT_DECK_TEMPLATE_DISABLED_REASONS}

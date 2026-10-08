@@ -175,7 +175,6 @@ export function EditPreview({
   const unit = kind === "card" ? "장" : kind === "text" ? "문단" : "장면";
   const cardPosition = cardTextPositions[activeLine] ?? "center";
   const activeMediaUrl = mediaUrls?.[activeLine] ?? mediaUrl;
-  const cardVerticalPosition = cardPosition.startsWith("top") ? "top" : cardPosition.startsWith("bottom") ? "bottom" : "center";
   const movingCardText = useRef(false);
   // 자막이 아래 UI가 덮는 자리 안으로 들어가면 실제 업로드 화면에서 가린다.
   const subtitleHidden = spec.safeBottom >= 20 && (subtitleSize === "크게" || line.length > 34);
@@ -235,18 +234,13 @@ export function EditPreview({
             <div
               className={`absolute z-10 w-4/5 rounded-control border border-border p-stack shadow-lg ${stageSize === "card-v70" ? styles.cardV70TextOverlay : styles.cardTextOverlay} ${CARD_POSITION_CLASS[cardPosition]}`}
               data-card-text-position={cardPosition}
+              aria-label="카드 글자 직접 끌어 옮기기"
+              onPointerDown={(event) => {
+                if (cardEditingLocked || event.target instanceof HTMLTextAreaElement) return;
+                movingCardText.current = true;
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+              }}
             >
-              <button
-                type="button"
-                aria-label="카드 글자 끌어 옮기기"
-                className={`mb-stack-tight min-h-control-touch w-full cursor-move rounded-control border border-border px-stack text-caption font-semibold ${styles.cardTextHandle}`}
-                onPointerDown={(event) => {
-                  movingCardText.current = true;
-                  event.currentTarget.setPointerCapture?.(event.pointerId);
-                }}
-              >
-                글자 위치 옮기기
-              </button>
               <textarea
                 aria-label={`카드 ${activeLine + 1} 글자`}
                 data-card-face-copy
@@ -297,30 +291,6 @@ export function EditPreview({
           ) : null}
         </div>
       </div>
-
-      {kind === "card" ? (
-        <div className="mt-stack flex flex-wrap items-center gap-stack-tight" role="group" aria-label="카드 글자 위치">
-          <span className="text-caption font-semibold text-muted">글자 위치</span>
-          {(["top", "center", "bottom"] as const).map((position) => (
-            <Button
-              key={position}
-              size="sm"
-              variant="secondary"
-              className={cardVerticalPosition === position ? "border-accent bg-accent-soft text-accent" : ""}
-              aria-pressed={cardVerticalPosition === position}
-              disabled={cardEditingLocked}
-              onClick={() => {
-                if (!onCardTextPositionsChange) return;
-                const next = lines.map((_, index) => cardTextPositions[index] ?? "center");
-                next[activeLine] = position === "top" ? "top-center" : position === "bottom" ? "bottom-center" : "center";
-                onCardTextPositionsChange(next);
-              }}
-            >
-              {position === "top" ? "상단" : position === "bottom" ? "하단" : "중앙"}
-            </Button>
-          ))}
-        </div>
-      ) : null}
 
       <div className="mt-stack flex flex-wrap items-center gap-stack-tight">
         <Button size="sm" onClick={() => onActiveLine(Math.max(0, activeLine - 1))} disabled={activeLine <= 0}>앞 {unit}</Button>
