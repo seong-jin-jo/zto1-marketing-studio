@@ -418,12 +418,13 @@ await editRoom.getByRole("button", { name: "카드뉴스" }).click();
 await editRoom.locator("[data-card-canvas-editor]").waitFor();
 const openExportButton = editRoom.getByRole("button", { name: "내보내기", exact: true }).last();
 await openExportButton.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
-await page.waitForTimeout(1_000);
-if (!(await openExportButton.isEnabled())) {
+try {
+  await openExportButton.click({ trial: true, timeout: 20_000 });
+} catch (error) {
   const exportBlock = await openExportButton.locator("xpath=../..").innerText().catch(() => "내보내기 영역을 읽지 못했습니다");
   const alerts = await editRoom.getByRole("alert").allTextContents();
   const workbenchDisabled = await editRoom.locator('[data-card-deck-v3-workbench]').getAttribute('aria-disabled');
-  throw new Error(`카드 편집 뒤 내보내기가 비활성입니다: ${JSON.stringify({ exportBlock, alerts, workbenchDisabled, room: (await editRoom.innerText()).slice(-4_000) })}`);
+  throw new Error(`카드 편집 뒤 내보내기가 20초 안에 활성화되지 않았습니다: ${JSON.stringify({ exportBlock, alerts, workbenchDisabled, room: (await editRoom.innerText()).slice(-4_000), cause: error instanceof Error ? error.message : String(error) })}`);
 }
 await openExportButton.click();
 const exportPanel = page.locator("[data-export-panel]");

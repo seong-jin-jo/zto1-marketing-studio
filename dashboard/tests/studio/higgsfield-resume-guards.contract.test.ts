@@ -69,3 +69,53 @@ describe("복구 폴링 가드 4 — 사용자 취소가 복구 폴링도 함께
     expect(body).toMatch(/resumePollAbort\.current\?\.abort\(\)/);
   });
 });
+
+describe("복구 폴링 가드 5 — 생성 성공 뒤 초안 저장 실패도 다시 회수한다", () => {
+  for (const contract of [
+    {
+      kind: "image",
+      start: "async function pollAndFinishImage(",
+      end: "async function genImage(",
+      saveNeedle: 'await save("draft", publishReconciliations, draftIdRef.current, stamped, persistedVideo',
+      clearNeedle: 'clearPendingJob(tenantId, "image")',
+      message: "이미지는 생성됐지만 작업물 저장에 실패했습니다",
+    },
+    {
+      kind: "video",
+      start: "async function pollAndFinishVideo(",
+      end: "async function genVideo(",
+      saveNeedle: 'await save("draft", publishReconciliations, draftIdRef.current, opts?.sourceImage ?? imgRef.current, stamped',
+      clearNeedle: 'clearPendingJob(tenantId, "video")',
+      message: "영상은 생성됐지만 작업물 저장에 실패했습니다",
+    },
+  ] as const) {
+    it(`${contract.kind} 성공 결과는 초안 저장과 목록 갱신 뒤에만 pending을 지운다`, () => {
+      const start = pageSrc.indexOf(contract.start);
+      const end = pageSrc.indexOf(contract.end, start);
+      const body = pageSrc.slice(start, end);
+      const stampedStart = body.indexOf("const stamped =");
+      const successPath = body.slice(stampedStart);
+      expect(successPath.indexOf(contract.saveNeedle)).toBeGreaterThanOrEqual(0);
+      expect(successPath.indexOf("await mutateHist()"), "목록 갱신을 기다려야 한다").toBeGreaterThan(successPath.indexOf(contract.saveNeedle));
+      expect(successPath.lastIndexOf(contract.clearNeedle), "pending 삭제는 저장·목록 갱신 뒤여야 한다")
+        .toBeGreaterThan(successPath.indexOf("await mutateHist()"));
+      expect(successPath).toContain(contract.message);
+    });
+  }
+});
+
+describe("복구 폴링 가드 6 — 영상 선행 이미지의 반대 도메인 비우기 의도를 보존한다", () => {
+  it("명시적으로 persistedVideo:null인 이미지 작업은 pending에 clear 의도를 저장한다", () => {
+    const start = pageSrc.indexOf("async function genImage(");
+    const end = pageSrc.indexOf("async function genVideo(", start);
+    const body = pageSrc.slice(start, end);
+    expect(body).toMatch(/hasOwnProperty\.call\(opts,\s*"persistedVideo"\)/);
+    expect(body).toMatch(/opts\.persistedVideo === null/);
+    expect(body).toMatch(/savePendingJob\([\s\S]*?videoDisposition:\s*"clear"/);
+  });
+
+  it("새로고침 복구도 clear 의도를 persistedVideo:null로 pollAndFinishImage에 전달한다", () => {
+    const body = sliceResumeEffect();
+    expect(body).toMatch(/pendingImg\.videoDisposition === "clear"[\s\S]*?persistedVideo:\s*null/);
+  });
+});

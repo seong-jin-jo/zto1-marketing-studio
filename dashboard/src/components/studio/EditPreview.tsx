@@ -5,7 +5,9 @@ import { Button } from "@/components/shared/Button";
 import type { EditContentKind } from "./StudioRooms";
 import styles from "./EditPreview.module.css";
 import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
+import { isCardTextPosition, type CardTextPosition } from "@/lib/studio/card-text-position";
 import { cardPositionFromPoint } from "@/lib/studio/text-card-image";
+export type { CardTextPosition } from "@/lib/studio/card-text-position";
 
 // 편집실 미리보기.
 //
@@ -38,11 +40,6 @@ export const PREVIEW_SPECS: readonly PreviewSpec[] = [
   { key: "card-horizontal", label: "가로 카드 1.91:1", ratio: "1.91 / 1", size: "1200 × 628", safeTop: 0, safeBottom: 0, kinds: ["card"] },
 ] as const;
 
-export type CardTextPosition =
-  | "top-left" | "top-center" | "top-right"
-  | "center-left" | "center" | "center-right"
-  | "bottom-left" | "bottom-center" | "bottom-right";
-
 const CARD_POSITION_CLASS: Record<CardTextPosition, string> = {
   "top-left": styles.cardTopLeft,
   "top-center": styles.cardTopCenter,
@@ -63,6 +60,7 @@ const CARD_POSITION_GRID: readonly (readonly CardTextPosition[])[] = [
 
 function nudgeCardTextPosition(position: CardTextPosition, key: string): CardTextPosition {
   const row = CARD_POSITION_GRID.findIndex((items) => items.includes(position));
+  if (row < 0) return "center";
   const column = CARD_POSITION_GRID[row]?.indexOf(position) ?? 1;
   if (key === "ArrowUp") return CARD_POSITION_GRID[Math.max(0, row - 1)][column];
   if (key === "ArrowDown") return CARD_POSITION_GRID[Math.min(CARD_POSITION_GRID.length - 1, row + 1)][column];
@@ -189,9 +187,9 @@ export function EditPreview({
   const spec = specs.find((one) => one.key === specKey) ?? specs[0] ?? PREVIEW_SPECS[0];
   const line = lines[activeLine] ?? lines[0] ?? "";
   const unit = kind === "card" ? "장" : kind === "text" ? "문단" : "장면";
-  const cardPosition = cardTextPositions[activeLine] ?? "center";
+  const cardPosition = isCardTextPosition(cardTextPositions[activeLine]) ? cardTextPositions[activeLine] : "center";
   const activeMediaUrl = mediaUrls?.[activeLine] ?? mediaUrl;
-  const movingCardText = useRef(false);
+  const movingCardText = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
   // 자막이 아래 UI가 덮는 자리 안으로 들어가면 실제 업로드 화면에서 가린다.
   const subtitleHidden = spec.safeBottom >= 20 && (subtitleSize === "크게" || line.length > 34);
 
@@ -215,8 +213,10 @@ export function EditPreview({
           data-edit-preview-frame={spec.ratio}
           data-card-canvas={kind === "card" ? "true" : undefined}
           onPointerUp={(event) => {
-            if (kind !== "card" || !movingCardText.current || !onCardTextPositionsChange) return;
-            movingCardText.current = false;
+            const movement = movingCardText.current;
+            movingCardText.current = null;
+            if (kind !== "card" || !movement || movement.pointerId !== event.pointerId || !onCardTextPositionsChange) return;
+            if (Math.hypot(event.clientX - movement.startX, event.clientY - movement.startY) < 4) return;
             const next = lines.map((_, index) => cardTextPositions[index] ?? "center");
             const bounds = event.currentTarget.getBoundingClientRect();
             const relX = bounds.width > 0 ? (event.clientX - bounds.left) / bounds.width : 0.5;
@@ -265,8 +265,12 @@ export function EditPreview({
               }}
               onPointerDown={(event) => {
                 if (cardEditingLocked || event.target instanceof HTMLTextAreaElement) return;
-                movingCardText.current = true;
+                movingCardText.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY };
                 event.currentTarget.setPointerCapture?.(event.pointerId);
+              }}
+              onPointerCancel={(event) => {
+                if (movingCardText.current?.pointerId === event.pointerId) movingCardText.current = null;
+                event.currentTarget.releasePointerCapture?.(event.pointerId);
               }}
             >
               <textarea

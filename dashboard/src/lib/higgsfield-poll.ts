@@ -129,6 +129,11 @@ export interface PendingHiggsfieldJob {
   jobId: string;
   aspectRatio?: "1:1" | "9:16";
   idea?: string;
+  /**
+   * 이미지 생성이 영상 만들기의 선행 단계일 때는 기존 영상을 명시적으로 비운다.
+   * 새로고침 복구도 그 의도를 보존해야 오래된 영상이 초안에 되살아나지 않는다.
+   */
+  videoDisposition?: "preserve" | "clear";
 }
 
 export function savePendingJob(workspaceId: string, kind: "image" | "video", job: PendingHiggsfieldJob): void {

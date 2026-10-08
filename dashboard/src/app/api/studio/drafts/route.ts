@@ -8,6 +8,7 @@ import { cardDeckV3ForDraft, usesChatBubbleV2 } from "@/lib/studio/card-deck-v3-
 import { isSynchronizedChatCardDeckV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import { validateVideoEdit, VideoEditValidationError, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import { CARD_DECK_TEMPLATE_IDS, type CardTemplateState } from "@/lib/studio/card-templates";
+import { normalizeCardTextPositions, validateCardTextPositions } from "@/lib/studio/card-text-position";
 
 /** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
 const CARD_DECK_MAX_BYTES = 64 * 1024;
@@ -116,7 +117,7 @@ function flattenDraft(r: DraftRow, options: { includeCardDeckV3: boolean }) {
     editKind: r.payload?.editKind ?? null,
     editLines: r.payload?.editLines ?? null,
     bodyRevision: Number.isSafeInteger(r.payload?.bodyRevision) ? r.payload.bodyRevision : 0,
-    cardTextPositions: r.payload?.cardTextPositions ?? null,
+    cardTextPositions: r.payload?.cardTextPositions == null ? null : normalizeCardTextPositions(r.payload.cardTextPositions),
     cardDeck,
     // 목록은 큰 덱 본문을 계속 제외하되, 서버에 v3가 있다는 사실까지 숨기면 상세 응답
     // 전의 plain 화면이 새 덱으로 덮어쓸 수 있다. boolean 한 칸만 실어 보호 구간을 연다.
@@ -183,6 +184,13 @@ export async function POST(request: Request) {
         issues: formatValidation.issues,
       }, { status: 422, headers: { "Cache-Control": "no-store" } });
     }
+  }
+  if (body.cardTextPositions !== undefined && body.cardTextPositions !== null && !validateCardTextPositions(body.cardTextPositions)) {
+    return Response.json({
+      ok: false,
+      code: "INVALID_CARD_TEXT_POSITIONS",
+      error: "카드 글자 위치값을 확인해 주세요",
+    }, { status: 422, headers: { "Cache-Control": "no-store" } });
   }
   if (
     body.selectedAccounts !== undefined

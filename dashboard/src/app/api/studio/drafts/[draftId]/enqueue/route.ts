@@ -56,7 +56,7 @@ export async function POST(
       const pinned = await exportRepository().withLatestForPublish(tenantId, draftId, exportKind, async (receipt, lockedPayload) => {
         if ((typeof body.expected_export_id === "string" && body.expected_export_id !== receipt.exportId)
           || (typeof body.expected_source_hash === "string" && body.expected_source_hash !== receipt.sourceHash)) {
-          throw new ExportQueueError(409, "EXPORT_RECEIPT_CHANGED", "화면에서 확인한 내보내기 판이 최신 고정 대상과 다릅니다");
+          throw new ExportQueueError(409, "EXPORT_RECEIPT_CHANGED", "화면에서 확인한 내보낸 파일이 최신 발행 대상과 다릅니다");
         }
         const lockedHandoff = editorHandoffFromDraftPayload(lockedPayload);
         const lockedKind = exportKindForDraftState(lockedHandoff?.kind, lockedPayload);

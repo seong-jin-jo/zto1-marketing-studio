@@ -108,7 +108,10 @@ describe("카드뉴스 이음매 계약", () => {
     expect(publishHandoff).toContain("pinnedPost?.imageUrls");
     expect(publishHandoff).toContain("setImg((current)");
     expect(publishHandoff).toContain("내보낸 파일로 발행실에서 미리 봅니다");
+    const enqueueRoute = fs.readFileSync(path.resolve(__dirname, "../../src/app/api/studio/drafts/[draftId]/enqueue/route.ts"), "utf8");
     expect(publishHandoff).not.toContain("내보내기 판");
+    expect(enqueueRoute).not.toContain("내보내기 판");
+    expect(enqueueRoute).toContain("화면에서 확인한 내보낸 파일이 최신 발행 대상과 다릅니다");
   });
 
   it("CARD-LINK-06 발행은 채널 규격대로 여러 장을 싣는다", () => {

@@ -75,7 +75,7 @@ import { Field } from "@/components/shared/Field";
 import { Stack } from "@/components/shared/Stack";
 import { GettingStartedStrip } from "@/components/shared/GettingStartedStrip";
 import { SCHEDULABLE_PLATFORMS } from "@/lib/constants";
-import type { CardTextPosition } from "@/components/studio/EditPreview";
+import { normalizeCardTextPositions, type CardTextPosition } from "@/lib/studio/card-text-position";
 import type { EditorHandoff } from "@/lib/studio/editor-handoff";
 import { resolveStudioRoom, shouldLoadPublishResources } from "@/lib/studio/room-routing";
 import {
@@ -1212,7 +1212,7 @@ export default function StudioPage() {
         });
         const restoredCardDeck = (w.cardDeck as CardDeck) || null;
         const restoredCardDeckV3 = cardDeckV3ForDraft(restoredCardDeck, w.cardDeckV3 as CardDeckV3 | null);
-        setCardTextPositions(w.cardTextPositions || []); setCardDeck(restoredCardDeck); setCardDeckV3(restoredCardDeckV3); setCardTemplateState(restoredCardDeckV3 ? (w.cardTemplateState as CardTemplateState | null) ?? defaultCardTemplateState(restoredCardDeckV3) : null); setCardDeckV3SourceSnapshot(restoredCardDeckV3 ? (w.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null : null); setCardDeckV3DetailStatus(restoredCardDeckV3 ? "ready" : "idle"); setReviewQueueId(w.reviewQueueId || null);
+        setCardTextPositions(normalizeCardTextPositions(w.cardTextPositions)); setCardDeck(restoredCardDeck); setCardDeckV3(restoredCardDeckV3); setCardTemplateState(restoredCardDeckV3 ? (w.cardTemplateState as CardTemplateState | null) ?? defaultCardTemplateState(restoredCardDeckV3) : null); setCardDeckV3SourceSnapshot(restoredCardDeckV3 ? (w.cardDeckV3SourceSnapshot as CardDeckV3SourceSnapshot) || null : null); setCardDeckV3DetailStatus(restoredCardDeckV3 ? "ready" : "idle"); setReviewQueueId(w.reviewQueueId || null);
         // B1(교차 리뷰 BLOCK, 재리뷰로 절반만 닫힘 지적): videoEdit이 이 복원 블록에
         // 없으면 편집기가 빈 videoEdit을 받았다. 이제 무조건 세팅한다(없으면 null —
         // 이전 워크스페이스 값이 남아 있으면 안 된다, 위 리셋과 짝). 다만 localStorage
@@ -1573,10 +1573,10 @@ export default function StudioPage() {
       const msg = result.error || "이미지 생성 작업을 찾지 못했습니다. 다시 만들어 주세요.";
       setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
     }
-    // 정상 종결(성공/실패 확정) — 더 회수할 게 없으니 지운다.
-    clearPendingJob(tenantId, "image");
     const r = result.data;
     if (!result.ok || !r?.ok) {
+      // 제공자가 실패를 확정했으므로 다시 회수할 결과가 없다.
+      clearPendingJob(tenantId, "image");
       const msg = r?.credits
         ? "이미지 생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다."
         : r?.nsfw
@@ -1589,6 +1589,7 @@ export default function StudioPage() {
     // 거짓이 되어 화면엔 아무것도 안 뜨고, 그렇다고 오류 토스트도 안 뜬다. 성공인데
     // 아무 표시가 없는 것은 실패보다 나쁘다 — 사용자는 다시 눌러야 할지도 모른다.
     if (!r.file && !r.url) {
+      clearPendingJob(tenantId, "image");
       const msg = "이미지를 만들었지만 화면에 걸 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.";
       setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
     }
@@ -1600,8 +1601,16 @@ export default function StudioPage() {
     const persistedVideo = opts && Object.prototype.hasOwnProperty.call(opts, "persistedVideo")
       ? opts.persistedVideo ?? null
       : vidRef.current;
-    await save("draft", publishReconciliations, draftIdRef.current, stamped, persistedVideo, null, null, null);
-    await mutateHist();
+    try {
+      await save("draft", publishReconciliations, draftIdRef.current, stamped, persistedVideo, null, null, null);
+      await mutateHist();
+    } catch {
+      // 생성 자체는 끝났으므로 pending을 남긴다. 다음 생성실 진입에서 같은 완료 결과를
+      // 다시 받아 초안 저장을 재시도할 수 있어, 유료 생성 결과가 새로고침 뒤 사라지지 않는다.
+      const msg = "이미지는 생성됐지만 작업물 저장에 실패했습니다. 생성실을 다시 열면 저장을 이어서 시도합니다.";
+      setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
+    }
+    clearPendingJob(tenantId, "image");
     mutateAcct();
     return stamped;
   }
@@ -1623,7 +1632,15 @@ export default function StudioPage() {
             : (r?.error || "이미지를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
         setLastError(`이미지: ${msg}`); showToast(msg, "error"); return null;
       }
-      savePendingJob(activeWorkspace.id, "image", { jobId: r.jobId, aspectRatio, idea });
+      const clearsPersistedVideo = opts
+        && Object.prototype.hasOwnProperty.call(opts, "persistedVideo")
+        && opts.persistedVideo === null;
+      savePendingJob(activeWorkspace.id, "image", {
+        jobId: r.jobId,
+        aspectRatio,
+        idea,
+        ...(clearsPersistedVideo ? { videoDisposition: "clear" as const } : {}),
+      });
       return await pollAndFinishImage(r.jobId, activeWorkspace.id, aspectRatio, {
         operationId: opts?.operationId,
         ...(opts && Object.prototype.hasOwnProperty.call(opts, "persistedVideo") ? { persistedVideo: opts.persistedVideo } : {}),
@@ -1681,9 +1698,9 @@ export default function StudioPage() {
       const msg = result.error || "영상 생성 작업을 찾지 못했습니다. 다시 만들어 주세요.";
       setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
     }
-    clearPendingJob(tenantId, "video");
     const r = result.data;
     if (!result.ok || !r?.ok) {
+      clearPendingJob(tenantId, "video");
       const msg = r?.nsfw
         ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감이나 결을 바꿔 다시 시도해 주세요."
         : r?.credits
@@ -1693,6 +1710,7 @@ export default function StudioPage() {
     }
     // ADR-007: 이미지와 같은 이유로 배달 주소 없는 "성공"을 성공으로 두지 않는다.
     if (!r.file && !r.url) {
+      clearPendingJob(tenantId, "video");
       const msg = "영상을 만들었지만 화면에 걸 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.";
       setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
     }
@@ -1703,8 +1721,14 @@ export default function StudioPage() {
       subtitleLineageState: "unbaked" as const,
     };
     setVid(stamped);
-    await save("draft", publishReconciliations, draftIdRef.current, opts?.sourceImage ?? imgRef.current, stamped, null, null, null);
-    await mutateHist();
+    try {
+      await save("draft", publishReconciliations, draftIdRef.current, opts?.sourceImage ?? imgRef.current, stamped, null, null, null);
+      await mutateHist();
+    } catch {
+      const msg = "영상은 생성됐지만 작업물 저장에 실패했습니다. 생성실을 다시 열면 저장을 이어서 시도합니다.";
+      setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
+    }
+    clearPendingJob(tenantId, "video");
     mutateAcct();
     return stamped;
   }
@@ -1768,6 +1792,7 @@ export default function StudioPage() {
         signal: controller.signal,
         topicLabel: pendingImg.idea,
         operationId,
+        ...(pendingImg.videoDisposition === "clear" ? { persistedVideo: null } : {}),
       }));
     }
     if (pendingVid) {
@@ -3373,7 +3398,7 @@ export default function StudioPage() {
       savedTopic: null,
       restoredIdea: String(d.idea || ""),
     });
-    setCardTextPositions((d.cardTextPositions as CardTextPosition[]) || []);
+    setCardTextPositions(normalizeCardTextPositions(d.cardTextPositions));
     const loadedCardDeck = (d.cardDeck as CardDeck) || null;
     setCardDeck(loadedCardDeck);
     const includesCardDeckV3 = Object.prototype.hasOwnProperty.call(d, "cardDeckV3");
@@ -3840,7 +3865,7 @@ export default function StudioPage() {
         savedTopic: null,
         restoredIdea: String((linkedDraft?.idea as string) || work.idea || ""),
       });
-      setCardTextPositions((linkedDraft?.cardTextPositions as CardTextPosition[]) || []);
+      setCardTextPositions(normalizeCardTextPositions(linkedDraft?.cardTextPositions));
       const linkedCardDeck = (linkedDraft?.cardDeck as CardDeck) || null;
       setCardDeck(linkedCardDeck);
       setCardDeckV3(cardDeckV3ForDraft(linkedCardDeck, linkedDraft?.cardDeckV3 as CardDeckV3 | null));
