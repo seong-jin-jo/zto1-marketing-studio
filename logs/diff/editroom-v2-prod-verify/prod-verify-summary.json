@@ -1,0 +1,103 @@
+{
+  "verified_at": "2026-10-08T19:22:59+09:00",
+  "environment": {
+    "url": "https://openclaw.sj-onpremise-cloudflare-tunnel.cloud",
+    "health_http": 200,
+    "database": "up",
+    "build_commit": "0a00005e6d3aae7ec653ef158ee012283bf28432",
+    "deployment_run": 37758259663,
+    "browser_tabs_before": 2,
+    "browser_tabs_after_close": 2
+  },
+  "draft": "요가 스튜디오 첫 수업 안내",
+  "template_apply_undo": {
+    "before": {
+      "slide_count": 3,
+      "first_slide_text": "고객이 겪는 문제",
+      "selected_template": "text_only"
+    },
+    "after_apply": {
+      "slide_count": 3,
+      "first_slide_text": "고객이 겪는 문제",
+      "selected_template": "headline_cover"
+    },
+    "after_undo": {
+      "slide_count": 3,
+      "first_slide_text": "고객이 겪는 문제",
+      "selected_template": "text_only"
+    },
+    "matches_before": {
+      "slide_count": true,
+      "first_slide_text": true,
+      "selected_template": true
+    }
+  },
+  "export": {
+    "start_button_enabled_after_seconds": 1.0,
+    "create_http": 202,
+    "status_poll_http": 200,
+    "elapsed_seconds": 181.6,
+    "final_status": "0 / 3장, 내보내기 대기열에 접수했습니다., 1장 대기 중, 2장 대기 중, 3장 대기 중",
+    "result": "timeout_queued",
+    "console_errors": 0,
+    "api_4xx_5xx": 0
+  },
+  "publish_and_inbox": {
+    "official_export_handoff_available": false,
+    "direct_top_navigation_url": "https://openclaw.sj-onpremise-cloudflare-tunnel.cloud/studio?room=publish",
+    "direct_top_navigation_active_step_count": 1,
+    "approval_inbox_pending": 0,
+    "draft_title_occurrences": 0,
+    "duplicate_posts": 0,
+    "external_social_publish_attempted": false
+  },
+  "viewport_checks": {
+    "widths": [390, 1440],
+    "screens": [
+      "edit_before_template",
+      "template_applied",
+      "template_undone",
+      "export_queued_timeout",
+      "publish_room_direct_navigation",
+      "approval_inbox"
+    ],
+    "horizontal_overflow_px": {
+      "390": 0,
+      "1440": 0
+    },
+    "console_errors": 0
+  },
+  "capture_quality": {
+    "passed": 12,
+    "below_threshold": 0,
+    "psnr_warnings": 0,
+    "inspection_failures": 0
+  },
+  "harness_checks": {
+    "pipeline_artifact_lint_exit": 0,
+    "pipeline_artifact_warnings": 28,
+    "design_lint_exit": 0,
+    "design_lint_warning_categories": 2,
+    "note": "Existing repository warnings were recorded but not changed by this production behavior-only QA."
+  },
+  "root_cause_boundary": {
+    "observed": "API accepted the export and status polling stayed healthy, but the job never advanced from queued to processing.",
+    "deployment_evidence": "Run 37758259663 observed the export worker only once at health: starting. The deployment gate waited for dashboard health only.",
+    "verified_scope": "The failure is narrowed to the export worker consumption boundary and its deployment verification gap.",
+    "unverified_scope": "The exact runtime cause inside the production worker requires container health and log inspection."
+  },
+  "screenshots": [
+    "01-edit-before-template-1440.png",
+    "01-edit-before-template-390.png",
+    "02-template-applied-1440.png",
+    "02-template-applied-390.png",
+    "03-template-undone-1440.png",
+    "03-template-undone-390.png",
+    "04-export-failed-real-1440.png",
+    "04-export-failed-real-390.png",
+    "05-publish-room-nav-only-1440.png",
+    "05-publish-room-nav-only-390.png",
+    "06-approval-inbox-1440.png",
+    "06-approval-inbox-390.png"
+  ]
+}

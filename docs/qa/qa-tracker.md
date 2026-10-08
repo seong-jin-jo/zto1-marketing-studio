@@ -1,3 +1,54 @@
+## 2026-10-08 운영 편집실 v2 S4·S7 클릭 QA ❌ NG
+
+<!-- READ_EVIDENCE: sed -n '1,260p' /Users/sj/.codex/skills/qa/SKILL.md ; sed -n '1,260p' /Users/sj/.claude/standards/standard-doc-review.md -->
+
+> 결론: S7 템플릿 적용 후 되돌리기는 원본 덱과 일치했다. S4 내보내기는 181.6초 동안 `0 / 3장` 대기 상태에서 진행되지 않아 운영 출고 기준을 통과하지 못했다.
+
+### 단계별 수치
+
+| 요청번호 | 무엇을 확인 | 테스트번호 | 판정 | 실행 증거 |
+|---|---|---|---|---|
+| S7 | 템플릿 적용 후 되돌리기가 원본 덱을 복원 | PROD-S7-TEMPLATE-UNDO | ✅ PASS | 슬라이드 수 `3 → 3 → 3`, 첫 장 `고객이 겪는 문제 → 동일 → 동일`, 템플릿 `text_only → headline_cover → text_only`. 세 비교값 모두 일치. |
+| S4 | 내보내기 작업이 운영에서 완료 상태까지 진행 | PROD-S4-EXPORT | ❌ NG | 시작 버튼은 1.0초 뒤 활성화. 생성 요청 HTTP 202, 상태 조회 HTTP 200. 181.6초 뒤에도 `0 / 3장`, `내보내기 대기열에 접수했습니다.`, 세 장 모두 `대기 중`. 콘솔 오류 0, API 4xx·5xx 0. |
+| S4 | 완료된 내보내기에서 발행실로 인계 | PROD-S4-HANDOFF | ❌ NG | 내보내기가 완료되지 않아 export 패널의 `발행실로` 버튼이 나타나지 않았다. 상단 `03 발행실` 직접 이동은 `/studio?room=publish`, 활성 단계 1개로 정상이나 S4 인계 증거로 세지 않는다. |
+| S4 | 승인 인박스 중복 글이 없음 | PROD-S4-INBOX-DEDUPE | ✅ PASS, 조건부 | 승인 인박스 `0 / 0 검토 중`, 선택 초안 제목 0건, 중복 0건. 다만 실패한 내보내기의 인계 항목 자체가 없으므로 신규 항목 생성까지 보장하지 않는다. |
+| 공통 | 화면 오류와 가로 넘침 | PROD-UI-390-1440 | ✅ PASS | 편집 전·적용·되돌리기·내보내기 고착·발행실·인박스 6화면 모두 390px와 1440px에서 가로 넘침 `0px`, 콘솔 오류 `0건`. |
+
+### 재현 절차와 네트워크
+
+1. 회장 9444 Chrome의 로그인된 멤버 세션에서 운영 `/studio`를 새 탭으로 연다.
+2. `작성 중` 목록의 `요가 스튜디오 첫 수업 안내`를 편집실에서 연다.
+3. `내보내기` 패널을 열고 실제 시작 버튼이 활성화될 때까지 기다린 뒤 클릭한다.
+4. `POST /api/studio/drafts/{draft}/exports`는 HTTP 202, 후속 상태 조회는 HTTP 200이지만 181.6초 동안 `queued`, `0 / 3장`에서 바뀌지 않는다.
+
+### 원인 경계
+
+- 관찰됨: 운영 Health API는 HTTP 200, DB `up`, 빌드 커밋 `0a00005e6d3aae7ec653ef158ee012283bf28432`다. 내보내기 API도 작업을 접수하고 상태를 계속 반환한다.
+- 근거 확인: export worker는 대기열을 claim한 뒤 `processing`과 완료 상태로 옮기는 별도 프로세스다. 배포 run `37758259663`은 worker를 `health: starting` 상태에서 한 번만 출력했고, 이후 성공 게이트는 dashboard 컨테이너의 `healthy`만 기다렸다.
+- 판정: 장애 경계는 export worker의 대기열 소비와 그 worker를 배포 성공 조건으로 검증하지 않는 구간까지 좁혀졌다.
+- 미검증: 운영 worker가 현재 종료, unhealthy, standby, 환경 설정 실패 중 어느 상태인지는 컨테이너 health와 로그를 직접 읽지 않아 단정하지 않는다.
+
+### 보장 범위
+
+- 보장한다: S7 템플릿 적용·되돌리기 데이터 보존, 상단 발행실 직접 이동, 현재 인박스 중복 0건, 관찰한 6화면의 콘솔 오류와 390·1440 가로 넘침 0.
+- 보장하지 않는다: S4 내보내기 완료물, export 패널에서 발행실로 가는 공식 인계, 신규 인박스 항목 생성, 외부 SNS 실제 발행, 전체 리그레션과 승인 시안 전수 대조. 외부 SNS 발행은 수행하지 않았다.
+
+증거 디렉터리: `logs/diff/editroom-v2-prod-verify/`. 고해상도 검사 결과는 통과 12, 미달 0, PSNR 경고 0, 검사 실패 0이다. 민감한 서명 URL이 포함된 원시 브라우저 로그는 커밋하지 않고 폐기했으며, `prod-verify-summary.json`에 비밀값 없는 수치만 남겼다.
+
+하네스 검사: `pipeline-artifact-lint.sh`는 종료 코드 0이지만 기존 design·qa·ship 산출물 핀 위생 경고 28건을 냈다. `design-lint.sh dashboard/src`도 종료 코드 0이지만 인라인 style 1파일과 토큰 밖 hex 8파일, 총 2종 경고를 냈다. 이번 운영 동작 실측은 소스 변경이 없어 수정하지 않았으며, 이 때문에 본 기록은 전체 릴리즈 QA 통과를 주장하지 않는다.
+
+벤치마크: Playwright 공식 `connectOverCDP` 계약과 Chrome DevTools Protocol Runtime 명세를 연결·콘솔 관찰 기준으로 사용했다. 제품 판정 기준은 프로젝트 ADR과 `standard-dev.md`, `standard-qa-methodology.md`를 우선했다.
+
+RUBRIC_SCORE: 완결=5/5 정밀=5/5 벤치마크=4/5 추적성=5/5 표현=5/5 total=24/25
+WEAKEST_LINE: 운영 worker 컨테이너와 로그를 직접 보지 않아 queued 고착의 세부 런타임 원인은 미검증이다.
+SKILLS_USED: qa, 9444 운영 클릭 QA와 증거 수집에 사용.
+SKILLS_SKIPPED: browse, 사용자 지정 Playwright CDP 경로로 동일 브라우저 관찰을 수행. design-review, 이번 과제는 승인 시안 대조가 아닌 S4·S7 운영 동작 실측 범위.
+SOURCES/MODEL: gpt-6.1-sol Codex | `wiki/거버넌스/결정.md` ADR-007 | `~/.claude/standards/standard-dev.md` | `~/.claude/standards/standard-qa-methodology.md` | `~/.claude/standards/standard-doc-review.md` | `~/.claude/standards/benchmarks.md` | `git show c418cc22:wiki/ops/인프라.md` | Playwright BrowserType API | Chrome DevTools Protocol Runtime
+KNOWLEDGE_QUERY: BRAIN CTO 허브에서 OpenClaw Auto 제품 상태를 조회하고, Playwright CDP 연결과 Chrome Runtime 콘솔 관찰의 공식 명세를 검색했다.
+HITS_USED: ADR-007은 실제 API·DB·상태 기록 의무, 표준 문서는 관찰 증거와 QA 판정, Playwright·CDP 공식 문서는 브라우저 연결과 콘솔 수집 기준에 사용했다.
+HITS_REJECTED: BRAIN `status-openclaw-auto.md`는 2026-08-28 기준이라 2026-10-08 운영 배포 상태 판정에는 사용하지 않았다.
+CONFLICTS: 현재 작업 트리에는 필수 입력 `wiki/ops/인프라.md`가 없었으나 최신 git 이력 `c418cc22`에는 존재했다. BRAIN 제품 상태도 운영 배포보다 오래되어 운영 실측과 배포 run을 우선했다.
+
 ## 2026-09-30 PR #95 독립 리뷰 r9 범위 안 경계 3건 ✅ 로컬 PASS
 
 | 요청번호 | 요청 요지 | 테스트번호 | 판정 | 증거 |
