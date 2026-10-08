@@ -1,5 +1,6 @@
 import http from "node:http";
 import postgres from "postgres";
+import { validateMediaStoreConfiguration } from "@/lib/media-store";
 import { ExportItemWorker, realExportWorkerDependencies, workerId } from "@/lib/studio/export-worker";
 import { PostgresExportRepository } from "@/lib/studio/export-repository";
 import { requireStudioExportWorkerEnv } from "./studio-export-worker-env";
@@ -7,6 +8,7 @@ import { requireStudioExportWorkerEnv } from "./studio-export-worker-env";
 const concurrency = Number(process.env.EXPORT_RENDER_CONCURRENCY ?? "1");
 if (concurrency !== 1) throw new Error("EXPORT_RENDER_CONCURRENCY must be 1 until capacity approval");
 const requiredEnvironment = requireStudioExportWorkerEnv();
+validateMediaStoreConfiguration();
 
 const healthPort = Number(process.env.EXPORT_WORKER_HEALTH_PORT ?? "34620");
 const databaseUrl = requiredEnvironment.DATABASE_URL;

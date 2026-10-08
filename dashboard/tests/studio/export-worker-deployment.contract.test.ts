@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { MediaStoreError, R2_ENV_KEYS, validateMediaStoreConfiguration } from "../../src/lib/media-store";
 import {
   REQUIRED_STUDIO_EXPORT_WORKER_ENV,
   requireStudioExportWorkerEnv,
@@ -40,19 +41,21 @@ describe("S3 별도 export worker 실행·배포 계약", () => {
   });
 
   it("S6-MAJOR1-01 배포: dashboard와 worker가 같은 영상 데이터 볼륨과 경로를 사용한다", () => {
+    const dashboardService = compose.slice(compose.indexOf("  openclaw-dashboard-osmu:"), compose.indexOf("  openclaw-studio-export-worker:"));
     const workerService = compose.slice(compose.indexOf("  openclaw-studio-export-worker:"), compose.indexOf("\nvolumes:"));
-    expect(workerService).toContain("- osmu-data:/app/data");
-    expect(workerService).toContain("DATA_DIR: /app/data");
+    for (const service of [dashboardService, workerService]) {
+      expect(service).toContain("- osmu-data:/app/data");
+      expect(service).toContain("DATA_DIR: /app/data");
+    }
     expect(studioPage).toContain("artifact_filename?: string");
     expect(studioPage).toContain("filename: resultFilename");
     expect(studioPage).toContain("videoResultFilename(vid)");
   });
 
-  it("S3-DEPLOY-03 거절: concurrency=1과 R2 필수 설정을 fail-closed로 검사한다", () => {
+  it("S3-DEPLOY-03 경계: concurrency=1과 R2 저장소 선택을 fail-closed로 검사한다", () => {
     expect(worker).toContain('concurrency !== 1');
-    for (const key of ["R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "R2_ENDPOINT"]) {
-      expect(REQUIRED_STUDIO_EXPORT_WORKER_ENV).toContain(key);
-    }
+    expect(worker).toContain("validateMediaStoreConfiguration()");
+    expect(REQUIRED_STUDIO_EXPORT_WORKER_ENV).toEqual(["DATABASE_URL", "MEDIA_SIGNING_SECRET", "OSMU_PUBLIC_URL"]);
     expect(envExample).toContain("EXPORT_RENDER_CONCURRENCY=1");
     expect(deploy).toContain("EXPORT_RENDER_CONCURRENCY=1");
   });
@@ -61,11 +64,18 @@ describe("S3 별도 export worker 실행·배포 계약", () => {
     const workerService = compose.slice(compose.indexOf("  openclaw-studio-export-worker:"), compose.indexOf("\nvolumes:"));
     const environment = workerService.slice(workerService.indexOf("    environment:"), workerService.indexOf("    command:"));
     const composeKeys = [...environment.matchAll(/^      ([A-Z][A-Z0-9_]+):/gm)].map((match) => match[1]);
+    const requiredInterpolationKeys = [...environment.matchAll(/\$\{([A-Z][A-Z0-9_]+):\?/g)]
+      .map((match) => match[1]);
 
     expect(workerService).toContain("env_file: .env.osmu");
     expect(REQUIRED_STUDIO_EXPORT_WORKER_ENV.filter((key) => !composeKeys.includes(key))).toEqual([]);
+    expect(requiredInterpolationKeys).toEqual([...REQUIRED_STUDIO_EXPORT_WORKER_ENV]);
     for (const key of REQUIRED_STUDIO_EXPORT_WORKER_ENV) {
       expect(environment).toContain(`${key}: \${${key}:?`);
+      expect(deploy).toMatch(new RegExp(`^\\s*${key}=`, "m"));
+    }
+    for (const key of R2_ENV_KEYS) {
+      expect(environment).not.toContain(`${key}: \${${key}:?`);
       expect(deploy).toMatch(new RegExp(`^\\s*${key}=`, "m"));
     }
   });
@@ -76,6 +86,24 @@ describe("S3 별도 export worker 실행·배포 계약", () => {
 
     for (const key of REQUIRED_STUDIO_EXPORT_WORKER_ENV) {
       expect(() => requireStudioExportWorkerEnv({ ...complete, [key]: "  " })).toThrow(`${key} is required`);
+    }
+  });
+
+  it("EXPORT-WORKER-ENV-03 경계: R2 4키 전부면 r2, 전부 없으면 local, 일부만 있으면 설정 오류다", () => {
+    const r2 = {
+      R2_ACCESS_KEY_ID: "fixture-access-key",
+      R2_SECRET_ACCESS_KEY: "fixture-secret-key",
+      R2_BUCKET: "fixture-bucket",
+      R2_ENDPOINT: "https://fixture.invalid",
+    };
+
+    expect(validateMediaStoreConfiguration({})).toBe("local");
+    expect(validateMediaStoreConfiguration(r2)).toBe("r2");
+    for (const missingKey of R2_ENV_KEYS) {
+      const partial = { ...r2, [missingKey]: "  " };
+      expect(() => validateMediaStoreConfiguration(partial)).toThrowError(
+        expect.objectContaining<Partial<MediaStoreError>>({ code: "R2_CONFIG", message: expect.stringContaining(missingKey) }),
+      );
     }
   });
 
