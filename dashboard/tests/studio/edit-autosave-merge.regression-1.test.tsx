@@ -266,7 +266,9 @@ describe("구조 대조: page.tsx가 독립 타이머로 되돌아갔는지", ()
 
   it("saveDraftWithNotice·recompositeCards도 emptyBubbleSlideNumber 검사를 거친다(F5)", () => {
     const saveDraftWithNotice = pageSrc.slice(pageSrc.indexOf("async function saveDraftWithNotice()"), pageSrc.indexOf("async function saveDraftWithNotice()") + 900);
-    const recomposite = pageSrc.slice(pageSrc.indexOf("async function recompositeCards("), pageSrc.indexOf("async function recompositeCards(") + 1300);
+    const recompositeStart = pageSrc.indexOf("async function recompositeCards(");
+    const recompositeEnd = pageSrc.indexOf("type SubtitleBurnOutcome", recompositeStart);
+    const recomposite = pageSrc.slice(recompositeStart, recompositeEnd);
     expect(saveDraftWithNotice).toContain("emptyBubbleSlideNumber(pruned)");
     expect(recomposite).toContain("const pruned = pruneEmptyBubbles(cardDeck)");
     expect(recomposite).toContain("emptyBubbleSlideNumber(pruned)");

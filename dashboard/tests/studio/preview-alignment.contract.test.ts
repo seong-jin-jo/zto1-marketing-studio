@@ -24,10 +24,14 @@ import { resolve } from "node:path";
 const src = (p: string) => readFileSync(resolve(__dirname, "../../src", p), "utf8");
 
 describe("미리보기 카드가 한 줄에서 시작한다(회귀 가드. 실측 증거는 qa:publish-room-alignment)", () => {
-  it("그리드가 카드를 같은 높이로 늘리려 하지 않는다(카드 높이를 강제로 맞추지 않는다)", () => {
+  it("플랫폼 카드는 세로로 쌓이고 같은 높이로 늘어나지 않는다", () => {
     const page = src("app/studio/page.tsx");
+    // 계약 갱신 근거: wiki/거버넌스/결정.md OD-2026-10-09-2.
+    // 회장 원문: "미리보기나 초안예시에서는 실제 이미지나 영상 보이게끔 하라고 하지 않았냐?"
+    // 실제 미디어를 첫 화면에서 확인하도록 플랫폼 카드는 R170·R174대로 한 열에 쌓는다.
     expect(page).not.toContain('className="grid items-start gap-stack-section md:grid-cols-2 xl:grid-cols-3"');
-    expect(page).toContain('className="grid gap-stack-section md:grid-cols-2 xl:grid-cols-3"');
+    expect(page).toContain('className="grid grid-cols-1 gap-stack-section" data-publish-preview-stack');
+    expect(page).not.toMatch(/data-publish-preview-stack[^>]*(?:md|xl):grid-cols-/);
     expect(page).toContain('className="flex min-w-0 flex-col rounded-surface');
   });
 

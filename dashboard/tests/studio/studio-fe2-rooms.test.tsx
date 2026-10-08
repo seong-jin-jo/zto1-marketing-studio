@@ -257,8 +257,14 @@ describe("화면 2차 편집실 계약", () => {
   it("FE3-EDIT-03 정상: 편집실 상단은 지금 무엇을 바꾸는지 설명한다", () => {
     render(<EditRoom lines={["첫 줄", "둘째 줄"]} onLinesChange={vi.fn()} />);
     const top = document.querySelector('[data-room-top="edit"]');
+    // 계약 갱신 근거: wiki/거버넌스/결정.md OD-2026-10-09-2.
+    // 회장 원문: "그냥 텍스트 이동하면 되는거지". 별도 모드 안내 대신 현재 편집 대상과
+    // 콘텐츠 형식을 같은 상단 영역에서 바로 확인해야 한다.
     expect(top).toHaveTextContent("내용과 화면을 직접 다듬습니다");
-    expect(top).toHaveTextContent("올릴 채널과 채널별 문구는 발행실에서 정합니다");
+    expect(within(top as HTMLElement).getByRole("group", { name: "만들 콘텐츠 형식" })).toBeInTheDocument();
+    for (const label of ["글", "카드뉴스", "영상"]) {
+      expect(within(top as HTMLElement).getByRole("button", { name: label })).toBeInTheDocument();
+    }
   });
 
   it("FE6-EDIT-01 정상: 영상 장면과 아이콘 도구 뒤에 대사를 항상 배치한다", () => {

@@ -25,7 +25,8 @@ function sliceResumeEffect(): string {
 describe("복구 폴링 가드 1 — 언마운트/재전환 시 abort", () => {
   it("복구 effect의 cleanup이 복구 전용 AbortController를 abort한다", () => {
     const body = sliceResumeEffect();
-    expect(body).toMatch(/return \(\) => \{\s*resumePollAbort\.current\?\.abort\(\);/);
+    // 일반 생성과 복구 폴링을 모두 끊는 순서로 확장돼도 복구 전용 abort 보호는 유지한다.
+    expect(body).toMatch(/return \(\) => \{[\s\S]*?resumePollAbort\.current\?\.abort\(\);/);
   });
 });
 

@@ -257,12 +257,16 @@ describe("편집실 미리보기 (회장: 컨텐츠가 미리볼 수 있는게 �
     vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
       x: 0, y: 0, left: 0, top: 0, right: 300, bottom: 400, width: 300, height: 400, toJSON: () => ({}),
     });
-    fireEvent.pointerDown(screen.getByRole("button", { name: "카드 글자 끌어 옮기기" }), { pointerId: 1 });
+    // 계약 갱신 근거: wiki/거버넌스/결정.md OD-2026-10-09-2.
+    // 회장 원문: "그냥 텍스트 이동하면 되는거지". 이동 버튼 대신 글자 상자 자체가
+    // 드래그 표면이어야 하며, 아래 단언은 좌표 변경 보호를 그대로 유지한다.
+    const draggableText = screen.getByRole("group", { name: "카드 글자 직접 끌어 옮기기" });
+    fireEvent.pointerDown(draggableText, { pointerId: 1 });
     // 가로 300 중 280은 오른쪽 칸, 세로 400 중 40은 위 칸이다.
     fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 280, clientY: 40 });
     expect(onPositionsChange).toHaveBeenCalledWith(["top-right"]);
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "카드 글자 끌어 옮기기" }), { pointerId: 1 });
+    fireEvent.pointerDown(draggableText, { pointerId: 1 });
     fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 150, clientY: 40 });
     expect(onPositionsChange).toHaveBeenLastCalledWith(["top-center"]);
   });

@@ -33,7 +33,12 @@ const draftWithBoth = {
   id: "draft-cross-1",
   idea: "교차 도메인",
   editKind: "card",
-  cardDeck: deckD100,
+  editLines: ["교차 도메인 카드", "반대 도메인은 보내지 않습니다"],
+  cardDeck: null,
+  // OD-2026-10-09-2 이후 카드 직접 편집기가 기본 화면이다. 현재 사용자가 실제로 만지는
+  // v3 카드 경로에서 교차 도메인 null 계약을 검사한다.
+  cardDeckV3: createPlainCardDeckV3(["교차 도메인 카드", "반대 도메인은 보내지 않습니다"], "deck-cross-domain"),
+  hasCardDeckV3: true,
   videoEdit: {
     contract_version: "1.0",
     overlays: [{ id: "ov-incomplete", order: 0, kind: "hook", text: "", startSec: 0, endSec: 3 }],
@@ -179,16 +184,14 @@ describe("A·B 회귀: 실제 StudioPage에서 자동저장이 반대 도메인�
   it("A: 카드덱만 바꾼 자동저장은 videoEdit:null을 보낸다(state에 미완성 videoEdit가 있어도)", async () => {
     render(<StudioPage />);
 
-    const cardDeckPanel = await waitFor(() => {
-      const el = document.querySelector("[data-card-deck-panel]");
-      if (!el) throw new Error("카드덱 패널이 아직 안 떴다");
-      return el as HTMLElement;
-    });
-
-    fireEvent.click(within(cardDeckPanel).getByText("이거 순서가 틀렸다면?"));
+    // 계약 갱신 근거: wiki/거버넌스/결정.md OD-2026-10-09-2.
+    // 회장 원문: "그냥 텍스트 이동하면 되는거지". 카드 편집은 별도 모드 진입 없이
+    // CardCanvasEditor가 기본이므로, 실제 직접 편집 입력으로 자동저장을 발생시킨다.
+    const directEditor = await screen.findByRole("region", { name: "카드 직접 편집기" });
+    fireEvent.click(within(directEditor).getByRole("button", { name: "글 추가" }));
     await new Promise((resolve) => setTimeout(resolve, 900));
 
-    const cardDeckPosts = fetchCalls.filter((c) => Object.prototype.hasOwnProperty.call(c.body, "cardDeck"));
+    const cardDeckPosts = fetchCalls.filter((c) => Object.prototype.hasOwnProperty.call(c.body, "cardDeckV3"));
     expect(cardDeckPosts.length).toBeGreaterThan(0);
     const last = cardDeckPosts[cardDeckPosts.length - 1];
     // 옛 결함(A)이라면 여기 미완성 videoEdit state가 실려 실제 서버가 400을 냈다.
@@ -263,7 +266,10 @@ describe("A·B 회귀: 실제 StudioPage에서 자동저장이 반대 도메인�
     expect(failedDeck.slides[0].elements[0].x).toBe(244);
     expect(failedTemplateSave.body.cardTemplateState).toMatchObject({ activeTemplateId: "number_list" });
     expect(fallbackSave.body).toMatchObject({ cardDeckV3: null, clearCardDeckV3: true, cardTemplateState: null });
-    expect(mocks.showToast).toHaveBeenCalledWith("자유 배치 템플릿 저장에 실패해 기본 카드 편집으로 저장했습니다.", "error");
+    // 계약 갱신 근거: wiki/거버넌스/결정.md OD-2026-10-09-2.
+    // 회장 원문: "그냥 텍스트 이동하면 되는거지". 복구 동작은 그대로 두고 폐기된
+    // "자유 배치" 모드 이름만 실제 기능명으로 바꾼다.
+    expect(mocks.showToast).toHaveBeenCalledWith("카드 직접 편집 저장에 실패해 기본 카드 편집으로 저장했습니다.", "error");
   }, 20000);
 
   it("PR87-R3-REV-02 새 초안 생성은 이전 draft id를 끊고 새 문서로 저장한다", async () => {

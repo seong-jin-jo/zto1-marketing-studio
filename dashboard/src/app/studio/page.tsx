@@ -1439,8 +1439,8 @@ export default function StudioPage() {
               },
             );
           } catch (error) {
-            // S7-R2 MINOR 7: 생성 직후 첫 저장이 실패한 자유 배치 덱을 화면에만 남기면
-            // 사용자는 저장됐다고 믿고 이탈할 수 있다. 자유 배치 상태를 먼저 걷고 같은
+            // S7-R2 MINOR 7: 생성 직후 첫 저장이 실패한 직접 편집 덱을 화면에만 남기면
+            // 사용자는 저장됐다고 믿고 이탈할 수 있다. 직접 편집 상태를 먼저 걷고 같은
             // 본문을 기본 카드 편집으로 한 번 더 저장해, 서버와 화면이 서로 다른 상태를
             // 유지하지 않게 한다.
             setCardDeckV3(null);
@@ -2056,7 +2056,7 @@ export default function StudioPage() {
     // 호출부를 짚어 강제로 명시하게 한다 — 다음에 같은 결함이 또 나는 것을 막는다.
     persistedCardDeck: CardDeck | null,
     persistedVideoEdit: VideoEdit | null,
-    // 자유 배치 덱은 기존 cardDeck/videoEdit 위치 계약 뒤에 붙인다. 기본값도 state가 아닌
+    // 직접 편집 덱은 기존 cardDeck/videoEdit 위치 계약 뒤에 붙인다. 기본값도 state가 아닌
     // null이라, 기존 도메인 한정 저장이 새 도메인을 암묵적으로 함께 보내지 않는다.
     persistedCardDeckV3: CardDeckV3 | null = null,
     bodyConflictRetryPlacement: "tail" | "head" = "tail",
@@ -3467,7 +3467,7 @@ export default function StudioPage() {
   }
   async function loadDraftDetail(draftToLoad: Record<string, unknown>): Promise<{ kind: EditContentKind | null }> {
     // 목록 응답은 큰 v3 덱만 제외하고 편집에 필요한 나머지 필드를 모두 갖는다. 화면은
-    // 목록 값으로 즉시 열고, 자유 배치 덱만 단건 응답으로 나중에 보강한다. 상세 조회가
+    // 목록 값으로 즉시 열고, 직접 편집 덱만 단건 응답으로 나중에 보강한다. 상세 조회가
     // 실패해도 기존 카드·영상 편집 화면 자체를 잃지 않는다.
     const kind = loadDraft(draftToLoad);
     void hydrateCardDeckV3Detail(draftToLoad);
@@ -3551,7 +3551,7 @@ export default function StudioPage() {
   // await가 끝난 시점에 "그 결과가 지금도 유효한 요청인지" 판정할 수 있게 한다.
   const activeWorkspaceIdRef = useRef<string | null>(null);
   activeWorkspaceIdRef.current = activeWorkspace?.id ?? null;
-  // 초안 목록은 카드 자유 배치 JSON을 싣지 않는다. 목록에서 작업물을 고르거나 딥링크를
+  // 초안 목록은 카드 직접 편집 JSON을 싣지 않는다. 목록에서 작업물을 고르거나 딥링크를
   // 새로고침한 뒤에는 단건 응답을 읽어야만 v3 덱을 복원할 수 있다. draft/tenant가 바뀐
   // 뒤 늦게 도착한 응답은 다른 작업물에 칠하지 않는다.
   useEffect(() => {

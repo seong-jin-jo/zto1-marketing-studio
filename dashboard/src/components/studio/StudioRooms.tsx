@@ -1759,7 +1759,7 @@ interface EditRoomProps {
   onStartCardDeckV3?: () => boolean | void | Promise<boolean | void>;
   cardDeckV3EntryBlockedReason?: string | null;
   onRetryCardDeckV3Detail?: () => void;
-  /** 자유 배치 진입 직전의 plain 카드 원문과 위치를 복원한다. */
+  /** 직접 편집 시작 직전의 plain 카드 원문과 위치를 복원한다. */
   onReturnFromCardDeckV3?: (projectedChatDeck?: CardDeck) => void;
   /**
    * 영상 편집 v1(세션맥락 과업 B). 있으면 `kind==="video"` 편집 워크벤치 위에

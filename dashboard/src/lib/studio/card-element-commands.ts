@@ -82,12 +82,12 @@ function containedGeometry(
 }
 
 export function plainCardDeckV3EntryBlockReason(lines: readonly string[]): string | null {
-  if (lines.length < 2) return "카드가 2장 이상일 때 자유 배치를 시작할 수 있습니다.";
-  if (lines.length > 11) return `자유 배치는 최대 11장까지 지원합니다. 현재 ${lines.length}장을 자르지 않고 그대로 보존했습니다.`;
+  if (lines.length < 2) return "카드가 2장 이상일 때 직접 편집할 수 있습니다.";
+  if (lines.length > 11) return `카드 직접 편집은 최대 11장까지 지원합니다. 현재 ${lines.length}장을 자르지 않고 그대로 보존했습니다.`;
   const emptyIndex = lines.findIndex((line) => !line.trim());
-  if (emptyIndex >= 0) return `${emptyIndex + 1}번 카드가 비어 있습니다. 내용을 채운 뒤 자유 배치를 시작해 주세요.`;
+  if (emptyIndex >= 0) return `${emptyIndex + 1}번 카드가 비어 있습니다. 내용을 채운 뒤 직접 편집해 주세요.`;
   const longIndex = lines.findIndex((line) => line.length > 2_000);
-  if (longIndex >= 0) return `${longIndex + 1}번 카드가 2,000자를 넘습니다. 원문을 줄인 뒤 자유 배치를 시작해 주세요.`;
+  if (longIndex >= 0) return `${longIndex + 1}번 카드가 2,000자를 넘습니다. 원문을 줄인 뒤 직접 편집해 주세요.`;
   return null;
 }
 

@@ -62,7 +62,7 @@ describe("편집실 조작 영역 하한 계약", () => {
     // 이 셋은 Button 컴포넌트를 안 쓰는 맨 <button> 이라 공용 수정이 안 닿는다.
     // 실측 높이는 각각 12px · 24px · 26px 이었다.
     expect(sidebar).toMatch(/min-h-control-touch px-stack mb-micro w-full flex items-center justify-between/);
-    expect(sidebar).toMatch(/min-h-control-touch w-full flex items-center gap-stack-tight[^"]*hover:text-danger/);
+    expect(sidebar).toMatch(/className="[^"]*min-h-control-touch[^"]*w-full[^"]*hover:text-danger/);
     expect(themeToggle).toMatch(/min-h-control-touch w-full flex items-center gap-stack-tight/);
   });
 

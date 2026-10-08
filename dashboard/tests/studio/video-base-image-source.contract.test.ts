@@ -45,7 +45,11 @@ describe("만든 파일 찾기는 한 곳이다", () => {
 
   it("화면은 파일 이름만 넘긴다(서버 절대경로를 들고 다니지 않는다)", () => {
     const text = src("app/studio/page.tsx");
-    expect(text).toMatch(/genVideo\(\{ filename: baseFilename \}\)/);
+    // 계약 갱신 근거: wiki/거버넌스/결정.md OD-2026-10-09-2.
+    // 회장 원문: "미리보기나 초안예시에서는 실제 이미지나 영상 보이게끔 하라고 하지 않았냐?"
+    // 파일 이름 계약은 유지하면서, 완료 뒤 같은 실제 바탕 이미지를 보존하고 늦은 결과가
+    // 현재 화면을 덮지 않도록 source와 operationId도 함께 넘긴다.
+    expect(text).toMatch(/genVideo\(\{ filename: baseFilename, image: source \}, operationId\)/);
     expect(text).not.toContain("source?.localPath");
   });
 });

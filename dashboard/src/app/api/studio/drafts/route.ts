@@ -230,7 +230,7 @@ export async function POST(request: Request) {
       return Response.json({
         ok: false,
         code: validation?.code ?? "INVALID_CARD_DECK_V3",
-        error: error instanceof Error ? error.message : "자유 배치 카드 덱을 확인해 주세요",
+        error: error instanceof Error ? error.message : "직접 편집 카드 덱을 확인해 주세요",
       }, { status: validation?.code === "CARD_DECK_TOO_LARGE" ? 413 : 400, headers: { "Cache-Control": "no-store" } });
     }
     if (savesChatBubbleV3 && !isSynchronizedChatCardDeckV3(body.cardDeck, body.cardDeckV3)) {
@@ -266,7 +266,7 @@ export async function POST(request: Request) {
       return Response.json({
         ok: false,
         code: "INVALID_CARD_DECK_V3_SOURCE",
-        error: "자유 배치로 바꾸기 전 카드 원문을 확인해 주세요",
+        error: "직접 편집하기 전 카드 원문을 확인해 주세요",
       }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
     cardDeckV3SourceSnapshotPatch.cardDeckV3SourceSnapshot = snapshot;
@@ -544,7 +544,7 @@ export async function POST(request: Request) {
       return Response.json({
         ok: false,
         code: "CARD_DECK_V3_IDENTITY_CONFLICT",
-        error: "이미 저장된 자유 배치 작업이 있습니다. 최신 작업을 다시 불러온 뒤 이어서 편집해 주세요.",
+        error: "이미 저장된 카드 직접 편집 작업이 있습니다. 최신 작업을 다시 불러온 뒤 이어서 편집해 주세요.",
         serverDeckId: e.serverDeckId,
         clientDeckId: e.clientDeckId,
       }, { status: 409, headers: { "Cache-Control": "no-store" } });
