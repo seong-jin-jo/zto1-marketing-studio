@@ -11,6 +11,7 @@ import { cardDeckExportSource, videoExportSource } from "@/lib/studio/export-sou
 import { ExportItemWorker, exportArtifactFilename, realExportWorkerDependencies } from "@/lib/studio/export-worker";
 import { emptyVideoEdit } from "@/lib/studio/video-edit-contract";
 import { withTenant } from "@/lib/db";
+import { mediaStore, R2_ENV_KEYS } from "@/lib/media-store";
 
 const databaseUrl = process.env.S3_DATABASE_URL;
 const integration = databaseUrl ? describe : describe.skip;
@@ -329,8 +330,13 @@ integration.sequential("S3 영속 내보내기 실제 PostgreSQL 통합", () => 
     "S3-RENDER-01 정상: 실제 PNG object bytes의 SHA-256과 DB artifact_sha256이 같다",
     async () => {
       const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "s3-export-object-"));
+      const isolatedEnvironmentKeys = ["DATA_DIR", "OSMU_PUBLIC_URL", ...R2_ENV_KEYS] as const;
+      const originalEnvironment = new Map<string, string | undefined>(
+        isolatedEnvironmentKeys.map((key) => [key, process.env[key]]),
+      );
       process.env.DATA_DIR = dataDir;
       process.env.OSMU_PUBLIC_URL = "http://127.0.0.1:18789";
+      for (const key of R2_ENV_KEYS) delete process.env[key];
       try {
         const draft = await seedDraft(["실제 렌더 첫 장", "실제 렌더 마지막 장"]);
         const repository = new PostgresExportRepository();
@@ -342,10 +348,17 @@ integration.sequential("S3 영속 내보내기 실제 PostgreSQL 통합", () => 
         const [artifact] = await admin!<{ artifact_key: string; artifact_sha256: string; byte_size: number }[]>`
           SELECT artifact_key,artifact_sha256,byte_size FROM studio_export_items WHERE id=${claimed!.id}`;
         const bytes = fs.readFileSync(path.join(dataDir, "tenants", tenantA, "images", artifact.artifact_key));
+        const dashboardArtifact = await mediaStore.get(tenantA, artifact.artifact_key);
         expect(crypto.createHash("sha256").update(bytes).digest("hex")).toBe(artifact.artifact_sha256);
         expect(bytes.byteLength).toBe(Number(artifact.byte_size));
         expect(bytes.subarray(1, 4).toString()).toBe("PNG");
+        expect(dashboardArtifact).toMatchObject({ source: "local", contentLength: bytes.byteLength });
       } finally {
+        for (const key of isolatedEnvironmentKeys) {
+          const originalValue = originalEnvironment.get(key);
+          if (originalValue === undefined) delete process.env[key];
+          else process.env[key] = originalValue;
+        }
         fs.rmSync(dataDir, { recursive: true, force: true });
       }
     },

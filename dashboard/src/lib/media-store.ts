@@ -5,12 +5,13 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { isSafeMediaFilename } from "@/lib/media-token";
 
-const R2_ENV_KEYS = ["R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "R2_ENDPOINT"] as const;
+export const R2_ENV_KEYS = ["R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "R2_ENDPOINT"] as const;
 
 type StoreMode =
   | { kind: "local" }
@@ -41,8 +42,8 @@ export class MediaStoreError extends Error {
 
 let cachedR2Client: { key: string; client: S3Client } | null = null;
 
-function resolveMode(): StoreMode {
-  const values = Object.fromEntries(R2_ENV_KEYS.map((key) => [key, process.env[key]?.trim() || ""])) as Record<
+function resolveMode(environment: Partial<Record<string, string | undefined>> = process.env): StoreMode {
+  const values = Object.fromEntries(R2_ENV_KEYS.map((key) => [key, environment[key]?.trim() || ""])) as Record<
     (typeof R2_ENV_KEYS)[number],
     string
   >;
@@ -59,6 +60,12 @@ function resolveMode(): StoreMode {
     bucket: values.R2_BUCKET,
     endpoint: values.R2_ENDPOINT,
   };
+}
+
+export function validateMediaStoreConfiguration(
+  environment: Partial<Record<string, string | undefined>> = process.env,
+): StoreMode["kind"] {
+  return resolveMode(environment).kind;
 }
 
 function r2Client(mode: Extract<StoreMode, { kind: "r2" }>): S3Client {
@@ -133,11 +140,14 @@ async function put(tenantId: string, filename: string, body: Buffer | Uint8Array
   const mode = resolveMode();
   if (mode.kind === "local") {
     const filePath = localFilePath(tenantId, filename);
+    const temporaryPath = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
     try {
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, body);
+      fs.writeFileSync(temporaryPath, body, { flag: "wx" });
+      fs.renameSync(temporaryPath, filePath);
       return;
     } catch (cause) {
+      fs.rmSync(temporaryPath, { force: true });
       throw new MediaStoreError("LOCAL_IO", "로컬 저장소에 이미지를 저장하지 못했습니다.", { cause });
     }
   }

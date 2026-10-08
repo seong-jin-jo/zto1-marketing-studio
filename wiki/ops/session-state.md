@@ -1,3 +1,15 @@
+## 2026-10-08 23:27 KST · 내보내기 작업자 local 저장 폴백 로컬 검증 완료
+
+- 인계 기준: 사용자가 직접 지정한 run `37787296935`, Read 목록, 세션맥락, 현재 `fix/export-worker-local-media` 브랜치를 정본으로 삼았다. tmux `openclaw-auto-3:0.1`은 이 Codex 워커 자신의 실행 기록이다.
+- 관찰: `origin/main`의 PR 132가 작업자 필수 환경변수 목록과 Compose `${VAR:?}`에 R2 4키를 넣었다. GitHub 시크릿에 R2 값이 없는 현재 운영 계약에서는 Compose 해석이 이미지 빌드 전에 실패한다. 대시보드는 `media-store.ts`에서 R2 4키 전부 없음이면 local, 일부만 있으면 `R2_CONFIG`로 실패한다.
+- 변경: 저장소 선택 정본을 `media-store.ts`에 유지하고 작업자 시작 시 같은 검증을 호출한다. 작업자 필수 목록과 Compose `${VAR:?}`는 `DATABASE_URL`, `MEDIA_SIGNING_SECRET`, `OSMU_PUBLIC_URL`만 남겼다. R2 4키는 기존 `.env.osmu` 선택값이며 전부 없음 local, 전부 있음 R2, 일부만 있음 `R2_CONFIG` 실패다. 공유 `osmu-data:/app/data`, `DATA_DIR=/app/data`, 테넌트 경로는 그대로다. local 저장은 임시 파일 뒤 atomic rename으로 부분 파일 노출을 막는다.
+- 검증: 관련 7파일 46건 PASS·PostgreSQL 환경 의존 12건 skip, `typecheck:ci`, `next build`, R2 없는 `docker compose config`가 통과했다. local 작업자 처리 로직 뒤 대시보드 `mediaStore.get()`과 tenant 파일 경로에서 같은 바이트를 읽었고 rename 실패 때 기존 파일 보존을 확인했다. Next dev 홈은 HTTP 200, 제목 `Marketing Hub`, 콘솔 오류 0이었다. 실제 PostgreSQL claim부터의 통합은 환경변수가 없어 미검증이다.
+- 이웃 영향 확인: PR 132 작업자 health 대기·마스킹 로그, advisory lock·queue 처리, R2 완전 설정, 부분 설정 fail-closed, 배포 `.env.osmu` 렌더, 기존 영상 저장 코드는 보존했다. UI 변경이 없어 디자인 lint·모바일 9폭은 대상이 아니다.
+- 독립 리뷰: 테스트·유지보수·성능·적대적 리뷰를 수행했다. atomic local write와 테스트 환경 격리 지적을 반영한 뒤 testing·adversarial 재검수에서 `REVIEW_VERDICT: PASS`를 받았다.
+- 커밋: 코드·테스트·Compose `71a08709` (`fix(studio): allow local export worker storage`). 문서 커밋만 남았다.
+- 다음 실행: 운영 반영이 승인되면 이 브랜치를 push하고 재배포한다. 운영 종료 증거는 worker healthy와 기존 queued 3개 처리 감소다.
+- 보존 대상: `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 다른 세션 소유 변경이므로 수정·stage하지 않는다. push·운영 재배포는 하지 않는다.
+
 ## 2026-10-08 22:24 KST · 운영 내보내기 작업자 R2 환경변수·health 게이트 로컬 교정 완료
 
 - 인계 기준: 사용자가 지정한 진단 run `37772730741`, Read 목록, 현재 `fix/export-worker-r2-env` 브랜치를 정본으로 삼았다. tmux `openclaw-auto-3:0.1`은 이 워커 자신의 실행 기록이었다.

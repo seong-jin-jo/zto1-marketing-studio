@@ -1,3 +1,15 @@
+## 2026-10-08 운영 내보내기 작업자 R2 강제 때문에 재배포가 Compose 해석에서 중단 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| EXPORT-WORKER-STORAGE-01 | R2 4키가 모두 있으면 R2, 모두 없으면 local, 일부만 있으면 명확한 설정 오류로 작업자 기동 실패 | ✅ 로컬 PASS | `media-store.ts`의 동일 판정을 작업자 시작 시 호출한다. 단위·배포 계약은 r2/local/부분 설정 세 경계를 모두 통과했다. |
+| EXPORT-WORKER-STORAGE-02 | local 모드에서 작업자 처리 로직이 완료한 산출물을 대시보드가 같은 `DATA_DIR`의 테넌트 경로에서 읽음 | ✅ 로컬 PASS, 실제 DB 통합 미검증 | 작업자 처리 로직이 카드 항목을 완료한 뒤 `mediaStore.get()`과 `DATA_DIR/tenants/<tenant>/images/<artifact>`에서 동일 바이트를 읽었다. Compose 두 서비스는 `osmu-data:/app/data`, `DATA_DIR=/app/data`를 공유한다. 실제 PostgreSQL claim 통합은 환경변수가 없어 skip됐다. |
+| EXPORT-WORKER-STORAGE-04 | local 저장 실패 중 부분 파일을 최종 이름으로 노출하지 않음 | ✅ 로컬 PASS | 같은 디렉터리 임시 파일 뒤 atomic rename을 사용하고, rename 실패 시 기존 최종 파일 보존과 임시 파일 정리를 검증했다. |
+| EXPORT-WORKER-STORAGE-03 | R2 없이 Compose가 해석되고 실제 필수 3개 누락만 배포 전에 거절 | ✅ 로컬 PASS | R2가 없는 합성 `.env.osmu`로 `docker compose config` 종료 코드 0. `DATABASE_URL`, `MEDIA_SIGNING_SECRET`, `OSMU_PUBLIC_URL`의 `${VAR:?}`는 유지했다. |
+| EXPORT-WORKER-HEALTH-03 | 배포 뒤 작업자 healthy 확인을 유지 | ✅ 계약 PASS, 운영 미검증 | PR 132의 최대 240초 healthy 대기와 마스킹 로그 수집 계약이 관련 회귀 묶음에서 통과했다. push·재배포는 하지 않았다. |
+
+검증: 관련 7파일 46건 PASS·PostgreSQL 환경 의존 12건 skip, TypeScript와 production build PASS. Next dev 홈은 HTTP 200, 제목 `Marketing Hub`, 콘솔 오류 0이다. 운영 queued 3개 처리 재개는 미검증이다.
+
 ## 2026-10-08 운영 내보내기 작업자 R2 누락 ❌ NG → ✅ 로컬 교정, 운영 미검증
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

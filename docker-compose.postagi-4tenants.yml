@@ -289,13 +289,9 @@ services:
     environment:
       NODE_ENV: production
       DATA_DIR: /app/data
-      # 작업자 entry가 요구하는 필수 런타임 계약. env_file에 키가 없거나 값이 비면
-      # 컨테이너를 재시작 루프에 넣지 않고 compose 해석 단계에서 배포를 실패시킨다.
+      # 작업자 entry가 요구하는 필수 런타임 계약. R2 4키는 선택 사항이며 env_file에서
+      # 전부 전달되면 R2, 전부 비면 공유 osmu-data를 쓴다. 일부만 있으면 entry가 명확히 실패한다.
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required for the studio export worker}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required for the studio export worker}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required for the studio export worker}
-      R2_BUCKET: ${R2_BUCKET:?R2_BUCKET is required for the studio export worker}
-      R2_ENDPOINT: ${R2_ENDPOINT:?R2_ENDPOINT is required for the studio export worker}
       MEDIA_SIGNING_SECRET: ${MEDIA_SIGNING_SECRET:?MEDIA_SIGNING_SECRET is required for the studio export worker}
       OSMU_PUBLIC_URL: ${OSMU_PUBLIC_URL:?OSMU_PUBLIC_URL is required for the studio export worker}
       EXPORT_RENDER_CONCURRENCY: "1"
