@@ -1,5 +1,31 @@
 # 운영 Higgsfield HTTP 503 근본원인 및 수정 보고
 
+## 2026-10-09 PR 136 Claude 재리뷰 5건 처리
+
+이 절은 아래 1차 교차 리뷰 기록보다 우선한다. 1차의 Docker Desktop bind mount `flock` 수치는 운영 Linux bind mount의 배타성을 증명하지 못하므로 운영 증거에서 제외했다. 운영 Linux runner 검증은 **미검증, 운영 러너 복구 후 실행**이다.
+
+| 번호 | 등급 | 지적 | 처리 | 증거 |
+|---|---|---|---|---|
+| 1 | CRITICAL | 비root 배포 러너가 root:root 0700 자격 증명 디렉터리의 lock 파일을 직접 열어 배포가 중단됨 | 배포 전환용 lock holder 컨테이너가 root로 동일 bind mount 안의 `flock`을 획득하고, 러너는 Docker API로 준비 여부만 확인한다. 정상 경로는 삭제를 3회 확인하고, 러너 강제 종료 때는 step 20분보다 긴 30분 상한과 `--rm`으로 고아 lock을 회수한다. dashboard 미포함 선택 배포는 holder 없이 정상 종료한다. | 권한 000 합성 디렉터리에서 추출한 셸이 호스트 파일 접근 없이 Docker 호출을 구성하는 계약은 성공했다. holder 삭제 실패와 holder 미생성 선택 배포 경계도 통과했다. 실제 비root Linux runner는 미검증이다. |
+| 2 | MAJOR-A | CLI의 실제 갱신 기준 60~90초와 애플리케이션의 5분 보호 구간 사이에서 실제 명령이 잠금 없이 갱신할 수 있음 | 잠금 아래 `auth token` 뒤 만료시각을 다시 읽고, 여전히 5분 이내면 이어지는 실제 CLI 명령도 같은 커널 파일 잠금으로 실행한다. | 만료 2분 fixture에서 미갱신이면 `true`, 갱신 뒤 1시간이면 `false`인 경계 계약 성공. |
+| 3 | MAJOR-B | 10ms 임계구역과 `set -e`가 겹침·경쟁자 실패를 놓칠 수 있음 | lock과 sentinel을 컨테이너 내부 파일시스템으로 옮기고 임계구역을 0.5초로 늘렸다. 각 경쟁자 종료 코드를 수집해 실패 1건도 전체 실패로 판정한다. | 로컬 Linux 컨테이너: `critical_seconds=0.5 contenders=4 rounds=50 overlaps=0 events=400 contender_failures=0 lock_timeout_status=75`. |
+| 4 | MINOR-1 | 만료 access token과 살아 있는 refresh token을 확인 없이 force 교체하고 백업이 무한 누적됨 | 기존 파일이 `missing` 또는 `invalid`가 아니면 모두 2차 확인을 요구한다. 성공·복원 뒤 최신 백업 3개만 남긴다. | force 상태 행렬, 만료 상태 거절, 백업 보존 계약 성공. |
+| 5 | MINOR-2 | monitor 종료 코드 75·127이 무한히 보류돼 조용한 장애가 될 수 있음 | 연속 보류 횟수를 cache에 저장하고 3회째부터 3회 간격으로 별도 Slack 경보를 보낸다. 정상·장애 판정 시 횟수를 0으로 초기화한다. | Bash 판정 12건과 workflow 계약 7건 성공. |
+
+### R2 검증 요약
+
+최종 독립 재검수에서 임시 holder의 5분 수명이 배포 제한시간보다 짧은 문제와 holder가 없는 선택 배포에서 정리 함수가 종료 코드 1을 반환하는 문제를 추가 발견했다. holder는 20분 step보다 긴 30분 상한과 `--rm`을 사용하고, 명시 정리는 삭제 확인 실패를 배포 실패로 전파한다. holder 미생성 경로는 명시적으로 성공을 반환하며 두 경계 모두 계약 테스트에 포함했다. 재검수 결과는 `NO FINDINGS`다.
+
+| 항목 | 결과 | 증거 등급 |
+|---|---|---|
+| 관련 계약 테스트 | 5파일 59건 성공 | 테스트됨, `/tmp/higgsfield-r2-vitest.log` |
+| monitor 순수 Bash | 12건 성공 | 테스트됨, `/tmp/higgsfield-r2-static.log` |
+| 셸·YAML | 관련 셸 `bash -n`, workflow YAML 3개 파싱 성공 | 테스트됨, `/tmp/higgsfield-r2-static.log` |
+| 파이프라인 산출물 검사 | 상태파일 2개의 실체·슬롯키·버전 정합 성공, 기존 핀 위생 경고 28건 | 근거 확인, `/tmp/higgsfield-r2-artifact-lint.log` |
+| 로컬 잠금 스트레스 | 4경쟁자×50회, 0.5초, 겹침 0, 이벤트 400, 경쟁자 실패 0 | 관찰됨, 로컬 컨테이너 내부 경로, `/tmp/higgsfield-r2-lock-stress.log` |
+| 운영 Linux bind mount | runner 오프라인 | 미검증, 운영 러너 복구 후 실행 |
+| 운영 배포·실제 생성 | 실행하지 않음 | 미검증 |
+
 ## 2026-10-09 PR 136 Claude 교차 리뷰 9건 처리
 
 | 번호 | 등급 | 지적 | 처리 |
@@ -20,7 +46,7 @@
 
 컨트롤러는 맥과 분리된 서버 전용 OAuth 세션을 만들고 GitHub 시크릿 `HIGGSFIELD_CREDENTIALS_JSON`을 2026-10-09 00:44:12 UTC에 갱신했다. 코드는 서버 전용 파일을 쓰기 가능 bind mount로 영속하고, 자격증명 갱신 구간만 커널 `flock`으로 직렬화한다. 배포 전 생존 판정은 만료 메타데이터만 읽으며, `force_generator_credentials=true`일 때만 검증·자동 복원 가능한 경로로 시크릿을 파일에 쓴다.
 
-로컬 컨테이너에서 경쟁자 4개를 50회 실행해 임계구역 겹침 0, 이벤트 400건, 살아 있는 잠금의 종료 코드 75, 자격 증명 파일 0600을 직접 관찰했다. 운영 배포, 운영 컨테이너의 DNS/TLS, 실제 이미지 생성은 미검증이다.
+로컬 Linux 컨테이너의 내부 파일시스템에서 경쟁자 4개를 50회 실행해 0.5초 임계구역 겹침 0, 이벤트 400건, 경쟁자 실패 0, 살아 있는 잠금의 종료 코드 75, 자격 증명 파일 0600을 직접 관찰했다. 이 결과는 Docker Desktop bind mount의 배타성을 증명하지 않는다. 운영 Linux runner의 동일 bind mount 재현, 운영 배포, 운영 컨테이너의 DNS/TLS, 실제 이미지 생성은 미검증이다.
 
 ## 원인과 증거
 
@@ -57,12 +83,13 @@
 
 | 항목 | 결과 | 증거 등급 |
 |---|---|---|
-| 관련 계약 테스트 | 5파일 55건 성공. Linux 컨테이너 안 wrapper 통합 계약도 실행됨 | 테스트됨, Docker 격리 Vitest 실행 |
+| 관련 계약 테스트 | 5파일 59건 성공. Linux 컨테이너 안 wrapper 통합 계약도 실행됨 | 테스트됨, Docker 격리 Vitest 실행 |
 | 배포 시크릿 분기 | unexpired, expired, missing에서 force=false 쓰기 0회, force=true 쓰기 1회. 빈 값·잘못된 JSON·token 누락·공백·비문자열은 기존 파일 보존 | 테스트됨 |
 | 셸 문법 | probe, lock runtime test, lock wrapper 3파일 `bash -n` PASS | 테스트됨, `/tmp/higgsfield-standard-dev-bash.log` |
 | YAML 및 workflow run block | workflow 2파일 파싱, Bash run block 19개 `bash -n` PASS | 테스트됨, `/tmp/higgsfield-standard-dev-yaml-final.log` |
 | Dashboard 이미지 | `f12908ca`까지의 선행 Docker image build는 Next production build 포함 PASS. 이번 재검수의 TypeScript 변경 뒤 Docker rebuild는 사용자 지시에 따라 생략 | 근거 확인, `/tmp/higgsfield-refresh-docker-build5.log`; 현재 이미지 미검증 |
-| 실제 컨테이너 잠금 | `contenders=4 rounds=50 overlaps=0 events=400 credential_mode=600 lock_timeout_status=75` | 관찰됨, `/tmp/higgsfield-flock-stress.log` |
+| 로컬 컨테이너 내부 잠금 | `critical_seconds=0.5 contenders=4 rounds=50 overlaps=0 events=400 contender_failures=0 credential_mode=600 lock_timeout_status=75` | 관찰됨, `/tmp/higgsfield-r2-lock-stress.log` |
+| 운영 Linux bind mount 잠금 | runner 오프라인으로 실행하지 못함 | 미검증, 운영 러너 복구 후 실행 |
 | Compose 해석 | runtime UID 0:0, credential mount RW, lock 경로 확인 | 테스트됨 |
 | 시크릿 literal 검사 | 추가 코드에서 고위험 token prefix 0건 | 테스트됨 |
 | 파이프라인 산출물 lint | 상태파일 2개의 핀 실체·슬롯키·버전 정합 PASS. 기존 design·QA 핀 위생 경고 28건 | 테스트됨, `/tmp/higgsfield-standard-dev-artifact-lint.log` |
@@ -105,14 +132,15 @@
 
 - 이 결론이 틀릴 가장 그럴듯한 이유: 인증 문제와 동시에 운영 호스트의 DNS, TLS, 외부 IP 차단이 발생했을 수 있다. 수정된 branch workflow가 운영에서 실행되기 전까지 이 축은 미검증으로 남긴다.
 - 까다로운 운영자 관점의 공격: 파일을 쓰기 가능하게 만든 것만으로 동시 갱신은 해결되지 않는다. 그래서 갱신·진단·배포의 실제 자격증명 변경 구간을 하나의 wrapper로 모았고 4개 경쟁자 50회와 살아 있는 잠금 제한시간을 실제 컨테이너에서 검증했다.
-- 가장 하중이 큰 가정: 같은 bind mount의 `flock`이 모든 갱신 주체를 실제로 직렬화하는가. 교차 리뷰가 이전 재현의 측정 오류를 바로잡은 뒤 동일 운영 이미지에서 200개 경쟁 호출을 실행했고 임계구역 겹침 0을 관찰했다.
+- 가장 하중이 큰 가정: 운영 Linux bind mount의 `flock`이 모든 갱신 주체를 실제로 직렬화하는가. 로컬 컨테이너 내부 파일시스템의 200개 경쟁 호출은 겹침 0이지만, 운영 bind mount 증거를 대신하지 않는다. 운영 runner 복구 뒤 같은 스크립트를 실행해야 이 가정을 닫을 수 있다.
 
 ## 후속 종료 조건
 
-1. 브랜치를 push하고 `diagnose-generator.yml`을 이 브랜치 ref로 실행한다.
-2. 배포 workflow를 `force_generator_credentials=true`로 한 번 실행한다.
-3. 운영 컨테이너에서 mount RW, UID 0, mode 600, 계정 탐침 성공을 확인한다.
-4. 운영 `/api/higgsfield/image`가 202를 반환하고 작업 완료 뒤 생성실에 실제 미디어가 나타나는지 확인한다.
+1. 운영 runner 복구 뒤 `scripts/verify-higgsfield-lock.sh`를 실행해 Linux bind mount의 겹침 0을 확인한다.
+2. 브랜치를 push하고 `diagnose-generator.yml`을 이 브랜치 ref로 실행한다.
+3. 배포 workflow를 `force_generator_credentials=true`로 한 번 실행한다.
+4. 운영 컨테이너에서 mount RW, UID 0, mode 600, 계정 탐침 성공을 확인한다.
+5. 운영 `/api/higgsfield/image`가 202를 반환하고 작업 완료 뒤 생성실에 실제 미디어가 나타나는지 확인한다.
 
 KNOWLEDGE_QUERY: OSMU Higgsfield 503, OAuth 갱신 토큰 회전, Docker bind mount 쓰기, Linux flock 파일 설명자 잠금
 HITS_USED: `wiki/거버넌스/결정.md`의 서버 전용 세션·단일 갱신 주체 결정, Docker 공식 bind mount 문서의 read-only/read-write 계약, Claude Opus 교차 리뷰의 실제 중첩 재현과 flock 교정안

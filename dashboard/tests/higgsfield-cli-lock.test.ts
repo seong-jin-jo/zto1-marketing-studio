@@ -8,6 +8,7 @@ import {
   higgsfieldCredentialsNeedRefresh,
   higgsfieldExecutionTimeout,
   isHiggsfieldLockBusyError,
+  refreshHiggsfieldCredentialsIfNeeded,
 } from "@/lib/higgsfield";
 
 describe("Higgsfield CLI 프로세스 간 잠금 계약", () => {
@@ -101,6 +102,48 @@ describe("Higgsfield CLI 프로세스 간 잠금 계약", () => {
 
       writeFileSync(credentialFile, JSON.stringify({ access_token: "access" }));
       expect(higgsfieldCredentialsNeedRefresh(env, now)).toBe(true);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("HIGGSFIELD-LOCK-07 경계: auth token이 갱신하지 않으면 실제 명령도 잠금을 유지한다", async () => {
+    const fixtureRoot = mkdtempSync(resolve(tmpdir(), "higgsfield-refresh-recheck-"));
+    const credentialFile = resolve(fixtureRoot, "credentials.json");
+    const env = {
+      HIGGSFIELD_LOCK_DIR: resolve(fixtureRoot, ".cli.lock.d"),
+      HIGGSFIELD_CREDENTIAL_FILE: credentialFile,
+    };
+    const now = Date.now();
+    let refreshCalls = 0;
+    try {
+      writeFileSync(credentialFile, JSON.stringify({
+        access_token: "access",
+        refresh_token: "refresh",
+        expires_at: new Date(now + 2 * 60 * 1000).toISOString(),
+      }));
+      const keepCommandLocked = await refreshHiggsfieldCredentialsIfNeeded(
+        env,
+        async () => { refreshCalls += 1; },
+        () => now,
+      );
+      expect(refreshCalls).toBe(1);
+      expect(keepCommandLocked).toBe(true);
+
+      const unlockAfterRotation = await refreshHiggsfieldCredentialsIfNeeded(
+        env,
+        async () => {
+          refreshCalls += 1;
+          writeFileSync(credentialFile, JSON.stringify({
+            access_token: "rotated-access",
+            refresh_token: "rotated-refresh",
+            expires_at: new Date(now + 60 * 60 * 1000).toISOString(),
+          }));
+        },
+        () => now,
+      );
+      expect(refreshCalls).toBe(2);
+      expect(unlockAfterRotation).toBe(false);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }

@@ -1,3 +1,11 @@
+## 2026-10-09 15:54 KST · PR 136 Claude 재리뷰 5건 로컬 교정 완료
+
+- handoff basis: 사용자가 지정한 PR 136 브랜치와 `cross-review-claude-opus-r2.md` 5건을 기준으로 이어갔다.
+- 변경: 비root 러너의 host lock 접근을 제거하고 root lock holder 컨테이너가 잠금을 보유한다. 정상 종료는 삭제를 3회 확인하고, 러너 강제 종료는 30분 상한과 `--rm`으로 회수한다. CLI 사전 갱신 뒤 만료를 재확인해 5분 이내면 실제 명령도 잠근다. force 확인 범위와 백업 상한, monitor 3회 간격 hold 경보를 추가했다.
+- 검증: Vitest 5파일 59건, monitor Bash 12건, 셸 문법, workflow YAML 3개 성공. holder 삭제 실패와 dashboard 미포함 선택 배포 경계도 포함한다. 로컬 컨테이너 내부 경로에서 `critical_seconds=0.5 contenders=4 rounds=50 overlaps=0 events=400 contender_failures=0 lock_timeout_status=75` 관찰.
+- 미검증: 운영 Linux bind mount는 runner 오프라인으로 미검증이며 복구 후 같은 스크립트를 실행한다. 운영 배포·실제 이미지 생성도 미검증이다.
+- 다음 실행: 운영 runner 복구 뒤 lock 스트레스 겹침 0을 확인하고, PR CI green과 force 배포·실제 생성 202를 순서대로 관찰한다.
+
 ## 2026-10-09 14:47 KST · PR 136 Claude 교차 리뷰 9건 로컬 교정 완료
 
 - handoff basis: 사용자가 지정한 PR 136 브랜치와 `cross-review-claude-opus.md` 9건을 기준으로 수정했다.
@@ -2797,3 +2805,9 @@ stage하지 않는다. 다음 액션은 편집실 계약 테스트를 먼저 추
 - 완료한 의미 단위: MAJOR A의 잘못된 `{ scope: "all" }`를 실제 명령 계약 `{ kind: "all" }`로 고치고, 저장 payload가 변환된 덱 좌표까지 담는 동작 단언을 추가했다. 글 요소 5개 이상 장은 템플릿 적용 전 거절하고, 선택하지 않은 혼잡 장은 한 장 적용에서 건드리지 않는 경계 테스트를 추가했다. 약한 소스 문자열 증거 2건은 제거했다.
 - 다음 실행: 실제 PostgreSQL route 통합 테스트와 drafts·text browser mock 없는 dev-server Chromium E2E를 구현한다. 이어 typecheck:ci, 관련 Vitest, integrity, contract를 실행하고 커밋한다.
 - 충돌 금지: PR 128 동시 수정 파일 `StudioRooms.tsx`, `CardCanvasEditor.tsx`, `package.json`은 손대지 않는다.
+## 2026-10-09 15:31 KST · PR 136 Claude 재리뷰 R2 BLOCK 교정 착수
+
+- handoff basis: 사용자가 지정한 PR 136 브랜치, `cross-review-claude-opus-r2.md`, 현재 git 상태를 정본으로 삼았다. 운영 러너가 오프라인이라는 사용자 관찰도 입력 계약으로 유지한다.
+- 현재 판정: 호스트 비root 잠금 권한 오류, 61~300초 갱신 경계, 너무 짧은 경합 시험과 wait 오류 은폐, force 2차 확인·백업 보존 누락, 무한 hold 5건을 QA tracker에 NG로 등록했다.
+- 이웃 영향 후보: 배포 rollback, dashboard 재기동, 생성 100초 예산, account status 진단, monitor 상태 파일과 기존 Slack 알림을 종료 전에 대조한다.
+- 다음 실행: 배포 잠금을 컨테이너 내부 lock-holder로 교체하고 갱신 뒤 만료를 재판정한다. 로컬 컨테이너 내부 경로에서 0.5초 임계구역 4×50 경합, 계약 테스트, 셸·YAML 검증 후 보고서와 커밋을 남긴다.

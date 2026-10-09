@@ -1,5 +1,15 @@
 # OSMU build log
 
+## 2026-10-09 15:54 KST · PR 136 Higgsfield R2 배포 lock 교정
+
+STAMP: 2026-10-09 15:54 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/tmp/higgsfield-r2-vitest.log`, `/tmp/higgsfield-r2-static.log`, `/tmp/higgsfield-r2-lock-stress.log` | 고민: Docker Desktop bind mount 관찰을 운영 Linux 증거로 오인하지 않고 검증 범위를 분리했다.
+
+**변경:** 배포 러너의 host lock 접근을 없애고 root lock holder 컨테이너가 같은 파일 잠금을 보유한다. 정상 경로는 삭제를 3회 확인하고, 러너 강제 종료 때는 step 제한 20분보다 긴 30분 상한과 `--rm`으로 고아 lock을 회수한다. 사전 `auth token`이 갱신하지 않으면 실제 CLI 명령도 잠근다. force 2차 확인 범위를 refresh token 생존 상태까지 넓히고 백업을 최신 3개로 제한했다. monitor는 3회 연속 hold부터 3회 간격으로 별도 경보한다.
+
+**검증:** Docker 격리 Vitest 5파일 59건, monitor Bash 12건, 관련 셸 `bash -n`, workflow YAML 3개 파싱이 성공했다. holder 삭제 실패와 dashboard 미포함 선택 배포 경계도 포함한다. 로컬 컨테이너 내부 파일시스템에서 0.5초 임계구역, 4경쟁자×50회, 겹침 0, 이벤트 400, 경쟁자 실패 0, 잠금 제한시간 종료 코드 75를 관찰했다. 파이프라인 산출물 검사는 상태파일 2개 정합에 성공했고 기존 핀 위생 경고 28건을 유지한다. 운영 Linux bind mount는 미검증이며 운영 runner 복구 후 실행한다. 운영 배포·실제 생성도 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/Users/sj/.claude/standards/standard-dev.md` | `logs/diff/higgsfield-503-20261009/cross-review-claude-opus-r2.md` | `logs/diff/higgsfield-503-20261009/report.md`
+
 ## 2026-10-09 14:47 KST · PR 136 Higgsfield `flock`·force 롤백 교정
 
 STAMP: 2026-10-09 14:47 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/tmp/higgsfield-flock-stress.log`, `/tmp/higgsfield-cr-static.log`, 표적 Vitest 55건 | 고민: 인증 파일을 보호하는 잠금이 정상 생성 처리량을 가로막지 않게 갱신 구간과 작업 구간을 분리했다.

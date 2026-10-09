@@ -1,3 +1,13 @@
+## 2026-10-09 PR 136 Claude 재리뷰 5건 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-R2-01 | 비root 배포 러너가 root 0700 경로를 열지 않고 컨테이너가 lock을 보유해야 함 | ✅ 코드 계약 PASS, 운영 미검증 | 권한 000 합성 경로에서 추출 셸이 호스트 직접 접근 없이 Docker 호출을 구성하고 holder를 명시 정리 전까지 유지하는 계약 성공. holder 삭제 실패와 dashboard 미포함 선택 배포도 경계 검증했다. 실제 비root Linux runner는 복구 후 실행. |
+| HIGGSFIELD-R2-02 | 잠금 아래 사전 갱신이 일어나지 않으면 5분 보호 구간의 실제 명령도 잠금을 유지해야 함 | ✅ PASS | 만료 2분 미갱신은 lock 유지, 1시간 갱신은 해제하는 경계 계약 성공. |
+| HIGGSFIELD-R2-03 | 0.5초 임계구역, 4경쟁자×50회에서 겹침·경쟁자 실패가 0이어야 함 | ✅ 로컬 PASS, 운영 미검증 | 컨테이너 내부 경로 `overlaps=0 events=400 contender_failures=0`. 운영 Linux bind mount는 runner 복구 후 실행. |
+| HIGGSFIELD-R2-04 | 만료 access token이라도 refresh token이 남으면 force 2차 확인, 백업 상한이 필요함 | ✅ PASS | expired 상태 무확인 거절, force 행렬, 최신 백업 3개 보존 계약 성공. |
+| HIGGSFIELD-R2-05 | 75·127 보류가 3회 연속이면 별도 경보하고 정상 판정에서 횟수를 초기화해야 함 | ✅ PASS | monitor Bash 12건과 workflow 계약 7건 성공. Slack 일시 실패 뒤 영구 침묵하지 않도록 3회 간격 재경보. |
+
 ## 2026-10-09 PR 136 Claude 교차 리뷰 9건 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
@@ -8307,3 +8317,12 @@ SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-is
 | EDITROOM-S4-R2-M4 | 버튼 반복 클릭마다 승인 인박스에 같은 draft가 쌓여 이중 발행 가능 | ❌ NG | export ID 멱등, 발행 완료 항목 승인 후보 제외, 실제 PostgreSQL 회귀 테스트 |
 | EDITROOM-S4-R2-m1 | 비관적 락(SELECT ... FOR UPDATE) 해제 뒤 queue 기록 사이에 draft 변경 가능 | ❌ NG | queue 기록 순서와 snapshot 한계를 코드·테스트에서 명시하고 경계 검증 |
 | EDITROOM-S4-R2-m2 | polling 자동 재시도가 두 번째 연속 오류 뒤 중단됨 | ❌ NG | 연속 오류 뒤에도 자동 polling 복구하는 회귀 테스트 |
+## 2026-10-09 PR 136 Claude 재리뷰 R2 5건 ❌ NG
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-R2-01 | 비root 배포 러너가 root 0700 자격증명 디렉터리를 직접 열지 않고 컨테이너 내부에서 배포 잠금을 획득해야 함 | ❌ NG | 현재 workflow가 호스트에서 `exec 9>`를 실행해 권한 오류 가능. |
+| HIGGSFIELD-R2-02 | `auth token`이 실제 갱신을 하지 않은 61~300초 구간에도 실제 CLI 명령이 잠금 밖에서 토큰을 회전하지 않아야 함 | ❌ NG | 갱신 뒤 만료시각 재확인과 잠금 유지 계약이 없음. |
+| HIGGSFIELD-R2-03 | 컨테이너 내부 잠금 경합을 0.5초 임계구역, 경쟁자 4개, 50회로 검증하고 자식 종료 코드 90을 누락하지 않아야 함 | ❌ NG | 기존 0.01초 임계구역과 `set -e` wait가 겹침 검출 신뢰도를 낮춤. |
+| HIGGSFIELD-R2-04 | 살아 있는 access token을 force 교체하려면 별도 확인이 필요하고 자격증명 백업 보존 수가 제한돼야 함 | ❌ NG | refresh 생존만으로 force가 진행되며 백업 정리 규칙이 없음. |
+| HIGGSFIELD-R2-05 | 잠금 대기·CLI 부재 hold가 연속되면 조용히 무한 유지하지 않고 별도 경보를 내야 함 | ❌ NG | 연속 hold 횟수와 경보 전이가 없음. |

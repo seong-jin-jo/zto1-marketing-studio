@@ -11,7 +11,7 @@ on:
         required: false
         default: 'false'
       confirm_replace_live_generator_credentials:
-        description: '현재 자격증명이 살아 있어도 교체할지 2차 확인 (force=true이며 state=unexpired일 때만 true)'
+        description: '현재 access 또는 refresh 자격증명이 남아 있어도 교체할지 2차 확인 (force=true이며 기존 파일이 missing/invalid가 아닐 때 true)'
         required: false
         default: 'false'
       reimport_oauth:
@@ -389,7 +389,14 @@ jobs:
                 target="$HIGGSFIELD_CREDENTIAL_FILE"
                 backup="$HIGGSFIELD_BACKUP_PATH"
                 node -e "$CREDENTIAL_WRITER_JS"
+                prune_credential_backups() {
+                  backup_dir="$(dirname "$target")"
+                  ls -1t "$backup_dir"/credentials.json.bak-* 2>/dev/null \
+                    | tail -n +4 \
+                    | xargs -r rm -f
+                }
                 if higgsfield account status >/dev/null 2>&1; then
+                  prune_credential_backups
                   exit 0
                 fi
                 if [ -f "$backup" ]; then
@@ -399,6 +406,7 @@ jobs:
                 else
                   rm -f "$target"
                 fi
+                prune_credential_backups
                 echo "credential verification failed; previous file restored" >&2
                 exit 1
               '
@@ -426,8 +434,10 @@ jobs:
               echo "::error::force_generator_credentials=true지만 HIGGSFIELD_CREDENTIALS_JSON이 비어 있음"
               exit 1
             fi
-            if [ "$CRED_STATE" = "unexpired" ] && [ "$CONFIRM_LIVE_REPLACE" != "true" ]; then
-              echo "::error::현재 생성기 자격증명이 살아 있음. 교체하려면 confirm_replace_live_generator_credentials=true 2차 확인이 필요함"
+            if [ "$CRED_STATE" != "missing" ] \
+                && [ "$CRED_STATE" != "invalid" ] \
+                && [ "$CONFIRM_LIVE_REPLACE" != "true" ]; then
+              echo "::error::현재 생성기 access 또는 refresh 자격증명이 남아 있음(state=$CRED_STATE). 교체하려면 confirm_replace_live_generator_credentials=true 2차 확인이 필요함"
               exit 1
             fi
             write_credentials
@@ -489,19 +499,75 @@ jobs:
           done
       - name: 기동
         # required NEXT_PUBLIC_* interpolation은 build와 up 모두에서 실행된다.
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           SERVICES="${{ github.event.inputs.services }}"
-          generator_lock_held=no
+          generator_lock_holder=""
+          release_generator_lock() {
+            if [ -n "$generator_lock_holder" ]; then
+              for _release_attempt in 1 2 3; do
+                docker rm -f "$generator_lock_holder" >/dev/null 2>&1 || true
+                if docker info >/dev/null 2>&1 \
+                    && ! docker container inspect "$generator_lock_holder" >/dev/null 2>&1; then
+                  generator_lock_holder=""
+                  return 0
+                fi
+                sleep 1
+              done
+              echo "::error::생성기 자격증명 잠금 컨테이너를 제거하지 못함(name=$generator_lock_holder)"
+              return 1
+            fi
+            return 0
+          }
+          cleanup_generator_lock() {
+            original_status=$?
+            trap - EXIT
+            if ! release_generator_lock; then
+              original_status=1
+            fi
+            exit "$original_status"
+          }
+          trap cleanup_generator_lock EXIT
           if [ -z "$SERVICES" ] || [[ " $SERVICES " == *" openclaw-dashboard-osmu "* ]]; then
-            mkdir -p "$HOME/.config/higgsfield/.cli.lock.d"
-            chmod 700 "$HOME/.config/higgsfield/.cli.lock.d"
-            exec 9>"$HOME/.config/higgsfield/.cli.lock.d/lock"
-            if ! flock -w 45 9; then
-              echo "::error::생성기 자격증명 갱신이 끝나지 않아 기동을 중단함"
+            # 호스트 러너는 root:root 0700 credential 디렉터리를 열 수 없다. 새 dashboard
+            # 이미지의 root 컨테이너가 bind mount 내부 flock을 소유하고 compose 전환이 끝날
+            # 때까지 유지한다. 러너는 Docker API만 사용하므로 호스트 파일 권한에 의존하지 않는다.
+            generator_lock_holder="higgsfield-deploy-lock-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            docker rm -f "$generator_lock_holder" >/dev/null 2>&1 || true
+            docker run -d --rm --name "$generator_lock_holder" \
+              -v "$HOME/.config/higgsfield:/credentials:rw" \
+              openclaw-auto/dashboard:0.2.0 \
+              sh -ceu '
+                umask 077
+                mkdir -p /credentials/.cli.lock.d
+                chmod 700 /credentials/.cli.lock.d
+                exec 9>/credentials/.cli.lock.d/lock
+                chmod 600 /credentials/.cli.lock.d/lock
+                if ! flock -w 45 9; then
+                  echo HIGGSFIELD_LOCK_BUSY >&2
+                  exit 75
+                fi
+                : > /tmp/deploy-lock-ready
+                # 정상 수명은 workflow가 명시적으로 끝낸다. 러너 SIGKILL·재부팅으로 trap이
+                # 사라져도 30분 뒤 자동 종료·--rm돼 영구 lock과 고아 컨테이너를 남기지 않는다.
+                exec sleep 1800
+              ' >/dev/null
+            generator_lock_ready=no
+            for _attempt in $(seq 1 50); do
+              if docker exec "$generator_lock_holder" test -f /tmp/deploy-lock-ready 2>/dev/null; then
+                generator_lock_ready=yes
+                break
+              fi
+              if [ "$(docker inspect -f '{{.State.Running}}' "$generator_lock_holder" 2>/dev/null || true)" != "true" ]; then
+                break
+              fi
+              sleep 1
+            done
+            if [ "$generator_lock_ready" != "yes" ]; then
+              echo "::error::생성기 자격증명 잠금을 컨테이너에서 획득하지 못해 기동을 중단함"
               exit 1
             fi
-            generator_lock_held=yes
           fi
           # export worker는 dashboard가 방금 빌드한 같은 image tag를 쓴다. dashboard만 선택한
           # 배포에서도 worker를 up 대상에 넣어 새 image ID로 반드시 재생성한다.
@@ -524,10 +590,10 @@ jobs:
               docker rename "$previous" openclaw-dashboard-osmu
               docker start openclaw-dashboard-osmu
             fi
-            [ "$generator_lock_held" = "no" ] || exec 9>&-
             exit 1
           fi
-          [ "$generator_lock_held" = "no" ] || exec 9>&-
+          release_generator_lock
+          trap - EXIT
       - name: 상태
         run: docker compose --env-file .env.osmu -f docker-compose.postagi-4tenants.yml ps
       - name: 앱 헬스체크 healthy 확인 (배포 뒤)

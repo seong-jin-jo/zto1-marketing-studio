@@ -52,6 +52,11 @@ describe("OSMU Higgsfield 로그인 정기 감시 계약", () => {
     expect(monitor).toContain("actions/cache/restore@v4");
     expect(monitor).toContain("actions/cache/save@v4");
     expect(monitor).toContain("generator_monitor_transition");
+    expect(monitor).toContain("generator_monitor_next_hold_count");
+    expect(monitor).toContain("hold_warning");
+    expect(monitor).toContain("3회 이상 연속 보류");
+    expect(monitor).toContain("3회 간격으로 다시 알림");
+    expect(monitor).toContain("hold_count=$next_hold_count");
     expect(monitor).toMatch(/if:\s*\$\{\{ steps\.transition\.outputs\.kind != 'none' \}\}/);
     expect(monitor).toContain("secrets.OSMU_ALERT_SLACK_WEBHOOK_URL");
     expect(monitor).toContain("생성기(Higgsfield) 로그인 만료: 사진 카드와 숏폼 영상 생성 중단, 글자 카드는 정상.");
@@ -66,7 +71,7 @@ describe("OSMU Higgsfield 로그인 정기 감시 계약", () => {
     expect(monitor).not.toMatch(/echo.*\$SLACK_WEBHOOK/);
   });
 
-  it("GENERATOR-MONITOR-WORKFLOW-06 단위: 정상·실패·보류·복구 일곱 판정이 bash에서 검증된다", () => {
+  it("GENERATOR-MONITOR-WORKFLOW-06 단위: 정상·실패·보류·복구와 연속 보류 열두 판정이 bash에서 검증된다", () => {
     const result = spawnSync(
       "bash",
       [resolve(repositoryRoot, "scripts/tests/generator-monitor-state.test.sh")],
@@ -74,6 +79,6 @@ describe("OSMU Higgsfield 로그인 정기 감시 계약", () => {
     );
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("generator monitor state tests: 7 passed");
+    expect(result.stdout).toContain("generator monitor state tests: 12 passed");
   });
 });

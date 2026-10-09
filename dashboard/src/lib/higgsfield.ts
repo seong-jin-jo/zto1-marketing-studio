@@ -96,9 +96,24 @@ async function execHiggsfieldRaw(
   });
 }
 
-async function refreshHiggsfieldCredentialsIfNeeded(): Promise<void> {
-  if (!process.env.HIGGSFIELD_LOCK_DIR?.trim() || !higgsfieldCredentialsNeedRefresh()) return;
-  await execHiggsfieldRaw(["auth", "token"], 8_000, 1024 * 1024, true);
+export async function refreshHiggsfieldCredentialsIfNeeded(
+  env: Record<string, string | undefined> = process.env,
+  refreshUnderLock: () => Promise<unknown> = () => execHiggsfieldRaw(
+    ["auth", "token"],
+    8_000,
+    1024 * 1024,
+    true,
+  ),
+  nowMs: () => number = Date.now,
+): Promise<boolean> {
+  if (!env.HIGGSFIELD_LOCK_DIR?.trim() || !higgsfieldCredentialsNeedRefresh(env, nowMs())) {
+    return false;
+  }
+  await refreshUnderLock();
+  // CLI 1.1.26은 access token이 약 60~90초 남을 때까지 auth token 호출만으로
+  // 갱신하지 않을 수 있다. 5분 보호 구간에 계속 남아 있으면 뒤 실제 명령도 같은
+  // 커널 잠금을 사용해야 두 프로세스가 같은 refresh token을 동시에 쓰지 않는다.
+  return higgsfieldCredentialsNeedRefresh(env, nowMs());
 }
 
 async function execHiggsfield(
@@ -112,8 +127,8 @@ async function execHiggsfield(
   if (args[0] === "auth" && args[1] === "token") {
     return execHiggsfieldRaw(args, timeout, maxBuffer, true);
   }
-  await refreshHiggsfieldCredentialsIfNeeded();
-  return execHiggsfieldRaw(args, timeout, maxBuffer, false);
+  const commandNeedsCredentialLock = await refreshHiggsfieldCredentialsIfNeeded();
+  return execHiggsfieldRaw(args, timeout, maxBuffer, commandNeedsCredentialLock);
 }
 
 // 테넌트별 스튜디오 디렉토리(data/studio/{tenantId}/). 생성물은 이 경로에 저장해 테넌트 격리.

@@ -2,6 +2,7 @@ import {
   chmodSync,
   existsSync,
   mkdtempSync,
+  mkdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -97,6 +98,65 @@ function credentialStepScript(force: boolean, confirmLiveReplace = false): strin
     .join("\n")
     .replace("${{ github.event.inputs.force_generator_credentials }}", force ? "true" : "false")
     .replace("${{ github.event.inputs.confirm_replace_live_generator_credentials }}", confirmLiveReplace ? "true" : "false");
+}
+
+function startStepScript(services = "openclaw-dashboard-osmu"): string {
+  const name = "      - name: 기동\n";
+  const start = workflow.indexOf(name);
+  const runStart = workflow.indexOf("        run: |\n", start);
+  const nextStep = workflow.indexOf("\n      - name:", runStart + 1);
+  if (start < 0 || runStart < 0 || nextStep < 0) throw new Error("start step not found");
+  return workflow
+    .slice(runStart + "        run: |\n".length, nextStep)
+    .split("\n")
+    .map((line) => line.startsWith("          ") ? line.slice(10) : line)
+    .join("\n")
+    .replaceAll("${{ github.event.inputs.services }}", services);
+}
+
+function runStartStepAsRestrictedRunner(options: { holderPersists?: boolean; services?: string } = {}) {
+  const fixtureRoot = mkdtempSync(resolve(tmpdir(), "generator-start-nonroot-"));
+  const fakeBin = resolve(fixtureRoot, "bin");
+  const credentialDir = resolve(fixtureRoot, ".config/higgsfield");
+  const dockerLog = resolve(fixtureRoot, "docker.log");
+  mkdirSync(fakeBin, { recursive: true });
+  mkdirSync(credentialDir, { recursive: true });
+  chmodSync(credentialDir, 0o000);
+  writeFileSync(resolve(fakeBin, "docker"), `#!/usr/bin/env bash
+set -eu
+printf '%s\\n' "$*" >> "$FAKE_DOCKER_LOG"
+joined="$*"
+case "$joined" in
+  *'exec higgsfield-deploy-lock-'*'test -f /tmp/deploy-lock-ready'*) exit 0 ;;
+  *'container inspect higgsfield-deploy-lock-'*)
+    if [ "$FAKE_HOLDER_PERSISTS" = "true" ]; then exit 0; else exit 1; fi
+    ;;
+  *'container inspect openclaw-dashboard-osmu'*) exit 1 ;;
+  *) exit 0 ;;
+esac
+`);
+  chmodSync(resolve(fakeBin, "docker"), 0o755);
+  try {
+    const result = spawnSync("bash", ["-c", startStepScript(options.services)], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: fixtureRoot,
+        PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+        FAKE_DOCKER_LOG: dockerLog,
+        FAKE_HOLDER_PERSISTS: String(options.holderPersists ?? false),
+        GITHUB_RUN_ID: "123",
+        GITHUB_RUN_ATTEMPT: "1",
+      },
+    });
+    return {
+      result,
+      dockerCalls: readFileSync(dockerLog, "utf8"),
+    };
+  } finally {
+    chmodSync(credentialDir, 0o700);
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
 }
 
 function runCredentialStep(
@@ -356,15 +416,45 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
     expect(finalProbeStep).toContain("생성기 자격증명 파일이 없거나 비어 있음");
   });
 
-  it("GENERATOR-LIVENESS-08B 경합: dashboard 기동은 refresh와 같은 host flock을 기다린다", () => {
+  it("GENERATOR-LIVENESS-08B 경합: 러너 셸은 호스트 파일을 열지 않고 컨테이너가 credential flock을 보유한다", () => {
     const start = workflow.indexOf("- name: 기동");
     const end = workflow.indexOf("- name: 상태", start);
     const startStep = workflow.slice(start, end);
 
-    expect(startStep).toContain('exec 9>"$HOME/.config/higgsfield/.cli.lock.d/lock"');
+    expect(startStep).toContain('generator_lock_holder="higgsfield-deploy-lock-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"');
+    expect(startStep).toContain('-v "$HOME/.config/higgsfield:/credentials:rw"');
+    expect(startStep).toContain("exec 9>/credentials/.cli.lock.d/lock");
     expect(startStep).toContain("flock -w 45 9");
+    expect(startStep).toContain("/tmp/deploy-lock-ready");
+    expect(startStep).toContain("timeout-minutes: 20");
+    expect(startStep).toContain("docker run -d --rm --name");
+    expect(startStep).toContain("exec sleep 1800");
+    expect(startStep).toContain("for _release_attempt in 1 2 3");
+    expect(startStep).toContain('docker info >/dev/null 2>&1');
+    expect(startStep).toContain('docker container inspect "$generator_lock_holder"');
+    expect(startStep).not.toContain("exec sleep 300");
     expect(startStep).toContain("docker compose --env-file .env.osmu");
-    expect(startStep).toContain("exec 9>&-");
+    expect(startStep).not.toContain('exec 9>"$HOME/.config/higgsfield');
+
+    const { result, dockerCalls } = runStartStepAsRestrictedRunner();
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(dockerCalls).toContain("run -d --rm --name higgsfield-deploy-lock-123-1");
+    expect(dockerCalls).toContain("compose --env-file .env.osmu");
+  });
+
+  it("GENERATOR-LIVENESS-08C 거절: lock holder 삭제가 확인되지 않으면 배포를 실패시킨다", () => {
+    const { result, dockerCalls } = runStartStepAsRestrictedRunner({ holderPersists: true });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("생성기 자격증명 잠금 컨테이너를 제거하지 못함");
+    expect(dockerCalls.match(/rm -f higgsfield-deploy-lock-123-1/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(dockerCalls).toContain("container inspect higgsfield-deploy-lock-123-1");
+  });
+
+  it("GENERATOR-LIVENESS-08D 정상: dashboard 미포함 선택 배포는 holder 없이 성공한다", () => {
+    const { result, dockerCalls } = runStartStepAsRestrictedRunner({ services: "gateway" });
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(dockerCalls).not.toContain("higgsfield-deploy-lock-");
+    expect(dockerCalls).toContain("compose --env-file .env.osmu");
   });
 
   it.each([
@@ -377,7 +467,7 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
     (state, force, expectedWrites) => {
       const { result, invocations } = runCredentialStep(state, force, {
         containerRunning: force,
-        confirmLiveReplace: state === "unexpired" && force,
+        confirmLiveReplace: state !== "missing" && force,
       });
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
       expect(invocations.filter((line) => line.startsWith("write_credentials_"))).toHaveLength(expectedWrites);
@@ -387,7 +477,10 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
   );
 
   it("GENERATOR-LIVENESS-10 경합: 실행 중 dashboard의 force 교체는 같은 credential 잠금을 거친다", () => {
-    const { result, invocations } = runCredentialStep("expired", true, { containerRunning: true });
+    const { result, invocations } = runCredentialStep("expired", true, {
+      containerRunning: true,
+      confirmLiveReplace: true,
+    });
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(invocations.filter((line) => line === "write_credentials_locked")).toHaveLength(1);
     expect(invocations).not.toContain("write_credentials_helper");
@@ -400,9 +493,18 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
     expect(invocations.filter((line) => line.startsWith("write_credentials_"))).toHaveLength(0);
   });
 
+  it("GENERATOR-LIVENESS-10C 거절: access token이 만료됐어도 refresh token이 남으면 2차 확인을 요구한다", () => {
+    const { result, invocations } = runCredentialStep("expired", true, { containerRunning: true });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("state=expired");
+    expect(result.stdout).toContain("confirm_replace_live_generator_credentials=true");
+    expect(invocations.filter((line) => line.startsWith("write_credentials_"))).toHaveLength(0);
+  });
+
   it("GENERATOR-LIVENESS-11 거절: 실행 중 옛 이미지에 잠금 wrapper가 없으면 force 교체를 중단한다", () => {
     const { result, invocations } = runCredentialStep("expired", true, {
       containerRunning: true,
+      confirmLiveReplace: true,
       wrapperAvailable: false,
     });
     expect(result.status).not.toBe(0);
@@ -413,6 +515,7 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
   it("GENERATOR-LIVENESS-11B 거절: 실행 중 이미지가 구형 mkdir wrapper면 force 교체를 중단한다", () => {
     const { result, invocations } = runCredentialStep("expired", true, {
       containerRunning: true,
+      confirmLiveReplace: true,
       wrapperUsesFlock: false,
     });
     expect(result.status).not.toBe(0);
@@ -434,6 +537,8 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
     expect(workflow).toContain('higgsfield account status >/dev/null 2>&1');
     expect(workflow).toContain('cp -f "$backup" "$target"');
     expect(workflow).toContain('chmod 600 "$target"');
+    expect(workflow).toContain("tail -n +4");
+    expect(workflow).toContain("xargs -r rm -f");
   });
 
   it.each([

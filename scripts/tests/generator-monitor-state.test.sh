@@ -57,8 +57,33 @@ assert_eq \
   "hold:up" \
   "$(generator_monitor_classify running 127 7 7 7):$(generator_monitor_persisted_state up hold)"
 
+assert_eq \
+  "GENERATOR-MONITOR-08 경계: 첫 hold는 횟수만 올리고 알리지 않음" \
+  "1:none" \
+  "$(generator_monitor_next_hold_count 0 hold):$(generator_monitor_transition up hold 1)"
+
+assert_eq \
+  "GENERATOR-MONITOR-09 경계: 세 번째 연속 hold는 별도 경보" \
+  "3:hold_warning" \
+  "$(generator_monitor_next_hold_count 2 hold):$(generator_monitor_transition up hold 3)"
+
+assert_eq \
+  "GENERATOR-MONITOR-10 정상: hold가 끝나면 연속 횟수를 초기화" \
+  "0:none" \
+  "$(generator_monitor_next_hold_count 9 up):$(generator_monitor_transition up up 0)"
+
+assert_eq \
+  "GENERATOR-MONITOR-11 경계: 네 번째 연속 hold는 중복 경보를 보내지 않음" \
+  "4:none" \
+  "$(generator_monitor_next_hold_count 3 hold):$(generator_monitor_transition up hold 4)"
+
+assert_eq \
+  "GENERATOR-MONITOR-12 복구성: 전송 실패에 대비해 여섯 번째 연속 hold에서 다시 경보" \
+  "6:hold_warning" \
+  "$(generator_monitor_next_hold_count 5 hold):$(generator_monitor_transition up hold 6)"
+
 if [ "$failures" -ne 0 ]; then
   exit 1
 fi
 
-printf 'generator monitor state tests: 7 passed\n'
+printf 'generator monitor state tests: 12 passed\n'
