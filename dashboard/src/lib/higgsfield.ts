@@ -229,6 +229,19 @@ export class HiggsfieldUnauthenticatedError extends Error {
   }
 }
 
+/** 다른 생성 요청이 OAuth 자격 증명을 갱신 중이라 공유 잠금을 제시간에 얻지 못한 상태. */
+export class HiggsfieldBusyError extends Error {
+  constructor() {
+    super("이미지·영상 생성기가 다른 작업을 처리 중입니다. 잠시 후 다시 시도해 주세요.");
+    this.name = "HiggsfieldBusyError";
+  }
+}
+
+export function isHiggsfieldLockBusyError(error: unknown): boolean {
+  const code = (error as { code?: string | number } | null)?.code;
+  return code === 75 || code === "75";
+}
+
 /**
  * 생성기가 쓸 수 있는 상태인지 짧게 먼저 확인한다.
  *
@@ -242,6 +255,7 @@ export async function assertHiggsfieldReady(): Promise<void> {
   } catch (e) {
     const code = (e as { code?: string })?.code;
     if (code === "ENOENT") throw new HiggsfieldUnavailableError();
+    if (isHiggsfieldLockBusyError(e)) throw new HiggsfieldBusyError();
     throw new HiggsfieldUnauthenticatedError();
   }
 }
@@ -255,6 +269,7 @@ export async function hfRun(args: string[], timeoutMs = 480000): Promise<{ stdou
     // 구분해 사용자에게 사실을 말한다(ADR-007 조용한 실패 금지).
     const code = (e as { code?: string })?.code;
     if (code === "ENOENT") throw new HiggsfieldUnavailableError();
+    if (isHiggsfieldLockBusyError(e)) throw new HiggsfieldBusyError();
     throw e;
   }
 }

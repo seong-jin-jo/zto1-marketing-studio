@@ -1,6 +1,6 @@
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { toGeneratorRatio } from "@/lib/generator-aspect-ratio";
-import { hfRun, extractJson, extractJobId, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError, assertHiggsfieldReady } from "@/lib/higgsfield";
+import { hfRun, extractJson, extractJobId, HiggsfieldBusyError, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError, assertHiggsfieldReady } from "@/lib/higgsfield";
 import { createHiggsfieldJob } from "@/lib/higgsfield-jobs";
 import { scheduleHiggsfieldBackgroundPoll } from "@/lib/higgsfield-background-poll";
 
@@ -63,6 +63,12 @@ export async function POST(request: Request) {
   } catch (e) {
     const stderrTail = (e as { stderr?: string })?.stderr?.trim().slice(-300);
     mark("catch", stderrTail || (e instanceof Error ? `${e.name}: ${e.message}`.slice(-300) : String(e)));
+    if (e instanceof HiggsfieldBusyError) {
+      return Response.json({
+        error: "이미지 생성 서비스가 다른 작업을 처리 중입니다. 계정 로그인 문제는 아니며 잠시 후 자동으로 다시 시도할 수 있습니다. 글 카드는 지금도 만드실 수 있습니다.",
+        code: "GENERATOR_BUSY",
+      }, { status: 503 });
+    }
     if (e instanceof HiggsfieldUnauthenticatedError) {
       return Response.json({
         error: "이미지 생성 서비스 연결이 잠시 끊겼습니다. 계정 로그인 문제는 아니며 운영팀이 복구하고 있습니다. 글 카드는 지금도 만드실 수 있습니다.",

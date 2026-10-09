@@ -265,7 +265,9 @@ services:
       NODE_ENV: production
       # 같은 credential 파일을 쓰는 API·상태 조회·workflow probe 전체의 프로세스 간 잠금.
       HIGGSFIELD_LOCK_DIR: /root/.config/higgsfield/.cli.lock.d
-      HIGGSFIELD_LOCK_WAIT_SECONDS: "45"
+      # 접수 API는 Cloudflare 100초 제한 전에 busy를 503으로 돌려줘야 한다. 준비 확인 8초와
+      # create 45초가 각각 잠금을 기다려도 총 73초를 넘지 않도록 프로세스 간 대기는 10초다.
+      HIGGSFIELD_LOCK_WAIT_SECONDS: "10"
     depends_on:
       - openclaw-studio-export-worker
     # 헬스체크(L4 재발방지) — hang/DB불가 감지. unhealthy 자동재시작은 autoheal 워치독이 수행

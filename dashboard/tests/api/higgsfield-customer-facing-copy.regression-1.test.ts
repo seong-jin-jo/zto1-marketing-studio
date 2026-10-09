@@ -33,7 +33,10 @@ function readRoute(file: string): string {
 // `error: "..."` 리터럴만 정확히 뽑는다. split/pop 방식은 코드가 늘어나면
 // 엉뚱한 블록을 집을 수 있어, 코드 마커 앞쪽에서 가장 가까운 error: 리터럴을
 // 정규식으로 직접 매칭한다.
-function errorMessageFor(src: string, code: "GENERATOR_UNAUTHENTICATED" | "GENERATOR_UNAVAILABLE"): string {
+function errorMessageFor(
+  src: string,
+  code: "GENERATOR_BUSY" | "GENERATOR_UNAUTHENTICATED" | "GENERATOR_UNAVAILABLE",
+): string {
   const codeIdx = src.indexOf(`code: "${code}"`);
   if (codeIdx === -1) throw new Error(`${code} 블록을 찾지 못함`);
   const before = src.slice(0, codeIdx);
@@ -42,7 +45,7 @@ function errorMessageFor(src: string, code: "GENERATOR_UNAUTHENTICATED" | "GENER
   return match[1];
 }
 
-const RESPONSE_CODES = ["GENERATOR_UNAUTHENTICATED", "GENERATOR_UNAVAILABLE"] as const;
+const RESPONSE_CODES = ["GENERATOR_BUSY", "GENERATOR_UNAUTHENTICATED", "GENERATOR_UNAVAILABLE"] as const;
 const ROUTE_X_CODE = ROUTE_FILES.flatMap((file) => RESPONSE_CODES.map((code) => [file, code] as const));
 
 describe("Higgsfield 생성기 미인증/미준비 문구 — 고객 관점 (2026-10-01)", () => {

@@ -269,8 +269,8 @@ jobs:
 
           mkdir -p "$HOME/.config/higgsfield" 2>/dev/null || true
           # 운영 컨테이너는 명시적으로 UID:GID 0:0으로 돈다. credential 갱신은 그 컨테이너만
-          # 수행하고 배포 러너는 Docker helper를 통해서만 파일을 준비한다. 그래서 CLI가
-          # atomic replace해도 소유자가 달라지지 않고, runner와 컨테이너의 동시 writer도 없다.
+          # 수행한다. 배포 러너는 권한 준비만 하고, 실행 중 컨테이너가 있으면 force 교체도
+          # 그 컨테이너의 동일 잠금을 거친다.
           docker run --rm -v "$CRED_DIR:/credentials:rw" alpine:3 sh -ceu '
             mkdir -p /credentials
             chown 0:0 /credentials
@@ -295,7 +295,7 @@ jobs:
               }
               try {
                 const data = JSON.parse(fs.readFileSync(file, "utf8"));
-                if (!data.access_token) throw new Error("missing access token");
+                if (!data.access_token || !data.refresh_token) throw new Error("missing OAuth token pair");
                 const raw = data.expires_at;
                 let milliseconds = typeof raw === "number" ? raw : Number(raw);
                 if (Number.isFinite(milliseconds) && milliseconds < 1000000000000) milliseconds *= 1000;
@@ -311,29 +311,53 @@ jobs:
             '
           }
 
-          # 시크릿은 stdin으로만 전달하고 helper 안에서 JSON 검증 뒤 같은 디렉터리의 임시
-          # 파일을 rename한다. 기존 파일을 교체하는 호출은 force=true 분기에만 있다.
+          container_up() {
+            [ "$(docker inspect -f '{{.State.Running}}' openclaw-dashboard-osmu 2>/dev/null)" = "true" ]
+          }
+
+          CREDENTIAL_WRITER_JS="$(cat <<'NODE'
+          const fs = require("fs");
+          const path = require("path");
+          const target = process.env.HIGGSFIELD_CREDENTIAL_FILE || "/credentials/credentials.json";
+          let raw = "";
+          process.stdin.setEncoding("utf8");
+          process.stdin.on("data", (chunk) => { raw += chunk; });
+          process.stdin.on("end", () => {
+            const data = JSON.parse(raw);
+            if (!data.access_token || !data.refresh_token) throw new Error("OAuth token pair missing");
+            const temp = path.join(path.dirname(target), `.credentials.json.tmp-${process.pid}`);
+            try {
+              fs.writeFileSync(temp, raw, { mode: 0o600 });
+              fs.chmodSync(temp, 0o600);
+              fs.chownSync(temp, 0, 0);
+              fs.renameSync(temp, target);
+            } finally {
+              try { fs.unlinkSync(temp); } catch {}
+            }
+          });
+          NODE
+          )"
+
+          # 시크릿은 stdin으로만 전달하고 JSON 검증 뒤 같은 디렉터리의 임시 파일을 rename한다.
+          # 실행 중 dashboard가 있으면 CLI refresh와 같은 잠금을 획득한다. 예전 이미지처럼
+          # wrapper가 없는 실행 컨테이너에는 쓰지 않는다. 먼저 force=false로 새 이미지를 올린
+          # 뒤 force 복구를 다시 실행해야 토큰 회전과 복구 쓰기가 겹치지 않는다.
           write_credentials() {
-            printf '%s' "$HIGGSFIELD_CREDENTIALS_JSON" | \
-              docker run --rm -i -v "$CRED_DIR:/credentials:rw" node:20-bookworm-slim node -e '
-                const fs = require("fs");
-                let raw = "";
-                process.stdin.setEncoding("utf8");
-                process.stdin.on("data", (chunk) => { raw += chunk; });
-                process.stdin.on("end", () => {
-                  const data = JSON.parse(raw);
-                  if (!data.access_token) throw new Error("access_token missing");
-                  const temp = `/credentials/.credentials.json.tmp-${process.pid}`;
-                  try {
-                    fs.writeFileSync(temp, raw, { mode: 0o600 });
-                    fs.chmodSync(temp, 0o600);
-                    fs.chownSync(temp, 0, 0);
-                    fs.renameSync(temp, "/credentials/credentials.json");
-                  } finally {
-                    try { fs.unlinkSync(temp); } catch {}
-                  }
-                });
-              '
+            if container_up; then
+              if ! docker exec openclaw-dashboard-osmu test -x /usr/local/bin/run-higgsfield-locked; then
+                echo "::error::실행 중 dashboard에 credential 잠금 wrapper가 없음. force=false 배포로 새 이미지를 먼저 올린 뒤 force 복구를 다시 실행해야 함"
+                return 1
+              fi
+              printf '%s' "$HIGGSFIELD_CREDENTIALS_JSON" | docker exec -i \
+                -e HIGGSFIELD_CREDENTIAL_FILE=/root/.config/higgsfield/credentials.json \
+                -e HIGGSFIELD_LOCK_WAIT_SECONDS=45 \
+                openclaw-dashboard-osmu /usr/local/bin/run-higgsfield-locked \
+                node -e "$CREDENTIAL_WRITER_JS"
+            else
+              printf '%s' "$HIGGSFIELD_CREDENTIALS_JSON" | \
+                docker run --rm -i -v "$CRED_DIR:/credentials:rw" \
+                  node:20-bookworm-slim node -e "$CREDENTIAL_WRITER_JS"
+            fi
           }
 
           # ★살아 있는 로그인을 덮어쓰지 않는다 (2026-09-07 회장 실사용에서 터진 사고).
@@ -555,10 +579,18 @@ jobs:
             echo "::error::생성기 자격증명 저장소 계약 위반(RW mount, runtime UID 0, credential 0600/root 필요)"
             exit 1
           fi
-          generator_probe_ok=no
+          generator_probe_state=failed
           for attempt in 1 2 3; do
-            if bash scripts/probe-generator-session.sh openclaw-dashboard-osmu; then
-              generator_probe_ok=yes
+            set +e
+            bash scripts/probe-generator-session.sh openclaw-dashboard-osmu
+            generator_probe_status=$?
+            set -e
+            if [ "$generator_probe_status" -eq 0 ]; then
+              generator_probe_state=valid
+              break
+            fi
+            if [ "$generator_probe_status" -eq 75 ]; then
+              generator_probe_state=busy
               break
             fi
             if [ "$attempt" -lt 3 ]; then
@@ -566,7 +598,8 @@ jobs:
               sleep 3
             fi
           done
-          if [ "$generator_probe_ok" = "yes" ]; then
+          echo "state=$generator_probe_state" >> "$GITHUB_OUTPUT"
+          if [ "$generator_probe_state" = "valid" ]; then
             credential_meta="$(docker exec openclaw-dashboard-osmu stat -c '%a %u' /root/.config/higgsfield/credentials.json)"
             read -r generator_credentials_mode generator_credentials_uid <<< "$credential_meta"
             if [ "$generator_credentials_mode" != "600" ] || [ "$generator_credentials_uid" != "0" ]; then
@@ -574,6 +607,8 @@ jobs:
               exit 1
             fi
             echo "생성기 계정 API가 세션을 수락함. 비용이 드는 실제 생성 기능은 이 단계에서 검증하지 않음."
+          elif [ "$generator_probe_state" = "busy" ]; then
+            echo "::warning::생성기 자격 증명 잠금이 사용 중이라 계정 API 검증을 미뤘다. 인증 실패로 판정하지 않음."
           else
             echo "::error::생성기 API 로그인이 죽어 있다. 카드뉴스 사진 이미지와 숏폼 영상이 만들어지지 않는다. 글자 카드는 영향 없음. HIGGSFIELD_CREDENTIALS_JSON 시크릿 갱신이 필요하다."
             exit 1
@@ -581,7 +616,12 @@ jobs:
       - name: 생성기 상태를 배포 요약에 기록
         if: ${{ always() && (github.event.inputs.services == '' || contains(github.event.inputs.services, 'osmu')) }}
         run: |
-          if [ "${{ steps.generator_liveness.outcome }}" = "failure" ]; then
+          if [ "${{ steps.generator_liveness.outputs.state }}" = "busy" ]; then
+            {
+              echo "## 🟡 생성기 계정 API: 잠금 사용 중"
+              echo "다른 생성 작업이 자격 증명을 사용 중이어서 검증을 미뤘습니다. 인증 실패로 판정하지 않았습니다."
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.generator_liveness.outcome }}" = "failure" ]; then
             {
               echo "## 🔴 생성기 기능: DEGRADED"
               echo "계정 API가 세션을 거부했습니다. 사진 카드와 숏폼 영상은 중단되며 글자 카드는 계속 동작합니다."

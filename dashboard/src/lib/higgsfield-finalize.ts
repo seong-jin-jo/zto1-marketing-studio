@@ -11,7 +11,7 @@ import { signMediaToken } from "@/lib/media-token";
 import { runWithTenant } from "@/lib/tenant-context";
 import {
   hfRun, extractJson, findResultUrl, downloadTo, addNarration, logGen,
-  recordMediaGenerationEvent, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError,
+  recordMediaGenerationEvent, HiggsfieldBusyError, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError,
   assertHiggsfieldReady, studioDir, assetUrl, normalizeJobStatus,
 } from "@/lib/higgsfield";
 import {
@@ -188,6 +188,19 @@ async function finalizeHiggsfieldJobInner(
     // 정확히 같은 문자열을 매체별로 쓴다 — 정적 소스 그렙 테스트
     // (higgsfield-customer-facing-copy.regression-1.test.ts)가 큰따옴표 리터럴을
     // 전제하므로 템플릿 리터럴 보간을 쓰지 않고 if/else로 분기한다.
+    if (e instanceof HiggsfieldBusyError) {
+      const result = job.kind === "image"
+        ? {
+          error: "이미지 생성 서비스가 다른 작업을 처리 중입니다. 계정 로그인 문제는 아니며 잠시 후 자동으로 다시 시도할 수 있습니다. 글 카드는 지금도 만드실 수 있습니다.",
+          code: "GENERATOR_BUSY",
+        }
+        : {
+          error: "영상 생성 서비스가 다른 작업을 처리 중입니다. 계정 로그인 문제는 아니며 잠시 후 자동으로 다시 시도할 수 있습니다. 글 카드는 지금도 만드실 수 있습니다.",
+          code: "GENERATOR_BUSY",
+        };
+      updateHiggsfieldJob(tenantId, jobId, { status: "queued" });
+      return { httpStatus: 503, body: result };
+    }
     if (e instanceof HiggsfieldUnauthenticatedError) {
       const result = job.kind === "image"
         ? {

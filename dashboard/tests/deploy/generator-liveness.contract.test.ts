@@ -1,13 +1,16 @@
 import {
   chmodSync,
+  existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 const repositoryRoot = resolve(__dirname, "../../..");
@@ -97,7 +100,11 @@ function credentialStepScript(force: boolean): string {
     .replace("${{ github.event.inputs.force_generator_credentials }}", force ? "true" : "false");
 }
 
-function runCredentialStep(state: string, force: boolean) {
+function runCredentialStep(
+  state: string,
+  force: boolean,
+  options: { containerRunning?: boolean; wrapperAvailable?: boolean; secret?: string } = {},
+) {
   const fixtureRoot = mkdtempSync(resolve(tmpdir(), "generator-credentials-"));
   const fakeBin = resolve(fixtureRoot, "bin");
   const invocationLog = resolve(fixtureRoot, "docker.log");
@@ -107,8 +114,21 @@ function runCredentialStep(state: string, force: boolean) {
 set -eu
 joined="$*"
 case "$joined" in
+  *'inspect -f'*openclaw-dashboard-osmu*)
+    if [ "$FAKE_CONTAINER_RUNNING" = "true" ]; then echo true; else echo false; fi
+    ;;
+  *'exec openclaw-dashboard-osmu test -x /usr/local/bin/run-higgsfield-locked'*)
+    if [ "$FAKE_WRAPPER_AVAILABLE" = "true" ]; then exit 0; else exit 1; fi
+    ;;
+  *'exec -i -e HIGGSFIELD_CREDENTIAL_FILE='*'/usr/local/bin/run-higgsfield-locked'*)
+    cat >/dev/null
+    echo write_credentials_locked >> "$FAKE_DOCKER_LOG"
+    ;;
   *'console.log("missing")'*) echo "$FAKE_CRED_STATE" ;;
-  *'.credentials.json.tmp-'*) cat >/dev/null; echo write_credentials >> "$FAKE_DOCKER_LOG" ;;
+  *'node:20-bookworm-slim node -e'*'.credentials.json.tmp-'*)
+    cat >/dev/null
+    echo write_credentials_helper >> "$FAKE_DOCKER_LOG"
+    ;;
   *'.config.json.tmp-'*) cat >/dev/null; echo write_config >> "$FAKE_DOCKER_LOG" ;;
   *) echo prepare_store >> "$FAKE_DOCKER_LOG" ;;
 esac
@@ -125,7 +145,10 @@ esac
         PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
         FAKE_CRED_STATE: state,
         FAKE_DOCKER_LOG: invocationLog,
-        HIGGSFIELD_CREDENTIALS_JSON: '{"access_token":"masked-test-value"}',
+        FAKE_CONTAINER_RUNNING: String(options.containerRunning ?? false),
+        FAKE_WRAPPER_AVAILABLE: String(options.wrapperAvailable ?? true),
+        HIGGSFIELD_CREDENTIALS_JSON: options.secret
+          ?? '{"access_token":"masked-test-value","refresh_token":"masked-refresh-value"}',
       },
     });
     const invocations = readFileSync(invocationLog, "utf8").trim().split("\n").filter(Boolean);
@@ -135,9 +158,60 @@ esac
   }
 }
 
+function credentialWriterScript(): string {
+  const marker = "CREDENTIAL_WRITER_JS=\"$(cat <<'NODE'\n";
+  const start = workflow.indexOf(marker);
+  const end = workflow.indexOf("\n          NODE\n", start);
+  if (start < 0 || end < 0) throw new Error("credential writer script not found");
+  return workflow.slice(start + marker.length, end)
+    .split("\n")
+    .map((line) => line.startsWith("          ") ? line.slice(10) : line)
+    .join("\n");
+}
+
+function runCredentialWriter(secret: string) {
+  const fixtureRoot = mkdtempSync(resolve(tmpdir(), "generator-writer-"));
+  const credentialFile = resolve(fixtureRoot, "credentials.json");
+  writeFileSync(credentialFile, '{"access_token":"existing","refresh_token":"keep-me"}', { mode: 0o600 });
+  const result = spawnSync(process.execPath, ["-e", credentialWriterScript()], {
+    encoding: "utf8",
+    input: secret,
+    env: { ...process.env, HIGGSFIELD_CREDENTIAL_FILE: credentialFile },
+  });
+  const content = readFileSync(credentialFile, "utf8");
+  rmSync(fixtureRoot, { recursive: true, force: true });
+  return { result, content };
+}
+
+function waitForFile(file: string, timeoutMs = 3_000): Promise<void> {
+  const startedAt = Date.now();
+  return new Promise((resolveWait, rejectWait) => {
+    const check = () => {
+      if (existsSync(file)) {
+        resolveWait();
+        return;
+      }
+      if (Date.now() - startedAt >= timeoutMs) {
+        rejectWait(new Error(`timed out waiting for ${file}`));
+        return;
+      }
+      setTimeout(check, 20);
+    };
+    check();
+  });
+}
+
+function waitForExit(child: ReturnType<typeof spawn>): Promise<number | null> {
+  return new Promise((resolveExit, rejectExit) => {
+    child.once("error", rejectExit);
+    child.once("exit", resolveExit);
+  });
+}
+
 describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
   it("GENERATOR-LIVENESS-01 정상: 비용 없는 account status API로 배포 전후 세션 생존을 확인한다", () => {
     expect(probe).toContain("higgsfield account status");
+    expect(probe).toContain('env HIGGSFIELD_LOCK_WAIT_SECONDS="$lock_wait"');
     expect(probe).toContain("/usr/local/bin/run-higgsfield-locked higgsfield account status");
     expect(probe).toContain('timeout -k "$kill_after" "$outer_timeout"');
     expect(probe).toContain('docker exec "$container" timeout -k "$kill_after" "$inner_timeout"');
@@ -172,6 +246,10 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
     expect(timedOut.status).toBe(124);
     expect(timedOut.stdout).toContain("생성기 API 생존 확인 종료 코드: 124");
 
+    const busy = runProbe("credential lock busy", 75);
+    expect(busy.status).toBe(75);
+    expect(busy.stdout).toContain("생성기 API 생존 확인 종료 코드: 75");
+
     const uncooperative = runUncooperativeProbe();
     expect(uncooperative.result.status).not.toBe(0);
     expect(uncooperative.result.error).toBeUndefined();
@@ -200,6 +278,10 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
     const summaryEnd = workflow.indexOf("OSMU 스모크 게이트", summaryStart);
     const summaryStep = workflow.slice(summaryStart, summaryEnd);
     expect(summaryStep).toContain("steps.generator_liveness.outcome");
+    expect(finalProbeStep).toContain("generator_probe_state=busy");
+    expect(finalProbeStep).toContain('echo "state=$generator_probe_state" >> "$GITHUB_OUTPUT"');
+    expect(summaryStep).toContain("steps.generator_liveness.outputs.state");
+    expect(summaryStep).toContain("인증 실패로 판정하지 않았습니다");
     expect(summaryStep).toContain("DEGRADED");
     expect(summaryStep).toContain("GITHUB_STEP_SUMMARY");
   });
@@ -238,6 +320,7 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
     expect(service).toContain('user: "0:0"');
     expect(service).toContain("${HOME}/.config/higgsfield:/root/.config/higgsfield:rw");
     expect(service).toContain("HIGGSFIELD_LOCK_DIR: /root/.config/higgsfield/.cli.lock.d");
+    expect(service).toContain('HIGGSFIELD_LOCK_WAIT_SECONDS: "10"');
     expect(worker).not.toContain(".config/higgsfield");
     expect(dockerfile).toContain("run-higgsfield-locked.sh /usr/local/bin/run-higgsfield-locked");
     expect(dockerfile).toContain("umask 077");
@@ -266,9 +349,109 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
     (state, force, expectedWrites) => {
       const { result, invocations } = runCredentialStep(state, force);
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-      expect(invocations.filter((line) => line === "write_credentials")).toHaveLength(expectedWrites);
+      expect(invocations.filter((line) => line.startsWith("write_credentials_"))).toHaveLength(expectedWrites);
       expect(invocations.filter((line) => line === "write_config")).toHaveLength(1);
       expect(result.stdout).not.toContain("masked-test-value");
     },
+  );
+
+  it("GENERATOR-LIVENESS-10 경합: 실행 중 dashboard의 force 교체는 같은 credential 잠금을 거친다", () => {
+    const { result, invocations } = runCredentialStep("expired", true, { containerRunning: true });
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(invocations.filter((line) => line === "write_credentials_locked")).toHaveLength(1);
+    expect(invocations).not.toContain("write_credentials_helper");
+  });
+
+  it("GENERATOR-LIVENESS-11 거절: 실행 중 옛 이미지에 잠금 wrapper가 없으면 force 교체를 중단한다", () => {
+    const { result, invocations } = runCredentialStep("expired", true, {
+      containerRunning: true,
+      wrapperAvailable: false,
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("force=false 배포로 새 이미지를 먼저 올린 뒤");
+    expect(invocations.filter((line) => line.startsWith("write_credentials_"))).toHaveLength(0);
+  });
+
+  it("GENERATOR-LIVENESS-12 거절: force 입력인데 시크릿이 비어 있으면 기존 파일을 건드리지 않는다", () => {
+    const { result, invocations } = runCredentialStep("expired", true, { secret: "" });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain("HIGGSFIELD_CREDENTIALS_JSON이 비어 있음");
+    expect(invocations.filter((line) => line.startsWith("write_credentials_"))).toHaveLength(0);
+  });
+
+  it.each([
+    ["잘못된 JSON", "{"],
+    ["access_token 누락", "{}"],
+    ["refresh_token 누락", '{"access_token":"access-only"}'],
+  ])("GENERATOR-LIVENESS-13 거절: %s은 기존 credential을 보존한다", (_label, secret) => {
+    const { result, content } = runCredentialWriter(secret);
+    expect(result.status).not.toBe(0);
+    expect(content).toBe('{"access_token":"existing","refresh_token":"keep-me"}');
+    expect(result.stdout).not.toContain("keep-me");
+    expect(result.stderr).not.toContain("keep-me");
+  });
+
+  const linuxIt = process.platform === "linux" ? it : it.skip;
+  linuxIt(
+    "GENERATOR-LIVENESS-14 경합: CI Linux에서 실제 wrapper가 force 교체를 직렬화하고 stale·timeout 경계를 보존한다",
+    async () => {
+      const fixtureRoot = mkdtempSync(resolve(tmpdir(), "generator-lock-integration-"));
+      const lockDir = resolve(fixtureRoot, ".cli.lock.d");
+      const ownerFile = resolve(lockDir, "owner");
+      const credentialFile = resolve(fixtureRoot, "credentials.json");
+      const wrapper = resolve(repositoryRoot, "dashboard/scripts/run-higgsfield-locked.sh");
+      const sharedEnv = {
+        ...process.env,
+        HIGGSFIELD_LOCK_DIR: lockDir,
+        HIGGSFIELD_LOCK_WAIT_SECONDS: "3",
+      };
+      writeFileSync(credentialFile, '{"access_token":"existing","refresh_token":"keep-me"}', { mode: 0o600 });
+
+      const holder = spawn(wrapper, ["sh", "-ceu", "sleep 0.6"], { env: sharedEnv, stdio: "ignore" });
+      const holderExit = waitForExit(holder);
+      try {
+        await waitForFile(ownerFile);
+        const writer = spawn(wrapper, [process.execPath, "-e", credentialWriterScript()], {
+          env: {
+            ...sharedEnv,
+            HIGGSFIELD_CREDENTIAL_FILE: credentialFile,
+          },
+          stdio: ["pipe", "ignore", "pipe"],
+        });
+        const writerExit = waitForExit(writer);
+        writer.stdin.end('{"access_token":"new-server-session","refresh_token":"new-refresh"}');
+
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+        expect(readFileSync(credentialFile, "utf8")).toContain("keep-me");
+        expect(await holderExit).toBe(0);
+        expect(await writerExit).toBe(0);
+        expect(JSON.parse(readFileSync(credentialFile, "utf8"))).toEqual({
+          access_token: "new-server-session",
+          refresh_token: "new-refresh",
+        });
+
+        const liveHolder = spawn(wrapper, ["sh", "-ceu", "sleep 2"], { env: sharedEnv, stdio: "ignore" });
+        const liveHolderExit = waitForExit(liveHolder);
+        await waitForFile(ownerFile);
+        const timedOut = spawnSync(wrapper, ["true"], {
+          env: { ...sharedEnv, HIGGSFIELD_LOCK_WAIT_SECONDS: "1" },
+          encoding: "utf8",
+        });
+        expect(timedOut.status).toBe(75);
+        expect(await liveHolderExit).toBe(0);
+
+        mkdirSync(lockDir);
+        writeFileSync(ownerFile, "stale-owner\n", { mode: 0o600 });
+        const old = new Date(Date.now() - 10_000);
+        utimesSync(lockDir, old, old);
+        utimesSync(ownerFile, old, old);
+        const staleRecovered = spawnSync(wrapper, ["true"], { env: sharedEnv, encoding: "utf8" });
+        expect(staleRecovered.status, staleRecovered.stderr).toBe(0);
+      } finally {
+        holder.kill("SIGTERM");
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    },
+    10_000,
   );
 });
