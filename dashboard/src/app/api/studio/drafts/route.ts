@@ -12,6 +12,7 @@ import {
   sanitizePersistedCardTextPositions,
   validatePersistedCardTextPositions,
 } from "@/lib/studio/card-text-position";
+import { normalizeDraftImage, normalizeDraftVideo } from "@/lib/studio/draft-media-compat";
 
 /** 직렬화 64KB 초과면 저장을 거부한다(설계 §7.2 413 CARD_DECK_TOO_LARGE). */
 const CARD_DECK_MAX_BYTES = 64 * 1024;
@@ -102,6 +103,7 @@ function extractVariants(payload: Record<string, unknown> | null | undefined): u
 
 // GET /api/studio/drafts?tenant_id=... — 워크스페이스 초안 목록(최근 50)
 function flattenDraft(r: DraftRow, options: { includeCardDeckV3: boolean }) {
+  const payload = r.payload as Record<string, unknown>;
   const cardDeck = r.payload?.cardDeck ?? null;
   const chatBubbleV2 = usesChatBubbleV2(cardDeck);
   const cardDeckV3 = cardDeckV3ForDraft(cardDeck, r.payload?.cardDeckV3);
@@ -109,8 +111,8 @@ function flattenDraft(r: DraftRow, options: { includeCardDeckV3: boolean }) {
     id: r.id,
     idea: r.idea,
     text: r.payload?.text ?? extractVariants(r.payload as Record<string, unknown>),
-    img: r.payload?.img ?? null,
-    vid: r.payload?.vid ?? null,
+    img: normalizeDraftImage(payload),
+    vid: normalizeDraftVideo(payload),
     includes: r.payload?.includes ?? {},
     publishReconciliations: r.payload?.publishReconciliations ?? null,
     publishReconciliation: r.payload?.publishReconciliation ?? null,

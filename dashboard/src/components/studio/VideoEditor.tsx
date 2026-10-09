@@ -288,7 +288,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
         <Button size="sm" variant={showOriginal ? "primary" : "secondary"} aria-pressed={showOriginal} onClick={() => setShowOriginal((value) => !value)} data-video-original-toggle>{showOriginal ? "편집 상태로" : "원본으로"}</Button>
       </div>
       <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_var(--video-editor-timeline-height)] max-[64rem]:[grid-template-rows:minmax(0,1fr)_var(--video-editor-timeline-height)] max-[26rem]:[grid-template-rows:auto_var(--video-editor-timeline-height)]">
-        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[26rem]:grid-cols-1">
+        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:calc(var(--space-region)*5)_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
             src={effectivePreviewUrl ?? previewVideoUrl}
             tenantId={tenantId}

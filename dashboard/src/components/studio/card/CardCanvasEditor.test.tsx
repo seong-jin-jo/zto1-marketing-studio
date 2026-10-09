@@ -117,11 +117,18 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     );
   });
 
-  it("S7-R1-B3 거절: plain 덱의 카톡 템플릿은 이유를 보이고 비활성 처리한다", () => {
-    render(<CardCanvasEditor deck={deck()} onDeckChange={() => {}} />);
+  it("R7-CHAT-03 정상: plain 덱에서 카톡 템플릿을 골라 말풍선 덱으로 전환한다", () => {
+    const onConvertToChat = vi.fn();
+    render(<CardCanvasEditor deck={deck()} onDeckChange={() => {}} onConvertToChat={onConvertToChat} />);
     const chatTemplate = screen.getByRole("button", { name: /카톡 대화/ });
-    expect(chatTemplate).toBeDisabled();
-    expect(chatTemplate).toHaveTextContent("기존 카톡 덱 만들기에서 선택");
+    expect(chatTemplate).toBeEnabled();
+    fireEvent.click(chatTemplate);
+    fireEvent.click(screen.getByRole("button", { name: "이 템플릿으로 바꾸기" }));
+    expect(onConvertToChat).toHaveBeenCalledWith(
+      expect.objectContaining({ template: "chat_bubble" }),
+      expect.objectContaining({ template: "chat_bubble" }),
+      expect.objectContaining({ activeTemplateId: "chat_bubble" }),
+    );
   });
 
   it("S5b-R2-A 카톡 장 도구를 미리보기 열 안에 두고 3열 workspace 구조를 보존한다", () => {
@@ -411,7 +418,7 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     const inspector = toolbar.closest("details");
     expect(inspector).toHaveAttribute("data-card-element-inspector");
     expect(inspector).toHaveAttribute("open");
-    expect(inspector?.parentElement).toHaveAttribute("data-card-right-panel");
+    expect(inspector?.parentElement).toHaveAttribute("data-card-stage-column");
     fireEvent.click(screen.getByRole("button", { name: /^삭제$/ }));
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
     await waitFor(() => expect(screen.getByLabelText("카드 편집 스테이지")).toHaveFocus());

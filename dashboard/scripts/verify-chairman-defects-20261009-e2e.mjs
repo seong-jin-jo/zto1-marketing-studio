@@ -9,10 +9,12 @@ import sharp from "sharp";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 const baseUrl = process.env.CHAIRMAN_FIX_BASE_URL || "http://127.0.0.1:3471";
-const outputDir = process.env.CHAIRMAN_FIX_OUTPUT_DIR || path.join(repoRoot, "logs/diff/editroom-chairman-fix-20261009/after");
+const outputDir = process.env.CHAIRMAN_FIX_OUTPUT_DIR || path.join(repoRoot, "logs/diff/editroom-chairman-fix-r7/after");
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const imageUrl = "/qa/chairman-photo.jpg";
 const videoUrl = "/qa/chairman-photo-motion.mp4";
+const expiredVideoToken = `${Buffer.from(JSON.stringify({ f: "chairman-photo-motion.mp4", e: 1 })).toString("base64url")}.expired-signature`;
+const expiredVideoUrl = `/api/media/${expiredVideoToken}`;
 const exportedImageUrl = "/qa/chairman-photo.jpg?export=chairman-v3";
 const lines = ["문제를 먼저 짚습니다", "이 구간은 컷합니다", "다음 행동을 제안합니다"];
 
@@ -74,9 +76,12 @@ await page.route("**/api/**", async (route) => {
   if (pathname === "/api/higgsfield/image") return json(route, { ok: true, jobId: "chairman-image-job" }, 202);
   if (pathname === "/api/higgsfield/job/chairman-image-job") return json(route, { ok: true, status: "completed", file: imageUrl, url: imageUrl, filename: "chairman-photo.jpg" });
   if (pathname === "/api/higgsfield/status") return json(route, { credits: 100 });
+  if (pathname === "/api/images/upload" && request.method() === "POST") {
+    return json(route, { ok: true, url: imageUrl, filename: "chairman-photo.jpg" });
+  }
   if (pathname === "/api/media/resign") {
     const body = request.postDataJSON();
-    return json(route, { ok: true, file: body?.purpose === "video" ? videoUrl : imageUrl });
+    return json(route, { ok: true, file: body?.purpose === "media" ? videoUrl : imageUrl });
   }
   if (pathname === "/api/studio/drafts") {
     if (request.method() === "POST") {
@@ -270,6 +275,19 @@ const generatedImageStats = await sharp(await page.getByTestId("create-made-imag
 if (!generatedImageStats.channels.some((channel) => channel.stdev > 20)) throw new Error("생성 결과가 식별 가능한 실제 이미지가 아니라 단색 픽스처입니다");
 if (!draftSaves.some((save) => save.img?.file === imageUrl && save.vid?.file === videoUrl)) throw new Error("생성 결과 이미지와 기존 영상이 같은 초안에 저장되지 않았습니다");
 
+// 운영 재측정(93b72a4b)에서 발견한 실제 과거 초안 모양을 그대로 재현한다.
+// 현재 img/vid 객체가 아니라 payload 최상위 image_urls/videoUrl만 있고, 영상 주소는 만료됐다.
+currentDraft = {
+  ...currentDraft,
+  img: null,
+  vid: null,
+  image_urls: [imageUrl],
+  imageUrl: imageUrl,
+  videoUrl: expiredVideoUrl,
+};
+await page.reload({ waitUntil: "domcontentloaded" });
+await page.getByTestId("create-card-image").waitFor();
+
 await page.getByRole("button", { name: /작업물 전체/ }).click();
 const workThumbnail = page.getByTestId("work-thumbnail-chairman-draft");
 await workThumbnail.waitFor();
@@ -432,6 +450,19 @@ if (skippedTime <= 0.1) throw new Error(`컷 재생이 구간을 건너뛰지 �
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982 }, { width: 390, height: 844 }]) {
   await page.setViewportSize(viewport);
   await assertNoHorizontalOverflow(`영상 편집실 ${viewport.width}`);
+  if (viewport.width >= 1024) {
+    const timeline = await editRoom.locator('[data-video-timeline]').evaluate((root, height) => {
+      const rect = root.getBoundingClientRect();
+      const lanes = [...root.querySelectorAll('[data-video-timeline-lane]')].map((lane) => {
+        const value = lane.getBoundingClientRect();
+        return { label: lane.getAttribute('data-video-timeline-lane'), y: value.y, bottom: value.bottom, height: value.height };
+      });
+      return { y: rect.y, bottom: rect.bottom, viewportHeight: height, lanes };
+    }, viewport.height);
+    if (timeline.lanes.length !== 5 || timeline.bottom > viewport.height + 1 || timeline.lanes.some((lane) => lane.y < 0 || lane.bottom > viewport.height + 1)) {
+      throw new Error(`영상 5레인 타임라인이 첫 화면 안에 없습니다: ${JSON.stringify(timeline)}`);
+    }
+  }
   await page.screenshot({ path: path.join(outputDir, `edit-video-${viewport.width}x${viewport.height}.png`) });
 }
 
@@ -490,6 +521,26 @@ if (boxes.length < 3 || !(boxes[0].y < boxes[1].y && boxes[1].y < boxes[2].y) ||
 if (await publishRoom.locator('img[src*="chairman-photo"], video[src*="chairman-photo-motion"]').count() < 3) throw new Error("발행 미리보기에 실제 이미지·영상이 표시되지 않았습니다");
 await page.screenshot({ path: path.join(outputDir, "publish-platforms-1440x900.png") });
 
+// R7-C: 생성실로 되돌아가지 않고 편집실 템플릿 선택만으로 카톡 덱을 만들고 말풍선을 고친다.
+await page.goto(`${baseUrl}/studio?room=edit&kind=card`, { waitUntil: "domcontentloaded" });
+await page.getByRole("button", { name: /작업물 전체/ }).click();
+await page.locator('[data-work-item="chairman-draft"]').click();
+const reopenedEditRoom = page.locator('[data-room="edit"]');
+await reopenedEditRoom.locator('[data-card-canvas-editor]').waitFor();
+const chatTemplate = reopenedEditRoom.locator('[data-card-template="chat_bubble"]');
+await chatTemplate.scrollIntoViewIfNeeded();
+await chatTemplate.click();
+await reopenedEditRoom.getByRole("button", { name: "이 템플릿으로 바꾸기" }).click();
+await reopenedEditRoom.locator('[data-chat-base="conversation"]').first().waitFor();
+const firstBubbleInput = reopenedEditRoom.getByLabel(/번째 말풍선 내용/).first();
+await firstBubbleInput.fill("편집실에서 바로 고친 카톡 말풍선");
+await firstBubbleInput.blur();
+await page.waitForTimeout(900);
+if (!draftSaves.some((save) => save.cardDeck?.template === "chat_bubble" && save.cardDeckV3?.template === "chat_bubble")) {
+  throw new Error("편집실 카톡 템플릿 전환이 v2·v3 동기화 저장으로 이어지지 않았습니다");
+}
+await page.screenshot({ path: path.join(outputDir, "edit-card-chat-1440x900.png") });
+
 if (consoleErrors.length) throw new Error(`브라우저 콘솔 오류: ${JSON.stringify(consoleErrors.slice(0, 10))}`);
 fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify({
   ok: true,
@@ -500,6 +551,7 @@ fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify({
   videoTabGeometry,
   videoCutSkippedTo: skippedTime,
   videoFrame,
+  expiredVideoResigned: apiRequests.filter((entry) => entry === "POST /api/media/resign").length,
   selectedPublishMedia: selectedMediaBoxes,
   exportFlow: { exportStarted, exportJobReads, selectedImageSrc: await selectedPublishImage.getAttribute("src") },
   publishBoxes: boxes,

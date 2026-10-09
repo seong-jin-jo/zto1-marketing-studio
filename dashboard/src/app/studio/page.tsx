@@ -86,6 +86,7 @@ import {
   type BulkPlatform,
 } from "@/lib/studio/publish-bulk";
 import { buildPublishReturnWork, readPublishReturnRequest, resolvePublishReturnDraftId } from "@/lib/publish-return-context";
+import { draftImageSource, draftVideoSource, normalizeDraftImage, normalizeDraftVideo } from "@/lib/studio/draft-media-compat";
 import {
   defaultContentEditFormat,
   validateContentEditFormat,
@@ -183,12 +184,9 @@ function draftLandingRoom(draft: Record<string, unknown>): StudioRoom {
 }
 
 function draftPreviewMedia(draft: Record<string, unknown>): { type: "image" | "video"; src: string } | null {
-  const video = draft.vid as { file?: unknown; url?: unknown } | null | undefined;
-  const videoSrc = typeof video?.file === "string" ? video.file : typeof video?.url === "string" ? video.url : "";
+  const videoSrc = draftVideoSource(draft);
   if (videoSrc) return { type: "video", src: videoSrc };
-  const image = draft.img as { file?: unknown; url?: unknown; imageUrls?: unknown } | null | undefined;
-  const firstImage = Array.isArray(image?.imageUrls) && typeof image.imageUrls[0] === "string" ? image.imageUrls[0] : "";
-  const imageSrc = typeof image?.file === "string" ? image.file : typeof image?.url === "string" ? image.url : firstImage;
+  const imageSrc = draftImageSource(draft);
   return imageSrc ? { type: "image", src: imageSrc } : null;
 }
 
@@ -3366,7 +3364,13 @@ export default function StudioPage() {
     if (cardDeckAutosaveTimer.current) { clearTimeout(cardDeckAutosaveTimer.current); cardDeckAutosaveTimer.current = null; }
     if (videoEditAutosaveTimer.current) { clearTimeout(videoEditAutosaveTimer.current); videoEditAutosaveTimer.current = null; }
     setIdea((d.idea as string) || "");
-    setImg(recoverDraftEmbeddedTextCard<ImgResult>(d)); setVid((d.vid as VidResult) || null);
+    const compatibleDraft = {
+      ...d,
+      img: normalizeDraftImage(d),
+      vid: normalizeDraftVideo(d),
+    };
+    setImg(recoverDraftEmbeddedTextCard<ImgResult>(compatibleDraft));
+    setVid((compatibleDraft.vid as unknown as VidResult) || null);
     setIncludes(d.includes ? normalizeIncludes(d.includes as Record<string, boolean>) : includes);
     // MINOR-g 근본원인: 초안을 불러오면 그 초안이 저장했던 체크 상태가 아무 표시 없이
     // 되살아난다. "지금 내가 고른 것"처럼 보이면 안 되므로 복원임을 배지로 남긴다.
@@ -4505,9 +4509,9 @@ export default function StudioPage() {
 
   function onCardDeckV3Change(
     nextDeck: CardDeckV3,
-    templateStateOrOptions?: CardTemplateState | { sourceSnapshot?: CardDeckV3SourceSnapshot | null },
+    templateStateOrOptions?: CardTemplateState | { sourceSnapshot?: CardDeckV3SourceSnapshot | null; templateState?: CardTemplateState; sourceDeck?: CardDeck },
   ) {
-    const options: { sourceSnapshot?: CardDeckV3SourceSnapshot | null; templateState?: CardTemplateState } = templateStateOrOptions && "activeTemplateId" in templateStateOrOptions
+    const options: { sourceSnapshot?: CardDeckV3SourceSnapshot | null; templateState?: CardTemplateState; sourceDeck?: CardDeck } = templateStateOrOptions && "activeTemplateId" in templateStateOrOptions
       ? { templateState: templateStateOrOptions }
       : templateStateOrOptions ?? {};
     const nextTemplateState = options.templateState
@@ -4517,7 +4521,8 @@ export default function StudioPage() {
     if (Object.prototype.hasOwnProperty.call(options, "sourceSnapshot") && options.sourceSnapshot) {
       cardDeckV3PendingSourceSnapshotRef.current = options.sourceSnapshot;
     }
-    const legacyProjection = cardDeck ? projectCardDeckV3ToV2(nextDeck, cardDeck) : null;
+    const projectionSource = options.sourceDeck ?? cardDeck;
+    const legacyProjection = projectionSource ? projectCardDeckV3ToV2(nextDeck, projectionSource) : null;
     const persistedDeck = legacyProjection && nextDeck.template === "chat_bubble"
       ? synchronizeChatCardDeckV3(nextDeck, legacyProjection)
       : nextDeck;
@@ -4559,6 +4564,11 @@ export default function StudioPage() {
           setCardDeckAutosaveError(extractApiErrorMessage(error, "카드 직접 편집 내용을 자동 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."));
         });
     }, 800);
+  }
+
+  function convertCardDeckToChat(source: CardDeck, nextDeck: CardDeckV3, templateState: CardTemplateState) {
+    setCardDeck(source);
+    onCardDeckV3Change(nextDeck, { sourceDeck: source, templateState });
   }
 
   async function startCardDeckV3(): Promise<boolean> {
@@ -4644,7 +4654,22 @@ export default function StudioPage() {
         nextDeck = createRecoverableEmbeddedCardDeckV3(snapshot.editLines, snapshot.cardTextPositions, backgrounds);
       } else {
         nextDeck = createPlainCardDeckV3(snapshot.editLines, snapshot.cardTextPositions);
-        if (img?.filename) nextDeck = applyGeneratedImageBackground(nextDeck, img.filename);
+        let backgroundAssetId = img?.filename;
+        if (!backgroundAssetId) {
+          const operationalImageUrl = img?.file || img?.url || img?.imageUrls?.[0];
+          if (operationalImageUrl) {
+            const uploaded = await browserCardUploader(authHeaders())(operationalImageUrl, 0);
+            if (typeof uploaded === "string" || !uploaded.filename) {
+              throw new Error("기존 초안 사진 파일명을 받지 못했습니다.");
+            }
+            if (!entryIsCurrent()) {
+              await uploaded.rollback?.();
+              return false;
+            }
+            backgroundAssetId = uploaded.filename;
+          }
+        }
+        if (backgroundAssetId) nextDeck = applyGeneratedImageBackground(nextDeck, backgroundAssetId);
       }
       if (!entryIsCurrent()) return false;
       onCardDeckV3Change(nextDeck, cardDeck?.template === "chat_bubble" ? undefined : { sourceSnapshot: snapshot });
@@ -4870,6 +4895,7 @@ export default function StudioPage() {
         cardDeckV3={cardDeckV3}
         cardTemplateState={cardTemplateState}
         onCardDeckV3Change={onCardDeckV3Change}
+        onConvertCardDeckToChat={convertCardDeckToChat}
         requestedCardSlide={requestedCardSlide}
         onStartCardDeckV3={cardDeckV3EntryEnabled(CARD_DECK_V3_RENDER_ENABLED, {
           hasCardDeckV2: Boolean(cardDeck),
@@ -4986,6 +5012,11 @@ export default function StudioPage() {
   );
   }
 
+  const publishImageUrl = img?.file || img?.url || img?.imageUrls?.[0] || "";
+  // OD-2026-10-02-1: URL은 표시 경계에서 재서명한다. 구형 초안은 file 없이 url만
+  // 있으므로 file만 읽으면 DeliveredMedia의 재서명 경로에 도달하기도 전에 사라진다.
+  const publishVideoUrl = vid?.url || vid?.file || "";
+
   if (activeRoom === "publish") return (
     <div className="px-stack-section py-pad-inset">
       {showWizard && activeWorkspace ? <LearningCardWizard workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onSaved={(info, completed) => { setLearningInfo(info); if (completed) { setShowWizard(false); mutateBrand(); showToast("학습 정보를 배웠습니다"); } else { setLearningFlash((value) => value + 1); } }} onClose={() => setShowWizard(false)} /> : null}
@@ -5088,22 +5119,22 @@ export default function StudioPage() {
               전부 해제
             </Button>
           </section>
-          {img?.file || vid?.file ? (
+          {publishImageUrl || publishVideoUrl ? (
             <section data-testid="publish-selected-media" aria-label="선택한 초안 실제 미디어" className="rounded-surface border border-border bg-surface p-stack">
               <div className="mb-stack-tight flex flex-wrap items-center gap-stack-tight">
                 <b className="mr-auto text-body text-text">선택한 초안 미디어</b>
                 <span className="text-caption text-subtle">발행할 이미지와 영상을 먼저 확인합니다</span>
               </div>
               <div className="grid grid-cols-1 gap-stack sm:grid-cols-2">
-                {img?.file ? (
+                {publishImageUrl ? (
                   <figure className="min-w-0">
-                    <DeliveredMedia type="image" src={img.file} tenantId={activeWorkspace?.id} testId="publish-selected-image" alt="선택한 초안 이미지" className="h-48 w-full rounded-control bg-surface-2 object-cover" />
+                    <DeliveredMedia type="image" src={publishImageUrl} tenantId={activeWorkspace?.id} testId="publish-selected-image" alt="선택한 초안 이미지" className="h-48 w-full rounded-control bg-surface-2 object-cover" />
                     <figcaption className="mt-micro text-caption text-muted">이미지</figcaption>
                   </figure>
                 ) : null}
-                {vid?.file ? (
+                {publishVideoUrl ? (
                   <figure className="min-w-0">
-                    <DeliveredMedia type="video" src={vid.file} tenantId={activeWorkspace?.id} testId="publish-selected-video" poster={img?.file} preload="metadata" className="h-48 w-full rounded-control bg-player-surface object-cover" />
+                    <DeliveredMedia type="video" src={publishVideoUrl} tenantId={activeWorkspace?.id} testId="publish-selected-video" poster={publishImageUrl || undefined} preload="metadata" className="h-48 w-full rounded-control bg-player-surface object-cover" />
                     <figcaption className="mt-micro text-caption text-muted">영상</figcaption>
                   </figure>
                 ) : null}
@@ -5273,9 +5304,9 @@ export default function StudioPage() {
                       platform={platform}
                       text={text || {}}
                       media={{
-                        imgUrl: img?.file,
+                        imgUrl: publishImageUrl || undefined,
                         imgUrls: planChannelImages(platform, publishDeck).images,
-                        vidUrl: vid?.file,
+                        vidUrl: publishVideoUrl || undefined,
                       }}
                       tenantId={activeWorkspace?.id}
                       editor={previewEditor(platform)}

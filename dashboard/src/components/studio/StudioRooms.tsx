@@ -1754,6 +1754,7 @@ interface EditRoomProps {
   cardDeckV3?: CardDeckV3 | null;
   cardTemplateState?: CardTemplateState | null;
   onCardDeckV3Change?: (deck: CardDeckV3, templateState?: CardTemplateState) => void;
+  onConvertCardDeckToChat?: (source: CardDeck, deck: CardDeckV3, templateState: CardTemplateState) => void;
   requestedCardSlide?: { id: string; requestId: number } | null;
   /** 기존 plain 카드의 줄과 v2 덱을 보존한 채 카드 직접 편집을 준비한다. false면 재시도 UI를 연다. */
   onStartCardDeckV3?: () => boolean | void | Promise<boolean | void>;
@@ -2073,6 +2074,7 @@ export function EditRoom({
   cardDeckV3 = null,
   cardTemplateState = null,
   onCardDeckV3Change,
+  onConvertCardDeckToChat,
   requestedCardSlide = null,
   onStartCardDeckV3,
   cardDeckV3EntryBlockedReason,
@@ -2374,7 +2376,7 @@ export function EditRoom({
                       </span>
                     ) : null}
                   </div> : null}
-                  <CardCanvasEditor deck={cardDeckV3} tenantId={workspaceId} templateState={cardTemplateState} sourceDeck={cardDeck} requestedSlide={requestedCardSlide} assetUrls={cardAssetUrls} onAssetUrlChange={(assetId, url) => setCardAssetUrls((current) => ({ ...current, [assetId]: url }))} onDeckChange={onCardDeckV3Change} />
+                  <CardCanvasEditor deck={cardDeckV3} tenantId={workspaceId} templateState={cardTemplateState} sourceDeck={cardDeck} requestedSlide={requestedCardSlide} assetUrls={cardAssetUrls} onAssetUrlChange={(assetId, url) => setCardAssetUrls((current) => ({ ...current, [assetId]: url }))} onDeckChange={onCardDeckV3Change} onConvertToChat={onConvertCardDeckToChat} />
                 </div>
               ) : kind === "card" && cardDeck && cardDeck.template === "chat_bubble" && onCardDeckChange ? (
                 <div className="card overflow-hidden p-pad-inset" data-edit-workspace data-card-deck-workbench inert={bodyEditConflict ? true : undefined} aria-disabled={bodyEditConflict || undefined}>
