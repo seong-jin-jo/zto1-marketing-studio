@@ -1,10 +1,11 @@
-## 2026-10-09 09:08 KST · 운영 Higgsfield 503 진단 착수
+## 2026-10-09 09:18 KST · 운영 Higgsfield 503 원인 판정, 진단 commit 완료
 
 - handoff basis: 회장이 지정한 과제 원문과 `origin/main` 79bd8d06을 정본으로 삼았다. `openclaw-auto-3:0.1`은 이 세션 자체의 실행 pane임을 확인했다.
-- 관찰: 08:50 KST `/api/higgsfield/image` HTTP 503 3회, diagnose run 37862950523의 컨테이너 `higgsfield account status`는 `request failed (no response received)`, 동시각 맥 CLI는 plus plan 686.5 credits 정상이다.
-- 현재 판정: 원인 미확정. 운영 컨테이너의 DNS·HTTPS·proxy 경로 문제와 refresh token 회전으로 인한 서버 자격증명 무효화를 분리해야 한다.
+- 원인 판정: GitHub Secret은 16:30 UTC 갱신 뒤 16:31 deploy에서 성공했다. 맥 credential은 23:19 UTC에 새 만료시각으로 재기록됐지만 Secret은 갱신되지 않았다. 23:19 deploy가 낡은 Secret을 서버에 다시 넣자 즉시 종료 코드 2였다. 갱신 불가능한 OAuth 스냅샷 공유가 인증 회귀 원인이고, refresh token rotation 자체는 값 비교 없이 확정하지 않은 강한 추론이다.
+- 추가 관찰: diagnose run 37862950523과 재실행 37863665063 모두 `request failed (no response received)`. 맥 HTTPS는 DNS·TLS 정상과 HTTP 404를 확인했다. 운영 컨테이너 DNS·TLS는 수정 workflow push 차단으로 미검증이다. 09:15 KST 맥 CLI 재확인도 `Session expired`라 현재는 유효한 복구 source가 없다.
 - 작업 위치: `/Users/sj/wt/zto1-higgsfield-503-20261009`, branch `fix/higgsfield-503-20261009`.
-- 다음 실행: `diagnose-generator.yml`에 비밀값을 노출하지 않는 읽기 전용 진단을 추가하고 계약 테스트 통과 후 push·PR·branch dispatch로 운영 원인을 확정한다.
+- 변경·검증: 선행 commit `5db41076`. 진단 정적·동적 계약 13건과 기존 probe·monitor 12건, 합계 25건, YAML·shell 구문 PASS. 동적 계약은 가짜 Docker 정상 경로와 필수 probe 실패 8종을 실행했다. 보안·테스트·성능·적대적 재검수에서 나온 결함을 수정한 뒤 최종 수렴 리뷰는 `NO FINDINGS`. 보고서 `logs/diff/higgsfield-503-20261009/report.md`.
+- 차단: `git push`가 실행 전 정책에 차단돼 PR과 branch dispatch는 만들지 못했다. 즉시 복구는 서버 전용 credential 발급 또는 별도 OAuth 로그인, Secret 갱신, `force_generator_credentials=true` 배포, 실제 이미지 생성 확인이다.
 
 ## 2026-10-09 07:50 KST · PR 134 Linux 글꼴 폭 카드 버튼 넘침 교정 완료
 

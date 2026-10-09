@@ -1,5 +1,15 @@
 # OSMU build log
 
+## 2026-10-09 09:18 KST · 운영 Higgsfield 503 진단 계약
+
+STAMP: 2026-10-09 09:18 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/tmp/higgsfield-diag-red.log`, `/tmp/higgsfield-diag-contracts.log`, workflow YAML·shell 구문 검사 | 고민: 운영 token과 계정 식별자는 한 글자도 출력하지 않고 장애 층만 분리했다.
+
+**변경:** `diagnose-generator.yml`에 DNS, token 없는 HTTPS timing, proxy 존재, CLI 버전, credential 만료 metadata, account status 종료 코드, 최근 30분 이미지 503 분기 로그를 추가했다. 계정·앱 로그 원문은 출력하지 않고 고정 분류만 허용하며, 로그를 원문 변수에 담지 않고 2,000레코드·1MiB·20초 입력과 200줄 출력 상한 아래 스트리밍한다. 생성·로그인·credential 덮어쓰기는 거절 계약으로 고정했다.
+
+**검증:** 구현 전 신규 계약 3 fail·1 pass. 구현 뒤 진단 workflow 정적·동적 계약 13건, 배포 probe 5건, 30분 monitor 7건, 합계 25건 PASS. 동적 계약은 가짜 Docker 정상 경로와 필수 probe 실패 8종, allowlist 출력, exact container를 실제 shell 실행으로 검증한다. YAML 파싱, 추출한 run script의 `bash -n`, `git diff --check` PASS. `git push`가 실행 정책에 차단되어 branch dispatch, PR, 운영 DNS·TLS 측정, 실제 이미지 생성은 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `.github/workflows/diagnose-generator.yml` | `/tmp/higgsfield-diag-contracts.log` | GitHub runs 37862950523·37863665063
+
 ## 2026-10-09 07:50 KST · PR 134 Linux 글꼴 폭 카드 버튼 회귀 복구
 
 STAMP: 2026-10-09 07:50 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `/tmp/zto1-r6-focused.log`, `/tmp/zto1-r6-typecheck.log`, `/tmp/zto1-r6-build.log`, `/tmp/zto1-r6-v70.log`, `/tmp/zto1-r6-chairman-2.log` | 고민: CI의 전체 자손 넘침 검사는 완화하지 않고, 같은 행의 10개 버튼에 더 강한 크기·내용·축소 수치 검사를 추가했다.

@@ -2,9 +2,9 @@
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
 |---|---|---|---|
-| HIGGSFIELD-503-01 | 운영 `/api/higgsfield/image`가 실제 이미지 생성 요청을 수락하고 503이 반복되지 않아야 함 | ❌ NG | 08:50 KST 운영 재측정에서 HTTP 503이 3회 반복됐다. 원인은 아직 미확정이다. |
-| HIGGSFIELD-503-02 | 배포 컨테이너에서 DNS, HTTPS 연결, proxy 환경, CLI 버전, 토큰 만료시각, 최근 503 분기를 비밀값 없이 진단할 수 있어야 함 | ❌ NG | 기존 `diagnose-generator.yml`은 실행 파일, 자격증명 파일, `account status`만 확인해 네트워크와 토큰 회전 여부를 구분하지 못한다. |
-| HIGGSFIELD-503-03 | 맥 CLI 토큰 갱신이 서버 refresh token을 무효화하는 회전 가능성을 운영 증거로 판정해야 함 | ❌ NG | 맥 CLI는 plus plan 686.5 credits로 정상이나 컨테이너 `account status`는 `request failed (no response received)`다. 네트워크 실패와 자격증명 회전 실패를 아직 분리하지 못했다. |
+| HIGGSFIELD-503-01 | 운영 `/api/higgsfield/image`가 실제 이미지 생성 요청을 수락하고 503이 반복되지 않아야 함 | ❌ NG | 08:50 KST HTTP 503 3회. 재로그인·Secret 갱신·강제 배포와 실생성을 아직 수행하지 못했다. |
+| HIGGSFIELD-503-02 | 배포 컨테이너에서 DNS, HTTPS 연결, proxy 환경, CLI 버전, 토큰 만료시각, 최근 503 분기를 비밀값 없이 진단할 수 있어야 함 | ✅ 로컬 계약 PASS, 운영 미검증 | 진단 정적·동적 13건과 기존 probe·monitor 12건, 합계 25건 및 YAML·shell 구문이 통과했다. push 정책 차단으로 branch workflow를 운영 실행하지 못했다. |
+| HIGGSFIELD-503-03 | 맥 CLI 토큰 갱신이 서버 refresh token을 무효화하는 회전 가능성을 운영 증거로 판정해야 함 | ✅ 오래된 스냅샷 확인, rotation은 강한 추론 | Secret 갱신 16:30 UTC → 16:31 probe 성공. 맥 credential 재기록 23:19 UTC 뒤 같은 Secret을 다시 넣은 23:19 deploy는 즉시 종료 코드 2. Secret 값 비교 없이 rotation 자체는 확정하지 않았다. |
 
 ## 2026-10-09 PR 134 Linux 글꼴 폭 카드 버튼 넘침 ❌ NG → ✅ PASS
 
