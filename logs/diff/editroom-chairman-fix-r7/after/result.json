@@ -376,8 +376,142 @@
   "videoFrame": {
     "readyState": 4,
     "currentTime": 1,
+    "duration": 3,
     "videoWidth": 540,
     "videoHeight": 960
+  },
+  "videoTimelineGeometry": {
+    "y": 642,
+    "bottom": 890,
+    "viewportHeight": 900,
+    "lanes": [
+      {
+        "label": "영상",
+        "y": 663,
+        "bottom": 708,
+        "height": 45
+      },
+      {
+        "label": "자막",
+        "y": 708,
+        "bottom": 753,
+        "height": 45
+      },
+      {
+        "label": "글·스티커",
+        "y": 753,
+        "bottom": 798,
+        "height": 45
+      },
+      {
+        "label": "훅·댓글",
+        "y": 798,
+        "bottom": 843,
+        "height": 45
+      },
+      {
+        "label": "배경 음악",
+        "y": 843,
+        "bottom": 888,
+        "height": 45
+      }
+    ],
+    "ticks": [
+      {
+        "text": "0:00",
+        "width": 24.5,
+        "height": 18,
+        "clientHeight": 18,
+        "scrollHeight": 18,
+        "lineHeight": 18,
+        "whiteSpace": "nowrap"
+      },
+      {
+        "text": "0:01",
+        "width": 22.609375,
+        "height": 18,
+        "clientHeight": 18,
+        "scrollHeight": 18,
+        "lineHeight": 18,
+        "whiteSpace": "nowrap"
+      },
+      {
+        "text": "0:02",
+        "width": 24.390625,
+        "height": 18,
+        "clientHeight": 18,
+        "scrollHeight": 18,
+        "lineHeight": 18,
+        "whiteSpace": "nowrap"
+      },
+      {
+        "text": "0:03",
+        "width": 24.75,
+        "height": 18,
+        "clientHeight": 18,
+        "scrollHeight": 18,
+        "lineHeight": 18,
+        "whiteSpace": "nowrap"
+      }
+    ],
+    "blocks": [
+      {
+        "kind": "video",
+        "width": 726,
+        "handles": []
+      },
+      {
+        "kind": "subtitle",
+        "width": 242,
+        "handles": [
+          {
+            "left": 337,
+            "right": 381,
+            "width": 44
+          },
+          {
+            "left": 533,
+            "right": 577,
+            "width": 44
+          }
+        ]
+      },
+      {
+        "kind": "subtitle",
+        "width": 242,
+        "handles": [
+          {
+            "left": 579,
+            "right": 623,
+            "width": 44
+          },
+          {
+            "left": 775,
+            "right": 819,
+            "width": 44
+          }
+        ]
+      },
+      {
+        "kind": "subtitle",
+        "width": 242,
+        "handles": [
+          {
+            "left": 821,
+            "right": 865,
+            "width": 44
+          },
+          {
+            "left": 1017,
+            "right": 1061,
+            "width": 44
+          }
+        ]
+      }
+    ],
+    "trackUsage": 1,
+    "videoLaneUsage": 1,
+    "pxPerSec": 242
   },
   "expiredVideoResigned": 15,
   "selectedPublishMedia": [
@@ -419,6 +553,31 @@
   "toastCounts": {
     "edit": 1,
     "publish": 1
+  },
+  "chatCanvasGeometry": {
+    "expectedText": "편집실에서 바로 고친 카톡 말풍선",
+    "stage": {
+      "x": 532,
+      "y": -207.5,
+      "right": 932,
+      "bottom": 292
+    },
+    "bubbles": [
+      {
+        "text": "편집실에서 바로 고친 카톡 말풍선",
+        "x": 697.578125,
+        "y": -155.59375,
+        "right": 907.125,
+        "bottom": -120.15625
+      },
+      {
+        "text": " 컷합니다",
+        "x": 593.46875,
+        "y": -95.109375,
+        "right": 668.765625,
+        "bottom": -59.671875
+      }
+    ]
   },
   "consoleErrors": 0
 }

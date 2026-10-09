@@ -1335,7 +1335,7 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
           <div className="pointer-events-none absolute inset-0" aria-hidden="true">
             {ticks.map((t) => (
               <div key={t} className="absolute top-0 bottom-0 border-l border-border/60" style={{ left: `${TIMELINE_LANE_LABEL_WIDTH + t * pxPerSec}px` }}>
-                <span className="absolute top-0 left-0.5 whitespace-nowrap text-caption leading-none text-subtle" data-video-timeline-tick>{formatClock(t)}</span>
+                <span className="absolute top-0 left-0.5 whitespace-nowrap text-caption text-subtle" data-video-timeline-tick>{formatClock(t)}</span>
               </div>
             ))}
             <div className="absolute top-0 bottom-0 w-px bg-accent" style={{ left: `${TIMELINE_LANE_LABEL_WIDTH + playhead * pxPerSec}px` }} data-video-timeline-playhead />
@@ -1422,7 +1422,7 @@ function TimelineLane({ label, labelWidth, children }: { label: string; labelWid
   // 간격을 두지 않는다 — 이 라벨 폭이 곧 위 눈금 오버레이의 오프셋 상수와 같아야
   // 블록이 눈금과 같은 원점에서 시작한다(M7).
   return (
-    <div className="relative flex min-h-control-touch items-center border-t border-border/40 pt-none first:border-t-0 sm:pt-micro" data-video-timeline-lane={label}>
+    <div className="relative flex min-h-control-touch items-center border-t border-border/40 first:border-t-0" data-video-timeline-lane={label}>
       <span className="sticky left-0 z-[1] shrink-0 bg-surface-2 text-caption uppercase text-subtle" style={{ width: `${labelWidth}px` }} data-video-timeline-lane-label>{label}</span>
       <div className="relative min-h-control-touch min-w-0 flex-1" data-video-timeline-lane-content>{children}</div>
     </div>

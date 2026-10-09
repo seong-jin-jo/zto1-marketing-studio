@@ -8,6 +8,18 @@ STAMP: 2026-10-09 10:00 KST | model: gpt-6.1-sol/Codex | agent: code-builder | s
 
 운영 구형 초안의 실제 사진과 만료 영상이 편집실·발행실에 다시 연결된다. 편집실에서 카톡 템플릿을 선택해 말풍선을 직접 수정할 수 있고, 카드 캔버스와 영상 타임라인도 v71 첫 화면 밀도로 복구했다.
 
+## R8 타임라인 시각 회귀 재검증
+
+| 항목 | v71 기준 | 수정 뒤 직접 관찰 |
+|---|---|---|
+| 짧은 영상 폭 | `가용폭 / 전체초`로 초당 폭 계산 | 3초 fixture는 242px/초, track·영상 레인 사용률 각각 100%. 5.875초·705px 계약은 120px/초. |
+| 시간 눈금 | 타임라인 위 한 줄 눈금 | `0:00`~`0:03` 모두 `nowrap`, client·scroll·line 높이 18px. |
+| 편집 블록 | 레인 시간 비율에 맞는 폭과 양끝 손잡이 | 자막 블록 3개 각각 242px, 두 손잡이 각각 44px, 겹침 0. 일반 블록 최소 24px, 편집 블록 최소 88px. |
+| 5레인 높이 | 첫 화면의 다섯 레인 | 390 타임라인 248px 안에 마지막 레인 bottom 718, 컨테이너 bottom 720. 1440×900은 5레인 전체가 viewport 안에 포함. |
+| 카톡 캔버스 | 편집 문구가 실제 카드 면에 표시 | 실제 `[data-card-stage]` 안에서 수정 말풍선을 확인하고 가운데로 스크롤해 캡처. 빈 크림색은 렌더 누락이 아니라 이전 캡처의 스크롤 위치 문제였다. |
+
+비교 캡처는 `after/v71-reference-video-1440x900.png`와 `after/edit-video-1440x900.png`다. 구현 화면은 v71의 가용폭 맞춤과 5레인 구조를 계승하되, 모바일 44px 조작 계약 때문에 편집 블록의 양끝 손잡이를 더 넓게 유지한다.
+
 ## 결함별 결과
 
 | 항목 | 원인 | 변경 | 직접 관찰 |
@@ -43,6 +55,7 @@ STAMP: 2026-10-09 10:00 KST | model: gpt-6.1-sol/Codex | agent: code-builder | s
 - 카드: `after/edit-card-1440x900.png`, `after/edit-card-1512x982.png`, `after/edit-card-390x844.png`
 - 카톡 편집: `after/edit-card-chat-1440x900.png`
 - 영상: `after/edit-video-1440x900.png`, `after/edit-video-1512x982.png`, `after/edit-video-390x844.png`
+- v71 영상 기준: `after/v71-reference-video-1440x900.png`
 - 발행실: `after/publish-1440x900.png`, `after/publish-1512x982.png`, `after/publish-390x844.png`, `after/publish-platforms-1440x900.png`
 - 브라우저 수치: `after/result.json`
 

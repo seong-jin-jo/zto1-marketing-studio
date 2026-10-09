@@ -1,3 +1,14 @@
+## 2026-10-09 운영 편집실 R8 짧은 영상 타임라인·카톡 캔버스 ❌ NG → ✅ PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| CHAIRMAN-FIX-R8-01 | 짧은 영상도 5레인 전체 폭을 80% 이상 쓰고 초 눈금이 한 줄로 보여야 함 | ✅ PASS | production Chromium에서 3초 fixture의 초당 폭은 242px, track·영상 레인 사용률은 각각 100%다. `0:00`~`0:03` 네 눈금은 모두 `white-space:nowrap`, client·scroll·line 높이 18px다. 5.875초 순수 계산 계약은 705px 가용폭에서 120px/초다. |
+| CHAIRMAN-FIX-R8-02 | 블록은 24px보다 좁아지지 않고 양쪽 44px 손잡이가 겹치지 않아야 함 | ✅ PASS | 실브라우저 자막 블록 3개는 각각 242px, 손잡이는 각각 44px이며 좌우 경계가 겹치지 않는다. 긴 120초 영상은 12px/초 하한과 가로 스크롤을 유지한다. |
+| CHAIRMAN-FIX-R8-03 | 눈금 추가 뒤에도 390에서 5개 44px 레인이 타임라인 안에 머물러야 함 | ✅ PASS | v70 화면 게이트 실측은 타임라인 248px, 마지막 레인 bottom 718, 타임라인 bottom 720이다. 다음 콘텐츠 top 732, 문서 가로 넘침 0이다. |
+| CHAIRMAN-FIX-R8-04 | 카톡 말풍선 수정 결과가 실제 캔버스 안에 렌더되고 캡처에 보여야 함 | ✅ PASS | 새 직접 편집기의 `[data-card-stage] [data-chat-bubble-text]`에서 수정 문구를 확인했고 모든 말풍선이 stage 경계 안이다. 캔버스를 가운데로 스크롤한 캡처에서 노란 말풍선과 상대 말풍선을 직접 확인했다. |
+
+종료 증거: `logs/diff/editroom-chairman-fix-r7/after/result.json`, `edit-video-1440x900.png`, `edit-video-1512x982.png`, `edit-video-390x844.png`, `edit-card-chat-1440x900.png`, `v71-reference-video-1440x900.png`. 집중 Vitest 17건, 두 production 화면 게이트, TypeScript, production build, 모바일 9폭이 PASS했고 콘솔 오류는 0이다. 전체 3,780건은 직전 커밋에서 통과했으며 이번에는 변경 영향 범위만 재실행했다.
+
 ## 2026-10-09 운영 편집실 R7 미디어 호환·카톡·화면 밀도 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

@@ -226,7 +226,9 @@ describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임�
     expect(globalsCss).toContain("--control-touch: 44px;");
     expect(timelineHeightToken.match(/var\(--control-touch\)/g)).toHaveLength(5);
     expect(timelineHeightToken.match(/var\(--stack-tight\)/g)).toHaveLength(2);
-    expect(timelineHeightToken.match(/var\(--space-micro\)/g)).toHaveLength(2);
+    // R7 후속: 눈금 한 줄을 추가한 뒤 Linux/Chromium의 테두리 반올림에서도
+    // 마지막 44px 레인이 타임라인 아래로 2px 넘지 않도록 토큰 4px 여유를 둔다.
+    expect(timelineHeightToken.match(/var\(--space-micro\)/g)).toHaveLength(3);
     expect(document.querySelector("[data-video-script-column]")).toBeInTheDocument();
   });
 

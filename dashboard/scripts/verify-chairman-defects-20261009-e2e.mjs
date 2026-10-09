@@ -498,7 +498,7 @@ const videoFrame = await videoElement.evaluate(async (video) => {
     });
   }
   video.pause();
-  return { readyState: video.readyState, currentTime: video.currentTime, videoWidth: video.videoWidth, videoHeight: video.videoHeight };
+  return { readyState: video.readyState, currentTime: video.currentTime, duration: video.duration, videoWidth: video.videoWidth, videoHeight: video.videoHeight };
 });
 if (videoFrame.videoWidth <= 0 || videoFrame.videoHeight <= 0) throw new Error(`영상 실제 프레임이 없습니다: ${JSON.stringify(videoFrame)}`);
 const videoFrameStats = await sharp(await videoElement.screenshot()).stats();
@@ -526,7 +526,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982
       const ticks = [...root.querySelectorAll('[data-video-timeline-tick]')].map((tick) => {
         const value = tick.getBoundingClientRect();
         const style = getComputedStyle(tick);
-        return { text: tick.textContent, width: value.width, height: value.height, clientHeight: tick.clientHeight, scrollHeight: tick.scrollHeight, whiteSpace: style.whiteSpace };
+        return { text: tick.textContent, width: value.width, height: value.height, clientHeight: tick.clientHeight, scrollHeight: tick.scrollHeight, lineHeight: Number.parseFloat(style.lineHeight), whiteSpace: style.whiteSpace };
       });
       const blocks = [...root.querySelectorAll('[data-video-timeline-block]')].map((block) => {
         const value = block.getBoundingClientRect();
@@ -562,7 +562,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982
     if (timeline.trackUsage < 0.8 || timeline.videoLaneUsage < 0.8) {
       throw new Error(`영상 타임라인이 가용 폭의 80%를 쓰지 않습니다: ${JSON.stringify(timeline)}`);
     }
-    if (timeline.ticks.length < 5 || timeline.ticks.some((tick) => tick.whiteSpace !== 'nowrap' || tick.scrollHeight > tick.clientHeight + 1 || tick.height > 16)) {
+    if (timeline.ticks.length < Math.floor(videoFrame.duration) + 1 || timeline.ticks.some((tick) => tick.whiteSpace !== 'nowrap' || tick.scrollHeight > tick.clientHeight + 1 || tick.height > tick.lineHeight + 1)) {
       throw new Error(`영상 눈금 라벨이 한 줄이 아닙니다: ${JSON.stringify(timeline.ticks)}`);
     }
     if (timeline.blocks.some((block) => block.width < 24 || (block.handles.length === 2 && block.handles[0].right > block.handles[1].left + 1))) {
@@ -661,10 +661,12 @@ await page.waitForTimeout(900);
 if (!draftSaves.some((save) => save.cardDeck?.template === "chat_bubble" && save.cardDeckV3?.template === "chat_bubble")) {
   throw new Error("편집실 카톡 템플릿 전환이 v2·v3 동기화 저장으로 이어지지 않았습니다");
 }
-const chatStage = reopenedEditRoom.locator('[data-card-deck-stage]');
+// OD-2026-10-09-2: v71 직접 편집기는 구 BubbleEditor의
+// data-card-deck-stage가 아니라 CardCanvasEditor의 data-card-stage가 정본이다.
+const chatStage = reopenedEditRoom.locator('[data-card-stage]');
 const chatCanvasGeometry = await chatStage.evaluate((stage, expectedText) => {
   const stageBox = stage.getBoundingClientRect();
-  const bubbles = [...stage.querySelectorAll('[data-bubble-content-editable]')].map((bubble) => {
+  const bubbles = [...stage.querySelectorAll('[data-chat-bubble-text]')].map((bubble) => {
     const box = bubble.getBoundingClientRect();
     return { text: bubble.textContent, x: box.x, y: box.y, right: box.right, bottom: box.bottom };
   });
