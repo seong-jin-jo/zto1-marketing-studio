@@ -383,6 +383,9 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
     ["잘못된 JSON", "{"],
     ["access_token 누락", "{}"],
     ["refresh_token 누락", '{"access_token":"access-only"}'],
+    ["공백 refresh_token", '{"access_token":"access","refresh_token":"   "}'],
+    ["객체 access_token", '{"access_token":{},"refresh_token":"refresh"}'],
+    ["배열 refresh_token", '{"access_token":"access","refresh_token":[]}'],
   ])("GENERATOR-LIVENESS-13 거절: %s은 기존 credential을 보존한다", (_label, secret) => {
     const { result, content } = runCredentialWriter(secret);
     expect(result.status).not.toBe(0);

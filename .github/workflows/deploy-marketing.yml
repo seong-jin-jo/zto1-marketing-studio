@@ -295,7 +295,10 @@ jobs:
               }
               try {
                 const data = JSON.parse(fs.readFileSync(file, "utf8"));
-                if (!data.access_token || !data.refresh_token) throw new Error("missing OAuth token pair");
+                const validToken = (value) => typeof value === "string" && value.trim().length > 0;
+                if (!validToken(data.access_token) || !validToken(data.refresh_token)) {
+                  throw new Error("missing OAuth token pair");
+                }
                 const raw = data.expires_at;
                 let milliseconds = typeof raw === "number" ? raw : Number(raw);
                 if (Number.isFinite(milliseconds) && milliseconds < 1000000000000) milliseconds *= 1000;
@@ -324,7 +327,10 @@ jobs:
           process.stdin.on("data", (chunk) => { raw += chunk; });
           process.stdin.on("end", () => {
             const data = JSON.parse(raw);
-            if (!data.access_token || !data.refresh_token) throw new Error("OAuth token pair missing");
+            const validToken = (value) => typeof value === "string" && value.trim().length > 0;
+            if (!validToken(data.access_token) || !validToken(data.refresh_token)) {
+              throw new Error("OAuth token pair missing");
+            }
             const temp = path.join(path.dirname(target), `.credentials.json.tmp-${process.pid}`);
             try {
               fs.writeFileSync(temp, raw, { mode: 0o600 });
