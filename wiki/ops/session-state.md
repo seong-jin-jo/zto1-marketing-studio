@@ -1,3 +1,17 @@
+## 2026-10-09 14:47 KST · PR 136 Claude 교차 리뷰 9건 로컬 교정 완료
+
+- handoff basis: 사용자가 지정한 PR 136 브랜치와 `cross-review-claude-opus.md` 9건을 기준으로 수정했다.
+- 변경: 커널 `flock`, wrapper 내부 timeout, 5분 임박 선갱신, 생성·조회 unlocked 실행, BUSY 실제 2회 재시도, force 2차 확인·0600 백업·계정 확인·실패 복원, 기동 host lock, monitor 75·127 hold, missing 파일 진단, 종료 코드 75 표식, OD-2026-10-09-3 정합을 반영했다.
+- 검증: 표적 Vitest 5파일 55건, monitor Bash 7건, 셸 문법, workflow YAML 3개, `git diff --check` 성공. 실제 컨테이너 `contenders=4 rounds=50 overlaps=0 events=400 credential_mode=600 lock_timeout_status=75` 관찰. 산출물 lint는 상태파일 정합 성공, 기존 경고 28건이다.
+- 미검증: 운영 배포, 실제 force 복원, 운영 계정 탐침, 실제 이미지·영상 생성. 다음 실행은 PR CI와 운영 배포 승인 뒤 이 네 경로를 직접 관찰하는 것이다.
+
+## 2026-10-09 14:xx KST · PR 136 Claude 교차 리뷰 BLOCK 교정 착수
+
+- handoff basis: 사용자가 지정한 PR 136 브랜치 `fix/higgsfield-503-20261009`, 교차 리뷰 파일 `logs/diff/higgsfield-503-20261009/cross-review-claude-opus.md`, 현재 git 상태를 정본으로 삼았다. tmux에는 같은 과제의 종료 pane이 있으나 이번 지시는 새 교차 리뷰 9건을 명시했으므로 transcript 추론은 사용하지 않는다.
+- 현재 판정: stale `mkdir` 잠금 경합, force 복구의 백업·검증·복원 결손, monitor 오분류, 정상 생성 처리량 직렬화, 로그 노출, 배포·진단 종료 경합, missing 파일 진단, 종료 코드 75 오분류, 결정 ID 충돌 9건을 QA tracker에 NG로 등록했다.
+- 이웃 영향 후보: 제품 생성 API의 100초 예산과 동시 상한 3, background polling, 배포 degraded 정책, monitor 2회 연속 장애 전이, Docker runtime 의존성, 기존 server-only credential 보존 계약을 대조한다.
+- 다음 실행: `flock` wrapper와 만료 임박 refresh 경계를 먼저 계약 테스트로 고정한 뒤 9건을 작은 단위로 수정한다. 4개 경쟁자 50회 실제 컨테이너 경합, 표적 Vitest, Bash·YAML 검증 후 문서와 커밋을 남긴다.
+
 ## 2026-10-09 13:41 KST · Higgsfield 품질헌법 재검수와 경합 보강 완료
 
 - handoff basis: 사용자가 지정한 commit `f12908ca`와 현재 worktree diff를 기준으로 `/Users/sj/.claude/standards/standard-dev.md`를 전문 Read하고 배포·시크릿·마이그레이션·롤백을 재검수했다.

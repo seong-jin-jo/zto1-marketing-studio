@@ -1,7 +1,11 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
   buildHiggsfieldInvocation,
+  higgsfieldCredentialsNeedRefresh,
   higgsfieldExecutionTimeout,
   isHiggsfieldLockBusyError,
 } from "@/lib/higgsfield";
@@ -54,20 +58,51 @@ describe("Higgsfield CLI 프로세스 간 잠금 계약", () => {
   });
 
   it("HIGGSFIELD-LOCK-04 경계: 잠금 종료 코드 75만 busy로 분류한다", () => {
-    expect(isHiggsfieldLockBusyError({ code: 75 })).toBe(true);
-    expect(isHiggsfieldLockBusyError({ code: "75" })).toBe(true);
+    expect(isHiggsfieldLockBusyError({ code: 75, stderr: "HIGGSFIELD_LOCK_BUSY\n" })).toBe(true);
+    expect(isHiggsfieldLockBusyError({ code: "75", stderr: "HIGGSFIELD_LOCK_BUSY" })).toBe(true);
+    expect(isHiggsfieldLockBusyError({ code: 75, stderr: "child returned 75" })).toBe(false);
     expect(isHiggsfieldLockBusyError({ code: 1 })).toBe(false);
     expect(isHiggsfieldLockBusyError({ code: "ENOENT" })).toBe(false);
   });
 
-  it("HIGGSFIELD-LOCK-05 경계: 운영 10초 잠금 대기는 접수 API 100초 예산을 넘기지 않는다", () => {
+  it("HIGGSFIELD-LOCK-05 경계: refresh 구간만 10초 잠금을 기다리고 생성 명령은 잠금 없이 실행한다", () => {
     const env = {
       HIGGSFIELD_LOCK_DIR: "/credentials/.cli.lock.d",
       HIGGSFIELD_LOCK_WAIT_SECONDS: "10",
     };
-    const worstCaseReadyAndCreateMs = higgsfieldExecutionTimeout(8_000, env)
-      + higgsfieldExecutionTimeout(45_000, env);
-    expect(worstCaseReadyAndCreateMs).toBe(73_000);
+    const worstCaseReadyAndCreateMs = higgsfieldExecutionTimeout(8_000, env, true)
+      + higgsfieldExecutionTimeout(45_000, env, false);
+    expect(worstCaseReadyAndCreateMs).toBe(63_000);
     expect(worstCaseReadyAndCreateMs).toBeLessThan(100_000);
+  });
+
+  it("HIGGSFIELD-LOCK-06 경계: 만료 5분 초과면 unlocked, 임박·누락이면 refresh lock을 요구한다", () => {
+    const fixtureRoot = mkdtempSync(resolve(tmpdir(), "higgsfield-expiry-"));
+    const credentialFile = resolve(fixtureRoot, "credentials.json");
+    const env = {
+      HIGGSFIELD_LOCK_DIR: resolve(fixtureRoot, ".cli.lock.d"),
+      HIGGSFIELD_CREDENTIAL_FILE: credentialFile,
+    };
+    const now = Date.now();
+    try {
+      writeFileSync(credentialFile, JSON.stringify({
+        access_token: "access",
+        refresh_token: "refresh",
+        expires_at: new Date(now + 5 * 60 * 1000 + 1).toISOString(),
+      }));
+      expect(higgsfieldCredentialsNeedRefresh(env, now)).toBe(false);
+
+      writeFileSync(credentialFile, JSON.stringify({
+        access_token: "access",
+        refresh_token: "refresh",
+        expires_at: new Date(now + 5 * 60 * 1000).toISOString(),
+      }));
+      expect(higgsfieldCredentialsNeedRefresh(env, now)).toBe(true);
+
+      writeFileSync(credentialFile, JSON.stringify({ access_token: "access" }));
+      expect(higgsfieldCredentialsNeedRefresh(env, now)).toBe(true);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
   });
 });

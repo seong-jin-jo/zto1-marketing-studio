@@ -23,17 +23,18 @@ type HiggsfieldInvocation = { file: string; args: string[] };
  * CLI는 access token 만료 시 credentials.json의 refresh token을 회전시켜 다시 쓴다.
  * API 요청, 상태 화면, 30분 monitor가 동시에 CLI를 실행하면 둘이 같은 이전 refresh
  * token을 쓸 수 있으므로 프로세스 내부 mutex만으로는 부족하다. Compose가 공유 bind
- * mount 안의 HIGGSFIELD_LOCK_DIR을 지정한 운영에서는 원자적 mkdir wrapper 한 개가 컨테이너
- * 안 모든 Node 프로세스와 workflow probe를 함께 직렬화한다. 로컬 개발은 해당 환경변수가
- * 없을 때 기존 직접 실행을 유지한다.
+ * mount 안의 HIGGSFIELD_LOCK_DIR을 지정한 운영에서는 커널 flock wrapper 한 개가 refresh
+ * 구간만 직렬화한다. access token 만료가 5분 넘게 남은 생성·조회는 잠금을 잡지 않아 제품의
+ * 동시 실행 상한을 보존한다. 로컬 개발은 해당 환경변수가 없을 때 기존 직접 실행을 유지한다.
  */
 export function buildHiggsfieldInvocation(
   args: string[],
   env: Record<string, string | undefined> = process.env,
+  useCredentialLock = true,
 ): HiggsfieldInvocation {
   const bin = env.HIGGSFIELD_BIN?.trim() || "higgsfield";
   const lockDir = env.HIGGSFIELD_LOCK_DIR?.trim();
-  if (!lockDir) return { file: bin, args };
+  if (!lockDir || !useCredentialLock) return { file: bin, args };
   return {
     file: env.HIGGSFIELD_LOCK_WRAPPER?.trim() || "/usr/local/bin/run-higgsfield-locked",
     args: [bin, ...args],
@@ -43,8 +44,9 @@ export function buildHiggsfieldInvocation(
 export function higgsfieldExecutionTimeout(
   commandTimeoutMs: number,
   env: Record<string, string | undefined> = process.env,
+  useCredentialLock = true,
 ): number {
-  if (!env.HIGGSFIELD_LOCK_DIR?.trim()) return commandTimeoutMs;
+  if (!env.HIGGSFIELD_LOCK_DIR?.trim() || !useCredentialLock) return commandTimeoutMs;
   const configuredWait = Number(env.HIGGSFIELD_LOCK_WAIT_SECONDS);
   const waitSeconds = Number.isInteger(configuredWait) && configuredWait >= 1 && configuredWait <= 300
     ? configuredWait
@@ -52,16 +54,66 @@ export function higgsfieldExecutionTimeout(
   return commandTimeoutMs + waitSeconds * 1000;
 }
 
+const HIGGSFIELD_REFRESH_WINDOW_MS = 5 * 60 * 1000;
+
+function parseExpiryMilliseconds(raw: unknown): number | null {
+  let milliseconds = typeof raw === "number" ? raw : Number(raw);
+  if (Number.isFinite(milliseconds) && milliseconds < 1_000_000_000_000) milliseconds *= 1000;
+  if (!Number.isFinite(milliseconds)) milliseconds = Date.parse(String(raw || ""));
+  return Number.isFinite(milliseconds) ? milliseconds : null;
+}
+
+export function higgsfieldCredentialsNeedRefresh(
+  env: Record<string, string | undefined> = process.env,
+  nowMs = Date.now(),
+): boolean {
+  if (!env.HIGGSFIELD_LOCK_DIR?.trim()) return false;
+  const credentialFile = env.HIGGSFIELD_CREDENTIAL_FILE?.trim()
+    || "/root/.config/higgsfield/credentials.json";
+  try {
+    const data = JSON.parse(fs.readFileSync(credentialFile, "utf8")) as Record<string, unknown>;
+    const validToken = (value: unknown) => typeof value === "string" && value.trim().length > 0;
+    const expiresAt = parseExpiryMilliseconds(data.expires_at);
+    return !validToken(data.access_token)
+      || !validToken(data.refresh_token)
+      || expiresAt === null
+      || expiresAt <= nowMs + HIGGSFIELD_REFRESH_WINDOW_MS;
+  } catch {
+    return true;
+  }
+}
+
+async function execHiggsfieldRaw(
+  args: string[],
+  timeout: number,
+  maxBuffer: number,
+  useCredentialLock: boolean,
+): Promise<{ stdout: string; stderr: string }> {
+  const invocation = buildHiggsfieldInvocation(args, process.env, useCredentialLock);
+  return execFileP(invocation.file, invocation.args, {
+    timeout: higgsfieldExecutionTimeout(timeout, process.env, useCredentialLock),
+    maxBuffer,
+  });
+}
+
+async function refreshHiggsfieldCredentialsIfNeeded(): Promise<void> {
+  if (!process.env.HIGGSFIELD_LOCK_DIR?.trim() || !higgsfieldCredentialsNeedRefresh()) return;
+  await execHiggsfieldRaw(["auth", "token"], 8_000, 1024 * 1024, true);
+}
+
 async function execHiggsfield(
   args: string[],
   timeout: number,
   maxBuffer: number,
 ): Promise<{ stdout: string; stderr: string }> {
-  const invocation = buildHiggsfieldInvocation(args);
-  return execFileP(invocation.file, invocation.args, {
-    timeout: higgsfieldExecutionTimeout(timeout),
-    maxBuffer,
-  });
+  if (!process.env.HIGGSFIELD_LOCK_DIR?.trim()) {
+    return execHiggsfieldRaw(args, timeout, maxBuffer, false);
+  }
+  if (args[0] === "auth" && args[1] === "token") {
+    return execHiggsfieldRaw(args, timeout, maxBuffer, true);
+  }
+  await refreshHiggsfieldCredentialsIfNeeded();
+  return execHiggsfieldRaw(args, timeout, maxBuffer, false);
 }
 
 // 테넌트별 스튜디오 디렉토리(data/studio/{tenantId}/). 생성물은 이 경로에 저장해 테넌트 격리.
@@ -239,7 +291,10 @@ export class HiggsfieldBusyError extends Error {
 
 export function isHiggsfieldLockBusyError(error: unknown): boolean {
   const code = (error as { code?: string | number } | null)?.code;
-  return code === 75 || code === "75";
+  const stderr = (error as { stderr?: unknown } | null)?.stderr;
+  return (code === 75 || code === "75")
+    && typeof stderr === "string"
+    && stderr.includes("HIGGSFIELD_LOCK_BUSY");
 }
 
 /**
@@ -251,7 +306,11 @@ export function isHiggsfieldLockBusyError(error: unknown): boolean {
  */
 export async function assertHiggsfieldReady(): Promise<void> {
   try {
-    await execHiggsfield(["auth", "token"], 8000, 1024 * 1024);
+    if (process.env.HIGGSFIELD_LOCK_DIR?.trim()) {
+      await refreshHiggsfieldCredentialsIfNeeded();
+    } else {
+      await execHiggsfield(["auth", "token"], 8000, 1024 * 1024);
+    }
   } catch (e) {
     const code = (e as { code?: string })?.code;
     if (code === "ENOENT") throw new HiggsfieldUnavailableError();

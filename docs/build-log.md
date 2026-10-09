@@ -1,5 +1,15 @@
 # OSMU build log
 
+## 2026-10-09 14:47 KST · PR 136 Higgsfield `flock`·force 롤백 교정
+
+STAMP: 2026-10-09 14:47 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/tmp/higgsfield-flock-stress.log`, `/tmp/higgsfield-cr-static.log`, 표적 Vitest 55건 | 고민: 인증 파일을 보호하는 잠금이 정상 생성 처리량을 가로막지 않게 갱신 구간과 작업 구간을 분리했다.
+
+**변경:** `mkdir` owner·stale 회수를 커널 `flock`으로 교체하고 CLI 자식 제한시간을 wrapper 내부로 옮겼다. access token 만료가 5분 넘게 남은 생성·조회는 잠금 없이 실행한다. BUSY 접수는 1초·2초 간격으로 실제 재시도한다. force 교체는 살아 있는 파일 2차 확인, 0600 UTC 백업, 계정 확인과 자동 복원을 보장한다. 기동 host lock, 75·127 monitor 보류, 파일 부재 진단, BUSY stderr 표식, OD-2026-10-09-3도 반영했다.
+
+**검증:** 표적 Vitest 5파일 55건 성공. 실제 컨테이너 `contenders=4 rounds=50 overlaps=0 events=400 credential_mode=600 lock_timeout_status=75`. 셸 5파일 `bash -n`, workflow YAML 3개 파싱, monitor Bash 7건, `git diff --check`가 성공했다. 파이프라인 산출물 lint는 상태파일 정합 성공과 기존 경고 28건을 보고했다. 운영 배포와 실제 생성은 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/Users/sj/.claude/standards/standard-dev.md` | `logs/diff/higgsfield-503-20261009/cross-review-claude-opus.md` | `logs/diff/higgsfield-503-20261009/report.md`
+
 ## 2026-10-09 13:41 KST · Higgsfield `standard-dev.md` 재검수
 
 STAMP: 2026-10-09 13:41 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/Users/sj/.claude/standards/standard-dev.md`, `/tmp/higgsfield-standard-dev-tests-final.log`, `/tmp/higgsfield-standard-dev-yaml-final.log`, 독립 리뷰 6축 | 고민: 운영 credential 파일 변경과 제품 API busy 응답을 한 배포 계약으로 묶되, 확인하지 않은 운영 실행은 완료로 올리지 않았다.

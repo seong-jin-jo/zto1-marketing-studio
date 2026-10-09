@@ -54,7 +54,7 @@ LABEL org.opencontainers.image.revision=$BUILD_COMMIT
 # 명시한 목록(Puppeteer/Playwright가 Debian에서 Chrome을 띄울 때 쓰는 표준 의존 세트와
 # 동일 계열)이다.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg fonts-noto-cjk ca-certificates curl gnupg \
+    ffmpeg fonts-noto-cjk ca-certificates curl gnupg util-linux coreutils \
     libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
     libasound2 libpango-1.0-0 libcairo2 libgtk-3-0 fonts-liberation libu2f-udev \

@@ -1,3 +1,17 @@
+## 2026-10-09 PR 136 Claude 교차 리뷰 9건 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-CR-01 | stale lock 경쟁 없이 `flock`이 4개 경쟁자·50회 전부 직렬화해야 함 | ✅ 로컬 PASS | 실제 컨테이너 `contenders=4 rounds=50 overlaps=0 events=400`, 잠금 대기 종료 코드 75. |
+| HIGGSFIELD-CR-02 | force 복구는 살아 있는 세션 2차 확인, 0600 백업, 교체 후 검증 실패 자동 복원을 보장해야 함 | ✅ 로컬 PASS | 계약 테스트가 2차 확인, `bak-<UTC>`, 0600, 계정 확인과 실패 복원 경로를 검증했다. 운영 force 실행은 미검증. |
+| HIGGSFIELD-CR-03 | monitor의 75·127은 인증 장애가 아닌 hold여야 함 | ✅ 로컬 PASS | Bash 순수 판정 7건이 75·127 hold와 상태 보존을 포함해 성공했다. |
+| HIGGSFIELD-CR-04 | 만료 여유가 충분한 생성 호출은 잠금을 점유하지 않고, BUSY 화면 안내와 실제 자동 재시도가 일치해야 함 | ✅ 로컬 PASS | 5분 경계 3건과 BUSY 1초·2초 재시도 정상·거절·소진 3건 성공. |
+| HIGGSFIELD-CR-05 | 잘못된 credential JSON이 로그에 원문을 남기지 않아야 함 | ✅ 로컬 PASS | 잘못된 JSON 6종이 기존 파일을 보존하고 파싱 실패는 고정 문구만 반환했다. |
+| HIGGSFIELD-CR-06 | 배포 기동과 진단 timeout이 자격 증명 갱신 중 CLI를 강제 종료하지 않아야 함 | ✅ 로컬 PASS | 기동 host flock과 wrapper 내부 timeout 계약 테스트, Bash 문법 검증 성공. 운영 재기동은 미검증. |
+| HIGGSFIELD-CR-07 | credential 파일 없음은 명확한 운영 오류로 보고돼야 함 | ✅ 로컬 PASS | 최종 탐침 전 `test -s`와 전용 오류 문구를 계약 테스트로 고정했다. |
+| HIGGSFIELD-CR-08 | 종료 코드 75는 wrapper의 명시 표식과 함께일 때만 BUSY로 분류해야 함 | ✅ 로컬 PASS | 표식 있는 75만 true, 자식 75·일반 오류는 false인 경계 테스트 성공. |
+| HIGGSFIELD-CR-09 | Higgsfield 결정 ID를 main과 충돌하지 않는 OD-2026-10-09-3으로 정합해야 함 | ✅ 로컬 PASS | 결정 ID와 OD-1 스냅샷 방식 폐기 문구를 정합했다. |
+
 ## 2026-10-09 Higgsfield 503 품질헌법 재검수 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

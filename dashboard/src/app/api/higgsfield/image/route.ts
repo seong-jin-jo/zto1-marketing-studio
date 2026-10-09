@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     mark("catch", stderrTail || (e instanceof Error ? `${e.name}: ${e.message}`.slice(-300) : String(e)));
     if (e instanceof HiggsfieldBusyError) {
       return Response.json({
-        error: "이미지 생성 서비스가 다른 작업을 처리 중입니다. 계정 로그인 문제는 아니며 잠시 후 자동으로 다시 시도할 수 있습니다. 글 카드는 지금도 만드실 수 있습니다.",
+        error: "이미지 생성 서비스가 다른 작업을 처리 중입니다. 계정 로그인 문제는 아니며 잠시 후 다시 요청해 주세요. 글 카드는 지금도 만드실 수 있습니다.",
         code: "GENERATOR_BUSY",
       }, { status: 503 });
     }

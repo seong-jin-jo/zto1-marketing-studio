@@ -18,41 +18,47 @@ trap cleanup EXIT
 docker run -d --rm --name "$container" \
   -v "$fixture_dir:/credentials:rw" \
   -v "$wrapper_path:/usr/local/bin/run-higgsfield-locked:ro" \
-  "$image" sh -c 'sleep 20' >/dev/null
+  "$image" sh -c 'sleep 120' >/dev/null
 
 run_contender() {
-  local label="$1"
-  local delay="$2"
+  local round="$1"
+  local label="$2"
   docker exec "$container" sh -ceu '
       umask 077
       HIGGSFIELD_LOCK_DIR=/credentials/.cli.lock.d \
         HIGGSFIELD_LOCK_WAIT_SECONDS=10 \
         /usr/local/bin/run-higgsfield-locked sh -ceu '\''
-          printf "%s:start\n" "$1" >> /credentials/events
-          sleep "$2"
-          printf "%s:end\n" "$1" >> /credentials/events
+          round="$1"
+          label="$2"
+          if ! mkdir /credentials/in-critical 2>/dev/null; then
+            printf "%s:%s\n" "$round" "$label" >> /credentials/overlaps
+            exit 90
+          fi
+          printf "%s:%s:start\n" "$round" "$label" >> /credentials/events
+          sleep 0.01
+          printf "%s:%s:end\n" "$round" "$label" >> /credentials/events
+          rmdir /credentials/in-critical
         '\'' sh "$1" "$2"
-    ' sh "$label" "$delay"
+    ' sh "$round" "$label"
 }
 
-run_contender first 1 &
-first_pid=$!
-for _attempt in 1 2 3 4 5 6 7 8 9 10; do
-  grep -q '^first:start$' "$fixture_dir/events" 2>/dev/null && break
-  sleep 0.1
+: > "$fixture_dir/events"
+: > "$fixture_dir/overlaps"
+for round in $(seq 1 50); do
+  contender_pids=()
+  for contender in 1 2 3 4; do
+    run_contender "$round" "$contender" &
+    contender_pids+=("$!")
+  done
+  for contender_pid in "${contender_pids[@]}"; do
+    wait "$contender_pid"
+  done
 done
-grep -q '^first:start$' "$fixture_dir/events"
-run_contender second 0 &
-second_pid=$!
 
-wait "$first_pid"
-wait "$second_pid"
-
-expected="$(printf 'first:start\nfirst:end\nsecond:start\nsecond:end')"
-actual="$(sed -n '1,4p' "$fixture_dir/events")"
-if [ "$actual" != "$expected" ]; then
-  echo "Higgsfield lock serialization failed" >&2
-  sed -n '1,4p' "$fixture_dir/events" >&2
+overlap_count="$(wc -l < "$fixture_dir/overlaps" | tr -d ' ')"
+event_count="$(wc -l < "$fixture_dir/events" | tr -d ' ')"
+if [ "$overlap_count" -ne 0 ] || [ "$event_count" -ne 400 ]; then
+  echo "Higgsfield flock stress failed: overlaps=$overlap_count events=$event_count" >&2
   exit 1
 fi
 
@@ -62,11 +68,10 @@ if [ "$credential_mode" != "600" ]; then
   exit 1
 fi
 
-# 강제 종료가 남긴 잠금은 owner 프로세스가 없으면 다음 호출이 회수해야 한다.
+# lock 파일은 남아 있어도 커널 lock owner가 없으면 즉시 획득할 수 있어야 한다.
 docker exec "$container" sh -ceu '
   mkdir -p /credentials/.cli.lock.d
-  printf "%s\n" stale-owner > /credentials/.cli.lock.d/owner
-  touch -d "10 seconds ago" /credentials/.cli.lock.d /credentials/.cli.lock.d/owner
+  : > /credentials/.cli.lock.d/lock
   HIGGSFIELD_LOCK_DIR=/credentials/.cli.lock.d \
     /usr/local/bin/run-higgsfield-locked true
 '
@@ -86,11 +91,11 @@ for _attempt in 1 2 3 4 5 6 7 8 9 10; do
 done
 [ -f "$fixture_dir/holder-ready" ]
 set +e
-docker exec "$container" sh -ceu '
+busy_output="$(docker exec "$container" sh -ceu '
   HIGGSFIELD_LOCK_DIR=/credentials/.cli.lock.d \
     HIGGSFIELD_LOCK_WAIT_SECONDS=1 \
     /usr/local/bin/run-higgsfield-locked true
-' >/dev/null 2>&1
+' 2>&1)"
 timeout_status=$?
 set -e
 wait "$holder_pid"
@@ -98,43 +103,9 @@ if [ "$timeout_status" -ne 75 ]; then
   echo "Higgsfield live lock must reject with 75, got $timeout_status" >&2
   exit 1
 fi
-
-# wrapper만 SIGKILL되고 자식 CLI가 살아 있어도 lock을 회수하면 안 된다. owner metadata의
-# child PID·start time이 살아 있는 동안 새 contender는 75로 거절돼야 한다.
-docker exec "$container" sh -ceu '
-  printf "%s\n" "$$" > /credentials/doomed-wrapper-pid
-  exec env HIGGSFIELD_LOCK_DIR=/credentials/.cli.lock.d \
-    /usr/local/bin/run-higgsfield-locked sh -ceu '\''
-      : > /credentials/orphan-child-ready
-      sleep 3
-    '\''
-' &
-doomed_exec_pid=$!
-for _attempt in 1 2 3 4 5 6 7 8 9 10; do
-  [ -f "$fixture_dir/orphan-child-ready" ] && break
-  sleep 0.1
-done
-[ -f "$fixture_dir/orphan-child-ready" ]
-docker exec "$container" sh -ceu 'kill -KILL "$(cat /credentials/doomed-wrapper-pid)"'
-set +e
-wait "$doomed_exec_pid"
-set -e
-set +e
-docker exec "$container" sh -ceu '
-  HIGGSFIELD_LOCK_DIR=/credentials/.cli.lock.d \
-    HIGGSFIELD_LOCK_WAIT_SECONDS=1 \
-    /usr/local/bin/run-higgsfield-locked true
-' >/dev/null 2>&1
-orphan_guard_status=$?
-set -e
-if [ "$orphan_guard_status" -ne 75 ]; then
-  echo "Higgsfield orphan child must keep lock, got $orphan_guard_status" >&2
+if [ "$busy_output" != "HIGGSFIELD_LOCK_BUSY" ]; then
+  echo "Higgsfield lock timeout marker mismatch" >&2
   exit 1
 fi
-sleep 2
-docker exec "$container" sh -ceu '
-  HIGGSFIELD_LOCK_DIR=/credentials/.cli.lock.d \
-    /usr/local/bin/run-higgsfield-locked true
-'
 
-echo "higgsfield_lock_serialized=true contenders=2 credential_mode=$credential_mode stale_recovered=true lock_timeout_status=$timeout_status orphan_guard_status=$orphan_guard_status"
+echo "higgsfield_flock_serialized=true contenders=4 rounds=50 overlaps=$overlap_count events=$event_count credential_mode=$credential_mode preexisting_lock_file_reused=true lock_timeout_status=$timeout_status"

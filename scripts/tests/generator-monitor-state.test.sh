@@ -47,8 +47,18 @@ assert_eq \
   "recovery:up" \
   "$(generator_monitor_transition down up):$(generator_monitor_persisted_state down up)"
 
+assert_eq \
+  "GENERATOR-MONITOR-06 보류: 잠금 대기 종료 코드 75는 인증 장애가 아니다" \
+  "hold:suspect" \
+  "$(generator_monitor_classify running 7 75 7 7):$(generator_monitor_persisted_state suspect hold)"
+
+assert_eq \
+  "GENERATOR-MONITOR-07 보류: 옛 이미지의 wrapper 없음 127은 인증 장애가 아니다" \
+  "hold:up" \
+  "$(generator_monitor_classify running 127 7 7 7):$(generator_monitor_persisted_state up hold)"
+
 if [ "$failures" -ne 0 ]; then
   exit 1
 fi
 
-printf 'generator monitor state tests: 5 passed\n'
+printf 'generator monitor state tests: 7 passed\n'

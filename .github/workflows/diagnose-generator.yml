@@ -171,8 +171,9 @@ jobs:
             failed=1
           fi
 
-          capture_bounded 65536 docker exec "$c" timeout 30s \
-            /usr/local/bin/run-higgsfield-locked higgsfield account status
+          capture_bounded 65536 docker exec "$c" sh -ceu \
+            'HIGGSFIELD_COMMAND_TIMEOUT_SECONDS=30 \
+              /usr/local/bin/run-higgsfield-locked higgsfield account status'
           account_result="$CAPTURE_OUTPUT"
           account_status="$CAPTURE_STATUS"
           if [ "$account_status" -eq 0 ]; then

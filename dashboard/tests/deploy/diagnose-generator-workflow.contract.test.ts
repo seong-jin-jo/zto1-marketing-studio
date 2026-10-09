@@ -126,6 +126,8 @@ describe("Higgsfield 운영 읽기 전용 진단 workflow 계약", () => {
     expect(workflow).toContain("higgsfield --version");
     expect(workflow).toContain("account_status_exit=");
     expect(workflow).toContain("account_status_class=");
+    expect(workflow).toContain("HIGGSFIELD_COMMAND_TIMEOUT_SECONDS=30");
+    expect(workflow).not.toContain('docker exec "$c" timeout 30s');
     expect(workflow).toContain("/usr/local/bin/run-higgsfield-locked higgsfield account status");
     expect(workflow).not.toContain('printf \'%s\\n\' "$account_result"');
     expect(workflow).toContain("expires_at");

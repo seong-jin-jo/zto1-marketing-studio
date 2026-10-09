@@ -13,12 +13,21 @@ generator_monitor_classify() {
   fi
 
   local probe_status
+  local has_hold_status=no
   for probe_status in "$@"; do
     if [ "$probe_status" = "0" ]; then
       printf '%s\n' "up"
       return 0
     fi
+    if [ "$probe_status" = "75" ] || [ "$probe_status" = "127" ]; then
+      has_hold_status=yes
+    fi
   done
+
+  if [ "$has_hold_status" = "yes" ]; then
+    printf '%s\n' "hold"
+    return 0
+  fi
 
   printf '%s\n' "down"
 }

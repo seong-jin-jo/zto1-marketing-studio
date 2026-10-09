@@ -1,12 +1,26 @@
 # 운영 Higgsfield HTTP 503 근본원인 및 수정 보고
 
+## 2026-10-09 PR 136 Claude 교차 리뷰 9건 처리
+
+| 번호 | 등급 | 지적 | 처리 |
+|---|---|---|---|
+| 1 | CRITICAL | `mkdir` stale 회수의 판정·이동 경쟁 | owner 파일과 stale 회수를 제거하고 커널 `flock`으로 교체했다. wrapper 내부 명령 제한시간을 추가했고 실제 컨테이너에서 경쟁자 4개×50회, 임계구역 200회, 이벤트 400건, 겹침 0을 관찰했다. |
+| 2 | MAJOR | force 교체의 백업·검증·복원·2차 확인 부재 | 살아 있는 파일은 별도 입력 없이는 거절한다. 잠금 안에서 `credentials.json.bak-<UTC>` 0600 백업, 원자 교체, `account status` 확인, 실패 시 자동 복원을 수행한다. |
+| 3 | MAJOR | monitor가 75·127을 로그인 만료로 오분류 | 두 종료 코드를 `hold`로 분류해 기존 상태를 유지한다. 장애 알림은 서버 재로그인, 새 서버 전용 세션 발급, 시크릿 갱신, force 배포 순서를 명시한다. |
+| 4 | MAJOR | 모든 생성·조회 직렬화와 거짓 자동 재시도 문구 | 만료가 5분 넘게 남으면 생성·조회는 잠금 없이 실행하고, 임박할 때만 `auth token`을 잠금 아래 선갱신한다. 접수 화면은 1초·2초 간격으로 실제 두 번 재시도하며 소진 문구를 별도로 표시한다. |
+| 5 | MINOR | JSON 파싱 오류의 입력 일부 로그 노출 | 파싱 예외를 고정 문구 `invalid credential JSON`으로 치환했다. 입력 원문은 출력하지 않는다. |
+| 6 | MINOR | compose 기동·진단 timeout이 갱신 중 CLI를 절단 | dashboard 기동은 같은 host `flock`을 기다린다. 진단과 탐침은 wrapper 내부 timeout에 명령 수명을 맡긴다. |
+| 7 | MINOR | credential 파일 부재 원인 불명 | 최종 생존 확인 전에 파일 존재·비어 있지 않음을 확인하고 전용 오류를 출력한다. |
+| 8 | MINOR | 자식 명령의 종료 코드 75도 BUSY로 오분류 | wrapper가 잠금 대기 실패 때만 `HIGGSFIELD_LOCK_BUSY` 표식을 쓰고, 애플리케이션은 종료 코드와 표식이 함께 있을 때만 BUSY로 분류한다. |
+| 9 | MINOR | 결정 ID 충돌 | Higgsfield 결정을 `OD-2026-10-09-3`으로 변경하고 브랜치 초안 OD-1의 스냅샷 덮어쓰기 방식을 폐기한다고 명시했다. |
+
 ## 결론
 
 운영 503의 구조적 원인은 OAuth 갱신 토큰을 맥과 서버가 같은 스냅샷으로 공유했고, 서버 컨테이너는 자격 증명 디렉터리를 읽기 전용으로 마운트해 갱신된 토큰을 영속할 수 없었다는 것이다. 서버가 옛 갱신 토큰을 다시 쓰면 세션 계열이 무효화될 수 있으며, 2026-10-09 08:19 KST에 맥 세션까지 함께 죽은 관찰과 부합한다.
 
-컨트롤러는 맥과 분리된 서버 전용 OAuth 세션을 만들고 GitHub 시크릿 `HIGGSFIELD_CREDENTIALS_JSON`을 2026-10-09 00:44:12 UTC에 갱신했다. 코드는 서버 전용 파일을 쓰기 가능 bind mount로 영속하고, 모든 운영 CLI 호출을 하나의 원자적 디렉터리 잠금으로 직렬화한다. 배포 전 생존 판정은 만료 메타데이터만 읽으며, `force_generator_credentials=true`일 때만 시크릿을 파일에 쓴다.
+컨트롤러는 맥과 분리된 서버 전용 OAuth 세션을 만들고 GitHub 시크릿 `HIGGSFIELD_CREDENTIALS_JSON`을 2026-10-09 00:44:12 UTC에 갱신했다. 코드는 서버 전용 파일을 쓰기 가능 bind mount로 영속하고, 자격증명 갱신 구간만 커널 `flock`으로 직렬화한다. 배포 전 생존 판정은 만료 메타데이터만 읽으며, `force_generator_credentials=true`일 때만 검증·자동 복원 가능한 경로로 시크릿을 파일에 쓴다.
 
-로컬 컨테이너에서 두 CLI 프로세스의 직렬 실행, 죽은 잠금 회수, 살아 있는 잠금의 종료 코드 75, 자격 증명 파일 0600을 직접 관찰했다. 운영 배포, 운영 컨테이너의 DNS/TLS, 실제 이미지 생성은 push 전이므로 미검증이다.
+로컬 컨테이너에서 경쟁자 4개를 50회 실행해 임계구역 겹침 0, 이벤트 400건, 살아 있는 잠금의 종료 코드 75, 자격 증명 파일 0600을 직접 관찰했다. 운영 배포, 운영 컨테이너의 DNS/TLS, 실제 이미지 생성은 미검증이다.
 
 ## 원인과 증거
 
@@ -24,10 +38,10 @@
 | 영역 | 변경 전 | 변경 후 |
 |---|---|---|
 | 자격 증명 영속성 | 컨테이너 bind mount `:ro` | `:rw`, 컨테이너 `user: 0:0`, 디렉터리 0700, JSON 0600/root |
-| 갱신 주체 | API, 진단, 탐침이 동시에 CLI 실행 가능 | dashboard 한 컨테이너만 파일을 마운트하고 모든 CLI가 같은 `mkdir` 잠금 경유 |
-| 잠금 실패 복구 | 없음 | boot ID, PID, 프로세스 시작시각으로 소유자를 확인해 죽은 잠금만 회수 |
+| 갱신 주체 | API, 진단, 탐침이 동시에 refresh 가능 | dashboard 한 컨테이너만 파일을 마운트하고 만료 임박 refresh만 같은 `flock` 경유 |
+| 잠금 실패 복구 | 사용자 공간 owner 판정과 stale 회수 경쟁 | 커널이 파일 설명자 수명으로 원자 획득·자동 해제, 자식은 wrapper 내부 timeout 적용 |
 | 배포 생존 판정 | `account status`가 갱신을 유발할 수 있음 | `expires_at` 메타데이터만 읽음 |
-| 시크릿 배치 | 실패 또는 파일 부재 시 자동 덮어쓰기 가능 | force 입력일 때만 정확히 1회 쓰기, 그 외 상태는 0회 |
+| 시크릿 배치 | 실패 또는 파일 부재 시 자동 덮어쓰기 가능 | force 입력과 살아 있는 파일 2차 확인, 0600 백업, 쓰기 후 계정 확인, 실패 자동 복원 |
 | 진단 | CLI 실패가 pipeline에서 success로 가려짐 | DNS, token 없는 HTTPS, proxy 존재, CLI 버전, 만료시각, 503 분기를 제한된 고정 형식으로 출력 |
 | 이미지 빌드 컨텍스트 | 로컬 `node_modules` 심볼릭 링크가 Docker context를 깨뜨릴 수 있음 | `.dockerignore`로 의존성·빌드 산출물 제외 |
 
@@ -35,20 +49,20 @@
 
 - `openclaw-dashboard-osmu`만 Higgsfield 자격 증명 경로를 마운트한다.
 - `openclaw-studio-export-worker`는 해당 파일을 마운트하지 않는다.
-- 애플리케이션의 `auth token`, `generate create`, `generate get`, 진단 `account status`, 배포 탐침은 모두 `/usr/local/bin/run-higgsfield-locked`를 경유한다.
-- 잠금은 공유 bind mount 내부의 `.cli.lock.d`를 원자적으로 만들며, 정상 소유자가 살아 있으면 기다린 뒤 75로 거절한다.
-- CLI 명령 제한시간에는 잠금 대기시간을 더해 정상적인 선행 요청 때문에 조기 종료되지 않게 했다.
+- 만료가 5분 이내인 애플리케이션 선갱신, 진단 `account status`, 배포 탐침과 force writer는 `/usr/local/bin/run-higgsfield-locked`를 경유한다. 만료가 5분 넘게 남은 `generate create/get`은 잠금 없이 실행한다.
+- 잠금은 공유 bind mount 내부 파일에 대한 커널 `flock`이며, 획득 실패 때 종료 코드 75와 전용 표식을 함께 반환한다.
+- wrapper는 명령 자체를 제한시간으로 감싸 멈춘 CLI가 잠금을 무기한 점유하지 못하게 한다.
 
 ## 검증
 
 | 항목 | 결과 | 증거 등급 |
 |---|---|---|
-| 관련 계약 테스트 | 5파일 71건 PASS, Linux 전용 실제 wrapper 경합 1건은 로컬 macOS에서 skip | 테스트됨, `/tmp/higgsfield-standard-dev-tests-final.log` |
+| 관련 계약 테스트 | 5파일 55건 성공. Linux 컨테이너 안 wrapper 통합 계약도 실행됨 | 테스트됨, Docker 격리 Vitest 실행 |
 | 배포 시크릿 분기 | unexpired, expired, missing에서 force=false 쓰기 0회, force=true 쓰기 1회. 빈 값·잘못된 JSON·token 누락·공백·비문자열은 기존 파일 보존 | 테스트됨 |
 | 셸 문법 | probe, lock runtime test, lock wrapper 3파일 `bash -n` PASS | 테스트됨, `/tmp/higgsfield-standard-dev-bash.log` |
 | YAML 및 workflow run block | workflow 2파일 파싱, Bash run block 19개 `bash -n` PASS | 테스트됨, `/tmp/higgsfield-standard-dev-yaml-final.log` |
 | Dashboard 이미지 | `f12908ca`까지의 선행 Docker image build는 Next production build 포함 PASS. 이번 재검수의 TypeScript 변경 뒤 Docker rebuild는 사용자 지시에 따라 생략 | 근거 확인, `/tmp/higgsfield-refresh-docker-build5.log`; 현재 이미지 미검증 |
-| 실제 컨테이너 잠금 | 현재 wrapper를 mount해 contenders=2 직렬화, mode=600, stale 회수, live timeout=75, wrapper SIGKILL 뒤 살아 있는 자식의 lock 유지=75 확인 | 관찰됨, `/tmp/higgsfield-standard-dev-lock-final2.log` |
+| 실제 컨테이너 잠금 | `contenders=4 rounds=50 overlaps=0 events=400 credential_mode=600 lock_timeout_status=75` | 관찰됨, `/tmp/higgsfield-flock-stress.log` |
 | Compose 해석 | runtime UID 0:0, credential mount RW, lock 경로 확인 | 테스트됨 |
 | 시크릿 literal 검사 | 추가 코드에서 고위험 token prefix 0건 | 테스트됨 |
 | 파이프라인 산출물 lint | 상태파일 2개의 핀 실체·슬롯키·버전 정합 PASS. 기존 design·QA 핀 위생 경고 28건 | 테스트됨, `/tmp/higgsfield-standard-dev-artifact-lint.log` |
@@ -56,7 +70,7 @@
 | 전체 TypeScript | 현재 로컬 의존성·타입 baseline이 전체 검사를 막았고, 이번 실행의 진단 목록에는 변경한 Higgsfield 파일이 없음. `origin/main` 동일 환경 비교는 실행하지 않음 | 실패 그대로 기록, `/tmp/higgsfield-standard-dev-typecheck.log`; 전체 타입체크 미검증 |
 | 운영 배포 및 실제 이미지 생성 | 아직 push 전 | 미검증 |
 
-코드 수정 커밋은 `070acb63`, `b571db16`, `05353bbb`이다. 이 보고와 상태 문서는 별도 문서 커밋으로 묶는다.
+선행 수정 커밋은 `070acb63`, `b571db16`, `05353bbb`이며, Claude 교차 리뷰 9건 교정은 이 보고와 같은 후속 커밋으로 묶는다.
 
 ## `standard-dev.md` 재검수 대조표
 
@@ -66,9 +80,9 @@
 |---|---|---|---|
 | 직접 관찰 증거 2종 이상 | 계약 테스트, Docker image build, 실제 컨테이너 잠금이 있었음 | 현재 diff의 계약 테스트와 셸·YAML 검증을 재실행. 선행 실제 컨테이너 잠금 관찰을 별도 증거로 유지 | 테스트됨·관찰됨 |
 | 미검증 정직 선언 | 운영 배포와 실제 생성이 미검증으로 기록됨 | 현재 Docker rebuild, GitHub Linux 전용 경합 테스트, 운영 배포·생성을 미검증으로 분리 | 근거 확인 |
-| 스펙 대비 diff | force 쓰기와 요청 latency의 세부 계약이 빠져 있었음 | force 쓰기도 같은 lock을 사용하고, 접수 최악 예산을 73초로 제한. lock timeout은 `GENERATOR_BUSY` 503으로 계약화 | 테스트됨 |
+| 스펙 대비 diff | force 쓰기와 정상 생성 동시성의 세부 계약이 빠져 있었음 | force는 같은 lock·백업·검증·복원을 사용하고, 만료가 5분 넘게 남은 생성은 잠금 없이 실행. BUSY는 실제 두 번 재시도 | 테스트됨 |
 | 고위험 코드 2차 리뷰 | 배포·인증 경계 독립 리뷰에서 경합 1건이 발견됨 | 보안·API·테스트·성능·단순화·적대적 리뷰를 수행. token 쌍 검증, 실제 Linux wrapper 테스트, wrapper 사망 뒤 live child 보호를 추가 | 근거 확인 |
-| 경계 테스트 | 정상 force와 wrapper 잠금 단위 계약 중심 | 빈 시크릿, 잘못된 JSON, token 누락·공백·비문자열, 옛 이미지 wrapper 부재, exit 75, wrapper SIGKILL·live child, 100초 경계를 추가 | 테스트됨 |
+| 경계 테스트 | 정상 force와 wrapper 잠금 단위 계약 중심 | 빈 시크릿, 잘못된 JSON, token 누락·공백·비문자열, 살아 있는 파일 2차 확인, 옛 이미지 wrapper 부재, 표식 있는 75, 5분 만료 경계, BUSY 재시도 소진을 추가 | 테스트됨 |
 
 ## 배포·시크릿·마이그레이션·롤백 대조
 
@@ -90,8 +104,8 @@
 ## 셀프심문과 레드팀
 
 - 이 결론이 틀릴 가장 그럴듯한 이유: 인증 문제와 동시에 운영 호스트의 DNS, TLS, 외부 IP 차단이 발생했을 수 있다. 수정된 branch workflow가 운영에서 실행되기 전까지 이 축은 미검증으로 남긴다.
-- 까다로운 운영자 관점의 공격: 파일을 쓰기 가능하게 만든 것만으로 동시 갱신은 해결되지 않는다. 그래서 API, 진단, 배포 탐침의 실제 CLI 진입점을 하나의 wrapper로 모았고, 두 프로세스 경합과 죽은 잠금, 살아 있는 잠금 제한시간을 실제 컨테이너에서 검증했다.
-- 가장 하중이 큰 가정: `mkdir` 잠금이 Docker Desktop의 같은 bind mount에서 직렬성을 제공하는가. 처음 채택한 `flock`은 실제 컨테이너 경합에서 겹쳐 실행돼 폐기했고, `mkdir` 구현은 같은 시험에서 정확한 순서를 관찰했다.
+- 까다로운 운영자 관점의 공격: 파일을 쓰기 가능하게 만든 것만으로 동시 갱신은 해결되지 않는다. 그래서 갱신·진단·배포의 실제 자격증명 변경 구간을 하나의 wrapper로 모았고 4개 경쟁자 50회와 살아 있는 잠금 제한시간을 실제 컨테이너에서 검증했다.
+- 가장 하중이 큰 가정: 같은 bind mount의 `flock`이 모든 갱신 주체를 실제로 직렬화하는가. 교차 리뷰가 이전 재현의 측정 오류를 바로잡은 뒤 동일 운영 이미지에서 200개 경쟁 호출을 실행했고 임계구역 겹침 0을 관찰했다.
 
 ## 후속 종료 조건
 
@@ -100,14 +114,14 @@
 3. 운영 컨테이너에서 mount RW, UID 0, mode 600, 계정 탐침 성공을 확인한다.
 4. 운영 `/api/higgsfield/image`가 202를 반환하고 작업 완료 뒤 생성실에 실제 미디어가 나타나는지 확인한다.
 
-KNOWLEDGE_QUERY: OSMU Higgsfield 503, OAuth 갱신 토큰 회전, Docker bind mount 쓰기, POSIX mkdir 디렉터리 연산
-HITS_USED: `wiki/거버넌스/결정.md`의 서버 전용 세션·단일 갱신 주체 결정, Docker 공식 bind mount 문서의 read-only/read-write 계약, POSIX mkdir·디렉터리 원자성 규정
+KNOWLEDGE_QUERY: OSMU Higgsfield 503, OAuth 갱신 토큰 회전, Docker bind mount 쓰기, Linux flock 파일 설명자 잠금
+HITS_USED: `wiki/거버넌스/결정.md`의 서버 전용 세션·단일 갱신 주체 결정, Docker 공식 bind mount 문서의 read-only/read-write 계약, Claude Opus 교차 리뷰의 실제 중첩 재현과 flock 교정안
 HITS_REJECTED: 맥 네트워크 성공은 운영 호스트 네트워크 증거가 아니므로 운영 복구 완료 근거로 쓰지 않음. 업스트림 CLI issue는 동일 증상이지만 운영 버전·네트워크를 직접 증명하지 못해 보조 근거로만 유지
 CONFLICTS: 기존 배포 주석은 CLI가 갱신 결과를 파일에 쓴다고 했지만 Compose 실물은 해당 경로를 읽기 전용으로 마운트했음
 
 SKILLS_USED: review, 전체 diff·배포·경합·롤백 계약 검수와 독립 전문 리뷰
 SKILLS_SKIPPED: investigate, 현재 available-skills에 없어 직접 재현과 계약 테스트로 대체
-SOURCES/MODEL: gpt-6.1-sol/Codex | `docker-compose.postagi-4tenants.yml` | `.github/workflows/deploy-marketing.yml` | `dashboard/scripts/run-higgsfield-locked.sh` | https://docs.docker.com/engine/storage/bind-mounts/ | https://pubs.opengroup.org/onlinepubs/9799919799/functions/mkdir.html
+SOURCES/MODEL: gpt-6.1-sol/Codex | `docker-compose.postagi-4tenants.yml` | `.github/workflows/deploy-marketing.yml` | `dashboard/scripts/run-higgsfield-locked.sh` | `logs/diff/higgsfield-503-20261009/cross-review-claude-opus.md` | https://docs.docker.com/engine/storage/bind-mounts/
 
 🏷 STAMP | line: osmu | 생성: 2026-10-09 13:41 KST | model: gpt-6.1-sol | agent: code-builder | skill: review
-근거: `standard-dev.md`, 운영 run 4건, 시크릿 metadata, 계약 71건, 셸·YAML, Docker build, 컨테이너 경합 실측, 독립 리뷰 6축 | 고민: 실제 bind mount에서 직렬화되지 않은 `flock`을 폐기하고, force writer까지 관찰된 `mkdir` 잠금 계약에 포함했다.
+근거: `standard-dev.md`, 운영 run 4건, 시크릿 metadata, 계약 55건, 셸·YAML, 컨테이너 4×50 경합 실측, Claude Opus 교차 리뷰 | 고민: 사용자 공간 stale 회수 경쟁을 없애고 refresh만 직렬화해 안전과 동시 처리량을 함께 지켰다.

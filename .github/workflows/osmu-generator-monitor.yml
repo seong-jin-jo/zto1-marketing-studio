@@ -143,7 +143,7 @@ jobs:
           fi
 
           if [ "$KIND" = "failure" ]; then
-            TEXT=":rotating_light: 생성기(Higgsfield) 로그인 만료: 사진 카드와 숏폼 영상 생성 중단, 글자 카드는 정상. 복구: 서버에서 higgsfield 재로그인 또는 HIGGSFIELD_CREDENTIALS_JSON 갱신 후 force_generator_credentials 배포"
+            TEXT=":rotating_light: 생성기(Higgsfield) 로그인 만료: 사진 카드와 숏폼 영상 생성 중단, 글자 카드는 정상. 복구: 서버에서 Higgsfield를 재로그인해 새 서버 전용 세션을 발급하고 HIGGSFIELD_CREDENTIALS_JSON을 갱신한 뒤 force_generator_credentials 배포"
           else
             TEXT=":white_check_mark: 생성기(Higgsfield) 로그인 복구: 사진 카드와 숏폼 영상 생성을 다시 사용할 수 있음"
           fi
