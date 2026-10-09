@@ -92,7 +92,7 @@
   position: relative;
   min-width: 0;
   /* 900px 높이에서도 상단 방 제목·추가 도구·선택 도구를 포함한 뒤 4:5 전체가 보인다. */
-  width: min(100%, calc(var(--space-region) * 15));
+  width: min(100%, calc(var(--space-region) * 12.5));
   margin-inline: auto;
   overflow: clip;
   border: 1px solid var(--border);
@@ -198,7 +198,7 @@
 .canvasInspector {
   position: relative;
   z-index: 300;
-  width: min(100%, calc(var(--space-region) * 15));
+  width: min(100%, calc(var(--space-region) * 12.5));
   box-shadow: var(--elevation-floating);
 }
 

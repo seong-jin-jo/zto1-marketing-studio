@@ -619,18 +619,34 @@ async function captureBakedTextCard(viewport) {
   await textSelection.waitFor();
   const beforePixels = await stage.screenshot();
   const editedLine = `즉시 반영 ${viewport.width}`;
-  await textSelection.dblclick();
+  // OD-2026-10-09-2의 직접 편집 계약은 마우스 전용이 아니다. 선택 요소에 초점을 둔 뒤
+  // Enter로 같은 인라인 편집기를 열어 키보드 접근 경로와 실제 문구 수정을 함께 지킨다.
+  await textSelection.focus();
+  await textSelection.press("Enter");
   const directTextEditor = stage.getByRole("textbox", { name: "글 내용 직접 편집" });
   await directTextEditor.fill(editedLine);
   await directTextEditor.press("Tab");
   await stage.getByText(editedLine, { exact: true }).waitFor();
-  const beforeMove = await textSelection.boundingBox();
+  await stage.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
+  const beforeMove = await textSelection.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  });
   if (!beforeMove) throw new Error(`${viewport.width} 복구 카드 글 요소 좌표를 읽지 못했습니다`);
   await page.mouse.move(beforeMove.x + beforeMove.width / 2, beforeMove.y + beforeMove.height / 2);
   await page.mouse.down();
   await page.mouse.move(beforeMove.x + beforeMove.width / 2 + 28, beforeMove.y + beforeMove.height / 2 + 34, { steps: 4 });
   await page.mouse.up();
-  const afterMove = await textSelection.boundingBox();
+  await page.waitForFunction(({ before }) => {
+    const element = document.querySelector('[data-room="edit"][data-edit-kind="card"] [data-card-stage] [aria-label="글 요소"]');
+    if (!(element instanceof HTMLElement)) return false;
+    const rect = element.getBoundingClientRect();
+    return Math.abs(rect.x - before.x) >= 2 || Math.abs(rect.y - before.y) >= 2;
+  }, { before: beforeMove }, { timeout: 5_000 });
+  const afterMove = await textSelection.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  });
   if (!afterMove || (Math.abs(afterMove.x - beforeMove.x) < 2 && Math.abs(afterMove.y - beforeMove.y) < 2)) {
     throw new Error(`${viewport.width} 복구 카드 글 요소를 직접 끌어도 좌표가 바뀌지 않았습니다: ${JSON.stringify({ beforeMove, afterMove })}`);
   }

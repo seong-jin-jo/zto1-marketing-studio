@@ -288,7 +288,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
         <Button size="sm" variant={showOriginal ? "primary" : "secondary"} aria-pressed={showOriginal} onClick={() => setShowOriginal((value) => !value)} data-video-original-toggle>{showOriginal ? "편집 상태로" : "원본으로"}</Button>
       </div>
       <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_var(--video-editor-timeline-height)] max-[64rem]:[grid-template-rows:minmax(0,1fr)_var(--video-editor-timeline-height)] max-[26rem]:[grid-template-rows:auto_var(--video-editor-timeline-height)]">
-        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:calc(var(--space-region)*5)_minmax(0,1fr)] max-[26rem]:grid-cols-1">
+        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:calc(var(--space-region)*4.5)_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
             src={effectivePreviewUrl ?? previewVideoUrl}
             tenantId={tenantId}
@@ -325,7 +325,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             }}
             onSeek={seekBodyTime}
           />
-          <div className="min-w-0 max-h-[32rem] space-y-stack overflow-y-auto" data-video-script-column>
+          <div className="min-w-0 max-h-[calc(var(--space-region)*8)] space-y-stack overflow-y-auto" data-video-script-column>
             {drawerOpen ? (
               <VideoInsertDrawer
                 edit={videoEdit}
@@ -539,7 +539,7 @@ function VideoPlayback({
   }
 
   return (
-    <div className="min-w-0 space-y-stack-tight max-[26rem]:grid max-[26rem]:grid-rows-[auto_auto_auto] max-[26rem]:gap-stack-tight max-[26rem]:space-y-none" data-video-playback>
+    <div className="relative min-w-0 max-[26rem]:grid max-[26rem]:grid-rows-[auto_auto] max-[26rem]:gap-stack-tight" data-video-playback>
       <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:h-40 max-[26rem]:min-h-40 max-[26rem]:aspect-auto" data-video-screen>
         {loadFailed ? (
           <div className="space-y-stack-tight p-pad-inset" role="alert" data-video-load-failed>
@@ -574,7 +574,7 @@ function VideoPlayback({
           </div>
         ) : null}
         {cta ? (
-          <div data-video-overlay-active data-video-overlay-kind="cta" className="pointer-events-none absolute inset-x-2 bottom-[14px] mx-auto w-fit max-w-[90%] truncate rounded-chip bg-success px-stack-tight py-micro text-center text-caption font-bold text-status-fg">
+          <div data-video-overlay-active data-video-overlay-kind="cta" className="pointer-events-none absolute inset-x-2 bottom-[72px] mx-auto w-fit max-w-[90%] truncate rounded-chip bg-success px-stack-tight py-micro text-center text-caption font-bold text-status-fg">
             {cta.text}
           </div>
         ) : null}
@@ -599,7 +599,7 @@ function VideoPlayback({
           <p
             data-video-subtitle-active
             data-video-subtitle-active-cut={activeSubtitle.cut}
-            className={`pointer-events-none absolute inset-x-2 bottom-[56px] text-center text-body font-extrabold [text-shadow:0_2px_6px_rgba(0,0,0,.8)] ${activeSubtitle.cut ? "text-player-text/45" : "text-player-text"}`}
+            className={`pointer-events-none absolute inset-x-2 bottom-[72px] text-center text-body font-extrabold [text-shadow:0_2px_6px_rgba(0,0,0,.8)] ${activeSubtitle.cut ? "text-player-text/45" : "text-player-text"}`}
           >
             {activeSubtitle.text}
           </p>
@@ -608,7 +608,7 @@ function VideoPlayback({
           <div className="pointer-events-none absolute inset-x-[13%] bottom-[21.9%] top-[11.5%] rounded-control border border-dashed border-warning" aria-label="플랫폼 안전 영역" data-video-safe-area-guide />
         ) : null}
       </div>
-      <div className="flex items-center gap-stack-tight rounded-control bg-player-panel p-stack-tight" data-video-controls>
+      <div className="absolute inset-x-0 bottom-0 z-[2] flex items-center gap-stack-tight rounded-control bg-player-panel/90 p-stack-tight" data-video-controls>
         <Button
           variant="primary"
           aria-label={playing ? "일시정지" : "재생"}
@@ -631,9 +631,9 @@ function VideoPlayback({
             data-video-scrubber
           />
         ) : <span className="flex-1 text-caption text-subtle">길이 확인 중</span>}
-        <span className="shrink-0 text-caption text-subtle">{formatSec(playhead)}초 / {duration ? `${formatSec(duration)}초` : "-"}</span>
+        <span className="sr-only">{formatSec(playhead)}초 / {duration ? `${formatSec(duration)}초` : "-"}</span>
       </div>
-      <p className="text-caption text-subtle" data-video-voice-row>
+      <p className="sr-only" data-video-voice-row>
         목소리: {voiceName ?? "기존 음성 그대로"}
       </p>
     </div>
