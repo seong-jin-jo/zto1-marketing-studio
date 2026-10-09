@@ -208,7 +208,10 @@ describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임�
     const playback = document.querySelector("[data-video-playback]");
     const screen = document.querySelector("[data-video-screen]");
     expect(playback?.className).not.toContain("max-[26rem]:h-[11.25rem]");
-    expect(playback?.className).toContain("max-[26rem]:space-y-none");
+    // R7: 플레이어 아래 여백만 없애던 계약에서 화면과 조작부를 명시적인 두 행으로
+    // 쌓는 계약으로 바뀌었다. 5레인 첫 화면 노출과 390 가로 넘침 0 보호 의도는 유지한다.
+    expect(playback?.className).toContain("max-[26rem]:grid-rows-[auto_auto]");
+    expect(playback?.className).toContain("max-[26rem]:gap-stack-tight");
     expect(screen?.className).toContain("max-[26rem]:h-40");
     expect(screen?.className).toContain("max-[26rem]:min-h-40");
     expect(screen?.className).toContain("max-[26rem]:aspect-auto");

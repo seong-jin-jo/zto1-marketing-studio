@@ -1,0 +1,424 @@
+{
+  "ok": true,
+  "draftSaveCount": 6,
+  "cardDrag": {
+    "before": {
+      "x": 577.21875,
+      "y": 539.609375,
+      "width": 309.546875,
+      "height": 184.25
+    },
+    "after": {
+      "x": 621.4375,
+      "y": 988.671875,
+      "width": 309.546875,
+      "height": 184.25
+    },
+    "pixelMean": [
+      107.21658493269561,
+      108.22112066355876,
+      111.27036285846906
+    ]
+  },
+  "cardResizeContainment": {
+    "before": {
+      "x": 621.4375,
+      "y": 469.671875,
+      "width": 309.546875,
+      "height": 184.25
+    },
+    "selection": {
+      "x": 533,
+      "y": 437.046875,
+      "width": 398,
+      "height": 261.9375
+    },
+    "stage": {
+      "x": 533,
+      "y": 201.5,
+      "width": 398,
+      "height": 497.5
+    }
+  },
+  "cardLayout": [
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "root": {
+        "x": 248,
+        "y": -39,
+        "width": 840,
+        "height": 2232.15625,
+        "right": 1088,
+        "bottom": 2193.15625
+      },
+      "canvas": {
+        "x": 532,
+        "y": 401.5,
+        "width": 400,
+        "height": 499.5,
+        "right": 932,
+        "bottom": 901
+      },
+      "overflow": [],
+      "outside": [],
+      "elementActionButtons": [
+        {
+          "label": "글 왼쪽 이동",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 오른쪽 이동",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 위 이동",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 아래 이동",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 앞으로",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 뒤로",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 숨기기",
+          "width": 49.125,
+          "height": 44,
+          "clientWidth": 47,
+          "scrollWidth": 47,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 잠금",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 복제",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 삭제",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 44,
+          "scrollWidth": 44,
+          "flexShrink": "0"
+        }
+      ],
+      "rootScrollLeft": 0
+    },
+    {
+      "viewport": {
+        "width": 1512,
+        "height": 982
+      },
+      "root": {
+        "x": 248,
+        "y": -39,
+        "width": 912,
+        "height": 2280.1875,
+        "right": 1160,
+        "bottom": 2241.1875
+      },
+      "canvas": {
+        "x": 568,
+        "y": 401.5,
+        "width": 400,
+        "height": 499.5,
+        "right": 968,
+        "bottom": 901
+      },
+      "overflow": [],
+      "outside": [],
+      "elementActionButtons": [
+        {
+          "label": "글 왼쪽 이동",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 오른쪽 이동",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 위 이동",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 아래 이동",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 앞으로",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 뒤로",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 숨기기",
+          "width": 49.125,
+          "height": 44,
+          "clientWidth": 47,
+          "scrollWidth": 47,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 잠금",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 복제",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 삭제",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 44,
+          "scrollWidth": 44,
+          "flexShrink": "0"
+        }
+      ],
+      "rootScrollLeft": 0
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "root": {
+        "x": 24,
+        "y": 154,
+        "width": 342,
+        "height": 4930.5,
+        "right": 366,
+        "bottom": 5084.5
+      },
+      "canvas": {
+        "x": 41,
+        "y": 1292,
+        "width": 308,
+        "height": 384.5,
+        "right": 349,
+        "bottom": 1676.5
+      },
+      "overflow": [],
+      "outside": [],
+      "elementActionButtons": [
+        {
+          "label": "글 왼쪽 이동",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 오른쪽 이동",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 위 이동",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 아래 이동",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 앞으로",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 뒤로",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 42,
+          "scrollWidth": 42,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 숨기기",
+          "width": 59.484375,
+          "height": 44,
+          "clientWidth": 57,
+          "scrollWidth": 57,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 잠금",
+          "width": 45.65625,
+          "height": 44,
+          "clientWidth": 44,
+          "scrollWidth": 44,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 복제",
+          "width": 45.65625,
+          "height": 44,
+          "clientWidth": 44,
+          "scrollWidth": 44,
+          "flexShrink": "0"
+        },
+        {
+          "label": "글 삭제",
+          "width": 44,
+          "height": 44,
+          "clientWidth": 44,
+          "scrollWidth": 44,
+          "flexShrink": "0"
+        }
+      ],
+      "rootScrollLeft": 0
+    }
+  ],
+  "videoTabGeometry": {
+    "rect": {
+      "x": 1044,
+      "y": 219,
+      "width": 44,
+      "height": 44
+    },
+    "hit": "<button type=\"button\" class=\"ds-label inline-flex min-h-control-touch ds-touch-target items-center justify-center gap-micro rounded-control font-medium transition-colors disabled:c"
+  },
+  "videoCutSkippedTo": 1,
+  "videoFrame": {
+    "readyState": 4,
+    "currentTime": 1,
+    "videoWidth": 540,
+    "videoHeight": 960
+  },
+  "expiredVideoResigned": 15,
+  "selectedPublishMedia": [
+    {
+      "x": 261,
+      "y": 219,
+      "width": 393,
+      "height": 192
+    },
+    {
+      "x": 666,
+      "y": 219,
+      "width": 393,
+      "height": 192
+    }
+  ],
+  "exportFlow": {
+    "exportStarted": true,
+    "exportJobReads": 2,
+    "selectedImageSrc": "/qa/chairman-photo.jpg?export=chairman-v3"
+  },
+  "publishBoxes": [
+    {
+      "x": 248,
+      "y": -777,
+      "width": 824
+    },
+    {
+      "x": 248,
+      "y": 30,
+      "width": 824
+    },
+    {
+      "x": 248,
+      "y": 837,
+      "width": 824
+    }
+  ],
+  "toastCounts": {
+    "edit": 1,
+    "publish": 1
+  },
+  "consoleErrors": 0
+}

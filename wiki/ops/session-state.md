@@ -1,3 +1,18 @@
+## 2026-10-09 10:02 KST · 운영 편집실 R7 로컬 완료
+
+- handoff basis: 사용자 지정 운영 배포 `79bd8d06`, 운영 재측정 `93b72a4b`, OD-2026-10-02-1·OD-2026-10-09-2, v71을 정본으로 완료했다. 작업 브랜치는 `fix/editroom-r7-20261009`, worktree는 `/Users/sj/wt/zto1-editroom-r7-20261009`다.
+- 변경: 구형·신형 이미지·영상 필드 정규화, 원격 사진의 카드 v3 배경 승격, `vid.url` 포함 만료 재서명, plain→카톡 7장 안전 변환과 편집실 말풍선 수정, 400×500 중앙 카드와 상단 글 도구, 영상 5레인 첫 화면 배치를 구현했다. DB 스키마와 외부 SNS 발행 동작은 바꾸지 않았다.
+- 검증: PostgreSQL 16 schema→seed→RLS와 migration matrix 뒤 전체 Vitest 517파일·3,780건 PASS, 3파일·16건 skip. TypeScript, 기능 플래그 production build, v70 화면 게이트, 회장 결함 통합 E2E PASS. 실제 사진·540×960 영상 프레임·재서명 15회·카톡 말풍선 편집·발행실 두 미디어·콘솔 오류 0을 관찰했다. 모바일 9폭도 전부 PASS다.
+- 증거: `logs/diff/editroom-chairman-fix-r7/report.md`와 `after/`의 1440·1512·390 PNG·`result.json`. design-lint 종료 코드 0과 기존 경고 2종, artifact lint 정합 PASS와 기존 핀 위생 경고 28건을 기록했다.
+- 다음 실행: 최종 테스트 계약·문서·캡처를 커밋하고 원격 브랜치 push를 시도한다. push 성공 시 신규 CI green 확인이 종료 증거다. 운영 재배포와 실제 외부 SNS 발행은 이 작업에서 실행하지 않았다.
+
+## 2026-10-09 운영 편집실 R7 전체 CI 재검증 경계
+
+- handoff basis: 운영 재측정 `93b72a4b`, R7 제품 커밋 `2f580a15`·`3b0a4960`, GitHub Actions `ci.yml`의 verify 명령을 정본으로 계속 작업한다.
+- 직접 관찰: 기능 플래그 production build, 회장 결함 통합 E2E, v70 화면 정합 게이트, TypeScript는 통과했다. 신규 1440·1512·390 캡처도 생성됐다.
+- 전체 테스트 1차 결과: 517파일 중 13파일, 3,796건 중 19건 실패했다. 15건은 CI와 다른 로컬 PostgreSQL 계정(`role postgres does not exist`)으로 실행한 환경 오류다. 제품 변경 영향 3건은 모바일 영상 레이아웃 클래스 계약 1건과 소스 절단·직접 인자 문자열에 묶인 배선 계약 2건이며, 실제 보호 로직은 남아 있다. 나머지 readiness 4건도 같은 DB 접속 실패의 파생 결과다.
+- 다음 실행: 배선 보호 의도를 약화하지 않고 현재 호환 정규화·모바일 그리드 구조에 맞게 세 계약을 갱신한다. 그 뒤 CI처럼 격리 PostgreSQL에 schema→seed→RLS를 적용하고 전체 Vitest를 다시 실행한다.
+
 ## 2026-10-09 운영 편집실 R7 1차 구현 경계
 
 - handoff basis: 사용자가 지정한 운영 배포 `79bd8d06`, 운영 재측정 커밋 `93b72a4b`, OD-2026-10-02-1·OD-2026-10-09-2를 계속 정본으로 삼는다.
