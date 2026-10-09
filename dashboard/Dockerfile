@@ -54,7 +54,7 @@ LABEL org.opencontainers.image.revision=$BUILD_COMMIT
 # 명시한 목록(Puppeteer/Playwright가 Debian에서 Chrome을 띄울 때 쓰는 표준 의존 세트와
 # 동일 계열)이다.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg fonts-noto-cjk ca-certificates curl gnupg util-linux \
+    ffmpeg fonts-noto-cjk ca-certificates curl gnupg \
     libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
     libasound2 libpango-1.0-0 libcairo2 libgtk-3-0 fonts-liberation libu2f-udev \
@@ -87,6 +87,7 @@ COPY --from=builder /app/package.json ./package.json
 # 아니라 Next의 standalone 파일 트레이싱이 못 따라간다) — 명시적으로 복사해야 한다.
 COPY --from=builder /app/remotion ./remotion
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder --chmod=0755 /app/scripts/run-higgsfield-locked.sh /usr/local/bin/run-higgsfield-locked
 # Next standalone 파일 트레이싱은 @remotion/bundler가 webpack 설정 안에서 동적으로
 # require.resolve()하는 형제 패키지(@remotion/studio, mediabunny 등 전이 의존성)와
 # rspack의 플랫폼별 네이티브 바인딩(@rspack/binding-*)을 추적하지 못한다(2026-10-02

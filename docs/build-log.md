@@ -1,5 +1,15 @@
 # OSMU build log
 
+## 2026-10-09 13:20 KST · 운영 Higgsfield 갱신 토큰 영속성·직렬화
+
+STAMP: 2026-10-09 13:20 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/tmp/higgsfield-final-contracts.log`, `/tmp/higgsfield-final-yaml.log`, `/tmp/higgsfield-refresh-docker-build5.log`, `/tmp/higgsfield-refresh-lock-final.log` | 고민: Docker Desktop bind mount에서 실제 직렬화되지 않은 `flock`을 폐기하고 원자적 디렉터리 잠금을 실측했다.
+
+**변경:** dashboard의 Higgsfield bind mount를 RW로 바꾸고 runtime UID:GID 0:0, 디렉터리 0700, 자격 증명·설정 0600/root를 강제했다. API·진단·탐침 CLI는 공유 `.cli.lock.d` wrapper로 직렬화하며, export worker는 자격 증명을 마운트하지 않는다. 배포 전 `CRED_ALIVE`는 만료 메타데이터만 읽고, 시크릿은 `force_generator_credentials=true`일 때만 쓴다.
+
+**검증:** 관련 계약 3파일 28건, workflow YAML 2파일과 Bash run block 20개, 셸 스크립트 3개가 PASS다. 선행 Docker image build는 Next production build까지 통과했고, 실제 컨테이너 두 프로세스는 `first:start, first:end, second:start, second:end` 순서로 직렬화됐다. mode 600, 죽은 잠금 회수, 살아 있는 잠금 종료 코드 75를 관찰했다. 운영 배포와 실제 이미지는 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `dashboard/scripts/run-higgsfield-locked.sh` | `.github/workflows/deploy-marketing.yml` | `scripts/verify-higgsfield-lock.sh`
+
 ## 2026-10-09 09:18 KST · 운영 Higgsfield 503 진단 계약
 
 STAMP: 2026-10-09 09:18 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/tmp/higgsfield-diag-red.log`, `/tmp/higgsfield-diag-contracts.log`, workflow YAML·shell 구문 검사 | 고민: 운영 token과 계정 식별자는 한 글자도 출력하지 않고 장애 층만 분리했다.

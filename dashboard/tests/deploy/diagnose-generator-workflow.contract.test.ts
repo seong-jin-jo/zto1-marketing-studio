@@ -55,7 +55,7 @@ case "$1" in
         ;;
       *"stat -c"*) [ "$probe" = metadata ] && exit 9; echo '1791501587 263';;
       *"node -e"*) [ "$probe" = expiry ] && exit 9; echo 'expires_at=2026-10-09T23:19:46.000Z expired=false';;
-      *"flock --exclusive"*"higgsfield account status"*)
+      *"run-higgsfield-locked higgsfield account status"*)
         if [ "$probe" = account ]; then echo 'request failed (no response received)'; exit 2; fi
         echo 'plus plan dummy-secret';;
       *) exit 92 ;;
@@ -126,8 +126,7 @@ describe("Higgsfield 운영 읽기 전용 진단 workflow 계약", () => {
     expect(workflow).toContain("higgsfield --version");
     expect(workflow).toContain("account_status_exit=");
     expect(workflow).toContain("account_status_class=");
-    expect(workflow).toContain("flock --exclusive");
-    expect(workflow).toContain("--no-fork");
+    expect(workflow).toContain("/usr/local/bin/run-higgsfield-locked higgsfield account status");
     expect(workflow).not.toContain('printf \'%s\\n\' "$account_result"');
     expect(workflow).toContain("expires_at");
     expect(workflow).toContain("expired=");

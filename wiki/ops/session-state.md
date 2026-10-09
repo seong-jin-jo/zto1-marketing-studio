@@ -1,3 +1,11 @@
+## 2026-10-09 13:20 KST · 운영 Higgsfield 갱신 토큰 영속성·직렬화 로컬 완료
+
+- handoff basis: 사용자가 지정한 `/Users/sj/wt/zto1-higgsfield-503-20261009` 현재 Git 변경분과 같은 브랜치를 정본으로 이어갔다. 무거운 Docker build는 사용자 지시에 따라 재실행하지 않고 선행 PASS 로그를 인용했다.
+- 원인과 변경: 읽기 전용 credential bind mount 때문에 CLI가 회전한 갱신 토큰을 영속하지 못했고, API·진단·탐침이 같은 파일을 동시에 갱신할 수 있었다. dashboard만 RW mount를 갖고 UID:GID 0:0, 디렉터리 0700, JSON 0600/root를 사용한다. 모든 운영 CLI는 공유 `.cli.lock.d` wrapper를 경유한다. 배포 전에는 만료 메타데이터만 읽고, force 입력일 때만 서버 전용 시크릿을 쓴다.
+- 검증: 현재 변경의 관련 계약 3파일 28건, workflow YAML 2파일과 Bash run block 20개, 셸 스크립트 3개 PASS. 선행 image build는 Next production build까지 PASS다. 실제 컨테이너에서 두 프로세스 직렬화, mode 600, 죽은 잠금 회수, 살아 있는 잠금 종료 코드 75를 관찰했다.
+- 중요한 교정: 최초 `flock` 구현은 Docker Desktop bind mount의 실제 경합 시험에서 두 프로세스가 겹쳐 실행돼 폐기했다. 원자적 `mkdir` wrapper로 교체한 뒤 같은 시험이 통과했다. missing 상태도 force=false면 시크릿을 쓰지 않도록 사용자 계약을 고정했다.
+- 남음: 운영 push, branch diagnose, force 배포, 운영 `/api/higgsfield/image` 202와 생성 완료·화면 표시가 미검증이다. 다음 소유자는 배포 권한이 있는 컨트롤러다.
+
 ## 2026-10-09 09:56 KST · 운영 Higgsfield refresh token 영속성·전역 잠금 구현 중
 
 - handoff basis: 회장이 같은 `fix/higgsfield-503-20261009` 브랜치를 명시했고 `openclaw-auto-3:0.1`은 이 Codex 세션 자체임을 확인했다. 작업 위치는 `/Users/sj/wt/zto1-higgsfield-503-20261009`다.

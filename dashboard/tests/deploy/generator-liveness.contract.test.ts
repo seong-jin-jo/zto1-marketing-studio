@@ -138,9 +138,7 @@ esac
 describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
   it("GENERATOR-LIVENESS-01 정상: 비용 없는 account status API로 배포 전후 세션 생존을 확인한다", () => {
     expect(probe).toContain("higgsfield account status");
-    expect(probe).toContain("flock --exclusive");
-    expect(probe).toContain("--no-fork");
-    expect(probe).toContain("--conflict-exit-code 75");
+    expect(probe).toContain("/usr/local/bin/run-higgsfield-locked higgsfield account status");
     expect(probe).toContain('timeout -k "$kill_after" "$outer_timeout"');
     expect(probe).toContain('docker exec "$container" timeout -k "$kill_after" "$inner_timeout"');
     expect(workflow.match(/scripts\/probe-generator-session\.sh/g)?.length).toBeGreaterThanOrEqual(1);
@@ -218,15 +216,15 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
     expect(credentialStep).not.toContain("higgsfield account status");
   });
 
-  it("GENERATOR-LIVENESS-06 거절: 기존 파일은 force 입력 없이는 Secret으로 덮어쓰지 않는다", () => {
+  it("GENERATOR-LIVENESS-06 거절: force 입력 없이는 시크릿을 쓰거나 덮어쓰지 않는다", () => {
     const credentialStepStart = workflow.indexOf("이미지·영상 생성기 자격증명 저장소 준비·선택적 배치");
     const credentialStepEnd = workflow.indexOf("OSMU DB 스키마 read-only preflight", credentialStepStart);
     const credentialStep = workflow.slice(credentialStepStart, credentialStepEnd);
 
     expect(credentialStep).toContain('FORCE_CREDENTIALS="${{ github.event.inputs.force_generator_credentials }}"');
     expect(credentialStep).toMatch(/if \[ "\$FORCE_CREDENTIALS" = "true" \]; then[\s\S]*write_credentials/);
-    expect(credentialStep).toMatch(/elif \[ "\$CRED_STATE" = "missing" \]; then[\s\S]*write_credentials/);
     expect(credentialStep).toMatch(/else[\s\S]*기존 생성기 자격증명 보존/);
+    expect(credentialStep.match(/write_credentials/g)).toHaveLength(2);
     expect(credentialStep).not.toContain('printf \'%s\' "$HIGGSFIELD_CREDENTIALS_JSON" > "$CRED"');
   });
 
@@ -239,9 +237,9 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
 
     expect(service).toContain('user: "0:0"');
     expect(service).toContain("${HOME}/.config/higgsfield:/root/.config/higgsfield:rw");
-    expect(service).toContain("HIGGSFIELD_LOCK_FILE: /root/.config/higgsfield/.cli.lock");
+    expect(service).toContain("HIGGSFIELD_LOCK_DIR: /root/.config/higgsfield/.cli.lock.d");
     expect(worker).not.toContain(".config/higgsfield");
-    expect(dockerfile).toContain("util-linux");
+    expect(dockerfile).toContain("run-higgsfield-locked.sh /usr/local/bin/run-higgsfield-locked");
     expect(dockerfile).toContain("umask 077");
     expect(workflow).toContain('chmod 600 "/credentials/$file"');
     expect(workflow).toContain('chown 0:0 "/credentials/$file"');
@@ -261,7 +259,7 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
   it.each([
     ["unexpired", false, 0],
     ["expired", false, 0],
-    ["missing", false, 1],
+    ["missing", false, 0],
     ["unexpired", true, 1],
   ] as const)(
     "GENERATOR-LIVENESS-09 통합: state=%s force=%s일 때 credential 교체 횟수는 %i다",

@@ -256,7 +256,7 @@ jobs:
           fi
           echo ".env.osmu rendered ($(grep -c . .env.osmu) lines)"
       - name: 이미지·영상 생성기 자격증명 저장소 준비·선택적 배치
-        # 서버 전용 OAuth 세션은 맥 세션과 분리한다. Secret은 최초 배치 또는
+        # 서버 전용 OAuth 세션은 맥 세션과 분리한다. 시크릿은
         # force_generator_credentials=true 복구 때만 쓴다. 평소 배포는 호스트의 현재
         # credentials.json을 보존하고, 컨테이너 CLI가 회전시킨 refresh token을 그 파일에 쓴다.
         env:
@@ -265,7 +265,6 @@ jobs:
           set -euo pipefail
           umask 077
           CRED_DIR="$HOME/.config/higgsfield"
-          CRED="$CRED_DIR/credentials.json"
           FORCE_CREDENTIALS="${{ github.event.inputs.force_generator_credentials }}"
 
           mkdir -p "$HOME/.config/higgsfield" 2>/dev/null || true
@@ -276,9 +275,6 @@ jobs:
             mkdir -p /credentials
             chown 0:0 /credentials
             chmod 700 /credentials
-            touch /credentials/.cli.lock
-            chown 0:0 /credentials/.cli.lock
-            chmod 600 /credentials/.cli.lock
             for file in credentials.json config.json; do
               if [ -e "/credentials/$file" ]; then
                 chown 0:0 "/credentials/$file"
@@ -315,7 +311,7 @@ jobs:
             '
           }
 
-          # Secret은 stdin으로만 전달하고 helper 안에서 JSON 검증 뒤 같은 디렉터리의 임시
+          # 시크릿은 stdin으로만 전달하고 helper 안에서 JSON 검증 뒤 같은 디렉터리의 임시
           # 파일을 rename한다. 기존 파일을 교체하는 호출은 force=true 분기에만 있다.
           write_credentials() {
             printf '%s' "$HIGGSFIELD_CREDENTIALS_JSON" | \
@@ -350,7 +346,7 @@ jobs:
           # force_generator_credentials 입력으로 명시한다.
           # 배포 전에는 만료시각만 읽고 실제 계정 API는 호출하지 않는다. access token이
           # 만료됐더라도 기존 refresh token은 보존하며, 새 컨테이너의 쓰기 가능 mount와
-          # 전역 flock 아래에서 배포 후 probe 한 번만 갱신 주체가 된다.
+          # 전역 원자적 디렉터리 잠금 아래에서 배포 후 probe 한 번만 갱신 주체가 된다.
           CRED_STATE="$(credential_state)"
           CRED_ALIVE=no
           if [ "$CRED_STATE" = "unexpired" ]; then
@@ -364,15 +360,11 @@ jobs:
             fi
             write_credentials
             echo "생성기 자격증명을 force 입력에 따라 새 서버 전용 세션으로 교체함"
-          elif [ "$CRED_STATE" = "missing" ]; then
-            if [ -n "$HIGGSFIELD_CREDENTIALS_JSON" ]; then
-              write_credentials
-              echo "생성기 자격증명이 없어 서버 전용 세션을 최초 배치함"
-            else
-              echo "::warning::생성기 자격증명과 HIGGSFIELD_CREDENTIALS_JSON이 모두 없음"
-            fi
           else
-            echo "기존 생성기 자격증명 보존(state=$CRED_STATE, alive=$CRED_ALIVE) — force 입력 없이는 Secret으로 덮어쓰지 않음"
+            echo "기존 생성기 자격증명 보존(state=$CRED_STATE, alive=$CRED_ALIVE) — force 입력 없이는 시크릿으로 쓰거나 덮어쓰지 않음"
+            if [ "$CRED_STATE" = "missing" ]; then
+              echo "::warning::생성기 자격증명이 없음. force_generator_credentials=true 복구 배포가 필요함"
+            fi
           fi
 
           # 자격증명만으로는 부족하다. 작업 공간 선택이 별도 설정 파일에 있고, 그것이 없으면

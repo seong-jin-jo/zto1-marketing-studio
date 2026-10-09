@@ -264,7 +264,7 @@ services:
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
       # 같은 credential 파일을 쓰는 API·상태 조회·workflow probe 전체의 프로세스 간 잠금.
-      HIGGSFIELD_LOCK_FILE: /root/.config/higgsfield/.cli.lock
+      HIGGSFIELD_LOCK_DIR: /root/.config/higgsfield/.cli.lock.d
       HIGGSFIELD_LOCK_WAIT_SECONDS: "45"
     depends_on:
       - openclaw-studio-export-worker

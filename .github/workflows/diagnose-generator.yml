@@ -172,8 +172,7 @@ jobs:
           fi
 
           capture_bounded 65536 docker exec "$c" timeout 30s \
-            flock --exclusive --wait 25 --conflict-exit-code 75 --no-fork \
-            /root/.config/higgsfield/.cli.lock higgsfield account status
+            /usr/local/bin/run-higgsfield-locked higgsfield account status
           account_result="$CAPTURE_OUTPUT"
           account_status="$CAPTURE_STATUS"
           if [ "$account_status" -eq 0 ]; then
