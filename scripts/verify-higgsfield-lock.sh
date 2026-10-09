@@ -43,6 +43,18 @@ case "$lock_path_mode" in
   *) echo "--lock-path must be bind or internal" >&2; exit 2 ;;
 esac
 
+rounds="${HIGGSFIELD_LOCK_ROUNDS:-50}"
+critical_seconds="${HIGGSFIELD_LOCK_CRITICAL_SECONDS:-0.5}"
+if ! [[ "$rounds" =~ ^[0-9]+$ ]] || [ "$rounds" -lt 1 ] || [ "$rounds" -gt 50 ]; then
+  echo "HIGGSFIELD_LOCK_ROUNDS must be an integer from 1 through 50" >&2
+  exit 2
+fi
+if ! [[ "$critical_seconds" =~ ^([0-4]([.][0-9]+)?|5([.]0+)?)$ ]] \
+  || [[ "$critical_seconds" =~ ^0([.]0+)?$ ]]; then
+  echo "HIGGSFIELD_LOCK_CRITICAL_SECONDS must be greater than 0 and at most 5" >&2
+  exit 2
+fi
+
 fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/higgsfield-lock.XXXXXX")"
 result_dir="$fixture_dir/results"
 internal_credential_dir="$fixture_dir/credentials"
@@ -110,17 +122,17 @@ run_contender() {
             exit 90
           fi
           printf "%s:%s:start\n" "$round" "$label" >> /results/events
-          sleep 0.5
+          sleep "$3"
           printf "%s:%s:end\n" "$round" "$label" >> /results/events
           rmdir /results/in-critical
-        '\'' sh "$2" "$3"
-    ' sh "$lock_dir" "$round" "$label"
+        '\'' sh "$2" "$3" "$4"
+    ' sh "$lock_dir" "$round" "$label" "$critical_seconds"
 }
 
 : > "$result_dir/events"
 : > "$result_dir/overlaps"
 contender_failures=0
-for round in $(seq 1 50); do
+for round in $(seq 1 "$rounds"); do
   contender_pids=()
   for contender in 1 2 3 4; do
     run_contender "$round" "$contender" &
@@ -139,7 +151,8 @@ done
 
 overlap_count="$(wc -l < "$result_dir/overlaps" | tr -d ' ')"
 event_count="$(wc -l < "$result_dir/events" | tr -d ' ')"
-if [ "$overlap_count" -ne 0 ] || [ "$event_count" -ne 400 ] || [ "$contender_failures" -ne 0 ]; then
+expected_event_count=$((rounds * 4 * 2))
+if [ "$overlap_count" -ne 0 ] || [ "$event_count" -ne "$expected_event_count" ] || [ "$contender_failures" -ne 0 ]; then
   echo "Higgsfield flock stress failed: overlaps=$overlap_count events=$event_count contender_failures=$contender_failures" >&2
   exit 1
 fi
@@ -195,4 +208,4 @@ if [ "$busy_output" != "HIGGSFIELD_LOCK_BUSY" ]; then
   exit 1
 fi
 
-echo "higgsfield_flock_serialized=true lock_path=$lock_path_mode containers=${#containers[@]} critical_seconds=0.5 contenders=4 rounds=50 overlaps=$overlap_count events=$event_count contender_failures=$contender_failures credential_mode=$credential_mode preexisting_lock_file_reused=true lock_timeout_status=$timeout_status"
+echo "higgsfield_flock_serialized=true lock_path=$lock_path_mode containers=${#containers[@]} critical_seconds=$critical_seconds contenders=4 rounds=$rounds overlaps=$overlap_count events=$event_count contender_failures=$contender_failures credential_mode=$credential_mode preexisting_lock_file_reused=true lock_timeout_status=$timeout_status"

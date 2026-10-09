@@ -1,5 +1,14 @@
 # 운영 Higgsfield HTTP 503 근본원인 및 수정 보고
 
+## 2026-10-09 PR 136 Claude 3차 리뷰 MINOR 2건 처리
+
+| 번호 | 지적 | 처리 | 증거 |
+|---|---|---|---|
+| MINOR-A | 기존 검증기는 단일 컨테이너 내부 잠금만 확인해 운영 bind mount를 증명하지 못함 | `scripts/verify-higgsfield-lock.sh --lock-path bind|internal`을 추가했다. `bind`는 `${HIGGSFIELD_CREDENTIAL_DIR:-$HOME/.config/higgsfield}`를 서로 다른 두 컨테이너에 RW로 마운트하고 4개 경쟁자를 교차 배분한다. credential 내용은 바꾸지 않고 mode만 읽는다. 회차는 1~50, 임계구역은 0초 초과·5초 이하만 허용한다. | `internal` 4경쟁자×50회에서 `containers=1 overlaps=0 events=400 contender_failures=0 lock_timeout_status=75`. 잘못된 입력 6종은 Docker 실행 전에 종료 코드 2로 거절됐다. 운영 runner가 오프라인이므로 실제 Linux `bind` 실행은 미검증이다. |
+| MINOR-B | 같은 요청에서 준비 확인과 실제 생성·조회가 `auth token` 확인을 중복해 최악 대기시간이 늘어남 | 준비 확인이 반환한 `commandNeedsCredentialLock`을 이미지·영상 접수와 완료 조회의 같은 `hfRun`에 전달한다. `false`도 완료된 판정으로 재사용하고 `undefined`일 때만 새로 확인한다. 완료 조회는 동시성 슬롯을 얻은 뒤 확인해 대기 중 판정이 낡지 않게 한다. | 선행 관련 Vitest 5파일 60건 성공 뒤 새 입력 거절 계약 1건을 분리 실행해 성공, 합계 61건이다. 실제 가짜 CLI와 `flock` wrapper를 실행해 `auth token` 1회, 생성 명령 1회를 관찰했다. |
+
+전체 TypeScript 검사는 현재 격리 컨테이너에서 120초 안에 끝나지 않아 미검증이다. 셸 문법, workflow YAML 3개, 잘못된 검증기 입력 6종 거절, `git diff --check`는 성공했다. 전체 Linux 테스트 재실행 1회는 macOS용 의존성을 Linux 컨테이너에 마운트한 환경 오류로 시작 전에 중단돼 성공 증거에서 제외했다. disposable bind mount의 두 컨테이너 실행은 Docker Desktop에서 `overlaps=1 events=14 contender_failures=1`로 정확히 실패를 검출했다. 이것은 운영 Linux 성공 증거가 아니며 실제 운영 bind 검증은 계속 미검증이다.
+
 ## 2026-10-09 PR 136 Claude 재리뷰 5건 처리
 
 이 절은 아래 1차 교차 리뷰 기록보다 우선한다. 1차의 Docker Desktop bind mount `flock` 수치는 운영 Linux bind mount의 배타성을 증명하지 못하므로 운영 증거에서 제외했다. 운영 Linux runner 검증은 **미검증, 운영 러너 복구 후 실행**이다.
@@ -136,7 +145,7 @@
 
 ## 후속 종료 조건
 
-1. 운영 runner 복구 뒤 `scripts/verify-higgsfield-lock.sh`를 실행해 Linux bind mount의 겹침 0을 확인한다.
+1. 운영 runner 복구 뒤 실제 `~/.config/higgsfield`가 있는 호스트에서 `scripts/verify-higgsfield-lock.sh --lock-path bind`를 실행한다. 서로 다른 두 컨테이너의 결과가 `containers=2 overlaps=0 events=400 contender_failures=0 lock_timeout_status=75`여야 종료다.
 2. 브랜치를 push하고 `diagnose-generator.yml`을 이 브랜치 ref로 실행한다.
 3. 배포 workflow를 `force_generator_credentials=true`로 한 번 실행한다.
 4. 운영 컨테이너에서 mount RW, UID 0, mode 600, 계정 탐침 성공을 확인한다.
