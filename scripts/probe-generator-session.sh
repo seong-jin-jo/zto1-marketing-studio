@@ -6,6 +6,8 @@ container="${1:-openclaw-dashboard-osmu}"
 outer_timeout="${GENERATOR_PROBE_OUTER_TIMEOUT:-35s}"
 inner_timeout="${GENERATOR_PROBE_INNER_TIMEOUT:-30s}"
 kill_after="${GENERATOR_PROBE_KILL_AFTER:-5s}"
+lock_file="${HIGGSFIELD_LOCK_FILE:-/root/.config/higgsfield/.cli.lock}"
+lock_wait="${HIGGSFIELD_LOCK_WAIT_SECONDS:-25}"
 
 # `account status`는 계정 API를 실제로 호출하는 읽기 전용 명령이다. 생성 요청은 하지 않는다.
 # 종료 코드는 보존하되 명령 출력은 로그에 내보내지 않는다. 계정 명령의 오류 출력에는
@@ -15,7 +17,8 @@ set +e
 # API가 멎어도 컨테이너에 고아 higgsfield 프로세스를 남기지 않는다.
 timeout -k "$kill_after" "$outer_timeout" \
   docker exec "$container" timeout -k "$kill_after" "$inner_timeout" \
-  higgsfield account status >/dev/null 2>&1
+  flock --exclusive --wait "$lock_wait" --conflict-exit-code 75 --no-fork \
+  "$lock_file" higgsfield account status >/dev/null 2>&1
 probe_status=$?
 set -e
 

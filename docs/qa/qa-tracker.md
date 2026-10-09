@@ -1,3 +1,12 @@
+## 2026-10-09 운영 Higgsfield 갱신 토큰 영속성·경합 ❌ NG
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-REFRESH-01 | 컨테이너가 갱신한 자격 증명이 호스트 `credentials.json`에 0600 권한으로 영속돼야 함 | ❌ NG | 현재 Compose가 자격 증명 디렉터리를 `:ro`로 마운트해 갱신 결과를 저장할 수 없다. |
+| HIGGSFIELD-REFRESH-02 | 배포 전 생존 판정은 CLI/API를 호출해 OAuth 갱신을 일으키지 않고, 강제 입력일 때만 기존 파일을 Secret으로 덮어써야 함 | ❌ NG | 현재 `CRED_ALIVE` 판정이 `higgsfield account status`를 실행하며, 실패하면 강제 입력 없이도 Secret으로 덮어쓴다. |
+| HIGGSFIELD-REFRESH-03 | API·모니터·진단의 모든 Higgsfield CLI 실행은 같은 프로세스 간 잠금으로 직렬화돼야 함 | ❌ NG | 현재 세 경로 모두 잠금 없이 같은 `credentials.json`을 읽고 갱신할 수 있다. |
+| HIGGSFIELD-REFRESH-04 | 서버 전용 OAuth Secret 갱신 시각과 수정 후 배포 재현 계약을 증거로 남겨야 함 | ❌ NG | GitHub Secret 갱신 시각 `2026-10-09T00:44:12Z`는 확인했으나 수정·테스트·운영 배포는 아직 미검증이다. |
+
 ## 2026-10-09 운영 Higgsfield 이미지 생성 HTTP 503 ❌ NG
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

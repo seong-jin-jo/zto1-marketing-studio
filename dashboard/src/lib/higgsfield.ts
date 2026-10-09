@@ -15,6 +15,53 @@ export const HF_BIN = process.env.HIGGSFIELD_BIN || "higgsfield";
 // 미디어 루트(data/studio) — 테넌트별 격리는 studioDir(tenantId)로. STUDIO_DIR 자체는 루트(genlog 등 비격리 메타용).
 export const STUDIO_DIR = MEDIA_ROOT;
 
+type HiggsfieldInvocation = { file: string; args: string[] };
+
+/**
+ * 운영의 모든 Higgsfield CLI 호출을 같은 파일 잠금으로 직렬화한다.
+ *
+ * CLI는 access token 만료 시 credentials.json의 refresh token을 회전시켜 다시 쓴다.
+ * API 요청, 상태 화면, 30분 monitor가 동시에 CLI를 실행하면 둘이 같은 이전 refresh
+ * token을 쓸 수 있으므로 프로세스 내부 mutex만으로는 부족하다. Compose가 공유 bind
+ * mount 안의 HIGGSFIELD_LOCK_FILE을 지정한 운영에서는 util-linux flock 한 개가 컨테이너
+ * 안 모든 Node 프로세스와 workflow probe를 함께 직렬화한다. 로컬 개발은 해당 환경변수가
+ * 없을 때 기존 직접 실행을 유지한다.
+ */
+export function buildHiggsfieldInvocation(
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): HiggsfieldInvocation {
+  const bin = env.HIGGSFIELD_BIN?.trim() || "higgsfield";
+  const lockFile = env.HIGGSFIELD_LOCK_FILE?.trim();
+  if (!lockFile) return { file: bin, args };
+
+  const configuredWait = Number(env.HIGGSFIELD_LOCK_WAIT_SECONDS);
+  const waitSeconds = Number.isInteger(configuredWait) && configuredWait >= 1 && configuredWait <= 300
+    ? String(configuredWait)
+    : "45";
+  return {
+    file: env.HIGGSFIELD_FLOCK_BIN?.trim() || "flock",
+    args: [
+      "--exclusive",
+      "--wait", waitSeconds,
+      "--conflict-exit-code", "75",
+      "--no-fork",
+      lockFile,
+      bin,
+      ...args,
+    ],
+  };
+}
+
+async function execHiggsfield(
+  args: string[],
+  timeout: number,
+  maxBuffer: number,
+): Promise<{ stdout: string; stderr: string }> {
+  const invocation = buildHiggsfieldInvocation(args);
+  return execFileP(invocation.file, invocation.args, { timeout, maxBuffer });
+}
+
 // 테넌트별 스튜디오 디렉토리(data/studio/{tenantId}/). 생성물은 이 경로에 저장해 테넌트 격리.
 export function studioDir(tenantId: string): string {
   return tenantMediaDir(tenantId);
@@ -189,7 +236,7 @@ export class HiggsfieldUnauthenticatedError extends Error {
  */
 export async function assertHiggsfieldReady(): Promise<void> {
   try {
-    await execFileP(HF_BIN, ["auth", "token"], { timeout: 8000, maxBuffer: 1024 * 1024 });
+    await execHiggsfield(["auth", "token"], 8000, 1024 * 1024);
   } catch (e) {
     const code = (e as { code?: string })?.code;
     if (code === "ENOENT") throw new HiggsfieldUnavailableError();
@@ -199,7 +246,7 @@ export async function assertHiggsfieldReady(): Promise<void> {
 
 export async function hfRun(args: string[], timeoutMs = 480000): Promise<{ stdout: string; stderr: string }> {
   try {
-    return await execFileP(HF_BIN, args, { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 });
+    return await execHiggsfield(args, timeoutMs, 16 * 1024 * 1024);
   } catch (e) {
     // 2026-09-06 실측: 운영 컨테이너에 실행기가 없어 생성 요청이 502 로 끝났다. 화면에는
     // "Request failed: 502" 만 떠 무엇이 문제인지 알 수 없었다. 없는 것과 실패한 것을

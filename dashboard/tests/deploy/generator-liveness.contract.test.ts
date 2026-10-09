@@ -15,6 +15,14 @@ const workflow = readFileSync(
   resolve(repositoryRoot, ".github/workflows/deploy-marketing.yml"),
   "utf8",
 );
+const compose = readFileSync(
+  resolve(repositoryRoot, "docker-compose.postagi-4tenants.yml"),
+  "utf8",
+);
+const dockerfile = readFileSync(
+  resolve(repositoryRoot, "dashboard/Dockerfile"),
+  "utf8",
+);
 const probe = readFileSync(
   resolve(repositoryRoot, "scripts/probe-generator-session.sh"),
   "utf8",
@@ -75,12 +83,67 @@ function runUncooperativeProbe() {
   }
 }
 
+function credentialStepScript(force: boolean): string {
+  const name = "      - name: 이미지·영상 생성기 자격증명 저장소 준비·선택적 배치\n";
+  const start = workflow.indexOf(name);
+  const runStart = workflow.indexOf("        run: |\n", start);
+  const nextStep = workflow.indexOf("\n      - name:", runStart + 1);
+  if (start < 0 || runStart < 0 || nextStep < 0) throw new Error("credential step not found");
+  return workflow
+    .slice(runStart + "        run: |\n".length, nextStep)
+    .split("\n")
+    .map((line) => line.startsWith("          ") ? line.slice(10) : line)
+    .join("\n")
+    .replace("${{ github.event.inputs.force_generator_credentials }}", force ? "true" : "false");
+}
+
+function runCredentialStep(state: string, force: boolean) {
+  const fixtureRoot = mkdtempSync(resolve(tmpdir(), "generator-credentials-"));
+  const fakeBin = resolve(fixtureRoot, "bin");
+  const invocationLog = resolve(fixtureRoot, "docker.log");
+  const mkdir = spawnSync("mkdir", ["-p", fakeBin]);
+  if (mkdir.status !== 0) throw new Error("failed to create fake bin directory");
+  const fakeDocker = `#!/usr/bin/env bash
+set -eu
+joined="$*"
+case "$joined" in
+  *'console.log("missing")'*) echo "$FAKE_CRED_STATE" ;;
+  *'.credentials.json.tmp-'*) cat >/dev/null; echo write_credentials >> "$FAKE_DOCKER_LOG" ;;
+  *'.config.json.tmp-'*) cat >/dev/null; echo write_config >> "$FAKE_DOCKER_LOG" ;;
+  *) echo prepare_store >> "$FAKE_DOCKER_LOG" ;;
+esac
+`;
+  writeFileSync(resolve(fakeBin, "docker"), fakeDocker);
+  chmodSync(resolve(fakeBin, "docker"), 0o755);
+
+  try {
+    const result = spawnSync("bash", ["-c", credentialStepScript(force)], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: fixtureRoot,
+        PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+        FAKE_CRED_STATE: state,
+        FAKE_DOCKER_LOG: invocationLog,
+        HIGGSFIELD_CREDENTIALS_JSON: '{"access_token":"masked-test-value"}',
+      },
+    });
+    const invocations = readFileSync(invocationLog, "utf8").trim().split("\n").filter(Boolean);
+    return { result, invocations };
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
 describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
   it("GENERATOR-LIVENESS-01 정상: 비용 없는 account status API로 배포 전후 세션 생존을 확인한다", () => {
     expect(probe).toContain("higgsfield account status");
+    expect(probe).toContain("flock --exclusive");
+    expect(probe).toContain("--no-fork");
+    expect(probe).toContain("--conflict-exit-code 75");
     expect(probe).toContain('timeout -k "$kill_after" "$outer_timeout"');
     expect(probe).toContain('docker exec "$container" timeout -k "$kill_after" "$inner_timeout"');
-    expect(workflow.match(/scripts\/probe-generator-session\.sh/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(workflow.match(/scripts\/probe-generator-session\.sh/g)?.length).toBeGreaterThanOrEqual(1);
     expect(workflow).not.toContain("higgsfield generate create");
     expect(probe).not.toContain("higgsfield generate");
   });
@@ -143,14 +206,71 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
     expect(summaryStep).toContain("GITHUB_STEP_SUMMARY");
   });
 
-  it("GENERATOR-LIVENESS-05 거절: 기존 세션 탐침이 실패하면 죽은 자격증명을 보존하지 않는다", () => {
-    const credentialStepStart = workflow.indexOf("이미지·영상 생성기 자격증명 배치");
+  it("GENERATOR-LIVENESS-05 정상: 배포 전 생존 판정은 만료 metadata만 읽고 CLI 갱신을 일으키지 않는다", () => {
+    const credentialStepStart = workflow.indexOf("이미지·영상 생성기 자격증명 저장소 준비·선택적 배치");
     const credentialStepEnd = workflow.indexOf("OSMU DB 스키마 read-only preflight", credentialStepStart);
     const credentialStep = workflow.slice(credentialStepStart, credentialStepEnd);
 
     expect(credentialStep).toContain("CRED_ALIVE=no");
-    expect(credentialStep).toMatch(/if probe_generator; then\s+CRED_ALIVE=yes/);
-    expect(credentialStep).toContain('if [ "$CRED_ALIVE" = "yes" ]');
-    expect(credentialStep).toContain("printf '%s' \"$HIGGSFIELD_CREDENTIALS_JSON\" > \"$CRED\"");
+    expect(credentialStep).toContain("credential_state");
+    expect(credentialStep).toContain("expires_at");
+    expect(credentialStep).not.toContain("probe_generator");
+    expect(credentialStep).not.toContain("higgsfield account status");
   });
+
+  it("GENERATOR-LIVENESS-06 거절: 기존 파일은 force 입력 없이는 Secret으로 덮어쓰지 않는다", () => {
+    const credentialStepStart = workflow.indexOf("이미지·영상 생성기 자격증명 저장소 준비·선택적 배치");
+    const credentialStepEnd = workflow.indexOf("OSMU DB 스키마 read-only preflight", credentialStepStart);
+    const credentialStep = workflow.slice(credentialStepStart, credentialStepEnd);
+
+    expect(credentialStep).toContain('FORCE_CREDENTIALS="${{ github.event.inputs.force_generator_credentials }}"');
+    expect(credentialStep).toMatch(/if \[ "\$FORCE_CREDENTIALS" = "true" \]; then[\s\S]*write_credentials/);
+    expect(credentialStep).toMatch(/elif \[ "\$CRED_STATE" = "missing" \]; then[\s\S]*write_credentials/);
+    expect(credentialStep).toMatch(/else[\s\S]*기존 생성기 자격증명 보존/);
+    expect(credentialStep).not.toContain('printf \'%s\' "$HIGGSFIELD_CREDENTIALS_JSON" > "$CRED"');
+  });
+
+  it("GENERATOR-LIVENESS-07 정상: 자격증명은 root 실행 UID·0600·쓰기 마운트로 영속된다", () => {
+    const service = compose.slice(
+      compose.indexOf("  openclaw-dashboard-osmu:"),
+      compose.indexOf("  openclaw-studio-export-worker:"),
+    );
+    const worker = compose.slice(compose.indexOf("  openclaw-studio-export-worker:"));
+
+    expect(service).toContain('user: "0:0"');
+    expect(service).toContain("${HOME}/.config/higgsfield:/root/.config/higgsfield:rw");
+    expect(service).toContain("HIGGSFIELD_LOCK_FILE: /root/.config/higgsfield/.cli.lock");
+    expect(worker).not.toContain(".config/higgsfield");
+    expect(dockerfile).toContain("util-linux");
+    expect(dockerfile).toContain("umask 077");
+    expect(workflow).toContain('chmod 600 "/credentials/$file"');
+    expect(workflow).toContain('chown 0:0 "/credentials/$file"');
+  });
+
+  it("GENERATOR-LIVENESS-08 정상: 배포 뒤 실제 마운트·UID·권한을 확인한다", () => {
+    const finalProbeStart = workflow.indexOf("생성기 API 생존 최종 확인 (배포 뒤)");
+    const finalProbeEnd = workflow.indexOf("생성기 상태를 배포 요약에 기록", finalProbeStart);
+    const finalProbeStep = workflow.slice(finalProbeStart, finalProbeEnd);
+
+    expect(finalProbeStep).toContain('echo "generator_mount_rw=$generator_mount_rw"');
+    expect(finalProbeStep).toContain('echo "generator_runtime_uid=$generator_runtime_uid"');
+    expect(finalProbeStep).toContain('echo "generator_credentials_mode=$generator_credentials_mode"');
+    expect(finalProbeStep).toContain('echo "generator_credentials_uid=$generator_credentials_uid"');
+  });
+
+  it.each([
+    ["unexpired", false, 0],
+    ["expired", false, 0],
+    ["missing", false, 1],
+    ["unexpired", true, 1],
+  ] as const)(
+    "GENERATOR-LIVENESS-09 통합: state=%s force=%s일 때 credential 교체 횟수는 %i다",
+    (state, force, expectedWrites) => {
+      const { result, invocations } = runCredentialStep(state, force);
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+      expect(invocations.filter((line) => line === "write_credentials")).toHaveLength(expectedWrites);
+      expect(invocations.filter((line) => line === "write_config")).toHaveLength(1);
+      expect(result.stdout).not.toContain("masked-test-value");
+    },
+  );
 });

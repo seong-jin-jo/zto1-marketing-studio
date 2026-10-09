@@ -1,3 +1,11 @@
+## 2026-10-09 09:56 KST · 운영 Higgsfield refresh token 영속성·전역 잠금 구현 중
+
+- handoff basis: 회장이 같은 `fix/higgsfield-503-20261009` 브랜치를 명시했고 `openclaw-auto-3:0.1`은 이 Codex 세션 자체임을 확인했다. 작업 위치는 `/Users/sj/wt/zto1-higgsfield-503-20261009`다.
+- 운영 입력: 서버 전용 OAuth 세션의 `HIGGSFIELD_CREDENTIALS_JSON` 갱신 시각은 GitHub Secret metadata에서 `2026-10-09T00:44:12Z`로 확인했다. 자격 증명 값은 조회하지 않았다.
+- 구현 chunk: dashboard 컨테이너 UID:GID를 0:0으로 명시하고 Higgsfield bind mount를 RW로 전환했다. 컨테이너 `umask 077`, credential·config·lock 0600/root, 배포 helper를 통한 atomic Secret 배치, 만료 metadata 전용 `CRED_ALIVE`, force 없이는 기존 파일 무덮어쓰기를 구현했다. API·monitor·diagnose의 credential 접근 CLI는 같은 bind mount의 util-linux `flock`으로 직렬화한다. export worker는 이 mount를 사용하지 않는다.
+- 현재 증거: 신규·기존 관련 계약 3파일 28건 PASS. 배포 단계 동적 계약은 unexpired/expired에서 무덮어쓰기, missing 최초 배치, force 교체를 실제 shell로 실행했다. YAML 2파일 파싱과 shell 5개 `bash -n`도 PASS다.
+- 다음 실행: Docker 이미지를 빌드해 두 컨테이너가 같은 lock을 쓸 때 실행 순서가 직렬화되고 mode 0600인지 실측한다. TypeScript·관련 회귀·Compose 실해석·review를 마친 뒤 QA tracker, 구현현황, report를 갱신하고 커밋한다. push가 정책에 막히면 커밋까지만 남긴다.
+
 ## 2026-10-09 09:18 KST · 운영 Higgsfield 503 원인 판정, 진단 commit 완료
 
 - handoff basis: 회장이 지정한 과제 원문과 `origin/main` 79bd8d06을 정본으로 삼았다. `openclaw-auto-3:0.1`은 이 세션 자체의 실행 pane임을 확인했다.
