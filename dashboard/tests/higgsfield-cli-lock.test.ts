@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -9,6 +9,7 @@ import {
   higgsfieldExecutionTimeout,
   isHiggsfieldLockBusyError,
   refreshHiggsfieldCredentialsIfNeeded,
+  resolveHiggsfieldCommandCredentialLock,
 } from "@/lib/higgsfield";
 
 describe("Higgsfield CLI 프로세스 간 잠금 계약", () => {
@@ -147,5 +148,42 @@ describe("Higgsfield CLI 프로세스 간 잠금 계약", () => {
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }
+  });
+
+  it("HIGGSFIELD-LOCK-08 정상: 같은 요청의 준비 확인 결과가 있으면 두 번째 auth token 확인을 생략한다", async () => {
+    let refreshCalls = 0;
+    const refresh = async () => {
+      refreshCalls += 1;
+      return true;
+    };
+
+    expect(await resolveHiggsfieldCommandCredentialLock(false, refresh)).toBe(false);
+    expect(await resolveHiggsfieldCommandCredentialLock(true, refresh)).toBe(true);
+    expect(refreshCalls).toBe(0);
+
+    expect(await resolveHiggsfieldCommandCredentialLock(undefined, refresh)).toBe(true);
+    expect(refreshCalls).toBe(1);
+  });
+
+  it("HIGGSFIELD-LOCK-09 통합: 준비 확인 결과를 이미지·영상·완료 조회의 같은 hfRun 호출에 전달한다", () => {
+    const sources = [
+      "src/app/api/higgsfield/image/route.ts",
+      "src/app/api/higgsfield/video/route.ts",
+      "src/lib/higgsfield-finalize.ts",
+    ].map((relativePath) => readFileSync(resolve(process.cwd(), relativePath), "utf8"));
+
+    for (const source of sources) {
+      expect(source).toContain("const credentialLockDecision = await assertHiggsfieldReady()");
+      expect(source).toMatch(/hfRun\([\s\S]*?credentialLockDecision\)/);
+    }
+  });
+
+  it("HIGGSFIELD-LOCK-10 계약: 검증기는 internal과 실제 credential bind mount의 두 컨테이너 모드를 구분한다", () => {
+    const source = readFileSync(resolve(process.cwd(), "../scripts/verify-higgsfield-lock.sh"), "utf8");
+
+    expect(source).toContain("--lock-path");
+    expect(source).toContain('if [ "$lock_path_mode" = "bind" ]');
+    expect(source).toContain('credential_dir="${HIGGSFIELD_CREDENTIAL_DIR:-$HOME/.config/higgsfield}"');
+    expect(source).toContain('containers=("$container_a" "$container_b")');
   });
 });

@@ -1,3 +1,11 @@
+## 2026-10-09 16:49 KST · PR 136 Claude 3차 리뷰 보완 로컬 완료
+
+- handoff basis: 사용자가 지정한 PR 136 브랜치와 MINOR 2건을 정본으로 삼았다. 현재 브랜치 HEAD와 작업 트리는 깨끗했다.
+- 변경: 잠금 검증기에 `--lock-path bind|internal`을 추가했다. bind 모드는 실제 `~/.config/higgsfield`를 서로 다른 두 컨테이너에 RW로 마운트하고 경쟁자를 교차 배분하며 credential 내용은 바꾸지 않는다. 이미지·영상 접수와 완료 조회는 준비 확인이 반환한 잠금 필요 여부를 같은 `hfRun`에 전달한다.
+- 검증: 표적 Vitest 5파일 59건, 셸 문법, workflow YAML 3개, `git diff --check` 성공. internal 모드의 4경쟁자×50회에서 `overlaps=0 events=400 contender_failures=0`을 관찰했다. 전체 TypeScript는 120초 안에 끝나지 않아 미검증이다.
+- 미검증: 운영 runner가 오프라인이므로 실제 Linux `~/.config/higgsfield` bind 모드와 운영 배포·실제 생성은 실행하지 못했다.
+- 다음 실행: 운영 runner 복구 뒤 `scripts/verify-higgsfield-lock.sh --lock-path bind`를 실행한다. 종료 증거는 `containers=2`, `overlaps=0`, `events=400`, `contender_failures=0`, `lock_timeout_status=75`다.
+
 ## 2026-10-09 15:54 KST · PR 136 Claude 재리뷰 5건 로컬 교정 완료
 
 - handoff basis: 사용자가 지정한 PR 136 브랜치와 `cross-review-claude-opus-r2.md` 5건을 기준으로 이어갔다.

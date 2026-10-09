@@ -39,14 +39,14 @@ export async function POST(request: Request) {
     ? ["--mode", "ugc", "--aspect_ratio", "9:16"]
     : [];
   try {
-    await assertHiggsfieldReady();
+    const credentialLockDecision = await assertHiggsfieldReady();
     // --wait/--wait-timeout 를 쓰지 않는다 — 접수만 받고 즉시 돌아온다. 접수 호출 자체의
     // 타임아웃도 짧게 명시한다(이미지와 같은 이유, 2026-10-01 추가 실측 cb35f3fd).
     const { stdout } = await hfRun([
       "generate", "create", model,
       "--image", localPath, "--prompt", motion, ...extra,
       "--json",
-    ], 45000);
+    ], 45000, credentialLockDecision);
     const data = extractJson(stdout);
     const providerJobId = extractJobId(data);
     if (!providerJobId) {

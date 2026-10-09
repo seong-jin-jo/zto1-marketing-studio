@@ -87,11 +87,11 @@ async function finalizeHiggsfieldJobInner(
   updateHiggsfieldJob(tenantId, jobId, { status: "processing" });
 
   try {
-    await assertHiggsfieldReady();
+    const credentialLockDecision = await assertHiggsfieldReady();
     // hfRun을 직접 쓴다(별도 hfGetJob 래퍼 대신) — 테스트가 hfRun 하나만 mock해도 이
     // 조회 호출까지 함께 잡히게 하기 위함. 전체 동시 생성기 호출 상한을 여기서 건다.
     const { stdout } = await withHiggsfieldConcurrency(() =>
-      hfRun(["generate", "get", job.providerJobId, "--json"], 20000),
+      hfRun(["generate", "get", job.providerJobId, "--json"], 20000, credentialLockDecision),
     );
     const data = extractJson(stdout);
     const cliStatus = normalizeJobStatus(data, stdout);

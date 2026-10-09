@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     console.log(JSON.stringify({ kind: "hf_image_step", step, extra: extra?.slice(0, 300) }));
   try {
     mark("ready:start");
-    await assertHiggsfieldReady();
+    const credentialLockDecision = await assertHiggsfieldReady();
     mark("ready:ok");
     // --wait 를 쓰지 않는다 — 접수만 받고 즉시 돌아온다. 생성기 대기열이 몇 분이든
     // 이 HTTP 요청 자체는 수 초 안에 끝난다.
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       "generate", "create", "text2image_soul_v2",
       "--prompt", prompt, "--aspect_ratio", toGeneratorRatio(aspectRatio), "--quality", quality,
       "--json",
-    ], 45000);
+    ], 45000, credentialLockDecision);
     mark("create:ok", `stdout=${stdout.length}`);
     const data = extractJson(stdout);
     const providerJobId = extractJobId(data);

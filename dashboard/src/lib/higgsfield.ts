@@ -116,10 +116,20 @@ export async function refreshHiggsfieldCredentialsIfNeeded(
   return higgsfieldCredentialsNeedRefresh(env, nowMs());
 }
 
+export async function resolveHiggsfieldCommandCredentialLock(
+  readyCheckResult: boolean | undefined,
+  refresh: () => Promise<boolean> = refreshHiggsfieldCredentialsIfNeeded,
+): Promise<boolean> {
+  // false도 "준비 확인을 마쳤고 실제 명령에는 잠금이 필요 없다"는 유효한 결과다.
+  // nullish 비교로만 미확인 상태를 구분해야 같은 요청에서 auth token을 다시 호출하지 않는다.
+  return readyCheckResult ?? refresh();
+}
+
 async function execHiggsfield(
   args: string[],
   timeout: number,
   maxBuffer: number,
+  readyCheckResult?: boolean,
 ): Promise<{ stdout: string; stderr: string }> {
   if (!process.env.HIGGSFIELD_LOCK_DIR?.trim()) {
     return execHiggsfieldRaw(args, timeout, maxBuffer, false);
@@ -127,7 +137,7 @@ async function execHiggsfield(
   if (args[0] === "auth" && args[1] === "token") {
     return execHiggsfieldRaw(args, timeout, maxBuffer, true);
   }
-  const commandNeedsCredentialLock = await refreshHiggsfieldCredentialsIfNeeded();
+  const commandNeedsCredentialLock = await resolveHiggsfieldCommandCredentialLock(readyCheckResult);
   return execHiggsfieldRaw(args, timeout, maxBuffer, commandNeedsCredentialLock);
 }
 
@@ -319,12 +329,13 @@ export function isHiggsfieldLockBusyError(error: unknown): boolean {
  * 게이트웨이가 502 를 돌려줬다. 사용자는 또 이유를 모른다. 긴 생성 호출에 들어가기 전에
  * 짧은 확인을 한 번 해서, 없으면 없다고 로그인 안 됐으면 안 됐다고 말한다.
  */
-export async function assertHiggsfieldReady(): Promise<void> {
+export async function assertHiggsfieldReady(): Promise<boolean | undefined> {
   try {
     if (process.env.HIGGSFIELD_LOCK_DIR?.trim()) {
-      await refreshHiggsfieldCredentialsIfNeeded();
+      return await refreshHiggsfieldCredentialsIfNeeded();
     } else {
       await execHiggsfield(["auth", "token"], 8000, 1024 * 1024);
+      return undefined;
     }
   } catch (e) {
     const code = (e as { code?: string })?.code;
@@ -334,9 +345,13 @@ export async function assertHiggsfieldReady(): Promise<void> {
   }
 }
 
-export async function hfRun(args: string[], timeoutMs = 480000): Promise<{ stdout: string; stderr: string }> {
+export async function hfRun(
+  args: string[],
+  timeoutMs = 480000,
+  readyCheckResult?: boolean,
+): Promise<{ stdout: string; stderr: string }> {
   try {
-    return await execHiggsfield(args, timeoutMs, 16 * 1024 * 1024);
+    return await execHiggsfield(args, timeoutMs, 16 * 1024 * 1024, readyCheckResult);
   } catch (e) {
     // 2026-09-06 실측: 운영 컨테이너에 실행기가 없어 생성 요청이 502 로 끝났다. 화면에는
     // "Request failed: 502" 만 떠 무엇이 문제인지 알 수 없었다. 없는 것과 실패한 것을

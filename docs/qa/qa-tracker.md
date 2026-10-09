@@ -1,3 +1,10 @@
+## 2026-10-09 PR 136 Claude 3차 리뷰 보완 2건 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-R3-01 | 잠금 검증기가 `--lock-path bind|internal`을 받고, 운영 검증은 실제 `~/.config/higgsfield` bind mount를 공유한 서로 다른 두 컨테이너가 경쟁해야 함 | ✅ 코드·internal 실측 PASS, 운영 bind 미검증 | `internal` 4경쟁자×50회는 겹침 0, 이벤트 400, 실패 0. `bind`는 실제 경로를 두 컨테이너에 RW mount하고 서로 다른 컨테이너에 경쟁자를 배분한다. 운영 runner 오프라인이라 실제 Linux bind 실행은 미검증. |
+| HIGGSFIELD-R3-02 | 한 요청의 준비 확인에서 얻은 갱신 결과를 실제 생성·조회 명령이 재사용해 `auth token`을 두 번 호출하지 않아야 함 | ✅ PASS | `false`와 `true`를 모두 재사용하고 미확인 `undefined`일 때만 갱신 확인을 호출하는 정상·경계 계약, 이미지·영상·완료 조회 배선 계약이 통과했다. |
+
 ## 2026-10-09 PR 136 Claude 재리뷰 5건 ❌ NG → ✅ 로컬 PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
