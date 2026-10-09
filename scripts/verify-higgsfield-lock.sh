@@ -5,6 +5,8 @@ set -euo pipefail
 image="${1:-openclaw-auto/dashboard:higgsfield-lock-test}"
 fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/higgsfield-lock.XXXXXX")"
 container="higgsfield-lock-test-$$"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+wrapper_path="$script_dir/../dashboard/scripts/run-higgsfield-locked.sh"
 cleanup() {
   docker rm -f "$container" >/dev/null 2>&1 || true
   rm -rf "$fixture_dir"
@@ -15,6 +17,7 @@ trap cleanup EXIT
 # 컨테이너에 docker exec한다. 같은 실제 구조로 하나의 컨테이너 안 두 프로세스를 경합시킨다.
 docker run -d --rm --name "$container" \
   -v "$fixture_dir:/credentials:rw" \
+  -v "$wrapper_path:/usr/local/bin/run-higgsfield-locked:ro" \
   "$image" sh -c 'sleep 20' >/dev/null
 
 run_contender() {
@@ -96,4 +99,42 @@ if [ "$timeout_status" -ne 75 ]; then
   exit 1
 fi
 
-echo "higgsfield_lock_serialized=true contenders=2 credential_mode=$credential_mode stale_recovered=true lock_timeout_status=$timeout_status"
+# wrapper만 SIGKILL되고 자식 CLI가 살아 있어도 lock을 회수하면 안 된다. owner metadata의
+# child PID·start time이 살아 있는 동안 새 contender는 75로 거절돼야 한다.
+docker exec "$container" sh -ceu '
+  printf "%s\n" "$$" > /credentials/doomed-wrapper-pid
+  exec env HIGGSFIELD_LOCK_DIR=/credentials/.cli.lock.d \
+    /usr/local/bin/run-higgsfield-locked sh -ceu '\''
+      : > /credentials/orphan-child-ready
+      sleep 3
+    '\''
+' &
+doomed_exec_pid=$!
+for _attempt in 1 2 3 4 5 6 7 8 9 10; do
+  [ -f "$fixture_dir/orphan-child-ready" ] && break
+  sleep 0.1
+done
+[ -f "$fixture_dir/orphan-child-ready" ]
+docker exec "$container" sh -ceu 'kill -KILL "$(cat /credentials/doomed-wrapper-pid)"'
+set +e
+wait "$doomed_exec_pid"
+set -e
+set +e
+docker exec "$container" sh -ceu '
+  HIGGSFIELD_LOCK_DIR=/credentials/.cli.lock.d \
+    HIGGSFIELD_LOCK_WAIT_SECONDS=1 \
+    /usr/local/bin/run-higgsfield-locked true
+' >/dev/null 2>&1
+orphan_guard_status=$?
+set -e
+if [ "$orphan_guard_status" -ne 75 ]; then
+  echo "Higgsfield orphan child must keep lock, got $orphan_guard_status" >&2
+  exit 1
+fi
+sleep 2
+docker exec "$container" sh -ceu '
+  HIGGSFIELD_LOCK_DIR=/credentials/.cli.lock.d \
+    /usr/local/bin/run-higgsfield-locked true
+'
+
+echo "higgsfield_lock_serialized=true contenders=2 credential_mode=$credential_mode stale_recovered=true lock_timeout_status=$timeout_status orphan_guard_status=$orphan_guard_status"

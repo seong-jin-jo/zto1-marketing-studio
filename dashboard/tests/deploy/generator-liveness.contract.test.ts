@@ -450,6 +450,26 @@ describe("deploy-marketing.yml 생성기 API 생존 계약", () => {
         utimesSync(ownerFile, old, old);
         const staleRecovered = spawnSync(wrapper, ["true"], { env: sharedEnv, encoding: "utf8" });
         expect(staleRecovered.status, staleRecovered.stderr).toBe(0);
+
+        const orphanMarker = resolve(fixtureRoot, "orphan-child-ready");
+        const doomedWrapper = spawn(
+          wrapper,
+          ["sh", "-ceu", 'printf ready > "$1"; sleep 2', "sh", orphanMarker],
+          { env: sharedEnv, stdio: "ignore" },
+        );
+        const doomedWrapperExit = waitForExit(doomedWrapper);
+        await waitForFile(orphanMarker);
+        doomedWrapper.kill("SIGKILL");
+        expect(await doomedWrapperExit).not.toBe(0);
+
+        const blockedByOrphan = spawnSync(wrapper, ["true"], {
+          env: { ...sharedEnv, HIGGSFIELD_LOCK_WAIT_SECONDS: "1" },
+          encoding: "utf8",
+        });
+        expect(blockedByOrphan.status).toBe(75);
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 1_200));
+        const afterOrphanExit = spawnSync(wrapper, ["true"], { env: sharedEnv, encoding: "utf8" });
+        expect(afterOrphanExit.status, afterOrphanExit.stderr).toBe(0);
       } finally {
         holder.kill("SIGTERM");
         rmSync(fixtureRoot, { recursive: true, force: true });
