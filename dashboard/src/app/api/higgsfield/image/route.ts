@@ -1,6 +1,6 @@
 import { effectiveTenantId } from "@/lib/tenant-auth";
 import { toGeneratorRatio } from "@/lib/generator-aspect-ratio";
-import { hfRun, extractJson, extractJobId, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError, assertHiggsfieldReady } from "@/lib/higgsfield";
+import { hfRun, extractJson, extractJobId, HiggsfieldBusyError, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError, assertHiggsfieldReady } from "@/lib/higgsfield";
 import { createHiggsfieldJob } from "@/lib/higgsfield-jobs";
 import { scheduleHiggsfieldBackgroundPoll } from "@/lib/higgsfield-background-poll";
 
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     console.log(JSON.stringify({ kind: "hf_image_step", step, extra: extra?.slice(0, 300) }));
   try {
     mark("ready:start");
-    await assertHiggsfieldReady();
+    const credentialLockDecision = await assertHiggsfieldReady();
     mark("ready:ok");
     // --wait 를 쓰지 않는다 — 접수만 받고 즉시 돌아온다. 생성기 대기열이 몇 분이든
     // 이 HTTP 요청 자체는 수 초 안에 끝난다.
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       "generate", "create", "text2image_soul_v2",
       "--prompt", prompt, "--aspect_ratio", toGeneratorRatio(aspectRatio), "--quality", quality,
       "--json",
-    ], 45000);
+    ], 45000, credentialLockDecision);
     mark("create:ok", `stdout=${stdout.length}`);
     const data = extractJson(stdout);
     const providerJobId = extractJobId(data);
@@ -63,6 +63,12 @@ export async function POST(request: Request) {
   } catch (e) {
     const stderrTail = (e as { stderr?: string })?.stderr?.trim().slice(-300);
     mark("catch", stderrTail || (e instanceof Error ? `${e.name}: ${e.message}`.slice(-300) : String(e)));
+    if (e instanceof HiggsfieldBusyError) {
+      return Response.json({
+        error: "이미지 생성 서비스가 다른 작업을 처리 중입니다. 계정 로그인 문제는 아니며 잠시 후 다시 요청해 주세요. 글 카드는 지금도 만드실 수 있습니다.",
+        code: "GENERATOR_BUSY",
+      }, { status: 503 });
+    }
     if (e instanceof HiggsfieldUnauthenticatedError) {
       return Response.json({
         error: "이미지 생성 서비스 연결이 잠시 끊겼습니다. 계정 로그인 문제는 아니며 운영팀이 복구하고 있습니다. 글 카드는 지금도 만드실 수 있습니다.",

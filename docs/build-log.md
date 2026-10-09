@@ -1,5 +1,55 @@
 # OSMU build log
 
+## 2026-10-09 15:54 KST · PR 136 Higgsfield R2 배포 lock 교정
+
+STAMP: 2026-10-09 15:54 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/tmp/higgsfield-r2-vitest.log`, `/tmp/higgsfield-r2-static.log`, `/tmp/higgsfield-r2-lock-stress.log` | 고민: Docker Desktop bind mount 관찰을 운영 Linux 증거로 오인하지 않고 검증 범위를 분리했다.
+
+**변경:** 배포 러너의 host lock 접근을 없애고 root lock holder 컨테이너가 같은 파일 잠금을 보유한다. 정상 경로는 삭제를 3회 확인하고, 러너 강제 종료 때는 step 제한 20분보다 긴 30분 상한과 `--rm`으로 고아 lock을 회수한다. 사전 `auth token`이 갱신하지 않으면 실제 CLI 명령도 잠근다. force 2차 확인 범위를 refresh token 생존 상태까지 넓히고 백업을 최신 3개로 제한했다. monitor는 3회 연속 hold부터 3회 간격으로 별도 경보한다.
+
+**검증:** Docker 격리 Vitest 5파일 59건, monitor Bash 12건, 관련 셸 `bash -n`, workflow YAML 3개 파싱이 성공했다. holder 삭제 실패와 dashboard 미포함 선택 배포 경계도 포함한다. 로컬 컨테이너 내부 파일시스템에서 0.5초 임계구역, 4경쟁자×50회, 겹침 0, 이벤트 400, 경쟁자 실패 0, 잠금 제한시간 종료 코드 75를 관찰했다. 파이프라인 산출물 검사는 상태파일 2개 정합에 성공했고 기존 핀 위생 경고 28건을 유지한다. 운영 Linux bind mount는 미검증이며 운영 runner 복구 후 실행한다. 운영 배포·실제 생성도 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/Users/sj/.claude/standards/standard-dev.md` | `logs/diff/higgsfield-503-20261009/cross-review-claude-opus-r2.md` | `logs/diff/higgsfield-503-20261009/report.md`
+
+## 2026-10-09 14:47 KST · PR 136 Higgsfield `flock`·force 롤백 교정
+
+STAMP: 2026-10-09 14:47 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/tmp/higgsfield-flock-stress.log`, `/tmp/higgsfield-cr-static.log`, 표적 Vitest 55건 | 고민: 인증 파일을 보호하는 잠금이 정상 생성 처리량을 가로막지 않게 갱신 구간과 작업 구간을 분리했다.
+
+**변경:** `mkdir` owner·stale 회수를 커널 `flock`으로 교체하고 CLI 자식 제한시간을 wrapper 내부로 옮겼다. access token 만료가 5분 넘게 남은 생성·조회는 잠금 없이 실행한다. BUSY 접수는 1초·2초 간격으로 실제 재시도한다. force 교체는 살아 있는 파일 2차 확인, 0600 UTC 백업, 계정 확인과 자동 복원을 보장한다. 기동 host lock, 75·127 monitor 보류, 파일 부재 진단, BUSY stderr 표식, OD-2026-10-09-3도 반영했다.
+
+**검증:** 표적 Vitest 5파일 55건 성공. 실제 컨테이너 `contenders=4 rounds=50 overlaps=0 events=400 credential_mode=600 lock_timeout_status=75`. 셸 5파일 `bash -n`, workflow YAML 3개 파싱, monitor Bash 7건, `git diff --check`가 성공했다. 파이프라인 산출물 lint는 상태파일 정합 성공과 기존 경고 28건을 보고했다. 운영 배포와 실제 생성은 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/Users/sj/.claude/standards/standard-dev.md` | `logs/diff/higgsfield-503-20261009/cross-review-claude-opus.md` | `logs/diff/higgsfield-503-20261009/report.md`
+
+## 2026-10-09 13:41 KST · Higgsfield `standard-dev.md` 재검수
+
+STAMP: 2026-10-09 13:41 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/Users/sj/.claude/standards/standard-dev.md`, `/tmp/higgsfield-standard-dev-tests-final.log`, `/tmp/higgsfield-standard-dev-yaml-final.log`, 독립 리뷰 6축 | 고민: 운영 credential 파일 변경과 제품 API busy 응답을 한 배포 계약으로 묶되, 확인하지 않은 운영 실행은 완료로 올리지 않았다.
+
+**발견·수정:** `f12908ca`의 force writer가 실행 중 CLI와 다른 경로에서 credential을 쓸 수 있었고, 두 lock 대기와 CLI 제한시간의 최악 합이 프록시 100초를 넘었다. force 쓰기를 실행 dashboard의 동일 wrapper로 직렬화하고 lock 대기를 10초로 제한했다. 종료 코드 75는 `GENERATOR_BUSY` 503으로 타입화했다. access token만 있는 갱신 불가능 입력도 거절한다. wrapper만 SIGKILL되고 CLI 자식이 남은 경우도 owner metadata의 자식 PID·시작시각으로 lock을 유지한다.
+
+**검증:** 표적 5파일 71건 PASS, Linux 전용 실제 wrapper·writer 경합 1건은 macOS에서 skip하며 기존 GitHub CI의 전체 Vitest 단계에서 실행되도록 연결됐다. 현재 wrapper를 기존 Linux 컨테이너에 mount한 실측은 직렬화, 0600, stale 회수, live timeout 75, wrapper SIGKILL 뒤 live child 보호 75를 모두 통과했다. token 누락·공백·객체·배열 입력은 기존 credential을 보존한다. 셸 3파일 `bash -n`, workflow YAML 2파일과 Bash run block 19개가 PASS다. 최종 수렴 리뷰는 `CLEAN`이다. 전체 TypeScript는 현재 로컬 baseline 때문에 실패했고, 현재 Docker rebuild·GitHub CI·운영 배포는 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/Users/sj/.claude/standards/standard-dev.md` | `.github/workflows/deploy-marketing.yml` | `logs/diff/higgsfield-503-20261009/report.md`
+
+## 2026-10-09 13:20 KST · 운영 Higgsfield 갱신 토큰 영속성·직렬화
+
+STAMP: 2026-10-09 13:20 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/tmp/higgsfield-final-contracts.log`, `/tmp/higgsfield-final-yaml.log`, `/tmp/higgsfield-refresh-docker-build5.log`, `/tmp/higgsfield-refresh-lock-final.log` | 고민: Docker Desktop bind mount에서 실제 직렬화되지 않은 `flock`을 폐기하고 원자적 디렉터리 잠금을 실측했다.
+
+**변경:** dashboard의 Higgsfield bind mount를 RW로 바꾸고 runtime UID:GID 0:0, 디렉터리 0700, 자격 증명·설정 0600/root를 강제했다. API·진단·탐침 CLI는 공유 `.cli.lock.d` wrapper로 직렬화하며, export worker는 자격 증명을 마운트하지 않는다. 배포 전 `CRED_ALIVE`는 만료 메타데이터만 읽고, 시크릿은 `force_generator_credentials=true`일 때만 쓴다.
+
+**검증:** 관련 계약 3파일 28건, workflow YAML 2파일과 Bash run block 20개, 셸 스크립트 3개가 PASS다. 선행 Docker image build는 Next production build까지 통과했고, 실제 컨테이너 두 프로세스는 `first:start, first:end, second:start, second:end` 순서로 직렬화됐다. mode 600, 죽은 잠금 회수, 살아 있는 잠금 종료 코드 75를 관찰했다. 운영 배포와 실제 이미지는 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `dashboard/scripts/run-higgsfield-locked.sh` | `.github/workflows/deploy-marketing.yml` | `scripts/verify-higgsfield-lock.sh`
+
+## 2026-10-09 09:18 KST · 운영 Higgsfield 503 진단 계약
+
+STAMP: 2026-10-09 09:18 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/tmp/higgsfield-diag-red.log`, `/tmp/higgsfield-diag-contracts.log`, workflow YAML·shell 구문 검사 | 고민: 운영 token과 계정 식별자는 한 글자도 출력하지 않고 장애 층만 분리했다.
+
+**변경:** `diagnose-generator.yml`에 DNS, token 없는 HTTPS timing, proxy 존재, CLI 버전, credential 만료 metadata, account status 종료 코드, 최근 30분 이미지 503 분기 로그를 추가했다. 계정·앱 로그 원문은 출력하지 않고 고정 분류만 허용하며, 로그를 원문 변수에 담지 않고 2,000레코드·1MiB·20초 입력과 200줄 출력 상한 아래 스트리밍한다. 생성·로그인·credential 덮어쓰기는 거절 계약으로 고정했다.
+
+**검증:** 구현 전 신규 계약 3 fail·1 pass. 구현 뒤 진단 workflow 정적·동적 계약 13건, 배포 probe 5건, 30분 monitor 7건, 합계 25건 PASS. 동적 계약은 가짜 Docker 정상 경로와 필수 probe 실패 8종, allowlist 출력, exact container를 실제 shell 실행으로 검증한다. YAML 파싱, 추출한 run script의 `bash -n`, `git diff --check` PASS. `git push`가 실행 정책에 차단되어 branch dispatch, PR, 운영 DNS·TLS 측정, 실제 이미지 생성은 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `.github/workflows/diagnose-generator.yml` | `/tmp/higgsfield-diag-contracts.log` | GitHub runs 37862950523·37863665063
+
 ## 2026-10-09 07:50 KST · PR 134 Linux 글꼴 폭 카드 버튼 회귀 복구
 
 STAMP: 2026-10-09 07:50 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `/tmp/zto1-r6-focused.log`, `/tmp/zto1-r6-typecheck.log`, `/tmp/zto1-r6-build.log`, `/tmp/zto1-r6-v70.log`, `/tmp/zto1-r6-chairman-2.log` | 고민: CI의 전체 자손 넘침 검사는 완화하지 않고, 같은 행의 10개 버튼에 더 강한 크기·내용·축소 수치 검사를 추가했다.

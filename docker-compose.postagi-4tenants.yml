@@ -235,6 +235,9 @@ services:
     <<: *dashboard-base
     image: openclaw-auto/dashboard:0.2.0
     container_name: openclaw-dashboard-osmu
+    # Higgsfield credential bind mount의 소유자와 CLI 실행 주체를 일치시킨다. Dockerfile도
+    # root 실행을 전제로 Docker socket과 운영 도구를 사용하므로 암묵값 대신 UID:GID를 고정한다.
+    user: "0:0"
     labels:
       autoheal: "true"   # autoheal 워치독이 unhealthy 시 자동 재시작
     volumes:
@@ -246,12 +249,13 @@ services:
       # claude CLI 폴백 인증(테넌트 Anthropic 키 미등록 시 `claude -p`). 호스트가 사전 인증된 ~/.claude 필요.
       # 테넌트가 자기 API 키 등록 시 이 경로 불필요(HTTP API로 감). 인증 없으면 폴백만 502(고객 키 경로는 정상).
       - ${HOME}/.claude:/root/.claude:ro
-      # 이미지·영상 생성기 자격증명. claude 와 같은 방식으로 호스트에서 읽기 전용 마운트한다.
+      # 이미지·영상 생성기 자격증명. CLI가 refresh token을 회전한 결과를 호스트에 영속해야
+      # 하므로 쓰기 가능 bind mount다. 배포가 디렉터리 0700, JSON·lock 0600, root:root를 보장한다.
       # 배포에서는 HIGGSFIELD_CREDENTIALS_JSON 시크릿을 이 경로에 렌더한다(deploy-marketing.yml).
       # 배포 VM 은 브라우저가 없어 서버에서 로그인할 수 없기 때문이다.
       # 로컬에서는 `higgsfield auth login` 을 한 번 해 두면 컨테이너가 그것을 읽는다.
       # 없으면 생성 요청이 "생성기가 아직 준비되지 않았습니다"로 정직하게 닫힌다.
-      - ${HOME}/.config/higgsfield:/root/.config/higgsfield:ro
+      - ${HOME}/.config/higgsfield:/root/.config/higgsfield:rw
     env_file: .env.osmu
     environment:
       DATA_DIR: /app/data
@@ -259,6 +263,11 @@ services:
       DASHBOARD_PORT: "18789"
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
+      # 같은 credential 파일을 쓰는 API·상태 조회·workflow probe 전체의 프로세스 간 잠금.
+      HIGGSFIELD_LOCK_DIR: /root/.config/higgsfield/.cli.lock.d
+      # 접수 API는 Cloudflare 100초 제한 전에 busy를 503으로 돌려줘야 한다. 준비 확인 8초와
+      # create 45초가 각각 잠금을 기다려도 총 73초를 넘지 않도록 프로세스 간 대기는 10초다.
+      HIGGSFIELD_LOCK_WAIT_SECONDS: "10"
     depends_on:
       - openclaw-studio-export-worker
     # 헬스체크(L4 재발방지) — hang/DB불가 감지. unhealthy 자동재시작은 autoheal 워치독이 수행

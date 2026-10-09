@@ -23,6 +23,8 @@ const H = vi.hoisted(() => ({
   tenantId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" as string | null,
   createStdout: "",
   getStdout: "",
+  readyError: "" as "" | "busy",
+  getError: "" as "" | "busy",
   hfRunCalls: [] as Array<{ args: string[]; timeoutMs?: number }>,
 }));
 
@@ -47,7 +49,9 @@ vi.mock("@/lib/higgsfield", async () => {
   const actual = await vi.importActual<typeof import("@/lib/higgsfield")>("@/lib/higgsfield");
   return {
     ...actual,
-    assertHiggsfieldReady: vi.fn(async () => {}),
+    assertHiggsfieldReady: vi.fn(async () => {
+      if (H.readyError === "busy") throw new actual.HiggsfieldBusyError();
+    }),
     downloadTo: vi.fn(async () => 1),
     logGen: vi.fn(),
     recordMediaGenerationEvent: vi.fn(async () => {}),
@@ -56,6 +60,7 @@ vi.mock("@/lib/higgsfield", async () => {
     hfRun: vi.fn(async (args: string[], timeoutMs?: number) => {
       H.hfRunCalls.push({ args, timeoutMs });
       if (args.includes("create")) return { stdout: H.createStdout, stderr: "" };
+      if (H.getError === "busy") throw new actual.HiggsfieldBusyError();
       return { stdout: H.getStdout, stderr: "" };
     }),
   };
@@ -70,6 +75,8 @@ beforeEach(() => {
   H.createStdout = fixture("create-image.json");
   H.getStdout = fixture("get-image-pending.json");
   H.hfRunCalls = [];
+  H.readyError = "";
+  H.getError = "";
   vi.resetModules();
 });
 afterEach(() => {
@@ -112,6 +119,15 @@ describe("생성 접수(POST)는 --wait를 쓰지 않고 짧게 끝난다", () =
     expect(createCall!.timeoutMs).toBeDefined();
     expect(createCall!.timeoutMs!).toBeLessThanOrEqual(60000);
   });
+
+  it("잠금 경합은 내부 명령을 노출하지 않고 GENERATOR_BUSY 503으로 답한다", async () => {
+    H.readyError = "busy";
+    const res = await postImage();
+    const body = await res.json();
+    expect(res.status).toBe(503);
+    expect(body.code).toBe("GENERATOR_BUSY");
+    expect(body.error).not.toMatch(/Command failed|run-higgsfield-locked|credentials\.json/);
+  });
 });
 
 describe("GET job — 실물 대기 중 응답은 완료로 오판되지 않는다", () => {
@@ -127,6 +143,18 @@ describe("GET job — 실물 대기 중 응답은 완료로 오판되지 않는�
     expect(body.ok).toBe(true);
     expect(body.status).toBe("queued");
     expect(downloadTo).not.toHaveBeenCalled();
+  });
+
+  it("잠금 경합은 작업을 실패로 확정하지 않고 GENERATOR_BUSY 503으로 재시도시킨다", async () => {
+    const postRes = await postImage();
+    const { jobId } = await postRes.json();
+    H.getError = "busy";
+    const res = await getJob(jobId, TENANT_A);
+    const body = await res.json();
+    expect(res.status).toBe(503);
+    expect(body.code).toBe("GENERATOR_BUSY");
+    const { readHiggsfieldJob } = await import("@/lib/higgsfield-jobs");
+    expect(readHiggsfieldJob(TENANT_A, jobId)?.status).toBe("queued");
   });
 
   it("영상이 아직 in_progress(바탕 그림 webp 포함)여도 실패로 확정되지 않는다", async () => {

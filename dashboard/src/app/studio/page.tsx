@@ -105,6 +105,7 @@ import { DEFAULT_COVER_SECONDS, coverUnsupportedReason, supportsCoverTimestamp }
 import { runWithConcurrency } from "@/lib/async-pool";
 import { embeddedTextCardImage, recoverDraftEmbeddedTextCard } from "@/lib/studio/text-card-provenance";
 import { GenerationOperationGate } from "@/lib/studio/generation-operation";
+import { isGeneratorBusyResponse, retryGeneratorBusy } from "@/lib/generator-busy-retry";
 
 const PUBLISH_CONCURRENCY = 3;
 // 2026-10-02 컨트롤러 감사: 이 타임아웃은 더 이상 "서버가 끝날 때까지" 기다리는 역할이
@@ -1622,7 +1623,7 @@ export default function StudioPage() {
     if (!activeWorkspace) { showToast("작업 공간을 먼저 고르세요", "error"); return null; }
     setLastError(null);
     try {
-      const r = await apiPost<{ ok?: boolean; jobId?: string; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/image", { prompt, aspectRatio, label: idea, tenant_id: activeWorkspace.id });
+      const r = await retryGeneratorBusy(() => apiPost<{ ok?: boolean; jobId?: string; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/image", { prompt, aspectRatio, label: idea, tenant_id: activeWorkspace.id }));
       if (!generationOperationIsCurrent(opts?.operationId)) return null;
       if (!r?.ok || !r.jobId) {
         const msg = r?.credits
@@ -1653,7 +1654,9 @@ export default function StudioPage() {
       const payload = e instanceof ApiResponseError
         ? (e.payload as { error?: string; nsfw?: boolean; credits?: boolean } | undefined)
         : undefined;
-      const msg = payload?.nsfw
+      const msg = isGeneratorBusyResponse(e)
+        ? "이미지 생성 서비스가 계속 사용 중입니다. 두 번 자동으로 다시 시도했지만 접수하지 못했습니다. 잠시 뒤 다시 눌러 주세요."
+        : payload?.nsfw
         ? "이 주제는 생성기가 만들 수 없다고 했습니다. 글감을 바꾸거나 결을 바꿔 다시 시도해 주세요."
         : payload?.credits
           ? "이미지 생성기 잔액이 부족합니다. 충전하면 바로 만들 수 있습니다."
@@ -1741,7 +1744,7 @@ export default function StudioPage() {
       // 2026-09-14 이전에는 여기 지시문이 고정 문자열이라 주제도 학습 정보도 실리지 않았다.
       // 무엇에 관한 영상이든 같은 지시가 갔고, 결과가 주제와 무관하게 나오는 원인 중 하나였다.
       const motion = buildImageToVideoMotionPrompt(learningInfo);
-      const r = await apiPost<{ ok?: boolean; jobId?: string; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { filename: source.filename, prompt: motion, model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id });
+      const r = await retryGeneratorBusy(() => apiPost<{ ok?: boolean; jobId?: string; error?: string; nsfw?: boolean; credits?: boolean }>("/api/higgsfield/video", { filename: source.filename, prompt: motion, model: videoModel, narration, label: idea, tenant_id: activeWorkspace.id }));
       if (!generationOperationIsCurrent(operationId)) return null;
       if (!r?.ok || !r.jobId) {
         const msg = r?.nsfw
@@ -1755,7 +1758,9 @@ export default function StudioPage() {
       return await pollAndFinishVideo(r.jobId, activeWorkspace.id, { sourceImage: source.image ?? imgRef.current, operationId });
     } catch (e) {
       if (!generationOperationIsCurrent(operationId)) return null;
-      const msg = extractApiErrorMessage(e, "영상 생성 실패");
+      const msg = isGeneratorBusyResponse(e)
+        ? "영상 생성 서비스가 계속 사용 중입니다. 두 번 자동으로 다시 시도했지만 접수하지 못했습니다. 잠시 뒤 다시 눌러 주세요."
+        : extractApiErrorMessage(e, "영상 생성 실패");
       setLastError(`영상: ${msg}`); showToast(msg, "error"); return null;
     }
   }

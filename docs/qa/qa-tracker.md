@@ -1,3 +1,57 @@
+## 2026-10-09 PR 136 Claude 3차 리뷰 보완 2건 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-R3-01 | 잠금 검증기가 `--lock-path bind|internal`을 받고, 운영 검증은 실제 `~/.config/higgsfield` bind mount를 공유한 서로 다른 두 컨테이너가 경쟁해야 함 | ✅ 코드·internal 실측 PASS, 운영 bind 미검증 | `internal` 4경쟁자×50회는 겹침 0, 이벤트 400, 실패 0. `bind`는 실제 경로를 두 컨테이너에 RW mount하고 서로 다른 컨테이너에 경쟁자를 배분한다. 과도하거나 잘못된 입력 6종은 Docker 실행 전에 종료 코드 2로 거절됐다. Docker Desktop disposable bind는 겹침 1건을 검출해 실패했고 운영 Linux 성공 근거로 쓰지 않았다. 운영 runner 오프라인이라 실제 Linux bind 실행은 미검증. |
+| HIGGSFIELD-R3-02 | 한 요청의 준비 확인에서 얻은 갱신 결과를 실제 생성·조회 명령이 재사용해 `auth token`을 두 번 호출하지 않아야 함 | ✅ PASS | `false`와 `true` 재사용, 미확인 `undefined` 갱신, 대기열 뒤 확인 계약이 통과했다. 실제 가짜 CLI 통합에서 `auth token` 1회와 생성 명령 1회를 관찰했다. |
+
+## 2026-10-09 PR 136 Claude 재리뷰 5건 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-R2-01 | 비root 배포 러너가 root 0700 경로를 열지 않고 컨테이너가 lock을 보유해야 함 | ✅ 코드 계약 PASS, 운영 미검증 | 권한 000 합성 경로에서 추출 셸이 호스트 직접 접근 없이 Docker 호출을 구성하고 holder를 명시 정리 전까지 유지하는 계약 성공. holder 삭제 실패와 dashboard 미포함 선택 배포도 경계 검증했다. 실제 비root Linux runner는 복구 후 실행. |
+| HIGGSFIELD-R2-02 | 잠금 아래 사전 갱신이 일어나지 않으면 5분 보호 구간의 실제 명령도 잠금을 유지해야 함 | ✅ PASS | 만료 2분 미갱신은 lock 유지, 1시간 갱신은 해제하는 경계 계약 성공. |
+| HIGGSFIELD-R2-03 | 0.5초 임계구역, 4경쟁자×50회에서 겹침·경쟁자 실패가 0이어야 함 | ✅ 로컬 PASS, 운영 미검증 | 컨테이너 내부 경로 `overlaps=0 events=400 contender_failures=0`. 운영 Linux bind mount는 runner 복구 후 실행. |
+| HIGGSFIELD-R2-04 | 만료 access token이라도 refresh token이 남으면 force 2차 확인, 백업 상한이 필요함 | ✅ PASS | expired 상태 무확인 거절, force 행렬, 최신 백업 3개 보존 계약 성공. |
+| HIGGSFIELD-R2-05 | 75·127 보류가 3회 연속이면 별도 경보하고 정상 판정에서 횟수를 초기화해야 함 | ✅ PASS | monitor Bash 12건과 workflow 계약 7건 성공. Slack 일시 실패 뒤 영구 침묵하지 않도록 3회 간격 재경보. |
+
+## 2026-10-09 PR 136 Claude 교차 리뷰 9건 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-CR-01 | stale lock 경쟁 없이 `flock`이 4개 경쟁자·50회 전부 직렬화해야 함 | ✅ 로컬 PASS | 실제 컨테이너 `contenders=4 rounds=50 overlaps=0 events=400`, 잠금 대기 종료 코드 75. |
+| HIGGSFIELD-CR-02 | force 복구는 살아 있는 세션 2차 확인, 0600 백업, 교체 후 검증 실패 자동 복원을 보장해야 함 | ✅ 로컬 PASS | 계약 테스트가 2차 확인, `bak-<UTC>`, 0600, 계정 확인과 실패 복원 경로를 검증했다. 운영 force 실행은 미검증. |
+| HIGGSFIELD-CR-03 | monitor의 75·127은 인증 장애가 아닌 hold여야 함 | ✅ 로컬 PASS | Bash 순수 판정 7건이 75·127 hold와 상태 보존을 포함해 성공했다. |
+| HIGGSFIELD-CR-04 | 만료 여유가 충분한 생성 호출은 잠금을 점유하지 않고, BUSY 화면 안내와 실제 자동 재시도가 일치해야 함 | ✅ 로컬 PASS | 5분 경계 3건과 BUSY 1초·2초 재시도 정상·거절·소진 3건 성공. |
+| HIGGSFIELD-CR-05 | 잘못된 credential JSON이 로그에 원문을 남기지 않아야 함 | ✅ 로컬 PASS | 잘못된 JSON 6종이 기존 파일을 보존하고 파싱 실패는 고정 문구만 반환했다. |
+| HIGGSFIELD-CR-06 | 배포 기동과 진단 timeout이 자격 증명 갱신 중 CLI를 강제 종료하지 않아야 함 | ✅ 로컬 PASS | 기동 host flock과 wrapper 내부 timeout 계약 테스트, Bash 문법 검증 성공. 운영 재기동은 미검증. |
+| HIGGSFIELD-CR-07 | credential 파일 없음은 명확한 운영 오류로 보고돼야 함 | ✅ 로컬 PASS | 최종 탐침 전 `test -s`와 전용 오류 문구를 계약 테스트로 고정했다. |
+| HIGGSFIELD-CR-08 | 종료 코드 75는 wrapper의 명시 표식과 함께일 때만 BUSY로 분류해야 함 | ✅ 로컬 PASS | 표식 있는 75만 true, 자식 75·일반 오류는 false인 경계 테스트 성공. |
+| HIGGSFIELD-CR-09 | Higgsfield 결정 ID를 main과 충돌하지 않는 OD-2026-10-09-3으로 정합해야 함 | ✅ 로컬 PASS | 결정 ID와 OD-1 스냅샷 방식 폐기 문구를 정합했다. |
+
+## 2026-10-09 Higgsfield 503 품질헌법 재검수 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-DEV-REVIEW-01 | `standard-dev.md`를 실제로 읽고 `f12908ca`까지의 변경을 배포·시크릿·마이그레이션·롤백 기준으로 재검수해야 함 | ✅ 로컬 PASS | 전문 Read 뒤 25파일 전체 diff를 대조했다. 독립 리뷰가 찾은 force writer 경합, 100초 접수 계약, 종료 코드 75, 갱신 불가능 시크릿, CI 실물 경합 결손, wrapper SIGKILL 뒤 live child 경합을 수정했다. 표적 5파일 71건 PASS·Linux 전용 1건 로컬 skip, 현재 wrapper의 실제 Linux 컨테이너 경합과 셸·YAML PASS. 운영 배포와 GitHub CI는 미검증이다. |
+
+## 2026-10-09 운영 Higgsfield 갱신 토큰 영속성·경합 ❌ NG → ✅ 로컬 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-REFRESH-01 | 컨테이너가 갱신한 자격 증명이 호스트 `credentials.json`에 0600 권한으로 영속돼야 함 | ✅ 로컬 PASS | Compose RW mount, UID 0, mode 600 계약과 실제 컨테이너 파일 mode 600을 확인했다. 운영 배포는 미검증이다. |
+| HIGGSFIELD-REFRESH-02 | 배포 전 생존 판정은 CLI/API를 호출해 OAuth 갱신을 일으키지 않고, 강제 입력일 때만 기존 파일을 시크릿으로 덮어써야 함 | ✅ PASS | 만료 메타데이터만 읽는다. unexpired, expired, missing에서 force=false 쓰기 0회, force=true 쓰기 1회를 동적 계약으로 확인했다. |
+| HIGGSFIELD-REFRESH-03 | API·모니터·진단의 모든 Higgsfield CLI 실행은 같은 프로세스 간 잠금으로 직렬화돼야 함 | ✅ 로컬 PASS | 두 프로세스 순서 직렬화, 죽은 잠금 회수, 살아 있는 잠금 종료 코드 75를 실제 컨테이너에서 확인했다. |
+| HIGGSFIELD-REFRESH-04 | 서버 전용 OAuth 시크릿 갱신 시각과 수정 후 배포 재현 계약을 증거로 남겨야 함 | ✅ 입력·로컬 계약 PASS, 운영 미검증 | 시크릿 갱신 `2026-10-09T00:44:12Z`, 관련 계약 28건, Docker build와 잠금 실측 PASS. 운영 배포·실제 이미지는 미검증이다. |
+
+## 2026-10-09 운영 Higgsfield 이미지 생성 HTTP 503 ❌ NG
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-503-01 | 운영 `/api/higgsfield/image`가 실제 이미지 생성 요청을 수락하고 503이 반복되지 않아야 함 | ❌ NG | 08:50 KST HTTP 503 3회. 재로그인·Secret 갱신·강제 배포와 실생성을 아직 수행하지 못했다. |
+| HIGGSFIELD-503-02 | 배포 컨테이너에서 DNS, HTTPS 연결, proxy 환경, CLI 버전, 토큰 만료시각, 최근 503 분기를 비밀값 없이 진단할 수 있어야 함 | ✅ 로컬 계약 PASS, 운영 미검증 | 진단 정적·동적 13건과 기존 probe·monitor 12건, 합계 25건 및 YAML·shell 구문이 통과했다. push 정책 차단으로 branch workflow를 운영 실행하지 못했다. |
+| HIGGSFIELD-503-03 | 맥 CLI 토큰 갱신이 서버 refresh token을 무효화하는 회전 가능성을 운영 증거로 판정해야 함 | ✅ 오래된 스냅샷 확인, rotation은 강한 추론 | Secret 갱신 16:30 UTC → 16:31 probe 성공. 맥 credential 재기록 23:19 UTC 뒤 같은 Secret을 다시 넣은 23:19 deploy는 즉시 종료 코드 2. Secret 값 비교 없이 rotation 자체는 확정하지 않았다. |
+
 ## 2026-10-09 PR 134 Linux 글꼴 폭 카드 버튼 넘침 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
@@ -8270,3 +8324,12 @@ SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-is
 | EDITROOM-S4-R2-M4 | 버튼 반복 클릭마다 승인 인박스에 같은 draft가 쌓여 이중 발행 가능 | ❌ NG | export ID 멱등, 발행 완료 항목 승인 후보 제외, 실제 PostgreSQL 회귀 테스트 |
 | EDITROOM-S4-R2-m1 | 비관적 락(SELECT ... FOR UPDATE) 해제 뒤 queue 기록 사이에 draft 변경 가능 | ❌ NG | queue 기록 순서와 snapshot 한계를 코드·테스트에서 명시하고 경계 검증 |
 | EDITROOM-S4-R2-m2 | polling 자동 재시도가 두 번째 연속 오류 뒤 중단됨 | ❌ NG | 연속 오류 뒤에도 자동 polling 복구하는 회귀 테스트 |
+## 2026-10-09 PR 136 Claude 재리뷰 R2 5건 ❌ NG
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-R2-01 | 비root 배포 러너가 root 0700 자격증명 디렉터리를 직접 열지 않고 컨테이너 내부에서 배포 잠금을 획득해야 함 | ❌ NG | 현재 workflow가 호스트에서 `exec 9>`를 실행해 권한 오류 가능. |
+| HIGGSFIELD-R2-02 | `auth token`이 실제 갱신을 하지 않은 61~300초 구간에도 실제 CLI 명령이 잠금 밖에서 토큰을 회전하지 않아야 함 | ❌ NG | 갱신 뒤 만료시각 재확인과 잠금 유지 계약이 없음. |
+| HIGGSFIELD-R2-03 | 컨테이너 내부 잠금 경합을 0.5초 임계구역, 경쟁자 4개, 50회로 검증하고 자식 종료 코드 90을 누락하지 않아야 함 | ❌ NG | 기존 0.01초 임계구역과 `set -e` wait가 겹침 검출 신뢰도를 낮춤. |
+| HIGGSFIELD-R2-04 | 살아 있는 access token을 force 교체하려면 별도 확인이 필요하고 자격증명 백업 보존 수가 제한돼야 함 | ❌ NG | refresh 생존만으로 force가 진행되며 백업 정리 규칙이 없음. |
+| HIGGSFIELD-R2-05 | 잠금 대기·CLI 부재 hold가 연속되면 조용히 무한 유지하지 않고 별도 경보를 내야 함 | ❌ NG | 연속 hold 횟수와 경보 전이가 없음. |

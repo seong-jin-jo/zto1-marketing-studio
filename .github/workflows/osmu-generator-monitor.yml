@@ -64,9 +64,14 @@ jobs:
         run: |
           state_file="$RUNNER_TEMP/.osmu-generator-state"
           if [ -f "$state_file" ]; then
-            echo "status=$(cat "$state_file")" >> "$GITHUB_OUTPUT"
+            previous_status="$(sed -n '1p' "$state_file")"
+            previous_hold_count="$(sed -n '2p' "$state_file")"
+            [[ "$previous_hold_count" =~ ^[0-9]+$ ]] || previous_hold_count=0
+            echo "status=${previous_status:-unknown}" >> "$GITHUB_OUTPUT"
+            echo "hold_count=$previous_hold_count" >> "$GITHUB_OUTPUT"
           else
             echo "status=unknown" >> "$GITHUB_OUTPUT"
+            echo "hold_count=0" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 생성기 로그인 읽기 전용 탐침
@@ -112,7 +117,13 @@ jobs:
           case "$current" in
             up) reason="account_status_ok" ;;
             down) reason="account_status_failed" ;;
-            hold) reason="container_not_running" ;;
+            hold)
+              if [ "$container_state" = "running" ]; then
+                reason="probe_deferred_status_75_or_127"
+              else
+                reason="container_not_running"
+              fi
+              ;;
           esac
 
           echo "status=$current" >> "$GITHUB_OUTPUT"
@@ -124,18 +135,22 @@ jobs:
         env:
           GENMON_DIR: ${{ steps.assets.outputs.dir }}
           PREVIOUS: ${{ steps.prev.outputs.status }}
+          PREVIOUS_HOLD_COUNT: ${{ steps.prev.outputs.hold_count }}
           CURRENT: ${{ steps.check.outputs.status }}
         run: |
           set -euo pipefail
           source "$GENMON_DIR/scripts/lib/generator-monitor-state.sh"
-          echo "kind=$(generator_monitor_transition "$PREVIOUS" "$CURRENT")" >> "$GITHUB_OUTPUT"
+          next_hold_count="$(generator_monitor_next_hold_count "$PREVIOUS_HOLD_COUNT" "$CURRENT")"
+          echo "kind=$(generator_monitor_transition "$PREVIOUS" "$CURRENT" "$next_hold_count")" >> "$GITHUB_OUTPUT"
           echo "persisted=$(generator_monitor_persisted_state "$PREVIOUS" "$CURRENT")" >> "$GITHUB_OUTPUT"
+          echo "hold_count=$next_hold_count" >> "$GITHUB_OUTPUT"
 
       - name: Slack 알림(상태 전이 시에만)
         if: ${{ steps.transition.outputs.kind != 'none' }}
         env:
           SLACK_WEBHOOK: ${{ secrets.OSMU_ALERT_SLACK_WEBHOOK_URL }}
           KIND: ${{ steps.transition.outputs.kind }}
+          REASON: ${{ steps.check.outputs.reason }}
         run: |
           if [ -z "$SLACK_WEBHOOK" ]; then
             echo "OSMU_ALERT_SLACK_WEBHOOK_URL 미설정: 상태 기록은 유지하고 알림만 건너뜀"
@@ -143,7 +158,9 @@ jobs:
           fi
 
           if [ "$KIND" = "failure" ]; then
-            TEXT=":rotating_light: 생성기(Higgsfield) 로그인 만료: 사진 카드와 숏폼 영상 생성 중단, 글자 카드는 정상. 복구: 서버에서 higgsfield 재로그인 또는 HIGGSFIELD_CREDENTIALS_JSON 갱신 후 force_generator_credentials 배포"
+            TEXT=":rotating_light: 생성기(Higgsfield) 로그인 만료: 사진 카드와 숏폼 영상 생성 중단, 글자 카드는 정상. 복구: 서버에서 Higgsfield를 재로그인해 새 서버 전용 세션을 발급하고 HIGGSFIELD_CREDENTIALS_JSON을 갱신한 뒤 force_generator_credentials 배포"
+          elif [ "$KIND" = "hold_warning" ]; then
+            TEXT=":warning: 생성기(Higgsfield) 상태 탐침이 3회 이상 연속 보류됨(reason=$REASON). 로그인 만료로 단정하지 말고 컨테이너 기동 상태, credential lock 대기, CLI 설치 상태를 확인해야 함. 보류가 계속되면 3회 간격으로 다시 알림"
           else
             TEXT=":white_check_mark: 생성기(Higgsfield) 로그인 복구: 사진 카드와 숏폼 영상 생성을 다시 사용할 수 있음"
           fi
@@ -156,7 +173,8 @@ jobs:
         if: ${{ steps.check.outcome == 'success' }}
         env:
           PERSISTED: ${{ steps.transition.outputs.persisted }}
-        run: printf '%s' "$PERSISTED" > "$RUNNER_TEMP/.osmu-generator-state"
+          HOLD_COUNT: ${{ steps.transition.outputs.hold_count }}
+        run: printf '%s\n%s\n' "$PERSISTED" "$HOLD_COUNT" > "$RUNNER_TEMP/.osmu-generator-state"
 
       - name: 새 상태 캐시 저장
         if: ${{ steps.check.outcome == 'success' }}
@@ -174,6 +192,7 @@ jobs:
             echo "- 이전 상태: ${{ steps.prev.outputs.status }}"
             echo "- 상태 전이: ${{ steps.transition.outputs.kind }}"
             echo "- 저장 상태: ${{ steps.transition.outputs.persisted }}"
+            echo "- 연속 판정 보류: ${{ steps.transition.outputs.hold_count }}회"
             echo "- 탐침 횟수: ${{ steps.check.outputs.attempts }}"
             echo "- 판정 사유: ${{ steps.check.outputs.reason }}"
             echo "- 생성 요청: 실행하지 않음"

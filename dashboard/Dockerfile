@@ -54,7 +54,7 @@ LABEL org.opencontainers.image.revision=$BUILD_COMMIT
 # 명시한 목록(Puppeteer/Playwright가 Debian에서 Chrome을 띄울 때 쓰는 표준 의존 세트와
 # 동일 계열)이다.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg fonts-noto-cjk ca-certificates curl gnupg \
+    ffmpeg fonts-noto-cjk ca-certificates curl gnupg util-linux coreutils \
     libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
     libasound2 libpango-1.0-0 libcairo2 libgtk-3-0 fonts-liberation libu2f-udev \
@@ -87,6 +87,7 @@ COPY --from=builder /app/package.json ./package.json
 # 아니라 Next의 standalone 파일 트레이싱이 못 따라간다) — 명시적으로 복사해야 한다.
 COPY --from=builder /app/remotion ./remotion
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder --chmod=0755 /app/scripts/run-higgsfield-locked.sh /usr/local/bin/run-higgsfield-locked
 # Next standalone 파일 트레이싱은 @remotion/bundler가 webpack 설정 안에서 동적으로
 # require.resolve()하는 형제 패키지(@remotion/studio, mediabunny 등 전이 의존성)와
 # rspack의 플랫폼별 네이티브 바인딩(@rspack/binding-*)을 추적하지 못한다(2026-10-02
@@ -113,4 +114,5 @@ RUN npm install -g @anthropic-ai/claude-code
 # 만들 수 없다는 것이 드러났다(생성 요청이 곧바로 502). 자격증명은 이미지에 넣지 않고
 # claude 와 같은 방식으로 호스트에서 읽기 전용 마운트한다.
 RUN npm install -g @higgsfield/cli
-CMD ["sh", "-c", "PORT=${DASHBOARD_PORT:-34560} node server.js"]
+# Higgsfield CLI가 credential을 atomic replace해도 새 파일이 0600보다 넓어지지 않게 한다.
+CMD ["sh", "-c", "umask 077; PORT=${DASHBOARD_PORT:-34560} node server.js"]

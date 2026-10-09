@@ -11,7 +11,7 @@ import { signMediaToken } from "@/lib/media-token";
 import { runWithTenant } from "@/lib/tenant-context";
 import {
   hfRun, extractJson, findResultUrl, downloadTo, addNarration, logGen,
-  recordMediaGenerationEvent, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError,
+  recordMediaGenerationEvent, HiggsfieldBusyError, HiggsfieldUnavailableError, HiggsfieldUnauthenticatedError,
   assertHiggsfieldReady, studioDir, assetUrl, normalizeJobStatus,
 } from "@/lib/higgsfield";
 import {
@@ -87,12 +87,14 @@ async function finalizeHiggsfieldJobInner(
   updateHiggsfieldJob(tenantId, jobId, { status: "processing" });
 
   try {
-    await assertHiggsfieldReady();
     // hfRun을 직접 쓴다(별도 hfGetJob 래퍼 대신) — 테스트가 hfRun 하나만 mock해도 이
     // 조회 호출까지 함께 잡히게 하기 위함. 전체 동시 생성기 호출 상한을 여기서 건다.
-    const { stdout } = await withHiggsfieldConcurrency(() =>
-      hfRun(["generate", "get", job.providerJobId, "--json"], 20000),
-    );
+    // 준비 확인을 대기열 진입 전에 하면 대기 중 5분 refresh 경계를 넘고도 stale false를
+    // 재사용할 수 있다. 슬롯을 얻은 뒤 확인하고 바로 다음 명령에만 결과를 넘긴다.
+    const { stdout } = await withHiggsfieldConcurrency(async () => {
+      const credentialLockDecision = await assertHiggsfieldReady();
+      return hfRun(["generate", "get", job.providerJobId, "--json"], 20000, credentialLockDecision);
+    });
     const data = extractJson(stdout);
     const cliStatus = normalizeJobStatus(data, stdout);
 
@@ -188,6 +190,19 @@ async function finalizeHiggsfieldJobInner(
     // 정확히 같은 문자열을 매체별로 쓴다 — 정적 소스 그렙 테스트
     // (higgsfield-customer-facing-copy.regression-1.test.ts)가 큰따옴표 리터럴을
     // 전제하므로 템플릿 리터럴 보간을 쓰지 않고 if/else로 분기한다.
+    if (e instanceof HiggsfieldBusyError) {
+      const result = job.kind === "image"
+        ? {
+          error: "이미지 생성 서비스가 다른 작업을 처리 중입니다. 계정 로그인 문제는 아니며 잠시 후 다시 요청해 주세요. 글 카드는 지금도 만드실 수 있습니다.",
+          code: "GENERATOR_BUSY",
+        }
+        : {
+          error: "영상 생성 서비스가 다른 작업을 처리 중입니다. 계정 로그인 문제는 아니며 잠시 후 다시 요청해 주세요. 글 카드는 지금도 만드실 수 있습니다.",
+          code: "GENERATOR_BUSY",
+        };
+      updateHiggsfieldJob(tenantId, jobId, { status: "queued" });
+      return { httpStatus: 503, body: result };
+    }
     if (e instanceof HiggsfieldUnauthenticatedError) {
       const result = job.kind === "image"
         ? {

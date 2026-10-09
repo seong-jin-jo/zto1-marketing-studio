@@ -1,30 +1,227 @@
 name: Diagnose image/video generator (read-only)
 
-# 왜 (회장 2026-09-06 "인스타그램 유튜브 디버깅은 니가 알아서해야지" + 생성기 승인):
-#   생성기가 배포 컨테이너 안에서 실제로 인증되어 있는지는 화면 로그인 없이 확인할 길이 없었다.
-#   이 워크플로는 배포 러너에서 컨테이너 안의 생성기 상태만 읽어 온다.
-#
-# 안전장치
-#   - 읽기 전용이다. 생성을 실행하지 않는다(돈이 나가는 호출 금지).
-#   - 자격증명 값을 출력하지 않는다. 계정 상태 한 줄과 잔여 크레딧만 본다.
-
+# 운영 생성기 장애를 DNS, TLS/HTTP, proxy, CLI, credential metadata, 앱 분기로 나눠 본다.
+# 생성·로그인·자격증명 덮어쓰기는 하지 않으며 token 없는 요청과 읽기만 수행한다.
 on:
   workflow_dispatch:
+
+permissions: {}
 
 jobs:
   diagnose:
     runs-on: [self-hosted, marketing_runner]
+    timeout-minutes: 5
     steps:
-      - name: 컨테이너 안 생성기 상태
+      - name: 컨테이너 안 생성기 네트워크·세션 진단
+        shell: bash
         run: |
-          for c in $(docker ps --format '{{.Names}}' | grep -i osmu); do
-            echo "::group::$c"
-            echo "-- 실행 파일 --"
-            docker exec "$c" sh -lc 'command -v higgsfield || echo "실행 파일 없음"' 2>&1 | tail -3
-            echo "-- 자격증명 파일 --"
-            docker exec "$c" sh -lc 'ls -l /root/.config/higgsfield 2>&1 | sed -E "s/[0-9]{4}-[0-9]{2}-[0-9]{2}//"' 2>&1 | tail -6
-            echo "-- 계정 상태 --"
-            docker exec "$c" sh -lc 'higgsfield account status 2>&1 | head -3' 2>&1 \
-              | sed -E 's/(ya29|eyJ)[A-Za-z0-9_.\-]+/[가림]/g' | tail -5
-            echo "::endgroup::"
-          done
+          set -uo pipefail
+          failed=0
+          c="openclaw-dashboard-osmu"
+          stop_token="diag-${GITHUB_RUN_ID:-0}-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || printf '%s-%s' "$RANDOM" "$RANDOM")"
+          resume_commands() { printf '::%s::\n' "$stop_token"; }
+          printf '::stop-commands::%s\n' "$stop_token"
+          trap resume_commands EXIT
+          CAPTURE_OUTPUT=""
+          CAPTURE_STATUS=0
+          capture_bounded() {
+            local byte_limit="$1"
+            shift
+            local capture
+            capture="$(
+              set +e
+              set -o pipefail
+              "$@" 2>&1 | tail -c "$byte_limit"
+              capture_status=("${PIPESTATUS[@]}")
+              printf '\n__CAPTURE_STATUS__=%s\n' "${capture_status[0]}"
+            )"
+            CAPTURE_STATUS="$(printf '%s\n' "$capture" | tail -1 | sed -nE 's/^__CAPTURE_STATUS__=([0-9]+)$/\1/p')"
+            CAPTURE_OUTPUT="$(printf '%s\n' "$capture" | sed '$d')"
+            if [ -z "$CAPTURE_STATUS" ]; then
+              CAPTURE_STATUS=1
+              CAPTURE_OUTPUT=""
+            fi
+          }
+          sanitize_generator_logs() {
+            while IFS= read -r log_line; do
+              case "$log_line" in
+                *hf_image_step*)
+                  step="$(printf '%s\n' "$log_line" | sed -nE 's/.*"step":"([a-z_]+)".*/\1/p')"
+                  case "$step" in
+                    request_received|session_ready|command_started|command_finished|response_ready)
+                      printf 'hf_image_step step=%s\n' "$step"
+                      ;;
+                    *) echo 'hf_image_step step=unknown' ;;
+                  esac
+                  ;;
+                *GENERATOR_UNAUTHENTICATED*) echo 'route=/api/higgsfield/image branch=GENERATOR_UNAUTHENTICATED' ;;
+                *GENERATOR_UNAVAILABLE*) echo 'route=/api/higgsfield/image branch=GENERATOR_UNAVAILABLE' ;;
+                *'/api/higgsfield/image'*503*|*503*'/api/higgsfield/image'*)
+                  echo 'route=/api/higgsfield/image http_status=503'
+                  ;;
+                *) ;;
+              esac
+            done
+          }
+
+          if [ "$(docker inspect --type=container -f '{{.State.Running}}' "$c" 2>/dev/null || true)" != "true" ]; then
+            echo "diagnostic_error=target_container_not_running target=$c"
+            exit 1
+          fi
+
+          echo "target_container=$c"
+          if docker exec "$c" sh -lc 'command -v higgsfield >/dev/null 2>&1'; then
+            echo "cli_present=true"
+          else
+            echo "cli_present=false"
+            failed=1
+          fi
+          capture_bounded 65536 docker exec "$c" higgsfield --version
+          cli_version="$(printf '%s\n' "$CAPTURE_OUTPUT" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+          if [ "$CAPTURE_STATUS" -eq 0 ] && [ -n "$cli_version" ]; then
+            echo "cli_version=$cli_version"
+          else
+            echo "cli_version=unavailable"
+            failed=1
+          fi
+
+          capture_bounded 65536 docker exec "$c" getent ahosts fnf-api-gw.higgsfield.ai
+          dns_status="$CAPTURE_STATUS"
+          if [ "$dns_status" -eq 0 ]; then
+            dns_addresses="$(printf '%s\n' "$CAPTURE_OUTPUT" \
+              | awk '$1 ~ /^([0-9.]+|[0-9a-fA-F:]+)$/ && !seen[$1]++ { print "dns_address=" $1 }' \
+              | head -6)"
+            if [ -n "$dns_addresses" ]; then
+              printf '%s\n' "$dns_addresses"
+              echo "dns_exit=0"
+            else
+              echo "dns_exit=1 dns_class=no_allowlisted_address"
+              failed=1
+            fi
+          else
+            echo "dns_exit=$dns_status dns_class=lookup_failed"
+            failed=1
+          fi
+
+          capture_bounded 65536 docker exec "$c" sh -lc \
+            'curl -sS -o /dev/null --connect-timeout 10 --max-time 20 \
+              -w "dns=%{time_namelookup}s tcp=%{time_connect}s tls=%{time_appconnect}s total=%{time_total}s http_code=%{http_code} ssl_verify=%{ssl_verify_result}\\n" \
+              https://fnf-api-gw.higgsfield.ai/'
+          https_status="$CAPTURE_STATUS"
+          https_metrics="$(printf '%s\n' "$CAPTURE_OUTPUT" \
+            | grep -E '^dns=[0-9.]+s tcp=[0-9.]+s tls=[0-9.]+s total=[0-9.]+s http_code=[0-9]{3} ssl_verify=[0-9]+$' \
+            | tail -1 || true)"
+          if [ "$https_status" -eq 0 ] && [ -n "$https_metrics" ]; then
+            echo "$https_metrics"
+            echo "https_exit=0"
+          else
+            echo "https_exit=$https_status https_metrics=unavailable"
+            failed=1
+          fi
+
+          capture_bounded 65536 docker exec "$c" sh -lc '
+            for name in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy; do
+              value="$(eval "printf %s \"\${$name-}\"")"
+              if [ -n "$value" ]; then
+                echo "$name=[SET:value-masked]"
+              else
+                echo "$name=[UNSET]"
+              fi
+            done
+          '
+          proxy_presence="$(printf '%s\n' "$CAPTURE_OUTPUT" \
+            | grep -E '^(HTTP_PROXY|HTTPS_PROXY|NO_PROXY|http_proxy|https_proxy|no_proxy)=\[(SET:value-masked|UNSET)\]$' \
+            || true)"
+          if [ "$CAPTURE_STATUS" -eq 0 ] && [ "$(printf '%s\n' "$proxy_presence" | grep -c .)" -eq 6 ]; then
+            printf '%s\n' "$proxy_presence"
+          else
+            echo "proxy_presence_probe=failed"
+            failed=1
+          fi
+
+          capture_bounded 65536 docker exec "$c" stat -c '%Y %s' \
+            /root/.config/higgsfield/credentials.json
+          credential_metadata="$CAPTURE_OUTPUT"
+          if [[ "$credential_metadata" =~ ^[0-9]+\ [0-9]+$ ]]; then
+            read -r credential_mtime credential_size <<< "$credential_metadata"
+            echo "credentials_mtime_epoch=$credential_mtime credentials_size=$credential_size"
+          else
+            echo "credentials_metadata=unavailable"
+            failed=1
+          fi
+          capture_bounded 65536 docker exec "$c" node -e '
+            const fs = require("fs");
+            try {
+              const data = JSON.parse(fs.readFileSync("/root/.config/higgsfield/credentials.json", "utf8"));
+              const raw = data.expires_at;
+              let milliseconds = typeof raw === "number" ? raw : Number(raw);
+              if (Number.isFinite(milliseconds) && milliseconds < 1000000000000) milliseconds *= 1000;
+              if (!Number.isFinite(milliseconds)) milliseconds = Date.parse(String(raw || ""));
+              if (!Number.isFinite(milliseconds)) throw new Error("missing expiry");
+              console.log(`expires_at=${new Date(milliseconds).toISOString()} expired=${milliseconds <= Date.now()}`);
+            } catch {
+              process.exitCode = 1;
+            }
+          '
+          expiry_result="$CAPTURE_OUTPUT"
+          if [ "$CAPTURE_STATUS" -eq 0 ] && [[ "$expiry_result" =~ ^expires_at=[0-9TZ:.-]+\ expired=(true|false)$ ]]; then
+            echo "$expiry_result"
+          else
+            echo "expires_at=unavailable expired=unknown"
+            failed=1
+          fi
+
+          capture_bounded 65536 docker exec "$c" sh -ceu \
+            'HIGGSFIELD_COMMAND_TIMEOUT_SECONDS=30 \
+              /usr/local/bin/run-higgsfield-locked higgsfield account status'
+          account_result="$CAPTURE_OUTPUT"
+          account_status="$CAPTURE_STATUS"
+          if [ "$account_status" -eq 0 ]; then
+            echo "account_status_exit=0 account_status_class=authenticated"
+          else
+            failed=1
+            case "$account_result" in
+              *[Ss]ession*[Ee]xpired*|*[Ll]ogin*[Rr]equired*) account_class=session_expired ;;
+              *[Nn]o*[Rr]esponse*[Rr]eceived*|*[Rr]equest*[Ff]ailed*) account_class=no_response ;;
+              *)
+                if [ "$account_status" -eq 124 ]; then
+                  account_class=timeout
+                else
+                  account_class=failed_other
+                fi
+                ;;
+            esac
+            echo "account_status_exit=$account_status account_status_class=$account_class"
+          fi
+
+          log_capture="$(
+            set +e
+            set -o pipefail
+            timeout 20s docker logs --since 30m --tail 2000 "$c" 2>&1 \
+              | tail -c 1048576 \
+              | sanitize_generator_logs \
+              | tail -200
+            pipeline_status=("${PIPESTATUS[@]}")
+            printf '__DIAG_STATUS__ docker=%s byte_cap=%s filter=%s output_cap=%s\n' \
+              "${pipeline_status[0]}" "${pipeline_status[1]}" \
+              "${pipeline_status[2]}" "${pipeline_status[3]}"
+          )"
+          status_line="$(printf '%s\n' "$log_capture" | tail -1)"
+          matching_logs="$(printf '%s\n' "$log_capture" | sed '$d')"
+          echo "log_window=30m input_tail_limit=2000 input_byte_limit=1048576 output_line_limit=200"
+          echo "$status_line"
+          docker_log_status="$(printf '%s\n' "$status_line" | sed -nE 's/^__DIAG_STATUS__ docker=([0-9]+).*/\1/p')"
+          if [ "$docker_log_status" != "0" ]; then
+            echo "log_read_class=failed_or_timed_out"
+            failed=1
+          else
+            echo "log_input_truncated=unknown_byte_cap_preserves_newest"
+          fi
+          if [ -n "$matching_logs" ]; then
+            printf '%s\n' "$matching_logs"
+          else
+            echo "matching_logs=0_or_outside_bounded_window"
+          fi
+
+          echo "diagnostic_failed=$failed"
+          exit "$failed"

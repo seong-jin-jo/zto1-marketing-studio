@@ -1,3 +1,66 @@
+## 2026-10-09 17:07 KST · PR 136 Claude 3차 리뷰 보완 로컬 완료
+
+- handoff basis: 사용자가 지정한 PR 136 브랜치와 MINOR 2건을 정본으로 삼았다. 현재 브랜치 HEAD와 작업 트리는 깨끗했다.
+- 변경: 잠금 검증기에 `--lock-path bind|internal`을 추가했다. bind 모드는 실제 `~/.config/higgsfield`를 서로 다른 두 컨테이너에 RW로 마운트하고 경쟁자를 교차 배분하며 credential 내용은 바꾸지 않는다. 이미지·영상 접수와 완료 조회는 준비 확인이 반환한 잠금 필요 여부를 같은 `hfRun`에 전달한다.
+- 검증: 선행 표적 Vitest 5파일 60건과 추가 입력 거절 계약 1건, 셸 문법, workflow YAML 3개, 잘못된 입력 6종의 종료 코드 2 거절, `git diff --check` 성공. 실제 가짜 CLI 통합에서 `auth token` 1회와 생성 명령 1회를 관찰했다. internal 모드의 4경쟁자×50회에서 `overlaps=0 events=400 contender_failures=0`을 관찰했고, 현재 스크립트의 1회 빠른 재실행도 겹침 0이었다. Docker Desktop disposable bind는 겹침 1건을 검출해 실패했으며 운영 Linux 증거로 쓰지 않았다. 전체 TypeScript는 120초 안에 끝나지 않아 미검증이다.
+- 미검증: 운영 runner가 오프라인이므로 실제 Linux `~/.config/higgsfield` bind 모드와 운영 배포·실제 생성은 실행하지 못했다.
+- 다음 실행: 운영 runner 복구 뒤 `scripts/verify-higgsfield-lock.sh --lock-path bind`를 실행한다. 종료 증거는 `containers=2`, `overlaps=0`, `events=400`, `contender_failures=0`, `lock_timeout_status=75`다.
+
+## 2026-10-09 15:54 KST · PR 136 Claude 재리뷰 5건 로컬 교정 완료
+
+- handoff basis: 사용자가 지정한 PR 136 브랜치와 `cross-review-claude-opus-r2.md` 5건을 기준으로 이어갔다.
+- 변경: 비root 러너의 host lock 접근을 제거하고 root lock holder 컨테이너가 잠금을 보유한다. 정상 종료는 삭제를 3회 확인하고, 러너 강제 종료는 30분 상한과 `--rm`으로 회수한다. CLI 사전 갱신 뒤 만료를 재확인해 5분 이내면 실제 명령도 잠근다. force 확인 범위와 백업 상한, monitor 3회 간격 hold 경보를 추가했다.
+- 검증: Vitest 5파일 59건, monitor Bash 12건, 셸 문법, workflow YAML 3개 성공. holder 삭제 실패와 dashboard 미포함 선택 배포 경계도 포함한다. 로컬 컨테이너 내부 경로에서 `critical_seconds=0.5 contenders=4 rounds=50 overlaps=0 events=400 contender_failures=0 lock_timeout_status=75` 관찰.
+- 미검증: 운영 Linux bind mount는 runner 오프라인으로 미검증이며 복구 후 같은 스크립트를 실행한다. 운영 배포·실제 이미지 생성도 미검증이다.
+- 다음 실행: 운영 runner 복구 뒤 lock 스트레스 겹침 0을 확인하고, PR CI green과 force 배포·실제 생성 202를 순서대로 관찰한다.
+
+## 2026-10-09 14:47 KST · PR 136 Claude 교차 리뷰 9건 로컬 교정 완료
+
+- handoff basis: 사용자가 지정한 PR 136 브랜치와 `cross-review-claude-opus.md` 9건을 기준으로 수정했다.
+- 변경: 커널 `flock`, wrapper 내부 timeout, 5분 임박 선갱신, 생성·조회 unlocked 실행, BUSY 실제 2회 재시도, force 2차 확인·0600 백업·계정 확인·실패 복원, 기동 host lock, monitor 75·127 hold, missing 파일 진단, 종료 코드 75 표식, OD-2026-10-09-3 정합을 반영했다.
+- 검증: 표적 Vitest 5파일 55건, monitor Bash 7건, 셸 문법, workflow YAML 3개, `git diff --check` 성공. 실제 컨테이너 `contenders=4 rounds=50 overlaps=0 events=400 credential_mode=600 lock_timeout_status=75` 관찰. 산출물 lint는 상태파일 정합 성공, 기존 경고 28건이다.
+- 미검증: 운영 배포, 실제 force 복원, 운영 계정 탐침, 실제 이미지·영상 생성. 다음 실행은 PR CI와 운영 배포 승인 뒤 이 네 경로를 직접 관찰하는 것이다.
+
+## 2026-10-09 14:xx KST · PR 136 Claude 교차 리뷰 BLOCK 교정 착수
+
+- handoff basis: 사용자가 지정한 PR 136 브랜치 `fix/higgsfield-503-20261009`, 교차 리뷰 파일 `logs/diff/higgsfield-503-20261009/cross-review-claude-opus.md`, 현재 git 상태를 정본으로 삼았다. tmux에는 같은 과제의 종료 pane이 있으나 이번 지시는 새 교차 리뷰 9건을 명시했으므로 transcript 추론은 사용하지 않는다.
+- 현재 판정: stale `mkdir` 잠금 경합, force 복구의 백업·검증·복원 결손, monitor 오분류, 정상 생성 처리량 직렬화, 로그 노출, 배포·진단 종료 경합, missing 파일 진단, 종료 코드 75 오분류, 결정 ID 충돌 9건을 QA tracker에 NG로 등록했다.
+- 이웃 영향 후보: 제품 생성 API의 100초 예산과 동시 상한 3, background polling, 배포 degraded 정책, monitor 2회 연속 장애 전이, Docker runtime 의존성, 기존 server-only credential 보존 계약을 대조한다.
+- 다음 실행: `flock` wrapper와 만료 임박 refresh 경계를 먼저 계약 테스트로 고정한 뒤 9건을 작은 단위로 수정한다. 4개 경쟁자 50회 실제 컨테이너 경합, 표적 Vitest, Bash·YAML 검증 후 문서와 커밋을 남긴다.
+
+## 2026-10-09 13:41 KST · Higgsfield 품질헌법 재검수와 경합 보강 완료
+
+- handoff basis: 사용자가 지정한 commit `f12908ca`와 현재 worktree diff를 기준으로 `/Users/sj/.claude/standards/standard-dev.md`를 전문 Read하고 배포·시크릿·마이그레이션·롤백을 재검수했다.
+- 발견·수정: force credential writer의 lock 누락, 접수 최악 143초, 종료 코드 75의 HTTP 200 내부 오류 노출, refresh token 없는 복구 입력 허용, 실제 wrapper CI 미실행, wrapper SIGKILL 뒤 live child lock 탈취를 닫았다. force writer는 실행 dashboard의 같은 lock을 쓰고, 요청 최악 예산은 73초며 busy는 고객용 503이다.
+- 검증: 표적 5파일 71건 PASS·Linux 전용 1건 로컬 skip, 셸 3파일·workflow YAML 2파일과 run block 19개 PASS. 현재 wrapper를 Linux 컨테이너에 mount한 실측은 직렬화·0600·stale·timeout 75·SIGKILL 뒤 live child 보호 75를 통과했다. 전체 TypeScript는 현재 로컬 baseline 때문에 실패했다.
+- 미검증: 현재 Docker rebuild, GitHub Linux 전용 실물 경합, branch workflow, 운영 force 배포, `/api/higgsfield/image` 202와 실제 생성 완료, rollback rehearsal.
+- 다음 실행: 컨트롤러가 브랜치를 push해 CI의 `GENERATOR-LIVENESS-14` green을 확인하고, force=false 1차 배포 뒤 필요 시 force=true 복구를 실행한다. 종료 증거는 운영 mount·UID·mode, account status, 실제 이미지 결과다.
+
+## 2026-10-09 13:20 KST · 운영 Higgsfield 갱신 토큰 영속성·직렬화 로컬 완료
+
+- handoff basis: 사용자가 지정한 `/Users/sj/wt/zto1-higgsfield-503-20261009` 현재 Git 변경분과 같은 브랜치를 정본으로 이어갔다. 무거운 Docker build는 사용자 지시에 따라 재실행하지 않고 선행 PASS 로그를 인용했다.
+- 원인과 변경: 읽기 전용 credential bind mount 때문에 CLI가 회전한 갱신 토큰을 영속하지 못했고, API·진단·탐침이 같은 파일을 동시에 갱신할 수 있었다. dashboard만 RW mount를 갖고 UID:GID 0:0, 디렉터리 0700, JSON 0600/root를 사용한다. 모든 운영 CLI는 공유 `.cli.lock.d` wrapper를 경유한다. 배포 전에는 만료 메타데이터만 읽고, force 입력일 때만 서버 전용 시크릿을 쓴다.
+- 검증: 현재 변경의 관련 계약 3파일 28건, workflow YAML 2파일과 Bash run block 20개, 셸 스크립트 3개 PASS. 선행 image build는 Next production build까지 PASS다. 실제 컨테이너에서 두 프로세스 직렬화, mode 600, 죽은 잠금 회수, 살아 있는 잠금 종료 코드 75를 관찰했다.
+- 중요한 교정: 최초 `flock` 구현은 Docker Desktop bind mount의 실제 경합 시험에서 두 프로세스가 겹쳐 실행돼 폐기했다. 원자적 `mkdir` wrapper로 교체한 뒤 같은 시험이 통과했다. missing 상태도 force=false면 시크릿을 쓰지 않도록 사용자 계약을 고정했다.
+- 남음: 운영 push, branch diagnose, force 배포, 운영 `/api/higgsfield/image` 202와 생성 완료·화면 표시가 미검증이다. 다음 소유자는 배포 권한이 있는 컨트롤러다.
+
+## 2026-10-09 09:56 KST · 운영 Higgsfield refresh token 영속성·전역 잠금 구현 중
+
+- handoff basis: 회장이 같은 `fix/higgsfield-503-20261009` 브랜치를 명시했고 `openclaw-auto-3:0.1`은 이 Codex 세션 자체임을 확인했다. 작업 위치는 `/Users/sj/wt/zto1-higgsfield-503-20261009`다.
+- 운영 입력: 서버 전용 OAuth 세션의 `HIGGSFIELD_CREDENTIALS_JSON` 갱신 시각은 GitHub Secret metadata에서 `2026-10-09T00:44:12Z`로 확인했다. 자격 증명 값은 조회하지 않았다.
+- 구현 chunk: dashboard 컨테이너 UID:GID를 0:0으로 명시하고 Higgsfield bind mount를 RW로 전환했다. 컨테이너 `umask 077`, credential·config·lock 0600/root, 배포 helper를 통한 atomic Secret 배치, 만료 metadata 전용 `CRED_ALIVE`, force 없이는 기존 파일 무덮어쓰기를 구현했다. API·monitor·diagnose의 credential 접근 CLI는 같은 bind mount의 util-linux `flock`으로 직렬화한다. export worker는 이 mount를 사용하지 않는다.
+- 현재 증거: 신규·기존 관련 계약 3파일 28건 PASS. 배포 단계 동적 계약은 unexpired/expired에서 무덮어쓰기, missing 최초 배치, force 교체를 실제 shell로 실행했다. YAML 2파일 파싱과 shell 5개 `bash -n`도 PASS다.
+- 다음 실행: Docker 이미지를 빌드해 두 컨테이너가 같은 lock을 쓸 때 실행 순서가 직렬화되고 mode 0600인지 실측한다. TypeScript·관련 회귀·Compose 실해석·review를 마친 뒤 QA tracker, 구현현황, report를 갱신하고 커밋한다. push가 정책에 막히면 커밋까지만 남긴다.
+
+## 2026-10-09 09:18 KST · 운영 Higgsfield 503 원인 판정, 진단 commit 완료
+
+- handoff basis: 회장이 지정한 과제 원문과 `origin/main` 79bd8d06을 정본으로 삼았다. `openclaw-auto-3:0.1`은 이 세션 자체의 실행 pane임을 확인했다.
+- 원인 판정: GitHub Secret은 16:30 UTC 갱신 뒤 16:31 deploy에서 성공했다. 맥 credential은 23:19 UTC에 새 만료시각으로 재기록됐지만 Secret은 갱신되지 않았다. 23:19 deploy가 낡은 Secret을 서버에 다시 넣자 즉시 종료 코드 2였다. 갱신 불가능한 OAuth 스냅샷 공유가 인증 회귀 원인이고, refresh token rotation 자체는 값 비교 없이 확정하지 않은 강한 추론이다.
+- 추가 관찰: diagnose run 37862950523과 재실행 37863665063 모두 `request failed (no response received)`. 맥 HTTPS는 DNS·TLS 정상과 HTTP 404를 확인했다. 운영 컨테이너 DNS·TLS는 수정 workflow push 차단으로 미검증이다. 09:15 KST 맥 CLI 재확인도 `Session expired`라 현재는 유효한 복구 source가 없다.
+- 작업 위치: `/Users/sj/wt/zto1-higgsfield-503-20261009`, branch `fix/higgsfield-503-20261009`.
+- 변경·검증: 선행 commit `5db41076`. 진단 정적·동적 계약 13건과 기존 probe·monitor 12건, 합계 25건, YAML·shell 구문 PASS. 동적 계약은 가짜 Docker 정상 경로와 필수 probe 실패 8종을 실행했다. 보안·테스트·성능·적대적 재검수에서 나온 결함을 수정한 뒤 최종 수렴 리뷰는 `NO FINDINGS`. 보고서 `logs/diff/higgsfield-503-20261009/report.md`.
+- 차단: `git push`가 실행 전 정책에 차단돼 PR과 branch dispatch는 만들지 못했다. 즉시 복구는 서버 전용 credential 발급 또는 별도 OAuth 로그인, Secret 갱신, `force_generator_credentials=true` 배포, 실제 이미지 생성 확인이다.
+
 ## 2026-10-09 07:50 KST · PR 134 Linux 글꼴 폭 카드 버튼 넘침 교정 완료
 
 - handoff basis: 사용자가 지정한 push 커밋 `31354f16`과 CI run `37853933999`를 정본으로 삼았다. 동일 과제의 tmux pane `openclaw-auto-3:0.1`은 직전 작업 종료를 확인하는 보조 근거로만 사용했다.
@@ -2750,3 +2813,9 @@ stage하지 않는다. 다음 액션은 편집실 계약 테스트를 먼저 추
 - 완료한 의미 단위: MAJOR A의 잘못된 `{ scope: "all" }`를 실제 명령 계약 `{ kind: "all" }`로 고치고, 저장 payload가 변환된 덱 좌표까지 담는 동작 단언을 추가했다. 글 요소 5개 이상 장은 템플릿 적용 전 거절하고, 선택하지 않은 혼잡 장은 한 장 적용에서 건드리지 않는 경계 테스트를 추가했다. 약한 소스 문자열 증거 2건은 제거했다.
 - 다음 실행: 실제 PostgreSQL route 통합 테스트와 drafts·text browser mock 없는 dev-server Chromium E2E를 구현한다. 이어 typecheck:ci, 관련 Vitest, integrity, contract를 실행하고 커밋한다.
 - 충돌 금지: PR 128 동시 수정 파일 `StudioRooms.tsx`, `CardCanvasEditor.tsx`, `package.json`은 손대지 않는다.
+## 2026-10-09 15:31 KST · PR 136 Claude 재리뷰 R2 BLOCK 교정 착수
+
+- handoff basis: 사용자가 지정한 PR 136 브랜치, `cross-review-claude-opus-r2.md`, 현재 git 상태를 정본으로 삼았다. 운영 러너가 오프라인이라는 사용자 관찰도 입력 계약으로 유지한다.
+- 현재 판정: 호스트 비root 잠금 권한 오류, 61~300초 갱신 경계, 너무 짧은 경합 시험과 wait 오류 은폐, force 2차 확인·백업 보존 누락, 무한 hold 5건을 QA tracker에 NG로 등록했다.
+- 이웃 영향 후보: 배포 rollback, dashboard 재기동, 생성 100초 예산, account status 진단, monitor 상태 파일과 기존 Slack 알림을 종료 전에 대조한다.
+- 다음 실행: 배포 잠금을 컨테이너 내부 lock-holder로 교체하고 갱신 뒤 만료를 재판정한다. 로컬 컨테이너 내부 경로에서 0.5초 임계구역 4×50 경합, 계약 테스트, 셸·YAML 검증 후 보고서와 커밋을 남긴다.

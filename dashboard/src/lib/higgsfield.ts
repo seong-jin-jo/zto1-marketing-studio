@@ -15,6 +15,132 @@ export const HF_BIN = process.env.HIGGSFIELD_BIN || "higgsfield";
 // 미디어 루트(data/studio) — 테넌트별 격리는 studioDir(tenantId)로. STUDIO_DIR 자체는 루트(genlog 등 비격리 메타용).
 export const STUDIO_DIR = MEDIA_ROOT;
 
+type HiggsfieldInvocation = { file: string; args: string[] };
+
+/**
+ * 운영의 모든 Higgsfield CLI 호출을 같은 파일 잠금으로 직렬화한다.
+ *
+ * CLI는 access token 만료 시 credentials.json의 refresh token을 회전시켜 다시 쓴다.
+ * API 요청, 상태 화면, 30분 monitor가 동시에 CLI를 실행하면 둘이 같은 이전 refresh
+ * token을 쓸 수 있으므로 프로세스 내부 mutex만으로는 부족하다. Compose가 공유 bind
+ * mount 안의 HIGGSFIELD_LOCK_DIR을 지정한 운영에서는 커널 flock wrapper 한 개가 refresh
+ * 구간만 직렬화한다. access token 만료가 5분 넘게 남은 생성·조회는 잠금을 잡지 않아 제품의
+ * 동시 실행 상한을 보존한다. 로컬 개발은 해당 환경변수가 없을 때 기존 직접 실행을 유지한다.
+ */
+export function buildHiggsfieldInvocation(
+  args: string[],
+  env: Record<string, string | undefined> = process.env,
+  useCredentialLock = true,
+): HiggsfieldInvocation {
+  const bin = env.HIGGSFIELD_BIN?.trim() || "higgsfield";
+  const lockDir = env.HIGGSFIELD_LOCK_DIR?.trim();
+  if (!lockDir || !useCredentialLock) return { file: bin, args };
+  return {
+    file: env.HIGGSFIELD_LOCK_WRAPPER?.trim() || "/usr/local/bin/run-higgsfield-locked",
+    args: [bin, ...args],
+  };
+}
+
+export function higgsfieldExecutionTimeout(
+  commandTimeoutMs: number,
+  env: Record<string, string | undefined> = process.env,
+  useCredentialLock = true,
+): number {
+  if (!env.HIGGSFIELD_LOCK_DIR?.trim() || !useCredentialLock) return commandTimeoutMs;
+  const configuredWait = Number(env.HIGGSFIELD_LOCK_WAIT_SECONDS);
+  const waitSeconds = Number.isInteger(configuredWait) && configuredWait >= 1 && configuredWait <= 300
+    ? configuredWait
+    : 45;
+  return commandTimeoutMs + waitSeconds * 1000;
+}
+
+const HIGGSFIELD_REFRESH_WINDOW_MS = 5 * 60 * 1000;
+
+function parseExpiryMilliseconds(raw: unknown): number | null {
+  let milliseconds = typeof raw === "number" ? raw : Number(raw);
+  if (Number.isFinite(milliseconds) && milliseconds < 1_000_000_000_000) milliseconds *= 1000;
+  if (!Number.isFinite(milliseconds)) milliseconds = Date.parse(String(raw || ""));
+  return Number.isFinite(milliseconds) ? milliseconds : null;
+}
+
+export function higgsfieldCredentialsNeedRefresh(
+  env: Record<string, string | undefined> = process.env,
+  nowMs = Date.now(),
+): boolean {
+  if (!env.HIGGSFIELD_LOCK_DIR?.trim()) return false;
+  const credentialFile = env.HIGGSFIELD_CREDENTIAL_FILE?.trim()
+    || "/root/.config/higgsfield/credentials.json";
+  try {
+    const data = JSON.parse(fs.readFileSync(credentialFile, "utf8")) as Record<string, unknown>;
+    const validToken = (value: unknown) => typeof value === "string" && value.trim().length > 0;
+    const expiresAt = parseExpiryMilliseconds(data.expires_at);
+    return !validToken(data.access_token)
+      || !validToken(data.refresh_token)
+      || expiresAt === null
+      || expiresAt <= nowMs + HIGGSFIELD_REFRESH_WINDOW_MS;
+  } catch {
+    return true;
+  }
+}
+
+async function execHiggsfieldRaw(
+  args: string[],
+  timeout: number,
+  maxBuffer: number,
+  useCredentialLock: boolean,
+): Promise<{ stdout: string; stderr: string }> {
+  const invocation = buildHiggsfieldInvocation(args, process.env, useCredentialLock);
+  return execFileP(invocation.file, invocation.args, {
+    timeout: higgsfieldExecutionTimeout(timeout, process.env, useCredentialLock),
+    maxBuffer,
+  });
+}
+
+export async function refreshHiggsfieldCredentialsIfNeeded(
+  env: Record<string, string | undefined> = process.env,
+  refreshUnderLock: () => Promise<unknown> = () => execHiggsfieldRaw(
+    ["auth", "token"],
+    8_000,
+    1024 * 1024,
+    true,
+  ),
+  nowMs: () => number = Date.now,
+): Promise<boolean> {
+  if (!env.HIGGSFIELD_LOCK_DIR?.trim() || !higgsfieldCredentialsNeedRefresh(env, nowMs())) {
+    return false;
+  }
+  await refreshUnderLock();
+  // CLI 1.1.26은 access token이 약 60~90초 남을 때까지 auth token 호출만으로
+  // 갱신하지 않을 수 있다. 5분 보호 구간에 계속 남아 있으면 뒤 실제 명령도 같은
+  // 커널 잠금을 사용해야 두 프로세스가 같은 refresh token을 동시에 쓰지 않는다.
+  return higgsfieldCredentialsNeedRefresh(env, nowMs());
+}
+
+export async function resolveHiggsfieldCommandCredentialLock(
+  readyCheckResult: boolean | undefined,
+  refresh: () => Promise<boolean> = refreshHiggsfieldCredentialsIfNeeded,
+): Promise<boolean> {
+  // false도 "준비 확인을 마쳤고 실제 명령에는 잠금이 필요 없다"는 유효한 결과다.
+  // nullish 비교로만 미확인 상태를 구분해야 같은 요청에서 auth token을 다시 호출하지 않는다.
+  return readyCheckResult ?? refresh();
+}
+
+async function execHiggsfield(
+  args: string[],
+  timeout: number,
+  maxBuffer: number,
+  readyCheckResult?: boolean,
+): Promise<{ stdout: string; stderr: string }> {
+  if (!process.env.HIGGSFIELD_LOCK_DIR?.trim()) {
+    return execHiggsfieldRaw(args, timeout, maxBuffer, false);
+  }
+  if (args[0] === "auth" && args[1] === "token") {
+    return execHiggsfieldRaw(args, timeout, maxBuffer, true);
+  }
+  const commandNeedsCredentialLock = await resolveHiggsfieldCommandCredentialLock(readyCheckResult);
+  return execHiggsfieldRaw(args, timeout, maxBuffer, commandNeedsCredentialLock);
+}
+
 // 테넌트별 스튜디오 디렉토리(data/studio/{tenantId}/). 생성물은 이 경로에 저장해 테넌트 격리.
 export function studioDir(tenantId: string): string {
   return tenantMediaDir(tenantId);
@@ -180,6 +306,22 @@ export class HiggsfieldUnauthenticatedError extends Error {
   }
 }
 
+/** 다른 생성 요청이 OAuth 자격 증명을 갱신 중이라 공유 잠금을 제시간에 얻지 못한 상태. */
+export class HiggsfieldBusyError extends Error {
+  constructor() {
+    super("이미지·영상 생성기가 다른 작업을 처리 중입니다. 잠시 후 다시 시도해 주세요.");
+    this.name = "HiggsfieldBusyError";
+  }
+}
+
+export function isHiggsfieldLockBusyError(error: unknown): boolean {
+  const code = (error as { code?: string | number } | null)?.code;
+  const stderr = (error as { stderr?: unknown } | null)?.stderr;
+  return (code === 75 || code === "75")
+    && typeof stderr === "string"
+    && stderr.includes("HIGGSFIELD_LOCK_BUSY");
+}
+
 /**
  * 생성기가 쓸 수 있는 상태인지 짧게 먼저 확인한다.
  *
@@ -187,25 +329,36 @@ export class HiggsfieldUnauthenticatedError extends Error {
  * 게이트웨이가 502 를 돌려줬다. 사용자는 또 이유를 모른다. 긴 생성 호출에 들어가기 전에
  * 짧은 확인을 한 번 해서, 없으면 없다고 로그인 안 됐으면 안 됐다고 말한다.
  */
-export async function assertHiggsfieldReady(): Promise<void> {
+export async function assertHiggsfieldReady(): Promise<boolean | undefined> {
   try {
-    await execFileP(HF_BIN, ["auth", "token"], { timeout: 8000, maxBuffer: 1024 * 1024 });
+    if (process.env.HIGGSFIELD_LOCK_DIR?.trim()) {
+      return await refreshHiggsfieldCredentialsIfNeeded();
+    } else {
+      await execHiggsfield(["auth", "token"], 8000, 1024 * 1024);
+      return undefined;
+    }
   } catch (e) {
     const code = (e as { code?: string })?.code;
     if (code === "ENOENT") throw new HiggsfieldUnavailableError();
+    if (isHiggsfieldLockBusyError(e)) throw new HiggsfieldBusyError();
     throw new HiggsfieldUnauthenticatedError();
   }
 }
 
-export async function hfRun(args: string[], timeoutMs = 480000): Promise<{ stdout: string; stderr: string }> {
+export async function hfRun(
+  args: string[],
+  timeoutMs = 480000,
+  readyCheckResult?: boolean,
+): Promise<{ stdout: string; stderr: string }> {
   try {
-    return await execFileP(HF_BIN, args, { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 });
+    return await execHiggsfield(args, timeoutMs, 16 * 1024 * 1024, readyCheckResult);
   } catch (e) {
     // 2026-09-06 실측: 운영 컨테이너에 실행기가 없어 생성 요청이 502 로 끝났다. 화면에는
     // "Request failed: 502" 만 떠 무엇이 문제인지 알 수 없었다. 없는 것과 실패한 것을
     // 구분해 사용자에게 사실을 말한다(ADR-007 조용한 실패 금지).
     const code = (e as { code?: string })?.code;
     if (code === "ENOENT") throw new HiggsfieldUnavailableError();
+    if (isHiggsfieldLockBusyError(e)) throw new HiggsfieldBusyError();
     throw e;
   }
 }
