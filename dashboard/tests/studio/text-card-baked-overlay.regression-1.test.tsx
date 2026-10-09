@@ -28,7 +28,10 @@ describe("TEXTCARD-OVERLAY-01 무료 글자 카드 편집 무대", () => {
     expect(pageSource).toContain("onTextCardsCreated={(urls, cardLines) => {");
     expect(pageSource).toContain("embeddedTextCardImage({ url: urls[0], file: urls[0], imageUrls: urls, topicKey: mediaTopicKey(idea) })");
     expect(pageSource).toContain("renderAndUploadEmbeddedTextCard({");
-    expect(pageSource).toContain("recoverDraftEmbeddedTextCard<ImgResult>(d)");
+    // R7: 운영 구형·신형 이미지 필드를 먼저 compatibleDraft로 정규화한 뒤에도
+    // embedded text provenance 복구가 반드시 같은 경로를 지나야 한다.
+    expect(pageSource).toContain("img: normalizeDraftImage(d)");
+    expect(pageSource).toContain("recoverDraftEmbeddedTextCard<ImgResult>(compatibleDraft)");
     expect(pageSource).toContain("recoverDraftEmbeddedTextCard<ImgResult>(w)");
     expect(pageSource).toContain('cardDeck?.template === "chat_bubble"');
     expect(pageSource).toContain("cardTextEmbedded={img?.textEmbedded === true}");

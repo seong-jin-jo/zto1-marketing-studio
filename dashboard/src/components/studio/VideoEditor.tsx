@@ -63,10 +63,16 @@ import {
 } from "@/lib/studio/video-edit-time-axis";
 import { normalizeSubtitleWindows } from "@/lib/studio/playback-edit-plan";
 
-/** 1초를 몇 px로 그리는지. design-spec-editroom-v70.md §4.4 "1초 ≈ 12px". */
+/** 긴 영상의 최소 축척. 짧은 영상은 v71처럼 가용 레인 폭을 전부 쓰도록 더 크게 계산한다. */
 const PX_PER_SEC = 12;
-/** 눈금 간격(초). §4.4 "5초 간격". */
-const TICK_SEC = 5;
+const TIMELINE_FALLBACK_WIDTH = 240;
+const TIMELINE_LANE_LABEL_WIDTH = 62;
+
+export function timelinePixelsPerSecond(totalSeconds: number, availableWidth: number): number {
+  const safeDuration = Math.max(1, Number.isFinite(totalSeconds) ? totalSeconds : 1);
+  const safeWidth = Math.max(TIMELINE_FALLBACK_WIDTH, Number.isFinite(availableWidth) ? availableWidth : 0);
+  return Math.max(PX_PER_SEC, safeWidth / safeDuration);
+}
 
 const VIDEO_HOOK_PRESETS = [
   "이거 순서가 틀렸다면?",
@@ -288,7 +294,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
         <Button size="sm" variant={showOriginal ? "primary" : "secondary"} aria-pressed={showOriginal} onClick={() => setShowOriginal((value) => !value)} data-video-original-toggle>{showOriginal ? "편집 상태로" : "원본으로"}</Button>
       </div>
       <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_var(--video-editor-timeline-height)] max-[64rem]:[grid-template-rows:minmax(0,1fr)_var(--video-editor-timeline-height)] max-[26rem]:[grid-template-rows:auto_var(--video-editor-timeline-height)]">
-        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:18rem_minmax(0,1fr)] max-[64rem]:[grid-template-columns:13.25rem_minmax(0,1fr)] max-[26rem]:grid-cols-1">
+        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:calc(var(--space-region)*4.5)_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
             src={effectivePreviewUrl ?? previewVideoUrl}
             tenantId={tenantId}
@@ -325,7 +331,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             }}
             onSeek={seekBodyTime}
           />
-          <div className="min-w-0 max-h-[32rem] space-y-stack overflow-y-auto" data-video-script-column>
+          <div className="min-w-0 max-h-[calc(var(--space-region)*8)] space-y-stack overflow-y-auto" data-video-script-column>
             {drawerOpen ? (
               <VideoInsertDrawer
                 edit={videoEdit}
@@ -539,7 +545,7 @@ function VideoPlayback({
   }
 
   return (
-    <div className="min-w-0 space-y-stack-tight max-[26rem]:grid max-[26rem]:grid-rows-[auto_auto_auto] max-[26rem]:gap-stack-tight max-[26rem]:space-y-none" data-video-playback>
+    <div className="relative min-w-0 max-[26rem]:grid max-[26rem]:grid-rows-[auto_auto] max-[26rem]:gap-stack-tight" data-video-playback>
       <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:h-40 max-[26rem]:min-h-40 max-[26rem]:aspect-auto" data-video-screen>
         {loadFailed ? (
           <div className="space-y-stack-tight p-pad-inset" role="alert" data-video-load-failed>
@@ -574,7 +580,7 @@ function VideoPlayback({
           </div>
         ) : null}
         {cta ? (
-          <div data-video-overlay-active data-video-overlay-kind="cta" className="pointer-events-none absolute inset-x-2 bottom-[14px] mx-auto w-fit max-w-[90%] truncate rounded-chip bg-success px-stack-tight py-micro text-center text-caption font-bold text-status-fg">
+          <div data-video-overlay-active data-video-overlay-kind="cta" className="pointer-events-none absolute inset-x-2 bottom-[72px] mx-auto w-fit max-w-[90%] truncate rounded-chip bg-success px-stack-tight py-micro text-center text-caption font-bold text-status-fg">
             {cta.text}
           </div>
         ) : null}
@@ -599,7 +605,7 @@ function VideoPlayback({
           <p
             data-video-subtitle-active
             data-video-subtitle-active-cut={activeSubtitle.cut}
-            className={`pointer-events-none absolute inset-x-2 bottom-[56px] text-center text-body font-extrabold [text-shadow:0_2px_6px_rgba(0,0,0,.8)] ${activeSubtitle.cut ? "text-player-text/45" : "text-player-text"}`}
+            className={`pointer-events-none absolute inset-x-2 bottom-[72px] text-center text-body font-extrabold [text-shadow:0_2px_6px_rgba(0,0,0,.8)] ${activeSubtitle.cut ? "text-player-text/45" : "text-player-text"}`}
           >
             {activeSubtitle.text}
           </p>
@@ -608,7 +614,7 @@ function VideoPlayback({
           <div className="pointer-events-none absolute inset-x-[13%] bottom-[21.9%] top-[11.5%] rounded-control border border-dashed border-warning" aria-label="플랫폼 안전 영역" data-video-safe-area-guide />
         ) : null}
       </div>
-      <div className="flex items-center gap-stack-tight rounded-control bg-player-panel p-stack-tight" data-video-controls>
+      <div className="absolute inset-x-0 bottom-0 z-[2] flex items-center gap-stack-tight rounded-control bg-player-panel/90 p-stack-tight" data-video-controls>
         <Button
           variant="primary"
           aria-label={playing ? "일시정지" : "재생"}
@@ -631,9 +637,9 @@ function VideoPlayback({
             data-video-scrubber
           />
         ) : <span className="flex-1 text-caption text-subtle">길이 확인 중</span>}
-        <span className="shrink-0 text-caption text-subtle">{formatSec(playhead)}초 / {duration ? `${formatSec(duration)}초` : "-"}</span>
+        <span className="sr-only">{formatSec(playhead)}초 / {duration ? `${formatSec(duration)}초` : "-"}</span>
       </div>
-      <p className="text-caption text-subtle" data-video-voice-row>
+      <p className="sr-only" data-video-voice-row>
         목소리: {voiceName ?? "기존 음성 그대로"}
       </p>
     </div>
@@ -1210,7 +1216,9 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
   showOriginal?: boolean;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<DragState>(null);
+  const [availableTrackWidth, setAvailableTrackWidth] = useState(TIMELINE_FALLBACK_WIDTH);
 
   const total = Math.max(
     duration ?? 0,
@@ -1218,20 +1226,40 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
     ...(edit.textStickers ?? []).map((item) => item.endSec),
     ...edit.overlays.map((o) => o.endSec),
     ...edit.comments.map((c) => c.endSec),
-    10,
+    1,
   );
-  const trackWidth = total * PX_PER_SEC;
+  const pxPerSec = timelinePixelsPerSecond(total, availableTrackWidth);
+  const trackWidth = total * pxPerSec;
+  const tickSec = total <= 12 ? 1 : total <= 60 ? 5 : 10;
   const ticks = useMemo(() => {
     const out: number[] = [];
-    for (let t = 0; t <= total; t += TICK_SEC) out.push(t);
+    for (let t = 0; t <= total; t += tickSec) out.push(t);
     return out;
-  }, [total]);
+  }, [tickSec, total]);
+
+  // OD-2026-10-09-2와 회장 R7 영상 검수: v71은 `가용폭 / 전체초`로 초당 픽셀을
+  // 계산한다. 고정 12px/초와 임의 10초 하한을 함께 쓰면 5.875초 영상이 240px에만
+  // 그려지고 나머지 레인이 비었다. 실제 스크롤 뷰 폭을 관찰해 짧은 영상은 레인 전체를
+  // 쓰고, 긴 영상만 12px/초 하한 때문에 가로 스크롤되게 한다.
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    const measure = () => setAvailableTrackWidth(Math.max(
+      TIMELINE_FALLBACK_WIDTH,
+      scroll.clientWidth - TIMELINE_LANE_LABEL_WIDTH,
+    ));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroll);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!drag) return;
     function onMove(event: PointerEvent) {
       if (!drag) return;
-      const deltaSec = (event.clientX - drag.originClientX) / PX_PER_SEC;
+      const deltaSec = (event.clientX - drag.originClientX) / pxPerSec;
       let nextStart = drag.originStart;
       let nextEnd = drag.originEnd;
       if (drag.edge === "move") {
@@ -1253,7 +1281,7 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
       window.removeEventListener("pointerup", onUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drag]);
+  }, [drag, pxPerSec]);
 
   // B-1(4차 재리뷰 BLOCKER): 드래그 시작점을 여기 한 곳에서 막는다 — 6개 pointerDown
   // 호출부마다 syncing 체크를 반복하는 대신, 드래그를 여는 이 함수가 거절하면 그 아래
@@ -1290,43 +1318,48 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
   // 그려졌는데, 블록은 레인 라벨 오른쪽의 내용 칸을 기준으로 그려졌다 — 두 좌표계가
   // 62px + 레인 간격만큼 어긋나 블록이 항상 눈금보다 오른쪽에 떠 있었다. 레인 라벨 폭을
   // 상수로 두고 간격 없이 붙여, 눈금 오버레이도 같은 상수만큼 오프셋해 같은 원점을 쓴다.
-  const LANE_LABEL_WIDTH = 62;
   return (
     <div
       data-video-timeline
       data-syncing={syncing || undefined}
       className={`min-w-0 space-y-micro rounded-surface border border-border bg-surface-2 p-stack-tight ${syncing ? "pointer-events-none opacity-60" : ""}`}
     >
-      <div className="overflow-x-auto" data-video-timeline-scroll>
-        <div ref={trackRef} className="relative" style={{ width: `${LANE_LABEL_WIDTH + Math.max(trackWidth, 240)}px` }} data-video-timeline-track>
+      <div ref={scrollRef} className="overflow-x-auto" data-video-timeline-scroll>
+        <div
+          ref={trackRef}
+          className="relative pt-stack"
+          style={{ width: `${TIMELINE_LANE_LABEL_WIDTH + trackWidth}px` }}
+          data-video-timeline-track
+          data-video-timeline-px-per-sec={pxPerSec.toFixed(3)}
+        >
           <div className="pointer-events-none absolute inset-0" aria-hidden="true">
             {ticks.map((t) => (
-              <div key={t} className="absolute top-0 bottom-0 border-l border-border/60" style={{ left: `${LANE_LABEL_WIDTH + t * PX_PER_SEC}px` }}>
-                <span className="absolute -top-4 left-0.5 text-caption text-subtle">{formatClock(t)}</span>
+              <div key={t} className="absolute top-0 bottom-0 border-l border-border/60" style={{ left: `${TIMELINE_LANE_LABEL_WIDTH + t * pxPerSec}px` }}>
+                <span className="absolute top-0 left-0.5 whitespace-nowrap text-caption text-subtle" data-video-timeline-tick>{formatClock(t)}</span>
               </div>
             ))}
-            <div className="absolute top-0 bottom-0 w-px bg-accent" style={{ left: `${LANE_LABEL_WIDTH + playhead * PX_PER_SEC}px` }} data-video-timeline-playhead />
+            <div className="absolute top-0 bottom-0 w-px bg-accent" style={{ left: `${TIMELINE_LANE_LABEL_WIDTH + playhead * pxPerSec}px` }} data-video-timeline-playhead />
           </div>
-          <TimelineLane label="영상" labelWidth={LANE_LABEL_WIDTH}>
-            {showOriginal ? <TimelineStaticBlock label="원본 영상" startSec={0} endSec={total} kind="video" /> : <>
-              {edit.introOutro?.introCompId ? <TimelineStaticBlock label="인트로" startSec={0} endSec={Math.min(total, edit.introOutro.introDurationSec ?? 1.5)} kind="intro" /> : null}
-              <TimelineStaticBlock label="본문 영상" startSec={edit.introOutro?.introDurationSec ?? 0} endSec={Math.max(edit.introOutro?.introDurationSec ?? 0.1, total - (edit.introOutro?.outroCompId ? 1.5 : 0))} kind="video" />
-              {edit.introOutro?.outroCompId ? <TimelineStaticBlock label="아웃트로" startSec={Math.max(0, total - 1.5)} endSec={total} kind="outro" /> : null}
+          <TimelineLane label="영상" labelWidth={TIMELINE_LANE_LABEL_WIDTH}>
+            {showOriginal ? <TimelineStaticBlock label="원본 영상" startSec={0} endSec={total} kind="video" pxPerSec={pxPerSec} /> : <>
+              {edit.introOutro?.introCompId ? <TimelineStaticBlock label="인트로" startSec={0} endSec={Math.min(total, edit.introOutro.introDurationSec ?? 1.5)} kind="intro" pxPerSec={pxPerSec} /> : null}
+              <TimelineStaticBlock label="본문 영상" startSec={edit.introOutro?.introDurationSec ?? 0} endSec={Math.max(edit.introOutro?.introDurationSec ?? 0.1, total - (edit.introOutro?.outroCompId ? 1.5 : 0))} kind="video" pxPerSec={pxPerSec} />
+              {edit.introOutro?.outroCompId ? <TimelineStaticBlock label="아웃트로" startSec={Math.max(0, total - 1.5)} endSec={total} kind="outro" pxPerSec={pxPerSec} /> : null}
             </>}
           </TimelineLane>
-          <TimelineLane label="자막" labelWidth={LANE_LABEL_WIDTH}>
+          <TimelineLane label="자막" labelWidth={TIMELINE_LANE_LABEL_WIDTH}>
             {!showOriginal ? displaySubtitles.map((s) => (
-              <TimelineEditableBlock key={s.id} lane="subtitle" id={s.id} label={s.text || "(빈 자막)"} startSec={s.startSec} endSec={s.endSec} tone={s.cut ? "cut" : "subtitle"} onSeek={onSeek} onStartDrag={startDrag} onNudge={nudgeBlock} />
+              <TimelineEditableBlock key={s.id} lane="subtitle" id={s.id} label={s.text || "(빈 자막)"} startSec={s.startSec} endSec={s.endSec} tone={s.cut ? "cut" : "subtitle"} pxPerSec={pxPerSec} onSeek={onSeek} onStartDrag={startDrag} onNudge={nudgeBlock} />
             )) : null}
           </TimelineLane>
-          <TimelineLane label="글·스티커" labelWidth={LANE_LABEL_WIDTH}>
-            {!showOriginal ? (edit.textStickers ?? []).map((item) => <TimelineEditableBlock key={item.id} lane="text" id={item.id} label={item.text} startSec={item.startSec} endSec={item.endSec} tone="text" onSeek={onSeek} onStartDrag={startDrag} onNudge={nudgeBlock} />) : null}
+          <TimelineLane label="글·스티커" labelWidth={TIMELINE_LANE_LABEL_WIDTH}>
+            {!showOriginal ? (edit.textStickers ?? []).map((item) => <TimelineEditableBlock key={item.id} lane="text" id={item.id} label={item.text} startSec={item.startSec} endSec={item.endSec} tone="text" pxPerSec={pxPerSec} onSeek={onSeek} onStartDrag={startDrag} onNudge={nudgeBlock} />) : null}
           </TimelineLane>
-          <TimelineLane label="훅·댓글" labelWidth={LANE_LABEL_WIDTH}>
-            {!showOriginal ? <>{edit.overlays.map((item) => <TimelineEditableBlock key={item.id} lane="overlay" id={item.id} label={item.text} startSec={item.startSec} endSec={item.endSec} tone={item.kind === "hook" ? "hook" : "cta"} onSeek={onSeek} onStartDrag={startDrag} onNudge={nudgeBlock} />)}{edit.comments.map((item) => <TimelineEditableBlock key={item.id} lane="comment" id={item.id} label={`${item.author}: ${item.text}`} startSec={item.startSec} endSec={item.endSec} tone="comment" onSeek={onSeek} onStartDrag={startDrag} onNudge={nudgeBlock} />)}</> : null}
+          <TimelineLane label="훅·댓글" labelWidth={TIMELINE_LANE_LABEL_WIDTH}>
+            {!showOriginal ? <>{edit.overlays.map((item) => <TimelineEditableBlock key={item.id} lane="overlay" id={item.id} label={item.text} startSec={item.startSec} endSec={item.endSec} tone={item.kind === "hook" ? "hook" : "cta"} pxPerSec={pxPerSec} onSeek={onSeek} onStartDrag={startDrag} onNudge={nudgeBlock} />)}{edit.comments.map((item) => <TimelineEditableBlock key={item.id} lane="comment" id={item.id} label={`${item.author}: ${item.text}`} startSec={item.startSec} endSec={item.endSec} tone="comment" pxPerSec={pxPerSec} onSeek={onSeek} onStartDrag={startDrag} onNudge={nudgeBlock} />)}</> : null}
           </TimelineLane>
-          <TimelineLane label="배경 음악" labelWidth={LANE_LABEL_WIDTH}>
-            {!showOriginal && edit.music ? <TimelineStaticBlock label={`${edit.music.label} · ${edit.music.volume}%`} startSec={0} endSec={total} kind="music" /> : null}
+          <TimelineLane label="배경 음악" labelWidth={TIMELINE_LANE_LABEL_WIDTH}>
+            {!showOriginal && edit.music ? <TimelineStaticBlock label={`${edit.music.label} · ${edit.music.volume}%`} startSec={0} endSec={total} kind="music" pxPerSec={pxPerSec} /> : null}
           </TimelineLane>
         </div>
       </div>
@@ -1334,17 +1367,18 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
   );
 }
 
-function TimelineStaticBlock({ label, startSec, endSec, kind }: { label: string; startSec: number; endSec: number; kind: "video" | "intro" | "outro" | "music" }) {
-  return <div data-video-timeline-block={kind} className="absolute top-0 flex min-h-control-touch items-center overflow-hidden rounded-control border border-border bg-surface px-stack-tight text-caption text-text" style={{ left: `${startSec * PX_PER_SEC}px`, width: `${Math.max(4, (endSec - startSec) * PX_PER_SEC)}px` }}><span className="truncate">{label}</span></div>;
+function TimelineStaticBlock({ label, startSec, endSec, kind, pxPerSec }: { label: string; startSec: number; endSec: number; kind: "video" | "intro" | "outro" | "music"; pxPerSec: number }) {
+  return <div data-video-timeline-block={kind} className="absolute top-0 flex min-h-control-touch items-center overflow-hidden rounded-control border border-border bg-surface px-stack-tight text-caption text-text" style={{ left: `${startSec * pxPerSec}px`, width: `${Math.max(24, (endSec - startSec) * pxPerSec)}px` }}><span className="truncate">{label}</span></div>;
 }
 
-function TimelineEditableBlock({ lane, id, label, startSec, endSec, tone, onSeek, onStartDrag, onNudge }: {
+function TimelineEditableBlock({ lane, id, label, startSec, endSec, tone, pxPerSec, onSeek, onStartDrag, onNudge }: {
   lane: NonNullable<DragState>["lane"];
   id: string;
   label: string;
   startSec: number;
   endSec: number;
   tone: "cut" | "subtitle" | "text" | "hook" | "cta" | "comment";
+  pxPerSec: number;
   onSeek: (sec: number) => void;
   onStartDrag: (lane: NonNullable<DragState>["lane"], id: string, edge: "move" | "start" | "end", startSec: number, endSec: number, clientX: number) => void;
   onNudge: (lane: NonNullable<DragState>["lane"], id: string, startSec: number, endSec: number, edge: "move" | "start" | "end", deltaSec: number) => void;
@@ -1371,8 +1405,8 @@ function TimelineEditableBlock({ lane, id, label, startSec, endSec, tone, onSeek
       aria-label={`${label}, ${formatSec(startSec)}초부터 ${formatSec(endSec)}초`}
       data-video-timeline-block={lane}
       data-video-timeline-block-id={id}
-      className={`absolute top-0 flex min-h-control-touch items-center overflow-visible rounded-control border border-border text-caption font-semibold active:opacity-90 max-[64rem]:!w-[calc(var(--control-touch)*2)] ${tones[tone]}`}
-      style={{ left: `${startSec * PX_PER_SEC}px`, width: `${Math.max(44, (endSec - startSec) * PX_PER_SEC)}px` }}
+      className={`absolute top-0 flex min-h-control-touch items-center overflow-visible rounded-control border border-border text-caption font-semibold active:opacity-90 ${tones[tone]}`}
+      style={{ left: `${startSec * pxPerSec}px`, width: `${Math.max(88, (endSec - startSec) * pxPerSec)}px` }}
       onClick={() => onSeek(startSec)}
       onKeyDown={(event) => handleKey(event, "move")}
       onPointerDown={(event) => onStartDrag(lane, id, "move", startSec, endSec, event.clientX)}
@@ -1388,9 +1422,9 @@ function TimelineLane({ label, labelWidth, children }: { label: string; labelWid
   // 간격을 두지 않는다 — 이 라벨 폭이 곧 위 눈금 오버레이의 오프셋 상수와 같아야
   // 블록이 눈금과 같은 원점에서 시작한다(M7).
   return (
-    <div className="relative flex min-h-control-touch items-center border-t border-border/40 pt-none first:border-t-0 sm:pt-micro" data-video-timeline-lane={label}>
+    <div className="relative flex min-h-control-touch items-center border-t border-border/40 first:border-t-0" data-video-timeline-lane={label}>
       <span className="sticky left-0 z-[1] shrink-0 bg-surface-2 text-caption uppercase text-subtle" style={{ width: `${labelWidth}px` }} data-video-timeline-lane-label>{label}</span>
-      <div className="relative min-h-control-touch min-w-0 flex-1">{children}</div>
+      <div className="relative min-h-control-touch min-w-0 flex-1" data-video-timeline-lane-content>{children}</div>
     </div>
   );
 }

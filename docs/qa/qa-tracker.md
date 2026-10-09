@@ -1,3 +1,26 @@
+## 2026-10-09 운영 편집실 R8 짧은 영상 타임라인·카톡 캔버스 ❌ NG → ✅ PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| CHAIRMAN-FIX-R8-01 | 짧은 영상도 5레인 전체 폭을 80% 이상 쓰고 초 눈금이 한 줄로 보여야 함 | ✅ PASS | production Chromium에서 3초 fixture의 초당 폭은 242px, track·영상 레인 사용률은 각각 100%다. `0:00`~`0:03` 네 눈금은 모두 `white-space:nowrap`, client·scroll·line 높이 18px다. 5.875초 순수 계산 계약은 705px 가용폭에서 120px/초다. |
+| CHAIRMAN-FIX-R8-02 | 블록은 24px보다 좁아지지 않고 양쪽 44px 손잡이가 겹치지 않아야 함 | ✅ PASS | 실브라우저 자막 블록 3개는 각각 242px, 손잡이는 각각 44px이며 좌우 경계가 겹치지 않는다. 긴 120초 영상은 12px/초 하한과 가로 스크롤을 유지한다. |
+| CHAIRMAN-FIX-R8-03 | 눈금 추가 뒤에도 390에서 5개 44px 레인이 타임라인 안에 머물러야 함 | ✅ PASS | v70 화면 게이트 실측은 타임라인 248px, 마지막 레인 bottom 718, 타임라인 bottom 720이다. 다음 콘텐츠 top 732, 문서 가로 넘침 0이다. |
+| CHAIRMAN-FIX-R8-04 | 카톡 말풍선 수정 결과가 실제 캔버스 안에 렌더되고 캡처에 보여야 함 | ✅ PASS | 새 직접 편집기의 `[data-card-stage] [data-chat-bubble-text]`에서 수정 문구를 확인했고 모든 말풍선이 stage 경계 안이다. 캔버스를 가운데로 스크롤한 캡처에서 노란 말풍선과 상대 말풍선을 직접 확인했다. |
+| CHAIRMAN-FIX-R8-05 | `standard-dev.md` 기준으로 커밋 `584b5067`까지 증거·미검증·스펙 차이·경계 테스트를 대조해야 함 | ❌ NG → ✅ PASS | 제품 코드 위반은 0건이다. 보고에 증거 등급 태그가 없던 1건을 `관찰됨`·`테스트됨`·`근거 확인`·`미검증` 대조표로 보완했다. 결제·인증·보안·마이그레이션 변경은 없다. |
+
+종료 증거: `logs/diff/editroom-chairman-fix-r7/after/result.json`, `edit-video-1440x900.png`, `edit-video-1512x982.png`, `edit-video-390x844.png`, `edit-card-chat-1440x900.png`, `v71-reference-video-1440x900.png`, `logs/diff/editroom-chairman-fix-r7/report.md`의 품질헌법 대조표. 집중 Vitest 17건, 두 production 화면 게이트, TypeScript, production build, 모바일 9폭이 PASS했고 콘솔 오류는 0이다. 전체 3,780건은 직전 커밋에서 통과했으며 이번에는 변경 영향 범위만 재실행했다.
+
+## 2026-10-09 운영 편집실 R7 미디어 호환·카톡·화면 밀도 ❌ NG → ✅ PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| CHAIRMAN-FIX-R7-A | 운영 구형·신형 초안의 실제 이미지 필드가 카드 캔버스 배경으로 이어져야 함 | ✅ PASS | 운영형 최상위 `image_urls` 픽스처를 불러와 원격 사진을 v3 background asset으로 승격했다. 1440·1512·390 캡처에서 실사 사진과 글 요소가 같은 카드에 보이며 카드 자손 overflow·outside는 0건이다. |
+| CHAIRMAN-FIX-R7-B | 발행실 첫 화면의 기존 영상이 만료 주소를 재서명해 실제 프레임을 보여야 함 | ✅ PASS | `vid.url`·`vid.file`과 구형 영상 필드를 정규화해 기존 만료 갱신 경로로 전달했다. production E2E에서 만료 영상 재서명 15회, video readyState 4, 540×960 실제 프레임, 발행실 이미지·영상 두 미디어를 확인했다. |
+| CHAIRMAN-FIX-R7-C | 편집실에서 카톡 대화 템플릿을 선택하고 말풍선을 편집할 수 있어야 함 | ✅ PASS | plain 카드에서 카톡 템플릿을 선택하면 검증 가능한 7장 v2/v3 덱으로 전환된다. 첫 말풍선 내용을 편집하고 자동저장한 뒤 카톡 작업대 캡처에서 변경 문구를 확인했다. |
+| CHAIRMAN-FIX-R7-D | 1440·1512에서 카드 캔버스를 큰 중앙 면적으로 쓰고 도구막대를 캔버스 위에 두며, 영상 5레인 타임라인을 첫 화면에 보여야 함 | ✅ PASS | 카드 면은 400×500으로 확대돼 중앙 배치되고 글 도구는 캔버스 위에 있다. 영상은 1440×900 첫 화면에 실제 플레이어·대본·5개 레인이 모두 보인다. 모바일 390 카드 면은 308×384.5로 화면 폭 안에 든다. |
+
+종료 증거: `logs/diff/editroom-chairman-fix-r7/report.md`. CI 동일 전체 Vitest 3,780건 PASS·16건 skip, TypeScript, production build, 두 화면 게이트, 콘솔 오류 0, 모바일 9폭 PASS. DB 스키마와 외부 SNS 발행 동작은 변경하지 않았다. 원격 CI와 운영 재배포는 미검증이다.
+
 ## 2026-10-09 PR 134 Linux 글꼴 폭 카드 버튼 넘침 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
@@ -8270,3 +8293,11 @@ SOURCES/MODEL: claude-sonnet-5 | `dashboard/tests/publish/video-routes-tenant-is
 | EDITROOM-S4-R2-M4 | 버튼 반복 클릭마다 승인 인박스에 같은 draft가 쌓여 이중 발행 가능 | ❌ NG | export ID 멱등, 발행 완료 항목 승인 후보 제외, 실제 PostgreSQL 회귀 테스트 |
 | EDITROOM-S4-R2-m1 | 비관적 락(SELECT ... FOR UPDATE) 해제 뒤 queue 기록 사이에 draft 변경 가능 | ❌ NG | queue 기록 순서와 snapshot 한계를 코드·테스트에서 명시하고 경계 검증 |
 | EDITROOM-S4-R2-m2 | polling 자동 재시도가 두 번째 연속 오류 뒤 중단됨 | ❌ NG | 연속 오류 뒤에도 자동 polling 복구하는 회귀 테스트 |
+## 2026-10-09 PR 135 영상 타임라인·카톡 캡처 2차 검수 ❌ NG
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| CHAIRMAN-FIX-R7-E | 5.875초 영상이 5레인 타임라인의 가용 폭을 채우고 초 눈금이 한 줄로 보여야 함 | ❌ NG | 1440 캡처에서 트랙이 약 240px만 쓰고 `0:01` 눈금이 세로로 쪼개졌다. 짧은 영상도 최소 10초·고정 12px/초로 그리는 코드와 44px 양끝 손잡이가 원인이다. |
+| CHAIRMAN-FIX-R7-F | 모든 타임라인 블록이 24px 이상이며 글자는 말줄임되고 양끝 손잡이가 겹치지 않아야 함 | ❌ NG | 자막 블록이 양끝 44px 손잡이보다 좁아 `‹ › ›` 조각으로 보인다. production Chromium에서 블록·손잡이 경계를 수치 단언하는 회귀 검사가 필요하다. |
+| CHAIRMAN-FIX-R7-G | 카톡 2장 캔버스에 편집한 말풍선이 실제 렌더되고 캡처에서도 보여야 함 | ❌ NG | 말풍선 DOM과 편집 저장은 존재하지만 입력칸으로 자동 스크롤된 뒤 캔버스 상단이 뷰포트 밖인 상태로 캡처해 빈 크림색처럼 보였다. 캔버스 말풍선 존재를 단언하고 캔버스를 다시 화면에 넣어 캡처해야 한다. |
+

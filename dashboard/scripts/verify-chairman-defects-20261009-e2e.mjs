@@ -9,10 +9,12 @@ import sharp from "sharp";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 const baseUrl = process.env.CHAIRMAN_FIX_BASE_URL || "http://127.0.0.1:3471";
-const outputDir = process.env.CHAIRMAN_FIX_OUTPUT_DIR || path.join(repoRoot, "logs/diff/editroom-chairman-fix-20261009/after");
+const outputDir = process.env.CHAIRMAN_FIX_OUTPUT_DIR || path.join(repoRoot, "logs/diff/editroom-chairman-fix-r7/after");
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const imageUrl = "/qa/chairman-photo.jpg";
 const videoUrl = "/qa/chairman-photo-motion.mp4";
+const expiredVideoToken = `${Buffer.from(JSON.stringify({ f: "chairman-photo-motion.mp4", e: 1 })).toString("base64url")}.expired-signature`;
+const expiredVideoUrl = `/api/media/${expiredVideoToken}`;
 const exportedImageUrl = "/qa/chairman-photo.jpg?export=chairman-v3";
 const lines = ["문제를 먼저 짚습니다", "이 구간은 컷합니다", "다음 행동을 제안합니다"];
 
@@ -74,9 +76,12 @@ await page.route("**/api/**", async (route) => {
   if (pathname === "/api/higgsfield/image") return json(route, { ok: true, jobId: "chairman-image-job" }, 202);
   if (pathname === "/api/higgsfield/job/chairman-image-job") return json(route, { ok: true, status: "completed", file: imageUrl, url: imageUrl, filename: "chairman-photo.jpg" });
   if (pathname === "/api/higgsfield/status") return json(route, { credits: 100 });
+  if (pathname === "/api/images/upload" && request.method() === "POST") {
+    return json(route, { ok: true, url: imageUrl, filename: "chairman-photo.jpg" });
+  }
   if (pathname === "/api/media/resign") {
     const body = request.postDataJSON();
-    return json(route, { ok: true, file: body?.purpose === "video" ? videoUrl : imageUrl });
+    return json(route, { ok: true, file: body?.purpose === "media" ? videoUrl : imageUrl });
   }
   if (pathname === "/api/studio/drafts") {
     if (request.method() === "POST") {
@@ -270,6 +275,19 @@ const generatedImageStats = await sharp(await page.getByTestId("create-made-imag
 if (!generatedImageStats.channels.some((channel) => channel.stdev > 20)) throw new Error("생성 결과가 식별 가능한 실제 이미지가 아니라 단색 픽스처입니다");
 if (!draftSaves.some((save) => save.img?.file === imageUrl && save.vid?.file === videoUrl)) throw new Error("생성 결과 이미지와 기존 영상이 같은 초안에 저장되지 않았습니다");
 
+// 운영 재측정(93b72a4b)에서 발견한 실제 과거 초안 모양을 그대로 재현한다.
+// 현재 img/vid 객체가 아니라 payload 최상위 image_urls/videoUrl만 있고, 영상 주소는 만료됐다.
+currentDraft = {
+  ...currentDraft,
+  img: null,
+  vid: null,
+  image_urls: [imageUrl],
+  imageUrl: imageUrl,
+  videoUrl: expiredVideoUrl,
+};
+await page.reload({ waitUntil: "domcontentloaded" });
+await page.getByTestId("create-card-image").waitFor();
+
 await page.getByRole("button", { name: /작업물 전체/ }).click();
 const workThumbnail = page.getByTestId("work-thumbnail-chairman-draft");
 await workThumbnail.waitFor();
@@ -313,21 +331,71 @@ if (!stageRect || stageRect.x < 0 || stageRect.x + stageRect.width > 1440 || sta
   await page.screenshot({ path: path.join(outputDir, "failed-edit-card-first-screen.png") });
   throw new Error(`카드 캔버스가 1440 첫 화면 밖입니다: ${JSON.stringify({ stageRect, geometry })}`);
 }
-const textElement = editRoom.locator('[data-element-selection]').first();
-const beforeBox = await textElement.boundingBox();
+const initialTextElement = editRoom.locator('[data-card-stage] [data-element-selection]').first();
+const draggedElementId = await initialTextElement.getAttribute('data-element-selection');
+if (!draggedElementId) throw new Error("드래그할 카드 글자 요소 식별자가 없습니다");
+const textElement = editRoom.locator(`[data-card-stage] [data-element-selection="${draggedElementId}"]`).first();
+const clientRect = (locator) => locator.evaluate((element) => {
+  const rect = element.getBoundingClientRect();
+  return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+});
+const beforeBox = await clientRect(textElement);
 const beforePixels = await editRoom.locator('[data-card-slide-scene]').screenshot();
 if (!beforeBox) throw new Error("드래그할 카드 글자 요소가 없습니다");
 await page.mouse.move(beforeBox.x + beforeBox.width / 2, beforeBox.y + beforeBox.height / 2);
 await page.mouse.down();
 await page.mouse.move(beforeBox.x + beforeBox.width / 2 + 84, beforeBox.y + beforeBox.height / 2 + 112, { steps: 12 });
 await page.mouse.up();
-const afterBox = await textElement.boundingBox();
-const afterPixels = await editRoom.locator('[data-card-slide-scene]').screenshot();
+await page.waitForFunction(({ elementId, before }) => {
+  const element = document.querySelector(`[data-card-stage] [data-element-selection="${elementId}"]`);
+  const scene = element?.closest('[data-card-stage]')?.querySelector('[data-card-slide-scene]');
+  if (!(element instanceof HTMLElement) || !(scene instanceof HTMLElement)) return false;
+  const elementRect = element.getBoundingClientRect();
+  const sceneRect = scene.getBoundingClientRect();
+  const moved = Math.abs(elementRect.x - before.x) >= 2 || Math.abs(elementRect.y - before.y) >= 2;
+  const contained = elementRect.x >= sceneRect.x - 1
+    && elementRect.y >= sceneRect.y - 1
+    && elementRect.right <= sceneRect.right + 1
+    && elementRect.bottom <= sceneRect.bottom + 1;
+  if (!moved || !contained) {
+    window.__chairmanDragStable = null;
+    return false;
+  }
+  const signature = [elementRect.x, elementRect.y, elementRect.width, elementRect.height].map((value) => value.toFixed(2)).join(':');
+  const previous = window.__chairmanDragStable;
+  if (!previous || previous.signature !== signature) {
+    window.__chairmanDragStable = { signature, since: performance.now() };
+    return false;
+  }
+  return performance.now() - previous.since >= 120;
+}, { elementId: draggedElementId, before: beforeBox }, { timeout: 5_000 });
+const afterBox = await clientRect(textElement);
 if (!afterBox || (Math.abs(afterBox.x - beforeBox.x) < 2 && Math.abs(afterBox.y - beforeBox.y) < 2)) throw new Error("카드 글자 드래그 뒤 좌표가 바뀌지 않았습니다");
-const movedStageRect = await editRoom.locator('[data-card-slide-scene]').boundingBox();
+const movedStageRect = await clientRect(editRoom.locator('[data-card-slide-scene]'));
 if (!movedStageRect || !afterBox || afterBox.x < movedStageRect.x - 1 || afterBox.y < movedStageRect.y - 1 || afterBox.x + afterBox.width > movedStageRect.x + movedStageRect.width + 1 || afterBox.y + afterBox.height > movedStageRect.y + movedStageRect.height + 1) {
-  throw new Error(`카드 글자 요소가 캔버스 밖으로 잘렸습니다: ${JSON.stringify({ movedStageRect, afterBox })}`);
+  const stageHostRect = await clientRect(editRoom.locator('[data-card-stage]'));
+  const elementGeometry = await textElement.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const parent = element.offsetParent;
+    const parentRect = parent instanceof HTMLElement ? parent.getBoundingClientRect() : null;
+    const selfRect = element.getBoundingClientRect();
+    return {
+      left: style.getPropertyValue('--selection-left'),
+      top: style.getPropertyValue('--selection-top'),
+      width: style.getPropertyValue('--selection-width'),
+      height: style.getPropertyValue('--selection-height'),
+      transform: style.transform,
+      computedTop: style.top,
+      computedLeft: style.left,
+      position: style.position,
+      selfRect: { x: selfRect.x, y: selfRect.y, width: selfRect.width, height: selfRect.height },
+      parentRect: parentRect ? { x: parentRect.x, y: parentRect.y, width: parentRect.width, height: parentRect.height } : null,
+      parentMarker: parent instanceof HTMLElement ? parent.getAttribute('data-card-stage') || parent.className : null,
+    };
+  });
+  throw new Error(`카드 글자 요소가 캔버스 밖으로 잘렸습니다: ${JSON.stringify({ stageHostRect, movedStageRect, beforeBox, afterBox, elementGeometry })}`);
 }
+const afterPixels = await editRoom.locator('[data-card-slide-scene]').screenshot();
 const pixelDiff = await sharp(beforePixels).composite([{ input: afterPixels, blend: "difference" }]).stats();
 if (!pixelDiff.channels.some((channel) => channel.mean > 0.2)) throw new Error("카드 글자 드래그 뒤 미리보기 픽셀이 바뀌지 않았습니다");
 if ((await page.getByText(/자유 배치를 시작했습니다|기본 편집으로 돌아가면/).count()) > 0) throw new Error("기본 카드 편집에 별도 자유 배치 모드 토스트가 남아 있습니다");
@@ -357,17 +425,30 @@ fs.writeFileSync(path.join(outputDir, "mobile-edit-data-fixture.html"), mobileFi
 
 await page.setViewportSize({ width: 1440, height: 900 });
 await page.evaluate(() => window.scrollTo(0, 0));
+await editRoom.locator('[data-card-stage]').evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest' }));
 const resizeHandle = textElement.locator('[data-handle="se"]');
 await resizeHandle.waitFor();
-const resizeBeforeRect = await textElement.boundingBox();
-const resizeHandleBox = await resizeHandle.boundingBox();
+const resizeBeforeRect = await clientRect(textElement);
+const resizeHandleBox = await clientRect(resizeHandle);
 if (!resizeBeforeRect || !resizeHandleBox) throw new Error("카드 글자 크기 조절점을 찾지 못했습니다");
 await page.mouse.move(resizeHandleBox.x + resizeHandleBox.width / 2, resizeHandleBox.y + resizeHandleBox.height / 2);
 await page.mouse.down();
-await page.mouse.move(resizeHandleBox.x + 2_000, resizeHandleBox.y + 2_000, { steps: 12 });
+await page.mouse.move(Math.min(1438, resizeHandleBox.x + 300), Math.min(898, resizeHandleBox.y + 100), { steps: 12 });
 await page.mouse.up();
-const resizedSelectionRect = await textElement.boundingBox();
-const resizedStageRect = await editRoom.locator('[data-card-slide-scene]').boundingBox();
+await page.waitForFunction(({ elementId, before }) => {
+  const element = document.querySelector(`[data-card-stage] [data-element-selection="${elementId}"]`);
+  const scene = element?.closest('[data-card-stage]')?.querySelector('[data-card-slide-scene]');
+  if (!(element instanceof HTMLElement) || !(scene instanceof HTMLElement)) return false;
+  const elementRect = element.getBoundingClientRect();
+  const sceneRect = scene.getBoundingClientRect();
+  return (elementRect.width > before.width + 2 || elementRect.height > before.height + 2)
+    && elementRect.x >= sceneRect.x - 1
+    && elementRect.y >= sceneRect.y - 1
+    && elementRect.right <= sceneRect.right + 1
+    && elementRect.bottom <= sceneRect.bottom + 1;
+}, { elementId: draggedElementId, before: resizeBeforeRect }, { timeout: 5_000 });
+const resizedSelectionRect = await clientRect(textElement);
+const resizedStageRect = await clientRect(editRoom.locator('[data-card-slide-scene]'));
 if (!resizedSelectionRect || resizedSelectionRect.width <= resizeBeforeRect.width + 2 || resizedSelectionRect.height <= resizeBeforeRect.height + 2) {
   throw new Error(`카드 크기 조절 드래그가 요소 크기를 바꾸지 못했습니다: ${JSON.stringify({ resizeBeforeRect, resizedSelectionRect })}`);
 }
@@ -417,7 +498,7 @@ const videoFrame = await videoElement.evaluate(async (video) => {
     });
   }
   video.pause();
-  return { readyState: video.readyState, currentTime: video.currentTime, videoWidth: video.videoWidth, videoHeight: video.videoHeight };
+  return { readyState: video.readyState, currentTime: video.currentTime, duration: video.duration, videoWidth: video.videoWidth, videoHeight: video.videoHeight };
 });
 if (videoFrame.videoWidth <= 0 || videoFrame.videoHeight <= 0) throw new Error(`영상 실제 프레임이 없습니다: ${JSON.stringify(videoFrame)}`);
 const videoFrameStats = await sharp(await videoElement.screenshot()).stats();
@@ -429,9 +510,66 @@ const skippedTime = await editRoom.locator('[data-video-el]').evaluate((video) =
   return video.currentTime;
 });
 if (skippedTime <= 0.1) throw new Error(`컷 재생이 구간을 건너뛰지 않았습니다: ${skippedTime}`);
+let videoTimelineGeometry = null;
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982 }, { width: 390, height: 844 }]) {
   await page.setViewportSize(viewport);
   await assertNoHorizontalOverflow(`영상 편집실 ${viewport.width}`);
+  if (viewport.width >= 1024) {
+    const timeline = await editRoom.locator('[data-video-timeline]').evaluate((root, height) => {
+      const rect = root.getBoundingClientRect();
+      const scroll = root.querySelector('[data-video-timeline-scroll]');
+      const track = root.querySelector('[data-video-timeline-track]');
+      const lanes = [...root.querySelectorAll('[data-video-timeline-lane]')].map((lane) => {
+        const value = lane.getBoundingClientRect();
+        return { label: lane.getAttribute('data-video-timeline-lane'), y: value.y, bottom: value.bottom, height: value.height };
+      });
+      const ticks = [...root.querySelectorAll('[data-video-timeline-tick]')].map((tick) => {
+        const value = tick.getBoundingClientRect();
+        const style = getComputedStyle(tick);
+        return { text: tick.textContent, width: value.width, height: value.height, clientHeight: tick.clientHeight, scrollHeight: tick.scrollHeight, lineHeight: Number.parseFloat(style.lineHeight), whiteSpace: style.whiteSpace };
+      });
+      const blocks = [...root.querySelectorAll('[data-video-timeline-block]')].map((block) => {
+        const value = block.getBoundingClientRect();
+        const handles = [...block.querySelectorAll('button')].map((handle) => {
+          const box = handle.getBoundingClientRect();
+          return { left: box.left, right: box.right, width: box.width };
+        });
+        return { kind: block.getAttribute('data-video-timeline-block'), width: value.width, handles };
+      });
+      const laneContent = root.querySelector('[data-video-timeline-lane="영상"] [data-video-timeline-lane-content]');
+      const bodyVideo = root.querySelector('[data-video-timeline-lane="영상"] [data-video-timeline-block="video"]');
+      const laneBox = laneContent?.getBoundingClientRect();
+      const videoBox = bodyVideo?.getBoundingClientRect();
+      const availableWidth = scroll ? Math.max(1, scroll.clientWidth - 62) : 1;
+      const trackUsedWidth = track ? Math.max(0, track.getBoundingClientRect().width - 62) : 0;
+      return {
+        y: rect.y,
+        bottom: rect.bottom,
+        viewportHeight: height,
+        lanes,
+        ticks,
+        blocks,
+        trackUsage: trackUsedWidth / availableWidth,
+        videoLaneUsage: laneBox && videoBox ? videoBox.width / laneBox.width : 0,
+        pxPerSec: Number(track?.getAttribute('data-video-timeline-px-per-sec') || 0),
+      };
+    }, viewport.height);
+    if (timeline.lanes.length !== 5 || timeline.bottom > viewport.height + 1 || timeline.lanes.some((lane) => lane.y < 0 || lane.bottom > viewport.height + 1)) {
+      throw new Error(`영상 5레인 타임라인이 첫 화면 안에 없습니다: ${JSON.stringify(timeline)}`);
+    }
+    // 회장 R7 반려와 OD-2026-10-09-2: v71처럼 짧은 영상도 레인 전체를 쓰며, 눈금은
+    // 0:00 0:01 형태의 한 줄이고 블록·양끝 손잡이는 서로 겹치지 않아야 한다.
+    if (timeline.trackUsage < 0.8 || timeline.videoLaneUsage < 0.8) {
+      throw new Error(`영상 타임라인이 가용 폭의 80%를 쓰지 않습니다: ${JSON.stringify(timeline)}`);
+    }
+    if (timeline.ticks.length < Math.floor(videoFrame.duration) + 1 || timeline.ticks.some((tick) => tick.whiteSpace !== 'nowrap' || tick.scrollHeight > tick.clientHeight + 1 || tick.height > tick.lineHeight + 1)) {
+      throw new Error(`영상 눈금 라벨이 한 줄이 아닙니다: ${JSON.stringify(timeline.ticks)}`);
+    }
+    if (timeline.blocks.some((block) => block.width < 24 || (block.handles.length === 2 && block.handles[0].right > block.handles[1].left + 1))) {
+      throw new Error(`영상 블록 최소폭 또는 손잡이 비겹침 계약을 어겼습니다: ${JSON.stringify(timeline.blocks)}`);
+    }
+    if (viewport.width === 1440) videoTimelineGeometry = timeline;
+  }
   await page.screenshot({ path: path.join(outputDir, `edit-video-${viewport.width}x${viewport.height}.png`) });
 }
 
@@ -468,7 +606,8 @@ if ((await page.getByText(/내보내기 판/).count()) > 0) throw new Error("사
 const selectedMediaBoxes = await Promise.all([selectedPublishImage.boundingBox(), selectedPublishVideo.boundingBox()]);
 if (selectedMediaBoxes.some((box) => !box || box.y < 0 || box.y + box.height > 900)) throw new Error(`발행실 선택 미디어가 1440 첫 화면 밖입니다: ${JSON.stringify(selectedMediaBoxes)}`);
 if (await selectedPublishImage.evaluate((image) => image.naturalWidth) <= 0) throw new Error("발행실 첫 화면 이미지가 실제 픽셀을 불러오지 못했습니다");
-if (!(await selectedPublishImage.getAttribute("src"))?.includes("export=chairman-v3")) throw new Error("발행실이 편집실 내보내기 고정 이미지를 사용하지 않습니다");
+const selectedPublishImageSrc = await selectedPublishImage.getAttribute("src");
+if (!selectedPublishImageSrc?.includes("export=chairman-v3")) throw new Error("발행실이 편집실 내보내기 고정 이미지를 사용하지 않습니다");
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982 }, { width: 390, height: 844 }]) {
   await page.setViewportSize(viewport);
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -490,6 +629,63 @@ if (boxes.length < 3 || !(boxes[0].y < boxes[1].y && boxes[1].y < boxes[2].y) ||
 if (await publishRoom.locator('img[src*="chairman-photo"], video[src*="chairman-photo-motion"]').count() < 3) throw new Error("발행 미리보기에 실제 이미지·영상이 표시되지 않았습니다");
 await page.screenshot({ path: path.join(outputDir, "publish-platforms-1440x900.png") });
 
+// R7-C: 생성실로 되돌아가지 않고 편집실 템플릿 선택만으로 카톡 덱을 만들고 말풍선을 고친다.
+await page.goto(`${baseUrl}/studio?room=edit&kind=card`, { waitUntil: "domcontentloaded" });
+await page.getByRole("button", { name: /작업물 전체/ }).click();
+await page.locator('[data-work-item="chairman-draft"]').click();
+const reopenedEditRoom = page.locator('[data-room="edit"]');
+await reopenedEditRoom.getByRole("button", { name: "카드뉴스" }).click();
+await reopenedEditRoom.locator('[data-card-canvas-editor]').waitFor();
+const chatTemplate = reopenedEditRoom.locator('[data-card-template="chat_bubble"]');
+await chatTemplate.scrollIntoViewIfNeeded();
+await chatTemplate.click();
+await reopenedEditRoom.getByRole("button", { name: "이 템플릿으로 바꾸기" }).click();
+await reopenedEditRoom.locator('[data-card-deck-v3-return-note]').waitFor({ timeout: 15_000 });
+await reopenedEditRoom.getByRole("button", { name: "2장", exact: true }).click();
+try {
+  await reopenedEditRoom.locator('[data-chat-base="conversation"]').first().waitFor({ timeout: 15_000 });
+} catch (error) {
+  fs.writeFileSync(path.join(outputDir, "failed-chat-conversion.json"), JSON.stringify({
+    currentDraft,
+    recentSaves: draftSaves.slice(-5),
+    roomText: (await reopenedEditRoom.innerText().catch(() => "편집실 없음")).slice(-5_000),
+    cause: error instanceof Error ? error.message : String(error),
+  }, null, 2));
+  await page.screenshot({ path: path.join(outputDir, "failed-chat-conversion.png") });
+  throw error;
+}
+const firstBubbleInput = reopenedEditRoom.getByLabel(/번째 말풍선 내용/).first();
+await firstBubbleInput.fill("편집실에서 바로 고친 카톡 말풍선");
+await firstBubbleInput.blur();
+await page.waitForTimeout(900);
+if (!draftSaves.some((save) => save.cardDeck?.template === "chat_bubble" && save.cardDeckV3?.template === "chat_bubble")) {
+  throw new Error("편집실 카톡 템플릿 전환이 v2·v3 동기화 저장으로 이어지지 않았습니다");
+}
+// OD-2026-10-09-2: v71 직접 편집기는 구 BubbleEditor의
+// data-card-deck-stage가 아니라 CardCanvasEditor의 data-card-stage가 정본이다.
+const chatStage = reopenedEditRoom.locator('[data-card-stage]');
+const chatCanvasGeometry = await chatStage.evaluate((stage, expectedText) => {
+  const stageBox = stage.getBoundingClientRect();
+  const bubbles = [...stage.querySelectorAll('[data-chat-bubble-text]')].map((bubble) => {
+    const box = bubble.getBoundingClientRect();
+    return { text: bubble.textContent, x: box.x, y: box.y, right: box.right, bottom: box.bottom };
+  });
+  return {
+    expectedText,
+    stage: { x: stageBox.x, y: stageBox.y, right: stageBox.right, bottom: stageBox.bottom },
+    bubbles,
+  };
+}, "편집실에서 바로 고친 카톡 말풍선");
+if (!chatCanvasGeometry.bubbles.some((bubble) => bubble.text?.includes(chatCanvasGeometry.expectedText))) {
+  throw new Error(`카톡 캔버스에 편집한 말풍선이 렌더되지 않았습니다: ${JSON.stringify(chatCanvasGeometry)}`);
+}
+if (chatCanvasGeometry.bubbles.some((bubble) => bubble.x < chatCanvasGeometry.stage.x - 1 || bubble.right > chatCanvasGeometry.stage.right + 1 || bubble.y < chatCanvasGeometry.stage.y - 1 || bubble.bottom > chatCanvasGeometry.stage.bottom + 1)) {
+  throw new Error(`카톡 말풍선이 캔버스 경계를 벗어났습니다: ${JSON.stringify(chatCanvasGeometry)}`);
+}
+await chatStage.evaluate((stage) => stage.scrollIntoView({ block: "center", inline: "nearest" }));
+await page.waitForTimeout(100);
+await page.screenshot({ path: path.join(outputDir, "edit-card-chat-1440x900.png") });
+
 if (consoleErrors.length) throw new Error(`브라우저 콘솔 오류: ${JSON.stringify(consoleErrors.slice(0, 10))}`);
 fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify({
   ok: true,
@@ -500,10 +696,13 @@ fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify({
   videoTabGeometry,
   videoCutSkippedTo: skippedTime,
   videoFrame,
+  videoTimelineGeometry,
+  expiredVideoResigned: apiRequests.filter((entry) => entry === "POST /api/media/resign").length,
   selectedPublishMedia: selectedMediaBoxes,
-  exportFlow: { exportStarted, exportJobReads, selectedImageSrc: await selectedPublishImage.getAttribute("src") },
+  exportFlow: { exportStarted, exportJobReads, selectedImageSrc: selectedPublishImageSrc },
   publishBoxes: boxes,
   toastCounts: { edit: editToastCount, publish: publishToastCount },
+  chatCanvasGeometry,
   consoleErrors: 0,
 }, null, 2));
 

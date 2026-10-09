@@ -24,6 +24,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
+import { timelinePixelsPerSecond } from "@/components/studio/VideoEditor";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { emptyVideoEdit, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import deckD100 from "./fixtures/deck-d100.v2.json";
@@ -208,7 +209,10 @@ describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임�
     const playback = document.querySelector("[data-video-playback]");
     const screen = document.querySelector("[data-video-screen]");
     expect(playback?.className).not.toContain("max-[26rem]:h-[11.25rem]");
-    expect(playback?.className).toContain("max-[26rem]:space-y-none");
+    // R7: 플레이어 아래 여백만 없애던 계약에서 화면과 조작부를 명시적인 두 행으로
+    // 쌓는 계약으로 바뀌었다. 5레인 첫 화면 노출과 390 가로 넘침 0 보호 의도는 유지한다.
+    expect(playback?.className).toContain("max-[26rem]:grid-rows-[auto_auto]");
+    expect(playback?.className).toContain("max-[26rem]:gap-stack-tight");
     expect(screen?.className).toContain("max-[26rem]:h-40");
     expect(screen?.className).toContain("max-[26rem]:min-h-40");
     expect(screen?.className).toContain("max-[26rem]:aspect-auto");
@@ -222,7 +226,9 @@ describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임�
     expect(globalsCss).toContain("--control-touch: 44px;");
     expect(timelineHeightToken.match(/var\(--control-touch\)/g)).toHaveLength(5);
     expect(timelineHeightToken.match(/var\(--stack-tight\)/g)).toHaveLength(2);
-    expect(timelineHeightToken.match(/var\(--space-micro\)/g)).toHaveLength(2);
+    // R7 후속: 눈금 한 줄을 추가한 뒤 Linux/Chromium의 테두리 반올림에서도
+    // 마지막 44px 레인이 타임라인 아래로 2px 넘지 않도록 토큰 4px 여유를 둔다.
+    expect(timelineHeightToken.match(/var\(--space-micro\)/g)).toHaveLength(3);
     expect(document.querySelector("[data-video-script-column]")).toBeInTheDocument();
   });
 
@@ -235,6 +241,24 @@ describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임�
     expect((document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement).getAttribute("aria-label")).toContain("0.1초부터 3.1초");
     fireEvent.keyDown(document.querySelector('[data-video-timeline-block="subtitle"]')!, { key: "ArrowRight", shiftKey: true });
     expect((document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement).getAttribute("aria-label")).toContain("0.1초부터 3.2초");
+  });
+
+  it("S6-TL-04 정상: 5.875초 영상은 v71처럼 가용 폭을 채우는 초당 픽셀을 계산하고 1초 눈금을 한 줄로 표시한다", () => {
+    // OD-2026-10-09-2와 회장 원문: "5.875초 영상을 타임라인 전체 폭에 맞게 스케일".
+    expect(timelinePixelsPerSecond(5.875, 705)).toBeCloseTo(120, 5);
+    stubVoicesUnconfigured();
+    render(<VideoRoomHarness initialLines={["첫 장면 대사", "둘째 장면 대사"]} />);
+    expect(Array.from(document.querySelectorAll("[data-video-timeline-tick]")).slice(0, 4).map((tick) => tick.textContent)).toEqual(["0:00", "0:01", "0:02", "0:03"]);
+    expect(Array.from(document.querySelectorAll("[data-video-timeline-tick]")).every((tick) => tick.className.includes("whitespace-nowrap"))).toBe(true);
+  });
+
+  it("S6-TL-05 경계: 긴 영상은 12px/초 하한을 유지하고 편집 블록은 24px보다 좁아지지 않는다", () => {
+    expect(timelinePixelsPerSecond(120, 705)).toBe(12);
+    stubVoicesUnconfigured();
+    render(<VideoRoomHarness initialLines={["짧은 자막"]} />);
+    const block = document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement;
+    expect(Number.parseFloat(block.style.width)).toBeGreaterThanOrEqual(24);
+    expect(block.className).not.toContain("max-[64rem]:!w-");
   });
 
   it("S6-MAJOR4-01 타임라인 블록의 접근 가능한 손잡이는 본문 텍스트에 화살표를 섞지 않는다", () => {

@@ -67,6 +67,7 @@ import {
   type CardDeckTemplateId,
 } from "@/lib/studio/card-templates";
 import styles from "./CardCanvasEditor.module.css";
+import { convertPlainCardDeckV3ToChat } from "@/lib/studio/plain-to-chat-template";
 
 const RESIZE_HANDLES: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 const CHAT_DECK_TEMPLATE_DISABLED_REASONS: Partial<Record<CardDeckTemplateId, string>> = {
@@ -175,9 +176,10 @@ export interface CardCanvasEditorProps {
   assetUrls?: Record<string, string>;
   onAssetUrlChange?: (assetId: string, url: string) => void;
   onDeckChange: (deck: CardDeckV3, templateState?: CardTemplateState) => void;
+  onConvertToChat?: (source: CardDeck, deck: CardDeckV3, templateState: CardTemplateState) => void;
 }
 
-export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceDeck = null, requestedSlide = null, assetUrls = {}, onAssetUrlChange, onDeckChange }: CardCanvasEditorProps) {
+export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceDeck = null, requestedSlide = null, assetUrls = {}, onAssetUrlChange, onDeckChange, onConvertToChat }: CardCanvasEditorProps) {
   const initialTemplateState = templateState ?? defaultCardTemplateState(deck);
   const [history, setHistory] = useState<CardEditorHistory>(() => createCardEditorHistory(deck, initialTemplateState));
   const [activeSlideId, setActiveSlideId] = useState(deck.slides[0]?.id ?? "");
@@ -300,12 +302,18 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
   const apply = useCallback((command: (current: CardDeckV3) => CardDeckV3) => commit(command(history.present)), [commit, history.present]);
   const applyTemplate = useCallback(() => {
     const before = structuredClone(history.present);
+    if (pendingTemplateId === "chat_bubble" && before.template === "plain") {
+      const converted = convertPlainCardDeckV3ToChat(before);
+      const nextTemplateState = { activeTemplateId: "chat_bubble" as const, previousTemplate: { id: activeTemplateId, deck: before } };
+      onConvertToChat?.(converted.source, converted.deck, nextTemplateState);
+      return;
+    }
     const next = applyCardDeckTemplate(before, pendingTemplateId, templateScope === "slide" ? { kind: "slide", slideId: activeSlideId } : { kind: "all" });
     const nextPrevious = { id: activeTemplateId, deck: before };
     setPreviousTemplate(nextPrevious);
     commit(next, { activeTemplateId: pendingTemplateId, previousTemplate: nextPrevious });
     setActiveTemplateId(pendingTemplateId);
-  }, [activeSlideId, activeTemplateId, commit, history.present, pendingTemplateId, templateScope]);
+  }, [activeSlideId, activeTemplateId, commit, history.present, onConvertToChat, pendingTemplateId, templateScope]);
   const performRestorePreviousTemplate = useCallback(() => {
     if (!previousTemplate) return;
     const current = structuredClone(history.present);
@@ -698,6 +706,24 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
           {workingDeck.slides.map((slide) => <Button key={slide.id} size="sm" data-card-slide={slide.id} aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>{slide.order + 1}장</Button>)}
         </nav>
         <div className={styles.stageColumn} data-card-stage-column>
+          {toolbarElement ? (
+            <details
+              className={`${styles.inspectorDetails} ${styles.canvasInspector}`}
+              open={inspectorOpen}
+              onToggle={(event) => setInspectorOpen(event.currentTarget.open)}
+              data-card-element-inspector
+            >
+              <summary>{toolbarElement.name} 도구</summary>
+              <CardElementToolbar
+                element={toolbarElement}
+                onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, toolbarElement.id, patch))}
+                onGeometryChange={(patch) => apply((current) => setCardElementGeometry(current, activeSlide.id, toolbarElement.id, patch))}
+                onLayer={(direction) => apply((current) => moveCardElementLayer(current, activeSlide.id, toolbarElement.id, direction))}
+                onDuplicate={() => duplicate(toolbarElement.id)}
+                onDelete={() => deleteAndRestoreStageFocus(toolbarElement.id)}
+              />
+            </details>
+          ) : null}
           {activeSlide.base.kind === "chat_bubble" ? <div className={styles.bubbleActions} role="toolbar" aria-label="카톡 장 편집 도구">
             <Button size="sm" variant="secondary" disabled={activeSlide.role === "cta"} onClick={() => {
               const next = runChatCommand((current) => addChatSlide(current, activeSlide.id));
@@ -818,24 +844,6 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
           </div>
         </div>
         <aside className={styles.rightPanel} data-card-right-panel>
-          {toolbarElement ? (
-            <details
-              className={styles.inspectorDetails}
-              open={inspectorOpen}
-              onToggle={(event) => setInspectorOpen(event.currentTarget.open)}
-              data-card-element-inspector
-            >
-              <summary>{toolbarElement.name} 도구</summary>
-              <CardElementToolbar
-                element={toolbarElement}
-                onTextChange={(patch) => apply((current) => patchTextElement(current, activeSlide.id, toolbarElement.id, patch))}
-                onGeometryChange={(patch) => apply((current) => setCardElementGeometry(current, activeSlide.id, toolbarElement.id, patch))}
-                onLayer={(direction) => apply((current) => moveCardElementLayer(current, activeSlide.id, toolbarElement.id, direction))}
-                onDuplicate={() => duplicate(toolbarElement.id)}
-                onDelete={() => deleteAndRestoreStageFocus(toolbarElement.id)}
-              />
-            </details>
-          ) : null}
           {activeSlide.base.kind === "chat_bubble" && activeSlide.role === "cover" ? (
             <section className={styles.chatBaseEditor} aria-label="표지 문구 편집">
               <h3>표지 문구</h3>
@@ -903,9 +911,7 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
         onSelect={setPendingTemplateId}
         previewImageUrl={Object.values(assetUrls).find(Boolean) ?? null}
         tenantId={tenantId}
-        disabledReasons={history.present.template === "plain"
-          ? { chat_bubble: "카톡 대화는 생성실의 기존 카톡 덱 만들기에서 선택해 주세요." }
-          : CHAT_DECK_TEMPLATE_DISABLED_REASONS}
+        disabledReasons={history.present.template === "plain" ? undefined : CHAT_DECK_TEMPLATE_DISABLED_REASONS}
         beforeDeck={history.present}
         afterDeck={templatePreviewDeck}
         scope={templateScope}

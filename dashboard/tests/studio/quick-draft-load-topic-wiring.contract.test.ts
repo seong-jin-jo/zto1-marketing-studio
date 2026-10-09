@@ -18,7 +18,9 @@ function sliceFrom(marker: string, length = 900): string {
 
 describe("생성 후보 불러오기 경로의 quickDraftTopicRef 배선 계약", () => {
   it("LOAD-WIRING-01: loadDraft는 replaceBodySnapshot 직후 quickDraftTopicRef를 resolveRestoredQuickDraftTopic으로 맞춘다", () => {
-    const body = sliceFrom("function loadDraft(d: Record<string, unknown>)", 2600);
+    // R7 운영 초안 호환 정규화가 loadDraft 앞부분에 추가돼도 주제 복원 배선까지
+    // 검사하도록 함수 절단 범위를 넓힌다. quickDraft 보호 단언 자체는 완화하지 않는다.
+    const body = sliceFrom("function loadDraft(d: Record<string, unknown>)", 3400);
     expect(body, "loadDraft가 quickDraftTopicRef를 다시 맞추지 않는다").toMatch(
       /quickDraftTopicRef\.current = resolveRestoredQuickDraftTopic\(\{[\s\S]*?restoredIdea: String\(d\.idea/,
     );

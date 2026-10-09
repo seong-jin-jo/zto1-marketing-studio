@@ -1,5 +1,29 @@
 # OSMU build log
 
+## 2026-10-09 13:20 KST · 운영 편집실 R8 타임라인 시각 회귀 복구
+
+STAMP: 2026-10-09 13:20 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `/tmp/zto1-r7-timeline-focused-r6.log`, `/tmp/zto1-r7-timeline-build-r6.log`, `/tmp/zto1-r7-timeline-v70-r6/observations.json`, `logs/diff/editroom-chairman-fix-r7/after/result.json` | 고민: CI 수치만 맞추지 않고 1440·1512·390과 v71 원본을 함께 열어 레인·블록·카톡 말풍선을 육안 확인했다.
+
+**변경:** 짧은 영상의 초당 폭을 실제 가용 레인 폭에서 계산하고, 한 줄 눈금·최소 블록 폭·44px 양끝 손잡이 비겹침을 제품과 E2E 계약으로 고정했다. 눈금 행이 추가된 390 타임라인은 토큰 4px를 더해 마지막 44px 레인이 컨테이너 아래로 넘지 않게 했다. 카톡 캡처는 구 편집기 선택자 대신 현재 직접 편집기 stage와 실제 렌더 말풍선을 검사한다.
+
+**검증:** 집중 Vitest 1파일 17건 PASS. `typecheck:ci`와 기능 플래그 production build PASS. `npm run start -p 3474`는 343ms에 Ready였고 같은 build의 `e2e:chairman-defects`, `e2e:studio-v70-screen`이 PASS, 콘솔 오류 0이다. 실측은 track·영상 레인 사용률 100%, 눈금 높이 한 줄 18px, 블록 최소 242px, 손잡이 겹침 0, 390 마지막 레인 bottom 718 < 타임라인 bottom 720이다. 모바일 9폭은 글자·44px 터치·눌림·가로 넘침 전부 PASS다. 전체 3,780건은 직전 커밋에서 통과해 이번 변경 영향 범위에서는 재실행하지 않았다.
+
+**기존 경고:** design-lint는 종료 코드 0과 기존 인라인 style·hex 2종 경고, artifact lint는 정합 PASS와 기존 핀 위생 경고 28건이다. 원격 CI와 운영 재배포는 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | `/tmp/zto1-r7-timeline-v70-r6/observations.json` | `logs/diff/editroom-chairman-fix-r7/after/result.json`
+
+## 2026-10-09 10:00 KST · 운영 편집실 R7 미디어 호환·카톡·첫 화면 밀도
+
+STAMP: 2026-10-09 10:00 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `.github/workflows/ci.yml`, `/tmp/zto1-r7-vitest-ci.log`, `logs/diff/editroom-chairman-fix-r7/after/result.json` | 고민: E2E 전용 신형 fixture를 운영 구형 초안 모양으로 바꾸고 같은 브라우저 흐름에서 카드 배경·재서명·카톡·첫 화면을 함께 검증했다.
+
+**변경:** 구형·신형 초안의 이미지·영상 필드 정규화, 원격 사진의 v3 background asset 승격, `vid.url` 포함 발행실 재서명, plain→카톡 7장 안전 변환과 편집실 말풍선 수정, 400×500 중앙 카드와 상단 글 도구, 영상 플레이어·대본 압축과 5레인 첫 화면 배치를 구현했다. DB 스키마와 외부 SNS 발행 동작은 변경하지 않았다.
+
+**검증:** `npx tsc --noEmit -p tsconfig.ci.json` PASS. 기능 플래그 production `npm run build` PASS. PostgreSQL 16 schema→seed→RLS와 migration concurrency matrix 뒤 CI 동일 `npx vitest run`은 517파일 통과·3파일 skip, 3,780건 통과·16건 skip, 396.26초다. 같은 build의 `e2e:studio-v70-screen`, `e2e:chairman-defects`가 PASS했고 회장 게이트는 초안 저장 6회, 실제 영상 540×960·readyState 4, 만료 영상 재서명 15회, 콘솔 오류 0이다. 1440·1512·390 캡처를 육안 확인했으며 모바일 아홉 폭은 본문 16px, 13px 미만 0, 44px 미만 누름 0, 눌림 100%, 가로 넘침 0이다.
+
+**기존 경고:** design-lint는 종료 코드 0이며 기존 인라인 style·hex 2종 경고가 남는다. artifact lint는 핀 실체·슬롯키·버전 정합 PASS와 기존 핀 위생 경고 28건이다. 원격 CI와 운영 재배포는 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `.github/workflows/ci.yml` | `/tmp/zto1-r7-vitest-ci.log` | `logs/diff/editroom-chairman-fix-r7/report.md`
+
 ## 2026-10-09 07:50 KST · PR 134 Linux 글꼴 폭 카드 버튼 회귀 복구
 
 STAMP: 2026-10-09 07:50 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `/tmp/zto1-r6-focused.log`, `/tmp/zto1-r6-typecheck.log`, `/tmp/zto1-r6-build.log`, `/tmp/zto1-r6-v70.log`, `/tmp/zto1-r6-chairman-2.log` | 고민: CI의 전체 자손 넘침 검사는 완화하지 않고, 같은 행의 10개 버튼에 더 강한 크기·내용·축소 수치 검사를 추가했다.
