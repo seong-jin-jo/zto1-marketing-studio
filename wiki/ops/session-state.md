@@ -1,3 +1,11 @@
+## 2026-10-09 09:08 KST · 운영 Higgsfield 503 진단 착수
+
+- handoff basis: 회장이 지정한 과제 원문과 `origin/main` 79bd8d06을 정본으로 삼았다. `openclaw-auto-3:0.1`은 이 세션 자체의 실행 pane임을 확인했다.
+- 관찰: 08:50 KST `/api/higgsfield/image` HTTP 503 3회, diagnose run 37862950523의 컨테이너 `higgsfield account status`는 `request failed (no response received)`, 동시각 맥 CLI는 plus plan 686.5 credits 정상이다.
+- 현재 판정: 원인 미확정. 운영 컨테이너의 DNS·HTTPS·proxy 경로 문제와 refresh token 회전으로 인한 서버 자격증명 무효화를 분리해야 한다.
+- 작업 위치: `/Users/sj/wt/zto1-higgsfield-503-20261009`, branch `fix/higgsfield-503-20261009`.
+- 다음 실행: `diagnose-generator.yml`에 비밀값을 노출하지 않는 읽기 전용 진단을 추가하고 계약 테스트 통과 후 push·PR·branch dispatch로 운영 원인을 확정한다.
+
 ## 2026-10-09 07:50 KST · PR 134 Linux 글꼴 폭 카드 버튼 넘침 교정 완료
 
 - handoff basis: 사용자가 지정한 push 커밋 `31354f16`과 CI run `37853933999`를 정본으로 삼았다. 동일 과제의 tmux pane `openclaw-auto-3:0.1`은 직전 작업 종료를 확인하는 보조 근거로만 사용했다.

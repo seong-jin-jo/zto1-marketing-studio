@@ -1,3 +1,11 @@
+## 2026-10-09 운영 Higgsfield 이미지 생성 HTTP 503 ❌ NG
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| HIGGSFIELD-503-01 | 운영 `/api/higgsfield/image`가 실제 이미지 생성 요청을 수락하고 503이 반복되지 않아야 함 | ❌ NG | 08:50 KST 운영 재측정에서 HTTP 503이 3회 반복됐다. 원인은 아직 미확정이다. |
+| HIGGSFIELD-503-02 | 배포 컨테이너에서 DNS, HTTPS 연결, proxy 환경, CLI 버전, 토큰 만료시각, 최근 503 분기를 비밀값 없이 진단할 수 있어야 함 | ❌ NG | 기존 `diagnose-generator.yml`은 실행 파일, 자격증명 파일, `account status`만 확인해 네트워크와 토큰 회전 여부를 구분하지 못한다. |
+| HIGGSFIELD-503-03 | 맥 CLI 토큰 갱신이 서버 refresh token을 무효화하는 회전 가능성을 운영 증거로 판정해야 함 | ❌ NG | 맥 CLI는 plus plan 686.5 credits로 정상이나 컨테이너 `account status`는 `request failed (no response received)`다. 네트워크 실패와 자격증명 회전 실패를 아직 분리하지 못했다. |
+
 ## 2026-10-09 PR 134 Linux 글꼴 폭 카드 버튼 넘침 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
