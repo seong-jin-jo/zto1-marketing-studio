@@ -1,0 +1,85 @@
+{
+  "stamp": "2026-10-09 08:57 KST",
+  "deployment": {
+    "commit": "79bd8d06071f22df05ddb7621e214b4cd76a8011",
+    "run": 37857533639,
+    "status": "completed",
+    "conclusion": "success"
+  },
+  "target": {
+    "environment": "production",
+    "session": "Chrome CDP 9444 existing member session",
+    "external_publish_clicked": false,
+    "existing_tabs_closed": 0
+  },
+  "verdict_counts": {
+    "reproduced": 2,
+    "not_reproduced": 4,
+    "partial": 6,
+    "overall": "QA_NG"
+  },
+  "fresh_generation": {
+    "image_attempts_http_503": 3,
+    "video_attempts_blocked_by_prerequisite_image_http_503": 1,
+    "ui_error": "이미지 생성 서비스 연결이 잠시 끊겼습니다. 계정 로그인 문제는 아니며 운영팀이 복구하고 있습니다. 글 카드는 지금도 만드실 수 있습니다.",
+    "fresh_draft_count_delta": 1,
+    "fresh_draft_thumbnail": "없음"
+  },
+  "work_list": {
+    "total": 13,
+    "existing_video_thumbnail_present": true,
+    "existing_image_thumbnail_dimensions": [1536, 1536],
+    "fresh_failed_draft_thumbnail_present": false
+  },
+  "card_edit": {
+    "media_count": 0,
+    "legacy_copy_present": {
+      "upper": false,
+      "middle": false,
+      "lower": false,
+      "move_text_button": false,
+      "free_placement": false,
+      "kakao_guidance": true
+    },
+    "direct_drag": {
+      "before": {"left_pct": 8.88888888888889, "top_pct": 13.333333333333334, "x": 252.84375, "y": 433.328125},
+      "after": {"left_pct": 17.77777777777778, "top_pct": 34.4137037037037, "x": 279.6875, "y": 512.90625},
+      "observed_delta_px": {"x": 26.84375, "y": 79.578125},
+      "undo_restored": true
+    },
+    "layout": {
+      "1440x900": {"canvas_right": 528, "chat_left": 1112, "gap_px": 584, "scroll_width": 1440, "client_width": 1440},
+      "1512x982": {"canvas_right": 528, "chat_left": 1184, "gap_px": 656, "scroll_width": 1512, "client_width": 1512},
+      "390x844": {"canvas_y": 732, "canvas_bottom": 1114.5, "chat_y": 4026.5, "vertical_gap_px": 2912, "scroll_width": 390, "client_width": 390}
+    }
+  },
+  "video_edit": {
+    "media": {"width": 768, "height": 1356, "duration_sec": 5.875, "ready_state": 4},
+    "first_screen": {"player_y": 371, "first_cut_y": 447},
+    "cut_playback": {"before_after_850ms_sec": 0.851837, "after_cut_after_850ms_sec": 1.772555, "cut_buttons_before": 6, "cut_buttons_after": 5, "undo_restored": true},
+    "visible_subtitle_layers_in_observed_frame": 1,
+    "fresh_video_subtitle_verification": "blocked_by_generation_503"
+  },
+  "export": {
+    "request_http": 202,
+    "video_files_complete": "1/1",
+    "latest_export_complete": true,
+    "image_status": "이미지를 불러오지 못했습니다",
+    "publish_room_handoff_available": false
+  },
+  "publish_room_existing_state": {
+    "first_screen_image_dimensions": [960, 1696],
+    "video_loaded": false,
+    "video_error_visible": true,
+    "platform_preview_order_y": {
+      "Threads": 1454,
+      "X": 2261,
+      "Facebook": 3150,
+      "TikTok": 6232,
+      "Instagram": 7567
+    },
+    "platform_preview_left_x_px": 93,
+    "vertical_stack": true
+  },
+  "captures": 12
+}
