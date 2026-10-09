@@ -8,6 +8,19 @@ STAMP: 2026-10-09 10:00 KST | model: gpt-6.1-sol/Codex | agent: code-builder | s
 
 운영 구형 초안의 실제 사진과 만료 영상이 편집실·발행실에 다시 연결된다. 편집실에서 카톡 템플릿을 선택해 말풍선을 직접 수정할 수 있고, 카드 캔버스와 영상 타임라인도 v71 첫 화면 밀도로 복구했다.
 
+## `standard-dev.md` 대조 감사
+
+검수 결론은 제품 코드 위반 0건, 보고 규격 위반 1건이다. 기존 보고가 실행 결과를 담았지만 증거 등급 태그를 붙이지 않은 문제를 아래 표로 바로잡았다.
+
+| 품질헌법 항목 | 판정 | 증거 등급 | 대조 결과와 조치 |
+|---|---|---|---|
+| 완료는 직접 관찰 증거 2종 이상 | ✅ PASS | 관찰됨·테스트됨 | production Chromium E2E의 DOM·영상 프레임·콘솔 수치와 1440·1512·390 PNG를 직접 확인했다. 집중 Vitest 17건, TypeScript, production build, 두 화면 게이트, 모바일 9폭도 통과했다. |
+| 직접 보지 않은 경로는 미검증 선언 | ✅ PASS | 미검증 | 커밋 `584b5067` 이후 원격 PR 135 CI와 운영 재배포, 실제 외부 SNS 발행은 실행하지 않았으므로 미검증으로 유지한다. |
+| 스펙 대비 차이 보고 | ✅ PASS | 근거 확인 | OD-2026-10-09-2와 v71의 `가용폭 / 전체초` 축척, 한 줄 눈금, 5레인을 계승했다. v71보다 넓은 44px 손잡이는 모바일 터치 최소 규격을 지키기 위한 의도된 차이이며 아래 R8 표와 비교 캡처에 기록했다. |
+| 고위험 코드 교차 검토 | ✅ 해당 없음 | 근거 확인 | `9d50dad4..584b5067`은 편집실 UI·회귀 테스트·검증 증거만 바꿨다. 결제·인증·보안·DB 마이그레이션 변경은 없다. |
+| 경계 테스트 존재 | ✅ PASS | 테스트됨 | 5.875초/705px의 120px/초 정상 경계, 120초 영상의 12px/초 하한, 블록 24px 최소폭, 80% 레인 사용률, 눈금 한 줄, 손잡이 비겹침, 390px 마지막 레인 경계를 자동 검증한다. |
+| 보고의 증거 등급 태그 | ❌ NG → ✅ PASS | 근거 확인 | 기존 보고에 태그가 없었다. 이 감사표에서 `관찰됨`·`테스트됨`·`근거 확인`·`미검증`으로 전 증거와 한계를 분리했다. |
+
 ## R8 타임라인 시각 회귀 재검증
 
 | 항목 | v71 기준 | 수정 뒤 직접 관찰 |
@@ -61,7 +74,7 @@ STAMP: 2026-10-09 10:00 KST | model: gpt-6.1-sol/Codex | agent: code-builder | s
 
 ## 미검증
 
-제품 `2f580a15`, 화면 밀도 `3b0a4960`, 전체 CI·문서·캡처 `12e45ddf`까지 로컬 커밋했다. `git push -u origin fix/editroom-r7-20261009`는 실행 정책이 승인 필요 작업으로 차단했고 이 세션은 승인 요청이 금지돼 실행 전에 거부됐다. 따라서 원격 CI와 운영 재배포는 미검증이다. 실제 외부 SNS 발행도 범위 밖이라 누르지 않았다.
+R8 핵심 구현 `7bd9ef6d`와 최종 시각 회귀 검증 `584b5067`까지 로컬 커밋했다. 이 감사에서는 제품 코드를 변경하지 않았다. 원격 PR 135 CI와 운영 재배포는 실행하지 않아 미검증이다. 실제 외부 SNS 발행도 범위 밖이라 누르지 않았다.
 
-SOURCES/MODEL: gpt-6.1-sol/Codex | `logs/diff/chairman-defects-20261009-recheck/report.md`@`93b72a4b` | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | `.github/workflows/ci.yml` | `after/result.json`
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/Users/sj/.claude/standards/standard-dev.md` | `logs/diff/chairman-defects-20261009-recheck/report.md`@`93b72a4b` | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | `.github/workflows/ci.yml` | `after/result.json`
 PRESENTATION_CHECK: 태그 잔재 없음 확인 / PNG 원본 육안 확인함

@@ -6,8 +6,9 @@
 | CHAIRMAN-FIX-R8-02 | 블록은 24px보다 좁아지지 않고 양쪽 44px 손잡이가 겹치지 않아야 함 | ✅ PASS | 실브라우저 자막 블록 3개는 각각 242px, 손잡이는 각각 44px이며 좌우 경계가 겹치지 않는다. 긴 120초 영상은 12px/초 하한과 가로 스크롤을 유지한다. |
 | CHAIRMAN-FIX-R8-03 | 눈금 추가 뒤에도 390에서 5개 44px 레인이 타임라인 안에 머물러야 함 | ✅ PASS | v70 화면 게이트 실측은 타임라인 248px, 마지막 레인 bottom 718, 타임라인 bottom 720이다. 다음 콘텐츠 top 732, 문서 가로 넘침 0이다. |
 | CHAIRMAN-FIX-R8-04 | 카톡 말풍선 수정 결과가 실제 캔버스 안에 렌더되고 캡처에 보여야 함 | ✅ PASS | 새 직접 편집기의 `[data-card-stage] [data-chat-bubble-text]`에서 수정 문구를 확인했고 모든 말풍선이 stage 경계 안이다. 캔버스를 가운데로 스크롤한 캡처에서 노란 말풍선과 상대 말풍선을 직접 확인했다. |
+| CHAIRMAN-FIX-R8-05 | `standard-dev.md` 기준으로 커밋 `584b5067`까지 증거·미검증·스펙 차이·경계 테스트를 대조해야 함 | ❌ NG → ✅ PASS | 제품 코드 위반은 0건이다. 보고에 증거 등급 태그가 없던 1건을 `관찰됨`·`테스트됨`·`근거 확인`·`미검증` 대조표로 보완했다. 결제·인증·보안·마이그레이션 변경은 없다. |
 
-종료 증거: `logs/diff/editroom-chairman-fix-r7/after/result.json`, `edit-video-1440x900.png`, `edit-video-1512x982.png`, `edit-video-390x844.png`, `edit-card-chat-1440x900.png`, `v71-reference-video-1440x900.png`. 집중 Vitest 17건, 두 production 화면 게이트, TypeScript, production build, 모바일 9폭이 PASS했고 콘솔 오류는 0이다. 전체 3,780건은 직전 커밋에서 통과했으며 이번에는 변경 영향 범위만 재실행했다.
+종료 증거: `logs/diff/editroom-chairman-fix-r7/after/result.json`, `edit-video-1440x900.png`, `edit-video-1512x982.png`, `edit-video-390x844.png`, `edit-card-chat-1440x900.png`, `v71-reference-video-1440x900.png`, `logs/diff/editroom-chairman-fix-r7/report.md`의 품질헌법 대조표. 집중 Vitest 17건, 두 production 화면 게이트, TypeScript, production build, 모바일 9폭이 PASS했고 콘솔 오류는 0이다. 전체 3,780건은 직전 커밋에서 통과했으며 이번에는 변경 영향 범위만 재실행했다.
 
 ## 2026-10-09 운영 편집실 R7 미디어 호환·카톡·화면 밀도 ❌ NG → ✅ PASS
 
