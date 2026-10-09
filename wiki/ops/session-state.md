@@ -1,3 +1,11 @@
+## 2026-10-09 13:41 KST · Higgsfield 품질헌법 재검수와 경합 보강 완료
+
+- handoff basis: 사용자가 지정한 commit `f12908ca`와 현재 worktree diff를 기준으로 `/Users/sj/.claude/standards/standard-dev.md`를 전문 Read하고 배포·시크릿·마이그레이션·롤백을 재검수했다.
+- 발견·수정: force credential writer의 lock 누락, 접수 최악 143초, 종료 코드 75의 HTTP 200 내부 오류 노출, refresh token 없는 복구 입력 허용, 실제 wrapper CI 미실행, wrapper SIGKILL 뒤 live child lock 탈취를 닫았다. force writer는 실행 dashboard의 같은 lock을 쓰고, 요청 최악 예산은 73초며 busy는 고객용 503이다.
+- 검증: 표적 5파일 71건 PASS·Linux 전용 1건 로컬 skip, 셸 3파일·workflow YAML 2파일과 run block 19개 PASS. 현재 wrapper를 Linux 컨테이너에 mount한 실측은 직렬화·0600·stale·timeout 75·SIGKILL 뒤 live child 보호 75를 통과했다. 전체 TypeScript는 현재 로컬 baseline 때문에 실패했다.
+- 미검증: 현재 Docker rebuild, GitHub Linux 전용 실물 경합, branch workflow, 운영 force 배포, `/api/higgsfield/image` 202와 실제 생성 완료, rollback rehearsal.
+- 다음 실행: 컨트롤러가 브랜치를 push해 CI의 `GENERATOR-LIVENESS-14` green을 확인하고, force=false 1차 배포 뒤 필요 시 force=true 복구를 실행한다. 종료 증거는 운영 mount·UID·mode, account status, 실제 이미지 결과다.
+
 ## 2026-10-09 13:20 KST · 운영 Higgsfield 갱신 토큰 영속성·직렬화 로컬 완료
 
 - handoff basis: 사용자가 지정한 `/Users/sj/wt/zto1-higgsfield-503-20261009` 현재 Git 변경분과 같은 브랜치를 정본으로 이어갔다. 무거운 Docker build는 사용자 지시에 따라 재실행하지 않고 선행 PASS 로그를 인용했다.

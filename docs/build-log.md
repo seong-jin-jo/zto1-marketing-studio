@@ -1,5 +1,15 @@
 # OSMU build log
 
+## 2026-10-09 13:41 KST · Higgsfield `standard-dev.md` 재검수
+
+STAMP: 2026-10-09 13:41 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/Users/sj/.claude/standards/standard-dev.md`, `/tmp/higgsfield-standard-dev-tests-final.log`, `/tmp/higgsfield-standard-dev-yaml-final.log`, 독립 리뷰 6축 | 고민: 운영 credential 파일 변경과 제품 API busy 응답을 한 배포 계약으로 묶되, 확인하지 않은 운영 실행은 완료로 올리지 않았다.
+
+**발견·수정:** `f12908ca`의 force writer가 실행 중 CLI와 다른 경로에서 credential을 쓸 수 있었고, 두 lock 대기와 CLI 제한시간의 최악 합이 프록시 100초를 넘었다. force 쓰기를 실행 dashboard의 동일 wrapper로 직렬화하고 lock 대기를 10초로 제한했다. 종료 코드 75는 `GENERATOR_BUSY` 503으로 타입화했다. access token만 있는 갱신 불가능 입력도 거절한다. wrapper만 SIGKILL되고 CLI 자식이 남은 경우도 owner metadata의 자식 PID·시작시각으로 lock을 유지한다.
+
+**검증:** 표적 5파일 71건 PASS, Linux 전용 실제 wrapper·writer 경합 1건은 macOS에서 skip하며 기존 GitHub CI의 전체 Vitest 단계에서 실행되도록 연결됐다. 현재 wrapper를 기존 Linux 컨테이너에 mount한 실측은 직렬화, 0600, stale 회수, live timeout 75, wrapper SIGKILL 뒤 live child 보호 75를 모두 통과했다. token 누락·공백·객체·배열 입력은 기존 credential을 보존한다. 셸 3파일 `bash -n`, workflow YAML 2파일과 Bash run block 19개가 PASS다. 최종 수렴 리뷰는 `CLEAN`이다. 전체 TypeScript는 현재 로컬 baseline 때문에 실패했고, 현재 Docker rebuild·GitHub CI·운영 배포는 미검증이다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/Users/sj/.claude/standards/standard-dev.md` | `.github/workflows/deploy-marketing.yml` | `logs/diff/higgsfield-503-20261009/report.md`
+
 ## 2026-10-09 13:20 KST · 운영 Higgsfield 갱신 토큰 영속성·직렬화
 
 STAMP: 2026-10-09 13:20 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: review | 근거: `/tmp/higgsfield-final-contracts.log`, `/tmp/higgsfield-final-yaml.log`, `/tmp/higgsfield-refresh-docker-build5.log`, `/tmp/higgsfield-refresh-lock-final.log` | 고민: Docker Desktop bind mount에서 실제 직렬화되지 않은 `flock`을 폐기하고 원자적 디렉터리 잠금을 실측했다.

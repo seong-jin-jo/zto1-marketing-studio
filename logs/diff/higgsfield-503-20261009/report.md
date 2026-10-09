@@ -43,14 +43,49 @@
 
 | 항목 | 결과 | 증거 등급 |
 |---|---|---|
-| 관련 계약 테스트 | 3파일 28건 PASS | 테스트됨, `/tmp/higgsfield-final-contracts.log` |
-| 배포 시크릿 분기 | unexpired, expired, missing에서 force=false 쓰기 0회, force=true 쓰기 1회 | 테스트됨 |
-| 셸 문법 | probe, lock runtime test, lock wrapper 3파일 `bash -n` PASS | 테스트됨, `/tmp/higgsfield-final-bash-n.log` |
-| YAML 및 workflow run block | workflow 2파일 파싱, Bash run block 20개 `bash -n` PASS | 테스트됨, `/tmp/higgsfield-final-yaml.log` |
-| Dashboard 이미지 | Next production build 포함 Docker image build PASS | 테스트됨, `/tmp/higgsfield-refresh-docker-build5.log`, 이번 재실행은 사용자 지시에 따라 생략 |
-| 실제 컨테이너 잠금 | contenders=2 직렬화, mode=600, stale 회수, live timeout=75 | 관찰됨, `/tmp/higgsfield-refresh-lock-final.log` |
+| 관련 계약 테스트 | 5파일 71건 PASS, Linux 전용 실제 wrapper 경합 1건은 로컬 macOS에서 skip | 테스트됨, `/tmp/higgsfield-standard-dev-tests-final.log` |
+| 배포 시크릿 분기 | unexpired, expired, missing에서 force=false 쓰기 0회, force=true 쓰기 1회. 빈 값·잘못된 JSON·token 누락·공백·비문자열은 기존 파일 보존 | 테스트됨 |
+| 셸 문법 | probe, lock runtime test, lock wrapper 3파일 `bash -n` PASS | 테스트됨, `/tmp/higgsfield-standard-dev-bash.log` |
+| YAML 및 workflow run block | workflow 2파일 파싱, Bash run block 19개 `bash -n` PASS | 테스트됨, `/tmp/higgsfield-standard-dev-yaml-final.log` |
+| Dashboard 이미지 | `f12908ca`까지의 선행 Docker image build는 Next production build 포함 PASS. 이번 재검수의 TypeScript 변경 뒤 Docker rebuild는 사용자 지시에 따라 생략 | 근거 확인, `/tmp/higgsfield-refresh-docker-build5.log`; 현재 이미지 미검증 |
+| 실제 컨테이너 잠금 | 현재 wrapper를 mount해 contenders=2 직렬화, mode=600, stale 회수, live timeout=75, wrapper SIGKILL 뒤 살아 있는 자식의 lock 유지=75 확인 | 관찰됨, `/tmp/higgsfield-standard-dev-lock-final2.log` |
 | Compose 해석 | runtime UID 0:0, credential mount RW, lock 경로 확인 | 테스트됨 |
+| 시크릿 literal 검사 | 추가 코드에서 고위험 token prefix 0건 | 테스트됨 |
+| 파이프라인 산출물 lint | 상태파일 2개의 핀 실체·슬롯키·버전 정합 PASS. 기존 design·QA 핀 위생 경고 28건 | 테스트됨, `/tmp/higgsfield-standard-dev-artifact-lint.log` |
+| 최종 수렴 리뷰 | 배포·시크릿·마이그레이션·롤백·lock·API·증거 정직성 재검수 `CLEAN` | 근거 확인 |
+| 전체 TypeScript | 현재 로컬 의존성·타입 baseline이 전체 검사를 막았고, 이번 실행의 진단 목록에는 변경한 Higgsfield 파일이 없음. `origin/main` 동일 환경 비교는 실행하지 않음 | 실패 그대로 기록, `/tmp/higgsfield-standard-dev-typecheck.log`; 전체 타입체크 미검증 |
 | 운영 배포 및 실제 이미지 생성 | 아직 push 전 | 미검증 |
+
+코드 수정 커밋은 `070acb63`, `b571db16`, `05353bbb`이다. 이 보고와 상태 문서는 별도 문서 커밋으로 묶는다.
+
+## `standard-dev.md` 재검수 대조표
+
+기준 파일은 2026-10-09 13:30 KST에 전문을 다시 읽었다. 인증·시크릿·운영 파일 상태를 바꾸는 고위험 변경이므로 독립 Codex 리뷰를 병렬 수행했고, 최초 지적을 수정한 뒤 재검수했다.
+
+| 품질헌법 기준 | `f12908ca`까지의 상태 | 재검수 결과와 조치 | 증거 |
+|---|---|---|---|
+| 직접 관찰 증거 2종 이상 | 계약 테스트, Docker image build, 실제 컨테이너 잠금이 있었음 | 현재 diff의 계약 테스트와 셸·YAML 검증을 재실행. 선행 실제 컨테이너 잠금 관찰을 별도 증거로 유지 | 테스트됨·관찰됨 |
+| 미검증 정직 선언 | 운영 배포와 실제 생성이 미검증으로 기록됨 | 현재 Docker rebuild, GitHub Linux 전용 경합 테스트, 운영 배포·생성을 미검증으로 분리 | 근거 확인 |
+| 스펙 대비 diff | force 쓰기와 요청 latency의 세부 계약이 빠져 있었음 | force 쓰기도 같은 lock을 사용하고, 접수 최악 예산을 73초로 제한. lock timeout은 `GENERATOR_BUSY` 503으로 계약화 | 테스트됨 |
+| 고위험 코드 2차 리뷰 | 배포·인증 경계 독립 리뷰에서 경합 1건이 발견됨 | 보안·API·테스트·성능·단순화·적대적 리뷰를 수행. token 쌍 검증, 실제 Linux wrapper 테스트, wrapper 사망 뒤 live child 보호를 추가 | 근거 확인 |
+| 경계 테스트 | 정상 force와 wrapper 잠금 단위 계약 중심 | 빈 시크릿, 잘못된 JSON, token 누락·공백·비문자열, 옛 이미지 wrapper 부재, exit 75, wrapper SIGKILL·live child, 100초 경계를 추가 | 테스트됨 |
+
+## 배포·시크릿·마이그레이션·롤백 대조
+
+| 축 | 발견한 위반 또는 위험 | 수정·판정 | 남은 검증 |
+|---|---|---|---|
+| 배포 | 실행 중 dashboard가 refresh 중이어도 force writer는 별도 helper에서 lock 없이 쓸 수 있었음 | 실행 컨테이너가 있으면 동일 wrapper 잠금 아래 `docker exec -i`로 원자 교체. wrapper 없는 옛 이미지는 fail-closed | 운영 force 배포 미검증 |
+| 시크릿 | access token만 있거나 token 필드가 공백·객체·배열인 갱신 불가능 JSON도 배치될 수 있었음 | 두 token 모두 공백 아닌 문자열인 쌍만 허용. 값은 stdin으로만 전달하고 argv·로그에 넣지 않음 | GitHub Actions 실제 시크릿 입력 미검증 |
+| 마이그레이션 | DB 변경은 없으나 credential 저장소가 read-only에서 read-write, root:root 0700·0600으로 상태 전환됨 | 배포 단계가 기존 파일을 제자리 권한 교정하고, 평상시 배포는 파일 내용을 덮어쓰지 않음. export worker는 mount 없음 | 운영 호스트 소유권 전환 미검증 |
+| 롤백 | 단순히 `f12908ca` 이전 Compose로 되돌리면 mount가 다시 read-only가 되어 장애가 재발함 | 애플리케이션 rollback 시에도 RW mount, UID 0, 0600, lock wrapper는 유지. credential 파일은 현재 운영본을 보존하고 시크릿 스냅샷으로 자동 복원하지 않음 | 실제 rollback rehearsal 미검증 |
+
+## 안전한 출고·롤백 순서
+
+1. 옛 dashboard가 실행 중이면 먼저 `force_generator_credentials=false`로 새 이미지와 lock wrapper를 배포한다.
+2. 새 컨테이너에서 RW mount, UID 0, credential 0600/root를 확인한다.
+3. 필요한 경우에만 `force_generator_credentials=true`로 서버 전용 access·refresh token 쌍을 같은 lock 아래 배치한다.
+4. 애플리케이션 rollback이 필요해도 credential 저장소와 lock 변경은 되돌리지 않는다. 현재 운영 `credentials.json`을 보존한 채 앱 이미지만 직전 버전으로 되돌린다.
+5. read-only mount로 되돌려야 하는 비상상황이면 생성 요청과 monitor·diagnose를 먼저 중지하고, 현재 credential 파일을 보존한 뒤에만 수행한다. 이 경로는 장애 원인을 다시 만드는 조치이므로 기본 rollback으로 쓰지 않는다.
 
 ## 셀프심문과 레드팀
 
@@ -70,9 +105,9 @@ HITS_USED: `wiki/거버넌스/결정.md`의 서버 전용 세션·단일 갱신 
 HITS_REJECTED: 맥 네트워크 성공은 운영 호스트 네트워크 증거가 아니므로 운영 복구 완료 근거로 쓰지 않음. 업스트림 CLI issue는 동일 증상이지만 운영 버전·네트워크를 직접 증명하지 못해 보조 근거로만 유지
 CONFLICTS: 기존 배포 주석은 CLI가 갱신 결과를 파일에 쓴다고 했지만 Compose 실물은 해당 경로를 읽기 전용으로 마운트했음
 
-SKILLS_USED: review, 변경 범위·경합·배포 계약 검수
+SKILLS_USED: review, 전체 diff·배포·경합·롤백 계약 검수와 독립 전문 리뷰
 SKILLS_SKIPPED: investigate, 현재 available-skills에 없어 직접 재현과 계약 테스트로 대체
 SOURCES/MODEL: gpt-6.1-sol/Codex | `docker-compose.postagi-4tenants.yml` | `.github/workflows/deploy-marketing.yml` | `dashboard/scripts/run-higgsfield-locked.sh` | https://docs.docker.com/engine/storage/bind-mounts/ | https://pubs.opengroup.org/onlinepubs/9799919799/functions/mkdir.html
 
-🏷 STAMP | line: osmu | 생성: 2026-10-09 13:20 KST | model: gpt-6.1-sol | agent: code-builder | skill: review
-근거: 운영 run 4건, 시크릿 metadata, 계약 28건, Docker build, 컨테이너 경합 실측, 공식 Docker·POSIX 문서 | 고민: 실제 bind mount에서 직렬화되지 않은 `flock`을 폐기하고 관찰된 `mkdir` 잠금으로 교체했다.
+🏷 STAMP | line: osmu | 생성: 2026-10-09 13:41 KST | model: gpt-6.1-sol | agent: code-builder | skill: review
+근거: `standard-dev.md`, 운영 run 4건, 시크릿 metadata, 계약 71건, 셸·YAML, Docker build, 컨테이너 경합 실측, 독립 리뷰 6축 | 고민: 실제 bind mount에서 직렬화되지 않은 `flock`을 폐기하고, force writer까지 관찰된 `mkdir` 잠금 계약에 포함했다.
