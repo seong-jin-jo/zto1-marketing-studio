@@ -510,21 +510,65 @@ const skippedTime = await editRoom.locator('[data-video-el]').evaluate((video) =
   return video.currentTime;
 });
 if (skippedTime <= 0.1) throw new Error(`컷 재생이 구간을 건너뛰지 않았습니다: ${skippedTime}`);
+let videoTimelineGeometry = null;
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1512, height: 982 }, { width: 390, height: 844 }]) {
   await page.setViewportSize(viewport);
   await assertNoHorizontalOverflow(`영상 편집실 ${viewport.width}`);
   if (viewport.width >= 1024) {
     const timeline = await editRoom.locator('[data-video-timeline]').evaluate((root, height) => {
       const rect = root.getBoundingClientRect();
+      const scroll = root.querySelector('[data-video-timeline-scroll]');
+      const track = root.querySelector('[data-video-timeline-track]');
       const lanes = [...root.querySelectorAll('[data-video-timeline-lane]')].map((lane) => {
         const value = lane.getBoundingClientRect();
         return { label: lane.getAttribute('data-video-timeline-lane'), y: value.y, bottom: value.bottom, height: value.height };
       });
-      return { y: rect.y, bottom: rect.bottom, viewportHeight: height, lanes };
+      const ticks = [...root.querySelectorAll('[data-video-timeline-tick]')].map((tick) => {
+        const value = tick.getBoundingClientRect();
+        const style = getComputedStyle(tick);
+        return { text: tick.textContent, width: value.width, height: value.height, clientHeight: tick.clientHeight, scrollHeight: tick.scrollHeight, whiteSpace: style.whiteSpace };
+      });
+      const blocks = [...root.querySelectorAll('[data-video-timeline-block]')].map((block) => {
+        const value = block.getBoundingClientRect();
+        const handles = [...block.querySelectorAll('button')].map((handle) => {
+          const box = handle.getBoundingClientRect();
+          return { left: box.left, right: box.right, width: box.width };
+        });
+        return { kind: block.getAttribute('data-video-timeline-block'), width: value.width, handles };
+      });
+      const laneContent = root.querySelector('[data-video-timeline-lane="영상"] [data-video-timeline-lane-content]');
+      const bodyVideo = root.querySelector('[data-video-timeline-lane="영상"] [data-video-timeline-block="video"]');
+      const laneBox = laneContent?.getBoundingClientRect();
+      const videoBox = bodyVideo?.getBoundingClientRect();
+      const availableWidth = scroll ? Math.max(1, scroll.clientWidth - 62) : 1;
+      const trackUsedWidth = track ? Math.max(0, track.getBoundingClientRect().width - 62) : 0;
+      return {
+        y: rect.y,
+        bottom: rect.bottom,
+        viewportHeight: height,
+        lanes,
+        ticks,
+        blocks,
+        trackUsage: trackUsedWidth / availableWidth,
+        videoLaneUsage: laneBox && videoBox ? videoBox.width / laneBox.width : 0,
+        pxPerSec: Number(track?.getAttribute('data-video-timeline-px-per-sec') || 0),
+      };
     }, viewport.height);
     if (timeline.lanes.length !== 5 || timeline.bottom > viewport.height + 1 || timeline.lanes.some((lane) => lane.y < 0 || lane.bottom > viewport.height + 1)) {
       throw new Error(`영상 5레인 타임라인이 첫 화면 안에 없습니다: ${JSON.stringify(timeline)}`);
     }
+    // 회장 R7 반려와 OD-2026-10-09-2: v71처럼 짧은 영상도 레인 전체를 쓰며, 눈금은
+    // 0:00 0:01 형태의 한 줄이고 블록·양끝 손잡이는 서로 겹치지 않아야 한다.
+    if (timeline.trackUsage < 0.8 || timeline.videoLaneUsage < 0.8) {
+      throw new Error(`영상 타임라인이 가용 폭의 80%를 쓰지 않습니다: ${JSON.stringify(timeline)}`);
+    }
+    if (timeline.ticks.length < 5 || timeline.ticks.some((tick) => tick.whiteSpace !== 'nowrap' || tick.scrollHeight > tick.clientHeight + 1 || tick.height > 16)) {
+      throw new Error(`영상 눈금 라벨이 한 줄이 아닙니다: ${JSON.stringify(timeline.ticks)}`);
+    }
+    if (timeline.blocks.some((block) => block.width < 24 || (block.handles.length === 2 && block.handles[0].right > block.handles[1].left + 1))) {
+      throw new Error(`영상 블록 최소폭 또는 손잡이 비겹침 계약을 어겼습니다: ${JSON.stringify(timeline.blocks)}`);
+    }
+    if (viewport.width === 1440) videoTimelineGeometry = timeline;
   }
   await page.screenshot({ path: path.join(outputDir, `edit-video-${viewport.width}x${viewport.height}.png`) });
 }
@@ -617,6 +661,27 @@ await page.waitForTimeout(900);
 if (!draftSaves.some((save) => save.cardDeck?.template === "chat_bubble" && save.cardDeckV3?.template === "chat_bubble")) {
   throw new Error("편집실 카톡 템플릿 전환이 v2·v3 동기화 저장으로 이어지지 않았습니다");
 }
+const chatStage = reopenedEditRoom.locator('[data-card-deck-stage]');
+const chatCanvasGeometry = await chatStage.evaluate((stage, expectedText) => {
+  const stageBox = stage.getBoundingClientRect();
+  const bubbles = [...stage.querySelectorAll('[data-bubble-content-editable]')].map((bubble) => {
+    const box = bubble.getBoundingClientRect();
+    return { text: bubble.textContent, x: box.x, y: box.y, right: box.right, bottom: box.bottom };
+  });
+  return {
+    expectedText,
+    stage: { x: stageBox.x, y: stageBox.y, right: stageBox.right, bottom: stageBox.bottom },
+    bubbles,
+  };
+}, "편집실에서 바로 고친 카톡 말풍선");
+if (!chatCanvasGeometry.bubbles.some((bubble) => bubble.text?.includes(chatCanvasGeometry.expectedText))) {
+  throw new Error(`카톡 캔버스에 편집한 말풍선이 렌더되지 않았습니다: ${JSON.stringify(chatCanvasGeometry)}`);
+}
+if (chatCanvasGeometry.bubbles.some((bubble) => bubble.x < chatCanvasGeometry.stage.x - 1 || bubble.right > chatCanvasGeometry.stage.right + 1 || bubble.y < chatCanvasGeometry.stage.y - 1 || bubble.bottom > chatCanvasGeometry.stage.bottom + 1)) {
+  throw new Error(`카톡 말풍선이 캔버스 경계를 벗어났습니다: ${JSON.stringify(chatCanvasGeometry)}`);
+}
+await chatStage.evaluate((stage) => stage.scrollIntoView({ block: "center", inline: "nearest" }));
+await page.waitForTimeout(100);
 await page.screenshot({ path: path.join(outputDir, "edit-card-chat-1440x900.png") });
 
 if (consoleErrors.length) throw new Error(`브라우저 콘솔 오류: ${JSON.stringify(consoleErrors.slice(0, 10))}`);
@@ -629,11 +694,13 @@ fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify({
   videoTabGeometry,
   videoCutSkippedTo: skippedTime,
   videoFrame,
+  videoTimelineGeometry,
   expiredVideoResigned: apiRequests.filter((entry) => entry === "POST /api/media/resign").length,
   selectedPublishMedia: selectedMediaBoxes,
   exportFlow: { exportStarted, exportJobReads, selectedImageSrc: selectedPublishImageSrc },
   publishBoxes: boxes,
   toastCounts: { edit: editToastCount, publish: publishToastCount },
+  chatCanvasGeometry,
   consoleErrors: 0,
 }, null, 2));
 

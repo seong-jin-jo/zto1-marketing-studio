@@ -24,6 +24,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditRoom } from "@/components/studio/StudioRooms";
+import { timelinePixelsPerSecond } from "@/components/studio/VideoEditor";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import { emptyVideoEdit, type VideoEdit } from "@/lib/studio/video-edit-contract";
 import deckD100 from "./fixtures/deck-d100.v2.json";
@@ -238,6 +239,24 @@ describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임�
     expect((document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement).getAttribute("aria-label")).toContain("0.1초부터 3.1초");
     fireEvent.keyDown(document.querySelector('[data-video-timeline-block="subtitle"]')!, { key: "ArrowRight", shiftKey: true });
     expect((document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement).getAttribute("aria-label")).toContain("0.1초부터 3.2초");
+  });
+
+  it("S6-TL-04 정상: 5.875초 영상은 v71처럼 가용 폭을 채우는 초당 픽셀을 계산하고 1초 눈금을 한 줄로 표시한다", () => {
+    // OD-2026-10-09-2와 회장 원문: "5.875초 영상을 타임라인 전체 폭에 맞게 스케일".
+    expect(timelinePixelsPerSecond(5.875, 705)).toBeCloseTo(120, 5);
+    stubVoicesUnconfigured();
+    render(<VideoRoomHarness initialLines={["첫 장면 대사", "둘째 장면 대사"]} />);
+    expect(Array.from(document.querySelectorAll("[data-video-timeline-tick]")).slice(0, 4).map((tick) => tick.textContent)).toEqual(["0:00", "0:01", "0:02", "0:03"]);
+    expect(Array.from(document.querySelectorAll("[data-video-timeline-tick]")).every((tick) => tick.className.includes("whitespace-nowrap"))).toBe(true);
+  });
+
+  it("S6-TL-05 경계: 긴 영상은 12px/초 하한을 유지하고 편집 블록은 24px보다 좁아지지 않는다", () => {
+    expect(timelinePixelsPerSecond(120, 705)).toBe(12);
+    stubVoicesUnconfigured();
+    render(<VideoRoomHarness initialLines={["짧은 자막"]} />);
+    const block = document.querySelector('[data-video-timeline-block="subtitle"]') as HTMLElement;
+    expect(Number.parseFloat(block.style.width)).toBeGreaterThanOrEqual(24);
+    expect(block.className).not.toContain("max-[64rem]:!w-");
   });
 
   it("S6-MAJOR4-01 타임라인 블록의 접근 가능한 손잡이는 본문 텍스트에 화살표를 섞지 않는다", () => {
