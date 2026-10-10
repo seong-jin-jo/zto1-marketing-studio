@@ -90,6 +90,7 @@ export function ExportPanel({ tenantId, draftId, kind, onClose, onOpenPublish, o
   const [job, setJob] = useState<ExportJobResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const pollingStartedAt = useRef<number | null>(null);
@@ -248,6 +249,29 @@ export function ExportPanel({ tenantId, draftId, kind, onClose, onOpenPublish, o
     }
   };
 
+  const downloadArtifact = async (item: ExportJobResponse["items"][number]) => {
+    if (!item.artifact_url) return;
+    setDownloadingKey(item.item_key);
+    setError("");
+    try {
+      const response = await fetch(item.artifact_url, { headers: authHeaders(), cache: "no-store" });
+      if (!response.ok) throw new Error(`${item.ordinal + 1}장 PNG를 내려받지 못했습니다.`);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = `card-${item.ordinal + 1}.png`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : `${item.ordinal + 1}장 PNG를 내려받지 못했습니다.`);
+    } finally {
+      setDownloadingKey(null);
+    }
+  };
+
   const openPublish = async () => {
     setBusy(true);
     setError("");
@@ -336,6 +360,11 @@ export function ExportPanel({ tenantId, draftId, kind, onClose, onOpenPublish, o
                 </div>
                 {item.error_code ? <p className="ds-copy text-caption text-danger">{item.error_code}</p> : null}
                 {item.artifact_url ? <DeliveredMedia type="image" className={styles.thumbnail} src={item.artifact_url} tenantId={tenantId} loading="lazy" alt={`${item.ordinal + 1}장 내보내기 결과`} /> : null}
+                {kind === "card_deck" && item.status === "succeeded" && item.artifact_url ? (
+                  <Button size="sm" onClick={() => void downloadArtifact(item)} disabled={downloadingKey === item.item_key} data-export-download={item.item_key}>
+                    {downloadingKey === item.item_key ? "받는 중" : `${item.ordinal + 1}장 PNG 다운로드`}
+                  </Button>
+                ) : null}
                 {item.status === "failed" ? <Button size="sm" onClick={() => void retryItem(item.item_key)} disabled={busy}>{kind === "card_deck" ? `${item.ordinal + 1}장` : "영상"} 다시 시도</Button> : null}
               </article>
             ))}

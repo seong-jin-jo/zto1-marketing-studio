@@ -1,3 +1,31 @@
+## 2026-10-10 카드 편집기 Canva 기본 조작 R2 ❌ NG → ✅ PASS
+
+| 요청번호 | 반려 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| CARD-CANVA-R2-01 | 기본 상태에서 제품 UI 내보내기 버튼이 활성이고 실제 PNG를 내려받아야 함 | ✅ PASS | 기능 플래그 미설정 기본 상태에서 버튼 활성, 차단 문구 0건이다. 제품 UI POST 202 → 실제 워커 4장 처리 → `1장 PNG 다운로드`로 받은 파일을 검증했다. |
+| CARD-CANVA-R2-02 | 화면과 PNG 글꼴이 같고 글자 영역 크롭도 일치해야 함 | ✅ PASS | 화면·Remotion 모두 Pretendard Variable의 `document.fonts.ready`를 기다린다. 글자 영역 전용 픽셀 차이 0.0000%, 전체 0.0034%다. |
+| CARD-CANVA-R2-03 | 글자가 선택 상자 안에서 줄바꿈되고 좌우로 잘리지 않아야 함 | ✅ PASS | 줄바꿈·scroll 경계·좌우 4px 이상 안쪽 여백을 단언했다. 1440 캡처에서 첫 글자가 선택 테두리 안에 있음을 직접 확인했다. |
+| CARD-CANVA-R2-04 | 선택 속성은 얇은 맥락 도구막대이고 값 잘림이 0이어야 함 | ✅ PASS | 맥락 도구막대 높이 52px다. 선택값 실제 글자 폭까지 측정해 잘림 0건이며 너비·높이·각도는 기본 접힘이다. |
+| CARD-CANVA-R2-05 | 1440x900에서 캔버스 높이가 560px 이상이고 담당 패널과 겹치지 않아야 함 | ✅ PASS | 실측 캔버스 높이 569.5px, 담당 패널 교차 0, 페이지 줄·작업 버튼도 y=0~900 안이다. |
+| CARD-CANVA-R2-06 | 모든 페이지 썸네일이 실제 장 내용을 보여야 함 | ✅ PASS | 4장 모두 텍스트 또는 이미지가 있고 2번 썸네일은 복제한 실제 장 내용과 이미지 3개를 렌더한다. 육안으로도 확인했다. |
+| CARD-CANVA-R2-07 | 배경 사진은 원본 이상 확대하지 않고 cover 크롭하며 PNG는 1080x1350이어야 함 | ✅ PASS | `chairman-photo.jpg` 1080x1350을 `object-fit:cover`, 확대 배율 1.00으로 사용했다. 제품 UI PNG도 1080x1350이다. |
+
+종료 증거: `logs/diff/card-editor-canva-20261010/report.md`, `measurements.json`, 제품 UI 다운로드 PNG, 1440x900·390x844 캡처. 실제 Next dev 3481·PostgreSQL·로컬 JPG·내보내기 워커, page.route 0에서 통과했다. 관련 Vitest 33파일·396건, TypeScript, Webpack production build, 모바일 9폭이 PASS다. 원격 CI·운영 배포·외부 SNS 실제 게시는 미검증이다.
+
+## 2026-10-10 카드 편집기 Canva 기본 조작 ❌ NG → ✅ PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| CARD-CANVA-01 | 요소 선택, 8개 크기 조절점, Shift 비율 고정, 회전, 이동 | ✅ PASS | 실제 마우스로 8개 조절점 노출, 이동, Shift 모서리 비율 유지, 60도 회전과 DB 저장을 확인했다. |
+| CARD-CANVA-02 | 글자를 두 번 눌러 캔버스 위에서 직접 수정하고 떠 있는 글 도구를 사용 | ✅ PASS | 두 번 누른 뒤 캔버스 위 입력으로 문구를 바꾸고 Georgia·70px·굵게·색·가운데 정렬·배경색을 저장했다. |
+| CARD-CANVA-03 | 글·생성 미디어·업로드 이미지·도형 추가, 삭제·복제·레이어 순서 | ✅ PASS | 실제 이미지 목록 API와 업로드 API를 거쳐 사진을 추가했다. 도형, Cmd+D, Delete, 맨 뒤·한 층 앞·맨 앞을 조작하고 DB z-index를 확인했다. |
+| CARD-CANVA-04 | 실행 취소·다시 실행, 중앙·가장자리 스냅 안내선 | ✅ PASS | 실제 조작과 DB 저장으로 undo·redo를 확인했고 가로 가이드는 가장자리 0%, 중앙 50%에서 나타났다. |
+| CARD-CANVA-05 | 하단 페이지 썸네일에서 추가·복제·삭제·순서 변경 | ✅ PASS | 3장에서 추가·복제·앞으로 이동·삭제 후 4장이 됐고 선택 장 order가 실제 DB에서 한 칸 이동했다. |
+| CARD-CANVA-06 | 실제 사진 배경과 편집 화면이 같은 PNG 내보내기, 픽셀 차이 2% 이하 | ✅ PASS | `chairman-photo.jpg` RGB 표준편차 79.90, 1080x1350 화면·PNG 차이 1.5464%다. page.route 0건이다. |
+| CARD-CANVA-07 | 1440x900 첫 화면 안에 편집 핵심이 있고 편집 담당 패널이 캔버스를 가리지 않음 | ✅ PASS | 추가 도구·글 도구·캔버스·하단 썸네일·페이지 도구가 y=0~900 안이고 담당 패널 교차 면적 0이다. 390 가로 폭 390=scrollWidth 390이다. |
+
+종료 증거: `logs/diff/card-editor-canva-20261010/report.md`, `measurements.json`, `mobile-ergonomics.jsonl`, 1440x900·390x844 화면, 화면·내보내기 PNG. 카드 집중 Vitest 318건, TypeScript, Webpack production build의 정적 페이지 188/188이 통과했다. 기본 Turbopack은 worktree `node_modules` 외부 심링크를 거절했다. 원격 CI·운영 배포·외부 SNS 실제 게시는 미검증이다.
+
 ## 2026-10-09 운영 편집실 R8 짧은 영상 타임라인·카톡 캔버스 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

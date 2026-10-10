@@ -31,7 +31,27 @@
   box-shadow: var(--elevation-floating);
 }
 
-.floatingToolbar { position: relative; z-index: 300; box-shadow: none; }
+.addToolbar { flex-wrap: nowrap; overflow-x: auto; }
+.contextToolbar {
+  position: relative;
+  z-index: 400;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-micro);
+  align-items: start;
+}
+.floatingToolbar {
+  position: relative;
+  z-index: 300;
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: var(--space-micro);
+  box-shadow: none;
+}
+.floatingToolbar > :global(button) { flex: 0 0 auto; white-space: nowrap; }
 .toolbarDivider { align-self: stretch; width: 1px; background: var(--border); }
 .fileInput { display: none; }
 .error { color: var(--danger); font-size: var(--font-body-size); }
@@ -39,20 +59,20 @@
 .toolbarField,
 .colorField {
   display: inline-flex;
-  min-width: 0;
+  min-width: max-content;
   min-height: var(--control-touch);
   align-items: center;
   gap: var(--space-micro);
   color: var(--text-muted);
   font-size: var(--font-body-sm-size);
+  white-space: nowrap;
 }
 
 .toolbarField select,
 .toolbarField input {
-  width: 100%;
-  min-width: 0;
+  width: auto;
+  min-width: calc(var(--control-touch) * 1.4);
   min-height: var(--control-touch);
-  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--shape-control);
   background: var(--surface-2);
@@ -61,15 +81,68 @@
   font-size: var(--font-body-size);
 }
 
+.fontField select { width: calc(var(--control-touch) * 5); }
+.sizeField input { width: calc(var(--control-touch) * 1.5); }
+.alignField select { width: calc(var(--control-touch) * 3.25); }
 .colorField input { width: var(--control-touch); height: var(--control-touch); border: 0; background: transparent; }
+.geometryDetails {
+  justify-self: end;
+  color: var(--text-muted);
+  font-size: var(--font-body-sm-size);
+}
+.geometryDetails summary {
+  min-height: var(--control-touch);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.geometryFields {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 350;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--stack-tight);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+  padding: var(--stack-tight);
+  box-shadow: var(--elevation-floating);
+}
+
+.mediaLibrary {
+  display: grid;
+  gap: var(--stack);
+  padding: var(--stack);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface-2);
+}
+
+.mediaLibrary header { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--stack); }
+.mediaLibrary header span,
+.mediaLibrary p { color: var(--text-muted); font-size: var(--font-body-size); }
+.mediaGrid { display: flex; gap: var(--stack); overflow-x: auto; padding-bottom: var(--stack-tight); }
+.mediaGrid button {
+  display: grid;
+  flex: 0 0 calc(var(--control-touch) * 2.5);
+  gap: var(--space-micro);
+  min-height: var(--control-touch);
+  border: 1px solid var(--border);
+  border-radius: var(--shape-control);
+  background: var(--surface);
+  padding: var(--space-micro);
+  color: var(--text);
+  cursor: pointer;
+}
+.mediaGrid img { width: 100%; aspect-ratio: 1; border-radius: var(--shape-control); object-fit: cover; }
+.mediaGrid span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-body-sm-size); }
 
 .workspace {
   display: grid;
-  /*
-    v71의 장 스트립 + 가운데 캔버스를 첫 화면에 보존한다. 회장 R3가 허용한
-    우측 접이식 선택 도구만 세 번째 열에 두고, 긴 고급 편집은 접힌 상태로 시작한다.
-  */
-  grid-template-columns: minmax(4rem, 7rem) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--pad-inset);
   align-items: start;
   min-width: 0;
@@ -82,17 +155,50 @@
 
 .slideStrip {
   display: grid;
+  width: min(100%, calc(var(--space-region) * 20));
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--stack-tight);
-  max-height: 70vh;
-  overflow-y: auto;
+  align-items: center;
 }
 
-.stageColumn { display: grid; min-width: 0; max-width: 100%; grid-column: 2; gap: var(--stack); justify-items: center; }
+.pageThumbnails,
+.pageActions { display: flex; gap: var(--stack-tight); align-items: center; }
+.pageThumbnails { width: 100%; overflow-x: auto; padding: var(--space-micro); }
+.pageActions { max-width: 100%; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; }
+.pageThumbnail {
+  position: relative;
+  flex: 0 0 calc(var(--control-touch) * 1.25);
+  min-width: var(--control-touch);
+  border: 2px solid transparent;
+  border-radius: var(--shape-control);
+  background: var(--surface);
+  padding: var(--space-micro);
+  cursor: pointer;
+}
+.pageThumbnail[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.pageThumbnail > :global([data-card-slide-scene]) { border-radius: calc(var(--shape-control) / 2); pointer-events: none; }
+.pageThumbnail > span {
+  position: absolute;
+  right: var(--space-micro);
+  bottom: var(--space-micro);
+  display: grid;
+  min-width: calc(var(--control-touch) / 2);
+  min-height: calc(var(--control-touch) / 2);
+  place-items: center;
+  border-radius: var(--shape-pill);
+  background: var(--text);
+  color: var(--surface);
+  font-size: var(--font-body-sm-size);
+}
+
+.stageColumn { display: grid; min-width: 0; max-width: 100%; grid-column: 1; gap: var(--stack); justify-items: center; }
 .stage {
   position: relative;
+  container-type: inline-size;
   min-width: 0;
-  /* 900px 높이에서도 상단 방 제목·추가 도구·선택 도구를 포함한 뒤 4:5 전체가 보인다. */
-  width: min(100%, calc(var(--space-region) * 12.5));
+  /* 456×570: 테두리·부분 픽셀 반올림 뒤에도 1440×900에서 실측 높이 560px 이상이다. */
+  width: min(100%, calc(var(--space-region) * 14 + var(--stack-tight)));
   margin-inline: auto;
   overflow: clip;
   border: 1px solid var(--border);
@@ -133,6 +239,9 @@
   padding: var(--stack-tight);
   color: var(--text);
   font: inherit;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .resizeHandle,
@@ -188,7 +297,7 @@
 
 .rightPanel {
   display: grid;
-  grid-column: 2;
+  grid-column: 1;
   min-width: 0;
   max-width: 100%;
   gap: var(--stack);
@@ -198,7 +307,7 @@
 .canvasInspector {
   position: relative;
   z-index: 300;
-  width: min(100%, calc(var(--space-region) * 12.5));
+  width: min(100%, calc(var(--space-region) * 24));
   box-shadow: var(--elevation-floating);
 }
 
@@ -208,26 +317,11 @@
   border: 1px solid var(--border);
   border-radius: var(--shape-control);
   background: var(--surface-2);
-  overflow: clip;
-}
-
-.inspectorDetails > summary {
-  min-height: var(--control-touch);
-  cursor: pointer;
-  padding: var(--stack);
-  color: var(--text);
-  font-size: var(--font-body-size);
-  font-weight: 700;
-}
-
-.inspectorDetails > summary:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: var(--space-micro);
+  overflow: visible;
 }
 
 .inspectorDetails .floatingToolbar {
   border: 0;
-  border-top: 1px solid var(--border);
   border-radius: 0;
 }
 
@@ -321,25 +415,37 @@
     max-width: 19.375rem;
   }
   .rightPanel { grid-column: auto; }
-  .slideStrip {
-    display: grid;
-    max-height: none;
-    grid-template-columns: repeat(auto-fit, minmax(var(--control-touch), 1fr));
-    overflow: visible;
-  }
   .stageColumn { order: -2; }
-  .slideStrip { order: -1; }
-  .floatingToolbar { position: static; overflow: clip; flex-wrap: wrap; }
-  .floatingToolbar > * { flex: 1 1 8rem; min-width: 0; }
+  .slideStrip { width: 100%; grid-template-columns: minmax(0, 1fr); order: initial; }
+  .contextToolbar { width: 100%; }
+  .floatingToolbar { position: static; overflow-x: auto; }
   .elementList { max-height: none; }
   .toolbarField,
   .elementList h3,
   .elementList p { font-size: var(--font-body-size); }
+  .editor button,
+  .editor input,
+  .editor select,
+  .editor textarea,
+  .editor summary,
+  .editor label,
+  .pageThumbnail > span,
+  .mediaGrid span { font-size: var(--font-body-size); }
 }
 
 @media (max-width: 26rem) {
-  .floatingToolbar > * {
-    flex-basis: 100%;
-    width: 100%;
+  .geometryFields { left: 0; right: auto; justify-content: flex-start; }
+}
+
+@media (min-width: 64rem) {
+  .floatingToolbar,
+  .floatingToolbar > :global(button),
+  .toolbarField,
+  .toolbarField select,
+  .toolbarField input,
+  .colorField,
+  .colorField input {
+    min-height: calc(var(--control-touch) - var(--stack-tight));
   }
+  .colorField input { height: calc(var(--control-touch) - var(--stack-tight)); }
 }

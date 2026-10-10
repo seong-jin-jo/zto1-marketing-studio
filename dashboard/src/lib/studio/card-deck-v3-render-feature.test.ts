@@ -5,8 +5,11 @@ import type { CardDeck } from "./card-deck-contract";
 import chatDeckFixture from "../../../tests/studio/fixtures/deck-d100.v2.json";
 
 describe("S2-B CardDeckV3 공용 렌더 feature flag", () => {
-  it("flag off가 기본이며 S1 발행 차단을 유지한다", () => {
-    expect(cardDeckV3RenderingEnabled({})).toBe(false);
+  it("R2-01 정상: 기본 설정에서도 직접 편집 PNG 내보내기를 연다", () => {
+    expect(cardDeckV3RenderingEnabled({})).toBe(true);
+  });
+
+  it("R2-01 거절: 긴급 중지 값이 명시되면 내보내기를 닫는다", () => {
     expect(cardDeckV3RenderingEnabled({ CARD_DECK_V3_RENDER_ENABLED: "0" })).toBe(false);
   });
 

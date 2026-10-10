@@ -9,7 +9,10 @@ import { migrateCardDeckV2ToV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import chatDeckFixture from "../../../../tests/studio/fixtures/deck-d100.v2.json";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function deck(): CardDeckV3 {
   return {
@@ -136,9 +139,9 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     render(<CardCanvasEditor deck={current} onDeckChange={() => {}} />);
 
     const toolbar = screen.getByRole("toolbar", { name: "카톡 장 편집 도구" });
-    const stageColumn = toolbar.parentElement;
+    const stageColumn = toolbar.closest("[data-card-stage-column]");
     expect(stageColumn).toHaveAttribute("data-card-stage-column");
-    expect(within(stageColumn!).getByLabelText("카드 편집 스테이지")).toBeInTheDocument();
+    expect(within(stageColumn as HTMLElement).getByLabelText("카드 편집 스테이지")).toBeInTheDocument();
     expect(document.querySelector("[data-card-right-panel]")).toBeInTheDocument();
   });
 
@@ -253,9 +256,56 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     rerender(<CardCanvasEditor deck={current} onDeckChange={(next) => { current = next; }} />);
     const text = current.slides[0].elements[0];
     expect(text.type === "text" && text.style.font_size).toBe(72);
-    fireEvent.click(screen.getByRole("button", { name: "가운데 정렬" }));
+    fireEvent.change(screen.getByLabelText("글꼴"), { target: { value: "Georgia" } });
+    fireEvent.change(screen.getByLabelText("글 배경색"), { target: { value: "#fff2a8" } });
+    fireEvent.change(screen.getByLabelText("글 정렬"), { target: { value: "center" } });
     const centered = current.slides[0].elements[0];
     expect(centered.type === "text" && centered.style.align).toBe("center");
+    expect(centered.type === "text" && centered.style.font_family).toBe("Georgia");
+    expect(centered.type === "text" && centered.style.background_color).toBe("#fff2a8");
+  });
+
+  it("CARD-CANVA-05 하단 썸네일에서 일반 카드 장을 추가·복제·이동·삭제한다", () => {
+    let current = deck();
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    const strip = screen.getByLabelText("카드 장 목록");
+    expect(strip).toHaveAttribute("data-card-page-strip");
+    fireEvent.click(screen.getByRole("button", { name: "새 장 추가" }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(current.slides).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "이 장 복제" }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(current.slides).toHaveLength(4);
+    fireEvent.click(screen.getByRole("button", { name: "장 앞으로" }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "이 장 삭제" }));
+    expect(current.slides).toHaveLength(3);
+  });
+
+  it("R2-04 정상: 자주 쓰는 글 도구는 맥락 툴바에 있고 크기·회전은 접힌 고급 항목에 둔다", () => {
+    render(<CardCanvasEditor deck={deck()} onDeckChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "제목" }));
+    const toolbar = screen.getByRole("toolbar", { name: "제목 도구" });
+    expect(within(toolbar).getByLabelText("글꼴")).toBeInTheDocument();
+    expect(within(toolbar).getByLabelText("글 정렬")).toBeInTheDocument();
+    const details = document.querySelector("[data-card-geometry-details]");
+    expect(details).not.toHaveAttribute("open");
+    expect(screen.getByLabelText("요소 너비")).toBeInTheDocument();
+  });
+
+  it("CARD-CANVA-03 실제 미디어 목록에서 이미지를 고르면 카드 요소로 추가한다", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ filename: "chairman-photo.jpg", url: "/qa/chairman-photo.jpg", size: 1200, createdAt: "2026-10-10T00:00:00.000Z" }],
+    }));
+    let current = deck();
+    const onChange = (next: CardDeckV3) => { current = next; };
+    render(<CardCanvasEditor deck={current} tenantId="tenant-card" onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "생성 미디어" }));
+    const media = await screen.findByRole("button", { name: "생성 미디어 chairman-photo.jpg 추가" });
+    fireEvent.click(media);
+    expect(current.slides[0].elements.at(-1)).toMatchObject({ type: "image", asset_id: "chairman-photo.jpg" });
   });
 
   it("S1-AC3 정상 경로: 5종 추가 버튼과 요소 목록의 숨김, 잠금, 층 이동, 복제, 삭제가 동작한다", () => {
@@ -369,13 +419,13 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     expect(current.slides[0].elements[0]).toMatchObject({ height: 4, rotation: 17 });
   });
 
-  it("S2-C-DIRECT-EDIT-01 실제 포인터 두 번째 클릭에서도 이동보다 직접 편집을 우선한다", () => {
+  it("S2-C-DIRECT-EDIT-01 브라우저가 이중 클릭으로 판정한 두 번째 누름에서 직접 편집을 연다", () => {
     const current = deck();
     render(<CardCanvasEditor deck={current} onDeckChange={() => {}} />);
     const selection = screen.getByLabelText("제목 요소");
-    fireEvent.pointerDown(selection, { pointerId: 7 });
+    fireEvent.pointerDown(selection, { pointerId: 7, detail: 1 });
     fireEvent.pointerUp(window, { pointerId: 7 });
-    fireEvent.pointerDown(selection, { pointerId: 8 });
+    fireEvent.pointerDown(selection, { pointerId: 8, detail: 2 });
     expect(screen.getByLabelText("글 내용 직접 편집")).toBeInTheDocument();
   });
 
@@ -415,9 +465,8 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     const selection = screen.getByLabelText("제목 요소");
     fireEvent.focus(selection);
     const toolbar = screen.getByRole("toolbar", { name: "제목 도구" });
-    const inspector = toolbar.closest("details");
+    const inspector = toolbar.closest("[data-card-element-inspector]");
     expect(inspector).toHaveAttribute("data-card-element-inspector");
-    expect(inspector).toHaveAttribute("open");
     expect(inspector?.parentElement).toHaveAttribute("data-card-stage-column");
     fireEvent.click(screen.getByRole("button", { name: /^삭제$/ }));
     view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);

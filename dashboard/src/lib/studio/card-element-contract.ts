@@ -13,9 +13,12 @@ export const CARD_DECK_V3_MAX_BYTES = 256 * 1024;
 export const CARD_LOGICAL_WIDTH = 1080;
 export const CARD_LOGICAL_HEIGHT = { "4:5": 1350, "1:1": 1080 } as const;
 export const CARD_ELEMENT_TYPES = ["text", "image", "shape", "sticker", "logo"] as const;
+export const CARD_FONT_FAMILIES = ["Pretendard Variable", "Arial", "Georgia"] as const;
+export const CARD_TEXT_BACKGROUND_DEFAULT_COLOR = "#FFFFFF" as const;
 
 export type CardRatioV3 = keyof typeof CARD_LOGICAL_HEIGHT;
 export type CardElementType = (typeof CARD_ELEMENT_TYPES)[number];
+export type CardFontFamily = (typeof CARD_FONT_FAMILIES)[number];
 export type CssHexColor = `#${string}`;
 
 export interface CardElementBase {
@@ -37,12 +40,13 @@ export interface TextElement extends CardElementBase {
   type: "text";
   text: string;
   style: {
-    font_family: "Pretendard Variable";
+    font_family: CardFontFamily;
     font_size: number;
     font_weight: number;
     line_height: number;
     letter_spacing: number;
     color: CssHexColor;
+    background_color?: CssHexColor | "transparent";
     align: "left" | "center" | "right";
     vertical_align: "top" | "middle" | "bottom";
   };
@@ -161,12 +165,13 @@ const textElementSchema = z.strictObject({
   type: z.literal("text"),
   text: z.string().max(2_000),
   style: z.strictObject({
-    font_family: z.literal("Pretendard Variable"),
+    font_family: z.enum(CARD_FONT_FAMILIES),
     font_size: preciseNumber.min(8).max(240),
     font_weight: preciseNumber.min(100).max(900),
     line_height: preciseNumber.min(0.8).max(2),
     letter_spacing: preciseNumber.min(-20).max(100),
     color: hexColor,
+    background_color: z.union([hexColor, z.literal("transparent")]).optional(),
     align: z.enum(["left", "center", "right"]),
     vertical_align: z.enum(["top", "middle", "bottom"]),
   }),

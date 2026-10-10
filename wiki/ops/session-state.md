@@ -1,3 +1,44 @@
+## 2026-10-10 23:31 KST · 카드 편집기 R2 반려 수정 로컬 완료
+
+- handoff basis: 회장이 지정한 같은 브랜치의 R2 일곱 결함과 v71을 정본으로 수정했다. 기존 카드 조작·카톡·발행실 연결은 보존했고 DB 스키마·외부 게시·다른 worktree는 건드리지 않았다.
+- 변경: 기본 제품 UI 내보내기와 장별 다운로드, 명시적 Pretendard 적재, 글 상자 안쪽 여백, 얇은 선택 맥락 도구막대와 접힌 크기·회전, 569.5px 캔버스, 실내용 페이지 복제·썸네일을 구현했다. `react-konva` 대신 화면·PNG가 공유하는 기존 DOM 장면을 유지했다.
+- 관찰됨: 실제 Next dev 3481·PostgreSQL·로컬 실사진·실제 내보내기 워커에서 page.route 0으로 제품 버튼을 눌러 4장 렌더 후 PNG를 다운로드했다. 전체 차이 0.0034%, 글자 영역 0%, 선택값 잘림 0, 패널 겹침 0, 콘솔·실패 요청 0이다. 1440 캡처와 PNG를 원본 해상도로 직접 열어 글꼴·첫 글자·2번 썸네일을 확인했다.
+- 테스트됨: 관련 Vitest 33파일·396건, TypeScript, Webpack production build, 모바일 360~1000 아홉 폭 PASS. 기본 Turbopack은 worktree 외부 `node_modules` 심볼릭 링크 제약으로 실패했다. design-lint는 기존 경고 2종이다.
+- 증거: `logs/diff/card-editor-canva-20261010/report.md`, `measurements.json`, `mobile-ergonomics.jsonl`, 1440x900·390x844 화면, 화면·제품 다운로드 PNG. 다음 소유자는 컨트롤러이며 push·원격 CI green·운영 재배포는 미검증이다.
+
+## 2026-10-10 21:58 KST · 카드 편집기 R2 반려 수정 착수
+
+- handoff basis: 회장이 지정한 같은 브랜치, R2 일곱 결함, 컨트롤러가 직접 연 `card-editor-1440x900.png`·`card-editor-export.png` 판정을 정본으로 삼는다. tmux `openclaw-auto-3:0.3`은 직전 워커 로그이며 별도 변경 인계는 없다.
+- 원인 가설: 검증 스크립트가 제품 UI 내보내기를 우회했고, 전체 픽셀 차이만 보아 글꼴 영역 불일치를 희석했다. 첫 화면 안 배치 목표를 캔버스 크기보다 우선해 폭을 312px로 축소했고, 속성 입력을 작은 자동 격자에 밀어 넣었다. 빈 장의 썸네일과 원본 사진 확대율도 단언하지 않았다.
+- 현재 실행: R2-01~07을 QA tracker에 NG로 등록했다. 실제 UI 다운로드, 글꼴 적재·글자 크롭, 상자 클리핑, 얇은 맥락 도구막대, 캔버스 높이 560px 이상, 실제 썸네일, 이미지 확대율을 하나의 실경로 E2E로 닫는다.
+- 이웃 영향 후보: 기존 카드 이동·크기·회전·직접 글 수정·undo/redo, 담당 패널 비겹침, 390 사용성, 1080x1350 PNG, 카톡 카드와 발행실 연결을 함께 대조한다. 외부 SNS 게시·배포·DB 스키마는 건드리지 않는다.
+
+## 2026-10-10 21:46 KST · 카드 편집기 Canva 기본 조작 로컬 완료
+
+- handoff basis: 회장이 지정한 브랜치 `fix/card-editor-canva-20261010`, 기준 커밋 `5f633b2e`, v71, 결함 보고, 과제 원문을 정본으로 완료했다.
+- 변경: 기존 DOM/PNG 공용 장면을 유지하며 Shift 비율 크기 조절, 글꼴·글 배경, 생성 미디어, 캔버스 가장자리 스냅, plain 카드 하단 썸네일과 페이지 추가·복제·삭제·순서변경을 구현했다. 기존 선택·이동·8핸들·회전·직접 글 수정·undo/redo·레이어 기능은 실제 조작 기준으로 연결·보강했다.
+- 관찰됨: 실제 Next dev 3481·PostgreSQL·`chairman-photo.jpg`, page.route 0에서 8핸들, 이동, Shift resize, 회전 60도, 직접 글 수정, 두 이미지 경로, 도형, Cmd+D, Delete, 레이어 양방향, undo/redo, 0%·50% 스냅, 페이지 order 이동을 DB 값으로 확인했다. 1440 첫 화면 안에 핵심 도구가 있고 담당 패널 겹침 0, 390 가로 넘침 0, 브라우저 오류·실패 요청 0이다. 화면/PNG 차이 1.5464%다.
+- 테스트됨: 카드 집중 Vitest 24파일·318건, `tsc -p tsconfig.ci.json --noEmit`, Webpack production build 정적 페이지 188/188, 모바일 360·390·412·600·700·780·820·900·1000 전부 PASS다. 기본 Turbopack은 worktree 밖 `node_modules` 심링크를 거절했고, design-lint 기존 경고 2종과 artifact lint 기존 핀 위생 경고 28건은 남았다.
+- 증거: `logs/diff/card-editor-canva-20261010/report.md`, `measurements.json`, `mobile-ergonomics.jsonl`, 1440x900·390x844 화면, 화면·내보내기 PNG.
+- 커밋: 1차 제품 `0383f784`, 최종 실구동 스크립트·증거·문서 `6b32c0f3`. push는 하지 않았다.
+- 미검증: 원격 PR #135 head 반영, 원격 CI, 운영 배포, 외부 SNS 실제 게시. 다음 소유자는 컨트롤러이며 로컬 커밋을 검수한 뒤 push·CI green을 확인한다.
+
+## 2026-10-10 21:10 KST · 카드 편집기 기본 조작 1차 구현
+
+- 구현: DOM 기반 공용 `CardSlideScene`을 유지해 선택 8핸들, Shift 비율 고정 크기 조절, 회전, 글꼴·크기·굵기·색·정렬·배경 도구, 생성 미디어·업로드, 가장자리 스냅, 일반 카드 페이지 추가·복제·삭제·순서 변경, 하단 썸네일을 연결했다.
+- 보존: 같은 덱 계약과 같은 장면 컴포넌트를 화면과 PNG 렌더가 공유한다. 카톡 전용 장 규칙과 기존 요소 목록·템플릿 기능은 삭제하지 않았다.
+- 테스트됨: `vitest` 대상 64건 PASS, `npx tsc -p tsconfig.ci.json --noEmit` PASS.
+- 미검증: 실제 로컬 PostgreSQL과 포트 3481에서 목업 없는 사용자 조작, 1440×900·390×844 화면, PNG 픽셀 차이, 모바일 9폭 측정은 아직 수행 전이다.
+- 다음 실행: 실제 DB tenant/draft/media를 시드하는 `dashboard/scripts/verify-card-editor-canva-20261010.mjs`를 작성해 위 미검증 항목을 직접 관찰한다.
+
+## 2026-10-10 20:59 KST · 카드 편집기 Canva 기본 조작 착수
+
+- handoff basis: 회장이 지정한 브랜치 `fix/card-editor-canva-20261010`, 기준 커밋 `5f633b2e`, 과제 원문을 정본으로 삼는다. tmux `openclaw-auto-3:0.3`은 별도 작업자 인계가 아니라 이 워커의 진행 표시 pane임을 확인했다.
+- 현재 판정: 기존 DOM 기반 `CardCanvasEditor`에는 선택·이동·8개 조절점·회전·직접 글 편집·undo/redo·다른 요소/중앙 스냅·업로드·요소 복제/삭제/레이어·공용 화면/PNG 렌더러가 이미 있다. 빠진 것은 Shift 비율 고정, 캔버스 가장자리 스냅, 실제 글꼴 선택·글 배경색, 생성 미디어 선택, plain 카드 페이지 조작과 하단 썸네일, 실제 DB·실사진·내보내기 무목 E2E다.
+- 구현 판단: `react-konva`는 도입하지 않는다. 현재 DOM 편집기와 발행 PNG가 같은 `CardSlideScene`·`cardSlideRenderModel`을 공유해 이미 WYSIWYG 기반이 있고, Konva로 갈아타면 직접 DOM 글 편집과 기존 저장·카톡 투영·내보내기 경로를 이중화한다. 기존 명령·렌더러를 확장한다.
+- 이웃 영향 후보: v2/v3 카톡 투영, 저장 JSON strict schema, 기존 S1/S2/S5/S7 테스트, 발행 PNG 렌더러, 390 사용성, 편집 담당 패널 열, 외부 SNS 발행 차단을 함께 대조한다. DB 스키마·배포·외부 게시·다른 worktree는 건드리지 않는다.
+- 다음 실행: 실패 계약을 먼저 추가하고 카드 명령·도구막대·페이지 줄·미디어 선택을 구현한다. 그 뒤 실제 Next dev 3481과 `.env.local` PostgreSQL에서 `page.route` 없는 Playwright E2E, PNG 픽셀 비교, 9폭 사용성, Vitest·TypeScript·build를 실행한다.
+
 ## 2026-10-09 13:26 KST · 운영 편집실 R8 개발 품질헌법 대조 완료
 
 - handoff basis: 사용자가 지정한 커밋 `584b5067`까지의 변경과 `/Users/sj/.claude/standards/standard-dev.md`를 정본으로 감사했다.

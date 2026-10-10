@@ -1,0 +1,121 @@
+{
+  "result": "PASS",
+  "runtime": {
+    "next": "http://localhost:3481",
+    "database": "PostgreSQL",
+    "routesMocked": 0,
+    "actualTenant": "78101010-1010-4010-8010-101010101010"
+  },
+  "selection": {
+    "handles": 8,
+    "move": true,
+    "shiftRatioResize": true,
+    "rotation": 30
+  },
+  "text": {
+    "inline": true,
+    "contained": true,
+    "font": "Pretendard Variable",
+    "size": 70,
+    "bold": true,
+    "color": "#17324d",
+    "align": "center",
+    "background": "#fff2a8"
+  },
+  "assets": {
+    "generatedMedia": true,
+    "upload": true,
+    "shape": true,
+    "realPhotoStdev": 79.9012670777309,
+    "backgroundPhoto": {
+      "naturalWidth": 1080,
+      "naturalHeight": 1350,
+      "renderedWidth": 454,
+      "renderedHeight": 567.5,
+      "objectFit": "cover"
+    },
+    "source": {
+      "width": 1080,
+      "height": 1350,
+      "coverScale": 1
+    }
+  },
+  "commands": {
+    "duplicate": true,
+    "delete": true,
+    "layerBackward": true,
+    "layerForward": true,
+    "undo": true,
+    "redo": true,
+    "edgeSnapGuide": "--snap-position: 0%;",
+    "centerSnapGuide": "--snap-position: 50%;"
+  },
+  "pages": {
+    "before": 3,
+    "after": 4,
+    "reorder": true,
+    "bottomStripWithin900": true,
+    "thumbnailContents": [
+      {
+        "text": "캔버스 위에서 바로 고친 문장",
+        "images": 3
+      },
+      {
+        "text": "캔버스 위에서 바로 고친 문장",
+        "images": 3
+      },
+      {
+        "text": "실제 사진과 도형을 함께 배치",
+        "images": 1
+      },
+      {
+        "text": "저장하고 다시 확인하세요",
+        "images": 1
+      }
+    ]
+  },
+  "layout": {
+    "stageHeight": 569.5,
+    "stageAssistantOverlap": false,
+    "contextToolbarHeight": 52,
+    "clippedToolbarValues": [],
+    "mobileOverflow": {
+      "viewport": 390,
+      "scrollWidth": 390
+    }
+  },
+  "exportUi": {
+    "defaultButtonEnabled": true,
+    "blockedCopyAbsent": true,
+    "enqueueStatus": 202,
+    "processedExportItems": 4,
+    "downloadedThroughUi": true
+  },
+  "png": {
+    "editorPng": "/Users/sj/wt/zto1-card-editor-canva-20261010/logs/diff/card-editor-canva-20261010/card-editor-screen.png",
+    "exportPng": "/Users/sj/wt/zto1-card-editor-canva-20261010/logs/diff/card-editor-canva-20261010/card-editor-export.png",
+    "width": 1080,
+    "height": 1350,
+    "pixelDiff": {
+      "width": 1080,
+      "height": 1350,
+      "changedPixels": 50,
+      "changedPixelRatio": 0.00003429355281207133
+    },
+    "textPixelDiff": {
+      "left": 75,
+      "top": 489,
+      "width": 929,
+      "height": 553,
+      "changedPixels": 0,
+      "changedPixelRatio": 0
+    }
+  },
+  "screenshots": [
+    "card-editor-1440x900.png",
+    "card-editor-390x844.png"
+  ],
+  "consoleErrors": 0,
+  "failedRequests": 0,
+  "persistedRevision": 8
+}
