@@ -1,3 +1,11 @@
+## 2026-10-11 02:01 KST · 로컬 실제 경로 R4 무문자 생성 원인 규명 착수
+
+- handoff basis: 사용자가 지정한 R4 원문과 직전 R3 커밋 `3da86ac5`를 정본으로 이어간다. tmux `openclaw-auto-3:0.1`은 직전 R3 종료 로그, `openclaw-auto-3:0.3`은 더 오래된 동일 worktree 실행 로그로 확인했고, 현재 R4 지시가 우선한다.
+- scope: `/api/higgsfield/image`에서 최종 모델·프롬프트·참조 이미지가 제공자 CLI까지 전달되는 import chain을 추적한다. CLI 도움말과 공식 문서로 negative prompt·모델 선택지를 검증하고 원인에 맞게 최소 수정한다.
+- evidence contract: 앱 실제 API 경로로 최대 3장만 생성한다. 세 파일 모두 원본 육안과 OCR에서 글자 없음이어야 PASS다. TypeScript·관련 Vitest·dev 스모크를 다시 통과시키고 보고서·구현현황을 갱신한다.
+- exclusions: 외부 SNS 게시, push, 다른 worktree, 사용자 소유 `.codex/logs/harness.jsonl`과 `wiki/거버넌스/요청.md`는 건드리지 않는다.
+- next action: R4 NG를 커밋한 뒤 생성 API route→provider runner→Higgsfield CLI payload와 R3 실제 요청 로그를 대조한다.
+
 ## 2026-10-11 01:48 KST · 로컬 실제 경로 R3 4/5 통과, 무문자 생성 실패
 
 - handoff basis: 사용자 R3 원문과 이 worktree의 실제 로컬 경로를 정본으로 삼았다. 제품 커밋 `3708dfc8`, `ad06a00e`, 재검증 계약 `f4039164`까지 반영했다.
