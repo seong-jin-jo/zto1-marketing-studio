@@ -1,5 +1,15 @@
 # OSMU build log
 
+## 2026-10-10 23:31 KST · 카드 편집기 R2 제품 내보내기·WYSIWYG 교정
+
+STAMP: 2026-10-10 23:31 KST | model: gpt-5/Codex | agent: code-builder | skill: qa | 근거: `/tmp/zto1-card-r2-e2e.log`, `/tmp/zto1-card-r2-vitest.log`, `/tmp/zto1-card-r2-tsc.log`, `/tmp/zto1-card-r2-build-webpack.log` | 고민: 전체 픽셀 수치로 글꼴 차이를 희석하지 않고 글자 영역을 별도로 비교했다.
+
+**변경:** 기능 플래그 미설정 기본 내보내기 활성, 장별 제품 UI PNG 다운로드, Remotion 글꼴 명시 적재, 글 상자 좌우 여백·줄바꿈, 선택 맥락 도구막대, 569.5px 캔버스, 실내용 페이지 복제·썸네일을 구현했다. 검증은 제품 UI 접수·워커·다운로드 파일을 사용하고 글자 크롭·선택값 글자 폭·사진 확대율을 추가 단언한다.
+
+**검증:** 실제 Next dev 3481은 2.2초에 Ready, 내보내기 POST 202, 실제 워커 4장 성공, 제품 UI 다운로드 PNG 1080x1350이다. 화면 전체 픽셀 차이 0.0034%, 글자 영역 0%, 캔버스 높이 569.5px, 툴바 52px, 잘린 값·담당 패널 겹침·콘솔 오류·실패 요청 각 0이다. 관련 Vitest 33파일·396건, TypeScript, Webpack production build, 모바일 9폭이 통과했다. 기본 `npm run build` Turbopack은 worktree 외부 `node_modules` 심볼릭 링크 제약으로 실패했고 Webpack 빌드는 통과했다. design-lint는 종료 코드 0과 기존 인라인 style·hex 경고 2종이다.
+
+SOURCES/MODEL: gpt-5/Codex | `logs/diff/card-editor-canva-20261010/report.md` | `dashboard/scripts/verify-card-editor-canva-20261010.mjs` | https://www.canva.com/help/download-or-purchase/ | https://developer.mozilla.org/en-US/docs/Web/API/Document/fonts
+
 ## 2026-10-09 13:20 KST · 운영 편집실 R8 타임라인 시각 회귀 복구
 
 STAMP: 2026-10-09 13:20 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `/tmp/zto1-r7-timeline-focused-r6.log`, `/tmp/zto1-r7-timeline-build-r6.log`, `/tmp/zto1-r7-timeline-v70-r6/observations.json`, `logs/diff/editroom-chairman-fix-r7/after/result.json` | 고민: CI 수치만 맞추지 않고 1440·1512·390과 v71 원본을 함께 열어 레인·블록·카톡 말풍선을 육안 확인했다.

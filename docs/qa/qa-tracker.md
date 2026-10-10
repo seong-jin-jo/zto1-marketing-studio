@@ -1,3 +1,17 @@
+## 2026-10-10 카드 편집기 Canva 기본 조작 R2 ❌ NG → ✅ PASS
+
+| 요청번호 | 반려 결함 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| CARD-CANVA-R2-01 | 기본 상태에서 제품 UI 내보내기 버튼이 활성이고 실제 PNG를 내려받아야 함 | ✅ PASS | 기능 플래그 미설정 기본 상태에서 버튼 활성, 차단 문구 0건이다. 제품 UI POST 202 → 실제 워커 4장 처리 → `1장 PNG 다운로드`로 받은 파일을 검증했다. |
+| CARD-CANVA-R2-02 | 화면과 PNG 글꼴이 같고 글자 영역 크롭도 일치해야 함 | ✅ PASS | 화면·Remotion 모두 Pretendard Variable의 `document.fonts.ready`를 기다린다. 글자 영역 전용 픽셀 차이 0.0000%, 전체 0.0034%다. |
+| CARD-CANVA-R2-03 | 글자가 선택 상자 안에서 줄바꿈되고 좌우로 잘리지 않아야 함 | ✅ PASS | 줄바꿈·scroll 경계·좌우 4px 이상 안쪽 여백을 단언했다. 1440 캡처에서 첫 글자가 선택 테두리 안에 있음을 직접 확인했다. |
+| CARD-CANVA-R2-04 | 선택 속성은 얇은 맥락 도구막대이고 값 잘림이 0이어야 함 | ✅ PASS | 맥락 도구막대 높이 52px다. 선택값 실제 글자 폭까지 측정해 잘림 0건이며 너비·높이·각도는 기본 접힘이다. |
+| CARD-CANVA-R2-05 | 1440x900에서 캔버스 높이가 560px 이상이고 담당 패널과 겹치지 않아야 함 | ✅ PASS | 실측 캔버스 높이 569.5px, 담당 패널 교차 0, 페이지 줄·작업 버튼도 y=0~900 안이다. |
+| CARD-CANVA-R2-06 | 모든 페이지 썸네일이 실제 장 내용을 보여야 함 | ✅ PASS | 4장 모두 텍스트 또는 이미지가 있고 2번 썸네일은 복제한 실제 장 내용과 이미지 3개를 렌더한다. 육안으로도 확인했다. |
+| CARD-CANVA-R2-07 | 배경 사진은 원본 이상 확대하지 않고 cover 크롭하며 PNG는 1080x1350이어야 함 | ✅ PASS | `chairman-photo.jpg` 1080x1350을 `object-fit:cover`, 확대 배율 1.00으로 사용했다. 제품 UI PNG도 1080x1350이다. |
+
+종료 증거: `logs/diff/card-editor-canva-20261010/report.md`, `measurements.json`, 제품 UI 다운로드 PNG, 1440x900·390x844 캡처. 실제 Next dev 3481·PostgreSQL·로컬 JPG·내보내기 워커, page.route 0에서 통과했다. 관련 Vitest 33파일·396건, TypeScript, Webpack production build, 모바일 9폭이 PASS다. 원격 CI·운영 배포·외부 SNS 실제 게시는 미검증이다.
+
 ## 2026-10-10 카드 편집기 Canva 기본 조작 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
