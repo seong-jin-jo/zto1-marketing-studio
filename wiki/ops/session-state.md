@@ -4,7 +4,8 @@
 - 실제 증거: Next.js 3483의 앱 API로 정확히 3장만 생성했다. `img_1791652044820.png`, `img_1791652046886.png`, `img_1791652048605.png`는 모두 752×1344이며 육안 글자 0건, OCR 글자 0건이다. 결함 원본은 같은 OCR에서 가짜 문자열을 검출했다.
 - 검증: Higgsfield 회귀 12파일·91건과 이미지 프롬프트 포함 집중 4파일·44건, TypeScript, Webpack production build PASS. 보고·QA tracker·build log·구현현황과 `r4-image-generation-verification.json`을 갱신했다.
 - 보존: 생성 PNG와 `.env.local`은 커밋하지 않는다. 사용자 소유 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`도 stage하지 않는다. 외부 게시·push·운영 배포는 미실행이다.
-- next action: 이 R4 증거 커밋과 최종 diff를 확인한 뒤 컨트롤러가 인수한다. push 뒤 원격 CI green과 운영 반영 여부가 다음 외부 관문이다.
+- 커밋: 실패 등록 `fe9be2a3`, 모델 교체·계약 `f972e0eb`, 실생성·OCR·보고 `d031befa`로 작업 단위를 분리했다.
+- next action: 컨트롤러가 세 커밋과 사용자 소유 미커밋 파일 2개를 구분해 인수한다. push 뒤 원격 CI green과 운영 반영 여부가 다음 외부 관문이다.
 
 ## 2026-10-11 02:08 KST · R4 원인 확정과 모델 계약 교정
 
