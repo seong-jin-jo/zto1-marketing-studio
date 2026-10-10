@@ -55,7 +55,7 @@
       "check": "edited_playback_jump",
       "fromSourceEndSec": 9,
       "toSourceStartSec": 0,
-      "observedSourceSec": 0.033256
+      "observedSourceSec": 0.033432
     },
     {
       "check": "mobile_ergonomics",
@@ -179,37 +179,41 @@
       "check": "real_export",
       "source": "dashboard/public/qa/video-editor-real-composite-12s.mp4",
       "sourceDuration": 12.12,
+      "sourceWidth": 540,
+      "sourceHeight": 960,
+      "outputWidth": 1080,
+      "outputHeight": 1920,
       "expectedDuration": 8.719999999999999,
       "actualDuration": 8.72,
       "durationDelta": 1.7763568394002505e-15,
       "frameDiffs": {
-        "firstToExpected": 0.6344401041666666,
-        "firstToDeleted": 77.3046875,
-        "secondToExpected": 0.8255208333333334,
-        "secondToDeleted": 68.42708333333333
+        "firstToExpected": 0.6653645833333334,
+        "firstToDeleted": 77.3271484375,
+        "secondToExpected": 1.0592447916666667,
+        "secondToDeleted": 68.349609375
       },
       "subtitlePixels": {
-        "yellowPixels": 274,
-        "rowClusters": 12,
-        "firstRow": 130,
-        "lastRow": 297
+        "yellowPixels": 64,
+        "rowClusters": 2,
+        "firstRow": 145,
+        "lastRow": 224
       },
       "activeSubtitleLayers": 1,
       "savedClips": [
         {
-          "id": "clip-c5da3q9g",
+          "id": "clip-6e91tude",
           "order": 0,
           "sourceEndSec": 9,
           "sourceStartSec": 6.4
         },
         {
-          "id": "clip-o03bxdle",
+          "id": "clip-q6u5dkp5",
           "order": 1,
           "sourceEndSec": 3,
           "sourceStartSec": 0
         },
         {
-          "id": "clip-yxhsud7w",
+          "id": "clip-c5w5jewu",
           "order": 2,
           "sourceEndSec": 12.12,
           "sourceStartSec": 9

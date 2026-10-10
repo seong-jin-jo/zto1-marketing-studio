@@ -47,7 +47,7 @@ real("S6 실제 MP4 렌더", () => {
     edit = setVoice(edit, { voiceId: "voice-test", voiceName: "테스트 목소리" });
     const result = await renderVideoExport(tenantId, { sourceFilename: "source.mp4", edit, lines: ["실제 자막"], subtitleSize: "보통" }, outputPath);
     const probed = await probeRenderedVideo(outputPath);
-    expect(result).toMatchObject({ width: 360, height: 640, hasAudio: true });
+    expect(result).toMatchObject({ width: 1080, height: 1920, hasAudio: true });
     expect(probed.hasAudio).toBe(true);
     expect(probed.durationSec).toBeGreaterThan(1.8);
     expect(fs.statSync(outputPath).size).toBeGreaterThan(10_000);

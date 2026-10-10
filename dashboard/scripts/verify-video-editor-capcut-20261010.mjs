@@ -33,9 +33,16 @@ if (!operatorToken || !sourceDatabaseUrl || !workspaceId || !studioToken) {
 }
 if (!fs.existsSync(sourceFixture)) throw new Error(`실제 영상 원본이 없습니다: ${sourceFixture}`);
 if (!fs.existsSync(chromePath)) throw new Error("Chrome for Testing 실행 파일이 없습니다.");
-const sourceDuration = Number(probe(sourceFixture).format?.duration);
+const sourceProbe = probe(sourceFixture);
+const sourceVideoStream = sourceProbe.streams?.find((stream) => stream.codec_type === "video");
+const sourceWidth = Number(sourceVideoStream?.width);
+const sourceHeight = Number(sourceVideoStream?.height);
+const sourceDuration = Number(sourceProbe.format?.duration);
 if (!Number.isFinite(sourceDuration) || sourceDuration < 12) {
   throw new Error(`실제 영상 원본은 12초 이상이어야 합니다: ${sourceDuration}`);
+}
+if (!Number.isFinite(sourceWidth) || !Number.isFinite(sourceHeight)) {
+  throw new Error(`실제 영상 원본 해상도를 읽지 못했습니다: ${JSON.stringify(sourceVideoStream)}`);
 }
 
 fs.mkdirSync(captureDir, { recursive: true });
@@ -155,10 +162,16 @@ function probe(file) {
   ], { encoding: "utf8" }));
 }
 
-function frame(file, sec, width = 32, height = 32, contentOnly = false) {
+function frame(file, sec, width = 32, height = 32, contentOnly = false, centeredSource = null) {
+  const filters = [];
+  if (centeredSource) {
+    filters.push(`crop=${centeredSource.width}:${centeredSource.height}:(iw-${centeredSource.width})/2:(ih-${centeredSource.height})/2`);
+  }
+  if (contentOnly) filters.push("crop=iw:ih*0.45:0:0");
+  filters.push(`scale=${width}:${height}:flags=area`, "format=rgb24");
   return execFileSync("ffmpeg", [
     "-v", "error", "-ss", String(sec), "-i", file, "-frames:v", "1",
-    "-vf", `${contentOnly ? "crop=iw:ih*0.45:0:0," : ""}scale=${width}:${height}:flags=area,format=rgb24`, "-f", "rawvideo", "pipe:1",
+    "-vf", filters.join(","), "-f", "rawvideo", "pipe:1",
   ], { maxBuffer: width * height * 4 });
 }
 
@@ -587,6 +600,12 @@ try {
   }
   const expectedDuration = savedClips.reduce((sum, clip) => sum + clip.sourceEndSec - clip.sourceStartSec, 0);
   const outputProbe = probe(outputVideo);
+  const outputVideoStream = outputProbe.streams?.find((stream) => stream.codec_type === "video");
+  const outputWidth = Number(outputVideoStream?.width);
+  const outputHeight = Number(outputVideoStream?.height);
+  if (outputWidth !== 1080 || outputHeight !== 1920) {
+    throw new Error(`내보내기 해상도 불일치: expected=1080x1920 actual=${outputWidth}x${outputHeight}`);
+  }
   const actualDuration = Number(outputProbe.format?.duration);
   const durationDelta = Math.abs(actualDuration - expectedDuration);
   if (!Number.isFinite(actualDuration) || durationDelta > 0.2) {
@@ -595,12 +614,13 @@ try {
 
   const firstClipDuration = savedClips[0].sourceEndSec - savedClips[0].sourceStartSec;
   const firstOutputTime = Math.max(0.02, Math.min(firstClipDuration / 2, firstClipDuration - 0.02));
-  const firstOutput = frame(outputVideo, firstOutputTime, 32, 32, true);
+  const centeredSource = { width: sourceWidth, height: sourceHeight };
+  const firstOutput = frame(outputVideo, firstOutputTime, 32, 32, true, centeredSource);
   const secondClip = savedClips[1];
   const secondClipDuration = secondClip.sourceEndSec - secondClip.sourceStartSec;
   const secondOffset = Math.max(0.02, Math.min(secondClipDuration / 2, secondClipDuration - 0.02));
   const secondOutputTime = firstClipDuration + secondOffset;
-  const secondOutput = frame(outputVideo, secondOutputTime, 32, 32, true);
+  const secondOutput = frame(outputVideo, secondOutputTime, 32, 32, true, centeredSource);
   const firstExpectedSource = frame(sourceFixture, savedClips[0].sourceStartSec + firstOutputTime, 32, 32, true);
   const secondExpectedSource = frame(sourceFixture, secondClip.sourceStartSec + secondOffset, 32, 32, true);
   const deletedSource = frame(sourceFixture, 4.5, 32, 32, true);
@@ -624,7 +644,7 @@ try {
   observations.push({
     check: "real_export",
     source: "dashboard/public/qa/video-editor-real-composite-12s.mp4",
-    sourceDuration,
+    sourceDuration, sourceWidth, sourceHeight, outputWidth, outputHeight,
     expectedDuration, actualDuration, durationDelta, frameDiffs, subtitlePixels, activeSubtitleLayers,
     savedClips,
     subtitleStyle: savedEdit.subtitleStyle,
@@ -643,12 +663,14 @@ try {
     + `- 편집 미리보기: 첫 클립 끝에서 다음 재배치 클립의 원본 ${playbackJumpTime.toFixed(3)}초로 실제 재생이 건너뛰었다.\n`
     + `- 모바일: 360·390·412·600·700·780·820·900·1000px에서 13px 미만 글자 0, 본문 토큰 16px 이상, 44px 미만 누름 0, 눌림 상태 90% 이상, 가로 넘침 0을 데이터 포함 편집 화면에서 확인했다.\n`
     + `- 자막: 문장 이동·수정·구간 삭제, 화면 직접 드래그(${savedEdit.subtitleStyle.xPercent.toFixed(1)}%, ${savedEdit.subtitleStyle.yPercent.toFixed(1)}%), 명조·120%·#ffd600을 실제 저장했다.\n`
+    + `- 내보내기 해상도: ffprobe ${outputWidth}×${outputHeight}. ${sourceWidth}×${sourceHeight} 원본은 확대하지 않고 같은 화소 크기와 비율로 세로 캔버스 중앙에 유지했다. 중앙 원본 영역 프레임을 다시 잘라 원본과 비교했다.\n`
     + `- MP4: 예상 ${expectedDuration.toFixed(3)}초, ffprobe ${actualDuration.toFixed(3)}초, 차이 ${durationDelta.toFixed(3)}초.\n`
     + `- 삭제 프레임: 기대 구간 MAD ${frameDiffs.firstToExpected.toFixed(3)}/${frameDiffs.secondToExpected.toFixed(3)}, 삭제 구간 MAD ${frameDiffs.firstToDeleted.toFixed(3)}/${frameDiffs.secondToDeleted.toFixed(3)}.\n`
     + `- 자막: 노랑 ${subtitlePixels.yellowPixels}픽셀, 해당 프레임 활성 자막 레이어 ${activeSubtitleLayers}개. crop은 captures/04-export-subtitle-crop.png.\n`
     + `- 브라우저 애플리케이션 오류: 0건. 미연결 선택 제공자(목소리) HTTP 경고: ${optionalProviderWarnings.length}건. 외부 SNS 게시: 0건.\n\n`
     + `## 증거\n\n- captures/01-first-screen-1440x900.png\n- captures/02-edited-timeline-and-subtitle.png\n- captures/03-export-full-frame.png\n- captures/04-export-subtitle-crop.png\n- exported-video-editor.mp4\n- next-dev.log, export-worker.log, observations.json\n\n`
     + `## 벤치마크 적용\n\nCapCut의 분할·트림·클립 재정렬·타임라인 확대 조작을 차용했고, Vrew의 문장 클릭 이동·수정·삭제 기반 컷 편집을 차용했다. 이 제품은 두 방식을 한 화면의 단일 편집 계약으로 묶고, 외부 SNS 게시를 실행하지 않는 점이 다르다.\n\n`
+    + `## 개발 품질헌법 자기점검\n\n| 항목 | 판정 | 증거 |\n|---|---|---|\n| 직접 관찰 증거 2종 이상 | 관찰됨 | 실제 PostgreSQL·Next·export worker Playwright 경로와 ffprobe·프레임 픽셀 검증을 함께 실행했다. |\n| 미검증 정직 선언 | 관찰됨 | 로컬 내보내기까지 확인했다. 원격 CI·운영 배포·외부 SNS 실제 게시와 각 플랫폼 업로드 후 재인코딩 결과는 미검증이다. |\n| 스펙 대비 차이 | 근거 확인 | R2의 540×960 원본 크기 출력을 1080×1920 발행 캔버스로 변경했다. 작은 원본 화소는 확대하지 않고 검은 여백으로 중앙 배치한다. 미리보기·타임라인 계약은 변경하지 않았다. |\n| 고위험 코드 교차 검토 | 해당 없음 | 결제·인증·보안·DB 마이그레이션 변경이 없다. |\n| 경계 테스트 | 테스트됨 | 540×960 작은 세로 원본 비확대와 1920×1080 큰 가로 원본 비율 축소를 계약 테스트로 고정했다. |\n\n`
     + `## 셀프 검증\n\n- 이 결론이 틀렸다면 가장 그럴듯한 이유: UI 조작은 저장됐지만 worker가 다른 편집 계약을 읽었을 수 있다. 저장 JSON, ffprobe 길이, 삭제 프레임 MAD, 자막 픽셀을 함께 대조해 반박했다.\n`
     + `- 레드팀: 픽스처 API나 단색 영상이면 실제 고객 경로를 증명하지 못한다. page.route를 쓰지 않고 실제 PostgreSQL·실영상·worker·다운로드 경로를 사용했다.\n\n`
     + `SKILLS_USED: qa, 실제 사용자 조작과 렌더 결과 검증 절차에 사용\n`
