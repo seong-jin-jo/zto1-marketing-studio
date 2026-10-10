@@ -15,6 +15,8 @@ import type { VideoEdit } from "./video-edit-contract";
 
 const execFileP = promisify(execFile);
 const FFPROBE_BIN = process.env.FFPROBE_BIN || "ffprobe";
+export const SHORT_FORM_EXPORT_WIDTH = 1080;
+export const SHORT_FORM_EXPORT_HEIGHT = 1920;
 
 export interface VideoRenderRequest {
   sourceFilename: string;
@@ -24,6 +26,29 @@ export interface VideoRenderRequest {
 }
 
 export interface VideoRenderResult { width: number; height: number; durationSec: number; hasAudio: boolean }
+
+export function shortFormCanvasFfmpegArgs(input: {
+  inputPath: string;
+  outputPath: string;
+  sourceWidth: number;
+  sourceHeight: number;
+}): string[] {
+  const contentWidth = Math.min(input.sourceWidth, SHORT_FORM_EXPORT_WIDTH);
+  const contentHeight = Math.min(input.sourceHeight, SHORT_FORM_EXPORT_HEIGHT);
+  const filter = [
+    `scale=${contentWidth}:${contentHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2`,
+    `pad=${SHORT_FORM_EXPORT_WIDTH}:${SHORT_FORM_EXPORT_HEIGHT}:(ow-iw)/2:(oh-ih)/2:black`,
+    "setsar=1",
+  ].join(",");
+  return [
+    "-y", "-i", input.inputPath,
+    "-map", "0:v:0", "-map", "0:a?",
+    "-vf", filter,
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "20",
+    "-c:a", "copy", "-movflags", "+faststart",
+    input.outputPath,
+  ];
+}
 
 let drawtextSupport: Promise<boolean> | null = null;
 
@@ -174,25 +199,48 @@ export async function renderVideoExport(tenantId: string, request: VideoRenderRe
       request.edit.subtitleStyle?.fontFamily ?? "sans",
     );
     if (!fontFile) throw new Error("SUBTITLE_FONT_MISSING");
-    const edit = alignPlaybackScript(request.edit, request.lines);
-    const plan = planPlaybackBurn({ edit, durationSec: source.durationSec, width: source.width, height: source.height, size: request.subtitleSize, fontFile, hasAudio: source.hasAudio });
-    if (!plan.ok) throw new Error(plan.reason === "nothing_left" ? "PLAYBACK_EMPTY" : "PLAYBACK_TOO_MANY_LAYERS");
-    // 클라이언트가 같은 원본 구간을 여러 id로 반복해 보내도 렌더 상한을 늘릴 수 없다.
-    // 원본 길이 검사만으로는 concat 출력 길이가 원본보다 길어지는 편집을 막지 못한다.
-    if (plan.outputDurationSec > MAX_VIDEO_DURATION_SECONDS) throw new Error("VIDEO_TOO_LONG");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "video-export-assets-"));
     try {
+      let renderInputPath = inputPath;
+      let renderSource = source;
+      if (source.width !== SHORT_FORM_EXPORT_WIDTH || source.height !== SHORT_FORM_EXPORT_HEIGHT) {
+        renderInputPath = path.join(tmpDir, "short-form-canvas.mp4");
+        await execFileP(FFMPEG_BIN, shortFormCanvasFfmpegArgs({
+          inputPath,
+          outputPath: renderInputPath,
+          sourceWidth: source.width,
+          sourceHeight: source.height,
+        }), { timeout: 180_000 });
+        renderSource = await probeRenderedVideo(renderInputPath);
+      }
+      if (renderSource.width !== SHORT_FORM_EXPORT_WIDTH || renderSource.height !== SHORT_FORM_EXPORT_HEIGHT) {
+        throw new Error("VIDEO_OUTPUT_RESOLUTION_INVALID");
+      }
+      const edit = alignPlaybackScript(request.edit, request.lines);
+      const plan = planPlaybackBurn({
+        edit,
+        durationSec: source.durationSec,
+        width: renderSource.width,
+        height: renderSource.height,
+        size: request.subtitleSize,
+        fontFile,
+        hasAudio: renderSource.hasAudio,
+      });
+      if (!plan.ok) throw new Error(plan.reason === "nothing_left" ? "PLAYBACK_EMPTY" : "PLAYBACK_TOO_MANY_LAYERS");
+      // 클라이언트가 같은 원본 구간을 여러 id로 반복해 보내도 렌더 상한을 늘릴 수 없다.
+      // 원본 길이 검사만으로는 concat 출력 길이가 원본보다 길어지는 편집을 막지 못한다.
+      if (plan.outputDurationSec > MAX_VIDEO_DURATION_SECONDS) throw new Error("VIDEO_TOO_LONG");
       const musicPath = await resolveRenderMusic(edit, tenantId, tmpDir, plan.outputDurationSec);
       const voicePath = await renderSelectedVoice(edit, edit.subtitles.filter((line) => !line.cut).map((line) => line.text.trim()).filter(Boolean).join(". "), path.join(tmpDir, "voice.mp3"), tenantId);
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
       if (plan.drawLayers.length && !(await ffmpegHasDrawtext())) {
         await renderCanvasOverlayFallback({
-          plan, edit, durationSec: source.durationSec, width: source.width, height: source.height,
-          size: request.subtitleSize, fontFile, hasAudio: source.hasAudio, inputPath, outputPath, tmpDir,
+          plan, edit, durationSec: source.durationSec, width: renderSource.width, height: renderSource.height,
+          size: request.subtitleSize, fontFile, hasAudio: renderSource.hasAudio, inputPath: renderInputPath, outputPath, tmpDir,
           musicPath, voicePath,
         });
       } else {
-        const args = playbackFfmpegArgs(plan, { inputPath, outputPath, musicPath, voicePath });
+        const args = playbackFfmpegArgs(plan, { inputPath: renderInputPath, outputPath, musicPath, voicePath });
         if (!args) throw new Error("VIDEO_RENDER_ARGS_EMPTY");
         await execFileP(FFMPEG_BIN, args, { timeout: 180_000 });
       }
