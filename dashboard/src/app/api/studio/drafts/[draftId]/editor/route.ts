@@ -14,7 +14,7 @@ export async function PATCH(
   try {
     const command = parseEditorOperation(input);
     const loaded = await loadEditorHandoff(tenantId, draftId);
-    if (!loaded) return Response.json({ error: "editor handoff not found", code: "EDITOR_HANDOFF_NOT_FOUND" }, { status: 404 });
+    if (!loaded) return Response.json({ error: "편집 인계 기록을 찾지 못했습니다.", code: "EDITOR_HANDOFF_NOT_FOUND" }, { status: 404 });
     const handoff = applyEditorOperation(loaded.handoff, command.expected_revision, command.change);
     const saved = await updateEditorHandoff(tenantId, draftId, command.expected_revision, handoff);
     if (!saved) {

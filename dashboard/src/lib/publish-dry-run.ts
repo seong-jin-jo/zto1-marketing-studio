@@ -119,12 +119,16 @@ export function recordTextPublishDryRun(input: {
   text: string;
   imageUrls?: string[];
   imagePaths?: string[];
+  videoUrl?: string;
+  videoPath?: string;
 }): PublishResult {
   const endpoint = TEXT_ENDPOINTS[input.platform];
   if (!endpoint) return { ok: false, error: `${input.platform} 드라이런 어댑터 미지원` };
   const firstImage = input.imageUrls?.[0];
-  const mediaUrls = input.imageUrls ?? [];
-  const mediaSpec = input.imagePaths?.[0] ? inspectDryRunMedia(input.imagePaths[0]) : null;
+  const mediaUrls = input.videoUrl ? [input.videoUrl] : input.imageUrls ?? [];
+  const mediaSpec = input.videoPath
+    ? inspectDryRunMedia(input.videoPath)
+    : input.imagePaths?.[0] ? inspectDryRunMedia(input.imagePaths[0]) : null;
   const requests: Array<{ step: string; method: "POST" | "PUT"; endpoint: string; body: Record<string, unknown> }> = [];
 
   if (input.platform === "x" && firstImage) {
@@ -227,10 +231,14 @@ export function recordTextPublishDryRun(input: {
     if (input.platform === "threads") return { text: input.text, media_type: firstImage ? "IMAGE" : "TEXT", image_url: firstImage };
     if (input.platform === "x") return { text: input.text };
     if (input.platform === "instagram") return { caption: input.text, media_type: (input.imageUrls?.length ?? 0) > 1 ? "CAROUSEL" : "IMAGE", image_url: firstImage };
-    if (input.platform === "facebook") return firstImage ? { caption: input.text, url: firstImage } : { message: input.text };
+    if (input.platform === "facebook") return input.videoUrl
+      ? { description: input.text, file_url: input.videoUrl }
+      : firstImage ? { caption: input.text, url: firstImage } : { message: input.text };
     if (input.platform === "linkedin") return { author: "urn:li:person:[ACCOUNT]", commentary: input.text, visibility: "PUBLIC" };
     if (input.platform === "bluesky") return { collection: "app.bsky.feed.post", record: { text: input.text, createdAt: "[NOW]" } };
-    if (input.platform === "telegram") return firstImage ? { chat_id: "[ACCOUNT]", caption: input.text, photo: firstImage } : { chat_id: "[ACCOUNT]", text: input.text };
+    if (input.platform === "telegram") return input.videoUrl
+      ? { chat_id: "[ACCOUNT]", caption: input.text, video: input.videoUrl }
+      : firstImage ? { chat_id: "[ACCOUNT]", caption: input.text, photo: firstImage } : { chat_id: "[ACCOUNT]", text: input.text };
     if (input.platform === "discord") return { content: input.text, embeds: firstImage ? [{ image: { url: firstImage } }] : [] };
     if (input.platform === "slack") return { text: input.text, blocks: firstImage ? [{ type: "image", image_url: firstImage, alt_text: "publish media" }] : [] };
     if (input.platform === "kakao") {
@@ -249,10 +257,14 @@ export function recordTextPublishDryRun(input: {
     requests.push({
       step: "post.create",
       method: "POST",
-      endpoint: input.platform === "facebook" && firstImage
-        ? "https://graph.facebook.com/v21.0/{page-id}/photos"
-        : input.platform === "telegram" && firstImage
-          ? "https://api.telegram.org/bot[REDACTED]/sendPhoto"
+      endpoint: input.platform === "facebook" && input.videoUrl
+        ? "https://graph.facebook.com/v21.0/{page-id}/videos"
+        : input.platform === "facebook" && firstImage
+          ? "https://graph.facebook.com/v21.0/{page-id}/photos"
+          : input.platform === "telegram" && input.videoUrl
+            ? "https://api.telegram.org/bot[REDACTED]/sendVideo"
+            : input.platform === "telegram" && firstImage
+              ? "https://api.telegram.org/bot[REDACTED]/sendPhoto"
           : endpoint,
       body,
     });

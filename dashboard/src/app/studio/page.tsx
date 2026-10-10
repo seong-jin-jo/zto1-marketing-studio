@@ -703,16 +703,14 @@ export default function StudioPage() {
    * /api/video/publish 요청에도 안 실었다. /app/videos/page.tsx에만 그 선택기가 있었다
    * (tiktokCreator.privacyLevels, creator-info 조회). 여기서도 같은 계약을 그대로
    * 따른다 — TikTok의 Content Posting 정책은 공개 범위를 사람이 직접 고르게 강제하므로
-   * 기본값을 미리 고르지 않는다(빈 문자열 시작). 상호작용 토글(댓글/듀엣/스티치)과 AI
-   * 생성 공개는 videos 페이지가 이미 쓰는 기본값 정책을 그대로 따른다(토글 셋은
-   * creator의 disabled 플래그로 동기화, AI 생성은 기본 true — 창작자가 아니오로
-   * 끄는 쪽이 "거짓으로 아니라고 답하기"보다 안전하다는 videos 페이지의 기존 판단).
+   * 기본값을 미리 고르지 않는다(빈 문자열 시작). AI 생성 표시도 공개 범위와 같은
+   * 발행 의사결정이므로 자동으로 참/거짓을 고르지 않는다.
    */
   const [tiktokPrivacy, setTiktokPrivacy] = useState(""); // 절대 기본값을 미리 고르지 않는다
   const [tiktokDisableComment, setTiktokDisableComment] = useState(false);
   const [tiktokDisableDuet, setTiktokDisableDuet] = useState(false);
   const [tiktokDisableStitch, setTiktokDisableStitch] = useState(false);
-  const [tiktokAiGenerated, setTiktokAiGenerated] = useState(true);
+  const [tiktokAiGenerated, setTiktokAiGenerated] = useState<boolean | null>(null);
   /**
    * 2026-10-03 독립 리뷰 m3(TikTok Content Sharing Guidelines): 상업 콘텐츠 공개
    * ("Your brand"/"Branded content")도 사람이 직접 켜야 한다 — 기본은 전부 꺼짐.
@@ -728,6 +726,7 @@ export default function StudioPage() {
    */
   const resetTiktokDisclosure = useCallback(() => {
     setTiktokPrivacy("");
+    setTiktokAiGenerated(null);
     setTiktokDisclosureEnabled(false);
     setTiktokBrandOrganic(false);
     setTiktokBrandContent(false);
@@ -2747,6 +2746,9 @@ export default function StudioPage() {
     if (platform === "tiktok" && !tiktokPrivacy) {
       return { disabledReason: "TikTok 공개 범위를 먼저 선택해주세요." };
     }
+    if (platform === "tiktok" && tiktokAiGenerated === null) {
+      return { disabledReason: "TikTok AI 생성 영상 표시 여부를 먼저 선택해주세요." };
+    }
     // 2026-10-03 독립 리뷰 m3: 상업 콘텐츠 공개를 켰는데 어느 쪽도 안 고르면 TikTok이
     // 요구하는 공개 내용이 비어버린다(tiktok-disclosure.ts).
     if (platform === "tiktok" && tiktokDisclosureError) {
@@ -3135,7 +3137,7 @@ export default function StudioPage() {
                 disable_comment: tiktokDisableComment,
                 disable_duet: tiktokDisableDuet,
                 disable_stitch: tiktokDisableStitch,
-                is_ai_generated: tiktokAiGenerated,
+                is_ai_generated: tiktokAiGenerated === true,
                 // 2026-10-03 독립 리뷰 m3: TikTok Content Sharing Guidelines의 상업
                 // 콘텐츠 공개("Your brand"/"Branded content"). ⚠️ /api/video/publish
                 // route.ts는 아직 이 세 필드를 받지 않는다(서버가 실제로 TikTok
@@ -3198,11 +3200,10 @@ export default function StudioPage() {
           text: publishText(p),
           // 채널이 몇 장까지 받는지는 채널 규격 한 자리에서 정한다(channel-image-capacity.ts).
           // 종전에는 인스타그램만 여러 장이었고 나머지는 대표 한 장으로 조용히 잘렸다.
-          // 현재 LinkedIn 어댑터는 텍스트만 지원한다. 미리보기에서 실제 원본을 확인하더라도
-          // 발행 요청에 이미지를 실어 422로 전체 흐름을 끊지 않고, 규격 표에서 미지원으로
-          // 명시한다. 이미지 어댑터가 구현되기 전까지는 텍스트 게시만 보낸다.
-          image_url: p === "linkedin" ? undefined : (planChannelImages(p, publishDeck).images[0] ?? img?.url),
-          image_urls: p !== "linkedin" && planChannelImages(p, publishDeck).images.length > 1
+          // LinkedIn도 자산 등록→업로드→UGC 연결을 구현했으므로 대표 이미지를 다른
+          // 단일 이미지 채널과 같은 계약으로 보낸다.
+          image_url: planChannelImages(p, publishDeck).images[0] ?? img?.url,
+          image_urls: planChannelImages(p, publishDeck).images.length > 1
             ? planChannelImages(p, publishDeck).images
             : undefined,
           draft_id: did,
@@ -4981,7 +4982,8 @@ export default function StudioPage() {
                 code?: string;
                 export_id?: string;
                 source_hash?: string;
-                pin_status?: "publish_ready" | "unpinned";
+                pin_status?: "publish_ready" | "draft_media" | "unpinned";
+                legacy_draft_fallback?: boolean;
                 post?: {
                   id?: string;
                   imageUrl?: string | null;
@@ -4994,7 +4996,8 @@ export default function StudioPage() {
               if (payload.pin_status === "unpinned") {
                 throw new Error(payload.error || "내보낸 파일을 발행실에 연결하지 못했습니다.");
               }
-              if (payload.export_id !== receipt.exportId || payload.source_hash !== receipt.sourceHash) {
+              if (payload.pin_status === "publish_ready"
+                && (payload.export_id !== receipt.exportId || payload.source_hash !== receipt.sourceHash)) {
                 throw new Error("내보낸 파일이 화면에서 확인한 편집 내용과 다릅니다.");
               }
               const pinnedPost = payload.post;
@@ -5020,7 +5023,9 @@ export default function StudioPage() {
                   filename: pinnedPost.videoFilename ?? current.filename,
                 } : current);
               }
-              const message = "내보낸 파일로 발행실에서 미리 봅니다.";
+              const message = payload.pin_status === "draft_media"
+                ? "초안에 저장된 미디어로 발행실에서 미리 봅니다."
+                : "내보낸 파일로 발행실에서 미리 봅니다.";
               setPublishExportPinNotice({ status: "pinned", message });
               showToast(message, "success");
             } catch (error) {
@@ -5447,14 +5452,19 @@ export default function StudioPage() {
                             onChange={(event) => setTiktokDisableStitch(event.target.checked)}
                           /> 스티치 끄기
                         </label>
-                        <label>
-                          <input
-                            type="checkbox"
-                            className="h-control-touch w-control-touch align-middle"
-                            aria-label="TikTok AI 생성 영상"
-                            checked={tiktokAiGenerated}
-                            onChange={(event) => setTiktokAiGenerated(event.target.checked)}
-                          /> AI 생성 영상
+                        <label className="text-subtle">
+                          AI 생성 영상 표시
+                          <select
+                            data-testid="tiktok-ai-generated-select"
+                            aria-label="TikTok AI 생성 영상 표시"
+                            value={tiktokAiGenerated === null ? "" : String(tiktokAiGenerated)}
+                            onChange={(event) => setTiktokAiGenerated(event.target.value === "" ? null : event.target.value === "true")}
+                            className="mt-micro min-h-control-touch w-full rounded-chip border border-border bg-surface p-stack-tight text-text"
+                          >
+                            <option value="">선택</option>
+                            <option value="true">표시함</option>
+                            <option value="false">표시하지 않음</option>
+                          </select>
                         </label>
                         {/*
                           m3: "Content Disclosure Setting" — "Your brand"(오가닉)과

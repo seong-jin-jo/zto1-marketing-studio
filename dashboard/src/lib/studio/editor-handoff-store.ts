@@ -48,6 +48,20 @@ export async function loadEditorHandoff(
   });
 }
 
+export async function loadDraftForPublish(
+  tenantId: string,
+  draftId: string,
+): Promise<DraftHandoffRow | null> {
+  return withTenant(tenantId, async (sql) => {
+    const [draft] = await sql<DraftHandoffRow[]>`
+      SELECT id, idea, payload, status
+      FROM drafts
+      WHERE id = ${draftId} AND tenant_id = ${tenantId}
+      LIMIT 1`;
+    return draft ?? null;
+  });
+}
+
 export function editorHandoffFromDraftPayload(payload: unknown): EditorHandoff | null {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
   const handoff = (payload as Record<string, unknown>).editor_handoff;

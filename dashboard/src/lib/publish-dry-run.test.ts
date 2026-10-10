@@ -84,4 +84,16 @@ describe("PUBLISH_DRY_RUN 계약", () => {
     const row = JSON.parse(fs.readFileSync(log, "utf8"));
     expect(row.endpoint).toContain(endpoint);
   });
+
+  it.each([
+    ["facebook", "/videos"],
+    ["telegram", "/sendVideo"],
+  ])("LOCAL-REAL-PATH-R3-01 정상: %s 영상은 영상 전용 엔드포인트를 기록한다", (platform, endpoint) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `osmu-${platform}-video-endpoint-`));
+    const log = path.join(dir, "requests.jsonl");
+    vi.stubEnv("PUBLISH_DRY_RUN_LOG", log);
+    recordTextPublishDryRun({ tenantId: "tenant-a", platform, text: "영상", videoUrl: "https://cdn.example/media.mp4" });
+    const row = JSON.parse(fs.readFileSync(log, "utf8"));
+    expect(row.endpoint).toContain(endpoint);
+  });
 });

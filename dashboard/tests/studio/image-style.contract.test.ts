@@ -20,12 +20,9 @@ describe("그림 지시문 조립", () => {
     expect(out).not.toContain("그린과 크림을 중심으로");
   });
 
-  it("글자를 부르지 않기 위해 글자를 언급하지 않는다", () => {
-    // 2026-09-08 실측 두 번. "no text" 를 넣으면 상표가 박히고, 더 세게 "blank signage"
-    // 까지 넣으면 글자가 더 늘었다. 부정을 이해하지 못하는 모델에게 "글자 없이" 라고
-    // 말하면 남는 것은 "글자" 라는 낱말이고 모델은 그것을 그린다.
+  it("LOCAL-REAL-PATH-R3-04 정상: 이미지 안 글자가 없도록 명시하고 편집실 합성을 전제로 한다", () => {
     const out = buildImagePrompt("카페 창가", null);
-    expect(out).not.toMatch(/text|letter|signage|watermark|logo|label/i);
+    expect(out).toContain("no text, letters, words, logos, labels, signage, captions, subtitles, or watermarks inside the image");
     expect(out).toContain("plain surfaces");
   });
 
@@ -62,7 +59,7 @@ describe("영상 움직임 지시문 조립", () => {
     const out = buildMotionPrompt("a runner crossing the finish line");
     expect(out).toContain("plain surfaces");
     expect(out).toContain("close interior framing");
-    expect(out).not.toMatch(/text|letter|signage|watermark|logo|label/i);
+    expect(out).toContain("no text");
   });
 
   it("VIDEO-PROMPT-SINGLE-CAPTION-02 이미지 기반 영상에는 주제 문자열을 다시 싣지 않는다", () => {
@@ -120,10 +117,10 @@ describe("업종 장면은 간판이 나올 자리를 피한다", () => {
     expect(hints.join(" ")).toContain("laundromat interior");
   });
 
-  it("최종 지시문은 실외 정면 대신 실내 근접 구도를 말한다(간판이라는 낱말 없이)", () => {
+  it("최종 지시문은 실내 근접 구도와 무문자 조건을 함께 말한다", () => {
     const out = buildImagePrompt("동네 세탁소 후기", null, {});
     expect(out).toContain("close interior framing");
-    expect(out).not.toMatch(/text|letter|signage|watermark|logo|label|sign\b/i);
+    expect(out).toContain("no text");
   });
 });
 

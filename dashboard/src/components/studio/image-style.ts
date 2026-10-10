@@ -85,12 +85,8 @@ export function paletteToColors(palette?: string): string {
  *   ② 더 세게 "free of any text, blank signage, no packaging labels" 로 바꿨더니
  *      오히려 탁자마다 뜻 없는 글자가 더 늘었다.
  *
- * 이 모델은 부정 지시 파라미터를 받지 않는다(비율·화질·씨앗·참조 이미지만). 부정을
- * 이해하지 못하는 모델에게 "글자 없이" 라고 말하면 남는 것은 "글자" 라는 낱말이고,
- * 모델은 그 낱말을 그린다. 그래서 금지어를 늘리는 방향이 정반대였다.
- *
- * 글자를 원하지 않으면 글자 이야기를 꺼내지 않는 것이 맞다. 대신 글자가 놓일 자리가
- * 적은 장면을 그리도록 구도만 말한다.
+ * 2026-10-11 R3 실생성에서는 구도 장치만으로도 깨진 가짜 영문이 남았다. 생성 단계에서
+ * 텍스트를 이미지에 넣지 않는다는 금지 조건을 명시하고, 글자는 편집실에서만 올린다.
  */
 /**
  * 2026-09-16 실측 추가(j.the.great.investor): 생성 이미지에 깨진 영문 간판 글자
@@ -99,12 +95,10 @@ export function paletteToColors(palette?: string): string {
  * 한국어 원문이 그대로 지시문의 주인공이 됐다. 모델은 한글을 모르니 그 뜻(세탁소)만
  * 알아듣고 **간판을 지어 그리려다** 못 읽는 라틴 글자 비슷한 것을 뭉갰다.
  *
- * 위에서 이미 실측한 대로 "글자 없이·간판 없이"를 부정문으로 적으면 그 낱말 자체가
- * 더 강하게 그려진다(두 번 실측, `NO_TEXT` 아래 참고). 그래서 "간판"이라는 말을
- * 꺼내지 않고 **간판이 나올 자리 자체를 지운다** — 실외 정면(간판이 달리는 자리) 대신
- * 실내 근접 구도로 좁힌다.
+ * 실내 근접 구도와 명시적 무문자 조건을 함께 사용한다. 한쪽만으로는 실생성 결과에서
+ * 깨진 가짜 글자를 막지 못했다.
  */
-const NO_TEXT = "clean minimal composition, plain surfaces, natural materials, close interior framing";
+const NO_TEXT = "purely visual scene, clean minimal composition, plain surfaces, blank unmarked surfaces, natural materials, close interior framing, no text, letters, words, logos, labels, signage, captions, subtitles, or watermarks inside the image";
 
 /**
  * 그림 지시문의 바탕이 될 말을 고른다.

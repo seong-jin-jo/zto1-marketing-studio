@@ -1277,14 +1277,18 @@ export async function publishXReply(cred: ChannelCred, text: string, parentId: s
   return { ok: true, externalId: id, permalink: `https://x.com/i/web/status/${id}` };
 }
 
-// Facebook 페이지 발행 (Graph API). imageUrl 있으면 /photos(caption), 없으면 /feed(message).
-export async function publishFacebook(cred: ChannelCred, message: string, imageUrl?: string): Promise<PublishResult> {
+// Facebook 페이지 발행 (Graph API). videoUrl 있으면 /videos(description), imageUrl 있으면
+// /photos(caption), 둘 다 없으면 /feed(message).
+export async function publishFacebook(cred: ChannelCred, message: string, imageUrl?: string, videoUrl?: string): Promise<PublishResult> {
   const pageId = cred.userId;
   if (!pageId) return { ok: false, error: "Facebook pageId(meta.userId) 없음" };
   if (!cred.token) return { ok: false, error: "Facebook access token 없음" };
-  const endpoint = imageUrl ? "photos" : "feed";
+  const endpoint = videoUrl ? "videos" : imageUrl ? "photos" : "feed";
   const params: Record<string, string> = { access_token: cred.token };
-  if (imageUrl) {
+  if (videoUrl) {
+    params.file_url = videoUrl;
+    if (message) params.description = message;
+  } else if (imageUrl) {
     params.url = imageUrl;
     if (message) params.caption = message;
   } else {
@@ -1297,7 +1301,7 @@ export async function publishFacebook(cred: ChannelCred, message: string, imageU
   });
   if (!resp.ok) return { ok: false, error: `Facebook ${endpoint} 실패(${resp.status}): ${(await resp.text()).slice(0, 200)}`,
     failureKind: isAmbiguousProviderHttpStatus(resp.status) ? "indeterminate" : "definitive" };
-  // photos → { id, post_id }, feed → { id }
+  // photos → { id, post_id }, videos/feed → { id }
   const data = (await resp.json()) as { id?: string; post_id?: string };
   const externalId = data.post_id ?? data.id;
   if (!externalId) return { ok: false, error: "Facebook 발행 결과 번호가 없습니다.", failureKind: "indeterminate" };
@@ -1514,10 +1518,11 @@ export async function publishBluesky(cred: ChannelCred, text: string, imageUrl?:
   }
 }
 
-// Telegram 발행 (Bot API). 이미지 없으면 sendMessage(text), 있으면 sendPhoto(photo=imageUrl, caption=text).
+// Telegram 발행 (Bot API). videoUrl이 있으면 sendVideo, imageUrl이 있으면 sendPhoto,
+// 둘 다 없으면 sendMessage를 사용한다.
 // chat_id는 meta.chatId(Settings에서 선택 입력) — 없으면 발행 대상 불명이라 명확히 에러.
 // 출처: https://core.telegram.org/bots/api#sendmessage , #sendphoto (2026-07 조사)
-export async function publishTelegram(cred: ChannelCred, text: string, imageUrl?: string): Promise<PublishResult> {
+export async function publishTelegram(cred: ChannelCred, text: string, imageUrl?: string, videoUrl?: string): Promise<PublishResult> {
   const token = cred.token;
   const chatIdRaw = cred.meta?.chatId;
   const chatId = typeof chatIdRaw === "string" || typeof chatIdRaw === "number" ? String(chatIdRaw) : "";
@@ -1526,9 +1531,11 @@ export async function publishTelegram(cred: ChannelCred, text: string, imageUrl?
 
   // 공식 한도: sendMessage text 4096자 / sendPhoto caption 1024자 — 초과 시 400 거부라 절단.
   // photo=URL은 텔레그램이 서버측에서 다운로드(5MB·가로+세로 10000 한도도 그쪽에서 검증) — 우리 표면 아님.
-  const method = imageUrl ? "sendPhoto" : "sendMessage";
-  const body: Record<string, string> = imageUrl
-    ? { chat_id: chatId, photo: imageUrl, caption: truncateChars(text ?? "", TELEGRAM_MAX_CAPTION) }
+  const method = videoUrl ? "sendVideo" : imageUrl ? "sendPhoto" : "sendMessage";
+  const body: Record<string, string> = videoUrl
+    ? { chat_id: chatId, video: videoUrl, caption: truncateChars(text ?? "", TELEGRAM_MAX_CAPTION) }
+    : imageUrl
+      ? { chat_id: chatId, photo: imageUrl, caption: truncateChars(text ?? "", TELEGRAM_MAX_CAPTION) }
     : { chat_id: chatId, text: truncateChars(text ?? "", TELEGRAM_MAX_TEXT) };
 
   try {
