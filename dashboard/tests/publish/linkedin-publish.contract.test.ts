@@ -1,4 +1,32 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
+
+const H = vi.hoisted(() => ({
+  bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+}));
+
+vi.mock("@/lib/image-token", () => ({
+  verifyImageToken: vi.fn(() => ({ tenantId: "tenant-a", filename: "image.png" })),
+  verifyImageTokenSignature: vi.fn(() => ({ tenantId: "tenant-a", filename: "image.png" })),
+  isSafeMediaFilename: () => true,
+}));
+
+vi.mock("@/lib/media-store", () => ({
+  mediaStore: {
+    get: vi.fn(async () => ({
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(H.bytes);
+          controller.close();
+        },
+      }),
+      contentLength: H.bytes.byteLength,
+      contentType: "image/png",
+      source: "local" as const,
+    })),
+  },
+  MediaStoreError: class MediaStoreError extends Error {},
+}));
+
 import { publishLinkedIn } from "@/lib/publish";
 
 // 2026-09-08: 아홉 채널 가운데 LinkedIn 만 발행 코드가 두 경로 어디에도 없었다.
@@ -62,5 +90,65 @@ describe("publishLinkedIn", () => {
     const r = await publishLinkedIn(cred, "본문");
     expect(r.error).not.toContain("내부 스택");
     expect(r.error).toContain("500");
+  });
+
+  it("LOCAL-REAL-PATH-R3-01 정상: 자산 등록, 이미지 업로드, UGC 미디어 연결 순서로 발행한다", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url.endsWith("/assets?action=registerUpload")) {
+        return Response.json({
+          value: {
+            asset: "urn:li:digitalmediaAsset:asset-1",
+            uploadMechanism: {
+              "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest": {
+                uploadUrl: "https://upload.linkedin.example/image-1",
+              },
+            },
+          },
+        });
+      }
+      if (url === "https://upload.linkedin.example/image-1") return new Response(null, { status: 201 });
+      if (url.endsWith("/ugcPosts")) return Response.json({ id: "urn:li:share:with-image" }, { status: 201 });
+      throw new Error(`unexpected fetch ${url}`);
+    }));
+
+    const result = await publishLinkedIn(cred, "이미지 본문", "https://osmu.example/api/images/deliver/signed-token");
+
+    expect(result.ok).toBe(true);
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api.linkedin.com/v2/assets?action=registerUpload",
+      "https://upload.linkedin.example/image-1",
+      "https://api.linkedin.com/v2/ugcPosts",
+    ]);
+    expect(calls[1].init?.method).toBe("PUT");
+    const post = JSON.parse(String(calls[2].init?.body));
+    expect(post.specificContent["com.linkedin.ugc.ShareContent"]).toMatchObject({
+      shareMediaCategory: "IMAGE",
+      media: [{ status: "READY", media: "urn:li:digitalmediaAsset:asset-1" }],
+    });
+  });
+
+  it("LOCAL-REAL-PATH-R3-01 거절: 이미지 업로드가 실패하면 텍스트 게시를 계속하지 않는다", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith("/assets?action=registerUpload")) {
+        return Response.json({
+          value: {
+            asset: "urn:li:digitalmediaAsset:asset-1",
+            uploadMechanism: { "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest": { uploadUrl: "https://upload.linkedin.example/image-1" } },
+          },
+        });
+      }
+      return new Response("failed", { status: 500 });
+    }));
+
+    const result = await publishLinkedIn(cred, "이미지 본문", "https://osmu.example/api/images/deliver/signed-token");
+
+    expect(result.ok).toBe(false);
+    expect(calls).not.toContain("https://api.linkedin.com/v2/ugcPosts");
   });
 });

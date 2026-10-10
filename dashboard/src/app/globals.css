@@ -43,6 +43,7 @@
      가 그리는 것과 같은 고정 브랜드색이라 테마 무관 — light/dark 재정의 없음
      (2026-09-22 코드리뷰 MINOR 1, 편집실 미리보기 UI가 캔버스 결과와 어긋나면 안 된다). */
   --chat-reader-bg: #FEE500;
+  --chat-sky: rgb(178 199 218);
   --focus: color-mix(in srgb, var(--accent) 35%, transparent);
   --shadow: 0 4px 12px rgba(16,24,40,0.08);
 
@@ -148,6 +149,7 @@
   --color-warning-soft: var(--warning-soft);
   --color-danger-soft:  var(--danger-soft);
   --color-chat-reader-bg: var(--chat-reader-bg);
+  --color-chat-sky: var(--chat-sky);
   --color-status-fg:    var(--status-fg);
   --color-player-surface: var(--player-surface);
   --color-player-panel:   var(--player-panel);
@@ -298,8 +300,12 @@ progress.progress-semantic::-moz-progress-bar { background: var(--success); }
    모바일 규격으로 올린다. caption은 화면에서 가장 많이 쓰이는 조작 라벨이라 16px로
    맞춰 실제 글자 중앙값도 본문 하한보다 작아지지 않게 한다. */
 @media (max-width: 1023px) {
+  body:has([data-room="create"]),
   body:has([data-room="edit"]),
-  body:has([data-room="edit"]) [data-room="edit"] {
+  body:has([data-room="publish"]),
+  body:has([data-room="create"]) [data-room="create"],
+  body:has([data-room="edit"]) [data-room="edit"],
+  body:has([data-room="publish"]) [data-room="publish"] {
     --font-caption-size: 16px;
     --font-caption-leading: 24px;
     --font-body-sm-size: 16px;
@@ -308,7 +314,7 @@ progress.progress-semantic::-moz-progress-bar { background: var(--success); }
     --font-body-leading: 24px;
   }
 
-  body:has([data-room="edit"]) :where(a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]):active {
+  body:has(:is([data-room="create"], [data-room="edit"], [data-room="publish"])) :where(a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]):active {
     opacity: 0.92;
   }
 }

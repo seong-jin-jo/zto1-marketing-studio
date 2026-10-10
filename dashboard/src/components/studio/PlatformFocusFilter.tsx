@@ -3,11 +3,12 @@
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/shared/Button";
 import type { PreviewPlatform } from "@/components/studio/PlatformPreview";
+import { PLATFORM_LABEL } from "@/lib/studio/channel-name-list";
 
 export type PlatformFocus = "all" | PreviewPlatform;
 
 export const PLATFORM_FOCUS_OPTIONS: ReadonlyArray<{ key: PlatformFocus; label: string }> = [
-  { key: "all", label: "전체 7곳" },
+  { key: "all", label: `전체 ${Object.keys(PLATFORM_LABEL).length}곳` },
   { key: "threads", label: "Threads" },
   { key: "x", label: "X" },
   { key: "instagram", label: "Instagram" },

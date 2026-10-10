@@ -101,7 +101,7 @@ export function PublishHeaderControls({
             <input
               aria-label={`${label} 발행`}
               type="checkbox"
-              className="h-5 w-5 shrink-0"
+              className="h-control-touch w-control-touch shrink-0"
               checked={checked}
               disabled={checkboxDisabled}
               onChange={(event) => onCheckedChange(event.target.checked)}
@@ -110,7 +110,7 @@ export function PublishHeaderControls({
           </label>
         ) : (
           <label className="ds-touch-target flex min-h-control-touch shrink-0 items-center gap-micro text-caption text-warning">
-            <input aria-label={`${label} 발행 미지원`} type="checkbox" className="h-5 w-5 shrink-0" checked={false} disabled readOnly />
+            <input aria-label={`${label} 발행 미지원`} type="checkbox" className="h-control-touch w-control-touch shrink-0" checked={false} disabled readOnly />
             미지원
           </label>
         )}

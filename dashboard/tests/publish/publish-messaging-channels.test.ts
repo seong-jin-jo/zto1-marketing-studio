@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { installFetch } from "./helpers/mock-fetch";
 import {
-  publishBluesky, publishTelegram, publishDiscord, publishSlack,
+  publishBluesky, publishFacebook, publishTelegram, publishDiscord, publishSlack,
   isSafePublicImageUrl, isAllowedServerFetchImageHost, truncateChars, truncateGraphemes,
 } from "@/lib/publish";
 
@@ -416,6 +416,21 @@ describe("publishTelegram — Bot API (sendMessage / sendPhoto)", () => {
     expect(sent.caption).toBe("caption text");
   });
 
+  it("LOCAL-REAL-PATH-R3-01 정상: 영상 있음 → sendVideo(caption)", async () => {
+    const { calls } = installFetch([
+      { match: "/sendVideo", json: { ok: true, result: { message_id: 44 } } },
+    ]);
+    const result = await publishTelegram(
+      { token: "bot-token", meta: { chatId: "123456" } },
+      "video caption",
+      undefined,
+      "https://cdn.example.com/video.mp4",
+    );
+    expect(result.ok).toBe(true);
+    expect(calls[0].url).toContain("/sendVideo");
+    expect(JSON.parse(calls[0].body!)).toMatchObject({ video: "https://cdn.example.com/video.mp4", caption: "video caption" });
+  });
+
   it("Bot Token(token) 없음 → 명확한 에러", async () => {
     const result = await publishTelegram({ token: "", meta: { chatId: "123456" } }, "hi");
     expect(result.ok).toBe(false);
@@ -433,6 +448,26 @@ describe("publishTelegram — Bot API (sendMessage / sendPhoto)", () => {
     const result = await publishTelegram({ token: "bot-token", meta: { chatId: "999" } }, "hi");
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/chat not found/);
+  });
+});
+
+describe("publishFacebook — Graph API 미디어 엔드포인트", () => {
+  const cred = { token: "facebook-token", userId: "page-1" };
+
+  it("LOCAL-REAL-PATH-R3-01 정상: 이미지는 /photos로 보낸다", async () => {
+    const { calls } = installFetch([{ match: "/photos", json: { id: "photo-1", post_id: "post-1" } }]);
+    const result = await publishFacebook(cred, "image caption", "https://cdn.example.com/image.png");
+    expect(result.ok).toBe(true);
+    expect(calls[0].url).toContain("/photos");
+    expect(calls[0].body).toContain("url=https%3A%2F%2Fcdn.example.com%2Fimage.png");
+  });
+
+  it("LOCAL-REAL-PATH-R3-01 정상: 영상은 /videos로 보낸다", async () => {
+    const { calls } = installFetch([{ match: "/videos", json: { id: "video-1" } }]);
+    const result = await publishFacebook(cred, "video description", undefined, "https://cdn.example.com/video.mp4");
+    expect(result.ok).toBe(true);
+    expect(calls[0].url).toContain("/videos");
+    expect(calls[0].body).toContain("file_url=https%3A%2F%2Fcdn.example.com%2Fvideo.mp4");
   });
 });
 

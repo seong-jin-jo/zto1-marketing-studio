@@ -77,8 +77,30 @@ export function exportRequestHash(input: CreateExportInput): string {
   return sha256Hex(canonicalJson(input));
 }
 
-export async function exportMemberId(request: Request): Promise<string> {
-  return (await resolveStudioPrincipal(request)).memberId;
+export function localDryRunExportMemberId(tenantId: string): string | null {
+  if (process.env.NODE_ENV === "production" || process.env.PUBLISH_DRY_RUN !== "1") return null;
+  if (process.env.STUDIO_IDENTITY_MODE !== "development") return null;
+
+  const memberId = process.env.STUDIO_DEV_MEMBER_ID?.trim() ?? "";
+  const allowedWorkspaceIds = new Set(
+    (process.env.STUDIO_DEV_WORKSPACE_IDS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+  return memberId && allowedWorkspaceIds.has(tenantId) ? memberId : null;
+}
+
+export async function exportMemberId(request: Request, tenantId: string): Promise<string> {
+  try {
+    return (await resolveStudioPrincipal(request)).memberId;
+  } catch (error) {
+    const localMemberId = localDryRunExportMemberId(tenantId);
+    if (error instanceof StudioApiError && error.code === "TOKEN_INVALID" && localMemberId) {
+      return localMemberId;
+    }
+    throw error;
+  }
 }
 
 export function exportErrorResponse(error: unknown): Response {

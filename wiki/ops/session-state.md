@@ -1,3 +1,70 @@
+## 2026-10-11 02:15 KST · R4 무문자 이미지 3/3 복구 완료
+
+- 완료: `/api/higgsfield/image`를 `gpt_image_2_5` 1k/low로 교체하고 실제 job에 모델·품질·해상도·빈 reference 목록을 기록한다. 참조 필드 비승격 회귀 테스트와 Apple Vision 4방향 OCR 검증기를 추가했다.
+- 실제 증거: Next.js 3483의 앱 API로 정확히 3장만 생성했다. `img_1791652044820.png`, `img_1791652046886.png`, `img_1791652048605.png`는 모두 752×1344이며 육안 글자 0건, OCR 글자 0건이다. 결함 원본은 같은 OCR에서 가짜 문자열을 검출했다.
+- 검증: Higgsfield 회귀 12파일·91건과 이미지 프롬프트 포함 집중 4파일·44건, TypeScript, Webpack production build PASS. 보고·QA tracker·build log·구현현황과 `r4-image-generation-verification.json`을 갱신했다.
+- 보존: 생성 PNG와 `.env.local`은 커밋하지 않는다. 사용자 소유 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`도 stage하지 않는다. 외부 게시·push·운영 배포는 미실행이다.
+- 커밋: 실패 등록 `fe9be2a3`, 모델 교체·계약 `f972e0eb`, 실생성·OCR·보고 `d031befa`로 작업 단위를 분리했다.
+- next action: 컨트롤러가 세 커밋과 사용자 소유 미커밋 파일 2개를 구분해 인수한다. push 뒤 원격 CI green과 운영 반영 여부가 다음 외부 관문이다.
+
+## 2026-10-11 02:08 KST · R4 원인 확정과 모델 계약 교정
+
+- 원인: R3 실제 job JSON과 route import chain을 대조했다. 제공자 요청은 `text2image_soul_v2`, 텍스트 프롬프트, 9:16, 1.5k뿐이었고 참조 이미지·초안 본문·화면 캡처는 없었다. Soul V2가 무문자 금지 나열에도 세로 장식 캡션을 자율 생성했고 이 모델의 CLI 계약에는 `negative_prompt`가 없다.
+- 변경: 무문자 대표 이미지 경로를 `gpt_image_2_5`의 1k/low로 고정하고, 저장 job에 model·resolution·quality·빈 reference 목록을 남긴다. 클라이언트가 reference 필드를 보내도 CLI로 승격하지 않는 회귀 테스트를 추가했다.
+- 검증: 신규 정상·거절 계약 2건과 기존 비동기 생성 10건, 합계 12건 PASS. CLI 비용 실측은 Soul V2 0.12 credit, GPT Image 2.5 0.25 credit다.
+- next action: 이 구현 단위를 커밋한 뒤 로컬 스택의 실제 `/api/higgsfield/image` 경로로 정확히 3장을 만들고, 원본 육안과 회전 포함 Tesseract OCR에서 3/3 무문자를 확인한다.
+
+## 2026-10-11 02:01 KST · 로컬 실제 경로 R4 무문자 생성 원인 규명 착수
+
+- handoff basis: 사용자가 지정한 R4 원문과 직전 R3 커밋 `3da86ac5`를 정본으로 이어간다. tmux `openclaw-auto-3:0.1`은 직전 R3 종료 로그, `openclaw-auto-3:0.3`은 더 오래된 동일 worktree 실행 로그로 확인했고, 현재 R4 지시가 우선한다.
+- scope: `/api/higgsfield/image`에서 최종 모델·프롬프트·참조 이미지가 제공자 CLI까지 전달되는 import chain을 추적한다. CLI 도움말과 공식 문서로 negative prompt·모델 선택지를 검증하고 원인에 맞게 최소 수정한다.
+- evidence contract: 앱 실제 API 경로로 최대 3장만 생성한다. 세 파일 모두 원본 육안과 OCR에서 글자 없음이어야 PASS다. TypeScript·관련 Vitest·dev 스모크를 다시 통과시키고 보고서·구현현황을 갱신한다.
+- exclusions: 외부 SNS 게시, push, 다른 worktree, 사용자 소유 `.codex/logs/harness.jsonl`과 `wiki/거버넌스/요청.md`는 건드리지 않는다.
+- next action: R4 NG를 커밋한 뒤 생성 API route→provider runner→Higgsfield CLI payload와 R3 실제 요청 로그를 대조한다.
+
+## 2026-10-11 01:48 KST · 로컬 실제 경로 R3 4/5 통과, 무문자 생성 실패
+
+- handoff basis: 사용자 R3 원문과 이 worktree의 실제 로컬 경로를 정본으로 삼았다. 제품 커밋 `3708dfc8`, `ad06a00e`, 재검증 계약 `f4039164`까지 반영했다.
+- 완료: X 4단계, LinkedIn 3단계, Bluesky 3단계, Facebook `/photos`, Telegram `/sendPhoto`를 포함한 13채널 20건 요청 원장을 만들었다. 구형 초안 폴백, 내부 오류 숨김, `전체 13곳`, TikTok 공개 범위·AI 표시 사용자 선택을 실제 Playwright 경로로 확인했다.
+- 검증: `verification.json ok=true`, 미리보기 13개, 요청 20건, 콘솔·401·외부 브라우저 요청 0건. TypeScript exit 0, 관련 Vitest 7파일·187건 PASS. 발행실 첫 화면과 13개 채널 캡처는 각각 1440×900이다.
+- 실패: 새 Higgsfield PNG 1장은 960×1696·2,299,965바이트로 생성됐지만 왼쪽에 읽을 수 없는 가짜 글자가 남았다. 사용 모델은 별도 negative prompt 입력이 없고, 1장 한도를 지켜 추가 생성하지 않았다.
+- 보존: 로컬 생성 미디어와 `.env.local`은 커밋하지 않는다. `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 사용자 소유 변경이라 stage하지 않는다. 외부 게시·push·운영 배포도 하지 않았다.
+- next action: 컨트롤러가 무문자 이미지 항목만 반려 상태로 인수한다. 종료 증거는 추가 크레딧 승인을 받은 뒤 다른 모델 또는 글자 탐지·재생성 게이트로 만든 새 이미지에서 가짜 글자 0건을 육안 확인하는 것이다. 서버 복구 후에는 13개 채널 실제 게시 수락을 채널별로 별도 확인한다.
+
+## 2026-10-11 01:26 KST · 로컬 실제 경로 R3 교정 착수
+
+- handoff basis: 사용자가 지정한 R3 원문, HEAD `92955e88`, `docs/qa/qa-tracker.md`의 LOCAL-REAL-PATH 항목을 정본으로 이어간다. 이전 동일 worktree pane 두 개는 종료 상태이고 현재 pane만 실행 중이다.
+- scope: LinkedIn·X·Telegram·Facebook·Bluesky의 미디어 업로드 포함 드라이런 순서, 구형 초안 발행실 폴백, 채널 수 표기, 이미지 무문자 생성 프롬프트와 실제 1장 재생성, TikTok 선택 보존을 수정한다.
+- exclusions: 외부 SNS 실제 게시, push, 카드·영상 편집기 내부 조작, 다른 worktree, 기존 사용자 변경 `.codex/logs/harness.jsonl`과 `wiki/거버넌스/요청.md`는 건드리지 않는다.
+- evidence contract: 드라이런 요청 원장 단계 순서, 구형 초안 Playwright 경로, 13채널 UI, 새 실제 이미지 픽셀·육안, TypeScript·관련 Vitest를 직접 확인하고 작업 단위별 커밋한다.
+- next action: 기존 어댑터·프롬프트·구형 초안 인계 import chain을 추적하고 공식 API 호출 순서와 대조한다.
+
+## 2026-10-11 00:35 KST · 로컬 실제 경로 직접 발행 완료, 검토 대기열 잔여
+
+- handoff basis: 사용자가 지정한 `fix/local-real-path-20261010`의 미커밋 변경과 `verification.json ok`를 정본으로 이어갔다. 제품 구현은 `9b29295d`로 먼저 커밋했다.
+- 완료: 실제 PNG·MP4가 생성실 목록→편집실 실제 재생→발행실 실제 미리보기→13개 채널 외부 API 직전 드라이런으로 이어졌다. 브라우저 외부 요청·콘솔 오류·401은 0이다. 실제 데이터 화면의 모바일 9폭도 전부 통과했다.
+- 증거: `logs/diff/local-real-path-20261010/report.md`, 1440×900 발행실 첫 화면, 13개 채널별 1440×900 캡처, 요청 JSONL, ffprobe·픽셀 검사, 모바일 측정 JSON이다. TypeScript, 집중 Vitest 95건, Webpack production build PASS다.
+- 빌드 경계: 기본 Turbopack build는 이 worktree의 `node_modules`가 파일시스템 루트 밖 심볼릭 링크라는 이유로 실패했다. 같은 코드의 `next build --webpack`은 성공했다.
+- 남음: 구형 Higgsfield 초안은 검토 대기열 연결에서 `editor_handoff` 경고가 남고 LinkedIn 어댑터는 텍스트만 보낸다. 운영 복구 뒤 실제 채널 게시 성공은 정책상 미검증이다. push는 하지 않는다.
+- commit boundary: 제품 변경은 `9b29295d`, 이 기록과 검증 증거는 후속 HEAD에 분리해 고정한다. 이후 소유자는 컨트롤러이며 push 전 diff와 두 커밋을 검수한다.
+
+## 2026-10-10 21:14 KST · 로컬 DB·발행 드라이런 경계 구현
+
+- handoff basis: 이 파일의 20:59 착수 기록과 사용자가 지정한 로컬 실제 경로 과제를 이어간다.
+- 완료한 구현 단위: `data/local-postgres-20261010`의 PostgreSQL 16을 127.0.0.1:55432에 기동하고 schema→seed→RLS를 적용했다. 개발 환경에서만 켜지고 production에서 무시되는 `PUBLISH_DRY_RUN=1` 경계, 자격증명 제거 JSONL 요청 원장, ffprobe 미디어 수치 기록, KakaoTalk 나에게 보내기 어댑터와 발행실 미리보기를 추가했다.
+- 로컬 스택: `dashboard/scripts/local-stack-20261010.sh`가 DB·스키마·가짜 연결 계정·로컬 디스크·export worker·Next 3483을 한 번에 준비한다. 가짜 연결 계정은 외부 전송이 차단된 드라이런 전용이며 실 자격증명을 담지 않는다.
+- 검증: 신규 드라이런 계약 Vitest 4건 PASS, `npm run typecheck:ci` PASS. 실제 dev 서버 화면, 생성·저장·발행 사용자 경로, PNG 픽셀·MP4 ffprobe, 모든 채널 요청 원장과 모바일 9폭은 아직 미검증이다.
+- next action: 로컬 스택을 제한시간 실행하고 실제 API·브라우저 기준의 생성 전 경로를 재현한다. 이후 Higgsfield 이미지 1장과 영상 1개만 생성해 최종 검증한다.
+
+## 2026-10-10 20:59 KST · 로컬 실제 생성→편집→발행 경로 작업 착수
+
+- handoff basis: 사용자가 지정한 브랜치 `fix/local-real-path-20261010`, HEAD `5f633b2e`, 과제 원문을 주 기준으로 삼았다. tmux `openclaw-auto-3:0.1`은 현재 이 워커 자체임을 확인했다.
+- scope: 포트 3483 로컬 Next.js + 로컬 PostgreSQL + OD-2026-10-09-1 로컬 디스크, 실제 Higgsfield 이미지 1장·영상 1개, 생성실 목록→편집실 첫 화면→저장 결과→발행실, 모든 코드상 채널의 외부 전송 직전 드라이런 기록이다.
+- exclusions: 카드·영상 편집기 내부 조작은 병렬 워커 소유라 수정하지 않는다. 외부 SNS 실제 게시, push, 다른 worktree 수정, git stash는 금지한다.
+- evidence contract: page.route 목업 금지. 실제 로컬 API·DB·파일 경로를 Playwright로 조작하고 PNG 픽셀·MP4 ffprobe·드라이런 요청 원장을 확인해야 종료한다.
+- current state: 필수 입력과 품질헌법을 읽고 QA tracker에 기존 운영 결함을 ❌ NG로 등록했다. 아직 소스 수정·실생성·로컬 스택 기동 전이다.
+- next action: 로컬 저장 경로와 생성·초안·편집 인계·발행 어댑터 import chain을 추적하고 최초 실제 경로를 재현한다.
+
 ## 2026-10-09 13:26 KST · 운영 편집실 R8 개발 품질헌법 대조 완료
 
 - handoff basis: 사용자가 지정한 커밋 `584b5067`까지의 변경과 `/Users/sj/.claude/standards/standard-dev.md`를 정본으로 감사했다.

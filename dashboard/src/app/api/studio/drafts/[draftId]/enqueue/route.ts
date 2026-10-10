@@ -3,7 +3,8 @@ import { runWithTenant } from "@/lib/tenant-context";
 import { addQueuePost, QueueInputError } from "@/lib/queue-add";
 import { mirrorQueuePost } from "@/lib/queue-store";
 import { EditorContractError, handoffQueueInput } from "@/lib/studio/editor-handoff";
-import { editorHandoffFromDraftPayload, loadEditorHandoff } from "@/lib/studio/editor-handoff-store";
+import { editorHandoffFromDraftPayload, loadDraftForPublish, loadEditorHandoff } from "@/lib/studio/editor-handoff-store";
+import { normalizeDraftImage, normalizeDraftVideo } from "@/lib/studio/draft-media-compat";
 import { cardDeckV3PublishErrorResponse } from "@/lib/studio/card-deck-v3-publish-gate";
 import { exportRepository } from "@/lib/studio/export-repository";
 import { ExportQueueError, type ExportKind } from "@/lib/studio/export-contract";
@@ -25,6 +26,61 @@ function artifactDeliveryUrl(tenantId: string, kind: ExportKind, artifactKey: st
   return `${origin}${path}`;
 }
 
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function legacyDraftText(idea: string, payload: Record<string, unknown>): string {
+  const lines = Array.isArray(payload.editLines)
+    ? payload.editLines.filter((line): line is string => typeof line === "string" && line.trim().length > 0)
+    : [];
+  if (lines.length > 0) return lines.join("\n");
+  const variants = record(payload.text);
+  const instagram = record(variants.instagram);
+  const shorts = record(variants.shorts);
+  return text(variants.threads)
+    || text(variants.facebook)
+    || text(variants.x)
+    || text(instagram.caption)
+    || [text(shorts.hook), text(shorts.body), text(shorts.cta)].filter(Boolean).join("\n")
+    || text(idea)
+    || "저장된 초안";
+}
+
+async function enqueueLegacyDraftMedia(tenantId: string, draftId: string, publishRoomPin: boolean) {
+  const draft = await loadDraftForPublish(tenantId, draftId);
+  if (!draft) return null;
+  const payload = draft.payload ?? {};
+  const image = normalizeDraftImage(payload);
+  const video = normalizeDraftVideo(payload);
+  const imageUrls = Array.isArray(image?.imageUrls)
+    ? image.imageUrls.filter((url): url is string => typeof url === "string" && url.trim().length > 0)
+    : null;
+  const imageUrl = text(image?.file) || text(image?.url) || imageUrls?.[0] || null;
+  const videoUrl = text(video?.url) || text(video?.file) || null;
+  const videoFilename = text(video?.filename) || null;
+  const input = {
+    text: legacyDraftText(draft.idea, payload),
+    draftId,
+    topic: "studio-legacy-draft",
+    imageUrl,
+    imageUrls,
+    videoUrl,
+    videoFilename,
+    idempotencyKey: `studio-legacy-draft:${draftId}`,
+  };
+  const result = await runWithTenant(tenantId, () => addQueuePost(tenantId, input, {
+    preparedMedia: { imageUrl, imageUrls, videoUrl, videoFilename },
+    ...(publishRoomPin ? { initialStatus: "publish_ready" as const, mirror: false } : {}),
+  }));
+  if (publishRoomPin) await mirrorQueuePost(tenantId, result.post);
+  return result;
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ draftId: string }> },
@@ -40,16 +96,17 @@ export async function POST(
   try {
     const loaded = await loadEditorHandoff(tenantId, draftId);
     if (!loaded) {
-      if (publishRoomPin) {
+      const fallback = await enqueueLegacyDraftMedia(tenantId, draftId, publishRoomPin);
+      if (fallback) {
         return Response.json({
           ok: true,
-          queued: false,
-          pin_status: "unpinned",
-          error: "editor handoff not found",
-          code: "EDITOR_HANDOFF_NOT_FOUND",
-        });
+          draft_id: draftId,
+          pin_status: publishRoomPin ? "draft_media" : "approval_draft",
+          legacy_draft_fallback: true,
+          ...fallback,
+        }, { status: fallback.reused ? 200 : 201 });
       }
-      return Response.json({ error: "editor handoff not found", code: "EDITOR_HANDOFF_NOT_FOUND" }, { status: 404 });
+      return Response.json({ error: "저장된 초안을 찾지 못했습니다.", code: "DRAFT_NOT_FOUND" }, { status: 404 });
     }
     const exportKind = exportKindForDraftState(loaded.handoff.kind, loaded.draft.payload ?? {});
     if (exportKind) {

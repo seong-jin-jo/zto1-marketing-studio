@@ -22,6 +22,7 @@ import {
   TIKTOK_PRIVACY_LEVELS,
   type TikTokPrivacyLevel,
 } from "@/lib/tiktok";
+import { isPublishDryRunEnabled, recordVideoPublishDryRun } from "@/lib/publish-dry-run";
 
 // SNS-015 Reels 제약: published_posts에 기록되는 플랫폼 키(대시보드 SSOT)와 허용 영상 형식/용량.
 const REELS_PLATFORM = "instagram_reels";
@@ -242,6 +243,38 @@ export async function POST(request: Request) {
     const videoPath = resolveGeneratedFile(tenantId, filename);
     if (!videoPath) {
       return Response.json({ error: "video not found" }, { status: 404 });
+    }
+
+    // 로컬 실제 경로 검증은 입력 검증·테넌트 파일 해석까지 그대로 통과한 뒤 외부 HTTP
+    // 경계에서만 멈춘다. 운영 NODE_ENV에서는 PUBLISH_DRY_RUN=1이어도 활성화되지 않는다.
+    if (tenantId && isPublishDryRunEnabled()) {
+      const mediaToken = signMediaToken(tenantId, filename);
+      if (!mediaToken) return Response.json({ error: "미디어 서명 설정이 없어 드라이런을 기록할 수 없습니다." }, { status: 400 });
+      const videoUrl = `${process.env.OSMU_PUBLIC_URL?.replace(/\/+$/, "") || "http://127.0.0.1:3483"}/api/media/${encodeURIComponent(mediaToken)}`;
+      const dryRun = recordVideoPublishDryRun({
+        tenantId,
+        platform,
+        title,
+        description,
+        videoPath,
+        videoUrl,
+        extra: {
+          cover_timestamp_ms: coverMs ?? null,
+          privacy_level: scalarString(data.privacy_level) ? data.privacy_level : null,
+          disable_comment: typeof data.disable_comment === "boolean" ? data.disable_comment : null,
+          disable_duet: typeof data.disable_duet === "boolean" ? data.disable_duet : null,
+          disable_stitch: typeof data.disable_stitch === "boolean" ? data.disable_stitch : null,
+          is_ai_generated: typeof data.is_ai_generated === "boolean" ? data.is_ai_generated : null,
+        },
+      });
+      return Response.json({
+        ...dryRun.result,
+        platform,
+        videoId: dryRun.result.externalId,
+        url: dryRun.result.permalink,
+        dryRun: true,
+        mediaSpec: dryRun.mediaSpec,
+      });
     }
 
     if (platform === "youtube") {

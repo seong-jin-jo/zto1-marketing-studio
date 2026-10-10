@@ -24,14 +24,17 @@ import { DEFAULT_COVER_SECONDS } from "@/lib/video-cover";
  * 장, 미연결·미지원 채널을 혼재시킨다.
  */
 const GROUPS: { title: string; platforms: PreviewPlatform[] }[] = [
-  { title: "텍스트", platforms: ["threads", "x", "facebook"] },
+  { title: "텍스트", platforms: ["threads", "x", "facebook", "linkedin", "bluesky"] },
   { title: "세로 영상", platforms: ["shorts", "reels", "tiktok"] },
   { title: "카드뉴스", platforms: ["instagram"] },
+  { title: "메시지", platforms: ["telegram", "discord", "slack", "kakao"] },
 ];
 
 const LABEL: Record<PreviewPlatform, string> = {
   threads: "Threads", x: "X", facebook: "Facebook", instagram: "Instagram",
+  linkedin: "LinkedIn", bluesky: "Bluesky", telegram: "Telegram", discord: "Discord", slack: "Slack",
   shorts: "Shorts", reels: "Reels", tiktok: "TikTok",
+  kakao: "KakaoTalk",
 };
 
 // 실제 회장 계정에서 나올 법한, 서로 다른 길이의 초안을 채널마다 준다.

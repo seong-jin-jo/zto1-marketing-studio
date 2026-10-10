@@ -1277,14 +1277,18 @@ export async function publishXReply(cred: ChannelCred, text: string, parentId: s
   return { ok: true, externalId: id, permalink: `https://x.com/i/web/status/${id}` };
 }
 
-// Facebook 페이지 발행 (Graph API). imageUrl 있으면 /photos(caption), 없으면 /feed(message).
-export async function publishFacebook(cred: ChannelCred, message: string, imageUrl?: string): Promise<PublishResult> {
+// Facebook 페이지 발행 (Graph API). videoUrl 있으면 /videos(description), imageUrl 있으면
+// /photos(caption), 둘 다 없으면 /feed(message).
+export async function publishFacebook(cred: ChannelCred, message: string, imageUrl?: string, videoUrl?: string): Promise<PublishResult> {
   const pageId = cred.userId;
   if (!pageId) return { ok: false, error: "Facebook pageId(meta.userId) 없음" };
   if (!cred.token) return { ok: false, error: "Facebook access token 없음" };
-  const endpoint = imageUrl ? "photos" : "feed";
+  const endpoint = videoUrl ? "videos" : imageUrl ? "photos" : "feed";
   const params: Record<string, string> = { access_token: cred.token };
-  if (imageUrl) {
+  if (videoUrl) {
+    params.file_url = videoUrl;
+    if (message) params.description = message;
+  } else if (imageUrl) {
     params.url = imageUrl;
     if (message) params.caption = message;
   } else {
@@ -1297,7 +1301,7 @@ export async function publishFacebook(cred: ChannelCred, message: string, imageU
   });
   if (!resp.ok) return { ok: false, error: `Facebook ${endpoint} 실패(${resp.status}): ${(await resp.text()).slice(0, 200)}`,
     failureKind: isAmbiguousProviderHttpStatus(resp.status) ? "indeterminate" : "definitive" };
-  // photos → { id, post_id }, feed → { id }
+  // photos → { id, post_id }, videos/feed → { id }
   const data = (await resp.json()) as { id?: string; post_id?: string };
   const externalId = data.post_id ?? data.id;
   if (!externalId) return { ok: false, error: "Facebook 발행 결과 번호가 없습니다.", failureKind: "indeterminate" };
@@ -1514,10 +1518,11 @@ export async function publishBluesky(cred: ChannelCred, text: string, imageUrl?:
   }
 }
 
-// Telegram 발행 (Bot API). 이미지 없으면 sendMessage(text), 있으면 sendPhoto(photo=imageUrl, caption=text).
+// Telegram 발행 (Bot API). videoUrl이 있으면 sendVideo, imageUrl이 있으면 sendPhoto,
+// 둘 다 없으면 sendMessage를 사용한다.
 // chat_id는 meta.chatId(Settings에서 선택 입력) — 없으면 발행 대상 불명이라 명확히 에러.
 // 출처: https://core.telegram.org/bots/api#sendmessage , #sendphoto (2026-07 조사)
-export async function publishTelegram(cred: ChannelCred, text: string, imageUrl?: string): Promise<PublishResult> {
+export async function publishTelegram(cred: ChannelCred, text: string, imageUrl?: string, videoUrl?: string): Promise<PublishResult> {
   const token = cred.token;
   const chatIdRaw = cred.meta?.chatId;
   const chatId = typeof chatIdRaw === "string" || typeof chatIdRaw === "number" ? String(chatIdRaw) : "";
@@ -1526,9 +1531,11 @@ export async function publishTelegram(cred: ChannelCred, text: string, imageUrl?
 
   // 공식 한도: sendMessage text 4096자 / sendPhoto caption 1024자 — 초과 시 400 거부라 절단.
   // photo=URL은 텔레그램이 서버측에서 다운로드(5MB·가로+세로 10000 한도도 그쪽에서 검증) — 우리 표면 아님.
-  const method = imageUrl ? "sendPhoto" : "sendMessage";
-  const body: Record<string, string> = imageUrl
-    ? { chat_id: chatId, photo: imageUrl, caption: truncateChars(text ?? "", TELEGRAM_MAX_CAPTION) }
+  const method = videoUrl ? "sendVideo" : imageUrl ? "sendPhoto" : "sendMessage";
+  const body: Record<string, string> = videoUrl
+    ? { chat_id: chatId, video: videoUrl, caption: truncateChars(text ?? "", TELEGRAM_MAX_CAPTION) }
+    : imageUrl
+      ? { chat_id: chatId, photo: imageUrl, caption: truncateChars(text ?? "", TELEGRAM_MAX_CAPTION) }
     : { chat_id: chatId, text: truncateChars(text ?? "", TELEGRAM_MAX_TEXT) };
 
   try {
@@ -1639,6 +1646,38 @@ export async function publishSlack(cred: ChannelCred, text: string, imageUrl?: s
   }
 }
 
+// KakaoTalk 메시지 API의 나에게 보내기. OSMU의 연결 계정이 소유한 나와의 채팅으로만
+// 보낸다. 임의 수신자나 친구 식별자를 받지 않아 권한 범위를 화면보다 넓히지 않는다.
+export async function publishKakao(cred: ChannelCred, text: string, imageUrl?: string): Promise<PublishResult> {
+  if (!cred.token) return { ok: false, error: "KakaoTalk 채널 토큰이 없습니다. 채널을 다시 연결해주세요." };
+  if ([...text].length > 200) return { ok: false, error: "KakaoTalk 텍스트 템플릿은 최대 200자입니다." };
+  const linkUrl = imageUrl || process.env.OSMU_PUBLIC_URL || "https://developers.kakao.com";
+  const template = {
+    object_type: "text",
+    text,
+    link: { web_url: linkUrl, mobile_web_url: linkUrl },
+    button_title: imageUrl ? "이미지 보기" : "내용 보기",
+  };
+  try {
+    const response = await fetch("https://kapi.kakao.com/v2/api/talk/memo/default/send", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cred.token}`,
+        "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+      },
+      body: new URLSearchParams({ template_object: JSON.stringify(template) }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return { ok: false, error: `KakaoTalk 메시지 발송 실패(${response.status})` };
+    const body = await response.json().catch(() => ({})) as { result_code?: number };
+    return body.result_code === 0
+      ? { ok: true, externalId: `kakao-self-${Date.now()}` }
+      : { ok: false, error: "KakaoTalk 메시지 발송 결과를 확인하지 못했습니다." };
+  } catch {
+    return { ok: false, error: "KakaoTalk 메시지 발송 결과를 확인하지 못했습니다.", failureKind: "indeterminate" };
+  }
+}
+
 /**
  * LinkedIn 회원 게시.
  *
@@ -1652,14 +1691,14 @@ export async function publishSlack(cred: ChannelCred, text: string, imageUrl?: s
  * 공개 범위는 전체 공개로 고정한다. 마케팅 발행 도구가 아무도 못 보는 글을 올리는 것은
  * 사용자가 기대한 일이 아니다. 나중에 선택이 필요해지면 그때 화면에 내놓는다.
  *
- * 이미지 첨부는 이번 범위에서 제외한다. LinkedIn 은 별도 업로드 등록 절차를 요구해
- * 텍스트 발행과 실패 모양이 다르다. 반쯤 되는 첨부를 넣는 것보다 텍스트를 확실히 하는 편이
- * 낫다. 첨부가 필요해지면 그때 등록 절차까지 함께 넣는다.
+ * 이미지가 있으면 디지털 자산 등록, 반환된 업로드 URL로 바이트 전송, UGC 게시물의
+ * 미디어 연결까지 한 묶음으로 끝낸다. 어느 단계든 실패하면 이미지를 버리고 텍스트만
+ * 조용히 올리지 않는다.
  */
 const LINKEDIN_API = "https://api.linkedin.com/v2";
 const LINKEDIN_MAX_TEXT = 3000;
 
-export async function publishLinkedIn(cred: ChannelCred, text: string): Promise<PublishResult> {
+export async function publishLinkedIn(cred: ChannelCred, text: string, imageUrl?: string): Promise<PublishResult> {
   const body = (text || "").trim();
   if (!body) return { ok: false, error: "LinkedIn 발행할 본문이 없습니다." };
   if ([...body].length > LINKEDIN_MAX_TEXT) {
@@ -1670,6 +1709,65 @@ export async function publishLinkedIn(cred: ChannelCred, text: string): Promise<
     return { ok: false, error: "LinkedIn 계정 식별자를 찾지 못했습니다. 설정에서 다시 연결해 주세요." };
   }
   const author = cred.userId.startsWith("urn:") ? cred.userId : `urn:li:person:${cred.userId}`;
+
+  let assetUrn: string | undefined;
+  if (imageUrl) {
+    const resolved = await resolveServerImageBytes(imageUrl);
+    if ("error" in resolved) return { ok: false, error: `LinkedIn 이미지 준비 실패: ${resolved.error}` };
+    let registered: Response;
+    try {
+      registered = await fetch(`${LINKEDIN_API}/assets?action=registerUpload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cred.token}`,
+          "Content-Type": "application/json",
+          "X-Restli-Protocol-Version": "2.0.0",
+        },
+        body: JSON.stringify({
+          registerUploadRequest: {
+            recipes: ["urn:li:digitalmediaRecipe:feedshare-image"],
+            owner: author,
+            serviceRelationships: [{ relationshipType: "OWNER", identifier: "urn:li:userGeneratedContent" }],
+          },
+        }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, error: "LinkedIn 이미지 업로드 등록 결과를 확인할 수 없습니다.", failureKind: "indeterminate" };
+    }
+    if (!registered.ok) {
+      return { ok: false, error: `LinkedIn 이미지 업로드 등록에 실패했습니다(오류 코드 ${registered.status}).`,
+        failureKind: isAmbiguousProviderHttpStatus(registered.status) ? "indeterminate" : "definitive" };
+    }
+    const registration = (await registered.json().catch(() => ({}))) as {
+      value?: {
+        asset?: string;
+        uploadMechanism?: {
+          "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"?: { uploadUrl?: string };
+        };
+      };
+    };
+    assetUrn = registration.value?.asset;
+    const uploadUrl = registration.value?.uploadMechanism?.["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]?.uploadUrl;
+    if (!assetUrn || !uploadUrl) {
+      return { ok: false, error: "LinkedIn 이미지 업로드 주소를 받지 못했습니다.", failureKind: "indeterminate" };
+    }
+    let uploaded: Response;
+    try {
+      uploaded = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${cred.token}`, "Content-Type": resolved.contentType },
+        body: Uint8Array.from(resolved.bytes),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      return { ok: false, error: "LinkedIn 이미지 전송 결과를 확인할 수 없습니다.", failureKind: "indeterminate" };
+    }
+    if (!uploaded.ok) {
+      return { ok: false, error: `LinkedIn 이미지 전송에 실패했습니다(오류 코드 ${uploaded.status}).`,
+        failureKind: isAmbiguousProviderHttpStatus(uploaded.status) ? "indeterminate" : "definitive" };
+    }
+  }
 
   let res: Response;
   try {
@@ -1686,7 +1784,8 @@ export async function publishLinkedIn(cred: ChannelCred, text: string): Promise<
         specificContent: {
           "com.linkedin.ugc.ShareContent": {
             shareCommentary: { text: body },
-            shareMediaCategory: "NONE",
+            shareMediaCategory: assetUrn ? "IMAGE" : "NONE",
+            ...(assetUrn ? { media: [{ status: "READY", media: assetUrn }] } : {}),
           },
         },
         visibility: { "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC" },

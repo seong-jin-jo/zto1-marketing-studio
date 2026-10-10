@@ -4,7 +4,7 @@ import { hfRun, extractJson, extractJobId, HiggsfieldUnavailableError, Higgsfiel
 import { createHiggsfieldJob } from "@/lib/higgsfield-jobs";
 import { scheduleHiggsfieldBackgroundPoll } from "@/lib/higgsfield-background-poll";
 
-// POST /api/higgsfield/image — Soul V2 text→image 작업 "접수"만 한다(비동기 전환 2026-10-01).
+// POST /api/higgsfield/image — GPT Image 2.5 text→image 작업 "접수"만 한다(비동기 전환 2026-10-01).
 // 반환: 202 { ok: true, jobId } — 실제 생성·다운로드·결과는 GET /api/higgsfield/job/[id] 가 한다.
 //
 // 왜 비동기인가: 운영은 Cloudflare 터널 뒤라 100초 넘는 동기 HTTP 요청은 524로 끊긴다. 종전
@@ -16,10 +16,19 @@ import { scheduleHiggsfieldBackgroundPoll } from "@/lib/higgsfield-background-po
 // 날 수 있으므로 기존 문구·상태코드 규약(거절=200, 실행기 미준비/미인증=503)을 그대로
 // 유지한다 — 화면 쪽 문구 분기(r.credits/r.nsfw)가 접수 응답에도 그대로 먹힌다.
 const GENERATOR_REFUSED = 200;
+// 2026-10-11 R4 실생성 원인 추적:
+// Soul V2 요청에는 참조 이미지도, 초안 본문도 없었지만 결과에 세로 가짜 캡션이 생겼다.
+// CLI 모델 계약에도 negative_prompt 입력이 없다. Soul V2는 패션·에디토리얼 사진에 특화돼
+// 장면에 장식 캡션을 자율 추가할 수 있으므로, 무문자 대표 이미지는 자연어 제약 준수가 더
+// 강한 GPT Image 2.5로 분리한다. 1k/low는 이 용도의 화면·숏폼 바탕에 충분하고 실측 비용도
+// Soul 0.12 대비 0.25 credit로 제한된다. 참조 이미지는 이 경로에서 받지도, 보내지도 않는다.
+export const HIGGSFIELD_IMAGE_MODEL = "gpt_image_2_5";
+export const HIGGSFIELD_IMAGE_RESOLUTION = "1k";
+export const HIGGSFIELD_IMAGE_QUALITY = "low";
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { prompt, aspectRatio = "9:16", quality = "1.5k", label = "" } = body;
+  const { prompt, aspectRatio = "9:16", label = "" } = body;
   if (!prompt || typeof prompt !== "string") {
     return Response.json({ error: "prompt required" }, { status: 400 });
   }
@@ -39,8 +48,11 @@ export async function POST(request: Request) {
     // 안에 끝나야 하는 짧은 호출이므로 타임아웃을 명시적으로 짧게 준다 — 걸리면 접수
     // 단계에서 바로 에러로 드러나야지, --wait 때처럼 조용히 길게 물려 있으면 안 된다.
     const { stdout } = await hfRun([
-      "generate", "create", "text2image_soul_v2",
-      "--prompt", prompt, "--aspect_ratio", toGeneratorRatio(aspectRatio), "--quality", quality,
+      "generate", "create", HIGGSFIELD_IMAGE_MODEL,
+      "--prompt", prompt,
+      "--aspect_ratio", toGeneratorRatio(aspectRatio),
+      "--resolution", HIGGSFIELD_IMAGE_RESOLUTION,
+      "--quality", HIGGSFIELD_IMAGE_QUALITY,
       "--json",
     ], 45000);
     mark("create:ok", `stdout=${stdout.length}`);
@@ -54,7 +66,13 @@ export async function POST(request: Request) {
       }, { status: GENERATOR_REFUSED });
     }
     const job = createHiggsfieldJob(tenantId, "image", providerJobId, {
-      prompt, aspectRatio, quality, label,
+      model: HIGGSFIELD_IMAGE_MODEL,
+      prompt,
+      aspectRatio,
+      resolution: HIGGSFIELD_IMAGE_RESOLUTION,
+      quality: HIGGSFIELD_IMAGE_QUALITY,
+      imageReferences: [],
+      label,
     });
     // 접수 직후 서버가 스스로 이 작업을 확인·완료 처리하는 백그라운드 루프를 돈다 —
     // 화면이 한 번도 GET하지 않아도(탭이 백그라운드에 묶이거나 닫혀도) 결과가 확정된다.

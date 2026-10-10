@@ -25,7 +25,9 @@ import type { PreviewPlatform } from "@/components/studio/PlatformPreview";
 const CHANNELS: PreviewPlatform[] = ["threads", "x", "facebook", "instagram", "shorts", "reels", "tiktok"];
 const LABEL: Record<PreviewPlatform, string> = {
   threads: "Threads", x: "X", facebook: "Facebook", instagram: "Instagram",
+  linkedin: "LinkedIn", bluesky: "Bluesky", telegram: "Telegram", discord: "Discord", slack: "Slack",
   shorts: "Shorts", reels: "Reels", tiktok: "TikTok",
+  kakao: "KakaoTalk",
 };
 
 function renderHeader(platform: PreviewPlatform, accountLabel: string) {

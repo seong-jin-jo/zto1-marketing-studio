@@ -273,7 +273,9 @@ export function PerformanceRoom({
   const focusedAllPosts = useMemo(
     () => focus === "all"
       ? posts
-      : posts.filter((post) => isPerformanceStoragePlatform(focus, post.platform)),
+      : performancePlatformForStorage(focus)
+        ? posts.filter((post) => isPerformanceStoragePlatform(performancePlatformForStorage(focus)!, post.platform))
+        : [],
     [focus, posts],
   );
   const measuredPosts = useMemo(

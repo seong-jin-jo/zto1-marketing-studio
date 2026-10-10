@@ -385,7 +385,9 @@ describe("Studio publish result integrity", () => {
     await waitFor(() => expect(screen.getByTestId("tiktok-privacy-panel")).toBeInTheDocument());
     // 절대 기본값을 미리 고르지 않는다 — 고르기 전에는 "선택"뿐이다.
     expect(screen.getByRole("combobox", { name: "TikTok 공개 범위" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "TikTok AI 생성 영상 표시" })).toHaveValue("");
     fireEvent.change(screen.getByRole("combobox", { name: "TikTok 공개 범위" }), { target: { value: "PUBLIC_TO_EVERYONE" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "TikTok AI 생성 영상 표시" }), { target: { value: "true" } });
 
     fireEvent.click(await findEnabledButton("선택한 1곳에 지금 발행"));
 

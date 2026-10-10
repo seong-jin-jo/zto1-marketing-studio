@@ -1,0 +1,56 @@
+{
+  "verifiedAt": "2026-10-11T02:13:00+09:00",
+  "route": "/api/higgsfield/image",
+  "generationCount": 3,
+  "model": "gpt_image_2_5",
+  "resolution": "1k",
+  "quality": "low",
+  "negativePromptParameterSupported": false,
+  "referenceImages": [],
+  "estimatedCreditsPerImage": 0.25,
+  "images": [
+    {
+      "providerJobId": "b3152520-3636-40b5-952f-be286f727290",
+      "filename": "img_1791652044820.png",
+      "width": 752,
+      "height": 1344,
+      "bytes": 1343837,
+      "pixelLumaRange": 219,
+      "visualTextDetected": false,
+      "ocrTextDetected": false
+    },
+    {
+      "providerJobId": "9fe97c2e-c077-4573-9883-9a0a36449b53",
+      "filename": "img_1791652046886.png",
+      "width": 752,
+      "height": 1344,
+      "bytes": 1424519,
+      "pixelLumaRange": 212,
+      "visualTextDetected": false,
+      "ocrTextDetected": false
+    },
+    {
+      "providerJobId": "db78bb76-42c4-4562-9c6d-c8c536112429",
+      "filename": "img_1791652048605.png",
+      "width": 752,
+      "height": 1344,
+      "bytes": 1475362,
+      "pixelLumaRange": 212,
+      "visualTextDetected": false,
+      "ocrTextDetected": false
+    }
+  ],
+  "ocr": {
+    "requestedEngine": "tesseract",
+    "requestedEngineAvailable": false,
+    "fallbackEngine": "Apple Vision VNRecognizeTextRequest",
+    "orientations": ["up", "right", "down", "left"],
+    "negativeControl": {
+      "filename": "img_1791650344582.png",
+      "textDetected": true,
+      "sample": "SHIORdYN TNEN AON ZLeiO.EPTEN"
+    },
+    "newImagesTextDetected": 0
+  },
+  "result": "PASS"
+}

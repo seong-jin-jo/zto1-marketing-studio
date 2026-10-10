@@ -1,3 +1,47 @@
+## 2026-10-11 02:15 KST · 로컬 실제 경로 R4 무문자 생성 원인 규명 ❌ NG → ✅ PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| LOCAL-REAL-PATH-R4-01 | `/api/higgsfield/image` 실제 요청의 모델·최종 프롬프트·참조 이미지를 추적하고 글자 유입 원인을 규명해야 함 | ✅ PASS | R3 job JSON과 route→CLI를 대조했다. Soul V2 텍스트 프롬프트만 전송됐고 참조 이미지·초안 본문·화면 캡처는 0건이었다. 세로 가짜 캡션은 Soul V2가 자체 생성했다. |
+| LOCAL-REAL-PATH-R4-02 | Higgsfield CLI·공식 문서로 negative prompt와 모델 선택지를 확인해 원인에 맞게 수정해야 함 | ✅ PASS | CLI `model get`에서 Soul V2·GPT Image 2.5 모두 별도 negative prompt가 없음을 확인했다. 무문자 경로를 `gpt_image_2_5`, 1k, low, 참조 0건으로 고정했다. |
+| LOCAL-REAL-PATH-R4-03 | 실제 앱 경로로 최대 3장 생성해 3장 모두 육안·OCR에서 글자 없음이어야 함 | ✅ PASS | 실제 `/api/higgsfield/image`로 정확히 3장을 생성했다. 3장 모두 원본 육안 글자 0건, Apple Vision 4방향 OCR 0건이다. 결함 원본은 같은 OCR이 가짜 문자열을 검출했다. |
+
+종료 증거: `logs/diff/local-real-path-20261010/r4-image-generation-verification.json`, 실제 job JSON 3건, 원본 PNG 3장, Higgsfield 회귀 12파일·91건과 이미지 프롬프트 포함 집중 4파일·44건, TypeScript, production build PASS. Tesseract는 미설치라 Apple Vision OCR로 대체했고 4방향 음성 대조를 포함했다.
+
+## 2026-10-11 01:48 KST · 로컬 실제 경로 R3 발행 계약·구형 초안·무문자 이미지 ⚠️ 4/5 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| LOCAL-REAL-PATH-R3-01 | LinkedIn·X·Telegram·Facebook·Bluesky 드라이런이 미디어 업로드를 포함한 실제 API 호출 순서를 모두 기록해야 함 | ✅ PASS | 실제 로컬 사용자 경로에서 X 4단계, LinkedIn 3단계, Bluesky 3단계, Facebook `/photos`, Telegram `/sendPhoto`를 포함한 20건을 기록했다. 영상 분기 `/videos`·`sendVideo`도 계약 테스트를 통과했다. |
+| LOCAL-REAL-PATH-R3-02 | 구형 초안도 인계 기록 없이 초안 미디어로 발행실이 동작하고 내부 영문 오류를 노출하지 않아야 함 | ✅ PASS | 인계 기록 없는 실제 초안이 초안 PNG·MP4로 발행실과 13채널 요청을 완료했고 내부 영문 오류는 0건이었다. |
+| LOCAL-REAL-PATH-R3-03 | 발행실 채널 필터의 전체 개수가 실제 13개 선택과 일치해야 함 | ✅ PASS | 발행실 첫 화면의 필터가 `전체 13곳`, 실제 미리보기와 선택 채널도 13개다. |
+| LOCAL-REAL-PATH-R3-04 | 이미지 생성 프롬프트가 이미지 안 글자를 금지하고 새 실제 생성물에서 깨진 가짜 글자가 없어야 함 | ❌ NG | 프롬프트와 실제 API 생성은 반영했지만 새 PNG 왼쪽에 읽을 수 없는 가짜 글자가 다시 생겼다. 1장 한도 때문에 추가 생성은 중단했다. |
+| LOCAL-REAL-PATH-R3-05 | TikTok 공개 범위와 AI 생성 표시는 사용자가 고르며 자동으로 `SELF_ONLY`로 전환되지 않아야 함 | ✅ PASS | 두 선택의 초기값은 비어 있고 Playwright가 사용자의 `PUBLIC_TO_EVERYONE`·AI 생성 `예` 선택 보존을 확인했다. |
+
+검증 기준: 실제 로컬 PostgreSQL·디스크 미디어·Next.js·Playwright 경로를 사용했다. 외부 SNS 요청은 전송하지 않고 드라이런 요청 원장에서 단계 순서를 확인했다. TypeScript와 관련 Vitest 7파일·187건은 통과했다.
+
+## 2026-10-11 00:35 KST · 로컬 실제 경로 생성→편집→발행 ❌ NG → ✅ 직접 발행 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| LOCAL-REAL-PATH-01 | 실제 Higgsfield 이미지·영상 생성물이 생성실 목록에 썸네일로 보이고 같은 미디어가 편집실·발행실까지 보존돼야 함 | ✅ PASS | 실제 PNG 960×1696과 MP4 768×1356·4.165986초를 사용했다. 생성실 썸네일 디코딩, 편집실 영상 0.5초 재생, 발행실 실제 이미지·영상 표시를 단일 Playwright 경로로 관찰했다. |
+| LOCAL-REAL-PATH-02 | 모든 발행 채널 어댑터가 외부 전송 직전까지 실행되고, 외부 요청과 미디어 규격 판정을 로컬 드라이런 기록으로 남겨야 함 | ✅ PASS | 13개 채널 요청이 엔드포인트·본문·미디어 주소·ffprobe 규격과 함께 기록됐다. 외부 HTTP 요청 0, 콘솔 오류 0, 401 응답 0이다. production에서는 드라이런 환경값을 무시하는 계약 테스트가 통과했다. |
+| LOCAL-REAL-PATH-03 | 발행실 플랫폼 카드는 세로 흐름이며 실제 이미지·영상 미리보기를 보여야 함 | ✅ PASS | 1440×900 첫 화면과 Threads·X·Facebook·Instagram·LinkedIn·Bluesky·Telegram·Discord·Slack·KakaoTalk·Shorts·Reels·TikTok 13개 개별 미리보기 캡처에서 실제 PNG 또는 MP4를 확인했다. |
+| LOCAL-REAL-PATH-04 | 실제 데이터 발행실이 360~1000px에서 글자·누름·눌림·가로 넘침 기준을 만족해야 함 | ✅ PASS | 9개 폭 모두 13px 미만 글자 0, 글자 중앙값 16px, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다. |
+| LOCAL-REAL-PATH-05 | 직접 발행과 검토 대기열 연결 상태를 구분해야 함 | 🔶 잔여 | 직접 발행 13채널은 PASS다. 구형 Higgsfield 초안의 검토 대기열 연결은 `editor_handoff` 부재 경고가 남고 LinkedIn은 미디어를 보내지 않는다. 외부 실제 게시는 정책상 미검증이다. |
+
+종료 증거: `logs/diff/local-real-path-20261010/report.md`, `verification.json`, `requests.jsonl`, `media-specs.json`, `mobile-ergonomics.json`, `03-publish-room-previews.png`, `publish-previews/*.png`. TypeScript PASS, 집중 Vitest 6파일·95건 PASS, Webpack production build PASS. 기본 Turbopack build는 worktree 밖 의존성 심볼릭 링크를 거부해 제품 코드와 무관하게 실패했다.
+
+## 2026-10-10 20:59 KST · 로컬 실제 경로 생성→편집→발행 ❌ NG 조사 시작
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| LOCAL-REAL-PATH-01 | 실제 Higgsfield 이미지·영상 생성물이 생성실 목록에 썸네일로 보이고 같은 미디어가 편집실·발행실까지 보존돼야 함 | ❌ NG, 재현·원인 조사 중 | 2026-10-09 운영 관찰에서 작업물 전체 목록 썸네일 0개, 신규 카드 편집실 미디어 0개, 발행실 미디어 0개였다. 로컬 실제 경로 재검증 전이다. |
+| LOCAL-REAL-PATH-02 | 모든 발행 채널 어댑터가 외부 전송 직전까지 실행되고, 외부 요청과 미디어 규격 판정을 로컬 드라이런 기록으로 남겨야 함 | ❌ NG, 구현·검증 전 | 현재 `PUBLISH_DRY_RUN=1` 전체 채널 기록 증거가 없다. 외부 실제 게시는 금지한다. |
+| LOCAL-REAL-PATH-03 | 발행실 플랫폼 카드는 세로 흐름이며 실제 이미지·영상 미리보기를 보여야 함 | ❌ NG, 재현·원인 조사 중 | 회장 결함 보고에서 플랫폼 카드 가로 나열과 실제 미디어 0개가 관찰됐다. |
+
+검증 기준: page.route 목업 없이 로컬 Next.js·PostgreSQL·로컬 디스크·실제 미디어 파일을 사용한다. Playwright 조작 결과와 PNG 픽셀·MP4 ffprobe, 발행 드라이런 요청 원장을 직접 대조한다.
+
 ## 2026-10-09 운영 편집실 R8 짧은 영상 타임라인·카톡 캔버스 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

@@ -64,10 +64,10 @@ function PublishPreviewHarness() {
 afterEach(cleanup);
 
 describe("발행실 플랫폼 집중 필터 계약", () => {
-  it("PUB-FOCUS-01 정상: 전체 7곳이 기본값이며 플랫폼 카드 일곱 장을 보여 준다", () => {
+  it("LOCAL-REAL-PATH-R3-03 정상: 전체 필터 숫자는 실제 발행 대상 13곳과 일치한다", () => {
     render(<PublishPreviewHarness />);
 
-    expect(screen.getByRole("button", { name: "전체 7곳" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "전체 13곳" })).toHaveAttribute("aria-pressed", "true");
     expect(document.querySelectorAll("[data-focus-card]")).toHaveLength(7);
   });
 
@@ -95,7 +95,7 @@ describe("발행실 플랫폼 집중 필터 계약", () => {
     expect(screen.getByRole("textbox", { name: "Threads 본문" })).toHaveValue("필터 뒤에도 남을 본문");
     expect(screen.getByRole("checkbox", { name: "Threads 발행 대상" })).toBeChecked();
 
-    fireEvent.click(screen.getByRole("button", { name: "전체 7곳" }));
+    fireEvent.click(screen.getByRole("button", { name: "전체 13곳" }));
     expect(document.querySelectorAll("[data-focus-card]")).toHaveLength(7);
     expect(screen.getByRole("textbox", { name: "Threads 본문" })).toHaveValue("필터 뒤에도 남을 본문");
   });

@@ -120,6 +120,8 @@ export interface VideoEditorProps {
   /** 현재 미리보기 파일 자체에 자막·오버레이가 이미 구워졌으면 DOM 글자층을 숨긴다. */
   previewContainsBakedText?: boolean;
   tenantId?: string;
+  /** 전역 ElevenLabs 설정을 읽을 수 있는 운영자만 목소리 목록을 요청한다. */
+  voiceOptionsEnabled?: boolean;
 }
 
 function formatSec(sec: number): string {
@@ -148,7 +150,7 @@ function videoEditErrorMessage(rule: string): string {
   return "입력한 값을 확인해 주세요.";
 }
 
-export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false, sourceFilename = null, previewContainsBakedText = false, tenantId }: VideoEditorProps) {
+export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lines = [], onLinesChange, onOpenCreate, syncing = false, sourceFilename = null, previewContainsBakedText = false, tenantId, voiceOptionsEnabled = false }: VideoEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [playhead, setPlayhead] = useState(0);
@@ -356,7 +358,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             />
             <OverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
             <CommentOverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
-            <VoiceSelector edit={videoEdit} run={run} syncing={syncing} />
+            <VoiceSelector edit={videoEdit} run={run} syncing={syncing} enabled={voiceOptionsEnabled} />
             {introOutroStale ? (
               <p role="alert" className="text-caption text-danger" data-intro-outro-stale-notice>
                 원본 영상이 바뀌어 적용했던 인트로/아웃트로가 더 이상 맞지 않습니다. 미리보기·발행 모두
@@ -950,12 +952,17 @@ function CommentOverlayEditor({ edit, duration, playhead, run, syncing = false }
   );
 }
 
-function VoiceSelector({ edit, run, syncing = false }: { edit: VideoEdit; run: (op: (e: VideoEdit) => VideoEdit) => void; syncing?: boolean }) {
+function VoiceSelector({ edit, run, syncing = false, enabled = false }: { edit: VideoEdit; run: (op: (e: VideoEdit) => VideoEdit) => void; syncing?: boolean; enabled?: boolean }) {
   const [voices, setVoices] = useState<Array<{ id: string; name: string; category: string }> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingVoice, setPendingVoice] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setVoices([]);
+      setLoadError("현재 계정에서는 음성 변경을 사용할 수 없습니다.");
+      return;
+    }
     let cancelled = false;
     // M4(2026-09-22 코드리뷰): res.ok를 안 보고 data.error(영문 원문·String(e))를 그대로
     // 화면에 찍었다. status/code로 분기하고, 사람이 읽는 한국어 고정 문구만 보여준다.
@@ -965,6 +972,10 @@ function VoiceSelector({ edit, run, syncing = false }: { edit: VideoEdit; run: (
         if (cancelled) return;
         if (res.ok && data && Array.isArray(data.voices)) {
           setVoices(data.voices);
+          return;
+        }
+        if (res.status === 403) {
+          setLoadError("현재 계정에서는 음성 변경을 사용할 수 없습니다.");
           return;
         }
         if (res.status === 503 || data?.code === "ELEVENLABS_NOT_CONFIGURED") {
@@ -979,7 +990,7 @@ function VoiceSelector({ edit, run, syncing = false }: { edit: VideoEdit; run: (
         if (!cancelled) setLoadError("연결이 끊겨 목소리 목록을 불러오지 못했습니다.");
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [enabled]);
 
   return (
     <section aria-label="음성 변경" className="space-y-stack-tight rounded-surface border border-border bg-surface-2 p-pad-inset" data-video-voice-editor>

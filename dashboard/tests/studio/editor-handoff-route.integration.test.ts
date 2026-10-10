@@ -62,6 +62,12 @@ vi.mock("@/lib/studio/editor-handoff-store", () => ({
     draft: { id: H.draftId, idea: H.handoff.summary, payload: { ...H.draftPayload, editor_handoff: H.handoff }, status: "draft" },
     handoff: H.handoff,
   } : null),
+  loadDraftForPublish: vi.fn(async () => ({
+    id: H.draftId,
+    idea: "구형 초안 본문",
+    payload: H.draftPayload,
+    status: "draft",
+  })),
   editorHandoffFromDraftPayload: vi.fn((payload: unknown) => {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
     const handoff = (payload as Record<string, unknown>).editor_handoff;
@@ -361,7 +367,12 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
     expect(H.mirrorCalls).toEqual([expect.objectContaining({ id: "queue-1" })]);
   });
 
-  it("S4-R2-B2 회귀: handoff가 없어도 발행실 고정 요청은 unpinned 정상 응답으로 이동을 막지 않는다", async () => {
+  it("LOCAL-REAL-PATH-R3-02 정상: handoff가 없는 구형 초안도 저장된 미디어로 발행실에 연결한다", async () => {
+    H.draftPayload = {
+      editLines: ["구형 초안 첫 줄", "구형 초안 둘째 줄"],
+      img: { file: "/api/media/legacy-image", imageUrls: ["/api/media/legacy-image"] },
+      vid: { url: "/api/media/legacy-video", filename: "legacy-video.mp4" },
+    };
     const { POST } = await import("@/app/api/studio/drafts/[draftId]/enqueue/route");
     const response = await POST(new Request("http://localhost/api/studio/drafts/draft-editor-1/enqueue", {
       method: "POST",
@@ -373,14 +384,28 @@ describe("Studio 편집 인계 HTTP 통합 계약", () => {
       }),
     }), { params: Promise.resolve({ draftId: H.draftId }) });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(201);
     expect(await response.json()).toMatchObject({
       ok: true,
-      queued: false,
-      pin_status: "unpinned",
-      code: "EDITOR_HANDOFF_NOT_FOUND",
+      pin_status: "draft_media",
+      legacy_draft_fallback: true,
+      post: {
+        imageUrl: "/api/media/legacy-image",
+        videoUrl: "/api/media/legacy-video",
+      },
     });
-    expect(H.queueCalls).toHaveLength(0);
+    expect(H.queueCalls).toEqual([expect.objectContaining({
+      text: "구형 초안 첫 줄\n구형 초안 둘째 줄",
+      idempotencyKey: `studio-legacy-draft:${H.draftId}`,
+    })]);
+    expect(H.queueOptions).toEqual([expect.objectContaining({
+      initialStatus: "publish_ready",
+      mirror: false,
+      preparedMedia: expect.objectContaining({
+        imageUrl: "/api/media/legacy-image",
+        videoUrl: "/api/media/legacy-video",
+      }),
+    })]);
   });
 
   it("S4-AC5 거절: 공개 HTTPS origin이 없으면 상대 artifact URL을 큐에 넣지 않는다", async () => {

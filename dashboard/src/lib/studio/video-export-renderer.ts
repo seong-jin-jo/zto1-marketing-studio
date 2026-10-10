@@ -7,7 +7,7 @@ import { FFMPEG_BIN } from "@/lib/higgsfield";
 import { resolveGeneratedFile } from "@/lib/storage";
 import { runWithTenant } from "@/lib/tenant-context";
 import { MAX_VIDEO_BYTES, MAX_VIDEO_DURATION_SECONDS } from "@/lib/video-limits";
-import { alignPlaybackScript, planPlaybackBurn, playbackFfmpegArgs } from "./playback-edit-plan";
+import { alignPlaybackScript, planPlaybackBurn, playbackFfmpegArgs, playbackHasWork } from "./playback-edit-plan";
 import { pickSubtitleFont, type SubtitleSize } from "./video-subtitle";
 import { renderSelectedVoice, resolveRenderMusic, VideoRenderAssetError } from "./video-render-assets";
 import type { VideoEdit } from "./video-edit-contract";
@@ -23,6 +23,10 @@ export interface VideoRenderRequest {
 }
 
 export interface VideoRenderResult { width: number; height: number; durationSec: number; hasAudio: boolean }
+
+export function shouldReuseVideoSource(edit: VideoEdit): boolean {
+  return !playbackHasWork(edit);
+}
 
 export async function probeRenderedVideo(filePath: string): Promise<VideoRenderResult> {
   const { stdout } = await execFileP(FFPROBE_BIN, ["-v", "error", "-show_entries", "stream=width,height,codec_type:format=duration", "-of", "json", filePath], { timeout: 20_000 });
@@ -42,9 +46,19 @@ export async function renderVideoExport(tenantId: string, request: VideoRenderRe
     if (inputBytes <= 0 || inputBytes > MAX_VIDEO_BYTES) throw new Error("VIDEO_SOURCE_SIZE_INVALID");
     const source = await probeRenderedVideo(inputPath);
     if (source.durationSec > MAX_VIDEO_DURATION_SECONDS) throw new Error("VIDEO_TOO_LONG");
+    const edit = alignPlaybackScript(request.edit, request.lines);
+    if (shouldReuseVideoSource(edit)) {
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+      try {
+        fs.copyFileSync(inputPath, outputPath);
+        return await probeRenderedVideo(outputPath);
+      } catch (error) {
+        fs.rmSync(outputPath, { force: true });
+        throw error;
+      }
+    }
     const fontFile = pickSubtitleFont((candidate) => fs.existsSync(candidate), process.env.SUBTITLE_FONT_FILE);
     if (!fontFile) throw new Error("SUBTITLE_FONT_MISSING");
-    const edit = alignPlaybackScript(request.edit, request.lines);
     const plan = planPlaybackBurn({ edit, durationSec: source.durationSec, width: source.width, height: source.height, size: request.subtitleSize, fontFile, hasAudio: source.hasAudio });
     if (!plan.ok) throw new Error(plan.reason === "nothing_left" ? "PLAYBACK_EMPTY" : "PLAYBACK_TOO_MANY_LAYERS");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "video-export-assets-"));

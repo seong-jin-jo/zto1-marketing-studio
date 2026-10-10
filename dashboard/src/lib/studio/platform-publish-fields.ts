@@ -5,7 +5,7 @@ import twitterText from "twitter-text";
 // 적었다(사이드바는 이번 라운드에서 뺐지만, 상한이 두 군데 적히면 언젠가 또 어긋난다).
 export const SHORTS_TITLE_LIMIT = 100;
 
-export type PublishPlatform = "threads" | "x" | "facebook" | "instagram" | "shorts" | "reels" | "tiktok";
+export type PublishPlatform = "threads" | "x" | "facebook" | "instagram" | "linkedin" | "bluesky" | "telegram" | "discord" | "slack" | "shorts" | "reels" | "tiktok" | "kakao";
 
 export type PlatformPublishInput = {
   title?: string;
@@ -46,9 +46,15 @@ export const PLATFORM_FIELD_CONTRACT: Record<PublishPlatform, PlatformFieldContr
     firstComment: true,
   },
   instagram: { bodyLabel: "캡션", title: false, hashtags: true, topicTag: false, firstComment: true },
+  linkedin: { bodyLabel: "게시물 본문", title: false, hashtags: true, topicTag: false, firstComment: false },
+  bluesky: { bodyLabel: "게시물 본문", title: false, hashtags: false, topicTag: false, firstComment: false },
+  telegram: { bodyLabel: "메시지", title: false, hashtags: false, topicTag: false, firstComment: false },
+  discord: { bodyLabel: "메시지", title: false, hashtags: false, topicTag: false, firstComment: false },
+  slack: { bodyLabel: "메시지", title: false, hashtags: false, topicTag: false, firstComment: false },
   shorts: { bodyLabel: "설명", title: true, hashtags: true, topicTag: false, firstComment: false },
   reels: { bodyLabel: "캡션", title: false, hashtags: true, topicTag: false, firstComment: true },
   tiktok: { bodyLabel: "캡션", title: false, hashtags: true, topicTag: false, firstComment: false },
+  kakao: { bodyLabel: "메시지", title: false, hashtags: false, topicTag: false, firstComment: false },
 };
 
 export function parseHashtagTokens(raw: string): string[] {
@@ -150,6 +156,18 @@ export function validatePlatformPublish(
     }
   } else if (platform === "tiktok") {
     pushHardLimit(result, "body", utf16UnitLength(combined), 2_200, "UTF-16 단위", "캡션과 해시태그");
+  } else if (platform === "kakao") {
+    pushHardLimit(result, "body", codePointLength(input.body ?? ""), 200, "자", "메시지");
+  } else if (platform === "linkedin") {
+    pushHardLimit(result, "body", codePointLength(combined), 3_000, "자", "게시물 본문과 해시태그");
+  } else if (platform === "bluesky") {
+    pushHardLimit(result, "body", codePointLength(input.body ?? ""), 300, "자", "게시물 본문");
+  } else if (platform === "telegram") {
+    pushHardLimit(result, "body", codePointLength(input.body ?? ""), 4_096, "자", "메시지");
+  } else if (platform === "discord") {
+    pushHardLimit(result, "body", codePointLength(input.body ?? ""), 2_000, "자", "메시지");
+  } else if (platform === "slack") {
+    pushHardLimit(result, "body", codePointLength(input.body ?? ""), 40_000, "자", "메시지");
   }
 
   return result;
