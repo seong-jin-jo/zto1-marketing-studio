@@ -1,5 +1,23 @@
 # OSMU build log
 
+## 2026-10-11 01:48 KST · 로컬 실제 경로 R3
+
+STAMP: 2026-10-11 01:48 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa
+
+| 검증 | 결과 | 증거 |
+|---|---|---|
+| TypeScript | PASS | `npx tsc -p tsconfig.ci.json --noEmit`, exit 0, `/tmp/zto1-r3-final-tsc.log` |
+| 관련 Vitest | PASS | 7파일·187건 통과, `/tmp/zto1-r3-final-vitest.log` |
+| Next.js production build | PASS | `npx next build --webpack`, exit 0, `/tmp/zto1-r3-final-build.log` |
+| 실제 dev 스모크 | PASS | Next.js 3483, 생성실·편집실·발행실, 요청 20건, 콘솔 오류 0 |
+| 실생성 이미지 | FAIL | 960×1696 PNG 규격은 정상이나 왼쪽 가짜 글자 육안 확인 |
+| design lint | 기존 경고 유지 | exit 0, 인라인 style 3파일·토큰 밖 hex 8파일, 이번 변경 신규 리터럴 없음 |
+| pipeline artifact lint | 정합 PASS | 2개 상태파일 정합 통과, 기존 핀 위생 경고 28건 |
+
+변경 커밋: `3708dfc8`, `ad06a00e`, `f4039164`. 외부 SNS 게시, push, 운영 배포는 실행하지 않았다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/tmp/zto1-r3-final-tsc.log` | `/tmp/zto1-r3-final-vitest.log` | `logs/diff/local-real-path-20261010/verification.json`
+
 ## 2026-10-09 13:20 KST · 운영 편집실 R8 타임라인 시각 회귀 복구
 
 STAMP: 2026-10-09 13:20 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `/tmp/zto1-r7-timeline-focused-r6.log`, `/tmp/zto1-r7-timeline-build-r6.log`, `/tmp/zto1-r7-timeline-v70-r6/observations.json`, `logs/diff/editroom-chairman-fix-r7/after/result.json` | 고민: CI 수치만 맞추지 않고 1440·1512·390과 v71 원본을 함께 열어 레인·블록·카톡 말풍선을 육안 확인했다.

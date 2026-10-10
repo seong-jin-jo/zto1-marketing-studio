@@ -1,6 +1,6 @@
 {
   "image": {
-    "filePath": "/Users/sj/wt/zto1-local-real-path-20261010/data/local-real-path-20261010/studio/cd1d0a40-540d-4524-9b49-bf2445d82182/img_1791634514136.png",
+    "filePath": "/Users/sj/wt/zto1-local-real-path-20261010/data/local-real-path-20261010/studio/cd1d0a40-540d-4524-9b49-bf2445d82182/img_1791650344582.png",
     "programs": [],
     "stream_groups": [],
     "streams": [
@@ -12,7 +12,7 @@
     ],
     "format": {
       "format_name": "png_pipe",
-      "size": "2120925"
+      "size": "2299965"
     },
     "pixelRange": {
       "ymin": 16,
@@ -21,7 +21,7 @@
     }
   },
   "video": {
-    "filePath": "/Users/sj/wt/zto1-local-real-path-20261010/data/local-real-path-20261010/tenants/cd1d0a40-540d-4524-9b49-bf2445d82182/images/export-d2d88e07-3e97-47af-88c5-82c273846e5d-0-5ff8d0b1c3f720aa.mp4",
+    "filePath": "/Users/sj/wt/zto1-local-real-path-20261010/data/local-real-path-20261010/tenants/cd1d0a40-540d-4524-9b49-bf2445d82182/images/export-5a25b753-cf6e-4866-9334-6d95ad3fdf55-0-ad90c2d1b95b8f48.mp4",
     "programs": [],
     "stream_groups": [],
     "streams": [

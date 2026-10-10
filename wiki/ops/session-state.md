@@ -1,3 +1,20 @@
+## 2026-10-11 01:48 KST · 로컬 실제 경로 R3 4/5 통과, 무문자 생성 실패
+
+- handoff basis: 사용자 R3 원문과 이 worktree의 실제 로컬 경로를 정본으로 삼았다. 제품 커밋 `3708dfc8`, `ad06a00e`, 재검증 계약 `f4039164`까지 반영했다.
+- 완료: X 4단계, LinkedIn 3단계, Bluesky 3단계, Facebook `/photos`, Telegram `/sendPhoto`를 포함한 13채널 20건 요청 원장을 만들었다. 구형 초안 폴백, 내부 오류 숨김, `전체 13곳`, TikTok 공개 범위·AI 표시 사용자 선택을 실제 Playwright 경로로 확인했다.
+- 검증: `verification.json ok=true`, 미리보기 13개, 요청 20건, 콘솔·401·외부 브라우저 요청 0건. TypeScript exit 0, 관련 Vitest 7파일·187건 PASS. 발행실 첫 화면과 13개 채널 캡처는 각각 1440×900이다.
+- 실패: 새 Higgsfield PNG 1장은 960×1696·2,299,965바이트로 생성됐지만 왼쪽에 읽을 수 없는 가짜 글자가 남았다. 사용 모델은 별도 negative prompt 입력이 없고, 1장 한도를 지켜 추가 생성하지 않았다.
+- 보존: 로컬 생성 미디어와 `.env.local`은 커밋하지 않는다. `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 사용자 소유 변경이라 stage하지 않는다. 외부 게시·push·운영 배포도 하지 않았다.
+- next action: 컨트롤러가 무문자 이미지 항목만 반려 상태로 인수한다. 종료 증거는 추가 크레딧 승인을 받은 뒤 다른 모델 또는 글자 탐지·재생성 게이트로 만든 새 이미지에서 가짜 글자 0건을 육안 확인하는 것이다. 서버 복구 후에는 13개 채널 실제 게시 수락을 채널별로 별도 확인한다.
+
+## 2026-10-11 01:26 KST · 로컬 실제 경로 R3 교정 착수
+
+- handoff basis: 사용자가 지정한 R3 원문, HEAD `92955e88`, `docs/qa/qa-tracker.md`의 LOCAL-REAL-PATH 항목을 정본으로 이어간다. 이전 동일 worktree pane 두 개는 종료 상태이고 현재 pane만 실행 중이다.
+- scope: LinkedIn·X·Telegram·Facebook·Bluesky의 미디어 업로드 포함 드라이런 순서, 구형 초안 발행실 폴백, 채널 수 표기, 이미지 무문자 생성 프롬프트와 실제 1장 재생성, TikTok 선택 보존을 수정한다.
+- exclusions: 외부 SNS 실제 게시, push, 카드·영상 편집기 내부 조작, 다른 worktree, 기존 사용자 변경 `.codex/logs/harness.jsonl`과 `wiki/거버넌스/요청.md`는 건드리지 않는다.
+- evidence contract: 드라이런 요청 원장 단계 순서, 구형 초안 Playwright 경로, 13채널 UI, 새 실제 이미지 픽셀·육안, TypeScript·관련 Vitest를 직접 확인하고 작업 단위별 커밋한다.
+- next action: 기존 어댑터·프롬프트·구형 초안 인계 import chain을 추적하고 공식 API 호출 순서와 대조한다.
+
 ## 2026-10-11 00:35 KST · 로컬 실제 경로 직접 발행 완료, 검토 대기열 잔여
 
 - handoff basis: 사용자가 지정한 `fix/local-real-path-20261010`의 미커밋 변경과 `verification.json ok`를 정본으로 이어갔다. 제품 구현은 `9b29295d`로 먼저 커밋했다.
