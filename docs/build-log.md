@@ -1,5 +1,17 @@
 # OSMU build log
 
+## 2026-10-11 02:23 KST · 영상 편집기 R3 1080×1920 내보내기
+
+STAMP: 2026-10-11 02:23 KST | model: gpt-5-codex | agent: code-builder | skills: qa, review | 근거: R3 반려 원문, `standard-dev.md`, 실제 Next·PostgreSQL·export worker·ffprobe·MP4 프레임 | 고민: 540×960을 1080×1920으로 늘려 화질을 꾸미지 않고, 원본 화소는 그대로 둔 채 발행 캔버스 규격만 맞췄다.
+
+**원인과 변경:** 렌더러가 원본 해상도를 편집 계획에 그대로 넘겼고 E2E도 길이·삭제 프레임·자막만 검사해 540×960 출력이 통과했다. 모든 세로 숏폼 내보내기는 1080×1920 캔버스를 만들며, 작은 원본은 확대하지 않고 중앙 배치한다. 큰 원본은 비율을 유지해 축소한다. 편집 계획과 자막은 이 발행 캔버스에서 렌더된다.
+
+**관찰됨:** 실제 540×960·12.120초 원본을 자르기 3회·삭제 1회·트림·재정렬·자막 3문장으로 편집했다. 산출물 ffprobe는 1080×1920·8.720초다. 중앙 540×960 영역을 다시 잘라 원본과 비교한 MAD는 `0.665/1.059`, 삭제 구간은 `77.327/68.350`이다. 캡처를 원본 크기로 열어 비율 유지, 검은 여백, 자막 한 겹을 확인했다.
+
+**게이트:** 관련 실제 렌더 4파일·20건, TypeScript, production Webpack build, CI 동일 전체 Vitest 519파일·3,794건 PASS, 3파일·16건 skip. 첫 전체 실행 1건은 호스트명 없는 DB 주소를 안전문이 거절한 환경 실패이며, `localhost/testdb`로 전체 재실행해 실패 0을 확인했다. 원격 CI·운영 배포·외부 SNS 실제 게시와 플랫폼 재인코딩 결과는 미검증이다.
+
+SOURCES/MODEL: gpt-5-codex | `/Users/sj/.claude/standards/standard-dev.md` | `dashboard/src/lib/studio/video-export-renderer.ts` | `logs/diff/video-editor-capcut-20261010/report.md`
+
 ## 2026-10-11 00:35 KST · 영상 편집기 R2 화면 밀도·실영상 12초 검증
 
 STAMP: 2026-10-11 00:35 KST | model: gpt-5-codex | agent: code-builder | skills: qa, review | 근거: R2 반려 원문, v71 승인 시안, 실제 Chromium·격리 PostgreSQL·export worker·12.120초 MP4 | 고민: 짧은 소스와 작은 플레이어로 만든 대리지표를 버리고, 캡처를 직접 열어 클립 이름·프레임 띠·자막 한 겹까지 판정했다.

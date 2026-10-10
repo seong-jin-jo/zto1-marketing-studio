@@ -1,11 +1,11 @@
-## 2026-10-11 영상 편집기 R3 내보내기 해상도 반려 ❌ NG
+## 2026-10-11 영상 편집기 R3 내보내기 해상도 반려 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
 |---|---|---|---|
-| VIDEO-CAPCUT-R3-01 | 쇼츠·릴스·TikTok용 MP4는 1080×1920 출력 캔버스를 사용하고, 작은 원본은 확대하지 않은 채 원본 비율로 중앙 배치해야 함 | ❌ NG | R2 산출물 ffprobe가 `540×960`이다. 출력 캔버스 규격과 확대 금지 계약이 렌더러·검증 스크립트에 없었다. |
-| VIDEO-CAPCUT-R3-02 | 실제 PostgreSQL·export worker 경로의 산출물을 ffprobe로 확인하고 개발 품질헌법 항목별 증거를 보고서에 기록해야 함 | ❌ NG | R2 보고서는 길이·삭제 프레임·자막을 검증했지만 출력 해상도 단언과 품질헌법 대조표가 없다. |
+| VIDEO-CAPCUT-R3-01 | 쇼츠·릴스·TikTok용 MP4는 1080×1920 출력 캔버스를 사용하고, 작은 원본은 확대하지 않은 채 원본 비율로 중앙 배치해야 함 | ✅ PASS | 실제 540×960 원본을 같은 화소 크기로 중앙 배치하고 검은 여백을 더했다. ffprobe는 `1080×1920`; 중앙 원본 영역 기대 프레임 MAD `0.665/1.059`로 비확대를 확인했다. |
+| VIDEO-CAPCUT-R3-02 | 실제 PostgreSQL·export worker 경로의 산출물을 ffprobe로 확인하고 개발 품질헌법 항목별 증거를 보고서에 기록해야 함 | ✅ PASS | 실제 Next 3482·격리 PostgreSQL·worker E2E와 ffprobe·픽셀 검증을 통과했다. 보고서에 직접 관찰, 미검증, 스펙 차이, 고위험 여부, 경계 테스트를 항목별 기록했다. |
 
-종료 조건: 실제 540×960 원본을 확대하지 않고 1080×1920 캔버스 중앙에 유지한 MP4, ffprobe `1080×1920`, 컷·자막·길이 회귀 0, `standard-dev.md` 항목별 증거표를 같은 실제 경로에서 확인한다.
+종료 증거: `logs/diff/video-editor-capcut-20261010/report.md`, `exported-video-editor.mp4`, `captures/03-export-full-frame.png`, `captures/04-export-subtitle-crop.png`. 예상·실측 길이 `8.720초`, 삭제 프레임 부재, 자막 활성 레이어 1개, 관련 실제 렌더 20건, 전체 Vitest 519파일·3,794건, TypeScript, production Webpack build가 PASS했다.
 
 ## 2026-10-11 영상 편집기 R2 시각·실영상 반려 ❌ NG → ✅ PASS
 
