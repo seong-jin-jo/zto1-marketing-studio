@@ -1,17 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ensureTenantForUser, getTenantStatus } from "@/lib/tenant-auth";
+import { ensureTenantForUser, getTenantStatus, resolveTenantToken } from "@/lib/tenant-auth";
 import { verifySupabaseJwt } from "@/lib/supabase";
 import { resolveStudioPrincipal } from "@/lib/studio/generation/identity";
 
 vi.mock("@/lib/tenant-auth", () => ({
   ensureTenantForUser: vi.fn(),
   getTenantStatus: vi.fn(),
+  resolveTenantToken: vi.fn(),
 }));
 vi.mock("@/lib/supabase", () => ({ verifySupabaseJwt: vi.fn() }));
 
 const mockVerify = vi.mocked(verifySupabaseJwt);
 const mockEnsureTenant = vi.mocked(ensureTenantForUser);
 const mockTenantStatus = vi.mocked(getTenantStatus);
+const mockResolveTenantToken = vi.mocked(resolveTenantToken);
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -79,5 +81,33 @@ describe("Studio 고객 신원 계약", () => {
     expect(principal.memberId).toBe("auth-user-local");
     expect([...principal.allowedWorkspaceIds]).toEqual(["33333333-3333-4333-8333-333333333333"]);
     expect(mockVerify).toHaveBeenCalledWith(customerJwt);
+  });
+
+  it("GEN-AUTH-05 정상: 고객 osmu API 토큰을 active 작업 공간 실행 주체로 해석한다", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("STUDIO_IDENTITY_MODE", "development");
+    mockResolveTenantToken.mockResolvedValue("44444444-4444-4444-8444-444444444444");
+    mockTenantStatus.mockResolvedValue("active");
+
+    const principal = await resolveStudioPrincipal(new Request("http://localhost/api/studio/drafts/draft/exports", {
+      headers: { Authorization: "Bearer osmu_valid-customer-token" },
+    }));
+
+    expect(principal.memberId).toBe("tenant-token:44444444-4444-4444-8444-444444444444");
+    expect([...principal.allowedWorkspaceIds]).toEqual(["44444444-4444-4444-8444-444444444444"]);
+    expect(mockResolveTenantToken).toHaveBeenCalledWith("osmu_valid-customer-token");
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it("GEN-AUTH-06 거절: 폐기되었거나 알 수 없는 osmu API 토큰은 개발 신원으로 폴스루하지 않는다", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("STUDIO_IDENTITY_MODE", "development");
+    vi.stubEnv("STUDIO_DEV_BEARER_TOKEN", "dev-token");
+    mockResolveTenantToken.mockResolvedValue(null);
+
+    await expect(resolveStudioPrincipal(new Request("http://localhost/api/studio/drafts/draft/exports", {
+      headers: { Authorization: "Bearer osmu_revoked" },
+    }))).rejects.toEqual(expect.objectContaining({ status: 401, code: "TOKEN_INVALID" }));
+    expect(mockVerify).not.toHaveBeenCalled();
   });
 });

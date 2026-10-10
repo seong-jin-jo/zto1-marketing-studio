@@ -1,5 +1,45 @@
 # OSMU build log
 
+## 2026-10-11 02:23 KST · 영상 편집기 R3 1080×1920 내보내기
+
+STAMP: 2026-10-11 02:23 KST | model: gpt-5-codex | agent: code-builder | skills: qa, review | 근거: R3 반려 원문, `standard-dev.md`, 실제 Next·PostgreSQL·export worker·ffprobe·MP4 프레임 | 고민: 540×960을 1080×1920으로 늘려 화질을 꾸미지 않고, 원본 화소는 그대로 둔 채 발행 캔버스 규격만 맞췄다.
+
+**원인과 변경:** 렌더러가 원본 해상도를 편집 계획에 그대로 넘겼고 E2E도 길이·삭제 프레임·자막만 검사해 540×960 출력이 통과했다. 모든 세로 숏폼 내보내기는 1080×1920 캔버스를 만들며, 작은 원본은 확대하지 않고 중앙 배치한다. 큰 원본은 비율을 유지해 축소한다. 편집 계획과 자막은 이 발행 캔버스에서 렌더된다.
+
+**관찰됨:** 실제 540×960·12.120초 원본을 자르기 3회·삭제 1회·트림·재정렬·자막 3문장으로 편집했다. 산출물 ffprobe는 1080×1920·8.720초다. 중앙 540×960 영역을 다시 잘라 원본과 비교한 MAD는 `0.665/1.059`, 삭제 구간은 `77.327/68.350`이다. 캡처를 원본 크기로 열어 비율 유지, 검은 여백, 자막 한 겹을 확인했다.
+
+**게이트:** 관련 실제 렌더 4파일·20건, TypeScript, production Webpack build, CI 동일 전체 Vitest 519파일·3,794건 PASS, 3파일·16건 skip. 첫 전체 실행 1건은 호스트명 없는 DB 주소를 안전문이 거절한 환경 실패이며, `localhost/testdb`로 전체 재실행해 실패 0을 확인했다. 원격 CI·운영 배포·외부 SNS 실제 게시와 플랫폼 재인코딩 결과는 미검증이다.
+
+SOURCES/MODEL: gpt-5-codex | `/Users/sj/.claude/standards/standard-dev.md` | `dashboard/src/lib/studio/video-export-renderer.ts` | `logs/diff/video-editor-capcut-20261010/report.md`
+
+## 2026-10-11 00:35 KST · 영상 편집기 R2 화면 밀도·실영상 12초 검증
+
+STAMP: 2026-10-11 00:35 KST | model: gpt-5-codex | agent: code-builder | skills: qa, review | 근거: R2 반려 원문, v71 승인 시안, 실제 Chromium·격리 PostgreSQL·export worker·12.120초 MP4 | 고민: 짧은 소스와 작은 플레이어로 만든 대리지표를 버리고, 캡처를 직접 열어 클립 이름·프레임 띠·자막 한 겹까지 판정했다.
+
+**변경:** 데스크톱 세로 영상 미리보기를 384px 높이 토큰으로 확대하고 진입 시 편집 작업대를 첫 화면에 맞춘다. 자막 문장 목록은 미리보기 옆, 5레인 타임라인은 아래 전체 폭을 유지한다. 영상 클립은 176px 최소 폭, 이름, 실제 프레임 3장 띠를 표시한다. 짧은 클립은 블록만 겹치게 늘리지 않고 시간축 전체를 자동 확대하며, 트림 손잡이는 부모 클립 재정렬 드래그를 시작하지 않는다.
+
+**실영상:** Higgsfield 실생성 4.166초와 저장소 실영상 2초·3초·3초를 이어 540×960·25fps·12.120초 `video-editor-real-composite-12s.mp4`를 만들었다. Playwright가 S 자르기 3회, 선택 삭제 1회, 시작점 트림 6.0→6.4초, 재정렬, 자막 3문장 수정·삭제·직접 이동을 실제 DB 초안에 저장했다.
+
+**관찰됨:** 1440×900에서 미리보기 288×384, 타임라인 bottom 889px, 대화창 겹침 0이다. 편집 후 클립 폭 194.7·224.6·233.6px, 겹침 0이며 각 이름과 실제 프레임 띠가 보인다. 출력은 예상·ffprobe 모두 8.720초, 삭제 4.5초 프레임과의 MAD는 77.305·68.427로 기대 프레임 0.634·0.826보다 크다. 노랑 자막 274픽셀, 활성 레이어 1개, 앱 콘솔 오류 0, 외부 SNS 게시 0이다. TypeScript, production Webpack build, 실제 경로 E2E, CI 동일 전체 Vitest 518파일·3,792건이 PASS했다. 3파일·16건은 기존 조건부 통합이라 skip이다.
+
+**정합:** artifact lint는 상태파일 2개의 핀 실체·슬롯키·버전 정합 PASS와 기존 산출물 핀 위생 경고 28건이다. design-lint는 종료 코드 0이며 레포 기존 인라인 style·hex 경고 2종이 남는다. 이번 화면의 UI 토큰 감사 직접값은 0건이다.
+
+SOURCES/MODEL: gpt-5-codex | `logs/diff/video-editor-capcut-20261010/report.md` | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | https://www.capcut.com/resource/how-to-use-capcut | https://vrew.ai/en/feature/text-based-video-editing/
+
+## 2026-10-10 22:47 KST · 영상 편집기 CapCut·Vrew 기본 조작
+
+STAMP: 2026-10-10 22:47 KST | model: gpt-5-codex | agent: code-builder | skill: qa | 근거: v71 승인 시안, CapCut·Vrew 공식 문서, 실제 Chromium·PostgreSQL·export worker·MP4 | 고민: 화면 요소 수나 목 서버를 합격 근거로 쓰지 않고 편집 JSON, 재생 점프, ffprobe, 원본·삭제 프레임 차이, 자막 픽셀을 한 경로에서 대조했다.
+
+**기존 구현 확인:** 자막 문장 클릭·수정·구간 컷과 단일 영상 재생은 있었지만 영상 트랙은 한 덩어리였다. 재생헤드 분할, 클립 선택 삭제, 트림, 재정렬, 타임라인 확대, 통합 실행취소가 없었고 export renderer도 클립 순서를 읽지 않았다. 고객 `osmu_` 토큰은 프록시를 통과한 뒤 Studio 신원 어댑터에서 다시 401이 됐고, 서명 MP4 주소도 프록시가 Bearer를 요구했다.
+
+**추가·변경:** `VideoEdit.clips`를 구데이터 호환 선택 필드로 추가하고 미리보기·ffmpeg가 같은 `playbackSegments`를 사용한다. S·Delete, 양끝 트림, 순서 드래그, 재생헤드, 75~400% 확대, undo·redo를 연결했다. Vrew식 자막 목록은 클릭 이동·문장 수정·구간 삭제를 유지하면서 화면 직접 드래그, 고딕·명조·둥근 고딕, 70~160% 크기와 색을 추가했다. drawtext 없는 로컬 ffmpeg는 node-canvas 투명 레이어와 ffmpeg overlay로 동일 편집 계약을 굽는다. 고객 API 토큰과 서명 MP4 배달 경계를 실제 브라우저 경로에 연결했다.
+
+**검증:** page.route 없이 Next dev 3482, 격리 PostgreSQL, 실제 고객 토큰·초안·자동저장, 실제 `chairman-photo-motion.mp4`, 실제 export worker를 구동했다. 1440×900에서 미리보기·타임라인 동시 노출과 대화창 겹침 0, 실제 재생의 `3.0초 → 0.0초` 점프, 모바일 9폭 사용성 전부 PASS다. MP4는 예상·ffprobe 모두 1.200초이며 삭제 구간 프레임이 없고 노랑 자막은 활성 레이어 1개다. 앱 콘솔 오류와 외부 SNS 게시는 0건이다. 실제 ffmpeg 렌더 통합 2건, TypeScript, `next build --webpack`도 PASS다. 기본 Turbopack build는 이 worktree의 `node_modules`가 다른 worktree를 가리키는 symlink라 프로젝트 루트 밖 경로로 거절됐고, 소스가 아닌 로컬 worktree 의존성 배치 문제다. 상세 수치는 `logs/diff/video-editor-capcut-20261010/report.md`다.
+
+**기존 경고:** design-lint는 종료 코드 0과 레포 기존 인라인 style·hex 경고 2종, artifact lint는 핀 실체·슬롯키·버전 정합 PASS와 기존 핀 위생 경고 28건이다. 원격 CI와 운영 배포는 미검증이다.
+
+SOURCES/MODEL: gpt-5-codex | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | `logs/diff/video-editor-capcut-20261010/report.md` | https://www.capcut.com/resource/how-to-use-capcut | https://vrew.ai/en/feature/text-based-video-editing/
+
 ## 2026-10-09 13:20 KST · 운영 편집실 R8 타임라인 시각 회귀 복구
 
 STAMP: 2026-10-09 13:20 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa | 근거: `/tmp/zto1-r7-timeline-focused-r6.log`, `/tmp/zto1-r7-timeline-build-r6.log`, `/tmp/zto1-r7-timeline-v70-r6/observations.json`, `logs/diff/editroom-chairman-fix-r7/after/result.json` | 고민: CI 수치만 맞추지 않고 1440·1512·390과 v71 원본을 함께 열어 레인·블록·카톡 말풍선을 육안 확인했다.

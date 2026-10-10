@@ -5,7 +5,7 @@
  *
  * 1단계(과업 B)는 4단 세로 아코디언 + 초 숫자 입력칸이었다. 회장 R-25가 "편집실이
  * 못 쓸 물건", "영상 편집은 CapCut·Vrew 수준이어야 한다"고 지적했다(20번 가까이 "왜
- * 멈추냐"). 이번 판은 규격표 §4 그대로: 플레이어(288px) + 자막 대본(1fr) 위, 3레인
+ * 멈추냐"). 이번 판은 규격표 §4 그대로: 플레이어(288px) + 자막 대본(1fr) 위, 5레인
  * 타임라인(168px) 아래. 자막 한 줄 = 한 컷. 초 숫자 입력칸은 타임라인 드래그로 대체한다.
  *
  * 유지: 오버레이 추가 폼(`OverlayEditor`)·댓글 폼(`CommentOverlayEditor`)·음성 선택
@@ -28,6 +28,7 @@ import { isDeliveryUrlExpired, resignDeliveryUrl } from "./DeliveredMedia";
 import {
   type SubtitleLine,
   type VideoComment,
+  type VideoClip,
   type VideoEdit,
   type VideoOverlay,
   type VideoTextSticker,
@@ -61,12 +62,25 @@ import {
   isPlaybackTimeWithinBody,
   playbackTimeFromBodyTime,
 } from "@/lib/studio/video-edit-time-axis";
-import { normalizeSubtitleWindows } from "@/lib/studio/playback-edit-plan";
+import {
+  deleteVideoClips,
+  materializeVideoClips,
+  normalizeSubtitleWindows,
+  outputTimeToSourceTime,
+  playbackSegments,
+  reorderVideoClips,
+  sourceTimeToOutputTime,
+  splitVideoClip,
+  trimVideoClip,
+} from "@/lib/studio/playback-edit-plan";
 
 /** 긴 영상의 최소 축척. 짧은 영상은 v71처럼 가용 레인 폭을 전부 쓰도록 더 크게 계산한다. */
 const PX_PER_SEC = 12;
 const TIMELINE_FALLBACK_WIDTH = 240;
 const TIMELINE_LANE_LABEL_WIDTH = 62;
+// globals.css --video-editor-clip-min-width와 같은 값이다. 짧은 클립이 생기면 블록만
+// 억지로 넓혀 겹치지 않고, 시간축 전체를 확대해 눈금·재생헤드·다른 레인도 함께 맞춘다.
+const TIMELINE_CLIP_MIN_WIDTH_PX = 176;
 
 export function timelinePixelsPerSecond(totalSeconds: number, availableWidth: number): number {
   const safeDuration = Math.max(1, Number.isFinite(totalSeconds) ? totalSeconds : 1);
@@ -157,7 +171,12 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<"intro" | "text" | "hook" | "transition" | "subtitle" | "music" | "cover">("intro");
   const [showOriginal, setShowOriginal] = useState(false);
+  const [selectedClipIds, setSelectedClipIds] = useState<string[]>([]);
+  const [timelineZoom, setTimelineZoom] = useState(1);
+  const [undoStack, setUndoStack] = useState<Array<{ edit: VideoEdit; lines: string[] }>>([]);
+  const [redoStack, setRedoStack] = useState<Array<{ edit: VideoEdit; lines: string[] }>>([]);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const editorRootRef = useRef<HTMLDivElement | null>(null);
   // M3(교차 리뷰): 플레이어 미리보기 자막도 대본·타임라인과 같은 재구성 결과를 봐야
   // 서버에 아직 커밋 안 된(시딩만 된) 상태에서도 글자가 보인다 — 셋이 서로 다른 자막을
   // 보여주면 어느 게 진짜인지 알 수 없다(B2와 같은 이유로 한 계산을 공유한다).
@@ -173,6 +192,19 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
       cut: false,
     }));
   }, [displaySubtitles, duration]);
+  const segments = useMemo(() => duration ? playbackSegments(videoEdit, duration) : [], [videoEdit, duration]);
+  const outputDuration = segments.at(-1)?.outputEndSec ?? duration ?? 0;
+  const sourcePlayhead = duration ? outputTimeToSourceTime(videoEdit, duration, playhead) : playhead;
+
+  // R2: 영상 편집기로 진입하면 편집 작업대 자체를 첫 화면으로 맞춘다. 상단 현황 카드 때문에
+  // 미리보기 384px와 5레인 타임라인을 동시에 볼 수 없었던 구조적 원인을 여기서 닫는다.
+  useEffect(() => {
+    if (!previewVideoUrl || typeof window === "undefined" || window.innerWidth < 1024) return;
+    const frame = window.requestAnimationFrame(() => {
+      editorRootRef.current?.scrollIntoView?.({ block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [previewVideoUrl]);
 
   /**
    * B-1(4차 재리뷰 BLOCKER): 이 함수가 videoEdit을 바꾸는 유일한 입구다(오버레이·댓글·
@@ -189,7 +221,11 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
     }
     try {
       setError(null);
-      onVideoEditChange(op(videoEdit));
+      const next = op(videoEdit);
+      if (next === videoEdit) return;
+      setUndoStack((history) => [...history.slice(-49), { edit: videoEdit, lines: [...lines] }]);
+      setRedoStack([]);
+      onVideoEditChange(next);
     } catch (cause) {
       // N3(2026-09-22 코드리뷰): VideoEditValidationError.message는 영문 내부 필드 경로
       // 원문이다. 원문은 로그로만 보내고 화면은 고정 한국어 문구로 바꾼다.
@@ -201,6 +237,55 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
       }
     }
   }
+
+  function undo() {
+    const previous = undoStack.at(-1);
+    if (!previous || syncing) return;
+    setRedoStack((history) => [...history.slice(-49), { edit: videoEdit, lines: [...lines] }]);
+    setUndoStack((history) => history.slice(0, -1));
+    onVideoEditChange(previous.edit);
+    onLinesChange?.(previous.lines);
+  }
+
+  function redo() {
+    const next = redoStack.at(-1);
+    if (!next || syncing) return;
+    setUndoStack((history) => [...history.slice(-49), { edit: videoEdit, lines: [...lines] }]);
+    setRedoStack((history) => history.slice(0, -1));
+    onVideoEditChange(next.edit);
+    onLinesChange?.(next.lines);
+  }
+
+  function splitAtPlayhead() {
+    if (!duration) return;
+    run((edit) => splitVideoClip(edit, duration, playhead));
+  }
+
+  function deleteSelectedClips() {
+    if (!duration || !selectedClipIds.length) return;
+    run((edit) => deleteVideoClips(edit, selectedClipIds, duration));
+    setSelectedClipIds([]);
+  }
+
+  useEffect(() => {
+    function onShortcut(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
+      const command = event.metaKey || event.ctrlKey;
+      if (command && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo(); else undo();
+      } else if (event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        splitAtPlayhead();
+      } else if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteSelectedClips();
+      }
+    }
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  });
 
   function togglePlay() {
     const el = videoRef.current;
@@ -273,28 +358,32 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   const playbackPlayhead = playbackTime;
 
   function seekBodyTime(sec: number) {
-    const playableBodyTime = nextPlayableBodyTime(sec, displaySubtitles, showOriginal);
-    const targetPlaybackTime = playbackTimeFromBodyTime(playableBodyTime, duration ?? playableBodyTime, playbackIntroOutro);
+    const sourceTime = showOriginal || !duration ? sec : outputTimeToSourceTime(videoEdit, duration, sec);
+    const targetPlaybackTime = playbackTimeFromBodyTime(sourceTime, duration ?? sourceTime, playbackIntroOutro);
     if (videoRef.current) {
       videoRef.current.currentTime = targetPlaybackTime;
     }
     setPlaybackTime(targetPlaybackTime);
-    setPlayhead(playableBodyTime);
+    setPlayhead(sec);
   }
 
   return (
-    <div className="space-y-stack" data-video-editor>
+    <div ref={editorRootRef} className="scroll-mt-pad-inset space-y-stack" data-video-editor>
       {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-video-editor-error>{error}</p> : null}
       <div className="flex flex-wrap items-center gap-stack-tight rounded-surface border border-border bg-surface-2 p-stack-tight" data-video-timeline-toolbar>
         <b className="text-caption text-text">타임라인</b>
         <span className="text-caption text-subtle">← 옆으로 밀어 더 보기 · 블록을 끌거나 양끝을 조절합니다</span>
         <span className="grow" />
+        <Button size="sm" variant="secondary" onClick={undo} disabled={!undoStack.length || syncing} data-video-undo>실행 취소</Button>
+        <Button size="sm" variant="secondary" onClick={redo} disabled={!redoStack.length || syncing} data-video-redo>다시 실행</Button>
+        <Button size="sm" variant="secondary" onClick={splitAtPlayhead} disabled={!duration || syncing} data-video-split>자르기 <kbd>S</kbd></Button>
+        <Button size="sm" variant="secondary" onClick={deleteSelectedClips} disabled={!selectedClipIds.length || syncing} data-video-delete-selected>선택 삭제</Button>
         <Button size="sm" variant={drawerOpen ? "primary" : "secondary"} aria-expanded={drawerOpen} onClick={() => setDrawerOpen((open) => !open)} data-video-insert-drawer-toggle>＋ 넣기 ▾</Button>
         <Button size="sm" variant={videoEdit.safeArea ? "primary" : "secondary"} aria-pressed={videoEdit.safeArea ?? false} onClick={() => run((edit) => setVideoSafeArea(edit, !(edit.safeArea ?? false)))} data-video-safe-area-toggle>안전 영역</Button>
         <Button size="sm" variant={showOriginal ? "primary" : "secondary"} aria-pressed={showOriginal} onClick={() => setShowOriginal((value) => !value)} data-video-original-toggle>{showOriginal ? "편집 상태로" : "원본으로"}</Button>
       </div>
       <div data-video-workbench className="grid gap-pad-inset [grid-template-rows:minmax(0,1fr)_var(--video-editor-timeline-height)] max-[64rem]:[grid-template-rows:minmax(0,1fr)_var(--video-editor-timeline-height)] max-[26rem]:[grid-template-rows:auto_var(--video-editor-timeline-height)]">
-        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:calc(var(--space-region)*4.5)_minmax(0,1fr)] max-[26rem]:grid-cols-1">
+        <div data-video-top className="grid min-w-0 gap-pad-inset [grid-template-columns:calc(var(--space-region)*9)_minmax(0,1fr)] max-[64rem]:[grid-template-columns:calc(var(--space-region)*6.625)_minmax(0,1fr)] max-[26rem]:grid-cols-1">
           <VideoPlayback
             src={effectivePreviewUrl ?? previewVideoUrl}
             tenantId={tenantId}
@@ -302,13 +391,16 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             videoRef={videoRef}
             overlays={videoEdit.overlays}
             comments={videoEdit.comments}
-            activeSubtitle={activeSubtitle(previewSubtitles, playhead)}
+            activeSubtitle={activeSubtitle(previewSubtitles, sourcePlayhead)}
             playhead={playhead}
+            layerTime={sourcePlayhead}
             playbackPlayhead={playbackPlayhead}
             bodyLayersVisible={bodyLayersVisible}
+            subtitleStyle={videoEdit.subtitleStyle}
+            onSubtitlePosition={(xPercent, yPercent) => run((edit) => setSubtitleStyle(edit, { xPercent, yPercent }))}
             safeAreaVisible={videoEdit.safeArea ?? false}
             textStickers={videoEdit.textStickers ?? []}
-            duration={duration}
+            duration={outputDuration}
             playing={playing}
             onTogglePlay={togglePlay}
             voiceName={videoEdit.voice?.voiceName ?? null}
@@ -317,26 +409,40 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
               setPlaybackTime(videoRef.current?.currentTime ?? 0);
             }}
             onTimeUpdate={(t) => {
+              // 플레이어의 실제 시각은 인트로·아웃트로 경계 표시에도 쓰인다. 마지막
+              // 편집 클립을 지난 경우 아래에서 조기 반환하더라도 먼저 갱신해야 본문
+              // 자막·오버레이가 아웃트로 위에 남지 않는다.
+              setPlaybackTime(t);
               const bodyTime = bodyTimeFromPlaybackTime(t, duration ?? t, playbackIntroOutro);
-              const playableBodyTime = nextPlayableBodyTime(bodyTime, displaySubtitles, showOriginal);
-              if (playableBodyTime !== bodyTime && videoRef.current) {
-                const nextPlaybackTime = playbackTimeFromBodyTime(playableBodyTime, duration ?? playableBodyTime, playbackIntroOutro);
-                videoRef.current.currentTime = nextPlaybackTime;
-                setPlaybackTime(nextPlaybackTime);
-                setPlayhead(playableBodyTime);
+              if (showOriginal || !duration || !segments.length) {
+                setPlayhead(bodyTime);
                 return;
               }
-              setPlaybackTime(t);
-              setPlayhead(bodyTime);
+              const current = segments.find((segment) => playhead >= segment.outputStartSec && playhead < segment.outputEndSec) ?? segments[0];
+              if (bodyTime < current.startSec - 0.04 || bodyTime >= current.endSec - 0.02) {
+                const next = segments[segments.indexOf(current) + 1];
+                if (!next) {
+                  videoRef.current?.pause();
+                  setPlaying(false);
+                  setPlayhead(outputDuration);
+                  return;
+                }
+                const nextPlaybackTime = playbackTimeFromBodyTime(next.startSec, duration, playbackIntroOutro);
+                if (videoRef.current) videoRef.current.currentTime = nextPlaybackTime;
+                setPlaybackTime(nextPlaybackTime);
+                setPlayhead(next.outputStartSec);
+                return;
+              }
+              setPlayhead(current.outputStartSec + bodyTime - current.startSec);
             }}
             onSeek={seekBodyTime}
           />
-          <div className="min-w-0 max-h-[calc(var(--space-region)*8)] space-y-stack overflow-y-auto" data-video-script-column>
+          <div className="min-w-0 max-h-[var(--video-editor-preview-height)] space-y-stack overflow-y-auto" data-video-script-column>
             {drawerOpen ? (
               <VideoInsertDrawer
                 edit={videoEdit}
                 duration={duration}
-                playhead={playhead}
+                playhead={sourcePlayhead}
                 sourceFilename={introOutroSourceFilename}
                 tenantId={tenantId}
                 activeTab={drawerTab}
@@ -348,14 +454,14 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
               lines={lines}
               onLinesChange={onLinesChange}
               edit={videoEdit}
-              playhead={playhead}
+              playhead={sourcePlayhead}
               duration={duration}
-              onSeek={seekBodyTime}
+              onSeek={(sec) => seekBodyTime(duration ? sourceTimeToOutputTime(videoEdit, duration, sec) : sec)}
               run={run}
               syncing={syncing}
             />
-            <OverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
-            <CommentOverlayEditor edit={videoEdit} duration={duration} playhead={playhead} run={run} syncing={syncing} />
+            <OverlayEditor edit={videoEdit} duration={duration} playhead={sourcePlayhead} run={run} syncing={syncing} />
+            <CommentOverlayEditor edit={videoEdit} duration={duration} playhead={sourcePlayhead} run={run} syncing={syncing} />
             <VoiceSelector edit={videoEdit} run={run} syncing={syncing} />
             {introOutroStale ? (
               <p role="alert" className="text-caption text-danger" data-intro-outro-stale-notice>
@@ -366,7 +472,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             </>}
           </div>
         </div>
-        <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seekBodyTime} run={run} syncing={syncing} showOriginal={showOriginal} />
+        <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seekBodyTime} run={run} syncing={syncing} showOriginal={showOriginal} selectedClipIds={selectedClipIds} onSelectClips={setSelectedClipIds} zoom={timelineZoom} onZoom={setTimelineZoom} thumbnailSrc={effectivePreviewUrl ?? previewVideoUrl} />
       </div>
       <p className="text-caption text-subtle" data-render-status-note>
         내보내면 컷, 자막 시간·스타일, 글·스티커, 훅·CTA·댓글, 배경음악, 인트로·아웃트로가 한 영상 파일에 반영됩니다. 안전 영역과 원본 보기 표시는 편집 가이드라 결과 파일에는 들어가지 않습니다.
@@ -386,7 +492,7 @@ function activeSubtitle(subtitles: SubtitleLine[], playhead: number): { text: st
 }
 
 function VideoPlayback({
-  src, tenantId, onOpenCreate, videoRef, overlays, comments, activeSubtitle, playhead, playbackPlayhead, bodyLayersVisible, safeAreaVisible, textStickers, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
+  src, tenantId, onOpenCreate, videoRef, overlays, comments, activeSubtitle, playhead, layerTime, playbackPlayhead, bodyLayersVisible, safeAreaVisible, textStickers, subtitleStyle, onSubtitlePosition, duration, playing, onTogglePlay, voiceName, onLoadedMetadata, onTimeUpdate, onSeek,
 }: {
   src: string;
   tenantId?: string;
@@ -396,10 +502,13 @@ function VideoPlayback({
   comments: VideoComment[];
   activeSubtitle: { text: string; cut: boolean } | null;
   playhead: number;
+  layerTime: number;
   playbackPlayhead: number;
   bodyLayersVisible: boolean;
   safeAreaVisible: boolean;
   textStickers: VideoTextSticker[];
+  subtitleStyle: VideoEdit["subtitleStyle"];
+  onSubtitlePosition: (xPercent: number, yPercent: number) => void;
   duration: number | null;
   playing: boolean;
   onTogglePlay: () => void;
@@ -409,6 +518,8 @@ function VideoPlayback({
   onSeek: (time: number) => void;
 }) {
   const [loadFailed, setLoadFailed] = useState(false);
+  const screenRef = useRef<HTMLDivElement | null>(null);
+  const [subtitleDragging, setSubtitleDragging] = useState(false);
   /*
     2026-10-02 회장 지적: 편집실 영상이 재생 안 됨. previewVideoUrl(서명 배달 주소)이
     12시간 지나면 만료되는데 이 플레이어는 토큰을 문자열 그대로 video의 src 속성에
@@ -435,13 +546,13 @@ function VideoPlayback({
     합쳐 총 1회로 센다.
   */
   const activeOverlays = bodyLayersVisible
-    ? overlays.filter((o) => playhead >= o.startSec && playhead <= o.endSec)
+    ? overlays.filter((o) => layerTime >= o.startSec && layerTime <= o.endSec)
     : [];
   const activeComment = bodyLayersVisible
-    ? comments.find((c) => playhead >= c.startSec && playhead <= c.endSec) ?? null
+    ? comments.find((c) => layerTime >= c.startSec && layerTime <= c.endSec) ?? null
     : null;
   const activeTextStickers = bodyLayersVisible
-    ? textStickers.filter((item) => playhead >= item.startSec && playhead <= item.endSec)
+    ? textStickers.filter((item) => layerTime >= item.startSec && layerTime <= item.endSec)
     : [];
   const hook = activeOverlays.find((o) => o.kind === "hook");
   const cta = activeOverlays.find((o) => o.kind === "cta");
@@ -453,6 +564,24 @@ function VideoPlayback({
   playbackPlayheadRef.current = playbackPlayhead;
   const playingRef = useRef(playing);
   playingRef.current = playing;
+
+  useEffect(() => {
+    if (!subtitleDragging) return;
+    function move(event: PointerEvent) {
+      const rect = screenRef.current?.getBoundingClientRect();
+      if (!rect?.width || !rect.height) return;
+      const x = Math.max(5, Math.min(95, ((event.clientX - rect.left) / rect.width) * 100));
+      const y = Math.max(5, Math.min(95, ((event.clientY - rect.top) / rect.height) * 100));
+      onSubtitlePosition(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
+    }
+    const stop = () => setSubtitleDragging(false);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+  }, [onSubtitlePosition, subtitleDragging]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -546,7 +675,7 @@ function VideoPlayback({
 
   return (
     <div className="relative min-w-0 max-[26rem]:grid max-[26rem]:grid-rows-[auto_auto] max-[26rem]:gap-stack-tight" data-video-playback>
-      <div className="relative aspect-[9/16] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:h-40 max-[26rem]:min-h-40 max-[26rem]:aspect-auto" data-video-screen>
+      <div ref={screenRef} className="relative h-[var(--video-editor-preview-height)] min-h-[var(--video-editor-preview-height)] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:h-40 max-[26rem]:min-h-40 max-[26rem]:aspect-auto" data-video-screen>
         {loadFailed ? (
           <div className="space-y-stack-tight p-pad-inset" role="alert" data-video-load-failed>
             <p className="text-caption text-danger">영상 주소가 만료됐거나 원본 파일을 찾지 못해 재생하지 못했습니다.</p>
@@ -605,7 +734,16 @@ function VideoPlayback({
           <p
             data-video-subtitle-active
             data-video-subtitle-active-cut={activeSubtitle.cut}
-            className={`pointer-events-none absolute inset-x-2 bottom-[72px] text-center text-body font-extrabold [text-shadow:0_2px_6px_rgba(0,0,0,.8)] ${activeSubtitle.cut ? "text-player-text/45" : "text-player-text"}`}
+            className={`absolute max-w-[90%] -translate-x-1/2 -translate-y-1/2 cursor-move select-none text-center font-extrabold [text-shadow:0_2px_6px_rgba(0,0,0,.8)] ${subtitleStyle?.fontFamily === "serif" ? "font-serif" : "font-sans"} ${activeSubtitle.cut ? "opacity-45" : ""}`}
+            style={{
+              left: `${subtitleStyle?.xPercent ?? 50}%`,
+              top: `${subtitleStyle?.yPercent ?? (subtitleStyle?.position === "top" ? 18 : subtitleStyle?.position === "middle" ? 50 : 78)}%`,
+              color: subtitleStyle?.color ?? "#ffffff",
+              fontSize: `${Math.max(70, subtitleStyle?.sizePercent ?? 100) / 100}rem`,
+            }}
+            onPointerDown={(event) => { event.preventDefault(); setSubtitleDragging(true); }}
+            aria-label="자막 위치 드래그"
+            data-video-subtitle-draggable
           >
             {activeSubtitle.text}
           </p>
@@ -820,7 +958,7 @@ function SubtitleScriptEditor({
                   data-video-subtitle-text
                 />
                 <Button size="sm" variant="secondary" className="max-[64rem]:col-span-2 max-[64rem]:w-full" disabled={syncing} onClick={() => commitCut(index)} data-video-subtitle-cut-toggle>
-                  {line.cut ? "되돌리기" : "컷"}
+                  {line.cut ? "문장 복원" : "문장 삭제"}
                 </Button>
               </li>
             );
@@ -971,7 +1109,9 @@ function VoiceSelector({ edit, run, syncing = false }: { edit: VideoEdit; run: (
           setLoadError("음성 설정이 아직 연결되지 않았습니다. 설정에서 먼저 연결해 주세요.");
           return;
         }
-        console.error("elevenlabs-voices 응답 실패", { status: res.status, code: data?.code });
+        // 고객 계정에 음성 제공자 설정이 없는 403은 선택 기능의 정상 비활성 상태다.
+        // 브라우저 오류로 기록하면 편집 본체가 깨진 것처럼 운영 관측을 오염시킨다.
+        console.warn("elevenlabs-voices 사용 불가", { status: res.status, code: data?.code });
         setLoadError("목소리 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
       })
       .catch((cause) => {
@@ -1171,7 +1311,9 @@ function VideoInsertDrawer({ edit, duration, playhead, sourceFilename, tenantId,
       {activeTab === "subtitle" ? (
         <div className="space-y-stack" data-video-drawer-subtitle>
           <div className="grid grid-cols-3 gap-stack-tight">{SUBTITLE_PRESET_LABELS.map(([preset, label]) => <Button key={preset} size="sm" variant={(edit.subtitleStyle?.preset ?? "basic") === preset ? "primary" : "secondary"} onClick={() => run((value) => setSubtitleStyle(value, { preset }))}>{label}</Button>)}</div>
-          <label className="grid gap-micro text-caption">위치<select value={edit.subtitleStyle?.position ?? "bottom"} onChange={(event) => run((value) => setSubtitleStyle(value, { position: event.target.value as "top" | "middle" | "bottom" }))} className="min-h-control-touch rounded-control border border-border bg-surface px-stack text-body"><option value="top">위</option><option value="middle">가운데</option><option value="bottom">아래</option></select></label>
+          <label className="grid gap-micro text-caption">위치<select value={edit.subtitleStyle?.position ?? "bottom"} onChange={(event) => { const position = event.target.value as "top" | "middle" | "bottom"; run((value) => setSubtitleStyle(value, { position, yPercent: position === "top" ? 18 : position === "middle" ? 50 : 78 })); }} className="min-h-control-touch rounded-control border border-border bg-surface px-stack text-body"><option value="top">위</option><option value="middle">가운데</option><option value="bottom">아래</option></select></label>
+          <label className="grid gap-micro text-caption">글꼴<select value={edit.subtitleStyle?.fontFamily ?? "sans"} onChange={(event) => run((value) => setSubtitleStyle(value, { fontFamily: event.target.value as "sans" | "serif" | "round" }))} className="min-h-control-touch rounded-control border border-border bg-surface px-stack text-body" data-video-subtitle-font><option value="sans">고딕</option><option value="serif">명조</option><option value="round">둥근 고딕</option></select></label>
+          <label className="grid gap-micro text-caption">글자 색<input type="color" value={edit.subtitleStyle?.color ?? "#ffffff"} onChange={(event) => run((value) => setSubtitleStyle(value, { color: event.target.value as `#${string}` }))} className="min-h-control-touch w-full rounded-control border border-border bg-surface" data-video-subtitle-color /></label>
           <label className="grid gap-micro text-caption">글자 크기 {edit.subtitleStyle?.sizePercent ?? 100}%<input type="range" min="70" max="160" step="10" value={edit.subtitleStyle?.sizePercent ?? 100} onChange={(event) => run((value) => setSubtitleStyle(value, { sizePercent: Number(event.target.value) }))} /></label>
           <Button size="sm" variant={edit.subtitleStyle?.outline ?? true ? "primary" : "secondary"} aria-pressed={edit.subtitleStyle?.outline ?? true} onClick={() => run((value) => setSubtitleStyle(value, { outline: !(value.subtitleStyle?.outline ?? true) }))}>글자 외곽선</Button>
         </div>
@@ -1199,10 +1341,10 @@ function VideoInsertDrawer({ edit, duration, playhead, sourceFilename, tenantId,
   );
 }
 
-type DragState = { lane: "subtitle" | "text" | "overlay" | "comment"; id: string; edge: "move" | "start" | "end"; originStart: number; originEnd: number; originClientX: number } | null;
+type DragState = { lane: "video" | "subtitle" | "text" | "overlay" | "comment"; id: string; edge: "move" | "start" | "end"; originStart: number; originEnd: number; originClientX: number } | null;
 
 /** v71 §S6: 영상, 자막, 글·스티커, 훅·CTA·댓글, 배경 음악의 5레인 타임라인. */
-function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run, syncing = false, showOriginal = false }: {
+function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run, syncing = false, showOriginal = false, selectedClipIds, onSelectClips, zoom, onZoom, thumbnailSrc }: {
   edit: VideoEdit;
   /** P3(교차 리뷰 재리뷰 MAJOR): 자막 레인은 서버 원본(edit.subtitles)이 아니라 대본
    * 재구성 결과를 그린다 — 대본·타임라인이 서로 다른 자막을 보여주면 어느 게 진짜인지
@@ -1214,21 +1356,44 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
   run: (op: (e: VideoEdit) => VideoEdit) => void;
   syncing?: boolean;
   showOriginal?: boolean;
+  selectedClipIds: string[];
+  onSelectClips: (ids: string[]) => void;
+  zoom: number;
+  onZoom: (zoom: number) => void;
+  thumbnailSrc: string | null;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<DragState>(null);
   const [availableTrackWidth, setAvailableTrackWidth] = useState(TIMELINE_FALLBACK_WIDTH);
+  const [draggingPlayhead, setDraggingPlayhead] = useState(false);
+  const clips = useMemo(() => duration ? materializeVideoClips(edit, duration) : [], [duration, edit]);
+  const clipLayouts = useMemo(() => {
+    let cursor = 0;
+    return clips.map((clip) => {
+      const startSec = cursor;
+      cursor += clip.sourceEndSec - clip.sourceStartSec;
+      return { clip, startSec, endSec: cursor };
+    });
+  }, [clips]);
+  const editedDuration = clipLayouts.at(-1)?.endSec ?? duration ?? 0;
 
   const total = Math.max(
-    duration ?? 0,
+    showOriginal ? duration ?? 0 : editedDuration,
     ...displaySubtitles.map((s) => s.endSec),
     ...(edit.textStickers ?? []).map((item) => item.endSec),
     ...edit.overlays.map((o) => o.endSec),
     ...edit.comments.map((c) => c.endSec),
     1,
   );
-  const pxPerSec = timelinePixelsPerSecond(total, availableTrackWidth);
+  const shortestClipSpan = clipLayouts.reduce(
+    (minimum, clip) => Math.min(minimum, clip.endSec - clip.startSec),
+    Number.POSITIVE_INFINITY,
+  );
+  const minimumClipScale = !showOriginal && Number.isFinite(shortestClipSpan)
+    ? TIMELINE_CLIP_MIN_WIDTH_PX / shortestClipSpan
+    : 0;
+  const pxPerSec = Math.max(timelinePixelsPerSecond(total, availableTrackWidth) * zoom, minimumClipScale);
   const trackWidth = total * pxPerSec;
   const tickSec = total <= 12 ? 1 : total <= 60 ? 5 : 10;
   const ticks = useMemo(() => {
@@ -1283,6 +1448,22 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drag, pxPerSec]);
 
+  useEffect(() => {
+    if (!draggingPlayhead) return;
+    function move(event: PointerEvent) {
+      const rect = trackRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      onSeek(Math.max(0, Math.min(total, (event.clientX - rect.left - TIMELINE_LANE_LABEL_WIDTH) / pxPerSec)));
+    }
+    const stop = () => setDraggingPlayhead(false);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+  }, [draggingPlayhead, onSeek, pxPerSec, total]);
+
   // B-1(4차 재리뷰 BLOCKER): 드래그 시작점을 여기 한 곳에서 막는다 — 6개 pointerDown
   // 호출부마다 syncing 체크를 반복하는 대신, 드래그를 여는 이 함수가 거절하면 그 아래
   // onMove가 도는 run() 호출 자체가 발생하지 않는다(run()도 별도로 다시 막지만, 여기서
@@ -1296,6 +1477,11 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
     const nextStart = Math.max(0, Math.round(startSec * 10) / 10);
     const nextEnd = Math.max(nextStart + 0.2, Math.round(endSec * 10) / 10);
     run((value) => {
+      if (lane === "video" && duration) {
+        if (drag?.edge === "start") return trimVideoClip(value, id, "start", nextStart, duration);
+        if (drag?.edge === "end") return trimVideoClip(value, id, "end", nextEnd, duration);
+        return value;
+      }
       if (lane === "subtitle") {
         const materialized = value.subtitles.some((line) => line.id === id)
           ? value
@@ -1324,6 +1510,11 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
       data-syncing={syncing || undefined}
       className={`min-w-0 space-y-micro rounded-surface border border-border bg-surface-2 p-stack-tight ${syncing ? "pointer-events-none opacity-60" : ""}`}
     >
+      <div className="flex items-center gap-stack-tight" aria-label="타임라인 확대 축소">
+        <Button size="sm" variant="secondary" onClick={() => onZoom(Math.max(0.75, Number((zoom - 0.25).toFixed(2))))} disabled={zoom <= 0.75}>축소</Button>
+        <span className="text-caption text-subtle" data-video-timeline-zoom>{Math.round(zoom * 100)}%</span>
+        <Button size="sm" variant="secondary" onClick={() => onZoom(Math.min(4, Number((zoom + 0.25).toFixed(2))))} disabled={zoom >= 4}>확대</Button>
+      </div>
       <div ref={scrollRef} className="overflow-x-auto" data-video-timeline-scroll>
         <div
           ref={trackRef}
@@ -1338,12 +1529,32 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
                 <span className="absolute top-0 left-0.5 whitespace-nowrap text-caption text-subtle" data-video-timeline-tick>{formatClock(t)}</span>
               </div>
             ))}
-            <div className="absolute top-0 bottom-0 w-px bg-accent" style={{ left: `${TIMELINE_LANE_LABEL_WIDTH + playhead * pxPerSec}px` }} data-video-timeline-playhead />
+            <button type="button" aria-label="재생헤드 드래그" className="pointer-events-auto absolute top-0 bottom-0 z-[3] w-control-touch -translate-x-1/2 cursor-ew-resize bg-transparent" style={{ left: `${TIMELINE_LANE_LABEL_WIDTH + playhead * pxPerSec}px` }} onPointerDown={() => setDraggingPlayhead(true)} data-video-timeline-playhead>
+              <span className="absolute left-1/2 top-0 bottom-0 w-px bg-accent" />
+              <span className="absolute left-1/2 top-0 size-3 -translate-x-1/2 rounded-pill bg-accent" />
+            </button>
           </div>
           <TimelineLane label="영상" labelWidth={TIMELINE_LANE_LABEL_WIDTH}>
             {showOriginal ? <TimelineStaticBlock label="원본 영상" startSec={0} endSec={total} kind="video" pxPerSec={pxPerSec} /> : <>
               {edit.introOutro?.introCompId ? <TimelineStaticBlock label="인트로" startSec={0} endSec={Math.min(total, edit.introOutro.introDurationSec ?? 1.5)} kind="intro" pxPerSec={pxPerSec} /> : null}
-              <TimelineStaticBlock label="본문 영상" startSec={edit.introOutro?.introDurationSec ?? 0} endSec={Math.max(edit.introOutro?.introDurationSec ?? 0.1, total - (edit.introOutro?.outroCompId ? 1.5 : 0))} kind="video" pxPerSec={pxPerSec} />
+              {clipLayouts.map(({ clip, startSec, endSec }, index) => (
+                <TimelineVideoClip
+                  key={clip.id}
+                  clip={clip}
+                  label={`클립 ${index + 1}`}
+                  startSec={startSec}
+                  endSec={endSec}
+                  pxPerSec={pxPerSec}
+                  selected={selectedClipIds.includes(clip.id)}
+                  onSelect={(additive) => onSelectClips(additive
+                    ? selectedClipIds.includes(clip.id) ? selectedClipIds.filter((id) => id !== clip.id) : [...selectedClipIds, clip.id]
+                    : [clip.id])}
+                  onSeek={onSeek}
+                  thumbnailSrc={thumbnailSrc}
+                  onStartTrim={(edge, clientX) => startDrag("video", clip.id, edge, clip.sourceStartSec, clip.sourceEndSec, clientX)}
+                  onDrop={(draggedId) => run((value) => reorderVideoClips(value, draggedId, clip.id, duration ?? total))}
+                />
+              ))}
               {edit.introOutro?.outroCompId ? <TimelineStaticBlock label="아웃트로" startSec={Math.max(0, total - 1.5)} endSec={total} kind="outro" pxPerSec={pxPerSec} /> : null}
             </>}
           </TimelineLane>
@@ -1369,6 +1580,79 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
 
 function TimelineStaticBlock({ label, startSec, endSec, kind, pxPerSec }: { label: string; startSec: number; endSec: number; kind: "video" | "intro" | "outro" | "music"; pxPerSec: number }) {
   return <div data-video-timeline-block={kind} className="absolute top-0 flex min-h-control-touch items-center overflow-hidden rounded-control border border-border bg-surface px-stack-tight text-caption text-text" style={{ left: `${startSec * pxPerSec}px`, width: `${Math.max(24, (endSec - startSec) * pxPerSec)}px` }}><span className="truncate">{label}</span></div>;
+}
+
+function TimelineVideoClip({ clip, label, startSec, endSec, pxPerSec, selected, onSelect, onSeek, onStartTrim, onDrop, thumbnailSrc }: {
+  clip: VideoClip;
+  label: string;
+  startSec: number;
+  endSec: number;
+  pxPerSec: number;
+  selected: boolean;
+  onSelect: (additive: boolean) => void;
+  onSeek: (sec: number) => void;
+  thumbnailSrc: string | null;
+  onStartTrim: (edge: "start" | "end", clientX: number) => void;
+  onDrop: (draggedId: string) => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      draggable
+      aria-pressed={selected}
+      aria-label={`${label}, ${formatSec(startSec)}초부터 ${formatSec(endSec)}초`}
+      data-video-timeline-block="video"
+      data-video-clip-id={clip.id}
+      data-video-clip-selected={selected || undefined}
+      className={`absolute top-0 flex min-h-control-touch min-w-[var(--video-editor-clip-min-width)] items-center overflow-visible rounded-control border bg-surface text-caption font-semibold ${selected ? "border-accent ring-2 ring-accent-soft" : "border-border"}`}
+      style={{ left: `${startSec * pxPerSec}px`, width: `${(endSec - startSec) * pxPerSec}px` }}
+      onClick={(event) => { onSelect(event.metaKey || event.ctrlKey || event.shiftKey); onSeek(startSec); }}
+      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(event.metaKey || event.ctrlKey || event.shiftKey); } }}
+      onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/video-clip-id", clip.id); }}
+      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}
+      onDrop={(event) => { event.preventDefault(); const dragged = event.dataTransfer.getData("text/video-clip-id"); if (dragged) onDrop(dragged); }}
+    >
+      <div className="pointer-events-none absolute inset-y-0 left-[var(--control-touch)] right-[var(--control-touch)] grid grid-cols-3 overflow-hidden" aria-hidden="true" data-video-clip-thumbnail-strip>
+        {[0.15, 0.5, 0.85].map((ratio) => (
+          <TimelineThumbnailFrame key={ratio} src={thumbnailSrc} timeSec={clip.sourceStartSec + (clip.sourceEndSec - clip.sourceStartSec) * ratio} />
+        ))}
+      </div>
+      <Button size="sm" variant="secondary" aria-label={`${label} 시작점 트림`} className="relative z-[2] h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize rounded-none border-0 border-r border-border bg-surface/90 p-none" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onStartTrim("start", event.clientX); }}>‹</Button>
+      <span className="relative z-[1] min-w-0 flex-1 truncate rounded-chip bg-player-panel/80 px-micro text-center text-player-text">{label}</span>
+      <Button size="sm" variant="secondary" aria-label={`${label} 끝점 트림`} className="relative z-[2] h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize rounded-none border-0 border-l border-border bg-surface/90 p-none" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); onStartTrim("end", event.clientX); }}>›</Button>
+    </div>
+  );
+}
+
+function TimelineThumbnailFrame({ src, timeSec }: { src: string | null; timeSec: number }) {
+  const frameRef = useRef<HTMLVideoElement | null>(null);
+  const [ready, setReady] = useState(false);
+
+  function seekFrame() {
+    const video = frameRef.current;
+    if (!video || !Number.isFinite(video.duration)) return;
+    video.pause();
+    video.currentTime = Math.max(0, Math.min(timeSec, Math.max(0, video.duration - 0.05)));
+  }
+
+  return src ? (
+    // raw-media-ok: thumbnailSrc는 VideoPlayback이 만료를 감지해 다시 서명한
+    // effectivePreviewUrl과 같은 값이며, 재서명 소유권은 부모 한 곳에 있다.
+    <video
+      ref={frameRef}
+      src={src}
+      muted
+      playsInline
+      preload="metadata"
+      tabIndex={-1}
+      aria-hidden="true"
+      className={`h-full min-w-0 w-full object-cover transition-opacity ${ready ? "opacity-75" : "opacity-0"}`}
+      onLoadedMetadata={seekFrame}
+      onSeeked={() => setReady(true)}
+      data-video-clip-thumbnail-frame
+    />
+  ) : <span className="bg-player-panel" data-video-clip-thumbnail-frame />;
 }
 
 function TimelineEditableBlock({ lane, id, label, startSec, endSec, tone, pxPerSec, onSeek, onStartDrag, onNudge }: {

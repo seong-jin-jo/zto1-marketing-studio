@@ -1,0 +1,253 @@
+{
+  "observations": [
+    {
+      "check": "first_screen",
+      "preview": {
+        "x": 265,
+        "y": 241,
+        "width": 288,
+        "height": 384
+      },
+      "timeline": {
+        "x": 265,
+        "y": 641,
+        "width": 806,
+        "height": 248
+      },
+      "assistantOverlapPx2": 0,
+      "zoom": "100%",
+      "scrollWidth": 788,
+      "trackWidth": 788,
+      "clipWidth": 726,
+      "clipLabel": "‹클립 1›",
+      "thumbnailFrames": 3
+    },
+    {
+      "check": "edited_clip_layout",
+      "clips": [
+        {
+          "left": 336,
+          "right": 530.671875,
+          "width": 194.671875,
+          "label": "‹클립 1›"
+        },
+        {
+          "left": 530.671875,
+          "right": 755.296875,
+          "width": 224.625,
+          "label": "‹클립 2›"
+        },
+        {
+          "left": 755.296875,
+          "right": 988.90625,
+          "width": 233.609375,
+          "label": "‹클립 3›"
+        }
+      ],
+      "overlapCount": 0,
+      "labelsVisible": true
+    },
+    {
+      "check": "autosave",
+      "status": 200
+    },
+    {
+      "check": "edited_playback_jump",
+      "fromSourceEndSec": 9,
+      "toSourceStartSec": 0,
+      "observedSourceSec": 0.033432
+    },
+    {
+      "check": "mobile_ergonomics",
+      "widths": [
+        {
+          "width": 360,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 73,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 3,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 390,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 73,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 3,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 412,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 73,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 3,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 600,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 73,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 3,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 700,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 73,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 3,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 780,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 103,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 3,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 820,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 103,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 3,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 900,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 103,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 3,
+          "loadError": false,
+          "pass": true
+        },
+        {
+          "width": 1000,
+          "fontBelow13": 0,
+          "tokenBodyPx": 16,
+          "tapBelow44": 0,
+          "tapTargets": 103,
+          "tapWithActiveRatio": 1,
+          "overflowX": false,
+          "clips": 3,
+          "loadError": false,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "check": "export_queue",
+      "status": "succeeded",
+      "itemStatus": "succeeded"
+    },
+    {
+      "check": "real_export",
+      "source": "dashboard/public/qa/video-editor-real-composite-12s.mp4",
+      "sourceDuration": 12.12,
+      "sourceWidth": 540,
+      "sourceHeight": 960,
+      "outputWidth": 1080,
+      "outputHeight": 1920,
+      "expectedDuration": 8.719999999999999,
+      "actualDuration": 8.72,
+      "durationDelta": 1.7763568394002505e-15,
+      "frameDiffs": {
+        "firstToExpected": 0.6653645833333334,
+        "firstToDeleted": 77.3271484375,
+        "secondToExpected": 1.0592447916666667,
+        "secondToDeleted": 68.349609375
+      },
+      "subtitlePixels": {
+        "yellowPixels": 64,
+        "rowClusters": 2,
+        "firstRow": 145,
+        "lastRow": 224
+      },
+      "activeSubtitleLayers": 1,
+      "savedClips": [
+        {
+          "id": "clip-6e91tude",
+          "order": 0,
+          "sourceEndSec": 9,
+          "sourceStartSec": 6.4
+        },
+        {
+          "id": "clip-q6u5dkp5",
+          "order": 1,
+          "sourceEndSec": 3,
+          "sourceStartSec": 0
+        },
+        {
+          "id": "clip-c5w5jewu",
+          "order": 2,
+          "sourceEndSec": 12.12,
+          "sourceStartSec": 9
+        }
+      ],
+      "subtitleStyle": {
+        "color": "#ffd600",
+        "preset": "basic",
+        "outline": true,
+        "position": "bottom",
+        "xPercent": 50,
+        "yPercent": 70,
+        "fontFamily": "serif",
+        "sizePercent": 120
+      }
+    }
+  ],
+  "consoleErrors": [],
+  "optionalProviderWarnings": [
+    {
+      "url": "/api/elevenlabs-voices",
+      "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "url": "/api/elevenlabs-voices",
+      "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "url": "/api/elevenlabs-voices",
+      "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "url": "/api/elevenlabs-voices",
+      "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    }
+  ]
+}

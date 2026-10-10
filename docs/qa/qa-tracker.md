@@ -1,3 +1,35 @@
+## 2026-10-11 영상 편집기 R3 내보내기 해상도 반려 ❌ NG → ✅ PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| VIDEO-CAPCUT-R3-01 | 쇼츠·릴스·TikTok용 MP4는 1080×1920 출력 캔버스를 사용하고, 작은 원본은 확대하지 않은 채 원본 비율로 중앙 배치해야 함 | ✅ PASS | 실제 540×960 원본을 같은 화소 크기로 중앙 배치하고 검은 여백을 더했다. ffprobe는 `1080×1920`; 중앙 원본 영역 기대 프레임 MAD `0.665/1.059`로 비확대를 확인했다. |
+| VIDEO-CAPCUT-R3-02 | 실제 PostgreSQL·export worker 경로의 산출물을 ffprobe로 확인하고 개발 품질헌법 항목별 증거를 보고서에 기록해야 함 | ✅ PASS | 실제 Next 3482·격리 PostgreSQL·worker E2E와 ffprobe·픽셀 검증을 통과했다. 보고서에 직접 관찰, 미검증, 스펙 차이, 고위험 여부, 경계 테스트를 항목별 기록했다. |
+
+종료 증거: `logs/diff/video-editor-capcut-20261010/report.md`, `exported-video-editor.mp4`, `captures/03-export-full-frame.png`, `captures/04-export-subtitle-crop.png`. 예상·실측 길이 `8.720초`, 삭제 프레임 부재, 자막 활성 레이어 1개, 관련 실제 렌더 20건, 전체 Vitest 519파일·3,794건, TypeScript, production Webpack build가 PASS했다.
+
+## 2026-10-11 영상 편집기 R2 시각·실영상 반려 ❌ NG → ✅ PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| VIDEO-CAPCUT-R2-01 | 1440×900에서 미리보기 높이 380px 이상, 옆 자막 3문장, 아래 전체폭 타임라인, 편집 담당 겹침 0 | ✅ PASS | 미리보기 `288×384`, timeline bottom `889`, 대화창 겹침 `0px²`; `captures/01-first-screen-1440x900.png` 직접 확인. |
+| VIDEO-CAPCUT-R2-02 | 기본 배율 전체 길이 맞춤, 클립 이름·최소 폭·실제 프레임 띠, 편집 뒤 블록 비겹침 | ✅ PASS | 기본 track·scroll `788px`, 편집 후 클립 `194.7/224.6/233.6px`, 겹침 0, 클립마다 프레임 3장; `captures/02-edited-timeline-and-subtitle.png`. |
+| VIDEO-CAPCUT-R2-03 | 12초 이상 실제 영상에서 자르기 3회·삭제 1회·자막 3문장 | ✅ PASS | Higgsfield 4.166초+실영상 2+3+3초 합성본 `12.120초`; 저장 클립 `6.4~9 → 0~3 → 9~12.12`, 가운데 3~6초 삭제. |
+| VIDEO-CAPCUT-R2-04 | MP4 길이·삭제 프레임·자막 한 겹을 실제 export worker 결과로 확인 | ✅ PASS | 예상·ffprobe `8.720초`, 차이 0.000초; 기대 MAD `0.634/0.826` < 삭제 프레임 MAD `77.305/68.427`; 노랑 274픽셀, 활성 자막 1개. |
+
+종료 증거: `logs/diff/video-editor-capcut-20261010/report.md`, `observations.json`, 원본 크기 캡처 4장, `exported-video-editor.mp4`. page.route와 단색 픽스처는 0건이다. TypeScript, production Webpack build, 전체 Vitest 518파일·3,792건 PASS, 3파일·16건 skip이다.
+
+## 2026-10-10 영상 편집기 CapCut·Vrew 기본 조작 ❌ NG → ✅ PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| VIDEO-CAPCUT-01 | 1440×900 첫 화면에 실제 영상 미리보기와 영상·자막 타임라인이 함께 보이고 편집 담당 대화창이 작업대를 가리지 않음 | ✅ PASS | preview `(265,422,144×208)`, timeline `(265,646,806×248)`로 둘 다 첫 화면 안이며 대화창 겹침은 `0px²`다. |
+| VIDEO-CAPCUT-02 | 재생헤드 드래그, S 분할, 선택 클립 Delete, 양끝 트림, 순서 드래그, 확대·축소가 같은 편집 계획을 변경함 | ✅ PASS | Playwright가 실제 DOM을 조작했고 저장 결과는 원본 `2.8~3.0초 → 0~1.0초` 두 클립이다. 미리보기는 첫 클립 끝에서 원본 `0.000초`로 실제 건너뛰었다. |
+| VIDEO-CAPCUT-03 | 문장 클릭 이동, 문장 수정, 문장 삭제 구간 컷, 자막 직접 이동, 글꼴·크기·색, 실행취소·다시실행 | ✅ PASS | 실제 저장 JSON에서 `fontFamily=serif`, `sizePercent=120`, `color=#ffd600`, 직접 이동 좌표와 수정 문장을 확인했다. undo·redo 뒤 클립 수 3→2도 브라우저에서 단언했다. |
+| VIDEO-CAPCUT-04 | 실제 `chairman-photo-motion.mp4` 내보내기에 클립 순서·트림·삭제·자막이 반영되고 ffprobe·프레임·자막 크롭이 일치함 | ✅ PASS | 예상 1.200초, ffprobe 1.200초, 차이 0.000초. 기대 프레임 MAD `0.402/0.579`는 삭제 구간 MAD `23.250/21.091`보다 작고 노랑 자막 267픽셀, 활성 자막 레이어 1개다. |
+| VIDEO-CAPCUT-05 | page.route 없이 로컬 Next·PostgreSQL·실제 미디어·로컬 export worker를 Playwright가 조작함 | ✅ PASS | 격리 PostgreSQL schema·RLS, Next dev 3482, 실제 고객 토큰·초안·자동저장, 실제 export worker·서명 다운로드를 사용했다. page.route 0건, 앱 콘솔 오류 0건, 외부 SNS 게시 0건이다. |
+
+종료 증거: `logs/diff/video-editor-capcut-20261010/report.md`, `observations.json`, 캡처 4장, 실제 `exported-video-editor.mp4`. 데이터 포함 편집 화면은 360·390·412·600·700·780·820·900·1000에서 13px 미만 글자 0, 본문 토큰 16px, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다.
+
 ## 2026-10-09 운영 편집실 R8 짧은 영상 타임라인·카톡 캔버스 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

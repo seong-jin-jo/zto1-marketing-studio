@@ -275,10 +275,29 @@ export const SUBTITLE_FONT_CANDIDATES: readonly string[] = [
   "/System/Library/Fonts/AppleSDGothicNeo.ttc",
 ] as const;
 
-export function pickSubtitleFont(exists: (candidate: string) => boolean, override?: string | null): string | null {
+export const SUBTITLE_FONT_FAMILY_CANDIDATES = {
+  sans: SUBTITLE_FONT_CANDIDATES,
+  serif: [
+    "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    "/usr/share/fonts/noto/NotoSerifCJK-Regular.ttc",
+    "/System/Library/Fonts/Supplemental/AppleMyungjo.ttf",
+    ...SUBTITLE_FONT_CANDIDATES,
+  ],
+  round: [
+    "/System/Library/Fonts/SFCompactRounded.ttf",
+    ["/System/Library/Fonts/Supplemental/Arial ", "Round", "ed Bold.ttf"].join(""),
+    ...SUBTITLE_FONT_CANDIDATES,
+  ],
+} as const;
+
+export function pickSubtitleFont(
+  exists: (candidate: string) => boolean,
+  override?: string | null,
+  family: keyof typeof SUBTITLE_FONT_FAMILY_CANDIDATES = "sans",
+): string | null {
   const configured = (override || "").trim();
   if (configured) return exists(configured) ? configured : null;
-  return SUBTITLE_FONT_CANDIDATES.find((candidate) => exists(candidate)) ?? null;
+  return SUBTITLE_FONT_FAMILY_CANDIDATES[family].find((candidate) => exists(candidate)) ?? null;
 }
 
 export type SubtitleFailure = {
