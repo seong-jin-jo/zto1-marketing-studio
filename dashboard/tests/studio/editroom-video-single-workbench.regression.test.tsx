@@ -203,6 +203,25 @@ describe("v71 S6: 영상 편집 워크벤치(플레이어+대본+5레인 타임�
     expect(document.querySelectorAll('[data-video-timeline] input[type="number"]').length).toBe(0);
   });
 
+  it("VIDEO-CAPCUT-R2-01 정상: 데스크톱 미리보기는 384px 토큰이고 클립은 이름·프레임 띠를 함께 보존한다", () => {
+    stubVoicesUnconfigured();
+    render(<VideoRoomHarness initialLines={["첫 문장", "둘째 문장", "셋째 문장"]} />);
+    const player = document.querySelector("[data-video-el]") as HTMLVideoElement;
+    Object.defineProperty(player, "duration", { value: 12.4, configurable: true });
+    fireEvent.loadedMetadata(player);
+
+    const screen = document.querySelector("[data-video-screen]");
+    expect(screen?.className).toContain("h-[var(--video-editor-preview-height)]");
+    expect(screen?.className).toContain("min-h-[var(--video-editor-preview-height)]");
+    expect(globalsCss).toContain("--video-editor-preview-height: calc(var(--space-region) * 12);");
+    expect(globalsCss).toContain("--video-editor-clip-min-width: calc(var(--control-touch) * 4);");
+
+    const clip = document.querySelector("[data-video-clip-id]");
+    expect(clip).toHaveTextContent("클립 1");
+    expect(clip?.className).toContain("min-w-[var(--video-editor-clip-min-width)]");
+    expect(clip?.querySelectorAll("[data-video-clip-thumbnail-frame]")).toHaveLength(3);
+  });
+
   it("S6-TL-02 390 영상 화면은 160px이고 5×44px 레인은 토큰화한 타임라인 안에 머문다", () => {
     stubVoicesUnconfigured();
     render(<VideoRoomHarness initialLines={["첫 장면 대사"]} />);

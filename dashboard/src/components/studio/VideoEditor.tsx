@@ -173,6 +173,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   const [undoStack, setUndoStack] = useState<Array<{ edit: VideoEdit; lines: string[] }>>([]);
   const [redoStack, setRedoStack] = useState<Array<{ edit: VideoEdit; lines: string[] }>>([]);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const editorRootRef = useRef<HTMLDivElement | null>(null);
   // M3(교차 리뷰): 플레이어 미리보기 자막도 대본·타임라인과 같은 재구성 결과를 봐야
   // 서버에 아직 커밋 안 된(시딩만 된) 상태에서도 글자가 보인다 — 셋이 서로 다른 자막을
   // 보여주면 어느 게 진짜인지 알 수 없다(B2와 같은 이유로 한 계산을 공유한다).
@@ -191,6 +192,16 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   const segments = useMemo(() => duration ? playbackSegments(videoEdit, duration) : [], [videoEdit, duration]);
   const outputDuration = segments.at(-1)?.outputEndSec ?? duration ?? 0;
   const sourcePlayhead = duration ? outputTimeToSourceTime(videoEdit, duration, playhead) : playhead;
+
+  // R2: 영상 편집기로 진입하면 편집 작업대 자체를 첫 화면으로 맞춘다. 상단 현황 카드 때문에
+  // 미리보기 384px와 5레인 타임라인을 동시에 볼 수 없었던 구조적 원인을 여기서 닫는다.
+  useEffect(() => {
+    if (!previewVideoUrl || typeof window === "undefined" || window.innerWidth < 1024) return;
+    const frame = window.requestAnimationFrame(() => {
+      editorRootRef.current?.scrollIntoView?.({ block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [previewVideoUrl]);
 
   /**
    * B-1(4차 재리뷰 BLOCKER): 이 함수가 videoEdit을 바꾸는 유일한 입구다(오버레이·댓글·
@@ -354,7 +365,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
   }
 
   return (
-    <div className="space-y-stack" data-video-editor>
+    <div ref={editorRootRef} className="scroll-mt-pad-inset space-y-stack" data-video-editor>
       {error ? <p role="alert" className="rounded-control border border-danger bg-danger-soft p-stack text-caption text-danger" data-video-editor-error>{error}</p> : null}
       <div className="flex flex-wrap items-center gap-stack-tight rounded-surface border border-border bg-surface-2 p-stack-tight" data-video-timeline-toolbar>
         <b className="text-caption text-text">타임라인</b>
@@ -423,7 +434,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             }}
             onSeek={seekBodyTime}
           />
-          <div className="min-w-0 max-h-[calc(var(--space-region)*6.5)] space-y-stack overflow-y-auto" data-video-script-column>
+          <div className="min-w-0 max-h-[var(--video-editor-preview-height)] space-y-stack overflow-y-auto" data-video-script-column>
             {drawerOpen ? (
               <VideoInsertDrawer
                 edit={videoEdit}
@@ -458,7 +469,7 @@ export function VideoEditor({ videoEdit, onVideoEditChange, previewVideoUrl, lin
             </>}
           </div>
         </div>
-        <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seekBodyTime} run={run} syncing={syncing} showOriginal={showOriginal} selectedClipIds={selectedClipIds} onSelectClips={setSelectedClipIds} zoom={timelineZoom} onZoom={setTimelineZoom} />
+        <VideoTimeline edit={videoEdit} displaySubtitles={displaySubtitles} duration={duration} playhead={playhead} onSeek={seekBodyTime} run={run} syncing={syncing} showOriginal={showOriginal} selectedClipIds={selectedClipIds} onSelectClips={setSelectedClipIds} zoom={timelineZoom} onZoom={setTimelineZoom} thumbnailSrc={effectivePreviewUrl ?? previewVideoUrl} />
       </div>
       <p className="text-caption text-subtle" data-render-status-note>
         내보내면 컷, 자막 시간·스타일, 글·스티커, 훅·CTA·댓글, 배경음악, 인트로·아웃트로가 한 영상 파일에 반영됩니다. 안전 영역과 원본 보기 표시는 편집 가이드라 결과 파일에는 들어가지 않습니다.
@@ -661,7 +672,7 @@ function VideoPlayback({
 
   return (
     <div className="relative min-w-0 max-[26rem]:grid max-[26rem]:grid-rows-[auto_auto] max-[26rem]:gap-stack-tight" data-video-playback>
-      <div ref={screenRef} className="relative h-[calc(var(--space-region)*6.5)] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:h-40 max-[26rem]:min-h-40 max-[26rem]:aspect-auto" data-video-screen>
+      <div ref={screenRef} className="relative h-[var(--video-editor-preview-height)] min-h-[var(--video-editor-preview-height)] w-full overflow-hidden rounded-surface border border-border bg-player-surface max-[26rem]:h-40 max-[26rem]:min-h-40 max-[26rem]:aspect-auto" data-video-screen>
         {loadFailed ? (
           <div className="space-y-stack-tight p-pad-inset" role="alert" data-video-load-failed>
             <p className="text-caption text-danger">영상 주소가 만료됐거나 원본 파일을 찾지 못해 재생하지 못했습니다.</p>
@@ -1330,7 +1341,7 @@ function VideoInsertDrawer({ edit, duration, playhead, sourceFilename, tenantId,
 type DragState = { lane: "video" | "subtitle" | "text" | "overlay" | "comment"; id: string; edge: "move" | "start" | "end"; originStart: number; originEnd: number; originClientX: number } | null;
 
 /** v71 §S6: 영상, 자막, 글·스티커, 훅·CTA·댓글, 배경 음악의 5레인 타임라인. */
-function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run, syncing = false, showOriginal = false, selectedClipIds, onSelectClips, zoom, onZoom }: {
+function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run, syncing = false, showOriginal = false, selectedClipIds, onSelectClips, zoom, onZoom, thumbnailSrc }: {
   edit: VideoEdit;
   /** P3(교차 리뷰 재리뷰 MAJOR): 자막 레인은 서버 원본(edit.subtitles)이 아니라 대본
    * 재구성 결과를 그린다 — 대본·타임라인이 서로 다른 자막을 보여주면 어느 게 진짜인지
@@ -1346,6 +1357,7 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
   onSelectClips: (ids: string[]) => void;
   zoom: number;
   onZoom: (zoom: number) => void;
+  thumbnailSrc: string | null;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -1528,6 +1540,7 @@ function VideoTimeline({ edit, displaySubtitles, duration, playhead, onSeek, run
                     ? selectedClipIds.includes(clip.id) ? selectedClipIds.filter((id) => id !== clip.id) : [...selectedClipIds, clip.id]
                     : [clip.id])}
                   onSeek={onSeek}
+                  thumbnailSrc={thumbnailSrc}
                   onStartTrim={(edge, clientX) => startDrag("video", clip.id, edge, clip.sourceStartSec, clip.sourceEndSec, clientX)}
                   onDrop={(draggedId) => run((value) => reorderVideoClips(value, draggedId, clip.id, duration ?? total))}
                 />
@@ -1559,7 +1572,7 @@ function TimelineStaticBlock({ label, startSec, endSec, kind, pxPerSec }: { labe
   return <div data-video-timeline-block={kind} className="absolute top-0 flex min-h-control-touch items-center overflow-hidden rounded-control border border-border bg-surface px-stack-tight text-caption text-text" style={{ left: `${startSec * pxPerSec}px`, width: `${Math.max(24, (endSec - startSec) * pxPerSec)}px` }}><span className="truncate">{label}</span></div>;
 }
 
-function TimelineVideoClip({ clip, label, startSec, endSec, pxPerSec, selected, onSelect, onSeek, onStartTrim, onDrop }: {
+function TimelineVideoClip({ clip, label, startSec, endSec, pxPerSec, selected, onSelect, onSeek, onStartTrim, onDrop, thumbnailSrc }: {
   clip: VideoClip;
   label: string;
   startSec: number;
@@ -1568,6 +1581,7 @@ function TimelineVideoClip({ clip, label, startSec, endSec, pxPerSec, selected, 
   selected: boolean;
   onSelect: (additive: boolean) => void;
   onSeek: (sec: number) => void;
+  thumbnailSrc: string | null;
   onStartTrim: (edge: "start" | "end", clientX: number) => void;
   onDrop: (draggedId: string) => void;
 }) {
@@ -1581,19 +1595,52 @@ function TimelineVideoClip({ clip, label, startSec, endSec, pxPerSec, selected, 
       data-video-timeline-block="video"
       data-video-clip-id={clip.id}
       data-video-clip-selected={selected || undefined}
-      className={`absolute top-0 flex min-h-control-touch items-center overflow-visible rounded-control border bg-surface text-caption font-semibold ${selected ? "border-accent ring-2 ring-accent-soft" : "border-border"}`}
-      style={{ left: `${startSec * pxPerSec}px`, width: `${Math.max(88, (endSec - startSec) * pxPerSec)}px` }}
+      className={`absolute top-0 flex min-h-control-touch min-w-[var(--video-editor-clip-min-width)] items-center overflow-visible rounded-control border bg-surface text-caption font-semibold ${selected ? "border-accent ring-2 ring-accent-soft" : "border-border"}`}
+      style={{ left: `${startSec * pxPerSec}px`, width: `${(endSec - startSec) * pxPerSec}px` }}
       onClick={(event) => { onSelect(event.metaKey || event.ctrlKey || event.shiftKey); onSeek(startSec); }}
       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(event.metaKey || event.ctrlKey || event.shiftKey); } }}
       onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/video-clip-id", clip.id); }}
       onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}
       onDrop={(event) => { event.preventDefault(); const dragged = event.dataTransfer.getData("text/video-clip-id"); if (dragged) onDrop(dragged); }}
     >
-      <button type="button" aria-label={`${label} 시작점 트림`} className="h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize border-r border-border bg-transparent" onPointerDown={(event) => { event.stopPropagation(); onStartTrim("start", event.clientX); }}>‹</button>
-      <span className="min-w-0 flex-1 truncate px-micro">{label}</span>
-      <button type="button" aria-label={`${label} 끝점 트림`} className="h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize border-l border-border bg-transparent" onPointerDown={(event) => { event.stopPropagation(); onStartTrim("end", event.clientX); }}>›</button>
+      <div className="pointer-events-none absolute inset-y-0 left-[var(--control-touch)] right-[var(--control-touch)] grid grid-cols-3 overflow-hidden" aria-hidden="true" data-video-clip-thumbnail-strip>
+        {[0.15, 0.5, 0.85].map((ratio) => (
+          <TimelineThumbnailFrame key={ratio} src={thumbnailSrc} timeSec={clip.sourceStartSec + (clip.sourceEndSec - clip.sourceStartSec) * ratio} />
+        ))}
+      </div>
+      <button type="button" aria-label={`${label} 시작점 트림`} className="relative z-[2] h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize border-r border-border bg-surface/90" onPointerDown={(event) => { event.stopPropagation(); onStartTrim("start", event.clientX); }}>‹</button>
+      <span className="relative z-[1] min-w-0 flex-1 truncate rounded-chip bg-player-panel/80 px-micro text-center text-player-text">{label}</span>
+      <button type="button" aria-label={`${label} 끝점 트림`} className="relative z-[2] h-full min-h-control-touch w-control-touch shrink-0 cursor-ew-resize border-l border-border bg-surface/90" onPointerDown={(event) => { event.stopPropagation(); onStartTrim("end", event.clientX); }}>›</button>
     </div>
   );
+}
+
+function TimelineThumbnailFrame({ src, timeSec }: { src: string | null; timeSec: number }) {
+  const frameRef = useRef<HTMLVideoElement | null>(null);
+  const [ready, setReady] = useState(false);
+
+  function seekFrame() {
+    const video = frameRef.current;
+    if (!video || !Number.isFinite(video.duration)) return;
+    video.pause();
+    video.currentTime = Math.max(0, Math.min(timeSec, Math.max(0, video.duration - 0.05)));
+  }
+
+  return src ? (
+    <video
+      ref={frameRef}
+      src={src}
+      muted
+      playsInline
+      preload="metadata"
+      tabIndex={-1}
+      aria-hidden="true"
+      className={`h-full min-w-0 w-full object-cover transition-opacity ${ready ? "opacity-75" : "opacity-0"}`}
+      onLoadedMetadata={seekFrame}
+      onSeeked={() => setReady(true)}
+      data-video-clip-thumbnail-frame
+    />
+  ) : <span className="bg-player-panel" data-video-clip-thumbnail-frame />;
 }
 
 function TimelineEditableBlock({ lane, id, label, startSec, endSec, tone, pxPerSec, onSeek, onStartDrag, onNudge }: {
