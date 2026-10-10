@@ -9,7 +9,10 @@ import { migrateCardDeckV2ToV3 } from "@/lib/studio/card-deck-v2-to-v3";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import chatDeckFixture from "../../../../tests/studio/fixtures/deck-d100.v2.json";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function deck(): CardDeckV3 {
   return {
@@ -253,9 +256,45 @@ describe("CardCanvasEditor S1 자유 배치", () => {
     rerender(<CardCanvasEditor deck={current} onDeckChange={(next) => { current = next; }} />);
     const text = current.slides[0].elements[0];
     expect(text.type === "text" && text.style.font_size).toBe(72);
+    fireEvent.change(screen.getByLabelText("글꼴"), { target: { value: "Georgia" } });
+    fireEvent.change(screen.getByLabelText("글 배경색"), { target: { value: "#fff2a8" } });
     fireEvent.click(screen.getByRole("button", { name: "가운데 정렬" }));
     const centered = current.slides[0].elements[0];
     expect(centered.type === "text" && centered.style.align).toBe("center");
+    expect(centered.type === "text" && centered.style.font_family).toBe("Georgia");
+    expect(centered.type === "text" && centered.style.background_color).toBe("#fff2a8");
+  });
+
+  it("CARD-CANVA-05 하단 썸네일에서 일반 카드 장을 추가·복제·이동·삭제한다", () => {
+    let current = deck();
+    const onChange = (next: CardDeckV3) => { current = next; };
+    const view = render(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    const strip = screen.getByLabelText("카드 장 목록");
+    expect(strip).toHaveAttribute("data-card-page-strip");
+    fireEvent.click(screen.getByRole("button", { name: "새 장 추가" }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(current.slides).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "이 장 복제" }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    expect(current.slides).toHaveLength(4);
+    fireEvent.click(screen.getByRole("button", { name: "장 앞으로" }));
+    view.rerender(<CardCanvasEditor deck={current} onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "이 장 삭제" }));
+    expect(current.slides).toHaveLength(3);
+  });
+
+  it("CARD-CANVA-03 실제 미디어 목록에서 이미지를 고르면 카드 요소로 추가한다", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ filename: "chairman-photo.jpg", url: "/qa/chairman-photo.jpg", size: 1200, createdAt: "2026-10-10T00:00:00.000Z" }],
+    }));
+    let current = deck();
+    const onChange = (next: CardDeckV3) => { current = next; };
+    render(<CardCanvasEditor deck={current} tenantId="tenant-card" onDeckChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "생성 미디어" }));
+    const media = await screen.findByRole("button", { name: "생성 미디어 chairman-photo.jpg 추가" });
+    fireEvent.click(media);
+    expect(current.slides[0].elements.at(-1)).toMatchObject({ type: "image", asset_id: "chairman-photo.jpg" });
   });
 
   it("S1-AC3 정상 경로: 5종 추가 버튼과 요소 목록의 숨김, 잠금, 층 이동, 복제, 삭제가 동작한다", () => {

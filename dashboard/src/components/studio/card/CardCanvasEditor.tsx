@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "@/components/shared/Button";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { DeliveredMedia } from "@/components/studio/DeliveredMedia";
 import { authHeaders } from "@/lib/auth";
 import type { CardDeckV3, CardElement, CardElementType } from "@/lib/studio/card-element-contract";
 import type { CardDeck } from "@/lib/studio/card-deck-contract";
 import {
   addCardElement,
+  addPlainCardSlide,
   addChatOverlayElement,
   addChatBubble,
   addChatSlide,
@@ -15,13 +17,16 @@ import {
   commitCardCommand,
   createCardCommandHistory,
   deleteCardElement,
+  deletePlainCardSlide,
   deleteChatBubble,
   deleteChatSlide,
   duplicateCardElement,
+  duplicatePlainCardSlide,
   duplicateChatSlide,
   mergeChatBubbleWithNext,
   moveCardElement,
   moveCardElementLayer,
+  movePlainCardSlide,
   moveChatBubble,
   moveChatBubbleToSlide,
   moveChatSlide,
@@ -142,6 +147,8 @@ type Interaction = {
   latestDeck?: CardDeckV3;
 };
 
+type GeneratedMediaItem = { filename: string; url: string; size: number; createdAt: string };
+
 function isTextEntryTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.matches("input, select, textarea, [contenteditable='true']") || Boolean(target.closest("input, select, textarea, [contenteditable='true']"));
@@ -188,6 +195,9 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
   const [guides, setGuides] = useState<SnapGuide[]>([]);
   const [localAssetUrls, setLocalAssetUrls] = useState<Record<string, string>>({});
   const [uploadError, setUploadError] = useState("");
+  const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false);
+  const [mediaLibraryBusy, setMediaLibraryBusy] = useState(false);
+  const [mediaLibrary, setMediaLibrary] = useState<GeneratedMediaItem[]>([]);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [editingTextValue, setEditingTextValue] = useState("");
   const [rotationPreview, setRotationPreview] = useState<number | null>(null);
@@ -410,7 +420,7 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
         setGuides(snapped.guides);
         interaction.latestDeck = moveCardElement(interaction.baseDeck, interaction.slideId, interaction.element.id, snapped.x, snapped.y);
       } else if (interaction.kind === "resize" && interaction.handle) {
-        interaction.latestDeck = resizeCardElement(interaction.baseDeck, interaction.slideId, interaction.element.id, interaction.handle, dx, dy);
+        interaction.latestDeck = resizeCardElement(interaction.baseDeck, interaction.slideId, interaction.element.id, interaction.handle, dx, dy, event.shiftKey);
       } else {
         const startAngle = Math.atan2(interaction.startClientY - interaction.centerClientY, interaction.startClientX - interaction.centerClientX) * 180 / Math.PI;
         const nextAngle = Math.atan2(event.clientY - interaction.centerClientY, event.clientX - interaction.centerClientX) * 180 / Math.PI;
@@ -529,6 +539,51 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
     }
   };
 
+  const runPageCommand = (command: (current: CardDeckV3) => CardDeckV3): CardDeckV3 | null => {
+    try {
+      const next = command(history.present);
+      commit(next);
+      setBubbleEditError("");
+      return next;
+    } catch (error) {
+      const code = error instanceof RangeError ? error.message : "";
+      setBubbleEditError(code === "OPS_SLIDE_LIMIT" ? "카드는 11장을 넘을 수 없습니다."
+        : code === "OPS_SLIDE_MIN" ? `카드는 ${workingDeck.template === "chat_bubble" ? "7" : "2"}장 아래로 줄일 수 없습니다.`
+          : code === "OPS_SLIDE_LOCKED" ? "카톡 표지와 마지막 장은 이동, 복제, 삭제할 수 없습니다."
+            : "카드 페이지를 바꾸지 못했습니다.");
+      return null;
+    }
+  };
+
+  const addPage = () => {
+    const next = runPageCommand((current) => current.template === "chat_bubble"
+      ? addChatSlide(current, activeSlide.id)
+      : addPlainCardSlide(current, activeSlide.id));
+    if (next) setActiveSlideId(next.slides[activeSlide.order + 1]?.id ?? activeSlide.id);
+  };
+
+  const duplicatePage = () => {
+    const next = runPageCommand((current) => current.template === "chat_bubble"
+      ? duplicateChatSlide(current, activeSlide.id)
+      : duplicatePlainCardSlide(current, activeSlide.id));
+    if (next) setActiveSlideId(next.slides[activeSlide.order + 1]?.id ?? activeSlide.id);
+  };
+
+  const movePage = (delta: -1 | 1) => {
+    const next = runPageCommand((current) => current.template === "chat_bubble"
+      ? moveChatSlide(current, activeSlide.id, delta)
+      : movePlainCardSlide(current, activeSlide.id, delta));
+    if (next) setActiveSlideId(activeSlide.id);
+  };
+
+  const deletePage = () => {
+    const fallback = workingDeck.slides[activeSlide.order - 1]?.id ?? workingDeck.slides[activeSlide.order + 1]?.id;
+    const next = runPageCommand((current) => current.template === "chat_bubble"
+      ? deleteChatSlide(current, activeSlide.id)
+      : deletePlainCardSlide(current, activeSlide.id));
+    if (next && fallback) setActiveSlideId(fallback);
+  };
+
   const handleSceneOverflowChange = useCallback((overflow: boolean) => {
     setSceneOverflow(overflow);
     setSplitNotice(overflow ? "발행 장면 기준으로 대화가 넘칩니다. 버튼을 눌러 다음 장으로 나눠 주세요." : "");
@@ -618,6 +673,28 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
     }
   };
 
+  const toggleMediaLibrary = async () => {
+    if (mediaLibraryOpen) {
+      setMediaLibraryOpen(false);
+      return;
+    }
+    setMediaLibraryOpen(true);
+    setMediaLibraryBusy(true);
+    setUploadError("");
+    try {
+      const query = tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : "";
+      const response = await fetch(`/api/images${query}`, { headers: authHeaders() });
+      const data = await response.json() as GeneratedMediaItem[] | { error?: string };
+      if (!response.ok || !Array.isArray(data)) throw new Error(!Array.isArray(data) ? data.error : "생성 미디어를 불러오지 못했습니다.");
+      setMediaLibrary(data);
+    } catch (error) {
+      setMediaLibrary([]);
+      setUploadError(error instanceof Error ? error.message : "생성 미디어를 불러오지 못했습니다.");
+    } finally {
+      setMediaLibraryBusy(false);
+    }
+  };
+
   const uploadProfileImage = async (file: File) => {
     setUploadError("");
     const body = new FormData();
@@ -668,7 +745,8 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
       />
       <div className={styles.addToolbar} role="toolbar" aria-label="카드 요소 추가">
         <Button size="sm" onClick={() => add("text")}>글 추가</Button>
-        <Button size="sm" onClick={() => fileInputRef.current?.click()}>사진 추가</Button>
+        <Button size="sm" onClick={() => void toggleMediaLibrary()} aria-expanded={mediaLibraryOpen}>생성 미디어</Button>
+        <Button size="sm" onClick={() => fileInputRef.current?.click()}>사진 업로드</Button>
         <Button size="sm" onClick={() => add("shape")}>도형 추가</Button>
         <Button size="sm" onClick={() => add("sticker")}>스티커 추가</Button>
         <Button size="sm" onClick={() => add("logo")}>로고 추가</Button>
@@ -684,6 +762,19 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
           <Button size="sm" variant="secondary" onClick={() => setSpeakerEditorOpen((open) => !open)}>화자 이름·프로필</Button>
         </> : null}
       </div>
+      {mediaLibraryOpen ? <section className={styles.mediaLibrary} aria-label="생성 미디어 선택">
+        <header><strong>생성 미디어</strong><span>편집할 실제 이미지를 카드에 추가합니다.</span></header>
+        {mediaLibraryBusy ? <p role="status">미디어를 불러오는 중입니다.</p> : mediaLibrary.length ? <div className={styles.mediaGrid}>
+          {mediaLibrary.map((item) => <button key={item.filename} type="button" aria-label={`생성 미디어 ${item.filename} 추가`} onClick={() => {
+            rememberAssetUrl(item.filename, item.url);
+            add("image", { assetId: item.filename, assetAlt: item.filename });
+            setMediaLibraryOpen(false);
+          }}>
+            <DeliveredMedia src={item.url} type="image" tenantId={tenantId} alt={item.filename} />
+            <span>{item.filename}</span>
+          </button>)}
+        </div> : <p>저장된 생성 이미지가 없습니다. 사진 업로드를 이용해 주세요.</p>}
+      </section> : null}
       {activeSlide.base.kind === "chat_bubble" ? <section className={styles.advancedToolbar} aria-label="카톡 대화 고급 편집 도구">
         {speakerEditorOpen ? <div className={styles.profileGrid}>
           <label>작성자 이름<input aria-label="작성자 이름" value={workingDeck.brand.display_name} onChange={(event) => runChatCommand((current) => patchChatDeckBrand(current, { display_name: event.target.value }))} /></label>
@@ -702,9 +793,6 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
       {splitNotice ? <p role="status" className={styles.error}>{splitNotice}</p> : null}
       {uploadError ? <p role="alert" className={styles.error}>{uploadError}</p> : null}
       <div className={styles.workspace}>
-        <nav className={styles.slideStrip} aria-label="카드 장 목록">
-          {workingDeck.slides.map((slide) => <Button key={slide.id} size="sm" data-card-slide={slide.id} aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>{slide.order + 1}장</Button>)}
-        </nav>
         <div className={styles.stageColumn} data-card-stage-column>
           {toolbarElement ? (
             <details
@@ -724,25 +812,6 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
               />
             </details>
           ) : null}
-          {activeSlide.base.kind === "chat_bubble" ? <div className={styles.bubbleActions} role="toolbar" aria-label="카톡 장 편집 도구">
-            <Button size="sm" variant="secondary" disabled={activeSlide.role === "cta"} onClick={() => {
-              const next = runChatCommand((current) => addChatSlide(current, activeSlide.id));
-              if (next) setActiveSlideId(next.slides[activeSlide.order + 1]?.id ?? activeSlide.id);
-            }}>새 장 추가</Button>
-            <Button size="sm" variant="secondary" disabled={activeSlide.role !== "body"} onClick={() => {
-              const next = runChatCommand((current) => duplicateChatSlide(current, activeSlide.id));
-              if (next) setActiveSlideId(next.slides[activeSlide.order + 1]?.id ?? activeSlide.id);
-            }}>이 장 복제</Button>
-            <Button size="sm" variant="secondary" disabled={activeSlide.role !== "body" || workingDeck.slides[activeSlide.order - 1]?.role !== "body"} onClick={() => runChatCommand((current) => moveChatSlide(current, activeSlide.id, -1))}>장 앞으로</Button>
-            <Button size="sm" variant="secondary" disabled={activeSlide.role !== "body" || workingDeck.slides[activeSlide.order + 1]?.role !== "body"} onClick={() => runChatCommand((current) => moveChatSlide(current, activeSlide.id, 1))}>장 뒤로</Button>
-            <Button size="sm" variant="secondary" disabled={activeSlide.role !== "body"} onClick={() => {
-              const fallback = workingDeck.slides[activeSlide.order - 1]?.id ?? workingDeck.slides[0]?.id;
-              const next = runChatCommand((current) => deleteChatSlide(current, activeSlide.id));
-              if (next && fallback) setActiveSlideId(fallback);
-            }}>이 장 삭제</Button>
-            {(activeSlide.role === "cover" || activeSlide.role === "cta") ? <Button size="sm" variant="secondary" onClick={() => backgroundInputRef.current?.click()}>배경 사진 고르기</Button> : null}
-            {(activeSlide.role === "cover" || activeSlide.role === "cta") && activeSlide.background.kind === "image" ? <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => clearChatSlideBackgroundImage(current, activeSlide.id))}>사진 빼기</Button> : null}
-          </div> : null}
           <div
             ref={stageRef}
             className={styles.stage}
@@ -806,6 +875,16 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
                     className={styles.directTextEditor}
                     aria-label="글 내용 직접 편집"
                     value={editingTextValue}
+                    style={{
+                      fontFamily: element.style.font_family,
+                      fontSize: `${element.style.font_size / 1080 * 100}cqw`,
+                      fontWeight: element.style.font_weight,
+                      lineHeight: element.style.line_height,
+                      letterSpacing: `${element.style.letter_spacing / 1080 * 100}cqw`,
+                      color: element.style.color,
+                      background: element.style.background_color ?? "transparent",
+                      textAlign: element.style.align,
+                    }}
                     onPointerDown={(event) => event.stopPropagation()}
                     onChange={(event) => {
                       const value = event.target.value;
@@ -841,6 +920,23 @@ export function CardCanvasEditor({ deck, tenantId, templateState = null, sourceD
               </div>
             ))}
             {guides.map((guide, index) => <span key={`${guide.axis}-${guide.value}-${index}`} className={styles.snapGuide} data-axis={guide.axis} style={{ "--snap-position": `${guide.value / (guide.axis === "x" ? 1080 : logicalHeight) * 100}%` } as CSSProperties} />)}
+          </div>
+          <nav className={styles.slideStrip} aria-label="카드 장 목록" data-card-page-strip>
+            <div className={styles.pageThumbnails}>
+              {workingDeck.slides.map((slide) => <button key={slide.id} type="button" className={styles.pageThumbnail} data-card-slide={slide.id} aria-label={`${slide.order + 1}장`} aria-pressed={slide.id === activeSlide.id} onClick={() => { setActiveSlideId(slide.id); setSelectedId(null); }}>
+                <CardSlideScene model={cardSlideRenderModel(workingDeck, slide.id, resolvedAssetUrls)} renderMode="editor" />
+                <span>{slide.order + 1}</span>
+              </button>)}
+            </div>
+          </nav>
+          <div className={styles.pageActions} role="toolbar" aria-label={workingDeck.template === "chat_bubble" ? "카톡 장 편집 도구" : "카드 페이지 편집 도구"}>
+              <Button size="sm" variant="secondary" disabled={workingDeck.slides.length >= 11 || (workingDeck.template === "chat_bubble" && activeSlide.role === "cta")} onClick={addPage}>새 장 추가</Button>
+              <Button size="sm" variant="secondary" disabled={workingDeck.slides.length >= 11 || (workingDeck.template === "chat_bubble" && activeSlide.role !== "body")} onClick={duplicatePage}>이 장 복제</Button>
+              <Button size="sm" variant="secondary" disabled={activeSlide.order === 0 || (workingDeck.template === "chat_bubble" && (activeSlide.role !== "body" || workingDeck.slides[activeSlide.order - 1]?.role !== "body"))} onClick={() => movePage(-1)}>장 앞으로</Button>
+              <Button size="sm" variant="secondary" disabled={activeSlide.order === workingDeck.slides.length - 1 || (workingDeck.template === "chat_bubble" && (activeSlide.role !== "body" || workingDeck.slides[activeSlide.order + 1]?.role !== "body"))} onClick={() => movePage(1)}>장 뒤로</Button>
+              <Button size="sm" variant="secondary" disabled={workingDeck.template === "chat_bubble" ? activeSlide.role !== "body" || workingDeck.slides.length <= 7 : workingDeck.slides.length <= 2} onClick={deletePage}>이 장 삭제</Button>
+              {workingDeck.template === "chat_bubble" && (activeSlide.role === "cover" || activeSlide.role === "cta") ? <Button size="sm" variant="secondary" onClick={() => backgroundInputRef.current?.click()}>배경 사진 고르기</Button> : null}
+              {workingDeck.template === "chat_bubble" && (activeSlide.role === "cover" || activeSlide.role === "cta") && activeSlide.background.kind === "image" ? <Button size="sm" variant="secondary" onClick={() => runChatCommand((current) => clearChatSlideBackgroundImage(current, activeSlide.id))}>사진 빼기</Button> : null}
           </div>
         </div>
         <aside className={styles.rightPanel} data-card-right-panel>

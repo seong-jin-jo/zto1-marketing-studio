@@ -40,6 +40,8 @@ function ElementContent({ element, model, renderMode }: { element: CardElement; 
       "--card-text-leading": element.style.line_height,
       "--card-text-tracking": `${element.style.letter_spacing / model.logicalWidth * 100}cqw`,
       "--card-text-color": element.style.color,
+      "--card-text-background": element.style.background_color ?? "transparent",
+      "--card-text-family": element.style.font_family,
       "--card-text-align": element.style.align,
       "--card-text-vertical": verticalAlignment(element.style.vertical_align),
     } as CSSProperties;

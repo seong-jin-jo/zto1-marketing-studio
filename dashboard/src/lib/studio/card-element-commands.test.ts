@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CardDeckV3 } from "./card-element-contract";
 import {
   addCardElement,
+  addPlainCardSlide,
   applyGeneratedImageBackground,
   addChatOverlayElement,
   addChatBubble,
@@ -12,12 +13,15 @@ import {
   createRecoverableEmbeddedCardDeckV3,
   createPlainCardDeckV3,
   deleteCardElement,
+  deletePlainCardSlide,
   deleteChatBubble,
   deleteChatSlide,
   duplicateCardElement,
+  duplicatePlainCardSlide,
   duplicateChatSlide,
   moveCardElement,
   moveCardElementLayer,
+  movePlainCardSlide,
   moveChatBubble,
   moveChatBubbleToSlide,
   moveChatSlide,
@@ -136,6 +140,39 @@ describe("T-CARD-OPS 카드 자유 배치 순수 명령", () => {
     const other = snapCardElementPosition(moving, 103, 360, [moving, sibling], "4:5");
     expect(other.x).toBe(100);
     expect(other.guides).toContainEqual({ axis: "x", value: 100, source: "element" });
+
+    const stageEdge = snapCardElementPosition(moving, 3, 4, [moving], "4:5");
+    expect(stageEdge).toMatchObject({ x: 0, y: 0 });
+    expect(stageEdge.guides).toEqual(expect.arrayContaining([
+      { axis: "x", value: 0, source: "stage" },
+      { axis: "y", value: 0, source: "stage" },
+    ]));
+  });
+
+  it("CARD-CANVA-02 모서리 크기 조절에서 Shift 비율 고정과 반대편 기준점을 보존한다", () => {
+    const withShape = addCardElement(deck(), "slide_cover", "shape", { id: "ratio_shape" });
+    const before = withShape.slides[0].elements[0];
+    const resized = resizeCardElement(withShape, "slide_cover", "ratio_shape", "se", 200, 10, true);
+    const after = resized.slides[0].elements[0];
+    expect(after.width / after.height).toBeCloseTo(before.width / before.height, 3);
+    expect(after).toMatchObject({ x: before.x, y: before.y });
+  });
+
+  it("CARD-CANVA-05 일반 카드도 장 추가·복제·삭제·순서를 최대 11장과 최소 2장 안에서 바꾼다", () => {
+    const seeded = addCardElement(deck(), "slide_cover", "shape", { id: "seed_shape" });
+    const added = addPlainCardSlide(seeded, "slide_cover", "slide_added");
+    expect(added.slides.map((slide) => [slide.id, slide.order, slide.role])).toEqual([
+      ["slide_cover", 0, "cover"],
+      ["slide_added", 1, "body"],
+      ["slide_cta", 2, "cta"],
+    ]);
+    const duplicated = duplicatePlainCardSlide(added, "slide_cover", "slide_copy");
+    expect(duplicated.slides[1].elements[0]).toMatchObject({ id: "slide_copy_el_1", type: "shape" });
+    const moved = movePlainCardSlide(duplicated, "slide_copy", 1);
+    expect(moved.slides[2].id).toBe("slide_copy");
+    const deleted = deletePlainCardSlide(moved, "slide_added");
+    expect(deleted.slides).toHaveLength(3);
+    expect(() => deletePlainCardSlide(deck(), "slide_cover")).toThrow("OPS_SLIDE_MIN");
   });
 
   it("S5b-AC1 말풍선 직접 편집은 base를 바꾸고 옛 projection을 정리한다", () => {

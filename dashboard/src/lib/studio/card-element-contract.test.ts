@@ -74,6 +74,20 @@ describe("AC-CARD-01 카드 요소 v3 계약", () => {
     expect(() => parseCardDeckV3(value)).toThrow(CardDeckV3ValidationError);
   });
 
+  it("CARD-CANVA-02 글꼴과 글 배경색은 허용 목록 안에서 저장하고 임의 글꼴은 거절한다", () => {
+    const value = deck();
+    const text = value.slides[0].elements[0];
+    if (text.type !== "text") throw new Error("fixture");
+    text.style.font_family = "Georgia";
+    text.style.background_color = "#FFF2A8";
+    expect(parseCardDeckV3(value).slides[0].elements[0]).toMatchObject({
+      type: "text",
+      style: { font_family: "Georgia", background_color: "#FFF2A8" },
+    });
+    text.style.font_family = "Unknown Font" as "Georgia";
+    expect(() => parseCardDeckV3(value)).toThrow(CardDeckV3ValidationError);
+  });
+
   it("S1-AC3 경계값: 256 KiB를 넘는 덱을 CARD_DECK_TOO_LARGE로 거절한다", () => {
     const value = deck();
     const text = value.slides[0].elements[0];

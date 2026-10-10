@@ -458,6 +458,67 @@ function reindexSlides(slides: CardSlideV3[]): CardSlideV3[] {
   return slides.map((slide, order) => ({ ...slide, order }));
 }
 
+function normalizePlainSlideRoles(slides: CardSlideV3[]): CardSlideV3[] {
+  return reindexSlides(slides).map((slide, order, all) => ({
+    ...slide,
+    role: order === 0 ? "cover" : order === all.length - 1 ? "cta" : "body",
+  }));
+}
+
+function mutatePlainSlides(deck: CardDeckV3, slides: CardSlideV3[]): CardDeckV3 {
+  if (deck.template !== "plain" || slides.some((slide) => slide.base.kind !== "plain")) {
+    throw new RangeError("OPS_NOT_PLAIN_DECK");
+  }
+  return { ...clone(deck), revision: deck.revision + 1, slides: normalizePlainSlideRoles(slides) };
+}
+
+function nextPlainSlideId(deck: CardDeckV3): string {
+  const ids = new Set(deck.slides.map((slide) => slide.id));
+  let index = deck.slides.length + 1;
+  while (ids.has(`slide_plain_${index}`)) index += 1;
+  return `slide_plain_${index}`;
+}
+
+export function addPlainCardSlide(deck: CardDeckV3, afterSlideId: string, explicitId?: string): CardDeckV3 {
+  if (deck.slides.length >= 11) throw new RangeError("OPS_SLIDE_LIMIT");
+  const afterIndex = deck.slides.findIndex((slide) => slide.id === afterSlideId);
+  if (afterIndex < 0) throw new RangeError("OPS_SLIDE_OUT_OF_RANGE");
+  const slide: CardSlideV3 = {
+    id: explicitId ?? nextPlainSlideId(deck), order: 0, role: "body", content_state: "empty",
+    background: { kind: "solid", color: deck.theme.background as `#${string}` },
+    base: { kind: "plain", lines: [] }, elements: [],
+  };
+  return mutatePlainSlides(deck, [...deck.slides.slice(0, afterIndex + 1), slide, ...deck.slides.slice(afterIndex + 1)]);
+}
+
+export function duplicatePlainCardSlide(deck: CardDeckV3, slideId: string, explicitId?: string): CardDeckV3 {
+  if (deck.slides.length >= 11) throw new RangeError("OPS_SLIDE_LIMIT");
+  const index = deck.slides.findIndex((slide) => slide.id === slideId);
+  const source = deck.slides[index];
+  if (!source || source.base.kind !== "plain" || deck.template !== "plain") throw new RangeError("OPS_NOT_PLAIN_DECK");
+  const duplicateId = explicitId ?? nextPlainSlideId(deck);
+  const duplicate: CardSlideV3 = {
+    ...clone(source), id: duplicateId,
+    elements: source.elements.map((element, order) => ({ ...clone(element), id: `${duplicateId}_el_${order + 1}`, z_index: order })),
+  };
+  return mutatePlainSlides(deck, [...deck.slides.slice(0, index + 1), duplicate, ...deck.slides.slice(index + 1)]);
+}
+
+export function deletePlainCardSlide(deck: CardDeckV3, slideId: string): CardDeckV3 {
+  if (deck.slides.length <= 2) throw new RangeError("OPS_SLIDE_MIN");
+  if (!deck.slides.some((slide) => slide.id === slideId)) throw new RangeError("OPS_SLIDE_OUT_OF_RANGE");
+  return mutatePlainSlides(deck, deck.slides.filter((slide) => slide.id !== slideId));
+}
+
+export function movePlainCardSlide(deck: CardDeckV3, slideId: string, delta: -1 | 1): CardDeckV3 {
+  const from = deck.slides.findIndex((slide) => slide.id === slideId);
+  const to = from + delta;
+  if (from < 0 || to < 0 || to >= deck.slides.length) throw new RangeError("OPS_SLIDE_OUT_OF_RANGE");
+  const slides = clone(deck.slides);
+  [slides[from], slides[to]] = [slides[to], slides[from]];
+  return mutatePlainSlides(deck, slides);
+}
+
 function nextChatSlideId(deck: CardDeckV3): string {
   const ids = new Set(deck.slides.map((slide) => slide.id));
   let index = deck.slides.length + 1;
@@ -781,6 +842,7 @@ export function resizeCardElement(
   handle: ResizeHandle,
   dx: number,
   dy: number,
+  preserveAspectRatio = false,
 ): CardDeckV3 {
   return mutateElement(deck, slideId, elementId, (element) => {
     let { x, y, width, height } = element;
@@ -795,6 +857,15 @@ export function resizeCardElement(
       const nextHeight = Math.max(4, height - dy);
       y += height - nextHeight;
       height = nextHeight;
+    }
+    if (preserveAspectRatio && handle.length === 2) {
+      const ratio = element.width / element.height;
+      const widthScale = Math.abs(width - element.width) / element.width;
+      const heightScale = Math.abs(height - element.height) / element.height;
+      if (widthScale >= heightScale) height = Math.max(4, width / ratio);
+      else width = Math.max(4, height * ratio);
+      x = handle.includes("w") ? element.x + element.width - width : element.x;
+      y = handle.includes("n") ? element.y + element.height - height : element.y;
     }
     const resized = { ...element, x: round(x), y: round(y), width: round(width), height: round(height) };
     return { ...resized, ...containedGeometry(resized, deck.ratio) };
@@ -823,8 +894,16 @@ export function snapCardElementPosition(
   const stageHeight = CARD_LOGICAL_HEIGHT[ratio];
   const movingX = [x, x + element.width / 2, x + element.width];
   const movingY = [y, y + element.height / 2, y + element.height];
-  const candidatesX: Array<{ value: number; source: "stage" | "element" }> = [{ value: CARD_LOGICAL_WIDTH / 2, source: "stage" }];
-  const candidatesY: Array<{ value: number; source: "stage" | "element" }> = [{ value: stageHeight / 2, source: "stage" }];
+  const candidatesX: Array<{ value: number; source: "stage" | "element" }> = [
+    { value: 0, source: "stage" },
+    { value: CARD_LOGICAL_WIDTH / 2, source: "stage" },
+    { value: CARD_LOGICAL_WIDTH, source: "stage" },
+  ];
+  const candidatesY: Array<{ value: number; source: "stage" | "element" }> = [
+    { value: 0, source: "stage" },
+    { value: stageHeight / 2, source: "stage" },
+    { value: stageHeight, source: "stage" },
+  ];
   siblings.filter((candidate) => candidate.id !== element.id && !candidate.hidden).forEach((candidate) => {
     candidatesX.push(
       { value: candidate.x, source: "element" },

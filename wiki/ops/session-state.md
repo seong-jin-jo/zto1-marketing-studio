@@ -1,3 +1,19 @@
+## 2026-10-10 21:10 KST · 카드 편집기 기본 조작 1차 구현
+
+- 구현: DOM 기반 공용 `CardSlideScene`을 유지해 선택 8핸들, Shift 비율 고정 크기 조절, 회전, 글꼴·크기·굵기·색·정렬·배경 도구, 생성 미디어·업로드, 가장자리 스냅, 일반 카드 페이지 추가·복제·삭제·순서 변경, 하단 썸네일을 연결했다.
+- 보존: 같은 덱 계약과 같은 장면 컴포넌트를 화면과 PNG 렌더가 공유한다. 카톡 전용 장 규칙과 기존 요소 목록·템플릿 기능은 삭제하지 않았다.
+- 테스트됨: `vitest` 대상 64건 PASS, `npx tsc -p tsconfig.ci.json --noEmit` PASS.
+- 미검증: 실제 로컬 PostgreSQL과 포트 3481에서 목업 없는 사용자 조작, 1440×900·390×844 화면, PNG 픽셀 차이, 모바일 9폭 측정은 아직 수행 전이다.
+- 다음 실행: 실제 DB tenant/draft/media를 시드하는 `dashboard/scripts/verify-card-editor-canva-20261010.mjs`를 작성해 위 미검증 항목을 직접 관찰한다.
+
+## 2026-10-10 20:59 KST · 카드 편집기 Canva 기본 조작 착수
+
+- handoff basis: 회장이 지정한 브랜치 `fix/card-editor-canva-20261010`, 기준 커밋 `5f633b2e`, 과제 원문을 정본으로 삼는다. tmux `openclaw-auto-3:0.3`은 별도 작업자 인계가 아니라 이 워커의 진행 표시 pane임을 확인했다.
+- 현재 판정: 기존 DOM 기반 `CardCanvasEditor`에는 선택·이동·8개 조절점·회전·직접 글 편집·undo/redo·다른 요소/중앙 스냅·업로드·요소 복제/삭제/레이어·공용 화면/PNG 렌더러가 이미 있다. 빠진 것은 Shift 비율 고정, 캔버스 가장자리 스냅, 실제 글꼴 선택·글 배경색, 생성 미디어 선택, plain 카드 페이지 조작과 하단 썸네일, 실제 DB·실사진·내보내기 무목 E2E다.
+- 구현 판단: `react-konva`는 도입하지 않는다. 현재 DOM 편집기와 발행 PNG가 같은 `CardSlideScene`·`cardSlideRenderModel`을 공유해 이미 WYSIWYG 기반이 있고, Konva로 갈아타면 직접 DOM 글 편집과 기존 저장·카톡 투영·내보내기 경로를 이중화한다. 기존 명령·렌더러를 확장한다.
+- 이웃 영향 후보: v2/v3 카톡 투영, 저장 JSON strict schema, 기존 S1/S2/S5/S7 테스트, 발행 PNG 렌더러, 390 사용성, 편집 담당 패널 열, 외부 SNS 발행 차단을 함께 대조한다. DB 스키마·배포·외부 게시·다른 worktree는 건드리지 않는다.
+- 다음 실행: 실패 계약을 먼저 추가하고 카드 명령·도구막대·페이지 줄·미디어 선택을 구현한다. 그 뒤 실제 Next dev 3481과 `.env.local` PostgreSQL에서 `page.route` 없는 Playwright E2E, PNG 픽셀 비교, 9폭 사용성, Vitest·TypeScript·build를 실행한다.
+
 ## 2026-10-09 13:26 KST · 운영 편집실 R8 개발 품질헌법 대조 완료
 
 - handoff basis: 사용자가 지정한 커밋 `584b5067`까지의 변경과 `/Users/sj/.claude/standards/standard-dev.md`를 정본으로 감사했다.
