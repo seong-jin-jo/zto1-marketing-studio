@@ -1,3 +1,14 @@
+## 2026-10-11 영상 편집기 R2 시각·실영상 반려 ❌ NG → ✅ PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| VIDEO-CAPCUT-R2-01 | 1440×900에서 미리보기 높이 380px 이상, 옆 자막 3문장, 아래 전체폭 타임라인, 편집 담당 겹침 0 | ✅ PASS | 미리보기 `288×384`, timeline bottom `889`, 대화창 겹침 `0px²`; `captures/01-first-screen-1440x900.png` 직접 확인. |
+| VIDEO-CAPCUT-R2-02 | 기본 배율 전체 길이 맞춤, 클립 이름·최소 폭·실제 프레임 띠, 편집 뒤 블록 비겹침 | ✅ PASS | 기본 track·scroll `788px`, 편집 후 클립 `194.7/224.6/233.6px`, 겹침 0, 클립마다 프레임 3장; `captures/02-edited-timeline-and-subtitle.png`. |
+| VIDEO-CAPCUT-R2-03 | 12초 이상 실제 영상에서 자르기 3회·삭제 1회·자막 3문장 | ✅ PASS | Higgsfield 4.166초+실영상 2+3+3초 합성본 `12.120초`; 저장 클립 `6.4~9 → 0~3 → 9~12.12`, 가운데 3~6초 삭제. |
+| VIDEO-CAPCUT-R2-04 | MP4 길이·삭제 프레임·자막 한 겹을 실제 export worker 결과로 확인 | ✅ PASS | 예상·ffprobe `8.720초`, 차이 0.000초; 기대 MAD `0.634/0.826` < 삭제 프레임 MAD `77.305/68.427`; 노랑 274픽셀, 활성 자막 1개. |
+
+종료 증거: `logs/diff/video-editor-capcut-20261010/report.md`, `observations.json`, 원본 크기 캡처 4장, `exported-video-editor.mp4`. page.route와 단색 픽스처는 0건이다. TypeScript, production Webpack build, 전체 Vitest 518파일·3,792건 PASS, 3파일·16건 skip이다.
+
 ## 2026-10-10 영상 편집기 CapCut·Vrew 기본 조작 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |

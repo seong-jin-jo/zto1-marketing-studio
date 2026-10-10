@@ -1,5 +1,19 @@
 # OSMU build log
 
+## 2026-10-11 00:35 KST · 영상 편집기 R2 화면 밀도·실영상 12초 검증
+
+STAMP: 2026-10-11 00:35 KST | model: gpt-5-codex | agent: code-builder | skills: qa, review | 근거: R2 반려 원문, v71 승인 시안, 실제 Chromium·격리 PostgreSQL·export worker·12.120초 MP4 | 고민: 짧은 소스와 작은 플레이어로 만든 대리지표를 버리고, 캡처를 직접 열어 클립 이름·프레임 띠·자막 한 겹까지 판정했다.
+
+**변경:** 데스크톱 세로 영상 미리보기를 384px 높이 토큰으로 확대하고 진입 시 편집 작업대를 첫 화면에 맞춘다. 자막 문장 목록은 미리보기 옆, 5레인 타임라인은 아래 전체 폭을 유지한다. 영상 클립은 176px 최소 폭, 이름, 실제 프레임 3장 띠를 표시한다. 짧은 클립은 블록만 겹치게 늘리지 않고 시간축 전체를 자동 확대하며, 트림 손잡이는 부모 클립 재정렬 드래그를 시작하지 않는다.
+
+**실영상:** Higgsfield 실생성 4.166초와 저장소 실영상 2초·3초·3초를 이어 540×960·25fps·12.120초 `video-editor-real-composite-12s.mp4`를 만들었다. Playwright가 S 자르기 3회, 선택 삭제 1회, 시작점 트림 6.0→6.4초, 재정렬, 자막 3문장 수정·삭제·직접 이동을 실제 DB 초안에 저장했다.
+
+**관찰됨:** 1440×900에서 미리보기 288×384, 타임라인 bottom 889px, 대화창 겹침 0이다. 편집 후 클립 폭 194.7·224.6·233.6px, 겹침 0이며 각 이름과 실제 프레임 띠가 보인다. 출력은 예상·ffprobe 모두 8.720초, 삭제 4.5초 프레임과의 MAD는 77.305·68.427로 기대 프레임 0.634·0.826보다 크다. 노랑 자막 274픽셀, 활성 레이어 1개, 앱 콘솔 오류 0, 외부 SNS 게시 0이다. TypeScript, production Webpack build, 실제 경로 E2E, CI 동일 전체 Vitest 518파일·3,792건이 PASS했다. 3파일·16건은 기존 조건부 통합이라 skip이다.
+
+**정합:** artifact lint는 상태파일 2개의 핀 실체·슬롯키·버전 정합 PASS와 기존 산출물 핀 위생 경고 28건이다. design-lint는 종료 코드 0이며 레포 기존 인라인 style·hex 경고 2종이 남는다. 이번 화면의 UI 토큰 감사 직접값은 0건이다.
+
+SOURCES/MODEL: gpt-5-codex | `logs/diff/video-editor-capcut-20261010/report.md` | `docs/design/prototypes/osmu-editroom-v71-hub-claude-opus-20261001-2335.html` | https://www.capcut.com/resource/how-to-use-capcut | https://vrew.ai/en/feature/text-based-video-editing/
+
 ## 2026-10-10 22:47 KST · 영상 편집기 CapCut·Vrew 기본 조작
 
 STAMP: 2026-10-10 22:47 KST | model: gpt-5-codex | agent: code-builder | skill: qa | 근거: v71 승인 시안, CapCut·Vrew 공식 문서, 실제 Chromium·PostgreSQL·export worker·MP4 | 고민: 화면 요소 수나 목 서버를 합격 근거로 쓰지 않고 편집 JSON, 재생 점프, ffprobe, 원본·삭제 프레임 차이, 자막 픽셀을 한 경로에서 대조했다.

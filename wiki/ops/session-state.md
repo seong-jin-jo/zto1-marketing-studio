@@ -1,3 +1,18 @@
+## 2026-10-11 01:56 KST · 영상 편집기 R2 완료·커밋 대기
+
+- handoff basis: 사용자 R2 반려 4항목을 모두 실제 화면·DB·worker·MP4 경로로 재검증했다. 현재 구현 커밋은 `06bbb111`, `d68191e3`, `eec25a0d`, `719a8ea9`다.
+- 완료: 384px 미리보기, 옆 자막 3문장, 아래 전체폭 타임라인, 클립 이름·프레임 띠·비겹침, 12.120초 실영상, 자르기 3회·삭제 1회·트림·재정렬·자막 편집, 8.720초 실제 내보내기를 확인했다.
+- 게이트: TypeScript PASS, production Webpack build PASS, 실제 경로 E2E PASS, CI 동일 전체 Vitest 518파일·3,792건 PASS, 3파일·16건 skip. 캡처 4장과 출력 MP4를 원본 크기로 직접 확인했다.
+- 남은 실행: 문서·최종 증거만 커밋하고 artifact lint와 git status를 확인한다. `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`는 다른 변경이라 제외한다. push·외부 SNS 게시·운영 배포는 하지 않는다.
+
+## 2026-10-11 00:35 KST · 영상 편집기 R2 실제 경로 PASS·최종 검증 진행
+
+- handoff basis: R2 반려 4항목을 정본으로 `06bbb111`에서 직전 작업을 고정하고, `d68191e3`에서 큰 미리보기·클립 프레임 띠를 분리 커밋했다.
+- 구현: 384px 미리보기, 옆 자막 목록, 아래 전체폭 타임라인, 클립 이름·실프레임 3장·176px 최소 폭, 짧은 클립 시간축 자동 확대, 트림·재정렬 포인터 분리를 적용했다. Higgsfield 4.166초와 QA 실영상을 이어 12.120초 원본을 만들었다.
+- 관찰됨: page.route 없는 실제 Next 3482·격리 PostgreSQL·export worker에서 자르기 3회·삭제 1회·6.0→6.4초 트림·재정렬·자막 3문장을 수행했다. 1440×900 미리보기 384px, timeline bottom 889px, 대화창 겹침 0, 클립 비겹침 0이다. MP4 예상·ffprobe 8.720초, 삭제 프레임 부재, 자막 1개·노랑 274픽셀, 콘솔 오류 0이다.
+- 육안 확인: 캡처 01·02와 출력 전체 프레임·자막 crop을 원본 크기로 직접 열어 실제 영상, 라벨·프레임 띠, 한 줄 자막을 확인했다. 증거는 `logs/diff/video-editor-capcut-20261010/`다.
+- 다음 실행: 관련 Vitest, build, artifact lint를 실행하고 R2 코드·실영상·증거·문서를 커밋한다. push·외부 SNS 게시·운영 배포는 하지 않는다.
+
 ## 2026-10-11 00:07 KST · 영상 편집기 R2 반려 반영 착수
 
 - handoff basis: 사용자가 지정한 R2 반려 4항목과 `captures/02-edited-timeline-and-subtitle.png` 육안 판정을 정본으로 이어간다. 직전 구현은 현재 worktree의 미커밋 변경이며 별도 tmux 구현자 handoff는 없다.

@@ -4,17 +4,48 @@
       "check": "first_screen",
       "preview": {
         "x": 265,
-        "y": 422,
-        "width": 144,
-        "height": 208
+        "y": 241,
+        "width": 288,
+        "height": 384
       },
       "timeline": {
         "x": 265,
-        "y": 646,
+        "y": 641,
         "width": 806,
         "height": 248
       },
-      "assistantOverlapPx2": 0
+      "assistantOverlapPx2": 0,
+      "zoom": "100%",
+      "scrollWidth": 788,
+      "trackWidth": 788,
+      "clipWidth": 726,
+      "clipLabel": "‹클립 1›",
+      "thumbnailFrames": 3
+    },
+    {
+      "check": "edited_clip_layout",
+      "clips": [
+        {
+          "left": 336,
+          "right": 530.671875,
+          "width": 194.671875,
+          "label": "‹클립 1›"
+        },
+        {
+          "left": 530.671875,
+          "right": 755.296875,
+          "width": 224.625,
+          "label": "‹클립 2›"
+        },
+        {
+          "left": 755.296875,
+          "right": 988.90625,
+          "width": 233.609375,
+          "label": "‹클립 3›"
+        }
+      ],
+      "overlapCount": 0,
+      "labelsVisible": true
     },
     {
       "check": "autosave",
@@ -22,9 +53,9 @@
     },
     {
       "check": "edited_playback_jump",
-      "fromSourceEndSec": 3,
+      "fromSourceEndSec": 9,
       "toSourceStartSec": 0,
-      "observedSourceSec": 0
+      "observedSourceSec": 0.033256
     },
     {
       "check": "mobile_ergonomics",
@@ -34,10 +65,10 @@
           "fontBelow13": 0,
           "tokenBodyPx": 16,
           "tapBelow44": 0,
-          "tapTargets": 70,
+          "tapTargets": 73,
           "tapWithActiveRatio": 1,
           "overflowX": false,
-          "clips": 2,
+          "clips": 3,
           "loadError": false,
           "pass": true
         },
@@ -46,10 +77,10 @@
           "fontBelow13": 0,
           "tokenBodyPx": 16,
           "tapBelow44": 0,
-          "tapTargets": 70,
+          "tapTargets": 73,
           "tapWithActiveRatio": 1,
           "overflowX": false,
-          "clips": 2,
+          "clips": 3,
           "loadError": false,
           "pass": true
         },
@@ -58,10 +89,10 @@
           "fontBelow13": 0,
           "tokenBodyPx": 16,
           "tapBelow44": 0,
-          "tapTargets": 70,
+          "tapTargets": 73,
           "tapWithActiveRatio": 1,
           "overflowX": false,
-          "clips": 2,
+          "clips": 3,
           "loadError": false,
           "pass": true
         },
@@ -70,10 +101,10 @@
           "fontBelow13": 0,
           "tokenBodyPx": 16,
           "tapBelow44": 0,
-          "tapTargets": 70,
+          "tapTargets": 73,
           "tapWithActiveRatio": 1,
           "overflowX": false,
-          "clips": 2,
+          "clips": 3,
           "loadError": false,
           "pass": true
         },
@@ -82,10 +113,10 @@
           "fontBelow13": 0,
           "tokenBodyPx": 16,
           "tapBelow44": 0,
-          "tapTargets": 70,
+          "tapTargets": 73,
           "tapWithActiveRatio": 1,
           "overflowX": false,
-          "clips": 2,
+          "clips": 3,
           "loadError": false,
           "pass": true
         },
@@ -94,10 +125,10 @@
           "fontBelow13": 0,
           "tokenBodyPx": 16,
           "tapBelow44": 0,
-          "tapTargets": 100,
+          "tapTargets": 103,
           "tapWithActiveRatio": 1,
           "overflowX": false,
-          "clips": 2,
+          "clips": 3,
           "loadError": false,
           "pass": true
         },
@@ -106,10 +137,10 @@
           "fontBelow13": 0,
           "tokenBodyPx": 16,
           "tapBelow44": 0,
-          "tapTargets": 100,
+          "tapTargets": 103,
           "tapWithActiveRatio": 1,
           "overflowX": false,
-          "clips": 2,
+          "clips": 3,
           "loadError": false,
           "pass": true
         },
@@ -118,10 +149,10 @@
           "fontBelow13": 0,
           "tokenBodyPx": 16,
           "tapBelow44": 0,
-          "tapTargets": 100,
+          "tapTargets": 103,
           "tapWithActiveRatio": 1,
           "overflowX": false,
-          "clips": 2,
+          "clips": 3,
           "loadError": false,
           "pass": true
         },
@@ -130,10 +161,10 @@
           "fontBelow13": 0,
           "tokenBodyPx": 16,
           "tapBelow44": 0,
-          "tapTargets": 100,
+          "tapTargets": 103,
           "tapWithActiveRatio": 1,
           "overflowX": false,
-          "clips": 2,
+          "clips": 3,
           "loadError": false,
           "pass": true
         }
@@ -146,35 +177,42 @@
     },
     {
       "check": "real_export",
-      "source": "dashboard/public/qa/chairman-photo-motion.mp4",
-      "expectedDuration": 1.2000000000000002,
-      "actualDuration": 1.2,
-      "durationDelta": 2.220446049250313e-16,
+      "source": "dashboard/public/qa/video-editor-real-composite-12s.mp4",
+      "sourceDuration": 12.12,
+      "expectedDuration": 8.719999999999999,
+      "actualDuration": 8.72,
+      "durationDelta": 1.7763568394002505e-15,
       "frameDiffs": {
-        "firstToExpected": 0.4016927083333333,
-        "firstToDeleted": 23.249674479166668,
-        "secondToExpected": 0.5787760416666666,
-        "secondToDeleted": 21.091145833333332
+        "firstToExpected": 0.6344401041666666,
+        "firstToDeleted": 77.3046875,
+        "secondToExpected": 0.8255208333333334,
+        "secondToDeleted": 68.42708333333333
       },
       "subtitlePixels": {
-        "yellowPixels": 267,
-        "rowClusters": 9,
+        "yellowPixels": 274,
+        "rowClusters": 12,
         "firstRow": 130,
-        "lastRow": 294
+        "lastRow": 297
       },
       "activeSubtitleLayers": 1,
       "savedClips": [
         {
-          "id": "clip-wg1rcfhd",
+          "id": "clip-c5da3q9g",
           "order": 0,
-          "sourceEndSec": 3,
-          "sourceStartSec": 2.8
+          "sourceEndSec": 9,
+          "sourceStartSec": 6.4
         },
         {
-          "id": "clip-iq6w6e7h",
+          "id": "clip-o03bxdle",
           "order": 1,
-          "sourceEndSec": 1,
+          "sourceEndSec": 3,
           "sourceStartSec": 0
+        },
+        {
+          "id": "clip-yxhsud7w",
+          "order": 2,
+          "sourceEndSec": 12.12,
+          "sourceStartSec": 9
         }
       ],
       "subtitleStyle": {
@@ -182,6 +220,8 @@
         "preset": "basic",
         "outline": true,
         "position": "bottom",
+        "xPercent": 50,
+        "yPercent": 70,
         "fontFamily": "serif",
         "sizePercent": 120
       }

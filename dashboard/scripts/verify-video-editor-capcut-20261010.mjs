@@ -638,7 +638,7 @@ try {
     + `STAMP: ${reportStamp} KST | gpt-5-codex | code-builder | qa | CapCut·Vrew 공식 기능 문서와 v71 승인 시안\n\n`
     + `## 판정\n\nPASS. page.route 없이 실제 Next dev 3482, 실제 PostgreSQL 초안·자동저장, 실제 export worker, 실제 영상 파일을 사용했다.\n\n`
     + `## 결과\n\n- 1440x900 첫 화면: 미리보기 ${previewBox.height.toFixed(0)}px, 자막 문장 목록과 전체폭 타임라인 동시 표시, 편집 담당 대화창 겹침 ${overlap}px².\n`
-    + `- 타임라인: 기본 100%에서 전체 ${sourceDuration.toFixed(3)}초가 가용 폭에 맞고, 클립 최소 ${firstScreenLayout.clipWidth.toFixed(0)}px, 클립 이름과 실제 영상 프레임 3장이 보인다.\n`
+    + `- 타임라인: 기본 100%에서 전체 ${sourceDuration.toFixed(3)}초가 가용 폭 ${firstScreenLayout.scrollWidth}px에 맞는다. 편집 후 세 클립 폭은 ${editedClipLayout.clips.map((clip) => clip.width.toFixed(1)).join("·")}px, 겹침 ${editedClipLayout.overlapCount}개이며 각 클립 이름과 실제 영상 프레임 3장이 보인다.\n`
     + `- 편집 조작: S 자르기 3회, Delete 선택 삭제 1회, 양끝 트림, 순서 변경, 재생헤드 이동, 125% 확대, 실행취소·다시실행을 Playwright로 조작했다.\n`
     + `- 편집 미리보기: 첫 클립 끝에서 다음 재배치 클립의 원본 ${playbackJumpTime.toFixed(3)}초로 실제 재생이 건너뛰었다.\n`
     + `- 모바일: 360·390·412·600·700·780·820·900·1000px에서 13px 미만 글자 0, 본문 토큰 16px 이상, 44px 미만 누름 0, 눌림 상태 90% 이상, 가로 넘침 0을 데이터 포함 편집 화면에서 확인했다.\n`
