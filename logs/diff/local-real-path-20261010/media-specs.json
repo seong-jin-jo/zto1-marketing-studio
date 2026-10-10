@@ -1,0 +1,48 @@
+{
+  "image": {
+    "filePath": "/Users/sj/wt/zto1-local-real-path-20261010/data/local-real-path-20261010/studio/cd1d0a40-540d-4524-9b49-bf2445d82182/img_1791634514136.png",
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "png",
+        "width": 960,
+        "height": 1696
+      }
+    ],
+    "format": {
+      "format_name": "png_pipe",
+      "size": "2120925"
+    },
+    "pixelRange": {
+      "ymin": 16,
+      "ymax": 235,
+      "delta": 219
+    }
+  },
+  "video": {
+    "filePath": "/Users/sj/wt/zto1-local-real-path-20261010/data/local-real-path-20261010/tenants/cd1d0a40-540d-4524-9b49-bf2445d82182/images/export-d2d88e07-3e97-47af-88c5-82c273846e5d-0-5ff8d0b1c3f720aa.mp4",
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 768,
+        "height": 1356
+      },
+      {
+        "codec_name": "aac"
+      }
+    ],
+    "format": {
+      "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+      "duration": "4.165986",
+      "size": "871070"
+    },
+    "pixelRange": {
+      "ymin": 1,
+      "ymax": 249,
+      "delta": 248
+    }
+  }
+}

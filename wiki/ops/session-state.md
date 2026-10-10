@@ -1,3 +1,29 @@
+## 2026-10-11 00:35 KST · 로컬 실제 경로 직접 발행 완료, 검토 대기열 잔여
+
+- handoff basis: 사용자가 지정한 `fix/local-real-path-20261010`의 미커밋 변경과 `verification.json ok`를 정본으로 이어갔다. 제품 구현은 `9b29295d`로 먼저 커밋했다.
+- 완료: 실제 PNG·MP4가 생성실 목록→편집실 실제 재생→발행실 실제 미리보기→13개 채널 외부 API 직전 드라이런으로 이어졌다. 브라우저 외부 요청·콘솔 오류·401은 0이다. 실제 데이터 화면의 모바일 9폭도 전부 통과했다.
+- 증거: `logs/diff/local-real-path-20261010/report.md`, 1440×900 발행실 첫 화면, 13개 채널별 1440×900 캡처, 요청 JSONL, ffprobe·픽셀 검사, 모바일 측정 JSON이다. TypeScript, 집중 Vitest 95건, Webpack production build PASS다.
+- 빌드 경계: 기본 Turbopack build는 이 worktree의 `node_modules`가 파일시스템 루트 밖 심볼릭 링크라는 이유로 실패했다. 같은 코드의 `next build --webpack`은 성공했다.
+- 남음: 구형 Higgsfield 초안은 검토 대기열 연결에서 `editor_handoff` 경고가 남고 LinkedIn 어댑터는 텍스트만 보낸다. 운영 복구 뒤 실제 채널 게시 성공은 정책상 미검증이다. push는 하지 않는다.
+- commit boundary: 제품 변경은 `9b29295d`, 이 기록과 검증 증거는 후속 HEAD에 분리해 고정한다. 이후 소유자는 컨트롤러이며 push 전 diff와 두 커밋을 검수한다.
+
+## 2026-10-10 21:14 KST · 로컬 DB·발행 드라이런 경계 구현
+
+- handoff basis: 이 파일의 20:59 착수 기록과 사용자가 지정한 로컬 실제 경로 과제를 이어간다.
+- 완료한 구현 단위: `data/local-postgres-20261010`의 PostgreSQL 16을 127.0.0.1:55432에 기동하고 schema→seed→RLS를 적용했다. 개발 환경에서만 켜지고 production에서 무시되는 `PUBLISH_DRY_RUN=1` 경계, 자격증명 제거 JSONL 요청 원장, ffprobe 미디어 수치 기록, KakaoTalk 나에게 보내기 어댑터와 발행실 미리보기를 추가했다.
+- 로컬 스택: `dashboard/scripts/local-stack-20261010.sh`가 DB·스키마·가짜 연결 계정·로컬 디스크·export worker·Next 3483을 한 번에 준비한다. 가짜 연결 계정은 외부 전송이 차단된 드라이런 전용이며 실 자격증명을 담지 않는다.
+- 검증: 신규 드라이런 계약 Vitest 4건 PASS, `npm run typecheck:ci` PASS. 실제 dev 서버 화면, 생성·저장·발행 사용자 경로, PNG 픽셀·MP4 ffprobe, 모든 채널 요청 원장과 모바일 9폭은 아직 미검증이다.
+- next action: 로컬 스택을 제한시간 실행하고 실제 API·브라우저 기준의 생성 전 경로를 재현한다. 이후 Higgsfield 이미지 1장과 영상 1개만 생성해 최종 검증한다.
+
+## 2026-10-10 20:59 KST · 로컬 실제 생성→편집→발행 경로 작업 착수
+
+- handoff basis: 사용자가 지정한 브랜치 `fix/local-real-path-20261010`, HEAD `5f633b2e`, 과제 원문을 주 기준으로 삼았다. tmux `openclaw-auto-3:0.1`은 현재 이 워커 자체임을 확인했다.
+- scope: 포트 3483 로컬 Next.js + 로컬 PostgreSQL + OD-2026-10-09-1 로컬 디스크, 실제 Higgsfield 이미지 1장·영상 1개, 생성실 목록→편집실 첫 화면→저장 결과→발행실, 모든 코드상 채널의 외부 전송 직전 드라이런 기록이다.
+- exclusions: 카드·영상 편집기 내부 조작은 병렬 워커 소유라 수정하지 않는다. 외부 SNS 실제 게시, push, 다른 worktree 수정, git stash는 금지한다.
+- evidence contract: page.route 목업 금지. 실제 로컬 API·DB·파일 경로를 Playwright로 조작하고 PNG 픽셀·MP4 ffprobe·드라이런 요청 원장을 확인해야 종료한다.
+- current state: 필수 입력과 품질헌법을 읽고 QA tracker에 기존 운영 결함을 ❌ NG로 등록했다. 아직 소스 수정·실생성·로컬 스택 기동 전이다.
+- next action: 로컬 저장 경로와 생성·초안·편집 인계·발행 어댑터 import chain을 추적하고 최초 실제 경로를 재현한다.
+
 ## 2026-10-09 13:26 KST · 운영 편집실 R8 개발 품질헌법 대조 완료
 
 - handoff basis: 사용자가 지정한 커밋 `584b5067`까지의 변경과 `/Users/sj/.claude/standards/standard-dev.md`를 정본으로 감사했다.

@@ -1,3 +1,25 @@
+## 2026-10-11 00:35 KST · 로컬 실제 경로 생성→편집→발행 ❌ NG → ✅ 직접 발행 PASS
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| LOCAL-REAL-PATH-01 | 실제 Higgsfield 이미지·영상 생성물이 생성실 목록에 썸네일로 보이고 같은 미디어가 편집실·발행실까지 보존돼야 함 | ✅ PASS | 실제 PNG 960×1696과 MP4 768×1356·4.165986초를 사용했다. 생성실 썸네일 디코딩, 편집실 영상 0.5초 재생, 발행실 실제 이미지·영상 표시를 단일 Playwright 경로로 관찰했다. |
+| LOCAL-REAL-PATH-02 | 모든 발행 채널 어댑터가 외부 전송 직전까지 실행되고, 외부 요청과 미디어 규격 판정을 로컬 드라이런 기록으로 남겨야 함 | ✅ PASS | 13개 채널 요청이 엔드포인트·본문·미디어 주소·ffprobe 규격과 함께 기록됐다. 외부 HTTP 요청 0, 콘솔 오류 0, 401 응답 0이다. production에서는 드라이런 환경값을 무시하는 계약 테스트가 통과했다. |
+| LOCAL-REAL-PATH-03 | 발행실 플랫폼 카드는 세로 흐름이며 실제 이미지·영상 미리보기를 보여야 함 | ✅ PASS | 1440×900 첫 화면과 Threads·X·Facebook·Instagram·LinkedIn·Bluesky·Telegram·Discord·Slack·KakaoTalk·Shorts·Reels·TikTok 13개 개별 미리보기 캡처에서 실제 PNG 또는 MP4를 확인했다. |
+| LOCAL-REAL-PATH-04 | 실제 데이터 발행실이 360~1000px에서 글자·누름·눌림·가로 넘침 기준을 만족해야 함 | ✅ PASS | 9개 폭 모두 13px 미만 글자 0, 글자 중앙값 16px, 44px 미만 누름 0, 눌림 상태 100%, 가로 넘침 0이다. |
+| LOCAL-REAL-PATH-05 | 직접 발행과 검토 대기열 연결 상태를 구분해야 함 | 🔶 잔여 | 직접 발행 13채널은 PASS다. 구형 Higgsfield 초안의 검토 대기열 연결은 `editor_handoff` 부재 경고가 남고 LinkedIn은 미디어를 보내지 않는다. 외부 실제 게시는 정책상 미검증이다. |
+
+종료 증거: `logs/diff/local-real-path-20261010/report.md`, `verification.json`, `requests.jsonl`, `media-specs.json`, `mobile-ergonomics.json`, `03-publish-room-previews.png`, `publish-previews/*.png`. TypeScript PASS, 집중 Vitest 6파일·95건 PASS, Webpack production build PASS. 기본 Turbopack build는 worktree 밖 의존성 심볼릭 링크를 거부해 제품 코드와 무관하게 실패했다.
+
+## 2026-10-10 20:59 KST · 로컬 실제 경로 생성→편집→발행 ❌ NG 조사 시작
+
+| 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
+|---|---|---|---|
+| LOCAL-REAL-PATH-01 | 실제 Higgsfield 이미지·영상 생성물이 생성실 목록에 썸네일로 보이고 같은 미디어가 편집실·발행실까지 보존돼야 함 | ❌ NG, 재현·원인 조사 중 | 2026-10-09 운영 관찰에서 작업물 전체 목록 썸네일 0개, 신규 카드 편집실 미디어 0개, 발행실 미디어 0개였다. 로컬 실제 경로 재검증 전이다. |
+| LOCAL-REAL-PATH-02 | 모든 발행 채널 어댑터가 외부 전송 직전까지 실행되고, 외부 요청과 미디어 규격 판정을 로컬 드라이런 기록으로 남겨야 함 | ❌ NG, 구현·검증 전 | 현재 `PUBLISH_DRY_RUN=1` 전체 채널 기록 증거가 없다. 외부 실제 게시는 금지한다. |
+| LOCAL-REAL-PATH-03 | 발행실 플랫폼 카드는 세로 흐름이며 실제 이미지·영상 미리보기를 보여야 함 | ❌ NG, 재현·원인 조사 중 | 회장 결함 보고에서 플랫폼 카드 가로 나열과 실제 미디어 0개가 관찰됐다. |
+
+검증 기준: page.route 목업 없이 로컬 Next.js·PostgreSQL·로컬 디스크·실제 미디어 파일을 사용한다. Playwright 조작 결과와 PNG 픽셀·MP4 ffprobe, 발행 드라이런 요청 원장을 직접 대조한다.
+
 ## 2026-10-09 운영 편집실 R8 짧은 영상 타임라인·카톡 캔버스 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
