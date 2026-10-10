@@ -1,3 +1,11 @@
+## 2026-10-11 02:15 KST · R4 무문자 이미지 3/3 복구 완료
+
+- 완료: `/api/higgsfield/image`를 `gpt_image_2_5` 1k/low로 교체하고 실제 job에 모델·품질·해상도·빈 reference 목록을 기록한다. 참조 필드 비승격 회귀 테스트와 Apple Vision 4방향 OCR 검증기를 추가했다.
+- 실제 증거: Next.js 3483의 앱 API로 정확히 3장만 생성했다. `img_1791652044820.png`, `img_1791652046886.png`, `img_1791652048605.png`는 모두 752×1344이며 육안 글자 0건, OCR 글자 0건이다. 결함 원본은 같은 OCR에서 가짜 문자열을 검출했다.
+- 검증: Higgsfield 회귀 12파일·91건과 이미지 프롬프트 포함 집중 4파일·44건, TypeScript, Webpack production build PASS. 보고·QA tracker·build log·구현현황과 `r4-image-generation-verification.json`을 갱신했다.
+- 보존: 생성 PNG와 `.env.local`은 커밋하지 않는다. 사용자 소유 `.codex/logs/harness.jsonl`, `wiki/거버넌스/요청.md`도 stage하지 않는다. 외부 게시·push·운영 배포는 미실행이다.
+- next action: 이 R4 증거 커밋과 최종 diff를 확인한 뒤 컨트롤러가 인수한다. push 뒤 원격 CI green과 운영 반영 여부가 다음 외부 관문이다.
+
 ## 2026-10-11 02:08 KST · R4 원인 확정과 모델 계약 교정
 
 - 원인: R3 실제 job JSON과 route import chain을 대조했다. 제공자 요청은 `text2image_soul_v2`, 텍스트 프롬프트, 9:16, 1.5k뿐이었고 참조 이미지·초안 본문·화면 캡처는 없었다. Soul V2가 무문자 금지 나열에도 세로 장식 캡션을 자율 생성했고 이 모델의 CLI 계약에는 `negative_prompt`가 없다.

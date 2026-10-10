@@ -1,5 +1,21 @@
 # OSMU build log
 
+## 2026-10-11 02:15 KST · 로컬 실제 경로 R4 무문자 이미지
+
+STAMP: 2026-10-11 02:15 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa
+
+| 검증 | 결과 | 증거 |
+|---|---|---|
+| 실제 dev API | PASS | Next.js 3483의 `/api/higgsfield/image`로 GPT Image 2.5 3건 completed, 참조 이미지 0건 |
+| 원본 육안·OCR | PASS | 새 PNG 3장 글자 0건, 결함 원본 문자열 검출 음성 대조, `r4-image-generation-verification.json` |
+| TypeScript | PASS | `npx tsc -p tsconfig.ci.json --noEmit`, exit 0, `/tmp/zto1-r4-final-tsc.log` |
+| 관련 Vitest | PASS | 이미지 프롬프트 포함 집중 4파일·44건, Higgsfield 회귀 12파일·91건 통과, `/tmp/zto1-r4-final-vitest.log`, `/tmp/zto1-r4-higgsfield-suite.log` |
+| Next.js production build | PASS | `npx next build --webpack`, exit 0, `/tmp/zto1-r4-final-build.log` |
+
+변경: Soul V2의 가짜 장식 캡션 재발 때문에 무문자 대표 이미지 경로를 GPT Image 2.5 1k/low로 교체했다. 실제 job에 모델·해상도·품질·빈 reference 목록을 남기고, 참조 필드가 CLI로 승격되지 않는 거절 테스트와 macOS 4방향 OCR 검증기를 추가했다. 외부 SNS 게시, push, 운영 배포는 실행하지 않았다.
+
+SOURCES/MODEL: gpt-6.1-sol/Codex | `/tmp/zto1-r4-final-tsc.log` | `/tmp/zto1-r4-final-vitest.log` | `/tmp/zto1-r4-higgsfield-suite.log` | `/tmp/zto1-r4-final-build.log` | `logs/diff/local-real-path-20261010/r4-image-generation-verification.json`
+
 ## 2026-10-11 01:48 KST · 로컬 실제 경로 R3
 
 STAMP: 2026-10-11 01:48 KST | model: gpt-6.1-sol/Codex | agent: code-builder | skill: qa

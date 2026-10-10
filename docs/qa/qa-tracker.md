@@ -1,12 +1,12 @@
-## 2026-10-11 02:01 KST · 로컬 실제 경로 R4 무문자 생성 원인 규명 ❌ NG
+## 2026-10-11 02:15 KST · 로컬 실제 경로 R4 무문자 생성 원인 규명 ❌ NG → ✅ PASS
 
 | 요청번호 | 결함 또는 수용 기준 | 현재 판정 | 종료 증거 |
 |---|---|---|---|
-| LOCAL-REAL-PATH-R4-01 | `/api/higgsfield/image` 실제 요청의 모델·최종 프롬프트·참조 이미지를 추적하고 글자 유입 원인을 규명해야 함 | ❌ NG | R3 새 PNG에 가짜 글자가 남았지만 실제 요청 payload와 제공자 호출 경계는 아직 대조하지 않았다. |
-| LOCAL-REAL-PATH-R4-02 | Higgsfield CLI·공식 문서로 negative prompt와 모델 선택지를 확인해 원인에 맞게 수정해야 함 | ❌ NG | R3에서는 Soul V2 메타데이터 일부만 확인했고 전체 CLI·공식 문서·대체 모델은 미검증이다. |
-| LOCAL-REAL-PATH-R4-03 | 실제 앱 경로로 최대 3장 생성해 3장 모두 육안·OCR에서 글자 없음이어야 함 | ❌ NG | R4 실생성 전이다. 합격은 3/3 원본 육안·OCR 글자 0건이다. |
+| LOCAL-REAL-PATH-R4-01 | `/api/higgsfield/image` 실제 요청의 모델·최종 프롬프트·참조 이미지를 추적하고 글자 유입 원인을 규명해야 함 | ✅ PASS | R3 job JSON과 route→CLI를 대조했다. Soul V2 텍스트 프롬프트만 전송됐고 참조 이미지·초안 본문·화면 캡처는 0건이었다. 세로 가짜 캡션은 Soul V2가 자체 생성했다. |
+| LOCAL-REAL-PATH-R4-02 | Higgsfield CLI·공식 문서로 negative prompt와 모델 선택지를 확인해 원인에 맞게 수정해야 함 | ✅ PASS | CLI `model get`에서 Soul V2·GPT Image 2.5 모두 별도 negative prompt가 없음을 확인했다. 무문자 경로를 `gpt_image_2_5`, 1k, low, 참조 0건으로 고정했다. |
+| LOCAL-REAL-PATH-R4-03 | 실제 앱 경로로 최대 3장 생성해 3장 모두 육안·OCR에서 글자 없음이어야 함 | ✅ PASS | 실제 `/api/higgsfield/image`로 정확히 3장을 생성했다. 3장 모두 원본 육안 글자 0건, Apple Vision 4방향 OCR 0건이다. 결함 원본은 같은 OCR이 가짜 문자열을 검출했다. |
 
-검증 기준: 화면 캡처나 초안 본문이 참조 이미지·프롬프트에 섞이는지 import chain 끝까지 추적한다. 실생성은 앱 API 경로만 사용하고 최대 3장, 원본 파일을 육안과 OCR로 각각 확인한다.
+종료 증거: `logs/diff/local-real-path-20261010/r4-image-generation-verification.json`, 실제 job JSON 3건, 원본 PNG 3장, Higgsfield 회귀 12파일·91건과 이미지 프롬프트 포함 집중 4파일·44건, TypeScript, production build PASS. Tesseract는 미설치라 Apple Vision OCR로 대체했고 4방향 음성 대조를 포함했다.
 
 ## 2026-10-11 01:48 KST · 로컬 실제 경로 R3 발행 계약·구형 초안·무문자 이미지 ⚠️ 4/5 PASS
 
